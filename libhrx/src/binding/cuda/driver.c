@@ -2397,8 +2397,7 @@ CUDAAPI CUresult cuOccupancyMaxActiveBlocksPerMultiprocessor(
   uint32_t max_blocks = 0;
   iree_status_t status =
       iree_hal_streaming_calculate_max_active_blocks_per_multiprocessor(
-          device, symbol, (uint32_t)blockSize,
-          (iree_host_size_t)dynamicSMemSize, &max_blocks);
+          device, symbol, (uint32_t)blockSize, dynamicSMemSize, &max_blocks);
 
   if (iree_status_is_ok(status)) {
     *numBlocks = (int)max_blocks;
@@ -2456,7 +2455,7 @@ CUDAAPI CUresult cuOccupancyMaxPotentialBlockSize(
   uint32_t out_block_size = 0;
   uint32_t out_min_grid_size = 0;
   iree_status_t status = iree_hal_streaming_calculate_optimal_block_size(
-      device, symbol, (uint32_t)dynamicSMemSize,
+      device, symbol, dynamicSMemSize,
       (iree_hal_streaming_block_to_dynamic_smem_fn_t)blockSizeToDynamicSMemSize,
       (uint32_t)blockSizeLimit, &out_block_size, &out_min_grid_size);
 

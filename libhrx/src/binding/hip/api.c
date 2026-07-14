@@ -12671,7 +12671,6 @@ static hipError_t iree_hip_function_attribute(
       return hipErrorInvalidValue;
   }
 }
-
 // Queries a single attribute of a kernel function.
 //
 // Parameters:
@@ -12921,13 +12920,18 @@ HIPAPI hipError_t hipFuncSetAttribute(hipFunction_t hfunc,
 HIPAPI hipError_t hipFuncSetCacheConfig(hipFunction_t hfunc,
                                         hipFuncCache_t config) {
   IREE_TRACE_ZONE_BEGIN(z0);
-  if (!hfunc) {
+  iree_hal_streaming_symbol_t* symbol = NULL;
+  hipError_t result = iree_hip_resolve_function_for_metadata(
+      hfunc, hipErrorInvalidDeviceFunction, hipErrorInvalidDeviceFunction,
+      &symbol);
+  if (result != hipSuccess) {
     IREE_TRACE_ZONE_END(z0);
-    HIP_RETURN_ERROR(hipErrorInvalidValue);
+    HIP_RETURN_ERROR(result);
   }
+  (void)symbol;
 
   // Validate cache configuration.
-  hipError_t result = hipSuccess;
+  result = hipSuccess;
   switch (config) {
     case hipFuncCachePreferNone:
     case hipFuncCachePreferShared:
@@ -12989,13 +12993,18 @@ HIPAPI hipError_t hipFuncSetCacheConfig(hipFunction_t hfunc,
 HIPAPI hipError_t hipFuncSetSharedMemConfig(hipFunction_t hfunc,
                                             hipSharedMemConfig config) {
   IREE_TRACE_ZONE_BEGIN(z0);
-  if (!hfunc) {
+  iree_hal_streaming_symbol_t* symbol = NULL;
+  hipError_t result = iree_hip_resolve_function_for_metadata(
+      hfunc, hipErrorInvalidDeviceFunction, hipErrorInvalidDeviceFunction,
+      &symbol);
+  if (result != hipSuccess) {
     IREE_TRACE_ZONE_END(z0);
-    HIP_RETURN_ERROR(hipErrorInvalidValue);
+    HIP_RETURN_ERROR(result);
   }
+  (void)symbol;
 
   // Validate shared memory configuration.
-  hipError_t result = hipSuccess;
+  result = hipSuccess;
   switch (config) {
     case hipSharedMemBankSizeDefault:
     case hipSharedMemBankSizeFourByte:
@@ -14042,9 +14051,14 @@ HIPAPI hipError_t hipModuleOccupancyMaxActiveBlocksPerMultiprocessor(
     int* numBlocks, hipFunction_t f, int blockSize, size_t dynSharedMemPerBlk) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  if (!numBlocks || !f || blockSize <= 0) {
+  if (!numBlocks || blockSize <= 0) {
     IREE_TRACE_ZONE_END(z0);
     HIP_RETURN_ERROR(hipErrorInvalidValue);
+  }
+  *numBlocks = 0;
+  if (!f) {
+    IREE_TRACE_ZONE_END(z0);
+    HIP_RETURN_ERROR(hipErrorInvalidHandle);
   }
 
   // Get the current context and device.
@@ -14199,9 +14213,15 @@ HIPAPI hipError_t hipModuleOccupancyMaxPotentialBlockSize(
     int blockSizeLimit) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  if (!gridSize || !blockSize || !f) {
+  if (!gridSize || !blockSize || blockSizeLimit < 0) {
     IREE_TRACE_ZONE_END(z0);
     HIP_RETURN_ERROR(hipErrorInvalidValue);
+  }
+  *gridSize = 0;
+  *blockSize = 0;
+  if (!f) {
+    IREE_TRACE_ZONE_END(z0);
+    HIP_RETURN_ERROR(hipErrorInvalidHandle);
   }
 
   // Get the current context and device.
@@ -14239,12 +14259,17 @@ HIPAPI hipError_t hipModuleOccupancyMaxPotentialBlockSize(
   // HIP doesn't yet have a C API for dynamic shared memory callbacks.
   // Pass NULL for the callback to use fixed dynamic shared memory size.
   iree_status_t status = iree_hal_streaming_calculate_optimal_block_size(
-      device, symbol, (uint32_t)dynSharedMemPerBlk, NULL,
-      (uint32_t)blockSizeLimit, &block_size, &min_grid_size);
-  *gridSize = min_grid_size;
-  *blockSize = block_size;
-
+      device, symbol, dynSharedMemPerBlk, NULL, (uint32_t)blockSizeLimit,
+      &block_size, &min_grid_size);
   hipError_t result = iree_status_to_hip_result(status);
+  if (result == hipSuccess) {
+    if (min_grid_size > INT_MAX || block_size > INT_MAX) {
+      result = hipErrorInvalidValue;
+    } else {
+      *gridSize = (int)min_grid_size;
+      *blockSize = (int)block_size;
+    }
+  }
   IREE_TRACE_ZONE_END(z0);
   HIP_RETURN_ERROR(result);
 }
@@ -14296,24 +14321,134 @@ HIPAPI hipError_t hipModuleOccupancyMaxPotentialBlockSizeWithFlags(
 // Runtime occupancy functions (for host function pointers)
 //===----------------------------------------------------------------------===//
 
+static hipError_t iree_hip_resolve_runtime_occupancy_function(
+    const void* function, iree_hal_streaming_device_t** out_device,
+    iree_hal_streaming_symbol_t** out_symbol) {
+  *out_device = NULL;
+  *out_symbol = NULL;
+  if (!function) return hipErrorInvalidDeviceFunction;
+
+  iree_hal_streaming_context_t* context = NULL;
+  hipError_t result = iree_hip_ensure_context(&context);
+  if (result != hipSuccess) return result;
+  if (!context->device_entry) return hipErrorInvalidDevice;
+
+  result = iree_hip_resolve_function_for_metadata(
+      function, hipErrorInvalidDeviceFunction, hipErrorInvalidDeviceFunction,
+      out_symbol);
+  if (result != hipSuccess) return result;
+
+  *out_device = context->device_entry;
+  return hipSuccess;
+}
+
+static hipError_t iree_hip_calculate_runtime_max_active_blocks(
+    int* num_blocks, const void* function, int block_size,
+    size_t dynamic_shared_memory_size) {
+  if (!num_blocks) return hipErrorInvalidValue;
+  *num_blocks = 0;
+  if (!function) return hipErrorInvalidDeviceFunction;
+  if (block_size <= 0) return hipErrorInvalidValue;
+
+  iree_hal_streaming_device_t* device = NULL;
+  iree_hal_streaming_symbol_t* symbol = NULL;
+  hipError_t result =
+      iree_hip_resolve_runtime_occupancy_function(function, &device, &symbol);
+  if (result != hipSuccess) return result;
+
+  uint32_t max_blocks = 0;
+  iree_status_t status =
+      iree_hal_streaming_calculate_max_active_blocks_per_multiprocessor(
+          device, symbol, (uint32_t)block_size, dynamic_shared_memory_size,
+          &max_blocks);
+  if (!iree_status_is_ok(status)) {
+    result = iree_status_to_hip_result(status);
+    return result;
+  }
+
+  *num_blocks = (int)max_blocks;
+  return hipSuccess;
+}
+
 // Calculates maximum active blocks per SM for a host function pointer.
 HIPAPI hipError_t hipOccupancyMaxActiveBlocksPerMultiprocessor(
     int* numBlocks, const void* f, int blockSize, size_t dynSharedMemPerBlk) {
-  if (!numBlocks || !f) {
-    HIP_RETURN_ERROR(hipErrorInvalidValue);
-  }
-  // Conservative default for AMD GPUs.
-  *numBlocks = 1;
-  return hipSuccess;
+  HIP_RETURN_ERROR(iree_hip_calculate_runtime_max_active_blocks(
+      numBlocks, f, blockSize, dynSharedMemPerBlk));
 }
 
 // Calculates maximum active blocks per SM with flags.
 HIPAPI hipError_t hipOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(
     int* numBlocks, const void* f, int blockSize, size_t dynSharedMemPerBlk,
     unsigned int flags) {
-  (void)flags;
-  return hipOccupancyMaxActiveBlocksPerMultiprocessor(numBlocks, f, blockSize,
-                                                      dynSharedMemPerBlk);
+  if (!iree_hip_occupancy_flags_are_valid(flags)) {
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
+  }
+  HIP_RETURN_ERROR(iree_hip_calculate_runtime_max_active_blocks(
+      numBlocks, f, blockSize, dynSharedMemPerBlk));
+}
+
+HIPAPI hipError_t hipOccupancyAvailableDynamicSMemPerBlock(
+    size_t* dynamicSmemSize, const void* f, int numBlocks, int blockSize) {
+  if (!dynamicSmemSize) {
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
+  }
+  *dynamicSmemSize = 0;
+  if (!f) {
+    HIP_RETURN_ERROR(hipErrorInvalidDeviceFunction);
+  }
+  if (numBlocks <= 0 || blockSize <= 0) {
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
+  }
+
+  iree_hal_streaming_device_t* device = NULL;
+  iree_hal_streaming_symbol_t* symbol = NULL;
+  hipError_t result =
+      iree_hip_resolve_runtime_occupancy_function(f, &device, &symbol);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+
+  uint32_t maximum_resident_blocks = 0;
+  iree_status_t status =
+      iree_hal_streaming_calculate_max_active_blocks_per_multiprocessor(
+          device, symbol, (uint32_t)blockSize, 0, &maximum_resident_blocks);
+  if (!iree_status_is_ok(status)) {
+    HIP_RETURN_ERROR(iree_status_to_hip_result(status));
+  }
+  if ((uint32_t)numBlocks > maximum_resident_blocks) {
+    HIP_RETURN_ERROR(hipSuccess);
+  }
+
+  const iree_device_size_t static_shared_memory =
+      symbol->function_attributes.fixed_shared_memory_size;
+  const iree_device_size_t shared_memory_per_block =
+      device->max_shared_memory_per_block;
+  const iree_device_size_t max_dynamic_by_block =
+      static_shared_memory < shared_memory_per_block
+          ? shared_memory_per_block - static_shared_memory
+          : 0;
+  iree_device_size_t max_dynamic_for_symbol = max_dynamic_by_block;
+  if (iree_all_bits_set(
+          symbol->function_attributes.provided_flags,
+          IREE_HAL_STREAMING_FUNCTION_ATTRIBUTE_FLAG_DYNAMIC_SHARED_MEMORY)) {
+    max_dynamic_for_symbol = iree_min(
+        max_dynamic_by_block,
+        (iree_device_size_t)
+            iree_hal_streaming_function_attributes_dynamic_shared_memory_size(
+                &symbol->function_attributes));
+  }
+
+  const iree_device_size_t shared_memory_per_multiprocessor =
+      device->max_shared_memory_per_multiprocessor;
+  const iree_device_size_t shared_memory_per_resident_block =
+      shared_memory_per_multiprocessor / (uint32_t)numBlocks;
+  const iree_device_size_t dynamic_shared_memory =
+      shared_memory_per_resident_block > static_shared_memory
+          ? shared_memory_per_resident_block - static_shared_memory
+          : 0;
+  *dynamicSmemSize = (size_t)(dynamic_shared_memory < max_dynamic_for_symbol
+                                  ? dynamic_shared_memory
+                                  : max_dynamic_for_symbol);
+  HIP_RETURN_ERROR(hipSuccess);
 }
 
 // Calculates optimal block and grid size for a host function pointer.
@@ -14325,22 +14460,40 @@ HIPAPI hipError_t hipOccupancyMaxPotentialBlockSize(int* gridSize,
   if (!gridSize || !blockSize || !f) {
     HIP_RETURN_ERROR(hipErrorInvalidValue);
   }
-  // Return conservative defaults that work for most kernels.
-  // Block size of 256 is commonly optimal for AMD GPUs.
-  *blockSize =
-      (blockSizeLimit > 0 && blockSizeLimit < 256) ? blockSizeLimit : 256;
-  // Grid size of 1 is a minimum that will work.
-  *gridSize = 1;
-  return hipSuccess;
+  *gridSize = 0;
+  *blockSize = 0;
+  if (blockSizeLimit < 0) {
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
+  }
+  iree_hal_streaming_device_t* device = NULL;
+  iree_hal_streaming_symbol_t* symbol = NULL;
+  hipError_t result =
+      iree_hip_resolve_runtime_occupancy_function(f, &device, &symbol);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+
+  uint32_t calculated_block_size = 0;
+  uint32_t minimum_grid_size = 0;
+  iree_status_t status = iree_hal_streaming_calculate_optimal_block_size(
+      device, symbol, dynSharedMemPerBlk, NULL, (uint32_t)blockSizeLimit,
+      &calculated_block_size, &minimum_grid_size);
+  if (!iree_status_is_ok(status)) {
+    HIP_RETURN_ERROR(iree_status_to_hip_result(status));
+  }
+
+  *gridSize = (int)minimum_grid_size;
+  *blockSize = (int)calculated_block_size;
+  HIP_RETURN_ERROR(hipSuccess);
 }
 
 // Calculates optimal block and grid size with flags.
 HIPAPI hipError_t hipOccupancyMaxPotentialBlockSizeWithFlags(
     int* gridSize, int* blockSize, const void* f, size_t dynSharedMemPerBlk,
     int blockSizeLimit, unsigned int flags) {
-  (void)flags;
-  return hipOccupancyMaxPotentialBlockSize(gridSize, blockSize, f,
-                                           dynSharedMemPerBlk, blockSizeLimit);
+  if (!iree_hip_occupancy_flags_are_valid(flags)) {
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
+  }
+  HIP_RETURN_ERROR(hipOccupancyMaxPotentialBlockSize(
+      gridSize, blockSize, f, dynSharedMemPerBlk, blockSizeLimit));
 }
 
 //===----------------------------------------------------------------------===//

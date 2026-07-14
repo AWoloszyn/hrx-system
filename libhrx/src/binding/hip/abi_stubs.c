@@ -1439,15 +1439,6 @@ HIPAPI hipError_t hipModuleLaunchCooperativeKernelMultiDevice(
   return hipErrorNotSupported;
 }
 
-HIPAPI hipError_t hipOccupancyAvailableDynamicSMemPerBlock(
-    size_t* dynamicSmemSize, const void* f, int numBlocks, int blockSize) {
-  (void)dynamicSmemSize;
-  (void)f;
-  (void)numBlocks;
-  (void)blockSize;
-  return hipErrorNotSupported;
-}
-
 HIPAPI hipError_t hipProfilerStart(void) { return hipErrorNotSupported; }
 
 HIPAPI hipError_t hipProfilerStop(void) { return hipErrorNotSupported; }

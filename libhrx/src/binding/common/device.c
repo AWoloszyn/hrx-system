@@ -454,7 +454,7 @@ iree_status_t iree_hal_streaming_device_release_primary_context(
 
 iree_status_t iree_hal_streaming_calculate_max_active_blocks_per_multiprocessor(
     iree_hal_streaming_device_t* device, iree_hal_streaming_symbol_t* symbol,
-    uint32_t block_size, uint32_t dynamic_shared_mem_size,
+    uint32_t block_size, iree_device_size_t dynamic_shared_mem_size,
     uint32_t* out_max_blocks) {
   IREE_ASSERT_ARGUMENT(device);
   IREE_ASSERT_ARGUMENT(symbol);
@@ -471,41 +471,74 @@ iree_status_t iree_hal_streaming_calculate_max_active_blocks_per_multiprocessor(
                             "block size must be positive");
   }
 
+  const uint32_t maximum_block_size =
+      symbol->function_attributes.maximum_threads_per_block != 0
+          ? iree_min(device->max_threads_per_block,
+                     symbol->function_attributes.maximum_threads_per_block)
+          : device->max_threads_per_block;
+  if (block_size > maximum_block_size) {
+    *out_max_blocks = 0;
+    return iree_ok_status();
+  }
+
   // Calculate constraints.
-  // 1. Thread constraint: blocks limited by max threads per SM.
+  // 1. Thread constraint: workgroups limited by resident invocations per
+  // execution unit.
   const uint32_t blocks_by_threads =
       device->max_threads_per_multiprocessor / block_size;
 
-  // 2. Block constraint: hardware limit on blocks per SM.
+  // 2. Workgroup constraint: hardware limit per execution unit.
   const uint32_t blocks_by_limit = device->max_blocks_per_multiprocessor;
 
   // 3. Register constraint: blocks limited by register usage.
   uint32_t blocks_by_regs = UINT32_MAX;
   const uint32_t register_count = symbol->function_attributes.register_count;
   if (register_count > 0) {
+    if (IREE_UNLIKELY(device->warp_size == 0)) {
+      return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                              "device reports a zero warp size");
+    }
     // Round up register allocation to warp granularity.
     const uint32_t warps_per_block =
-        (block_size + device->warp_size - 1) / device->warp_size;
+        block_size / device->warp_size + (block_size % device->warp_size != 0);
     const uint64_t registers_per_block =
         (uint64_t)register_count * warps_per_block * device->warp_size;
-    if (registers_per_block > device->max_registers_per_multiprocessor) {
-      blocks_by_regs = 0;
-    } else if (registers_per_block > 0) {
+    if (registers_per_block > 0) {
       blocks_by_regs =
-          device->max_registers_per_multiprocessor / registers_per_block;
+          registers_per_block > device->max_registers_per_multiprocessor
+              ? 0
+              : device->max_registers_per_multiprocessor /
+                    registers_per_block;
     }
   }
 
   // 4. Shared memory constraint.
   uint32_t blocks_by_smem = UINT32_MAX;
-  const uint64_t total_shared_memory =
-      (uint64_t)symbol->function_attributes.fixed_shared_memory_size +
-      dynamic_shared_mem_size;
-  if (total_shared_memory > device->max_shared_memory_per_multiprocessor) {
-    blocks_by_smem = 0;
-  } else if (total_shared_memory > 0) {
+  iree_device_size_t total_shared_memory = 0;
+  if (IREE_UNLIKELY(!iree_device_size_checked_add(
+          symbol->function_attributes.fixed_shared_memory_size,
+          dynamic_shared_mem_size, &total_shared_memory))) {
+    *out_max_blocks = 0;
+    return iree_ok_status();
+  }
+  const iree_device_size_t maximum_dynamic_shared_memory =
+      iree_all_bits_set(
+          symbol->function_attributes.provided_flags,
+          IREE_HAL_STREAMING_FUNCTION_ATTRIBUTE_FLAG_DYNAMIC_SHARED_MEMORY)
+          ? iree_hal_streaming_function_attributes_dynamic_shared_memory_size(
+                &symbol->function_attributes)
+          : device->max_shared_memory_per_block;
+  if (dynamic_shared_mem_size > maximum_dynamic_shared_memory ||
+      total_shared_memory > device->max_shared_memory_per_block) {
+    *out_max_blocks = 0;
+    return iree_ok_status();
+  }
+  if (total_shared_memory > 0) {
     blocks_by_smem =
-        device->max_shared_memory_per_multiprocessor / total_shared_memory;
+        total_shared_memory > device->max_shared_memory_per_multiprocessor
+            ? 0
+            : device->max_shared_memory_per_multiprocessor /
+                  total_shared_memory;
   }
 
   // Take the minimum of all constraints.
@@ -520,7 +553,7 @@ iree_status_t iree_hal_streaming_calculate_max_active_blocks_per_multiprocessor(
 
 iree_status_t iree_hal_streaming_calculate_optimal_block_size(
     iree_hal_streaming_device_t* device, iree_hal_streaming_symbol_t* symbol,
-    uint32_t dynamic_shared_mem_size,
+    iree_device_size_t dynamic_shared_mem_size,
     iree_hal_streaming_block_to_dynamic_smem_fn_t dynamic_shared_mem_callback,
     uint32_t block_size_limit, uint32_t* out_block_size,
     uint32_t* out_min_grid_size) {
@@ -540,25 +573,33 @@ iree_status_t iree_hal_streaming_calculate_optimal_block_size(
       symbol->function_attributes.maximum_threads_per_block;
   if (max_block_size == 0) {
     max_block_size = device->max_threads_per_block;
+  } else {
+    max_block_size = iree_min(max_block_size, device->max_threads_per_block);
   }
   if (block_size_limit > 0 && block_size_limit < max_block_size) {
     max_block_size = block_size_limit;
   }
+  if (max_block_size == 0) {
+    *out_block_size = 0;
+    *out_min_grid_size = 0;
+    return iree_ok_status();
+  }
 
-  // Try different block sizes and find the one with best occupancy.
-  uint32_t best_block_size = 32;
+  // Occupancy only changes at subgroup boundaries for thread residency. Walk
+  // those boundaries from largest to smallest so equal-occupancy candidates
+  // select the larger workgroup.
+  const uint32_t block_size_step =
+      device->warp_size != 0 ? device->warp_size : 1;
+  uint32_t test_size = max_block_size >= block_size_step
+                           ? max_block_size - max_block_size % block_size_step
+                           : max_block_size;
+  uint32_t best_block_size = 0;
   uint32_t best_occupancy = 0;
-
-  // Test common block sizes: 32, 64, 128, 256, 512, 768, 1024.
-  const uint32_t block_sizes[] = {32, 64, 128, 256, 512, 768, 1024};
-  for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(block_sizes); ++i) {
-    const uint32_t test_size = block_sizes[i];
-    if (test_size > max_block_size) break;
-
+  while (test_size != 0) {
     // Calculate dynamic shared memory size for this block size.
-    const uint32_t dynamic_smem = dynamic_shared_mem_callback
-                                      ? dynamic_shared_mem_callback(test_size)
-                                      : dynamic_shared_mem_size;
+    const iree_device_size_t dynamic_smem =
+        dynamic_shared_mem_callback ? dynamic_shared_mem_callback(test_size)
+                                    : dynamic_shared_mem_size;
 
     // Get max active blocks for this configuration.
     uint32_t active_blocks = 0;
@@ -566,11 +607,14 @@ iree_status_t iree_hal_streaming_calculate_optimal_block_size(
         iree_hal_streaming_calculate_max_active_blocks_per_multiprocessor(
             device, symbol, test_size, dynamic_smem, &active_blocks);
     if (!iree_status_is_ok(status)) {
-      iree_status_ignore(status);
-      continue;
+      return status;
     }
 
-    // Calculate occupancy (active warps).
+    if (IREE_UNLIKELY(active_blocks != 0 &&
+                      test_size > UINT32_MAX / active_blocks)) {
+      return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                              "occupancy calculation overflow");
+    }
     const uint32_t occupancy = active_blocks * test_size;
 
     // Update best if this is better.
@@ -578,6 +622,14 @@ iree_status_t iree_hal_streaming_calculate_optimal_block_size(
       best_occupancy = occupancy;
       best_block_size = test_size;
     }
+    if (test_size <= block_size_step) break;
+    test_size -= block_size_step;
+  }
+
+  if (best_block_size == 0) {
+    *out_block_size = 0;
+    *out_min_grid_size = 0;
+    return iree_ok_status();
   }
 
   // Calculate grid size with the best block size.
@@ -585,17 +637,23 @@ iree_status_t iree_hal_streaming_calculate_optimal_block_size(
       device->multiprocessor_count > 0 ? device->multiprocessor_count : 1;
 
   // Get dynamic shared memory for the best block size.
-  const uint32_t best_dynamic_smem =
+  const iree_device_size_t best_dynamic_smem =
       dynamic_shared_mem_callback ? dynamic_shared_mem_callback(best_block_size)
-                                  : 0;
+                                  : dynamic_shared_mem_size;
 
   uint32_t blocks_per_mp = 0;
   IREE_RETURN_IF_ERROR(
       iree_hal_streaming_calculate_max_active_blocks_per_multiprocessor(
           device, symbol, best_block_size, best_dynamic_smem, &blocks_per_mp));
 
+  if (IREE_UNLIKELY(blocks_per_mp != 0 &&
+                    mp_count > UINT32_MAX / blocks_per_mp)) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "occupancy grid size overflow");
+  }
+  const uint32_t minimum_grid_size = blocks_per_mp * mp_count;
   *out_block_size = best_block_size;
-  *out_min_grid_size = blocks_per_mp * mp_count;
+  *out_min_grid_size = minimum_grid_size;
 
   return iree_ok_status();
 }

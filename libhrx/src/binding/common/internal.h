@@ -1421,7 +1421,7 @@ iree_status_t iree_hal_streaming_device_set_primary_context_flags(
 // Synchronization: none (queries kernel occupancy).
 iree_status_t iree_hal_streaming_calculate_max_active_blocks_per_multiprocessor(
     iree_hal_streaming_device_t* device, iree_hal_streaming_symbol_t* symbol,
-    uint32_t block_size, uint32_t dynamic_shared_mem_size,
+    uint32_t block_size, iree_device_size_t dynamic_shared_mem_size,
     uint32_t* out_max_blocks);
 
 // Callback type for dynamic shared memory size calculation.
@@ -1446,7 +1446,7 @@ iree_status_t iree_hal_streaming_calculate_max_active_blocks_per_multiprocessor(
 //   return 2 * tile_size * tile_size * sizeof(float);
 // }
 // ```
-typedef uint32_t (*iree_hal_streaming_block_to_dynamic_smem_fn_t)(
+typedef iree_device_size_t (*iree_hal_streaming_block_to_dynamic_smem_fn_t)(
     uint32_t block_size);
 
 // Calculates optimal block size for a kernel with optional dynamic shared
@@ -1456,7 +1456,7 @@ typedef uint32_t (*iree_hal_streaming_block_to_dynamic_smem_fn_t)(
 // Synchronization: none (queries kernel occupancy).
 iree_status_t iree_hal_streaming_calculate_optimal_block_size(
     iree_hal_streaming_device_t* device, iree_hal_streaming_symbol_t* symbol,
-    uint32_t dynamic_shared_mem_size,
+    iree_device_size_t dynamic_shared_mem_size,
     iree_hal_streaming_block_to_dynamic_smem_fn_t dynamic_shared_mem_callback,
     uint32_t block_size_limit, uint32_t* out_block_size,
     uint32_t* out_min_grid_size);
