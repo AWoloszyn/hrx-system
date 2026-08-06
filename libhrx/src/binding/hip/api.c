@@ -968,6 +968,7 @@ static hipError_t iree_hip_get_per_thread_stream_state(
 }
 
 static void iree_hip_thread_error_set(hipError_t error, bool sticky) {
+  if (iree_hip_thread_error.sticky && !sticky) return;
   iree_hip_thread_error.last_error = error;
   iree_hip_thread_error.sticky = sticky;
 }
@@ -1094,6 +1095,8 @@ static hipError_t iree_status_to_hip_result(iree_status_t status) {
       return hipErrorNotReady;
     case IREE_STATUS_FAILED_PRECONDITION:
       return hipErrorNotInitialized;
+    case IREE_STATUS_ABORTED:
+      return hipErrorIllegalAddress;
     default:
       return hipErrorUnknown;
   }
@@ -1443,6 +1446,9 @@ static bool iree_hip_no_visible_devices_requested(void) {
 }
 
 static hipError_t iree_hip_ensure_initialized(void) {
+  if (iree_hip_thread_error.sticky) {
+    return iree_hip_thread_error_peek();
+  }
   if (iree_hip_no_visible_devices_requested()) {
     return hipErrorNoDevice;
   }
@@ -3205,7 +3211,10 @@ HIPAPI hipError_t hipDeviceSynchronize(void) {
       "[HIP_API] hipDeviceSynchronize() returned %d (sync_count=%d)\n", result,
       sync_count);
   IREE_TRACE_ZONE_END(z0);
-  return result;
+  if (result == hipErrorIllegalAddress) {
+    HIP_RETURN_STICKY_ERROR(result);
+  }
+  HIP_RETURN_ERROR(result);
 }
 
 // Resets the current device and destroys all allocations.
@@ -12896,7 +12905,9 @@ HIPAPI hipError_t hipLaunchKernel(const void* function_address, dim3 numBlocks,
       iree_hip_resolve_registered_stream(stream, &resolved_stream);
   if (init_result != hipSuccess) {
     IREE_TRACE_ZONE_END(z0);
-    HIP_RETURN_ERROR(init_result);
+    HIP_RETURN_ERROR(init_result == hipErrorInvalidResourceHandle
+                         ? hipErrorInvalidValue
+                         : init_result);
   }
   iree_hal_streaming_context_t* context = resolved_stream.context;
   iree_hal_streaming_stream_t* stream_obj = resolved_stream.stream;
@@ -12945,6 +12956,13 @@ HIPAPI hipError_t hipLaunchKernel(const void* function_address, dim3 numBlocks,
     iree_hip_resolved_stream_release(&resolved_stream);
     IREE_TRACE_ZONE_END(z0);
     HIP_RETURN_ERROR(hipErrorInvalidDeviceFunction);
+  }
+
+  if (stream_obj->context->device_entry->max_shared_memory_per_block != 0 &&
+      sharedMemBytes >
+          stream_obj->context->device_entry->max_shared_memory_per_block) {
+    IREE_TRACE_ZONE_END(z0);
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
   }
 
   hipError_t launch_config_result = iree_hip_validate_launch_configuration(
