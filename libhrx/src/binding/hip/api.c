@@ -32,6 +32,7 @@
 #include "binding/hip/launch_params.h"
 #include "common/graph.h"
 #include "common/internal.h"
+#include "common/managed_global.h"
 #include "common/stream.h"
 #include "common/tls.h"
 #include "hrx_runtime.h"
@@ -3173,6 +3174,10 @@ HIPAPI hipError_t hipDeviceSynchronize(void) {
   }
 
   iree_status_t status = iree_hal_streaming_context_synchronize(context);
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_streaming_context_symbol_map_synchronize_managed_data(
+        &context->symbol_map);
+  }
   hipError_t result = iree_status_to_hip_result(status);
   HIP_DEBUG_LOG(
       "[HIP_API] hipDeviceSynchronize() returned %d (sync_count=%d)\n", result,
@@ -10980,6 +10985,10 @@ HIPAPI hipError_t hipStreamSynchronize(hipStream_t stream) {
     iree_status_t status =
         iree_hal_streaming_context_synchronize_legacy_default(
             resolved_stream.context);
+    if (iree_status_is_ok(status)) {
+      status = iree_hal_streaming_context_symbol_map_synchronize_managed_data(
+          &resolved_stream.context->symbol_map);
+    }
     iree_hip_resolved_stream_release(&resolved_stream);
     hipError_t result = iree_status_to_hip_result(status);
     IREE_TRACE_ZONE_END(z0);
@@ -10995,6 +11004,10 @@ HIPAPI hipError_t hipStreamSynchronize(hipStream_t stream) {
 
   iree_status_t status =
       iree_hal_streaming_stream_synchronize(resolved_stream.stream);
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_streaming_context_symbol_map_synchronize_managed_data(
+        &resolved_stream.context->symbol_map);
+  }
   iree_hip_resolved_stream_release(&resolved_stream);
   hipError_t result = iree_status_to_hip_result(status);
   IREE_TRACE_ZONE_END(z0);
@@ -11772,6 +11785,10 @@ HIPAPI hipError_t hipEventSynchronize(hipEvent_t event) {
   }
 
   iree_status_t status = iree_hal_streaming_event_synchronize(streaming_event);
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_streaming_context_symbol_map_synchronize_managed_data(
+        &streaming_event->context->symbol_map);
+  }
   iree_hal_streaming_event_release(streaming_event);
   hipError_t result = iree_status_to_hip_result(status);
   IREE_TRACE_ZONE_END(z0);
@@ -24525,11 +24542,12 @@ HIPAPI void __hipRegisterManagedVar(void* hipModule, void** pointer,
   iree_status_t status =
       iree_hal_streaming_global_symbol_registry_insert_managed_variable(
           registry, (iree_hal_streaming_module_registration_t*)hipModule,
-          managed_pointer ? managed_pointer : pointer, name, size, align);
+          managed_pointer ? managed_pointer : pointer, name, size, align,
+          managed_pointer);
   if (iree_status_is_ok(status) && (void*)pointer != managed_pointer) {
     status = iree_hal_streaming_global_symbol_registry_insert_managed_variable(
         registry, (iree_hal_streaming_module_registration_t*)hipModule, pointer,
-        name, size, align);
+        name, size, align, /*managed_initial_value=*/NULL);
   }
   iree_status_ignore(status);
 }
