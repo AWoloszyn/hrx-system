@@ -74,11 +74,16 @@ hipError_t iree_hip_validate_launch_block_configuration(
   }
   threads_per_block *= block_dim[2];
   const uint32_t device_max_threads = device->max_threads_per_block;
+  if (device_max_threads != 0 && threads_per_block > device_max_threads) {
+    return hipErrorInvalidConfiguration;
+  }
+  // A function's compiled workgroup limit is a launch bound, not a device
+  // configuration limit. Keep this check separate so callers can distinguish
+  // a launch that violates executable metadata from an invalid device shape.
   const uint32_t symbol_max_threads =
       symbol ? symbol->function_attributes.maximum_threads_per_block : 0;
-  if ((device_max_threads != 0 && threads_per_block > device_max_threads) ||
-      (symbol_max_threads != 0 && threads_per_block > symbol_max_threads)) {
-    return hipErrorInvalidConfiguration;
+  if (symbol_max_threads != 0 && threads_per_block > symbol_max_threads) {
+    return hipErrorLaunchFailure;
   }
 
   if (symbol &&

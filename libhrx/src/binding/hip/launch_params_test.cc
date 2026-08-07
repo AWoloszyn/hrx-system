@@ -156,19 +156,43 @@ TEST(LaunchParamsTest, ValidateLaunchConfigurationRejectsInvalidDimensions) {
                 /*block_dim_z=*/1, /*shared_memory_bytes=*/0));
 }
 
-TEST(LaunchParamsTest, ValidateLaunchConfigurationRejectsResourceExcess) {
+TEST(LaunchParamsTest, ValidateLaunchConfigurationRejectsDeviceResourceExcess) {
+  iree_hal_streaming_device_t device = {};
+  InitializeLaunchDevice(&device);
+
+  EXPECT_EQ(hipErrorInvalidConfiguration,
+            iree_hip_validate_launch_configuration(
+                &device, nullptr, /*grid_dim_x=*/1, /*grid_dim_y=*/1,
+                /*grid_dim_z=*/1, /*block_dim_x=*/1024, /*block_dim_y=*/2,
+                /*block_dim_z=*/1, /*shared_memory_bytes=*/0));
+  EXPECT_EQ(hipErrorInvalidValue,
+            iree_hip_validate_launch_configuration(
+                &device, nullptr, /*grid_dim_x=*/1, /*grid_dim_y=*/1,
+                /*grid_dim_z=*/1, /*block_dim_x=*/128, /*block_dim_y=*/1,
+                /*block_dim_z=*/1,
+                /*shared_memory_bytes=*/64 * 1024 + 1));
+}
+
+TEST(LaunchParamsTest, ValidateLaunchConfigurationEnforcesLaunchBounds) {
   iree_hal_streaming_device_t device = {};
   InitializeLaunchDevice(&device);
   iree_hal_streaming_symbol_t symbol = {};
   InitializeLaunchSymbol(&symbol, /*maximum_threads_per_block=*/256,
                          /*dynamic_shared_memory_size=*/4096);
 
-  EXPECT_EQ(hipErrorInvalidConfiguration,
+  EXPECT_EQ(hipErrorLaunchFailure,
             iree_hip_validate_launch_configuration(
                 &device, &symbol, /*grid_dim_x=*/1, /*grid_dim_y=*/1,
                 /*grid_dim_z=*/1, /*block_dim_x=*/512, /*block_dim_y=*/1,
                 /*block_dim_z=*/1, /*shared_memory_bytes=*/0));
-  EXPECT_EQ(hipErrorInvalidConfiguration,
+}
+
+TEST(LaunchParamsTest, ValidateLaunchConfigurationUsesDeviceSharedMemoryLimit) {
+  iree_hal_streaming_device_t device = {};
+  InitializeLaunchDevice(&device);
+  iree_hal_streaming_symbol_t symbol = {};
+
+  EXPECT_EQ(hipSuccess,
             iree_hip_validate_launch_configuration(
                 &device, &symbol, /*grid_dim_x=*/1, /*grid_dim_y=*/1,
                 /*grid_dim_z=*/1, /*block_dim_x=*/128, /*block_dim_y=*/1,
@@ -219,7 +243,7 @@ TEST(LaunchParamsTest,
                 &device, nullptr, /*grid_dim_x=*/1, /*grid_dim_y=*/1,
                 /*grid_dim_z=*/1, /*block_dim_x=*/1, /*block_dim_y=*/1,
                 /*block_dim_z=*/1, /*shared_memory_bytes=*/UINT32_MAX));
-  EXPECT_EQ(hipErrorInvalidConfiguration,
+  EXPECT_EQ(hipErrorInvalidValue,
             iree_hip_validate_launch_configuration(
                 &device, nullptr, /*grid_dim_x=*/1, /*grid_dim_y=*/1,
                 /*grid_dim_z=*/1, /*block_dim_x=*/1, /*block_dim_y=*/1,
