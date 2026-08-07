@@ -12850,7 +12850,7 @@ HIPAPI hipError_t hipFuncSetAttribute(hipFunction_t hfunc,
     HIP_RETURN_ERROR(result);
   }
 
-  if (attrib < 0 || attrib >= hipFuncAttributeMax) {
+  if (attrib < 0 || attrib > hipFuncAttributeMax) {
     IREE_TRACE_ZONE_END(z0);
     HIP_RETURN_ERROR(hipErrorInvalidValue);
   }
@@ -12872,6 +12872,15 @@ HIPAPI hipError_t hipFuncSetAttribute(hipFunction_t hfunc,
         iree_atomic_store(&symbol->preferred_shared_memory_carveout, value,
                           iree_memory_order_relaxed);
       }
+      break;
+    case hipFuncAttributeClusterDimMustBeSet:
+    case hipFuncAttributeRequiredClusterWidth:
+    case hipFuncAttributeRequiredClusterHeight:
+    case hipFuncAttributeRequiredClusterDepth:
+    case hipFuncAttributeNonPortableClusterSizeAllowed:
+    case hipFuncAttributeClusterSchedulingPolicyPreference:
+    case hipFuncAttributeMax:
+      // Cluster controls and the reserved upper bound are accepted as no-ops.
       break;
     default:
       result = hipErrorInvalidValue;

@@ -447,6 +447,12 @@ typedef enum hipFuncAttribute {
   hipFuncAttributeCacheModeCA = 7,
   hipFuncAttributeMaxDynamicSharedSizeBytes = 8,
   hipFuncAttributePreferredSharedMemoryCarveout = 9,
+  hipFuncAttributeClusterDimMustBeSet = 10,
+  hipFuncAttributeRequiredClusterWidth = 11,
+  hipFuncAttributeRequiredClusterHeight = 12,
+  hipFuncAttributeRequiredClusterDepth = 13,
+  hipFuncAttributeNonPortableClusterSizeAllowed = 14,
+  hipFuncAttributeClusterSchedulingPolicyPreference = 15,
   hipFuncAttributeMax
 } hipFuncAttribute_t;
 
