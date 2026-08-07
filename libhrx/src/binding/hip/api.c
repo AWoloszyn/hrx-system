@@ -12665,7 +12665,8 @@ static hipError_t iree_hip_function_attribute(
               attributes);
       return hipSuccess;
     case hipFuncAttributePreferredSharedMemoryCarveout:
-      *out_value = symbol->preferred_shared_memory_carveout;
+      *out_value = iree_atomic_load(&symbol->preferred_shared_memory_carveout,
+                                    iree_memory_order_relaxed);
       return hipSuccess;
     default:
       return hipErrorInvalidValue;
@@ -12791,7 +12792,8 @@ HIPAPI hipError_t hipFuncGetAttributes(hipFuncAttributes* attr,
   attr->maxDynamicSharedSizeBytes =
       iree_hal_streaming_function_attributes_dynamic_shared_memory_size(
           attributes);
-  attr->preferredShmemCarveout = symbol->preferred_shared_memory_carveout;
+  attr->preferredShmemCarveout = iree_atomic_load(
+      &symbol->preferred_shared_memory_carveout, iree_memory_order_relaxed);
 
   HIP_RETURN_ERROR(hipSuccess);
 }
@@ -12867,7 +12869,8 @@ HIPAPI hipError_t hipFuncSetAttribute(hipFunction_t hfunc,
       if (value < -1 || value > 100) {
         result = hipErrorInvalidValue;
       } else {
-        symbol->preferred_shared_memory_carveout = value;
+        iree_atomic_store(&symbol->preferred_shared_memory_carveout, value,
+                          iree_memory_order_relaxed);
       }
       break;
     default:
@@ -12928,22 +12931,30 @@ HIPAPI hipError_t hipFuncSetCacheConfig(hipFunction_t hfunc,
     IREE_TRACE_ZONE_END(z0);
     HIP_RETURN_ERROR(result);
   }
-  (void)symbol;
-
-  // Validate cache configuration.
   result = hipSuccess;
+  int preferred_shared_memory_carveout = -1;
   switch (config) {
     case hipFuncCachePreferNone:
+      preferred_shared_memory_carveout = 0;
+      break;
     case hipFuncCachePreferShared:
+      preferred_shared_memory_carveout = 100;
+      break;
     case hipFuncCachePreferL1:
+      // A nonzero minimum requests the largest available L1 partition.
+      preferred_shared_memory_carveout = 1;
+      break;
     case hipFuncCachePreferEqual:
-      // These are all valid configurations.
-      // We don't actually configure cache in the stream HAL yet,
-      // but we accept the values.
+      preferred_shared_memory_carveout = 50;
       break;
     default:
       result = hipErrorInvalidValue;
       break;
+  }
+  if (result == hipSuccess) {
+    iree_atomic_store(&symbol->preferred_shared_memory_carveout,
+                      preferred_shared_memory_carveout,
+                      iree_memory_order_relaxed);
   }
 
   IREE_TRACE_ZONE_END(z0);

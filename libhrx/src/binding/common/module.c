@@ -317,7 +317,8 @@ static iree_status_t iree_hal_streaming_module_extract_metadata(
     status = iree_hal_streaming_function_attributes_initialize(
         device_spec, &export_infos[i], &symbol->function_attributes);
     if (!iree_status_is_ok(status)) break;
-    symbol->preferred_shared_memory_carveout = -1;
+    iree_atomic_store(&symbol->preferred_shared_memory_carveout, -1,
+                      iree_memory_order_relaxed);
 
     // Initialize parameter info.
     iree_hal_streaming_parameter_info_t* parameter_info = &symbol->parameters;

@@ -665,8 +665,8 @@ typedef struct iree_hal_streaming_symbol_t {
   iree_hal_occupancy_info_t occupancy_info;
   // Cached generic facts and mutable compatibility limits.
   iree_hal_streaming_function_attributes_t function_attributes;
-  // Preferred shared-memory carveout percentage, or -1 for the device default.
-  int preferred_shared_memory_carveout;
+  // Preferred workgroup-local memory carveout percentage, or -1 when unset.
+  iree_atomic_int32_t preferred_shared_memory_carveout;
 
   // Function parameter information used for argument packing and unpacking.
   iree_hal_streaming_parameter_info_t parameters;
