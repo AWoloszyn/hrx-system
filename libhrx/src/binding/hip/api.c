@@ -2493,6 +2493,9 @@ HIPAPI hipError_t hipDeviceGetAttribute(int* value, hipDeviceAttribute_t attr,
     case hipDeviceAttributeMaxRegistersPerBlock:
       *value = device_obj->max_registers_per_block;
       break;
+    case hipDeviceAttributeMaxAvailableVgprsPerThread:
+      *value = device_obj->max_registers_per_thread;
+      break;
     case hipDeviceAttributeClockRate:
       *value = is_gfx942 ? 2100000 : (is_gfx1100 ? 1760000 : 1000000);  // kHz
       break;

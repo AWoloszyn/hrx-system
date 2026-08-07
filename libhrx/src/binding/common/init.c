@@ -183,6 +183,8 @@ static iree_status_t iree_hal_streaming_query_device_info(
                                         is_gfx942 ? 19922944u : 49152u);
   device->max_registers_per_block = iree_hal_streaming_u32_or_default(
       execution ? execution->maximum_workgroup_register_count : 0, 65536);
+  device->max_registers_per_thread =
+      execution ? execution->maximum_invocation_register_count : 0;
   device->max_shared_memory_per_block = iree_hal_streaming_u32_or_default(
       execution ? execution->maximum_workgroup_local_memory_size : 0,
       (is_gfx942 || is_gfx1100) ? 65536u : 49152u);

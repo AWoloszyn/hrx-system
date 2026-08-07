@@ -354,6 +354,8 @@ typedef struct iree_hal_streaming_device_t {
   uint32_t max_registers_per_multiprocessor;
   uint32_t max_shared_memory_per_multiprocessor;
   uint32_t max_registers_per_block;
+  // Maximum vector registers addressable by one thread.
+  uint32_t max_registers_per_thread;
   // Default shared-memory capacity available to one block.
   uint32_t max_shared_memory_per_block;
   // Maximum shared-memory capacity available to an opted-in block.
