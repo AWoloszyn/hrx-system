@@ -117,6 +117,24 @@ hrx_cc_library(
     ],
 )
 
+hrx_cc_library(
+    name = "legacy_launch_state",
+    srcs = ["legacy_launch_state.c"],
+    hdrs = ["legacy_launch_state.h"],
+    includes = [
+        "../..",
+        "../../../include",
+        "../../libhrx",
+    ],
+    target_compatible_with = _LINUX_COMPATIBILITY,
+    deps = [
+        ":launch_params",
+        "//libhrx/src/binding/common",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/threading",
+    ],
+)
+
 hrx_cc_shared_library(
     name = "amdhip64",
     srcs = [
@@ -147,6 +165,7 @@ hrx_cc_shared_library(
         ":blocking_printf_provider",
         ":handle_registry",
         ":launch_params",
+        ":legacy_launch_state",
         "//libhrx/src/binding/common",
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/threading",
@@ -160,6 +179,17 @@ hrx_cc_test(
     deps = [
         ":handle_registry",
         "//build_tools:pthreads",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+hrx_cc_test(
+    name = "legacy_launch_state_test",
+    srcs = ["legacy_launch_state_test.cc"],
+    target_compatible_with = _LINUX_COMPATIBILITY,
+    deps = [
+        ":legacy_launch_state",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
     ],
