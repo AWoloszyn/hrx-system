@@ -1604,23 +1604,14 @@ iree_status_t iree_hal_streaming_launch_kernel(
   uint64_t timing_barrier_ns = 0;
   const bool direct_queue_dispatch_requested =
       hrx_direct_queue_dispatch_enabled();
+  const bool cooperative_dispatch =
+      (params->flags & IREE_HAL_STREAMING_DISPATCH_FLAG_COOPERATIVE) != 0;
 
   // Verify the symbol is a function.
   if (symbol->type != IREE_HAL_STREAMING_SYMBOL_TYPE_FUNCTION) {
     IREE_TRACE_ZONE_END(z0);
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "symbol is not a function (type=%d)", symbol->type);
-  }
-
-  // Check if cooperative launch is requested.
-  if (params->flags & IREE_HAL_STREAMING_DISPATCH_FLAG_COOPERATIVE) {
-    // Cooperative launch requires a backend dispatch mode that reserves the
-    // full grid concurrently. The HAL dispatch path does not expose that
-    // contract, so fail loudly.
-    IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(
-        IREE_STATUS_UNIMPLEMENTED,
-        "cooperative kernel launch not yet implemented in HAL layer");
   }
 
   // Verify parameter storage early for metadata-described launches. The
@@ -1778,7 +1769,12 @@ iree_status_t iree_hal_streaming_launch_kernel(
     timing_params_ns += hrx_launch_timing_now_ns() - timing_params_start_ns;
   }
 
-  bool dispatch_directly = direct_queue_dispatch_requested;
+  // Cooperative dispatches use the direct queue operation so the backend can
+  // select a queue that reserves concurrent execution resources. The stream
+  // timeline around that operation preserves ordering with command-buffer
+  // work before and after the launch.
+  bool dispatch_directly =
+      direct_queue_dispatch_requested || cooperative_dispatch;
   if (!dispatch_directly) {
     for (iree_host_size_t i = 0; i < binding_list.count; ++i) {
       const iree_hal_buffer_ref_t* binding = &binding_list.values[i];
@@ -1823,6 +1819,9 @@ iree_status_t iree_hal_streaming_launch_kernel(
       (use_raw_arguments || is_pre_packed)
           ? IREE_HAL_DISPATCH_FLAG_CUSTOM_DIRECT_ARGUMENTS
           : IREE_HAL_DISPATCH_FLAG_NONE;
+  if (cooperative_dispatch) {
+    flags |= IREE_HAL_DISPATCH_FLAG_COOPERATIVE;
+  }
 
   uint64_t timing_step_ns = timing_enabled ? hrx_launch_timing_now_ns() : 0;
   iree_status_t status = iree_ok_status();

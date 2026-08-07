@@ -1851,6 +1851,38 @@ iree_status_t iree_hal_streaming_graph_exec_instantiate_from_template(
                     node->attrs.host.fn, node->attrs.host.user_data, node,
                     IREE_HAL_HOST_CALL_FLAG_NONE, &block, &ptrs));
       } else if (partition->type ==
+                 IREE_HAL_STREAMING_GRAPH_PARTITION_TYPE_DISPATCH) {
+        iree_hal_streaming_graph_node_t* node =
+            schedule.sorted_nodes[partition->start_index].node;
+        const iree_hal_streaming_graph_kernel_node_attrs_t* attrs =
+            &node->attrs.kernel;
+        const iree_hal_dispatch_config_t config = {
+            .workgroup_size =
+                {
+                    attrs->block_dim[0],
+                    attrs->block_dim[1],
+                    attrs->block_dim[2],
+                },
+            .workgroup_count =
+                {
+                    attrs->grid_dim[0],
+                    attrs->grid_dim[1],
+                    attrs->grid_dim[2],
+                },
+            .dynamic_workgroup_local_memory = attrs->shared_memory_bytes,
+        };
+        iree_hal_dispatch_flags_t flags = IREE_HAL_DISPATCH_FLAG_COOPERATIVE;
+        if (attrs->bindings.count == 0) {
+          flags |= IREE_HAL_DISPATCH_FLAG_CUSTOM_DIRECT_ARGUMENTS;
+        }
+        IREE_RETURN_AND_END_ZONE_IF_ERROR(
+            z0, iree_hal_streaming_graph_create_dispatch_block(
+                    exec, partition->start_index, partition->count,
+                    wait_semaphore_count, signal_semaphore_count,
+                    attrs->symbol->executable, attrs->symbol->export_ordinal,
+                    config, attrs->constants, attrs->bindings, flags, &block,
+                    &ptrs));
+      } else if (partition->type ==
                  IREE_HAL_STREAMING_GRAPH_PARTITION_TYPE_GRAPH) {
         iree_hal_streaming_graph_node_t* node =
             schedule.sorted_nodes[partition->start_index].node;

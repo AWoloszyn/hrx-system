@@ -41,6 +41,112 @@ class GraphNodeStorage {
   iree_hal_streaming_graph_node_t* node_ = nullptr;
 };
 
+template <size_t NodeCount>
+class GraphNodeBlockStorage {
+ public:
+  explicit GraphNodeBlockStorage(
+      const std::array<GraphNodeStorage, NodeCount>& nodes) {
+    const size_t allocation_size =
+        sizeof(*block_) + NodeCount * sizeof(block_->nodes[0]);
+    IREE_CHECK_OK(iree_allocator_malloc(iree_allocator_system(),
+                                        allocation_size, (void**)&block_));
+    memset(block_, 0, allocation_size);
+    block_->capacity = NodeCount;
+    block_->count = NodeCount;
+    for (size_t i = 0; i < NodeCount; ++i) {
+      block_->nodes[i] = nodes[i].get();
+    }
+  }
+
+  ~GraphNodeBlockStorage() {
+    iree_allocator_free(iree_allocator_system(), block_);
+  }
+
+  GraphNodeBlockStorage(const GraphNodeBlockStorage&) = delete;
+  GraphNodeBlockStorage& operator=(const GraphNodeBlockStorage&) = delete;
+
+  iree_hal_streaming_node_block_t* get() const { return block_; }
+
+ private:
+  // Variable-sized node block populated with the owned test nodes.
+  iree_hal_streaming_node_block_t* block_ = nullptr;
+};
+
+TEST(GraphTest, AddedDependenciesConstrainDetectedWorkstreams) {
+  constexpr size_t kNodeCount = 20;
+  std::array<GraphNodeStorage, kNodeCount> node_storage;
+  GraphNodeBlockStorage<kNodeCount> node_block(node_storage);
+  for (uint32_t i = 0; i < kNodeCount; ++i) {
+    iree_hal_streaming_graph_node_t* node = node_storage[i].get();
+    node->node_index = i;
+    node->type = IREE_HAL_STREAMING_GRAPH_NODE_TYPE_KERNEL;
+  }
+
+  std::array<iree_hal_streaming_graph_edge_t, kNodeCount - 1> edges = {};
+  for (size_t i = 0; i < edges.size(); ++i) {
+    edges[i].from = node_storage[i].get();
+    edges[i].to = node_storage[i + 1].get();
+    edges[i].next = i + 1 < edges.size() ? &edges[i + 1] : nullptr;
+  }
+
+  iree_arena_block_pool_t block_pool;
+  iree_arena_block_pool_initialize(4096, iree_allocator_system(), &block_pool);
+  iree_arena_allocator_t arena;
+  iree_arena_initialize(&block_pool, &arena);
+  iree_hal_streaming_graph_schedule_t schedule = {};
+  IREE_ASSERT_OK(iree_hal_streaming_graph_schedule_nodes(
+      node_block.get(), kNodeCount, /*disabled_nodes=*/nullptr,
+      /*disabled_node_count=*/0, edges.data(), &arena, &schedule));
+
+  ASSERT_EQ(schedule.partition_count, 1u);
+  ASSERT_EQ(schedule.block_count, 1u);
+  EXPECT_EQ(schedule.partitions[0].type,
+            IREE_HAL_STREAMING_GRAPH_PARTITION_TYPE_RECORDABLE);
+  EXPECT_EQ(schedule.partitions[0].stream_count, 1u);
+  for (uint32_t i = 0; i < kNodeCount; ++i) {
+    EXPECT_EQ(schedule.sorted_nodes[i].node->node_index, i);
+    EXPECT_EQ(schedule.sorted_nodes[i].stream_id, 0u);
+  }
+
+  iree_arena_deinitialize(&arena);
+  iree_arena_block_pool_deinitialize(&block_pool);
+}
+
+TEST(GraphTest, CooperativeKernelUsesQueueDispatchPartition) {
+  constexpr size_t kNodeCount = 2;
+  std::array<GraphNodeStorage, kNodeCount> node_storage;
+  GraphNodeBlockStorage<kNodeCount> node_block(node_storage);
+  iree_hal_streaming_graph_node_t* ordinary_node = node_storage[0].get();
+  ordinary_node->node_index = 0;
+  ordinary_node->type = IREE_HAL_STREAMING_GRAPH_NODE_TYPE_KERNEL;
+  iree_hal_streaming_graph_node_t* cooperative_node = node_storage[1].get();
+  cooperative_node->node_index = 1;
+  cooperative_node->type = IREE_HAL_STREAMING_GRAPH_NODE_TYPE_KERNEL;
+  cooperative_node->attrs.kernel.cooperative = 1;
+
+  iree_arena_block_pool_t block_pool;
+  iree_arena_block_pool_initialize(4096, iree_allocator_system(), &block_pool);
+  iree_arena_allocator_t arena;
+  iree_arena_initialize(&block_pool, &arena);
+  iree_hal_streaming_graph_schedule_t schedule = {};
+  IREE_EXPECT_OK(iree_hal_streaming_graph_schedule_nodes(
+      node_block.get(), kNodeCount, /*disabled_nodes=*/nullptr,
+      /*disabled_node_count=*/0, /*additional_edges=*/nullptr, &arena,
+      &schedule));
+
+  ASSERT_EQ(2u, schedule.partition_count);
+  ASSERT_EQ(2u, schedule.block_count);
+  EXPECT_EQ(IREE_HAL_STREAMING_GRAPH_PARTITION_TYPE_RECORDABLE,
+            schedule.partitions[0].type);
+  EXPECT_EQ(IREE_HAL_STREAMING_GRAPH_PARTITION_TYPE_DISPATCH,
+            schedule.partitions[1].type);
+  EXPECT_EQ(1u, schedule.partitions[0].count);
+  EXPECT_EQ(1u, schedule.partitions[1].count);
+
+  iree_arena_deinitialize(&arena);
+  iree_arena_block_pool_deinitialize(&block_pool);
+}
+
 TEST(GraphTest, KernelParameterUpdateIsFailureAtomic) {
   constexpr size_t kArgumentCount = 3;
   std::array<iree_hal_streaming_parameter_op_t, kArgumentCount> operations = {};

@@ -55,6 +55,10 @@
 #define HIP_DEBUG_LOG(fmt, ...) ((void)0)
 #endif
 
+static hipError_t iree_hip_resolve_function_symbol(
+    iree_hal_streaming_context_t* context, const void* function_address,
+    iree_hal_streaming_symbol_t** out_symbol);
+
 //===----------------------------------------------------------------------===//
 // HRX binding identification
 //===----------------------------------------------------------------------===//
@@ -2325,7 +2329,7 @@ HIPAPI hipError_t hipGetDeviceProperties(hipDeviceProp_t* prop, int device) {
   prop->concurrentManagedAccess = 1;
   prop->computePreemptionSupported = 0;
   prop->canUseHostPointerForRegisteredMem = 1;
-  prop->cooperativeLaunch = 0;
+  prop->cooperativeLaunch = device_obj->supports_cooperative_launch ? 1 : 0;
   prop->cooperativeMultiDeviceLaunch = 0;
   prop->sharedMemPerBlockOptin = device_obj->max_shared_memory_per_block_optin;
   prop->pageableMemoryAccessUsesHostPageTables = 0;
@@ -2460,6 +2464,15 @@ HIPAPI hipError_t hipDeviceGetAttribute(int* value, hipDeviceAttribute_t attr,
       break;
     case hipDeviceAttributeCanUseHostPointerForRegisteredMem:
       *value = 1;
+      break;
+    case hipDeviceAttributeConcurrentKernels:
+      *value = 1;
+      break;
+    case hipDeviceAttributeCooperativeLaunch:
+      *value = device_obj->supports_cooperative_launch ? 1 : 0;
+      break;
+    case hipDeviceAttributeCooperativeMultiDeviceLaunch:
+      *value = 0;
       break;
     case hipDeviceAttributeHostNativeAtomicSupported:
       // HIP-on-AMDGPU requires fine-grained host/device atomic shared memory.
@@ -13812,7 +13825,7 @@ HIPAPI hipError_t hipHccModuleLaunchKernel(
 //
 // Device requirements:
 // - Device must support cooperative launch (check device attributes).
-// - Compute capability 6.0+ for NVIDIA, RDNA+ for AMD.
+// - Device and target ABI must provide cooperative dispatch.
 // - Limited by SM/CU count and available resources.
 //
 // Performance considerations:
@@ -13829,6 +13842,62 @@ HIPAPI hipError_t hipHccModuleLaunchKernel(
 // See also: hipModuleLaunchKernel,
 //           hipOccupancyMaxActiveBlocksPerMultiprocessor,
 //           hipLaunchCooperativeKernelMultiDevice.
+HIPAPI hipError_t hipLaunchCooperativeKernel(const void* function_address,
+                                             dim3 grid_dim, dim3 block_dim,
+                                             void** kernel_params,
+                                             unsigned int shared_memory_bytes,
+                                             hipStream_t stream) {
+  IREE_TRACE_ZONE_BEGIN(z0);
+  if (!function_address) {
+    IREE_TRACE_ZONE_END(z0);
+    HIP_RETURN_ERROR(hipErrorInvalidDeviceFunction);
+  }
+
+  iree_hal_streaming_stream_t* stream_obj = NULL;
+  hipError_t result = iree_hip_resolve_registered_stream(stream, &stream_obj);
+  if (result != hipSuccess) {
+    IREE_TRACE_ZONE_END(z0);
+    HIP_RETURN_ERROR(result);
+  }
+  iree_hal_streaming_context_t* context = stream_obj->context;
+  if (!context) {
+    iree_hal_streaming_stream_release(stream_obj);
+    IREE_TRACE_ZONE_END(z0);
+    HIP_RETURN_ERROR(hipErrorContextIsDestroyed);
+  }
+  iree_hal_streaming_symbol_t* symbol = NULL;
+  result = iree_hip_resolve_function_symbol(context, function_address, &symbol);
+  if (result != hipSuccess) {
+    iree_hal_streaming_stream_release(stream_obj);
+    IREE_TRACE_ZONE_END(z0);
+    HIP_RETURN_ERROR(result);
+  }
+
+  hipError_t launch_config_result = iree_hip_validate_launch_configuration(
+      stream_obj->context ? stream_obj->context->device_entry : NULL, symbol,
+      grid_dim.x, grid_dim.y, grid_dim.z, block_dim.x, block_dim.y, block_dim.z,
+      shared_memory_bytes);
+  if (launch_config_result != hipSuccess) {
+    if (launch_config_result == hipErrorInvalidValue &&
+        stream_obj->context->device_entry->max_shared_memory_per_block != 0 &&
+        shared_memory_bytes >
+            stream_obj->context->device_entry->max_shared_memory_per_block) {
+      launch_config_result = hipErrorCooperativeLaunchTooLarge;
+    }
+    iree_hal_streaming_stream_release(stream_obj);
+    IREE_TRACE_ZONE_END(z0);
+    HIP_RETURN_ERROR(launch_config_result);
+  }
+
+  result = hipModuleLaunchCooperativeKernel(
+      (hipFunction_t)iree_hal_streaming_symbol_tag(symbol), grid_dim.x,
+      grid_dim.y, grid_dim.z, block_dim.x, block_dim.y, block_dim.z,
+      shared_memory_bytes, (hipStream_t)stream_obj, kernel_params);
+  iree_hal_streaming_stream_release(stream_obj);
+  IREE_TRACE_ZONE_END(z0);
+  return result;
+}
+
 HIPAPI hipError_t hipModuleLaunchCooperativeKernel(
     hipFunction_t f, unsigned int gridDimX, unsigned int gridDimY,
     unsigned int gridDimZ, unsigned int blockDimX, unsigned int blockDimY,
@@ -13838,7 +13907,7 @@ HIPAPI hipError_t hipModuleLaunchCooperativeKernel(
 
   if (!f) {
     IREE_TRACE_ZONE_END(z0);
-    HIP_RETURN_ERROR(hipErrorInvalidValue);
+    HIP_RETURN_ERROR(hipErrorInvalidResourceHandle);
   }
 
   iree_hip_resolved_stream_t resolved_stream = {0};
@@ -13890,7 +13959,7 @@ HIPAPI hipError_t hipModuleLaunchCooperativeKernel(
   // Verify grid size doesn't exceed max active blocks.
   // If max_blocks is 0 (device doesn't support cooperative launch) or
   // grid is too large, return error.
-  uint64_t total_blocks =
+  const uint64_t total_blocks =
       (uint64_t)gridDimX * (uint64_t)gridDimY * (uint64_t)gridDimZ;
   if (max_blocks == 0 || total_blocks > max_blocks) {
     iree_hip_resolved_stream_release(&resolved_stream);
@@ -13905,7 +13974,8 @@ HIPAPI hipError_t hipModuleLaunchCooperativeKernel(
       .block_dim = {blockDimX, blockDimY, blockDimZ},
       .shared_memory_bytes = sharedMemBytes,
       .buffer = kernelParams,  // Array of pointers to parameters.
-      .flags = IREE_HAL_STREAMING_DISPATCH_FLAG_COOPERATIVE,
+      .flags = IREE_HAL_STREAMING_DISPATCH_FLAG_COOPERATIVE |
+               IREE_HAL_STREAMING_DISPATCH_FLAG_ARGS_ARRAY,
   };
 
   hipError_t dependency_result =

@@ -126,10 +126,10 @@ static iree_status_t iree_hal_streaming_query_device_info(
   const bool is_gfx1100 = strncmp(device->gcn_arch_name, "gfx1100", 7) == 0;
   const bool is_gfx942 = strncmp(device->gcn_arch_name, "gfx942", 6) == 0;
 
-  // Query cooperative launch support.
-  // TODO: Query from actual device properties.
-  // Cooperative launch requires Pascal (SM 6.0) or newer.
-  device->supports_cooperative_launch = (device->compute_capability_major >= 6);
+  device->supports_cooperative_launch =
+      dispatch &&
+      iree_all_bits_set(dispatch->flags,
+                        IREE_HAL_DEVICE_DISPATCH_SPEC_FLAG_COOPERATIVE);
 
   device->max_threads_per_block = iree_hal_streaming_u32_or_default(
       launch ? launch->maximum_workgroup_invocations : 0, 1024);
