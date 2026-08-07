@@ -1785,14 +1785,14 @@ iree_status_t iree_hal_streaming_launch_kernel(
         break;
       }
     }
-    if (dispatch_directly && stream->command_buffer) {
-      uint64_t timing_step_ns = timing_enabled ? hrx_launch_timing_now_ns() : 0;
-      iree_status_t flush_status = iree_hal_streaming_stream_flush(stream);
-      if (timing_enabled) {
-        timing_begin_ns += hrx_launch_timing_now_ns() - timing_step_ns;
-      }
-      IREE_RETURN_AND_END_ZONE_IF_ERROR(z0, flush_status);
+  }
+  if (dispatch_directly && stream->command_buffer) {
+    uint64_t timing_step_ns = timing_enabled ? hrx_launch_timing_now_ns() : 0;
+    iree_status_t flush_status = iree_hal_streaming_stream_flush(stream);
+    if (timing_enabled) {
+      timing_begin_ns += hrx_launch_timing_now_ns() - timing_step_ns;
     }
+    IREE_RETURN_AND_END_ZONE_IF_ERROR(z0, flush_status);
   }
 
   // Create IREE dispatch config.
