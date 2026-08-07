@@ -58,6 +58,11 @@
 static hipError_t iree_hip_resolve_function_symbol(
     iree_hal_streaming_context_t* context, const void* function_address,
     iree_hal_streaming_symbol_t** out_symbol);
+static hipError_t iree_hip_module_launch_cooperative_kernel(
+    hipFunction_t function, unsigned int grid_dim_x, unsigned int grid_dim_y,
+    unsigned int grid_dim_z, unsigned int block_dim_x, unsigned int block_dim_y,
+    unsigned int block_dim_z, unsigned int shared_memory_bytes,
+    hipStream_t stream, void** kernel_params, void** extra);
 
 //===----------------------------------------------------------------------===//
 // HRX binding identification
@@ -13159,6 +13164,12 @@ static hipError_t iree_hip_launch_kernel(const void* function_address,
     IREE_TRACE_ZONE_END(z0);
     HIP_RETURN_ERROR(launch_config_result);
   }
+  if (!args &&
+      !iree_hal_streaming_parameter_info_is_empty(&symbol->parameters)) {
+    iree_hal_streaming_stream_release(stream_obj);
+    IREE_TRACE_ZONE_END(z0);
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
+  }
 
   const iree_hal_streaming_dispatch_params_t params = {
       .grid_dim = {numBlocks.x, numBlocks.y, numBlocks.z},
@@ -13381,6 +13392,29 @@ HIPAPI hipError_t hipExtLaunchMultiKernelMultiDevice(
   return result;
 }
 
+HIPAPI hipError_t hipLaunchKernelExC(const hipLaunchConfig_t* config,
+                                     const void* function_address,
+                                     void** args) {
+  if (!function_address) HIP_RETURN_ERROR(hipErrorInvalidDeviceFunction);
+  if (!config) HIP_RETURN_ERROR(hipErrorInvalidConfiguration);
+
+  bool cooperative = false;
+  hipError_t result = iree_hip_parse_launch_attributes(
+      config->attrs, config->numAttrs, &cooperative);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+
+  if (cooperative) {
+    if (config->dynamicSmemBytes > UINT32_MAX) {
+      HIP_RETURN_ERROR(hipErrorInvalidValue);
+    }
+    return hipLaunchCooperativeKernel(
+        function_address, config->gridDim, config->blockDim, args,
+        (unsigned int)config->dynamicSmemBytes, config->stream);
+  }
+  return hipLaunchKernel(function_address, config->gridDim, config->blockDim,
+                         args, config->dynamicSmemBytes, config->stream);
+}
+
 // Launches a kernel with specified configuration.
 //
 // Parameters:
@@ -13551,12 +13585,6 @@ static hipError_t iree_hip_module_launch_kernel(
     IREE_TRACE_ZONE_END(z0);
     HIP_RETURN_ERROR(hipErrorInvalidValue);
   }
-  if (!kernelParams && !extra &&
-      (symbol->parameters.copy_count || symbol->parameters.binding_count)) {
-    IREE_TRACE_ZONE_END(z0);
-    HIP_RETURN_ERROR(hipErrorInvalidValue);
-  }
-
   hipError_t launch_config_result = iree_hip_validate_launch_configuration(
       context->device_entry, symbol, gridDimX, gridDimY, gridDimZ, blockDimX,
       blockDimY, blockDimZ, sharedMemBytes);
@@ -13564,6 +13592,12 @@ static hipError_t iree_hip_module_launch_kernel(
     iree_hip_resolved_stream_release(&resolved_stream);
     IREE_TRACE_ZONE_END(z0);
     HIP_RETURN_ERROR(launch_config_result);
+  }
+  if (!kernelParams && !extra &&
+      !iree_hal_streaming_parameter_info_is_empty(&symbol->parameters)) {
+    iree_hip_resolved_stream_release(&resolved_stream);
+    IREE_TRACE_ZONE_END(z0);
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
   }
 
   // Extract params pointer and size from HIP's parameter format.
@@ -13661,6 +13695,29 @@ HIPAPI hipError_t hipModuleLaunchKernel(
   return iree_hip_module_launch_kernel(
       f, gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ,
       sharedMemBytes, stream, kernelParams, extra, NULL, NULL);
+}
+
+HIPAPI hipError_t hipDrvLaunchKernelEx(const HIP_LAUNCH_CONFIG* config,
+                                       hipFunction_t function,
+                                       void** kernel_params, void** extra) {
+  if (!function) HIP_RETURN_ERROR(hipErrorInvalidResourceHandle);
+  if (!config) HIP_RETURN_ERROR(hipErrorInvalidValue);
+
+  bool cooperative = false;
+  hipError_t result = iree_hip_parse_launch_attributes(
+      config->attrs, config->numAttrs, &cooperative);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+
+  if (cooperative) {
+    return iree_hip_module_launch_cooperative_kernel(
+        function, config->gridDimX, config->gridDimY, config->gridDimZ,
+        config->blockDimX, config->blockDimY, config->blockDimZ,
+        config->sharedMemBytes, config->hStream, kernel_params, extra);
+  }
+  return hipModuleLaunchKernel(
+      function, config->gridDimX, config->gridDimY, config->gridDimZ,
+      config->blockDimX, config->blockDimY, config->blockDimZ,
+      config->sharedMemBytes, config->hStream, kernel_params, extra);
 }
 
 // Launches a kernel function with specified dimensions and parameters.
@@ -13901,11 +13958,11 @@ HIPAPI hipError_t hipLaunchCooperativeKernel(const void* function_address,
   return result;
 }
 
-HIPAPI hipError_t hipModuleLaunchCooperativeKernel(
+static hipError_t iree_hip_module_launch_cooperative_kernel(
     hipFunction_t f, unsigned int gridDimX, unsigned int gridDimY,
     unsigned int gridDimZ, unsigned int blockDimX, unsigned int blockDimY,
     unsigned int blockDimZ, unsigned int sharedMemBytes, hipStream_t stream,
-    void** kernelParams) {
+    void** kernelParams, void** extra) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
   if (!f) {
@@ -13935,7 +13992,11 @@ HIPAPI hipError_t hipModuleLaunchCooperativeKernel(
     IREE_TRACE_ZONE_END(z0);
     HIP_RETURN_ERROR(hipErrorInvalidHandle);
   }
-
+  if (kernelParams && extra) {
+    iree_hip_resolved_stream_release(&resolved_stream);
+    IREE_TRACE_ZONE_END(z0);
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
+  }
   hipError_t launch_config_result = iree_hip_validate_launch_configuration(
       device, symbol, gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY,
       blockDimZ, sharedMemBytes);
@@ -13943,6 +14004,12 @@ HIPAPI hipError_t hipModuleLaunchCooperativeKernel(
     iree_hip_resolved_stream_release(&resolved_stream);
     IREE_TRACE_ZONE_END(z0);
     HIP_RETURN_ERROR(launch_config_result);
+  }
+  if (!kernelParams && !extra &&
+      !iree_hal_streaming_parameter_info_is_empty(&symbol->parameters)) {
+    iree_hip_resolved_stream_release(&resolved_stream);
+    IREE_TRACE_ZONE_END(z0);
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
   }
 
   // Calculate maximum blocks for cooperative launch.
@@ -13970,15 +14037,31 @@ HIPAPI hipError_t hipModuleLaunchCooperativeKernel(
     HIP_RETURN_ERROR(hipErrorCooperativeLaunchTooLarge);
   }
 
-  // Set up dispatch params with cooperative flag.
-  // Cooperative launch always uses kernelParams format.
+  void* params_ptr = NULL;
+  size_t params_size = 0;
+  iree_hal_streaming_dispatch_flags_t dispatch_flags =
+      IREE_HAL_STREAMING_DISPATCH_FLAG_COOPERATIVE;
+  if (extra) {
+    hipError_t parse_result =
+        iree_hip_parse_launch_extra(extra, &params_ptr, &params_size);
+    if (parse_result != hipSuccess) {
+      iree_hip_resolved_stream_release(&resolved_stream);
+      IREE_TRACE_ZONE_END(z0);
+      HIP_RETURN_ERROR(parse_result);
+    }
+    dispatch_flags |= IREE_HAL_STREAMING_DISPATCH_FLAG_PRE_PACKED;
+  } else if (kernelParams) {
+    params_ptr = kernelParams;
+    dispatch_flags |= IREE_HAL_STREAMING_DISPATCH_FLAG_ARGS_ARRAY;
+  }
+
   const iree_hal_streaming_dispatch_params_t params = {
       .grid_dim = {gridDimX, gridDimY, gridDimZ},
       .block_dim = {blockDimX, blockDimY, blockDimZ},
       .shared_memory_bytes = sharedMemBytes,
-      .buffer = kernelParams,  // Array of pointers to parameters.
-      .flags = IREE_HAL_STREAMING_DISPATCH_FLAG_COOPERATIVE |
-               IREE_HAL_STREAMING_DISPATCH_FLAG_ARGS_ARRAY,
+      .buffer = params_ptr,
+      .buffer_size = params_size,
+      .flags = dispatch_flags,
   };
 
   hipError_t dependency_result =
@@ -13999,6 +14082,16 @@ HIPAPI hipError_t hipModuleLaunchCooperativeKernel(
 
   IREE_TRACE_ZONE_END(z0);
   return hipSuccess;
+}
+
+HIPAPI hipError_t hipModuleLaunchCooperativeKernel(
+    hipFunction_t function, unsigned int grid_dim_x, unsigned int grid_dim_y,
+    unsigned int grid_dim_z, unsigned int block_dim_x, unsigned int block_dim_y,
+    unsigned int block_dim_z, unsigned int shared_memory_bytes,
+    hipStream_t stream, void** kernel_params) {
+  return iree_hip_module_launch_cooperative_kernel(
+      function, grid_dim_x, grid_dim_y, grid_dim_z, block_dim_x, block_dim_y,
+      block_dim_z, shared_memory_bytes, stream, kernel_params, NULL);
 }
 
 // Enqueues a host function callback in a stream.

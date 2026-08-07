@@ -1140,6 +1140,37 @@ typedef union hipLaunchAttributeValue {
   const hipExtDynDataPrefetchConfig* dynDataPrefetch;
 } hipLaunchAttributeValue;
 
+typedef struct hipLaunchAttribute_st {
+  hipLaunchAttributeID id;                     // Attribute identifier.
+  char pad[8 - sizeof(hipLaunchAttributeID)];  // Aligns the value to 8 bytes.
+  union {
+    hipLaunchAttributeValue val;    // Runtime API spelling for the value.
+    hipLaunchAttributeValue value;  // Driver API spelling for the value.
+  };
+} hipLaunchAttribute;
+
+typedef struct hipLaunchConfig_st {
+  dim3 gridDim;               // Grid dimensions in blocks.
+  dim3 blockDim;              // Block dimensions in threads.
+  size_t dynamicSmemBytes;    // Dynamic shared memory per block.
+  hipStream_t stream;         // Stream receiving the launch.
+  hipLaunchAttribute* attrs;  // Array of launch attributes.
+  unsigned int numAttrs;      // Number of entries in |attrs|.
+} hipLaunchConfig_t;
+
+typedef struct HIP_LAUNCH_CONFIG_st {
+  unsigned int gridDimX;        // Grid width in blocks.
+  unsigned int gridDimY;        // Grid height in blocks.
+  unsigned int gridDimZ;        // Grid depth in blocks.
+  unsigned int blockDimX;       // Block width in threads.
+  unsigned int blockDimY;       // Block height in threads.
+  unsigned int blockDimZ;       // Block depth in threads.
+  unsigned int sharedMemBytes;  // Dynamic shared memory per block.
+  hipStream_t hStream;          // Stream receiving the launch.
+  hipLaunchAttribute* attrs;    // Array of launch attributes.
+  unsigned int numAttrs;        // Number of entries in |attrs|.
+} HIP_LAUNCH_CONFIG;
+
 #define hipStreamAttrID hipLaunchAttributeID
 #define hipStreamAttributeAccessPolicyWindow \
   hipLaunchAttributeAccessPolicyWindow
@@ -1667,6 +1698,8 @@ HIPAPI hipError_t hipLaunchKernel(const void* function_address, dim3 numBlocks,
                                   size_t sharedMemBytes, hipStream_t stream);
 HIPAPI hipError_t hipExtLaunchMultiKernelMultiDevice(
     hipLaunchParams* launchParamsList, int numDevices, unsigned int flags);
+HIPAPI hipError_t hipLaunchKernelExC(const hipLaunchConfig_t* config,
+                                     const void* function_address, void** args);
 HIPAPI hipError_t hipLaunchCooperativeKernel(const void* function_address,
                                              dim3 grid_dim, dim3 block_dim,
                                              void** kernel_params,
@@ -1677,6 +1710,9 @@ HIPAPI hipError_t hipModuleLaunchKernel(
     unsigned int gridDimZ, unsigned int blockDimX, unsigned int blockDimY,
     unsigned int blockDimZ, unsigned int sharedMemBytes, hipStream_t hStream,
     void** kernelParams, void** extra);
+HIPAPI hipError_t hipDrvLaunchKernelEx(const HIP_LAUNCH_CONFIG* config,
+                                       hipFunction_t function,
+                                       void** kernel_params, void** extra);
 HIPAPI hipError_t hipModuleLaunchCooperativeKernel(
     hipFunction_t f, unsigned int gridDimX, unsigned int gridDimY,
     unsigned int gridDimZ, unsigned int blockDimX, unsigned int blockDimY,
