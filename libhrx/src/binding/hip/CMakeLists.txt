@@ -180,16 +180,19 @@ iree_cc_library(
   HDRS
     "api.h"
     "binding_internal.h"
+    "dynamic_logging.h"
   SRCS
     "abi_stubs.c"
     "api.c"
     "api_metadata.c"
+    "dynamic_logging.c"
   DEPS
     ::blocking_printf_provider
     ::handle_registry
     ::launch_params
     ::legacy_launch_state
     iree::base
+    iree::base::internal
     iree::base::threading
     iree::hal
     libhrx::src::binding::common
