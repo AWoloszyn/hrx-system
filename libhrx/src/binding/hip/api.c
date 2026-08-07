@@ -8883,7 +8883,7 @@ HIPAPI hipError_t hipMemset2DAsync(void* dst, size_t pitch, int value,
       hipError_t result = iree_memset_status_to_hip_result(status);
       iree_hip_resolved_stream_release(&resolved_stream);
       IREE_TRACE_ZONE_END(z0);
-      return result;
+      HIP_RETURN_ERROR(result);
     }
   }
 
@@ -8938,7 +8938,7 @@ HIPAPI hipError_t hipMemset2D(void* dst, size_t pitch, int value, size_t width,
   }
 
   IREE_TRACE_ZONE_END(z0);
-  return result;
+  HIP_RETURN_ERROR(result);
 }
 
 static hipError_t iree_hip_validate_memset3d_shape(
@@ -9040,7 +9040,7 @@ HIPAPI hipError_t hipMemset3DAsync(hipPitchedPtr pitchedDevPtr, int value,
     hipError_t linear_result =
         hipMemsetAsync(pitchedDevPtr.ptr, value, byte_count, stream);
     IREE_TRACE_ZONE_END(z0);
-    return linear_result;
+    HIP_RETURN_ERROR(linear_result);
   }
 
   uint8_t* base = (uint8_t*)pitchedDevPtr.ptr;
@@ -9094,7 +9094,7 @@ HIPAPI hipError_t hipMemset3D(hipPitchedPtr pitchedDevPtr, int value,
     result = hipDeviceSynchronize();
   }
   IREE_TRACE_ZONE_END(z0);
-  return result;
+  HIP_RETURN_ERROR(result);
 }
 
 // Allocates 3D device memory.
@@ -10065,10 +10065,10 @@ HIPAPI hipError_t hipMemset(void* dst, int value, size_t sizeBytes) {
     HIP_DEBUG_LOG("[HIP_API] hipMemset sync done\n");
   }
 
-  hipError_t result = iree_status_to_hip_result(status);
+  hipError_t result = iree_memset_status_to_hip_result(status);
   HIP_DEBUG_LOG("[HIP_API] hipMemset EXIT result=%d\n", result);
   IREE_TRACE_ZONE_END(z0);
-  return result;
+  HIP_RETURN_ERROR(result);
 }
 
 // Sets device memory to a value asynchronously.
@@ -10139,10 +10139,10 @@ HIPAPI hipError_t hipMemsetAsync(void* dst, int value, size_t sizeBytes,
       resolved_stream.context, (iree_hal_streaming_deviceptr_t)dst, sizeBytes,
       &value, 1, resolved_stream.stream);
 
-  hipError_t result = iree_status_to_hip_result(status);
+  hipError_t result = iree_memset_status_to_hip_result(status);
   iree_hip_resolved_stream_release(&resolved_stream);
   IREE_TRACE_ZONE_END(z0);
-  return result;
+  HIP_RETURN_ERROR(result);
 }
 
 // Sets device memory to an 8-bit value.
@@ -10205,9 +10205,9 @@ HIPAPI hipError_t hipMemsetD8(hipDeviceptr_t dstDevice, unsigned char uc,
     status = iree_hal_streaming_stream_synchronize(context->default_stream);
   }
 
-  hipError_t result = iree_status_to_hip_result(status);
+  hipError_t result = iree_memset_status_to_hip_result(status);
   IREE_TRACE_ZONE_END(z0);
-  return result;
+  HIP_RETURN_ERROR(result);
 }
 
 // Sets device memory to a 16-bit value.
@@ -10279,9 +10279,9 @@ HIPAPI hipError_t hipMemsetD16(hipDeviceptr_t dstDevice, unsigned short us,
     status = iree_hal_streaming_stream_synchronize(context->default_stream);
   }
 
-  hipError_t result = iree_status_to_hip_result(status);
+  hipError_t result = iree_memset_status_to_hip_result(status);
   IREE_TRACE_ZONE_END(z0);
-  return result;
+  HIP_RETURN_ERROR(result);
 }
 
 // Sets device memory to a 32-bit value.
@@ -10352,9 +10352,9 @@ HIPAPI hipError_t hipMemsetD32(hipDeviceptr_t dstDevice, int i, size_t N) {
     status = iree_hal_streaming_stream_synchronize(context->default_stream);
   }
 
-  hipError_t result = iree_status_to_hip_result(status);
+  hipError_t result = iree_memset_status_to_hip_result(status);
   IREE_TRACE_ZONE_END(z0);
-  return result;
+  HIP_RETURN_ERROR(result);
 }
 
 // Sets device memory to an 8-bit value asynchronously.
@@ -10420,10 +10420,10 @@ HIPAPI hipError_t hipMemsetD8Async(hipDeviceptr_t dstDevice, unsigned char uc,
       resolved_stream.context, (iree_hal_streaming_deviceptr_t)dstDevice, N,
       &uc, 1, resolved_stream.stream);
 
-  hipError_t result = iree_status_to_hip_result(status);
+  hipError_t result = iree_memset_status_to_hip_result(status);
   iree_hip_resolved_stream_release(&resolved_stream);
   IREE_TRACE_ZONE_END(z0);
-  return result;
+  HIP_RETURN_ERROR(result);
 }
 
 // Asynchronously sets memory to a 16-bit value.
@@ -10501,10 +10501,10 @@ HIPAPI hipError_t hipMemsetD16Async(hipDeviceptr_t dstDevice, unsigned short us,
       resolved_stream.context, (iree_hal_streaming_deviceptr_t)dstDevice,
       byte_count, &us, sizeof(us), resolved_stream.stream);
 
-  hipError_t result = iree_status_to_hip_result(status);
+  hipError_t result = iree_memset_status_to_hip_result(status);
   iree_hip_resolved_stream_release(&resolved_stream);
   IREE_TRACE_ZONE_END(z0);
-  return result;
+  HIP_RETURN_ERROR(result);
 }
 
 // Asynchronously sets memory to a 32-bit value.
@@ -10583,10 +10583,10 @@ HIPAPI hipError_t hipMemsetD32Async(hipDeviceptr_t dstDevice, int i, size_t N,
       resolved_stream.context, (iree_hal_streaming_deviceptr_t)dstDevice,
       byte_count, &i, sizeof(i), resolved_stream.stream);
 
-  hipError_t result = iree_status_to_hip_result(status);
+  hipError_t result = iree_memset_status_to_hip_result(status);
   iree_hip_resolved_stream_release(&resolved_stream);
   IREE_TRACE_ZONE_END(z0);
-  return result;
+  HIP_RETURN_ERROR(result);
 }
 
 //===----------------------------------------------------------------------===//
