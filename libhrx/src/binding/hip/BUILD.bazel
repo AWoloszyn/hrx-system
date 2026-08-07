@@ -142,6 +142,7 @@ hrx_cc_shared_library(
         "api.c",
         "api_metadata.c",
         "dynamic_logging.c",
+        "execution_context.c",
     ],
     hdrs = [
         "api.h",

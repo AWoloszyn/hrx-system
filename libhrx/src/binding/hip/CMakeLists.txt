@@ -186,6 +186,7 @@ iree_cc_library(
     "api.c"
     "api_metadata.c"
     "dynamic_logging.c"
+    "execution_context.c"
   DEPS
     ::blocking_printf_provider
     ::handle_registry

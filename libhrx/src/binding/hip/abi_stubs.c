@@ -21,9 +21,8 @@
 #include "libhrx/src/binding/hip/api.h"
 #include "libhrx/src/binding/hip/binding_internal.h"
 
-// Local compatibility declarations for unsupported ABI entries. These symbols
-// only need type-correct call boundaries here; their implementations below
-// always return hipErrorNotSupported.
+// Local compatibility declarations for ABI entries not represented by the
+// core binding header. These keep the exported call boundaries type-correct.
 typedef const struct hipArray_st* hipArray_const_t;
 typedef struct hipMipmappedArray_st* hipMipmappedArray_t;
 typedef const struct hipMipmappedArray_st* hipMipmappedArray_const_t;
@@ -153,8 +152,6 @@ typedef struct hipDeviceProp_tR0000 {
   int pageableMemoryAccessUsesHostPageTables;
 } hipDeviceProp_tR0000;
 typedef hipDeviceProp_t hipDeviceProp_tR0600;
-typedef struct ihipDevResourceDesc_t* hipDevResourceDesc_t;
-typedef struct ihipExecutionCtx_t* hipExecutionCtx_t;
 typedef void* hipExternalMemory_t;
 typedef struct hipExternalMemoryBufferDesc_st hipExternalMemoryBufferDesc;
 typedef struct hipExternalMemoryHandleDesc_st hipExternalMemoryHandleDesc;
@@ -234,9 +231,6 @@ typedef struct hipMemcpy3DBatchOp {
 typedef struct hipResourceDesc hipResourceDesc;
 typedef struct hipResourceViewDesc hipResourceViewDesc;
 typedef struct hipTextureDesc hipTextureDesc;
-typedef struct hipDevResource_st hipDevResource;
-typedef struct hipDevSmResourceGroupParams_st hipDevSmResourceGroupParams;
-typedef int hipDevResourceType;
 typedef int hipDriverEntryPointQueryResult;
 typedef int hipFunction_attribute;
 typedef int hipJitInputType;
@@ -836,40 +830,6 @@ HIPAPI hipError_t hipDestroyExternalSemaphore(hipExternalSemaphore_t extSem) {
   return hipErrorNotSupported;
 }
 
-HIPAPI hipError_t hipDevResourceGenerateDesc(hipDevResourceDesc_t* phDesc,
-                                             hipDevResource* resources,
-                                             unsigned int nbResources) {
-  (void)phDesc;
-  (void)resources;
-  (void)nbResources;
-  return hipErrorNotSupported;
-}
-
-HIPAPI hipError_t hipDevSmResourceSplit(
-    hipDevResource* result, unsigned int nbGroups, const hipDevResource* input,
-    hipDevResource* remainder, unsigned int flags,
-    hipDevSmResourceGroupParams* groupParams) {
-  (void)result;
-  (void)nbGroups;
-  (void)input;
-  (void)remainder;
-  (void)flags;
-  (void)groupParams;
-  return hipErrorNotSupported;
-}
-
-HIPAPI hipError_t hipDevSmResourceSplitByCount(
-    hipDevResource* result, unsigned int* nbGroups, const hipDevResource* input,
-    hipDevResource* remainder, unsigned int flags, unsigned int minCount) {
-  (void)result;
-  (void)nbGroups;
-  (void)input;
-  (void)remainder;
-  (void)flags;
-  (void)minCount;
-  return hipErrorNotSupported;
-}
-
 HIPAPI hipError_t hipDeviceComputeCapability(int* major, int* minor,
                                              hipDevice_t device) {
   if (!major || !minor) return hipErrorInvalidValue;
@@ -878,15 +838,6 @@ HIPAPI hipError_t hipDeviceComputeCapability(int* major, int* minor,
   if (result != hipSuccess) return result;
   return hipDeviceGetAttribute(minor, hipDeviceAttributeComputeCapabilityMinor,
                                device);
-}
-
-HIPAPI hipError_t hipDeviceGetDevResource(hipDevice_t device,
-                                          hipDevResource* resource,
-                                          hipDevResourceType type) {
-  (void)device;
-  (void)resource;
-  (void)type;
-  return hipErrorNotSupported;
 }
 
 HIPAPI hipError_t hipDeviceGetExecutionCtx(hipExecutionCtx_t* ctx,
@@ -992,34 +943,6 @@ HIPAPI hipError_t hipEventRecordWithFlags(hipEvent_t event, hipStream_t stream,
   (void)event;
   (void)stream;
   (void)flags;
-  return hipErrorNotSupported;
-}
-
-HIPAPI hipError_t hipExecutionCtxDestroy(hipExecutionCtx_t ctx) {
-  (void)ctx;
-  return hipErrorNotSupported;
-}
-
-HIPAPI hipError_t hipExecutionCtxGetDevResource(hipExecutionCtx_t ctx,
-                                                hipDevResource* resource,
-                                                hipDevResourceType type) {
-  (void)ctx;
-  (void)resource;
-  (void)type;
-  return hipErrorNotSupported;
-}
-
-HIPAPI hipError_t hipExecutionCtxGetDevice(hipDevice_t* device,
-                                           hipExecutionCtx_t ctx) {
-  (void)device;
-  (void)ctx;
-  return hipErrorNotSupported;
-}
-
-HIPAPI hipError_t hipExecutionCtxGetId(hipExecutionCtx_t ctx,
-                                       unsigned long long* ctxId) {
-  (void)ctx;
-  (void)ctxId;
   return hipErrorNotSupported;
 }
 
@@ -1209,16 +1132,6 @@ HIPAPI hipError_t hipGraphExecExternalSemaphoresWaitNodeSetParams(
   (void)hGraphExec;
   (void)hNode;
   (void)nodeParams;
-  return hipErrorNotSupported;
-}
-
-HIPAPI hipError_t hipGreenCtxCreate(hipExecutionCtx_t* ctx,
-                                    hipDevResourceDesc_t desc, int device,
-                                    unsigned int flags) {
-  (void)ctx;
-  (void)desc;
-  (void)device;
-  (void)flags;
   return hipErrorNotSupported;
 }
 

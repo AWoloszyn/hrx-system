@@ -24357,6 +24357,11 @@ HIPAPI hipError_t hipMemRetainAllocationHandle(
   X(hipErrorGraphExecUpdateFailure,                                           \
     "the graph update was not performed because it included changes which "   \
     "violated constraints specific to instantiated graph update")             \
+  X(hipErrorInvalidResourceType,                                              \
+    "resource type is not valid for the operation")                           \
+  X(hipErrorInvalidResourceConfiguration,                                     \
+    "resource configuration is not valid for the operation")                  \
+  X(hipErrorStreamDetached, "stream is detached")                             \
   X(hipErrorUnknown, "unknown error")                                         \
   X(hipErrorRuntimeMemory, "runtime memory call returned error")              \
   X(hipErrorRuntimeOther, "runtime call other than memory returned error")
