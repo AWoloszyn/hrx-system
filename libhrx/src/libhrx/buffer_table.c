@@ -208,6 +208,32 @@ hrx_status_t hrx_buffer_table_remove(hrx_buffer_table_t* table,
   return hrx_ok_status();
 }
 
+hrx_status_t hrx_buffer_table_take_first_matching(
+    hrx_buffer_table_t* table, hrx_buffer_table_match_fn_t match_fn,
+    void* user_data, hrx_buffer_table_entry_t* out_entry) {
+  iree_slim_mutex_lock(&table->mutex);
+
+  size_t index = 0;
+  while (index < table->count && !match_fn(&table->entries[index], user_data)) {
+    ++index;
+  }
+  if (index == table->count) {
+    iree_slim_mutex_unlock(&table->mutex);
+    return hrx_make_status(HRX_STATUS_NOT_FOUND,
+                           "no matching entry in buffer table");
+  }
+
+  *out_entry = table->entries[index];
+  if (index < table->count - 1) {
+    memmove(&table->entries[index], &table->entries[index + 1],
+            (table->count - index - 1) * sizeof(table->entries[0]));
+  }
+  --table->count;
+
+  iree_slim_mutex_unlock(&table->mutex);
+  return hrx_ok_status();
+}
+
 static void hrx_buffer_table_fill_result(hrx_buffer_table_entry_t* e,
                                          uint64_t any_ptr,
                                          hrx_buffer_t* out_buffer,

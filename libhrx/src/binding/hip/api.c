@@ -1481,6 +1481,9 @@ static bool iree_hip_no_visible_devices_requested(void) {
   return rocr_visible_devices && strcmp(rocr_visible_devices, "-1") == 0;
 }
 
+static void iree_hip_clear_per_thread_stream(
+    iree_hal_streaming_context_t* context);
+
 static hipError_t iree_hip_ensure_initialized(void) {
   if (iree_hip_thread_error.sticky) {
     return iree_hip_thread_error_peek();
@@ -1547,12 +1550,22 @@ static hipError_t iree_hip_ensure_context(
     HIP_RETURN_ERROR(init_result);
   }
 
-  // Check if current thread has context.
+  // A reset retires the old primary context process-wide, but another thread
+  // may still have that context in thread-local state. Replace it lazily while
+  // preserving the selected device ordinal.
   iree_hal_streaming_context_t* context = iree_hal_streaming_context_current();
+  iree_hal_streaming_device_ordinal_t device_ordinal = 0;
+  if (iree_hal_streaming_context_is_retired(context)) {
+    device_ordinal = context->device_ordinal;
+    iree_hip_clear_per_thread_stream(context);
+    iree_hal_streaming_context_set_current(NULL);
+    context = NULL;
+  }
   if (!context) {
-    // No context set - create primary context for device 0.
-    // This matches HIP behavior of implicitly using device 0.
-    iree_hal_streaming_device_t* device = iree_hal_streaming_device_entry(0);
+    // Threads without a selected device begin on device 0. Threads observing a
+    // retired context recreate the primary context for their prior device.
+    iree_hal_streaming_device_t* device =
+        iree_hal_streaming_device_entry(device_ordinal);
     if (!device) {
       if (out_context) *out_context = NULL;
       return hipErrorNoDevice;
@@ -3392,10 +3405,11 @@ HIPAPI hipError_t hipDeviceReset(void) {
     HIP_RETURN_ERROR(init_result);
   }
 
-  // Reset the primary context for the current device.
-  hipDevice_t current_device = context->device_ordinal;
   iree_hip_clear_per_thread_stream(context);
-  hipError_t result = hipDevicePrimaryCtxReset(current_device);
+  iree_hal_streaming_device_t* device = context->device_entry;
+  iree_status_t status =
+      iree_hal_streaming_device_reset_primary_context(device);
+  hipError_t result = iree_status_to_fixed_hip_result(status, hipErrorUnknown);
 
   IREE_TRACE_ZONE_END(z0);
   iree_hip_thread_error_set(result, false);
@@ -3577,14 +3591,10 @@ HIPAPI hipError_t hipDeviceGetSharedMemConfig(hipSharedMemConfig* config) {
 //
 // Primary context behavior:
 // - Creates primary context if it doesn't exist.
-// - Increments reference count if it already exists.
 // - Primary context is shared by all threads.
-// - More lightweight than hipCtxCreate contexts.
 // - Automatically created when needed by runtime API.
 //
 // Multi-GPU: Each device has its own primary context.
-//
-// Warning: Must balance with hipDevicePrimaryCtxRelease().
 //
 // See also: hipDevicePrimaryCtxRelease, hipDevicePrimaryCtxSetFlags,
 //           hipCtxCreate.
@@ -3608,12 +3618,13 @@ HIPAPI hipError_t hipDevicePrimaryCtxRetain(hipCtx_t* pctx, hipDevice_t dev) {
     HIP_RETURN_ERROR(hipErrorInvalidDevice);
   }
 
-  // Retain the primary context, creating it if necessary.
+  // HIP exposes the device primary context handle. Retain/release do not add a
+  // separate lifetime tier beyond the device-owned primary context.
   iree_hal_streaming_context_t* primary_context = NULL;
   HIP_RETURN_STATUS_AND_END_ZONE_IF_ERROR(
       z0,
-      iree_hal_streaming_device_retain_primary_context(device,
-                                                       &primary_context),
+      iree_hal_streaming_device_get_or_create_primary_context(device,
+                                                              &primary_context),
       hipErrorOutOfMemory);
 
   *pctx = (hipCtx_t)primary_context;
@@ -3630,17 +3641,8 @@ HIPAPI hipError_t hipDevicePrimaryCtxRetain(hipCtx_t* pctx, hipDevice_t dev) {
 //  - hipSuccess: Primary context released successfully.
 //  - hipErrorInvalidDevice: Invalid device handle.
 //
-// Synchronization: This operation is synchronous.
-//
-// Primary context behavior:
-// - Decrements reference count.
-// - Destroys context when reference count reaches zero.
-// - All resources in the context are released.
-// - Subsequent API calls may recreate the context.
-//
-// Multi-GPU: Only affects the specified device's primary context.
-//
-// Warning: Must balance with hipDevicePrimaryCtxRetain().
+// HIP primary-context retain/release calls do not control the lifetime of the
+// runtime-owned device context. Release validates the device and succeeds.
 //
 // See also: hipDevicePrimaryCtxRetain, hipDevicePrimaryCtxReset.
 HIPAPI hipError_t hipDevicePrimaryCtxRelease(hipDevice_t dev) {
@@ -3659,11 +3661,6 @@ HIPAPI hipError_t hipDevicePrimaryCtxRelease(hipDevice_t dev) {
     HIP_RETURN_ERROR(hipErrorInvalidDevice);
   }
 
-  // Release the primary context (destroys when ref count reaches 0).
-  HIP_RETURN_STATUS_AND_END_ZONE_IF_ERROR(
-      z0, iree_hal_streaming_device_release_primary_context(device),
-      hipErrorInvalidContext);
-
   IREE_TRACE_ZONE_END(z0);
   return hipSuccess;
 }
@@ -3676,52 +3673,34 @@ HIPAPI hipError_t hipDevicePrimaryCtxRelease(hipDevice_t dev) {
 //                hipCtxSchedYield, hipCtxSchedBlockingSync, etc.).
 //
 // Returns:
-//  - hipSuccess: Flags set successfully.
 //  - hipErrorInvalidDevice: Invalid device handle.
-//  - hipErrorInvalidValue: Invalid flags.
 //  - hipErrorContextAlreadyInUse: Primary context already active.
 //
 // Synchronization: This operation is synchronous.
 //
-// Flag behavior:
-// - Must be called before primary context is created.
-// - Cannot change flags after context is active.
-// - Affects scheduling behavior and resource allocation.
-//
-// Scheduling flags:
-// - hipCtxSchedAuto: Automatic scheduling.
-// - hipCtxSchedSpin: Spin-wait (low latency, high CPU).
-// - hipCtxSchedYield: Yield CPU (higher latency, low CPU).
-// - hipCtxSchedBlockingSync: Block on synchronization.
-//
-// Multi-GPU: Each device's primary context has independent flags.
+// The HIP runtime owns an active primary context for each initialized device,
+// so its creation flags cannot be changed through this entry point.
 //
 // See also: hipDevicePrimaryCtxGetState, hipDevicePrimaryCtxRetain.
 HIPAPI hipError_t hipDevicePrimaryCtxSetFlags(hipDevice_t dev,
                                               unsigned int flags) {
   IREE_TRACE_ZONE_BEGIN(z0);
+  hipError_t init_result = iree_hip_ensure_initialized();
+  if (init_result != hipSuccess) {
+    IREE_TRACE_ZONE_END(z0);
+    HIP_RETURN_ERROR(init_result);
+  }
   iree_hal_streaming_device_t* device = iree_hal_streaming_device_entry(dev);
   if (!device) {
     IREE_TRACE_ZONE_END(z0);
     HIP_RETURN_ERROR(hipErrorInvalidDevice);
   }
 
-  if (!iree_hip_context_flags_are_valid(flags)) {
-    IREE_TRACE_ZONE_END(z0);
-    HIP_RETURN_ERROR(hipErrorInvalidValue);
-  }
-
-  const iree_hal_streaming_context_flags_t internal_flags =
-      iree_hal_streaming_hip_context_flags_to_internal(flags);
-
-  // Set the primary context flags.
-  HIP_RETURN_STATUS_AND_END_ZONE_IF_ERROR(
-      z0,
-      iree_hal_streaming_device_set_primary_context_flags(dev, &internal_flags),
-      hipErrorInvalidValue);
-
+  // HIP owns the device primary context for the lifetime of the initialized
+  // runtime, so there is no inactive interval in which its flags can change.
+  (void)flags;
   IREE_TRACE_ZONE_END(z0);
-  return hipSuccess;
+  HIP_RETURN_ERROR(hipErrorContextAlreadyInUse);
 }
 
 // Gets the state of the primary context.
@@ -3759,6 +3738,11 @@ HIPAPI hipError_t hipDevicePrimaryCtxGetState(hipDevice_t dev,
                                               unsigned int* flags,
                                               int* active) {
   IREE_TRACE_ZONE_BEGIN(z0);
+  hipError_t init_result = iree_hip_ensure_initialized();
+  if (init_result != hipSuccess) {
+    IREE_TRACE_ZONE_END(z0);
+    HIP_RETURN_ERROR(init_result);
+  }
   iree_hal_streaming_device_t* device = iree_hal_streaming_device_entry(dev);
   if (!device) {
     IREE_TRACE_ZONE_END(z0);
@@ -3799,11 +3783,9 @@ HIPAPI hipError_t hipDevicePrimaryCtxGetState(hipDevice_t dev,
 // to complete.
 //
 // Reset behavior:
-// - Destroys the primary context regardless of reference count.
-// - All resources in the context are released.
-// - All allocations are freed.
-// - All streams and events are destroyed.
-// - Context will be recreated on next use.
+// - Retires the current primary context and releases its API-owned allocations.
+// - Restores default context flags and allocation-pool selection.
+// - Recreates the primary context lazily on the next operation for that device.
 //
 // Multi-GPU: Only affects the specified device's primary context.
 //
@@ -3836,50 +3818,9 @@ HIPAPI hipError_t hipDevicePrimaryCtxReset(hipDevice_t dev) {
     HIP_RETURN_ERROR(hipErrorInvalidDevice);
   }
 
-  // Reset the primary context by:
-  // 1. Waiting for all operations to complete (if it exists)
-  // 2. Releasing the current context
-  // 3. The context will be recreated lazily on next access
-
-  if (device->primary_context) {
-    // Wait for all operations on the context to complete.
-    iree_status_t status = iree_hal_streaming_context_wait_idle(
-        device->primary_context, iree_infinite_timeout());
-    if (!iree_status_is_ok(status)) {
-      IREE_TRACE_ZONE_END(z0);
-      HIP_RETURN_ERROR(
-          iree_status_to_fixed_hip_result(status, hipErrorUnknown));
-    }
-
-    // Clear current context if it was the primary context (before release).
-    iree_hal_streaming_context_t* current_context =
-        iree_hal_streaming_context_current();
-    if (current_context == device->primary_context) {
-      iree_hal_streaming_context_set_current(NULL);
-    }
-
-    // All allocations are released with the context — reset free memory.
-    iree_atomic_store(&device->free_memory, device->total_memory,
-                      iree_memory_order_relaxed);
-
-    // Lock to ensure thread safety during reset.
-    iree_slim_mutex_lock(&device->primary_context_mutex);
-
-    // Release the old context.
-    iree_hal_streaming_context_release(device->primary_context);
-    device->primary_context = NULL;
-
-    // Reset reference count to 0.
-    device->primary_context_ref_count = 0;
-
-    // Also clear memory pools.
-    hrx_mem_pool_release(device->current_mem_pool);
-    device->current_mem_pool = NULL;
-    hrx_mem_pool_release(device->default_mem_pool);
-    device->default_mem_pool = NULL;
-
-    iree_slim_mutex_unlock(&device->primary_context_mutex);
-  }
+  HIP_RETURN_STATUS_AND_END_ZONE_IF_ERROR(
+      z0, iree_hal_streaming_device_reset_primary_context(device),
+      hipErrorUnknown);
 
   IREE_TRACE_ZONE_END(z0);
   return hipSuccess;

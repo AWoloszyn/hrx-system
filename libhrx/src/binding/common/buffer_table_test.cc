@@ -692,6 +692,48 @@ TEST(BufferTableTest, ReservedInsertSurvivesCapacityPressure) {
   }
 }
 
+static bool MatchBufferTableUserData(const hrx_buffer_table_entry_t* entry,
+                                     void* user_data) {
+  return entry->user_data == user_data;
+}
+
+TEST(BufferTableTest, TakeFirstMatchingPreservesOtherEntries) {
+  iree_allocator_t allocator = iree_allocator_system();
+  iree_hal_streaming_buffer_table_t* table = nullptr;
+  IREE_ASSERT_OK(iree_hal_streaming_buffer_table_allocate(allocator, &table));
+
+  auto* first = CreateDummyBuffer(0x100000000ULL, 4096, allocator);
+  auto* selected = CreateDummyBuffer(0x200000000ULL, 4096, allocator);
+  auto* last = CreateDummyBuffer(0x300000000ULL, 4096, allocator);
+  for (auto* buffer : {first, selected, last}) {
+    IREE_ASSERT_OK(BufferTableStatus(
+        hrx_buffer_table_insert(table, buffer->device_ptr, buffer->host_ptr,
+                                buffer->size, (hrx_buffer_t)buffer, buffer)));
+  }
+
+  hrx_buffer_table_entry_t entry = {};
+  IREE_EXPECT_OK(BufferTableStatus(hrx_buffer_table_take_first_matching(
+      table, MatchBufferTableUserData, selected, &entry)));
+  EXPECT_EQ(entry.user_data, selected);
+  EXPECT_EQ(table->count, 2u);
+
+  iree_hal_streaming_buffer_t* found = nullptr;
+  IREE_EXPECT_OK(
+      iree_hal_streaming_buffer_table_lookup(table, first->device_ptr, &found));
+  EXPECT_EQ(found, first);
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_NOT_FOUND,
+                        iree_hal_streaming_buffer_table_lookup(
+                            table, selected->device_ptr, &found));
+  IREE_EXPECT_OK(
+      iree_hal_streaming_buffer_table_lookup(table, last->device_ptr, &found));
+  EXPECT_EQ(found, last);
+
+  iree_hal_streaming_buffer_table_free(table);
+  FreeDummyBuffer(first, allocator);
+  FreeDummyBuffer(selected, allocator);
+  FreeDummyBuffer(last, allocator);
+}
+
 TEST(BufferTableTest, MixedOperations) {
   iree_allocator_t allocator = iree_allocator_system();
   iree_hal_streaming_buffer_table_t* table = nullptr;

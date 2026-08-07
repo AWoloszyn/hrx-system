@@ -77,6 +77,7 @@ iree_status_t iree_hal_streaming_context_create(
   context->device_allocator =
       iree_hal_device_allocator(device_entry->hal_device);
   context->flags = flags;
+  iree_atomic_store(&context->is_retired, 0, iree_memory_order_relaxed);
   context->default_stream = NULL;
   context->next_capture_id = 1;
   context->peer_contexts = NULL;
@@ -277,6 +278,12 @@ iree_hal_streaming_context_flags_t iree_hal_streaming_context_flags(
     iree_hal_streaming_context_t* context) {
   IREE_ASSERT_ARGUMENT(context);
   return context->flags;
+}
+
+bool iree_hal_streaming_context_is_retired(
+    iree_hal_streaming_context_t* context) {
+  return context &&
+         iree_atomic_load(&context->is_retired, iree_memory_order_acquire) != 0;
 }
 
 iree_hal_streaming_context_t* iree_hal_streaming_context_current(void) {

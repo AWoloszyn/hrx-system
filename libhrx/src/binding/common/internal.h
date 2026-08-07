@@ -206,6 +206,9 @@ struct iree_hal_streaming_context_t {
   // Context flags.
   iree_hal_streaming_context_flags_t flags;
 
+  // Non-zero after device reset detaches this context from its device.
+  iree_atomic_int32_t is_retired;
+
   // Default stream for this context (always created during context
   // initialization).
   iree_hal_streaming_stream_t* default_stream;
@@ -1407,6 +1410,12 @@ iree_status_t iree_hal_streaming_device_retain_primary_context(
 iree_status_t iree_hal_streaming_device_release_primary_context(
     iree_hal_streaming_device_t* device);
 
+// Detaches and retires the current primary context, releases its API-owned
+// allocations, and restores the device's default context state.
+// Synchronization: device (waits for the retired context to become idle).
+iree_status_t iree_hal_streaming_device_reset_primary_context(
+    iree_hal_streaming_device_t* device);
+
 // Synchronization: none (sets flags for future context creation).
 iree_status_t iree_hal_streaming_device_set_primary_context_flags(
     iree_hal_streaming_device_ordinal_t device_ordinal,
@@ -1485,6 +1494,11 @@ bool iree_hal_streaming_context_try_retain(
 
 // Synchronization: none (queries flags).
 iree_hal_streaming_context_flags_t iree_hal_streaming_context_flags(
+    iree_hal_streaming_context_t* context);
+
+// Returns true after the context has been detached by a device reset.
+// Synchronization: thread-safe atomic query.
+bool iree_hal_streaming_context_is_retired(
     iree_hal_streaming_context_t* context);
 
 // Synchronization: none (thread-local access).
@@ -1917,6 +1931,12 @@ iree_status_t iree_hal_streaming_memory_release_completed_async_frees(
 // Releases every terminal stream-ordered free owned by |context|.
 // Synchronization: all context streams have reached terminal queue state.
 iree_status_t iree_hal_streaming_memory_release_terminal_async_frees(
+    iree_hal_streaming_context_t* context);
+
+// Releases all API-owned allocations still registered with |context|. Borrowed
+// executable-global wrappers remain owned by their modules.
+// Synchronization: context must be idle and detached from new API operations.
+iree_status_t iree_hal_streaming_memory_release_context_allocations(
     iree_hal_streaming_context_t* context);
 
 // Releases completed stream-ordered frees retained by |pool|.

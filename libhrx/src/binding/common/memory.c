@@ -420,6 +420,46 @@ void iree_hal_streaming_memory_release_pageable_staging(
   }
 }
 
+static bool iree_hal_streaming_memory_matches_context_owned_buffer(
+    const hrx_buffer_table_entry_t* entry, void* user_data) {
+  (void)user_data;
+  const iree_hal_streaming_buffer_t* buffer =
+      (const iree_hal_streaming_buffer_t*)entry->user_data;
+  return buffer && buffer->context_ownership ==
+                       IREE_HAL_STREAMING_BUFFER_CONTEXT_RETAINED;
+}
+
+iree_status_t iree_hal_streaming_memory_release_context_allocations(
+    iree_hal_streaming_context_t* context) {
+  IREE_ASSERT_ARGUMENT(context);
+  IREE_TRACE_ZONE_BEGIN(z0);
+
+  iree_hal_streaming_memory_release_pageable_staging(context);
+
+  while (true) {
+    hrx_buffer_table_entry_t entry;
+    hrx_status_t take_status = hrx_buffer_table_take_first_matching(
+        &context->buffer_table,
+        iree_hal_streaming_memory_matches_context_owned_buffer, NULL, &entry);
+    if (!hrx_status_is_ok(take_status)) {
+      if (hrx_status_code(take_status) == HRX_STATUS_NOT_FOUND) {
+        hrx_status_ignore(take_status);
+        break;
+      }
+      IREE_TRACE_ZONE_END(z0);
+      return HRX_CALL(take_status);
+    }
+
+    iree_hal_streaming_buffer_t* buffer =
+        (iree_hal_streaming_buffer_t*)entry.user_data;
+    iree_hal_streaming_memory_account_device_free(buffer);
+    iree_hal_streaming_buffer_free(buffer);
+  }
+
+  IREE_TRACE_ZONE_END(z0);
+  return iree_ok_status();
+}
+
 static iree_status_t iree_hal_streaming_buffer_ref_validate_range(
     const iree_hal_streaming_buffer_ref_t* ref, iree_device_size_t size) {
   if (!ref->buffer) {

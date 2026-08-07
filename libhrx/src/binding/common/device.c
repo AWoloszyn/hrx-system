@@ -448,6 +448,55 @@ iree_status_t iree_hal_streaming_device_release_primary_context(
   return iree_ok_status();
 }
 
+iree_status_t iree_hal_streaming_device_reset_primary_context(
+    iree_hal_streaming_device_t* device) {
+  IREE_ASSERT_ARGUMENT(device);
+  IREE_TRACE_ZONE_BEGIN(z0);
+
+  iree_slim_mutex_lock(&device->primary_context_mutex);
+  iree_hal_streaming_context_t* retired_context = device->primary_context;
+  if (retired_context) {
+    iree_atomic_store(&retired_context->is_retired, 1,
+                      iree_memory_order_release);
+  }
+  device->primary_context = NULL;
+  device->primary_context_ref_count = 0;
+  device->primary_context_flags.scheduling_mode =
+      IREE_HAL_STREAMING_SCHEDULING_MODE_AUTO;
+  device->primary_context_flags.map_host_memory = true;
+  device->primary_context_flags.resize_local_mem_to_max = false;
+
+  hrx_mem_pool_t current_mem_pool = device->current_mem_pool;
+  hrx_mem_pool_t default_mem_pool = device->default_mem_pool;
+  device->current_mem_pool = NULL;
+  device->default_mem_pool = NULL;
+  iree_slim_mutex_unlock(&device->primary_context_mutex);
+
+  iree_status_t status = iree_ok_status();
+  if (retired_context) {
+    status = iree_hal_streaming_context_synchronize(retired_context);
+    if (iree_status_is_ok(status)) {
+      status = iree_hal_streaming_memory_release_terminal_async_frees(
+          retired_context);
+    }
+    if (iree_status_is_ok(status)) {
+      status = iree_hal_streaming_memory_release_context_allocations(
+          retired_context);
+    }
+    iree_hal_streaming_context_release(retired_context);
+  }
+
+  hrx_mem_pool_release(current_mem_pool);
+  hrx_mem_pool_release(default_mem_pool);
+  if (iree_status_is_ok(status)) {
+    iree_atomic_store(&device->free_memory, device->total_memory,
+                      iree_memory_order_relaxed);
+  }
+
+  IREE_TRACE_ZONE_END(z0);
+  return status;
+}
+
 //===----------------------------------------------------------------------===//
 // Occupancy calculation helpers
 //===----------------------------------------------------------------------===//

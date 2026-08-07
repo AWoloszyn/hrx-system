@@ -34,6 +34,11 @@ typedef struct hrx_buffer_table_t {
   size_t reserved_insert_count;
 } hrx_buffer_table_t;
 
+// Selects entries for removal by hrx_buffer_table_take_first_matching.
+// Invoked while the table mutex is held and must not call back into the table.
+typedef bool (*hrx_buffer_table_match_fn_t)(
+    const hrx_buffer_table_entry_t* entry, void* user_data);
+
 void hrx_buffer_table_initialize(hrx_buffer_table_t* table);
 void hrx_buffer_table_deinitialize(hrx_buffer_table_t* table);
 
@@ -68,6 +73,12 @@ void hrx_buffer_table_cancel_reserved_insert(hrx_buffer_table_t* table);
 
 hrx_status_t hrx_buffer_table_remove(hrx_buffer_table_t* table,
                                      uint64_t any_ptr);
+
+// Removes and returns the first entry accepted by |match_fn|. Returns NOT_FOUND
+// without modifying |out_entry| when no entry matches.
+hrx_status_t hrx_buffer_table_take_first_matching(
+    hrx_buffer_table_t* table, hrx_buffer_table_match_fn_t match_fn,
+    void* user_data, hrx_buffer_table_entry_t* out_entry);
 
 // Looks up a buffer containing |any_ptr| (device or host).
 // Returns the buffer, byte offset within it, and optional user_data.
