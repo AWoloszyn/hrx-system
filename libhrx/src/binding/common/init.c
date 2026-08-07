@@ -497,7 +497,7 @@ void iree_hal_streaming_unregister_context(
 
 iree_status_t iree_hal_streaming_init_global(
     const iree_hal_device_create_params_extension_t* device_extensions,
-    iree_allocator_t host_allocator) {
+    iree_string_view_t device_selector, iree_allocator_t host_allocator) {
   IREE_TRACE_ZONE_BEGIN(z0);
   if (iree_hal_streaming_global_registry &&
       iree_hal_streaming_global_registry->initialized) {
@@ -517,7 +517,7 @@ iree_status_t iree_hal_streaming_init_global(
   // driver registration, device enumeration).
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, HRX_CALL(hrx_gpu_initialize_with_device_extensions(
-              /*flags=*/0, device_extensions)));
+              /*flags=*/0, device_extensions, device_selector)));
 
   // Create global registry.
   IREE_RETURN_AND_END_ZONE_IF_ERROR(

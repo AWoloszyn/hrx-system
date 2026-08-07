@@ -1332,7 +1332,7 @@ typedef struct iree_hal_streaming_graph_node_t {
 // Synchronization: none (one-time initialization).
 iree_status_t iree_hal_streaming_init_global(
     const iree_hal_device_create_params_extension_t* device_extensions,
-    iree_allocator_t host_allocator);
+    iree_string_view_t device_selector, iree_allocator_t host_allocator);
 
 // Cleans up global state and releases all resources.
 // Synchronization: all contexts (synchronizes all active contexts).

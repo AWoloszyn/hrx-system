@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "device_selection.h"
 #include "hrx_internal.h"
 #include "iree/async/frontier_tracker.h"
 #include "iree/async/util/proactor_pool.h"
@@ -725,7 +726,8 @@ hrx_status_t hrx_cpu_device_get(int index, hrx_device_t* device) {
 
 hrx_status_t hrx_gpu_initialize_with_device_extensions(
     uint32_t flags,
-    const iree_hal_device_create_params_extension_t* device_extensions) {
+    const iree_hal_device_create_params_extension_t* device_extensions,
+    iree_string_view_t device_selector) {
   (void)flags;
   if (g_gpu.initialized) {
     return hrx_make_status(HRX_STATUS_ALREADY_EXISTS,
@@ -776,21 +778,25 @@ hrx_status_t hrx_gpu_initialize_with_device_extensions(
   // IREE AMDGPU reports a pseudo-device with an empty path at ordinal 0 that
   // represents all visible GPUs as one logical device, then one entry per
   // physical device. HRX exposes physical devices to callers.
-  int physical_count = 0;
-  for (iree_host_size_t i = 0; i < device_info_count; ++i) {
-    if (device_infos[i].path.size == 0) continue;
-    physical_count++;
+  iree_host_size_t selected_info_indices[HRX_MAX_DEVICES] = {0};
+  iree_host_size_t selected_info_count = 0;
+  iree_status = hrx_gpu_resolve_device_selection(
+      device_selector, device_info_count, device_infos,
+      IREE_ARRAYSIZE(selected_info_indices), &selected_info_count,
+      selected_info_indices);
+  if (!iree_status_is_ok(iree_status)) {
+    iree_allocator_free(alloc, device_infos);
+    iree_hal_driver_release(driver);
+    hrx_release_shared_state();
+    return hrx_status_from_iree(iree_status);
   }
-  if (physical_count == 0) {
+  if (selected_info_count == 0) {
     iree_allocator_free(alloc, device_infos);
     iree_hal_driver_release(driver);
     hrx_release_shared_state();
     return hrx_make_status(HRX_STATUS_UNAVAILABLE,
-                           "no physical GPU devices found");
+                           "no selected physical GPU devices found");
   }
-
-  int count =
-      physical_count < HRX_MAX_DEVICES ? physical_count : HRX_MAX_DEVICES;
 
   iree_hal_device_runtime_feature_flags_t runtime_features =
       IREE_HAL_DEVICE_RUNTIME_FEATURE_FLAG_NONE;
@@ -824,9 +830,9 @@ hrx_status_t hrx_gpu_initialize_with_device_extensions(
   }
 
   int created_count = 0;
-  for (iree_host_size_t info_index = 0;
-       info_index < device_info_count && created_count < count; ++info_index) {
-    if (device_infos[info_index].path.size == 0) continue;
+  for (iree_host_size_t selected_index = 0;
+       selected_index < selected_info_count; ++selected_index) {
+    const iree_host_size_t info_index = selected_info_indices[selected_index];
 
     iree_hal_device_t* hal_device = NULL;
     iree_status = iree_hal_driver_create_device_by_ordinal(
@@ -912,7 +918,8 @@ hrx_status_t hrx_gpu_initialize_with_device_extensions(
 
 hrx_status_t hrx_gpu_initialize(uint32_t flags) {
   return hrx_gpu_initialize_with_device_extensions(flags,
-                                                   /*device_extensions=*/NULL);
+                                                   /*device_extensions=*/NULL,
+                                                   iree_string_view_empty());
 }
 
 hrx_status_t hrx_gpu_shutdown(void) {

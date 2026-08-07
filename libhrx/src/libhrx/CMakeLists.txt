@@ -25,6 +25,7 @@ iree_cc_library(
   HDRS
     "${LIBHRX_SOURCE_DIR}/src/iree_hal_compat.h"
     "buffer_table.h"
+    "device_selection.h"
     "hrx_internal.h"
     "mem_pool.h"
   SRCS
@@ -33,6 +34,7 @@ iree_cc_library(
     "buffer_table.c"
     "buffer_view.c"
     "device.c"
+    "device_selection.c"
     "event.c"
     "executable.c"
     "fence.c"
@@ -103,6 +105,7 @@ iree_cc_library(
   HDRS
     "${LIBHRX_SOURCE_DIR}/src/iree_hal_compat.h"
     "buffer_table.h"
+    "device_selection.h"
     "hrx_internal.h"
     "mem_pool.h"
   SRCS
@@ -111,6 +114,7 @@ iree_cc_library(
     "buffer_table.c"
     "buffer_view.c"
     "device.c"
+    "device_selection.c"
     "event.c"
     "executable.c"
     "fence.c"
@@ -166,6 +170,20 @@ iree_cc_library(
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../include>"
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/../../include>"
   PUBLIC
+)
+
+iree_cc_test(
+  NAME
+    device_selection_test
+  SRCS
+    "device_selection_test.cc"
+  DEPS
+    ::hrx_static
+    iree::base
+    iree::hal
+    iree::testing::gtest
+    iree::testing::gtest_main
+    libhrx_defs
 )
 
 iree_cc_test(

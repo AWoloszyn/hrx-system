@@ -648,7 +648,8 @@ bool hrx_runtime_try_get_hal_device_event_sink(
 // valid until hrx_gpu_shutdown().
 hrx_status_t hrx_gpu_initialize_with_device_extensions(
     uint32_t flags,
-    const iree_hal_device_create_params_extension_t* device_extensions);
+    const iree_hal_device_create_params_extension_t* device_extensions,
+    iree_string_view_t device_selector);
 
 // Ensure shared infrastructure is created (idempotent).
 hrx_status_t hrx_ensure_shared_state(void);

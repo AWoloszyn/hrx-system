@@ -196,7 +196,8 @@ static CUresult iree_status_to_cu_result(iree_status_t status) {
 CUDAAPI CUresult cuInit(unsigned int Flags) {
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_status_t status = iree_hal_streaming_init_global(
-      /*device_extensions=*/NULL, iree_allocator_system());
+      /*device_extensions=*/NULL, iree_string_view_empty(),
+      iree_allocator_system());
   CUresult result = iree_status_to_cu_result(status);
   IREE_TRACE_ZONE_END(z0);
   return result;

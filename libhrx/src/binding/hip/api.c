@@ -1472,10 +1472,22 @@ static hipError_t iree_hip_graph_exec_rebuild(
 // Implicit initialization helpers
 //===----------------------------------------------------------------------===//
 
+static iree_string_view_t iree_hip_visible_device_selector(void) {
+  const char* hip_visible_devices = getenv("HIP_VISIBLE_DEVICES");
+  if (hip_visible_devices && hip_visible_devices[0]) {
+    return iree_make_cstring_view(hip_visible_devices);
+  }
+  const char* cuda_visible_devices = getenv("CUDA_VISIBLE_DEVICES");
+  if (cuda_visible_devices && cuda_visible_devices[0]) {
+    return iree_make_cstring_view(cuda_visible_devices);
+  }
+  return iree_string_view_empty();
+}
+
 // Ensures HIP runtime is initialized (calls hipInit if needed).
 static bool iree_hip_no_visible_devices_requested(void) {
-  const char* hip_visible_devices = getenv("HIP_VISIBLE_DEVICES");
-  if (hip_visible_devices && strcmp(hip_visible_devices, "-1") == 0) {
+  if (iree_string_view_equal(iree_hip_visible_device_selector(),
+                             IREE_SV("-1"))) {
     return true;
   }
   const char* rocr_visible_devices = getenv("ROCR_VISIBLE_DEVICES");
@@ -1527,8 +1539,9 @@ static hipError_t iree_hip_ensure_initialized(void) {
 
   const iree_hal_device_create_params_extension_t* device_extension =
       &iree_hip_host_queue_extension.base;
-  iree_status_t status =
-      iree_hal_streaming_init_global(device_extension, iree_allocator_system());
+  iree_status_t status = iree_hal_streaming_init_global(
+      device_extension, iree_hip_visible_device_selector(),
+      iree_allocator_system());
   if (!iree_status_is_ok(status)) {
     const iree_status_code_t status_code = iree_status_code(status);
     iree_status_free(status);
