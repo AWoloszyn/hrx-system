@@ -8,6 +8,26 @@
 
 #include "common/internal.h"
 #include "common/stream.h"
+struct iree_hal_streaming_queue_scope_t {
+  // References held by the execution context and each scoped stream.
+  iree_atomic_ref_count_t ref_count;
+  // Context owning the queue reservation and scope registry.
+  iree_hal_streaming_context_t* context;
+  // Next scope in the context-owned intrusive list.
+  iree_hal_streaming_queue_scope_t* next;
+  // Device retained independently of the streaming context.
+  iree_hal_device_t* device;
+  // Exact queue reserved for this scope.
+  iree_hal_queue_affinity_t queue_affinity;
+  // Non-zero while new streams may be attached to this scope.
+  iree_atomic_int32_t is_attached;
+  // Allocator owning this scope.
+  iree_allocator_t host_allocator;
+  // Number of execution-unit mask bits stored in |execution_unit_mask|.
+  iree_host_size_t execution_unit_mask_bit_count;
+  // Immutable execution-unit mask applied to |queue_affinity|.
+  uint32_t execution_unit_mask[];
+};
 
 //===----------------------------------------------------------------------===//
 // Global state
@@ -105,6 +125,8 @@ iree_status_t iree_hal_streaming_context_create(
   context->stream_capacity =
       8;  // Pre-allocate for default stream + user streams.
   context->streams = NULL;
+  context->reserved_queue_affinity = 0;
+  context->queue_scope_head = NULL;
 
   // Initialize default limits.
   // These are typical defaults matching CUDA/HIP behavior.
@@ -226,6 +248,9 @@ static void iree_hal_streaming_context_destroy(
 
   // Now release the context's reference to default stream.
   iree_hal_streaming_stream_release(default_stream);
+
+  IREE_ASSERT(context->queue_scope_head == NULL,
+              "queue scopes retain their streaming context");
 
   // Free stream tracking resources.
   if (context->streams) {
@@ -680,6 +705,420 @@ iree_status_t iree_hal_streaming_context_register_stream(
   iree_slim_mutex_unlock(&context->stream_list_mutex);
 
   IREE_TRACE_ZONE_END(z0);
+  return status;
+}
+
+static iree_status_t iree_hal_streaming_context_select_scope_queue(
+    iree_hal_streaming_context_t* context,
+    iree_hal_queue_affinity_t* out_queue_affinity) {
+  *out_queue_affinity = 0;
+  const iree_hal_device_queue_spec_t* queue_spec =
+      iree_hal_device_spec_queues(iree_hal_device_spec(context->device));
+  const iree_hal_queue_family_role_flags_t required_roles =
+      IREE_HAL_QUEUE_FAMILY_ROLE_FLAG_DISPATCH |
+      IREE_HAL_QUEUE_FAMILY_ROLE_FLAG_TRANSFER;
+  iree_host_size_t queue_ordinal = 0;
+  for (iree_host_size_t i = 0; i < queue_spec->family_count; ++i) {
+    for (iree_host_size_t j = 0; j < queue_spec->families[i].queue_count;
+         ++j, ++queue_ordinal) {
+      if (IREE_UNLIKELY(queue_ordinal >= IREE_HAL_MAX_QUEUES)) {
+        return iree_make_status(
+            IREE_STATUS_FAILED_PRECONDITION,
+            "device exposes more queues than a queue affinity can represent");
+      }
+      const iree_hal_queue_affinity_t candidate = 1ull << queue_ordinal;
+      // Unscoped submissions using ANY deterministically select queue zero.
+      // Keeping that queue outside the reservation pool prevents persistent
+      // execution masks from affecting direct context operations.
+      if (queue_ordinal == 0 ||
+          !iree_all_bits_set(queue_spec->families[i].role_flags,
+                             required_roles) ||
+          iree_any_bit_set(context->reserved_queue_affinity, candidate)) {
+        continue;
+      }
+      *out_queue_affinity = candidate;
+      return iree_ok_status();
+    }
+  }
+  return iree_make_status(
+      IREE_STATUS_RESOURCE_EXHAUSTED,
+      "no dispatch/transfer queue is available for exclusive use");
+}
+
+static void iree_hal_streaming_context_unlink_queue_scope_locked(
+    iree_hal_streaming_context_t* context,
+    iree_hal_streaming_queue_scope_t* scope) {
+  iree_hal_streaming_queue_scope_t** current = &context->queue_scope_head;
+  while (*current && *current != scope) current = &(*current)->next;
+  if (*current) {
+    *current = scope->next;
+    context->reserved_queue_affinity &= ~scope->queue_affinity;
+  }
+  scope->next = NULL;
+}
+
+static void iree_hal_streaming_queue_scope_report_restore_error(
+    iree_status_t status) {
+  if (iree_status_is_ok(status)) return;
+  iree_status_fprint(stderr, status);
+  iree_status_free(status);
+}
+
+static iree_status_t iree_hal_streaming_queue_scope_create_for_context(
+    iree_hal_streaming_context_t* context,
+    iree_host_size_t execution_unit_mask_bit_count,
+    const uint32_t* execution_unit_mask, iree_allocator_t host_allocator,
+    iree_hal_streaming_queue_scope_t** out_scope) {
+  IREE_ASSERT_ARGUMENT(context);
+  IREE_ASSERT_ARGUMENT(out_scope);
+  *out_scope = NULL;
+  if (IREE_UNLIKELY(execution_unit_mask_bit_count == 0 ||
+                    execution_unit_mask == NULL ||
+                    execution_unit_mask_bit_count % 32 != 0)) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "queue scope requires a non-empty 32-bit-aligned "
+                            "execution mask");
+  }
+
+  iree_hal_streaming_queue_scope_t* scope = NULL;
+  iree_host_size_t execution_unit_mask_size = 0;
+  iree_host_size_t allocation_size = 0;
+  if (IREE_UNLIKELY(
+          !iree_host_size_checked_mul(execution_unit_mask_bit_count / 8,
+                                      sizeof(uint8_t),
+                                      &execution_unit_mask_size) ||
+          !iree_host_size_checked_add(sizeof(*scope), execution_unit_mask_size,
+                                      &allocation_size))) {
+    return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                            "queue scope allocation size overflow");
+  }
+  IREE_RETURN_IF_ERROR(
+      iree_allocator_malloc(host_allocator, allocation_size, (void**)&scope));
+  memset(scope, 0, allocation_size);
+  iree_atomic_ref_count_init(&scope->ref_count);
+  iree_atomic_store(&scope->is_attached, 1, iree_memory_order_relaxed);
+  scope->context = context;
+  scope->device = context->device;
+  scope->host_allocator = host_allocator;
+  scope->execution_unit_mask_bit_count = execution_unit_mask_bit_count;
+  memcpy(scope->execution_unit_mask, execution_unit_mask,
+         execution_unit_mask_size);
+  // The scope is linked into context-owned state below. Retain the context
+  // before publishing that link so concurrent context teardown cannot race
+  // queue configuration.
+  iree_hal_streaming_context_retain(context);
+  iree_hal_device_retain(scope->device);
+
+  iree_slim_mutex_lock(&context->stream_list_mutex);
+  iree_status_t status = iree_hal_streaming_context_select_scope_queue(
+      context, &scope->queue_affinity);
+  if (iree_status_is_ok(status)) {
+    context->reserved_queue_affinity |= scope->queue_affinity;
+    scope->next = context->queue_scope_head;
+    context->queue_scope_head = scope;
+  }
+  iree_slim_mutex_unlock(&context->stream_list_mutex);
+
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_device_queue_set_execution_unit_mask(
+        scope->device, scope->queue_affinity, execution_unit_mask_bit_count,
+        execution_unit_mask);
+  }
+  if (!iree_status_is_ok(status)) {
+    iree_slim_mutex_lock(&context->stream_list_mutex);
+    iree_hal_streaming_context_unlink_queue_scope_locked(context, scope);
+    iree_slim_mutex_unlock(&context->stream_list_mutex);
+    iree_hal_device_release(scope->device);
+    iree_allocator_free(host_allocator, scope);
+    iree_hal_streaming_context_release(context);
+    return status;
+  }
+
+  *out_scope = scope;
+  return iree_ok_status();
+}
+
+iree_status_t iree_hal_streaming_queue_scope_create(
+    iree_host_size_t device_ordinal,
+    iree_host_size_t execution_unit_mask_bit_count,
+    const uint32_t* execution_unit_mask, iree_allocator_t host_allocator,
+    iree_hal_streaming_queue_scope_t** out_scope) {
+  IREE_ASSERT_ARGUMENT(out_scope);
+  *out_scope = NULL;
+  iree_hal_streaming_device_t* device =
+      iree_hal_streaming_device_entry(device_ordinal);
+  if (!device) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "queue scope device ordinal is unavailable");
+  }
+  iree_hal_streaming_context_t* context = NULL;
+  IREE_RETURN_IF_ERROR(iree_hal_streaming_device_get_or_create_primary_context(
+      device, &context));
+  return iree_hal_streaming_queue_scope_create_for_context(
+      context, execution_unit_mask_bit_count, execution_unit_mask,
+      host_allocator, out_scope);
+}
+
+void iree_hal_streaming_queue_scope_retain(
+    iree_hal_streaming_queue_scope_t* scope) {
+  if (scope) iree_atomic_ref_count_inc(&scope->ref_count);
+}
+
+void iree_hal_streaming_queue_scope_release(
+    iree_hal_streaming_queue_scope_t* scope) {
+  if (!scope || iree_atomic_ref_count_dec(&scope->ref_count) != 1) return;
+
+  iree_hal_streaming_context_t* context = scope->context;
+  iree_slim_mutex_lock(&context->stream_list_mutex);
+  iree_hal_streaming_context_unlink_queue_scope_locked(context, scope);
+  iree_slim_mutex_unlock(&context->stream_list_mutex);
+  iree_hal_streaming_queue_scope_report_restore_error(
+      iree_hal_device_queue_set_execution_unit_mask(
+          scope->device, scope->queue_affinity, 0, NULL));
+  iree_hal_device_release(scope->device);
+  iree_allocator_free(scope->host_allocator, scope);
+  iree_hal_streaming_context_release(context);
+}
+
+void iree_hal_streaming_queue_scope_detach(
+    iree_hal_streaming_queue_scope_t* scope) {
+  if (scope) {
+    iree_atomic_store(&scope->is_attached, 0, iree_memory_order_release);
+  }
+}
+
+bool iree_hal_streaming_queue_scope_is_attached(
+    const iree_hal_streaming_queue_scope_t* scope) {
+  return !scope ||
+         iree_atomic_load(&scope->is_attached, iree_memory_order_acquire) != 0;
+}
+
+iree_hal_queue_affinity_t iree_hal_streaming_queue_scope_affinity(
+    const iree_hal_streaming_queue_scope_t* scope) {
+  return scope ? scope->queue_affinity : IREE_HAL_QUEUE_AFFINITY_ANY;
+}
+
+iree_hal_streaming_context_t* iree_hal_streaming_queue_scope_context(
+    const iree_hal_streaming_queue_scope_t* scope) {
+  return scope ? scope->context : NULL;
+}
+
+iree_host_size_t iree_hal_streaming_queue_scope_execution_unit_mask_bit_count(
+    const iree_hal_streaming_queue_scope_t* scope) {
+  return scope ? scope->execution_unit_mask_bit_count : 0;
+}
+
+void iree_hal_streaming_queue_scope_copy_execution_unit_mask(
+    const iree_hal_streaming_queue_scope_t* scope,
+    iree_host_size_t execution_unit_mask_word_count,
+    uint32_t* out_execution_unit_mask) {
+  IREE_ASSERT_ARGUMENT(scope);
+  IREE_ASSERT_ARGUMENT(out_execution_unit_mask);
+  const iree_host_size_t stored_word_count =
+      scope->execution_unit_mask_bit_count / 32;
+  const iree_host_size_t copied_word_count =
+      iree_min(execution_unit_mask_word_count, stored_word_count);
+  memcpy(out_execution_unit_mask, scope->execution_unit_mask,
+         copied_word_count * sizeof(*out_execution_unit_mask));
+  memset(out_execution_unit_mask + copied_word_count, 0,
+         (execution_unit_mask_word_count - copied_word_count) *
+             sizeof(*out_execution_unit_mask));
+}
+
+static iree_status_t iree_hal_streaming_queue_scope_snapshot_streams(
+    iree_hal_streaming_queue_scope_t* scope,
+    iree_hal_streaming_stream_t*** out_streams,
+    iree_host_size_t* out_stream_count) {
+  IREE_ASSERT_ARGUMENT(scope);
+  IREE_ASSERT_ARGUMENT(out_streams);
+  IREE_ASSERT_ARGUMENT(out_stream_count);
+  *out_streams = NULL;
+  *out_stream_count = 0;
+  iree_hal_streaming_context_t* context = scope->context;
+
+  iree_hal_streaming_stream_t** streams = NULL;
+  iree_host_size_t stream_count = 0;
+  iree_slim_mutex_lock(&context->stream_list_mutex);
+  iree_status_t status = iree_ok_status();
+  if (context->stream_count > 0) {
+    iree_host_size_t allocation_size = 0;
+    if (IREE_UNLIKELY(!iree_host_size_checked_mul(
+            context->stream_count, sizeof(*streams), &allocation_size))) {
+      status = iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                                "queue scope stream snapshot overflow");
+    } else {
+      status = iree_allocator_malloc(context->host_allocator, allocation_size,
+                                     (void**)&streams);
+    }
+  }
+  if (iree_status_is_ok(status)) {
+    for (iree_host_size_t i = 0; i < context->stream_count; ++i) {
+      iree_hal_streaming_stream_t* stream = context->streams[i];
+      if (stream->queue_scope != scope) continue;
+      iree_hal_streaming_stream_retain(stream);
+      streams[stream_count++] = stream;
+    }
+  }
+  iree_slim_mutex_unlock(&context->stream_list_mutex);
+
+  if (iree_status_is_ok(status)) {
+    *out_streams = streams;
+    *out_stream_count = stream_count;
+  } else {
+    iree_allocator_free(context->host_allocator, streams);
+  }
+  return status;
+}
+
+static void iree_hal_streaming_queue_scope_release_stream_snapshot(
+    iree_hal_streaming_queue_scope_t* scope,
+    iree_hal_streaming_stream_t** streams, iree_host_size_t stream_count) {
+  for (iree_host_size_t i = 0; i < stream_count; ++i) {
+    iree_hal_streaming_stream_release(streams[i]);
+  }
+  iree_allocator_free(scope->context->host_allocator, streams);
+}
+
+iree_status_t iree_hal_streaming_queue_scope_synchronize(
+    iree_hal_streaming_queue_scope_t* scope) {
+  IREE_ASSERT_ARGUMENT(scope);
+  iree_hal_streaming_stream_t** streams = NULL;
+  iree_host_size_t stream_count = 0;
+  iree_status_t status = iree_hal_streaming_queue_scope_snapshot_streams(
+      scope, &streams, &stream_count);
+
+  for (iree_host_size_t i = 0; i < stream_count && iree_status_is_ok(status);
+       ++i) {
+    status = iree_hal_streaming_stream_synchronize(streams[i]);
+  }
+  iree_hal_streaming_queue_scope_release_stream_snapshot(scope, streams,
+                                                         stream_count);
+  return status;
+}
+
+iree_status_t iree_hal_streaming_queue_scope_record_event(
+    iree_hal_streaming_queue_scope_t* scope,
+    iree_hal_streaming_event_t* event) {
+  IREE_ASSERT_ARGUMENT(scope);
+  IREE_ASSERT_ARGUMENT(event);
+  iree_hal_streaming_context_t* context = scope->context;
+  if (IREE_UNLIKELY(event->context != context)) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "event belongs to a different device context");
+  }
+  iree_hal_streaming_stream_t** streams = NULL;
+  iree_host_size_t stream_count = 0;
+  iree_status_t status = iree_hal_streaming_queue_scope_snapshot_streams(
+      scope, &streams, &stream_count);
+  for (iree_host_size_t i = 0; i < stream_count && iree_status_is_ok(status);
+       ++i) {
+    iree_slim_mutex_lock(&streams[i]->mutex);
+    const bool is_capturing =
+        streams[i]->capture_status != IREE_HAL_STREAMING_CAPTURE_STATUS_NONE;
+    iree_slim_mutex_unlock(&streams[i]->mutex);
+    if (is_capturing) {
+      status = iree_make_status(
+          IREE_STATUS_FAILED_PRECONDITION,
+          "queue scope event recording is unavailable during stream capture");
+    } else {
+      status = iree_hal_streaming_stream_flush(streams[i]);
+    }
+  }
+
+  iree_hal_semaphore_t** wait_semaphores = NULL;
+  uint64_t* wait_values = NULL;
+  iree_host_size_t semaphore_array_size = 0;
+  iree_host_size_t value_array_size = 0;
+  if (iree_status_is_ok(status) && stream_count > 0 &&
+      (!iree_host_size_checked_mul(stream_count, sizeof(*wait_semaphores),
+                                   &semaphore_array_size) ||
+       !iree_host_size_checked_mul(stream_count, sizeof(*wait_values),
+                                   &value_array_size))) {
+    status = iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                              "queue scope event wait list overflow");
+  }
+  if (iree_status_is_ok(status) && stream_count > 0) {
+    status =
+        iree_allocator_malloc(context->host_allocator, semaphore_array_size,
+                              (void**)&wait_semaphores);
+  }
+  if (iree_status_is_ok(status) && stream_count > 0) {
+    status = iree_allocator_malloc(context->host_allocator, value_array_size,
+                                   (void**)&wait_values);
+  }
+  if (iree_status_is_ok(status)) {
+    for (iree_host_size_t i = 0; i < stream_count; ++i) {
+      iree_slim_mutex_lock(&streams[i]->mutex);
+      wait_semaphores[i] = streams[i]->timeline_semaphore;
+      wait_values[i] = streams[i]->pending_value;
+      iree_slim_mutex_unlock(&streams[i]->mutex);
+    }
+  }
+
+  iree_hal_semaphore_t* record_semaphore = NULL;
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_semaphore_create(
+        context->device, scope->queue_affinity, /*initial_value=*/0,
+        IREE_HAL_SEMAPHORE_FLAG_NONE, &record_semaphore);
+  }
+  if (iree_status_is_ok(status)) {
+    const uint64_t signal_value = 1;
+    const iree_hal_semaphore_list_t waits = {
+        .count = stream_count,
+        .semaphores = wait_semaphores,
+        .payload_values = wait_values,
+    };
+    const iree_hal_semaphore_list_t signals = {
+        .count = 1,
+        .semaphores = &record_semaphore,
+        .payload_values = &signal_value,
+    };
+    status = iree_hal_device_queue_barrier(
+        context->device, scope->queue_affinity, waits, signals,
+        IREE_HAL_EXECUTE_FLAG_NONE);
+    if (iree_status_is_ok(status)) {
+      const iree_hal_streaming_recorded_point_t recorded_point = {
+          .semaphore = record_semaphore,
+          .value = signal_value,
+          .ordered_after_stream_id = 0,
+          .ordered_after_stream_value = 0,
+          .record_time_ns = iree_time_now(),
+      };
+      iree_hal_streaming_event_commit_recorded_point(event, recorded_point);
+      iree_hal_streaming_stream_release(
+          iree_hal_streaming_event_exchange_recording_stream(event, NULL));
+      status =
+          iree_hal_device_queue_flush(context->device, scope->queue_affinity);
+    }
+  }
+  iree_hal_semaphore_release(record_semaphore);
+  iree_allocator_free(context->host_allocator, wait_values);
+  iree_allocator_free(context->host_allocator, wait_semaphores);
+  iree_hal_streaming_queue_scope_release_stream_snapshot(scope, streams,
+                                                         stream_count);
+  return status;
+}
+
+iree_status_t iree_hal_streaming_queue_scope_wait_event(
+    iree_hal_streaming_queue_scope_t* scope,
+    iree_hal_streaming_event_t* event) {
+  IREE_ASSERT_ARGUMENT(scope);
+  IREE_ASSERT_ARGUMENT(event);
+  if (IREE_UNLIKELY(event->context != scope->context)) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "event belongs to a different device context");
+  }
+  iree_hal_streaming_stream_t** streams = NULL;
+  iree_host_size_t stream_count = 0;
+  iree_status_t status = iree_hal_streaming_queue_scope_snapshot_streams(
+      scope, &streams, &stream_count);
+  for (iree_host_size_t i = 0; i < stream_count && iree_status_is_ok(status);
+       ++i) {
+    status = iree_hal_streaming_stream_wait_event(
+        streams[i], event, /*capture_external_wait=*/false);
+  }
+  iree_hal_streaming_queue_scope_release_stream_snapshot(scope, streams,
+                                                         stream_count);
   return status;
 }
 

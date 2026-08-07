@@ -103,6 +103,9 @@ typedef uintptr_t iree_hal_streaming_tagged_symbol_ptr_t;
 // Context types
 //===----------------------------------------------------------------------===//
 
+typedef struct iree_hal_streaming_queue_scope_t
+    iree_hal_streaming_queue_scope_t;
+
 // Scheduling policy.
 typedef enum iree_hal_streaming_scheduling_mode_e {
   // Automatic scheduling.
@@ -257,6 +260,11 @@ struct iree_hal_streaming_context_t {
   iree_host_size_t stream_count;
   // Number of allocated entries in |streams|.
   iree_host_size_t stream_capacity;
+
+  // Queues held exclusively by execution scopes in this context.
+  iree_hal_queue_affinity_t reserved_queue_affinity;
+  // Intrusive list of live queue scopes guarded by |stream_list_mutex|.
+  iree_hal_streaming_queue_scope_t* queue_scope_head;
 
   // Dedicated mutex for stream list access.
   iree_slim_mutex_t stream_list_mutex;
@@ -500,6 +508,8 @@ typedef struct iree_hal_streaming_stream_t {
 
   // Queue affinity.
   iree_hal_queue_affinity_t queue_affinity;
+  // Optional exclusive queue scope retained by this stream.
+  iree_hal_streaming_queue_scope_t* queue_scope;
 
   // Event dependencies that establish safe cross-stream allocation reuse.
   iree_hal_streaming_memory_reuse_dependency_t* memory_reuse_dependencies;

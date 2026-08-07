@@ -4,6 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "common/stream.h"
+
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -286,14 +288,20 @@ bool iree_hal_streaming_stream_has_memory_reuse_dependency(
   return has_dependency;
 }
 
-iree_status_t iree_hal_streaming_stream_create(
+static iree_status_t iree_hal_streaming_stream_create_impl(
     iree_hal_streaming_context_t* context,
+    iree_hal_streaming_queue_scope_t* queue_scope,
     iree_hal_streaming_stream_flags_t flags, int priority,
     iree_allocator_t host_allocator, iree_hal_streaming_stream_t** out_stream) {
   IREE_ASSERT_ARGUMENT(context);
   IREE_ASSERT_ARGUMENT(out_stream);
   *out_stream = NULL;
   IREE_TRACE_ZONE_BEGIN(z0);
+  if (queue_scope && !iree_hal_streaming_queue_scope_is_attached(queue_scope)) {
+    IREE_TRACE_ZONE_END(z0);
+    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                            "queue scope is detached");
+  }
 
   iree_hal_streaming_stream_t* stream = NULL;
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
@@ -309,7 +317,12 @@ iree_status_t iree_hal_streaming_stream_create(
   stream->timeline_semaphore = NULL;
   stream->pending_value = 0;
   stream->completed_value = 0;
-  stream->queue_affinity = IREE_HAL_QUEUE_AFFINITY_ANY;
+  stream->queue_affinity = queue_scope
+                               ? iree_hal_streaming_queue_scope_affinity(
+                                     queue_scope)
+                               : IREE_HAL_QUEUE_AFFINITY_ANY;
+  stream->queue_scope = queue_scope;
+  iree_hal_streaming_queue_scope_retain(queue_scope);
   stream->memory_reuse_dependencies = NULL;
   stream->memory_reuse_dependency_count = 0;
   stream->memory_reuse_dependency_capacity = 0;
@@ -331,7 +344,7 @@ iree_status_t iree_hal_streaming_stream_create(
 
   // Create timeline semaphore for synchronization.
   iree_status_t status = iree_hal_semaphore_create(
-      context->device, IREE_HAL_QUEUE_AFFINITY_ANY, 0ULL,
+      context->device, stream->queue_affinity, 0ULL,
       IREE_HAL_SEMAPHORE_FLAG_NONE, &stream->timeline_semaphore);
 
   // Register stream with context.
@@ -346,6 +359,45 @@ iree_status_t iree_hal_streaming_stream_create(
   }
   IREE_TRACE_ZONE_END(z0);
   return status;
+}
+
+iree_status_t iree_hal_streaming_stream_create(
+    iree_hal_streaming_context_t* context,
+    iree_hal_streaming_stream_flags_t flags, int priority,
+    iree_allocator_t host_allocator, iree_hal_streaming_stream_t** out_stream) {
+  return iree_hal_streaming_stream_create_impl(context, /*queue_scope=*/NULL,
+                                               flags, priority, host_allocator,
+                                               out_stream);
+}
+
+iree_status_t iree_hal_streaming_stream_create_in_queue_scope(
+    iree_hal_streaming_queue_scope_t* queue_scope, uint64_t flags, int priority,
+    iree_allocator_t host_allocator, iree_hal_streaming_stream_t** out_stream) {
+  IREE_ASSERT_ARGUMENT(queue_scope);
+  iree_hal_streaming_context_t* context =
+      iree_hal_streaming_queue_scope_context(queue_scope);
+  if (!context) {
+    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                            "queue scope context has been destroyed");
+  }
+  if (IREE_UNLIKELY(flags &
+                    ~(uint64_t)IREE_HAL_STREAMING_STREAM_FLAG_NON_BLOCKING)) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "unsupported scoped stream flags");
+  }
+  return iree_hal_streaming_stream_create_impl(
+      context, queue_scope, (iree_hal_streaming_stream_flags_t)flags, priority,
+      host_allocator, out_stream);
+}
+
+iree_hal_streaming_queue_scope_t* iree_hal_streaming_stream_queue_scope(
+    const iree_hal_streaming_stream_t* stream) {
+  return stream ? stream->queue_scope : NULL;
+}
+
+iree_host_size_t iree_hal_streaming_stream_device_ordinal(
+    const iree_hal_streaming_stream_t* stream) {
+  return stream ? stream->context->device_ordinal : 0;
 }
 
 static void iree_hal_streaming_stream_destroy(
@@ -380,6 +432,8 @@ static void iree_hal_streaming_stream_destroy(
 
   // Release timeline semaphore.
   iree_hal_semaphore_release(stream->timeline_semaphore);
+
+  iree_hal_streaming_queue_scope_release(stream->queue_scope);
 
   // Deinitialize synchronization.
   iree_slim_mutex_deinitialize(&stream->mutex);
@@ -1839,6 +1893,17 @@ iree_status_t iree_hal_streaming_launch_kernel(
     g_hrx_launch_timing.launch_barrier_ns += timing_barrier_ns;
   }
   IREE_TRACE_ZONE_END(z0);
+  return status;
+}
+
+iree_status_t iree_hal_streaming_stream_wait_event(
+    iree_hal_streaming_stream_t* stream, iree_hal_streaming_event_t* event) {
+  IREE_ASSERT_ARGUMENT(stream);
+  IREE_ASSERT_ARGUMENT(event);
+  iree_slim_mutex_lock(&event->mutex);
+  iree_status_t status =
+      iree_hal_streaming_stream_wait_event_locked(stream, event);
+  iree_slim_mutex_unlock(&event->mutex);
   return status;
 }
 

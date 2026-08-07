@@ -12,13 +12,13 @@
 #include "iree/base/api.h"
 #include "iree/base/threading/call_once.h"
 #include "iree/base/threading/mutex.h"
+#include "libhrx/src/binding/common/stream.h"
 #include "libhrx/src/binding/hip/api.h"
+#include "libhrx/src/binding/hip/binding_internal.h"
 
 // Resource partitioning and descriptor management are host-side control-plane
-// operations. Execution-context streams require backend queues that enforce a
-// CU mask; ordinary streaming-layer streams share queues and cannot provide
-// that isolation. This file therefore owns only the resource and context
-// contracts that can be implemented independently of queue creation.
+// operations. Each execution context lazily reserves one streaming queue and
+// applies its immutable execution-unit mask when the first stream is created.
 
 typedef struct hrx_hip_sm_resource_metadata_t {
   // Device ordinal whose SM range is described by the resource.
@@ -52,8 +52,20 @@ struct ihipExecutionCtx_t {
   hipDevice_t device;
   // Stable process-local context identifier.
   unsigned long long context_id;
+  // Serializes scope creation and context detachment.
+  iree_slim_mutex_t mutex;
+  // True for the device-owned context returned by hipDeviceGetExecutionCtx.
+  bool is_primary;
+  // True after this context has been invalidated.
+  bool is_destroyed;
   // Resource descriptor consumed when the context was created.
   hipDevResourceDesc_t descriptor;
+  // Number of valid bits in |execution_unit_mask|.
+  iree_host_size_t execution_unit_mask_bit_count;
+  // Immutable mask synthesized from |descriptor|.
+  uint32_t* execution_unit_mask;
+  // Lazily-created exclusive queue scope owned by this context.
+  iree_hal_streaming_queue_scope_t* queue_scope;
 };
 
 static iree_once_flag hrx_hip_descriptor_registry_once = IREE_ONCE_FLAG_INIT;
@@ -228,13 +240,61 @@ static hipError_t hrx_hip_descriptor_registry_consume(
   return hipSuccess;
 }
 
+static hipError_t hrx_hip_execution_context_allocate(
+    hipDevice_t device, hipDevResourceDesc_t descriptor, bool is_primary,
+    hipExecutionCtx_t* out_context) {
+  *out_context = NULL;
+  unsigned int sm_count = 0;
+  hipError_t result = hrx_hip_device_sm_count(device, &sm_count);
+  if (result != hipSuccess) return result;
+
+  const iree_host_size_t mask_word_count =
+      ((iree_host_size_t)sm_count + 31) / 32;
+  iree_host_size_t mask_size = 0;
+  if (!iree_host_size_checked_mul(mask_word_count, sizeof(uint32_t),
+                                  &mask_size)) {
+    return hipErrorOutOfMemory;
+  }
+
+  hipExecutionCtx_t context = calloc(1, sizeof(*context));
+  if (!context) return hipErrorOutOfMemory;
+  context->execution_unit_mask = calloc(1, mask_size);
+  if (!context->execution_unit_mask) {
+    free(context);
+    return hipErrorOutOfMemory;
+  }
+
+  for (unsigned int i = 0; i < descriptor->resource_count; ++i) {
+    const hipDevResource* resource = &descriptor->resources[i];
+    if (resource->type != hipDevResourceTypeSm) continue;
+    const hrx_hip_sm_resource_metadata_t metadata =
+        hrx_hip_get_sm_resource_metadata(resource);
+    for (unsigned int sm = metadata.start_sm;
+         sm < metadata.start_sm + resource->sm.smCount; ++sm) {
+      context->execution_unit_mask[sm / 32] |= UINT32_C(1) << (sm % 32);
+    }
+  }
+
+  iree_atomic_ref_count_init(&context->ref_count);
+  iree_slim_mutex_initialize(&context->mutex);
+  context->device = device;
+  context->is_primary = is_primary;
+  context->descriptor = descriptor;
+  context->execution_unit_mask_bit_count = mask_word_count * 32;
+  *out_context = context;
+  return hipSuccess;
+}
+
 static void hrx_hip_execution_context_destroy(hipExecutionCtx_t context) {
+  iree_hal_streaming_queue_scope_release(context->queue_scope);
+  free(context->execution_unit_mask);
   hrx_hip_descriptor_destroy(context->descriptor);
+  iree_slim_mutex_deinitialize(&context->mutex);
   free(context);
 }
 
 static void hrx_hip_execution_context_release(hipExecutionCtx_t context) {
-  if (iree_atomic_ref_count_dec(&context->ref_count) == 1) {
+  if (context && iree_atomic_ref_count_dec(&context->ref_count) == 1) {
     hrx_hip_execution_context_destroy(context);
   }
 }
@@ -246,6 +306,15 @@ static void hrx_hip_execution_context_registry_insert(
   context->next_live_context = hrx_hip_execution_context_registry_head;
   hrx_hip_execution_context_registry_head = context;
   iree_slim_mutex_unlock(&hrx_hip_execution_context_registry_mutex);
+}
+
+static hipExecutionCtx_t
+hrx_hip_execution_context_registry_lookup_primary_locked(hipDevice_t device) {
+  for (hipExecutionCtx_t current = hrx_hip_execution_context_registry_head;
+       current; current = current->next_live_context) {
+    if (current->is_primary && current->device == device) return current;
+  }
+  return NULL;
 }
 
 static hipExecutionCtx_t hrx_hip_execution_context_registry_lookup(
@@ -273,7 +342,7 @@ static bool hrx_hip_execution_context_registry_remove(
   while (*current && *current != context) {
     current = &(*current)->next_live_context;
   }
-  if (!*current) {
+  if (!*current || (*current)->is_primary) {
     iree_slim_mutex_unlock(&hrx_hip_execution_context_registry_mutex);
     return false;
   }
@@ -281,6 +350,66 @@ static bool hrx_hip_execution_context_registry_remove(
   context->next_live_context = NULL;
   iree_slim_mutex_unlock(&hrx_hip_execution_context_registry_mutex);
   return true;
+}
+
+static hipExecutionCtx_t hrx_hip_execution_context_registry_lookup_scope(
+    iree_hal_streaming_queue_scope_t* queue_scope) {
+  hipExecutionCtx_t retained_context = NULL;
+  hrx_hip_execution_context_registry_lock();
+  for (hipExecutionCtx_t current = hrx_hip_execution_context_registry_head;
+       current; current = current->next_live_context) {
+    iree_slim_mutex_lock(&current->mutex);
+    const bool matches =
+        !current->is_destroyed && current->queue_scope == queue_scope;
+    if (matches) iree_atomic_ref_count_inc(&current->ref_count);
+    iree_slim_mutex_unlock(&current->mutex);
+    if (matches) {
+      retained_context = current;
+      break;
+    }
+  }
+  iree_slim_mutex_unlock(&hrx_hip_execution_context_registry_mutex);
+  return retained_context;
+}
+
+static hipError_t hrx_hip_execution_context_retain_queue_scope(
+    hipExecutionCtx_t context, bool create,
+    iree_hal_streaming_queue_scope_t** out_queue_scope) {
+  *out_queue_scope = NULL;
+  iree_slim_mutex_lock(&context->mutex);
+  hipError_t result = hipSuccess;
+  if (context->is_destroyed) {
+    result = hipErrorInvalidValue;
+  } else if (!context->queue_scope && create) {
+    iree_status_t status = iree_hal_streaming_queue_scope_create(
+        (iree_host_size_t)context->device,
+        context->execution_unit_mask_bit_count, context->execution_unit_mask,
+        iree_allocator_system(), &context->queue_scope);
+    result = iree_status_to_hip_result(status);
+  }
+  if (result == hipSuccess && context->queue_scope) {
+    iree_hal_streaming_queue_scope_retain(context->queue_scope);
+    *out_queue_scope = context->queue_scope;
+  }
+  iree_slim_mutex_unlock(&context->mutex);
+  return result;
+}
+
+static hipError_t hrx_hip_execution_context_fill_resource(
+    hipExecutionCtx_t context, hipDevResource* resource,
+    hipDevResourceType type) {
+  unsigned int output_count = 0;
+  for (unsigned int i = 0; i < context->descriptor->resource_count; ++i) {
+    const hipDevResource* source = &context->descriptor->resources[i];
+    if (source->type != type) continue;
+    resource[output_count] = *source;
+    resource[output_count].nextResource = NULL;
+    if (output_count > 0) {
+      resource[output_count - 1].nextResource = &resource[output_count];
+    }
+    ++output_count;
+  }
+  return output_count > 0 ? hipSuccess : hipErrorInvalidResourceType;
 }
 
 HIPAPI hipError_t hipDeviceGetDevResource(hipDevice_t device,
@@ -474,18 +603,17 @@ HIPAPI hipError_t hipGreenCtxCreate(hipExecutionCtx_t* context,
   hipError_t result = hrx_hip_validate_device(device);
   if (result != hipSuccess) return result;
 
-  hipExecutionCtx_t new_context = calloc(1, sizeof(*new_context));
-  if (!new_context) return hipErrorOutOfMemory;
   hipDevResourceDesc_t owned_descriptor = NULL;
   result = hrx_hip_descriptor_registry_consume(desc, device, &owned_descriptor);
+  if (result != hipSuccess) return result;
+
+  hipExecutionCtx_t new_context = NULL;
+  result = hrx_hip_execution_context_allocate(
+      device, owned_descriptor, /*is_primary=*/false, &new_context);
   if (result != hipSuccess) {
-    free(new_context);
+    hrx_hip_descriptor_destroy(owned_descriptor);
     return result;
   }
-
-  iree_atomic_ref_count_init(&new_context->ref_count);
-  new_context->device = device;
-  new_context->descriptor = owned_descriptor;
   hrx_hip_execution_context_registry_insert(new_context);
   *context = new_context;
   return hipSuccess;
@@ -496,7 +624,68 @@ HIPAPI hipError_t hipExecutionCtxDestroy(hipExecutionCtx_t context) {
   if (!hrx_hip_execution_context_registry_remove(context)) {
     return hipErrorInvalidValue;
   }
+  iree_slim_mutex_lock(&context->mutex);
+  context->is_destroyed = true;
+  iree_hal_streaming_queue_scope_t* queue_scope = context->queue_scope;
+  context->queue_scope = NULL;
+  iree_hal_streaming_queue_scope_detach(queue_scope);
+  iree_slim_mutex_unlock(&context->mutex);
+  iree_hal_streaming_queue_scope_release(queue_scope);
   hrx_hip_execution_context_release(context);
+  return hipSuccess;
+}
+
+HIPAPI hipError_t hipDeviceGetExecutionCtx(hipExecutionCtx_t* context,
+                                           hipDevice_t device) {
+  if (!context) return hipErrorInvalidValue;
+  *context = NULL;
+  unsigned int sm_count = 0;
+  hipError_t result = hrx_hip_device_sm_count(device, &sm_count);
+  if (result != hipSuccess) return result;
+
+  hrx_hip_execution_context_registry_lock();
+  hipExecutionCtx_t primary_context =
+      hrx_hip_execution_context_registry_lookup_primary_locked(device);
+  iree_slim_mutex_unlock(&hrx_hip_execution_context_registry_mutex);
+  if (primary_context) {
+    *context = primary_context;
+    return hipSuccess;
+  }
+
+  hipDevResourceDesc_t descriptor = calloc(1, sizeof(*descriptor));
+  if (!descriptor) return hipErrorOutOfMemory;
+  descriptor->resources = calloc(1, sizeof(*descriptor->resources));
+  if (!descriptor->resources) {
+    free(descriptor);
+    return hipErrorOutOfMemory;
+  }
+  descriptor->device = device;
+  descriptor->resource_count = 1;
+  hrx_hip_fill_sm_resource(descriptor->resources, sm_count, /*alignment=*/2,
+                           hipDevSmResourceGroupDefault, device,
+                           /*start_sm=*/0);
+
+  hipExecutionCtx_t candidate = NULL;
+  result = hrx_hip_execution_context_allocate(device, descriptor,
+                                              /*is_primary=*/true, &candidate);
+  if (result != hipSuccess) {
+    hrx_hip_descriptor_destroy(descriptor);
+    return result;
+  }
+
+  hrx_hip_execution_context_registry_lock();
+  primary_context =
+      hrx_hip_execution_context_registry_lookup_primary_locked(device);
+  if (!primary_context) {
+    candidate->context_id = hrx_hip_next_execution_context_id++;
+    candidate->next_live_context = hrx_hip_execution_context_registry_head;
+    hrx_hip_execution_context_registry_head = candidate;
+    primary_context = candidate;
+    candidate = NULL;
+  }
+  iree_slim_mutex_unlock(&hrx_hip_execution_context_registry_mutex);
+  hrx_hip_execution_context_release(candidate);
+  *context = primary_context;
   return hipSuccess;
 }
 
@@ -509,20 +698,10 @@ HIPAPI hipError_t hipExecutionCtxGetDevResource(hipExecutionCtx_t context,
       hrx_hip_execution_context_registry_lookup(context);
   if (!retained_context) return hipErrorInvalidValue;
 
-  unsigned int output_count = 0;
-  for (unsigned int i = 0; i < retained_context->descriptor->resource_count;
-       ++i) {
-    const hipDevResource* source = &retained_context->descriptor->resources[i];
-    if (source->type != type) continue;
-    resource[output_count] = *source;
-    resource[output_count].nextResource = NULL;
-    if (output_count > 0) {
-      resource[output_count - 1].nextResource = &resource[output_count];
-    }
-    ++output_count;
-  }
+  hipError_t result =
+      hrx_hip_execution_context_fill_resource(retained_context, resource, type);
   hrx_hip_execution_context_release(retained_context);
-  return output_count > 0 ? hipSuccess : hipErrorInvalidResourceType;
+  return result;
 }
 
 HIPAPI hipError_t hipExecutionCtxGetDevice(hipDevice_t* device,
@@ -545,4 +724,147 @@ HIPAPI hipError_t hipExecutionCtxGetId(hipExecutionCtx_t context,
   *contextId = retained_context->context_id;
   hrx_hip_execution_context_release(retained_context);
   return hipSuccess;
+}
+
+HIPAPI hipError_t hipExecutionCtxStreamCreate(hipStream_t* stream,
+                                              hipExecutionCtx_t context,
+                                              unsigned int flags,
+                                              int priority) {
+  if (!stream) return hipErrorInvalidValue;
+  *stream = NULL;
+  if (flags != hipStreamDefault && flags != hipStreamNonBlocking) {
+    return hipErrorInvalidValue;
+  }
+  hipExecutionCtx_t retained_context =
+      hrx_hip_execution_context_registry_lookup(context);
+  if (!retained_context) return hipErrorInvalidValue;
+
+  // Keep scope attachment and stream registration in the same critical
+  // section as context destruction. A successfully returned stream owns its
+  // scope independently; otherwise destruction wins before creation begins.
+  iree_slim_mutex_lock(&retained_context->mutex);
+  hipError_t result = hipSuccess;
+  if (retained_context->is_destroyed) {
+    result = hipErrorInvalidValue;
+  } else if (!retained_context->queue_scope) {
+    iree_status_t status = iree_hal_streaming_queue_scope_create(
+        (iree_host_size_t)retained_context->device,
+        retained_context->execution_unit_mask_bit_count,
+        retained_context->execution_unit_mask, iree_allocator_system(),
+        &retained_context->queue_scope);
+    result = iree_status_to_hip_result(status);
+  }
+  if (result == hipSuccess) {
+    const uint64_t internal_flags =
+        flags == hipStreamNonBlocking
+            ? IREE_HAL_STREAMING_STREAM_FLAG_NON_BLOCKING
+            : IREE_HAL_STREAMING_STREAM_FLAG_NONE;
+    iree_hal_streaming_stream_t* streaming_stream = NULL;
+    iree_status_t status = iree_hal_streaming_stream_create_in_queue_scope(
+        retained_context->queue_scope, internal_flags,
+        iree_hip_clamp_stream_priority(priority), iree_allocator_system(),
+        &streaming_stream);
+    result = iree_status_to_hip_result(status);
+    if (result == hipSuccess) {
+      result = iree_hip_publish_stream(streaming_stream, stream);
+    }
+  }
+  iree_slim_mutex_unlock(&retained_context->mutex);
+  hrx_hip_execution_context_release(retained_context);
+  return result;
+}
+
+HIPAPI hipError_t hipExecutionCtxRecordEvent(hipExecutionCtx_t context,
+                                             hipEvent_t event) {
+  hipExecutionCtx_t retained_context =
+      hrx_hip_execution_context_registry_lookup(context);
+  if (!retained_context) return hipErrorInvalidValue;
+  iree_hal_streaming_event_t* streaming_event = NULL;
+  hipError_t result = iree_hip_event_lookup_retain(event, &streaming_event);
+  iree_hal_streaming_queue_scope_t* queue_scope = NULL;
+  if (result == hipSuccess) {
+    result = hrx_hip_execution_context_retain_queue_scope(
+        retained_context, /*create=*/false, &queue_scope);
+  }
+  if (result == hipSuccess && queue_scope) {
+    result =
+        iree_status_to_hip_result(iree_hal_streaming_queue_scope_record_event(
+            queue_scope, streaming_event));
+  }
+  iree_hal_streaming_queue_scope_release(queue_scope);
+  iree_hal_streaming_event_release(streaming_event);
+  hrx_hip_execution_context_release(retained_context);
+  return result;
+}
+
+HIPAPI hipError_t hipExecutionCtxWaitEvent(hipExecutionCtx_t context,
+                                           hipEvent_t event) {
+  hipExecutionCtx_t retained_context =
+      hrx_hip_execution_context_registry_lookup(context);
+  if (!retained_context) return hipErrorInvalidValue;
+  iree_hal_streaming_event_t* streaming_event = NULL;
+  hipError_t result = iree_hip_event_lookup_retain(event, &streaming_event);
+  iree_hal_streaming_queue_scope_t* queue_scope = NULL;
+  if (result == hipSuccess) {
+    result = hrx_hip_execution_context_retain_queue_scope(
+        retained_context, /*create=*/false, &queue_scope);
+  }
+  if (result == hipSuccess && queue_scope) {
+    result =
+        iree_status_to_hip_result(iree_hal_streaming_queue_scope_wait_event(
+            queue_scope, streaming_event));
+  }
+  iree_hal_streaming_queue_scope_release(queue_scope);
+  iree_hal_streaming_event_release(streaming_event);
+  hrx_hip_execution_context_release(retained_context);
+  return result;
+}
+
+HIPAPI hipError_t hipExecutionCtxSynchronize(hipExecutionCtx_t context) {
+  hipExecutionCtx_t retained_context =
+      hrx_hip_execution_context_registry_lookup(context);
+  if (!retained_context) return hipErrorInvalidValue;
+  iree_hal_streaming_queue_scope_t* queue_scope = NULL;
+  hipError_t result = hrx_hip_execution_context_retain_queue_scope(
+      retained_context, /*create=*/false, &queue_scope);
+  if (result == hipSuccess && queue_scope) {
+    result = iree_status_to_hip_result(
+        iree_hal_streaming_queue_scope_synchronize(queue_scope));
+  }
+  iree_hal_streaming_queue_scope_release(queue_scope);
+  hrx_hip_execution_context_release(retained_context);
+  return result;
+}
+
+HIPAPI hipError_t hipStreamGetDevResource(hipStream_t stream,
+                                          hipDevResource* resource,
+                                          hipDevResourceType type) {
+  if (!resource) return hipErrorInvalidValue;
+  if (type != hipDevResourceTypeSm) return hipErrorInvalidResourceType;
+  iree_hal_streaming_stream_t* streaming_stream = NULL;
+  iree_hal_streaming_context_t* streaming_context = NULL;
+  hipError_t result = iree_hip_resolve_stream_retain(
+      stream, &streaming_stream, &streaming_context);
+  if (result != hipSuccess) return result;
+
+  iree_hal_streaming_queue_scope_t* queue_scope =
+      iree_hal_streaming_stream_queue_scope(streaming_stream);
+  if (!queue_scope) {
+    result = hipDeviceGetDevResource(
+        (hipDevice_t)iree_hal_streaming_stream_device_ordinal(streaming_stream),
+        resource, type);
+  } else {
+    hipExecutionCtx_t retained_context =
+        hrx_hip_execution_context_registry_lookup_scope(queue_scope);
+    if (!retained_context) {
+      result = hipErrorStreamDetached;
+    } else {
+      result = hrx_hip_execution_context_fill_resource(retained_context,
+                                                       resource, type);
+      hrx_hip_execution_context_release(retained_context);
+    }
+  }
+  iree_hal_streaming_context_release(streaming_context);
+  iree_hal_streaming_stream_release(streaming_stream);
+  return result;
 }

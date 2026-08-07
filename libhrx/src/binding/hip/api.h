@@ -1363,6 +1363,11 @@ HIPAPI hipError_t hipGreenCtxCreate(hipExecutionCtx_t* context,
                                     hipDevResourceDesc_t desc, int device,
                                     unsigned int flags);
 HIPAPI hipError_t hipExecutionCtxDestroy(hipExecutionCtx_t context);
+HIPAPI hipError_t hipDeviceGetExecutionCtx(hipExecutionCtx_t* context,
+                                           hipDevice_t device);
+HIPAPI hipError_t hipExecutionCtxStreamCreate(hipStream_t* stream,
+                                              hipExecutionCtx_t context,
+                                              unsigned int flags, int priority);
 HIPAPI hipError_t hipExecutionCtxGetDevResource(hipExecutionCtx_t context,
                                                 hipDevResource* resource,
                                                 hipDevResourceType type);
@@ -1370,6 +1375,14 @@ HIPAPI hipError_t hipExecutionCtxGetDevice(hipDevice_t* device,
                                            hipExecutionCtx_t context);
 HIPAPI hipError_t hipExecutionCtxGetId(hipExecutionCtx_t context,
                                        unsigned long long* contextId);
+HIPAPI hipError_t hipStreamGetDevResource(hipStream_t stream,
+                                          hipDevResource* resource,
+                                          hipDevResourceType type);
+HIPAPI hipError_t hipExecutionCtxRecordEvent(hipExecutionCtx_t context,
+                                             hipEvent_t event);
+HIPAPI hipError_t hipExecutionCtxSynchronize(hipExecutionCtx_t context);
+HIPAPI hipError_t hipExecutionCtxWaitEvent(hipExecutionCtx_t context,
+                                           hipEvent_t event);
 
 // Primary context
 HIPAPI hipError_t hipDevicePrimaryCtxRetain(hipCtx_t* pctx, hipDevice_t dev);

@@ -178,7 +178,7 @@ typedef struct hrx_hip_batch_mem_op_node_params_t {
 } hrx_hip_batch_mem_op_node_params_t;
 
 static bool iree_hip_graph_handle_is_live(hipGraph_t graph);
-static hipError_t iree_status_to_hip_result(iree_status_t status);
+hipError_t iree_status_to_hip_result(iree_status_t status);
 
 #define IREE_HIP_ARRAY_MAGIC 0x6872786869706179ull
 // HRX HIP arrays are backed by normal device allocations. The practical limit
@@ -623,7 +623,7 @@ static bool iree_hip_synchronization_policy_is_valid(
   return false;
 }
 
-static int iree_hip_clamp_stream_priority(int priority) {
+int iree_hip_clamp_stream_priority(int priority) {
   int least_priority = 0;
   int greatest_priority = 0;
   hipError_t result =
@@ -928,6 +928,7 @@ static iree_once_flag iree_hip_global_init_mutex_once = IREE_ONCE_FLAG_INIT;
 static iree_atomic_int32_t iree_hip_runtime_initialized =
     IREE_ATOMIC_VAR_INIT(0);
 static iree_hip_blocking_printf_provider_t iree_hip_blocking_printf_provider;
+static iree_hal_amdgpu_host_queue_extension_t iree_hip_host_queue_extension;
 
 typedef struct iree_hip_per_thread_stream_state_t {
   // Context associated with the cached per-thread stream.
@@ -1105,7 +1106,7 @@ static hipError_t iree_hip_thread_error_peek(void) {
 // Status conversion
 //===----------------------------------------------------------------------===//
 
-static hipError_t iree_status_to_hip_result(iree_status_t status) {
+hipError_t iree_status_to_hip_result(iree_status_t status) {
   if (iree_status_is_ok(status)) {
     return hipSuccess;
   }
@@ -1510,11 +1511,22 @@ static hipError_t iree_hip_ensure_initialized(void) {
     iree_hip_blocking_printf_provider_initialize(
         event_sink, iree_allocator_system(),
         &iree_hip_blocking_printf_provider);
+    iree_hip_host_queue_extension.base.type =
+        IREE_HAL_AMDGPU_DEVICE_CREATE_PARAMS_EXTENSION_TYPE_HOST_QUEUES;
+    iree_hip_host_queue_extension.base.next =
+        iree_hip_blocking_printf_provider_device_extension(
+            &iree_hip_blocking_printf_provider);
+    // HIP execution-resource contexts require one independent hardware queue
+    // per simultaneously active partition. Reserve the affinity address space
+    // here while leaving all queues beyond the normal eager set uninitialized
+    // until a context actually uses them.
+    iree_hip_host_queue_extension.capacity = IREE_HAL_MAX_QUEUES;
+    iree_hip_host_queue_extension.initial_count =
+        IREE_HAL_AMDGPU_DEFAULT_GPU_AGENT_QUEUE_COUNT;
   }
 
   const iree_hal_device_create_params_extension_t* device_extension =
-      iree_hip_blocking_printf_provider_device_extension(
-          &iree_hip_blocking_printf_provider);
+      &iree_hip_host_queue_extension.base;
   iree_status_t status =
       iree_hal_streaming_init_global(device_extension, iree_allocator_system());
   if (!iree_status_is_ok(status)) {
@@ -1703,6 +1715,19 @@ static void iree_hip_stream_discard_unpublished(
   iree_hal_streaming_context_release(context);
 }
 
+hipError_t iree_hip_publish_stream(iree_hal_streaming_stream_t* stream,
+                                   hipStream_t* out_stream) {
+  IREE_ASSERT_ARGUMENT(stream);
+  IREE_ASSERT_ARGUMENT(out_stream);
+  iree_status_t status = iree_hip_stream_register(stream);
+  if (!iree_status_is_ok(status)) {
+    iree_hip_stream_discard_unpublished(stream);
+    return iree_status_to_hip_result(status);
+  }
+  *out_stream = (hipStream_t)stream;
+  return hipSuccess;
+}
+
 typedef struct iree_hip_resolved_stream_t {
   // Context retained for the duration of the API operation.
   iree_hal_streaming_context_t* context;
@@ -1734,6 +1759,13 @@ static hipError_t iree_hip_resolve_registered_stream(
       iree_hip_resolved_stream_release(out_resolved_stream);
       return hipErrorContextIsDestroyed;
     }
+    iree_hal_streaming_queue_scope_t* queue_scope =
+        iree_hal_streaming_stream_queue_scope(out_resolved_stream->stream);
+    if (queue_scope &&
+        !iree_hal_streaming_queue_scope_is_attached(queue_scope)) {
+      iree_hip_resolved_stream_release(out_resolved_stream);
+      return hipErrorStreamDetached;
+    }
     return hipSuccess;
   }
 
@@ -1759,6 +1791,22 @@ static hipError_t iree_hip_resolve_registered_stream(
   return hipSuccess;
 }
 
+hipError_t iree_hip_resolve_stream_retain(
+    hipStream_t stream, iree_hal_streaming_stream_t** out_stream,
+    iree_hal_streaming_context_t** out_context) {
+  IREE_ASSERT_ARGUMENT(out_stream);
+  IREE_ASSERT_ARGUMENT(out_context);
+  *out_stream = NULL;
+  *out_context = NULL;
+  iree_hip_resolved_stream_t resolved_stream = {0};
+  hipError_t result =
+      iree_hip_resolve_registered_stream(stream, &resolved_stream);
+  if (result != hipSuccess) return result;
+  *out_stream = resolved_stream.stream;
+  *out_context = resolved_stream.context;
+  return hipSuccess;
+}
+
 static iree_once_flag iree_hip_event_registry_once = IREE_ONCE_FLAG_INIT;
 static iree_hip_handle_registry_t iree_hip_event_registry;
 
@@ -1778,7 +1826,7 @@ static iree_status_t iree_hip_event_register(
                                          (uintptr_t)event);
 }
 
-static hipError_t iree_hip_event_lookup_retain(
+hipError_t iree_hip_event_lookup_retain(
     hipEvent_t event, iree_hal_streaming_event_t** out_event) {
   IREE_ASSERT_ARGUMENT(out_event);
   *out_event = NULL;
@@ -11580,7 +11628,14 @@ HIPAPI hipError_t hipExtStreamGetCUMask(hipStream_t stream, uint32_t mask_count,
     HIP_RETURN_ERROR(hipErrorInvalidValue);
   }
 
-  iree_hip_fill_default_cu_mask(resolved_stream.context, mask_count, mask);
+  iree_hal_streaming_queue_scope_t* queue_scope =
+      iree_hal_streaming_stream_queue_scope(resolved_stream.stream);
+  if (queue_scope) {
+    iree_hal_streaming_queue_scope_copy_execution_unit_mask(
+        queue_scope, mask_count, mask);
+  } else {
+    iree_hip_fill_default_cu_mask(resolved_stream.context, mask_count, mask);
+  }
   iree_hip_resolved_stream_release(&resolved_stream);
   return hipSuccess;
 }
