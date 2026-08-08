@@ -13969,6 +13969,9 @@ static hipError_t iree_hip_validate_cooperative_multi_device_count(
     return hipErrorInvalidValue;
   }
 
+  hipError_t init_result = iree_hip_ensure_initialized();
+  if (init_result != hipSuccess) return init_result;
+
   iree_host_size_t available_device_count = 0;
   iree_status_t status =
       iree_hal_streaming_device_count(&available_device_count);
