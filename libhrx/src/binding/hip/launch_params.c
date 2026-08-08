@@ -63,6 +63,8 @@ hipError_t iree_hip_parse_launch_attributes(
       case hipLaunchAttributeCooperative:
         *out_cooperative |= attributes[i].val.cooperative != 0;
         break;
+      case hipLaunchAttributeExtDynDataPrefetch:
+        return hipErrorNotSupported;
       default:
         return hipErrorInvalidValue;
     }
