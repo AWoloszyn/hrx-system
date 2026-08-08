@@ -14007,6 +14007,214 @@ static hipError_t iree_hip_validate_cooperative_multi_device_stream(
   return hipSuccess;
 }
 
+static hipError_t iree_hip_validate_cooperative_launch_capacity(
+    iree_hal_streaming_device_t* device, iree_hal_streaming_symbol_t* symbol,
+    uint32_t grid_dim_x, uint32_t grid_dim_y, uint32_t grid_dim_z,
+    uint32_t block_dim_x, uint32_t block_dim_y, uint32_t block_dim_z,
+    uint32_t shared_memory_bytes) {
+  const uint32_t block_size = block_dim_x * block_dim_y * block_dim_z;
+  uint32_t maximum_block_count = 0;
+  iree_status_t status = iree_hal_streaming_calculate_max_cooperative_blocks(
+      device, symbol, block_size, shared_memory_bytes, &maximum_block_count);
+  if (!iree_status_is_ok(status)) {
+    return iree_status_to_fixed_hip_result(status, hipErrorInvalidValue);
+  }
+
+  const uint64_t block_count = (uint64_t)grid_dim_x * grid_dim_y * grid_dim_z;
+  if (maximum_block_count == 0 || block_count > maximum_block_count) {
+    return hipErrorCooperativeLaunchTooLarge;
+  }
+  return hipSuccess;
+}
+
+typedef struct iree_hip_cooperative_multi_device_launch_t {
+  // Retained stream receiving this grid's dispatch.
+  iree_hal_streaming_stream_t* stream;
+  // Function symbol resolved in |stream|'s device context.
+  iree_hal_streaming_symbol_t* symbol;
+  // Streaming dispatch parameters for this grid.
+  iree_hal_streaming_dispatch_params_t params;
+} iree_hip_cooperative_multi_device_launch_t;
+
+typedef struct iree_hip_cooperative_sync_allocation_t {
+  // Number of live callback subspans plus the launch helper's owner reference.
+  iree_atomic_ref_count_t ref_count;
+  // Allocator used for this state.
+  iree_allocator_t host_allocator;
+  // Fine-grained HSA allocation retained until every grid completes.
+  iree_hal_buffer_t* buffer;
+  // Exported device pointer imported into each participating device.
+  iree_hal_external_buffer_t external_buffer;
+} iree_hip_cooperative_sync_allocation_t;
+
+static void iree_hip_cooperative_sync_allocation_release(
+    iree_hip_cooperative_sync_allocation_t* allocation) {
+  if (!allocation || iree_atomic_ref_count_dec(&allocation->ref_count) != 1) {
+    return;
+  }
+  iree_hal_buffer_release(allocation->buffer);
+  iree_allocator_free(allocation->host_allocator, allocation);
+}
+
+static void iree_hip_cooperative_sync_buffer_release(
+    void* user_data, iree_hal_buffer_t* buffer) {
+  (void)buffer;
+  iree_hip_cooperative_sync_allocation_release(
+      (iree_hip_cooperative_sync_allocation_t*)user_data);
+}
+
+static iree_status_t iree_hip_cooperative_sync_allocation_create(
+    iree_hal_streaming_context_t* context,
+    iree_hip_cooperative_sync_allocation_t** out_allocation) {
+  IREE_ASSERT_ARGUMENT(context);
+  IREE_ASSERT_ARGUMENT(out_allocation);
+  *out_allocation = NULL;
+  iree_hip_cooperative_sync_allocation_t* allocation = NULL;
+  IREE_RETURN_IF_ERROR(iree_allocator_malloc(
+      context->host_allocator, sizeof(*allocation), (void**)&allocation));
+  memset(allocation, 0, sizeof(*allocation));
+  iree_atomic_ref_count_init(&allocation->ref_count);
+  allocation->host_allocator = context->host_allocator;
+
+  const iree_hal_buffer_params_t params = {
+      .usage = IREE_HAL_BUFFER_USAGE_DISPATCH_STORAGE |
+               IREE_HAL_BUFFER_USAGE_MAPPING_SCOPED |
+               IREE_HAL_BUFFER_USAGE_SHARING_CONCURRENT,
+      .access = IREE_HAL_MEMORY_ACCESS_READ | IREE_HAL_MEMORY_ACCESS_WRITE,
+      .type = IREE_HAL_MEMORY_TYPE_HOST_LOCAL |
+              IREE_HAL_MEMORY_TYPE_HOST_VISIBLE |
+              IREE_HAL_MEMORY_TYPE_HOST_COHERENT |
+              IREE_HAL_MEMORY_TYPE_DEVICE_VISIBLE,
+      .queue_affinity = IREE_HAL_QUEUE_AFFINITY_ANY,
+      .min_alignment = _Alignof(uint32_t),
+  };
+  iree_status_t status = iree_hal_allocator_allocate_buffer(
+      context->device_allocator, params, sizeof(uint32_t[2]),
+      &allocation->buffer);
+  iree_hal_buffer_mapping_t mapping;
+  memset(&mapping, 0, sizeof(mapping));
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_buffer_map_range(
+        allocation->buffer, IREE_HAL_MAPPING_MODE_SCOPED,
+        IREE_HAL_MEMORY_ACCESS_WRITE, /*byte_offset=*/0, sizeof(uint32_t[2]),
+        &mapping);
+  }
+  if (iree_status_is_ok(status)) {
+    memset(mapping.contents.data, 0, mapping.contents.data_length);
+    status = iree_hal_buffer_unmap_range(&mapping);
+  }
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_allocator_export_buffer(
+        context->device_allocator, allocation->buffer,
+        IREE_HAL_EXTERNAL_BUFFER_TYPE_DEVICE_ALLOCATION,
+        IREE_HAL_EXTERNAL_BUFFER_FLAG_NONE, &allocation->external_buffer);
+  }
+  if (iree_status_is_ok(status)) {
+    *out_allocation = allocation;
+  } else {
+    iree_hip_cooperative_sync_allocation_release(allocation);
+  }
+  return status;
+}
+
+static iree_status_t iree_hip_cooperative_sync_buffer_import(
+    iree_hal_streaming_context_t* context,
+    iree_hip_cooperative_sync_allocation_t* allocation,
+    iree_hal_buffer_t** out_buffer) {
+  IREE_ASSERT_ARGUMENT(context);
+  IREE_ASSERT_ARGUMENT(allocation);
+  IREE_ASSERT_ARGUMENT(out_buffer);
+  *out_buffer = NULL;
+
+  iree_hal_buffer_params_t params = {
+      .usage = IREE_HAL_BUFFER_USAGE_DISPATCH_STORAGE |
+               IREE_HAL_BUFFER_USAGE_SHARING_CONCURRENT,
+      .access = IREE_HAL_MEMORY_ACCESS_READ | IREE_HAL_MEMORY_ACCESS_WRITE,
+      .type = IREE_HAL_MEMORY_TYPE_HOST_LOCAL |
+              IREE_HAL_MEMORY_TYPE_HOST_VISIBLE |
+              IREE_HAL_MEMORY_TYPE_HOST_COHERENT |
+              IREE_HAL_MEMORY_TYPE_DEVICE_VISIBLE,
+      .queue_affinity = IREE_HAL_QUEUE_AFFINITY_ANY,
+      .min_alignment = _Alignof(uint32_t),
+  };
+  iree_hal_buffer_t* imported_buffer = NULL;
+  iree_status_t status = iree_hal_allocator_import_buffer(
+      context->device_allocator, params, &allocation->external_buffer,
+      iree_hal_buffer_release_callback_null(), &imported_buffer);
+  if (iree_status_is_ok(status)) {
+    iree_atomic_ref_count_inc(&allocation->ref_count);
+    const iree_hal_buffer_release_callback_t release_callback = {
+        .fn = iree_hip_cooperative_sync_buffer_release,
+        .user_data = allocation,
+    };
+    status = iree_hal_subspan_buffer_create_with_callback(
+        imported_buffer, /*byte_offset=*/0, sizeof(uint32_t[2]),
+        release_callback, context->host_allocator, out_buffer);
+    if (!iree_status_is_ok(status)) {
+      iree_hip_cooperative_sync_allocation_release(allocation);
+    }
+  }
+  iree_hal_buffer_release(imported_buffer);
+  return status;
+}
+
+static hipError_t iree_hip_launch_cooperative_multi_device(
+    iree_hip_cooperative_multi_device_launch_t* launches,
+    iree_host_size_t launch_count, unsigned int flags) {
+  hipError_t result = hipSuccess;
+  if ((flags & hipCooperativeLaunchMultiDeviceNoPreSync) == 0) {
+    for (iree_host_size_t i = 0; i < launch_count && result == hipSuccess;
+         ++i) {
+      result = iree_status_to_hip_result(
+          iree_hal_streaming_stream_synchronize(launches[i].stream));
+    }
+  }
+
+  iree_hip_cooperative_sync_allocation_t* sync_allocation = NULL;
+  iree_hal_buffer_t* sync_buffers[IREE_HAL_STREAMING_MAX_DEVICES] = {0};
+  if (result == hipSuccess && launch_count > 1) {
+    result =
+        iree_status_to_hip_result(iree_hip_cooperative_sync_allocation_create(
+            launches[0].stream->context, &sync_allocation));
+  }
+  for (iree_host_size_t i = 0;
+       i < launch_count && result == hipSuccess && sync_allocation; ++i) {
+    result = iree_status_to_hip_result(iree_hip_cooperative_sync_buffer_import(
+        launches[i].stream->context, sync_allocation, &sync_buffers[i]));
+  }
+
+  for (iree_host_size_t i = 0; i < launch_count && result == hipSuccess; ++i) {
+    iree_hip_cooperative_multi_device_launch_t* launch = &launches[i];
+    if (sync_allocation) {
+      launch->params.flags |=
+          IREE_HAL_STREAMING_DISPATCH_FLAG_COOPERATIVE_MULTI_GRID;
+      launch->params.cooperative_synchronization_buffer = sync_buffers[i];
+      launch->params.cooperative_grid_ordinal = (uint32_t)i;
+      launch->params.cooperative_grid_count = (uint32_t)launch_count;
+    }
+    result = iree_hip_order_legacy_stream_dependencies(launch->stream->context,
+                                                       launch->stream);
+    if (result == hipSuccess) {
+      result = iree_status_to_hip_result(iree_hal_streaming_launch_kernel(
+          launch->symbol, &launch->params, launch->stream));
+    }
+  }
+
+  for (iree_host_size_t i = 0; i < launch_count; ++i) {
+    iree_hal_buffer_release(sync_buffers[i]);
+  }
+  iree_hip_cooperative_sync_allocation_release(sync_allocation);
+
+  if ((flags & hipCooperativeLaunchMultiDeviceNoPostSync) == 0) {
+    for (iree_host_size_t i = 0; i < launch_count; ++i) {
+      hipError_t synchronize_result = iree_status_to_hip_result(
+          iree_hal_streaming_stream_synchronize(launches[i].stream));
+      if (result == hipSuccess) result = synchronize_result;
+    }
+  }
+  return result;
+}
+
 HIPAPI hipError_t hipLaunchCooperativeKernelMultiDevice(
     hipLaunchParams* launch_params_list, int num_devices, unsigned int flags) {
   IREE_TRACE_ZONE_BEGIN(z0);
@@ -14017,6 +14225,9 @@ HIPAPI hipError_t hipLaunchCooperativeKernelMultiDevice(
 
   hipError_t result = iree_hip_validate_cooperative_multi_device_count(
       (iree_host_size_t)num_devices, flags, hipErrorInvalidDevice);
+  iree_hip_cooperative_multi_device_launch_t
+      launches[IREE_HAL_STREAMING_MAX_DEVICES] = {0};
+  iree_host_size_t retained_launch_count = 0;
   for (int i = 0; i < num_devices && result == hipSuccess; ++i) {
     const hipLaunchParams* launch = &launch_params_list[i];
     if (!launch->func) {
@@ -14043,15 +14254,11 @@ HIPAPI hipError_t hipLaunchCooperativeKernelMultiDevice(
                                                                &stream);
     if (result == hipSuccess) {
       for (int j = 0; j < i; ++j) {
-        iree_hal_streaming_stream_t* previous_stream = NULL;
-        result = iree_hip_validate_cooperative_multi_device_stream(
-            launch_params_list[j].stream, &previous_stream);
-        if (result == hipSuccess && previous_stream->context->device_ordinal ==
-                                        stream->context->device_ordinal) {
+        if (launches[j].stream->context->device_ordinal ==
+            stream->context->device_ordinal) {
           result = hipErrorInvalidDevice;
+          break;
         }
-        iree_hal_streaming_stream_release(previous_stream);
-        if (result != hipSuccess) break;
       }
     }
 
@@ -14066,14 +14273,43 @@ HIPAPI hipError_t hipLaunchCooperativeKernelMultiDevice(
           launch->gridDim.y, launch->gridDim.z, launch->blockDim.x,
           launch->blockDim.y, launch->blockDim.z, launch->sharedMem);
     }
-    iree_hal_streaming_stream_release(stream);
+    if (result == hipSuccess) {
+      result = iree_hip_validate_cooperative_launch_capacity(
+          stream->context->device_entry, symbol, launch->gridDim.x,
+          launch->gridDim.y, launch->gridDim.z, launch->blockDim.x,
+          launch->blockDim.y, launch->blockDim.z, launch->sharedMem);
+    }
+    if (result == hipSuccess) {
+      launches[i] = (iree_hip_cooperative_multi_device_launch_t){
+          .stream = stream,
+          .symbol = symbol,
+          .params =
+              {
+                  .grid_dim = {launch->gridDim.x, launch->gridDim.y,
+                               launch->gridDim.z},
+                  .block_dim = {launch->blockDim.x, launch->blockDim.y,
+                                launch->blockDim.z},
+                  .shared_memory_bytes = launch->sharedMem,
+                  .buffer = launch->args,
+                  .flags = IREE_HAL_STREAMING_DISPATCH_FLAG_COOPERATIVE |
+                           (launch->args
+                                ? IREE_HAL_STREAMING_DISPATCH_FLAG_ARGS_ARRAY
+                                : IREE_HAL_STREAMING_DISPATCH_FLAG_NONE),
+              },
+      };
+      ++retained_launch_count;
+    } else {
+      iree_hal_streaming_stream_release(stream);
+    }
   }
 
-  // Multi-device cooperative kernels share synchronization state through a
-  // hidden kernel argument. The current dispatch contract only creates state
-  // for one grid, so accepting a valid launch here would make multi-grid
-  // barriers read unrelated state on each device.
-  if (result == hipSuccess) result = hipErrorNotSupported;
+  if (result == hipSuccess) {
+    result = iree_hip_launch_cooperative_multi_device(
+        launches, (iree_host_size_t)num_devices, flags);
+  }
+  for (iree_host_size_t i = 0; i < retained_launch_count; ++i) {
+    iree_hal_streaming_stream_release(launches[i].stream);
+  }
   IREE_TRACE_ZONE_END(z0);
   HIP_RETURN_ERROR(result);
 }
@@ -14143,29 +14379,13 @@ static hipError_t iree_hip_module_launch_cooperative_kernel(
     HIP_RETURN_ERROR(hipErrorInvalidValue);
   }
 
-  // Calculate maximum blocks for cooperative launch.
-  // This will return 0 if the device doesn't support cooperative launch.
-  uint32_t block_size = blockDimX * blockDimY * blockDimZ;
-  uint32_t max_blocks = 0;
-  iree_status_t status = iree_hal_streaming_calculate_max_cooperative_blocks(
-      device, symbol, block_size, sharedMemBytes, &max_blocks);
-  hipError_t result =
-      iree_status_to_fixed_hip_result(status, hipErrorInvalidValue);
-  if (result != hipSuccess) {
+  hipError_t capacity_result = iree_hip_validate_cooperative_launch_capacity(
+      device, symbol, gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY,
+      blockDimZ, sharedMemBytes);
+  if (capacity_result != hipSuccess) {
     iree_hip_resolved_stream_release(&resolved_stream);
     IREE_TRACE_ZONE_END(z0);
-    HIP_RETURN_ERROR(result);
-  }
-
-  // Verify grid size doesn't exceed max active blocks.
-  // If max_blocks is 0 (device doesn't support cooperative launch) or
-  // grid is too large, return error.
-  const uint64_t total_blocks =
-      (uint64_t)gridDimX * (uint64_t)gridDimY * (uint64_t)gridDimZ;
-  if (max_blocks == 0 || total_blocks > max_blocks) {
-    iree_hip_resolved_stream_release(&resolved_stream);
-    IREE_TRACE_ZONE_END(z0);
-    HIP_RETURN_ERROR(hipErrorCooperativeLaunchTooLarge);
+    HIP_RETURN_ERROR(capacity_result);
   }
 
   void* params_ptr = NULL;
@@ -14237,6 +14457,9 @@ HIPAPI hipError_t hipModuleLaunchCooperativeKernelMultiDevice(
 
   hipError_t result = iree_hip_validate_cooperative_multi_device_count(
       num_devices, flags, hipErrorInvalidValue);
+  iree_hip_cooperative_multi_device_launch_t
+      launches[IREE_HAL_STREAMING_MAX_DEVICES] = {0};
+  iree_host_size_t retained_launch_count = 0;
   for (unsigned int i = 0; i < num_devices && result == hipSuccess; ++i) {
     const hipFunctionLaunchParams* launch = &launch_params_list[i];
     if (i > 0) {
@@ -14258,15 +14481,11 @@ HIPAPI hipError_t hipModuleLaunchCooperativeKernelMultiDevice(
                                                                &stream);
     if (result == hipSuccess) {
       for (unsigned int j = 0; j < i; ++j) {
-        iree_hal_streaming_stream_t* previous_stream = NULL;
-        result = iree_hip_validate_cooperative_multi_device_stream(
-            launch_params_list[j].hStream, &previous_stream);
-        if (result == hipSuccess && previous_stream->context->device_ordinal ==
-                                        stream->context->device_ordinal) {
+        if (launches[j].stream->context->device_ordinal ==
+            stream->context->device_ordinal) {
           result = hipErrorInvalidDevice;
+          break;
         }
-        iree_hal_streaming_stream_release(previous_stream);
-        if (result != hipSuccess) break;
       }
     }
 
@@ -14288,12 +14507,43 @@ HIPAPI hipError_t hipModuleLaunchCooperativeKernelMultiDevice(
           launch->gridDimY, launch->gridDimZ, launch->blockDimX,
           launch->blockDimY, launch->blockDimZ, launch->sharedMemBytes);
     }
-    iree_hal_streaming_stream_release(stream);
+    if (result == hipSuccess) {
+      result = iree_hip_validate_cooperative_launch_capacity(
+          stream->context->device_entry, symbol, launch->gridDimX,
+          launch->gridDimY, launch->gridDimZ, launch->blockDimX,
+          launch->blockDimY, launch->blockDimZ, launch->sharedMemBytes);
+    }
+    if (result == hipSuccess) {
+      launches[i] = (iree_hip_cooperative_multi_device_launch_t){
+          .stream = stream,
+          .symbol = symbol,
+          .params =
+              {
+                  .grid_dim = {launch->gridDimX, launch->gridDimY,
+                               launch->gridDimZ},
+                  .block_dim = {launch->blockDimX, launch->blockDimY,
+                                launch->blockDimZ},
+                  .shared_memory_bytes = launch->sharedMemBytes,
+                  .buffer = launch->kernelParams,
+                  .flags = IREE_HAL_STREAMING_DISPATCH_FLAG_COOPERATIVE |
+                           (launch->kernelParams
+                                ? IREE_HAL_STREAMING_DISPATCH_FLAG_ARGS_ARRAY
+                                : IREE_HAL_STREAMING_DISPATCH_FLAG_NONE),
+              },
+      };
+      ++retained_launch_count;
+    } else {
+      iree_hal_streaming_stream_release(stream);
+    }
   }
 
-  // See hipLaunchCooperativeKernelMultiDevice for the missing synchronization
-  // contract. Module handles change symbol lookup, not multi-grid semantics.
-  if (result == hipSuccess) result = hipErrorNotSupported;
+  if (result == hipSuccess) {
+    result =
+        iree_hip_launch_cooperative_multi_device(launches, num_devices, flags);
+  }
+  for (iree_host_size_t i = 0; i < retained_launch_count; ++i) {
+    iree_hal_streaming_stream_release(launches[i].stream);
+  }
   IREE_TRACE_ZONE_END(z0);
   HIP_RETURN_ERROR(result);
 }

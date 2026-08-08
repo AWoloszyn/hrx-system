@@ -1606,6 +1606,9 @@ iree_status_t iree_hal_streaming_launch_kernel(
       hrx_direct_queue_dispatch_enabled();
   const bool cooperative_dispatch =
       (params->flags & IREE_HAL_STREAMING_DISPATCH_FLAG_COOPERATIVE) != 0;
+  const bool cooperative_multi_grid_dispatch =
+      (params->flags &
+       IREE_HAL_STREAMING_DISPATCH_FLAG_COOPERATIVE_MULTI_GRID) != 0;
 
   // Verify the symbol is a function.
   if (symbol->type != IREE_HAL_STREAMING_SYMBOL_TYPE_FUNCTION) {
@@ -1796,7 +1799,7 @@ iree_status_t iree_hal_streaming_launch_kernel(
   }
 
   // Create IREE dispatch config.
-  const iree_hal_dispatch_config_t config = {
+  iree_hal_dispatch_config_t config = {
       .workgroup_size =
           {
               params->block_dim[0],
@@ -1811,6 +1814,15 @@ iree_status_t iree_hal_streaming_launch_kernel(
           },
       .dynamic_workgroup_local_memory = params->shared_memory_bytes,
   };
+  if (cooperative_multi_grid_dispatch) {
+    config.cooperative_grid = (iree_hal_cooperative_grid_config_t){
+        .grid_ordinal = params->cooperative_grid_ordinal,
+        .grid_count = params->cooperative_grid_count,
+        .synchronization_buffer = params->cooperative_synchronization_buffer,
+        .synchronization_offset = 0,
+        .synchronization_length = sizeof(uint32_t[2]),
+    };
+  }
 
   // HIP launches use native kernarg bytes. The AMDGPU queue code still
   // populates the dispatch implicit arguments for CUSTOM_DIRECT_ARGUMENTS; this
@@ -1821,6 +1833,9 @@ iree_status_t iree_hal_streaming_launch_kernel(
           : IREE_HAL_DISPATCH_FLAG_NONE;
   if (cooperative_dispatch) {
     flags |= IREE_HAL_DISPATCH_FLAG_COOPERATIVE;
+  }
+  if (cooperative_multi_grid_dispatch) {
+    flags |= IREE_HAL_DISPATCH_FLAG_COOPERATIVE_MULTI_GRID;
   }
 
   uint64_t timing_step_ns = timing_enabled ? hrx_launch_timing_now_ns() : 0;

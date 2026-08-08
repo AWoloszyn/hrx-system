@@ -9,6 +9,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cstdlib>
+#include <limits>
 #include <thread>
 
 #include "binding/hip/api.h"
@@ -60,6 +61,11 @@ using HipModuleLaunchCooperativeKernelFn = hipError_t (*)(
     unsigned int grid_dim_z, unsigned int block_dim_x, unsigned int block_dim_y,
     unsigned int block_dim_z, unsigned int shared_memory_bytes,
     hipStream_t stream, void** arguments);
+using HipLaunchCooperativeKernelMultiDeviceFn = hipError_t (*)(
+    hipLaunchParams* launch_params, int device_count, unsigned int flags);
+using HipModuleLaunchCooperativeKernelMultiDeviceFn =
+    hipError_t (*)(hipFunctionLaunchParams* launch_params,
+                   unsigned int device_count, unsigned int flags);
 using HipGraphCreateFn = hipError_t (*)(hipGraph_t* graph, unsigned int flags);
 using HipGraphDestroyFn = hipError_t (*)(hipGraph_t graph);
 using HipGraphAddKernelNodeFn = hipError_t (*)(
@@ -95,6 +101,12 @@ struct HipRuntimeApi {
   HipFuncSetAttributeFn function_set_attribute = nullptr;
   // Launches a cooperative module kernel with pointer-array arguments.
   HipModuleLaunchCooperativeKernelFn module_launch_cooperative_kernel = nullptr;
+  // Launches a runtime kernel cooperatively across multiple devices.
+  HipLaunchCooperativeKernelMultiDeviceFn
+      launch_cooperative_kernel_multi_device = nullptr;
+  // Launches a module kernel cooperatively across multiple devices.
+  HipModuleLaunchCooperativeKernelMultiDeviceFn
+      module_launch_cooperative_kernel_multi_device = nullptr;
   // Creates a graph template.
   HipGraphCreateFn graph_create = nullptr;
   // Destroys a graph template.
@@ -143,6 +155,12 @@ class HipLaunchValidationApiTest : public testing::Test {
       api_.module_launch_cooperative_kernel =
           ResolveHipSymbol<HipModuleLaunchCooperativeKernelFn>(
               api_.library, "hipModuleLaunchCooperativeKernel");
+      api_.launch_cooperative_kernel_multi_device =
+          ResolveHipSymbol<HipLaunchCooperativeKernelMultiDeviceFn>(
+              api_.library, "hipLaunchCooperativeKernelMultiDevice");
+      api_.module_launch_cooperative_kernel_multi_device =
+          ResolveHipSymbol<HipModuleLaunchCooperativeKernelMultiDeviceFn>(
+              api_.library, "hipModuleLaunchCooperativeKernelMultiDevice");
       api_.graph_create =
           ResolveHipSymbol<HipGraphCreateFn>(api_.library, "hipGraphCreate");
       api_.graph_destroy =
@@ -167,6 +185,8 @@ class HipLaunchValidationApiTest : public testing::Test {
     ASSERT_NE(nullptr, api_.function_get_attribute);
     ASSERT_NE(nullptr, api_.function_set_attribute);
     ASSERT_NE(nullptr, api_.module_launch_cooperative_kernel);
+    ASSERT_NE(nullptr, api_.launch_cooperative_kernel_multi_device);
+    ASSERT_NE(nullptr, api_.module_launch_cooperative_kernel_multi_device);
     ASSERT_NE(nullptr, api_.graph_create);
     ASSERT_NE(nullptr, api_.graph_destroy);
     ASSERT_NE(nullptr, api_.graph_add_kernel_node);
@@ -375,6 +395,23 @@ TEST_F(HipLaunchValidationApiTest,
                 /*grid_dim_z=*/1, /*block_dim_x=*/0, /*block_dim_y=*/1,
                 /*block_dim_z=*/1, /*shared_memory_bytes=*/0, stream_,
                 /*arguments=*/nullptr));
+}
+
+TEST_F(HipLaunchValidationApiTest,
+       CooperativeMultiDeviceLaunchRejectsExcessiveCount) {
+  auto* runtime_launch_params =
+      reinterpret_cast<hipLaunchParams*>(uintptr_t{1});
+  EXPECT_EQ(hipErrorInvalidDevice,
+            api_.launch_cooperative_kernel_multi_device(
+                runtime_launch_params, std::numeric_limits<int>::max(),
+                /*flags=*/0));
+
+  auto* module_launch_params =
+      reinterpret_cast<hipFunctionLaunchParams*>(uintptr_t{1});
+  EXPECT_EQ(hipErrorInvalidValue,
+            api_.module_launch_cooperative_kernel_multi_device(
+                module_launch_params, std::numeric_limits<unsigned int>::max(),
+                /*flags=*/0));
 }
 
 TEST_F(HipLaunchValidationApiTest,

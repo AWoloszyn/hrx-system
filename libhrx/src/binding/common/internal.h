@@ -995,16 +995,30 @@ typedef enum iree_hal_streaming_dispatch_flag_bits_e {
   // The launch path preserves the byte image and does not rewrite reflected
   // pointer slots into HAL bindings.
   IREE_HAL_STREAMING_DISPATCH_FLAG_PRE_PACKED = 1ull << 2,
+  // Cooperative launch participating in a multi-device grid.
+  IREE_HAL_STREAMING_DISPATCH_FLAG_COOPERATIVE_MULTI_GRID = 1ull << 3,
 } iree_hal_streaming_dispatch_flags_t;
 
 // Dispatch parameters for kernel launches.
 typedef struct iree_hal_streaming_dispatch_params_t {
+  // Number of workgroups in each grid dimension.
   uint32_t grid_dim[3];
+  // Number of workitems in each workgroup dimension.
   uint32_t block_dim[3];
+  // Dynamic workgroup-local memory size in bytes.
   uint32_t shared_memory_bytes;
+  // Kernel argument storage or argument pointer array.
   void* buffer;
-  size_t buffer_size;  // Size of the buffer in bytes (for native kernels)
+  // Size of native kernel argument storage in bytes.
+  size_t buffer_size;
+  // Flags controlling argument interpretation and cooperative dispatch.
   iree_hal_streaming_dispatch_flags_t flags;
+  // Device-visible import of synchronization state shared by all launch grids.
+  iree_hal_buffer_t* cooperative_synchronization_buffer;
+  // Zero-based grid ordinal within a cooperative multi-device launch.
+  uint32_t cooperative_grid_ordinal;
+  // Number of grids in a cooperative multi-device launch.
+  uint32_t cooperative_grid_count;
 } iree_hal_streaming_dispatch_params_t;
 
 //===----------------------------------------------------------------------===//
