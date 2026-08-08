@@ -786,7 +786,7 @@ HIPAPI hipError_t hipCtxGetApiVersion(hipCtx_t ctx, unsigned int* apiVersion) {
 }
 
 HIPAPI hipError_t hipCtxGetCacheConfig(hipFuncCache_t* cacheConfig) {
-  (void)cacheConfig;
+  if (!cacheConfig) return hipErrorInvalidValue;
   return hipErrorNotSupported;
 }
 
@@ -796,18 +796,33 @@ HIPAPI hipError_t hipCtxGetFlags(unsigned int* flags) {
 }
 
 HIPAPI hipError_t hipCtxGetSharedMemConfig(hipSharedMemConfig* pConfig) {
-  (void)pConfig;
-  return hipErrorNotSupported;
+  if (!pConfig) return hipErrorInvalidValue;
+  // The device exposes a fixed four-byte shared-memory bank mode.
+  *pConfig = hipSharedMemBankSizeFourByte;
+  return hipSuccess;
 }
 
 HIPAPI hipError_t hipCtxSetCacheConfig(hipFuncCache_t cacheConfig) {
-  (void)cacheConfig;
-  return hipErrorNotSupported;
+  switch (cacheConfig) {
+    case hipFuncCachePreferNone:
+    case hipFuncCachePreferShared:
+    case hipFuncCachePreferL1:
+    case hipFuncCachePreferEqual:
+      return hipErrorNotSupported;
+    default:
+      return hipErrorInvalidValue;
+  }
 }
 
 HIPAPI hipError_t hipCtxSetSharedMemConfig(hipSharedMemConfig config) {
-  (void)config;
-  return hipErrorNotSupported;
+  switch (config) {
+    case hipSharedMemBankSizeDefault:
+    case hipSharedMemBankSizeFourByte:
+    case hipSharedMemBankSizeEightByte:
+      return hipErrorNotSupported;
+    default:
+      return hipErrorInvalidValue;
+  }
 }
 
 HIPAPI hipError_t hipDestroySurfaceObject(hipSurfaceObject_t surfaceObject) {
