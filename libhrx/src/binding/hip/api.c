@@ -8933,7 +8933,7 @@ static hipError_t iree_hip_memset_2d(void* dst, size_t pitch, int value,
       hipError_t result = iree_memset_status_to_hip_result(status);
       iree_hip_resolved_stream_release(&resolved_stream);
       IREE_TRACE_ZONE_END(z0);
-      return result;
+      HIP_RETURN_ERROR(result);
     }
   }
 
@@ -8946,7 +8946,7 @@ static hipError_t iree_hip_memset_2d(void* dst, size_t pitch, int value,
       hipError_t result = iree_memset_status_to_hip_result(status);
       iree_hip_resolved_stream_release(&resolved_stream);
       IREE_TRACE_ZONE_END(z0);
-      return result;
+      HIP_RETURN_ERROR(result);
     }
   }
 
