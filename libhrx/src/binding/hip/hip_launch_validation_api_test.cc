@@ -55,6 +55,11 @@ using HipFuncGetAttributeFn = hipError_t (*)(int* value,
 using HipFuncSetAttributeFn = hipError_t (*)(hipFunction_t function,
                                              hipFuncAttribute_t attribute,
                                              int value);
+using HipModuleLaunchCooperativeKernelFn = hipError_t (*)(
+    hipFunction_t function, unsigned int grid_dim_x, unsigned int grid_dim_y,
+    unsigned int grid_dim_z, unsigned int block_dim_x, unsigned int block_dim_y,
+    unsigned int block_dim_z, unsigned int shared_memory_bytes,
+    hipStream_t stream, void** arguments);
 using HipGraphCreateFn = hipError_t (*)(hipGraph_t* graph, unsigned int flags);
 using HipGraphDestroyFn = hipError_t (*)(hipGraph_t graph);
 using HipGraphAddKernelNodeFn = hipError_t (*)(
@@ -88,6 +93,8 @@ struct HipRuntimeApi {
   HipFuncGetAttributeFn function_get_attribute = nullptr;
   // Updates a mutable function compatibility attribute.
   HipFuncSetAttributeFn function_set_attribute = nullptr;
+  // Launches a cooperative module kernel with pointer-array arguments.
+  HipModuleLaunchCooperativeKernelFn module_launch_cooperative_kernel = nullptr;
   // Creates a graph template.
   HipGraphCreateFn graph_create = nullptr;
   // Destroys a graph template.
@@ -133,6 +140,9 @@ class HipLaunchValidationApiTest : public testing::Test {
           api_.library, "hipFuncGetAttribute");
       api_.function_set_attribute = ResolveHipSymbol<HipFuncSetAttributeFn>(
           api_.library, "hipFuncSetAttribute");
+      api_.module_launch_cooperative_kernel =
+          ResolveHipSymbol<HipModuleLaunchCooperativeKernelFn>(
+              api_.library, "hipModuleLaunchCooperativeKernel");
       api_.graph_create =
           ResolveHipSymbol<HipGraphCreateFn>(api_.library, "hipGraphCreate");
       api_.graph_destroy =
@@ -156,6 +166,7 @@ class HipLaunchValidationApiTest : public testing::Test {
     ASSERT_NE(nullptr, api_.module_launch_kernel);
     ASSERT_NE(nullptr, api_.function_get_attribute);
     ASSERT_NE(nullptr, api_.function_set_attribute);
+    ASSERT_NE(nullptr, api_.module_launch_cooperative_kernel);
     ASSERT_NE(nullptr, api_.graph_create);
     ASSERT_NE(nullptr, api_.graph_destroy);
     ASSERT_NE(nullptr, api_.graph_add_kernel_node);
@@ -346,6 +357,27 @@ TEST_F(HipLaunchValidationApiTest,
 }
 
 TEST_F(HipLaunchValidationApiTest,
+       CooperativeModuleLaunchReportsInvalidGeometryAsInvalidValue) {
+  iree_hal_streaming_symbol_t symbol = {};
+  symbol.type = IREE_HAL_STREAMING_SYMBOL_TYPE_FUNCTION;
+  const hipFunction_t function =
+      (hipFunction_t)iree_hal_streaming_symbol_tag(&symbol);
+
+  EXPECT_EQ(hipErrorInvalidValue,
+            api_.module_launch_cooperative_kernel(
+                function, /*grid_dim_x=*/0, /*grid_dim_y=*/1,
+                /*grid_dim_z=*/1, /*block_dim_x=*/1, /*block_dim_y=*/1,
+                /*block_dim_z=*/1, /*shared_memory_bytes=*/0, stream_,
+                /*arguments=*/nullptr));
+  EXPECT_EQ(hipErrorInvalidValue,
+            api_.module_launch_cooperative_kernel(
+                function, /*grid_dim_x=*/1, /*grid_dim_y=*/1,
+                /*grid_dim_z=*/1, /*block_dim_x=*/0, /*block_dim_y=*/1,
+                /*block_dim_z=*/1, /*shared_memory_bytes=*/0, stream_,
+                /*arguments=*/nullptr));
+}
+
+TEST_F(HipLaunchValidationApiTest,
        LaunchEntryPointsRejectOutOfRangeSharedMemory) {
   if (sizeof(size_t) <= sizeof(uint32_t)) {
     GTEST_SKIP() << "size_t cannot represent a value above uint32_t";
@@ -376,7 +408,7 @@ TEST_F(HipLaunchValidationApiTest,
       api_.ext_launch_kernel(function, valid_dimension, valid_dimension,
                              /*arguments=*/nullptr, oversized_shared_memory,
                              stream_, nullptr, nullptr, /*flags=*/0));
-  EXPECT_EQ(hipErrorInvalidConfiguration,
+  EXPECT_EQ(hipErrorInvalidValue,
             api_.module_launch_kernel(
                 (hipFunction_t)function, /*grid_dim_x=*/1, /*grid_dim_y=*/1,
                 /*grid_dim_z=*/1, /*block_dim_x=*/1, /*block_dim_y=*/1,
@@ -400,7 +432,7 @@ TEST_F(HipLaunchValidationApiTest,
 
   hipKernelNodeParams rejected_params = valid_params;
   rejected_params.sharedMemBytes = largest_dispatch_shared_memory;
-  EXPECT_EQ(hipErrorInvalidConfiguration,
+  EXPECT_EQ(hipErrorInvalidValue,
             api_.graph_kernel_node_set_params(node, &rejected_params));
   hipKernelNodeParams retained_params = {};
   ASSERT_EQ(hipSuccess,
@@ -409,7 +441,7 @@ TEST_F(HipLaunchValidationApiTest,
 
   hipGraphNode_t rejected_node = reinterpret_cast<hipGraphNode_t>(uintptr_t{1});
   EXPECT_EQ(
-      hipErrorInvalidConfiguration,
+      hipErrorInvalidValue,
       api_.graph_add_kernel_node(&rejected_node, graph,
                                  /*dependencies=*/nullptr,
                                  /*dependency_count=*/0, &rejected_params));

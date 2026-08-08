@@ -62,7 +62,8 @@ static hipError_t iree_hip_module_launch_cooperative_kernel(
     hipFunction_t function, unsigned int grid_dim_x, unsigned int grid_dim_y,
     unsigned int grid_dim_z, unsigned int block_dim_x, unsigned int block_dim_y,
     unsigned int block_dim_z, unsigned int shared_memory_bytes,
-    hipStream_t stream, void** kernel_params, void** extra);
+    hipStream_t stream, void** kernel_params, void** extra,
+    hipError_t invalid_geometry_error);
 
 //===----------------------------------------------------------------------===//
 // HRX binding identification
@@ -13712,7 +13713,8 @@ HIPAPI hipError_t hipDrvLaunchKernelEx(const HIP_LAUNCH_CONFIG* config,
     return iree_hip_module_launch_cooperative_kernel(
         function, config->gridDimX, config->gridDimY, config->gridDimZ,
         config->blockDimX, config->blockDimY, config->blockDimZ,
-        config->sharedMemBytes, config->hStream, kernel_params, extra);
+        config->sharedMemBytes, config->hStream, kernel_params, extra,
+        hipErrorInvalidConfiguration);
   }
   return hipModuleLaunchKernel(
       function, config->gridDimX, config->gridDimY, config->gridDimZ,
@@ -14080,7 +14082,7 @@ static hipError_t iree_hip_module_launch_cooperative_kernel(
     hipFunction_t f, unsigned int gridDimX, unsigned int gridDimY,
     unsigned int gridDimZ, unsigned int blockDimX, unsigned int blockDimY,
     unsigned int blockDimZ, unsigned int sharedMemBytes, hipStream_t stream,
-    void** kernelParams, void** extra) {
+    void** kernelParams, void** extra, hipError_t invalid_geometry_error) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
   if (!f) {
@@ -14118,6 +14120,11 @@ static hipError_t iree_hip_module_launch_cooperative_kernel(
   hipError_t launch_config_result = iree_hip_validate_launch_configuration(
       device, symbol, gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY,
       blockDimZ, sharedMemBytes);
+  // Module cooperative and extended launch entry points expose different
+  // errors for invalid geometry while sharing the same dispatch machinery.
+  if (launch_config_result == hipErrorInvalidConfiguration) {
+    launch_config_result = invalid_geometry_error;
+  }
   if (launch_config_result != hipSuccess) {
     iree_hip_resolved_stream_release(&resolved_stream);
     IREE_TRACE_ZONE_END(z0);
@@ -14209,7 +14216,8 @@ HIPAPI hipError_t hipModuleLaunchCooperativeKernel(
     hipStream_t stream, void** kernel_params) {
   return iree_hip_module_launch_cooperative_kernel(
       function, grid_dim_x, grid_dim_y, grid_dim_z, block_dim_x, block_dim_y,
-      block_dim_z, shared_memory_bytes, stream, kernel_params, NULL);
+      block_dim_z, shared_memory_bytes, stream, kernel_params, NULL,
+      hipErrorInvalidValue);
 }
 
 HIPAPI hipError_t hipModuleLaunchCooperativeKernelMultiDevice(
