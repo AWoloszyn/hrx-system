@@ -98,6 +98,30 @@ typedef struct hipLaunchParams_t {
   hipStream_t stream;
 } hipLaunchParams;
 
+// Per-device module launch description used by cooperative launch APIs.
+typedef struct hipFunctionLaunchParams_t {
+  // Function handle resolved from the module loaded for the target device.
+  hipFunction_t function;
+  // Grid width in blocks.
+  unsigned int gridDimX;
+  // Grid height in blocks.
+  unsigned int gridDimY;
+  // Grid depth in blocks.
+  unsigned int gridDimZ;
+  // Block width in threads.
+  unsigned int blockDimX;
+  // Block height in threads.
+  unsigned int blockDimY;
+  // Block depth in threads.
+  unsigned int blockDimZ;
+  // Dynamic shared memory bytes per block.
+  unsigned int sharedMemBytes;
+  // Explicit stream associated with the target device.
+  hipStream_t hStream;
+  // Array of pointers to argument values.
+  void** kernelParams;
+} hipFunctionLaunchParams;
+
 // Omits synchronization of participating streams before the launch set.
 #define hipCooperativeLaunchMultiDeviceNoPreSync 0x01
 // Omits synchronization of participating streams after the launch set.
@@ -1705,6 +1729,8 @@ HIPAPI hipError_t hipLaunchCooperativeKernel(const void* function_address,
                                              void** kernel_params,
                                              unsigned int shared_memory_bytes,
                                              hipStream_t stream);
+HIPAPI hipError_t hipLaunchCooperativeKernelMultiDevice(
+    hipLaunchParams* launch_params_list, int num_devices, unsigned int flags);
 HIPAPI hipError_t hipModuleLaunchKernel(
     hipFunction_t f, unsigned int gridDimX, unsigned int gridDimY,
     unsigned int gridDimZ, unsigned int blockDimX, unsigned int blockDimY,
@@ -1718,6 +1744,9 @@ HIPAPI hipError_t hipModuleLaunchCooperativeKernel(
     unsigned int gridDimZ, unsigned int blockDimX, unsigned int blockDimY,
     unsigned int blockDimZ, unsigned int sharedMemBytes, hipStream_t hStream,
     void** kernelParams);
+HIPAPI hipError_t hipModuleLaunchCooperativeKernelMultiDevice(
+    hipFunctionLaunchParams* launch_params_list, unsigned int num_devices,
+    unsigned int flags);
 HIPAPI hipError_t hipExtLaunchKernel(const void* function_address,
                                      dim3 numBlocks, dim3 dimBlocks,
                                      void** args, size_t sharedMemBytes,

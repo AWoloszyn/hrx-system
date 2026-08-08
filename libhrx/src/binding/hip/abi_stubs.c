@@ -54,7 +54,6 @@ typedef struct hipExternalSemaphoreSignalNodeParams
     hipExternalSemaphoreSignalNodeParams;
 typedef struct hipExternalSemaphoreWaitNodeParams
     hipExternalSemaphoreWaitNodeParams;
-typedef struct hipFunctionLaunchParams_t hipFunctionLaunchParams;
 typedef struct hipGraphicsResource hipGraphicsResource;
 typedef hipGraphicsResource* hipGraphicsResource_t;
 typedef enum hipMemcpyFlags {
@@ -962,14 +961,6 @@ HIPAPI hipError_t hipImportExternalSemaphore(
   return hipErrorNotSupported;
 }
 
-HIPAPI hipError_t hipLaunchCooperativeKernelMultiDevice(
-    hipLaunchParams* launchParamsList, int numDevices, unsigned int flags) {
-  (void)launchParamsList;
-  (void)numDevices;
-  (void)flags;
-  return hipErrorNotSupported;
-}
-
 HIPAPI hipError_t hipMallocMipmappedArray(
     hipMipmappedArray_t* mipmappedArray,
     const struct hipChannelFormatDesc* desc, struct hipExtent extent,
@@ -1387,15 +1378,6 @@ HIPAPI hipError_t hipModuleGetTexRef(textureReference** texRef,
   (void)texRef;
   (void)hmod;
   (void)name;
-  return hipErrorNotSupported;
-}
-
-HIPAPI hipError_t hipModuleLaunchCooperativeKernelMultiDevice(
-    hipFunctionLaunchParams* launchParamsList, unsigned int numDevices,
-    unsigned int flags) {
-  (void)launchParamsList;
-  (void)numDevices;
-  (void)flags;
   return hipErrorNotSupported;
 }
 
