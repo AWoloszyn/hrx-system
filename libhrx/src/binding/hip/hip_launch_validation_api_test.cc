@@ -378,6 +378,24 @@ TEST_F(HipLaunchValidationApiTest,
 }
 
 TEST_F(HipLaunchValidationApiTest,
+       CooperativeModuleLaunchReportsDestroyedStreamContext) {
+  iree_hal_streaming_symbol_t symbol = {};
+  symbol.type = IREE_HAL_STREAMING_SYMBOL_TYPE_FUNCTION;
+  const hipFunction_t function =
+      (hipFunction_t)iree_hal_streaming_symbol_tag(&symbol);
+  hipStream_t destroyed_stream = stream_;
+  ASSERT_EQ(hipSuccess, api_.stream_destroy(stream_));
+  stream_ = nullptr;
+
+  EXPECT_EQ(hipErrorContextIsDestroyed,
+            api_.module_launch_cooperative_kernel(
+                function, /*grid_dim_x=*/1, /*grid_dim_y=*/1,
+                /*grid_dim_z=*/1, /*block_dim_x=*/1, /*block_dim_y=*/1,
+                /*block_dim_z=*/1, /*shared_memory_bytes=*/0, destroyed_stream,
+                /*arguments=*/nullptr));
+}
+
+TEST_F(HipLaunchValidationApiTest,
        LaunchEntryPointsRejectOutOfRangeSharedMemory) {
   if (sizeof(size_t) <= sizeof(uint32_t)) {
     GTEST_SKIP() << "size_t cannot represent a value above uint32_t";

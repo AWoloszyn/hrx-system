@@ -63,7 +63,7 @@ static hipError_t iree_hip_module_launch_cooperative_kernel(
     unsigned int grid_dim_z, unsigned int block_dim_x, unsigned int block_dim_y,
     unsigned int block_dim_z, unsigned int shared_memory_bytes,
     hipStream_t stream, void** kernel_params, void** extra,
-    hipError_t invalid_geometry_error);
+    hipError_t invalid_geometry_error, hipError_t invalid_stream_error);
 
 //===----------------------------------------------------------------------===//
 // HRX binding identification
@@ -13714,7 +13714,7 @@ HIPAPI hipError_t hipDrvLaunchKernelEx(const HIP_LAUNCH_CONFIG* config,
         function, config->gridDimX, config->gridDimY, config->gridDimZ,
         config->blockDimX, config->blockDimY, config->blockDimZ,
         config->sharedMemBytes, config->hStream, kernel_params, extra,
-        hipErrorInvalidConfiguration);
+        hipErrorInvalidConfiguration, hipErrorInvalidResourceHandle);
   }
   return hipModuleLaunchKernel(
       function, config->gridDimX, config->gridDimY, config->gridDimZ,
@@ -14082,7 +14082,8 @@ static hipError_t iree_hip_module_launch_cooperative_kernel(
     hipFunction_t f, unsigned int gridDimX, unsigned int gridDimY,
     unsigned int gridDimZ, unsigned int blockDimX, unsigned int blockDimY,
     unsigned int blockDimZ, unsigned int sharedMemBytes, hipStream_t stream,
-    void** kernelParams, void** extra, hipError_t invalid_geometry_error) {
+    void** kernelParams, void** extra, hipError_t invalid_geometry_error,
+    hipError_t invalid_stream_error) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
   if (!f) {
@@ -14094,6 +14095,11 @@ static hipError_t iree_hip_module_launch_cooperative_kernel(
   hipError_t resolve_result =
       iree_hip_resolve_registered_stream(stream, &resolved_stream);
   if (resolve_result != hipSuccess) {
+    // Module cooperative and extended launch entry points expose different
+    // errors when their stream handle is not live.
+    if (resolve_result == hipErrorInvalidResourceHandle) {
+      resolve_result = invalid_stream_error;
+    }
     IREE_TRACE_ZONE_END(z0);
     HIP_RETURN_ERROR(resolve_result);
   }
@@ -14217,7 +14223,7 @@ HIPAPI hipError_t hipModuleLaunchCooperativeKernel(
   return iree_hip_module_launch_cooperative_kernel(
       function, grid_dim_x, grid_dim_y, grid_dim_z, block_dim_x, block_dim_y,
       block_dim_z, shared_memory_bytes, stream, kernel_params, NULL,
-      hipErrorInvalidValue);
+      hipErrorInvalidValue, hipErrorContextIsDestroyed);
 }
 
 HIPAPI hipError_t hipModuleLaunchCooperativeKernelMultiDevice(
