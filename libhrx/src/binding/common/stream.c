@@ -1815,13 +1815,14 @@ iree_status_t iree_hal_streaming_launch_kernel(
       .dynamic_workgroup_local_memory = params->shared_memory_bytes,
   };
   if (cooperative_multi_grid_dispatch) {
-    config.cooperative_grid = (iree_hal_cooperative_grid_config_t){
-        .grid_ordinal = params->cooperative_grid_ordinal,
-        .grid_count = params->cooperative_grid_count,
-        .synchronization_buffer = params->cooperative_synchronization_buffer,
-        .synchronization_offset = 0,
-        .synchronization_length = sizeof(uint32_t[2]),
-    };
+    if (!params->cooperative_synchronization_buffer ||
+        params->cooperative_grid_count < 2 ||
+        params->cooperative_grid_ordinal >= params->cooperative_grid_count) {
+      IREE_TRACE_ZONE_END(z0);
+      return iree_make_status(
+          IREE_STATUS_INVALID_ARGUMENT,
+          "invalid cooperative multi-grid synchronization state");
+    }
   }
 
   // HIP launches use native kernarg bytes. The AMDGPU queue code still
@@ -1831,13 +1832,6 @@ iree_status_t iree_hal_streaming_launch_kernel(
       (use_raw_arguments || is_pre_packed)
           ? IREE_HAL_DISPATCH_FLAG_CUSTOM_DIRECT_ARGUMENTS
           : IREE_HAL_DISPATCH_FLAG_NONE;
-  if (cooperative_dispatch) {
-    flags |= IREE_HAL_DISPATCH_FLAG_COOPERATIVE;
-  }
-  if (cooperative_multi_grid_dispatch) {
-    flags |= IREE_HAL_DISPATCH_FLAG_COOPERATIVE_MULTI_GRID;
-  }
-
   uint64_t timing_step_ns = timing_enabled ? hrx_launch_timing_now_ns() : 0;
   iree_status_t status = iree_ok_status();
   bool should_flush = false;
@@ -1858,12 +1852,36 @@ iree_status_t iree_hal_streaming_launch_kernel(
         .payload_values = &signal_value,
     };
     if (iree_status_is_ok(status)) {
-      status = iree_hal_device_queue_dispatch(
-          stream->context->device, stream->queue_affinity, wait_semaphores,
-          signal_semaphores, symbol->executable,
-          iree_hal_executable_function_from_index(symbol->export_ordinal),
-          config, iree_make_const_byte_span(constants, constants_size),
-          binding_list, flags);
+      if (cooperative_dispatch) {
+        iree_hal_streaming_queue_dispatch_cooperative_fn_t
+            dispatch_cooperative =
+                stream->context->backend_operations.queue_dispatch_cooperative;
+        if (dispatch_cooperative) {
+          status = dispatch_cooperative(
+              stream->context->device, stream->queue_affinity, wait_semaphores,
+              signal_semaphores, symbol->executable,
+              iree_hal_executable_function_from_index(symbol->export_ordinal),
+              config, iree_make_const_byte_span(constants, constants_size),
+              binding_list, params->cooperative_synchronization_buffer,
+              cooperative_multi_grid_dispatch
+                  ? params->cooperative_grid_ordinal
+                  : 0,
+              cooperative_multi_grid_dispatch ? params->cooperative_grid_count
+                                              : 1,
+              flags);
+        } else {
+          status = iree_make_status(
+              IREE_STATUS_UNIMPLEMENTED,
+              "cooperative dispatch is not supported by this backend");
+        }
+      } else {
+        status = iree_hal_device_queue_dispatch(
+            stream->context->device, stream->queue_affinity, wait_semaphores,
+            signal_semaphores, symbol->executable,
+            iree_hal_executable_function_from_index(symbol->export_ordinal),
+            config, iree_make_const_byte_span(constants, constants_size),
+            binding_list, flags);
+      }
     }
     if (iree_status_is_ok(status)) {
       // The accepted dispatch owns the value it signals, so the timeline

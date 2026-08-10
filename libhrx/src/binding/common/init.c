@@ -50,7 +50,9 @@ static uint32_t iree_hal_streaming_u32_or_default(uint64_t value,
 
 // Queries device info and populates device properties.
 static iree_status_t iree_hal_streaming_query_device_info(
+    const iree_hal_streaming_device_registry_t* registry,
     iree_hal_streaming_device_t* device) {
+  IREE_ASSERT_ARGUMENT(registry);
   IREE_ASSERT_ARGUMENT(device);
   IREE_ASSERT_ARGUMENT(device->hal_device);
 
@@ -126,10 +128,12 @@ static iree_status_t iree_hal_streaming_query_device_info(
   const bool is_gfx1100 = strncmp(device->gcn_arch_name, "gfx1100", 7) == 0;
   const bool is_gfx942 = strncmp(device->gcn_arch_name, "gfx942", 6) == 0;
 
-  device->supports_cooperative_launch =
-      dispatch &&
-      iree_all_bits_set(dispatch->flags,
-                        IREE_HAL_DEVICE_DISPATCH_SPEC_FLAG_COOPERATIVE);
+  bool supports_cooperative_dispatch = false;
+  if (registry->backend_operations.query_dispatch_properties) {
+    IREE_RETURN_IF_ERROR(registry->backend_operations.query_dispatch_properties(
+        device->hal_device, &supports_cooperative_dispatch));
+  }
+  device->supports_cooperative_launch = supports_cooperative_dispatch;
 
   device->max_threads_per_block = iree_hal_streaming_u32_or_default(
       launch ? launch->maximum_workgroup_invocations : 0, 1024);
@@ -183,8 +187,13 @@ static iree_status_t iree_hal_streaming_query_device_info(
                                         is_gfx942 ? 19922944u : 49152u);
   device->max_registers_per_block = iree_hal_streaming_u32_or_default(
       execution ? execution->maximum_workgroup_register_count : 0, 65536);
+  // GFX12.5 extends the vector-register address space with bank selection.
+  // Earlier supported processors directly address the low 256 registers.
   device->max_registers_per_thread =
-      execution ? execution->maximum_invocation_register_count : 0;
+      device->compute_capability_major == 12 &&
+              device->compute_capability_minor == 5
+          ? 1024
+          : 256;
   device->max_shared_memory_per_block = iree_hal_streaming_u32_or_default(
       execution ? execution->maximum_workgroup_local_memory_size : 0,
       (is_gfx942 || is_gfx1100) ? 65536u : 49152u);
@@ -254,7 +263,7 @@ static iree_status_t iree_hal_streaming_initialize_device(
   }
 
   // Query and initialize all device properties.
-  status = iree_hal_streaming_query_device_info(out_device);
+  status = iree_hal_streaming_query_device_info(registry, out_device);
 
   // Initialize primary context flags with defaults.
   out_device->primary_context_flags.scheduling_mode =
@@ -499,6 +508,7 @@ void iree_hal_streaming_unregister_context(
 
 iree_status_t iree_hal_streaming_init_global(
     const iree_hal_device_create_params_extension_t* device_extensions,
+    const iree_hal_streaming_backend_operations_t* backend_operations,
     iree_allocator_t host_allocator) {
   IREE_TRACE_ZONE_BEGIN(z0);
   if (iree_hal_streaming_global_registry &&
@@ -510,6 +520,21 @@ iree_status_t iree_hal_streaming_init_global(
           IREE_STATUS_FAILED_PRECONDITION,
           "streaming runtime is already initialized with a different HAL "
           "device extension configuration");
+    }
+    const iree_hal_streaming_backend_operations_t requested_operations =
+        backend_operations ? *backend_operations
+                           : (iree_hal_streaming_backend_operations_t){0};
+    const iree_hal_streaming_backend_operations_t* current_operations =
+        &iree_hal_streaming_global_registry->backend_operations;
+    if (IREE_UNLIKELY(current_operations->query_dispatch_properties !=
+                          requested_operations.query_dispatch_properties ||
+                      current_operations->queue_dispatch_cooperative !=
+                          requested_operations.queue_dispatch_cooperative)) {
+      IREE_TRACE_ZONE_END(z0);
+      return iree_make_status(
+          IREE_STATUS_FAILED_PRECONDITION,
+          "streaming runtime is already initialized with different backend "
+          "operations");
     }
     IREE_TRACE_ZONE_END(z0);
     return iree_ok_status();
@@ -532,6 +557,9 @@ iree_status_t iree_hal_streaming_init_global(
   memset(device_registry, 0, sizeof(*device_registry));
   device_registry->host_allocator = host_allocator;
   device_registry->device_extensions = device_extensions;
+  device_registry->backend_operations =
+      backend_operations ? *backend_operations
+                         : (iree_hal_streaming_backend_operations_t){0};
   iree_slim_mutex_initialize(&device_registry->mutex);
 
   // Initialize context list.

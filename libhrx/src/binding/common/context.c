@@ -74,6 +74,9 @@ iree_status_t iree_hal_streaming_context_create(
   context->device_ordinal = device_entry->ordinal;
   context->device_entry = device_entry;
   context->queue_affinity = IREE_HAL_QUEUE_AFFINITY_ANY;
+  iree_hal_streaming_device_registry_t* device_registry =
+      iree_hal_streaming_device_registry();
+  context->backend_operations = device_registry->backend_operations;
   context->device_allocator =
       iree_hal_device_allocator(device_entry->hal_device);
   context->flags = flags;

@@ -200,6 +200,9 @@ struct iree_hal_streaming_context_t {
   iree_hal_streaming_device_t* device_entry;
   iree_hal_queue_affinity_t queue_affinity;
 
+  // Backend operations selected when the streaming runtime was initialized.
+  iree_hal_streaming_backend_operations_t backend_operations;
+
   // HAL resources.
   iree_hal_allocator_t* device_allocator;
   iree_status_t loop_status;
@@ -409,6 +412,9 @@ typedef struct iree_hal_streaming_device_registry_t {
 
   // Immutable HAL device-creation extension chain selected at initialization.
   const iree_hal_device_create_params_extension_t* device_extensions;
+
+  // Backend operations supplied by the API binding at initialization.
+  iree_hal_streaming_backend_operations_t backend_operations;
 
   // Global initialization state.
   bool initialized;
@@ -1341,6 +1347,7 @@ typedef struct iree_hal_streaming_graph_node_t {
 // Synchronization: none (one-time initialization).
 iree_status_t iree_hal_streaming_init_global(
     const iree_hal_device_create_params_extension_t* device_extensions,
+    const iree_hal_streaming_backend_operations_t* backend_operations,
     iree_allocator_t host_allocator);
 
 // Cleans up global state and releases all resources.

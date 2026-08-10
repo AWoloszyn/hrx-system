@@ -1508,8 +1508,14 @@ static hipError_t iree_hip_ensure_initialized(void) {
   const iree_hal_device_create_params_extension_t* device_extension =
       iree_hip_blocking_printf_provider_device_extension(
           &iree_hip_blocking_printf_provider);
-  iree_status_t status =
-      iree_hal_streaming_init_global(device_extension, iree_allocator_system());
+  const iree_hal_streaming_backend_operations_t backend_operations = {
+      .query_dispatch_properties =
+          iree_hal_amdgpu_device_query_dispatch_properties,
+      .queue_dispatch_cooperative =
+          iree_hal_amdgpu_device_queue_dispatch_cooperative,
+  };
+  iree_status_t status = iree_hal_streaming_init_global(
+      device_extension, &backend_operations, iree_allocator_system());
   if (!iree_status_is_ok(status)) {
     const iree_status_code_t status_code = iree_status_code(status);
     iree_status_free(status);

@@ -88,6 +88,8 @@ typedef struct iree_hal_streaming_graph_dispatch_block_attrs_t {
   iree_hal_dispatch_config_t config;
   iree_const_byte_span_t constants;
   iree_hal_buffer_ref_list_t bindings;
+  // True when submission requires a cooperative backend queue.
+  bool cooperative;
   iree_hal_dispatch_flags_t flags;
 } iree_hal_streaming_graph_dispatch_block_attrs_t;
 
@@ -1265,7 +1267,7 @@ static iree_status_t iree_hal_streaming_graph_create_dispatch_block(
     uint16_t signal_semaphore_count, iree_hal_executable_t* executable,
     iree_host_size_t entry_point, iree_hal_dispatch_config_t config,
     iree_const_byte_span_t constants, iree_hal_buffer_ref_list_t bindings,
-    iree_hal_dispatch_flags_t flags,
+    bool cooperative, iree_hal_dispatch_flags_t flags,
     iree_hal_streaming_graph_block_t** out_block,
     iree_hal_streaming_graph_block_ptrs_t* out_ptrs) {
   IREE_TRACE_ZONE_BEGIN(z0);
@@ -1285,6 +1287,7 @@ static iree_status_t iree_hal_streaming_graph_create_dispatch_block(
   attrs->executable = executable;
   attrs->entry_point = entry_point;
   attrs->config = config;
+  attrs->cooperative = cooperative;
   attrs->flags = flags;
 
   // Copy constants if provided.
@@ -1871,7 +1874,7 @@ iree_status_t iree_hal_streaming_graph_exec_instantiate_from_template(
                 },
             .dynamic_workgroup_local_memory = attrs->shared_memory_bytes,
         };
-        iree_hal_dispatch_flags_t flags = IREE_HAL_DISPATCH_FLAG_COOPERATIVE;
+        iree_hal_dispatch_flags_t flags = IREE_HAL_DISPATCH_FLAG_NONE;
         if (attrs->bindings.count == 0) {
           flags |= IREE_HAL_DISPATCH_FLAG_CUSTOM_DIRECT_ARGUMENTS;
         }
@@ -1880,8 +1883,8 @@ iree_status_t iree_hal_streaming_graph_exec_instantiate_from_template(
                     exec, partition->start_index, partition->count,
                     wait_semaphore_count, signal_semaphore_count,
                     attrs->symbol->executable, attrs->symbol->export_ordinal,
-                    config, attrs->constants, attrs->bindings, flags, &block,
-                    &ptrs));
+                    config, attrs->constants, attrs->bindings,
+                    /*cooperative=*/true, flags, &block, &ptrs));
       } else if (partition->type ==
                  IREE_HAL_STREAMING_GRAPH_PARTITION_TYPE_GRAPH) {
         iree_hal_streaming_graph_node_t* node =
@@ -1998,6 +2001,24 @@ static iree_status_t iree_hal_streaming_graph_submit_block(
           .count = ptrs->attrs->dispatch.bindings.count,
           .values = ptrs->attrs->dispatch.bindings.values,
       };
+      if (ptrs->attrs->dispatch.cooperative) {
+        iree_hal_streaming_queue_dispatch_cooperative_fn_t
+            dispatch_cooperative =
+                stream->context->backend_operations.queue_dispatch_cooperative;
+        if (!dispatch_cooperative) {
+          return iree_make_status(
+              IREE_STATUS_UNIMPLEMENTED,
+              "cooperative dispatch is not supported by this backend");
+        }
+        return dispatch_cooperative(
+            stream->context->device, stream->queue_affinity, wait_semaphores,
+            signal_semaphores, ptrs->attrs->dispatch.executable,
+            iree_hal_executable_function_from_index(
+                (uint32_t)ptrs->attrs->dispatch.entry_point),
+            ptrs->attrs->dispatch.config, ptrs->attrs->dispatch.constants,
+            bindings_list, /*synchronization_buffer=*/NULL,
+            /*grid_ordinal=*/0, /*grid_count=*/1, ptrs->attrs->dispatch.flags);
+      }
       return iree_hal_device_queue_dispatch(
           stream->context->device, stream->queue_affinity, wait_semaphores,
           signal_semaphores, ptrs->attrs->dispatch.executable,
