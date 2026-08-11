@@ -44,6 +44,7 @@ iree_cc_library(
     "kpack.h"
     "managed_global.h"
     "memory.h"
+    "p2p_topology.h"
     "stream.h"
     "tls.h"
   TEXTUAL_HDRS
@@ -65,6 +66,7 @@ iree_cc_library(
     "memory.c"
     "module.c"
     "peer.c"
+    "p2p_topology.c"
     "registry.c"
     "stream.c"
     "tls.c"
@@ -99,6 +101,20 @@ iree_cc_test(
     "function_attributes_test.cc"
   DEPS
     ::function_attributes
+    iree::base
+    iree::hal
+    iree::testing::gtest
+    iree::testing::gtest_main
+    libhrx_defs
+)
+
+iree_cc_test(
+  NAME
+    p2p_topology_test
+  SRCS
+    "p2p_topology_test.cc"
+  DEPS
+    ::common
     iree::base
     iree::hal
     iree::testing::gtest
