@@ -925,7 +925,7 @@ TEST_F(CpuStreamingContextTest, AGraphLaunchOnAnUntimedDeviceGoesUntimed) {
   for (iree_host_size_t i = kEventCount; i > 0; --i) {
     iree_hal_streaming_event_release(events[i - 1]);
   }
-  iree_hal_streaming_graph_exec_release(exec);
+  IREE_EXPECT_OK(iree_hal_streaming_graph_exec_destroy_handle(exec));
   iree_hal_streaming_graph_release(graph);
   iree_hal_streaming_stream_release(stream);
 }
