@@ -56,6 +56,7 @@ typedef struct hipExternalSemaphoreWaitNodeParams
     hipExternalSemaphoreWaitNodeParams;
 typedef struct hipGraphicsResource hipGraphicsResource;
 typedef hipGraphicsResource* hipGraphicsResource_t;
+typedef struct hipMemcpy3DPeerParms hipMemcpy3DPeerParms;
 typedef enum hipMemcpyFlags {
   hipMemcpyFlagDefault = 0x0,
   hipMemcpyFlagPreferOverlapWithCompute = 0x1,
