@@ -9688,6 +9688,12 @@ HIPAPI hipError_t hipMemcpyPeer(void* dst, int dstDeviceId, const void* src,
     IREE_TRACE_ZONE_END(z0);
     HIP_RETURN_ERROR(result);
   }
+  if (iree_hip_context_invalidate_visible_captures(src_context) ||
+      (dst_context != src_context &&
+       iree_hip_context_invalidate_visible_captures(dst_context))) {
+    IREE_TRACE_ZONE_END(z0);
+    HIP_RETURN_ERROR(hipErrorStreamCaptureImplicit);
+  }
   if (sizeBytes == 0) {
     IREE_TRACE_ZONE_END(z0);
     return hipSuccess;
@@ -9695,13 +9701,6 @@ HIPAPI hipError_t hipMemcpyPeer(void* dst, int dstDeviceId, const void* src,
   if (!dst || !src) {
     IREE_TRACE_ZONE_END(z0);
     HIP_RETURN_ERROR(hipErrorInvalidValue);
-  }
-
-  if (iree_hip_context_invalidate_visible_captures(src_context) ||
-      (dst_context != src_context &&
-       iree_hip_context_invalidate_visible_captures(dst_context))) {
-    IREE_TRACE_ZONE_END(z0);
-    HIP_RETURN_ERROR(hipErrorStreamCaptureImplicit);
   }
 
   result = iree_hip_memcpy_peer_staged(dst_context, dst, src_context, src,
