@@ -1882,7 +1882,8 @@ static bool iree_hal_amdgpu_host_queue_is_noop_dispatch(
 
 // Shared direct-dispatch path. Empty dispatches route through the barrier path
 // so they still signal semaphores and profile as dispatch submissions.
-static iree_status_t iree_hal_amdgpu_host_queue_dispatch_internal(
+static inline IREE_ATTRIBUTE_ALWAYS_INLINE iree_status_t
+iree_hal_amdgpu_host_queue_dispatch_internal(
     iree_hal_amdgpu_host_queue_t* queue,
     const iree_hal_semaphore_list_t wait_semaphore_list,
     const iree_hal_semaphore_list_t signal_semaphore_list,
@@ -1955,11 +1956,19 @@ static iree_status_t iree_hal_amdgpu_host_queue_dispatch_internal(
       iree_hal_amdgpu_host_queue_op_submission_defer_for_capacity(&submission);
     }
   } else if (iree_status_is_ok(status)) {
-    status = iree_hal_amdgpu_host_queue_submit_dispatch(
-        queue, &submission.resolution, signal_semaphore_list, executable,
-        export_ordinal, config, constants, bindings, cooperative_grid, flags,
-        IREE_HAL_AMDGPU_HOST_QUEUE_SUBMISSION_FLAG_RETAIN_RESOURCES,
-        &submission.ready);
+    if (cooperative_grid) {
+      status = iree_hal_amdgpu_host_queue_submit_dispatch_cooperative(
+          queue, &submission.resolution, signal_semaphore_list, executable,
+          export_ordinal, config, constants, bindings, cooperative_grid, flags,
+          IREE_HAL_AMDGPU_HOST_QUEUE_SUBMISSION_FLAG_RETAIN_RESOURCES,
+          &submission.ready);
+    } else {
+      status = iree_hal_amdgpu_host_queue_submit_dispatch(
+          queue, &submission.resolution, signal_semaphore_list, executable,
+          export_ordinal, config, constants, bindings, flags,
+          IREE_HAL_AMDGPU_HOST_QUEUE_SUBMISSION_FLAG_RETAIN_RESOURCES,
+          &submission.ready);
+    }
     if (iree_status_is_ok(status) && !submission.ready) {
       status = iree_hal_amdgpu_host_queue_defer_dispatch(
           queue, &wait_semaphore_list, &signal_semaphore_list, executable,

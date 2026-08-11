@@ -83,13 +83,22 @@ static iree_status_t iree_hal_amdgpu_pending_op_issue_dispatch(
     iree_hal_amdgpu_pending_op_t* op,
     const iree_hal_amdgpu_wait_resolution_t* resolution,
     iree_hal_amdgpu_pending_op_payload_issue_t* issue) {
-  iree_status_t status = iree_hal_amdgpu_host_queue_submit_dispatch(
-      op->queue, resolution, op->signal_semaphore_list, op->dispatch.executable,
-      op->dispatch.export_ordinal, op->dispatch.config, op->dispatch.constants,
-      op->dispatch.bindings,
-      op->dispatch.is_cooperative ? &op->dispatch.cooperative_grid : NULL,
-      op->dispatch.flags, IREE_HAL_AMDGPU_HOST_QUEUE_SUBMISSION_FLAG_NONE,
-      &issue->ready);
+  iree_status_t status;
+  if (op->dispatch.is_cooperative) {
+    status = iree_hal_amdgpu_host_queue_submit_dispatch_cooperative(
+        op->queue, resolution, op->signal_semaphore_list,
+        op->dispatch.executable, op->dispatch.export_ordinal,
+        op->dispatch.config, op->dispatch.constants, op->dispatch.bindings,
+        &op->dispatch.cooperative_grid, op->dispatch.flags,
+        IREE_HAL_AMDGPU_HOST_QUEUE_SUBMISSION_FLAG_NONE, &issue->ready);
+  } else {
+    status = iree_hal_amdgpu_host_queue_submit_dispatch(
+        op->queue, resolution, op->signal_semaphore_list,
+        op->dispatch.executable, op->dispatch.export_ordinal,
+        op->dispatch.config, op->dispatch.constants, op->dispatch.bindings,
+        op->dispatch.flags, IREE_HAL_AMDGPU_HOST_QUEUE_SUBMISSION_FLAG_NONE,
+        &issue->ready);
+  }
   if (iree_status_is_ok(status) && issue->ready) {
     op->retained_resource_count = 0;
   }
