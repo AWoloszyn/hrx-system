@@ -819,7 +819,7 @@ iree_status_t iree_hal_streaming_context_flush(
 
   for (iree_host_size_t i = 0; i < count && iree_status_is_ok(status); ++i) {
     if (streams[i]) {
-      status = iree_hal_streaming_stream_flush(streams[i]);
+      status = iree_hal_streaming_stream_flush_in_context(streams[i], context);
     }
   }
 
@@ -830,7 +830,8 @@ iree_status_t iree_hal_streaming_context_flush(
   }
 
   if (context->default_stream) {
-    status = iree_hal_streaming_stream_flush(context->default_stream);
+    status = iree_hal_streaming_stream_flush_in_context(context->default_stream,
+                                                        context);
   }
 
   IREE_TRACE_ZONE_END(z0);
@@ -929,7 +930,8 @@ static iree_status_t iree_hal_streaming_context_synchronize_streams(
         (stream->flags & IREE_HAL_STREAMING_STREAM_FLAG_NON_BLOCKING)) {
       continue;
     }
-    status = iree_hal_streaming_stream_synchronize_flushed(stream);
+    status = iree_hal_streaming_stream_synchronize_in_context(
+        stream, context, /*flush_context=*/false);
   }
 
   iree_hal_streaming_context_release_stream_snapshot(context, streams_copy,
@@ -944,8 +946,8 @@ static iree_status_t iree_hal_streaming_context_synchronize_streams(
   // The legacy default stream always participates in its own ordering.
   if (context->default_stream) {
     IREE_RETURN_AND_END_ZONE_IF_ERROR(
-        z0,
-        iree_hal_streaming_stream_synchronize_flushed(context->default_stream));
+        z0, iree_hal_streaming_stream_synchronize_in_context(
+                context->default_stream, context, /*flush_context=*/false));
   }
 
   IREE_TRACE_ZONE_END(z0);
@@ -1095,8 +1097,8 @@ iree_status_t iree_hal_streaming_context_query(
       continue;
     }
     int stream_status = 0;
-    query_status =
-        iree_hal_streaming_stream_query(streams_copy[i], &stream_status);
+    query_status = iree_hal_streaming_stream_query_in_context(
+        streams_copy[i], context, &stream_status);
     if (iree_status_is_ok(query_status) && stream_status != 0) {
       *status = 1;
       break;
@@ -1141,7 +1143,8 @@ iree_status_t iree_hal_streaming_context_wait_all_submitted(
   // For the default stream, synchronize fully since caller needs it complete.
   if (context->default_stream) {
     IREE_RETURN_AND_END_ZONE_IF_ERROR(
-        z0, iree_hal_streaming_stream_synchronize(context->default_stream));
+        z0, iree_hal_streaming_stream_synchronize_in_context(
+                context->default_stream, context, /*flush_context=*/true));
   }
 
   IREE_TRACE_ZONE_END(z0);
