@@ -12,6 +12,7 @@
 #include "iree/base/api.h"
 #include "iree/base/threading/call_once.h"
 #include "iree/base/threading/mutex.h"
+#include "iree/hal/drivers/amdgpu/api.h"
 #include "libhrx/src/binding/common/stream.h"
 #include "libhrx/src/binding/hip/api.h"
 #include "libhrx/src/binding/hip/binding_internal.h"
@@ -384,6 +385,7 @@ static hipError_t hrx_hip_execution_context_retain_queue_scope(
     iree_status_t status = iree_hal_streaming_queue_scope_create(
         (iree_host_size_t)context->device,
         context->execution_unit_mask_bit_count, context->execution_unit_mask,
+        iree_hal_amdgpu_device_queue_set_execution_unit_mask,
         iree_allocator_system(), &context->queue_scope);
     result = iree_status_to_hip_result(status);
   }
@@ -750,8 +752,9 @@ HIPAPI hipError_t hipExecutionCtxStreamCreate(hipStream_t* stream,
     iree_status_t status = iree_hal_streaming_queue_scope_create(
         (iree_host_size_t)retained_context->device,
         retained_context->execution_unit_mask_bit_count,
-        retained_context->execution_unit_mask, iree_allocator_system(),
-        &retained_context->queue_scope);
+        retained_context->execution_unit_mask,
+        iree_hal_amdgpu_device_queue_set_execution_unit_mask,
+        iree_allocator_system(), &retained_context->queue_scope);
     result = iree_status_to_hip_result(status);
   }
   if (result == hipSuccess) {

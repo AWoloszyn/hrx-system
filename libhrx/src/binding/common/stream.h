@@ -19,6 +19,14 @@ typedef struct iree_hal_streaming_event_t iree_hal_streaming_event_t;
 typedef struct iree_hal_streaming_queue_scope_t
     iree_hal_streaming_queue_scope_t;
 
+// Applies or restores backend-specific execution-unit configuration for one
+// exclusively reserved queue.
+typedef iree_status_t(
+    IREE_API_PTR* iree_hal_streaming_queue_scope_configure_fn_t)(
+    iree_hal_device_t* device, iree_hal_queue_affinity_t queue_affinity,
+    iree_host_size_t execution_unit_mask_bit_count,
+    const uint32_t* execution_unit_mask);
+
 // Retains the stream's context for one operation. Returns false after context
 // teardown has detached the stream. The caller releases |*out_context|.
 bool iree_hal_streaming_stream_retain_context(
@@ -47,7 +55,9 @@ iree_status_t iree_hal_streaming_stream_wait_streams(
 iree_status_t iree_hal_streaming_queue_scope_create(
     iree_host_size_t device_ordinal,
     iree_host_size_t execution_unit_mask_bit_count,
-    const uint32_t* execution_unit_mask, iree_allocator_t host_allocator,
+    const uint32_t* execution_unit_mask,
+    iree_hal_streaming_queue_scope_configure_fn_t configure,
+    iree_allocator_t host_allocator,
     iree_hal_streaming_queue_scope_t** out_scope);
 
 void iree_hal_streaming_queue_scope_retain(

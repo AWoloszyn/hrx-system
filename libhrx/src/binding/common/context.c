@@ -25,6 +25,8 @@ struct iree_hal_streaming_queue_scope_t {
   iree_allocator_t host_allocator;
   // Number of execution-unit mask bits stored in |execution_unit_mask|.
   iree_host_size_t execution_unit_mask_bit_count;
+  // Backend callback applying and restoring the queue configuration.
+  iree_hal_streaming_queue_scope_configure_fn_t configure;
   // Immutable execution-unit mask applied to |queue_affinity|.
   uint32_t execution_unit_mask[];
 };
@@ -767,9 +769,12 @@ static void iree_hal_streaming_queue_scope_report_restore_error(
 static iree_status_t iree_hal_streaming_queue_scope_create_for_context(
     iree_hal_streaming_context_t* context,
     iree_host_size_t execution_unit_mask_bit_count,
-    const uint32_t* execution_unit_mask, iree_allocator_t host_allocator,
+    const uint32_t* execution_unit_mask,
+    iree_hal_streaming_queue_scope_configure_fn_t configure,
+    iree_allocator_t host_allocator,
     iree_hal_streaming_queue_scope_t** out_scope) {
   IREE_ASSERT_ARGUMENT(context);
+  IREE_ASSERT_ARGUMENT(configure);
   IREE_ASSERT_ARGUMENT(out_scope);
   *out_scope = NULL;
   if (IREE_UNLIKELY(execution_unit_mask_bit_count == 0 ||
@@ -801,6 +806,7 @@ static iree_status_t iree_hal_streaming_queue_scope_create_for_context(
   scope->device = context->device;
   scope->host_allocator = host_allocator;
   scope->execution_unit_mask_bit_count = execution_unit_mask_bit_count;
+  scope->configure = configure;
   memcpy(scope->execution_unit_mask, execution_unit_mask,
          execution_unit_mask_size);
   // The scope is linked into context-owned state below. Retain the context
@@ -820,9 +826,9 @@ static iree_status_t iree_hal_streaming_queue_scope_create_for_context(
   iree_slim_mutex_unlock(&context->stream_list_mutex);
 
   if (iree_status_is_ok(status)) {
-    status = iree_hal_device_queue_set_execution_unit_mask(
-        scope->device, scope->queue_affinity, execution_unit_mask_bit_count,
-        execution_unit_mask);
+    status =
+        scope->configure(scope->device, scope->queue_affinity,
+                         execution_unit_mask_bit_count, execution_unit_mask);
   }
   if (!iree_status_is_ok(status)) {
     iree_slim_mutex_lock(&context->stream_list_mutex);
@@ -841,8 +847,11 @@ static iree_status_t iree_hal_streaming_queue_scope_create_for_context(
 iree_status_t iree_hal_streaming_queue_scope_create(
     iree_host_size_t device_ordinal,
     iree_host_size_t execution_unit_mask_bit_count,
-    const uint32_t* execution_unit_mask, iree_allocator_t host_allocator,
+    const uint32_t* execution_unit_mask,
+    iree_hal_streaming_queue_scope_configure_fn_t configure,
+    iree_allocator_t host_allocator,
     iree_hal_streaming_queue_scope_t** out_scope) {
+  IREE_ASSERT_ARGUMENT(configure);
   IREE_ASSERT_ARGUMENT(out_scope);
   *out_scope = NULL;
   iree_hal_streaming_device_t* device =
@@ -855,7 +864,7 @@ iree_status_t iree_hal_streaming_queue_scope_create(
   IREE_RETURN_IF_ERROR(iree_hal_streaming_device_get_or_create_primary_context(
       device, &context));
   return iree_hal_streaming_queue_scope_create_for_context(
-      context, execution_unit_mask_bit_count, execution_unit_mask,
+      context, execution_unit_mask_bit_count, execution_unit_mask, configure,
       host_allocator, out_scope);
 }
 
@@ -869,12 +878,13 @@ void iree_hal_streaming_queue_scope_release(
   if (!scope || iree_atomic_ref_count_dec(&scope->ref_count) != 1) return;
 
   iree_hal_streaming_context_t* context = scope->context;
+  // Keep the queue reserved until its default configuration has been restored.
+  // Otherwise another scope could claim the queue between unlink and restore.
+  iree_hal_streaming_queue_scope_report_restore_error(
+      scope->configure(scope->device, scope->queue_affinity, 0, NULL));
   iree_slim_mutex_lock(&context->stream_list_mutex);
   iree_hal_streaming_context_unlink_queue_scope_locked(context, scope);
   iree_slim_mutex_unlock(&context->stream_list_mutex);
-  iree_hal_streaming_queue_scope_report_restore_error(
-      iree_hal_device_queue_set_execution_unit_mask(
-          scope->device, scope->queue_affinity, 0, NULL));
   iree_hal_device_release(scope->device);
   iree_allocator_free(scope->host_allocator, scope);
   iree_hal_streaming_context_release(context);
