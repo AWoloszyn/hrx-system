@@ -327,6 +327,9 @@ typedef struct iree_hal_amdgpu_physical_device_t {
   iree_hal_amdgpu_wait_barrier_strategy_t wait_barrier_strategy;
   // Queue-local PM4 timestamp strategy selected from this GPU agent's ISA.
   iree_hal_amdgpu_pm4_timestamp_strategy_t pm4_timestamp_strategy;
+  // True when this agent and its device library support cooperative dispatches
+  // without a separate GWS initialization operation.
+  bool supports_cooperative_dispatch;
 
   // Number of live host queues initialized in |host_queues|. Queue activation
   // stores with release ordering after initialization is complete; readers load

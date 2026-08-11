@@ -864,10 +864,10 @@ iree_status_t iree_hal_amdgpu_host_queue_initialize(
     const iree_hal_pool_set_t* default_pool_set, iree_hal_pool_t* default_pool,
     iree_hal_amdgpu_transient_buffer_pool_t* transient_buffer_pool,
     iree_hal_amdgpu_staging_pool_t* staging_pool,
-    iree_host_size_t device_ordinal, uint32_t aql_queue_capacity,
-    uint32_t notification_capacity, uint32_t kernarg_capacity_in_blocks,
-    uint32_t upload_capacity, iree_allocator_t host_allocator,
-    iree_hal_amdgpu_host_queue_t* out_queue) {
+    iree_host_size_t device_ordinal, bool supports_cooperative_dispatch,
+    uint32_t aql_queue_capacity, uint32_t notification_capacity,
+    uint32_t kernarg_capacity_in_blocks, uint32_t upload_capacity,
+    iree_allocator_t host_allocator, iree_hal_amdgpu_host_queue_t* out_queue) {
   IREE_ASSERT_ARGUMENT(libhsa);
   IREE_ASSERT_ARGUMENT(logical_device);
   IREE_ASSERT_ARGUMENT(proactor);
@@ -935,6 +935,7 @@ iree_status_t iree_hal_amdgpu_host_queue_initialize(
   out_queue->transient_buffer_pool = transient_buffer_pool;
   out_queue->staging_pool = staging_pool;
   out_queue->device_ordinal = device_ordinal;
+  out_queue->supports_cooperative_dispatch = supports_cooperative_dispatch;
   out_queue->pending_head = NULL;
   iree_async_frontier_initialize(iree_hal_amdgpu_host_queue_frontier(out_queue),
                                  /*entry_count=*/0);
@@ -957,27 +958,44 @@ iree_status_t iree_hal_amdgpu_host_queue_initialize(
 
   // Create the HSA hardware AQL queue.
   //
-  // HSA_QUEUE_TYPE_MULTI is required (not just an optimization). Once command
-  // buffers start performing device-side enqueue, the CP itself becomes a
-  // concurrent producer alongside the host submission path, so the queue must
-  // permit multiple concurrent producers. The host-side reserve already uses
-  // an atomic fetch_add on the write index, which is well-defined only on
-  // MULTI queues.
+  // Both queue types support the multiproducer mechanics required once command
+  // buffers and the host can concurrently enqueue packets. A cooperative queue
+  // additionally reserves the execution resources required by grid-wide
+  // barriers.
   hsa_queue_t* hardware_queue = NULL;
   if (iree_status_is_ok(status)) {
+    const hsa_queue_type_t queue_type = supports_cooperative_dispatch
+                                            ? HSA_QUEUE_TYPE_COOPERATIVE
+                                            : HSA_QUEUE_TYPE_MULTI;
     status = iree_hsa_queue_create(
-        IREE_LIBHSA(libhsa), gpu_agent, aql_queue_capacity,
-        HSA_QUEUE_TYPE_MULTI, iree_hal_amdgpu_host_queue_error_callback,
+        IREE_LIBHSA(libhsa), gpu_agent, aql_queue_capacity, queue_type,
+        iree_hal_amdgpu_host_queue_error_callback,
         /*data=*/out_queue,
         /*private_segment_size=*/UINT32_MAX,
         /*group_segment_size=*/UINT32_MAX, &hardware_queue);
   }
 
   // Initialize the AQL ring from the hardware queue.
+  uint32_t actual_aql_queue_capacity = aql_queue_capacity;
   if (iree_status_is_ok(status)) {
     out_queue->hardware_queue = hardware_queue;
     iree_hal_amdgpu_aql_ring_initialize(
         libhsa, (iree_amd_queue_t*)hardware_queue, &out_queue->aql_ring);
+    actual_aql_queue_capacity = hardware_queue->size;
+    if (IREE_UNLIKELY(
+            !iree_host_size_is_power_of_two(actual_aql_queue_capacity))) {
+      status =
+          iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                           "HSA returned an invalid AQL queue capacity of %u",
+                           actual_aql_queue_capacity);
+    } else if (IREE_UNLIKELY(kernarg_capacity_in_blocks / 2u <
+                             actual_aql_queue_capacity)) {
+      status = iree_make_status(
+          IREE_STATUS_RESOURCE_EXHAUSTED,
+          "HSA returned an AQL queue capacity larger than the queue-owned "
+          "kernarg ring can support (kernarg_blocks=%u, aql_packets=%u)",
+          kernarg_capacity_in_blocks, actual_aql_queue_capacity);
+    }
   }
 
   // Initialize the kernarg ring from the selected HSA memory pool.
@@ -1011,7 +1029,7 @@ iree_status_t iree_hal_amdgpu_host_queue_initialize(
       (vendor_packet_capabilities &
        IREE_HAL_AMDGPU_VENDOR_PACKET_CAPABILITY_AQL_PM4_IB)) {
     status = iree_hal_amdgpu_host_queue_allocate_pm4_ib_slots(
-        libhsa, gpu_agent, pm4_ib_pool, aql_queue_capacity, out_queue);
+        libhsa, gpu_agent, pm4_ib_pool, actual_aql_queue_capacity, out_queue);
   }
 
   // Initialize the notification ring (creates epoch signal + entry buffer).
@@ -1862,19 +1880,18 @@ static bool iree_hal_amdgpu_host_queue_is_noop_dispatch(
           config.workgroup_count[2]) == 0;
 }
 
-// Queue dispatch entry point. Empty direct dispatches route through the barrier
-// path so they still signal semaphores and profile as dispatch submissions.
-static iree_status_t iree_hal_amdgpu_host_queue_dispatch(
-    iree_hal_amdgpu_virtual_queue_t* base_queue,
+// Shared direct-dispatch path. Empty dispatches route through the barrier path
+// so they still signal semaphores and profile as dispatch submissions.
+static iree_status_t iree_hal_amdgpu_host_queue_dispatch_internal(
+    iree_hal_amdgpu_host_queue_t* queue,
     const iree_hal_semaphore_list_t wait_semaphore_list,
     const iree_hal_semaphore_list_t signal_semaphore_list,
     iree_hal_executable_t* executable,
     iree_hal_executable_function_t export_ordinal,
     const iree_hal_dispatch_config_t config, iree_const_byte_span_t constants,
     const iree_hal_buffer_ref_list_t bindings,
+    const iree_hal_amdgpu_cooperative_grid_t* cooperative_grid,
     iree_hal_dispatch_flags_t flags) {
-  iree_hal_amdgpu_host_queue_t* queue =
-      (iree_hal_amdgpu_host_queue_t*)base_queue;
   const bool is_noop_dispatch =
       iree_hal_amdgpu_host_queue_is_noop_dispatch(config, flags);
 
@@ -1887,6 +1904,11 @@ static iree_status_t iree_hal_amdgpu_host_queue_dispatch(
     buffer_state = iree_hal_amdgpu_host_queue_merge_buffer_states(
         buffer_state, iree_hal_amdgpu_host_queue_buffer_state(
                           config.workgroup_count_ref.buffer));
+  }
+  if (cooperative_grid && cooperative_grid->grid_count > 1) {
+    buffer_state = iree_hal_amdgpu_host_queue_merge_buffer_states(
+        buffer_state, iree_hal_amdgpu_host_queue_buffer_state(
+                          cooperative_grid->synchronization_buffer));
   }
   bool needs_staging = false;
   iree_status_t status = iree_hal_amdgpu_host_queue_validate_buffer_state(
@@ -1901,7 +1923,7 @@ static iree_status_t iree_hal_amdgpu_host_queue_dispatch(
     } else {
       status = iree_hal_amdgpu_host_queue_defer_dispatch(
           queue, &wait_semaphore_list, &signal_semaphore_list, executable,
-          export_ordinal, config, constants, bindings, flags,
+          export_ordinal, config, constants, bindings, cooperative_grid, flags,
           &submission.deferred_op);
     }
   } else if (iree_status_is_ok(status) && is_noop_dispatch) {
@@ -1935,18 +1957,50 @@ static iree_status_t iree_hal_amdgpu_host_queue_dispatch(
   } else if (iree_status_is_ok(status)) {
     status = iree_hal_amdgpu_host_queue_submit_dispatch(
         queue, &submission.resolution, signal_semaphore_list, executable,
-        export_ordinal, config, constants, bindings, flags,
+        export_ordinal, config, constants, bindings, cooperative_grid, flags,
         IREE_HAL_AMDGPU_HOST_QUEUE_SUBMISSION_FLAG_RETAIN_RESOURCES,
         &submission.ready);
     if (iree_status_is_ok(status) && !submission.ready) {
       status = iree_hal_amdgpu_host_queue_defer_dispatch(
           queue, &wait_semaphore_list, &signal_semaphore_list, executable,
-          export_ordinal, config, constants, bindings, flags,
+          export_ordinal, config, constants, bindings, cooperative_grid, flags,
           &submission.deferred_op);
       iree_hal_amdgpu_host_queue_op_submission_defer_for_capacity(&submission);
     }
   }
   return iree_hal_amdgpu_host_queue_op_submission_end(&submission, status);
+}
+
+// Generic HAL queue dispatch entry point.
+static iree_status_t iree_hal_amdgpu_host_queue_dispatch(
+    iree_hal_amdgpu_virtual_queue_t* base_queue,
+    const iree_hal_semaphore_list_t wait_semaphore_list,
+    const iree_hal_semaphore_list_t signal_semaphore_list,
+    iree_hal_executable_t* executable,
+    iree_hal_executable_function_t export_ordinal,
+    const iree_hal_dispatch_config_t config, iree_const_byte_span_t constants,
+    const iree_hal_buffer_ref_list_t bindings,
+    iree_hal_dispatch_flags_t flags) {
+  return iree_hal_amdgpu_host_queue_dispatch_internal(
+      (iree_hal_amdgpu_host_queue_t*)base_queue, wait_semaphore_list,
+      signal_semaphore_list, executable, export_ordinal, config, constants,
+      bindings, /*cooperative_grid=*/NULL, flags);
+}
+
+iree_status_t iree_hal_amdgpu_host_queue_dispatch_cooperative(
+    iree_hal_amdgpu_host_queue_t* queue,
+    const iree_hal_semaphore_list_t wait_semaphore_list,
+    const iree_hal_semaphore_list_t signal_semaphore_list,
+    iree_hal_executable_t* executable,
+    iree_hal_executable_function_t export_ordinal,
+    const iree_hal_dispatch_config_t config, iree_const_byte_span_t constants,
+    const iree_hal_buffer_ref_list_t bindings,
+    const iree_hal_amdgpu_cooperative_grid_t* cooperative_grid,
+    iree_hal_dispatch_flags_t flags) {
+  IREE_ASSERT_ARGUMENT(cooperative_grid);
+  return iree_hal_amdgpu_host_queue_dispatch_internal(
+      queue, wait_semaphore_list, signal_semaphore_list, executable,
+      export_ordinal, config, constants, bindings, cooperative_grid, flags);
 }
 
 static iree_status_t iree_hal_amdgpu_host_queue_read(

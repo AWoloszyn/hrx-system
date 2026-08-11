@@ -161,6 +161,10 @@ struct iree_hal_amdgpu_pending_op_t {
       iree_const_byte_span_t constants;
       // Arena-owned copy of dispatch buffer references.
       iree_hal_buffer_ref_list_t bindings;
+      // Cooperative grid state copied by value, when present.
+      iree_hal_amdgpu_cooperative_grid_t cooperative_grid;
+      // True when |cooperative_grid| is present for this dispatch.
+      bool is_cooperative;
       // HAL dispatch flags captured from queue_dispatch.
       iree_hal_dispatch_flags_t flags;
     } dispatch;

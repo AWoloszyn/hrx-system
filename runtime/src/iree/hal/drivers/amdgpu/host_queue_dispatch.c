@@ -39,9 +39,19 @@ typedef struct iree_hal_amdgpu_host_queue_dispatch_plan_t {
   uint32_t workgroup_cluster_count[3];
   // True when workgroup counts are read from a device buffer before dispatch.
   bool uses_indirect_parameters;
+  // Number of extra kernarg blocks reserved for cooperative grid-sync state.
+  uint32_t cooperative_sync_block_count;
+  // Total number of workgroups participating in a cooperative grid.
+  uint32_t cooperative_workgroup_count;
+  // Total number of workitems participating in a cooperative grid.
+  uint64_t cooperative_workitem_count;
+  // True when this dispatch participates in a cooperative multi-grid launch.
+  bool cooperative_multi_grid;
 } iree_hal_amdgpu_host_queue_dispatch_plan_t;
 
 static iree_status_t iree_hal_amdgpu_host_queue_validate_dispatch_flags(
+    const iree_hal_amdgpu_host_queue_t* queue,
+    const iree_hal_amdgpu_cooperative_grid_t* cooperative_grid,
     iree_hal_dispatch_flags_t flags) {
   if (iree_hal_dispatch_uses_indirect_arguments(flags)) {
     return iree_make_status(
@@ -49,7 +59,12 @@ static iree_status_t iree_hal_amdgpu_host_queue_validate_dispatch_flags(
         "indirect dispatch arguments are not supported by AMDGPU "
         "queue_dispatch yet");
   }
-
+  if (IREE_UNLIKELY(cooperative_grid &&
+                    iree_hal_dispatch_uses_indirect_parameters(flags))) {
+    return iree_make_status(
+        IREE_STATUS_UNIMPLEMENTED,
+        "cooperative dispatch requires a statically known workgroup count");
+  }
   const iree_hal_dispatch_flags_t supported_flags =
       IREE_HAL_DISPATCH_FLAG_DYNAMIC_INDIRECT_PARAMETERS |
       IREE_HAL_DISPATCH_FLAG_STATIC_INDIRECT_PARAMETERS |
@@ -60,7 +75,56 @@ static iree_status_t iree_hal_amdgpu_host_queue_validate_dispatch_flags(
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "unsupported dispatch flags: 0x%" PRIx64, flags);
   }
+  if (IREE_UNLIKELY(cooperative_grid &&
+                    !queue->supports_cooperative_dispatch)) {
+    return iree_make_status(
+        IREE_STATUS_FAILED_PRECONDITION,
+        "cooperative dispatch requires a cooperative hardware queue");
+  }
   return iree_ok_status();
+}
+
+static iree_status_t
+iree_hal_amdgpu_host_queue_validate_cooperative_grid_config(
+    const iree_hal_amdgpu_cooperative_grid_t* cooperative_grid) {
+  if (IREE_UNLIKELY(cooperative_grid->grid_count == 0)) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "cooperative dispatch requires at least one grid");
+  }
+  if (IREE_UNLIKELY(cooperative_grid->grid_ordinal >=
+                    cooperative_grid->grid_count)) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "cooperative grid ordinal %u exceeds grid count %u",
+                            cooperative_grid->grid_ordinal,
+                            cooperative_grid->grid_count);
+  }
+  if (cooperative_grid->grid_count == 1) {
+    if (IREE_UNLIKELY(cooperative_grid->synchronization_buffer)) {
+      return iree_make_status(
+          IREE_STATUS_INVALID_ARGUMENT,
+          "single-grid cooperative dispatch cannot provide shared state");
+    }
+    return iree_ok_status();
+  }
+  if (IREE_UNLIKELY(!cooperative_grid->synchronization_buffer)) {
+    return iree_make_status(
+        IREE_STATUS_INVALID_ARGUMENT,
+        "cooperative multi-grid dispatch requires a synchronization buffer");
+  }
+  IREE_RETURN_IF_ERROR(iree_hal_buffer_validate_memory_type(
+      iree_hal_buffer_memory_type(cooperative_grid->synchronization_buffer),
+      IREE_HAL_MEMORY_TYPE_DEVICE_VISIBLE |
+          IREE_HAL_MEMORY_TYPE_HOST_COHERENT));
+  IREE_RETURN_IF_ERROR(iree_hal_buffer_validate_usage(
+      iree_hal_buffer_allowed_usage(cooperative_grid->synchronization_buffer),
+      IREE_HAL_BUFFER_USAGE_DISPATCH_STORAGE |
+          IREE_HAL_BUFFER_USAGE_SHARING_CONCURRENT));
+  IREE_RETURN_IF_ERROR(iree_hal_buffer_validate_access(
+      iree_hal_buffer_allowed_access(cooperative_grid->synchronization_buffer),
+      IREE_HAL_MEMORY_ACCESS_READ | IREE_HAL_MEMORY_ACCESS_WRITE));
+  return iree_hal_buffer_validate_range(
+      cooperative_grid->synchronization_buffer, 0,
+      sizeof(iree_amdgpu_grid_sync_data_t));
 }
 
 static iree_status_t iree_hal_amdgpu_host_queue_lookup_dispatch_descriptor(
@@ -249,6 +313,7 @@ static iree_status_t iree_hal_amdgpu_host_queue_validate_dispatch_kernargs(
     const iree_hal_amdgpu_host_queue_t* queue,
     const iree_hal_amdgpu_executable_dispatch_descriptor_t* descriptor,
     iree_const_byte_span_t constants, const iree_hal_buffer_ref_list_t bindings,
+    const iree_hal_amdgpu_cooperative_grid_t* cooperative_grid,
     iree_hal_dispatch_flags_t flags,
     const iree_hal_amdgpu_kernarg_layout_t** out_kernarg_layout,
     const iree_hal_amdgpu_device_dispatch_kernarg_layout_t** out_custom_layout,
@@ -347,6 +412,9 @@ static iree_status_t iree_hal_amdgpu_host_queue_validate_dispatch_kernargs(
   if (iree_hal_dispatch_uses_indirect_parameters(flags)) {
     ++operation_resource_count;
   }
+  if (cooperative_grid && cooperative_grid->grid_count > 1) {
+    ++operation_resource_count;
+  }
   if (iree_any_bit_set(flags,
                        IREE_HAL_DISPATCH_FLAG_BORROW_RESOURCE_LIFETIMES)) {
     operation_resource_count = 0;
@@ -369,11 +437,18 @@ static iree_status_t iree_hal_amdgpu_host_queue_prepare_dispatch_plan(
     iree_hal_executable_t* executable,
     iree_hal_executable_function_t export_ordinal,
     const iree_hal_dispatch_config_t config, iree_const_byte_span_t constants,
-    const iree_hal_buffer_ref_list_t bindings, iree_hal_dispatch_flags_t flags,
+    const iree_hal_buffer_ref_list_t bindings,
+    const iree_hal_amdgpu_cooperative_grid_t* cooperative_grid,
+    iree_hal_dispatch_flags_t flags,
     iree_hal_amdgpu_host_queue_dispatch_plan_t* out_plan) {
   memset(out_plan, 0, sizeof(*out_plan));
-  IREE_RETURN_IF_ERROR(
-      iree_hal_amdgpu_host_queue_validate_dispatch_flags(flags));
+  IREE_RETURN_IF_ERROR(iree_hal_amdgpu_host_queue_validate_dispatch_flags(
+      queue, cooperative_grid, flags));
+  if (cooperative_grid) {
+    IREE_RETURN_IF_ERROR(
+        iree_hal_amdgpu_host_queue_validate_cooperative_grid_config(
+            cooperative_grid));
+  }
 
   IREE_RETURN_IF_ERROR(iree_hal_amdgpu_host_queue_lookup_dispatch_descriptor(
       queue, executable, export_ordinal, &out_plan->descriptor));
@@ -385,11 +460,69 @@ static iree_status_t iree_hal_amdgpu_host_queue_prepare_dispatch_plan(
       out_plan->workgroup_cluster_count));
   out_plan->uses_indirect_parameters =
       iree_hal_dispatch_uses_indirect_parameters(flags);
-
-  return iree_hal_amdgpu_host_queue_validate_dispatch_kernargs(
-      queue, out_plan->descriptor, constants, bindings, flags,
+  IREE_RETURN_IF_ERROR(iree_hal_amdgpu_host_queue_validate_dispatch_kernargs(
+      queue, out_plan->descriptor, constants, bindings, cooperative_grid, flags,
       &out_plan->kernarg_layout, &out_plan->custom_layout,
-      &out_plan->kernarg_block_count, &out_plan->operation_resource_count);
+      &out_plan->kernarg_block_count, &out_plan->operation_resource_count));
+
+  if (cooperative_grid) {
+    out_plan->cooperative_multi_grid = cooperative_grid->grid_count > 1;
+    const bool has_implicit_args =
+        out_plan->custom_layout
+            ? out_plan->custom_layout->has_implicit_args
+            : iree_any_bit_set(
+                  out_plan->kernarg_layout->flags,
+                  IREE_HAL_AMDGPU_KERNARG_LAYOUT_FLAG_IMPLICIT_ARGS);
+    uint64_t workgroup_count = 1;
+    uint64_t workitem_count = 1;
+    for (iree_host_size_t i = 0; i < 3; ++i) {
+      if (IREE_UNLIKELY(config.workgroup_count[i] != 0 &&
+                        workgroup_count >
+                            UINT32_MAX / config.workgroup_count[i])) {
+        return iree_make_status(
+            IREE_STATUS_OUT_OF_RANGE,
+            "cooperative grid workgroup count exceeds uint32_t");
+      }
+      workgroup_count *= config.workgroup_count[i];
+      if (IREE_UNLIKELY(out_plan->kernel_args->workgroup_size[i] != 0 &&
+                        workitem_count >
+                            UINT64_MAX /
+                                out_plan->kernel_args->workgroup_size[i])) {
+        return iree_make_status(
+            IREE_STATUS_OUT_OF_RANGE,
+            "cooperative grid workitem count exceeds uint64_t");
+      }
+      workitem_count *= out_plan->kernel_args->workgroup_size[i];
+    }
+    if (IREE_UNLIKELY(workgroup_count != 0 &&
+                      workitem_count > UINT64_MAX / workgroup_count)) {
+      return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                              "cooperative grid size exceeds uint64_t");
+    }
+    // Cooperative residency is valid without grid synchronization. Reserve
+    // queue-owned synchronization state only when the kernel ABI exposes the
+    // hidden argument that can reference it.
+    out_plan->cooperative_sync_block_count = has_implicit_args ? 1 : 0;
+    out_plan->cooperative_workgroup_count = (uint32_t)workgroup_count;
+    out_plan->cooperative_workitem_count = workitem_count * workgroup_count;
+    if (IREE_UNLIKELY(out_plan->cooperative_multi_grid &&
+                      out_plan->cooperative_workitem_count >
+                          UINT64_MAX / cooperative_grid->grid_count)) {
+      return iree_make_status(
+          IREE_STATUS_OUT_OF_RANGE,
+          "cooperative multi-grid workitem count exceeds uint64_t");
+    }
+    if (IREE_UNLIKELY(out_plan->cooperative_sync_block_count != 0 &&
+                      out_plan->kernarg_block_count >=
+                          queue->kernarg_ring.capacity)) {
+      return iree_make_status(
+          IREE_STATUS_OUT_OF_RANGE,
+          "cooperative dispatch kernargs require %u blocks but the queue "
+          "kernarg ring capacity is %u",
+          out_plan->kernarg_block_count + 1, queue->kernarg_ring.capacity);
+    }
+  }
+  return iree_ok_status();
 }
 
 static iree_status_t iree_hal_amdgpu_host_queue_resolve_validated_binding_ptr(
@@ -559,18 +692,21 @@ static bool iree_hal_amdgpu_host_queue_should_profile_dispatch(
       physical_device_ordinal, queue_ordinal);
 }
 
-iree_status_t iree_hal_amdgpu_host_queue_validate_dispatch(
+iree_status_t
+iree_hal_amdgpu_host_queue_validate_dispatch_with_cooperative_grid(
     const iree_hal_amdgpu_host_queue_t* queue,
     iree_hal_executable_t* executable,
     iree_hal_executable_function_t export_ordinal,
     const iree_hal_dispatch_config_t config, iree_const_byte_span_t constants,
-    const iree_hal_buffer_ref_list_t bindings, iree_hal_dispatch_flags_t flags,
+    const iree_hal_buffer_ref_list_t bindings,
+    const iree_hal_amdgpu_cooperative_grid_t* cooperative_grid,
+    iree_hal_dispatch_flags_t flags,
     iree_host_size_t* out_operation_resource_count) {
   *out_operation_resource_count = 0;
   iree_hal_amdgpu_host_queue_dispatch_plan_t plan;
   iree_status_t status = iree_hal_amdgpu_host_queue_prepare_dispatch_plan(
-      queue, executable, export_ordinal, config, constants, bindings, flags,
-      &plan);
+      queue, executable, export_ordinal, config, constants, bindings,
+      cooperative_grid, flags, &plan);
   if (iree_status_is_ok(status) &&
       !iree_any_bit_set(flags,
                         IREE_HAL_DISPATCH_FLAG_CUSTOM_DIRECT_ARGUMENTS)) {
@@ -587,6 +723,18 @@ iree_status_t iree_hal_amdgpu_host_queue_validate_dispatch(
   return status;
 }
 
+iree_status_t iree_hal_amdgpu_host_queue_validate_dispatch(
+    const iree_hal_amdgpu_host_queue_t* queue,
+    iree_hal_executable_t* executable,
+    iree_hal_executable_function_t export_ordinal,
+    const iree_hal_dispatch_config_t config, iree_const_byte_span_t constants,
+    const iree_hal_buffer_ref_list_t bindings, iree_hal_dispatch_flags_t flags,
+    iree_host_size_t* out_operation_resource_count) {
+  return iree_hal_amdgpu_host_queue_validate_dispatch_with_cooperative_grid(
+      queue, executable, export_ordinal, config, constants, bindings,
+      /*cooperative_grid=*/NULL, flags, out_operation_resource_count);
+}
+
 static iree_status_t iree_hal_amdgpu_host_queue_submit_dispatch_packets(
     iree_hal_amdgpu_host_queue_t* queue,
     const iree_hal_amdgpu_wait_resolution_t* resolution,
@@ -595,7 +743,9 @@ static iree_status_t iree_hal_amdgpu_host_queue_submit_dispatch_packets(
     iree_hal_executable_t* executable,
     iree_hal_executable_function_t export_ordinal,
     const iree_hal_dispatch_config_t config, iree_const_byte_span_t constants,
+    const iree_hal_amdgpu_cooperative_grid_t* cooperative_grid,
     const uint64_t* binding_ptrs, uint64_t workgroup_count_ptr,
+    uint64_t cooperative_sync_ptr,
     iree_hal_resource_t* const* operation_resources,
     bool uses_custom_direct_arguments,
     iree_hal_amdgpu_host_queue_submission_flags_t submission_flags,
@@ -611,6 +761,8 @@ static iree_status_t iree_hal_amdgpu_host_queue_submit_dispatch_packets(
                                                            export_ordinal);
   }
   const uint32_t target_kernarg_block_count = plan->kernarg_block_count;
+  const uint32_t cooperative_sync_block_count =
+      plan->cooperative_sync_block_count;
   iree_hal_amdgpu_profile_dispatch_event_reservation_t profile_events = {0};
   iree_status_t status = iree_ok_status();
   if (should_profile_dispatch) {
@@ -699,7 +851,7 @@ static iree_status_t iree_hal_amdgpu_host_queue_submit_dispatch_packets(
       queue, resolution, signal_semaphore_list, plan->operation_resource_count,
       payload_packet_count,
       pre_dispatch_kernarg_block_count + target_kernarg_block_count +
-          profile_harvest_kernarg_block_count,
+          cooperative_sync_block_count + profile_harvest_kernarg_block_count,
       out_ready, &submission);
   if (!iree_status_is_ok(status) || !*out_ready) {
     iree_hal_amdgpu_host_queue_cancel_profile_dispatch_events(queue,
@@ -744,7 +896,8 @@ static iree_status_t iree_hal_amdgpu_host_queue_submit_dispatch_packets(
   if (profile_dispatch_packet) {
     iree_hal_amdgpu_kernarg_block_t* profile_harvest_kernarg_blocks =
         &kernarg_blocks[pre_dispatch_kernarg_block_count +
-                        target_kernarg_block_count];
+                        target_kernarg_block_count +
+                        cooperative_sync_block_count];
     profile_harvest_kernarg_data = profile_harvest_kernarg_blocks->data;
   }
   const uint32_t placeholder_workgroup_count[3] = {0, 0, 0};
@@ -774,6 +927,32 @@ static iree_status_t iree_hal_amdgpu_host_queue_submit_dispatch_packets(
                  : NULL)
           : iree_hal_amdgpu_host_queue_native_implicit_args(
                 plan->kernarg_layout, dispatch_kernarg_data);
+  if (cooperative_sync_block_count != 0) {
+    IREE_ASSERT(implicit_args,
+                "cooperative dispatch plan must have implicit arguments");
+    iree_amdgpu_grid_sync_info_t* sync_info =
+        (iree_amdgpu_grid_sync_info_t*)
+            kernarg_blocks[pre_dispatch_kernarg_block_count +
+                           target_kernarg_block_count]
+                .data;
+    memset(sync_info, 0, sizeof(*sync_info));
+    if (plan->cooperative_multi_grid) {
+      const uint64_t grid_ordinal = cooperative_grid->grid_ordinal;
+      const uint64_t grid_count = cooperative_grid->grid_count;
+      sync_info->multi_grid_sync = cooperative_sync_ptr;
+      sync_info->grid_id = cooperative_grid->grid_ordinal;
+      sync_info->grid_count = cooperative_grid->grid_count;
+      sync_info->preceding_workitem_count =
+          plan->cooperative_workitem_count * grid_ordinal;
+      sync_info->total_workitem_count =
+          plan->cooperative_workitem_count * grid_count;
+    } else {
+      sync_info->grid_count = 1;
+      sync_info->total_workitem_count = plan->cooperative_workitem_count;
+    }
+    sync_info->workgroup_count = plan->cooperative_workgroup_count;
+    implicit_args->grid_sync_arg = (uint64_t)(uintptr_t)sync_info;
+  }
   const iree_hsa_fence_scope_t dispatch_acquire_scope =
       iree_hal_amdgpu_host_queue_kernarg_acquire_scope(
           IREE_HSA_FENCE_SCOPE_AGENT);
@@ -982,7 +1161,9 @@ iree_status_t iree_hal_amdgpu_host_queue_submit_dispatch(
     iree_hal_executable_t* executable,
     iree_hal_executable_function_t export_ordinal,
     const iree_hal_dispatch_config_t config, iree_const_byte_span_t constants,
-    const iree_hal_buffer_ref_list_t bindings, iree_hal_dispatch_flags_t flags,
+    const iree_hal_buffer_ref_list_t bindings,
+    const iree_hal_amdgpu_cooperative_grid_t* cooperative_grid,
+    iree_hal_dispatch_flags_t flags,
     iree_hal_amdgpu_host_queue_submission_flags_t submission_flags,
     bool* out_ready) {
   IREE_ASSERT_ARGUMENT(out_ready);
@@ -992,8 +1173,8 @@ iree_status_t iree_hal_amdgpu_host_queue_submit_dispatch(
   }
   iree_hal_amdgpu_host_queue_dispatch_plan_t plan;
   IREE_RETURN_IF_ERROR(iree_hal_amdgpu_host_queue_prepare_dispatch_plan(
-      queue, executable, export_ordinal, config, constants, bindings, flags,
-      &plan));
+      queue, executable, export_ordinal, config, constants, bindings,
+      cooperative_grid, flags, &plan));
 
   iree_hal_resource_t** operation_resources =
       queue->dispatch_scratch.operation_resources;
@@ -1015,13 +1196,28 @@ iree_status_t iree_hal_amdgpu_host_queue_submit_dispatch(
     status = iree_hal_amdgpu_host_queue_prepare_dispatch_indirect_parameters(
         config, operation_resources, resource_index, &workgroup_count_ptr);
   }
+  uint64_t cooperative_sync_ptr = 0;
+  if (iree_status_is_ok(status) && cooperative_grid &&
+      cooperative_grid->grid_count > 1) {
+    const iree_host_size_t resource_index =
+        uses_custom_direct_arguments ? 1 : 1 + bindings.count;
+    iree_hal_buffer_ref_t synchronization_ref =
+        iree_hal_make_buffer_ref(cooperative_grid->synchronization_buffer, 0,
+                                 sizeof(iree_amdgpu_grid_sync_data_t));
+    status = iree_hal_amdgpu_host_queue_resolve_validated_binding_ptr(
+        &synchronization_ref, &cooperative_sync_ptr);
+    if (iree_status_is_ok(status)) {
+      operation_resources[resource_index] =
+          (iree_hal_resource_t*)cooperative_grid->synchronization_buffer;
+    }
+  }
 
   if (iree_status_is_ok(status)) {
     status = iree_hal_amdgpu_host_queue_submit_dispatch_packets(
         queue, resolution, signal_semaphore_list, &plan, executable,
-        export_ordinal, config, constants, binding_ptrs, workgroup_count_ptr,
-        operation_resources, uses_custom_direct_arguments, submission_flags,
-        out_ready);
+        export_ordinal, config, constants, cooperative_grid, binding_ptrs,
+        workgroup_count_ptr, cooperative_sync_ptr, operation_resources,
+        uses_custom_direct_arguments, submission_flags, out_ready);
   }
 
   return status;

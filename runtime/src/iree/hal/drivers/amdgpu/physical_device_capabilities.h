@@ -263,6 +263,12 @@ iree_status_t iree_hal_amdgpu_select_physical_topology_edge(
 bool iree_hal_amdgpu_gfxip_allows_hdp_kernarg_publication(
     iree_hal_amdgpu_gfxip_version_t version);
 
+// Returns true when the target device library implements cooperative
+// grid-wide barriers with memory-backed synchronization state. Other targets
+// require a queue-local GWS initialization dispatch before each grid.
+bool iree_hal_amdgpu_gfxip_supports_memory_grid_sync(
+    iree_hal_amdgpu_gfxip_version_t version);
+
 // Selects CPU-visible device-coarse memory from already-queried topology facts.
 iree_status_t iree_hal_amdgpu_select_cpu_visible_device_coarse_memory(
     const iree_hal_amdgpu_cpu_visible_device_coarse_memory_selection_t*

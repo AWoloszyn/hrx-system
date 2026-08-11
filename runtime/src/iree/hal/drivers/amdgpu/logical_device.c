@@ -1661,6 +1661,53 @@ static iree_status_t iree_hal_amdgpu_logical_device_select_host_queue(
       logical_device, resolved.queue_ordinal, out_queue);
 }
 
+// Selects the cooperative queue on the physical device identified by
+// |queue_affinity|. The final queue slot is reserved for this role so ordinary
+// queue affinities and frontier axes remain stable.
+static iree_status_t iree_hal_amdgpu_logical_device_select_cooperative_queue(
+    iree_hal_amdgpu_logical_device_t* logical_device,
+    iree_hal_queue_affinity_t queue_affinity,
+    iree_hal_amdgpu_virtual_queue_t** out_queue) {
+  IREE_ASSERT_ARGUMENT(logical_device);
+  IREE_ASSERT_ARGUMENT(out_queue);
+  *out_queue = NULL;
+
+  iree_hal_amdgpu_queue_affinity_resolved_t resolved;
+  const iree_hal_amdgpu_queue_affinity_domain_t queue_affinity_domain =
+      iree_hal_amdgpu_logical_device_queue_affinity_domain(logical_device);
+  IREE_RETURN_IF_ERROR(iree_hal_amdgpu_queue_affinity_resolve(
+      queue_affinity_domain, queue_affinity, &resolved));
+  iree_hal_amdgpu_physical_device_t* physical_device =
+      logical_device->physical_devices[resolved.physical_device_ordinal];
+  if (IREE_UNLIKELY(!physical_device->supports_cooperative_dispatch)) {
+    return iree_make_status(
+        IREE_STATUS_UNIMPLEMENTED,
+        "physical device does not support cooperative dispatch queues");
+  }
+
+  const iree_host_size_t cooperative_queue_ordinal =
+      resolved.physical_device_ordinal *
+          queue_affinity_domain.queue_count_per_physical_device +
+      physical_device->host_queue_capacity - 1;
+  iree_hal_amdgpu_queue_affinity_resolved_t cooperative_resolved;
+  IREE_RETURN_IF_ERROR(iree_hal_amdgpu_queue_affinity_resolve_ordinal(
+      queue_affinity_domain, cooperative_queue_ordinal,
+      &cooperative_resolved));
+  IREE_RETURN_IF_ERROR(iree_hal_amdgpu_logical_device_ensure_host_queue(
+      logical_device, &cooperative_resolved));
+
+  iree_hal_amdgpu_host_queue_t* queue =
+      &physical_device
+           ->host_queues[cooperative_resolved.physical_queue_ordinal];
+  if (IREE_UNLIKELY(!queue->supports_cooperative_dispatch)) {
+    return iree_make_status(
+        IREE_STATUS_FAILED_PRECONDITION,
+        "physical device cooperative queue was not initialized");
+  }
+  *out_queue = &queue->base;
+  return iree_ok_status();
+}
+
 // Selects the physical device backing |queue_affinity| for pool creation.
 //
 // Queue pools are scoped to one physical memory domain, but |queue_affinity|
@@ -3380,6 +3427,67 @@ static iree_status_t iree_hal_amdgpu_logical_device_queue_dispatch(
   return queue->vtable->dispatch(
       queue, wait_semaphore_list, signal_semaphore_list, executable,
       export_ordinal, config, constants, bindings, flags);
+}
+
+IREE_API_EXPORT iree_status_t iree_hal_amdgpu_device_query_dispatch_properties(
+    iree_hal_device_t* base_device, bool* out_supports_cooperative_dispatch) {
+  IREE_ASSERT_ARGUMENT(base_device);
+  IREE_ASSERT_ARGUMENT(out_supports_cooperative_dispatch);
+  *out_supports_cooperative_dispatch = false;
+
+  iree_hal_amdgpu_logical_device_t* logical_device =
+      iree_hal_amdgpu_logical_device_cast(base_device);
+  if (IREE_UNLIKELY(logical_device->physical_device_count == 0)) {
+    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                            "AMDGPU logical device has no physical devices");
+  }
+  bool supports_cooperative_dispatch = true;
+  for (iree_host_size_t i = 0; i < logical_device->physical_device_count; ++i) {
+    const iree_hal_amdgpu_physical_device_t* physical_device =
+        logical_device->physical_devices[i];
+    supports_cooperative_dispatch &=
+        physical_device->supports_cooperative_dispatch;
+  }
+
+  *out_supports_cooperative_dispatch = supports_cooperative_dispatch;
+  return iree_ok_status();
+}
+
+IREE_API_EXPORT iree_status_t iree_hal_amdgpu_device_queue_dispatch_cooperative(
+    iree_hal_device_t* base_device, iree_hal_queue_affinity_t queue_affinity,
+    const iree_hal_semaphore_list_t wait_semaphore_list,
+    const iree_hal_semaphore_list_t signal_semaphore_list,
+    iree_hal_executable_t* executable,
+    iree_hal_executable_function_t export_ordinal,
+    const iree_hal_dispatch_config_t config, iree_const_byte_span_t constants,
+    const iree_hal_buffer_ref_list_t bindings,
+    iree_hal_buffer_t* synchronization_buffer, uint32_t grid_ordinal,
+    uint32_t grid_count, iree_hal_dispatch_flags_t flags) {
+  IREE_ASSERT_ARGUMENT(base_device);
+  IREE_ASSERT_ARGUMENT(executable);
+  IREE_TRACE_ZONE_BEGIN(z0);
+  iree_hal_amdgpu_logical_device_t* logical_device =
+      iree_hal_amdgpu_logical_device_cast(base_device);
+  iree_status_t status =
+      iree_hal_amdgpu_logical_device_check_failure(logical_device);
+  iree_hal_amdgpu_virtual_queue_t* queue = NULL;
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_amdgpu_logical_device_select_cooperative_queue(
+        logical_device, queue_affinity, &queue);
+  }
+  const iree_hal_amdgpu_cooperative_grid_t cooperative_grid = {
+      .synchronization_buffer = synchronization_buffer,
+      .grid_ordinal = grid_ordinal,
+      .grid_count = grid_count,
+  };
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_amdgpu_host_queue_dispatch_cooperative(
+        (iree_hal_amdgpu_host_queue_t*)queue, wait_semaphore_list,
+        signal_semaphore_list, executable, export_ordinal, config, constants,
+        bindings, &cooperative_grid, flags);
+  }
+  IREE_TRACE_ZONE_END(z0);
+  return status;
 }
 
 static iree_status_t iree_hal_amdgpu_logical_device_queue_execute(

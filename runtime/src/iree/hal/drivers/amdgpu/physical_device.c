@@ -948,6 +948,21 @@ iree_hal_amdgpu_physical_device_initialize_vendor_packet_strategy(
   out_physical_device->vendor_packet_capabilities = vendor_packet_capabilities;
   out_physical_device->wait_barrier_strategy = wait_barrier_strategy;
   out_physical_device->pm4_timestamp_strategy = pm4_timestamp_strategy;
+  bool hsa_supports_cooperative_queues = false;
+  const hsa_status_t cooperative_queue_status = iree_hsa_agent_get_info_raw(
+      &system->libhsa, device_agent,
+      (hsa_agent_info_t)HSA_AMD_AGENT_INFO_COOPERATIVE_QUEUES,
+      &hsa_supports_cooperative_queues);
+  if (cooperative_queue_status == HSA_STATUS_ERROR_INVALID_ARGUMENT) {
+    hsa_supports_cooperative_queues = false;
+  } else if (IREE_UNLIKELY(cooperative_queue_status != HSA_STATUS_SUCCESS)) {
+    return iree_status_from_hsa_status(
+        __FILE__, __LINE__, cooperative_queue_status, "hsa_agent_get_info",
+        "querying cooperative queue support");
+  }
+  out_physical_device->supports_cooperative_dispatch =
+      hsa_supports_cooperative_queues &&
+      iree_hal_amdgpu_gfxip_supports_memory_grid_sync(gfxip_version);
   return iree_ok_status();
 }
 
@@ -1270,7 +1285,6 @@ static iree_status_t iree_hal_amdgpu_physical_device_initialize_host_queue(
     profiling_memory.event_access_agents = &physical_device->device_agent;
     profiling_memory.event_access_agent_count = 1;
   }
-
   const iree_host_size_t logical_queue_ordinal =
       physical_device->device_ordinal * physical_device->host_queue_capacity +
       queue_ordinal;
@@ -1296,6 +1310,8 @@ static iree_status_t iree_hal_amdgpu_physical_device_initialize_host_queue(
       &physical_device->default_pool_set, physical_device->default_pool,
       &physical_device->transient_buffer_pool,
       &physical_device->file_staging_pool, physical_device->device_ordinal,
+      physical_device->supports_cooperative_dispatch &&
+          queue_ordinal + 1 == physical_device->host_queue_capacity,
       physical_device->host_queue_aql_capacity,
       physical_device->host_queue_notification_capacity,
       physical_device->host_queue_kernarg_capacity,

@@ -451,6 +451,25 @@ IREE_API_EXPORT iree_hal_queue_affinity_t
 iree_hal_amdgpu_execution_queue_affinity(
     const iree_hal_amdgpu_execution_queue_t* execution_queue);
 
+// Queries immutable dispatch properties aggregated across all physical devices
+// in |device|.
+IREE_API_EXPORT iree_status_t iree_hal_amdgpu_device_query_dispatch_properties(
+    iree_hal_device_t* device, bool* out_supports_cooperative_dispatch);
+
+// Enqueues a cooperative dispatch on the physical device selected by
+// |queue_affinity|. A non-NULL |synchronization_buffer| identifies a
+// multi-grid launch shared by |grid_count| devices.
+IREE_API_EXPORT iree_status_t iree_hal_amdgpu_device_queue_dispatch_cooperative(
+    iree_hal_device_t* device, iree_hal_queue_affinity_t queue_affinity,
+    const iree_hal_semaphore_list_t wait_semaphore_list,
+    const iree_hal_semaphore_list_t signal_semaphore_list,
+    iree_hal_executable_t* executable,
+    iree_hal_executable_function_t export_ordinal,
+    const iree_hal_dispatch_config_t config, iree_const_byte_span_t constants,
+    const iree_hal_buffer_ref_list_t bindings,
+    iree_hal_buffer_t* synchronization_buffer, uint32_t grid_ordinal,
+    uint32_t grid_count, iree_hal_dispatch_flags_t flags);
+
 //===----------------------------------------------------------------------===//
 // iree_hal_amdgpu_driver_t
 //===----------------------------------------------------------------------===//

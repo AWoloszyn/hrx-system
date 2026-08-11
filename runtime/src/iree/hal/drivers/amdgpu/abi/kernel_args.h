@@ -248,12 +248,13 @@ typedef struct IREE_AMDGPU_ALIGNAS(8) iree_amdgpu_kernel_implicit_args_t {
   //   hidden_hostcall_buffer
   void* hostcall_buffer;  // + 80
 
-  // Multi-grid support was deprecated in ROCM 5.x and should never appear in
-  // any program we generate ourselves or care about running.
+  // Grid synchronization state for cooperative dispatches. This field is also
+  // used by the single-grid synchronization implementation despite the
+  // historical metadata name.
   //
   // Represented in metadata as:
   //   hidden_multigrid_sync_arg
-  uint64_t deprecated_multigrid_sync_arg;
+  uint64_t grid_sync_arg;
 
   // Device memory heap pointer for device malloc/free.
   // We don't support kernels using this as it requires too much goo for little
@@ -322,6 +323,38 @@ typedef struct IREE_AMDGPU_ALIGNAS(8) iree_amdgpu_kernel_implicit_args_t {
   //   hidden_queue_ptr;
   iree_hsa_queue_t* deprecated_queue_ptr;
 } iree_amdgpu_kernel_implicit_args_t;
+
+// Synchronization word pair shared by all workgroups in one cooperative grid.
+typedef struct IREE_AMDGPU_ALIGNAS(8) iree_amdgpu_grid_sync_data_t {
+  // Arrival generation and workgroup count state owned by the device library.
+  uint32_t word0;
+  // Release generation state owned by the device library.
+  uint32_t word1;
+} iree_amdgpu_grid_sync_data_t;
+
+// Device-library ABI state referenced by hidden_multigrid_sync_arg for a
+// cooperative dispatch. Single-grid launches leave |multi_grid_sync| unset;
+// multi-grid launches point it at synchronization state shared by every grid.
+typedef struct IREE_AMDGPU_ALIGNAS(8) iree_amdgpu_grid_sync_info_t {
+  // Multi-grid synchronization storage, or zero for a single-grid dispatch.
+  uint64_t multi_grid_sync;
+  // Zero-based grid identifier within a multi-grid launch.
+  uint32_t grid_id;
+  // Number of grids participating in the launch.
+  uint32_t grid_count;
+  // Sum of workitems in grids preceding this grid.
+  uint64_t preceding_workitem_count;
+  // Total workitem count across all grids.
+  uint64_t total_workitem_count;
+  // Synchronization storage for workgroups in this grid.
+  iree_amdgpu_grid_sync_data_t single_grid_sync;
+  // Number of workgroups participating in this grid.
+  uint32_t workgroup_count;
+  // Reserved ABI padding.
+  uint32_t reserved;
+} iree_amdgpu_grid_sync_info_t;
+IREE_AMDGPU_STATIC_ASSERT(sizeof(iree_amdgpu_grid_sync_info_t) == 48,
+                          "grid sync info ABI size must remain stable");
 
 #define IREE_AMDGPU_KERNEL_IMPLICIT_ARGS_SIZE               \
   (IREE_AMDGPU_OFFSETOF(iree_amdgpu_kernel_implicit_args_t, \
