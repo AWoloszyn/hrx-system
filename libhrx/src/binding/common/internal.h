@@ -261,8 +261,6 @@ struct iree_hal_streaming_context_t {
   // Number of allocated entries in |streams|.
   iree_host_size_t stream_capacity;
 
-  // Queues held exclusively by execution scopes in this context.
-  iree_hal_queue_affinity_t reserved_queue_affinity;
   // Intrusive list of live queue scopes guarded by |stream_list_mutex|.
   iree_hal_streaming_queue_scope_t* queue_scope_head;
 

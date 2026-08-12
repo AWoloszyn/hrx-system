@@ -12,14 +12,15 @@
 #include "iree/base/api.h"
 #include "iree/base/threading/call_once.h"
 #include "iree/base/threading/mutex.h"
-#include "iree/hal/drivers/amdgpu/api.h"
 #include "libhrx/src/binding/common/stream.h"
 #include "libhrx/src/binding/hip/api.h"
 #include "libhrx/src/binding/hip/binding_internal.h"
+#include "libhrx/src/binding/hip/execution_queue.h"
 
 // Resource partitioning and descriptor management are host-side control-plane
-// operations. Each execution context lazily reserves one streaming queue and
-// applies its immutable execution-unit mask when the first stream is created.
+// operations. Each execution context lazily acquires a streaming queue scope
+// when its first stream is created. Scopes with equal masks share an immutable
+// hardware queue lease while retaining independent context lifetimes.
 
 typedef struct hrx_hip_sm_resource_metadata_t {
   // Device ordinal whose SM range is described by the resource.
@@ -65,7 +66,7 @@ struct ihipExecutionCtx_t {
   iree_host_size_t execution_unit_mask_bit_count;
   // Immutable mask synthesized from |descriptor|.
   uint32_t* execution_unit_mask;
-  // Lazily-created exclusive queue scope owned by this context.
+  // Lazily-created virtual queue scope owned by this context.
   iree_hal_streaming_queue_scope_t* queue_scope;
 };
 
@@ -382,10 +383,9 @@ static hipError_t hrx_hip_execution_context_retain_queue_scope(
   if (context->is_destroyed) {
     result = hipErrorInvalidValue;
   } else if (!context->queue_scope && create) {
-    iree_status_t status = iree_hal_streaming_queue_scope_create(
+    iree_status_t status = hrx_hip_execution_queue_scope_create(
         (iree_host_size_t)context->device,
         context->execution_unit_mask_bit_count, context->execution_unit_mask,
-        iree_hal_amdgpu_device_queue_set_execution_unit_mask,
         iree_allocator_system(), &context->queue_scope);
     result = iree_status_to_hip_result(status);
   }
@@ -749,12 +749,11 @@ HIPAPI hipError_t hipExecutionCtxStreamCreate(hipStream_t* stream,
   if (retained_context->is_destroyed) {
     result = hipErrorInvalidValue;
   } else if (!retained_context->queue_scope) {
-    iree_status_t status = iree_hal_streaming_queue_scope_create(
+    iree_status_t status = hrx_hip_execution_queue_scope_create(
         (iree_host_size_t)retained_context->device,
         retained_context->execution_unit_mask_bit_count,
-        retained_context->execution_unit_mask,
-        iree_hal_amdgpu_device_queue_set_execution_unit_mask,
-        iree_allocator_system(), &retained_context->queue_scope);
+        retained_context->execution_unit_mask, iree_allocator_system(),
+        &retained_context->queue_scope);
     result = iree_status_to_hip_result(status);
   }
   if (result == hipSuccess) {

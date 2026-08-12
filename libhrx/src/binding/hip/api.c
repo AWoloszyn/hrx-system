@@ -30,6 +30,7 @@
 #include "binding/hip/blocking_printf_provider.h"
 #include "binding/hip/dynamic_logging.h"
 #include "binding/hip/handle_registry.h"
+#include "binding/hip/execution_queue.h"
 #include "binding/hip/launch_params.h"
 #include "binding/hip/legacy_launch_state.h"
 #include "common/graph.h"
@@ -1528,10 +1529,10 @@ static hipError_t iree_hip_ensure_initialized(void) {
     iree_hip_host_queue_extension.base.next =
         iree_hip_blocking_printf_provider_device_extension(
             &iree_hip_blocking_printf_provider);
-    // HIP execution-resource contexts require one independent hardware queue
-    // per simultaneously active partition. Reserve the affinity address space
+    // Distinct active execution-unit masks require independent hardware queues;
+    // equal masks share one immutable queue. Reserve the affinity address space
     // here while leaving all queues beyond the normal eager set uninitialized
-    // until a context actually uses them.
+    // until a mask first uses them.
     iree_hip_host_queue_extension.capacity = IREE_HAL_MAX_QUEUES;
     iree_hip_host_queue_extension.initial_count =
         IREE_HAL_AMDGPU_DEFAULT_GPU_AGENT_QUEUE_COUNT;
@@ -11610,14 +11611,35 @@ static void iree_hip_fill_default_cu_mask(
 HIPAPI hipError_t hipExtStreamCreateWithCUMask(hipStream_t* stream,
                                                uint32_t mask_count,
                                                const uint32_t* mask) {
-  if (!stream || mask_count == 0 || !mask) {
-    HIP_RETURN_ERROR(hipErrorInvalidValue);
-  }
+  iree_hal_streaming_context_t* context = NULL;
+  hipError_t result = iree_hip_ensure_context(&context);
+  if (result != hipSuccess) return result;
+
+  if (!stream) return hipErrorInvalidHandle;
   *stream = NULL;
-  // A masked stream requires queue selection that enforces the requested
-  // compute-unit set. Recording the mask on a virtual stream without applying
-  // it to submitted work would expose a stream that violates its contract.
-  HIP_RETURN_ERROR(hipErrorNotSupported);
+  if (mask_count == 0 || !mask) return hipErrorInvalidValue;
+
+  iree_host_size_t mask_bit_count = 0;
+  if (IREE_UNLIKELY(!iree_host_size_checked_mul((iree_host_size_t)mask_count,
+                                                32, &mask_bit_count))) {
+    return hipErrorInvalidValue;
+  }
+  iree_hal_streaming_queue_scope_t* queue_scope = NULL;
+  iree_status_t status = hrx_hip_execution_queue_scope_create(
+      context->device_ordinal, mask_bit_count, mask, iree_allocator_system(),
+      &queue_scope);
+  if (iree_status_is_ok(status)) {
+    iree_hal_streaming_stream_t* streaming_stream = NULL;
+    status = iree_hal_streaming_stream_create_in_queue_scope(
+        queue_scope, IREE_HAL_STREAMING_STREAM_FLAG_NONE, /*priority=*/0,
+        iree_allocator_system(), &streaming_stream);
+    if (iree_status_is_ok(status)) {
+      result = iree_hip_publish_stream(streaming_stream, stream);
+    }
+  }
+  iree_hal_streaming_queue_scope_release(queue_scope);
+  if (result != hipSuccess) return result;
+  return iree_status_to_hip_result(status);
 }
 
 HIPAPI hipError_t hipExtStreamGetCUMask(hipStream_t stream, uint32_t mask_count,
@@ -11643,10 +11665,21 @@ HIPAPI hipError_t hipExtStreamGetCUMask(hipStream_t stream, uint32_t mask_count,
 
   iree_hal_streaming_queue_scope_t* queue_scope =
       iree_hal_streaming_stream_queue_scope(resolved_stream.stream);
+  memset(mask, 0, mask_count * sizeof(*mask));
   if (queue_scope) {
-    iree_hal_streaming_queue_scope_copy_execution_unit_mask(
-        queue_scope, mask_count, mask);
-  } else {
+    iree_hal_streaming_queue_scope_copy_execution_unit_mask(queue_scope,
+                                                            mask_count, mask);
+  }
+  bool has_enabled_unit = false;
+  if (queue_scope) {
+    for (uint32_t i = 0; i < required_mask_count; ++i) {
+      has_enabled_unit |= mask[i] != 0;
+    }
+  }
+  // Ordinary streams and empty custom masks use every HIP-visible execution
+  // unit. The final word is clipped to the physical device instead of
+  // reporting nonexistent units as enabled.
+  if (!queue_scope || !has_enabled_unit) {
     iree_hip_fill_default_cu_mask(resolved_stream.context, mask_count, mask);
   }
   iree_hip_resolved_stream_release(&resolved_stream);

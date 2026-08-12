@@ -181,12 +181,14 @@ iree_cc_library(
     "api.h"
     "binding_internal.h"
     "dynamic_logging.h"
+    "execution_queue.h"
   SRCS
     "abi_stubs.c"
     "api.c"
     "api_metadata.c"
     "dynamic_logging.c"
     "execution_context.c"
+    "execution_queue.c"
   DEPS
     ::blocking_printf_provider
     ::handle_registry

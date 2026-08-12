@@ -19,13 +19,21 @@ typedef struct iree_hal_streaming_event_t iree_hal_streaming_event_t;
 typedef struct iree_hal_streaming_queue_scope_t
     iree_hal_streaming_queue_scope_t;
 
-// Applies or restores backend-specific execution-unit configuration for one
-// exclusively reserved queue.
+// Acquires a backend queue with immutable execution-unit configuration.
+// Called synchronously by iree_hal_streaming_queue_scope_create; neither
+// |user_data| nor |execution_unit_mask| may be retained by the callback. A
+// successful callback returns a non-NULL lease and one exact queue affinity.
 typedef iree_status_t(
-    IREE_API_PTR* iree_hal_streaming_queue_scope_configure_fn_t)(
-    iree_hal_device_t* device, iree_hal_queue_affinity_t queue_affinity,
+    IREE_API_PTR* iree_hal_streaming_queue_scope_acquire_fn_t)(
+    void* user_data, iree_hal_device_t* device,
+    iree_hal_queue_affinity_t device_affinity,
     iree_host_size_t execution_unit_mask_bit_count,
-    const uint32_t* execution_unit_mask);
+    const uint32_t* execution_unit_mask, void** out_backend_queue,
+    iree_hal_queue_affinity_t* out_queue_affinity);
+
+// Releases a backend queue acquired for a streaming queue scope.
+typedef void(IREE_API_PTR* iree_hal_streaming_queue_scope_release_fn_t)(
+    void* backend_queue);
 
 // Retains the stream's context for one operation. Returns false after context
 // teardown has detached the stream. The caller releases |*out_context|.
@@ -50,13 +58,17 @@ iree_status_t iree_hal_streaming_stream_wait_streams(
     iree_hal_streaming_stream_t* stream,
     iree_hal_streaming_stream_t* const* sources, iree_host_size_t source_count);
 
-// Reserves an otherwise unused queue and applies |execution_unit_mask| until
-// every stream created from the scope has been destroyed.
+// Acquires a backend queue for |execution_unit_mask| and creates a virtual
+// scope over it. Backends may share one immutable queue among scopes with the
+// same configuration. A distinct mask may fail when backend capacity is
+// exhausted.
 iree_status_t iree_hal_streaming_queue_scope_create(
     iree_host_size_t device_ordinal,
     iree_host_size_t execution_unit_mask_bit_count,
     const uint32_t* execution_unit_mask,
-    iree_hal_streaming_queue_scope_configure_fn_t configure,
+    iree_hal_streaming_queue_scope_acquire_fn_t acquire,
+    void* acquire_user_data,
+    iree_hal_streaming_queue_scope_release_fn_t release,
     iree_allocator_t host_allocator,
     iree_hal_streaming_queue_scope_t** out_scope);
 
@@ -65,8 +77,8 @@ void iree_hal_streaming_queue_scope_retain(
 void iree_hal_streaming_queue_scope_release(
     iree_hal_streaming_queue_scope_t* scope);
 
-// Prevents new work from being submitted through streams in |scope|. Existing
-// queue work and the queue mask remain live until the last stream is destroyed.
+// Prevents new streams from being attached to |scope|. Existing streams keep
+// the backend queue lease live until their final release.
 void iree_hal_streaming_queue_scope_detach(
     iree_hal_streaming_queue_scope_t* scope);
 
