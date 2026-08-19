@@ -1912,12 +1912,9 @@ iree_status_t iree_hal_streaming_queue_host_call(
 
 iree_status_t iree_hal_streaming_queue_wait_value(
     iree_hal_streaming_stream_t* stream, iree_hal_buffer_t* target_buffer,
-    iree_device_size_t target_offset, uint64_t value, uint64_t mask,
-    iree_host_size_t value_length, uint32_t condition, uint64_t flags,
-    iree_hal_streaming_queue_wait_value_fn_t queue_wait_value) {
+    iree_device_size_t target_offset, iree_hal_atomic_wait_params_t params) {
   IREE_ASSERT_ARGUMENT(stream);
   IREE_ASSERT_ARGUMENT(target_buffer);
-  IREE_ASSERT_ARGUMENT(queue_wait_value);
   IREE_TRACE_ZONE_BEGIN(z0);
 
   // Captured waits require a graph node that preserves the target allocation
@@ -1933,14 +1930,15 @@ iree_status_t iree_hal_streaming_queue_wait_value(
                                     iree_hal_streaming_stream_flush(stream));
 
   iree_slim_mutex_lock(&stream->mutex);
-  uint64_t wait_value = stream->pending_value;
-  if (IREE_UNLIKELY(wait_value == UINT64_MAX)) {
+  uint64_t wait_value = 0;
+  uint64_t signal_value = 0;
+  iree_status_t status = iree_hal_streaming_stream_reserve_next_value_locked(
+      stream, &wait_value, &signal_value);
+  if (!iree_status_is_ok(status)) {
     iree_slim_mutex_unlock(&stream->mutex);
     IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
-                            "stream timeline value overflow");
+    return status;
   }
-  uint64_t signal_value = wait_value + 1;
   iree_hal_semaphore_list_t wait_semaphores = {
       .count = wait_value > 0 ? 1 : 0,
       .semaphores = &stream->timeline_semaphore,
@@ -1952,13 +1950,11 @@ iree_status_t iree_hal_streaming_queue_wait_value(
       .payload_values = &signal_value,
   };
 
-  iree_status_t status = queue_wait_value(
+  status = iree_hal_device_queue_atomic_wait(
       stream->context->device, stream->queue_affinity, wait_semaphores,
-      signal_semaphores, target_buffer, target_offset, value, mask,
-      value_length, condition, flags);
+      signal_semaphores, target_buffer, target_offset, params);
   if (iree_status_is_ok(status)) {
     stream->pending_value = signal_value;
-    stream->submitted_value = signal_value;
   }
   iree_slim_mutex_unlock(&stream->mutex);
 

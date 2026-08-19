@@ -8626,6 +8626,7 @@ HIPAPI hipError_t hipMemset2DAsync(void* dst, size_t pitch, int value,
   hipError_t dependency_result =
       iree_hip_order_legacy_stream_dependencies(context, stream_obj);
   if (dependency_result != hipSuccess) {
+    iree_hip_resolved_stream_release(&resolved_stream);
     IREE_TRACE_ZONE_END(z0);
     HIP_RETURN_ERROR(dependency_result);
   }
@@ -8638,14 +8639,6 @@ HIPAPI hipError_t hipMemset2DAsync(void* dst, size_t pitch, int value,
     iree_hip_resolved_stream_release(&resolved_stream);
     IREE_TRACE_ZONE_END(z0);
     HIP_RETURN_ERROR(result);
-  }
-
-  hipError_t dependency_result =
-      iree_hip_order_legacy_stream_dependencies(context, stream_obj);
-  if (dependency_result != hipSuccess) {
-    iree_hip_resolved_stream_release(&resolved_stream);
-    IREE_TRACE_ZONE_END(z0);
-    HIP_RETURN_ERROR(dependency_result);
   }
 
   if (stream_obj->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE) {
@@ -11391,30 +11384,47 @@ static hipError_t iree_hip_enqueue_stream_value_write(
   return iree_status_to_hip_result(status);
 }
 
-static iree_hal_amdgpu_wait_value_condition_t
-iree_hip_stream_wait_value_condition(unsigned int flags) {
-  switch (flags) {
-    case IREE_HIP_STREAM_WAIT_VALUE_EQ:
-      return IREE_HAL_AMDGPU_WAIT_VALUE_CONDITION_EQUAL;
-    case IREE_HIP_STREAM_WAIT_VALUE_AND:
-      return IREE_HAL_AMDGPU_WAIT_VALUE_CONDITION_BITWISE_AND;
-    case IREE_HIP_STREAM_WAIT_VALUE_NOR:
-      return IREE_HAL_AMDGPU_WAIT_VALUE_CONDITION_BITWISE_NOR;
-    case IREE_HIP_STREAM_WAIT_VALUE_GTE:
-    default:
-      return IREE_HAL_AMDGPU_WAIT_VALUE_CONDITION_GREATER_THAN_OR_EQUAL;
-  }
-}
-
 static iree_status_t iree_hip_enqueue_stream_value_wait_resolved(
     iree_hal_streaming_stream_t* stream,
     const iree_hip_stream_value_target_t* target, uint64_t value,
     unsigned int flags, uint64_t mask, iree_host_size_t byte_length) {
+  const uint64_t width_mask =
+      byte_length == sizeof(uint32_t) ? UINT32_MAX : UINT64_MAX;
+  value &= width_mask;
+  mask &= width_mask;
+  iree_hal_atomic_wait_params_t params = {
+      .value = value,
+      .mask = mask,
+      .flags = IREE_HAL_ATOMIC_FLAG_ACQUIRE |
+               IREE_HAL_ATOMIC_FLAG_SYSTEM_SCOPE,
+      .width = byte_length == sizeof(uint32_t) ? IREE_HAL_ATOMIC_WIDTH_32
+                                               : IREE_HAL_ATOMIC_WIDTH_64,
+  };
+  switch (flags) {
+    case IREE_HIP_STREAM_WAIT_VALUE_EQ:
+      params.condition = IREE_HAL_ATOMIC_WAIT_CONDITION_EQUAL;
+      break;
+    case IREE_HIP_STREAM_WAIT_VALUE_AND:
+      params.value = 0;
+      params.mask = mask & value;
+      params.condition = IREE_HAL_ATOMIC_WAIT_CONDITION_NOT_EQUAL;
+      break;
+    case IREE_HIP_STREAM_WAIT_VALUE_NOR: {
+      const uint64_t required_zero_bits = width_mask & ~(value & mask);
+      params.value = required_zero_bits;
+      params.mask = mask & required_zero_bits;
+      params.condition = IREE_HAL_ATOMIC_WAIT_CONDITION_NOT_EQUAL;
+      break;
+    }
+    case IREE_HIP_STREAM_WAIT_VALUE_GTE:
+    default:
+      params.condition =
+          IREE_HAL_ATOMIC_WAIT_CONDITION_UNSIGNED_GREATER_EQUAL;
+      break;
+  }
   return iree_hal_streaming_queue_wait_value(
       stream, target->buffer_ref.buffer->buffer, target->buffer_ref.offset,
-      value, mask, byte_length, iree_hip_stream_wait_value_condition(flags),
-      IREE_HAL_AMDGPU_WAIT_VALUE_FLAG_NONE,
-      iree_hal_amdgpu_device_queue_wait_value);
+      params);
 }
 
 static hipError_t iree_hip_enqueue_stream_value_wait(
