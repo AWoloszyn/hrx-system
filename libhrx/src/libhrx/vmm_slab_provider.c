@@ -181,8 +181,7 @@ static iree_status_t hrx_vmm_slab_provider_protect_slab(
     iree_hal_memory_protection_t protection) {
   return iree_hal_allocator_virtual_memory_protect(
       accessor_allocator->hal_allocator, slab->virtual_buffer,
-      /*virtual_offset=*/0, slab->allocation_size,
-      IREE_HAL_QUEUE_AFFINITY_ANY,
+      /*virtual_offset=*/0, slab->allocation_size, IREE_HAL_QUEUE_AFFINITY_ANY,
       IREE_HAL_VIRTUAL_MEMORY_ACCESS_SCOPE_DEVICE, protection);
 }
 

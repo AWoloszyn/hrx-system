@@ -12104,8 +12104,7 @@ static iree_status_t iree_hip_enqueue_stream_value_wait_resolved(
   iree_hal_atomic_wait_params_t params = {
       .value = value,
       .mask = mask,
-      .flags = IREE_HAL_ATOMIC_FLAG_ACQUIRE |
-               IREE_HAL_ATOMIC_FLAG_SYSTEM_SCOPE,
+      .flags = IREE_HAL_ATOMIC_FLAG_ACQUIRE | IREE_HAL_ATOMIC_FLAG_SYSTEM_SCOPE,
       .width = byte_length == sizeof(uint32_t) ? IREE_HAL_ATOMIC_WIDTH_32
                                                : IREE_HAL_ATOMIC_WIDTH_64,
   };
@@ -12127,13 +12126,12 @@ static iree_status_t iree_hip_enqueue_stream_value_wait_resolved(
     }
     case IREE_HIP_STREAM_WAIT_VALUE_GTE:
     default:
-      params.condition =
-          IREE_HAL_ATOMIC_WAIT_CONDITION_UNSIGNED_GREATER_EQUAL;
+      params.condition = IREE_HAL_ATOMIC_WAIT_CONDITION_UNSIGNED_GREATER_EQUAL;
       break;
   }
-  return iree_hal_streaming_queue_wait_value(
-      stream, target->buffer_ref.buffer->buffer, target->buffer_ref.offset,
-      params);
+  return iree_hal_streaming_queue_wait_value(stream,
+                                             target->buffer_ref.buffer->buffer,
+                                             target->buffer_ref.offset, params);
 }
 
 static hipError_t iree_hip_enqueue_stream_value_wait(
@@ -12308,8 +12306,8 @@ HIPAPI hipError_t hipStreamBatchMemOp(hipStream_t stream, unsigned int count,
   }
 
   if (result == hipSuccess) {
-    result = iree_hip_order_legacy_stream_dependencies(
-        resolved_stream.context, resolved_stream.stream);
+    result = iree_hip_order_legacy_stream_dependencies(resolved_stream.context,
+                                                       resolved_stream.stream);
   }
   for (iree_host_size_t i = 0; i < initialized_count && result == hipSuccess;
        ++i) {
@@ -14233,9 +14231,9 @@ HIPAPI hipError_t hipExtLaunchMultiKernelMultiDevice(
                                  (void**)&launches);
   iree_hip_resolved_stream_t* resolved_streams = NULL;
   if (iree_status_is_ok(status)) {
-    status = iree_allocator_malloc(current_context->host_allocator,
-                                   resolved_streams_size,
-                                   (void**)&resolved_streams);
+    status =
+        iree_allocator_malloc(current_context->host_allocator,
+                              resolved_streams_size, (void**)&resolved_streams);
   }
   if (!iree_status_is_ok(status)) {
     iree_allocator_free(current_context->host_allocator, launches);
@@ -26092,16 +26090,14 @@ static hipError_t iree_hip_get_proc_address(const char* symbol, void** function,
 
   const char* lookup_symbol = symbol;
   if (strcmp(symbol, "hipGetDeviceProperties") == 0) {
-    lookup_symbol =
-        hip_version >= IREE_HIP_DEVICE_PROPERTIES_R0600_VERSION
-            ? "hipGetDevicePropertiesR0600"
-            : "hipGetDevicePropertiesR0000";
+    lookup_symbol = hip_version >= IREE_HIP_DEVICE_PROPERTIES_R0600_VERSION
+                        ? "hipGetDevicePropertiesR0600"
+                        : "hipGetDevicePropertiesR0000";
     prefer_spt = false;
   } else if (strcmp(symbol, "hipChooseDevice") == 0) {
-    lookup_symbol =
-        hip_version >= IREE_HIP_DEVICE_PROPERTIES_R0600_VERSION
-            ? "hipChooseDeviceR0600"
-            : "hipChooseDeviceR0000";
+    lookup_symbol = hip_version >= IREE_HIP_DEVICE_PROPERTIES_R0600_VERSION
+                        ? "hipChooseDeviceR0600"
+                        : "hipChooseDeviceR0000";
     prefer_spt = false;
   }
   return iree_hip_lookup_runtime_symbol(lookup_symbol, prefer_spt, function,
