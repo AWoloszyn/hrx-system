@@ -2283,15 +2283,6 @@ iree_status_t iree_hal_streaming_graph_exec_launch(
   }
 
   iree_slim_mutex_lock(&stream->mutex);
-  if (IREE_UNLIKELY(stream->pending_value == UINT64_MAX)) {
-    iree_slim_mutex_unlock(&stream->mutex);
-    iree_slim_mutex_unlock(&exec->mutex);
-    iree_hal_semaphore_release(completion_semaphore);
-    IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
-                            "stream timeline value overflow");
-  }
-
   // Reserve the next stream timeline value while holding the stream lock so
   // concurrent host threads cannot submit same-stream work with the same wait
   // or signal value. The graph waits on the current stream tail, not the last
@@ -2300,8 +2291,15 @@ iree_status_t iree_hal_streaming_graph_exec_launch(
   // not synchronize between launches.
   uint64_t stream_wait_value = 0;
   uint64_t stream_signal_value = 0;
-  iree_status_t status = iree_hal_streaming_stream_reserve_next_value_locked(
+  status = iree_hal_streaming_stream_reserve_next_value_locked(
       stream, &stream_wait_value, &stream_signal_value);
+  if (!iree_status_is_ok(status)) {
+    iree_slim_mutex_unlock(&stream->mutex);
+    iree_slim_mutex_unlock(&exec->mutex);
+    iree_hal_semaphore_release(completion_semaphore);
+    IREE_TRACE_ZONE_END(z0);
+    return status;
+  }
 
   iree_hal_semaphore_t* wait_semaphore = stream->timeline_semaphore;
   uint64_t wait_payload_value = stream_wait_value;
