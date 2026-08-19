@@ -13199,21 +13199,33 @@ HIPAPI hipError_t hipExtLaunchMultiKernelMultiDevice(
   }
 
   iree_host_size_t launches_size = 0;
+  iree_host_size_t resolved_streams_size = 0;
   if (!iree_host_size_checked_mul((iree_host_size_t)numDevices,
                                   sizeof(iree_hal_streaming_kernel_launch_t),
-                                  &launches_size)) {
+                                  &launches_size) ||
+      !iree_host_size_checked_mul((iree_host_size_t)numDevices,
+                                  sizeof(iree_hip_resolved_stream_t),
+                                  &resolved_streams_size)) {
     IREE_TRACE_ZONE_END(z0);
     HIP_RETURN_ERROR(hipErrorOutOfMemory);
   }
   iree_hal_streaming_kernel_launch_t* launches = NULL;
   status = iree_allocator_malloc(current_context->host_allocator, launches_size,
                                  (void**)&launches);
+  iree_hip_resolved_stream_t* resolved_streams = NULL;
+  if (iree_status_is_ok(status)) {
+    status = iree_allocator_malloc(current_context->host_allocator,
+                                   resolved_streams_size,
+                                   (void**)&resolved_streams);
+  }
   if (!iree_status_is_ok(status)) {
+    iree_allocator_free(current_context->host_allocator, launches);
     result = iree_status_to_hip_result(status);
     IREE_TRACE_ZONE_END(z0);
     HIP_RETURN_ERROR(result);
   }
   memset(launches, 0, launches_size);
+  memset(resolved_streams, 0, resolved_streams_size);
 
   iree_host_size_t retained_stream_count = 0;
   for (int i = 0; i < numDevices && result == hipSuccess; ++i) {
@@ -13237,10 +13249,12 @@ HIPAPI hipError_t hipExtLaunchMultiKernelMultiDevice(
       }
     }
 
-    iree_hal_streaming_stream_t* stream = NULL;
-    result = iree_hip_resolve_registered_stream(launch->stream, &stream);
+    iree_hip_resolved_stream_t* resolved_stream = &resolved_streams[i];
+    result =
+        iree_hip_resolve_registered_stream(launch->stream, resolved_stream);
     if (result != hipSuccess) break;
     ++retained_stream_count;
+    iree_hal_streaming_stream_t* stream = resolved_stream->stream;
     launches[i].stream = stream;
 
     iree_slim_mutex_lock(&stream->mutex);
@@ -13260,13 +13274,9 @@ HIPAPI hipError_t hipExtLaunchMultiKernelMultiDevice(
       break;
     }
 
-    iree_hal_streaming_context_t* context = stream->context;
-    if (!context) {
-      result = hipErrorContextIsDestroyed;
-      break;
-    }
+    iree_hal_streaming_context_t* context = resolved_stream->context;
     for (int j = 0; j < i; ++j) {
-      if (launches[j].stream->context->device_ordinal ==
+      if (resolved_streams[j].context->device_ordinal ==
           context->device_ordinal) {
         result = hipErrorInvalidDevice;
         break;
@@ -13318,8 +13328,9 @@ HIPAPI hipError_t hipExtLaunchMultiKernelMultiDevice(
   }
 
   for (iree_host_size_t i = 0; i < retained_stream_count; ++i) {
-    iree_hal_streaming_stream_release(launches[i].stream);
+    iree_hip_resolved_stream_release(&resolved_streams[i]);
   }
+  iree_allocator_free(current_context->host_allocator, resolved_streams);
   iree_allocator_free(current_context->host_allocator, launches);
   IREE_TRACE_ZONE_END(z0);
   return result;

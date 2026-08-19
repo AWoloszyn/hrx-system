@@ -687,7 +687,8 @@ iree_status_t iree_hal_streaming_stream_wait_streams(
 
     status = iree_status_join(
         status,
-        iree_hal_streaming_memory_release_completed_async_frees(source_stream));
+        iree_hal_streaming_memory_release_completed_async_frees(
+            source_stream->context, source_stream));
     if (!iree_status_is_ok(status) || source_timeline_value == 0) continue;
 
     iree_hal_streaming_wait_dependency_t* dependency =
