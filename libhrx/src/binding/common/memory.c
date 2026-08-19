@@ -2200,13 +2200,11 @@ static iree_status_t iree_hal_streaming_queue_buffer_copy_locked(
     iree_hal_streaming_stream_t* stream, iree_hal_buffer_t* src_buffer,
     iree_device_size_t src_offset, iree_hal_buffer_t* dst_buffer,
     iree_device_size_t dst_offset, iree_device_size_t length) {
-  uint64_t wait_value = stream->pending_value;
-  iree_status_t status = iree_ok_status();
-  if (IREE_UNLIKELY(wait_value == UINT64_MAX)) {
-    status = iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
-                              "stream timeline value overflow");
-  } else {
-    uint64_t signal_value = wait_value + 1;
+  uint64_t wait_value = 0;
+  uint64_t signal_value = 0;
+  iree_status_t status = iree_hal_streaming_stream_reserve_next_value_locked(
+      stream, &wait_value, &signal_value);
+  if (iree_status_is_ok(status)) {
     const iree_hal_semaphore_list_t wait_semaphores = {
         .count = wait_value > 0 ? 1 : 0,
         .semaphores = &stream->timeline_semaphore,
@@ -2223,7 +2221,6 @@ static iree_status_t iree_hal_streaming_queue_buffer_copy_locked(
         length, IREE_HAL_COPY_FLAG_NONE);
     if (iree_status_is_ok(status)) {
       stream->pending_value = signal_value;
-      stream->submitted_value = signal_value;
     }
   }
   return status;
