@@ -895,10 +895,10 @@ typedef struct iree_hal_streaming_cross_device_event_wait_t {
   // Resource retained by the queued host call until it runs or is cancelled.
   iree_hal_resource_t resource;
 
-  // Event whose device-owned semaphore is being waited on.
-  iree_hal_streaming_event_t* event;
+  // Device-owned semaphore captured from the event's recorded point.
+  iree_hal_semaphore_t* semaphore;
 
-  // Event payload captured when the stream wait was enqueued.
+  // Semaphore payload captured from the event's recorded point.
   uint64_t signal_value;
 } iree_hal_streaming_cross_device_event_wait_t;
 
@@ -906,7 +906,7 @@ static void iree_hal_streaming_cross_device_event_wait_destroy(
     iree_hal_resource_t* base_resource) {
   iree_hal_streaming_cross_device_event_wait_t* wait =
       (iree_hal_streaming_cross_device_event_wait_t*)base_resource;
-  iree_hal_streaming_event_release(wait->event);
+  iree_hal_semaphore_release(wait->semaphore);
   iree_allocator_free(iree_allocator_system(), wait);
 }
 
@@ -922,22 +922,22 @@ static iree_status_t iree_hal_streaming_cross_device_event_wait_call(
   (void)call_context;
   iree_hal_streaming_cross_device_event_wait_t* wait =
       (iree_hal_streaming_cross_device_event_wait_t*)user_data;
-  return iree_hal_semaphore_wait(wait->event->semaphore, wait->signal_value,
+  return iree_hal_semaphore_wait(wait->semaphore, wait->signal_value,
                                  iree_infinite_timeout(),
                                  IREE_ASYNC_WAIT_FLAG_NONE);
 }
 
 static iree_status_t iree_hal_streaming_stream_wait_cross_device_event(
-    iree_hal_streaming_stream_t* stream, iree_hal_streaming_event_t* event,
+    iree_hal_streaming_stream_t* stream, iree_hal_semaphore_t* semaphore,
     uint64_t signal_value) {
   iree_hal_streaming_cross_device_event_wait_t* wait = NULL;
   IREE_RETURN_IF_ERROR(iree_allocator_malloc(iree_allocator_system(),
                                              sizeof(*wait), (void**)&wait));
   iree_hal_resource_initialize(
       &iree_hal_streaming_cross_device_event_wait_vtable, &wait->resource);
-  wait->event = event;
+  wait->semaphore = semaphore;
   wait->signal_value = signal_value;
-  iree_hal_streaming_event_retain(event);
+  iree_hal_semaphore_retain(semaphore);
 
   const uint64_t args[4] = {0, 0, 0, 0};
   const iree_hal_host_call_t call = iree_hal_make_host_call_with_resource(
@@ -1070,8 +1070,12 @@ iree_status_t iree_hal_streaming_stream_wait_event(
   // signaled only after the source device's event semaphore reaches the
   // payload captured above.
   if (event->context->device != stream->context->device) {
-    iree_status_t status = iree_hal_streaming_stream_wait_cross_device_event(
-        stream, event, source_timeline_value);
+    iree_status_t status = iree_ok_status();
+    if (recorded_point.semaphore) {
+      status = iree_hal_streaming_stream_wait_cross_device_event(
+          stream, recorded_point.semaphore, recorded_point.value);
+    }
+    iree_hal_semaphore_release(recorded_point.semaphore);
     if (!iree_status_is_ok(status) && added_memory_reuse_dependency) {
       iree_hal_streaming_stream_remove_uncommitted_memory_reuse_dependency(
           stream, source_stream_id);

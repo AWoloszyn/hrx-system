@@ -9157,18 +9157,21 @@ static hipError_t iree_hip_memset_3d(hipPitchedPtr pitchedDevPtr, int value,
     return linear_result;
   }
 
-  iree_hal_streaming_stream_t* stream_obj = NULL;
-  result = iree_hip_resolve_stream(stream, &stream_obj);
+  iree_hip_resolved_stream_t resolved_stream = {0};
+  result = iree_hip_resolve_registered_stream(stream, &resolved_stream);
   if (result != hipSuccess) {
     IREE_TRACE_ZONE_END(z0);
     HIP_RETURN_ERROR(result);
   }
+  context = resolved_stream.context;
+  iree_hal_streaming_stream_t* stream_obj = resolved_stream.stream;
   iree_status_t status = iree_hal_streaming_memory_memset_3d(
       context, (iree_hal_streaming_deviceptr_t)pitchedDevPtr.ptr,
       pitchedDevPtr.pitch, slice_pitch, extent.width, extent.height,
       extent.depth, &value, 1, stream_obj);
   if (!iree_status_is_ok(status)) {
     result = iree_memset_status_to_hip_result(status);
+    iree_hip_resolved_stream_release(&resolved_stream);
     IREE_TRACE_ZONE_END(z0);
     HIP_RETURN_ERROR(result);
   }
@@ -9181,6 +9184,7 @@ static hipError_t iree_hip_memset_3d(hipPitchedPtr pitchedDevPtr, int value,
     result = iree_memset_status_to_hip_result(sync_status);
   }
 
+  iree_hip_resolved_stream_release(&resolved_stream);
   IREE_TRACE_ZONE_END(z0);
   return result;
 }

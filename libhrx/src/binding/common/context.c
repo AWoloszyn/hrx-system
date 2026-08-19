@@ -1087,11 +1087,11 @@ iree_hal_streaming_context_enqueue_legacy_default_dependency_barrier(
     }
 
     if (wait_count > 0) {
-      if (IREE_UNLIKELY(default_stream->pending_value == UINT64_MAX)) {
-        status = iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
-                                  "default stream timeline overflow");
-      } else {
-        uint64_t signal_value = default_stream->pending_value + 1;
+      uint64_t wait_value = 0;
+      uint64_t signal_value = 0;
+      status = iree_hal_streaming_stream_reserve_next_value_locked(
+          default_stream, &wait_value, &signal_value);
+      if (iree_status_is_ok(status)) {
         const iree_hal_semaphore_list_t waits = {
             .count = wait_count,
             .semaphores = wait_semaphores,
@@ -1106,11 +1106,9 @@ iree_hal_streaming_context_enqueue_legacy_default_dependency_barrier(
             context->device, default_stream->queue_affinity, waits, signals,
             IREE_HAL_EXECUTE_FLAG_NONE);
         if (iree_status_is_ok(status)) {
+          default_stream->pending_value = signal_value;
           status = iree_hal_device_queue_flush(context->device,
                                                default_stream->queue_affinity);
-        }
-        if (iree_status_is_ok(status)) {
-          default_stream->pending_value = signal_value;
         }
       }
     }
