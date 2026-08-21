@@ -45,6 +45,12 @@ iree_status_t iree_hal_streaming_queue_host_call(
     iree_hal_streaming_stream_t* stream, iree_hal_host_call_t call,
     const uint64_t args[4], iree_hal_host_call_flags_t flags);
 
+// Enqueues a device-side value wait at the current stream timeline point.
+// Synchronization: flushes pending stream commands before enqueueing.
+iree_status_t iree_hal_streaming_queue_wait_value(
+    iree_hal_streaming_stream_t* stream, iree_hal_buffer_t* target_buffer,
+    iree_device_size_t target_offset, iree_hal_atomic_wait_params_t params);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

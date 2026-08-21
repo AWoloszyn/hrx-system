@@ -881,8 +881,14 @@ static iree_status_t iree_hal_streaming_stream_synchronize_impl(
 
 iree_status_t iree_hal_streaming_stream_synchronize(
     iree_hal_streaming_stream_t* stream) {
+  // HIP launches are submitted when enqueued even though the streaming layer
+  // batches command-buffer recording. Publish work from every context before
+  // blocking so device-side dependencies cannot wait on a launch that remains
+  // recorded in another stream or physical-device context. The wait below is
+  // still scoped to |stream|.
+  IREE_RETURN_IF_ERROR(iree_hal_streaming_context_flush_all());
   return iree_hal_streaming_stream_synchronize_impl(stream, stream->context,
-                                                    /*flush_context=*/true);
+                                                    /*flush_context=*/false);
 }
 
 iree_status_t iree_hal_streaming_stream_synchronize_flushed(
@@ -2142,6 +2148,58 @@ iree_status_t iree_hal_streaming_queue_host_call(
   status = iree_hal_device_queue_host_call(
       stream->context->device, stream->queue_affinity, wait_semaphores,
       signal_semaphores, call, args, flags);
+  if (iree_status_is_ok(status)) {
+    stream->pending_value = signal_value;
+  }
+  iree_slim_mutex_unlock(&stream->mutex);
+
+  IREE_TRACE_ZONE_END(z0);
+  return status;
+}
+
+iree_status_t iree_hal_streaming_queue_wait_value(
+    iree_hal_streaming_stream_t* stream, iree_hal_buffer_t* target_buffer,
+    iree_device_size_t target_offset, iree_hal_atomic_wait_params_t params) {
+  IREE_ASSERT_ARGUMENT(stream);
+  IREE_ASSERT_ARGUMENT(target_buffer);
+  IREE_TRACE_ZONE_BEGIN(z0);
+
+  // Captured waits require a graph node that preserves the target allocation
+  // and materializes the wait during each graph launch.
+  if (stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE) {
+    IREE_TRACE_ZONE_END(z0);
+    return iree_make_status(
+        IREE_STATUS_UNIMPLEMENTED,
+        "queue-ordered value waits are not supported during stream capture");
+  }
+
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(z0,
+                                    iree_hal_streaming_stream_flush(stream));
+
+  iree_slim_mutex_lock(&stream->mutex);
+  uint64_t wait_value = 0;
+  uint64_t signal_value = 0;
+  iree_status_t status = iree_hal_streaming_stream_reserve_next_value_locked(
+      stream, &wait_value, &signal_value);
+  if (!iree_status_is_ok(status)) {
+    iree_slim_mutex_unlock(&stream->mutex);
+    IREE_TRACE_ZONE_END(z0);
+    return status;
+  }
+  iree_hal_semaphore_list_t wait_semaphores = {
+      .count = wait_value > 0 ? 1 : 0,
+      .semaphores = &stream->timeline_semaphore,
+      .payload_values = &wait_value,
+  };
+  iree_hal_semaphore_list_t signal_semaphores = {
+      .count = 1,
+      .semaphores = &stream->timeline_semaphore,
+      .payload_values = &signal_value,
+  };
+
+  status = iree_hal_device_queue_atomic_wait(
+      stream->context->device, stream->queue_affinity, wait_semaphores,
+      signal_semaphores, target_buffer, target_offset, params);
   if (iree_status_is_ok(status)) {
     stream->pending_value = signal_value;
   }
