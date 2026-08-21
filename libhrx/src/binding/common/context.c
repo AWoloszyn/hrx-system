@@ -1042,9 +1042,9 @@ iree_hal_streaming_context_enqueue_legacy_default_dependency_barrier(
     status = iree_hal_streaming_stream_flush(stream);
     if (iree_status_is_ok(status)) {
       iree_slim_mutex_lock(&stream->mutex);
-      if (stream->submitted_value > 0) {
+      if (stream->pending_value > 0) {
         wait_semaphores[wait_count] = stream->timeline_semaphore;
-        wait_values[wait_count] = stream->submitted_value;
+        wait_values[wait_count] = stream->pending_value;
         ++wait_count;
       }
       iree_slim_mutex_unlock(&stream->mutex);
@@ -1093,7 +1093,6 @@ iree_hal_streaming_context_enqueue_legacy_default_dependency_barrier(
         }
         if (iree_status_is_ok(status)) {
           default_stream->pending_value = signal_value;
-          default_stream->submitted_value = signal_value;
         }
       }
     }
