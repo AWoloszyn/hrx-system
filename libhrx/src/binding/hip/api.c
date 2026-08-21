@@ -29,8 +29,8 @@
 #include "binding/hip/binding_internal.h"
 #include "binding/hip/blocking_printf_provider.h"
 #include "binding/hip/dynamic_logging.h"
-#include "binding/hip/handle_registry.h"
 #include "binding/hip/execution_queue.h"
+#include "binding/hip/handle_registry.h"
 #include "binding/hip/launch_params.h"
 #include "binding/hip/legacy_launch_state.h"
 #include "common/graph.h"
@@ -39,6 +39,7 @@
 #include "common/tls.h"
 #include "hrx_runtime.h"
 #include "iree/base/threading/call_once.h"
+#include "iree/hal/drivers/amdgpu/api.h"
 
 //===----------------------------------------------------------------------===//
 // Debug logging

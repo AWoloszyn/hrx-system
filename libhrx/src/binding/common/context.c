@@ -1025,7 +1025,7 @@ iree_status_t iree_hal_streaming_queue_scope_record_event(
         IREE_HAL_SEMAPHORE_FLAG_NONE, &record_semaphore);
   }
   if (iree_status_is_ok(status)) {
-    const uint64_t signal_value = 1;
+    uint64_t signal_value = 1;
     const iree_hal_semaphore_list_t waits = {
         .count = stream_count,
         .semaphores = wait_semaphores,
@@ -1036,9 +1036,9 @@ iree_status_t iree_hal_streaming_queue_scope_record_event(
         .semaphores = &record_semaphore,
         .payload_values = &signal_value,
     };
-    status = iree_hal_device_queue_barrier(
-        context->device, scope->queue_affinity, waits, signals,
-        IREE_HAL_EXECUTE_FLAG_NONE);
+    status = iree_hal_device_queue_barrier(context->device,
+                                           scope->queue_affinity, waits,
+                                           signals, IREE_HAL_EXECUTE_FLAG_NONE);
     if (iree_status_is_ok(status)) {
       const iree_hal_streaming_recorded_point_t recorded_point = {
           .semaphore = record_semaphore,

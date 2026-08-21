@@ -317,10 +317,9 @@ static iree_status_t iree_hal_streaming_stream_create_impl(
   stream->timeline_semaphore = NULL;
   stream->pending_value = 0;
   stream->completed_value = 0;
-  stream->queue_affinity = queue_scope
-                               ? iree_hal_streaming_queue_scope_affinity(
-                                     queue_scope)
-                               : IREE_HAL_QUEUE_AFFINITY_ANY;
+  stream->queue_affinity =
+      queue_scope ? iree_hal_streaming_queue_scope_affinity(queue_scope)
+                  : IREE_HAL_QUEUE_AFFINITY_ANY;
   stream->queue_scope = queue_scope;
   iree_hal_streaming_queue_scope_retain(queue_scope);
   stream->memory_reuse_dependencies = NULL;
@@ -1893,17 +1892,6 @@ iree_status_t iree_hal_streaming_launch_kernel(
     g_hrx_launch_timing.launch_barrier_ns += timing_barrier_ns;
   }
   IREE_TRACE_ZONE_END(z0);
-  return status;
-}
-
-iree_status_t iree_hal_streaming_stream_wait_event(
-    iree_hal_streaming_stream_t* stream, iree_hal_streaming_event_t* event) {
-  IREE_ASSERT_ARGUMENT(stream);
-  IREE_ASSERT_ARGUMENT(event);
-  iree_slim_mutex_lock(&event->mutex);
-  iree_status_t status =
-      iree_hal_streaming_stream_wait_event_locked(stream, event);
-  iree_slim_mutex_unlock(&event->mutex);
   return status;
 }
 
