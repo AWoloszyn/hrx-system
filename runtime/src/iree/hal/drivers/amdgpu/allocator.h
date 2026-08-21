@@ -9,8 +9,8 @@
 
 #include "iree/base/api.h"
 #include "iree/hal/api.h"
-#include "iree/hal/drivers/amdgpu/util/libhsa.h"
 
+typedef struct iree_hal_amdgpu_libhsa_t iree_hal_amdgpu_libhsa_t;
 typedef struct iree_hal_amdgpu_logical_device_t
     iree_hal_amdgpu_logical_device_t;
 typedef struct iree_hal_amdgpu_topology_t iree_hal_amdgpu_topology_t;
