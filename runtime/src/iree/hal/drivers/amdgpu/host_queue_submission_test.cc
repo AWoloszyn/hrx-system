@@ -7,6 +7,7 @@
 #include "iree/hal/drivers/amdgpu/host_queue_submission.h"
 
 #include <cstdint>
+#include <vector>
 
 #include "iree/hal/api.h"
 #include "iree/hal/cts/util/test_base.h"
@@ -73,10 +74,13 @@ class TestLogicalDevice {
       const iree_hal_amdgpu_logical_device_options_t* options,
       const iree_hal_amdgpu_libhsa_t* libhsa,
       const iree_hal_amdgpu_topology_t* topology,
-      iree_allocator_t host_allocator) {
+      iree_allocator_t host_allocator,
+      const iree_hal_device_create_params_extension_t* extension = nullptr) {
     IREE_RETURN_IF_ERROR(create_context_.Initialize(host_allocator));
+    iree_hal_device_create_params_t create_params = *create_context_.params();
+    create_params.next = extension;
     IREE_RETURN_IF_ERROR(iree_hal_amdgpu_logical_device_create(
-        IREE_SV("amdgpu"), options, libhsa, topology, create_context_.params(),
+        IREE_SV("amdgpu"), options, libhsa, topology, &create_params,
         host_allocator, &base_device_));
     return iree_hal_device_group_create_from_device(
         base_device_, create_context_.frontier_tracker(), host_allocator,
@@ -89,7 +93,10 @@ class TestLogicalDevice {
     if (logical_device->physical_device_count == 0) return NULL;
     iree_hal_amdgpu_physical_device_t* physical_device =
         logical_device->physical_devices[0];
-    if (physical_device->host_queue_count == 0) return NULL;
+    if (iree_hal_amdgpu_physical_device_host_queue_count(physical_device) ==
+        0) {
+      return NULL;
+    }
     return &physical_device->host_queues[0];
   }
 
@@ -162,7 +169,10 @@ class TestLogicalDeviceGroup {
     if (logical_device->physical_device_count == 0) return NULL;
     iree_hal_amdgpu_physical_device_t* physical_device =
         logical_device->physical_devices[0];
-    if (physical_device->host_queue_count == 0) return NULL;
+    if (iree_hal_amdgpu_physical_device_host_queue_count(physical_device) ==
+        0) {
+      return NULL;
+    }
     return &physical_device->host_queues[0];
   }
 
@@ -176,6 +186,230 @@ class TestLogicalDeviceGroup {
   // Group owning the topology borrowed by both logical devices.
   iree_hal_device_group_t* device_group_ = NULL;
 };
+
+TEST_F(HostQueueSubmissionTest, ExecutionQueuesShareIdenticalMasks) {
+  iree_hal_amdgpu_logical_device_options_t options;
+  iree_hal_amdgpu_logical_device_options_initialize(&options);
+  iree_hal_amdgpu_host_queue_extension_t queue_extension = {
+      /*.base=*/
+      {
+          /*.type=*/
+          IREE_HAL_AMDGPU_DEVICE_CREATE_PARAMS_EXTENSION_TYPE_HOST_QUEUES,
+          /*.next=*/nullptr,
+      },
+      /*.capacity=*/IREE_HAL_AMDGPU_DEFAULT_GPU_AGENT_QUEUE_COUNT + 1,
+      /*.initial_count=*/IREE_HAL_AMDGPU_DEFAULT_GPU_AGENT_QUEUE_COUNT,
+  };
+
+  TestLogicalDevice test_device;
+  IREE_ASSERT_OK(test_device.Initialize(
+      &options, &libhsa_, &topology_, host_allocator_, &queue_extension.base));
+  auto* logical_device = reinterpret_cast<iree_hal_amdgpu_logical_device_t*>(
+      test_device.base_device());
+  ASSERT_GT(logical_device->physical_device_count, 0u);
+  const iree_host_size_t compute_unit_count =
+      logical_device->physical_devices[0]->compute_unit_count;
+  const iree_host_size_t mask_word_count = (compute_unit_count + 31) / 32;
+  std::vector<uint32_t> mask(mask_word_count, UINT32_MAX);
+  if (compute_unit_count % 32 != 0) {
+    mask.back() = (UINT32_C(1) << (compute_unit_count % 32)) - 1;
+  }
+
+  iree_hal_amdgpu_execution_queue_t* first_queue = nullptr;
+  IREE_ASSERT_OK(iree_hal_amdgpu_execution_queue_acquire(
+      test_device.base_device(), IREE_HAL_QUEUE_AFFINITY_ANY,
+      mask_word_count * 32, mask.data(), &first_queue));
+  ASSERT_NE(first_queue, nullptr);
+  iree_hal_amdgpu_execution_queue_t* second_queue = nullptr;
+  IREE_ASSERT_OK(iree_hal_amdgpu_execution_queue_acquire(
+      test_device.base_device(), IREE_HAL_QUEUE_AFFINITY_ANY,
+      mask_word_count * 32, mask.data(), &second_queue));
+  EXPECT_EQ(second_queue, first_queue);
+  EXPECT_EQ(iree_hal_amdgpu_execution_queue_affinity(second_queue),
+            iree_hal_amdgpu_execution_queue_affinity(first_queue));
+  EXPECT_NE(iree_hal_amdgpu_execution_queue_affinity(first_queue),
+            IREE_HAL_QUEUE_AFFINITY_ANY);
+  EXPECT_EQ(iree_hal_amdgpu_execution_queue_affinity(first_queue) &
+                logical_device->ordinary_queue_affinity_mask,
+            0u);
+
+  iree_hal_amdgpu_execution_queue_release(first_queue);
+  EXPECT_NE(logical_device->execution_queue_head, nullptr);
+  iree_hal_amdgpu_execution_queue_release(second_queue);
+  EXPECT_EQ(logical_device->execution_queue_head, nullptr);
+  EXPECT_EQ(logical_device->leased_execution_queue_affinity, 0u);
+}
+
+TEST_F(HostQueueSubmissionTest, SpecializedQueueAffinityRequiresAnActiveLease) {
+  iree_hal_amdgpu_logical_device_options_t options;
+  iree_hal_amdgpu_logical_device_options_initialize(&options);
+  iree_hal_amdgpu_host_queue_extension_t queue_extension = {
+      /*.base=*/
+      {
+          /*.type=*/
+          IREE_HAL_AMDGPU_DEVICE_CREATE_PARAMS_EXTENSION_TYPE_HOST_QUEUES,
+          /*.next=*/nullptr,
+      },
+      /*.capacity=*/IREE_HAL_AMDGPU_DEFAULT_GPU_AGENT_QUEUE_COUNT + 1,
+      /*.initial_count=*/IREE_HAL_AMDGPU_DEFAULT_GPU_AGENT_QUEUE_COUNT,
+  };
+
+  TestLogicalDevice test_device;
+  IREE_ASSERT_OK(test_device.Initialize(
+      &options, &libhsa_, &topology_, host_allocator_, &queue_extension.base));
+  auto* logical_device = reinterpret_cast<iree_hal_amdgpu_logical_device_t*>(
+      test_device.base_device());
+  ASSERT_GT(logical_device->physical_device_count, 0u);
+  iree_hal_amdgpu_physical_device_t* physical_device =
+      logical_device->physical_devices[0];
+  const iree_hal_queue_affinity_t specialized_affinity =
+      (iree_hal_queue_affinity_t)1ull
+      << physical_device->host_queue_ordinary_count;
+
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_FAILED_PRECONDITION,
+                        iree_hal_device_queue_flush(test_device.base_device(),
+                                                    specialized_affinity));
+
+  const iree_host_size_t compute_unit_count =
+      physical_device->compute_unit_count;
+  const iree_host_size_t mask_word_count = (compute_unit_count + 31) / 32;
+  std::vector<uint32_t> mask(mask_word_count, UINT32_MAX);
+  if (compute_unit_count % 32 != 0) {
+    mask.back() = (UINT32_C(1) << (compute_unit_count % 32)) - 1;
+  }
+  iree_hal_amdgpu_execution_queue_t* execution_queue = nullptr;
+  IREE_ASSERT_OK(iree_hal_amdgpu_execution_queue_acquire(
+      test_device.base_device(), IREE_HAL_QUEUE_AFFINITY_ANY,
+      mask_word_count * 32, mask.data(), &execution_queue));
+  ASSERT_NE(execution_queue, nullptr);
+  ASSERT_EQ(iree_hal_amdgpu_execution_queue_affinity(execution_queue),
+            specialized_affinity);
+  IREE_ASSERT_OK(iree_hal_device_queue_barrier(
+      test_device.base_device(), specialized_affinity,
+      iree_hal_semaphore_list_empty(), iree_hal_semaphore_list_empty(),
+      IREE_HAL_EXECUTE_FLAG_NONE));
+
+  // Final release must wait for the submitted packet before restoring the
+  // native queue configuration and making the slot reusable.
+  iree_hal_amdgpu_execution_queue_release(execution_queue);
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_FAILED_PRECONDITION,
+                        iree_hal_device_queue_flush(test_device.base_device(),
+                                                    specialized_affinity));
+}
+
+TEST_F(HostQueueSubmissionTest, ExecutionQueueCapacityIsBoundedAndReusable) {
+  iree_hal_amdgpu_logical_device_options_t options;
+  iree_hal_amdgpu_logical_device_options_initialize(&options);
+  iree_hal_amdgpu_host_queue_extension_t queue_extension = {
+      /*.base=*/
+      {
+          /*.type=*/
+          IREE_HAL_AMDGPU_DEVICE_CREATE_PARAMS_EXTENSION_TYPE_HOST_QUEUES,
+          /*.next=*/nullptr,
+      },
+      /*.capacity=*/IREE_HAL_AMDGPU_DEFAULT_GPU_AGENT_QUEUE_COUNT + 1,
+      /*.initial_count=*/IREE_HAL_AMDGPU_DEFAULT_GPU_AGENT_QUEUE_COUNT,
+  };
+
+  TestLogicalDevice test_device;
+  IREE_ASSERT_OK(test_device.Initialize(
+      &options, &libhsa_, &topology_, host_allocator_, &queue_extension.base));
+  auto* logical_device = reinterpret_cast<iree_hal_amdgpu_logical_device_t*>(
+      test_device.base_device());
+  ASSERT_GT(logical_device->physical_device_count, 0u);
+  const iree_host_size_t compute_unit_count =
+      logical_device->physical_devices[0]->compute_unit_count;
+  ASSERT_GE(compute_unit_count, 4u);
+  const iree_host_size_t mask_word_count = (compute_unit_count + 31) / 32;
+  std::vector<uint32_t> first_mask(mask_word_count, UINT32_MAX);
+  if (compute_unit_count % 32 != 0) {
+    first_mask.back() = (UINT32_C(1) << (compute_unit_count % 32)) - 1;
+  }
+  std::vector<uint32_t> second_mask = first_mask;
+  second_mask[0] &= ~UINT32_C(3);
+
+  iree_hal_amdgpu_execution_queue_t* first_queue = nullptr;
+  IREE_ASSERT_OK(iree_hal_amdgpu_execution_queue_acquire(
+      test_device.base_device(), IREE_HAL_QUEUE_AFFINITY_ANY,
+      mask_word_count * 32, first_mask.data(), &first_queue));
+  const iree_hal_queue_affinity_t reusable_affinity =
+      iree_hal_amdgpu_execution_queue_affinity(first_queue);
+
+  iree_hal_amdgpu_execution_queue_t* second_queue = nullptr;
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_RESOURCE_EXHAUSTED,
+      iree_hal_amdgpu_execution_queue_acquire(
+          test_device.base_device(), IREE_HAL_QUEUE_AFFINITY_ANY,
+          mask_word_count * 32, second_mask.data(), &second_queue));
+  EXPECT_EQ(second_queue, nullptr);
+
+  iree_hal_amdgpu_execution_queue_release(first_queue);
+  IREE_ASSERT_OK(iree_hal_amdgpu_execution_queue_acquire(
+      test_device.base_device(), IREE_HAL_QUEUE_AFFINITY_ANY,
+      mask_word_count * 32, second_mask.data(), &second_queue));
+  EXPECT_EQ(iree_hal_amdgpu_execution_queue_affinity(second_queue),
+            reusable_affinity);
+  iree_hal_amdgpu_execution_queue_release(second_queue);
+}
+
+TEST_F(HostQueueSubmissionTest,
+       ExecutionQueueRejectsInvalidMasksWithoutReservation) {
+  iree_hal_amdgpu_logical_device_options_t options;
+  iree_hal_amdgpu_logical_device_options_initialize(&options);
+  iree_hal_amdgpu_host_queue_extension_t queue_extension = {
+      /*.base=*/
+      {
+          /*.type=*/
+          IREE_HAL_AMDGPU_DEVICE_CREATE_PARAMS_EXTENSION_TYPE_HOST_QUEUES,
+          /*.next=*/nullptr,
+      },
+      /*.capacity=*/IREE_HAL_AMDGPU_DEFAULT_GPU_AGENT_QUEUE_COUNT + 1,
+      /*.initial_count=*/IREE_HAL_AMDGPU_DEFAULT_GPU_AGENT_QUEUE_COUNT,
+  };
+
+  TestLogicalDevice test_device;
+  IREE_ASSERT_OK(test_device.Initialize(
+      &options, &libhsa_, &topology_, host_allocator_, &queue_extension.base));
+  auto* logical_device = reinterpret_cast<iree_hal_amdgpu_logical_device_t*>(
+      test_device.base_device());
+  ASSERT_GT(logical_device->physical_device_count, 0u);
+  const iree_host_size_t compute_unit_count =
+      logical_device->physical_devices[0]->compute_unit_count;
+  const iree_host_size_t mask_word_count = (compute_unit_count + 31) / 32;
+
+  iree_hal_amdgpu_execution_queue_t* execution_queue = nullptr;
+  std::vector<uint32_t> wrong_size_mask(mask_word_count + 1, UINT32_MAX);
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      iree_hal_amdgpu_execution_queue_acquire(
+          test_device.base_device(), IREE_HAL_QUEUE_AFFINITY_ANY,
+          wrong_size_mask.size() * 32, wrong_size_mask.data(),
+          &execution_queue));
+  EXPECT_EQ(execution_queue, nullptr);
+
+  std::vector<uint32_t> empty_mask(mask_word_count, 0);
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      iree_hal_amdgpu_execution_queue_acquire(
+          test_device.base_device(), IREE_HAL_QUEUE_AFFINITY_ANY,
+          empty_mask.size() * 32, empty_mask.data(), &execution_queue));
+  EXPECT_EQ(execution_queue, nullptr);
+
+  if (compute_unit_count % 32 != 0) {
+    std::vector<uint32_t> out_of_range_mask(mask_word_count, 0);
+    out_of_range_mask.back() = UINT32_C(1) << (compute_unit_count % 32);
+    IREE_EXPECT_STATUS_IS(
+        IREE_STATUS_INVALID_ARGUMENT,
+        iree_hal_amdgpu_execution_queue_acquire(
+            test_device.base_device(), IREE_HAL_QUEUE_AFFINITY_ANY,
+            out_of_range_mask.size() * 32, out_of_range_mask.data(),
+            &execution_queue));
+    EXPECT_EQ(execution_queue, nullptr);
+  }
+
+  EXPECT_EQ(logical_device->execution_queue_head, nullptr);
+  EXPECT_EQ(logical_device->leased_execution_queue_affinity, 0u);
+}
 
 TEST_F(HostQueueSubmissionTest, GroupedLogicalDeviceQueueFrontiersAreDistinct) {
   iree_hal_amdgpu_logical_device_options_t options;

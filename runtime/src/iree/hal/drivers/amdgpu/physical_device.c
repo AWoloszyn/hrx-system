@@ -208,6 +208,8 @@ void iree_hal_amdgpu_physical_device_options_initialize(
 
   out_options->host_queue_count =
       IREE_HAL_AMDGPU_PHYSICAL_DEVICE_DEFAULT_QUEUE_COUNT;
+  out_options->host_queue_ordinary_count = out_options->host_queue_count;
+  out_options->host_queue_initial_count = out_options->host_queue_count;
   out_options->host_queue_aql_capacity =
       IREE_HAL_AMDGPU_PHYSICAL_DEVICE_DEFAULT_HOST_QUEUE_AQL_CAPACITY;
   out_options->host_queue_notification_capacity =
@@ -264,6 +266,24 @@ iree_status_t iree_hal_amdgpu_physical_device_options_verify(
         "host queue count must be in [1, %u] to fit the queue-axis encoding "
         "(got %" PRIhsz ")",
         UINT8_MAX, options->host_queue_count);
+  }
+  if (options->host_queue_ordinary_count == 0 ||
+      options->host_queue_ordinary_count > options->host_queue_count) {
+    return iree_make_status(
+        IREE_STATUS_OUT_OF_RANGE,
+        "ordinary host queue count must be in [1, host_queue_count] "
+        "(got ordinary=%" PRIhsz ", capacity=%" PRIhsz ")",
+        options->host_queue_ordinary_count, options->host_queue_count);
+  }
+  if (options->host_queue_initial_count < options->host_queue_ordinary_count ||
+      options->host_queue_initial_count > options->host_queue_count) {
+    return iree_make_status(
+        IREE_STATUS_OUT_OF_RANGE,
+        "initial host queue count must be in "
+        "[host_queue_ordinary_count, host_queue_count] "
+        "(got initial=%" PRIhsz ", ordinary=%" PRIhsz ", capacity=%" PRIhsz ")",
+        options->host_queue_initial_count, options->host_queue_ordinary_count,
+        options->host_queue_count);
   }
   if (!iree_host_size_is_power_of_two(options->host_queue_aql_capacity) ||
       !iree_host_size_is_power_of_two(
@@ -355,6 +375,12 @@ static iree_status_t iree_hal_amdgpu_physical_device_initialize_identity(
   out_physical_device->device_ordinal = device_ordinal;
   out_physical_device->host_memory_pools = *host_memory_pools;
   out_physical_device->host_queue_capacity = options->host_queue_count;
+  out_physical_device->host_queue_ordinary_count =
+      options->host_queue_ordinary_count;
+  out_physical_device->host_queue_initial_count =
+      options->host_queue_initial_count;
+  iree_atomic_store(&out_physical_device->host_queue_count, 0,
+                    iree_memory_order_relaxed);
   out_physical_device->host_queue_aql_capacity =
       options->host_queue_aql_capacity;
   out_physical_device->host_queue_notification_capacity =
@@ -1196,7 +1222,7 @@ static iree_status_t iree_hal_amdgpu_physical_device_create_default_pools(
   return status;
 }
 
-iree_status_t iree_hal_amdgpu_physical_device_assign_frontier(
+static iree_status_t iree_hal_amdgpu_physical_device_initialize_host_queue(
     iree_hal_device_t* logical_device, iree_hal_amdgpu_system_t* system,
     iree_async_proactor_t* proactor,
     iree_async_frontier_tracker_t* frontier_tracker,
@@ -1204,13 +1230,9 @@ iree_status_t iree_hal_amdgpu_physical_device_assign_frontier(
     iree_hal_amdgpu_epoch_signal_table_t* epoch_signal_table,
     iree_hal_amdgpu_feedback_state_t* feedback_state,
     const iree_hal_amdgpu_host_memory_pools_t* host_memory_pools,
-    iree_allocator_t host_allocator,
+    iree_host_size_t queue_ordinal, iree_allocator_t host_allocator,
     iree_hal_amdgpu_physical_device_t* physical_device) {
-  IREE_TRACE_ZONE_BEGIN(z0);
-
   iree_hal_amdgpu_libhsa_t* libhsa = &system->libhsa;
-  iree_status_t status = iree_hal_amdgpu_physical_device_create_default_pools(
-      physical_device, epoch_signal_table, host_allocator);
   const iree_hal_amdgpu_queue_affinity_domain_t queue_affinity_domain = {
       .supported_affinity = IREE_HAL_QUEUE_AFFINITY_ANY,
       .physical_device_count = system->topology.gpu_agent_count,
@@ -1248,45 +1270,91 @@ iree_status_t iree_hal_amdgpu_physical_device_assign_frontier(
     profiling_memory.event_access_agents = &physical_device->device_agent;
     profiling_memory.event_access_agent_count = 1;
   }
-  for (iree_host_size_t queue_ordinal = 0;
-       queue_ordinal < physical_device->host_queue_capacity &&
-       iree_status_is_ok(status);
-       ++queue_ordinal) {
-    const iree_host_size_t logical_queue_ordinal =
-        physical_device->device_ordinal * physical_device->host_queue_capacity +
-        queue_ordinal;
-    iree_hal_amdgpu_queue_affinity_resolved_t resolved;
-    iree_async_axis_t queue_axis = 0;
-    status = iree_hal_amdgpu_queue_affinity_make_axis(
-        queue_affinity_domain, base_axis, logical_queue_ordinal, &resolved,
-        &queue_axis);
-    if (!iree_status_is_ok(status)) break;
-    iree_thread_affinity_t completion_thread_affinity;
-    iree_thread_affinity_set_group_any(physical_device->host_numa_node,
-                                       &completion_thread_affinity);
-    status = iree_hal_amdgpu_host_queue_initialize(
-        libhsa, logical_device,
-        iree_hal_amdgpu_physical_device_hostcall_buffer(physical_device),
-        proactor, physical_device->device_agent,
-        &kernarg_ring_memory.descriptor, host_memory_pools->fine_pool,
-        frontier_tracker, queue_axis, resolved.queue_affinity,
-        logical_queue_ordinal, queue_ordinal, completion_thread_affinity,
-        physical_device->wait_barrier_strategy,
-        physical_device->vendor_packet_capabilities,
-        physical_device->pm4_timestamp_strategy, epoch_signal_table,
-        feedback_state, &physical_device->fine_host_block_pool,
-        profiling_memory, &physical_device->buffer_transfer_context,
-        &physical_device->default_pool_set, physical_device->default_pool,
-        &physical_device->transient_buffer_pool,
-        &physical_device->file_staging_pool, physical_device->device_ordinal,
-        physical_device->host_queue_aql_capacity,
-        physical_device->host_queue_notification_capacity,
-        physical_device->host_queue_kernarg_capacity,
-        physical_device->host_queue_upload_capacity, host_allocator,
-        &physical_device->host_queues[queue_ordinal]);
-    if (iree_status_is_ok(status)) {
-      physical_device->host_queue_count = queue_ordinal + 1;
-    }
+
+  const iree_host_size_t logical_queue_ordinal =
+      physical_device->device_ordinal * physical_device->host_queue_capacity +
+      queue_ordinal;
+  iree_hal_amdgpu_queue_affinity_resolved_t resolved;
+  iree_async_axis_t queue_axis = 0;
+  IREE_RETURN_IF_ERROR(iree_hal_amdgpu_queue_affinity_make_axis(
+      queue_affinity_domain, base_axis, logical_queue_ordinal, &resolved,
+      &queue_axis));
+  iree_thread_affinity_t completion_thread_affinity;
+  iree_thread_affinity_set_group_any(physical_device->host_numa_node,
+                                     &completion_thread_affinity);
+  iree_status_t status = iree_hal_amdgpu_host_queue_initialize(
+      libhsa, logical_device,
+      iree_hal_amdgpu_physical_device_hostcall_buffer(physical_device),
+      proactor, physical_device->device_agent, &kernarg_ring_memory.descriptor,
+      host_memory_pools->fine_pool, frontier_tracker, queue_axis,
+      resolved.queue_affinity, logical_queue_ordinal, queue_ordinal,
+      completion_thread_affinity, physical_device->wait_barrier_strategy,
+      physical_device->vendor_packet_capabilities,
+      physical_device->pm4_timestamp_strategy, epoch_signal_table,
+      feedback_state, &physical_device->fine_host_block_pool, profiling_memory,
+      &physical_device->buffer_transfer_context,
+      &physical_device->default_pool_set, physical_device->default_pool,
+      &physical_device->transient_buffer_pool,
+      &physical_device->file_staging_pool, physical_device->device_ordinal,
+      physical_device->host_queue_aql_capacity,
+      physical_device->host_queue_notification_capacity,
+      physical_device->host_queue_kernarg_capacity,
+      physical_device->host_queue_upload_capacity, host_allocator,
+      &physical_device->host_queues[queue_ordinal]);
+  if (iree_status_is_ok(status)) {
+    iree_atomic_store(&physical_device->host_queue_count,
+                      (int32_t)(queue_ordinal + 1), iree_memory_order_release);
+  }
+  return status;
+}
+
+iree_status_t iree_hal_amdgpu_physical_device_ensure_host_queue(
+    iree_hal_device_t* logical_device, iree_hal_amdgpu_system_t* system,
+    iree_async_proactor_t* proactor,
+    iree_async_frontier_tracker_t* frontier_tracker,
+    iree_async_axis_t base_axis,
+    iree_hal_amdgpu_epoch_signal_table_t* epoch_signal_table,
+    iree_hal_amdgpu_feedback_state_t* feedback_state,
+    iree_host_size_t queue_ordinal, iree_allocator_t host_allocator,
+    iree_hal_amdgpu_physical_device_t* physical_device) {
+  if (IREE_UNLIKELY(queue_ordinal >= physical_device->host_queue_capacity)) {
+    return iree_make_status(
+        IREE_STATUS_OUT_OF_RANGE,
+        "host queue ordinal %" PRIhsz " exceeds capacity %" PRIhsz,
+        queue_ordinal, physical_device->host_queue_capacity);
+  }
+
+  iree_status_t status = iree_ok_status();
+  for (iree_host_size_t i =
+           iree_hal_amdgpu_physical_device_host_queue_count(physical_device);
+       i <= queue_ordinal && iree_status_is_ok(status); ++i) {
+    status = iree_hal_amdgpu_physical_device_initialize_host_queue(
+        logical_device, system, proactor, frontier_tracker, base_axis,
+        epoch_signal_table, feedback_state, &physical_device->host_memory_pools,
+        i, host_allocator, physical_device);
+  }
+  return status;
+}
+
+iree_status_t iree_hal_amdgpu_physical_device_assign_frontier(
+    iree_hal_device_t* logical_device, iree_hal_amdgpu_system_t* system,
+    iree_async_proactor_t* proactor,
+    iree_async_frontier_tracker_t* frontier_tracker,
+    iree_async_axis_t base_axis,
+    iree_hal_amdgpu_epoch_signal_table_t* epoch_signal_table,
+    iree_hal_amdgpu_feedback_state_t* feedback_state,
+    iree_allocator_t host_allocator,
+    iree_hal_amdgpu_physical_device_t* physical_device) {
+  IREE_TRACE_ZONE_BEGIN(z0);
+
+  iree_status_t status = iree_hal_amdgpu_physical_device_create_default_pools(
+      physical_device, epoch_signal_table, host_allocator);
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_amdgpu_physical_device_ensure_host_queue(
+        logical_device, system, proactor, frontier_tracker, base_axis,
+        epoch_signal_table, feedback_state,
+        physical_device->host_queue_initial_count - 1, host_allocator,
+        physical_device);
   }
 
   if (!iree_status_is_ok(status)) {
@@ -1300,10 +1368,13 @@ iree_status_t iree_hal_amdgpu_physical_device_assign_frontier(
 void iree_hal_amdgpu_physical_device_deassign_frontier(
     iree_hal_amdgpu_physical_device_t* physical_device) {
   IREE_TRACE_ZONE_BEGIN(z0);
-  for (iree_host_size_t i = 0; i < physical_device->host_queue_count; ++i) {
+  const iree_host_size_t host_queue_count =
+      iree_hal_amdgpu_physical_device_host_queue_count(physical_device);
+  for (iree_host_size_t i = 0; i < host_queue_count; ++i) {
     iree_hal_amdgpu_host_queue_deinitialize(&physical_device->host_queues[i]);
   }
-  physical_device->host_queue_count = 0;
+  iree_atomic_store(&physical_device->host_queue_count, 0,
+                    iree_memory_order_release);
   if (physical_device->default_pool_set.entries) {
     iree_hal_pool_set_deinitialize(&physical_device->default_pool_set);
   }
@@ -1326,9 +1397,10 @@ iree_status_t iree_hal_amdgpu_physical_device_set_hsa_profiling_enabled(
 
   iree_status_t status = iree_ok_status();
   iree_host_size_t changed_count = 0;
+  const iree_host_size_t host_queue_count =
+      iree_hal_amdgpu_physical_device_host_queue_count(physical_device);
   for (iree_host_size_t i = 0;
-       i < physical_device->host_queue_count && iree_status_is_ok(status);
-       ++i) {
+       i < host_queue_count && iree_status_is_ok(status); ++i) {
     status = iree_hal_amdgpu_host_queue_set_hsa_profiling_enabled(
         &physical_device->host_queues[i], enabled);
     if (iree_status_is_ok(status)) {
@@ -1343,8 +1415,7 @@ iree_status_t iree_hal_amdgpu_physical_device_set_hsa_profiling_enabled(
                       &physical_device->host_queues[i], false));
     }
   } else if (!enabled) {
-    for (iree_host_size_t i = changed_count;
-         i < physical_device->host_queue_count; ++i) {
+    for (iree_host_size_t i = changed_count; i < host_queue_count; ++i) {
       status = iree_status_join(
           status, iree_hal_amdgpu_host_queue_set_hsa_profiling_enabled(
                       &physical_device->host_queues[i], false));
@@ -1421,7 +1492,9 @@ iree_status_t iree_hal_amdgpu_physical_device_trim(
   IREE_ASSERT_ARGUMENT(physical_device);
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  for (iree_host_size_t i = 0; i < physical_device->host_queue_count; ++i) {
+  const iree_host_size_t host_queue_count =
+      iree_hal_amdgpu_physical_device_host_queue_count(physical_device);
+  for (iree_host_size_t i = 0; i < host_queue_count; ++i) {
     physical_device->host_queues[i].base.vtable->trim(
         &physical_device->host_queues[i].base);
   }
