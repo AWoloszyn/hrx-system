@@ -132,8 +132,14 @@ typedef struct iree_hal_amdgpu_physical_device_options_t {
   // Initial block count preallocated for the host block pool.
   iree_host_size_t host_block_pool_initial_capacity;
 
-  // Number of host queues created for this physical device.
+  // Maximum number of host queues available for this physical device.
   iree_host_size_t host_queue_count;
+  // Number of ordinary queues exposed through the generic HAL device spec.
+  iree_host_size_t host_queue_ordinary_count;
+  // Number of host queues initialized when the device frontier is assigned.
+  // This may exceed |host_queue_ordinary_count| when instrumentation requires
+  // queue-local state to be fixed before executable loading.
+  iree_host_size_t host_queue_initial_count;
   // Per-host-queue HSA AQL ring capacity in packets.
   uint32_t host_queue_aql_capacity;
   // Per-host-queue completion/reclaim ring capacity.
@@ -302,6 +308,10 @@ typedef struct iree_hal_amdgpu_physical_device_t {
 
   // Total number of host queue slots allocated in |host_queues|.
   iree_host_size_t host_queue_capacity;
+  // Number of ordinary queues exposed through the generic HAL device spec.
+  iree_host_size_t host_queue_ordinary_count;
+  // Number of host queues initialized when the device frontier is assigned.
+  iree_host_size_t host_queue_initial_count;
   // Per-host-queue HSA AQL ring capacity in packets.
   uint32_t host_queue_aql_capacity;
   // Per-host-queue completion/reclaim ring capacity.
@@ -317,12 +327,24 @@ typedef struct iree_hal_amdgpu_physical_device_t {
   iree_hal_amdgpu_wait_barrier_strategy_t wait_barrier_strategy;
   // Queue-local PM4 timestamp strategy selected from this GPU agent's ISA.
   iree_hal_amdgpu_pm4_timestamp_strategy_t pm4_timestamp_strategy;
+  // True when this agent and its device library support cooperative dispatches
+  // without a separate GWS initialization operation.
+  bool supports_cooperative_dispatch;
 
-  // Number of live host queues initialized in |host_queues|.
-  iree_host_size_t host_queue_count;
+  // Number of live host queues initialized in |host_queues|. Queue activation
+  // stores with release ordering after initialization is complete; readers load
+  // with acquire ordering before accessing the corresponding queue storage.
+  iree_atomic_int32_t host_queue_count;
   // One or more host queues mapped to HSA queues on this physical device.
   iree_hal_amdgpu_host_queue_t host_queues[/*host_queue_count*/];
 } iree_hal_amdgpu_physical_device_t;
+
+// Returns the number of fully initialized host queues.
+static inline iree_host_size_t iree_hal_amdgpu_physical_device_host_queue_count(
+    const iree_hal_amdgpu_physical_device_t* physical_device) {
+  return (iree_host_size_t)iree_atomic_load(&physical_device->host_queue_count,
+                                            iree_memory_order_acquire);
+}
 
 // Returns the aligned heap size in bytes required to store the physical device
 // data structure. Requires that the options have been verified.
@@ -353,8 +375,19 @@ iree_status_t iree_hal_amdgpu_physical_device_assign_frontier(
     iree_async_axis_t base_axis,
     iree_hal_amdgpu_epoch_signal_table_t* epoch_signal_table,
     iree_hal_amdgpu_feedback_state_t* feedback_state,
-    const iree_hal_amdgpu_host_memory_pools_t* host_memory_pools,
     iree_allocator_t host_allocator,
+    iree_hal_amdgpu_physical_device_t* physical_device);
+
+// Initializes host queues through |queue_ordinal|. The caller must serialize
+// this with other queue activation and device teardown operations.
+iree_status_t iree_hal_amdgpu_physical_device_ensure_host_queue(
+    iree_hal_device_t* logical_device, iree_hal_amdgpu_system_t* system,
+    iree_async_proactor_t* proactor,
+    iree_async_frontier_tracker_t* frontier_tracker,
+    iree_async_axis_t base_axis,
+    iree_hal_amdgpu_epoch_signal_table_t* epoch_signal_table,
+    iree_hal_amdgpu_feedback_state_t* feedback_state,
+    iree_host_size_t queue_ordinal, iree_allocator_t host_allocator,
     iree_hal_amdgpu_physical_device_t* physical_device);
 
 // Deinitializes any host queues initialized by assign_frontier.

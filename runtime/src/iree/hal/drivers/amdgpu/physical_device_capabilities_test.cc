@@ -53,6 +53,18 @@ static iree_hal_amdgpu_gfxip_version_t GfxIpFromProcessor(
   return identity.version;
 }
 
+TEST(MemoryGridSyncCapabilitiesTest, SelectsSupportedTargets) {
+  EXPECT_FALSE(iree_hal_amdgpu_gfxip_supports_memory_grid_sync(
+      GfxIpFromProcessor("gfx90a")));
+  EXPECT_FALSE(iree_hal_amdgpu_gfxip_supports_memory_grid_sync(GfxIp(9, 4, 1)));
+  EXPECT_TRUE(iree_hal_amdgpu_gfxip_supports_memory_grid_sync(GfxIp(9, 4, 2)));
+  EXPECT_TRUE(iree_hal_amdgpu_gfxip_supports_memory_grid_sync(GfxIp(9, 5, 0)));
+  EXPECT_TRUE(iree_hal_amdgpu_gfxip_supports_memory_grid_sync(
+      GfxIpFromProcessor("gfx1100")));
+  EXPECT_TRUE(iree_hal_amdgpu_gfxip_supports_memory_grid_sync(
+      GfxIpFromProcessor("gfx1200")));
+}
+
 static hsa_amd_memory_pool_link_info_t LinkInfo(
     hsa_amd_link_info_type_t link_type) {
   hsa_amd_memory_pool_link_info_t link_info = {};

@@ -144,10 +144,20 @@ IREE_ASYNC_FIXED_FRONTIER_TYPE(iree_hal_amdgpu_host_queue_frontier_t,
 #define IREE_HAL_AMDGPU_HOST_QUEUE_DISPATCH_SCRATCH_BINDING_CAPACITY 256u
 
 // Maximum number of operation resources retained by one direct queue_dispatch:
-// the executable, one optional indirect-parameter buffer, plus one resource per
-// direct buffer binding.
+// the executable, one optional indirect-parameter or cooperative-sync buffer,
+// plus one resource per direct buffer binding.
 #define IREE_HAL_AMDGPU_HOST_QUEUE_DISPATCH_SCRATCH_RESOURCE_CAPACITY \
   (2u + IREE_HAL_AMDGPU_HOST_QUEUE_DISPATCH_SCRATCH_BINDING_CAPACITY)
+
+// AMDGPU synchronization state for a cooperative multi-grid dispatch.
+typedef struct iree_hal_amdgpu_cooperative_grid_t {
+  // Device-visible synchronization buffer shared by all grids.
+  iree_hal_buffer_t* synchronization_buffer;
+  // Zero-based ordinal of this grid.
+  uint32_t grid_ordinal;
+  // Number of grids participating in the launch.
+  uint32_t grid_count;
+} iree_hal_amdgpu_cooperative_grid_t;
 
 // Host-driven queue with per-queue epoch signal and wait-backed
 // notification ring. Embeds iree_hal_amdgpu_virtual_queue_t at offset 0.
@@ -188,6 +198,8 @@ typedef struct iree_hal_amdgpu_host_queue_t {
 
   // Hardware AQL queue created via hsa_queue_create. Owned by this queue.
   hsa_queue_t* hardware_queue;
+  // True when |hardware_queue| supports cooperative grid dispatches.
+  bool supports_cooperative_dispatch;
 
   // Cached AQL ring state for zero-indirection packet submission.
   // Initialized from hardware_queue at init time.
@@ -591,6 +603,18 @@ iree_status_t iree_hal_amdgpu_host_queue_copy_buffer(
     iree_device_size_t length, iree_hal_copy_flags_t flags,
     iree_hal_profile_queue_event_type_t profile_event_type);
 
+// Enqueues a cooperative dispatch on a cooperative host queue.
+iree_status_t iree_hal_amdgpu_host_queue_dispatch_cooperative(
+    iree_hal_amdgpu_host_queue_t* queue,
+    const iree_hal_semaphore_list_t wait_semaphore_list,
+    const iree_hal_semaphore_list_t signal_semaphore_list,
+    iree_hal_executable_t* executable,
+    iree_hal_executable_function_t export_ordinal,
+    const iree_hal_dispatch_config_t config, iree_const_byte_span_t constants,
+    const iree_hal_buffer_ref_list_t bindings,
+    const iree_hal_amdgpu_cooperative_grid_t* cooperative_grid,
+    iree_hal_dispatch_flags_t flags);
+
 // Enqueues a driver-owned host action ordered after |wait_semaphore_list|.
 // |action| uses the reclaim-action status ownership contract: OK means the
 // ordering barrier completed, while non-OK is a borrowed queue/device failure
@@ -686,10 +710,10 @@ iree_status_t iree_hal_amdgpu_host_queue_initialize(
     const iree_hal_pool_set_t* default_pool_set, iree_hal_pool_t* default_pool,
     iree_hal_amdgpu_transient_buffer_pool_t* transient_buffer_pool,
     iree_hal_amdgpu_staging_pool_t* staging_pool,
-    iree_host_size_t device_ordinal, uint32_t aql_queue_capacity,
-    uint32_t notification_capacity, uint32_t kernarg_capacity_in_blocks,
-    uint32_t upload_capacity, iree_allocator_t host_allocator,
-    iree_hal_amdgpu_host_queue_t* out_queue);
+    iree_host_size_t device_ordinal, bool supports_cooperative_dispatch,
+    uint32_t aql_queue_capacity, uint32_t notification_capacity,
+    uint32_t kernarg_capacity_in_blocks, uint32_t upload_capacity,
+    iree_allocator_t host_allocator, iree_hal_amdgpu_host_queue_t* out_queue);
 
 // Initializes queue-owned TSAN state.
 //
@@ -744,6 +768,19 @@ iree_host_size_t iree_hal_amdgpu_host_queue_drain_completions_for_waiter(
 // drains only the completed notification entries it observes.
 iree_status_t iree_hal_amdgpu_host_queue_wait_for_setup_epoch(
     iree_hal_amdgpu_host_queue_t* queue, uint64_t epoch);
+
+// Applies an immutable execution-unit mask and opens the queue for a
+// specialized lease. If native configuration fails, restores the default mask
+// before reporting the queue as reusable through |out_queue_reusable|.
+iree_status_t iree_hal_amdgpu_host_queue_begin_execution_lease(
+    iree_hal_amdgpu_host_queue_t* queue, uint32_t mask_bit_count,
+    const uint32_t* mask, bool* out_queue_reusable);
+
+// Closes a specialized queue to new submissions, waits for all committed work
+// to complete, and restores the default execution-unit mask. Deferred work at
+// final release violates the lease contract and leaves the queue quarantined.
+iree_status_t iree_hal_amdgpu_host_queue_end_execution_lease(
+    iree_hal_amdgpu_host_queue_t* queue);
 
 // Enables or disables HSA dispatch timestamp population for this queue.
 //

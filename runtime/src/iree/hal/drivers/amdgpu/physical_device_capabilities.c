@@ -666,6 +666,13 @@ bool iree_hal_amdgpu_gfxip_allows_hdp_kernarg_publication(
          iree_hal_amdgpu_gfxip_is_gfx125x(version);
 }
 
+bool iree_hal_amdgpu_gfxip_supports_memory_grid_sync(
+    iree_hal_amdgpu_gfxip_version_t version) {
+  return (version.major == 9 && version.minor == 4 && version.stepping == 2) ||
+         (version.major == 9 && version.minor == 5 && version.stepping == 0) ||
+         version.major >= 11;
+}
+
 iree_status_t iree_hal_amdgpu_select_cpu_visible_device_coarse_memory(
     const iree_hal_amdgpu_cpu_visible_device_coarse_memory_selection_t*
         selection,
