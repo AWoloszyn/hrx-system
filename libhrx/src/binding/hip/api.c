@@ -36,6 +36,7 @@
 #include "common/tls.h"
 #include "hrx_runtime.h"
 #include "iree/base/threading/call_once.h"
+#include "iree/hal/drivers/amdgpu/api.h"
 
 //===----------------------------------------------------------------------===//
 // Debug logging
@@ -13173,7 +13174,7 @@ static hipError_t iree_hip_launch_kernel(const void* function_address,
   }
   if (!args &&
       !iree_hal_streaming_parameter_info_is_empty(&symbol->parameters)) {
-    iree_hal_streaming_stream_release(stream_obj);
+    iree_hip_resolved_stream_release(&resolved_stream);
     IREE_TRACE_ZONE_END(z0);
     HIP_RETURN_ERROR(hipErrorInvalidValue);
   }
@@ -13921,38 +13922,33 @@ HIPAPI hipError_t hipLaunchCooperativeKernel(const void* function_address,
     HIP_RETURN_ERROR(hipErrorInvalidDeviceFunction);
   }
 
-  iree_hal_streaming_stream_t* stream_obj = NULL;
-  hipError_t result = iree_hip_resolve_registered_stream(stream, &stream_obj);
+  iree_hip_resolved_stream_t resolved_stream = {0};
+  hipError_t result =
+      iree_hip_resolve_registered_stream(stream, &resolved_stream);
   if (result != hipSuccess) {
     IREE_TRACE_ZONE_END(z0);
     HIP_RETURN_ERROR(result);
   }
-  iree_hal_streaming_context_t* context = stream_obj->context;
-  if (!context) {
-    iree_hal_streaming_stream_release(stream_obj);
-    IREE_TRACE_ZONE_END(z0);
-    HIP_RETURN_ERROR(hipErrorContextIsDestroyed);
-  }
+  iree_hal_streaming_context_t* context = resolved_stream.context;
   iree_hal_streaming_symbol_t* symbol = NULL;
   result = iree_hip_resolve_function_symbol(context, function_address, &symbol);
   if (result != hipSuccess) {
-    iree_hal_streaming_stream_release(stream_obj);
+    iree_hip_resolved_stream_release(&resolved_stream);
     IREE_TRACE_ZONE_END(z0);
     HIP_RETURN_ERROR(result);
   }
 
   hipError_t launch_config_result = iree_hip_validate_launch_configuration(
-      stream_obj->context ? stream_obj->context->device_entry : NULL, symbol,
-      grid_dim.x, grid_dim.y, grid_dim.z, block_dim.x, block_dim.y, block_dim.z,
-      shared_memory_bytes);
+      context->device_entry, symbol, grid_dim.x, grid_dim.y, grid_dim.z,
+      block_dim.x, block_dim.y, block_dim.z, shared_memory_bytes);
   if (launch_config_result != hipSuccess) {
     if (launch_config_result == hipErrorInvalidValue &&
-        stream_obj->context->device_entry->max_shared_memory_per_block != 0 &&
+        context->device_entry->max_shared_memory_per_block != 0 &&
         shared_memory_bytes >
-            stream_obj->context->device_entry->max_shared_memory_per_block) {
+            context->device_entry->max_shared_memory_per_block) {
       launch_config_result = hipErrorCooperativeLaunchTooLarge;
     }
-    iree_hal_streaming_stream_release(stream_obj);
+    iree_hip_resolved_stream_release(&resolved_stream);
     IREE_TRACE_ZONE_END(z0);
     HIP_RETURN_ERROR(launch_config_result);
   }
@@ -13960,8 +13956,8 @@ HIPAPI hipError_t hipLaunchCooperativeKernel(const void* function_address,
   result = hipModuleLaunchCooperativeKernel(
       (hipFunction_t)iree_hal_streaming_symbol_tag(symbol), grid_dim.x,
       grid_dim.y, grid_dim.z, block_dim.x, block_dim.y, block_dim.z,
-      shared_memory_bytes, (hipStream_t)stream_obj, kernel_params);
-  iree_hal_streaming_stream_release(stream_obj);
+      shared_memory_bytes, stream, kernel_params);
+  iree_hip_resolved_stream_release(&resolved_stream);
   IREE_TRACE_ZONE_END(z0);
   return result;
 }
@@ -13989,28 +13985,32 @@ static hipError_t iree_hip_validate_cooperative_multi_device_count(
 }
 
 static hipError_t iree_hip_validate_cooperative_multi_device_stream(
-    hipStream_t stream, iree_hal_streaming_stream_t** out_stream) {
-  *out_stream = NULL;
+    hipStream_t stream, iree_hip_resolved_stream_t* out_resolved_stream) {
+  memset(out_resolved_stream, 0, sizeof(*out_resolved_stream));
   if (!stream || stream == hipStreamLegacy) {
     return hipErrorInvalidResourceHandle;
   }
 
-  hipError_t result = iree_hip_resolve_registered_stream(stream, out_stream);
+  hipError_t result =
+      iree_hip_resolve_registered_stream(stream, out_resolved_stream);
   if (result != hipSuccess) return result;
 
-  iree_slim_mutex_lock(&(*out_stream)->mutex);
+  iree_hal_streaming_stream_t* stream_obj = out_resolved_stream->stream;
+  iree_slim_mutex_lock(&stream_obj->mutex);
   const iree_hal_streaming_capture_status_t capture_status =
-      (*out_stream)->capture_status;
+      stream_obj->capture_status;
   if (capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE) {
     iree_hal_streaming_stream_set_capture_status(
-        *out_stream, IREE_HAL_STREAMING_CAPTURE_STATUS_INVALIDATED);
+        stream_obj, IREE_HAL_STREAMING_CAPTURE_STATUS_INVALIDATED);
   }
-  iree_slim_mutex_unlock(&(*out_stream)->mutex);
+  iree_slim_mutex_unlock(&stream_obj->mutex);
 
   if (capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE) {
+    iree_hip_resolved_stream_release(out_resolved_stream);
     return hipErrorStreamCaptureUnsupported;
   }
   if (capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_INVALIDATED) {
+    iree_hip_resolved_stream_release(out_resolved_stream);
     return hipErrorStreamCaptureInvalidated;
   }
   return hipSuccess;
@@ -14037,9 +14037,9 @@ static hipError_t iree_hip_validate_cooperative_launch_capacity(
 }
 
 typedef struct iree_hip_cooperative_multi_device_launch_t {
-  // Retained stream receiving this grid's dispatch.
-  iree_hal_streaming_stream_t* stream;
-  // Function symbol resolved in |stream|'s device context.
+  // Retained stream and context receiving this grid's dispatch.
+  iree_hip_resolved_stream_t resolved_stream;
+  // Function symbol resolved in |resolved_stream.context|.
   iree_hal_streaming_symbol_t* symbol;
   // Streaming dispatch parameters for this grid.
   iree_hal_streaming_dispatch_params_t params;
@@ -14086,7 +14086,7 @@ static iree_status_t iree_hip_cooperative_sync_allocation_create(
   allocation->host_allocator = context->host_allocator;
 
   const iree_hal_buffer_params_t params = {
-      .usage = IREE_HAL_BUFFER_USAGE_DISPATCH_STORAGE |
+      .usage = IREE_HAL_BUFFER_USAGE_STORAGE |
                IREE_HAL_BUFFER_USAGE_MAPPING_SCOPED |
                IREE_HAL_BUFFER_USAGE_SHARING_CONCURRENT,
       .access = IREE_HAL_MEMORY_ACCESS_READ | IREE_HAL_MEMORY_ACCESS_WRITE,
@@ -14136,7 +14136,7 @@ static iree_status_t iree_hip_cooperative_sync_buffer_import(
   *out_buffer = NULL;
 
   iree_hal_buffer_params_t params = {
-      .usage = IREE_HAL_BUFFER_USAGE_DISPATCH_STORAGE |
+      .usage = IREE_HAL_BUFFER_USAGE_STORAGE |
                IREE_HAL_BUFFER_USAGE_SHARING_CONCURRENT,
       .access = IREE_HAL_MEMORY_ACCESS_READ | IREE_HAL_MEMORY_ACCESS_WRITE,
       .type = IREE_HAL_MEMORY_TYPE_HOST_LOCAL |
@@ -14175,7 +14175,8 @@ static hipError_t iree_hip_launch_cooperative_multi_device(
     for (iree_host_size_t i = 0; i < launch_count && result == hipSuccess;
          ++i) {
       result = iree_status_to_hip_result(
-          iree_hal_streaming_stream_synchronize(launches[i].stream));
+          iree_hal_streaming_stream_synchronize(
+              launches[i].resolved_stream.stream));
     }
   }
 
@@ -14184,12 +14185,13 @@ static hipError_t iree_hip_launch_cooperative_multi_device(
   if (result == hipSuccess && launch_count > 1) {
     result =
         iree_status_to_hip_result(iree_hip_cooperative_sync_allocation_create(
-            launches[0].stream->context, &sync_allocation));
+            launches[0].resolved_stream.context, &sync_allocation));
   }
   for (iree_host_size_t i = 0;
        i < launch_count && result == hipSuccess && sync_allocation; ++i) {
     result = iree_status_to_hip_result(iree_hip_cooperative_sync_buffer_import(
-        launches[i].stream->context, sync_allocation, &sync_buffers[i]));
+        launches[i].resolved_stream.context, sync_allocation,
+        &sync_buffers[i]));
   }
 
   for (iree_host_size_t i = 0; i < launch_count && result == hipSuccess; ++i) {
@@ -14201,11 +14203,11 @@ static hipError_t iree_hip_launch_cooperative_multi_device(
       launch->params.cooperative_grid_ordinal = (uint32_t)i;
       launch->params.cooperative_grid_count = (uint32_t)launch_count;
     }
-    result = iree_hip_order_legacy_stream_dependencies(launch->stream->context,
-                                                       launch->stream);
+    result = iree_hip_order_legacy_stream_dependencies(
+        launch->resolved_stream.context, launch->resolved_stream.stream);
     if (result == hipSuccess) {
       result = iree_status_to_hip_result(iree_hal_streaming_launch_kernel(
-          launch->symbol, &launch->params, launch->stream));
+          launch->symbol, &launch->params, launch->resolved_stream.stream));
     }
   }
 
@@ -14217,7 +14219,8 @@ static hipError_t iree_hip_launch_cooperative_multi_device(
   if ((flags & hipCooperativeLaunchMultiDeviceNoPostSync) == 0) {
     for (iree_host_size_t i = 0; i < launch_count; ++i) {
       hipError_t synchronize_result = iree_status_to_hip_result(
-          iree_hal_streaming_stream_synchronize(launches[i].stream));
+          iree_hal_streaming_stream_synchronize(
+              launches[i].resolved_stream.stream));
       if (result == hipSuccess) result = synchronize_result;
     }
   }
@@ -14258,13 +14261,13 @@ HIPAPI hipError_t hipLaunchCooperativeKernelMultiDevice(
       }
     }
 
-    iree_hal_streaming_stream_t* stream = NULL;
+    iree_hip_resolved_stream_t resolved_stream = {0};
     result = iree_hip_validate_cooperative_multi_device_stream(launch->stream,
-                                                               &stream);
+                                                               &resolved_stream);
     if (result == hipSuccess) {
       for (int j = 0; j < i; ++j) {
-        if (launches[j].stream->context->device_ordinal ==
-            stream->context->device_ordinal) {
+        if (launches[j].resolved_stream.context->device_ordinal ==
+            resolved_stream.context->device_ordinal) {
           result = hipErrorInvalidDevice;
           break;
         }
@@ -14273,24 +14276,24 @@ HIPAPI hipError_t hipLaunchCooperativeKernelMultiDevice(
 
     iree_hal_streaming_symbol_t* symbol = NULL;
     if (result == hipSuccess) {
-      result = iree_hip_resolve_function_symbol(stream->context, launch->func,
-                                                &symbol);
+      result = iree_hip_resolve_function_symbol(
+          resolved_stream.context, launch->func, &symbol);
     }
     if (result == hipSuccess) {
       result = iree_hip_validate_launch_configuration(
-          stream->context->device_entry, symbol, launch->gridDim.x,
+          resolved_stream.context->device_entry, symbol, launch->gridDim.x,
           launch->gridDim.y, launch->gridDim.z, launch->blockDim.x,
           launch->blockDim.y, launch->blockDim.z, launch->sharedMem);
     }
     if (result == hipSuccess) {
       result = iree_hip_validate_cooperative_launch_capacity(
-          stream->context->device_entry, symbol, launch->gridDim.x,
+          resolved_stream.context->device_entry, symbol, launch->gridDim.x,
           launch->gridDim.y, launch->gridDim.z, launch->blockDim.x,
           launch->blockDim.y, launch->blockDim.z, launch->sharedMem);
     }
     if (result == hipSuccess) {
       launches[i] = (iree_hip_cooperative_multi_device_launch_t){
-          .stream = stream,
+          .resolved_stream = resolved_stream,
           .symbol = symbol,
           .params =
               {
@@ -14306,10 +14309,10 @@ HIPAPI hipError_t hipLaunchCooperativeKernelMultiDevice(
                                 : IREE_HAL_STREAMING_DISPATCH_FLAG_NONE),
               },
       };
+      memset(&resolved_stream, 0, sizeof(resolved_stream));
       ++retained_launch_count;
-    } else {
-      iree_hal_streaming_stream_release(stream);
     }
+    iree_hip_resolved_stream_release(&resolved_stream);
   }
 
   if (result == hipSuccess) {
@@ -14317,7 +14320,7 @@ HIPAPI hipError_t hipLaunchCooperativeKernelMultiDevice(
         launches, (iree_host_size_t)num_devices, flags);
   }
   for (iree_host_size_t i = 0; i < retained_launch_count; ++i) {
-    iree_hal_streaming_stream_release(launches[i].stream);
+    iree_hip_resolved_stream_release(&launches[i].resolved_stream);
   }
   IREE_TRACE_ZONE_END(z0);
   HIP_RETURN_ERROR(result);
@@ -14431,8 +14434,9 @@ static hipError_t iree_hip_module_launch_cooperative_kernel(
     IREE_TRACE_ZONE_END(z0);
     HIP_RETURN_ERROR(dependency_result);
   }
-  status = iree_hal_streaming_launch_kernel(symbol, &params, stream_obj);
-  result =
+  iree_status_t status =
+      iree_hal_streaming_launch_kernel(symbol, &params, stream_obj);
+  hipError_t result =
       iree_status_to_fixed_hip_result(status, hipErrorInvalidConfiguration);
   iree_hip_resolved_stream_release(&resolved_stream);
   if (result != hipSuccess) {
@@ -14485,13 +14489,13 @@ HIPAPI hipError_t hipModuleLaunchCooperativeKernelMultiDevice(
       }
     }
 
-    iree_hal_streaming_stream_t* stream = NULL;
+    iree_hip_resolved_stream_t resolved_stream = {0};
     result = iree_hip_validate_cooperative_multi_device_stream(launch->hStream,
-                                                               &stream);
+                                                               &resolved_stream);
     if (result == hipSuccess) {
       for (unsigned int j = 0; j < i; ++j) {
-        if (launches[j].stream->context->device_ordinal ==
-            stream->context->device_ordinal) {
+        if (launches[j].resolved_stream.context->device_ordinal ==
+            resolved_stream.context->device_ordinal) {
           result = hipErrorInvalidDevice;
           break;
         }
@@ -14506,25 +14510,25 @@ HIPAPI hipError_t hipModuleLaunchCooperativeKernelMultiDevice(
       symbol = iree_hal_streaming_symbol_untag(launch->function);
       if (!symbol || symbol->type != IREE_HAL_STREAMING_SYMBOL_TYPE_FUNCTION) {
         result = hipErrorInvalidHandle;
-      } else if (symbol->module->context != stream->context) {
+      } else if (symbol->module->context != resolved_stream.context) {
         result = hipErrorInvalidDevice;
       }
     }
     if (result == hipSuccess) {
       result = iree_hip_validate_launch_configuration(
-          stream->context->device_entry, symbol, launch->gridDimX,
+          resolved_stream.context->device_entry, symbol, launch->gridDimX,
           launch->gridDimY, launch->gridDimZ, launch->blockDimX,
           launch->blockDimY, launch->blockDimZ, launch->sharedMemBytes);
     }
     if (result == hipSuccess) {
       result = iree_hip_validate_cooperative_launch_capacity(
-          stream->context->device_entry, symbol, launch->gridDimX,
+          resolved_stream.context->device_entry, symbol, launch->gridDimX,
           launch->gridDimY, launch->gridDimZ, launch->blockDimX,
           launch->blockDimY, launch->blockDimZ, launch->sharedMemBytes);
     }
     if (result == hipSuccess) {
       launches[i] = (iree_hip_cooperative_multi_device_launch_t){
-          .stream = stream,
+          .resolved_stream = resolved_stream,
           .symbol = symbol,
           .params =
               {
@@ -14540,10 +14544,10 @@ HIPAPI hipError_t hipModuleLaunchCooperativeKernelMultiDevice(
                                 : IREE_HAL_STREAMING_DISPATCH_FLAG_NONE),
               },
       };
+      memset(&resolved_stream, 0, sizeof(resolved_stream));
       ++retained_launch_count;
-    } else {
-      iree_hal_streaming_stream_release(stream);
     }
+    iree_hip_resolved_stream_release(&resolved_stream);
   }
 
   if (result == hipSuccess) {
@@ -14551,7 +14555,7 @@ HIPAPI hipError_t hipModuleLaunchCooperativeKernelMultiDevice(
         iree_hip_launch_cooperative_multi_device(launches, num_devices, flags);
   }
   for (iree_host_size_t i = 0; i < retained_launch_count; ++i) {
-    iree_hal_streaming_stream_release(launches[i].stream);
+    iree_hip_resolved_stream_release(&launches[i].resolved_stream);
   }
   IREE_TRACE_ZONE_END(z0);
   HIP_RETURN_ERROR(result);

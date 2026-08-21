@@ -127,7 +127,7 @@ iree_hal_amdgpu_host_queue_validate_cooperative_grid_config(
           IREE_HAL_MEMORY_TYPE_HOST_COHERENT));
   IREE_RETURN_IF_ERROR(iree_hal_buffer_validate_usage(
       iree_hal_buffer_allowed_usage(cooperative_grid->synchronization_buffer),
-      IREE_HAL_BUFFER_USAGE_DISPATCH_STORAGE |
+      IREE_HAL_BUFFER_USAGE_STORAGE |
           IREE_HAL_BUFFER_USAGE_SHARING_CONCURRENT));
   IREE_RETURN_IF_ERROR(iree_hal_buffer_validate_access(
       iree_hal_buffer_allowed_access(cooperative_grid->synchronization_buffer),

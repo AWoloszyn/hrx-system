@@ -10,6 +10,7 @@
 #include "common/fat_binary.h"
 #include "common/function_attributes.h"
 #include "common/hrx_bridge.h"
+#include "common/stream.h"
 #include "iree/async/frontier_tracker.h"
 #include "iree/async/util/proactor_pool.h"
 #include "iree/base/api.h"
