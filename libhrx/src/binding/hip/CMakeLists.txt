@@ -168,6 +168,23 @@ iree_cc_library(
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/../../libhrx>"
   PUBLIC
 )
+
+iree_cc_library(
+  NAME
+    spirv_linker_compiler
+  HDRS
+    "spirv_linker_compiler.h"
+  SRCS
+    "spirv_linker_compiler.c"
+  DEPS
+    iree::base
+    iree::base::internal
+    libhrx_defs
+  INCLUDES
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>"
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/../..>"
+  PUBLIC
+)
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -187,16 +204,20 @@ iree_cc_library(
     "api.c"
     "api_metadata.c"
     "dynamic_logging.c"
+    "library.c"
+    "linker.c"
     "vmm.c"
   DEPS
     ::blocking_printf_provider
     ::handle_registry
     ::launch_params
     ::legacy_launch_state
+    ::spirv_linker_compiler
     iree::base
     iree::base::internal
     iree::base::threading
     iree::hal
+    iree::hal::drivers::amdgpu
     libhrx::src::binding::common
     libhrx_defs
   SHARED
