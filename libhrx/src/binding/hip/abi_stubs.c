@@ -66,7 +66,6 @@ typedef struct hipLaunchConfig_st hipLaunchConfig_t;
 typedef struct hipLaunchParams_t hipLaunchParams;
 typedef struct hipLibrary_st* hipLibrary_t;
 typedef struct ihipLinkState_t* hipLinkState_t;
-typedef struct hipMemcpy3DPeerParms hipMemcpy3DPeerParms;
 typedef enum hipMemcpyFlags {
   hipMemcpyFlagDefault = 0x0,
   hipMemcpyFlagPreferOverlapWithCompute = 0x1,
@@ -836,16 +835,6 @@ HIPAPI hipError_t hipExtDisableLogging(void) { return hipErrorNotSupported; }
 
 HIPAPI hipError_t hipExtEnableLogging(void) { return hipErrorNotSupported; }
 
-HIPAPI hipError_t hipExtGetLinkTypeAndHopCount(int device1, int device2,
-                                               uint32_t* linktype,
-                                               uint32_t* hopcount) {
-  (void)device1;
-  (void)device2;
-  (void)linktype;
-  (void)hopcount;
-  return hipErrorNotSupported;
-}
-
 HIPAPI hipError_t hipExtLaunchMultiKernelMultiDevice(
     hipLaunchParams* launchParamsList, int numDevices, unsigned int flags) {
   (void)launchParamsList;
@@ -1465,18 +1454,6 @@ HIPAPI hipError_t hipMemcpy3DBatchAsync(size_t numOps,
     }
   }
   return hipSuccess;
-}
-
-HIPAPI hipError_t hipMemcpy3DPeer(hipMemcpy3DPeerParms* p) {
-  (void)p;
-  return hipErrorNotSupported;
-}
-
-HIPAPI hipError_t hipMemcpy3DPeerAsync(hipMemcpy3DPeerParms* p,
-                                       hipStream_t stream) {
-  (void)p;
-  (void)stream;
-  return hipErrorNotSupported;
 }
 
 HIPAPI hipError_t hipMemcpyBatchAsync(void** dsts, void** srcs, size_t* sizes,
