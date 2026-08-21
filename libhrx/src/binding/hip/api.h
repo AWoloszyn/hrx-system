@@ -441,6 +441,9 @@ typedef enum hipLimit_t {
   hipLimitDevRuntimePendingLaunchCount = 0x04,
   hipLimitMaxL2FetchGranularity = 0x05,
   hipLimitPersistingL2CacheSize = 0x06,
+  hipExtLimitScratchMin = 0x1000,
+  hipExtLimitScratchMax = 0x1001,
+  hipExtLimitScratchCurrent = 0x1002,
   hipLimitRange
 } hipLimit_t;
 
@@ -1561,6 +1564,18 @@ HIPAPI const char* hipKernelNameRefByPtr(const void* hostFunction,
                                          hipStream_t stream);
 
 // Execution control
+HIPAPI hipError_t hipGetFuncBySymbol(hipFunction_t* functionPtr,
+                                     const void* symbolPtr);
+HIPAPI hipError_t hipConfigureCall(dim3 gridDim, dim3 blockDim,
+                                   size_t sharedMem, hipStream_t stream);
+HIPAPI hipError_t __hipPushCallConfiguration(dim3 gridDim, dim3 blockDim,
+                                             size_t sharedMem,
+                                             hipStream_t stream);
+HIPAPI hipError_t __hipPopCallConfiguration(dim3* gridDim, dim3* blockDim,
+                                            size_t* sharedMem,
+                                            hipStream_t* stream);
+HIPAPI hipError_t hipSetupArgument(const void* arg, size_t size, size_t offset);
+HIPAPI hipError_t hipLaunchByPtr(const void* func);
 HIPAPI hipError_t hipLaunchKernel(const void* function_address, dim3 numBlocks,
                                   dim3 dimBlocks, void** args,
                                   size_t sharedMemBytes, hipStream_t stream);
