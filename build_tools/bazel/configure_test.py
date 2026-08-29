@@ -275,7 +275,7 @@ class ConfigureBazelTest(unittest.TestCase):
         config = self.configure_bazel.generate_config(args)
 
         self.assertIn(
-            "build --//loom/config/target:enable=amdgpu,llvmir,spirv,x86",
+            "build --//loom/config/target:enable=amdgpu,llvmir,spirv,xdna,x86",
             config,
         )
         self.assertIn("build --//loom/config/execute:enable=iree_hal", config)
@@ -292,7 +292,7 @@ class ConfigureBazelTest(unittest.TestCase):
 
                 self.assertIn(
                     "build --//loom/config/target:enable="
-                    f"amdgpu,llvmir,spirv,{target},x86",
+                    f"amdgpu,llvmir,spirv,{target},xdna,x86",
                     config,
                 )
                 self.assertIn("build --//loom/config/execute:enable=iree_hal", config)
@@ -307,7 +307,7 @@ class ConfigureBazelTest(unittest.TestCase):
         config = self.configure_bazel.generate_config(args)
 
         self.assertIn(
-            "build --//loom/config/target:enable=amdgpu,llvmir,spirv,vm,x86",
+            "build --//loom/config/target:enable=amdgpu,llvmir,spirv,vm,xdna,x86",
             config,
         )
 
@@ -324,7 +324,7 @@ class ConfigureBazelTest(unittest.TestCase):
         config = self.configure_bazel.generate_config(args)
 
         self.assertIn(
-            "build --//loom/config/target:enable=llvmir,spirv,x86",
+            "build --//loom/config/target:enable=llvmir,spirv,xdna,x86",
             config,
         )
         self.assertIn("build --//loom/config/execute:enable=iree_hal", config)
@@ -335,7 +335,7 @@ class ConfigureBazelTest(unittest.TestCase):
         config = self.configure_bazel.generate_config(args)
 
         self.assertIn(
-            "build --//loom/config/target:enable=amdgpu,llvmir,spirv,x86",
+            "build --//loom/config/target:enable=amdgpu,llvmir,spirv,xdna,x86",
             config,
         )
         self.assertIn("build --//loom/config/execute:enable=", config)
@@ -346,7 +346,7 @@ class ConfigureBazelTest(unittest.TestCase):
         config = self.configure_bazel.generate_config(args)
 
         self.assertIn(
-            "build --//loom/config/target:enable=amdgpu,llvmir,spirv,x86",
+            "build --//loom/config/target:enable=amdgpu,llvmir,spirv,xdna,x86",
             config,
         )
         self.assertIn("build --//loom/config/execute:enable=iree_hal", config)
