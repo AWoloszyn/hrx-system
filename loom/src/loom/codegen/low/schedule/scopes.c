@@ -38,9 +38,10 @@ static iree_status_t loom_low_schedule_add_order_dependency(
   if (producer == LOOM_LOW_SCHEDULE_NODE_NONE) {
     return iree_ok_status();
   }
-  return loom_low_schedule_add_dependency(state, producer, consumer,
-                                          LOOM_LOW_SCHEDULE_DEPENDENCY_ORDER,
-                                          UINT32_MAX);
+  return loom_low_schedule_add_dependency(
+      state, producer, consumer, LOOM_LOW_SCHEDULE_DEPENDENCY_ORDER,
+      LOOM_LOW_ID_NONE, loom_low_schedule_dependency_endpoint_none(),
+      loom_low_schedule_dependency_endpoint_none());
 }
 
 static iree_status_t loom_low_schedule_phase_add_member(

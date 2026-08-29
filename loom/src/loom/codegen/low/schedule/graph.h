@@ -15,12 +15,24 @@
 extern "C" {
 #endif
 
-// Appends an ordering edge, omitting self edges and consecutive duplicates.
+// A dependency endpoint without a descriptor attachment or timing event.
+static inline loom_low_schedule_dependency_endpoint_t
+loom_low_schedule_dependency_endpoint_none(void) {
+  return (loom_low_schedule_dependency_endpoint_t){
+      .attachment_index = LOOM_LOW_ID_NONE,
+      .timing_event_id = LOOM_LOW_TIMING_EVENT_NONE,
+      .attachment_kind = LOOM_LOW_SCHEDULE_DEPENDENCY_ATTACHMENT_NONE,
+  };
+}
+
+// Appends a dependency edge, omitting self edges and consecutive duplicates.
 // Allocation and representational capacity failures are returned as status.
 iree_status_t loom_low_schedule_add_dependency(
     loom_low_schedule_build_state_t* state, uint32_t producer_node,
     uint32_t consumer_node, loom_low_schedule_dependency_kind_t kind,
-    uint32_t operand_index);
+    uint16_t value_operand_index,
+    loom_low_schedule_dependency_endpoint_t producer_endpoint,
+    loom_low_schedule_dependency_endpoint_t consumer_endpoint);
 
 iree_status_t loom_low_schedule_fill_nodes(
     loom_low_schedule_build_state_t* state);
