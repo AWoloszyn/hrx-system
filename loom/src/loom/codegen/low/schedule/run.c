@@ -718,6 +718,13 @@ static bool loom_low_schedule_node_is_source_order_boundary(
                           LOOM_LOW_SCHEDULE_NODE_FLAG_SOURCE_ORDER_BOUNDARY);
 }
 
+static bool loom_low_schedule_node_has_zero_issue_width(
+    const loom_low_schedule_node_t* node) {
+  return iree_any_bit_set(node->flags,
+                          LOOM_LOW_SCHEDULE_NODE_FLAG_ZERO_ISSUE_WIDTH) ||
+         loom_traits_are_compile_time_only(node->traits);
+}
+
 // Returns the exclusive end of the next independently reorderable source
 // range. Boundary nodes occupy one-node ranges so every earlier range is fully
 // scheduled before the boundary and every later range begins after it.
@@ -1381,9 +1388,9 @@ static iree_status_t loom_low_schedule_run_list_scheduler(
       // Compile-time controls remain visible in the schedule, but cannot hide
       // latency or satisfy an instruction-distance hazard by occupying a slot.
       if (scheduled_in_block < block_record->node_count &&
-          !loom_traits_are_compile_time_only(chosen->traits) &&
           state->options->strategy !=
-              LOOM_LOW_SCHEDULE_STRATEGY_RESOURCE_STALL) {
+              LOOM_LOW_SCHEDULE_STRATEGY_RESOURCE_STALL &&
+          !loom_low_schedule_node_has_zero_issue_width(chosen)) {
         if (state->current_issue_cycle == UINT32_MAX) {
           return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                                   "low schedule issue cycle overflows");
@@ -1393,9 +1400,9 @@ static iree_status_t loom_low_schedule_run_list_scheduler(
       if (scheduled_in_range == range_end - range_start) {
         range_start = range_end;
         if (range_start < block_node_end) {
-          if (!loom_traits_are_compile_time_only(chosen->traits) &&
-              state->options->strategy ==
-                  LOOM_LOW_SCHEDULE_STRATEGY_RESOURCE_STALL) {
+          if (state->options->strategy ==
+                  LOOM_LOW_SCHEDULE_STRATEGY_RESOURCE_STALL &&
+              !loom_low_schedule_node_has_zero_issue_width(chosen)) {
             if (state->current_issue_cycle == UINT32_MAX) {
               return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                                       "low schedule issue cycle overflows");
