@@ -29,7 +29,6 @@ from loom.assembly import (
     BindingList,
     BlockArgs,
     BlockRef,
-    Clause,
     FormatElement,
     FuncArgs,
     KeyRef,
@@ -1089,12 +1088,6 @@ low_op = Op(
     attrs=[
         AttrDef("descriptor", "scoped_enum"),
         AttrDef("attrs", "dict", optional=True),
-        AttrDef(
-            "memory_access",
-            "i64_array",
-            optional=True,
-            doc=("Versioned source-derived memory access summary retained for final scheduling."),
-        ),
     ],
     results=[Result("results", REGISTER, variadic=True)],
     traits=[UNKNOWN_EFFECTS],
@@ -1106,10 +1099,6 @@ low_op = Op(
         Refs("operands"),
         RPAREN,
         AttrDict("attrs"),
-        OptionalGroup(
-            [Clause("memory_access", Attr("memory_access"))],
-            anchor="memory_access",
-        ),
         COLON,
         LPAREN,
         TypesOf("operands"),
