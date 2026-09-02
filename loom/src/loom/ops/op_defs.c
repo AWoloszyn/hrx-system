@@ -412,6 +412,9 @@ bool loom_op_is_trivially_dead(const loom_module_t* module,
   if (loom_traits_are_convergent(traits)) {
     return false;
   }
+  if (loom_traits_have_observable_effects(traits)) {
+    return false;
+  }
   if (loom_traits_may_write(traits)) {
     return false;
   }
@@ -419,6 +422,9 @@ bool loom_op_is_trivially_dead(const loom_module_t* module,
     return false;
   }
   if (loom_op_regions_have_convergent_effects(op)) {
+    return false;
+  }
+  if (loom_op_regions_have_observable_effects(op)) {
     return false;
   }
   if (loom_op_regions_have_hints(op)) {
@@ -3372,6 +3378,7 @@ static void loom_region_reset_summaries(loom_region_t* region) {
   region->read_effect_count = 0;
   region->write_effect_count = 0;
   region->convergent_effect_count = 0;
+  region->observable_effect_count = 0;
   region->hint_source_count = 0;
   loom_block_t* block = NULL;
   loom_region_for_each_block(region, block) {
