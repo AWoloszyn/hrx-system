@@ -1272,6 +1272,9 @@ static iree_status_t loom_vector_canonicalize_extract_from_load(
   if (!loom_type_is_scalar(result_type)) {
     return iree_ok_status();
   }
+  if (loom_vector_load_memory_flags(source_def_op) != 0) {
+    return iree_ok_status();
+  }
 
   if (source_def_op->result_count != 1) {
     return iree_ok_status();
@@ -1381,8 +1384,8 @@ static iree_status_t loom_vector_canonicalize_extract_from_load(
   loom_value_id_t value_checkpoint = loom_rewriter_value_checkpoint(rewriter);
   loom_op_t* load_op = NULL;
   IREE_RETURN_IF_ERROR(loom_view_load_build(
-      &rewriter->builder, build_flags, view, dynamic_indices,
-      dynamic_index_count, static_indices, access.view_rank,
+      &rewriter->builder, build_flags, /*instance_flags=*/0, view,
+      dynamic_indices, dynamic_index_count, static_indices, access.view_rank,
       cache_policy.cache_scope, cache_policy.cache_temporal, result_type,
       op->location, &load_op));
   IREE_RETURN_IF_ERROR(loom_vector_replace_single_result_with_new_op(
@@ -2527,7 +2530,7 @@ static iree_status_t loom_vector_canonicalize_all_true_masked_memory(
         return iree_ok_status();
       }
       IREE_RETURN_IF_ERROR(loom_vector_load_build(
-          &rewriter->builder, cache_policy.build_flags,
+          &rewriter->builder, cache_policy.build_flags, /*instance_flags=*/0,
           loom_vector_load_mask_view(op), indices.values, indices.count,
           static_indices.i64_array, static_indices.count,
           cache_policy.cache_scope, cache_policy.cache_temporal, result_type,
@@ -2545,7 +2548,7 @@ static iree_status_t loom_vector_canonicalize_all_true_masked_memory(
         return iree_ok_status();
       }
       IREE_RETURN_IF_ERROR(loom_vector_load_build(
-          &rewriter->builder, cache_policy.build_flags,
+          &rewriter->builder, cache_policy.build_flags, /*instance_flags=*/0,
           loom_vector_load_expand_view(op), indices.values, indices.count,
           static_indices.i64_array, static_indices.count,
           cache_policy.cache_scope, cache_policy.cache_temporal, result_type,
@@ -2599,7 +2602,7 @@ static iree_status_t loom_vector_canonicalize_all_true_masked_memory(
       loom_attribute_t static_indices =
           loom_vector_store_mask_static_indices(op);
       IREE_RETURN_IF_ERROR(loom_vector_store_build(
-          &rewriter->builder, cache_policy.build_flags,
+          &rewriter->builder, cache_policy.build_flags, /*instance_flags=*/0,
           loom_vector_store_mask_value(op), loom_vector_store_mask_view(op),
           indices.values, indices.count, static_indices.i64_array,
           static_indices.count, cache_policy.cache_scope,
@@ -2612,7 +2615,7 @@ static iree_status_t loom_vector_canonicalize_all_true_masked_memory(
       loom_attribute_t static_indices =
           loom_vector_store_compress_static_indices(op);
       IREE_RETURN_IF_ERROR(loom_vector_store_build(
-          &rewriter->builder, cache_policy.build_flags,
+          &rewriter->builder, cache_policy.build_flags, /*instance_flags=*/0,
           loom_vector_store_compress_value(op),
           loom_vector_store_compress_view(op), indices.values, indices.count,
           static_indices.i64_array, static_indices.count,
@@ -2766,7 +2769,7 @@ static iree_status_t loom_vector_canonicalize_contiguous_gather_scatter(
       loom_value_slice_t indices = loom_vector_gather_indices(op);
       loom_attribute_t static_indices = loom_vector_gather_static_indices(op);
       IREE_RETURN_IF_ERROR(loom_vector_load_build(
-          &rewriter->builder, cache_policy.build_flags,
+          &rewriter->builder, cache_policy.build_flags, /*instance_flags=*/0,
           loom_vector_gather_view(op), indices.values, indices.count,
           static_indices.i64_array, static_indices.count,
           cache_policy.cache_scope, cache_policy.cache_temporal, shaped_type,
@@ -2794,7 +2797,7 @@ static iree_status_t loom_vector_canonicalize_contiguous_gather_scatter(
       loom_value_slice_t indices = loom_vector_scatter_indices(op);
       loom_attribute_t static_indices = loom_vector_scatter_static_indices(op);
       IREE_RETURN_IF_ERROR(loom_vector_store_build(
-          &rewriter->builder, cache_policy.build_flags,
+          &rewriter->builder, cache_policy.build_flags, /*instance_flags=*/0,
           loom_vector_scatter_value(op), loom_vector_scatter_view(op),
           indices.values, indices.count, static_indices.i64_array,
           static_indices.count, cache_policy.cache_scope,
