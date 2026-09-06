@@ -58,7 +58,9 @@ static iree_status_t loom_aie2p_array_resident_phase_count(
   uint32_t phase_count = 1;
   for (iree_host_size_t i = 0; i < plan->worker_port_count; ++i) {
     const loom_aie2p_array_worker_port_plan_t* port = &plan->worker_ports[i];
-    if (port->worker_index != worker_index) continue;
+    if (port->worker_index != worker_index) {
+      continue;
+    }
     IREE_ASSERT_LT(port->channel_index, plan->channel_count);
     const uint32_t capacity = plan->channels[port->channel_index].capacity;
     IREE_ASSERT_NE(capacity, 0u);
@@ -98,10 +100,17 @@ static const loom_aie2p_array_lock_plan_t* loom_aie2p_array_resident_find_lock(
     const loom_aie2p_array_plan_t* plan,
     const loom_aie2p_array_worker_port_plan_t* port,
     loom_aie2p_array_lock_role_t role) {
+  const loom_aie2p_array_channel_t* channel =
+      &plan->channels[port->channel_index];
+  const loom_aie2p_array_endpoint_direction_t ring_endpoint_direction =
+      channel->transport == LOOM_AIE2P_ARRAY_CHANNEL_TRANSPORT_NEIGHBOR_MEMORY
+          ? LOOM_AIE2P_ARRAY_ENDPOINT_DIRECTION_SEND
+          : port->direction;
   const loom_aie2p_array_lock_plan_t* result = NULL;
   for (iree_host_size_t i = 0; i < plan->lock_count; ++i) {
     const loom_aie2p_array_lock_plan_t* lock = &plan->locks[i];
     if (lock->channel_index == port->channel_index &&
+        lock->ring_endpoint_direction == ring_endpoint_direction &&
         lock->consumer_ready == (role == LOOM_AIE2P_ARRAY_LOCK_ROLE_READY)) {
       IREE_ASSERT(result == NULL &&
                   "channel role must have exactly one canonical ring lock");
@@ -317,8 +326,8 @@ static iree_status_t loom_aie2p_array_resident_materialize_resources(
           &builder->plan->channel_slots[slot_index];
       const uint32_t address =
           port->direction == LOOM_AIE2P_ARRAY_ENDPOINT_DIRECTION_SEND
-              ? slot->sender_load_address
-              : slot->receiver_load_address;
+              ? slot->sender_storage.load_address
+              : slot->receiver_storage.load_address;
       IREE_ASSERT_NE(address, UINT32_MAX);
 
       loom_builder_t ir_builder;
