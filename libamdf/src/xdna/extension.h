@@ -8,6 +8,8 @@
 #define AMDF_SRC_XDNA_EXTENSION_H_
 
 #include "amdf/amdf.h"
+#include "libamdf/src/platform/endpoint.h"
+#include "libamdf/src/xdna/endpoint_profile.h"
 
 #ifdef __cplusplus
 extern "C" {

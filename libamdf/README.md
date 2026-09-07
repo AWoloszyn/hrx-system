@@ -33,8 +33,16 @@ constructed for that endpoint. Missing families mean the loaded provider has
 no matching implementation, not that the silicon necessarily lacks the
 capability. `endpoint_query_queue_family_info` copies records cached during
 endpoint open and performs no allocation, system call, device initialization,
-queue creation, retry, sleep, or device wait. The query-only provider currently
-reports no families because it contains no queue constructors.
+queue creation, retry, sleep, or device wait.
+
+A materialized XDNA device can own system-memory backing with one stable XDNA
+virtual address on qualified Windows x86-64 systems. Memory creation publishes
+the address only after mapping and ordinary residency have completed, without
+using the fatal `MustSucceed` residency mode. Explicit host mappings expose
+write-back cached pages and require range-scoped flush or invalidate operations
+when ownership moves between the host and XDNA. Placement classes or properties
+that the provider cannot fully satisfy fail explicitly instead of silently
+degrading.
 
 The build produces two link modes from one implementation:
 

@@ -104,10 +104,27 @@ static const amdf_xdna_endpoint_info_t amdf_xdna_npu6_endpoint_info = {
 };
 
 static const amdf_xdna_endpoint_profile_t amdf_xdna_endpoint_profiles[] = {
-    {AMDF_PCI_XDNA_MODEL_NPU1, &amdf_xdna_npu1_endpoint_info},
-    {AMDF_PCI_XDNA_MODEL_NPU4, &amdf_xdna_npu4_endpoint_info},
-    {AMDF_PCI_XDNA_MODEL_NPU5, &amdf_xdna_npu5_endpoint_info},
-    {AMDF_PCI_XDNA_MODEL_NPU6, &amdf_xdna_npu6_endpoint_info},
+    {
+        .model = AMDF_PCI_XDNA_MODEL_NPU1,
+        .info = &amdf_xdna_npu1_endpoint_info,
+    },
+    {
+        .model = AMDF_PCI_XDNA_MODEL_NPU4,
+        .info = &amdf_xdna_npu4_endpoint_info,
+    },
+    {
+        .model = AMDF_PCI_XDNA_MODEL_NPU5,
+        .info = &amdf_xdna_npu5_endpoint_info,
+        .transaction =
+            {
+                .device_generation = 4,
+                .memory_tile_row_count = 1,
+            },
+    },
+    {
+        .model = AMDF_PCI_XDNA_MODEL_NPU6,
+        .info = &amdf_xdna_npu6_endpoint_info,
+    },
 };
 
 const amdf_xdna_endpoint_profile_t* amdf_xdna_endpoint_profile_select(

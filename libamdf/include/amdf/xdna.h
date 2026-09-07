@@ -65,9 +65,7 @@ enum amdf_xdna_scheduling_mode_bits_e {
 
 /// Immutable compiler target and context-admission properties of one endpoint.
 ///
-/// This record describes an exact hardware/compiler profile. It does not imply
-/// that any queue publication mechanism or executable format is available;
-/// those capabilities belong to later queue-family and program queries.
+/// This record describes an exact hardware/compiler profile.
 typedef struct amdf_xdna_endpoint_info_t {
   /// Must be `AMDF_STRUCTURE_TYPE_XDNA_ENDPOINT_INFO`.
   amdf_structure_type_t type;

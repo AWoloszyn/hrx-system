@@ -27,6 +27,8 @@ static_assert(offsetof(amdf_xdna_device_info_t, reset_epoch) == 32);
 static_assert(offsetof(amdf_xdna_device_info_t, columns) == 48);
 static_assert(offsetof(amdf_xdna_device_info_t, row_count) == 60);
 static_assert(sizeof(amdf_xdna_device_info_t) == 64);
+static_assert(offsetof(amdf_xdna_endpoint_info_t, target_id) == 72);
+static_assert(sizeof(amdf_xdna_endpoint_info_t) == 136);
 static_assert(offsetof(amdf_xdna_api_t, device_query_info) +
                   sizeof(amdf_xdna_api_t::device_query_info) ==
               sizeof(amdf_xdna_api_t));

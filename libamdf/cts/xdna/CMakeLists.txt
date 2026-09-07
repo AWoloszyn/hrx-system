@@ -14,6 +14,8 @@ iree_cc_library(
   NAME
     xdna_tests
   SRCS
+    "memory_test.cc"
+    "xdna_device_fixture.h"
     "xdna_extension_test.cc"
   DEPS
     amdf::headers

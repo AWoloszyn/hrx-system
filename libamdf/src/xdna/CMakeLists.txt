@@ -30,15 +30,20 @@ iree_cc_library(
     device
   HDRS
     "device.h"
+    "memory.h"
   SRCS
     "device.c"
+    "memory.c"
   DEPS
     ::endpoint_profile
     amdf::headers
     libamdf::src::device
     libamdf::src::endpoint
+    libamdf::src::host_mapping
+    libamdf::src::memory
     libamdf::src::structure
     libamdf::src::xdna::umd::device
+    libamdf::src::xdna::umd::memory
   PUBLIC
 )
 endif()
@@ -56,6 +61,7 @@ iree_cc_library(
     ::endpoint_profile
     amdf::headers
     libamdf::src::endpoint
+    libamdf::src::platform
     libamdf::src::structure
   PUBLIC
 )

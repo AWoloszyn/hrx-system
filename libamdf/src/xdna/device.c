@@ -13,6 +13,7 @@
 #include "libamdf/src/endpoint.h"
 #include "libamdf/src/structure.h"
 #include "libamdf/src/xdna/endpoint_profile.h"
+#include "libamdf/src/xdna/memory.h"
 #include "libamdf/src/xdna/umd/device.h"
 
 typedef struct amdf_xdna_device_t {
@@ -76,6 +77,7 @@ static amdf_status_t amdf_xdna_device_destroy_native(
 }
 
 static const amdf_device_vtable_t amdf_xdna_device_vtable = {
+    .memory_create = amdf_xdna_memory_create,
     .destroy_native = amdf_xdna_device_destroy_native,
 };
 
@@ -161,3 +163,12 @@ amdf_status_t AMDF_CALL amdf_xdna_device_query_info(
   out_info->next = next;
   return AMDF_STATUS_OK;
 }
+
+amdf_xdna_umd_device_t* amdf_xdna_device_get_umd(amdf_device_t* device) {
+  return ((amdf_xdna_device_t*)device)->umd;
+}
+
+uint64_t amdf_xdna_device_query_reset_epoch(const amdf_device_t* device) {
+  return ((const amdf_xdna_device_t*)device)->info.reset_epoch;
+}
+

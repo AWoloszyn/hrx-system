@@ -10,24 +10,8 @@
 #include <stdlib.h>
 
 #include "libamdf/src/platform/windows/endpoint.h"
+#include "libamdf/src/xdna/umd/mcdm/device.h"
 #include "libamdf/src/xdna/umd/mcdm/legacy_context.h"
-
-struct amdf_xdna_umd_device_t {
-  // KMT table borrowed from the endpoint's platform instance.
-  const amdf_kmt_api_t* kmt;
-  // Logical KMT device owning paging and execution state.
-  D3DKMT_HANDLE device;
-  // Paging queue owned by this logical device.
-  D3DKMT_HANDLE paging_queue;
-  // Synchronization object owned by the paging queue.
-  D3DKMT_HANDLE paging_sync_object;
-  // CPU mapping of the paging queue's monitored fence.
-  const volatile uint64_t* paging_fence;
-  // Program-independent XDNA context and address domain.
-  D3DKMT_HANDLE context;
-  // Driver-returned command aperture cookie used by prepared commands.
-  uint32_t command_aperture_cookie;
-};
 
 static amdf_status_t amdf_windows_xdna_query_legacy_context_abi(
     const amdf_platform_endpoint_t* endpoint) {
@@ -169,9 +153,6 @@ amdf_status_t amdf_xdna_umd_device_create(
     } else {
       status = amdf_windows_xdna_legacy_context_query_command_aperture_cookie(
           context_data, context_data_size, &device->command_aperture_cookie);
-      if (amdf_status_is_ok(status) && device->command_aperture_cookie == 0) {
-        status = amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
-      }
     }
   }
   free(context_data);

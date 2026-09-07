@@ -23,14 +23,23 @@ amdf_cc_library(
 
 amdf_cc_library(
     name = "device",
-    srcs = ["device.c"],
-    hdrs = ["device.h"],
+    srcs = [
+        "device.c",
+        "memory.c",
+    ],
+    hdrs = [
+        "device.h",
+        "memory.h",
+    ],
     deps = [
         ":endpoint_profile",
         "//libamdf/src:device",
         "//libamdf/src:endpoint",
+        "//libamdf/src:host_mapping",
+        "//libamdf/src:memory",
         "//libamdf/src:structure",
         "//libamdf/src/xdna/umd:device",
+        "//libamdf/src/xdna/umd:memory",
     ],
 )
 
@@ -44,6 +53,7 @@ amdf_cc_library(
         ":endpoint_profile",
         "//libamdf/src:endpoint",
         "//libamdf/src:structure",
+        "//libamdf/src/platform",
     ],
 )
 
@@ -66,3 +76,4 @@ amdf_cc_test(
         "//third_party:google_test_main",
     ],
 )
+
