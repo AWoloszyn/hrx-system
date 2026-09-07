@@ -147,6 +147,9 @@ CPU_RESOURCE_TAG_EXCLUDES = (
 )
 NON_CPU_HAL_DRIVER_CTEST_REGEX = r"^iree/hal/drivers/(amdgpu|vulkan|webgpu)/"
 
+AMDF_BAZEL_TARGETS = ("//libamdf/...",)
+AMDF_BUILD_REQUIREMENT_TAG = "iree-build-requirement=libamdf"
+AMDF_CTEST_REGEX = r"^libamdf/"
 AMDGPU_CMAKE_DRIVER_TARGETS = ("runtime/src/iree/hal/drivers/amdgpu/all",)
 DEFAULT_AMDGPU_TARGET_SELECTOR = "gfx942"
 AMDGPU_BUILD_REQUIREMENT_TAG = "iree-build-requirement=runtime.hal.amdgpu"

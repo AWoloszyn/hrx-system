@@ -441,6 +441,7 @@ def repository_build_steps() -> list[CiStep]:
             enabled_drivers=REPOSITORY_BUILD_HAL_DRIVERS,
             enabled_loom_targets=REPOSITORY_BUILD_LOOM_TARGETS,
             enabled_loom_importers=REPOSITORY_BUILD_LOOM_IMPORTERS,
+            extra_options=("--//libamdf/config:enabled=true",),
         ),
         bazel_build_step("Build repository", ("//...",)),
     ]
@@ -645,6 +646,7 @@ def cmake_repository_build_steps(command_name: str) -> list[CiStep]:
             enabled_loom_importers=REPOSITORY_BUILD_LOOM_IMPORTERS,
             amdgpu_target_selector=None,
             amdgpu_device_binary_mode="prebuilt",
+            extra_options=("-DAMDF_BUILD=ON",),
         ),
         cmake_build_step(command_name, "Build repository"),
         cmake_test_step(
