@@ -86,8 +86,6 @@ uint32_t amdf_extension_query_endpoint_queue_families(
     amdf_queue_family_info_t* out_families) {
   const amdf_endpoint_info_t* endpoint_info =
       amdf_endpoint_get_cached_info(endpoint);
-  amdf_platform_endpoint_t* platform_endpoint =
-      amdf_endpoint_get_platform(endpoint);
   switch (endpoint_info->engine_kind) {
 #if defined(AMDF_HAVE_GPU)
     case AMDF_ENGINE_KIND_GPU: {
@@ -98,7 +96,7 @@ uint32_t amdf_extension_query_endpoint_queue_families(
       }
       return amdf_gpu_extension_query_endpoint_queue_families(
           (const amdf_gpu_endpoint_profile_t*)untyped_profile,
-          platform_endpoint, capacity, out_families);
+          amdf_endpoint_get_platform(endpoint), capacity, out_families);
     }
 #endif  // AMDF_HAVE_GPU
     default:

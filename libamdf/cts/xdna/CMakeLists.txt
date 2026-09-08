@@ -27,18 +27,18 @@ iree_cc_library(
 )
 endif()
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
 amdf_cts_test(
   NAME
     static
   SRCS
+    "${PROJECT_SOURCE_DIR}/libamdf/cts/util/linked_provider.cc"
     "${PROJECT_SOURCE_DIR}/libamdf/cts/util/test_main.cc"
   DEPS
     ::xdna_tests
     amdf::amdf_static
     amdf::headers
     iree::third_party::google_test
-    libamdf::cts::util::linked_provider
     libamdf::cts::util::provider_headers
   LABELS
     "manual"
@@ -47,11 +47,12 @@ amdf_cts_test(
 )
 endif()
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
 amdf_cts_test(
   NAME
     shared
   SRCS
+    "${PROJECT_SOURCE_DIR}/libamdf/cts/util/linked_provider.cc"
     "${PROJECT_SOURCE_DIR}/libamdf/cts/util/test_main.cc"
   DATA
     amdf::amdf
@@ -60,7 +61,6 @@ amdf_cts_test(
     amdf::amdf
     amdf::headers
     iree::third_party::google_test
-    libamdf::cts::util::linked_provider
     libamdf::cts::util::provider_headers
   LABELS
     "manual"
@@ -69,7 +69,7 @@ amdf_cts_test(
 )
 endif()
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
 amdf_cts_test(
   NAME
     dynamic

@@ -32,6 +32,7 @@ amdf_cc_library(
     target_compatible_with = DRM_COMPATIBILITY,
     deps = [
         ":buffer",
+        "//libamdf/src:atomics",
         "//libamdf/src/xdna/umd:device",
     ],
 )
@@ -62,6 +63,16 @@ amdf_cc_library(
         ":device_state",
         "//libamdf/src/platform/linux:host_cache",
         "//libamdf/src/xdna/umd:memory",
+    ],
+)
+
+amdf_cc_library(
+    name = "drm",
+    target_compatible_with = DRM_COMPATIBILITY,
+    visibility = ["//libamdf/src/xdna:__pkg__"],
+    deps = [
+        ":device",
+        ":memory",
     ],
 )
 

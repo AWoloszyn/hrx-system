@@ -7,6 +7,7 @@
 #ifndef AMDF_SRC_XDNA_UMD_DRM_DEVICE_H_
 #define AMDF_SRC_XDNA_UMD_DRM_DEVICE_H_
 
+#include "libamdf/src/atomics.h"
 #include "libamdf/src/xdna/umd/device.h"
 #include "libamdf/src/xdna/umd/drm/buffer.h"
 

@@ -33,6 +33,7 @@ iree_cc_library(
   DEPS
     ::buffer
     amdf::headers
+    libamdf::src::atomics
     libamdf::src::xdna::umd::device
   PUBLIC
 )
@@ -72,6 +73,18 @@ iree_cc_library(
     amdf::headers
     libamdf::src::platform::linux::host_cache
     libamdf::src::xdna::umd::memory
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_library(
+  NAME
+    drm
+  DEPS
+    ::device
+    ::memory
+    amdf::headers
   PUBLIC
 )
 endif()
