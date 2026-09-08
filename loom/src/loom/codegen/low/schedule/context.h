@@ -227,8 +227,6 @@ typedef struct loom_low_schedule_build_state_t {
   loom_liveness_block_order_t* liveness_block_orders;
   // Operation pointers in final scheduled order.
   const loom_op_t** scheduled_ops;
-  // Function-local storage layout accumulated while populating schedule nodes.
-  loom_low_storage_layout_builder_t storage_layout_builder;
   // Authored scope controls collected during the node walk.
   loom_low_schedule_scope_builder_t scope_builder;
   // Scope identities and CFG entry states retained for graph consumers.
