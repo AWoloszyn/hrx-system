@@ -68,6 +68,7 @@ amdf_wkmi_bridge_gpu_kernel_queue_create_info_t MakeCreateInfo() {
   amdf_wkmi_bridge_gpu_kernel_queue_create_info_t info = {};
   info.structure_size = sizeof(info);
   info.device_handle = kDevice;
+  info.command_type = AMDF_WKMI_BRIDGE_GPU_QUEUE_COMMAND_TYPE_PM4;
   return info;
 }
 
