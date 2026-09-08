@@ -103,6 +103,7 @@ amdf_status_t amdf_xdna_umd_device_create(
     free(context_data);
     return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
   }
+  amdf_kmt_device_status_initialize(&device->status);
   device->kmt = &endpoint->instance->kmt;
 
   D3DKMT_CREATEDEVICE create_device = {0};
