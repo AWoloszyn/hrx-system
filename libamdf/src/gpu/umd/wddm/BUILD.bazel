@@ -35,6 +35,18 @@ amdf_cc_library(
 )
 
 amdf_cc_library(
+    name = "kernel_queue",
+    srcs = ["kernel_queue.c"],
+    target_compatible_with = ["@platforms//os:windows"],
+    deps = [
+        ":device_state",
+        "//libamdf/src/gpu/umd:kernel_queue",
+        "//libamdf/src/gpu/umd/wddm/wkmi:adapter",
+        "//libamdf/src/platform/windows:kmt_api",
+    ],
+)
+
+amdf_cc_library(
     name = "device",
     srcs = ["device.c"],
     target_compatible_with = ["@platforms//os:windows"],
@@ -65,6 +77,7 @@ amdf_cc_library(
     deps = [
         ":device",
         ":endpoint_profile",
+        ":kernel_queue",
         ":memory",
     ],
 )

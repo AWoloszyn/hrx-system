@@ -43,14 +43,42 @@ amdf_windows_sidecar_library(
   NAME
     amdf_wkmi_bridge
   SRCS
+    "adapter_state.h"
     "bridge.cc"
     "dxcore_loader_compatibility.cc"
+    "kernel_queue.cc"
+    "kernel_queue.h"
   LINKOPTS
     "gdi32.lib"
   DEPS
     ::bridge_api
     amdf::headers
     iree::third_party::amdf_wkmi
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_test(
+  NAME
+    kernel_queue_test
+  SRCS
+    "adapter_state.h"
+    "kernel_queue.cc"
+    "kernel_queue.h"
+    "kernel_queue_test.cc"
+  COPTS
+    "/MT"
+  DEFINES
+    "_DISABLE_STRING_ANNOTATION"
+    "_DISABLE_VECTOR_ANNOTATION"
+    "_ITERATOR_DEBUG_LEVEL=0"
+  DEPS
+    ::bridge_api
+    amdf::headers
+    iree::third_party::amdf_wkmi
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
 )
 endif()
 

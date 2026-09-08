@@ -14,10 +14,14 @@
 
 static amdf_status_t amdf_gpu_wddm_device_release_native(
     amdf_gpu_umd_device_t* device) {
+  amdf_status_t status = amdf_gpu_wddm_wkmi_adapter_deinitialize(&device->wkmi);
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   if (device->paging_queue != 0) {
     D3DDDI_DESTROYPAGINGQUEUE destroy_paging_queue = {0};
     destroy_paging_queue.hPagingQueue = device->paging_queue;
-    const amdf_status_t status = amdf_kmt_make_status(
+    status = amdf_kmt_make_status(
         device->kmt->destroy_paging_queue(&destroy_paging_queue));
     if (!amdf_status_is_ok(status)) {
       return status;
@@ -29,14 +33,13 @@ static amdf_status_t amdf_gpu_wddm_device_release_native(
   if (device->device != 0) {
     D3DKMT_DESTROYDEVICE destroy_device = {0};
     destroy_device.hDevice = device->device;
-    const amdf_status_t status =
-        amdf_kmt_make_status(device->kmt->destroy_device(&destroy_device));
+    status = amdf_kmt_make_status(device->kmt->destroy_device(&destroy_device));
     if (!amdf_status_is_ok(status)) {
       return status;
     }
     device->device = 0;
   }
-  return amdf_gpu_wddm_wkmi_adapter_deinitialize(&device->wkmi);
+  return AMDF_STATUS_OK;
 }
 
 amdf_status_t amdf_gpu_umd_device_create(
