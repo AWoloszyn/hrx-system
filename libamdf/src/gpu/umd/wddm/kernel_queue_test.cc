@@ -12,6 +12,7 @@
 
 #include "gtest/gtest.h"
 #include "libamdf/src/gpu/umd/wddm/device.h"
+#include "libamdf/src/wait.h"
 
 namespace {
 
@@ -160,8 +161,10 @@ TEST_F(WindowsGpuKernelQueueTest,
   EXPECT_EQ(Submit(&submission), AMDF_STATUS_OK);
   EXPECT_EQ(submission, 1u);
   EXPECT_EQ(state_.submitted_values, (std::vector<uint64_t>{1, 1}));
-  EXPECT_EQ(amdf_gpu_umd_kernel_queue_wait(queue_, submission,
-                                           AMDF_TIMEOUT_INFINITE, 0),
+  amdf_wait_deadline_t deadline;
+  ASSERT_EQ(amdf_wait_deadline_initialize(AMDF_TIMEOUT_INFINITE, 0, &deadline),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(amdf_gpu_umd_kernel_queue_wait(queue_, submission, &deadline),
             AMDF_STATUS_OK);
   EXPECT_EQ(state_.diagnostic_count, 1u);
 }
@@ -190,15 +193,16 @@ TEST_F(WindowsGpuKernelQueueTest, RecoverableWaitErrorDoesNotReplayCommand) {
   uint64_t submission = 0;
   ASSERT_EQ(Submit(&submission), AMDF_STATUS_OK);
   state_.wait_status = STATUS_NO_MEMORY;
-  EXPECT_EQ(amdf_gpu_umd_kernel_queue_wait(queue_, submission,
-                                           AMDF_TIMEOUT_INFINITE, 0),
+  amdf_wait_deadline_t deadline;
+  ASSERT_EQ(amdf_wait_deadline_initialize(AMDF_TIMEOUT_INFINITE, 0, &deadline),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(amdf_gpu_umd_kernel_queue_wait(queue_, submission, &deadline),
             amdf_kmt_make_status(STATUS_NO_MEMORY));
   EXPECT_EQ(amdf_gpu_umd_kernel_queue_query_terminal_status(queue_),
             AMDF_STATUS_OK);
   EXPECT_EQ(amdf_gpu_umd_kernel_queue_query_progress(queue_), 0u);
   state_.wait_status = STATUS_SUCCESS;
-  EXPECT_EQ(amdf_gpu_umd_kernel_queue_wait(queue_, submission,
-                                           AMDF_TIMEOUT_INFINITE, 0),
+  EXPECT_EQ(amdf_gpu_umd_kernel_queue_wait(queue_, submission, &deadline),
             AMDF_STATUS_OK);
   EXPECT_EQ(state_.submitted_values.size(), 1u);
   EXPECT_EQ(state_.wait_count, 2u);
@@ -210,8 +214,10 @@ TEST_F(WindowsGpuKernelQueueTest,
   ASSERT_EQ(Submit(&submission), AMDF_STATUS_OK);
   state_.wait_status = STATUS_DEVICE_REMOVED;
   state_.progress_on_wait_error = submission;
-  EXPECT_EQ(amdf_gpu_umd_kernel_queue_wait(queue_, submission,
-                                           AMDF_TIMEOUT_INFINITE, 0),
+  amdf_wait_deadline_t deadline;
+  ASSERT_EQ(amdf_wait_deadline_initialize(AMDF_TIMEOUT_INFINITE, 0, &deadline),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(amdf_gpu_umd_kernel_queue_wait(queue_, submission, &deadline),
             amdf_kmt_make_status(STATUS_DEVICE_REMOVED));
   EXPECT_EQ(amdf_gpu_umd_kernel_queue_query_progress(queue_), submission);
   EXPECT_EQ(amdf_gpu_umd_kernel_queue_query_terminal_status(queue_),
@@ -221,15 +227,18 @@ TEST_F(WindowsGpuKernelQueueTest,
 TEST_F(WindowsGpuKernelQueueTest, TimeoutDoesNotRetireOrFailAcceptedWork) {
   uint64_t submission = 0;
   ASSERT_EQ(Submit(&submission), AMDF_STATUS_OK);
-  EXPECT_EQ(amdf_gpu_umd_kernel_queue_wait(queue_, submission, 0, 0),
+  amdf_wait_deadline_t deadline;
+  ASSERT_EQ(amdf_wait_deadline_initialize(0, 0, &deadline), AMDF_STATUS_OK);
+  EXPECT_EQ(amdf_gpu_umd_kernel_queue_wait(queue_, submission, &deadline),
             amdf_make_api_status(AMDF_STATUS_CODE_DEADLINE_EXCEEDED));
   EXPECT_EQ(amdf_gpu_umd_kernel_queue_query_progress(queue_), 0u);
   EXPECT_EQ(amdf_gpu_umd_kernel_queue_query_terminal_status(queue_),
             AMDF_STATUS_OK);
   EXPECT_EQ(state_.wait_count, 0u);
   EXPECT_EQ(state_.diagnostic_count, 0u);
-  EXPECT_EQ(amdf_gpu_umd_kernel_queue_wait(queue_, submission,
-                                           AMDF_TIMEOUT_INFINITE, 0),
+  ASSERT_EQ(amdf_wait_deadline_initialize(AMDF_TIMEOUT_INFINITE, 0, &deadline),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(amdf_gpu_umd_kernel_queue_wait(queue_, submission, &deadline),
             AMDF_STATUS_OK);
 }
 

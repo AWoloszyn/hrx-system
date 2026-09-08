@@ -51,7 +51,9 @@ iree_cc_library(
     amdf::headers
     libamdf::src::gpu::umd::kernel_queue
     libamdf::src::gpu::umd::wddm::wkmi::adapter
+    libamdf::src::platform::wait
     libamdf::src::platform::windows::kmt_api
+    libamdf::src::wait
   PUBLIC
 )
 endif()
@@ -114,6 +116,7 @@ iree_cc_test(
     iree::third_party::google_test
     iree::third_party::google_test_main
     libamdf::src::gpu::umd::kernel_queue
+    libamdf::src::wait
   LABELS
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.gpu"
