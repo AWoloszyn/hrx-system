@@ -13,14 +13,34 @@ package(
 )
 
 amdf_cc_library(
-    name = "device",
-    srcs = ["device.c"],
+    name = "device_state",
     hdrs = ["device.h"],
     target_compatible_with = ["@platforms//os:windows"],
     deps = [
         "//libamdf/src/gpu/umd:device",
-        "//libamdf/src/platform/windows:endpoint",
+        "//libamdf/src/gpu/umd/wddm/wkmi:adapter",
         "//libamdf/src/platform/windows:kmt_api",
+    ],
+)
+
+amdf_cc_library(
+    name = "memory",
+    srcs = ["memory.c"],
+    target_compatible_with = ["@platforms//os:windows"],
+    deps = [
+        ":device_state",
+        "//libamdf/src/gpu/umd:memory",
+        "//libamdf/src/platform/windows:host_cache",
+    ],
+)
+
+amdf_cc_library(
+    name = "device",
+    srcs = ["device.c"],
+    target_compatible_with = ["@platforms//os:windows"],
+    deps = [
+        ":device_state",
+        "//libamdf/src/platform/windows:endpoint",
     ],
 )
 
@@ -32,8 +52,8 @@ amdf_cc_library(
     deps = [
         "//libamdf/src/gpu:endpoint_profile",
         "//libamdf/src/gpu/umd:endpoint_profile",
+        "//libamdf/src/gpu/umd/wddm/wkmi:adapter",
         "//libamdf/src/gpu/umd/wddm/wkmi:endpoint_properties",
-        "//libamdf/src/gpu/umd/wddm/wkmi:loader",
         "//libamdf/src/platform/windows:endpoint",
     ],
 )
@@ -45,5 +65,6 @@ amdf_cc_library(
     deps = [
         ":device",
         ":endpoint_profile",
+        ":memory",
     ],
 )

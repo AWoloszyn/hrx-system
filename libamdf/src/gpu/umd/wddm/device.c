@@ -36,7 +36,7 @@ static amdf_status_t amdf_gpu_wddm_device_release_native(
     }
     device->device = 0;
   }
-  return AMDF_STATUS_OK;
+  return amdf_gpu_wddm_wkmi_adapter_deinitialize(&device->wkmi);
 }
 
 amdf_status_t amdf_gpu_umd_device_create(
@@ -53,11 +53,24 @@ amdf_status_t amdf_gpu_umd_device_create(
     return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
   }
   device->kmt = &endpoint->instance->kmt;
+  device->adapter = endpoint->adapter;
+  device->physical_adapter_index = endpoint->physical_adapter_index;
+
+  amdf_wkmi_bridge_gpu_properties_t properties = {0};
+  bool wkmi_available = false;
+  amdf_status_t status = amdf_gpu_wddm_wkmi_adapter_initialize(
+      endpoint->adapter, endpoint->physical_adapter_index, &device->wkmi,
+      &properties, &wkmi_available);
+  (void)properties;
+  if (amdf_status_is_ok(status) && !wkmi_available) {
+    status = amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
 
   D3DKMT_CREATEDEVICE create_device = {0};
   create_device.hAdapter = endpoint->adapter;
-  amdf_status_t status =
-      amdf_kmt_make_status(device->kmt->create_device(&create_device));
+  if (amdf_status_is_ok(status)) {
+    status = amdf_kmt_make_status(device->kmt->create_device(&create_device));
+  }
   if (amdf_status_is_ok(status)) {
     device->device = create_device.hDevice;
     if (device->device == 0) {
