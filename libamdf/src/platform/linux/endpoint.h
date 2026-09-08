@@ -17,10 +17,13 @@ struct amdf_platform_endpoint_t {
   int descriptor;
   // Immutable identity and PCI properties established on open.
   amdf_endpoint_info_t info;
-  // DRM interface major version reported by the opened file.
-  uint32_t driver_major_version;
-  // DRM interface minor version reported by the opened file.
-  uint32_t driver_minor_version;
+  // DRM interface version reported by the opened file.
+  struct {
+    // Major ABI version.
+    uint32_t major_version;
+    // Minor ABI revision.
+    uint32_t minor_version;
+  } driver;
 };
 
 #ifdef __cplusplus

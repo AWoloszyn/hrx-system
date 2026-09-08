@@ -9,6 +9,20 @@
 
 iree_add_all_subdirs()
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD)
+iree_cc_library(
+  NAME
+    host_cache
+  HDRS
+    "host_cache.h"
+  SRCS
+    "host_cache_x86_64.c"
+  DEPS
+    amdf::headers
+  PUBLIC
+)
+endif()
+
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND AMDF_BUILD)
 iree_cc_library(
   NAME
