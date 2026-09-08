@@ -7,6 +7,8 @@
 # Public Bazel facade for source dependencies. Source declarations, locks, and
 # CMake adapters live under build_tools/third_party/. See
 # build_tools/third_party/README.md for dependency ownership and update policy.
+# CMake facades are supplied by the dependency-specific adapters.
+# bazel-to-cmake: skip
 
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
@@ -26,6 +28,11 @@ package_group(
 package_group(
     name = "libhrx_users",
     packages = ["//libhrx/..."],
+)
+
+package_group(
+    name = "libamdf_users",
+    packages = ["//libamdf/..."],
 )
 
 package_group(
@@ -82,6 +89,12 @@ alias(
     name = "catch2",
     actual = "@catch2//:catch2",
     visibility = [":libhrx_users"],
+)
+
+alias(
+    name = "amdf_wkmi",
+    actual = "//build_tools/third_party/wkmi",
+    visibility = [":libamdf_users"],
 )
 
 alias(
