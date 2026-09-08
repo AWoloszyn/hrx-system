@@ -16,6 +16,14 @@
 extern "C" {
 #endif  // __cplusplus
 
+// Native support and implemented features for one context ownership mode.
+typedef struct amdf_gpu_device_mode_properties_t {
+  // Whether this mode can be explicitly selected during device creation.
+  bool supported;
+  // Features guaranteed for a device created in this mode.
+  amdf_gpu_device_features_t features;
+} amdf_gpu_device_mode_properties_t;
+
 // Provider-neutral facts used to qualify one immutable GPU profile.
 typedef struct amdf_gpu_endpoint_properties_t {
   // Exact Graphics IP identity.
@@ -53,6 +61,8 @@ typedef struct amdf_gpu_endpoint_properties_t {
   bool supports_pm4_kernel_queue;
   // Whether the native provider can construct a kernel-published SDMA queue.
   bool supports_sdma_kernel_queue;
+  // Capabilities indexed by amdf_gpu_device_mode_t.
+  amdf_gpu_device_mode_properties_t device_modes[2];
 } amdf_gpu_endpoint_properties_t;
 
 // Immutable qualified GPU profile owned by one core endpoint.
@@ -63,6 +73,8 @@ typedef struct amdf_gpu_endpoint_profile_t {
   bool supports_pm4_kernel_queue;
   // Whether the native provider can construct a kernel-published SDMA queue.
   bool supports_sdma_kernel_queue;
+  // Capabilities indexed by amdf_gpu_device_mode_t.
+  amdf_gpu_device_mode_properties_t device_modes[2];
 } amdf_gpu_endpoint_profile_t;
 
 // Validates and normalizes |properties| into |out_profile|.
@@ -73,6 +85,11 @@ bool amdf_gpu_endpoint_profile_initialize(
 // Returns the borrowed public information stored in |profile|.
 const amdf_gpu_endpoint_info_t* amdf_gpu_endpoint_profile_get_info(
     const amdf_gpu_endpoint_profile_t* profile);
+
+// Validates a caller-selected mode and copies its cached features on success.
+amdf_status_t amdf_gpu_endpoint_profile_query_device_features(
+    const amdf_gpu_endpoint_profile_t* profile, amdf_gpu_device_mode_t mode,
+    amdf_gpu_device_features_t* out_features);
 
 #ifdef __cplusplus
 }  // extern "C"

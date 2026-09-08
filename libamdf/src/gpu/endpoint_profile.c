@@ -50,6 +50,9 @@ bool amdf_gpu_endpoint_profile_initialize(
       properties->topology.shader_engine_count_per_xcc;
   profile.supports_pm4_kernel_queue = properties->supports_pm4_kernel_queue;
   profile.supports_sdma_kernel_queue = properties->supports_sdma_kernel_queue;
+  for (uint32_t i = 0; i < 2; ++i) {
+    profile.device_modes[i] = properties->device_modes[i];
+  }
   *out_profile = profile;
   return true;
 }
@@ -57,4 +60,17 @@ bool amdf_gpu_endpoint_profile_initialize(
 const amdf_gpu_endpoint_info_t* amdf_gpu_endpoint_profile_get_info(
     const amdf_gpu_endpoint_profile_t* profile) {
   return &profile->info;
+}
+
+amdf_status_t amdf_gpu_endpoint_profile_query_device_features(
+    const amdf_gpu_endpoint_profile_t* profile, amdf_gpu_device_mode_t mode,
+    amdf_gpu_device_features_t* out_features) {
+  if (mode > AMDF_GPU_DEVICE_MODE_PROCESS) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  }
+  if (!profile->device_modes[mode].supported) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
+  *out_features = profile->device_modes[mode].features;
+  return AMDF_STATUS_OK;
 }

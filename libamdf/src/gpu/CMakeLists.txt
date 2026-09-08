@@ -34,6 +34,7 @@ iree_cc_library(
     "device.c"
     "memory.c"
   DEPS
+    ::endpoint_profile
     amdf::headers
     libamdf::src::device
     libamdf::src::endpoint

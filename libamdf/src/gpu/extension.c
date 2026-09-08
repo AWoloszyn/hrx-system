@@ -44,6 +44,24 @@ static amdf_status_t AMDF_CALL amdf_gpu_endpoint_query_info(
   return AMDF_STATUS_OK;
 }
 
+static amdf_status_t AMDF_CALL amdf_gpu_endpoint_query_device_capabilities(
+    amdf_endpoint_t* endpoint, amdf_gpu_device_mode_t mode,
+    amdf_gpu_device_capabilities_t* out_capabilities) {
+  if (endpoint == NULL) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  }
+  amdf_status_t status = amdf_structure_validate_output(
+      out_capabilities, AMDF_STRUCTURE_TYPE_GPU_DEVICE_CAPABILITIES,
+      (uint32_t)sizeof(*out_capabilities));
+  if (!amdf_status_is_ok(status)) return status;
+  const void* profile = NULL;
+  status = amdf_endpoint_query_engine_profile(endpoint, AMDF_ENGINE_KIND_GPU,
+                                              &profile);
+  if (!amdf_status_is_ok(status)) return status;
+  return amdf_gpu_endpoint_profile_query_device_features(
+      profile, mode, &out_capabilities->features);
+}
+
 static const amdf_gpu_api_t amdf_gpu_api_v1 = {
     .structure_size = sizeof(amdf_gpu_api_t),
     .extension_version = AMDF_GPU_EXTENSION_VERSION_1,
@@ -52,6 +70,8 @@ static const amdf_gpu_api_t amdf_gpu_api_v1 = {
     .device_query_info = amdf_gpu_device_query_info,
     .kernel_queue_create = amdf_gpu_kernel_queue_create,
     .kernel_queue_submit = amdf_gpu_kernel_queue_submit,
+    .endpoint_query_device_capabilities =
+        amdf_gpu_endpoint_query_device_capabilities,
 };
 
 void amdf_gpu_extension_initialize_endpoint(amdf_endpoint_t* endpoint) {

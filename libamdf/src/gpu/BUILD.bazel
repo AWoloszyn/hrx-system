@@ -31,6 +31,7 @@ amdf_cc_library(
         "memory.h",
     ],
     deps = [
+        ":endpoint_profile",
         "//libamdf/src:device",
         "//libamdf/src:endpoint",
         "//libamdf/src:host_mapping",

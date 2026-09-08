@@ -133,4 +133,37 @@ TEST(GpuEndpointProfileTest, RejectsIncompleteOrInconsistentProperties) {
   EXPECT_FALSE(amdf_gpu_endpoint_profile_initialize(&properties, &profile));
 }
 
+TEST(GpuEndpointProfileTest, SelectsCapabilitiesByExplicitContextMode) {
+  auto properties =
+      MakeProperties(11, 5, 1, 1, 32, 40, 32, 32, 64u * 1024u, 1, 2);
+  properties.device_modes[AMDF_GPU_DEVICE_MODE_INDEPENDENT] = {
+      true, AMDF_GPU_DEVICE_FEATURE_DEVICE_RECREATION};
+  properties.device_modes[AMDF_GPU_DEVICE_MODE_PROCESS] = {
+      true, AMDF_GPU_DEVICE_FEATURE_HOST_REGISTRATION};
+  amdf_gpu_endpoint_profile_t profile = {};
+  ASSERT_TRUE(amdf_gpu_endpoint_profile_initialize(&properties, &profile));
+
+  amdf_gpu_device_features_t features = UINT64_MAX;
+  EXPECT_EQ(amdf_gpu_endpoint_profile_query_device_features(
+                &profile, AMDF_GPU_DEVICE_MODE_INDEPENDENT, &features),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(features, AMDF_GPU_DEVICE_FEATURE_DEVICE_RECREATION);
+  EXPECT_EQ(amdf_gpu_endpoint_profile_query_device_features(
+                &profile, AMDF_GPU_DEVICE_MODE_PROCESS, &features),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(features, AMDF_GPU_DEVICE_FEATURE_HOST_REGISTRATION);
+
+  EXPECT_EQ(amdf_status_code(amdf_gpu_endpoint_profile_query_device_features(
+                &profile, UINT32_MAX, &features)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(features, AMDF_GPU_DEVICE_FEATURE_HOST_REGISTRATION);
+
+  properties.device_modes[AMDF_GPU_DEVICE_MODE_INDEPENDENT].supported = false;
+  ASSERT_TRUE(amdf_gpu_endpoint_profile_initialize(&properties, &profile));
+  EXPECT_EQ(amdf_status_code(amdf_gpu_endpoint_profile_query_device_features(
+                &profile, AMDF_GPU_DEVICE_MODE_INDEPENDENT, &features)),
+            AMDF_STATUS_CODE_UNSUPPORTED);
+  EXPECT_EQ(features, AMDF_GPU_DEVICE_FEATURE_HOST_REGISTRATION);
+}
+
 }  // namespace

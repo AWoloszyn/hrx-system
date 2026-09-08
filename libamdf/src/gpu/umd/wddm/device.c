@@ -43,8 +43,11 @@ static amdf_status_t amdf_gpu_wddm_device_release_native(
 }
 
 amdf_status_t amdf_gpu_umd_device_create(
-    amdf_platform_endpoint_t* endpoint, amdf_gpu_umd_device_t** out_device,
+    amdf_platform_endpoint_t* endpoint, amdf_gpu_device_mode_t mode,
+    amdf_gpu_umd_device_t** out_device,
     amdf_gpu_umd_device_result_t* out_result) {
+  // The public boundary has selected the only advertised WDDM mode.
+  (void)mode;
   *out_device = NULL;
   if (!amdf_kmt_api_supports_paging_devices(&endpoint->instance->kmt)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);

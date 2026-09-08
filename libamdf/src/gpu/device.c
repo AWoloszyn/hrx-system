@@ -11,6 +11,7 @@
 
 #include "libamdf/src/device.h"
 #include "libamdf/src/endpoint.h"
+#include "libamdf/src/gpu/endpoint_profile.h"
 #include "libamdf/src/gpu/memory.h"
 #include "libamdf/src/gpu/umd/device.h"
 #include "libamdf/src/structure.h"
@@ -58,6 +59,9 @@ amdf_status_t AMDF_CALL amdf_gpu_device_create(
   if (!amdf_status_is_ok(validation_status)) {
     return validation_status;
   }
+  if (create_info->reserved != 0) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  }
 
   const void* untyped_profile = NULL;
   const amdf_status_t profile_status = amdf_endpoint_query_engine_profile(
@@ -65,7 +69,11 @@ amdf_status_t AMDF_CALL amdf_gpu_device_create(
   if (!amdf_status_is_ok(profile_status)) {
     return profile_status;
   }
-  (void)untyped_profile;
+  amdf_gpu_device_features_t features = 0;
+  const amdf_status_t mode_status =
+      amdf_gpu_endpoint_profile_query_device_features(
+          untyped_profile, create_info->mode, &features);
+  if (!amdf_status_is_ok(mode_status)) return mode_status;
 
   amdf_gpu_device_t* device = (amdf_gpu_device_t*)calloc(1, sizeof(*device));
   if (device == NULL) {
@@ -75,14 +83,17 @@ amdf_status_t AMDF_CALL amdf_gpu_device_create(
       &device->base, &amdf_gpu_device_vtable, endpoint, AMDF_ENGINE_KIND_GPU);
   amdf_gpu_umd_device_result_t result = {0};
   if (amdf_status_is_ok(status)) {
-    status = amdf_gpu_umd_device_create(amdf_endpoint_get_platform(endpoint),
-                                        &device->umd, &result);
+    status =
+        amdf_gpu_umd_device_create(amdf_endpoint_get_platform(endpoint),
+                                   create_info->mode, &device->umd, &result);
   }
   if (amdf_status_is_ok(status)) {
     device->info.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_INFO;
     device->info.structure_size = sizeof(device->info);
     device->info.id = result.id;
     device->info.reset_epoch = result.reset_epoch;
+    device->info.mode = create_info->mode;
+    device->info.features = features;
     *out_device = &device->base;
   } else {
     if (device->base.endpoint != NULL) {

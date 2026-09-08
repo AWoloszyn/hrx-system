@@ -26,8 +26,16 @@ amdf_status_t amdf_gpu_umd_query_endpoint_profile(
   if (amdf_status_is_ok(status) && provider_properties_available) {
     amdf_gpu_endpoint_properties_t properties = {0};
     if (amdf_gpu_wddm_wkmi_endpoint_properties_translate(&provider_properties,
-                                                         &properties) &&
-        amdf_gpu_endpoint_profile_initialize(&properties, out_profile)) {
+                                                         &properties)) {
+      properties.device_modes[AMDF_GPU_DEVICE_MODE_INDEPENDENT] =
+          (amdf_gpu_device_mode_properties_t){
+              .supported = true,
+              .features = AMDF_GPU_DEVICE_FEATURE_HOST_REGISTRATION |
+                          AMDF_GPU_DEVICE_FEATURE_DEVICE_RECREATION |
+                          AMDF_GPU_DEVICE_FEATURE_LOCAL_MEMORY,
+          };
+    }
+    if (amdf_gpu_endpoint_profile_initialize(&properties, out_profile)) {
       *out_available = true;
     } else {
       status = amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);

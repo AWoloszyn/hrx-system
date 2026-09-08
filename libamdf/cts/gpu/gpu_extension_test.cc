@@ -22,17 +22,18 @@ static_assert(offsetof(amdf_gpu_endpoint_info_t, asic_revision) == 28);
 static_assert(offsetof(amdf_gpu_endpoint_info_t, compute) == 32);
 static_assert(offsetof(amdf_gpu_endpoint_info_t, topology) == 56);
 static_assert(sizeof(amdf_gpu_endpoint_info_t) == 64);
-static_assert(sizeof(amdf_gpu_device_create_info_t) ==
-              sizeof(amdf_input_structure_t));
+static_assert(sizeof(amdf_gpu_device_create_info_t) == 24);
 static_assert(offsetof(amdf_gpu_device_info_t, id) ==
               sizeof(amdf_output_structure_t));
 static_assert(offsetof(amdf_gpu_device_info_t, reset_epoch) == 32);
-static_assert(sizeof(amdf_gpu_device_info_t) == 40);
+static_assert(offsetof(amdf_gpu_device_info_t, mode) == 40);
+static_assert(sizeof(amdf_gpu_device_info_t) == 56);
+static_assert(sizeof(amdf_gpu_device_capabilities_t) == 24);
 static_assert(sizeof(amdf_gpu_kernel_command_t) == 24);
 static_assert(sizeof(amdf_gpu_kernel_queue_create_info_t) == 24);
 static_assert(sizeof(amdf_gpu_kernel_queue_submission_info_t) == 32);
-static_assert(offsetof(amdf_gpu_api_t, kernel_queue_submit) +
-                  sizeof(amdf_gpu_api_t::kernel_queue_submit) ==
+static_assert(offsetof(amdf_gpu_api_t, endpoint_query_device_capabilities) +
+                  sizeof(amdf_gpu_api_t::endpoint_query_device_capabilities) ==
               sizeof(amdf_gpu_api_t));
 
 const amdf_api_t* QueryApi() {
@@ -64,6 +65,7 @@ TEST(GpuExtensionTest, ReportsCompiledAvailabilityBeforeCreatingInstance) {
   EXPECT_NE(gpu_api->device_query_info, nullptr);
   EXPECT_NE(gpu_api->kernel_queue_create, nullptr);
   EXPECT_NE(gpu_api->kernel_queue_submit, nullptr);
+  EXPECT_NE(gpu_api->endpoint_query_device_capabilities, nullptr);
 }
 
 TEST(GpuExtensionTest, ReturnsStableImmutableTable) {
@@ -271,6 +273,20 @@ TEST_F(GpuEndpointTest, ValidatesDeviceCreationArgumentsWithoutNativeWork) {
       amdf_status_code(gpu_api_->device_create(nullptr, &create_info, &output)),
       AMDF_STATUS_CODE_INVALID_ARGUMENT);
   EXPECT_EQ(output, nullptr);
+
+  create_info = MakeDeviceCreateInfo();
+  create_info.mode = UINT32_MAX;
+  EXPECT_EQ(amdf_status_code(
+                gpu_api_->device_create(endpoint_, &create_info, &output)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(output, nullptr);
+  create_info = MakeDeviceCreateInfo();
+  create_info.reserved = 1;
+  EXPECT_EQ(amdf_status_code(
+                gpu_api_->device_create(endpoint_, &create_info, &output)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(output, nullptr);
+  create_info = MakeDeviceCreateInfo();
   EXPECT_EQ(
       amdf_status_code(gpu_api_->device_create(endpoint_, nullptr, &output)),
       AMDF_STATUS_CODE_INVALID_ARGUMENT);
@@ -339,6 +355,14 @@ TEST_F(GpuEndpointTest, MaterializesProgramIndependentDevice) {
   ASSERT_TRUE(amdf_status_is_ok(gpu_api_->device_query_info(device_, &info)));
   EXPECT_NE(info.id.words[0] | info.id.words[1], 0u);
   EXPECT_EQ(info.reset_epoch, 1u);
+  EXPECT_EQ(info.mode, AMDF_GPU_DEVICE_MODE_INDEPENDENT);
+  amdf_gpu_device_capabilities_t capabilities = {};
+  capabilities.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_CAPABILITIES;
+  capabilities.structure_size = sizeof(capabilities);
+  ASSERT_EQ(gpu_api_->endpoint_query_device_capabilities(endpoint_, info.mode,
+                                                         &capabilities),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(info.features, capabilities.features);
 
   amdf_gpu_device_info_t second_info = {};
   second_info.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_INFO;
@@ -410,6 +434,50 @@ TEST_F(GpuEndpointTest, CreatesIndependentDevicesFromOneEndpoint) {
 
   ASSERT_TRUE(amdf_status_is_ok(api_->device_destroy(second_device_)));
   second_device_ = nullptr;
+}
+
+TEST_F(GpuEndpointTest, QueriesModeCapabilitiesWithoutCreatingDevice) {
+  bool engine_found = false;
+  ASSERT_EQ(OpenEngine(AMDF_ENGINE_KIND_GPU, &engine_found), AMDF_STATUS_OK);
+  if (!engine_found) GTEST_SKIP() << "No GPU endpoint";
+
+  amdf_gpu_device_capabilities_t capabilities = {};
+  capabilities.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_CAPABILITIES;
+  capabilities.structure_size = sizeof(capabilities);
+  capabilities.features = UINT64_MAX;
+  EXPECT_EQ(amdf_status_code(gpu_api_->endpoint_query_device_capabilities(
+                endpoint_, UINT32_MAX, &capabilities)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(capabilities.features, UINT64_MAX);
+  capabilities.next = &capabilities;
+  EXPECT_EQ(amdf_status_code(gpu_api_->endpoint_query_device_capabilities(
+                endpoint_, AMDF_GPU_DEVICE_MODE_INDEPENDENT, &capabilities)),
+            AMDF_STATUS_CODE_UNSUPPORTED);
+  EXPECT_EQ(capabilities.features, UINT64_MAX);
+  capabilities.next = nullptr;
+
+  for (amdf_gpu_device_mode_t mode :
+       {AMDF_GPU_DEVICE_MODE_INDEPENDENT, AMDF_GPU_DEVICE_MODE_PROCESS}) {
+    capabilities.features = UINT64_MAX;
+    const amdf_status_t status = gpu_api_->endpoint_query_device_capabilities(
+        endpoint_, mode, &capabilities);
+    if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
+      EXPECT_EQ(capabilities.features, UINT64_MAX);
+      amdf_gpu_device_create_info_t create_info = MakeDeviceCreateInfo();
+      create_info.mode = mode;
+      amdf_device_t* output = reinterpret_cast<amdf_device_t*>(uintptr_t{1});
+      EXPECT_EQ(gpu_api_->device_create(endpoint_, &create_info, &output),
+                status);
+      EXPECT_EQ(output, nullptr);
+    } else {
+      ASSERT_EQ(status, AMDF_STATUS_OK);
+      amdf_gpu_device_capabilities_t second = capabilities;
+      ASSERT_EQ(gpu_api_->endpoint_query_device_capabilities(endpoint_, mode,
+                                                             &second),
+                AMDF_STATUS_OK);
+      EXPECT_EQ(second.features, capabilities.features);
+    }
+  }
 }
 
 }  // namespace
