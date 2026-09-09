@@ -27,12 +27,12 @@ amdf_status_t amdf_xdna_umd_context_destroy(amdf_xdna_umd_context_t* context) {
 }
 
 amdf_status_t amdf_xdna_umd_context_create(
-    amdf_xdna_umd_device_t* device, const amdf_xdna_endpoint_profile_t* profile,
+    amdf_xdna_umd_device_t* device,
     const amdf_xdna_context_create_info_t* create_info,
     amdf_xdna_umd_context_t** out_context,
     amdf_xdna_umd_context_result_t* out_result) {
-  if (profile->model != AMDF_PCI_XDNA_MODEL_NPU5 ||
-      (create_info->acceptable_scheduling_modes &
+  const amdf_xdna_endpoint_profile_t* profile = device->profile;
+  if ((create_info->acceptable_scheduling_modes &
        AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED) == 0 ||
       (create_info->physical_column_origin !=
            AMDF_XDNA_PHYSICAL_COLUMN_ORIGIN_ANY &&

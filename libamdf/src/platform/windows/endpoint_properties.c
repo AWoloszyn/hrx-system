@@ -164,7 +164,12 @@ amdf_status_t amdf_windows_query_endpoint_info(const amdf_kmt_api_t* api,
     endpoint_info.pci.subsystem_vendor_id = device_ids.DeviceIds.SubVendorID;
     endpoint_info.pci.subsystem_device_id = device_ids.DeviceIds.SubSystemID;
     endpoint_info.pci.revision_id = device_ids.DeviceIds.RevisionID;
-    endpoint_info.engine_kind = amdf_pci_classify_engine(&endpoint_info.pci);
+    if (endpoint_info.pci.vendor_id == 0x1002u) {
+      endpoint_info.engine_kind = AMDF_ENGINE_KIND_GPU;
+    } else if (endpoint_info.pci.vendor_id == 0x1022u &&
+               adapter_type.ComputeOnly) {
+      endpoint_info.engine_kind = AMDF_ENGINE_KIND_XDNA;
+    }
     status = amdf_windows_copy_endpoint_name(&description, endpoint_info.name);
   }
   if (amdf_status_is_ok(status)) {

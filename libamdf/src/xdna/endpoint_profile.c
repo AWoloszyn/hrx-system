@@ -8,6 +8,12 @@
 
 #include <stddef.h>
 
+#include "libamdf/src/xdna/target/npu5/bootstrap.h"
+#include "libamdf/src/xdna/transaction_interpreter.h"
+
+_Static_assert(sizeof(amdf_xdna_endpoint_profile_t) <= 64,
+               "resolved XDNA execution profile must remain cache compact");
+
 // Static profiles contain only properties that are invariant for an exact PCI
 // identity. AIE4 geometry is firmware-reported and is intentionally absent.
 static const amdf_xdna_endpoint_info_t amdf_xdna_npu1_endpoint_info = {
@@ -103,28 +109,55 @@ static const amdf_xdna_endpoint_info_t amdf_xdna_npu6_endpoint_info = {
     .target_id = "amd.xdna.krackan.17f0_20",
 };
 
-static const amdf_xdna_endpoint_profile_t amdf_xdna_endpoint_profiles[] = {
-    {
-        .model = AMDF_PCI_XDNA_MODEL_NPU1,
-        .info = &amdf_xdna_npu1_endpoint_info,
-    },
-    {
-        .model = AMDF_PCI_XDNA_MODEL_NPU4,
-        .info = &amdf_xdna_npu4_endpoint_info,
-    },
-    {
-        .model = AMDF_PCI_XDNA_MODEL_NPU5,
-        .info = &amdf_xdna_npu5_endpoint_info,
-        .transaction =
-            {
-                .device_generation = 4,
-                .memory_tile_row_count = 1,
-            },
-    },
-    {
-        .model = AMDF_PCI_XDNA_MODEL_NPU6,
-        .info = &amdf_xdna_npu6_endpoint_info,
-    },
+static const amdf_xdna_endpoint_profile_t amdf_xdna_npu1_profile = {
+    .info = &amdf_xdna_npu1_endpoint_info,
+};
+
+static const amdf_xdna_endpoint_profile_t amdf_xdna_npu4_profile = {
+    .info = &amdf_xdna_npu4_endpoint_info,
+};
+
+static const amdf_xdna_endpoint_profile_t amdf_xdna_npu5_profile = {
+    .info = &amdf_xdna_npu5_endpoint_info,
+    .execution_capabilities =
+        AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1,
+    .bootstrap = &amdf_xdna_npu5_bootstrap,
+    .firmware_heap_byte_length = 64u * 1024u * 1024u,
+    .transaction =
+        {
+            .device_generation = 4,
+        },
+    .rows =
+        {
+            .shim_origin = 0,
+            .shim_count = 1,
+            .memory_origin = 1,
+            .memory_count = 1,
+            .core_origin = 2,
+            .core_count = 4,
+        },
+};
+
+static const amdf_xdna_endpoint_profile_t amdf_xdna_npu6_profile = {
+    .info = &amdf_xdna_npu6_endpoint_info,
+};
+
+typedef struct amdf_xdna_profile_identity_t {
+  // PCI device identifier used only for central profile selection.
+  uint32_t device_id;
+  // PCI revision identifier used only for central profile selection.
+  uint32_t revision_id;
+  // Process-lifetime execution profile selected for the exact identity.
+  const amdf_xdna_endpoint_profile_t* profile;
+} amdf_xdna_profile_identity_t;
+
+// Exact PCI identities are confined to this selector. The native object graph
+// receives the resolved profile and never observes these keys.
+static const amdf_xdna_profile_identity_t amdf_xdna_profile_identities[] = {
+    {0x1502u, 0x00u, &amdf_xdna_npu1_profile},
+    {0x17F0u, 0x10u, &amdf_xdna_npu4_profile},
+    {0x17F0u, 0x11u, &amdf_xdna_npu5_profile},
+    {0x17F0u, 0x20u, &amdf_xdna_npu6_profile},
 };
 
 const amdf_xdna_endpoint_profile_t* amdf_xdna_endpoint_profile_select(
@@ -132,15 +165,17 @@ const amdf_xdna_endpoint_profile_t* amdf_xdna_endpoint_profile_select(
   if (endpoint_info->engine_kind != AMDF_ENGINE_KIND_XDNA) {
     return NULL;
   }
-  const amdf_pci_xdna_model_t model =
-      amdf_pci_classify_xdna_model(&endpoint_info->pci);
-  for (size_t i = 0; i < sizeof(amdf_xdna_endpoint_profiles) /
-                             sizeof(amdf_xdna_endpoint_profiles[0]);
+  if (endpoint_info->pci.vendor_id != 0x1022u) {
+    return NULL;
+  }
+  for (size_t i = 0; i < sizeof(amdf_xdna_profile_identities) /
+                             sizeof(amdf_xdna_profile_identities[0]);
        ++i) {
-    const amdf_xdna_endpoint_profile_t* profile =
-        &amdf_xdna_endpoint_profiles[i];
-    if (model == profile->model) {
-      return profile;
+    const amdf_xdna_profile_identity_t* identity =
+        &amdf_xdna_profile_identities[i];
+    if (endpoint_info->pci.device_id == identity->device_id &&
+        endpoint_info->pci.revision_id == identity->revision_id) {
+      return identity->profile;
     }
   }
   return NULL;

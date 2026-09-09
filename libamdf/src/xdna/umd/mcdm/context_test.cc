@@ -112,8 +112,10 @@ class WindowsXdnaContextTest : public ::testing::Test {
     device_.kmt = &kmt_;
     device_.device = 0x10;
     endpoint_info_.array.column_count = 8;
-    profile_.model = AMDF_PCI_XDNA_MODEL_NPU5;
+    profile_.execution_capabilities =
+        AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1;
     profile_.info = &endpoint_info_;
+    device_.profile = &profile_;
     create_info_.logical_column_count = 1;
     create_info_.physical_column_origin = AMDF_XDNA_PHYSICAL_COLUMN_ORIGIN_ANY;
     create_info_.acceptable_scheduling_modes =
@@ -134,7 +136,7 @@ TEST_F(WindowsXdnaContextTest, CreatesTwoContextsAndDestroysIndependently) {
   amdf_xdna_umd_context_t* contexts[2] = {};
   amdf_xdna_umd_context_result_t results[2] = {};
   for (size_t i = 0; i < 2; ++i) {
-    ASSERT_EQ(amdf_xdna_umd_context_create(&device_, &profile_, &create_info_,
+    ASSERT_EQ(amdf_xdna_umd_context_create(&device_, &create_info_,
                                            &contexts[i], &results[i]),
               AMDF_STATUS_OK);
     ASSERT_NE(contexts[i], nullptr);
@@ -163,9 +165,9 @@ TEST_F(WindowsXdnaContextTest, DestroysNativeContextBeforeHostMetadata) {
   };
   amdf_xdna_umd_context_t* context = nullptr;
   amdf_xdna_umd_context_result_t result = {};
-  ASSERT_EQ(amdf_xdna_umd_context_create(&device_, &profile_, &create_info_,
-                                         &context, &result),
-            AMDF_STATUS_OK);
+  ASSERT_EQ(
+      amdf_xdna_umd_context_create(&device_, &create_info_, &context, &result),
+      AMDF_STATUS_OK);
   ASSERT_NE(context, nullptr);
   EXPECT_EQ(allocator_state.live_allocation_count, 1u);
   state_.operations.clear();
@@ -194,7 +196,7 @@ TEST_F(WindowsXdnaContextTest, RollsBackHostExhaustionAtEachConstructionStep) {
     const auto original = result;
 
     EXPECT_EQ(amdf_status_code(amdf_xdna_umd_context_create(
-                  &device_, &profile_, &create_info_, &context, &result)),
+                  &device_, &create_info_, &context, &result)),
               AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
     EXPECT_EQ(context, sentinel);
     EXPECT_EQ(std::memcmp(&result, &original, sizeof(result)), 0);
@@ -213,9 +215,9 @@ TEST_F(WindowsXdnaContextTest, ExplicitDestroyFailureRetainsPublishedOwner) {
   };
   amdf_xdna_umd_context_t* context = nullptr;
   amdf_xdna_umd_context_result_t result = {};
-  ASSERT_EQ(amdf_xdna_umd_context_create(&device_, &profile_, &create_info_,
-                                         &context, &result),
-            AMDF_STATUS_OK);
+  ASSERT_EQ(
+      amdf_xdna_umd_context_create(&device_, &create_info_, &context, &result),
+      AMDF_STATUS_OK);
   state_.destroy_failures_remaining = 1;
   EXPECT_EQ(amdf_xdna_umd_context_destroy(context),
             amdf_kmt_make_status(kFailure));

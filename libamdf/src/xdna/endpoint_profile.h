@@ -8,25 +8,49 @@
 #define AMDF_SRC_XDNA_ENDPOINT_PROFILE_H_
 
 #include "amdf/xdna.h"
-#include "libamdf/src/pci.h"
+#include "libamdf/src/xdna/bootstrap.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
 
-// Exact immutable implementation profile selected from one PCI identity.
+// Target-native execution services carried by a resolved endpoint profile.
+typedef uint64_t amdf_xdna_execution_capabilities_t;
+enum amdf_xdna_execution_capability_bits_e {
+  // Version 1 transaction interpreter, command packet, and bootstrap contract.
+  AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1 = UINT64_C(1) << 0,
+};
+
+// Exact immutable execution profile selected from one PCI identity.
 typedef struct amdf_xdna_endpoint_profile_t {
-  // Private model identity selecting platform-specific implementation code.
-  amdf_pci_xdna_model_t model;
   // Borrowed public compiler target and context-admission properties.
   const amdf_xdna_endpoint_info_t* info;
+  // Target-native services whose complete contracts are available below.
+  amdf_xdna_execution_capabilities_t execution_capabilities;
+  // Borrowed process-lifetime interpreter bootstrap, or NULL when unsupported.
+  const amdf_xdna_bootstrap_t* bootstrap;
+  // Firmware heap extent and alignment in bytes.
+  uint32_t firmware_heap_byte_length;
   // Target-native transaction properties fixed for this endpoint identity.
   struct {
     // AIE-RT device-generation value encoded in transaction headers.
     uint8_t device_generation;
-    // Memory-tile row count encoded in transaction headers.
-    uint8_t memory_tile_row_count;
   } transaction;
+  // Physical row classes reported by the native driver.
+  struct {
+    // First shim row in physical coordinates.
+    uint8_t shim_origin;
+    // Number of contiguous shim rows.
+    uint8_t shim_count;
+    // First memory-tile row in physical coordinates.
+    uint8_t memory_origin;
+    // Number of contiguous memory-tile rows.
+    uint8_t memory_count;
+    // First core-tile row in physical coordinates.
+    uint8_t core_origin;
+    // Number of contiguous core-tile rows.
+    uint8_t core_count;
+  } rows;
 } amdf_xdna_endpoint_profile_t;
 
 // Selects the exact immutable XDNA profile matching `endpoint_info`.

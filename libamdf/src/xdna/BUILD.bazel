@@ -14,6 +14,19 @@ package(
 )
 
 amdf_cc_library(
+    name = "bootstrap",
+    hdrs = ["bootstrap.h"],
+    visibility = ["//libamdf/src/xdna:__subpackages__"],
+)
+
+amdf_cc_library(
+    name = "transaction_interpreter",
+    srcs = ["transaction_interpreter.c"],
+    hdrs = ["transaction_interpreter.h"],
+    visibility = ["//libamdf/src/xdna:__subpackages__"],
+)
+
+amdf_cc_library(
     name = "endpoint_profile",
     srcs = ["endpoint_profile.c"],
     hdrs = ["endpoint_profile.h"],
@@ -22,8 +35,9 @@ amdf_cc_library(
         "//libamdf/src/xdna:__subpackages__",
     ],
     deps = [
-        "//libamdf/src:pci",
-        "//libamdf/src/xdna/target/npu5:ert_packet",
+        ":bootstrap",
+        ":transaction_interpreter",
+        "//libamdf/src/xdna/target/npu5:bootstrap",
     ],
 )
 
@@ -100,6 +114,16 @@ amdf_cc_test(
     srcs = ["endpoint_profile_test.cc"],
     deps = [
         ":endpoint_profile",
+        "//third_party:google_test",
+        "//third_party:google_test_main",
+    ],
+)
+
+amdf_cc_test(
+    name = "transaction_interpreter_test",
+    srcs = ["transaction_interpreter_test.cc"],
+    deps = [
+        ":transaction_interpreter",
         "//third_party:google_test",
         "//third_party:google_test_main",
     ],

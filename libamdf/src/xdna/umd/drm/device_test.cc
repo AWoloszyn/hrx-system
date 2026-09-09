@@ -18,8 +18,6 @@
 #include "libamdf/src/allocator.h"
 #include "libamdf/src/platform/linux/endpoint.h"
 #include "libamdf/src/xdna/endpoint_profile.h"
-#include "libamdf/src/xdna/target/npu5/bootstrap.h"
-#include "libamdf/src/xdna/target/npu5/context.h"
 #include "libamdf/src/xdna/umd/context.h"
 #include "libamdf/src/xdna/umd/drm/memory.h"
 
@@ -44,12 +42,17 @@ class LinuxXdnaDeviceTest : public ::testing::Test {
           amdf_platform_endpoint_open(instance, &summary.id, &endpoint, &info),
           AMDF_STATUS_OK);
       profile = amdf_xdna_endpoint_profile_select(&info);
-      if (profile != nullptr && profile->model == AMDF_PCI_XDNA_MODEL_NPU5)
+      if (profile != nullptr &&
+          (profile->execution_capabilities &
+           AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1) != 0) {
         break;
+      }
       ASSERT_EQ(amdf_platform_endpoint_close(endpoint), AMDF_STATUS_OK);
       endpoint = nullptr;
     }
-    if (endpoint == nullptr) GTEST_SKIP() << "No NPU5 endpoint";
+    if (endpoint == nullptr) {
+      GTEST_SKIP() << "No transaction-interpreter XDNA endpoint";
+    }
   }
 
   void TearDown() override {
@@ -95,15 +98,14 @@ TEST_F(LinuxXdnaDeviceTest, ContextsShareDeviceMemoryAndDestroyIndependently) {
                                   &device, &device_result),
       AMDF_STATUS_OK);
   EXPECT_NE(device_result.id.words[0] | device_result.id.words[1], 0u);
-  const void* pdi = nullptr;
-  size_t pdi_byte_length = 0;
-  amdf_xdna_npu5_bootstrap_query_pdi(&pdi, &pdi_byte_length);
   EXPECT_EQ(reinterpret_cast<uintptr_t>(device->heap.host_pointer) %
-                AMDF_XDNA_NPU5_HEAP_BYTE_LENGTH,
+                profile->firmware_heap_byte_length,
             0u);
   EXPECT_NE(fcntl(device->descriptor, F_GETFD) & FD_CLOEXEC, 0);
-  EXPECT_EQ(std::memcmp(pdi, device->bootstrap.host_pointer, pdi_byte_length),
-            0);
+  EXPECT_EQ(
+      std::memcmp(profile->bootstrap->pdi_bytes, device->bootstrap.host_pointer,
+                  profile->bootstrap->pdi_byte_length),
+      0);
 
   amdf_xdna_context_create_info_t create_info = {};
   create_info.acceptable_scheduling_modes =
@@ -113,8 +115,8 @@ TEST_F(LinuxXdnaDeviceTest, ContextsShareDeviceMemoryAndDestroyIndependently) {
   amdf_xdna_umd_context_result_t results[2] = {};
   for (size_t i = 0; i < 2; ++i) {
     std::cout << "Create native context " << i << std::endl;
-    ASSERT_EQ(amdf_xdna_umd_context_create(device, profile, &create_info,
-                                           &contexts[i], &results[i]),
+    ASSERT_EQ(amdf_xdna_umd_context_create(device, &create_info, &contexts[i],
+                                           &results[i]),
               AMDF_STATUS_OK);
     EXPECT_EQ(results[i].physical_column_origin, 0u);
     EXPECT_EQ(results[i].physical_column_count, 8u);

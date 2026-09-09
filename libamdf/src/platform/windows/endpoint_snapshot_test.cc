@@ -84,6 +84,8 @@ struct FakeKmt {
   uint32_t amd_device_id = 0x1000u;
   // PCI revision used for endpoint classification.
   uint32_t amd_revision_id = 1;
+  // Native adapter capability distinguishing compute-only AMD endpoints.
+  bool amd_compute_only = false;
   // Number of calls in the native two-call snapshot protocol.
   uint32_t enumeration_call_count = 0;
   // Native release fault and consumption evidence.
@@ -183,7 +185,9 @@ NTSTATUS APIENTRY FakeQueryAdapterInfo(const D3DKMT_QUERYADAPTERINFO* query) {
       }
       auto* type = static_cast<D3DKMT_ADAPTERTYPE*>(query->pPrivateDriverData);
       type->Value = 0;
-      type->RenderSupported = 1;
+      type->ComputeOnly =
+          query->hAdapter == kAmdAdapter && current_fake->amd_compute_only;
+      type->RenderSupported = !type->ComputeOnly;
       return kSuccess;
     }
     case KMTQAITYPE_DRIVER_DESCRIPTION: {
@@ -338,6 +342,7 @@ TEST_F(EndpointSnapshotTest, ClassifiesKnownXdnaEndpoint) {
   fake_.amd_vendor_id = 0x1022u;
   fake_.amd_device_id = 0x17F0u;
   fake_.amd_revision_id = 0x10u;
+  fake_.amd_compute_only = true;
   amdf_endpoint_summary_t summary = {};
   uint32_t endpoint_count = 0;
 
@@ -349,7 +354,22 @@ TEST_F(EndpointSnapshotTest, ClassifiesKnownXdnaEndpoint) {
   EXPECT_EQ(summary.engine_kind, AMDF_ENGINE_KIND_XDNA);
 }
 
-TEST_F(EndpointSnapshotTest, LeavesUnknownAmdIdentityUnclassified) {
+TEST_F(EndpointSnapshotTest, ClassifiesUnrecognizedComputeOnlyIdentity) {
+  fake_.amd_vendor_id = 0x1022u;
+  fake_.amd_device_id = 0xABCDu;
+  fake_.amd_revision_id = 0x12u;
+  fake_.amd_compute_only = true;
+  amdf_endpoint_summary_t summary = {};
+  uint32_t endpoint_count = 0;
+
+  ASSERT_EQ(amdf_platform_endpoint_enumerate(platform_instance_, 1, &summary,
+                                             &endpoint_count),
+            AMDF_STATUS_OK);
+  ASSERT_EQ(endpoint_count, 1u);
+  EXPECT_EQ(summary.engine_kind, AMDF_ENGINE_KIND_XDNA);
+}
+
+TEST_F(EndpointSnapshotTest, LeavesNonComputeAmdIdentityUnclassified) {
   fake_.amd_vendor_id = 0x1022u;
   fake_.amd_device_id = 0x17F0u;
   fake_.amd_revision_id = 0x12u;

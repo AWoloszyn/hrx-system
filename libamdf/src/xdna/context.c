@@ -108,7 +108,6 @@ amdf_status_t AMDF_CALL amdf_xdna_context_create(
   amdf_xdna_umd_context_result_t result = {0};
   if (amdf_status_is_ok(status)) {
     status = amdf_xdna_umd_context_create(amdf_xdna_device_get_umd(device),
-                                          amdf_xdna_device_get_profile(device),
                                           create_info, &context->umd, &result);
   }
   if (amdf_status_is_ok(status)) {

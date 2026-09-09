@@ -163,7 +163,8 @@ class WindowsXdnaDeviceRollbackTest : public ::testing::Test {
 
     endpoint_info_.array.column_origin = 0;
     endpoint_info_.array.column_count = 8;
-    profile_.model = AMDF_PCI_XDNA_MODEL_NPU5;
+    profile_.execution_capabilities =
+        AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1;
     profile_.info = &endpoint_info_;
   }
 

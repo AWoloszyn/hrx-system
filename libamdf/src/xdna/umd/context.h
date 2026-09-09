@@ -33,7 +33,7 @@ typedef struct amdf_xdna_umd_context_result_t {
 
 // Creates one program-independent native XDNA scheduling context.
 amdf_status_t amdf_xdna_umd_context_create(
-    amdf_xdna_umd_device_t* device, const amdf_xdna_endpoint_profile_t* profile,
+    amdf_xdna_umd_device_t* device,
     const amdf_xdna_context_create_info_t* create_info,
     amdf_xdna_umd_context_t** out_context,
     amdf_xdna_umd_context_result_t* out_result);

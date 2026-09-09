@@ -84,8 +84,6 @@ iree_cc_library(
     libamdf::src::platform::linux::endpoint
     libamdf::src::platform::linux::file
     libamdf::src::platform::linux::host_cache
-    libamdf::src::xdna::target::npu5::bootstrap
-    libamdf::src::xdna::target::npu5::context
     libamdf::src::xdna::umd::device
   PUBLIC
 )
@@ -103,7 +101,6 @@ iree_cc_library(
     amdf::headers
     libamdf::src::allocator
     libamdf::src::platform::linux::file
-    libamdf::src::xdna::target::npu5::context
     libamdf::src::xdna::umd::context
   PUBLIC
 )
@@ -184,8 +181,6 @@ iree_cc_test(
     libamdf::src::platform
     libamdf::src::platform::linux::endpoint
     libamdf::src::xdna::endpoint_profile
-    libamdf::src::xdna::target::npu5::bootstrap
-    libamdf::src::xdna::target::npu5::context
     libamdf::src::xdna::umd::context
     libamdf::src::xdna::umd::device
     libamdf::src::xdna::umd::memory

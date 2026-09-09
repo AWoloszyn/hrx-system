@@ -12,15 +12,42 @@ iree_add_all_subdirs()
 if(AMDF_BUILD AND AMDF_FAMILY_XDNA)
 iree_cc_library(
   NAME
+    bootstrap
+  HDRS
+    "bootstrap.h"
+  DEPS
+    amdf::headers
+  PUBLIC
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_library(
+  NAME
+    transaction_interpreter
+  HDRS
+    "transaction_interpreter.h"
+  SRCS
+    "transaction_interpreter.c"
+  DEPS
+    amdf::headers
+  PUBLIC
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_library(
+  NAME
     endpoint_profile
   HDRS
     "endpoint_profile.h"
   SRCS
     "endpoint_profile.c"
   DEPS
+    ::bootstrap
+    ::transaction_interpreter
     amdf::headers
-    libamdf::src::pci
-    libamdf::src::xdna::target::npu5::ert_packet
+    libamdf::src::xdna::target::npu5::bootstrap
   PUBLIC
 )
 endif()
@@ -117,6 +144,23 @@ iree_cc_test(
     "endpoint_profile_test.cc"
   DEPS
     ::endpoint_profile
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.xdna"
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_test(
+  NAME
+    transaction_interpreter_test
+  SRCS
+    "transaction_interpreter_test.cc"
+  DEPS
+    ::transaction_interpreter
     amdf::headers
     iree::third_party::google_test
     iree::third_party::google_test_main

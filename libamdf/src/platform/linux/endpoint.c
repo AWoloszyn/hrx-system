@@ -90,11 +90,6 @@ static amdf_status_t amdf_linux_query_endpoint(int directory,
     status = amdf_linux_read_pci_attribute(directory, attributes[i], fields[i]);
   }
   if (!amdf_status_is_ok(status)) return status;
-  info->engine_kind = amdf_pci_classify_engine(&info->pci);
-  if (info->engine_kind == AMDF_ENGINE_KIND_UNKNOWN) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_NOT_FOUND);
-  }
-
   char driver[256];
   const ssize_t driver_length =
       readlinkat(directory, "device/driver", driver, sizeof(driver) - 1);
@@ -105,9 +100,11 @@ static amdf_status_t amdf_linux_query_endpoint(int directory,
   driver[driver_length] = 0;
   const char* driver_name = strrchr(driver, '/');
   driver_name = driver_name ? driver_name + 1 : driver;
-  const char* expected_driver =
-      info->engine_kind == AMDF_ENGINE_KIND_XDNA ? "amdxdna" : "amdgpu";
-  if (strcmp(driver_name, expected_driver) != 0) {
+  if (strcmp(driver_name, "amdxdna") == 0) {
+    info->engine_kind = AMDF_ENGINE_KIND_XDNA;
+  } else if (strcmp(driver_name, "amdgpu") == 0) {
+    info->engine_kind = AMDF_ENGINE_KIND_GPU;
+  } else {
     return amdf_make_api_status(AMDF_STATUS_CODE_NOT_FOUND);
   }
 

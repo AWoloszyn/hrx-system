@@ -60,7 +60,8 @@ amdf_status_t amdf_xdna_umd_device_create(
   if (!amdf_kmt_api_supports_device_contexts(&endpoint->instance->kmt)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
-  if (profile->model != AMDF_PCI_XDNA_MODEL_NPU5) {
+  if ((profile->execution_capabilities &
+       AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1) == 0) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
   amdf_status_t status = amdf_windows_xdna_query_legacy_context_abi(endpoint);
@@ -73,6 +74,7 @@ amdf_status_t amdf_xdna_umd_device_create(
                        amdf_alignof(amdf_xdna_umd_device_t), (void**)&device);
   if (!amdf_status_is_ok(status)) return status;
   device->host_allocator = host_allocator;
+  device->profile = profile;
   amdf_kmt_device_status_initialize(&device->status);
   device->kmt = &endpoint->instance->kmt;
 

@@ -14,6 +14,8 @@
 struct amdf_xdna_umd_device_t {
   // Host allocator copied for device and child metadata.
   amdf_allocator_t host_allocator;
+  // Process-lifetime execution profile selected for this device.
+  const amdf_xdna_endpoint_profile_t* profile;
   // Fresh open file description owning all native handle namespaces.
   int descriptor;
   // Native host page size established during construction.

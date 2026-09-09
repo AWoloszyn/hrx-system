@@ -19,50 +19,8 @@ iree_cc_library(
     "bootstrap.c"
   DEPS
     amdf::headers
+    libamdf::src::xdna::bootstrap
   PUBLIC
-)
-endif()
-
-if(AMDF_BUILD AND AMDF_FAMILY_XDNA)
-iree_cc_library(
-  NAME
-    context
-  HDRS
-    "context.h"
-  DEPS
-    amdf::headers
-  PUBLIC
-)
-endif()
-
-if(AMDF_BUILD AND AMDF_FAMILY_XDNA)
-iree_cc_library(
-  NAME
-    ert_packet
-  HDRS
-    "ert_packet.h"
-  SRCS
-    "ert_packet.c"
-  DEPS
-    amdf::headers
-  PUBLIC
-)
-endif()
-
-if(AMDF_BUILD AND AMDF_FAMILY_XDNA)
-iree_cc_test(
-  NAME
-    ert_packet_test
-  SRCS
-    "ert_packet_test.cc"
-  DEPS
-    ::ert_packet
-    amdf::headers
-    iree::third_party::google_test
-    iree::third_party::google_test_main
-  LABELS
-    "iree-build-requirement=libamdf"
-    "iree-build-requirement=libamdf.xdna"
 )
 endif()
 

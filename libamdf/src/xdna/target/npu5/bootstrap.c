@@ -181,20 +181,19 @@ static const uint8_t amdf_xdna_npu5_bootstrap_pdi[] = {
 _Static_assert(sizeof(amdf_xdna_npu5_bootstrap_pdi) == 2000,
                "NPU5 legacy bootstrap PDI must match the qualified image");
 
-void amdf_xdna_npu5_bootstrap_query_pdi(const void** out_data,
-                                        size_t* out_data_size) {
-  *out_data = amdf_xdna_npu5_bootstrap_pdi;
-  *out_data_size = sizeof(amdf_xdna_npu5_bootstrap_pdi);
-}
+// NOOP transaction admitting the interpreter before application work.
+static const uint8_t amdf_xdna_npu5_bootstrap_admission_transaction[] = {
+    0,  1, 4, 6, 8, 1, 0, 0,  // Version 0.1 and full-array AIE2P geometry.
+    1,  0, 0, 0,              // One operation.
+    20, 0, 0, 0,              // Complete transaction byte length.
+    5,  0, 0, 0,              // XAIE_IO_NOOP.
+};
 
-void amdf_xdna_npu5_bootstrap_query_transaction(const void** out_data,
-                                                size_t* out_data_size) {
-  static const uint8_t transaction[] = {
-      0,  1, 4, 6, 8, 1, 0, 0,  // Version 0.1 and full-array AIE2P geometry.
-      1,  0, 0, 0,              // One operation.
-      20, 0, 0, 0,              // Complete transaction byte length.
-      5,  0, 0, 0,              // XAIE_IO_NOOP.
-  };
-  *out_data = transaction;
-  *out_data_size = sizeof(transaction);
-}
+const amdf_xdna_bootstrap_t amdf_xdna_npu5_bootstrap = {
+    .pdi_bytes = amdf_xdna_npu5_bootstrap_pdi,
+    .pdi_byte_length = sizeof(amdf_xdna_npu5_bootstrap_pdi),
+    .admission_transaction_bytes =
+        amdf_xdna_npu5_bootstrap_admission_transaction,
+    .admission_transaction_byte_length =
+        sizeof(amdf_xdna_npu5_bootstrap_admission_transaction),
+};

@@ -7,23 +7,14 @@
 #ifndef AMDF_SRC_XDNA_TARGET_NPU5_BOOTSTRAP_H_
 #define AMDF_SRC_XDNA_TARGET_NPU5_BOOTSTRAP_H_
 
-#include <stddef.h>
-#include <stdint.h>
+#include "libamdf/src/xdna/bootstrap.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// Returns the immutable provider-owned PDI initializing the NPU5 transaction
-// interpreter. The caller retains any native copy through context destruction.
-// This payload is independent of the operating system's admission envelope.
-void amdf_xdna_npu5_bootstrap_query_pdi(const void** out_data,
-                                        size_t* out_data_size);
-
-// Returns a NOOP transaction used to admit the interpreter before user work.
-// The transaction spans the physical array without touching tile state.
-void amdf_xdna_npu5_bootstrap_query_transaction(const void** out_data,
-                                                size_t* out_data_size);
+// Target bootstrap selected only by the central endpoint profile table.
+extern const amdf_xdna_bootstrap_t amdf_xdna_npu5_bootstrap;
 
 #ifdef __cplusplus
 }  // extern "C"

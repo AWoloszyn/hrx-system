@@ -11,7 +11,6 @@
 
 #include "libamdf/src/allocator.h"
 #include "libamdf/src/platform/linux/file.h"
-#include "libamdf/src/xdna/target/npu5/context.h"
 #include "libamdf/src/xdna/umd/drm/context.h"
 
 amdf_status_t amdf_xdna_umd_context_destroy(amdf_xdna_umd_context_t* context) {
@@ -40,12 +39,12 @@ amdf_status_t amdf_xdna_umd_context_destroy(amdf_xdna_umd_context_t* context) {
 }
 
 amdf_status_t amdf_xdna_umd_context_create(
-    amdf_xdna_umd_device_t* device, const amdf_xdna_endpoint_profile_t* profile,
+    amdf_xdna_umd_device_t* device,
     const amdf_xdna_context_create_info_t* create_info,
     amdf_xdna_umd_context_t** out_context,
     amdf_xdna_umd_context_result_t* out_result) {
-  if (profile->model != AMDF_PCI_XDNA_MODEL_NPU5 ||
-      (create_info->acceptable_scheduling_modes &
+  const amdf_xdna_endpoint_profile_t* profile = device->profile;
+  if ((create_info->acceptable_scheduling_modes &
        AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED) == 0 ||
       (create_info->physical_column_origin !=
            AMDF_XDNA_PHYSICAL_COLUMN_ORIGIN_ANY &&
@@ -63,12 +62,11 @@ amdf_status_t amdf_xdna_umd_context_create(
   context->handle = AMDXDNA_INVALID_CTX_HANDLE;
 
   struct amdxdna_qos_info qos = {.priority = AMDXDNA_QOS_NORMAL_PRIORITY};
-  // Current NPU5 firmware admits the complete physical array. The public
-  // logical width remains the program and command admission limit.
+  // The transaction-interpreter firmware admits the complete physical array.
+  // The public logical width remains the program and command admission limit.
   struct amdxdna_drm_create_hwctx create = {
       .qos_p = (uintptr_t)&qos,
-      .num_tiles =
-          profile->info->array.column_count * AMDF_XDNA_NPU5_CORE_ROW_COUNT,
+      .num_tiles = profile->info->array.column_count * profile->rows.core_count,
   };
   if (ioctl(device->descriptor, DRM_IOCTL_AMDXDNA_CREATE_HWCTX, &create) != 0) {
     status = amdf_linux_error(errno);
