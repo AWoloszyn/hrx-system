@@ -76,10 +76,49 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
 iree_cc_library(
   NAME
+    buffer
+  HDRS
+    "buffer.h"
+  SRCS
+    "buffer.c"
+  DEPS
+    ::device_state
+    amdf::headers
+    libamdf::src::allocator
+    libamdf::src::platform::linux::file
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_test(
+  NAME
+    buffer_test
+  SRCS
+    "buffer_test.cc"
+  LINKOPTS
+    "-Wl,--wrap=ioctl"
+  DEPS
+    ::buffer
+    ::device_state
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+    libamdf::src::allocator
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_library(
+  NAME
     memory
   SRCS
     "memory.c"
   DEPS
+    ::buffer
     ::device_state
     ::topology
     amdf::headers
@@ -145,6 +184,7 @@ iree_cc_library(
   NAME
     kfd
   DEPS
+    ::buffer
     ::device
     ::endpoint_profile
     ::kernel_queue

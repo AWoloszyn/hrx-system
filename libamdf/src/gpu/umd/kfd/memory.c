@@ -13,9 +13,9 @@
 #include <limits.h>
 #include <linux/kfd_ioctl.h>
 #include <sys/ioctl.h>
-#include <sys/mman.h>
 
 #include "libamdf/src/allocator.h"
+#include "libamdf/src/gpu/umd/kfd/buffer.h"
 #include "libamdf/src/gpu/umd/kfd/device.h"
 #include "libamdf/src/platform/linux/dma_buf.h"
 #include "libamdf/src/platform/linux/file.h"
@@ -24,23 +24,12 @@
 struct amdf_gpu_umd_memory_t {
   // Device borrowed while memory metadata is live.
   amdf_gpu_umd_device_t* device;
-  // Native KFD allocation identity, or zero after release.
-  uint64_t handle;
+  // Complete native allocation and stable CPU/GPU mapping.
+  amdf_gpu_kfd_buffer_t* buffer;
   // Page-covered native backing length in bytes.
   size_t byte_length;
   // Canonical DMA-BUF identity for shareable owned GTT.
   amdf_physical_memory_id_t physical_backing_id;
-  // True until the GPU mapping and its unmap synchronization have completed.
-  bool mapped;
-  // Native unmap progress retained across an interrupted final synchronization.
-  uint32_t unmap_success_count;
-  // Owned CPU VA interval reserving the GPU VA and any CPU backing mapping.
-  struct {
-    // First reserved host address, or NULL after release.
-    void* base;
-    // Complete reserved interval length, including alignment padding.
-    size_t byte_length;
-  } reservation;
   // Borrowed caller pages or persistent mapping into the owned reservation.
   void* host_pointer;
   // Cache behavior of the host view.
@@ -134,102 +123,12 @@ static amdf_status_t amdf_gpu_kfd_memory_plan(
 }
 
 amdf_status_t amdf_gpu_umd_memory_destroy(amdf_gpu_umd_memory_t* memory) {
-  if (memory->mapped) {
-    struct kfd_ioctl_unmap_memory_from_gpu_args unmap = {
-        .handle = memory->handle,
-        .device_ids_array_ptr = (uintptr_t)&memory->device->topology.gpu_id,
-        .n_devices = 1,
-        .n_success = memory->unmap_success_count,
-    };
-    const int result = ioctl(memory->device->descriptor,
-                             AMDKFD_IOC_UNMAP_MEMORY_FROM_GPU, &unmap);
-    memory->unmap_success_count = unmap.n_success;
-    if (result != 0) return amdf_linux_error(errno);
-    if (unmap.n_success != 1) return amdf_linux_error(EPROTO);
-    memory->mapped = false;
-  }
-  if (memory->handle != 0) {
-    struct kfd_ioctl_free_memory_of_gpu_args release = {.handle =
-                                                            memory->handle};
-    if (ioctl(memory->device->descriptor, AMDKFD_IOC_FREE_MEMORY_OF_GPU,
-              &release) != 0) {
-      return amdf_linux_error(errno);
-    }
-    memory->handle = 0;
-  }
-  if (memory->reservation.base != NULL) {
-    if (munmap(memory->reservation.base, memory->reservation.byte_length) !=
-        0) {
-      return amdf_linux_error(errno);
-    }
-    memory->reservation.base = NULL;
+  if (memory->buffer != NULL) {
+    const amdf_status_t status = amdf_gpu_kfd_buffer_destroy(memory->buffer);
+    if (!amdf_status_is_ok(status)) return status;
+    memory->buffer = NULL;
   }
   amdf_free(memory->device->host_allocator, memory);
-  return AMDF_STATUS_OK;
-}
-
-static amdf_status_t amdf_gpu_kfd_memory_allocate(
-    const amdf_gpu_kfd_memory_plan_t* plan,
-    const amdf_memory_create_info_t* create_info, amdf_gpu_umd_memory_t* memory,
-    uint64_t* out_device_address) {
-  memory->reservation.byte_length =
-      plan->byte_length + plan->alignment - memory->device->page_size;
-  void* reservation = mmap(NULL, memory->reservation.byte_length, PROT_NONE,
-                           MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-  if (reservation == MAP_FAILED) return amdf_linux_error(errno);
-  memory->reservation.base = reservation;
-  const uintptr_t address =
-      ((uintptr_t)reservation + plan->alignment - 1) & ~(plan->alignment - 1);
-  const amdf_gpu_kfd_topology_t* topology = &memory->device->topology;
-  if (address < topology->virtual_address.begin ||
-      address >= topology->virtual_address.end ||
-      plan->byte_length > topology->virtual_address.end - address) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
-  }
-
-  struct kfd_ioctl_alloc_memory_of_gpu_args allocate = {
-      .va_addr = address,
-      .size = plan->byte_length,
-      .gpu_id = topology->gpu_id,
-      .flags = plan->native_flags,
-  };
-  if (create_info->memory_class == AMDF_MEMORY_CLASS_REGISTERED_HOST) {
-    memory->host_pointer = create_info->registered_host_pointer;
-    allocate.mmap_offset =
-        (uintptr_t)memory->host_pointer - plan->host_byte_offset;
-  }
-  if (ioctl(memory->device->descriptor, AMDKFD_IOC_ALLOC_MEMORY_OF_GPU,
-            &allocate) != 0) {
-    return amdf_linux_error(errno);
-  }
-  memory->handle = allocate.handle;
-  if (memory->handle == 0) return amdf_linux_error(EPROTO);
-
-  if (create_info->memory_class != AMDF_MEMORY_CLASS_REGISTERED_HOST &&
-      (plan->flags & AMDF_MEMORY_FLAG_HOST_VISIBLE) != 0) {
-    // MAP_FIXED only replaces pages in this object's own PROT_NONE reservation.
-    void* mapping =
-        mmap((void*)address, plan->byte_length, PROT_READ | PROT_WRITE,
-             MAP_SHARED | MAP_FIXED, memory->device->render_descriptor,
-             allocate.mmap_offset);
-    if (mapping == MAP_FAILED) return amdf_linux_error(errno);
-    memory->host_pointer = mapping;
-  }
-  memory->cacheability = (plan->flags & AMDF_MEMORY_FLAG_HOST_COHERENT) != 0
-                             ? AMDF_HOST_CACHEABILITY_COHERENT
-                             : AMDF_HOST_CACHEABILITY_WRITE_COMBINED;
-  struct kfd_ioctl_map_memory_to_gpu_args map = {
-      .handle = memory->handle,
-      .device_ids_array_ptr = (uintptr_t)&topology->gpu_id,
-      .n_devices = 1,
-  };
-  const int result =
-      ioctl(memory->device->descriptor, AMDKFD_IOC_MAP_MEMORY_TO_GPU, &map);
-  // Mapping can succeed before the final residency/page-table wait fails.
-  memory->mapped = map.n_success != 0;
-  if (result != 0) return amdf_linux_error(errno);
-  if (map.n_success != 1) return amdf_linux_error(EPROTO);
-  *out_device_address = address + plan->host_byte_offset;
   return AMDF_STATUS_OK;
 }
 
@@ -237,7 +136,7 @@ static amdf_status_t amdf_gpu_kfd_memory_open_dma_buf(
     amdf_gpu_umd_memory_t* memory, int* out_descriptor,
     amdf_linux_dma_buf_info_t* out_info) {
   struct kfd_ioctl_export_dmabuf_args export_args = {
-      .handle = memory->handle,
+      .handle = amdf_gpu_kfd_buffer_handle(memory->buffer),
       .flags = O_CLOEXEC,
   };
   if (ioctl(memory->device->descriptor, AMDKFD_IOC_EXPORT_DMABUF,
@@ -418,8 +317,29 @@ amdf_status_t amdf_gpu_umd_memory_create(
   if (!amdf_status_is_ok(status)) return status;
   memory->device = device;
   memory->byte_length = plan.byte_length;
-  uint64_t address = 0;
-  status = amdf_gpu_kfd_memory_allocate(&plan, create_info, memory, &address);
+  const bool registered =
+      create_info->memory_class == AMDF_MEMORY_CLASS_REGISTERED_HOST;
+  const amdf_gpu_kfd_buffer_create_info_t buffer_create_info = {
+      .native_flags = plan.native_flags,
+      .byte_length = plan.byte_length,
+      .alignment = plan.alignment,
+      .host_access = registered
+                         ? AMDF_GPU_KFD_BUFFER_HOST_ACCESS_BORROWED
+                         : ((plan.flags & AMDF_MEMORY_FLAG_HOST_VISIBLE) != 0
+                                ? AMDF_GPU_KFD_BUFFER_HOST_ACCESS_MAPPED
+                                : AMDF_GPU_KFD_BUFFER_HOST_ACCESS_NONE),
+      .host_pointer = create_info->registered_host_pointer,
+      .host_byte_offset = plan.host_byte_offset,
+  };
+  amdf_gpu_kfd_buffer_result_t buffer_result = {0};
+  status = amdf_gpu_kfd_buffer_create(device, &buffer_create_info,
+                                      &memory->buffer, &buffer_result);
+  if (amdf_status_is_ok(status)) {
+    memory->host_pointer = buffer_result.host_pointer;
+    memory->cacheability = (plan.flags & AMDF_MEMORY_FLAG_HOST_COHERENT) != 0
+                               ? AMDF_HOST_CACHEABILITY_COHERENT
+                               : AMDF_HOST_CACHEABILITY_WRITE_COMBINED;
+  }
   if (amdf_status_is_ok(status) &&
       create_info->memory_class == AMDF_MEMORY_CLASS_SYSTEM) {
     amdf_linux_dma_buf_info_t info;
@@ -429,8 +349,6 @@ amdf_status_t amdf_gpu_umd_memory_create(
     }
   }
   if (amdf_status_is_ok(status)) {
-    const bool registered =
-        create_info->memory_class == AMDF_MEMORY_CLASS_REGISTERED_HOST;
     // A subpage registration promises only the alignment shared by the caller
     // address and the GPU view, and never exposes unborrowed neighboring bytes.
     const uint64_t alignment =
@@ -456,15 +374,16 @@ amdf_status_t amdf_gpu_umd_memory_create(
         .byte_length = length,
         .alignment = alignment,
         .physical_backing_id = physical_backing_id,
-        .device_address = address,
+        .device_address = buffer_result.device_address,
     };
     *out_memory = memory;
   } else {
-    const amdf_status_t release_status = amdf_gpu_umd_memory_destroy(memory);
-    if (!amdf_status_is_ok(release_status)) {
-      amdf_free(device->host_allocator, memory);
-      status = release_status;
+    if (memory->buffer != NULL) {
+      const amdf_status_t release_status =
+          amdf_gpu_kfd_buffer_discard(memory->buffer);
+      if (!amdf_status_is_ok(release_status)) status = release_status;
     }
+    amdf_free(device->host_allocator, memory);
   }
   return status;
 }

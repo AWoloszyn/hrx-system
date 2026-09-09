@@ -64,10 +64,37 @@ amdf_cc_library(
 )
 
 amdf_cc_library(
+    name = "buffer",
+    srcs = ["buffer.c"],
+    hdrs = ["buffer.h"],
+    target_compatible_with = KFD_COMPATIBILITY,
+    deps = [
+        ":device_state",
+        "//libamdf/src:allocator",
+        "//libamdf/src/platform/linux:file",
+    ],
+)
+
+amdf_cc_test(
+    name = "buffer_test",
+    srcs = ["buffer_test.cc"],
+    linkopts = ["-Wl,--wrap=ioctl"],
+    target_compatible_with = KFD_COMPATIBILITY,
+    deps = [
+        ":buffer",
+        ":device_state",
+        "//libamdf/src:allocator",
+        "//third_party:google_test",
+        "//third_party:google_test_main",
+    ],
+)
+
+amdf_cc_library(
     name = "memory",
     srcs = ["memory.c"],
     target_compatible_with = KFD_COMPATIBILITY,
     deps = [
+        ":buffer",
         ":device_state",
         ":topology",
         "//libamdf/src:allocator",
@@ -115,6 +142,7 @@ amdf_cc_library(
     target_compatible_with = KFD_COMPATIBILITY,
     visibility = ["//libamdf/src/gpu/umd:__pkg__"],
     deps = [
+        ":buffer",
         ":device",
         ":endpoint_profile",
         ":kernel_queue",
