@@ -18,7 +18,9 @@ extern "C" {
 // Schedules and allocates one prepared VM function with the common frame
 // builder, then appends its instruction stream exactly once. |out_row| receives
 // its byte length and frame high waters; the module writer owns callable and
-// section-relative offsets. All scratch storage belongs to |request|'s arena.
+// section-relative offsets. Branches target block markers using signed word
+// offsets patched after emission. The shared allocator owns edge and packet
+// moves, including cycle temporaries. All scratch belongs to |request|'s arena.
 iree_status_t loom_vm_function_emit(
     const loom_target_emit_request_t* request, loom_func_like_t function,
     const loom_target_facts_t* target_facts, iree_io_stream_t* stream,

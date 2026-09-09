@@ -7,14 +7,17 @@
 """Source operation correspondence for spec-derived VM instructions."""
 
 from iree.vm.bytecode.spec.isa.core.integer import (
+    INTEGER_COMPARE_SELECTOR,
     IntegerBinaryOperation,
     IntegerBinarySemantics,
+    IntegerCompareSemantics,
 )
 from iree.vm.bytecode.spec.specification import SPECIFICATION
 
-from loom.dialect.scalar import ALL_SCALAR_OPS, arithmetic, conversion
+from loom.dialect.scalar import ALL_SCALAR_OPS, arithmetic, comparison, conversion
 from loom.target.arch.vm.descriptors import VM_CORE_DESCRIPTOR_SET
 from loom.target.contracts import (
+    AttrProject,
     ContractFragment,
     DescriptorEmitForm,
     DescriptorRule,
@@ -36,6 +39,11 @@ _BINARY_SOURCE_OPS = {
 
 _INSTRUCTIONS = {
     instruction.opcode: instruction for instruction in SPECIFICATION.instructions
+}
+
+# A direct ordinal projection is valid only while both public enums agree.
+assert {case.keyword: case.value for case in comparison.CmpIPredicate.cases} == {
+    value.name: value.value for value in INTEGER_COMPARE_SELECTOR.values
 }
 
 VM_CORE_CONTRACT_DIALECT_OPS = {"scalar": ALL_SCALAR_OPS}
@@ -76,11 +84,44 @@ def _constant_cases():
         )
 
 
+def _compare_cases():
+    for descriptor in VM_CORE_DESCRIPTOR_SET.descriptors:
+        semantics = _INSTRUCTIONS[descriptor.encoding_id].semantics
+        if not isinstance(semantics, IntegerCompareSemantics):
+            continue
+        operand_type = Scalar(f"i{semantics.bit_width}")
+        yield DescriptorRule(
+            source_op=comparison.scalar_cmpi,
+            descriptor=descriptor,
+            guards=(
+                Guard.value_type("lhs", operand_type),
+                Guard.value_type("rhs", operand_type),
+                Guard.value_type("result", Scalar("i1")),
+            ),
+            emit=(
+                EmitDescriptorOp(
+                    descriptor=descriptor,
+                    operands={
+                        "left_v8": ValueRef.operand("lhs"),
+                        "right_v8": ValueRef.operand("rhs"),
+                    },
+                    results={"destination_v8": ValueRef.result("result")},
+                    immediates={
+                        descriptor.immediates[0].field_name: AttrProject.enum_ordinal(
+                            "predicate"
+                        )
+                    },
+                ),
+            ),
+        )
+
+
 VM_CORE_CONTRACT_FRAGMENT = ContractFragment(
     name="vm.core",
     descriptor_set=VM_CORE_DESCRIPTOR_SET,
     public_header="loom/target/arch/vm/contracts/core.h",
     cases=tuple(_constant_cases())
+    + tuple(_compare_cases())
     + binary_descriptor_rules(
         tuple(_binary_cases()),
         descriptor_result="destination_v8",

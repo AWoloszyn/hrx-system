@@ -18,7 +18,8 @@ static iree_status_t loom_vm_map_type(void* user_data,
                                       loom_type_t* out_low_type) {
   (void)user_data;
   if (loom_type_is_scalar(source_type) &&
-      (loom_type_element_type(source_type) == LOOM_SCALAR_TYPE_I32 ||
+      (loom_type_element_type(source_type) == LOOM_SCALAR_TYPE_I1 ||
+       loom_type_element_type(source_type) == LOOM_SCALAR_TYPE_I32 ||
        loom_type_element_type(source_type) == LOOM_SCALAR_TYPE_I64)) {
     return loom_low_lower_make_typed_register_type(
         context, VM_CORE_REG_CLASS_ID_VALUE, 1, source_type, out_low_type);

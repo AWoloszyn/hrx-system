@@ -14,6 +14,50 @@
 #include "loom/ops/low/ops.h"
 #include "loom/target/arch/vm/descriptors/descriptors.h"
 
+// Branch displacement fields are patched after the single emission walk. Dense
+// target indices come directly from the shared CFG, in scheduled block order.
+typedef struct loom_vm_branch_fixup_t {
+  // Absolute stream offset of the signed word-displacement field.
+  iree_io_stream_pos_t offset;
+  // Dense target block index in the shared schedule.
+  uint16_t target_block;
+} loom_vm_branch_fixup_t;
+
+static iree_status_t loom_vm_function_moves(const loom_low_move_t* moves,
+                                            loom_low_move_range_t range,
+                                            iree_io_stream_t* stream) {
+  iree_status_t status = iree_ok_status();
+  for (iree_host_size_t i = 0; i < range.count && iree_status_is_ok(status);
+       ++i) {
+    const loom_low_move_t* move = &moves[range.start + i];
+    const iree_vm_bytecode_value_copy_t instruction = {
+        .opcode = IREE_VM_BYTECODE_OPCODE_VALUE_COPY,
+        .destination_v8 = (uint8_t)move->destination.location,
+        .source_v8 = (uint8_t)move->source.location,
+    };
+    status = iree_io_stream_write(stream, sizeof(instruction), &instruction);
+  }
+  return status;
+}
+
+static iree_status_t loom_vm_function_branch(
+    iree_io_stream_t* stream, uint8_t opcode, uint8_t condition,
+    uint16_t target_block, loom_vm_branch_fixup_t* out_fixup) {
+  // The wide branch family shares one encoding. An unconditional branch has
+  // zero in the condition byte, which is reserved padding in that form.
+  const iree_vm_bytecode_control_branch_if_s32_t instruction = {
+      .opcode = opcode,
+      .condition_v8 = condition,
+  };
+  *out_fixup = (loom_vm_branch_fixup_t){
+      .offset = iree_io_stream_offset(stream) +
+                offsetof(iree_vm_bytecode_control_branch_if_s32_t,
+                         target_word_offset_s32),
+      .target_block = target_block,
+  };
+  return iree_io_stream_write(stream, sizeof(instruction), &instruction);
+}
+
 // Only returned values remain live at a return boundary. A cycle temporary
 // can use any value register absent from that parallel move group; it does
 // not reserve a register throughout the function or enlarge unrelated frames.
@@ -72,23 +116,35 @@ static iree_status_t loom_vm_function_return(
       &move_count, &complete));
   // Capacity covers the worst permutation and the temporary always resolves.
   IREE_ASSERT(complete);
-  iree_status_t status = iree_ok_status();
-  for (iree_host_size_t i = 0; i < move_count && iree_status_is_ok(status);
-       ++i) {
-    const iree_vm_bytecode_value_copy_t instruction = {
-        .opcode = IREE_VM_BYTECODE_OPCODE_VALUE_COPY,
-        .destination_v8 = (uint8_t)moves[i].destination.location,
-        .source_v8 = (uint8_t)moves[i].source.location,
-    };
-    status = iree_io_stream_write(stream, sizeof(instruction), &instruction);
+  IREE_RETURN_IF_ERROR(loom_vm_function_moves(
+      moves, (loom_low_move_range_t){.count = move_count}, stream));
+  const iree_vm_bytecode_control_return_t instruction = {
+      .opcode = IREE_VM_BYTECODE_OPCODE_CONTROL_RETURN,
+  };
+  return iree_io_stream_write(stream, sizeof(instruction), &instruction);
+}
+
+static uint64_t loom_vm_function_immediate(
+    const loom_low_emission_frame_t* frame,
+    const loom_low_immediate_t* immediate, loom_attribute_t value) {
+  if (value.kind != LOOM_ATTR_STRING) return (uint64_t)value.i64;
+  // Verified Low permits either an integer ordinal or a named enum token.
+  // Compiler lowering emits ordinals; authored assembly can use either form.
+  const loom_low_descriptor_set_t* descriptors = frame->target.descriptor_set;
+  const loom_low_enum_domain_t* domain =
+      &descriptors->enum_domains[immediate->enum_domain_id];
+  const iree_string_view_t token =
+      frame->module->strings.entries[value.string_id];
+  for (uint16_t i = 0; i < domain->value_count; ++i) {
+    const loom_low_enum_value_t* entry =
+        &descriptors->enum_values[domain->value_start + i];
+    if (iree_string_view_equal(token,
+                               loom_low_descriptor_set_string(
+                                   descriptors, entry->token_string_offset))) {
+      return (uint64_t)entry->value;
+    }
   }
-  if (iree_status_is_ok(status)) {
-    const iree_vm_bytecode_control_return_t instruction = {
-        .opcode = IREE_VM_BYTECODE_OPCODE_CONTROL_RETURN,
-    };
-    status = iree_io_stream_write(stream, sizeof(instruction), &instruction);
-  }
-  return status;
+  IREE_BUILTIN_UNREACHABLE();
 }
 
 static iree_status_t loom_vm_function_packet(
@@ -116,15 +172,15 @@ static iree_status_t loom_vm_function_packet(
     packet[operand->encoding_field_id] = (uint8_t)assignment->location_base;
   }
   if (descriptor->immediate_count) {
-    // The projection and Low verifier establish one required integer immediate.
-    // Its position is unambiguous; no string lookup or decoding table is
-    // needed.
+    // The projection and Low verifier establish one required immediate, so its
+    // dictionary position is unambiguous and needs no attribute-name lookup.
     const loom_named_attr_slice_t attributes =
         loom_low_const_isa(node->op) ? loom_low_const_attrs(node->op)
                                      : loom_low_op_attrs(node->op);
-    const uint64_t bits = (uint64_t)attributes.entries[0].value.i64;
     const loom_low_immediate_t* immediate =
         &frame->target.descriptor_set->immediates[descriptor->immediate_start];
+    const uint64_t bits = loom_vm_function_immediate(
+        frame, immediate, attributes.entries[0].value);
     memcpy(packet + immediate->encoding_field_id, &bits,
            immediate->bit_width / 8);
   }
@@ -181,12 +237,24 @@ iree_status_t loom_vm_function_emit(
   loom_low_move_sequence_scratch_t return_scratch = {0};
   IREE_RETURN_IF_ERROR(loom_low_move_sequence_scratch_initialize(
       request->scratch_arena, results.count, &return_scratch));
+  const loom_cfg_graph_t* graph = &frame.schedule.cfg_graph;
+  iree_io_stream_pos_t* block_offsets = NULL;
+  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+      request->scratch_arena, graph->block_count, sizeof(*block_offsets),
+      (void**)&block_offsets));
+  loom_vm_branch_fixup_t* fixups = NULL;
+  IREE_RETURN_IF_ERROR(
+      iree_arena_allocate_array(request->scratch_arena, graph->edge_count,
+                                sizeof(*fixups), (void**)&fixups));
+  iree_host_size_t fixup_count = 0;
+  iree_host_size_t edge_copy_index = 0;
 
   const iree_io_stream_pos_t start = iree_io_stream_offset(stream);
   iree_status_t status = iree_ok_status();
   for (iree_host_size_t b = 0;
        b < frame.schedule.block_count && iree_status_is_ok(status); ++b) {
     const loom_low_schedule_block_t* block = &frame.schedule.blocks[b];
+    block_offsets[b] = iree_io_stream_offset(stream);
     const iree_vm_bytecode_control_block_t instruction = {
         .opcode = IREE_VM_BYTECODE_OPCODE_CONTROL_BLOCK,
     };
@@ -202,6 +270,60 @@ iree_status_t loom_vm_function_emit(
       } else if (loom_low_return_isa(node->op)) {
         status = loom_vm_function_return(&frame, node, &return_scratch, stream,
                                          &out_row->value_register_count_u16);
+      } else if (loom_low_br_isa(node->op)) {
+        // Allocation records one group for each payload-bearing branch, in
+        // source block order, including groups whose moves all coalesced.
+        if (node->operand_count) {
+          const loom_low_move_range_t range =
+              frame.allocation.edge_copy_groups[edge_copy_index++]
+                  .move_group.moves;
+          status =
+              loom_vm_function_moves(frame.allocation.moves, range, stream);
+        }
+        const uint16_t target =
+            graph->successor_indices[graph->blocks[b].successor_start];
+        if (iree_status_is_ok(status) && target != b + 1) {
+          status = loom_vm_function_branch(
+              stream, IREE_VM_BYTECODE_OPCODE_CONTROL_BRANCH_S32, 0, target,
+              &fixups[fixup_count++]);
+        }
+      } else if (loom_low_cond_br_isa(node->op)) {
+        const uint16_t* targets =
+            graph->successor_indices + graph->blocks[b].successor_start;
+        const loom_value_ordinal_t condition_ordinal =
+            loom_low_schedule_node_const_operand_ordinals(node)[0];
+        const uint8_t condition =
+            (uint8_t)loom_low_allocation_assignment_for_value_ordinal(
+                &frame.allocation, condition_ordinal, NULL)
+                ->location_base;
+        // Invert the condition when the true edge can fall through. Otherwise
+        // branch on true and emit the false jump only if it cannot fall
+        // through.
+        if (targets[0] == b + 1) {
+          status = loom_vm_function_branch(
+              stream, IREE_VM_BYTECODE_OPCODE_CONTROL_BRANCH_UNLESS_S32,
+              condition, targets[1], &fixups[fixup_count++]);
+        } else {
+          status = loom_vm_function_branch(
+              stream, IREE_VM_BYTECODE_OPCODE_CONTROL_BRANCH_IF_S32, condition,
+              targets[0], &fixups[fixup_count++]);
+          if (iree_status_is_ok(status) && targets[1] != b + 1) {
+            status = loom_vm_function_branch(
+                stream, IREE_VM_BYTECODE_OPCODE_CONTROL_BRANCH_S32, 0,
+                targets[1], &fixups[fixup_count++]);
+          }
+        }
+      } else if (loom_low_copy_isa(node->op) || loom_low_move_isa(node->op) ||
+                 loom_low_slice_isa(node->op) ||
+                 loom_low_concat_isa(node->op)) {
+        const loom_low_allocation_packet_move_group_t* group =
+            loom_low_allocation_find_packet_move_group_by_source_ordinal(
+                &frame.allocation, node->source_ordinal);
+        if (group) {
+          const loom_low_move_range_t range = group->move_group.moves;
+          status =
+              loom_vm_function_moves(frame.allocation.moves, range, stream);
+        }
       } else {
         status = iree_make_status(
             IREE_STATUS_UNIMPLEMENTED,
@@ -212,13 +334,31 @@ iree_status_t loom_vm_function_emit(
     }
   }
   if (iree_status_is_ok(status)) {
-    const iree_io_stream_pos_t length = iree_io_stream_offset(stream) - start;
+    const iree_io_stream_pos_t end = iree_io_stream_offset(stream);
+    const iree_io_stream_pos_t length = end - start;
     if (length > INT32_MAX) {
       status =
           iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                            "VM function bytecode exceeds signed 32-bit extent");
     } else {
       out_row->bytecode_length_u32 = (uint32_t)length;
+    }
+    for (iree_host_size_t i = 0; i < fixup_count && iree_status_is_ok(status);
+         ++i) {
+      const loom_vm_branch_fixup_t fixup = fixups[i];
+      const int32_t displacement =
+          (int32_t)((block_offsets[fixup.target_block] - fixup.offset -
+                     (iree_io_stream_pos_t)sizeof(int32_t)) /
+                    4);
+      status =
+          iree_io_stream_seek(stream, IREE_IO_STREAM_SEEK_SET, fixup.offset);
+      if (iree_status_is_ok(status)) {
+        status =
+            iree_io_stream_write(stream, sizeof(displacement), &displacement);
+      }
+    }
+    if (fixup_count && iree_status_is_ok(status)) {
+      status = iree_io_stream_seek(stream, IREE_IO_STREAM_SEEK_SET, end);
     }
   }
   return status;

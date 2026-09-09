@@ -52,3 +52,18 @@ low.func.def target<vm.core>(@vm) abi(vm_function) @constant_bits() -> (reg<vm.v
   %wide = constant.i64 -9223372036854775808
   return %narrow, %wide
 }
+
+// ====
+
+vm.target<core> @vm
+
+func.def target(@vm) @compare(%a: i64, %b: i64) -> (i1) {
+  %result = scalar.cmpi ult, %a, %b : i64
+  func.return %result : i1
+}
+
+// ----
+low.func.def target<vm.core>(@vm) abi(vm_function) @compare(%a: reg<vm.value : i64>, %b: reg<vm.value : i64>) -> (reg<vm.value : i1>) asm {
+  %result = integer.compare.i64 %a, %b, 6
+  return %result
+}

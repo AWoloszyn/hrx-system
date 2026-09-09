@@ -6,7 +6,10 @@
 
 from iree.vm.bytecode.spec.isa import ControlFlow, FieldRole, Suspension
 from iree.vm.bytecode.spec.isa.core.constant import CONSTANT_I32, CONSTANT_I64
-from iree.vm.bytecode.spec.isa.core.integer import IntegerBinarySemantics
+from iree.vm.bytecode.spec.isa.core.integer import (
+    IntegerBinarySemantics,
+    IntegerCompareSemantics,
+)
 from iree.vm.bytecode.spec.isa.core.rules import FieldRule
 from iree.vm.bytecode.spec.specification import SPECIFICATION
 
@@ -74,6 +77,36 @@ def test_lowering_uses_the_projected_descriptors():
             for operand in case.descriptor.operands
             if operand.role is OperandRole.RESULT
         }
+
+
+def test_compare_selectors_preserve_the_spec_domain_and_encoding():
+    descriptors = {
+        descriptor.encoding_id: descriptor
+        for descriptor in VM_CORE_DESCRIPTOR_SET.descriptors
+    }
+    domains = {domain.name: domain for domain in VM_CORE_DESCRIPTOR_SET.enum_domains}
+    for instruction in SPECIFICATION.instructions:
+        if not isinstance(instruction.semantics, IntegerCompareSemantics):
+            continue
+        descriptor = descriptors[instruction.opcode]
+        (immediate,) = descriptor.immediates
+        (selector,) = (
+            (field, offset)
+            for field, offset in zip(
+                instruction.fields, instruction.field_offsets, strict=True
+            )
+            if field.rule.kind is FieldRule.SELECTOR
+        )
+        field, offset = selector
+        assert immediate.encoding_field_id == offset
+        assert immediate.bit_width == field.field.byte_length * 8
+        assert {
+            entry.token: entry.value for entry in domains[immediate.enum_domain].values
+        } == {entry.name: entry.value for entry in field.rule.data.values}
+        assert (
+            descriptor.asm_forms[0].result_value_types[0].element_type
+            is ScalarTypeKind.I1
+        )
 
 
 def test_constant_immediates_preserve_the_wire_bits_and_alignment():

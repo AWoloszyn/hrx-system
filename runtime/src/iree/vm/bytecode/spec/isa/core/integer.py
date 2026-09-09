@@ -43,6 +43,11 @@ class IntegerBinarySemantics(NamedTuple):
     bit_width: int
 
 
+class IntegerCompareSemantics(NamedTuple):
+    # Width of the integer operands; the result is a canonical boolean cell.
+    bit_width: int
+
+
 class _BitstreamOperation(enum.Enum):
     PACK = "pack"
     UNPACK_UNSIGNED = "unpack.u"
@@ -657,7 +662,7 @@ def _compare(opcode: int, bit_width: int) -> Instruction:
             ),
             _padding(element_count=3),
         ),
-        semantics=None,
+        semantics=IntegerCompareSemantics(bit_width),
         behavior=(
             f"Compares the selected low {bit_width} bits using equality, signed "
             "ordering, or unsigned ordering selected by predicate_u8."

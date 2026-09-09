@@ -27,3 +27,12 @@ low.func.def target<vm.core>(@vm) abi(vm_function) @constants() -> (reg<vm.value
   %wide = constant.i64 -9223372036854775808
   return %narrow, %wide
 }
+
+// ====
+
+vm.target<core> @vm
+
+low.func.def target<vm.core>(@vm) abi(vm_function) @compare(%a: reg<vm.value : i32>, %b: reg<vm.value : i32>) -> (reg<vm.value : i1>) asm {
+  %result = integer.compare.i32 %a, %b, "slt"
+  return %result
+}
