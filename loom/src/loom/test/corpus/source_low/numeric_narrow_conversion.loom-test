@@ -66,6 +66,28 @@ func.def @narrow_constants() -> (i8, i16, f16, bf16) {
 
 // ====
 
+func.def @float8_constants() -> (f8E4M3, f8E5M2, f8E4M3, f8E5M2) {
+  %finite_e4 = scalar.constant -1.5 : f8E4M3
+  %finite_e5 = scalar.constant 1.25 : f8E5M2
+  %zero_e4 = scalar.constant -0.0 : f8E4M3
+  %zero_e5 = scalar.constant -0.0 : f8E5M2
+  func.return %finite_e4, %finite_e5, %zero_e4, %zero_e5 : f8E4M3, f8E5M2, f8E4M3, f8E5M2
+}
+
+// ====
+
+func.def @float_nan_constants() -> (f8E4M3, f8E5M2, f16, bf16, f32, f64) {
+  %e4 = scalar.constant nan : f8E4M3
+  %e5 = scalar.constant nan : f8E5M2
+  %half = scalar.constant nan : f16
+  %brain = scalar.constant nan : bf16
+  %single = scalar.constant nan : f32
+  %wide = scalar.constant nan : f64
+  func.return %e4, %e5, %half, %brain, %single, %wide : f8E4M3, f8E5M2, f16, bf16, f32, f64
+}
+
+// ====
+
 func.def @float_conversion_paths(%e4: f8E4M3, %e5: f8E5M2, %half: f16, %brain: bf16) -> (f16, bf16, f64, f64, f8E4M3, f8E5M2, i8, i16, i32, i64) {
   %r0 = scalar.extf %e4 : f8E4M3 to f16
   %r1 = scalar.extf %e5 : f8E5M2 to bf16

@@ -141,6 +141,52 @@ low.func.def target<vm.core>(@vm) abi(vm_function) @narrow_constants() -> (reg<v
 
 vm.target<core> @vm
 
+func.def target(@vm) @float8_constants() -> (f8E4M3, f8E5M2, f8E4M3, f8E5M2) {
+  %finite_e4 = scalar.constant -1.5 : f8E4M3
+  %finite_e5 = scalar.constant 1.25 : f8E5M2
+  %zero_e4 = scalar.constant -0.0 : f8E4M3
+  %zero_e5 = scalar.constant -0.0 : f8E5M2
+  func.return %finite_e4, %finite_e5, %zero_e4, %zero_e5 : f8E4M3, f8E5M2, f8E4M3, f8E5M2
+}
+
+// ----
+low.func.def target<vm.core>(@vm) abi(vm_function) @float8_constants() -> (reg<vm.value : f8E4M3>, reg<vm.value : f8E5M2>, reg<vm.value : f8E4M3>, reg<vm.value : f8E5M2>) asm {
+  %finite_e4 = constant.i32 188 : reg<vm.value : f8E4M3>
+  %finite_e5 = constant.i32 61 : reg<vm.value : f8E5M2>
+  %zero_e4 = constant.i32 128 : reg<vm.value : f8E4M3>
+  %zero_e5 = constant.i32 128 : reg<vm.value : f8E5M2>
+  return %finite_e4, %finite_e5, %zero_e4, %zero_e5
+}
+
+// ====
+
+vm.target<core> @vm
+
+func.def target(@vm) @float_nan_constants() -> (f8E4M3, f8E5M2, f16, bf16, f32, f64) {
+  %e4 = scalar.constant nan : f8E4M3
+  %e5 = scalar.constant nan : f8E5M2
+  %half = scalar.constant nan : f16
+  %brain = scalar.constant nan : bf16
+  %single = scalar.constant nan : f32
+  %wide = scalar.constant nan : f64
+  func.return %e4, %e5, %half, %brain, %single, %wide : f8E4M3, f8E5M2, f16, bf16, f32, f64
+}
+
+// ----
+low.func.def target<vm.core>(@vm) abi(vm_function) @float_nan_constants() -> (reg<vm.value : f8E4M3>, reg<vm.value : f8E5M2>, reg<vm.value : f16>, reg<vm.value : bf16>, reg<vm.value : f32>, reg<vm.value : f64>) asm {
+  %e4 = constant.i32 127 : reg<vm.value : f8E4M3>
+  %e5 = constant.i32 127 : reg<vm.value : f8E5M2>
+  %half = constant.i32 32767 : reg<vm.value : f16>
+  %brain = constant.i32 32767 : reg<vm.value : bf16>
+  %single = constant.i32 2143289344 : reg<vm.value : f32>
+  %wide = constant.i64 9221120237041090560 : reg<vm.value : f64>
+  return %e4, %e5, %half, %brain, %single, %wide
+}
+
+// ====
+
+vm.target<core> @vm
+
 func.def target(@vm) @float_conversion_paths(%e4: f8E4M3, %e5: f8E5M2, %half: f16, %brain: bf16) -> (f16, bf16, f64, f64, f8E4M3, f8E5M2, i8, i16, i32, i64) {
   %r0 = scalar.extf %e4 : f8E4M3 to f16
   %r1 = scalar.extf %e5 : f8E5M2 to bf16

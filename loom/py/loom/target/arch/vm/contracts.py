@@ -167,22 +167,20 @@ _CONSTANT_SOURCES = {
         "i8": ValueProject.i32_as_u32_bits,
         "i16": ValueProject.i32_as_u32_bits,
         "i32": ValueProject.i32_as_u32_bits,
-        "f16": ValueProject.float_as_f16_bits,
-        "bf16": ValueProject.float_as_bf16_bits,
-        "f32": ValueProject.float_as_f32_bits,
+        "f8E4M3": ValueProject.float_bits,
+        "f8E5M2": ValueProject.float_bits,
+        "f16": ValueProject.float_bits,
+        "bf16": ValueProject.float_bits,
+        "f32": ValueProject.float_bits,
     },
     64: {
         "i64": ValueProject.exact_i64,
-        "f64": ValueProject.float_as_f64_bits,
+        "f64": ValueProject.float_bits,
         "index": ValueProject.exact_i64,
         "offset": ValueProject.exact_i64,
     },
 }
-_SCALAR_TYPES = (
-    *(name for types in _CONSTANT_SOURCES.values() for name in types),
-    "f8E4M3",
-    "f8E5M2",
-)
+_SCALAR_TYPES = tuple(name for types in _CONSTANT_SOURCES.values() for name in types)
 _SOURCE_SCALAR_NAMES = {name.lower(): name for name in _SCALAR_TYPES}
 
 # Selectors carry their source/destination types in the canonical ISA spelling.

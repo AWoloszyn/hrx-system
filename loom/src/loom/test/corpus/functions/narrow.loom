@@ -1,3 +1,52 @@
+func.def public @float8_constants() -> (f8E4M3, f8E5M2, f8E4M3, f8E5M2) {
+  %finite_e4 = scalar.constant -1.5 : f8E4M3
+  %finite_e5 = scalar.constant 1.25 : f8E5M2
+  %zero_e4 = scalar.constant -0.0 : f8E4M3
+  %zero_e5 = scalar.constant -0.0 : f8E5M2
+  func.return %finite_e4, %finite_e5, %zero_e4, %zero_e5 : f8E4M3, f8E5M2, f8E4M3, f8E5M2
+}
+
+check.case @float8_constants_case {
+  %finite_e4, %finite_e5, %zero_e4, %zero_e5 = func.call @float8_constants() : () -> (f8E4M3, f8E5M2, f8E4M3, f8E5M2)
+  %expected_e4 = check.literal value(-1.5) : f8E4M3
+  %expected_e5 = check.literal value(1.25) : f8E5M2
+  %expected_zero_e4 = check.literal value(-0.0) : f8E4M3
+  %expected_zero_e5 = check.literal value(-0.0) : f8E5M2
+  check.expect.bitwise actual(%finite_e4) expected(%expected_e4) : f8E4M3
+  check.expect.bitwise actual(%finite_e5) expected(%expected_e5) : f8E5M2
+  check.expect.bitwise actual(%zero_e4) expected(%expected_zero_e4) : f8E4M3
+  check.expect.bitwise actual(%zero_e5) expected(%expected_zero_e5) : f8E5M2
+  check.return
+}
+
+// Authored NaNs have a canonical value, unlike an unknown raw NaN payload.
+func.def public @float_nan_constants() -> (f8E4M3, f8E5M2, f16, bf16, f32, f64) {
+  %e4 = scalar.constant nan : f8E4M3
+  %e5 = scalar.constant nan : f8E5M2
+  %half = scalar.constant nan : f16
+  %brain = scalar.constant nan : bf16
+  %single = scalar.constant nan : f32
+  %wide = scalar.constant nan : f64
+  func.return %e4, %e5, %half, %brain, %single, %wide : f8E4M3, f8E5M2, f16, bf16, f32, f64
+}
+
+check.case @float_nan_constants_case {
+  %e4, %e5, %half, %brain, %single, %wide = func.call @float_nan_constants() : () -> (f8E4M3, f8E5M2, f16, bf16, f32, f64)
+  %expected_e4 = check.literal value(nan) : f8E4M3
+  %expected_e5 = check.literal value(nan) : f8E5M2
+  %expected_half = check.literal value(nan) : f16
+  %expected_brain = check.literal value(nan) : bf16
+  %expected_single = check.literal value(nan) : f32
+  %expected_wide = check.literal value(nan) : f64
+  check.expect.bitwise actual(%e4) expected(%expected_e4) : f8E4M3
+  check.expect.bitwise actual(%e5) expected(%expected_e5) : f8E5M2
+  check.expect.bitwise actual(%half) expected(%expected_half) : f16
+  check.expect.bitwise actual(%brain) expected(%expected_brain) : bf16
+  check.expect.bitwise actual(%single) expected(%expected_single) : f32
+  check.expect.bitwise actual(%wide) expected(%expected_wide) : f64
+  check.return
+}
+
 // Inputs remain dynamic in the compiled functions. Neighbors around exact
 // f64 midpoints distinguish direct narrowing from a double-rounded f32 path.
 func.def public @f8e4m3_bits(%bits: i64) -> (i32) {
