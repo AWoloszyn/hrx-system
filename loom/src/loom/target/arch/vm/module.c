@@ -28,12 +28,12 @@ typedef struct loom_vm_module_function_t {
   iree_string_view_t export_name;
   // Function ordinal in the emitted image.
   uint16_t ordinal;
-  // Source-ordered scalar argument count.
+  // Source-ordered logical argument count.
   uint16_t argument_count;
   // Canonical callable ordinal assigned by signature sorting.
   uint16_t callable_ordinal;
-  // Source-ordered argument and result wire type descriptors.
-  iree_vm_bytecode_v0_signature_descriptor_row_t* descriptors;
+  // Exact logical fields and their physical argument/result bank counts.
+  loom_vm_function_signature_t signature;
 } loom_vm_module_function_t;
 
 typedef struct loom_vm_module_function_span_t {
@@ -43,9 +43,11 @@ typedef struct loom_vm_module_function_span_t {
   uint16_t* ordinals_by_symbol;
   // Number of records in |values|, bounded by the module symbol ID space.
   uint32_t count;
+  // Whether any signature names the Core buffer reference type.
+  bool uses_buffer_type;
 } loom_vm_module_function_span_t;
 
-// A scalar signature is ordered by argument count/types then result
+// A signature is ordered by argument count/types then result
 // count/types, exactly as the wire callable table requires. Ordinals are
 // assigned by sorting once; the runtime performs no hashing or interning.
 static int loom_vm_signature_compare(const void* lhs_ptr, const void* rhs_ptr) {
@@ -56,15 +58,15 @@ static int loom_vm_signature_compare(const void* lhs_ptr, const void* rhs_ptr) {
   int comparison = (int)lhs->argument_count - (int)rhs->argument_count;
   if (comparison) return comparison;
   for (uint16_t i = 0; i < lhs->argument_count; ++i) {
-    comparison =
-        (int)lhs->descriptors[i].kind_u16 - (int)rhs->descriptors[i].kind_u16;
+    comparison = (int)lhs->signature.fields[i].kind_u16 -
+                 (int)rhs->signature.fields[i].kind_u16;
     if (comparison) return comparison;
   }
   comparison = (int)lhs->results.count - (int)rhs->results.count;
   if (comparison) return comparison;
   for (uint16_t i = 0; i < lhs->results.count; ++i) {
-    comparison = (int)lhs->descriptors[lhs->argument_count + i].kind_u16 -
-                 (int)rhs->descriptors[rhs->argument_count + i].kind_u16;
+    comparison = (int)lhs->signature.fields[lhs->argument_count + i].kind_u16 -
+                 (int)rhs->signature.fields[rhs->argument_count + i].kind_u16;
     if (comparison) return comparison;
   }
   return 0;
@@ -97,15 +99,18 @@ static iree_status_t loom_vm_signature_type(loom_type_t type,
   };
   const loom_type_t* value_type = loom_type_register_value_type(type);
   if (value_type) {
+    if (loom_type_is_buffer(*value_type)) {
+      *out_kind = IREE_VM_BYTECODE_SIGNATURE_KIND_REF;
+      return iree_ok_status();
+    }
     const uint8_t kind = kScalarKinds[loom_type_element_type(*value_type)];
     if (kind) {
       *out_kind = kind;
       return iree_ok_status();
     }
   }
-  return iree_make_status(
-      IREE_STATUS_UNIMPLEMENTED,
-      "VM signature requires a supported typed value register");
+  return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
+                          "VM signature requires a supported typed register");
 }
 
 // Only top-level symbol definitions are collected. Callgraph specialization
@@ -176,9 +181,10 @@ static iree_status_t loom_vm_module_collect(
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       request->scratch_arena, iree_max(descriptor_count, 1),
       sizeof(*descriptors), (void**)&descriptors));
+  bool uses_buffer_type = false;
   for (uint32_t i = 0; i < count && iree_status_is_ok(status); ++i) {
     loom_vm_module_function_t* entry = &functions[i];
-    entry->descriptors = descriptors;
+    entry->signature.fields = descriptors;
     const uint32_t field_count = entry->argument_count + entry->results.count;
     for (uint32_t j = 0; j < field_count && iree_status_is_ok(status); ++j) {
       const loom_value_id_t value =
@@ -188,6 +194,20 @@ static iree_status_t loom_vm_module_collect(
       descriptors[j].type_ordinal_u16 = 0;
       status = loom_vm_signature_type(loom_module_value_type(module, value),
                                       &descriptors[j].kind_u16);
+      if (iree_status_is_ok(status)) {
+        iree_vm_bytecode_v0_signature_row_t* row = &entry->signature.row;
+        uint16_t* bank_count;
+        if (descriptors[j].kind_u16 == IREE_VM_BYTECODE_SIGNATURE_KIND_REF) {
+          uses_buffer_type = true;
+          bank_count = j < entry->argument_count ? &row->argument_ref_count_u16
+                                                 : &row->result_ref_count_u16;
+        } else {
+          bank_count = j < entry->argument_count
+                           ? &row->argument_value_count_u16
+                           : &row->result_value_count_u16;
+        }
+        ++(*bank_count);
+      }
     }
     descriptors += field_count;
   }
@@ -196,6 +216,7 @@ static iree_status_t loom_vm_module_collect(
         .values = functions,
         .ordinals_by_symbol = ordinals_by_symbol,
         .count = count,
+        .uses_buffer_type = uses_buffer_type,
     };
   }
   return status;
@@ -252,20 +273,27 @@ static iree_status_t loom_vm_module_write(
       .magic_u8 = {'I', 'R', 'E', 'E', 'V', 'M', 0, 0},
       .core_major_u16 = IREE_VM_BYTECODE_CORE_MAJOR,
       .core_required_minor_u16 = IREE_VM_BYTECODE_CORE_MINOR,
-      .section_count_u16 = export_count ? 5 : 3,
+      .section_count_u16 = 3 + (export_count != 0) +
+                           (export_count != 0 || functions.uses_buffer_type) +
+                           functions.uses_buffer_type,
   };
   IREE_RETURN_IF_ERROR(iree_io_stream_write(stream, sizeof(header), &header));
-  iree_vm_bytecode_v0_section_directory_row_t directory[5] = {0};
+  iree_vm_bytecode_v0_section_directory_row_t directory[6] = {0};
   IREE_RETURN_IF_ERROR(iree_io_stream_write(
       stream, header.section_count_u16 * sizeof(directory[0]), directory));
   uint16_t section = 0;
   iree_io_stream_pos_t start = 0;
   iree_status_t status = iree_ok_status();
-  if (export_count) {
+  if (export_count || functions.uses_buffer_type) {
     qsort(exports, export_count, sizeof(*exports), loom_vm_export_compare);
     IREE_RETURN_IF_ERROR(loom_vm_section_begin(
         stream, IREE_VM_BYTECODE_SECTION_STRINGS, &directory[section], &start));
-    const iree_vm_bytecode_v0_strings_header_t strings_header = {export_count};
+    const iree_vm_bytecode_v0_strings_header_t strings_header = {
+        export_count + (functions.uses_buffer_type ? 2 : 0)};
+    if (strings_header.string_count_u32 > UINT16_MAX) {
+      return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                              "VM string count exceeds the u16 ordinal space");
+    }
     IREE_RETURN_IF_ERROR(
         iree_io_stream_write(stream, sizeof(strings_header), &strings_header));
     uint32_t offset = 0;
@@ -284,10 +312,42 @@ static iree_status_t loom_vm_module_write(
         status = iree_io_stream_write(stream, sizeof(offset), &offset);
       }
     }
+    // Source buffer types lower to the single Core vm.buffer type. These two
+    // strings follow export names, preserving their direct ordinal mapping.
+    if (functions.uses_buffer_type && iree_status_is_ok(status)) {
+      if (offset > UINT32_MAX - 8) {
+        status = iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                                  "VM string bytes exceed u32");
+      } else {
+        const uint32_t offsets[] = {offset + 2, offset + 8};
+        status = iree_io_stream_write(stream, sizeof(offsets), offsets);
+      }
+    }
     for (uint32_t i = 0; i < export_count && iree_status_is_ok(status); ++i) {
       status = iree_io_stream_write_string(stream, exports[i]->export_name);
     }
+    if (functions.uses_buffer_type && iree_status_is_ok(status)) {
+      status = iree_io_stream_write_string(stream, IREE_SV("vmbuffer"));
+    }
     IREE_RETURN_IF_ERROR(status);
+    directory[section++].byte_length_u64 =
+        iree_io_stream_offset(stream) - start;
+  }
+
+  if (functions.uses_buffer_type) {
+    IREE_RETURN_IF_ERROR(
+        loom_vm_section_begin(stream, IREE_VM_BYTECODE_SECTION_REF_TYPES,
+                              &directory[section], &start));
+    const iree_vm_bytecode_v0_ref_types_header_t types_header = {
+        .group_count_u32 = 1};
+    const iree_vm_bytecode_v0_ref_type_group_row_t group = {
+        .namespace_string_u16 = (uint16_t)export_count, .entry_count_u32 = 1};
+    const iree_vm_bytecode_v0_ref_type_entry_row_t entry = {
+        .type_name_string_u16 = (uint16_t)(export_count + 1)};
+    IREE_RETURN_IF_ERROR(
+        iree_io_stream_write(stream, sizeof(types_header), &types_header));
+    IREE_RETURN_IF_ERROR(iree_io_stream_write(stream, sizeof(group), &group));
+    IREE_RETURN_IF_ERROR(iree_io_stream_write(stream, sizeof(entry), &entry));
     directory[section++].byte_length_u64 =
         iree_io_stream_offset(stream) - start;
   }
@@ -311,11 +371,8 @@ static iree_status_t loom_vm_module_write(
   uint32_t descriptor_base = 0;
   for (uint32_t i = 0; i < callable_count && iree_status_is_ok(status); ++i) {
     const loom_vm_module_function_t* entry = sorted[i];
-    const iree_vm_bytecode_v0_signature_row_t signature = {
-        .descriptor_base_u32 = descriptor_base,
-        .argument_value_count_u16 = entry->argument_count,
-        .result_value_count_u16 = entry->results.count,
-    };
+    iree_vm_bytecode_v0_signature_row_t signature = entry->signature.row;
+    signature.descriptor_base_u32 = descriptor_base;
     status = iree_io_stream_write(stream, sizeof(signature), &signature);
     descriptor_base += entry->argument_count + entry->results.count;
   }
@@ -324,8 +381,8 @@ static iree_status_t loom_vm_module_write(
     status =
         iree_io_stream_write(stream,
                              (entry->argument_count + entry->results.count) *
-                                 sizeof(*entry->descriptors),
-                             entry->descriptors);
+                                 sizeof(*entry->signature.fields),
+                             entry->signature.fields);
   }
   IREE_RETURN_IF_ERROR(status);
   directory[section++].byte_length_u64 = iree_io_stream_offset(stream) - start;
@@ -389,6 +446,7 @@ static iree_status_t loom_vm_module_write(
     };
     status = loom_vm_function_emit(request, functions.values[i].function,
                                    functions.values[i].target_facts,
+                                   &functions.values[i].signature,
                                    functions.ordinals_by_symbol, stream, &row);
     if (iree_status_is_ok(status)) {
       functions_header.maximum_block_count_u32 = iree_max(

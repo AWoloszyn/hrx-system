@@ -15,6 +15,15 @@
 extern "C" {
 #endif
 
+// Exact logical signature retained by module collection for function emission.
+typedef struct loom_vm_function_signature_t {
+  // Physical argument/result counts. Serialization assigns descriptor_base.
+  iree_vm_bytecode_v0_signature_row_t row;
+  // Borrowed source-ordered argument descriptors followed by result
+  // descriptors.
+  const iree_vm_bytecode_v0_signature_descriptor_row_t* fields;
+} loom_vm_function_signature_t;
+
 // Schedules and allocates one prepared VM function with the common frame
 // builder, then appends its instruction stream exactly once. |out_row| receives
 // its byte length and frame high waters; the module writer owns callable and
@@ -30,6 +39,7 @@ extern "C" {
 iree_status_t loom_vm_function_emit(
     const loom_target_emit_request_t* request, loom_func_like_t function,
     const loom_target_facts_t* target_facts,
+    const loom_vm_function_signature_t* signature,
     const uint16_t* function_ordinals_by_symbol, iree_io_stream_t* stream,
     iree_vm_bytecode_v0_function_row_t* out_row);
 

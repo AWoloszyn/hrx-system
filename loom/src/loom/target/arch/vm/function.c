@@ -79,9 +79,14 @@ static iree_status_t loom_vm_return_temporary(
     void* user_data, const loom_low_move_location_t* storage_class,
     const loom_low_move_t* moves, iree_host_size_t move_count,
     loom_low_move_location_t* out_temporary, bool* out_resolved) {
-  loom_vm_return_state_t* state = user_data;
+  loom_vm_return_state_t* states = user_data;
+  loom_vm_return_state_t* state =
+      &states[storage_class->descriptor_reg_class_id];
   bool occupied[256] = {false};
   for (iree_host_size_t i = 0; i < move_count; ++i) {
+    if (moves[i].source.descriptor_reg_class_id !=
+        storage_class->descriptor_reg_class_id)
+      continue;
     occupied[moves[i].source.location] = true;
     occupied[moves[i].destination.location] = true;
   }
@@ -98,7 +103,19 @@ static iree_status_t loom_vm_function_return(
     const loom_low_emission_frame_t* frame,
     const loom_low_schedule_node_t* node,
     loom_low_move_sequence_scratch_t* scratch, iree_io_stream_t* stream,
-    uint16_t* register_count) {
+    const loom_vm_function_signature_t* signature,
+    iree_vm_bytecode_v0_function_row_t* out_row) {
+  loom_vm_return_state_t states[] = {
+      [VM_CORE_REG_CLASS_ID_VALUE] = {.result_count =
+                                          signature->row.result_value_count_u16,
+                                      .register_count =
+                                          out_row->value_register_count_u16},
+      [VM_CORE_REG_CLASS_ID_REF] = {.result_count =
+                                        signature->row.result_ref_count_u16,
+                                    .register_count =
+                                        out_row->ref_register_count_u16},
+  };
+  uint16_t ordinals_by_bank[IREE_ARRAYSIZE(states)] = {0};
   const loom_value_ordinal_t* ordinals =
       loom_low_schedule_node_const_operand_ordinals(node);
   for (uint16_t i = 0; i < node->operand_count; ++i) {
@@ -108,25 +125,22 @@ static iree_status_t loom_vm_function_return(
     const loom_low_move_location_t source = {
         .location_kind = LOOM_LOW_ALLOCATION_LOCATION_PHYSICAL_REGISTER,
         .value_class = assignment->value_class,
-        .descriptor_reg_class_id = VM_CORE_REG_CLASS_ID_VALUE,
+        .descriptor_reg_class_id = assignment->descriptor_reg_class_id,
         .location = assignment->location_base,
     };
     scratch->moves[i] =
         (loom_low_move_t){.source = source, .destination = source};
-    scratch->moves[i].destination.location = i;
+    scratch->moves[i].destination.location =
+        ordinals_by_bank[assignment->descriptor_reg_class_id]++;
   }
-  loom_vm_return_state_t state = {
-      .result_count = node->operand_count,
-      .register_count = *register_count,
-  };
   const loom_low_move_sequence_options_t options = {
       .descriptor_set = frame->target.descriptor_set,
       .resolve_temporary = {.fn = loom_vm_return_temporary,
-                            .user_data = &state},
+                            .user_data = states},
   };
-  // The direct value ABI has at most 16 results. Each cycle adds at most one
+  // Each direct bank has at most 16 results. Each cycle adds at most one
   // save for two original moves, so this also covers every cyclic permutation.
-  loom_low_move_t moves[24];
+  loom_low_move_t moves[24 * IREE_ARRAYSIZE(states)];
   iree_host_size_t move_count = 0;
   bool complete = false;
   IREE_RETURN_IF_ERROR(loom_low_move_sequence_resolve(
@@ -134,7 +148,10 @@ static iree_status_t loom_vm_function_return(
       &move_count, &complete));
   // Capacity covers the worst permutation and the temporary always resolves.
   IREE_ASSERT(complete);
-  *register_count = state.register_count;
+  out_row->value_register_count_u16 =
+      states[VM_CORE_REG_CLASS_ID_VALUE].register_count;
+  out_row->ref_register_count_u16 =
+      states[VM_CORE_REG_CLASS_ID_REF].register_count;
   IREE_RETURN_IF_ERROR(loom_vm_function_moves(
       moves, (loom_low_move_range_t){.count = move_count}, stream));
   const iree_vm_bytecode_control_return_t instruction = {
@@ -245,6 +262,63 @@ static iree_status_t loom_vm_function_transfer_stack(iree_io_stream_t* stream,
   return status;
 }
 
+// Ref-slot transfers share a register/slot encoding. The selected opcode states
+// whether a transfer retains an owner or moves and clears its source.
+static iree_status_t loom_vm_function_transfer_refs(iree_io_stream_t* stream,
+                                                    uint8_t opcode,
+                                                    uint16_t slot_base,
+                                                    uint16_t register_base,
+                                                    uint16_t count) {
+  iree_status_t status = iree_ok_status();
+  for (uint16_t i = 0; i < count && iree_status_is_ok(status); ++i) {
+    const iree_vm_bytecode_ref_stack_load_retain_t instruction = {
+        .opcode = opcode,
+        .destination_r8 = (uint8_t)(register_base + i),
+        .slot_u16 = slot_base + i,
+    };
+    status = iree_io_stream_write(stream, sizeof(instruction), &instruction);
+  }
+  return status;
+}
+
+typedef struct loom_vm_call_bank_t {
+  // Source-ordered physical argument locations in this bank's direct prefix.
+  uint8_t arguments[16];
+  // Source-ordered physical result locations in this bank's direct prefix.
+  uint8_t results[16];
+  // Number of logical arguments carried by this bank.
+  uint16_t argument_count;
+  // Number of logical results carried by this bank.
+  uint16_t result_count;
+} loom_vm_call_bank_t;
+
+// Captures each allocated location once while partitioning logical operands
+// and results into the independent architectural banks.
+static iree_status_t loom_vm_function_call_bindings(
+    const loom_low_emission_frame_t* frame,
+    const loom_low_schedule_node_t* node, loom_vm_call_bank_t* banks) {
+  for (uint16_t side = 0; side < 2; ++side) {
+    const uint16_t count = side ? node->result_count : node->operand_count;
+    const loom_value_ordinal_t* ordinals =
+        side ? loom_low_schedule_node_const_result_ordinals(node)
+             : loom_low_schedule_node_const_operand_ordinals(node);
+    for (uint16_t i = 0; i < count; ++i) {
+      const loom_low_allocation_assignment_t* assignment =
+          loom_low_allocation_assignment_for_value_ordinal(&frame->allocation,
+                                                           ordinals[i], NULL);
+      loom_vm_call_bank_t* bank = &banks[assignment->descriptor_reg_class_id];
+      uint16_t* bank_count = side ? &bank->result_count : &bank->argument_count;
+      if (*bank_count == 16) {
+        return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
+                                "VM call overflow requires stack ABI lowering");
+      }
+      (side ? bank->results : bank->arguments)[(*bank_count)++] =
+          (uint8_t)assignment->location_base;
+    }
+  }
+  return iree_ok_status();
+}
+
 // Calls overwrite only the argument/result prefix. Marshal from a snapshot so
 // argument permutations cannot clobber their sources, then overlay the results
 // at their allocated positions before restoring live caller values. Registers
@@ -254,10 +328,6 @@ static iree_status_t loom_vm_function_call(
     const loom_low_schedule_node_t* node,
     const uint16_t* function_ordinals_by_symbol, iree_io_stream_t* stream,
     iree_vm_bytecode_v0_function_row_t* out_row) {
-  if (node->operand_count > 16 || node->result_count > 16) {
-    return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                            "VM call overflow requires stack ABI lowering");
-  }
   const uint16_t ordinal =
       function_ordinals_by_symbol[loom_low_func_call_callee(node->op)
                                       .symbol_id];
@@ -265,8 +335,17 @@ static iree_status_t loom_vm_function_call(
     return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
                             "VM runtime imports require module import rows");
   }
+  loom_vm_call_bank_t banks[] = {
+      [VM_CORE_REG_CLASS_ID_VALUE] = {0},
+      [VM_CORE_REG_CLASS_ID_REF] = {0},
+  };
+  IREE_RETURN_IF_ERROR(loom_vm_function_call_bindings(frame, node, banks));
+  const loom_vm_call_bank_t* values = &banks[VM_CORE_REG_CLASS_ID_VALUE];
+  const loom_vm_call_bank_t* refs = &banks[VM_CORE_REG_CLASS_ID_REF];
   const uint16_t prefix_count =
-      iree_max(node->operand_count, node->result_count);
+      iree_max(values->argument_count, values->result_count);
+  const uint16_t ref_prefix_count =
+      iree_max(refs->argument_count, refs->result_count);
   const uint16_t byte_offset =
       (uint16_t)frame->schedule.storage_layout.space_sizes.stack_bytes;
   const uint32_t local_byte_length =
@@ -280,16 +359,20 @@ static iree_status_t loom_vm_function_call(
       iree_max(out_row->value_register_count_u16, prefix_count);
   out_row->local_byte_length_u16 =
       iree_max(out_row->local_byte_length_u16, local_byte_length);
+  out_row->ref_register_count_u16 =
+      iree_max(out_row->ref_register_count_u16, ref_prefix_count);
+  out_row->local_ref_count_u32 =
+      iree_max(out_row->local_ref_count_u32, ref_prefix_count);
   iree_status_t status = loom_vm_function_transfer_stack(stream, byte_offset, 0,
                                                          prefix_count, true);
-  const loom_value_ordinal_t* operands =
-      loom_low_schedule_node_const_operand_ordinals(node);
-  for (uint16_t i = 0; i < node->operand_count && iree_status_is_ok(status);
+  if (iree_status_is_ok(status)) {
+    status = loom_vm_function_transfer_refs(
+        stream, IREE_VM_BYTECODE_OPCODE_REF_STACK_STORE_RETAIN, 0, 0,
+        ref_prefix_count);
+  }
+  for (uint16_t i = 0; i < values->argument_count && iree_status_is_ok(status);
        ++i) {
-    const uint8_t source =
-        (uint8_t)loom_low_allocation_assignment_for_value_ordinal(
-            &frame->allocation, operands[i], NULL)
-            ->location_base;
+    const uint8_t source = values->arguments[i];
     if (source == i) continue;
     if (source < prefix_count) {
       status = loom_vm_function_transfer_stack(
@@ -303,22 +386,35 @@ static iree_status_t loom_vm_function_call(
       status = iree_io_stream_write(stream, sizeof(instruction), &instruction);
     }
   }
+  for (uint16_t i = 0; i < refs->argument_count && iree_status_is_ok(status);
+       ++i) {
+    const uint8_t source = refs->arguments[i];
+    if (source == i) continue;
+    if (source < ref_prefix_count) {
+      status = loom_vm_function_transfer_refs(
+          stream, IREE_VM_BYTECODE_OPCODE_REF_STACK_LOAD_RETAIN, source, i, 1);
+    } else {
+      const iree_vm_bytecode_ref_retain_t instruction = {
+          .opcode = IREE_VM_BYTECODE_OPCODE_REF_RETAIN,
+          .destination_r8 = (uint8_t)i,
+          .source_r8 = source,
+      };
+      status = iree_io_stream_write(stream, sizeof(instruction), &instruction);
+    }
+  }
   if (iree_status_is_ok(status)) {
     const iree_vm_bytecode_control_call_t instruction = {
         .opcode = IREE_VM_BYTECODE_OPCODE_CONTROL_CALL,
         .target_kind_u8 = IREE_VM_BYTECODE_CONTROL_CALL_TARGET_LOCAL,
         .target_ordinal_u16 = ordinal,
+        .direct_ref_move_mask_u16 =
+            (uint16_t)((1u << refs->argument_count) - 1),
     };
     status = iree_io_stream_write(stream, sizeof(instruction), &instruction);
   }
-  const loom_value_ordinal_t* results =
-      loom_low_schedule_node_const_result_ordinals(node);
-  for (uint16_t i = 0; i < node->result_count && iree_status_is_ok(status);
+  for (uint16_t i = 0; i < values->result_count && iree_status_is_ok(status);
        ++i) {
-    const uint8_t destination =
-        (uint8_t)loom_low_allocation_assignment_for_value_ordinal(
-            &frame->allocation, results[i], NULL)
-            ->location_base;
+    const uint8_t destination = values->results[i];
     if (destination < prefix_count) {
       status = loom_vm_function_transfer_stack(
           stream, byte_offset + destination * sizeof(uint64_t), i, 1, true);
@@ -331,9 +427,30 @@ static iree_status_t loom_vm_function_call(
       status = iree_io_stream_write(stream, sizeof(instruction), &instruction);
     }
   }
+  for (uint16_t i = 0; i < refs->result_count && iree_status_is_ok(status);
+       ++i) {
+    const uint8_t destination = refs->results[i];
+    if (destination < ref_prefix_count) {
+      status = loom_vm_function_transfer_refs(
+          stream, IREE_VM_BYTECODE_OPCODE_REF_STACK_STORE_MOVE, destination, i,
+          1);
+    } else {
+      const iree_vm_bytecode_ref_move_t instruction = {
+          .opcode = IREE_VM_BYTECODE_OPCODE_REF_MOVE,
+          .destination_r8 = destination,
+          .source_r8 = (uint8_t)i,
+      };
+      status = iree_io_stream_write(stream, sizeof(instruction), &instruction);
+    }
+  }
   if (iree_status_is_ok(status)) {
     status = loom_vm_function_transfer_stack(stream, byte_offset, 0,
                                              prefix_count, false);
+  }
+  if (iree_status_is_ok(status)) {
+    status = loom_vm_function_transfer_refs(
+        stream, IREE_VM_BYTECODE_OPCODE_REF_STACK_LOAD_MOVE, 0, 0,
+        ref_prefix_count);
   }
   return status;
 }
@@ -389,23 +506,32 @@ static iree_status_t loom_vm_function_diagnostic(
 iree_status_t loom_vm_function_emit(
     const loom_target_emit_request_t* request, loom_func_like_t function,
     const loom_target_facts_t* target_facts,
+    const loom_vm_function_signature_t* signature,
     const uint16_t* function_ordinals_by_symbol, iree_io_stream_t* stream,
     iree_vm_bytecode_v0_function_row_t* out_row) {
   uint16_t argument_count = 0;
   const loom_value_id_t* arguments =
       loom_func_like_arg_ids(function, &argument_count);
   const loom_value_slice_t results = loom_low_func_def_results(function.op);
-  if (argument_count > 16 || results.count > 16) {
+  if (signature->row.argument_value_count_u16 > 16 ||
+      signature->row.argument_ref_count_u16 > 16 ||
+      signature->row.result_value_count_u16 > 16 ||
+      signature->row.result_ref_count_u16 > 16) {
     return iree_make_status(
         IREE_STATUS_UNIMPLEMENTED,
         "VM overflow arguments and results require stack ABI lowering");
   }
-  loom_low_allocation_fixed_value_t fixed_values[16];
+  loom_low_allocation_fixed_value_t fixed_values[32];
+  uint16_t value_ordinal = 0;
+  uint16_t ref_ordinal = 0;
   for (uint16_t i = 0; i < argument_count; ++i) {
     fixed_values[i] = (loom_low_allocation_fixed_value_t){
         .value_id = arguments[i],
         .location_kind = LOOM_LOW_ALLOCATION_LOCATION_PHYSICAL_REGISTER,
-        .location_base = i,
+        .location_base =
+            signature->fields[i].kind_u16 == IREE_VM_BYTECODE_SIGNATURE_KIND_REF
+                ? ref_ordinal++
+                : value_ordinal++,
         .location_count = 1,
     };
   }
@@ -443,12 +569,15 @@ iree_status_t loom_vm_function_emit(
   }
   out_row->local_byte_length_u16 = (uint16_t)local_storage.stack_bytes;
   out_row->value_register_count_u16 =
-      (uint16_t)iree_max(iree_max(argument_count, results.count),
+      (uint16_t)iree_max(iree_max(signature->row.argument_value_count_u16,
+                                  signature->row.result_value_count_u16),
                          frame.allocation.physical_extents
                              .ends_by_reg_class[VM_CORE_REG_CLASS_ID_VALUE]);
   out_row->ref_register_count_u16 =
-      (uint16_t)frame.allocation.physical_extents
-          .ends_by_reg_class[VM_CORE_REG_CLASS_ID_REF];
+      (uint16_t)iree_max(iree_max(signature->row.argument_ref_count_u16,
+                                  signature->row.result_ref_count_u16),
+                         frame.allocation.physical_extents
+                             .ends_by_reg_class[VM_CORE_REG_CLASS_ID_REF]);
   out_row->block_count_u32 = (uint32_t)frame.schedule.block_count;
   loom_low_move_sequence_scratch_t return_scratch = {0};
   IREE_RETURN_IF_ERROR(loom_low_move_sequence_scratch_initialize(
@@ -494,7 +623,7 @@ iree_status_t loom_vm_function_emit(
         status = loom_vm_function_storage(&frame, node, stream);
       } else if (loom_low_return_isa(node->op)) {
         status = loom_vm_function_return(&frame, node, &return_scratch, stream,
-                                         &out_row->value_register_count_u16);
+                                         signature, out_row);
       } else if (loom_low_br_isa(node->op)) {
         // Allocation records one group for each payload-bearing branch, in
         // source block order, including groups whose moves all coalesced.
