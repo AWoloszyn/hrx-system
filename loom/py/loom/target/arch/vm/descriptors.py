@@ -29,6 +29,7 @@ from iree.vm.bytecode.spec.isa.core.float import (
     FloatClassifySemantics,
     FloatCompareSemantics,
     FloatFmaSemantics,
+    FloatMathSemantics,
     FloatMinmaxSemantics,
     FloatUnarySemantics,
 )
@@ -91,6 +92,7 @@ _RESULT_TYPES = {
     FloatClassifySemantics: _PREDICATE_TYPES,
     FloatClampSemantics: _FLOAT_TYPES,
     FloatFmaSemantics: _FLOAT_TYPES,
+    FloatMathSemantics: _FLOAT_TYPES,
 }
 _SCALAR_INSTRUCTIONS = tuple(
     instruction

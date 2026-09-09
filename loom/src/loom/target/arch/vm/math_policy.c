@@ -10,13 +10,20 @@ static void loom_vm_math_policy_query(
     const loom_target_math_policy_t* policy,
     const loom_target_math_query_t* query,
     loom_target_math_policy_decision_t* out_decision) {
-  if (query->math_op != LOOM_TARGET_MATH_OP_ADDF &&
-      query->math_op != LOOM_TARGET_MATH_OP_MULF) {
-    *out_decision = (loom_target_math_policy_decision_t){
-        .action = LOOM_TARGET_MATH_POLICY_ACTION_REJECT,
-        .constraint_key = IREE_SVL("math.op.supported"),
-    };
-    return;
+  switch (query->math_op) {
+    case LOOM_TARGET_MATH_OP_ADDF:
+    case LOOM_TARGET_MATH_OP_MULF:
+    case LOOM_TARGET_MATH_OP_CEILF:
+    case LOOM_TARGET_MATH_OP_FLOORF:
+    case LOOM_TARGET_MATH_OP_ROUNDEVENF:
+    case LOOM_TARGET_MATH_OP_TRUNCF:
+      break;
+    default:
+      *out_decision = (loom_target_math_policy_decision_t){
+          .action = LOOM_TARGET_MATH_POLICY_ACTION_REJECT,
+          .constraint_key = IREE_SVL("math.op.supported"),
+      };
+      return;
   }
   if (query->element_type != LOOM_SCALAR_TYPE_F32 &&
       query->element_type != LOOM_SCALAR_TYPE_F64) {

@@ -81,6 +81,7 @@ loom_check_test_suite(
     "test/emission.loom-test"
     "test/scalar.loom-test"
     "test/source_low/numeric_float_arithmetic.loom-test"
+    "test/source_low/numeric_float_rounding.loom-test"
     "test/source_low/numeric_float_selectors.loom-test"
     "test/source_low/numeric_index.loom-test"
     "test/source_low/numeric_index_conversion.loom-test"
@@ -92,6 +93,7 @@ loom_check_test_suite(
     "test/source_low/scalar_selection.loom-test"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_float_arithmetic.loom-test"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_float_rounding.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_float_selectors.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_index.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_index_conversion.loom-test"

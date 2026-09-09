@@ -74,6 +74,11 @@ class FloatFmaSemantics(NamedTuple):
     bit_width: int
 
 
+class FloatMathSemantics(NamedTuple):
+    # The instruction's selector defines the exact mapping at this width.
+    bit_width: int
+
+
 def _selector(
     name: str, summary: str, values: tuple[tuple[str, int, str], ...]
 ) -> NumericTable:
@@ -898,7 +903,7 @@ def _math_unary(opcode: int, width: int) -> Instruction:
                 selector,
             ),
         ),
-        semantics=None,
+        semantics=FloatMathSemantics(width),
         behavior=(
             "Evaluates the selector's frozen mapping under the family floating "
             "profile. Approximate f32 leaves have selector-specific denormal and NaN "

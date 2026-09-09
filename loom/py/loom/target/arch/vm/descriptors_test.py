@@ -12,6 +12,7 @@ from iree.vm.bytecode.spec.isa.core.float import (
     FloatClassifySemantics,
     FloatCompareSemantics,
     FloatFmaSemantics,
+    FloatMathSemantics,
     FloatMinmaxSemantics,
     FloatUnarySemantics,
 )
@@ -58,6 +59,7 @@ def test_scalar_packets_preserve_spec_encoding_and_semantic_types():
                 FloatClassifySemantics,
                 FloatClampSemantics,
                 FloatFmaSemantics,
+                FloatMathSemantics,
             ),
         )
     ]
@@ -96,6 +98,7 @@ def test_scalar_packets_preserve_spec_encoding_and_semantic_types():
                     FloatMinmaxSemantics,
                     FloatClampSemantics,
                     FloatFmaSemantics,
+                    FloatMathSemantics,
                 ),
             )
             else {32: ScalarTypeKind.I32, 64: ScalarTypeKind.I64}

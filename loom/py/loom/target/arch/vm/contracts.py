@@ -15,6 +15,7 @@ from iree.vm.bytecode.spec.isa.core.float import (
     FloatClassifySemantics,
     FloatCompareSemantics,
     FloatFmaSemantics,
+    FloatMathSemantics,
     FloatMinmaxSemantics,
     FloatUnaryOperation,
     FloatUnarySemantics,
@@ -145,6 +146,12 @@ _SELECTED_SOURCE_OPS = {
         "isinf": comparison.scalar_isinff,
         "isfinite": comparison.scalar_isfinitef,
     },
+}
+_EXACT_MATH_SOURCE_OPS = {
+    "ceil": math.scalar_ceilf,
+    "floor": math.scalar_floorf,
+    "round_even": math.scalar_roundevenf,
+    "trunc": math.scalar_truncf,
 }
 _ATTRIBUTE_SOURCE_OPS = {
     IntegerCompareSemantics: (comparison.scalar_cmpi, "i", "predicate"),
@@ -361,6 +368,25 @@ def _conversion_cases():
             )
 
 
+def _math_cases():
+    for descriptor in VM_CORE_DESCRIPTOR_SET.descriptors:
+        instruction = _INSTRUCTIONS[descriptor.encoding_id]
+        if not isinstance(instruction.semantics, FloatMathSemantics):
+            continue
+        selector = instruction.fields[-1].rule.data
+        assert set(_EXACT_MATH_SOURCE_OPS) <= {value.name for value in selector.values}
+        for value in selector.values:
+            # Approximate selectors have distinct denormal/accuracy contracts;
+            # an unqualified source operation cannot select them.
+            if source_op := _EXACT_MATH_SOURCE_OPS.get(value.name):
+                yield _scalar_rule(
+                    descriptor,
+                    source_op,
+                    Scalar(f"f{instruction.semantics.bit_width}"),
+                    value.value,
+                )
+
+
 def _address_cases():
     # Address widths are fixed by vm.core. The shared verifier owns the index
     # domain restrictions; these rules consume that established source contract.
@@ -490,6 +516,7 @@ VM_CORE_CONTRACT_FRAGMENT = ContractFragment(
     cases=tuple(_constant_cases())
     + tuple(_selected_cases())
     + tuple(_conversion_cases())
+    + tuple(_math_cases())
     + tuple(_address_cases())
     + select_descriptor_rules(
         (
