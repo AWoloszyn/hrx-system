@@ -1494,7 +1494,7 @@ iree_status_t loom_low_schedule_fill_nodes(
   return iree_ok_status();
 }
 
-static iree_status_t loom_low_schedule_preserve_live_out_state(
+static void loom_low_schedule_preserve_live_out_state(
     loom_low_schedule_build_state_t* state, uint32_t block_index,
     const loom_liveness_block_info_t* liveness) {
   const loom_low_schedule_block_t* block = &state->blocks[block_index];
@@ -1532,13 +1532,8 @@ static iree_status_t loom_low_schedule_preserve_live_out_state(
         .state_value_id = value->value_id,
     };
     ++state->error_count;
-    if (state->options->emitter.fn != NULL) {
-      IREE_RETURN_IF_ERROR(
-          loom_low_schedule_emit_state_clobber(state, &state->failure));
-    }
-    return iree_ok_status();
+    return;
   }
-  return iree_ok_status();
 }
 
 iree_status_t loom_low_schedule_build_dependencies(
@@ -1639,8 +1634,8 @@ iree_status_t loom_low_schedule_build_dependencies(
     }
     loom_low_schedule_reset_storage_reads(state);
     if (liveness->block_count != 0) {
-      IREE_RETURN_IF_ERROR(loom_low_schedule_preserve_live_out_state(
-          state, (uint32_t)block_index, &liveness->blocks[block_index]));
+      loom_low_schedule_preserve_live_out_state(
+          state, (uint32_t)block_index, &liveness->blocks[block_index]);
       if (state->error_count != 0) {
         return iree_ok_status();
       }
