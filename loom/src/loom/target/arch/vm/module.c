@@ -39,6 +39,8 @@ typedef struct loom_vm_module_function_t {
 typedef struct loom_vm_module_function_span_t {
   // Arena-owned function records in bytecode ordinal order.
   loom_vm_module_function_t* values;
+  // Symbol-indexed local function ordinals; UINT16_MAX marks other symbols.
+  uint16_t* ordinals_by_symbol;
   // Number of records in |values|, bounded by the module symbol ID space.
   uint32_t count;
 } loom_vm_module_function_span_t;
@@ -116,9 +118,16 @@ static iree_status_t loom_vm_module_collect(
   IREE_RETURN_IF_ERROR(loom_target_function_version_snapshot_build(
       module, request->function_versions, request->scratch_arena, &versions));
   loom_vm_module_function_t* functions = NULL;
-  IREE_RETURN_IF_ERROR(
-      iree_arena_allocate_array(request->scratch_arena, module->symbols.count,
-                                sizeof(*functions), (void**)&functions));
+  iree_host_size_t storage_size = 0;
+  iree_host_size_t ordinals_offset = 0;
+  IREE_RETURN_IF_ERROR(IREE_STRUCT_LAYOUT(
+      0, &storage_size,
+      IREE_STRUCT_FIELD(module->symbols.count, loom_vm_module_function_t, NULL),
+      IREE_STRUCT_FIELD(module->symbols.count, uint16_t, &ordinals_offset)));
+  IREE_RETURN_IF_ERROR(iree_arena_allocate(request->scratch_arena, storage_size,
+                                           (void**)&functions));
+  uint16_t* ordinals_by_symbol =
+      (uint16_t*)((uint8_t*)functions + ordinals_offset);
   uint32_t count = 0;
   iree_host_size_t descriptor_count = 0;
   iree_status_t status = iree_ok_status();
@@ -126,6 +135,7 @@ static iree_status_t loom_vm_module_collect(
        ++i) {
     const loom_symbol_t* symbol = &module->symbols.entries[i];
     loom_op_t* op = symbol->defining_op;
+    ordinals_by_symbol[i] = UINT16_MAX;
     if (!loom_low_func_def_isa(op)) continue;
     loom_func_like_t function = loom_func_like_cast(module, op);
     const loom_string_id_t contract = loom_func_like_repr_contract(function);
@@ -135,6 +145,7 @@ static iree_status_t loom_vm_module_collect(
       continue;
     }
     loom_vm_module_function_t* entry = &functions[count];
+    ordinals_by_symbol[i] = (uint16_t)count;
     *entry = (loom_vm_module_function_t){
         .function = function,
         .target_facts = loom_target_function_version_target_facts(
@@ -181,7 +192,11 @@ static iree_status_t loom_vm_module_collect(
     descriptors += field_count;
   }
   if (iree_status_is_ok(status)) {
-    *out_functions = (loom_vm_module_function_span_t){functions, count};
+    *out_functions = (loom_vm_module_function_span_t){
+        .values = functions,
+        .ordinals_by_symbol = ordinals_by_symbol,
+        .count = count,
+    };
   }
   return status;
 }
@@ -372,9 +387,9 @@ static iree_status_t loom_vm_module_write(
         .callable_type_ordinal_u16 = functions.values[i].callable_ordinal,
         .bytecode_offset_u32 = (uint32_t)offset,
     };
-    status =
-        loom_vm_function_emit(request, functions.values[i].function,
-                              functions.values[i].target_facts, stream, &row);
+    status = loom_vm_function_emit(request, functions.values[i].function,
+                                   functions.values[i].target_facts,
+                                   functions.ordinals_by_symbol, stream, &row);
     if (iree_status_is_ok(status)) {
       functions_header.maximum_block_count_u32 = iree_max(
           functions_header.maximum_block_count_u32, row.block_count_u32);

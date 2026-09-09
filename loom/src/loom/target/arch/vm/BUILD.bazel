@@ -87,6 +87,7 @@ loom_check_test_suite(
     name = "loom_check_file_test",
     srcs = [
         "test/assembly.loom-test",
+        "test/calls.loom-test",
         "test/effects.loom-test",
         "test/emission.loom-test",
         "test/scalar.loom-test",

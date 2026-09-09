@@ -199,9 +199,136 @@ static iree_status_t loom_vm_function_packet(
   return iree_io_stream_write(stream, descriptor->encoding_format_id, packet);
 }
 
+// Transfers an ABI prefix to/from its frame-local snapshot. Whole 64-bit cells
+// preserve every scalar format; the Core lane groups cover up to eight cells.
+static iree_status_t loom_vm_function_transfer_prefix(iree_io_stream_t* stream,
+                                                      uint16_t count,
+                                                      bool is_store) {
+  iree_status_t status = iree_ok_status();
+  for (uint16_t i = 0; i < count && iree_status_is_ok(status);) {
+    const uint8_t lane_log2 =
+        (uint8_t)iree_min(3, 31 - iree_math_count_leading_zeros_u32(count - i));
+    const uint8_t format = IREE_VM_BYTECODE_MEMORY_FORMAT_I64_X1 + lane_log2;
+    if (is_store) {
+      const iree_vm_bytecode_stack_store_t instruction = {
+          .opcode = IREE_VM_BYTECODE_OPCODE_STACK_STORE,
+          .base_u16 = i * sizeof(uint64_t),
+          .source_v8 = (uint8_t)i,
+          .format_u8 = format,
+      };
+      status = iree_io_stream_write(stream, sizeof(instruction), &instruction);
+    } else {
+      const iree_vm_bytecode_stack_load_t instruction = {
+          .opcode = IREE_VM_BYTECODE_OPCODE_STACK_LOAD,
+          .destination_v8 = (uint8_t)i,
+          .base_u16 = i * sizeof(uint64_t),
+          .format_u8 = format,
+      };
+      status = iree_io_stream_write(stream, sizeof(instruction), &instruction);
+    }
+    i += 1u << lane_log2;
+  }
+  return status;
+}
+
+// Calls overwrite only the argument/result prefix. Marshal from a snapshot so
+// argument permutations cannot clobber their sources, then overlay the results
+// at their allocated positions before restoring live caller values. Registers
+// outside the prefix survive the call directly. No leaf storage is reserved.
+static iree_status_t loom_vm_function_call(
+    const loom_low_emission_frame_t* frame,
+    const loom_low_schedule_node_t* node,
+    const uint16_t* function_ordinals_by_symbol, iree_io_stream_t* stream,
+    iree_vm_bytecode_v0_function_row_t* out_row) {
+  if (node->operand_count > 16 || node->result_count > 16) {
+    return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
+                            "VM call overflow requires stack ABI lowering");
+  }
+  const uint16_t ordinal =
+      function_ordinals_by_symbol[loom_low_func_call_callee(node->op)
+                                      .symbol_id];
+  if (ordinal == UINT16_MAX) {
+    return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
+                            "VM runtime imports require module import rows");
+  }
+  const uint16_t prefix_count =
+      iree_max(node->operand_count, node->result_count);
+  out_row->flags_u16 |= IREE_VM_BYTECODE_FUNCTION_FLAG_HAS_CALL;
+  out_row->value_register_count_u16 =
+      iree_max(out_row->value_register_count_u16, prefix_count);
+  out_row->local_byte_length_u16 =
+      iree_max(out_row->local_byte_length_u16, prefix_count * sizeof(uint64_t));
+  iree_status_t status =
+      loom_vm_function_transfer_prefix(stream, prefix_count, true);
+  const loom_value_ordinal_t* operands =
+      loom_low_schedule_node_const_operand_ordinals(node);
+  for (uint16_t i = 0; i < node->operand_count && iree_status_is_ok(status);
+       ++i) {
+    const uint8_t source =
+        (uint8_t)loom_low_allocation_assignment_for_value_ordinal(
+            &frame->allocation, operands[i], NULL)
+            ->location_base;
+    if (source == i) continue;
+    if (source < prefix_count) {
+      const iree_vm_bytecode_stack_load_t instruction = {
+          .opcode = IREE_VM_BYTECODE_OPCODE_STACK_LOAD,
+          .destination_v8 = (uint8_t)i,
+          .base_u16 = source * sizeof(uint64_t),
+          .format_u8 = IREE_VM_BYTECODE_MEMORY_FORMAT_I64_X1,
+      };
+      status = iree_io_stream_write(stream, sizeof(instruction), &instruction);
+    } else {
+      const iree_vm_bytecode_value_copy_t instruction = {
+          .opcode = IREE_VM_BYTECODE_OPCODE_VALUE_COPY,
+          .destination_v8 = (uint8_t)i,
+          .source_v8 = source,
+      };
+      status = iree_io_stream_write(stream, sizeof(instruction), &instruction);
+    }
+  }
+  if (iree_status_is_ok(status)) {
+    const iree_vm_bytecode_control_call_t instruction = {
+        .opcode = IREE_VM_BYTECODE_OPCODE_CONTROL_CALL,
+        .target_kind_u8 = IREE_VM_BYTECODE_CONTROL_CALL_TARGET_LOCAL,
+        .target_ordinal_u16 = ordinal,
+    };
+    status = iree_io_stream_write(stream, sizeof(instruction), &instruction);
+  }
+  const loom_value_ordinal_t* results =
+      loom_low_schedule_node_const_result_ordinals(node);
+  for (uint16_t i = 0; i < node->result_count && iree_status_is_ok(status);
+       ++i) {
+    const uint8_t destination =
+        (uint8_t)loom_low_allocation_assignment_for_value_ordinal(
+            &frame->allocation, results[i], NULL)
+            ->location_base;
+    if (destination < prefix_count) {
+      const iree_vm_bytecode_stack_store_t instruction = {
+          .opcode = IREE_VM_BYTECODE_OPCODE_STACK_STORE,
+          .base_u16 = destination * sizeof(uint64_t),
+          .source_v8 = (uint8_t)i,
+          .format_u8 = IREE_VM_BYTECODE_MEMORY_FORMAT_I64_X1,
+      };
+      status = iree_io_stream_write(stream, sizeof(instruction), &instruction);
+    } else {
+      const iree_vm_bytecode_value_copy_t instruction = {
+          .opcode = IREE_VM_BYTECODE_OPCODE_VALUE_COPY,
+          .destination_v8 = destination,
+          .source_v8 = (uint8_t)i,
+      };
+      status = iree_io_stream_write(stream, sizeof(instruction), &instruction);
+    }
+  }
+  if (iree_status_is_ok(status)) {
+    status = loom_vm_function_transfer_prefix(stream, prefix_count, false);
+  }
+  return status;
+}
+
 iree_status_t loom_vm_function_emit(
     const loom_target_emit_request_t* request, loom_func_like_t function,
-    const loom_target_facts_t* target_facts, iree_io_stream_t* stream,
+    const loom_target_facts_t* target_facts,
+    const uint16_t* function_ordinals_by_symbol, iree_io_stream_t* stream,
     iree_vm_bytecode_v0_function_row_t* out_row) {
   uint16_t argument_count = 0;
   const loom_value_id_t* arguments =
@@ -279,6 +406,9 @@ iree_status_t loom_vm_function_emit(
       const loom_low_schedule_node_t* node = &frame.schedule.nodes[node_index];
       if (node->descriptor) {
         status = loom_vm_function_packet(&frame, node, stream);
+      } else if (loom_low_func_call_isa(node->op)) {
+        status = loom_vm_function_call(
+            &frame, node, function_ordinals_by_symbol, stream, out_row);
       } else if (loom_low_return_isa(node->op)) {
         status = loom_vm_function_return(&frame, node, &return_scratch, stream,
                                          &out_row->value_register_count_u16);

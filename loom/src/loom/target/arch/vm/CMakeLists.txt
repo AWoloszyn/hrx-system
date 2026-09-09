@@ -77,6 +77,7 @@ loom_check_test_suite(
     loom_check_file_test
   SRCS
     "test/assembly.loom-test"
+    "test/calls.loom-test"
     "test/effects.loom-test"
     "test/emission.loom-test"
     "test/scalar.loom-test"
