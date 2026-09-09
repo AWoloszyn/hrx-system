@@ -228,7 +228,6 @@ amdf_status_t amdf_gpu_umd_memory_create(
     amdf_gpu_umd_device_t* device, const amdf_memory_create_info_t* create_info,
     amdf_gpu_umd_memory_t** out_memory,
     amdf_gpu_umd_memory_result_t* out_result) {
-  *out_memory = NULL;
   amdf_gpu_kfd_memory_plan_t plan = {0};
   amdf_status_t status = amdf_gpu_kfd_memory_plan(device, create_info, &plan);
   if (!amdf_status_is_ok(status)) return status;

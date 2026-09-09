@@ -606,7 +606,7 @@ typedef struct amdf_api_t {
   /// procedure table used by its children. Creation is thread-safe and performs
   /// bounded constant work. It performs no endpoint enumeration, device or
   /// firmware initialization, worker creation, retry, sleep, or process-global
-  /// initialization. On failure, `out_instance` is set to `NULL`.
+  /// initialization. Failure leaves `out_instance` unchanged.
   amdf_status_t(AMDF_CALL* instance_create)(
       const amdf_instance_create_info_t* create_info,
       amdf_instance_t** out_instance);
@@ -624,9 +624,10 @@ typedef struct amdf_api_t {
   /// `NULL`. A nonzero capacity requires `summaries` to reference that many
   /// elements. When capacity is insufficient, the available prefix is written,
   /// `out_count` receives the total, and `AMDF_STATUS_CODE_BUFFER_TOO_SMALL` is
-  /// returned. The call creates no device, paging queue, address space,
-  /// context, allocation, executable, or hardware queue. Arrival or removal may
-  /// change the result of a later call.
+  /// returned. Every other failure leaves both outputs unchanged. The call
+  /// creates no device, paging queue, address space, context, allocation,
+  /// executable, or hardware queue. Arrival or removal may change the result of
+  /// a later call.
   amdf_status_t(AMDF_CALL* endpoint_enumerate)(
       amdf_instance_t* instance, uint32_t capacity,
       amdf_endpoint_summary_t* summaries, uint32_t* out_count);
@@ -636,8 +637,8 @@ typedef struct amdf_api_t {
   /// The returned query-only endpoint borrows `instance`; the instance must
   /// outlive it. Opening may acquire a native query handle and cache immutable
   /// identity, but creates no schedulable device state. A stale identity fails
-  /// rather than selecting another endpoint. On failure, `out_endpoint` is set
-  /// to `NULL`.
+  /// rather than selecting another endpoint. Failure leaves `out_endpoint`
+  /// unchanged.
   amdf_status_t(AMDF_CALL* endpoint_open)(amdf_instance_t* instance,
                                           const amdf_endpoint_id_t* id,
                                           amdf_endpoint_t** out_endpoint);
@@ -665,7 +666,7 @@ typedef struct amdf_api_t {
   /// `maximum_version` form an inclusive range. An unknown or excluded
   /// extension returns `AMDF_STATUS_CODE_UNSUPPORTED`; a compiled extension
   /// with no version in range returns `AMDF_STATUS_CODE_VERSION_MISMATCH`.
-  /// Failure sets `out_extension_api` to `NULL` when it is non-NULL.
+  /// Failure leaves `out_extension_api` unchanged when it is non-NULL.
   ///
   /// This operation is thread-safe, bounded constant time, and inert. It
   /// performs no allocation, system call, device discovery, dependent-library
@@ -708,7 +709,7 @@ typedef struct amdf_api_t {
   /// contents. If the pointer came from a host mapping, that source mapping
   /// and its memory must outlive the registration. Independent registrations
   /// do not transfer ownership or establish execution or cache dependencies.
-  /// On failure, `out_memory` is set to `NULL`.
+  /// Failure leaves `out_memory` unchanged.
   amdf_status_t(AMDF_CALL* memory_create)(
       amdf_device_t* device, const amdf_memory_create_info_t* create_info,
       amdf_memory_t** out_memory);
@@ -725,8 +726,8 @@ typedef struct amdf_api_t {
   /// Creates an explicit host mapping of one memory range.
   ///
   /// The returned mapping borrows `memory`, which must outlive it. Mapping does
-  /// not wait for device work or transfer cache ownership. On failure,
-  /// `out_mapping` is set to `NULL`.
+  /// not wait for device work or transfer cache ownership. Failure leaves
+  /// `out_mapping` unchanged.
   amdf_status_t(AMDF_CALL* memory_map)(amdf_memory_t* memory,
                                        const amdf_memory_map_info_t* map_info,
                                        amdf_host_mapping_t** out_mapping);
@@ -821,8 +822,8 @@ typedef amdf_status_t(AMDF_CALL* amdf_query_api_fn_t)(
 /// Acquires the newest supported API table in the inclusive requested range.
 ///
 /// On success, `out_api` receives a borrowed immutable table that remains valid
-/// until the providing library is unloaded. On failure, `out_api` is set to
-/// `NULL` when it is non-NULL.
+/// until the providing library is unloaded. Failure leaves `out_api` unchanged
+/// when it is non-NULL.
 ///
 /// This function is thread-safe, bounded constant time, and inert. It performs
 /// no allocation, system call, device discovery, dependent-library load, or

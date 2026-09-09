@@ -25,7 +25,9 @@ amdf_status_t amdf_platform_instance_create(
 amdf_status_t amdf_platform_instance_destroy(
     amdf_platform_instance_t* instance);
 
-// Enumerates a bounded snapshot of normalized execution endpoints.
+// Enumerates a bounded snapshot of normalized execution endpoints. Success and
+// BUFFER_TOO_SMALL publish the output prefix and total together; every other
+// result leaves both outputs unchanged.
 amdf_status_t amdf_platform_endpoint_enumerate(
     amdf_platform_instance_t* instance, uint32_t capacity,
     amdf_endpoint_summary_t* summaries, uint32_t* out_count);

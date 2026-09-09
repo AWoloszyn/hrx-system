@@ -17,7 +17,9 @@
 extern "C" {
 #endif  // __cplusplus
 
-// Queries and qualifies one immutable GPU endpoint profile.
+// Queries and qualifies one immutable GPU endpoint profile. Success always
+// publishes availability and publishes the profile only when available;
+// failure leaves both outputs unchanged.
 amdf_status_t amdf_gpu_umd_query_endpoint_profile(
     amdf_platform_endpoint_t* platform_endpoint,
     amdf_gpu_endpoint_profile_t* out_profile, bool* out_available);

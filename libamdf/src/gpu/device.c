@@ -49,7 +49,6 @@ amdf_status_t AMDF_CALL amdf_gpu_device_create(
   if (out_device == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
-  *out_device = NULL;
   if (endpoint == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }

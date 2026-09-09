@@ -176,7 +176,6 @@ amdf_status_t amdf_xdna_umd_memory_create(
     const amdf_memory_create_info_t* create_info,
     amdf_xdna_umd_memory_t** out_memory,
     amdf_xdna_umd_memory_result_t* out_result) {
-  *out_memory = NULL;
   if (!amdf_kmt_api_supports_memory(device->kmt)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
@@ -247,7 +246,6 @@ amdf_status_t amdf_xdna_umd_memory_map(
     amdf_xdna_umd_memory_t* memory, const amdf_memory_map_info_t* map_info,
     amdf_xdna_umd_host_mapping_t** out_mapping,
     amdf_xdna_umd_host_mapping_result_t* out_result) {
-  *out_mapping = NULL;
   amdf_xdna_umd_host_mapping_t* mapping =
       (amdf_xdna_umd_host_mapping_t*)calloc(1, sizeof(*mapping));
   if (mapping == NULL) {

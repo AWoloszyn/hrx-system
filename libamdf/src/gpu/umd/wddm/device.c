@@ -59,7 +59,6 @@ amdf_status_t amdf_gpu_umd_device_create(
     amdf_gpu_umd_device_result_t* out_result) {
   // The public boundary has selected the only advertised WDDM mode.
   (void)mode;
-  *out_device = NULL;
   if (!amdf_kmt_api_supports_paging_devices(&endpoint->instance->kmt)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }

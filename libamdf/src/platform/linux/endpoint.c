@@ -153,6 +153,17 @@ static amdf_status_t amdf_linux_query_endpoint(int directory,
 amdf_status_t amdf_platform_endpoint_enumerate(
     amdf_platform_instance_t* instance, uint32_t capacity,
     amdf_endpoint_summary_t* summaries, uint32_t* out_count) {
+  if ((size_t)capacity > SIZE_MAX / sizeof(*summaries)) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
+  }
+  amdf_endpoint_summary_t* staged_summaries = NULL;
+  if (capacity != 0) {
+    staged_summaries = calloc((size_t)capacity, sizeof(*staged_summaries));
+    if (staged_summaries == NULL) {
+      return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
+    }
+  }
+
   const char* classes[] = {"class/drm", "class/accel"};
   const char* prefixes[] = {"renderD", "accel"};
   uint32_t count = 0;
@@ -202,23 +213,35 @@ amdf_status_t amdf_platform_endpoint_enumerate(
         continue;
       }
       if (amdf_status_is_ok(status)) {
+        if (count == UINT32_MAX) {
+          status = amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
+          break;
+        }
         if (count < capacity) {
-          summaries[count] = (amdf_endpoint_summary_t){
+          staged_summaries[count] = (amdf_endpoint_summary_t){
               .id = info.id,
               .engine_kind = info.engine_kind,
               .type_flags = info.type_flags,
           };
-          memcpy(summaries[count].name, info.name, sizeof(info.name));
+          memcpy(staged_summaries[count].name, info.name, sizeof(info.name));
         }
         ++count;
       }
     }
     if (closedir(directory) != 0) status = amdf_linux_error(errno);
   }
-  *out_count = count;
-  if (amdf_status_is_ok(status) && capacity != 0 && capacity < count) {
-    status = amdf_make_api_status(AMDF_STATUS_CODE_BUFFER_TOO_SMALL);
+  if (amdf_status_is_ok(status)) {
+    if (capacity != 0) {
+      const uint32_t copied_count = count < capacity ? count : capacity;
+      memcpy(summaries, staged_summaries,
+             (size_t)copied_count * sizeof(*summaries));
+    }
+    *out_count = count;
+    if (capacity != 0 && capacity < count) {
+      status = amdf_make_api_status(AMDF_STATUS_CODE_BUFFER_TOO_SMALL);
+    }
   }
+  free(staged_summaries);
   return status;
 }
 
@@ -294,7 +317,6 @@ static amdf_status_t amdf_linux_open_endpoint(
 amdf_status_t amdf_platform_endpoint_open(
     amdf_platform_instance_t* instance, const amdf_endpoint_id_t* id,
     amdf_platform_endpoint_t** out_endpoint, amdf_endpoint_info_t* out_info) {
-  *out_endpoint = NULL;
   amdf_platform_endpoint_t* endpoint = calloc(1, sizeof(*endpoint));
   if (endpoint == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
@@ -316,7 +338,6 @@ amdf_status_t amdf_platform_endpoint_open(
 
 amdf_status_t amdf_linux_endpoint_open_file(
     const amdf_platform_endpoint_t* endpoint, int* out_descriptor) {
-  *out_descriptor = -1;
   amdf_platform_endpoint_t opened = {.descriptor = -1};
   amdf_status_t status =
       amdf_linux_open_endpoint(endpoint->instance, &endpoint->info.id, &opened);

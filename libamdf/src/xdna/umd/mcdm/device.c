@@ -70,7 +70,6 @@ amdf_status_t amdf_xdna_umd_device_create(
     const amdf_xdna_device_create_info_t* create_info,
     amdf_xdna_umd_device_t** out_device,
     amdf_xdna_umd_device_result_t* out_result) {
-  *out_device = NULL;
   if (!amdf_kmt_api_supports_device_contexts(&endpoint->instance->kmt)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }

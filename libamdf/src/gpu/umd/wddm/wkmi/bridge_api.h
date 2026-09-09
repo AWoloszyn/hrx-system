@@ -221,6 +221,8 @@ typedef struct amdf_wkmi_bridge_api_t {
       amdf_wkmi_bridge_gpu_adapter_t* adapter, uint32_t* out_native_status);
 
   // Queries the native allocation layout for an aggregate byte length.
+  // Success publishes both layout outputs. Every other result leaves them
+  // unchanged.
   amdf_wkmi_bridge_result_t(AMDF_WKMI_BRIDGE_CALL* gpu_allocation_query_layout)(
       amdf_wkmi_bridge_gpu_adapter_t* adapter, uint64_t byte_length,
       uint32_t* out_allocation_count,
@@ -229,7 +231,10 @@ typedef struct amdf_wkmi_bridge_api_t {
   // Creates one grouped set of native allocations through pinned WKMI.
   //
   // No allocation is created unless `allocation_handle_capacity` is
-  // sufficient. Zero capacity permits a NULL handle array for the count query.
+  // sufficient. BUFFER_TOO_SMALL publishes only the required allocation count.
+  // Zero capacity permits a NULL handle array for the count query.
+  // Success publishes the handles, resource, and count. Every other result
+  // leaves those outputs unchanged and retains no caller-owned allocation.
   // Native success forwards the driver's handle values without validation;
   // the backing owner validates them after capturing all cleanup identities.
   // The bridge retains no native allocation or deferred cleanup state.
@@ -243,6 +248,8 @@ typedef struct amdf_wkmi_bridge_api_t {
       uint32_t* out_native_status);
 
   // Creates one kernel-mediated native GPU queue through pinned WKMI.
+  // Success publishes the queue and its complete information. Every other
+  // result leaves both outputs unchanged and retains no caller-owned queue.
   amdf_wkmi_bridge_result_t(AMDF_WKMI_BRIDGE_CALL* gpu_kernel_queue_create)(
       amdf_wkmi_bridge_gpu_adapter_t* adapter,
       const amdf_wkmi_bridge_gpu_kernel_queue_create_info_t* create_info,

@@ -24,6 +24,12 @@ constexpr NTSTATUS kCloseFailure = static_cast<NTSTATUS>(0xC000000Du);
 constexpr D3DKMT_HANDLE kAmdAdapter = 1;
 constexpr D3DKMT_HANDLE kOtherAdapter = 2;
 
+amdf_endpoint_summary_t MakeSentinelSummary() {
+  amdf_endpoint_summary_t summary;
+  std::memset(&summary, 0xA5, sizeof(summary));
+  return summary;
+}
+
 enum class FailurePoint {
   kNone,
   kOpen,
@@ -304,23 +310,28 @@ TEST_F(EndpointSnapshotTest, WritesAvailablePrefixAndReportsTotal) {
 
 TEST_F(EndpointSnapshotTest, ClosesReturnedHandlesWhenEnumerationFails) {
   fake_.failure_point = FailurePoint::kSecondEnumeration;
-  uint32_t endpoint_count = 0;
+  amdf_endpoint_summary_t summary = MakeSentinelSummary();
+  const amdf_endpoint_summary_t expected_summary = summary;
+  uint32_t endpoint_count = 123;
   const amdf_status_t status = amdf_platform_endpoint_enumerate(
-      platform_instance_, 0, nullptr, &endpoint_count);
+      platform_instance_, 1, &summary, &endpoint_count);
 
   EXPECT_EQ(amdf_status_domain(status), AMDF_STATUS_DOMAIN_NTSTATUS);
   EXPECT_EQ(amdf_status_code(status), static_cast<uint32_t>(kFailure));
+  EXPECT_EQ(endpoint_count, 123u);
+  EXPECT_EQ(std::memcmp(&summary, &expected_summary, sizeof(summary)), 0);
   EXPECT_EQ(fake_.close.call_count, 2u);
 }
 
 TEST_F(EndpointSnapshotTest, ReturnsInitialEnumerationFailureWithoutCleanup) {
   fake_.failure_point = FailurePoint::kFirstEnumeration;
-  uint32_t endpoint_count = 0;
+  uint32_t endpoint_count = 123;
   const amdf_status_t status = amdf_platform_endpoint_enumerate(
       platform_instance_, 0, nullptr, &endpoint_count);
 
   EXPECT_EQ(amdf_status_domain(status), AMDF_STATUS_DOMAIN_NTSTATUS);
   EXPECT_EQ(amdf_status_code(status), static_cast<uint32_t>(kFailure));
+  EXPECT_EQ(endpoint_count, 123u);
   EXPECT_EQ(fake_.close.call_count, 0u);
 }
 
@@ -334,23 +345,31 @@ TEST_F(EndpointSnapshotTest, ClosesEveryHandleAfterQueryFailures) {
   for (FailurePoint failure_point : failure_points) {
     fake_ = {};
     fake_.failure_point = failure_point;
-    uint32_t endpoint_count = 0;
+    amdf_endpoint_summary_t summary = MakeSentinelSummary();
+    const amdf_endpoint_summary_t expected_summary = summary;
+    uint32_t endpoint_count = 123;
     const amdf_status_t status = amdf_platform_endpoint_enumerate(
-        platform_instance_, 0, nullptr, &endpoint_count);
+        platform_instance_, 1, &summary, &endpoint_count);
     EXPECT_EQ(amdf_status_domain(status), AMDF_STATUS_DOMAIN_NTSTATUS);
     EXPECT_EQ(amdf_status_code(status), static_cast<uint32_t>(kFailure));
+    EXPECT_EQ(endpoint_count, 123u);
+    EXPECT_EQ(std::memcmp(&summary, &expected_summary, sizeof(summary)), 0);
     EXPECT_EQ(fake_.close.call_count, 2u);
   }
 }
 
 TEST_F(EndpointSnapshotTest, SurfacesCloseFailureAfterClosingEveryHandle) {
   fake_.failure_point = FailurePoint::kClose;
-  uint32_t endpoint_count = 0;
+  amdf_endpoint_summary_t summary = MakeSentinelSummary();
+  const amdf_endpoint_summary_t expected_summary = summary;
+  uint32_t endpoint_count = 123;
   const amdf_status_t status = amdf_platform_endpoint_enumerate(
-      platform_instance_, 0, nullptr, &endpoint_count);
+      platform_instance_, 1, &summary, &endpoint_count);
 
   EXPECT_EQ(amdf_status_domain(status), AMDF_STATUS_DOMAIN_NTSTATUS);
   EXPECT_EQ(amdf_status_code(status), static_cast<uint32_t>(kCloseFailure));
+  EXPECT_EQ(endpoint_count, 123u);
+  EXPECT_EQ(std::memcmp(&summary, &expected_summary, sizeof(summary)), 0);
   EXPECT_EQ(fake_.close.call_count, 2u);
 }
 
@@ -381,7 +400,7 @@ TEST_F(EndpointSnapshotTest, RejectsStaleIdentityAndClosesOpenedAdapter) {
 
   EXPECT_EQ(amdf_status_domain(status), AMDF_STATUS_DOMAIN_API);
   EXPECT_EQ(amdf_status_code(status), AMDF_STATUS_CODE_NOT_FOUND);
-  EXPECT_EQ(endpoint, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(endpoint), uintptr_t{1});
   EXPECT_EQ(fake_.enumeration_call_count, 0u);
   EXPECT_EQ(fake_.close.call_count, 1u);
 }
@@ -389,42 +408,45 @@ TEST_F(EndpointSnapshotTest, RejectsStaleIdentityAndClosesOpenedAdapter) {
 TEST_F(EndpointSnapshotTest, ClosesHandleReturnedByFailedOpen) {
   const amdf_endpoint_id_t id = EnumerateAmdEndpointId();
   fake_.failure_point = FailurePoint::kOpenWithHandle;
-  amdf_platform_endpoint_t* endpoint = nullptr;
+  amdf_platform_endpoint_t* endpoint =
+      reinterpret_cast<amdf_platform_endpoint_t*>(uintptr_t{1});
   amdf_endpoint_info_t info = {};
   const amdf_status_t status =
       amdf_platform_endpoint_open(platform_instance_, &id, &endpoint, &info);
 
   EXPECT_EQ(amdf_status_domain(status), AMDF_STATUS_DOMAIN_NTSTATUS);
   EXPECT_EQ(amdf_status_code(status), static_cast<uint32_t>(kFailure));
-  EXPECT_EQ(endpoint, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(endpoint), uintptr_t{1});
   EXPECT_EQ(fake_.close.call_count, 1u);
 }
 
 TEST_F(EndpointSnapshotTest, ReturnsOpenFailureWithoutCleanup) {
   const amdf_endpoint_id_t id = EnumerateAmdEndpointId();
   fake_.failure_point = FailurePoint::kOpen;
-  amdf_platform_endpoint_t* endpoint = nullptr;
+  amdf_platform_endpoint_t* endpoint =
+      reinterpret_cast<amdf_platform_endpoint_t*>(uintptr_t{1});
   amdf_endpoint_info_t info = {};
   const amdf_status_t status =
       amdf_platform_endpoint_open(platform_instance_, &id, &endpoint, &info);
 
   EXPECT_EQ(amdf_status_domain(status), AMDF_STATUS_DOMAIN_NTSTATUS);
   EXPECT_EQ(amdf_status_code(status), static_cast<uint32_t>(kFailure));
-  EXPECT_EQ(endpoint, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(endpoint), uintptr_t{1});
   EXPECT_EQ(fake_.close.call_count, 0u);
 }
 
 TEST_F(EndpointSnapshotTest, ClosesOpenedAdapterAfterQueryFailure) {
   const amdf_endpoint_id_t id = EnumerateAmdEndpointId();
   fake_.failure_point = FailurePoint::kAdapterType;
-  amdf_platform_endpoint_t* endpoint = nullptr;
+  amdf_platform_endpoint_t* endpoint =
+      reinterpret_cast<amdf_platform_endpoint_t*>(uintptr_t{1});
   amdf_endpoint_info_t info = {};
   const amdf_status_t status =
       amdf_platform_endpoint_open(platform_instance_, &id, &endpoint, &info);
 
   EXPECT_EQ(amdf_status_domain(status), AMDF_STATUS_DOMAIN_NTSTATUS);
   EXPECT_EQ(amdf_status_code(status), static_cast<uint32_t>(kFailure));
-  EXPECT_EQ(endpoint, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(endpoint), uintptr_t{1});
   EXPECT_EQ(fake_.close.call_count, 1u);
 }
 
@@ -494,7 +516,7 @@ TEST_F(EndpointSnapshotTest, ReportsEndpointRollbackFailureWithoutRetention) {
   EXPECT_EQ(
       amdf_platform_endpoint_open(platform_instance_, &id, &endpoint, &info),
       amdf_kmt_make_status(kCloseFailure));
-  EXPECT_EQ(endpoint, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(endpoint), uintptr_t{1});
   EXPECT_EQ(std::memcmp(&info, &original_info, sizeof(info)), 0);
   EXPECT_EQ(fake_.close.call_count, 1u);
   EXPECT_EQ(fake_.close.successful[kAmdAdapter], 0u);

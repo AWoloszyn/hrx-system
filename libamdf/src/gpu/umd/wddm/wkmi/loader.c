@@ -51,17 +51,18 @@ static amdf_status_t amdf_gpu_wddm_wkmi_make_absolute_path(
 
 static amdf_status_t amdf_gpu_wddm_wkmi_allocate_environment_path(
     wchar_t** out_path) {
-  *out_path = NULL;
   SetLastError(ERROR_SUCCESS);
   const DWORD required_capacity = GetEnvironmentVariableW(
       AMDF_WKMI_BRIDGE_PATH_ENVIRONMENT_VARIABLE, NULL, 0);
   if (required_capacity == 0) {
     const DWORD error = GetLastError();
-    return error == ERROR_ENVVAR_NOT_FOUND
-               ? AMDF_STATUS_OK
-               : amdf_make_status(
-                     AMDF_STATUS_DOMAIN_WIN32,
-                     error == ERROR_SUCCESS ? ERROR_INVALID_DATA : error);
+    if (error == ERROR_ENVVAR_NOT_FOUND) {
+      *out_path = NULL;
+      return AMDF_STATUS_OK;
+    }
+    return amdf_make_status(AMDF_STATUS_DOMAIN_WIN32, error == ERROR_SUCCESS
+                                                          ? ERROR_INVALID_DATA
+                                                          : error);
   }
 
   wchar_t* path = (wchar_t*)malloc((size_t)required_capacity * sizeof(*path));
@@ -77,13 +78,17 @@ static amdf_status_t amdf_gpu_wddm_wkmi_allocate_environment_path(
                                                           ? ERROR_INVALID_DATA
                                                           : error);
   }
-  *out_path = path;
-  return amdf_gpu_wddm_wkmi_make_absolute_path(out_path);
+  const amdf_status_t status = amdf_gpu_wddm_wkmi_make_absolute_path(&path);
+  if (amdf_status_is_ok(status)) {
+    *out_path = path;
+  } else {
+    free(path);
+  }
+  return status;
 }
 
 static amdf_status_t amdf_gpu_wddm_wkmi_allocate_sibling_path(
     wchar_t** out_path) {
-  *out_path = NULL;
   HMODULE owner_module = NULL;
   if (!GetModuleHandleExW(
           GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |

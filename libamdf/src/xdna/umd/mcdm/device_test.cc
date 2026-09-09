@@ -173,7 +173,7 @@ TEST_F(WindowsXdnaDeviceRollbackTest,
       endpoint_, &profile_, &create_info_, &device, &result);
 
   EXPECT_EQ(status, amdf_kmt_make_status(kFailure));
-  EXPECT_EQ(device, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(device), uintptr_t{1});
   EXPECT_EQ(
       state_.operations,
       (std::vector<Operation>{

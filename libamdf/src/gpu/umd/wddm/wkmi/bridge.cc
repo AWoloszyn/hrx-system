@@ -154,11 +154,11 @@ amdf_wkmi_bridge_result_t AMDF_WKMI_BRIDGE_CALL GpuAllocationQueryLayout(
       out_maximum_allocation_byte_length == nullptr) {
     return AMDF_WKMI_BRIDGE_RESULT_INVALID_ARGUMENT;
   }
-  *out_allocation_count = 0;
-  *out_maximum_allocation_byte_length = 0;
+  uint32_t allocation_count = 0;
   const amdf_wkmi_bridge_result_t result =
-      QueryAllocationCount(byte_length, out_allocation_count);
+      QueryAllocationCount(byte_length, &allocation_count);
   if (result == AMDF_WKMI_BRIDGE_RESULT_SUCCESS) {
+    *out_allocation_count = allocation_count;
     *out_maximum_allocation_byte_length = kMaximumNativeAllocationByteLength;
   }
   return result;
@@ -285,8 +285,6 @@ amdf_wkmi_bridge_result_t AMDF_WKMI_BRIDGE_CALL GpuAllocationCreate(
       out_native_status == nullptr) {
     return AMDF_WKMI_BRIDGE_RESULT_INVALID_ARGUMENT;
   }
-  *out_resource_handle = 0;
-  *out_allocation_count = 0;
   *out_native_status = 0;
   const amdf_wkmi_bridge_gpu_allocation_flags_t known_flags =
       AMDF_WKMI_BRIDGE_GPU_ALLOCATION_FLAG_FINE_GRAIN |

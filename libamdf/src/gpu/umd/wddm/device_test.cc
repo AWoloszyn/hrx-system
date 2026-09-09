@@ -196,7 +196,7 @@ TEST_F(WindowsGpuDeviceRollbackTest,
       endpoint_, AMDF_GPU_DEVICE_MODE_INDEPENDENT, &device, &result);
 
   EXPECT_EQ(amdf_status_code(status), AMDF_STATUS_CODE_BUSY);
-  EXPECT_EQ(device, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(device), uintptr_t{1});
   EXPECT_EQ(std::memcmp(&result, &original, sizeof(result)), 0);
   EXPECT_EQ(state_.operations,
             (std::vector<Operation>{Operation::kCreateDevice,
@@ -232,7 +232,7 @@ TEST_F(WindowsGpuDeviceRollbackTest,
   EXPECT_EQ(amdf_gpu_umd_device_create(
                 endpoint_, AMDF_GPU_DEVICE_MODE_INDEPENDENT, &device, &result),
             amdf_kmt_make_status(kFailure));
-  EXPECT_EQ(device, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(device), uintptr_t{1});
   EXPECT_EQ(std::memcmp(&result, &original, sizeof(result)), 0);
   EXPECT_EQ(amdf_platform_endpoint_close(endpoint_), AMDF_STATUS_OK);
   endpoint_ = nullptr;

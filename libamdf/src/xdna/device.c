@@ -88,7 +88,6 @@ amdf_xdna_device_create(amdf_endpoint_t* endpoint,
   if (out_device == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
-  *out_device = NULL;
   if (endpoint == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }

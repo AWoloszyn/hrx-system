@@ -183,7 +183,7 @@ typedef struct amdf_xdna_api_t {
   /// returned device borrows the endpoint, which must outlive it. The selected
   /// scheduling mode and achieved placement are copied by `device_query_info`.
   /// No executable, PDI, xclbin, transaction, or control bytes are accepted or
-  /// parsed. On failure, `out_device` is set to `NULL`.
+  /// parsed. Failure leaves `out_device` unchanged.
   amdf_status_t(AMDF_CALL* device_create)(
       amdf_endpoint_t* endpoint,
       const amdf_xdna_device_create_info_t* create_info,

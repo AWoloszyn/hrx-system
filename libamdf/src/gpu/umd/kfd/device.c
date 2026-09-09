@@ -26,7 +26,6 @@ amdf_status_t amdf_gpu_umd_device_create(
     amdf_platform_endpoint_t* endpoint, amdf_gpu_device_mode_t mode,
     amdf_gpu_umd_device_t** out_device,
     amdf_gpu_umd_device_result_t* out_result) {
-  *out_device = NULL;
   amdf_gpu_umd_device_t* device = calloc(1, sizeof(*device));
   if (device == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);

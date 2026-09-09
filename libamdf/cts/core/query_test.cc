@@ -86,24 +86,28 @@ TEST(QueryApiTest, RejectsNullOutput) {
   EXPECT_EQ(amdf_status_code(status), AMDF_STATUS_CODE_INVALID_ARGUMENT);
 }
 
-TEST(QueryApiTest, RejectsReversedVersionRangeAndClearsOutput) {
-  const amdf_api_t* api = reinterpret_cast<const amdf_api_t*>(uintptr_t{1});
+TEST(QueryApiTest, RejectsReversedVersionRangeWithoutPublishingOutput) {
+  const auto* const sentinel =
+      reinterpret_cast<const amdf_api_t*>(uintptr_t{1});
+  const amdf_api_t* api = sentinel;
   const amdf_status_t status = amdf_cts_provider_query_api()(
       AMDF_ABI_VERSION_1 + 1, AMDF_ABI_VERSION_1, &api);
 
   EXPECT_EQ(amdf_status_domain(status), AMDF_STATUS_DOMAIN_API);
   EXPECT_EQ(amdf_status_code(status), AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(api, nullptr);
+  EXPECT_EQ(api, sentinel);
 }
 
-TEST(QueryApiTest, RejectsUnsupportedVersionAndClearsOutput) {
-  const amdf_api_t* api = reinterpret_cast<const amdf_api_t*>(uintptr_t{1});
+TEST(QueryApiTest, RejectsUnsupportedVersionWithoutPublishingOutput) {
+  const auto* const sentinel =
+      reinterpret_cast<const amdf_api_t*>(uintptr_t{1});
+  const amdf_api_t* api = sentinel;
   const amdf_status_t status = amdf_cts_provider_query_api()(
       AMDF_ABI_VERSION_LATEST + 1, AMDF_ABI_VERSION_LATEST + 1, &api);
 
   EXPECT_EQ(amdf_status_domain(status), AMDF_STATUS_DOMAIN_API);
   EXPECT_EQ(amdf_status_code(status), AMDF_STATUS_CODE_VERSION_MISMATCH);
-  EXPECT_EQ(api, nullptr);
+  EXPECT_EQ(api, sentinel);
 }
 
 TEST(QueryExtensionTest, RejectsNullOutput) {
@@ -118,32 +122,34 @@ TEST(QueryExtensionTest, RejectsNullOutput) {
   EXPECT_EQ(amdf_status_code(status), AMDF_STATUS_CODE_INVALID_ARGUMENT);
 }
 
-TEST(QueryExtensionTest, RejectsReversedVersionRangeAndClearsOutput) {
+TEST(QueryExtensionTest, RejectsReversedVersionRangeWithoutPublishingOutput) {
   const amdf_api_t* api = nullptr;
   ASSERT_TRUE(amdf_status_is_ok(amdf_cts_provider_query_api()(
       AMDF_ABI_VERSION_1, AMDF_ABI_VERSION_LATEST, &api)));
-  const void* extension_api = reinterpret_cast<const void*>(uintptr_t{1});
+  const void* const sentinel = reinterpret_cast<const void*>(uintptr_t{1});
+  const void* extension_api = sentinel;
 
   const amdf_status_t status =
       api->query_extension(AMDF_EXTENSION_XDNA, 2, 1, &extension_api);
 
   EXPECT_EQ(amdf_status_domain(status), AMDF_STATUS_DOMAIN_API);
   EXPECT_EQ(amdf_status_code(status), AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(extension_api, nullptr);
+  EXPECT_EQ(extension_api, sentinel);
 }
 
-TEST(QueryExtensionTest, RejectsUnknownExtensionAndClearsOutput) {
+TEST(QueryExtensionTest, RejectsUnknownExtensionWithoutPublishingOutput) {
   const amdf_api_t* api = nullptr;
   ASSERT_TRUE(amdf_status_is_ok(amdf_cts_provider_query_api()(
       AMDF_ABI_VERSION_1, AMDF_ABI_VERSION_LATEST, &api)));
-  const void* extension_api = reinterpret_cast<const void*>(uintptr_t{1});
+  const void* const sentinel = reinterpret_cast<const void*>(uintptr_t{1});
+  const void* extension_api = sentinel;
 
   const amdf_status_t status =
       api->query_extension(UINT32_MAX, 1, UINT32_MAX, &extension_api);
 
   EXPECT_EQ(amdf_status_domain(status), AMDF_STATUS_DOMAIN_API);
   EXPECT_EQ(amdf_status_code(status), AMDF_STATUS_CODE_UNSUPPORTED);
-  EXPECT_EQ(extension_api, nullptr);
+  EXPECT_EQ(extension_api, sentinel);
 }
 
 TEST(StatusTest, PreservesDomainAndCode) {

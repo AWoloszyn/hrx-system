@@ -13,10 +13,10 @@
 amdf_status_t amdf_gpu_umd_query_endpoint_profile(
     amdf_platform_endpoint_t* endpoint,
     amdf_gpu_endpoint_profile_t* out_profile, bool* out_available) {
-  *out_available = false;
   amdf_gpu_kfd_topology_t topology = {0};
   amdf_status_t status = amdf_gpu_kfd_topology_query(endpoint, &topology);
   if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
+    *out_available = false;
     return AMDF_STATUS_OK;
   }
   int descriptor = -1;
@@ -30,6 +30,7 @@ amdf_status_t amdf_gpu_umd_query_endpoint_profile(
   // KFD 1.18 is the minimum supported native interface. CREATE_PROCESS arrived
   // in 1.19; its absence never changes an independent request into primary use.
   if (version.major_version != 1 || version.minor_version < 18) {
+    *out_available = false;
     return AMDF_STATUS_OK;
   }
   topology.properties.device_modes[AMDF_GPU_DEVICE_MODE_PROCESS] =
@@ -44,10 +45,11 @@ amdf_status_t amdf_gpu_umd_query_endpoint_profile(
           .features = topology.memory_features |
                       AMDF_GPU_DEVICE_FEATURE_DEVICE_RECREATION,
       };
-  if (!amdf_gpu_endpoint_profile_initialize(&topology.properties,
-                                            out_profile)) {
+  amdf_gpu_endpoint_profile_t profile;
+  if (!amdf_gpu_endpoint_profile_initialize(&topology.properties, &profile)) {
     return amdf_linux_error(EPROTO);
   }
+  *out_profile = profile;
   *out_available = true;
   return AMDF_STATUS_OK;
 }

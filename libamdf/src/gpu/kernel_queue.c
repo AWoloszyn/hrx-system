@@ -244,7 +244,6 @@ amdf_status_t AMDF_CALL amdf_gpu_kernel_queue_create(
   if (out_queue == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
-  *out_queue = NULL;
   if (!amdf_device_is_engine(device, AMDF_ENGINE_KIND_GPU)) {
     return device == NULL
                ? amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT)

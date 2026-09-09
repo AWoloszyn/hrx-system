@@ -81,10 +81,12 @@ TEST_F(LinuxEndpointTest, NativeIdentityAndIndependentFiles) {
 
     amdf_endpoint_id_t stale = summary.id;
     stale.words[1] ^= UINT64_C(1) << 63;
-    endpoint = reinterpret_cast<amdf_platform_endpoint_t*>(uintptr_t{1});
-    EXPECT_EQ(amdf_platform_endpoint_open(instance, &stale, &endpoint, &info),
-              amdf_make_api_status(AMDF_STATUS_CODE_NOT_FOUND));
-    EXPECT_EQ(endpoint, nullptr);
+    amdf_platform_endpoint_t* failed_endpoint =
+        reinterpret_cast<amdf_platform_endpoint_t*>(uintptr_t{1});
+    EXPECT_EQ(
+        amdf_platform_endpoint_open(instance, &stale, &failed_endpoint, &info),
+        amdf_make_api_status(AMDF_STATUS_CODE_NOT_FOUND));
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(failed_endpoint), uintptr_t{1});
   }
 }
 

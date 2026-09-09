@@ -47,7 +47,6 @@ amdf_status_t AMDF_CALL amdf_query_api(amdf_abi_version_t minimum_version,
   if (out_api == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
-  *out_api = NULL;
   if (minimum_version > maximum_version) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }

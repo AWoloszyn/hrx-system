@@ -46,7 +46,6 @@ amdf_status_t AMDF_CALL amdf_endpoint_open(amdf_instance_t* instance,
   if (out_endpoint == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
-  *out_endpoint = NULL;
   if (instance == NULL || id == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
@@ -123,7 +122,6 @@ void amdf_endpoint_store_engine_profile_error(amdf_endpoint_t* endpoint,
 amdf_status_t amdf_endpoint_query_engine_profile(
     const amdf_endpoint_t* endpoint, amdf_engine_kind_t expected_engine_kind,
     const void** out_profile) {
-  *out_profile = NULL;
   if (endpoint->info.engine_kind != expected_engine_kind ||
       !endpoint->engine_profile_resolved) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);

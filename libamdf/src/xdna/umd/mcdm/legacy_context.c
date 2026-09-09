@@ -105,8 +105,6 @@ amdf_status_t amdf_windows_xdna_legacy_context_build(
   if (out_data == NULL || out_data_size == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
-  *out_data = NULL;
-  *out_data_size = 0;
   const size_t xclbin_uuid_offset = 0x1A0;
   if (amdf_windows_xdna_npu5_legacy_bootstrap_image_size <
           xclbin_uuid_offset + 16 ||

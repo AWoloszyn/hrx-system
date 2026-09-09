@@ -14,7 +14,6 @@
 
 amdf_status_t amdf_platform_instance_create(
     amdf_platform_instance_t** out_instance) {
-  *out_instance = NULL;
   amdf_platform_instance_t* instance = calloc(1, sizeof(*instance));
   if (instance == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);

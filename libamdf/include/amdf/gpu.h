@@ -246,8 +246,8 @@ typedef struct amdf_gpu_api_t {
   /// `endpoint` remains query-only. `create_info->mode` selects the exact
   /// context ownership; an unsupported mode is rejected without fallback. The
   /// returned device borrows the endpoint, which must outlive it. No queue,
-  /// executable, command stream, or public memory object is created. On
-  /// failure, `out_device` is set to `NULL`.
+  /// executable, command stream, or public memory object is created. Failure
+  /// leaves `out_device` unchanged.
   amdf_status_t(AMDF_CALL* device_create)(
       amdf_endpoint_t* endpoint,
       const amdf_gpu_device_create_info_t* create_info,
@@ -266,8 +266,8 @@ typedef struct amdf_gpu_api_t {
   ///
   /// The returned queue borrows `device`, which must outlive it. Creation
   /// selects an advertised `GPU_PM4 + KERNEL` or `GPU_SDMA + KERNEL` family
-  /// and allocates every bounded submission resource before publication. On
-  /// failure, `out_queue` is set to `NULL`.
+  /// and allocates every bounded submission resource before publication.
+  /// Failure leaves `out_queue` unchanged.
   amdf_status_t(AMDF_CALL* kernel_queue_create)(
       amdf_device_t* device,
       const amdf_gpu_kernel_queue_create_info_t* create_info,

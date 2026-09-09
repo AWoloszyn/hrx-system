@@ -83,14 +83,14 @@ TEST_F(GpuMemoryTest, ValidatesPlacementRequirementsBeforeNativeAllocation) {
   EXPECT_EQ(
       amdf_status_code(api_->memory_create(device_, &create_info, &output)),
       AMDF_STATUS_CODE_UNSUPPORTED);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 
   create_info = MakeSystemMemoryCreateInfo();
   create_info.required_flags |= AMDF_MEMORY_FLAG_DEVICE_LOCAL;
   EXPECT_EQ(
       amdf_status_code(api_->memory_create(device_, &create_info, &output)),
       AMDF_STATUS_CODE_UNSUPPORTED);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 
   create_info = MakeSystemMemoryCreateInfo();
   create_info.memory_class = AMDF_MEMORY_CLASS_LOCAL;
@@ -98,7 +98,7 @@ TEST_F(GpuMemoryTest, ValidatesPlacementRequirementsBeforeNativeAllocation) {
   EXPECT_EQ(
       amdf_status_code(api_->memory_create(device_, &create_info, &output)),
       AMDF_STATUS_CODE_UNSUPPORTED);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 
   create_info = MakeSystemMemoryCreateInfo();
   create_info.memory_class = AMDF_MEMORY_CLASS_REGISTERED_HOST;
@@ -107,7 +107,7 @@ TEST_F(GpuMemoryTest, ValidatesPlacementRequirementsBeforeNativeAllocation) {
   EXPECT_EQ(
       amdf_status_code(api_->memory_create(device_, &create_info, &output)),
       AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 }
 
 TEST_F(GpuMemoryTest, OwnsStableSystemAddressAndExplicitHostMapping) {
@@ -211,7 +211,7 @@ TEST_F(GpuMemoryTest, CreatesDeviceLocalExecutableMemory) {
       reinterpret_cast<amdf_host_mapping_t*>(uintptr_t{1});
   EXPECT_EQ(amdf_status_code(api_->memory_map(memory_, &map_info, &output)),
             AMDF_STATUS_CODE_UNSUPPORTED);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 }
 
 TEST_F(GpuMemoryTest, RegistersCallerOwnedCoherentHostPages) {

@@ -246,8 +246,6 @@ amdf_wkmi_bridge_result_t AMDF_WKMI_BRIDGE_CALL GpuKernelQueueCreate(
       out_info == nullptr || out_native_status == nullptr) {
     return AMDF_WKMI_BRIDGE_RESULT_INVALID_ARGUMENT;
   }
-  *out_queue = nullptr;
-  *out_info = {};
   *out_native_status = 0;
   try {
     return CreateNativeQueue(adapter, create_info->device_handle,

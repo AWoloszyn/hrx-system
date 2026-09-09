@@ -78,10 +78,11 @@ TEST(GpuExtensionTest, ReturnsStableImmutableTable) {
   EXPECT_EQ(first_api, second_api);
 }
 
-TEST(GpuExtensionTest, RejectsUnsupportedVersionAndClearsOutput) {
+TEST(GpuExtensionTest, RejectsUnsupportedVersionWithoutPublishingOutput) {
   const amdf_api_t* api = QueryApi();
   ASSERT_NE(api, nullptr);
-  const void* extension_api = reinterpret_cast<const void*>(uintptr_t{1});
+  const void* const sentinel = reinterpret_cast<const void*>(uintptr_t{1});
+  const void* extension_api = sentinel;
 
   const amdf_status_t status = api->query_extension(
       AMDF_EXTENSION_GPU, AMDF_GPU_EXTENSION_VERSION_LATEST + 1,
@@ -89,7 +90,7 @@ TEST(GpuExtensionTest, RejectsUnsupportedVersionAndClearsOutput) {
 
   EXPECT_EQ(amdf_status_domain(status), AMDF_STATUS_DOMAIN_API);
   EXPECT_EQ(amdf_status_code(status), AMDF_STATUS_CODE_VERSION_MISMATCH);
-  EXPECT_EQ(extension_api, nullptr);
+  EXPECT_EQ(extension_api, sentinel);
 }
 
 class GpuEndpointTest : public ::testing::Test {
@@ -280,25 +281,25 @@ TEST_F(GpuEndpointTest, ValidatesDeviceCreationArgumentsWithoutNativeWork) {
   EXPECT_EQ(
       amdf_status_code(gpu_api_->device_create(nullptr, &create_info, &output)),
       AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 
   create_info = MakeDeviceCreateInfo();
   create_info.mode = UINT32_MAX;
   EXPECT_EQ(amdf_status_code(
                 gpu_api_->device_create(endpoint_, &create_info, &output)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
   create_info = MakeDeviceCreateInfo();
   create_info.reserved = 1;
   EXPECT_EQ(amdf_status_code(
                 gpu_api_->device_create(endpoint_, &create_info, &output)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
   create_info = MakeDeviceCreateInfo();
   EXPECT_EQ(
       amdf_status_code(gpu_api_->device_create(endpoint_, nullptr, &output)),
       AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
   EXPECT_EQ(amdf_status_code(
                 gpu_api_->device_create(endpoint_, &create_info, nullptr)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
@@ -307,14 +308,14 @@ TEST_F(GpuEndpointTest, ValidatesDeviceCreationArgumentsWithoutNativeWork) {
   EXPECT_EQ(amdf_status_code(
                 gpu_api_->device_create(endpoint_, &create_info, &output)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 
   create_info = MakeDeviceCreateInfo();
   create_info.next = &create_info;
   EXPECT_EQ(amdf_status_code(
                 gpu_api_->device_create(endpoint_, &create_info, &output)),
             AMDF_STATUS_CODE_UNSUPPORTED);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 }
 
 TEST_F(GpuEndpointTest, RejectsXdnaEndpointForDeviceCreation) {
@@ -333,7 +334,7 @@ TEST_F(GpuEndpointTest, RejectsXdnaEndpointForDeviceCreation) {
 
   EXPECT_EQ(amdf_status_domain(status), AMDF_STATUS_DOMAIN_API);
   EXPECT_EQ(amdf_status_code(status), AMDF_STATUS_CODE_UNSUPPORTED);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 }
 
 TEST_F(GpuEndpointTest, MaterializesProgramIndependentDevice) {
@@ -490,7 +491,7 @@ TEST_F(GpuEndpointTest, QueriesModeCapabilitiesWithoutCreatingDevice) {
       amdf_device_t* output = reinterpret_cast<amdf_device_t*>(uintptr_t{1});
       EXPECT_EQ(gpu_api_->device_create(endpoint_, &create_info, &output),
                 status);
-      EXPECT_EQ(output, nullptr);
+      EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
     } else {
       ASSERT_EQ(status, AMDF_STATUS_OK);
       amdf_gpu_device_capabilities_t second = capabilities;

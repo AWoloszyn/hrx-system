@@ -46,7 +46,6 @@ amdf_status_t AMDF_CALL amdf_extension_query(amdf_extension_id_t extension_id,
   if (out_extension_api == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
-  *out_extension_api = NULL;
   if (minimum_version > maximum_version) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }

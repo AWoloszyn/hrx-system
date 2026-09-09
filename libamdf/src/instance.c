@@ -25,7 +25,6 @@ amdf_instance_create(const amdf_instance_create_info_t* create_info,
   if (out_instance == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
-  *out_instance = NULL;
   amdf_status_t status = amdf_structure_validate_input(
       create_info, AMDF_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
       (uint32_t)sizeof(amdf_instance_create_info_t));
@@ -68,7 +67,6 @@ amdf_status_t AMDF_CALL amdf_endpoint_enumerate(
   if (out_count == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
-  *out_count = 0;
   if (instance == NULL || (capacity != 0 && summaries == NULL)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }

@@ -241,7 +241,7 @@ TEST_F(WindowsXdnaMemoryTest, RejectsUnavailablePropertiesBeforeAllocation) {
         amdf_xdna_umd_memory_create(&device_, &create_info, &memory, &result);
 
     EXPECT_EQ(amdf_status_code(status), AMDF_STATUS_CODE_UNSUPPORTED);
-    EXPECT_EQ(memory, nullptr);
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(memory), uintptr_t{1});
     EXPECT_TRUE(state_.operations.empty());
   };
 
@@ -274,7 +274,7 @@ TEST_F(WindowsXdnaMemoryTest, ReclaimsEverySynchronousFailurePrefix) {
         amdf_xdna_umd_memory_create(&device_, &create_info_, &memory, &result);
 
     EXPECT_FALSE(amdf_status_is_ok(status));
-    EXPECT_EQ(memory, nullptr);
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(memory), uintptr_t{1});
     const bool allocation_was_created = failure_point != FailurePoint::kCreate;
     EXPECT_EQ(!state_.operations.empty() &&
                   state_.operations.back() == Operation::kDestroy,
@@ -308,7 +308,7 @@ TEST_F(WindowsXdnaMemoryTest,
   EXPECT_EQ(
       amdf_xdna_umd_memory_create(&device_, &create_info_, &memory, &result),
       amdf_kmt_make_status(kStatusNoMemory));
-  EXPECT_EQ(memory, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(memory), uintptr_t{1});
   EXPECT_EQ(std::memcmp(&result, &original_result, sizeof(result)), 0);
   EXPECT_EQ(state_.operations,
             (std::vector<Operation>{Operation::kCreate, Operation::kMap,

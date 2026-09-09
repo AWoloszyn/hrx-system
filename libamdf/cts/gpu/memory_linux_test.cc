@@ -179,7 +179,7 @@ TEST_F(GpuLinuxMemoryTest, RejectsUnachievableSystemPlacement) {
     amdf_memory_t* output = reinterpret_cast<amdf_memory_t*>(uintptr_t{1});
     EXPECT_EQ(api_->memory_create(device_, &info, &output),
               amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED));
-    EXPECT_EQ(output, nullptr);
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
   }
 }
 
@@ -241,7 +241,7 @@ TEST_F(GpuLinuxMemoryTest, RejectsRegistrationWhenModeDoesNotSupportIt) {
   amdf_memory_t* output = reinterpret_cast<amdf_memory_t*>(uintptr_t{1});
   EXPECT_EQ(api_->memory_create(device_, &info, &output),
             amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED));
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 }
 
 TEST_F(GpuLinuxMemoryTest, RejectsUnadvertisedKernelQueueCreation) {
@@ -268,7 +268,7 @@ TEST_F(GpuLinuxMemoryTest, RejectsUnadvertisedKernelQueueCreation) {
   EXPECT_EQ(amdf_status_code(
                 gpu_api_->kernel_queue_create(device_, &create_info, &output)),
             AMDF_STATUS_CODE_OUT_OF_RANGE);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 }
 
 // Process mode has one long-lived device in this test process. Its native VM
@@ -348,7 +348,7 @@ TEST_F(GpuLinuxProcessMemoryTest, OwnsMemoryAndOverlappingCallerRegistrations) {
       reinterpret_cast<amdf_host_mapping_t*>(uintptr_t{1});
   EXPECT_EQ(amdf_status_code(api_->memory_map(memories_[0], &overrun, &output)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 
   for (amdf_host_mapping_t*& mapping : mappings_) {
     ASSERT_EQ(api_->host_mapping_destroy(mapping), AMDF_STATUS_OK);

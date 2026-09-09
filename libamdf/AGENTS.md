@@ -29,6 +29,10 @@ Runtime-only consumers outside `libamdf/` retain their own subsystem prefix.
   local rollback before publication; a cleanup error does not transfer that
   ownership to the instance. Native failure handling follows the operation's
   resource-consumption and progress contract, not a generic later-retry policy.
+- Fallible constructors and initializers publish complete outputs only after
+  success is guaranteed. Failure leaves caller output storage unchanged and
+  creates no cleanup obligation. A non-success result publishes data only when
+  the API explicitly defines that result-bearing protocol.
 - GPU, XDNA, and platform implementation packages remain dependency-isolated.
   Common code may not acquire a device-family dependency by convenience.
 - Extension entry points and shared family code are UMD-agnostic. They operate

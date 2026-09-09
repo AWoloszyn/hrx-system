@@ -47,6 +47,18 @@ static void amdf_windows_copy_endpoint_summary(
 amdf_status_t amdf_windows_endpoint_snapshot_enumerate(
     const amdf_kmt_api_t* api, uint32_t capacity,
     amdf_endpoint_summary_t* summaries, uint32_t* out_count) {
+  if ((size_t)capacity > SIZE_MAX / sizeof(*summaries)) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
+  }
+  amdf_endpoint_summary_t* staged_summaries = NULL;
+  if (capacity != 0) {
+    staged_summaries = (amdf_endpoint_summary_t*)calloc(
+        (size_t)capacity, sizeof(*staged_summaries));
+    if (staged_summaries == NULL) {
+      return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
+    }
+  }
+
   // Include compute/display-only application adapters. GPU-P partition
   // adapters remain hidden on the host; they are intended for guest use.
   D3DKMT_ENUMADAPTERS3 enumeration = {0};
@@ -54,17 +66,25 @@ amdf_status_t amdf_windows_endpoint_snapshot_enumerate(
   enumeration.Filter.IncludeDisplayOnly = 1;
   amdf_status_t status =
       amdf_kmt_make_status(api->enumerate_adapters(&enumeration));
-  if (!amdf_status_is_ok(status) || enumeration.NumAdapters == 0) {
+  if (!amdf_status_is_ok(status)) {
+    free(staged_summaries);
     return status;
+  }
+  if (enumeration.NumAdapters == 0) {
+    free(staged_summaries);
+    *out_count = 0;
+    return AMDF_STATUS_OK;
   }
 
   const uint32_t adapter_capacity = enumeration.NumAdapters;
   if ((size_t)adapter_capacity > SIZE_MAX / sizeof(D3DKMT_ADAPTERINFO)) {
+    free(staged_summaries);
     return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
   }
   D3DKMT_ADAPTERINFO* adapters =
       (D3DKMT_ADAPTERINFO*)calloc(adapter_capacity, sizeof(*adapters));
   if (adapters == NULL) {
+    free(staged_summaries);
     return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
   }
   enumeration.NumAdapters = adapter_capacity;
@@ -100,7 +120,8 @@ amdf_status_t amdf_windows_endpoint_snapshot_enumerate(
         break;
       }
       if (endpoint_count < capacity) {
-        amdf_windows_copy_endpoint_summary(&info, &summaries[endpoint_count]);
+        amdf_windows_copy_endpoint_summary(&info,
+                                           &staged_summaries[endpoint_count]);
       }
       ++endpoint_count;
     }
@@ -113,10 +134,17 @@ amdf_status_t amdf_windows_endpoint_snapshot_enumerate(
   }
   free(adapters);
   if (amdf_status_is_ok(status)) {
+    if (capacity != 0) {
+      const uint32_t copied_count =
+          endpoint_count < capacity ? endpoint_count : capacity;
+      memcpy(summaries, staged_summaries,
+             (size_t)copied_count * sizeof(*summaries));
+    }
     *out_count = endpoint_count;
     if (capacity != 0 && endpoint_count > capacity) {
       status = amdf_make_api_status(AMDF_STATUS_CODE_BUFFER_TOO_SMALL);
     }
   }
+  free(staged_summaries);
   return status;
 }

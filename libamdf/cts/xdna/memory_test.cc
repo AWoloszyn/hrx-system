@@ -68,10 +68,10 @@ TEST_F(XdnaMemoryTest, ValidatesCreationArgumentsWithoutNativeAllocation) {
   EXPECT_EQ(
       amdf_status_code(api_->memory_create(nullptr, &create_info, &output)),
       AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
   EXPECT_EQ(amdf_status_code(api_->memory_create(device_, nullptr, &output)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
   EXPECT_EQ(
       amdf_status_code(api_->memory_create(device_, &create_info, nullptr)),
       AMDF_STATUS_CODE_INVALID_ARGUMENT);
@@ -80,35 +80,35 @@ TEST_F(XdnaMemoryTest, ValidatesCreationArgumentsWithoutNativeAllocation) {
   EXPECT_EQ(
       amdf_status_code(api_->memory_create(device_, &create_info, &output)),
       AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 
   create_info = MakeMemoryCreateInfo();
   create_info.byte_length = 0;
   EXPECT_EQ(
       amdf_status_code(api_->memory_create(device_, &create_info, &output)),
       AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 
   create_info = MakeMemoryCreateInfo();
   create_info.minimum_alignment = 3;
   EXPECT_EQ(
       amdf_status_code(api_->memory_create(device_, &create_info, &output)),
       AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 
   create_info = MakeMemoryCreateInfo();
   create_info.required_flags = UINT64_C(1) << 63;
   EXPECT_EQ(
       amdf_status_code(api_->memory_create(device_, &create_info, &output)),
       AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 
   create_info = MakeMemoryCreateInfo();
   create_info.registered_host_pointer = &create_info;
   EXPECT_EQ(
       amdf_status_code(api_->memory_create(device_, &create_info, &output)),
       AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 }
 
 TEST_F(XdnaMemoryTest, OwnsStableAddressAndExplicitHostMapping) {
@@ -265,27 +265,27 @@ TEST_F(XdnaMemoryTest, RejectsInvalidMappingRequestsBeforeNativeMapping) {
       reinterpret_cast<amdf_host_mapping_t*>(uintptr_t{1});
   EXPECT_EQ(amdf_status_code(api_->memory_map(nullptr, &map_info, &output)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
   EXPECT_EQ(amdf_status_code(api_->memory_map(memory_, nullptr, &output)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 
   map_info.flags = 0;
   EXPECT_EQ(amdf_status_code(api_->memory_map(memory_, &map_info, &output)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 
   map_info.flags = UINT32_C(1) << 31;
   EXPECT_EQ(amdf_status_code(api_->memory_map(memory_, &map_info, &output)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 
   map_info.flags = AMDF_MEMORY_MAP_FLAG_READ;
   map_info.byte_offset = UINT64_C(65536);
   map_info.byte_length = 1;
   EXPECT_EQ(amdf_status_code(api_->memory_map(memory_, &map_info, &output)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 }
 
 }  // namespace

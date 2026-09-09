@@ -77,7 +77,6 @@ amdf_status_t AMDF_CALL amdf_memory_create(
   if (out_memory == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
-  *out_memory = NULL;
   if (device == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
@@ -116,7 +115,6 @@ amdf_status_t AMDF_CALL amdf_memory_map(amdf_memory_t* memory,
   if (out_mapping == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
-  *out_mapping = NULL;
   if (memory == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }

@@ -77,10 +77,11 @@ TEST(XdnaExtensionTest, ReturnsStableImmutableTable) {
   EXPECT_EQ(first_api, second_api);
 }
 
-TEST(XdnaExtensionTest, RejectsUnsupportedVersionAndClearsOutput) {
+TEST(XdnaExtensionTest, RejectsUnsupportedVersionWithoutPublishingOutput) {
   const amdf_api_t* api = QueryApi();
   ASSERT_NE(api, nullptr);
-  const void* extension_api = reinterpret_cast<const void*>(uintptr_t{1});
+  const void* const sentinel = reinterpret_cast<const void*>(uintptr_t{1});
+  const void* extension_api = sentinel;
 
   const amdf_status_t status = api->query_extension(
       AMDF_EXTENSION_XDNA, AMDF_XDNA_EXTENSION_VERSION_LATEST + 1,
@@ -88,7 +89,7 @@ TEST(XdnaExtensionTest, RejectsUnsupportedVersionAndClearsOutput) {
 
   EXPECT_EQ(amdf_status_domain(status), AMDF_STATUS_DOMAIN_API);
   EXPECT_EQ(amdf_status_code(status), AMDF_STATUS_CODE_VERSION_MISMATCH);
-  EXPECT_EQ(extension_api, nullptr);
+  EXPECT_EQ(extension_api, sentinel);
 }
 
 class XdnaEndpointTest : public ::testing::Test {
@@ -245,11 +246,11 @@ TEST_F(XdnaEndpointTest, ValidatesDeviceCreationArgumentsWithoutNativeWork) {
   EXPECT_EQ(amdf_status_code(
                 xdna_api_->device_create(nullptr, &create_info, &output)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
   EXPECT_EQ(
       amdf_status_code(xdna_api_->device_create(endpoint_, nullptr, &output)),
       AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
   EXPECT_EQ(amdf_status_code(
                 xdna_api_->device_create(endpoint_, &create_info, nullptr)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
@@ -258,27 +259,27 @@ TEST_F(XdnaEndpointTest, ValidatesDeviceCreationArgumentsWithoutNativeWork) {
   EXPECT_EQ(amdf_status_code(
                 xdna_api_->device_create(endpoint_, &create_info, &output)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 
   create_info = MakeDeviceCreateInfo();
   create_info.acceptable_scheduling_modes = 0;
   EXPECT_EQ(amdf_status_code(
                 xdna_api_->device_create(endpoint_, &create_info, &output)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 
   create_info = MakeDeviceCreateInfo(0);
   EXPECT_EQ(amdf_status_code(
                 xdna_api_->device_create(endpoint_, &create_info, &output)),
             AMDF_STATUS_CODE_OUT_OF_RANGE);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 
   create_info = MakeDeviceCreateInfo();
   create_info.acceptable_scheduling_modes = UINT32_MAX;
   EXPECT_EQ(amdf_status_code(
                 xdna_api_->device_create(endpoint_, &create_info, &output)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 }
 
 TEST_F(XdnaEndpointTest, MaterializesProgramIndependentDevice) {

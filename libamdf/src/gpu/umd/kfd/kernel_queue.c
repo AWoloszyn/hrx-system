@@ -14,7 +14,7 @@ amdf_status_t amdf_gpu_umd_kernel_queue_create(
     amdf_gpu_umd_kernel_queue_t** out_queue) {
   (void)device;
   (void)command_type;
-  *out_queue = NULL;
+  (void)out_queue;
   return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
 }
 

@@ -44,7 +44,6 @@ struct amdf_gpu_umd_kernel_queue_t {
 amdf_status_t amdf_gpu_umd_kernel_queue_create(
     amdf_gpu_umd_device_t* device, amdf_queue_command_type_t command_type,
     amdf_gpu_umd_kernel_queue_t** out_queue) {
-  *out_queue = NULL;
   amdf_wkmi_bridge_gpu_queue_command_type_t native_command_type;
   switch (command_type) {
     case AMDF_QUEUE_COMMAND_TYPE_GPU_PM4:

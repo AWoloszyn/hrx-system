@@ -86,7 +86,6 @@ amdf_status_t amdf_xdna_umd_device_create(
     const amdf_xdna_device_create_info_t* create_info,
     amdf_xdna_umd_device_t** out_device,
     amdf_xdna_umd_device_result_t* out_result) {
-  *out_device = NULL;
   if (profile->model != AMDF_PCI_XDNA_MODEL_NPU5 ||
       endpoint->driver.major_version != 0 ||
       endpoint->driver.minor_version < 8 ||

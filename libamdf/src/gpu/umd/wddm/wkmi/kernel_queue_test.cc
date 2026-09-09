@@ -215,14 +215,14 @@ bool NativeFailureLeavesNoAdapterCleanupObligation() {
     auto* queue = reinterpret_cast<amdf_wkmi_bridge_gpu_kernel_queue_t*>(1);
     amdf_wkmi_bridge_gpu_kernel_queue_info_t info;
     std::memset(&info, 0xA5, sizeof(info));
-    const amdf_wkmi_bridge_gpu_kernel_queue_info_t original = {};
+    const auto original = info;
     uint32_t native_status = 0;
     AMDF_EXPECT(amdf::wkmi_bridge::GpuKernelQueueCreate(
                     &adapter, &create, &queue, &info, &native_status) ==
                 AMDF_WKMI_BRIDGE_RESULT_NATIVE_FAILURE);
     AMDF_EXPECT(native_status ==
                 static_cast<uint32_t>(failure.expected_status));
-    AMDF_EXPECT(queue == nullptr);
+    AMDF_EXPECT(reinterpret_cast<uintptr_t>(queue) == 1);
     AMDF_EXPECT(std::memcmp(&info, &original, sizeof(info)) == 0);
 
     AMDF_EXPECT(adapter.live_queue_count == 0);

@@ -54,28 +54,29 @@ TEST(InstanceTest, ValidatesCreateInfoBeforePlatformInitialization) {
   const amdf_api_t* api = QueryApi();
   ASSERT_NE(api, nullptr);
 
-  amdf_instance_t* instance = reinterpret_cast<amdf_instance_t*>(uintptr_t{1});
+  auto* const sentinel = reinterpret_cast<amdf_instance_t*>(uintptr_t{1});
+  amdf_instance_t* instance = sentinel;
   EXPECT_EQ(amdf_status_code(api->instance_create(nullptr, &instance)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(instance, nullptr);
+  EXPECT_EQ(instance, sentinel);
 
   amdf_instance_create_info_t create_info = {};
   create_info.structure_size = sizeof(create_info);
   EXPECT_EQ(amdf_status_code(api->instance_create(&create_info, &instance)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(instance, nullptr);
+  EXPECT_EQ(instance, sentinel);
 
   create_info.type = AMDF_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
   create_info.structure_size = sizeof(amdf_input_structure_t) - 1;
   EXPECT_EQ(amdf_status_code(api->instance_create(&create_info, &instance)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(instance, nullptr);
+  EXPECT_EQ(instance, sentinel);
 
   create_info.structure_size = sizeof(create_info);
   create_info.next = &create_info;
   EXPECT_EQ(amdf_status_code(api->instance_create(&create_info, &instance)),
             AMDF_STATUS_CODE_UNSUPPORTED);
-  EXPECT_EQ(instance, nullptr);
+  EXPECT_EQ(instance, sentinel);
 
   EXPECT_EQ(amdf_status_code(api->instance_create(&create_info, nullptr)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
@@ -159,14 +160,19 @@ class DiscoveryTest : public ::testing::Test {
 };
 
 TEST_F(DiscoveryTest, ValidatesEnumerationArguments) {
+  amdf_endpoint_summary_t summary;
+  std::memset(&summary, 0xA5, sizeof(summary));
+  const amdf_endpoint_summary_t expected_summary = summary;
   uint32_t endpoint_count = 123;
-  EXPECT_EQ(amdf_status_code(
-                api_->endpoint_enumerate(nullptr, 0, nullptr, &endpoint_count)),
+  EXPECT_EQ(amdf_status_code(api_->endpoint_enumerate(nullptr, 1, &summary,
+                                                      &endpoint_count)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(endpoint_count, 0u);
+  EXPECT_EQ(std::memcmp(&summary, &expected_summary, sizeof(summary)), 0);
+  EXPECT_EQ(endpoint_count, 123u);
   EXPECT_EQ(amdf_status_code(api_->endpoint_enumerate(instance_, 1, nullptr,
                                                       &endpoint_count)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(endpoint_count, 123u);
   EXPECT_EQ(amdf_status_code(
                 api_->endpoint_enumerate(instance_, 0, nullptr, nullptr)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
@@ -336,7 +342,7 @@ TEST_F(DiscoveryTest, OpenEndpointPreventsInstanceDestruction) {
   EXPECT_EQ(amdf_status_code(status), AMDF_STATUS_CODE_BUSY);
 }
 
-TEST_F(DiscoveryTest, RejectsStaleEndpointIdentityAndClearsOutput) {
+TEST_F(DiscoveryTest, RejectsStaleEndpointIdentityWithoutPublishingOutput) {
   std::vector<amdf_endpoint_summary_t> summaries;
   ASSERT_TRUE(amdf_status_is_ok(Enumerate(&summaries)));
   if (summaries.empty()) {
@@ -344,24 +350,26 @@ TEST_F(DiscoveryTest, RejectsStaleEndpointIdentityAndClearsOutput) {
   }
   amdf_endpoint_id_t stale_id = summaries[0].id;
   stale_id.words[1] ^= UINT64_C(1) << 63;
-  amdf_endpoint_t* endpoint = reinterpret_cast<amdf_endpoint_t*>(uintptr_t{1});
+  auto* const sentinel = reinterpret_cast<amdf_endpoint_t*>(uintptr_t{1});
+  amdf_endpoint_t* endpoint = sentinel;
   const amdf_status_t status =
       api_->endpoint_open(instance_, &stale_id, &endpoint);
   EXPECT_EQ(amdf_status_domain(status), AMDF_STATUS_DOMAIN_API);
   EXPECT_EQ(amdf_status_code(status), AMDF_STATUS_CODE_NOT_FOUND);
-  EXPECT_EQ(endpoint, nullptr);
+  EXPECT_EQ(endpoint, sentinel);
 }
 
 TEST_F(DiscoveryTest, ValidatesEndpointArguments) {
   amdf_endpoint_id_t id = {};
-  amdf_endpoint_t* endpoint = reinterpret_cast<amdf_endpoint_t*>(uintptr_t{1});
+  auto* const sentinel = reinterpret_cast<amdf_endpoint_t*>(uintptr_t{1});
+  amdf_endpoint_t* endpoint = sentinel;
   EXPECT_EQ(amdf_status_code(api_->endpoint_open(nullptr, &id, &endpoint)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(endpoint, nullptr);
+  EXPECT_EQ(endpoint, sentinel);
   EXPECT_EQ(
       amdf_status_code(api_->endpoint_open(instance_, nullptr, &endpoint)),
       AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(endpoint, nullptr);
+  EXPECT_EQ(endpoint, sentinel);
   EXPECT_EQ(amdf_status_code(api_->endpoint_open(instance_, &id, nullptr)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
   EXPECT_EQ(amdf_status_code(api_->endpoint_query_info(nullptr, nullptr)),
