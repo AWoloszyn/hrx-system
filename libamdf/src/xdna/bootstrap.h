@@ -15,7 +15,9 @@ extern "C" {
 
 // Immutable target bootstrap consumed by native execution providers.
 typedef struct amdf_xdna_bootstrap_t {
-  // Provider-independent PDI bytes copied into native device storage.
+  // Provider-independent PDI bytes copied into native device storage. Fabric
+  // effects belong only to interpreter transport and leave application data
+  // routes unclaimed after admission.
   const void* pdi_bytes;
   // Number of bytes in `pdi_bytes`.
   uint32_t pdi_byte_length;

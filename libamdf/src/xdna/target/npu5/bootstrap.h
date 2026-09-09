@@ -13,7 +13,7 @@
 extern "C" {
 #endif
 
-// Target bootstrap selected only by the central endpoint profile table.
+// Audited target bootstrap selected only by the central endpoint profile table.
 extern const amdf_xdna_bootstrap_t amdf_xdna_npu5_bootstrap;
 
 #ifdef __cplusplus
