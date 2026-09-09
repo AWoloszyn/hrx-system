@@ -206,12 +206,12 @@ amdf_status_t amdf_gpu_umd_user_queue_destroy(
   if (queue->retirement_state == AMDF_GPU_KFD_USER_QUEUE_RETIREMENT_ACTIVE) {
     const uint64_t consumed_index = amdf_atomic_uint64_load_acquire(
         amdf_gpu_kfd_user_queue_read_index(queue));
-    const uint64_t published_index = amdf_atomic_uint64_load_acquire(
+    const uint64_t producer_index = amdf_atomic_uint64_load_acquire(
         amdf_gpu_kfd_user_queue_write_index(queue));
-    if (consumed_index < published_index) {
+    if (consumed_index < producer_index) {
       return amdf_make_api_status(AMDF_STATUS_CODE_BUSY);
     }
-    if (consumed_index > published_index) {
+    if (consumed_index > producer_index) {
       const amdf_status_t failure =
           amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
       amdf_gpu_kfd_user_queue_record_failure(queue, failure);
@@ -480,7 +480,7 @@ amdf_status_t amdf_gpu_umd_user_queue_query_status(
   }
   const uint64_t consumed_index = amdf_atomic_uint64_load_acquire(
       amdf_gpu_kfd_user_queue_read_index(queue));
-  const uint64_t published_index = amdf_atomic_uint64_load_acquire(
+  const uint64_t producer_index = amdf_atomic_uint64_load_acquire(
       amdf_gpu_kfd_user_queue_write_index(queue));
   amdf_status_t terminal_status = AMDF_STATUS_OK;
   if (queue->plan.control.error_payload_byte_length != 0) {
@@ -488,7 +488,7 @@ amdf_status_t amdf_gpu_umd_user_queue_query_status(
         amdf_gpu_kfd_user_queue_error_payload(queue));
     terminal_status = amdf_gpu_kfd_user_queue_classify_error(error_payload);
   }
-  if (consumed_index > published_index) {
+  if (consumed_index > producer_index) {
     terminal_status = amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
   }
   if (!amdf_status_is_ok(terminal_status)) {
@@ -504,7 +504,7 @@ amdf_status_t amdf_gpu_umd_user_queue_query_status(
           : amdf_status_is_ok(terminal_status) ? AMDF_QUEUE_STATE_ACTIVE
                                                : AMDF_QUEUE_STATE_FAILED,
       .reset_epoch = 1,
-      .published_index = published_index,
+      .producer_index = producer_index,
       .consumed_index = consumed_index,
       .terminal_status = terminal_status,
   };
@@ -521,7 +521,7 @@ amdf_status_t amdf_gpu_umd_user_queue_wait_consumed(
   amdf_status_t status =
       amdf_gpu_umd_user_queue_query_status(queue, &queue_status);
   if (!amdf_status_is_ok(status)) return status;
-  if (published_index > queue_status.published_index) {
+  if (published_index > queue_status.producer_index) {
     return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
   }
   for (;;) {

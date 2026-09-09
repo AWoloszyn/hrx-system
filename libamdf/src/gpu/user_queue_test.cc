@@ -396,7 +396,7 @@ amdf_status_t amdf_gpu_umd_user_queue_query_status(
     amdf_gpu_umd_user_queue_t* queue, amdf_user_queue_status_t* out_status) {
   out_status->state = AMDF_QUEUE_STATE_ACTIVE;
   out_status->reset_epoch = 1;
-  out_status->published_index = 13;
+  out_status->producer_index = 13;
   out_status->consumed_index = 11;
   return queue->state->query_status;
 }

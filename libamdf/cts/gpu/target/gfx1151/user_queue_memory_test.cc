@@ -470,7 +470,7 @@ void Gfx1151UserQueueMemoryTest::RunCopiesBetweenExactAccessAttachments(
             AMDF_STATUS_OK);
   EXPECT_EQ(queue_status.state, AMDF_QUEUE_STATE_ACTIVE);
   EXPECT_EQ(queue_status.reset_epoch, queue_info.reset_epoch);
-  EXPECT_EQ(queue_status.published_index, 0u);
+  EXPECT_EQ(queue_status.producer_index, 0u);
   EXPECT_EQ(queue_status.consumed_index, 0u);
   EXPECT_EQ(queue_status.terminal_status, AMDF_STATUS_OK);
 
@@ -498,7 +498,7 @@ void Gfx1151UserQueueMemoryTest::RunCopiesBetweenExactAccessAttachments(
             AMDF_STATUS_OK);
   EXPECT_EQ(queue_status.state, AMDF_QUEUE_STATE_ACTIVE);
   EXPECT_EQ(queue_status.reset_epoch, queue_info.reset_epoch);
-  EXPECT_EQ(queue_status.published_index, stream.published_index);
+  EXPECT_EQ(queue_status.producer_index, stream.published_index);
   EXPECT_EQ(queue_status.consumed_index, stream.published_index);
   EXPECT_EQ(queue_status.terminal_status, AMDF_STATUS_OK);
 

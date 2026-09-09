@@ -80,7 +80,7 @@ static amdf_status_t FakeQueryStatus(amdf_user_queue_t* base_queue,
   auto* queue = reinterpret_cast<FakeQueue*>(base_queue);
   out_status->state = AMDF_QUEUE_STATE_ACTIVE;
   out_status->reset_epoch = base_queue->info.reset_epoch;
-  out_status->published_index = 41;
+  out_status->producer_index = 41;
   out_status->consumed_index = 37;
   return queue->query_status;
 }

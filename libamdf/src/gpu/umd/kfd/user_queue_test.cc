@@ -608,7 +608,7 @@ TEST_F(KfdUserQueueTest, SamplesProgressAndLatchesTerminalFailures) {
   ASSERT_EQ(amdf_gpu_umd_user_queue_query_status(queue_, &status),
             AMDF_STATUS_OK);
   EXPECT_EQ(status.state, AMDF_QUEUE_STATE_ACTIVE);
-  EXPECT_EQ(status.published_index, 16u);
+  EXPECT_EQ(status.producer_index, 16u);
   EXPECT_EQ(status.consumed_index, 8u);
   EXPECT_EQ(status.terminal_status, AMDF_STATUS_OK);
 
