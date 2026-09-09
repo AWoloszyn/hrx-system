@@ -86,6 +86,20 @@ amdf_cc_library(
 )
 
 amdf_cc_test(
+    name = "device_test",
+    srcs = ["device_test.cc"],
+    target_compatible_with = MCDM_COMPATIBILITY,
+    deps = [
+        ":device",
+        "//libamdf/src/platform/windows:endpoint",
+        "//libamdf/src/xdna:endpoint_profile",
+        "//libamdf/src/xdna/umd:device",
+        "//third_party:google_test",
+        "//third_party:google_test_main",
+    ],
+)
+
+amdf_cc_test(
     name = "legacy_context_test",
     srcs = ["legacy_context_test.cc"],
     target_compatible_with = MCDM_COMPATIBILITY,

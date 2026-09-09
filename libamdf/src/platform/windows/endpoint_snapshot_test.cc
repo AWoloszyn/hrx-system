@@ -13,6 +13,7 @@
 
 #include "gtest/gtest.h"
 #include "libamdf/src/platform/endpoint.h"
+#include "libamdf/src/platform/windows/endpoint.h"
 #include "libamdf/src/platform/windows/instance.h"
 
 namespace {

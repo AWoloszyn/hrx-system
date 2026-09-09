@@ -58,6 +58,20 @@ amdf_windows_sidecar_library(
 endif()
 
 if(IREE_ARCH STREQUAL "x86_64" AND CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_library(
+  NAME
+    fake_wkmi_bridge_test
+  SRCS
+    "fake_wkmi_bridge_test.cc"
+  DEPS
+    ::bridge_api
+    amdf::headers
+  TESTONLY
+  SHARED
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
 iree_cc_test(
   NAME
     kernel_queue_test

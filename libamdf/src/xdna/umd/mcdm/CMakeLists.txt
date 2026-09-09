@@ -115,6 +115,26 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
 iree_cc_test(
   NAME
+    device_test
+  SRCS
+    "device_test.cc"
+  DEPS
+    ::device
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+    libamdf::src::platform::windows::endpoint
+    libamdf::src::xdna::endpoint_profile
+    libamdf::src::xdna::umd::device
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.xdna"
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_test(
+  NAME
     legacy_context_test
   SRCS
     "legacy_context_test.cc"

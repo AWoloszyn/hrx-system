@@ -6,7 +6,6 @@
 
 #include "libamdf/src/xdna/umd/device.h"
 
-#include <stddef.h>
 #include <stdlib.h>
 
 #include "libamdf/src/platform/windows/endpoint.h"
@@ -172,10 +171,12 @@ amdf_status_t amdf_xdna_umd_device_create(
   } else {
     const amdf_status_t release_status =
         amdf_windows_xdna_device_release_native(device);
+    // No paging or execution work has been submitted by construction. Failed
+    // native cleanup cannot borrow this unpublished host bookkeeping.
+    free(device);
     if (!amdf_status_is_ok(release_status)) {
       status = release_status;
     }
-    free(device);
   }
   return status;
 }

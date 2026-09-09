@@ -87,6 +87,23 @@ amdf_cc_library(
 )
 
 amdf_cc_test(
+    name = "device_test",
+    srcs = ["device_test.cc"],
+    data = ["//libamdf/src/gpu/umd/wddm/wkmi:fake_wkmi_bridge_test"],
+    env = {
+        "AMDF_WKMI_BRIDGE_PATH": "$(location //libamdf/src/gpu/umd/wddm/wkmi:fake_wkmi_bridge_test)",
+    },
+    target_compatible_with = ["@platforms//os:windows"],
+    deps = [
+        ":device",
+        "//libamdf/src/gpu/umd:device",
+        "//libamdf/src/platform/windows:endpoint",
+        "//third_party:google_test",
+        "//third_party:google_test_main",
+    ],
+)
+
+amdf_cc_test(
     name = "kernel_queue_test",
     srcs = ["kernel_queue_test.cc"],
     target_compatible_with = ["@platforms//os:windows"],

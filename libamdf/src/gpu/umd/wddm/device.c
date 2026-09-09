@@ -118,6 +118,7 @@ amdf_status_t amdf_gpu_umd_device_create(
     if (!amdf_status_is_ok(release_status)) {
       status = release_status;
     }
+    // Construction has submitted no work borrowing this host bookkeeping.
     free(device);
   }
   return status;
