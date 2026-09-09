@@ -730,20 +730,19 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   //===--------------------------------------------------------------------===//
   {
     double value = fuzz_consume_double(&input);
-    uint8_t format_choice = fuzz_consume_u8(&input) % 5;
-    const char* formats[] = {"%f", "%e", "%g", "%.2f", "%.16e"};
+    uint8_t format_choice = fuzz_consume_u8(&input) % 6;
+    const char* formats[] = {"%f", "%e", "%g", "%.2f", "%.16e", "%.17g"};
 
     int iree_length = iree_snprintf(iree_buffer, sizeof(iree_buffer),
                                     formats[format_choice], value);
     int libc_length = snprintf(libc_buffer, sizeof(libc_buffer),
                                formats[format_choice], value);
 
-    // Exponential formatting extracts and rounds the exact binary64
-    // coefficient and must match libc across the entire finite range. Fixed
-    // formatting retains a narrower exact-comparison range, and %g may select
-    // that fixed path depending on the value.
+    // Exponential and general formatting round the exact binary64 coefficient
+    // and must match libc across the entire finite range. Fixed formatting
+    // retains a narrower exact-comparison range.
     bool compare_exactly =
-        format_choice == 1 || format_choice == 4 ||
+        format_choice == 1 || format_choice == 2 || format_choice >= 4 ||
         (std::fabs(value) < 1e18 && std::fabs(value) > 1e-15);
     if (iree_length >= 0 && libc_length >= 0 && std::isfinite(value) &&
         compare_exactly) {
