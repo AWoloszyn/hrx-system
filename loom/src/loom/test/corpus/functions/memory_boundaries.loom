@@ -1,0 +1,121 @@
+// A partial pattern repeats its little-endian bytes. Adjacent canaries and
+// independent byte observations detect both overrun and wrong tail handling.
+// Copying disjoint ranges of one root is legal; overlapping ranges are not.
+func.def public @partial_pattern_copy(%pattern: i32) -> (i32, i32, i32, i32, i32, i32, i32, i32) {
+  %c0 = index.constant 0 : offset
+  %c1 = index.constant 1 : offset
+  %c2 = index.constant 2 : offset
+  %c3 = index.constant 3 : offset
+  %c5 = index.constant 5 : offset
+  %c6 = index.constant 6 : offset
+  %c10 = index.constant 10 : offset
+  %c11 = index.constant 11 : offset
+  %length = index.constant 12 : offset
+  %storage = buffer.alloca<private> align(4) %length : buffer
+  %canary = scalar.constant 85 : i8
+  buffer.fill %canary, %storage[%c0], %length : i8
+  buffer.fill %pattern, %storage[%c0], %c5 : i32
+  %byte0 = buffer.load.i8.u %storage[%c0]
+  %byte1 = buffer.load.i8.u %storage[%c1]
+  %byte2 = buffer.load.i8.u %storage[%c2]
+  %byte3 = buffer.load.i8.u %storage[%c3]
+  buffer.copy %storage[%c0], %storage[%c6], %c5
+  %replacement = scalar.constant 0 : i32
+  buffer.store.i8 %replacement, %storage[%c0]
+  %copied_first = buffer.load.i8.u %storage[%c6]
+  %copied_last = buffer.load.i8.u %storage[%c10]
+  %middle_canary = buffer.load.i8.u %storage[%c5]
+  %last_canary = buffer.load.i8.u %storage[%c11]
+  func.return %byte0, %byte1, %byte2, %byte3, %copied_first, %copied_last, %middle_canary, %last_canary : i32, i32, i32, i32, i32, i32, i32, i32
+}
+
+check.case @partial_pattern_copy_case {
+  // 0x12345678 repeats as 78 56 34 12 78, followed by an untouched 55.
+  %pattern = check.literal value(305419896) : i32
+  %byte0, %byte1, %byte2, %byte3, %copied_first, %copied_last, %middle_canary, %last_canary = func.call @partial_pattern_copy(%pattern) : (i32) -> (i32, i32, i32, i32, i32, i32, i32, i32)
+  %expected0 = check.literal value(120) : i32
+  %expected1 = check.literal value(86) : i32
+  %expected2 = check.literal value(52) : i32
+  %expected3 = check.literal value(18) : i32
+  %canary = check.literal value(85) : i32
+  check.expect.equal actual(%byte0) expected(%expected0) : i32
+  check.expect.equal actual(%byte1) expected(%expected1) : i32
+  check.expect.equal actual(%byte2) expected(%expected2) : i32
+  check.expect.equal actual(%byte3) expected(%expected3) : i32
+  check.expect.equal actual(%copied_first) expected(%expected0) : i32
+  check.expect.equal actual(%copied_last) expected(%expected0) : i32
+  check.expect.equal actual(%middle_canary) expected(%canary) : i32
+  check.expect.equal actual(%last_canary) expected(%canary) : i32
+  check.return
+}
+
+// Only the final byte differs. Lexicographic order is unsigned and canonical,
+// while signed and unsigned interpretations retain their distinct meanings.
+func.def public @last_byte_order(%a: i32, %b: i32) -> (i32, i32, i32, i32) {
+  %c0 = index.constant 0 : offset
+  %last = index.constant 4 : offset
+  %length = index.constant 5 : offset
+  %left = buffer.alloca<private> align(1) %length : buffer
+  %right = buffer.alloca<private> align(1) %length : buffer
+  %prefix = scalar.constant 42 : i8
+  buffer.fill %prefix, %left[%c0], %length : i8
+  buffer.fill %prefix, %right[%c0], %length : i8
+  buffer.store.i8 %a, %left[%last]
+  buffer.store.i8 %b, %right[%last]
+  %forward = buffer.compare %left[%c0], %right[%c0], %length
+  %reverse = buffer.compare %right[%c0], %left[%c0], %length
+  %unsigned = buffer.load.i8.u %left[%last]
+  %narrow = scalar.trunci %unsigned : i32 to i8
+  %signed = scalar.extsi %narrow : i8 to i32
+  func.return %forward, %reverse, %signed, %unsigned : i32, i32, i32, i32
+}
+
+check.case @last_byte_order_unsigned {
+  %a = check.param.choice values([255, 511, -1]) : i32
+  %b = check.literal value(127) : i32
+  %forward, %reverse, %signed, %unsigned = func.call @last_byte_order(%a, %b) : (i32, i32) -> (i32, i32, i32, i32)
+  %less = check.literal value(-1) : i32
+  %greater = check.literal value(1) : i32
+  %maximum_byte = check.literal value(255) : i32
+  check.expect.equal actual(%forward) expected(%greater) : i32
+  check.expect.equal actual(%reverse) expected(%less) : i32
+  check.expect.equal actual(%signed) expected(%less) : i32
+  check.expect.equal actual(%unsigned) expected(%maximum_byte) : i32
+  check.return
+}
+
+// The invalid address belongs to a non-taken branch and must never be read.
+func.def public @guarded_byte_load(%position: i64) -> (i32) {
+  %c0 = index.constant 0 : offset
+  %length = index.constant 1 : offset
+  %storage = buffer.alloca<private> align(1) %length : buffer
+  %payload = scalar.constant 55 : i32
+  buffer.store.i8 %payload, %storage[%c0]
+  %limit = scalar.constant 1 : i64
+  %in_bounds = scalar.cmpi ult, %position, %limit : i64
+  %result = scf.if %in_bounds -> (i32) {
+    %offset = index.cast %position : i64 to offset
+    %byte = buffer.load.i8.u %storage[%offset]
+    scf.yield %byte : i32
+  } else {
+    %other = scalar.constant 77 : i32
+    scf.yield %other : i32
+  }
+  func.return %result : i32
+}
+
+check.case @guarded_byte_load_valid {
+  %position = check.literal value(0) : i64
+  %result = func.call @guarded_byte_load(%position) : (i64) -> (i32)
+  %expected = check.literal value(55) : i32
+  check.expect.equal actual(%result) expected(%expected) : i32
+  check.return
+}
+
+check.case @guarded_byte_load_not_taken {
+  %position = check.param.choice values([1, 16, 4294967296, -1]) : i64
+  %result = func.call @guarded_byte_load(%position) : (i64) -> (i32)
+  %expected = check.literal value(77) : i32
+  check.expect.equal actual(%result) expected(%expected) : i32
+  check.return
+}

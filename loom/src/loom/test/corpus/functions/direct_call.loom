@@ -84,8 +84,8 @@ check.case @call_in_loop {
   check.return
 }
 
-// The complete direct prefix spans two Core memory lane groups. Most results
-// are unused, and original arguments must remain live beside the kept results.
+// A wide result tuple is only partly consumed. Original arguments must remain
+// live beside the kept results, including values from both ends of the tuple.
 func.def noinline @rotate16(%v0: i64, %v1: i64, %v2: i64, %v3: i64, %v4: i64, %v5: i64, %v6: i64, %v7: i64, %v8: i64, %v9: i64, %v10: i64, %v11: i64, %v12: i64, %v13: i64, %v14: i64, %v15: i64) -> (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) {
   func.return %v15, %v0, %v1, %v2, %v3, %v4, %v5, %v6, %v7, %v8, %v9, %v10, %v11, %v12, %v13, %v14 : i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64
 }
@@ -95,7 +95,7 @@ func.def public @wide_call(%a: i64, %b: i64) -> (i64, i64, i64, i64, i64) {
   func.return %a, %b, %r0, %r8, %r15 : i64, i64, i64, i64, i64
 }
 
-check.case @full_direct_prefix {
+check.case @wide_call_result_subset {
   %a = check.literal value(4294967297) : i64
   %b = check.literal value(-3) : i64
   %original_a, %original_b, %first, %middle, %last = func.call @wide_call(%a, %b) : (i64, i64) -> (i64, i64, i64, i64, i64)

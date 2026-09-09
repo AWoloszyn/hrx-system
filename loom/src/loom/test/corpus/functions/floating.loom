@@ -1,5 +1,5 @@
-// The wire carries raw integer bits while the exported signature preserves the
-// logical types. Mixed results cross the same source-ordered invocation ABI.
+// Mixed floating and predicate results preserve their logical types and source
+// order across the function boundary.
 func.def public @logical_constants() -> (f32, f64, i1, i1) {
   %narrow = scalar.constant 1.25 : f32
   %wide = scalar.constant 4294967297.5 : f64
