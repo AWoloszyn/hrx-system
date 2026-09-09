@@ -32,6 +32,15 @@ amdf_cc_library(
 )
 
 amdf_cc_library(
+    name = "dma_buf",
+    srcs = ["dma_buf.c"],
+    hdrs = ["dma_buf.h"],
+    target_compatible_with = ["@platforms//os:linux"],
+    visibility = ["//libamdf/src:__subpackages__"],
+    deps = [":file"],
+)
+
+amdf_cc_library(
     name = "wait",
     srcs = ["wait.c"],
     target_compatible_with = ["@platforms//os:linux"],
@@ -76,6 +85,17 @@ amdf_cc_library(
     deps = [
         ":endpoint",
         ":instance",
+    ],
+)
+
+amdf_cc_test(
+    name = "dma_buf_test",
+    srcs = ["dma_buf_test.cc"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":dma_buf",
+        "//third_party:google_test",
+        "//third_party:google_test_main",
     ],
 )
 

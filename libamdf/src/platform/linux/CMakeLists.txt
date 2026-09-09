@@ -38,6 +38,21 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND AMDF_BUILD)
 iree_cc_library(
   NAME
+    dma_buf
+  HDRS
+    "dma_buf.h"
+  SRCS
+    "dma_buf.c"
+  DEPS
+    ::file
+    amdf::headers
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND AMDF_BUILD)
+iree_cc_library(
+  NAME
     wait
   SRCS
     "wait.c"
@@ -94,6 +109,22 @@ iree_cc_library(
     ::instance
     amdf::headers
   PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND AMDF_BUILD)
+iree_cc_test(
+  NAME
+    dma_buf_test
+  SRCS
+    "dma_buf_test.cc"
+  DEPS
+    ::dma_buf
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+  LABELS
+    "iree-build-requirement=libamdf"
 )
 endif()
 

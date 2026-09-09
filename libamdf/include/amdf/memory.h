@@ -205,7 +205,7 @@ typedef struct amdf_memory_profile_t {
   uint32_t structure_size;
   /// Optional output extension chain. No extensions are currently defined.
   void* next;
-  /// Dense ordinal accepted by memory construction operations.
+  /// Dense query ordinal reported by attachments and accepted by import.
   uint32_t ordinal;
   /// Physical placement class produced by this profile.
   amdf_memory_class_t memory_class;
