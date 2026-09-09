@@ -15,16 +15,21 @@ and operand encoding field IDs are byte offsets from the instruction start.
 from pathlib import Path
 
 from iree.vm.bytecode.spec.isa import FieldRole, Instruction
+from iree.vm.bytecode.spec.isa.core.constant import CONSTANT_I32, CONSTANT_I64
 from iree.vm.bytecode.spec.isa.core.integer import IntegerBinarySemantics
 from iree.vm.bytecode.spec.specification import SPECIFICATION
 
 from loom.ir import ScalarTypeKind
 from loom.target.low_descriptors import (
     AsmForm,
+    AsmImmediate,
     AsmResultValueType,
     Descriptor,
     DescriptorFlag,
+    DescriptorOpKind,
     DescriptorSet,
+    Immediate,
+    ImmediateKind,
     InstructionClass,
     IssueUse,
     LatencyKind,
@@ -46,11 +51,16 @@ _OPERAND_ROLES = {
 }
 
 
-def _integer_binary_descriptor(instruction: Instruction) -> Descriptor:
-    semantics = instruction.semantics
-    assert isinstance(semantics, IntegerBinarySemantics)
-    # The register-packet emitter consumes one opcode and three byte registers.
-    assert instruction.byte_length == 4
+def _value_descriptor(
+    instruction: Instruction,
+    result_type: ScalarTypeKind,
+    *,
+    op_kind: DescriptorOpKind = DescriptorOpKind.OP,
+    immediates: tuple[Immediate, ...] = (),
+) -> Descriptor:
+    # The emitter has a bounded packet and positional storage for one immediate.
+    assert instruction.byte_length <= CONSTANT_I64.byte_length
+    assert len(immediates) <= 1
     operands = tuple(
         Operand(
             field.field.name,
@@ -61,6 +71,7 @@ def _integer_binary_descriptor(instruction: Instruction) -> Descriptor:
         for field, offset in zip(
             instruction.fields, instruction.field_offsets, strict=True
         )
+        if field.role in _OPERAND_ROLES
     )
     return Descriptor(
         key=f"vm.{instruction.mnemonic}",
@@ -68,6 +79,8 @@ def _integer_binary_descriptor(instruction: Instruction) -> Descriptor:
         semantic_tag=None,
         operands=operands,
         schedule_class="vm.scalar",
+        op_kind=op_kind,
+        immediates=immediates,
         encoding_id=instruction.opcode,
         encoding_format_id=instruction.byte_length,
         flags=(DescriptorFlag.DEAD_REMOVABLE,),
@@ -84,13 +97,43 @@ def _integer_binary_descriptor(instruction: Instruction) -> Descriptor:
                     for operand in operands
                     if operand.role is OperandRole.OPERAND
                 ),
-                result_value_types=(
-                    AsmResultValueType(
-                        {32: ScalarTypeKind.I32, 64: ScalarTypeKind.I64}[
-                            semantics.bit_width
-                        ]
-                    ),
+                immediates=tuple(
+                    AsmImmediate(value.field_name) for value in immediates
                 ),
+                result_value_types=(AsmResultValueType(result_type),),
+            ),
+        ),
+    )
+
+
+def _constant_descriptor(instruction: Instruction) -> Descriptor:
+    # Loom carries the exact scalar bits as one immediate. The wire stores wide
+    # constants as consecutive u32 words to preserve instruction alignment.
+    fields = tuple(
+        (field.field, offset)
+        for field, offset in zip(
+            instruction.fields, instruction.field_offsets, strict=True
+        )
+        if field.role is FieldRole.IMMEDIATE
+    )
+    offset = fields[0][1]
+    byte_length = sum(field.byte_length for field, _ in fields)
+    assert tuple(position for _, position in fields) == tuple(
+        range(offset, offset + byte_length, 4)
+    )
+    bit_width = byte_length * 8
+    return _value_descriptor(
+        instruction,
+        {32: ScalarTypeKind.I32, 64: ScalarTypeKind.I64}[bit_width],
+        op_kind=DescriptorOpKind.CONST,
+        immediates=(
+            Immediate(
+                "bits",
+                ImmediateKind.UNSIGNED if bit_width == 32 else ImmediateKind.SIGNED,
+                bit_width=bit_width,
+                encoding_field_id=offset,
+                signed_min=-(1 << 63) if bit_width == 64 else 0,
+                unsigned_max=(1 << bit_width) - 1,
             ),
         ),
     )
@@ -128,8 +171,14 @@ VM_CORE_DESCRIPTOR_SET = DescriptorSet(
         ),
     ),
     requires_explicit_asm_surface=True,
-    descriptors=tuple(
-        _integer_binary_descriptor(instruction)
+    descriptors=tuple(_constant_descriptor(op) for op in (CONSTANT_I32, CONSTANT_I64))
+    + tuple(
+        _value_descriptor(
+            instruction,
+            {32: ScalarTypeKind.I32, 64: ScalarTypeKind.I64}[
+                instruction.semantics.bit_width
+            ],
+        )
         for instruction in SPECIFICATION.instructions
         if isinstance(instruction.semantics, IntegerBinarySemantics)
     ),

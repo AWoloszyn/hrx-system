@@ -17,3 +17,13 @@ low.func.def target<vm.core>(@vm) abi(vm_function) @arithmetic64(%a: reg<vm.valu
   %result = integer.sub.i64 %sum, %a
   return %result
 }
+
+// ====
+
+vm.target<core> @vm
+
+low.func.def target<vm.core>(@vm) abi(vm_function) @constants() -> (reg<vm.value : i32>, reg<vm.value : i64>) asm {
+  %narrow = constant.i32 4294967295
+  %wide = constant.i64 -9223372036854775808
+  return %narrow, %wide
+}

@@ -6,6 +6,8 @@
 
 #include "loom/target/arch/vm/function.h"
 
+#include <string.h>
+
 #include "iree/vm/bytecode/wire/core.h"
 #include "loom/codegen/low/allocation/move_sequence.h"
 #include "loom/codegen/low/frame.h"
@@ -99,7 +101,7 @@ static iree_status_t loom_vm_function_packet(
       loom_low_schedule_node_const_result_ordinals(node);
   const loom_value_ordinal_t* inputs =
       loom_low_schedule_node_const_operand_ordinals(node);
-  uint8_t packet[sizeof(iree_vm_bytecode_integer_add_i64_t)] = {
+  uint8_t packet[sizeof(iree_vm_bytecode_constant_i64_t)] = {
       (uint8_t)descriptor->encoding_id,
   };
   for (uint16_t i = 0; i < descriptor->operand_count; ++i) {
@@ -112,6 +114,19 @@ static iree_status_t loom_vm_function_packet(
         loom_low_allocation_assignment_for_value_ordinal(&frame->allocation,
                                                          ordinal, NULL);
     packet[operand->encoding_field_id] = (uint8_t)assignment->location_base;
+  }
+  if (descriptor->immediate_count) {
+    // The projection and Low verifier establish one required integer immediate.
+    // Its position is unambiguous; no string lookup or decoding table is
+    // needed.
+    const loom_named_attr_slice_t attributes =
+        loom_low_const_isa(node->op) ? loom_low_const_attrs(node->op)
+                                     : loom_low_op_attrs(node->op);
+    const uint64_t bits = (uint64_t)attributes.entries[0].value.i64;
+    const loom_low_immediate_t* immediate =
+        &frame->target.descriptor_set->immediates[descriptor->immediate_start];
+    memcpy(packet + immediate->encoding_field_id, &bits,
+           immediate->bit_width / 8);
   }
   return iree_io_stream_write(stream, descriptor->encoding_format_id, packet);
 }

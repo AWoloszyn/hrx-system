@@ -81,3 +81,24 @@ check.case @fanout_case {
   check.expect.equal actual(%third) expected(%b) : i64
   check.return
 }
+
+func.def public @constant_bits() -> (i32, i64, i64, i32) {
+  %narrow = scalar.constant -1 : i32
+  %wide = scalar.constant 4294967297 : i64
+  %minimum = scalar.constant -9223372036854775808 : i64
+  %c0 = scalar.constant 0 : i32
+  func.return %narrow, %wide, %minimum, %c0 : i32, i64, i64, i32
+}
+
+check.case @constant_bits_case {
+  %narrow, %wide, %minimum, %zero = func.call @constant_bits() : () -> (i32, i64, i64, i32)
+  %expected_narrow = check.literal value(-1) : i32
+  %expected_wide = check.literal value(4294967297) : i64
+  %expected_minimum = check.literal value(-9223372036854775808) : i64
+  %expected_zero = check.literal value(0) : i32
+  check.expect.equal actual(%narrow) expected(%expected_narrow) : i32
+  check.expect.equal actual(%wide) expected(%expected_wide) : i64
+  check.expect.equal actual(%minimum) expected(%expected_minimum) : i64
+  check.expect.equal actual(%zero) expected(%expected_zero) : i32
+  check.return
+}

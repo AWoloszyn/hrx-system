@@ -35,3 +35,20 @@ low.func.def target<vm.core>(@vm) abi(vm_function) @arithmetic64(%a: reg<vm.valu
   %result = integer.sub.i64 %scaled, %b
   return %result
 }
+
+// ====
+
+vm.target<core> @vm
+
+func.def target(@vm) @constant_bits() -> (i32, i64) {
+  %narrow = scalar.constant -1 : i32
+  %wide = scalar.constant -9223372036854775808 : i64
+  func.return %narrow, %wide : i32, i64
+}
+
+// ----
+low.func.def target<vm.core>(@vm) abi(vm_function) @constant_bits() -> (reg<vm.value : i32>, reg<vm.value : i64>) asm {
+  %narrow = constant.i32 4294967295
+  %wide = constant.i64 -9223372036854775808
+  return %narrow, %wide
+}
