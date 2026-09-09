@@ -69,6 +69,7 @@ static void amdf_memory_profile_assert_valid(
       AMDF_MEMORY_PROFILE_ROLE_HOST_MAP |
       AMDF_MEMORY_PROFILE_ROLE_MAPPING_SOURCE |
       AMDF_MEMORY_PROFILE_ROLE_MAPPING_TARGET;
+  (void)known_roles;
   assert(profile->memory_class >= AMDF_MEMORY_CLASS_SYSTEM &&
          profile->memory_class <= AMDF_MEMORY_CLASS_REGISTERED_HOST &&
          "memory profiles must report a concrete placement class");
@@ -136,6 +137,7 @@ static void amdf_memory_profile_assert_valid(
           profile->device_address.address_bit_count == 64
               ? UINT64_MAX
               : (UINT64_C(1) << profile->device_address.address_bit_count) - 1;
+      (void)address_width_maximum;
       assert(profile->device_address.minimum_address <=
                  profile->device_address.maximum_address &&
              profile->device_address.maximum_address <= address_width_maximum &&
@@ -188,6 +190,7 @@ static void amdf_memory_profile_assert_valid(
         AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_SOURCE_OFFSET |
         AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_CROSS_PROCESS |
         AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_FOREIGN_API;
+    (void)known_support_flags;
     assert(
         amdf_external_memory_type_is_valid(support->type) &&
         (support->flags & (AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_IMPORT |
