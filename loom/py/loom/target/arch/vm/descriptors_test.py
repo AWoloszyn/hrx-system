@@ -9,6 +9,7 @@ from iree.vm.bytecode.spec.isa.core.constant import CONSTANT_I32, CONSTANT_I64
 from iree.vm.bytecode.spec.isa.core.integer import (
     IntegerBinarySemantics,
     IntegerCompareSemantics,
+    IntegerUnarySemantics,
 )
 from iree.vm.bytecode.spec.isa.core.rules import FieldRule
 from iree.vm.bytecode.spec.specification import SPECIFICATION
@@ -27,7 +28,9 @@ def test_integer_packets_preserve_spec_encoding_and_semantic_types():
     instructions = [
         instruction
         for instruction in SPECIFICATION.instructions
-        if isinstance(instruction.semantics, IntegerBinarySemantics)
+        if isinstance(
+            instruction.semantics, (IntegerBinarySemantics, IntegerUnarySemantics)
+        )
     ]
     assert instructions
     for instruction in instructions:
@@ -39,11 +42,17 @@ def test_integer_packets_preserve_spec_encoding_and_semantic_types():
         assert not instruction.state_effects
         assert not instruction.failures
         assert DescriptorFlag.DEAD_REMOVABLE in descriptor.flags
-        assert (
-            tuple(operand.encoding_field_id for operand in descriptor.operands)
-            == instruction.field_offsets
+        register_fields = tuple(
+            (field, offset)
+            for field, offset in zip(
+                instruction.fields, instruction.field_offsets, strict=True
+            )
+            if field.role in (FieldRole.RESULT, FieldRole.OPERAND)
         )
-        for field, operand in zip(instruction.fields, descriptor.operands, strict=True):
+        for (field, offset), operand in zip(
+            register_fields, descriptor.operands, strict=True
+        ):
+            assert operand.encoding_field_id == offset
             assert field.rule.kind is FieldRule.REGISTER_VALUE
             assert field.field.name == operand.field_name
             assert (field.role is FieldRole.RESULT) == (

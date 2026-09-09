@@ -20,6 +20,7 @@ from iree.vm.bytecode.spec.isa.core.integer import (
     INTEGER_COMPARE_SELECTOR,
     IntegerBinarySemantics,
     IntegerCompareSemantics,
+    IntegerUnarySemantics,
 )
 from iree.vm.bytecode.spec.specification import SPECIFICATION
 
@@ -219,7 +220,9 @@ VM_CORE_DESCRIPTOR_SET = DescriptorSet(
             ],
         )
         for instruction in SPECIFICATION.instructions
-        if isinstance(instruction.semantics, IntegerBinarySemantics)
+        if isinstance(
+            instruction.semantics, (IntegerBinarySemantics, IntegerUnarySemantics)
+        )
     )
     + tuple(
         _compare_descriptor(instruction)

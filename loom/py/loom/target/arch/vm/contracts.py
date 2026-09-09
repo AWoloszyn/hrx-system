@@ -11,6 +11,8 @@ from iree.vm.bytecode.spec.isa.core.integer import (
     IntegerBinaryOperation,
     IntegerBinarySemantics,
     IntegerCompareSemantics,
+    IntegerUnaryOperation,
+    IntegerUnarySemantics,
 )
 from iree.vm.bytecode.spec.specification import SPECIFICATION
 
@@ -34,6 +36,7 @@ from loom.target.contracts import (
     ValueProject,
     ValueRef,
     binary_descriptor_rules,
+    unary_descriptor_rules,
 )
 from loom.target.low_descriptors import DescriptorOpKind
 
@@ -55,6 +58,14 @@ _BINARY_SOURCE_OPS = {
     IntegerBinaryOperation.ROTATE_RIGHT: bitwise.scalar_rotri,
 }
 
+_UNARY_SOURCE_OPS = {
+    IntegerUnaryOperation.NEGATE: arithmetic.scalar_negi,
+    IntegerUnaryOperation.ABSOLUTE: arithmetic.scalar_absi,
+    IntegerUnaryOperation.COUNT_LEADING_ZEROS: bitwise.scalar_ctlzi,
+    IntegerUnaryOperation.COUNT_TRAILING_ZEROS: bitwise.scalar_cttzi,
+    IntegerUnaryOperation.POPULATION_COUNT: bitwise.scalar_ctpopi,
+}
+
 _INSTRUCTIONS = {
     instruction.opcode: instruction for instruction in SPECIFICATION.instructions
 }
@@ -67,12 +78,12 @@ assert {case.keyword: case.value for case in comparison.CmpIPredicate.cases} == 
 VM_CORE_CONTRACT_DIALECT_OPS = {"scalar": ALL_SCALAR_OPS}
 
 
-def _binary_cases():
+def _direct_cases(semantics_type, source_ops):
     for descriptor in VM_CORE_DESCRIPTOR_SET.descriptors:
         semantics = _INSTRUCTIONS[descriptor.encoding_id].semantics
-        if isinstance(semantics, IntegerBinarySemantics):
+        if isinstance(semantics, semantics_type):
             yield DirectDescriptorCase(
-                _BINARY_SOURCE_OPS[semantics.operation],
+                source_ops[semantics.operation],
                 descriptor,
                 Scalar(f"i{semantics.bit_width}"),
             )
@@ -141,9 +152,14 @@ VM_CORE_CONTRACT_FRAGMENT = ContractFragment(
     cases=tuple(_constant_cases())
     + tuple(_compare_cases())
     + binary_descriptor_rules(
-        tuple(_binary_cases()),
+        tuple(_direct_cases(IntegerBinarySemantics, _BINARY_SOURCE_OPS)),
         descriptor_result="destination_v8",
         descriptor_lhs="left_v8",
         descriptor_rhs="right_v8",
+    )
+    + unary_descriptor_rules(
+        tuple(_direct_cases(IntegerUnarySemantics, _UNARY_SOURCE_OPS)),
+        descriptor_result="destination_v8",
+        descriptor_input="source_v8",
     ),
 )

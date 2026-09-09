@@ -55,6 +55,19 @@ class IntegerBinarySemantics(NamedTuple):
     bit_width: int
 
 
+class IntegerUnaryOperation(enum.Enum):
+    NEGATE = "neg.i"
+    ABSOLUTE = "abs.s"
+    COUNT_LEADING_ZEROS = "count.leading.zeros.i"
+    COUNT_TRAILING_ZEROS = "count.trailing.zeros.i"
+    POPULATION_COUNT = "popcount.i"
+
+
+class IntegerUnarySemantics(NamedTuple):
+    operation: IntegerUnaryOperation
+    bit_width: int
+
+
 class IntegerCompareSemantics(NamedTuple):
     # Width of the integer operands; the result is a canonical boolean cell.
     bit_width: int
@@ -559,15 +572,16 @@ _DIVISION_INSTRUCTIONS = tuple(
 
 class _UnaryDefinition(NamedTuple):
     opcode: int
-    mnemonic: str
+    operation: IntegerUnaryOperation
+    bit_width: int
     summary: str
     result: str
     expression: str
 
 
 def _unary(definition: _UnaryDefinition) -> Instruction:
-    opcode, mnemonic, summary, result, expression = definition
-    bit_width = 32 if mnemonic.endswith("32") else 64
+    opcode, operation, bit_width, summary, result, expression = definition
+    mnemonic = f"integer.{operation.value}{bit_width}"
     return Instruction(
         opcode=opcode,
         mnemonic=mnemonic,
@@ -583,7 +597,7 @@ def _unary(definition: _UnaryDefinition) -> Instruction:
             _value("source_v8", FieldRole.OPERAND, "Source value-register ordinal."),
             _padding(),
         ),
-        semantics=None,
+        semantics=IntegerUnarySemantics(operation, bit_width),
         behavior=f"Reads source_v8 and computes the selected {bit_width}-bit result.",
         success=(result,),
         assembly=f"%v<destination> = {mnemonic} %v<source>",
@@ -598,70 +612,80 @@ def _unary(definition: _UnaryDefinition) -> Instruction:
 _UNARY_DEFINITIONS = (
     _UnaryDefinition(
         0x4E,
-        "integer.neg.i32",
+        IntegerUnaryOperation.NEGATE,
+        32,
         "Computes two's-complement negation modulo 2^32.",
         "destination_v8 receives the modular negation and clears its high half.",
         "0 - bits",
     ),
     _UnaryDefinition(
         0x4F,
-        "integer.neg.i64",
+        IntegerUnaryOperation.NEGATE,
+        64,
         "Computes two's-complement negation modulo 2^64.",
         "destination_v8 receives the complete modular negation.",
         "0 - bits",
     ),
     _UnaryDefinition(
         0x50,
-        "integer.abs.s32",
+        IntegerUnaryOperation.ABSOLUTE,
+        32,
         "Computes modular signed 32-bit absolute value.",
         "destination_v8 receives abs(source); INT32_MIN retains its bits.",
         "bit_is_set(bits, 31) ? 0 - bits : bits",
     ),
     _UnaryDefinition(
         0x51,
-        "integer.abs.s64",
+        IntegerUnaryOperation.ABSOLUTE,
+        64,
         "Computes modular signed 64-bit absolute value.",
         "destination_v8 receives abs(source); INT64_MIN retains its bits.",
         "bit_is_set(bits, 63) ? 0 - bits : bits",
     ),
     _UnaryDefinition(
         0x6A,
-        "integer.count.leading.zeros.i32",
+        IntegerUnaryOperation.COUNT_LEADING_ZEROS,
+        32,
         "Counts leading zeroes in the low 32 bits.",
         "destination_v8 receives 32 for zero or the exact count with high bits clear.",
         "bits == 0 ? 32 : count_leading_zeros(bits, 32)",
     ),
     _UnaryDefinition(
         0x6B,
-        "integer.count.leading.zeros.i64",
+        IntegerUnaryOperation.COUNT_LEADING_ZEROS,
+        64,
         "Counts leading zeroes in all 64 bits.",
         "destination_v8 receives 64 for zero or the exact count.",
         "bits == 0 ? 64 : count_leading_zeros(bits, 64)",
     ),
     _UnaryDefinition(
         0x6C,
-        "integer.count.trailing.zeros.i32",
+        IntegerUnaryOperation.COUNT_TRAILING_ZEROS,
+        32,
         "Counts trailing zeroes in the low 32 bits.",
         "destination_v8 receives 32 for zero or the exact count with high bits clear.",
         "bits == 0 ? 32 : count_trailing_zeros(bits, 32)",
     ),
     _UnaryDefinition(
         0x6D,
-        "integer.count.trailing.zeros.i64",
+        IntegerUnaryOperation.COUNT_TRAILING_ZEROS,
+        64,
         "Counts trailing zeroes in all 64 bits.",
         "destination_v8 receives 64 for zero or the exact count.",
         "bits == 0 ? 64 : count_trailing_zeros(bits, 64)",
     ),
     _UnaryDefinition(
         0x6E,
-        "integer.popcount.i32",
+        IntegerUnaryOperation.POPULATION_COUNT,
+        32,
         "Counts one bits in the low 32 bits.",
         "destination_v8 receives the population count with high bits clear.",
         "population_count(bits, 32)",
     ),
     _UnaryDefinition(
         0x6F,
-        "integer.popcount.i64",
+        IntegerUnaryOperation.POPULATION_COUNT,
+        64,
         "Counts one bits in all 64 bits.",
         "destination_v8 receives the population count.",
         "population_count(bits, 64)",

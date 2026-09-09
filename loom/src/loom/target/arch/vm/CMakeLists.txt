@@ -77,8 +77,10 @@ loom_check_test_suite(
     "test/emission.loom-test"
     "test/scalar.loom-test"
     "test/source_low/numeric_integer_order_bits.loom-test"
+    "test/source_low/numeric_integer_unary.loom-test"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_integer_order_bits.loom-test"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_integer_unary.loom-test"
   TEST_NAME_PREFIX_TO_STRIP
     "test/"
 )
