@@ -73,6 +73,30 @@ amdf_cc_library(
 )
 
 amdf_cc_library(
+    name = "user_queue_native",
+    srcs = ["user_queue_native.c"],
+    hdrs = ["user_queue_native.h"],
+    target_compatible_with = KFD_COMPATIBILITY,
+    deps = [
+        ":buffer",
+        ":device_state",
+        ":reset_monitor",
+        "//libamdf/src/platform/linux:file",
+    ],
+)
+
+amdf_cc_test(
+    name = "user_queue_native_test",
+    srcs = ["user_queue_native_test.cc"],
+    target_compatible_with = KFD_COMPATIBILITY,
+    deps = [
+        ":user_queue_native",
+        "//third_party:google_test",
+        "//third_party:google_test_main",
+    ],
+)
+
+amdf_cc_library(
     name = "device",
     srcs = ["device.c"],
     target_compatible_with = KFD_COMPATIBILITY,
@@ -81,6 +105,7 @@ amdf_cc_library(
         ":file",
         ":reset_monitor",
         ":topology",
+        ":user_queue_native",
         "//libamdf/src:allocator",
         "//libamdf/src/gpu/umd/kfd/target/gfx1151:pm4_queue",
         "//libamdf/src/platform/linux:endpoint",
@@ -152,7 +177,9 @@ amdf_cc_library(
         ":topology",
         "//libamdf/src/gpu:endpoint_profile",
         "//libamdf/src/gpu/umd:endpoint_profile",
+        "//libamdf/src/gpu/umd/kfd/target/gfx1151:pm4_queue",
         "//libamdf/src/platform/linux:file",
+        "//libamdf/src/platform/linux:host_cache",
     ],
 )
 
@@ -167,7 +194,34 @@ amdf_cc_library(
     name = "user_queue",
     srcs = ["user_queue.c"],
     target_compatible_with = KFD_COMPATIBILITY,
-    deps = ["//libamdf/src/gpu/umd:user_queue"],
+    deps = [
+        ":buffer",
+        ":device_state",
+        ":user_queue_native",
+        "//libamdf/src:allocator",
+        "//libamdf/src:atomics",
+        "//libamdf/src/gpu/umd:user_queue",
+        "//libamdf/src/gpu/umd/kfd/target/gfx1151:pm4_queue",
+        "//libamdf/src/platform:wait",
+        "//libamdf/src/platform/linux:file",
+    ],
+)
+
+amdf_cc_test(
+    name = "user_queue_test",
+    srcs = ["user_queue_test.cc"],
+    target_compatible_with = KFD_COMPATIBILITY,
+    deps = [
+        ":device_state",
+        ":user_queue",
+        ":user_queue_native",
+        "//libamdf/src:allocator",
+        "//libamdf/src:atomics",
+        "//libamdf/src/gpu/umd:user_queue",
+        "//libamdf/src/gpu/umd/kfd/target/gfx1151:pm4_queue",
+        "//third_party:google_test",
+        "//third_party:google_test_main",
+    ],
 )
 
 amdf_cc_library(

@@ -91,6 +91,41 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
 iree_cc_library(
   NAME
+    user_queue_native
+  HDRS
+    "user_queue_native.h"
+  SRCS
+    "user_queue_native.c"
+  DEPS
+    ::buffer
+    ::device_state
+    ::reset_monitor
+    amdf::headers
+    libamdf::src::platform::linux::file
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_test(
+  NAME
+    user_queue_native_test
+  SRCS
+    "user_queue_native_test.cc"
+  DEPS
+    ::user_queue_native
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_library(
+  NAME
     device
   SRCS
     "device.c"
@@ -99,6 +134,7 @@ iree_cc_library(
     ::file
     ::reset_monitor
     ::topology
+    ::user_queue_native
     amdf::headers
     libamdf::src::allocator
     libamdf::src::gpu::umd::kfd::target::gfx1151::pm4_queue
@@ -197,7 +233,9 @@ iree_cc_library(
     amdf::headers
     libamdf::src::gpu::endpoint_profile
     libamdf::src::gpu::umd::endpoint_profile
+    libamdf::src::gpu::umd::kfd::target::gfx1151::pm4_queue
     libamdf::src::platform::linux::file
+    libamdf::src::platform::linux::host_cache
   PUBLIC
 )
 endif()
@@ -222,9 +260,40 @@ iree_cc_library(
   SRCS
     "user_queue.c"
   DEPS
+    ::buffer
+    ::device_state
+    ::user_queue_native
     amdf::headers
+    libamdf::src::allocator
+    libamdf::src::atomics
+    libamdf::src::gpu::umd::kfd::target::gfx1151::pm4_queue
     libamdf::src::gpu::umd::user_queue
+    libamdf::src::platform::linux::file
+    libamdf::src::platform::wait
   PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_test(
+  NAME
+    user_queue_test
+  SRCS
+    "user_queue_test.cc"
+  DEPS
+    ::device_state
+    ::user_queue
+    ::user_queue_native
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+    libamdf::src::allocator
+    libamdf::src::atomics
+    libamdf::src::gpu::umd::kfd::target::gfx1151::pm4_queue
+    libamdf::src::gpu::umd::user_queue
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
 )
 endif()
 

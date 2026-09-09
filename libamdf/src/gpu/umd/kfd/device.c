@@ -11,6 +11,7 @@
 #include "libamdf/src/gpu/umd/kfd/file.h"
 #include "libamdf/src/gpu/umd/kfd/reset_monitor.h"
 #include "libamdf/src/gpu/umd/kfd/target/gfx1151/pm4_queue.h"
+#include "libamdf/src/gpu/umd/kfd/user_queue_native.h"
 #include "libamdf/src/platform/linux/endpoint.h"
 #include "libamdf/src/platform/linux/host_cache.h"
 
@@ -43,6 +44,7 @@ amdf_status_t amdf_gpu_umd_device_create(
   device->descriptor = -1;
   device->render_descriptor = -1;
   device->mode = mode;
+  device->user_queue_native_api = amdf_gpu_kfd_user_queue_default_native_api();
 
   status = amdf_gpu_kfd_topology_query(endpoint, &device->topology);
   const long page_size = sysconf(_SC_PAGESIZE);

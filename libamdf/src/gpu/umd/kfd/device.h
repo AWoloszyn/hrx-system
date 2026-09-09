@@ -13,6 +13,9 @@
 #include "libamdf/src/gpu/umd/kfd/reset_monitor.h"
 #include "libamdf/src/gpu/umd/kfd/topology.h"
 
+typedef struct amdf_gpu_kfd_user_queue_native_api_t
+    amdf_gpu_kfd_user_queue_native_api_t;
+
 // Explicit owner of one KFD context and its acquired DRM virtual address space.
 struct amdf_gpu_umd_device_t {
   // Host allocator copied for device and child metadata.
@@ -29,6 +32,8 @@ struct amdf_gpu_umd_device_t {
   size_t page_size;
   // Qualified host cache-line length in bytes.
   uint32_t cache_line_size;
+  // Native KFD queue operations borrowed through device destruction.
+  const amdf_gpu_kfd_user_queue_native_api_t* user_queue_native_api;
   // Physical reset observer owned for every queue-qualified device.
   amdf_gpu_kfd_reset_monitor_t reset_monitor;
 };

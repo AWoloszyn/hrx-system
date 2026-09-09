@@ -7,8 +7,12 @@
 #define _GNU_SOURCE
 #include "libamdf/src/gpu/umd/endpoint_profile.h"
 
+#include <unistd.h>
+
 #include "libamdf/src/gpu/umd/kfd/file.h"
+#include "libamdf/src/gpu/umd/kfd/target/gfx1151/pm4_queue.h"
 #include "libamdf/src/gpu/umd/kfd/topology.h"
+#include "libamdf/src/platform/linux/host_cache.h"
 
 amdf_status_t amdf_gpu_umd_query_endpoint_profile(
     amdf_platform_endpoint_t* endpoint, amdf_allocator_t host_allocator,
@@ -46,6 +50,19 @@ amdf_status_t amdf_gpu_umd_query_endpoint_profile(
           .features = topology.memory_features |
                       AMDF_GPU_DEVICE_FEATURE_DEVICE_RECREATION,
       };
+  const long page_size = sysconf(_SC_PAGESIZE);
+  uint32_t cache_line_size = 0;
+  if (page_size <= 0 || (page_size & (page_size - 1)) != 0) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
+  status = amdf_linux_host_cache_query_line_size(&cache_line_size);
+  if (!amdf_status_is_ok(status)) return status;
+  if (amdf_gpu_kfd_gfx1151_pm4_queue_is_supported(&topology, (size_t)page_size,
+                                                  cache_line_size)) {
+    topology.properties
+        .queue_families[topology.properties.queue_family_count++] =
+        amdf_gpu_kfd_gfx1151_pm4_queue_family_properties();
+  }
   amdf_gpu_endpoint_profile_t profile;
   if (!amdf_gpu_endpoint_profile_initialize(&topology.properties, &profile)) {
     return amdf_linux_error(EPROTO);

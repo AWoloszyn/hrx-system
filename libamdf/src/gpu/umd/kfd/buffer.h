@@ -78,6 +78,10 @@ amdf_status_t amdf_gpu_kfd_buffer_destroy(amdf_gpu_kfd_buffer_t* buffer);
 // reservation intact as a leak, not as a deferred cleanup object.
 amdf_status_t amdf_gpu_kfd_buffer_discard(amdf_gpu_kfd_buffer_t* buffer);
 
+// Consumes unpublished metadata only. Performs no native release or unmap;
+// unreleased backing and its VA reservation remain intact after abandonment.
+void amdf_gpu_kfd_buffer_abandon(amdf_gpu_kfd_buffer_t* buffer);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

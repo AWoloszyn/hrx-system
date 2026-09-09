@@ -87,6 +87,10 @@ amdf_status_t amdf_gpu_kfd_buffer_discard(amdf_gpu_kfd_buffer_t* buffer) {
   return status;
 }
 
+void amdf_gpu_kfd_buffer_abandon(amdf_gpu_kfd_buffer_t* buffer) {
+  amdf_free(buffer->device->host_allocator, buffer);
+}
+
 amdf_status_t amdf_gpu_kfd_buffer_create(
     amdf_gpu_umd_device_t* device,
     const amdf_gpu_kfd_buffer_create_info_t* create_info,
