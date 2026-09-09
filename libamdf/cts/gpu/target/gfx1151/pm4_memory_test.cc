@@ -108,6 +108,8 @@ size_t EncodeCopyStream(uint32_t* words, uint64_t source_address,
 
 class Gfx1151Pm4MemoryTest : public GpuDeviceFixture {
  protected:
+  void RunCopiesBetweenExactAccessAttachments();
+
   amdf_status_t MatchGpuEndpoint(amdf_endpoint_t* endpoint,
                                  bool* out_matches) const override {
     amdf_gpu_endpoint_info_t info = {};
@@ -272,7 +274,14 @@ class Gfx1151Pm4MemoryTest : public GpuDeviceFixture {
   amdf_host_mapping_info_t target_mapping_info_ = {};
 };
 
-TEST_F(Gfx1151Pm4MemoryTest, CopiesBetweenExactAccessAttachments) {
+class Gfx1151Pm4ProcessMemoryTest : public Gfx1151Pm4MemoryTest {
+ protected:
+  amdf_gpu_device_mode_t GetDeviceMode() const override {
+    return AMDF_GPU_DEVICE_MODE_PROCESS;
+  }
+};
+
+void Gfx1151Pm4MemoryTest::RunCopiesBetweenExactAccessAttachments() {
   uint32_t queue_family_ordinal = UINT32_MAX;
   ASSERT_EQ(FindPm4TransferFamily(&queue_family_ordinal), AMDF_STATUS_OK);
   ASSERT_NE(queue_family_ordinal, UINT32_MAX);
@@ -427,6 +436,14 @@ TEST_F(Gfx1151Pm4MemoryTest, CopiesBetweenExactAccessAttachments) {
     EXPECT_EQ(source[i], expected[i]) << "source word " << i;
   }
   EXPECT_EQ(*completion, kCompletionValue);
+}
+
+TEST_F(Gfx1151Pm4MemoryTest, CopiesBetweenExactAccessAttachments) {
+  RunCopiesBetweenExactAccessAttachments();
+}
+
+TEST_F(Gfx1151Pm4ProcessMemoryTest, CopiesBetweenExactAccessAttachments) {
+  RunCopiesBetweenExactAccessAttachments();
 }
 
 }  // namespace
