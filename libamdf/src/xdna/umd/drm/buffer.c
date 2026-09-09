@@ -31,6 +31,31 @@ amdf_status_t amdf_linux_xdna_buffer_create(
   return AMDF_STATUS_OK;
 }
 
+amdf_status_t amdf_linux_xdna_buffer_import_dma_buf(
+    int descriptor, int dma_buf_descriptor, size_t byte_length,
+    amdf_linux_xdna_buffer_t* out_buffer) {
+  struct amdxdna_drm_va_tbl virtual_address_table = {
+      .dmabuf_fd = dma_buf_descriptor,
+  };
+  struct amdxdna_drm_create_bo create = {
+      .vaddr = (uintptr_t)&virtual_address_table,
+      .size = byte_length,
+      .type = AMDXDNA_BO_SHARE,
+  };
+  if (ioctl(descriptor, DRM_IOCTL_AMDXDNA_CREATE_BO, &create) != 0) {
+    return amdf_linux_error(errno);
+  }
+  if (create.handle == 0) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
+  }
+  *out_buffer = (amdf_linux_xdna_buffer_t){
+      .handle = create.handle,
+      .type = AMDXDNA_BO_SHARE,
+      .byte_length = byte_length,
+  };
+  return AMDF_STATUS_OK;
+}
+
 amdf_status_t amdf_linux_xdna_buffer_attach(
     int descriptor, size_t alignment, size_t page_size,
     const amdf_linux_xdna_buffer_t* heap, amdf_linux_xdna_buffer_t* buffer) {

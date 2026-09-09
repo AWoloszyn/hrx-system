@@ -9,6 +9,7 @@
 
 #include "amdf/amdf.h"
 #include "libamdf/src/child_tracker.h"
+#include "libamdf/src/memory_pair.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -21,8 +22,8 @@ typedef struct amdf_memory_vtable_t {
                                    const amdf_memory_export_info_t* export_info,
                                    amdf_external_memory_t* out_value);
   // Copies exact directional facts into caller-private result storage.
-  amdf_status_t (*query_pair_info)(const amdf_memory_site_t* producer_site,
-                                   const amdf_memory_site_t* consumer_site,
+  amdf_status_t (*query_pair_info)(amdf_memory_t* producer_memory,
+                                   const amdf_memory_pair_query_t* query,
                                    amdf_memory_pair_info_t* out_info);
   // Creates one explicit host mapping. Failure releases every partial resource;
   // success returns one complete mapping.

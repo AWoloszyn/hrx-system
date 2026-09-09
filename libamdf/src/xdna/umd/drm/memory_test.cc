@@ -1,0 +1,226 @@
+// Copyright 2026 The IREE Authors
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/licenses/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+#include "libamdf/src/xdna/umd/memory.h"
+
+#include <drm/amdxdna_accel.h>
+#include <drm/drm.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <unistd.h>
+
+#include <cstdarg>
+#include <cstring>
+
+#include "gtest/gtest.h"
+#include "libamdf/src/allocator.h"
+#include "libamdf/src/xdna/umd/drm/device.h"
+#include "libamdf/src/xdna/umd/drm/memory.h"
+
+namespace {
+
+// Only the DRM dependency is modeled. Allocation and imported descriptor
+// ownership use the production memory implementation and real host resources.
+struct NativeMemoryState {
+  // Terminal GEM-close error, or zero for successful local rollback.
+  int close_error = ENODEV;
+  // Number of native handle release attempts.
+  uint32_t close_count = 0;
+  // Number of unpublished memory headers returned to the host allocator.
+  uint32_t metadata_free_count = 0;
+  // Whether the modeled GEM handle remains unreleased.
+  bool handle_live = false;
+  // Independent backing reference held by a modeled imported GEM handle.
+  int backing_descriptor = -1;
+};
+
+// Calls outside the fixture retain the real DRM dependency.
+thread_local NativeMemoryState* native_memory = nullptr;
+
+}  // namespace
+
+extern "C" int __real_ioctl(int descriptor, unsigned long request, ...);
+
+extern "C" int __wrap_ioctl(int descriptor, unsigned long request, ...) {
+  va_list arguments;
+  va_start(arguments, request);
+  void* argument = va_arg(arguments, void*);
+  va_end(arguments);
+  if (native_memory == nullptr) {
+    return __real_ioctl(descriptor, request, argument);
+  }
+  EXPECT_EQ(descriptor, 17);
+  switch (request) {
+    case DRM_IOCTL_AMDXDNA_CREATE_BO: {
+      auto* create = static_cast<amdxdna_drm_create_bo*>(argument);
+      EXPECT_EQ(create->type, AMDXDNA_BO_SHARE);
+      EXPECT_FALSE(native_memory->handle_live);
+      if (create->vaddr != 0) {
+        const auto* table =
+            reinterpret_cast<const amdxdna_drm_va_tbl*>(create->vaddr);
+        if (table->dmabuf_fd >= 0) {
+          native_memory->backing_descriptor = dup(table->dmabuf_fd);
+          EXPECT_GE(native_memory->backing_descriptor, 0);
+        }
+      }
+      create->handle = 0x1234;
+      native_memory->handle_live = true;
+      return 0;
+    }
+    case DRM_IOCTL_AMDXDNA_GET_BO_INFO:
+      EXPECT_TRUE(native_memory->handle_live);
+      errno = EIO;
+      return -1;
+    case DRM_IOCTL_GEM_CLOSE: {
+      auto* release = static_cast<drm_gem_close*>(argument);
+      EXPECT_EQ(release->handle, 0x1234u);
+      EXPECT_TRUE(native_memory->handle_live);
+      ++native_memory->close_count;
+      if (native_memory->close_error != 0) {
+        errno = native_memory->close_error;
+        return -1;
+      }
+      if (native_memory->backing_descriptor != -1) {
+        EXPECT_EQ(close(native_memory->backing_descriptor), 0);
+        native_memory->backing_descriptor = -1;
+      }
+      native_memory->handle_live = false;
+      return 0;
+    }
+    default:
+      ADD_FAILURE() << "unexpected DRM memory ioctl: " << request;
+      errno = ENOTTY;
+      return -1;
+  }
+}
+
+namespace {
+
+class LinuxXdnaMemoryRollbackTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    native_memory = &native_;
+    device_.descriptor = 17;
+    device_.page_size = 4096;
+    device_.host_allocator = amdf_allocator_system();
+    device_.host_allocator.user_data = &native_;
+    device_.host_allocator.free = [](void* user_data, void* allocation) {
+      ++static_cast<NativeMemoryState*>(user_data)->metadata_free_count;
+      amdf_free(amdf_allocator_system(), allocation);
+    };
+    std::memset(&result_, 0xA5, sizeof(result_));
+  }
+
+  void TearDown() override {
+    EXPECT_EQ(native_.close_count, 1u);
+    EXPECT_EQ(native_.metadata_free_count, 1u);
+    EXPECT_EQ(native_.handle_live, native_.close_error != 0);
+    EXPECT_EQ(memory_, nullptr);
+    amdf_xdna_umd_memory_result_t original_result;
+    std::memset(&original_result, 0xA5, sizeof(original_result));
+    EXPECT_EQ(std::memcmp(&result_, &original_result, sizeof(result_)), 0);
+    // A failed native close is deliberately not retried. Only the model's
+    // independent test-file reference is reclaimed here, not a real GEM handle.
+    if (native_.backing_descriptor != -1) {
+      EXPECT_EQ(close(native_.backing_descriptor), 0);
+    }
+    native_memory = nullptr;
+  }
+
+  // Native failure and resource-consumption state.
+  NativeMemoryState native_;
+  // Explicit live native device borrowed by the constructor.
+  amdf_xdna_umd_device_t device_ = {};
+  // Output remains unpublished on every modeled failure.
+  amdf_xdna_umd_memory_t* memory_ = nullptr;
+  // Sentinel output unchanged by failed construction.
+  amdf_xdna_umd_memory_result_t result_;
+};
+
+TEST_F(LinuxXdnaMemoryRollbackTest, ReportsTerminalOwnedBufferCleanupFailure) {
+  const amdf_memory_create_info_t create_info = {
+      .memory_class = AMDF_MEMORY_CLASS_SYSTEM, .byte_length = 4096};
+  EXPECT_EQ(
+      amdf_xdna_umd_memory_create(&device_, &create_info, &memory_, &result_),
+      amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, ENODEV));
+}
+
+TEST_F(LinuxXdnaMemoryRollbackTest, SuccessfulRollbackReportsOriginalFailure) {
+  native_.close_error = 0;
+  const amdf_memory_create_info_t create_info = {
+      .memory_class = AMDF_MEMORY_CLASS_SYSTEM, .byte_length = 4096};
+  EXPECT_EQ(
+      amdf_xdna_umd_memory_create(&device_, &create_info, &memory_, &result_),
+      amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, EIO));
+}
+
+TEST_F(LinuxXdnaMemoryRollbackTest,
+       FailedImportDoesNotConsumeCallerDescriptor) {
+  // File metadata is real; the ioctl model supplies the DMA-BUF/GEM contract.
+  const int descriptor = memfd_create("drm-memory-rollback", MFD_CLOEXEC);
+  ASSERT_GE(descriptor, 0);
+  ASSERT_EQ(ftruncate(descriptor, 4096), 0);
+  uint32_t release_count = 0;
+  const amdf_external_memory_t external_memory = {
+      .type = AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD,
+      .payload = {.file_descriptor = descriptor},
+      .byte_length = 4096,
+      .release =
+          [](void* user_data, amdf_external_memory_type_t,
+             amdf_external_memory_payload_t) {
+            ++*static_cast<uint32_t*>(user_data);
+          },
+      .release_user_data = &release_count,
+  };
+  const amdf_memory_import_info_t import_info = {};
+  EXPECT_EQ(amdf_xdna_umd_memory_import(&device_, &import_info,
+                                        &external_memory, &memory_, &result_),
+            amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, ENODEV));
+  EXPECT_EQ(release_count, 0u);
+  EXPECT_GE(fcntl(descriptor, F_GETFD), 0);
+  EXPECT_GE(native_.backing_descriptor, 0);
+  EXPECT_NE(native_.backing_descriptor, descriptor);
+  EXPECT_EQ(close(descriptor), 0);
+  EXPECT_GE(fcntl(native_.backing_descriptor, F_GETFD), 0);
+}
+
+TEST(LinuxXdnaMemoryProfileTest, ExposesSystemCreateAndDmaBufImport) {
+  amdf_xdna_umd_device_t device = {};
+  device.page_size = 4096;
+  amdf_memory_profile_t profile = {};
+  profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
+  profile.structure_size = sizeof(profile);
+  ASSERT_EQ(amdf_xdna_umd_device_query_memory_profile(&device, 0, &profile),
+            AMDF_STATUS_OK);
+
+  EXPECT_EQ(profile.ordinal, 0u);
+  EXPECT_EQ(profile.memory_class, AMDF_MEMORY_CLASS_SYSTEM);
+  EXPECT_EQ(profile.roles, AMDF_MEMORY_PROFILE_ROLE_CREATE |
+                               AMDF_MEMORY_PROFILE_ROLE_IMPORT |
+                               AMDF_MEMORY_PROFILE_ROLE_HOST_MAP);
+  EXPECT_EQ(profile.guaranteed_flags,
+            AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS);
+  EXPECT_EQ(profile.minimum_alignment, 1u);
+  ASSERT_EQ(profile.external_memory_support_count, 1u);
+  EXPECT_EQ(profile.external_memory_support[0].type,
+            AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD);
+  EXPECT_EQ(profile.external_memory_support[0].flags,
+            AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_IMPORT |
+                AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_SOURCE_OFFSET |
+                AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_CROSS_PROCESS |
+                AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_FOREIGN_API);
+  EXPECT_EQ(profile.external_memory_support[0].source_offset_alignment, 1u);
+  EXPECT_EQ(profile.external_memory_support[0].byte_length_alignment, 1u);
+
+  profile.ordinal = UINT32_MAX;
+  EXPECT_EQ(amdf_status_code(amdf_xdna_umd_device_query_memory_profile(
+                &device, 1, &profile)),
+            AMDF_STATUS_CODE_OUT_OF_RANGE);
+  EXPECT_EQ(profile.ordinal, UINT32_MAX);
+}
+
+}  // namespace

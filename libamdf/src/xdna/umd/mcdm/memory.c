@@ -225,12 +225,10 @@ amdf_status_t amdf_xdna_umd_memory_export(
 }
 
 amdf_status_t amdf_xdna_umd_memory_query_pair_info(
-    amdf_xdna_umd_memory_t* memory, const amdf_memory_site_t* producer_site,
-    const amdf_memory_site_t* consumer_site,
+    amdf_xdna_umd_memory_t* memory, const amdf_memory_pair_query_t* query,
     amdf_memory_pair_info_t* out_info) {
   (void)memory;
-  (void)producer_site;
-  (void)consumer_site;
+  (void)query;
   (void)out_info;
   return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
 }

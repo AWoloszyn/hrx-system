@@ -431,8 +431,22 @@ amdf_memory_query_pair_info(const amdf_memory_site_t* producer_site,
       .structure_size = out_info->structure_size,
       .next = out_info->next,
   };
-  status = producer_site->memory->vtable->query_pair_info(producer_site,
-                                                          consumer_site, &info);
+  const amdf_memory_pair_query_t query = {
+      .producer =
+          {
+              .engine_kind = producer_site->memory->device->engine_kind,
+              .queue_family_ordinal = producer_site->queue_family_ordinal,
+              .memory_info = &producer_site->memory->info,
+          },
+      .consumer =
+          {
+              .engine_kind = consumer_site->memory->device->engine_kind,
+              .queue_family_ordinal = consumer_site->queue_family_ordinal,
+              .memory_info = &consumer_site->memory->info,
+          },
+  };
+  status = producer_site->memory->vtable->query_pair_info(producer_site->memory,
+                                                          &query, &info);
   if (amdf_status_is_ok(status)) {
     info.type = AMDF_STRUCTURE_TYPE_MEMORY_PAIR_INFO;
     info.structure_size = out_info->structure_size;

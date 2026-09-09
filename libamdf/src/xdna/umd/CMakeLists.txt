@@ -45,6 +45,7 @@ iree_cc_library(
     "memory.h"
   DEPS
     amdf::headers
+    libamdf::src::memory_pair
   PUBLIC
 )
 endif()

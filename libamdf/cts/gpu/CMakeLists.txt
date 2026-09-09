@@ -30,10 +30,12 @@ iree_cc_library(
     linux_tests
   SRCS
     "memory_linux_test.cc"
+    "memory_xdna_interop_linux_test.cc"
   DEPS
     ::gpu_device_fixture
     amdf::headers
     iree::third_party::google_test
+    libamdf::cts::util::provider_headers
   TESTONLY
   ALWAYSLINK
   PUBLIC

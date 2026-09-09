@@ -8,6 +8,7 @@
 #define AMDF_SRC_XDNA_UMD_MEMORY_H_
 
 #include "amdf/amdf.h"
+#include "libamdf/src/memory_pair.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -79,8 +80,8 @@ amdf_status_t amdf_xdna_umd_memory_export(
 
 // Copies exact directional facts for two concrete attachment sites.
 amdf_status_t amdf_xdna_umd_memory_query_pair_info(
-    amdf_xdna_umd_memory_t* memory, const amdf_memory_site_t* producer_site,
-    const amdf_memory_site_t* consumer_site, amdf_memory_pair_info_t* out_info);
+    amdf_xdna_umd_memory_t* memory, const amdf_memory_pair_query_t* query,
+    amdf_memory_pair_info_t* out_info);
 
 // Releases a memory attachment and its physical backing.
 amdf_status_t amdf_xdna_umd_memory_destroy(amdf_xdna_umd_memory_t* memory);

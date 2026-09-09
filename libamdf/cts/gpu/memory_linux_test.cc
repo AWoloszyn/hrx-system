@@ -172,15 +172,12 @@ TEST_F(GpuLinuxMemoryTest, OwnsAlignedSystemMemoryAndBorrowedHostViews) {
 }
 
 TEST_F(GpuLinuxMemoryTest, RejectsUnachievableSystemPlacement) {
-  for (amdf_memory_flags_t flag :
-       {AMDF_MEMORY_FLAG_DEVICE_LOCAL, AMDF_MEMORY_FLAG_SHAREABLE}) {
-    amdf_memory_create_info_t info = MakeSystemMemoryCreateInfo();
-    info.required_flags |= flag;
-    amdf_memory_t* output = reinterpret_cast<amdf_memory_t*>(uintptr_t{1});
-    EXPECT_EQ(api_->memory_create(device_, &info, &output),
-              amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED));
-    EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
-  }
+  amdf_memory_create_info_t info = MakeSystemMemoryCreateInfo();
+  info.required_flags |= AMDF_MEMORY_FLAG_DEVICE_LOCAL;
+  amdf_memory_t* output = reinterpret_cast<amdf_memory_t*>(uintptr_t{1});
+  EXPECT_EQ(api_->memory_create(device_, &info, &output),
+            amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED));
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 }
 
 TEST_F(GpuLinuxMemoryTest, HonorsLocalPlacementCapabilities) {

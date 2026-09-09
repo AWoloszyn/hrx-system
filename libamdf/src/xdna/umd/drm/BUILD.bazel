@@ -98,8 +98,24 @@ amdf_cc_library(
         ":buffer",
         ":device_state",
         "//libamdf/src:allocator",
+        "//libamdf/src/platform/linux:dma_buf",
         "//libamdf/src/platform/linux:host_cache",
         "//libamdf/src/xdna/umd:memory",
+    ],
+)
+
+amdf_cc_test(
+    name = "memory_test",
+    srcs = ["memory_test.cc"],
+    linkopts = ["-Wl,--wrap=ioctl"],
+    target_compatible_with = DRM_COMPATIBILITY,
+    deps = [
+        ":device_state",
+        ":memory",
+        "//libamdf/src:allocator",
+        "//libamdf/src/xdna/umd:memory",
+        "//third_party:google_test",
+        "//third_party:google_test_main",
     ],
 )
 

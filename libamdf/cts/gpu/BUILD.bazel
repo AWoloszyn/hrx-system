@@ -26,13 +26,17 @@ amdf_cc_library(
 amdf_cc_library(
     name = "linux_tests",
     testonly = True,
-    srcs = ["memory_linux_test.cc"],
+    srcs = [
+        "memory_linux_test.cc",
+        "memory_xdna_interop_linux_test.cc",
+    ],
     target_compatible_with = [
         "@platforms//os:linux",
         "@platforms//cpu:x86_64",
     ],
     deps = [
         ":gpu_device_fixture",
+        "//libamdf/cts/util:provider_headers",
         "//third_party:google_test",
     ],
     alwayslink = True,

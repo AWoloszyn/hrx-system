@@ -79,11 +79,10 @@ static amdf_status_t FakeMemoryExport(
 }
 
 static amdf_status_t FakeMemoryQueryPairInfo(
-    const amdf_memory_site_t* producer_site,
-    const amdf_memory_site_t* consumer_site,
+    amdf_memory_t* producer_memory, const amdf_memory_pair_query_t* query,
     amdf_memory_pair_info_t* out_info) {
-  (void)consumer_site;
-  auto* memory = reinterpret_cast<FakeMemory*>(producer_site->memory);
+  (void)query;
+  auto* memory = reinterpret_cast<FakeMemory*>(producer_memory);
   ++memory->pair_query_count;
   if (!amdf_status_is_ok(memory->pair_status)) {
     out_info->flags = UINT64_MAX;

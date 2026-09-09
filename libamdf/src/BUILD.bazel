@@ -117,8 +117,15 @@ amdf_cc_library(
         ":allocator",
         ":child_tracker",
         ":device",
+        ":memory_pair",
         ":structure",
     ],
+)
+
+amdf_cc_library(
+    name = "memory_pair",
+    hdrs = ["memory_pair.h"],
+    visibility = ["//libamdf/src:__subpackages__"],
 )
 
 amdf_cc_test(

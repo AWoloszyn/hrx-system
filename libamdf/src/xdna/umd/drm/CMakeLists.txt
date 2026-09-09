@@ -122,9 +122,32 @@ iree_cc_library(
     ::device_state
     amdf::headers
     libamdf::src::allocator
+    libamdf::src::platform::linux::dma_buf
     libamdf::src::platform::linux::host_cache
     libamdf::src::xdna::umd::memory
   PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_test(
+  NAME
+    memory_test
+  SRCS
+    "memory_test.cc"
+  LINKOPTS
+    "-Wl,--wrap=ioctl"
+  DEPS
+    ::device_state
+    ::memory
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+    libamdf::src::allocator
+    libamdf::src::xdna::umd::memory
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.xdna"
 )
 endif()
 

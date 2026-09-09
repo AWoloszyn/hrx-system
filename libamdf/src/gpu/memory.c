@@ -42,12 +42,10 @@ static amdf_status_t amdf_gpu_memory_export(
 }
 
 static amdf_status_t amdf_gpu_memory_query_pair_info(
-    const amdf_memory_site_t* producer_site,
-    const amdf_memory_site_t* consumer_site,
+    amdf_memory_t* producer_memory, const amdf_memory_pair_query_t* query,
     amdf_memory_pair_info_t* out_info) {
-  amdf_gpu_memory_t* memory = (amdf_gpu_memory_t*)producer_site->memory;
-  return amdf_gpu_umd_memory_query_pair_info(memory->umd, producer_site,
-                                             consumer_site, out_info);
+  amdf_gpu_memory_t* memory = (amdf_gpu_memory_t*)producer_memory;
+  return amdf_gpu_umd_memory_query_pair_info(memory->umd, query, out_info);
 }
 
 static amdf_status_t amdf_gpu_host_mapping_cache_control(

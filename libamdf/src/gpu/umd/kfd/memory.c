@@ -7,13 +7,17 @@
 #define _GNU_SOURCE
 #include "libamdf/src/gpu/umd/memory.h"
 
+#include <assert.h>
 #include <emmintrin.h>
+#include <fcntl.h>
+#include <limits.h>
 #include <linux/kfd_ioctl.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 
 #include "libamdf/src/allocator.h"
 #include "libamdf/src/gpu/umd/kfd/device.h"
+#include "libamdf/src/platform/linux/dma_buf.h"
 #include "libamdf/src/platform/linux/file.h"
 
 // One backing handle and GPU attachment, including incomplete teardown state.
@@ -22,6 +26,10 @@ struct amdf_gpu_umd_memory_t {
   amdf_gpu_umd_device_t* device;
   // Native KFD allocation identity, or zero after release.
   uint64_t handle;
+  // Page-covered native backing length in bytes.
+  size_t byte_length;
+  // Canonical DMA-BUF identity for shareable owned GTT.
+  amdf_physical_memory_id_t physical_backing_id;
   // True until the GPU mapping and its unmap synchronization have completed.
   bool mapped;
   // Native unmap progress retained across an interrupted final synchronization.
@@ -95,6 +103,7 @@ static amdf_status_t amdf_gpu_kfd_memory_plan(
       plan->host_byte_offset = pointer & (device->page_size - 1);
       plan->native_flags |= KFD_IOC_ALLOC_MEM_FLAGS_USERPTR;
     } else {
+      plan->flags |= AMDF_MEMORY_FLAG_SHAREABLE;
       plan->native_flags |= KFD_IOC_ALLOC_MEM_FLAGS_GTT;
     }
   }
@@ -224,13 +233,128 @@ static amdf_status_t amdf_gpu_kfd_memory_allocate(
   return AMDF_STATUS_OK;
 }
 
+static amdf_status_t amdf_gpu_kfd_memory_open_dma_buf(
+    amdf_gpu_umd_memory_t* memory, int* out_descriptor,
+    amdf_linux_dma_buf_info_t* out_info) {
+  struct kfd_ioctl_export_dmabuf_args export_args = {
+      .handle = memory->handle,
+      .flags = O_CLOEXEC,
+  };
+  if (ioctl(memory->device->descriptor, AMDKFD_IOC_EXPORT_DMABUF,
+            &export_args) != 0) {
+    return amdf_linux_error(errno);
+  }
+  assert(export_args.dmabuf_fd <= INT_MAX &&
+         "successful DMA-BUF export must return a native int descriptor");
+  int descriptor = (int)export_args.dmabuf_fd;
+  amdf_linux_dma_buf_info_t info;
+  amdf_status_t status = amdf_linux_dma_buf_query(descriptor, &info);
+  if (!amdf_status_is_ok(status)) {
+    const amdf_status_t close_status = amdf_linux_file_close(&descriptor);
+    if (!amdf_status_is_ok(close_status)) status = close_status;
+    return status;
+  }
+  *out_descriptor = descriptor;
+  *out_info = info;
+  return AMDF_STATUS_OK;
+}
+
+static amdf_status_t amdf_gpu_kfd_memory_query_dma_buf(
+    amdf_gpu_umd_memory_t* memory, amdf_linux_dma_buf_info_t* out_info) {
+  int descriptor = -1;
+  amdf_linux_dma_buf_info_t info;
+  amdf_status_t status =
+      amdf_gpu_kfd_memory_open_dma_buf(memory, &descriptor, &info);
+  if (amdf_status_is_ok(status) && info.byte_length != memory->byte_length) {
+    status = amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
+  }
+  const amdf_status_t close_status = amdf_linux_file_close(&descriptor);
+  if (!amdf_status_is_ok(close_status)) status = close_status;
+  if (amdf_status_is_ok(status)) *out_info = info;
+  return status;
+}
+
+static uint32_t amdf_gpu_kfd_memory_profile_ordinal(
+    const amdf_gpu_umd_device_t* device, amdf_memory_class_t memory_class) {
+  if (memory_class == AMDF_MEMORY_CLASS_SYSTEM) return 0;
+  const bool local_memory_supported =
+      (device->topology.memory_features &
+       AMDF_GPU_DEVICE_FEATURE_LOCAL_MEMORY) != 0;
+  if (memory_class == AMDF_MEMORY_CLASS_LOCAL) {
+    assert(local_memory_supported &&
+           "created local memory must have an advertised profile");
+    return 1;
+  }
+  assert(memory_class == AMDF_MEMORY_CLASS_REGISTERED_HOST &&
+         device->mode == AMDF_GPU_DEVICE_MODE_PROCESS &&
+         "registered memory must have an advertised profile");
+  return local_memory_supported ? 2 : 1;
+}
+
 amdf_status_t amdf_gpu_umd_device_query_memory_profile(
     amdf_gpu_umd_device_t* device, uint32_t memory_profile_ordinal,
     amdf_memory_profile_t* out_profile) {
-  (void)device;
-  (void)memory_profile_ordinal;
-  (void)out_profile;
-  return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  amdf_memory_profile_t profile = {
+      .type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE,
+      .structure_size = out_profile->structure_size,
+      .next = out_profile->next,
+      .ordinal = memory_profile_ordinal,
+  };
+  uint32_t ordinal = 0;
+  if (memory_profile_ordinal == ordinal++) {
+    profile.memory_class = AMDF_MEMORY_CLASS_SYSTEM;
+    profile.roles = AMDF_MEMORY_PROFILE_ROLE_CREATE |
+                    AMDF_MEMORY_PROFILE_ROLE_EXPORT |
+                    AMDF_MEMORY_PROFILE_ROLE_HOST_MAP;
+    profile.guaranteed_flags =
+        AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_SHAREABLE |
+        AMDF_MEMORY_FLAG_HOST_COHERENT | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+    profile.supported_flags = profile.guaranteed_flags |
+                              AMDF_MEMORY_FLAG_EXECUTABLE |
+                              AMDF_MEMORY_FLAG_QUEUE_STORAGE;
+    profile.minimum_alignment = device->page_size;
+    profile.external_memory_support_count = 1;
+    profile.external_memory_support[0] = (amdf_external_memory_support_t){
+        .type = AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD,
+        .flags = AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_EXPORT |
+                 AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_SOURCE_OFFSET |
+                 AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_CROSS_PROCESS,
+        .source_offset_alignment = 1,
+        .byte_length_alignment = 1,
+    };
+  } else if ((device->topology.memory_features &
+              AMDF_GPU_DEVICE_FEATURE_LOCAL_MEMORY) != 0 &&
+             memory_profile_ordinal == ordinal++) {
+    profile.memory_class = AMDF_MEMORY_CLASS_LOCAL;
+    profile.roles = AMDF_MEMORY_PROFILE_ROLE_CREATE;
+    profile.guaranteed_flags =
+        AMDF_MEMORY_FLAG_DEVICE_LOCAL | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+    profile.supported_flags = profile.guaranteed_flags |
+                              AMDF_MEMORY_FLAG_EXECUTABLE |
+                              AMDF_MEMORY_FLAG_QUEUE_STORAGE;
+    if ((device->topology.memory_features &
+         AMDF_GPU_DEVICE_FEATURE_HOST_VISIBLE_LOCAL_MEMORY) != 0) {
+      profile.roles |= AMDF_MEMORY_PROFILE_ROLE_HOST_MAP;
+      profile.supported_flags |= AMDF_MEMORY_FLAG_HOST_VISIBLE;
+    }
+    profile.minimum_alignment = device->page_size;
+  } else if (device->mode == AMDF_GPU_DEVICE_MODE_PROCESS &&
+             memory_profile_ordinal == ordinal) {
+    profile.memory_class = AMDF_MEMORY_CLASS_REGISTERED_HOST;
+    profile.roles =
+        AMDF_MEMORY_PROFILE_ROLE_REGISTER | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP;
+    profile.guaranteed_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE |
+                               AMDF_MEMORY_FLAG_HOST_COHERENT |
+                               AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+    profile.supported_flags = profile.guaranteed_flags |
+                              AMDF_MEMORY_FLAG_EXECUTABLE |
+                              AMDF_MEMORY_FLAG_QUEUE_STORAGE;
+    profile.minimum_alignment = 1;
+  } else {
+    return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
+  }
+  *out_profile = profile;
+  return AMDF_STATUS_OK;
 }
 
 amdf_status_t amdf_gpu_umd_memory_import(
@@ -249,19 +373,34 @@ amdf_status_t amdf_gpu_umd_memory_import(
 amdf_status_t amdf_gpu_umd_memory_export(
     amdf_gpu_umd_memory_t* memory, const amdf_memory_export_info_t* export_info,
     amdf_external_memory_t* out_value) {
-  (void)memory;
   (void)export_info;
-  (void)out_value;
-  return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  int descriptor = -1;
+  amdf_linux_dma_buf_info_t info;
+  amdf_status_t status =
+      amdf_gpu_kfd_memory_open_dma_buf(memory, &descriptor, &info);
+  if (amdf_status_is_ok(status) &&
+      (info.byte_length != memory->byte_length ||
+       !amdf_physical_memory_id_is_equal(&info.physical_backing_id,
+                                         &memory->physical_backing_id))) {
+    status = amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
+  }
+  if (amdf_status_is_ok(status)) {
+    *out_value = (amdf_external_memory_t){
+        .payload.file_descriptor = descriptor,
+        .release = amdf_linux_dma_buf_release,
+    };
+  } else {
+    const amdf_status_t close_status = amdf_linux_file_close(&descriptor);
+    if (!amdf_status_is_ok(close_status)) status = close_status;
+  }
+  return status;
 }
 
 amdf_status_t amdf_gpu_umd_memory_query_pair_info(
-    amdf_gpu_umd_memory_t* memory, const amdf_memory_site_t* producer_site,
-    const amdf_memory_site_t* consumer_site,
+    amdf_gpu_umd_memory_t* memory, const amdf_memory_pair_query_t* query,
     amdf_memory_pair_info_t* out_info) {
   (void)memory;
-  (void)producer_site;
-  (void)consumer_site;
+  (void)query;
   (void)out_info;
   return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
 }
@@ -278,8 +417,17 @@ amdf_status_t amdf_gpu_umd_memory_create(
                        _Alignof(amdf_gpu_umd_memory_t), (void**)&memory);
   if (!amdf_status_is_ok(status)) return status;
   memory->device = device;
+  memory->byte_length = plan.byte_length;
   uint64_t address = 0;
   status = amdf_gpu_kfd_memory_allocate(&plan, create_info, memory, &address);
+  if (amdf_status_is_ok(status) &&
+      create_info->memory_class == AMDF_MEMORY_CLASS_SYSTEM) {
+    amdf_linux_dma_buf_info_t info;
+    status = amdf_gpu_kfd_memory_query_dma_buf(memory, &info);
+    if (amdf_status_is_ok(status)) {
+      memory->physical_backing_id = info.physical_backing_id;
+    }
+  }
   if (amdf_status_is_ok(status)) {
     const bool registered =
         create_info->memory_class == AMDF_MEMORY_CLASS_REGISTERED_HOST;
@@ -291,19 +439,23 @@ amdf_status_t amdf_gpu_umd_memory_create(
             : plan.alignment;
     const uint64_t length =
         registered ? create_info->byte_length : plan.byte_length;
+    const amdf_physical_memory_id_t physical_backing_id =
+        create_info->memory_class == AMDF_MEMORY_CLASS_SYSTEM
+            ? memory->physical_backing_id
+            : (amdf_physical_memory_id_t){
+                  .words = {registered ? (uintptr_t)memory->host_pointer
+                                       : (uintptr_t)memory,
+                            length},
+              };
     *out_result = (amdf_gpu_umd_memory_result_t){
-        .memory_profile_ordinal = AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN,
+        .memory_profile_ordinal = amdf_gpu_kfd_memory_profile_ordinal(
+            device, create_info->memory_class),
         .memory_class = create_info->memory_class,
         .flags = plan.flags,
         .source_byte_offset = 0,
         .byte_length = length,
         .alignment = alignment,
-        .physical_backing_id =
-            {
-                .words = {registered ? (uintptr_t)memory->host_pointer
-                                     : (uintptr_t)memory,
-                          length},
-            },
+        .physical_backing_id = physical_backing_id,
         .device_address = address,
     };
     *out_memory = memory;

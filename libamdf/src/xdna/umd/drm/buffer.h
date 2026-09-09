@@ -43,6 +43,13 @@ amdf_status_t amdf_linux_xdna_buffer_create(
     int descriptor, uint32_t type, size_t byte_length,
     amdf_linux_xdna_buffer_t* out_buffer);
 
+// Imports one borrowed DMA-BUF as a GEM buffer. Success transfers an
+// independent file-local handle to `out_buffer`; failure leaves the output
+// unchanged and retains no ownership.
+amdf_status_t amdf_linux_xdna_buffer_import_dma_buf(
+    int descriptor, int dma_buf_descriptor, size_t byte_length,
+    amdf_linux_xdna_buffer_t* out_buffer);
+
 // Establishes native addresses and a persistent CPU mapping for one live GEM
 // buffer. Failure retains any mapping state acquired by this one-shot operation
 // in `buffer` for deinitialization.

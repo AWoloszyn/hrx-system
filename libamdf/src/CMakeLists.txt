@@ -176,7 +176,20 @@ iree_cc_library(
     ::allocator
     ::child_tracker
     ::device
+    ::memory_pair
     ::structure
+    amdf::headers
+  PUBLIC
+)
+endif()
+
+if(AMDF_BUILD)
+iree_cc_library(
+  NAME
+    memory_pair
+  HDRS
+    "memory_pair.h"
+  DEPS
     amdf::headers
   PUBLIC
 )

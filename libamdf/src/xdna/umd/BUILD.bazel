@@ -36,5 +36,6 @@ amdf_cc_library(
     name = "memory",
     hdrs = ["memory.h"],
     visibility = ["//libamdf/src/xdna:__subpackages__"],
+    deps = ["//libamdf/src:memory_pair"],
 )
 

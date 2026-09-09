@@ -85,8 +85,28 @@ iree_cc_library(
     amdf::headers
     libamdf::src::allocator
     libamdf::src::gpu::umd::memory
+    libamdf::src::platform::linux::dma_buf
     libamdf::src::platform::linux::file
   PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_test(
+  NAME
+    memory_test
+  SRCS
+    "memory_test.cc"
+  DEPS
+    ::device_state
+    ::memory
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+    libamdf::src::gpu::umd::memory
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
 )
 endif()
 
