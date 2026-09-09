@@ -81,6 +81,12 @@ static iree_status_t loom_vm_signature_type(loom_type_t type,
   const loom_type_t* value_type = loom_type_register_value_type(type);
   if (value_type) {
     switch (loom_type_element_type(*value_type)) {
+      case LOOM_SCALAR_TYPE_I8:
+        *out_kind = IREE_VM_BYTECODE_SIGNATURE_KIND_I8;
+        return iree_ok_status();
+      case LOOM_SCALAR_TYPE_I16:
+        *out_kind = IREE_VM_BYTECODE_SIGNATURE_KIND_I16;
+        return iree_ok_status();
       // Predicates cross the VM ABI as canonical zero/one i32 values.
       case LOOM_SCALAR_TYPE_I1:
       case LOOM_SCALAR_TYPE_I32:

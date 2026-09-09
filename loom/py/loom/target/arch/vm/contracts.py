@@ -32,6 +32,8 @@ from iree.vm.bytecode.spec.isa.core.integer import (
 from iree.vm.bytecode.spec.isa.core.value import VALUE_COPY, VALUE_SELECT
 from iree.vm.bytecode.spec.specification import SPECIFICATION
 
+from loom.dialect.index import ALL_INDEX_OPS, IndexPredicate
+from loom.dialect.index import defs as index
 from loom.dialect.scalar import (
     ALL_SCALAR_OPS,
     ClampFMode,
@@ -53,6 +55,7 @@ from loom.target.contracts import (
     Guard,
     Scalar,
     SelectDescriptorCase,
+    ValueAliasRule,
     ValueProject,
     ValueRef,
     binary_descriptor_rules,
@@ -86,6 +89,27 @@ _UNARY_SOURCE_OPS = {
     IntegerUnaryOperation.COUNT_LEADING_ZEROS: bitwise.scalar_ctlzi,
     IntegerUnaryOperation.COUNT_TRAILING_ZEROS: bitwise.scalar_cttzi,
     IntegerUnaryOperation.POPULATION_COUNT: bitwise.scalar_ctpopi,
+}
+
+_INDEX_SOURCE_OPS = {
+    IntegerBinaryOperation.ADD: index.index_add,
+    IntegerBinaryOperation.SUB: index.index_sub,
+    IntegerBinaryOperation.MUL: index.index_mul,
+    IntegerBinaryOperation.MIN_SIGNED: index.index_min,
+    IntegerBinaryOperation.MAX_SIGNED: index.index_max,
+    IntegerBinaryOperation.AND: index.index_andi,
+    IntegerBinaryOperation.OR: index.index_ori,
+    IntegerBinaryOperation.XOR: index.index_xori,
+    IntegerBinaryOperation.SHIFT_LEFT: index.index_shli,
+    IntegerBinaryOperation.SHIFT_RIGHT_SIGNED: index.index_shrsi,
+    IntegerBinaryOperation.SHIFT_RIGHT_UNSIGNED: index.index_shrui,
+    IntegerBinaryOperation.ROTATE_LEFT: index.index_rotli,
+    IntegerBinaryOperation.ROTATE_RIGHT: index.index_rotri,
+    IntegerUnaryOperation.COUNT_LEADING_ZEROS: index.index_ctlzi,
+    IntegerUnaryOperation.COUNT_TRAILING_ZEROS: index.index_cttzi,
+    IntegerUnaryOperation.POPULATION_COUNT: index.index_ctpopi,
+    IntegerDivisionOperation.UNSIGNED_QUOTIENT: index.index_div,
+    IntegerDivisionOperation.UNSIGNED_REMAINDER: index.index_rem,
 }
 
 _DIVISION_SOURCE_OPS = {
@@ -138,9 +162,15 @@ _CONSTANT_SOURCES = {
     64: {
         "i64": ValueProject.exact_i64,
         "f64": ValueProject.float_as_f64_bits,
+        "index": ValueProject.exact_i64,
+        "offset": ValueProject.exact_i64,
     },
 }
-_SCALAR_TYPES = tuple(name for types in _CONSTANT_SOURCES.values() for name in types)
+_SCALAR_TYPES = (
+    *(name for types in _CONSTANT_SOURCES.values() for name in types),
+    "i8",
+    "i16",
+)
 
 # Selectors carry their source/destination types in the canonical ISA spelling.
 # Only the correspondence with Loom operations belongs in this projection.
@@ -166,6 +196,7 @@ _DESCRIPTORS = {
 # A direct ordinal projection is valid only while both public enums agree.
 for source_enum, selector in (
     (comparison.CmpIPredicate, INTEGER_COMPARE_SELECTOR),
+    (IndexPredicate, INTEGER_COMPARE_SELECTOR),
     (comparison.CmpFPredicate, FLOAT_COMPARE_SELECTOR),
     (ClampFMode, FLOAT_CLAMP_SELECTOR),
 ):
@@ -173,7 +204,11 @@ for source_enum, selector in (
         value.name: value.value for value in selector.values
     }
 
-VM_CORE_CONTRACT_DIALECT_OPS = {"scalar": ALL_SCALAR_OPS, "scf": ALL_SCF_OPS}
+VM_CORE_CONTRACT_DIALECT_OPS = {
+    "scalar": ALL_SCALAR_OPS,
+    "index": ALL_INDEX_OPS,
+    "scf": ALL_SCF_OPS,
+}
 
 
 def _direct_cases(semantics_type, source_ops, type_prefix="i"):
@@ -201,7 +236,11 @@ def _constant_cases():
         bit_width = descriptor.immediates[0].bit_width
         for source_type, projection in _CONSTANT_SOURCES[bit_width].items():
             yield DescriptorRule(
-                source_op=conversion.scalar_constant,
+                source_op=(
+                    index.index_constant
+                    if source_type in ("index", "offset")
+                    else conversion.scalar_constant
+                ),
                 descriptor=descriptor,
                 guards=(Guard.value_type("result", Scalar(source_type)),),
                 emit=(
@@ -215,7 +254,9 @@ def _constant_cases():
             )
 
 
-def _selected_rule(descriptor, source_op, source_type, selector, *, result_type=None):
+def _scalar_rule(
+    descriptor, source_op, source_type, selector=None, *, result_type=None
+):
     result_type = result_type or (
         Scalar("i1")
         if isinstance(
@@ -251,7 +292,11 @@ def _selected_rule(descriptor, source_op, source_type, selector, *, result_type=
                 descriptor=descriptor,
                 operands=operands,
                 results={"destination_v8": ValueRef.result("result")},
-                immediates={descriptor.immediates[0].field_name: selector},
+                immediates=(
+                    {descriptor.immediates[0].field_name: selector}
+                    if selector is not None
+                    else {}
+                ),
             ),
         ),
     )
@@ -262,7 +307,7 @@ def _selected_cases():
         semantics = _INSTRUCTIONS[descriptor.encoding_id].semantics
         if source := _ATTRIBUTE_SOURCE_OPS.get(type(semantics)):
             source_op, type_prefix, attribute = source
-            yield _selected_rule(
+            yield _scalar_rule(
                 descriptor,
                 source_op,
                 Scalar(f"{type_prefix}{semantics.bit_width}"),
@@ -276,7 +321,7 @@ def _selected_cases():
             )
             assert set(source_ops) == {value.name for value in selector.values}
             for value in selector.values:
-                yield _selected_rule(
+                yield _scalar_rule(
                     descriptor,
                     source_ops[value.name],
                     Scalar(f"f{semantics.bit_width}"),
@@ -307,13 +352,135 @@ def _conversion_cases():
                 if domain == "float.to.integer"
                 else source[0]
             )
-            yield _selected_rule(
+            yield _scalar_rule(
                 descriptor,
                 _CONVERSION_SOURCE_OPS[domain][key],
                 Scalar(source_type),
                 value.value,
                 result_type=Scalar(result_type),
             )
+
+
+def _address_cases():
+    # Address widths are fixed by vm.core. The shared verifier owns the index
+    # domain restrictions; these rules consume that established source contract.
+    integer_descriptors = {
+        semantics.operation: descriptor
+        for descriptor in VM_CORE_DESCRIPTOR_SET.descriptors
+        if isinstance(
+            semantics := _INSTRUCTIONS[descriptor.encoding_id].semantics,
+            (IntegerBinarySemantics, IntegerUnarySemantics, IntegerDivisionSemantics),
+        )
+        and semantics.bit_width == 64
+    }
+    for operation, source_op in _INDEX_SOURCE_OPS.items():
+        yield _scalar_rule(
+            integer_descriptors[operation],
+            source_op,
+            Scalar(("index", "offset"))
+            if source_op in (index.index_add, index.index_sub)
+            else Scalar("index"),
+        )
+    for descriptor in VM_CORE_DESCRIPTOR_SET.descriptors:
+        semantics = _INSTRUCTIONS[descriptor.encoding_id].semantics
+        if isinstance(semantics, IntegerCompareSemantics) and semantics.bit_width == 64:
+            yield _scalar_rule(
+                descriptor,
+                index.index_cmp,
+                Scalar(("index", "offset")),
+                AttrProject.enum_ordinal("predicate"),
+            )
+        if (
+            not descriptor.immediates
+            or descriptor.immediates[0].enum_domain != "integer.convert"
+        ):
+            continue
+        selector = _INSTRUCTIONS[descriptor.encoding_id].fields[-1].rule.data
+        for value in selector.values:
+            source, destination = value.name.split(".to.")
+            source_type = "i" + source[1:]
+            if destination == "i64" and source != "s1":
+                # Predicates enter both domains as zero/one. Other payloads are
+                # signed coordinates or unsigned byte offsets, respectively.
+                result_types = (
+                    ("index", "offset")
+                    if source == "u1"
+                    else ("offset",)
+                    if source[0] == "u"
+                    else ("index",)
+                )
+                yield _scalar_rule(
+                    descriptor,
+                    index.index_cast,
+                    Scalar(source_type),
+                    value.value,
+                    result_type=Scalar(result_types),
+                )
+            elif source == "i64":
+                yield _scalar_rule(
+                    descriptor,
+                    index.index_cast,
+                    Scalar(("index", "offset")),
+                    value.value,
+                    result_type=Scalar(destination),
+                )
+    yield ValueAliasRule(
+        source_op=index.index_cast,
+        source=ValueRef.operand("input"),
+        result=ValueRef.result("result"),
+        guards=(
+            Guard.value_type("input", Scalar(("i64", "index", "offset"))),
+            Guard.value_type("result", Scalar(("i64", "index", "offset"))),
+        ),
+    )
+    multiply = integer_descriptors[IntegerBinaryOperation.MUL]
+    add = integer_descriptors[IntegerBinaryOperation.ADD]
+    yield DescriptorRule(
+        source_op=index.index_scale,
+        descriptor=multiply,
+        guards=(
+            Guard.value_type("index", Scalar("index")),
+            Guard.value_type("stride", Scalar("offset")),
+            Guard.value_type("result", Scalar("offset")),
+        ),
+        emit=(
+            EmitDescriptorOp(
+                descriptor=multiply,
+                operands={
+                    "left_v8": ValueRef.operand("index"),
+                    "right_v8": ValueRef.operand("stride"),
+                },
+                results={"destination_v8": ValueRef.result("result")},
+            ),
+        ),
+    )
+    yield DescriptorRule(
+        source_op=index.index_madd,
+        descriptor=add,
+        guards=tuple(
+            Guard.value_type(name, Scalar("index"))
+            for name in ("a", "b", "c", "result")
+        ),
+        emit=(
+            EmitDescriptorOp(
+                descriptor=multiply,
+                operands={
+                    "left_v8": ValueRef.operand("a"),
+                    "right_v8": ValueRef.operand("b"),
+                },
+                results={"destination_v8": ValueRef.temporary("product")},
+                result_types={"destination_v8": Scalar("index")},
+            ),
+            EmitDescriptorOp(
+                descriptor=add,
+                operands={
+                    "left_v8": ValueRef.temporary("product"),
+                    "right_v8": ValueRef.operand("c"),
+                },
+                results={"destination_v8": ValueRef.result("result")},
+            ),
+        ),
+    )
 
 
 VM_CORE_CONTRACT_FRAGMENT = ContractFragment(
@@ -323,6 +490,7 @@ VM_CORE_CONTRACT_FRAGMENT = ContractFragment(
     cases=tuple(_constant_cases())
     + tuple(_selected_cases())
     + tuple(_conversion_cases())
+    + tuple(_address_cases())
     + select_descriptor_rules(
         (
             SelectDescriptorCase(

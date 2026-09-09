@@ -82,6 +82,8 @@ loom_check_test_suite(
     "test/scalar.loom-test"
     "test/source_low/numeric_float_arithmetic.loom-test"
     "test/source_low/numeric_float_selectors.loom-test"
+    "test/source_low/numeric_index.loom-test"
+    "test/source_low/numeric_index_conversion.loom-test"
     "test/source_low/numeric_integer_division.loom-test"
     "test/source_low/numeric_integer_order_bits.loom-test"
     "test/source_low/numeric_integer_unary.loom-test"
@@ -91,6 +93,8 @@ loom_check_test_suite(
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_float_arithmetic.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_float_selectors.loom-test"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_index.loom-test"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_index_conversion.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_integer_division.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_integer_order_bits.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_integer_unary.loom-test"

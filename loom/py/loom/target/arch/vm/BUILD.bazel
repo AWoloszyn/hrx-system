@@ -40,6 +40,7 @@ iree_py_library(
     srcs = ["contracts.py"],
     deps = [
         ":descriptors",
+        "//loom/py/loom/dialect/index",
         "//loom/py/loom/dialect/scalar",
         "//loom/py/loom/dialect/scf",
         "//loom/py/loom/target/contracts",

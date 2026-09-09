@@ -27,6 +27,7 @@ from iree.vm.bytecode.spec.specification import SPECIFICATION
 from loom.ir import ScalarTypeKind
 from loom.target.arch.vm.contracts import VM_CORE_CONTRACT_FRAGMENT
 from loom.target.arch.vm.descriptors import VM_CORE_DESCRIPTOR_SET
+from loom.target.contracts import DescriptorRule
 from loom.target.low_descriptors import (
     DescriptorFlag,
     DescriptorOpKind,
@@ -133,21 +134,24 @@ def test_scalar_effects_preserve_observable_failures():
 
 def test_lowering_uses_the_projected_descriptors():
     descriptors = VM_CORE_DESCRIPTOR_SET.descriptors
-    cases = VM_CORE_CONTRACT_FRAGMENT.cases
-    assert {id(case.descriptor) for case in cases} == {
+    cases = (
+        case
+        for case in VM_CORE_CONTRACT_FRAGMENT.cases
+        if isinstance(case, DescriptorRule)
+    )
+    emissions = tuple(emit for case in cases for emit in case.emit)
+    assert {id(emit.descriptor) for emit in emissions} == {
         id(descriptor) for descriptor in descriptors
     }
-    for case in cases:
-        emit = case.emit[0]
-        assert emit.descriptor is case.descriptor
+    for emit in emissions:
         assert set(emit.operands) == {
             operand.field_name
-            for operand in case.descriptor.operands
+            for operand in emit.descriptor.operands
             if operand.role is OperandRole.OPERAND
         }
         assert set(emit.results) == {
             operand.field_name
-            for operand in case.descriptor.operands
+            for operand in emit.descriptor.operands
             if operand.role is OperandRole.RESULT
         }
 

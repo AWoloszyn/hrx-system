@@ -19,6 +19,7 @@ loom_target_contract_table_cc_libraries(
     generator = "//loom/py/loom/gen/target/contracts:vm_contract_table_family",
     lower_rule_deps = [
         "//loom/src/loom/codegen/low/lower",
+        "//loom/src/loom/ops/index",
         "//loom/src/loom/ops/scalar",
         "//loom/src/loom/ops/scf",
         "//loom/src/loom/target/arch/vm/descriptors:descriptors_ids",

@@ -17,8 +17,17 @@ static iree_status_t loom_vm_map_type(void* user_data,
                                       loom_type_t source_type,
                                       loom_type_t* out_low_type) {
   (void)user_data;
+  // Both address domains use the target's 64-bit value carrier. Signedness is
+  // expressed by the selected operations, not a distinct physical register.
+  if (loom_type_is_scalar(source_type) &&
+      (loom_type_element_type(source_type) == LOOM_SCALAR_TYPE_INDEX ||
+       loom_type_element_type(source_type) == LOOM_SCALAR_TYPE_OFFSET)) {
+    source_type = loom_type_scalar(LOOM_SCALAR_TYPE_I64);
+  }
   if (loom_type_is_scalar(source_type) &&
       (loom_type_element_type(source_type) == LOOM_SCALAR_TYPE_I1 ||
+       loom_type_element_type(source_type) == LOOM_SCALAR_TYPE_I8 ||
+       loom_type_element_type(source_type) == LOOM_SCALAR_TYPE_I16 ||
        loom_type_element_type(source_type) == LOOM_SCALAR_TYPE_I32 ||
        loom_type_element_type(source_type) == LOOM_SCALAR_TYPE_I64 ||
        loom_type_element_type(source_type) == LOOM_SCALAR_TYPE_F32 ||

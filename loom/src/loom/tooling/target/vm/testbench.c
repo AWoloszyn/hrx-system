@@ -200,6 +200,9 @@ static iree_status_t loom_vm_testbench_invoke(
       &invocation->module->symbols.entries[invocation->callee_ref.symbol_id];
   const loom_func_like_t function =
       loom_func_like_const_cast(invocation->module, symbol->defining_op);
+  uint16_t parameter_count = 0;
+  const loom_value_id_t* parameter_ids =
+      loom_func_like_arg_ids(function, &parameter_count);
   const loom_string_id_t export_name = loom_func_like_export_symbol(function);
   iree_vm_function_t callee = iree_vm_function_null();
   IREE_RETURN_IF_ERROR(iree_vm_process_lookup_function(
@@ -211,13 +214,23 @@ static iree_status_t loom_vm_testbench_invoke(
   iree_vm_variant_t arguments[IREE_VM_CALL_DIRECT_REGISTER_COUNT] = {0};
   iree_vm_variant_t results[IREE_VM_CALL_DIRECT_REGISTER_COUNT] = {0};
   iree_status_t status = iree_ok_status();
-  for (iree_host_size_t i = 0; i < input_count && iree_status_is_ok(status);
+  for (iree_host_size_t i = 0; i < parameter_count && iree_status_is_ok(status);
        ++i) {
     if (inputs[i].kind != LOOM_TESTBENCH_VALUE_KIND_SCALAR) {
       status = iree_make_status(IREE_STATUS_UNIMPLEMENTED,
                                 "VM test input requires scalar marshalling");
     } else if (inputs[i].scalar.kind == IREE_TOOLING_VALUE_KIND_I32) {
-      arguments[i] = iree_vm_variant_from_i32(inputs[i].scalar.storage.i32);
+      const loom_scalar_type_t scalar_type = loom_type_element_type(
+          loom_module_value_type(invocation->module, parameter_ids[i]));
+      if (scalar_type == LOOM_SCALAR_TYPE_I8) {
+        arguments[i] =
+            iree_vm_variant_from_i8((int8_t)inputs[i].scalar.storage.i32);
+      } else if (scalar_type == LOOM_SCALAR_TYPE_I16) {
+        arguments[i] =
+            iree_vm_variant_from_i16((int16_t)inputs[i].scalar.storage.i32);
+      } else {
+        arguments[i] = iree_vm_variant_from_i32(inputs[i].scalar.storage.i32);
+      }
     } else if (inputs[i].scalar.kind == IREE_TOOLING_VALUE_KIND_I64) {
       arguments[i] = iree_vm_variant_from_i64(inputs[i].scalar.storage.i64);
     } else if (inputs[i].scalar.kind == IREE_TOOLING_VALUE_KIND_F32) {
@@ -240,6 +253,20 @@ static iree_status_t loom_vm_testbench_invoke(
        ++i) {
     out_results[i].kind = LOOM_TESTBENCH_VALUE_KIND_SCALAR;
     switch (iree_vm_variant_scalar_type(results[i])) {
+      case IREE_VM_SCALAR_TYPE_I8: {
+        int8_t value = 0;
+        status = iree_vm_i8_from_variant(results[i], &value);
+        out_results[i].scalar.kind = IREE_TOOLING_VALUE_KIND_I32;
+        out_results[i].scalar.storage.i32 = value;
+        break;
+      }
+      case IREE_VM_SCALAR_TYPE_I16: {
+        int16_t value = 0;
+        status = iree_vm_i16_from_variant(results[i], &value);
+        out_results[i].scalar.kind = IREE_TOOLING_VALUE_KIND_I32;
+        out_results[i].scalar.storage.i32 = value;
+        break;
+      }
       case IREE_VM_SCALAR_TYPE_I32:
         out_results[i].scalar.kind = IREE_TOOLING_VALUE_KIND_I32;
         status = iree_vm_i32_from_variant(results[i],
