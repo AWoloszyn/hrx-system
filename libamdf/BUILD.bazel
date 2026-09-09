@@ -36,7 +36,7 @@ amdf_library(
     ],
     components = ["//libamdf/src/provider"],
     runtime_data = select({
-        "//libamdf/config/provider:gpu": [
+        "//libamdf/config/provider:wddm": [
             "//libamdf/src/gpu/umd/wddm/wkmi:runtime",
         ],
         "//conditions:default": [],

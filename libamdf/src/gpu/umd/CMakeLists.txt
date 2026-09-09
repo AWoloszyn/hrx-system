@@ -62,7 +62,13 @@ iree_cc_library(
 )
 endif()
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+set(_umd_platform_deps "")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  list(APPEND _umd_platform_deps libamdf::src::gpu::umd::kfd)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+  list(APPEND _umd_platform_deps libamdf::src::gpu::umd::wddm)
+endif()
 iree_cc_library(
   NAME
     umd
@@ -72,7 +78,7 @@ iree_cc_library(
     ::kernel_queue
     ::memory
     amdf::headers
-    libamdf::src::gpu::umd::wddm
+    ${_umd_platform_deps}
   PUBLIC
 )
 endif()

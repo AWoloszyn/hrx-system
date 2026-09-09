@@ -17,6 +17,10 @@
 // Materializes the first qualified GPU endpoint and one native device.
 class GpuDeviceFixture : public ::testing::Test {
  protected:
+  virtual amdf_gpu_device_mode_t GetDeviceMode() const {
+    return AMDF_GPU_DEVICE_MODE_INDEPENDENT;
+  }
+
   void SetUp() override {
     ASSERT_TRUE(amdf_status_is_ok(amdf_cts_provider_query_api()(
         AMDF_ABI_VERSION_1, AMDF_ABI_VERSION_LATEST, &api_)));
@@ -59,14 +63,23 @@ class GpuDeviceFixture : public ::testing::Test {
       GTEST_SKIP() << "no qualified GPU endpoint present";
     }
 
+    amdf_gpu_device_capabilities_t capabilities = {};
+    capabilities.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_CAPABILITIES;
+    capabilities.structure_size = sizeof(capabilities);
+    status = gpu_api_->endpoint_query_device_capabilities(
+        endpoint_, GetDeviceMode(), &capabilities);
+    if (amdf_status_domain(status) == AMDF_STATUS_DOMAIN_API &&
+        amdf_status_code(status) == AMDF_STATUS_CODE_UNSUPPORTED) {
+      GTEST_SKIP() << "requested GPU device mode is unavailable";
+    }
+    ASSERT_EQ(status, AMDF_STATUS_OK);
+    features_ = capabilities.features;
+
     amdf_gpu_device_create_info_t device_create_info = {};
     device_create_info.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_CREATE_INFO;
     device_create_info.structure_size = sizeof(device_create_info);
+    device_create_info.mode = GetDeviceMode();
     status = gpu_api_->device_create(endpoint_, &device_create_info, &device_);
-    if (amdf_status_domain(status) == AMDF_STATUS_DOMAIN_API &&
-        amdf_status_code(status) == AMDF_STATUS_CODE_UNSUPPORTED) {
-      GTEST_SKIP() << "GPU device materialization is unavailable";
-    }
     ASSERT_TRUE(amdf_status_is_ok(status))
         << "domain=" << amdf_status_domain(status)
         << " code=" << amdf_status_code(status);
@@ -84,11 +97,18 @@ class GpuDeviceFixture : public ::testing::Test {
     }
   }
 
+  // Core table borrowed from the CTS provider.
   const amdf_api_t* api_ = nullptr;
+  // GPU table borrowed from the CTS provider.
   const amdf_gpu_api_t* gpu_api_ = nullptr;
+  // Instance owning the endpoint.
   amdf_instance_t* instance_ = nullptr;
+  // Query endpoint borrowed by the device.
   amdf_endpoint_t* endpoint_ = nullptr;
+  // Native device retained until all test children have been released.
   amdf_device_t* device_ = nullptr;
+  // Cached capabilities of the explicitly selected mode.
+  amdf_gpu_device_features_t features_ = 0;
 };
 
 #endif  // AMDF_CTS_GPU_GPU_DEVICE_FIXTURE_H_

@@ -12,6 +12,102 @@ iree_add_all_subdirs()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
 iree_cc_library(
   NAME
+    file
+  HDRS
+    "file.h"
+  DEPS
+    amdf::headers
+    libamdf::src::platform::linux::file
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_library(
+  NAME
+    topology
+  HDRS
+    "topology.h"
+  SRCS
+    "topology.c"
+  DEPS
+    amdf::headers
+    libamdf::src::gpu::endpoint_profile
+    libamdf::src::platform
+    libamdf::src::platform::linux::endpoint
+    libamdf::src::platform::linux::file
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_library(
+  NAME
+    device_state
+  HDRS
+    "device.h"
+  DEPS
+    ::topology
+    amdf::headers
+    libamdf::src::gpu::umd::device
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_library(
+  NAME
+    device
+  SRCS
+    "device.c"
+  DEPS
+    ::device_state
+    ::file
+    ::topology
+    amdf::headers
+    libamdf::src::platform::linux::endpoint
+    libamdf::src::platform::linux::file
+    libamdf::src::platform::linux::host_cache
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_library(
+  NAME
+    memory
+  SRCS
+    "memory.c"
+  DEPS
+    ::device_state
+    ::topology
+    amdf::headers
+    libamdf::src::gpu::umd::memory
+    libamdf::src::platform::linux::file
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_library(
+  NAME
+    endpoint_profile
+  SRCS
+    "endpoint_profile.c"
+  DEPS
+    ::file
+    ::topology
+    amdf::headers
+    libamdf::src::gpu::endpoint_profile
+    libamdf::src::gpu::umd::endpoint_profile
+    libamdf::src::platform::linux::file
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_library(
+  NAME
     kernel_queue
   SRCS
     "kernel_queue.c"
@@ -27,7 +123,10 @@ iree_cc_library(
   NAME
     kfd
   DEPS
+    ::device
+    ::endpoint_profile
     ::kernel_queue
+    ::memory
     amdf::headers
   PUBLIC
 )

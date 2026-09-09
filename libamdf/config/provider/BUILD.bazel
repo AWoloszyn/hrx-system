@@ -14,9 +14,33 @@ config_setting(
 )
 
 selects.config_setting_group(
-    name = "gpu",
+    name = "wddm",
     match_all = [
         ":windows",
+        "//libamdf/config/family:gpu",
+    ],
+)
+
+config_setting(
+    name = "linux_x86_64",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+)
+
+selects.config_setting_group(
+    name = "gpu_platform",
+    match_any = [
+        ":windows",
+        ":linux_x86_64",
+    ],
+)
+
+selects.config_setting_group(
+    name = "gpu",
+    match_all = [
+        ":gpu_platform",
         "//libamdf/config/family:gpu",
     ],
 )

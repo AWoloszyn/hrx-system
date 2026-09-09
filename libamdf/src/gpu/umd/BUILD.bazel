@@ -47,13 +47,20 @@ amdf_cc_library(
 
 amdf_cc_library(
     name = "umd",
-    target_compatible_with = ["@platforms//os:windows"],
+    target_compatible_with = ["@platforms//cpu:x86_64"] + select({
+        "@platforms//os:linux": [],
+        "@platforms//os:windows": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     visibility = ["//libamdf/src/gpu:__pkg__"],
     deps = [
         ":device",
         ":endpoint_profile",
         ":kernel_queue",
         ":memory",
-        "//libamdf/src/gpu/umd/wddm",
-    ],
+    ] + select({
+        "@platforms//os:linux": ["//libamdf/src/gpu/umd/kfd"],
+        "@platforms//os:windows": ["//libamdf/src/gpu/umd/wddm"],
+        "//conditions:default": [],
+    }),
 )

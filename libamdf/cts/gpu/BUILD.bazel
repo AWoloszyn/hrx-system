@@ -14,26 +14,74 @@ package(
 )
 
 amdf_cc_library(
-    name = "gpu_tests",
+    name = "gpu_device_fixture",
+    testonly = True,
+    hdrs = ["gpu_device_fixture.h"],
+    deps = [
+        "//libamdf/cts/util:provider_headers",
+        "//third_party:google_test",
+    ],
+)
+
+amdf_cc_library(
+    name = "linux_tests",
+    testonly = True,
+    srcs = ["memory_linux_test.cc"],
+    target_compatible_with = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+    deps = [
+        ":gpu_device_fixture",
+        "//third_party:google_test",
+    ],
+    alwayslink = True,
+)
+
+amdf_cc_library(
+    name = "windows_tests",
     testonly = True,
     srcs = [
-        "gpu_device_fixture.h",
-        "gpu_extension_test.cc",
         "kernel_queue_test.cc",
         "memory_interop_test.cc",
         "windows/memory_test.cc",
     ],
     target_compatible_with = ["@platforms//os:windows"],
     deps = [
-        "//libamdf/cts/util:provider_headers",
+        ":gpu_device_fixture",
         "//third_party:google_test",
     ],
+    alwayslink = True,
+)
+
+amdf_cc_library(
+    name = "gpu_tests",
+    testonly = True,
+    srcs = ["gpu_extension_test.cc"],
+    target_compatible_with = ["@platforms//cpu:x86_64"] + select({
+        "@platforms//os:linux": [],
+        "@platforms//os:windows": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [
+        "//libamdf/cts/util:provider_headers",
+        "//third_party:google_test",
+    ] + select({
+        "@platforms//os:linux": [":linux_tests"],
+        "@platforms//os:windows": [":windows_tests"],
+        "//conditions:default": [],
+    }),
     alwayslink = True,
 )
 
 amdf_cts_test_suite(
     name = "gpu",
     suites = [":gpu_tests"],
-    target_compatible_with = ["@platforms//os:windows"],
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//cpu:x86_64"] + select({
+        "@platforms//os:linux": [],
+        "@platforms//os:windows": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     visibility = ["//visibility:public"],
 )

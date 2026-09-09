@@ -78,7 +78,11 @@ amdf_cc_library(
 
 amdf_cc_library(
     name = "gpu",
-    target_compatible_with = ["@platforms//os:windows"],
+    target_compatible_with = ["@platforms//cpu:x86_64"] + select({
+        "@platforms//os:linux": [],
+        "@platforms//os:windows": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     visibility = ["//libamdf/src/provider:__pkg__"],
     deps = [
         ":extension",

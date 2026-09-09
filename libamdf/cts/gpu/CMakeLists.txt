@@ -9,20 +9,31 @@
 
 iree_add_all_subdirs()
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+if(AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
 iree_cc_library(
   NAME
-    gpu_tests
-  SRCS
+    gpu_device_fixture
+  HDRS
     "gpu_device_fixture.h"
-    "gpu_extension_test.cc"
-    "kernel_queue_test.cc"
-    "memory_interop_test.cc"
-    "windows/memory_test.cc"
   DEPS
     amdf::headers
     iree::third_party::google_test
     libamdf::cts::util::provider_headers
+  TESTONLY
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_library(
+  NAME
+    linux_tests
+  SRCS
+    "memory_linux_test.cc"
+  DEPS
+    ::gpu_device_fixture
+    amdf::headers
+    iree::third_party::google_test
   TESTONLY
   ALWAYSLINK
   PUBLIC
@@ -30,6 +41,47 @@ iree_cc_library(
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_library(
+  NAME
+    windows_tests
+  SRCS
+    "kernel_queue_test.cc"
+    "memory_interop_test.cc"
+    "windows/memory_test.cc"
+  DEPS
+    ::gpu_device_fixture
+    amdf::headers
+    iree::third_party::google_test
+  TESTONLY
+  ALWAYSLINK
+  PUBLIC
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+set(_gpu_tests_platform_deps "")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  list(APPEND _gpu_tests_platform_deps ::linux_tests)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+  list(APPEND _gpu_tests_platform_deps ::windows_tests)
+endif()
+iree_cc_library(
+  NAME
+    gpu_tests
+  SRCS
+    "gpu_extension_test.cc"
+  DEPS
+    amdf::headers
+    iree::third_party::google_test
+    libamdf::cts::util::provider_headers
+    ${_gpu_tests_platform_deps}
+  TESTONLY
+  ALWAYSLINK
+  PUBLIC
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
 amdf_cts_test(
   NAME
     static
@@ -43,12 +95,13 @@ amdf_cts_test(
     iree::third_party::google_test
     libamdf::cts::util::provider_headers
   LABELS
+    "manual"
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.gpu"
 )
 endif()
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
 amdf_cts_test(
   NAME
     shared
@@ -64,12 +117,13 @@ amdf_cts_test(
     iree::third_party::google_test
     libamdf::cts::util::provider_headers
   LABELS
+    "manual"
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.gpu"
 )
 endif()
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
 amdf_cts_test(
   NAME
     dynamic
@@ -86,6 +140,7 @@ amdf_cts_test(
   ARGS
     "--amdf_library=$<TARGET_FILE:amdf::amdf>"
   LABELS
+    "manual"
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.gpu"
 )

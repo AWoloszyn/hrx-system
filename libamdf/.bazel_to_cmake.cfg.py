@@ -16,7 +16,8 @@ _AMDF_CONFIG_CMAKE_OPTIONS = {
     "//libamdf/config/family:gpu": "AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA",
     "//libamdf/config/family:rdna": "AMDF_FAMILY_RDNA",
     "//libamdf/config/family:xdna": "AMDF_FAMILY_XDNA",
-    "//libamdf/config/provider:gpu": '(AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND CMAKE_SYSTEM_NAME STREQUAL "Windows"',
+    "//libamdf/config/provider:gpu": '(AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Windows" OR (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64"))',
+    "//libamdf/config/provider:wddm": '(AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND CMAKE_SYSTEM_NAME STREQUAL "Windows"',
 }
 
 

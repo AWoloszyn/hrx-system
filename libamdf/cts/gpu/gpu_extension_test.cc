@@ -154,6 +154,14 @@ class GpuEndpointTest : public ::testing::Test {
     return AMDF_STATUS_OK;
   }
 
+  amdf_status_t QueryIndependentMode() {
+    amdf_gpu_device_capabilities_t capabilities = {};
+    capabilities.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_CAPABILITIES;
+    capabilities.structure_size = sizeof(capabilities);
+    return gpu_api_->endpoint_query_device_capabilities(
+        endpoint_, AMDF_GPU_DEVICE_MODE_INDEPENDENT, &capabilities);
+  }
+
   amdf_gpu_device_create_info_t MakeDeviceCreateInfo() {
     amdf_gpu_device_create_info_t create_info = {};
     create_info.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_CREATE_INFO;
@@ -337,13 +345,15 @@ TEST_F(GpuEndpointTest, MaterializesProgramIndependentDevice) {
     GTEST_SKIP() << "no GPU endpoint present";
   }
 
+  const amdf_status_t mode_status = QueryIndependentMode();
+  if (mode_status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
+    GTEST_SKIP() << "independent GPU devices are unavailable";
+  }
+  ASSERT_EQ(mode_status, AMDF_STATUS_OK);
+
   const amdf_gpu_device_create_info_t create_info = MakeDeviceCreateInfo();
   const amdf_status_t create_status =
       gpu_api_->device_create(endpoint_, &create_info, &device_);
-  if (amdf_status_domain(create_status) == AMDF_STATUS_DOMAIN_API &&
-      amdf_status_code(create_status) == AMDF_STATUS_CODE_UNSUPPORTED) {
-    GTEST_SKIP() << "GPU device materialization is unavailable";
-  }
   ASSERT_TRUE(amdf_status_is_ok(create_status))
       << "domain=" << amdf_status_domain(create_status)
       << " code=" << amdf_status_code(create_status);
@@ -383,6 +393,12 @@ TEST_F(GpuEndpointTest, RejectsMalformedDeviceInfoWithoutMutation) {
   if (!engine_found) {
     GTEST_SKIP() << "no GPU endpoint present";
   }
+  const amdf_status_t mode_status = QueryIndependentMode();
+  if (mode_status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
+    GTEST_SKIP() << "independent GPU devices are unavailable";
+  }
+  ASSERT_EQ(mode_status, AMDF_STATUS_OK);
+
   const amdf_gpu_device_create_info_t create_info = MakeDeviceCreateInfo();
   ASSERT_TRUE(amdf_status_is_ok(
       gpu_api_->device_create(endpoint_, &create_info, &device_)));
@@ -414,6 +430,12 @@ TEST_F(GpuEndpointTest, CreatesIndependentDevicesFromOneEndpoint) {
   if (!engine_found) {
     GTEST_SKIP() << "no GPU endpoint present";
   }
+  const amdf_status_t mode_status = QueryIndependentMode();
+  if (mode_status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
+    GTEST_SKIP() << "independent GPU devices are unavailable";
+  }
+  ASSERT_EQ(mode_status, AMDF_STATUS_OK);
+
   const amdf_gpu_device_create_info_t create_info = MakeDeviceCreateInfo();
   ASSERT_TRUE(amdf_status_is_ok(
       gpu_api_->device_create(endpoint_, &create_info, &device_)));
