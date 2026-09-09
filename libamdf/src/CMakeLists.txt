@@ -183,6 +183,32 @@ iree_cc_library(
 endif()
 
 if(AMDF_BUILD)
+set(_memory_test_platform_deps "")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  list(APPEND _memory_test_platform_deps libamdf::src::platform::linux)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+  list(APPEND _memory_test_platform_deps libamdf::src::platform::windows)
+endif()
+iree_cc_test(
+  NAME
+    memory_test
+  SRCS
+    "memory_test.cc"
+  DEPS
+    ::allocator
+    ::child_tracker
+    ::device
+    ::memory
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+    ${_memory_test_platform_deps}
+  LABELS
+    "iree-build-requirement=libamdf"
+)
+endif()
+
+if(AMDF_BUILD)
 iree_cc_library(
   NAME
     host_mapping

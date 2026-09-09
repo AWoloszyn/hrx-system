@@ -48,7 +48,9 @@ static amdf_status_t amdf_xdna_device_destroy_native(
 }
 
 static const amdf_device_vtable_t amdf_xdna_device_vtable = {
+    .query_memory_profile = amdf_xdna_device_query_memory_profile,
     .memory_create = amdf_xdna_memory_create,
+    .memory_import = amdf_xdna_memory_import,
     .destroy_native = amdf_xdna_device_destroy_native,
 };
 

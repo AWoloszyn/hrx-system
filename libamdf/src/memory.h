@@ -15,7 +15,17 @@ extern "C" {
 #endif  // __cplusplus
 
 typedef struct amdf_memory_vtable_t {
-  // Creates one explicit host mapping.
+  // Exports one logical range as a complete owned transport value. Failure
+  // releases every partial resource and leaves the result storage empty.
+  amdf_status_t (*export_external)(amdf_memory_t* memory,
+                                   const amdf_memory_export_info_t* export_info,
+                                   amdf_external_memory_t* out_value);
+  // Copies exact directional facts into caller-private result storage.
+  amdf_status_t (*query_pair_info)(const amdf_memory_site_t* producer_site,
+                                   const amdf_memory_site_t* consumer_site,
+                                   amdf_memory_pair_info_t* out_info);
+  // Creates one explicit host mapping. Failure releases every partial resource;
+  // success returns one complete mapping.
   amdf_status_t (*map)(amdf_memory_t* memory,
                        const amdf_memory_map_info_t* map_info,
                        amdf_host_mapping_t** out_mapping);
@@ -58,9 +68,32 @@ amdf_status_t AMDF_CALL amdf_memory_create(
     amdf_device_t* device, const amdf_memory_create_info_t* create_info,
     amdf_memory_t** out_memory);
 
+// Copies one immutable memory profile supported by `device`.
+amdf_status_t AMDF_CALL amdf_device_query_memory_profile(
+    amdf_device_t* device, uint32_t memory_profile_ordinal,
+    amdf_memory_profile_t* out_profile);
+
+// Imports external memory as a ready attachment to `device`.
+amdf_status_t AMDF_CALL amdf_memory_import(
+    amdf_device_t* device, const amdf_memory_import_info_t* import_info,
+    amdf_external_memory_t* inout_external_memory, amdf_memory_t** out_memory);
+
 // Copies immutable memory properties.
 amdf_status_t AMDF_CALL amdf_memory_query_info(amdf_memory_t* memory,
                                                amdf_memory_info_t* out_info);
+
+// Exports one logical range as a move-owned external value.
+amdf_status_t AMDF_CALL amdf_memory_export(
+    amdf_memory_t* memory, const amdf_memory_export_info_t* export_info,
+    amdf_external_memory_t* out_value);
+
+// Releases and zeros one move-owned external value.
+void AMDF_CALL amdf_external_memory_release(amdf_external_memory_t* value);
+
+// Copies exact directional facts for two concrete attachment sites.
+amdf_status_t AMDF_CALL amdf_memory_query_pair_info(
+    const amdf_memory_site_t* producer_site,
+    const amdf_memory_site_t* consumer_site, amdf_memory_pair_info_t* out_info);
 
 // Creates an explicit host mapping of one memory range.
 amdf_status_t AMDF_CALL amdf_memory_map(amdf_memory_t* memory,

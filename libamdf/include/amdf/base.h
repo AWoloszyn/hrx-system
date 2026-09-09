@@ -146,6 +146,16 @@ enum amdf_structure_type_e {
   AMDF_STRUCTURE_TYPE_KERNEL_QUEUE_INFO = 8,
   /// An `amdf_kernel_queue_status_t` output structure.
   AMDF_STRUCTURE_TYPE_KERNEL_QUEUE_STATUS = 9,
+  /// An `amdf_memory_profile_t` output structure.
+  AMDF_STRUCTURE_TYPE_MEMORY_PROFILE = 10,
+  /// An `amdf_memory_import_info_t` input structure.
+  AMDF_STRUCTURE_TYPE_MEMORY_IMPORT_INFO = 11,
+  /// An `amdf_memory_export_info_t` input structure.
+  AMDF_STRUCTURE_TYPE_MEMORY_EXPORT_INFO = 12,
+  /// An `amdf_memory_site_t` input structure.
+  AMDF_STRUCTURE_TYPE_MEMORY_SITE = 13,
+  /// An `amdf_memory_pair_info_t` output structure.
+  AMDF_STRUCTURE_TYPE_MEMORY_PAIR_INFO = 14,
 };
 
 /// Identifier of an optional API table compiled into the providing library.

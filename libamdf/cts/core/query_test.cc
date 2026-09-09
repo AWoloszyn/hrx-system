@@ -18,6 +18,15 @@ static_assert(offsetof(amdf_instance_create_info_t, host_allocator) ==
               sizeof(amdf_input_structure_t));
 static_assert(sizeof(amdf_instance_create_info_t) ==
               sizeof(amdf_input_structure_t) + sizeof(amdf_allocator_t));
+static_assert(sizeof(amdf_external_memory_t) == 80);
+static_assert(offsetof(amdf_external_memory_t, source_byte_offset) == 32);
+static_assert(offsetof(amdf_external_memory_t, release) == 64);
+static_assert(sizeof(amdf_memory_profile_t) == 312);
+static_assert(offsetof(amdf_memory_profile_t, external_memory_support) == 72);
+static_assert(sizeof(amdf_memory_import_info_t) == 40);
+static_assert(sizeof(amdf_memory_export_info_t) == 40);
+static_assert(sizeof(amdf_memory_site_t) == 32);
+static_assert(sizeof(amdf_memory_pair_info_t) == 128);
 static_assert(offsetof(amdf_endpoint_info_t, queue_family_count) ==
               offsetof(amdf_endpoint_info_t, name) +
                   AMDF_ENDPOINT_NAME_CAPACITY);
@@ -59,8 +68,13 @@ TEST(QueryApiTest, NegotiatesSupportedVersion) {
   EXPECT_NE(api->query_extension, nullptr);
   EXPECT_NE(api->endpoint_query_queue_family_info, nullptr);
   EXPECT_NE(api->device_destroy, nullptr);
+  EXPECT_NE(api->device_query_memory_profile, nullptr);
   EXPECT_NE(api->memory_create, nullptr);
+  EXPECT_NE(api->memory_import, nullptr);
   EXPECT_NE(api->memory_query_info, nullptr);
+  EXPECT_NE(api->memory_export, nullptr);
+  EXPECT_NE(api->external_memory_release, nullptr);
+  EXPECT_NE(api->memory_query_pair_info, nullptr);
   EXPECT_NE(api->memory_map, nullptr);
   EXPECT_NE(api->host_mapping_query_info, nullptr);
   EXPECT_NE(api->host_mapping_cache_control, nullptr);

@@ -34,6 +34,25 @@ _Static_assert(offsetof(amdf_xdna_memory_t, base) == 0,
 _Static_assert(offsetof(amdf_xdna_host_mapping_t, base) == 0,
                "XDNA mapping base must be the first field");
 
+static amdf_status_t amdf_xdna_memory_export(
+    amdf_memory_t* base_memory, const amdf_memory_export_info_t* export_info,
+    amdf_external_memory_t* out_value) {
+  (void)base_memory;
+  (void)export_info;
+  (void)out_value;
+  return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+}
+
+static amdf_status_t amdf_xdna_memory_query_pair_info(
+    const amdf_memory_site_t* producer_site,
+    const amdf_memory_site_t* consumer_site,
+    amdf_memory_pair_info_t* out_info) {
+  (void)producer_site;
+  (void)consumer_site;
+  (void)out_info;
+  return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+}
+
 static amdf_status_t amdf_xdna_host_mapping_cache_control(
     amdf_host_mapping_t* base_mapping, amdf_host_cache_operation_t operation,
     uint64_t byte_offset, uint64_t byte_length) {
@@ -106,9 +125,20 @@ static amdf_status_t amdf_xdna_memory_destroy_native(
 }
 
 static const amdf_memory_vtable_t amdf_xdna_memory_vtable = {
+    .export_external = amdf_xdna_memory_export,
+    .query_pair_info = amdf_xdna_memory_query_pair_info,
     .map = amdf_xdna_memory_map,
     .destroy_native = amdf_xdna_memory_destroy_native,
 };
+
+amdf_status_t amdf_xdna_device_query_memory_profile(
+    amdf_device_t* device, uint32_t memory_profile_ordinal,
+    amdf_memory_profile_t* out_profile) {
+  (void)device;
+  (void)memory_profile_ordinal;
+  (void)out_profile;
+  return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+}
 
 amdf_status_t amdf_xdna_memory_create(
     amdf_device_t* device, const amdf_memory_create_info_t* create_info,
@@ -130,8 +160,11 @@ amdf_status_t amdf_xdna_memory_create(
   if (amdf_status_is_ok(status)) {
     memory->base.info.type = AMDF_STRUCTURE_TYPE_MEMORY_INFO;
     memory->base.info.structure_size = sizeof(memory->base.info);
+    memory->base.info.memory_profile_ordinal =
+        AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN;
     memory->base.info.memory_class = result.memory_class;
     memory->base.info.flags = result.flags;
+    memory->base.info.source_byte_offset = 0;
     memory->base.info.byte_length = result.byte_length;
     memory->base.info.alignment = result.alignment;
     memory->base.info.physical_backing_id = result.physical_backing_id;
@@ -145,4 +178,14 @@ amdf_status_t amdf_xdna_memory_create(
     amdf_free(host_allocator, memory);
   }
   return status;
+}
+
+amdf_status_t amdf_xdna_memory_import(
+    amdf_device_t* device, const amdf_memory_import_info_t* import_info,
+    const amdf_external_memory_t* external_memory, amdf_memory_t** out_memory) {
+  (void)device;
+  (void)import_info;
+  (void)external_memory;
+  (void)out_memory;
+  return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
 }

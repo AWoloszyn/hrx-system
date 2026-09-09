@@ -15,9 +15,21 @@ extern "C" {
 #endif  // __cplusplus
 
 typedef struct amdf_device_vtable_t {
-  // Creates physical memory attached to this device, or NULL when unsupported.
+  // Copies one immutable memory profile into caller-private result storage.
+  amdf_status_t (*query_memory_profile)(amdf_device_t* device,
+                                        uint32_t memory_profile_ordinal,
+                                        amdf_memory_profile_t* out_profile);
+  // Creates physical memory attached to this device. Failure releases every
+  // partial resource; success returns one complete attachment.
   amdf_status_t (*memory_create)(amdf_device_t* device,
                                  const amdf_memory_create_info_t* create_info,
+                                 amdf_memory_t** out_memory);
+  // Imports external memory as a ready attachment to this device. Success owns
+  // the input release obligation by either invoking or adopting its callback;
+  // failure invokes no callback and releases every partial native resource.
+  amdf_status_t (*memory_import)(amdf_device_t* device,
+                                 const amdf_memory_import_info_t* import_info,
+                                 const amdf_external_memory_t* external_memory,
                                  amdf_memory_t** out_memory);
   // Releases the exact native state owned by a device implementation.
   amdf_status_t (*destroy_native)(amdf_device_t* device);

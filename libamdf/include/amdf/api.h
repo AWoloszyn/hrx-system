@@ -122,6 +122,17 @@ typedef struct amdf_api_t {
   /// so destruction can be retried.
   amdf_status_t(AMDF_CALL* device_destroy)(amdf_device_t* device);
 
+  /// Copies one immutable memory profile supported by `device`.
+  ///
+  /// Profiles are fixed for the device lifetime. The operation is thread-safe
+  /// and performs no allocation, native query, mapping mutation, retry, sleep,
+  /// or device wait. An unavailable ordinal returns
+  /// `AMDF_STATUS_CODE_OUT_OF_RANGE`. The caller initializes `out_profile` and
+  /// its complete extension chain. Failure leaves it byte-for-byte unchanged.
+  amdf_status_t(AMDF_CALL* device_query_memory_profile)(
+      amdf_device_t* device, uint32_t memory_profile_ordinal,
+      amdf_memory_profile_t* out_profile);
+
   /// Creates physical backing and one stable attachment to `device`.
   ///
   /// The returned memory borrows `device`, which must outlive it. Every bit in
@@ -139,6 +150,19 @@ typedef struct amdf_api_t {
       amdf_device_t* device, const amdf_memory_create_info_t* create_info,
       amdf_memory_t** out_memory);
 
+  /// Attaches one move-owned external-memory value to `device`.
+  ///
+  /// The returned attachment borrows `device` and is completely mapped and
+  /// ready for every achieved ordinary use. On success, the implementation has
+  /// acquired or adopted the payload lifetime, zeros `inout_external_memory`,
+  /// and publishes `out_memory`. Every failure leaves both caller values
+  /// byte-for-byte unchanged and requires no cleanup of a partial attachment.
+  /// This operation performs no queue submission or device-wide wait.
+  amdf_status_t(AMDF_CALL* memory_import)(
+      amdf_device_t* device, const amdf_memory_import_info_t* import_info,
+      amdf_external_memory_t* inout_external_memory,
+      amdf_memory_t** out_memory);
+
   /// Copies immutable properties cached when `memory` was created.
   ///
   /// The operation is thread-safe and performs no system call, allocation,
@@ -147,6 +171,39 @@ typedef struct amdf_api_t {
   /// validation fails.
   amdf_status_t(AMDF_CALL* memory_query_info)(amdf_memory_t* memory,
                                               amdf_memory_info_t* out_info);
+
+  /// Exports one logical range as a move-owned external-memory value.
+  ///
+  /// Success publishes a complete value whose payload remains valid until it
+  /// is imported or explicitly released. The caller obtains a separate export
+  /// for every independent import transaction. Export performs no queue wait,
+  /// cache transition, or implicit synchronization. Failure leaves `out_value`
+  /// byte-for-byte unchanged.
+  amdf_status_t(AMDF_CALL* memory_export)(
+      amdf_memory_t* memory, const amdf_memory_export_info_t* export_info,
+      amdf_external_memory_t* out_value);
+
+  /// Releases one move-owned external-memory value and zeros it.
+  ///
+  /// An empty value and a null pointer are no-ops. A nonempty value invokes its
+  /// release callback exactly once when one is present. The caller must have
+  /// exclusive access to the value.
+  void(AMDF_CALL* external_memory_release)(amdf_external_memory_t* value);
+
+  /// Copies the exact directional relation between two concrete attachments.
+  ///
+  /// The producer and consumer sites name exact queue families. Defined
+  /// engine-specific execution-site extensions may refine those sites. Known
+  /// unequal physical identities return
+  /// `AMDF_STATUS_CODE_FAILED_PRECONDITION`. Equal addresses or equal physical
+  /// identities do not imply reach, visibility, or atomics; only qualified
+  /// provider facts are returned. The operation performs no native query,
+  /// import, mapping, cache transition, synchronization, or wait. Failure
+  /// leaves `out_info` byte-for-byte unchanged.
+  amdf_status_t(AMDF_CALL* memory_query_pair_info)(
+      const amdf_memory_site_t* producer_site,
+      const amdf_memory_site_t* consumer_site,
+      amdf_memory_pair_info_t* out_info);
 
   /// Creates an explicit host mapping of one memory range.
   ///

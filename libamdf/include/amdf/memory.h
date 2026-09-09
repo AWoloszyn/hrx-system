@@ -45,6 +45,189 @@ enum amdf_memory_flag_bits_e {
   AMDF_MEMORY_FLAG_DEVICE_ADDRESS = UINT64_C(1) << 6,
 };
 
+/// Native representation carried by one external-memory value.
+typedef uint32_t amdf_external_memory_type_t;
+enum amdf_external_memory_type_e {
+  /// No payload. The all-zero external-memory value has this type.
+  AMDF_EXTERNAL_MEMORY_TYPE_NONE = 0,
+  /// Linux DMA-BUF file descriptor.
+  AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD = 1,
+  /// File descriptor accepted only by a provider with matching provenance.
+  AMDF_EXTERNAL_MEMORY_TYPE_OPAQUE_FD = 2,
+  /// Windows NT handle.
+  AMDF_EXTERNAL_MEMORY_TYPE_NT_HANDLE = 3,
+  /// Host virtual address with a caller-defined lifetime lease.
+  AMDF_EXTERNAL_MEMORY_TYPE_HOST_POINTER = 4,
+  /// Device virtual address with a caller-defined lifetime lease.
+  AMDF_EXTERNAL_MEMORY_TYPE_DEVICE_ADDRESS = 5,
+};
+
+/// Number of external-memory types defined by ABI version 1.
+#define AMDF_EXTERNAL_MEMORY_TYPE_COUNT 5u
+
+/// Opaque identity of the exact native interpretation of a transport payload.
+///
+/// Portable self-describing transports use an all-zero identity. Opaque file
+/// descriptors and raw device addresses require a matching nonzero identity in
+/// the importing memory profile. The value is meaningful only while its
+/// provider instance remains live and is never a native handle.
+typedef struct amdf_external_memory_provenance_t {
+  /// Provider-defined identity words.
+  uint64_t words[2];
+} amdf_external_memory_provenance_t;
+
+/// Returns true when an external-memory provenance identity is available.
+static inline bool amdf_external_memory_provenance_is_valid(
+    const amdf_external_memory_provenance_t* provenance) {
+  return (provenance->words[0] | provenance->words[1]) != 0;
+}
+
+/// Returns true when two transport provenance identities contain one value.
+static inline bool amdf_external_memory_provenance_is_equal(
+    const amdf_external_memory_provenance_t* lhs,
+    const amdf_external_memory_provenance_t* rhs) {
+  return lhs->words[0] == rhs->words[0] && lhs->words[1] == rhs->words[1];
+}
+
+/// Payload of one typed external-memory value.
+typedef union amdf_external_memory_payload_t {
+  /// Nonnegative DMA-BUF or opaque file descriptor.
+  int64_t file_descriptor;
+  /// Windows NT handle.
+  void* native_handle;
+  /// First host byte of the exported backing.
+  void* host_pointer;
+  /// First device byte of the exported backing.
+  uint64_t device_address;
+} amdf_external_memory_payload_t;
+
+/// Infallibly releases one external-memory payload.
+///
+/// The callback must be thread-safe and must not throw or unwind across the C
+/// ABI. It receives the exact type and payload copied into the external value.
+typedef void(AMDF_CALL* amdf_external_memory_release_fn_t)(
+    void* user_data, amdf_external_memory_type_t type,
+    amdf_external_memory_payload_t payload);
+
+/// Move-owned transport for one logical range of physical memory.
+///
+/// The all-zero value is empty. A nonempty value with a null `release` callback
+/// borrows its payload; the caller keeps the native owner live through import
+/// or explicit release. Copying a nonempty value does not duplicate ownership.
+typedef struct amdf_external_memory_t {
+  /// Native payload representation.
+  amdf_external_memory_type_t type;
+  /// Reserved for future use and always zero.
+  uint32_t reserved;
+  /// Typed native payload.
+  amdf_external_memory_payload_t payload;
+  /// Exact payload interpretation, or all-zero for portable transports.
+  amdf_external_memory_provenance_t provenance;
+  /// Byte offset of logical byte zero in the exported physical backing.
+  uint64_t source_byte_offset;
+  /// Nonzero logical byte length represented by this value.
+  uint64_t byte_length;
+  /// Physical identity established by the exporter, when available.
+  amdf_physical_memory_id_t physical_backing_id;
+  /// Optional infallible payload release callback.
+  amdf_external_memory_release_fn_t release;
+  /// Opaque value passed to `release`.
+  void* release_user_data;
+} amdf_external_memory_t;
+
+/// Operations supported by one memory profile.
+typedef uint64_t amdf_memory_profile_roles_t;
+enum amdf_memory_profile_role_bits_e {
+  /// Creates provider-owned physical backing.
+  AMDF_MEMORY_PROFILE_ROLE_CREATE = UINT64_C(1) << 0,
+  /// Registers caller-owned host pages.
+  AMDF_MEMORY_PROFILE_ROLE_REGISTER = UINT64_C(1) << 1,
+  /// Imports typed external memory.
+  AMDF_MEMORY_PROFILE_ROLE_IMPORT = UINT64_C(1) << 2,
+  /// Exports typed external memory.
+  AMDF_MEMORY_PROFILE_ROLE_EXPORT = UINT64_C(1) << 3,
+  /// Creates explicit host mappings.
+  AMDF_MEMORY_PROFILE_ROLE_HOST_MAP = UINT64_C(1) << 4,
+  /// Supplies physical backing to a virtual-memory mapping operation.
+  AMDF_MEMORY_PROFILE_ROLE_MAPPING_SOURCE = UINT64_C(1) << 5,
+  /// Owns virtual-address reservations and mapping operations.
+  AMDF_MEMORY_PROFILE_ROLE_MAPPING_TARGET = UINT64_C(1) << 6,
+};
+
+/// Capabilities of one external-memory type in a memory profile.
+typedef uint32_t amdf_external_memory_support_flags_t;
+enum amdf_external_memory_support_flag_bits_e {
+  /// Values of this type can be imported through this profile.
+  AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_IMPORT = 1u << 0,
+  /// Attachments using this profile can export values of this type.
+  AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_EXPORT = 1u << 1,
+  /// Nonzero logical source offsets are supported.
+  AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_SOURCE_OFFSET = 1u << 2,
+  /// Values of this type may cross a process boundary.
+  AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_CROSS_PROCESS = 1u << 3,
+  /// Values created by a foreign API provider may be imported.
+  AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_FOREIGN_API = 1u << 4,
+};
+
+/// Type-specific import and export limits within one memory profile.
+typedef struct amdf_external_memory_support_t {
+  /// External-memory representation described by this entry.
+  amdf_external_memory_type_t type;
+  /// Supported import, export, offset, and provenance capabilities.
+  amdf_external_memory_support_flags_t flags;
+  /// Required payload provenance, or all-zero for portable transports.
+  amdf_external_memory_provenance_t provenance;
+  /// Required source-offset alignment, or zero when offsets must be zero.
+  uint64_t source_offset_alignment;
+  /// Required logical byte-length alignment.
+  uint64_t byte_length_alignment;
+  /// Maximum logical byte length, or zero to use the profile maximum.
+  uint64_t maximum_byte_length;
+} amdf_external_memory_support_t;
+
+/// Maximum external-memory support entries in an ABI version 1 profile.
+#define AMDF_MEMORY_PROFILE_EXTERNAL_SUPPORT_CAPACITY \
+  AMDF_EXTERNAL_MEMORY_TYPE_COUNT
+
+/// Indicates that an attachment has no queryable memory-profile ordinal.
+#define AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN UINT32_MAX
+
+/// Immutable construction and transport capabilities of one memory profile.
+///
+/// A profile is one valid physical placement and operation combination, not a
+/// set of independently composable feature bits. Callers derive a valid
+/// construction request from one profile and require only flags included in
+/// `supported_flags`.
+typedef struct amdf_memory_profile_t {
+  /// Must be `AMDF_STRUCTURE_TYPE_MEMORY_PROFILE`.
+  amdf_structure_type_t type;
+  /// Must be at least `sizeof(amdf_memory_profile_t)`.
+  uint32_t structure_size;
+  /// Optional output extension chain. No extensions are currently defined.
+  void* next;
+  /// Dense ordinal accepted by memory construction operations.
+  uint32_t ordinal;
+  /// Physical placement class produced by this profile.
+  amdf_memory_class_t memory_class;
+  /// Creation, registration, transport, mapping, and address roles.
+  amdf_memory_profile_roles_t roles;
+  /// Properties present on every attachment created with this profile.
+  amdf_memory_flags_t guaranteed_flags;
+  /// Properties which callers may require from this profile.
+  amdf_memory_flags_t supported_flags;
+  /// Maximum logical attachment length in bytes, or zero when unavailable.
+  uint64_t maximum_byte_length;
+  /// Minimum power-of-two allocation and device-address alignment.
+  uint64_t minimum_alignment;
+  /// Number of valid entries in `external_memory_support`.
+  uint32_t external_memory_support_count;
+  /// Reserved for future use and always zero.
+  uint32_t reserved;
+  /// Type-specific external-memory support records.
+  amdf_external_memory_support_t
+      external_memory_support[AMDF_MEMORY_PROFILE_EXTERNAL_SUPPORT_CAPACITY];
+} amdf_memory_profile_t;
+
 /// Parameters used to create physical backing and attach it to one device.
 typedef struct amdf_memory_create_info_t {
   /// Must be `AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO`.
@@ -76,14 +259,19 @@ typedef struct amdf_memory_info_t {
   uint32_t structure_size;
   /// Optional output extension chain. No extensions are currently defined.
   void* next;
+  /// Achieved profile ordinal, or `AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN` when
+  /// the provider exposes no profile for this attachment path.
+  uint32_t memory_profile_ordinal;
   /// Achieved physical placement class.
   amdf_memory_class_t memory_class;
   /// Achieved attachment properties.
   amdf_memory_flags_t flags;
-  /// Physical allocation length in bytes.
+  /// Byte offset of logical byte zero in the physical backing.
+  uint64_t source_byte_offset;
+  /// Logical attachment length in bytes.
   uint64_t byte_length;
-  /// Guaranteed power-of-two allocation-base alignment in every supported
-  /// address space.
+  /// Guaranteed power-of-two logical-base alignment in every supported address
+  /// space.
   uint64_t alignment;
   /// Identity shared by attachments to the same physical backing, when known.
   amdf_physical_memory_id_t physical_backing_id;
@@ -92,6 +280,43 @@ typedef struct amdf_memory_info_t {
   /// Device reset epoch in which the attachment and address remain valid.
   uint64_t reset_epoch;
 } amdf_memory_info_t;
+
+/// Parameters used to attach typed external memory to one device.
+typedef struct amdf_memory_import_info_t {
+  /// Must be `AMDF_STRUCTURE_TYPE_MEMORY_IMPORT_INFO`.
+  amdf_structure_type_t type;
+  /// Must be at least `sizeof(amdf_memory_import_info_t)`.
+  uint32_t structure_size;
+  /// Optional input extension chain. No extensions are currently defined.
+  const void* next;
+  /// Memory profile selected for the destination attachment.
+  uint32_t memory_profile_ordinal;
+  /// Reserved for future use and always zero.
+  uint32_t reserved;
+  /// Required properties that must all be achieved.
+  amdf_memory_flags_t required_flags;
+  /// Minimum power-of-two destination device-address alignment, or zero for
+  /// profile policy.
+  uint64_t minimum_alignment;
+} amdf_memory_import_info_t;
+
+/// Parameters used to export one logical memory range.
+typedef struct amdf_memory_export_info_t {
+  /// Must be `AMDF_STRUCTURE_TYPE_MEMORY_EXPORT_INFO`.
+  amdf_structure_type_t type;
+  /// Must be at least `sizeof(amdf_memory_export_info_t)`.
+  uint32_t structure_size;
+  /// Optional input extension chain. No extensions are currently defined.
+  const void* next;
+  /// Required external-memory representation.
+  amdf_external_memory_type_t external_memory_type;
+  /// Reserved for future use and always zero.
+  uint32_t reserved;
+  /// Byte offset within the logical attachment.
+  uint64_t byte_offset;
+  /// Nonzero logical byte length to export.
+  uint64_t byte_length;
+} amdf_memory_export_info_t;
 
 /// Host access requested for one explicit mapping.
 typedef uint32_t amdf_memory_map_flags_t;
@@ -110,7 +335,7 @@ typedef struct amdf_memory_map_info_t {
   uint32_t structure_size;
   /// Optional input extension chain. No extensions are currently defined.
   const void* next;
-  /// Byte offset into the physical allocation.
+  /// Byte offset within the logical attachment.
   uint64_t byte_offset;
   /// Nonzero byte length of the mapped range.
   uint64_t byte_length;
@@ -158,11 +383,198 @@ typedef struct amdf_host_mapping_info_t {
 /// Direction of one explicit host cache ownership transition.
 typedef uint32_t amdf_host_cache_operation_t;
 enum amdf_host_cache_operation_e {
+  /// No host cache operation.
+  AMDF_HOST_CACHE_OPERATION_NONE = 0,
   /// Releases prior host writes for subsequent device reads.
   AMDF_HOST_CACHE_OPERATION_FLUSH = 1,
   /// Acquires prior device writes for subsequent host reads.
   AMDF_HOST_CACHE_OPERATION_INVALIDATE = 2,
 };
+
+/// Public semantic cache-operation identifier interpreted by an exact engine.
+typedef uint32_t amdf_cache_operation_t;
+
+/// No engine-specific cache operation.
+#define AMDF_CACHE_OPERATION_NONE ((amdf_cache_operation_t)0)
+
+/// Granularity of one directional cache transition.
+typedef uint32_t amdf_cache_transition_kind_t;
+enum amdf_cache_transition_kind_e {
+  /// No qualified transition is available.
+  AMDF_CACHE_TRANSITION_KIND_UNKNOWN = 0,
+  /// Producer and consumer accesses are mutually coherent.
+  AMDF_CACHE_TRANSITION_KIND_COHERENT = 1,
+  /// The transition applies to an explicit byte range.
+  AMDF_CACHE_TRANSITION_KIND_RANGE = 2,
+  /// The transition applies to the complete native cache domain.
+  AMDF_CACHE_TRANSITION_KIND_GLOBAL = 3,
+};
+
+/// Execution site responsible for one cache transition.
+typedef uint32_t amdf_cache_transition_executor_t;
+enum amdf_cache_transition_executor_e {
+  /// No executor is available or required.
+  AMDF_CACHE_TRANSITION_EXECUTOR_NONE = 0,
+  /// The transition is encoded for an exact queue family.
+  AMDF_CACHE_TRANSITION_EXECUTOR_QUEUE = 1,
+  /// The transition is encoded in an engine program.
+  AMDF_CACHE_TRANSITION_EXECUTOR_PROGRAM = 2,
+  /// The host executes the reported instruction and fence directly.
+  AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT = 3,
+  /// A provider host API performs the transition.
+  AMDF_CACHE_TRANSITION_EXECUTOR_HOST_API = 4,
+};
+
+/// Public host instruction used by a direct cache transition.
+typedef uint32_t amdf_host_cache_instruction_t;
+enum amdf_host_cache_instruction_e {
+  /// No host cache instruction.
+  AMDF_HOST_CACHE_INSTRUCTION_NONE = 0,
+  /// The x86 CLFLUSH instruction.
+  AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH = 1,
+  /// The x86 CLFLUSHOPT instruction.
+  AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSHOPT = 2,
+  /// The x86 CLWB instruction.
+  AMDF_HOST_CACHE_INSTRUCTION_X86_CLWB = 3,
+};
+
+/// Public host fence completing a direct cache transition.
+typedef uint32_t amdf_host_cache_fence_t;
+enum amdf_host_cache_fence_e {
+  /// No host fence.
+  AMDF_HOST_CACHE_FENCE_NONE = 0,
+  /// The x86 SFENCE instruction.
+  AMDF_HOST_CACHE_FENCE_X86_SFENCE = 1,
+  /// The x86 MFENCE instruction.
+  AMDF_HOST_CACHE_FENCE_X86_MFENCE = 2,
+};
+
+/// Exact operation required for one directional visibility transition.
+typedef struct amdf_cache_transition_t {
+  /// Coherent, ranged, global, or unavailable transition kind.
+  amdf_cache_transition_kind_t kind;
+  /// Queue, program, direct-host, host-API, or no-op executor.
+  amdf_cache_transition_executor_t executor;
+  /// Engine-specific public semantic operation identifier.
+  amdf_cache_operation_t operation;
+  /// Host flush or invalidate operation for a host executor.
+  amdf_host_cache_operation_t host_operation;
+  /// Direct host instruction, or `AMDF_HOST_CACHE_INSTRUCTION_NONE`.
+  amdf_host_cache_instruction_t host_instruction;
+  /// Host fence required after the final direct instruction.
+  amdf_host_cache_fence_t host_fence;
+  /// Smallest independently transitionable range, or zero when not ranged.
+  uint64_t range_granularity;
+} amdf_cache_transition_t;
+
+/// Integer atomic operations supported across one directional memory pair.
+typedef uint64_t amdf_atomic_operations_t;
+enum amdf_atomic_operation_bits_e {
+  /// Atomic load.
+  AMDF_ATOMIC_OPERATION_LOAD = UINT64_C(1) << 0,
+  /// Atomic store.
+  AMDF_ATOMIC_OPERATION_STORE = UINT64_C(1) << 1,
+  /// Atomic exchange.
+  AMDF_ATOMIC_OPERATION_EXCHANGE = UINT64_C(1) << 2,
+  /// Atomic compare and exchange.
+  AMDF_ATOMIC_OPERATION_COMPARE_EXCHANGE = UINT64_C(1) << 3,
+  /// Atomic addition.
+  AMDF_ATOMIC_OPERATION_ADD = UINT64_C(1) << 4,
+  /// Atomic subtraction.
+  AMDF_ATOMIC_OPERATION_SUBTRACT = UINT64_C(1) << 5,
+  /// Atomic signed minimum.
+  AMDF_ATOMIC_OPERATION_SIGNED_MINIMUM = UINT64_C(1) << 6,
+  /// Atomic unsigned minimum.
+  AMDF_ATOMIC_OPERATION_UNSIGNED_MINIMUM = UINT64_C(1) << 7,
+  /// Atomic signed maximum.
+  AMDF_ATOMIC_OPERATION_SIGNED_MAXIMUM = UINT64_C(1) << 8,
+  /// Atomic unsigned maximum.
+  AMDF_ATOMIC_OPERATION_UNSIGNED_MAXIMUM = UINT64_C(1) << 9,
+  /// Atomic bitwise AND.
+  AMDF_ATOMIC_OPERATION_AND = UINT64_C(1) << 10,
+  /// Atomic bitwise OR.
+  AMDF_ATOMIC_OPERATION_OR = UINT64_C(1) << 11,
+  /// Atomic bitwise XOR.
+  AMDF_ATOMIC_OPERATION_XOR = UINT64_C(1) << 12,
+  /// Atomic bounded increment.
+  AMDF_ATOMIC_OPERATION_INCREMENT = UINT64_C(1) << 13,
+  /// Atomic bounded decrement.
+  AMDF_ATOMIC_OPERATION_DECREMENT = UINT64_C(1) << 14,
+};
+
+/// Largest domain over which reported atomic operations are mutually atomic.
+typedef uint32_t amdf_atomic_scope_t;
+enum amdf_atomic_scope_e {
+  /// No qualified atomic scope.
+  AMDF_ATOMIC_SCOPE_NONE = 0,
+  /// One device address domain.
+  AMDF_ATOMIC_SCOPE_DEVICE = 1,
+  /// One correlated device fabric.
+  AMDF_ATOMIC_SCOPE_FABRIC = 2,
+  /// Host and every reported device participant.
+  AMDF_ATOMIC_SCOPE_SYSTEM = 3,
+};
+
+/// Exact aligned atomic operations supported by one memory pair.
+typedef struct amdf_atomic_info_t {
+  /// Operations supported on aligned 32-bit words.
+  amdf_atomic_operations_t operations_32;
+  /// Operations supported on aligned 64-bit words.
+  amdf_atomic_operations_t operations_64;
+  /// Minimum address alignment for 32-bit operations, or zero when absent.
+  uint32_t minimum_alignment_32;
+  /// Minimum address alignment for 64-bit operations, or zero when absent.
+  uint32_t minimum_alignment_64;
+  /// Largest mutually atomic scope.
+  amdf_atomic_scope_t scope;
+  /// Reserved for future use and always zero.
+  uint32_t reserved;
+} amdf_atomic_info_t;
+
+/// One concrete attachment and exact execution family in a pair query.
+typedef struct amdf_memory_site_t {
+  /// Must be `AMDF_STRUCTURE_TYPE_MEMORY_SITE`.
+  amdf_structure_type_t type;
+  /// Must be at least `sizeof(amdf_memory_site_t)`.
+  uint32_t structure_size;
+  /// Optional input extension chain. No extensions are currently defined.
+  const void* next;
+  /// Borrowed concrete memory attachment.
+  amdf_memory_t* memory;
+  /// Exact queue family used for memory access and cache transitions.
+  uint32_t queue_family_ordinal;
+  /// Reserved for future use and always zero.
+  uint32_t reserved;
+} amdf_memory_site_t;
+
+/// Directional capabilities of one concrete shared-backing memory pair.
+typedef uint64_t amdf_memory_pair_flags_t;
+enum amdf_memory_pair_flag_bits_e {
+  /// The consumer execution site can directly reach the shared backing.
+  AMDF_MEMORY_PAIR_FLAG_SHARED_BACKING_REACHABLE = UINT64_C(1) << 0,
+  /// The producer attachment can source consumer virtual-memory mappings.
+  AMDF_MEMORY_PAIR_FLAG_MAPPING_SOURCE = UINT64_C(1) << 1,
+};
+
+/// Exact directional relation from one producer attachment to one consumer.
+typedef struct amdf_memory_pair_info_t {
+  /// Must be `AMDF_STRUCTURE_TYPE_MEMORY_PAIR_INFO`.
+  amdf_structure_type_t type;
+  /// Must be at least `sizeof(amdf_memory_pair_info_t)`.
+  uint32_t structure_size;
+  /// Optional output extension chain. No extensions are currently defined.
+  void* next;
+  /// Direct reach and mapping-source capabilities.
+  amdf_memory_pair_flags_t flags;
+  /// Visibility operation performed after producer writes.
+  amdf_cache_transition_t release;
+  /// Visibility operation performed before consumer reads.
+  amdf_cache_transition_t acquire;
+  /// Integer atomic operations shared by the two execution sites.
+  amdf_atomic_info_t atomics;
+  /// Informational fixed transition cost in nanoseconds, or zero when unknown.
+  uint64_t estimated_fixed_cost_nanoseconds;
+} amdf_memory_pair_info_t;
 
 #ifdef __cplusplus
 }  // extern "C"

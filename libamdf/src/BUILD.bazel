@@ -121,6 +121,23 @@ amdf_cc_library(
     ],
 )
 
+amdf_cc_test(
+    name = "memory_test",
+    srcs = ["memory_test.cc"],
+    deps = [
+        ":allocator",
+        ":child_tracker",
+        ":device",
+        ":memory",
+        "//third_party:google_test",
+        "//third_party:google_test_main",
+    ] + select({
+        "@platforms//os:linux": ["//libamdf/src/platform/linux"],
+        "@platforms//os:windows": ["//libamdf/src/platform/windows"],
+        "//conditions:default": [],
+    }),
+)
+
 amdf_cc_library(
     name = "host_mapping",
     srcs = ["host_mapping.c"],

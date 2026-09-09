@@ -28,11 +28,12 @@ static_assert(offsetof(amdf_memory_create_info_t, memory_class) ==
 static_assert(offsetof(amdf_memory_create_info_t, required_flags) == 24);
 static_assert(offsetof(amdf_memory_create_info_t, byte_length) == 32);
 static_assert(sizeof(amdf_memory_create_info_t) == 56);
-static_assert(offsetof(amdf_memory_info_t, memory_class) ==
+static_assert(offsetof(amdf_memory_info_t, memory_profile_ordinal) ==
               sizeof(amdf_output_structure_t));
-static_assert(offsetof(amdf_memory_info_t, physical_backing_id) == 48);
-static_assert(offsetof(amdf_memory_info_t, device_address) == 64);
-static_assert(sizeof(amdf_memory_info_t) == 80);
+static_assert(offsetof(amdf_memory_info_t, memory_class) == 20);
+static_assert(offsetof(amdf_memory_info_t, physical_backing_id) == 56);
+static_assert(offsetof(amdf_memory_info_t, device_address) == 72);
+static_assert(sizeof(amdf_memory_info_t) == 88);
 
 class GpuMemoryTest : public GpuDeviceFixture {
  protected:
