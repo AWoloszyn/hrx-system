@@ -40,16 +40,6 @@ typedef struct amdf_windows_xdna_private_allocation_wire_t {
 _Static_assert(sizeof(amdf_windows_xdna_private_allocation_wire_t) == 56,
                "XDNA private allocation record must match the installed ABI");
 
-static bool amdf_windows_xdna_private_allocation_descriptors_equal(
-    const amdf_windows_xdna_private_allocation_descriptor_t* lhs,
-    const amdf_windows_xdna_private_allocation_descriptor_t* rhs) {
-  return lhs->requested_byte_length == rhs->requested_byte_length &&
-         lhs->allocation_byte_length == rhs->allocation_byte_length &&
-         lhs->type == rhs->type && lhs->policy == rhs->policy &&
-         lhs->xcl_flags == rhs->xcl_flags && lhs->selector == rhs->selector &&
-         lhs->flags == rhs->flags;
-}
-
 static amdf_status_t amdf_windows_xdna_private_allocation_wait_for_paging(
     amdf_windows_xdna_private_allocation_t* allocation) {
   return amdf_kmt_wait_for_paging(
@@ -126,26 +116,19 @@ static amdf_status_t amdf_windows_xdna_private_allocation_make_resident(
   return status;
 }
 
-amdf_status_t amdf_windows_xdna_private_allocation_create(
+void amdf_windows_xdna_private_allocation_initialize(
     amdf_xdna_umd_device_t* device,
     const amdf_windows_xdna_private_allocation_descriptor_t* descriptor,
-    amdf_windows_xdna_private_allocation_t* out_allocation) {
-  if (device == NULL || descriptor == NULL || out_allocation == NULL ||
-      descriptor->requested_byte_length == 0 ||
-      descriptor->allocation_byte_length == 0 ||
-      descriptor->requested_byte_length > descriptor->allocation_byte_length ||
-      descriptor->allocation_byte_length % AMDF_WINDOWS_KMT_PAGE_SIZE != 0) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  }
-  if (out_allocation->device == NULL) {
-    memset(out_allocation, 0, sizeof(*out_allocation));
-    out_allocation->device = device;
-    out_allocation->descriptor = *descriptor;
-  } else if (out_allocation->device != device ||
-             !amdf_windows_xdna_private_allocation_descriptors_equal(
-                 &out_allocation->descriptor, descriptor)) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  }
+    amdf_windows_xdna_private_allocation_t* allocation) {
+  memset(allocation, 0, sizeof(*allocation));
+  allocation->device = device;
+  allocation->descriptor = *descriptor;
+}
+
+amdf_status_t amdf_windows_xdna_private_allocation_realize(
+    amdf_windows_xdna_private_allocation_t* allocation) {
+  const amdf_windows_xdna_private_allocation_descriptor_t* descriptor =
+      &allocation->descriptor;
 
   amdf_windows_xdna_private_allocation_wire_t private_data = {0};
   private_data.requested_byte_length = descriptor->requested_byte_length;
@@ -156,12 +139,12 @@ amdf_status_t amdf_windows_xdna_private_allocation_create(
   private_data.xcl_flags = descriptor->xcl_flags;
 
   amdf_status_t status = AMDF_STATUS_OK;
-  if (out_allocation->construction_phase == 0) {
+  if (allocation->realization_phase == 0) {
     D3DDDI_ALLOCATIONINFO2 allocation_info = {0};
     allocation_info.pPrivateDriverData = &private_data;
     allocation_info.PrivateDriverDataSize = sizeof(private_data);
     D3DKMT_CREATEALLOCATION create = {0};
-    create.hDevice = device->device;
+    create.hDevice = allocation->device->device;
     create.NumAllocations = 1;
     create.pAllocationInfo2 = &allocation_info;
     if ((descriptor->flags &
@@ -169,43 +152,44 @@ amdf_status_t amdf_windows_xdna_private_allocation_create(
       create.Flags.CreateResource = 1;
       create.Flags.CreateShared = 1;
     }
-    status = amdf_kmt_make_status(device->kmt->create_allocation(&create));
+    status = amdf_kmt_make_status(
+        allocation->device->kmt->create_allocation(&create));
     if (amdf_status_is_ok(status)) {
-      out_allocation->resource = create.hResource;
-      out_allocation->allocation = allocation_info.hAllocation;
-      out_allocation->construction_phase = 1;
-      if (out_allocation->allocation == 0) {
+      allocation->resource = create.hResource;
+      allocation->allocation = allocation_info.hAllocation;
+      allocation->realization_phase = 1;
+      if (allocation->allocation == 0) {
         status = amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
       }
     }
   }
-  if (amdf_status_is_ok(status) && out_allocation->construction_phase != 0 &&
-      out_allocation->allocation == 0) {
+  if (amdf_status_is_ok(status) && allocation->realization_phase != 0 &&
+      allocation->allocation == 0) {
     status = amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
   }
   if (amdf_status_is_ok(status) &&
       (descriptor->flags &
        AMDF_WINDOWS_XDNA_PRIVATE_ALLOCATION_FLAG_DEVICE_ADDRESS) != 0 &&
-      out_allocation->construction_phase == 1) {
-    status = amdf_windows_xdna_private_allocation_map(out_allocation);
+      allocation->realization_phase == 1) {
+    status = amdf_windows_xdna_private_allocation_map(allocation);
     if (amdf_status_is_ok(status)) {
-      out_allocation->construction_phase = 2;
+      allocation->realization_phase = 2;
     }
   }
   if (amdf_status_is_ok(status) &&
       (descriptor->flags &
        AMDF_WINDOWS_XDNA_PRIVATE_ALLOCATION_FLAG_DEVICE_ADDRESS) != 0 &&
-      out_allocation->construction_phase == 2) {
-    status = amdf_windows_xdna_private_allocation_make_resident(out_allocation);
+      allocation->realization_phase == 2) {
+    status = amdf_windows_xdna_private_allocation_make_resident(allocation);
     if (amdf_status_is_ok(status)) {
-      out_allocation->construction_phase = 3;
+      allocation->realization_phase = 3;
     }
   }
   if (amdf_status_is_ok(status) &&
       (descriptor->flags &
        AMDF_WINDOWS_XDNA_PRIVATE_ALLOCATION_FLAG_DEVICE_ADDRESS) == 0 &&
-      out_allocation->construction_phase == 1) {
-    out_allocation->construction_phase = 3;
+      allocation->realization_phase == 1) {
+    allocation->realization_phase = 3;
   }
   return status;
 }
@@ -302,7 +286,7 @@ amdf_status_t amdf_windows_xdna_private_allocation_destroy(
   }
   allocation->device_address = 0;
   memset(&allocation->descriptor, 0, sizeof(allocation->descriptor));
-  allocation->construction_phase = 0;
+  allocation->realization_phase = 0;
   allocation->device = NULL;
   return AMDF_STATUS_OK;
 }

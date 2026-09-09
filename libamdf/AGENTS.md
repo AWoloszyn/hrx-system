@@ -33,6 +33,11 @@ Runtime-only consumers outside `libamdf/` retain their own subsystem prefix.
   success is guaranteed. Failure leaves caller output storage unchanged and
   creates no cleanup obligation. A non-success result publishes data only when
   the API explicitly defines that result-bearing protocol.
+- Names expose retained state. `create` and fallible `initialize` operations
+  are transactional. Operations that may retain native progress after failure
+  act on an already-live owner, use a state-transition verb such as `attach`,
+  `prepare`, `realize`, or `bootstrap`, and document the retry and teardown
+  obligation without naming live state as an `out_*` parameter.
 - GPU, XDNA, and platform implementation packages remain dependency-isolated.
   Common code may not acquire a device-family dependency by convenience.
 - Extension entry points and shared family code are UMD-agnostic. They operate

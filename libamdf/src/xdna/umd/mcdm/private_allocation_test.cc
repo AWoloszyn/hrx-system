@@ -165,7 +165,7 @@ class WindowsXdnaPrivateAllocationTest : public ::testing::Test {
 };
 
 TEST_F(WindowsXdnaPrivateAllocationTest,
-       CreatesMapsPublishesAndReleasesPrivateAllocation) {
+       RealizesMapsPublishesAndReleasesPrivateAllocation) {
   const amdf_windows_xdna_private_allocation_descriptor_t descriptor = {
       .requested_byte_length = 4200,
       .allocation_byte_length = 8192,
@@ -176,8 +176,15 @@ TEST_F(WindowsXdnaPrivateAllocationTest,
       .flags = AMDF_WINDOWS_XDNA_PRIVATE_ALLOCATION_FLAG_DEVICE_ADDRESS,
   };
   amdf_windows_xdna_private_allocation_t allocation = {};
-  ASSERT_TRUE(amdf_status_is_ok(amdf_windows_xdna_private_allocation_create(
-      &device_, &descriptor, &allocation)));
+  amdf_windows_xdna_private_allocation_initialize(&device_, &descriptor,
+                                                  &allocation);
+  EXPECT_TRUE(state_.operations.empty());
+  EXPECT_EQ(allocation.device, &device_);
+  EXPECT_EQ(allocation.descriptor.requested_byte_length,
+            descriptor.requested_byte_length);
+  EXPECT_EQ(allocation.realization_phase, 0u);
+  ASSERT_TRUE(amdf_status_is_ok(
+      amdf_windows_xdna_private_allocation_realize(&allocation)));
 
   EXPECT_EQ(state_.operations,
             (std::vector<Operation>{Operation::kCreate, Operation::kMap,
@@ -212,7 +219,7 @@ TEST_F(WindowsXdnaPrivateAllocationTest,
 }
 
 TEST_F(WindowsXdnaPrivateAllocationTest,
-       CreatesSharedHostLockedAllocationWithoutDeviceMapping) {
+       RealizesSharedHostLockedAllocationWithoutDeviceMapping) {
   const amdf_windows_xdna_private_allocation_descriptor_t descriptor = {
       .requested_byte_length = 4096,
       .allocation_byte_length = 4096,
@@ -220,8 +227,10 @@ TEST_F(WindowsXdnaPrivateAllocationTest,
       .flags = AMDF_WINDOWS_XDNA_PRIVATE_ALLOCATION_FLAG_SHARED_RESOURCE,
   };
   amdf_windows_xdna_private_allocation_t allocation = {};
-  ASSERT_TRUE(amdf_status_is_ok(amdf_windows_xdna_private_allocation_create(
-      &device_, &descriptor, &allocation)));
+  amdf_windows_xdna_private_allocation_initialize(&device_, &descriptor,
+                                                  &allocation);
+  ASSERT_TRUE(amdf_status_is_ok(
+      amdf_windows_xdna_private_allocation_realize(&allocation)));
   EXPECT_EQ(state_.operations, (std::vector<Operation>{Operation::kCreate}));
   EXPECT_EQ(allocation.resource, 0x21u);
   EXPECT_EQ(allocation.device_address, 0u);
@@ -243,14 +252,16 @@ TEST_F(WindowsXdnaPrivateAllocationTest,
       .flags = AMDF_WINDOWS_XDNA_PRIVATE_ALLOCATION_FLAG_DEVICE_ADDRESS,
   };
   amdf_windows_xdna_private_allocation_t allocation = {};
-  EXPECT_FALSE(amdf_status_is_ok(amdf_windows_xdna_private_allocation_create(
-      &device_, &descriptor, &allocation)));
+  amdf_windows_xdna_private_allocation_initialize(&device_, &descriptor,
+                                                  &allocation);
+  EXPECT_FALSE(amdf_status_is_ok(
+      amdf_windows_xdna_private_allocation_realize(&allocation)));
   EXPECT_EQ(state_.operations,
             (std::vector<Operation>{Operation::kCreate, Operation::kMap,
                                     Operation::kWait}));
 
-  ASSERT_TRUE(amdf_status_is_ok(amdf_windows_xdna_private_allocation_create(
-      &device_, &descriptor, &allocation)));
+  ASSERT_TRUE(amdf_status_is_ok(
+      amdf_windows_xdna_private_allocation_realize(&allocation)));
   EXPECT_EQ(state_.operations,
             (std::vector<Operation>{Operation::kCreate, Operation::kMap,
                                     Operation::kWait, Operation::kWait,
@@ -272,15 +283,17 @@ TEST_F(WindowsXdnaPrivateAllocationTest,
       .flags = AMDF_WINDOWS_XDNA_PRIVATE_ALLOCATION_FLAG_DEVICE_ADDRESS,
   };
   amdf_windows_xdna_private_allocation_t allocation = {};
-  EXPECT_FALSE(amdf_status_is_ok(amdf_windows_xdna_private_allocation_create(
-      &device_, &descriptor, &allocation)));
+  amdf_windows_xdna_private_allocation_initialize(&device_, &descriptor,
+                                                  &allocation);
+  EXPECT_FALSE(amdf_status_is_ok(
+      amdf_windows_xdna_private_allocation_realize(&allocation)));
   EXPECT_EQ(state_.operations,
             (std::vector<Operation>{Operation::kCreate, Operation::kMap,
                                     Operation::kWait, Operation::kResident,
                                     Operation::kWait}));
 
-  ASSERT_TRUE(amdf_status_is_ok(amdf_windows_xdna_private_allocation_create(
-      &device_, &descriptor, &allocation)));
+  ASSERT_TRUE(amdf_status_is_ok(
+      amdf_windows_xdna_private_allocation_realize(&allocation)));
   EXPECT_EQ(state_.operations,
             (std::vector<Operation>{Operation::kCreate, Operation::kMap,
                                     Operation::kWait, Operation::kResident,

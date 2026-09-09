@@ -15,7 +15,7 @@
 extern "C" {
 #endif  // __cplusplus
 
-// Native operations performed while constructing one private allocation.
+// Native operations performed while realizing one private allocation.
 typedef uint32_t amdf_windows_xdna_private_allocation_flags_t;
 enum amdf_windows_xdna_private_allocation_flag_bits_e {
   // Creates a resource handle around the allocation.
@@ -38,7 +38,7 @@ typedef struct amdf_windows_xdna_private_allocation_descriptor_t {
   uint32_t xcl_flags;
   // Additional private allocation selector.
   uint32_t selector;
-  // Native construction operations to perform.
+  // Native realization operations to perform.
   amdf_windows_xdna_private_allocation_flags_t flags;
 } amdf_windows_xdna_private_allocation_descriptor_t;
 
@@ -54,14 +54,14 @@ typedef struct amdf_windows_xdna_private_allocation_t {
   void* host_pointer;
   // Stable XDNA virtual address, or zero when not requested.
   uint64_t device_address;
-  // Immutable descriptor captured by the first construction call.
+  // Immutable descriptor captured during initialization.
   amdf_windows_xdna_private_allocation_descriptor_t descriptor;
   // Fence value of an accepted paging operation awaiting observation.
   uint64_t pending_paging_fence;
   // Device address returned by an accepted mapping operation.
   uint64_t pending_device_address;
-  // Completed native construction phase.
-  uint32_t construction_phase;
+  // Completed native realization phase.
+  uint32_t realization_phase;
   // One while an accepted paging operation remains to be observed.
   uint32_t paging_operation_pending;
   // One when the accepted paging operation returned a valid result.
@@ -70,11 +70,19 @@ typedef struct amdf_windows_xdna_private_allocation_t {
   uint32_t host_lock_owned;
 } amdf_windows_xdna_private_allocation_t;
 
-// Creates one private allocation without allocating host bookkeeping.
-amdf_status_t amdf_windows_xdna_private_allocation_create(
+// Initializes inert private-allocation state without performing native work.
+// All arguments must be valid and `allocation` must be uninitialized storage;
+// the descriptor is retained by value and the operation is infallible.
+void amdf_windows_xdna_private_allocation_initialize(
     amdf_xdna_umd_device_t* device,
     const amdf_windows_xdna_private_allocation_descriptor_t* descriptor,
-    amdf_windows_xdna_private_allocation_t* out_allocation);
+    amdf_windows_xdna_private_allocation_t* allocation);
+
+// Realizes one initialized private allocation. A failed call may retain an
+// accepted native allocation or paging operation; retry resumes that work and
+// destruction releases every retained phase.
+amdf_status_t amdf_windows_xdna_private_allocation_realize(
+    amdf_windows_xdna_private_allocation_t* allocation);
 
 // Establishes an explicit host lock on one private allocation.
 amdf_status_t amdf_windows_xdna_private_allocation_lock(
