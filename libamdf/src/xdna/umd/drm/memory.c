@@ -43,6 +43,50 @@ static amdf_status_t amdf_linux_xdna_memory_discard(
   return status;
 }
 
+amdf_status_t amdf_xdna_umd_device_query_memory_profile(
+    amdf_xdna_umd_device_t* device, uint32_t memory_profile_ordinal,
+    amdf_memory_profile_t* out_profile) {
+  (void)device;
+  (void)memory_profile_ordinal;
+  (void)out_profile;
+  return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+}
+
+amdf_status_t amdf_xdna_umd_memory_import(
+    amdf_xdna_umd_device_t* device,
+    const amdf_memory_import_info_t* import_info,
+    const amdf_external_memory_t* external_memory,
+    amdf_xdna_umd_memory_t** out_memory,
+    amdf_xdna_umd_memory_result_t* out_result) {
+  (void)device;
+  (void)import_info;
+  (void)external_memory;
+  (void)out_memory;
+  (void)out_result;
+  return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+}
+
+amdf_status_t amdf_xdna_umd_memory_export(
+    amdf_xdna_umd_memory_t* memory,
+    const amdf_memory_export_info_t* export_info,
+    amdf_external_memory_t* out_value) {
+  (void)memory;
+  (void)export_info;
+  (void)out_value;
+  return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+}
+
+amdf_status_t amdf_xdna_umd_memory_query_pair_info(
+    amdf_xdna_umd_memory_t* memory, const amdf_memory_site_t* producer_site,
+    const amdf_memory_site_t* consumer_site,
+    amdf_memory_pair_info_t* out_info) {
+  (void)memory;
+  (void)producer_site;
+  (void)consumer_site;
+  (void)out_info;
+  return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+}
+
 amdf_status_t amdf_xdna_umd_memory_create(
     amdf_xdna_umd_device_t* device,
     const amdf_memory_create_info_t* create_info,
@@ -81,8 +125,10 @@ amdf_status_t amdf_xdna_umd_memory_create(
   }
   if (amdf_status_is_ok(status)) {
     amdf_xdna_umd_memory_result_t result = {0};
+    result.memory_profile_ordinal = AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN;
     result.memory_class = AMDF_MEMORY_CLASS_SYSTEM;
     result.flags = flags;
+    result.source_byte_offset = 0;
     result.byte_length = byte_length;
     result.alignment = alignment;
     result.physical_backing_id.words[0] = (uintptr_t)device;

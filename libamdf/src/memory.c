@@ -36,7 +36,8 @@ static amdf_status_t amdf_external_memory_validate(
   }
   switch (value->type) {
     case AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD:
-      if (value->payload.file_descriptor < 0) {
+      if (value->payload.file_descriptor < 0 ||
+          amdf_external_memory_provenance_is_valid(&value->provenance)) {
         return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
       }
       break;
@@ -47,12 +48,14 @@ static amdf_status_t amdf_external_memory_validate(
       }
       break;
     case AMDF_EXTERNAL_MEMORY_TYPE_NT_HANDLE:
-      if (value->payload.native_handle == NULL) {
+      if (value->payload.native_handle == NULL ||
+          amdf_external_memory_provenance_is_valid(&value->provenance)) {
         return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
       }
       break;
     case AMDF_EXTERNAL_MEMORY_TYPE_HOST_POINTER:
-      if (value->payload.host_pointer == NULL) {
+      if (value->payload.host_pointer == NULL ||
+          amdf_external_memory_provenance_is_valid(&value->provenance)) {
         return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
       }
       break;
@@ -66,6 +69,79 @@ static amdf_status_t amdf_external_memory_validate(
       return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
   return AMDF_STATUS_OK;
+}
+
+static const amdf_external_memory_support_t*
+amdf_memory_profile_find_external_support(const amdf_memory_profile_t* profile,
+                                          amdf_external_memory_type_t type) {
+  assert(profile->external_memory_support_count <=
+             AMDF_MEMORY_PROFILE_EXTERNAL_SUPPORT_CAPACITY &&
+         "memory profile external support count must fit its fixed storage");
+  for (uint32_t i = 0; i < profile->external_memory_support_count; ++i) {
+    if (profile->external_memory_support[i].type == type) {
+      return &profile->external_memory_support[i];
+    }
+  }
+  return NULL;
+}
+
+static amdf_status_t amdf_memory_validate_external_range(
+    const amdf_memory_profile_t* profile,
+    const amdf_external_memory_support_t* support, uint64_t source_byte_offset,
+    uint64_t byte_length) {
+  if (source_byte_offset != 0 &&
+      ((support->flags & AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_SOURCE_OFFSET) ==
+           0 ||
+       support->source_offset_alignment == 0 ||
+       source_byte_offset % support->source_offset_alignment != 0)) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
+  assert(support->byte_length_alignment != 0 &&
+         "external memory byte-length alignment must be nonzero");
+  if (byte_length % support->byte_length_alignment != 0) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
+  const uint64_t maximum_byte_length = support->maximum_byte_length != 0
+                                           ? support->maximum_byte_length
+                                           : profile->maximum_byte_length;
+  if (maximum_byte_length != 0 && byte_length > maximum_byte_length) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
+  return AMDF_STATUS_OK;
+}
+
+static amdf_status_t amdf_memory_query_external_support(
+    amdf_device_t* device, uint32_t memory_profile_ordinal,
+    amdf_memory_profile_roles_t required_role,
+    amdf_memory_flags_t required_flags,
+    amdf_external_memory_type_t external_memory_type,
+    amdf_external_memory_support_flags_t required_support_flag,
+    uint64_t source_byte_offset, uint64_t byte_length,
+    amdf_external_memory_support_t* out_support) {
+  amdf_memory_profile_t profile = {
+      .type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE,
+      .structure_size = sizeof(profile),
+  };
+  amdf_status_t status = amdf_device_query_memory_profile(
+      device, memory_profile_ordinal, &profile);
+  if (!amdf_status_is_ok(status)) return status;
+  assert(profile.ordinal == memory_profile_ordinal &&
+         "memory profile query must return the requested ordinal");
+  if ((profile.roles & required_role) == 0 ||
+      (required_flags & ~profile.supported_flags) != 0) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
+  const amdf_external_memory_support_t* support =
+      amdf_memory_profile_find_external_support(&profile, external_memory_type);
+  if (support == NULL || (support->flags & required_support_flag) == 0) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
+  status = amdf_memory_validate_external_range(&profile, support,
+                                               source_byte_offset, byte_length);
+  if (amdf_status_is_ok(status)) {
+    *out_support = *support;
+  }
+  return status;
 }
 
 static amdf_status_t amdf_memory_validate_create_info(
@@ -232,6 +308,19 @@ amdf_status_t AMDF_CALL amdf_memory_import(
   status = amdf_external_memory_validate(inout_external_memory);
   if (!amdf_status_is_ok(status)) return status;
 
+  amdf_external_memory_support_t support;
+  status = amdf_memory_query_external_support(
+      device, import_info->memory_profile_ordinal,
+      AMDF_MEMORY_PROFILE_ROLE_IMPORT, import_info->required_flags,
+      inout_external_memory->type, AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_IMPORT,
+      inout_external_memory->source_byte_offset,
+      inout_external_memory->byte_length, &support);
+  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_external_memory_provenance_is_equal(
+          &support.provenance, &inout_external_memory->provenance)) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
+
   amdf_memory_t* memory = NULL;
   status = device->vtable->memory_import(device, import_info,
                                          inout_external_memory, &memory);
@@ -275,6 +364,20 @@ amdf_status_t AMDF_CALL amdf_memory_export(
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
 
+  if (memory->info.memory_profile_ordinal ==
+      AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
+  const uint64_t source_byte_offset =
+      memory->info.source_byte_offset + export_info->byte_offset;
+  amdf_external_memory_support_t support;
+  const amdf_status_t support_status = amdf_memory_query_external_support(
+      memory->device, memory->info.memory_profile_ordinal,
+      AMDF_MEMORY_PROFILE_ROLE_EXPORT, 0, export_info->external_memory_type,
+      AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_EXPORT, source_byte_offset,
+      export_info->byte_length, &support);
+  if (!amdf_status_is_ok(support_status)) return support_status;
+
   amdf_external_memory_t value = {0};
   const amdf_status_t status =
       memory->vtable->export_external(memory, export_info, &value);
@@ -283,8 +386,8 @@ amdf_status_t AMDF_CALL amdf_memory_export(
            "successful memory export must own its payload lifetime");
     value.type = export_info->external_memory_type;
     value.reserved = 0;
-    value.source_byte_offset =
-        memory->info.source_byte_offset + export_info->byte_offset;
+    value.provenance = support.provenance;
+    value.source_byte_offset = source_byte_offset;
     value.byte_length = export_info->byte_length;
     value.physical_backing_id = memory->info.physical_backing_id;
     *out_value = value;

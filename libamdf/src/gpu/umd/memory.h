@@ -19,11 +19,15 @@ typedef struct amdf_gpu_umd_device_t amdf_gpu_umd_device_t;
 
 // Native GPU memory properties established before publication.
 typedef struct amdf_gpu_umd_memory_result_t {
+  // Dense memory-profile ordinal governing this attachment.
+  uint32_t memory_profile_ordinal;
   // Achieved physical placement class.
   amdf_memory_class_t memory_class;
   // Achieved attachment properties.
   amdf_memory_flags_t flags;
-  // Physical allocation length in bytes.
+  // Byte offset of logical byte zero in the physical backing.
+  uint64_t source_byte_offset;
+  // Logical attachment length in bytes.
   uint64_t byte_length;
   // Guaranteed allocation-base alignment in every supported address space.
   uint64_t alignment;
@@ -47,11 +51,33 @@ typedef struct amdf_gpu_umd_host_mapping_result_t {
   uint32_t cache_line_size;
 } amdf_gpu_umd_host_mapping_result_t;
 
+// Copies one immutable memory profile supported by `device`.
+amdf_status_t amdf_gpu_umd_device_query_memory_profile(
+    amdf_gpu_umd_device_t* device, uint32_t memory_profile_ordinal,
+    amdf_memory_profile_t* out_profile);
+
 // Creates physical backing and a stable attachment to `device`.
 amdf_status_t amdf_gpu_umd_memory_create(
     amdf_gpu_umd_device_t* device, const amdf_memory_create_info_t* create_info,
     amdf_gpu_umd_memory_t** out_memory,
     amdf_gpu_umd_memory_result_t* out_result);
+
+// Imports external memory as one complete attachment to `device`.
+amdf_status_t amdf_gpu_umd_memory_import(
+    amdf_gpu_umd_device_t* device, const amdf_memory_import_info_t* import_info,
+    const amdf_external_memory_t* external_memory,
+    amdf_gpu_umd_memory_t** out_memory,
+    amdf_gpu_umd_memory_result_t* out_result);
+
+// Exports one logical range as an owned native payload.
+amdf_status_t amdf_gpu_umd_memory_export(
+    amdf_gpu_umd_memory_t* memory, const amdf_memory_export_info_t* export_info,
+    amdf_external_memory_t* out_value);
+
+// Copies exact directional facts for two concrete attachment sites.
+amdf_status_t amdf_gpu_umd_memory_query_pair_info(
+    amdf_gpu_umd_memory_t* memory, const amdf_memory_site_t* producer_site,
+    const amdf_memory_site_t* consumer_site, amdf_memory_pair_info_t* out_info);
 
 // Releases a memory attachment and its physical backing.
 amdf_status_t amdf_gpu_umd_memory_destroy(amdf_gpu_umd_memory_t* memory);
