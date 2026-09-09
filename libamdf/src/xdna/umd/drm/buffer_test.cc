@@ -86,4 +86,17 @@ TEST(LinuxXdnaBufferTest, RegistrationFailureLeavesOutputUnchanged) {
   EXPECT_EQ(buffer.mapping.byte_length, 0x3000u);
 }
 
+TEST(LinuxXdnaBufferTest, ExportFailureLeavesOutputUnchanged) {
+  const amdf_linux_xdna_buffer_t buffer = {
+      .handle = 0x10,
+      .type = AMDXDNA_BO_SHARE,
+      .byte_length = 0x2000,
+  };
+  int descriptor = 73;
+
+  EXPECT_EQ(amdf_linux_xdna_buffer_export_dma_buf(-1, &buffer, &descriptor),
+            amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, EBADF));
+  EXPECT_EQ(descriptor, 73);
+}
+
 }  // namespace

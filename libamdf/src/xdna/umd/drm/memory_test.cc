@@ -171,7 +171,7 @@ TEST_F(LinuxXdnaMemoryRollbackTest, FailedRegistrationLeavesCallerPagesAlone) {
   void* pages = mmap(nullptr, 4096, PROT_READ | PROT_WRITE,
                      MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   ASSERT_NE(pages, MAP_FAILED);
-  const amdf_memory_profile_t profile = QueryProfile(1);
+  const amdf_memory_profile_t profile = QueryProfile(2);
   const amdf_memory_create_info_t create_info = {
       .byte_length = 4096,
       .registered_host_pointer = pages,
@@ -202,7 +202,7 @@ TEST_F(LinuxXdnaMemoryRollbackTest,
           },
       .release_user_data = &release_count,
   };
-  const amdf_memory_profile_t profile = QueryProfile(0);
+  const amdf_memory_profile_t profile = QueryProfile(1);
   const amdf_memory_import_info_t import_info = {};
   EXPECT_EQ(amdf_xdna_umd_memory_import(&device_, &profile, &import_info,
                                         &external_memory, &memory_, &result_),
@@ -216,7 +216,7 @@ TEST_F(LinuxXdnaMemoryRollbackTest,
 }
 
 TEST(LinuxXdnaMemoryProfileTest,
-     ExposesSystemCreateDmaBufImportAndHostRegistration) {
+     SeparatesOwnedImportedAndRegisteredHostProfiles) {
   amdf_xdna_umd_device_t device = {};
   device.page_size = 4096;
   amdf_memory_profile_t profile = {};
@@ -228,10 +228,11 @@ TEST(LinuxXdnaMemoryProfileTest,
   EXPECT_EQ(profile.ordinal, 0u);
   EXPECT_EQ(profile.memory_class, AMDF_MEMORY_CLASS_SYSTEM);
   EXPECT_EQ(profile.roles, AMDF_MEMORY_PROFILE_ROLE_CREATE |
-                               AMDF_MEMORY_PROFILE_ROLE_IMPORT |
+                               AMDF_MEMORY_PROFILE_ROLE_EXPORT |
                                AMDF_MEMORY_PROFILE_ROLE_HOST_MAP);
-  EXPECT_EQ(profile.guaranteed_flags,
-            AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS);
+  EXPECT_EQ(profile.guaranteed_flags, AMDF_MEMORY_FLAG_HOST_VISIBLE |
+                                          AMDF_MEMORY_FLAG_SHAREABLE |
+                                          AMDF_MEMORY_FLAG_DEVICE_ADDRESS);
   EXPECT_EQ(profile.guaranteed_device_access,
             AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE);
   EXPECT_EQ(profile.supported_device_access,
@@ -242,27 +243,45 @@ TEST(LinuxXdnaMemoryProfileTest,
   EXPECT_EQ(profile.device_address.maximum_address, 0u);
   EXPECT_EQ(profile.allocation.minimum_alignment, 4096u);
   EXPECT_EQ(profile.allocation.maximum_alignment, 4096u);
-  EXPECT_EQ(profile.import.minimum_alignment, 1u);
-  EXPECT_EQ(profile.import.maximum_alignment, 4096u);
   EXPECT_EQ(profile.host_mapping.byte_offset_granularity, 1u);
   ASSERT_EQ(profile.external_memory_support_count, 1u);
   EXPECT_EQ(profile.external_memory_support[0].type,
             AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD);
   EXPECT_EQ(profile.external_memory_support[0].flags,
+            AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_EXPORT |
+                AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_SOURCE_OFFSET |
+                AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_CROSS_PROCESS);
+  EXPECT_EQ(profile.external_memory_support[0].source_offset_alignment, 1u);
+  EXPECT_EQ(profile.external_memory_support[0].byte_length_alignment, 1u);
+
+  amdf_memory_profile_t imported_profile = {};
+  imported_profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
+  imported_profile.structure_size = sizeof(imported_profile);
+  ASSERT_EQ(
+      amdf_xdna_umd_device_query_memory_profile(&device, 1, &imported_profile),
+      AMDF_STATUS_OK);
+  EXPECT_EQ(imported_profile.ordinal, 1u);
+  EXPECT_EQ(imported_profile.memory_class, AMDF_MEMORY_CLASS_SYSTEM);
+  EXPECT_EQ(imported_profile.roles, AMDF_MEMORY_PROFILE_ROLE_IMPORT |
+                                        AMDF_MEMORY_PROFILE_ROLE_HOST_MAP);
+  EXPECT_EQ(imported_profile.guaranteed_flags,
+            AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS);
+  EXPECT_EQ(imported_profile.import.minimum_alignment, 1u);
+  EXPECT_EQ(imported_profile.import.maximum_alignment, 4096u);
+  ASSERT_EQ(imported_profile.external_memory_support_count, 1u);
+  EXPECT_EQ(imported_profile.external_memory_support[0].flags,
             AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_IMPORT |
                 AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_SOURCE_OFFSET |
                 AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_CROSS_PROCESS |
                 AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_FOREIGN_API);
-  EXPECT_EQ(profile.external_memory_support[0].source_offset_alignment, 1u);
-  EXPECT_EQ(profile.external_memory_support[0].byte_length_alignment, 1u);
 
   amdf_memory_profile_t registered_profile = {};
   registered_profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
   registered_profile.structure_size = sizeof(registered_profile);
-  ASSERT_EQ(amdf_xdna_umd_device_query_memory_profile(&device, 1,
+  ASSERT_EQ(amdf_xdna_umd_device_query_memory_profile(&device, 2,
                                                       &registered_profile),
             AMDF_STATUS_OK);
-  EXPECT_EQ(registered_profile.ordinal, 1u);
+  EXPECT_EQ(registered_profile.ordinal, 2u);
   EXPECT_EQ(registered_profile.memory_class, AMDF_MEMORY_CLASS_REGISTERED_HOST);
   EXPECT_EQ(registered_profile.roles, AMDF_MEMORY_PROFILE_ROLE_REGISTER |
                                           AMDF_MEMORY_PROFILE_ROLE_HOST_MAP);
@@ -284,7 +303,7 @@ TEST(LinuxXdnaMemoryProfileTest,
 
   profile.ordinal = UINT32_MAX;
   EXPECT_EQ(amdf_status_code(amdf_xdna_umd_device_query_memory_profile(
-                &device, 2, &profile)),
+                &device, 3, &profile)),
             AMDF_STATUS_CODE_OUT_OF_RANGE);
   EXPECT_EQ(profile.ordinal, UINT32_MAX);
 }

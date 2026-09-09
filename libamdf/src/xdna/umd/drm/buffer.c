@@ -8,6 +8,8 @@
 #include "libamdf/src/xdna/umd/drm/buffer.h"
 
 #include <drm/amdxdna_accel.h>
+#include <drm/drm.h>
+#include <fcntl.h>
 #include <stdint.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
@@ -87,6 +89,24 @@ amdf_status_t amdf_linux_xdna_buffer_register_host_pages(
       .byte_length = byte_length,
       .host_pointer = host_page_base,
   };
+  return AMDF_STATUS_OK;
+}
+
+amdf_status_t amdf_linux_xdna_buffer_export_dma_buf(
+    int descriptor, const amdf_linux_xdna_buffer_t* buffer,
+    int* out_dma_buf_descriptor) {
+  struct drm_prime_handle export_args = {
+      .handle = buffer->handle,
+      .flags = DRM_CLOEXEC | DRM_RDWR,
+      .fd = -1,
+  };
+  if (ioctl(descriptor, DRM_IOCTL_PRIME_HANDLE_TO_FD, &export_args) != 0) {
+    return amdf_linux_error(errno);
+  }
+  if (export_args.fd < 0) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
+  }
+  *out_dma_buf_descriptor = export_args.fd;
   return AMDF_STATUS_OK;
 }
 

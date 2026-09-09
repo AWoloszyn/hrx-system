@@ -123,6 +123,7 @@ iree_cc_library(
     amdf::headers
     libamdf::src::allocator
     libamdf::src::platform::linux::dma_buf
+    libamdf::src::platform::linux::file
     libamdf::src::platform::linux::host_cache
     libamdf::src::xdna::umd::memory
   PUBLIC

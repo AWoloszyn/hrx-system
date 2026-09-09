@@ -60,6 +60,12 @@ amdf_status_t amdf_linux_xdna_buffer_register_host_pages(
     int descriptor, void* host_page_base, size_t byte_length,
     amdf_linux_xdna_buffer_t* out_buffer);
 
+// Exports one borrowed buffer as an independently owned DMA-BUF descriptor.
+// Failure leaves `out_dma_buf_descriptor` unchanged.
+amdf_status_t amdf_linux_xdna_buffer_export_dma_buf(
+    int descriptor, const amdf_linux_xdna_buffer_t* buffer,
+    int* out_dma_buf_descriptor);
+
 // Establishes native addresses and a persistent CPU mapping for one live GEM
 // buffer. Failure retains any mapping state acquired by this one-shot operation
 // in `buffer` for deinitialization.

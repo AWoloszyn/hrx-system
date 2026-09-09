@@ -13,6 +13,7 @@
 
 #include "libamdf/src/allocator.h"
 #include "libamdf/src/platform/linux/dma_buf.h"
+#include "libamdf/src/platform/linux/file.h"
 #include "libamdf/src/platform/linux/host_cache.h"
 #include "libamdf/src/xdna/umd/drm/device.h"
 #include "libamdf/src/xdna/umd/drm/memory.h"
@@ -46,10 +47,29 @@ static amdf_status_t amdf_linux_xdna_memory_discard(
   return status;
 }
 
+static amdf_status_t amdf_linux_xdna_memory_query_dma_buf(
+    amdf_xdna_umd_memory_t* memory, amdf_linux_dma_buf_info_t* out_info) {
+  int descriptor = -1;
+  amdf_status_t status = amdf_linux_xdna_buffer_export_dma_buf(
+      memory->device->descriptor, &memory->buffer, &descriptor);
+  amdf_linux_dma_buf_info_t info;
+  if (amdf_status_is_ok(status)) {
+    status = amdf_linux_dma_buf_query(descriptor, &info);
+  }
+  if (amdf_status_is_ok(status) &&
+      info.byte_length != memory->buffer.byte_length) {
+    status = amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
+  }
+  const amdf_status_t close_status = amdf_linux_file_close(&descriptor);
+  if (!amdf_status_is_ok(close_status)) status = close_status;
+  if (amdf_status_is_ok(status)) *out_info = info;
+  return status;
+}
+
 amdf_status_t amdf_xdna_umd_device_query_memory_profile(
     amdf_xdna_umd_device_t* device, uint32_t memory_profile_ordinal,
     amdf_memory_profile_t* out_profile) {
-  if (memory_profile_ordinal > 1) {
+  if (memory_profile_ordinal > 2) {
     return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
   }
   const uint64_t maximum_byte_length =
@@ -89,8 +109,10 @@ amdf_status_t amdf_xdna_umd_device_query_memory_profile(
   if (memory_profile_ordinal == 0) {
     profile.memory_class = AMDF_MEMORY_CLASS_SYSTEM;
     profile.roles = AMDF_MEMORY_PROFILE_ROLE_CREATE |
-                    AMDF_MEMORY_PROFILE_ROLE_IMPORT |
+                    AMDF_MEMORY_PROFILE_ROLE_EXPORT |
                     AMDF_MEMORY_PROFILE_ROLE_HOST_MAP;
+    profile.guaranteed_flags |= AMDF_MEMORY_FLAG_SHAREABLE;
+    profile.supported_flags |= AMDF_MEMORY_FLAG_SHAREABLE;
     profile.allocation = (amdf_memory_construction_capabilities_t){
         .maximum_byte_length = maximum_byte_length,
         .byte_length_granularity = 1,
@@ -98,6 +120,19 @@ amdf_status_t amdf_xdna_umd_device_query_memory_profile(
         .maximum_alignment = device->page_size,
         .native_byte_length_granularity = device->page_size,
     };
+    profile.external_memory_support_count = 1;
+    profile.external_memory_support[0] = (amdf_external_memory_support_t){
+        .type = AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD,
+        .flags = AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_EXPORT |
+                 AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_SOURCE_OFFSET |
+                 AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_CROSS_PROCESS,
+        .source_offset_alignment = 1,
+        .byte_length_alignment = 1,
+    };
+  } else if (memory_profile_ordinal == 1) {
+    profile.memory_class = AMDF_MEMORY_CLASS_SYSTEM;
+    profile.roles =
+        AMDF_MEMORY_PROFILE_ROLE_IMPORT | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP;
     profile.import = (amdf_memory_construction_capabilities_t){
         .maximum_byte_length = maximum_byte_length,
         .byte_length_granularity = 1,
@@ -224,10 +259,30 @@ amdf_status_t amdf_xdna_umd_memory_export(
     amdf_xdna_umd_memory_t* memory,
     const amdf_memory_export_info_t* export_info,
     amdf_external_memory_t* out_value) {
-  (void)memory;
   (void)export_info;
-  (void)out_value;
-  return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  int descriptor = -1;
+  amdf_status_t status = amdf_linux_xdna_buffer_export_dma_buf(
+      memory->device->descriptor, &memory->buffer, &descriptor);
+  amdf_linux_dma_buf_info_t info;
+  if (amdf_status_is_ok(status)) {
+    status = amdf_linux_dma_buf_query(descriptor, &info);
+  }
+  if (amdf_status_is_ok(status) &&
+      (info.byte_length != memory->buffer.byte_length ||
+       !amdf_physical_memory_id_is_equal(&info.physical_backing_id,
+                                         &memory->physical_backing_id))) {
+    status = amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
+  }
+  if (amdf_status_is_ok(status)) {
+    *out_value = (amdf_external_memory_t){
+        .payload.file_descriptor = descriptor,
+        .release = amdf_linux_dma_buf_release,
+    };
+  } else {
+    const amdf_status_t close_status = amdf_linux_file_close(&descriptor);
+    if (!amdf_status_is_ok(close_status)) status = close_status;
+  }
+  return status;
 }
 
 amdf_status_t amdf_xdna_umd_memory_query_pair_info(
@@ -307,12 +362,14 @@ amdf_status_t amdf_xdna_umd_memory_create(
                                              &memory->buffer);
     }
   }
-  if (amdf_status_is_ok(status)) {
-    if (!registers_host) {
-      memory->physical_backing_id = (amdf_physical_memory_id_t){
-          .words = {(uintptr_t)device, memory->buffer.handle},
-      };
+  if (amdf_status_is_ok(status) && !registers_host) {
+    amdf_linux_dma_buf_info_t info;
+    status = amdf_linux_xdna_memory_query_dma_buf(memory, &info);
+    if (amdf_status_is_ok(status)) {
+      memory->physical_backing_id = info.physical_backing_id;
     }
+  }
+  if (amdf_status_is_ok(status)) {
     const amdf_xdna_umd_memory_result_t result = {
         .flags = profile->guaranteed_flags | create_info->required_flags,
         .source_byte_offset = source_byte_offset,

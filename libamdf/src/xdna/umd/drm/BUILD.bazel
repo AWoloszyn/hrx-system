@@ -99,6 +99,7 @@ amdf_cc_library(
         ":device_state",
         "//libamdf/src:allocator",
         "//libamdf/src/platform/linux:dma_buf",
+        "//libamdf/src/platform/linux:file",
         "//libamdf/src/platform/linux:host_cache",
         "//libamdf/src/xdna/umd:memory",
     ],
