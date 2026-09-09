@@ -33,9 +33,21 @@ from iree.vm.bytecode.spec.version import CORE_0
 
 
 class IntegerBinaryOperation(enum.Enum):
-    ADD = "add"
-    SUB = "sub"
-    MUL = "mul"
+    ADD = "add.i"
+    SUB = "sub.i"
+    MUL = "mul.i"
+    MIN_SIGNED = "min.s"
+    MIN_UNSIGNED = "min.u"
+    MAX_SIGNED = "max.s"
+    MAX_UNSIGNED = "max.u"
+    AND = "and.i"
+    OR = "or.i"
+    XOR = "xor.i"
+    SHIFT_LEFT = "shift.left.i"
+    SHIFT_RIGHT_SIGNED = "shift.right.s"
+    SHIFT_RIGHT_UNSIGNED = "shift.right.u"
+    ROTATE_LEFT = "rotate.left.i"
+    ROTATE_RIGHT = "rotate.right.i"
 
 
 class IntegerBinarySemantics(NamedTuple):
@@ -150,25 +162,18 @@ def _result_contract(bit_width: int, result: str) -> str:
     return f"{result}{suffix}"
 
 
-_SOURCE_BINARY_OPERATION = {
-    "integer.add": IntegerBinaryOperation.ADD,
-    "integer.sub": IntegerBinaryOperation.SUB,
-    "integer.mul": IntegerBinaryOperation.MUL,
-}
-
-
 class _BinaryDefinition(NamedTuple):
     opcode: int
-    mnemonic: str
+    operation: IntegerBinaryOperation
+    bit_width: int
     summary: str
     result: str
     expression: str
 
 
 def _binary(definition: _BinaryDefinition) -> Instruction:
-    opcode, mnemonic, summary, result, expression = definition
-    bit_width = 32 if mnemonic.endswith("32") else 64
-    operation = _SOURCE_BINARY_OPERATION.get(mnemonic.rsplit(".", 1)[0])
+    opcode, operation, bit_width, summary, result, expression = definition
+    mnemonic = f"integer.{operation.value}{bit_width}"
     return Instruction(
         opcode=opcode,
         mnemonic=mnemonic,
@@ -176,11 +181,7 @@ def _binary(definition: _BinaryDefinition) -> Instruction:
         family=INTEGER_FAMILY,
         summary=summary,
         fields=_binary_fields(),
-        semantics=(
-            IntegerBinarySemantics(operation, bit_width)
-            if operation is not None
-            else None
-        ),
+        semantics=IntegerBinarySemantics(operation, bit_width),
         behavior=(
             f"Reads both operands before computing the selected {bit_width}-bit result."
         ),
@@ -198,210 +199,240 @@ def _binary(definition: _BinaryDefinition) -> Instruction:
 _REGULAR_BINARY_DEFINITIONS = (
     _BinaryDefinition(
         0x40,
-        "integer.add.i32",
+        IntegerBinaryOperation.ADD,
+        32,
         "Adds low 32-bit patterns modulo 2^32.",
         "destination_v8 receives the low 32 sum bits and clears its high half.",
         "left + right",
     ),
     _BinaryDefinition(
         0x41,
-        "integer.add.i64",
+        IntegerBinaryOperation.ADD,
+        64,
         "Adds complete 64-bit patterns modulo 2^64.",
         "destination_v8 receives the low 64 sum bits.",
         "left + right",
     ),
     _BinaryDefinition(
         0x42,
-        "integer.sub.i32",
+        IntegerBinaryOperation.SUB,
+        32,
         "Subtracts low 32-bit patterns modulo 2^32.",
         "destination_v8 receives the low 32 difference bits and clears its high half.",
         "left - right",
     ),
     _BinaryDefinition(
         0x43,
-        "integer.sub.i64",
+        IntegerBinaryOperation.SUB,
+        64,
         "Subtracts complete 64-bit patterns modulo 2^64.",
         "destination_v8 receives the low 64 difference bits.",
         "left - right",
     ),
     _BinaryDefinition(
         0x44,
-        "integer.mul.i32",
+        IntegerBinaryOperation.MUL,
+        32,
         "Multiplies low 32-bit patterns and retains the low 32 product bits.",
         "destination_v8 receives the low 32 product bits and clears its high half.",
         "left * right",
     ),
     _BinaryDefinition(
         0x45,
-        "integer.mul.i64",
+        IntegerBinaryOperation.MUL,
+        64,
         "Multiplies complete 64-bit patterns and retains the low 64 product bits.",
         "destination_v8 receives the low 64 product bits.",
         "left * right",
     ),
     _BinaryDefinition(
         0x52,
-        "integer.min.s32",
+        IntegerBinaryOperation.MIN_SIGNED,
+        32,
         "Selects the lesser signed two's-complement 32-bit operand.",
         "destination_v8 receives the selected low bits and clears its high half.",
         "signed_w(left, 32) <= signed_w(right, 32) ? left : right",
     ),
     _BinaryDefinition(
         0x53,
-        "integer.min.s64",
+        IntegerBinaryOperation.MIN_SIGNED,
+        64,
         "Selects the lesser signed two's-complement 64-bit operand.",
         "destination_v8 receives the selected complete operand bits.",
         "signed_w(left, 64) <= signed_w(right, 64) ? left : right",
     ),
     _BinaryDefinition(
         0x54,
-        "integer.min.u32",
+        IntegerBinaryOperation.MIN_UNSIGNED,
+        32,
         "Selects the lesser unsigned 32-bit operand.",
         "destination_v8 receives the selected low bits and clears its high half.",
         "left <= right ? left : right",
     ),
     _BinaryDefinition(
         0x55,
-        "integer.min.u64",
+        IntegerBinaryOperation.MIN_UNSIGNED,
+        64,
         "Selects the lesser unsigned 64-bit operand.",
         "destination_v8 receives the selected complete operand bits.",
         "left <= right ? left : right",
     ),
     _BinaryDefinition(
         0x56,
-        "integer.max.s32",
+        IntegerBinaryOperation.MAX_SIGNED,
+        32,
         "Selects the greater signed two's-complement 32-bit operand.",
         "destination_v8 receives the selected low bits and clears its high half.",
         "signed_w(left, 32) >= signed_w(right, 32) ? left : right",
     ),
     _BinaryDefinition(
         0x57,
-        "integer.max.s64",
+        IntegerBinaryOperation.MAX_SIGNED,
+        64,
         "Selects the greater signed two's-complement 64-bit operand.",
         "destination_v8 receives the selected complete operand bits.",
         "signed_w(left, 64) >= signed_w(right, 64) ? left : right",
     ),
     _BinaryDefinition(
         0x58,
-        "integer.max.u32",
+        IntegerBinaryOperation.MAX_UNSIGNED,
+        32,
         "Selects the greater unsigned 32-bit operand.",
         "destination_v8 receives the selected low bits and clears its high half.",
         "left >= right ? left : right",
     ),
     _BinaryDefinition(
         0x59,
-        "integer.max.u64",
+        IntegerBinaryOperation.MAX_UNSIGNED,
+        64,
         "Selects the greater unsigned 64-bit operand.",
         "destination_v8 receives the selected complete operand bits.",
         "left >= right ? left : right",
     ),
     _BinaryDefinition(
         0x5A,
-        "integer.and.i32",
+        IntegerBinaryOperation.AND,
+        32,
         "Computes bitwise AND over the low 32 bits.",
         "destination_v8 receives the AND bits and clears its high half.",
         "left & right",
     ),
     _BinaryDefinition(
         0x5B,
-        "integer.and.i64",
+        IntegerBinaryOperation.AND,
+        64,
         "Computes bitwise AND over all 64 bits.",
         "destination_v8 receives the complete 64-bit AND result.",
         "left & right",
     ),
     _BinaryDefinition(
         0x5C,
-        "integer.or.i32",
+        IntegerBinaryOperation.OR,
+        32,
         "Computes bitwise OR over the low 32 bits.",
         "destination_v8 receives the OR bits and clears its high half.",
         "left | right",
     ),
     _BinaryDefinition(
         0x5D,
-        "integer.or.i64",
+        IntegerBinaryOperation.OR,
+        64,
         "Computes bitwise OR over all 64 bits.",
         "destination_v8 receives the complete 64-bit OR result.",
         "left | right",
     ),
     _BinaryDefinition(
         0x5E,
-        "integer.xor.i32",
+        IntegerBinaryOperation.XOR,
+        32,
         "Computes bitwise XOR over the low 32 bits.",
         "destination_v8 receives the XOR bits and clears its high half.",
         "left ^ right",
     ),
     _BinaryDefinition(
         0x5F,
-        "integer.xor.i64",
+        IntegerBinaryOperation.XOR,
+        64,
         "Computes bitwise XOR over all 64 bits.",
         "destination_v8 receives the complete 64-bit XOR result.",
         "left ^ right",
     ),
     _BinaryDefinition(
         0x60,
-        "integer.shift.left.i32",
+        IntegerBinaryOperation.SHIFT_LEFT,
+        32,
         "Shifts low 32 bits left by the count's low five bits.",
         "destination_v8 receives the shifted bits and clears its high half.",
         "left << (right & 31)",
     ),
     _BinaryDefinition(
         0x61,
-        "integer.shift.left.i64",
+        IntegerBinaryOperation.SHIFT_LEFT,
+        64,
         "Shifts all 64 bits left by the count's low six bits.",
         "destination_v8 receives the complete shifted result.",
         "left << (right & 63)",
     ),
     _BinaryDefinition(
         0x62,
-        "integer.shift.right.s32",
+        IntegerBinaryOperation.SHIFT_RIGHT_SIGNED,
+        32,
         "Sign-fills low 32 bits right by the count's low five bits.",
         "destination_v8 receives the arithmetic shift and clears its high half.",
         "asr_w(left, right & 31, 32)",
     ),
     _BinaryDefinition(
         0x63,
-        "integer.shift.right.s64",
+        IntegerBinaryOperation.SHIFT_RIGHT_SIGNED,
+        64,
         "Sign-fills all 64 bits right by the count's low six bits.",
         "destination_v8 receives the complete arithmetic shift.",
         "asr_w(left, right & 63, 64)",
     ),
     _BinaryDefinition(
         0x64,
-        "integer.shift.right.u32",
+        IntegerBinaryOperation.SHIFT_RIGHT_UNSIGNED,
+        32,
         "Logically shifts low 32 bits right by the count's low five bits.",
         "destination_v8 receives the logical shift and clears its high half.",
         "left >> (right & 31)",
     ),
     _BinaryDefinition(
         0x65,
-        "integer.shift.right.u64",
+        IntegerBinaryOperation.SHIFT_RIGHT_UNSIGNED,
+        64,
         "Logically shifts all 64 bits right by the count's low six bits.",
         "destination_v8 receives the complete logical shift.",
         "left >> (right & 63)",
     ),
     _BinaryDefinition(
         0x66,
-        "integer.rotate.left.i32",
+        IntegerBinaryOperation.ROTATE_LEFT,
+        32,
         "Rotates low 32 bits left by the count's low five bits.",
         "destination_v8 receives the rotated bits and clears its high half.",
         "rotl_w(left, right & 31, 32)",
     ),
     _BinaryDefinition(
         0x67,
-        "integer.rotate.left.i64",
+        IntegerBinaryOperation.ROTATE_LEFT,
+        64,
         "Rotates all 64 bits left by the count's low six bits.",
         "destination_v8 receives the complete rotated result.",
         "rotl_w(left, right & 63, 64)",
     ),
     _BinaryDefinition(
         0x68,
-        "integer.rotate.right.i32",
+        IntegerBinaryOperation.ROTATE_RIGHT,
+        32,
         "Rotates low 32 bits right by the count's low five bits.",
         "destination_v8 receives the rotated bits and clears its high half.",
         "rotr_w(left, right & 31, 32)",
     ),
     _BinaryDefinition(
         0x69,
-        "integer.rotate.right.i64",
+        IntegerBinaryOperation.ROTATE_RIGHT,
+        64,
         "Rotates all 64 bits right by the count's low six bits.",
         "destination_v8 receives the complete rotated result.",
         "rotr_w(left, right & 63, 64)",

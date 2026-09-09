@@ -14,7 +14,13 @@ from iree.vm.bytecode.spec.isa.core.integer import (
 )
 from iree.vm.bytecode.spec.specification import SPECIFICATION
 
-from loom.dialect.scalar import ALL_SCALAR_OPS, arithmetic, comparison, conversion
+from loom.dialect.scalar import (
+    ALL_SCALAR_OPS,
+    arithmetic,
+    bitwise,
+    comparison,
+    conversion,
+)
 from loom.target.arch.vm.descriptors import VM_CORE_DESCRIPTOR_SET
 from loom.target.contracts import (
     AttrProject,
@@ -35,6 +41,18 @@ _BINARY_SOURCE_OPS = {
     IntegerBinaryOperation.ADD: arithmetic.scalar_addi,
     IntegerBinaryOperation.SUB: arithmetic.scalar_subi,
     IntegerBinaryOperation.MUL: arithmetic.scalar_muli,
+    IntegerBinaryOperation.MIN_SIGNED: arithmetic.scalar_minsi,
+    IntegerBinaryOperation.MIN_UNSIGNED: arithmetic.scalar_minui,
+    IntegerBinaryOperation.MAX_SIGNED: arithmetic.scalar_maxsi,
+    IntegerBinaryOperation.MAX_UNSIGNED: arithmetic.scalar_maxui,
+    IntegerBinaryOperation.AND: bitwise.scalar_andi,
+    IntegerBinaryOperation.OR: bitwise.scalar_ori,
+    IntegerBinaryOperation.XOR: bitwise.scalar_xori,
+    IntegerBinaryOperation.SHIFT_LEFT: bitwise.scalar_shli,
+    IntegerBinaryOperation.SHIFT_RIGHT_SIGNED: bitwise.scalar_shrsi,
+    IntegerBinaryOperation.SHIFT_RIGHT_UNSIGNED: bitwise.scalar_shrui,
+    IntegerBinaryOperation.ROTATE_LEFT: bitwise.scalar_rotli,
+    IntegerBinaryOperation.ROTATE_RIGHT: bitwise.scalar_rotri,
 }
 
 _INSTRUCTIONS = {
