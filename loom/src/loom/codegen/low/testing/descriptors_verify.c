@@ -1413,6 +1413,7 @@ static bool loom_low_effect_kind_is_valid(loom_low_effect_kind_t kind) {
     case LOOM_LOW_EFFECT_KIND_COUNTER:
     case LOOM_LOW_EFFECT_KIND_CONVERGENT:
     case LOOM_LOW_EFFECT_KIND_CONTROL:
+    case LOOM_LOW_EFFECT_KIND_FAILURE:
       return true;
     default:
       return false;
@@ -1550,6 +1551,7 @@ static bool loom_low_effect_kind_requires_side_effecting_flag(
     case LOOM_LOW_EFFECT_KIND_BARRIER:
     case LOOM_LOW_EFFECT_KIND_COUNTER:
     case LOOM_LOW_EFFECT_KIND_CONTROL:
+    case LOOM_LOW_EFFECT_KIND_FAILURE:
       return true;
     default:
       return false;

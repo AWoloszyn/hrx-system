@@ -227,6 +227,10 @@ typedef enum loom_low_effect_kind_e {
   LOOM_LOW_EFFECT_KIND_CONVERGENT = 6,
   // Descriptor changes control flow.
   LOOM_LOW_EFFECT_KIND_CONTROL = 7,
+  // Descriptor may fail instead of continuing to the next instruction.
+  // Failure is observable and ordered against other effects, but successful
+  // execution continues within the block; this is not a terminator.
+  LOOM_LOW_EFFECT_KIND_FAILURE = 8,
 } loom_low_effect_kind_t;
 
 typedef enum loom_low_memory_space_e {

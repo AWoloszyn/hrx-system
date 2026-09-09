@@ -1,0 +1,18 @@
+// An unused quotient can still fail. An unused add cannot.
+// RUN: pass low-dce
+
+vm.target<core> @vm
+
+low.func.def target<vm.core>(@vm) abi(vm_function) @preserve_division_failure(%dividend: reg<vm.value : i32>, %divisor: reg<vm.value : i32>) -> (reg<vm.value : i32>) asm {
+  %unused_sum = integer.add.i32 %dividend, %divisor
+  %unused_quotient = integer.div.s32 %dividend, %divisor
+  return %dividend
+}
+
+// ----
+vm.target<core> @vm
+
+low.func.def target<vm.core>(@vm) abi(vm_function) @preserve_division_failure(%dividend: reg<vm.value : i32>, %divisor: reg<vm.value : i32>) -> (reg<vm.value : i32>) {
+  %unused_quotient = low.op<vm.integer.div.s32>(%dividend, %divisor) : (reg<vm.value : i32>, reg<vm.value : i32>) -> reg<vm.value : i32>
+  low.return %dividend : reg<vm.value : i32>
+}

@@ -455,14 +455,21 @@ _REGULAR_BINARY_DEFINITIONS = (
 _REGULAR_BINARY_INSTRUCTIONS = tuple(map(_binary, _REGULAR_BINARY_DEFINITIONS))
 
 
-class _DivisionKind(enum.Enum):
+class IntegerDivisionOperation(enum.Enum):
     SIGNED_QUOTIENT = ("div", "s")
     UNSIGNED_QUOTIENT = ("div", "u")
     SIGNED_REMAINDER = ("rem", "s")
     UNSIGNED_REMAINDER = ("rem", "u")
 
 
-def _division(opcode: int, kind: _DivisionKind, bit_width: int) -> Instruction:
+class IntegerDivisionSemantics(NamedTuple):
+    operation: IntegerDivisionOperation
+    bit_width: int
+
+
+def _division(
+    opcode: int, kind: IntegerDivisionOperation, bit_width: int
+) -> Instruction:
     operation, signedness = kind.value
     is_signed = signedness == "s"
     is_remainder = operation == "rem"
@@ -526,7 +533,7 @@ def _division(opcode: int, kind: _DivisionKind, bit_width: int) -> Instruction:
         family=INTEGER_FAMILY,
         summary=f"Computes the {interpretation} {bit_width}-bit {result_name}.",
         fields=_binary_fields(),
-        semantics=None,
+        semantics=IntegerDivisionSemantics(kind, bit_width),
         behavior=behavior,
         success=(
             _result_contract(
@@ -558,14 +565,14 @@ def _division(opcode: int, kind: _DivisionKind, bit_width: int) -> Instruction:
 _DIVISION_INSTRUCTIONS = tuple(
     _division(opcode, kind, bit_width)
     for opcode, kind, bit_width in (
-        (0x46, _DivisionKind.SIGNED_QUOTIENT, 32),
-        (0x47, _DivisionKind.SIGNED_QUOTIENT, 64),
-        (0x48, _DivisionKind.UNSIGNED_QUOTIENT, 32),
-        (0x49, _DivisionKind.UNSIGNED_QUOTIENT, 64),
-        (0x4A, _DivisionKind.SIGNED_REMAINDER, 32),
-        (0x4B, _DivisionKind.SIGNED_REMAINDER, 64),
-        (0x4C, _DivisionKind.UNSIGNED_REMAINDER, 32),
-        (0x4D, _DivisionKind.UNSIGNED_REMAINDER, 64),
+        (0x46, IntegerDivisionOperation.SIGNED_QUOTIENT, 32),
+        (0x47, IntegerDivisionOperation.SIGNED_QUOTIENT, 64),
+        (0x48, IntegerDivisionOperation.UNSIGNED_QUOTIENT, 32),
+        (0x49, IntegerDivisionOperation.UNSIGNED_QUOTIENT, 64),
+        (0x4A, IntegerDivisionOperation.SIGNED_REMAINDER, 32),
+        (0x4B, IntegerDivisionOperation.SIGNED_REMAINDER, 64),
+        (0x4C, IntegerDivisionOperation.UNSIGNED_REMAINDER, 32),
+        (0x4D, IntegerDivisionOperation.UNSIGNED_REMAINDER, 64),
     )
 )
 

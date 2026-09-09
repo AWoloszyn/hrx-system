@@ -28,6 +28,7 @@ from iree.vm.bytecode.spec.isa.core.float import (
 from iree.vm.bytecode.spec.isa.core.integer import (
     IntegerBinarySemantics,
     IntegerCompareSemantics,
+    IntegerDivisionSemantics,
     IntegerUnarySemantics,
 )
 from iree.vm.bytecode.spec.isa.core.value import VALUE_COPY
@@ -42,6 +43,8 @@ from loom.target.low_descriptors import (
     DescriptorFlag,
     DescriptorOpKind,
     DescriptorSet,
+    Effect,
+    EffectKind,
     EnumDomain,
     EnumValue,
     Immediate,
@@ -73,6 +76,7 @@ _RESULT_TYPES = {
     IntegerBinarySemantics: _INTEGER_TYPES,
     IntegerUnarySemantics: _INTEGER_TYPES,
     IntegerCompareSemantics: _PREDICATE_TYPES,
+    IntegerDivisionSemantics: _INTEGER_TYPES,
     FloatBinarySemantics: _FLOAT_TYPES,
     FloatUnarySemantics: _FLOAT_TYPES,
     FloatMinmaxSemantics: _FLOAT_TYPES,
@@ -144,7 +148,12 @@ def _value_descriptor(
         immediates=immediates,
         encoding_id=instruction.opcode,
         encoding_format_id=instruction.byte_length,
-        flags=(DescriptorFlag.DEAD_REMOVABLE,),
+        effects=(Effect(EffectKind.FAILURE),) if instruction.failures else (),
+        flags=(
+            DescriptorFlag.SIDE_EFFECTING
+            if instruction.failures
+            else DescriptorFlag.DEAD_REMOVABLE,
+        ),
         instruction_classes=(InstructionClass.SCALAR_ALU,),
         asm_forms=(
             AsmForm(

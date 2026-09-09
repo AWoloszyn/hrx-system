@@ -18,6 +18,7 @@ from iree.vm.bytecode.spec.isa.core.float import (
 from iree.vm.bytecode.spec.isa.core.integer import (
     IntegerBinarySemantics,
     IntegerCompareSemantics,
+    IntegerDivisionSemantics,
     IntegerUnarySemantics,
 )
 from iree.vm.bytecode.spec.isa.core.rules import FieldRule
@@ -26,7 +27,12 @@ from iree.vm.bytecode.spec.specification import SPECIFICATION
 from loom.ir import ScalarTypeKind
 from loom.target.arch.vm.contracts import VM_CORE_CONTRACT_FRAGMENT
 from loom.target.arch.vm.descriptors import VM_CORE_DESCRIPTOR_SET
-from loom.target.low_descriptors import DescriptorFlag, DescriptorOpKind, OperandRole
+from loom.target.low_descriptors import (
+    DescriptorFlag,
+    DescriptorOpKind,
+    EffectKind,
+    OperandRole,
+)
 
 
 def test_scalar_packets_preserve_spec_encoding_and_semantic_types():
@@ -43,6 +49,7 @@ def test_scalar_packets_preserve_spec_encoding_and_semantic_types():
                 IntegerBinarySemantics,
                 IntegerUnarySemantics,
                 IntegerCompareSemantics,
+                IntegerDivisionSemantics,
                 FloatBinarySemantics,
                 FloatUnarySemantics,
                 FloatMinmaxSemantics,
@@ -61,8 +68,15 @@ def test_scalar_packets_preserve_spec_encoding_and_semantic_types():
         assert instruction.control_flow is ControlFlow.SEQUENTIAL
         assert instruction.suspension is Suspension.NEVER
         assert not instruction.state_effects
-        assert not instruction.failures
-        assert DescriptorFlag.DEAD_REMOVABLE in descriptor.flags
+        if instruction.failures:
+            assert DescriptorFlag.SIDE_EFFECTING in descriptor.flags
+            assert DescriptorFlag.DEAD_REMOVABLE not in descriptor.flags
+            assert tuple(effect.kind for effect in descriptor.effects) == (
+                EffectKind.FAILURE,
+            )
+        else:
+            assert not descriptor.effects
+            assert DescriptorFlag.DEAD_REMOVABLE in descriptor.flags
         register_fields = tuple(
             (field, offset)
             for field, offset in zip(

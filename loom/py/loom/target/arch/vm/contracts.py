@@ -24,6 +24,8 @@ from iree.vm.bytecode.spec.isa.core.integer import (
     IntegerBinaryOperation,
     IntegerBinarySemantics,
     IntegerCompareSemantics,
+    IntegerDivisionOperation,
+    IntegerDivisionSemantics,
     IntegerUnaryOperation,
     IntegerUnarySemantics,
 )
@@ -81,6 +83,13 @@ _UNARY_SOURCE_OPS = {
     IntegerUnaryOperation.COUNT_LEADING_ZEROS: bitwise.scalar_ctlzi,
     IntegerUnaryOperation.COUNT_TRAILING_ZEROS: bitwise.scalar_cttzi,
     IntegerUnaryOperation.POPULATION_COUNT: bitwise.scalar_ctpopi,
+}
+
+_DIVISION_SOURCE_OPS = {
+    IntegerDivisionOperation.SIGNED_QUOTIENT: arithmetic.scalar_divsi,
+    IntegerDivisionOperation.UNSIGNED_QUOTIENT: arithmetic.scalar_divui,
+    IntegerDivisionOperation.SIGNED_REMAINDER: arithmetic.scalar_remsi,
+    IntegerDivisionOperation.UNSIGNED_REMAINDER: arithmetic.scalar_remui,
 }
 
 _FLOAT_BINARY_SOURCE_OPS = {
@@ -266,6 +275,7 @@ VM_CORE_CONTRACT_FRAGMENT = ContractFragment(
     + tuple(_selected_cases())
     + binary_descriptor_rules(
         tuple(_direct_cases(IntegerBinarySemantics, _BINARY_SOURCE_OPS))
+        + tuple(_direct_cases(IntegerDivisionSemantics, _DIVISION_SOURCE_OPS))
         + tuple(_direct_cases(FloatBinarySemantics, _FLOAT_BINARY_SOURCE_OPS, "f")),
         descriptor_result="destination_v8",
         descriptor_lhs="left_v8",
