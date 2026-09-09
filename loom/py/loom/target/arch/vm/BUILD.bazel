@@ -41,6 +41,7 @@ iree_py_library(
     deps = [
         ":descriptors",
         "//loom/py/loom/dialect/scalar",
+        "//loom/py/loom/dialect/scf",
         "//loom/py/loom/target/contracts",
         "//runtime/src/iree/vm/bytecode/spec:model",
     ],

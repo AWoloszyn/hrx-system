@@ -29,7 +29,7 @@ from iree.vm.bytecode.spec.isa.core.integer import (
     IntegerUnaryOperation,
     IntegerUnarySemantics,
 )
-from iree.vm.bytecode.spec.isa.core.value import VALUE_COPY
+from iree.vm.bytecode.spec.isa.core.value import VALUE_COPY, VALUE_SELECT
 from iree.vm.bytecode.spec.specification import SPECIFICATION
 
 from loom.dialect.scalar import (
@@ -41,6 +41,7 @@ from loom.dialect.scalar import (
     conversion,
     math,
 )
+from loom.dialect.scf import ALL_SCF_OPS, scf_select
 from loom.target.arch.vm.descriptors import VM_CORE_DESCRIPTOR_SET
 from loom.target.contracts import (
     AttrProject,
@@ -51,9 +52,11 @@ from loom.target.contracts import (
     EmitDescriptorOp,
     Guard,
     Scalar,
+    SelectDescriptorCase,
     ValueProject,
     ValueRef,
     binary_descriptor_rules,
+    select_descriptor_rules,
     ternary_descriptor_rules,
     unary_descriptor_rules,
 )
@@ -137,6 +140,20 @@ _CONSTANT_SOURCES = {
         "f64": ValueProject.float_as_f64_bits,
     },
 }
+_SCALAR_TYPES = tuple(name for types in _CONSTANT_SOURCES.values() for name in types)
+
+# Selectors carry their source/destination types in the canonical ISA spelling.
+# Only the correspondence with Loom operations belongs in this projection.
+_CONVERSION_SOURCE_OPS = {
+    "integer.convert": {
+        "s": conversion.scalar_extsi,
+        "u": conversion.scalar_extui,
+        "i": conversion.scalar_trunci,
+    },
+    "float.width": {"f32": conversion.scalar_extf, "f64": conversion.scalar_fptrunc},
+    "integer.to.float": {"s": conversion.scalar_sitofp, "u": conversion.scalar_uitofp},
+    "float.to.integer": {"s": conversion.scalar_fptosi, "u": conversion.scalar_fptoui},
+}
 
 _INSTRUCTIONS = {
     instruction.opcode: instruction for instruction in SPECIFICATION.instructions
@@ -156,7 +173,7 @@ for source_enum, selector in (
         value.name: value.value for value in selector.values
     }
 
-VM_CORE_CONTRACT_DIALECT_OPS = {"scalar": ALL_SCALAR_OPS}
+VM_CORE_CONTRACT_DIALECT_OPS = {"scalar": ALL_SCALAR_OPS, "scf": ALL_SCF_OPS}
 
 
 def _direct_cases(semantics_type, source_ops, type_prefix="i"):
@@ -198,8 +215,8 @@ def _constant_cases():
             )
 
 
-def _selected_rule(descriptor, source_op, source_type, selector):
-    result_type = (
+def _selected_rule(descriptor, source_op, source_type, selector, *, result_type=None):
+    result_type = result_type or (
         Scalar("i1")
         if isinstance(
             _INSTRUCTIONS[descriptor.encoding_id].semantics,
@@ -267,12 +284,59 @@ def _selected_cases():
                 )
 
 
+def _conversion_cases():
+    for descriptor in VM_CORE_DESCRIPTOR_SET.descriptors:
+        if not descriptor.immediates:
+            continue
+        domain = descriptor.immediates[0].enum_domain
+        if domain not in _CONVERSION_SOURCE_OPS:
+            continue
+        selector = _INSTRUCTIONS[descriptor.encoding_id].fields[-1].rule.data
+        for value in selector.values:
+            source, destination = value.name.split(".to.")
+            source_type = "i" + source[1:] if source[0] in "su" else source
+            result_type = (
+                "i" + destination[1:] if destination[0] in "su" else destination
+            )
+            if source_type not in _SCALAR_TYPES or result_type not in _SCALAR_TYPES:
+                continue
+            key = (
+                source
+                if domain == "float.width"
+                else destination[0]
+                if domain == "float.to.integer"
+                else source[0]
+            )
+            yield _selected_rule(
+                descriptor,
+                _CONVERSION_SOURCE_OPS[domain][key],
+                Scalar(source_type),
+                value.value,
+                result_type=Scalar(result_type),
+            )
+
+
 VM_CORE_CONTRACT_FRAGMENT = ContractFragment(
     name="vm.core",
     descriptor_set=VM_CORE_DESCRIPTOR_SET,
     public_header="loom/target/arch/vm/contracts/core.h",
     cases=tuple(_constant_cases())
     + tuple(_selected_cases())
+    + tuple(_conversion_cases())
+    + select_descriptor_rules(
+        (
+            SelectDescriptorCase(
+                scf_select,
+                _DESCRIPTORS[VALUE_SELECT.opcode],
+                Scalar("i1"),
+                Scalar(_SCALAR_TYPES),
+            ),
+        ),
+        descriptor_result="destination_v8",
+        descriptor_condition="condition_v8",
+        descriptor_true_value="true_v8",
+        descriptor_false_value="false_v8",
+    )
     + binary_descriptor_rules(
         tuple(_direct_cases(IntegerBinarySemantics, _BINARY_SOURCE_OPS))
         + tuple(_direct_cases(IntegerDivisionSemantics, _DIVISION_SOURCE_OPS))

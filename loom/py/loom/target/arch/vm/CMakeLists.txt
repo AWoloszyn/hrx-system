@@ -39,6 +39,7 @@ iree_py_library(
   DEPS
     loom::py::loom::target::arch::vm::descriptors
     loom::py::loom::dialect::scalar::scalar
+    loom::py::loom::dialect::scf::scf
     loom::py::loom::target::contracts::contracts
     iree::vm::bytecode::spec::model
 )

@@ -16,6 +16,13 @@ from pathlib import Path
 
 from iree.vm.bytecode.spec.isa import FieldRole, Instruction
 from iree.vm.bytecode.spec.isa.core.constant import CONSTANT_I32, CONSTANT_I64
+from iree.vm.bytecode.spec.isa.core.conversion import (
+    CONVERSION_INSTRUCTIONS,
+    FLOAT_TO_INTEGER_SELECTOR,
+    FLOAT_WIDTH_SELECTOR,
+    INTEGER_CONVERT_SELECTOR,
+    INTEGER_TO_FLOAT_SELECTOR,
+)
 from iree.vm.bytecode.spec.isa.core.float import (
     FloatBinarySemantics,
     FloatClampSemantics,
@@ -31,7 +38,7 @@ from iree.vm.bytecode.spec.isa.core.integer import (
     IntegerDivisionSemantics,
     IntegerUnarySemantics,
 )
-from iree.vm.bytecode.spec.isa.core.value import VALUE_COPY
+from iree.vm.bytecode.spec.isa.core.value import VALUE_COPY, VALUE_SELECT
 from iree.vm.bytecode.spec.specification import SPECIFICATION
 
 from loom.ir import ScalarTypeKind
@@ -90,9 +97,20 @@ _SCALAR_INSTRUCTIONS = tuple(
     for instruction in SPECIFICATION.instructions
     if type(instruction.semantics) in _RESULT_TYPES
 )
+_SCALAR_CONVERSIONS = tuple(
+    instruction
+    for instruction in CONVERSION_INSTRUCTIONS
+    if instruction.fields[-1].rule.data
+    in (
+        INTEGER_CONVERT_SELECTOR,
+        FLOAT_WIDTH_SELECTOR,
+        INTEGER_TO_FLOAT_SELECTOR,
+        FLOAT_TO_INTEGER_SELECTOR,
+    )
+)
 _SELECTORS = {
     field.rule.data.name: field.rule.data
-    for instruction in _SCALAR_INSTRUCTIONS
+    for instruction in (*_SCALAR_INSTRUCTIONS, *_SCALAR_CONVERSIONS)
     for field in instruction.fields
     if field.role is FieldRole.IMMEDIATE
 }
@@ -250,7 +268,9 @@ VM_CORE_DESCRIPTOR_SET = DescriptorSet(
     ),
     descriptors=(
         _value_descriptor(VALUE_COPY, ScalarTypeKind.I64),
+        _value_descriptor(VALUE_SELECT, ScalarTypeKind.I64),
         *(_constant_descriptor(op) for op in (CONSTANT_I32, CONSTANT_I64)),
+        *(_value_descriptor(op, ScalarTypeKind.I64) for op in _SCALAR_CONVERSIONS),
         *(
             _value_descriptor(
                 instruction,

@@ -96,6 +96,8 @@ loom_check_test_suite(
         "test/source_low/numeric_integer_order_bits.loom-test",
         "test/source_low/numeric_integer_unary.loom-test",
         "test/source_low/numeric_logical_constants.loom-test",
+        "test/source_low/numeric_scalar_conversion.loom-test",
+        "test/source_low/scalar_selection.loom-test",
     ],
     data = [
         "//loom/src/loom/test/corpus/source_low:numeric_float_arithmetic.loom-test",
@@ -104,6 +106,8 @@ loom_check_test_suite(
         "//loom/src/loom/test/corpus/source_low:numeric_integer_order_bits.loom-test",
         "//loom/src/loom/test/corpus/source_low:numeric_integer_unary.loom-test",
         "//loom/src/loom/test/corpus/source_low:numeric_logical_constants.loom-test",
+        "//loom/src/loom/test/corpus/source_low:numeric_scalar_conversion.loom-test",
+        "//loom/src/loom/test/corpus/source_low:scalar_selection.loom-test",
     ],
     target_compatible_with = loom_config_compatible_with(["//loom/config/target/arch:vm"]),
     test_name_prefix_to_strip = "test/",

@@ -68,15 +68,6 @@ def test_scalar_packets_preserve_spec_encoding_and_semantic_types():
         assert instruction.control_flow is ControlFlow.SEQUENTIAL
         assert instruction.suspension is Suspension.NEVER
         assert not instruction.state_effects
-        if instruction.failures:
-            assert DescriptorFlag.SIDE_EFFECTING in descriptor.flags
-            assert DescriptorFlag.DEAD_REMOVABLE not in descriptor.flags
-            assert tuple(effect.kind for effect in descriptor.effects) == (
-                EffectKind.FAILURE,
-            )
-        else:
-            assert not descriptor.effects
-            assert DescriptorFlag.DEAD_REMOVABLE in descriptor.flags
         register_fields = tuple(
             (field, offset)
             for field, offset in zip(
@@ -121,6 +112,23 @@ def test_scalar_packets_preserve_spec_encoding_and_semantic_types():
             else scalar_types[instruction.semantics.bit_width]
         )
         assert result_type.element_type is expected_type
+
+
+def test_scalar_effects_preserve_observable_failures():
+    instructions = {
+        instruction.opcode: instruction for instruction in SPECIFICATION.instructions
+    }
+    for descriptor in VM_CORE_DESCRIPTOR_SET.descriptors:
+        instruction = instructions[descriptor.encoding_id]
+        if instruction.failures:
+            assert DescriptorFlag.SIDE_EFFECTING in descriptor.flags
+            assert DescriptorFlag.DEAD_REMOVABLE not in descriptor.flags
+            assert tuple(effect.kind for effect in descriptor.effects) == (
+                EffectKind.FAILURE,
+            )
+        else:
+            assert not descriptor.effects
+            assert DescriptorFlag.DEAD_REMOVABLE in descriptor.flags
 
 
 def test_lowering_uses_the_projected_descriptors():

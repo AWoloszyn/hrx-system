@@ -20,6 +20,7 @@ loom_target_contract_table_cc_libraries(
     lower_rule_deps = [
         "//loom/src/loom/codegen/low/lower",
         "//loom/src/loom/ops/scalar",
+        "//loom/src/loom/ops/scf",
         "//loom/src/loom/target/arch/vm/descriptors:descriptors_ids",
     ],
 )
