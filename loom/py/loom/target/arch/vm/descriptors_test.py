@@ -8,6 +8,11 @@ from iree.vm.bytecode.spec.isa import ControlFlow, FieldRole, Suspension
 from iree.vm.bytecode.spec.isa.core.constant import CONSTANT_I32, CONSTANT_I64
 from iree.vm.bytecode.spec.isa.core.float import (
     FloatBinarySemantics,
+    FloatClampSemantics,
+    FloatClassifySemantics,
+    FloatCompareSemantics,
+    FloatFmaSemantics,
+    FloatMinmaxSemantics,
     FloatUnarySemantics,
 )
 from iree.vm.bytecode.spec.isa.core.integer import (
@@ -37,8 +42,14 @@ def test_scalar_packets_preserve_spec_encoding_and_semantic_types():
             (
                 IntegerBinarySemantics,
                 IntegerUnarySemantics,
+                IntegerCompareSemantics,
                 FloatBinarySemantics,
                 FloatUnarySemantics,
+                FloatMinmaxSemantics,
+                FloatCompareSemantics,
+                FloatClassifySemantics,
+                FloatClampSemantics,
+                FloatFmaSemantics,
             ),
         )
     ]
@@ -72,19 +83,39 @@ def test_scalar_packets_preserve_spec_encoding_and_semantic_types():
         scalar_types = (
             {32: ScalarTypeKind.F32, 64: ScalarTypeKind.F64}
             if isinstance(
-                instruction.semantics, (FloatBinarySemantics, FloatUnarySemantics)
+                instruction.semantics,
+                (
+                    FloatBinarySemantics,
+                    FloatUnarySemantics,
+                    FloatMinmaxSemantics,
+                    FloatClampSemantics,
+                    FloatFmaSemantics,
+                ),
             )
             else {32: ScalarTypeKind.I32, 64: ScalarTypeKind.I64}
         )
-        assert result_type.element_type is scalar_types[instruction.semantics.bit_width]
+        expected_type = (
+            ScalarTypeKind.I1
+            if isinstance(
+                instruction.semantics,
+                (
+                    IntegerCompareSemantics,
+                    FloatCompareSemantics,
+                    FloatClassifySemantics,
+                ),
+            )
+            else scalar_types[instruction.semantics.bit_width]
+        )
+        assert result_type.element_type is expected_type
 
 
 def test_lowering_uses_the_projected_descriptors():
     descriptors = VM_CORE_DESCRIPTOR_SET.descriptors
-    assert {id(case.descriptor) for case in VM_CORE_CONTRACT_FRAGMENT.cases} == {
+    cases = VM_CORE_CONTRACT_FRAGMENT.cases
+    assert {id(case.descriptor) for case in cases} == {
         id(descriptor) for descriptor in descriptors
     }
-    for case in VM_CORE_CONTRACT_FRAGMENT.cases:
+    for case in cases:
         emit = case.emit[0]
         assert emit.descriptor is case.descriptor
         assert set(emit.operands) == {
@@ -99,16 +130,18 @@ def test_lowering_uses_the_projected_descriptors():
         }
 
 
-def test_compare_selectors_preserve_the_spec_domain_and_encoding():
+def test_selectors_preserve_the_spec_domain_and_encoding():
     descriptors = {
         descriptor.encoding_id: descriptor
         for descriptor in VM_CORE_DESCRIPTOR_SET.descriptors
     }
     domains = {domain.name: domain for domain in VM_CORE_DESCRIPTOR_SET.enum_domains}
     for instruction in SPECIFICATION.instructions:
-        if not isinstance(instruction.semantics, IntegerCompareSemantics):
+        if instruction.opcode not in descriptors:
             continue
         descriptor = descriptors[instruction.opcode]
+        if not descriptor.immediates or descriptor.op_kind is DescriptorOpKind.CONST:
+            continue
         (immediate,) = descriptor.immediates
         (selector,) = (
             (field, offset)
@@ -123,10 +156,6 @@ def test_compare_selectors_preserve_the_spec_domain_and_encoding():
         assert {
             entry.token: entry.value for entry in domains[immediate.enum_domain].values
         } == {entry.name: entry.value for entry in field.rule.data.values}
-        assert (
-            descriptor.asm_forms[0].result_value_types[0].element_type
-            is ScalarTypeKind.I1
-        )
 
 
 def test_constant_immediates_preserve_the_wire_bits_and_alignment():

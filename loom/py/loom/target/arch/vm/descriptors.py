@@ -18,14 +18,19 @@ from iree.vm.bytecode.spec.isa import FieldRole, Instruction
 from iree.vm.bytecode.spec.isa.core.constant import CONSTANT_I32, CONSTANT_I64
 from iree.vm.bytecode.spec.isa.core.float import (
     FloatBinarySemantics,
+    FloatClampSemantics,
+    FloatClassifySemantics,
+    FloatCompareSemantics,
+    FloatFmaSemantics,
+    FloatMinmaxSemantics,
     FloatUnarySemantics,
 )
 from iree.vm.bytecode.spec.isa.core.integer import (
-    INTEGER_COMPARE_SELECTOR,
     IntegerBinarySemantics,
     IntegerCompareSemantics,
     IntegerUnarySemantics,
 )
+from iree.vm.bytecode.spec.isa.core.value import VALUE_COPY
 from iree.vm.bytecode.spec.specification import SPECIFICATION
 
 from loom.ir import ScalarTypeKind
@@ -61,14 +66,59 @@ _OPERAND_ROLES = {
     FieldRole.OPERAND: OperandRole.OPERAND,
 }
 
+_INTEGER_TYPES = {32: ScalarTypeKind.I32, 64: ScalarTypeKind.I64}
+_FLOAT_TYPES = {32: ScalarTypeKind.F32, 64: ScalarTypeKind.F64}
+_PREDICATE_TYPES = {32: ScalarTypeKind.I1, 64: ScalarTypeKind.I1}
+_RESULT_TYPES = {
+    IntegerBinarySemantics: _INTEGER_TYPES,
+    IntegerUnarySemantics: _INTEGER_TYPES,
+    IntegerCompareSemantics: _PREDICATE_TYPES,
+    FloatBinarySemantics: _FLOAT_TYPES,
+    FloatUnarySemantics: _FLOAT_TYPES,
+    FloatMinmaxSemantics: _FLOAT_TYPES,
+    FloatCompareSemantics: _PREDICATE_TYPES,
+    FloatClassifySemantics: _PREDICATE_TYPES,
+    FloatClampSemantics: _FLOAT_TYPES,
+    FloatFmaSemantics: _FLOAT_TYPES,
+}
+_SCALAR_INSTRUCTIONS = tuple(
+    instruction
+    for instruction in SPECIFICATION.instructions
+    if type(instruction.semantics) in _RESULT_TYPES
+)
+_SELECTORS = {
+    field.rule.data.name: field.rule.data
+    for instruction in _SCALAR_INSTRUCTIONS
+    for field in instruction.fields
+    if field.role is FieldRole.IMMEDIATE
+}
+
+
+def _selector_immediates(instruction: Instruction) -> tuple[Immediate, ...]:
+    return tuple(
+        Immediate(
+            field.field.name,
+            ImmediateKind.ENUM,
+            bit_width=field.field.byte_length * 8,
+            encoding_field_id=offset,
+            enum_domain=field.rule.data.name,
+        )
+        for field, offset in zip(
+            instruction.fields, instruction.field_offsets, strict=True
+        )
+        if field.role is FieldRole.IMMEDIATE
+    )
+
 
 def _value_descriptor(
     instruction: Instruction,
     result_type: ScalarTypeKind,
     *,
     op_kind: DescriptorOpKind = DescriptorOpKind.OP,
-    immediates: tuple[Immediate, ...] = (),
+    immediates: tuple[Immediate, ...] | None = None,
 ) -> Descriptor:
+    if immediates is None:
+        immediates = _selector_immediates(instruction)
     # The emitter has a bounded packet and positional storage for one immediate.
     assert instruction.byte_length <= CONSTANT_I64.byte_length
     assert len(immediates) <= 1
@@ -150,30 +200,6 @@ def _constant_descriptor(instruction: Instruction) -> Descriptor:
     )
 
 
-def _compare_descriptor(instruction: Instruction) -> Descriptor:
-    (selector,) = (
-        (field, offset)
-        for field, offset in zip(
-            instruction.fields, instruction.field_offsets, strict=True
-        )
-        if field.role is FieldRole.IMMEDIATE
-    )
-    field, offset = selector
-    return _value_descriptor(
-        instruction,
-        ScalarTypeKind.I1,
-        immediates=(
-            Immediate(
-                field.field.name,
-                ImmediateKind.ENUM,
-                bit_width=field.field.byte_length * 8,
-                encoding_field_id=offset,
-                enum_domain=field.rule.data.name,
-            ),
-        ),
-    )
-
-
 VM_CORE_DESCRIPTOR_SET = DescriptorSet(
     key="vm.core",
     target_key="vm",
@@ -206,43 +232,24 @@ VM_CORE_DESCRIPTOR_SET = DescriptorSet(
         ),
     ),
     requires_explicit_asm_surface=True,
-    enum_domains=(
+    enum_domains=tuple(
         EnumDomain(
-            INTEGER_COMPARE_SELECTOR.name,
-            tuple(
-                EnumValue(value.name, value.value)
-                for value in INTEGER_COMPARE_SELECTOR.values
-            ),
-        ),
+            selector.name,
+            tuple(EnumValue(value.name, value.value) for value in selector.values),
+        )
+        for selector in _SELECTORS.values()
     ),
-    descriptors=tuple(_constant_descriptor(op) for op in (CONSTANT_I32, CONSTANT_I64))
-    + tuple(
-        _value_descriptor(
-            instruction,
-            {32: ScalarTypeKind.I32, 64: ScalarTypeKind.I64}[
-                instruction.semantics.bit_width
-            ],
-        )
-        for instruction in SPECIFICATION.instructions
-        if isinstance(
-            instruction.semantics, (IntegerBinarySemantics, IntegerUnarySemantics)
-        )
-    )
-    + tuple(
-        _value_descriptor(
-            instruction,
-            {32: ScalarTypeKind.F32, 64: ScalarTypeKind.F64}[
-                instruction.semantics.bit_width
-            ],
-        )
-        for instruction in SPECIFICATION.instructions
-        if isinstance(
-            instruction.semantics, (FloatBinarySemantics, FloatUnarySemantics)
-        )
-    )
-    + tuple(
-        _compare_descriptor(instruction)
-        for instruction in SPECIFICATION.instructions
-        if isinstance(instruction.semantics, IntegerCompareSemantics)
+    descriptors=(
+        _value_descriptor(VALUE_COPY, ScalarTypeKind.I64),
+        *(_constant_descriptor(op) for op in (CONSTANT_I32, CONSTANT_I64)),
+        *(
+            _value_descriptor(
+                instruction,
+                _RESULT_TYPES[type(instruction.semantics)][
+                    instruction.semantics.bit_width
+                ],
+            )
+            for instruction in _SCALAR_INSTRUCTIONS
+        ),
     ),
 )

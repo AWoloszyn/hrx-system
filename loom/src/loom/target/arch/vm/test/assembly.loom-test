@@ -49,3 +49,15 @@ low.func.def target<vm.core>(@vm) abi(vm_function) @typed_cells(%a: reg<vm.value
   %both = integer.and.i32 %b, %yes : reg<vm.value : i1>
   return %sum, %wide, %both
 }
+
+// ====
+
+vm.target<core> @vm
+
+low.func.def target<vm.core>(@vm) abi(vm_function) @float_selectors(%a: reg<vm.value : f32>, %b: reg<vm.value : f32>, %c: reg<vm.value : f32>) -> (reg<vm.value : i32>, reg<vm.value : i1>) asm {
+  %minimum = float.minmax.f32 %a, %b, "minimum"
+  %fused = float.fma.f32 %minimum, %b, %c
+  %unordered = float.compare.f32 %fused, %a, "uno"
+  %bits = value.copy %fused : reg<vm.value : i32>
+  return %bits, %unordered
+}

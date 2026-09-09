@@ -54,6 +54,26 @@ class FloatUnarySemantics(NamedTuple):
     bit_width: int
 
 
+class FloatMinmaxSemantics(NamedTuple):
+    bit_width: int
+
+
+class FloatCompareSemantics(NamedTuple):
+    bit_width: int
+
+
+class FloatClassifySemantics(NamedTuple):
+    bit_width: int
+
+
+class FloatClampSemantics(NamedTuple):
+    bit_width: int
+
+
+class FloatFmaSemantics(NamedTuple):
+    bit_width: int
+
+
 def _selector(
     name: str, summary: str, values: tuple[tuple[str, int, str], ...]
 ) -> NumericTable:
@@ -642,7 +662,7 @@ _SIGN_DEFINITIONS = (
 
 class _SelectedBinaryDefinition(NamedTuple):
     opcode: int
-    mnemonic: str
+    bit_width: int
     selector_name: str
     selector: NumericTable
     summary: str
@@ -651,8 +671,8 @@ class _SelectedBinaryDefinition(NamedTuple):
 
 
 def _selected_binary(definition: _SelectedBinaryDefinition) -> Instruction:
-    opcode, mnemonic, selector_name, selector, summary, result, evaluator = definition
-    width = 32 if mnemonic.endswith("32") else 64
+    opcode, width, selector_name, selector, summary, result, evaluator = definition
+    mnemonic = f"{selector.name}.f{width}"
     reads = "read_float_bits"
     if selector is FLOAT_COMPARE_SELECTOR:
         publish = "values[destination_v8] = canonical_bool(result);\n"
@@ -680,7 +700,11 @@ def _selected_binary(definition: _SelectedBinaryDefinition) -> Instruction:
             ),
             _padding(element_count=3),
         ),
-        semantics=None,
+        semantics=(
+            FloatCompareSemantics(width)
+            if selector is FLOAT_COMPARE_SELECTOR
+            else FloatMinmaxSemantics(width)
+        ),
         behavior=(
             f"Evaluates the selected {width}-bit {selector.name} operation under "
             "the selector's exact contract."
@@ -703,7 +727,7 @@ def _selected_binary(definition: _SelectedBinaryDefinition) -> Instruction:
 _SELECTED_BINARY_DEFINITIONS = (
     _SelectedBinaryDefinition(
         0x8E,
-        "float.minmax.f32",
+        32,
         "selector_u8",
         FLOAT_MINMAX_SELECTOR,
         "Selects f32 IEEE or number-selecting minimum/maximum.",
@@ -717,7 +741,7 @@ _SELECTED_BINARY_DEFINITIONS = (
     ),
     _SelectedBinaryDefinition(
         0x8F,
-        "float.minmax.f64",
+        64,
         "selector_u8",
         FLOAT_MINMAX_SELECTOR,
         "Selects f64 IEEE or number-selecting minimum/maximum.",
@@ -731,7 +755,7 @@ _SELECTED_BINARY_DEFINITIONS = (
     ),
     _SelectedBinaryDefinition(
         0x90,
-        "float.compare.f32",
+        32,
         "predicate_u8",
         FLOAT_COMPARE_SELECTOR,
         "Evaluates one ordered or unordered raw-payload f32 predicate.",
@@ -744,7 +768,7 @@ _SELECTED_BINARY_DEFINITIONS = (
     ),
     _SelectedBinaryDefinition(
         0x91,
-        "float.compare.f64",
+        64,
         "predicate_u8",
         FLOAT_COMPARE_SELECTOR,
         "Evaluates one ordered or unordered raw-payload f64 predicate.",
@@ -780,7 +804,7 @@ def _classify(opcode: int, width: int) -> Instruction:
                 FLOAT_CLASSIFY_SELECTOR,
             ),
         ),
-        semantics=None,
+        semantics=FloatClassifySemantics(width),
         behavior=(
             "Tests raw exponent and significand bits for NaN, infinity, or finite "
             "without performing floating arithmetic."
@@ -824,7 +848,7 @@ def _clamp(opcode: int, width: int) -> Instruction:
             ),
             _padding(U16),
         ),
-        semantics=None,
+        semantics=FloatClampSemantics(width),
         behavior=(
             "Ordered mode applies two ordered comparisons and selects, preserving a "
             "NaN value bit-for-bit and ignoring a NaN bound. Number mode composes "
@@ -914,7 +938,7 @@ def _fma(opcode: int, width: int) -> Instruction:
             _value("c_v8", FieldRole.OPERAND, "Addend C payload."),
             _padding(element_count=3),
         ),
-        semantics=None,
+        semantics=FloatFmaSemantics(width),
         behavior=(
             "Computes infinitely precise a*b+c and rounds once to selected width."
         ),
