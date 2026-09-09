@@ -9,11 +9,17 @@
 
 #include "libamdf/src/allocator.h"
 #include "libamdf/src/gpu/umd/kfd/file.h"
+#include "libamdf/src/gpu/umd/kfd/reset_monitor.h"
+#include "libamdf/src/gpu/umd/kfd/target/gfx1151/pm4_queue.h"
 #include "libamdf/src/platform/linux/endpoint.h"
 #include "libamdf/src/platform/linux/host_cache.h"
 
 amdf_status_t amdf_gpu_umd_device_destroy(amdf_gpu_umd_device_t* device) {
-  amdf_status_t status = amdf_linux_file_close(&device->descriptor);
+  amdf_status_t status =
+      amdf_gpu_kfd_reset_monitor_deinitialize(&device->reset_monitor);
+  if (amdf_status_is_ok(status)) {
+    status = amdf_linux_file_close(&device->descriptor);
+  }
   if (amdf_status_is_ok(status)) {
     status = amdf_linux_file_close(&device->render_descriptor);
   }
@@ -76,6 +82,14 @@ amdf_status_t amdf_gpu_umd_device_create(
     if (ioctl(device->descriptor, AMDKFD_IOC_ACQUIRE_VM, &acquire) != 0) {
       status = amdf_linux_error(errno);
     }
+  }
+  if (amdf_status_is_ok(status) &&
+      amdf_gpu_kfd_gfx1151_pm4_queue_is_supported(
+          &device->topology, device->page_size, device->cache_line_size)) {
+    status = amdf_gpu_kfd_reset_monitor_initialize(
+        device->render_descriptor,
+        amdf_gpu_kfd_reset_monitor_default_native_api(),
+        &device->reset_monitor);
   }
   if (amdf_status_is_ok(status)) {
     *out_result = (amdf_gpu_umd_device_result_t){

@@ -10,6 +10,7 @@
 #include <stddef.h>
 
 #include "libamdf/src/gpu/umd/device.h"
+#include "libamdf/src/gpu/umd/kfd/reset_monitor.h"
 #include "libamdf/src/gpu/umd/kfd/topology.h"
 
 // Explicit owner of one KFD context and its acquired DRM virtual address space.
@@ -28,6 +29,8 @@ struct amdf_gpu_umd_device_t {
   size_t page_size;
   // Qualified host cache-line length in bytes.
   uint32_t cache_line_size;
+  // Physical reset observer owned for every queue-qualified device.
+  amdf_gpu_kfd_reset_monitor_t reset_monitor;
 };
 
 #endif  // AMDF_SRC_GPU_UMD_KFD_DEVICE_H_

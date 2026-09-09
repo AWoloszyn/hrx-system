@@ -43,10 +43,44 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
 iree_cc_library(
   NAME
+    reset_monitor
+  HDRS
+    "reset_monitor.h"
+  SRCS
+    "reset_monitor.c"
+  DEPS
+    amdf::headers
+    libamdf::src::atomics
+    libamdf::src::platform::linux::file
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_test(
+  NAME
+    reset_monitor_test
+  SRCS
+    "reset_monitor_test.cc"
+  DEPS
+    ::reset_monitor
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_library(
+  NAME
     device_state
   HDRS
     "device.h"
   DEPS
+    ::reset_monitor
     ::topology
     amdf::headers
     libamdf::src::gpu::umd::device
@@ -63,9 +97,11 @@ iree_cc_library(
   DEPS
     ::device_state
     ::file
+    ::reset_monitor
     ::topology
     amdf::headers
     libamdf::src::allocator
+    libamdf::src::gpu::umd::kfd::target::gfx1151::pm4_queue
     libamdf::src::platform::linux::endpoint
     libamdf::src::platform::linux::file
     libamdf::src::platform::linux::host_cache

@@ -74,6 +74,9 @@ static amdf_status_t amdf_gpu_kfd_read_node(
     ARRAY_COUNT,
     ARRAYS_PER_ENGINE,
     XCC_COUNT,
+    COMPUTE_QUEUE_COUNT,
+    CONTEXT_SAVE_RESTORE_SIZE,
+    CONTROL_STACK_SIZE,
     PROPERTY_COUNT,
   };
   const char* names[PROPERTY_COUNT] = {
@@ -91,6 +94,9 @@ static amdf_status_t amdf_gpu_kfd_read_node(
       "array_count",
       "simd_arrays_per_engine",
       "num_xcc",
+      "num_cp_queues",
+      "cwsr_size",
+      "ctl_stack_size",
   };
   uint32_t values[PROPERTY_COUNT] = {0};
   uint32_t present = 0;
@@ -167,6 +173,10 @@ static amdf_status_t amdf_gpu_kfd_read_node(
                   (uint32_t)(values[ARRAY_COUNT] / arrays_per_xcc),
           },
   };
+  topology->compute_queue_count = values[COMPUTE_QUEUE_COUNT];
+  topology->context_save_restore_byte_length =
+      values[CONTEXT_SAVE_RESTORE_SIZE];
+  topology->control_stack_byte_length = values[CONTROL_STACK_SIZE];
   *out_matches = true;
   return AMDF_STATUS_OK;
 }

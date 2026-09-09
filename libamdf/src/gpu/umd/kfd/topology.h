@@ -18,6 +18,12 @@ typedef struct amdf_gpu_kfd_topology_t {
   uint32_t gpu_id;
   // Physical placement features supported by the native device.
   amdf_gpu_device_features_t memory_features;
+  // Number of native compute queues exposed by this KFD node.
+  uint32_t compute_queue_count;
+  // Required per-XCC context-save/restore area length in bytes.
+  uint32_t context_save_restore_byte_length;
+  // Required per-XCC control-stack length in bytes.
+  uint32_t control_stack_byte_length;
   // Ordinary GPU virtual-address interval reported by DRM.
   struct {
     // First usable GPU virtual byte address.
