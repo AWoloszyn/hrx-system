@@ -34,7 +34,7 @@ amdf_status_t amdf_platform_endpoint_open(
   amdf_platform_endpoint_t* endpoint = NULL;
   amdf_status_t status =
       amdf_calloc(instance->host_allocator, sizeof(*endpoint),
-                  _Alignof(amdf_platform_endpoint_t), (void**)&endpoint);
+                  amdf_alignof(amdf_platform_endpoint_t), (void**)&endpoint);
   if (!amdf_status_is_ok(status)) return status;
   endpoint->instance = instance;
 

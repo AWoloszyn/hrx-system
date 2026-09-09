@@ -40,6 +40,11 @@ Runtime-only consumers outside `libamdf/` retain their own subsystem prefix.
   obligation without naming live state as an `out_*` parameter.
 - GPU, XDNA, and platform implementation packages remain dependency-isolated.
   Common code may not acquire a device-family dependency by convenience.
+- Compiler and scalar portability policy lives beside the shared primitives in
+  `include/amdf/base.h`. Callers use those primitives without local platform
+  branches. Native OS headers such as `windows.h` belong only in explicitly
+  platform-specific implementation or test files, never in common core files
+  or portable headers.
 - Extension entry points and shared family code are UMD-agnostic. They operate
   on the implementation selected for the live object, without inspecting UMD
   identity or using preprocessor branches to change behavior for a UMD.

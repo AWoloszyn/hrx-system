@@ -6,7 +6,6 @@
 
 #include "libamdf/src/gpu/umd/memory.h"
 
-#include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -160,7 +159,8 @@ static void amdf_windows_gpu_memory_plan(
       }
       break;
     default:
-      assert(false && "selected GPU memory profile must have a known class");
+      amdf_assert(false &&
+                  "selected GPU memory profile must have a known class");
       break;
   }
 
@@ -670,7 +670,7 @@ amdf_status_t amdf_gpu_umd_memory_create(
   status = amdf_calloc_with_trailing(
       device->host_allocator,
       offsetof(amdf_gpu_umd_memory_t, allocation_handles), handle_bytes,
-      _Alignof(amdf_gpu_umd_memory_t), (void**)&memory);
+      amdf_alignof(amdf_gpu_umd_memory_t), (void**)&memory);
   if (!amdf_status_is_ok(status)) return status;
   memory->device = device;
   memory->allocation_capacity = allocation_count;
@@ -750,7 +750,7 @@ amdf_status_t amdf_gpu_umd_memory_map(
   amdf_gpu_umd_host_mapping_t* mapping = NULL;
   amdf_status_t status =
       amdf_calloc(memory->device->host_allocator, sizeof(*mapping),
-                  _Alignof(amdf_gpu_umd_host_mapping_t), (void**)&mapping);
+                  amdf_alignof(amdf_gpu_umd_host_mapping_t), (void**)&mapping);
   if (!amdf_status_is_ok(status)) return status;
   mapping->memory = memory;
   mapping->memory_byte_offset = map_info->byte_offset;

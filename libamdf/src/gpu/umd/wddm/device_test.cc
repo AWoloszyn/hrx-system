@@ -150,7 +150,7 @@ class WindowsGpuDeviceRollbackTest : public ::testing::Test {
     instance_.kmt.close_adapter = FakeCloseAdapter;
 
     ASSERT_EQ(amdf_calloc(instance_.host_allocator, sizeof(*endpoint_),
-                          alignof(amdf_platform_endpoint_t),
+                          amdf_alignof(amdf_platform_endpoint_t),
                           reinterpret_cast<void**>(&endpoint_)),
               AMDF_STATUS_OK);
     endpoint_->instance = &instance_;

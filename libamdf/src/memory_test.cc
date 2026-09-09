@@ -133,7 +133,7 @@ static amdf_status_t AllocateFakeMemory(FakeDevice* device,
       amdf_device_host_allocator(&device->base);
   FakeMemory* memory = nullptr;
   amdf_status_t status =
-      amdf_calloc(host_allocator, sizeof(*memory), alignof(FakeMemory),
+      amdf_calloc(host_allocator, sizeof(*memory), amdf_alignof(FakeMemory),
                   reinterpret_cast<void**>(&memory));
   if (!amdf_status_is_ok(status)) return status;
   memory->device = device;

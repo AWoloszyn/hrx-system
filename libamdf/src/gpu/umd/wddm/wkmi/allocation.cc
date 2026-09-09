@@ -113,7 +113,7 @@ amdf_wkmi_bridge_result_t GpuAllocationCreateImpl(
                                    allocation_private_byte_length) ||
       !allocation_infos.Allocate(adapter->host_allocator,
                                  allocation_info_byte_length,
-                                 alignof(D3DDDI_ALLOCATIONINFO2))) {
+                                 amdf_alignof(D3DDDI_ALLOCATIONINFO2))) {
     return AMDF_WKMI_BRIDGE_RESULT_RESOURCE_EXHAUSTED;
   }
   auto* allocation_private_bytes =

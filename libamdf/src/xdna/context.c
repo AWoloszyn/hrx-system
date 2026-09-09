@@ -97,7 +97,7 @@ amdf_status_t AMDF_CALL amdf_xdna_context_create(
   const amdf_allocator_t host_allocator = amdf_device_host_allocator(device);
   amdf_xdna_context_t* context = NULL;
   status = amdf_calloc(host_allocator, sizeof(*context),
-                       _Alignof(amdf_xdna_context_t), (void**)&context);
+                       amdf_alignof(amdf_xdna_context_t), (void**)&context);
   if (!amdf_status_is_ok(status)) return status;
   status = amdf_device_register_child(device);
   if (amdf_status_is_ok(status)) {

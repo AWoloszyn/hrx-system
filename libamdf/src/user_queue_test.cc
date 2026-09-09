@@ -45,9 +45,9 @@ static amdf_status_t FakeMap(amdf_user_queue_t* base_queue,
   auto* queue = reinterpret_cast<FakeQueue*>(base_queue);
   if (!amdf_status_is_ok(queue->map_status)) return queue->map_status;
   FakeMapping* mapping = nullptr;
-  amdf_status_t status =
-      amdf_calloc(base_queue->host_allocator, sizeof(*mapping),
-                  alignof(FakeMapping), reinterpret_cast<void**>(&mapping));
+  amdf_status_t status = amdf_calloc(
+      base_queue->host_allocator, sizeof(*mapping), amdf_alignof(FakeMapping),
+      reinterpret_cast<void**>(&mapping));
   if (!amdf_status_is_ok(status)) return status;
   amdf_user_queue_mapping_info_t info = {
       .type = AMDF_STRUCTURE_TYPE_USER_QUEUE_MAPPING_INFO,
@@ -111,8 +111,8 @@ static amdf_status_t CreateFakeQueue(amdf_device_t* device,
                                      amdf_user_queue_t** out_queue) {
   FakeQueue* queue = nullptr;
   amdf_status_t status =
-      amdf_calloc(device->host_allocator, sizeof(*queue), alignof(FakeQueue),
-                  reinterpret_cast<void**>(&queue));
+      amdf_calloc(device->host_allocator, sizeof(*queue),
+                  amdf_alignof(FakeQueue), reinterpret_cast<void**>(&queue));
   if (!amdf_status_is_ok(status)) return status;
   const amdf_user_queue_info_t info = {
       .type = AMDF_STRUCTURE_TYPE_USER_QUEUE_INFO,

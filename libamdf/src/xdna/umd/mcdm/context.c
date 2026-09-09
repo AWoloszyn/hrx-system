@@ -52,7 +52,7 @@ amdf_status_t amdf_xdna_umd_context_create(
 
   amdf_xdna_umd_context_t* context = NULL;
   status = amdf_calloc(device->host_allocator, sizeof(*context),
-                       _Alignof(amdf_xdna_umd_context_t), (void**)&context);
+                       amdf_alignof(amdf_xdna_umd_context_t), (void**)&context);
   if (!amdf_status_is_ok(status)) {
     amdf_free(device->host_allocator, context_data);
     return status;

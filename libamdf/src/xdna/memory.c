@@ -6,7 +6,6 @@
 
 #include "libamdf/src/xdna/memory.h"
 
-#include <assert.h>
 #include <stddef.h>
 
 #include "libamdf/src/allocator.h"
@@ -94,7 +93,7 @@ static amdf_status_t amdf_xdna_memory_map(
   amdf_xdna_host_mapping_t* mapping = NULL;
   amdf_status_t status =
       amdf_calloc(host_allocator, sizeof(*mapping),
-                  _Alignof(amdf_xdna_host_mapping_t), (void**)&mapping);
+                  amdf_alignof(amdf_xdna_host_mapping_t), (void**)&mapping);
   if (!amdf_status_is_ok(status)) return status;
   status = amdf_host_mapping_initialize(
       &mapping->base, &amdf_xdna_host_mapping_vtable, base_memory);
@@ -105,11 +104,11 @@ static amdf_status_t amdf_xdna_memory_map(
                                       &mapping->umd, &result);
   }
   if (amdf_status_is_ok(status)) {
-    assert((result.flags & map_info->flags) == map_info->flags &&
-           (result.flags & ~profile->host_mapping.supported_access) == 0 &&
-           result.pointer != NULL &&
-           result.byte_length == map_info->byte_length &&
-           "XDNA host mapping must achieve the selected profile request");
+    amdf_assert((result.flags & map_info->flags) == map_info->flags &&
+                (result.flags & ~profile->host_mapping.supported_access) == 0 &&
+                result.pointer != NULL &&
+                result.byte_length == map_info->byte_length &&
+                "XDNA host mapping must achieve the selected profile request");
     mapping->base.info.type = AMDF_STRUCTURE_TYPE_HOST_MAPPING_INFO;
     mapping->base.info.structure_size = sizeof(mapping->base.info);
     mapping->base.info.flags = result.flags;
@@ -193,8 +192,8 @@ amdf_status_t amdf_xdna_memory_create(
   const amdf_allocator_t host_allocator = amdf_device_host_allocator(device);
   amdf_xdna_memory_t* memory = NULL;
   amdf_status_t status =
-      amdf_calloc(host_allocator, sizeof(*memory), _Alignof(amdf_xdna_memory_t),
-                  (void**)&memory);
+      amdf_calloc(host_allocator, sizeof(*memory),
+                  amdf_alignof(amdf_xdna_memory_t), (void**)&memory);
   if (!amdf_status_is_ok(status)) return status;
   status =
       amdf_memory_initialize(&memory->base, &amdf_xdna_memory_vtable, device);
@@ -225,8 +224,8 @@ amdf_status_t amdf_xdna_memory_import(
   const amdf_allocator_t host_allocator = amdf_device_host_allocator(device);
   amdf_xdna_memory_t* memory = NULL;
   amdf_status_t status =
-      amdf_calloc(host_allocator, sizeof(*memory), _Alignof(amdf_xdna_memory_t),
-                  (void**)&memory);
+      amdf_calloc(host_allocator, sizeof(*memory),
+                  amdf_alignof(amdf_xdna_memory_t), (void**)&memory);
   if (!amdf_status_is_ok(status)) return status;
   status =
       amdf_memory_initialize(&memory->base, &amdf_xdna_memory_vtable, device);

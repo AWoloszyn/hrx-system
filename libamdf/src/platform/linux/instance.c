@@ -17,7 +17,7 @@ amdf_status_t amdf_platform_instance_create(
   amdf_platform_instance_t* instance = NULL;
   amdf_status_t status =
       amdf_calloc(host_allocator, sizeof(*instance),
-                  _Alignof(amdf_platform_instance_t), (void**)&instance);
+                  amdf_alignof(amdf_platform_instance_t), (void**)&instance);
   if (!amdf_status_is_ok(status)) return status;
   instance->host_allocator = host_allocator;
   instance->sysfs_descriptor = open("/sys", O_PATH | O_DIRECTORY | O_CLOEXEC);

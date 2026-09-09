@@ -20,15 +20,22 @@
 namespace {
 
 struct TestAllocator {
+  // Rejects allocation requests without changing live storage.
   bool fail_allocation = false;
+  // Number of allocation requests observed by the callback.
   size_t allocation_count = 0;
+  // Number of non-null allocations released through the callback.
   size_t free_count = 0;
+  // Number of successful allocations not yet freed.
   size_t live_allocation_count = 0;
+  // Alignment supplied to the most recent allocation callback.
+  uint64_t requested_alignment = 0;
 
   static void* AMDF_CALL Allocate(void* user_data, uint64_t byte_length,
                                   uint64_t minimum_alignment) {
     auto* self = static_cast<TestAllocator*>(user_data);
     ++self->allocation_count;
+    self->requested_alignment = minimum_alignment;
     if (self->fail_allocation) return nullptr;
 #if defined(_WIN32)
     void* pointer = _aligned_malloc(static_cast<size_t>(byte_length),
@@ -76,6 +83,19 @@ TEST(AllocatorTest, SystemAllocatorProvidesAlignmentAndZeroing) {
   amdf_free(allocator, pointer);
 }
 
+TEST(AllocatorTest, SmallAlignmentIsNormalizedForScalarStorage) {
+  TestAllocator state;
+  const amdf_allocator_t allocator = state.MakeAllocator();
+  void* pointer = nullptr;
+  ASSERT_EQ(amdf_malloc(allocator, sizeof(std::max_align_t), 1, &pointer),
+            AMDF_STATUS_OK);
+  EXPECT_GE(state.requested_alignment, amdf_alignof(std::max_align_t));
+  EXPECT_EQ(
+      reinterpret_cast<uintptr_t>(pointer) % amdf_alignof(std::max_align_t),
+      0u);
+  amdf_free(allocator, pointer);
+}
+
 TEST(AllocatorTest, ResolveRejectsPartialAllocatorWithoutChangingOutput) {
   TestAllocator state;
   const amdf_allocator_t requested = {
@@ -112,12 +132,12 @@ TEST(AllocatorTest, OverflowPreservesOutput) {
   const amdf_allocator_t allocator = amdf_allocator_system();
   void* const sentinel = reinterpret_cast<void*>(uintptr_t{1});
   void* pointer = sentinel;
-  EXPECT_EQ(amdf_status_code(amdf_calloc_array(
-                allocator, SIZE_MAX, 2, alignof(std::max_align_t), &pointer)),
+  EXPECT_EQ(amdf_status_code(amdf_calloc_array(allocator, SIZE_MAX, 2,
+                                               amdf_max_align_t, &pointer)),
             AMDF_STATUS_CODE_OUT_OF_RANGE);
   EXPECT_EQ(pointer, sentinel);
   EXPECT_EQ(amdf_status_code(amdf_calloc_with_trailing(
-                allocator, 2, SIZE_MAX, alignof(std::max_align_t), &pointer)),
+                allocator, 2, SIZE_MAX, amdf_max_align_t, &pointer)),
             AMDF_STATUS_CODE_OUT_OF_RANGE);
   EXPECT_EQ(pointer, sentinel);
 }

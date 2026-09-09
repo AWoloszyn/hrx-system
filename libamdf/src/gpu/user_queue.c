@@ -84,9 +84,9 @@ static amdf_status_t amdf_gpu_user_queue_map(
 
   const amdf_allocator_t host_allocator = base_queue->host_allocator;
   amdf_gpu_user_queue_mapping_t* mapping = NULL;
-  amdf_status_t status =
-      amdf_calloc(host_allocator, sizeof(*mapping),
-                  _Alignof(amdf_gpu_user_queue_mapping_t), (void**)&mapping);
+  amdf_status_t status = amdf_calloc(
+      host_allocator, sizeof(*mapping),
+      amdf_alignof(amdf_gpu_user_queue_mapping_t), (void**)&mapping);
   if (!amdf_status_is_ok(status)) return status;
   const amdf_user_queue_mapping_info_t info = {
       .type = AMDF_STRUCTURE_TYPE_USER_QUEUE_MAPPING_INFO,
@@ -295,7 +295,7 @@ amdf_status_t AMDF_CALL amdf_gpu_user_queue_create(
   const amdf_allocator_t host_allocator = amdf_device_host_allocator(device);
   amdf_gpu_user_queue_t* queue = NULL;
   status = amdf_calloc(host_allocator, sizeof(*queue),
-                       _Alignof(amdf_gpu_user_queue_t), (void**)&queue);
+                       amdf_alignof(amdf_gpu_user_queue_t), (void**)&queue);
   if (!amdf_status_is_ok(status)) return status;
   status = amdf_user_queue_initialize(&queue->base, &amdf_gpu_user_queue_vtable,
                                       device, &info);

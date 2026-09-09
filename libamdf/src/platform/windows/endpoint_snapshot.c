@@ -55,7 +55,7 @@ amdf_status_t amdf_windows_endpoint_snapshot_enumerate(
   if (capacity != 0) {
     const amdf_status_t allocation_status = amdf_calloc_array(
         host_allocator, (size_t)capacity, sizeof(*staged_summaries),
-        _Alignof(amdf_endpoint_summary_t), (void**)&staged_summaries);
+        amdf_alignof(amdf_endpoint_summary_t), (void**)&staged_summaries);
     if (!amdf_status_is_ok(allocation_status)) return allocation_status;
   }
 
@@ -84,7 +84,7 @@ amdf_status_t amdf_windows_endpoint_snapshot_enumerate(
   D3DKMT_ADAPTERINFO* adapters = NULL;
   const amdf_status_t allocation_status =
       amdf_calloc_array(host_allocator, adapter_capacity, sizeof(*adapters),
-                        _Alignof(D3DKMT_ADAPTERINFO), (void**)&adapters);
+                        amdf_alignof(D3DKMT_ADAPTERINFO), (void**)&adapters);
   if (!amdf_status_is_ok(allocation_status)) {
     amdf_free(host_allocator, staged_summaries);
     return allocation_status;

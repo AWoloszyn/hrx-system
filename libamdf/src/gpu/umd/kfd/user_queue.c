@@ -316,7 +316,7 @@ amdf_status_t amdf_gpu_umd_user_queue_create(
   amdf_gpu_umd_user_queue_t* queue = NULL;
   amdf_status_t status =
       amdf_calloc(device->host_allocator, sizeof(*queue),
-                  _Alignof(amdf_gpu_umd_user_queue_t), (void**)&queue);
+                  amdf_alignof(amdf_gpu_umd_user_queue_t), (void**)&queue);
   if (!amdf_status_is_ok(status)) return status;
   queue->device = device;
   queue->native_api = device->user_queue_native_api;
@@ -439,7 +439,7 @@ amdf_status_t amdf_gpu_umd_user_queue_map(
   amdf_gpu_umd_user_queue_mapping_t* mapping = NULL;
   const amdf_status_t status = amdf_calloc(
       queue->device->host_allocator, sizeof(*mapping),
-      _Alignof(amdf_gpu_umd_user_queue_mapping_t), (void**)&mapping);
+      amdf_alignof(amdf_gpu_umd_user_queue_mapping_t), (void**)&mapping);
   if (!amdf_status_is_ok(status)) return status;
   mapping->host_allocator = queue->device->host_allocator;
   const amdf_gpu_umd_user_queue_mapping_result_t result = {

@@ -37,7 +37,7 @@ void* AMDF_CALL TestAllocate(void* user_data, uint64_t byte_length,
   auto* state = static_cast<TestAllocatorState*>(user_data);
   const size_t ordinal = state->allocation_count++;
   if (ordinal == state->failure_ordinal) return nullptr;
-  if (minimum_alignment < alignof(std::max_align_t) ||
+  if (minimum_alignment < amdf_max_align_t ||
       (minimum_alignment & (minimum_alignment - 1)) != 0) {
     ++state->invalid_alignment_count;
   }

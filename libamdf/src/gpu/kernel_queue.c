@@ -278,7 +278,7 @@ amdf_status_t AMDF_CALL amdf_gpu_kernel_queue_create(
   const amdf_allocator_t host_allocator = amdf_device_host_allocator(device);
   amdf_gpu_kernel_queue_t* queue = NULL;
   status = amdf_calloc(host_allocator, sizeof(*queue),
-                       _Alignof(amdf_gpu_kernel_queue_t), (void**)&queue);
+                       amdf_alignof(amdf_gpu_kernel_queue_t), (void**)&queue);
   if (!amdf_status_is_ok(status)) return status;
   const amdf_gpu_device_info_t* device_info = amdf_gpu_device_get_info(device);
   amdf_kernel_queue_info_t info = {

@@ -80,7 +80,7 @@ amdf_status_t amdf_xdna_umd_device_create(
   amdf_xdna_umd_device_t* device = NULL;
   amdf_status_t status =
       amdf_calloc(host_allocator, sizeof(*device),
-                  _Alignof(amdf_xdna_umd_device_t), (void**)&device);
+                  amdf_alignof(amdf_xdna_umd_device_t), (void**)&device);
   if (!amdf_status_is_ok(status)) return status;
   device->host_allocator = host_allocator;
   device->descriptor = -1;

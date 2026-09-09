@@ -57,7 +57,7 @@ amdf_status_t amdf_gpu_umd_kernel_queue_create(
   amdf_gpu_umd_kernel_queue_t* queue = NULL;
   amdf_status_t status =
       amdf_calloc(device->host_allocator, sizeof(*queue),
-                  _Alignof(amdf_gpu_umd_kernel_queue_t), (void**)&queue);
+                  amdf_alignof(amdf_gpu_umd_kernel_queue_t), (void**)&queue);
   if (!amdf_status_is_ok(status)) return status;
   queue->device = device;
   InitializeSRWLock(&queue->wait_lock);

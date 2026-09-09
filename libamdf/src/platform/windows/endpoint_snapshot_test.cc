@@ -219,7 +219,7 @@ class EndpointSnapshotTest : public ::testing::Test {
     current_fake = &fake_;
     const amdf_allocator_t host_allocator = host_allocations_.MakeAllocator();
     ASSERT_EQ(amdf_calloc(host_allocator, sizeof(*platform_instance_),
-                          alignof(amdf_platform_instance_t),
+                          amdf_alignof(amdf_platform_instance_t),
                           reinterpret_cast<void**>(&platform_instance_)),
               AMDF_STATUS_OK);
     platform_instance_->host_allocator = host_allocator;

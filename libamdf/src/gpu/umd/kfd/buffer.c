@@ -117,7 +117,7 @@ amdf_status_t amdf_gpu_kfd_buffer_create(
   amdf_gpu_kfd_buffer_t* buffer = NULL;
   amdf_status_t status =
       amdf_calloc(device->host_allocator, sizeof(*buffer),
-                  _Alignof(amdf_gpu_kfd_buffer_t), (void**)&buffer);
+                  amdf_alignof(amdf_gpu_kfd_buffer_t), (void**)&buffer);
   if (!amdf_status_is_ok(status)) return status;
   buffer->device = device;
   buffer->byte_length = create_info->byte_length;

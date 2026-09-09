@@ -33,7 +33,7 @@ static amdf_status_t amdf_gpu_wddm_wkmi_make_absolute_path(
   wchar_t* absolute_path = NULL;
   amdf_status_t status = amdf_malloc(
       host_allocator, (size_t)required_capacity * sizeof(*absolute_path),
-      _Alignof(wchar_t), (void**)&absolute_path);
+      amdf_alignof(wchar_t), (void**)&absolute_path);
   if (!amdf_status_is_ok(status)) return status;
   const DWORD path_length =
       GetFullPathNameW(*inout_path, required_capacity, absolute_path, NULL);
@@ -69,7 +69,7 @@ static amdf_status_t amdf_gpu_wddm_wkmi_allocate_environment_path(
   wchar_t* path = NULL;
   amdf_status_t status =
       amdf_malloc(host_allocator, (size_t)required_capacity * sizeof(*path),
-                  _Alignof(wchar_t), (void**)&path);
+                  amdf_alignof(wchar_t), (void**)&path);
   if (!amdf_status_is_ok(status)) return status;
   const DWORD path_length = GetEnvironmentVariableW(
       AMDF_WKMI_BRIDGE_PATH_ENVIRONMENT_VARIABLE, path, required_capacity);
@@ -107,9 +107,9 @@ static amdf_status_t amdf_gpu_wddm_wkmi_allocate_sibling_path(
   bool path_complete = false;
   while (capacity <= AMDF_WINDOWS_MAXIMUM_PATH_CAPACITY) {
     const size_t expanded_byte_length = (size_t)capacity * sizeof(*path);
-    amdf_status_t status =
-        amdf_realloc(host_allocator, allocated_byte_length,
-                     expanded_byte_length, _Alignof(wchar_t), (void**)&path);
+    amdf_status_t status = amdf_realloc(host_allocator, allocated_byte_length,
+                                        expanded_byte_length,
+                                        amdf_alignof(wchar_t), (void**)&path);
     if (!amdf_status_is_ok(status)) {
       amdf_free(host_allocator, path);
       return status;
@@ -149,7 +149,7 @@ static amdf_status_t amdf_gpu_wddm_wkmi_allocate_sibling_path(
   const size_t sibling_byte_length = sibling_capacity * sizeof(*path);
   amdf_status_t status =
       amdf_realloc(host_allocator, allocated_byte_length, sibling_byte_length,
-                   _Alignof(wchar_t), (void**)&path);
+                   amdf_alignof(wchar_t), (void**)&path);
   if (!amdf_status_is_ok(status)) {
     amdf_free(host_allocator, path);
     return status;

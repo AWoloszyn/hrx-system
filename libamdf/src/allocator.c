@@ -82,7 +82,7 @@ static bool amdf_allocator_normalize_alignment(size_t minimum_alignment,
       (minimum_alignment & (minimum_alignment - 1)) != 0) {
     return false;
   }
-  const size_t natural_alignment = _Alignof(max_align_t);
+  const size_t natural_alignment = amdf_max_align_t;
   *out_alignment = minimum_alignment < natural_alignment ? natural_alignment
                                                          : minimum_alignment;
   return true;

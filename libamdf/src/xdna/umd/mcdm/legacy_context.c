@@ -121,8 +121,8 @@ amdf_status_t amdf_windows_xdna_legacy_context_build(
     return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
   }
   uint8_t* data = NULL;
-  const amdf_status_t allocation_status = amdf_calloc(
-      host_allocator, total_size, _Alignof(max_align_t), (void**)&data);
+  const amdf_status_t allocation_status =
+      amdf_calloc(host_allocator, total_size, amdf_max_align_t, (void**)&data);
   if (!amdf_status_is_ok(allocation_status)) return allocation_status;
 
   amdf_windows_xdna_legacy_context_header_t* header =

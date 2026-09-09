@@ -6,7 +6,6 @@
 
 #include "libamdf/src/platform/linux/dma_buf.h"
 
-#include <assert.h>
 #include <limits.h>
 #include <stdint.h>
 #include <sys/stat.h>
@@ -40,9 +39,11 @@ void AMDF_CALL
 amdf_linux_dma_buf_release(void* user_data, amdf_external_memory_type_t type,
                            amdf_external_memory_payload_t payload) {
   (void)user_data;
-  assert(type == AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD);
-  assert(payload.file_descriptor >= 0 && payload.file_descriptor <= INT_MAX);
+  amdf_assert(type == AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD);
+  amdf_assert(payload.file_descriptor >= 0 &&
+              payload.file_descriptor <= INT_MAX);
   const int result = close((int)payload.file_descriptor);
-  assert(result == 0 && "closing an owned DMA-BUF descriptor must succeed");
+  amdf_assert(result == 0 &&
+              "closing an owned DMA-BUF descriptor must succeed");
   (void)result;
 }

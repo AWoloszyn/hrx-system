@@ -19,8 +19,8 @@ namespace amdf::wkmi_bridge {
 // Allocates and zeroes bridge-controlled storage through the parent instance.
 inline void* AllocateHostBytes(amdf_allocator_t allocator, size_t byte_length,
                                size_t minimum_alignment) noexcept {
-  const size_t alignment = minimum_alignment < alignof(std::max_align_t)
-                               ? alignof(std::max_align_t)
+  const size_t alignment = minimum_alignment < amdf_max_align_t
+                               ? amdf_max_align_t
                                : minimum_alignment;
   void* pointer =
       allocator.allocate(allocator.user_data, byte_length, alignment);
@@ -48,7 +48,7 @@ class HostBuffer {
   ~HostBuffer() { Reset(); }
 
   bool Allocate(amdf_allocator_t allocator, size_t byte_length,
-                size_t minimum_alignment = alignof(std::max_align_t)) noexcept {
+                size_t minimum_alignment = amdf_max_align_t) noexcept {
     if (pointer_ != nullptr || byte_length == 0 || minimum_alignment == 0 ||
         (minimum_alignment & (minimum_alignment - 1)) != 0) {
       return false;
@@ -91,7 +91,7 @@ class HostObject {
   ~HostObject() { Reset(); }
 
   bool Allocate() {
-    void* storage = AllocateHostBytes(allocator_, sizeof(T), alignof(T));
+    void* storage = AllocateHostBytes(allocator_, sizeof(T), amdf_alignof(T));
     if (storage == nullptr) return false;
     try {
       object_ = ::new (storage) T();

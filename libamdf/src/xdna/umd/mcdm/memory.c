@@ -267,7 +267,7 @@ amdf_status_t amdf_xdna_umd_memory_create(
   amdf_xdna_umd_memory_t* memory = NULL;
   amdf_status_t status =
       amdf_calloc(device->host_allocator, sizeof(*memory),
-                  _Alignof(amdf_xdna_umd_memory_t), (void**)&memory);
+                  amdf_alignof(amdf_xdna_umd_memory_t), (void**)&memory);
   if (!amdf_status_is_ok(status)) return status;
   memory->device = device;
   memory->byte_length = byte_length;
@@ -331,7 +331,7 @@ amdf_status_t amdf_xdna_umd_memory_map(
   amdf_xdna_umd_host_mapping_t* mapping = NULL;
   amdf_status_t status =
       amdf_calloc(memory->device->host_allocator, sizeof(*mapping),
-                  _Alignof(amdf_xdna_umd_host_mapping_t), (void**)&mapping);
+                  amdf_alignof(amdf_xdna_umd_host_mapping_t), (void**)&mapping);
   if (!amdf_status_is_ok(status)) return status;
   mapping->host_allocator = memory->device->host_allocator;
   mapping->pointer = (uint8_t*)memory->host_pointer + map_info->byte_offset;

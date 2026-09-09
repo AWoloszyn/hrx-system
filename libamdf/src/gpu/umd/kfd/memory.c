@@ -7,7 +7,6 @@
 #define _GNU_SOURCE
 #include "libamdf/src/gpu/umd/memory.h"
 
-#include <assert.h>
 #include <emmintrin.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -108,8 +107,8 @@ static amdf_status_t amdf_gpu_kfd_memory_open_dma_buf(
             &export_args) != 0) {
     return amdf_linux_error(errno);
   }
-  assert(export_args.dmabuf_fd <= INT_MAX &&
-         "successful DMA-BUF export must return a native int descriptor");
+  amdf_assert(export_args.dmabuf_fd <= INT_MAX &&
+              "successful DMA-BUF export must return a native int descriptor");
   int descriptor = (int)export_args.dmabuf_fd;
   amdf_linux_dma_buf_info_t info;
   amdf_status_t status = amdf_linux_dma_buf_query(descriptor, &info);
@@ -375,7 +374,7 @@ amdf_status_t amdf_gpu_umd_memory_create(
   amdf_gpu_umd_memory_t* memory = NULL;
   amdf_status_t status =
       amdf_calloc(device->host_allocator, sizeof(*memory),
-                  _Alignof(amdf_gpu_umd_memory_t), (void**)&memory);
+                  amdf_alignof(amdf_gpu_umd_memory_t), (void**)&memory);
   if (!amdf_status_is_ok(status)) return status;
   memory->device = device;
   memory->byte_length = plan.byte_length;

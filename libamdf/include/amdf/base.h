@@ -8,7 +8,44 @@
 #define AMDF_BASE_H_
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
+
+/// Compile-time assertion policy, independent of the C library's `NDEBUG`.
+///
+/// Set `AMDF_ENABLE_ASSERTS=0` as a compiler definition to remove invariant
+/// checks. Expressions remain parsed but are not evaluated when disabled.
+#if !defined(AMDF_ENABLE_ASSERTS)
+#define AMDF_ENABLE_ASSERTS 1
+#endif
+
+/// Terminates the process after an invariant violation.
+static inline void amdf_abort(void) { abort(); }
+
+#if AMDF_ENABLE_ASSERTS
+#define amdf_assert(condition)      \
+  do {                              \
+    if (!(condition)) amdf_abort(); \
+  } while (0)
+#else
+#define amdf_assert(condition)   \
+  do {                           \
+    (void)sizeof(!!(condition)); \
+  } while (0)
+#endif
+
+/// Returns the ABI alignment of a type as a compile-time constant.
+#if defined(_MSC_VER)
+#define amdf_alignof(type) __alignof(type)
+/// Natural maximum scalar alignment. MSVC omits C's max_align_t; long double
+/// has the maximum scalar alignment in the Microsoft ABI.
+#define amdf_max_align_t amdf_alignof(long double)
+#else
+#define amdf_alignof(type) __alignof__(type)
+/// Natural maximum scalar alignment, shared by C and C++ allocation callbacks.
+#define amdf_max_align_t amdf_alignof(max_align_t)
+#endif
 
 #if defined(_WIN32)
 #define AMDF_CALL __cdecl

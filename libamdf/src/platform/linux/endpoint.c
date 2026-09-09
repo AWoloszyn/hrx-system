@@ -161,7 +161,7 @@ amdf_status_t amdf_platform_endpoint_enumerate(
   if (capacity != 0) {
     const amdf_status_t allocation_status = amdf_calloc_array(
         instance->host_allocator, (size_t)capacity, sizeof(*staged_summaries),
-        _Alignof(amdf_endpoint_summary_t), (void**)&staged_summaries);
+        amdf_alignof(amdf_endpoint_summary_t), (void**)&staged_summaries);
     if (!amdf_status_is_ok(allocation_status)) return allocation_status;
   }
 
@@ -321,7 +321,7 @@ amdf_status_t amdf_platform_endpoint_open(
   amdf_platform_endpoint_t* endpoint = NULL;
   amdf_status_t status =
       amdf_calloc(instance->host_allocator, sizeof(*endpoint),
-                  _Alignof(amdf_platform_endpoint_t), (void**)&endpoint);
+                  amdf_alignof(amdf_platform_endpoint_t), (void**)&endpoint);
   if (!amdf_status_is_ok(status)) return status;
   endpoint->instance = instance;
   endpoint->descriptor = -1;

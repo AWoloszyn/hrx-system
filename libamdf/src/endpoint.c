@@ -6,7 +6,6 @@
 
 #include "libamdf/src/endpoint.h"
 
-#include <assert.h>
 #include <stddef.h>
 #include <string.h>
 
@@ -54,8 +53,8 @@ amdf_status_t AMDF_CALL amdf_endpoint_open(amdf_instance_t* instance,
       amdf_instance_host_allocator(instance);
   amdf_endpoint_t* endpoint = NULL;
   amdf_status_t status =
-      amdf_calloc(host_allocator, sizeof(*endpoint), _Alignof(amdf_endpoint_t),
-                  (void**)&endpoint);
+      amdf_calloc(host_allocator, sizeof(*endpoint),
+                  amdf_alignof(amdf_endpoint_t), (void**)&endpoint);
   if (!amdf_status_is_ok(status)) return status;
   amdf_child_tracker_initialize(&endpoint->children);
   status = amdf_instance_register_endpoint(instance);
@@ -81,7 +80,7 @@ amdf_status_t AMDF_CALL amdf_endpoint_open(amdf_instance_t* instance,
 void amdf_endpoint_set_queue_families(
     amdf_endpoint_t* endpoint, uint32_t queue_family_count,
     const amdf_queue_family_info_t* queue_families) {
-  assert(queue_family_count <= AMDF_ENDPOINT_QUEUE_FAMILY_CAPACITY);
+  amdf_assert(queue_family_count <= AMDF_ENDPOINT_QUEUE_FAMILY_CAPACITY);
   for (uint32_t i = 0; i < queue_family_count; ++i) {
     endpoint->queue_families.values[i] = queue_families[i];
   }
@@ -110,10 +109,10 @@ amdf_instance_t* amdf_endpoint_get_instance(const amdf_endpoint_t* endpoint) {
 void amdf_endpoint_store_engine_profile(amdf_endpoint_t* endpoint,
                                         const void* profile,
                                         size_t profile_byte_length) {
-  assert(!endpoint->engine_profile_resolved);
+  amdf_assert(!endpoint->engine_profile_resolved);
   endpoint->engine_profile_status =
       amdf_malloc(amdf_endpoint_host_allocator(endpoint), profile_byte_length,
-                  _Alignof(max_align_t), &endpoint->engine_profile);
+                  amdf_alignof(max_align_t), &endpoint->engine_profile);
   if (amdf_status_is_ok(endpoint->engine_profile_status)) {
     memcpy(endpoint->engine_profile, profile, profile_byte_length);
     endpoint->engine_profile_status = AMDF_STATUS_OK;
@@ -123,8 +122,8 @@ void amdf_endpoint_store_engine_profile(amdf_endpoint_t* endpoint,
 
 void amdf_endpoint_store_engine_profile_error(amdf_endpoint_t* endpoint,
                                               amdf_status_t status) {
-  assert(!endpoint->engine_profile_resolved);
-  assert(!amdf_status_is_ok(status));
+  amdf_assert(!endpoint->engine_profile_resolved);
+  amdf_assert(!amdf_status_is_ok(status));
   endpoint->engine_profile_status = status;
   endpoint->engine_profile_resolved = true;
 }

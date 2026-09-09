@@ -80,7 +80,7 @@ amdf_xdna_device_create(amdf_endpoint_t* endpoint,
       amdf_endpoint_host_allocator(endpoint);
   amdf_xdna_device_t* device = NULL;
   status = amdf_calloc(host_allocator, sizeof(*device),
-                       _Alignof(amdf_xdna_device_t), (void**)&device);
+                       amdf_alignof(amdf_xdna_device_t), (void**)&device);
   if (!amdf_status_is_ok(status)) return status;
   status = amdf_device_initialize(&device->base, &amdf_xdna_device_vtable,
                                   endpoint, AMDF_ENGINE_KIND_XDNA);

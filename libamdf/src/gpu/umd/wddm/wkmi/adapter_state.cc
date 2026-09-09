@@ -6,11 +6,10 @@
 
 #include "libamdf/src/gpu/umd/wddm/wkmi/adapter_state.h"
 
-#include <cassert>
 #include <cstdlib>
 
 amdf_wkmi_bridge_gpu_adapter_t::~amdf_wkmi_bridge_gpu_adapter_t() {
-  assert(live_queue_count == 0);
+  amdf_assert(live_queue_count == 0);
   std::free(device_info.adapter_info);
 }
 

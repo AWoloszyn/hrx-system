@@ -41,7 +41,7 @@ amdf_instance_create(const amdf_instance_create_info_t* create_info,
 
   amdf_instance_t* instance = NULL;
   status = amdf_calloc(host_allocator, sizeof(*instance),
-                       _Alignof(amdf_instance_t), (void**)&instance);
+                       amdf_alignof(amdf_instance_t), (void**)&instance);
   if (!amdf_status_is_ok(status)) return status;
   instance->host_allocator = host_allocator;
   amdf_child_tracker_initialize(&instance->children);

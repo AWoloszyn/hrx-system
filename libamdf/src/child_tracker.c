@@ -6,8 +6,6 @@
 
 #include "libamdf/src/child_tracker.h"
 
-#include <assert.h>
-
 void amdf_child_tracker_initialize(amdf_child_tracker_t* tracker) {
   amdf_atomic_uint32_initialize(&tracker->count, 0);
 }
@@ -31,7 +29,7 @@ void amdf_child_tracker_unregister(amdf_child_tracker_t* tracker) {
   uint32_t old_count = amdf_atomic_uint32_load_relaxed(&tracker->count);
   for (;;) {
     if (old_count == 0) {
-      assert(false && "unbalanced child registration");
+      amdf_assert(false && "unbalanced child registration");
       return;
     }
     if (amdf_atomic_uint32_compare_exchange_acq_rel(&tracker->count, &old_count,
