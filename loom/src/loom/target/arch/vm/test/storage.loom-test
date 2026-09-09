@@ -1,0 +1,63 @@
+// RUN: emit vm-dis
+
+vm.target<core> @vm
+
+low.func.def target<vm.core>(@vm) abi(vm_function) @identity(%a: reg<vm.value : i64>) -> (reg<vm.value : i64>) asm {
+  return %a
+}
+
+// A view owns no storage. Its offset and the spill's relative offset select a
+// whole cell in the reservation; calls use separate scratch beyond that span.
+low.func.def public target<vm.core>(@vm) abi(vm_function) @local(%a: reg<vm.value : i64>, %b: reg<vm.value : i64>) -> (reg<vm.value : i64>, reg<vm.value : i64>) {
+  %storage = low.storage.reserve {byte_alignment = 8, byte_length = 32} : low.storage<stack>
+  %view = low.storage.view %storage {byte_length = 16, offset = 8} : low.storage<stack> -> low.storage<stack>
+  low.spill %a, %view {offset = 8} : reg<vm.value : i64>, low.storage<stack>
+  %result = low.func.call @identity(%b) : (reg<vm.value : i64>) -> (reg<vm.value : i64>)
+  %original = low.reload %view {offset = 8} : low.storage<stack> -> reg<vm.value : i64>
+  low.return %original, %result : reg<vm.value : i64>, reg<vm.value : i64>
+}
+
+// ----
+vm.module core(0.0) {
+  section strings alignment(8) {
+    string @string0 = "local"
+  }
+
+  section signatures alignment(8) {
+    signature @signature0 (i64) -> (i64)
+    signature @signature1 (i64, i64) -> (i64, i64)
+  }
+
+  section callable_types alignment(8) {
+    callable @callable0 flags([]) depth(0) : @signature0
+    callable @callable1 flags([]) depth(0) : @signature1
+  }
+
+  section exports alignment(8) {
+    export @export0 name(@string0) : @callable1 = @function1
+  }
+
+  section functions alignment(8) {
+    func @function0 : @callable0 flags([]) frame(local_bytes = 0, value_registers = 1, ref_registers = 0, function_registers = 0, local_refs = 0, local_functions = 0) {
+    ^bb0:
+      control.block
+      control.return
+    }
+    func @function1 : @callable1 flags([has_call]) frame(local_bytes = 40, value_registers = 3, ref_registers = 0, function_registers = 0, local_refs = 0, local_functions = 0) {
+    ^bb0:
+      control.block
+      stack.store.i64 #v16, %v0.x1
+      stack.store.i64 #v32, %v0.x1
+      %v0 = value.copy %v1
+      control.call @function0 {direct_ref_move_mask = 0x0000}
+      stack.store.i64 #v32, %v0.x1
+      %v0.x1 = stack.load.i64 #v32
+      %v1.x1 = stack.load.i64 #v16
+      %v2 = value.copy %v0
+      %v0 = value.copy %v1
+      %v1 = value.copy %v2
+      control.return
+    }
+  }
+
+}

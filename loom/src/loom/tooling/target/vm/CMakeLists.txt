@@ -43,6 +43,7 @@ iree_execution_test_suite(
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/duplicate_exports.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/empty_export.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/invalid_storage.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/module.loom"
 )
 endif()

@@ -37,6 +37,7 @@ iree_execution_test_suite(
     data = [
         "duplicate_exports.loom",
         "empty_export.loom",
+        "invalid_storage.loom",
         "module.loom",
     ],
     manifests = ["vm.test.json"],

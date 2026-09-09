@@ -47,6 +47,33 @@
       },
       "exit": 1,
       "stderr": {"contains": ["VM export names must not be empty"]}
+    },
+    {
+      "name": "rejects storage exceeding the Core frame extent",
+      "run": {
+        "tool": "loom-compile",
+        "args": ["{srcdir}/invalid_storage.loom", "--root=oversized", "--format=vm", "--output={tmp}/invalid.vm"]
+      },
+      "exit": 1,
+      "stderr": {"contains": ["VM local storage exceeds 65535 bytes"]}
+    },
+    {
+      "name": "rejects a narrow scalar spill that does not hold a complete value cell",
+      "run": {
+        "tool": "loom-compile",
+        "args": ["{srcdir}/invalid_storage.loom", "--root=short", "--format=vm", "--output={tmp}/invalid.vm"]
+      },
+      "exit": 1,
+      "stderr": {"contains": ["VM register transfer exceeds its storage span"]}
+    },
+    {
+      "name": "rejects workgroup storage in a Core host function",
+      "run": {
+        "tool": "loom-compile",
+        "args": ["{srcdir}/invalid_storage.loom", "--root=wrong_space", "--format=vm", "--output={tmp}/invalid.vm"]
+      },
+      "exit": 1,
+      "stderr": {"contains": ["VM local storage requires the stack space"]}
     }
   ]
 }

@@ -37,7 +37,9 @@ loom_cc_library(
     visibility = ["//loom/src/loom/tooling/target/vm:__pkg__"],
     deps = [
         "//loom/src/loom/codegen/low:frame",
+        "//loom/src/loom/codegen/low:storage_layout",
         "//loom/src/loom/codegen/low/allocation:move_sequence",
+        "//loom/src/loom/error:error_defs",
         "//loom/src/loom/ir",
         "//loom/src/loom/ops/low",
         "//loom/src/loom/target:function_version",
@@ -103,6 +105,7 @@ loom_check_test_suite(
         "test/source_low/numeric_narrow_conversion.loom-test",
         "test/source_low/numeric_scalar_conversion.loom-test",
         "test/source_low/scalar_selection.loom-test",
+        "test/storage.loom-test",
     ],
     data = [
         "//loom/src/loom/test/corpus/source_low:numeric_float_arithmetic.loom-test",

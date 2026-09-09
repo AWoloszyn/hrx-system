@@ -11,6 +11,8 @@
 #include "iree/vm/bytecode/wire/core.h"
 #include "loom/codegen/low/allocation/move_sequence.h"
 #include "loom/codegen/low/frame.h"
+#include "loom/codegen/low/storage_layout.h"
+#include "loom/error/error_defs.h"
 #include "loom/ops/low/ops.h"
 #include "loom/target/arch/vm/descriptors/descriptors.h"
 
@@ -199,11 +201,13 @@ static iree_status_t loom_vm_function_packet(
   return iree_io_stream_write(stream, descriptor->encoding_format_id, packet);
 }
 
-// Transfers an ABI prefix to/from its frame-local snapshot. Whole 64-bit cells
-// preserve every scalar format; the Core lane groups cover up to eight cells.
-static iree_status_t loom_vm_function_transfer_prefix(iree_io_stream_t* stream,
-                                                      uint16_t count,
-                                                      bool is_store) {
+// Transfers whole value cells between physical registers and frame-local
+// bytes. Core lane groups preserve every scalar format without byte packing.
+static iree_status_t loom_vm_function_transfer_stack(iree_io_stream_t* stream,
+                                                     uint16_t byte_offset,
+                                                     uint16_t register_base,
+                                                     uint16_t count,
+                                                     bool is_store) {
   iree_status_t status = iree_ok_status();
   for (uint16_t i = 0; i < count && iree_status_is_ok(status);) {
     const uint8_t lane_log2 =
@@ -212,16 +216,16 @@ static iree_status_t loom_vm_function_transfer_prefix(iree_io_stream_t* stream,
     if (is_store) {
       const iree_vm_bytecode_stack_store_t instruction = {
           .opcode = IREE_VM_BYTECODE_OPCODE_STACK_STORE,
-          .base_u16 = i * sizeof(uint64_t),
-          .source_v8 = (uint8_t)i,
+          .base_u16 = byte_offset + i * sizeof(uint64_t),
+          .source_v8 = (uint8_t)(register_base + i),
           .format_u8 = format,
       };
       status = iree_io_stream_write(stream, sizeof(instruction), &instruction);
     } else {
       const iree_vm_bytecode_stack_load_t instruction = {
           .opcode = IREE_VM_BYTECODE_OPCODE_STACK_LOAD,
-          .destination_v8 = (uint8_t)i,
-          .base_u16 = i * sizeof(uint64_t),
+          .destination_v8 = (uint8_t)(register_base + i),
+          .base_u16 = byte_offset + i * sizeof(uint64_t),
           .format_u8 = format,
       };
       status = iree_io_stream_write(stream, sizeof(instruction), &instruction);
@@ -253,13 +257,21 @@ static iree_status_t loom_vm_function_call(
   }
   const uint16_t prefix_count =
       iree_max(node->operand_count, node->result_count);
+  const uint16_t byte_offset =
+      (uint16_t)frame->schedule.storage_layout.space_sizes.stack_bytes;
+  const uint32_t local_byte_length =
+      byte_offset + prefix_count * sizeof(uint64_t);
+  if (local_byte_length > UINT16_MAX) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "VM call scratch exceeds the local byte limit");
+  }
   out_row->flags_u16 |= IREE_VM_BYTECODE_FUNCTION_FLAG_HAS_CALL;
   out_row->value_register_count_u16 =
       iree_max(out_row->value_register_count_u16, prefix_count);
   out_row->local_byte_length_u16 =
-      iree_max(out_row->local_byte_length_u16, prefix_count * sizeof(uint64_t));
-  iree_status_t status =
-      loom_vm_function_transfer_prefix(stream, prefix_count, true);
+      iree_max(out_row->local_byte_length_u16, local_byte_length);
+  iree_status_t status = loom_vm_function_transfer_stack(stream, byte_offset, 0,
+                                                         prefix_count, true);
   const loom_value_ordinal_t* operands =
       loom_low_schedule_node_const_operand_ordinals(node);
   for (uint16_t i = 0; i < node->operand_count && iree_status_is_ok(status);
@@ -270,13 +282,8 @@ static iree_status_t loom_vm_function_call(
             ->location_base;
     if (source == i) continue;
     if (source < prefix_count) {
-      const iree_vm_bytecode_stack_load_t instruction = {
-          .opcode = IREE_VM_BYTECODE_OPCODE_STACK_LOAD,
-          .destination_v8 = (uint8_t)i,
-          .base_u16 = source * sizeof(uint64_t),
-          .format_u8 = IREE_VM_BYTECODE_MEMORY_FORMAT_I64_X1,
-      };
-      status = iree_io_stream_write(stream, sizeof(instruction), &instruction);
+      status = loom_vm_function_transfer_stack(
+          stream, byte_offset + source * sizeof(uint64_t), i, 1, false);
     } else {
       const iree_vm_bytecode_value_copy_t instruction = {
           .opcode = IREE_VM_BYTECODE_OPCODE_VALUE_COPY,
@@ -303,13 +310,8 @@ static iree_status_t loom_vm_function_call(
             &frame->allocation, results[i], NULL)
             ->location_base;
     if (destination < prefix_count) {
-      const iree_vm_bytecode_stack_store_t instruction = {
-          .opcode = IREE_VM_BYTECODE_OPCODE_STACK_STORE,
-          .base_u16 = destination * sizeof(uint64_t),
-          .source_v8 = (uint8_t)i,
-          .format_u8 = IREE_VM_BYTECODE_MEMORY_FORMAT_I64_X1,
-      };
-      status = iree_io_stream_write(stream, sizeof(instruction), &instruction);
+      status = loom_vm_function_transfer_stack(
+          stream, byte_offset + destination * sizeof(uint64_t), i, 1, true);
     } else {
       const iree_vm_bytecode_value_copy_t instruction = {
           .opcode = IREE_VM_BYTECODE_OPCODE_VALUE_COPY,
@@ -320,9 +322,58 @@ static iree_status_t loom_vm_function_call(
     }
   }
   if (iree_status_is_ok(status)) {
-    status = loom_vm_function_transfer_prefix(stream, prefix_count, false);
+    status = loom_vm_function_transfer_stack(stream, byte_offset, 0,
+                                             prefix_count, false);
   }
   return status;
+}
+
+static iree_status_t loom_vm_function_storage(
+    const loom_low_emission_frame_t* frame,
+    const loom_low_schedule_node_t* node, iree_io_stream_t* stream) {
+  const bool is_store = loom_low_spill_isa(node->op);
+  const loom_value_id_t storage_value = is_store
+                                            ? loom_low_spill_storage(node->op)
+                                            : loom_low_reload_storage(node->op);
+  const uint64_t relative_offset = is_store ? loom_low_spill_offset(node->op)
+                                            : loom_low_reload_offset(node->op);
+  loom_low_storage_layout_reference_t reference;
+  loom_low_storage_layout_lookup_reference(&frame->schedule.storage_layout,
+                                           frame->module, storage_value,
+                                           &reference);
+  const loom_value_ordinal_t value_ordinal =
+      (is_store ? loom_low_schedule_node_const_operand_ordinals(node)
+                : loom_low_schedule_node_const_result_ordinals(node))[0];
+  const loom_low_allocation_assignment_t* assignment =
+      loom_low_allocation_assignment_for_value_ordinal(&frame->allocation,
+                                                       value_ordinal, NULL);
+  // Low verification establishes the byte offset. The target allocation unit
+  // determines the transfer width, including padding in narrow scalar cells.
+  if (assignment->location_count * sizeof(uint64_t) >
+      reference.byte_length - relative_offset) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "VM register transfer exceeds its storage span");
+  }
+  return loom_vm_function_transfer_stack(
+      stream,
+      (uint16_t)(reference.reservation.byte_offset + reference.byte_offset +
+                 relative_offset),
+      (uint16_t)assignment->location_base, (uint16_t)assignment->location_count,
+      is_store);
+}
+
+// Frame construction reports target failures as structured diagnostics. The
+// module emitter forwards them and terminates emission on an error, including
+// when its caller has no diagnostic sink.
+static iree_status_t loom_vm_function_diagnostic(
+    void* user_data, const loom_diagnostic_emission_t* emission) {
+  IREE_RETURN_IF_ERROR(iree_diagnostic_emit(
+      *(const iree_diagnostic_emitter_t*)user_data, emission));
+  if (loom_error_def_severity(emission->error) == LOOM_DIAGNOSTIC_ERROR) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "VM frame construction failed");
+  }
+  return iree_ok_status();
 }
 
 iree_status_t loom_vm_function_emit(
@@ -348,26 +399,39 @@ iree_status_t loom_vm_function_emit(
         .location_count = 1,
     };
   }
+  iree_diagnostic_emitter_t diagnostic_emitter = request->diagnostic_emitter;
   const loom_low_emission_frame_options_t options = {
       .descriptor_registry = request->low_descriptor_registry,
       .function_target_facts = target_facts,
       .schedule_strategy = LOOM_LOW_SCHEDULE_STRATEGY_SOURCE_PRIORITY,
       .allocation_fixed_values = fixed_values,
       .allocation_fixed_value_count = argument_count,
-      .emitter = request->diagnostic_emitter,
+      .emitter = {.fn = loom_vm_function_diagnostic,
+                  .user_data = &diagnostic_emitter},
+  };
+  const loom_low_emission_frame_spill_free_options_t spill_options = {
+      .materialization_options =
+          {
+              .has_supported_storage_spaces = true,
+              .supported_storage_spaces = LOOM_LOW_STORAGE_SPACE_SET_STACK,
+          },
   };
   loom_low_emission_frame_t frame = {0};
-  IREE_RETURN_IF_ERROR(loom_low_emission_frame_build(
-      request->module, function.op, &options, request->scratch_arena, &frame));
-  if (frame.schedule.error_count || frame.allocation.error_count) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "VM scheduling or allocation failed");
+  IREE_RETURN_IF_ERROR(loom_low_emission_frame_build_spill_free(
+      request->module, function.op, &options, &spill_options,
+      request->scratch_arena, &frame));
+  const loom_low_storage_layout_space_sizes_t local_storage =
+      frame.schedule.storage_layout.space_sizes;
+  if (local_storage.scratch_bytes || local_storage.private_bytes ||
+      local_storage.workgroup_bytes) {
+    return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
+                            "VM local storage requires the stack space");
   }
-  if (frame.allocation.spill_count) {
-    return iree_make_status(
-        IREE_STATUS_UNIMPLEMENTED,
-        "VM register spills require stack instruction lowering");
+  if (local_storage.stack_bytes > UINT16_MAX) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "VM local storage exceeds 65535 bytes");
   }
+  out_row->local_byte_length_u16 = (uint16_t)local_storage.stack_bytes;
   out_row->value_register_count_u16 =
       (uint16_t)iree_max(iree_max(argument_count, results.count),
                          frame.allocation.physical_extents
@@ -409,6 +473,12 @@ iree_status_t loom_vm_function_emit(
       } else if (loom_low_func_call_isa(node->op)) {
         status = loom_vm_function_call(
             &frame, node, function_ordinals_by_symbol, stream, out_row);
+      } else if (loom_low_storage_reserve_isa(node->op) ||
+                 loom_low_storage_view_isa(node->op)) {
+        // Storage layout is already fixed by the shared scheduler.
+      } else if (loom_low_spill_isa(node->op) ||
+                 loom_low_reload_isa(node->op)) {
+        status = loom_vm_function_storage(&frame, node, stream);
       } else if (loom_low_return_isa(node->op)) {
         status = loom_vm_function_return(&frame, node, &return_scratch, stream,
                                          &out_row->value_register_count_u16);
