@@ -10,20 +10,6 @@
 #include <cstdio>
 #include <cstring>
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif  // WIN32_LEAN_AND_MEAN
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif  // NOMINMAX
-#define WIN32_NO_STATUS
-#include <windows.h>
-#include <winternl.h>
-#undef WIN32_NO_STATUS
-
-#include <d3dkmthk.h>
-#include <ntstatus.h>
-
 #include "libamdf/src/gpu/umd/wddm/wkmi/adapter_state.h"
 
 namespace {

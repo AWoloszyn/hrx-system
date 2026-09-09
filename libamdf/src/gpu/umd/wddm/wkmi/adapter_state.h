@@ -7,15 +7,25 @@
 #ifndef AMDF_SRC_GPU_UMD_WDDM_WKMI_ADAPTER_STATE_H_
 #define AMDF_SRC_GPU_UMD_WDDM_WKMI_ADAPTER_STATE_H_
 
-#include <cstdlib>
-
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif  // WIN32_LEAN_AND_MEAN
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif  // NOMINMAX
+#ifndef WIN32_NO_STATUS
+#define WIN32_NO_STATUS
+#define AMDF_WKMI_BRIDGE_UNDEFINE_WIN32_NO_STATUS
+#endif  // WIN32_NO_STATUS
 #include <windows.h>
+#include <winternl.h>
+#ifdef AMDF_WKMI_BRIDGE_UNDEFINE_WIN32_NO_STATUS
+#undef WIN32_NO_STATUS
+#undef AMDF_WKMI_BRIDGE_UNDEFINE_WIN32_NO_STATUS
+#endif  // AMDF_WKMI_BRIDGE_UNDEFINE_WIN32_NO_STATUS
+
+#include <d3dkmthk.h>
+#include <ntstatus.h>
 
 #include "libamdf/src/gpu/umd/wddm/wkmi/bridge_api.h"
 #include "wkmi.h"
@@ -25,11 +35,20 @@ struct amdf_wkmi_bridge_gpu_adapter_t {
   // Private normalized adapter properties owned by WKMI.
   Wkmi::DeviceInfo device_info = {};
   // Protects live-child accounting.
-  SRWLOCK queue_lock = SRWLOCK_INIT;
+  SRWLOCK state_lock = SRWLOCK_INIT;
   // Number of live queues borrowing this adapter.
   uint32_t live_queue_count = 0;
 
-  ~amdf_wkmi_bridge_gpu_adapter_t() { std::free(device_info.adapter_info); }
+  ~amdf_wkmi_bridge_gpu_adapter_t();
 };
+
+namespace amdf::wkmi_bridge {
+
+// Verifies that no live child borrows `adapter`.
+amdf_wkmi_bridge_result_t PrepareGpuAdapterClose(
+    amdf_wkmi_bridge_gpu_adapter_t* adapter,
+    uint32_t* out_native_status) noexcept;
+
+}  // namespace amdf::wkmi_bridge
 
 #endif  // AMDF_SRC_GPU_UMD_WDDM_WKMI_ADAPTER_STATE_H_

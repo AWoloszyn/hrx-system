@@ -37,7 +37,10 @@ amdf_cc_library(
 amdf_windows_sidecar_library(
     name = "amdf_wkmi_bridge",
     srcs = [
+        "adapter_state.cc",
         "adapter_state.h",
+        "allocation.cc",
+        "allocation.h",
         "bridge.cc",
         "dxcore_loader_compatibility.cc",
         "kernel_queue.cc",
@@ -64,8 +67,34 @@ amdf_cc_binary(
 )
 
 amdf_cc_test(
+    name = "allocation_test",
+    srcs = [
+        "adapter_state.cc",
+        "adapter_state.h",
+        "allocation.cc",
+        "allocation.h",
+        "allocation_test.cc",
+    ],
+    copts = ["/MT"],
+    defines = [
+        "_DISABLE_STRING_ANNOTATION",
+        "_DISABLE_VECTOR_ANNOTATION",
+        "_ITERATOR_DEBUG_LEVEL=0",
+    ],
+    target_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:windows",
+    ],
+    deps = [
+        ":bridge_api",
+        "//third_party:amdf_wkmi",
+    ],
+)
+
+amdf_cc_test(
     name = "kernel_queue_test",
     srcs = [
+        "adapter_state.cc",
         "adapter_state.h",
         "kernel_queue.cc",
         "kernel_queue.h",

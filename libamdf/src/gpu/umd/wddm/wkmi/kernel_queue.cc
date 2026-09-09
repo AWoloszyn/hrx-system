@@ -6,6 +6,7 @@
 
 #include "libamdf/src/gpu/umd/wddm/wkmi/kernel_queue.h"
 
+#include <cstddef>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -202,32 +203,16 @@ amdf_wkmi_bridge_result_t CreateNativeQueue(
   info.progress_fence_device_address =
       create_queue.HwQueueProgressFenceGPUVirtualAddress;
 
-  AcquireSRWLockExclusive(&adapter->queue_lock);
+  AcquireSRWLockExclusive(&adapter->state_lock);
   ++adapter->live_queue_count;
   queue->counted_live = true;
-  ReleaseSRWLockExclusive(&adapter->queue_lock);
+  ReleaseSRWLockExclusive(&adapter->state_lock);
   *out_info = info;
   *out_queue = queue.release();
   return AMDF_WKMI_BRIDGE_RESULT_SUCCESS;
 }
 
 }  // namespace
-
-amdf_wkmi_bridge_result_t PrepareGpuAdapterClose(
-    amdf_wkmi_bridge_gpu_adapter_t* adapter,
-    uint32_t* out_native_status) noexcept {
-  if (adapter == nullptr || out_native_status == nullptr) {
-    return AMDF_WKMI_BRIDGE_RESULT_INVALID_ARGUMENT;
-  }
-  *out_native_status = 0;
-  AcquireSRWLockExclusive(&adapter->queue_lock);
-  if (adapter->live_queue_count != 0) {
-    ReleaseSRWLockExclusive(&adapter->queue_lock);
-    return AMDF_WKMI_BRIDGE_RESULT_BUSY;
-  }
-  ReleaseSRWLockExclusive(&adapter->queue_lock);
-  return AMDF_WKMI_BRIDGE_RESULT_SUCCESS;
-}
 
 amdf_wkmi_bridge_result_t AMDF_WKMI_BRIDGE_CALL GpuKernelQueueCreate(
     amdf_wkmi_bridge_gpu_adapter_t* adapter,
@@ -299,9 +284,9 @@ GpuKernelQueueDestroy(amdf_wkmi_bridge_gpu_kernel_queue_t* queue,
     return AMDF_WKMI_BRIDGE_RESULT_INVALID_ARGUMENT;
   }
   *out_native_status = 0;
-  AcquireSRWLockExclusive(&queue->adapter->queue_lock);
+  AcquireSRWLockExclusive(&queue->adapter->state_lock);
   if (!queue->counted_live || queue->adapter->live_queue_count == 0) {
-    ReleaseSRWLockExclusive(&queue->adapter->queue_lock);
+    ReleaseSRWLockExclusive(&queue->adapter->state_lock);
     return AMDF_WKMI_BRIDGE_RESULT_INTERNAL;
   }
   const NTSTATUS native_status = DestroyNativeQueue(queue);
@@ -309,7 +294,7 @@ GpuKernelQueueDestroy(amdf_wkmi_bridge_gpu_kernel_queue_t* queue,
     --queue->adapter->live_queue_count;
     queue->counted_live = false;
   }
-  ReleaseSRWLockExclusive(&queue->adapter->queue_lock);
+  ReleaseSRWLockExclusive(&queue->adapter->state_lock);
   if (native_status != STATUS_SUCCESS) {
     return MakeNativeFailure(native_status, out_native_status);
   }

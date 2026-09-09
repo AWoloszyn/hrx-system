@@ -23,11 +23,6 @@ bool SelectGpuHardwareQueueScheduler(
     amdf_wkmi_bridge_gpu_queue_command_type_t command_type,
     uint32_t* out_scheduler);
 
-// Verifies that no queue borrows `adapter`.
-amdf_wkmi_bridge_result_t PrepareGpuAdapterClose(
-    amdf_wkmi_bridge_gpu_adapter_t* adapter,
-    uint32_t* out_native_status) noexcept;
-
 // Creates one native GPU hardware queue and execution context.
 amdf_wkmi_bridge_result_t AMDF_WKMI_BRIDGE_CALL GpuKernelQueueCreate(
     amdf_wkmi_bridge_gpu_adapter_t* adapter,
