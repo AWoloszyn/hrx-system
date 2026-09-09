@@ -33,7 +33,11 @@ from loom.target.arch.vm.contracts import (
     VM_CORE_CONTRACT_FRAGMENT,
 )
 from loom.target.arch.vm.descriptors import VM_CORE_DESCRIPTOR_SET
-from loom.target.contracts import DescriptorRule, compile_lower_rule_set
+from loom.target.contracts import (
+    LOWER_EMIT_FLAG_RECORD_SOURCE_MEMORY,
+    DescriptorRule,
+    compile_lower_rule_set,
+)
 from loom.target.low_descriptors import (
     DescriptorFlag,
     DescriptorOpKind,
@@ -158,9 +162,18 @@ def test_effects_preserve_memory_access_and_observable_failures():
 
 
 def test_lowering_uses_the_projected_descriptors():
-    compile_lower_rule_set(
+    compiled = compile_lower_rule_set(
         VM_CORE_CONTRACT_FRAGMENT, dialect_ops=VM_CORE_CONTRACT_DIALECT_OPS
     )
+    for emit in compiled.emits:
+        records_access = bool(emit.flags & LOWER_EMIT_FLAG_RECORD_SOURCE_MEMORY)
+        assert records_access == bool(
+            emit.source_memory_ordinal
+            and any(
+                effect.kind in (EffectKind.READ, EffectKind.WRITE)
+                for effect in emit.descriptor.effects
+            )
+        )
     descriptors = VM_CORE_DESCRIPTOR_SET.descriptors
     cases = (
         case

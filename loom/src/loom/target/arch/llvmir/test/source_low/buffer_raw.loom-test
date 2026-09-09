@@ -16,3 +16,24 @@ low.func.def target<llvmir.generic.core>(@target) abi(object_function) @raw_byte
   store.indexed.i8 %13, %target, %target_offset, 0, 1
   return %byte
 }
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+// Signed view-base terms remain signed native indexed-address displacements.
+func.def target(@target) @reverse_base_load(%source: buffer, %distance: offset) -> (i32) {
+  %end = index.constant 64 : offset
+  %base = index.sub %end, %distance : offset
+  %view = buffer.view %source[%base] : buffer -> view<1xi32>
+  %loaded = view.load %view[0] : view<1xi32> -> i32
+  func.return %loaded : i32
+}
+
+// ----
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @reverse_base_load(%view: reg<llvmir.ptr>, %distance: reg<llvmir.i64>) -> (reg<llvmir.i32>) asm {
+  %10 = const.i64 -1
+  %11 = mul.i64 %distance, %10
+  %loaded = load.indexed.i32 %view, %11, 64, 1
+  return %loaded
+}

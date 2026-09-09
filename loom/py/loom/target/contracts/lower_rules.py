@@ -73,6 +73,7 @@ from loom.target.low_descriptors import (
     ConstraintKind,
     Descriptor,
     DescriptorOpKind,
+    EffectKind,
     OperandRole,
 )
 
@@ -132,6 +133,7 @@ LOWER_EMIT_FLAG_ACCUMULATE_SEED_FIRST_LANE = 1 << 3
 LOWER_EMIT_FLAG_ACCUMULATE_TREE_BALANCED = 1 << 4
 LOWER_EMIT_FLAG_ACCUMULATE_SKIP_FIRST_LANE = 1 << 5
 LOWER_EMIT_FLAG_RESULT_DESCRIPTOR_TYPE = 1 << 6
+LOWER_EMIT_FLAG_RECORD_SOURCE_MEMORY = 1 << 7
 LOWER_SOURCE_MEMORY_NONE = 0
 LOWER_RULE_FLAG_CONTRACT_ONLY = 1 << 0
 LOWER_RULE_FLAG_ORDINAL_VALUE_ALIAS = 1 << 1
@@ -1445,9 +1447,12 @@ class _LowerRuleSetCompiler:
 
         source_memory_ordinal = LOWER_SOURCE_MEMORY_NONE
         if emit.source_memory is not None:
-            if emit_kind != LowerEmitKind.DESCRIPTOR_OP:
+            if emit_kind not in (
+                LowerEmitKind.DESCRIPTOR_OP,
+                LowerEmitKind.DESCRIPTOR_CONST,
+            ):
                 raise ValueError(
-                    f"{source_op.name}: source-memory emits must use descriptor-op form"
+                    f"{source_op.name}: source-memory emits require op or constant form"
                 )
             source_memory_ordinal = self._append_source_memory(
                 source_op,
@@ -1455,6 +1460,11 @@ class _LowerRuleSetCompiler:
                 emit.source_memory_byte_offset_materializer,
                 emit.source_memory_address_materializer,
             )
+            if any(
+                effect.kind in (EffectKind.READ, EffectKind.WRITE)
+                for effect in emit.descriptor.effects
+            ):
+                flags |= LOWER_EMIT_FLAG_RECORD_SOURCE_MEMORY
 
         self._emits.append(
             LowerEmit(

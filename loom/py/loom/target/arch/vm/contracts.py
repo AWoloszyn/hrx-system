@@ -15,6 +15,7 @@ from iree.vm.bytecode.spec.isa.core.buffer import (
     BUFFER_LOAD,
     BUFFER_STORE,
 )
+from iree.vm.bytecode.spec.isa.core.constant import CONSTANT_I64
 from iree.vm.bytecode.spec.isa.core.float import (
     FLOAT_CLAMP_SELECTOR,
     FLOAT_COMPARE_SELECTOR,
@@ -43,7 +44,7 @@ from iree.vm.bytecode.spec.isa.core.stack import MEMORY_FORMAT_SELECTOR
 from iree.vm.bytecode.spec.isa.core.value import VALUE_COPY, VALUE_SELECT
 from iree.vm.bytecode.spec.specification import SPECIFICATION
 
-from loom.dialect import buffer
+from loom.dialect import buffer, view
 from loom.dialect.index import ALL_INDEX_OPS, IndexPredicate
 from loom.dialect.index import defs as index
 from loom.dialect.scalar import (
@@ -68,6 +69,10 @@ from loom.target.contracts import (
     Guard,
     Scalar,
     SelectDescriptorCase,
+    SourceMemoryByteOffsetMaterializer,
+    SourceMemoryConstraint,
+    SourceMemoryOperation,
+    SourceMemoryProject,
     ValueAliasRule,
     ValueProject,
     ValueRef,
@@ -76,6 +81,7 @@ from loom.target.contracts import (
     ternary_descriptor_rules,
     unary_descriptor_rules,
 )
+from loom.target.contracts.memory_spaces import MEMORY_SPACE_NAMES
 from loom.target.low_descriptors import DescriptorOpKind, OperandRole
 
 _BINARY_SOURCE_OPS = {
@@ -237,6 +243,7 @@ VM_CORE_CONTRACT_DIALECT_OPS = {
     "scalar": ALL_SCALAR_OPS,
     "index": ALL_INDEX_OPS,
     "scf": ALL_SCF_OPS,
+    "view": view.ALL_VIEW_OPS,
 }
 
 
@@ -635,6 +642,130 @@ def _address_cases():
     )
 
 
+def _view_cases():
+    # Views whose addresses are fully analyzed need no runtime object. Their
+    # buffer identity and byte expression remain separate until each access.
+    for source_op, operand in (
+        (buffer.buffer_view, "buffer"),
+        (view.view_subview, "source"),
+        (view.view_refine, "source"),
+    ):
+        yield ValueAliasRule(
+            source_op=source_op,
+            source=ValueRef.operand(operand),
+            result=ValueRef.result("result"),
+        )
+    integers = {
+        semantics.operation: descriptor
+        for descriptor in VM_CORE_DESCRIPTOR_SET.descriptors
+        if isinstance(
+            semantics := _INSTRUCTIONS[descriptor.encoding_id].semantics,
+            IntegerBinarySemantics,
+        )
+        and semantics.bit_width == 64
+    }
+    constant = _DESCRIPTORS[CONSTANT_I64.opcode]
+    add = integers[IntegerBinaryOperation.ADD]
+    materializer = SourceMemoryByteOffsetMaterializer(
+        const_i64=constant,
+        add_i64=add,
+        mul_i64=integers[IntegerBinaryOperation.MUL],
+        shl_i64=integers[IntegerBinaryOperation.SHIFT_LEFT],
+        const_i64_immediate="bits",
+    )
+    for selector in MEMORY_FORMAT_SELECTOR.values:
+        scalar, lanes = selector.name.split(".")
+        if lanes != "x1":
+            continue
+        width = int(scalar[1:])
+        types = tuple(
+            str(ScalarType(kind))
+            for kind in ScalarTypeKind
+            if ScalarType(kind).bitwidth == width
+            and str(ScalarType(kind)) in _SCALAR_TYPES
+        )
+        for source_op, instruction, operation, value_field in (
+            (view.view_load, BUFFER_LOAD, SourceMemoryOperation.LOAD, "result"),
+            (view.view_store, BUFFER_STORE, SourceMemoryOperation.STORE, "value"),
+        ):
+            descriptor = _DESCRIPTORS[instruction.opcode]
+            # Prefer the shorter zero-static recipe. The general form adds all
+            # signed contributions before the VM checks the final unsigned range.
+            for dynamic, zero_static in ((False, False), (True, True), (True, False)):
+                memory = SourceMemoryConstraint(
+                    operation=operation,
+                    memory_spaces=tuple(sorted(MEMORY_SPACE_NAMES)),
+                    element_byte_count=width // 8,
+                    vector_lane_count=1,
+                    vector_lane_byte_stride=width // 8,
+                    static_byte_offset_minimum=0 if zero_static else -(2**63),
+                    static_byte_offset_maximum=0 if zero_static else 2**63 - 1,
+                    dynamic_term_count=None if dynamic else 0,
+                    dynamic_term_count_minimum=1 if dynamic else 0,
+                )
+                emits = []
+                coordinate = ValueRef.source_memory_dynamic_byte_offset()
+                if not zero_static:
+                    emits.append(
+                        EmitDescriptorOp(
+                            descriptor=constant,
+                            form=DescriptorEmitForm.CONST,
+                            results={"destination_v8": ValueRef.temporary("static")},
+                            result_types={"destination_v8": Scalar("i64")},
+                            immediates={
+                                "bits": SourceMemoryProject.static_byte_offset()
+                            },
+                            source_memory=memory,
+                        )
+                    )
+                    if dynamic:
+                        emits.append(
+                            EmitDescriptorOp(
+                                descriptor=add,
+                                operands={
+                                    "left_v8": coordinate,
+                                    "right_v8": ValueRef.temporary("static"),
+                                },
+                                results={
+                                    "destination_v8": ValueRef.temporary("offset")
+                                },
+                                result_types={"destination_v8": Scalar("i64")},
+                                source_memory=memory,
+                                source_memory_byte_offset_materializer=materializer,
+                            )
+                        )
+                    coordinate = ValueRef.temporary("offset" if dynamic else "static")
+                operands = {
+                    "buffer_r8": ValueRef.operand("view"),
+                    "base_v8": coordinate,
+                    "index_v8": coordinate,
+                }
+                results = {}
+                if operation == SourceMemoryOperation.STORE:
+                    operands["source_v8"] = ValueRef.operand("value")
+                else:
+                    results["destination_v8"] = ValueRef.result("result")
+                emits.append(
+                    EmitDescriptorOp(
+                        descriptor=descriptor,
+                        operands=operands,
+                        results=results,
+                        immediates={"scale_u8": 0, "format_u8": selector.value},
+                        source_memory=memory,
+                        source_memory_byte_offset_materializer=(
+                            materializer if zero_static else None
+                        ),
+                    )
+                )
+                yield DescriptorRule(
+                    source_op=source_op,
+                    descriptor=descriptor,
+                    guards=(Guard.value_type(value_field, Scalar(types)),),
+                    emit=emits,
+                    priority=1 if zero_static else 0,
+                )
+
+
 def _buffer_cases():
     # Source spelling is the only correspondence here: types and legal value
     # ranges come from the source op and wire fields respectively.
@@ -779,6 +910,7 @@ VM_CORE_CONTRACT_FRAGMENT = ContractFragment(
     + tuple(_math_cases())
     + tuple(_address_cases())
     + tuple(_buffer_cases())
+    + tuple(_view_cases())
     + select_descriptor_rules(
         (
             SelectDescriptorCase(

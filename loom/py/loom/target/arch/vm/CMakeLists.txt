@@ -42,6 +42,7 @@ iree_py_library(
     loom::py::loom::dialect::index::index
     loom::py::loom::dialect::scalar::scalar
     loom::py::loom::dialect::scf::scf
+    loom::py::loom::dialect::view::view
     loom::py::loom::target::contracts::contracts
     iree::vm::bytecode::spec::model
 )

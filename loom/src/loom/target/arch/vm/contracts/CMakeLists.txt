@@ -24,6 +24,7 @@ loom_target_contract_table_cc_libraries(
     loom::ops::index
     loom::ops::scalar
     loom::ops::scf
+    loom::ops::view
     loom::target::arch::vm::descriptors::descriptors_ids
 )
 

@@ -667,6 +667,9 @@ typedef uint16_t loom_low_lower_emit_flags_t;
 #define LOOM_LOW_LOWER_EMIT_FLAG_ACCUMULATE_SKIP_FIRST_LANE ((uint16_t)1u << 5)
 // Synthesizes emitted low result types from descriptor result operand rows.
 #define LOOM_LOW_LOWER_EMIT_FLAG_RESULT_DESCRIPTOR_TYPE ((uint16_t)1u << 6)
+// Records the source access summary for an emitted descriptor with memory
+// effects. Address arithmetic consumes the plan without recording an access.
+#define LOOM_LOW_LOWER_EMIT_FLAG_RECORD_SOURCE_MEMORY ((uint16_t)1u << 7)
 
 typedef struct loom_low_lower_emit_t {
   // Emit action to perform.
@@ -708,8 +711,9 @@ typedef struct loom_low_lower_emit_t {
   uint16_t tied_result_start;
   // Number of tied-result rows forwarded to the low packet builder.
   uint16_t tied_result_count;
-  // One-based source-memory row recorded by this descriptor emit. Zero means
-  // the emit is not a source memory access.
+  // One-based source-memory row consumed by this descriptor emit. Zero means
+  // the emit does not consume a source memory plan. RECORD_SOURCE_MEMORY marks
+  // memory packets; address-only emits use the plan without recording it.
   uint16_t source_memory_ordinal;
 } loom_low_lower_emit_t;
 

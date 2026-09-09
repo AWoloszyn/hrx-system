@@ -109,6 +109,7 @@ loom_check_test_suite(
         "test/source_low/numeric_scalar_conversion.loom-test",
         "test/source_low/owned_buffers.loom-test",
         "test/source_low/scalar_selection.loom-test",
+        "test/source_low/view_access.loom-test",
         "test/storage.loom-test",
     ],
     data = [
@@ -127,6 +128,7 @@ loom_check_test_suite(
         "//loom/src/loom/test/corpus/source_low:numeric_scalar_conversion.loom-test",
         "//loom/src/loom/test/corpus/source_low:owned_buffers.loom-test",
         "//loom/src/loom/test/corpus/source_low:scalar_selection.loom-test",
+        "//loom/src/loom/test/corpus/source_low:view_access.loom-test",
     ],
     target_compatible_with = loom_config_compatible_with(["//loom/config/target/arch:vm"]),
     test_name_prefix_to_strip = "test/",

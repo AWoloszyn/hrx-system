@@ -17,6 +17,9 @@ extern "C" {
 // The shared lowerer owns traversal, value mapping, and function/control-flow
 // structure. Semantic scalar types survive in the value register type so the
 // module writer can describe the public function ABI without rediscovery.
+// Analyzed views alias their buffer carrier; the shared source-memory plan
+// supplies each access's complete byte coordinate without a runtime view
+// object.
 void loom_vm_low_lower_policy_registry_initialize(
     loom_low_lower_policy_registry_t* out_registry);
 
