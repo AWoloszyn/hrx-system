@@ -22,14 +22,17 @@ from iree.vm.bytecode.spec.isa.core.integer import (
     IntegerDivisionSemantics,
     IntegerUnarySemantics,
 )
-from iree.vm.bytecode.spec.isa.core.rules import FieldRule
+from iree.vm.bytecode.spec.isa.core.rules import FieldRule, StateAccess
 from iree.vm.bytecode.spec.specification import SPECIFICATION
 
 from loom.dialect.scalar import conversion
 from loom.ir import ScalarType, ScalarTypeKind
-from loom.target.arch.vm.contracts import VM_CORE_CONTRACT_FRAGMENT
+from loom.target.arch.vm.contracts import (
+    VM_CORE_CONTRACT_DIALECT_OPS,
+    VM_CORE_CONTRACT_FRAGMENT,
+)
 from loom.target.arch.vm.descriptors import VM_CORE_DESCRIPTOR_SET
-from loom.target.contracts import DescriptorRule
+from loom.target.contracts import DescriptorRule, compile_lower_rule_set
 from loom.target.low_descriptors import (
     DescriptorFlag,
     DescriptorOpKind,
@@ -72,22 +75,6 @@ def test_scalar_packets_preserve_spec_encoding_and_semantic_types():
         assert instruction.control_flow is ControlFlow.SEQUENTIAL
         assert instruction.suspension is Suspension.NEVER
         assert not instruction.state_effects
-        register_fields = tuple(
-            (field, offset)
-            for field, offset in zip(
-                instruction.fields, instruction.field_offsets, strict=True
-            )
-            if field.role in (FieldRole.RESULT, FieldRole.OPERAND)
-        )
-        for (field, offset), operand in zip(
-            register_fields, descriptor.operands, strict=True
-        ):
-            assert operand.encoding_field_id == offset
-            assert field.rule.kind is FieldRule.REGISTER_VALUE
-            assert field.field.name == operand.field_name
-            assert (field.role is FieldRole.RESULT) == (
-                operand.role is OperandRole.RESULT
-            )
         result_type = descriptor.asm_forms[0].result_value_types[0]
         scalar_types = (
             {32: ScalarTypeKind.F32, 64: ScalarTypeKind.F64}
@@ -119,24 +106,59 @@ def test_scalar_packets_preserve_spec_encoding_and_semantic_types():
         assert result_type.element_type is expected_type
 
 
-def test_scalar_effects_preserve_observable_failures():
+def test_register_fields_preserve_the_wire_bank_and_position():
+    instructions = {
+        instruction.opcode: instruction for instruction in SPECIFICATION.instructions
+    }
+    banks = {FieldRule.REGISTER_VALUE: "vm.value", FieldRule.REGISTER_REF: "vm.ref"}
+    for descriptor in VM_CORE_DESCRIPTOR_SET.descriptors:
+        instruction = instructions[descriptor.encoding_id]
+        fields = (
+            (field, offset)
+            for field, offset in zip(
+                instruction.fields, instruction.field_offsets, strict=True
+            )
+            if field.role in (FieldRole.RESULT, FieldRole.OPERAND)
+        )
+        for (field, offset), operand in zip(fields, descriptor.operands, strict=True):
+            assert operand.encoding_field_id == offset
+            assert field.field.name == operand.field_name
+            assert (field.role is FieldRole.RESULT) == (
+                operand.role is OperandRole.RESULT
+            )
+            (alternative,) = operand.reg_alts
+            assert alternative.reg_class == banks[field.rule.kind]
+
+
+def test_effects_preserve_memory_access_and_observable_failures():
     instructions = {
         instruction.opcode: instruction for instruction in SPECIFICATION.instructions
     }
     for descriptor in VM_CORE_DESCRIPTOR_SET.descriptors:
         instruction = instructions[descriptor.encoding_id]
-        if instruction.failures:
+        expected = tuple(
+            dict.fromkeys(
+                {
+                    StateAccess.READ: EffectKind.READ,
+                    StateAccess.WRITE: EffectKind.WRITE,
+                    StateAccess.ALLOCATE: EffectKind.WRITE,
+                }[effect.access]
+                for effect in instruction.state_effects
+            )
+        ) + ((EffectKind.FAILURE,) if instruction.failures else ())
+        if expected:
             assert DescriptorFlag.SIDE_EFFECTING in descriptor.flags
             assert DescriptorFlag.DEAD_REMOVABLE not in descriptor.flags
-            assert tuple(effect.kind for effect in descriptor.effects) == (
-                EffectKind.FAILURE,
-            )
+            assert tuple(effect.kind for effect in descriptor.effects) == expected
         else:
             assert not descriptor.effects
             assert DescriptorFlag.DEAD_REMOVABLE in descriptor.flags
 
 
 def test_lowering_uses_the_projected_descriptors():
+    compile_lower_rule_set(
+        VM_CORE_CONTRACT_FRAGMENT, dialect_ops=VM_CORE_CONTRACT_DIALECT_OPS
+    )
     descriptors = VM_CORE_DESCRIPTOR_SET.descriptors
     cases = (
         case
@@ -178,14 +200,24 @@ def test_selectors_preserve_the_spec_domain_and_encoding():
             for field, offset in zip(
                 instruction.fields, instruction.field_offsets, strict=True
             )
-            if field.rule.kind is FieldRule.SELECTOR
+            if field.role is FieldRole.IMMEDIATE
         )
         field, offset = selector
         assert immediate.encoding_field_id == offset
         assert immediate.bit_width == field.field.byte_length * 8
-        assert {
-            entry.token: entry.value for entry in domains[immediate.enum_domain].values
-        } == {entry.name: entry.value for entry in field.rule.data.values}
+        if field.rule.kind is FieldRule.SELECTOR:
+            assert {
+                entry.token: entry.value
+                for entry in domains[immediate.enum_domain].values
+            } == {entry.name: entry.value for entry in field.rule.data.values}
+        elif field.rule.kind is FieldRule.ALLOWED_VALUES:
+            assert (
+                tuple(entry.value for entry in domains[immediate.enum_domain].values)
+                == field.rule.values
+            )
+        else:
+            assert field.rule.kind is FieldRule.ALLOWED_RANGE
+            assert (immediate.signed_min, immediate.unsigned_max) == field.rule.values
 
 
 def test_constant_immediates_preserve_the_wire_bits_and_alignment():

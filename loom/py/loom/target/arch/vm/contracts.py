@@ -6,6 +6,13 @@
 
 """Source operation correspondence for spec-derived VM instructions."""
 
+from iree.vm.bytecode.spec.isa.core.buffer import (
+    BUFFER_ALLOCATE,
+    BUFFER_COMPARE,
+    BUFFER_COPY,
+    BUFFER_FILL,
+    BUFFER_LENGTH,
+)
 from iree.vm.bytecode.spec.isa.core.float import (
     FLOAT_CLAMP_SELECTOR,
     FLOAT_COMPARE_SELECTOR,
@@ -33,6 +40,7 @@ from iree.vm.bytecode.spec.isa.core.integer import (
 from iree.vm.bytecode.spec.isa.core.value import VALUE_COPY, VALUE_SELECT
 from iree.vm.bytecode.spec.specification import SPECIFICATION
 
+from loom.dialect import buffer
 from loom.dialect.index import ALL_INDEX_OPS, IndexPredicate
 from loom.dialect.index import defs as index
 from loom.dialect.scalar import (
@@ -222,6 +230,7 @@ for source_enum, selector in (
     }
 
 VM_CORE_CONTRACT_DIALECT_OPS = {
+    "buffer": buffer.ALL_BUFFER_OPS,
     "scalar": ALL_SCALAR_OPS,
     "index": ALL_INDEX_OPS,
     "scf": ALL_SCF_OPS,
@@ -623,6 +632,108 @@ def _address_cases():
     )
 
 
+def _buffer_cases():
+    # Source spelling is the only correspondence here: types and legal value
+    # ranges come from the source op and wire fields respectively.
+    for source_op, instruction, operands, results in (
+        (
+            buffer.buffer_length,
+            BUFFER_LENGTH,
+            {"buffer_r8": "buffer"},
+            {"destination_v8": "byte_length"},
+        ),
+        (
+            buffer.buffer_copy,
+            BUFFER_COPY,
+            {
+                "target_r8": "target",
+                "target_offset_v8": "target_offset",
+                "source_r8": "source",
+                "source_offset_v8": "source_offset",
+                "length_v8": "byte_length",
+            },
+            {},
+        ),
+        (
+            buffer.buffer_compare,
+            BUFFER_COMPARE,
+            {
+                "left_r8": "lhs",
+                "left_offset_v8": "lhs_offset",
+                "right_r8": "rhs",
+                "right_offset_v8": "rhs_offset",
+                "length_v8": "byte_length",
+            },
+            {"destination_v8": "order"},
+        ),
+    ):
+        descriptor = _DESCRIPTORS[instruction.opcode]
+        yield DescriptorRule(
+            source_op=source_op,
+            descriptor=descriptor,
+            emit=(
+                EmitDescriptorOp(
+                    descriptor=descriptor,
+                    form=DescriptorEmitForm.OP,
+                    operands={
+                        target: ValueRef.operand(source)
+                        for target, source in operands.items()
+                    },
+                    results={
+                        target: ValueRef.result(source)
+                        for target, source in results.items()
+                    },
+                ),
+            ),
+        )
+    descriptor = _DESCRIPTORS[BUFFER_ALLOCATE.opcode]
+    yield DescriptorRule(
+        source_op=buffer.buffer_alloca,
+        descriptor=descriptor,
+        guards=(Guard.enum_attr_equals("memory_space", "private"),),
+        emit=(
+            EmitDescriptorOp(
+                descriptor=descriptor,
+                form=DescriptorEmitForm.OP,
+                operands={"length_v8": ValueRef.operand("byte_length")},
+                results={"destination_r8": ValueRef.result("result")},
+                immediates={
+                    "minimum_alignment_log2_u8": AttrProject.i64_log2("base_alignment")
+                },
+            ),
+        ),
+    )
+    descriptor = _DESCRIPTORS[BUFFER_FILL.opcode]
+    pattern_field = next(
+        field for field in BUFFER_FILL.fields if field.field.name == "pattern_width_u8"
+    )
+    for width in pattern_field.rule.values:
+        types = tuple(
+            str(ScalarType(kind))
+            for kind in ScalarTypeKind
+            if ScalarType(kind).bitwidth == width * 8
+            and str(ScalarType(kind)) in _SCALAR_TYPES
+        )
+        yield DescriptorRule(
+            source_op=buffer.buffer_fill,
+            descriptor=descriptor,
+            guards=(Guard.value_type("pattern", Scalar(types)),),
+            emit=(
+                EmitDescriptorOp(
+                    descriptor=descriptor,
+                    operands={
+                        "buffer_r8": ValueRef.operand("target"),
+                        "offset_v8": ValueRef.operand("target_offset"),
+                        "length_v8": ValueRef.operand("byte_length"),
+                        "pattern_v8": ValueRef.operand("pattern"),
+                    },
+                    results={},
+                    immediates={"pattern_width_u8": width},
+                ),
+            ),
+        )
+
+
 VM_CORE_CONTRACT_FRAGMENT = ContractFragment(
     name="vm.core",
     descriptor_set=VM_CORE_DESCRIPTOR_SET,
@@ -632,6 +743,7 @@ VM_CORE_CONTRACT_FRAGMENT = ContractFragment(
     + tuple(_conversion_cases())
     + tuple(_math_cases())
     + tuple(_address_cases())
+    + tuple(_buffer_cases())
     + select_descriptor_rules(
         (
             SelectDescriptorCase(

@@ -15,6 +15,13 @@ and operand encoding field IDs are byte offsets from the instruction start.
 from pathlib import Path
 
 from iree.vm.bytecode.spec.isa import FieldRole, Instruction
+from iree.vm.bytecode.spec.isa.core.buffer import (
+    BUFFER_ALLOCATE,
+    BUFFER_COMPARE,
+    BUFFER_COPY,
+    BUFFER_FILL,
+    BUFFER_LENGTH,
+)
 from iree.vm.bytecode.spec.isa.core.constant import CONSTANT_I32, CONSTANT_I64
 from iree.vm.bytecode.spec.isa.core.conversion import (
     CONVERSION_INSTRUCTIONS,
@@ -41,6 +48,7 @@ from iree.vm.bytecode.spec.isa.core.integer import (
     IntegerDivisionSemantics,
     IntegerUnarySemantics,
 )
+from iree.vm.bytecode.spec.isa.core.rules import FieldRule, StateAccess
 from iree.vm.bytecode.spec.isa.core.value import VALUE_COPY, VALUE_SELECT
 from iree.vm.bytecode.spec.specification import SPECIFICATION
 
@@ -62,6 +70,7 @@ from loom.target.low_descriptors import (
     InstructionClass,
     IssueUse,
     LatencyKind,
+    MemorySpace,
     ModelQuality,
     Operand,
     OperandRole,
@@ -78,6 +87,17 @@ _OPERAND_ROLES = {
     FieldRole.RESULT: OperandRole.RESULT,
     FieldRole.OPERAND: OperandRole.OPERAND,
 }
+_REGISTER_CLASSES = {
+    FieldRule.REGISTER_VALUE: "vm.value",
+    FieldRule.REGISTER_REF: "vm.ref",
+}
+_BUFFER_INSTRUCTIONS = (
+    BUFFER_ALLOCATE,
+    BUFFER_LENGTH,
+    BUFFER_FILL,
+    BUFFER_COPY,
+    BUFFER_COMPARE,
+)
 
 _INTEGER_TYPES = {32: ScalarTypeKind.I32, 64: ScalarTypeKind.I64}
 _FLOAT_TYPES = {32: ScalarTypeKind.F32, 64: ScalarTypeKind.F64}
@@ -122,31 +142,46 @@ _SELECTORS = {
 }
 
 
-def _selector_immediates(instruction: Instruction) -> tuple[Immediate, ...]:
-    return tuple(
-        Immediate(
-            field.field.name,
-            ImmediateKind.ENUM,
-            bit_width=field.field.byte_length * 8,
-            encoding_field_id=offset,
-            enum_domain=field.rule.data.name,
+def _immediates(instruction: Instruction) -> tuple[Immediate, ...]:
+    immediates = []
+    for field, offset in zip(
+        instruction.fields, instruction.field_offsets, strict=True
+    ):
+        if field.role is not FieldRole.IMMEDIATE:
+            continue
+        bit_width = field.field.byte_length * 8
+        minimum, maximum = 0, 0
+        domain = None
+        if field.rule.kind is FieldRule.SELECTOR:
+            domain = field.rule.data.name
+        elif field.rule.kind is FieldRule.ALLOWED_VALUES:
+            domain = f"{instruction.mnemonic}.{field.field.name}"
+        else:
+            assert field.rule.kind is FieldRule.ALLOWED_RANGE
+            minimum, maximum = field.rule.values
+        immediates.append(
+            Immediate(
+                field.field.name,
+                ImmediateKind.ENUM if domain is not None else ImmediateKind.UNSIGNED,
+                bit_width=bit_width,
+                encoding_field_id=offset,
+                enum_domain=domain,
+                signed_min=minimum,
+                unsigned_max=maximum,
+            )
         )
-        for field, offset in zip(
-            instruction.fields, instruction.field_offsets, strict=True
-        )
-        if field.role is FieldRole.IMMEDIATE
-    )
+    return tuple(immediates)
 
 
-def _value_descriptor(
+def _descriptor(
     instruction: Instruction,
-    result_type: ScalarTypeKind,
+    result_type: ScalarTypeKind | None,
     *,
     op_kind: DescriptorOpKind = DescriptorOpKind.OP,
     immediates: tuple[Immediate, ...] | None = None,
 ) -> Descriptor:
     if immediates is None:
-        immediates = _selector_immediates(instruction)
+        immediates = _immediates(instruction)
     # The emitter has a bounded packet and positional storage for one immediate.
     assert instruction.byte_length <= CONSTANT_I64.byte_length
     assert len(immediates) <= 1
@@ -154,7 +189,7 @@ def _value_descriptor(
         Operand(
             field.field.name,
             _OPERAND_ROLES[field.role],
-            (RegClassAlt("vm.value"),),
+            (RegClassAlt(_REGISTER_CLASSES[field.rule.kind]),),
             encoding_field_id=offset,
         )
         for field, offset in zip(
@@ -162,6 +197,19 @@ def _value_descriptor(
         )
         if field.role in _OPERAND_ROLES
     )
+    effects = tuple(
+        dict.fromkeys(
+            Effect(
+                {
+                    StateAccess.READ: EffectKind.READ,
+                    StateAccess.WRITE: EffectKind.WRITE,
+                    StateAccess.ALLOCATE: EffectKind.WRITE,
+                }[effect.access],
+                MemorySpace.GENERIC,
+            )
+            for effect in instruction.state_effects
+        )
+    ) + ((Effect(EffectKind.FAILURE),) if instruction.failures else ())
     return Descriptor(
         key=f"vm.{instruction.mnemonic}",
         mnemonic=instruction.mnemonic,
@@ -172,13 +220,15 @@ def _value_descriptor(
         immediates=immediates,
         encoding_id=instruction.opcode,
         encoding_format_id=instruction.byte_length,
-        effects=(Effect(EffectKind.FAILURE),) if instruction.failures else (),
+        effects=effects,
         flags=(
-            DescriptorFlag.SIDE_EFFECTING
-            if instruction.failures
-            else DescriptorFlag.DEAD_REMOVABLE,
+            DescriptorFlag.SIDE_EFFECTING if effects else DescriptorFlag.DEAD_REMOVABLE,
         ),
-        instruction_classes=(InstructionClass.SCALAR_ALU,),
+        instruction_classes=(
+            InstructionClass.GENERIC_MEMORY
+            if instruction.state_effects
+            else InstructionClass.SCALAR_ALU,
+        ),
         asm_forms=(
             AsmForm(
                 results=tuple(
@@ -194,7 +244,9 @@ def _value_descriptor(
                 immediates=tuple(
                     AsmImmediate(value.field_name) for value in immediates
                 ),
-                result_value_types=(AsmResultValueType(result_type),),
+                result_value_types=(AsmResultValueType(result_type),)
+                if result_type is not None
+                else (),
             ),
         ),
     )
@@ -216,7 +268,7 @@ def _constant_descriptor(instruction: Instruction) -> Descriptor:
         range(offset, offset + byte_length, 4)
     )
     bit_width = byte_length * 8
-    return _value_descriptor(
+    return _descriptor(
         instruction,
         {32: ScalarTypeKind.I32, 64: ScalarTypeKind.I64}[bit_width],
         op_kind=DescriptorOpKind.CONST,
@@ -253,6 +305,17 @@ VM_CORE_DESCRIPTOR_SET = DescriptorSet(
             flags=(RegClassFlag.PHYSICAL,),
             allocatable_count=256,
         ),
+        RegClass(
+            "vm.ref",
+            alloc_unit_bits=128,
+            spill_slot_space=SpillSlotSpace.PRIVATE,
+            flags=(
+                RegClassFlag.PHYSICAL,
+                RegClassFlag.REFERENCE,
+                RegClassFlag.UNSPILLABLE,
+            ),
+            allocatable_count=256,
+        ),
     ),
     resources=(Resource("vm.issue", 1, ResourceKind.SCALAR_ALU),),
     schedule_classes=(
@@ -271,20 +334,40 @@ VM_CORE_DESCRIPTOR_SET = DescriptorSet(
             tuple(EnumValue(value.name, value.value) for value in selector.values),
         )
         for selector in _SELECTORS.values()
+    )
+    + tuple(
+        EnumDomain(
+            f"{instruction.mnemonic}.{field.field.name}",
+            tuple(EnumValue(str(value), value) for value in field.rule.values),
+        )
+        for instruction in _BUFFER_INSTRUCTIONS
+        for field in instruction.fields
+        if field.rule.kind is FieldRule.ALLOWED_VALUES
     ),
     descriptors=(
-        _value_descriptor(VALUE_COPY, ScalarTypeKind.I64),
-        _value_descriptor(VALUE_SELECT, ScalarTypeKind.I64),
+        _descriptor(VALUE_COPY, ScalarTypeKind.I64),
+        _descriptor(VALUE_SELECT, ScalarTypeKind.I64),
         *(_constant_descriptor(op) for op in (CONSTANT_I32, CONSTANT_I64)),
-        *(_value_descriptor(op, ScalarTypeKind.I64) for op in _SCALAR_CONVERSIONS),
+        *(_descriptor(op, ScalarTypeKind.I64) for op in _SCALAR_CONVERSIONS),
         *(
-            _value_descriptor(
+            _descriptor(
                 instruction,
                 _RESULT_TYPES[type(instruction.semantics)][
                     instruction.semantics.bit_width
                 ],
             )
             for instruction in _SCALAR_INSTRUCTIONS
+        ),
+        *(
+            _descriptor(
+                op,
+                ScalarTypeKind.I64
+                if op is BUFFER_LENGTH
+                else ScalarTypeKind.I32
+                if op is BUFFER_COMPARE
+                else None,
+            )
+            for op in _BUFFER_INSTRUCTIONS
         ),
     ),
 )

@@ -95,6 +95,7 @@ class LowerAttrCopyKind(Enum):
 
     DIRECT = "direct"
     ENUM_ORDINAL = "enum_ordinal"
+    I64_LOG2 = "i64_log2"
     I64_ARRAY_ELEMENT = "i64_array_element"
     I64_ARRAY_PACK_ELEMENTS = "i64_array_pack_elements"
     I64_ATTRS_PACK_CONSECUTIVE = "i64_attrs_pack_consecutive"
@@ -1630,6 +1631,12 @@ class _LowerRuleSetCompiler:
         if project.kind == AttrProjectKind.ENUM_ORDINAL:
             return LowerAttrCopy(
                 kind=LowerAttrCopyKind.ENUM_ORDINAL,
+                target_name=target_name,
+                source_attr_index=source_attr_index,
+            )
+        if project.kind == AttrProjectKind.I64_LOG2:
+            return LowerAttrCopy(
+                kind=LowerAttrCopyKind.I64_LOG2,
                 target_name=target_name,
                 source_attr_index=source_attr_index,
             )

@@ -627,6 +627,7 @@ def attr_copy_row(
     if row.kind in (
         LowerAttrCopyKind.DIRECT,
         LowerAttrCopyKind.ENUM_ORDINAL,
+        LowerAttrCopyKind.I64_LOG2,
         LowerAttrCopyKind.I64_ARRAY_ELEMENT,
         LowerAttrCopyKind.I64_ARRAY_PACK_ELEMENTS,
         LowerAttrCopyKind.I64_ATTRS_PACK_CONSECUTIVE,

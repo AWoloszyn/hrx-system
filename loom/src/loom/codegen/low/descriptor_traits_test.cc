@@ -92,6 +92,29 @@ TEST(LowDescriptorTraitsTest, BarrierPreservesPreciseMemoryEffects) {
   EXPECT_FALSE(iree_any_bit_set(traits, LOOM_TRAIT_UNKNOWN_EFFECTS));
 }
 
+TEST(LowDescriptorTraitsTest, OpaqueEffectsSubsumePreciseMemoryTraits) {
+  for (auto kind : {LOOM_LOW_EFFECT_KIND_CALL, LOOM_LOW_EFFECT_KIND_COUNTER,
+                    LOOM_LOW_EFFECT_KIND_FAILURE}) {
+    loom_low_effect_t effects[5] = {};
+    effects[0].kind = LOOM_LOW_EFFECT_KIND_READ;
+    effects[1].kind = kind;
+    effects[2].kind = LOOM_LOW_EFFECT_KIND_WRITE;
+    effects[3].kind = LOOM_LOW_EFFECT_KIND_CONTROL;
+    effects[4].kind = LOOM_LOW_EFFECT_KIND_CONVERGENT;
+    const loom_trait_flags_t traits =
+        ProjectEffects(effects, IREE_ARRAYSIZE(effects));
+
+    EXPECT_TRUE(iree_all_bits_set(traits, LOOM_TRAIT_UNKNOWN_EFFECTS |
+                                              LOOM_TRAIT_TERMINATOR |
+                                              LOOM_TRAIT_CONVERGENT));
+    EXPECT_TRUE(loom_traits_may_read(traits));
+    EXPECT_TRUE(loom_traits_may_write(traits));
+    EXPECT_FALSE(iree_any_bit_set(traits, LOOM_TRAIT_PURE |
+                                              LOOM_TRAIT_READS_MEMORY |
+                                              LOOM_TRAIT_WRITES_MEMORY));
+  }
+}
+
 TEST(LowDescriptorTraitsTest, SideEffectingTerminatorFlagsCompose) {
   const loom_low_descriptor_set_t descriptor_set = {};
   loom_low_descriptor_t descriptor = {};

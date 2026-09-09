@@ -38,6 +38,7 @@ iree_py_library(
     "contracts.py"
   DEPS
     loom::py::loom::target::arch::vm::descriptors
+    loom::py::loom::dialect::buffer::buffer
     loom::py::loom::dialect::index::index
     loom::py::loom::dialect::scalar::scalar
     loom::py::loom::dialect::scf::scf

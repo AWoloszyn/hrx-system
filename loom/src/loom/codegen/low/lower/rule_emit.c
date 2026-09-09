@@ -336,6 +336,10 @@ static iree_status_t loom_low_lower_rule_build_attrs(
                                        attr_copy->target_name_string_offset),
         &attrs[i].name_id));
     switch (attr_copy->kind) {
+      case LOOM_LOW_LOWER_ATTR_COPY_I64_LOG2:
+        attrs[i].value = loom_attr_i64(iree_math_floor_log2_u64(
+            (uint64_t)source_attrs[attr_copy->source_attr_index].i64));
+        break;
       case LOOM_LOW_LOWER_ATTR_COPY_DIRECT:
         IREE_ASSERT_LT(attr_copy->source_attr_index,
                        source_op->attribute_count);

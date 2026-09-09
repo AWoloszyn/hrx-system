@@ -32,8 +32,13 @@ static iree_status_t loom_vm_function_moves(const loom_low_move_t* moves,
   for (iree_host_size_t i = 0; i < range.count && iree_status_is_ok(status);
        ++i) {
     const loom_low_move_t* move = &moves[range.start + i];
+    // Value copies and ref retains share the same register-pair encoding.
+    // Ref copies acquire the new owner before replacing their destination.
     const iree_vm_bytecode_value_copy_t instruction = {
-        .opcode = IREE_VM_BYTECODE_OPCODE_VALUE_COPY,
+        .opcode =
+            move->source.descriptor_reg_class_id == VM_CORE_REG_CLASS_ID_REF
+                ? IREE_VM_BYTECODE_OPCODE_REF_RETAIN
+                : IREE_VM_BYTECODE_OPCODE_VALUE_COPY,
         .destination_v8 = (uint8_t)move->destination.location,
         .source_v8 = (uint8_t)move->source.location,
     };
@@ -436,6 +441,9 @@ iree_status_t loom_vm_function_emit(
       (uint16_t)iree_max(iree_max(argument_count, results.count),
                          frame.allocation.physical_extents
                              .ends_by_reg_class[VM_CORE_REG_CLASS_ID_VALUE]);
+  out_row->ref_register_count_u16 =
+      (uint16_t)frame.allocation.physical_extents
+          .ends_by_reg_class[VM_CORE_REG_CLASS_ID_REF];
   out_row->block_count_u32 = (uint32_t)frame.schedule.block_count;
   loom_low_move_sequence_scratch_t return_scratch = {0};
   IREE_RETURN_IF_ERROR(loom_low_move_sequence_scratch_initialize(

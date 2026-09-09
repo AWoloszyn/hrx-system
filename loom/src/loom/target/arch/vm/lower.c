@@ -14,11 +14,12 @@
 static bool loom_vm_source_type_supported(void* user_data,
                                           const loom_module_t* module,
                                           loom_type_t type) {
-  return loom_type_is_scalar(type) &&
-         loom_scalar_type_set_contains(LOOM_SCALAR_TYPE_SET_ADDRESS |
-                                           LOOM_SCALAR_TYPE_SET_INTEGER |
-                                           LOOM_SCALAR_TYPE_SET_FLOAT,
-                                       loom_type_element_type(type));
+  return loom_type_is_buffer(type) ||
+         (loom_type_is_scalar(type) &&
+          loom_scalar_type_set_contains(LOOM_SCALAR_TYPE_SET_ADDRESS |
+                                            LOOM_SCALAR_TYPE_SET_INTEGER |
+                                            LOOM_SCALAR_TYPE_SET_FLOAT,
+                                        loom_type_element_type(type)));
 }
 
 static iree_status_t loom_vm_map_type(void* user_data,
@@ -37,7 +38,10 @@ static iree_status_t loom_vm_map_type(void* user_data,
   if (loom_vm_source_type_supported(
           user_data, loom_low_lower_context_module(context), source_type)) {
     return loom_low_lower_make_typed_register_type(
-        context, VM_CORE_REG_CLASS_ID_VALUE, 1, source_type, out_low_type);
+        context,
+        loom_type_is_buffer(source_type) ? VM_CORE_REG_CLASS_ID_REF
+                                         : VM_CORE_REG_CLASS_ID_VALUE,
+        1, source_type, out_low_type);
   }
   return loom_low_lower_emit_source_type_unsupported(
       context, source_op, IREE_SV("source"), source_type);

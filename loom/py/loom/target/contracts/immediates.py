@@ -25,6 +25,7 @@ class AttrProjectKind(Enum):
 
     DIRECT = "direct"
     ENUM_ORDINAL = "enum_ordinal"
+    I64_LOG2 = "i64_log2"
     I64_ARRAY_ELEMENT = "i64_array_element"
     I64_ARRAY_PACK_ELEMENTS = "i64_array_pack_elements"
     I64_ATTRS_PACK_CONSECUTIVE = "i64_attrs_pack_consecutive"
@@ -90,6 +91,11 @@ class AttrProject:
     @classmethod
     def enum_ordinal(cls, source_attr: str) -> Self:
         return cls(kind=AttrProjectKind.ENUM_ORDINAL, source_attr=source_attr)
+
+    @classmethod
+    def i64_log2(cls, source_attr: str) -> Self:
+        """Encodes a verified positive power-of-two attribute as its logarithm."""
+        return cls(kind=AttrProjectKind.I64_LOG2, source_attr=source_attr)
 
     @classmethod
     def i64_array_element(
@@ -247,7 +253,15 @@ class AttrProject:
             AttrProjectKind.I64_SHIFTED_LOW_BIT_MASK,
             AttrProjectKind.I64_SHIFTED_LOW_BIT_CLEAR_MASK,
         )
-        if self.kind in (*mask_kinds, *literal_kinds) and self.target_bit_offset != 0:
+        if (
+            self.kind
+            in (
+                AttrProjectKind.I64_LOG2,
+                *mask_kinds,
+                *literal_kinds,
+            )
+            and self.target_bit_offset != 0
+        ):
             raise ValueError(
                 f"{self.kind.value} projection must not use target bit offset"
             )
@@ -327,7 +341,7 @@ class AttrProject:
             AttrProjectKind.I64_SHIFTED_LOW_BIT_MASK,
             AttrProjectKind.I64_SHIFTED_LOW_BIT_CLEAR_MASK,
         )
-        if self.kind in mask_kinds:
+        if self.kind in (AttrProjectKind.I64_LOG2, *mask_kinds):
             self._validate_i64_attr_projection(
                 source_op,
                 descriptor,

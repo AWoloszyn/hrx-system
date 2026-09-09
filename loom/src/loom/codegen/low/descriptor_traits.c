@@ -71,7 +71,11 @@ loom_trait_flags_t loom_low_descriptor_effective_traits(
     // rematerializable SSA.
     traits |= LOOM_TRAIT_NON_DETERMINISTIC;
   }
-  if (iree_any_bit_set(traits, LOOM_TRAIT_UNKNOWN_EFFECTS)) return traits;
+  if (iree_any_bit_set(traits, LOOM_TRAIT_UNKNOWN_EFFECTS)) {
+    // Unknown effects subsume generic reads and writes. The scheduler still
+    // consumes the precise accesses from the descriptor's effect rows.
+    return traits & ~(LOOM_TRAIT_READS_MEMORY | LOOM_TRAIT_WRITES_MEMORY);
+  }
 
   if (!iree_any_bit_set(
           traits, LOOM_TRAIT_READS_MEMORY | LOOM_TRAIT_WRITES_MEMORY |
