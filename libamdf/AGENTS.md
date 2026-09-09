@@ -31,6 +31,17 @@ Runtime-only consumers outside `libamdf/` retain their own subsystem prefix.
   resource-consumption and progress contract, not a generic later-retry policy.
 - GPU, XDNA, and platform implementation packages remain dependency-isolated.
   Common code may not acquire a device-family dependency by convenience.
+- Extension entry points and shared family code are UMD-agnostic. They operate
+  on the implementation selected for the live object, without inspecting UMD
+  identity or using preprocessor branches to change behavior for a UMD.
+- UMD boundaries preserve the ownership and dispatch seams needed for multiple
+  implementations, including native backends, mocks, and simulators such as
+  rocJITsu. Static UMD selection is acceptable during bringup; runtime
+  pluggability is not a prerequisite for landing. Shared APIs remain
+  independent of that temporary implementation-binding choice.
+- Unsupported services use callable operations with capability discovery and
+  explicit unsupported results, or live in a separate absent extension. The
+  public and internal contracts consistently follow the selected model.
 
 ## Build structure
 
