@@ -63,3 +63,44 @@ func.def @narrow_constants() -> (i8, i16, f16, bf16) {
   %brain = scalar.constant 1.25 : bf16
   func.return %byte, %word, %half, %brain : i8, i16, f16, bf16
 }
+
+// ====
+
+func.def @float_conversion_paths(%e4: f8E4M3, %e5: f8E5M2, %half: f16, %brain: bf16) -> (f16, bf16, f64, f64, f8E4M3, f8E5M2, i8, i16, i32, i64) {
+  %r0 = scalar.extf %e4 : f8E4M3 to f16
+  %r1 = scalar.extf %e5 : f8E5M2 to bf16
+  %r2 = scalar.extf %half : f16 to f64
+  %r3 = scalar.extf %brain : bf16 to f64
+  %r4 = scalar.fptrunc %half : f16 to f8E4M3
+  %r5 = scalar.fptrunc %brain : bf16 to f8E5M2
+  %r6 = scalar.fptosi %e5 : f8E5M2 to i8
+  %r7 = scalar.fptoui %half : f16 to i16
+  %r8 = scalar.fptosi %brain : bf16 to i32
+  %r9 = scalar.fptoui %e4 : f8E4M3 to i64
+  func.return %r0, %r1, %r2, %r3, %r4, %r5, %r6, %r7, %r8, %r9 : f16, bf16, f64, f64, f8E4M3, f8E5M2, i8, i16, i32, i64
+}
+
+// ====
+
+func.def @small_integer_float(%flag: i1, %byte: i8, %word: i16) -> (f8E4M3, f16, f32, f64, bf16, bf16, f8E5M2) {
+  %r0 = scalar.sitofp %flag : i1 to f8E4M3
+  %r1 = scalar.uitofp %flag : i1 to f16
+  %r2 = scalar.sitofp %byte : i8 to f32
+  %r3 = scalar.uitofp %byte : i8 to f64
+  %r4 = scalar.sitofp %word : i16 to bf16
+  %r5 = scalar.uitofp %word : i16 to bf16
+  %r6 = scalar.sitofp %byte : i8 to f8E5M2
+  func.return %r0, %r1, %r2, %r3, %r4, %r5, %r6 : f8E4M3, f16, f32, f64, bf16, bf16, f8E5M2
+}
+
+// ====
+
+func.def @wide_integer_narrow_float(%wide: i64) -> (f16, f8E4M3, f8E5M2, f16, f8E4M3, f8E5M2) {
+  %r0 = scalar.sitofp %wide : i64 to f16
+  %r1 = scalar.sitofp %wide : i64 to f8E4M3
+  %r2 = scalar.sitofp %wide : i64 to f8E5M2
+  %r3 = scalar.uitofp %wide : i64 to f16
+  %r4 = scalar.uitofp %wide : i64 to f8E4M3
+  %r5 = scalar.uitofp %wide : i64 to f8E5M2
+  func.return %r0, %r1, %r2, %r3, %r4, %r5 : f16, f8E4M3, f8E5M2, f16, f8E4M3, f8E5M2
+}

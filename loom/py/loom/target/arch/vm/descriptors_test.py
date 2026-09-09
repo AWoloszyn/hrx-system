@@ -25,7 +25,8 @@ from iree.vm.bytecode.spec.isa.core.integer import (
 from iree.vm.bytecode.spec.isa.core.rules import FieldRule
 from iree.vm.bytecode.spec.specification import SPECIFICATION
 
-from loom.ir import ScalarTypeKind
+from loom.dialect.scalar import conversion
+from loom.ir import ScalarType, ScalarTypeKind
 from loom.target.arch.vm.contracts import VM_CORE_CONTRACT_FRAGMENT
 from loom.target.arch.vm.descriptors import VM_CORE_DESCRIPTOR_SET
 from loom.target.contracts import DescriptorRule
@@ -221,3 +222,66 @@ def test_constant_immediates_preserve_the_wire_bits_and_alignment():
                     )
                     == (value >> (relative_offset * 8)) & 0xFFFFFFFF
                 )
+
+
+def test_numeric_conversions_cover_the_source_type_relations():
+    operations = (
+        conversion.scalar_extsi,
+        conversion.scalar_extui,
+        conversion.scalar_trunci,
+        conversion.scalar_extf,
+        conversion.scalar_fptrunc,
+        conversion.scalar_sitofp,
+        conversion.scalar_uitofp,
+        conversion.scalar_fptosi,
+        conversion.scalar_fptoui,
+    )
+    cases = {}
+    for case in VM_CORE_CONTRACT_FRAGMENT.cases:
+        if case.source_op not in operations:
+            continue
+        types = {guard.field: guard.type_pattern.element for guard in case.guards}
+        key = (case.source_op, types["input"], types["result"])
+        assert key not in cases
+        cases[key] = case
+
+    expected = set()
+    types = [
+        ScalarType(kind)
+        for kind in ScalarTypeKind
+        if kind not in (ScalarTypeKind.INDEX, ScalarTypeKind.OFFSET)
+    ]
+    for source in types:
+        for result in types:
+            source_integer = str(source).startswith("i")
+            result_integer = str(result).startswith("i")
+            if source_integer != result_integer:
+                ops = (
+                    (conversion.scalar_sitofp, conversion.scalar_uitofp)
+                    if source_integer
+                    else (conversion.scalar_fptosi, conversion.scalar_fptoui)
+                )
+            elif source.bitwidth == result.bitwidth:
+                continue
+            elif source_integer:
+                ops = (
+                    (conversion.scalar_extsi, conversion.scalar_extui)
+                    if source.bitwidth < result.bitwidth
+                    else (conversion.scalar_trunci,)
+                )
+            else:
+                ops = (
+                    conversion.scalar_extf
+                    if source.bitwidth < result.bitwidth
+                    else conversion.scalar_fptrunc,
+                )
+            expected.update((op, str(source), str(result)) for op in ops)
+    assert set(cases) == expected
+
+    # Direct rounding must not be replaced with a staged conversion. Bfloat16
+    # and f64 narrowing can distinguish even a one-bit intermediate error.
+    for source in ("i32", "i64"):
+        for op in (conversion.scalar_sitofp, conversion.scalar_uitofp):
+            assert len(cases[(op, source, "bf16")].emit) == 1
+    for result in ("f8E4M3", "f8E5M2", "f16", "bf16", "f32"):
+        assert len(cases[(conversion.scalar_fptrunc, "f64", result)].emit) == 1

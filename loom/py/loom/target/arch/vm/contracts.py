@@ -45,6 +45,7 @@ from loom.dialect.scalar import (
     math,
 )
 from loom.dialect.scf import ALL_SCF_OPS, scf_select
+from loom.ir import ScalarType, ScalarTypeKind
 from loom.target.arch.vm.descriptors import VM_CORE_DESCRIPTOR_SET
 from loom.target.contracts import (
     AttrProject,
@@ -343,7 +344,7 @@ def _selected_cases():
                 )
 
 
-def _conversion_cases():
+def _conversion_steps():
     for descriptor in VM_CORE_DESCRIPTOR_SET.descriptors:
         if not descriptor.immediates:
             continue
@@ -369,13 +370,112 @@ def _conversion_cases():
                 if domain == "float.to.integer"
                 else source[0]
             )
-            yield _scalar_rule(
-                descriptor,
-                _CONVERSION_SOURCE_OPS[domain][key],
-                Scalar(source_type),
-                value.value,
-                result_type=Scalar(result_type),
+            yield (
+                (_CONVERSION_SOURCE_OPS[domain][key], source_type, result_type),
+                (descriptor, value.value),
             )
+
+
+def _conversion_rule(source_op, path, steps):
+    emits = []
+    source = ValueRef.operand("input")
+    for step_index, key in enumerate(path):
+        descriptor, selector = steps[key]
+        final = step_index == len(path) - 1
+        result = (
+            ValueRef.result("result")
+            if final
+            else ValueRef.temporary(f"conversion{step_index}")
+        )
+        if step_index:
+            assert path[step_index - 1][2] == key[1]
+        emits.append(
+            EmitDescriptorOp(
+                descriptor=descriptor,
+                operands={"source_v8": source},
+                results={"destination_v8": result},
+                result_types=None if final else {"destination_v8": Scalar(key[2])},
+                immediates={descriptor.immediates[0].field_name: selector},
+            )
+        )
+        source = result
+    return DescriptorRule(
+        source_op=source_op,
+        descriptor=emits[-1].descriptor,
+        guards=(
+            Guard.value_type("input", Scalar(path[0][1])),
+            Guard.value_type("result", Scalar(path[-1][2])),
+        ),
+        emit=tuple(emits),
+    )
+
+
+def _conversion_cases():
+    steps = dict(_conversion_steps())
+    paths = {key: (key,) for key in steps}
+    bit_widths = {
+        str(ScalarType(kind)): ScalarType(kind).bitwidth for kind in ScalarTypeKind
+    }
+    floats = tuple(name for name in _SCALAR_TYPES if name.startswith(("f", "bf")))
+    integers = tuple(
+        name for name in _SCALAR_TYPES if name.startswith("i") and name != "index"
+    )
+
+    for source in floats:
+        if bit_widths[source] >= 32:
+            continue
+        extend = (conversion.scalar_extf, source, "f32")
+        for result in floats:
+            if bit_widths[source] == bit_widths[result]:
+                continue
+            source_op = (
+                conversion.scalar_extf
+                if bit_widths[source] < bit_widths[result]
+                else conversion.scalar_fptrunc
+            )
+            key = (source_op, source, result)
+            if key not in paths:
+                final_op = (
+                    conversion.scalar_extf
+                    if result == "f64"
+                    else conversion.scalar_fptrunc
+                )
+                paths[key] = (extend, (final_op, "f32", result))
+        for source_op in (conversion.scalar_fptosi, conversion.scalar_fptoui):
+            for result in integers:
+                paths[(source_op, source, result)] = (
+                    extend,
+                    (source_op, "f32", result),
+                )
+
+    for source in integers:
+        for source_op, extension in (
+            (conversion.scalar_sitofp, conversion.scalar_extsi),
+            (conversion.scalar_uitofp, conversion.scalar_extui),
+        ):
+            carrier = "i32" if bit_widths[source] < 32 else source
+            prefix = ((extension, source, carrier),) if source != carrier else ()
+            for result in floats:
+                key = (source_op, source, result)
+                if key in paths:
+                    continue
+                native = (source_op, carrier, result)
+                if native in steps:
+                    paths[key] = (*prefix, native)
+                else:
+                    # All integer values relevant to f16/FP8 finite rounding
+                    # fit exactly in f32. Larger magnitudes overflow or saturate
+                    # in the destination. Bfloat16 uses its direct selector:
+                    # its wider exponent range makes intermediate rounding unsafe.
+                    assert result in ("f16", "f8E4M3", "f8E5M2")
+                    paths[key] = (
+                        *prefix,
+                        (source_op, carrier, "f32"),
+                        (conversion.scalar_fptrunc, "f32", result),
+                    )
+
+    for (source_op, _, _), path in paths.items():
+        yield _conversion_rule(source_op, path, steps)
 
 
 def _math_cases():

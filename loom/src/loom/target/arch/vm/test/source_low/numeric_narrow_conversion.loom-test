@@ -136,3 +136,102 @@ low.func.def target<vm.core>(@vm) abi(vm_function) @narrow_constants() -> (reg<v
   %brain = constant.i32 16288 : reg<vm.value : bf16>
   return %byte, %word, %half, %brain
 }
+
+// ====
+
+vm.target<core> @vm
+
+func.def target(@vm) @float_conversion_paths(%e4: f8E4M3, %e5: f8E5M2, %half: f16, %brain: bf16) -> (f16, bf16, f64, f64, f8E4M3, f8E5M2, i8, i16, i32, i64) {
+  %r0 = scalar.extf %e4 : f8E4M3 to f16
+  %r1 = scalar.extf %e5 : f8E5M2 to bf16
+  %r2 = scalar.extf %half : f16 to f64
+  %r3 = scalar.extf %brain : bf16 to f64
+  %r4 = scalar.fptrunc %half : f16 to f8E4M3
+  %r5 = scalar.fptrunc %brain : bf16 to f8E5M2
+  %r6 = scalar.fptosi %e5 : f8E5M2 to i8
+  %r7 = scalar.fptoui %half : f16 to i16
+  %r8 = scalar.fptosi %brain : bf16 to i32
+  %r9 = scalar.fptoui %e4 : f8E4M3 to i64
+  func.return %r0, %r1, %r2, %r3, %r4, %r5, %r6, %r7, %r8, %r9 : f16, bf16, f64, f64, f8E4M3, f8E5M2, i8, i16, i32, i64
+}
+
+// ----
+low.func.def target<vm.core>(@vm) abi(vm_function) @float_conversion_paths(%e4: reg<vm.value : f8E4M3>, %e5: reg<vm.value : f8E5M2>, %half: reg<vm.value : f16>, %brain: reg<vm.value : bf16>) -> (reg<vm.value : f16>, reg<vm.value : bf16>, reg<vm.value : f64>, reg<vm.value : f64>, reg<vm.value : f8E4M3>, reg<vm.value : f8E5M2>, reg<vm.value : i8>, reg<vm.value : i16>, reg<vm.value : i32>, reg<vm.value : i64>) asm {
+  %38 = conversion.float.extend %e4, 0 : reg<vm.value : f32>
+  %r0 = conversion.float.truncate %38, 2 : reg<vm.value : f16>
+  %40 = conversion.float.extend %e5, 1 : reg<vm.value : f32>
+  %r1 = conversion.float.truncate %40, 3 : reg<vm.value : bf16>
+  %42 = conversion.float.extend %half, 2 : reg<vm.value : f32>
+  %r2 = conversion.float.width %42, 0 : reg<vm.value : f64>
+  %44 = conversion.float.extend %brain, 3 : reg<vm.value : f32>
+  %r3 = conversion.float.width %44, 0 : reg<vm.value : f64>
+  %r4 = conversion.float.truncate %42, 0 : reg<vm.value : f8E4M3>
+  %r5 = conversion.float.truncate %44, 1 : reg<vm.value : f8E5M2>
+  %r6 = conversion.float.to.integer %40, 2 : reg<vm.value : i8>
+  %r7 = conversion.float.to.integer %42, 5 : reg<vm.value : i16>
+  %r8 = conversion.float.to.integer %44, 6 : reg<vm.value : i32>
+  %r9 = conversion.float.to.integer %38, 9
+  return %r0, %r1, %r2, %r3, %r4, %r5, %r6, %r7, %r8, %r9
+}
+
+// ====
+
+vm.target<core> @vm
+
+func.def target(@vm) @small_integer_float(%flag: i1, %byte: i8, %word: i16) -> (f8E4M3, f16, f32, f64, bf16, bf16, f8E5M2) {
+  %r0 = scalar.sitofp %flag : i1 to f8E4M3
+  %r1 = scalar.uitofp %flag : i1 to f16
+  %r2 = scalar.sitofp %byte : i8 to f32
+  %r3 = scalar.uitofp %byte : i8 to f64
+  %r4 = scalar.sitofp %word : i16 to bf16
+  %r5 = scalar.uitofp %word : i16 to bf16
+  %r6 = scalar.sitofp %byte : i8 to f8E5M2
+  func.return %r0, %r1, %r2, %r3, %r4, %r5, %r6 : f8E4M3, f16, f32, f64, bf16, bf16, f8E5M2
+}
+
+// ----
+low.func.def target<vm.core>(@vm) abi(vm_function) @small_integer_float(%flag: reg<vm.value : i1>, %byte: reg<vm.value : i8>, %word: reg<vm.value : i16>) -> (reg<vm.value : f8E4M3>, reg<vm.value : f16>, reg<vm.value : f32>, reg<vm.value : f64>, reg<vm.value : bf16>, reg<vm.value : bf16>, reg<vm.value : f8E5M2>) asm {
+  %27 = conversion.integer %flag, 4 : reg<vm.value : i32>
+  %28 = conversion.integer.to.float %27, 0 : reg<vm.value : f32>
+  %r0 = conversion.float.truncate %28, 0 : reg<vm.value : f8E4M3>
+  %30 = conversion.integer %flag, 5 : reg<vm.value : i32>
+  %31 = conversion.integer.to.float %30, 1 : reg<vm.value : f32>
+  %r1 = conversion.float.truncate %31, 2 : reg<vm.value : f16>
+  %33 = conversion.integer %byte, 10 : reg<vm.value : i32>
+  %r2 = conversion.integer.to.float %33, 0 : reg<vm.value : f32>
+  %35 = conversion.integer %byte, 11 : reg<vm.value : i32>
+  %r3 = conversion.integer.to.float %35, 3 : reg<vm.value : f64>
+  %37 = conversion.integer %word, 14 : reg<vm.value : i32>
+  %r4 = conversion.integer.to.float %37, 8 : reg<vm.value : bf16>
+  %39 = conversion.integer %word, 15 : reg<vm.value : i32>
+  %r5 = conversion.integer.to.float %39, 9 : reg<vm.value : bf16>
+  %r6 = conversion.float.truncate %r2, 1 : reg<vm.value : f8E5M2>
+  return %r0, %r1, %r2, %r3, %r4, %r5, %r6
+}
+
+// ====
+
+vm.target<core> @vm
+
+func.def target(@vm) @wide_integer_narrow_float(%wide: i64) -> (f16, f8E4M3, f8E5M2, f16, f8E4M3, f8E5M2) {
+  %r0 = scalar.sitofp %wide : i64 to f16
+  %r1 = scalar.sitofp %wide : i64 to f8E4M3
+  %r2 = scalar.sitofp %wide : i64 to f8E5M2
+  %r3 = scalar.uitofp %wide : i64 to f16
+  %r4 = scalar.uitofp %wide : i64 to f8E4M3
+  %r5 = scalar.uitofp %wide : i64 to f8E5M2
+  func.return %r0, %r1, %r2, %r3, %r4, %r5 : f16, f8E4M3, f8E5M2, f16, f8E4M3, f8E5M2
+}
+
+// ----
+low.func.def target<vm.core>(@vm) abi(vm_function) @wide_integer_narrow_float(%wide: reg<vm.value : i64>) -> (reg<vm.value : f16>, reg<vm.value : f8E4M3>, reg<vm.value : f8E5M2>, reg<vm.value : f16>, reg<vm.value : f8E4M3>, reg<vm.value : f8E5M2>) asm {
+  %20 = conversion.integer.to.float %wide, 4 : reg<vm.value : f32>
+  %r0 = conversion.float.truncate %20, 2 : reg<vm.value : f16>
+  %r1 = conversion.float.truncate %20, 0 : reg<vm.value : f8E4M3>
+  %r2 = conversion.float.truncate %20, 1 : reg<vm.value : f8E5M2>
+  %26 = conversion.integer.to.float %wide, 5 : reg<vm.value : f32>
+  %r3 = conversion.float.truncate %26, 2 : reg<vm.value : f16>
+  %r4 = conversion.float.truncate %26, 0 : reg<vm.value : f8E4M3>
+  %r5 = conversion.float.truncate %26, 1 : reg<vm.value : f8E5M2>
+  return %r0, %r1, %r2, %r3, %r4, %r5
+}
