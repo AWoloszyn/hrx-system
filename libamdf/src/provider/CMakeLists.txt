@@ -44,6 +44,7 @@ iree_cc_library(
     libamdf::src::instance
     libamdf::src::kernel_queue
     libamdf::src::memory
+    libamdf::src::user_queue
     ${_provider_platform_deps}
   DEFINES
     ${_provider_platform_defines}

@@ -255,6 +255,50 @@ iree_cc_library(
 )
 endif()
 
+if(AMDF_BUILD)
+iree_cc_library(
+  NAME
+    user_queue
+  HDRS
+    "user_queue.h"
+  SRCS
+    "user_queue.c"
+  DEPS
+    ::allocator
+    ::child_tracker
+    ::device
+    ::structure
+    amdf::headers
+  PUBLIC
+)
+endif()
+
+if(AMDF_BUILD)
+set(_user_queue_test_platform_deps "")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  list(APPEND _user_queue_test_platform_deps libamdf::src::platform::linux)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+  list(APPEND _user_queue_test_platform_deps libamdf::src::platform::windows)
+endif()
+iree_cc_test(
+  NAME
+    user_queue_test
+  SRCS
+    "user_queue_test.cc"
+  DEPS
+    ::allocator
+    ::child_tracker
+    ::device
+    ::user_queue
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+    ${_user_queue_test_platform_deps}
+  LABELS
+    "iree-build-requirement=libamdf"
+)
+endif()
+
 if(AMDF_BUILD AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
 set(_core_platform_deps "")
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -274,6 +318,7 @@ iree_cc_library(
     ::memory
     ::pci
     ::structure
+    ::user_queue
     amdf::headers
     ${_core_platform_deps}
   PUBLIC

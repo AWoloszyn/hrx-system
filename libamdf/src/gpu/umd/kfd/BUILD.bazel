@@ -138,6 +138,13 @@ amdf_cc_library(
 )
 
 amdf_cc_library(
+    name = "user_queue",
+    srcs = ["user_queue.c"],
+    target_compatible_with = KFD_COMPATIBILITY,
+    deps = ["//libamdf/src/gpu/umd:user_queue"],
+)
+
+amdf_cc_library(
     name = "kfd",
     target_compatible_with = KFD_COMPATIBILITY,
     visibility = ["//libamdf/src/gpu/umd:__pkg__"],
@@ -147,5 +154,6 @@ amdf_cc_library(
         ":endpoint_profile",
         ":kernel_queue",
         ":memory",
+        ":user_queue",
     ],
 )

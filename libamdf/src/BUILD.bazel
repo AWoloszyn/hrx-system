@@ -170,6 +170,36 @@ amdf_cc_library(
 )
 
 amdf_cc_library(
+    name = "user_queue",
+    srcs = ["user_queue.c"],
+    hdrs = ["user_queue.h"],
+    visibility = ["//libamdf/src:__subpackages__"],
+    deps = [
+        ":allocator",
+        ":child_tracker",
+        ":device",
+        ":structure",
+    ],
+)
+
+amdf_cc_test(
+    name = "user_queue_test",
+    srcs = ["user_queue_test.cc"],
+    deps = [
+        ":allocator",
+        ":child_tracker",
+        ":device",
+        ":user_queue",
+        "//third_party:google_test",
+        "//third_party:google_test_main",
+    ] + select({
+        "@platforms//os:linux": ["//libamdf/src/platform/linux"],
+        "@platforms//os:windows": ["//libamdf/src/platform/windows"],
+        "//conditions:default": [],
+    }),
+)
+
+amdf_cc_library(
     name = "core",
     target_compatible_with = select({
         "@platforms//os:linux": [],
@@ -186,6 +216,7 @@ amdf_cc_library(
         ":memory",
         ":pci",
         ":structure",
+        ":user_queue",
     ] + select({
         "@platforms//os:linux": ["//libamdf/src/platform/linux"],
         "@platforms//os:windows": ["//libamdf/src/platform/windows"],

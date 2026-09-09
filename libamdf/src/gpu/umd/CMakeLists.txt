@@ -63,6 +63,20 @@ iree_cc_library(
 )
 endif()
 
+if(AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_library(
+  NAME
+    user_queue
+  HDRS
+    "user_queue.h"
+  DEPS
+    ::device
+    amdf::headers
+    libamdf::src::wait
+  PUBLIC
+)
+endif()
+
 if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
 set(_umd_platform_deps "")
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -78,6 +92,7 @@ iree_cc_library(
     ::endpoint_profile
     ::kernel_queue
     ::memory
+    ::user_queue
     amdf::headers
     ${_umd_platform_deps}
   PUBLIC

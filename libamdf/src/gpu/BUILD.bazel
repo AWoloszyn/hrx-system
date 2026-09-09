@@ -63,6 +63,23 @@ amdf_cc_library(
 )
 
 amdf_cc_library(
+    name = "user_queue",
+    srcs = ["user_queue.c"],
+    hdrs = ["user_queue.h"],
+    deps = [
+        ":device",
+        "//libamdf/src:allocator",
+        "//libamdf/src:device",
+        "//libamdf/src:endpoint",
+        "//libamdf/src:memory",
+        "//libamdf/src:structure",
+        "//libamdf/src:user_queue",
+        "//libamdf/src:wait",
+        "//libamdf/src/gpu/umd:user_queue",
+    ],
+)
+
+amdf_cc_library(
     name = "extension",
     srcs = ["extension.c"],
     hdrs = ["extension.h"],
@@ -71,10 +88,10 @@ amdf_cc_library(
         ":device",
         ":endpoint_profile",
         ":kernel_queue",
+        ":user_queue",
         "//libamdf/src:endpoint",
         "//libamdf/src:structure",
         "//libamdf/src/gpu/umd:endpoint_profile",
-        "//libamdf/src/platform",
     ],
 )
 
@@ -97,6 +114,23 @@ amdf_cc_test(
     srcs = ["endpoint_profile_test.cc"],
     deps = [
         ":endpoint_profile",
+        "//third_party:google_test",
+        "//third_party:google_test_main",
+    ],
+)
+
+amdf_cc_test(
+    name = "user_queue_test",
+    srcs = ["user_queue_test.cc"],
+    deps = [
+        ":device",
+        ":user_queue",
+        "//libamdf/src:allocator",
+        "//libamdf/src:child_tracker",
+        "//libamdf/src:device",
+        "//libamdf/src:memory",
+        "//libamdf/src:user_queue",
+        "//libamdf/src/gpu/umd:user_queue",
         "//third_party:google_test",
         "//third_party:google_test_main",
     ],

@@ -50,8 +50,18 @@ TEST(WkmiEndpointPropertiesTest, NormalizesMultiXccTopology) {
   EXPECT_EQ(properties.compute.local_data_share_byte_length, 320u * 1024u);
   EXPECT_EQ(properties.topology.xcc_count, 8u);
   EXPECT_EQ(properties.topology.shader_engine_count_per_xcc, 2u);
-  EXPECT_TRUE(properties.supports_pm4_kernel_queue);
-  EXPECT_TRUE(properties.supports_sdma_kernel_queue);
+  ASSERT_EQ(properties.queue_family_count, 2u);
+  EXPECT_EQ(properties.queue_families[0].command_type,
+            AMDF_QUEUE_COMMAND_TYPE_GPU_PM4);
+  EXPECT_EQ(properties.queue_families[0].publication_modes,
+            AMDF_QUEUE_PUBLICATION_MODE_KERNEL);
+  EXPECT_EQ(properties.queue_families[0].roles,
+            AMDF_QUEUE_ROLE_COMPUTE | AMDF_QUEUE_ROLE_CACHE_CONTROL);
+  EXPECT_EQ(properties.queue_families[1].command_type,
+            AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA);
+  EXPECT_EQ(properties.queue_families[1].publication_modes,
+            AMDF_QUEUE_PUBLICATION_MODE_KERNEL);
+  EXPECT_EQ(properties.queue_families[1].roles, AMDF_QUEUE_ROLE_TRANSFER);
 }
 
 TEST(WkmiEndpointPropertiesTest, NormalizesMissingScratchSlots) {

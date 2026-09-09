@@ -35,7 +35,23 @@ static_assert(offsetof(amdf_queue_family_info_t, ordinal) ==
               sizeof(amdf_output_structure_t));
 static_assert(offsetof(amdf_queue_family_info_t, command_type) == 20);
 static_assert(offsetof(amdf_queue_family_info_t, publication_modes) == 24);
-static_assert(sizeof(amdf_queue_family_info_t) == 32);
+static_assert(offsetof(amdf_queue_family_info_t, format_version) == 28);
+static_assert(offsetof(amdf_queue_family_info_t, roles) == 32);
+static_assert(sizeof(amdf_queue_family_info_t) == 104);
+static_assert(offsetof(amdf_user_queue_info_t, device_id) ==
+              sizeof(amdf_output_structure_t));
+static_assert(offsetof(amdf_user_queue_info_t, priority) == 72);
+static_assert(offsetof(amdf_user_queue_info_t, capabilities) == 80);
+static_assert(sizeof(amdf_user_queue_info_t) == 128);
+static_assert(offsetof(amdf_user_queue_mapping_info_t, producer_device_id) ==
+              sizeof(amdf_output_structure_t));
+static_assert(offsetof(amdf_user_queue_mapping_info_t, queue_id) == 32);
+static_assert(offsetof(amdf_user_queue_mapping_info_t, ring_address) == 72);
+static_assert(sizeof(amdf_user_queue_mapping_info_t) == 152);
+static_assert(offsetof(amdf_user_queue_status_t, state) ==
+              sizeof(amdf_output_structure_t));
+static_assert(offsetof(amdf_user_queue_status_t, terminal_status) == 48);
+static_assert(sizeof(amdf_user_queue_status_t) == 56);
 static_assert(offsetof(amdf_kernel_queue_info_t, device_id) ==
               sizeof(amdf_output_structure_t));
 static_assert(offsetof(amdf_kernel_queue_info_t, reset_epoch) == 32);
@@ -46,8 +62,8 @@ static_assert(offsetof(amdf_kernel_queue_status_t, retired_submission) ==
               sizeof(amdf_output_structure_t));
 static_assert(offsetof(amdf_kernel_queue_status_t, terminal_status) == 32);
 static_assert(sizeof(amdf_kernel_queue_status_t) == 40);
-static_assert(offsetof(amdf_api_t, kernel_queue_destroy) +
-                  sizeof(amdf_api_t::kernel_queue_destroy) ==
+static_assert(offsetof(amdf_api_t, user_queue_destroy) +
+                  sizeof(amdf_api_t::user_queue_destroy) ==
               sizeof(amdf_api_t));
 
 TEST(QueryApiTest, NegotiatesSupportedVersion) {
@@ -84,6 +100,13 @@ TEST(QueryApiTest, NegotiatesSupportedVersion) {
   EXPECT_NE(api->kernel_queue_query_status, nullptr);
   EXPECT_NE(api->kernel_queue_wait, nullptr);
   EXPECT_NE(api->kernel_queue_destroy, nullptr);
+  EXPECT_NE(api->user_queue_query_info, nullptr);
+  EXPECT_NE(api->user_queue_map, nullptr);
+  EXPECT_NE(api->user_queue_mapping_query_info, nullptr);
+  EXPECT_NE(api->user_queue_mapping_destroy, nullptr);
+  EXPECT_NE(api->user_queue_query_status, nullptr);
+  EXPECT_NE(api->user_queue_wait_consumed, nullptr);
+  EXPECT_NE(api->user_queue_destroy, nullptr);
 }
 
 TEST(QueryApiTest, ReturnsStableImmutableTable) {

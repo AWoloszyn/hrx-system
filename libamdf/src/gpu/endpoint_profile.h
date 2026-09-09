@@ -24,6 +24,36 @@ typedef struct amdf_gpu_device_mode_properties_t {
   amdf_gpu_device_features_t features;
 } amdf_gpu_device_mode_properties_t;
 
+enum { AMDF_GPU_QUEUE_FAMILY_CAPACITY = 4 };
+
+// Native service properties for one constructible GPU queue family.
+typedef struct amdf_gpu_queue_family_properties_t {
+  // Native command representation accepted by this family.
+  amdf_queue_command_type_t command_type;
+  // Version defining commands and direct publication when available.
+  uint32_t format_version;
+  // Implemented publication mechanisms.
+  amdf_queue_publication_modes_t publication_modes;
+  // Semantic operations accepted by this family.
+  amdf_queue_roles_t roles;
+  // Direct producer operations supported by user queues.
+  amdf_user_queue_capabilities_t user_queue_capabilities;
+  // Optional operations supported by kernel queues.
+  amdf_kernel_queue_capabilities_t kernel_queue_capabilities;
+  // Supported direct-publication reservation protocols.
+  amdf_queue_producer_modes_t producer_modes;
+  // Supported scheduling priorities for user queues.
+  amdf_queue_priority_capabilities_t priority_capabilities;
+  // Optional sidecar metadata command format.
+  amdf_queue_metadata_format_t metadata;
+  // Minimum supported power-of-two primary user ring length in bytes.
+  uint64_t minimum_ring_byte_length;
+  // Maximum supported power-of-two primary user ring length in bytes.
+  uint64_t maximum_ring_byte_length;
+  // Required primary user ring alignment in bytes.
+  uint64_t ring_byte_length_alignment;
+} amdf_gpu_queue_family_properties_t;
+
 // Provider-neutral facts used to qualify one immutable GPU profile.
 typedef struct amdf_gpu_endpoint_properties_t {
   // Exact Graphics IP identity.
@@ -57,10 +87,11 @@ typedef struct amdf_gpu_endpoint_properties_t {
     // Uniform number of shader engines within each XCC.
     uint32_t shader_engine_count_per_xcc;
   } topology;
-  // Whether the native provider can construct a kernel-published PM4 queue.
-  bool supports_pm4_kernel_queue;
-  // Whether the native provider can construct a kernel-published SDMA queue.
-  bool supports_sdma_kernel_queue;
+  // Number of constructible native queue families.
+  uint32_t queue_family_count;
+  // Exact native queue services implemented by the selected UMD.
+  amdf_gpu_queue_family_properties_t
+      queue_families[AMDF_GPU_QUEUE_FAMILY_CAPACITY];
   // Capabilities indexed by amdf_gpu_device_mode_t.
   amdf_gpu_device_mode_properties_t device_modes[2];
 } amdf_gpu_endpoint_properties_t;
@@ -69,10 +100,10 @@ typedef struct amdf_gpu_endpoint_properties_t {
 typedef struct amdf_gpu_endpoint_profile_t {
   // Public target and compute properties copied by the GPU extension.
   amdf_gpu_endpoint_info_t info;
-  // Whether the native provider can construct a kernel-published PM4 queue.
-  bool supports_pm4_kernel_queue;
-  // Whether the native provider can construct a kernel-published SDMA queue.
-  bool supports_sdma_kernel_queue;
+  // Number of validated public queue-family records.
+  uint32_t queue_family_count;
+  // Public queue-family records with dense endpoint-local ordinals.
+  amdf_queue_family_info_t queue_families[AMDF_GPU_QUEUE_FAMILY_CAPACITY];
   // Capabilities indexed by amdf_gpu_device_mode_t.
   amdf_gpu_device_mode_properties_t device_modes[2];
 } amdf_gpu_endpoint_profile_t;

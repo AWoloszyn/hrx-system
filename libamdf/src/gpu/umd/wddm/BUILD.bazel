@@ -53,6 +53,13 @@ amdf_cc_library(
 )
 
 amdf_cc_library(
+    name = "user_queue",
+    srcs = ["user_queue.c"],
+    target_compatible_with = ["@platforms//os:windows"],
+    deps = ["//libamdf/src/gpu/umd:user_queue"],
+)
+
+amdf_cc_library(
     name = "device",
     srcs = ["device.c"],
     target_compatible_with = ["@platforms//os:windows"],
@@ -86,6 +93,7 @@ amdf_cc_library(
         ":endpoint_profile",
         ":kernel_queue",
         ":memory",
+        ":user_queue",
     ],
 )
 

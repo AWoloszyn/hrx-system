@@ -269,7 +269,7 @@ TEST_F(GpuKernelQueueTest, ExecutesMaterializedCopyData) {
   ASSERT_TRUE(amdf_status_is_ok(
       api_->kernel_queue_query_status(queue_, &queue_status)));
   EXPECT_EQ(queue_status.retired_submission, submission);
-  EXPECT_EQ(queue_status.state, AMDF_KERNEL_QUEUE_STATE_ACTIVE);
+  EXPECT_EQ(queue_status.state, AMDF_QUEUE_STATE_ACTIVE);
 
   const amdf_host_mapping_info_t result_mapping_info = MapCommandMemory();
   ASSERT_NE(mapping_, nullptr);

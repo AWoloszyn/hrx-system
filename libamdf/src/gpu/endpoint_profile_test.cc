@@ -34,8 +34,19 @@ amdf_gpu_endpoint_properties_t MakeProperties(
       local_data_share_byte_length;
   properties.topology.xcc_count = xcc_count;
   properties.topology.shader_engine_count_per_xcc = shader_engine_count_per_xcc;
-  properties.supports_pm4_kernel_queue = true;
-  properties.supports_sdma_kernel_queue = true;
+  properties.queue_family_count = 2;
+  properties.queue_families[0] = {
+      .command_type = AMDF_QUEUE_COMMAND_TYPE_GPU_PM4,
+      .format_version = AMDF_GPU_PM4_QUEUE_FORMAT_VERSION_1,
+      .publication_modes = AMDF_QUEUE_PUBLICATION_MODE_KERNEL,
+      .roles = AMDF_QUEUE_ROLE_COMPUTE | AMDF_QUEUE_ROLE_CACHE_CONTROL,
+  };
+  properties.queue_families[1] = {
+      .command_type = AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA,
+      .format_version = AMDF_GPU_SDMA_QUEUE_FORMAT_VERSION_1,
+      .publication_modes = AMDF_QUEUE_PUBLICATION_MODE_KERNEL,
+      .roles = AMDF_QUEUE_ROLE_TRANSFER,
+  };
   return properties;
 }
 
@@ -86,10 +97,18 @@ TEST(GpuEndpointProfileTest, QualifiesRdnaCdnaAndMultiXccProfiles) {
     EXPECT_EQ(info->topology.xcc_count, properties.topology.xcc_count);
     EXPECT_EQ(info->topology.shader_engine_count_per_xcc,
               properties.topology.shader_engine_count_per_xcc);
-    EXPECT_EQ(profile.supports_pm4_kernel_queue,
-              properties.supports_pm4_kernel_queue);
-    EXPECT_EQ(profile.supports_sdma_kernel_queue,
-              properties.supports_sdma_kernel_queue);
+    ASSERT_EQ(profile.queue_family_count, properties.queue_family_count);
+    for (uint32_t i = 0; i < profile.queue_family_count; ++i) {
+      EXPECT_EQ(profile.queue_families[i].ordinal, i);
+      EXPECT_EQ(profile.queue_families[i].command_type,
+                properties.queue_families[i].command_type);
+      EXPECT_EQ(profile.queue_families[i].format_version,
+                properties.queue_families[i].format_version);
+      EXPECT_EQ(profile.queue_families[i].publication_modes,
+                properties.queue_families[i].publication_modes);
+      EXPECT_EQ(profile.queue_families[i].roles,
+                properties.queue_families[i].roles);
+    }
   }
 }
 
@@ -130,6 +149,79 @@ TEST(GpuEndpointProfileTest, RejectsIncompleteOrInconsistentProperties) {
   EXPECT_FALSE(amdf_gpu_endpoint_profile_initialize(&properties, &profile));
   properties = valid;
   properties.topology.shader_engine_count_per_xcc = 0;
+  EXPECT_FALSE(amdf_gpu_endpoint_profile_initialize(&properties, &profile));
+
+  properties = valid;
+  properties.queue_family_count = AMDF_GPU_QUEUE_FAMILY_CAPACITY + 1;
+  EXPECT_FALSE(amdf_gpu_endpoint_profile_initialize(&properties, &profile));
+  properties = valid;
+  properties.queue_families[0].format_version = 0;
+  EXPECT_FALSE(amdf_gpu_endpoint_profile_initialize(&properties, &profile));
+  properties = valid;
+  properties.queue_families[0].publication_modes =
+      AMDF_QUEUE_PUBLICATION_MODE_USER;
+  EXPECT_FALSE(amdf_gpu_endpoint_profile_initialize(&properties, &profile));
+  properties = valid;
+  properties.queue_families[0].kernel_queue_capabilities =
+      AMDF_KERNEL_QUEUE_CAPABILITY_VECTOR_SUBMIT;
+  properties.queue_families[0].publication_modes =
+      AMDF_QUEUE_PUBLICATION_MODE_USER;
+  properties.queue_families[0].user_queue_capabilities =
+      AMDF_USER_QUEUE_CAPABILITY_HOST_PRODUCER;
+  properties.queue_families[0].producer_modes =
+      AMDF_QUEUE_PRODUCER_MODE_BIT_SINGLE;
+  properties.queue_families[0].priority_capabilities =
+      AMDF_QUEUE_PRIORITY_CAPABILITY_NORMAL;
+  properties.queue_families[0].minimum_ring_byte_length = 4096;
+  properties.queue_families[0].maximum_ring_byte_length = 4096;
+  properties.queue_families[0].ring_byte_length_alignment = 4096;
+  EXPECT_FALSE(amdf_gpu_endpoint_profile_initialize(&properties, &profile));
+
+  properties = valid;
+  properties.queue_family_count = 1;
+  properties.queue_families[0] = {
+      .command_type = AMDF_QUEUE_COMMAND_TYPE_GPU_PM4,
+      .format_version = AMDF_GPU_PM4_QUEUE_FORMAT_VERSION_1,
+      .publication_modes = AMDF_QUEUE_PUBLICATION_MODE_USER,
+      .roles = AMDF_QUEUE_ROLE_COMPUTE,
+      .user_queue_capabilities = AMDF_USER_QUEUE_CAPABILITY_HOST_PRODUCER,
+      .producer_modes = AMDF_QUEUE_PRODUCER_MODE_BIT_SINGLE,
+      .priority_capabilities = AMDF_QUEUE_PRIORITY_CAPABILITY_NORMAL,
+      .minimum_ring_byte_length = 4096,
+      .maximum_ring_byte_length = 4096,
+      .ring_byte_length_alignment = 4096,
+  };
+  EXPECT_TRUE(amdf_gpu_endpoint_profile_initialize(&properties, &profile));
+  properties.queue_families[0].ring_byte_length_alignment = 3072;
+  EXPECT_FALSE(amdf_gpu_endpoint_profile_initialize(&properties, &profile));
+  properties.queue_families[0].ring_byte_length_alignment = 4096;
+  properties.queue_families[0].maximum_ring_byte_length = 12288;
+  EXPECT_FALSE(amdf_gpu_endpoint_profile_initialize(&properties, &profile));
+  properties = valid;
+  properties.queue_family_count = 1;
+  properties.queue_families[0] = {
+      .command_type = AMDF_QUEUE_COMMAND_TYPE_GPU_AQL,
+      .format_version = 1,
+      .publication_modes = AMDF_QUEUE_PUBLICATION_MODE_USER,
+      .roles = AMDF_QUEUE_ROLE_COMPUTE,
+      .user_queue_capabilities = AMDF_USER_QUEUE_CAPABILITY_HOST_PRODUCER,
+      .producer_modes = AMDF_QUEUE_PRODUCER_MODE_BIT_SINGLE,
+      .priority_capabilities = AMDF_QUEUE_PRIORITY_CAPABILITY_NORMAL,
+      .metadata =
+          {
+              .command_type = AMDF_QUEUE_COMMAND_TYPE_GPU_AQL_METADATA,
+              .dispatch_version = 1,
+              .barrier_version = 1,
+          },
+      .minimum_ring_byte_length = 4096,
+      .maximum_ring_byte_length = 65536,
+      .ring_byte_length_alignment = 4096,
+  };
+  EXPECT_TRUE(amdf_gpu_endpoint_profile_initialize(&properties, &profile));
+  properties.queue_families[0].metadata.barrier_version = 0;
+  EXPECT_FALSE(amdf_gpu_endpoint_profile_initialize(&properties, &profile));
+  properties.queue_families[0].metadata.barrier_version = 1;
+  properties.queue_families[0].command_type = AMDF_QUEUE_COMMAND_TYPE_GPU_PM4;
   EXPECT_FALSE(amdf_gpu_endpoint_profile_initialize(&properties, &profile));
 }
 

@@ -40,6 +40,7 @@ amdf_cc_library(
         "//libamdf/src:instance",
         "//libamdf/src:kernel_queue",
         "//libamdf/src:memory",
+        "//libamdf/src:user_queue",
     ] + select({
         "//libamdf/config/provider:gpu": [
             "//libamdf/src/gpu",

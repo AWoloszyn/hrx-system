@@ -44,6 +44,10 @@ extern "C" {
 #define AMDF_STRUCTURE_TYPE_GPU_DEVICE_CAPABILITIES \
   ((amdf_structure_type_t)0x00020006u)
 
+/// An `amdf_gpu_user_queue_create_info_t` input structure.
+#define AMDF_STRUCTURE_TYPE_GPU_USER_QUEUE_CREATE_INFO \
+  ((amdf_structure_type_t)0x00020007u)
+
 /// Native context ownership selected explicitly at device creation.
 typedef uint32_t amdf_gpu_device_mode_t;
 enum amdf_gpu_device_mode_e {
@@ -173,6 +177,70 @@ typedef struct amdf_gpu_device_info_t {
   amdf_gpu_device_features_t features;
 } amdf_gpu_device_info_t;
 
+/// First directly published PM4 queue format.
+///
+/// The primary ring contains native PM4 dwords for the selected GPU target.
+/// Read and write indices are naturally aligned 64-bit monotonic dword counts;
+/// each index selects storage modulo `ring_byte_length / 4`.
+/// A producer never advances more than that capacity beyond the acquired read
+/// index. After storing complete commands into the ring, the producer performs
+/// a release store of the new write index followed by a release store of the
+/// same value to the 64-bit doorbell. An acquire load of a read index at least
+/// that value proves the corresponding ring dwords are no longer in use by
+/// the queue. Packet encoding and required command-boundary padding remain
+/// target-specific PM4 rules.
+#define AMDF_GPU_PM4_QUEUE_FORMAT_VERSION_1 1u
+
+/// First native SDMA command-stream format.
+///
+/// Command encoding remains target-specific. Direct-publication index and
+/// notification semantics are defined by the advertised family and mapping;
+/// kernel publication accepts an immutable dword-aligned command stream.
+#define AMDF_GPU_SDMA_QUEUE_FORMAT_VERSION_1 1u
+
+/// Scratch backing borrowed by one directly published compute queue.
+///
+/// An all-zero value disables scratch and accepts only commands whose private
+/// segment is empty. Otherwise `memory` must be an attachment to the queue's
+/// device with a stable device address. The queue borrows it until destruction
+/// succeeds, preventing the scratch backing from being released early.
+typedef struct amdf_gpu_queue_scratch_t {
+  /// Memory attachment borrowed for the queue lifetime, or NULL when disabled.
+  amdf_memory_t* memory;
+  /// Byte offset from the attachment's stable device base.
+  uint64_t byte_offset;
+  /// Nonzero scratch backing length in bytes, or zero when disabled.
+  uint64_t byte_length;
+  /// Maximum private-segment bytes per workitem accepted by the queue.
+  uint32_t maximum_private_segment_byte_length;
+  /// Number of simultaneously scratch-backed waves.
+  uint32_t maximum_wave_count;
+} amdf_gpu_queue_scratch_t;
+
+/// Parameters used to acquire one directly published GPU queue.
+typedef struct amdf_gpu_user_queue_create_info_t {
+  /// Must be `AMDF_STRUCTURE_TYPE_GPU_USER_QUEUE_CREATE_INFO`.
+  amdf_structure_type_t type;
+  /// Must be at least `sizeof(amdf_gpu_user_queue_create_info_t)`.
+  uint32_t structure_size;
+  /// Optional input extension chain. No extensions are currently defined.
+  const void* next;
+  /// Endpoint-local PM4, SDMA, or AQL family supporting user publication.
+  uint32_t queue_family_ordinal;
+  /// Requested scheduling priority.
+  amdf_queue_priority_t priority;
+  /// Required producer reservation protocol.
+  amdf_queue_producer_mode_t producer_mode;
+  /// Reserved for compatible growth and must be zero.
+  uint32_t reserved;
+  /// Direct producer capabilities that creation must achieve.
+  amdf_user_queue_capabilities_t required_capabilities;
+  /// Requested power-of-two primary ring capacity, or zero for the default.
+  uint64_t ring_byte_length;
+  /// Compute scratch borrowed for the queue lifetime, or all-zero when absent.
+  amdf_gpu_queue_scratch_t scratch;
+} amdf_gpu_user_queue_create_info_t;
+
 /// One already-materialized native GPU command stream.
 ///
 /// The command bytes reside in executable memory with a stable device address
@@ -300,6 +368,18 @@ typedef struct amdf_gpu_api_t {
   amdf_status_t(AMDF_CALL* endpoint_query_device_capabilities)(
       amdf_endpoint_t* endpoint, amdf_gpu_device_mode_t mode,
       amdf_gpu_device_capabilities_t* out_capabilities);
+
+  /// Acquires one directly published native command queue from a GPU device.
+  ///
+  /// Creation selects an advertised `GPU_PM4 + USER`, `GPU_SDMA + USER`, or
+  /// `GPU_AQL + USER` family and allocates every queue-owned ring and native
+  /// sidecar before publication. The returned queue borrows `device` and any
+  /// supplied scratch memory, which must outlive it. Commands are published
+  /// through a mapping from the base API. Failure leaves `out_queue` unchanged.
+  amdf_status_t(AMDF_CALL* user_queue_create)(
+      amdf_device_t* device,
+      const amdf_gpu_user_queue_create_info_t* create_info,
+      amdf_user_queue_t** out_queue);
 } amdf_gpu_api_t;
 
 #ifdef __cplusplus

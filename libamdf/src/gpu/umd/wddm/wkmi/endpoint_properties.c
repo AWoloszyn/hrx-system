@@ -29,7 +29,7 @@ bool amdf_gpu_wddm_wkmi_endpoint_properties_translate(
     return false;
   }
 
-  const amdf_gpu_endpoint_properties_t properties = {
+  amdf_gpu_endpoint_properties_t properties = {
       .gfx_ip =
           {
               .major = (uint32_t)provider_properties->gfx_ip_major,
@@ -55,11 +55,25 @@ bool amdf_gpu_wddm_wkmi_endpoint_properties_translate(
               .xcc_count = xcc_count,
               .shader_engine_count_per_xcc = shader_engine_count / xcc_count,
           },
-      .supports_pm4_kernel_queue =
-          provider_properties->supports_pm4_kernel_queue != 0,
-      .supports_sdma_kernel_queue =
-          provider_properties->supports_sdma_kernel_queue != 0,
   };
+  if (provider_properties->supports_pm4_kernel_queue != 0) {
+    properties.queue_families[properties.queue_family_count++] =
+        (amdf_gpu_queue_family_properties_t){
+            .command_type = AMDF_QUEUE_COMMAND_TYPE_GPU_PM4,
+            .format_version = AMDF_GPU_PM4_QUEUE_FORMAT_VERSION_1,
+            .publication_modes = AMDF_QUEUE_PUBLICATION_MODE_KERNEL,
+            .roles = AMDF_QUEUE_ROLE_COMPUTE | AMDF_QUEUE_ROLE_CACHE_CONTROL,
+        };
+  }
+  if (provider_properties->supports_sdma_kernel_queue != 0) {
+    properties.queue_families[properties.queue_family_count++] =
+        (amdf_gpu_queue_family_properties_t){
+            .command_type = AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA,
+            .format_version = AMDF_GPU_SDMA_QUEUE_FORMAT_VERSION_1,
+            .publication_modes = AMDF_QUEUE_PUBLICATION_MODE_KERNEL,
+            .roles = AMDF_QUEUE_ROLE_TRANSFER,
+        };
+  }
   *out_properties = properties;
   return true;
 }

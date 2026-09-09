@@ -29,11 +29,13 @@ static_assert(offsetof(amdf_gpu_device_info_t, reset_epoch) == 32);
 static_assert(offsetof(amdf_gpu_device_info_t, mode) == 40);
 static_assert(sizeof(amdf_gpu_device_info_t) == 56);
 static_assert(sizeof(amdf_gpu_device_capabilities_t) == 24);
+static_assert(sizeof(amdf_gpu_queue_scratch_t) == 32);
+static_assert(sizeof(amdf_gpu_user_queue_create_info_t) == 80);
 static_assert(sizeof(amdf_gpu_kernel_command_t) == 24);
 static_assert(sizeof(amdf_gpu_kernel_queue_create_info_t) == 24);
 static_assert(sizeof(amdf_gpu_kernel_queue_submission_info_t) == 32);
-static_assert(offsetof(amdf_gpu_api_t, endpoint_query_device_capabilities) +
-                  sizeof(amdf_gpu_api_t::endpoint_query_device_capabilities) ==
+static_assert(offsetof(amdf_gpu_api_t, user_queue_create) +
+                  sizeof(amdf_gpu_api_t::user_queue_create) ==
               sizeof(amdf_gpu_api_t));
 
 const amdf_api_t* QueryApi() {
@@ -66,6 +68,7 @@ TEST(GpuExtensionTest, ReportsCompiledAvailabilityBeforeCreatingInstance) {
   EXPECT_NE(gpu_api->kernel_queue_create, nullptr);
   EXPECT_NE(gpu_api->kernel_queue_submit, nullptr);
   EXPECT_NE(gpu_api->endpoint_query_device_capabilities, nullptr);
+  EXPECT_NE(gpu_api->user_queue_create, nullptr);
 }
 
 TEST(GpuExtensionTest, ReturnsStableImmutableTable) {

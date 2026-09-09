@@ -74,6 +74,9 @@ enum amdf_xdna_scheduling_mode_bits_e {
   AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED = 1u << 2,
 };
 
+/// First XDNA kernel-published command-object format.
+#define AMDF_XDNA_QUEUE_FORMAT_VERSION_1 1u
+
 /// Immutable compiler target and context-admission properties of one endpoint.
 ///
 /// This record describes an exact hardware/compiler profile.

@@ -141,8 +141,8 @@ static amdf_status_t amdf_gpu_kernel_queue_query_status(
   out_status->terminal_status =
       amdf_gpu_umd_kernel_queue_query_terminal_status(queue->umd);
   out_status->state = amdf_status_is_ok(out_status->terminal_status)
-                          ? AMDF_KERNEL_QUEUE_STATE_ACTIVE
-                          : AMDF_KERNEL_QUEUE_STATE_DEVICE_LOST;
+                          ? AMDF_QUEUE_STATE_ACTIVE
+                          : AMDF_QUEUE_STATE_DEVICE_LOST;
   return AMDF_STATUS_OK;
 }
 

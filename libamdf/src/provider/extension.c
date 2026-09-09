@@ -94,8 +94,8 @@ uint32_t amdf_extension_query_endpoint_queue_families(
         return 0;
       }
       return amdf_gpu_extension_query_endpoint_queue_families(
-          (const amdf_gpu_endpoint_profile_t*)untyped_profile,
-          amdf_endpoint_get_platform(endpoint), capacity, out_families);
+          (const amdf_gpu_endpoint_profile_t*)untyped_profile, capacity,
+          out_families);
     }
 #endif  // AMDF_HAVE_GPU
     default:

@@ -156,6 +156,12 @@ enum amdf_structure_type_e {
   AMDF_STRUCTURE_TYPE_MEMORY_SITE = 13,
   /// An `amdf_memory_pair_info_t` output structure.
   AMDF_STRUCTURE_TYPE_MEMORY_PAIR_INFO = 14,
+  /// An `amdf_user_queue_info_t` output structure.
+  AMDF_STRUCTURE_TYPE_USER_QUEUE_INFO = 15,
+  /// An `amdf_user_queue_mapping_info_t` output structure.
+  AMDF_STRUCTURE_TYPE_USER_QUEUE_MAPPING_INFO = 16,
+  /// An `amdf_user_queue_status_t` output structure.
+  AMDF_STRUCTURE_TYPE_USER_QUEUE_STATUS = 17,
 };
 
 /// Identifier of an optional API table compiled into the providing library.
@@ -201,6 +207,12 @@ typedef struct amdf_memory_t amdf_memory_t;
 
 /// Explicit host access to one range of host-visible memory.
 typedef struct amdf_host_mapping_t amdf_host_mapping_t;
+
+/// Directly published native queue owned by one materialized device.
+typedef struct amdf_user_queue_t amdf_user_queue_t;
+
+/// Producer-local mapping of one directly published native queue.
+typedef struct amdf_user_queue_mapping_t amdf_user_queue_mapping_t;
 
 /// Kernel-mediated publication and retirement of native commands.
 typedef struct amdf_kernel_queue_t amdf_kernel_queue_t;
@@ -292,6 +304,26 @@ typedef struct amdf_device_id_t {
 /// Returns true when two device identities contain the same opaque value.
 static inline bool amdf_device_id_is_equal(const amdf_device_id_t* lhs,
                                            const amdf_device_id_t* rhs) {
+  return lhs->words[0] == rhs->words[0] && lhs->words[1] == rhs->words[1];
+}
+
+/// Opaque identity of one live native queue.
+///
+/// The value remains meaningful through the lifetime of the queue and is used
+/// only for correlation and failure attribution. It is never a native handle.
+typedef struct amdf_queue_id_t {
+  /// Provider-defined identity words.
+  uint64_t words[2];
+} amdf_queue_id_t;
+
+/// Returns true when a queue identity is available.
+static inline bool amdf_queue_id_is_valid(const amdf_queue_id_t* id) {
+  return (id->words[0] | id->words[1]) != 0;
+}
+
+/// Returns true when two queue identities contain the same opaque value.
+static inline bool amdf_queue_id_is_equal(const amdf_queue_id_t* lhs,
+                                          const amdf_queue_id_t* rhs) {
   return lhs->words[0] == rhs->words[0] && lhs->words[1] == rhs->words[1];
 }
 

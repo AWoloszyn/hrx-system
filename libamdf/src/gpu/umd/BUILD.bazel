@@ -47,6 +47,16 @@ amdf_cc_library(
 )
 
 amdf_cc_library(
+    name = "user_queue",
+    hdrs = ["user_queue.h"],
+    visibility = ["//libamdf/src/gpu:__subpackages__"],
+    deps = [
+        ":device",
+        "//libamdf/src:wait",
+    ],
+)
+
+amdf_cc_library(
     name = "umd",
     target_compatible_with = ["@platforms//cpu:x86_64"] + select({
         "@platforms//os:linux": [],
@@ -59,6 +69,7 @@ amdf_cc_library(
         ":endpoint_profile",
         ":kernel_queue",
         ":memory",
+        ":user_queue",
     ] + select({
         "@platforms//os:linux": ["//libamdf/src/gpu/umd/kfd"],
         "@platforms//os:windows": ["//libamdf/src/gpu/umd/wddm"],

@@ -76,6 +76,29 @@ endif()
 if(AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
 iree_cc_library(
   NAME
+    user_queue
+  HDRS
+    "user_queue.h"
+  SRCS
+    "user_queue.c"
+  DEPS
+    ::device
+    amdf::headers
+    libamdf::src::allocator
+    libamdf::src::device
+    libamdf::src::endpoint
+    libamdf::src::gpu::umd::user_queue
+    libamdf::src::memory
+    libamdf::src::structure
+    libamdf::src::user_queue
+    libamdf::src::wait
+  PUBLIC
+)
+endif()
+
+if(AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_library(
+  NAME
     extension
   HDRS
     "extension.h"
@@ -85,10 +108,10 @@ iree_cc_library(
     ::device
     ::endpoint_profile
     ::kernel_queue
+    ::user_queue
     amdf::headers
     libamdf::src::endpoint
     libamdf::src::gpu::umd::endpoint_profile
-    libamdf::src::platform
     libamdf::src::structure
   PUBLIC
 )
@@ -117,6 +140,30 @@ iree_cc_test(
     amdf::headers
     iree::third_party::google_test
     iree::third_party::google_test_main
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+)
+endif()
+
+if(AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_test(
+  NAME
+    user_queue_test
+  SRCS
+    "user_queue_test.cc"
+  DEPS
+    ::device
+    ::user_queue
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+    libamdf::src::allocator
+    libamdf::src::child_tracker
+    libamdf::src::device
+    libamdf::src::gpu::umd::user_queue
+    libamdf::src::memory
+    libamdf::src::user_queue
   LABELS
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.gpu"

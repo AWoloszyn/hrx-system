@@ -294,6 +294,72 @@ typedef struct amdf_api_t {
   /// native teardown failure leaves the queue live so destruction can be
   /// retried.
   amdf_status_t(AMDF_CALL* kernel_queue_destroy)(amdf_kernel_queue_t* queue);
+
+  /// Copies immutable properties cached when `queue` was created.
+  ///
+  /// The operation is thread-safe and performs no system call, allocation,
+  /// native progress query, retry, sleep, or device wait. No output is modified
+  /// when validation fails.
+  amdf_status_t(AMDF_CALL* user_queue_query_info)(
+      amdf_user_queue_t* queue, amdf_user_queue_info_t* out_info);
+
+  /// Maps a directly published queue into one producer.
+  ///
+  /// A null `producer_device` maps the queue for host publication. A non-null
+  /// producer must be an exact device for which the queue advertises and can
+  /// establish device publication. The returned mapping borrows the queue,
+  /// which must outlive it. Failure leaves `out_mapping` unchanged.
+  amdf_status_t(AMDF_CALL* user_queue_map)(
+      amdf_user_queue_t* queue, amdf_device_t* producer_device,
+      amdf_user_queue_mapping_t** out_mapping);
+
+  /// Copies producer-local addresses from one live queue mapping.
+  ///
+  /// The operation is thread-safe and performs no system call, allocation,
+  /// native progress query, retry, sleep, or device wait. No output is modified
+  /// when validation fails.
+  amdf_status_t(AMDF_CALL* user_queue_mapping_query_info)(
+      amdf_user_queue_mapping_t* mapping,
+      amdf_user_queue_mapping_info_t* out_info);
+
+  /// Releases one queue mapping after that producer has stopped using it.
+  ///
+  /// The caller must have exclusive access. Failure leaves the mapping live so
+  /// destruction can be retried. Queue execution is not implicitly waited.
+  amdf_status_t(AMDF_CALL* user_queue_mapping_destroy)(
+      amdf_user_queue_mapping_t* mapping);
+
+  /// Samples directly published progress and observed terminal state.
+  ///
+  /// The operation is thread-safe with producer publication. It performs no
+  /// allocation, retry, sleep, or active polling. ACTIVE means no terminal
+  /// failure has been observed. A terminal failure is sticky and does not by
+  /// itself prove that published commands retired. No output is modified when
+  /// validation or the native observation fails.
+  amdf_status_t(AMDF_CALL* user_queue_query_status)(
+      amdf_user_queue_t* queue, amdf_user_queue_status_t* out_status);
+
+  /// Waits until `published_index` is consumed, failure is observed, or time
+  /// expires.
+  ///
+  /// The index uses the units defined by the queue format. The target must have
+  /// already been release-published by a producer. `timeout_nanoseconds`
+  /// includes host contention, active polling, and native waiting under one
+  /// deadline. `poll_duration_nanoseconds` is clipped to that timeout; zero
+  /// disables active polling. `AMDF_TIMEOUT_INFINITE` requests no deadline. A
+  /// timeout observes but never cancels work.
+  amdf_status_t(AMDF_CALL* user_queue_wait_consumed)(
+      amdf_user_queue_t* queue, uint64_t published_index,
+      uint64_t timeout_nanoseconds, uint64_t poll_duration_nanoseconds);
+
+  /// Destroys one directly published queue after all mappings are gone and all
+  /// published work has been consumed.
+  ///
+  /// The caller must have exclusive access. The operation returns BUSY without
+  /// native mutation while a mapping or unconsumed publication remains. A
+  /// native teardown failure leaves the queue live so destruction can be
+  /// retried.
+  amdf_status_t(AMDF_CALL* user_queue_destroy)(amdf_user_queue_t* queue);
 } amdf_api_t;
 
 /// Function type used to acquire the immutable API table.

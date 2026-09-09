@@ -13,6 +13,7 @@
 #include "libamdf/src/gpu/endpoint_profile.h"
 #include "libamdf/src/gpu/kernel_queue.h"
 #include "libamdf/src/gpu/umd/endpoint_profile.h"
+#include "libamdf/src/gpu/user_queue.h"
 #include "libamdf/src/structure.h"
 
 static amdf_status_t AMDF_CALL amdf_gpu_endpoint_query_info(
@@ -72,6 +73,7 @@ static const amdf_gpu_api_t amdf_gpu_api_v1 = {
     .kernel_queue_submit = amdf_gpu_kernel_queue_submit,
     .endpoint_query_device_capabilities =
         amdf_gpu_endpoint_query_device_capabilities,
+    .user_queue_create = amdf_gpu_user_queue_create,
 };
 
 void amdf_gpu_extension_initialize_endpoint(amdf_endpoint_t* endpoint) {
@@ -97,43 +99,16 @@ void amdf_gpu_extension_initialize_endpoint(amdf_endpoint_t* endpoint) {
 }
 
 uint32_t amdf_gpu_extension_query_endpoint_queue_families(
-    const amdf_gpu_endpoint_profile_t* profile,
-    const amdf_platform_endpoint_t* platform_endpoint, uint32_t capacity,
+    const amdf_gpu_endpoint_profile_t* profile, uint32_t capacity,
     amdf_queue_family_info_t* out_families) {
   if (profile == NULL || capacity == 0) {
     return 0;
   }
-
-  struct {
-    // Native command representation accepted by this candidate family.
-    amdf_queue_command_type_t command_type;
-    // Whether the qualified endpoint can construct this native queue.
-    bool supported;
-  } candidates[] = {
-      {AMDF_QUEUE_COMMAND_TYPE_GPU_PM4, profile->supports_pm4_kernel_queue},
-      {AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA, profile->supports_sdma_kernel_queue},
-  };
-  uint32_t family_count = 0;
-  for (uint32_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]) &&
-                       family_count < capacity;
-       ++i) {
-    if (!candidates[i].supported) {
-      continue;
-    }
-    const amdf_queue_publication_modes_t publication_modes =
-        amdf_platform_endpoint_query_queue_publication_modes(
-            platform_endpoint, candidates[i].command_type);
-    if (publication_modes == 0) {
-      continue;
-    }
-    amdf_queue_family_info_t* family = &out_families[family_count];
-    *family = (amdf_queue_family_info_t){0};
-    family->type = AMDF_STRUCTURE_TYPE_QUEUE_FAMILY_INFO;
-    family->structure_size = sizeof(*family);
-    family->ordinal = family_count;
-    family->command_type = candidates[i].command_type;
-    family->publication_modes = publication_modes;
-    ++family_count;
+  const uint32_t family_count = profile->queue_family_count < capacity
+                                    ? profile->queue_family_count
+                                    : capacity;
+  for (uint32_t i = 0; i < family_count; ++i) {
+    out_families[i] = profile->queue_families[i];
   }
   return family_count;
 }

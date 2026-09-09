@@ -250,6 +250,8 @@ TEST_F(DiscoveryTest, QueriesImmutableQueueFamilies) {
     EXPECT_EQ(family_info.ordinal, ordinal);
     EXPECT_NE(family_info.command_type, AMDF_QUEUE_COMMAND_TYPE_UNKNOWN);
     EXPECT_NE(family_info.publication_modes, 0u);
+    EXPECT_NE(family_info.format_version, 0u);
+    EXPECT_NE(family_info.roles, 0u);
     EXPECT_EQ(
         family_info.publication_modes & ~(AMDF_QUEUE_PUBLICATION_MODE_USER |
                                           AMDF_QUEUE_PUBLICATION_MODE_KERNEL),
