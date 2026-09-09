@@ -155,9 +155,15 @@ static amdf_status_t amdf_gpu_wddm_wkmi_allocate_sibling_path(
 
 static amdf_status_t amdf_gpu_wddm_wkmi_allocate_bridge_path(
     wchar_t** out_path) {
-  amdf_status_t status = amdf_gpu_wddm_wkmi_allocate_environment_path(out_path);
-  if (amdf_status_is_ok(status) && *out_path == NULL) {
-    status = amdf_gpu_wddm_wkmi_allocate_sibling_path(out_path);
+  wchar_t* path = NULL;
+  amdf_status_t status = amdf_gpu_wddm_wkmi_allocate_environment_path(&path);
+  if (amdf_status_is_ok(status) && path == NULL) {
+    status = amdf_gpu_wddm_wkmi_allocate_sibling_path(&path);
+  }
+  if (amdf_status_is_ok(status)) {
+    *out_path = path;
+  } else {
+    free(path);
   }
   return status;
 }
