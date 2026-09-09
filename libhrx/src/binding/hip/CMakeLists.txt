@@ -174,6 +174,23 @@ iree_cc_library(
 
 iree_cc_library(
   NAME
+    stream_value
+  HDRS
+    "stream_value.h"
+  SRCS
+    "stream_value.c"
+  DEPS
+    iree::base
+    iree::hal
+    libhrx_defs
+  INCLUDES
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>"
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/../..>"
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
     handle_registry
   HDRS
     "handle_registry.h"
@@ -408,6 +425,7 @@ iree_cc_library(
     ::spirv_linker_compiler
     ::status_conversion
     ::stream
+    ::stream_value
     iree::base
     iree::base::core_headers
     iree::base::internal
@@ -476,6 +494,18 @@ iree_cc_test(
     libhrx_defs
 )
 endif()
+
+iree_cc_test(
+  NAME
+    stream_value_test
+  SRCS
+    "stream_value_test.cc"
+  DEPS
+    ::stream_value
+    iree::testing::gtest
+    iree::testing::gtest_main
+    libhrx_defs
+)
 
 iree_cc_test(
   NAME

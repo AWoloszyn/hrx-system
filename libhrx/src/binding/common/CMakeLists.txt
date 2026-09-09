@@ -80,6 +80,7 @@ iree_cc_library(
     "occupancy.h"
     "peer.h"
     "stream.h"
+    "stream_value.h"
     "tls.h"
   TEXTUAL_HDRS
     "${IREE_ROOT_DIR}/build_tools/amdgpu/elf_machine_map.inl"
@@ -104,6 +105,7 @@ iree_cc_library(
     "registry.c"
     "stream.c"
     "stream_host_call.c"
+    "stream_value.c"
     "tls.c"
   DEPS
     ::amdgpu_architecture
@@ -211,6 +213,19 @@ iree_cc_test(
     iree::testing::gtest
     iree::testing::gtest_main
     libhrx::src::libhrx::hrx_static
+    libhrx_defs
+)
+
+iree_cc_test(
+  NAME
+    stream_value_test
+  SRCS
+    "stream_value_test.cc"
+  DEPS
+    ::common
+    iree::hal
+    iree::testing::gtest
+    iree::testing::gtest_main
     libhrx_defs
 )
 
