@@ -1,3 +1,62 @@
+func.def public @boolean_logic(%a: i1, %b: i1) -> (i1, i1, i1) {
+  %both = scalar.andi %a, %b : i1
+  %either = scalar.ori %a, %b : i1
+  %exclusive = scalar.xori %a, %b : i1
+  func.return %both, %either, %exclusive : i1, i1, i1
+}
+
+check.case @boolean_logic_false_false {
+  %a = check.literal value(false) : i1
+  %b = check.literal value(false) : i1
+  %both, %either, %exclusive = func.call @boolean_logic(%a, %b) : (i1, i1) -> (i1, i1, i1)
+  %expected_both = check.literal value(false) : i1
+  %expected_either = check.literal value(false) : i1
+  %expected_exclusive = check.literal value(false) : i1
+  check.expect.equal actual(%both) expected(%expected_both) : i1
+  check.expect.equal actual(%either) expected(%expected_either) : i1
+  check.expect.equal actual(%exclusive) expected(%expected_exclusive) : i1
+  check.return
+}
+
+check.case @boolean_logic_false_true {
+  %a = check.literal value(false) : i1
+  %b = check.literal value(true) : i1
+  %both, %either, %exclusive = func.call @boolean_logic(%a, %b) : (i1, i1) -> (i1, i1, i1)
+  %expected_both = check.literal value(false) : i1
+  %expected_either = check.literal value(true) : i1
+  %expected_exclusive = check.literal value(true) : i1
+  check.expect.equal actual(%both) expected(%expected_both) : i1
+  check.expect.equal actual(%either) expected(%expected_either) : i1
+  check.expect.equal actual(%exclusive) expected(%expected_exclusive) : i1
+  check.return
+}
+
+check.case @boolean_logic_true_false {
+  %a = check.literal value(true) : i1
+  %b = check.literal value(false) : i1
+  %both, %either, %exclusive = func.call @boolean_logic(%a, %b) : (i1, i1) -> (i1, i1, i1)
+  %expected_both = check.literal value(false) : i1
+  %expected_either = check.literal value(true) : i1
+  %expected_exclusive = check.literal value(true) : i1
+  check.expect.equal actual(%both) expected(%expected_both) : i1
+  check.expect.equal actual(%either) expected(%expected_either) : i1
+  check.expect.equal actual(%exclusive) expected(%expected_exclusive) : i1
+  check.return
+}
+
+check.case @boolean_logic_true_true {
+  %a = check.literal value(true) : i1
+  %b = check.literal value(true) : i1
+  %both, %either, %exclusive = func.call @boolean_logic(%a, %b) : (i1, i1) -> (i1, i1, i1)
+  %expected_both = check.literal value(true) : i1
+  %expected_either = check.literal value(true) : i1
+  %expected_exclusive = check.literal value(false) : i1
+  check.expect.equal actual(%both) expected(%expected_both) : i1
+  check.expect.equal actual(%either) expected(%expected_either) : i1
+  check.expect.equal actual(%exclusive) expected(%expected_exclusive) : i1
+  check.return
+}
+
 // Predicates use the same source-ordered scalar ABI as other value arguments.
 // Both arms perform work, and their result joins before the return boundary.
 func.def public @conditional(%condition: i1, %a: i64, %b: i64) -> (i64) {

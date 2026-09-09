@@ -89,6 +89,12 @@ static iree_status_t loom_vm_signature_type(loom_type_t type,
       case LOOM_SCALAR_TYPE_I64:
         *out_kind = IREE_VM_BYTECODE_SIGNATURE_KIND_I64;
         return iree_ok_status();
+      case LOOM_SCALAR_TYPE_F32:
+        *out_kind = IREE_VM_BYTECODE_SIGNATURE_KIND_F32;
+        return iree_ok_status();
+      case LOOM_SCALAR_TYPE_F64:
+        *out_kind = IREE_VM_BYTECODE_SIGNATURE_KIND_F64;
+        return iree_ok_status();
       default:
         break;
     }

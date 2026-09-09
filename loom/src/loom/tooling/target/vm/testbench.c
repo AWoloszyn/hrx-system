@@ -220,6 +220,10 @@ static iree_status_t loom_vm_testbench_invoke(
       arguments[i] = iree_vm_variant_from_i32(inputs[i].scalar.storage.i32);
     } else if (inputs[i].scalar.kind == IREE_TOOLING_VALUE_KIND_I64) {
       arguments[i] = iree_vm_variant_from_i64(inputs[i].scalar.storage.i64);
+    } else if (inputs[i].scalar.kind == IREE_TOOLING_VALUE_KIND_F32) {
+      arguments[i] = iree_vm_variant_from_f32(inputs[i].scalar.storage.f32);
+    } else if (inputs[i].scalar.kind == IREE_TOOLING_VALUE_KIND_F64) {
+      arguments[i] = iree_vm_variant_from_f64(inputs[i].scalar.storage.f64);
     } else {
       status = iree_make_status(IREE_STATUS_UNIMPLEMENTED,
                                 "VM test scalar kind %u is not implemented",
@@ -245,6 +249,16 @@ static iree_status_t loom_vm_testbench_invoke(
         out_results[i].scalar.kind = IREE_TOOLING_VALUE_KIND_I64;
         status = iree_vm_i64_from_variant(results[i],
                                           &out_results[i].scalar.storage.i64);
+        break;
+      case IREE_VM_SCALAR_TYPE_F32:
+        out_results[i].scalar.kind = IREE_TOOLING_VALUE_KIND_F32;
+        status = iree_vm_f32_from_variant(results[i],
+                                          &out_results[i].scalar.storage.f32);
+        break;
+      case IREE_VM_SCALAR_TYPE_F64:
+        out_results[i].scalar.kind = IREE_TOOLING_VALUE_KIND_F64;
+        status = iree_vm_f64_from_variant(results[i],
+                                          &out_results[i].scalar.storage.f64);
         break;
       default:
         status = iree_make_status(

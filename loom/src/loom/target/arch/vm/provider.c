@@ -8,6 +8,7 @@
 
 #include "loom/target/arch/vm/descriptors/descriptors.h"
 #include "loom/target/arch/vm/lower.h"
+#include "loom/target/arch/vm/math_policy.h"
 #include "loom/target/arch/vm/module.h"
 #include "loom/target/arch/vm/ops/ops.h"
 #include "loom/target/arch/vm/ops/registry.h"
@@ -71,6 +72,7 @@ const loom_target_provider_t loom_vm_target_provider = {
                      .count = IREE_ARRAYSIZE(loom_vm_emitters)},
     .select_low_call_policy = loom_target_select_low_call_policy_direct,
     .register_context = loom_vm_ops_register_dialect,
+    .initialize_math_policy_registry = loom_vm_math_policy_registry_initialize,
     .initialize_low_descriptor_registry =
         loom_vm_descriptor_registry_initialize,
     .initialize_low_lower_policy_registry =

@@ -6,6 +6,10 @@
 
 from iree.vm.bytecode.spec.isa import ControlFlow, FieldRole, Suspension
 from iree.vm.bytecode.spec.isa.core.constant import CONSTANT_I32, CONSTANT_I64
+from iree.vm.bytecode.spec.isa.core.float import (
+    FloatBinarySemantics,
+    FloatUnarySemantics,
+)
 from iree.vm.bytecode.spec.isa.core.integer import (
     IntegerBinarySemantics,
     IntegerCompareSemantics,
@@ -20,7 +24,7 @@ from loom.target.arch.vm.descriptors import VM_CORE_DESCRIPTOR_SET
 from loom.target.low_descriptors import DescriptorFlag, DescriptorOpKind, OperandRole
 
 
-def test_integer_packets_preserve_spec_encoding_and_semantic_types():
+def test_scalar_packets_preserve_spec_encoding_and_semantic_types():
     descriptors = {
         descriptor.encoding_id: descriptor
         for descriptor in VM_CORE_DESCRIPTOR_SET.descriptors
@@ -29,7 +33,13 @@ def test_integer_packets_preserve_spec_encoding_and_semantic_types():
         instruction
         for instruction in SPECIFICATION.instructions
         if isinstance(
-            instruction.semantics, (IntegerBinarySemantics, IntegerUnarySemantics)
+            instruction.semantics,
+            (
+                IntegerBinarySemantics,
+                IntegerUnarySemantics,
+                FloatBinarySemantics,
+                FloatUnarySemantics,
+            ),
         )
     ]
     assert instructions
@@ -59,13 +69,14 @@ def test_integer_packets_preserve_spec_encoding_and_semantic_types():
                 operand.role is OperandRole.RESULT
             )
         result_type = descriptor.asm_forms[0].result_value_types[0]
-        assert (
-            result_type.element_type
-            is {
-                32: ScalarTypeKind.I32,
-                64: ScalarTypeKind.I64,
-            }[instruction.semantics.bit_width]
+        scalar_types = (
+            {32: ScalarTypeKind.F32, 64: ScalarTypeKind.F64}
+            if isinstance(
+                instruction.semantics, (FloatBinarySemantics, FloatUnarySemantics)
+            )
+            else {32: ScalarTypeKind.I32, 64: ScalarTypeKind.I64}
         )
+        assert result_type.element_type is scalar_types[instruction.semantics.bit_width]
 
 
 def test_lowering_uses_the_projected_descriptors():

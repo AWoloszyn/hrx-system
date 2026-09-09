@@ -6,6 +6,12 @@
 
 """Source operation correspondence for spec-derived VM instructions."""
 
+from iree.vm.bytecode.spec.isa.core.float import (
+    FloatBinaryOperation,
+    FloatBinarySemantics,
+    FloatUnaryOperation,
+    FloatUnarySemantics,
+)
 from iree.vm.bytecode.spec.isa.core.integer import (
     INTEGER_COMPARE_SELECTOR,
     IntegerBinaryOperation,
@@ -66,6 +72,33 @@ _UNARY_SOURCE_OPS = {
     IntegerUnaryOperation.POPULATION_COUNT: bitwise.scalar_ctpopi,
 }
 
+_FLOAT_BINARY_SOURCE_OPS = {
+    FloatBinaryOperation.ADD: arithmetic.scalar_addf,
+    FloatBinaryOperation.SUB: arithmetic.scalar_subf,
+    FloatBinaryOperation.MUL: arithmetic.scalar_mulf,
+    FloatBinaryOperation.DIV: arithmetic.scalar_divf,
+    FloatBinaryOperation.REM: arithmetic.scalar_remf,
+    FloatBinaryOperation.COPY_SIGN: arithmetic.scalar_copysignf,
+}
+
+_FLOAT_UNARY_SOURCE_OPS = {
+    FloatUnaryOperation.NEGATE: arithmetic.scalar_negf,
+    FloatUnaryOperation.ABSOLUTE: arithmetic.scalar_absf,
+}
+
+# Constants carry bits; the Low result retains the source interpretation.
+_CONSTANT_SOURCES = {
+    32: {
+        "i1": ValueProject.exact_i64,
+        "i32": ValueProject.i32_as_u32_bits,
+        "f32": ValueProject.float_as_f32_bits,
+    },
+    64: {
+        "i64": ValueProject.exact_i64,
+        "f64": ValueProject.float_as_f64_bits,
+    },
+}
+
 _INSTRUCTIONS = {
     instruction.opcode: instruction for instruction in SPECIFICATION.instructions
 }
@@ -78,14 +111,21 @@ assert {case.keyword: case.value for case in comparison.CmpIPredicate.cases} == 
 VM_CORE_CONTRACT_DIALECT_OPS = {"scalar": ALL_SCALAR_OPS}
 
 
-def _direct_cases(semantics_type, source_ops):
+def _direct_cases(semantics_type, source_ops, type_prefix="i"):
     for descriptor in VM_CORE_DESCRIPTOR_SET.descriptors:
         semantics = _INSTRUCTIONS[descriptor.encoding_id].semantics
         if isinstance(semantics, semantics_type):
+            source_type = Scalar(f"{type_prefix}{semantics.bit_width}")
+            if semantics.bit_width == 32 and semantics.operation in (
+                IntegerBinaryOperation.AND,
+                IntegerBinaryOperation.OR,
+                IntegerBinaryOperation.XOR,
+            ):
+                source_type = Scalar(("i1", "i32"))
             yield DirectDescriptorCase(
                 source_ops[semantics.operation],
                 descriptor,
-                Scalar(f"i{semantics.bit_width}"),
+                source_type,
             )
 
 
@@ -94,23 +134,20 @@ def _constant_cases():
         if descriptor.op_kind is not DescriptorOpKind.CONST:
             continue
         bit_width = descriptor.immediates[0].bit_width
-        yield DescriptorRule(
-            source_op=conversion.scalar_constant,
-            descriptor=descriptor,
-            guards=(Guard.value_type("result", Scalar(f"i{bit_width}")),),
-            emit=(
-                EmitDescriptorOp(
-                    descriptor=descriptor,
-                    results={"destination_v8": ValueRef.result("result")},
-                    immediates={
-                        "bits": ValueProject.i32_as_u32_bits("result")
-                        if bit_width == 32
-                        else ValueProject.exact_i64("result")
-                    },
-                    form=DescriptorEmitForm.CONST,
+        for source_type, projection in _CONSTANT_SOURCES[bit_width].items():
+            yield DescriptorRule(
+                source_op=conversion.scalar_constant,
+                descriptor=descriptor,
+                guards=(Guard.value_type("result", Scalar(source_type)),),
+                emit=(
+                    EmitDescriptorOp(
+                        descriptor=descriptor,
+                        results={"destination_v8": ValueRef.result("result")},
+                        immediates={"bits": projection("result")},
+                        form=DescriptorEmitForm.CONST,
+                    ),
                 ),
-            ),
-        )
+            )
 
 
 def _compare_cases():
@@ -152,13 +189,15 @@ VM_CORE_CONTRACT_FRAGMENT = ContractFragment(
     cases=tuple(_constant_cases())
     + tuple(_compare_cases())
     + binary_descriptor_rules(
-        tuple(_direct_cases(IntegerBinarySemantics, _BINARY_SOURCE_OPS)),
+        tuple(_direct_cases(IntegerBinarySemantics, _BINARY_SOURCE_OPS))
+        + tuple(_direct_cases(FloatBinarySemantics, _FLOAT_BINARY_SOURCE_OPS, "f")),
         descriptor_result="destination_v8",
         descriptor_lhs="left_v8",
         descriptor_rhs="right_v8",
     )
     + unary_descriptor_rules(
-        tuple(_direct_cases(IntegerUnarySemantics, _UNARY_SOURCE_OPS)),
+        tuple(_direct_cases(IntegerUnarySemantics, _UNARY_SOURCE_OPS))
+        + tuple(_direct_cases(FloatUnarySemantics, _FLOAT_UNARY_SOURCE_OPS, "f")),
         descriptor_result="destination_v8",
         descriptor_input="source_v8",
     ),

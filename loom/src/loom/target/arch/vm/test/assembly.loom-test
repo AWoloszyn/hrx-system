@@ -36,3 +36,16 @@ low.func.def target<vm.core>(@vm) abi(vm_function) @compare(%a: reg<vm.value : i
   %result = integer.compare.i32 %a, %b, "slt"
   return %result
 }
+
+// ====
+
+vm.target<core> @vm
+
+low.func.def target<vm.core>(@vm) abi(vm_function) @typed_cells(%a: reg<vm.value : f32>, %b: reg<vm.value : i1>) -> (reg<vm.value : f32>, reg<vm.value : f64>, reg<vm.value : i1>) asm {
+  %narrow = constant.i32 1067450368 : reg<vm.value : f32>
+  %wide = constant.i64 4751297606877446144 : reg<vm.value : f64>
+  %yes = constant.i32 1 : reg<vm.value : i1>
+  %sum = float.add.f32 %a, %narrow
+  %both = integer.and.i32 %b, %yes : reg<vm.value : i1>
+  return %sum, %wide, %both
+}

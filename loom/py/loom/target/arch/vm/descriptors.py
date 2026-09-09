@@ -16,6 +16,10 @@ from pathlib import Path
 
 from iree.vm.bytecode.spec.isa import FieldRole, Instruction
 from iree.vm.bytecode.spec.isa.core.constant import CONSTANT_I32, CONSTANT_I64
+from iree.vm.bytecode.spec.isa.core.float import (
+    FloatBinarySemantics,
+    FloatUnarySemantics,
+)
 from iree.vm.bytecode.spec.isa.core.integer import (
     INTEGER_COMPARE_SELECTOR,
     IntegerBinarySemantics,
@@ -222,6 +226,18 @@ VM_CORE_DESCRIPTOR_SET = DescriptorSet(
         for instruction in SPECIFICATION.instructions
         if isinstance(
             instruction.semantics, (IntegerBinarySemantics, IntegerUnarySemantics)
+        )
+    )
+    + tuple(
+        _value_descriptor(
+            instruction,
+            {32: ScalarTypeKind.F32, 64: ScalarTypeKind.F64}[
+                instruction.semantics.bit_width
+            ],
+        )
+        for instruction in SPECIFICATION.instructions
+        if isinstance(
+            instruction.semantics, (FloatBinarySemantics, FloatUnarySemantics)
         )
     )
     + tuple(
