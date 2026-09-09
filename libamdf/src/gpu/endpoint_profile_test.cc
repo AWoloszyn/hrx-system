@@ -40,6 +40,9 @@ amdf_gpu_endpoint_properties_t MakeProperties(
       .format_version = AMDF_GPU_PM4_QUEUE_FORMAT_VERSION_1,
       .publication_modes = AMDF_QUEUE_PUBLICATION_MODE_KERNEL,
       .roles = AMDF_QUEUE_ROLE_COMPUTE | AMDF_QUEUE_ROLE_CACHE_CONTROL,
+      .cache_operations = AMDF_CACHE_OPERATIONS_RELEASE_TO_SYSTEM |
+                          AMDF_CACHE_OPERATIONS_ACQUIRE_FROM_SYSTEM,
+      .cache_transition_kinds = AMDF_CACHE_TRANSITION_KINDS_GLOBAL,
   };
   properties.queue_families[1] = {
       .command_type = AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA,
@@ -108,6 +111,10 @@ TEST(GpuEndpointProfileTest, QualifiesRdnaCdnaAndMultiXccProfiles) {
                 properties.queue_families[i].publication_modes);
       EXPECT_EQ(profile.queue_families[i].roles,
                 properties.queue_families[i].roles);
+      EXPECT_EQ(profile.queue_families[i].cache_operations,
+                properties.queue_families[i].cache_operations);
+      EXPECT_EQ(profile.queue_families[i].cache_transition_kinds,
+                properties.queue_families[i].cache_transition_kinds);
     }
   }
 }

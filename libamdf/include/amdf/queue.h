@@ -8,6 +8,7 @@
 #define AMDF_QUEUE_H_
 
 #include "amdf/base.h"
+#include "amdf/memory.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -150,6 +151,14 @@ typedef struct amdf_queue_family_info_t {
   uint32_t format_version;
   /// Semantic operations accepted by queues in this family.
   amdf_queue_roles_t roles;
+  /// Semantic cache operations encoded by this command representation.
+  amdf_cache_operations_t cache_operations;
+  /// Range and global forms available for the reported cache operations.
+  amdf_cache_transition_kinds_t cache_transition_kinds;
+  /// Reserved for compatible growth and always zero.
+  uint32_t reserved;
+  /// Atomic operations encoded by this command representation.
+  amdf_atomic_capabilities_t atomic_capabilities;
   /// Direct producer operations supported by user queues.
   amdf_user_queue_capabilities_t user_queue_capabilities;
   /// Optional operations supported by kernel-mediated queues.

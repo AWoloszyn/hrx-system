@@ -36,6 +36,12 @@ typedef struct amdf_gpu_queue_family_properties_t {
   amdf_queue_publication_modes_t publication_modes;
   // Semantic operations accepted by this family.
   amdf_queue_roles_t roles;
+  // Semantic cache operations encoded by this family.
+  amdf_cache_operations_t cache_operations;
+  // Range and global forms available for cache operations.
+  amdf_cache_transition_kinds_t cache_transition_kinds;
+  // Atomic operations encoded by this family.
+  amdf_atomic_capabilities_t atomic_capabilities;
   // Direct producer operations supported by user queues.
   amdf_user_queue_capabilities_t user_queue_capabilities;
   // Optional operations supported by kernel queues.

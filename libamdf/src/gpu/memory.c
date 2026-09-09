@@ -11,6 +11,7 @@
 
 #include "libamdf/src/allocator.h"
 #include "libamdf/src/device.h"
+#include "libamdf/src/endpoint.h"
 #include "libamdf/src/gpu/device.h"
 #include "libamdf/src/gpu/umd/memory.h"
 #include "libamdf/src/host_mapping.h"
@@ -42,11 +43,23 @@ static amdf_status_t amdf_gpu_memory_export(
   return amdf_gpu_umd_memory_export(memory->umd, export_info, out_value);
 }
 
-static amdf_status_t amdf_gpu_memory_query_pair_info(
-    amdf_memory_t* producer_memory, const amdf_memory_pair_query_t* query,
-    amdf_memory_pair_info_t* out_info) {
-  amdf_gpu_memory_t* memory = (amdf_gpu_memory_t*)producer_memory;
-  return amdf_gpu_umd_memory_query_pair_info(memory->umd, query, out_info);
+static amdf_status_t amdf_gpu_memory_describe_site(
+    amdf_memory_t* base_memory, uint32_t queue_family_ordinal,
+    amdf_memory_site_description_t* out_description) {
+  amdf_queue_family_info_t queue_family_info = {
+      .type = AMDF_STRUCTURE_TYPE_QUEUE_FAMILY_INFO,
+      .structure_size = sizeof(queue_family_info),
+  };
+  const amdf_status_t status = amdf_endpoint_query_queue_family_info(
+      base_memory->device->endpoint, queue_family_ordinal, &queue_family_info);
+  if (!amdf_status_is_ok(status)) return status;
+  const amdf_memory_site_query_t query = {
+      .memory_info = &base_memory->info,
+      .queue_family_info = &queue_family_info,
+  };
+  amdf_gpu_memory_t* memory = (amdf_gpu_memory_t*)base_memory;
+  return amdf_gpu_umd_memory_describe_site(memory->umd, &query,
+                                           out_description);
 }
 
 static amdf_status_t amdf_gpu_host_mapping_cache_control(
@@ -111,6 +124,8 @@ static amdf_status_t amdf_gpu_memory_map(amdf_memory_t* base_memory,
         profile->host_mapping.byte_length_granularity;
     mapping->base.info.cache_line_size = result.cache_line_size;
     mapping->base.info.reset_epoch = base_memory->info.reset_epoch;
+    mapping->base.info.release = result.release;
+    mapping->base.info.acquire = result.acquire;
     *out_mapping = &mapping->base;
   } else {
     if (mapping->base.memory != NULL) {
@@ -133,7 +148,7 @@ static amdf_status_t amdf_gpu_memory_destroy_native(
 
 static const amdf_memory_vtable_t amdf_gpu_memory_vtable = {
     .export_external = amdf_gpu_memory_export,
-    .query_pair_info = amdf_gpu_memory_query_pair_info,
+    .describe_site = amdf_gpu_memory_describe_site,
     .map = amdf_gpu_memory_map,
     .destroy_native = amdf_gpu_memory_destroy_native,
 };
@@ -155,6 +170,8 @@ static void amdf_gpu_memory_set_info(amdf_gpu_memory_t* memory,
   memory->base.info.memory_profile_ordinal = profile->ordinal;
   memory->base.info.memory_class = profile->memory_class;
   memory->base.info.device_access = device_access;
+  memory->base.info.atomic_operations_32 = result.atomic_operations_32;
+  memory->base.info.atomic_operations_64 = result.atomic_operations_64;
   memory->base.info.address_domain_ordinal =
       profile->device_address.address_domain_ordinal;
   memory->base.info.device_id = amdf_gpu_device_get_info(device)->id;

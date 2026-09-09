@@ -285,13 +285,27 @@ amdf_status_t amdf_xdna_umd_memory_export(
   return status;
 }
 
-amdf_status_t amdf_xdna_umd_memory_query_pair_info(
-    amdf_xdna_umd_memory_t* memory, const amdf_memory_pair_query_t* query,
-    amdf_memory_pair_info_t* out_info) {
+amdf_status_t amdf_xdna_umd_memory_describe_site(
+    amdf_xdna_umd_memory_t* memory, const amdf_memory_site_query_t* query,
+    amdf_memory_site_description_t* out_description) {
   (void)memory;
-  (void)query;
-  (void)out_info;
-  return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  const amdf_queue_family_info_t* family = query->queue_family_info;
+  if (family->command_type != AMDF_QUEUE_COMMAND_TYPE_XDNA ||
+      family->format_version != AMDF_XDNA_QUEUE_FORMAT_VERSION_1 ||
+      (family->roles & AMDF_QUEUE_ROLE_COMPUTE) == 0) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
+  amdf_memory_site_description_t description = {0};
+  if ((query->memory_info->device_access & AMDF_MEMORY_ACCESS_READ) != 0) {
+    description.capabilities |= AMDF_MEMORY_SITE_CAPABILITY_READ;
+  }
+  if ((query->memory_info->device_access & AMDF_MEMORY_ACCESS_WRITE) != 0) {
+    description.capabilities |= AMDF_MEMORY_SITE_CAPABILITY_WRITE;
+  }
+  description.release.kind = AMDF_CACHE_TRANSITION_KIND_NONE;
+  description.acquire.kind = AMDF_CACHE_TRANSITION_KIND_NONE;
+  *out_description = description;
+  return AMDF_STATUS_OK;
 }
 
 amdf_status_t amdf_xdna_umd_memory_create(
@@ -412,6 +426,24 @@ amdf_status_t amdf_xdna_umd_memory_map(
   result.byte_length = map_info->byte_length;
   result.cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK;
   result.cache_line_size = mapping->cache_line_size;
+  result.release = (amdf_cache_transition_t){
+      .kind = AMDF_CACHE_TRANSITION_KIND_RANGE,
+      .executor = AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT,
+      .host_operation = AMDF_HOST_CACHE_OPERATION_FLUSH,
+      .host_instruction = AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH,
+      .host_fence_before = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
+      .host_fence_after = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
+      .range_granularity = mapping->cache_line_size,
+  };
+  result.acquire = (amdf_cache_transition_t){
+      .kind = AMDF_CACHE_TRANSITION_KIND_RANGE,
+      .executor = AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT,
+      .host_operation = AMDF_HOST_CACHE_OPERATION_INVALIDATE,
+      .host_instruction = AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH,
+      .host_fence_before = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
+      .host_fence_after = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
+      .range_granularity = mapping->cache_line_size,
+  };
   *out_result = result;
   *out_mapping = mapping;
   return AMDF_STATUS_OK;

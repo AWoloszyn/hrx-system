@@ -6,6 +6,8 @@
 
 #include "libamdf/src/gpu/umd/memory.h"
 
+#include <cstring>
+
 #include "gtest/gtest.h"
 #include "libamdf/src/gpu/umd/kfd/device.h"
 
@@ -19,6 +21,46 @@ static amdf_memory_profile_t QueryProfile(amdf_gpu_umd_device_t* device,
   EXPECT_EQ(amdf_gpu_umd_device_query_memory_profile(device, ordinal, &profile),
             AMDF_STATUS_OK);
   return profile;
+}
+
+TEST(LinuxGpuMemoryPairTest, DescribesOnlyTheExactLocalPm4Site) {
+  const amdf_memory_info_t memory_info = {
+      .device_access = AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE,
+  };
+  amdf_queue_family_info_t family = {
+      .command_type = AMDF_QUEUE_COMMAND_TYPE_GPU_PM4,
+      .format_version = AMDF_GPU_PM4_QUEUE_FORMAT_VERSION_1,
+      .roles = AMDF_QUEUE_ROLE_CACHE_CONTROL,
+      .cache_operations = AMDF_CACHE_OPERATIONS_RELEASE_TO_SYSTEM |
+                          AMDF_CACHE_OPERATIONS_ACQUIRE_FROM_SYSTEM,
+      .cache_transition_kinds = AMDF_CACHE_TRANSITION_KINDS_GLOBAL,
+  };
+  const amdf_memory_site_query_t query = {
+      .memory_info = &memory_info,
+      .queue_family_info = &family,
+  };
+  amdf_memory_site_description_t description = {};
+  ASSERT_EQ(amdf_gpu_umd_memory_describe_site(nullptr, &query, &description),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(description.capabilities, AMDF_MEMORY_SITE_CAPABILITY_READ |
+                                          AMDF_MEMORY_SITE_CAPABILITY_WRITE);
+  EXPECT_EQ(description.release.kind, AMDF_CACHE_TRANSITION_KIND_GLOBAL);
+  EXPECT_EQ(description.release.executor, AMDF_CACHE_TRANSITION_EXECUTOR_QUEUE);
+  EXPECT_EQ(description.release.operation,
+            AMDF_CACHE_OPERATION_RELEASE_TO_SYSTEM);
+  EXPECT_EQ(description.acquire.kind, AMDF_CACHE_TRANSITION_KIND_GLOBAL);
+  EXPECT_EQ(description.acquire.operation,
+            AMDF_CACHE_OPERATION_ACQUIRE_FROM_SYSTEM);
+  EXPECT_EQ(description.atomic_reach.scope_32, AMDF_ATOMIC_SCOPE_NONE);
+  EXPECT_EQ(description.atomic_reach.scope_64, AMDF_ATOMIC_SCOPE_NONE);
+
+  family.command_type = AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA;
+  std::memset(&description, 0xA5, sizeof(description));
+  const amdf_memory_site_description_t original = description;
+  EXPECT_EQ(amdf_status_code(amdf_gpu_umd_memory_describe_site(nullptr, &query,
+                                                               &description)),
+            AMDF_STATUS_CODE_UNSUPPORTED);
+  EXPECT_EQ(std::memcmp(&description, &original, sizeof(description)), 0);
 }
 
 TEST(LinuxGpuMemoryProfileTest, IndependentDeviceExposesOwnedSystemMemory) {

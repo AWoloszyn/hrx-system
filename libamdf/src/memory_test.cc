@@ -57,10 +57,12 @@ struct FakeMemory {
   FakeDevice* device;
   amdf_status_t export_status;
   amdf_status_t map_status;
-  amdf_status_t pair_status;
+  amdf_status_t site_status;
   uint32_t export_call_count;
   uint32_t map_call_count;
-  uint32_t pair_query_count;
+  uint32_t site_description_count;
+  uint32_t last_queue_family_ordinal;
+  amdf_memory_site_description_t site_description;
   ReleaseState* export_release_state;
   amdf_external_memory_t adopted_external_memory;
 };
@@ -80,28 +82,16 @@ static amdf_status_t FakeMemoryExport(
   return AMDF_STATUS_OK;
 }
 
-static amdf_status_t FakeMemoryQueryPairInfo(
-    amdf_memory_t* producer_memory, const amdf_memory_pair_query_t* query,
-    amdf_memory_pair_info_t* out_info) {
-  (void)query;
-  auto* memory = reinterpret_cast<FakeMemory*>(producer_memory);
-  ++memory->pair_query_count;
-  if (!amdf_status_is_ok(memory->pair_status)) {
-    return memory->pair_status;
+static amdf_status_t FakeMemoryDescribeSite(
+    amdf_memory_t* base_memory, uint32_t queue_family_ordinal,
+    amdf_memory_site_description_t* out_description) {
+  auto* memory = reinterpret_cast<FakeMemory*>(base_memory);
+  ++memory->site_description_count;
+  memory->last_queue_family_ordinal = queue_family_ordinal;
+  if (!amdf_status_is_ok(memory->site_status)) {
+    return memory->site_status;
   }
-  out_info->flags = AMDF_MEMORY_PAIR_FLAG_SHARED_BACKING_REACHABLE |
-                    AMDF_MEMORY_PAIR_FLAG_MAPPING_SOURCE;
-  out_info->release.kind = AMDF_CACHE_TRANSITION_KIND_COHERENT;
-  out_info->release.executor = AMDF_CACHE_TRANSITION_EXECUTOR_NONE;
-  out_info->acquire.kind = AMDF_CACHE_TRANSITION_KIND_RANGE;
-  out_info->acquire.executor = AMDF_CACHE_TRANSITION_EXECUTOR_QUEUE;
-  out_info->acquire.operation = 7;
-  out_info->acquire.range_granularity = 64;
-  out_info->atomics.operations_32 =
-      AMDF_ATOMIC_OPERATION_LOAD | AMDF_ATOMIC_OPERATION_STORE;
-  out_info->atomics.minimum_alignment_32 = 4;
-  out_info->atomics.scope = AMDF_ATOMIC_SCOPE_SYSTEM;
-  out_info->estimated_fixed_cost_nanoseconds = 42;
+  *out_description = memory->site_description;
   return AMDF_STATUS_OK;
 }
 
@@ -128,7 +118,7 @@ static amdf_status_t FakeMemoryDestroyNative(amdf_memory_t* base_memory) {
 
 static const amdf_memory_vtable_t kFakeMemoryVtable = {
     .export_external = FakeMemoryExport,
-    .query_pair_info = FakeMemoryQueryPairInfo,
+    .describe_site = FakeMemoryDescribeSite,
     .map = FakeMemoryMap,
     .destroy_native = FakeMemoryDestroyNative,
 };
@@ -149,7 +139,26 @@ static amdf_status_t AllocateFakeMemory(FakeDevice* device,
   memory->device = device;
   memory->export_status = AMDF_STATUS_OK;
   memory->map_status = amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
-  memory->pair_status = AMDF_STATUS_OK;
+  memory->site_status = AMDF_STATUS_OK;
+  memory->site_description.capabilities =
+      AMDF_MEMORY_SITE_CAPABILITY_READ | AMDF_MEMORY_SITE_CAPABILITY_WRITE |
+      AMDF_MEMORY_SITE_CAPABILITY_MAPPING_SOURCE |
+      AMDF_MEMORY_SITE_CAPABILITY_MAPPING_TARGET |
+      AMDF_MEMORY_SITE_CAPABILITY_RELEASE_COST_KNOWN |
+      AMDF_MEMORY_SITE_CAPABILITY_ACQUIRE_COST_KNOWN;
+  memory->site_description.release.kind = AMDF_CACHE_TRANSITION_KIND_NONE;
+  memory->site_description.acquire.kind = AMDF_CACHE_TRANSITION_KIND_RANGE;
+  memory->site_description.acquire.executor =
+      AMDF_CACHE_TRANSITION_EXECUTOR_QUEUE;
+  memory->site_description.acquire.operation =
+      AMDF_CACHE_OPERATION_ACQUIRE_FROM_SYSTEM;
+  memory->site_description.acquire.range_granularity = 64;
+  memory->site_description.mapping_domain.words[0] = 1;
+  memory->site_description.atomic_domain.words[0] = 2;
+  memory->site_description.atomic_reach.scope_32 = AMDF_ATOMIC_SCOPE_SYSTEM;
+  memory->site_description.atomic_reach.scope_64 = AMDF_ATOMIC_SCOPE_DEVICE;
+  memory->site_description.release_fixed_cost_nanoseconds = 17;
+  memory->site_description.acquire_fixed_cost_nanoseconds = 25;
   status =
       amdf_memory_initialize(&memory->base, &kFakeMemoryVtable, &device->base);
   if (amdf_status_is_ok(status)) {
@@ -159,6 +168,10 @@ static amdf_status_t AllocateFakeMemory(FakeDevice* device,
     memory->base.info.memory_class = AMDF_MEMORY_CLASS_SYSTEM;
     memory->base.info.device_access =
         AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
+    memory->base.info.atomic_operations_32 =
+        device->profile.atomic_operations_32;
+    memory->base.info.atomic_operations_64 =
+        device->profile.atomic_operations_64;
     memory->base.info.address_domain_ordinal = 0;
     memory->base.info.flags = AMDF_MEMORY_FLAG_HOST_VISIBLE |
                               AMDF_MEMORY_FLAG_SHAREABLE |
@@ -255,6 +268,8 @@ static void InitializeFakeDevice(uint64_t identity, FakeDevice* out_device) {
   std::memset(out_device, 0, sizeof(*out_device));
   out_device->base.host_allocator = amdf_allocator_system();
   out_device->base.vtable = &kFakeDeviceVtable;
+  out_device->base.provider_instance =
+      reinterpret_cast<amdf_instance_t*>(uintptr_t{1});
   out_device->base.engine_kind = AMDF_ENGINE_KIND_GPU;
   amdf_child_tracker_initialize(&out_device->base.children);
   out_device->profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
@@ -439,11 +454,34 @@ TEST(MemoryExternalTest, CompletesProfileExportImportPairAndReverseTeardown) {
       amdf_memory_query_pair_info(&producer_site, &consumer_site, &pair_info),
       AMDF_STATUS_OK);
   EXPECT_EQ(pair_info.flags, AMDF_MEMORY_PAIR_FLAG_SHARED_BACKING_REACHABLE |
-                                 AMDF_MEMORY_PAIR_FLAG_MAPPING_SOURCE);
-  EXPECT_EQ(pair_info.release.kind, AMDF_CACHE_TRANSITION_KIND_COHERENT);
+                                 AMDF_MEMORY_PAIR_FLAG_MAPPING_SOURCE |
+                                 AMDF_MEMORY_PAIR_FLAG_FIXED_COST_KNOWN);
+  EXPECT_EQ(pair_info.release.kind, AMDF_CACHE_TRANSITION_KIND_NONE);
   EXPECT_EQ(pair_info.acquire.executor, AMDF_CACHE_TRANSITION_EXECUTOR_QUEUE);
   EXPECT_EQ(pair_info.acquire.range_granularity, 64u);
-  EXPECT_EQ(pair_info.atomics.scope, AMDF_ATOMIC_SCOPE_SYSTEM);
+  EXPECT_EQ(pair_info.atomic_reach.scope_32, AMDF_ATOMIC_SCOPE_SYSTEM);
+  EXPECT_EQ(pair_info.atomic_reach.scope_64, AMDF_ATOMIC_SCOPE_DEVICE);
+  EXPECT_EQ(pair_info.estimated_fixed_cost_nanoseconds, 42u);
+  EXPECT_EQ(
+      reinterpret_cast<FakeMemory*>(source_memory)->last_queue_family_ordinal,
+      3u);
+  EXPECT_EQ(reinterpret_cast<FakeMemory*>(destination_memory)
+                ->last_queue_family_ordinal,
+            5u);
+
+  auto* destination_fake = reinterpret_cast<FakeMemory*>(destination_memory);
+  destination_fake->site_description.mapping_domain.words[0] = 19;
+  destination_fake->site_description.atomic_domain.words[0] = 23;
+  pair_info = {};
+  pair_info.type = AMDF_STRUCTURE_TYPE_MEMORY_PAIR_INFO;
+  pair_info.structure_size = sizeof(pair_info);
+  ASSERT_EQ(
+      amdf_memory_query_pair_info(&producer_site, &consumer_site, &pair_info),
+      AMDF_STATUS_OK);
+  EXPECT_EQ(pair_info.flags, AMDF_MEMORY_PAIR_FLAG_SHARED_BACKING_REACHABLE |
+                                 AMDF_MEMORY_PAIR_FLAG_FIXED_COST_KNOWN);
+  EXPECT_EQ(pair_info.atomic_reach.scope_32, AMDF_ATOMIC_SCOPE_NONE);
+  EXPECT_EQ(pair_info.atomic_reach.scope_64, AMDF_ATOMIC_SCOPE_NONE);
 
   ASSERT_EQ(amdf_memory_destroy(source_memory), AMDF_STATUS_OK);
   EXPECT_EQ(amdf_child_tracker_count(&source_device.base.children), 0u);
@@ -870,20 +908,52 @@ TEST(MemoryExternalTest, FailedQueriesAndExportsPreserveCallerStorage) {
   pair_info.structure_size = sizeof(pair_info);
   pair_info.next = nullptr;
   const amdf_memory_pair_info_t original_pair_info = pair_info;
+  destination_device.base.provider_instance =
+      reinterpret_cast<amdf_instance_t*>(uintptr_t{2});
   EXPECT_EQ(amdf_status_code(amdf_memory_query_pair_info(
                 &producer_site, &different_consumer_site, &pair_info)),
             AMDF_STATUS_CODE_FAILED_PRECONDITION);
-  EXPECT_EQ(fake_source_memory->pair_query_count, 0u);
+  EXPECT_EQ(fake_source_memory->site_description_count, 0u);
+  EXPECT_EQ(std::memcmp(&pair_info, &original_pair_info, sizeof(pair_info)), 0);
+  destination_device.base.provider_instance =
+      source_device.base.provider_instance;
+
+  EXPECT_EQ(amdf_status_code(amdf_memory_query_pair_info(
+                &producer_site, &different_consumer_site, &pair_info)),
+            AMDF_STATUS_CODE_FAILED_PRECONDITION);
+  EXPECT_EQ(fake_source_memory->site_description_count, 0u);
   EXPECT_EQ(std::memcmp(&pair_info, &original_pair_info, sizeof(pair_info)), 0);
 
   destination_memory->info.physical_backing_id =
       source_memory->info.physical_backing_id;
-  fake_source_memory->pair_status =
+  const amdf_physical_memory_id_t source_backing_id =
+      source_memory->info.physical_backing_id;
+  source_memory->info.physical_backing_id = {};
+  EXPECT_EQ(amdf_status_code(amdf_memory_query_pair_info(
+                &producer_site, &different_consumer_site, &pair_info)),
+            AMDF_STATUS_CODE_UNSUPPORTED);
+  EXPECT_EQ(fake_source_memory->site_description_count, 0u);
+  EXPECT_EQ(std::memcmp(&pair_info, &original_pair_info, sizeof(pair_info)), 0);
+  source_memory->info.physical_backing_id = source_backing_id;
+
+  fake_source_memory->site_status =
       amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   EXPECT_EQ(amdf_memory_query_pair_info(&producer_site,
                                         &different_consumer_site, &pair_info),
-            fake_source_memory->pair_status);
-  EXPECT_EQ(fake_source_memory->pair_query_count, 1u);
+            fake_source_memory->site_status);
+  EXPECT_EQ(fake_source_memory->site_description_count, 1u);
+  EXPECT_EQ(std::memcmp(&pair_info, &original_pair_info, sizeof(pair_info)), 0);
+
+  fake_source_memory->site_status = AMDF_STATUS_OK;
+  auto* fake_destination_memory =
+      reinterpret_cast<FakeMemory*>(destination_memory);
+  fake_destination_memory->site_status =
+      amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
+  EXPECT_EQ(amdf_memory_query_pair_info(&producer_site,
+                                        &different_consumer_site, &pair_info),
+            fake_destination_memory->site_status);
+  EXPECT_EQ(fake_source_memory->site_description_count, 2u);
+  EXPECT_EQ(fake_destination_memory->site_description_count, 1u);
   EXPECT_EQ(std::memcmp(&pair_info, &original_pair_info, sizeof(pair_info)), 0);
 
   ASSERT_EQ(amdf_memory_destroy(destination_memory), AMDF_STATUS_OK);

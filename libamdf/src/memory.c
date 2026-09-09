@@ -25,6 +25,13 @@ static amdf_memory_access_t amdf_memory_known_device_access(void) {
          AMDF_MEMORY_ACCESS_EXECUTE;
 }
 
+static amdf_atomic_operations_t amdf_memory_known_atomic_operations(void) {
+  return AMDF_ATOMIC_OPERATION_WAIT | AMDF_ATOMIC_OPERATION_STORE |
+         AMDF_ATOMIC_OPERATION_ADD | AMDF_ATOMIC_OPERATION_SUBTRACT |
+         AMDF_ATOMIC_OPERATION_AND | AMDF_ATOMIC_OPERATION_OR |
+         AMDF_ATOMIC_OPERATION_XOR;
+}
+
 static bool amdf_memory_is_power_of_two(uint64_t value) {
   return value != 0 && (value & (value - 1)) == 0;
 }
@@ -85,6 +92,11 @@ static void amdf_memory_profile_assert_valid(
          (profile->supported_device_access &
           ~amdf_memory_known_device_access()) == 0 &&
          "guaranteed device access must be a subset of supported access");
+  assert((profile->atomic_operations_32 &
+          ~amdf_memory_known_atomic_operations()) == 0 &&
+         (profile->atomic_operations_64 &
+          ~amdf_memory_known_atomic_operations()) == 0 &&
+         "memory profiles must report only known atomic operations");
   assert(profile->reserved == 0 &&
          "memory profiles must leave reserved fields zero");
 
@@ -439,6 +451,11 @@ static void amdf_memory_assert_result(
          "memory must achieve every required property");
   assert((memory->info.flags & ~profile->supported_flags) == 0 &&
          "memory cannot achieve properties absent from its profile");
+  assert((memory->info.atomic_operations_32 & ~profile->atomic_operations_32) ==
+             0 &&
+         (memory->info.atomic_operations_64 & ~profile->atomic_operations_64) ==
+             0 &&
+         "memory atomics must be a subset of the selected profile");
   assert(memory->info.byte_length >= minimum_byte_length &&
          "memory must achieve the requested logical length");
   assert(
@@ -743,43 +760,80 @@ amdf_memory_query_pair_info(const amdf_memory_site_t* producer_site,
       (uint32_t)sizeof(amdf_memory_pair_info_t));
   if (!amdf_status_is_ok(status)) return status;
 
+  if (!amdf_device_shares_provider_instance(producer_site->memory->device,
+                                            consumer_site->memory->device)) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_FAILED_PRECONDITION);
+  }
+
   const amdf_physical_memory_id_t* producer_id =
       &producer_site->memory->info.physical_backing_id;
   const amdf_physical_memory_id_t* consumer_id =
       &consumer_site->memory->info.physical_backing_id;
-  if (amdf_physical_memory_id_is_valid(producer_id) &&
-      amdf_physical_memory_id_is_valid(consumer_id) &&
-      !amdf_physical_memory_id_is_equal(producer_id, consumer_id)) {
+  if (!amdf_physical_memory_id_is_valid(producer_id) ||
+      !amdf_physical_memory_id_is_valid(consumer_id)) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
+  if (!amdf_physical_memory_id_is_equal(producer_id, consumer_id)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_FAILED_PRECONDITION);
+  }
+
+  amdf_memory_site_description_t producer = {0};
+  status = producer_site->memory->vtable->describe_site(
+      producer_site->memory, producer_site->queue_family_ordinal, &producer);
+  if (!amdf_status_is_ok(status)) return status;
+  amdf_memory_site_description_t consumer = {0};
+  status = consumer_site->memory->vtable->describe_site(
+      consumer_site->memory, consumer_site->queue_family_ordinal, &consumer);
+  if (!amdf_status_is_ok(status)) return status;
+
+  if ((producer.capabilities & AMDF_MEMORY_SITE_CAPABILITY_WRITE) == 0 ||
+      (consumer.capabilities & AMDF_MEMORY_SITE_CAPABILITY_READ) == 0) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
 
   amdf_memory_pair_info_t info = {
       .type = AMDF_STRUCTURE_TYPE_MEMORY_PAIR_INFO,
       .structure_size = out_info->structure_size,
       .next = out_info->next,
+      .flags = AMDF_MEMORY_PAIR_FLAG_SHARED_BACKING_REACHABLE,
+      .release = producer.release,
+      .acquire = consumer.acquire,
   };
-  const amdf_memory_pair_query_t query = {
-      .producer =
-          {
-              .engine_kind = producer_site->memory->device->engine_kind,
-              .queue_family_ordinal = producer_site->queue_family_ordinal,
-              .memory_info = &producer_site->memory->info,
-          },
-      .consumer =
-          {
-              .engine_kind = consumer_site->memory->device->engine_kind,
-              .queue_family_ordinal = consumer_site->queue_family_ordinal,
-              .memory_info = &consumer_site->memory->info,
-          },
-  };
-  status = producer_site->memory->vtable->query_pair_info(producer_site->memory,
-                                                          &query, &info);
-  if (amdf_status_is_ok(status)) {
-    info.type = AMDF_STRUCTURE_TYPE_MEMORY_PAIR_INFO;
-    info.structure_size = out_info->structure_size;
-    info.next = out_info->next;
-    *out_info = info;
+  if ((producer.capabilities & AMDF_MEMORY_SITE_CAPABILITY_MAPPING_SOURCE) !=
+          0 &&
+      (consumer.capabilities & AMDF_MEMORY_SITE_CAPABILITY_MAPPING_TARGET) !=
+          0 &&
+      amdf_memory_compatibility_domain_is_valid(&producer.mapping_domain) &&
+      amdf_memory_compatibility_domain_is_equal(&producer.mapping_domain,
+                                                &consumer.mapping_domain)) {
+    info.flags |= AMDF_MEMORY_PAIR_FLAG_MAPPING_SOURCE;
   }
+  if (amdf_memory_compatibility_domain_is_valid(&producer.atomic_domain) &&
+      amdf_memory_compatibility_domain_is_equal(&producer.atomic_domain,
+                                                &consumer.atomic_domain)) {
+    info.atomic_reach.scope_32 =
+        producer.atomic_reach.scope_32 < consumer.atomic_reach.scope_32
+            ? producer.atomic_reach.scope_32
+            : consumer.atomic_reach.scope_32;
+    info.atomic_reach.scope_64 =
+        producer.atomic_reach.scope_64 < consumer.atomic_reach.scope_64
+            ? producer.atomic_reach.scope_64
+            : consumer.atomic_reach.scope_64;
+  }
+  if ((producer.capabilities &
+       AMDF_MEMORY_SITE_CAPABILITY_RELEASE_COST_KNOWN) != 0 &&
+      (consumer.capabilities &
+       AMDF_MEMORY_SITE_CAPABILITY_ACQUIRE_COST_KNOWN) != 0) {
+    if (producer.release_fixed_cost_nanoseconds >
+        UINT64_MAX - consumer.acquire_fixed_cost_nanoseconds) {
+      return amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
+    }
+    info.flags |= AMDF_MEMORY_PAIR_FLAG_FIXED_COST_KNOWN;
+    info.estimated_fixed_cost_nanoseconds =
+        producer.release_fixed_cost_nanoseconds +
+        consumer.acquire_fixed_cost_nanoseconds;
+  }
+  *out_info = info;
   return status;
 }
 

@@ -323,13 +323,42 @@ amdf_status_t amdf_gpu_umd_memory_export(
   return status;
 }
 
-amdf_status_t amdf_gpu_umd_memory_query_pair_info(
-    amdf_gpu_umd_memory_t* memory, const amdf_memory_pair_query_t* query,
-    amdf_memory_pair_info_t* out_info) {
+amdf_status_t amdf_gpu_umd_memory_describe_site(
+    amdf_gpu_umd_memory_t* memory, const amdf_memory_site_query_t* query,
+    amdf_memory_site_description_t* out_description) {
   (void)memory;
-  (void)query;
-  (void)out_info;
-  return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  const amdf_queue_family_info_t* family = query->queue_family_info;
+  if (family->command_type != AMDF_QUEUE_COMMAND_TYPE_GPU_PM4 ||
+      family->format_version != AMDF_GPU_PM4_QUEUE_FORMAT_VERSION_1 ||
+      (family->roles & AMDF_QUEUE_ROLE_CACHE_CONTROL) == 0 ||
+      (family->cache_operations &
+       (AMDF_CACHE_OPERATIONS_RELEASE_TO_SYSTEM |
+        AMDF_CACHE_OPERATIONS_ACQUIRE_FROM_SYSTEM)) !=
+          (AMDF_CACHE_OPERATIONS_RELEASE_TO_SYSTEM |
+           AMDF_CACHE_OPERATIONS_ACQUIRE_FROM_SYSTEM) ||
+      (family->cache_transition_kinds & AMDF_CACHE_TRANSITION_KINDS_GLOBAL) ==
+          0) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
+  amdf_memory_site_description_t description = {0};
+  if ((query->memory_info->device_access & AMDF_MEMORY_ACCESS_READ) != 0) {
+    description.capabilities |= AMDF_MEMORY_SITE_CAPABILITY_READ;
+  }
+  if ((query->memory_info->device_access & AMDF_MEMORY_ACCESS_WRITE) != 0) {
+    description.capabilities |= AMDF_MEMORY_SITE_CAPABILITY_WRITE;
+  }
+  description.release = (amdf_cache_transition_t){
+      .kind = AMDF_CACHE_TRANSITION_KIND_GLOBAL,
+      .executor = AMDF_CACHE_TRANSITION_EXECUTOR_QUEUE,
+      .operation = AMDF_CACHE_OPERATION_RELEASE_TO_SYSTEM,
+  };
+  description.acquire = (amdf_cache_transition_t){
+      .kind = AMDF_CACHE_TRANSITION_KIND_GLOBAL,
+      .executor = AMDF_CACHE_TRANSITION_EXECUTOR_QUEUE,
+      .operation = AMDF_CACHE_OPERATION_ACQUIRE_FROM_SYSTEM,
+  };
+  *out_description = description;
+  return AMDF_STATUS_OK;
 }
 
 amdf_status_t amdf_gpu_umd_memory_create(
@@ -422,12 +451,33 @@ amdf_status_t amdf_gpu_umd_memory_map(
     const amdf_memory_map_info_t* map_info,
     amdf_gpu_umd_host_mapping_t** out_mapping,
     amdf_gpu_umd_host_mapping_result_t* out_result) {
+  const bool coherent = memory->cacheability == AMDF_HOST_CACHEABILITY_COHERENT;
+  const amdf_cache_transition_t release =
+      coherent
+          ? (amdf_cache_transition_t){.kind = AMDF_CACHE_TRANSITION_KIND_NONE}
+          : (amdf_cache_transition_t){
+                .kind = AMDF_CACHE_TRANSITION_KIND_GLOBAL,
+                .executor = AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT,
+                .host_operation = AMDF_HOST_CACHE_OPERATION_FLUSH,
+                .host_fence_after = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
+            };
+  const amdf_cache_transition_t acquire =
+      coherent
+          ? (amdf_cache_transition_t){.kind = AMDF_CACHE_TRANSITION_KIND_NONE}
+          : (amdf_cache_transition_t){
+                .kind = AMDF_CACHE_TRANSITION_KIND_GLOBAL,
+                .executor = AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT,
+                .host_operation = AMDF_HOST_CACHE_OPERATION_INVALIDATE,
+                .host_fence_after = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
+            };
   *out_result = (amdf_gpu_umd_host_mapping_result_t){
       .flags = profile->host_mapping.supported_access,
       .pointer = (uint8_t*)memory->host_pointer + map_info->byte_offset,
       .byte_length = map_info->byte_length,
       .cacheability = memory->cacheability,
-      .cache_line_size = memory->device->cache_line_size,
+      .cache_line_size = 0,
+      .release = release,
+      .acquire = acquire,
   };
   // The common host-view object owns the borrow; the native mapping persists
   // with memory and needs no separate allocation or per-view native resource.

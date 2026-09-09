@@ -69,6 +69,9 @@ class GpuUserQueueTest : public ::testing::Test {
         .publication_modes = AMDF_QUEUE_PUBLICATION_MODE_USER,
         .format_version = AMDF_GPU_PM4_QUEUE_FORMAT_VERSION_1,
         .roles = AMDF_QUEUE_ROLE_COMPUTE | AMDF_QUEUE_ROLE_CACHE_CONTROL,
+        .cache_operations = AMDF_CACHE_OPERATIONS_RELEASE_TO_SYSTEM |
+                            AMDF_CACHE_OPERATIONS_ACQUIRE_FROM_SYSTEM,
+        .cache_transition_kinds = AMDF_CACHE_TRANSITION_KINDS_GLOBAL,
         .user_queue_capabilities = AMDF_USER_QUEUE_CAPABILITY_HOST_PRODUCER |
                                    AMDF_USER_QUEUE_CAPABILITY_DEVICE_PRODUCER,
         .producer_modes = AMDF_QUEUE_PRODUCER_MODE_BIT_SINGLE,
@@ -322,6 +325,10 @@ void amdf_endpoint_unregister_device(amdf_endpoint_t*) {}
 
 amdf_allocator_t amdf_endpoint_host_allocator(const amdf_endpoint_t*) {
   return amdf_allocator_system();
+}
+
+amdf_instance_t* amdf_endpoint_get_instance(const amdf_endpoint_t*) {
+  return reinterpret_cast<amdf_instance_t*>(uintptr_t{1});
 }
 
 amdf_gpu_umd_device_t* amdf_gpu_device_get_umd(amdf_device_t* device) {

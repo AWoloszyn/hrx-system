@@ -29,18 +29,60 @@ static bool amdf_gpu_queue_family_properties_validate(
       AMDF_KERNEL_QUEUE_CAPABILITY_VECTOR_SUBMIT |
       AMDF_KERNEL_QUEUE_CAPABILITY_VIRTUAL_MEMORY |
       AMDF_KERNEL_QUEUE_CAPABILITY_EXTERNAL_SYNCHRONIZATION;
+  const amdf_cache_operations_t known_cache_operations =
+      AMDF_CACHE_OPERATIONS_RELEASE_TO_SYSTEM |
+      AMDF_CACHE_OPERATIONS_ACQUIRE_FROM_SYSTEM;
+  const amdf_cache_transition_kinds_t known_cache_transition_kinds =
+      AMDF_CACHE_TRANSITION_KINDS_RANGE | AMDF_CACHE_TRANSITION_KINDS_GLOBAL;
+  const amdf_atomic_operations_t known_atomic_operations =
+      AMDF_ATOMIC_OPERATION_WAIT | AMDF_ATOMIC_OPERATION_STORE |
+      AMDF_ATOMIC_OPERATION_ADD | AMDF_ATOMIC_OPERATION_SUBTRACT |
+      AMDF_ATOMIC_OPERATION_AND | AMDF_ATOMIC_OPERATION_OR |
+      AMDF_ATOMIC_OPERATION_XOR;
+  const amdf_atomic_wait_conditions_t known_atomic_wait_conditions =
+      AMDF_ATOMIC_WAIT_CONDITION_EQUAL | AMDF_ATOMIC_WAIT_CONDITION_NOT_EQUAL |
+      AMDF_ATOMIC_WAIT_CONDITION_UNSIGNED_GREATER_EQUAL;
+  const amdf_atomic_capabilities_t* atomics = &properties->atomic_capabilities;
   if ((properties->command_type != AMDF_QUEUE_COMMAND_TYPE_GPU_PM4 &&
        properties->command_type != AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA &&
        properties->command_type != AMDF_QUEUE_COMMAND_TYPE_GPU_AQL) ||
       properties->format_version == 0 || properties->publication_modes == 0 ||
       (properties->publication_modes & ~known_publication_modes) != 0 ||
       properties->roles == 0 || (properties->roles & ~known_roles) != 0 ||
+      (properties->cache_operations & ~known_cache_operations) != 0 ||
+      (properties->cache_transition_kinds & ~known_cache_transition_kinds) !=
+          0 ||
+      (atomics->operations_32 & ~known_atomic_operations) != 0 ||
+      (atomics->operations_64 & ~known_atomic_operations) != 0 ||
+      (atomics->wait_conditions_32 & ~known_atomic_wait_conditions) != 0 ||
+      (atomics->wait_conditions_64 & ~known_atomic_wait_conditions) != 0 ||
+      (atomics->operations_without_dispatch_32 & ~atomics->operations_32) !=
+          0 ||
+      (atomics->operations_without_dispatch_64 & ~atomics->operations_64) !=
+          0 ||
       (properties->user_queue_capabilities & ~known_user_capabilities) != 0 ||
       (properties->kernel_queue_capabilities & ~known_kernel_capabilities) !=
           0 ||
       (properties->producer_modes & ~known_producer_modes) != 0 ||
       (properties->priority_capabilities & ~known_priorities) != 0 ||
       properties->metadata.reserved != 0) {
+    return false;
+  }
+
+  const bool has_cache_control =
+      (properties->roles & AMDF_QUEUE_ROLE_CACHE_CONTROL) != 0;
+  if (has_cache_control != (properties->cache_operations != 0) ||
+      has_cache_control != (properties->cache_transition_kinds != 0)) {
+    return false;
+  }
+  const bool has_atomic_operations =
+      atomics->operations_32 != 0 || atomics->operations_64 != 0;
+  if (((properties->roles & AMDF_QUEUE_ROLE_ATOMIC) != 0) !=
+          has_atomic_operations ||
+      ((atomics->operations_32 & AMDF_ATOMIC_OPERATION_WAIT) == 0) !=
+          (atomics->wait_conditions_32 == 0) ||
+      ((atomics->operations_64 & AMDF_ATOMIC_OPERATION_WAIT) == 0) !=
+          (atomics->wait_conditions_64 == 0)) {
     return false;
   }
 
@@ -163,6 +205,9 @@ bool amdf_gpu_endpoint_profile_initialize(
         .publication_modes = source->publication_modes,
         .format_version = source->format_version,
         .roles = source->roles,
+        .cache_operations = source->cache_operations,
+        .cache_transition_kinds = source->cache_transition_kinds,
+        .atomic_capabilities = source->atomic_capabilities,
         .user_queue_capabilities = source->user_queue_capabilities,
         .kernel_queue_capabilities = source->kernel_queue_capabilities,
         .producer_modes = source->producer_modes,

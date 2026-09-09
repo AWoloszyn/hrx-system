@@ -103,6 +103,10 @@ amdf_allocator_t amdf_endpoint_host_allocator(const amdf_endpoint_t* endpoint) {
   return amdf_instance_host_allocator(endpoint->instance);
 }
 
+amdf_instance_t* amdf_endpoint_get_instance(const amdf_endpoint_t* endpoint) {
+  return endpoint->instance;
+}
+
 void amdf_endpoint_store_engine_profile(amdf_endpoint_t* endpoint,
                                         const void* profile,
                                         size_t profile_byte_length) {

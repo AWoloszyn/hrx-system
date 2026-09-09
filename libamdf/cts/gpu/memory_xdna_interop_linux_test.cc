@@ -67,6 +67,31 @@ amdf_status_t FindDmaBufProfile(
   return amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
 }
 
+amdf_status_t FindQueueFamilyOrdinal(const amdf_api_t* api,
+                                     amdf_endpoint_t* endpoint,
+                                     amdf_queue_command_type_t command_type,
+                                     uint32_t* out_ordinal) {
+  amdf_endpoint_info_t endpoint_info = {};
+  endpoint_info.type = AMDF_STRUCTURE_TYPE_ENDPOINT_INFO;
+  endpoint_info.structure_size = sizeof(endpoint_info);
+  amdf_status_t status = api->endpoint_query_info(endpoint, &endpoint_info);
+  if (!amdf_status_is_ok(status)) return status;
+  for (uint32_t ordinal = 0; ordinal < endpoint_info.queue_family_count;
+       ++ordinal) {
+    amdf_queue_family_info_t family_info = {};
+    family_info.type = AMDF_STRUCTURE_TYPE_QUEUE_FAMILY_INFO;
+    family_info.structure_size = sizeof(family_info);
+    status =
+        api->endpoint_query_queue_family_info(endpoint, ordinal, &family_info);
+    if (!amdf_status_is_ok(status)) return status;
+    if (family_info.command_type == command_type) {
+      *out_ordinal = ordinal;
+      return AMDF_STATUS_OK;
+    }
+  }
+  return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+}
+
 class GpuXdnaMemoryInteropTest : public ::testing::Test {
  protected:
   void SetUp() override {
@@ -378,6 +403,56 @@ TEST_F(GpuXdnaMemoryInteropTest, ImportsGpuSubrangeAndSurvivesSourceTeardown) {
   EXPECT_TRUE(
       amdf_physical_memory_id_is_equal(&xdna_memory_info.physical_backing_id,
                                        &gpu_memory_info.physical_backing_id));
+
+  uint32_t gpu_queue_family_ordinal = UINT32_MAX;
+  ASSERT_EQ(FindQueueFamilyOrdinal(api_, gpu_endpoint_,
+                                   AMDF_QUEUE_COMMAND_TYPE_GPU_PM4,
+                                   &gpu_queue_family_ordinal),
+            AMDF_STATUS_OK);
+  uint32_t xdna_queue_family_ordinal = UINT32_MAX;
+  ASSERT_EQ(
+      FindQueueFamilyOrdinal(api_, xdna_endpoint_, AMDF_QUEUE_COMMAND_TYPE_XDNA,
+                             &xdna_queue_family_ordinal),
+      AMDF_STATUS_OK);
+
+  amdf_memory_site_t gpu_site = {};
+  gpu_site.type = AMDF_STRUCTURE_TYPE_MEMORY_SITE;
+  gpu_site.structure_size = sizeof(gpu_site);
+  gpu_site.memory = gpu_memory_;
+  gpu_site.queue_family_ordinal = gpu_queue_family_ordinal;
+  amdf_memory_site_t xdna_site = {};
+  xdna_site.type = AMDF_STRUCTURE_TYPE_MEMORY_SITE;
+  xdna_site.structure_size = sizeof(xdna_site);
+  xdna_site.memory = xdna_memory_;
+  xdna_site.queue_family_ordinal = xdna_queue_family_ordinal;
+
+  amdf_memory_pair_info_t gpu_to_xdna = {};
+  gpu_to_xdna.type = AMDF_STRUCTURE_TYPE_MEMORY_PAIR_INFO;
+  gpu_to_xdna.structure_size = sizeof(gpu_to_xdna);
+  ASSERT_EQ(api_->memory_query_pair_info(&gpu_site, &xdna_site, &gpu_to_xdna),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(gpu_to_xdna.flags, AMDF_MEMORY_PAIR_FLAG_SHARED_BACKING_REACHABLE);
+  EXPECT_EQ(gpu_to_xdna.release.kind, AMDF_CACHE_TRANSITION_KIND_GLOBAL);
+  EXPECT_EQ(gpu_to_xdna.release.executor, AMDF_CACHE_TRANSITION_EXECUTOR_QUEUE);
+  EXPECT_EQ(gpu_to_xdna.release.operation,
+            AMDF_CACHE_OPERATION_RELEASE_TO_SYSTEM);
+  EXPECT_EQ(gpu_to_xdna.acquire.kind, AMDF_CACHE_TRANSITION_KIND_NONE);
+  EXPECT_EQ(gpu_to_xdna.atomic_reach.scope_32, AMDF_ATOMIC_SCOPE_NONE);
+  EXPECT_EQ(gpu_to_xdna.atomic_reach.scope_64, AMDF_ATOMIC_SCOPE_NONE);
+
+  amdf_memory_pair_info_t xdna_to_gpu = {};
+  xdna_to_gpu.type = AMDF_STRUCTURE_TYPE_MEMORY_PAIR_INFO;
+  xdna_to_gpu.structure_size = sizeof(xdna_to_gpu);
+  ASSERT_EQ(api_->memory_query_pair_info(&xdna_site, &gpu_site, &xdna_to_gpu),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(xdna_to_gpu.flags, AMDF_MEMORY_PAIR_FLAG_SHARED_BACKING_REACHABLE);
+  EXPECT_EQ(xdna_to_gpu.release.kind, AMDF_CACHE_TRANSITION_KIND_NONE);
+  EXPECT_EQ(xdna_to_gpu.acquire.kind, AMDF_CACHE_TRANSITION_KIND_GLOBAL);
+  EXPECT_EQ(xdna_to_gpu.acquire.executor, AMDF_CACHE_TRANSITION_EXECUTOR_QUEUE);
+  EXPECT_EQ(xdna_to_gpu.acquire.operation,
+            AMDF_CACHE_OPERATION_ACQUIRE_FROM_SYSTEM);
+  EXPECT_EQ(xdna_to_gpu.atomic_reach.scope_32, AMDF_ATOMIC_SCOPE_NONE);
+  EXPECT_EQ(xdna_to_gpu.atomic_reach.scope_64, AMDF_ATOMIC_SCOPE_NONE);
 
   amdf_host_mapping_info_t xdna_mapping_info = {};
   ASSERT_EQ(Map(xdna_memory_, page_size, &xdna_mapping_, &xdna_mapping_info),

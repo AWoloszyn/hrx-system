@@ -163,6 +163,31 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
                   (info.flags & AMDF_MEMORY_FLAG_HOST_COHERENT) != 0
                       ? AMDF_HOST_CACHEABILITY_COHERENT
                       : AMDF_HOST_CACHEABILITY_WRITE_COMBINED);
+        if ((info.flags & AMDF_MEMORY_FLAG_HOST_COHERENT) != 0) {
+          EXPECT_EQ(mapping_infos_[0].cache_line_size, 0u);
+          EXPECT_EQ(mapping_infos_[0].release.kind,
+                    AMDF_CACHE_TRANSITION_KIND_NONE);
+          EXPECT_EQ(mapping_infos_[0].acquire.kind,
+                    AMDF_CACHE_TRANSITION_KIND_NONE);
+        } else {
+          EXPECT_EQ(mapping_infos_[0].cache_line_size, 0u);
+          EXPECT_EQ(mapping_infos_[0].release.kind,
+                    AMDF_CACHE_TRANSITION_KIND_GLOBAL);
+          EXPECT_EQ(mapping_infos_[0].release.executor,
+                    AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT);
+          EXPECT_EQ(mapping_infos_[0].release.host_operation,
+                    AMDF_HOST_CACHE_OPERATION_FLUSH);
+          EXPECT_EQ(mapping_infos_[0].release.host_fence_after,
+                    AMDF_HOST_CACHE_FENCE_X86_MFENCE);
+          EXPECT_EQ(mapping_infos_[0].acquire.kind,
+                    AMDF_CACHE_TRANSITION_KIND_GLOBAL);
+          EXPECT_EQ(mapping_infos_[0].acquire.executor,
+                    AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT);
+          EXPECT_EQ(mapping_infos_[0].acquire.host_operation,
+                    AMDF_HOST_CACHE_OPERATION_INVALIDATE);
+          EXPECT_EQ(mapping_infos_[0].acquire.host_fence_after,
+                    AMDF_HOST_CACHE_FENCE_X86_MFENCE);
+        }
         const uint8_t value = static_cast<uint8_t>(0x41 + case_ordinal);
         std::memset(mapping_infos_[0].pointer, value,
                     static_cast<size_t>(info.byte_length));
@@ -276,6 +301,9 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
                   (info.alignment - 1),
               0u);
     EXPECT_EQ(mapping_infos_[0].cacheability, AMDF_HOST_CACHEABILITY_COHERENT);
+    EXPECT_EQ(mapping_infos_[0].cache_line_size, 0u);
+    EXPECT_EQ(mapping_infos_[0].release.kind, AMDF_CACHE_TRANSITION_KIND_NONE);
+    EXPECT_EQ(mapping_infos_[0].acquire.kind, AMDF_CACHE_TRANSITION_KIND_NONE);
     EXPECT_EQ(mapping_infos_[0].reset_epoch, info.reset_epoch);
     std::memset(mapping_infos_[0].pointer, 0xA5,
                 static_cast<size_t>(info.byte_length));

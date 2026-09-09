@@ -22,6 +22,10 @@ typedef struct amdf_xdna_umd_device_t amdf_xdna_umd_device_t;
 typedef struct amdf_xdna_umd_memory_result_t {
   // Achieved attachment properties.
   amdf_memory_flags_t flags;
+  // Atomic operations supported by 32-bit words in this attachment.
+  amdf_atomic_operations_t atomic_operations_32;
+  // Atomic operations supported by 64-bit words in this attachment.
+  amdf_atomic_operations_t atomic_operations_64;
   // Byte offset of logical byte zero in the physical backing.
   uint64_t source_byte_offset;
   // Logical attachment length in bytes.
@@ -50,6 +54,10 @@ typedef struct amdf_xdna_umd_host_mapping_result_t {
   amdf_host_cacheability_t cacheability;
   // Host cache-line length in bytes.
   uint32_t cache_line_size;
+  // Operation releasing host writes to the attached XDNA device.
+  amdf_cache_transition_t release;
+  // Operation acquiring attached-XDNA writes for the host.
+  amdf_cache_transition_t acquire;
 } amdf_xdna_umd_host_mapping_result_t;
 
 // Copies one immutable memory profile supported by `device`.
@@ -78,10 +86,10 @@ amdf_status_t amdf_xdna_umd_memory_export(
     const amdf_memory_export_info_t* export_info,
     amdf_external_memory_t* out_value);
 
-// Copies exact directional facts for two concrete attachment sites.
-amdf_status_t amdf_xdna_umd_memory_query_pair_info(
-    amdf_xdna_umd_memory_t* memory, const amdf_memory_pair_query_t* query,
-    amdf_memory_pair_info_t* out_info);
+// Describes one concrete attachment and exact local queue family.
+amdf_status_t amdf_xdna_umd_memory_describe_site(
+    amdf_xdna_umd_memory_t* memory, const amdf_memory_site_query_t* query,
+    amdf_memory_site_description_t* out_description);
 
 // Releases a memory attachment and its physical backing.
 amdf_status_t amdf_xdna_umd_memory_destroy(amdf_xdna_umd_memory_t* memory);

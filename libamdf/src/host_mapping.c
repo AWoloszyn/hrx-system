@@ -70,7 +70,13 @@ amdf_status_t AMDF_CALL amdf_host_mapping_cache_control(
        (mapping->info.flags & AMDF_MEMORY_MAP_FLAG_READ) == 0)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_FAILED_PRECONDITION);
   }
-  if (mapping->info.cacheability == AMDF_HOST_CACHEABILITY_COHERENT) {
+  const amdf_cache_transition_t* transition =
+      operation == AMDF_HOST_CACHE_OPERATION_FLUSH ? &mapping->info.release
+                                                   : &mapping->info.acquire;
+  if (transition->kind == AMDF_CACHE_TRANSITION_KIND_UNKNOWN) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
+  if (transition->kind == AMDF_CACHE_TRANSITION_KIND_NONE) {
     return AMDF_STATUS_OK;
   }
   return mapping->vtable->cache_control(mapping, operation, byte_offset,

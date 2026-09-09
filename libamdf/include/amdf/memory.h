@@ -63,6 +63,76 @@ enum amdf_memory_map_flag_bits_e {
   AMDF_MEMORY_MAP_FLAG_WRITE = 1u << 1,
 };
 
+/// Atomic operations supported by queues and target memory.
+typedef uint64_t amdf_atomic_operations_t;
+enum amdf_atomic_operation_bits_e {
+  /// Waits until an atomic value satisfies a supported condition.
+  AMDF_ATOMIC_OPERATION_WAIT = UINT64_C(1) << 0,
+  /// Atomic store.
+  AMDF_ATOMIC_OPERATION_STORE = UINT64_C(1) << 1,
+  /// No-result atomic addition.
+  AMDF_ATOMIC_OPERATION_ADD = UINT64_C(1) << 2,
+  /// No-result atomic subtraction.
+  AMDF_ATOMIC_OPERATION_SUBTRACT = UINT64_C(1) << 3,
+  /// Atomic bitwise AND.
+  AMDF_ATOMIC_OPERATION_AND = UINT64_C(1) << 4,
+  /// Atomic bitwise OR.
+  AMDF_ATOMIC_OPERATION_OR = UINT64_C(1) << 5,
+  /// Atomic bitwise XOR.
+  AMDF_ATOMIC_OPERATION_XOR = UINT64_C(1) << 6,
+};
+
+/// Atomic wait conditions supported by one queue command representation.
+typedef uint32_t amdf_atomic_wait_conditions_t;
+enum amdf_atomic_wait_condition_bits_e {
+  /// Wait while the masked value is not equal to the requested value.
+  AMDF_ATOMIC_WAIT_CONDITION_EQUAL = 1u << 0,
+  /// Wait while the masked value is equal to the requested value.
+  AMDF_ATOMIC_WAIT_CONDITION_NOT_EQUAL = 1u << 1,
+  /// Wait while the masked value is less than the requested unsigned value.
+  AMDF_ATOMIC_WAIT_CONDITION_UNSIGNED_GREATER_EQUAL = 1u << 2,
+};
+
+/// Atomic commands encoded by one queue family.
+///
+/// These capabilities describe command encoding only. Callers intersect them
+/// with target-memory operation support and concrete pair reach before use.
+typedef struct amdf_atomic_capabilities_t {
+  /// Operations accepted on naturally aligned 32-bit words.
+  amdf_atomic_operations_t operations_32;
+  /// Operations accepted on naturally aligned 64-bit words.
+  amdf_atomic_operations_t operations_64;
+  /// Wait conditions accepted on 32-bit words.
+  amdf_atomic_wait_conditions_t wait_conditions_32;
+  /// Wait conditions accepted on 64-bit words.
+  amdf_atomic_wait_conditions_t wait_conditions_64;
+  /// 32-bit operations which consume no dispatch resources.
+  amdf_atomic_operations_t operations_without_dispatch_32;
+  /// 64-bit operations which consume no dispatch resources.
+  amdf_atomic_operations_t operations_without_dispatch_64;
+} amdf_atomic_capabilities_t;
+
+/// Largest domain over which an atomic access is mutually atomic.
+typedef uint32_t amdf_atomic_scope_t;
+enum amdf_atomic_scope_e {
+  /// No qualified atomic scope.
+  AMDF_ATOMIC_SCOPE_NONE = 0,
+  /// One device address domain.
+  AMDF_ATOMIC_SCOPE_DEVICE = 1,
+  /// One correlated device fabric.
+  AMDF_ATOMIC_SCOPE_FABRIC = 2,
+  /// Host and every reported device participant.
+  AMDF_ATOMIC_SCOPE_SYSTEM = 3,
+};
+
+/// Atomic-cell reach shared by two exact execution sites.
+typedef struct amdf_atomic_reach_t {
+  /// Largest mutually atomic scope for naturally aligned 32-bit accesses.
+  amdf_atomic_scope_t scope_32;
+  /// Largest mutually atomic scope for naturally aligned 64-bit accesses.
+  amdf_atomic_scope_t scope_64;
+} amdf_atomic_reach_t;
+
 /// Native representation carried by one external-memory value.
 typedef uint32_t amdf_external_memory_type_t;
 enum amdf_external_memory_type_e {
@@ -292,6 +362,10 @@ typedef struct amdf_memory_profile_t {
   amdf_memory_access_t guaranteed_device_access;
   /// Device access bits which may be selected for this profile.
   amdf_memory_access_t supported_device_access;
+  /// Atomic operations supported by 32-bit words in this target placement.
+  amdf_atomic_operations_t atomic_operations_32;
+  /// Atomic operations supported by 64-bit words in this target placement.
+  amdf_atomic_operations_t atomic_operations_64;
   /// Ordinary device-address domain and numeric envelope.
   amdf_memory_address_capabilities_t device_address;
   /// Provider-owned physical allocation limits, or all-zero without CREATE.
@@ -353,6 +427,10 @@ typedef struct amdf_memory_info_t {
   amdf_memory_class_t memory_class;
   /// Exact device read, write, and execute access of this attachment.
   amdf_memory_access_t device_access;
+  /// Atomic operations supported by 32-bit words in this target attachment.
+  amdf_atomic_operations_t atomic_operations_32;
+  /// Atomic operations supported by 64-bit words in this target attachment.
+  amdf_atomic_operations_t atomic_operations_64;
   /// Ordinary device-address domain containing `device_address`.
   uint32_t address_domain_ordinal;
   /// Identity of the live device owning this attachment.
@@ -447,36 +525,6 @@ enum amdf_host_cacheability_e {
   AMDF_HOST_CACHEABILITY_UNCACHED = 4,
 };
 
-/// Immutable properties of one live host mapping.
-typedef struct amdf_host_mapping_info_t {
-  /// Must be `AMDF_STRUCTURE_TYPE_HOST_MAPPING_INFO`.
-  amdf_structure_type_t type;
-  /// Must be at least `sizeof(amdf_host_mapping_info_t)`.
-  uint32_t structure_size;
-  /// Optional output extension chain. No extensions are currently defined.
-  void* next;
-  /// Achieved host read and write access.
-  amdf_memory_map_flags_t flags;
-  /// Host cache behavior of the mapped pages.
-  amdf_host_cacheability_t cacheability;
-  /// First mapped byte borrowed until `host_mapping_destroy` succeeds.
-  void* pointer;
-  /// Byte offset of `pointer` within the logical memory attachment.
-  uint64_t memory_byte_offset;
-  /// Mapped byte length.
-  uint64_t byte_length;
-  /// Native byte-offset granularity of mapping requests.
-  uint64_t byte_offset_granularity;
-  /// Native byte-length granularity of mapping requests.
-  uint64_t byte_length_granularity;
-  /// Host cache-line length in bytes, or zero when not applicable.
-  uint32_t cache_line_size;
-  /// Reserved for future use and always zero.
-  uint32_t reserved;
-  /// Device reset epoch in which the mapping remains valid.
-  uint64_t reset_epoch;
-} amdf_host_mapping_info_t;
-
 /// Direction of one explicit host cache ownership transition.
 typedef uint32_t amdf_host_cache_operation_t;
 enum amdf_host_cache_operation_e {
@@ -488,23 +536,48 @@ enum amdf_host_cache_operation_e {
   AMDF_HOST_CACHE_OPERATION_INVALIDATE = 2,
 };
 
-/// Public semantic cache-operation identifier interpreted by an exact engine.
+/// Semantic cache operation encoded by an exact engine queue family.
 typedef uint32_t amdf_cache_operation_t;
+enum amdf_cache_operation_e {
+  /// No engine cache operation.
+  AMDF_CACHE_OPERATION_NONE = 0,
+  /// Releases prior engine writes to the system visibility domain.
+  AMDF_CACHE_OPERATION_RELEASE_TO_SYSTEM = 1,
+  /// Acquires prior system-visible writes for subsequent engine reads.
+  AMDF_CACHE_OPERATION_ACQUIRE_FROM_SYSTEM = 2,
+};
 
-/// No engine-specific cache operation.
-#define AMDF_CACHE_OPERATION_NONE ((amdf_cache_operation_t)0)
+/// Set of semantic engine cache operations.
+typedef uint64_t amdf_cache_operations_t;
+enum amdf_cache_operation_bits_e {
+  /// System release operations are supported.
+  AMDF_CACHE_OPERATIONS_RELEASE_TO_SYSTEM =
+      UINT64_C(1) << AMDF_CACHE_OPERATION_RELEASE_TO_SYSTEM,
+  /// System acquire operations are supported.
+  AMDF_CACHE_OPERATIONS_ACQUIRE_FROM_SYSTEM =
+      UINT64_C(1) << AMDF_CACHE_OPERATION_ACQUIRE_FROM_SYSTEM,
+};
 
 /// Granularity of one directional cache transition.
 typedef uint32_t amdf_cache_transition_kind_t;
 enum amdf_cache_transition_kind_e {
   /// No qualified transition is available.
   AMDF_CACHE_TRANSITION_KIND_UNKNOWN = 0,
-  /// Producer and consumer accesses are mutually coherent.
-  AMDF_CACHE_TRANSITION_KIND_COHERENT = 1,
+  /// The local access requires no cache-maintenance operation.
+  AMDF_CACHE_TRANSITION_KIND_NONE = 1,
   /// The transition applies to an explicit byte range.
   AMDF_CACHE_TRANSITION_KIND_RANGE = 2,
   /// The transition applies to the complete native cache domain.
   AMDF_CACHE_TRANSITION_KIND_GLOBAL = 3,
+};
+
+/// Set of cache-transition granularities implemented by a queue family.
+typedef uint32_t amdf_cache_transition_kinds_t;
+enum amdf_cache_transition_kind_bits_e {
+  /// Range cache transitions are supported.
+  AMDF_CACHE_TRANSITION_KINDS_RANGE = 1u << AMDF_CACHE_TRANSITION_KIND_RANGE,
+  /// Global cache transitions are supported.
+  AMDF_CACHE_TRANSITION_KINDS_GLOBAL = 1u << AMDF_CACHE_TRANSITION_KIND_GLOBAL,
 };
 
 /// Execution site responsible for one cache transition.
@@ -518,7 +591,7 @@ enum amdf_cache_transition_executor_e {
   AMDF_CACHE_TRANSITION_EXECUTOR_PROGRAM = 2,
   /// The host executes the reported instruction and fence directly.
   AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT = 3,
-  /// A provider host API performs the transition.
+  /// A provider host API performs the complete transition.
   AMDF_CACHE_TRANSITION_EXECUTOR_HOST_API = 4,
 };
 
@@ -548,85 +621,57 @@ enum amdf_host_cache_fence_e {
 
 /// Exact operation required for one directional visibility transition.
 typedef struct amdf_cache_transition_t {
-  /// Coherent, ranged, global, or unavailable transition kind.
+  /// Qualified no-op, ranged, global, or unavailable transition kind.
   amdf_cache_transition_kind_t kind;
   /// Queue, program, direct-host, host-API, or no-op executor.
   amdf_cache_transition_executor_t executor;
-  /// Engine-specific public semantic operation identifier.
+  /// Semantic queue operation, or `AMDF_CACHE_OPERATION_NONE`.
   amdf_cache_operation_t operation;
   /// Host flush or invalidate operation for a host executor.
   amdf_host_cache_operation_t host_operation;
   /// Direct host instruction, or `AMDF_HOST_CACHE_INSTRUCTION_NONE`.
   amdf_host_cache_instruction_t host_instruction;
+  /// Host fence required before the first direct instruction.
+  amdf_host_cache_fence_t host_fence_before;
   /// Host fence required after the final direct instruction.
-  amdf_host_cache_fence_t host_fence;
+  amdf_host_cache_fence_t host_fence_after;
   /// Smallest independently transitionable range, or zero when not ranged.
   uint64_t range_granularity;
 } amdf_cache_transition_t;
 
-/// Integer atomic operations supported across one directional memory pair.
-typedef uint64_t amdf_atomic_operations_t;
-enum amdf_atomic_operation_bits_e {
-  /// Atomic load.
-  AMDF_ATOMIC_OPERATION_LOAD = UINT64_C(1) << 0,
-  /// Atomic store.
-  AMDF_ATOMIC_OPERATION_STORE = UINT64_C(1) << 1,
-  /// Atomic exchange.
-  AMDF_ATOMIC_OPERATION_EXCHANGE = UINT64_C(1) << 2,
-  /// Atomic compare and exchange.
-  AMDF_ATOMIC_OPERATION_COMPARE_EXCHANGE = UINT64_C(1) << 3,
-  /// Atomic addition.
-  AMDF_ATOMIC_OPERATION_ADD = UINT64_C(1) << 4,
-  /// Atomic subtraction.
-  AMDF_ATOMIC_OPERATION_SUBTRACT = UINT64_C(1) << 5,
-  /// Atomic signed minimum.
-  AMDF_ATOMIC_OPERATION_SIGNED_MINIMUM = UINT64_C(1) << 6,
-  /// Atomic unsigned minimum.
-  AMDF_ATOMIC_OPERATION_UNSIGNED_MINIMUM = UINT64_C(1) << 7,
-  /// Atomic signed maximum.
-  AMDF_ATOMIC_OPERATION_SIGNED_MAXIMUM = UINT64_C(1) << 8,
-  /// Atomic unsigned maximum.
-  AMDF_ATOMIC_OPERATION_UNSIGNED_MAXIMUM = UINT64_C(1) << 9,
-  /// Atomic bitwise AND.
-  AMDF_ATOMIC_OPERATION_AND = UINT64_C(1) << 10,
-  /// Atomic bitwise OR.
-  AMDF_ATOMIC_OPERATION_OR = UINT64_C(1) << 11,
-  /// Atomic bitwise XOR.
-  AMDF_ATOMIC_OPERATION_XOR = UINT64_C(1) << 12,
-  /// Atomic bounded increment.
-  AMDF_ATOMIC_OPERATION_INCREMENT = UINT64_C(1) << 13,
-  /// Atomic bounded decrement.
-  AMDF_ATOMIC_OPERATION_DECREMENT = UINT64_C(1) << 14,
-};
-
-/// Largest domain over which reported atomic operations are mutually atomic.
-typedef uint32_t amdf_atomic_scope_t;
-enum amdf_atomic_scope_e {
-  /// No qualified atomic scope.
-  AMDF_ATOMIC_SCOPE_NONE = 0,
-  /// One device address domain.
-  AMDF_ATOMIC_SCOPE_DEVICE = 1,
-  /// One correlated device fabric.
-  AMDF_ATOMIC_SCOPE_FABRIC = 2,
-  /// Host and every reported device participant.
-  AMDF_ATOMIC_SCOPE_SYSTEM = 3,
-};
-
-/// Exact aligned atomic operations supported by one memory pair.
-typedef struct amdf_atomic_info_t {
-  /// Operations supported on aligned 32-bit words.
-  amdf_atomic_operations_t operations_32;
-  /// Operations supported on aligned 64-bit words.
-  amdf_atomic_operations_t operations_64;
-  /// Minimum address alignment for 32-bit operations, or zero when absent.
-  uint32_t minimum_alignment_32;
-  /// Minimum address alignment for 64-bit operations, or zero when absent.
-  uint32_t minimum_alignment_64;
-  /// Largest mutually atomic scope.
-  amdf_atomic_scope_t scope;
+/// Immutable properties of one live host mapping.
+typedef struct amdf_host_mapping_info_t {
+  /// Must be `AMDF_STRUCTURE_TYPE_HOST_MAPPING_INFO`.
+  amdf_structure_type_t type;
+  /// Must be at least `sizeof(amdf_host_mapping_info_t)`.
+  uint32_t structure_size;
+  /// Optional output extension chain. No extensions are currently defined.
+  void* next;
+  /// Achieved host read and write access.
+  amdf_memory_map_flags_t flags;
+  /// Host cache behavior of the mapped pages.
+  amdf_host_cacheability_t cacheability;
+  /// First mapped byte borrowed until `host_mapping_destroy` succeeds.
+  void* pointer;
+  /// Byte offset of `pointer` within the logical memory attachment.
+  uint64_t memory_byte_offset;
+  /// Mapped byte length.
+  uint64_t byte_length;
+  /// Native byte-offset granularity of mapping requests.
+  uint64_t byte_offset_granularity;
+  /// Native byte-length granularity of mapping requests.
+  uint64_t byte_length_granularity;
+  /// Host cache-line length in bytes, or zero when not applicable.
+  uint32_t cache_line_size;
   /// Reserved for future use and always zero.
   uint32_t reserved;
-} amdf_atomic_info_t;
+  /// Device reset epoch in which the mapping remains valid.
+  uint64_t reset_epoch;
+  /// Operation releasing host writes to the attached device.
+  amdf_cache_transition_t release;
+  /// Operation acquiring attached-device writes for host reads.
+  amdf_cache_transition_t acquire;
+} amdf_host_mapping_info_t;
 
 /// One concrete attachment and exact execution family in a pair query.
 typedef struct amdf_memory_site_t {
@@ -651,6 +696,8 @@ enum amdf_memory_pair_flag_bits_e {
   AMDF_MEMORY_PAIR_FLAG_SHARED_BACKING_REACHABLE = UINT64_C(1) << 0,
   /// The producer attachment can source consumer virtual-memory mappings.
   AMDF_MEMORY_PAIR_FLAG_MAPPING_SOURCE = UINT64_C(1) << 1,
+  /// `estimated_fixed_cost_nanoseconds` is a qualified value, including zero.
+  AMDF_MEMORY_PAIR_FLAG_FIXED_COST_KNOWN = UINT64_C(1) << 2,
 };
 
 /// Exact directional relation from one producer attachment to one consumer.
@@ -667,9 +714,12 @@ typedef struct amdf_memory_pair_info_t {
   amdf_cache_transition_t release;
   /// Visibility operation performed before consumer reads.
   amdf_cache_transition_t acquire;
-  /// Integer atomic operations shared by the two execution sites.
-  amdf_atomic_info_t atomics;
-  /// Informational fixed transition cost in nanoseconds, or zero when unknown.
+  /// Width-specific mutually atomic reach shared by both execution sites. This
+  /// does not imply operation support; callers also intersect both the queue
+  /// family and target-memory operation masks.
+  amdf_atomic_reach_t atomic_reach;
+  /// Informational fixed transition cost in nanoseconds. The value is valid
+  /// only when `AMDF_MEMORY_PAIR_FLAG_FIXED_COST_KNOWN` is set.
   uint64_t estimated_fixed_cost_nanoseconds;
 } amdf_memory_pair_info_t;
 

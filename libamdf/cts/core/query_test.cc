@@ -21,12 +21,13 @@ static_assert(sizeof(amdf_instance_create_info_t) ==
 static_assert(sizeof(amdf_external_memory_t) == 80);
 static_assert(offsetof(amdf_external_memory_t, source_byte_offset) == 32);
 static_assert(offsetof(amdf_external_memory_t, release) == 64);
-static_assert(sizeof(amdf_memory_profile_t) == 512);
-static_assert(offsetof(amdf_memory_profile_t, external_memory_support) == 272);
+static_assert(sizeof(amdf_memory_profile_t) == 528);
+static_assert(offsetof(amdf_memory_profile_t, atomic_operations_32) == 56);
+static_assert(offsetof(amdf_memory_profile_t, external_memory_support) == 288);
 static_assert(sizeof(amdf_memory_import_info_t) == 40);
 static_assert(sizeof(amdf_memory_export_info_t) == 40);
 static_assert(sizeof(amdf_memory_site_t) == 32);
-static_assert(sizeof(amdf_memory_pair_info_t) == 128);
+static_assert(sizeof(amdf_memory_pair_info_t) == 120);
 static_assert(offsetof(amdf_endpoint_info_t, queue_family_count) ==
               offsetof(amdf_endpoint_info_t, name) +
                   AMDF_ENDPOINT_NAME_CAPACITY);
@@ -37,7 +38,9 @@ static_assert(offsetof(amdf_queue_family_info_t, command_type) == 20);
 static_assert(offsetof(amdf_queue_family_info_t, publication_modes) == 24);
 static_assert(offsetof(amdf_queue_family_info_t, format_version) == 28);
 static_assert(offsetof(amdf_queue_family_info_t, roles) == 32);
-static_assert(sizeof(amdf_queue_family_info_t) == 104);
+static_assert(offsetof(amdf_queue_family_info_t, cache_operations) == 40);
+static_assert(offsetof(amdf_queue_family_info_t, atomic_capabilities) == 56);
+static_assert(sizeof(amdf_queue_family_info_t) == 160);
 static_assert(offsetof(amdf_user_queue_info_t, device_id) ==
               sizeof(amdf_output_structure_t));
 static_assert(offsetof(amdf_user_queue_info_t, priority) == 72);

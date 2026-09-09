@@ -54,12 +54,32 @@ bool amdf_gpu_kfd_gfx1151_pm4_queue_is_supported(
 
 amdf_gpu_queue_family_properties_t
 amdf_gpu_kfd_gfx1151_pm4_queue_family_properties(void) {
+  const amdf_atomic_operations_t atomic_operations =
+      AMDF_ATOMIC_OPERATION_WAIT | AMDF_ATOMIC_OPERATION_STORE |
+      AMDF_ATOMIC_OPERATION_ADD | AMDF_ATOMIC_OPERATION_SUBTRACT |
+      AMDF_ATOMIC_OPERATION_AND | AMDF_ATOMIC_OPERATION_OR |
+      AMDF_ATOMIC_OPERATION_XOR;
+  const amdf_atomic_wait_conditions_t atomic_wait_conditions =
+      AMDF_ATOMIC_WAIT_CONDITION_EQUAL | AMDF_ATOMIC_WAIT_CONDITION_NOT_EQUAL |
+      AMDF_ATOMIC_WAIT_CONDITION_UNSIGNED_GREATER_EQUAL;
   return (amdf_gpu_queue_family_properties_t){
       .command_type = AMDF_QUEUE_COMMAND_TYPE_GPU_PM4,
       .format_version = AMDF_GPU_PM4_QUEUE_FORMAT_VERSION_1,
       .publication_modes = AMDF_QUEUE_PUBLICATION_MODE_USER,
       .roles = AMDF_QUEUE_ROLE_COMPUTE | AMDF_QUEUE_ROLE_TRANSFER |
                AMDF_QUEUE_ROLE_ATOMIC | AMDF_QUEUE_ROLE_CACHE_CONTROL,
+      .cache_operations = AMDF_CACHE_OPERATIONS_RELEASE_TO_SYSTEM |
+                          AMDF_CACHE_OPERATIONS_ACQUIRE_FROM_SYSTEM,
+      .cache_transition_kinds = AMDF_CACHE_TRANSITION_KINDS_GLOBAL,
+      .atomic_capabilities =
+          {
+              .operations_32 = atomic_operations,
+              .operations_64 = atomic_operations,
+              .wait_conditions_32 = atomic_wait_conditions,
+              .wait_conditions_64 = atomic_wait_conditions,
+              .operations_without_dispatch_32 = atomic_operations,
+              .operations_without_dispatch_64 = atomic_operations,
+          },
       .user_queue_capabilities = AMDF_USER_QUEUE_CAPABILITY_HOST_PRODUCER,
       .producer_modes = AMDF_QUEUE_PRODUCER_MODE_BIT_SINGLE,
       .priority_capabilities = AMDF_QUEUE_PRIORITY_CAPABILITY_NORMAL,

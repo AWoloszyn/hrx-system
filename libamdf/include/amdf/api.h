@@ -200,13 +200,16 @@ typedef struct amdf_api_t {
   /// Copies the exact directional relation between two concrete attachments.
   ///
   /// The producer and consumer sites name exact queue families. Defined
-  /// engine-specific execution-site extensions may refine those sites. Known
-  /// unequal physical identities return
-  /// `AMDF_STATUS_CODE_FAILED_PRECONDITION`. Equal addresses or equal physical
-  /// identities do not imply reach, visibility, or atomics; only qualified
-  /// provider facts are returned. The operation performs no native query,
-  /// import, mapping, cache transition, synchronization, or wait. Failure
-  /// leaves `out_info` byte-for-byte unchanged.
+  /// engine-specific execution-site extensions may refine those sites. Both
+  /// attachments must belong to one provider instance and have equal valid
+  /// physical identities. A scope or identity mismatch returns
+  /// `AMDF_STATUS_CODE_FAILED_PRECONDITION`; an unavailable identity returns
+  /// `AMDF_STATUS_CODE_UNSUPPORTED`. Equal addresses or physical identities do
+  /// not imply reach, visibility, or atomics. Common code composes
+  /// independently reported local facts and gives neither implementation the
+  /// other one's object. The operation performs no native query, import,
+  /// mapping, cache transition, synchronization, or wait. Failure leaves
+  /// `out_info` byte-for-byte unchanged.
   amdf_status_t(AMDF_CALL* memory_query_pair_info)(
       const amdf_memory_site_t* producer_site,
       const amdf_memory_site_t* consumer_site,
@@ -225,7 +228,9 @@ typedef struct amdf_api_t {
 
   /// Copies immutable properties of one live host mapping.
   ///
-  /// The copied pointer is borrowed until `host_mapping_destroy` succeeds. The
+  /// The copied pointer is borrowed until `host_mapping_destroy` succeeds. Its
+  /// release and acquire recipes state whether a caller can execute cache
+  /// maintenance directly or must invoke `host_mapping_cache_control`. The
   /// operation is thread-safe and performs no system call, allocation, cache
   /// transition, or device wait. No output is modified on validation failure.
   amdf_status_t(AMDF_CALL* host_mapping_query_info)(

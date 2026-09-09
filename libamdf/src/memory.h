@@ -21,10 +21,10 @@ typedef struct amdf_memory_vtable_t {
   amdf_status_t (*export_external)(amdf_memory_t* memory,
                                    const amdf_memory_export_info_t* export_info,
                                    amdf_external_memory_t* out_value);
-  // Copies exact directional facts into caller-private result storage.
-  amdf_status_t (*query_pair_info)(amdf_memory_t* producer_memory,
-                                   const amdf_memory_pair_query_t* query,
-                                   amdf_memory_pair_info_t* out_info);
+  // Describes one concrete attachment and exact local queue family.
+  amdf_status_t (*describe_site)(
+      amdf_memory_t* memory, uint32_t queue_family_ordinal,
+      amdf_memory_site_description_t* out_description);
   // Creates one explicit host mapping. Failure releases every partial resource;
   // success returns one complete mapping.
   amdf_status_t (*map)(amdf_memory_t* memory,

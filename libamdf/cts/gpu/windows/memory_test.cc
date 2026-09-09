@@ -31,9 +31,10 @@ static_assert(sizeof(amdf_memory_create_info_t) == 56);
 static_assert(offsetof(amdf_memory_info_t, memory_profile_ordinal) ==
               sizeof(amdf_output_structure_t));
 static_assert(offsetof(amdf_memory_info_t, memory_class) == 20);
-static_assert(offsetof(amdf_memory_info_t, physical_backing_id) == 96);
-static_assert(offsetof(amdf_memory_info_t, device_address) == 112);
-static_assert(sizeof(amdf_memory_info_t) == 128);
+static_assert(offsetof(amdf_memory_info_t, atomic_operations_32) == 32);
+static_assert(offsetof(amdf_memory_info_t, physical_backing_id) == 120);
+static_assert(offsetof(amdf_memory_info_t, device_address) == 136);
+static_assert(sizeof(amdf_memory_info_t) == 152);
 
 class GpuMemoryTest : public GpuDeviceFixture {
  protected:
@@ -170,6 +171,25 @@ TEST_F(GpuMemoryTest, OwnsStableSystemAddressAndExplicitHostMapping) {
             0u);
   EXPECT_EQ(mapping_info.cacheability, AMDF_HOST_CACHEABILITY_WRITE_BACK);
   EXPECT_EQ(mapping_info.byte_length, memory_info.byte_length);
+  ASSERT_NE(mapping_info.cache_line_size, 0u);
+  EXPECT_EQ(mapping_info.release.kind, AMDF_CACHE_TRANSITION_KIND_RANGE);
+  EXPECT_EQ(mapping_info.release.executor,
+            AMDF_CACHE_TRANSITION_EXECUTOR_HOST_API);
+  EXPECT_EQ(mapping_info.release.host_operation,
+            AMDF_HOST_CACHE_OPERATION_FLUSH);
+  EXPECT_EQ(mapping_info.release.range_granularity,
+            mapping_info.cache_line_size);
+  EXPECT_EQ(mapping_info.acquire.kind, AMDF_CACHE_TRANSITION_KIND_RANGE);
+  EXPECT_EQ(mapping_info.acquire.executor,
+            AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT);
+  EXPECT_EQ(mapping_info.acquire.host_operation,
+            AMDF_HOST_CACHE_OPERATION_INVALIDATE);
+  EXPECT_EQ(mapping_info.acquire.host_instruction,
+            AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH);
+  EXPECT_EQ(mapping_info.acquire.host_fence_after,
+            AMDF_HOST_CACHE_FENCE_X86_MFENCE);
+  EXPECT_EQ(mapping_info.acquire.range_granularity,
+            mapping_info.cache_line_size);
 
   std::memset(mapping_info.pointer, 0xA5,
               static_cast<size_t>(mapping_info.byte_length));
@@ -274,6 +294,9 @@ TEST_F(GpuMemoryTest, RegistersCallerOwnedCoherentHostPages) {
       mapping_info.pointer,
       static_cast<uint8_t*>(registered_host_pointer_) + map_info.byte_offset);
   EXPECT_EQ(mapping_info.cacheability, AMDF_HOST_CACHEABILITY_COHERENT);
+  EXPECT_EQ(mapping_info.cache_line_size, 0u);
+  EXPECT_EQ(mapping_info.release.kind, AMDF_CACHE_TRANSITION_KIND_NONE);
+  EXPECT_EQ(mapping_info.acquire.kind, AMDF_CACHE_TRANSITION_KIND_NONE);
   EXPECT_TRUE(amdf_status_is_ok(api_->host_mapping_cache_control(
       mapping_, AMDF_HOST_CACHE_OPERATION_FLUSH, 0, mapping_info.byte_length)));
 

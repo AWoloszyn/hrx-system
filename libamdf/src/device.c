@@ -22,6 +22,7 @@ amdf_status_t amdf_device_initialize(amdf_device_t* device,
   device->host_allocator = amdf_endpoint_host_allocator(endpoint);
   device->vtable = vtable;
   device->endpoint = endpoint;
+  device->provider_instance = amdf_endpoint_get_instance(endpoint);
   device->engine_kind = engine_kind;
   amdf_child_tracker_initialize(&device->children);
   return AMDF_STATUS_OK;
@@ -30,11 +31,18 @@ amdf_status_t amdf_device_initialize(amdf_device_t* device,
 void amdf_device_deinitialize(amdf_device_t* device) {
   amdf_endpoint_unregister_device(device->endpoint);
   device->endpoint = NULL;
+  device->provider_instance = NULL;
 }
 
 bool amdf_device_is_engine(const amdf_device_t* device,
                            amdf_engine_kind_t expected_engine_kind) {
   return device != NULL && device->engine_kind == expected_engine_kind;
+}
+
+bool amdf_device_shares_provider_instance(const amdf_device_t* lhs,
+                                          const amdf_device_t* rhs) {
+  return lhs != NULL && rhs != NULL && lhs->provider_instance != NULL &&
+         lhs->provider_instance == rhs->provider_instance;
 }
 
 amdf_allocator_t amdf_device_host_allocator(const amdf_device_t* device) {

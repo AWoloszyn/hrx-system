@@ -23,9 +23,10 @@ static_assert(sizeof(amdf_memory_create_info_t) == 56);
 static_assert(offsetof(amdf_memory_info_t, memory_profile_ordinal) ==
               sizeof(amdf_output_structure_t));
 static_assert(offsetof(amdf_memory_info_t, memory_class) == 20);
-static_assert(offsetof(amdf_memory_info_t, physical_backing_id) == 96);
-static_assert(offsetof(amdf_memory_info_t, device_address) == 112);
-static_assert(sizeof(amdf_memory_info_t) == 128);
+static_assert(offsetof(amdf_memory_info_t, atomic_operations_32) == 32);
+static_assert(offsetof(amdf_memory_info_t, physical_backing_id) == 120);
+static_assert(offsetof(amdf_memory_info_t, device_address) == 136);
+static_assert(sizeof(amdf_memory_info_t) == 152);
 static_assert(offsetof(amdf_memory_map_info_t, byte_offset) ==
               sizeof(amdf_input_structure_t));
 static_assert(sizeof(amdf_memory_map_info_t) == 40);
@@ -33,7 +34,9 @@ static_assert(offsetof(amdf_host_mapping_info_t, flags) ==
               sizeof(amdf_output_structure_t));
 static_assert(offsetof(amdf_host_mapping_info_t, pointer) == 24);
 static_assert(offsetof(amdf_host_mapping_info_t, reset_epoch) == 72);
-static_assert(sizeof(amdf_host_mapping_info_t) == 80);
+static_assert(offsetof(amdf_host_mapping_info_t, release) == 80);
+static_assert(offsetof(amdf_host_mapping_info_t, acquire) == 120);
+static_assert(sizeof(amdf_host_mapping_info_t) == 160);
 
 class XdnaMemoryTest : public XdnaDeviceFixture {
  protected:
@@ -189,13 +192,36 @@ TEST_F(XdnaMemoryTest, OwnsStableAddressAndExplicitHostMapping) {
   ASSERT_TRUE(amdf_status_is_ok(
       api_->host_mapping_query_info(mapping_, &mapping_info)));
   EXPECT_EQ(mapping_info.flags & map_info.flags, map_info.flags);
-  EXPECT_NE(mapping_info.cacheability, AMDF_HOST_CACHEABILITY_UNKNOWN);
+  EXPECT_EQ(mapping_info.cacheability, AMDF_HOST_CACHEABILITY_WRITE_BACK);
   ASSERT_NE(mapping_info.pointer, nullptr);
   EXPECT_EQ(mapping_info.byte_length, map_info.byte_length);
   EXPECT_EQ(mapping_info.memory_byte_offset, map_info.byte_offset);
   EXPECT_EQ(mapping_info.byte_offset_granularity, 1u);
   EXPECT_EQ(mapping_info.byte_length_granularity, 1u);
   EXPECT_EQ(mapping_info.reset_epoch, memory_info.reset_epoch);
+  ASSERT_NE(mapping_info.cache_line_size, 0u);
+  EXPECT_EQ(mapping_info.release.kind, AMDF_CACHE_TRANSITION_KIND_RANGE);
+  EXPECT_EQ(mapping_info.release.executor,
+            AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT);
+  EXPECT_EQ(mapping_info.release.host_operation,
+            AMDF_HOST_CACHE_OPERATION_FLUSH);
+  EXPECT_EQ(mapping_info.release.host_instruction,
+            AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH);
+  EXPECT_EQ(mapping_info.release.host_fence_after,
+            AMDF_HOST_CACHE_FENCE_X86_MFENCE);
+  EXPECT_EQ(mapping_info.release.range_granularity,
+            mapping_info.cache_line_size);
+  EXPECT_EQ(mapping_info.acquire.kind, AMDF_CACHE_TRANSITION_KIND_RANGE);
+  EXPECT_EQ(mapping_info.acquire.executor,
+            AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT);
+  EXPECT_EQ(mapping_info.acquire.host_operation,
+            AMDF_HOST_CACHE_OPERATION_INVALIDATE);
+  EXPECT_EQ(mapping_info.acquire.host_instruction,
+            AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH);
+  EXPECT_EQ(mapping_info.acquire.host_fence_after,
+            AMDF_HOST_CACHE_FENCE_X86_MFENCE);
+  EXPECT_EQ(mapping_info.acquire.range_granularity,
+            mapping_info.cache_line_size);
 
   amdf_host_mapping_info_t invalid_mapping_info = mapping_info;
   invalid_mapping_info.type = AMDF_STRUCTURE_TYPE_NONE;

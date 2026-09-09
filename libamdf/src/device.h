@@ -44,6 +44,8 @@ struct amdf_device_t {
   const amdf_device_vtable_t* vtable;
   // Endpoint borrowed for the lifetime of this device.
   amdf_endpoint_t* endpoint;
+  // Provider instance defining the scope of provider-local identities.
+  amdf_instance_t* provider_instance;
   // Exact engine family implementing this device.
   amdf_engine_kind_t engine_kind;
   // Number of live children borrowing this device.
@@ -62,6 +64,10 @@ void amdf_device_deinitialize(amdf_device_t* device);
 // Returns true when a device is implemented by `expected_engine_kind`.
 bool amdf_device_is_engine(const amdf_device_t* device,
                            amdf_engine_kind_t expected_engine_kind);
+
+// Returns true when both devices share one provider-instance identity scope.
+bool amdf_device_shares_provider_instance(const amdf_device_t* lhs,
+                                          const amdf_device_t* rhs);
 
 // Returns the host allocator copied by the device.
 amdf_allocator_t amdf_device_host_allocator(const amdf_device_t* device);
