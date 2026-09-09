@@ -79,10 +79,12 @@ loom_check_test_suite(
     loom_check_file_test
   SRCS
     "test/assembly.loom-test"
+    "test/buffer_packets.loom-test"
     "test/calls.loom-test"
     "test/effects.loom-test"
     "test/emission.loom-test"
     "test/scalar.loom-test"
+    "test/source_low/buffer_access.loom-test"
     "test/source_low/numeric_float_arithmetic.loom-test"
     "test/source_low/numeric_float_rounding.loom-test"
     "test/source_low/numeric_float_selectors.loom-test"
@@ -99,6 +101,7 @@ loom_check_test_suite(
     "test/source_low/scalar_selection.loom-test"
     "test/storage.loom-test"
   DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/buffer_access.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_float_arithmetic.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_float_rounding.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_float_selectors.loom-test"

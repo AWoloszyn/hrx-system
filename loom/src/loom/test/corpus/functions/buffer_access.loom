@@ -1,0 +1,60 @@
+func.def public @byte_checksum(%byte_count: i64, %byte_start: i64, %pattern: i32) -> (i32) {
+  %length = index.cast %byte_count : i64 to offset
+  %start = index.cast %byte_start : i64 to offset
+  %extent = index.add %length, %start : offset
+  %storage = buffer.alloca<private> align(8) %extent : buffer
+  %begin = index.constant 0 : offset
+  %stride = index.constant 1 : offset
+  scf.for %i = [%begin to %length step %stride] {
+    %position = index.add %start, %i : offset
+    buffer.store.i8 %pattern, %storage[%position]
+  }
+  %initial = scalar.constant 0 : i32
+  %checksum = scf.for %i = [%begin to %length step %stride](%sum = %initial : i32) -> (i32) {
+    %position = index.add %start, %i : offset
+    %byte = buffer.load.i8.u %storage[%position]
+    %next = scalar.addi %sum, %byte : i32
+    scf.yield %next : i32
+  }
+  func.return %checksum : i32
+}
+
+check.case @byte_checksum_empty {
+  %count = check.literal value(0) : i64
+  %start = check.param.choice values([0, 3, 9]) : i64
+  %pattern = check.param.choice values([0, 127, 128, 255, 256, 511, -1]) : i32
+  %actual = func.call @byte_checksum(%count, %start, %pattern) : (i64, i64, i32) -> (i32)
+  %expected = check.literal value(0) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}
+
+check.case @byte_checksum_wrap {
+  %count = check.literal value(17) : i64
+  %start = check.param.choice values([0, 3, 9]) : i64
+  %pattern = check.param.choice values([255, 511, -1]) : i32
+  %actual = func.call @byte_checksum(%count, %start, %pattern) : (i64, i64, i32) -> (i32)
+  %expected = check.literal value(4335) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}
+
+check.case @byte_checksum_unsigned {
+  %count = check.literal value(1) : i64
+  %start = check.param.choice values([0, 3, 9]) : i64
+  %pattern = check.param.choice values([128, 384, -128]) : i32
+  %actual = func.call @byte_checksum(%count, %start, %pattern) : (i64, i64, i32) -> (i32)
+  %expected = check.literal value(128) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}
+
+check.case @byte_checksum_zero {
+  %count = check.literal value(65) : i64
+  %start = check.param.choice values([0, 3, 9]) : i64
+  %pattern = check.param.choice values([0, 256, -2147483648]) : i32
+  %actual = func.call @byte_checksum(%count, %start, %pattern) : (i64, i64, i32) -> (i32)
+  %expected = check.literal value(0) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}

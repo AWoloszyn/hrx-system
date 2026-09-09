@@ -1,0 +1,45 @@
+// RUN: emit vm-dis
+
+vm.target<core> @vm
+
+// Wire order is scale then format; canonical dictionaries store format first.
+// Named and numeric selectors must encode the same unaligned halfword access.
+low.func.def public target<vm.core>(@vm) abi(vm_function) @scaled_half(%base: reg<vm.value : i64>, %index: reg<vm.value : i64>, %value: reg<vm.value : i64>) -> (reg<vm.value : i64>) asm {
+  %length = constant.i64 64
+  %buffer = buffer.allocate %length, 3 : reg<vm.ref : buffer>
+  buffer.store %buffer, %base, %index, %value, 3, "i16.x1"
+  %result = buffer.load %buffer, %base, %index, 3, 4
+  return %result
+}
+
+// ----
+vm.module core(0.0) {
+  section strings alignment(8) {
+    string @string0 = "scaled_half"
+  }
+
+  section signatures alignment(8) {
+    signature @signature0 (i64, i64, i64) -> (i64)
+  }
+
+  section callable_types alignment(8) {
+    callable @callable0 flags([]) depth(0) : @signature0
+  }
+
+  section exports alignment(8) {
+    export @export0 name(@string0) : @callable0 = @function0
+  }
+
+  section functions alignment(8) {
+    func @function0 : @callable0 flags([]) frame(local_bytes = 0, value_registers = 4, ref_registers = 1, function_registers = 0, local_refs = 0, local_functions = 0) {
+    ^bb0:
+      control.block
+      %v3 = constant.i64 0x0000000000000040
+      %r0 = buffer.allocate %v3 {minimum_alignment_log2 = 3}
+      buffer.store.i16 %r0, %v0, %v1, %v2.x1 {scale = 3}
+      %v0.x1 = buffer.load.i16 %r0, %v0, %v1 {scale = 3}
+      control.return
+    }
+  }
+
+}

@@ -23,6 +23,7 @@ from iree.vm.bytecode.spec.isa.core.integer import (
     IntegerUnarySemantics,
 )
 from iree.vm.bytecode.spec.isa.core.rules import FieldRule, StateAccess
+from iree.vm.bytecode.spec.isa.core.stack import MEMORY_FORMAT_SELECTOR
 from iree.vm.bytecode.spec.specification import SPECIFICATION
 
 from loom.dialect.scalar import conversion
@@ -37,6 +38,7 @@ from loom.target.low_descriptors import (
     DescriptorFlag,
     DescriptorOpKind,
     EffectKind,
+    ImmediateFlag,
     OperandRole,
 )
 
@@ -182,6 +184,16 @@ def test_lowering_uses_the_projected_descriptors():
         }
 
 
+def test_immediate_positions_match_canonical_attributes():
+    for descriptor in VM_CORE_DESCRIPTOR_SET.descriptors:
+        names = tuple(value.field_name for value in descriptor.immediates)
+        assert names == tuple(sorted(names))
+        assert all(
+            ImmediateFlag.DEFAULT_VALUE not in value.flags
+            for value in descriptor.immediates
+        )
+
+
 def test_selectors_preserve_the_spec_domain_and_encoding():
     descriptors = {
         descriptor.encoding_id: descriptor
@@ -194,30 +206,43 @@ def test_selectors_preserve_the_spec_domain_and_encoding():
         descriptor = descriptors[instruction.opcode]
         if not descriptor.immediates or descriptor.op_kind is DescriptorOpKind.CONST:
             continue
-        (immediate,) = descriptor.immediates
-        (selector,) = (
-            (field, offset)
+        fields = {
+            field.field.name: (field, offset)
             for field, offset in zip(
                 instruction.fields, instruction.field_offsets, strict=True
             )
             if field.role is FieldRole.IMMEDIATE
-        )
-        field, offset = selector
-        assert immediate.encoding_field_id == offset
-        assert immediate.bit_width == field.field.byte_length * 8
-        if field.rule.kind is FieldRule.SELECTOR:
-            assert {
-                entry.token: entry.value
-                for entry in domains[immediate.enum_domain].values
-            } == {entry.name: entry.value for entry in field.rule.data.values}
-        elif field.rule.kind is FieldRule.ALLOWED_VALUES:
-            assert (
-                tuple(entry.value for entry in domains[immediate.enum_domain].values)
-                == field.rule.values
-            )
-        else:
-            assert field.rule.kind is FieldRule.ALLOWED_RANGE
-            assert (immediate.signed_min, immediate.unsigned_max) == field.rule.values
+        }
+        for immediate in descriptor.immediates:
+            field, offset = fields[immediate.field_name]
+            assert immediate.encoding_field_id == offset
+            assert immediate.bit_width == field.field.byte_length * 8
+            if field.rule.kind is FieldRule.SELECTOR:
+                expected = {
+                    entry.name: entry.value
+                    for entry in field.rule.data.values
+                    if field.rule.data is not MEMORY_FORMAT_SELECTOR
+                    or entry.name.endswith(".x1")
+                }
+                assert {
+                    entry.token: entry.value
+                    for entry in domains[immediate.enum_domain].values
+                } == expected
+            elif field.rule.kind is FieldRule.ALLOWED_VALUES:
+                assert (
+                    tuple(
+                        entry.value for entry in domains[immediate.enum_domain].values
+                    )
+                    == field.rule.values
+                )
+            elif field.rule.kind is FieldRule.ANY_BITS:
+                assert immediate.unsigned_max == (1 << immediate.bit_width) - 1
+            else:
+                assert field.rule.kind is FieldRule.ALLOWED_RANGE
+                assert (
+                    immediate.signed_min,
+                    immediate.unsigned_max,
+                ) == field.rule.values
 
 
 def test_constant_immediates_preserve_the_wire_bits_and_alignment():

@@ -12,6 +12,8 @@ from iree.vm.bytecode.spec.isa.core.buffer import (
     BUFFER_COPY,
     BUFFER_FILL,
     BUFFER_LENGTH,
+    BUFFER_LOAD,
+    BUFFER_STORE,
 )
 from iree.vm.bytecode.spec.isa.core.float import (
     FLOAT_CLAMP_SELECTOR,
@@ -37,6 +39,7 @@ from iree.vm.bytecode.spec.isa.core.integer import (
     IntegerUnaryOperation,
     IntegerUnarySemantics,
 )
+from iree.vm.bytecode.spec.isa.core.stack import MEMORY_FORMAT_SELECTOR
 from iree.vm.bytecode.spec.isa.core.value import VALUE_COPY, VALUE_SELECT
 from iree.vm.bytecode.spec.specification import SPECIFICATION
 
@@ -635,12 +638,18 @@ def _address_cases():
 def _buffer_cases():
     # Source spelling is the only correspondence here: types and legal value
     # ranges come from the source op and wire fields respectively.
-    for source_op, instruction, operands, results in (
+    byte_format = next(
+        value.value for value in MEMORY_FORMAT_SELECTOR.values if value.name == "i8.x1"
+    )
+    # A zero scale uses the byte offset directly without a zero index register.
+    byte_access = {"scale_u8": 0, "format_u8": byte_format}
+    for source_op, instruction, operands, results, immediates in (
         (
             buffer.buffer_length,
             BUFFER_LENGTH,
             {"buffer_r8": "buffer"},
             {"destination_v8": "byte_length"},
+            {},
         ),
         (
             buffer.buffer_copy,
@@ -652,6 +661,7 @@ def _buffer_cases():
                 "source_offset_v8": "source_offset",
                 "length_v8": "byte_length",
             },
+            {},
             {},
         ),
         (
@@ -665,6 +675,30 @@ def _buffer_cases():
                 "length_v8": "byte_length",
             },
             {"destination_v8": "order"},
+            {},
+        ),
+        (
+            buffer.buffer_load_i8_u,
+            BUFFER_LOAD,
+            {
+                "buffer_r8": "source",
+                "base_v8": "byte_offset",
+                "index_v8": "byte_offset",
+            },
+            {"destination_v8": "result"},
+            byte_access,
+        ),
+        (
+            buffer.buffer_store_i8,
+            BUFFER_STORE,
+            {
+                "buffer_r8": "target",
+                "base_v8": "byte_offset",
+                "index_v8": "byte_offset",
+                "source_v8": "value",
+            },
+            {},
+            byte_access,
         ),
     ):
         descriptor = _DESCRIPTORS[instruction.opcode]
@@ -683,6 +717,7 @@ def _buffer_cases():
                         target: ValueRef.result(source)
                         for target, source in results.items()
                     },
+                    immediates=immediates,
                 ),
             ),
         )

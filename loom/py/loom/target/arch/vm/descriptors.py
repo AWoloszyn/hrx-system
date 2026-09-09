@@ -21,6 +21,8 @@ from iree.vm.bytecode.spec.isa.core.buffer import (
     BUFFER_COPY,
     BUFFER_FILL,
     BUFFER_LENGTH,
+    BUFFER_LOAD,
+    BUFFER_STORE,
 )
 from iree.vm.bytecode.spec.isa.core.constant import CONSTANT_I32, CONSTANT_I64
 from iree.vm.bytecode.spec.isa.core.conversion import (
@@ -49,6 +51,7 @@ from iree.vm.bytecode.spec.isa.core.integer import (
     IntegerUnarySemantics,
 )
 from iree.vm.bytecode.spec.isa.core.rules import FieldRule, StateAccess
+from iree.vm.bytecode.spec.isa.core.stack import MEMORY_FORMAT_SELECTOR
 from iree.vm.bytecode.spec.isa.core.value import VALUE_COPY, VALUE_SELECT
 from iree.vm.bytecode.spec.specification import SPECIFICATION
 
@@ -66,6 +69,7 @@ from loom.target.low_descriptors import (
     EnumDomain,
     EnumValue,
     Immediate,
+    ImmediateFlag,
     ImmediateKind,
     InstructionClass,
     IssueUse,
@@ -97,6 +101,8 @@ _BUFFER_INSTRUCTIONS = (
     BUFFER_FILL,
     BUFFER_COPY,
     BUFFER_COMPARE,
+    BUFFER_LOAD,
+    BUFFER_STORE,
 )
 
 _INTEGER_TYPES = {32: ScalarTypeKind.I32, 64: ScalarTypeKind.I64}
@@ -136,9 +142,13 @@ _SCALAR_CONVERSIONS = tuple(
 )
 _SELECTORS = {
     field.rule.data.name: field.rule.data
-    for instruction in (*_SCALAR_INSTRUCTIONS, *_SCALAR_CONVERSIONS)
+    for instruction in (
+        *_SCALAR_INSTRUCTIONS,
+        *_SCALAR_CONVERSIONS,
+        *_BUFFER_INSTRUCTIONS,
+    )
     for field in instruction.fields
-    if field.role is FieldRole.IMMEDIATE
+    if field.rule.kind is FieldRule.SELECTOR
 }
 
 
@@ -156,6 +166,8 @@ def _immediates(instruction: Instruction) -> tuple[Immediate, ...]:
             domain = field.rule.data.name
         elif field.rule.kind is FieldRule.ALLOWED_VALUES:
             domain = f"{instruction.mnemonic}.{field.field.name}"
+        elif field.rule.kind is FieldRule.ANY_BITS:
+            maximum = (1 << bit_width) - 1
         else:
             assert field.rule.kind is FieldRule.ALLOWED_RANGE
             minimum, maximum = field.rule.values
@@ -182,9 +194,10 @@ def _descriptor(
 ) -> Descriptor:
     if immediates is None:
         immediates = _immediates(instruction)
-    # The emitter has a bounded packet and positional storage for one immediate.
+    # Required immediates sort with canonical IR dictionaries. Assembly retains
+    # wire order, while the emitter consumes attributes directly by position.
     assert instruction.byte_length <= CONSTANT_I64.byte_length
-    assert len(immediates) <= 1
+    assert all(ImmediateFlag.DEFAULT_VALUE not in value.flags for value in immediates)
     operands = tuple(
         Operand(
             field.field.name,
@@ -217,7 +230,7 @@ def _descriptor(
         operands=operands,
         schedule_class="vm.scalar",
         op_kind=op_kind,
-        immediates=immediates,
+        immediates=tuple(sorted(immediates, key=lambda value: value.field_name)),
         encoding_id=instruction.opcode,
         encoding_format_id=instruction.byte_length,
         effects=effects,
@@ -331,7 +344,13 @@ VM_CORE_DESCRIPTOR_SET = DescriptorSet(
     enum_domains=tuple(
         EnumDomain(
             selector.name,
-            tuple(EnumValue(value.name, value.value) for value in selector.values),
+            tuple(
+                EnumValue(value.name, value.value)
+                for value in selector.values
+                # Scalar memory operands occupy one value cell. Wider groups
+                # require matching register-group descriptors.
+                if selector is not MEMORY_FORMAT_SELECTOR or value.name.endswith(".x1")
+            ),
         )
         for selector in _SELECTORS.values()
     )
@@ -362,7 +381,7 @@ VM_CORE_DESCRIPTOR_SET = DescriptorSet(
             _descriptor(
                 op,
                 ScalarTypeKind.I64
-                if op is BUFFER_LENGTH
+                if op in (BUFFER_LENGTH, BUFFER_LOAD)
                 else ScalarTypeKind.I32
                 if op is BUFFER_COMPARE
                 else None,

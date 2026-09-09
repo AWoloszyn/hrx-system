@@ -166,7 +166,9 @@ static uint64_t loom_vm_function_immediate(
   IREE_BUILTIN_UNREACHABLE();
 }
 
-static iree_status_t loom_vm_function_packet(
+// Keep field encoding in its own compilation boundary instead of growing the
+// register-allocation scope of frame and control-flow emission.
+IREE_ATTRIBUTE_NOINLINE static iree_status_t loom_vm_function_packet(
     const loom_low_emission_frame_t* frame,
     const loom_low_schedule_node_t* node, iree_io_stream_t* stream) {
   const loom_low_descriptor_t* descriptor = node->descriptor;
@@ -191,17 +193,20 @@ static iree_status_t loom_vm_function_packet(
     packet[operand->encoding_field_id] = (uint8_t)assignment->location_base;
   }
   if (descriptor->immediate_count) {
-    // The projection and Low verifier establish one required immediate, so its
-    // dictionary position is unambiguous and needs no attribute-name lookup.
+    // Required descriptor immediates and canonical IR dictionaries share name
+    // order, established by the projection and Low verifier.
     const loom_named_attr_slice_t attributes =
         loom_low_const_isa(node->op) ? loom_low_const_attrs(node->op)
                                      : loom_low_op_attrs(node->op);
-    const loom_low_immediate_t* immediate =
-        &frame->target.descriptor_set->immediates[descriptor->immediate_start];
-    const uint64_t bits = loom_vm_function_immediate(
-        frame, immediate, attributes.entries[0].value);
-    memcpy(packet + immediate->encoding_field_id, &bits,
-           immediate->bit_width / 8);
+    for (uint16_t i = 0; i < descriptor->immediate_count; ++i) {
+      const loom_low_immediate_t* immediate =
+          &frame->target.descriptor_set
+               ->immediates[descriptor->immediate_start + i];
+      const uint64_t bits = loom_vm_function_immediate(
+          frame, immediate, attributes.entries[i].value);
+      memcpy(packet + immediate->encoding_field_id, &bits,
+             immediate->bit_width / 8);
+    }
   }
   return iree_io_stream_write(stream, descriptor->encoding_format_id, packet);
 }
