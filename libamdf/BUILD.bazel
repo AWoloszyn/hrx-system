@@ -31,7 +31,11 @@ amdf_library(
     name = "amdf",
     hdrs = [
         "include/amdf/amdf.h",
+        "include/amdf/api.h",
+        "include/amdf/base.h",
         "include/amdf/gpu.h",
+        "include/amdf/memory.h",
+        "include/amdf/queue.h",
         "include/amdf/xdna.h",
     ],
     components = ["//libamdf/src/provider"],
