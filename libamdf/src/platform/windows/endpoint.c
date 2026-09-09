@@ -16,10 +16,13 @@
 
 static amdf_status_t amdf_windows_close_endpoint_adapter(
     amdf_platform_endpoint_t* endpoint) {
+  if (endpoint->adapter == 0) return AMDF_STATUS_OK;
   D3DKMT_CLOSEADAPTER close_adapter = {0};
   close_adapter.hAdapter = endpoint->adapter;
-  return amdf_kmt_make_status(
+  const amdf_status_t status = amdf_kmt_make_status(
       endpoint->instance->kmt.close_adapter(&close_adapter));
+  if (amdf_status_is_ok(status)) endpoint->adapter = 0;
+  return status;
 }
 
 amdf_status_t amdf_platform_endpoint_open(
@@ -73,13 +76,12 @@ amdf_status_t amdf_platform_endpoint_open(
     *out_info = endpoint_info;
     *out_endpoint = endpoint;
   } else {
-    if (endpoint->adapter != 0) {
-      const amdf_status_t close_status =
-          amdf_windows_close_endpoint_adapter(endpoint);
-      if (!amdf_status_is_ok(close_status)) {
-        status = close_status;
-      }
+    const amdf_status_t close_status =
+        amdf_windows_close_endpoint_adapter(endpoint);
+    if (!amdf_status_is_ok(close_status)) {
+      status = close_status;
     }
+    // Query handles have no accepted work borrowing this unpublished object.
     free(endpoint);
   }
   return status;

@@ -14,9 +14,11 @@
 #include "libamdf/src/pci.h"
 #include "libamdf/src/platform/windows/endpoint_properties.h"
 
-static amdf_status_t amdf_windows_close_snapshot_adapters(
+// Every returned handle gets one close attempt, including partial enumeration
+// output. Native failure has no completion protocol or host-storage borrow.
+static amdf_status_t amdf_windows_endpoint_snapshot_close(
     const amdf_kmt_api_t* api, uint32_t adapter_count,
-    D3DKMT_ADAPTERINFO* adapters) {
+    const D3DKMT_ADAPTERINFO* adapters) {
   amdf_status_t status = AMDF_STATUS_OK;
   for (uint32_t i = 0; i < adapter_count; ++i) {
     if (adapters[i].hAdapter == 0) {
@@ -26,7 +28,7 @@ static amdf_status_t amdf_windows_close_snapshot_adapters(
     close_adapter.hAdapter = adapters[i].hAdapter;
     const amdf_status_t close_status =
         amdf_kmt_make_status(api->close_adapter(&close_adapter));
-    if (amdf_status_is_ok(status) && !amdf_status_is_ok(close_status)) {
+    if (amdf_status_is_ok(status)) {
       status = close_status;
     }
   }
@@ -61,11 +63,10 @@ amdf_status_t amdf_windows_endpoint_snapshot_enumerate(
     return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
   }
   D3DKMT_ADAPTERINFO* adapters =
-      (D3DKMT_ADAPTERINFO*)calloc(adapter_capacity, sizeof(D3DKMT_ADAPTERINFO));
+      (D3DKMT_ADAPTERINFO*)calloc(adapter_capacity, sizeof(*adapters));
   if (adapters == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
   }
-
   enumeration.NumAdapters = adapter_capacity;
   enumeration.pAdapters = adapters;
   status = amdf_kmt_make_status(api->enumerate_adapters(&enumeration));
@@ -106,11 +107,11 @@ amdf_status_t amdf_windows_endpoint_snapshot_enumerate(
   }
 
   const amdf_status_t close_status =
-      amdf_windows_close_snapshot_adapters(api, adapter_capacity, adapters);
-  free(adapters);
-  if (amdf_status_is_ok(status) && !amdf_status_is_ok(close_status)) {
+      amdf_windows_endpoint_snapshot_close(api, adapter_capacity, adapters);
+  if (!amdf_status_is_ok(close_status)) {
     status = close_status;
   }
+  free(adapters);
   if (amdf_status_is_ok(status)) {
     *out_count = endpoint_count;
     if (capacity != 0 && endpoint_count > capacity) {

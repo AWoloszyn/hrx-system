@@ -16,7 +16,9 @@
 extern "C" {
 #endif  // __cplusplus
 
-// Enumerates a snapshot and normalizes its supported AMD endpoints.
+// Enumerates a snapshot and normalizes its supported AMD endpoints. Every
+// returned adapter gets one close attempt. Native close failure is reported
+// without retaining the snapshot for later cleanup.
 amdf_status_t amdf_windows_endpoint_snapshot_enumerate(
     const amdf_kmt_api_t* api, uint32_t capacity,
     amdf_endpoint_summary_t* summaries, uint32_t* out_count);
