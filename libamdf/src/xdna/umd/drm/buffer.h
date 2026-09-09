@@ -12,7 +12,8 @@
 #include "amdf/amdf.h"
 
 // A GEM allocation and its persistent native attachment. Zero initialization
-// is empty. DEV allocations borrow the heap mapping; other types own theirs.
+// is empty. DEV allocations borrow the heap mapping, registered SHARE buffers
+// borrow caller pages, and other buffers own their mappings.
 typedef struct amdf_linux_xdna_buffer_t {
   // File-local GEM handle, or zero after release.
   uint32_t handle;
@@ -48,6 +49,15 @@ amdf_status_t amdf_linux_xdna_buffer_create(
 // unchanged and retains no ownership.
 amdf_status_t amdf_linux_xdna_buffer_import_dma_buf(
     int descriptor, int dma_buf_descriptor, size_t byte_length,
+    amdf_linux_xdna_buffer_t* out_buffer);
+
+// Registers one page-aligned caller-owned host range as a SHARE buffer. The
+// caller keeps every page live until deinitialization succeeds. Success
+// transfers only the file-local GEM handle to `out_buffer`; the host range
+// remains borrowed and is never unmapped by the buffer. Buffer attachment
+// resolves whether its device address is SVA or IOVA.
+amdf_status_t amdf_linux_xdna_buffer_register_host_pages(
+    int descriptor, void* host_page_base, size_t byte_length,
     amdf_linux_xdna_buffer_t* out_buffer);
 
 // Establishes native addresses and a persistent CPU mapping for one live GEM

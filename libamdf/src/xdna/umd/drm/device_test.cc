@@ -128,7 +128,7 @@ TEST_F(LinuxXdnaDeviceTest, ContextsShareDeviceMemoryAndDestroyIndependently) {
   memory_create.required_flags =
       AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
   memory_create.byte_length = 4097;
-  memory_create.minimum_alignment = 65536;
+  memory_create.minimum_alignment = 4096;
   amdf_xdna_umd_memory_result_t memory_result = {};
   amdf_memory_profile_t memory_profile = {};
   memory_profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;

@@ -12,15 +12,52 @@ iree_add_all_subdirs()
 if(AMDF_BUILD AND AMDF_FAMILY_XDNA)
 iree_cc_library(
   NAME
-    xdna_tests
-  SRCS
-    "memory_test.cc"
+    xdna_device_fixture
+  HDRS
     "xdna_device_fixture.h"
-    "xdna_extension_test.cc"
   DEPS
     amdf::headers
     iree::third_party::google_test
     libamdf::cts::util::provider_headers
+  TESTONLY
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_library(
+  NAME
+    linux_tests
+  SRCS
+    "memory_linux_test.cc"
+  DEPS
+    ::xdna_device_fixture
+    amdf::headers
+    iree::third_party::google_test
+    libamdf::cts::util::provider_headers
+  TESTONLY
+  ALWAYSLINK
+  PUBLIC
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA)
+set(_xdna_tests_platform_deps "")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  list(APPEND _xdna_tests_platform_deps ::linux_tests)
+endif()
+iree_cc_library(
+  NAME
+    xdna_tests
+  SRCS
+    "memory_test.cc"
+    "xdna_extension_test.cc"
+  DEPS
+    ::xdna_device_fixture
+    amdf::headers
+    iree::third_party::google_test
+    libamdf::cts::util::provider_headers
+    ${_xdna_tests_platform_deps}
   TESTONLY
   ALWAYSLINK
   PUBLIC

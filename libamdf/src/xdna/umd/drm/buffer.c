@@ -8,6 +8,7 @@
 #include "libamdf/src/xdna/umd/drm/buffer.h"
 
 #include <drm/amdxdna_accel.h>
+#include <stdint.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 
@@ -56,6 +57,39 @@ amdf_status_t amdf_linux_xdna_buffer_import_dma_buf(
   return AMDF_STATUS_OK;
 }
 
+amdf_status_t amdf_linux_xdna_buffer_register_host_pages(
+    int descriptor, void* host_page_base, size_t byte_length,
+    amdf_linux_xdna_buffer_t* out_buffer) {
+  _Alignas(struct amdxdna_drm_va_tbl) unsigned char
+      table_storage[sizeof(struct amdxdna_drm_va_tbl) +
+                    sizeof(struct amdxdna_drm_va_entry)] = {0};
+  struct amdxdna_drm_va_tbl* virtual_address_table =
+      (struct amdxdna_drm_va_tbl*)table_storage;
+  virtual_address_table->dmabuf_fd = -1;
+  virtual_address_table->num_entries = 1;
+  virtual_address_table->va_entries[0] = (struct amdxdna_drm_va_entry){
+      .vaddr = (uintptr_t)host_page_base,
+      .len = byte_length,
+  };
+  struct amdxdna_drm_create_bo create = {
+      .vaddr = (uintptr_t)virtual_address_table,
+      .type = AMDXDNA_BO_SHARE,
+  };
+  if (ioctl(descriptor, DRM_IOCTL_AMDXDNA_CREATE_BO, &create) != 0) {
+    return amdf_linux_error(errno);
+  }
+  if (create.handle == 0) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
+  }
+  *out_buffer = (amdf_linux_xdna_buffer_t){
+      .handle = create.handle,
+      .type = AMDXDNA_BO_SHARE,
+      .byte_length = byte_length,
+      .host_pointer = host_page_base,
+  };
+  return AMDF_STATUS_OK;
+}
+
 amdf_status_t amdf_linux_xdna_buffer_attach(
     int descriptor, size_t alignment, size_t page_size,
     const amdf_linux_xdna_buffer_t* heap, amdf_linux_xdna_buffer_t* buffer) {
@@ -63,7 +97,15 @@ amdf_status_t amdf_linux_xdna_buffer_attach(
   if (ioctl(descriptor, DRM_IOCTL_AMDXDNA_GET_BO_INFO, &info) != 0) {
     return amdf_linux_error(errno);
   }
-  if (buffer->type == AMDXDNA_BO_DEV) {
+  if (buffer->host_pointer != NULL && buffer->mapping.base == NULL) {
+    // Registered SHARE buffers have no mmap contract. PASID mode reports no
+    // numeric address because the original caller VA is the SVA; forced-IOVA
+    // mode reports the independently assigned device address.
+    buffer->device_address = info.xdna_addr == AMDXDNA_INVALID_ADDR
+                                 ? (uintptr_t)buffer->host_pointer
+                                 : info.xdna_addr;
+    return AMDF_STATUS_OK;
+  } else if (buffer->type == AMDXDNA_BO_DEV) {
     // The kernel reports a subrange of the one live heap mapping. Validate
     // native output before turning it into a host pointer used for copying.
     if (info.xdna_addr < heap->device_address ||
@@ -102,8 +144,7 @@ amdf_status_t amdf_linux_xdna_buffer_attach(
       return amdf_linux_error(errno);
     }
     if (info.vaddr != (uintptr_t)mapping ||
-        (buffer->type != AMDXDNA_BO_DEV_HEAP &&
-         info.xdna_addr != (uintptr_t)mapping)) {
+        info.xdna_addr == AMDXDNA_INVALID_ADDR) {
       return amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
     }
     buffer->host_pointer = mapping;
