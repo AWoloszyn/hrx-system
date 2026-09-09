@@ -124,11 +124,42 @@ amdf_cc_library(
 )
 
 amdf_cc_test(
+    name = "adapter_test",
+    srcs = ["adapter_test.cc"],
+    data = [":fake_wkmi_bridge_test"],
+    env = {
+        "AMDF_WKMI_BRIDGE_PATH": "$(location :fake_wkmi_bridge_test)",
+    },
+    target_compatible_with = ["@platforms//os:windows"],
+    deps = [
+        ":adapter",
+        ":loader",
+        "//third_party:google_test",
+        "//third_party:google_test_main",
+    ],
+)
+
+amdf_cc_test(
     name = "endpoint_properties_test",
     srcs = ["endpoint_properties_test.cc"],
     target_compatible_with = ["@platforms//os:windows"],
     deps = [
         ":endpoint_properties",
+        "//third_party:google_test",
+        "//third_party:google_test_main",
+    ],
+)
+
+amdf_cc_test(
+    name = "loader_test",
+    srcs = ["loader_test.cc"],
+    data = [":fake_wkmi_bridge_test"],
+    env = {
+        "AMDF_WKMI_BRIDGE_PATH": "$(location :fake_wkmi_bridge_test)",
+    },
+    target_compatible_with = ["@platforms//os:windows"],
+    deps = [
+        ":loader",
         "//third_party:google_test",
         "//third_party:google_test_main",
     ],

@@ -7,7 +7,6 @@
 #ifndef AMDF_SRC_GPU_UMD_WDDM_WKMI_ADAPTER_H_
 #define AMDF_SRC_GPU_UMD_WDDM_WKMI_ADAPTER_H_
 
-#include <stdbool.h>
 #include <stdint.h>
 
 #include "amdf/amdf.h"
@@ -19,21 +18,22 @@
 extern "C" {
 #endif  // __cplusplus
 
-// Loaded bridge and parsed private state for one physical GPU adapter.
+// Parsed private state for one physical GPU adapter.
 typedef struct amdf_gpu_wddm_wkmi_adapter_t {
-  // Loaded bridge module owning the native adapter and API table.
-  amdf_gpu_wddm_wkmi_loader_t loader;
+  // Borrowed API table owned by the loader that outlives this adapter.
+  const amdf_wkmi_bridge_api_t* api;
   // Opaque parsed adapter state owned by the loaded bridge.
   amdf_wkmi_bridge_gpu_adapter_t* native;
 } amdf_gpu_wddm_wkmi_adapter_t;
 
-// Loads WKMI and parses one physical GPU adapter.
+// Parses one physical GPU adapter through |loader|. Failure leaves both output
+// structures unchanged and creates no native adapter ownership.
 amdf_status_t amdf_gpu_wddm_wkmi_adapter_initialize(
-    D3DKMT_HANDLE adapter, uint32_t physical_adapter_index,
-    amdf_gpu_wddm_wkmi_adapter_t* out_adapter,
-    amdf_wkmi_bridge_gpu_properties_t* out_properties, bool* out_available);
+    const amdf_gpu_wddm_wkmi_loader_t* loader, D3DKMT_HANDLE adapter,
+    uint32_t physical_adapter_index, amdf_gpu_wddm_wkmi_adapter_t* out_adapter,
+    amdf_wkmi_bridge_gpu_properties_t* out_properties);
 
-// Releases parsed state and unloads WKMI after every dependent object is gone.
+// Releases parsed state after every dependent bridge object is gone.
 amdf_status_t amdf_gpu_wddm_wkmi_adapter_deinitialize(
     amdf_gpu_wddm_wkmi_adapter_t* adapter);
 

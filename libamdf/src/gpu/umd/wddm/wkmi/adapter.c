@@ -7,7 +7,6 @@
 #include "libamdf/src/gpu/umd/wddm/wkmi/adapter.h"
 
 #include <stddef.h>
-#include <string.h>
 
 _Static_assert(sizeof(D3DKMT_HANDLE) == sizeof(uint32_t),
                "WKMI bridge handles must match D3DKMT handles");
@@ -39,61 +38,48 @@ static amdf_status_t amdf_gpu_wddm_wkmi_make_status(
 }
 
 amdf_status_t amdf_gpu_wddm_wkmi_adapter_initialize(
-    D3DKMT_HANDLE adapter_handle, uint32_t physical_adapter_index,
-    amdf_gpu_wddm_wkmi_adapter_t* out_adapter,
-    amdf_wkmi_bridge_gpu_properties_t* out_properties, bool* out_available) {
-  *out_adapter = (amdf_gpu_wddm_wkmi_adapter_t){0};
-  *out_properties = (amdf_wkmi_bridge_gpu_properties_t){0};
-  *out_available = false;
-
-  amdf_gpu_wddm_wkmi_adapter_t adapter = {0};
-  amdf_status_t status = amdf_gpu_wddm_wkmi_loader_initialize(&adapter.loader);
-  if (amdf_status_is_ok(status)) {
-    uint32_t native_status = 0;
-    const amdf_wkmi_bridge_result_t result =
-        adapter.loader.api->gpu_adapter_open(
-            (uint32_t)adapter_handle, physical_adapter_index, &adapter.native,
-            out_properties, &native_status);
-    if (result == AMDF_WKMI_BRIDGE_RESULT_UNSUPPORTED) {
-      status = AMDF_STATUS_OK;
-    } else {
-      status = amdf_gpu_wddm_wkmi_make_status(result, native_status);
-      *out_available = amdf_status_is_ok(status);
-    }
-  }
-
-  if (*out_available) {
-    *out_adapter = adapter;
-  } else if (adapter.loader.module != NULL) {
-    const amdf_status_t cleanup_status =
-        amdf_gpu_wddm_wkmi_adapter_deinitialize(&adapter);
-    if (!amdf_status_is_ok(cleanup_status)) {
-      status = cleanup_status;
-    }
-  }
+    const amdf_gpu_wddm_wkmi_loader_t* loader, D3DKMT_HANDLE adapter_handle,
+    uint32_t physical_adapter_index, amdf_gpu_wddm_wkmi_adapter_t* out_adapter,
+    amdf_wkmi_bridge_gpu_properties_t* out_properties) {
+  const amdf_wkmi_bridge_api_t* api = NULL;
+  amdf_status_t status = amdf_gpu_wddm_wkmi_loader_query_api(loader, &api);
   if (!amdf_status_is_ok(status)) {
-    *out_properties = (amdf_wkmi_bridge_gpu_properties_t){0};
+    return status;
   }
-  return status;
+
+  amdf_wkmi_bridge_gpu_adapter_t* native = NULL;
+  amdf_wkmi_bridge_gpu_properties_t properties = {0};
+  uint32_t native_status = 0;
+  const amdf_wkmi_bridge_result_t result =
+      api->gpu_adapter_open((uint32_t)adapter_handle, physical_adapter_index,
+                            &native, &properties, &native_status);
+  status = amdf_gpu_wddm_wkmi_make_status(result, native_status);
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
+  if (native == NULL) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
+  }
+
+  *out_properties = properties;
+  *out_adapter = (amdf_gpu_wddm_wkmi_adapter_t){
+      .api = api,
+      .native = native,
+  };
+  return AMDF_STATUS_OK;
 }
 
 amdf_status_t amdf_gpu_wddm_wkmi_adapter_deinitialize(
     amdf_gpu_wddm_wkmi_adapter_t* adapter) {
-  if (adapter->native != NULL) {
-    uint32_t native_status = 0;
-    const amdf_wkmi_bridge_result_t result =
-        adapter->loader.api->gpu_adapter_close(adapter->native, &native_status);
-    const amdf_status_t status =
-        amdf_gpu_wddm_wkmi_make_status(result, native_status);
-    if (!amdf_status_is_ok(status)) {
-      return status;
-    }
-    adapter->native = NULL;
+  uint32_t native_status = 0;
+  const amdf_wkmi_bridge_result_t result =
+      adapter->api->gpu_adapter_close(adapter->native, &native_status);
+  const amdf_status_t status =
+      amdf_gpu_wddm_wkmi_make_status(result, native_status);
+  if (amdf_status_is_ok(status)) {
+    *adapter = (amdf_gpu_wddm_wkmi_adapter_t){0};
   }
-  if (adapter->loader.module == NULL) {
-    return AMDF_STATUS_OK;
-  }
-  return amdf_gpu_wddm_wkmi_loader_deinitialize(&adapter->loader);
+  return status;
 }
 
 amdf_status_t amdf_gpu_wddm_wkmi_adapter_query_allocation_layout(
@@ -101,7 +87,7 @@ amdf_status_t amdf_gpu_wddm_wkmi_adapter_query_allocation_layout(
     uint32_t* out_allocation_count,
     uint64_t* out_maximum_allocation_byte_length) {
   const amdf_wkmi_bridge_result_t result =
-      adapter->loader.api->gpu_allocation_query_layout(
+      adapter->api->gpu_allocation_query_layout(
           adapter->native, byte_length, out_allocation_count,
           out_maximum_allocation_byte_length);
   return amdf_gpu_wddm_wkmi_make_status(result, 0);
@@ -113,11 +99,10 @@ amdf_status_t amdf_gpu_wddm_wkmi_adapter_create_allocations(
     uint32_t allocation_handle_capacity, D3DKMT_HANDLE* out_allocation_handles,
     D3DKMT_HANDLE* out_resource, uint32_t* out_allocation_count) {
   uint32_t native_status = 0;
-  const amdf_wkmi_bridge_result_t result =
-      adapter->loader.api->gpu_allocation_create(
-          adapter->native, create_info, allocation_handle_capacity,
-          (uint32_t*)out_allocation_handles, (uint32_t*)out_resource,
-          out_allocation_count, &native_status);
+  const amdf_wkmi_bridge_result_t result = adapter->api->gpu_allocation_create(
+      adapter->native, create_info, allocation_handle_capacity,
+      (uint32_t*)out_allocation_handles, (uint32_t*)out_resource,
+      out_allocation_count, &native_status);
   return amdf_gpu_wddm_wkmi_make_status(result, native_status);
 }
 
@@ -128,7 +113,7 @@ amdf_status_t amdf_gpu_wddm_wkmi_adapter_create_kernel_queue(
     amdf_wkmi_bridge_gpu_kernel_queue_info_t* out_info) {
   uint32_t native_status = 0;
   const amdf_wkmi_bridge_result_t result =
-      adapter->loader.api->gpu_kernel_queue_create(
+      adapter->api->gpu_kernel_queue_create(
           adapter->native, create_info, out_queue, out_info, &native_status);
   return amdf_gpu_wddm_wkmi_make_status(result, native_status);
 }
@@ -139,9 +124,9 @@ amdf_status_t amdf_gpu_wddm_wkmi_adapter_submit_kernel_queue(
     uint64_t command_buffer_byte_length, uint64_t progress_value) {
   uint32_t native_status = 0;
   const amdf_wkmi_bridge_result_t result =
-      adapter->loader.api->gpu_kernel_queue_submit(
-          queue, command_buffer_address, command_buffer_byte_length,
-          progress_value, &native_status);
+      adapter->api->gpu_kernel_queue_submit(queue, command_buffer_address,
+                                            command_buffer_byte_length,
+                                            progress_value, &native_status);
   return amdf_gpu_wddm_wkmi_make_status(result, native_status);
 }
 
@@ -150,6 +135,6 @@ amdf_status_t amdf_gpu_wddm_wkmi_adapter_destroy_kernel_queue(
     amdf_wkmi_bridge_gpu_kernel_queue_t* queue) {
   uint32_t native_status = 0;
   const amdf_wkmi_bridge_result_t result =
-      adapter->loader.api->gpu_kernel_queue_destroy(queue, &native_status);
+      adapter->api->gpu_kernel_queue_destroy(queue, &native_status);
   return amdf_gpu_wddm_wkmi_make_status(result, native_status);
 }

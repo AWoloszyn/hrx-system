@@ -106,6 +106,29 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
 iree_cc_test(
   NAME
+    endpoint_profile_test
+  SRCS
+    "endpoint_profile_test.cc"
+  DATA
+    libamdf::src::gpu::umd::wddm::wkmi::fake_wkmi_bridge_test
+  DEPS
+    ::endpoint_profile
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+    libamdf::src::gpu::umd::endpoint_profile
+    libamdf::src::platform::windows::endpoint
+  ENV
+    "AMDF_WKMI_BRIDGE_PATH=$<TARGET_FILE:libamdf::src::gpu::umd::wddm::wkmi::fake_wkmi_bridge_test>"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_test(
+  NAME
     device_test
   SRCS
     "device_test.cc"

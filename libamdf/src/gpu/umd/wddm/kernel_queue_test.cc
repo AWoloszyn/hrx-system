@@ -108,8 +108,8 @@ class WindowsGpuKernelQueueTest : public ::testing::Test {
     kmt_.wait_from_cpu = FakeWaitFromCpu;
     device_.device = 0x10;
     device_.kmt = &kmt_;
-    device_.wkmi.loader.api = &bridge_;
-    device_.wkmi.native =
+    device_.wkmi_adapter.api = &bridge_;
+    device_.wkmi_adapter.native =
         reinterpret_cast<amdf_wkmi_bridge_gpu_adapter_t*>(&state_);
     amdf_kmt_device_status_initialize(&device_.status);
     ASSERT_EQ(amdf_gpu_umd_kernel_queue_create(

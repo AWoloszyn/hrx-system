@@ -105,8 +105,6 @@ GpuAdapterOpen(uint32_t adapter_handle, uint32_t physical_adapter_index,
       out_properties == nullptr || out_native_status == nullptr) {
     return AMDF_WKMI_BRIDGE_RESULT_INVALID_ARGUMENT;
   }
-  *out_adapter = nullptr;
-  *out_properties = {};
   *out_native_status = 0;
   if (physical_adapter_index != 0) {
     return AMDF_WKMI_BRIDGE_RESULT_UNSUPPORTED;
@@ -344,7 +342,6 @@ amdf_wkmi_bridge_query_api(uint32_t minimum_version, uint32_t maximum_version,
   if (out_api == nullptr) {
     return AMDF_WKMI_BRIDGE_RESULT_INVALID_ARGUMENT;
   }
-  *out_api = nullptr;
   if (minimum_version > AMDF_WKMI_BRIDGE_ABI_VERSION_1 ||
       maximum_version < AMDF_WKMI_BRIDGE_ABI_VERSION_1) {
     return AMDF_WKMI_BRIDGE_RESULT_VERSION_MISMATCH;

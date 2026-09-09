@@ -11,7 +11,7 @@
 #include "libamdf/src/gpu/umd/kfd/topology.h"
 
 amdf_status_t amdf_gpu_umd_query_endpoint_profile(
-    const amdf_platform_endpoint_t* endpoint,
+    amdf_platform_endpoint_t* endpoint,
     amdf_gpu_endpoint_profile_t* out_profile, bool* out_available) {
   *out_available = false;
   amdf_gpu_kfd_topology_t topology = {0};

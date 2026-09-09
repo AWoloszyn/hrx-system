@@ -14,10 +14,17 @@ struct amdf_wkmi_bridge_gpu_kernel_queue_t {};
 namespace {
 
 struct FakeBridgeState {
+  // Stable parsed adapter identity returned by successful opens.
   amdf_wkmi_bridge_gpu_adapter_t adapter;
+  // Result selected for bridge API negotiation.
+  amdf_wkmi_bridge_result_t query_result = AMDF_WKMI_BRIDGE_RESULT_SUCCESS;
+  // Number of adapter-close operations rejected before native consumption.
   uint32_t adapter_close_failures_remaining = 1;
+  // Number of successfully parsed adapters.
   uint32_t adapter_open_success_count = 0;
+  // Number of adapter-close attempts.
   uint32_t adapter_close_attempt_count = 0;
+  // Number of successfully released adapters.
   uint32_t adapter_close_success_count = 0;
 };
 
@@ -33,10 +40,24 @@ GpuAdapterOpen(uint32_t adapter_handle, uint32_t physical_adapter_index,
       out_native_status == nullptr) {
     return AMDF_WKMI_BRIDGE_RESULT_INVALID_ARGUMENT;
   }
-  *out_adapter = &state.adapter;
-  *out_properties = {};
-  *out_native_status = 0;
+  amdf_wkmi_bridge_gpu_properties_t properties = {};
+  properties.gfx_ip_major = 11;
+  properties.gfx_ip_minor = 5;
+  properties.gfx_ip_stepping = 1;
+  properties.asic_revision = 3;
+  properties.wavefront_size = 32;
+  properties.compute_unit_count = 16;
+  properties.maximum_wave_count_per_compute_unit = 32;
+  properties.maximum_scratch_wave_count_per_compute_unit = 32;
+  properties.local_data_share_byte_length = 64 * 1024;
+  properties.xcc_count = 1;
+  properties.shader_engine_count = 2;
+  properties.supports_pm4_kernel_queue = 1;
+  properties.supports_sdma_kernel_queue = 1;
   ++state.adapter_open_success_count;
+  *out_adapter = &state.adapter;
+  *out_properties = properties;
+  *out_native_status = 0;
   return AMDF_WKMI_BRIDGE_RESULT_SUCCESS;
 }
 
@@ -106,7 +127,9 @@ amdf_wkmi_bridge_query_api(uint32_t minimum_version, uint32_t maximum_version,
   if (out_api == nullptr) {
     return AMDF_WKMI_BRIDGE_RESULT_INVALID_ARGUMENT;
   }
-  *out_api = nullptr;
+  if (state.query_result != AMDF_WKMI_BRIDGE_RESULT_SUCCESS) {
+    return state.query_result;
+  }
   if (minimum_version > AMDF_WKMI_BRIDGE_ABI_VERSION_1 ||
       maximum_version < AMDF_WKMI_BRIDGE_ABI_VERSION_1) {
     return AMDF_WKMI_BRIDGE_RESULT_VERSION_MISMATCH;
@@ -118,7 +141,18 @@ amdf_wkmi_bridge_query_api(uint32_t minimum_version, uint32_t maximum_version,
 extern "C" __declspec(dllexport) void AMDF_WKMI_BRIDGE_CALL
 amdf_test_wkmi_bridge_reset(void) {
   state = {};
+  state.query_result = AMDF_WKMI_BRIDGE_RESULT_SUCCESS;
   state.adapter_close_failures_remaining = 1;
+}
+
+extern "C" __declspec(dllexport) void AMDF_WKMI_BRIDGE_CALL
+amdf_test_wkmi_bridge_set_query_result(amdf_wkmi_bridge_result_t result) {
+  state.query_result = result;
+}
+
+extern "C" __declspec(dllexport) void AMDF_WKMI_BRIDGE_CALL
+amdf_test_wkmi_bridge_set_adapter_close_failures(uint32_t failure_count) {
+  state.adapter_close_failures_remaining = failure_count;
 }
 
 extern "C" __declspec(dllexport) uint32_t AMDF_WKMI_BRIDGE_CALL

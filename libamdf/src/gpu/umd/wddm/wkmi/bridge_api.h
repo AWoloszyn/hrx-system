@@ -206,6 +206,8 @@ typedef struct amdf_wkmi_bridge_api_t {
   //
   // |adapter_handle| is a live D3DKMT adapter handle and
   // |physical_adapter_index| selects one physical adapter represented by it.
+  // Success publishes the adapter and properties. Every other result leaves
+  // both outputs unchanged and retains no native adapter ownership.
   // |out_native_status| receives the NTSTATUS only for
   // AMDF_WKMI_BRIDGE_RESULT_NATIVE_FAILURE and is zero otherwise.
   amdf_wkmi_bridge_result_t(AMDF_WKMI_BRIDGE_CALL* gpu_adapter_open)(
@@ -268,7 +270,8 @@ _Static_assert(sizeof(amdf_wkmi_bridge_api_t) == 64,
                "WKMI entry-point table ABI must remain stable");
 #endif
 
-// Negotiates one immutable bridge API table.
+// Negotiates one immutable bridge API table. Failure leaves |out_api|
+// unchanged.
 typedef amdf_wkmi_bridge_result_t(
     AMDF_WKMI_BRIDGE_CALL* amdf_wkmi_bridge_query_api_fn_t)(
     uint32_t minimum_version, uint32_t maximum_version,

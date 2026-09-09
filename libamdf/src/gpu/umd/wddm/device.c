@@ -14,14 +14,24 @@
 
 static amdf_status_t amdf_gpu_wddm_device_release_native(
     amdf_gpu_umd_device_t* device) {
-  amdf_status_t status = amdf_gpu_wddm_wkmi_adapter_deinitialize(&device->wkmi);
-  if (!amdf_status_is_ok(status)) {
-    return status;
+  if (device->wkmi_adapter.native != NULL) {
+    const amdf_status_t status =
+        amdf_gpu_wddm_wkmi_adapter_deinitialize(&device->wkmi_adapter);
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
+  }
+  if (device->wkmi_loader.module != NULL) {
+    const amdf_status_t status =
+        amdf_gpu_wddm_wkmi_loader_deinitialize(&device->wkmi_loader);
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
   }
   if (device->paging_queue != 0) {
     D3DDDI_DESTROYPAGINGQUEUE destroy_paging_queue = {0};
     destroy_paging_queue.hPagingQueue = device->paging_queue;
-    status = amdf_kmt_make_status(
+    const amdf_status_t status = amdf_kmt_make_status(
         device->kmt->destroy_paging_queue(&destroy_paging_queue));
     if (!amdf_status_is_ok(status)) {
       return status;
@@ -33,7 +43,8 @@ static amdf_status_t amdf_gpu_wddm_device_release_native(
   if (device->device != 0) {
     D3DKMT_DESTROYDEVICE destroy_device = {0};
     destroy_device.hDevice = device->device;
-    status = amdf_kmt_make_status(device->kmt->destroy_device(&destroy_device));
+    const amdf_status_t status =
+        amdf_kmt_make_status(device->kmt->destroy_device(&destroy_device));
     if (!amdf_status_is_ok(status)) {
       return status;
     }
@@ -64,14 +75,14 @@ amdf_status_t amdf_gpu_umd_device_create(
   device->physical_adapter_index = endpoint->physical_adapter_index;
 
   amdf_wkmi_bridge_gpu_properties_t properties = {0};
-  bool wkmi_available = false;
-  amdf_status_t status = amdf_gpu_wddm_wkmi_adapter_initialize(
-      endpoint->adapter, endpoint->physical_adapter_index, &device->wkmi,
-      &properties, &wkmi_available);
-  (void)properties;
-  if (amdf_status_is_ok(status) && !wkmi_available) {
-    status = amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  amdf_status_t status =
+      amdf_gpu_wddm_wkmi_loader_initialize(&device->wkmi_loader);
+  if (amdf_status_is_ok(status)) {
+    status = amdf_gpu_wddm_wkmi_adapter_initialize(
+        &device->wkmi_loader, endpoint->adapter,
+        endpoint->physical_adapter_index, &device->wkmi_adapter, &properties);
   }
+  (void)properties;
 
   D3DKMT_CREATEDEVICE create_device = {0};
   create_device.hAdapter = endpoint->adapter;

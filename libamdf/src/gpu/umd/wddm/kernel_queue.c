@@ -78,7 +78,7 @@ amdf_status_t amdf_gpu_umd_kernel_queue_create(
   };
   if (amdf_status_is_ok(status)) {
     status = amdf_gpu_wddm_wkmi_adapter_create_kernel_queue(
-        &device->wkmi, &create_info, &queue->native, &queue_info);
+        &device->wkmi_adapter, &create_info, &queue->native, &queue_info);
   }
   if (amdf_status_is_ok(status)) {
     queue->command_buffer_alignment = queue_info.command_buffer_alignment;
@@ -124,7 +124,7 @@ amdf_status_t amdf_gpu_umd_kernel_queue_submit(
   const uint64_t native_submission = queue->last_native_submission + 1;
   MemoryBarrier();
   const amdf_status_t status = amdf_gpu_wddm_wkmi_adapter_submit_kernel_queue(
-      &queue->device->wkmi, queue->native, command_buffer_address,
+      &queue->device->wkmi_adapter, queue->native, command_buffer_address,
       command_buffer_byte_length, native_submission);
   if (amdf_status_is_ok(status)) {
     queue->last_native_submission = native_submission;
@@ -242,8 +242,8 @@ amdf_status_t amdf_gpu_umd_kernel_queue_destroy(
     amdf_gpu_umd_kernel_queue_t* queue) {
   if (queue->native != NULL) {
     const amdf_status_t status =
-        amdf_gpu_wddm_wkmi_adapter_destroy_kernel_queue(&queue->device->wkmi,
-                                                        queue->native);
+        amdf_gpu_wddm_wkmi_adapter_destroy_kernel_queue(
+            &queue->device->wkmi_adapter, queue->native);
     if (!amdf_status_is_ok(status)) {
       return status;
     }

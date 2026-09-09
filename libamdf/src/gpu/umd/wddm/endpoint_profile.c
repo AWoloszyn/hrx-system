@@ -13,17 +13,25 @@
 #include "libamdf/src/platform/windows/endpoint.h"
 
 amdf_status_t amdf_gpu_umd_query_endpoint_profile(
-    const amdf_platform_endpoint_t* platform_endpoint,
+    amdf_platform_endpoint_t* platform_endpoint,
     amdf_gpu_endpoint_profile_t* out_profile, bool* out_available) {
-  *out_available = false;
+  amdf_gpu_wddm_wkmi_loader_t loader = {0};
   amdf_gpu_wddm_wkmi_adapter_t adapter = {0};
+  bool profile_available = false;
+  amdf_gpu_endpoint_profile_t profile = {0};
   amdf_wkmi_bridge_gpu_properties_t provider_properties = {0};
-  bool provider_properties_available = false;
-  amdf_status_t status = amdf_gpu_wddm_wkmi_adapter_initialize(
-      platform_endpoint->adapter, platform_endpoint->physical_adapter_index,
-      &adapter, &provider_properties, &provider_properties_available);
+  amdf_status_t status = amdf_gpu_wddm_wkmi_loader_initialize(&loader);
+  if (amdf_status_is_ok(status)) {
+    status = amdf_gpu_wddm_wkmi_adapter_initialize(
+        &loader, platform_endpoint->adapter,
+        platform_endpoint->physical_adapter_index, &adapter,
+        &provider_properties);
+    if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
+      status = AMDF_STATUS_OK;
+    }
+  }
 
-  if (amdf_status_is_ok(status) && provider_properties_available) {
+  if (amdf_status_is_ok(status) && adapter.native != NULL) {
     amdf_gpu_endpoint_properties_t properties = {0};
     if (amdf_gpu_wddm_wkmi_endpoint_properties_translate(&provider_properties,
                                                          &properties)) {
@@ -33,22 +41,31 @@ amdf_status_t amdf_gpu_umd_query_endpoint_profile(
               .features = AMDF_GPU_DEVICE_FEATURE_HOST_REGISTRATION |
                           AMDF_GPU_DEVICE_FEATURE_DEVICE_RECREATION |
                           AMDF_GPU_DEVICE_FEATURE_LOCAL_MEMORY,
-          };
-    }
-    if (amdf_gpu_endpoint_profile_initialize(&properties, out_profile)) {
-      *out_available = true;
+      };
+      if (amdf_gpu_endpoint_profile_initialize(&properties, &profile)) {
+        profile_available = true;
+      } else {
+        status = amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
+      }
     } else {
       status = amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
     }
   }
 
-  if (adapter.loader.module != NULL) {
-    const amdf_status_t deinitialize_status =
-        amdf_gpu_wddm_wkmi_adapter_deinitialize(&adapter);
-    if (!amdf_status_is_ok(deinitialize_status)) {
-      *out_available = false;
-      status = deinitialize_status;
+  amdf_status_t release_status = AMDF_STATUS_OK;
+  if (adapter.native != NULL) {
+    release_status = amdf_gpu_wddm_wkmi_adapter_deinitialize(&adapter);
+  }
+  if (amdf_status_is_ok(release_status) && loader.module != NULL) {
+    release_status = amdf_gpu_wddm_wkmi_loader_deinitialize(&loader);
+  }
+  if (!amdf_status_is_ok(release_status)) status = release_status;
+
+  if (amdf_status_is_ok(status)) {
+    if (profile_available) {
+      *out_profile = profile;
     }
+    *out_available = profile_available;
   }
   return status;
 }

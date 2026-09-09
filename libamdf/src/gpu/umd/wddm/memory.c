@@ -267,7 +267,7 @@ static amdf_status_t amdf_windows_gpu_memory_create_allocations(
   }
   uint32_t created_allocation_count = 0;
   const amdf_status_t status = amdf_gpu_wddm_wkmi_adapter_create_allocations(
-      &memory->device->wkmi, &create_info, memory->allocation_capacity,
+      &memory->device->wkmi_adapter, &create_info, memory->allocation_capacity,
       memory->allocation_handles, &memory->resource, &created_allocation_count);
   if (!amdf_status_is_ok(status)) return status;
   // Capture every usable native handle before rejecting malformed driver
@@ -523,7 +523,7 @@ amdf_status_t amdf_gpu_umd_memory_create(
   uint32_t allocation_count = 0;
   uint64_t maximum_native_allocation_byte_length = 0;
   status = amdf_gpu_wddm_wkmi_adapter_query_allocation_layout(
-      &device->wkmi, plan.byte_length, &allocation_count,
+      &device->wkmi_adapter, plan.byte_length, &allocation_count,
       &maximum_native_allocation_byte_length);
   if (!amdf_status_is_ok(status)) {
     return status;

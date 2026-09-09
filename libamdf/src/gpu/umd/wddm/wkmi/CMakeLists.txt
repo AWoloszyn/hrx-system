@@ -131,6 +131,28 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
 iree_cc_test(
   NAME
+    adapter_test
+  SRCS
+    "adapter_test.cc"
+  DATA
+    ::fake_wkmi_bridge_test
+  DEPS
+    ::adapter
+    ::loader
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+  ENV
+    "AMDF_WKMI_BRIDGE_PATH=$<TARGET_FILE:libamdf::src::gpu::umd::wddm::wkmi::fake_wkmi_bridge_test>"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_test(
+  NAME
     endpoint_properties_test
   SRCS
     "endpoint_properties_test.cc"
@@ -139,6 +161,27 @@ iree_cc_test(
     amdf::headers
     iree::third_party::google_test
     iree::third_party::google_test_main
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_test(
+  NAME
+    loader_test
+  SRCS
+    "loader_test.cc"
+  DATA
+    ::fake_wkmi_bridge_test
+  DEPS
+    ::loader
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+  ENV
+    "AMDF_WKMI_BRIDGE_PATH=$<TARGET_FILE:libamdf::src::gpu::umd::wddm::wkmi::fake_wkmi_bridge_test>"
   LABELS
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.gpu"

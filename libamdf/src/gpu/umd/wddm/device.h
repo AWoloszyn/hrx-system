@@ -20,8 +20,10 @@ struct amdf_gpu_umd_device_t {
   D3DKMT_HANDLE adapter;
   // Physical adapter represented by native private records.
   uint32_t physical_adapter_index;
-  // Loaded private WKMI adapter state shared by allocations and queues.
-  amdf_gpu_wddm_wkmi_adapter_t wkmi;
+  // Loaded WKMI module outliving its borrowed API table and native adapter.
+  amdf_gpu_wddm_wkmi_loader_t wkmi_loader;
+  // Parsed private WKMI adapter state shared by allocations and queues.
+  amdf_gpu_wddm_wkmi_adapter_t wkmi_adapter;
   // Logical KMT device owning paging and future execution state.
   D3DKMT_HANDLE device;
   // Confirmed execution failure shared by every queue on this device.

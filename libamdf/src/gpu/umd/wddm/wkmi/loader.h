@@ -23,17 +23,21 @@
 extern "C" {
 #endif  // __cplusplus
 
-// Loaded private WKMI bridge and its negotiated immutable API table.
+// Loaded private WKMI bridge module.
 typedef struct amdf_gpu_wddm_wkmi_loader_t {
-  // Module owning every procedure in `api`.
+  // Module owning every bridge procedure and returned API table.
   HMODULE module;
-  // Borrowed API table valid until `module` is unloaded.
-  const amdf_wkmi_bridge_api_t* api;
 } amdf_gpu_wddm_wkmi_loader_t;
 
-// Loads the bridge and negotiates its most recent supported API version.
+// Loads the bridge. Failure leaves |out_loader| unchanged.
 amdf_status_t amdf_gpu_wddm_wkmi_loader_initialize(
     amdf_gpu_wddm_wkmi_loader_t* out_loader);
+
+// Negotiates the most recent API supported by a loaded bridge.
+// Failure leaves |out_api| unchanged.
+amdf_status_t amdf_gpu_wddm_wkmi_loader_query_api(
+    const amdf_gpu_wddm_wkmi_loader_t* loader,
+    const amdf_wkmi_bridge_api_t** out_api);
 
 // Unloads the bridge after all calls through its API table have returned.
 amdf_status_t amdf_gpu_wddm_wkmi_loader_deinitialize(
