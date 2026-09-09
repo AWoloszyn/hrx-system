@@ -1,0 +1,76 @@
+// Turn-domain trigonometry has a frozen f32 mapping shared with source folding.
+// Dynamic payloads exercise the compiled operations, including their low bits.
+func.def public @turns(%bits: i32) -> (i32, i32) {
+  %value = scalar.bitcast %bits : i32 to f32
+  %sin = scalar.sinturnsf %value : f32
+  %cos = scalar.costurnsf %value : f32
+  %sin_bits = scalar.bitcast %sin : f32 to i32
+  %cos_bits = scalar.bitcast %cos : f32 to i32
+  func.return %sin_bits, %cos_bits : i32, i32
+}
+
+check.case @turns_integral {
+  %input = check.param.choice values([0, 1065353216, 1258291200]) : i32
+  %sin, %cos = func.call @turns(%input) : (i32) -> (i32, i32)
+  %expected_sin = check.literal value(0) : i32
+  check.expect.equal actual(%sin) expected(%expected_sin) : i32
+  %expected_cos = check.literal value(1065353216) : i32
+  check.expect.equal actual(%cos) expected(%expected_cos) : i32
+  check.return
+}
+
+check.case @turns_quarter {
+  %input = check.literal value(1048576000) : i32
+  %sin, %cos = func.call @turns(%input) : (i32) -> (i32, i32)
+  %expected_sin = check.literal value(1065353216) : i32
+  check.expect.equal actual(%sin) expected(%expected_sin) : i32
+  %expected_cos = check.literal value(0) : i32
+  check.expect.equal actual(%cos) expected(%expected_cos) : i32
+  check.return
+}
+
+check.case @turns_negative_zero {
+  %input = check.literal value(-2147483648) : i32
+  %sin, %cos = func.call @turns(%input) : (i32) -> (i32, i32)
+  %expected_sin = check.literal value(-2147483648) : i32
+  check.expect.equal actual(%sin) expected(%expected_sin) : i32
+  %expected_cos = check.literal value(1065353216) : i32
+  check.expect.equal actual(%cos) expected(%expected_cos) : i32
+  check.return
+}
+
+check.case @turns_subnormal {
+  %input = check.literal value(1) : i32
+  %sin, %cos = func.call @turns(%input) : (i32) -> (i32, i32)
+  %expected_sin = check.literal value(6) : i32
+  check.expect.equal actual(%sin) expected(%expected_sin) : i32
+  %expected_cos = check.literal value(1065353216) : i32
+  check.expect.equal actual(%cos) expected(%expected_cos) : i32
+  check.return
+}
+
+check.case @turns_nonfinite {
+  %input = check.param.choice values([2139095040, -8388608, 2143289344]) : i32
+  %sin, %cos = func.call @turns(%input) : (i32) -> (i32, i32)
+  %expected_sin = check.literal value(2143289344) : i32
+  check.expect.equal actual(%sin) expected(%expected_sin) : i32
+  %expected_cos = check.literal value(2143289344) : i32
+  check.expect.equal actual(%cos) expected(%expected_cos) : i32
+  check.return
+}
+
+check.case @turns_frozen_sine {
+  %input = check.literal value(1180433910) : i32
+  %sin, %cos = func.call @turns(%input) : (i32) -> (i32, i32)
+  %expected_sin = check.literal value(1031482228) : i32
+  check.expect.equal actual(%sin) expected(%expected_sin) : i32
+  check.return
+}
+
+check.case @turns_frozen_cosine {
+  %input = check.literal value(-976397844) : i32
+  %sin, %cos = func.call @turns(%input) : (i32) -> (i32, i32)
+  %expected_cos = check.literal value(1031482228) : i32
+  check.expect.equal actual(%cos) expected(%expected_cos) : i32
+  check.return
+}

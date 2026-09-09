@@ -18,6 +18,16 @@ static void loom_vm_math_policy_query(
     case LOOM_TARGET_MATH_OP_ROUNDEVENF:
     case LOOM_TARGET_MATH_OP_TRUNCF:
       break;
+    case LOOM_TARGET_MATH_OP_SINTURNSF:
+    case LOOM_TARGET_MATH_OP_COSTURNSF:
+      if (query->element_type != LOOM_SCALAR_TYPE_F32) {
+        *out_decision = (loom_target_math_policy_decision_t){
+            .action = LOOM_TARGET_MATH_POLICY_ACTION_REJECT,
+            .constraint_key = IREE_SVL("math.turns_trig.f32"),
+        };
+        return;
+      }
+      break;
     default:
       *out_decision = (loom_target_math_policy_decision_t){
           .action = LOOM_TARGET_MATH_POLICY_ACTION_REJECT,

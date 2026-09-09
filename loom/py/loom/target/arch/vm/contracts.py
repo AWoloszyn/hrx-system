@@ -148,11 +148,15 @@ _SELECTED_SOURCE_OPS = {
         "isfinite": comparison.scalar_isfinitef,
     },
 }
-_EXACT_MATH_SOURCE_OPS = {
+_MATH_SOURCE_OPS = {
     "ceil": math.scalar_ceilf,
     "floor": math.scalar_floorf,
     "round_even": math.scalar_roundevenf,
     "trunc": math.scalar_truncf,
+    # Despite the ISA spelling, these are frozen correctly rounded f32
+    # mappings shared with source constant folding, including subnormals.
+    "sin_turns.approx": math.scalar_sinturnsf,
+    "cos_turns.approx": math.scalar_costurnsf,
 }
 _ATTRIBUTE_SOURCE_OPS = {
     IntegerCompareSemantics: (comparison.scalar_cmpi, "i", "predicate"),
@@ -477,22 +481,24 @@ def _conversion_cases():
 
 
 def _math_cases():
+    remaining = set(_MATH_SOURCE_OPS)
     for descriptor in VM_CORE_DESCRIPTOR_SET.descriptors:
         instruction = _INSTRUCTIONS[descriptor.encoding_id]
         if not isinstance(instruction.semantics, FloatMathSemantics):
             continue
         selector = instruction.fields[-1].rule.data
-        assert set(_EXACT_MATH_SOURCE_OPS) <= {value.name for value in selector.values}
         for value in selector.values:
-            # Approximate selectors have distinct denormal/accuracy contracts;
-            # an unqualified source operation cannot select them.
-            if source_op := _EXACT_MATH_SOURCE_OPS.get(value.name):
+            # Machine selectors with different denormal contracts require
+            # separate source policies; a matching spelling is insufficient.
+            if source_op := _MATH_SOURCE_OPS.get(value.name):
+                remaining.discard(value.name)
                 yield _scalar_rule(
                     descriptor,
                     source_op,
                     Scalar(f"f{instruction.semantics.bit_width}"),
                     value.value,
                 )
+    assert not remaining, f"math source mappings have no ISA selector: {remaining}"
 
 
 def _address_cases():
