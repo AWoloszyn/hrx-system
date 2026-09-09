@@ -25,6 +25,31 @@ loom_cc_library(
 )
 
 loom_cc_library(
+    name = "module",
+    srcs = [
+        "function.c",
+        "module.c",
+    ],
+    hdrs = [
+        "function.h",
+        "module.h",
+    ],
+    visibility = ["//loom/src/loom/tooling/target/vm:__pkg__"],
+    deps = [
+        "//loom/src/loom/codegen/low:frame",
+        "//loom/src/loom/codegen/low/allocation:move_sequence",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops/low",
+        "//loom/src/loom/target:function_version",
+        "//loom/src/loom/target:provider",
+        "//loom/src/loom/target/arch/vm/descriptors",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/io:stream",
+        "//runtime/src/iree/vm/bytecode:wire",
+    ],
+)
+
+loom_cc_library(
     name = "provider",
     srcs = [
         "lower.c",
@@ -37,8 +62,13 @@ loom_cc_library(
     visibility = [
         "//loom/src/loom/target/all:__pkg__",
         "//loom/src/loom/target/configured:__pkg__",
+        "//loom/src/loom/tooling/target/vm:__pkg__",
+        "//loom/src/loom/tools/iree-benchmark-loom:__pkg__",
+        "//loom/src/loom/tools/iree-test-loom:__pkg__",
     ],
     deps = [
+        ":module",
+        ":records",
         "//loom/src/loom/codegen/low/lower",
         "//loom/src/loom/error:error_defs",
         "//loom/src/loom/target:provider",
@@ -54,6 +84,7 @@ loom_check_test_suite(
     name = "loom_check_file_test",
     srcs = [
         "test/assembly.loom-test",
+        "test/emission.loom-test",
         "test/scalar.loom-test",
     ],
     target_compatible_with = loom_config_compatible_with(["//loom/config/target/arch:vm"]),
@@ -66,8 +97,11 @@ loom_cc_library(
     hdrs = ["check.h"],
     visibility = ["//loom/src/loom/tools/loom-check:__pkg__"],
     deps = [
+        ":module",
         ":provider",
+        "//loom/src/loom/tools/loom-check:execute",
         "//loom/src/loom/tools/loom-check:provider",
         "//runtime/src/iree/base",
+        "//runtime/src/iree/vm/bytecode:disassembler",
     ],
 )

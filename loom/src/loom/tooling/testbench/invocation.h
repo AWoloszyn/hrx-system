@@ -72,6 +72,20 @@ typedef struct loom_testbench_invocation_provider_t {
   void* user_data;
 } loom_testbench_invocation_provider_t;
 
+// Binds one borrowed function-call provider to a complete parsed case plan.
+// The caller owns callback state. The plan remains live through the final
+// invocation; provider teardown must not access it after the runner returns.
+typedef loom_testbench_invocation_provider_t(
+    IREE_API_PTR* loom_testbench_function_call_provider_fn_t)(
+    void* user_data, const loom_testbench_module_plan_t* plan);
+
+typedef struct loom_testbench_function_call_provider_callback_t {
+  // Binding callback, or NULL when no function executor is linked.
+  loom_testbench_function_call_provider_fn_t fn;
+  // Caller-owned executor state passed to |fn|.
+  void* user_data;
+} loom_testbench_function_call_provider_callback_t;
+
 typedef struct loom_testbench_oracle_provider_t {
   // Stable provider name referenced by check.oracle.call.
   iree_string_view_t name;

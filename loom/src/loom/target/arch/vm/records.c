@@ -25,14 +25,15 @@ static const loom_target_config_t kCoreConfig = {
     .contract_set_key = IREE_SVL("vm.core"),
 };
 
-static const loom_target_bundle_t kCoreBundle = {
+const loom_target_bundle_t loom_vm_core_target_bundle = {
     .name = IREE_SVL("vm-core"),
     .snapshot = &kCoreSnapshot,
     .export_plan = &kCoreExportPlan,
     .config = &kCoreConfig,
 };
 
-static const loom_target_bundle_t* const kBundles[] = {NULL, &kCoreBundle};
+static const loom_target_bundle_t* const kBundles[] = {
+    NULL, &loom_vm_core_target_bundle};
 
 const loom_target_bundle_table_t loom_vm_target_bundles = {
     .values = kBundles,

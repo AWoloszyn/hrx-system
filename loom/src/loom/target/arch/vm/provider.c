@@ -8,8 +8,40 @@
 
 #include "loom/target/arch/vm/descriptors/descriptors.h"
 #include "loom/target/arch/vm/lower.h"
+#include "loom/target/arch/vm/module.h"
 #include "loom/target/arch/vm/ops/ops.h"
 #include "loom/target/arch/vm/ops/registry.h"
+#include "loom/target/arch/vm/records.h"
+
+static iree_status_t loom_vm_profile_project_facts(
+    const loom_target_profile_t* profile, iree_arena_allocator_t* arena,
+    loom_target_facts_t* out_facts) {
+  out_facts->selector = LOOM_VM_TARGET_KIND_CORE;
+  return iree_ok_status();
+}
+
+static const loom_target_profile_type_t kProfileType = {
+    .name = IREE_SVL("vm"),
+    .fact_type = &loom_vm_target_fact_type,
+    .project_facts = loom_vm_profile_project_facts,
+};
+
+static const loom_target_profile_t kCoreProfile = {
+    .type = &kProfileType,
+    .target_bundle = &loom_vm_core_target_bundle,
+};
+
+static iree_status_t loom_vm_select_profile(
+    iree_string_view_t selector, const loom_target_profile_t** out_profile) {
+  *out_profile = NULL;
+  if (!iree_string_view_equal(selector, IREE_SV("core"))) {
+    return iree_make_status(IREE_STATUS_NOT_FOUND,
+                            "unknown VM target profile '%.*s'",
+                            (int)selector.size, selector.data);
+  }
+  *out_profile = &kCoreProfile;
+  return iree_ok_status();
+}
 
 static void loom_vm_descriptor_registry_initialize(
     loom_target_low_descriptor_registry_t* out_registry) {
@@ -20,7 +52,23 @@ static void loom_vm_descriptor_registry_initialize(
       out_registry, kProviders, IREE_ARRAYSIZE(kProviders));
 }
 
+static const loom_target_emitter_t loom_vm_emitter = {
+    .name = IREE_SVL("vm"),
+    .public_artifact_format = IREE_SVL("vm"),
+    .default_identifier = IREE_SVL("module.vm"),
+    .target_artifact_format = LOOM_TARGET_ARTIFACT_FORMAT_VM_BINARY,
+    .emit = loom_vm_module_emit,
+};
+
+static const loom_target_emitter_t* const loom_vm_emitters[] = {
+    &loom_vm_emitter,
+};
+
 const loom_target_provider_t loom_vm_target_provider = {
+    .profile_type = &kProfileType,
+    .select_profile = loom_vm_select_profile,
+    .emitter_list = {.values = loom_vm_emitters,
+                     .count = IREE_ARRAYSIZE(loom_vm_emitters)},
     .select_low_call_policy = loom_target_select_low_call_policy_direct,
     .register_context = loom_vm_ops_register_dialect,
     .initialize_low_descriptor_registry =

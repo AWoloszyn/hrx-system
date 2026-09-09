@@ -771,6 +771,11 @@ int iree_test_loom_main(int argc, char** argv,
         iree_test_loom_normalize_case_name(iree_make_cstring_view(FLAG_case));
     loom_testbench_case_execution_options_t execution_options = {0};
     loom_testbench_case_execution_options_initialize(&execution_options);
+    if (iree_status_is_ok(status) && configuration->function_call_provider.fn) {
+      execution_options.invocation.function_call =
+          configuration->function_call_provider.fn(
+              configuration->function_call_provider.user_data, &module_plan);
+    }
     execution_options.materializer.host_allocator = allocator;
     execution_options.materializer.open_read_file =
         (loom_testbench_file_open_callback_t){

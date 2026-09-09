@@ -1,0 +1,104 @@
+// RUN: emit vm-dis
+
+vm.target<core> @vm
+
+func.def public target(@vm) @arithmetic(%a: i32, %b: i32, %c: i32) -> (i32) {
+  %sum = scalar.addi %a, %b : i32
+  %scaled = scalar.muli %sum, %c : i32
+  %result = scalar.subi %scaled, %b : i32
+  func.return %result : i32
+}
+
+// ----
+vm.module core(0.0) {
+  section strings alignment(8) {
+    string @string0 = "arithmetic"
+  }
+
+  section signatures alignment(8) {
+    signature @signature0 (i32, i32, i32) -> (i32)
+  }
+
+  section callable_types alignment(8) {
+    callable @callable0 flags([]) depth(0) : @signature0
+  }
+
+  section exports alignment(8) {
+    export @export0 name(@string0) : @callable0 = @function0
+  }
+
+  section functions alignment(8) {
+    func @function0 : @callable0 flags([]) frame(local_bytes = 0, value_registers = 3, ref_registers = 0, function_registers = 0, local_refs = 0, local_functions = 0) {
+    ^bb0:
+      control.block
+      %v0 = integer.add.i32 %v0, %v1
+      %v0 = integer.mul.i32 %v0, %v2
+      %v0 = integer.sub.i32 %v0, %v1
+      control.return
+    }
+  }
+
+}
+
+// ====
+
+vm.target<core> @vm
+
+func.def public target(@vm) @swap(%a: i64, %b: i64) -> (i64, i64) {
+  func.return %b, %a : i64, i64
+}
+
+func.def public target(@vm) @passthrough(%a: i64, %b: i64) -> (i64, i64) {
+  func.return %a, %b : i64, i64
+}
+
+func.def public target(@vm) @empty() {
+  func.return
+}
+
+// ----
+vm.module core(0.0) {
+  section strings alignment(8) {
+    string @string0 = "empty"
+    string @string1 = "passthrough"
+    string @string2 = "swap"
+  }
+
+  section signatures alignment(8) {
+    signature @signature0 () -> ()
+    signature @signature1 (i64, i64) -> (i64, i64)
+  }
+
+  section callable_types alignment(8) {
+    callable @callable0 flags([]) depth(0) : @signature0
+    callable @callable1 flags([]) depth(0) : @signature1
+  }
+
+  section exports alignment(8) {
+    export @export0 name(@string0) : @callable0 = @function2
+    export @export1 name(@string1) : @callable1 = @function1
+    export @export2 name(@string2) : @callable1 = @function0
+  }
+
+  section functions alignment(8) {
+    func @function0 : @callable1 flags([]) frame(local_bytes = 0, value_registers = 3, ref_registers = 0, function_registers = 0, local_refs = 0, local_functions = 0) {
+    ^bb0:
+      control.block
+      %v2 = value.copy %v0
+      %v0 = value.copy %v1
+      %v1 = value.copy %v2
+      control.return
+    }
+    func @function1 : @callable1 flags([]) frame(local_bytes = 0, value_registers = 2, ref_registers = 0, function_registers = 0, local_refs = 0, local_functions = 0) {
+    ^bb0:
+      control.block
+      control.return
+    }
+    func @function2 : @callable0 flags([]) frame(local_bytes = 0, value_registers = 0, ref_registers = 0, function_registers = 0, local_refs = 0, local_functions = 0) {
+    ^bb0:
+      control.block
+      control.return
+    }
+  }
+
+}

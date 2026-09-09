@@ -1,0 +1,9 @@
+vm.target<core> @vm
+
+func.def target(@vm) export("collision") @first() {
+  func.return
+}
+
+func.def target(@vm) export("collision") @second() {
+  func.return
+}

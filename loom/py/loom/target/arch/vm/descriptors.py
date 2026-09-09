@@ -8,8 +8,8 @@
 
 The runtime spec owns opcodes, packet fields, and semantics. This projection
 supplies the interpreter's register and scheduling model, not a second ISA.
-Encoding IDs are byte opcodes and operand encoding field IDs are byte offsets
-from the beginning of the instruction, including its opcode byte.
+Encoding IDs are byte opcodes, encoding format IDs are packet byte lengths,
+and operand encoding field IDs are byte offsets from the instruction start.
 """
 
 from pathlib import Path
@@ -49,6 +49,8 @@ _OPERAND_ROLES = {
 def _integer_binary_descriptor(instruction: Instruction) -> Descriptor:
     semantics = instruction.semantics
     assert isinstance(semantics, IntegerBinarySemantics)
+    # The register-packet emitter consumes one opcode and three byte registers.
+    assert instruction.byte_length == 4
     operands = tuple(
         Operand(
             field.field.name,
@@ -67,6 +69,7 @@ def _integer_binary_descriptor(instruction: Instruction) -> Descriptor:
         operands=operands,
         schedule_class="vm.scalar",
         encoding_id=instruction.opcode,
+        encoding_format_id=instruction.byte_length,
         flags=(DescriptorFlag.DEAD_REMOVABLE,),
         instruction_classes=(InstructionClass.SCALAR_ALU,),
         asm_forms=(

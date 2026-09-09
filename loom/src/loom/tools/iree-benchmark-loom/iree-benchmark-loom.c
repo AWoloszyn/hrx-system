@@ -19,9 +19,13 @@
 #ifndef IREE_BENCHMARK_LOOM_HAVE_SPIRV
 #define IREE_BENCHMARK_LOOM_HAVE_SPIRV 0
 #endif  // IREE_BENCHMARK_LOOM_HAVE_SPIRV
+#ifndef IREE_BENCHMARK_LOOM_HAVE_VM
+#define IREE_BENCHMARK_LOOM_HAVE_VM 0
+#endif  // IREE_BENCHMARK_LOOM_HAVE_VM
 
-#define IREE_BENCHMARK_LOOM_HAVE_ANY_PROVIDER \
-  (IREE_BENCHMARK_LOOM_HAVE_AMDGPU || IREE_BENCHMARK_LOOM_HAVE_SPIRV)
+#define IREE_BENCHMARK_LOOM_HAVE_ANY_PROVIDER                           \
+  (IREE_BENCHMARK_LOOM_HAVE_AMDGPU || IREE_BENCHMARK_LOOM_HAVE_SPIRV || \
+   IREE_BENCHMARK_LOOM_HAVE_VM)
 #define IREE_BENCHMARK_LOOM_HAVE_ANY_DEVICE_PROVIDER \
   (IREE_BENCHMARK_LOOM_HAVE_AMDGPU || IREE_BENCHMARK_LOOM_HAVE_SPIRV)
 
@@ -35,6 +39,15 @@
 #include "loom/tooling/target/spirv/device_provider.h"
 #include "loom/tooling/target/spirv/testbench_requirements.h"
 #endif  // IREE_BENCHMARK_LOOM_HAVE_SPIRV
+#if IREE_BENCHMARK_LOOM_HAVE_VM
+#include "loom/target/arch/vm/provider.h"
+#include "loom/tooling/target/vm/testbench.h"
+
+static const loom_run_execution_provider_t kIreeBenchmarkLoomVmProvider = {
+    .name = IREE_SVL("vm"),
+    .target_provider = &loom_vm_target_provider,
+};
+#endif  // IREE_BENCHMARK_LOOM_HAVE_VM
 
 #if IREE_BENCHMARK_LOOM_HAVE_AMDGPU
 static const loom_run_execution_provider_t kIreeBenchmarkLoomAmdgpuProvider = {
@@ -53,6 +66,9 @@ static const loom_run_execution_provider_t kIreeBenchmarkLoomSpirvProvider = {
 #if IREE_BENCHMARK_LOOM_HAVE_ANY_PROVIDER
 static const loom_run_execution_provider_t* const
     kIreeBenchmarkLoomProviders[] = {
+#if IREE_BENCHMARK_LOOM_HAVE_VM
+        &kIreeBenchmarkLoomVmProvider,
+#endif  // IREE_BENCHMARK_LOOM_HAVE_VM
 #if IREE_BENCHMARK_LOOM_HAVE_AMDGPU
         &kIreeBenchmarkLoomAmdgpuProvider,
 #endif  // IREE_BENCHMARK_LOOM_HAVE_AMDGPU
@@ -157,7 +173,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  const iree_benchmark_loom_configuration_t configuration = {
+  iree_benchmark_loom_configuration_t configuration = {
       .tool_name = "iree-benchmark-loom",
       .register_context =
           loom_run_execution_environment_register_context_callback(
@@ -173,7 +189,20 @@ int main(int argc, char** argv) {
           loom_run_execution_environment_low_descriptor_registry_callback(
               &environment),
   };
+#if IREE_BENCHMARK_LOOM_HAVE_VM
+  loom_vm_testbench_t vm_testbench;
+  loom_vm_testbench_initialize(configuration.target_environment,
+                               iree_allocator_system(), &vm_testbench);
+  configuration.function_call_provider =
+      (loom_testbench_function_call_provider_callback_t){
+          .fn = loom_vm_testbench_invocation_provider,
+          .user_data = &vm_testbench,
+      };
+#endif  // IREE_BENCHMARK_LOOM_HAVE_VM
   int exit_code = iree_benchmark_loom_main(argc, argv, &configuration);
+#if IREE_BENCHMARK_LOOM_HAVE_VM
+  loom_vm_testbench_deinitialize(&vm_testbench);
+#endif  // IREE_BENCHMARK_LOOM_HAVE_VM
   loom_run_execution_environment_deinitialize(&environment);
   return exit_code;
 }

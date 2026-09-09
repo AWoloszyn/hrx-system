@@ -30,6 +30,7 @@ def test_integer_packets_preserve_spec_encoding_and_semantic_types():
     for instruction in instructions:
         descriptor = descriptors[instruction.opcode]
         assert descriptor.mnemonic == instruction.mnemonic
+        assert descriptor.encoding_format_id == instruction.byte_length
         assert instruction.control_flow is ControlFlow.SEQUENTIAL
         assert instruction.suspension is Suspension.NEVER
         assert not instruction.state_effects

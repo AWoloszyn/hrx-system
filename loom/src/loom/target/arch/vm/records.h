@@ -17,6 +17,10 @@ extern "C" {
 // index/offset arithmetic independently of the native interpreter's host ABI.
 extern const loom_target_bundle_table_t loom_vm_target_bundles;
 
+// Core instruction set and host function ABI, shared by authored target
+// declarations and invocation-local profile specialization.
+extern const loom_target_bundle_t loom_vm_core_target_bundle;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

@@ -24,6 +24,29 @@ loom_cc_library(
 
 loom_cc_library(
   NAME
+    module
+  HDRS
+    "function.h"
+    "module.h"
+  SRCS
+    "function.c"
+    "module.c"
+  DEPS
+    iree::base
+    iree::io::stream
+    iree::vm::bytecode::wire
+    loom::codegen::low::allocation::move_sequence
+    loom::codegen::low::frame
+    loom::ir
+    loom::ops::low
+    loom::target::arch::vm::descriptors
+    loom::target::function_version
+    loom::target::provider
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
     provider
   HDRS
     "lower.h"
@@ -32,6 +55,8 @@ loom_cc_library(
     "lower.c"
     "provider.c"
   DEPS
+    ::module
+    ::records
     iree::base
     loom::codegen::low::lower
     loom::error::error_defs
@@ -49,6 +74,7 @@ loom_check_test_suite(
     loom_check_file_test
   SRCS
     "test/assembly.loom-test"
+    "test/emission.loom-test"
     "test/scalar.loom-test"
   TEST_NAME_PREFIX_TO_STRIP
     "test/"
@@ -63,8 +89,11 @@ loom_cc_library(
   SRCS
     "check.c"
   DEPS
+    ::module
     ::provider
     iree::base
+    iree::vm::bytecode::disassembler
+    loom::tools::loom-check::execute
     loom::tools::loom-check::provider
   PUBLIC
 )

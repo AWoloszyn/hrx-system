@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "compiles an authored module into standalone VM bytecode",
+      "steps": [
+        {
+          "name": "compile",
+          "run": {
+            "tool": "loom-compile",
+            "args": ["{srcdir}/module.loom", "--format=vm", "--output={tmp}/module.vm"]
+          }
+        },
+        {
+          "name": "disassemble",
+          "run": {
+            "tool": "vm-dis",
+            "args": ["{tmp}/module.vm"]
+          },
+          "stdout": {
+            "contains": [
+              "vm.module core(0.0)",
+              "\"arithmetic\"",
+              "\"swap\"",
+              "integer.mul.i32",
+              "value.copy",
+              "control.return"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "rejects colliding host export names",
+      "run": {
+        "tool": "loom-compile",
+        "args": ["{srcdir}/duplicate_exports.loom", "--format=vm", "--output={tmp}/invalid.vm"]
+      },
+      "exit": 1,
+      "stderr": {"contains": ["duplicate VM export 'collision'"]}
+    },
+    {
+      "name": "rejects an explicitly empty export name",
+      "run": {
+        "tool": "loom-compile",
+        "args": ["{srcdir}/empty_export.loom", "--format=vm", "--output={tmp}/invalid.vm"]
+      },
+      "exit": 1,
+      "stderr": {"contains": ["VM export names must not be empty"]}
+    }
+  ]
+}

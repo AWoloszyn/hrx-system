@@ -1,0 +1,83 @@
+func.def public @arithmetic(%a: i32, %b: i32, %c: i32) -> (i32) {
+  %sum = scalar.addi %a, %b : i32
+  %scaled = scalar.muli %sum, %c : i32
+  %result = scalar.subi %scaled, %b : i32
+  func.return %result : i32
+}
+
+check.case @arithmetic_case {
+  %a = check.literal value(6) : i32
+  %b = check.literal value(7) : i32
+  %c = check.literal value(9) : i32
+  %result = func.call @arithmetic(%a, %b, %c) : (i32, i32, i32) -> (i32)
+  %expected = check.literal value(110) : i32
+  check.expect.equal actual(%result) expected(%expected) : i32
+  check.return
+}
+
+check.benchmark<@arithmetic_case>
+
+func.def public @swap(%a: i64, %b: i64) -> (i64, i64) {
+  func.return %b, %a : i64, i64
+}
+
+check.case @swap_case {
+  %a = check.literal value(4294967297) : i64
+  %b = check.literal value(-9) : i64
+  %first, %second = func.call @swap(%a, %b) : (i64, i64) -> (i64, i64)
+  check.expect.equal actual(%first) expected(%b) : i64
+  check.expect.equal actual(%second) expected(%a) : i64
+  %again_first, %again_second = func.call @swap(%first, %second) : (i64, i64) -> (i64, i64)
+  check.expect.equal actual(%again_first) expected(%a) : i64
+  check.expect.equal actual(%again_second) expected(%b) : i64
+  check.return
+}
+
+func.def public @passthrough(%a: i64, %b: i64) -> (i64, i64) {
+  func.return %a, %b : i64, i64
+}
+
+check.case @passthrough_case {
+  %a = check.param.choice values([0, -1, 4294967297]) : i64
+  %b = check.param.choice values([3, -9]) : i64
+  %first, %second = func.call @passthrough(%a, %b) : (i64, i64) -> (i64, i64)
+  check.expect.equal actual(%first) expected(%a) : i64
+  check.expect.equal actual(%second) expected(%b) : i64
+  check.return
+}
+
+func.def public @empty() {
+  func.return
+}
+
+check.case @empty_case {
+  func.call @empty() : ()
+  check.return
+}
+
+func.def public @mixed(%a: i32, %b: i64) -> (i64, i32) {
+  func.return %b, %a : i64, i32
+}
+
+check.case @mixed_case {
+  %a = check.literal value(-12) : i32
+  %b = check.literal value(4294967297) : i64
+  %first, %second = func.call @mixed(%a, %b) : (i32, i64) -> (i64, i32)
+  check.expect.equal actual(%first) expected(%b) : i64
+  check.expect.equal actual(%second) expected(%a) : i32
+  check.return
+}
+
+func.def public @fanout(%a: i64, %b: i64) -> (i64, i64, i64) {
+  func.return %a, %a, %b : i64, i64, i64
+}
+
+check.case @fanout_case {
+  %a = check.literal value(-12) : i64
+  %b = check.literal value(4294967297) : i64
+  %first, %second, %third = func.call @fanout(%a, %b) : (i64, i64) -> (i64, i64, i64)
+  check.expect.equal actual(%first) expected(%a) : i64
+  check.expect.equal actual(%second) expected(%a) : i64
+  check.expect.equal actual(%third) expected(%b) : i64
+  check.return
+}
