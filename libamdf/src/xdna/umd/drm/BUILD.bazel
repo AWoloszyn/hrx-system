@@ -26,6 +26,17 @@ amdf_cc_library(
     deps = ["//libamdf/src/platform/linux:file"],
 )
 
+amdf_cc_test(
+    name = "buffer_test",
+    srcs = ["buffer_test.cc"],
+    target_compatible_with = DRM_COMPATIBILITY,
+    deps = [
+        ":buffer",
+        "//third_party:google_test",
+        "//third_party:google_test_main",
+    ],
+)
+
 amdf_cc_library(
     name = "device_state",
     hdrs = ["device.h"],

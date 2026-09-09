@@ -67,9 +67,13 @@ amdf_status_t amdf_xdna_umd_memory_create(
     return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
   }
   memory->device = device;
-  amdf_status_t status = amdf_linux_xdna_buffer_initialize(
-      device->descriptor, AMDXDNA_BO_SHARE, byte_length, alignment,
-      device->page_size, NULL, &memory->buffer);
+  amdf_status_t status = amdf_linux_xdna_buffer_create(
+      device->descriptor, AMDXDNA_BO_SHARE, byte_length, &memory->buffer);
+  if (amdf_status_is_ok(status)) {
+    status =
+        amdf_linux_xdna_buffer_attach(device->descriptor, alignment,
+                                      device->page_size, NULL, &memory->buffer);
+  }
   if (amdf_status_is_ok(status)) {
     amdf_xdna_umd_memory_result_t result = {0};
     result.memory_class = AMDF_MEMORY_CLASS_SYSTEM;

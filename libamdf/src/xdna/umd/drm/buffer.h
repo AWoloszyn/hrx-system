@@ -16,6 +16,8 @@
 typedef struct amdf_linux_xdna_buffer_t {
   // File-local GEM handle, or zero after release.
   uint32_t handle;
+  // Native `AMDXDNA_BO_*` allocation type fixed by creation.
+  uint32_t type;
   // Allocation extent in bytes, rounded to the native page size.
   size_t byte_length;
   // Stable address in this native device's address domain.
@@ -35,13 +37,18 @@ typedef struct amdf_linux_xdna_buffer_t {
 extern "C" {
 #endif
 
-// Creates one native allocation. Length and alignment are checked page
-// multiples. On failure the caller still owns all partially initialized state
-// in buffer and must release it before releasing the owning file or heap.
-amdf_status_t amdf_linux_xdna_buffer_initialize(
-    int descriptor, uint32_t type, size_t byte_length, size_t alignment,
-    size_t page_size, const amdf_linux_xdna_buffer_t* heap,
-    amdf_linux_xdna_buffer_t* buffer);
+// Creates one GEM buffer. Success transfers its file-local handle to
+// `out_buffer`; failure leaves the output unchanged and retains no ownership.
+amdf_status_t amdf_linux_xdna_buffer_create(
+    int descriptor, uint32_t type, size_t byte_length,
+    amdf_linux_xdna_buffer_t* out_buffer);
+
+// Establishes native addresses and a persistent CPU mapping for one live GEM
+// buffer. Failure retains any mapping state acquired by this one-shot operation
+// in `buffer` for deinitialization.
+amdf_status_t amdf_linux_xdna_buffer_attach(
+    int descriptor, size_t alignment, size_t page_size,
+    const amdf_linux_xdna_buffer_t* heap, amdf_linux_xdna_buffer_t* buffer);
 
 // Releases an idle buffer. A failed release retains the remaining ownership.
 amdf_status_t amdf_linux_xdna_buffer_deinitialize(

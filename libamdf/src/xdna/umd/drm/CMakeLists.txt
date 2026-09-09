@@ -25,6 +25,23 @@ iree_cc_library(
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_test(
+  NAME
+    buffer_test
+  SRCS
+    "buffer_test.cc"
+  DEPS
+    ::buffer
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.xdna"
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
 iree_cc_library(
   NAME
     device_state

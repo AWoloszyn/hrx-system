@@ -109,10 +109,14 @@ amdf_status_t amdf_xdna_umd_device_create(
     status = amdf_linux_xdna_device_qualify(device, profile);
   }
   if (amdf_status_is_ok(status)) {
-    status = amdf_linux_xdna_buffer_initialize(
+    status = amdf_linux_xdna_buffer_create(
         device->descriptor, AMDXDNA_BO_DEV_HEAP,
-        AMDF_XDNA_NPU5_HEAP_BYTE_LENGTH, AMDF_XDNA_NPU5_HEAP_BYTE_LENGTH,
-        device->page_size, NULL, &device->heap);
+        AMDF_XDNA_NPU5_HEAP_BYTE_LENGTH, &device->heap);
+  }
+  if (amdf_status_is_ok(status)) {
+    status = amdf_linux_xdna_buffer_attach(
+        device->descriptor, AMDF_XDNA_NPU5_HEAP_BYTE_LENGTH, device->page_size,
+        NULL, &device->heap);
   }
   const void* pdi = NULL;
   size_t pdi_byte_length = 0;
@@ -120,9 +124,13 @@ amdf_status_t amdf_xdna_umd_device_create(
   if (amdf_status_is_ok(status)) {
     const size_t length =
         (pdi_byte_length + device->page_size - 1) & ~(device->page_size - 1);
-    status = amdf_linux_xdna_buffer_initialize(
-        device->descriptor, AMDXDNA_BO_DEV, length, device->page_size,
-        device->page_size, &device->heap, &device->bootstrap);
+    status = amdf_linux_xdna_buffer_create(device->descriptor, AMDXDNA_BO_DEV,
+                                           length, &device->bootstrap);
+  }
+  if (amdf_status_is_ok(status)) {
+    status = amdf_linux_xdna_buffer_attach(device->descriptor,
+                                           device->page_size, device->page_size,
+                                           &device->heap, &device->bootstrap);
   }
   if (amdf_status_is_ok(status)) {
     memcpy(device->bootstrap.host_pointer, pdi, pdi_byte_length);
