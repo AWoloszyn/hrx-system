@@ -92,23 +92,18 @@ static amdf_atomic_uint64_t* amdf_gpu_kfd_user_queue_error_payload(
 }
 
 static amdf_status_t amdf_gpu_kfd_user_queue_buffer_create(
-    amdf_gpu_umd_user_queue_t* queue, size_t byte_length,
+    amdf_gpu_umd_user_queue_t* queue,
+    const amdf_gpu_kfd_buffer_create_info_t* create_info,
     amdf_gpu_kfd_user_queue_buffer_t* out_buffer) {
-  const amdf_gpu_kfd_buffer_create_info_t create_info = {
-      .native_flags =
-          KFD_IOC_ALLOC_MEM_FLAGS_GTT | KFD_IOC_ALLOC_MEM_FLAGS_WRITABLE |
-          KFD_IOC_ALLOC_MEM_FLAGS_EXECUTABLE | KFD_IOC_ALLOC_MEM_FLAGS_COHERENT,
-      .byte_length = byte_length,
-      .alignment = queue->device->page_size,
-      .host_access = AMDF_GPU_KFD_BUFFER_HOST_ACCESS_MAPPED,
-  };
   amdf_gpu_kfd_buffer_t* native = NULL;
   amdf_gpu_kfd_buffer_result_t result = {0};
   const amdf_status_t status = queue->native_api->buffer_create(
-      queue->native_api->user_data, queue->device, &create_info, &native,
+      queue->native_api->user_data, queue->device, create_info, &native,
       &result);
   if (!amdf_status_is_ok(status)) return status;
-  memset(result.host_pointer, 0, byte_length);
+  if (create_info->host_access != AMDF_GPU_KFD_BUFFER_HOST_ACCESS_NONE) {
+    memset(result.host_pointer, 0, create_info->byte_length);
+  }
   *out_buffer = (amdf_gpu_kfd_user_queue_buffer_t){
       .native = native,
       .device_address = result.device_address,
@@ -290,18 +285,18 @@ amdf_status_t amdf_gpu_umd_user_queue_create(
   amdf_atomic_uint64_initialize(&queue->terminal_status, AMDF_STATUS_OK);
 
   status = amdf_gpu_kfd_user_queue_buffer_create(
-      queue, queue->layout.ring_byte_length, &queue->ring);
+      queue, &queue->layout.ring_storage, &queue->ring);
   if (amdf_status_is_ok(status)) {
     status = amdf_gpu_kfd_user_queue_buffer_create(
-        queue, queue->layout.control_byte_length, &queue->control);
+        queue, &queue->layout.control_storage, &queue->control);
   }
   if (amdf_status_is_ok(status)) {
     status = amdf_gpu_kfd_user_queue_buffer_create(
-        queue, queue->layout.end_of_pipe_byte_length, &queue->end_of_pipe);
+        queue, &queue->layout.end_of_pipe_storage, &queue->end_of_pipe);
   }
   if (amdf_status_is_ok(status)) {
     status = amdf_gpu_kfd_user_queue_buffer_create(
-        queue, queue->layout.context_allocation_byte_length, &queue->context);
+        queue, &queue->layout.context_storage, &queue->context);
   }
   if (amdf_status_is_ok(status)) {
     amdf_gpu_kfd_gfx1151_pm4_queue_initialize_context_header(
@@ -318,13 +313,13 @@ amdf_status_t amdf_gpu_umd_user_queue_create(
                                  queue->layout.write_index_byte_offset,
         .read_pointer_address = queue->control.device_address +
                                 queue->layout.read_index_byte_offset,
-        .ring_size = (uint32_t)queue->layout.ring_byte_length,
+        .ring_size = (uint32_t)queue->layout.ring_storage.byte_length,
         .gpu_id = device->topology.gpu_id,
         .queue_type = KFD_IOC_QUEUE_TYPE_COMPUTE,
         .queue_percentage = KFD_MAX_QUEUE_PERCENTAGE,
         .queue_priority = 7,
         .eop_buffer_address = queue->end_of_pipe.device_address,
-        .eop_buffer_size = queue->layout.end_of_pipe_byte_length,
+        .eop_buffer_size = queue->layout.end_of_pipe_storage.byte_length,
         .ctx_save_restore_address = queue->context.device_address,
         .ctx_save_restore_size = queue->layout.context_save_restore_byte_length,
         .ctl_stack_size = queue->layout.control_stack_byte_length,
@@ -368,7 +363,7 @@ amdf_status_t amdf_gpu_umd_user_queue_create(
                 .words = {device->topology.gpu_id, (uintptr_t)queue},
             },
         .capabilities = AMDF_USER_QUEUE_CAPABILITY_HOST_PRODUCER,
-        .ring_byte_length = queue->layout.ring_byte_length,
+        .ring_byte_length = queue->layout.ring_storage.byte_length,
     };
     *out_queue = queue;
     *out_result = result;

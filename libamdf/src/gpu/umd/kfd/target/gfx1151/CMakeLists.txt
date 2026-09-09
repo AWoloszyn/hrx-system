@@ -20,6 +20,7 @@ iree_cc_library(
   DEPS
     amdf::headers
     libamdf::src::gpu::endpoint_profile
+    libamdf::src::gpu::umd::kfd::buffer
     libamdf::src::gpu::umd::kfd::topology
   PUBLIC
 )

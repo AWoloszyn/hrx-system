@@ -25,6 +25,7 @@ namespace {
 
 struct FakeBuffer {
   std::vector<uint64_t> storage;
+  amdf_gpu_kfd_buffer_create_info_t create_info = {};
   uint64_t device_address = 0;
   size_t byte_length = 0;
   bool live = false;
@@ -49,6 +50,7 @@ struct FakeNativeState {
     FakeBuffer& buffer = self->buffers[self->buffer_create_count - 1];
     buffer.storage.resize((create_info->byte_length + sizeof(uint64_t) - 1) /
                           sizeof(uint64_t));
+    buffer.create_info = *create_info;
     buffer.device_address =
         UINT64_C(0x10000000) +
         (self->buffer_create_count - 1) * UINT64_C(0x01000000);
@@ -57,7 +59,10 @@ struct FakeNativeState {
     *out_buffer = reinterpret_cast<amdf_gpu_kfd_buffer_t*>(&buffer);
     *out_result = {
         .device_address = buffer.device_address,
-        .host_pointer = buffer.storage.data(),
+        .host_pointer =
+            create_info->host_access == AMDF_GPU_KFD_BUFFER_HOST_ACCESS_NONE
+                ? nullptr
+                : buffer.storage.data(),
     };
     return AMDF_STATUS_OK;
   }
@@ -353,6 +358,35 @@ TEST_F(KfdUserQueueTest, PublishesExactNativeQueueAndHostMapping) {
   EXPECT_EQ(queue_result_.ring_byte_length, 4096u);
   EXPECT_EQ(queue_result_.metadata_ring_byte_length, 0u);
   EXPECT_EQ(native_state_.LiveBufferCount(), 4u);
+
+  const uint32_t host_storage_flags =
+      KFD_IOC_ALLOC_MEM_FLAGS_GTT | KFD_IOC_ALLOC_MEM_FLAGS_WRITABLE |
+      KFD_IOC_ALLOC_MEM_FLAGS_EXECUTABLE | KFD_IOC_ALLOC_MEM_FLAGS_COHERENT;
+  EXPECT_EQ(native_state_.buffers[0].create_info.native_flags,
+            host_storage_flags);
+  EXPECT_EQ(native_state_.buffers[0].create_info.byte_length, 4096u);
+  EXPECT_EQ(native_state_.buffers[0].create_info.alignment, 4096u);
+  EXPECT_EQ(native_state_.buffers[0].create_info.host_access,
+            AMDF_GPU_KFD_BUFFER_HOST_ACCESS_MAPPED);
+  EXPECT_EQ(native_state_.buffers[1].create_info.native_flags,
+            host_storage_flags | KFD_IOC_ALLOC_MEM_FLAGS_UNCACHED);
+  EXPECT_EQ(native_state_.buffers[1].create_info.byte_length, 4096u);
+  EXPECT_EQ(native_state_.buffers[1].create_info.alignment, 4096u);
+  EXPECT_EQ(native_state_.buffers[1].create_info.host_access,
+            AMDF_GPU_KFD_BUFFER_HOST_ACCESS_MAPPED);
+  EXPECT_EQ(native_state_.buffers[2].create_info.native_flags,
+            KFD_IOC_ALLOC_MEM_FLAGS_VRAM | KFD_IOC_ALLOC_MEM_FLAGS_WRITABLE |
+                KFD_IOC_ALLOC_MEM_FLAGS_EXECUTABLE);
+  EXPECT_EQ(native_state_.buffers[2].create_info.byte_length, 4096u);
+  EXPECT_EQ(native_state_.buffers[2].create_info.alignment, 4096u);
+  EXPECT_EQ(native_state_.buffers[2].create_info.host_access,
+            AMDF_GPU_KFD_BUFFER_HOST_ACCESS_NONE);
+  EXPECT_EQ(native_state_.buffers[3].create_info.native_flags,
+            host_storage_flags);
+  EXPECT_EQ(native_state_.buffers[3].create_info.byte_length, 8192u);
+  EXPECT_EQ(native_state_.buffers[3].create_info.alignment, 4096u);
+  EXPECT_EQ(native_state_.buffers[3].create_info.host_access,
+            AMDF_GPU_KFD_BUFFER_HOST_ACCESS_MAPPED);
 
   const auto& create = native_state_.observed_create;
   EXPECT_EQ(create.ring_base_address, native_state_.buffers[0].device_address);

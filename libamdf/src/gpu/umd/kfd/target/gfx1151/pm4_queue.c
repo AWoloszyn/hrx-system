@@ -71,6 +71,9 @@ amdf_gpu_kfd_gfx1151_pm4_queue_family_properties(void) {
 
 amdf_gpu_kfd_gfx1151_pm4_queue_layout_t amdf_gpu_kfd_gfx1151_pm4_queue_layout(
     const amdf_gpu_kfd_topology_t* topology, uint32_t cache_line_size) {
+  const uint32_t host_storage_flags =
+      KFD_IOC_ALLOC_MEM_FLAGS_GTT | KFD_IOC_ALLOC_MEM_FLAGS_WRITABLE |
+      KFD_IOC_ALLOC_MEM_FLAGS_EXECUTABLE | KFD_IOC_ALLOC_MEM_FLAGS_COHERENT;
   const uint32_t debug_byte_length =
       topology->properties.compute.compute_unit_count *
       AMDF_GPU_KFD_GFX1151_WAVE_COUNT_PER_COMPUTE_UNIT *
@@ -78,19 +81,46 @@ amdf_gpu_kfd_gfx1151_pm4_queue_layout_t amdf_gpu_kfd_gfx1151_pm4_queue_layout(
   const size_t context_byte_length =
       topology->context_save_restore_byte_length + debug_byte_length;
   return (amdf_gpu_kfd_gfx1151_pm4_queue_layout_t){
-      .ring_byte_length = AMDF_GPU_KFD_GFX1151_RING_BYTE_LENGTH,
-      .control_byte_length = AMDF_GPU_KFD_GFX1151_PAGE_SIZE,
+      .ring_storage =
+          {
+              .native_flags = host_storage_flags,
+              .byte_length = AMDF_GPU_KFD_GFX1151_RING_BYTE_LENGTH,
+              .alignment = AMDF_GPU_KFD_GFX1151_PAGE_SIZE,
+              .host_access = AMDF_GPU_KFD_BUFFER_HOST_ACCESS_MAPPED,
+          },
+      .control_storage =
+          {
+              .native_flags =
+                  host_storage_flags | KFD_IOC_ALLOC_MEM_FLAGS_UNCACHED,
+              .byte_length = AMDF_GPU_KFD_GFX1151_PAGE_SIZE,
+              .alignment = AMDF_GPU_KFD_GFX1151_PAGE_SIZE,
+              .host_access = AMDF_GPU_KFD_BUFFER_HOST_ACCESS_MAPPED,
+          },
       .read_index_byte_offset = 0,
       .write_index_byte_offset = cache_line_size,
       .error_payload_byte_offset = 2u * cache_line_size,
-      .end_of_pipe_byte_length = AMDF_GPU_KFD_GFX1151_END_OF_PIPE_BYTE_LENGTH,
+      .end_of_pipe_storage =
+          {
+              .native_flags = KFD_IOC_ALLOC_MEM_FLAGS_VRAM |
+                              KFD_IOC_ALLOC_MEM_FLAGS_WRITABLE |
+                              KFD_IOC_ALLOC_MEM_FLAGS_EXECUTABLE,
+              .byte_length = AMDF_GPU_KFD_GFX1151_END_OF_PIPE_BYTE_LENGTH,
+              .alignment = AMDF_GPU_KFD_GFX1151_PAGE_SIZE,
+              .host_access = AMDF_GPU_KFD_BUFFER_HOST_ACCESS_NONE,
+          },
       .context_save_restore_byte_length =
           topology->context_save_restore_byte_length,
       .debug_byte_offset = topology->context_save_restore_byte_length,
       .debug_byte_length = debug_byte_length,
-      .context_allocation_byte_length =
-          (context_byte_length + AMDF_GPU_KFD_GFX1151_PAGE_SIZE - 1) &
-          ~(size_t)(AMDF_GPU_KFD_GFX1151_PAGE_SIZE - 1),
+      .context_storage =
+          {
+              .native_flags = host_storage_flags,
+              .byte_length =
+                  (context_byte_length + AMDF_GPU_KFD_GFX1151_PAGE_SIZE - 1) &
+                  ~(size_t)(AMDF_GPU_KFD_GFX1151_PAGE_SIZE - 1),
+              .alignment = AMDF_GPU_KFD_GFX1151_PAGE_SIZE,
+              .host_access = AMDF_GPU_KFD_BUFFER_HOST_ACCESS_MAPPED,
+          },
       .control_stack_byte_length = topology->control_stack_byte_length,
       .doorbell_mapping_byte_length =
           AMDF_GPU_KFD_GFX1151_DOORBELL_MAPPING_BYTE_LENGTH,

@@ -119,6 +119,7 @@ amdf_cc_library(
     srcs = ["buffer.c"],
     hdrs = ["buffer.h"],
     target_compatible_with = KFD_COMPATIBILITY,
+    visibility = ["//libamdf/src/gpu/umd/kfd:__subpackages__"],
     deps = [
         ":device_state",
         "//libamdf/src:allocator",

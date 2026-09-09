@@ -12,6 +12,7 @@
 #include <stdint.h>
 
 #include "libamdf/src/gpu/endpoint_profile.h"
+#include "libamdf/src/gpu/umd/kfd/buffer.h"
 #include "libamdf/src/gpu/umd/kfd/topology.h"
 
 #ifdef __cplusplus
@@ -20,26 +21,26 @@ extern "C" {
 
 // Complete KFD-owned side storage for one gfx1151 PM4 queue.
 typedef struct amdf_gpu_kfd_gfx1151_pm4_queue_layout_t {
-  // Fixed primary PM4 ring length in bytes.
-  size_t ring_byte_length;
-  // Host-mapped queue-control page length in bytes.
-  size_t control_byte_length;
+  // Host-mapped primary PM4 ring storage.
+  amdf_gpu_kfd_buffer_create_info_t ring_storage;
+  // Host-mapped queue-control page storage.
+  amdf_gpu_kfd_buffer_create_info_t control_storage;
   // Consumer-owned read-index byte offset in the control page.
   size_t read_index_byte_offset;
   // Producer-owned write-index byte offset in the control page.
   size_t write_index_byte_offset;
   // KFD exception-payload byte offset in the control page.
   size_t error_payload_byte_offset;
-  // End-of-pipe ring length in bytes.
-  size_t end_of_pipe_byte_length;
+  // Device-local end-of-pipe ring storage.
+  amdf_gpu_kfd_buffer_create_info_t end_of_pipe_storage;
   // Context-save/restore bytes reported to KFD.
   uint32_t context_save_restore_byte_length;
   // Debug-state byte offset in the context-save allocation.
   uint32_t debug_byte_offset;
   // Debug-state byte length required by the active compute units.
   uint32_t debug_byte_length;
-  // Complete page-covered context-save allocation length in bytes.
-  size_t context_allocation_byte_length;
+  // Host-mapped context-save, control-stack, and debug storage.
+  amdf_gpu_kfd_buffer_create_info_t context_storage;
   // Control-stack bytes reported to KFD.
   uint32_t control_stack_byte_length;
   // Native doorbell aperture mapping length in bytes.
