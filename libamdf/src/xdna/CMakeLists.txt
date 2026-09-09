@@ -53,12 +53,34 @@ endif()
 if(AMDF_BUILD AND AMDF_FAMILY_XDNA)
 iree_cc_library(
   NAME
+    context
+  HDRS
+    "context.h"
+  SRCS
+    "context.c"
+  DEPS
+    ::device
+    ::endpoint_profile
+    amdf::headers
+    libamdf::src::allocator
+    libamdf::src::child_tracker
+    libamdf::src::device
+    libamdf::src::structure
+    libamdf::src::xdna::umd::context
+  PUBLIC
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_library(
+  NAME
     extension
   HDRS
     "extension.h"
   SRCS
     "extension.c"
   DEPS
+    ::context
     ::device
     ::endpoint_profile
     amdf::headers

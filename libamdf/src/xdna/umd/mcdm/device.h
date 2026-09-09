@@ -13,7 +13,7 @@
 #include "libamdf/src/platform/windows/kmt_api.h"
 #include "libamdf/src/xdna/umd/device.h"
 
-// Concrete Windows state backing one program-independent XDNA device.
+// Concrete Windows state backing one XDNA ordinary-address-domain device.
 struct amdf_xdna_umd_device_t {
   // Host allocator copied for device and child metadata.
   amdf_allocator_t host_allocator;
@@ -29,10 +29,6 @@ struct amdf_xdna_umd_device_t {
   D3DKMT_HANDLE paging_sync_object;
   // CPU mapping of the paging queue's monitored fence.
   const volatile uint64_t* paging_fence;
-  // Program-independent XDNA context and address domain.
-  D3DKMT_HANDLE context;
-  // Driver-returned command aperture selector; zero is a valid value.
-  uint32_t command_aperture_cookie;
 };
 
 #endif  // AMDF_SRC_XDNA_UMD_MCDM_DEVICE_H_

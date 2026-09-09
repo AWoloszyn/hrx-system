@@ -21,6 +21,9 @@ extern "C" {
 /// The most recent XDNA extension version described by this header.
 #define AMDF_XDNA_EXTENSION_VERSION_LATEST AMDF_XDNA_EXTENSION_VERSION_1
 
+/// One program-independent schedulable XDNA context.
+typedef struct amdf_xdna_context_t amdf_xdna_context_t;
+
 /// An `amdf_xdna_endpoint_info_t` output structure.
 #define AMDF_STRUCTURE_TYPE_XDNA_ENDPOINT_INFO \
   ((amdf_structure_type_t)0x00010001u)
@@ -33,7 +36,15 @@ extern "C" {
 #define AMDF_STRUCTURE_TYPE_XDNA_DEVICE_INFO \
   ((amdf_structure_type_t)0x00010003u)
 
-/// Lets the provider select the physical origin of an XDNA device.
+/// An `amdf_xdna_context_create_info_t` input structure.
+#define AMDF_STRUCTURE_TYPE_XDNA_CONTEXT_CREATE_INFO \
+  ((amdf_structure_type_t)0x0001000Au)
+
+/// An `amdf_xdna_context_info_t` output structure.
+#define AMDF_STRUCTURE_TYPE_XDNA_CONTEXT_INFO \
+  ((amdf_structure_type_t)0x0001000Bu)
+
+/// Lets the provider select the physical origin of an XDNA context.
 #define AMDF_XDNA_PHYSICAL_COLUMN_ORIGIN_ANY UINT32_MAX
 
 /// Capacity in bytes of a NUL-terminated canonical XDNA target identifier.
@@ -105,11 +116,28 @@ typedef struct amdf_xdna_endpoint_info_t {
   char target_id[AMDF_XDNA_TARGET_ID_CAPACITY];
 } amdf_xdna_endpoint_info_t;
 
-/// Parameters used to materialize one program-independent XDNA device.
+/// Opaque identity of one live XDNA context.
 ///
-/// A device owns one native XDNA context and stable address domain. Creating
-/// another placement from the same endpoint creates another independent
-/// device; no executable or program bytes participate in this operation.
+/// The value is meaningful only while the context and its provider instance
+/// remain live. It is intended for correlation and compatibility checks, not
+/// persistence or native-handle recovery.
+typedef struct amdf_xdna_context_id_t {
+  /// Provider-defined identity words.
+  uint64_t words[2];
+} amdf_xdna_context_id_t;
+
+/// Returns true when two XDNA context identities contain the same value.
+static inline bool amdf_xdna_context_id_is_equal(
+    const amdf_xdna_context_id_t* lhs, const amdf_xdna_context_id_t* rhs) {
+  return lhs->words[0] == rhs->words[0] && lhs->words[1] == rhs->words[1];
+}
+
+/// Parameters used to materialize one XDNA ordinary-address-domain device.
+///
+/// Version 1 has no device-specific fields. The structure retains its extension
+/// chain so later address-domain admission inputs do not require a new entry
+/// point. Context placement, scheduling, and program bytes are not device
+/// creation inputs.
 typedef struct amdf_xdna_device_create_info_t {
   /// Must be `AMDF_STRUCTURE_TYPE_XDNA_DEVICE_CREATE_INFO`.
   amdf_structure_type_t type;
@@ -117,16 +145,9 @@ typedef struct amdf_xdna_device_create_info_t {
   uint32_t structure_size;
   /// Optional input extension chain. No extensions are currently defined.
   const void* next;
-  /// Number of logical array columns requested for the context.
-  uint32_t logical_column_count;
-  /// Exact physical partition origin or
-  /// `AMDF_XDNA_PHYSICAL_COLUMN_ORIGIN_ANY` to let the provider choose.
-  uint32_t physical_column_origin;
-  /// Nonempty set of scheduling modes acceptable to the caller.
-  amdf_xdna_scheduling_modes_t acceptable_scheduling_modes;
 } amdf_xdna_device_create_info_t;
 
-/// Achieved placement and identity of one live XDNA device.
+/// Identity of one live XDNA ordinary-address-domain device.
 typedef struct amdf_xdna_device_info_t {
   /// Must be `AMDF_STRUCTURE_TYPE_XDNA_DEVICE_INFO`.
   amdf_structure_type_t type;
@@ -138,6 +159,39 @@ typedef struct amdf_xdna_device_info_t {
   amdf_device_id_t id;
   /// Monotonic provider epoch invalidating state after a device reset.
   uint64_t reset_epoch;
+} amdf_xdna_device_info_t;
+
+/// Parameters used to admit one program-independent XDNA context.
+typedef struct amdf_xdna_context_create_info_t {
+  /// Must be `AMDF_STRUCTURE_TYPE_XDNA_CONTEXT_CREATE_INFO`.
+  amdf_structure_type_t type;
+  /// Must be at least `sizeof(amdf_xdna_context_create_info_t)`.
+  uint32_t structure_size;
+  /// Optional input extension chain. No extensions are currently defined.
+  const void* next;
+  /// Number of logical array columns requested for the context.
+  uint32_t logical_column_count;
+  /// Exact physical partition origin or
+  /// `AMDF_XDNA_PHYSICAL_COLUMN_ORIGIN_ANY` to let the provider choose.
+  uint32_t physical_column_origin;
+  /// Nonempty set of scheduling modes acceptable to the caller.
+  amdf_xdna_scheduling_modes_t acceptable_scheduling_modes;
+} amdf_xdna_context_create_info_t;
+
+/// Achieved placement and identity of one live XDNA context.
+typedef struct amdf_xdna_context_info_t {
+  /// Must be `AMDF_STRUCTURE_TYPE_XDNA_CONTEXT_INFO`.
+  amdf_structure_type_t type;
+  /// Must be at least `sizeof(amdf_xdna_context_info_t)`.
+  uint32_t structure_size;
+  /// Optional output extension chain. No extensions are currently defined.
+  void* next;
+  /// Opaque identity of this live schedulable context.
+  amdf_xdna_context_id_t id;
+  /// Identity of the ordinary-address-domain device borrowed by this context.
+  amdf_device_id_t device_id;
+  /// Device reset epoch in which this context remains valid.
+  uint64_t reset_epoch;
   /// Single scheduling mode selected from the acceptable input set.
   amdf_xdna_scheduling_modes_t scheduling_mode;
   /// Generation of the achieved placement reported below.
@@ -148,12 +202,12 @@ typedef struct amdf_xdna_device_info_t {
     uint32_t logical_count;
     /// Physical origin of the backing array partition.
     uint32_t physical_origin;
-    /// Physical column count of the backing array partition.
+    /// Physical width of the backing partition, including unused columns.
     uint32_t physical_count;
   } columns;
   /// Number of physical rows visible within each admitted column.
   uint32_t row_count;
-} amdf_xdna_device_info_t;
+} amdf_xdna_context_info_t;
 
 /// Immutable entry-point table for one negotiated XDNA extension version.
 ///
@@ -177,19 +231,18 @@ typedef struct amdf_xdna_api_t {
   amdf_status_t(AMDF_CALL* endpoint_query_info)(
       amdf_endpoint_t* endpoint, amdf_xdna_endpoint_info_t* out_info);
 
-  /// Materializes one program-independent XDNA context and address domain.
+  /// Materializes one XDNA ordinary-address domain and allocation namespace.
   ///
   /// `endpoint` remains query-only and may create independent devices. The
-  /// returned device borrows the endpoint, which must outlive it. The selected
-  /// scheduling mode and achieved placement are copied by `device_query_info`.
-  /// No executable, PDI, xclbin, transaction, or control bytes are accepted or
-  /// parsed. Failure leaves `out_device` unchanged.
+  /// returned device borrows the endpoint, which must outlive it. No context
+  /// placement, scheduling, executable, PDI, xclbin, transaction, or control
+  /// bytes are accepted or parsed. Failure leaves `out_device` unchanged.
   amdf_status_t(AMDF_CALL* device_create)(
       amdf_endpoint_t* endpoint,
       const amdf_xdna_device_create_info_t* create_info,
       amdf_device_t** out_device);
 
-  /// Copies the identity and current achieved placement of `device`.
+  /// Copies the identity and reset epoch of `device`.
   ///
   /// The operation is thread-safe and performs no system call, allocation,
   /// device initialization, retry, sleep, or device wait. The caller
@@ -197,6 +250,36 @@ typedef struct amdf_xdna_api_t {
   /// modified when validation or engine compatibility fails.
   amdf_status_t(AMDF_CALL* device_query_info)(
       amdf_device_t* device, amdf_xdna_device_info_t* out_info);
+
+  /// Admits one program-independent schedulable context beneath `device`.
+  ///
+  /// The returned context borrows the ordinary-address-domain device, which
+  /// must outlive it. Creation selects one scheduling mode and establishes the
+  /// complete achieved placement and native completion state before
+  /// publication. It consumes no program or invocation bytes. Failure
+  /// leaves `out_context` unchanged and creates no caller cleanup obligation.
+  /// Construction releases its unpublished state locally; a native cleanup
+  /// failure is reported without transferring that state to `device`.
+  amdf_status_t(AMDF_CALL* context_create)(
+      amdf_device_t* device, const amdf_xdna_context_create_info_t* create_info,
+      amdf_xdna_context_t** out_context);
+
+  /// Copies the immutable identity and achieved placement of `context`.
+  ///
+  /// The operation is thread-safe and performs no system call, allocation,
+  /// native initialization, retry, sleep, or device wait. The caller
+  /// initializes `out_info` and its complete extension chain. No output is
+  /// modified when validation fails.
+  amdf_status_t(AMDF_CALL* context_query_info)(
+      amdf_xdna_context_t* context, amdf_xdna_context_info_t* out_info);
+
+  /// Destroys one context after all context-local children are gone.
+  ///
+  /// Returns `AMDF_STATUS_CODE_BUSY` without native mutation while children
+  /// remain live. A native teardown failure leaves the context
+  /// live so destruction can be retried. The caller must otherwise have
+  /// exclusive access.
+  amdf_status_t(AMDF_CALL* context_destroy)(amdf_xdna_context_t* context);
 } amdf_xdna_api_t;
 
 #ifdef __cplusplus

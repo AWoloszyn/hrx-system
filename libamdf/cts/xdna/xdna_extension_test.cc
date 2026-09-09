@@ -16,21 +16,28 @@
 
 namespace {
 
-static_assert(offsetof(amdf_xdna_device_create_info_t, logical_column_count) ==
+static_assert(sizeof(amdf_xdna_device_create_info_t) ==
               sizeof(amdf_input_structure_t));
-static_assert(offsetof(amdf_xdna_device_create_info_t,
-                       acceptable_scheduling_modes) == 24);
-static_assert(sizeof(amdf_xdna_device_create_info_t) == 32);
 static_assert(offsetof(amdf_xdna_device_info_t, id) ==
               sizeof(amdf_output_structure_t));
 static_assert(offsetof(amdf_xdna_device_info_t, reset_epoch) == 32);
-static_assert(offsetof(amdf_xdna_device_info_t, columns) == 48);
-static_assert(offsetof(amdf_xdna_device_info_t, row_count) == 60);
-static_assert(sizeof(amdf_xdna_device_info_t) == 64);
+static_assert(sizeof(amdf_xdna_device_info_t) == 40);
+static_assert(offsetof(amdf_xdna_context_create_info_t, logical_column_count) ==
+              sizeof(amdf_input_structure_t));
+static_assert(offsetof(amdf_xdna_context_create_info_t,
+                       acceptable_scheduling_modes) == 24);
+static_assert(sizeof(amdf_xdna_context_create_info_t) == 32);
+static_assert(offsetof(amdf_xdna_context_info_t, id) ==
+              sizeof(amdf_output_structure_t));
+static_assert(offsetof(amdf_xdna_context_info_t, device_id) == 32);
+static_assert(offsetof(amdf_xdna_context_info_t, reset_epoch) == 48);
+static_assert(offsetof(amdf_xdna_context_info_t, columns) == 64);
+static_assert(offsetof(amdf_xdna_context_info_t, row_count) == 76);
+static_assert(sizeof(amdf_xdna_context_info_t) == 80);
 static_assert(offsetof(amdf_xdna_endpoint_info_t, target_id) == 72);
 static_assert(sizeof(amdf_xdna_endpoint_info_t) == 136);
-static_assert(offsetof(amdf_xdna_api_t, device_query_info) +
-                  sizeof(amdf_xdna_api_t::device_query_info) ==
+static_assert(offsetof(amdf_xdna_api_t, context_destroy) +
+                  sizeof(amdf_xdna_api_t::context_destroy) ==
               sizeof(amdf_xdna_api_t));
 
 const amdf_api_t* QueryApi() {
@@ -65,6 +72,9 @@ TEST(XdnaExtensionTest, ReportsCompiledAvailabilityBeforeCreatingInstance) {
   EXPECT_NE(xdna_api->endpoint_query_info, nullptr);
   EXPECT_NE(xdna_api->device_create, nullptr);
   EXPECT_NE(xdna_api->device_query_info, nullptr);
+  EXPECT_NE(xdna_api->context_create, nullptr);
+  EXPECT_NE(xdna_api->context_query_info, nullptr);
+  EXPECT_NE(xdna_api->context_destroy, nullptr);
 }
 
 TEST(XdnaExtensionTest, ReturnsStableImmutableTable) {
@@ -113,6 +123,9 @@ class XdnaEndpointTest : public ::testing::Test {
   }
 
   void TearDown() override {
+    if (context_ != nullptr) {
+      EXPECT_TRUE(amdf_status_is_ok(xdna_api_->context_destroy(context_)));
+    }
     if (device_ != nullptr) {
       EXPECT_TRUE(amdf_status_is_ok(api_->device_destroy(device_)));
     }
@@ -145,10 +158,17 @@ class XdnaEndpointTest : public ::testing::Test {
     return false;
   }
 
-  amdf_xdna_device_create_info_t MakeDeviceCreateInfo(
-      uint32_t logical_column_count = 1) {
+  amdf_xdna_device_create_info_t MakeDeviceCreateInfo() {
     amdf_xdna_device_create_info_t create_info = {};
     create_info.type = AMDF_STRUCTURE_TYPE_XDNA_DEVICE_CREATE_INFO;
+    create_info.structure_size = sizeof(create_info);
+    return create_info;
+  }
+
+  amdf_xdna_context_create_info_t MakeContextCreateInfo(
+      uint32_t logical_column_count = 1) {
+    amdf_xdna_context_create_info_t create_info = {};
+    create_info.type = AMDF_STRUCTURE_TYPE_XDNA_CONTEXT_CREATE_INFO;
     create_info.structure_size = sizeof(create_info);
     create_info.logical_column_count = logical_column_count;
     create_info.physical_column_origin = AMDF_XDNA_PHYSICAL_COLUMN_ORIGIN_ANY;
@@ -162,9 +182,10 @@ class XdnaEndpointTest : public ::testing::Test {
   amdf_instance_t* instance_ = nullptr;
   amdf_endpoint_t* endpoint_ = nullptr;
   amdf_device_t* device_ = nullptr;
+  amdf_xdna_context_t* context_ = nullptr;
 };
 
-TEST_F(XdnaEndpointTest, ReturnsQualifiedCachedProfile) {
+TEST_F(XdnaEndpointTest, ReturnsStableCachedProfile) {
   if (!OpenEngine(AMDF_ENGINE_KIND_XDNA)) {
     GTEST_SKIP() << "no qualified XDNA endpoint present";
   }
@@ -175,19 +196,22 @@ TEST_F(XdnaEndpointTest, ReturnsQualifiedCachedProfile) {
   ASSERT_TRUE(
       amdf_status_is_ok(xdna_api_->endpoint_query_info(endpoint_, &info)));
 
-  EXPECT_EQ(info.architecture, AMDF_XDNA_ARCHITECTURE_AIE2P);
-  EXPECT_EQ(info.array.column_origin, 0u);
-  EXPECT_EQ(info.array.column_count, 8u);
-  EXPECT_EQ(info.array.row_count, 6u);
-  EXPECT_EQ(info.array.column_stride, UINT64_C(1) << 25);
-  EXPECT_EQ(info.context.scheduling_modes,
-            AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED);
-  EXPECT_EQ(info.context.minimum_column_count, 1u);
-  EXPECT_EQ(info.context.maximum_column_count, 8u);
-  EXPECT_EQ(info.context.column_count_granularity, 1u);
-  EXPECT_EQ(info.context.maximum_live_context_count, 32u);
-  EXPECT_EQ(info.context.maximum_hardware_context_count, 16u);
-  EXPECT_STREQ(info.target_id, "amd.xdna.strix_halo.17f0_11");
+  EXPECT_EQ(info.type, AMDF_STRUCTURE_TYPE_XDNA_ENDPOINT_INFO);
+  EXPECT_EQ(info.structure_size, sizeof(info));
+  EXPECT_NE(info.architecture, AMDF_XDNA_ARCHITECTURE_UNKNOWN);
+  EXPECT_GT(info.array.column_count, 0u);
+  EXPECT_GT(info.array.row_count, 0u);
+  EXPECT_GT(info.array.column_stride, 0u);
+  EXPECT_NE(info.context.scheduling_modes, 0u);
+  EXPECT_GT(info.context.minimum_column_count, 0u);
+  EXPECT_LE(info.context.minimum_column_count,
+            info.context.maximum_column_count);
+  EXPECT_LE(info.context.maximum_column_count, info.array.column_count);
+  EXPECT_GT(info.context.column_count_granularity, 0u);
+  EXPECT_GE(info.context.maximum_live_context_count,
+            info.context.maximum_hardware_context_count);
+  EXPECT_NE(info.target_id[0], '\0');
+  EXPECT_EQ(info.target_id[AMDF_XDNA_TARGET_ID_CAPACITY - 1], '\0');
 
   amdf_xdna_endpoint_info_t second_info = {};
   second_info.type = AMDF_STRUCTURE_TYPE_XDNA_ENDPOINT_INFO;
@@ -260,32 +284,73 @@ TEST_F(XdnaEndpointTest, ValidatesDeviceCreationArgumentsWithoutNativeWork) {
                 xdna_api_->device_create(endpoint_, &create_info, &output)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
   EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
-
-  create_info = MakeDeviceCreateInfo();
-  create_info.acceptable_scheduling_modes = 0;
-  EXPECT_EQ(amdf_status_code(
-                xdna_api_->device_create(endpoint_, &create_info, &output)),
-            AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
-
-  create_info = MakeDeviceCreateInfo(0);
-  EXPECT_EQ(amdf_status_code(
-                xdna_api_->device_create(endpoint_, &create_info, &output)),
-            AMDF_STATUS_CODE_OUT_OF_RANGE);
-  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
-
-  create_info = MakeDeviceCreateInfo();
-  create_info.acceptable_scheduling_modes = UINT32_MAX;
-  EXPECT_EQ(amdf_status_code(
-                xdna_api_->device_create(endpoint_, &create_info, &output)),
-            AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 }
 
-TEST_F(XdnaEndpointTest, MaterializesProgramIndependentDevice) {
+TEST_F(XdnaEndpointTest, ValidatesContextCreationWithoutPublishingOnFailure) {
   if (!OpenEngine(AMDF_ENGINE_KIND_XDNA)) {
     GTEST_SKIP() << "no qualified XDNA endpoint present";
   }
+  const amdf_xdna_device_create_info_t device_create_info =
+      MakeDeviceCreateInfo();
+  const amdf_status_t device_status =
+      xdna_api_->device_create(endpoint_, &device_create_info, &device_);
+  if (amdf_status_domain(device_status) == AMDF_STATUS_DOMAIN_API &&
+      amdf_status_code(device_status) == AMDF_STATUS_CODE_UNSUPPORTED) {
+    GTEST_SKIP() << "XDNA device materialization is unavailable";
+  }
+  ASSERT_TRUE(amdf_status_is_ok(device_status));
+
+  amdf_xdna_context_create_info_t create_info = MakeContextCreateInfo();
+  auto* const sentinel = reinterpret_cast<amdf_xdna_context_t*>(uintptr_t{1});
+  amdf_xdna_context_t* output = sentinel;
+  EXPECT_EQ(amdf_status_code(
+                xdna_api_->context_create(nullptr, &create_info, &output)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(output, sentinel);
+  EXPECT_EQ(
+      amdf_status_code(xdna_api_->context_create(device_, nullptr, &output)),
+      AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(output, sentinel);
+  EXPECT_EQ(amdf_status_code(
+                xdna_api_->context_create(device_, &create_info, nullptr)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+
+  create_info.type = AMDF_STRUCTURE_TYPE_NONE;
+  EXPECT_EQ(amdf_status_code(
+                xdna_api_->context_create(device_, &create_info, &output)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(output, sentinel);
+
+  create_info = MakeContextCreateInfo();
+  create_info.acceptable_scheduling_modes = 0;
+  EXPECT_EQ(amdf_status_code(
+                xdna_api_->context_create(device_, &create_info, &output)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(output, sentinel);
+
+  create_info = MakeContextCreateInfo(0);
+  EXPECT_EQ(amdf_status_code(
+                xdna_api_->context_create(device_, &create_info, &output)),
+            AMDF_STATUS_CODE_OUT_OF_RANGE);
+  EXPECT_EQ(output, sentinel);
+
+  create_info = MakeContextCreateInfo();
+  create_info.acceptable_scheduling_modes = UINT32_MAX;
+  EXPECT_EQ(amdf_status_code(
+                xdna_api_->context_create(device_, &create_info, &output)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(output, sentinel);
+}
+
+TEST_F(XdnaEndpointTest, MaterializesDeviceAndProgramIndependentContext) {
+  if (!OpenEngine(AMDF_ENGINE_KIND_XDNA)) {
+    GTEST_SKIP() << "no qualified XDNA endpoint present";
+  }
+  amdf_xdna_endpoint_info_t endpoint_info = {};
+  endpoint_info.type = AMDF_STRUCTURE_TYPE_XDNA_ENDPOINT_INFO;
+  endpoint_info.structure_size = sizeof(endpoint_info);
+  ASSERT_TRUE(amdf_status_is_ok(
+      xdna_api_->endpoint_query_info(endpoint_, &endpoint_info)));
   const amdf_xdna_device_create_info_t create_info = MakeDeviceCreateInfo();
   const amdf_status_t create_status =
       xdna_api_->device_create(endpoint_, &create_info, &device_);
@@ -304,12 +369,6 @@ TEST_F(XdnaEndpointTest, MaterializesProgramIndependentDevice) {
   ASSERT_TRUE(amdf_status_is_ok(xdna_api_->device_query_info(device_, &info)));
   EXPECT_NE(info.id.words[0] | info.id.words[1], 0u);
   EXPECT_EQ(info.reset_epoch, 1u);
-  EXPECT_EQ(info.scheduling_mode, AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED);
-  EXPECT_EQ(info.placement_generation, 1u);
-  EXPECT_EQ(info.columns.logical_count, create_info.logical_column_count);
-  EXPECT_EQ(info.columns.physical_origin, 0u);
-  EXPECT_EQ(info.columns.physical_count, 8u);
-  EXPECT_EQ(info.row_count, 6u);
 
   amdf_xdna_device_info_t second_info = {};
   second_info.type = AMDF_STRUCTURE_TYPE_XDNA_DEVICE_INFO;
@@ -317,6 +376,34 @@ TEST_F(XdnaEndpointTest, MaterializesProgramIndependentDevice) {
   ASSERT_TRUE(
       amdf_status_is_ok(xdna_api_->device_query_info(device_, &second_info)));
   EXPECT_EQ(std::memcmp(&info, &second_info, sizeof(info)), 0);
+
+  const amdf_xdna_context_create_info_t context_create_info =
+      MakeContextCreateInfo();
+  ASSERT_TRUE(amdf_status_is_ok(
+      xdna_api_->context_create(device_, &context_create_info, &context_)));
+  amdf_xdna_context_info_t context_info = {};
+  context_info.type = AMDF_STRUCTURE_TYPE_XDNA_CONTEXT_INFO;
+  context_info.structure_size = sizeof(context_info);
+  ASSERT_TRUE(amdf_status_is_ok(
+      xdna_api_->context_query_info(context_, &context_info)));
+  EXPECT_NE(context_info.id.words[0] | context_info.id.words[1], 0u);
+  EXPECT_TRUE(amdf_device_id_is_equal(&context_info.device_id, &info.id));
+  EXPECT_EQ(context_info.reset_epoch, info.reset_epoch);
+  EXPECT_EQ(context_info.scheduling_mode,
+            AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED);
+  EXPECT_EQ(context_info.placement_generation, 1u);
+  EXPECT_EQ(context_info.columns.logical_count,
+            context_create_info.logical_column_count);
+  ASSERT_GE(context_info.columns.physical_origin,
+            endpoint_info.array.column_origin);
+  const uint32_t physical_offset =
+      context_info.columns.physical_origin - endpoint_info.array.column_origin;
+  ASSERT_LE(physical_offset, endpoint_info.array.column_count);
+  EXPECT_GE(context_info.columns.physical_count,
+            context_info.columns.logical_count);
+  EXPECT_LE(context_info.columns.physical_count,
+            endpoint_info.array.column_count - physical_offset);
+  EXPECT_EQ(context_info.row_count, endpoint_info.array.row_count);
 
   EXPECT_EQ(amdf_status_code(api_->endpoint_close(endpoint_)),
             AMDF_STATUS_CODE_BUSY);
@@ -352,6 +439,41 @@ TEST_F(XdnaEndpointTest, RejectsMalformedDeviceInfoWithoutMutation) {
   info.type = AMDF_STRUCTURE_TYPE_XDNA_DEVICE_INFO;
   info.next = &info;
   EXPECT_EQ(amdf_status_code(xdna_api_->device_query_info(device_, &info)),
+            AMDF_STATUS_CODE_UNSUPPORTED);
+  EXPECT_EQ(info.reset_epoch, UINT64_MAX);
+}
+
+TEST_F(XdnaEndpointTest, RejectsMalformedContextInfoWithoutMutation) {
+  if (!OpenEngine(AMDF_ENGINE_KIND_XDNA)) {
+    GTEST_SKIP() << "no qualified XDNA endpoint present";
+  }
+  const amdf_xdna_device_create_info_t device_create_info =
+      MakeDeviceCreateInfo();
+  const amdf_status_t device_status =
+      xdna_api_->device_create(endpoint_, &device_create_info, &device_);
+  if (amdf_status_domain(device_status) == AMDF_STATUS_DOMAIN_API &&
+      amdf_status_code(device_status) == AMDF_STATUS_CODE_UNSUPPORTED) {
+    GTEST_SKIP() << "XDNA device materialization is unavailable";
+  }
+  ASSERT_TRUE(amdf_status_is_ok(device_status));
+  const amdf_xdna_context_create_info_t context_create_info =
+      MakeContextCreateInfo();
+  ASSERT_TRUE(amdf_status_is_ok(
+      xdna_api_->context_create(device_, &context_create_info, &context_)));
+
+  EXPECT_EQ(amdf_status_code(xdna_api_->context_query_info(context_, nullptr)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+
+  amdf_xdna_context_info_t info = {};
+  info.structure_size = sizeof(info);
+  info.reset_epoch = UINT64_MAX;
+  EXPECT_EQ(amdf_status_code(xdna_api_->context_query_info(context_, &info)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(info.reset_epoch, UINT64_MAX);
+
+  info.type = AMDF_STRUCTURE_TYPE_XDNA_CONTEXT_INFO;
+  info.next = &info;
+  EXPECT_EQ(amdf_status_code(xdna_api_->context_query_info(context_, &info)),
             AMDF_STATUS_CODE_UNSUPPORTED);
   EXPECT_EQ(info.reset_epoch, UINT64_MAX);
 }

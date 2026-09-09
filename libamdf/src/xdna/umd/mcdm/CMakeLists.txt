@@ -57,6 +57,20 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
 iree_cc_library(
   NAME
+    context_state
+  HDRS
+    "context.h"
+  DEPS
+    ::device_state
+    amdf::headers
+    libamdf::src::xdna::umd::context
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_library(
+  NAME
     private_allocation
   HDRS
     "private_allocation.h"
@@ -94,7 +108,6 @@ iree_cc_library(
     "device.c"
   DEPS
     ::device_state
-    ::legacy_context
     amdf::headers
     libamdf::src::allocator
     libamdf::src::platform::windows::endpoint
@@ -106,8 +119,26 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
 iree_cc_library(
   NAME
+    context
+  SRCS
+    "context.c"
+  DEPS
+    ::context_state
+    ::device_state
+    ::legacy_context
+    amdf::headers
+    libamdf::src::allocator
+    libamdf::src::xdna::umd::context
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_library(
+  NAME
     mcdm
   DEPS
+    ::context
     ::device
     ::memory
     amdf::headers
@@ -122,6 +153,8 @@ iree_cc_test(
   SRCS
     "device_test.cc"
   DEPS
+    ::context
+    ::context_state
     ::device
     amdf::headers
     iree::third_party::google_test
@@ -129,7 +162,30 @@ iree_cc_test(
     libamdf::src::allocator
     libamdf::src::platform::windows::endpoint
     libamdf::src::xdna::endpoint_profile
+    libamdf::src::xdna::umd::context
     libamdf::src::xdna::umd::device
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.xdna"
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_test(
+  NAME
+    context_test
+  SRCS
+    "context_test.cc"
+  DEPS
+    ::context
+    ::context_state
+    ::device_state
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+    libamdf::src::allocator
+    libamdf::src::xdna::endpoint_profile
+    libamdf::src::xdna::umd::context
   LABELS
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.xdna"

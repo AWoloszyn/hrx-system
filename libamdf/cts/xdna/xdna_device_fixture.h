@@ -14,7 +14,7 @@
 #include "gtest/gtest.h"
 #include "util/provider.h"
 
-// Materializes the first qualified XDNA endpoint and one single-column device.
+// Materializes the first qualified XDNA endpoint, device, and context.
 class XdnaDeviceFixture : public ::testing::Test {
  protected:
   void SetUp() override {
@@ -62,11 +62,6 @@ class XdnaDeviceFixture : public ::testing::Test {
     amdf_xdna_device_create_info_t device_create_info = {};
     device_create_info.type = AMDF_STRUCTURE_TYPE_XDNA_DEVICE_CREATE_INFO;
     device_create_info.structure_size = sizeof(device_create_info);
-    device_create_info.logical_column_count = 1;
-    device_create_info.physical_column_origin =
-        AMDF_XDNA_PHYSICAL_COLUMN_ORIGIN_ANY;
-    device_create_info.acceptable_scheduling_modes =
-        AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED;
     status = xdna_api_->device_create(endpoint_, &device_create_info, &device_);
     if (amdf_status_domain(status) == AMDF_STATUS_DOMAIN_API &&
         amdf_status_code(status) == AMDF_STATUS_CODE_UNSUPPORTED) {
@@ -75,9 +70,26 @@ class XdnaDeviceFixture : public ::testing::Test {
     ASSERT_TRUE(amdf_status_is_ok(status))
         << "domain=" << amdf_status_domain(status)
         << " code=" << amdf_status_code(status);
+
+    amdf_xdna_context_create_info_t context_create_info = {};
+    context_create_info.type = AMDF_STRUCTURE_TYPE_XDNA_CONTEXT_CREATE_INFO;
+    context_create_info.structure_size = sizeof(context_create_info);
+    context_create_info.logical_column_count = 1;
+    context_create_info.physical_column_origin =
+        AMDF_XDNA_PHYSICAL_COLUMN_ORIGIN_ANY;
+    context_create_info.acceptable_scheduling_modes =
+        AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED;
+    status =
+        xdna_api_->context_create(device_, &context_create_info, &context_);
+    ASSERT_TRUE(amdf_status_is_ok(status))
+        << "domain=" << amdf_status_domain(status)
+        << " code=" << amdf_status_code(status);
   }
 
   void TearDown() override {
+    if (context_ != nullptr) {
+      EXPECT_TRUE(amdf_status_is_ok(xdna_api_->context_destroy(context_)));
+    }
     if (device_ != nullptr) {
       EXPECT_TRUE(amdf_status_is_ok(api_->device_destroy(device_)));
     }
@@ -94,6 +106,7 @@ class XdnaDeviceFixture : public ::testing::Test {
   amdf_instance_t* instance_ = nullptr;
   amdf_endpoint_t* endpoint_ = nullptr;
   amdf_device_t* device_ = nullptr;
+  amdf_xdna_context_t* context_ = nullptr;
 };
 
 #endif  // AMDF_CTS_API_XDNA_DEVICE_FIXTURE_H_

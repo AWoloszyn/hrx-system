@@ -51,11 +51,27 @@ amdf_cc_library(
 )
 
 amdf_cc_library(
+    name = "context",
+    srcs = ["context.c"],
+    hdrs = ["context.h"],
+    deps = [
+        ":device",
+        ":endpoint_profile",
+        "//libamdf/src:allocator",
+        "//libamdf/src:child_tracker",
+        "//libamdf/src:device",
+        "//libamdf/src:structure",
+        "//libamdf/src/xdna/umd:context",
+    ],
+)
+
+amdf_cc_library(
     name = "extension",
     srcs = ["extension.c"],
     hdrs = ["extension.h"],
     visibility = ["//libamdf/src/provider:__pkg__"],
     deps = [
+        ":context",
         ":device",
         ":endpoint_profile",
         "//libamdf/src:endpoint",

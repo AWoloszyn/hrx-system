@@ -165,13 +165,6 @@ class WindowsXdnaDeviceRollbackTest : public ::testing::Test {
     endpoint_info_.array.column_count = 8;
     profile_.model = AMDF_PCI_XDNA_MODEL_NPU5;
     profile_.info = &endpoint_info_;
-
-    create_info_.type = AMDF_STRUCTURE_TYPE_XDNA_DEVICE_CREATE_INFO;
-    create_info_.structure_size = sizeof(create_info_);
-    create_info_.logical_column_count = 1;
-    create_info_.physical_column_origin = AMDF_XDNA_PHYSICAL_COLUMN_ORIGIN_ANY;
-    create_info_.acceptable_scheduling_modes =
-        AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED;
   }
 
   void TearDown() override {
@@ -189,7 +182,6 @@ class WindowsXdnaDeviceRollbackTest : public ::testing::Test {
   amdf_platform_endpoint_t* endpoint_ = nullptr;
   amdf_xdna_endpoint_info_t endpoint_info_ = {};
   amdf_xdna_endpoint_profile_t profile_ = {};
-  amdf_xdna_device_create_info_t create_info_ = {};
 };
 
 TEST_F(WindowsXdnaDeviceRollbackTest,
@@ -200,9 +192,8 @@ TEST_F(WindowsXdnaDeviceRollbackTest,
   std::memset(&result, 0xA5, sizeof(result));
   const auto original_result = result;
 
-  const amdf_status_t status =
-      amdf_xdna_umd_device_create(endpoint_, &profile_, &create_info_,
-                                  instance_.host_allocator, &device, &result);
+  const amdf_status_t status = amdf_xdna_umd_device_create(
+      endpoint_, &profile_, instance_.host_allocator, &device, &result);
 
   EXPECT_EQ(status, amdf_kmt_make_status(kFailure));
   EXPECT_EQ(reinterpret_cast<uintptr_t>(device), uintptr_t{1});

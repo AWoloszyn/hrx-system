@@ -20,6 +20,7 @@
 #include "libamdf/src/xdna/endpoint_profile.h"
 #include "libamdf/src/xdna/target/npu5/bootstrap.h"
 #include "libamdf/src/xdna/target/npu5/context.h"
+#include "libamdf/src/xdna/umd/context.h"
 #include "libamdf/src/xdna/umd/drm/memory.h"
 
 namespace {
@@ -58,12 +59,13 @@ class LinuxXdnaDeviceTest : public ::testing::Test {
         EXPECT_EQ(amdf_xdna_umd_host_mapping_destroy(value), AMDF_STATUS_OK);
     }
     if (memory) EXPECT_EQ(amdf_xdna_umd_memory_destroy(memory), AMDF_STATUS_OK);
-    for (auto* value : devices) {
+    for (auto* value : contexts) {
       if (value) {
         std::cout << "Destroy native context" << std::endl;
-        EXPECT_EQ(amdf_xdna_umd_device_destroy(value), AMDF_STATUS_OK);
+        EXPECT_EQ(amdf_xdna_umd_context_destroy(value), AMDF_STATUS_OK);
       }
     }
+    if (device) EXPECT_EQ(amdf_xdna_umd_device_destroy(device), AMDF_STATUS_OK);
     if (endpoint)
       EXPECT_EQ(amdf_platform_endpoint_close(endpoint), AMDF_STATUS_OK);
     if (instance)
@@ -76,42 +78,47 @@ class LinuxXdnaDeviceTest : public ::testing::Test {
   amdf_platform_endpoint_t* endpoint = nullptr;
   // Static target profile selected from the opened endpoint.
   const amdf_xdna_endpoint_profile_t* profile = nullptr;
-  // Independent native devices, each owning its own handle namespaces.
-  amdf_xdna_umd_device_t* devices[2] = {};
+  // Native device owning one ordinary address and BO namespace.
+  amdf_xdna_umd_device_t* device = nullptr;
+  // Independent scheduling contexts borrowing the native device.
+  amdf_xdna_umd_context_t* contexts[2] = {};
   // Memory retained until every host view has been destroyed.
   amdf_xdna_umd_memory_t* memory = nullptr;
   // Independent host views into the same native attachment.
   amdf_xdna_umd_host_mapping_t* mappings[2] = {};
 };
 
-TEST_F(LinuxXdnaDeviceTest, IndependentContextsAndPersistentMappings) {
-  amdf_xdna_device_create_info_t create_info = {};
+TEST_F(LinuxXdnaDeviceTest, ContextsShareDeviceMemoryAndDestroyIndependently) {
+  amdf_xdna_umd_device_result_t device_result = {};
+  ASSERT_EQ(
+      amdf_xdna_umd_device_create(endpoint, profile, amdf_allocator_system(),
+                                  &device, &device_result),
+      AMDF_STATUS_OK);
+  EXPECT_NE(device_result.id.words[0] | device_result.id.words[1], 0u);
+  const void* pdi = nullptr;
+  size_t pdi_byte_length = 0;
+  amdf_xdna_npu5_bootstrap_query_pdi(&pdi, &pdi_byte_length);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(device->heap.host_pointer) %
+                AMDF_XDNA_NPU5_HEAP_BYTE_LENGTH,
+            0u);
+  EXPECT_NE(fcntl(device->descriptor, F_GETFD) & FD_CLOEXEC, 0);
+  EXPECT_EQ(std::memcmp(pdi, device->bootstrap.host_pointer, pdi_byte_length),
+            0);
+
+  amdf_xdna_context_create_info_t create_info = {};
   create_info.acceptable_scheduling_modes =
       AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED;
   create_info.logical_column_count = 1;
   create_info.physical_column_origin = AMDF_XDNA_PHYSICAL_COLUMN_ORIGIN_ANY;
-  amdf_xdna_umd_device_result_t results[2] = {};
-  const void* pdi = nullptr;
-  size_t pdi_byte_length = 0;
-  amdf_xdna_npu5_bootstrap_query_pdi(&pdi, &pdi_byte_length);
+  amdf_xdna_umd_context_result_t results[2] = {};
   for (size_t i = 0; i < 2; ++i) {
-    std::cout << "Create independent native context " << i << std::endl;
-    ASSERT_EQ(amdf_xdna_umd_device_create(endpoint, profile, &create_info,
-                                          amdf_allocator_system(), &devices[i],
-                                          &results[i]),
+    std::cout << "Create native context " << i << std::endl;
+    ASSERT_EQ(amdf_xdna_umd_context_create(device, profile, &create_info,
+                                           &contexts[i], &results[i]),
               AMDF_STATUS_OK);
     EXPECT_EQ(results[i].physical_column_origin, 0u);
     EXPECT_EQ(results[i].physical_column_count, 8u);
-    EXPECT_EQ(reinterpret_cast<uintptr_t>(devices[i]->heap.host_pointer) %
-                  AMDF_XDNA_NPU5_HEAP_BYTE_LENGTH,
-              0u);
-    EXPECT_NE(fcntl(devices[i]->descriptor, F_GETFD) & FD_CLOEXEC, 0);
-    EXPECT_EQ(
-        std::memcmp(pdi, devices[i]->bootstrap.host_pointer, pdi_byte_length),
-        0);
   }
-  EXPECT_NE(devices[0]->descriptor, devices[1]->descriptor);
-  EXPECT_NE(devices[0]->heap.host_pointer, devices[1]->heap.host_pointer);
   EXPECT_NE(results[0].id.words[0], results[1].id.words[0]);
 
   amdf_memory_create_info_t memory_create = {};
@@ -122,7 +129,7 @@ TEST_F(LinuxXdnaDeviceTest, IndependentContextsAndPersistentMappings) {
   memory_create.minimum_alignment = 65536;
   amdf_xdna_umd_memory_result_t memory_result = {};
   std::cout << "Create aligned SHARE attachment" << std::endl;
-  ASSERT_EQ(amdf_xdna_umd_memory_create(devices[0], &memory_create, &memory,
+  ASSERT_EQ(amdf_xdna_umd_memory_create(device, &memory_create, &memory,
                                         &memory_result),
             AMDF_STATUS_OK);
   EXPECT_GE(memory_result.byte_length, memory_create.byte_length);
@@ -150,9 +157,9 @@ TEST_F(LinuxXdnaDeviceTest, IndependentContextsAndPersistentMappings) {
   std::cout << "First view destroyed; attachment remains mapped" << std::endl;
   struct amdxdna_drm_get_bo_info native_info = {};
   native_info.handle = memory->buffer.handle;
-  ASSERT_EQ(ioctl(devices[0]->descriptor, DRM_IOCTL_AMDXDNA_GET_BO_INFO,
-                  &native_info),
-            0);
+  ASSERT_EQ(
+      ioctl(device->descriptor, DRM_IOCTL_AMDXDNA_GET_BO_INFO, &native_info),
+      0);
   EXPECT_EQ(native_info.xdna_addr, memory_result.device_address);
   EXPECT_EQ(native_info.vaddr, memory_result.device_address);
   EXPECT_EQ(static_cast<uint8_t*>(views[1].pointer)[0], 0xA5);
@@ -164,9 +171,10 @@ TEST_F(LinuxXdnaDeviceTest, IndependentContextsAndPersistentMappings) {
   EXPECT_EQ(static_cast<uint8_t*>(views[1].pointer)[4095], 0xA5);
 
   std::cout << "Destroy sibling context while memory stays live" << std::endl;
-  ASSERT_EQ(amdf_xdna_umd_device_destroy(devices[1]), AMDF_STATUS_OK);
-  devices[1] = nullptr;
+  ASSERT_EQ(amdf_xdna_umd_context_destroy(contexts[0]), AMDF_STATUS_OK);
+  contexts[0] = nullptr;
   EXPECT_EQ(static_cast<uint8_t*>(views[1].pointer)[4095], 0xA5);
+  EXPECT_NE(contexts[1], nullptr);
 }
 
 }  // namespace

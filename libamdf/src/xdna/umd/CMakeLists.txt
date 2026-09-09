@@ -26,6 +26,20 @@ endif()
 if(AMDF_BUILD AND AMDF_FAMILY_XDNA)
 iree_cc_library(
   NAME
+    context
+  HDRS
+    "context.h"
+  DEPS
+    ::device
+    amdf::headers
+    libamdf::src::xdna::endpoint_profile
+  PUBLIC
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_library(
+  NAME
     memory
   HDRS
     "memory.h"

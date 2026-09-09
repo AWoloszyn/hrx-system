@@ -21,22 +21,6 @@
 #include "libamdf/src/xdna/umd/drm/device.h"
 
 amdf_status_t amdf_xdna_umd_device_destroy(amdf_xdna_umd_device_t* device) {
-  // Keep every heap allocation alive through native HWCTX teardown.
-  if (device->context != AMDXDNA_INVALID_CTX_HANDLE) {
-    struct amdxdna_drm_destroy_hwctx destroy = {.handle = device->context};
-    if (ioctl(device->descriptor, DRM_IOCTL_AMDXDNA_DESTROY_HWCTX, &destroy) !=
-        0) {
-      return amdf_linux_error(errno);
-    }
-    device->context = AMDXDNA_INVALID_CTX_HANDLE;
-  }
-  if (device->completion_syncobj != 0) {
-    struct drm_syncobj_destroy destroy = {.handle = device->completion_syncobj};
-    if (ioctl(device->descriptor, DRM_IOCTL_SYNCOBJ_DESTROY, &destroy) != 0) {
-      return amdf_linux_error(errno);
-    }
-    device->completion_syncobj = 0;
-  }
   amdf_status_t status = amdf_linux_xdna_buffer_deinitialize(
       device->descriptor, &device->bootstrap);
   if (amdf_status_is_ok(status)) {
@@ -86,18 +70,11 @@ static amdf_status_t amdf_linux_xdna_device_qualify(
 amdf_status_t amdf_xdna_umd_device_create(
     amdf_platform_endpoint_t* endpoint,
     const amdf_xdna_endpoint_profile_t* profile,
-    const amdf_xdna_device_create_info_t* create_info,
     amdf_allocator_t host_allocator, amdf_xdna_umd_device_t** out_device,
     amdf_xdna_umd_device_result_t* out_result) {
   if (profile->model != AMDF_PCI_XDNA_MODEL_NPU5 ||
       endpoint->driver.major_version != 0 ||
-      endpoint->driver.minor_version < 8 ||
-      (create_info->acceptable_scheduling_modes &
-       AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED) == 0 ||
-      (create_info->physical_column_origin !=
-           AMDF_XDNA_PHYSICAL_COLUMN_ORIGIN_ANY &&
-       create_info->physical_column_origin !=
-           profile->info->array.column_origin)) {
+      endpoint->driver.minor_version < 8) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
   amdf_xdna_umd_device_t* device = NULL;
@@ -107,7 +84,6 @@ amdf_status_t amdf_xdna_umd_device_create(
   if (!amdf_status_is_ok(status)) return status;
   device->host_allocator = host_allocator;
   device->descriptor = -1;
-  device->context = AMDXDNA_INVALID_CTX_HANDLE;
   status = amdf_linux_endpoint_open_file(endpoint, &device->descriptor);
   if (amdf_status_is_ok(status)) {
     status = amdf_linux_xdna_device_qualify(device, profile);
@@ -140,31 +116,12 @@ amdf_status_t amdf_xdna_umd_device_create(
     memcpy(device->bootstrap.host_pointer, pdi, pdi_byte_length);
     amdf_linux_host_cache_transfer(device->bootstrap.host_pointer,
                                    pdi_byte_length, device->cache_line_size);
-    struct amdxdna_qos_info qos = {.priority = AMDXDNA_QOS_NORMAL_PRIORITY};
-    // Full physical width has exactly one legal placement, at origin zero.
-    // The public logical width remains the caller's program admission limit.
-    struct amdxdna_drm_create_hwctx create = {
-        .qos_p = (uintptr_t)&qos,
-        .num_tiles =
-            profile->info->array.column_count * AMDF_XDNA_NPU5_CORE_ROW_COUNT,
-    };
-    if (ioctl(device->descriptor, DRM_IOCTL_AMDXDNA_CREATE_HWCTX, &create) !=
-        0) {
-      status = amdf_linux_error(errno);
-    } else {
-      device->context = create.handle;
-      device->completion_syncobj = create.syncobj_handle;
-    }
   }
   if (amdf_status_is_ok(status)) {
     amdf_xdna_umd_device_result_t result = {0};
     result.id.words[0] = (uintptr_t)device;
     result.id.words[1] = endpoint->info.id.words[1];
     result.reset_epoch = 1;
-    result.scheduling_mode = AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED;
-    result.placement_generation = 1;
-    result.physical_column_origin = profile->info->array.column_origin;
-    result.physical_column_count = profile->info->array.column_count;
     *out_result = result;
     *out_device = device;
   } else {

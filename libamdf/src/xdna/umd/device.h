@@ -19,25 +19,16 @@ typedef struct amdf_xdna_umd_device_t amdf_xdna_umd_device_t;
 
 // Native result used to publish one successfully materialized XDNA device.
 typedef struct amdf_xdna_umd_device_result_t {
-  // Opaque identity of the live native context.
+  // Opaque identity of the live native address-domain device.
   amdf_device_id_t id;
   // Provider epoch invalidating native state after reset.
   uint64_t reset_epoch;
-  // Single scheduling mode selected for this context.
-  amdf_xdna_scheduling_modes_t scheduling_mode;
-  // Generation of the fixed physical placement below.
-  uint32_t placement_generation;
-  // Origin of the achieved physical backing partition.
-  uint32_t physical_column_origin;
-  // Width of the achieved physical backing partition.
-  uint32_t physical_column_count;
 } amdf_xdna_umd_device_result_t;
 
-// Creates one program-independent native XDNA context and address domain.
+// Creates one native XDNA ordinary-address domain and allocation namespace.
 amdf_status_t amdf_xdna_umd_device_create(
     amdf_platform_endpoint_t* endpoint,
     const amdf_xdna_endpoint_profile_t* profile,
-    const amdf_xdna_device_create_info_t* create_info,
     amdf_allocator_t host_allocator, amdf_xdna_umd_device_t** out_device,
     amdf_xdna_umd_device_result_t* out_result);
 

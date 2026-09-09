@@ -11,6 +11,7 @@
 #include "amdf/xdna.h"
 #include "libamdf/src/endpoint.h"
 #include "libamdf/src/structure.h"
+#include "libamdf/src/xdna/context.h"
 #include "libamdf/src/xdna/device.h"
 #include "libamdf/src/xdna/endpoint_profile.h"
 
@@ -47,6 +48,9 @@ static const amdf_xdna_api_t amdf_xdna_api_v1 = {
     .endpoint_query_info = amdf_xdna_endpoint_query_info,
     .device_create = amdf_xdna_device_create,
     .device_query_info = amdf_xdna_device_query_info,
+    .context_create = amdf_xdna_context_create,
+    .context_query_info = amdf_xdna_context_query_info,
+    .context_destroy = amdf_xdna_context_destroy,
 };
 
 amdf_status_t amdf_xdna_extension_query(uint32_t minimum_version,

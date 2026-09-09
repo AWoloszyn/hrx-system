@@ -45,6 +45,16 @@ amdf_cc_library(
 )
 
 amdf_cc_library(
+    name = "context_state",
+    hdrs = ["context.h"],
+    target_compatible_with = MCDM_COMPATIBILITY,
+    deps = [
+        ":device_state",
+        "//libamdf/src/xdna/umd:context",
+    ],
+)
+
+amdf_cc_library(
     name = "private_allocation",
     srcs = ["private_allocation.c"],
     hdrs = ["private_allocation.h"],
@@ -73,10 +83,22 @@ amdf_cc_library(
     target_compatible_with = MCDM_COMPATIBILITY,
     deps = [
         ":device_state",
-        ":legacy_context",
         "//libamdf/src:allocator",
         "//libamdf/src/platform/windows:endpoint",
         "//libamdf/src/xdna/umd:device",
+    ],
+)
+
+amdf_cc_library(
+    name = "context",
+    srcs = ["context.c"],
+    target_compatible_with = MCDM_COMPATIBILITY,
+    deps = [
+        ":context_state",
+        ":device_state",
+        ":legacy_context",
+        "//libamdf/src:allocator",
+        "//libamdf/src/xdna/umd:context",
     ],
 )
 
@@ -85,6 +107,7 @@ amdf_cc_library(
     target_compatible_with = MCDM_COMPATIBILITY,
     visibility = ["//libamdf/src/xdna:__pkg__"],
     deps = [
+        ":context",
         ":device",
         ":memory",
     ],
@@ -95,11 +118,30 @@ amdf_cc_test(
     srcs = ["device_test.cc"],
     target_compatible_with = MCDM_COMPATIBILITY,
     deps = [
+        ":context",
+        ":context_state",
         ":device",
         "//libamdf/src:allocator",
         "//libamdf/src/platform/windows:endpoint",
         "//libamdf/src/xdna:endpoint_profile",
+        "//libamdf/src/xdna/umd:context",
         "//libamdf/src/xdna/umd:device",
+        "//third_party:google_test",
+        "//third_party:google_test_main",
+    ],
+)
+
+amdf_cc_test(
+    name = "context_test",
+    srcs = ["context_test.cc"],
+    target_compatible_with = MCDM_COMPATIBILITY,
+    deps = [
+        ":context",
+        ":context_state",
+        ":device_state",
+        "//libamdf/src:allocator",
+        "//libamdf/src/xdna:endpoint_profile",
+        "//libamdf/src/xdna/umd:context",
         "//third_party:google_test",
         "//third_party:google_test_main",
     ],

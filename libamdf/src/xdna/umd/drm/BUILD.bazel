@@ -43,8 +43,18 @@ amdf_cc_library(
     target_compatible_with = DRM_COMPATIBILITY,
     deps = [
         ":buffer",
-        "//libamdf/src:atomics",
         "//libamdf/src/xdna/umd:device",
+    ],
+)
+
+amdf_cc_library(
+    name = "context_state",
+    hdrs = ["context.h"],
+    target_compatible_with = DRM_COMPATIBILITY,
+    deps = [
+        ":device_state",
+        "//libamdf/src:atomics",
+        "//libamdf/src/xdna/umd:context",
     ],
 )
 
@@ -62,6 +72,20 @@ amdf_cc_library(
         "//libamdf/src/xdna/target/npu5:bootstrap",
         "//libamdf/src/xdna/target/npu5:context",
         "//libamdf/src/xdna/umd:device",
+    ],
+)
+
+amdf_cc_library(
+    name = "context",
+    srcs = ["context.c"],
+    target_compatible_with = DRM_COMPATIBILITY,
+    deps = [
+        ":context_state",
+        ":device_state",
+        "//libamdf/src:allocator",
+        "//libamdf/src/platform/linux:file",
+        "//libamdf/src/xdna/target/npu5:context",
+        "//libamdf/src/xdna/umd:context",
     ],
 )
 
@@ -84,6 +108,7 @@ amdf_cc_library(
     target_compatible_with = DRM_COMPATIBILITY,
     visibility = ["//libamdf/src/xdna:__pkg__"],
     deps = [
+        ":context",
         ":device",
         ":memory",
     ],
@@ -95,6 +120,8 @@ amdf_cc_test(
     tags = ["manual"],
     target_compatible_with = DRM_COMPATIBILITY,
     deps = [
+        ":context",
+        ":context_state",
         ":device",
         ":device_state",
         ":memory",
@@ -104,6 +131,7 @@ amdf_cc_test(
         "//libamdf/src/xdna:endpoint_profile",
         "//libamdf/src/xdna/target/npu5:bootstrap",
         "//libamdf/src/xdna/target/npu5:context",
+        "//libamdf/src/xdna/umd:context",
         "//libamdf/src/xdna/umd:device",
         "//libamdf/src/xdna/umd:memory",
         "//third_party:google_test",

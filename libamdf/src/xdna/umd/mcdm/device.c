@@ -9,7 +9,6 @@
 #include "libamdf/src/allocator.h"
 #include "libamdf/src/platform/windows/endpoint.h"
 #include "libamdf/src/xdna/umd/mcdm/device.h"
-#include "libamdf/src/xdna/umd/mcdm/legacy_context.h"
 
 static amdf_status_t amdf_windows_xdna_query_legacy_context_abi(
     const amdf_platform_endpoint_t* endpoint) {
@@ -28,16 +27,6 @@ static amdf_status_t amdf_windows_xdna_query_legacy_context_abi(
 
 static amdf_status_t amdf_windows_xdna_device_release_native(
     amdf_xdna_umd_device_t* device) {
-  if (device->context != 0) {
-    D3DKMT_DESTROYCONTEXT destroy_context = {0};
-    destroy_context.hContext = device->context;
-    const amdf_status_t status =
-        amdf_kmt_make_status(device->kmt->destroy_context(&destroy_context));
-    if (!amdf_status_is_ok(status)) {
-      return status;
-    }
-    device->context = 0;
-  }
   if (device->paging_queue != 0) {
     D3DDDI_DESTROYPAGINGQUEUE destroy_paging_queue = {0};
     destroy_paging_queue.hPagingQueue = device->paging_queue;
@@ -66,19 +55,12 @@ static amdf_status_t amdf_windows_xdna_device_release_native(
 amdf_status_t amdf_xdna_umd_device_create(
     amdf_platform_endpoint_t* endpoint,
     const amdf_xdna_endpoint_profile_t* profile,
-    const amdf_xdna_device_create_info_t* create_info,
     amdf_allocator_t host_allocator, amdf_xdna_umd_device_t** out_device,
     amdf_xdna_umd_device_result_t* out_result) {
   if (!amdf_kmt_api_supports_device_contexts(&endpoint->instance->kmt)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
-  if (profile->model != AMDF_PCI_XDNA_MODEL_NPU5 ||
-      (create_info->acceptable_scheduling_modes &
-       AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED) == 0 ||
-      (create_info->physical_column_origin !=
-           AMDF_XDNA_PHYSICAL_COLUMN_ORIGIN_ANY &&
-       create_info->physical_column_origin !=
-           profile->info->array.column_origin)) {
+  if (profile->model != AMDF_PCI_XDNA_MODEL_NPU5) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
   amdf_status_t status = amdf_windows_xdna_query_legacy_context_abi(endpoint);
@@ -86,21 +68,10 @@ amdf_status_t amdf_xdna_umd_device_create(
     return status;
   }
 
-  uint8_t* context_data = NULL;
-  uint32_t context_data_size = 0;
-  status = amdf_windows_xdna_legacy_context_build(
-      create_info->logical_column_count, profile->info->array.column_origin,
-      host_allocator, &context_data, &context_data_size);
-  if (!amdf_status_is_ok(status)) {
-    return status;
-  }
   amdf_xdna_umd_device_t* device = NULL;
   status = amdf_calloc(host_allocator, sizeof(*device),
                        _Alignof(amdf_xdna_umd_device_t), (void**)&device);
-  if (!amdf_status_is_ok(status)) {
-    amdf_free(host_allocator, context_data);
-    return status;
-  }
+  if (!amdf_status_is_ok(status)) return status;
   device->host_allocator = host_allocator;
   amdf_kmt_device_status_initialize(&device->status);
   device->kmt = &endpoint->instance->kmt;
@@ -134,38 +105,11 @@ amdf_status_t amdf_xdna_umd_device_create(
     }
   }
 
-  D3DKMT_CREATECONTEXTVIRTUAL create_context = {0};
-  if (amdf_status_is_ok(status)) {
-    create_context.hDevice = device->device;
-    create_context.NodeOrdinal = 0;
-    create_context.EngineAffinity = 1;
-    create_context.Flags.HwQueueSupported = 1;
-    create_context.pPrivateDriverData = context_data;
-    create_context.PrivateDriverDataSize = context_data_size;
-    create_context.ClientHint = (D3DKMT_CLIENTHINT)25;
-    status = amdf_kmt_make_status(
-        device->kmt->create_context_virtual(&create_context));
-  }
-  if (amdf_status_is_ok(status)) {
-    device->context = create_context.hContext;
-    if (device->context == 0) {
-      status = amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
-    } else {
-      status = amdf_windows_xdna_legacy_context_query_command_aperture_cookie(
-          context_data, context_data_size, &device->command_aperture_cookie);
-    }
-  }
-  amdf_free(host_allocator, context_data);
-
   if (amdf_status_is_ok(status)) {
     amdf_xdna_umd_device_result_t result = {0};
     result.id.words[0] = endpoint->id.words[0];
-    result.id.words[1] = ((uint64_t)device->context << 32) | device->device;
+    result.id.words[1] = device->device;
     result.reset_epoch = 1;
-    result.scheduling_mode = AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED;
-    result.placement_generation = 1;
-    result.physical_column_origin = profile->info->array.column_origin;
-    result.physical_column_count = profile->info->array.column_count;
     *out_result = result;
     *out_device = device;
   } else {

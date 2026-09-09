@@ -7,27 +7,22 @@
 #ifndef AMDF_SRC_XDNA_UMD_DRM_DEVICE_H_
 #define AMDF_SRC_XDNA_UMD_DRM_DEVICE_H_
 
-#include "libamdf/src/atomics.h"
 #include "libamdf/src/xdna/umd/device.h"
 #include "libamdf/src/xdna/umd/drm/buffer.h"
 
-// One independent accel file, context, and firmware heap.
+// One independent accel client, ordinary address domain, and firmware heap.
 struct amdf_xdna_umd_device_t {
   // Host allocator copied for device and child metadata.
   amdf_allocator_t host_allocator;
   // Fresh open file description owning all native handle namespaces.
   int descriptor;
-  // Hardware context, or AMDXDNA_INVALID_CTX_HANDLE after destruction.
-  uint32_t context;
-  // Context's user-owned DRM timeline sync object, or zero after destruction.
-  uint32_t completion_syncobj;
   // Native host page size established during construction.
   size_t page_size;
   // Qualified CLFLUSH cache-line length in bytes.
   uint32_t cache_line_size;
   // Firmware-addressable device heap with its persistent aligned host mapping.
   amdf_linux_xdna_buffer_t heap;
-  // Context-lifetime transaction interpreter PDI, allocated inside the heap.
+  // Client-lifetime transaction interpreter PDI, allocated inside the heap.
   amdf_linux_xdna_buffer_t bootstrap;
 };
 

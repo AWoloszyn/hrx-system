@@ -50,8 +50,22 @@ iree_cc_library(
   DEPS
     ::buffer
     amdf::headers
-    libamdf::src::atomics
     libamdf::src::xdna::umd::device
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_library(
+  NAME
+    context_state
+  HDRS
+    "context.h"
+  DEPS
+    ::device_state
+    amdf::headers
+    libamdf::src::atomics
+    libamdf::src::xdna::umd::context
   PUBLIC
 )
 endif()
@@ -80,6 +94,24 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
 iree_cc_library(
   NAME
+    context
+  SRCS
+    "context.c"
+  DEPS
+    ::context_state
+    ::device_state
+    amdf::headers
+    libamdf::src::allocator
+    libamdf::src::platform::linux::file
+    libamdf::src::xdna::target::npu5::context
+    libamdf::src::xdna::umd::context
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_library(
+  NAME
     memory
   HDRS
     "memory.h"
@@ -101,6 +133,7 @@ iree_cc_library(
   NAME
     drm
   DEPS
+    ::context
     ::device
     ::memory
     amdf::headers
@@ -115,6 +148,8 @@ iree_cc_test(
   SRCS
     "device_test.cc"
   DEPS
+    ::context
+    ::context_state
     ::device
     ::device_state
     ::memory
@@ -127,6 +162,7 @@ iree_cc_test(
     libamdf::src::xdna::endpoint_profile
     libamdf::src::xdna::target::npu5::bootstrap
     libamdf::src::xdna::target::npu5::context
+    libamdf::src::xdna::umd::context
     libamdf::src::xdna::umd::device
     libamdf::src::xdna::umd::memory
   LABELS
