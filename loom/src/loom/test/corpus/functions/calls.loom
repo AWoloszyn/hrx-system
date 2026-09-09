@@ -33,6 +33,23 @@ check.case @swap_case {
   check.return
 }
 
+// A return cycle must preserve values already in their ABI destination. The
+// parallel-move solver elides identity moves before requesting cycle scratch.
+func.def public @swap_preserving_middle(%a: i64, %b: i64, %c: i64) -> (i64, i64, i64) {
+  func.return %c, %b, %a : i64, i64, i64
+}
+
+check.case @swap_preserving_middle_case {
+  %a = check.literal value(4294967297) : i64
+  %b = check.literal value(-9) : i64
+  %c = check.literal value(7) : i64
+  %first, %middle, %last = func.call @swap_preserving_middle(%a, %b, %c) : (i64, i64, i64) -> (i64, i64, i64)
+  check.expect.equal actual(%first) expected(%c) : i64
+  check.expect.equal actual(%middle) expected(%b) : i64
+  check.expect.equal actual(%last) expected(%a) : i64
+  check.return
+}
+
 func.def public @passthrough(%a: i64, %b: i64) -> (i64, i64) {
   func.return %a, %b : i64, i64
 }

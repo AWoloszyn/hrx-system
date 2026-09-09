@@ -58,24 +58,31 @@ static iree_status_t loom_vm_function_branch(
   return iree_io_stream_write(stream, sizeof(instruction), &instruction);
 }
 
-// Only returned values remain live at a return boundary. A cycle temporary
-// can use any value register absent from that parallel move group; it does
-// not reserve a register throughout the function or enlarge unrelated frames.
+typedef struct loom_vm_return_state_t {
+  // ABI result registers remain live even when their identity moves are elided.
+  uint16_t result_count;
+  // Function register high water, including any return-cycle temporary.
+  uint16_t register_count;
+} loom_vm_return_state_t;
+
+// Cycle scratch excludes the complete result prefix and the move sources. The
+// solver's compacted move list omits identity results, which must survive too.
+// No temporary is reserved throughout the rest of the function.
 static iree_status_t loom_vm_return_temporary(
     void* user_data, const loom_low_move_location_t* storage_class,
     const loom_low_move_t* moves, iree_host_size_t move_count,
     loom_low_move_location_t* out_temporary, bool* out_resolved) {
-  uint16_t* register_count = user_data;
+  loom_vm_return_state_t* state = user_data;
   bool occupied[256] = {false};
   for (iree_host_size_t i = 0; i < move_count; ++i) {
     occupied[moves[i].source.location] = true;
     occupied[moves[i].destination.location] = true;
   }
-  uint32_t location = 0;
+  uint32_t location = state->result_count;
   while (occupied[location]) ++location;
   *out_temporary = *storage_class;
   out_temporary->location = location;
-  *register_count = iree_max(*register_count, location + 1);
+  state->register_count = iree_max(state->register_count, location + 1);
   *out_resolved = true;
   return iree_ok_status();
 }
@@ -101,10 +108,14 @@ static iree_status_t loom_vm_function_return(
         (loom_low_move_t){.source = source, .destination = source};
     scratch->moves[i].destination.location = i;
   }
+  loom_vm_return_state_t state = {
+      .result_count = node->operand_count,
+      .register_count = *register_count,
+  };
   const loom_low_move_sequence_options_t options = {
       .descriptor_set = frame->target.descriptor_set,
       .resolve_temporary = {.fn = loom_vm_return_temporary,
-                            .user_data = register_count},
+                            .user_data = &state},
   };
   // The direct value ABI has at most 16 results. Each cycle adds at most one
   // save for two original moves, so this also covers every cyclic permutation.
@@ -116,6 +127,7 @@ static iree_status_t loom_vm_function_return(
       &move_count, &complete));
   // Capacity covers the worst permutation and the temporary always resolves.
   IREE_ASSERT(complete);
+  *register_count = state.register_count;
   IREE_RETURN_IF_ERROR(loom_vm_function_moves(
       moves, (loom_low_move_range_t){.count = move_count}, stream));
   const iree_vm_bytecode_control_return_t instruction = {
