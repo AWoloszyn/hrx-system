@@ -28,6 +28,9 @@ static amdf_status_t amdf_windows_close_endpoint_adapter(
 amdf_status_t amdf_platform_endpoint_open(
     amdf_platform_instance_t* instance, const amdf_endpoint_id_t* id,
     amdf_platform_endpoint_t** out_endpoint, amdf_endpoint_info_t* out_info) {
+  if (!amdf_kmt_api_supports_endpoint_discovery(&instance->kmt)) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
   amdf_platform_endpoint_t* endpoint =
       (amdf_platform_endpoint_t*)calloc(1, sizeof(*endpoint));
   if (endpoint == NULL) {

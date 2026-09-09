@@ -85,11 +85,16 @@ typedef struct amdf_kmt_api_t {
   PFND3DKMT_CLOSEADAPTER close_adapter;
 } amdf_kmt_api_t;
 
-// Loads system KMT modules and resolves required and optional procedures once.
+// Loads the primary system KMT module and resolves available procedures.
+// Failure leaves `out_api` unchanged. Procedure availability is reported by
+// operation-specific capability queries on the successfully initialized table.
 amdf_status_t amdf_kmt_api_initialize(amdf_kmt_api_t* out_api);
 
 // Unloads system KMT modules after every child handle has been closed.
 amdf_status_t amdf_kmt_api_deinitialize(amdf_kmt_api_t* api);
+
+// Returns true when the complete endpoint discovery procedure set exists.
+bool amdf_kmt_api_supports_endpoint_discovery(const amdf_kmt_api_t* api);
 
 // Returns true when the complete logical-device and paging procedure set
 // exists.

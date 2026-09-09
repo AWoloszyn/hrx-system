@@ -39,6 +39,9 @@ amdf_status_t amdf_platform_instance_destroy(
 amdf_status_t amdf_platform_endpoint_enumerate(
     amdf_platform_instance_t* instance, uint32_t capacity,
     amdf_endpoint_summary_t* summaries, uint32_t* out_count) {
+  if (!amdf_kmt_api_supports_endpoint_discovery(&instance->kmt)) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
   return amdf_windows_endpoint_snapshot_enumerate(&instance->kmt, capacity,
                                                   summaries, out_count);
 }

@@ -13,7 +13,7 @@ amdf_status_t amdf_kmt_make_status(NTSTATUS status) {
   return amdf_make_status(AMDF_STATUS_DOMAIN_NTSTATUS, (uint32_t)status);
 }
 
-static amdf_status_t amdf_kmt_resolve_procedures(amdf_kmt_api_t* api) {
+static void amdf_kmt_resolve_procedures(amdf_kmt_api_t* api) {
   api->enumerate_adapters = (PFND3DKMT_ENUMADAPTERS3)GetProcAddress(
       api->module, "D3DKMTEnumAdapters3");
   api->open_adapter_from_luid = (PFND3DKMT_OPENADAPTERFROMLUID)GetProcAddress(
@@ -72,11 +72,12 @@ static amdf_status_t amdf_kmt_resolve_procedures(amdf_kmt_api_t* api) {
   }
   api->close_adapter =
       (PFND3DKMT_CLOSEADAPTER)GetProcAddress(api->module, "D3DKMTCloseAdapter");
-  if (api->enumerate_adapters == NULL || api->open_adapter_from_luid == NULL ||
-      api->query_adapter_info == NULL || api->close_adapter == NULL) {
-    return amdf_make_status(AMDF_STATUS_DOMAIN_WIN32, ERROR_PROC_NOT_FOUND);
-  }
-  return AMDF_STATUS_OK;
+}
+
+bool amdf_kmt_api_supports_endpoint_discovery(const amdf_kmt_api_t* api) {
+  return api->enumerate_adapters != NULL &&
+         api->open_adapter_from_luid != NULL &&
+         api->query_adapter_info != NULL && api->close_adapter != NULL;
 }
 
 bool amdf_kmt_api_supports_paging_devices(const amdf_kmt_api_t* api) {
@@ -141,37 +142,16 @@ amdf_status_t amdf_kmt_wait_for_paging(
 }
 
 amdf_status_t amdf_kmt_api_initialize(amdf_kmt_api_t* out_api) {
-  memset(out_api, 0, sizeof(*out_api));
-  out_api->module =
-      LoadLibraryExW(L"gdi32.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
-  if (out_api->module == NULL) {
+  amdf_kmt_api_t api = {0};
+  api.module = LoadLibraryExW(L"gdi32.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+  if (api.module == NULL) {
     return amdf_make_status(AMDF_STATUS_DOMAIN_WIN32, GetLastError());
   }
-  out_api->win32u_module =
+  api.win32u_module =
       LoadLibraryExW(L"win32u.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
-  const amdf_status_t status = amdf_kmt_resolve_procedures(out_api);
-  if (!amdf_status_is_ok(status)) {
-    amdf_status_t cleanup_status = AMDF_STATUS_OK;
-    if (out_api->win32u_module != NULL) {
-      if (FreeLibrary(out_api->win32u_module)) {
-        out_api->win32u_module = NULL;
-      } else {
-        cleanup_status =
-            amdf_make_status(AMDF_STATUS_DOMAIN_WIN32, GetLastError());
-      }
-    }
-    if (FreeLibrary(out_api->module)) {
-      out_api->module = NULL;
-    } else if (amdf_status_is_ok(cleanup_status)) {
-      cleanup_status =
-          amdf_make_status(AMDF_STATUS_DOMAIN_WIN32, GetLastError());
-    }
-    if (!amdf_status_is_ok(cleanup_status)) {
-      return cleanup_status;
-    }
-    memset(out_api, 0, sizeof(*out_api));
-  }
-  return status;
+  amdf_kmt_resolve_procedures(&api);
+  *out_api = api;
+  return AMDF_STATUS_OK;
 }
 
 amdf_status_t amdf_kmt_api_deinitialize(amdf_kmt_api_t* api) {

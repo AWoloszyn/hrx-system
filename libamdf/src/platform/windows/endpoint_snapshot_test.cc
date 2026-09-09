@@ -46,6 +46,8 @@ enum class FailurePoint {
 struct FakeKmt {
   // Native operation whose failure is injected by the test.
   FailurePoint failure_point = FailurePoint::kNone;
+  // Number of direct adapter-open calls.
+  uint32_t open_call_count = 0;
   // Number of physical adapters reported for the AMD adapter handle.
   uint32_t amd_physical_adapter_count = 1;
   // PCI vendor used for endpoint classification.
@@ -71,6 +73,7 @@ FakeKmt* current_fake = nullptr;
 
 NTSTATUS APIENTRY
 FakeOpenAdapterFromLuid(D3DKMT_OPENADAPTERFROMLUID* open_adapter) {
+  ++current_fake->open_call_count;
   if (open_adapter->AdapterLuid.LowPart != kAmdAdapter) {
     return kFailure;
   }
@@ -239,6 +242,62 @@ TEST_F(EndpointSnapshotTest, ReturnsOnlyAmdEndpointsAndClosesSnapshot) {
   EXPECT_EQ(summaries[0].engine_kind, AMDF_ENGINE_KIND_GPU);
   EXPECT_EQ(fake_.enumeration_call_count, 2u);
   EXPECT_EQ(fake_.close.call_count, 2u);
+}
+
+TEST_F(EndpointSnapshotTest,
+       MissingDiscoveryProcedureRejectsEnumerationAndDirectOpen) {
+  enum class MissingProcedure {
+    kEnumerateAdapters,
+    kOpenAdapterFromLuid,
+    kQueryAdapterInfo,
+    kCloseAdapter,
+  };
+  const amdf_kmt_api_t complete_api = platform_instance_->kmt;
+  for (MissingProcedure missing : {
+           MissingProcedure::kEnumerateAdapters,
+           MissingProcedure::kOpenAdapterFromLuid,
+           MissingProcedure::kQueryAdapterInfo,
+           MissingProcedure::kCloseAdapter,
+       }) {
+    fake_ = {};
+    platform_instance_->kmt = complete_api;
+    switch (missing) {
+      case MissingProcedure::kEnumerateAdapters:
+        platform_instance_->kmt.enumerate_adapters = nullptr;
+        break;
+      case MissingProcedure::kOpenAdapterFromLuid:
+        platform_instance_->kmt.open_adapter_from_luid = nullptr;
+        break;
+      case MissingProcedure::kQueryAdapterInfo:
+        platform_instance_->kmt.query_adapter_info = nullptr;
+        break;
+      case MissingProcedure::kCloseAdapter:
+        platform_instance_->kmt.close_adapter = nullptr;
+        break;
+    }
+
+    amdf_endpoint_summary_t summary = MakeSentinelSummary();
+    const amdf_endpoint_summary_t expected_summary = summary;
+    uint32_t endpoint_count = 123;
+    EXPECT_EQ(amdf_status_code(amdf_platform_endpoint_enumerate(
+                  platform_instance_, 1, &summary, &endpoint_count)),
+              AMDF_STATUS_CODE_UNSUPPORTED);
+    EXPECT_EQ(std::memcmp(&summary, &expected_summary, sizeof(summary)), 0);
+    EXPECT_EQ(endpoint_count, 123u);
+
+    const amdf_endpoint_id_t id = {};
+    amdf_platform_endpoint_t* endpoint =
+        reinterpret_cast<amdf_platform_endpoint_t*>(uintptr_t{1});
+    amdf_endpoint_info_t info = {};
+    EXPECT_EQ(amdf_status_code(amdf_platform_endpoint_open(
+                  platform_instance_, &id, &endpoint, &info)),
+              AMDF_STATUS_CODE_UNSUPPORTED);
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(endpoint), uintptr_t{1});
+    EXPECT_EQ(fake_.enumeration_call_count, 0u);
+    EXPECT_EQ(fake_.open_call_count, 0u);
+    EXPECT_EQ(fake_.close.call_count, 0u);
+  }
+  platform_instance_->kmt = complete_api;
 }
 
 TEST_F(EndpointSnapshotTest, ClassifiesKnownXdnaEndpoint) {
