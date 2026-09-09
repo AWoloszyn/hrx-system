@@ -38,6 +38,7 @@ amdf_status_t FindDmaBufProfile(
     const amdf_api_t* api, amdf_device_t* device,
     amdf_memory_profile_roles_t required_roles,
     amdf_memory_flags_t required_memory_flags,
+    amdf_memory_access_t device_access,
     amdf_external_memory_support_flags_t required_external_flags,
     uint32_t* out_ordinal, amdf_memory_profile_t* out_profile) {
   for (uint32_t ordinal = 0; ordinal != UINT32_MAX; ++ordinal) {
@@ -54,6 +55,9 @@ amdf_status_t FindDmaBufProfile(
     if (profile.memory_class == AMDF_MEMORY_CLASS_SYSTEM &&
         (profile.roles & required_roles) == required_roles &&
         (required_memory_flags & ~profile.supported_flags) == 0 &&
+        (device_access & profile.guaranteed_device_access) ==
+            profile.guaranteed_device_access &&
+        (device_access & ~profile.supported_device_access) == 0 &&
         FindDmaBufSupport(profile, required_external_flags) != nullptr) {
       *out_ordinal = ordinal;
       *out_profile = profile;
@@ -246,14 +250,14 @@ TEST_F(GpuXdnaMemoryInteropTest, ImportsGpuSubrangeAndSurvivesSourceTeardown) {
   uint32_t gpu_profile_ordinal = AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN;
   amdf_memory_profile_t gpu_profile = {};
   ASSERT_EQ(
-      FindDmaBufProfile(api_, gpu_device_,
-                        AMDF_MEMORY_PROFILE_ROLE_CREATE |
-                            AMDF_MEMORY_PROFILE_ROLE_EXPORT |
-                            AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
-                        kGpuRequiredFlags,
-                        AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_EXPORT |
-                            AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_SOURCE_OFFSET,
-                        &gpu_profile_ordinal, &gpu_profile),
+      FindDmaBufProfile(
+          api_, gpu_device_,
+          AMDF_MEMORY_PROFILE_ROLE_CREATE | AMDF_MEMORY_PROFILE_ROLE_EXPORT |
+              AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
+          kGpuRequiredFlags, AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE,
+          AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_EXPORT |
+              AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_SOURCE_OFFSET,
+          &gpu_profile_ordinal, &gpu_profile),
       AMDF_STATUS_OK);
   ASSERT_NE(gpu_profile_ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
   const amdf_external_memory_support_t* gpu_dma_buf_support = FindDmaBufSupport(
@@ -274,6 +278,7 @@ TEST_F(GpuXdnaMemoryInteropTest, ImportsGpuSubrangeAndSurvivesSourceTeardown) {
           api_, xdna_device_,
           AMDF_MEMORY_PROFILE_ROLE_IMPORT | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
           kXdnaRequiredFlags,
+          AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE,
           AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_IMPORT |
               AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_SOURCE_OFFSET |
               AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_FOREIGN_API,
@@ -284,7 +289,9 @@ TEST_F(GpuXdnaMemoryInteropTest, ImportsGpuSubrangeAndSurvivesSourceTeardown) {
   amdf_memory_create_info_t create_info = {};
   create_info.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
   create_info.structure_size = sizeof(create_info);
-  create_info.memory_class = AMDF_MEMORY_CLASS_SYSTEM;
+  create_info.memory_profile_ordinal = gpu_profile_ordinal;
+  create_info.device_access =
+      AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
   create_info.required_flags = kGpuRequiredFlags;
   create_info.byte_length = backing_byte_length;
   create_info.minimum_alignment = page_size;
@@ -342,6 +349,8 @@ TEST_F(GpuXdnaMemoryInteropTest, ImportsGpuSubrangeAndSurvivesSourceTeardown) {
   import_info.type = AMDF_STRUCTURE_TYPE_MEMORY_IMPORT_INFO;
   import_info.structure_size = sizeof(import_info);
   import_info.memory_profile_ordinal = xdna_profile_ordinal;
+  import_info.device_access =
+      AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
   import_info.required_flags = kXdnaRequiredFlags;
   import_info.minimum_alignment = page_size;
   ASSERT_EQ(api_->memory_import(xdna_device_, &import_info, &external_memory_,
@@ -427,16 +436,33 @@ TEST_F(GpuXdnaMemoryInteropTest,
           api_, xdna_device_,
           AMDF_MEMORY_PROFILE_ROLE_IMPORT | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
           AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS,
+          AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE,
           AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_IMPORT |
               AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_FOREIGN_API,
           &xdna_profile_ordinal, &xdna_profile),
       AMDF_STATUS_OK);
   ASSERT_NE(xdna_profile_ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
 
+  uint32_t gpu_profile_ordinal = AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN;
+  amdf_memory_profile_t gpu_profile = {};
+  ASSERT_EQ(
+      FindDmaBufProfile(
+          api_, gpu_device_,
+          AMDF_MEMORY_PROFILE_ROLE_CREATE | AMDF_MEMORY_PROFILE_ROLE_EXPORT,
+          AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_SHAREABLE |
+              AMDF_MEMORY_FLAG_DEVICE_ADDRESS,
+          AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE,
+          AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_EXPORT, &gpu_profile_ordinal,
+          &gpu_profile),
+      AMDF_STATUS_OK);
+  ASSERT_NE(gpu_profile_ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
+
   amdf_memory_create_info_t create_info = {};
   create_info.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
   create_info.structure_size = sizeof(create_info);
-  create_info.memory_class = AMDF_MEMORY_CLASS_SYSTEM;
+  create_info.memory_profile_ordinal = gpu_profile_ordinal;
+  create_info.device_access =
+      AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
   create_info.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE |
                                AMDF_MEMORY_FLAG_SHAREABLE |
                                AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
@@ -464,6 +490,8 @@ TEST_F(GpuXdnaMemoryInteropTest,
   import_info.type = AMDF_STRUCTURE_TYPE_MEMORY_IMPORT_INFO;
   import_info.structure_size = sizeof(import_info);
   import_info.memory_profile_ordinal = xdna_profile_ordinal;
+  import_info.device_access =
+      AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
   import_info.required_flags =
       AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
   auto* const sentinel = reinterpret_cast<amdf_memory_t*>(uintptr_t{1});

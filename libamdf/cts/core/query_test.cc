@@ -21,8 +21,8 @@ static_assert(sizeof(amdf_instance_create_info_t) ==
 static_assert(sizeof(amdf_external_memory_t) == 80);
 static_assert(offsetof(amdf_external_memory_t, source_byte_offset) == 32);
 static_assert(offsetof(amdf_external_memory_t, release) == 64);
-static_assert(sizeof(amdf_memory_profile_t) == 312);
-static_assert(offsetof(amdf_memory_profile_t, external_memory_support) == 72);
+static_assert(sizeof(amdf_memory_profile_t) == 512);
+static_assert(offsetof(amdf_memory_profile_t, external_memory_support) == 272);
 static_assert(sizeof(amdf_memory_import_info_t) == 40);
 static_assert(sizeof(amdf_memory_export_info_t) == 40);
 static_assert(sizeof(amdf_memory_site_t) == 32);

@@ -101,6 +101,7 @@ NTSTATUS APIENTRY FakeMapGpuVirtualAddress(D3DDDI_MAPGPUVIRTUALADDRESS* map) {
   EXPECT_EQ(map->hAllocation, 0x20u);
   EXPECT_EQ(map->SizeInPages, 16u);
   EXPECT_EQ(map->Protection.Write, 1u);
+  EXPECT_EQ(map->Protection.Execute, 0u);
   map->VirtualAddress =
       g_fake_state->failure_point == FailurePoint::kInvalidMapAddress
           ? UINT64_C(0x12340001)
@@ -167,11 +168,17 @@ class WindowsXdnaMemoryTest : public ::testing::Test {
 
     create_info_.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
     create_info_.structure_size = sizeof(create_info_);
-    create_info_.memory_class = AMDF_MEMORY_CLASS_SYSTEM;
+    create_info_.memory_profile_ordinal = 0;
+    create_info_.device_access =
+        AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
     create_info_.required_flags =
         AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
     create_info_.byte_length = 4097;
     create_info_.minimum_alignment = 4096;
+    profile_.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
+    profile_.structure_size = sizeof(profile_);
+    ASSERT_TRUE(amdf_status_is_ok(
+        amdf_xdna_umd_device_query_memory_profile(&device_, 0, &profile_)));
   }
 
   void TearDown() override { g_fake_state = nullptr; }
@@ -197,13 +204,15 @@ class WindowsXdnaMemoryTest : public ::testing::Test {
   volatile uint64_t paging_fence_ = 0;
   // System-memory request for an unaligned logical byte length.
   amdf_memory_create_info_t create_info_ = {};
+  // Profile queried from the production native provider.
+  amdf_memory_profile_t profile_ = {};
 };
 
 TEST_F(WindowsXdnaMemoryTest, PublishesOnlyAfterMapAndOrdinaryResidency) {
   amdf_xdna_umd_memory_t* memory = nullptr;
   amdf_xdna_umd_memory_result_t result = {};
-  ASSERT_TRUE(amdf_status_is_ok(
-      amdf_xdna_umd_memory_create(&device_, &create_info_, &memory, &result)));
+  ASSERT_TRUE(amdf_status_is_ok(amdf_xdna_umd_memory_create(
+      &device_, &profile_, &create_info_, &memory, &result)));
   ASSERT_NE(memory, nullptr);
 
   EXPECT_EQ(state_.operations,
@@ -213,7 +222,6 @@ TEST_F(WindowsXdnaMemoryTest, PublishesOnlyAfterMapAndOrdinaryResidency) {
   EXPECT_EQ(state_.resident_flags.CantTrimFurther, 0u);
   EXPECT_EQ(state_.resident_flags.MustSucceed, 0u);
   EXPECT_EQ(state_.wait_targets, (std::vector<uint64_t>{1, 2}));
-  EXPECT_EQ(result.memory_class, AMDF_MEMORY_CLASS_SYSTEM);
   EXPECT_EQ(result.flags,
             AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS);
   EXPECT_EQ(result.byte_length, UINT64_C(65536));
@@ -227,8 +235,8 @@ TEST_F(WindowsXdnaMemoryTest, PublishesOnlyAfterMapAndOrdinaryResidency) {
   map_info.flags = AMDF_MEMORY_MAP_FLAG_READ | AMDF_MEMORY_MAP_FLAG_WRITE;
   amdf_xdna_umd_host_mapping_t* mapping = nullptr;
   amdf_xdna_umd_host_mapping_result_t map_result = {};
-  ASSERT_TRUE(amdf_status_is_ok(
-      amdf_xdna_umd_memory_map(memory, &map_info, &mapping, &map_result)));
+  ASSERT_TRUE(amdf_status_is_ok(amdf_xdna_umd_memory_map(
+      memory, &profile_, &map_info, &mapping, &map_result)));
   ASSERT_NE(mapping, nullptr);
   EXPECT_NE(map_result.pointer, nullptr);
   EXPECT_EQ(map_result.byte_length, map_info.byte_length);
@@ -245,31 +253,21 @@ TEST_F(WindowsXdnaMemoryTest, PublishesOnlyAfterMapAndOrdinaryResidency) {
   EXPECT_EQ(state_.operations.back(), Operation::kDestroy);
 }
 
-TEST_F(WindowsXdnaMemoryTest, RejectsUnavailablePropertiesBeforeAllocation) {
-  auto expect_unsupported = [&](const amdf_memory_create_info_t& create_info) {
-    amdf_xdna_umd_memory_t* memory =
-        reinterpret_cast<amdf_xdna_umd_memory_t*>(uintptr_t{1});
-    amdf_xdna_umd_memory_result_t result = {};
-
-    const amdf_status_t status =
-        amdf_xdna_umd_memory_create(&device_, &create_info, &memory, &result);
-
-    EXPECT_EQ(amdf_status_code(status), AMDF_STATUS_CODE_UNSUPPORTED);
-    EXPECT_EQ(reinterpret_cast<uintptr_t>(memory), uintptr_t{1});
-    EXPECT_TRUE(state_.operations.empty());
-  };
-
-  amdf_memory_create_info_t create_info = create_info_;
-  create_info.required_flags |= AMDF_MEMORY_FLAG_EXECUTABLE;
-  expect_unsupported(create_info);
-
-  create_info = create_info_;
-  create_info.memory_class = AMDF_MEMORY_CLASS_LOCAL;
-  expect_unsupported(create_info);
-
-  create_info = create_info_;
-  create_info.minimum_alignment = UINT64_C(131072);
-  expect_unsupported(create_info);
+TEST_F(WindowsXdnaMemoryTest, ExposesExactSystemMemoryProfile) {
+  EXPECT_EQ(profile_.memory_class, AMDF_MEMORY_CLASS_SYSTEM);
+  EXPECT_EQ(profile_.roles, AMDF_MEMORY_PROFILE_ROLE_CREATE |
+                                AMDF_MEMORY_PROFILE_ROLE_HOST_MAP);
+  EXPECT_EQ(profile_.guaranteed_device_access,
+            AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE);
+  EXPECT_EQ(profile_.supported_device_access,
+            AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE);
+  EXPECT_EQ(profile_.device_address.address_bit_count,
+            AMDF_MEMORY_ADDRESS_BIT_COUNT_UNKNOWN);
+  EXPECT_EQ(profile_.device_address.minimum_address, 0u);
+  EXPECT_EQ(profile_.device_address.maximum_address, 0u);
+  EXPECT_EQ(profile_.allocation.minimum_alignment, UINT64_C(65536));
+  EXPECT_EQ(profile_.allocation.maximum_alignment, UINT64_C(65536));
+  EXPECT_TRUE(state_.operations.empty());
 }
 
 TEST_F(WindowsXdnaMemoryTest,
@@ -285,8 +283,8 @@ TEST_F(WindowsXdnaMemoryTest,
         reinterpret_cast<amdf_xdna_umd_memory_t*>(uintptr_t{1});
     amdf_xdna_umd_memory_result_t result = {};
 
-    const amdf_status_t status =
-        amdf_xdna_umd_memory_create(&device_, &create_info_, &memory, &result);
+    const amdf_status_t status = amdf_xdna_umd_memory_create(
+        &device_, &profile_, &create_info_, &memory, &result);
 
     EXPECT_FALSE(amdf_status_is_ok(status));
     EXPECT_EQ(reinterpret_cast<uintptr_t>(memory), uintptr_t{1});
@@ -353,9 +351,9 @@ TEST_F(WindowsXdnaMemoryTest,
   std::memset(&result, 0xA5, sizeof(result));
   const amdf_xdna_umd_memory_result_t original_result = result;
 
-  EXPECT_EQ(
-      amdf_xdna_umd_memory_create(&device_, &create_info_, &memory, &result),
-      amdf_kmt_make_status(kStatusNoMemory));
+  EXPECT_EQ(amdf_xdna_umd_memory_create(&device_, &profile_, &create_info_,
+                                        &memory, &result),
+            amdf_kmt_make_status(kStatusNoMemory));
   EXPECT_EQ(reinterpret_cast<uintptr_t>(memory), uintptr_t{1});
   EXPECT_EQ(std::memcmp(&result, &original_result, sizeof(result)), 0);
   EXPECT_EQ(state_.metadata_free_count, 1u);
@@ -370,8 +368,8 @@ TEST_F(WindowsXdnaMemoryTest,
 TEST_F(WindowsXdnaMemoryTest, KeepsPublishedMemoryLiveAfterDestroyFailure) {
   amdf_xdna_umd_memory_t* memory = nullptr;
   amdf_xdna_umd_memory_result_t result = {};
-  ASSERT_TRUE(amdf_status_is_ok(
-      amdf_xdna_umd_memory_create(&device_, &create_info_, &memory, &result)));
+  ASSERT_TRUE(amdf_status_is_ok(amdf_xdna_umd_memory_create(
+      &device_, &profile_, &create_info_, &memory, &result)));
   ASSERT_NE(memory, nullptr);
 
   state_.failure_point = FailurePoint::kDestroy;
@@ -392,9 +390,9 @@ TEST_F(WindowsXdnaMemoryTest,
   std::memset(&result, 0xA5, sizeof(result));
   const amdf_xdna_umd_memory_result_t original_result = result;
 
-  EXPECT_EQ(
-      amdf_xdna_umd_memory_create(&device_, &create_info_, &memory, &result),
-      amdf_kmt_make_status(kStatusNoMemory));
+  EXPECT_EQ(amdf_xdna_umd_memory_create(&device_, &profile_, &create_info_,
+                                        &memory, &result),
+            amdf_kmt_make_status(kStatusNoMemory));
   EXPECT_EQ(reinterpret_cast<uintptr_t>(memory), uintptr_t{1});
   EXPECT_EQ(std::memcmp(&result, &original_result, sizeof(result)), 0);
   EXPECT_EQ(state_.metadata_free_count, 1u);

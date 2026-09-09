@@ -25,6 +25,8 @@ TEST(LinuxGpuMemoryProfileTest, IndependentDeviceExposesOwnedSystemMemory) {
   amdf_gpu_umd_device_t device = {};
   device.mode = AMDF_GPU_DEVICE_MODE_INDEPENDENT;
   device.page_size = 4096;
+  device.topology.virtual_address.begin = UINT64_C(0x10000);
+  device.topology.virtual_address.end = UINT64_C(1) << 48;
 
   const amdf_memory_profile_t profile = QueryProfile(&device, 0);
   EXPECT_EQ(profile.ordinal, 0u);
@@ -36,6 +38,12 @@ TEST(LinuxGpuMemoryProfileTest, IndependentDeviceExposesOwnedSystemMemory) {
                                           AMDF_MEMORY_FLAG_SHAREABLE |
                                           AMDF_MEMORY_FLAG_HOST_COHERENT |
                                           AMDF_MEMORY_FLAG_DEVICE_ADDRESS);
+  EXPECT_EQ(profile.guaranteed_device_access, AMDF_MEMORY_ACCESS_READ);
+  EXPECT_EQ(profile.supported_device_access, AMDF_MEMORY_ACCESS_READ |
+                                                 AMDF_MEMORY_ACCESS_WRITE |
+                                                 AMDF_MEMORY_ACCESS_EXECUTE);
+  EXPECT_EQ(profile.allocation.minimum_alignment, 4096u);
+  EXPECT_EQ(profile.allocation.byte_length_granularity, 1u);
   ASSERT_EQ(profile.external_memory_support_count, 1u);
   EXPECT_EQ(profile.external_memory_support[0].type,
             AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD);
@@ -58,6 +66,8 @@ TEST(LinuxGpuMemoryProfileTest, ProcessDeviceUsesDenseOptionalProfiles) {
   amdf_gpu_umd_device_t device = {};
   device.mode = AMDF_GPU_DEVICE_MODE_PROCESS;
   device.page_size = 4096;
+  device.topology.virtual_address.begin = UINT64_C(0x10000);
+  device.topology.virtual_address.end = UINT64_C(1) << 48;
   device.topology.memory_features =
       AMDF_GPU_DEVICE_FEATURE_LOCAL_MEMORY |
       AMDF_GPU_DEVICE_FEATURE_HOST_VISIBLE_LOCAL_MEMORY;
@@ -71,6 +81,9 @@ TEST(LinuxGpuMemoryProfileTest, ProcessDeviceUsesDenseOptionalProfiles) {
   EXPECT_EQ(registered_profile.memory_class, AMDF_MEMORY_CLASS_REGISTERED_HOST);
   EXPECT_EQ(registered_profile.roles, AMDF_MEMORY_PROFILE_ROLE_REGISTER |
                                           AMDF_MEMORY_PROFILE_ROLE_HOST_MAP);
+  EXPECT_EQ(registered_profile.registration.minimum_alignment, 1u);
+  EXPECT_EQ(registered_profile.registration.registered_host_pointer_alignment,
+            1u);
 
   device.topology.memory_features = 0;
   const amdf_memory_profile_t dense_registered_profile =

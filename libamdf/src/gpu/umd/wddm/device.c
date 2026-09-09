@@ -12,6 +12,31 @@
 #include "libamdf/src/gpu/umd/wddm/device.h"
 #include "libamdf/src/platform/windows/endpoint.h"
 
+static amdf_status_t amdf_windows_gpu_query_memory_capabilities(
+    const amdf_platform_endpoint_t* endpoint,
+    amdf_windows_gpu_memory_capabilities_t* out_capabilities) {
+  D3DKMT_QUERY_GPUMMU_CAPS query = {0};
+  query.PhysicalAdapterIndex = endpoint->physical_adapter_index;
+  const amdf_status_t status = amdf_kmt_query_adapter_info(
+      &endpoint->instance->kmt, endpoint->adapter, KMTQAITYPE_QUERY_GPUMMU_CAPS,
+      &query, sizeof(query));
+  if (!amdf_status_is_ok(status)) return status;
+  if (query.Caps.VirtualAddressBitCount == 0 ||
+      query.Caps.VirtualAddressBitCount > 64) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
+  }
+
+  const amdf_windows_gpu_memory_capabilities_t capabilities = {
+      .virtual_address_bit_count = query.Caps.VirtualAddressBitCount,
+      .read_only_memory_supported = query.Caps.Flags.ReadOnlyMemorySupported,
+      .no_execute_memory_supported = query.Caps.Flags.NoExecuteMemorySupported,
+      .cache_coherent_memory_supported =
+          query.Caps.Flags.CacheCoherentMemorySupported,
+  };
+  *out_capabilities = capabilities;
+  return AMDF_STATUS_OK;
+}
+
 static amdf_status_t amdf_gpu_wddm_device_release_native(
     amdf_gpu_umd_device_t* device) {
   if (device->wkmi_adapter.native != NULL) {
@@ -62,6 +87,10 @@ amdf_status_t amdf_gpu_umd_device_create(
   if (!amdf_kmt_api_supports_paging_devices(&endpoint->instance->kmt)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
+  amdf_windows_gpu_memory_capabilities_t memory_capabilities = {0};
+  const amdf_status_t memory_profile_status =
+      amdf_windows_gpu_query_memory_capabilities(endpoint,
+                                                 &memory_capabilities);
 
   amdf_gpu_umd_device_t* device = NULL;
   amdf_status_t status =
@@ -73,6 +102,8 @@ amdf_status_t amdf_gpu_umd_device_create(
   device->kmt = &endpoint->instance->kmt;
   device->adapter = endpoint->adapter;
   device->physical_adapter_index = endpoint->physical_adapter_index;
+  device->memory_profile_status = memory_profile_status;
+  device->memory_capabilities = memory_capabilities;
 
   amdf_wkmi_bridge_gpu_properties_t properties = {0};
   status = amdf_gpu_wddm_wkmi_loader_initialize(host_allocator,

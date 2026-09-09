@@ -13,7 +13,7 @@
 extern "C" {
 #endif
 
-/// Physical placement class requested for a memory allocation.
+/// Physical placement class of a memory profile or live attachment.
 typedef uint32_t amdf_memory_class_t;
 enum amdf_memory_class_e {
   /// No placement class. This value is never accepted by memory creation.
@@ -35,14 +35,32 @@ enum amdf_memory_flag_bits_e {
   AMDF_MEMORY_FLAG_DEVICE_LOCAL = UINT64_C(1) << 1,
   /// The physical backing can be exported and attached to another device.
   AMDF_MEMORY_FLAG_SHAREABLE = UINT64_C(1) << 2,
-  /// The allocation can hold instructions executable by the device.
-  AMDF_MEMORY_FLAG_EXECUTABLE = UINT64_C(1) << 3,
   /// The allocation can hold directly published user-mode queue state.
-  AMDF_MEMORY_FLAG_QUEUE_STORAGE = UINT64_C(1) << 4,
+  AMDF_MEMORY_FLAG_QUEUE_STORAGE = UINT64_C(1) << 3,
   /// Host and device access requires no explicit host cache transition.
-  AMDF_MEMORY_FLAG_HOST_COHERENT = UINT64_C(1) << 5,
+  AMDF_MEMORY_FLAG_HOST_COHERENT = UINT64_C(1) << 4,
   /// A stable device address is established before creation returns.
-  AMDF_MEMORY_FLAG_DEVICE_ADDRESS = UINT64_C(1) << 6,
+  AMDF_MEMORY_FLAG_DEVICE_ADDRESS = UINT64_C(1) << 5,
+};
+
+/// Exact device page-table access granted to one memory attachment.
+typedef uint32_t amdf_memory_access_t;
+enum amdf_memory_access_bit_e {
+  /// Device loads are permitted from the attachment.
+  AMDF_MEMORY_ACCESS_READ = 1u << 0,
+  /// Device stores are permitted to the attachment.
+  AMDF_MEMORY_ACCESS_WRITE = 1u << 1,
+  /// Device instruction fetches are permitted from the attachment.
+  AMDF_MEMORY_ACCESS_EXECUTE = 1u << 2,
+};
+
+/// Host access requested for one explicit mapping.
+typedef uint32_t amdf_memory_map_flags_t;
+enum amdf_memory_map_flag_bits_e {
+  /// Host loads are permitted from the mapped range.
+  AMDF_MEMORY_MAP_FLAG_READ = 1u << 0,
+  /// Host stores are permitted to the mapped range.
+  AMDF_MEMORY_MAP_FLAG_WRITE = 1u << 1,
 };
 
 /// Native representation carried by one external-memory value.
@@ -181,7 +199,7 @@ typedef struct amdf_external_memory_support_t {
   uint64_t source_offset_alignment;
   /// Required logical byte-length alignment.
   uint64_t byte_length_alignment;
-  /// Maximum logical byte length, or zero to use the profile maximum.
+  /// Maximum logical byte length, or zero for no type-specific limit.
   uint64_t maximum_byte_length;
 } amdf_external_memory_support_t;
 
@@ -192,12 +210,66 @@ typedef struct amdf_external_memory_support_t {
 /// Indicates that an attachment has no queryable memory-profile ordinal.
 #define AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN UINT32_MAX
 
+/// Indicates that a profile or attachment has no ordinary address domain.
+#define AMDF_ADDRESS_DOMAIN_ORDINAL_NONE UINT32_MAX
+
+/// Indicates that a provider cannot report a numeric device-address envelope.
+#define AMDF_MEMORY_ADDRESS_BIT_COUNT_UNKNOWN 0u
+
+/// Limits for one way of constructing a memory attachment.
+typedef struct amdf_memory_construction_capabilities_t {
+  /// Maximum logical attachment length accepted by this operation.
+  uint64_t maximum_byte_length;
+  /// Required logical byte-length granularity.
+  uint64_t byte_length_granularity;
+  /// Required caller-owned host-pointer alignment for registration, or zero
+  /// when the operation consumes no host pointer.
+  uint64_t registered_host_pointer_alignment;
+  /// Power-of-two base alignment guaranteed when callers request no stronger
+  /// alignment.
+  uint64_t minimum_alignment;
+  /// Strongest power-of-two minimum alignment callers may request.
+  uint64_t maximum_alignment;
+  /// Granularity of the native physical allocation or page cover in bytes.
+  uint64_t native_byte_length_granularity;
+} amdf_memory_construction_capabilities_t;
+
+/// Numeric device-address capabilities of one memory profile.
+typedef struct amdf_memory_address_capabilities_t {
+  /// Device-local ordinary address-domain ordinal.
+  uint32_t address_domain_ordinal;
+  /// Native device-address width, or
+  /// `AMDF_MEMORY_ADDRESS_BIT_COUNT_UNKNOWN` when the provider cannot query it.
+  uint32_t address_bit_count;
+  /// Inclusive lower bound when `address_bit_count` is known, otherwise zero.
+  uint64_t minimum_address;
+  /// Inclusive upper bound when `address_bit_count` is known, otherwise zero.
+  uint64_t maximum_address;
+  /// Minimum power-of-two alignment of produced device addresses.
+  uint64_t minimum_alignment;
+} amdf_memory_address_capabilities_t;
+
+/// Range and access capabilities of explicit host mappings.
+typedef struct amdf_host_mapping_capabilities_t {
+  /// Maximum logical mapping length in bytes.
+  uint64_t maximum_byte_length;
+  /// Required mapping byte-offset granularity.
+  uint64_t byte_offset_granularity;
+  /// Required mapping byte-length granularity.
+  uint64_t byte_length_granularity;
+  /// Host read and write requests accepted by the profile.
+  amdf_memory_map_flags_t supported_access;
+  /// Reserved for future use and always zero.
+  uint32_t reserved;
+} amdf_host_mapping_capabilities_t;
+
 /// Immutable construction and transport capabilities of one memory profile.
 ///
 /// A profile is one valid physical placement and operation combination, not a
-/// set of independently composable feature bits. Callers derive a valid
-/// construction request from one profile and require only flags included in
-/// `supported_flags`.
+/// set of independently composable feature bits. A profile exposes at most one
+/// of CREATE and REGISTER; IMPORT and transport roles may describe additional
+/// ways to attach the same placement. Callers derive each request from one
+/// profile and require only flags and access included in its supported sets.
 typedef struct amdf_memory_profile_t {
   /// Must be `AMDF_STRUCTURE_TYPE_MEMORY_PROFILE`.
   amdf_structure_type_t type;
@@ -205,7 +277,8 @@ typedef struct amdf_memory_profile_t {
   uint32_t structure_size;
   /// Optional output extension chain. No extensions are currently defined.
   void* next;
-  /// Dense query ordinal reported by attachments and accepted by import.
+  /// Dense query ordinal reported by attachments and selected for construction
+  /// or import.
   uint32_t ordinal;
   /// Physical placement class produced by this profile.
   amdf_memory_class_t memory_class;
@@ -215,10 +288,20 @@ typedef struct amdf_memory_profile_t {
   amdf_memory_flags_t guaranteed_flags;
   /// Properties which callers may require from this profile.
   amdf_memory_flags_t supported_flags;
-  /// Maximum logical attachment length in bytes, or zero when unavailable.
-  uint64_t maximum_byte_length;
-  /// Minimum power-of-two allocation and device-address alignment.
-  uint64_t minimum_alignment;
+  /// Device access present in every attachment using this profile.
+  amdf_memory_access_t guaranteed_device_access;
+  /// Device access bits which may be selected for this profile.
+  amdf_memory_access_t supported_device_access;
+  /// Ordinary device-address domain and numeric envelope.
+  amdf_memory_address_capabilities_t device_address;
+  /// Provider-owned physical allocation limits, or all-zero without CREATE.
+  amdf_memory_construction_capabilities_t allocation;
+  /// Caller-owned host registration limits, or all-zero without REGISTER.
+  amdf_memory_construction_capabilities_t registration;
+  /// External-memory attachment limits, or all-zero without IMPORT.
+  amdf_memory_construction_capabilities_t import;
+  /// Explicit host-mapping limits, or all-zero without HOST_MAP.
+  amdf_host_mapping_capabilities_t host_mapping;
   /// Number of valid entries in `external_memory_support`.
   uint32_t external_memory_support_count;
   /// Reserved for future use and always zero.
@@ -236,8 +319,12 @@ typedef struct amdf_memory_create_info_t {
   uint32_t structure_size;
   /// Optional input extension chain. No extensions are currently defined.
   const void* next;
-  /// Required physical placement class.
-  amdf_memory_class_t memory_class;
+  /// Dense device memory-profile ordinal selected for construction. A CREATE
+  /// profile requires `registered_host_pointer` to be `NULL`; a REGISTER
+  /// profile requires it to be non-`NULL`.
+  uint32_t memory_profile_ordinal;
+  /// Exact device read, write, and execute access required on the attachment.
+  amdf_memory_access_t device_access;
   /// Required properties that must all be achieved.
   amdf_memory_flags_t required_flags;
   /// Minimum usable byte length. The achieved allocation may be larger.
@@ -245,9 +332,9 @@ typedef struct amdf_memory_create_info_t {
   /// Minimum power-of-two allocation-base alignment in every supported address
   /// space, or zero for provider policy.
   uint64_t minimum_alignment;
-  /// Borrowed host base for `AMDF_MEMORY_CLASS_REGISTERED_HOST`, otherwise
-  /// `NULL`. The caller keeps this address range backed by the same live pages
-  /// until `memory_destroy` succeeds. Registration does not take ownership.
+  /// Borrowed host base for a REGISTER profile, otherwise `NULL`. The caller
+  /// keeps this address range backed by the same live pages until
+  /// `memory_destroy` succeeds. Registration does not take ownership.
   void* registered_host_pointer;
 } amdf_memory_create_info_t;
 
@@ -264,6 +351,12 @@ typedef struct amdf_memory_info_t {
   uint32_t memory_profile_ordinal;
   /// Achieved physical placement class.
   amdf_memory_class_t memory_class;
+  /// Exact device read, write, and execute access of this attachment.
+  amdf_memory_access_t device_access;
+  /// Ordinary device-address domain containing `device_address`.
+  uint32_t address_domain_ordinal;
+  /// Identity of the live device owning this attachment.
+  amdf_device_id_t device_id;
   /// Achieved attachment properties.
   amdf_memory_flags_t flags;
   /// Byte offset of logical byte zero in the physical backing.
@@ -273,6 +366,10 @@ typedef struct amdf_memory_info_t {
   /// Guaranteed power-of-two logical-base alignment in every supported address
   /// space.
   uint64_t alignment;
+  /// Complete native physical allocation or registered page-cover length.
+  uint64_t native_allocation_byte_length;
+  /// Granularity of `native_allocation_byte_length` in bytes.
+  uint64_t native_allocation_granularity;
   /// Identity shared by attachments to the same physical backing, when known.
   amdf_physical_memory_id_t physical_backing_id;
   /// Stable device virtual base when `AMDF_MEMORY_FLAG_DEVICE_ADDRESS` is set.
@@ -289,14 +386,15 @@ typedef struct amdf_memory_import_info_t {
   uint32_t structure_size;
   /// Optional input extension chain. No extensions are currently defined.
   const void* next;
-  /// Memory profile selected for the destination attachment.
+  /// Dense destination-device memory profile with the IMPORT role.
   uint32_t memory_profile_ordinal;
-  /// Reserved for future use and always zero.
-  uint32_t reserved;
+  /// Exact device read, write, and execute access required on the attachment.
+  amdf_memory_access_t device_access;
   /// Required properties that must all be achieved.
   amdf_memory_flags_t required_flags;
   /// Minimum power-of-two destination device-address alignment, or zero for
-  /// profile policy.
+  /// profile policy. A nonzero external source offset must be divisible by
+  /// this value.
   uint64_t minimum_alignment;
 } amdf_memory_import_info_t;
 
@@ -317,15 +415,6 @@ typedef struct amdf_memory_export_info_t {
   /// Nonzero logical byte length to export.
   uint64_t byte_length;
 } amdf_memory_export_info_t;
-
-/// Host access requested for one explicit mapping.
-typedef uint32_t amdf_memory_map_flags_t;
-enum amdf_memory_map_flag_bits_e {
-  /// Host loads are permitted from the mapped range.
-  AMDF_MEMORY_MAP_FLAG_READ = 1u << 0,
-  /// Host stores are permitted to the mapped range.
-  AMDF_MEMORY_MAP_FLAG_WRITE = 1u << 1,
-};
 
 /// Parameters used to map a range of host-visible memory.
 typedef struct amdf_memory_map_info_t {
@@ -372,10 +461,18 @@ typedef struct amdf_host_mapping_info_t {
   amdf_host_cacheability_t cacheability;
   /// First mapped byte borrowed until `host_mapping_destroy` succeeds.
   void* pointer;
+  /// Byte offset of `pointer` within the logical memory attachment.
+  uint64_t memory_byte_offset;
   /// Mapped byte length.
   uint64_t byte_length;
+  /// Native byte-offset granularity of mapping requests.
+  uint64_t byte_offset_granularity;
+  /// Native byte-length granularity of mapping requests.
+  uint64_t byte_length_granularity;
   /// Host cache-line length in bytes, or zero when not applicable.
   uint32_t cache_line_size;
+  /// Reserved for future use and always zero.
+  uint32_t reserved;
   /// Device reset epoch in which the mapping remains valid.
   uint64_t reset_epoch;
 } amdf_host_mapping_info_t;

@@ -6,6 +6,7 @@
 
 #include "libamdf/src/gpu/memory.h"
 
+#include <assert.h>
 #include <stddef.h>
 
 #include "libamdf/src/allocator.h"
@@ -72,6 +73,7 @@ static const amdf_host_mapping_vtable_t amdf_gpu_host_mapping_vtable = {
 };
 
 static amdf_status_t amdf_gpu_memory_map(amdf_memory_t* base_memory,
+                                         const amdf_memory_profile_t* profile,
                                          const amdf_memory_map_info_t* map_info,
                                          amdf_host_mapping_t** out_mapping) {
   amdf_gpu_memory_t* memory = (amdf_gpu_memory_t*)base_memory;
@@ -87,16 +89,26 @@ static amdf_status_t amdf_gpu_memory_map(amdf_memory_t* base_memory,
 
   amdf_gpu_umd_host_mapping_result_t result = {0};
   if (amdf_status_is_ok(status)) {
-    status =
-        amdf_gpu_umd_memory_map(memory->umd, map_info, &mapping->umd, &result);
+    status = amdf_gpu_umd_memory_map(memory->umd, profile, map_info,
+                                     &mapping->umd, &result);
   }
   if (amdf_status_is_ok(status)) {
+    assert((result.flags & map_info->flags) == map_info->flags &&
+           (result.flags & ~profile->host_mapping.supported_access) == 0 &&
+           result.pointer != NULL &&
+           result.byte_length == map_info->byte_length &&
+           "GPU host mapping must achieve the selected profile request");
     mapping->base.info.type = AMDF_STRUCTURE_TYPE_HOST_MAPPING_INFO;
     mapping->base.info.structure_size = sizeof(mapping->base.info);
     mapping->base.info.flags = result.flags;
     mapping->base.info.cacheability = result.cacheability;
     mapping->base.info.pointer = result.pointer;
+    mapping->base.info.memory_byte_offset = map_info->byte_offset;
     mapping->base.info.byte_length = result.byte_length;
+    mapping->base.info.byte_offset_granularity =
+        profile->host_mapping.byte_offset_granularity;
+    mapping->base.info.byte_length_granularity =
+        profile->host_mapping.byte_length_granularity;
     mapping->base.info.cache_line_size = result.cache_line_size;
     mapping->base.info.reset_epoch = base_memory->info.reset_epoch;
     *out_mapping = &mapping->base;
@@ -135,52 +147,33 @@ amdf_status_t amdf_gpu_device_query_memory_profile(
 
 static void amdf_gpu_memory_set_info(amdf_gpu_memory_t* memory,
                                      amdf_device_t* device,
+                                     const amdf_memory_profile_t* profile,
+                                     amdf_memory_access_t device_access,
                                      amdf_gpu_umd_memory_result_t result) {
   memory->base.info.type = AMDF_STRUCTURE_TYPE_MEMORY_INFO;
   memory->base.info.structure_size = sizeof(memory->base.info);
-  memory->base.info.memory_profile_ordinal = result.memory_profile_ordinal;
-  memory->base.info.memory_class = result.memory_class;
+  memory->base.info.memory_profile_ordinal = profile->ordinal;
+  memory->base.info.memory_class = profile->memory_class;
+  memory->base.info.device_access = device_access;
+  memory->base.info.address_domain_ordinal =
+      profile->device_address.address_domain_ordinal;
+  memory->base.info.device_id = amdf_gpu_device_get_info(device)->id;
   memory->base.info.flags = result.flags;
   memory->base.info.source_byte_offset = result.source_byte_offset;
   memory->base.info.byte_length = result.byte_length;
   memory->base.info.alignment = result.alignment;
+  memory->base.info.native_allocation_byte_length =
+      result.native_allocation_byte_length;
+  memory->base.info.native_allocation_granularity =
+      result.native_allocation_granularity;
   memory->base.info.physical_backing_id = result.physical_backing_id;
   memory->base.info.device_address = result.device_address;
   memory->base.info.reset_epoch = amdf_gpu_device_query_reset_epoch(device);
 }
 
 amdf_status_t amdf_gpu_memory_create(
-    amdf_device_t* device, const amdf_memory_create_info_t* create_info,
-    amdf_memory_t** out_memory) {
-  const amdf_allocator_t host_allocator = amdf_device_host_allocator(device);
-  amdf_gpu_memory_t* memory = NULL;
-  amdf_status_t status =
-      amdf_calloc(host_allocator, sizeof(*memory), _Alignof(amdf_gpu_memory_t),
-                  (void**)&memory);
-  if (!amdf_status_is_ok(status)) return status;
-  status =
-      amdf_memory_initialize(&memory->base, &amdf_gpu_memory_vtable, device);
-
-  amdf_gpu_umd_memory_result_t result = {0};
-  if (amdf_status_is_ok(status)) {
-    status = amdf_gpu_umd_memory_create(amdf_gpu_device_get_umd(device),
-                                        create_info, &memory->umd, &result);
-  }
-  if (amdf_status_is_ok(status)) {
-    amdf_gpu_memory_set_info(memory, device, result);
-    *out_memory = &memory->base;
-  } else {
-    if (memory->base.device != NULL) {
-      amdf_memory_deinitialize(&memory->base);
-    }
-    amdf_free(host_allocator, memory);
-  }
-  return status;
-}
-
-amdf_status_t amdf_gpu_memory_import(
-    amdf_device_t* device, const amdf_memory_import_info_t* import_info,
-    const amdf_external_memory_t* external_memory, amdf_memory_t** out_memory) {
+    amdf_device_t* device, const amdf_memory_profile_t* profile,
+    const amdf_memory_create_info_t* create_info, amdf_memory_t** out_memory) {
   const amdf_allocator_t host_allocator = amdf_device_host_allocator(device);
   amdf_gpu_memory_t* memory = NULL;
   amdf_status_t status =
@@ -193,11 +186,44 @@ amdf_status_t amdf_gpu_memory_import(
   amdf_gpu_umd_memory_result_t result = {0};
   if (amdf_status_is_ok(status)) {
     status =
-        amdf_gpu_umd_memory_import(amdf_gpu_device_get_umd(device), import_info,
-                                   external_memory, &memory->umd, &result);
+        amdf_gpu_umd_memory_create(amdf_gpu_device_get_umd(device), profile,
+                                   create_info, &memory->umd, &result);
   }
   if (amdf_status_is_ok(status)) {
-    amdf_gpu_memory_set_info(memory, device, result);
+    amdf_gpu_memory_set_info(memory, device, profile,
+                             create_info->device_access, result);
+    *out_memory = &memory->base;
+  } else {
+    if (memory->base.device != NULL) {
+      amdf_memory_deinitialize(&memory->base);
+    }
+    amdf_free(host_allocator, memory);
+  }
+  return status;
+}
+
+amdf_status_t amdf_gpu_memory_import(
+    amdf_device_t* device, const amdf_memory_profile_t* profile,
+    const amdf_memory_import_info_t* import_info,
+    const amdf_external_memory_t* external_memory, amdf_memory_t** out_memory) {
+  const amdf_allocator_t host_allocator = amdf_device_host_allocator(device);
+  amdf_gpu_memory_t* memory = NULL;
+  amdf_status_t status =
+      amdf_calloc(host_allocator, sizeof(*memory), _Alignof(amdf_gpu_memory_t),
+                  (void**)&memory);
+  if (!amdf_status_is_ok(status)) return status;
+  status =
+      amdf_memory_initialize(&memory->base, &amdf_gpu_memory_vtable, device);
+
+  amdf_gpu_umd_memory_result_t result = {0};
+  if (amdf_status_is_ok(status)) {
+    status = amdf_gpu_umd_memory_import(amdf_gpu_device_get_umd(device),
+                                        profile, import_info, external_memory,
+                                        &memory->umd, &result);
+  }
+  if (amdf_status_is_ok(status)) {
+    amdf_gpu_memory_set_info(memory, device, profile,
+                             import_info->device_access, result);
     *out_memory = &memory->base;
   } else {
     if (memory->base.device != NULL) {

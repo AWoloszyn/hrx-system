@@ -12,6 +12,18 @@
 #include "libamdf/src/platform/windows/device_status.h"
 #include "libamdf/src/platform/windows/kmt_api.h"
 
+// Immutable KMT memory capabilities captured for one physical GPU adapter.
+typedef struct amdf_windows_gpu_memory_capabilities_t {
+  // Native GPU virtual-address width in bits.
+  uint32_t virtual_address_bit_count;
+  // Nonzero when GPU mappings can deny device writes.
+  uint32_t read_only_memory_supported;
+  // Nonzero when GPU mappings can deny instruction fetches.
+  uint32_t no_execute_memory_supported;
+  // Nonzero when the GPU MMU supports coherent system-memory mappings.
+  uint32_t cache_coherent_memory_supported;
+} amdf_windows_gpu_memory_capabilities_t;
+
 // Concrete Windows state backing one program-independent GPU device.
 struct amdf_gpu_umd_device_t {
   // Host allocator copied for this device and child metadata.
@@ -22,6 +34,10 @@ struct amdf_gpu_umd_device_t {
   D3DKMT_HANDLE adapter;
   // Physical adapter represented by native private records.
   uint32_t physical_adapter_index;
+  // Immutable result of querying the GPU MMU memory capabilities.
+  amdf_status_t memory_profile_status;
+  // Exact GPU MMU facts available to immutable memory-profile queries.
+  amdf_windows_gpu_memory_capabilities_t memory_capabilities;
   // Loaded WKMI module outliving its borrowed API table and native adapter.
   amdf_gpu_wddm_wkmi_loader_t wkmi_loader;
   // Parsed private WKMI adapter state shared by allocations and queues.

@@ -22,6 +22,7 @@ constexpr NTSTATUS kSuccess = 0;
 constexpr NTSTATUS kFailure = static_cast<NTSTATUS>(0xC0000001u);
 
 enum class Operation {
+  kQueryMemoryCapabilities,
   kCreateDevice,
   kCreatePagingQueue,
   kDestroyPagingQueue,
@@ -66,6 +67,21 @@ void AMDF_CALL Free(void* user_data, void* allocation) {
   EXPECT_NE(state->live_allocation_count, 0u);
   --state->live_allocation_count;
   _aligned_free(allocation);
+}
+
+NTSTATUS APIENTRY FakeQueryAdapterInfo(const D3DKMT_QUERYADAPTERINFO* query) {
+  current_state->operations.push_back(Operation::kQueryMemoryCapabilities);
+  EXPECT_EQ(query->hAdapter, 0x08u);
+  EXPECT_EQ(query->Type, KMTQAITYPE_QUERY_GPUMMU_CAPS);
+  EXPECT_EQ(query->PrivateDriverDataSize, sizeof(D3DKMT_QUERY_GPUMMU_CAPS));
+  auto* gpu_mmu =
+      static_cast<D3DKMT_QUERY_GPUMMU_CAPS*>(query->pPrivateDriverData);
+  EXPECT_EQ(gpu_mmu->PhysicalAdapterIndex, 0u);
+  gpu_mmu->Caps.Flags.ReadOnlyMemorySupported = 1;
+  gpu_mmu->Caps.Flags.NoExecuteMemorySupported = 1;
+  gpu_mmu->Caps.Flags.CacheCoherentMemorySupported = 1;
+  gpu_mmu->Caps.VirtualAddressBitCount = 48;
+  return kSuccess;
 }
 
 NTSTATUS APIENTRY FakeCreateDevice(D3DKMT_CREATEDEVICE* create) {
@@ -125,6 +141,7 @@ class WindowsGpuDeviceRollbackTest : public ::testing::Test {
     current_state = &state_;
     instance_.host_allocator = {
         .user_data = &state_, .allocate = Allocate, .free = Free};
+    instance_.kmt.query_adapter_info = FakeQueryAdapterInfo;
     instance_.kmt.create_device = FakeCreateDevice;
     instance_.kmt.destroy_device = FakeDestroyDevice;
     instance_.kmt.get_device_state = FakeGetDeviceState;
@@ -226,7 +243,8 @@ TEST_F(WindowsGpuDeviceRollbackTest,
   EXPECT_EQ(std::memcmp(&result, &original, sizeof(result)), 0);
   EXPECT_EQ(state_.live_allocation_count, 1u);
   EXPECT_EQ(state_.operations,
-            (std::vector<Operation>{Operation::kCreateDevice,
+            (std::vector<Operation>{Operation::kQueryMemoryCapabilities,
+                                    Operation::kCreateDevice,
                                     Operation::kCreatePagingQueue}));
   EXPECT_EQ(query_bridge_open_success_count_(), 1u);
   EXPECT_EQ(query_bridge_close_attempt_count_(), 1u);
@@ -238,9 +256,9 @@ TEST_F(WindowsGpuDeviceRollbackTest,
   EXPECT_EQ(amdf_platform_endpoint_close(endpoint_), AMDF_STATUS_OK);
   endpoint_ = nullptr;
   EXPECT_EQ(state_.operations,
-            (std::vector<Operation>{Operation::kCreateDevice,
-                                    Operation::kCreatePagingQueue,
-                                    Operation::kCloseAdapter}));
+            (std::vector<Operation>{
+                Operation::kQueryMemoryCapabilities, Operation::kCreateDevice,
+                Operation::kCreatePagingQueue, Operation::kCloseAdapter}));
   EXPECT_EQ(query_bridge_close_attempt_count_(), 1u);
   EXPECT_EQ(query_bridge_close_success_count_(), 0u);
   EXPECT_EQ(state_.paging_queue_destroy_success_count, 0u);
@@ -268,8 +286,9 @@ TEST_F(WindowsGpuDeviceRollbackTest,
   endpoint_ = nullptr;
   EXPECT_EQ(state_.operations,
             (std::vector<Operation>{
-                Operation::kCreateDevice, Operation::kCreatePagingQueue,
-                Operation::kDestroyPagingQueue, Operation::kCloseAdapter}));
+                Operation::kQueryMemoryCapabilities, Operation::kCreateDevice,
+                Operation::kCreatePagingQueue, Operation::kDestroyPagingQueue,
+                Operation::kCloseAdapter}));
   EXPECT_EQ(query_bridge_close_attempt_count_(), 1u);
   EXPECT_EQ(query_bridge_close_success_count_(), 1u);
   EXPECT_EQ(state_.paging_queue_destroy_success_count, 0u);

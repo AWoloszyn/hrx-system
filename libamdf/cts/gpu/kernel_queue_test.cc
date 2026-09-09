@@ -124,10 +124,15 @@ class GpuKernelQueueTest : public GpuDeviceFixture {
     amdf_memory_create_info_t create_info = {};
     create_info.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
     create_info.structure_size = sizeof(create_info);
-    create_info.memory_class = AMDF_MEMORY_CLASS_SYSTEM;
-    create_info.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE |
-                                 AMDF_MEMORY_FLAG_EXECUTABLE |
-                                 AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+    create_info.device_access = AMDF_MEMORY_ACCESS_READ |
+                                AMDF_MEMORY_ACCESS_WRITE |
+                                AMDF_MEMORY_ACCESS_EXECUTE;
+    create_info.required_flags =
+        AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+    create_info.memory_profile_ordinal = FindMemoryProfileOrdinal(
+        AMDF_MEMORY_CLASS_SYSTEM,
+        AMDF_MEMORY_PROFILE_ROLE_CREATE | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
+        create_info.required_flags, create_info.device_access);
     create_info.byte_length = kMemoryByteLength;
     EXPECT_TRUE(amdf_status_is_ok(
         api_->memory_create(device_, &create_info, &memory_)));
@@ -161,10 +166,14 @@ class GpuKernelQueueTest : public GpuDeviceFixture {
     amdf_memory_create_info_t create_info = {};
     create_info.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
     create_info.structure_size = sizeof(create_info);
-    create_info.memory_class = AMDF_MEMORY_CLASS_LOCAL;
-    create_info.required_flags = AMDF_MEMORY_FLAG_DEVICE_LOCAL |
-                                 AMDF_MEMORY_FLAG_EXECUTABLE |
-                                 AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+    create_info.device_access = AMDF_MEMORY_ACCESS_READ |
+                                AMDF_MEMORY_ACCESS_WRITE |
+                                AMDF_MEMORY_ACCESS_EXECUTE;
+    create_info.required_flags =
+        AMDF_MEMORY_FLAG_DEVICE_LOCAL | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+    create_info.memory_profile_ordinal = FindMemoryProfileOrdinal(
+        AMDF_MEMORY_CLASS_LOCAL, AMDF_MEMORY_PROFILE_ROLE_CREATE,
+        create_info.required_flags, create_info.device_access);
     create_info.byte_length = kMemoryByteLength;
     EXPECT_TRUE(amdf_status_is_ok(
         api_->memory_create(device_, &create_info, &local_memory_)));
@@ -176,6 +185,7 @@ class GpuKernelQueueTest : public GpuDeviceFixture {
         api_->memory_query_info(local_memory_, &memory_info)));
     EXPECT_EQ(memory_info.flags & create_info.required_flags,
               create_info.required_flags);
+    EXPECT_EQ(memory_info.device_access, create_info.device_access);
     EXPECT_GE(memory_info.byte_length, kMemoryByteLength);
     return memory_info;
   }

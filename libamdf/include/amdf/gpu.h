@@ -345,9 +345,9 @@ typedef struct amdf_gpu_api_t {
   /// streams in the representation selected when the queue was created.
   ///
   /// Every command range must belong to the queue's device and reset epoch and
-  /// have `EXECUTABLE` and `DEVICE_ADDRESS` memory flags. The call registers
-  /// memory borrows before native acceptance and releases them only when queue
-  /// progress later retires the returned submission. It performs no
+  /// have execute device access and the `DEVICE_ADDRESS` memory flag. The call
+  /// registers memory borrows before native acceptance and releases them only
+  /// when queue progress later retires the returned submission. It performs no
   /// allocation, command-byte access, native-format parsing, lowering,
   /// transcription, retry, sleep, or host wait. Native rejection leaves
   /// `out_submission` unchanged. Because command bytes are opaque, the caller

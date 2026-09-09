@@ -124,19 +124,24 @@ typedef struct amdf_api_t {
 
   /// Copies one immutable memory profile supported by `device`.
   ///
-  /// Profiles are fixed for the device lifetime. The operation is thread-safe
-  /// and performs no allocation, native query, mapping mutation, retry, sleep,
-  /// or device wait. An unavailable ordinal returns
-  /// `AMDF_STATUS_CODE_OUT_OF_RANGE`. The caller initializes `out_profile` and
-  /// its complete extension chain. Failure leaves it byte-for-byte unchanged.
+  /// Profiles are fixed for the device lifetime and each describe one complete
+  /// placement, construction, access, address, host-view, and transport
+  /// contract. The operation is thread-safe and performs no allocation, native
+  /// query, mapping mutation, retry, sleep, or device wait. An unavailable
+  /// ordinal returns `AMDF_STATUS_CODE_OUT_OF_RANGE`. The caller initializes
+  /// `out_profile` and its complete extension chain. Failure leaves it
+  /// byte-for-byte unchanged.
   amdf_status_t(AMDF_CALL* device_query_memory_profile)(
       amdf_device_t* device, uint32_t memory_profile_ordinal,
       amdf_memory_profile_t* out_profile);
 
   /// Creates physical backing and one stable attachment to `device`.
   ///
-  /// The returned memory borrows `device`, which must outlive it. Every bit in
-  /// `required_flags` is guaranteed in the copied memory info. In particular,
+  /// The selected profile must expose exactly one of CREATE and REGISTER, with
+  /// `registered_host_pointer` present exactly for REGISTER. The returned
+  /// memory borrows `device`, which must outlive it. Its copied memory info
+  /// reports the exact requested device access, and every bit in
+  /// `required_flags` is guaranteed. In particular,
   /// `AMDF_MEMORY_FLAG_DEVICE_ADDRESS` means that all ordinary mapping and
   /// residency work has completed and the address is ready for any supported
   /// consumer when this cold call returns. This operation performs no queue
@@ -152,8 +157,10 @@ typedef struct amdf_api_t {
 
   /// Attaches one move-owned external-memory value to `device`.
   ///
-  /// The returned attachment borrows `device` and is completely mapped and
-  /// ready for every achieved ordinary use. On success, the implementation has
+  /// The selected destination profile must expose IMPORT and accept the exact
+  /// requested device access and transport. The returned attachment borrows
+  /// `device` and is completely mapped and ready for every achieved ordinary
+  /// use. On success, the implementation has
   /// acquired or adopted the payload lifetime, zeros `inout_external_memory`,
   /// and publishes `out_memory`. Every failure leaves both caller values
   /// byte-for-byte unchanged and requires no cleanup of a partial attachment.
@@ -207,9 +214,11 @@ typedef struct amdf_api_t {
 
   /// Creates an explicit host mapping of one memory range.
   ///
-  /// The returned mapping borrows `memory`, which must outlive it. Mapping does
-  /// not wait for device work or transfer cache ownership. Failure leaves
-  /// `out_mapping` unchanged.
+  /// Requested access is a minimum. The returned mapping reports the actual
+  /// native access, which may include additional bits advertised by the
+  /// attachment profile. The mapping borrows `memory`, which must outlive it.
+  /// Mapping does not wait for device work or transfer cache ownership.
+  /// Failure leaves `out_mapping` unchanged.
   amdf_status_t(AMDF_CALL* memory_map)(amdf_memory_t* memory,
                                        const amdf_memory_map_info_t* map_info,
                                        amdf_host_mapping_t** out_mapping);

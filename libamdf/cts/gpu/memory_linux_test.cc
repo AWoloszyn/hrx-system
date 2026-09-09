@@ -42,10 +42,14 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
     amdf_memory_create_info_t info = {};
     info.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
     info.structure_size = sizeof(info);
-    info.memory_class = AMDF_MEMORY_CLASS_SYSTEM;
+    info.device_access = AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
     info.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE |
                           AMDF_MEMORY_FLAG_HOST_COHERENT |
                           AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+    info.memory_profile_ordinal = FindMemoryProfileOrdinal(
+        AMDF_MEMORY_CLASS_SYSTEM,
+        AMDF_MEMORY_PROFILE_ROLE_CREATE | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
+        info.required_flags, info.device_access);
     info.byte_length = 4097;
     info.minimum_alignment = 1024 * 1024;
     return info;
@@ -141,11 +145,13 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
     ASSERT_EQ(MapMemory(memories_[0], 0, 0, info.byte_length,
                         AMDF_MEMORY_MAP_FLAG_READ),
               AMDF_STATUS_OK);
+    EXPECT_EQ(mapping_infos_[0].flags,
+              AMDF_MEMORY_MAP_FLAG_READ | AMDF_MEMORY_MAP_FLAG_WRITE);
     EXPECT_EQ(static_cast<const uint8_t*>(mapping_infos_[0].pointer)[128],
               0xA5);
-    EXPECT_EQ(amdf_status_code(api_->host_mapping_cache_control(
-                  mappings_[0], AMDF_HOST_CACHE_OPERATION_FLUSH, 0, 1)),
-              AMDF_STATUS_CODE_FAILED_PRECONDITION);
+    EXPECT_EQ(api_->host_mapping_cache_control(
+                  mappings_[0], AMDF_HOST_CACHE_OPERATION_FLUSH, 0, 1),
+              AMDF_STATUS_OK);
 
     for (amdf_host_mapping_t*& mapping : mappings_) {
       ASSERT_EQ(api_->host_mapping_destroy(mapping), AMDF_STATUS_OK);
@@ -181,18 +187,30 @@ TEST_F(GpuLinuxMemoryTest, RejectsUnachievableSystemPlacement) {
 }
 
 TEST_F(GpuLinuxMemoryTest, HonorsLocalPlacementCapabilities) {
-  amdf_memory_create_info_t create_info = MakeSystemMemoryCreateInfo();
-  create_info.memory_class = AMDF_MEMORY_CLASS_LOCAL;
-  create_info.required_flags = AMDF_MEMORY_FLAG_DEVICE_LOCAL |
-                               AMDF_MEMORY_FLAG_DEVICE_ADDRESS |
-                               AMDF_MEMORY_FLAG_EXECUTABLE;
-  const amdf_status_t status =
-      api_->memory_create(device_, &create_info, &memories_[0]);
   if ((features_ & AMDF_GPU_DEVICE_FEATURE_LOCAL_MEMORY) == 0) {
-    EXPECT_EQ(status, amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED));
-    EXPECT_EQ(memories_[0], nullptr);
+    for (uint32_t ordinal = 0;; ++ordinal) {
+      amdf_memory_profile_t profile = {};
+      profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
+      profile.structure_size = sizeof(profile);
+      const amdf_status_t status =
+          api_->device_query_memory_profile(device_, ordinal, &profile);
+      if (amdf_status_code(status) == AMDF_STATUS_CODE_OUT_OF_RANGE) break;
+      ASSERT_EQ(status, AMDF_STATUS_OK);
+      EXPECT_NE(profile.memory_class, AMDF_MEMORY_CLASS_LOCAL);
+    }
     return;
   }
+  amdf_memory_create_info_t create_info = MakeSystemMemoryCreateInfo();
+  create_info.device_access = AMDF_MEMORY_ACCESS_READ |
+                              AMDF_MEMORY_ACCESS_WRITE |
+                              AMDF_MEMORY_ACCESS_EXECUTE;
+  create_info.required_flags =
+      AMDF_MEMORY_FLAG_DEVICE_LOCAL | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+  create_info.memory_profile_ordinal = FindMemoryProfileOrdinal(
+      AMDF_MEMORY_CLASS_LOCAL, AMDF_MEMORY_PROFILE_ROLE_CREATE,
+      create_info.required_flags, create_info.device_access);
+  const amdf_status_t status =
+      api_->memory_create(device_, &create_info, &memories_[0]);
   ASSERT_EQ(status, AMDF_STATUS_OK);
   amdf_memory_info_t info = {};
   info.type = AMDF_STRUCTURE_TYPE_MEMORY_INFO;
@@ -201,6 +219,7 @@ TEST_F(GpuLinuxMemoryTest, HonorsLocalPlacementCapabilities) {
   EXPECT_EQ(info.memory_class, AMDF_MEMORY_CLASS_LOCAL);
   EXPECT_EQ(info.flags & create_info.required_flags,
             create_info.required_flags);
+  EXPECT_EQ(info.device_access, create_info.device_access);
   EXPECT_EQ(MapMemory(memories_[0], 0, 0, 1, AMDF_MEMORY_MAP_FLAG_READ),
             amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED));
   EXPECT_EQ(mappings_[0], nullptr);
@@ -225,20 +244,21 @@ TEST_F(GpuLinuxMemoryTest, HonorsLocalPlacementCapabilities) {
             AMDF_STATUS_OK);
 }
 
-TEST_F(GpuLinuxMemoryTest, RejectsRegistrationWhenModeDoesNotSupportIt) {
+TEST_F(GpuLinuxMemoryTest, OmitsRegistrationWhenModeDoesNotSupportIt) {
   if ((features_ & AMDF_GPU_DEVICE_FEATURE_HOST_REGISTRATION) != 0) {
     GTEST_SKIP() << "selected mode supports host registration";
   }
-  ASSERT_NO_FATAL_FAILURE(AllocateCallerPages());
-  amdf_memory_create_info_t info = MakeSystemMemoryCreateInfo();
-  info.memory_class = AMDF_MEMORY_CLASS_REGISTERED_HOST;
-  info.byte_length = caller_byte_length_;
-  info.minimum_alignment = 0;
-  info.registered_host_pointer = caller_pages_;
-  amdf_memory_t* output = reinterpret_cast<amdf_memory_t*>(uintptr_t{1});
-  EXPECT_EQ(api_->memory_create(device_, &info, &output),
-            amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED));
-  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
+  for (uint32_t ordinal = 0;; ++ordinal) {
+    amdf_memory_profile_t profile = {};
+    profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
+    profile.structure_size = sizeof(profile);
+    const amdf_status_t status =
+        api_->device_query_memory_profile(device_, ordinal, &profile);
+    if (amdf_status_code(status) == AMDF_STATUS_CODE_OUT_OF_RANGE) break;
+    ASSERT_EQ(status, AMDF_STATUS_OK);
+    EXPECT_NE(profile.roles & AMDF_MEMORY_PROFILE_ROLE_REGISTER,
+              AMDF_MEMORY_PROFILE_ROLE_REGISTER);
+  }
 }
 
 TEST_F(GpuLinuxMemoryTest, RejectsUnadvertisedKernelQueueCreation) {
@@ -290,7 +310,10 @@ TEST_F(GpuLinuxProcessMemoryTest, OwnsMemoryAndOverlappingCallerRegistrations) {
   ASSERT_NO_FATAL_FAILURE(AllocateCallerPages());
 
   amdf_memory_create_info_t create_info = MakeSystemMemoryCreateInfo();
-  create_info.memory_class = AMDF_MEMORY_CLASS_REGISTERED_HOST;
+  create_info.memory_profile_ordinal = FindMemoryProfileOrdinal(
+      AMDF_MEMORY_CLASS_REGISTERED_HOST,
+      AMDF_MEMORY_PROFILE_ROLE_REGISTER | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
+      create_info.required_flags, create_info.device_access);
   create_info.byte_length = caller_byte_length_ / 2 + 17;
   create_info.minimum_alignment = 1;
   create_info.registered_host_pointer = caller_pages_ + 3;

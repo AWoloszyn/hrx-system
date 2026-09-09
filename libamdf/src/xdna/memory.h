@@ -20,12 +20,13 @@ amdf_status_t amdf_xdna_device_query_memory_profile(
 
 // Creates memory attached to one XDNA device.
 amdf_status_t amdf_xdna_memory_create(
-    amdf_device_t* device, const amdf_memory_create_info_t* create_info,
-    amdf_memory_t** out_memory);
+    amdf_device_t* device, const amdf_memory_profile_t* profile,
+    const amdf_memory_create_info_t* create_info, amdf_memory_t** out_memory);
 
 // Imports external memory into one XDNA device, or reports it unsupported.
 amdf_status_t amdf_xdna_memory_import(
-    amdf_device_t* device, const amdf_memory_import_info_t* import_info,
+    amdf_device_t* device, const amdf_memory_profile_t* profile,
+    const amdf_memory_import_info_t* import_info,
     const amdf_external_memory_t* external_memory, amdf_memory_t** out_memory);
 
 #ifdef __cplusplus

@@ -343,9 +343,8 @@ amdf_status_t AMDF_CALL amdf_gpu_kernel_queue_submit(
       command->byte_length > memory->info.byte_length - command->byte_offset) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
-  const amdf_memory_flags_t required_memory_flags =
-      AMDF_MEMORY_FLAG_EXECUTABLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
-  if ((memory->info.flags & required_memory_flags) != required_memory_flags) {
+  if ((memory->info.flags & AMDF_MEMORY_FLAG_DEVICE_ADDRESS) == 0 ||
+      (memory->info.device_access & AMDF_MEMORY_ACCESS_EXECUTE) == 0) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
   if (memory->info.reset_epoch != base_queue->info.reset_epoch ||

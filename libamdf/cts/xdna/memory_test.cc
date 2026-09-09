@@ -15,7 +15,7 @@
 
 namespace {
 
-static_assert(offsetof(amdf_memory_create_info_t, memory_class) ==
+static_assert(offsetof(amdf_memory_create_info_t, memory_profile_ordinal) ==
               sizeof(amdf_input_structure_t));
 static_assert(offsetof(amdf_memory_create_info_t, required_flags) == 24);
 static_assert(offsetof(amdf_memory_create_info_t, byte_length) == 32);
@@ -23,17 +23,17 @@ static_assert(sizeof(amdf_memory_create_info_t) == 56);
 static_assert(offsetof(amdf_memory_info_t, memory_profile_ordinal) ==
               sizeof(amdf_output_structure_t));
 static_assert(offsetof(amdf_memory_info_t, memory_class) == 20);
-static_assert(offsetof(amdf_memory_info_t, physical_backing_id) == 56);
-static_assert(offsetof(amdf_memory_info_t, device_address) == 72);
-static_assert(sizeof(amdf_memory_info_t) == 88);
+static_assert(offsetof(amdf_memory_info_t, physical_backing_id) == 96);
+static_assert(offsetof(amdf_memory_info_t, device_address) == 112);
+static_assert(sizeof(amdf_memory_info_t) == 128);
 static_assert(offsetof(amdf_memory_map_info_t, byte_offset) ==
               sizeof(amdf_input_structure_t));
 static_assert(sizeof(amdf_memory_map_info_t) == 40);
 static_assert(offsetof(amdf_host_mapping_info_t, flags) ==
               sizeof(amdf_output_structure_t));
 static_assert(offsetof(amdf_host_mapping_info_t, pointer) == 24);
-static_assert(offsetof(amdf_host_mapping_info_t, reset_epoch) == 48);
-static_assert(sizeof(amdf_host_mapping_info_t) == 56);
+static_assert(offsetof(amdf_host_mapping_info_t, reset_epoch) == 72);
+static_assert(sizeof(amdf_host_mapping_info_t) == 80);
 
 class XdnaMemoryTest : public XdnaDeviceFixture {
  protected:
@@ -51,9 +51,14 @@ class XdnaMemoryTest : public XdnaDeviceFixture {
     amdf_memory_create_info_t create_info = {};
     create_info.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
     create_info.structure_size = sizeof(create_info);
-    create_info.memory_class = AMDF_MEMORY_CLASS_SYSTEM;
+    create_info.device_access =
+        AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
     create_info.required_flags =
         AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+    create_info.memory_profile_ordinal = FindMemoryProfileOrdinal(
+        AMDF_MEMORY_CLASS_SYSTEM,
+        AMDF_MEMORY_PROFILE_ROLE_CREATE | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
+        create_info.required_flags, create_info.device_access);
     create_info.byte_length = 4097;
     create_info.minimum_alignment = 4096;
     return create_info;
@@ -133,6 +138,10 @@ TEST_F(XdnaMemoryTest, OwnsStableAddressAndExplicitHostMapping) {
   EXPECT_EQ(memory_info.memory_class, AMDF_MEMORY_CLASS_SYSTEM);
   EXPECT_EQ(memory_info.flags & create_info.required_flags,
             create_info.required_flags);
+  EXPECT_EQ(memory_info.device_access, create_info.device_access);
+  EXPECT_EQ(memory_info.address_domain_ordinal, 0u);
+  EXPECT_GE(memory_info.native_allocation_byte_length, memory_info.byte_length);
+  EXPECT_NE(memory_info.native_allocation_granularity, 0u);
   EXPECT_GE(memory_info.byte_length, create_info.byte_length);
   ASSERT_GE(memory_info.alignment, create_info.minimum_alignment);
   EXPECT_EQ(memory_info.alignment & (memory_info.alignment - 1), 0u);
@@ -183,6 +192,9 @@ TEST_F(XdnaMemoryTest, OwnsStableAddressAndExplicitHostMapping) {
   EXPECT_NE(mapping_info.cacheability, AMDF_HOST_CACHEABILITY_UNKNOWN);
   ASSERT_NE(mapping_info.pointer, nullptr);
   EXPECT_EQ(mapping_info.byte_length, map_info.byte_length);
+  EXPECT_EQ(mapping_info.memory_byte_offset, map_info.byte_offset);
+  EXPECT_EQ(mapping_info.byte_offset_granularity, 1u);
+  EXPECT_EQ(mapping_info.byte_length_granularity, 1u);
   EXPECT_EQ(mapping_info.reset_epoch, memory_info.reset_epoch);
 
   amdf_host_mapping_info_t invalid_mapping_info = mapping_info;

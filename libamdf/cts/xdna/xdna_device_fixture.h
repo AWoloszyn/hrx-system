@@ -101,6 +101,36 @@ class XdnaDeviceFixture : public ::testing::Test {
     }
   }
 
+  uint32_t FindMemoryProfileOrdinal(amdf_memory_class_t memory_class,
+                                    amdf_memory_profile_roles_t required_roles,
+                                    amdf_memory_flags_t required_flags,
+                                    amdf_memory_access_t device_access) const {
+    for (uint32_t ordinal = 0;; ++ordinal) {
+      amdf_memory_profile_t profile = {};
+      profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
+      profile.structure_size = sizeof(profile);
+      const amdf_status_t status =
+          api_->device_query_memory_profile(device_, ordinal, &profile);
+      if (amdf_status_code(status) == AMDF_STATUS_CODE_OUT_OF_RANGE) break;
+      if (!amdf_status_is_ok(status)) {
+        ADD_FAILURE() << "memory profile query failed: domain="
+                      << amdf_status_domain(status)
+                      << " code=" << amdf_status_code(status);
+        break;
+      }
+      if (profile.memory_class == memory_class &&
+          (profile.roles & required_roles) == required_roles &&
+          (required_flags & ~profile.supported_flags) == 0 &&
+          (device_access & profile.guaranteed_device_access) ==
+              profile.guaranteed_device_access &&
+          (device_access & ~profile.supported_device_access) == 0) {
+        return ordinal;
+      }
+    }
+    ADD_FAILURE() << "no matching memory profile";
+    return AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN;
+  }
+
   const amdf_api_t* api_ = nullptr;
   const amdf_xdna_api_t* xdna_api_ = nullptr;
   amdf_instance_t* instance_ = nullptr;

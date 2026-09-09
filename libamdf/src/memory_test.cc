@@ -6,6 +6,7 @@
 
 #include "libamdf/src/memory.h"
 
+#include <array>
 #include <cstdint>
 #include <cstring>
 
@@ -46,6 +47,7 @@ struct FakeDevice {
   amdf_status_t import_status;
   ImportFailureStage import_failure_stage;
   bool adopt_external_memory;
+  uint32_t create_call_count;
   uint32_t import_call_count;
   amdf_physical_memory_id_t backing_id;
 };
@@ -57,6 +59,7 @@ struct FakeMemory {
   amdf_status_t map_status;
   amdf_status_t pair_status;
   uint32_t export_call_count;
+  uint32_t map_call_count;
   uint32_t pair_query_count;
   ReleaseState* export_release_state;
   amdf_external_memory_t adopted_external_memory;
@@ -69,7 +72,6 @@ static amdf_status_t FakeMemoryExport(
   auto* memory = reinterpret_cast<FakeMemory*>(base_memory);
   ++memory->export_call_count;
   if (!amdf_status_is_ok(memory->export_status)) {
-    out_value->payload.file_descriptor = 97;
     return memory->export_status;
   }
   out_value->payload.file_descriptor = 73;
@@ -85,7 +87,6 @@ static amdf_status_t FakeMemoryQueryPairInfo(
   auto* memory = reinterpret_cast<FakeMemory*>(producer_memory);
   ++memory->pair_query_count;
   if (!amdf_status_is_ok(memory->pair_status)) {
-    out_info->flags = UINT64_MAX;
     return memory->pair_status;
   }
   out_info->flags = AMDF_MEMORY_PAIR_FLAG_SHARED_BACKING_REACHABLE |
@@ -105,13 +106,15 @@ static amdf_status_t FakeMemoryQueryPairInfo(
 }
 
 static amdf_status_t FakeMemoryMap(amdf_memory_t* memory,
+                                   const amdf_memory_profile_t* profile,
                                    const amdf_memory_map_info_t* map_info,
                                    amdf_host_mapping_t** out_mapping) {
-  (void)memory;
+  (void)profile;
   (void)map_info;
+  (void)out_mapping;
   auto* fake_memory = reinterpret_cast<FakeMemory*>(memory);
+  ++fake_memory->map_call_count;
   if (!amdf_status_is_ok(fake_memory->map_status)) {
-    *out_mapping = reinterpret_cast<amdf_host_mapping_t*>(uintptr_t{2});
     return fake_memory->map_status;
   }
   return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
@@ -154,12 +157,18 @@ static amdf_status_t AllocateFakeMemory(FakeDevice* device,
     memory->base.info.structure_size = sizeof(memory->base.info);
     memory->base.info.memory_profile_ordinal = memory_profile_ordinal;
     memory->base.info.memory_class = AMDF_MEMORY_CLASS_SYSTEM;
+    memory->base.info.device_access =
+        AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
+    memory->base.info.address_domain_ordinal = 0;
     memory->base.info.flags = AMDF_MEMORY_FLAG_HOST_VISIBLE |
                               AMDF_MEMORY_FLAG_SHAREABLE |
                               AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
     memory->base.info.source_byte_offset = source_byte_offset;
     memory->base.info.byte_length = byte_length;
     memory->base.info.alignment = 4096;
+    memory->base.info.native_allocation_byte_length =
+        source_byte_offset + byte_length;
+    memory->base.info.native_allocation_granularity = 4096;
     memory->base.info.physical_backing_id = backing_id;
     memory->base.info.device_address = UINT64_C(0x100000);
     memory->base.info.reset_epoch = 1;
@@ -175,7 +184,6 @@ static amdf_status_t FakeDeviceQueryMemoryProfile(
     amdf_memory_profile_t* out_profile) {
   auto* device = reinterpret_cast<FakeDevice*>(base_device);
   if (!amdf_status_is_ok(device->profile_status)) {
-    out_profile->ordinal = UINT32_MAX;
     return device->profile_status;
   }
   if (memory_profile_ordinal != device->profile.ordinal) {
@@ -186,19 +194,21 @@ static amdf_status_t FakeDeviceQueryMemoryProfile(
 }
 
 static amdf_status_t FakeDeviceMemoryCreate(
-    amdf_device_t* base_device, const amdf_memory_create_info_t* create_info,
-    amdf_memory_t** out_memory) {
+    amdf_device_t* base_device, const amdf_memory_profile_t* profile,
+    const amdf_memory_create_info_t* create_info, amdf_memory_t** out_memory) {
   auto* device = reinterpret_cast<FakeDevice*>(base_device);
+  ++device->create_call_count;
   if (!amdf_status_is_ok(device->create_status)) {
-    *out_memory = reinterpret_cast<amdf_memory_t*>(uintptr_t{2});
     return device->create_status;
   }
-  return AllocateFakeMemory(device, 0, 0, create_info->byte_length,
-                            device->backing_id, out_memory);
+  return AllocateFakeMemory(device, profile->ordinal, 0,
+                            create_info->byte_length, device->backing_id,
+                            out_memory);
 }
 
 static amdf_status_t FakeDeviceMemoryImport(
-    amdf_device_t* base_device, const amdf_memory_import_info_t* import_info,
+    amdf_device_t* base_device, const amdf_memory_profile_t* profile,
+    const amdf_memory_import_info_t* import_info,
     const amdf_external_memory_t* external_memory, amdf_memory_t** out_memory) {
   auto* device = reinterpret_cast<FakeDevice*>(base_device);
   ++device->import_call_count;
@@ -208,9 +218,9 @@ static amdf_status_t FakeDeviceMemoryImport(
 
   amdf_memory_t* base_memory = nullptr;
   amdf_status_t status = AllocateFakeMemory(
-      device, import_info->memory_profile_ordinal,
-      external_memory->source_byte_offset, external_memory->byte_length,
-      external_memory->physical_backing_id, &base_memory);
+      device, profile->ordinal, external_memory->source_byte_offset,
+      external_memory->byte_length, external_memory->physical_backing_id,
+      &base_memory);
   if (!amdf_status_is_ok(status)) return status;
   if (device->import_failure_stage == ImportFailureStage::kAfterAttachment) {
     const amdf_status_t destroy_status = amdf_memory_destroy(base_memory);
@@ -251,15 +261,32 @@ static void InitializeFakeDevice(uint64_t identity, FakeDevice* out_device) {
   out_device->profile.structure_size = sizeof(out_device->profile);
   out_device->profile.ordinal = 0;
   out_device->profile.memory_class = AMDF_MEMORY_CLASS_SYSTEM;
-  out_device->profile.roles = AMDF_MEMORY_PROFILE_ROLE_CREATE |
-                              AMDF_MEMORY_PROFILE_ROLE_IMPORT |
-                              AMDF_MEMORY_PROFILE_ROLE_EXPORT;
+  out_device->profile.roles =
+      AMDF_MEMORY_PROFILE_ROLE_CREATE | AMDF_MEMORY_PROFILE_ROLE_IMPORT |
+      AMDF_MEMORY_PROFILE_ROLE_EXPORT | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP;
   out_device->profile.guaranteed_flags = AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
   out_device->profile.supported_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE |
                                         AMDF_MEMORY_FLAG_SHAREABLE |
                                         AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
-  out_device->profile.maximum_byte_length = UINT64_C(1) << 32;
-  out_device->profile.minimum_alignment = 4096;
+  out_device->profile.guaranteed_device_access = AMDF_MEMORY_ACCESS_READ;
+  out_device->profile.supported_device_access =
+      AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
+  out_device->profile.device_address.address_domain_ordinal = 0;
+  out_device->profile.device_address.address_bit_count = 48;
+  out_device->profile.device_address.maximum_address = (UINT64_C(1) << 48) - 1;
+  out_device->profile.device_address.minimum_alignment = 4096;
+  out_device->profile.allocation.maximum_byte_length = UINT64_C(1) << 32;
+  out_device->profile.allocation.byte_length_granularity = 1;
+  out_device->profile.allocation.minimum_alignment = 4096;
+  out_device->profile.allocation.maximum_alignment = UINT64_C(1) << 30;
+  out_device->profile.allocation.native_byte_length_granularity = 4096;
+  out_device->profile.import = out_device->profile.allocation;
+  out_device->profile.import.minimum_alignment = 1;
+  out_device->profile.host_mapping.maximum_byte_length = UINT64_C(1) << 32;
+  out_device->profile.host_mapping.byte_offset_granularity = 1;
+  out_device->profile.host_mapping.byte_length_granularity = 1;
+  out_device->profile.host_mapping.supported_access =
+      AMDF_MEMORY_MAP_FLAG_READ | AMDF_MEMORY_MAP_FLAG_WRITE;
   out_device->profile.external_memory_support_count = 1;
   out_device->profile.external_memory_support[0].type =
       AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD;
@@ -281,7 +308,8 @@ static amdf_memory_create_info_t MakeMemoryCreateInfo() {
   amdf_memory_create_info_t info = {};
   info.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
   info.structure_size = sizeof(info);
-  info.memory_class = AMDF_MEMORY_CLASS_SYSTEM;
+  info.memory_profile_ordinal = 0;
+  info.device_access = AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
   info.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE |
                         AMDF_MEMORY_FLAG_SHAREABLE |
                         AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
@@ -295,6 +323,7 @@ static amdf_memory_import_info_t MakeMemoryImportInfo() {
   info.type = AMDF_STRUCTURE_TYPE_MEMORY_IMPORT_INFO;
   info.structure_size = sizeof(info);
   info.memory_profile_ordinal = 0;
+  info.device_access = AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
   info.required_flags =
       AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
   info.minimum_alignment = 4096;
@@ -423,6 +452,31 @@ TEST(MemoryExternalTest, CompletesProfileExportImportPairAndReverseTeardown) {
   EXPECT_EQ(transport_release.count, 1u);
 }
 
+TEST(MemoryExternalTest, AcceptsUnknownNumericDeviceAddressEnvelope) {
+  FakeDevice device;
+  InitializeFakeDevice(31, &device);
+  device.profile.device_address.address_bit_count =
+      AMDF_MEMORY_ADDRESS_BIT_COUNT_UNKNOWN;
+  device.profile.device_address.minimum_address = 0;
+  device.profile.device_address.maximum_address = 0;
+
+  amdf_memory_profile_t profile = {};
+  profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
+  profile.structure_size = sizeof(profile);
+  ASSERT_EQ(amdf_device_query_memory_profile(&device.base, 0, &profile),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(profile.device_address.address_bit_count,
+            AMDF_MEMORY_ADDRESS_BIT_COUNT_UNKNOWN);
+
+  amdf_memory_t* memory = nullptr;
+  const amdf_memory_create_info_t create_info = MakeMemoryCreateInfo();
+  ASSERT_EQ(amdf_memory_create(&device.base, &create_info, &memory),
+            AMDF_STATUS_OK);
+  ASSERT_NE(memory, nullptr);
+  EXPECT_EQ(memory->info.device_address, UINT64_C(0x100000));
+  EXPECT_EQ(amdf_memory_destroy(memory), AMDF_STATUS_OK);
+}
+
 TEST(MemoryExternalTest, ImportFailureNeverConsumesInputOrPublishesOutput) {
   FakeDevice device;
   InitializeFakeDevice(41, &device);
@@ -455,7 +509,7 @@ TEST(MemoryExternalTest, ImportFailureNeverConsumesInputOrPublishesOutput) {
   }
 
   amdf_memory_import_info_t invalid_info = import_info;
-  invalid_info.reserved = 1;
+  invalid_info.device_access |= UINT32_C(1) << 31;
   const uint32_t prior_import_call_count = device.import_call_count;
   amdf_memory_t* output = sentinel;
   EXPECT_EQ(amdf_status_code(amdf_memory_import(&device.base, &invalid_info,
@@ -511,24 +565,39 @@ TEST(MemoryExternalTest, ImportProfileRejectionPrecedesLeafMutation) {
 
   import_info = supported_import_info;
   device.profile.roles &= ~AMDF_MEMORY_PROFILE_ROLE_IMPORT;
+  device.profile.import = {};
+  device.profile.external_memory_support[0].flags &=
+      ~AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_IMPORT;
   expect_rejected(import_info, AMDF_STATUS_CODE_UNSUPPORTED);
 
   device.profile = supported_profile;
-  import_info.required_flags |= AMDF_MEMORY_FLAG_EXECUTABLE;
+  import_info.device_access |= AMDF_MEMORY_ACCESS_EXECUTE;
   expect_rejected(import_info, AMDF_STATUS_CODE_UNSUPPORTED);
 
   device.profile = supported_profile;
   import_info = supported_import_info;
   device.profile.external_memory_support[0].flags &=
       ~AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_IMPORT;
+  device.profile.external_memory_support_count = 2;
+  device.profile.external_memory_support[1].type =
+      AMDF_EXTERNAL_MEMORY_TYPE_HOST_POINTER;
+  device.profile.external_memory_support[1].flags =
+      AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_IMPORT;
+  device.profile.external_memory_support[1].byte_length_alignment = 1;
   expect_rejected(import_info, AMDF_STATUS_CODE_UNSUPPORTED);
 
   device.profile = supported_profile;
   device.profile.external_memory_support[0].flags &=
       ~AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_SOURCE_OFFSET;
+  device.profile.external_memory_support[0].source_offset_alignment = 0;
   expect_rejected(import_info, AMDF_STATUS_CODE_UNSUPPORTED);
 
   device.profile = supported_profile;
+  external_memory.source_byte_offset = 1;
+  expect_rejected(import_info, AMDF_STATUS_CODE_UNSUPPORTED);
+
+  device.profile = supported_profile;
+  device.profile.external_memory_support[0].source_offset_alignment = 1;
   external_memory.source_byte_offset = 1;
   expect_rejected(import_info, AMDF_STATUS_CODE_UNSUPPORTED);
 
@@ -570,14 +639,15 @@ TEST(MemoryExternalTest, RawAddressImportAdoptsReleaseUntilTeardown) {
   device.profile.external_memory_support[0].type =
       AMDF_EXTERNAL_MEMORY_TYPE_HOST_POINTER;
   device.profile.external_memory_support[0].flags =
-      AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_IMPORT;
+      AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_IMPORT |
+      AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_EXPORT;
   device.profile.external_memory_support[0].source_offset_alignment = 0;
   device.profile.external_memory_support[0].byte_length_alignment = 1;
   ReleaseState release_state = {};
-  uint32_t host_storage = 0;
+  alignas(4096) std::array<uint8_t, 4096> host_storage = {};
   amdf_external_memory_t external_memory = {};
   external_memory.type = AMDF_EXTERNAL_MEMORY_TYPE_HOST_POINTER;
-  external_memory.payload.host_pointer = &host_storage;
+  external_memory.payload.host_pointer = host_storage.data();
   external_memory.byte_length = sizeof(host_storage);
   external_memory.physical_backing_id = device.backing_id;
   external_memory.release = RecordRelease;
@@ -596,7 +666,7 @@ TEST(MemoryExternalTest, RawAddressImportAdoptsReleaseUntilTeardown) {
   ASSERT_EQ(amdf_memory_destroy(memory), AMDF_STATUS_OK);
   EXPECT_EQ(release_state.count, 1u);
   EXPECT_EQ(release_state.type, AMDF_EXTERNAL_MEMORY_TYPE_HOST_POINTER);
-  EXPECT_EQ(release_state.payload.host_pointer, &host_storage);
+  EXPECT_EQ(release_state.payload.host_pointer, host_storage.data());
   EXPECT_EQ(amdf_child_tracker_count(&device.base.children), 0u);
 }
 
@@ -628,6 +698,122 @@ TEST(MemoryExternalTest, FailedCreateAndMapPreserveCallerStorage) {
   amdf_host_mapping_t* mapping = mapping_sentinel;
   EXPECT_EQ(amdf_memory_map(memory, &map_info, &mapping), failure_status);
   EXPECT_EQ(mapping, mapping_sentinel);
+
+  ASSERT_EQ(amdf_memory_destroy(memory), AMDF_STATUS_OK);
+}
+
+TEST(MemoryExternalTest, CreateProfileRejectionPrecedesLeafMutation) {
+  FakeDevice device;
+  InitializeFakeDevice(60, &device);
+  const amdf_memory_profile_t supported_profile = device.profile;
+  const amdf_memory_create_info_t supported_create_info =
+      MakeMemoryCreateInfo();
+  auto* const sentinel = reinterpret_cast<amdf_memory_t*>(uintptr_t{1});
+
+  auto expect_rejected = [&](amdf_memory_create_info_t create_info,
+                             amdf_status_code_t expected_code) {
+    const uint32_t prior_create_call_count = device.create_call_count;
+    amdf_memory_t* output = sentinel;
+    EXPECT_EQ(amdf_status_code(
+                  amdf_memory_create(&device.base, &create_info, &output)),
+              expected_code);
+    EXPECT_EQ(device.create_call_count, prior_create_call_count);
+    EXPECT_EQ(output, sentinel);
+  };
+
+  amdf_memory_create_info_t create_info = supported_create_info;
+  create_info.memory_profile_ordinal = 1;
+  expect_rejected(create_info, AMDF_STATUS_CODE_OUT_OF_RANGE);
+
+  create_info = supported_create_info;
+  device.profile.roles &= ~AMDF_MEMORY_PROFILE_ROLE_CREATE;
+  device.profile.allocation = {};
+  expect_rejected(create_info, AMDF_STATUS_CODE_UNSUPPORTED);
+
+  device.profile = supported_profile;
+  create_info.device_access |= AMDF_MEMORY_ACCESS_EXECUTE;
+  expect_rejected(create_info, AMDF_STATUS_CODE_UNSUPPORTED);
+
+  device.profile = supported_profile;
+  create_info = supported_create_info;
+  create_info.required_flags |= AMDF_MEMORY_FLAG_HOST_COHERENT;
+  expect_rejected(create_info, AMDF_STATUS_CODE_UNSUPPORTED);
+
+  device.profile = supported_profile;
+  device.profile.allocation.maximum_byte_length = 2048;
+  expect_rejected(create_info, AMDF_STATUS_CODE_UNSUPPORTED);
+
+  device.profile = supported_profile;
+  device.profile.allocation.byte_length_granularity = 8192;
+  expect_rejected(create_info, AMDF_STATUS_CODE_UNSUPPORTED);
+
+  device.profile = supported_profile;
+  create_info.minimum_alignment = 8192;
+  device.profile.allocation.maximum_alignment = 4096;
+  expect_rejected(create_info, AMDF_STATUS_CODE_UNSUPPORTED);
+
+  device.profile = supported_profile;
+  create_info = supported_create_info;
+  create_info.registered_host_pointer = &create_info;
+  expect_rejected(create_info, AMDF_STATUS_CODE_INVALID_ARGUMENT);
+
+  create_info = supported_create_info;
+  create_info.device_access |= UINT32_C(1) << 31;
+  expect_rejected(create_info, AMDF_STATUS_CODE_INVALID_ARGUMENT);
+}
+
+TEST(MemoryExternalTest, MapProfileRejectionPrecedesLeafMutation) {
+  FakeDevice device;
+  InitializeFakeDevice(62, &device);
+  const amdf_memory_profile_t supported_profile = device.profile;
+  amdf_memory_t* memory = nullptr;
+  const amdf_memory_create_info_t create_info = MakeMemoryCreateInfo();
+  ASSERT_EQ(amdf_memory_create(&device.base, &create_info, &memory),
+            AMDF_STATUS_OK);
+  auto* fake_memory = reinterpret_cast<FakeMemory*>(memory);
+  const amdf_memory_map_info_t supported_map_info = {
+      .type = AMDF_STRUCTURE_TYPE_MEMORY_MAP_INFO,
+      .structure_size = sizeof(amdf_memory_map_info_t),
+      .byte_length = create_info.byte_length,
+      .flags = AMDF_MEMORY_MAP_FLAG_READ | AMDF_MEMORY_MAP_FLAG_WRITE,
+  };
+  auto* const sentinel = reinterpret_cast<amdf_host_mapping_t*>(uintptr_t{1});
+
+  auto expect_rejected = [&](amdf_memory_map_info_t map_info,
+                             amdf_status_code_t expected_code) {
+    const uint32_t prior_map_call_count = fake_memory->map_call_count;
+    amdf_host_mapping_t* output = sentinel;
+    EXPECT_EQ(amdf_status_code(amdf_memory_map(memory, &map_info, &output)),
+              expected_code);
+    EXPECT_EQ(fake_memory->map_call_count, prior_map_call_count);
+    EXPECT_EQ(output, sentinel);
+  };
+
+  amdf_memory_map_info_t map_info = supported_map_info;
+  device.profile.roles &= ~AMDF_MEMORY_PROFILE_ROLE_HOST_MAP;
+  device.profile.supported_flags &= ~AMDF_MEMORY_FLAG_HOST_VISIBLE;
+  device.profile.host_mapping = {};
+  expect_rejected(map_info, AMDF_STATUS_CODE_UNSUPPORTED);
+
+  device.profile = supported_profile;
+  device.profile.host_mapping.supported_access = AMDF_MEMORY_MAP_FLAG_READ;
+  expect_rejected(map_info, AMDF_STATUS_CODE_UNSUPPORTED);
+
+  device.profile = supported_profile;
+  device.profile.host_mapping.maximum_byte_length = 2048;
+  expect_rejected(map_info, AMDF_STATUS_CODE_UNSUPPORTED);
+
+  device.profile = supported_profile;
+  device.profile.host_mapping.byte_offset_granularity = 4096;
+  map_info.byte_offset = 1;
+  --map_info.byte_length;
+  expect_rejected(map_info, AMDF_STATUS_CODE_UNSUPPORTED);
+
+  device.profile = supported_profile;
+  memory->info.memory_profile_ordinal = AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN;
+  map_info = supported_map_info;
+  expect_rejected(map_info, AMDF_STATUS_CODE_UNSUPPORTED);
+  memory->info.memory_profile_ordinal = supported_profile.ordinal;
 
   ASSERT_EQ(amdf_memory_destroy(memory), AMDF_STATUS_OK);
 }
@@ -744,11 +930,20 @@ TEST(MemoryExternalTest, ExportProfileRejectionPrecedesLeafMutation) {
   memory->info.memory_profile_ordinal = 0;
 
   device.profile.roles &= ~AMDF_MEMORY_PROFILE_ROLE_EXPORT;
+  device.profile.supported_flags &= ~AMDF_MEMORY_FLAG_SHAREABLE;
+  device.profile.external_memory_support[0].flags &=
+      ~AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_EXPORT;
   expect_rejected(export_info, AMDF_STATUS_CODE_UNSUPPORTED);
 
   device.profile = supported_profile;
   device.profile.external_memory_support[0].flags &=
       ~AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_EXPORT;
+  device.profile.external_memory_support_count = 2;
+  device.profile.external_memory_support[1].type =
+      AMDF_EXTERNAL_MEMORY_TYPE_HOST_POINTER;
+  device.profile.external_memory_support[1].flags =
+      AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_EXPORT;
+  device.profile.external_memory_support[1].byte_length_alignment = 1;
   expect_rejected(export_info, AMDF_STATUS_CODE_UNSUPPORTED);
 
   device.profile = supported_profile;
@@ -759,6 +954,7 @@ TEST(MemoryExternalTest, ExportProfileRejectionPrecedesLeafMutation) {
   device.profile = supported_profile;
   device.profile.external_memory_support[0].flags &=
       ~AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_SOURCE_OFFSET;
+  device.profile.external_memory_support[0].source_offset_alignment = 0;
   expect_rejected(export_info, AMDF_STATUS_CODE_UNSUPPORTED);
 
   device.profile = supported_profile;

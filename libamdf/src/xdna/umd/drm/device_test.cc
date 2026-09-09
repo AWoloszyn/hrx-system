@@ -122,15 +122,23 @@ TEST_F(LinuxXdnaDeviceTest, ContextsShareDeviceMemoryAndDestroyIndependently) {
   EXPECT_NE(results[0].id.words[0], results[1].id.words[0]);
 
   amdf_memory_create_info_t memory_create = {};
-  memory_create.memory_class = AMDF_MEMORY_CLASS_SYSTEM;
+  memory_create.memory_profile_ordinal = 0;
+  memory_create.device_access =
+      AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
   memory_create.required_flags =
       AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
   memory_create.byte_length = 4097;
   memory_create.minimum_alignment = 65536;
   amdf_xdna_umd_memory_result_t memory_result = {};
+  amdf_memory_profile_t memory_profile = {};
+  memory_profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
+  memory_profile.structure_size = sizeof(memory_profile);
+  ASSERT_EQ(
+      amdf_xdna_umd_device_query_memory_profile(device, 0, &memory_profile),
+      AMDF_STATUS_OK);
   std::cout << "Create aligned SHARE attachment" << std::endl;
-  ASSERT_EQ(amdf_xdna_umd_memory_create(device, &memory_create, &memory,
-                                        &memory_result),
+  ASSERT_EQ(amdf_xdna_umd_memory_create(device, &memory_profile, &memory_create,
+                                        &memory, &memory_result),
             AMDF_STATUS_OK);
   EXPECT_GE(memory_result.byte_length, memory_create.byte_length);
   EXPECT_EQ(memory_result.device_address % memory_create.minimum_alignment, 0u);
@@ -140,9 +148,9 @@ TEST_F(LinuxXdnaDeviceTest, ContextsShareDeviceMemoryAndDestroyIndependently) {
   map_info.flags = AMDF_MEMORY_MAP_FLAG_READ | AMDF_MEMORY_MAP_FLAG_WRITE;
   amdf_xdna_umd_host_mapping_result_t views[2] = {};
   for (size_t i = 0; i < 2; ++i) {
-    ASSERT_EQ(
-        amdf_xdna_umd_memory_map(memory, &map_info, &mappings[i], &views[i]),
-        AMDF_STATUS_OK);
+    ASSERT_EQ(amdf_xdna_umd_memory_map(memory, &memory_profile, &map_info,
+                                       &mappings[i], &views[i]),
+              AMDF_STATUS_OK);
   }
   EXPECT_EQ(reinterpret_cast<uintptr_t>(views[0].pointer),
             memory_result.device_address + map_info.byte_offset);

@@ -6,6 +6,7 @@
 
 #include "libamdf/src/gpu/umd/memory.h"
 
+#include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -74,6 +75,8 @@ struct amdf_gpu_umd_memory_t {
   uint32_t is_resident;
   // Achieved public memory properties.
   amdf_memory_flags_t flags;
+  // Exact GPU page-table access granted to every native allocation.
+  amdf_memory_access_t device_access;
   // Native allocation handles in increasing byte-offset order.
   D3DKMT_HANDLE allocation_handles[];
 };
@@ -99,92 +102,78 @@ static bool amdf_windows_gpu_align_up(uint64_t value, uint64_t alignment,
   return true;
 }
 
-static amdf_status_t amdf_windows_gpu_memory_validate_create_info(
+static uint64_t amdf_windows_gpu_maximum_address(
+    const amdf_gpu_umd_device_t* device) {
+  return device->memory_capabilities.virtual_address_bit_count == 64
+             ? UINT64_MAX
+             : (UINT64_C(1)
+                << device->memory_capabilities.virtual_address_bit_count) -
+                   1;
+}
+
+static uint64_t amdf_windows_gpu_maximum_byte_length(
+    const amdf_gpu_umd_device_t* device) {
+  const uint64_t address_span_half =
+      device->memory_capabilities.virtual_address_bit_count == 64
+          ? UINT64_MAX / 2
+          : UINT64_C(1)
+                << (device->memory_capabilities.virtual_address_bit_count - 1);
+  const uint64_t host_span_half = SIZE_MAX / 2;
+  const uint64_t limit =
+      address_span_half < host_span_half ? address_span_half : host_span_half;
+  return limit & ~(AMDF_WINDOWS_GPU_RESERVATION_GRANULARITY - 1);
+}
+
+static uint64_t amdf_windows_gpu_maximum_alignment(
+    const amdf_gpu_umd_device_t* device) {
+  uint64_t limit = amdf_windows_gpu_maximum_byte_length(device);
+  uint64_t alignment = 1;
+  while (alignment <= limit / 2) alignment <<= 1;
+  return alignment;
+}
+
+static void amdf_windows_gpu_memory_plan(
+    const amdf_memory_profile_t* profile,
     const amdf_memory_create_info_t* create_info,
     amdf_windows_gpu_memory_plan_t* out_plan) {
-  const amdf_memory_flags_t supported_flags =
-      AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_LOCAL |
-      AMDF_MEMORY_FLAG_EXECUTABLE | AMDF_MEMORY_FLAG_QUEUE_STORAGE |
-      AMDF_MEMORY_FLAG_HOST_COHERENT | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
-  if ((create_info->required_flags & ~supported_flags) != 0) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
-  }
-
   amdf_windows_gpu_memory_plan_t plan = {0};
-  plan.achieved_flags = AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+  plan.achieved_flags = profile->guaranteed_flags | create_info->required_flags;
   plan.alignment = create_info->minimum_alignment;
-  switch (create_info->memory_class) {
+  switch (profile->memory_class) {
     case AMDF_MEMORY_CLASS_SYSTEM:
-      if ((create_info->required_flags & AMDF_MEMORY_FLAG_DEVICE_LOCAL) != 0) {
-        return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
-      }
       plan.allocation_domain = AMDF_WKMI_BRIDGE_GPU_ALLOCATION_DOMAIN_SYSTEM;
-      plan.achieved_flags |= AMDF_MEMORY_FLAG_HOST_VISIBLE;
       if (plan.alignment < AMDF_WINDOWS_GPU_RESERVATION_GRANULARITY) {
         plan.alignment = AMDF_WINDOWS_GPU_RESERVATION_GRANULARITY;
       }
       break;
     case AMDF_MEMORY_CLASS_LOCAL:
-      if ((create_info->required_flags &
-           (AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_HOST_COHERENT)) !=
-          0) {
-        return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
-      }
       plan.allocation_domain = AMDF_WKMI_BRIDGE_GPU_ALLOCATION_DOMAIN_LOCAL;
-      plan.achieved_flags |= AMDF_MEMORY_FLAG_DEVICE_LOCAL;
       if (plan.alignment < AMDF_WINDOWS_GPU_RESERVATION_GRANULARITY) {
         plan.alignment = AMDF_WINDOWS_GPU_RESERVATION_GRANULARITY;
       }
       break;
     case AMDF_MEMORY_CLASS_REGISTERED_HOST:
-      if ((create_info->required_flags & AMDF_MEMORY_FLAG_DEVICE_LOCAL) != 0) {
-        return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
-      }
-      if ((create_info->byte_length & (AMDF_WINDOWS_GPU_PAGE_SIZE - 1)) != 0 ||
-          ((uintptr_t)create_info->registered_host_pointer &
-           (AMDF_WINDOWS_GPU_PAGE_SIZE - 1)) != 0) {
-        return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
-      }
       plan.allocation_domain =
           AMDF_WKMI_BRIDGE_GPU_ALLOCATION_DOMAIN_REGISTERED_HOST;
-      plan.achieved_flags |= AMDF_MEMORY_FLAG_HOST_VISIBLE;
       if (plan.alignment < AMDF_WINDOWS_GPU_PAGE_SIZE) {
         plan.alignment = AMDF_WINDOWS_GPU_PAGE_SIZE;
       }
-      if (((uintptr_t)create_info->registered_host_pointer &
-           (plan.alignment - 1)) != 0) {
-        return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
-      }
-      if (create_info->byte_length >
-          UINTPTR_MAX - (uintptr_t)create_info->registered_host_pointer) {
-        return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
-      }
       break;
     default:
-      return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
+      assert(false && "selected GPU memory profile must have a known class");
+      break;
   }
 
-  if (!amdf_windows_gpu_align_up(create_info->byte_length,
-                                 AMDF_WINDOWS_GPU_PAGE_SIZE,
-                                 &plan.byte_length)) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
-  }
-  if (plan.byte_length > SIZE_MAX) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
-  }
+  plan.byte_length =
+      (create_info->byte_length + AMDF_WINDOWS_GPU_PAGE_SIZE - 1) &
+      ~(AMDF_WINDOWS_GPU_PAGE_SIZE - 1);
   if ((create_info->required_flags & AMDF_MEMORY_FLAG_HOST_COHERENT) != 0) {
     plan.allocation_flags |= AMDF_WKMI_BRIDGE_GPU_ALLOCATION_FLAG_FINE_GRAIN;
-    plan.achieved_flags |= AMDF_MEMORY_FLAG_HOST_COHERENT;
   }
   if ((create_info->required_flags & AMDF_MEMORY_FLAG_QUEUE_STORAGE) != 0) {
     plan.allocation_flags |= AMDF_WKMI_BRIDGE_GPU_ALLOCATION_FLAG_QUEUE_STORAGE;
-    plan.achieved_flags |= AMDF_MEMORY_FLAG_QUEUE_STORAGE;
-  }
-  if ((create_info->required_flags & AMDF_MEMORY_FLAG_EXECUTABLE) != 0) {
-    plan.achieved_flags |= AMDF_MEMORY_FLAG_EXECUTABLE;
   }
   *out_plan = plan;
-  return AMDF_STATUS_OK;
 }
 
 static amdf_status_t amdf_windows_gpu_memory_allocate_host_storage(
@@ -193,13 +182,7 @@ static amdf_status_t amdf_windows_gpu_memory_allocate_host_storage(
   if (plan->alignment > AMDF_WINDOWS_GPU_RESERVATION_GRANULARITY) {
     const uint64_t alignment_slack =
         plan->alignment - AMDF_WINDOWS_GPU_RESERVATION_GRANULARITY;
-    if (reservation_byte_length > UINT64_MAX - alignment_slack) {
-      return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
-    }
     reservation_byte_length += alignment_slack;
-  }
-  if (reservation_byte_length > SIZE_MAX) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
   }
 
   memory->host_reservation = VirtualAlloc(NULL, (SIZE_T)reservation_byte_length,
@@ -223,19 +206,13 @@ static amdf_status_t amdf_windows_gpu_memory_allocate_host_storage(
 
 static amdf_status_t amdf_windows_gpu_memory_reserve_device_address(
     const amdf_windows_gpu_memory_plan_t* plan, amdf_gpu_umd_memory_t* memory) {
-  uint64_t usable_reservation_byte_length = 0;
-  if (!amdf_windows_gpu_align_up(plan->byte_length,
-                                 AMDF_WINDOWS_GPU_RESERVATION_GRANULARITY,
-                                 &usable_reservation_byte_length)) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
-  }
+  const uint64_t usable_reservation_byte_length =
+      (plan->byte_length + AMDF_WINDOWS_GPU_RESERVATION_GRANULARITY - 1) &
+      ~(AMDF_WINDOWS_GPU_RESERVATION_GRANULARITY - 1);
   uint64_t reservation_byte_length = usable_reservation_byte_length;
   if (plan->alignment > AMDF_WINDOWS_GPU_RESERVATION_GRANULARITY) {
     const uint64_t alignment_slack =
         plan->alignment - AMDF_WINDOWS_GPU_RESERVATION_GRANULARITY;
-    if (reservation_byte_length > UINT64_MAX - alignment_slack) {
-      return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
-    }
     reservation_byte_length += alignment_slack;
   }
 
@@ -249,11 +226,16 @@ static amdf_status_t amdf_windows_gpu_memory_reserve_device_address(
   }
   memory->device_reservation_base = reserve.VirtualAddress;
   memory->device_reservation_byte_length = reservation_byte_length;
+  const uint64_t maximum_address =
+      amdf_windows_gpu_maximum_address(memory->device);
   if (!amdf_windows_gpu_align_up(reserve.VirtualAddress, plan->alignment,
                                  &memory->device_address) ||
       memory->device_address < reserve.VirtualAddress ||
       memory->device_address - reserve.VirtualAddress >
-          reservation_byte_length - usable_reservation_byte_length) {
+          reservation_byte_length - usable_reservation_byte_length ||
+      memory->device_address > maximum_address ||
+      usable_reservation_byte_length - 1 >
+          maximum_address - memory->device_address) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
   }
   return AMDF_STATUS_OK;
@@ -360,8 +342,10 @@ static amdf_status_t amdf_windows_gpu_memory_map_device_address(
     map.BaseAddress = memory->device_address + memory->mapped_byte_length;
     map.hAllocation = memory->allocation_handles[i];
     map.SizeInPages = chunk_byte_length / AMDF_WINDOWS_GPU_PAGE_SIZE;
-    map.Protection.Write = 1;
-    map.Protection.Execute = (memory->flags & AMDF_MEMORY_FLAG_EXECUTABLE) != 0;
+    map.Protection.Write =
+        (memory->device_access & AMDF_MEMORY_ACCESS_WRITE) != 0;
+    map.Protection.Execute =
+        (memory->device_access & AMDF_MEMORY_ACCESS_EXECUTE) != 0;
     const NTSTATUS native_status =
         memory->device->kmt->map_gpu_virtual_address(&map);
     if (!amdf_kmt_status_is_success_or_pending(native_status)) {
@@ -524,18 +508,118 @@ static amdf_status_t amdf_windows_gpu_memory_release_native(
 amdf_status_t amdf_gpu_umd_device_query_memory_profile(
     amdf_gpu_umd_device_t* device, uint32_t memory_profile_ordinal,
     amdf_memory_profile_t* out_profile) {
-  (void)device;
-  (void)memory_profile_ordinal;
-  (void)out_profile;
-  return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  if (memory_profile_ordinal > 2 ||
+      !amdf_kmt_api_supports_gpu_memory(device->kmt)) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
+  }
+  if (!amdf_status_is_ok(device->memory_profile_status)) {
+    return device->memory_profile_status;
+  }
+  if (amdf_windows_gpu_maximum_byte_length(device) == 0) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
+  }
+  amdf_memory_access_t guaranteed_device_access = AMDF_MEMORY_ACCESS_READ;
+  if (!device->memory_capabilities.read_only_memory_supported) {
+    guaranteed_device_access |= AMDF_MEMORY_ACCESS_WRITE;
+  }
+  if (!device->memory_capabilities.no_execute_memory_supported) {
+    guaranteed_device_access |= AMDF_MEMORY_ACCESS_EXECUTE;
+  }
+  const uint64_t maximum_address = amdf_windows_gpu_maximum_address(device);
+  const uint64_t maximum_byte_length =
+      amdf_windows_gpu_maximum_byte_length(device);
+  const uint64_t maximum_alignment = amdf_windows_gpu_maximum_alignment(device);
+  amdf_memory_profile_t profile = {
+      .type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE,
+      .structure_size = out_profile->structure_size,
+      .next = out_profile->next,
+      .ordinal = memory_profile_ordinal,
+      .guaranteed_device_access = guaranteed_device_access,
+      .supported_device_access = AMDF_MEMORY_ACCESS_READ |
+                                 AMDF_MEMORY_ACCESS_WRITE |
+                                 AMDF_MEMORY_ACCESS_EXECUTE,
+      .device_address =
+          {
+              .address_domain_ordinal = 0,
+              .address_bit_count =
+                  device->memory_capabilities.virtual_address_bit_count,
+              .minimum_address = 0,
+              .maximum_address = maximum_address,
+          },
+  };
+  const amdf_memory_construction_capabilities_t allocation = {
+      .maximum_byte_length = maximum_byte_length,
+      .byte_length_granularity = 1,
+      .minimum_alignment = AMDF_WINDOWS_GPU_RESERVATION_GRANULARITY,
+      .maximum_alignment = maximum_alignment,
+      .native_byte_length_granularity = AMDF_WINDOWS_GPU_PAGE_SIZE,
+  };
+  const amdf_host_mapping_capabilities_t host_mapping = {
+      .maximum_byte_length = maximum_byte_length,
+      .byte_offset_granularity = 1,
+      .byte_length_granularity = 1,
+      .supported_access =
+          AMDF_MEMORY_MAP_FLAG_READ | AMDF_MEMORY_MAP_FLAG_WRITE,
+  };
+  if (memory_profile_ordinal == 0) {
+    profile.memory_class = AMDF_MEMORY_CLASS_SYSTEM;
+    profile.roles =
+        AMDF_MEMORY_PROFILE_ROLE_CREATE | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP;
+    profile.guaranteed_flags =
+        AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+    profile.supported_flags =
+        profile.guaranteed_flags | AMDF_MEMORY_FLAG_QUEUE_STORAGE;
+    if (device->memory_capabilities.cache_coherent_memory_supported) {
+      profile.supported_flags |= AMDF_MEMORY_FLAG_HOST_COHERENT;
+    }
+    profile.device_address.minimum_alignment =
+        AMDF_WINDOWS_GPU_RESERVATION_GRANULARITY;
+    profile.allocation = allocation;
+    profile.host_mapping = host_mapping;
+  } else if (memory_profile_ordinal == 1) {
+    profile.memory_class = AMDF_MEMORY_CLASS_LOCAL;
+    profile.roles = AMDF_MEMORY_PROFILE_ROLE_CREATE;
+    profile.guaranteed_flags =
+        AMDF_MEMORY_FLAG_DEVICE_LOCAL | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+    profile.supported_flags =
+        profile.guaranteed_flags | AMDF_MEMORY_FLAG_QUEUE_STORAGE;
+    profile.device_address.minimum_alignment =
+        AMDF_WINDOWS_GPU_RESERVATION_GRANULARITY;
+    profile.allocation = allocation;
+  } else {
+    profile.memory_class = AMDF_MEMORY_CLASS_REGISTERED_HOST;
+    profile.roles =
+        AMDF_MEMORY_PROFILE_ROLE_REGISTER | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP;
+    profile.guaranteed_flags =
+        AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+    profile.supported_flags =
+        profile.guaranteed_flags | AMDF_MEMORY_FLAG_QUEUE_STORAGE;
+    if (device->memory_capabilities.cache_coherent_memory_supported) {
+      profile.supported_flags |= AMDF_MEMORY_FLAG_HOST_COHERENT;
+    }
+    profile.device_address.minimum_alignment = AMDF_WINDOWS_GPU_PAGE_SIZE;
+    profile.registration = (amdf_memory_construction_capabilities_t){
+        .maximum_byte_length = maximum_byte_length,
+        .byte_length_granularity = AMDF_WINDOWS_GPU_PAGE_SIZE,
+        .registered_host_pointer_alignment = AMDF_WINDOWS_GPU_PAGE_SIZE,
+        .minimum_alignment = AMDF_WINDOWS_GPU_PAGE_SIZE,
+        .maximum_alignment = maximum_alignment,
+        .native_byte_length_granularity = AMDF_WINDOWS_GPU_PAGE_SIZE,
+    };
+    profile.host_mapping = host_mapping;
+  }
+  *out_profile = profile;
+  return AMDF_STATUS_OK;
 }
 
 amdf_status_t amdf_gpu_umd_memory_import(
-    amdf_gpu_umd_device_t* device, const amdf_memory_import_info_t* import_info,
+    amdf_gpu_umd_device_t* device, const amdf_memory_profile_t* profile,
+    const amdf_memory_import_info_t* import_info,
     const amdf_external_memory_t* external_memory,
     amdf_gpu_umd_memory_t** out_memory,
     amdf_gpu_umd_memory_result_t* out_result) {
   (void)device;
+  (void)profile;
   (void)import_info;
   (void)external_memory;
   (void)out_memory;
@@ -562,29 +646,23 @@ amdf_status_t amdf_gpu_umd_memory_query_pair_info(
 }
 
 amdf_status_t amdf_gpu_umd_memory_create(
-    amdf_gpu_umd_device_t* device, const amdf_memory_create_info_t* create_info,
+    amdf_gpu_umd_device_t* device, const amdf_memory_profile_t* profile,
+    const amdf_memory_create_info_t* create_info,
     amdf_gpu_umd_memory_t** out_memory,
     amdf_gpu_umd_memory_result_t* out_result) {
-  if (!amdf_kmt_api_supports_gpu_memory(device->kmt)) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
-  }
   amdf_windows_gpu_memory_plan_t plan = {0};
-  amdf_status_t status =
-      amdf_windows_gpu_memory_validate_create_info(create_info, &plan);
-  if (!amdf_status_is_ok(status)) {
-    return status;
-  }
+  amdf_windows_gpu_memory_plan(profile, create_info, &plan);
 
   uint32_t allocation_count = 0;
   uint64_t maximum_native_allocation_byte_length = 0;
-  status = amdf_gpu_wddm_wkmi_adapter_query_allocation_layout(
+  amdf_status_t status = amdf_gpu_wddm_wkmi_adapter_query_allocation_layout(
       &device->wkmi_adapter, plan.byte_length, &allocation_count,
       &maximum_native_allocation_byte_length);
   if (!amdf_status_is_ok(status)) {
     return status;
   }
   if (allocation_count == 0 || maximum_native_allocation_byte_length == 0) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
+    return amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
   }
 
   const size_t handle_bytes = (size_t)allocation_count * sizeof(D3DKMT_HANDLE);
@@ -600,9 +678,10 @@ amdf_status_t amdf_gpu_umd_memory_create(
       maximum_native_allocation_byte_length;
   memory->byte_length = plan.byte_length;
   memory->flags = plan.achieved_flags;
-  if (create_info->memory_class == AMDF_MEMORY_CLASS_SYSTEM) {
+  memory->device_access = create_info->device_access;
+  if (profile->memory_class == AMDF_MEMORY_CLASS_SYSTEM) {
     status = amdf_windows_gpu_memory_allocate_host_storage(&plan, memory);
-  } else if (create_info->memory_class == AMDF_MEMORY_CLASS_REGISTERED_HOST) {
+  } else if (profile->memory_class == AMDF_MEMORY_CLASS_REGISTERED_HOST) {
     memory->host_pointer = create_info->registered_host_pointer;
   }
   if (amdf_status_is_ok(status)) {
@@ -620,13 +699,13 @@ amdf_status_t amdf_gpu_umd_memory_create(
 
   if (amdf_status_is_ok(status)) {
     amdf_gpu_umd_memory_result_t result = {0};
-    result.memory_profile_ordinal = AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN;
-    result.memory_class = create_info->memory_class;
     result.flags = plan.achieved_flags;
     result.source_byte_offset = 0;
     result.byte_length = plan.byte_length;
     result.alignment = plan.alignment;
-    if (create_info->memory_class == AMDF_MEMORY_CLASS_REGISTERED_HOST) {
+    result.native_allocation_byte_length = plan.byte_length;
+    result.native_allocation_granularity = AMDF_WINDOWS_GPU_PAGE_SIZE;
+    if (profile->memory_class == AMDF_MEMORY_CLASS_REGISTERED_HOST) {
       result.physical_backing_id.words[0] =
           (uint64_t)(uintptr_t)memory->host_pointer;
       result.physical_backing_id.words[1] = memory->byte_length;
@@ -664,7 +743,8 @@ amdf_status_t amdf_gpu_umd_memory_destroy(amdf_gpu_umd_memory_t* memory) {
 }
 
 amdf_status_t amdf_gpu_umd_memory_map(
-    amdf_gpu_umd_memory_t* memory, const amdf_memory_map_info_t* map_info,
+    amdf_gpu_umd_memory_t* memory, const amdf_memory_profile_t* profile,
+    const amdf_memory_map_info_t* map_info,
     amdf_gpu_umd_host_mapping_t** out_mapping,
     amdf_gpu_umd_host_mapping_result_t* out_result) {
   amdf_gpu_umd_host_mapping_t* mapping = NULL;
@@ -678,7 +758,7 @@ amdf_status_t amdf_gpu_umd_memory_map(
   mapping->byte_length = map_info->byte_length;
 
   amdf_gpu_umd_host_mapping_result_t result = {0};
-  result.flags = map_info->flags;
+  result.flags = profile->host_mapping.supported_access;
   result.pointer = mapping->pointer;
   result.byte_length = mapping->byte_length;
   result.cacheability = (memory->flags & AMDF_MEMORY_FLAG_HOST_COHERENT) != 0

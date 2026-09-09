@@ -28,6 +28,7 @@ typedef struct amdf_memory_vtable_t {
   // Creates one explicit host mapping. Failure releases every partial resource;
   // success returns one complete mapping.
   amdf_status_t (*map)(amdf_memory_t* memory,
+                       const amdf_memory_profile_t* profile,
                        const amdf_memory_map_info_t* map_info,
                        amdf_host_mapping_t** out_mapping);
   // Releases the exact native state owned by a memory implementation.

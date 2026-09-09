@@ -20,10 +20,6 @@ typedef struct amdf_xdna_umd_device_t amdf_xdna_umd_device_t;
 
 // Native memory properties established before publication.
 typedef struct amdf_xdna_umd_memory_result_t {
-  // Dense memory-profile ordinal governing this attachment.
-  uint32_t memory_profile_ordinal;
-  // Achieved physical placement class.
-  amdf_memory_class_t memory_class;
   // Achieved attachment properties.
   amdf_memory_flags_t flags;
   // Byte offset of logical byte zero in the physical backing.
@@ -32,6 +28,10 @@ typedef struct amdf_xdna_umd_memory_result_t {
   uint64_t byte_length;
   // Guaranteed allocation-base alignment in every supported address space.
   uint64_t alignment;
+  // Complete native physical allocation or registered page-cover length.
+  uint64_t native_allocation_byte_length;
+  // Granularity of the native allocation length.
+  uint64_t native_allocation_granularity;
   // Identity of the physical backing within the provider instance.
   amdf_physical_memory_id_t physical_backing_id;
   // Stable XDNA virtual base.
@@ -59,14 +59,14 @@ amdf_status_t amdf_xdna_umd_device_query_memory_profile(
 
 // Creates physical backing and a stable attachment to `device`.
 amdf_status_t amdf_xdna_umd_memory_create(
-    amdf_xdna_umd_device_t* device,
+    amdf_xdna_umd_device_t* device, const amdf_memory_profile_t* profile,
     const amdf_memory_create_info_t* create_info,
     amdf_xdna_umd_memory_t** out_memory,
     amdf_xdna_umd_memory_result_t* out_result);
 
 // Imports external memory as one complete attachment to `device`.
 amdf_status_t amdf_xdna_umd_memory_import(
-    amdf_xdna_umd_device_t* device,
+    amdf_xdna_umd_device_t* device, const amdf_memory_profile_t* profile,
     const amdf_memory_import_info_t* import_info,
     const amdf_external_memory_t* external_memory,
     amdf_xdna_umd_memory_t** out_memory,
@@ -88,7 +88,8 @@ amdf_status_t amdf_xdna_umd_memory_destroy(amdf_xdna_umd_memory_t* memory);
 
 // Creates one explicit host mapping.
 amdf_status_t amdf_xdna_umd_memory_map(
-    amdf_xdna_umd_memory_t* memory, const amdf_memory_map_info_t* map_info,
+    amdf_xdna_umd_memory_t* memory, const amdf_memory_profile_t* profile,
+    const amdf_memory_map_info_t* map_info,
     amdf_xdna_umd_host_mapping_t** out_mapping,
     amdf_xdna_umd_host_mapping_result_t* out_result);
 

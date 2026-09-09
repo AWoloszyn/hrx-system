@@ -82,31 +82,6 @@ static amdf_status_t amdf_windows_xdna_memory_release_native(
   return AMDF_STATUS_OK;
 }
 
-static amdf_status_t amdf_windows_xdna_memory_validate_create_info(
-    const amdf_memory_create_info_t* create_info, uint64_t* out_byte_length) {
-  const amdf_memory_flags_t supported_flags =
-      AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
-  if (create_info->memory_class != AMDF_MEMORY_CLASS_SYSTEM ||
-      (create_info->required_flags & ~supported_flags) != 0) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
-  }
-  if (create_info->minimum_alignment > AMDF_WINDOWS_XDNA_ALLOCATION_ALIGNMENT) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
-  }
-  if (create_info->byte_length >
-      UINT64_MAX - (AMDF_WINDOWS_XDNA_ALLOCATION_ALIGNMENT - 1)) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
-  }
-  const uint64_t byte_length = (create_info->byte_length +
-                                (AMDF_WINDOWS_XDNA_ALLOCATION_ALIGNMENT - 1)) &
-                               ~(AMDF_WINDOWS_XDNA_ALLOCATION_ALIGNMENT - 1);
-  if (byte_length > SIZE_MAX) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
-  }
-  *out_byte_length = byte_length;
-  return AMDF_STATUS_OK;
-}
-
 static amdf_status_t amdf_windows_xdna_memory_create_allocation(
     amdf_xdna_umd_memory_t* memory) {
   D3DDDI_ALLOCATIONINFO2 allocation_info = {0};
@@ -138,12 +113,13 @@ static amdf_status_t amdf_windows_xdna_memory_create_allocation(
 }
 
 static amdf_status_t amdf_windows_xdna_memory_map_device_address(
-    amdf_xdna_umd_memory_t* memory) {
+    amdf_xdna_umd_memory_t* memory, amdf_memory_access_t device_access) {
   D3DDDI_MAPGPUVIRTUALADDRESS map = {0};
   map.hPagingQueue = memory->device->paging_queue;
   map.hAllocation = memory->allocation;
   map.SizeInPages = memory->byte_length / AMDF_WINDOWS_KMT_PAGE_SIZE;
-  map.Protection.Write = 1;
+  map.Protection.Write = (device_access & AMDF_MEMORY_ACCESS_WRITE) != 0;
+  map.Protection.Execute = (device_access & AMDF_MEMORY_ACCESS_EXECUTE) != 0;
   NTSTATUS native_status = memory->device->kmt->map_gpu_virtual_address(&map);
   if (!amdf_kmt_status_is_success_or_pending(native_status)) {
     return amdf_kmt_make_status(native_status);
@@ -194,19 +170,65 @@ static amdf_status_t amdf_windows_xdna_memory_make_resident(
 amdf_status_t amdf_xdna_umd_device_query_memory_profile(
     amdf_xdna_umd_device_t* device, uint32_t memory_profile_ordinal,
     amdf_memory_profile_t* out_profile) {
-  (void)device;
-  (void)memory_profile_ordinal;
-  (void)out_profile;
-  return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  if (memory_profile_ordinal != 0 ||
+      !amdf_kmt_api_supports_memory(device->kmt)) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
+  }
+  *out_profile = (amdf_memory_profile_t){
+      .type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE,
+      .structure_size = out_profile->structure_size,
+      .next = out_profile->next,
+      .ordinal = 0,
+      .memory_class = AMDF_MEMORY_CLASS_SYSTEM,
+      .roles =
+          AMDF_MEMORY_PROFILE_ROLE_CREATE | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
+      .guaranteed_flags =
+          AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS,
+      .supported_flags =
+          AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS,
+      .guaranteed_device_access =
+          AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE,
+      .supported_device_access =
+          AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE,
+      .device_address =
+          {
+              .address_domain_ordinal = 0,
+              .address_bit_count = AMDF_MEMORY_ADDRESS_BIT_COUNT_UNKNOWN,
+              .minimum_address = 0,
+              .maximum_address = 0,
+              .minimum_alignment = AMDF_WINDOWS_XDNA_ALLOCATION_ALIGNMENT,
+          },
+      .allocation =
+          {
+              .maximum_byte_length =
+                  SIZE_MAX & ~(AMDF_WINDOWS_XDNA_ALLOCATION_ALIGNMENT - 1),
+              .byte_length_granularity = 1,
+              .minimum_alignment = AMDF_WINDOWS_XDNA_ALLOCATION_ALIGNMENT,
+              .maximum_alignment = AMDF_WINDOWS_XDNA_ALLOCATION_ALIGNMENT,
+              .native_byte_length_granularity =
+                  AMDF_WINDOWS_XDNA_ALLOCATION_ALIGNMENT,
+          },
+      .host_mapping =
+          {
+              .maximum_byte_length =
+                  SIZE_MAX & ~(AMDF_WINDOWS_XDNA_ALLOCATION_ALIGNMENT - 1),
+              .byte_offset_granularity = 1,
+              .byte_length_granularity = 1,
+              .supported_access =
+                  AMDF_MEMORY_MAP_FLAG_READ | AMDF_MEMORY_MAP_FLAG_WRITE,
+          },
+  };
+  return AMDF_STATUS_OK;
 }
 
 amdf_status_t amdf_xdna_umd_memory_import(
-    amdf_xdna_umd_device_t* device,
+    amdf_xdna_umd_device_t* device, const amdf_memory_profile_t* profile,
     const amdf_memory_import_info_t* import_info,
     const amdf_external_memory_t* external_memory,
     amdf_xdna_umd_memory_t** out_memory,
     amdf_xdna_umd_memory_result_t* out_result) {
   (void)device;
+  (void)profile;
   (void)import_info;
   (void)external_memory;
   (void)out_memory;
@@ -234,23 +256,18 @@ amdf_status_t amdf_xdna_umd_memory_query_pair_info(
 }
 
 amdf_status_t amdf_xdna_umd_memory_create(
-    amdf_xdna_umd_device_t* device,
+    amdf_xdna_umd_device_t* device, const amdf_memory_profile_t* profile,
     const amdf_memory_create_info_t* create_info,
     amdf_xdna_umd_memory_t** out_memory,
     amdf_xdna_umd_memory_result_t* out_result) {
-  if (!amdf_kmt_api_supports_memory(device->kmt)) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
-  }
-  uint64_t byte_length = 0;
-  amdf_status_t status =
-      amdf_windows_xdna_memory_validate_create_info(create_info, &byte_length);
-  if (!amdf_status_is_ok(status)) {
-    return status;
-  }
+  const uint64_t byte_length =
+      (create_info->byte_length + AMDF_WINDOWS_XDNA_ALLOCATION_ALIGNMENT - 1) &
+      ~(AMDF_WINDOWS_XDNA_ALLOCATION_ALIGNMENT - 1);
 
   amdf_xdna_umd_memory_t* memory = NULL;
-  status = amdf_calloc(device->host_allocator, sizeof(*memory),
-                       _Alignof(amdf_xdna_umd_memory_t), (void**)&memory);
+  amdf_status_t status =
+      amdf_calloc(device->host_allocator, sizeof(*memory),
+                  _Alignof(amdf_xdna_umd_memory_t), (void**)&memory);
   if (!amdf_status_is_ok(status)) return status;
   memory->device = device;
   memory->byte_length = byte_length;
@@ -263,7 +280,8 @@ amdf_status_t amdf_xdna_umd_memory_create(
     status = amdf_windows_xdna_memory_create_allocation(memory);
   }
   if (amdf_status_is_ok(status)) {
-    status = amdf_windows_xdna_memory_map_device_address(memory);
+    status = amdf_windows_xdna_memory_map_device_address(
+        memory, create_info->device_access);
   }
   if (amdf_status_is_ok(status)) {
     status = amdf_windows_xdna_memory_make_resident(memory);
@@ -271,13 +289,13 @@ amdf_status_t amdf_xdna_umd_memory_create(
 
   if (amdf_status_is_ok(status)) {
     amdf_xdna_umd_memory_result_t result = {0};
-    result.memory_profile_ordinal = AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN;
-    result.memory_class = AMDF_MEMORY_CLASS_SYSTEM;
-    result.flags =
-        AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+    result.flags = profile->guaranteed_flags;
     result.source_byte_offset = 0;
     result.byte_length = memory->byte_length;
     result.alignment = AMDF_WINDOWS_XDNA_ALLOCATION_ALIGNMENT;
+    result.native_allocation_byte_length = memory->byte_length;
+    result.native_allocation_granularity =
+        AMDF_WINDOWS_XDNA_ALLOCATION_ALIGNMENT;
     result.physical_backing_id.words[0] =
         (uint64_t)(uintptr_t)memory->host_pointer;
     result.physical_backing_id.words[1] = memory->byte_length;
@@ -306,7 +324,8 @@ amdf_status_t amdf_xdna_umd_memory_destroy(amdf_xdna_umd_memory_t* memory) {
 }
 
 amdf_status_t amdf_xdna_umd_memory_map(
-    amdf_xdna_umd_memory_t* memory, const amdf_memory_map_info_t* map_info,
+    amdf_xdna_umd_memory_t* memory, const amdf_memory_profile_t* profile,
+    const amdf_memory_map_info_t* map_info,
     amdf_xdna_umd_host_mapping_t** out_mapping,
     amdf_xdna_umd_host_mapping_result_t* out_result) {
   amdf_xdna_umd_host_mapping_t* mapping = NULL;
@@ -319,7 +338,7 @@ amdf_status_t amdf_xdna_umd_memory_map(
   mapping->byte_length = map_info->byte_length;
 
   amdf_xdna_umd_host_mapping_result_t result = {0};
-  result.flags = map_info->flags;
+  result.flags = profile->host_mapping.supported_access;
   result.pointer = mapping->pointer;
   result.byte_length = mapping->byte_length;
   result.cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK;

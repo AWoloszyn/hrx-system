@@ -105,12 +105,20 @@ class GpuMemoryInteropTest : public GpuDeviceFixture {
     amdf_memory_create_info_t memory_info = {};
     memory_info.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
     memory_info.structure_size = sizeof(memory_info);
-    memory_info.memory_class = registered_host_pointer != nullptr
-                                   ? AMDF_MEMORY_CLASS_REGISTERED_HOST
-                                   : AMDF_MEMORY_CLASS_SYSTEM;
-    memory_info.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE |
-                                 AMDF_MEMORY_FLAG_EXECUTABLE |
-                                 AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+    memory_info.device_access = AMDF_MEMORY_ACCESS_READ |
+                                AMDF_MEMORY_ACCESS_WRITE |
+                                AMDF_MEMORY_ACCESS_EXECUTE;
+    memory_info.required_flags =
+        AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+    const bool is_registration = registered_host_pointer != nullptr;
+    memory_info.memory_profile_ordinal = FindMemoryProfileOrdinal(
+        access.device,
+        is_registration ? AMDF_MEMORY_CLASS_REGISTERED_HOST
+                        : AMDF_MEMORY_CLASS_SYSTEM,
+        (is_registration ? AMDF_MEMORY_PROFILE_ROLE_REGISTER
+                         : AMDF_MEMORY_PROFILE_ROLE_CREATE) |
+            AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
+        memory_info.required_flags, memory_info.device_access);
     memory_info.byte_length = kMemoryByteLength;
     memory_info.registered_host_pointer = registered_host_pointer;
     amdf_status_t status =
