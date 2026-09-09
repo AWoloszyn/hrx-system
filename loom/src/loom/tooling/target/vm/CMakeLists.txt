@@ -18,6 +18,7 @@ loom_cc_library(
     "testbench.c"
   DEPS
     iree::base
+    iree::hal
     iree::vm
     iree::vm::bytecode::module
     loom::ops::func

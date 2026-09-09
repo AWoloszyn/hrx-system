@@ -27,6 +27,7 @@ contract under test rather than a target instruction or implementation file.
 | Representation and accuracy | `bitfield.loom`, `conversion*.loom`, `narrow.loom`, `rounding.loom`, `float_selectors.loom`, `turns.loom`: widths, field boundaries, floating policies, and fused versus separate rounding. |
 | Vector lane programs | `vector_fields.loom`: construction, signed and unsigned fields, full-width replacement, lane extraction, and typed stores through portable legalization. |
 | Control and ownership | `control.loom`, `structured_control.loom`, `calls.loom`, `direct_call.loom`, `spill.loom`, `buffer_calls.loom`: tuple joins, nested loops, while-condition effects, recursion, live values across calls, and returned aliases. |
+| Host buffer calls | `buffer_arguments.loom`: owned results passed into later calls, returned aliases, interleaved scalar/reference results, mutation visibility, and empty allocations. |
 | Memory | `address.loom`, `buffers.loom`, `buffer_access.loom`, `memory_boundaries.loom`, `view_access.loom`: offsets, partial patterns with canaries, same-root copies, unsigned byte ordering, guarded access, typed views, and allocation lifetime. |
 
 Inputs enter through function arguments so execution exercises the compiled

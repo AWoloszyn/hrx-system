@@ -7,6 +7,7 @@
 #ifndef LOOM_TOOLING_TARGET_VM_TESTBENCH_H_
 #define LOOM_TOOLING_TARGET_VM_TESTBENCH_H_
 
+#include "iree/vm/buffer.h"
 #include "iree/vm/invocation.h"
 #include "iree/vm/process.h"
 #include "loom/target/provider.h"
@@ -21,6 +22,9 @@ extern "C" {
 // IR copy specialized to the Core profile with the normal pipeline, verifies
 // the emitted bytes, and creates a process; subsequent calls reuse that process
 // and its invocation storage. The authored functions need no target binding.
+// Buffer arguments and results share storage with the case's HAL bindings.
+// Arguments require coherent persistent host mappings; results retain the VM
+// storage until the final binding or alias is released.
 typedef struct loom_vm_testbench_t {
   // Borrowed compiler capabilities, live through deinitialization.
   const loom_target_environment_t* target_environment;
@@ -32,6 +36,8 @@ typedef struct loom_vm_testbench_t {
   iree_vm_process_t* process;
   // Owned reusable execution storage, never shared by concurrent calls.
   iree_vm_invocation_t* invocation;
+  // Borrowed Core descriptors whose provider lives with the linked VM runtime.
+  iree_vm_ref_types_t ref_types;
 } loom_vm_testbench_t;
 
 // Initializes a lazy function provider without compiling or allocating.

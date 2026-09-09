@@ -6,6 +6,7 @@
 
 #include "loom/tooling/target/vm/testbench.h"
 
+#include "iree/hal/buffer.h"
 #include "iree/vm/bytecode/module.h"
 #include "iree/vm/execution.h"
 #include "iree/vm/sync.h"
@@ -144,6 +145,11 @@ static iree_status_t loom_vm_testbench_prepare(loom_vm_testbench_t* testbench,
   iree_status_t status =
       iree_vm_environment_allocate(testbench->host_allocator, &environment);
   if (iree_status_is_ok(status)) {
+    status = iree_vm_ref_types_resolve(
+        iree_vm_environment_lookup_ref_type_table(environment, IREE_SV("vm")),
+        &testbench->ref_types);
+  }
+  if (iree_status_is_ok(status)) {
     status = iree_vm_bytecode_module_create(
         environment, IREE_SV("test"),
         (iree_vm_bytecode_module_storage_t){
@@ -181,6 +187,96 @@ static iree_status_t loom_vm_testbench_prepare(loom_vm_testbench_t* testbench,
   return status;
 }
 
+static void loom_vm_testbench_release_hal_buffer(void* user_data,
+                                                 iree_byte_span_t storage) {
+  iree_hal_buffer_release(user_data);
+}
+
+// A persistent mapping borrows the HAL buffer's lifetime. The VM wrapper owns
+// that lifetime, including when a returned alias outlives the invocation.
+static iree_status_t loom_vm_testbench_import_buffer(
+    loom_vm_testbench_t* testbench,
+    const iree_tooling_buffer_binding_t* binding,
+    iree_vm_variant_t* out_argument) {
+  iree_vm_buffer_t* buffer = NULL;
+  if (binding->buffer) {
+    IREE_RETURN_IF_ERROR(iree_hal_buffer_validate_memory_type(
+        iree_hal_buffer_memory_type(binding->buffer),
+        IREE_HAL_MEMORY_TYPE_HOST_COHERENT));
+    const iree_hal_memory_access_t access =
+        iree_hal_buffer_allowed_access(binding->buffer) &
+        (IREE_HAL_MEMORY_ACCESS_READ | IREE_HAL_MEMORY_ACCESS_WRITE);
+    iree_hal_buffer_mapping_t mapping = {0};
+    IREE_RETURN_IF_ERROR(iree_hal_buffer_map_range(
+        binding->buffer, IREE_HAL_MAPPING_MODE_PERSISTENT, access,
+        binding->byte_offset, binding->byte_length, &mapping));
+    iree_vm_buffer_access_flags_t vm_access = 0;
+    if (iree_any_bit_set(access, IREE_HAL_MEMORY_ACCESS_READ)) {
+      vm_access |= IREE_VM_BUFFER_ACCESS_FLAG_READ;
+    }
+    if (iree_any_bit_set(access, IREE_HAL_MEMORY_ACCESS_WRITE)) {
+      vm_access |= IREE_VM_BUFFER_ACCESS_FLAG_WRITE;
+    }
+    IREE_RETURN_IF_ERROR(iree_vm_buffer_wrap(
+        vm_access, mapping.contents,
+        (iree_vm_buffer_release_callback_t){
+            .function = loom_vm_testbench_release_hal_buffer,
+            .user_data = binding->buffer},
+        testbench->host_allocator, &buffer));
+    iree_hal_buffer_retain(binding->buffer);
+  }
+  *out_argument =
+      iree_vm_buffer_variant_from_ptr_move(&testbench->ref_types, &buffer);
+  return iree_ok_status();
+}
+
+static void loom_vm_testbench_release_vm_buffer(void* user_data,
+                                                iree_hal_buffer_t* buffer) {
+  iree_vm_buffer_release(user_data);
+}
+
+static iree_status_t loom_vm_testbench_export_buffer(
+    loom_vm_testbench_t* testbench, iree_vm_variant_t result,
+    loom_testbench_value_t* out_value) {
+  iree_vm_buffer_t* source = NULL;
+  IREE_RETURN_IF_ERROR(iree_vm_buffer_ptr_from_variant_borrowed(
+      &testbench->ref_types, result, &source));
+  iree_hal_buffer_t* buffer = NULL;
+  const iree_host_size_t length = iree_vm_buffer_length(source);
+  if (source) {
+    const iree_vm_buffer_access_flags_t vm_access =
+        iree_vm_buffer_access(source);
+    iree_hal_memory_access_t access = IREE_HAL_MEMORY_ACCESS_UNALIGNED;
+    if (iree_any_bit_set(vm_access, IREE_VM_BUFFER_ACCESS_FLAG_READ)) {
+      access |= IREE_HAL_MEMORY_ACCESS_READ;
+    }
+    if (iree_any_bit_set(vm_access, IREE_VM_BUFFER_ACCESS_FLAG_WRITE)) {
+      access |= IREE_HAL_MEMORY_ACCESS_WRITE;
+    }
+    void* data = iree_any_bit_set(vm_access, IREE_VM_BUFFER_ACCESS_FLAG_WRITE)
+                     ? iree_vm_buffer_data(source)
+                     : (void*)iree_vm_buffer_const_data(source);
+    IREE_RETURN_IF_ERROR(iree_hal_heap_buffer_wrap(
+        iree_hal_buffer_placement_undefined(),
+        IREE_HAL_MEMORY_TYPE_HOST_LOCAL | IREE_HAL_MEMORY_TYPE_HOST_COHERENT,
+        access,
+        IREE_HAL_BUFFER_USAGE_MAPPING_SCOPED |
+            IREE_HAL_BUFFER_USAGE_MAPPING_PERSISTENT,
+        length, iree_make_byte_span(data, length),
+        (iree_hal_buffer_release_callback_t){
+            .fn = loom_vm_testbench_release_vm_buffer, .user_data = source},
+        testbench->host_allocator, &buffer));
+    iree_vm_buffer_retain(source);
+  }
+  *out_value = (loom_testbench_value_t){
+      .kind = LOOM_TESTBENCH_VALUE_KIND_BUFFER,
+      .buffer = {.kind = IREE_TOOLING_BUFFER_BINDING_KIND_STORAGE_BUFFER,
+                 .buffer = buffer,
+                 .byte_length = length},
+  };
+  return iree_ok_status();
+}
+
 static iree_status_t loom_vm_testbench_invoke(
     void* user_data, const loom_testbench_invocation_plan_t* invocation,
     iree_host_size_t workload_count, const loom_testbench_value_t* workloads,
@@ -216,9 +312,13 @@ static iree_status_t loom_vm_testbench_invoke(
   iree_status_t status = iree_ok_status();
   for (iree_host_size_t i = 0; i < parameter_count && iree_status_is_ok(status);
        ++i) {
-    if (inputs[i].kind != LOOM_TESTBENCH_VALUE_KIND_SCALAR) {
-      status = iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                                "VM test input requires scalar marshalling");
+    if (inputs[i].kind == LOOM_TESTBENCH_VALUE_KIND_BUFFER) {
+      status = loom_vm_testbench_import_buffer(testbench, &inputs[i].buffer,
+                                               &arguments[i]);
+    } else if (inputs[i].kind != LOOM_TESTBENCH_VALUE_KIND_SCALAR) {
+      status = iree_make_status(
+          IREE_STATUS_UNIMPLEMENTED,
+          "VM test input requires scalar or buffer marshalling");
     } else {
       // The shared materializer stores narrow floats as raw words and narrow
       // integers as i32. The source signature supplies their exact VM tags.
@@ -276,9 +376,17 @@ static iree_status_t loom_vm_testbench_invoke(
         iree_vm_invoke(testbench->invocation, callee,
                        iree_vm_variant_span_from_ptr(arguments, input_count),
                        iree_vm_variant_span_from_ptr(results, result_count));
+  } else {
+    iree_vm_variant_span_reset(
+        iree_vm_variant_span_from_ptr(arguments, input_count));
   }
   for (iree_host_size_t i = 0; i < result_count && iree_status_is_ok(status);
        ++i) {
+    if (iree_vm_variant_is_ref(results[i])) {
+      status = loom_vm_testbench_export_buffer(testbench, results[i],
+                                               &out_results[i]);
+      continue;
+    }
     out_results[i].kind = LOOM_TESTBENCH_VALUE_KIND_SCALAR;
     switch (iree_vm_variant_scalar_type(results[i])) {
       case IREE_VM_SCALAR_TYPE_I8: {

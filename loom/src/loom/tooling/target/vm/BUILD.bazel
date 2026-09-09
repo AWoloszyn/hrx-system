@@ -27,6 +27,7 @@ loom_cc_library(
         "//loom/src/loom/tooling/compile:pipeline",
         "//loom/src/loom/tooling/testbench:invocation",
         "//runtime/src/iree/base",
+        "//runtime/src/iree/hal",
         "//runtime/src/iree/vm",
         "//runtime/src/iree/vm/bytecode:module",
     ],
