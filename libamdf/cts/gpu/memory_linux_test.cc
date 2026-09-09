@@ -19,7 +19,9 @@
 namespace {
 
 struct DeviceAccessCase {
+  // Exact device permissions requested for this case.
   amdf_memory_access_t access;
+  // Physical properties added for this case.
   amdf_memory_flags_t additional_flags;
 };
 

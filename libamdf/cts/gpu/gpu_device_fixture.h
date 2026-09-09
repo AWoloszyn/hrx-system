@@ -14,11 +14,20 @@
 #include "gtest/gtest.h"
 #include "util/provider.h"
 
-// Materializes the first qualified GPU endpoint and one native device.
+// Materializes the first selected GPU endpoint and one native device.
 class GpuDeviceFixture : public ::testing::Test {
  protected:
   virtual amdf_gpu_device_mode_t GetDeviceMode() const {
     return AMDF_GPU_DEVICE_MODE_INDEPENDENT;
+  }
+
+  // Selects which opened GPU endpoint should back this fixture. A failure
+  // leaves `out_matches` unchanged.
+  virtual amdf_status_t MatchGpuEndpoint(amdf_endpoint_t* endpoint,
+                                         bool* out_matches) const {
+    (void)endpoint;
+    *out_matches = true;
+    return AMDF_STATUS_OK;
   }
 
   void SetUp() override {
@@ -53,11 +62,20 @@ class GpuDeviceFixture : public ::testing::Test {
           instance_, endpoint_count, summaries.data(), &endpoint_count)));
     }
     for (const amdf_endpoint_summary_t& summary : summaries) {
-      if (summary.engine_kind == AMDF_ENGINE_KIND_GPU) {
-        ASSERT_TRUE(amdf_status_is_ok(
-            api_->endpoint_open(instance_, &summary.id, &endpoint_)));
-        break;
-      }
+      if (summary.engine_kind != AMDF_ENGINE_KIND_GPU) continue;
+      ASSERT_TRUE(amdf_status_is_ok(
+          api_->endpoint_open(instance_, &summary.id, &endpoint_)));
+      bool matches = false;
+      status = MatchGpuEndpoint(endpoint_, &matches);
+      ASSERT_EQ(status, AMDF_STATUS_OK)
+          << "domain=" << amdf_status_domain(status)
+          << " code=" << amdf_status_code(status);
+      if (matches) break;
+      status = api_->endpoint_close(endpoint_);
+      if (amdf_status_is_ok(status)) endpoint_ = nullptr;
+      ASSERT_EQ(status, AMDF_STATUS_OK)
+          << "domain=" << amdf_status_domain(status)
+          << " code=" << amdf_status_code(status);
     }
     if (endpoint_ == nullptr) {
       GTEST_SKIP() << "no qualified GPU endpoint present";
