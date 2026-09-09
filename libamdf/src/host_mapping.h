@@ -23,6 +23,8 @@ typedef struct amdf_host_mapping_vtable_t {
 } amdf_host_mapping_vtable_t;
 
 struct amdf_host_mapping_t {
+  // Host allocator copied for direct terminal teardown.
+  amdf_allocator_t host_allocator;
   // Implementation operations selected before the mapping is published.
   const amdf_host_mapping_vtable_t* vtable;
   // Memory borrowed for the lifetime of this mapping.

@@ -8,9 +8,9 @@
 
 #include <assert.h>
 #include <stddef.h>
-#include <stdlib.h>
 #include <string.h>
 
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/child_tracker.h"
 #include "libamdf/src/instance.h"
 #include "libamdf/src/platform/endpoint.h"
@@ -50,12 +50,15 @@ amdf_status_t AMDF_CALL amdf_endpoint_open(amdf_instance_t* instance,
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
 
-  amdf_endpoint_t* endpoint = (amdf_endpoint_t*)calloc(1, sizeof(*endpoint));
-  if (endpoint == NULL) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
-  }
+  const amdf_allocator_t host_allocator =
+      amdf_instance_host_allocator(instance);
+  amdf_endpoint_t* endpoint = NULL;
+  amdf_status_t status =
+      amdf_calloc(host_allocator, sizeof(*endpoint), _Alignof(amdf_endpoint_t),
+                  (void**)&endpoint);
+  if (!amdf_status_is_ok(status)) return status;
   amdf_child_tracker_initialize(&endpoint->children);
-  amdf_status_t status = amdf_instance_register_endpoint(instance);
+  status = amdf_instance_register_endpoint(instance);
   if (amdf_status_is_ok(status)) {
     endpoint->instance = instance;
     endpoint->info.type = AMDF_STRUCTURE_TYPE_ENDPOINT_INFO;
@@ -70,7 +73,7 @@ amdf_status_t AMDF_CALL amdf_endpoint_open(amdf_instance_t* instance,
     if (endpoint->instance != NULL) {
       amdf_instance_unregister_endpoint(endpoint->instance);
     }
-    free(endpoint);
+    amdf_free(host_allocator, endpoint);
   }
   return status;
 }
@@ -96,15 +99,18 @@ amdf_platform_endpoint_t* amdf_endpoint_get_platform(
   return endpoint->platform;
 }
 
+amdf_allocator_t amdf_endpoint_host_allocator(const amdf_endpoint_t* endpoint) {
+  return amdf_instance_host_allocator(endpoint->instance);
+}
+
 void amdf_endpoint_store_engine_profile(amdf_endpoint_t* endpoint,
                                         const void* profile,
                                         size_t profile_byte_length) {
   assert(!endpoint->engine_profile_resolved);
-  endpoint->engine_profile = malloc(profile_byte_length);
-  if (endpoint->engine_profile == NULL) {
-    endpoint->engine_profile_status =
-        amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
-  } else {
+  endpoint->engine_profile_status =
+      amdf_malloc(amdf_endpoint_host_allocator(endpoint), profile_byte_length,
+                  _Alignof(max_align_t), &endpoint->engine_profile);
+  if (amdf_status_is_ok(endpoint->engine_profile_status)) {
     memcpy(endpoint->engine_profile, profile, profile_byte_length);
     endpoint->engine_profile_status = AMDF_STATUS_OK;
   }
@@ -195,9 +201,11 @@ amdf_status_t AMDF_CALL amdf_endpoint_close(amdf_endpoint_t* endpoint) {
   }
   const amdf_status_t status = amdf_platform_endpoint_close(endpoint->platform);
   if (amdf_status_is_ok(status)) {
+    const amdf_allocator_t host_allocator =
+        amdf_endpoint_host_allocator(endpoint);
     amdf_instance_unregister_endpoint(endpoint->instance);
-    free(endpoint->engine_profile);
-    free(endpoint);
+    amdf_free(host_allocator, endpoint->engine_profile);
+    amdf_free(host_allocator, endpoint);
   }
   return status;
 }

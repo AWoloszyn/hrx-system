@@ -13,10 +13,10 @@
 #define NOMINMAX
 #endif  // NOMINMAX
 #include <stddef.h>
-#include <stdlib.h>
 #include <string.h>
 #include <windows.h>
 
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/xdna/umd/mcdm/npu5_legacy_bootstrap_image.h"
 
 // Fixed header of the installed NPU5 legacy context-private ABI.
@@ -101,7 +101,8 @@ _Static_assert(AMDF_WINDOWS_XDNA_LEGACY_CONTEXT_TAIL_SIZE == 0x37C,
 
 amdf_status_t amdf_windows_xdna_legacy_context_build(
     uint32_t logical_column_count, uint32_t physical_column_origin,
-    uint8_t** out_data, uint32_t* out_data_size) {
+    amdf_allocator_t host_allocator, uint8_t** out_data,
+    uint32_t* out_data_size) {
   if (out_data == NULL || out_data_size == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
@@ -119,10 +120,10 @@ amdf_status_t amdf_windows_xdna_legacy_context_build(
   if (total_size > UINT32_MAX) {
     return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
   }
-  uint8_t* data = (uint8_t*)calloc(1, total_size);
-  if (data == NULL) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
-  }
+  uint8_t* data = NULL;
+  const amdf_status_t allocation_status = amdf_calloc(
+      host_allocator, total_size, _Alignof(max_align_t), (void**)&data);
+  if (!amdf_status_is_ok(allocation_status)) return allocation_status;
 
   amdf_windows_xdna_legacy_context_header_t* header =
       (amdf_windows_xdna_legacy_context_header_t*)data;

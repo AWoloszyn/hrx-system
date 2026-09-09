@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "libamdf/src/allocator.h"
 
 namespace {
 
@@ -51,14 +52,16 @@ TEST_F(WkmiLoaderTest, FailedInitializationLeavesOutputUnchanged) {
   const HMODULE sentinel = reinterpret_cast<HMODULE>(uintptr_t{1});
   amdf_gpu_wddm_wkmi_loader_t loader = {};
   loader.module = sentinel;
-  EXPECT_FALSE(
-      amdf_status_is_ok(amdf_gpu_wddm_wkmi_loader_initialize(&loader)));
+  EXPECT_FALSE(amdf_status_is_ok(
+      amdf_gpu_wddm_wkmi_loader_initialize(amdf_allocator_system(), &loader)));
   EXPECT_EQ(loader.module, sentinel);
 }
 
 TEST_F(WkmiLoaderTest, NegotiationFailurePreservesLiveModuleOwner) {
   amdf_gpu_wddm_wkmi_loader_t loader = {};
-  ASSERT_EQ(amdf_gpu_wddm_wkmi_loader_initialize(&loader), AMDF_STATUS_OK);
+  ASSERT_EQ(
+      amdf_gpu_wddm_wkmi_loader_initialize(amdf_allocator_system(), &loader),
+      AMDF_STATUS_OK);
   ASSERT_NE(loader.module, nullptr);
   const HMODULE loaded_module = loader.module;
 

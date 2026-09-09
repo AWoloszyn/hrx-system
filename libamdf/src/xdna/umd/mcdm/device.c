@@ -6,8 +6,7 @@
 
 #include "libamdf/src/xdna/umd/device.h"
 
-#include <stdlib.h>
-
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/platform/windows/endpoint.h"
 #include "libamdf/src/xdna/umd/mcdm/device.h"
 #include "libamdf/src/xdna/umd/mcdm/legacy_context.h"
@@ -68,7 +67,7 @@ amdf_status_t amdf_xdna_umd_device_create(
     amdf_platform_endpoint_t* endpoint,
     const amdf_xdna_endpoint_profile_t* profile,
     const amdf_xdna_device_create_info_t* create_info,
-    amdf_xdna_umd_device_t** out_device,
+    amdf_allocator_t host_allocator, amdf_xdna_umd_device_t** out_device,
     amdf_xdna_umd_device_result_t* out_result) {
   if (!amdf_kmt_api_supports_device_contexts(&endpoint->instance->kmt)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
@@ -91,16 +90,18 @@ amdf_status_t amdf_xdna_umd_device_create(
   uint32_t context_data_size = 0;
   status = amdf_windows_xdna_legacy_context_build(
       create_info->logical_column_count, profile->info->array.column_origin,
-      &context_data, &context_data_size);
+      host_allocator, &context_data, &context_data_size);
   if (!amdf_status_is_ok(status)) {
     return status;
   }
-  amdf_xdna_umd_device_t* device =
-      (amdf_xdna_umd_device_t*)calloc(1, sizeof(*device));
-  if (device == NULL) {
-    free(context_data);
-    return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
+  amdf_xdna_umd_device_t* device = NULL;
+  status = amdf_calloc(host_allocator, sizeof(*device),
+                       _Alignof(amdf_xdna_umd_device_t), (void**)&device);
+  if (!amdf_status_is_ok(status)) {
+    amdf_free(host_allocator, context_data);
+    return status;
   }
+  device->host_allocator = host_allocator;
   amdf_kmt_device_status_initialize(&device->status);
   device->kmt = &endpoint->instance->kmt;
 
@@ -154,7 +155,7 @@ amdf_status_t amdf_xdna_umd_device_create(
           context_data, context_data_size, &device->command_aperture_cookie);
     }
   }
-  free(context_data);
+  amdf_free(host_allocator, context_data);
 
   if (amdf_status_is_ok(status)) {
     amdf_xdna_umd_device_result_t result = {0};
@@ -172,7 +173,7 @@ amdf_status_t amdf_xdna_umd_device_create(
         amdf_windows_xdna_device_release_native(device);
     // No paging or execution work has been submitted by construction. Failed
     // native cleanup cannot borrow this unpublished host bookkeeping.
-    free(device);
+    amdf_free(host_allocator, device);
     if (!amdf_status_is_ok(release_status)) {
       status = release_status;
     }
@@ -183,7 +184,8 @@ amdf_status_t amdf_xdna_umd_device_create(
 amdf_status_t amdf_xdna_umd_device_destroy(amdf_xdna_umd_device_t* device) {
   const amdf_status_t status = amdf_windows_xdna_device_release_native(device);
   if (amdf_status_is_ok(status)) {
-    free(device);
+    const amdf_allocator_t host_allocator = device->host_allocator;
+    amdf_free(host_allocator, device);
   }
   return status;
 }

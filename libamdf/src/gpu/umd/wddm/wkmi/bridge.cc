@@ -4,10 +4,6 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include <cstdlib>
-#include <memory>
-#include <new>
-
 #include "libamdf/src/gpu/umd/wddm/wkmi/bridge_api.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -26,6 +22,7 @@
 
 #include "libamdf/src/gpu/umd/wddm/wkmi/adapter_state.h"
 #include "libamdf/src/gpu/umd/wddm/wkmi/allocation.h"
+#include "libamdf/src/gpu/umd/wddm/wkmi/bridge_allocator.h"
 #include "libamdf/src/gpu/umd/wddm/wkmi/kernel_queue.h"
 #include "wkmi.h"
 
@@ -68,14 +65,16 @@ void PopulateGpuProperties(Wkmi::DeviceInfo& device_info,
 }
 
 amdf_wkmi_bridge_result_t GpuAdapterOpenImpl(
-    uint32_t adapter_handle, amdf_wkmi_bridge_gpu_adapter_t** out_adapter,
+    uint32_t adapter_handle, amdf_allocator_t host_allocator,
+    amdf_wkmi_bridge_gpu_adapter_t** out_adapter,
     amdf_wkmi_bridge_gpu_properties_t* out_properties,
     uint32_t* out_native_status) {
-  std::unique_ptr<amdf_wkmi_bridge_gpu_adapter_t> adapter(
-      new (std::nothrow) amdf_wkmi_bridge_gpu_adapter_t());
-  if (adapter == nullptr) {
+  amdf::wkmi_bridge::HostObject<amdf_wkmi_bridge_gpu_adapter_t> adapter(
+      host_allocator);
+  if (!adapter.Allocate()) {
     return AMDF_WKMI_BRIDGE_RESULT_RESOURCE_EXHAUSTED;
   }
+  adapter->host_allocator = host_allocator;
   const NTSTATUS native_status = Wkmi::ParseAdapterInfo(
       static_cast<D3DKMT_HANDLE>(adapter_handle), &adapter->device_info);
   if (IsUnsupportedAdapterStatus(native_status)) {
@@ -92,11 +91,14 @@ amdf_wkmi_bridge_result_t GpuAdapterOpenImpl(
 
 amdf_wkmi_bridge_result_t AMDF_WKMI_BRIDGE_CALL
 GpuAdapterOpen(uint32_t adapter_handle, uint32_t physical_adapter_index,
+               const amdf_allocator_t* host_allocator,
                amdf_wkmi_bridge_gpu_adapter_t** out_adapter,
                amdf_wkmi_bridge_gpu_properties_t* out_properties,
                uint32_t* out_native_status) noexcept {
-  if (adapter_handle == 0 || out_adapter == nullptr ||
-      out_properties == nullptr || out_native_status == nullptr) {
+  if (adapter_handle == 0 || host_allocator == nullptr ||
+      host_allocator->allocate == nullptr || host_allocator->free == nullptr ||
+      out_adapter == nullptr || out_properties == nullptr ||
+      out_native_status == nullptr) {
     return AMDF_WKMI_BRIDGE_RESULT_INVALID_ARGUMENT;
   }
   *out_native_status = 0;
@@ -105,8 +107,8 @@ GpuAdapterOpen(uint32_t adapter_handle, uint32_t physical_adapter_index,
   }
 
   try {
-    return GpuAdapterOpenImpl(adapter_handle, out_adapter, out_properties,
-                              out_native_status);
+    return GpuAdapterOpenImpl(adapter_handle, *host_allocator, out_adapter,
+                              out_properties, out_native_status);
   } catch (const std::bad_alloc&) {
     return AMDF_WKMI_BRIDGE_RESULT_RESOURCE_EXHAUSTED;
   } catch (...) {
@@ -122,13 +124,14 @@ GpuAdapterClose(amdf_wkmi_bridge_gpu_adapter_t* adapter,
   if (result != AMDF_WKMI_BRIDGE_RESULT_SUCCESS) {
     return result;
   }
-  delete adapter;
+  const amdf_allocator_t host_allocator = adapter->host_allocator;
+  amdf::wkmi_bridge::DestroyHostObject(host_allocator, adapter);
   return AMDF_WKMI_BRIDGE_RESULT_SUCCESS;
 }
 
-const amdf_wkmi_bridge_api_t kBridgeApiV1 = {
+const amdf_wkmi_bridge_api_t kBridgeApiV2 = {
     sizeof(amdf_wkmi_bridge_api_t),
-    AMDF_WKMI_BRIDGE_ABI_VERSION_1,
+    AMDF_WKMI_BRIDGE_ABI_VERSION_2,
     GpuAdapterOpen,
     GpuAdapterClose,
     amdf::wkmi_bridge::GpuAllocationQueryLayout,
@@ -146,10 +149,10 @@ amdf_wkmi_bridge_query_api(uint32_t minimum_version, uint32_t maximum_version,
   if (out_api == nullptr) {
     return AMDF_WKMI_BRIDGE_RESULT_INVALID_ARGUMENT;
   }
-  if (minimum_version > AMDF_WKMI_BRIDGE_ABI_VERSION_1 ||
-      maximum_version < AMDF_WKMI_BRIDGE_ABI_VERSION_1) {
+  if (minimum_version > AMDF_WKMI_BRIDGE_ABI_VERSION_2 ||
+      maximum_version < AMDF_WKMI_BRIDGE_ABI_VERSION_2) {
     return AMDF_WKMI_BRIDGE_RESULT_VERSION_MISMATCH;
   }
-  *out_api = &kBridgeApiV1;
+  *out_api = &kBridgeApiV2;
   return AMDF_WKMI_BRIDGE_RESULT_SUCCESS;
 }

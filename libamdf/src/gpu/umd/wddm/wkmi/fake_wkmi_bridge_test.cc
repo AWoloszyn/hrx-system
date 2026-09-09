@@ -32,12 +32,14 @@ FakeBridgeState state;
 
 amdf_wkmi_bridge_result_t AMDF_WKMI_BRIDGE_CALL
 GpuAdapterOpen(uint32_t adapter_handle, uint32_t physical_adapter_index,
+               const amdf_allocator_t* host_allocator,
                amdf_wkmi_bridge_gpu_adapter_t** out_adapter,
                amdf_wkmi_bridge_gpu_properties_t* out_properties,
                uint32_t* out_native_status) {
   if (adapter_handle == 0 || physical_adapter_index != 0 ||
-      out_adapter == nullptr || out_properties == nullptr ||
-      out_native_status == nullptr) {
+      host_allocator == nullptr || host_allocator->allocate == nullptr ||
+      host_allocator->free == nullptr || out_adapter == nullptr ||
+      out_properties == nullptr || out_native_status == nullptr) {
     return AMDF_WKMI_BRIDGE_RESULT_INVALID_ARGUMENT;
   }
   amdf_wkmi_bridge_gpu_properties_t properties = {};
@@ -109,7 +111,7 @@ GpuKernelQueueDestroy(amdf_wkmi_bridge_gpu_kernel_queue_t*, uint32_t*) {
 
 const amdf_wkmi_bridge_api_t kApi = {
     sizeof(amdf_wkmi_bridge_api_t),
-    AMDF_WKMI_BRIDGE_ABI_VERSION_1,
+    AMDF_WKMI_BRIDGE_ABI_VERSION_2,
     GpuAdapterOpen,
     GpuAdapterClose,
     GpuAllocationQueryLayout,
@@ -130,8 +132,8 @@ amdf_wkmi_bridge_query_api(uint32_t minimum_version, uint32_t maximum_version,
   if (state.query_result != AMDF_WKMI_BRIDGE_RESULT_SUCCESS) {
     return state.query_result;
   }
-  if (minimum_version > AMDF_WKMI_BRIDGE_ABI_VERSION_1 ||
-      maximum_version < AMDF_WKMI_BRIDGE_ABI_VERSION_1) {
+  if (minimum_version > AMDF_WKMI_BRIDGE_ABI_VERSION_2 ||
+      maximum_version < AMDF_WKMI_BRIDGE_ABI_VERSION_2) {
     return AMDF_WKMI_BRIDGE_RESULT_VERSION_MISMATCH;
   }
   *out_api = &kApi;

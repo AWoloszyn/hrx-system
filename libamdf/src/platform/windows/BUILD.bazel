@@ -71,6 +71,7 @@ amdf_cc_library(
     deps = [
         ":endpoint_properties",
         ":kmt_api",
+        "//libamdf/src:allocator",
         "//libamdf/src:pci",
     ],
 )
@@ -83,6 +84,7 @@ amdf_cc_library(
     deps = [
         ":endpoint_snapshot",
         ":kmt_api",
+        "//libamdf/src:allocator",
         "//libamdf/src/platform",
     ],
 )
@@ -96,6 +98,7 @@ amdf_cc_library(
     deps = [
         ":endpoint_properties",
         ":instance",
+        "//libamdf/src:allocator",
         "//libamdf/src/platform",
     ],
 )
@@ -129,6 +132,7 @@ amdf_cc_test(
         ":endpoint",
         ":endpoint_snapshot",
         ":instance",
+        "//libamdf/src:allocator",
         "//libamdf/src/platform",
         "//third_party:google_test",
         "//third_party:google_test_main",

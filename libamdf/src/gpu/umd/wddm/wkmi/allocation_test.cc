@@ -6,6 +6,8 @@
 
 #include "libamdf/src/gpu/umd/wddm/wkmi/allocation.h"
 
+#include <malloc.h>
+
 #include <array>
 #include <cstdint>
 #include <cstdio>
@@ -18,6 +20,43 @@ constexpr NTSTATUS kStatusNoMemory = static_cast<NTSTATUS>(0xC0000017u);
 constexpr D3DKMT_HANDLE kDeviceHandle = 0x10;
 constexpr D3DKMT_HANDLE kResourceHandle = 0x21;
 constexpr D3DKMT_HANDLE kAllocationHandle = 0x20;
+
+struct TestAllocatorState {
+  // Allocation ordinal rejected by the callback, or `SIZE_MAX` for none.
+  size_t failure_ordinal = SIZE_MAX;
+  // Number of allocation callback invocations.
+  size_t allocation_count = 0;
+  // Number of callback allocations not yet freed.
+  size_t live_allocation_count = 0;
+  // Number of requests violating the public allocator alignment contract.
+  size_t invalid_alignment_count = 0;
+};
+
+void* AMDF_CALL TestAllocate(void* user_data, uint64_t byte_length,
+                             uint64_t minimum_alignment) {
+  auto* state = static_cast<TestAllocatorState*>(user_data);
+  const size_t ordinal = state->allocation_count++;
+  if (ordinal == state->failure_ordinal) return nullptr;
+  if (minimum_alignment < alignof(std::max_align_t) ||
+      (minimum_alignment & (minimum_alignment - 1)) != 0) {
+    ++state->invalid_alignment_count;
+  }
+  void* pointer = _aligned_malloc(static_cast<size_t>(byte_length),
+                                  static_cast<size_t>(minimum_alignment));
+  if (pointer != nullptr) ++state->live_allocation_count;
+  return pointer;
+}
+
+void AMDF_CALL TestFree(void* user_data, void* allocation) {
+  auto* state = static_cast<TestAllocatorState*>(user_data);
+  if (allocation == nullptr) return;
+  --state->live_allocation_count;
+  _aligned_free(allocation);
+}
+
+amdf_allocator_t MakeTestAllocator(TestAllocatorState* state) {
+  return amdf_allocator_t{state, TestAllocate, nullptr, TestFree};
+}
 
 struct FakeNativeState {
   // Status returned by native allocation creation.
@@ -122,10 +161,12 @@ namespace {
 bool MalformedNativeSuccessPublishesResourceToCaller() {
   bool passed = true;
   FakeNativeState native_state;
+  TestAllocatorState allocator_state;
   native_state.malformed_create_count = 1;
   g_fake_native_state = &native_state;
   {
     amdf_wkmi_bridge_gpu_adapter_t adapter;
+    adapter.host_allocator = MakeTestAllocator(&allocator_state);
     alignas(4096) std::array<uint8_t, 4096> host_storage = {};
     const amdf_wkmi_bridge_gpu_allocation_create_info_t create_info =
         MakeSystemCreateInfo(host_storage.data(), host_storage.size());
@@ -153,6 +194,8 @@ bool MalformedNativeSuccessPublishesResourceToCaller() {
     AMDF_EXPECT(native_state.destroy_attempt_count == 0);
   }
   AMDF_EXPECT(native_state.dependency_failure_count == 0);
+  AMDF_EXPECT(allocator_state.live_allocation_count == 0);
+  AMDF_EXPECT(allocator_state.invalid_alignment_count == 0);
   g_fake_native_state = nullptr;
   return passed;
 }
@@ -160,9 +203,11 @@ bool MalformedNativeSuccessPublishesResourceToCaller() {
 bool SuccessfulCreatePublishesNativeHandles() {
   bool passed = true;
   FakeNativeState native_state;
+  TestAllocatorState allocator_state;
   g_fake_native_state = &native_state;
   {
     amdf_wkmi_bridge_gpu_adapter_t adapter;
+    adapter.host_allocator = MakeTestAllocator(&allocator_state);
     alignas(4096) std::array<uint8_t, 4096> host_storage = {};
     const amdf_wkmi_bridge_gpu_allocation_create_info_t create_info =
         MakeSystemCreateInfo(host_storage.data(), host_storage.size());
@@ -187,6 +232,8 @@ bool SuccessfulCreatePublishesNativeHandles() {
     AMDF_EXPECT(native_state.destroy_attempt_count == 0);
   }
   AMDF_EXPECT(native_state.dependency_failure_count == 0);
+  AMDF_EXPECT(allocator_state.live_allocation_count == 0);
+  AMDF_EXPECT(allocator_state.invalid_alignment_count == 0);
   g_fake_native_state = nullptr;
   return passed;
 }
@@ -194,10 +241,12 @@ bool SuccessfulCreatePublishesNativeHandles() {
 bool NativeCreateFailureLeavesOutputsUnchanged() {
   bool passed = true;
   FakeNativeState native_state;
+  TestAllocatorState allocator_state;
   native_state.create_status = kStatusNoMemory;
   g_fake_native_state = &native_state;
   {
     amdf_wkmi_bridge_gpu_adapter_t adapter;
+    adapter.host_allocator = MakeTestAllocator(&allocator_state);
     alignas(4096) std::array<uint8_t, 4096> host_storage = {};
     const amdf_wkmi_bridge_gpu_allocation_create_info_t create_info =
         MakeSystemCreateInfo(host_storage.data(), host_storage.size());
@@ -217,6 +266,8 @@ bool NativeCreateFailureLeavesOutputsUnchanged() {
     AMDF_EXPECT(native_state.destroy_attempt_count == 0);
   }
   AMDF_EXPECT(native_state.dependency_failure_count == 0);
+  AMDF_EXPECT(allocator_state.live_allocation_count == 0);
+  AMDF_EXPECT(allocator_state.invalid_alignment_count == 0);
   g_fake_native_state = nullptr;
   return passed;
 }
@@ -224,9 +275,11 @@ bool NativeCreateFailureLeavesOutputsUnchanged() {
 bool InsufficientCapacityReportsCountWithoutAllocating() {
   bool passed = true;
   FakeNativeState native_state;
+  TestAllocatorState allocator_state;
   g_fake_native_state = &native_state;
   {
     amdf_wkmi_bridge_gpu_adapter_t adapter;
+    adapter.host_allocator = MakeTestAllocator(&allocator_state);
     alignas(4096) std::array<uint8_t, 4096> host_storage = {};
     const amdf_wkmi_bridge_gpu_allocation_create_info_t create_info =
         MakeSystemCreateInfo(host_storage.data(), host_storage.size());
@@ -241,6 +294,7 @@ bool InsufficientCapacityReportsCountWithoutAllocating() {
     AMDF_EXPECT(allocation_count == 1);
     AMDF_EXPECT(native_status == 0);
     AMDF_EXPECT(native_state.create_attempt_count == 0);
+    AMDF_EXPECT(allocator_state.allocation_count == 0);
   }
   g_fake_native_state = nullptr;
   return passed;
@@ -269,6 +323,39 @@ bool QueryLayoutPublishesOnlyOnSuccess() {
   return passed;
 }
 
+bool MetadataAllocationFailureLeavesOwnershipOutputsUnchanged() {
+  bool passed = true;
+  FakeNativeState native_state;
+  TestAllocatorState allocator_state;
+  allocator_state.failure_ordinal = 0;
+  g_fake_native_state = &native_state;
+  {
+    amdf_wkmi_bridge_gpu_adapter_t adapter;
+    adapter.host_allocator = MakeTestAllocator(&allocator_state);
+    alignas(4096) std::array<uint8_t, 4096> host_storage = {};
+    const amdf_wkmi_bridge_gpu_allocation_create_info_t create_info =
+        MakeSystemCreateInfo(host_storage.data(), host_storage.size());
+    uint32_t allocation_handle = 0xA0;
+    uint32_t resource_handle = 0xA1;
+    uint32_t allocation_count = 0xA2;
+    uint32_t native_status = 0xA3;
+
+    AMDF_EXPECT(amdf::wkmi_bridge::GpuAllocationCreate(
+                    &adapter, &create_info, 1, &allocation_handle,
+                    &resource_handle, &allocation_count, &native_status) ==
+                AMDF_WKMI_BRIDGE_RESULT_RESOURCE_EXHAUSTED);
+    AMDF_EXPECT(allocation_handle == 0xA0);
+    AMDF_EXPECT(resource_handle == 0xA1);
+    AMDF_EXPECT(allocation_count == 0xA2);
+    AMDF_EXPECT(native_status == 0);
+    AMDF_EXPECT(native_state.create_attempt_count == 0);
+  }
+  AMDF_EXPECT(allocator_state.live_allocation_count == 0);
+  AMDF_EXPECT(allocator_state.invalid_alignment_count == 0);
+  g_fake_native_state = nullptr;
+  return passed;
+}
+
 #undef AMDF_EXPECT
 
 }  // namespace
@@ -290,6 +377,8 @@ int main() {
       {"QueryLayoutPublishesOnlyOnSuccess", QueryLayoutPublishesOnlyOnSuccess},
       {"InsufficientCapacityReportsCountWithoutAllocating",
        InsufficientCapacityReportsCountWithoutAllocating},
+      {"MetadataAllocationFailureLeavesOwnershipOutputsUnchanged",
+       MetadataAllocationFailureLeavesOwnershipOutputsUnchanged},
   };
 
   bool passed = true;

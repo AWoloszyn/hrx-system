@@ -7,10 +7,10 @@
 #include "libamdf/src/xdna/umd/mcdm/legacy_context.h"
 
 #include <cstdint>
-#include <cstdlib>
 #include <cstring>
 
 #include "gtest/gtest.h"
+#include "libamdf/src/allocator.h"
 
 namespace {
 
@@ -27,10 +27,11 @@ uint64_t ReadU64(const uint8_t* data, size_t offset) {
 }
 
 TEST(XdnaLegacyContextTest, BuildsExactNpu5CompatibilityRecord) {
+  const amdf_allocator_t host_allocator = amdf_allocator_system();
   uint8_t* data = nullptr;
   uint32_t data_size = 0;
-  ASSERT_TRUE(amdf_status_is_ok(
-      amdf_windows_xdna_legacy_context_build(3, 0, &data, &data_size)));
+  ASSERT_TRUE(amdf_status_is_ok(amdf_windows_xdna_legacy_context_build(
+      3, 0, host_allocator, &data, &data_size)));
   ASSERT_NE(data, nullptr);
   EXPECT_EQ(data_size, 9578u);
 
@@ -66,18 +67,19 @@ TEST(XdnaLegacyContextTest, BuildsExactNpu5CompatibilityRecord) {
       amdf_windows_xdna_legacy_context_query_command_aperture_cookie(
           data, data_size, &cookie)));
   EXPECT_EQ(cookie, kReturnedCookie);
-  std::free(data);
+  amdf_free(host_allocator, data);
 }
 
 TEST(XdnaLegacyContextTest, ValidatesOutputStorage) {
+  const amdf_allocator_t host_allocator = amdf_allocator_system();
   uint8_t* data = reinterpret_cast<uint8_t*>(uintptr_t{1});
   uint32_t data_size = UINT32_MAX;
   EXPECT_EQ(amdf_status_code(amdf_windows_xdna_legacy_context_build(
-                1, 0, nullptr, &data_size)),
+                1, 0, host_allocator, nullptr, &data_size)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
   EXPECT_EQ(data_size, UINT32_MAX);
-  EXPECT_EQ(amdf_status_code(
-                amdf_windows_xdna_legacy_context_build(1, 0, &data, nullptr)),
+  EXPECT_EQ(amdf_status_code(amdf_windows_xdna_legacy_context_build(
+                1, 0, host_allocator, &data, nullptr)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
   EXPECT_EQ(data, reinterpret_cast<uint8_t*>(uintptr_t{1}));
 }

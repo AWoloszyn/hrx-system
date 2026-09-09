@@ -30,6 +30,9 @@ amdf_status_t AMDF_CALL amdf_endpoint_enumerate(
 // Returns the platform implementation borrowed by the instance.
 amdf_platform_instance_t* amdf_instance_platform(amdf_instance_t* instance);
 
+// Returns the host allocator copied by the instance.
+amdf_allocator_t amdf_instance_host_allocator(const amdf_instance_t* instance);
+
 // Registers an endpoint that borrows the instance.
 amdf_status_t amdf_instance_register_endpoint(amdf_instance_t* instance);
 

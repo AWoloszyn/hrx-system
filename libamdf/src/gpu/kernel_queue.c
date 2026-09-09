@@ -7,8 +7,8 @@
 #include "libamdf/src/gpu/kernel_queue.h"
 
 #include <stddef.h>
-#include <stdlib.h>
 
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/atomics.h"
 #include "libamdf/src/device.h"
 #include "libamdf/src/endpoint.h"
@@ -275,11 +275,11 @@ amdf_status_t AMDF_CALL amdf_gpu_kernel_queue_create(
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
 
-  amdf_gpu_kernel_queue_t* queue =
-      (amdf_gpu_kernel_queue_t*)calloc(1, sizeof(*queue));
-  if (queue == NULL) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
-  }
+  const amdf_allocator_t host_allocator = amdf_device_host_allocator(device);
+  amdf_gpu_kernel_queue_t* queue = NULL;
+  status = amdf_calloc(host_allocator, sizeof(*queue),
+                       _Alignof(amdf_gpu_kernel_queue_t), (void**)&queue);
+  if (!amdf_status_is_ok(status)) return status;
   const amdf_gpu_device_info_t* device_info = amdf_gpu_device_get_info(device);
   amdf_kernel_queue_info_t info = {
       .type = AMDF_STRUCTURE_TYPE_KERNEL_QUEUE_INFO,
@@ -307,7 +307,7 @@ amdf_status_t AMDF_CALL amdf_gpu_kernel_queue_create(
     if (queue->base.device != NULL) {
       amdf_kernel_queue_deinitialize(&queue->base);
     }
-    free(queue);
+    amdf_free(host_allocator, queue);
   }
   return status;
 }

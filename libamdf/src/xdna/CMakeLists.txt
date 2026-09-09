@@ -38,6 +38,7 @@ iree_cc_library(
   DEPS
     ::endpoint_profile
     amdf::headers
+    libamdf::src::allocator
     libamdf::src::device
     libamdf::src::endpoint
     libamdf::src::host_mapping

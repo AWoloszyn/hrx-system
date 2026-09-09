@@ -38,7 +38,7 @@ amdf_status_t amdf_xdna_umd_device_create(
     amdf_platform_endpoint_t* endpoint,
     const amdf_xdna_endpoint_profile_t* profile,
     const amdf_xdna_device_create_info_t* create_info,
-    amdf_xdna_umd_device_t** out_device,
+    amdf_allocator_t host_allocator, amdf_xdna_umd_device_t** out_device,
     amdf_xdna_umd_device_result_t* out_result);
 
 // Releases native XDNA device state in reverse ownership order.

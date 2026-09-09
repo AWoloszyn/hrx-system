@@ -17,6 +17,7 @@
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/pci.h"
 #include "libamdf/src/platform/linux/file.h"
 
@@ -158,10 +159,10 @@ amdf_status_t amdf_platform_endpoint_enumerate(
   }
   amdf_endpoint_summary_t* staged_summaries = NULL;
   if (capacity != 0) {
-    staged_summaries = calloc((size_t)capacity, sizeof(*staged_summaries));
-    if (staged_summaries == NULL) {
-      return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
-    }
+    const amdf_status_t allocation_status = amdf_calloc_array(
+        instance->host_allocator, (size_t)capacity, sizeof(*staged_summaries),
+        _Alignof(amdf_endpoint_summary_t), (void**)&staged_summaries);
+    if (!amdf_status_is_ok(allocation_status)) return allocation_status;
   }
 
   const char* classes[] = {"class/drm", "class/accel"};
@@ -241,7 +242,7 @@ amdf_status_t amdf_platform_endpoint_enumerate(
       status = amdf_make_api_status(AMDF_STATUS_CODE_BUFFER_TOO_SMALL);
     }
   }
-  free(staged_summaries);
+  amdf_free(instance->host_allocator, staged_summaries);
   return status;
 }
 
@@ -317,13 +318,14 @@ static amdf_status_t amdf_linux_open_endpoint(
 amdf_status_t amdf_platform_endpoint_open(
     amdf_platform_instance_t* instance, const amdf_endpoint_id_t* id,
     amdf_platform_endpoint_t** out_endpoint, amdf_endpoint_info_t* out_info) {
-  amdf_platform_endpoint_t* endpoint = calloc(1, sizeof(*endpoint));
-  if (endpoint == NULL) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
-  }
+  amdf_platform_endpoint_t* endpoint = NULL;
+  amdf_status_t status =
+      amdf_calloc(instance->host_allocator, sizeof(*endpoint),
+                  _Alignof(amdf_platform_endpoint_t), (void**)&endpoint);
+  if (!amdf_status_is_ok(status)) return status;
   endpoint->instance = instance;
   endpoint->descriptor = -1;
-  amdf_status_t status = amdf_linux_open_endpoint(instance, id, endpoint);
+  status = amdf_linux_open_endpoint(instance, id, endpoint);
   if (amdf_status_is_ok(status)) {
     *out_info = endpoint->info;
     *out_endpoint = endpoint;
@@ -331,7 +333,7 @@ amdf_status_t amdf_platform_endpoint_open(
     const amdf_status_t close_status =
         amdf_linux_file_close(&endpoint->descriptor);
     if (!amdf_status_is_ok(close_status)) status = close_status;
-    free(endpoint);
+    amdf_free(instance->host_allocator, endpoint);
   }
   return status;
 }
@@ -366,6 +368,8 @@ amdf_platform_endpoint_query_queue_publication_modes(
 
 amdf_status_t amdf_platform_endpoint_close(amdf_platform_endpoint_t* endpoint) {
   const amdf_status_t status = amdf_linux_file_close(&endpoint->descriptor);
-  if (amdf_status_is_ok(status)) free(endpoint);
+  if (amdf_status_is_ok(status)) {
+    amdf_free(endpoint->instance->host_allocator, endpoint);
+  }
   return status;
 }

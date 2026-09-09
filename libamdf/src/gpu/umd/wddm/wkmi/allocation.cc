@@ -9,9 +9,6 @@
 #include <algorithm>
 #include <cstddef>
 #include <limits>
-#include <memory>
-#include <new>
-#include <vector>
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -28,6 +25,7 @@
 #include <ntstatus.h>
 
 #include "libamdf/src/gpu/umd/wddm/wkmi/adapter_state.h"
+#include "libamdf/src/gpu/umd/wddm/wkmi/bridge_allocator.h"
 #include "wkmi.h"
 
 namespace amdf::wkmi_bridge {
@@ -102,10 +100,26 @@ amdf_wkmi_bridge_result_t GpuAllocationCreateImpl(
     return AMDF_WKMI_BRIDGE_RESULT_OUT_OF_RANGE;
   }
 
-  std::vector<uint8_t> driver_private(static_cast<size_t>(driver_private_size));
-  std::vector<uint8_t> allocation_private(
-      static_cast<size_t>(allocation_private_size) * allocation_count);
-  std::vector<D3DDDI_ALLOCATIONINFO2> allocation_infos(allocation_count);
+  const size_t allocation_private_byte_length =
+      static_cast<size_t>(allocation_private_size) * allocation_count;
+  const size_t allocation_info_byte_length =
+      static_cast<size_t>(allocation_count) * sizeof(D3DDDI_ALLOCATIONINFO2);
+  HostBuffer driver_private;
+  HostBuffer allocation_private;
+  HostBuffer allocation_infos;
+  if (!driver_private.Allocate(adapter->host_allocator,
+                               static_cast<size_t>(driver_private_size)) ||
+      !allocation_private.Allocate(adapter->host_allocator,
+                                   allocation_private_byte_length) ||
+      !allocation_infos.Allocate(adapter->host_allocator,
+                                 allocation_info_byte_length,
+                                 alignof(D3DDDI_ALLOCATIONINFO2))) {
+    return AMDF_WKMI_BRIDGE_RESULT_RESOURCE_EXHAUSTED;
+  }
+  auto* allocation_private_bytes =
+      static_cast<uint8_t*>(allocation_private.data());
+  auto* allocation_info_records =
+      static_cast<D3DDDI_ALLOCATIONINFO2*>(allocation_infos.data());
   Wkmi::FillinAllocPrivDrvData(driver_private.data(), allocation_private_size);
 
   uint64_t remaining_byte_length = create_info.byte_length;
@@ -113,7 +127,7 @@ amdf_wkmi_bridge_result_t GpuAllocationCreateImpl(
   for (uint32_t i = 0; i < allocation_count; ++i) {
     const uint64_t chunk_byte_length =
         std::min(remaining_byte_length, kMaximumNativeAllocationByteLength);
-    void* private_data = allocation_private.data() +
+    void* private_data = allocation_private_bytes +
                          static_cast<size_t>(allocation_private_size) * i;
     const uint64_t placement_device_address =
         create_info.domain == AMDF_WKMI_BRIDGE_GPU_ALLOCATION_DOMAIN_LOCAL
@@ -125,7 +139,7 @@ amdf_wkmi_bridge_result_t GpuAllocationCreateImpl(
                             ToWkmiAllocationFlags(create_info.flags),
                             Wkmi::KCOMPUTE0, adapter->device_info);
 
-    D3DDDI_ALLOCATIONINFO2& allocation_info = allocation_infos[i];
+    D3DDDI_ALLOCATIONINFO2& allocation_info = allocation_info_records[i];
     if (create_info.host_pointer != nullptr) {
       allocation_info.pSystemMem =
           static_cast<uint8_t*>(create_info.host_pointer) + byte_offset;
@@ -142,7 +156,7 @@ amdf_wkmi_bridge_result_t GpuAllocationCreateImpl(
   create.pPrivateDriverData = driver_private.data();
   create.PrivateDriverDataSize = driver_private_size;
   create.NumAllocations = allocation_count;
-  create.pAllocationInfo2 = allocation_infos.data();
+  create.pAllocationInfo2 = allocation_info_records;
   const NTSTATUS native_status = D3DKMTCreateAllocation2(&create);
   if (native_status != STATUS_SUCCESS) {
     *out_native_status = static_cast<uint32_t>(native_status);
@@ -151,7 +165,7 @@ amdf_wkmi_bridge_result_t GpuAllocationCreateImpl(
   // The backing owner receives every native result before validating it. This
   // bridge cannot hide a native allocation whose cleanup still needs backing.
   for (uint32_t i = 0; i < allocation_count; ++i) {
-    out_allocation_handles[i] = allocation_infos[i].hAllocation;
+    out_allocation_handles[i] = allocation_info_records[i].hAllocation;
   }
   *out_resource_handle = create.hResource;
   *out_allocation_count = allocation_count;

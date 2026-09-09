@@ -7,22 +7,23 @@
 #include "libamdf/src/platform/windows/instance.h"
 
 #include <stddef.h>
-#include <stdlib.h>
 
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/platform/windows/endpoint_snapshot.h"
 
 amdf_status_t amdf_platform_instance_create(
-    amdf_platform_instance_t** out_instance) {
-  amdf_platform_instance_t* instance =
-      (amdf_platform_instance_t*)calloc(1, sizeof(*instance));
-  if (instance == NULL) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
-  }
-  const amdf_status_t status = amdf_kmt_api_initialize(&instance->kmt);
+    amdf_allocator_t host_allocator, amdf_platform_instance_t** out_instance) {
+  amdf_platform_instance_t* instance = NULL;
+  amdf_status_t status =
+      amdf_calloc(host_allocator, sizeof(*instance),
+                  _Alignof(amdf_platform_instance_t), (void**)&instance);
+  if (!amdf_status_is_ok(status)) return status;
+  instance->host_allocator = host_allocator;
+  status = amdf_kmt_api_initialize(&instance->kmt);
   if (amdf_status_is_ok(status)) {
     *out_instance = instance;
   } else {
-    free(instance);
+    amdf_free(host_allocator, instance);
   }
   return status;
 }
@@ -31,7 +32,8 @@ amdf_status_t amdf_platform_instance_destroy(
     amdf_platform_instance_t* instance) {
   const amdf_status_t status = amdf_kmt_api_deinitialize(&instance->kmt);
   if (amdf_status_is_ok(status)) {
-    free(instance);
+    const amdf_allocator_t host_allocator = instance->host_allocator;
+    amdf_free(host_allocator, instance);
   }
   return status;
 }
@@ -42,6 +44,6 @@ amdf_status_t amdf_platform_endpoint_enumerate(
   if (!amdf_kmt_api_supports_endpoint_discovery(&instance->kmt)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
-  return amdf_windows_endpoint_snapshot_enumerate(&instance->kmt, capacity,
-                                                  summaries, out_count);
+  return amdf_windows_endpoint_snapshot_enumerate(
+      &instance->kmt, capacity, summaries, out_count, instance->host_allocator);
 }

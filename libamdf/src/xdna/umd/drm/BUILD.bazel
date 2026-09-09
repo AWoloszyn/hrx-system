@@ -55,6 +55,7 @@ amdf_cc_library(
     deps = [
         ":buffer",
         ":device_state",
+        "//libamdf/src:allocator",
         "//libamdf/src/platform/linux:endpoint",
         "//libamdf/src/platform/linux:file",
         "//libamdf/src/platform/linux:host_cache",
@@ -72,6 +73,7 @@ amdf_cc_library(
     deps = [
         ":buffer",
         ":device_state",
+        "//libamdf/src:allocator",
         "//libamdf/src/platform/linux:host_cache",
         "//libamdf/src/xdna/umd:memory",
     ],
@@ -96,6 +98,7 @@ amdf_cc_test(
         ":device",
         ":device_state",
         ":memory",
+        "//libamdf/src:allocator",
         "//libamdf/src/platform",
         "//libamdf/src/platform/linux:endpoint",
         "//libamdf/src/xdna:endpoint_profile",

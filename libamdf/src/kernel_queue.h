@@ -26,6 +26,8 @@ typedef struct amdf_kernel_queue_vtable_t {
 } amdf_kernel_queue_vtable_t;
 
 struct amdf_kernel_queue_t {
+  // Host allocator copied for direct terminal teardown.
+  amdf_allocator_t host_allocator;
   // Implementation operations selected before the queue is published.
   const amdf_kernel_queue_vtable_t* vtable;
   // Device borrowed for the lifetime of this queue.

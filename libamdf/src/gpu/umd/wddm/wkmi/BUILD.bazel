@@ -42,6 +42,7 @@ amdf_windows_sidecar_library(
         "allocation.cc",
         "allocation.h",
         "bridge.cc",
+        "bridge_allocator.h",
         "dxcore_loader_compatibility.cc",
         "kernel_queue.cc",
         "kernel_queue.h",
@@ -74,6 +75,7 @@ amdf_cc_test(
         "allocation.cc",
         "allocation.h",
         "allocation_test.cc",
+        "bridge_allocator.h",
     ],
     copts = ["/MT"],
     defines = [
@@ -96,6 +98,7 @@ amdf_cc_test(
     srcs = [
         "adapter_state.cc",
         "adapter_state.h",
+        "bridge_allocator.h",
         "kernel_queue.cc",
         "kernel_queue.h",
         "kernel_queue_test.cc",
@@ -148,6 +151,7 @@ amdf_cc_library(
     visibility = ["//libamdf/src/gpu/umd/wddm:__pkg__"],
     deps = [
         ":bridge_api",
+        "//libamdf/src:allocator",
         "//libamdf/src/platform/windows:kmt_api",
     ],
 )
@@ -163,6 +167,7 @@ amdf_cc_test(
     deps = [
         ":adapter",
         ":loader",
+        "//libamdf/src:allocator",
         "//third_party:google_test",
         "//third_party:google_test_main",
     ],
@@ -189,6 +194,7 @@ amdf_cc_test(
     target_compatible_with = ["@platforms//os:windows"],
     deps = [
         ":loader",
+        "//libamdf/src:allocator",
         "//third_party:google_test",
         "//third_party:google_test_main",
     ],

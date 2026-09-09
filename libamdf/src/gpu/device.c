@@ -7,8 +7,8 @@
 #include "libamdf/src/gpu/device.h"
 
 #include <stddef.h>
-#include <stdlib.h>
 
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/device.h"
 #include "libamdf/src/endpoint.h"
 #include "libamdf/src/gpu/endpoint_profile.h"
@@ -74,17 +74,20 @@ amdf_status_t AMDF_CALL amdf_gpu_device_create(
           untyped_profile, create_info->mode, &features);
   if (!amdf_status_is_ok(mode_status)) return mode_status;
 
-  amdf_gpu_device_t* device = (amdf_gpu_device_t*)calloc(1, sizeof(*device));
-  if (device == NULL) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
-  }
-  amdf_status_t status = amdf_device_initialize(
-      &device->base, &amdf_gpu_device_vtable, endpoint, AMDF_ENGINE_KIND_GPU);
+  const amdf_allocator_t host_allocator =
+      amdf_endpoint_host_allocator(endpoint);
+  amdf_gpu_device_t* device = NULL;
+  amdf_status_t status =
+      amdf_calloc(host_allocator, sizeof(*device), _Alignof(amdf_gpu_device_t),
+                  (void**)&device);
+  if (!amdf_status_is_ok(status)) return status;
+  status = amdf_device_initialize(&device->base, &amdf_gpu_device_vtable,
+                                  endpoint, AMDF_ENGINE_KIND_GPU);
   amdf_gpu_umd_device_result_t result = {0};
   if (amdf_status_is_ok(status)) {
-    status =
-        amdf_gpu_umd_device_create(amdf_endpoint_get_platform(endpoint),
-                                   create_info->mode, &device->umd, &result);
+    status = amdf_gpu_umd_device_create(amdf_endpoint_get_platform(endpoint),
+                                        host_allocator, create_info->mode,
+                                        &device->umd, &result);
   }
   if (amdf_status_is_ok(status)) {
     device->info.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_INFO;
@@ -98,7 +101,7 @@ amdf_status_t AMDF_CALL amdf_gpu_device_create(
     if (device->base.endpoint != NULL) {
       amdf_device_deinitialize(&device->base);
     }
-    free(device);
+    amdf_free(host_allocator, device);
   }
   return status;
 }

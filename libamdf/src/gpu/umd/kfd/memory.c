@@ -9,10 +9,10 @@
 
 #include <emmintrin.h>
 #include <linux/kfd_ioctl.h>
-#include <stdlib.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/gpu/umd/kfd/device.h"
 #include "libamdf/src/platform/linux/file.h"
 
@@ -155,7 +155,7 @@ amdf_status_t amdf_gpu_umd_memory_destroy(amdf_gpu_umd_memory_t* memory) {
     }
     memory->reservation.base = NULL;
   }
-  free(memory);
+  amdf_free(memory->device->host_allocator, memory);
   return AMDF_STATUS_OK;
 }
 
@@ -231,10 +231,10 @@ amdf_status_t amdf_gpu_umd_memory_create(
   amdf_gpu_kfd_memory_plan_t plan = {0};
   amdf_status_t status = amdf_gpu_kfd_memory_plan(device, create_info, &plan);
   if (!amdf_status_is_ok(status)) return status;
-  amdf_gpu_umd_memory_t* memory = calloc(1, sizeof(*memory));
-  if (memory == NULL) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
-  }
+  amdf_gpu_umd_memory_t* memory = NULL;
+  status = amdf_calloc(device->host_allocator, sizeof(*memory),
+                       _Alignof(amdf_gpu_umd_memory_t), (void**)&memory);
+  if (!amdf_status_is_ok(status)) return status;
   memory->device = device;
   uint64_t address = 0;
   status = amdf_gpu_kfd_memory_allocate(&plan, create_info, memory, &address);
@@ -266,7 +266,7 @@ amdf_status_t amdf_gpu_umd_memory_create(
   } else {
     const amdf_status_t release_status = amdf_gpu_umd_memory_destroy(memory);
     if (!amdf_status_is_ok(release_status)) {
-      free(memory);
+      amdf_free(device->host_allocator, memory);
       status = release_status;
     }
   }

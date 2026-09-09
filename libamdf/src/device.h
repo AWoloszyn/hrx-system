@@ -24,6 +24,8 @@ typedef struct amdf_device_vtable_t {
 } amdf_device_vtable_t;
 
 struct amdf_device_t {
+  // Host allocator copied for direct terminal teardown.
+  amdf_allocator_t host_allocator;
   // Implementation operations selected before the device is published.
   const amdf_device_vtable_t* vtable;
   // Endpoint borrowed for the lifetime of this device.
@@ -46,6 +48,9 @@ void amdf_device_deinitialize(amdf_device_t* device);
 // Returns true when a device is implemented by `expected_engine_kind`.
 bool amdf_device_is_engine(const amdf_device_t* device,
                            amdf_engine_kind_t expected_engine_kind);
+
+// Returns the host allocator copied by the device.
+amdf_allocator_t amdf_device_host_allocator(const amdf_device_t* device);
 
 // Registers one child that borrows `device`.
 amdf_status_t amdf_device_register_child(amdf_device_t* device);

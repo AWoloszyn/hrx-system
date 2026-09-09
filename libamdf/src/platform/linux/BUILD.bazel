@@ -49,6 +49,7 @@ amdf_cc_library(
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
         ":file",
+        "//libamdf/src:allocator",
         "//libamdf/src/platform",
     ],
 )
@@ -62,6 +63,7 @@ amdf_cc_library(
     deps = [
         ":file",
         ":instance",
+        "//libamdf/src:allocator",
         "//libamdf/src:pci",
         "//libamdf/src/platform",
     ],
@@ -84,6 +86,7 @@ amdf_cc_test(
     deps = [
         ":endpoint",
         ":file",
+        "//libamdf/src:allocator",
         "//libamdf/src/platform",
         "//third_party:google_test",
         "//third_party:google_test_main",

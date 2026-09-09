@@ -14,17 +14,19 @@
 
 amdf_status_t amdf_gpu_umd_query_endpoint_profile(
     amdf_platform_endpoint_t* platform_endpoint,
-    amdf_gpu_endpoint_profile_t* out_profile, bool* out_available) {
+    amdf_allocator_t host_allocator, amdf_gpu_endpoint_profile_t* out_profile,
+    bool* out_available) {
   amdf_gpu_wddm_wkmi_loader_t loader = {0};
   amdf_gpu_wddm_wkmi_adapter_t adapter = {0};
   bool profile_available = false;
   amdf_gpu_endpoint_profile_t profile = {0};
   amdf_wkmi_bridge_gpu_properties_t provider_properties = {0};
-  amdf_status_t status = amdf_gpu_wddm_wkmi_loader_initialize(&loader);
+  amdf_status_t status =
+      amdf_gpu_wddm_wkmi_loader_initialize(host_allocator, &loader);
   if (amdf_status_is_ok(status)) {
     status = amdf_gpu_wddm_wkmi_adapter_initialize(
         &loader, platform_endpoint->adapter,
-        platform_endpoint->physical_adapter_index, &adapter,
+        platform_endpoint->physical_adapter_index, host_allocator, &adapter,
         &provider_properties);
     if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
       status = AMDF_STATUS_OK;

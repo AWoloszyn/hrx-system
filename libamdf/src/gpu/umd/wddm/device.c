@@ -7,8 +7,8 @@
 #include "libamdf/src/gpu/umd/device.h"
 
 #include <stddef.h>
-#include <stdlib.h>
 
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/gpu/umd/wddm/device.h"
 #include "libamdf/src/platform/windows/endpoint.h"
 
@@ -54,8 +54,8 @@ static amdf_status_t amdf_gpu_wddm_device_release_native(
 }
 
 amdf_status_t amdf_gpu_umd_device_create(
-    amdf_platform_endpoint_t* endpoint, amdf_gpu_device_mode_t mode,
-    amdf_gpu_umd_device_t** out_device,
+    amdf_platform_endpoint_t* endpoint, amdf_allocator_t host_allocator,
+    amdf_gpu_device_mode_t mode, amdf_gpu_umd_device_t** out_device,
     amdf_gpu_umd_device_result_t* out_result) {
   // The public boundary has selected the only advertised WDDM mode.
   (void)mode;
@@ -63,23 +63,25 @@ amdf_status_t amdf_gpu_umd_device_create(
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
 
-  amdf_gpu_umd_device_t* device =
-      (amdf_gpu_umd_device_t*)calloc(1, sizeof(*device));
-  if (device == NULL) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
-  }
+  amdf_gpu_umd_device_t* device = NULL;
+  amdf_status_t status =
+      amdf_calloc(host_allocator, sizeof(*device),
+                  _Alignof(amdf_gpu_umd_device_t), (void**)&device);
+  if (!amdf_status_is_ok(status)) return status;
+  device->host_allocator = host_allocator;
   amdf_kmt_device_status_initialize(&device->status);
   device->kmt = &endpoint->instance->kmt;
   device->adapter = endpoint->adapter;
   device->physical_adapter_index = endpoint->physical_adapter_index;
 
   amdf_wkmi_bridge_gpu_properties_t properties = {0};
-  amdf_status_t status =
-      amdf_gpu_wddm_wkmi_loader_initialize(&device->wkmi_loader);
+  status = amdf_gpu_wddm_wkmi_loader_initialize(host_allocator,
+                                                &device->wkmi_loader);
   if (amdf_status_is_ok(status)) {
     status = amdf_gpu_wddm_wkmi_adapter_initialize(
         &device->wkmi_loader, endpoint->adapter,
-        endpoint->physical_adapter_index, &device->wkmi_adapter, &properties);
+        endpoint->physical_adapter_index, host_allocator, &device->wkmi_adapter,
+        &properties);
   }
   (void)properties;
 
@@ -129,7 +131,7 @@ amdf_status_t amdf_gpu_umd_device_create(
       status = release_status;
     }
     // Construction has submitted no work borrowing this host bookkeeping.
-    free(device);
+    amdf_free(host_allocator, device);
   }
   return status;
 }
@@ -137,7 +139,8 @@ amdf_status_t amdf_gpu_umd_device_create(
 amdf_status_t amdf_gpu_umd_device_destroy(amdf_gpu_umd_device_t* device) {
   const amdf_status_t status = amdf_gpu_wddm_device_release_native(device);
   if (amdf_status_is_ok(status)) {
-    free(device);
+    const amdf_allocator_t host_allocator = device->host_allocator;
+    amdf_free(host_allocator, device);
   }
   return status;
 }

@@ -7,12 +7,14 @@
 #include "libamdf/src/instance.h"
 
 #include <stddef.h>
-#include <stdlib.h>
 
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/child_tracker.h"
 #include "libamdf/src/structure.h"
 
 struct amdf_instance_t {
+  // Host allocator copied for this instance and all of its children.
+  amdf_allocator_t host_allocator;
   // Platform implementation owned by this instance.
   amdf_platform_instance_t* platform;
   // Number of open children borrowing this instance.
@@ -32,16 +34,22 @@ amdf_instance_create(const amdf_instance_create_info_t* create_info,
     return status;
   }
 
-  amdf_instance_t* instance = (amdf_instance_t*)calloc(1, sizeof(*instance));
-  if (instance == NULL) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
-  }
+  amdf_allocator_t host_allocator;
+  status =
+      amdf_allocator_resolve(&create_info->host_allocator, &host_allocator);
+  if (!amdf_status_is_ok(status)) return status;
+
+  amdf_instance_t* instance = NULL;
+  status = amdf_calloc(host_allocator, sizeof(*instance),
+                       _Alignof(amdf_instance_t), (void**)&instance);
+  if (!amdf_status_is_ok(status)) return status;
+  instance->host_allocator = host_allocator;
   amdf_child_tracker_initialize(&instance->children);
-  status = amdf_platform_instance_create(&instance->platform);
+  status = amdf_platform_instance_create(host_allocator, &instance->platform);
   if (amdf_status_is_ok(status)) {
     *out_instance = instance;
   } else {
-    free(instance);
+    amdf_free(host_allocator, instance);
   }
   return status;
 }
@@ -56,7 +64,8 @@ amdf_status_t AMDF_CALL amdf_instance_destroy(amdf_instance_t* instance) {
   const amdf_status_t status =
       amdf_platform_instance_destroy(instance->platform);
   if (amdf_status_is_ok(status)) {
-    free(instance);
+    const amdf_allocator_t host_allocator = instance->host_allocator;
+    amdf_free(host_allocator, instance);
   }
   return status;
 }
@@ -76,6 +85,10 @@ amdf_status_t AMDF_CALL amdf_endpoint_enumerate(
 
 amdf_platform_instance_t* amdf_instance_platform(amdf_instance_t* instance) {
   return instance->platform;
+}
+
+amdf_allocator_t amdf_instance_host_allocator(const amdf_instance_t* instance) {
+  return instance->host_allocator;
 }
 
 amdf_status_t amdf_instance_register_endpoint(amdf_instance_t* instance) {

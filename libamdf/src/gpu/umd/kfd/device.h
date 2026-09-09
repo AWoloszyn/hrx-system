@@ -14,6 +14,8 @@
 
 // Explicit owner of one KFD context and its acquired DRM virtual address space.
 struct amdf_gpu_umd_device_t {
+  // Host allocator copied for device and child metadata.
+  amdf_allocator_t host_allocator;
   // KFD file selecting the primary or independent process context.
   int descriptor;
   // Fresh render file whose VM is acquired by the KFD context.

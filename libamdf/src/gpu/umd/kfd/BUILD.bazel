@@ -55,6 +55,7 @@ amdf_cc_library(
         ":device_state",
         ":file",
         ":topology",
+        "//libamdf/src:allocator",
         "//libamdf/src/platform/linux:endpoint",
         "//libamdf/src/platform/linux:file",
         "//libamdf/src/platform/linux:host_cache",
@@ -68,6 +69,7 @@ amdf_cc_library(
     deps = [
         ":device_state",
         ":topology",
+        "//libamdf/src:allocator",
         "//libamdf/src/gpu/umd:memory",
         "//libamdf/src/platform/linux:file",
     ],

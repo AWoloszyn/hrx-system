@@ -60,6 +60,7 @@ iree_cc_library(
   DEPS
     ::file
     amdf::headers
+    libamdf::src::allocator
     libamdf::src::platform
   PUBLIC
 )
@@ -77,6 +78,7 @@ iree_cc_library(
     ::file
     ::instance
     amdf::headers
+    libamdf::src::allocator
     libamdf::src::pci
     libamdf::src::platform
   PUBLIC
@@ -107,6 +109,7 @@ iree_cc_test(
     amdf::headers
     iree::third_party::google_test
     iree::third_party::google_test_main
+    libamdf::src::allocator
     libamdf::src::platform
   LABELS
     "iree-build-requirement=libamdf"

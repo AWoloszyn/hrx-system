@@ -32,6 +32,8 @@
 
 // Parsed adapter state shared by live bridge objects.
 struct amdf_wkmi_bridge_gpu_adapter_t {
+  // Parent-instance allocator copied for all bridge-controlled storage.
+  amdf_allocator_t host_allocator = {};
   // Private normalized adapter properties owned by WKMI.
   Wkmi::DeviceInfo device_info = {};
   // Protects live-child accounting.

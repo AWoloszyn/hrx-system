@@ -13,6 +13,8 @@
 
 // One independent accel file, context, and firmware heap.
 struct amdf_xdna_umd_device_t {
+  // Host allocator copied for device and child metadata.
+  amdf_allocator_t host_allocator;
   // Fresh open file description owning all native handle namespaces.
   int descriptor;
   // Hardware context, or AMDXDNA_INVALID_CTX_HANDLE after destruction.

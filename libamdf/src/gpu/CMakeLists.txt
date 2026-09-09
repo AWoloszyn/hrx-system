@@ -36,6 +36,7 @@ iree_cc_library(
   DEPS
     ::endpoint_profile
     amdf::headers
+    libamdf::src::allocator
     libamdf::src::device
     libamdf::src::endpoint
     libamdf::src::gpu::umd::device
@@ -58,6 +59,7 @@ iree_cc_library(
   DEPS
     ::device
     amdf::headers
+    libamdf::src::allocator
     libamdf::src::atomics
     libamdf::src::device
     libamdf::src::endpoint

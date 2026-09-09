@@ -6,6 +6,8 @@
 
 #include "libamdf/src/gpu/umd/wddm/wkmi/kernel_queue.h"
 
+#include <malloc.h>
+
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -40,6 +42,12 @@ struct FakeNativeState {
   uint32_t context_destroy_count = 0;
   // Number of submitted commands.
   uint32_t submit_count = 0;
+  // Host allocation ordinal rejected, or SIZE_MAX for no injected failure.
+  size_t failure_ordinal = SIZE_MAX;
+  // Number of attempted host allocations.
+  size_t allocation_count = 0;
+  // Number of host allocations still owned by the bridge.
+  size_t live_allocation_count = 0;
   // Number of contract violations observed by native dependencies.
   uint32_t dependency_failure_count = 0;
 };
@@ -48,6 +56,23 @@ FakeNativeState* current_state = nullptr;
 
 void ExpectDependency(bool condition) {
   if (!condition) ++current_state->dependency_failure_count;
+}
+
+void* AMDF_CALL Allocate(void* user_data, uint64_t byte_length,
+                         uint64_t minimum_alignment) {
+  auto* state = static_cast<FakeNativeState*>(user_data);
+  if (state->allocation_count++ == state->failure_ordinal) return nullptr;
+  void* pointer = _aligned_malloc(static_cast<size_t>(byte_length),
+                                  static_cast<size_t>(minimum_alignment));
+  if (pointer != nullptr) ++state->live_allocation_count;
+  return pointer;
+}
+
+void AMDF_CALL Free(void* user_data, void* allocation) {
+  if (allocation == nullptr) return;
+  auto* state = static_cast<FakeNativeState*>(user_data);
+  --state->live_allocation_count;
+  _aligned_free(allocation);
 }
 
 amdf_wkmi_bridge_gpu_kernel_queue_create_info_t MakeCreateInfo() {
@@ -158,6 +183,34 @@ void FillinSubmitPrivData(void* private_data, D3DKMT_HANDLE queue,
 
 namespace {
 
+bool AllocationFailureLeavesNoNativeOwnership() {
+  bool passed = true;
+  for (size_t ordinal = 0; ordinal < 4; ++ordinal) {
+    FakeNativeState state;
+    state.failure_ordinal = ordinal;
+    current_state = &state;
+    amdf_wkmi_bridge_gpu_adapter_t adapter;
+    adapter.host_allocator = {&state, Allocate, nullptr, Free};
+    const auto create = MakeCreateInfo();
+    auto* queue = reinterpret_cast<amdf_wkmi_bridge_gpu_kernel_queue_t*>(1);
+    amdf_wkmi_bridge_gpu_kernel_queue_info_t info;
+    std::memset(&info, 0xA5, sizeof(info));
+    const auto original = info;
+    uint32_t native_status = 1;
+    AMDF_EXPECT(amdf::wkmi_bridge::GpuKernelQueueCreate(
+                    &adapter, &create, &queue, &info, &native_status) ==
+                AMDF_WKMI_BRIDGE_RESULT_RESOURCE_EXHAUSTED);
+    AMDF_EXPECT(reinterpret_cast<uintptr_t>(queue) == 1);
+    AMDF_EXPECT(std::memcmp(&info, &original, sizeof(info)) == 0);
+    AMDF_EXPECT(native_status == 0);
+    AMDF_EXPECT(state.live_allocation_count == 0);
+    AMDF_EXPECT(state.context_create_count == 0);
+    AMDF_EXPECT(adapter.live_queue_count == 0);
+  }
+  current_state = nullptr;
+  return passed;
+}
+
 bool NativeFailureLeavesNoAdapterCleanupObligation() {
   bool passed = true;
   struct FailureCase {
@@ -197,6 +250,7 @@ bool NativeFailureLeavesNoAdapterCleanupObligation() {
     state.fence = 0;
     current_state = &state;
     amdf_wkmi_bridge_gpu_adapter_t adapter;
+    adapter.host_allocator = {&state, Allocate, nullptr, Free};
     const auto create = MakeCreateInfo();
     auto* queue = reinterpret_cast<amdf_wkmi_bridge_gpu_kernel_queue_t*>(1);
     amdf_wkmi_bridge_gpu_kernel_queue_info_t info;
@@ -210,7 +264,7 @@ bool NativeFailureLeavesNoAdapterCleanupObligation() {
                 static_cast<uint32_t>(failure.expected_status));
     AMDF_EXPECT(reinterpret_cast<uintptr_t>(queue) == 1);
     AMDF_EXPECT(std::memcmp(&info, &original, sizeof(info)) == 0);
-
+    AMDF_EXPECT(state.live_allocation_count == 0);
     AMDF_EXPECT(adapter.live_queue_count == 0);
     AMDF_EXPECT(
         amdf::wkmi_bridge::PrepareGpuAdapterClose(&adapter, &native_status) ==
@@ -229,6 +283,7 @@ bool PublishedQueueOwnsSubmissionUntilExplicitDestruction() {
   FakeNativeState state;
   current_state = &state;
   amdf_wkmi_bridge_gpu_adapter_t adapter;
+  adapter.host_allocator = {&state, Allocate, nullptr, Free};
   const auto create = MakeCreateInfo();
   amdf_wkmi_bridge_gpu_kernel_queue_t* queue = nullptr;
   amdf_wkmi_bridge_gpu_kernel_queue_info_t info = {};
@@ -239,7 +294,7 @@ bool PublishedQueueOwnsSubmissionUntilExplicitDestruction() {
   if (queue == nullptr) return false;
   AMDF_EXPECT(info.progress_fence_handle == kFence);
   AMDF_EXPECT(info.progress_fence_pointer == &state.progress);
-
+  AMDF_EXPECT(state.live_allocation_count == 2);
   AMDF_EXPECT(adapter.live_queue_count == 1);
   AMDF_EXPECT(amdf::wkmi_bridge::GpuKernelQueueSubmit(queue, 0x2000, 64, 7,
                                                       &native_status) ==
@@ -251,12 +306,12 @@ bool PublishedQueueOwnsSubmissionUntilExplicitDestruction() {
   AMDF_EXPECT(native_status == static_cast<uint32_t>(STATUS_DEVICE_BUSY));
   AMDF_EXPECT(amdf::wkmi_bridge::PrepareGpuAdapterClose(
                   &adapter, &native_status) == AMDF_WKMI_BRIDGE_RESULT_BUSY);
-
+  AMDF_EXPECT(state.live_allocation_count == 2);
   AMDF_EXPECT(state.context_destroy_count == 0);
   state.destroy_queue_status = STATUS_SUCCESS;
   AMDF_EXPECT(amdf::wkmi_bridge::GpuKernelQueueDestroy(queue, &native_status) ==
               AMDF_WKMI_BRIDGE_RESULT_SUCCESS);
-
+  AMDF_EXPECT(state.live_allocation_count == 0);
   AMDF_EXPECT(adapter.live_queue_count == 0);
   AMDF_EXPECT(state.queue_destroy_count == 2);
   AMDF_EXPECT(state.context_destroy_count == 1);
@@ -278,6 +333,8 @@ int main() {
     bool (*run)();
   };
   const TestCase cases[] = {
+      {"AllocationFailureLeavesNoNativeOwnership",
+       AllocationFailureLeavesNoNativeOwnership},
       {"NativeFailureLeavesNoAdapterCleanupObligation",
        NativeFailureLeavesNoAdapterCleanupObligation},
       {"PublishedQueueOwnsSubmissionUntilExplicitDestruction",

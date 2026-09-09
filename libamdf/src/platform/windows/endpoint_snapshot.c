@@ -8,9 +8,9 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include <stdlib.h>
 #include <string.h>
 
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/pci.h"
 #include "libamdf/src/platform/windows/endpoint_properties.h"
 
@@ -46,17 +46,17 @@ static void amdf_windows_copy_endpoint_summary(
 
 amdf_status_t amdf_windows_endpoint_snapshot_enumerate(
     const amdf_kmt_api_t* api, uint32_t capacity,
-    amdf_endpoint_summary_t* summaries, uint32_t* out_count) {
+    amdf_endpoint_summary_t* summaries, uint32_t* out_count,
+    amdf_allocator_t host_allocator) {
   if ((size_t)capacity > SIZE_MAX / sizeof(*summaries)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
   }
   amdf_endpoint_summary_t* staged_summaries = NULL;
   if (capacity != 0) {
-    staged_summaries = (amdf_endpoint_summary_t*)calloc(
-        (size_t)capacity, sizeof(*staged_summaries));
-    if (staged_summaries == NULL) {
-      return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
-    }
+    const amdf_status_t allocation_status = amdf_calloc_array(
+        host_allocator, (size_t)capacity, sizeof(*staged_summaries),
+        _Alignof(amdf_endpoint_summary_t), (void**)&staged_summaries);
+    if (!amdf_status_is_ok(allocation_status)) return allocation_status;
   }
 
   // Include compute/display-only application adapters. GPU-P partition
@@ -67,25 +67,27 @@ amdf_status_t amdf_windows_endpoint_snapshot_enumerate(
   amdf_status_t status =
       amdf_kmt_make_status(api->enumerate_adapters(&enumeration));
   if (!amdf_status_is_ok(status)) {
-    free(staged_summaries);
+    amdf_free(host_allocator, staged_summaries);
     return status;
   }
   if (enumeration.NumAdapters == 0) {
-    free(staged_summaries);
+    amdf_free(host_allocator, staged_summaries);
     *out_count = 0;
     return AMDF_STATUS_OK;
   }
 
   const uint32_t adapter_capacity = enumeration.NumAdapters;
   if ((size_t)adapter_capacity > SIZE_MAX / sizeof(D3DKMT_ADAPTERINFO)) {
-    free(staged_summaries);
+    amdf_free(host_allocator, staged_summaries);
     return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
   }
-  D3DKMT_ADAPTERINFO* adapters =
-      (D3DKMT_ADAPTERINFO*)calloc(adapter_capacity, sizeof(*adapters));
-  if (adapters == NULL) {
-    free(staged_summaries);
-    return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
+  D3DKMT_ADAPTERINFO* adapters = NULL;
+  const amdf_status_t allocation_status =
+      amdf_calloc_array(host_allocator, adapter_capacity, sizeof(*adapters),
+                        _Alignof(D3DKMT_ADAPTERINFO), (void**)&adapters);
+  if (!amdf_status_is_ok(allocation_status)) {
+    amdf_free(host_allocator, staged_summaries);
+    return allocation_status;
   }
   enumeration.NumAdapters = adapter_capacity;
   enumeration.pAdapters = adapters;
@@ -132,7 +134,7 @@ amdf_status_t amdf_windows_endpoint_snapshot_enumerate(
   if (!amdf_status_is_ok(close_status)) {
     status = close_status;
   }
-  free(adapters);
+  amdf_free(host_allocator, adapters);
   if (amdf_status_is_ok(status)) {
     if (capacity != 0) {
       const uint32_t copied_count =
@@ -145,6 +147,6 @@ amdf_status_t amdf_windows_endpoint_snapshot_enumerate(
       status = amdf_make_api_status(AMDF_STATUS_CODE_BUFFER_TOO_SMALL);
     }
   }
-  free(staged_summaries);
+  amdf_free(host_allocator, staged_summaries);
   return status;
 }

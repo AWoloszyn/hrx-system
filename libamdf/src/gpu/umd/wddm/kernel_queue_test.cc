@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/gpu/umd/wddm/device.h"
 #include "libamdf/src/wait.h"
 
@@ -106,6 +107,7 @@ class WindowsGpuKernelQueueTest : public ::testing::Test {
     bridge_.gpu_kernel_queue_destroy = FakeDestroyQueue;
     kmt_.get_device_state = FakeGetDeviceState;
     kmt_.wait_from_cpu = FakeWaitFromCpu;
+    device_.host_allocator = amdf_allocator_system();
     device_.device = 0x10;
     device_.kmt = &kmt_;
     device_.wkmi_adapter.api = &bridge_;

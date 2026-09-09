@@ -7,8 +7,8 @@
 #include "libamdf/src/xdna/device.h"
 
 #include <stddef.h>
-#include <stdlib.h>
 
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/device.h"
 #include "libamdf/src/endpoint.h"
 #include "libamdf/src/structure.h"
@@ -104,18 +104,20 @@ amdf_xdna_device_create(amdf_endpoint_t* endpoint,
     return status;
   }
 
-  amdf_xdna_device_t* device = (amdf_xdna_device_t*)calloc(1, sizeof(*device));
-  if (device == NULL) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
-  }
+  const amdf_allocator_t host_allocator =
+      amdf_endpoint_host_allocator(endpoint);
+  amdf_xdna_device_t* device = NULL;
+  status = amdf_calloc(host_allocator, sizeof(*device),
+                       _Alignof(amdf_xdna_device_t), (void**)&device);
+  if (!amdf_status_is_ok(status)) return status;
   status = amdf_device_initialize(&device->base, &amdf_xdna_device_vtable,
                                   endpoint, AMDF_ENGINE_KIND_XDNA);
 
   amdf_xdna_umd_device_result_t result = {0};
   if (amdf_status_is_ok(status)) {
     status = amdf_xdna_umd_device_create(amdf_endpoint_get_platform(endpoint),
-                                         profile, create_info, &device->umd,
-                                         &result);
+                                         profile, create_info, host_allocator,
+                                         &device->umd, &result);
   }
   if (amdf_status_is_ok(status)) {
     const amdf_xdna_endpoint_info_t* endpoint_info =
@@ -135,7 +137,7 @@ amdf_xdna_device_create(amdf_endpoint_t* endpoint,
     if (device->base.endpoint != NULL) {
       amdf_device_deinitialize(&device->base);
     }
-    free(device);
+    amdf_free(host_allocator, device);
   }
   return status;
 }

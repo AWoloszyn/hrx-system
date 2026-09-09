@@ -10,6 +10,7 @@
 #include <cstring>
 
 #include "gtest/gtest.h"
+#include "libamdf/src/allocator.h"
 
 namespace {
 
@@ -18,7 +19,9 @@ using SetQueryResultFn = void(__cdecl*)(amdf_wkmi_bridge_result_t);
 
 TEST(WkmiAdapterTest, FailedInitializationLeavesOutputsUnchanged) {
   amdf_gpu_wddm_wkmi_loader_t loader = {};
-  ASSERT_EQ(amdf_gpu_wddm_wkmi_loader_initialize(&loader), AMDF_STATUS_OK);
+  const amdf_allocator_t host_allocator = amdf_allocator_system();
+  ASSERT_EQ(amdf_gpu_wddm_wkmi_loader_initialize(host_allocator, &loader),
+            AMDF_STATUS_OK);
 
   const auto reset_bridge = reinterpret_cast<ResetBridgeFn>(
       GetProcAddress(loader.module, "amdf_test_wkmi_bridge_reset"));
@@ -39,7 +42,7 @@ TEST(WkmiAdapterTest, FailedInitializationLeavesOutputsUnchanged) {
   const amdf_wkmi_bridge_gpu_properties_t sentinel_properties = properties;
 
   EXPECT_EQ(amdf_status_code(amdf_gpu_wddm_wkmi_adapter_initialize(
-                &loader, 0x08, 0, &adapter, &properties)),
+                &loader, 0x08, 0, host_allocator, &adapter, &properties)),
             AMDF_STATUS_CODE_VERSION_MISMATCH);
   EXPECT_EQ(adapter.api, sentinel_adapter.api);
   EXPECT_EQ(adapter.native, sentinel_adapter.native);
@@ -49,8 +52,8 @@ TEST(WkmiAdapterTest, FailedInitializationLeavesOutputsUnchanged) {
   set_query_result(AMDF_WKMI_BRIDGE_RESULT_SUCCESS);
   adapter = {};
   properties = {};
-  ASSERT_EQ(amdf_gpu_wddm_wkmi_adapter_initialize(&loader, 0x08, 0, &adapter,
-                                                  &properties),
+  ASSERT_EQ(amdf_gpu_wddm_wkmi_adapter_initialize(
+                &loader, 0x08, 0, host_allocator, &adapter, &properties),
             AMDF_STATUS_OK);
   EXPECT_NE(adapter.api, nullptr);
   EXPECT_NE(adapter.native, nullptr);

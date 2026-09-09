@@ -96,6 +96,7 @@ iree_cc_library(
     ::endpoint_properties
     ::kmt_api
     amdf::headers
+    libamdf::src::allocator
     libamdf::src::pci
   PUBLIC
 )
@@ -113,6 +114,7 @@ iree_cc_library(
     ::endpoint_snapshot
     ::kmt_api
     amdf::headers
+    libamdf::src::allocator
     libamdf::src::platform
   PUBLIC
 )
@@ -130,6 +132,7 @@ iree_cc_library(
     ::endpoint_properties
     ::instance
     amdf::headers
+    libamdf::src::allocator
     libamdf::src::platform
   PUBLIC
 )
@@ -176,6 +179,7 @@ iree_cc_test(
     amdf::headers
     iree::third_party::google_test
     iree::third_party::google_test_main
+    libamdf::src::allocator
     libamdf::src::platform
   LABELS
     "iree-build-requirement=libamdf"

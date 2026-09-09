@@ -27,7 +27,10 @@ amdf_cc_library(
     srcs = ["legacy_context.c"],
     hdrs = ["legacy_context.h"],
     target_compatible_with = MCDM_COMPATIBILITY,
-    deps = [":bootstrap_image"],
+    deps = [
+        ":bootstrap_image",
+        "//libamdf/src:allocator",
+    ],
 )
 
 amdf_cc_library(
@@ -58,6 +61,7 @@ amdf_cc_library(
     target_compatible_with = MCDM_COMPATIBILITY,
     deps = [
         ":device_state",
+        "//libamdf/src:allocator",
         "//libamdf/src/platform/windows:host_cache",
         "//libamdf/src/xdna/umd:memory",
     ],
@@ -70,6 +74,7 @@ amdf_cc_library(
     deps = [
         ":device_state",
         ":legacy_context",
+        "//libamdf/src:allocator",
         "//libamdf/src/platform/windows:endpoint",
         "//libamdf/src/xdna/umd:device",
     ],
@@ -91,6 +96,7 @@ amdf_cc_test(
     target_compatible_with = MCDM_COMPATIBILITY,
     deps = [
         ":device",
+        "//libamdf/src:allocator",
         "//libamdf/src/platform/windows:endpoint",
         "//libamdf/src/xdna:endpoint_profile",
         "//libamdf/src/xdna/umd:device",
@@ -105,6 +111,7 @@ amdf_cc_test(
     target_compatible_with = MCDM_COMPATIBILITY,
     deps = [
         ":legacy_context",
+        "//libamdf/src:allocator",
         "//third_party:google_test",
         "//third_party:google_test_main",
     ],
@@ -117,6 +124,7 @@ amdf_cc_test(
     deps = [
         ":device_state",
         ":memory",
+        "//libamdf/src:allocator",
         "//libamdf/src/xdna/umd:memory",
         "//third_party:google_test",
         "//third_party:google_test_main",

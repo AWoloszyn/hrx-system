@@ -6,8 +6,7 @@
 
 #include "libamdf/src/host_mapping.h"
 
-#include <stdlib.h>
-
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/memory.h"
 #include "libamdf/src/structure.h"
 
@@ -18,6 +17,7 @@ amdf_status_t amdf_host_mapping_initialize(
   if (!amdf_status_is_ok(status)) {
     return status;
   }
+  mapping->host_allocator = amdf_memory_host_allocator(memory);
   mapping->vtable = vtable;
   mapping->memory = memory;
   return AMDF_STATUS_OK;
@@ -84,8 +84,9 @@ amdf_host_mapping_destroy(amdf_host_mapping_t* mapping) {
   }
   const amdf_status_t status = mapping->vtable->destroy_native(mapping);
   if (amdf_status_is_ok(status)) {
+    const amdf_allocator_t host_allocator = mapping->host_allocator;
     amdf_host_mapping_deinitialize(mapping);
-    free(mapping);
+    amdf_free(host_allocator, mapping);
   }
   return status;
 }

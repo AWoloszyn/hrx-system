@@ -84,7 +84,8 @@ void amdf_gpu_extension_initialize_endpoint(amdf_endpoint_t* endpoint) {
   amdf_gpu_endpoint_profile_t profile = {0};
   bool profile_available = false;
   const amdf_status_t status = amdf_gpu_umd_query_endpoint_profile(
-      amdf_endpoint_get_platform(endpoint), &profile, &profile_available);
+      amdf_endpoint_get_platform(endpoint),
+      amdf_endpoint_host_allocator(endpoint), &profile, &profile_available);
   if (!amdf_status_is_ok(status)) {
     amdf_endpoint_store_engine_profile_error(endpoint, status);
   } else if (!profile_available) {

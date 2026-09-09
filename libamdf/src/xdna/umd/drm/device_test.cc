@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/platform/linux/endpoint.h"
 #include "libamdf/src/xdna/endpoint_profile.h"
 #include "libamdf/src/xdna/target/npu5/bootstrap.h"
@@ -26,7 +27,8 @@ namespace {
 class LinuxXdnaDeviceTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    ASSERT_EQ(amdf_platform_instance_create(&instance), AMDF_STATUS_OK);
+    ASSERT_EQ(amdf_platform_instance_create(amdf_allocator_system(), &instance),
+              AMDF_STATUS_OK);
     uint32_t count = 0;
     ASSERT_EQ(amdf_platform_endpoint_enumerate(instance, 0, nullptr, &count),
               AMDF_STATUS_OK);
@@ -95,7 +97,8 @@ TEST_F(LinuxXdnaDeviceTest, IndependentContextsAndPersistentMappings) {
   for (size_t i = 0; i < 2; ++i) {
     std::cout << "Create independent native context " << i << std::endl;
     ASSERT_EQ(amdf_xdna_umd_device_create(endpoint, profile, &create_info,
-                                          &devices[i], &results[i]),
+                                          amdf_allocator_system(), &devices[i],
+                                          &results[i]),
               AMDF_STATUS_OK);
     EXPECT_EQ(results[i].physical_column_origin, 0u);
     EXPECT_EQ(results[i].physical_column_count, 8u);

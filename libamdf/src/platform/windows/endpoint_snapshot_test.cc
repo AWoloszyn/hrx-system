@@ -12,6 +12,7 @@
 #include <cstring>
 
 #include "gtest/gtest.h"
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/platform/endpoint.h"
 #include "libamdf/src/platform/windows/endpoint.h"
 #include "libamdf/src/platform/windows/instance.h"
@@ -41,6 +42,33 @@ enum class FailurePoint {
   kAdapterType,
   kDescription,
   kClose,
+};
+
+struct HostAllocationState {
+  // Backing allocator used by the counted callbacks.
+  amdf_allocator_t system = amdf_allocator_system();
+  // Host allocations still owned by the implementation under test.
+  uint32_t live_count = 0;
+
+  static void* AMDF_CALL Allocate(void* user_data, uint64_t byte_length,
+                                  uint64_t minimum_alignment) {
+    auto* state = static_cast<HostAllocationState*>(user_data);
+    void* pointer = state->system.allocate(state->system.user_data, byte_length,
+                                           minimum_alignment);
+    if (pointer != nullptr) ++state->live_count;
+    return pointer;
+  }
+
+  static void AMDF_CALL Free(void* user_data, void* pointer) {
+    auto* state = static_cast<HostAllocationState*>(user_data);
+    if (pointer == nullptr) return;
+    --state->live_count;
+    state->system.free(state->system.user_data, pointer);
+  }
+
+  amdf_allocator_t MakeAllocator() {
+    return {.user_data = this, .allocate = Allocate, .free = Free};
+  }
 };
 
 struct FakeKmt {
@@ -189,9 +217,12 @@ class EndpointSnapshotTest : public ::testing::Test {
  protected:
   void SetUp() override {
     current_fake = &fake_;
-    platform_instance_ = static_cast<amdf_platform_instance_t*>(
-        std::calloc(1, sizeof(*platform_instance_)));
-    ASSERT_NE(platform_instance_, nullptr);
+    const amdf_allocator_t host_allocator = host_allocations_.MakeAllocator();
+    ASSERT_EQ(amdf_calloc(host_allocator, sizeof(*platform_instance_),
+                          alignof(amdf_platform_instance_t),
+                          reinterpret_cast<void**>(&platform_instance_)),
+              AMDF_STATUS_OK);
+    platform_instance_->host_allocator = host_allocator;
     platform_instance_->kmt.enumerate_adapters = FakeEnumerateAdapters;
     platform_instance_->kmt.open_adapter_from_luid = FakeOpenAdapterFromLuid;
     platform_instance_->kmt.query_adapter_info = FakeQueryAdapterInfo;
@@ -202,6 +233,7 @@ class EndpointSnapshotTest : public ::testing::Test {
     if (platform_instance_ != nullptr) {
       EXPECT_TRUE(amdf_status_is_ok(DestroyInstance()));
     }
+    EXPECT_EQ(host_allocations_.live_count, 0u);
     current_fake = nullptr;
   }
 
@@ -226,6 +258,8 @@ class EndpointSnapshotTest : public ::testing::Test {
 
   // Injected KMT operations and native ownership accounting.
   FakeKmt fake_;
+  // Host bookkeeping must be released even when a native close fails.
+  HostAllocationState host_allocations_;
   // Real platform owner containing only the injected native procedure table.
   amdf_platform_instance_t* platform_instance_ = nullptr;
 };
@@ -430,6 +464,7 @@ TEST_F(EndpointSnapshotTest, SurfacesCloseFailureAfterClosingEveryHandle) {
   EXPECT_EQ(endpoint_count, 123u);
   EXPECT_EQ(std::memcmp(&summary, &expected_summary, sizeof(summary)), 0);
   EXPECT_EQ(fake_.close.call_count, 2u);
+  EXPECT_EQ(host_allocations_.live_count, 1u);
 }
 
 TEST_F(EndpointSnapshotTest, OpensIdentityDirectlyAndCachesProperties) {
@@ -540,7 +575,9 @@ TEST_F(EndpointSnapshotTest,
   EXPECT_EQ(fake_.close.successful[kAmdAdapter], 0u);
   EXPECT_EQ(fake_.close.successful[kOtherAdapter], 1u);
 
+  EXPECT_EQ(host_allocations_.live_count, 1u);
   ASSERT_EQ(DestroyInstance(), AMDF_STATUS_OK);
+  EXPECT_EQ(host_allocations_.live_count, 0u);
   EXPECT_EQ(fake_.close.call_count, 2u);
   EXPECT_EQ(fake_.close.successful[kAmdAdapter], 0u);
   EXPECT_EQ(fake_.close.successful[kOtherAdapter], 1u);
@@ -556,7 +593,9 @@ TEST_F(EndpointSnapshotTest, ReportsCleanupFailureAfterEnumerationFailure) {
   EXPECT_EQ(endpoint_count, 37u);
   EXPECT_EQ(fake_.close.call_count, 2u);
   EXPECT_EQ(fake_.close.successful[kOtherAdapter], 1u);
+  EXPECT_EQ(host_allocations_.live_count, 1u);
   ASSERT_EQ(DestroyInstance(), AMDF_STATUS_OK);
+  EXPECT_EQ(host_allocations_.live_count, 0u);
   EXPECT_EQ(fake_.close.call_count, 2u);
   EXPECT_EQ(fake_.close.successful[kAmdAdapter], 0u);
   EXPECT_EQ(fake_.close.successful[kOtherAdapter], 1u);
@@ -580,7 +619,9 @@ TEST_F(EndpointSnapshotTest, ReportsEndpointRollbackFailureWithoutRetention) {
   EXPECT_EQ(fake_.close.call_count, 1u);
   EXPECT_EQ(fake_.close.successful[kAmdAdapter], 0u);
 
+  EXPECT_EQ(host_allocations_.live_count, 1u);
   ASSERT_EQ(DestroyInstance(), AMDF_STATUS_OK);
+  EXPECT_EQ(host_allocations_.live_count, 0u);
   EXPECT_EQ(fake_.close.call_count, 1u);
   EXPECT_EQ(fake_.close.successful[kAmdAdapter], 0u);
 }

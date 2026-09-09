@@ -19,7 +19,7 @@ typedef struct amdf_platform_instance_t amdf_platform_instance_t;
 
 // Creates the compile-time-selected platform instance.
 amdf_status_t amdf_platform_instance_create(
-    amdf_platform_instance_t** out_instance);
+    amdf_allocator_t host_allocator, amdf_platform_instance_t** out_instance);
 
 // Destroys a platform instance after all platform children are closed.
 amdf_status_t amdf_platform_instance_destroy(

@@ -24,6 +24,8 @@ typedef struct amdf_memory_vtable_t {
 } amdf_memory_vtable_t;
 
 struct amdf_memory_t {
+  // Host allocator copied for direct terminal teardown.
+  amdf_allocator_t host_allocator;
   // Implementation operations selected before the memory is published.
   const amdf_memory_vtable_t* vtable;
   // Device borrowed for the lifetime of this memory attachment.
@@ -47,6 +49,9 @@ amdf_status_t amdf_memory_register_child(amdf_memory_t* memory);
 
 // Releases one child borrow.
 void amdf_memory_unregister_child(amdf_memory_t* memory);
+
+// Returns the host allocator copied by the memory attachment.
+amdf_allocator_t amdf_memory_host_allocator(const amdf_memory_t* memory);
 
 // Creates memory attached to `device`.
 amdf_status_t AMDF_CALL amdf_memory_create(

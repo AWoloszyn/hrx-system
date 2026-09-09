@@ -18,7 +18,8 @@ extern "C" {
 // Builds the exact NPU5 legacy context record around the provider-owned image.
 amdf_status_t amdf_windows_xdna_legacy_context_build(
     uint32_t logical_column_count, uint32_t physical_column_origin,
-    uint8_t** out_data, uint32_t* out_data_size);
+    amdf_allocator_t host_allocator, uint8_t** out_data,
+    uint32_t* out_data_size);
 
 // Reads the command-aperture cookie written back by context creation.
 amdf_status_t amdf_windows_xdna_legacy_context_query_command_aperture_cookie(

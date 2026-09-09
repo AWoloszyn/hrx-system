@@ -7,8 +7,9 @@
 #include "libamdf/src/xdna/memory.h"
 
 #include <stddef.h>
-#include <stdlib.h>
 
+#include "libamdf/src/allocator.h"
+#include "libamdf/src/device.h"
 #include "libamdf/src/host_mapping.h"
 #include "libamdf/src/memory.h"
 #include "libamdf/src/xdna/device.h"
@@ -60,12 +61,14 @@ static amdf_status_t amdf_xdna_memory_map(
     amdf_memory_t* base_memory, const amdf_memory_map_info_t* map_info,
     amdf_host_mapping_t** out_mapping) {
   amdf_xdna_memory_t* memory = (amdf_xdna_memory_t*)base_memory;
-  amdf_xdna_host_mapping_t* mapping =
-      (amdf_xdna_host_mapping_t*)calloc(1, sizeof(*mapping));
-  if (mapping == NULL) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
-  }
-  amdf_status_t status = amdf_host_mapping_initialize(
+  const amdf_allocator_t host_allocator =
+      amdf_memory_host_allocator(base_memory);
+  amdf_xdna_host_mapping_t* mapping = NULL;
+  amdf_status_t status =
+      amdf_calloc(host_allocator, sizeof(*mapping),
+                  _Alignof(amdf_xdna_host_mapping_t), (void**)&mapping);
+  if (!amdf_status_is_ok(status)) return status;
+  status = amdf_host_mapping_initialize(
       &mapping->base, &amdf_xdna_host_mapping_vtable, base_memory);
 
   amdf_xdna_umd_host_mapping_result_t result = {0};
@@ -87,7 +90,7 @@ static amdf_status_t amdf_xdna_memory_map(
     if (mapping->base.memory != NULL) {
       amdf_host_mapping_deinitialize(&mapping->base);
     }
-    free(mapping);
+    amdf_free(host_allocator, mapping);
   }
   return status;
 }
@@ -110,11 +113,13 @@ static const amdf_memory_vtable_t amdf_xdna_memory_vtable = {
 amdf_status_t amdf_xdna_memory_create(
     amdf_device_t* device, const amdf_memory_create_info_t* create_info,
     amdf_memory_t** out_memory) {
-  amdf_xdna_memory_t* memory = (amdf_xdna_memory_t*)calloc(1, sizeof(*memory));
-  if (memory == NULL) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
-  }
+  const amdf_allocator_t host_allocator = amdf_device_host_allocator(device);
+  amdf_xdna_memory_t* memory = NULL;
   amdf_status_t status =
+      amdf_calloc(host_allocator, sizeof(*memory), _Alignof(amdf_xdna_memory_t),
+                  (void**)&memory);
+  if (!amdf_status_is_ok(status)) return status;
+  status =
       amdf_memory_initialize(&memory->base, &amdf_xdna_memory_vtable, device);
 
   amdf_xdna_umd_memory_result_t result = {0};
@@ -137,7 +142,7 @@ amdf_status_t amdf_xdna_memory_create(
     if (memory->base.device != NULL) {
       amdf_memory_deinitialize(&memory->base);
     }
-    free(memory);
+    amdf_free(host_allocator, memory);
   }
   return status;
 }

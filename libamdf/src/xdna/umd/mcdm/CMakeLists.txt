@@ -34,6 +34,7 @@ iree_cc_library(
   DEPS
     ::bootstrap_image
     amdf::headers
+    libamdf::src::allocator
   PUBLIC
 )
 endif()
@@ -78,6 +79,7 @@ iree_cc_library(
   DEPS
     ::device_state
     amdf::headers
+    libamdf::src::allocator
     libamdf::src::platform::windows::host_cache
     libamdf::src::xdna::umd::memory
   PUBLIC
@@ -94,6 +96,7 @@ iree_cc_library(
     ::device_state
     ::legacy_context
     amdf::headers
+    libamdf::src::allocator
     libamdf::src::platform::windows::endpoint
     libamdf::src::xdna::umd::device
   PUBLIC
@@ -123,6 +126,7 @@ iree_cc_test(
     amdf::headers
     iree::third_party::google_test
     iree::third_party::google_test_main
+    libamdf::src::allocator
     libamdf::src::platform::windows::endpoint
     libamdf::src::xdna::endpoint_profile
     libamdf::src::xdna::umd::device
@@ -143,6 +147,7 @@ iree_cc_test(
     amdf::headers
     iree::third_party::google_test
     iree::third_party::google_test_main
+    libamdf::src::allocator
   LABELS
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.xdna"
@@ -161,6 +166,7 @@ iree_cc_test(
     amdf::headers
     iree::third_party::google_test
     iree::third_party::google_test_main
+    libamdf::src::allocator
     libamdf::src::xdna::umd::memory
   LABELS
     "iree-build-requirement=libamdf"

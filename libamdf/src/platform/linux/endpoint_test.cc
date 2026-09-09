@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/platform/linux/file.h"
 
 namespace {
@@ -21,7 +22,8 @@ namespace {
 class LinuxEndpointTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    ASSERT_EQ(amdf_platform_instance_create(&instance), AMDF_STATUS_OK);
+    ASSERT_EQ(amdf_platform_instance_create(amdf_allocator_system(), &instance),
+              AMDF_STATUS_OK);
   }
 
   void TearDown() override {

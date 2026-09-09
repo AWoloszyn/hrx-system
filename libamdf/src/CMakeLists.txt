@@ -24,6 +24,36 @@ endif()
 if(AMDF_BUILD)
 iree_cc_library(
   NAME
+    allocator
+  HDRS
+    "allocator.h"
+  SRCS
+    "allocator.c"
+  DEPS
+    amdf::headers
+  PUBLIC
+)
+endif()
+
+if(AMDF_BUILD)
+iree_cc_test(
+  NAME
+    allocator_test
+  SRCS
+    "allocator_test.cc"
+  DEPS
+    ::allocator
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+  LABELS
+    "iree-build-requirement=libamdf"
+)
+endif()
+
+if(AMDF_BUILD)
+iree_cc_library(
+  NAME
     wait
   HDRS
     "wait.h"
@@ -89,6 +119,7 @@ iree_cc_library(
   SRCS
     "instance.c"
   DEPS
+    ::allocator
     ::child_tracker
     ::structure
     amdf::headers
@@ -106,6 +137,7 @@ iree_cc_library(
   SRCS
     "endpoint.c"
   DEPS
+    ::allocator
     ::child_tracker
     ::instance
     ::structure
@@ -124,6 +156,7 @@ iree_cc_library(
   SRCS
     "device.c"
   DEPS
+    ::allocator
     ::child_tracker
     ::endpoint
     amdf::headers
@@ -140,6 +173,7 @@ iree_cc_library(
   SRCS
     "memory.c"
   DEPS
+    ::allocator
     ::child_tracker
     ::device
     ::structure
@@ -157,6 +191,7 @@ iree_cc_library(
   SRCS
     "host_mapping.c"
   DEPS
+    ::allocator
     ::memory
     ::structure
     amdf::headers
@@ -173,6 +208,7 @@ iree_cc_library(
   SRCS
     "kernel_queue.c"
   DEPS
+    ::allocator
     ::device
     ::structure
     amdf::headers

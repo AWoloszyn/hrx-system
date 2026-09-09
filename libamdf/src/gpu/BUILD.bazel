@@ -32,6 +32,7 @@ amdf_cc_library(
     ],
     deps = [
         ":endpoint_profile",
+        "//libamdf/src:allocator",
         "//libamdf/src:device",
         "//libamdf/src:endpoint",
         "//libamdf/src:host_mapping",
@@ -48,6 +49,7 @@ amdf_cc_library(
     hdrs = ["kernel_queue.h"],
     deps = [
         ":device",
+        "//libamdf/src:allocator",
         "//libamdf/src:atomics",
         "//libamdf/src:device",
         "//libamdf/src:endpoint",

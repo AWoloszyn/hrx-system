@@ -9,9 +9,6 @@
 #include <cstddef>
 #include <cstring>
 #include <limits>
-#include <memory>
-#include <new>
-#include <vector>
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -28,6 +25,7 @@
 #include <ntstatus.h>
 
 #include "libamdf/src/gpu/umd/wddm/wkmi/adapter_state.h"
+#include "libamdf/src/gpu/umd/wddm/wkmi/bridge_allocator.h"
 #include "wkmi.h"
 
 struct amdf_wkmi_bridge_gpu_kernel_queue_t {
@@ -38,7 +36,7 @@ struct amdf_wkmi_bridge_gpu_kernel_queue_t {
   // Native kernel-mediated hardware queue.
   D3DKMT_HANDLE handle = 0;
   // Fixed WKMI record reused by externally serialized submissions.
-  std::vector<uint8_t> submission_private_data;
+  amdf::wkmi_bridge::HostBuffer submission_private_data;
   // True after this queue enters its adapter's live-child count.
   bool counted_live = false;
 };
@@ -128,16 +126,22 @@ amdf_wkmi_bridge_result_t CreateNativeQueue(
     return AMDF_WKMI_BRIDGE_RESULT_VERSION_MISMATCH;
   }
 
-  std::unique_ptr<amdf_wkmi_bridge_gpu_kernel_queue_t> queue(
-      new (std::nothrow) amdf_wkmi_bridge_gpu_kernel_queue_t());
-  if (queue == nullptr) {
+  HostObject<amdf_wkmi_bridge_gpu_kernel_queue_t> queue(
+      adapter->host_allocator);
+  if (!queue.Allocate()) {
     return AMDF_WKMI_BRIDGE_RESULT_RESOURCE_EXHAUSTED;
   }
-  std::vector<uint8_t> context_private(
-      static_cast<size_t>(context_private_size));
-  std::vector<uint8_t> queue_private(static_cast<size_t>(queue_private_size));
-  queue->submission_private_data.resize(
-      static_cast<size_t>(submission_private_size));
+  HostBuffer context_private;
+  HostBuffer queue_private;
+  if (!context_private.Allocate(adapter->host_allocator,
+                                static_cast<size_t>(context_private_size)) ||
+      !queue_private.Allocate(adapter->host_allocator,
+                              static_cast<size_t>(queue_private_size)) ||
+      !queue->submission_private_data.Allocate(
+          adapter->host_allocator,
+          static_cast<size_t>(submission_private_size))) {
+    return AMDF_WKMI_BRIDGE_RESULT_RESOURCE_EXHAUSTED;
+  }
   queue->adapter = adapter;
 
   Wkmi::FillinContextPrivData(context_private.data(),
@@ -150,7 +154,7 @@ amdf_wkmi_bridge_result_t CreateNativeQueue(
   create_context.Flags.HwQueueSupported = 1;
   create_context.pPrivateDriverData = context_private.data();
   create_context.PrivateDriverDataSize =
-      static_cast<uint32_t>(context_private.size());
+      static_cast<uint32_t>(context_private.byte_length());
   create_context.ClientHint = D3DKMT_CLIENTHINT_OPENCL;
   NTSTATUS native_status = D3DKMTCreateContextVirtual(&create_context);
   if (native_status != STATUS_SUCCESS) {
@@ -172,7 +176,7 @@ amdf_wkmi_bridge_result_t CreateNativeQueue(
     create_queue.Flags.DisableGpuTimeout = 0;
     create_queue.pPrivateDriverData = queue_private.data();
     create_queue.PrivateDriverDataSize =
-        static_cast<uint32_t>(queue_private.size());
+        static_cast<uint32_t>(queue_private.byte_length());
     native_status = D3DKMTCreateHwQueue(&create_queue);
   }
   if (native_status == STATUS_SUCCESS) {
@@ -258,7 +262,7 @@ amdf_wkmi_bridge_result_t AMDF_WKMI_BRIDGE_CALL GpuKernelQueueSubmit(
   }
   *out_native_status = 0;
   std::memset(queue->submission_private_data.data(), 0,
-              queue->submission_private_data.size());
+              queue->submission_private_data.byte_length());
   Wkmi::FillinSubmitPrivData(queue->submission_private_data.data(),
                              queue->handle, command_buffer_address,
                              command_buffer_byte_length, true);
@@ -270,7 +274,7 @@ amdf_wkmi_bridge_result_t AMDF_WKMI_BRIDGE_CALL GpuKernelQueueSubmit(
   submit.CommandLength = static_cast<uint32_t>(command_buffer_byte_length);
   submit.pPrivateDriverData = queue->submission_private_data.data();
   submit.PrivateDriverDataSize =
-      static_cast<uint32_t>(queue->submission_private_data.size());
+      static_cast<uint32_t>(queue->submission_private_data.byte_length());
   const NTSTATUS native_status = D3DKMTSubmitCommandToHwQueue(&submit);
   return native_status == STATUS_SUCCESS
              ? AMDF_WKMI_BRIDGE_RESULT_SUCCESS
@@ -298,7 +302,8 @@ GpuKernelQueueDestroy(amdf_wkmi_bridge_gpu_kernel_queue_t* queue,
   if (native_status != STATUS_SUCCESS) {
     return MakeNativeFailure(native_status, out_native_status);
   }
-  delete queue;
+  const amdf_allocator_t host_allocator = queue->adapter->host_allocator;
+  DestroyHostObject(host_allocator, queue);
   return AMDF_WKMI_BRIDGE_RESULT_SUCCESS;
 }
 

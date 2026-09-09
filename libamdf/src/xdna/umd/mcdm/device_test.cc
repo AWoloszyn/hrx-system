@@ -6,11 +6,14 @@
 
 #include "libamdf/src/xdna/umd/device.h"
 
+#include <malloc.h>
+
 #include <cstdint>
-#include <cstdlib>
+#include <cstring>
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/platform/windows/endpoint.h"
 #include "libamdf/src/xdna/endpoint_profile.h"
 
@@ -33,6 +36,8 @@ struct FakeKmtState {
   uint32_t paging_queue_destroy_failures_remaining = 2;
   // Ordered native operations used to verify local and published ownership.
   std::vector<Operation> operations;
+  // Number of host allocations retained by endpoint/device bookkeeping.
+  uint32_t live_allocation_count = 0;
   // Number of successfully released paging queues.
   uint32_t paging_queue_destroy_success_count = 0;
   // Number of successfully released logical devices.
@@ -44,6 +49,23 @@ struct FakeKmtState {
 };
 
 FakeKmtState* current_state = nullptr;
+
+void* AMDF_CALL Allocate(void* user_data, uint64_t byte_length,
+                         uint64_t minimum_alignment) {
+  auto* state = static_cast<FakeKmtState*>(user_data);
+  void* pointer = _aligned_malloc(static_cast<size_t>(byte_length),
+                                  static_cast<size_t>(minimum_alignment));
+  if (pointer != nullptr) ++state->live_allocation_count;
+  return pointer;
+}
+
+void AMDF_CALL Free(void* user_data, void* allocation) {
+  if (allocation == nullptr) return;
+  auto* state = static_cast<FakeKmtState*>(user_data);
+  EXPECT_NE(state->live_allocation_count, 0u);
+  --state->live_allocation_count;
+  _aligned_free(allocation);
+}
 
 NTSTATUS APIENTRY FakeQueryAdapterInfo(const D3DKMT_QUERYADAPTERINFO* query) {
   current_state->operations.push_back(Operation::kQueryAdapter);
@@ -116,6 +138,11 @@ class WindowsXdnaDeviceRollbackTest : public ::testing::Test {
  protected:
   void SetUp() override {
     current_state = &state_;
+    instance_.host_allocator = {
+        .user_data = &state_,
+        .allocate = Allocate,
+        .free = Free,
+    };
     instance_.kmt.query_adapter_info = FakeQueryAdapterInfo;
     instance_.kmt.create_device = FakeCreateDevice;
     instance_.kmt.destroy_device = FakeDestroyDevice;
@@ -126,9 +153,10 @@ class WindowsXdnaDeviceRollbackTest : public ::testing::Test {
     instance_.kmt.destroy_context = FakeDestroyContext;
     instance_.kmt.close_adapter = FakeCloseAdapter;
 
-    endpoint_ = static_cast<amdf_platform_endpoint_t*>(
-        std::calloc(1, sizeof(*endpoint_)));
-    ASSERT_NE(endpoint_, nullptr);
+    ASSERT_EQ(amdf_calloc(instance_.host_allocator, sizeof(*endpoint_),
+                          alignof(amdf_platform_endpoint_t),
+                          reinterpret_cast<void**>(&endpoint_)),
+              AMDF_STATUS_OK);
     endpoint_->instance = &instance_;
     endpoint_->adapter = 0x08;
     endpoint_->physical_adapter_index = 0;
@@ -152,6 +180,7 @@ class WindowsXdnaDeviceRollbackTest : public ::testing::Test {
       EXPECT_EQ(amdf_platform_endpoint_close(endpoint_), AMDF_STATUS_OK);
       endpoint_ = nullptr;
     }
+    EXPECT_EQ(state_.live_allocation_count, 0u);
     current_state = nullptr;
   }
 
@@ -167,13 +196,18 @@ TEST_F(WindowsXdnaDeviceRollbackTest,
        ReportsFailedRollbackWithoutRetainingDevice) {
   amdf_xdna_umd_device_t* device =
       reinterpret_cast<amdf_xdna_umd_device_t*>(uintptr_t{1});
-  amdf_xdna_umd_device_result_t result = {};
+  amdf_xdna_umd_device_result_t result;
+  std::memset(&result, 0xA5, sizeof(result));
+  const auto original_result = result;
 
-  const amdf_status_t status = amdf_xdna_umd_device_create(
-      endpoint_, &profile_, &create_info_, &device, &result);
+  const amdf_status_t status =
+      amdf_xdna_umd_device_create(endpoint_, &profile_, &create_info_,
+                                  instance_.host_allocator, &device, &result);
 
   EXPECT_EQ(status, amdf_kmt_make_status(kFailure));
   EXPECT_EQ(reinterpret_cast<uintptr_t>(device), uintptr_t{1});
+  EXPECT_EQ(std::memcmp(&result, &original_result, sizeof(result)), 0);
+  EXPECT_EQ(state_.live_allocation_count, 1u);
   EXPECT_EQ(
       state_.operations,
       (std::vector<Operation>{
@@ -193,6 +227,7 @@ TEST_F(WindowsXdnaDeviceRollbackTest,
   EXPECT_EQ(state_.paging_queue_destroy_success_count, 0u);
   EXPECT_EQ(state_.device_destroy_success_count, 0u);
   EXPECT_EQ(state_.adapter_close_success_count, 1u);
+  EXPECT_EQ(state_.live_allocation_count, 0u);
 }
 
 }  // namespace

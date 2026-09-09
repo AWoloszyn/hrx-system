@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/xdna/umd/mcdm/device.h"
 
 namespace {
@@ -47,6 +48,8 @@ struct FakeKmtState {
   uint32_t wait_failures_remaining = 1;
   // Real host backing borrowed by the modeled native allocation.
   const void* host_pointer = nullptr;
+  // Memory and host-view metadata returned to the host allocator.
+  uint32_t metadata_free_count = 0;
   // Flags observed in the residency request.
   D3DDDI_MAKERESIDENT_FLAGS resident_flags = {};
   // Native operations in call order.
@@ -150,6 +153,12 @@ class WindowsXdnaMemoryTest : public ::testing::Test {
     kmt_.map_gpu_virtual_address = FakeMapGpuVirtualAddress;
     kmt_.make_resident = FakeMakeResident;
     kmt_.wait_from_cpu = FakeWaitFromCpu;
+    device_.host_allocator = amdf_allocator_system();
+    device_.host_allocator.user_data = &state_;
+    device_.host_allocator.free = [](void* user_data, void* allocation) {
+      ++static_cast<FakeKmtState*>(user_data)->metadata_free_count;
+      amdf_free(amdf_allocator_system(), allocation);
+    };
     device_.kmt = &kmt_;
     device_.device = 0x10;
     device_.paging_queue = 0x30;
@@ -281,6 +290,7 @@ TEST_F(WindowsXdnaMemoryTest,
 
     EXPECT_FALSE(amdf_status_is_ok(status));
     EXPECT_EQ(reinterpret_cast<uintptr_t>(memory), uintptr_t{1});
+    EXPECT_EQ(state_.metadata_free_count, 1u);
     switch (failure_point) {
       case FailurePoint::kCreate:
         EXPECT_EQ(state_.operations,
@@ -348,6 +358,7 @@ TEST_F(WindowsXdnaMemoryTest,
       amdf_kmt_make_status(kStatusNoMemory));
   EXPECT_EQ(reinterpret_cast<uintptr_t>(memory), uintptr_t{1});
   EXPECT_EQ(std::memcmp(&result, &original_result, sizeof(result)), 0);
+  EXPECT_EQ(state_.metadata_free_count, 1u);
   EXPECT_EQ(state_.operations,
             (std::vector<Operation>{Operation::kCreate, Operation::kMap,
                                     Operation::kWait, Operation::kWait}));
@@ -365,8 +376,10 @@ TEST_F(WindowsXdnaMemoryTest, KeepsPublishedMemoryLiveAfterDestroyFailure) {
 
   state_.failure_point = FailurePoint::kDestroy;
   EXPECT_FALSE(amdf_status_is_ok(amdf_xdna_umd_memory_destroy(memory)));
+  EXPECT_EQ(state_.metadata_free_count, 0u);
   state_.failure_point = FailurePoint::kNone;
   EXPECT_TRUE(amdf_status_is_ok(amdf_xdna_umd_memory_destroy(memory)));
+  EXPECT_EQ(state_.metadata_free_count, 1u);
 }
 
 TEST_F(WindowsXdnaMemoryTest,
@@ -384,6 +397,7 @@ TEST_F(WindowsXdnaMemoryTest,
       amdf_kmt_make_status(kStatusNoMemory));
   EXPECT_EQ(reinterpret_cast<uintptr_t>(memory), uintptr_t{1});
   EXPECT_EQ(std::memcmp(&result, &original_result, sizeof(result)), 0);
+  EXPECT_EQ(state_.metadata_free_count, 1u);
   EXPECT_EQ(state_.operations,
             (std::vector<Operation>{Operation::kCreate, Operation::kMap,
                                     Operation::kDestroy}));

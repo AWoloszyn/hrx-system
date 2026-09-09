@@ -34,6 +34,7 @@ iree_cc_library(
   DEPS
     ::device_state
     amdf::headers
+    libamdf::src::allocator
     libamdf::src::gpu::umd::memory
     libamdf::src::platform::windows::host_cache
   PUBLIC
@@ -49,6 +50,7 @@ iree_cc_library(
   DEPS
     ::device_state
     amdf::headers
+    libamdf::src::allocator
     libamdf::src::gpu::umd::kernel_queue
     libamdf::src::gpu::umd::wddm::wkmi::adapter
     libamdf::src::platform::wait
@@ -67,6 +69,7 @@ iree_cc_library(
   DEPS
     ::device_state
     amdf::headers
+    libamdf::src::allocator
     libamdf::src::platform::windows::endpoint
   PUBLIC
 )
@@ -116,6 +119,7 @@ iree_cc_test(
     amdf::headers
     iree::third_party::google_test
     iree::third_party::google_test_main
+    libamdf::src::allocator
     libamdf::src::gpu::umd::endpoint_profile
     libamdf::src::platform::windows::endpoint
   ENV
@@ -139,6 +143,7 @@ iree_cc_test(
     amdf::headers
     iree::third_party::google_test
     iree::third_party::google_test_main
+    libamdf::src::allocator
     libamdf::src::gpu::umd::device
     libamdf::src::platform::windows::endpoint
   ENV
@@ -161,6 +166,7 @@ iree_cc_test(
     amdf::headers
     iree::third_party::google_test
     iree::third_party::google_test_main
+    libamdf::src::allocator
     libamdf::src::gpu::umd::kernel_queue
     libamdf::src::wait
   LABELS
@@ -181,6 +187,7 @@ iree_cc_test(
     amdf::headers
     iree::third_party::google_test
     iree::third_party::google_test_main
+    libamdf::src::allocator
     libamdf::src::gpu::umd::memory
   LABELS
     "iree-build-requirement=libamdf"

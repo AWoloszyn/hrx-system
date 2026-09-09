@@ -11,6 +11,8 @@
 #include "libamdf/src/platform/windows/kmt_api.h"
 
 struct amdf_platform_instance_t {
+  // Host allocator copied from the public provider instance.
+  amdf_allocator_t host_allocator;
   // Immutable KMT procedure table owned by this platform instance.
   amdf_kmt_api_t kmt;
 };

@@ -15,6 +15,8 @@
 
 // Concrete Windows state backing one program-independent XDNA device.
 struct amdf_xdna_umd_device_t {
+  // Host allocator copied for device and child metadata.
+  amdf_allocator_t host_allocator;
   // KMT table borrowed from the endpoint's platform instance.
   const amdf_kmt_api_t* kmt;
   // Logical KMT device owning paging and execution state.

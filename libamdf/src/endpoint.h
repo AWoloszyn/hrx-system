@@ -47,6 +47,9 @@ const amdf_endpoint_info_t* amdf_endpoint_get_cached_info(
 // Returns the borrowed platform endpoint.
 amdf_platform_endpoint_t* amdf_endpoint_get_platform(amdf_endpoint_t* endpoint);
 
+// Returns the host allocator owned by the endpoint's provider instance.
+amdf_allocator_t amdf_endpoint_host_allocator(const amdf_endpoint_t* endpoint);
+
 // Copies one immutable engine profile or caches the allocation failure.
 void amdf_endpoint_store_engine_profile(amdf_endpoint_t* endpoint,
                                         const void* profile,

@@ -31,6 +31,7 @@ amdf_cc_library(
     target_compatible_with = ["@platforms//os:windows"],
     deps = [
         ":device_state",
+        "//libamdf/src:allocator",
         "//libamdf/src/gpu/umd:memory",
         "//libamdf/src/platform/windows:host_cache",
     ],
@@ -42,6 +43,7 @@ amdf_cc_library(
     target_compatible_with = ["@platforms//os:windows"],
     deps = [
         ":device_state",
+        "//libamdf/src:allocator",
         "//libamdf/src:wait",
         "//libamdf/src/gpu/umd:kernel_queue",
         "//libamdf/src/gpu/umd/wddm/wkmi:adapter",
@@ -56,6 +58,7 @@ amdf_cc_library(
     target_compatible_with = ["@platforms//os:windows"],
     deps = [
         ":device_state",
+        "//libamdf/src:allocator",
         "//libamdf/src/platform/windows:endpoint",
     ],
 )
@@ -96,6 +99,7 @@ amdf_cc_test(
     target_compatible_with = ["@platforms//os:windows"],
     deps = [
         ":endpoint_profile",
+        "//libamdf/src:allocator",
         "//libamdf/src/gpu/umd:endpoint_profile",
         "//libamdf/src/platform/windows:endpoint",
         "//third_party:google_test",
@@ -113,6 +117,7 @@ amdf_cc_test(
     target_compatible_with = ["@platforms//os:windows"],
     deps = [
         ":device",
+        "//libamdf/src:allocator",
         "//libamdf/src/gpu/umd:device",
         "//libamdf/src/platform/windows:endpoint",
         "//third_party:google_test",
@@ -127,6 +132,7 @@ amdf_cc_test(
     deps = [
         ":device_state",
         ":kernel_queue",
+        "//libamdf/src:allocator",
         "//libamdf/src:wait",
         "//libamdf/src/gpu/umd:kernel_queue",
         "//third_party:google_test",
@@ -141,6 +147,7 @@ amdf_cc_test(
     deps = [
         ":device_state",
         ":memory",
+        "//libamdf/src:allocator",
         "//libamdf/src/gpu/umd:memory",
         "//third_party:google_test",
         "//third_party:google_test_main",

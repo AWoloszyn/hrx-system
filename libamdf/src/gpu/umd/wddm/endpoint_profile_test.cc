@@ -7,11 +7,11 @@
 #include "libamdf/src/gpu/umd/endpoint_profile.h"
 
 #include <cstdint>
-#include <cstdlib>
 #include <cstring>
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/platform/windows/endpoint.h"
 
 namespace {
@@ -41,11 +41,13 @@ class WindowsGpuEndpointProfileTest : public ::testing::Test {
  protected:
   void SetUp() override {
     current_state = &state_;
+    instance_.host_allocator = amdf_allocator_system();
     instance_.kmt.close_adapter = FakeCloseAdapter;
 
-    endpoint_ = static_cast<amdf_platform_endpoint_t*>(
-        std::calloc(1, sizeof(*endpoint_)));
-    ASSERT_NE(endpoint_, nullptr);
+    ASSERT_EQ(amdf_calloc(instance_.host_allocator, sizeof(*endpoint_),
+                          alignof(amdf_platform_endpoint_t),
+                          reinterpret_cast<void**>(&endpoint_)),
+              AMDF_STATUS_OK);
     endpoint_->instance = &instance_;
     endpoint_->adapter = 0x08;
     endpoint_->physical_adapter_index = 0;
@@ -131,8 +133,8 @@ TEST_F(WindowsGpuEndpointProfileTest,
   const amdf_gpu_endpoint_profile_t sentinel_profile = profile;
   bool available = true;
 
-  const amdf_status_t status =
-      amdf_gpu_umd_query_endpoint_profile(endpoint_, &profile, &available);
+  const amdf_status_t status = amdf_gpu_umd_query_endpoint_profile(
+      endpoint_, instance_.host_allocator, &profile, &available);
 
   EXPECT_EQ(amdf_status_code(status), AMDF_STATUS_CODE_BUSY);
   EXPECT_EQ(std::memcmp(&profile, &sentinel_profile, sizeof(profile)), 0);
@@ -155,9 +157,9 @@ TEST_F(WindowsGpuEndpointProfileTest,
   amdf_gpu_endpoint_profile_t profile = {};
   bool available = false;
 
-  EXPECT_EQ(
-      amdf_gpu_umd_query_endpoint_profile(endpoint_, &profile, &available),
-      AMDF_STATUS_OK);
+  EXPECT_EQ(amdf_gpu_umd_query_endpoint_profile(
+                endpoint_, instance_.host_allocator, &profile, &available),
+            AMDF_STATUS_OK);
 
   EXPECT_TRUE(available);
   EXPECT_EQ(profile.info.gfx_ip.major, 11u);

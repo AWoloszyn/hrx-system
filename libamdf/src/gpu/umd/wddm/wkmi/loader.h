@@ -31,7 +31,7 @@ typedef struct amdf_gpu_wddm_wkmi_loader_t {
 
 // Loads the bridge. Failure leaves |out_loader| unchanged.
 amdf_status_t amdf_gpu_wddm_wkmi_loader_initialize(
-    amdf_gpu_wddm_wkmi_loader_t* out_loader);
+    amdf_allocator_t host_allocator, amdf_gpu_wddm_wkmi_loader_t* out_loader);
 
 // Negotiates the most recent API supported by a loaded bridge.
 // Failure leaves |out_api| unchanged.

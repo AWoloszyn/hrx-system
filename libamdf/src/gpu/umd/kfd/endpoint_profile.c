@@ -11,8 +11,9 @@
 #include "libamdf/src/gpu/umd/kfd/topology.h"
 
 amdf_status_t amdf_gpu_umd_query_endpoint_profile(
-    amdf_platform_endpoint_t* endpoint,
+    amdf_platform_endpoint_t* endpoint, amdf_allocator_t host_allocator,
     amdf_gpu_endpoint_profile_t* out_profile, bool* out_available) {
+  (void)host_allocator;
   amdf_gpu_kfd_topology_t topology = {0};
   amdf_status_t status = amdf_gpu_kfd_topology_query(endpoint, &topology);
   if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {

@@ -10,6 +10,8 @@
 #include "libamdf/src/platform/instance.h"
 
 struct amdf_platform_instance_t {
+  // Host allocator copied from the public provider instance.
+  amdf_allocator_t host_allocator;
   // Owned sysfs root used for discovery without process-global state.
   int sysfs_descriptor;
 };

@@ -8,8 +8,8 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include <stdlib.h>
 
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/gpu/umd/wddm/device.h"
 #include "libamdf/src/platform/windows/host_cache.h"
 
@@ -547,14 +547,13 @@ amdf_status_t amdf_gpu_umd_memory_create(
     return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
   }
 
-  const size_t memory_size =
-      offsetof(amdf_gpu_umd_memory_t, allocation_handles) +
-      (size_t)allocation_count * sizeof(D3DKMT_HANDLE);
-  amdf_gpu_umd_memory_t* memory =
-      (amdf_gpu_umd_memory_t*)calloc(1, memory_size);
-  if (memory == NULL) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
-  }
+  const size_t handle_bytes = (size_t)allocation_count * sizeof(D3DKMT_HANDLE);
+  amdf_gpu_umd_memory_t* memory = NULL;
+  status = amdf_calloc_with_trailing(
+      device->host_allocator,
+      offsetof(amdf_gpu_umd_memory_t, allocation_handles), handle_bytes,
+      _Alignof(amdf_gpu_umd_memory_t), (void**)&memory);
+  if (!amdf_status_is_ok(status)) return status;
   memory->device = device;
   memory->allocation_capacity = allocation_count;
   memory->maximum_native_allocation_byte_length =
@@ -609,7 +608,7 @@ amdf_status_t amdf_gpu_umd_memory_create(
     }
     // Native release stops before freeing backing that unreleased allocations
     // can still reference. Only unpublished metadata is unconditionally freed.
-    free(memory);
+    amdf_free(device->host_allocator, memory);
   }
   return status;
 }
@@ -617,7 +616,7 @@ amdf_status_t amdf_gpu_umd_memory_create(
 amdf_status_t amdf_gpu_umd_memory_destroy(amdf_gpu_umd_memory_t* memory) {
   const amdf_status_t status = amdf_windows_gpu_memory_release_native(memory);
   if (amdf_status_is_ok(status)) {
-    free(memory);
+    amdf_free(memory->device->host_allocator, memory);
   }
   return status;
 }
@@ -626,11 +625,11 @@ amdf_status_t amdf_gpu_umd_memory_map(
     amdf_gpu_umd_memory_t* memory, const amdf_memory_map_info_t* map_info,
     amdf_gpu_umd_host_mapping_t** out_mapping,
     amdf_gpu_umd_host_mapping_result_t* out_result) {
-  amdf_gpu_umd_host_mapping_t* mapping =
-      (amdf_gpu_umd_host_mapping_t*)calloc(1, sizeof(*mapping));
-  if (mapping == NULL) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
-  }
+  amdf_gpu_umd_host_mapping_t* mapping = NULL;
+  amdf_status_t status =
+      amdf_calloc(memory->device->host_allocator, sizeof(*mapping),
+                  _Alignof(amdf_gpu_umd_host_mapping_t), (void**)&mapping);
+  if (!amdf_status_is_ok(status)) return status;
   mapping->memory = memory;
   mapping->memory_byte_offset = map_info->byte_offset;
   mapping->pointer = (uint8_t*)memory->host_pointer + map_info->byte_offset;
@@ -691,6 +690,6 @@ amdf_status_t amdf_gpu_umd_host_mapping_cache_control(
 
 amdf_status_t amdf_gpu_umd_host_mapping_destroy(
     amdf_gpu_umd_host_mapping_t* mapping) {
-  free(mapping);
+  amdf_free(mapping->memory->device->host_allocator, mapping);
   return AMDF_STATUS_OK;
 }

@@ -66,6 +66,7 @@ iree_cc_library(
     ::buffer
     ::device_state
     amdf::headers
+    libamdf::src::allocator
     libamdf::src::platform::linux::endpoint
     libamdf::src::platform::linux::file
     libamdf::src::platform::linux::host_cache
@@ -88,6 +89,7 @@ iree_cc_library(
     ::buffer
     ::device_state
     amdf::headers
+    libamdf::src::allocator
     libamdf::src::platform::linux::host_cache
     libamdf::src::xdna::umd::memory
   PUBLIC
@@ -119,6 +121,7 @@ iree_cc_test(
     amdf::headers
     iree::third_party::google_test
     iree::third_party::google_test_main
+    libamdf::src::allocator
     libamdf::src::platform
     libamdf::src::platform::linux::endpoint
     libamdf::src::xdna::endpoint_profile

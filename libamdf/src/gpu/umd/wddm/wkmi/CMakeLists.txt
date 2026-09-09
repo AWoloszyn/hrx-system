@@ -48,6 +48,7 @@ amdf_windows_sidecar_library(
     "allocation.cc"
     "allocation.h"
     "bridge.cc"
+    "bridge_allocator.h"
     "dxcore_loader_compatibility.cc"
     "kernel_queue.cc"
     "kernel_queue.h"
@@ -84,6 +85,7 @@ iree_cc_test(
     "allocation.cc"
     "allocation.h"
     "allocation_test.cc"
+    "bridge_allocator.h"
   COPTS
     "/MT"
   DEFINES
@@ -107,6 +109,7 @@ iree_cc_test(
   SRCS
     "adapter_state.cc"
     "adapter_state.h"
+    "bridge_allocator.h"
     "kernel_queue.cc"
     "kernel_queue.h"
     "kernel_queue_test.cc"
@@ -153,6 +156,7 @@ iree_cc_library(
   DEPS
     ::bridge_api
     amdf::headers
+    libamdf::src::allocator
     libamdf::src::platform::windows::kmt_api
   PUBLIC
 )
@@ -172,6 +176,7 @@ iree_cc_test(
     amdf::headers
     iree::third_party::google_test
     iree::third_party::google_test_main
+    libamdf::src::allocator
   ENV
     "AMDF_WKMI_BRIDGE_PATH=$<TARGET_FILE:libamdf::src::gpu::umd::wddm::wkmi::fake_wkmi_bridge_test>"
   LABELS
@@ -210,6 +215,7 @@ iree_cc_test(
     amdf::headers
     iree::third_party::google_test
     iree::third_party::google_test_main
+    libamdf::src::allocator
   ENV
     "AMDF_WKMI_BRIDGE_PATH=$<TARGET_FILE:libamdf::src::gpu::umd::wddm::wkmi::fake_wkmi_bridge_test>"
   LABELS

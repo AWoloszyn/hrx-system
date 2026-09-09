@@ -6,8 +6,7 @@
 
 #include "libamdf/src/gpu/umd/kernel_queue.h"
 
-#include <stdlib.h>
-
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/gpu/umd/wddm/device.h"
 #include "libamdf/src/platform/wait.h"
 #include "libamdf/src/wait.h"
@@ -55,15 +54,15 @@ amdf_status_t amdf_gpu_umd_kernel_queue_create(
     default:
       return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
-  amdf_gpu_umd_kernel_queue_t* queue =
-      (amdf_gpu_umd_kernel_queue_t*)calloc(1, sizeof(*queue));
-  if (queue == NULL) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
-  }
+  amdf_gpu_umd_kernel_queue_t* queue = NULL;
+  amdf_status_t status =
+      amdf_calloc(device->host_allocator, sizeof(*queue),
+                  _Alignof(amdf_gpu_umd_kernel_queue_t), (void**)&queue);
+  if (!amdf_status_is_ok(status)) return status;
   queue->device = device;
   InitializeSRWLock(&queue->wait_lock);
 
-  amdf_status_t status = AMDF_STATUS_OK;
+  status = AMDF_STATUS_OK;
   queue->wait_event = CreateEventW(NULL, TRUE, FALSE, NULL);
   if (queue->wait_event == NULL) {
     status = amdf_make_status(AMDF_STATUS_DOMAIN_WIN32, GetLastError());
@@ -92,7 +91,7 @@ amdf_status_t amdf_gpu_umd_kernel_queue_create(
     if (queue->wait_event != NULL && !CloseHandle(queue->wait_event)) {
       status = amdf_make_status(AMDF_STATUS_DOMAIN_WIN32, GetLastError());
     }
-    free(queue);
+    amdf_free(device->host_allocator, queue);
   }
   return status;
 }
@@ -254,6 +253,6 @@ amdf_status_t amdf_gpu_umd_kernel_queue_destroy(
     }
     queue->wait_event = NULL;
   }
-  free(queue);
+  amdf_free(queue->device->host_allocator, queue);
   return AMDF_STATUS_OK;
 }

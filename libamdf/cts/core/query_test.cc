@@ -13,6 +13,11 @@
 
 namespace {
 
+static_assert(sizeof(amdf_allocator_t) == 4 * sizeof(void*));
+static_assert(offsetof(amdf_instance_create_info_t, host_allocator) ==
+              sizeof(amdf_input_structure_t));
+static_assert(sizeof(amdf_instance_create_info_t) ==
+              sizeof(amdf_input_structure_t) + sizeof(amdf_allocator_t));
 static_assert(offsetof(amdf_endpoint_info_t, queue_family_count) ==
               offsetof(amdf_endpoint_info_t, name) +
                   AMDF_ENDPOINT_NAME_CAPACITY);

@@ -7,8 +7,8 @@
 #include "libamdf/src/kernel_queue.h"
 
 #include <stddef.h>
-#include <stdlib.h>
 
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/device.h"
 #include "libamdf/src/structure.h"
 
@@ -19,6 +19,7 @@ amdf_status_t amdf_kernel_queue_initialize(
   if (!amdf_status_is_ok(status)) {
     return status;
   }
+  queue->host_allocator = amdf_device_host_allocator(device);
   queue->vtable = vtable;
   queue->device = device;
   queue->info = *info;
@@ -93,8 +94,9 @@ amdf_status_t AMDF_CALL amdf_kernel_queue_destroy(amdf_kernel_queue_t* queue) {
   }
   const amdf_status_t status = queue->vtable->destroy_native(queue);
   if (amdf_status_is_ok(status)) {
+    const amdf_allocator_t host_allocator = queue->host_allocator;
     amdf_kernel_queue_deinitialize(queue);
-    free(queue);
+    amdf_free(host_allocator, queue);
   }
   return status;
 }

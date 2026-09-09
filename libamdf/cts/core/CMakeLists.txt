@@ -14,6 +14,7 @@ iree_cc_library(
   NAME
     core_tests
   SRCS
+    "allocator_test.cc"
     "discovery_test.cc"
     "query_test.cc"
   DEPS

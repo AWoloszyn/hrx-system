@@ -7,8 +7,8 @@
 #include "libamdf/src/device.h"
 
 #include <stddef.h>
-#include <stdlib.h>
 
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/endpoint.h"
 
 amdf_status_t amdf_device_initialize(amdf_device_t* device,
@@ -19,6 +19,7 @@ amdf_status_t amdf_device_initialize(amdf_device_t* device,
   if (!amdf_status_is_ok(status)) {
     return status;
   }
+  device->host_allocator = amdf_endpoint_host_allocator(endpoint);
   device->vtable = vtable;
   device->endpoint = endpoint;
   device->engine_kind = engine_kind;
@@ -34,6 +35,10 @@ void amdf_device_deinitialize(amdf_device_t* device) {
 bool amdf_device_is_engine(const amdf_device_t* device,
                            amdf_engine_kind_t expected_engine_kind) {
   return device != NULL && device->engine_kind == expected_engine_kind;
+}
+
+amdf_allocator_t amdf_device_host_allocator(const amdf_device_t* device) {
+  return device->host_allocator;
 }
 
 amdf_status_t amdf_device_register_child(amdf_device_t* device) {
@@ -53,8 +58,9 @@ amdf_status_t AMDF_CALL amdf_device_destroy(amdf_device_t* device) {
   }
   const amdf_status_t status = device->vtable->destroy_native(device);
   if (amdf_status_is_ok(status)) {
+    const amdf_allocator_t host_allocator = device->host_allocator;
     amdf_device_deinitialize(device);
-    free(device);
+    amdf_free(host_allocator, device);
   }
   return status;
 }

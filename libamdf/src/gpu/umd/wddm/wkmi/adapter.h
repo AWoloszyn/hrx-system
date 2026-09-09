@@ -30,7 +30,8 @@ typedef struct amdf_gpu_wddm_wkmi_adapter_t {
 // structures unchanged and creates no native adapter ownership.
 amdf_status_t amdf_gpu_wddm_wkmi_adapter_initialize(
     const amdf_gpu_wddm_wkmi_loader_t* loader, D3DKMT_HANDLE adapter,
-    uint32_t physical_adapter_index, amdf_gpu_wddm_wkmi_adapter_t* out_adapter,
+    uint32_t physical_adapter_index, amdf_allocator_t host_allocator,
+    amdf_gpu_wddm_wkmi_adapter_t* out_adapter,
     amdf_wkmi_bridge_gpu_properties_t* out_properties);
 
 // Releases parsed state after every dependent bridge object is gone.

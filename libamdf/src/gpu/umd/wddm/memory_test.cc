@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/gpu/umd/wddm/device.h"
 
 namespace {
@@ -45,6 +46,8 @@ struct FakeMemoryState {
   NTSTATUS destroy_status = 0;
   // Host backing borrowed by native allocation creation, if any.
   void* host_pointer = nullptr;
+  // Number of memory headers returned to the host allocator.
+  uint32_t metadata_free_count = 0;
   // Next fence value assigned to an accepted paging operation.
   uint64_t next_paging_fence = 1;
   // Fence whose CPU wait should fail, or zero for none.
@@ -219,6 +222,12 @@ class WindowsGpuMemoryTest : public ::testing::Test {
     kmt_.evict = FakeEvict;
     kmt_.invalidate_cache = FakeUnexpectedInvalidateCache;
     kmt_.wait_from_cpu = FakeWaitFromCpu;
+    device_.host_allocator = amdf_allocator_system();
+    device_.host_allocator.user_data = &state_;
+    device_.host_allocator.free = [](void* user_data, void* allocation) {
+      ++static_cast<FakeMemoryState*>(user_data)->metadata_free_count;
+      amdf_free(amdf_allocator_system(), allocation);
+    };
     device_.kmt = &kmt_;
     device_.adapter = 0x08;
     device_.device = 0x10;
@@ -306,6 +315,7 @@ TEST_F(WindowsGpuMemoryTest,
       amdf_kmt_make_status(kStatusNoMemory));
   EXPECT_EQ(memory, nullptr);
   EXPECT_EQ(std::memcmp(&result, &original_result, sizeof(result)), 0);
+  EXPECT_EQ(state_.metadata_free_count, 1u);
   EXPECT_EQ(state_.operations,
             (std::vector<Operation>{
                 Operation::kQueryLayout, Operation::kReserveAddress,
@@ -330,6 +340,7 @@ TEST_F(WindowsGpuMemoryTest, MalformedUngroupedAllocationReleasesValidHandles) {
       amdf_kmt_make_status(STATUS_INVALID_HANDLE));
   EXPECT_EQ(memory, nullptr);
   EXPECT_EQ(std::memcmp(&result, &original_result, sizeof(result)), 0);
+  EXPECT_EQ(state_.metadata_free_count, 1u);
   EXPECT_EQ(state_.operations,
             (std::vector<Operation>{
                 Operation::kQueryLayout, Operation::kReserveAddress,

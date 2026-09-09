@@ -9,6 +9,8 @@
 
 #include <stdint.h>
 
+#include "amdf/amdf.h"
+
 #if defined(_WIN32)
 #define AMDF_WKMI_BRIDGE_CALL __cdecl
 #else
@@ -22,8 +24,11 @@ extern "C" {
 // First supported private bridge ABI version.
 #define AMDF_WKMI_BRIDGE_ABI_VERSION_1 1u
 
+// First version carrying the instance allocator across the DLL boundary.
+#define AMDF_WKMI_BRIDGE_ABI_VERSION_2 2u
+
 // Most recent private bridge ABI version described by this header.
-#define AMDF_WKMI_BRIDGE_ABI_VERSION_LATEST AMDF_WKMI_BRIDGE_ABI_VERSION_1
+#define AMDF_WKMI_BRIDGE_ABI_VERSION_LATEST AMDF_WKMI_BRIDGE_ABI_VERSION_2
 
 // Result of one bridge operation.
 typedef uint32_t amdf_wkmi_bridge_result_t;
@@ -195,7 +200,7 @@ _Static_assert(sizeof(amdf_wkmi_bridge_gpu_kernel_queue_info_t) == 40,
                "WKMI queue info ABI must remain stable");
 #endif
 
-// Immutable entry-point table for private bridge ABI version 1.
+// Immutable entry-point table for private bridge ABI version 2.
 typedef struct amdf_wkmi_bridge_api_t {
   // Size in bytes of this table version.
   uint32_t structure_size;
@@ -206,12 +211,15 @@ typedef struct amdf_wkmi_bridge_api_t {
   //
   // |adapter_handle| is a live D3DKMT adapter handle and
   // |physical_adapter_index| selects one physical adapter represented by it.
+  // |host_allocator| is copied into the adapter and must remain callable until
+  // adapter close succeeds.
   // Success publishes the adapter and properties. Every other result leaves
   // both outputs unchanged and retains no native adapter ownership.
   // |out_native_status| receives the NTSTATUS only for
   // AMDF_WKMI_BRIDGE_RESULT_NATIVE_FAILURE and is zero otherwise.
   amdf_wkmi_bridge_result_t(AMDF_WKMI_BRIDGE_CALL* gpu_adapter_open)(
       uint32_t adapter_handle, uint32_t physical_adapter_index,
+      const amdf_allocator_t* host_allocator,
       amdf_wkmi_bridge_gpu_adapter_t** out_adapter,
       amdf_wkmi_bridge_gpu_properties_t* out_properties,
       uint32_t* out_native_status);

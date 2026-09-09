@@ -17,6 +17,7 @@ amdf_cc_library(
     name = "core_tests",
     testonly = True,
     srcs = [
+        "allocator_test.cc",
         "discovery_test.cc",
         "query_test.cc",
     ],

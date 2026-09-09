@@ -8,11 +8,11 @@
 
 #include <drm/amdxdna_accel.h>
 #include <stddef.h>
-#include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/platform/linux/endpoint.h"
 #include "libamdf/src/platform/linux/file.h"
 #include "libamdf/src/platform/linux/host_cache.h"
@@ -46,7 +46,10 @@ amdf_status_t amdf_xdna_umd_device_destroy(amdf_xdna_umd_device_t* device) {
   if (amdf_status_is_ok(status)) {
     status = amdf_linux_file_close(&device->descriptor);
   }
-  if (amdf_status_is_ok(status)) free(device);
+  if (amdf_status_is_ok(status)) {
+    const amdf_allocator_t host_allocator = device->host_allocator;
+    amdf_free(host_allocator, device);
+  }
   return status;
 }
 
@@ -84,7 +87,7 @@ amdf_status_t amdf_xdna_umd_device_create(
     amdf_platform_endpoint_t* endpoint,
     const amdf_xdna_endpoint_profile_t* profile,
     const amdf_xdna_device_create_info_t* create_info,
-    amdf_xdna_umd_device_t** out_device,
+    amdf_allocator_t host_allocator, amdf_xdna_umd_device_t** out_device,
     amdf_xdna_umd_device_result_t* out_result) {
   if (profile->model != AMDF_PCI_XDNA_MODEL_NPU5 ||
       endpoint->driver.major_version != 0 ||
@@ -97,14 +100,15 @@ amdf_status_t amdf_xdna_umd_device_create(
            profile->info->array.column_origin)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
-  amdf_xdna_umd_device_t* device = calloc(1, sizeof(*device));
-  if (device == NULL) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
-  }
+  amdf_xdna_umd_device_t* device = NULL;
+  amdf_status_t status =
+      amdf_calloc(host_allocator, sizeof(*device),
+                  _Alignof(amdf_xdna_umd_device_t), (void**)&device);
+  if (!amdf_status_is_ok(status)) return status;
+  device->host_allocator = host_allocator;
   device->descriptor = -1;
   device->context = AMDXDNA_INVALID_CTX_HANDLE;
-  amdf_status_t status =
-      amdf_linux_endpoint_open_file(endpoint, &device->descriptor);
+  status = amdf_linux_endpoint_open_file(endpoint, &device->descriptor);
   if (amdf_status_is_ok(status)) {
     status = amdf_linux_xdna_device_qualify(device, profile);
   }
@@ -170,7 +174,7 @@ amdf_status_t amdf_xdna_umd_device_create(
       // can close without retaining this unpublished host metadata.
       const amdf_status_t close_status =
           amdf_linux_file_close(&device->descriptor);
-      free(device);
+      amdf_free(host_allocator, device);
       status = release_status;
       if (!amdf_status_is_ok(close_status)) status = close_status;
     }

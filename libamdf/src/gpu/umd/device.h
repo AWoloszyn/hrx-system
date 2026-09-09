@@ -26,8 +26,8 @@ typedef struct amdf_gpu_umd_device_result_t {
 
 // Creates one program-independent native GPU execution and address domain.
 amdf_status_t amdf_gpu_umd_device_create(
-    amdf_platform_endpoint_t* endpoint, amdf_gpu_device_mode_t mode,
-    amdf_gpu_umd_device_t** out_device,
+    amdf_platform_endpoint_t* endpoint, amdf_allocator_t host_allocator,
+    amdf_gpu_device_mode_t mode, amdf_gpu_umd_device_t** out_device,
     amdf_gpu_umd_device_result_t* out_result);
 
 // Releases native GPU device state in reverse ownership order.

@@ -14,6 +14,8 @@
 
 // Concrete Windows state backing one program-independent GPU device.
 struct amdf_gpu_umd_device_t {
+  // Host allocator copied for this device and child metadata.
+  amdf_allocator_t host_allocator;
   // KMT table borrowed from the endpoint's platform instance.
   const amdf_kmt_api_t* kmt;
   // Adapter handle borrowed from the endpoint owning this device.

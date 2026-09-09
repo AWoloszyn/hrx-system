@@ -8,8 +8,8 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include <stdlib.h>
 
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/pci.h"
 #include "libamdf/src/platform/windows/endpoint_properties.h"
 #include "libamdf/src/platform/windows/instance.h"
@@ -31,11 +31,11 @@ amdf_status_t amdf_platform_endpoint_open(
   if (!amdf_kmt_api_supports_endpoint_discovery(&instance->kmt)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
-  amdf_platform_endpoint_t* endpoint =
-      (amdf_platform_endpoint_t*)calloc(1, sizeof(*endpoint));
-  if (endpoint == NULL) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
-  }
+  amdf_platform_endpoint_t* endpoint = NULL;
+  amdf_status_t status =
+      amdf_calloc(instance->host_allocator, sizeof(*endpoint),
+                  _Alignof(amdf_platform_endpoint_t), (void**)&endpoint);
+  if (!amdf_status_is_ok(status)) return status;
   endpoint->instance = instance;
 
   LUID adapter_luid;
@@ -45,7 +45,7 @@ amdf_status_t amdf_platform_endpoint_open(
   endpoint->id = *id;
   D3DKMT_OPENADAPTERFROMLUID open_adapter = {0};
   open_adapter.AdapterLuid = adapter_luid;
-  amdf_status_t status =
+  status =
       amdf_kmt_make_status(instance->kmt.open_adapter_from_luid(&open_adapter));
   endpoint->adapter = open_adapter.hAdapter;
   if (amdf_status_is_ok(status) && endpoint->adapter == 0) {
@@ -84,7 +84,7 @@ amdf_status_t amdf_platform_endpoint_open(
       status = close_status;
     }
     // Query handles have no accepted work borrowing this unpublished object.
-    free(endpoint);
+    amdf_free(instance->host_allocator, endpoint);
   }
   return status;
 }
@@ -108,7 +108,7 @@ amdf_platform_endpoint_query_queue_publication_modes(
 amdf_status_t amdf_platform_endpoint_close(amdf_platform_endpoint_t* endpoint) {
   const amdf_status_t status = amdf_windows_close_endpoint_adapter(endpoint);
   if (amdf_status_is_ok(status)) {
-    free(endpoint);
+    amdf_free(endpoint->instance->host_allocator, endpoint);
   }
   return status;
 }

@@ -8,13 +8,15 @@
 
 #include <drm/amdxdna_accel.h>
 #include <stdint.h>
-#include <stdlib.h>
 
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/platform/linux/host_cache.h"
 #include "libamdf/src/xdna/umd/drm/device.h"
 #include "libamdf/src/xdna/umd/drm/memory.h"
 
 struct amdf_xdna_umd_host_mapping_t {
+  // Host allocator copied for independent mapping teardown.
+  amdf_allocator_t host_allocator;
   // View into the attachment's persistent mapping, never independently
   // unmapped.
   void* pointer;
@@ -25,7 +27,9 @@ struct amdf_xdna_umd_host_mapping_t {
 amdf_status_t amdf_xdna_umd_memory_destroy(amdf_xdna_umd_memory_t* memory) {
   const amdf_status_t status = amdf_linux_xdna_buffer_deinitialize(
       memory->device->descriptor, &memory->buffer);
-  if (amdf_status_is_ok(status)) free(memory);
+  if (amdf_status_is_ok(status)) {
+    amdf_free(memory->device->host_allocator, memory);
+  }
   return status;
 }
 
@@ -35,7 +39,7 @@ static amdf_status_t amdf_linux_xdna_memory_discard(
       memory->device->descriptor, &memory->buffer);
   // Failed native release leaves its remaining mappings and GEM references
   // intact. Unpublished metadata does not become a parent-owned retry record.
-  free(memory);
+  amdf_free(memory->device->host_allocator, memory);
   return status;
 }
 
@@ -62,13 +66,14 @@ amdf_status_t amdf_xdna_umd_memory_create(
   const size_t byte_length =
       (create_info->byte_length + device->page_size - 1) &
       ~(device->page_size - 1);
-  amdf_xdna_umd_memory_t* memory = calloc(1, sizeof(*memory));
-  if (memory == NULL) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
-  }
+  amdf_xdna_umd_memory_t* memory = NULL;
+  amdf_status_t status =
+      amdf_calloc(device->host_allocator, sizeof(*memory),
+                  _Alignof(amdf_xdna_umd_memory_t), (void**)&memory);
+  if (!amdf_status_is_ok(status)) return status;
   memory->device = device;
-  amdf_status_t status = amdf_linux_xdna_buffer_create(
-      device->descriptor, AMDXDNA_BO_SHARE, byte_length, &memory->buffer);
+  status = amdf_linux_xdna_buffer_create(device->descriptor, AMDXDNA_BO_SHARE,
+                                         byte_length, &memory->buffer);
   if (amdf_status_is_ok(status)) {
     status =
         amdf_linux_xdna_buffer_attach(device->descriptor, alignment,
@@ -98,10 +103,12 @@ amdf_status_t amdf_xdna_umd_memory_map(
     amdf_xdna_umd_memory_t* memory, const amdf_memory_map_info_t* map_info,
     amdf_xdna_umd_host_mapping_t** out_mapping,
     amdf_xdna_umd_host_mapping_result_t* out_result) {
-  amdf_xdna_umd_host_mapping_t* mapping = calloc(1, sizeof(*mapping));
-  if (mapping == NULL) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
-  }
+  amdf_xdna_umd_host_mapping_t* mapping = NULL;
+  amdf_status_t status =
+      amdf_calloc(memory->device->host_allocator, sizeof(*mapping),
+                  _Alignof(amdf_xdna_umd_host_mapping_t), (void**)&mapping);
+  if (!amdf_status_is_ok(status)) return status;
+  mapping->host_allocator = memory->device->host_allocator;
   mapping->pointer =
       (uint8_t*)memory->buffer.host_pointer + map_info->byte_offset;
   mapping->cache_line_size = memory->device->cache_line_size;
@@ -129,6 +136,6 @@ amdf_status_t amdf_xdna_umd_host_mapping_cache_control(
 
 amdf_status_t amdf_xdna_umd_host_mapping_destroy(
     amdf_xdna_umd_host_mapping_t* mapping) {
-  free(mapping);
+  amdf_free(mapping->host_allocator, mapping);
   return AMDF_STATUS_OK;
 }

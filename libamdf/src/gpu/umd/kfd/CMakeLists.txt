@@ -65,6 +65,7 @@ iree_cc_library(
     ::file
     ::topology
     amdf::headers
+    libamdf::src::allocator
     libamdf::src::platform::linux::endpoint
     libamdf::src::platform::linux::file
     libamdf::src::platform::linux::host_cache
@@ -82,6 +83,7 @@ iree_cc_library(
     ::device_state
     ::topology
     amdf::headers
+    libamdf::src::allocator
     libamdf::src::gpu::umd::memory
     libamdf::src::platform::linux::file
   PUBLIC

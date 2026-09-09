@@ -6,12 +6,14 @@
 
 #include "libamdf/src/gpu/umd/device.h"
 
+#include <malloc.h>
+
 #include <cstdint>
-#include <cstdlib>
 #include <cstring>
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/platform/windows/endpoint.h"
 
 namespace {
@@ -35,6 +37,8 @@ struct FakeKmtState {
   D3DKMT_HANDLE paging_sync_object = 0;
   // Ordered native KMT operations used to verify local and published ownership.
   std::vector<Operation> operations;
+  // Host allocations still owned by endpoint/device bookkeeping.
+  uint32_t live_allocation_count = 0;
   // Number of successfully released paging queues.
   uint32_t paging_queue_destroy_success_count = 0;
   // Number of successfully released logical devices.
@@ -46,6 +50,23 @@ struct FakeKmtState {
 };
 
 FakeKmtState* current_state = nullptr;
+
+void* AMDF_CALL Allocate(void* user_data, uint64_t byte_length,
+                         uint64_t minimum_alignment) {
+  auto* state = static_cast<FakeKmtState*>(user_data);
+  void* pointer = _aligned_malloc(static_cast<size_t>(byte_length),
+                                  static_cast<size_t>(minimum_alignment));
+  if (pointer != nullptr) ++state->live_allocation_count;
+  return pointer;
+}
+
+void AMDF_CALL Free(void* user_data, void* allocation) {
+  if (allocation == nullptr) return;
+  auto* state = static_cast<FakeKmtState*>(user_data);
+  EXPECT_NE(state->live_allocation_count, 0u);
+  --state->live_allocation_count;
+  _aligned_free(allocation);
+}
 
 NTSTATUS APIENTRY FakeCreateDevice(D3DKMT_CREATEDEVICE* create) {
   current_state->operations.push_back(Operation::kCreateDevice);
@@ -102,6 +123,8 @@ class WindowsGpuDeviceRollbackTest : public ::testing::Test {
  protected:
   void SetUp() override {
     current_state = &state_;
+    instance_.host_allocator = {
+        .user_data = &state_, .allocate = Allocate, .free = Free};
     instance_.kmt.create_device = FakeCreateDevice;
     instance_.kmt.destroy_device = FakeDestroyDevice;
     instance_.kmt.get_device_state = FakeGetDeviceState;
@@ -109,9 +132,10 @@ class WindowsGpuDeviceRollbackTest : public ::testing::Test {
     instance_.kmt.destroy_paging_queue = FakeDestroyPagingQueue;
     instance_.kmt.close_adapter = FakeCloseAdapter;
 
-    endpoint_ = static_cast<amdf_platform_endpoint_t*>(
-        std::calloc(1, sizeof(*endpoint_)));
-    ASSERT_NE(endpoint_, nullptr);
+    ASSERT_EQ(amdf_calloc(instance_.host_allocator, sizeof(*endpoint_),
+                          alignof(amdf_platform_endpoint_t),
+                          reinterpret_cast<void**>(&endpoint_)),
+              AMDF_STATUS_OK);
     endpoint_->instance = &instance_;
     endpoint_->adapter = 0x08;
     endpoint_->physical_adapter_index = 0;
@@ -169,6 +193,7 @@ class WindowsGpuDeviceRollbackTest : public ::testing::Test {
       EXPECT_TRUE(FreeLibrary(bridge_module_));
       bridge_module_ = nullptr;
     }
+    EXPECT_EQ(state_.live_allocation_count, 0u);
     current_state = nullptr;
   }
 
@@ -193,11 +218,13 @@ TEST_F(WindowsGpuDeviceRollbackTest,
   const amdf_gpu_umd_device_result_t original = result;
 
   const amdf_status_t status = amdf_gpu_umd_device_create(
-      endpoint_, AMDF_GPU_DEVICE_MODE_INDEPENDENT, &device, &result);
+      endpoint_, instance_.host_allocator, AMDF_GPU_DEVICE_MODE_INDEPENDENT,
+      &device, &result);
 
   EXPECT_EQ(amdf_status_code(status), AMDF_STATUS_CODE_BUSY);
   EXPECT_EQ(reinterpret_cast<uintptr_t>(device), uintptr_t{1});
   EXPECT_EQ(std::memcmp(&result, &original, sizeof(result)), 0);
+  EXPECT_EQ(state_.live_allocation_count, 1u);
   EXPECT_EQ(state_.operations,
             (std::vector<Operation>{Operation::kCreateDevice,
                                     Operation::kCreatePagingQueue}));
@@ -219,6 +246,7 @@ TEST_F(WindowsGpuDeviceRollbackTest,
   EXPECT_EQ(state_.paging_queue_destroy_success_count, 0u);
   EXPECT_EQ(state_.device_destroy_success_count, 0u);
   EXPECT_EQ(state_.adapter_close_success_count, 1u);
+  EXPECT_EQ(state_.live_allocation_count, 0u);
 }
 
 TEST_F(WindowsGpuDeviceRollbackTest,
@@ -229,11 +257,13 @@ TEST_F(WindowsGpuDeviceRollbackTest,
   amdf_gpu_umd_device_result_t result;
   std::memset(&result, 0xA5, sizeof(result));
   const amdf_gpu_umd_device_result_t original = result;
-  EXPECT_EQ(amdf_gpu_umd_device_create(
-                endpoint_, AMDF_GPU_DEVICE_MODE_INDEPENDENT, &device, &result),
+  EXPECT_EQ(amdf_gpu_umd_device_create(endpoint_, instance_.host_allocator,
+                                       AMDF_GPU_DEVICE_MODE_INDEPENDENT,
+                                       &device, &result),
             amdf_kmt_make_status(kFailure));
   EXPECT_EQ(reinterpret_cast<uintptr_t>(device), uintptr_t{1});
   EXPECT_EQ(std::memcmp(&result, &original, sizeof(result)), 0);
+  EXPECT_EQ(state_.live_allocation_count, 1u);
   EXPECT_EQ(amdf_platform_endpoint_close(endpoint_), AMDF_STATUS_OK);
   endpoint_ = nullptr;
   EXPECT_EQ(state_.operations,
@@ -244,6 +274,7 @@ TEST_F(WindowsGpuDeviceRollbackTest,
   EXPECT_EQ(query_bridge_close_success_count_(), 1u);
   EXPECT_EQ(state_.paging_queue_destroy_success_count, 0u);
   EXPECT_EQ(state_.device_destroy_success_count, 0u);
+  EXPECT_EQ(state_.live_allocation_count, 0u);
 }
 
 TEST_F(WindowsGpuDeviceRollbackTest,
@@ -252,16 +283,19 @@ TEST_F(WindowsGpuDeviceRollbackTest,
   state_.paging_sync_object = 0x30;
   amdf_gpu_umd_device_t* device = nullptr;
   amdf_gpu_umd_device_result_t result = {};
-  ASSERT_EQ(amdf_gpu_umd_device_create(
-                endpoint_, AMDF_GPU_DEVICE_MODE_INDEPENDENT, &device, &result),
+  ASSERT_EQ(amdf_gpu_umd_device_create(endpoint_, instance_.host_allocator,
+                                       AMDF_GPU_DEVICE_MODE_INDEPENDENT,
+                                       &device, &result),
             AMDF_STATUS_OK);
   EXPECT_EQ(amdf_gpu_umd_device_destroy(device),
             amdf_kmt_make_status(kFailure));
+  EXPECT_EQ(state_.live_allocation_count, 2u);
   EXPECT_EQ(state_.device_destroy_success_count, 0u);
   EXPECT_EQ(amdf_gpu_umd_device_destroy(device), AMDF_STATUS_OK);
   EXPECT_EQ(query_bridge_close_attempt_count_(), 1u);
   EXPECT_EQ(state_.paging_queue_destroy_success_count, 1u);
   EXPECT_EQ(state_.device_destroy_success_count, 1u);
+  EXPECT_EQ(state_.live_allocation_count, 1u);
 }
 
 }  // namespace

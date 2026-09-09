@@ -7,8 +7,7 @@
 #define _GNU_SOURCE
 #include "libamdf/src/gpu/umd/kfd/device.h"
 
-#include <stdlib.h>
-
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/gpu/umd/kfd/file.h"
 #include "libamdf/src/platform/linux/endpoint.h"
 #include "libamdf/src/platform/linux/host_cache.h"
@@ -18,24 +17,28 @@ amdf_status_t amdf_gpu_umd_device_destroy(amdf_gpu_umd_device_t* device) {
   if (amdf_status_is_ok(status)) {
     status = amdf_linux_file_close(&device->render_descriptor);
   }
-  if (amdf_status_is_ok(status)) free(device);
+  if (amdf_status_is_ok(status)) {
+    const amdf_allocator_t host_allocator = device->host_allocator;
+    amdf_free(host_allocator, device);
+  }
   return status;
 }
 
 amdf_status_t amdf_gpu_umd_device_create(
-    amdf_platform_endpoint_t* endpoint, amdf_gpu_device_mode_t mode,
-    amdf_gpu_umd_device_t** out_device,
+    amdf_platform_endpoint_t* endpoint, amdf_allocator_t host_allocator,
+    amdf_gpu_device_mode_t mode, amdf_gpu_umd_device_t** out_device,
     amdf_gpu_umd_device_result_t* out_result) {
-  amdf_gpu_umd_device_t* device = calloc(1, sizeof(*device));
-  if (device == NULL) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
-  }
+  amdf_gpu_umd_device_t* device = NULL;
+  amdf_status_t status =
+      amdf_calloc(host_allocator, sizeof(*device),
+                  _Alignof(amdf_gpu_umd_device_t), (void**)&device);
+  if (!amdf_status_is_ok(status)) return status;
+  device->host_allocator = host_allocator;
   device->descriptor = -1;
   device->render_descriptor = -1;
   device->mode = mode;
 
-  amdf_status_t status =
-      amdf_gpu_kfd_topology_query(endpoint, &device->topology);
+  status = amdf_gpu_kfd_topology_query(endpoint, &device->topology);
   const long page_size = sysconf(_SC_PAGESIZE);
   if (amdf_status_is_ok(status)) {
     if (page_size <= 0 || (page_size & (page_size - 1)) != 0 ||
@@ -85,7 +88,7 @@ amdf_status_t amdf_gpu_umd_device_create(
     if (!amdf_status_is_ok(release_status)) {
       // Native cleanup retains any unreleased backing. Only unpublished host
       // metadata is abandoned here; the endpoint owns no retry obligation.
-      free(device);
+      amdf_free(host_allocator, device);
       status = release_status;
     }
   }
