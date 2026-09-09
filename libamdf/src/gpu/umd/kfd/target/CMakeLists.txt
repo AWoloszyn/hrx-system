@@ -9,4 +9,53 @@
 
 iree_add_all_subdirs()
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_library(
+  NAME
+    queue_plan
+  HDRS
+    "queue_plan.h"
+  DEPS
+    amdf::headers
+    libamdf::src::gpu::endpoint_profile
+    libamdf::src::gpu::umd::kfd::buffer
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_library(
+  NAME
+    user_queue
+  HDRS
+    "user_queue.h"
+  SRCS
+    "user_queue.c"
+  DEPS
+    ::queue_plan
+    amdf::headers
+    libamdf::src::gpu::umd::kfd::target::gfx1151::pm4_queue
+    libamdf::src::gpu::umd::kfd::target::gfx1151::sdma_queue
+    libamdf::src::gpu::umd::kfd::topology
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_test(
+  NAME
+    user_queue_test
+  SRCS
+    "user_queue_test.cc"
+  DEPS
+    ::user_queue
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+)
+endif()
+
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

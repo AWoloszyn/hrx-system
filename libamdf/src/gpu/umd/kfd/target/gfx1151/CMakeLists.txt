@@ -19,8 +19,23 @@ iree_cc_library(
     "pm4_queue.c"
   DEPS
     amdf::headers
-    libamdf::src::gpu::endpoint_profile
-    libamdf::src::gpu::umd::kfd::buffer
+    libamdf::src::gpu::umd::kfd::target::queue_plan
+    libamdf::src::gpu::umd::kfd::topology
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_library(
+  NAME
+    sdma_queue
+  HDRS
+    "sdma_queue.h"
+  SRCS
+    "sdma_queue.c"
+  DEPS
+    amdf::headers
+    libamdf::src::gpu::umd::kfd::target::queue_plan
     libamdf::src::gpu::umd::kfd::topology
   PUBLIC
 )

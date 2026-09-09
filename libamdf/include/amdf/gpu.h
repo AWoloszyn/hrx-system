@@ -193,9 +193,16 @@ typedef struct amdf_gpu_device_info_t {
 
 /// First native SDMA command-stream format.
 ///
-/// Command encoding remains target-specific. Direct-publication index and
-/// notification semantics are defined by the advertised family and mapping;
-/// kernel publication accepts an immutable dword-aligned command stream.
+/// The primary ring contains native target-specific SDMA dwords. Read and
+/// write indices are naturally aligned 64-bit monotonic byte counts; each
+/// index selects storage modulo `ring_byte_length`. A producer never advances
+/// more than that capacity beyond the acquired read index. After storing
+/// complete packets into the ring, the producer performs a release store of
+/// the new write index followed by a release store of the same value to the
+/// 64-bit doorbell. An acquire load of a read index at least that value proves
+/// the corresponding ring bytes are no longer in use by the queue. Packet
+/// encoding, alignment, and boundary padding remain target-specific rules.
+/// Kernel publication accepts an immutable dword-aligned command stream.
 #define AMDF_GPU_SDMA_QUEUE_FORMAT_VERSION_1 1u
 
 /// Scratch backing borrowed by one directly published compute queue.

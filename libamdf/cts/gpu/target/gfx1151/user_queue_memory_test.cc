@@ -20,9 +20,15 @@ constexpr size_t kElementCount = 16;
 constexpr uint64_t kMemoryByteLength = 4096;
 constexpr uint64_t kCompletionByteOffset = 256;
 constexpr uint32_t kCompletionValue = UINT32_C(0x71c04a5e);
-constexpr size_t kPublishedDwordCount = 128;
+constexpr size_t kPm4PublishedDwordCount = 128;
+constexpr size_t kSdmaPublishedDwordCount = 22;
 constexpr amdf_queue_roles_t kRequiredQueueRoles =
     AMDF_QUEUE_ROLE_TRANSFER | AMDF_QUEUE_ROLE_CACHE_CONTROL;
+
+struct EncodedQueueStream {
+  size_t byte_length;
+  uint64_t published_index;
+};
 
 uint32_t MakePm4Header(uint32_t opcode, uint32_t dword_count) {
   return (UINT32_C(3) << 30) | (opcode << 8) | ((dword_count - 2) << 16);
@@ -86,8 +92,8 @@ void AppendWriteData32(uint32_t* words, size_t* ordinal,
   words[(*ordinal)++] = value;
 }
 
-size_t EncodeCopyStream(uint32_t* words, uint64_t source_address,
-                        uint64_t target_address) {
+size_t EncodePm4CopyStream(uint32_t* words, uint64_t source_address,
+                           uint64_t target_address) {
   size_t ordinal = 0;
   AppendSystemBarrier(words, &ordinal);
   for (size_t i = 0; i < kElementCount; ++i) {
@@ -106,9 +112,72 @@ size_t EncodeCopyStream(uint32_t* words, uint64_t source_address,
   return ordinal + padding_dword_count;
 }
 
-class Gfx1151Pm4MemoryTest : public GpuDeviceFixture {
+void AppendSdmaCacheTransition(uint32_t* words, size_t* ordinal,
+                               uint32_t control) {
+  words[(*ordinal)++] = 17;
+  words[(*ordinal)++] = 0;
+  words[(*ordinal)++] = (control & UINT32_C(0xffff)) << 16;
+  words[(*ordinal)++] = control >> 16;
+  words[(*ordinal)++] = 0;
+}
+
+size_t EncodeSdmaCopyStream(uint32_t* words, uint64_t source_address,
+                            uint64_t target_address) {
+  enum : uint32_t {
+    kAcquireControl = 0x043a1,
+    kReleaseControl = 0x0c3a1,
+    kCopyByteLength = kElementCount * sizeof(uint32_t),
+    kUncachedFenceHeader = 5 | (3 << 16),
+  };
+  size_t ordinal = 0;
+  AppendSdmaCacheTransition(words, &ordinal, kAcquireControl);
+  words[ordinal++] = 1;
+  words[ordinal++] = kCopyByteLength - 1;
+  words[ordinal++] = 0;
+  words[ordinal++] = static_cast<uint32_t>(source_address);
+  words[ordinal++] = static_cast<uint32_t>(source_address >> 32);
+  words[ordinal++] = static_cast<uint32_t>(target_address);
+  words[ordinal++] = static_cast<uint32_t>(target_address >> 32);
+  AppendSdmaCacheTransition(words, &ordinal, kReleaseControl);
+  const uint64_t completion_address = target_address + kCompletionByteOffset;
+  words[ordinal++] = kUncachedFenceHeader;
+  words[ordinal++] = static_cast<uint32_t>(completion_address);
+  words[ordinal++] = static_cast<uint32_t>(completion_address >> 32);
+  words[ordinal++] = kCompletionValue;
+  words[ordinal++] = 0;
+  return ordinal;
+}
+
+EncodedQueueStream EncodeCopyStream(amdf_queue_command_type_t command_type,
+                                    uint32_t* words, uint64_t source_address,
+                                    uint64_t target_address) {
+  if (command_type == AMDF_QUEUE_COMMAND_TYPE_GPU_PM4) {
+    const size_t dword_count =
+        EncodePm4CopyStream(words, source_address, target_address);
+    return {
+        .byte_length = dword_count * sizeof(uint32_t),
+        .published_index = dword_count,
+    };
+  }
+  const size_t dword_count =
+      EncodeSdmaCopyStream(words, source_address, target_address);
+  return {
+      .byte_length = dword_count * sizeof(uint32_t),
+      .published_index = dword_count * sizeof(uint32_t),
+  };
+}
+
+uint32_t QueueFormatVersion(amdf_queue_command_type_t command_type) {
+  return command_type == AMDF_QUEUE_COMMAND_TYPE_GPU_PM4
+             ? AMDF_GPU_PM4_QUEUE_FORMAT_VERSION_1
+             : AMDF_GPU_SDMA_QUEUE_FORMAT_VERSION_1;
+}
+
+class Gfx1151UserQueueMemoryTest : public GpuDeviceFixture {
  protected:
-  void RunCopiesBetweenExactAccessAttachments();
+  void RunCopiesBetweenExactAccessAttachments(
+      amdf_queue_command_type_t command_type);
+  void DestroyCopyResources();
 
   amdf_status_t MatchGpuEndpoint(amdf_endpoint_t* endpoint,
                                  bool* out_matches) const override {
@@ -148,7 +217,8 @@ class Gfx1151Pm4MemoryTest : public GpuDeviceFixture {
     GpuDeviceFixture::TearDown();
   }
 
-  amdf_status_t FindPm4TransferFamily(uint32_t* out_ordinal) const {
+  amdf_status_t FindTransferFamily(amdf_queue_command_type_t command_type,
+                                   uint32_t* out_ordinal) const {
     amdf_endpoint_info_t endpoint_info = {};
     endpoint_info.type = AMDF_STRUCTURE_TYPE_ENDPOINT_INFO;
     endpoint_info.structure_size = sizeof(endpoint_info);
@@ -162,8 +232,8 @@ class Gfx1151Pm4MemoryTest : public GpuDeviceFixture {
       status =
           api_->endpoint_query_queue_family_info(endpoint_, ordinal, &family);
       if (!amdf_status_is_ok(status)) return status;
-      if (family.command_type == AMDF_QUEUE_COMMAND_TYPE_GPU_PM4 &&
-          family.format_version == AMDF_GPU_PM4_QUEUE_FORMAT_VERSION_1 &&
+      if (family.command_type == command_type &&
+          family.format_version == QueueFormatVersion(command_type) &&
           (family.publication_modes & AMDF_QUEUE_PUBLICATION_MODE_USER) != 0 &&
           (family.roles & kRequiredQueueRoles) == kRequiredQueueRoles &&
           (family.user_queue_capabilities &
@@ -260,9 +330,9 @@ class Gfx1151Pm4MemoryTest : public GpuDeviceFixture {
   amdf_host_mapping_t* source_mapping_ = nullptr;
   // Host view of the target attachment.
   amdf_host_mapping_t* target_mapping_ = nullptr;
-  // Directly published PM4 queue.
+  // Directly published GPU queue.
   amdf_user_queue_t* queue_ = nullptr;
-  // Host producer mapping of the PM4 queue.
+  // Host producer mapping of the GPU queue.
   amdf_user_queue_mapping_t* queue_mapping_ = nullptr;
   // Immutable properties of the source attachment.
   amdf_memory_info_t source_memory_info_ = {};
@@ -274,16 +344,18 @@ class Gfx1151Pm4MemoryTest : public GpuDeviceFixture {
   amdf_host_mapping_info_t target_mapping_info_ = {};
 };
 
-class Gfx1151Pm4ProcessMemoryTest : public Gfx1151Pm4MemoryTest {
+class Gfx1151UserQueueProcessMemoryTest : public Gfx1151UserQueueMemoryTest {
  protected:
   amdf_gpu_device_mode_t GetDeviceMode() const override {
     return AMDF_GPU_DEVICE_MODE_PROCESS;
   }
 };
 
-void Gfx1151Pm4MemoryTest::RunCopiesBetweenExactAccessAttachments() {
+void Gfx1151UserQueueMemoryTest::RunCopiesBetweenExactAccessAttachments(
+    amdf_queue_command_type_t command_type) {
   uint32_t queue_family_ordinal = UINT32_MAX;
-  ASSERT_EQ(FindPm4TransferFamily(&queue_family_ordinal), AMDF_STATUS_OK);
+  ASSERT_EQ(FindTransferFamily(command_type, &queue_family_ordinal),
+            AMDF_STATUS_OK);
   ASSERT_NE(queue_family_ordinal, UINT32_MAX);
 
   ASSERT_NO_FATAL_FAILURE(CreateMappedSystemMemory(
@@ -335,8 +407,8 @@ void Gfx1151Pm4MemoryTest::RunCopiesBetweenExactAccessAttachments() {
   queue_info.structure_size = sizeof(queue_info);
   ASSERT_EQ(api_->user_queue_query_info(queue_, &queue_info), AMDF_STATUS_OK);
   EXPECT_EQ(queue_info.queue_family_ordinal, queue_family_ordinal);
-  EXPECT_EQ(queue_info.command_type, AMDF_QUEUE_COMMAND_TYPE_GPU_PM4);
-  EXPECT_EQ(queue_info.format_version, AMDF_GPU_PM4_QUEUE_FORMAT_VERSION_1);
+  EXPECT_EQ(queue_info.command_type, command_type);
+  EXPECT_EQ(queue_info.format_version, QueueFormatVersion(command_type));
   EXPECT_EQ(queue_info.producer_mode, AMDF_QUEUE_PRODUCER_MODE_SINGLE);
   EXPECT_EQ(queue_info.priority, AMDF_QUEUE_PRIORITY_NORMAL);
   EXPECT_EQ(queue_info.capabilities, AMDF_USER_QUEUE_CAPABILITY_HOST_PRODUCER);
@@ -380,7 +452,7 @@ void Gfx1151Pm4MemoryTest::RunCopiesBetweenExactAccessAttachments() {
   ASSERT_EQ(mapping_info.write_index_address & (sizeof(uint64_t) - 1), 0u);
   ASSERT_EQ(mapping_info.doorbell_address & (sizeof(uint64_t) - 1), 0u);
   ASSERT_GE(mapping_info.ring_byte_length,
-            kPublishedDwordCount * sizeof(uint32_t));
+            kPm4PublishedDwordCount * sizeof(uint32_t));
 
   auto* read_index = reinterpret_cast<volatile uint64_t*>(
       static_cast<uintptr_t>(mapping_info.read_index_address));
@@ -404,23 +476,30 @@ void Gfx1151Pm4MemoryTest::RunCopiesBetweenExactAccessAttachments() {
 
   auto* ring = reinterpret_cast<uint32_t*>(
       static_cast<uintptr_t>(mapping_info.ring_address));
-  const size_t published_dword_count =
-      EncodeCopyStream(ring, source_memory_info_.device_address,
+  const EncodedQueueStream stream =
+      EncodeCopyStream(command_type, ring, source_memory_info_.device_address,
                        target_memory_info_.device_address);
-  ASSERT_EQ(published_dword_count, kPublishedDwordCount);
-  __atomic_store_n(write_index, published_dword_count, __ATOMIC_RELEASE);
-  __atomic_store_n(doorbell, published_dword_count, __ATOMIC_RELEASE);
+  if (command_type == AMDF_QUEUE_COMMAND_TYPE_GPU_PM4) {
+    ASSERT_EQ(stream.byte_length, kPm4PublishedDwordCount * sizeof(uint32_t));
+    ASSERT_EQ(stream.published_index, kPm4PublishedDwordCount);
+  } else {
+    ASSERT_EQ(stream.byte_length, kSdmaPublishedDwordCount * sizeof(uint32_t));
+    ASSERT_EQ(stream.published_index, stream.byte_length);
+  }
+  ASSERT_LE(stream.byte_length, mapping_info.ring_byte_length);
+  __atomic_store_n(write_index, stream.published_index, __ATOMIC_RELEASE);
+  __atomic_store_n(doorbell, stream.published_index, __ATOMIC_RELEASE);
 
   ASSERT_EQ(
-      api_->user_queue_wait_consumed(queue_, published_dword_count,
+      api_->user_queue_wait_consumed(queue_, stream.published_index,
                                      AMDF_TIMEOUT_INFINITE, UINT64_C(10000000)),
       AMDF_STATUS_OK);
   ASSERT_EQ(api_->user_queue_query_status(queue_, &queue_status),
             AMDF_STATUS_OK);
   EXPECT_EQ(queue_status.state, AMDF_QUEUE_STATE_ACTIVE);
   EXPECT_EQ(queue_status.reset_epoch, queue_info.reset_epoch);
-  EXPECT_EQ(queue_status.published_index, published_dword_count);
-  EXPECT_EQ(queue_status.consumed_index, published_dword_count);
+  EXPECT_EQ(queue_status.published_index, stream.published_index);
+  EXPECT_EQ(queue_status.consumed_index, stream.published_index);
   EXPECT_EQ(queue_status.terminal_status, AMDF_STATUS_OK);
 
   ASSERT_EQ(api_->host_mapping_cache_control(
@@ -436,14 +515,42 @@ void Gfx1151Pm4MemoryTest::RunCopiesBetweenExactAccessAttachments() {
     EXPECT_EQ(source[i], expected[i]) << "source word " << i;
   }
   EXPECT_EQ(*completion, kCompletionValue);
+  ASSERT_NO_FATAL_FAILURE(DestroyCopyResources());
 }
 
-TEST_F(Gfx1151Pm4MemoryTest, CopiesBetweenExactAccessAttachments) {
-  RunCopiesBetweenExactAccessAttachments();
+void Gfx1151UserQueueMemoryTest::DestroyCopyResources() {
+  ASSERT_NE(queue_mapping_, nullptr);
+  ASSERT_EQ(api_->user_queue_mapping_destroy(queue_mapping_), AMDF_STATUS_OK);
+  queue_mapping_ = nullptr;
+
+  ASSERT_NE(queue_, nullptr);
+  ASSERT_EQ(api_->user_queue_destroy(queue_), AMDF_STATUS_OK);
+  queue_ = nullptr;
+
+  DestroyHostMapping(source_mapping_);
+  ASSERT_EQ(source_mapping_, nullptr);
+  DestroyHostMapping(target_mapping_);
+  ASSERT_EQ(target_mapping_, nullptr);
+  DestroyMemory(source_memory_);
+  ASSERT_EQ(source_memory_, nullptr);
+  DestroyMemory(target_memory_);
+  ASSERT_EQ(target_memory_, nullptr);
 }
 
-TEST_F(Gfx1151Pm4ProcessMemoryTest, CopiesBetweenExactAccessAttachments) {
-  RunCopiesBetweenExactAccessAttachments();
+TEST_F(Gfx1151UserQueueMemoryTest, Pm4CopiesBetweenExactAccessAttachments) {
+  RunCopiesBetweenExactAccessAttachments(AMDF_QUEUE_COMMAND_TYPE_GPU_PM4);
+}
+
+TEST_F(Gfx1151UserQueueMemoryTest, SdmaCopiesBetweenExactAccessAttachments) {
+  RunCopiesBetweenExactAccessAttachments(AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA);
+}
+
+TEST_F(Gfx1151UserQueueProcessMemoryTest,
+       SdmaThenPm4CopiesBetweenExactAccessAttachments) {
+  ASSERT_NO_FATAL_FAILURE(
+      RunCopiesBetweenExactAccessAttachments(AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA));
+  ASSERT_NO_FATAL_FAILURE(
+      RunCopiesBetweenExactAccessAttachments(AMDF_QUEUE_COMMAND_TYPE_GPU_PM4));
 }
 
 }  // namespace

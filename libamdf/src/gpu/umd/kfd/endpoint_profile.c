@@ -10,7 +10,7 @@
 #include <unistd.h>
 
 #include "libamdf/src/gpu/umd/kfd/file.h"
-#include "libamdf/src/gpu/umd/kfd/target/gfx1151/pm4_queue.h"
+#include "libamdf/src/gpu/umd/kfd/target/user_queue.h"
 #include "libamdf/src/gpu/umd/kfd/topology.h"
 #include "libamdf/src/platform/linux/host_cache.h"
 
@@ -57,11 +57,13 @@ amdf_status_t amdf_gpu_umd_query_endpoint_profile(
   }
   status = amdf_linux_host_cache_query_line_size(&cache_line_size);
   if (!amdf_status_is_ok(status)) return status;
-  if (amdf_gpu_kfd_gfx1151_pm4_queue_is_supported(&topology, (size_t)page_size,
-                                                  cache_line_size)) {
+  amdf_gpu_kfd_user_queue_plans_t queue_plans;
+  amdf_gpu_kfd_target_user_queue_plans_initialize(
+      &topology, (size_t)page_size, cache_line_size, &queue_plans);
+  for (uint32_t i = 0; i < queue_plans.count; ++i) {
     topology.properties
         .queue_families[topology.properties.queue_family_count++] =
-        amdf_gpu_kfd_gfx1151_pm4_queue_family_properties();
+        queue_plans.values[i].family;
   }
   amdf_gpu_endpoint_profile_t profile;
   if (!amdf_gpu_endpoint_profile_initialize(&topology.properties, &profile)) {

@@ -54,8 +54,9 @@ static amdf_status_t amdf_gpu_kfd_read_number(int directory, const char* name,
   return AMDF_STATUS_OK;
 }
 
-// KFD topology properties are decimal name/value records. All fields used by
-// normalization are mandatory, including fields for which zero is meaningful.
+// KFD topology properties are decimal name/value records. Baseline endpoint
+// fields are mandatory, including fields for which zero is meaningful. The
+// SDMA group is optional on older kernels but must be complete when present.
 static amdf_status_t amdf_gpu_kfd_read_node(
     int directory, const amdf_platform_endpoint_t* endpoint,
     amdf_gpu_kfd_topology_t* topology, bool* out_matches) {
@@ -77,6 +78,10 @@ static amdf_status_t amdf_gpu_kfd_read_node(
     COMPUTE_QUEUE_COUNT,
     CONTEXT_SAVE_RESTORE_SIZE,
     CONTROL_STACK_SIZE,
+    REQUIRED_PROPERTY_COUNT,
+    SDMA_ENGINE_COUNT = REQUIRED_PROPERTY_COUNT,
+    SDMA_XGMI_ENGINE_COUNT,
+    SDMA_QUEUE_COUNT_PER_ENGINE,
     PROPERTY_COUNT,
   };
   const char* names[PROPERTY_COUNT] = {
@@ -97,6 +102,9 @@ static amdf_status_t amdf_gpu_kfd_read_node(
       "num_cp_queues",
       "cwsr_size",
       "ctl_stack_size",
+      "num_sdma_engines",
+      "num_sdma_xgmi_engines",
+      "num_sdma_queues_per_engine",
   };
   uint32_t values[PROPERTY_COUNT] = {0};
   uint32_t present = 0;
@@ -132,7 +140,12 @@ static amdf_status_t amdf_gpu_kfd_read_node(
   if (values[RENDER_MINOR] != (uint32_t)endpoint->info.id.words[0]) {
     return AMDF_STATUS_OK;
   }
-  if (present != (1u << PROPERTY_COUNT) - 1) {
+  const uint32_t required_properties = (1u << REQUIRED_PROPERTY_COUNT) - 1;
+  const uint32_t sdma_properties =
+      ((1u << PROPERTY_COUNT) - 1) & ~required_properties;
+  if ((present & required_properties) != required_properties ||
+      ((present & sdma_properties) != 0 &&
+       (present & sdma_properties) != sdma_properties)) {
     return amdf_linux_error(EPROTO);
   }
   if (values[VENDOR_ID] != endpoint->info.pci.vendor_id ||
@@ -174,10 +187,49 @@ static amdf_status_t amdf_gpu_kfd_read_node(
           },
   };
   topology->compute_queue_count = values[COMPUTE_QUEUE_COUNT];
+  topology->sdma.engine_count = values[SDMA_ENGINE_COUNT];
+  topology->sdma.xgmi_engine_count = values[SDMA_XGMI_ENGINE_COUNT];
+  topology->sdma.queue_count_per_engine = values[SDMA_QUEUE_COUNT_PER_ENGINE];
   topology->context_save_restore_byte_length =
       values[CONTEXT_SAVE_RESTORE_SIZE];
   topology->control_stack_byte_length = values[CONTROL_STACK_SIZE];
   *out_matches = true;
+  return AMDF_STATUS_OK;
+}
+
+static amdf_status_t amdf_gpu_kfd_query_sdma(
+    const amdf_platform_endpoint_t* endpoint,
+    amdf_gpu_kfd_topology_t* topology) {
+  if (topology->sdma.engine_count == 0 &&
+      topology->sdma.xgmi_engine_count == 0) {
+    return AMDF_STATUS_OK;
+  }
+  struct drm_amdgpu_info_hw_ip sdma = {0};
+  struct drm_amdgpu_info query = {
+      .return_pointer = (uintptr_t)&sdma,
+      .return_size = sizeof(sdma),
+      .query = AMDGPU_INFO_HW_IP_INFO,
+      .query_hw_ip =
+          {
+              .type = AMDGPU_HW_IP_DMA,
+              .ip_instance = 0,
+          },
+  };
+  if (ioctl(endpoint->descriptor, DRM_IOCTL_AMDGPU_INFO, &query) != 0) {
+    // Older kernels may expose KFD SDMA counts without the exact DRM discovery
+    // version. Other GPU services remain usable, but no packet ABI is selected.
+    return errno == EINVAL || errno == ENODEV ? AMDF_STATUS_OK
+                                              : amdf_linux_error(errno);
+  }
+  if ((sdma.ip_discovery_version & UINT32_C(0xff000000)) != 0) {
+    return amdf_linux_error(EPROTO);
+  }
+  if (sdma.ip_discovery_version != 0) {
+    topology->sdma.ip.major = (sdma.ip_discovery_version >> 16) & 0xff;
+    topology->sdma.ip.minor = (sdma.ip_discovery_version >> 8) & 0xff;
+    topology->sdma.ip.revision = sdma.ip_discovery_version & 0xff;
+    topology->sdma.ip.exact = true;
+  }
   return AMDF_STATUS_OK;
 }
 
@@ -297,6 +349,8 @@ amdf_status_t amdf_gpu_kfd_topology_query(
   }
   if (amdf_status_is_ok(status))
     status = amdf_gpu_kfd_query_memory(endpoint, &topology);
+  if (amdf_status_is_ok(status))
+    status = amdf_gpu_kfd_query_sdma(endpoint, &topology);
   if (amdf_status_is_ok(status)) *out_topology = topology;
   return status;
 }

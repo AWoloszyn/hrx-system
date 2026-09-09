@@ -31,7 +31,7 @@ iree_cc_library(
   SRCS
     "memory_linux_test.cc"
     "memory_xdna_interop_linux_test.cc"
-    "target/gfx1151/pm4_memory_test.cc"
+    "target/gfx1151/user_queue_memory_test.cc"
   DEPS
     ::gpu_device_fixture
     amdf::headers

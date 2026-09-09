@@ -22,10 +22,21 @@ amdf_cc_library(
     srcs = ["pm4_queue.c"],
     hdrs = ["pm4_queue.h"],
     target_compatible_with = KFD_COMPATIBILITY,
-    visibility = ["//libamdf/src/gpu/umd/kfd:__pkg__"],
+    visibility = ["//libamdf/src/gpu/umd/kfd/target:__pkg__"],
     deps = [
-        "//libamdf/src/gpu:endpoint_profile",
-        "//libamdf/src/gpu/umd/kfd:buffer",
         "//libamdf/src/gpu/umd/kfd:topology",
+        "//libamdf/src/gpu/umd/kfd/target:queue_plan",
+    ],
+)
+
+amdf_cc_library(
+    name = "sdma_queue",
+    srcs = ["sdma_queue.c"],
+    hdrs = ["sdma_queue.h"],
+    target_compatible_with = KFD_COMPATIBILITY,
+    visibility = ["//libamdf/src/gpu/umd/kfd/target:__pkg__"],
+    deps = [
+        "//libamdf/src/gpu/umd/kfd:topology",
+        "//libamdf/src/gpu/umd/kfd/target:queue_plan",
     ],
 )

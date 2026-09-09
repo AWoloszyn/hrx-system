@@ -18,7 +18,7 @@
 #include "libamdf/src/allocator.h"
 #include "libamdf/src/atomics.h"
 #include "libamdf/src/gpu/umd/kfd/device.h"
-#include "libamdf/src/gpu/umd/kfd/target/gfx1151/pm4_queue.h"
+#include "libamdf/src/gpu/umd/kfd/target/user_queue.h"
 #include "libamdf/src/gpu/umd/kfd/user_queue_native.h"
 
 namespace {
@@ -32,7 +32,7 @@ struct FakeBuffer {
 };
 
 struct FakeNativeState {
-  static constexpr size_t kBufferCount = 4;
+  static constexpr size_t kBufferCount = 5;
 
   bool FailCreationOperation() {
     ++creation_operation_count;
@@ -229,6 +229,9 @@ class KfdUserQueueTest : public ::testing::Test {
     device_.topology.properties.topology.xcc_count = 1;
     device_.topology.gpu_id = 73;
     device_.topology.compute_queue_count = 8;
+    device_.topology.sdma.engine_count = 1;
+    device_.topology.sdma.queue_count_per_engine = 6;
+    device_.topology.sdma.ip = {6, 1, 1, true};
     device_.topology.context_save_restore_byte_length = 4096;
     device_.topology.control_stack_byte_length = 4096;
     device_.topology.virtual_address.alignment = 4096;
@@ -265,21 +268,32 @@ class KfdUserQueueTest : public ::testing::Test {
     }
   }
 
-  amdf_gpu_umd_user_queue_create_info_t MakeCreateInfo() const {
-    const amdf_gpu_queue_family_properties_t family =
-        amdf_gpu_kfd_gfx1151_pm4_queue_family_properties();
-    return {
-        .command_type = family.command_type,
-        .format_version = family.format_version,
-        .priority = AMDF_QUEUE_PRIORITY_NORMAL,
-        .producer_mode = AMDF_QUEUE_PRODUCER_MODE_SINGLE,
-        .required_capabilities = AMDF_USER_QUEUE_CAPABILITY_HOST_PRODUCER,
-        .roles = family.roles,
-    };
+  amdf_gpu_umd_user_queue_create_info_t MakeCreateInfo(
+      amdf_queue_command_type_t command_type =
+          AMDF_QUEUE_COMMAND_TYPE_GPU_PM4) const {
+    amdf_gpu_kfd_user_queue_plans_t plans;
+    amdf_gpu_kfd_target_user_queue_plans_initialize(
+        &device_.topology, device_.page_size, device_.cache_line_size, &plans);
+    for (uint32_t i = 0; i < plans.count; ++i) {
+      const amdf_gpu_queue_family_properties_t& family = plans.values[i].family;
+      if (family.command_type != command_type) continue;
+      return {
+          .command_type = family.command_type,
+          .format_version = family.format_version,
+          .priority = AMDF_QUEUE_PRIORITY_NORMAL,
+          .producer_mode = AMDF_QUEUE_PRODUCER_MODE_SINGLE,
+          .required_capabilities = AMDF_USER_QUEUE_CAPABILITY_HOST_PRODUCER,
+          .roles = family.roles,
+      };
+    }
+    ADD_FAILURE() << "no target queue plan for command type " << command_type;
+    return {};
   }
 
-  void CreateQueue() {
-    const amdf_gpu_umd_user_queue_create_info_t create_info = MakeCreateInfo();
+  void CreateQueue(amdf_queue_command_type_t command_type =
+                       AMDF_QUEUE_COMMAND_TYPE_GPU_PM4) {
+    const amdf_gpu_umd_user_queue_create_info_t create_info =
+        MakeCreateInfo(command_type);
     ASSERT_EQ(amdf_gpu_umd_user_queue_create(&device_, &create_info, &queue_,
                                              &queue_result_),
               AMDF_STATUS_OK);
@@ -330,7 +344,7 @@ class KfdUserQueueTest : public ::testing::Test {
 
 TEST_F(KfdUserQueueTest, ConstructionDependenciesPublishOnlyOnSuccess) {
   const amdf_gpu_umd_user_queue_create_info_t create_info = MakeCreateInfo();
-  for (int failed_operation = 1; failed_operation <= 6; ++failed_operation) {
+  for (int failed_operation = 1; failed_operation <= 7; ++failed_operation) {
     native_state_.Reset();
     native_state_.failed_creation_operation = failed_operation;
     auto* const sentinel =
@@ -346,7 +360,7 @@ TEST_F(KfdUserQueueTest, ConstructionDependenciesPublishOnlyOnSuccess) {
     EXPECT_EQ(queue, sentinel);
     EXPECT_EQ(std::memcmp(&result, &original_result, sizeof(result)), 0);
     EXPECT_EQ(native_state_.LiveBufferCount(), 0u);
-    EXPECT_EQ(native_state_.queue_destroy_count, failed_operation == 6 ? 1 : 0);
+    EXPECT_EQ(native_state_.queue_destroy_count, failed_operation == 7 ? 1 : 0);
   }
 }
 
@@ -357,7 +371,7 @@ TEST_F(KfdUserQueueTest, PublishesExactNativeQueueAndHostMapping) {
             AMDF_USER_QUEUE_CAPABILITY_HOST_PRODUCER);
   EXPECT_EQ(queue_result_.ring_byte_length, 4096u);
   EXPECT_EQ(queue_result_.metadata_ring_byte_length, 0u);
-  EXPECT_EQ(native_state_.LiveBufferCount(), 4u);
+  EXPECT_EQ(native_state_.LiveBufferCount(), 5u);
 
   const uint32_t host_storage_flags =
       KFD_IOC_ALLOC_MEM_FLAGS_GTT | KFD_IOC_ALLOC_MEM_FLAGS_WRITABLE |
@@ -387,6 +401,13 @@ TEST_F(KfdUserQueueTest, PublishesExactNativeQueueAndHostMapping) {
   EXPECT_EQ(native_state_.buffers[3].create_info.alignment, 4096u);
   EXPECT_EQ(native_state_.buffers[3].create_info.host_access,
             AMDF_GPU_KFD_BUFFER_HOST_ACCESS_MAPPED);
+  EXPECT_EQ(native_state_.buffers[4].create_info.native_flags,
+            KFD_IOC_ALLOC_MEM_FLAGS_GTT | KFD_IOC_ALLOC_MEM_FLAGS_WRITABLE |
+                KFD_IOC_ALLOC_MEM_FLAGS_COHERENT);
+  EXPECT_EQ(native_state_.buffers[4].create_info.byte_length, 4096u);
+  EXPECT_EQ(native_state_.buffers[4].create_info.alignment, 4096u);
+  EXPECT_EQ(native_state_.buffers[4].create_info.host_access,
+            AMDF_GPU_KFD_BUFFER_HOST_ACCESS_NONE);
 
   const auto& create = native_state_.observed_create;
   EXPECT_EQ(create.ring_base_address, native_state_.buffers[0].device_address);
@@ -447,6 +468,100 @@ TEST_F(KfdUserQueueTest, PublishesExactNativeQueueAndHostMapping) {
   EXPECT_EQ(
       std::memcmp(&rejected_result, &original_result, sizeof(rejected_result)),
       0);
+}
+
+TEST_F(KfdUserQueueTest, SdmaConstructionPublishesOnlyAfterSuccess) {
+  const amdf_gpu_umd_user_queue_create_info_t create_info =
+      MakeCreateInfo(AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA);
+  for (int failed_operation = 1; failed_operation <= 5; ++failed_operation) {
+    native_state_.Reset();
+    native_state_.failed_creation_operation = failed_operation;
+    auto* const sentinel =
+        reinterpret_cast<amdf_gpu_umd_user_queue_t*>(uintptr_t{1});
+    amdf_gpu_umd_user_queue_t* queue = sentinel;
+    amdf_gpu_umd_user_queue_result_t result;
+    std::memset(&result, 0xA5, sizeof(result));
+    const amdf_gpu_umd_user_queue_result_t original_result = result;
+
+    EXPECT_EQ(
+        amdf_gpu_umd_user_queue_create(&device_, &create_info, &queue, &result),
+        native_state_.creation_failure);
+    EXPECT_EQ(queue, sentinel);
+    EXPECT_EQ(std::memcmp(&result, &original_result, sizeof(result)), 0);
+    EXPECT_EQ(native_state_.LiveBufferCount(), 0u);
+    EXPECT_EQ(native_state_.queue_destroy_count, failed_operation == 5 ? 1 : 0);
+  }
+}
+
+TEST_F(KfdUserQueueTest, PublishesExactSdmaQueueAndHostMapping) {
+  CreateQueue(AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA);
+  EXPECT_TRUE(amdf_queue_id_is_valid(&queue_result_.queue_id));
+  EXPECT_EQ(queue_result_.capabilities,
+            AMDF_USER_QUEUE_CAPABILITY_HOST_PRODUCER);
+  EXPECT_EQ(queue_result_.ring_byte_length, 4096u);
+  EXPECT_EQ(queue_result_.metadata_ring_byte_length, 0u);
+  ASSERT_EQ(native_state_.LiveBufferCount(), 3u);
+  ASSERT_EQ(native_state_.buffer_create_count, 3);
+
+  const uint32_t host_storage_flags =
+      KFD_IOC_ALLOC_MEM_FLAGS_GTT | KFD_IOC_ALLOC_MEM_FLAGS_WRITABLE |
+      KFD_IOC_ALLOC_MEM_FLAGS_EXECUTABLE | KFD_IOC_ALLOC_MEM_FLAGS_COHERENT;
+  EXPECT_EQ(native_state_.buffers[0].create_info.native_flags,
+            host_storage_flags);
+  EXPECT_EQ(native_state_.buffers[0].create_info.byte_length, 4096u);
+  EXPECT_EQ(native_state_.buffers[1].create_info.native_flags,
+            host_storage_flags | KFD_IOC_ALLOC_MEM_FLAGS_UNCACHED);
+  EXPECT_EQ(native_state_.buffers[1].create_info.byte_length, 4096u);
+  EXPECT_EQ(native_state_.buffers[2].create_info.native_flags,
+            KFD_IOC_ALLOC_MEM_FLAGS_GTT | KFD_IOC_ALLOC_MEM_FLAGS_WRITABLE |
+                KFD_IOC_ALLOC_MEM_FLAGS_COHERENT);
+  EXPECT_EQ(native_state_.buffers[2].create_info.byte_length, 4096u);
+  EXPECT_EQ(native_state_.buffers[2].create_info.host_access,
+            AMDF_GPU_KFD_BUFFER_HOST_ACCESS_NONE);
+
+  const auto& create = native_state_.observed_create;
+  EXPECT_EQ(create.ring_base_address, native_state_.buffers[0].device_address);
+  EXPECT_EQ(create.write_pointer_address,
+            native_state_.buffers[1].device_address + 64);
+  EXPECT_EQ(create.read_pointer_address,
+            native_state_.buffers[1].device_address);
+  EXPECT_EQ(create.ring_size, 4096u);
+  EXPECT_EQ(create.queue_type, KFD_IOC_QUEUE_TYPE_SDMA);
+  EXPECT_EQ(create.eop_buffer_address, 0u);
+  EXPECT_EQ(create.eop_buffer_size, 0u);
+  EXPECT_EQ(create.ctx_save_restore_address, 0u);
+  EXPECT_EQ(create.ctx_save_restore_size, 0u);
+  EXPECT_EQ(create.ctl_stack_size, 0u);
+
+  MapQueue();
+  EXPECT_EQ(
+      mapping_result_.ring_address,
+      reinterpret_cast<uintptr_t>(native_state_.buffers[0].storage.data()));
+  EXPECT_EQ(
+      mapping_result_.read_index_address,
+      reinterpret_cast<uintptr_t>(native_state_.buffers[1].storage.data()));
+  EXPECT_EQ(mapping_result_.write_index_address,
+            mapping_result_.read_index_address + 64);
+  EXPECT_EQ(mapping_result_.index_bits, 64u);
+  EXPECT_EQ(mapping_result_.doorbell_bits, 64u);
+  EXPECT_EQ(mapping_result_.metadata_ring_address, 0u);
+
+  auto* const absent_error_payload = reinterpret_cast<amdf_atomic_uint64_t*>(
+      reinterpret_cast<uint8_t*>(native_state_.buffers[1].storage.data()) +
+      128);
+  amdf_atomic_uint64_store_release(absent_error_payload, UINT64_MAX);
+  amdf_user_queue_status_t status = {};
+  ASSERT_EQ(amdf_gpu_umd_user_queue_query_status(queue_, &status),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(status.state, AMDF_QUEUE_STATE_ACTIVE);
+  EXPECT_EQ(status.terminal_status, AMDF_STATUS_OK);
+
+  ASSERT_EQ(amdf_gpu_umd_user_queue_mapping_destroy(mapping_), AMDF_STATUS_OK);
+  mapping_ = nullptr;
+  ASSERT_EQ(amdf_gpu_umd_user_queue_destroy(queue_), AMDF_STATUS_OK);
+  queue_ = nullptr;
+  EXPECT_EQ(native_state_.destroyed_buffer_indices,
+            (std::vector<size_t>{2, 1, 0}));
 }
 
 TEST_F(KfdUserQueueTest, RejectsUnqualifiedQueueWithoutPublishingOutputs) {
@@ -575,7 +690,7 @@ TEST_F(KfdUserQueueTest, WaitAndDestroyRequireConsumedPublication) {
   EXPECT_EQ(native_state_.doorbell_unmap_count, 1);
   EXPECT_EQ(native_state_.LiveBufferCount(), 0u);
   EXPECT_EQ(native_state_.destroyed_buffer_indices,
-            (std::vector<size_t>{3, 2, 1, 0}));
+            (std::vector<size_t>{4, 3, 2, 1, 0}));
 }
 
 TEST_F(KfdUserQueueTest, RetainedIdentifierRetriesTheSameNativeQueue) {
@@ -585,7 +700,7 @@ TEST_F(KfdUserQueueTest, RetainedIdentifierRetriesTheSameNativeQueue) {
   native_state_.queue_identifier_consumed = false;
   EXPECT_EQ(amdf_gpu_umd_user_queue_destroy(queue_),
             native_state_.queue_destroy_status);
-  EXPECT_EQ(native_state_.LiveBufferCount(), 4u);
+  EXPECT_EQ(native_state_.LiveBufferCount(), 5u);
   EXPECT_EQ(native_state_.doorbell_unmap_count, 0);
 
   native_state_.queue_destroy_status = AMDF_STATUS_OK;
@@ -605,7 +720,7 @@ TEST_F(KfdUserQueueTest, ConsumedIdentifierWaitsForCompletedReset) {
   EXPECT_EQ(amdf_gpu_umd_user_queue_destroy(queue_),
             native_state_.queue_destroy_status);
   EXPECT_EQ(native_state_.queue_destroy_count, 1);
-  EXPECT_EQ(native_state_.LiveBufferCount(), 4u);
+  EXPECT_EQ(native_state_.LiveBufferCount(), 5u);
 
   native_state_.queue_destroy_status = AMDF_STATUS_OK;
   native_state_.reset_state = {};
@@ -643,6 +758,24 @@ TEST_F(KfdUserQueueTest, StorageReleaseRetriesWithoutNativeQueueMutation) {
   EXPECT_EQ(native_state_.LiveBufferCount(), 0u);
 }
 
+TEST_F(KfdUserQueueTest, RetirementFlushRetriesWithoutNativeQueueMutation) {
+  CreateQueue();
+  native_state_.failed_buffer_destroy_call = 1;
+  EXPECT_EQ(amdf_gpu_umd_user_queue_destroy(queue_),
+            native_state_.buffer_destroy_failure);
+  EXPECT_EQ(native_state_.queue_destroy_count, 1);
+  EXPECT_EQ(native_state_.doorbell_unmap_count, 0);
+  EXPECT_EQ(native_state_.LiveBufferCount(), 5u);
+
+  native_state_.failed_buffer_destroy_call = 0;
+  ASSERT_EQ(amdf_gpu_umd_user_queue_destroy(queue_), AMDF_STATUS_OK);
+  queue_ = nullptr;
+  EXPECT_EQ(native_state_.queue_destroy_count, 1);
+  EXPECT_EQ(native_state_.destroyed_buffer_indices,
+            (std::vector<size_t>{4, 3, 2, 1, 0}));
+  EXPECT_EQ(native_state_.LiveBufferCount(), 0u);
+}
+
 TEST_F(KfdUserQueueTest,
        FailedRollbackAbandonsMetadataWithoutReleasingBacking) {
   struct Scenario {
@@ -656,16 +789,16 @@ TEST_F(KfdUserQueueTest,
     std::vector<size_t> abandoned;
   };
   const Scenario scenarios[] = {
-      {EBUSY, 0, {}, {0, 1, 2, 3}},
-      {ETIME, 0, {}, {0, 1, 2, 3}},
-      {0, 1, {}, {0, 1, 2, 3}},
-      {0, 3, {3, 2}, {0, 1}},
+      {EBUSY, 0, {}, {0, 1, 2, 3, 4}},
+      {ETIME, 0, {}, {0, 1, 2, 3, 4}},
+      {0, 1, {}, {0, 1, 2, 3, 4}},
+      {0, 3, {4, 3}, {0, 1, 2}},
   };
   for (const auto& scenario : scenarios) {
     SCOPED_TRACE(scenario.destroy_error);
     SCOPED_TRACE(scenario.failed_buffer_destroy_call);
     native_state_.Reset();
-    native_state_.failed_creation_operation = 6;
+    native_state_.failed_creation_operation = 7;
     native_state_.queue_destroy_status =
         scenario.destroy_error == 0 ? AMDF_STATUS_OK
                                     : amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO,

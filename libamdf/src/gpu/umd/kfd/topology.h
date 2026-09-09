@@ -20,6 +20,26 @@ typedef struct amdf_gpu_kfd_topology_t {
   amdf_gpu_device_features_t memory_features;
   // Number of native compute queues exposed by this KFD node.
   uint32_t compute_queue_count;
+  // Native SDMA engines and exact packet-ABI identity.
+  struct {
+    // Number of ordinary SDMA engines exposed by KFD.
+    uint32_t engine_count;
+    // Number of XGMI-specialized SDMA engines exposed by KFD.
+    uint32_t xgmi_engine_count;
+    // Number of constructible queues per SDMA engine.
+    uint32_t queue_count_per_engine;
+    // DRM IP discovery version used to select exact packet encodings.
+    struct {
+      // SDMA IP major version.
+      uint32_t major;
+      // SDMA IP minor version.
+      uint32_t minor;
+      // SDMA IP revision.
+      uint32_t revision;
+      // Whether DRM supplied the full discovery version.
+      bool exact;
+    } ip;
+  } sdma;
   // Required per-XCC context-save/restore area length in bytes.
   uint32_t context_save_restore_byte_length;
   // Required per-XCC control-stack length in bytes.

@@ -23,7 +23,7 @@ static amdf_memory_profile_t QueryProfile(amdf_gpu_umd_device_t* device,
   return profile;
 }
 
-TEST(LinuxGpuMemoryPairTest, DescribesOnlyTheExactLocalPm4Site) {
+TEST(LinuxGpuMemoryPairTest, DescribesExactLocalQueueSites) {
   const amdf_memory_info_t memory_info = {
       .device_access = AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE,
   };
@@ -55,6 +55,18 @@ TEST(LinuxGpuMemoryPairTest, DescribesOnlyTheExactLocalPm4Site) {
   EXPECT_EQ(description.atomic_reach.scope_64, AMDF_ATOMIC_SCOPE_NONE);
 
   family.command_type = AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA;
+  ASSERT_EQ(amdf_gpu_umd_memory_describe_site(nullptr, &query, &description),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(description.capabilities, AMDF_MEMORY_SITE_CAPABILITY_READ |
+                                          AMDF_MEMORY_SITE_CAPABILITY_WRITE);
+  EXPECT_EQ(description.release.kind, AMDF_CACHE_TRANSITION_KIND_GLOBAL);
+  EXPECT_EQ(description.release.operation,
+            AMDF_CACHE_OPERATION_RELEASE_TO_SYSTEM);
+  EXPECT_EQ(description.acquire.kind, AMDF_CACHE_TRANSITION_KIND_GLOBAL);
+  EXPECT_EQ(description.acquire.operation,
+            AMDF_CACHE_OPERATION_ACQUIRE_FROM_SYSTEM);
+
+  family.command_type = AMDF_QUEUE_COMMAND_TYPE_GPU_AQL;
   std::memset(&description, 0xA5, sizeof(description));
   const amdf_memory_site_description_t original = description;
   EXPECT_EQ(amdf_status_code(amdf_gpu_umd_memory_describe_site(nullptr, &query,

@@ -111,8 +111,9 @@ amdf_status_t amdf_gpu_umd_user_queue_wait_consumed(
     amdf_gpu_umd_user_queue_t* queue, uint64_t published_index,
     const amdf_wait_deadline_t* deadline);
 
-// Releases an idle native user queue. A consumed native identity may retain
-// its storage until reset recovery proves the device no longer references it.
+// Releases an idle native user queue. A consumed native identity retains its
+// storage until target retirement or reset recovery proves the device no
+// longer references it.
 amdf_status_t amdf_gpu_umd_user_queue_destroy(amdf_gpu_umd_user_queue_t* queue);
 
 #ifdef __cplusplus

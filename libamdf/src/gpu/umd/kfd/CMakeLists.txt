@@ -137,7 +137,7 @@ iree_cc_library(
     ::user_queue_native
     amdf::headers
     libamdf::src::allocator
-    libamdf::src::gpu::umd::kfd::target::gfx1151::pm4_queue
+    libamdf::src::gpu::umd::kfd::target::user_queue
     libamdf::src::platform::linux::endpoint
     libamdf::src::platform::linux::file
     libamdf::src::platform::linux::host_cache
@@ -233,7 +233,7 @@ iree_cc_library(
     amdf::headers
     libamdf::src::gpu::endpoint_profile
     libamdf::src::gpu::umd::endpoint_profile
-    libamdf::src::gpu::umd::kfd::target::gfx1151::pm4_queue
+    libamdf::src::gpu::umd::kfd::target::user_queue
     libamdf::src::platform::linux::file
     libamdf::src::platform::linux::host_cache
   PUBLIC
@@ -266,7 +266,7 @@ iree_cc_library(
     amdf::headers
     libamdf::src::allocator
     libamdf::src::atomics
-    libamdf::src::gpu::umd::kfd::target::gfx1151::pm4_queue
+    libamdf::src::gpu::umd::kfd::target::user_queue
     libamdf::src::gpu::umd::user_queue
     libamdf::src::platform::linux::file
     libamdf::src::platform::wait
@@ -289,7 +289,7 @@ iree_cc_test(
     iree::third_party::google_test_main
     libamdf::src::allocator
     libamdf::src::atomics
-    libamdf::src::gpu::umd::kfd::target::gfx1151::pm4_queue
+    libamdf::src::gpu::umd::kfd::target::user_queue
     libamdf::src::gpu::umd::user_queue
   LABELS
     "iree-build-requirement=libamdf"
