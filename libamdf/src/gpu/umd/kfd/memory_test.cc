@@ -42,8 +42,19 @@ TEST(LinuxGpuMemoryProfileTest, IndependentDeviceExposesOwnedSystemMemory) {
   EXPECT_EQ(profile.supported_device_access, AMDF_MEMORY_ACCESS_READ |
                                                  AMDF_MEMORY_ACCESS_WRITE |
                                                  AMDF_MEMORY_ACCESS_EXECUTE);
+  EXPECT_EQ(profile.supported_flags,
+            profile.guaranteed_flags | AMDF_MEMORY_FLAG_QUEUE_STORAGE);
   EXPECT_EQ(profile.allocation.minimum_alignment, 4096u);
   EXPECT_EQ(profile.allocation.byte_length_granularity, 1u);
+  EXPECT_EQ(profile.allocation.native_byte_length_granularity, 4096u);
+  EXPECT_EQ(profile.device_address.address_domain_ordinal, 0u);
+  EXPECT_EQ(profile.device_address.address_bit_count, 48u);
+  EXPECT_EQ(profile.device_address.minimum_address, UINT64_C(0x10000));
+  EXPECT_EQ(profile.device_address.maximum_address, (UINT64_C(1) << 48) - 1);
+  EXPECT_EQ(profile.host_mapping.byte_offset_granularity, 1u);
+  EXPECT_EQ(profile.host_mapping.byte_length_granularity, 1u);
+  EXPECT_EQ(profile.host_mapping.supported_access,
+            AMDF_MEMORY_MAP_FLAG_READ | AMDF_MEMORY_MAP_FLAG_WRITE);
   ASSERT_EQ(profile.external_memory_support_count, 1u);
   EXPECT_EQ(profile.external_memory_support[0].type,
             AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD);
@@ -74,8 +85,20 @@ TEST(LinuxGpuMemoryProfileTest, ProcessDeviceUsesDenseOptionalProfiles) {
 
   const amdf_memory_profile_t local_profile = QueryProfile(&device, 1);
   EXPECT_EQ(local_profile.memory_class, AMDF_MEMORY_CLASS_LOCAL);
-  EXPECT_NE(local_profile.roles & AMDF_MEMORY_PROFILE_ROLE_HOST_MAP, 0u);
-  EXPECT_NE(local_profile.supported_flags & AMDF_MEMORY_FLAG_HOST_VISIBLE, 0u);
+  EXPECT_EQ(local_profile.roles, AMDF_MEMORY_PROFILE_ROLE_CREATE |
+                                     AMDF_MEMORY_PROFILE_ROLE_HOST_MAP);
+  EXPECT_EQ(local_profile.guaranteed_flags,
+            AMDF_MEMORY_FLAG_DEVICE_LOCAL | AMDF_MEMORY_FLAG_DEVICE_ADDRESS);
+  EXPECT_EQ(local_profile.supported_flags, local_profile.guaranteed_flags |
+                                               AMDF_MEMORY_FLAG_QUEUE_STORAGE |
+                                               AMDF_MEMORY_FLAG_HOST_VISIBLE);
+  EXPECT_EQ(local_profile.guaranteed_device_access, AMDF_MEMORY_ACCESS_READ);
+  EXPECT_EQ(local_profile.supported_device_access,
+            AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE |
+                AMDF_MEMORY_ACCESS_EXECUTE);
+  EXPECT_EQ(local_profile.allocation.minimum_alignment, 4096u);
+  EXPECT_EQ(local_profile.host_mapping.supported_access,
+            AMDF_MEMORY_MAP_FLAG_READ | AMDF_MEMORY_MAP_FLAG_WRITE);
 
   const amdf_memory_profile_t registered_profile = QueryProfile(&device, 2);
   EXPECT_EQ(registered_profile.memory_class, AMDF_MEMORY_CLASS_REGISTERED_HOST);
@@ -84,6 +107,34 @@ TEST(LinuxGpuMemoryProfileTest, ProcessDeviceUsesDenseOptionalProfiles) {
   EXPECT_EQ(registered_profile.registration.minimum_alignment, 1u);
   EXPECT_EQ(registered_profile.registration.registered_host_pointer_alignment,
             1u);
+  EXPECT_EQ(registered_profile.registration.native_byte_length_granularity,
+            4096u);
+  EXPECT_EQ(registered_profile.device_address.minimum_alignment, 1u);
+  EXPECT_EQ(registered_profile.guaranteed_flags,
+            AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_HOST_COHERENT |
+                AMDF_MEMORY_FLAG_DEVICE_ADDRESS);
+  EXPECT_EQ(
+      registered_profile.supported_flags,
+      registered_profile.guaranteed_flags | AMDF_MEMORY_FLAG_QUEUE_STORAGE);
+  EXPECT_EQ(registered_profile.guaranteed_device_access,
+            AMDF_MEMORY_ACCESS_READ);
+  EXPECT_EQ(registered_profile.supported_device_access,
+            AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE |
+                AMDF_MEMORY_ACCESS_EXECUTE);
+
+  device.topology.memory_features = AMDF_GPU_DEVICE_FEATURE_LOCAL_MEMORY;
+  const amdf_memory_profile_t nonvisible_local_profile =
+      QueryProfile(&device, 1);
+  EXPECT_EQ(nonvisible_local_profile.memory_class, AMDF_MEMORY_CLASS_LOCAL);
+  EXPECT_EQ(nonvisible_local_profile.roles, AMDF_MEMORY_PROFILE_ROLE_CREATE);
+  EXPECT_EQ(nonvisible_local_profile.supported_flags,
+            nonvisible_local_profile.guaranteed_flags |
+                AMDF_MEMORY_FLAG_QUEUE_STORAGE);
+  EXPECT_EQ(nonvisible_local_profile.host_mapping.maximum_byte_length, 0u);
+  const amdf_memory_profile_t registered_after_local_profile =
+      QueryProfile(&device, 2);
+  EXPECT_EQ(registered_after_local_profile.memory_class,
+            AMDF_MEMORY_CLASS_REGISTERED_HOST);
 
   device.topology.memory_features = 0;
   const amdf_memory_profile_t dense_registered_profile =
