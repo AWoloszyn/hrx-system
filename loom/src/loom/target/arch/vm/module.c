@@ -78,31 +78,27 @@ static int loom_vm_export_compare(const void* lhs_ptr, const void* rhs_ptr) {
 
 static iree_status_t loom_vm_signature_type(loom_type_t type,
                                             uint16_t* out_kind) {
+  // Logical scalar tags are stable, small, and independent of cell width.
+  // Predicates cross the ABI as canonical zero/one i32 values.
+  static const uint8_t kScalarKinds[LOOM_SCALAR_TYPE_COUNT_] = {
+      [LOOM_SCALAR_TYPE_I1] = IREE_VM_BYTECODE_SIGNATURE_KIND_I32,
+      [LOOM_SCALAR_TYPE_I8] = IREE_VM_BYTECODE_SIGNATURE_KIND_I8,
+      [LOOM_SCALAR_TYPE_I16] = IREE_VM_BYTECODE_SIGNATURE_KIND_I16,
+      [LOOM_SCALAR_TYPE_I32] = IREE_VM_BYTECODE_SIGNATURE_KIND_I32,
+      [LOOM_SCALAR_TYPE_I64] = IREE_VM_BYTECODE_SIGNATURE_KIND_I64,
+      [LOOM_SCALAR_TYPE_F8E4M3] = IREE_VM_BYTECODE_SIGNATURE_KIND_F8E4M3FN,
+      [LOOM_SCALAR_TYPE_F8E5M2] = IREE_VM_BYTECODE_SIGNATURE_KIND_F8E5M2,
+      [LOOM_SCALAR_TYPE_F16] = IREE_VM_BYTECODE_SIGNATURE_KIND_F16,
+      [LOOM_SCALAR_TYPE_BF16] = IREE_VM_BYTECODE_SIGNATURE_KIND_BF16,
+      [LOOM_SCALAR_TYPE_F32] = IREE_VM_BYTECODE_SIGNATURE_KIND_F32,
+      [LOOM_SCALAR_TYPE_F64] = IREE_VM_BYTECODE_SIGNATURE_KIND_F64,
+  };
   const loom_type_t* value_type = loom_type_register_value_type(type);
   if (value_type) {
-    switch (loom_type_element_type(*value_type)) {
-      case LOOM_SCALAR_TYPE_I8:
-        *out_kind = IREE_VM_BYTECODE_SIGNATURE_KIND_I8;
-        return iree_ok_status();
-      case LOOM_SCALAR_TYPE_I16:
-        *out_kind = IREE_VM_BYTECODE_SIGNATURE_KIND_I16;
-        return iree_ok_status();
-      // Predicates cross the VM ABI as canonical zero/one i32 values.
-      case LOOM_SCALAR_TYPE_I1:
-      case LOOM_SCALAR_TYPE_I32:
-        *out_kind = IREE_VM_BYTECODE_SIGNATURE_KIND_I32;
-        return iree_ok_status();
-      case LOOM_SCALAR_TYPE_I64:
-        *out_kind = IREE_VM_BYTECODE_SIGNATURE_KIND_I64;
-        return iree_ok_status();
-      case LOOM_SCALAR_TYPE_F32:
-        *out_kind = IREE_VM_BYTECODE_SIGNATURE_KIND_F32;
-        return iree_ok_status();
-      case LOOM_SCALAR_TYPE_F64:
-        *out_kind = IREE_VM_BYTECODE_SIGNATURE_KIND_F64;
-        return iree_ok_status();
-      default:
-        break;
+    const uint8_t kind = kScalarKinds[loom_type_element_type(*value_type)];
+    if (kind) {
+      *out_kind = kind;
+      return iree_ok_status();
     }
   }
   return iree_make_status(

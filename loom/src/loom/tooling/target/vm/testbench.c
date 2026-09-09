@@ -219,28 +219,56 @@ static iree_status_t loom_vm_testbench_invoke(
     if (inputs[i].kind != LOOM_TESTBENCH_VALUE_KIND_SCALAR) {
       status = iree_make_status(IREE_STATUS_UNIMPLEMENTED,
                                 "VM test input requires scalar marshalling");
-    } else if (inputs[i].scalar.kind == IREE_TOOLING_VALUE_KIND_I32) {
+    } else {
+      // The shared materializer stores narrow floats as raw words and narrow
+      // integers as i32. The source signature supplies their exact VM tags.
       const loom_scalar_type_t scalar_type = loom_type_element_type(
           loom_module_value_type(invocation->module, parameter_ids[i]));
-      if (scalar_type == LOOM_SCALAR_TYPE_I8) {
-        arguments[i] =
-            iree_vm_variant_from_i8((int8_t)inputs[i].scalar.storage.i32);
-      } else if (scalar_type == LOOM_SCALAR_TYPE_I16) {
-        arguments[i] =
-            iree_vm_variant_from_i16((int16_t)inputs[i].scalar.storage.i32);
-      } else {
-        arguments[i] = iree_vm_variant_from_i32(inputs[i].scalar.storage.i32);
+      const iree_tooling_value_t value = inputs[i].scalar;
+      switch (scalar_type) {
+        case LOOM_SCALAR_TYPE_I8:
+          arguments[i] = iree_vm_variant_from_i8((int8_t)value.storage.i32);
+          break;
+        case LOOM_SCALAR_TYPE_I16:
+          arguments[i] = iree_vm_variant_from_i16((int16_t)value.storage.i32);
+          break;
+        case LOOM_SCALAR_TYPE_I1:
+        case LOOM_SCALAR_TYPE_I32:
+          arguments[i] = iree_vm_variant_from_i32(value.storage.i32);
+          break;
+        case LOOM_SCALAR_TYPE_INDEX:
+        case LOOM_SCALAR_TYPE_OFFSET:
+        case LOOM_SCALAR_TYPE_I64:
+          arguments[i] = iree_vm_variant_from_i64(value.storage.i64);
+          break;
+        case LOOM_SCALAR_TYPE_F8E4M3:
+          arguments[i] =
+              iree_vm_variant_from_f8e4m3fn_bits((uint8_t)value.storage.u32);
+          break;
+        case LOOM_SCALAR_TYPE_F8E5M2:
+          arguments[i] =
+              iree_vm_variant_from_f8e5m2_bits((uint8_t)value.storage.u32);
+          break;
+        case LOOM_SCALAR_TYPE_F16:
+          arguments[i] =
+              iree_vm_variant_from_f16_bits((uint16_t)value.storage.u32);
+          break;
+        case LOOM_SCALAR_TYPE_BF16:
+          arguments[i] =
+              iree_vm_variant_from_bf16_bits((uint16_t)value.storage.u32);
+          break;
+        case LOOM_SCALAR_TYPE_F32:
+          arguments[i] = iree_vm_variant_from_f32(value.storage.f32);
+          break;
+        case LOOM_SCALAR_TYPE_F64:
+          arguments[i] = iree_vm_variant_from_f64(value.storage.f64);
+          break;
+        default:
+          status = iree_make_status(IREE_STATUS_UNIMPLEMENTED,
+                                    "VM test scalar type %u is not implemented",
+                                    scalar_type);
+          break;
       }
-    } else if (inputs[i].scalar.kind == IREE_TOOLING_VALUE_KIND_I64) {
-      arguments[i] = iree_vm_variant_from_i64(inputs[i].scalar.storage.i64);
-    } else if (inputs[i].scalar.kind == IREE_TOOLING_VALUE_KIND_F32) {
-      arguments[i] = iree_vm_variant_from_f32(inputs[i].scalar.storage.f32);
-    } else if (inputs[i].scalar.kind == IREE_TOOLING_VALUE_KIND_F64) {
-      arguments[i] = iree_vm_variant_from_f64(inputs[i].scalar.storage.f64);
-    } else {
-      status = iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                                "VM test scalar kind %u is not implemented",
-                                inputs[i].scalar.kind);
     }
   }
   if (iree_status_is_ok(status)) {
@@ -277,6 +305,34 @@ static iree_status_t loom_vm_testbench_invoke(
         status = iree_vm_i64_from_variant(results[i],
                                           &out_results[i].scalar.storage.i64);
         break;
+      case IREE_VM_SCALAR_TYPE_F8E4M3FN: {
+        uint8_t bits = 0;
+        status = iree_vm_f8e4m3fn_bits_from_variant(results[i], &bits);
+        out_results[i].scalar.kind = IREE_TOOLING_VALUE_KIND_RAW_U32;
+        out_results[i].scalar.storage.u32 = bits;
+        break;
+      }
+      case IREE_VM_SCALAR_TYPE_F8E5M2: {
+        uint8_t bits = 0;
+        status = iree_vm_f8e5m2_bits_from_variant(results[i], &bits);
+        out_results[i].scalar.kind = IREE_TOOLING_VALUE_KIND_RAW_U32;
+        out_results[i].scalar.storage.u32 = bits;
+        break;
+      }
+      case IREE_VM_SCALAR_TYPE_F16: {
+        uint16_t bits = 0;
+        status = iree_vm_f16_bits_from_variant(results[i], &bits);
+        out_results[i].scalar.kind = IREE_TOOLING_VALUE_KIND_RAW_U32;
+        out_results[i].scalar.storage.u32 = bits;
+        break;
+      }
+      case IREE_VM_SCALAR_TYPE_BF16: {
+        uint16_t bits = 0;
+        status = iree_vm_bf16_bits_from_variant(results[i], &bits);
+        out_results[i].scalar.kind = IREE_TOOLING_VALUE_KIND_RAW_U32;
+        out_results[i].scalar.storage.u32 = bits;
+        break;
+      }
       case IREE_VM_SCALAR_TYPE_F32:
         out_results[i].scalar.kind = IREE_TOOLING_VALUE_KIND_F32;
         status = iree_vm_f32_from_variant(results[i],

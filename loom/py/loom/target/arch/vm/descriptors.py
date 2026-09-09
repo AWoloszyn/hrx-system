@@ -18,7 +18,9 @@ from iree.vm.bytecode.spec.isa import FieldRole, Instruction
 from iree.vm.bytecode.spec.isa.core.constant import CONSTANT_I32, CONSTANT_I64
 from iree.vm.bytecode.spec.isa.core.conversion import (
     CONVERSION_INSTRUCTIONS,
+    FLOAT_EXTEND_SELECTOR,
     FLOAT_TO_INTEGER_SELECTOR,
+    FLOAT_TRUNCATE_SELECTOR,
     FLOAT_WIDTH_SELECTOR,
     INTEGER_CONVERT_SELECTOR,
     INTEGER_TO_FLOAT_SELECTOR,
@@ -105,6 +107,8 @@ _SCALAR_CONVERSIONS = tuple(
     if instruction.fields[-1].rule.data
     in (
         INTEGER_CONVERT_SELECTOR,
+        FLOAT_EXTEND_SELECTOR,
+        FLOAT_TRUNCATE_SELECTOR,
         FLOAT_WIDTH_SELECTOR,
         INTEGER_TO_FLOAT_SELECTOR,
         FLOAT_TO_INTEGER_SELECTOR,

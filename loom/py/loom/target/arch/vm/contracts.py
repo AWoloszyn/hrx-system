@@ -163,7 +163,11 @@ _ATTRIBUTE_SOURCE_OPS = {
 _CONSTANT_SOURCES = {
     32: {
         "i1": ValueProject.exact_i64,
+        "i8": ValueProject.i32_as_u32_bits,
+        "i16": ValueProject.i32_as_u32_bits,
         "i32": ValueProject.i32_as_u32_bits,
+        "f16": ValueProject.float_as_f16_bits,
+        "bf16": ValueProject.float_as_bf16_bits,
         "f32": ValueProject.float_as_f32_bits,
     },
     64: {
@@ -175,9 +179,10 @@ _CONSTANT_SOURCES = {
 }
 _SCALAR_TYPES = (
     *(name for types in _CONSTANT_SOURCES.values() for name in types),
-    "i8",
-    "i16",
+    "f8E4M3",
+    "f8E5M2",
 )
+_SOURCE_SCALAR_NAMES = {name.lower(): name for name in _SCALAR_TYPES}
 
 # Selectors carry their source/destination types in the canonical ISA spelling.
 # Only the correspondence with Loom operations belongs in this projection.
@@ -188,6 +193,8 @@ _CONVERSION_SOURCE_OPS = {
         "i": conversion.scalar_trunci,
     },
     "float.width": {"f32": conversion.scalar_extf, "f64": conversion.scalar_fptrunc},
+    "float.extend": {"f": conversion.scalar_extf, "b": conversion.scalar_extf},
+    "float.truncate": {"f": conversion.scalar_fptrunc},
     "integer.to.float": {"s": conversion.scalar_sitofp, "u": conversion.scalar_uitofp},
     "float.to.integer": {"s": conversion.scalar_fptosi, "u": conversion.scalar_fptoui},
 }
@@ -350,6 +357,9 @@ def _conversion_cases():
             result_type = (
                 "i" + destination[1:] if destination[0] in "su" else destination
             )
+            # Loom's FP8 names use capital E/M; ISA selectors use lowercase.
+            source_type = _SOURCE_SCALAR_NAMES.get(source_type, source_type)
+            result_type = _SOURCE_SCALAR_NAMES.get(result_type, result_type)
             if source_type not in _SCALAR_TYPES or result_type not in _SCALAR_TYPES:
                 continue
             key = (
@@ -549,7 +559,12 @@ VM_CORE_CONTRACT_FRAGMENT = ContractFragment(
                 _DESCRIPTORS[VALUE_COPY.opcode],
                 Scalar(types),
             )
-            for types in (("i32", "f32"), ("i64", "f64"))
+            for types in (
+                ("i8", "f8E4M3", "f8E5M2"),
+                ("i16", "f16", "bf16"),
+                ("i32", "f32"),
+                ("i64", "f64"),
+            )
         ),
         descriptor_result="destination_v8",
         descriptor_input="source_v8",

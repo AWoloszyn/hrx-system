@@ -11,6 +11,16 @@
 #include "loom/target/arch/vm/contracts/core_lower_rules.h"
 #include "loom/target/arch/vm/descriptors/descriptors.h"
 
+static bool loom_vm_source_type_supported(void* user_data,
+                                          const loom_module_t* module,
+                                          loom_type_t type) {
+  return loom_type_is_scalar(type) &&
+         loom_scalar_type_set_contains(LOOM_SCALAR_TYPE_SET_ADDRESS |
+                                           LOOM_SCALAR_TYPE_SET_INTEGER |
+                                           LOOM_SCALAR_TYPE_SET_FLOAT,
+                                       loom_type_element_type(type));
+}
+
 static iree_status_t loom_vm_map_type(void* user_data,
                                       loom_low_lower_context_t* context,
                                       const loom_op_t* source_op,
@@ -24,14 +34,8 @@ static iree_status_t loom_vm_map_type(void* user_data,
        loom_type_element_type(source_type) == LOOM_SCALAR_TYPE_OFFSET)) {
     source_type = loom_type_scalar(LOOM_SCALAR_TYPE_I64);
   }
-  if (loom_type_is_scalar(source_type) &&
-      (loom_type_element_type(source_type) == LOOM_SCALAR_TYPE_I1 ||
-       loom_type_element_type(source_type) == LOOM_SCALAR_TYPE_I8 ||
-       loom_type_element_type(source_type) == LOOM_SCALAR_TYPE_I16 ||
-       loom_type_element_type(source_type) == LOOM_SCALAR_TYPE_I32 ||
-       loom_type_element_type(source_type) == LOOM_SCALAR_TYPE_I64 ||
-       loom_type_element_type(source_type) == LOOM_SCALAR_TYPE_F32 ||
-       loom_type_element_type(source_type) == LOOM_SCALAR_TYPE_F64)) {
+  if (loom_vm_source_type_supported(
+          user_data, loom_low_lower_context_module(context), source_type)) {
     return loom_low_lower_make_typed_register_type(
         context, VM_CORE_REG_CLASS_ID_VALUE, 1, source_type, out_low_type);
   }
@@ -50,6 +54,7 @@ static const loom_target_contract_binding_t kContractBindings[] = {
 static const loom_low_lower_policy_t kPolicy = {
     .name = IREE_SVL("vm-lower"),
     .error_catalog = &loom_error_catalog_core,
+    .source_type_supported = {.fn = loom_vm_source_type_supported},
     .map_type = {.fn = loom_vm_map_type},
     .rule_sets = {.count = IREE_ARRAYSIZE(kRuleSets), .values = kRuleSets},
     .contract_bindings = kContractBindings,

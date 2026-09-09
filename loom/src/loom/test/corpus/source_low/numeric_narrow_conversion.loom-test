@@ -1,0 +1,65 @@
+// RUN: roundtrip
+
+func.def @extend_narrow(%arg0: f8E4M3, %arg1: f8E5M2, %arg2: f16, %arg3: bf16) -> (f32, f32, f32, f32) {
+  %result0 = scalar.extf %arg0 : f8E4M3 to f32
+  %result1 = scalar.extf %arg1 : f8E5M2 to f32
+  %result2 = scalar.extf %arg2 : f16 to f32
+  %result3 = scalar.extf %arg3 : bf16 to f32
+  func.return %result0, %result1, %result2, %result3 : f32, f32, f32, f32
+}
+
+// ====
+
+func.def @truncate_single(%input: f32) -> (f8E4M3, f8E5M2, f16, bf16) {
+  %result0 = scalar.fptrunc %input : f32 to f8E4M3
+  %result1 = scalar.fptrunc %input : f32 to f8E5M2
+  %result2 = scalar.fptrunc %input : f32 to f16
+  %result3 = scalar.fptrunc %input : f32 to bf16
+  func.return %result0, %result1, %result2, %result3 : f8E4M3, f8E5M2, f16, bf16
+}
+
+// ====
+
+func.def @truncate_double(%input: f64) -> (f8E4M3, f8E5M2, f16, bf16) {
+  %result0 = scalar.fptrunc %input : f64 to f8E4M3
+  %result1 = scalar.fptrunc %input : f64 to f8E5M2
+  %result2 = scalar.fptrunc %input : f64 to f16
+  %result3 = scalar.fptrunc %input : f64 to bf16
+  func.return %result0, %result1, %result2, %result3 : f8E4M3, f8E5M2, f16, bf16
+}
+
+// ====
+
+func.def @narrow_bits(%byte: i8, %word: i16, %condition: i1) -> (i8, i16) {
+  %e4m3 = scalar.bitcast %byte : i8 to f8E4M3
+  %e5m2 = scalar.bitcast %byte : i8 to f8E5M2
+  %other_byte = scalar.bitcast %e5m2 : f8E5M2 to f8E4M3
+  %selected_byte = scf.select %condition, %e4m3, %other_byte : f8E4M3
+  %byte_result = scalar.bitcast %selected_byte : f8E4M3 to i8
+  %half = scalar.bitcast %word : i16 to f16
+  %brain = scalar.bitcast %word : i16 to bf16
+  %other_word = scalar.bitcast %brain : bf16 to f16
+  %selected_word = scf.select %condition, %half, %other_word : f16
+  %word_result = scalar.bitcast %selected_word : f16 to i16
+  func.return %byte_result, %word_result : i8, i16
+}
+
+// ====
+
+func.def @integer_to_bf16(%word: i32, %wide: i64) -> (bf16, bf16, bf16, bf16) {
+  %signed_word = scalar.sitofp %word : i32 to bf16
+  %unsigned_word = scalar.uitofp %word : i32 to bf16
+  %signed_wide = scalar.sitofp %wide : i64 to bf16
+  %unsigned_wide = scalar.uitofp %wide : i64 to bf16
+  func.return %signed_word, %unsigned_word, %signed_wide, %unsigned_wide : bf16, bf16, bf16, bf16
+}
+
+// ====
+
+func.def @narrow_constants() -> (i8, i16, f16, bf16) {
+  %byte = scalar.constant -127 : i8
+  %word = scalar.constant -32767 : i16
+  %half = scalar.constant -1.5 : f16
+  %brain = scalar.constant 1.25 : bf16
+  func.return %byte, %word, %half, %brain : i8, i16, f16, bf16
+}

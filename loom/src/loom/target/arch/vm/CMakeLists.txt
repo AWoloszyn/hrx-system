@@ -89,6 +89,7 @@ loom_check_test_suite(
     "test/source_low/numeric_integer_order_bits.loom-test"
     "test/source_low/numeric_integer_unary.loom-test"
     "test/source_low/numeric_logical_constants.loom-test"
+    "test/source_low/numeric_narrow_conversion.loom-test"
     "test/source_low/numeric_scalar_conversion.loom-test"
     "test/source_low/scalar_selection.loom-test"
   DATA
@@ -101,6 +102,7 @@ loom_check_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_integer_order_bits.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_integer_unary.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_logical_constants.loom-test"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_narrow_conversion.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_scalar_conversion.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/scalar_selection.loom-test"
   TEST_NAME_PREFIX_TO_STRIP
