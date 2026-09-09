@@ -207,7 +207,8 @@ iree_status_t loom_low_schedule_pressure_initialize(
     memset(out_pressure_state->candidate_delta_touched_flags, 0,
            reg_class_count *
                sizeof(*out_pressure_state->candidate_delta_touched_flags));
-    if (state->node_unspillable_completion_signatures != NULL) {
+    if (node_count != 0 &&
+        state->pressure_limits.unspillable_completion_domain_count != 0) {
       const uint16_t completion_domain_count =
           state->pressure_limits.unspillable_completion_domain_count;
       IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -219,14 +220,6 @@ iree_status_t loom_low_schedule_pressure_initialize(
           completion_domain_count *
               sizeof(
                   *out_pressure_state->active_unspillable_completion_values));
-      IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-          state->scratch_arena, completion_domain_count,
-          sizeof(*out_pressure_state->cached_unspillable_completion_sinks),
-          (void**)&out_pressure_state->cached_unspillable_completion_sinks));
-      memset(
-          out_pressure_state->cached_unspillable_completion_sinks, 0xFF,
-          completion_domain_count *
-              sizeof(*out_pressure_state->cached_unspillable_completion_sinks));
       IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
           state->scratch_arena, completion_domain_count,
           sizeof(
@@ -1348,9 +1341,10 @@ iree_status_t loom_low_schedule_pressure_initialize_unlock_summaries(
   if (node_count == 0) {
     return iree_ok_status();
   }
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      state->scratch_arena, node_count, sizeof(*pressure_state->unlocks.records),
-      (void**)&pressure_state->unlocks.records));
+  IREE_RETURN_IF_ERROR(
+      iree_arena_allocate_array(state->scratch_arena, node_count,
+                                sizeof(*pressure_state->unlocks.records),
+                                (void**)&pressure_state->unlocks.records));
   memset(pressure_state->unlocks.records, 0,
          node_count * sizeof(*pressure_state->unlocks.records));
   if (state->node_register_packing_activation_units != NULL) {
