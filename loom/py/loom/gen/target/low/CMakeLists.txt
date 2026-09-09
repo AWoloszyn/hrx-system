@@ -70,6 +70,16 @@ iree_py_library(
 
 iree_py_library(
   NAME
+    vm_low_descriptor_shard
+  MAIN_MODULE
+    "loom.gen.target.low.low_descriptor_shard"
+  DEPS
+    loom::py::loom::gen::target::low::low_descriptor_shard
+    loom::py::loom::target::arch::vm::descriptors
+)
+
+iree_py_library(
+  NAME
     wasm_low_descriptor_shard
   MAIN_MODULE
     "loom.gen.target.low.low_descriptor_shard"

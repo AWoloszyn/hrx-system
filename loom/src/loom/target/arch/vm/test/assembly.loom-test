@@ -1,0 +1,19 @@
+// RUN: roundtrip
+
+vm.target<core> @vm
+
+low.func.def target<vm.core>(@vm) abi(vm_function) @arithmetic(%a: reg<vm.value : i32>, %b: reg<vm.value : i32>) -> (reg<vm.value : i32>) asm {
+  %sum = integer.add.i32 %a, %b
+  %product = integer.mul.i32 %sum, %a
+  return %product
+}
+
+// ====
+
+vm.target<core> @vm
+
+low.func.def target<vm.core>(@vm) abi(vm_function) @arithmetic64(%a: reg<vm.value : i64>, %b: reg<vm.value : i64>) -> (reg<vm.value : i64>) asm {
+  %sum = integer.add.i64 %a, %b
+  %result = integer.sub.i64 %sum, %a
+  return %result
+}

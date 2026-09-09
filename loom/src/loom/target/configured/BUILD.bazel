@@ -18,6 +18,10 @@ package(
 
 _CONFIGURED_TARGET_COPTS = (
     iree_select({
+        "//loom/config/target/arch:vm": ["-DLOOM_CONFIG_TARGET_HAVE_VM=1"],
+        "//conditions:default": [],
+    }) +
+    iree_select({
         "//loom/config/target/arch:amdgpu": [
             "-DLOOM_CONFIG_TARGET_HAVE_AMDGPU=1",
         ],
@@ -50,6 +54,10 @@ _CONFIGURED_TARGET_COPTS = (
 )
 
 _CONFIGURED_TARGET_DEPS = (
+    iree_select({
+        "//loom/config/target/arch:vm": ["//loom/src/loom/target/arch/vm:provider"],
+        "//conditions:default": [],
+    }) +
     iree_select({
         "//loom/config/target/arch:amdgpu": [
             "//loom/src/loom/target/arch/amdgpu:provider",

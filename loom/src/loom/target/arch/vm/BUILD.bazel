@@ -1,0 +1,73 @@
+# Copyright 2026 The IREE Authors
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+load("//loom/build_tools/bazel:build_defs.bzl", "loom_cc_library", "loom_config_compatible_with")
+load("//loom/build_tools/bazel:loom_check.bzl", "loom_check_test_suite")
+
+package(
+    default_visibility = ["//visibility:private"],
+    features = ["layering_check"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+loom_cc_library(
+    name = "records",
+    srcs = ["records.c"],
+    hdrs = ["records.h"],
+    visibility = ["//loom/src/loom/target/arch/vm/ops:__pkg__"],
+    deps = [
+        "//loom/src/loom/target:types",
+        "//runtime/src/iree/base",
+    ],
+)
+
+loom_cc_library(
+    name = "provider",
+    srcs = [
+        "lower.c",
+        "provider.c",
+    ],
+    hdrs = [
+        "lower.h",
+        "provider.h",
+    ],
+    visibility = [
+        "//loom/src/loom/target/all:__pkg__",
+        "//loom/src/loom/target/configured:__pkg__",
+    ],
+    deps = [
+        "//loom/src/loom/codegen/low/lower",
+        "//loom/src/loom/error:error_defs",
+        "//loom/src/loom/target:provider",
+        "//loom/src/loom/target/arch/vm/contracts:core",
+        "//loom/src/loom/target/arch/vm/contracts:core_lower_rules",
+        "//loom/src/loom/target/arch/vm/descriptors",
+        "//loom/src/loom/target/arch/vm/ops",
+        "//runtime/src/iree/base",
+    ],
+)
+
+loom_check_test_suite(
+    name = "loom_check_file_test",
+    srcs = [
+        "test/assembly.loom-test",
+        "test/scalar.loom-test",
+    ],
+    target_compatible_with = loom_config_compatible_with(["//loom/config/target/arch:vm"]),
+    test_name_prefix_to_strip = "test/",
+)
+
+loom_cc_library(
+    name = "check",
+    srcs = ["check.c"],
+    hdrs = ["check.h"],
+    visibility = ["//loom/src/loom/tools/loom-check:__pkg__"],
+    deps = [
+        ":provider",
+        "//loom/src/loom/tools/loom-check:provider",
+        "//runtime/src/iree/base",
+    ],
+)

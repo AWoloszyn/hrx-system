@@ -1,0 +1,20 @@
+# Copyright 2026 The IREE Authors
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+load("//loom/build_tools/bazel:build_defs.bzl", "loom_low_descriptor_cc_library")
+
+package(
+    default_visibility = ["//loom/src/loom/target/arch/vm:__subpackages__"],
+    features = ["layering_check"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+loom_low_descriptor_cc_library(
+    name = "descriptors",
+    args = ["--descriptor-set=vm.core"],
+    generator = "//loom/py/loom/gen/target/low:vm_low_descriptor_shard",
+    deps = ["//loom/src/loom/codegen/low:descriptors"],
+)

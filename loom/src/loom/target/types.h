@@ -32,6 +32,7 @@ typedef enum loom_target_codegen_format_e {
   LOOM_TARGET_CODEGEN_FORMAT_SPIRV = 2,
   LOOM_TARGET_CODEGEN_FORMAT_LOW_NATIVE = 4,
   LOOM_TARGET_CODEGEN_FORMAT_WASM = 5,
+  LOOM_TARGET_CODEGEN_FORMAT_VM = 6,
 } loom_target_codegen_format_e;
 
 typedef uint8_t loom_target_artifact_format_t;
@@ -44,6 +45,7 @@ typedef enum loom_target_artifact_format_e {
   LOOM_TARGET_ARTIFACT_FORMAT_WASM_BINARY = 6,
   LOOM_TARGET_ARTIFACT_FORMAT_LLVMIR_TEXT = 7,
   LOOM_TARGET_ARTIFACT_FORMAT_LLVMIR_BITCODE = 8,
+  LOOM_TARGET_ARTIFACT_FORMAT_VM_BINARY = 9,
 } loom_target_artifact_format_e;
 
 typedef uint8_t loom_target_abi_kind_t;
@@ -54,6 +56,7 @@ typedef enum loom_target_abi_kind_e {
   LOOM_TARGET_ABI_SHADER_ENTRY_POINT = 4,
   LOOM_TARGET_ABI_WASM_FUNCTION = 5,
   LOOM_TARGET_ABI_COMMAND_PROGRAM = 6,
+  LOOM_TARGET_ABI_VM_FUNCTION = 7,
 } loom_target_abi_kind_e;
 
 typedef uint8_t loom_target_linkage_t;
@@ -74,6 +77,8 @@ static inline iree_string_view_t loom_target_codegen_format_name(
       return IREE_SV("low_native");
     case LOOM_TARGET_CODEGEN_FORMAT_WASM:
       return IREE_SV("wasm");
+    case LOOM_TARGET_CODEGEN_FORMAT_VM:
+      return IREE_SV("vm");
     case LOOM_TARGET_CODEGEN_FORMAT_UNKNOWN:
       return IREE_SV("unknown");
   }
@@ -94,6 +99,8 @@ static inline iree_string_view_t loom_target_artifact_format_name(
       return IREE_SV("spirv_binary");
     case LOOM_TARGET_ARTIFACT_FORMAT_WASM_BINARY:
       return IREE_SV("wasm_binary");
+    case LOOM_TARGET_ARTIFACT_FORMAT_VM_BINARY:
+      return IREE_SV("vm_binary");
     case LOOM_TARGET_ARTIFACT_FORMAT_LLVMIR_TEXT:
       return IREE_SV("llvmir_text");
     case LOOM_TARGET_ARTIFACT_FORMAT_LLVMIR_BITCODE:
@@ -118,6 +125,8 @@ static inline iree_string_view_t loom_target_abi_kind_name(
       return IREE_SV("wasm_function");
     case LOOM_TARGET_ABI_COMMAND_PROGRAM:
       return IREE_SV("command_program");
+    case LOOM_TARGET_ABI_VM_FUNCTION:
+      return IREE_SV("vm_function");
     case LOOM_TARGET_ABI_UNKNOWN:
       return IREE_SV("unknown");
   }
