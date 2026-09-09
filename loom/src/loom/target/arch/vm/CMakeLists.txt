@@ -101,6 +101,7 @@ loom_check_test_suite(
     "test/source_low/numeric_scalar_conversion.loom-test"
     "test/source_low/numeric_scalar_i32.loom-test"
     "test/source_low/owned_buffers.loom-test"
+    "test/source_low/packed_bitfield.loom-test"
     "test/source_low/scalar_selection.loom-test"
     "test/source_low/view_access.loom-test"
     "test/storage.loom-test"
@@ -122,6 +123,7 @@ loom_check_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_scalar_conversion.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_scalar_i32.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/owned_buffers.loom-test"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/packed_bitfield.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/scalar_selection.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/view_access.loom-test"
   TEST_NAME_PREFIX_TO_STRIP

@@ -46,6 +46,21 @@ check.case @wrapping_i32_product_overflow {
   check.return
 }
 
+func.def public @integer_multiply_add(%lhs: i32, %rhs: i32, %init: i32) -> (i32) {
+  %result = scalar.fmai %lhs, %rhs, %init : i32
+  func.return %result : i32
+}
+
+check.case @integer_multiply_add_wraps {
+  %lhs = check.literal value(2147483647) : i32
+  %rhs = check.literal value(2) : i32
+  %init = check.literal value(3) : i32
+  %result = func.call @integer_multiply_add(%lhs, %rhs, %init) : (i32, i32, i32) -> (i32)
+  %expected = check.literal value(1) : i32
+  check.expect.equal actual(%result) expected(%expected) : i32
+  check.return
+}
+
 func.def public @shift_boundaries_i32(%value: i32, %count: i32) -> (i32, i32, i32, i32, i32) {
   %left = scalar.shli %value, %count : i32
   %arithmetic = scalar.shrsi %value, %count : i32

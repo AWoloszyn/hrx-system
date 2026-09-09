@@ -25,6 +25,7 @@ contract under test rather than a target instruction or implementation file.
 | Floating comparisons | `float_comparison.loom`: every predicate at f32/f64, adjacent values, signed zeros, subnormals, infinities, quiet/signaling NaNs in either operand. |
 | Scalar values | `integer.loom`, `integer_boundaries.loom`, `floating.loom`, `division.loom`, `selection.loom`: arithmetic, wrapping overflow, endpoint shifts/rotates, division signs, unary operations, and selection. |
 | Representation and accuracy | `bitfield.loom`, `conversion*.loom`, `narrow.loom`, `rounding.loom`, `float_selectors.loom`, `turns.loom`: widths, field boundaries, floating policies, and fused versus separate rounding. |
+| Vector lane programs | `vector_fields.loom`: construction, signed and unsigned fields, full-width replacement, lane extraction, and typed stores through portable legalization. |
 | Control and ownership | `control.loom`, `structured_control.loom`, `calls.loom`, `direct_call.loom`, `spill.loom`, `buffer_calls.loom`: tuple joins, nested loops, while-condition effects, recursion, live values across calls, and returned aliases. |
 | Memory | `address.loom`, `buffers.loom`, `buffer_access.loom`, `memory_boundaries.loom`, `view_access.loom`: offsets, partial patterns with canaries, same-root copies, unsigned byte ordering, guarded access, typed views, and allocation lifetime. |
 
