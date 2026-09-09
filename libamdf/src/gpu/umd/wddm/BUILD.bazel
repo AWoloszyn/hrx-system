@@ -133,3 +133,16 @@ amdf_cc_test(
         "//third_party:google_test_main",
     ],
 )
+
+amdf_cc_test(
+    name = "memory_test",
+    srcs = ["memory_test.cc"],
+    target_compatible_with = ["@platforms//os:windows"],
+    deps = [
+        ":device_state",
+        ":memory",
+        "//libamdf/src/gpu/umd:memory",
+        "//third_party:google_test",
+        "//third_party:google_test_main",
+    ],
+)

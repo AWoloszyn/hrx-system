@@ -63,6 +63,13 @@ struct amdf_gpu_umd_memory_t {
     // Paging fence that publishes the mapping before rollback.
     uint64_t paging_fence_value;
   } rollback;
+  // Accepted page-table removal retained across wait failures.
+  struct {
+    // Paging fence that makes the removal visible.
+    uint64_t paging_fence_value;
+    // Nonzero while the accepted removal remains to be observed.
+    uint32_t active;
+  } pending_unmap;
   // Nonzero while the native allocations are resident.
   uint32_t is_resident;
   // Achieved public memory properties.
@@ -290,20 +297,29 @@ static amdf_status_t amdf_windows_gpu_memory_create_allocations(
 static amdf_status_t amdf_windows_gpu_memory_unmap_range(
     amdf_gpu_umd_memory_t* memory, uint64_t device_address,
     uint64_t byte_length) {
-  D3DDDI_MAPGPUVIRTUALADDRESS unmap = {0};
-  unmap.hPagingQueue = memory->device->paging_queue;
-  unmap.BaseAddress = device_address;
-  unmap.SizeInPages = byte_length / AMDF_WINDOWS_GPU_PAGE_SIZE;
-  unmap.Protection.NoAccess = 1;
-  const NTSTATUS native_status =
-      memory->device->kmt->map_gpu_virtual_address(&unmap);
-  if (!amdf_kmt_status_is_success_or_pending(native_status)) {
-    return amdf_kmt_make_status(native_status);
+  if (memory->pending_unmap.active == 0) {
+    D3DDDI_MAPGPUVIRTUALADDRESS unmap = {0};
+    unmap.hPagingQueue = memory->device->paging_queue;
+    unmap.BaseAddress = device_address;
+    unmap.SizeInPages = byte_length / AMDF_WINDOWS_GPU_PAGE_SIZE;
+    unmap.Protection.NoAccess = 1;
+    const NTSTATUS native_status =
+        memory->device->kmt->map_gpu_virtual_address(&unmap);
+    if (!amdf_kmt_status_is_success_or_pending(native_status)) {
+      return amdf_kmt_make_status(native_status);
+    }
+    memory->pending_unmap.paging_fence_value = unmap.PagingFenceValue;
+    memory->pending_unmap.active = 1;
   }
-  return amdf_kmt_wait_for_paging(memory->device->kmt, memory->device->device,
-                                  memory->device->paging_sync_object,
-                                  memory->device->paging_fence,
-                                  unmap.PagingFenceValue);
+  const amdf_status_t status = amdf_kmt_wait_for_paging(
+      memory->device->kmt, memory->device->device,
+      memory->device->paging_sync_object, memory->device->paging_fence,
+      memory->pending_unmap.paging_fence_value);
+  if (amdf_status_is_ok(status)) {
+    memory->pending_unmap.paging_fence_value = 0;
+    memory->pending_unmap.active = 0;
+  }
+  return status;
 }
 
 static amdf_status_t amdf_windows_gpu_memory_rollback_unexpected_mapping(
