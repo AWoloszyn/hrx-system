@@ -76,8 +76,10 @@ typedef struct loom_artifact_t {
   void* storage;
 } loom_artifact_t;
 
-// Emits a compiler artifact. When |out_emitted| is true the artifact has a
-// target bundle, non-empty target-native and executable contents, and a valid
+// Emits a compiler artifact from verified, prepared target-low IR. Providers
+// check emission-specific constraints without repeating structural or Low
+// verification. When |out_emitted| is true the artifact has a target bundle,
+// non-empty target-native and executable contents, and a valid
 // descriptor and contents for every sidecar. Returning OK with |out_emitted|
 // false is reserved for product diagnostics emitted through |diagnostic_sink|;
 // infrastructure failures return a non-OK status.

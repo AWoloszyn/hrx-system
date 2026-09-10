@@ -7,7 +7,6 @@
 #include "loom/tooling/target/spirv/artifact_provider.h"
 
 #include "loom/target/arch/spirv/descriptors/low_registry.h"
-#include "loom/target/arch/spirv/low_verify.h"
 #include "loom/target/arch/spirv/profile.h"
 #include "loom/target/emit/spirv/module_builder.h"
 #include "loom/target/emit/spirv/module_emitter.h"
@@ -61,17 +60,6 @@ static iree_status_t loom_spirv_artifact_provider_emit_entries(
     iree_arena_allocator_t* arena, iree_allocator_t allocator,
     bool* out_emitted, loom_artifact_t* out_artifact) {
   *out_emitted = false;
-
-  loom_low_verify_result_t low_verify_result = {0};
-  loom_low_verify_scratch_t low_verify_scratch =
-      loom_low_verify_scratch_for_module(module);
-  IREE_RETURN_IF_ERROR(loom_target_entry_verify_low_module(
-      module, low_registry, target_options, diagnostic_emitter,
-      /*default_max_errors=*/20, loom_spirv_low_verify_provider_list(),
-      &low_verify_scratch, &low_verify_result));
-  if (low_verify_result.error_count != 0) {
-    return iree_ok_status();
-  }
 
   loom_op_t** entry_ops = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -197,25 +185,16 @@ static iree_status_t loom_spirv_artifact_provider_emit_artifact(
   loom_target_low_descriptor_registry_t low_registry = {0};
   loom_spirv_low_descriptor_registry_initialize(&low_registry);
 
-  iree_status_t status = iree_ok_status();
-  loom_verify_result_t verify_result = {0};
-  if (iree_status_is_ok(status)) {
-    status = loom_target_entry_verify_module(
-        module, &target_options, /*default_max_errors=*/20, &verify_result);
-  }
-
   const loom_target_entry_predicate_t entry_predicate = {
       .fn = loom_spirv_artifact_provider_bundle_is_compatible,
       .user_data = (void*)loom_artifact_target_bundle(target),
   };
   loom_target_entry_list_t entries = {0};
   bool selected = false;
-  if (iree_status_is_ok(status) && verify_result.error_count == 0) {
-    status = loom_target_entry_select_all_entries(
-        module, &target_options, entry_predicate, &diagnostic_emitter,
-        IREE_SV("SPIR-V Vulkan HAL"), &arena, &selected, &entries);
-  }
-  if (iree_status_is_ok(status) && verify_result.error_count == 0 && selected &&
+  iree_status_t status = loom_target_entry_select_all_entries(
+      module, &target_options, entry_predicate, &diagnostic_emitter,
+      IREE_SV("SPIR-V Vulkan HAL"), &arena, &selected, &entries);
+  if (iree_status_is_ok(status) && selected &&
       diagnostic_emitter.error_count == 0) {
     if (options->report != NULL) {
       loom_target_compile_report_record_target_bundle(
