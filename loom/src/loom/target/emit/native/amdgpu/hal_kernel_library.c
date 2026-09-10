@@ -18,7 +18,6 @@
 #include "loom/codegen/low/frame.h"
 #include "loom/codegen/low/storage_layout.h"
 #include "loom/codegen/low/target_binding.h"
-#include "loom/codegen/low/verify.h"
 #include "loom/error/error_catalog.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
@@ -853,7 +852,6 @@ static iree_status_t loom_amdgpu_hal_kernel_library_compose_data_symbols(
 static iree_status_t loom_amdgpu_hal_kernel_library_entries(
     loom_module_t* module, const loom_target_entry_options_t* target_options,
     const loom_target_low_descriptor_registry_t* low_registry,
-    loom_low_verify_provider_list_t low_verify_provider_list,
     loom_target_entry_list_t entries,
     loom_target_entry_diagnostic_emitter_t* diagnostic_emitter,
     iree_arena_allocator_t* table_arena, loom_target_compile_report_t* report,
@@ -931,28 +929,6 @@ static iree_status_t loom_amdgpu_hal_kernel_library_entries(
        ++i) {
     status = loom_amdgpu_hal_kernel_library_prepare_kernel_abi_layout(
         module, &plans[i], table_arena);
-  }
-
-  loom_verify_result_t verify_result = {0};
-  if (iree_status_is_ok(status) && !diagnostics_failed) {
-    status = loom_target_entry_verify_module(
-        module, target_options,
-        LOOM_AMDGPU_HAL_KERNEL_LIBRARY_DEFAULT_MAX_ERRORS, &verify_result);
-    if (iree_status_is_ok(status) && verify_result.error_count != 0) {
-      diagnostics_failed = true;
-    }
-  }
-  loom_low_verify_result_t low_verify_result = {0};
-  loom_low_verify_scratch_t low_verify_scratch =
-      loom_low_verify_scratch_for_module(module);
-  if (iree_status_is_ok(status) && !diagnostics_failed) {
-    status = loom_target_entry_verify_low_module(
-        module, low_registry, target_options, diagnostic_emitter,
-        LOOM_AMDGPU_HAL_KERNEL_LIBRARY_DEFAULT_MAX_ERRORS,
-        low_verify_provider_list, &low_verify_scratch, &low_verify_result);
-    if (iree_status_is_ok(status) && low_verify_result.error_count != 0) {
-      diagnostics_failed = true;
-    }
   }
 
   loom_amdgpu_kernel_hsaco_contribution_t* contributions = NULL;
@@ -1124,15 +1100,8 @@ iree_status_t loom_amdgpu_emit_hal_kernel_library(
   iree_arena_initialize(module->arena.block_pool, &table_arena);
 
   loom_target_entry_list_t entries = {0};
-  loom_verify_result_t verify_result = {0};
-  if (iree_status_is_ok(status)) {
-    status = loom_target_entry_verify_module(
-        module, &target_options,
-        LOOM_AMDGPU_HAL_KERNEL_LIBRARY_DEFAULT_MAX_ERRORS, &verify_result);
-  }
   bool selected = false;
-  if (iree_status_is_ok(status) && verify_result.error_count == 0 &&
-      diagnostic_emitter.error_count == 0) {
+  if (iree_status_is_ok(status)) {
     status = loom_target_entry_select_all_entries(
         module, &target_options, entry_predicate, &diagnostic_emitter,
         IREE_SV("AMDGPU HAL-native"), &table_arena, &selected, &entries);
@@ -1154,10 +1123,8 @@ iree_status_t loom_amdgpu_emit_hal_kernel_library(
   if (iree_status_is_ok(status) && selected &&
       diagnostic_emitter.error_count == 0) {
     status = loom_amdgpu_hal_kernel_library_entries(
-        module, &target_options, &low_registry,
-        loom_target_environment_low_verify_provider_list(&target_environment),
-        entries, &diagnostic_emitter, &table_arena, report, options,
-        out_emitted, out_library, allocator);
+        module, &target_options, &low_registry, entries, &diagnostic_emitter,
+        &table_arena, report, options, out_emitted, out_library, allocator);
   }
   if (iree_status_is_ok(status) && *out_emitted && report != NULL) {
     loom_target_compile_report_record_artifact_size(
