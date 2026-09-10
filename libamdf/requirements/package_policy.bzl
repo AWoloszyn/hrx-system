@@ -15,9 +15,11 @@ load(
 )
 load(
     "//libamdf/requirements:defs.bzl",
+    "AMDGPU_RESOURCE",
     "LIBAMDF",
     "LIBAMDF_GPU",
     "LIBAMDF_XDNA",
+    "XDNA_RESOURCE",
 )
 
 PACKAGE_POLICIES = [
@@ -47,6 +49,17 @@ PACKAGE_POLICIES = [
         ],
         build_requirements = [LIBAMDF_GPU],
         forbidden_deps = ["//libamdf/src/xdna/..."],
+    ),
+    package_policy(
+        packages = ["libamdf/cts/gpu/..."],
+        run_requirements = [AMDGPU_RESOURCE],
+        resource_group = "iree-hal-drivers-amdgpu-tests",
+    ),
+    package_policy(
+        packages = ["libamdf/cts/xdna/..."],
+        run_requirements = [XDNA_RESOURCE],
+        # GPU CTS includes GPU/XDNA interop and competes for this device too.
+        resource_group = "iree-hal-drivers-amdgpu-tests",
     ),
     package_policy(
         packages = [

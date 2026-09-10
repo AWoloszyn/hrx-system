@@ -78,9 +78,12 @@ amdf_cts_test(
     iree::third_party::google_test
     libamdf::cts::util::provider_headers
   LABELS
-    "manual"
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.xdna"
+    "iree-run-requirement=libamdf.resource.xdna"
+    "runtime-resource=amd-xdna"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
 )
 endif()
 
@@ -100,9 +103,12 @@ amdf_cts_test(
     iree::third_party::google_test
     libamdf::cts::util::provider_headers
   LABELS
-    "manual"
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.xdna"
+    "iree-run-requirement=libamdf.resource.xdna"
+    "runtime-resource=amd-xdna"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
 )
 endif()
 
@@ -123,9 +129,12 @@ amdf_cts_test(
   ARGS
     "--amdf_library=$<TARGET_FILE:amdf::amdf>"
   LABELS
-    "manual"
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.xdna"
+    "iree-run-requirement=libamdf.resource.xdna"
+    "runtime-resource=amd-xdna"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
 )
 endif()
 

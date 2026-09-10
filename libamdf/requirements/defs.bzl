@@ -4,9 +4,9 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-"""libamdf build requirements."""
+"""libamdf build and run requirements."""
 
-load("//build_tools/bazel:requirements.bzl", "build_requirement")
+load("//build_tools/bazel:requirements.bzl", "build_requirement", "run_requirement")
 
 LIBAMDF = build_requirement(
     id = "libamdf",
@@ -29,8 +29,24 @@ LIBAMDF_XDNA = build_requirement(
     cmake_condition = "AMDF_FAMILY_XDNA",
 )
 
+AMDGPU_RESOURCE = run_requirement(
+    id = "libamdf.resource.amd_gpu",
+    label = Label("//libamdf/requirements:amd_gpu"),
+    cmake_label = "runtime-resource=amd-gpu",
+    skip_contract = "Tests skip when no qualified native AMD GPU endpoint is available.",
+)
+
+XDNA_RESOURCE = run_requirement(
+    id = "libamdf.resource.xdna",
+    label = Label("//libamdf/requirements:xdna_device"),
+    cmake_label = "runtime-resource=amd-xdna",
+    skip_contract = "Tests skip when no qualified native XDNA endpoint is available.",
+)
+
 REQUIREMENTS = [
     LIBAMDF,
     LIBAMDF_GPU,
     LIBAMDF_XDNA,
+    AMDGPU_RESOURCE,
+    XDNA_RESOURCE,
 ]

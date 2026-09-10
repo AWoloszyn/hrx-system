@@ -85,7 +85,9 @@ Configure and test Bazel explicitly without enabling the legacy AMDGPU HAL:
 
 ```bash
 python dev.py bazel configure -DAMDF_BUILD=ON
-iree-bazel-test //libamdf/cts/...
+iree-bazel-test --config=asan \
+  --test_tag_filters=-iree-run-requirement=libamdf.resource.amd_gpu,-iree-run-requirement=libamdf.resource.xdna \
+  //libamdf/...
 iree-bazel-run //libamdf/examples:enumerate
 ```
 
@@ -94,11 +96,28 @@ The equivalent CMake build is:
 ```bash
 iree-cmake-configure -DAMDF_BUILD=ON -DIREE_HAL_DRIVER_AMDGPU=OFF -DLIBHRX_BUILD=OFF -DLOOM_BUILD=OFF
 iree-cmake-build amdf amdf_static
-iree-cmake-test -R '^libamdf/' -LE manual
+iree-cmake-test -R '^libamdf/' -LE 'manual|runtime-resource='
 ```
 
-Hardware-backed CTS targets carry the `manual` label and run only when named
-explicitly on a qualified host.
+Hardware-backed tests declare the `libamdf.resource.amd_gpu` or
+`libamdf.resource.xdna` run requirement. CMake exposes the corresponding
+`runtime-resource=amd-gpu` and `runtime-resource=amd-xdna` labels. These tests
+remain discoverable by wildcard selection; host-only presubmit excludes their
+requirements. Native suites share the AMD hardware resource group because GPU
+CTS also exercises GPU/XDNA interoperability.
+
+On a qualified XDNA host, select all XDNA hardware tests, including each CTS
+linkage mode and the native DRM device lifecycle:
+
+```bash
+iree-bazel-test --config=asan --//libamdf/config:families=xdna \
+  --test_tag_filters=iree-run-requirement=libamdf.resource.xdna //libamdf/...
+iree-cmake-test -L runtime-resource=amd-xdna
+```
+
+Linux XDNA execution requires the host's `amdxdna` driver and `/dev/accel`
+devices to be accessible inside the test environment. GPU device access through
+`/dev/kfd` and `/dev/dri` does not provide XDNA device access.
 
 Installing the repository exports `amdf::amdf` and `amdf::amdf_static` through
 `find_package(amdf CONFIG REQUIRED)` and installs the public headers beneath

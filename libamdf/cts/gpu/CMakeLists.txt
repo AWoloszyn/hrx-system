@@ -98,9 +98,12 @@ amdf_cts_test(
     iree::third_party::google_test
     libamdf::cts::util::provider_headers
   LABELS
-    "manual"
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
 )
 endif()
 
@@ -120,9 +123,12 @@ amdf_cts_test(
     iree::third_party::google_test
     libamdf::cts::util::provider_headers
   LABELS
-    "manual"
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
 )
 endif()
 
@@ -143,9 +149,12 @@ amdf_cts_test(
   ARGS
     "--amdf_library=$<TARGET_FILE:amdf::amdf>"
   LABELS
-    "manual"
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
 )
 endif()
 

@@ -131,7 +131,11 @@ amdf_cc_library(
 amdf_cc_test(
     name = "device_test",
     srcs = ["device_test.cc"],
-    tags = ["manual"],
+    resource_group = "iree-hal-drivers-amdgpu-tests",
+    tags = [
+        "iree-run-requirement=libamdf.resource.xdna",
+        "runtime-resource=amd-xdna",
+    ],
     target_compatible_with = DRM_COMPATIBILITY,
     deps = [
         ":context",

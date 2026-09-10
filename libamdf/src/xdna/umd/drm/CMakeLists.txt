@@ -185,9 +185,12 @@ iree_cc_test(
     libamdf::src::xdna::umd::device
     libamdf::src::xdna::umd::memory
   LABELS
-    "manual"
+    "iree-run-requirement=libamdf.resource.xdna"
+    "runtime-resource=amd-xdna"
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.xdna"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
 )
 endif()
 

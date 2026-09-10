@@ -10,6 +10,7 @@ import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 def load_presubmit_module():
@@ -43,12 +44,18 @@ class LibamdfPresubmitTest(unittest.TestCase):
 
         self.assertEqual(command[-4:], ["cmake", "build", "amdf", "amdf_static"])
 
-    def test_cmake_tests_exclude_manual_hardware_tests(self):
+    def test_cmake_tests_forward_selection_filters(self):
         build_dir = Path("build/libamdf")
-        command = self.presubmit.cmake_test_command(build_dir)
+        with mock.patch.multiple(
+            self.presubmit,
+            CMAKE_TEST_REGEX="TARGET_A",
+            CMAKE_TEST_LABEL_EXCLUDE_REGEX="TARGET_B",
+        ):
+            command = self.presubmit.cmake_test_command(build_dir)
 
         self.assertEqual(
-            command[-6:], ["cmake", "test", "-R", "^libamdf/", "-LE", "manual"]
+            command[-6:],
+            ["cmake", "test", "-R", "TARGET_A", "-LE", "TARGET_B"],
         )
 
     def test_libamdf_change_runs_tests(self):

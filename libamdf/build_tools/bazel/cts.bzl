@@ -64,6 +64,7 @@ def amdf_cts_test_suite(
     )
     native.test_suite(
         name = name,
+        tags = tags,
         tests = [
             ":dynamic",
             ":shared",

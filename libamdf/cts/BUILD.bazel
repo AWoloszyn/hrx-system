@@ -15,6 +15,7 @@ test_suite(
     tests = [
         "//libamdf/cts/core",
         "//libamdf/cts/gpu",
+        "//libamdf/cts/xdna",
     ],
     visibility = ["//visibility:public"],
 )
