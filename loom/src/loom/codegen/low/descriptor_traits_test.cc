@@ -69,16 +69,6 @@ TEST(LowDescriptorTraitsTest, BarrierIsMemoryFence) {
   EXPECT_FALSE(iree_any_bit_set(traits, LOOM_TRAIT_PURE));
 }
 
-TEST(LowDescriptorTraitsTest, FailureIsObservableWithoutTerminatingTheBlock) {
-  loom_low_effect_t effect = {};
-  effect.kind = LOOM_LOW_EFFECT_KIND_FAILURE;
-  const loom_trait_flags_t traits = ProjectEffects(&effect, 1);
-
-  EXPECT_TRUE(iree_all_bits_set(traits, LOOM_TRAIT_UNKNOWN_EFFECTS));
-  EXPECT_FALSE(
-      iree_any_bit_set(traits, LOOM_TRAIT_PURE | LOOM_TRAIT_TERMINATOR));
-}
-
 TEST(LowDescriptorTraitsTest, BarrierPreservesPreciseMemoryEffects) {
   loom_low_effect_t effects[2] = {};
   effects[0].kind = LOOM_LOW_EFFECT_KIND_READ;
@@ -93,8 +83,7 @@ TEST(LowDescriptorTraitsTest, BarrierPreservesPreciseMemoryEffects) {
 }
 
 TEST(LowDescriptorTraitsTest, OpaqueEffectsSubsumePreciseMemoryTraits) {
-  for (auto kind : {LOOM_LOW_EFFECT_KIND_CALL, LOOM_LOW_EFFECT_KIND_COUNTER,
-                    LOOM_LOW_EFFECT_KIND_FAILURE}) {
+  for (auto kind : {LOOM_LOW_EFFECT_KIND_CALL, LOOM_LOW_EFFECT_KIND_COUNTER}) {
     loom_low_effect_t effects[5] = {};
     effects[0].kind = LOOM_LOW_EFFECT_KIND_READ;
     effects[1].kind = kind;

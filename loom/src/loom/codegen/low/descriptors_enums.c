@@ -89,8 +89,6 @@ iree_string_view_t loom_low_effect_kind_name(loom_low_effect_kind_t kind) {
       return IREE_SV("convergent");
     case LOOM_LOW_EFFECT_KIND_CONTROL:
       return IREE_SV("control");
-    case LOOM_LOW_EFFECT_KIND_FAILURE:
-      return IREE_SV("failure");
     default:
       return IREE_SV("unknown");
   }

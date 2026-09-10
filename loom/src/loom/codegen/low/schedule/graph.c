@@ -990,7 +990,6 @@ static bool loom_low_schedule_effect_is_ordered(
     case LOOM_LOW_EFFECT_KIND_COUNTER:
     case LOOM_LOW_EFFECT_KIND_CONVERGENT:
     case LOOM_LOW_EFFECT_KIND_CONTROL:
-    case LOOM_LOW_EFFECT_KIND_FAILURE:
     default:
       return true;
   }
@@ -1009,7 +1008,6 @@ static bool loom_low_schedule_effect_orders_memory(
     case LOOM_LOW_EFFECT_KIND_BARRIER:
     case LOOM_LOW_EFFECT_KIND_COUNTER:
     case LOOM_LOW_EFFECT_KIND_CONTROL:
-    case LOOM_LOW_EFFECT_KIND_FAILURE:
       return true;
     case LOOM_LOW_EFFECT_KIND_CONVERGENT:
     default:

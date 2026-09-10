@@ -44,7 +44,6 @@ loom_trait_flags_t loom_low_descriptor_effective_traits(
         break;
       case LOOM_LOW_EFFECT_KIND_CALL:
       case LOOM_LOW_EFFECT_KIND_COUNTER:
-      case LOOM_LOW_EFFECT_KIND_FAILURE:
         traits |= LOOM_TRAIT_UNKNOWN_EFFECTS;
         break;
       case LOOM_LOW_EFFECT_KIND_BARRIER:

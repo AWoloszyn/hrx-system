@@ -136,7 +136,7 @@ def test_register_fields_preserve_the_wire_bank_and_position():
             assert alternative.reg_class == banks[field.rule.kind]
 
 
-def test_effects_preserve_memory_access_and_observable_failures():
+def test_effects_preserve_state_access_not_runtime_aborts():
     instructions = {
         instruction.opcode: instruction for instruction in SPECIFICATION.instructions
     }
@@ -151,7 +151,7 @@ def test_effects_preserve_memory_access_and_observable_failures():
                 }[effect.access]
                 for effect in instruction.state_effects
             )
-        ) + ((EffectKind.FAILURE,) if instruction.failures else ())
+        )
         if expected:
             assert DescriptorFlag.SIDE_EFFECTING in descriptor.flags
             assert DescriptorFlag.DEAD_REMOVABLE not in descriptor.flags

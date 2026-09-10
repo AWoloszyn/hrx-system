@@ -1565,19 +1565,6 @@ TEST(LowDescriptorsTest, RejectsControlEffectWithoutTerminator) {
                         loom_low_descriptor_set_verify(&tables.set));
 }
 
-TEST(LowDescriptorsTest, FailureDoesNotRequireTerminatingControl) {
-  TestTables tables;
-  InitializeTestTables(&tables);
-  AddAddDescriptorEffect(&tables, LOOM_LOW_EFFECT_KIND_FAILURE,
-                         LOOM_LOW_MEMORY_SPACE_NONE);
-  tables.descriptors[1].flags = LOOM_LOW_DESCRIPTOR_FLAG_SIDE_EFFECTING;
-
-  IREE_ASSERT_OK(loom_low_descriptor_set_verify(&tables.set));
-  tables.descriptors[1].flags = 0;
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
-                        loom_low_descriptor_set_verify(&tables.set));
-}
-
 TEST(LowDescriptorsTest, RejectsScheduleClassMissingEffectFlag) {
   TestTables tables;
   InitializeTestTables(&tables);

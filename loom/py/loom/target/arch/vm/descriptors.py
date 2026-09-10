@@ -210,6 +210,8 @@ def _descriptor(
         )
         if field.role in _OPERAND_ROLES
     )
+    # Invocation aborts are runtime behavior, not compiler-visible effects.
+    # Only state accesses constrain optimization of these instructions.
     effects = tuple(
         dict.fromkeys(
             Effect(
@@ -222,7 +224,7 @@ def _descriptor(
             )
             for effect in instruction.state_effects
         )
-    ) + ((Effect(EffectKind.FAILURE),) if instruction.failures else ())
+    )
     return Descriptor(
         key=f"vm.{instruction.mnemonic}",
         mnemonic=instruction.mnemonic,
