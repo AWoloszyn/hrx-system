@@ -1,0 +1,130 @@
+// Scalar-memory completion remains anchored before a zero-instruction identity.
+// RUN: emit amdgpu-assembly @scalar_load_assumption strategy=source
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @scalar_load_assumption(%base: reg<amdgpu.sgpr x2>, %offset: reg<amdgpu.sgpr>, %addend: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>) asm {
+  %loaded = s_load_dword %base, %offset
+  %bounded = low.assume %loaded [range(%loaded, 1, 2048)] : reg<amdgpu.sgpr>
+  %sum = s_add_u32 %bounded, %addend
+  return %sum
+}
+
+// ----
+  s_load_dword s4, s[0:1], s2 offset:0
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  s_add_u32 s0, s4, s3
+  s_endpgm
+
+// ====
+
+// RUN: emit amdgpu-native-words @scalar_load_assumption strategy=source
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @scalar_load_assumption(%base: reg<amdgpu.sgpr x2>, %offset: reg<amdgpu.sgpr>, %addend: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>) asm {
+  %loaded = s_load_dword %base, %offset
+  %bounded = low.assume %loaded [range(%loaded, 1, 2048)] : reg<amdgpu.sgpr>
+  %sum = s_add_u32 %bounded, %addend
+  return %sum
+}
+
+// ----
+0xF4000100
+0x04000000
+0xBF89FC07
+0x80000304
+0xBFB00000
+
+// ====
+
+// A chain of identities preserves the load wait and subsequent store drain.
+// RUN: emit amdgpu-assembly @global_load_assumptions strategy=source
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @global_load_assumptions(%resource: reg<amdgpu.sgpr x4>, %address: reg<amdgpu.vgpr>, %offset: reg<amdgpu.sgpr>) asm {
+  %loaded = buffer_load_dword %resource, %address, %offset
+  %positive = low.assume %loaded [range(%loaded, 1, 4096)] : reg<amdgpu.vgpr>
+  %bounded = low.assume %positive [range(%positive, 1, 2048)] : reg<amdgpu.vgpr>
+  %sum = v_add_u32 %bounded, %address
+  buffer_store_dword %sum, %resource, %address, %offset
+  return
+}
+
+// ----
+  buffer_load_dword v1, v0, s[0:3], s4 offen offset:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_add_u32 v1, v1, v0
+  buffer_store_dword v1, v0, s[0:3], s4 offen offset:0
+  s_waitcnt_vscnt vscnt(0)
+  s_endpgm
+
+// ====
+
+// RUN: emit amdgpu-native-words @global_load_assumptions strategy=source
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @global_load_assumptions(%resource: reg<amdgpu.sgpr x4>, %address: reg<amdgpu.vgpr>, %offset: reg<amdgpu.sgpr>) asm {
+  %loaded = buffer_load_dword %resource, %address, %offset
+  %positive = low.assume %loaded [range(%loaded, 1, 4096)] : reg<amdgpu.vgpr>
+  %bounded = low.assume %positive [range(%positive, 1, 2048)] : reg<amdgpu.vgpr>
+  %sum = v_add_u32 %bounded, %address
+  buffer_store_dword %sum, %resource, %address, %offset
+  return
+}
+
+// ----
+0xE0500000
+0x04400100
+0xBF8903F7
+0x4A020101
+0xE0680000
+0x04400100
+0xBC7C0000
+0xBFB00000
+
+// ====
+
+// Multiple pending LDS reads meet at one relational fact identity.
+// RUN: emit amdgpu-assembly @local_load_assumptions strategy=source
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @local_load_assumptions(%address: reg<amdgpu.vgpr>) asm {
+  %position = ds_read_b32 %address
+  %length = ds_read_b32 %address {offset = 4}
+  %bounded_position, %bounded_length = low.assume %position, %length [lt(%position, %length)] : reg<amdgpu.vgpr>, reg<amdgpu.vgpr>
+  %sum = v_add_u32 %bounded_position, %bounded_length
+  ds_write_b32 %address, %sum {offset = 8}
+  return
+}
+
+// ----
+  ds_read_b32 v1, v0 offset:0
+  ds_read_b32 v2, v0 offset:4
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  v_add_u32 v1, v1, v2
+  ds_write_b32 v0, v1 offset:8
+  s_endpgm
+
+// ====
+
+// RUN: emit amdgpu-native-words @local_load_assumptions strategy=source
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @local_load_assumptions(%address: reg<amdgpu.vgpr>) asm {
+  %position = ds_read_b32 %address
+  %length = ds_read_b32 %address {offset = 4}
+  %bounded_position, %bounded_length = low.assume %position, %length [lt(%position, %length)] : reg<amdgpu.vgpr>, reg<amdgpu.vgpr>
+  %sum = v_add_u32 %bounded_position, %bounded_length
+  ds_write_b32 %address, %sum {offset = 8}
+  return
+}
+
+// ----
+0xD8D80000
+0x01000000
+0xD8D80004
+0x02000000
+0xBF89FC07
+0x4A020501
+0xD8340008
+0x00000100
+0xBFB00000

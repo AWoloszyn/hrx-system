@@ -59,7 +59,8 @@ static_assert(sizeof(loom_low_packet_view_t) == 20,
 
 // Returns true when |packet| is compile-time-only and has no emitted target
 // instruction. These packets remain in schedule and report tables so their
-// structural position is observable, but final emitters omit them.
+// structural position is observable. Emitters omit the packet itself but still
+// consume target insertions anchored at its scheduled position.
 IREE_ATTRIBUTE_ALWAYS_INLINE static inline bool
 loom_low_packet_is_compile_time_only(const loom_low_packet_view_t* packet) {
   return loom_traits_are_compile_time_only(packet->node->traits);

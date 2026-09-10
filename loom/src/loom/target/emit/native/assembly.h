@@ -50,6 +50,7 @@ typedef struct loom_native_assembly_format_options_t {
   // Optional hook that appends zero or more complete assembly lines before the
   // current scheduled packet. Targets use this for table-materialized packets
   // such as waits or delays without teaching the shared formatter target facts.
+  // Called even when the current packet itself emits no target instruction.
   loom_native_assembly_append_packet_callback_t append_before_packet;
   // Required formatter for descriptor-backed low.op and low.const packets.
   loom_native_assembly_append_packet_callback_t append_descriptor_packet;
