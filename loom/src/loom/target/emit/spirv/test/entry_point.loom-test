@@ -3,6 +3,13 @@
 
 spirv.target<vulkan1_3> @target
 
+test.target<low_core> @native
+
+// This callable shares compilation, but not the SPIR-V artifact.
+low.func.def public target<test.low.core>(@native) @native_identity(%value: reg<test.i32>) -> (reg<test.i32>) asm {
+  return %value
+}
+
 low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @empty_entry() asm {
   low.schedule.fence
   return

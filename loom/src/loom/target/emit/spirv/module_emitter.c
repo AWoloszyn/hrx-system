@@ -119,6 +119,13 @@ static iree_status_t loom_spirv_emit_low_function_into_module(
       state->module, &state->symbol_facts, low_function_op,
       function_version ? function_version->function_target_facts : NULL,
       state->descriptor_registry, state->diagnostic_emitter, &target));
+  // Concrete targets select their artifact backend; targetless assembly is
+  // selected by its representation contract below.
+  const loom_target_bundle_t* bundle = loom_low_resolved_target_bundle(&target);
+  if (bundle &&
+      bundle->snapshot->codegen_format != LOOM_TARGET_CODEGEN_FORMAT_SPIRV) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(loom_spirv_emit_validate_target(&target));
   IREE_RETURN_IF_ERROR(
       loom_spirv_emit_module_prepare_contract(state, &target, allocator));
