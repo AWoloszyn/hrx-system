@@ -8467,16 +8467,18 @@ static iree_status_t iree_hal_vulkan_transfer_select_strategy(
       *out_strategy = IREE_HAL_VULKAN_TRANSFER_STRATEGY_NATIVE;
       return iree_ok_status();
     }
-    case IREE_HAL_TRANSFER_OPERATION_TYPE_UPLOAD:
+    case IREE_HAL_TRANSFER_OPERATION_TYPE_UPLOAD: {
       IREE_RETURN_IF_ERROR(iree_hal_vulkan_transfer_validate_buffer(
           queue, operation->upload.target_buffer));
       *out_strategy = IREE_HAL_VULKAN_TRANSFER_STRATEGY_STAGED_UPLOAD;
       return iree_ok_status();
-    case IREE_HAL_TRANSFER_OPERATION_TYPE_DOWNLOAD:
+    }
+    case IREE_HAL_TRANSFER_OPERATION_TYPE_DOWNLOAD: {
       IREE_RETURN_IF_ERROR(iree_hal_vulkan_transfer_validate_buffer(
           queue, operation->download.source_buffer));
       *out_strategy = IREE_HAL_VULKAN_TRANSFER_STRATEGY_STAGED_DOWNLOAD;
       return iree_ok_status();
+    }
   }
   return iree_make_status(IREE_STATUS_INTERNAL,
                           "invalid validated Vulkan transfer operation");
