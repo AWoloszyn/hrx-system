@@ -495,6 +495,31 @@ loom_cc_library(
     ],
 )
 
+loom_cc_benchmark(
+    name = "allocation_benchmark",
+    size = "medium",
+    srcs = ["allocation_benchmark.cc"],
+    args = ["--benchmark_filter=.*/length:(8|64)/components:(1|16)/width:(1|4)"],
+    deps = [
+        ":allocation",
+        ":function_model",
+        ":placement",
+        ":text_asm",
+        ":verify",
+        "//loom/src/loom/analysis:liveness",
+        "//loom/src/loom/format/text:parser",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops/func",
+        "//loom/src/loom/ops/low",
+        "//loom/src/loom/ops/target",
+        "//loom/src/loom/ops/test",
+        "//loom/src/loom/target/test:low_registry",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:benchmark_main",
+    ],
+)
+
 loom_cc_library(
     name = "allocation_materialization",
     srcs = ["allocation_materialization.c"],
