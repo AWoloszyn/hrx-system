@@ -546,6 +546,14 @@ class BorrowedStatusParameterAnalyzer {
   }
 
  private:
+  // Carry cloning to the source parameter through casts and value selection;
+  // cloning an explicitly borrowed source does not transfer that source.
+  enum class StatusUse {
+    Observe,
+    Clone,
+    Transfer,
+  };
+
   void markObserved(const VarDecl* Param, SourceLocation Location) {
     auto It = State_.find(Param);
     if (It == State_.end() || It->second.OwnsOrEscapes) {
@@ -568,48 +576,19 @@ class BorrowedStatusParameterAnalyzer {
     }
   }
 
-  bool referencesTrackedStatusParameter(const Expr* Expr) {
-    Expr = IgnoreExprNoise(Expr);
-    if (!Expr) {
-      return false;
-    }
-    if (const VarDecl* Param = ReferencedStatusParameter(Expr);
-        Param && State_.contains(Param)) {
-      return true;
-    }
-    if (const auto* Lambda = dyn_cast<LambdaExpr>(Expr)) {
-      for (const LambdaCapture& Capture : Lambda->captures()) {
-        if (const auto* Param =
-                dyn_cast_or_null<ParmVarDecl>(Capture.getCapturedVar())) {
-          if (State_.contains(Param->getCanonicalDecl())) {
-            return true;
-          }
-        }
-      }
-      return false;
-    }
-    for (const Stmt* Child : Expr->children()) {
-      if (const auto* ChildExpr = dyn_cast_or_null<clang::Expr>(Child);
-          ChildExpr && referencesTrackedStatusParameter(ChildExpr)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   void markReferencedParametersOwnOrEscaped(const Expr* Expression) {
     Expression = IgnoreExprNoise(Expression);
     if (!Expression) {
       return;
     }
     if (isa<AbstractConditionalOperator>(Expression)) {
-      analyzeExpression(Expression, /*transferred=*/true);
+      analyzeExpression(Expression, StatusUse::Transfer);
       return;
     }
     if (const auto* Call = dyn_cast<CallExpr>(Expression);
         Call && IsKnownStatusClone(CalleeName(Call))) {
       for (const Expr* Arg : Call->arguments()) {
-        analyzeExpression(Arg, /*transferred=*/false);
+        analyzeExpression(Arg, StatusUse::Observe);
       }
       return;
     }
@@ -649,12 +628,14 @@ class BorrowedStatusParameterAnalyzer {
     }
     if (const auto* Return = dyn_cast<ReturnStmt>(Statement)) {
       if (const Expr* Value = Return->getRetValue()) {
-        analyzeExpression(Value, /*transferred=*/FunctionReturnsStatus_);
+        const auto Use =
+            FunctionReturnsStatus_ ? StatusUse::Transfer : StatusUse::Observe;
+        analyzeExpression(Value, Use);
       }
       return;
     }
     if (const auto* ExprStatement = dyn_cast<Expr>(Statement)) {
-      analyzeExpression(ExprStatement, /*transferred=*/false);
+      analyzeExpression(ExprStatement, StatusUse::Observe);
       return;
     }
     for (const Stmt* Child : Statement->children()) {
@@ -668,19 +649,21 @@ class BorrowedStatusParameterAnalyzer {
       if (!Var || !Var->hasInit()) {
         continue;
       }
-      analyzeExpression(Var->getInit(),
-                        /*transferred=*/IsStatusType(Var->getType()));
+      const auto Use = IsStatusType(Var->getType()) ? StatusUse::Transfer
+                                                    : StatusUse::Observe;
+      analyzeExpression(Var->getInit(), Use);
     }
   }
 
-  void analyzeExpression(const Expr* Expr, bool transferred) {
+  void analyzeExpression(const Expr* Expr, StatusUse Use) {
     Expr = IgnoreExprNoise(Expr);
     if (!Expr) {
       return;
     }
     if (const VarDecl* Param = ReferencedStatusParameter(Expr);
         Param && State_.contains(Param)) {
-      if (transferred) {
+      if (Use == StatusUse::Transfer ||
+          (Use == StatusUse::Clone && !State_[Param].ExplicitBorrowed)) {
         markOwnsOrEscapes(Param, Expr->getExprLoc());
       } else {
         markObserved(Param, Expr->getExprLoc());
@@ -688,11 +671,11 @@ class BorrowedStatusParameterAnalyzer {
       return;
     }
     if (const auto* Cast = dyn_cast<CastExpr>(Expr)) {
-      analyzeExpression(Cast->getSubExpr(), transferred);
+      analyzeExpression(Cast->getSubExpr(), Use);
       return;
     }
     if (const auto* Call = dyn_cast<CallExpr>(Expr)) {
-      analyzeCall(Call, transferred);
+      analyzeCall(Call, Use);
       return;
     }
     if (const auto* Construct = dyn_cast<CXXConstructExpr>(Expr)) {
@@ -701,83 +684,95 @@ class BorrowedStatusParameterAnalyzer {
           Constructor && Constructor->getParent() &&
           (Constructor->getParent()->getName() == "Status" ||
            Constructor->getParent()->getName() == "StatusOr");
+      const auto ArgUse =
+          IsStatusWrapper ? StatusUse::Transfer : StatusUse::Observe;
       for (unsigned I = 0; I < Construct->getNumArgs(); ++I) {
-        analyzeExpression(Construct->getArg(I), IsStatusWrapper);
+        analyzeExpression(Construct->getArg(I), ArgUse);
       }
       return;
     }
     if (const auto* Binary = dyn_cast<BinaryOperator>(Expr)) {
-      if (Binary->isAssignmentOp()) {
-        analyzeExpression(Binary->getLHS(), /*transferred=*/false);
-        analyzeExpression(
-            Binary->getRHS(),
-            /*transferred=*/isStatusDestination(Binary->getLHS()));
+      if (Binary->getOpcode() == BO_Comma) {
+        analyzeExpression(Binary->getLHS(), StatusUse::Observe);
+        analyzeExpression(Binary->getRHS(), Use);
         return;
       }
-      analyzeExpression(Binary->getLHS(), /*transferred=*/false);
-      analyzeExpression(Binary->getRHS(), /*transferred=*/false);
+      if (Binary->isAssignmentOp()) {
+        analyzeExpression(Binary->getLHS(), StatusUse::Observe);
+        const auto ArgUse = isStatusDestination(Binary->getLHS())
+                                ? StatusUse::Transfer
+                                : StatusUse::Observe;
+        analyzeExpression(Binary->getRHS(), ArgUse);
+        return;
+      }
+      analyzeExpression(Binary->getLHS(), StatusUse::Observe);
+      analyzeExpression(Binary->getRHS(), StatusUse::Observe);
       return;
     }
     if (const auto* Unary = dyn_cast<UnaryOperator>(Expr)) {
       if (Unary->getOpcode() == UO_AddrOf) {
         markReferencedParametersOwnOrEscaped(Unary->getSubExpr());
       } else {
-        analyzeExpression(Unary->getSubExpr(), transferred);
+        analyzeExpression(Unary->getSubExpr(), Use);
       }
       return;
     }
-    if (const auto* Conditional = dyn_cast<AbstractConditionalOperator>(Expr)) {
-      analyzeExpression(Conditional->getCond(), /*transferred=*/false);
-      analyzeExpression(Conditional->getTrueExpr(), transferred);
-      analyzeExpression(Conditional->getFalseExpr(), transferred);
+    if (const auto* Conditional = dyn_cast<BinaryConditionalOperator>(Expr)) {
+      // The common expression is evaluated once and supplies the true value.
+      analyzeExpression(Conditional->getCommon(), Use);
+      analyzeExpression(Conditional->getFalseExpr(), Use);
+      return;
+    }
+    if (const auto* Conditional = dyn_cast<ConditionalOperator>(Expr)) {
+      analyzeExpression(Conditional->getCond(), StatusUse::Observe);
+      analyzeExpression(Conditional->getTrueExpr(), Use);
+      analyzeExpression(Conditional->getFalseExpr(), Use);
       return;
     }
     for (const Stmt* Child : Expr->children()) {
       if (const auto* ChildExpr = dyn_cast_or_null<clang::Expr>(Child)) {
-        analyzeExpression(ChildExpr, transferred);
+        analyzeExpression(ChildExpr, Use);
       } else {
         analyzeStatement(Child);
       }
     }
   }
 
-  void analyzeCall(const CallExpr* Call, bool transferred) {
+  void analyzeCall(const CallExpr* Call, StatusUse Use) {
     StringRef Name = CalleeName(Call);
     if (IsKnownStatusConsumer(Name) && Call->getNumArgs() >= 1) {
-      analyzeExpression(Call->getArg(0), /*transferred=*/true);
+      analyzeExpression(Call->getArg(0), StatusUse::Transfer);
       for (unsigned I = 1; I < Call->getNumArgs(); ++I) {
-        analyzeExpression(Call->getArg(I), /*transferred=*/false);
+        analyzeExpression(Call->getArg(I), StatusUse::Observe);
       }
       return;
     }
     if (IsKnownStatusTransferProducer(Name)) {
       for (unsigned I = 0; I < Call->getNumArgs(); ++I) {
         bool ConsumesArg = Name == "iree_status_join" ? I <= 1 : I == 0;
-        analyzeExpression(Call->getArg(I), /*transferred=*/ConsumesArg);
+        const auto ArgUse =
+            ConsumesArg ? StatusUse::Transfer : StatusUse::Observe;
+        analyzeExpression(Call->getArg(I), ArgUse);
       }
       return;
     }
     if (IsKnownStatusClone(Name)) {
-      for (unsigned I = 0; I < Call->getNumArgs(); ++I) {
-        const Expr* Arg = Call->getArg(I);
-        if (const VarDecl* Param = ReferencedStatusParameter(Arg);
-            Param && State_.contains(Param) && State_[Param].ExplicitBorrowed) {
-          analyzeExpression(Arg, /*transferred=*/false);
-        } else {
-          analyzeExpression(Arg, /*transferred=*/true);
-        }
+      for (const Expr* Arg : Call->arguments()) {
+        analyzeExpression(Arg, StatusUse::Clone);
       }
       return;
     }
     if (std::optional<unsigned> SinkArg = KnownStatusSinkArgument(Name)) {
       for (unsigned I = 0; I < Call->getNumArgs(); ++I) {
-        analyzeExpression(Call->getArg(I), /*transferred=*/I == *SinkArg);
+        const auto ArgUse =
+            I == *SinkArg ? StatusUse::Transfer : StatusUse::Observe;
+        analyzeExpression(Call->getArg(I), ArgUse);
       }
       return;
     }
     if (IsStatusObserver(Name)) {
       for (const Expr* Arg : Call->arguments()) {
-        analyzeExpression(Arg, /*transferred=*/false);
+        analyzeExpression(Arg, StatusUse::Observe);
       }
       return;
     }
@@ -790,13 +785,11 @@ class BorrowedStatusParameterAnalyzer {
       const bool ArgIsStatus = IsStatusType(Arg->getType()) ||
                                (!ParamType.isNull() && IsStatusType(ParamType));
       if (ParamIsBorrowedStatus) {
-        analyzeExpression(Arg, /*transferred=*/false);
-      } else if (transferred || ArgIsStatus) {
-        markReferencedParametersOwnOrEscaped(Arg);
-      } else if (referencesTrackedStatusParameter(Arg)) {
-        analyzeExpression(Arg, /*transferred=*/false);
+        analyzeExpression(Arg, StatusUse::Observe);
+      } else if (Use == StatusUse::Transfer || ArgIsStatus) {
+        analyzeExpression(Arg, StatusUse::Transfer);
       } else {
-        analyzeExpression(Arg, /*transferred=*/false);
+        analyzeExpression(Arg, StatusUse::Observe);
       }
     }
   }
