@@ -10,16 +10,16 @@ low.kernel.def target<amdgpu.cdna3.core>(@target) workgroup_size(64, 1, 1) @lega
 // ----
 amdgpu.target<gfx942> @target
 
-low.kernel.def target<amdgpu.cdna3.core>(@target) workgroup_size(64, 1, 1) @legacy_record(%binding: reg<amdgpu.sgpr x2>) {
-  %2 = low.slice %binding[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
-  %3 = low.slice %binding[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
-  %4 = low.const<amdgpu.s_mov_b32> {imm32 = 65535} : reg<amdgpu.sgpr>
-  %5 = low.op<amdgpu.s_and_b32>(%3, %4) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr>
-  %6 = low.concat(%2, %5) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
-  %7 = low.const<amdgpu.s_mov_b32> {imm32 = 16} : reg<amdgpu.sgpr>
-  %8 = low.const<amdgpu.s_mov_b32> {imm32 = 159744} : reg<amdgpu.sgpr>
-  %descriptor = low.concat(%6, %7, %8) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x4>
-  low.return
+low.kernel.def target<amdgpu.cdna3.core>(@target) workgroup_size(64, 1, 1) @legacy_record(%binding: reg<amdgpu.sgpr x2>) asm {
+  %2 = slice %binding[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %3 = slice %binding[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %4 = s_mov_b32 65535
+  %5 = s_and_b32 %3, %4
+  %6 = concat(%2, %5) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  %7 = s_mov_b32 16
+  %8 = s_mov_b32 159744
+  %descriptor = concat(%6, %7, %8) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x4>
+  return
 }
 
 // ====
@@ -34,16 +34,16 @@ low.kernel.def target<amdgpu.rdna3.core>(@target) workgroup_size(64, 1, 1) @unif
 // ----
 amdgpu.target<gfx1100> @target
 
-low.kernel.def target<amdgpu.rdna3.core>(@target) workgroup_size(64, 1, 1) @unified_record(%binding: reg<amdgpu.sgpr x2>) {
-  %2 = low.slice %binding[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
-  %3 = low.slice %binding[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
-  %4 = low.const<amdgpu.s_mov_b32> {imm32 = 65535} : reg<amdgpu.sgpr>
-  %5 = low.op<amdgpu.s_and_b32>(%3, %4) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr>
-  %6 = low.concat(%2, %5) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
-  %7 = low.const<amdgpu.s_mov_b32> {imm32 = 16} : reg<amdgpu.sgpr>
-  %8 = low.const<amdgpu.s_mov_b32> {imm32 = 822173696} : reg<amdgpu.sgpr>
-  %descriptor = low.concat(%6, %7, %8) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x4>
-  low.return
+low.kernel.def target<amdgpu.rdna3.core>(@target) workgroup_size(64, 1, 1) @unified_record(%binding: reg<amdgpu.sgpr x2>) asm {
+  %2 = slice %binding[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %3 = slice %binding[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %4 = s_mov_b32 65535
+  %5 = s_and_b32 %3, %4
+  %6 = concat(%2, %5) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  %7 = s_mov_b32 16
+  %8 = s_mov_b32 822173696
+  %descriptor = concat(%6, %7, %8) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x4>
+  return
 }
 
 // ====
@@ -58,16 +58,16 @@ low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) workgroup_size(64, 1, 
 // ----
 amdgpu.target<gfx1250> @target
 
-low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) workgroup_size(64, 1, 1) @extended_static_record(%binding: reg<amdgpu.sgpr x2>) {
-  %2 = low.slice %binding[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
-  %3 = low.slice %binding[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
-  %4 = low.const<amdgpu.s_mov_b32> {imm32 = 2} : reg<amdgpu.sgpr>
-  %5 = low.const<amdgpu.s_mov_b32> {imm32 = 1174405120} : reg<amdgpu.sgpr>
-  %6 = low.op<amdgpu.s_or_b32>(%3, %5) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr>
-  %7 = low.const<amdgpu.s_mov_b32> {imm32 = 0} : reg<amdgpu.sgpr>
-  %8 = low.concat(%2, %6) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
-  %descriptor = low.concat(%8, %4, %7) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x4>
-  low.return
+low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) workgroup_size(64, 1, 1) @extended_static_record(%binding: reg<amdgpu.sgpr x2>) asm {
+  %2 = slice %binding[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %3 = slice %binding[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %4 = s_mov_b32 2
+  %5 = s_mov_b32 1174405120
+  %6 = s_or_b32 %3, %5
+  %7 = s_mov_b32 0
+  %8 = concat(%2, %6) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  %descriptor = concat(%8, %4, %7) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x4>
+  return
 }
 
 // ====
@@ -82,16 +82,16 @@ low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) workgroup_size(64, 1, 
 // ----
 amdgpu.target<gfx1250> @target
 
-low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) workgroup_size(64, 1, 1) @extended_dynamic_record(%binding: reg<amdgpu.sgpr x2>, %extent: reg<amdgpu.sgpr>) {
-  %3 = low.slice %binding[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
-  %4 = low.slice %binding[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
-  %5 = low.op<amdgpu.s_lshl_b32.rhs_inline>(%extent) {imm32 = 25} : (reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr>
-  %6 = low.op<amdgpu.s_or_b32>(%4, %5) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr>
-  %7 = low.op<amdgpu.s_lshr_b32.rhs_inline>(%extent) {imm32 = 7} : (reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr>
-  %8 = low.const<amdgpu.s_mov_b32> {imm32 = 0} : reg<amdgpu.sgpr>
-  %9 = low.concat(%3, %6) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
-  %descriptor = low.concat(%9, %7, %8) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x4>
-  low.return
+low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) workgroup_size(64, 1, 1) @extended_dynamic_record(%binding: reg<amdgpu.sgpr x2>, %extent: reg<amdgpu.sgpr>) asm {
+  %3 = slice %binding[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %4 = slice %binding[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %5 = s_lshl_b32_rhs_inline %extent, 25
+  %6 = s_or_b32 %4, %5
+  %7 = s_lshr_b32_rhs_inline %extent, 7
+  %8 = s_mov_b32 0
+  %9 = concat(%3, %6) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  %descriptor = concat(%9, %7, %8) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x4>
+  return
 }
 
 // ====
@@ -106,18 +106,18 @@ low.kernel.def target<amdgpu.cdna4.core>(@target) workgroup_size(64, 1, 1) @cach
 // ----
 amdgpu.target<gfx950> @target
 
-low.kernel.def target<amdgpu.cdna4.core>(@target) workgroup_size(64, 1, 1) @cache_swizzled_record(%binding: reg<amdgpu.sgpr x2>) {
-  %2 = low.slice %binding[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
-  %3 = low.slice %binding[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
-  %4 = low.const<amdgpu.s_mov_b32> {imm32 = 65535} : reg<amdgpu.sgpr>
-  %5 = low.op<amdgpu.s_and_b32>(%3, %4) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr>
-  %6 = low.const<amdgpu.s_mov_b32> {imm32 = 1074659328} : reg<amdgpu.sgpr>
-  %7 = low.op<amdgpu.s_or_b32>(%5, %6) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr>
-  %8 = low.concat(%2, %7) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
-  %9 = low.const<amdgpu.s_mov_b32> {imm32 = 16} : reg<amdgpu.sgpr>
-  %10 = low.const<amdgpu.s_mov_b32> {imm32 = 159744} : reg<amdgpu.sgpr>
-  %descriptor = low.concat(%8, %9, %10) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x4>
-  low.return
+low.kernel.def target<amdgpu.cdna4.core>(@target) workgroup_size(64, 1, 1) @cache_swizzled_record(%binding: reg<amdgpu.sgpr x2>) asm {
+  %2 = slice %binding[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %3 = slice %binding[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %4 = s_mov_b32 65535
+  %5 = s_and_b32 %3, %4
+  %6 = s_mov_b32 1074659328
+  %7 = s_or_b32 %5, %6
+  %8 = concat(%2, %7) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  %9 = s_mov_b32 16
+  %10 = s_mov_b32 159744
+  %descriptor = concat(%8, %9, %10) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x4>
+  return
 }
 
 // ====
@@ -132,14 +132,14 @@ low.kernel.def target<amdgpu.gfx12_5.generic.core>(@target) workgroup_size(32, 1
 // ----
 amdgpu.target<gfx12-5-generic> @target
 
-low.kernel.def target<amdgpu.gfx12_5.generic.core>(@target) workgroup_size(32, 1, 1) @generic_extended_record(%binding: reg<amdgpu.sgpr x2>) {
-  %2 = low.slice %binding[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
-  %3 = low.slice %binding[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
-  %4 = low.const<amdgpu.s_mov_b32> {imm32 = 2} : reg<amdgpu.sgpr>
-  %5 = low.const<amdgpu.s_mov_b32> {imm32 = 1174405120} : reg<amdgpu.sgpr>
-  %6 = low.op<amdgpu.s_or_b32>(%3, %5) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr>
-  %7 = low.const<amdgpu.s_mov_b32> {imm32 = 0} : reg<amdgpu.sgpr>
-  %8 = low.concat(%2, %6) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
-  %descriptor = low.concat(%8, %4, %7) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x4>
-  low.return
+low.kernel.def target<amdgpu.gfx12_5.generic.core>(@target) workgroup_size(32, 1, 1) @generic_extended_record(%binding: reg<amdgpu.sgpr x2>) asm {
+  %2 = slice %binding[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %3 = slice %binding[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %4 = s_mov_b32 2
+  %5 = s_mov_b32 1174405120
+  %6 = s_or_b32 %3, %5
+  %7 = s_mov_b32 0
+  %8 = concat(%2, %6) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  %descriptor = concat(%8, %4, %7) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x4>
+  return
 }

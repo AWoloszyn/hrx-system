@@ -4,6 +4,11 @@
 file into `// ====` cases, runs the selected `// RUN:` mode, and compares the
 actual output or diagnostics against the inline expectation.
 
+Roundtrip and pass modes print Low in assembly form by default, including when
+an explicit `// ----` expectation is present. Creating or updating an expectation
+does not change the output representation. `with-locations` retains that
+assembly form while including source locations.
+
 Use checked-in Bazel test targets for normal verification:
 
 ```bash

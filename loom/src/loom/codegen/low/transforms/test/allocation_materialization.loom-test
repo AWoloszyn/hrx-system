@@ -256,15 +256,15 @@ low.func.def target<test.low.core>(@test_target) @rematerialize_spill_plan(%a: r
 // ----
 test.target<low_core> @test_target
 
-low.func.def target<test.low.core>(@test_target) @rematerialize_spill_plan(%a: reg<test.i32>, %b: reg<test.i32>, %c: reg<test.i32>) -> (reg<test.i32>) {
-  %ab = low.op<test.add.i32>(%a, %b) : (reg<test.i32>, reg<test.i32>) -> reg<test.i32>
-  %bc = low.op<test.add.i32>(%b, %c) : (reg<test.i32>, reg<test.i32>) -> reg<test.i32>
-  %literal_remat$10 = low.const<test.const.i32> {i32_value = 7} : reg<test.i32>
-  %use0 = low.op<test.add.i32>(%ab, %literal_remat$10) : (reg<test.i32>, reg<test.i32>) -> reg<test.i32>
-  %literal_remat$11 = low.const<test.const.i32> {i32_value = 7} : reg<test.i32>
-  %use1 = low.op<test.add.i32>(%bc, %literal_remat$11) : (reg<test.i32>, reg<test.i32>) -> reg<test.i32>
-  %out = low.op<test.add.i32>(%use0, %use1) : (reg<test.i32>, reg<test.i32>) -> reg<test.i32>
-  low.return %out : reg<test.i32>
+low.func.def target<test.low.core>(@test_target) @rematerialize_spill_plan(%a: reg<test.i32>, %b: reg<test.i32>, %c: reg<test.i32>) -> (reg<test.i32>) asm {
+  %ab = test.add.i32 %a, %b
+  %bc = test.add.i32 %b, %c
+  %literal_remat$10 = test.const.i32 7
+  %use0 = test.add.i32 %ab, %literal_remat$10
+  %literal_remat$11 = test.const.i32 7
+  %use1 = test.add.i32 %bc, %literal_remat$11
+  %out = test.add.i32 %use0, %use1
+  return %out
 }
 
 // ====

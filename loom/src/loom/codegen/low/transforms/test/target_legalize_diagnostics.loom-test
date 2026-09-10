@@ -50,8 +50,8 @@ func.def target(@test_target) @removes_dead_compile_time_query() {
 // ----
 test.target<low_core> @test_target
 
-low.func.def target<test.low.core>(@test_target) abi(object_function) @removes_dead_compile_time_query() {
-  low.return
+low.func.def target<test.low.core>(@test_target) abi(object_function) @removes_dead_compile_time_query() asm {
+  return
 }
 
 // ====
