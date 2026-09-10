@@ -147,6 +147,31 @@ TEST(StatusMacro, AssignOrReturn) {
   IREE_EXPECT_OK(assignOrReturn("foo"));
 }
 
+TEST(StatusClone, OkIsIdentity) {
+  iree_status_t status = iree_ok_status();
+  iree_status_t cloned_status = iree_status_clone(status);
+  EXPECT_EQ(cloned_status, status);
+  iree_status_free(cloned_status);
+  iree_status_free(status);
+}
+
+TEST(StatusClone, CodeOnlyIsIdentity) {
+  iree_status_t status = iree_status_from_code(IREE_STATUS_UNAVAILABLE);
+  iree_status_t cloned_status = iree_status_clone(status);
+  EXPECT_EQ(cloned_status, status);
+  iree_status_free(cloned_status);
+  iree_status_free(status);
+}
+
+TEST(StatusClone, FailureOutlivesOriginal) {
+  iree_status_t status =
+      iree_make_status(IREE_STATUS_INVALID_ARGUMENT, "original failure");
+  Status cloned_status = iree_status_clone(status);
+  iree_status_free(status);
+  EXPECT_THAT(cloned_status, StatusIs(StatusCode::kInvalidArgument));
+  CHECK_STATUS_MESSAGE(cloned_status, "original failure");
+}
+
 TEST(StatusJoin, OkBaseReturnsNewStatus) {
   Status status = iree_status_join(
       iree_ok_status(),

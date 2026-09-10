@@ -69,19 +69,16 @@ static iree_async_semaphore_timepoint_t* iree_async_semaphore_detach_all_locked(
 }
 
 // Dispatches a detached timepoint list, firing each callback with the given
-// |status|. For OK status, passes iree_ok_status() directly. For failure
-// status, clones it for each callback (each callback takes ownership of its
-// clone). Does NOT take ownership of |status|.
+// |status|. Each callback takes ownership of its clone; this function does not
+// take ownership of |status|.
 // Must be called WITHOUT the semaphore's lock held.
 static void iree_async_semaphore_dispatch_detached(
-    iree_async_semaphore_timepoint_t* head, iree_status_t status) {
+    iree_async_semaphore_timepoint_t* head, const iree_status_t status) {
   while (head != NULL) {
     iree_async_semaphore_timepoint_t* next = head->next;
     head->next = NULL;
     head->prev = NULL;
-    head->callback(head->user_data, head,
-                   iree_status_is_ok(status) ? iree_ok_status()
-                                             : iree_status_clone(status));
+    head->callback(head->user_data, head, iree_status_clone(status));
     head = next;
   }
 }
@@ -654,9 +651,7 @@ IREE_API_EXPORT void iree_async_semaphore_dispatch_timepoints(
 }
 
 IREE_API_EXPORT void iree_async_semaphore_dispatch_timepoints_failed(
-    iree_async_semaphore_t* semaphore, iree_status_t status) {
-  // Borrows |status| as a template for per-timepoint clones; does NOT take
-  // ownership (caller retains or has already stored it in failure_status).
+    iree_async_semaphore_t* semaphore, const iree_status_t status) {
   iree_slim_mutex_lock(&semaphore->mutex);
   iree_async_semaphore_timepoint_t* pending =
       iree_async_semaphore_detach_all_locked(semaphore);

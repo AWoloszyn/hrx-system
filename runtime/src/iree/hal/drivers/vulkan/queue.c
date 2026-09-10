@@ -2881,8 +2881,7 @@ static iree_status_t iree_hal_vulkan_queue_check_error(
     iree_hal_vulkan_queue_t* queue) {
   iree_status_t status = (iree_status_t)iree_atomic_load(
       &queue->failure_status, iree_memory_order_acquire);
-  return iree_status_is_ok(status) ? iree_ok_status()
-                                   : iree_status_clone(status);
+  return iree_status_clone(status);
 }
 
 static iree_status_t iree_hal_vulkan_queue_signal_wakeup(

@@ -599,8 +599,9 @@ IREE_API_EXPORT IREE_MUST_USE_RESULT iree_status_t iree_status_allocate_copy(
     iree_status_code_t code, iree_string_view_t file, uint32_t line,
     iree_string_view_t message) IREE_ATTRIBUTE_COLD IREE_ATTRIBUTE_NOINLINE;
 
-// Clones |status| into a new status instance.
-// No payloads, if present, will be cloned.
+// Clones |status| without consuming it. Returns storage-free statuses
+// (including OK) unchanged; otherwise creates independent storage. No payloads,
+// if present, will be cloned.
 IREE_API_EXPORT IREE_MUST_USE_RESULT iree_status_t
 iree_status_clone(iree_status_t status);
 
