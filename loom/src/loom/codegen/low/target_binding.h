@@ -169,6 +169,10 @@ static inline iree_string_view_t loom_low_descriptor_packet_diagnostic_key(
 
 // Resolves the function target facts and descriptor set for |low_func_op|
 // using caller-owned symbol facts.
+// Supplied |function_target_facts| already include the function contract and
+// are consumed without symbol-fact queries. Kernel workgroup-size refinement
+// allocates its result from the symbol-fact table's arena without populating
+// the table.
 //
 // User IR failures are emitted through |emitter| and leave
 // out_target->descriptor_set NULL. Infrastructure failures are returned as

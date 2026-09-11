@@ -114,7 +114,7 @@ iree_status_t loom_target_function_contract_refine_internal_facts(
 // kernel-owned IR. Ordinary function contract resolution intentionally never
 // discovers or stores workgroup sizes.
 iree_status_t loom_target_function_contract_apply_hal_workgroup_size(
-    const loom_func_symbol_facts_t* func_facts, iree_string_view_t target_name,
+    const loom_op_t* function_op, iree_string_view_t target_name,
     const loom_target_workgroup_size_t* required_workgroup_size,
     iree_diagnostic_emitter_t diagnostic_emitter,
     loom_target_bundle_storage_t* bundle_storage, bool* out_valid);
@@ -124,9 +124,11 @@ iree_status_t loom_target_function_contract_apply_hal_workgroup_size(
 //
 // Kernel dialect code calls this after deriving launch metadata from
 // kernel-owned IR. Invalid user IR emits diagnostics and sets |out_valid|
-// false.
+// false. |function_op| identifies the diagnostic location; the function name
+// comes from |base_facts|'s export plan. No symbol facts are queried or
+// rebuilt.
 iree_status_t loom_target_function_contract_refine_hal_workgroup_size(
-    const loom_func_symbol_facts_t* func_facts, iree_string_view_t target_name,
+    const loom_op_t* function_op, iree_string_view_t target_name,
     const loom_target_workgroup_size_t* required_workgroup_size,
     const loom_target_facts_t* base_facts,
     iree_diagnostic_emitter_t diagnostic_emitter, iree_arena_allocator_t* arena,
