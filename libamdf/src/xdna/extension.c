@@ -14,6 +14,7 @@
 #include "libamdf/src/xdna/context.h"
 #include "libamdf/src/xdna/device.h"
 #include "libamdf/src/xdna/endpoint_profile.h"
+#include "libamdf/src/xdna/umd/device.h"
 
 static amdf_status_t AMDF_CALL amdf_xdna_endpoint_query_info(
     amdf_endpoint_t* endpoint, amdf_xdna_endpoint_info_t* out_info) {
@@ -37,6 +38,8 @@ static amdf_status_t AMDF_CALL amdf_xdna_endpoint_query_info(
   const uint32_t structure_size = out_info->structure_size;
   void* const next = out_info->next;
   *out_info = *amdf_xdna_endpoint_profile_get_info(profile);
+  out_info->context.placement_modes =
+      amdf_xdna_umd_query_context_placement_modes(profile);
   out_info->structure_size = structure_size;
   out_info->next = next;
   return AMDF_STATUS_OK;
@@ -50,6 +53,7 @@ static const amdf_xdna_api_t amdf_xdna_api_v1 = {
     .device_query_info = amdf_xdna_device_query_info,
     .context_create = amdf_xdna_context_create,
     .context_query_info = amdf_xdna_context_query_info,
+    .context_query_placement_info = amdf_xdna_context_query_placement_info,
     .context_destroy = amdf_xdna_context_destroy,
 };
 

@@ -34,6 +34,9 @@ enum class Operation {
 struct FakeKmtState {
   // Number of paging-queue releases rejected before native consumption.
   uint32_t paging_queue_destroy_failures_remaining = 2;
+  // Sync-object handle returned with the paging queue, or zero for malformed
+  // output.
+  D3DKMT_HANDLE paging_sync_object = 0;
   // Ordered native operations used to verify local and published ownership.
   std::vector<Operation> operations;
   // Number of host allocations retained by endpoint/device bookkeeping.
@@ -100,7 +103,7 @@ NTSTATUS APIENTRY FakeCreatePagingQueue(D3DKMT_CREATEPAGINGQUEUE* create) {
   current_state->operations.push_back(Operation::kCreatePagingQueue);
   EXPECT_EQ(create->hDevice, 0x10u);
   create->hPagingQueue = 0x20;
-  create->hSyncObject = 0;
+  create->hSyncObject = current_state->paging_sync_object;
   create->FenceValueCPUVirtualAddress =
       const_cast<uint64_t*>(&current_state->paging_progress);
   return kSuccess;
@@ -186,6 +189,24 @@ class WindowsXdnaDeviceRollbackTest : public ::testing::Test {
 };
 
 TEST_F(WindowsXdnaDeviceRollbackTest,
+       ReportsNoFixedPlacementBeforeAndAfterDeviceCreation) {
+  EXPECT_EQ(amdf_xdna_umd_query_context_placement_modes(&profile_), 0u);
+  EXPECT_TRUE(state_.operations.empty());
+  state_.paging_sync_object = 0x21;
+  state_.paging_queue_destroy_failures_remaining = 0;
+  amdf_xdna_umd_device_t* device = nullptr;
+  amdf_xdna_umd_device_result_t result = {};
+  ASSERT_EQ(
+      amdf_xdna_umd_device_create(endpoint_, &profile_,
+                                  instance_.host_allocator, &device, &result),
+      AMDF_STATUS_OK);
+  EXPECT_EQ(result.placement_modes, 0u);
+  EXPECT_EQ(amdf_xdna_umd_device_destroy(device), AMDF_STATUS_OK);
+  EXPECT_EQ(state_.paging_queue_destroy_success_count, 1u);
+  EXPECT_EQ(state_.device_destroy_success_count, 1u);
+}
+
+TEST_F(WindowsXdnaDeviceRollbackTest,
        ReportsFailedRollbackWithoutRetainingDevice) {
   amdf_xdna_umd_device_t* device =
       reinterpret_cast<amdf_xdna_umd_device_t*>(uintptr_t{1});
@@ -220,6 +241,27 @@ TEST_F(WindowsXdnaDeviceRollbackTest,
   EXPECT_EQ(state_.device_destroy_success_count, 0u);
   EXPECT_EQ(state_.adapter_close_success_count, 1u);
   EXPECT_EQ(state_.live_allocation_count, 0u);
+}
+
+TEST_F(WindowsXdnaDeviceRollbackTest,
+       ExplicitDestroyFailureRetainsPublishedDevice) {
+  state_.paging_sync_object = 0x21;
+  state_.paging_queue_destroy_failures_remaining = 1;
+  amdf_xdna_umd_device_t* device = nullptr;
+  amdf_xdna_umd_device_result_t result = {};
+  ASSERT_EQ(
+      amdf_xdna_umd_device_create(endpoint_, &profile_,
+                                  instance_.host_allocator, &device, &result),
+      AMDF_STATUS_OK);
+  EXPECT_EQ(amdf_xdna_umd_device_destroy(device),
+            amdf_kmt_make_status(kFailure));
+  EXPECT_EQ(state_.live_allocation_count, 2u);
+  EXPECT_EQ(state_.device_destroy_success_count, 0u);
+
+  EXPECT_EQ(amdf_xdna_umd_device_destroy(device), AMDF_STATUS_OK);
+  EXPECT_EQ(state_.live_allocation_count, 1u);
+  EXPECT_EQ(state_.paging_queue_destroy_success_count, 1u);
+  EXPECT_EQ(state_.device_destroy_success_count, 1u);
 }
 
 }  // namespace

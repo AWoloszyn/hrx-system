@@ -114,6 +114,7 @@ iree_cc_library(
     libamdf::src::endpoint
     libamdf::src::platform
     libamdf::src::structure
+    libamdf::src::xdna::umd::device
   PUBLIC
 )
 endif()

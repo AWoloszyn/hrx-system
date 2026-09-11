@@ -92,12 +92,16 @@ class LinuxXdnaDeviceTest : public ::testing::Test {
 };
 
 TEST_F(LinuxXdnaDeviceTest, ContextsShareDeviceMemoryAndDestroyIndependently) {
+  EXPECT_EQ(amdf_xdna_umd_query_context_placement_modes(profile),
+            AMDF_XDNA_PLACEMENT_MODE_FIXED_FULL_ARRAY);
   amdf_xdna_umd_device_result_t device_result = {};
   ASSERT_EQ(
       amdf_xdna_umd_device_create(endpoint, profile, amdf_allocator_system(),
                                   &device, &device_result),
       AMDF_STATUS_OK);
   EXPECT_NE(device_result.id.words[0] | device_result.id.words[1], 0u);
+  EXPECT_EQ(device_result.placement_modes,
+            AMDF_XDNA_PLACEMENT_MODE_FIXED_FULL_ARRAY);
   EXPECT_EQ(reinterpret_cast<uintptr_t>(device->heap.host_pointer) %
                 profile->firmware_heap_byte_length,
             0u);
@@ -111,15 +115,19 @@ TEST_F(LinuxXdnaDeviceTest, ContextsShareDeviceMemoryAndDestroyIndependently) {
   create_info.acceptable_scheduling_modes =
       AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED;
   create_info.logical_column_count = 1;
-  create_info.physical_column_origin = AMDF_XDNA_PHYSICAL_COLUMN_ORIGIN_ANY;
   amdf_xdna_umd_context_result_t results[2] = {};
   for (size_t i = 0; i < 2; ++i) {
+    create_info.physical_column_origin =
+        i == 0 ? profile->info->array.column_origin
+               : AMDF_XDNA_PHYSICAL_COLUMN_ORIGIN_ANY;
     std::cout << "Create native context " << i << std::endl;
     ASSERT_EQ(amdf_xdna_umd_context_create(device, &create_info, &contexts[i],
                                            &results[i]),
               AMDF_STATUS_OK);
-    EXPECT_EQ(results[i].physical_column_origin, 0u);
-    EXPECT_EQ(results[i].physical_column_count, 8u);
+    EXPECT_EQ(results[i].physical_column_origin,
+              profile->info->array.column_origin);
+    EXPECT_EQ(results[i].physical_column_count,
+              profile->info->array.column_count);
   }
   EXPECT_NE(results[0].id.words[0], results[1].id.words[0]);
 

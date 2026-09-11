@@ -23,7 +23,14 @@ typedef struct amdf_xdna_umd_device_result_t {
   amdf_device_id_t id;
   // Provider epoch invalidating native state after reset.
   uint64_t reset_epoch;
+  // Effective binding context placement contracts after native qualification.
+  amdf_xdna_placement_modes_t placement_modes;
 } amdf_xdna_umd_device_result_t;
+
+// Returns expected context placement contracts from the profile and implemented
+// native provider. Performs no allocation, native query or device activation.
+amdf_xdna_placement_modes_t amdf_xdna_umd_query_context_placement_modes(
+    const amdf_xdna_endpoint_profile_t* profile);
 
 // Creates one native XDNA ordinary-address domain and allocation namespace.
 amdf_status_t amdf_xdna_umd_device_create(

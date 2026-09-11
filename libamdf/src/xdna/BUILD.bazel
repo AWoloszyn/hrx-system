@@ -91,6 +91,7 @@ amdf_cc_library(
         "//libamdf/src:endpoint",
         "//libamdf/src:structure",
         "//libamdf/src/platform",
+        "//libamdf/src/xdna/umd:device",
     ],
 )
 

@@ -23,11 +23,9 @@ typedef struct amdf_xdna_umd_context_result_t {
   amdf_xdna_context_id_t id;
   // Single scheduling mode selected for this context.
   amdf_xdna_scheduling_modes_t scheduling_mode;
-  // Generation of the fixed physical placement below.
-  uint32_t placement_generation;
-  // Origin of the achieved physical backing partition.
+  // Origin of the fixed backing, present only with a device placement mode.
   uint32_t physical_column_origin;
-  // Width of the achieved physical backing partition.
+  // Width of the fixed backing, present only with a device placement mode.
   uint32_t physical_column_count;
 } amdf_xdna_umd_context_result_t;
 

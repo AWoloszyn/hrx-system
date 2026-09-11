@@ -44,6 +44,10 @@ typedef struct amdf_xdna_context_t amdf_xdna_context_t;
 #define AMDF_STRUCTURE_TYPE_XDNA_CONTEXT_INFO \
   ((amdf_structure_type_t)0x0001000Bu)
 
+/// An `amdf_xdna_context_placement_info_t` output structure.
+#define AMDF_STRUCTURE_TYPE_XDNA_CONTEXT_PLACEMENT_INFO \
+  ((amdf_structure_type_t)0x0001000Du)
+
 /// Lets the provider select the physical origin of an XDNA context.
 #define AMDF_XDNA_PHYSICAL_COLUMN_ORIGIN_ANY UINT32_MAX
 
@@ -74,12 +78,26 @@ enum amdf_xdna_scheduling_mode_bits_e {
   AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED = 1u << 2,
 };
 
+/// Binding physical placement contracts supported by the native provider.
+/// Zero means no fixed placement is available, not an unqueried value.
+typedef uint32_t amdf_xdna_placement_modes_t;
+enum amdf_xdna_placement_mode_bits_e {
+  /// Every admitted context has fixed backing covering the endpoint's complete
+  /// physical array, including when its logical column count is smaller. The
+  /// only explicit origin accepted is `array.column_origin`. ANY is also
+  /// accepted and provides the same fixed backing. Fixed geometry grants
+  /// neither
+  /// exclusive ownership nor uninterrupted residency. Reset may discard state.
+  AMDF_XDNA_PLACEMENT_MODE_FIXED_FULL_ARRAY = 1u << 0,
+};
+
 /// First XDNA kernel-published command-object format.
 #define AMDF_XDNA_QUEUE_FORMAT_VERSION_1 1u
 
-/// Immutable compiler target and context-admission properties of one endpoint.
+/// Immutable compiler target and expected native admission of one endpoint.
 ///
-/// This record describes an exact hardware/compiler profile.
+/// This record combines hardware/compiler facts with the native provider's
+/// expected services, not reservations or live resource allocation.
 typedef struct amdf_xdna_endpoint_info_t {
   /// Must be `AMDF_STRUCTURE_TYPE_XDNA_ENDPOINT_INFO`.
   amdf_structure_type_t type;
@@ -104,6 +122,9 @@ typedef struct amdf_xdna_endpoint_info_t {
   struct {
     /// Exclusive, spatial, and time-sliced modes accepted by the endpoint.
     amdf_xdna_scheduling_modes_t scheduling_modes;
+    /// Expected binding placement contracts, independent of occupancy.
+    /// Device creation reports effective support; this snapshot is immutable.
+    amdf_xdna_placement_modes_t placement_modes;
     /// Minimum logical column count requestable by one context.
     uint32_t minimum_column_count;
     /// Maximum logical column count requestable by one context.
@@ -162,6 +183,10 @@ typedef struct amdf_xdna_device_info_t {
   amdf_device_id_t id;
   /// Monotonic provider epoch invalidating state after a device reset.
   uint64_t reset_epoch;
+  /// Effective binding placement contracts for new contexts on this device.
+  /// Zero means explicit origins and placement queries are unsupported.
+  /// ANY-origin execution does not require fixed placement support.
+  amdf_xdna_placement_modes_t placement_modes;
 } amdf_xdna_device_info_t;
 
 /// Parameters used to admit one program-independent XDNA context.
@@ -174,14 +199,18 @@ typedef struct amdf_xdna_context_create_info_t {
   const void* next;
   /// Number of logical array columns requested for the context.
   uint32_t logical_column_count;
-  /// Exact physical partition origin or
-  /// `AMDF_XDNA_PHYSICAL_COLUMN_ORIGIN_ANY` to let the provider choose.
+  /// Exact physical backing origin, constrained by the device's placement
+  /// modes, or `AMDF_XDNA_PHYSICAL_COLUMN_ORIGIN_ANY` to let the provider
+  /// choose. An explicit origin requires a supported binding placement
+  /// contract; it is never silently weakened into a preference. Unsupported
+  /// requests fail with `AMDF_STATUS_CODE_UNSUPPORTED`.
   uint32_t physical_column_origin;
   /// Nonempty set of scheduling modes acceptable to the caller.
   amdf_xdna_scheduling_modes_t acceptable_scheduling_modes;
 } amdf_xdna_context_create_info_t;
 
-/// Achieved placement and identity of one live XDNA context.
+/// Identity and logical admission of one live XDNA context.
+/// Physical backing is a separate capability-gated placement query.
 typedef struct amdf_xdna_context_info_t {
   /// Must be `AMDF_STRUCTURE_TYPE_XDNA_CONTEXT_INFO`.
   amdf_structure_type_t type;
@@ -197,20 +226,28 @@ typedef struct amdf_xdna_context_info_t {
   uint64_t reset_epoch;
   /// Single scheduling mode selected from the acceptable input set.
   amdf_xdna_scheduling_modes_t scheduling_mode;
-  /// Generation of the achieved placement reported below.
-  uint32_t placement_generation;
-  /// Achieved logical request and physical backing partition.
-  struct {
-    /// Logical column count admitted for programs and commands.
-    uint32_t logical_count;
-    /// Physical origin of the backing array partition.
-    uint32_t physical_origin;
-    /// Physical width of the backing partition, including unused columns.
-    uint32_t physical_count;
-  } columns;
+  /// Logical column count admitted for programs and commands.
+  uint32_t logical_column_count;
   /// Number of physical rows visible within each admitted column.
   uint32_t row_count;
 } amdf_xdna_context_info_t;
+
+/// Complete fixed physical backing of one live XDNA context.
+/// Geometry is immutable for the context's valid lifetime and is not a snapshot
+/// of scheduler telemetry. Device reset invalidates the context's state; fixed
+/// placement does not imply exclusive or uninterrupted execution.
+typedef struct amdf_xdna_context_placement_info_t {
+  /// Must be `AMDF_STRUCTURE_TYPE_XDNA_CONTEXT_PLACEMENT_INFO`.
+  amdf_structure_type_t type;
+  /// Must be at least `sizeof(amdf_xdna_context_placement_info_t)`.
+  uint32_t structure_size;
+  /// Optional output extension chain. No extensions are currently defined.
+  void* next;
+  /// Physical origin of the backing array partition.
+  uint32_t column_origin;
+  /// Physical width of the backing partition, including unused columns.
+  uint32_t column_count;
+} amdf_xdna_context_placement_info_t;
 
 /// Immutable entry-point table for one negotiated XDNA extension version.
 ///
@@ -258,8 +295,9 @@ typedef struct amdf_xdna_api_t {
   ///
   /// The returned context borrows the ordinary-address-domain device, which
   /// must outlive it. Creation selects one scheduling mode and establishes the
-  /// complete achieved placement and native completion state before
-  /// publication. It consumes no program or invocation bytes. Failure
+  /// logical admission and native completion state before publication. Explicit
+  /// physical placement requires a supported device placement mode and is
+  /// binding on success. It consumes no program or invocation bytes. Failure
   /// leaves `out_context` unchanged and creates no caller cleanup obligation.
   /// Construction releases its unpublished state locally; a native cleanup
   /// failure is reported without transferring that state to `device`.
@@ -267,7 +305,7 @@ typedef struct amdf_xdna_api_t {
       amdf_device_t* device, const amdf_xdna_context_create_info_t* create_info,
       amdf_xdna_context_t** out_context);
 
-  /// Copies the immutable identity and achieved placement of `context`.
+  /// Copies the immutable identity and logical admission of `context`.
   ///
   /// The operation is thread-safe and performs no system call, allocation,
   /// native initialization, retry, sleep, or device wait. The caller
@@ -275,6 +313,17 @@ typedef struct amdf_xdna_api_t {
   /// modified when validation fails.
   amdf_status_t(AMDF_CALL* context_query_info)(
       amdf_xdna_context_t* context, amdf_xdna_context_info_t* out_info);
+
+  /// Copies the complete fixed physical backing of `context`.
+  ///
+  /// Returns `AMDF_STATUS_CODE_UNSUPPORTED` if the device has no supported
+  /// placement mode. This applies even when context creation used ANY origin.
+  /// The operation is thread-safe and performs no system call, allocation,
+  /// initialization, retry or wait. The caller initializes `out_info`; every
+  /// failure leaves it unchanged.
+  amdf_status_t(AMDF_CALL* context_query_placement_info)(
+      amdf_xdna_context_t* context,
+      amdf_xdna_context_placement_info_t* out_info);
 
   /// Destroys one context after all context-local children are gone.
   ///

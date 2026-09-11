@@ -34,10 +34,8 @@ amdf_status_t amdf_xdna_umd_context_create(
   const amdf_xdna_endpoint_profile_t* profile = device->profile;
   if ((create_info->acceptable_scheduling_modes &
        AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED) == 0 ||
-      (create_info->physical_column_origin !=
-           AMDF_XDNA_PHYSICAL_COLUMN_ORIGIN_ANY &&
-       create_info->physical_column_origin !=
-           profile->info->array.column_origin)) {
+      create_info->physical_column_origin !=
+          AMDF_XDNA_PHYSICAL_COLUMN_ORIGIN_ANY) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
 
@@ -84,9 +82,6 @@ amdf_status_t amdf_xdna_umd_context_create(
     result.id.words[0] = (uintptr_t)context;
     result.id.words[1] = ((uint64_t)context->handle << 32) | device->device;
     result.scheduling_mode = AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED;
-    result.placement_generation = 1;
-    result.physical_column_origin = profile->info->array.column_origin;
-    result.physical_column_count = profile->info->array.column_count;
     *out_result = result;
     *out_context = context;
   } else {

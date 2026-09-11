@@ -20,8 +20,10 @@ struct amdf_xdna_context_t {
   amdf_device_t* device;
   // Native scheduling, placement, completion, and private execution state.
   amdf_xdna_umd_context_t* umd;
-  // Immutable identity and achieved placement returned by the provider.
+  // Immutable identity and logical admission returned by the provider.
   amdf_xdna_context_info_t info;
+  // Fixed backing, exposed only when the device supports a placement mode.
+  amdf_xdna_context_placement_info_t placement_info;
   // Number of live children borrowing this context.
   amdf_child_tracker_t children;
 };
@@ -120,11 +122,13 @@ amdf_status_t AMDF_CALL amdf_xdna_context_create(
     context->info.device_id = amdf_xdna_device_get_info(device)->id;
     context->info.reset_epoch = amdf_xdna_device_query_reset_epoch(device);
     context->info.scheduling_mode = result.scheduling_mode;
-    context->info.placement_generation = result.placement_generation;
-    context->info.columns.logical_count = create_info->logical_column_count;
-    context->info.columns.physical_origin = result.physical_column_origin;
-    context->info.columns.physical_count = result.physical_column_count;
+    context->info.logical_column_count = create_info->logical_column_count;
     context->info.row_count = endpoint_info->array.row_count;
+    context->placement_info.type =
+        AMDF_STRUCTURE_TYPE_XDNA_CONTEXT_PLACEMENT_INFO;
+    context->placement_info.structure_size = sizeof(context->placement_info);
+    context->placement_info.column_origin = result.physical_column_origin;
+    context->placement_info.column_count = result.physical_column_count;
     *out_context = context;
   } else {
     if (context->device != NULL) {
@@ -149,6 +153,27 @@ amdf_status_t AMDF_CALL amdf_xdna_context_query_info(
   const uint32_t structure_size = out_info->structure_size;
   void* const next = out_info->next;
   *out_info = context->info;
+  out_info->structure_size = structure_size;
+  out_info->next = next;
+  return AMDF_STATUS_OK;
+}
+
+amdf_status_t AMDF_CALL amdf_xdna_context_query_placement_info(
+    amdf_xdna_context_t* context,
+    amdf_xdna_context_placement_info_t* out_info) {
+  if (context == NULL) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  }
+  const amdf_status_t status = amdf_structure_validate_output(
+      out_info, AMDF_STRUCTURE_TYPE_XDNA_CONTEXT_PLACEMENT_INFO,
+      (uint32_t)sizeof(amdf_xdna_context_placement_info_t));
+  if (!amdf_status_is_ok(status)) return status;
+  if (amdf_xdna_device_get_info(context->device)->placement_modes == 0) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
+  const uint32_t structure_size = out_info->structure_size;
+  void* const next = out_info->next;
+  *out_info = context->placement_info;
   out_info->structure_size = structure_size;
   out_info->next = next;
   return AMDF_STATUS_OK;

@@ -10,6 +10,13 @@
 #include "libamdf/src/platform/windows/endpoint.h"
 #include "libamdf/src/xdna/umd/mcdm/device.h"
 
+amdf_xdna_placement_modes_t amdf_xdna_umd_query_context_placement_modes(
+    const amdf_xdna_endpoint_profile_t* profile) {
+  (void)profile;
+  // The native admission record does not establish binding physical placement.
+  return 0;
+}
+
 static amdf_status_t amdf_windows_xdna_query_legacy_context_abi(
     const amdf_platform_endpoint_t* endpoint) {
   uint32_t private_info[2] = {0};

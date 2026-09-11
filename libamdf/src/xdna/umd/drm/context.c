@@ -85,7 +85,10 @@ amdf_status_t amdf_xdna_umd_context_create(
     result.id.words[1] =
         ((uint64_t)context->completion_syncobj << 32) | context->handle;
     result.scheduling_mode = AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED;
-    result.placement_generation = 1;
+    // Device qualification matched the full array geometry. Successful native
+    // admission of every compute tile leaves one candidate partition: the full
+    // array at its origin. The kernel retains it across context restarts, but
+    // may time-share it with other contexts.
     result.physical_column_origin = profile->info->array.column_origin;
     result.physical_column_count = profile->info->array.column_count;
     *out_result = result;

@@ -19,9 +19,13 @@ amdf_status_t AMDF_CALL amdf_xdna_context_create(
     amdf_device_t* device, const amdf_xdna_context_create_info_t* create_info,
     amdf_xdna_context_t** out_context);
 
-// Copies immutable context identity and achieved placement information.
+// Copies immutable context identity and logical admission information.
 amdf_status_t AMDF_CALL amdf_xdna_context_query_info(
     amdf_xdna_context_t* context, amdf_xdna_context_info_t* out_info);
+
+// Copies complete fixed placement, or returns UNSUPPORTED without output.
+amdf_status_t AMDF_CALL amdf_xdna_context_query_placement_info(
+    amdf_xdna_context_t* context, amdf_xdna_context_placement_info_t* out_info);
 
 // Returns the ordinary-address-domain device borrowed by one context.
 amdf_device_t* amdf_xdna_context_get_device(amdf_xdna_context_t* context);

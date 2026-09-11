@@ -97,6 +97,7 @@ amdf_xdna_device_create(amdf_endpoint_t* endpoint,
     device->info.structure_size = sizeof(device->info);
     device->info.id = result.id;
     device->info.reset_epoch = result.reset_epoch;
+    device->info.placement_modes = result.placement_modes;
     *out_device = &device->base;
   } else {
     if (device->base.endpoint != NULL) {

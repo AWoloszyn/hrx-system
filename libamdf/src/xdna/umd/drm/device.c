@@ -18,6 +18,14 @@
 #include "libamdf/src/platform/linux/host_cache.h"
 #include "libamdf/src/xdna/umd/drm/device.h"
 
+amdf_xdna_placement_modes_t amdf_xdna_umd_query_context_placement_modes(
+    const amdf_xdna_endpoint_profile_t* profile) {
+  return (profile->execution_capabilities &
+          AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1) != 0
+             ? AMDF_XDNA_PLACEMENT_MODE_FIXED_FULL_ARRAY
+             : 0;
+}
+
 amdf_status_t amdf_xdna_umd_device_destroy(amdf_xdna_umd_device_t* device) {
   amdf_status_t status = amdf_linux_xdna_buffer_deinitialize(
       device->descriptor, &device->bootstrap);
@@ -123,6 +131,7 @@ amdf_status_t amdf_xdna_umd_device_create(
     result.id.words[0] = (uintptr_t)device;
     result.id.words[1] = endpoint->info.id.words[1];
     result.reset_epoch = 1;
+    result.placement_modes = AMDF_XDNA_PLACEMENT_MODE_FIXED_FULL_ARRAY;
     *out_result = result;
     *out_device = device;
   } else {

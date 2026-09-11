@@ -141,7 +141,7 @@ TEST_F(WindowsXdnaContextTest, CreatesTwoContextsAndDestroysIndependently) {
               AMDF_STATUS_OK);
     ASSERT_NE(contexts[i], nullptr);
     EXPECT_EQ(contexts[i]->device, &device_);
-    EXPECT_EQ(results[i].physical_column_count, 8u);
+    EXPECT_EQ(results[i].physical_column_count, 0u);
   }
   EXPECT_NE(results[0].id.words[0], results[1].id.words[0]);
   EXPECT_EQ(state_.created_contexts, (std::vector<D3DKMT_HANDLE>{0x30, 0x31}));
@@ -154,6 +154,33 @@ TEST_F(WindowsXdnaContextTest, CreatesTwoContextsAndDestroysIndependently) {
   contexts[1] = nullptr;
   EXPECT_EQ(state_.destroyed_contexts,
             (std::vector<D3DKMT_HANDLE>{0x30, 0x31}));
+}
+
+TEST_F(WindowsXdnaContextTest,
+       RejectsExplicitPlacementBeforeNativeOrHostAllocation) {
+  FaultAllocatorState allocator_state = {};
+  device_.host_allocator = {
+      .user_data = &allocator_state,
+      .allocate = FaultAllocate,
+      .free = FaultFree,
+  };
+  for (uint32_t origin : {0u, 1u, 4u}) {
+    create_info_.physical_column_origin = origin;
+    auto* const sentinel =
+        reinterpret_cast<amdf_xdna_umd_context_t*>(uintptr_t{1});
+    amdf_xdna_umd_context_t* context = sentinel;
+    amdf_xdna_umd_context_result_t result;
+    std::memset(&result, 0xA5, sizeof(result));
+    const amdf_xdna_umd_context_result_t original_result = result;
+    EXPECT_EQ(amdf_status_code(amdf_xdna_umd_context_create(
+                  &device_, &create_info_, &context, &result)),
+              AMDF_STATUS_CODE_UNSUPPORTED);
+    EXPECT_EQ(context, sentinel);
+    EXPECT_EQ(std::memcmp(&result, &original_result, sizeof(result)), 0);
+  }
+  EXPECT_EQ(allocator_state.allocation_call_count, 0u);
+  EXPECT_TRUE(state_.created_contexts.empty());
+  EXPECT_TRUE(state_.destroyed_contexts.empty());
 }
 
 TEST_F(WindowsXdnaContextTest, DestroysNativeContextBeforeHostMetadata) {
