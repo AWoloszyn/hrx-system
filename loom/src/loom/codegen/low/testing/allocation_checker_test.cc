@@ -75,13 +75,10 @@ class AllocationCheckerTest : public ::testing::Test {
     value_class_.type_kind = LOOM_TYPE_REGISTER;
     value_class_.register_descriptor_set_stable_id = descriptor_set_.stable_id;
     value_class_.register_class_id = 0;
-    value_ids_[0] = 1;
-    value_ids_[1] = 2;
-    interval_indices_[0] = 0;
-    interval_indices_[1] = 1;
-    assignment_indices_[0] = 0;
-    assignment_indices_[1] = 1;
-    for (uint32_t i = 0; i < 2; ++i) {
+    for (uint32_t i = 0; i < 3; ++i) {
+      value_ids_[i] = i + 1;
+      interval_indices_[i] = i;
+      assignment_indices_[i] = i;
       intervals_[i] = MakeInterval(value_ids_[i], 0, 4, value_class_);
       assignments_[i] = MakeAssignment(value_ids_[i], 0, 4, i, i, value_class_);
       unit_start_points_[i] = 0;
@@ -154,6 +151,15 @@ class AllocationCheckerTest : public ::testing::Test {
     frame_.allocation.placement.relation_count = 3;
   }
 
+  void ConfigureThreeValues() {
+    frame_.schedule.value_count = 3;
+    frame_.allocation.liveness.interval_count = 3;
+    frame_.allocation.liveness.value_count = 3;
+    frame_.allocation.placement.value_count = 3;
+    frame_.allocation.assignment_count = 3;
+    frame_.allocation.unit_point_count = 3;
+  }
+
   void ConfigureRefinedReservation(uint32_t temporary_end_point) {
     intervals_[0] = MakeInterval(value_ids_[0], /*start_point=*/2,
                                  /*end_point=*/4, value_class_);
@@ -211,6 +217,80 @@ TEST_F(AllocationCheckerTest, RejectsOverlappingLiveAssignments) {
   EXPECT_EQ(result.first_violation.related_value_id, value_ids_[1]);
 }
 
+TEST_F(AllocationCheckerTest, IntersectsUnsegmentedUnitsWithSparseLifetimes) {
+  loom_liveness_segment_t segments[] = {{0, 2}, {5, 7}};
+  frame_.allocation.liveness.segments = segments;
+  frame_.allocation.liveness.segment_count = IREE_ARRAYSIZE(segments);
+  for (uint32_t sparse_ordinal = 0; sparse_ordinal < 2; ++sparse_ordinal) {
+    const uint32_t contiguous_ordinal = 1 - sparse_ordinal;
+    for (uint32_t begin = 0; begin < 7; ++begin) {
+      for (uint32_t end = begin + 1; end <= 7; ++end) {
+        SCOPED_TRACE(::testing::Message()
+                     << "sparse_ordinal=" << sparse_ordinal
+                     << " begin=" << begin << " end=" << end);
+        intervals_[sparse_ordinal] =
+            MakeInterval(value_ids_[sparse_ordinal], 0, 7, value_class_);
+        assignments_[sparse_ordinal] = MakeAssignment(
+            value_ids_[sparse_ordinal], 0, 7, 0, sparse_ordinal, value_class_);
+        assignments_[sparse_ordinal].liveness_segments = {0, 2};
+        unit_start_points_[sparse_ordinal] = 0;
+        unit_end_points_[sparse_ordinal] = 7;
+        intervals_[contiguous_ordinal] = MakeInterval(
+            value_ids_[contiguous_ordinal], begin, end, value_class_);
+        assignments_[contiguous_ordinal] =
+            MakeAssignment(value_ids_[contiguous_ordinal], begin, end, 0,
+                           contiguous_ordinal, value_class_);
+        unit_start_points_[contiguous_ordinal] = begin;
+        unit_end_points_[contiguous_ordinal] = end;
+        const bool overlaps = begin < 2 || end > 5;
+        const loom_low_allocation_check_result_t result = Check();
+        EXPECT_EQ(result.violation_count, overlaps ? 1u : 0u);
+        if (overlaps) {
+          EXPECT_EQ(result.first_violation.kind,
+                    LOOM_LOW_ALLOCATION_CHECK_VIOLATION_STORAGE_CONFLICT);
+        }
+      }
+    }
+  }
+}
+
+TEST_F(AllocationCheckerTest, ClipsSparseLifetimesAtRefinedUnitStarts) {
+  loom_liveness_segment_t segments[] = {{0, 2}, {5, 7}, {1, 4}};
+  frame_.allocation.liveness.segments = segments;
+  frame_.allocation.liveness.segment_count = IREE_ARRAYSIZE(segments);
+  for (uint32_t sparse_ordinal = 0; sparse_ordinal < 2; ++sparse_ordinal) {
+    const uint32_t other_ordinal = 1 - sparse_ordinal;
+    intervals_[sparse_ordinal] =
+        MakeInterval(value_ids_[sparse_ordinal], 5, 7, value_class_);
+    intervals_[sparse_ordinal].unit_count = 2;
+    assignments_[sparse_ordinal] =
+        MakeAssignment(value_ids_[sparse_ordinal], 0, 7, 0, 0, value_class_);
+    assignments_[sparse_ordinal].unit_count = 2;
+    assignments_[sparse_ordinal].location_count = 2;
+    assignments_[sparse_ordinal].flags =
+        LOOM_LOW_ALLOCATION_ASSIGNMENT_FLAG_REFINED_UNIT_STARTS;
+    assignments_[sparse_ordinal].liveness_segments = {0, 2};
+    unit_start_points_[0] = 0;
+    unit_end_points_[0] = 7;
+    unit_end_points_[1] = 7;
+    intervals_[other_ordinal] =
+        MakeInterval(value_ids_[other_ordinal], 1, 4, value_class_);
+    assignments_[other_ordinal] =
+        MakeAssignment(value_ids_[other_ordinal], 1, 4, 1, 2, value_class_);
+    assignments_[other_ordinal].liveness_segments = {2, 1};
+    unit_start_points_[2] = 1;
+    unit_end_points_[2] = 4;
+    frame_.allocation.unit_point_count = 3;
+    for (uint32_t start = 0; start <= 5; ++start) {
+      SCOPED_TRACE(::testing::Message() << "sparse_ordinal=" << sparse_ordinal
+                                        << " refined_start=" << start);
+      unit_start_points_[1] = start;
+      const loom_low_allocation_check_result_t result = Check();
+      EXPECT_EQ(result.violation_count, start < 2 ? 1u : 0u);
+    }
+  }
+}
+
 TEST_F(AllocationCheckerTest, AcceptsReuseEndingAtFutureUnitStart) {
   ConfigureRefinedReservation(/*temporary_end_point=*/2);
   const loom_low_allocation_check_result_t result = Check();
@@ -262,7 +342,9 @@ TEST_F(AllocationCheckerTest, RejectsOverwriteOfLiveCopiedValue) {
 
 TEST_F(AllocationCheckerTest, RejectsUnrelatedStorageReuseThroughTiedChain) {
   ConfigureTiedCopies();
-  relations_[1].flags = LOOM_LOW_PLACEMENT_RELATION_FLAG_PREFERRED;
+  // Remove the copy linking the two mandatory storage identities.
+  relations_[1] = relations_[2];
+  frame_.allocation.placement.relation_count = 2;
   const auto result = Check();
   EXPECT_GT(result.violation_count, 0u);
   EXPECT_EQ(result.first_violation.kind,
@@ -323,6 +405,92 @@ TEST_F(AllocationCheckerTest, HardAliasesPreserveSubrangeOffsets) {
                 LOOM_LOW_ALLOCATION_CHECK_VIOLATION_STORAGE_CONFLICT);
     }
   }
+}
+
+TEST_F(AllocationCheckerTest, AcceptsCopiesOfSharedContents) {
+  ConfigureThreeValues();
+  assignments_[1].location_base = assignments_[0].location_base;
+  assignments_[2].location_base = assignments_[0].location_base;
+  loom_low_placement_relation_t relations[] = {
+      MakeAliasRelation(1, 0, LOOM_LOW_PLACEMENT_RELATION_FLAG_PREFERRED),
+      MakeAliasRelation(2, 0, LOOM_LOW_PLACEMENT_RELATION_FLAG_PREFERRED),
+  };
+  for (auto& relation : relations) {
+    relation.cause = LOOM_LOW_PLACEMENT_CAUSE_LOW_COPY;
+  }
+  frame_.allocation.placement.relations = relations;
+  frame_.allocation.placement.relation_count = IREE_ARRAYSIZE(relations);
+  EXPECT_EQ(Check().violation_count, 0u);
+
+  // A chain carries the same contents even when relation rows are reversed.
+  relations[1].source_ordinal = 1;
+  const auto first = relations[0];
+  relations[0] = relations[1];
+  relations[1] = first;
+  EXPECT_EQ(Check().violation_count, 0u);
+}
+
+TEST_F(AllocationCheckerTest, StorageTiesDoNotImplyTransitiveContentIdentity) {
+  ConfigureThreeValues();
+  // The copy is defined at one and overwritten at two while the original
+  // remains live. Its storage reservation includes the successor's lifetime.
+  for (uint32_t i = 1; i < 3; ++i) {
+    intervals_[i].start_point = assignments_[i].start_point =
+        unit_start_points_[i] = i;
+  }
+  intervals_[1].end_point = 2;
+  assignments_[1].location_base = assignments_[0].location_base;
+  assignments_[2].location_base = assignments_[0].location_base;
+  loom_low_placement_relation_t relations[] = {
+      MakeAliasRelation(1, 0, LOOM_LOW_PLACEMENT_RELATION_FLAG_PREFERRED),
+      MakeAliasRelation(2, 1, LOOM_LOW_PLACEMENT_RELATION_FLAG_HARD),
+  };
+  relations[0].cause = LOOM_LOW_PLACEMENT_CAUSE_LOW_COPY;
+  relations[1].cause = LOOM_LOW_PLACEMENT_CAUSE_TIED_RESULT;
+  frame_.allocation.placement.relations = relations;
+  frame_.allocation.placement.relation_count = IREE_ARRAYSIZE(relations);
+  const loom_low_allocation_check_result_t result = Check();
+  // Both the extended copy reservation and the successor conflict with the
+  // original after the destructive write.
+  EXPECT_EQ(result.violation_count, 2u);
+  EXPECT_EQ(result.first_violation.kind,
+            LOOM_LOW_ALLOCATION_CHECK_VIOLATION_STORAGE_CONFLICT);
+  EXPECT_EQ(result.first_violation.value_id, value_ids_[0]);
+  EXPECT_EQ(result.first_violation.related_value_id, value_ids_[1]);
+}
+
+TEST_F(AllocationCheckerTest, DistinguishesContentsAtDifferentSourceOffsets) {
+  ConfigureThreeValues();
+  intervals_[0].unit_count = 2;
+  assignments_[0].unit_count = 2;
+  assignments_[0].location_count = 2;
+  assignments_[0].location_base = 2;
+  assignments_[1].unit_point_start = 2;
+  assignments_[1].location_base = 0;
+  assignments_[2].unit_point_start = 3;
+  assignments_[2].location_base = 0;
+  unit_end_points_[3] = 4;
+  frame_.allocation.unit_point_count = 4;
+  loom_low_placement_relation_t relations[] = {
+      MakeAliasRelation(1, 0, LOOM_LOW_PLACEMENT_RELATION_FLAG_PREFERRED),
+      MakeAliasRelation(2, 0, LOOM_LOW_PLACEMENT_RELATION_FLAG_PREFERRED),
+  };
+  for (auto& relation : relations) {
+    relation.kind = LOOM_LOW_PLACEMENT_RELATION_SUBRANGE;
+    relation.cause = LOOM_LOW_PLACEMENT_CAUSE_LOW_SLICE;
+  }
+  relations[1].source_unit_offset = 1;
+  frame_.allocation.placement.relations = relations;
+  frame_.allocation.placement.relation_count = IREE_ARRAYSIZE(relations);
+  const loom_low_allocation_check_result_t result = Check();
+  EXPECT_EQ(result.violation_count, 1u);
+  EXPECT_EQ(result.first_violation.kind,
+            LOOM_LOW_ALLOCATION_CHECK_VIOLATION_STORAGE_CONFLICT);
+  EXPECT_EQ(result.first_violation.value_id, value_ids_[1]);
+  EXPECT_EQ(result.first_violation.related_value_id, value_ids_[2]);
+
+  relations[1].source_unit_offset = 0;
+  EXPECT_EQ(Check().violation_count, 0u);
 }
 
 TEST_F(AllocationCheckerTest, RejectsFixedLocationMismatch) {
