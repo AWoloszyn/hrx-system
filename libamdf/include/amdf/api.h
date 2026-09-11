@@ -261,6 +261,9 @@ typedef struct amdf_api_t {
   /// without native mutation while a mapping remains live. Destruction performs
   /// no implicit device wait or cache transition. A native teardown failure
   /// leaves the memory live so destruction can be retried.
+  /// Addresses embedded in opaque device work do not create library-visible
+  /// borrows. The caller proves all such accesses have stopped before teardown;
+  /// absence of a BUSY result is not proof of device retirement.
   amdf_status_t(AMDF_CALL* memory_destroy)(amdf_memory_t* memory);
 
   /// Copies immutable properties cached when `queue` was created.

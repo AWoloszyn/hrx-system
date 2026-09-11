@@ -138,6 +138,10 @@ amdf_status_t amdf_linux_xdna_buffer_attach(
     }
     buffer->host_pointer = (void*)(uintptr_t)info.vaddr;
   } else {
+    // Retain a full native mapping independently of public host views. For
+    // SHARE/CMD backing the GEM mmap path acquires the complete page array;
+    // this mapping owns that reference until buffer teardown, without a
+    // submission-time BO list or a second host registration.
     void* address = NULL;
     int flags = MAP_SHARED;
     if (alignment > page_size) {
