@@ -14,8 +14,11 @@ loom_target_contract_table_cc_libraries(
     core
   GENERATOR
     loom::py::loom::gen::target::contracts::vm_contract_table_family
+  INDEX_OUTPUT
+    "tables.inl"
   ARGS
     "--contract-fragment=vm.core"
+    "--contract-index=LOOM_VM_CORE_CONTRACT:vm.core"
   CONTRACT_DEPS
     loom::target::contract
   LOWER_RULE_DEPS

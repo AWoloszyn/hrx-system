@@ -54,6 +54,8 @@ loom_cc_library(
     "lower.h"
     "math_policy.h"
     "provider.h"
+  TEXTUAL_HDRS
+    "${IREE_BINARY_DIR}/loom/src/loom/target/arch/vm/contracts/tables.inl"
   SRCS
     "lower.c"
     "math_policy.c"

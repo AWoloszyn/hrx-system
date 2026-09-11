@@ -63,6 +63,7 @@ loom_cc_library(
         "math_policy.h",
         "provider.h",
     ],
+    textual_hdrs = ["//loom/src/loom/target/arch/vm/contracts:tables.inl"],
     visibility = [
         "//loom/src/loom/target/all:__pkg__",
         "//loom/src/loom/target/configured:__pkg__",

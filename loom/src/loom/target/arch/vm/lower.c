@@ -47,22 +47,14 @@ static iree_status_t loom_vm_map_type(void* user_data,
       context, source_op, IREE_SV("source"), source_type);
 }
 
-static const loom_low_lower_rule_set_t* const kRuleSets[] = {
-    &loom_vm_core_lower_rule_set,
-};
-
-static const loom_target_contract_binding_t kContractBindings[] = {
-    {.fragment = &loom_vm_core_contract_fragment, .rule_set_index = 0},
-};
+#include "loom/target/arch/vm/contracts/tables.inl"
 
 static const loom_low_lower_policy_t kPolicy = {
     .name = IREE_SVL("vm-lower"),
     .error_catalog = &loom_error_catalog_core,
     .source_type_supported = {.fn = loom_vm_source_type_supported},
     .map_type = {.fn = loom_vm_map_type},
-    .rule_sets = {.count = IREE_ARRAYSIZE(kRuleSets), .values = kRuleSets},
-    .contract_bindings = kContractBindings,
-    .contract_binding_count = IREE_ARRAYSIZE(kContractBindings),
+    .contract = LOOM_VM_CORE_CONTRACT,
 };
 
 void loom_vm_low_lower_policy_registry_initialize(
