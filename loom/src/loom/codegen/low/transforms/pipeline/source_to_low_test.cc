@@ -658,7 +658,7 @@ TEST_F(LowLowerPassTest,
       &no_span_rule_set,
   };
   loom_low_lower_policy_t policy = *loom_test_low_lower_policy();
-  policy.rule_sets = {
+  policy.contract.rule_sets = {
       /*.count=*/IREE_ARRAYSIZE(rule_sets),
       /*.values=*/rule_sets,
   };

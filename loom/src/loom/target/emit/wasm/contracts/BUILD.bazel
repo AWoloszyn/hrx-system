@@ -18,9 +18,13 @@ package(
 
 loom_target_contract_table_cc_libraries(
     name = "core_simd128",
-    args = ["--contract-fragment=wasm.core.simd128"],
+    args = [
+        "--contract-fragment=wasm.core.simd128",
+        "--contract-index=LOOM_WASM_CONTRACT:wasm.core.simd128",
+    ],
     contract_deps = ["//loom/src/loom/target:contract"],
     generator = "//loom/py/loom/gen/target/contracts:wasm_contract_table_family",
+    index_output = "tables.inl",
     lower_rule_deps = [
         "//loom/src/loom/codegen/low/lower",
         "//loom/src/loom/ops/buffer",

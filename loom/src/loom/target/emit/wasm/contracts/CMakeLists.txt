@@ -15,8 +15,11 @@ loom_target_contract_table_cc_libraries(
     core_simd128
   GENERATOR
     loom::py::loom::gen::target::contracts::wasm_contract_table_family
+  INDEX_OUTPUT
+    "tables.inl"
   ARGS
     "--contract-fragment=wasm.core.simd128"
+    "--contract-index=LOOM_WASM_CONTRACT:wasm.core.simd128"
   CONTRACT_DEPS
     loom::target::contract
   LOWER_RULE_DEPS

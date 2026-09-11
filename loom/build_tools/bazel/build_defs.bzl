@@ -379,6 +379,7 @@ def loom_target_contract_table_cc_libraries(
         name,
         generator,
         args = [],
+        index_output = None,
         inputs = [],
         contract_deps = [],
         lower_rule_deps = [],
@@ -396,6 +397,7 @@ def loom_target_contract_table_cc_libraries(
         library and files use the same stem with a _lower_rules suffix.
       generator: Python executable that writes both C/H output pairs.
       args: Generator arguments before the four output flags.
+      index_output: Optional private index include emitted by the same action.
       inputs: Source data labels consumed by the generator.
       contract_deps: Runtime dependencies of the contract C library.
       lower_rule_deps: Runtime dependencies of the lower-rule C library.
@@ -426,6 +428,9 @@ def loom_target_contract_table_cc_libraries(
         "--lower-rule-source",
         "--lower-rule-header",
     ]
+    if index_output:
+        outputs.append(index_output)
+        output_flags.append("--index-output")
     iree_generated_files(
         name = name + "_gen",
         srcs = inputs,
@@ -450,6 +455,7 @@ def loom_target_contract_file_family(
         generator,
         fragments,
         args = [],
+        index_output = None,
         inputs = [],
         tags = [],
         target_compatible_with = None,
@@ -466,6 +472,7 @@ def loom_target_contract_file_family(
       generator: Python executable that writes every contract table family.
       fragments: Mapping from output file stem to contract fragment key.
       args: Common generator arguments before fragment and output arguments.
+      index_output: Optional private index include emitted by the same action.
       inputs: Source data labels consumed by the generator.
       tags: Additional Bazel tags for the generator action.
       target_compatible_with: Optional target compatibility constraints.
@@ -493,6 +500,10 @@ def loom_target_contract_file_family(
             "--lower-rule-source",
             "--lower-rule-header",
         ])
+
+    if index_output:
+        outputs.append(index_output)
+        output_flags.append("--index-output")
 
     _loom_generated_files(
         name = name,

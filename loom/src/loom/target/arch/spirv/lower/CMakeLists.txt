@@ -17,6 +17,8 @@ loom_cc_library(
     "lower.h"
     "matrix.h"
     "workgroup.h"
+  TEXTUAL_HDRS
+    "${IREE_BINARY_DIR}/loom/src/loom/target/arch/spirv/contracts/tables.inl"
   SRCS
     "matrix.c"
     "registry.c"

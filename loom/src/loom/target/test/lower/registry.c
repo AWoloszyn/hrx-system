@@ -271,16 +271,7 @@ static iree_status_t loom_test_low_matrix_query(
   return iree_ok_status();
 }
 
-static const loom_low_lower_rule_set_t* const kTestLowRuleSets[] = {
-    &loom_test_low_core_lower_rule_set,
-};
-
-static const loom_target_contract_binding_t kTestLowContractBindings[] = {
-    {
-        .fragment = &loom_test_low_core_contract_fragment,
-        .rule_set_index = 0,
-    },
-};
+#include "loom/target/test/contracts/tables.inl"
 
 static const loom_low_lower_policy_t kTestLowLowerPolicy = {
     .name = IREE_SVL("test-low-lower-policy"),
@@ -289,13 +280,7 @@ static const loom_low_lower_policy_t kTestLowLowerPolicy = {
     .map_contract_value = {.fn = loom_test_low_lower_map_contract_value,
                            .user_data = NULL},
     .map_argument = {.fn = loom_test_low_lower_map_argument, .user_data = NULL},
-    .rule_sets =
-        {
-            .count = IREE_ARRAYSIZE(kTestLowRuleSets),
-            .values = kTestLowRuleSets,
-        },
-    .contract_bindings = kTestLowContractBindings,
-    .contract_binding_count = IREE_ARRAYSIZE(kTestLowContractBindings),
+    .contract = LOOM_TEST_LOW_CONTRACT,
     .descriptor_matrix =
         {
             .options = loom_test_low_matrix_options,

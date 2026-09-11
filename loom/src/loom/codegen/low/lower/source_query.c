@@ -135,8 +135,8 @@ static iree_status_t loom_low_lower_source_query_contract(
       .environment = &query_environment,
   };
   const loom_low_lower_contract_query_options_t query_options = {
-      .contract_index = &context->contract_index,
-      .rule_sets = context->policy->rule_sets,
+      .contract_index = context->policy->contract.index,
+      .rule_sets = context->policy->contract.rule_sets,
       .map_value =
           {
               .fn = loom_low_lower_source_query_map_value,
@@ -231,12 +231,6 @@ iree_status_t loom_low_lower_source_query_scope_create(
                                         : NULL,
                                     &scope->context.function_arena,
                                     &scope->context.lowering.condition_query);
-  }
-  if (iree_status_is_ok(status)) {
-    status = loom_target_contract_index_compose(
-        scope->context.policy->contract_bindings,
-        scope->context.policy->contract_binding_count,
-        &scope->context.contract_index, &scope->context.function_arena);
   }
   if (!iree_status_is_ok(status)) {
     loom_low_lower_source_query_scope_deinitialize(scope);

@@ -171,13 +171,7 @@ static iree_status_t loom_wasm_map_argument(
                             &out_argument->abi_type);
 }
 
-static const loom_low_lower_rule_set_t* const kWasmRuleSets[] = {
-    &loom_wasm_core_simd128_lower_rule_set,
-};
-
-static const loom_target_contract_binding_t kWasmContractBindings[] = {
-    {&loom_wasm_core_simd128_contract_fragment, 0},
-};
+#include "loom/target/emit/wasm/contracts/tables.inl"
 
 static const loom_low_lower_policy_t kWasmLowLowerPolicy = {
     .name = IREE_SVL("wasm-lower"),
@@ -186,13 +180,7 @@ static const loom_low_lower_policy_t kWasmLowLowerPolicy = {
     .map_argument = {.fn = loom_wasm_map_argument, .user_data = NULL},
     .source_type_supported = {.fn = loom_wasm_source_type_supported,
                               .user_data = NULL},
-    .rule_sets =
-        {
-            .count = IREE_ARRAYSIZE(kWasmRuleSets),
-            .values = kWasmRuleSets,
-        },
-    .contract_bindings = kWasmContractBindings,
-    .contract_binding_count = IREE_ARRAYSIZE(kWasmContractBindings),
+    .contract = LOOM_WASM_CONTRACT,
 };
 
 const loom_low_lower_policy_t* loom_wasm_low_lower_policy(void) {

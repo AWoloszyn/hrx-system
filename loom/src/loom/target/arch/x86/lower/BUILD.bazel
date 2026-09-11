@@ -27,6 +27,7 @@ loom_cc_library(
         "contraction.h",
         "lower.h",
     ],
+    textual_hdrs = ["//loom/src/loom/target/arch/x86/contracts:tables.inl"],
     visibility = _X86_ROOT_VISIBILITY,
     deps = [
         "//loom/src/loom/codegen/low:descriptors",

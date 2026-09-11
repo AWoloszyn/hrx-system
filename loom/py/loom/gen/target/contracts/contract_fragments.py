@@ -18,7 +18,6 @@ from loom.gen.support.c import c_pascal_identifier as _pascal_identifier
 from loom.gen.support.files import write_text_file
 from loom.gen.support.generated_file import line_comment_header
 from loom.target.contracts import (
-    CONTRACT_ROW_NONE,
     CompiledContractFragment,
     CompiledDescriptorMatrix,
     CompiledDescriptorRule,
@@ -32,16 +31,6 @@ from loom.target.contracts import (
 
 _UINT16_MAX = 0xFFFF
 
-_CONTRACT_SYSTEM_C_NAMES = {
-    ContractSystem.DESCRIPTOR_RULE: "LOOM_TARGET_CONTRACT_SYSTEM_DESCRIPTOR_RULE",
-    ContractSystem.VALUE_ALIAS: "LOOM_TARGET_CONTRACT_SYSTEM_VALUE_ALIAS",
-    ContractSystem.VALUE_ELIDE: "LOOM_TARGET_CONTRACT_SYSTEM_VALUE_ELIDE",
-    ContractSystem.SOURCE_MEMORY: "LOOM_TARGET_CONTRACT_SYSTEM_SOURCE_MEMORY",
-    ContractSystem.ENVIRONMENT: "LOOM_TARGET_CONTRACT_SYSTEM_ENVIRONMENT",
-    ContractSystem.DESCRIPTOR_MATRIX: "LOOM_TARGET_CONTRACT_SYSTEM_DESCRIPTOR_MATRIX",
-    ContractSystem.RECIPE_RULE: "LOOM_TARGET_CONTRACT_SYSTEM_RECIPE_RULE",
-}
-
 _DESCRIPTOR_MATRIX_SOURCE_C_NAMES = {
     "vector_mma": "LOOM_TARGET_CONTRACT_DESCRIPTOR_MATRIX_SOURCE_VECTOR_MMA",
 }
@@ -49,10 +38,11 @@ _DESCRIPTOR_MATRIX_SOURCE_C_NAMES = {
 
 @dataclass(frozen=True, slots=True)
 class GeneratedContractFragment:
-    """Generated C/H contents for one target contract fragment."""
+    """Compiled fragment and its generated C/H contents."""
 
     header: str
     source: str
+    compiled: CompiledContractFragment
 
 
 def generate_contract_fragment(
@@ -96,6 +86,7 @@ def generate_contract_fragment_from_lower_rules(
     c_table_prefix = _generated_table_prefix(table)
     header_guard = _header_guard_from_public_header(public_header)
     return GeneratedContractFragment(
+        compiled=compiled,
         header=_generate_header(
             header_guard=header_guard,
             table=compiled,
@@ -189,30 +180,6 @@ def _generate_source(
         ]
     )
 
-    op_spans_name = f"k{c_table_prefix}OpSpans"
-    if table.op_spans:
-        lines.append(f"static const loom_target_contract_fragment_op_span_t {op_spans_name}[] = {{")
-        for op_span in table.op_spans:
-            dialect_id = op_span.op_kind >> 8
-            op_index = op_span.op_kind & 0xFF
-            lines.append(f"    {{LOOM_OP_KIND(0x{dialect_id:02X}, {op_index}), {op_span.case_start}, {op_span.case_count}}},  // {op_span.op_name}")
-        lines.extend(["};", ""])
-        op_spans_value = op_spans_name
-    else:
-        op_spans_value = "NULL"
-
-    cases_name = f"k{c_table_prefix}Cases"
-    if table.cases:
-        lines.append(f"static const loom_target_contract_fragment_case_t {cases_name}[] = {{")
-        for contract_case in table.cases:
-            system_name = _CONTRACT_SYSTEM_C_NAMES[contract_case.system]
-            row_index = "LOOM_TARGET_CONTRACT_ROW_NONE" if contract_case.row_index == CONTRACT_ROW_NONE else str(contract_case.row_index)
-            lines.append(f"    {{{system_name}, 0, {row_index}}},")
-        lines.extend(["};", ""])
-        cases_value = cases_name
-    else:
-        cases_value = "NULL"
-
     descriptor_rules_name = f"k{c_table_prefix}DescriptorRules"
     if table.descriptor_rules:
         lines.append(f"static const loom_target_contract_descriptor_rule_t {descriptor_rules_name}[] = {{")
@@ -235,12 +202,7 @@ def _generate_source(
     lines.extend(
         [
             f"const loom_target_contract_fragment_t {symbol_name} = {{",
-            f"    {len(table.op_spans)},",
             f"    {flags_value},",
-            "    0,",
-            f"    {op_spans_value},",
-            f"    {len(table.cases)},",
-            f"    {cases_value},",
             f"    {len(table.descriptor_rules)},",
             f"    {descriptor_rules_value},",
             f"    {len(table.descriptor_matrices)},",

@@ -72,7 +72,10 @@ iree_py_library(
 
 iree_py_library(
     name = "contract_table_family",
-    srcs = ["contract_table_family.py"],
+    srcs = [
+        "contract_index.py",
+        "contract_table_family.py",
+    ],
     deps = [
         ":contract_fragments",
         ":lower_rules",

@@ -95,6 +95,7 @@ loom_cc_library(
     name = "lower",
     srcs = ["lower/registry.c"],
     hdrs = ["lower.h"],
+    textual_hdrs = ["//loom/src/loom/target/test/contracts:tables.inl"],
     visibility = _TEST_LOW_LOWER_VISIBILITY,
     deps = [
         ":descriptors",

@@ -15,11 +15,19 @@ loom_target_contract_file_family(
     contract_tables_gen
   GENERATOR
     loom::py::loom::gen::target::contracts::x86_contract_table_family
+  INDEX_OUTPUT
+    "tables.inl"
   FRAGMENTS
     "avx2=x86.avx2"
     "avx512=x86.avx512"
     "packed_dot=x86.packed_dot"
     "scalar=x86.scalar"
+  ARGS
+    "--contract-index=LOOM_X86_SCALAR_CONTRACT:x86.scalar"
+    "--contract-index=LOOM_X86_AVX2_CONTRACT:x86.scalar,x86.avx2"
+    "--contract-index=LOOM_X86_AVX512_CONTRACT:x86.scalar,x86.avx2,x86.avx512"
+    "--contract-index=LOOM_X86_PACKED_DOT_CONTRACT:x86.packed_dot"
+    "--contract-index=LOOM_X86_AVX512_PACKED_DOT_CONTRACT:x86.scalar,x86.avx2,x86.avx512,x86.packed_dot"
   COMMENT
     "Generating x86 contract table families"
 )

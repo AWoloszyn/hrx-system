@@ -15,8 +15,11 @@ loom_target_contract_table_cc_libraries(
     logical_core
   GENERATOR
     loom::py::loom::gen::target::contracts::spirv_contract_table_family
+  INDEX_OUTPUT
+    "tables.inl"
   ARGS
     "--contract-fragment=spirv.logical.core"
+    "--contract-index=LOOM_SPIRV_LOGICAL_CONTRACT:spirv.logical.core"
   CONTRACT_DEPS
     loom::target::contract
   LOWER_RULE_DEPS

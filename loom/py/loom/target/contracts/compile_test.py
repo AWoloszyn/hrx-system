@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from loom.dialect.scalar import ALL_SCALAR_OPS
@@ -28,11 +30,84 @@ from loom.target.contracts import (
     Vector,
     compile_contract_fragment,
 )
+from loom.target.contracts.compile import (
+    CONTRACT_ROW_NONE,
+    CompiledCase,
+    CompiledContractFragment,
+    CompiledIndexCase,
+    CompiledOpSpan,
+    compile_contract_index,
+)
 from loom.target.test.descriptors import (
     TEST_LOW_ADD_I32_DESCRIPTOR,
     TEST_LOW_ADD_V4I32_DESCRIPTOR,
     TEST_LOW_CORE_DESCRIPTOR_SET,
 )
+
+
+def _index_fragment(op_kind: int, *rows: int) -> CompiledContractFragment:
+    return CompiledContractFragment(
+        name="test.index",
+        target_contract_query=True,
+        op_spans=(CompiledOpSpan(op_kind, "test.op", 0, len(rows)),),
+        cases=tuple(CompiledCase(ContractSystem.VALUE_ALIAS, row) for row in rows),
+        descriptor_rules=(),
+        descriptor_matrices=(),
+    )
+
+
+def test_compile_index_preserves_binding_and_local_order() -> None:
+    first = _index_fragment(0x703, 4, 2)
+    second = _index_fragment(0x703, 9)
+    for fragments, rows in (
+        ((first, second), ((0, 4), (0, 2), (1, 9))),
+        ((second, first), ((0, 9), (1, 4), (1, 2))),
+    ):
+        index = compile_contract_index(fragments)
+        assert index.dialect_base_id == 7
+        assert index.dialects == (((CONTRACT_ROW_NONE, 0),) * 3 + ((0, 3),),)
+        assert index.cases == tuple(
+            CompiledIndexCase(ContractSystem.VALUE_ALIAS, binding, row)
+            for binding, row in rows
+        )
+
+
+def test_compile_index_preserves_dialect_holes_and_fragment_ordinals() -> None:
+    high = _index_fragment(0x900, 3)
+    low = _index_fragment(0x701, 7)
+    empty = replace(high, op_spans=(), cases=())
+    index = compile_contract_index((high, empty, low))
+    assert index.dialect_base_id == 7
+    assert index.dialects == (((CONTRACT_ROW_NONE, 0), (0, 1)), (), ((1, 1),))
+    assert [(case.binding_index, case.row_index) for case in index.cases] == [
+        (2, 7),
+        (0, 3),
+    ]
+    assert compile_contract_index((empty,)).cases == ()
+    assert compile_contract_index(()).dialects == ()
+
+
+def test_compile_index_preserves_metadata_only_rows() -> None:
+    fragment = _index_fragment(0x703, 0)
+    fragment = replace(
+        fragment, cases=(CompiledCase(ContractSystem.DESCRIPTOR_MATRIX, 0),)
+    )
+    assert compile_contract_index((fragment,)).cases == (
+        CompiledIndexCase(ContractSystem.DESCRIPTOR_MATRIX, 0, 0),
+    )
+
+
+def test_compile_index_checks_compact_field_limits() -> None:
+    fragment = _index_fragment(0x703, 0)
+    assert len(compile_contract_index((fragment,) * 255).cases) == 255
+    with pytest.raises(ValueError, match="binding count"):
+        compile_contract_index((fragment,) * 256)
+    with pytest.raises(ValueError, match="dialect span"):
+        compile_contract_index((_index_fragment(0, 0), _index_fragment(0xFF00, 0)))
+    full = _index_fragment(0x703, *range(0xFFFF))
+    assert len(compile_contract_index((full,)).cases) == 0xFFFF
+    with pytest.raises(ValueError, match="case count"):
+        compile_contract_index((full, fragment))
 
 
 def test_compile_contract_fragment_packs_populated_op_spans() -> None:

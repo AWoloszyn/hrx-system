@@ -760,6 +760,17 @@ typedef struct loom_low_lower_finalize_module_callback_t {
   void* user_data;
 } loom_low_lower_finalize_module_callback_t;
 
+// Immutable rule selection tables. The index and rule-set order are generated
+// together: ordinary bindings name ordinals in this exact rule-set list;
+// metadata-only bindings have no ordinary rule pool.
+typedef struct loom_low_lower_contract_t {
+  // Direct source-op lookup, or NULL for callback-only policies.
+  const loom_target_contract_index_t* index;
+  // Rule pools in selection order. Overlapping rules retain first-match
+  // precedence; failed diagnostics use the most-specific rejected candidate.
+  loom_low_lower_rule_set_list_t rule_sets;
+} loom_low_lower_contract_t;
+
 typedef struct loom_low_lower_policy_t {
   // Stable policy name used in diagnostics and status messages.
   iree_string_view_t name;
@@ -802,15 +813,8 @@ typedef struct loom_low_lower_policy_t {
   // Low declaration import kind for target-bound source imports, or zero when
   // this policy does not lower import declarations.
   loom_low_func_decl_import_kind_t import_decl_kind;
-  // Optional table-driven source-op lowering rule sets in selection order. Rule
-  // sets may overlap; the first matching rule wins and failed diagnostics use
-  // the most-specific rejected candidate.
-  loom_low_lower_rule_set_list_t rule_sets;
-  // Active contract fragments composed into a dense root index for direct
-  // source-op lookup and read-only legality queries.
-  const loom_target_contract_binding_t* contract_bindings;
-  // Number of active contract fragments.
-  uint16_t contract_binding_count;
+  // Generated source-op selection tables shared by all uses of this policy.
+  loom_low_lower_contract_t contract;
   // Optional observer of the compiler-owned source-plan traversal. The
   // observer sees the current op only and must not recursively inspect the
   // source function.

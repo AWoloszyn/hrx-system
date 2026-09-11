@@ -808,7 +808,7 @@ static iree_status_t loom_low_lower_plan_op_from_contract_index(
     loom_low_lower_rule_source_memory_state_t* source_memory_state,
     bool* out_selected) {
   *out_selected = false;
-  const loom_target_contract_index_t* index = &context->contract_index;
+  const loom_target_contract_index_t* index = context->policy->contract.index;
   const loom_target_contract_op_entry_t op_entry =
       loom_target_contract_index_lookup_kind(index, source_op->kind);
   if (loom_target_contract_op_entry_is_empty(op_entry)) {
@@ -861,7 +861,7 @@ static iree_status_t loom_low_lower_plan_op_from_contract_index(
       continue;
     }
     const loom_low_lower_rule_set_t* rule_set =
-        context->policy->rule_sets.values[binding->rule_set_index];
+        context->policy->contract.rule_sets.values[binding->rule_set_index];
     match_context.policy_rule_set_ordinal =
         (uint16_t)(binding->rule_set_index + 1u);
     if (rule_set->source_memory_count != 0 && !view_regions_resolved) {
@@ -929,7 +929,7 @@ static iree_status_t loom_low_lower_plan_op(loom_low_lower_context_t* context,
   loom_low_lower_rule_source_memory_state_initialize(
       source_op, &source_memory_access, &source_memory_state);
   bool selected_rule = false;
-  if (context->contract_index.case_count != 0) {
+  if (context->policy->contract.index != NULL) {
     IREE_RETURN_IF_ERROR(loom_low_lower_plan_op_from_contract_index(
         context, source_op, &failed_rule_set, &failed_rule_selection,
         &source_memory_state, &selected_rule));

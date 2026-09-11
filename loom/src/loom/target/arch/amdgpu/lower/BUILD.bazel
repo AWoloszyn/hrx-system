@@ -230,6 +230,7 @@ loom_cc_library(
         ":encoding/fp8_table_counts.h",
     ],
     textual_hdrs = [
+        "//loom/src/loom/target/arch/amdgpu/contracts:tables.inl",
         "//loom/src/loom/target/arch/amdgpu:target_records_tables.inl",
         "//loom/src/loom/target/arch/amdgpu/descriptors:lower_capabilities.h",
         "//loom/src/loom/target/arch/amdgpu:memory_cache_policy_encoding_rows.inl",

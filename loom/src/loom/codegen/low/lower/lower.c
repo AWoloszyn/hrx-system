@@ -1286,12 +1286,6 @@ iree_status_t loom_low_lower_function(loom_module_t* module,
     iree_arena_deinitialize(&context.function_arena);
     return iree_ok_status();
   }
-  if (iree_status_is_ok(status)) {
-    status = loom_target_contract_index_compose(
-        context.policy->contract_bindings,
-        context.policy->contract_binding_count, &context.contract_index,
-        &context.function_arena);
-  }
 
   loom_vector_memory_footprint_result_t footprint_result = {0};
   if (iree_status_is_ok(status)) {

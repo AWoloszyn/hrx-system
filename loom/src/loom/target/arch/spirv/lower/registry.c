@@ -326,13 +326,7 @@ static iree_status_t loom_spirv_map_argument(
                              source_type, &out_argument->abi_type);
 }
 
-static const loom_low_lower_rule_set_t* const kSpirvRuleSets[] = {
-    &loom_spirv_logical_core_lower_rule_set,
-};
-
-static const loom_target_contract_binding_t kSpirvContractBindings[] = {
-    {&loom_spirv_logical_core_contract_fragment, 0},
-};
+#include "loom/target/arch/spirv/contracts/tables.inl"
 
 static iree_status_t loom_spirv_preselect_op(void* user_data,
                                              loom_low_lower_context_t* context,
@@ -367,13 +361,7 @@ static const loom_low_lower_policy_t kSpirvLowLowerPolicy = {
     .map_argument = {.fn = loom_spirv_map_argument, .user_data = NULL},
     .source_type_supported = {.fn = loom_spirv_source_type_supported,
                               .user_data = NULL},
-    .rule_sets =
-        {
-            .count = IREE_ARRAYSIZE(kSpirvRuleSets),
-            .values = kSpirvRuleSets,
-        },
-    .contract_bindings = kSpirvContractBindings,
-    .contract_binding_count = IREE_ARRAYSIZE(kSpirvContractBindings),
+    .contract = LOOM_SPIRV_LOGICAL_CONTRACT,
     .descriptor_matrix =
         {
             .options = loom_spirv_descriptor_matrix_options,

@@ -18,9 +18,13 @@ package(
 
 loom_target_contract_table_cc_libraries(
     name = "logical_core",
-    args = ["--contract-fragment=spirv.logical.core"],
+    args = [
+        "--contract-fragment=spirv.logical.core",
+        "--contract-index=LOOM_SPIRV_LOGICAL_CONTRACT:spirv.logical.core",
+    ],
     contract_deps = ["//loom/src/loom/target:contract"],
     generator = "//loom/py/loom/gen/target/contracts:spirv_contract_table_family",
+    index_output = "tables.inl",
     lower_rule_deps = [
         "//loom/src/loom/codegen/low/lower",
         "//loom/src/loom/ops/buffer",

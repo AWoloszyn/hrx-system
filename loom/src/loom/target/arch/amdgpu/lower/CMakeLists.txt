@@ -122,6 +122,7 @@ loom_cc_library(
     "value/vector_transform.h"
     "workgroup.h"
   TEXTUAL_HDRS
+    "${IREE_BINARY_DIR}/loom/src/loom/target/arch/amdgpu/contracts/tables.inl"
     "${IREE_BINARY_DIR}/loom/src/loom/target/arch/amdgpu/descriptors/lower_capabilities.h"
     "${IREE_BINARY_DIR}/loom/src/loom/target/arch/amdgpu/lower/candidates/memory_descriptor_candidate_ranges.inl"
     "${IREE_BINARY_DIR}/loom/src/loom/target/arch/amdgpu/lower/candidates/memory_descriptor_candidates.inl"
