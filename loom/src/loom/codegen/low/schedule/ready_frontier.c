@@ -224,7 +224,13 @@ iree_status_t loom_low_schedule_ready_frontier_initialize(
     void* segment = NULL;
     IREE_RETURN_IF_ERROR(loom_segmented_storage_append(
         &out_frontier->node_states, arena, &segment));
-    memset(segment, 0xFF, sizeof(loom_low_schedule_ready_node_segment_t));
+    // Capacity is fixed for this frontier. The unused tail of its last
+    // segment is never indexed and needs no initial state.
+    const uint32_t segment_node_count = iree_min(
+        node_capacity - (i << LOOM_LOW_SCHEDULE_READY_NODE_SEGMENT_SHIFT),
+        LOOM_LOW_SCHEDULE_READY_NODE_SEGMENT_CAPACITY);
+    memset(segment, 0xFF,
+           segment_node_count * sizeof(loom_low_schedule_ready_node_state_t));
   }
 
   const uint32_t heap_segment_count =

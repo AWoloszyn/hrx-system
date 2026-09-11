@@ -40,6 +40,35 @@ static loom_low_schedule_ready_keys_t MakeKeys(uint64_t source,
   return {{source, pressure, schedule, storage}};
 }
 
+TEST_F(ScheduleReadyFrontierTest, InitializesEveryNodeAfterWorkspaceReuse) {
+  for (uint32_t node_capacity : {0u, 1u, 511u, 512u, 513u, 5000u}) {
+    SCOPED_TRACE(node_capacity);
+    const auto checkpoint = iree_arena_checkpoint_save(&arena_);
+    for (int repetition = 0; repetition < 2; ++repetition) {
+      iree_arena_checkpoint_restore(&checkpoint);
+      loom_low_schedule_ready_frontier_t frontier;
+      IREE_ASSERT_OK(loom_low_schedule_ready_frontier_initialize(
+          node_capacity, /*descriptor_count=*/1,
+          LOOM_LOW_SCHEDULE_READY_VIEW_COUNT, &arena_, &frontier));
+      EXPECT_EQ(loom_low_schedule_ready_frontier_count(&frontier), 0u);
+      EXPECT_FALSE(
+          loom_low_schedule_ready_frontier_contains(&frontier, node_capacity));
+      for (uint32_t node = 0; node < node_capacity; ++node) {
+        ASSERT_FALSE(
+            loom_low_schedule_ready_frontier_contains(&frontier, node));
+        const auto keys = MakeKeys(node, node, node, node);
+        loom_low_schedule_ready_frontier_insert(&frontier, node, &keys, 0);
+        EXPECT_TRUE(loom_low_schedule_ready_frontier_contains(&frontier, node));
+      }
+      EXPECT_EQ(loom_low_schedule_ready_frontier_count(&frontier),
+                node_capacity);
+      EXPECT_EQ(loom_low_schedule_ready_frontier_descriptor_count(&frontier, 0),
+                node_capacity);
+    }
+    iree_arena_checkpoint_restore(&checkpoint);
+  }
+}
+
 TEST_F(ScheduleReadyFrontierTest, MaintainsViewsAcrossSegmentBoundaries) {
   loom_low_schedule_ready_frontier_t frontier;
   IREE_ASSERT_OK(loom_low_schedule_ready_frontier_initialize(
