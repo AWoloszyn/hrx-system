@@ -40,7 +40,7 @@ iree_execution_test_suite(
     "vm.test.json"
   TOOLS
     "loom-compile=loom::tools::loom-compile"
-    "vm-dis=iree::tools::vm-dis"
+    "vm-dis=iree::tools::vm::vm-dis"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/duplicate_exports.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/empty_export.loom"
