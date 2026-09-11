@@ -61,35 +61,32 @@ typedef struct amdf_windows_xdna_legacy_context_header_t {
 typedef struct amdf_windows_xdna_legacy_context_tail_t {
   // Legacy kernel name and driver-required terminal discriminator.
   char kernel_name[0x40];
-  // Unresolved NPU5 legacy value fixed at 0x10000.
-  uint64_t opaque_0040;
-  // Number of columns in the complete physical NPU5 array.
-  uint64_t physical_array_column_count;
+  // Register address range in bytes of the compatibility kernel.
+  uint64_t kernel_register_byte_length;
+  // Number of arguments declared by the compatibility kernel.
+  uint64_t kernel_argument_count;
   // Unresolved legacy state preceding the kernel identifier.
   uint8_t reserved_0050[8];
   // Legacy kernel identifier used only by the compatibility envelope.
   uint64_t kernel_id;
   // Unresolved program-independent legacy context state.
   uint8_t reserved_0060[0x300];
-  // Offset of context instruction storage within the command aperture.
-  uint32_t context_instruction_offset;
-  // Number of compute rows in each NPU5 column.
-  uint32_t compute_row_count;
-  // Logical column count admitted to the materialized context.
-  uint32_t logical_column_count;
-  // Physical origin requested for the complete array partition.
-  uint32_t physical_column_origin;
-  // Unresolved NPU5 legacy value fixed at two.
-  uint32_t opaque_0370;
-  // Unresolved NPU5 legacy value fixed at three.
-  uint32_t opaque_0374;
-  // Unresolved NPU5 legacy value fixed at four.
-  uint32_t opaque_0378;
+  // Native partition-admission inputs, not achieved placement or geometry.
+  struct {
+    // Operations per AIE cycle used for native quality-of-service accounting.
+    uint32_t operations_per_cycle;
+    // Number of candidate physical starting columns following this header.
+    uint32_t start_column_count;
+    // Requested partition width in columns.
+    uint32_t column_count;
+    // Candidate physical starting columns supplied to native admission.
+    uint32_t start_columns[4];
+  } partition;
 } amdf_windows_xdna_legacy_context_tail_t;
 
-#define AMDF_WINDOWS_XDNA_LEGACY_CONTEXT_TAIL_SIZE                  \
-  (offsetof(amdf_windows_xdna_legacy_context_tail_t, opaque_0378) + \
-   sizeof(uint32_t))
+#define AMDF_WINDOWS_XDNA_LEGACY_CONTEXT_TAIL_SIZE                \
+  (offsetof(amdf_windows_xdna_legacy_context_tail_t, partition) + \
+   sizeof(((amdf_windows_xdna_legacy_context_tail_t*)0)->partition))
 
 _Static_assert(sizeof(amdf_windows_xdna_legacy_context_header_t) == 0xE8,
                "legacy context header layout must match the NPU5 ABI");
@@ -100,7 +97,7 @@ _Static_assert(AMDF_WINDOWS_XDNA_LEGACY_CONTEXT_TAIL_SIZE == 0x37C,
                "legacy context tail layout must match the NPU5 ABI");
 
 amdf_status_t amdf_windows_xdna_legacy_context_build(
-    uint32_t logical_column_count, uint32_t physical_column_origin,
+    uint32_t partition_column_count, uint32_t first_start_column,
     amdf_allocator_t host_allocator, uint8_t** out_data,
     uint32_t* out_data_size) {
   if (out_data == NULL || out_data_size == NULL) {
@@ -148,16 +145,16 @@ amdf_status_t amdf_windows_xdna_legacy_context_build(
   static const char kernel_name[] = "MLIR_AIE";
   memcpy(tail.kernel_name, kernel_name, sizeof(kernel_name));
   tail.kernel_name[0x3F] = '0';
-  tail.opaque_0040 = UINT64_C(0x10000);
-  tail.physical_array_column_count = 8;
+  tail.kernel_register_byte_length = UINT64_C(0x10000);
+  tail.kernel_argument_count = 8;
   tail.kernel_id = UINT64_C(0x901);
-  tail.context_instruction_offset = 0x800;
-  tail.compute_row_count = 4;
-  tail.logical_column_count = logical_column_count;
-  tail.physical_column_origin = physical_column_origin;
-  tail.opaque_0370 = 2;
-  tail.opaque_0374 = 3;
-  tail.opaque_0378 = 4;
+  tail.partition.operations_per_cycle = 0x800;
+  tail.partition.start_column_count = 4;
+  tail.partition.column_count = partition_column_count;
+  tail.partition.start_columns[0] = first_start_column;
+  tail.partition.start_columns[1] = 2;
+  tail.partition.start_columns[2] = 3;
+  tail.partition.start_columns[3] = 4;
   memcpy(image_data + amdf_windows_xdna_npu5_legacy_bootstrap_image_size, &tail,
          AMDF_WINDOWS_XDNA_LEGACY_CONTEXT_TAIL_SIZE);
 

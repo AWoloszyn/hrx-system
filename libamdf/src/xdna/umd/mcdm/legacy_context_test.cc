@@ -48,7 +48,13 @@ TEST(XdnaLegacyContextTest, BuildsExactNpu5CompatibilityRecord) {
 
   constexpr size_t kTailOffset = 0xE8 + 8454;
   EXPECT_STREQ(reinterpret_cast<const char*>(data + kTailOffset), "MLIR_AIE");
+  // Kernel metadata describes the register range and argument count, not the
+  // physical array width.
+  EXPECT_EQ(ReadU64(data, kTailOffset + 0x40), UINT64_C(0x10000));
   EXPECT_EQ(ReadU64(data, kTailOffset + 0x48), 8u);
+  // Partition admission describes operations per cycle, a candidate count,
+  // the requested width, and the complete candidate starting-column list.
+  EXPECT_EQ(ReadU32(data, kTailOffset + 0x360), 0x800u);
   EXPECT_EQ(ReadU32(data, kTailOffset + 0x364), 4u);
   EXPECT_EQ(ReadU32(data, kTailOffset + 0x368), 3u);
   EXPECT_EQ(ReadU32(data, kTailOffset + 0x36C), 0u);

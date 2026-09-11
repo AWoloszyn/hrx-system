@@ -16,8 +16,11 @@ extern "C" {
 #endif  // __cplusplus
 
 // Builds the exact NPU5 legacy context record around the provider-owned image.
+// Replaces its partition width and first candidate starting column; the other
+// candidate starting columns remain fixed. These are admission inputs, not a
+// guarantee of the native context's achieved placement.
 amdf_status_t amdf_windows_xdna_legacy_context_build(
-    uint32_t logical_column_count, uint32_t physical_column_origin,
+    uint32_t partition_column_count, uint32_t first_start_column,
     amdf_allocator_t host_allocator, uint8_t** out_data,
     uint32_t* out_data_size);
 
