@@ -5,6 +5,11 @@ It isolates operating-system and driver-private mechanisms behind an
 unloadable library while leaving executable formats, command construction,
 scheduling, and memory policy in the calling runtime.
 
+The [memory design](docs/memory.md) describes the scope-based fabric contract,
+resource and address lifetimes, and CPU/GPU/NPU caller scenarios. It defines the
+selected design; the implementation overview below describes available provider
+paths rather than qualification of every design capability.
+
 The base public surface is `include/amdf/amdf.h`. `amdf_query_api` negotiates an
 ABI version and returns an immutable API table. Optional family surfaces in
 `include/amdf/gpu.h` and `include/amdf/xdna.h` are negotiated from that table
