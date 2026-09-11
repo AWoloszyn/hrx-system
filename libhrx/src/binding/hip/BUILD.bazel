@@ -334,11 +334,13 @@ hrx_cc_shared_library(
         "api_metadata.c",
         "library.c",
         "linker.c",
+        "vmm.c",
     ],
     hdrs = [
         "api.h",
         "binding_internal.h",
         "error_state.h",
+        "vmm.h",
     ],
     additional_linker_inputs = ["amdhip64.map"],
     copts = [
@@ -393,10 +395,12 @@ hrx_cc_shared_library(
         "array_lease_test_hook.c",
         "library.c",
         "linker.c",
+        "vmm.c",
     ],
     hdrs = [
         "api.h",
         "binding_internal.h",
+        "vmm.h",
     ],
     additional_linker_inputs = ["amdhip64.map"],
     copts = [

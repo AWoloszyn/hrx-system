@@ -440,12 +440,14 @@ iree_cc_library(
     "api.h"
     "binding_internal.h"
     "error_state.h"
+    "vmm.h"
   SRCS
     "abi_stubs.c"
     "api.c"
     "api_metadata.c"
     "library.c"
     "linker.c"
+    "vmm.c"
   DEPS
     ::array_lifetime
     ::blocking_printf_provider
@@ -496,6 +498,7 @@ iree_cc_library(
   HDRS
     "api.h"
     "binding_internal.h"
+    "vmm.h"
   SRCS
     "abi_stubs.c"
     "api.c"
@@ -503,6 +506,7 @@ iree_cc_library(
     "array_lease_test_hook.c"
     "library.c"
     "linker.c"
+    "vmm.c"
   DEPS
     ::array_lifetime
     ::blocking_printf_provider
