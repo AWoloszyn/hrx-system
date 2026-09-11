@@ -78,6 +78,7 @@ iree_cc_library(
     "memory.h"
     "module.h"
     "occupancy.h"
+    "peer.h"
     "stream.h"
     "tls.h"
   TEXTUAL_HDRS
@@ -164,6 +165,20 @@ iree_cc_test(
     "function_attributes_test.cc"
   DEPS
     ::function_attributes
+    iree::base
+    iree::hal
+    iree::testing::gtest
+    iree::testing::gtest_main
+    libhrx_defs
+)
+
+iree_cc_test(
+  NAME
+    peer_test
+  SRCS
+    "peer_test.cc"
+  DEPS
+    ::common
     iree::base
     iree::hal
     iree::testing::gtest
