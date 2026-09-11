@@ -43,9 +43,9 @@ enum loom_low_storage_relation_cause_e {
   // Semantically tied result requiring source/result storage identity.
   // Includes descriptor ties, FactIdentity pairs, and ValueAlias results.
   LOOM_LOW_STORAGE_RELATION_CAUSE_TIED_RESULT = 1,
-  // low.copy source/result storage affinity.
+  // low.copy source/result sharing or disjoint-placement preference.
   LOOM_LOW_STORAGE_RELATION_CAUSE_LOW_COPY = 2,
-  // low.move source/result storage affinity.
+  // low.move source/result sharing or disjoint-placement preference.
   LOOM_LOW_STORAGE_RELATION_CAUSE_LOW_MOVE = 3,
   // low.slice source/result subrange affinity.
   LOOM_LOW_STORAGE_RELATION_CAUSE_LOW_SLICE = 4,
@@ -65,7 +65,8 @@ typedef uint8_t loom_low_storage_relation_cause_t;
 enum loom_low_storage_relation_flag_bits_e {
   // The relation is required for the operation semantics.
   LOOM_LOW_STORAGE_RELATION_FLAG_HARD = 1u << 0,
-  // The relation removes a move when allocation can satisfy it.
+  // An optional placement objective, such as removing a move, freeing fixed
+  // storage, or enabling instruction pairing. It does not establish legality.
   LOOM_LOW_STORAGE_RELATION_FLAG_PREFERRED = 1u << 1,
 };
 

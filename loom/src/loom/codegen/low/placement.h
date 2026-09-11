@@ -6,11 +6,11 @@
 
 // Function-local storage placement relations for target-low allocation.
 //
-// Placement is the target-independent producer of storage-affinity facts. It
-// records the IR-level relationships that make two low values profitable or
-// mandatory to place in the same concrete storage without deciding where that
-// storage is. Allocation consumes this table when assigning locations; move
-// sequencing consumes the allocation result after unavoidable copies remain.
+// Placement is the target-independent producer of storage constraints and
+// preferences. It records required sharing, optional copy coalescing, disjoint
+// placement, and target instruction-pair location preferences without assigning
+// concrete storage. Allocation consumes this table when selecting locations;
+// move sequencing materializes the transfers left by the chosen allocation.
 
 #ifndef LOOM_CODEGEN_LOW_PLACEMENT_H_
 #define LOOM_CODEGEN_LOW_PLACEMENT_H_
@@ -31,9 +31,9 @@ typedef enum loom_low_placement_cause_bits_e {
   LOOM_LOW_PLACEMENT_CAUSE_UNKNOWN = 0,
   // Semantically tied result requiring source/result storage identity.
   LOOM_LOW_PLACEMENT_CAUSE_TIED_RESULT = 1,
-  // low.copy source/result storage affinity.
+  // low.copy source/result sharing or disjoint-placement preference.
   LOOM_LOW_PLACEMENT_CAUSE_LOW_COPY = 2,
-  // low.move source/result storage affinity.
+  // low.move source/result sharing or disjoint-placement preference.
   LOOM_LOW_PLACEMENT_CAUSE_LOW_MOVE = 3,
   // low.slice source/result subrange affinity.
   LOOM_LOW_PLACEMENT_CAUSE_LOW_SLICE = 4,
@@ -55,7 +55,8 @@ typedef uint8_t loom_low_placement_cause_t;
 enum loom_low_placement_relation_flag_bits_e {
   // The relation is required for the selected target operation semantics.
   LOOM_LOW_PLACEMENT_RELATION_FLAG_HARD = 1u << 0,
-  // The relation removes a move when allocation can satisfy it.
+  // An optional placement objective, such as removing a move, freeing fixed
+  // storage, or enabling instruction pairing. It does not establish legality.
   LOOM_LOW_PLACEMENT_RELATION_FLAG_PREFERRED = 1u << 1,
   // The relation can justify overlapping target-visible storage.
   LOOM_LOW_PLACEMENT_RELATION_FLAG_CAN_ALIAS_STORAGE = 1u << 2,
