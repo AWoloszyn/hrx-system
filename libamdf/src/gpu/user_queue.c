@@ -192,7 +192,8 @@ static amdf_status_t amdf_gpu_user_queue_validate_scratch(
   }
   if (scratch->byte_offset > memory->info.byte_length ||
       scratch->byte_length > memory->info.byte_length - scratch->byte_offset ||
-      memory->info.device_address > UINT64_MAX - scratch->byte_offset) {
+      memory->addresses[AMDF_MEMORY_ADDRESS_GPU] >
+          UINT64_MAX - scratch->byte_offset) {
     return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
   }
   const amdf_gpu_device_info_t* device_info = amdf_gpu_device_get_info(device);
@@ -200,7 +201,8 @@ static amdf_status_t amdf_gpu_user_queue_validate_scratch(
     return amdf_make_api_status(AMDF_STATUS_CODE_FAILED_PRECONDITION);
   }
   *out_scratch = (amdf_gpu_umd_queue_scratch_t){
-      .device_address = memory->info.device_address + scratch->byte_offset,
+      .device_address =
+          memory->addresses[AMDF_MEMORY_ADDRESS_GPU] + scratch->byte_offset,
       .byte_length = scratch->byte_length,
       .maximum_private_segment_byte_length =
           scratch->maximum_private_segment_byte_length,

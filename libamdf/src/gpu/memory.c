@@ -183,7 +183,11 @@ static void amdf_gpu_memory_set_info(amdf_gpu_memory_t* memory,
   memory->base.info.native_allocation_granularity =
       result.native_allocation_granularity;
   memory->base.info.physical_backing_id = result.physical_backing_id;
-  memory->base.info.device_address = result.device_address;
+  memory->base.addresses[AMDF_MEMORY_ADDRESS_GPU] = result.device_address;
+  memory->base.info.address_kinds =
+      (result.flags & AMDF_MEMORY_FLAG_DEVICE_ADDRESS) != 0
+          ? UINT64_C(1) << AMDF_MEMORY_ADDRESS_GPU
+          : 0;
   memory->base.info.reset_epoch = amdf_gpu_device_query_reset_epoch(device);
 }
 

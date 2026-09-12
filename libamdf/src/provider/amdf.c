@@ -52,6 +52,7 @@ static const amdf_api_t amdf_api_v1 = {
     .user_queue_query_status = amdf_user_queue_query_status,
     .user_queue_wait_consumed = amdf_user_queue_wait_consumed,
     .user_queue_destroy = amdf_user_queue_destroy,
+    .memory_query_address = amdf_memory_query_address,
 };
 
 amdf_status_t AMDF_CALL amdf_query_api(amdf_abi_version_t minimum_version,

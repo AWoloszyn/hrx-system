@@ -21,7 +21,7 @@ static_assert(sizeof(amdf_instance_create_info_t) ==
 static_assert(sizeof(amdf_external_memory_t) == 80);
 static_assert(offsetof(amdf_external_memory_t, source_byte_offset) == 32);
 static_assert(offsetof(amdf_external_memory_t, release) == 64);
-static_assert(sizeof(amdf_memory_profile_t) == 528);
+static_assert(sizeof(amdf_memory_profile_t) == 536);
 static_assert(offsetof(amdf_memory_profile_t, atomic_operations_32) == 56);
 static_assert(offsetof(amdf_memory_profile_t, external_memory_support) == 288);
 static_assert(sizeof(amdf_memory_import_info_t) == 40);
@@ -65,8 +65,8 @@ static_assert(offsetof(amdf_kernel_queue_status_t, retired_submission) ==
               sizeof(amdf_output_structure_t));
 static_assert(offsetof(amdf_kernel_queue_status_t, terminal_status) == 32);
 static_assert(sizeof(amdf_kernel_queue_status_t) == 40);
-static_assert(offsetof(amdf_api_t, user_queue_destroy) +
-                  sizeof(amdf_api_t::user_queue_destroy) ==
+static_assert(offsetof(amdf_api_t, memory_query_address) +
+                  sizeof(amdf_api_t::memory_query_address) ==
               sizeof(amdf_api_t));
 
 TEST(QueryApiTest, NegotiatesSupportedVersion) {
@@ -91,6 +91,7 @@ TEST(QueryApiTest, NegotiatesSupportedVersion) {
   EXPECT_NE(api->memory_create, nullptr);
   EXPECT_NE(api->memory_import, nullptr);
   EXPECT_NE(api->memory_query_info, nullptr);
+  EXPECT_NE(api->memory_query_address, nullptr);
   EXPECT_NE(api->memory_export, nullptr);
   EXPECT_NE(api->external_memory_release, nullptr);
   EXPECT_NE(api->memory_query_pair_info, nullptr);

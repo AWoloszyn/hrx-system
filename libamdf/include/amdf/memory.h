@@ -54,6 +54,22 @@ enum amdf_memory_access_bit_e {
   AMDF_MEMORY_ACCESS_EXECUTE = 1u << 2,
 };
 
+/// Interface consuming a numeric memory address, not an address-space owner.
+typedef uint32_t amdf_memory_address_kind_t;
+enum amdf_memory_address_kind_e {
+  /// Ordinary GPU loads, stores, instruction fetches, and command addresses.
+  AMDF_MEMORY_ADDRESS_GPU = 0,
+  /// XDNA shim DMA descriptors, with the native DRAM translation applied.
+  AMDF_MEMORY_ADDRESS_XDNA_DMA = 1,
+  /// XDNA firmware buffer arguments or scoped instruction-storage addresses.
+  /// This is not an address to place directly in a shim DMA descriptor.
+  AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE = 2,
+};
+
+/// Set of address kinds, with bit `1 << amdf_memory_address_kind_t` set for
+/// each supported kind. Support describes usable addresses, not ownership.
+typedef uint64_t amdf_memory_address_kinds_t;
+
 /// Host access requested for one explicit mapping.
 typedef uint32_t amdf_memory_map_flags_t;
 enum amdf_memory_map_flag_bits_e {
@@ -304,18 +320,20 @@ typedef struct amdf_memory_construction_capabilities_t {
   uint64_t native_byte_length_granularity;
 } amdf_memory_construction_capabilities_t;
 
-/// Numeric device-address capabilities of one memory profile.
+/// Numeric envelope shared by every address kind produced by one profile.
+/// Bounds cover complete logical ranges, including any consumer translation;
+/// they do not promise that every address inside the envelope is allocatable.
 typedef struct amdf_memory_address_capabilities_t {
   /// Device-local ordinary address-domain ordinal.
   uint32_t address_domain_ordinal;
-  /// Native device-address width, or
+  /// Maximum significant width across produced address kinds, or
   /// `AMDF_MEMORY_ADDRESS_BIT_COUNT_UNKNOWN` when the provider cannot query it.
   uint32_t address_bit_count;
   /// Inclusive lower bound when `address_bit_count` is known, otherwise zero.
   uint64_t minimum_address;
   /// Inclusive upper bound when `address_bit_count` is known, otherwise zero.
   uint64_t maximum_address;
-  /// Minimum power-of-two alignment of produced device addresses.
+  /// Minimum power-of-two alignment common to all produced address kinds.
   uint64_t minimum_alignment;
 } amdf_memory_address_capabilities_t;
 
@@ -366,7 +384,7 @@ typedef struct amdf_memory_profile_t {
   amdf_atomic_operations_t atomic_operations_32;
   /// Atomic operations supported by 64-bit words in this target placement.
   amdf_atomic_operations_t atomic_operations_64;
-  /// Ordinary device-address domain and numeric envelope.
+  /// Ordinary address domain and envelope covering every produced address kind.
   amdf_memory_address_capabilities_t device_address;
   /// Provider-owned physical allocation limits, or all-zero without CREATE.
   amdf_memory_construction_capabilities_t allocation;
@@ -383,6 +401,8 @@ typedef struct amdf_memory_profile_t {
   /// Type-specific external-memory support records.
   amdf_external_memory_support_t
       external_memory_support[AMDF_MEMORY_PROFILE_EXTERNAL_SUPPORT_CAPACITY];
+  /// Address kinds established when construction obtains DEVICE_ADDRESS.
+  amdf_memory_address_kinds_t address_kinds;
 } amdf_memory_profile_t;
 
 /// Parameters used to create physical backing and attach it to one device.
@@ -450,8 +470,10 @@ typedef struct amdf_memory_info_t {
   uint64_t native_allocation_granularity;
   /// Identity shared by attachments to the same physical backing, when known.
   amdf_physical_memory_id_t physical_backing_id;
-  /// Stable device virtual base when `AMDF_MEMORY_FLAG_DEVICE_ADDRESS` is set.
-  uint64_t device_address;
+  /// Address kinds established for the complete logical range. Each set bit
+  /// guarantees that memory_query_address succeeds for that kind. Zero means
+  /// no device address was established; unsupported kinds have no address.
+  amdf_memory_address_kinds_t address_kinds;
   /// Device reset epoch in which the attachment and address remain valid.
   uint64_t reset_epoch;
 } amdf_memory_info_t;

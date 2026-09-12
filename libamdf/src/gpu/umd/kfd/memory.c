@@ -173,6 +173,7 @@ amdf_status_t amdf_gpu_umd_device_query_memory_profile(
       .structure_size = out_profile->structure_size,
       .next = out_profile->next,
       .ordinal = memory_profile_ordinal,
+      .address_kinds = UINT64_C(1) << AMDF_MEMORY_ADDRESS_GPU,
   };
   const uint64_t maximum_byte_length = amdf_gpu_kfd_maximum_byte_length(device);
   const uint64_t maximum_alignment = amdf_gpu_kfd_maximum_alignment(device);

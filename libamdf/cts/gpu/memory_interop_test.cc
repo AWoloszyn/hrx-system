@@ -40,8 +40,10 @@ struct DeviceAccess {
   amdf_device_t* device = nullptr;
   // Device-specific attachment, owning backing only for the first device.
   amdf_memory_t* memory = nullptr;
-  // Immutable attachment properties including its device virtual address.
+  // Immutable attachment properties.
   amdf_memory_info_t memory_info = {};
+  // GPU address cached before preparing commands.
+  uint64_t address = 0;
   // Explicit host access retained through the last use of registered pages.
   amdf_host_mapping_t* mapping = nullptr;
   // Host mapping properties and borrowed base pointer.
@@ -128,6 +130,9 @@ class GpuMemoryInteropTest : public GpuDeviceFixture {
     access.memory_info.structure_size = sizeof(access.memory_info);
     status = api_->memory_query_info(access.memory, &access.memory_info);
     if (!amdf_status_is_ok(status)) return status;
+    status = api_->memory_query_address(access.memory, AMDF_MEMORY_ADDRESS_GPU,
+                                        &access.address);
+    if (!amdf_status_is_ok(status)) return status;
 
     amdf_memory_map_info_t map_info = {};
     map_info.type = AMDF_STRUCTURE_TYPE_MEMORY_MAP_INFO;
@@ -171,9 +176,8 @@ class GpuMemoryInteropTest : public GpuDeviceFixture {
 
   void WriteCommand(DeviceAccess& access, uint64_t command_offset,
                     uint64_t source_offset, uint64_t target_offset) {
-    const auto command =
-        MakeCopyData32(access.memory_info.device_address + source_offset,
-                       access.memory_info.device_address + target_offset);
+    const auto command = MakeCopyData32(access.address + source_offset,
+                                        access.address + target_offset);
     std::memcpy(
         static_cast<uint8_t*>(access.mapping_info.pointer) + command_offset,
         command.data(), sizeof(command));

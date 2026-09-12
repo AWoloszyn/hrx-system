@@ -182,7 +182,10 @@ static void amdf_xdna_memory_set_info(amdf_xdna_memory_t* memory,
   memory->base.info.native_allocation_granularity =
       result.native_allocation_granularity;
   memory->base.info.physical_backing_id = result.physical_backing_id;
-  memory->base.info.device_address = result.device_address;
+  memory->base.addresses[AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE] =
+      result.device_address;
+  memory->base.info.address_kinds = result.address_kinds;
+  memory->base.addresses[AMDF_MEMORY_ADDRESS_XDNA_DMA] = result.dma_address;
   memory->base.info.reset_epoch = amdf_xdna_device_query_reset_epoch(device);
 }
 

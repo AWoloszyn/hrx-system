@@ -25,7 +25,7 @@ static_assert(offsetof(amdf_memory_info_t, memory_profile_ordinal) ==
 static_assert(offsetof(amdf_memory_info_t, memory_class) == 20);
 static_assert(offsetof(amdf_memory_info_t, atomic_operations_32) == 32);
 static_assert(offsetof(amdf_memory_info_t, physical_backing_id) == 120);
-static_assert(offsetof(amdf_memory_info_t, device_address) == 136);
+static_assert(offsetof(amdf_memory_info_t, address_kinds) == 136);
 static_assert(sizeof(amdf_memory_info_t) == 152);
 static_assert(offsetof(amdf_memory_map_info_t, byte_offset) ==
               sizeof(amdf_input_structure_t));
@@ -148,8 +148,47 @@ TEST_F(XdnaMemoryTest, OwnsStableAddressAndExplicitHostMapping) {
   EXPECT_GE(memory_info.byte_length, create_info.byte_length);
   ASSERT_GE(memory_info.alignment, create_info.minimum_alignment);
   EXPECT_EQ(memory_info.alignment & (memory_info.alignment - 1), 0u);
-  EXPECT_NE(memory_info.device_address, 0u);
-  EXPECT_EQ(memory_info.device_address & (memory_info.alignment - 1), 0u);
+  uint64_t address = 0;
+  ASSERT_EQ(api_->memory_query_address(
+                memory_, AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE, &address),
+            AMDF_STATUS_OK);
+  EXPECT_NE(address, 0u);
+  EXPECT_EQ(address & (memory_info.alignment - 1), 0u);
+  amdf_memory_profile_t profile = {};
+  profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
+  profile.structure_size = sizeof(profile);
+  ASSERT_EQ(api_->device_query_memory_profile(
+                device_, create_info.memory_profile_ordinal, &profile),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(memory_info.address_kinds, profile.address_kinds);
+  EXPECT_NE(memory_info.address_kinds &
+                (UINT64_C(1) << AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE),
+            0u);
+  for (amdf_memory_address_kind_t kind :
+       {AMDF_MEMORY_ADDRESS_GPU, AMDF_MEMORY_ADDRESS_XDNA_DMA,
+        AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE}) {
+    uint64_t queried_address = UINT64_MAX;
+    const amdf_status_t status =
+        api_->memory_query_address(memory_, kind, &queried_address);
+    if ((memory_info.address_kinds & (UINT64_C(1) << kind)) != 0) {
+      ASSERT_EQ(status, AMDF_STATUS_OK);
+      EXPECT_EQ(queried_address & (memory_info.alignment - 1), 0u);
+      if (profile.device_address.address_bit_count !=
+          AMDF_MEMORY_ADDRESS_BIT_COUNT_UNKNOWN) {
+        EXPECT_GE(queried_address, profile.device_address.minimum_address);
+        ASSERT_LE(queried_address, profile.device_address.maximum_address);
+        EXPECT_LE(memory_info.byte_length - 1,
+                  profile.device_address.maximum_address - queried_address);
+      }
+      uint64_t repeated_address = 0;
+      ASSERT_EQ(api_->memory_query_address(memory_, kind, &repeated_address),
+                AMDF_STATUS_OK);
+      EXPECT_EQ(repeated_address, queried_address);
+    } else {
+      EXPECT_EQ(amdf_status_code(status), AMDF_STATUS_CODE_UNSUPPORTED);
+      EXPECT_EQ(queried_address, UINT64_MAX);
+    }
+  }
 
   amdf_xdna_device_info_t device_info = {};
   device_info.type = AMDF_STRUCTURE_TYPE_XDNA_DEVICE_INFO;

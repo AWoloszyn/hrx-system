@@ -534,6 +534,7 @@ amdf_status_t amdf_gpu_umd_device_query_memory_profile(
       .structure_size = out_profile->structure_size,
       .next = out_profile->next,
       .ordinal = memory_profile_ordinal,
+      .address_kinds = UINT64_C(1) << AMDF_MEMORY_ADDRESS_GPU,
       .guaranteed_device_access = guaranteed_device_access,
       .supported_device_access = AMDF_MEMORY_ACCESS_READ |
                                  AMDF_MEMORY_ACCESS_WRITE |

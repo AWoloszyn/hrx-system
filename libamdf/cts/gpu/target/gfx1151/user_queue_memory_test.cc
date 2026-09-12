@@ -277,8 +277,12 @@ class UserQueueMemoryScenario {
     EXPECT_EQ(memory_info.byte_length, kMemoryByteLength);
     EXPECT_EQ(memory_info.native_allocation_byte_length, kMemoryByteLength);
     EXPECT_GE(memory_info.alignment, create_info.minimum_alignment);
-    EXPECT_NE(memory_info.device_address, 0u);
-    EXPECT_EQ(memory_info.device_address & (sizeof(uint32_t) - 1), 0u);
+    uint64_t address = 0;
+    ASSERT_EQ(
+        api_->memory_query_address(memory, AMDF_MEMORY_ADDRESS_GPU, &address),
+        AMDF_STATUS_OK);
+    EXPECT_NE(address, 0u);
+    EXPECT_EQ(address & (sizeof(uint32_t) - 1), 0u);
     EXPECT_NE(memory_info.physical_backing_id.words[0] |
                   memory_info.physical_backing_id.words[1],
               0u);
@@ -359,8 +363,15 @@ void UserQueueMemoryScenario::RunCopiesBetweenExactAccessAttachments(
   ASSERT_NO_FATAL_FAILURE(CreateMappedSystemMemory(
       AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE, target_memory_,
       target_memory_info_, target_mapping_, target_mapping_info_));
-  EXPECT_NE(source_memory_info_.device_address,
-            target_memory_info_.device_address);
+  uint64_t source_address = 0;
+  uint64_t target_address = 0;
+  ASSERT_EQ(api_->memory_query_address(source_memory_, AMDF_MEMORY_ADDRESS_GPU,
+                                       &source_address),
+            AMDF_STATUS_OK);
+  ASSERT_EQ(api_->memory_query_address(target_memory_, AMDF_MEMORY_ADDRESS_GPU,
+                                       &target_address),
+            AMDF_STATUS_OK);
+  EXPECT_NE(source_address, target_address);
   EXPECT_FALSE(amdf_physical_memory_id_is_equal(
       &source_memory_info_.physical_backing_id,
       &target_memory_info_.physical_backing_id));
@@ -472,8 +483,7 @@ void UserQueueMemoryScenario::RunCopiesBetweenExactAccessAttachments(
   auto* ring = reinterpret_cast<uint32_t*>(
       static_cast<uintptr_t>(mapping_info.ring_address));
   const EncodedQueueStream stream =
-      EncodeCopyStream(command_type, ring, source_memory_info_.device_address,
-                       target_memory_info_.device_address);
+      EncodeCopyStream(command_type, ring, source_address, target_address);
   if (command_type == AMDF_QUEUE_COMMAND_TYPE_GPU_PM4) {
     ASSERT_EQ(stream.byte_length, kPm4PublishedDwordCount * sizeof(uint32_t));
     ASSERT_EQ(stream.published_index, kPm4PublishedDwordCount);

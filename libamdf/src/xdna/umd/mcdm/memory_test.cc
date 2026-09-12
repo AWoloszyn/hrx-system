@@ -228,6 +228,9 @@ TEST_F(WindowsXdnaMemoryTest, PublishesOnlyAfterMapAndOrdinaryResidency) {
   EXPECT_EQ(result.alignment, UINT64_C(65536));
   EXPECT_TRUE(amdf_physical_memory_id_is_valid(&result.physical_backing_id));
   EXPECT_EQ(result.device_address, UINT64_C(0x12340000));
+  EXPECT_EQ(result.address_kinds, UINT64_C(1)
+                                      << AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE);
+  EXPECT_EQ(result.address_kinds, profile_.address_kinds);
 
   amdf_memory_map_info_t map_info = {};
   map_info.byte_offset = 32;

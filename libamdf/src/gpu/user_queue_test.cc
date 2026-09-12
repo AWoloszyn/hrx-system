@@ -115,8 +115,9 @@ class GpuUserQueueTest : public ::testing::Test {
     scratch_.info.type = AMDF_STRUCTURE_TYPE_MEMORY_INFO;
     scratch_.info.structure_size = sizeof(scratch_.info);
     scratch_.info.flags = AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+    scratch_.info.address_kinds = UINT64_C(1) << AMDF_MEMORY_ADDRESS_GPU;
     scratch_.info.byte_length = 16384;
-    scratch_.info.device_address = UINT64_C(0x800000);
+    scratch_.addresses[AMDF_MEMORY_ADDRESS_GPU] = UINT64_C(0x800000);
     scratch_.info.reset_epoch = consumer_.info.reset_epoch;
     amdf_child_tracker_initialize(&scratch_.children);
   }
@@ -154,7 +155,8 @@ TEST_F(GpuUserQueueTest, RetainsScratchAndMappingsAcrossDestroyRetries) {
   EXPECT_EQ(amdf_child_tracker_count(&consumer_.base.children), 1u);
   EXPECT_EQ(amdf_child_tracker_count(&scratch_.children), 1u);
   EXPECT_EQ(consumer_state_.observed_create.scratch.device_address,
-            scratch_.info.device_address + create_info.scratch.byte_offset);
+            scratch_.addresses[AMDF_MEMORY_ADDRESS_GPU] +
+                create_info.scratch.byte_offset);
   EXPECT_EQ(consumer_state_.observed_create.scratch.byte_length,
             create_info.scratch.byte_length);
 

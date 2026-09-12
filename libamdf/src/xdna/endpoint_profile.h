@@ -31,6 +31,13 @@ typedef struct amdf_xdna_endpoint_profile_t {
   const amdf_xdna_bootstrap_t* bootstrap;
   // Firmware heap extent and alignment in bytes.
   uint32_t firmware_heap_byte_length;
+  // Native DRAM address interpretation for direct shim DMA descriptors.
+  struct {
+    // Offset added to the native buffer address for shim DMA access.
+    uint32_t byte_offset;
+    // Number of significant bits in the complete translated DMA address.
+    uint32_t address_bit_count;
+  } dma;
   // Target-native transaction properties fixed for this endpoint identity.
   struct {
     // AIE-RT device-generation value encoded in transaction headers.

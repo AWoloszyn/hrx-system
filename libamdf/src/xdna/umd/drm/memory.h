@@ -21,4 +21,20 @@ struct amdf_xdna_umd_memory_t {
   amdf_linux_xdna_buffer_t buffer;
 };
 
+#ifdef __cplusplus
+extern "C" {
+#endif  // __cplusplus
+
+// Translates a nonempty logical range of an attached native buffer for shim
+// DMA. The complete translated range must fit the target aperture. Native
+// addresses are external input; failure leaves out_address unchanged. The
+// caller has already established that the logical range fits the backing.
+amdf_status_t amdf_linux_xdna_memory_translate_dma_address(
+    const amdf_xdna_umd_memory_t* memory, uint64_t byte_offset,
+    uint64_t byte_length, uint64_t* out_address);
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif  // __cplusplus
+
 #endif  // AMDF_SRC_XDNA_UMD_DRM_MEMORY_H_

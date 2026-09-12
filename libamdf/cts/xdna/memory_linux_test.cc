@@ -152,8 +152,12 @@ TEST_F(XdnaLinuxMemoryTest,
   EXPECT_EQ(first_info.native_allocation_granularity, page_size_);
   EXPECT_FALSE(
       amdf_physical_memory_id_is_valid(&first_info.physical_backing_id));
-  EXPECT_EQ(first_info.device_address & (page_size_ - 1),
-            first_info.source_byte_offset);
+  uint64_t first_address = 0;
+  ASSERT_EQ(
+      api_->memory_query_address(
+          memories_[0], AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE, &first_address),
+      AMDF_STATUS_OK);
+  EXPECT_EQ(first_address & (page_size_ - 1), first_info.source_byte_offset);
   ASSERT_EQ(MapMemory(memories_[0], 0, create_info.byte_length),
             AMDF_STATUS_OK);
   EXPECT_EQ(mapping_infos_[0].pointer, create_info.registered_host_pointer);
@@ -171,8 +175,12 @@ TEST_F(XdnaLinuxMemoryTest,
             AMDF_STATUS_OK);
   EXPECT_EQ(second_info.source_byte_offset, 19u);
   EXPECT_EQ(second_info.byte_length, create_info.byte_length);
-  EXPECT_EQ(second_info.device_address & (page_size_ - 1),
-            second_info.source_byte_offset);
+  uint64_t second_address = 0;
+  ASSERT_EQ(
+      api_->memory_query_address(
+          memories_[1], AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE, &second_address),
+      AMDF_STATUS_OK);
+  EXPECT_EQ(second_address & (page_size_ - 1), second_info.source_byte_offset);
   ASSERT_EQ(MapMemory(memories_[1], 1, create_info.byte_length),
             AMDF_STATUS_OK);
   EXPECT_EQ(mapping_infos_[1].pointer, create_info.registered_host_pointer);

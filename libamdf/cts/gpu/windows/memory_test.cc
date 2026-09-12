@@ -33,7 +33,7 @@ static_assert(offsetof(amdf_memory_info_t, memory_profile_ordinal) ==
 static_assert(offsetof(amdf_memory_info_t, memory_class) == 20);
 static_assert(offsetof(amdf_memory_info_t, atomic_operations_32) == 32);
 static_assert(offsetof(amdf_memory_info_t, physical_backing_id) == 120);
-static_assert(offsetof(amdf_memory_info_t, device_address) == 136);
+static_assert(offsetof(amdf_memory_info_t, address_kinds) == 136);
 static_assert(sizeof(amdf_memory_info_t) == 152);
 
 class GpuMemoryTest : public GpuDeviceFixture {
@@ -140,7 +140,11 @@ TEST_F(GpuMemoryTest, OwnsStableSystemAddressAndExplicitHostMapping) {
             create_info.required_flags);
   EXPECT_GE(memory_info.byte_length, create_info.byte_length);
   EXPECT_GE(memory_info.alignment, create_info.minimum_alignment);
-  EXPECT_EQ(memory_info.device_address & (memory_info.alignment - 1), 0u);
+  uint64_t address = 0;
+  ASSERT_EQ(
+      api_->memory_query_address(memory_, AMDF_MEMORY_ADDRESS_GPU, &address),
+      AMDF_STATUS_OK);
+  EXPECT_EQ(address & (memory_info.alignment - 1), 0u);
   EXPECT_NE(memory_info.physical_backing_id.words[0] |
                 memory_info.physical_backing_id.words[1],
             0u);
@@ -237,8 +241,12 @@ TEST_F(GpuMemoryTest, CreatesDeviceLocalExecutableMemory) {
   EXPECT_EQ(memory_info.device_access, create_info.device_access);
   EXPECT_GE(memory_info.byte_length, create_info.byte_length);
   EXPECT_GE(memory_info.alignment, create_info.minimum_alignment);
-  EXPECT_EQ(memory_info.device_address & (memory_info.alignment - 1), 0u);
-  EXPECT_NE(memory_info.device_address, 0u);
+  uint64_t address = 0;
+  ASSERT_EQ(
+      api_->memory_query_address(memory_, AMDF_MEMORY_ADDRESS_GPU, &address),
+      AMDF_STATUS_OK);
+  EXPECT_EQ(address & (memory_info.alignment - 1), 0u);
+  EXPECT_NE(address, 0u);
 
   amdf_memory_map_info_t map_info = {};
   map_info.type = AMDF_STRUCTURE_TYPE_MEMORY_MAP_INFO;

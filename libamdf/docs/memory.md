@@ -110,7 +110,7 @@ An interior range is explicit and needs no search for an original allocation
 base. Libamdf needs no object for every tensor, argument block, or executable
 subrange.
 
-## Addresses and execution domains
+## Addresses and their consumers
 
 An address is meaningful to a particular consumer in a particular address domain:
 the environment in which the numeric address is interpreted. One backing store
@@ -123,12 +123,35 @@ consumer, accessible range, and granted access. The caller can cache the base
 and use offsets within that range. Querying it is a metadata operation, not a
 hidden mapping or residency operation.
 
-Scopes and address domains are distinct. Several placement scopes can use one
-domain; one scope can support access through several domains. Queues use the
-mappings established for their initialized devices. Creating a queue does not
-require another public memory attachment or a new copy of the backing. Native
-isolation requirements remain explicit; sharing a libamdf instance does not by
-itself guarantee native address space isolation or sharing.
+Ordinary unified GPU addressing gives participating GPUs a common pointer once
+their access is established. Native per-GPU page tables do not require the
+application to manage different pointers. Scopes select obtainable storage;
+there is no separate public ordinary address-space object to create or select
+for memory or queues. Allocation establishes access for the requested live
+devices; their queues use those established mappings. Creating a queue does
+not require another public memory attachment or allocate a new copy.
+
+The address-query kind identifies the interface that consumes the number:
+
+```c
+api->memory_query_address(memory, AMDF_MEMORY_ADDRESS_GPU, &gpu_address);
+api->memory_query_address(memory, AMDF_MEMORY_ADDRESS_XDNA_DMA, &dma_address);
+api->memory_query_address(memory, AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE,
+                          &firmware_address);
+```
+
+Each call returns a status; the example omits propagation. Profiles report
+supported address kinds, and memory info reports the kinds established for the
+whole logical range. Unsupported kinds fail without modifying the output. The
+GPU kind is for ordinary GPU addressing. The XDNA DMA kind includes the native
+translation needed by shim DMA descriptors; the firmware kind is for native
+firmware arguments or private instruction storage. Passing a DMA address to a
+firmware interface that applies that translation itself would translate twice.
+CPU pointers come from explicit host mappings, not this device-address query.
+
+Genuinely context-private memory obtains its ownership qualification from its
+scope. Equal firmware instruction addresses in different private scopes can
+name different storage without changing the ordinary shared-data pointer model.
 
 ## Native resources and activation
 
@@ -267,8 +290,8 @@ A CPU/GPU/NPU pipeline follows one resource lifecycle:
 
 1. Create an instance and passively discover endpoints, available scopes,
    profiles, and access capabilities.
-2. Select a system-memory contract covering the consumers and their address
-   domains.
+2. Select a system-memory contract covering the consumers and required address
+   kinds.
 3. Explicitly initialize the GPU and NPU devices. Check their complete achieved
    capabilities against the selected requirements.
 4. Allocate backing once from the selected scope, requesting access for those

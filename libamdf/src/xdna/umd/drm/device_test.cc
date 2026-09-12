@@ -152,6 +152,11 @@ TEST_F(LinuxXdnaDeviceTest, ContextsShareDeviceMemoryAndDestroyIndependently) {
             AMDF_STATUS_OK);
   EXPECT_GE(memory_result.byte_length, memory_create.byte_length);
   EXPECT_EQ(memory_result.device_address % memory_create.minimum_alignment, 0u);
+  EXPECT_EQ(memory_result.address_kinds, memory_profile.address_kinds);
+  EXPECT_EQ(memory_result.dma_address,
+            memory_result.device_address + profile->dma.byte_offset);
+  EXPECT_LE(memory_result.dma_address + memory_result.byte_length - 1,
+            (UINT64_C(1) << profile->dma.address_bit_count) - 1);
   amdf_memory_map_info_t map_info = {};
   map_info.byte_offset = 1;
   map_info.byte_length = 4096;

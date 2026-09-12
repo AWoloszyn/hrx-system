@@ -179,6 +179,7 @@ amdf_status_t amdf_xdna_umd_device_query_memory_profile(
       .structure_size = out_profile->structure_size,
       .next = out_profile->next,
       .ordinal = 0,
+      .address_kinds = UINT64_C(1) << AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE,
       .memory_class = AMDF_MEMORY_CLASS_SYSTEM,
       .roles =
           AMDF_MEMORY_PROFILE_ROLE_CREATE | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
@@ -300,6 +301,7 @@ amdf_status_t amdf_xdna_umd_memory_create(
         (uint64_t)(uintptr_t)memory->host_pointer;
     result.physical_backing_id.words[1] = memory->byte_length;
     result.device_address = memory->device_address;
+    result.address_kinds = UINT64_C(1) << AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE;
     *out_result = result;
     *out_memory = memory;
   } else {

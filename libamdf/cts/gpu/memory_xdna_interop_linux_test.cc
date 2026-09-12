@@ -399,7 +399,11 @@ TEST_F(GpuXdnaMemoryLifetimeTest, ImportsGpuSubrangeAndSurvivesSourceTeardown) {
   EXPECT_EQ(xdna_memory_info.source_byte_offset, page_size);
   EXPECT_EQ(xdna_memory_info.byte_length, page_size);
   EXPECT_GE(xdna_memory_info.alignment, page_size);
-  EXPECT_EQ(xdna_memory_info.device_address & (page_size - 1), 0u);
+  uint64_t xdna_address = 0;
+  ASSERT_EQ(api_->memory_query_address(
+                xdna_memory_, AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE, &xdna_address),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(xdna_address & (page_size - 1), 0u);
   EXPECT_TRUE(
       amdf_physical_memory_id_is_equal(&xdna_memory_info.physical_backing_id,
                                        &gpu_memory_info.physical_backing_id));

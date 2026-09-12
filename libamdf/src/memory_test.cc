@@ -42,6 +42,8 @@ enum class ImportFailureStage {
 struct FakeDevice {
   amdf_device_t base;
   amdf_memory_profile_t profile;
+  // Consumer addresses established by the fake native construction boundary.
+  std::array<uint64_t, AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE + 1> addresses;
   amdf_status_t profile_status;
   amdf_status_t create_status;
   amdf_status_t import_status;
@@ -183,7 +185,9 @@ static amdf_status_t AllocateFakeMemory(FakeDevice* device,
         source_byte_offset + byte_length;
     memory->base.info.native_allocation_granularity = 4096;
     memory->base.info.physical_backing_id = backing_id;
-    memory->base.info.device_address = UINT64_C(0x100000);
+    std::memcpy(memory->base.addresses, device->addresses.data(),
+                sizeof(memory->base.addresses));
+    memory->base.info.address_kinds = device->profile.address_kinds;
     memory->base.info.reset_epoch = 1;
     *out_memory = &memory->base;
   } else {
@@ -287,6 +291,8 @@ static void InitializeFakeDevice(uint64_t identity, FakeDevice* out_device) {
   out_device->profile.supported_device_access =
       AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
   out_device->profile.device_address.address_domain_ordinal = 0;
+  out_device->profile.address_kinds = UINT64_C(1) << AMDF_MEMORY_ADDRESS_GPU;
+  out_device->addresses[AMDF_MEMORY_ADDRESS_GPU] = UINT64_C(0x100000);
   out_device->profile.device_address.address_bit_count = 48;
   out_device->profile.device_address.maximum_address = (UINT64_C(1) << 48) - 1;
   out_device->profile.device_address.minimum_alignment = 4096;
@@ -384,6 +390,79 @@ TEST(ExternalMemoryTest, ReleaseInvokesCallbackOnceAndZerosValue) {
 
   amdf_external_memory_release(&value);
   EXPECT_EQ(release_state.count, 1u);
+}
+
+TEST(MemoryAddressTest, QueriesCachedAddressAndRejectsUnavailableConsumers) {
+  FakeDevice device;
+  InitializeFakeDevice(11, &device);
+  const amdf_memory_create_info_t create_info = MakeMemoryCreateInfo();
+  amdf_memory_t* memory = nullptr;
+  ASSERT_EQ(amdf_memory_create(&device.base, &create_info, &memory),
+            AMDF_STATUS_OK);
+  uint64_t address = 0;
+  EXPECT_EQ(
+      amdf_memory_query_address(memory, AMDF_MEMORY_ADDRESS_GPU, &address),
+      AMDF_STATUS_OK);
+  EXPECT_EQ(address, UINT64_C(0x100000));
+  for (amdf_memory_address_kind_t kind :
+       {AMDF_MEMORY_ADDRESS_XDNA_DMA, AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE}) {
+    EXPECT_EQ(
+        amdf_status_code(amdf_memory_query_address(memory, kind, &address)),
+        AMDF_STATUS_CODE_UNSUPPORTED);
+    EXPECT_EQ(address, UINT64_C(0x100000));
+  }
+  EXPECT_EQ(
+      amdf_status_code(amdf_memory_query_address(memory, UINT32_MAX, &address)),
+      AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(address, UINT64_C(0x100000));
+  EXPECT_EQ(amdf_status_code(amdf_memory_query_address(
+                nullptr, AMDF_MEMORY_ADDRESS_GPU, &address)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(address, UINT64_C(0x100000));
+  EXPECT_EQ(amdf_status_code(amdf_memory_query_address(
+                memory, AMDF_MEMORY_ADDRESS_GPU, nullptr)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  const auto* native = reinterpret_cast<const FakeMemory*>(memory);
+  EXPECT_EQ(native->map_call_count, 0u);
+  EXPECT_EQ(native->export_call_count, 0u);
+  EXPECT_EQ(device.create_call_count, 1u);
+  EXPECT_EQ(amdf_memory_destroy(memory), AMDF_STATUS_OK);
+}
+
+TEST(MemoryAddressTest, KeepsDistinctConsumerAddressesIncludingZero) {
+  FakeDevice device;
+  InitializeFakeDevice(12, &device);
+  device.profile.address_kinds =
+      (UINT64_C(1) << AMDF_MEMORY_ADDRESS_XDNA_DMA) |
+      (UINT64_C(1) << AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE);
+  device.addresses[AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE] = 0;
+  device.addresses[AMDF_MEMORY_ADDRESS_XDNA_DMA] = UINT64_C(0x80000000);
+  const amdf_memory_create_info_t create_info = MakeMemoryCreateInfo();
+  amdf_memory_t* memory = nullptr;
+  ASSERT_EQ(amdf_memory_create(&device.base, &create_info, &memory),
+            AMDF_STATUS_OK);
+  // A published object cannot consult the provider again for cached addresses.
+  device.profile_status = amdf_make_api_status(AMDF_STATUS_CODE_DEVICE_LOST);
+  for (int iteration = 0; iteration < 2; ++iteration) {
+    uint64_t address = UINT64_MAX;
+    EXPECT_EQ(amdf_memory_query_address(
+                  memory, AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE, &address),
+              AMDF_STATUS_OK);
+    EXPECT_EQ(address, 0u);
+    EXPECT_EQ(amdf_memory_query_address(memory, AMDF_MEMORY_ADDRESS_XDNA_DMA,
+                                        &address),
+              AMDF_STATUS_OK);
+    EXPECT_EQ(address, UINT64_C(0x80000000));
+    EXPECT_EQ(amdf_status_code(amdf_memory_query_address(
+                  memory, AMDF_MEMORY_ADDRESS_GPU, &address)),
+              AMDF_STATUS_CODE_UNSUPPORTED);
+    EXPECT_EQ(address, UINT64_C(0x80000000));
+  }
+  const auto* native = reinterpret_cast<const FakeMemory*>(memory);
+  EXPECT_EQ(native->map_call_count, 0u);
+  EXPECT_EQ(native->export_call_count, 0u);
+  EXPECT_EQ(device.create_call_count, 1u);
+  EXPECT_EQ(amdf_memory_destroy(memory), AMDF_STATUS_OK);
 }
 
 TEST(MemoryExternalTest, CompletesProfileExportImportPairAndReverseTeardown) {
@@ -511,7 +590,7 @@ TEST(MemoryExternalTest, AcceptsUnknownNumericDeviceAddressEnvelope) {
   ASSERT_EQ(amdf_memory_create(&device.base, &create_info, &memory),
             AMDF_STATUS_OK);
   ASSERT_NE(memory, nullptr);
-  EXPECT_EQ(memory->info.device_address, UINT64_C(0x100000));
+  EXPECT_EQ(memory->addresses[AMDF_MEMORY_ADDRESS_GPU], UINT64_C(0x100000));
   EXPECT_EQ(amdf_memory_destroy(memory), AMDF_STATUS_OK);
 }
 

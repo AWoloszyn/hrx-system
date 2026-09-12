@@ -106,6 +106,7 @@ class LinuxXdnaMemoryRollbackTest : public ::testing::Test {
     native_memory = &native_;
     device_.descriptor = 17;
     device_.page_size = 4096;
+    device_.profile = &endpoint_profile_;
     device_.host_allocator = amdf_allocator_system();
     device_.host_allocator.user_data = &native_;
     device_.host_allocator.free = [](void* user_data, void* allocation) {
@@ -142,6 +143,10 @@ class LinuxXdnaMemoryRollbackTest : public ::testing::Test {
 
   // Native failure and resource-consumption state.
   NativeMemoryState native_;
+  // Complete address-translation limits for the test device.
+  amdf_xdna_endpoint_profile_t endpoint_profile_ = {
+      .dma = {.address_bit_count = 48},
+  };
   // Explicit live native device borrowed by the constructor.
   amdf_xdna_umd_device_t device_ = {};
   // Output remains unpublished on every modeled failure.
@@ -251,8 +256,12 @@ TEST(LinuxXdnaMemoryPairTest, DescribesOnlyTheExactLocalXdnaSite) {
 
 TEST(LinuxXdnaMemoryProfileTest,
      SeparatesOwnedImportedAndRegisteredHostProfiles) {
+  const amdf_xdna_endpoint_profile_t endpoint_profile = {
+      .dma = {.byte_offset = UINT32_C(0x80000000), .address_bit_count = 48},
+  };
   amdf_xdna_umd_device_t device = {};
   device.page_size = 4096;
+  device.profile = &endpoint_profile;
   amdf_memory_profile_t profile = {};
   profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
   profile.structure_size = sizeof(profile);
@@ -271,10 +280,14 @@ TEST(LinuxXdnaMemoryProfileTest,
             AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE);
   EXPECT_EQ(profile.supported_device_access,
             AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE);
-  EXPECT_EQ(profile.device_address.address_bit_count,
-            AMDF_MEMORY_ADDRESS_BIT_COUNT_UNKNOWN);
+  EXPECT_EQ(profile.device_address.address_bit_count, 48u);
   EXPECT_EQ(profile.device_address.minimum_address, 0u);
-  EXPECT_EQ(profile.device_address.maximum_address, 0u);
+  EXPECT_EQ(profile.device_address.maximum_address, (UINT64_C(1) << 48) - 1);
+  EXPECT_EQ(profile.allocation.maximum_byte_length,
+            (UINT64_C(1) << 48) - UINT64_C(0x80000000));
+  EXPECT_EQ(profile.address_kinds,
+            (UINT64_C(1) << AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE) |
+                (UINT64_C(1) << AMDF_MEMORY_ADDRESS_XDNA_DMA));
   EXPECT_EQ(profile.allocation.minimum_alignment, 4096u);
   EXPECT_EQ(profile.allocation.maximum_alignment, 4096u);
   EXPECT_EQ(profile.host_mapping.byte_offset_granularity, 1u);
@@ -340,6 +353,75 @@ TEST(LinuxXdnaMemoryProfileTest,
                 &device, 3, &profile)),
             AMDF_STATUS_CODE_OUT_OF_RANGE);
   EXPECT_EQ(profile.ordinal, UINT32_MAX);
+}
+
+TEST(LinuxXdnaMemoryAddressTest, TranslatesCompleteLogicalRanges) {
+  const amdf_xdna_endpoint_profile_t profile = {
+      .dma = {.byte_offset = UINT32_C(0x80000000), .address_bit_count = 48},
+  };
+  amdf_xdna_umd_device_t device = {};
+  device.profile = &profile;
+  amdf_xdna_umd_memory_t memory = {};
+  memory.device = &device;
+  const uint64_t maximum_address = (UINT64_C(1) << 48) - 1;
+  const uint64_t maximum_native_address =
+      maximum_address - profile.dma.byte_offset;
+  uint64_t address = UINT64_MAX;
+  EXPECT_EQ(amdf_linux_xdna_memory_translate_dma_address(
+                &memory, 0, maximum_native_address + 1, &address),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(address, profile.dma.byte_offset);
+
+  memory.buffer.device_address = maximum_native_address - 4095;
+  EXPECT_EQ(
+      amdf_linux_xdna_memory_translate_dma_address(&memory, 17, 4079, &address),
+      AMDF_STATUS_OK);
+  EXPECT_EQ(address, maximum_address - 4078);
+  EXPECT_EQ(
+      amdf_linux_xdna_memory_translate_dma_address(&memory, 4095, 1, &address),
+      AMDF_STATUS_OK);
+  EXPECT_EQ(address, maximum_address);
+}
+
+TEST(LinuxXdnaMemoryAddressTest, RejectsOverflowWithoutPublishingAddress) {
+  const amdf_xdna_endpoint_profile_t profile = {
+      .dma = {.byte_offset = UINT32_C(0x80000000), .address_bit_count = 48},
+  };
+  amdf_xdna_umd_device_t device = {};
+  device.profile = &profile;
+  amdf_xdna_umd_memory_t memory = {};
+  memory.device = &device;
+  const uint64_t maximum_native_address =
+      (UINT64_C(1) << 48) - 1 - profile.dma.byte_offset;
+  const struct {
+    // Untranslated native buffer base returned by the driver.
+    uint64_t native_address;
+    // Byte offset of the requested logical range in that buffer.
+    uint64_t byte_offset;
+    // Nonempty logical extent to translate.
+    uint64_t byte_length;
+  } cases[] = {
+      {maximum_native_address + 1, 0, 1},
+      {maximum_native_address, 1, 1},
+      {maximum_native_address, 0, 2},
+      {0, 0, maximum_native_address + 2},
+      {maximum_native_address - 4095, 17, 4080},
+      {UINT64_MAX, 0, 1},
+      {1, UINT64_MAX, 1},
+      {1, 0, UINT64_MAX},
+  };
+  for (const auto& test_case : cases) {
+    SCOPED_TRACE(test_case.native_address);
+    SCOPED_TRACE(test_case.byte_offset);
+    SCOPED_TRACE(test_case.byte_length);
+    memory.buffer.device_address = test_case.native_address;
+    uint64_t address = UINT64_C(0x12345678);
+    EXPECT_EQ(
+        amdf_status_code(amdf_linux_xdna_memory_translate_dma_address(
+            &memory, test_case.byte_offset, test_case.byte_length, &address)),
+        AMDF_STATUS_CODE_OUT_OF_RANGE);
+    EXPECT_EQ(address, UINT64_C(0x12345678));
+  }
 }
 
 }  // namespace

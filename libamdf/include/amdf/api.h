@@ -377,6 +377,22 @@ typedef struct amdf_api_t {
   /// native teardown failure leaves the queue live so destruction can be
   /// retried.
   amdf_status_t(AMDF_CALL* user_queue_destroy)(amdf_user_queue_t* queue);
+
+  /// Returns the stable base address consumed by `kind` for `memory`.
+  ///
+  /// The address names logical byte zero; offsets below the memory's reported
+  /// byte_length are valid. The caller retains the memory through every use.
+  /// Kinds identify consuming interfaces, not independently selectable address
+  /// spaces. The memory info's address_kinds reports the established kinds;
+  /// zero is a valid address value, not an indication of availability.
+  /// An unknown kind is INVALID_ARGUMENT; a known but unavailable kind is
+  /// UNSUPPORTED. Every failure leaves `out_address` unchanged.
+  ///
+  /// This thread-safe metadata query performs no allocation, native query,
+  /// mapping, pinning, synchronization, or address-to-handle lookup.
+  amdf_status_t(AMDF_CALL* memory_query_address)(
+      amdf_memory_t* memory, amdf_memory_address_kind_t kind,
+      uint64_t* out_address);
 } amdf_api_t;
 
 /// Function type used to acquire the immutable API table.

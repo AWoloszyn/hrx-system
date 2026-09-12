@@ -30,7 +30,7 @@ typedef struct amdf_xdna_umd_memory_result_t {
   uint64_t source_byte_offset;
   // Logical attachment length in bytes.
   uint64_t byte_length;
-  // Guaranteed allocation-base alignment in every supported address space.
+  // Guaranteed logical-base alignment for every established address kind.
   uint64_t alignment;
   // Complete native physical allocation or registered page-cover length.
   uint64_t native_allocation_byte_length;
@@ -38,8 +38,12 @@ typedef struct amdf_xdna_umd_memory_result_t {
   uint64_t native_allocation_granularity;
   // Identity of the physical backing within the provider instance.
   amdf_physical_memory_id_t physical_backing_id;
-  // Stable XDNA virtual base.
+  // Address of logical byte zero consumed by XDNA firmware interfaces.
   uint64_t device_address;
+  // Address kinds established for the complete logical range.
+  amdf_memory_address_kinds_t address_kinds;
+  // Native-translated shim DMA base when the DMA kind is established.
+  uint64_t dma_address;
 } amdf_xdna_umd_memory_result_t;
 
 // Native host mapping properties established before publication.

@@ -120,7 +120,7 @@ class GpuKernelQueueTest : public GpuDeviceFixture {
     return gpu_api_->endpoint_query_info(endpoint_, out_info);
   }
 
-  amdf_memory_info_t CreateCommandMemory() {
+  uint64_t CreateCommandMemory() {
     amdf_memory_create_info_t create_info = {};
     create_info.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
     create_info.structure_size = sizeof(create_info);
@@ -137,12 +137,11 @@ class GpuKernelQueueTest : public GpuDeviceFixture {
     EXPECT_TRUE(amdf_status_is_ok(
         api_->memory_create(device_, &create_info, &memory_)));
 
-    amdf_memory_info_t memory_info = {};
-    memory_info.type = AMDF_STRUCTURE_TYPE_MEMORY_INFO;
-    memory_info.structure_size = sizeof(memory_info);
-    EXPECT_TRUE(
-        amdf_status_is_ok(api_->memory_query_info(memory_, &memory_info)));
-    return memory_info;
+    uint64_t address = 0;
+    EXPECT_EQ(
+        api_->memory_query_address(memory_, AMDF_MEMORY_ADDRESS_GPU, &address),
+        AMDF_STATUS_OK);
+    return address;
   }
 
   amdf_host_mapping_info_t MapCommandMemory() {
@@ -162,7 +161,7 @@ class GpuKernelQueueTest : public GpuDeviceFixture {
     return mapping_info;
   }
 
-  amdf_memory_info_t CreateLocalExecutableMemory() {
+  uint64_t CreateLocalExecutableMemory() {
     amdf_memory_create_info_t create_info = {};
     create_info.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
     create_info.structure_size = sizeof(create_info);
@@ -187,7 +186,11 @@ class GpuKernelQueueTest : public GpuDeviceFixture {
               create_info.required_flags);
     EXPECT_EQ(memory_info.device_access, create_info.device_access);
     EXPECT_GE(memory_info.byte_length, kMemoryByteLength);
-    return memory_info;
+    uint64_t address = 0;
+    EXPECT_EQ(api_->memory_query_address(local_memory_, AMDF_MEMORY_ADDRESS_GPU,
+                                         &address),
+              AMDF_STATUS_OK);
+    return address;
   }
 
   amdf_memory_t* memory_ = nullptr;
@@ -217,7 +220,7 @@ TEST_F(GpuKernelQueueTest, ExecutesMaterializedCopyData) {
   EXPECT_EQ(queue_info.maximum_pending_submission_count, 1u);
   EXPECT_EQ(queue_info.maximum_command_count, 1u);
 
-  const amdf_memory_info_t memory_info = CreateCommandMemory();
+  const uint64_t address = CreateCommandMemory();
   ASSERT_NE(memory_, nullptr);
   const amdf_host_mapping_info_t mapping_info = MapCommandMemory();
   ASSERT_NE(mapping_, nullptr);
@@ -231,8 +234,7 @@ TEST_F(GpuKernelQueueTest, ExecutesMaterializedCopyData) {
   std::memcpy(bytes + kTargetByteOffset, &kTargetSentinel,
               sizeof(kTargetSentinel));
   const std::array<uint32_t, kCopyDataDwordCount> command =
-      MakeCopyData32(memory_info.device_address + kSourceByteOffset,
-                     memory_info.device_address + kTargetByteOffset);
+      MakeCopyData32(address + kSourceByteOffset, address + kTargetByteOffset);
   std::memcpy(bytes + kCommandByteOffset, command.data(), sizeof(command));
   ASSERT_TRUE(amdf_status_is_ok(api_->host_mapping_cache_control(
       mapping_, AMDF_HOST_CACHE_OPERATION_FLUSH, 0, kMemoryByteLength)));
@@ -320,7 +322,7 @@ TEST_F(GpuKernelQueueTest, ExecutesMaterializedSdmaCopy) {
   EXPECT_EQ(queue_info.queue_family_ordinal, family_ordinal);
   EXPECT_EQ(queue_info.command_type, AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA);
 
-  const amdf_memory_info_t memory_info = CreateCommandMemory();
+  const uint64_t address = CreateCommandMemory();
   ASSERT_NE(memory_, nullptr);
   const amdf_host_mapping_info_t mapping_info = MapCommandMemory();
   ASSERT_NE(mapping_, nullptr);
@@ -335,8 +337,7 @@ TEST_F(GpuKernelQueueTest, ExecutesMaterializedSdmaCopy) {
   amdf_gpu_endpoint_info_t endpoint_info = {};
   ASSERT_TRUE(amdf_status_is_ok(QueryGpuEndpointInfo(&endpoint_info)));
   const std::array<uint32_t, kSdmaCopyDwordCount> command = MakeSdmaCopy32(
-      endpoint_info, memory_info.device_address + kSourceByteOffset,
-      memory_info.device_address + kTargetByteOffset);
+      endpoint_info, address + kSourceByteOffset, address + kTargetByteOffset);
   std::memcpy(bytes + kCommandByteOffset, command.data(), sizeof(command));
   ASSERT_TRUE(amdf_status_is_ok(api_->host_mapping_cache_control(
       mapping_, AMDF_HOST_CACHE_OPERATION_FLUSH, 0, kMemoryByteLength)));
@@ -382,16 +383,16 @@ TEST_F(GpuKernelQueueTest, CopiesThroughDeviceLocalExecutableMemory) {
   }
   ASSERT_TRUE(amdf_status_is_ok(CreateQueue(family_ordinal)));
 
-  const amdf_memory_info_t memory_info = CreateCommandMemory();
+  const uint64_t address = CreateCommandMemory();
   ASSERT_NE(memory_, nullptr);
   const amdf_host_mapping_info_t mapping_info = MapCommandMemory();
   ASSERT_NE(mapping_, nullptr);
   ASSERT_NE(mapping_info.pointer, nullptr);
   ASSERT_GE(mapping_info.byte_length, kMemoryByteLength);
 
-  const amdf_memory_info_t local_memory_info = CreateLocalExecutableMemory();
+  const uint64_t local_address = CreateLocalExecutableMemory();
   ASSERT_NE(local_memory_, nullptr);
-  ASSERT_NE(local_memory_info.device_address, 0u);
+  ASSERT_NE(local_address, 0u);
 
   constexpr uint32_t kSourceValue = 0x2468ACE0u;
   constexpr uint32_t kTargetSentinel = 0xA5A5A5A5u;
@@ -400,11 +401,11 @@ TEST_F(GpuKernelQueueTest, CopiesThroughDeviceLocalExecutableMemory) {
   std::memcpy(bytes + kTargetByteOffset, &kTargetSentinel,
               sizeof(kTargetSentinel));
   const std::array<uint32_t, kCopyDataDwordCount> upload_command =
-      MakeCopyData32(memory_info.device_address + kSourceByteOffset,
-                     local_memory_info.device_address + kLocalByteOffset);
+      MakeCopyData32(address + kSourceByteOffset,
+                     local_address + kLocalByteOffset);
   const std::array<uint32_t, kCopyDataDwordCount> download_command =
-      MakeCopyData32(local_memory_info.device_address + kLocalByteOffset,
-                     memory_info.device_address + kTargetByteOffset);
+      MakeCopyData32(local_address + kLocalByteOffset,
+                     address + kTargetByteOffset);
   std::array<uint32_t, 2 * kCopyDataDwordCount> command = {};
   std::memcpy(command.data(), upload_command.data(), sizeof(upload_command));
   std::memcpy(command.data() + kCopyDataDwordCount, download_command.data(),
@@ -456,15 +457,15 @@ TEST_F(GpuKernelQueueTest, ExecutesDeviceLocalCommandStream) {
   }
   ASSERT_TRUE(amdf_status_is_ok(CreateQueue(family_ordinal)));
 
-  const amdf_memory_info_t memory_info = CreateCommandMemory();
+  const uint64_t address = CreateCommandMemory();
   ASSERT_NE(memory_, nullptr);
   const amdf_host_mapping_info_t mapping_info = MapCommandMemory();
   ASSERT_NE(mapping_, nullptr);
   ASSERT_NE(mapping_info.pointer, nullptr);
   ASSERT_GE(mapping_info.byte_length, kMemoryByteLength);
-  const amdf_memory_info_t local_memory_info = CreateLocalExecutableMemory();
+  const uint64_t local_address = CreateLocalExecutableMemory();
   ASSERT_NE(local_memory_, nullptr);
-  ASSERT_NE(local_memory_info.device_address, 0u);
+  ASSERT_NE(local_address, 0u);
 
   constexpr uint32_t kSourceValue = 0x10203040u;
   constexpr uint32_t kTargetSentinel = 0xA5A5A5A5u;
@@ -474,23 +475,20 @@ TEST_F(GpuKernelQueueTest, ExecutesDeviceLocalCommandStream) {
               sizeof(kTargetSentinel));
 
   const std::array<uint32_t, kCopyDataDwordCount> local_command =
-      MakeCopyData32(memory_info.device_address + kSourceByteOffset,
-                     memory_info.device_address + kTargetByteOffset);
+      MakeCopyData32(address + kSourceByteOffset, address + kTargetByteOffset);
   std::memcpy(bytes + kStagedCommandByteOffset, local_command.data(),
               sizeof(local_command));
   std::array<uint32_t, 2 * kCopyDataDwordCount * kCopyDataDwordCount>
       upload_command = {};
   for (uint32_t i = 0; i < kCopyDataDwordCount; ++i) {
     const std::array<uint32_t, kCopyDataDwordCount> upload_word =
-        MakeCopyData32(memory_info.device_address + kStagedCommandByteOffset +
-                           i * sizeof(uint32_t),
-                       local_memory_info.device_address + kLocalByteOffset +
-                           i * sizeof(uint32_t));
+        MakeCopyData32(
+            address + kStagedCommandByteOffset + i * sizeof(uint32_t),
+            local_address + kLocalByteOffset + i * sizeof(uint32_t));
     const std::array<uint32_t, kCopyDataDwordCount> verify_word =
-        MakeCopyData32(local_memory_info.device_address + kLocalByteOffset +
-                           i * sizeof(uint32_t),
-                       memory_info.device_address + kVerifiedCommandByteOffset +
-                           i * sizeof(uint32_t));
+        MakeCopyData32(
+            local_address + kLocalByteOffset + i * sizeof(uint32_t),
+            address + kVerifiedCommandByteOffset + i * sizeof(uint32_t));
     std::memcpy(upload_command.data() + 2 * i * kCopyDataDwordCount,
                 upload_word.data(), sizeof(upload_word));
     std::memcpy(upload_command.data() + (2 * i + 1) * kCopyDataDwordCount,

@@ -352,7 +352,8 @@ amdf_status_t AMDF_CALL amdf_gpu_kernel_queue_submit(
           amdf_gpu_device_query_reset_epoch(base_queue->device)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_FAILED_PRECONDITION);
   }
-  if (memory->info.device_address > UINT64_MAX - command->byte_offset) {
+  if (memory->addresses[AMDF_MEMORY_ADDRESS_GPU] >
+      UINT64_MAX - command->byte_offset) {
     return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
   }
 
@@ -379,7 +380,8 @@ amdf_status_t AMDF_CALL amdf_gpu_kernel_queue_submit(
   uint64_t native_submission = 0;
   if (amdf_status_is_ok(status)) {
     status = amdf_gpu_umd_kernel_queue_submit(
-        queue->umd, memory->info.device_address + command->byte_offset,
+        queue->umd,
+        memory->addresses[AMDF_MEMORY_ADDRESS_GPU] + command->byte_offset,
         command->byte_length, &native_submission);
   }
   if (!amdf_status_is_ok(status)) {

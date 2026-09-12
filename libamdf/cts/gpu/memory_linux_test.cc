@@ -152,7 +152,11 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
                 0u);
       EXPECT_GE(info.byte_length, create_info.byte_length);
       EXPECT_GE(info.alignment, create_info.minimum_alignment);
-      EXPECT_EQ(info.device_address & (info.alignment - 1), 0u);
+      uint64_t address = 0;
+      ASSERT_EQ(api_->memory_query_address(memories_[0],
+                                           AMDF_MEMORY_ADDRESS_GPU, &address),
+                AMDF_STATUS_OK);
+      EXPECT_EQ(address & (info.alignment - 1), 0u);
 
       if (map_memory) {
         ASSERT_EQ(
@@ -288,8 +292,12 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
               create_info.required_flags);
     EXPECT_GE(info.byte_length, create_info.byte_length);
     ASSERT_GE(info.alignment, create_info.minimum_alignment);
-    EXPECT_NE(info.device_address, 0u);
-    EXPECT_EQ(info.device_address & (info.alignment - 1), 0u);
+    uint64_t address = 0;
+    ASSERT_EQ(api_->memory_query_address(memories_[0], AMDF_MEMORY_ADDRESS_GPU,
+                                         &address),
+              AMDF_STATUS_OK);
+    EXPECT_NE(address, 0u);
+    EXPECT_EQ(address & (info.alignment - 1), 0u);
     EXPECT_NE(
         info.physical_backing_id.words[0] | info.physical_backing_id.words[1],
         0u);
@@ -334,7 +342,11 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
     mappings_[0] = nullptr;
     amdf_memory_info_t after = info;
     ASSERT_EQ(api_->memory_query_info(memories_[0], &after), AMDF_STATUS_OK);
-    EXPECT_EQ(after.device_address, info.device_address);
+    uint64_t address_after = 0;
+    ASSERT_EQ(api_->memory_query_address(memories_[0], AMDF_MEMORY_ADDRESS_GPU,
+                                         &address_after),
+              AMDF_STATUS_OK);
+    EXPECT_EQ(address_after, address);
     ASSERT_EQ(MapMemory(memories_[0], 0, 0, info.byte_length,
                         AMDF_MEMORY_MAP_FLAG_READ),
               AMDF_STATUS_OK);
@@ -463,6 +475,7 @@ TEST_F(GpuLinuxProcessMemoryTest, OwnsMemoryRegistrationsAndQualifiedQueues) {
                                          AMDF_MEMORY_FLAG_HOST_COHERENT |
                                          AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
   std::array<amdf_memory_info_t, 4> memory_infos = {};
+  std::array<uint64_t, 4> addresses = {};
   for (size_t case_ordinal = 0; case_ordinal < kDeviceAccessCases.size();
        ++case_ordinal) {
     const DeviceAccessCase& access_case = kDeviceAccessCases[case_ordinal];
@@ -502,11 +515,14 @@ TEST_F(GpuLinuxProcessMemoryTest, OwnsMemoryRegistrationsAndQualifiedQueues) {
         ((kCallerOffsets[case_ordinal] + logical_byte_length + page_size - 1) /
          page_size) *
             page_size);
-    EXPECT_EQ(info.device_address & (info.alignment - 1), 0u);
+    ASSERT_EQ(api_->memory_query_address(memories_[case_ordinal],
+                                         AMDF_MEMORY_ADDRESS_GPU,
+                                         &addresses[case_ordinal]),
+              AMDF_STATUS_OK);
+    EXPECT_EQ(addresses[case_ordinal] & (info.alignment - 1), 0u);
     for (size_t prior_ordinal = 0; prior_ordinal < case_ordinal;
          ++prior_ordinal) {
-      EXPECT_NE(info.device_address,
-                memory_infos[prior_ordinal].device_address);
+      EXPECT_NE(addresses[case_ordinal], addresses[prior_ordinal]);
       EXPECT_TRUE(amdf_physical_memory_id_is_equal(
           &info.physical_backing_id,
           &memory_infos[prior_ordinal].physical_backing_id));

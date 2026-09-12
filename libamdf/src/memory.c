@@ -480,21 +480,24 @@ static void amdf_memory_assert_result(
                   memory->info.native_allocation_byte_length -
                       memory->info.source_byte_offset &&
               "logical memory must fit within its native allocation");
-  if ((memory->info.flags & AMDF_MEMORY_FLAG_DEVICE_ADDRESS) != 0) {
-    amdf_assert((memory->info.device_address & (memory->info.alignment - 1)) ==
-                    0 &&
-                "memory address must satisfy the achieved alignment");
+  amdf_assert(memory->info.address_kinds ==
+                  ((memory->info.flags & AMDF_MEMORY_FLAG_DEVICE_ADDRESS) != 0
+                       ? profile->address_kinds
+                       : 0) &&
+              "memory must establish the selected profile address kinds");
+  for (amdf_memory_address_kind_t kind = AMDF_MEMORY_ADDRESS_GPU;
+       kind <= AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE; ++kind) {
+    if ((memory->info.address_kinds & (UINT64_C(1) << kind)) == 0) continue;
+    const uint64_t address = memory->addresses[kind];
+    amdf_assert((address & (memory->info.alignment - 1)) == 0 &&
+                "every memory address must satisfy the achieved alignment");
     if (profile->device_address.address_bit_count !=
         AMDF_MEMORY_ADDRESS_BIT_COUNT_UNKNOWN) {
-      amdf_assert(
-          memory->info.device_address >=
-              profile->device_address.minimum_address &&
-          memory->info.device_address <=
-              profile->device_address.maximum_address &&
-          memory->info.byte_length - 1 <=
-              profile->device_address.maximum_address -
-                  memory->info.device_address &&
-          "memory range must fit the selected numeric address envelope");
+      amdf_assert(address >= profile->device_address.minimum_address &&
+                  address <= profile->device_address.maximum_address &&
+                  memory->info.byte_length - 1 <=
+                      profile->device_address.maximum_address - address &&
+                  "every memory range must fit the selected numeric envelope");
     }
   }
 }
@@ -676,6 +679,20 @@ amdf_status_t AMDF_CALL amdf_memory_import(
     *out_memory = memory;
   }
   return status;
+}
+
+amdf_status_t AMDF_CALL amdf_memory_query_address(
+    amdf_memory_t* memory, amdf_memory_address_kind_t kind,
+    uint64_t* out_address) {
+  if (memory == NULL || out_address == NULL ||
+      kind > AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  }
+  if ((memory->info.address_kinds & (UINT64_C(1) << kind)) == 0) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
+  *out_address = memory->addresses[kind];
+  return AMDF_STATUS_OK;
 }
 
 amdf_status_t AMDF_CALL amdf_memory_query_info(amdf_memory_t* memory,

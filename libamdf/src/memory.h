@@ -44,6 +44,9 @@ struct amdf_memory_t {
   amdf_device_t* device;
   // Immutable properties established before publication.
   amdf_memory_info_t info;
+  // Cached bases indexed by consuming interface. Availability is recorded in
+  // info.address_kinds; an unavailable entry is never consumed.
+  uint64_t addresses[AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE + 1];
   // Number of live mappings and commands borrowing this memory.
   amdf_child_tracker_t children;
 };
@@ -83,6 +86,11 @@ amdf_status_t AMDF_CALL amdf_memory_import(
 // Copies immutable memory properties.
 amdf_status_t AMDF_CALL amdf_memory_query_info(amdf_memory_t* memory,
                                                amdf_memory_info_t* out_info);
+
+// Returns a cached address for an established consuming interface.
+amdf_status_t AMDF_CALL amdf_memory_query_address(
+    amdf_memory_t* memory, amdf_memory_address_kind_t kind,
+    uint64_t* out_address);
 
 // Exports one logical range as a move-owned external value.
 amdf_status_t AMDF_CALL amdf_memory_export(
