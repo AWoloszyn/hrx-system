@@ -15,20 +15,13 @@
 // Stack buffer size for formatting generated value-name suffixes.
 #define LOOM_PRINT_NAME_SUFFIX_BUFFER_SIZE 32
 
-typedef enum loom_print_name_resolution_kind_e {
-  LOOM_PRINT_NAME_RESOLUTION_GENERATED = 0,
-  LOOM_PRINT_NAME_RESOLUTION_EXPLICIT = 1,
-  LOOM_PRINT_NAME_RESOLUTION_EXPLICIT_SUFFIX = 2,
-} loom_print_name_resolution_kind_t;
-
 struct loom_print_name_resolution_t {
-  // Resolution mode selected for this value.
-  uint8_t kind;
-  // Collision-avoidance attempt selected for generated or suffixed names.
-  uint8_t attempt;
+  // Zero preserves the explicit name or bare numeric ID. One appends $ID;
+  // larger selectors append $(suffix - 1)$ID to the explicit name, if any.
+  uint32_t suffix;
 };
 
-static_assert(sizeof(loom_print_name_resolution_t) == 2,
+static_assert(sizeof(loom_print_name_resolution_t) == 4,
               "name resolutions must remain compact");
 
 typedef struct loom_print_name_index_entry_t {
@@ -153,192 +146,50 @@ static void loom_print_name_index_insert(loom_print_name_index_entry_t* entries,
   entries[slot].name_key = name_key;
 }
 
-static bool loom_print_name_index_contains(
-    const loom_module_t* module, loom_print_name_index_entry_t* entries,
-    iree_host_size_t capacity, const void* scope, iree_string_view_t name) {
+static bool loom_print_name_is_explicit(const loom_module_t* module,
+                                        const uint8_t* explicit_names,
+                                        iree_string_view_t name) {
   loom_string_id_t name_id = loom_module_lookup_string(module, name);
   return name_id != LOOM_STRING_ID_INVALID &&
-         loom_print_name_index_find(entries, capacity, scope, name_id) != NULL;
+         (explicit_names[name_id / 8] & (1u << (name_id % 8))) != 0;
 }
 
-static iree_string_view_t loom_print_name_format_generated(
-    loom_value_id_t value_id, uint8_t attempt, char* buffer,
+static iree_string_view_t loom_print_name_format_suffix(
+    loom_value_id_t value_id, uint32_t suffix, char* buffer,
     iree_host_size_t buffer_capacity) {
-  int length = attempt == 0
-                   ? iree_snprintf(buffer, buffer_capacity, "%" PRIu32,
-                                   (uint32_t)value_id)
-                   : iree_snprintf(buffer, buffer_capacity, "%" PRIu32 "$%u",
-                                   (uint32_t)value_id, (unsigned)attempt);
+  int length = 0;
+  if (suffix == 0) {
+    length = iree_snprintf(buffer, buffer_capacity, "%" PRIu32, value_id);
+  } else if (suffix == 1) {
+    length = iree_snprintf(buffer, buffer_capacity, "$%" PRIu32, value_id);
+  } else {
+    length = iree_snprintf(buffer, buffer_capacity, "$%" PRIu32 "$%" PRIu32,
+                           suffix - 1, value_id);
+  }
   IREE_ASSERT(length > 0 && (iree_host_size_t)length < buffer_capacity);
   return iree_make_string_view(buffer, (iree_host_size_t)length);
 }
 
-static iree_string_view_t loom_print_name_format_explicit_candidate(
-    iree_string_view_t base_name, loom_value_id_t value_id, uint8_t attempt,
+// The final $ID component makes candidate families disjoint across values,
+// including values whose explicit names already contain dollar markers. Each
+// failed lookup therefore consumes a distinct explicit spelling, bounding total
+// probes by values plus explicit names. At most the other values can obstruct
+// one value, so the selected suffix fits in the module's uint32_t ID space.
+static uint32_t loom_print_name_resolve_suffix(
+    const loom_module_t* module, const uint8_t* explicit_names,
+    loom_value_id_t value_id, iree_string_view_t base_name, uint32_t suffix,
     char* buffer, iree_host_size_t buffer_capacity) {
-  memcpy(buffer, base_name.data, base_name.size);
-  int suffix_length =
-      attempt == 0
-          ? iree_snprintf(buffer + base_name.size,
-                          buffer_capacity - base_name.size, "$%" PRIu32,
-                          (uint32_t)value_id)
-          : iree_snprintf(buffer + base_name.size,
-                          buffer_capacity - base_name.size, "$%" PRIu32 "$%u",
-                          (uint32_t)value_id, (unsigned)attempt);
-  IREE_ASSERT(suffix_length > 0 && (iree_host_size_t)suffix_length <
-                                       buffer_capacity - base_name.size);
-  return iree_make_string_view(
-      buffer, base_name.size + (iree_host_size_t)suffix_length);
-}
-
-static loom_print_name_resolution_t loom_print_name_resolve_generated(
-    const loom_module_t* module, loom_print_name_index_entry_t* entries,
-    iree_host_size_t capacity, const void* scope, loom_value_id_t value_id) {
-  char buffer[LOOM_PRINT_NAME_SUFFIX_BUFFER_SIZE];
-  for (uint8_t attempt = 0; attempt < 8; ++attempt) {
-    iree_string_view_t candidate = loom_print_name_format_generated(
-        value_id, attempt, buffer, sizeof(buffer));
-    if (!loom_print_name_index_contains(module, entries, capacity, scope,
-                                        candidate)) {
-      return (loom_print_name_resolution_t){
-          .kind = LOOM_PRINT_NAME_RESOLUTION_GENERATED,
-          .attempt = attempt,
-      };
-    }
+  if (base_name.size) memcpy(buffer, base_name.data, base_name.size);
+  for (;;) {
+    iree_string_view_t tail =
+        loom_print_name_format_suffix(value_id, suffix, buffer + base_name.size,
+                                      buffer_capacity - base_name.size);
+    iree_string_view_t candidate =
+        iree_make_string_view(buffer, base_name.size + tail.size);
+    if (!loom_print_name_is_explicit(module, explicit_names, candidate)) break;
+    ++suffix;
   }
-  return (loom_print_name_resolution_t){
-      .kind = LOOM_PRINT_NAME_RESOLUTION_GENERATED,
-  };
-}
-
-static loom_print_name_resolution_t loom_print_name_resolve_explicit_duplicate(
-    const loom_module_t* module, loom_print_name_index_entry_t* entries,
-    iree_host_size_t capacity, const void* scope, loom_value_id_t value_id,
-    iree_string_view_t base_name, char* candidate_buffer,
-    iree_host_size_t candidate_buffer_capacity) {
-  for (uint8_t attempt = 0; attempt < 8; ++attempt) {
-    iree_string_view_t candidate = loom_print_name_format_explicit_candidate(
-        base_name, value_id, attempt, candidate_buffer,
-        candidate_buffer_capacity);
-    if (!loom_print_name_index_contains(module, entries, capacity, scope,
-                                        candidate)) {
-      return (loom_print_name_resolution_t){
-          .kind = LOOM_PRINT_NAME_RESOLUTION_EXPLICIT_SUFFIX,
-          .attempt = attempt,
-      };
-    }
-  }
-  return loom_print_name_resolve_generated(module, entries, capacity, scope,
-                                           value_id);
-}
-
-static bool loom_print_name_direct_contains(const loom_module_t* module,
-                                            const void* scope,
-                                            iree_string_view_t name) {
-  for (iree_host_size_t i = 0; i < module->values.count; ++i) {
-    const loom_value_id_t value_id = (loom_value_id_t)i;
-    if (!loom_print_name_value_is_printable(module, value_id) ||
-        loom_print_name_parse_scope(module, value_id) != scope) {
-      continue;
-    }
-    loom_string_id_t name_id = LOOM_STRING_ID_INVALID;
-    if (loom_print_name_value_has_name(module, value_id, &name_id) &&
-        iree_string_view_equal(module->strings.entries[name_id], name)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-static bool loom_print_name_direct_suffix_exists(const loom_module_t* module,
-                                                 const void* scope,
-                                                 iree_string_view_t base_name,
-                                                 iree_string_view_t suffix) {
-  for (iree_host_size_t i = 0; i < module->values.count; ++i) {
-    const loom_value_id_t value_id = (loom_value_id_t)i;
-    if (!loom_print_name_value_is_printable(module, value_id) ||
-        loom_print_name_parse_scope(module, value_id) != scope) {
-      continue;
-    }
-    loom_string_id_t name_id = LOOM_STRING_ID_INVALID;
-    if (!loom_print_name_value_has_name(module, value_id, &name_id)) continue;
-    iree_string_view_t name = module->strings.entries[name_id];
-    if (name.size == base_name.size + suffix.size &&
-        iree_string_view_starts_with(name, base_name) &&
-        iree_string_view_equal(
-            iree_string_view_substr(name, base_name.size, suffix.size),
-            suffix)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-static loom_print_name_resolution_t loom_print_name_resolve_generated_direct(
-    const loom_module_t* module, const void* scope, loom_value_id_t value_id) {
-  char buffer[LOOM_PRINT_NAME_SUFFIX_BUFFER_SIZE];
-  for (uint8_t attempt = 0; attempt < 8; ++attempt) {
-    iree_string_view_t candidate = loom_print_name_format_generated(
-        value_id, attempt, buffer, sizeof(buffer));
-    if (!loom_print_name_direct_contains(module, scope, candidate)) {
-      return (loom_print_name_resolution_t){
-          .kind = LOOM_PRINT_NAME_RESOLUTION_GENERATED,
-          .attempt = attempt,
-      };
-    }
-  }
-  return (loom_print_name_resolution_t){
-      .kind = LOOM_PRINT_NAME_RESOLUTION_GENERATED,
-  };
-}
-
-static loom_print_name_resolution_t loom_print_name_resolve_direct(
-    const loom_module_t* module, loom_value_id_t value_id) {
-  const void* scope = loom_print_name_parse_scope(module, value_id);
-  loom_string_id_t name_id = LOOM_STRING_ID_INVALID;
-  if (!loom_print_name_value_has_name(module, value_id, &name_id)) {
-    return loom_print_name_resolve_generated_direct(module, scope, value_id);
-  }
-
-  bool duplicated = false;
-  for (iree_host_size_t i = 0; i < module->values.count; ++i) {
-    if (i == value_id) continue;
-    const loom_value_id_t other_value_id = (loom_value_id_t)i;
-    if (loom_print_name_value_is_printable(module, other_value_id) &&
-        loom_print_name_parse_scope(module, other_value_id) == scope &&
-        loom_module_value(module, other_value_id)->name_id == name_id) {
-      duplicated = true;
-      break;
-    }
-  }
-  if (!duplicated) {
-    return (loom_print_name_resolution_t){
-        .kind = LOOM_PRINT_NAME_RESOLUTION_EXPLICIT,
-    };
-  }
-
-  iree_string_view_t base_name = module->strings.entries[name_id];
-  char suffix_buffer[LOOM_PRINT_NAME_SUFFIX_BUFFER_SIZE];
-  for (uint8_t attempt = 0; attempt < 8; ++attempt) {
-    int suffix_length =
-        attempt == 0 ? iree_snprintf(suffix_buffer, sizeof(suffix_buffer),
-                                     "$%" PRIu32, (uint32_t)value_id)
-                     : iree_snprintf(suffix_buffer, sizeof(suffix_buffer),
-                                     "$%" PRIu32 "$%u", (uint32_t)value_id,
-                                     (unsigned)attempt);
-    IREE_ASSERT(suffix_length > 0 &&
-                (iree_host_size_t)suffix_length < sizeof(suffix_buffer));
-    iree_string_view_t suffix =
-        iree_make_string_view(suffix_buffer, (iree_host_size_t)suffix_length);
-    if (!loom_print_name_direct_suffix_exists(module, scope, base_name,
-                                              suffix)) {
-      return (loom_print_name_resolution_t){
-          .kind = LOOM_PRINT_NAME_RESOLUTION_EXPLICIT_SUFFIX,
-          .attempt = attempt,
-      };
-    }
-  }
-  return loom_print_name_resolve_generated_direct(module, scope, value_id);
+  return suffix;
 }
 
 iree_status_t loom_print_name_plan_initialize(
@@ -375,27 +226,21 @@ iree_status_t loom_print_name_plan_initialize(
   memset(out_plan->resolutions, 0,
          module->values.count * sizeof(*out_plan->resolutions));
 
-  if (indexed_name_count == 0) {
-    for (iree_host_size_t i = 0; i < module->values.count; ++i) {
-      loom_string_id_t name_id = LOOM_STRING_ID_INVALID;
-      if (loom_print_name_value_has_name(module, (loom_value_id_t)i,
-                                         &name_id)) {
-        out_plan->resolutions[i].kind = LOOM_PRINT_NAME_RESOLUTION_EXPLICIT;
-      }
-    }
-    return iree_ok_status();
-  }
+  if (indexed_name_count == 0) return iree_ok_status();
 
   iree_host_size_t index_capacity =
       iree_host_size_next_power_of_two((indexed_name_count * 4 + 2) / 3);
-  if (index_capacity < 16) index_capacity = 16;
   if (index_capacity == 0) {
     loom_print_name_plan_deinitialize(out_plan);
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                             "SSA name index capacity exceeds storage limit");
   }
+  if (index_capacity < 16) index_capacity = 16;
 
   iree_host_size_t index_offset = 0;
+  iree_host_size_t explicit_names_offset = 0;
+  const iree_host_size_t explicit_names_size =
+      iree_host_size_ceil_div(module->strings.count, 8);
   iree_host_size_t candidate_buffer_offset = 0;
   iree_host_size_t temporary_size = 0;
   iree_arena_checkpoint_t temporary_checkpoint =
@@ -405,6 +250,7 @@ iree_status_t loom_print_name_plan_initialize(
       IREE_STRUCT_FIELD_ALIGNED(index_capacity, loom_print_name_index_entry_t,
                                 iree_alignof(loom_print_name_index_entry_t),
                                 &index_offset),
+      IREE_STRUCT_FIELD(explicit_names_size, uint8_t, &explicit_names_offset),
       IREE_STRUCT_FIELD(maximum_name_length, char, &candidate_buffer_offset),
       IREE_STRUCT_FIELD(LOOM_PRINT_NAME_SUFFIX_BUFFER_SIZE, char, NULL));
   void* temporary_storage = NULL;
@@ -422,6 +268,8 @@ iree_status_t loom_print_name_plan_initialize(
       (loom_print_name_index_entry_t*)((uint8_t*)temporary_storage +
                                        index_offset);
   memset(index_entries, 0, index_capacity * sizeof(*index_entries));
+  uint8_t* explicit_names = (uint8_t*)temporary_storage + explicit_names_offset;
+  memset(explicit_names, 0, explicit_names_size);
   char* candidate_buffer = (char*)temporary_storage + candidate_buffer_offset;
   const iree_host_size_t candidate_buffer_capacity =
       temporary_size - candidate_buffer_offset;
@@ -430,6 +278,9 @@ iree_status_t loom_print_name_plan_initialize(
     loom_string_id_t name_id = LOOM_STRING_ID_INVALID;
     if (loom_print_name_value_is_printable(module, (loom_value_id_t)i) &&
         loom_print_name_value_has_name(module, (loom_value_id_t)i, &name_id)) {
+      // Reserve explicit spellings across scopes so generated names cannot
+      // shadow an explicit name in an enclosing or nested parser scope.
+      explicit_names[name_id / 8] |= 1u << (name_id % 8);
       loom_print_name_index_insert(
           index_entries, index_capacity,
           loom_print_name_parse_scope(module, (loom_value_id_t)i), name_id);
@@ -441,8 +292,9 @@ iree_status_t loom_print_name_plan_initialize(
     const void* scope = loom_print_name_parse_scope(module, value_id);
     loom_string_id_t name_id = LOOM_STRING_ID_INVALID;
     if (!loom_print_name_value_has_name(module, value_id, &name_id)) {
-      out_plan->resolutions[i] = loom_print_name_resolve_generated(
-          module, index_entries, index_capacity, scope, value_id);
+      out_plan->resolutions[i].suffix = loom_print_name_resolve_suffix(
+          module, explicit_names, value_id, iree_string_view_empty(), 0,
+          candidate_buffer, candidate_buffer_capacity);
       continue;
     }
 
@@ -451,14 +303,10 @@ iree_status_t loom_print_name_plan_initialize(
     const bool duplicated =
         entry && (entry->duplicated ||
                   !loom_print_name_value_is_printable(module, value_id));
-    if (!duplicated) {
-      out_plan->resolutions[i].kind = LOOM_PRINT_NAME_RESOLUTION_EXPLICIT;
-      continue;
-    }
-    out_plan->resolutions[i] = loom_print_name_resolve_explicit_duplicate(
-        module, index_entries, index_capacity, scope, value_id,
-        module->strings.entries[name_id], candidate_buffer,
-        candidate_buffer_capacity);
+    if (!duplicated) continue;
+    out_plan->resolutions[i].suffix = loom_print_name_resolve_suffix(
+        module, explicit_names, value_id, module->strings.entries[name_id], 1,
+        candidate_buffer, candidate_buffer_capacity);
   }
 
   iree_arena_checkpoint_restore(&temporary_checkpoint);
@@ -473,51 +321,32 @@ void loom_print_name_plan_deinitialize(loom_print_name_plan_t* plan) {
 static iree_status_t loom_print_name_write_resolution(
     loom_output_stream_t* stream, const loom_module_t* module,
     loom_value_id_t value_id, loom_print_name_resolution_t resolution) {
-  if (resolution.kind == LOOM_PRINT_NAME_RESOLUTION_EXPLICIT) {
-    loom_string_id_t name_id = loom_module_value(module, value_id)->name_id;
-    IREE_RETURN_IF_ERROR(loom_output_stream_write_char(stream, '%'));
-    return loom_output_stream_write(stream, module->strings.entries[name_id]);
-  }
-
-  if (resolution.kind == LOOM_PRINT_NAME_RESOLUTION_EXPLICIT_SUFFIX) {
-    loom_string_id_t name_id = loom_module_value(module, value_id)->name_id;
-    IREE_RETURN_IF_ERROR(loom_output_stream_write_char(stream, '%'));
+  IREE_RETURN_IF_ERROR(loom_output_stream_write_char(stream, '%'));
+  loom_string_id_t name_id = LOOM_STRING_ID_INVALID;
+  if (loom_print_name_value_has_name(module, value_id, &name_id)) {
     IREE_RETURN_IF_ERROR(
         loom_output_stream_write(stream, module->strings.entries[name_id]));
-    if (resolution.attempt == 0) {
-      return loom_output_stream_write_format(stream, "$%" PRIu32,
-                                             (uint32_t)value_id);
-    }
-    return loom_output_stream_write_format(stream, "$%" PRIu32 "$%u",
-                                           (uint32_t)value_id,
-                                           (unsigned)resolution.attempt);
+    if (resolution.suffix == 0) return iree_ok_status();
   }
-
-  if (resolution.attempt == 0) {
-    return loom_output_stream_write_format(stream, "%%%" PRIu32,
-                                           (uint32_t)value_id);
-  }
-  return loom_output_stream_write_format(stream, "%%%" PRIu32 "$%u",
-                                         (uint32_t)value_id,
-                                         (unsigned)resolution.attempt);
+  char buffer[LOOM_PRINT_NAME_SUFFIX_BUFFER_SIZE];
+  return loom_output_stream_write(
+      stream, loom_print_name_format_suffix(value_id, resolution.suffix, buffer,
+                                            sizeof(buffer)));
 }
 
-iree_status_t loom_print_name_plan_write_value_ref(
-    const loom_print_name_plan_t* plan, loom_output_stream_t* stream,
-    const loom_module_t* module, loom_value_id_t value_id) {
+iree_status_t loom_print_name_plan_write_value_ref(loom_print_name_plan_t* plan,
+                                                   loom_output_stream_t* stream,
+                                                   const loom_module_t* module,
+                                                   loom_value_id_t value_id) {
   if (!module || value_id >= module->values.count) {
     return loom_output_stream_write_cstring(stream, "%?");
   }
-  if (plan) {
-    loom_print_name_resolution_t resolution = {
-        .kind = LOOM_PRINT_NAME_RESOLUTION_GENERATED,
-    };
-    if (plan->resolutions) resolution = plan->resolutions[value_id];
-    return loom_print_name_write_resolution(stream, module, value_id,
-                                            resolution);
+  if (!plan->arena.block_pool) {
+    IREE_RETURN_IF_ERROR(loom_print_name_plan_initialize(module, plan));
   }
-
-  return loom_print_name_write_resolution(
-      stream, module, value_id,
-      loom_print_name_resolve_direct(module, value_id));
+  if (!plan->resolutions) {
+    return loom_output_stream_write_format(stream, "%%%" PRIu32, value_id);
+  }
+  return loom_print_name_write_resolution(stream, module, value_id,
+                                          plan->resolutions[value_id]);
 }

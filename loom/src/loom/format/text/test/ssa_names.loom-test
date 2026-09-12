@@ -1,0 +1,40 @@
+// RUN: roundtrip
+
+// Independent scopes retain their authored names, including nested shadowing.
+func.def @first(%extent: index, %condition: i1) -> (index) {
+  scf.if %condition {
+    %extent = index.constant 4 : index
+    test.use %extent : index
+  }
+  func.return %extent : index
+}
+
+func.def @second(%extent: index) -> (index) {
+  func.return %extent : index
+}
+
+// ====
+
+// RUN: pass scf-to-cfg
+
+// Flattening scopes must keep inner and outer references distinct.
+func.def @flattened_scope(%extent: index, %condition: i1, %buffer: buffer, %offset: offset) -> (index) {
+  scf.if %condition {
+    %extent = index.constant 4 : index
+    %window = buffer.view %buffer[%offset] : buffer -> view<[%extent]xf32>
+    test.use %window : view<[%extent]xf32>
+  }
+  func.return %extent : index
+}
+
+// ----
+func.def @flattened_scope(%extent$0: index, %condition: i1, %buffer: buffer, %offset: offset) -> (index) {
+  cfg.cond_br %condition, ^_bb1, ^_bb2
+^_bb1:
+  %extent$5 = index.constant 4 : index
+  %window = buffer.view %buffer[%offset] : buffer -> view<[%extent$5]xf32>
+  test.use %window : view<[%extent$5]xf32>
+  cfg.br ^_bb2
+^_bb2:
+  func.return %extent$0 : index
+}

@@ -51,6 +51,19 @@ loom_cc_library(
 
 loom_cc_test(
   NAME
+    name_plan_test
+  SRCS
+    "name_plan_test.cc"
+  DEPS
+    ::printer_impl
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::ir
+    loom::ops::test
+)
+
+loom_cc_test(
+  NAME
     printer_test
   SRCS
     "printer_test.cc"

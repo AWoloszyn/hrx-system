@@ -17,18 +17,21 @@ extern "C" {
 
 typedef struct loom_print_name_resolution_t loom_print_name_resolution_t;
 
-// Immutable canonical SSA name resolutions for one module print.
+// Canonical SSA name resolutions shared by one print invocation.
 //
 // Construction indexes explicit names by parser scope and resolves all
-// duplicate and generated-name collisions once. Emission is then an O(1)
-// value-id lookup. The plan owns only the compact resolutions in a scoped
-// arena backed by the module block pool; its larger construction index is
-// discarded from that arena before initialization returns.
+// same-scope duplicates and generated-name collisions once. Generated
+// candidates have disjoint value-ID suffixes and cannot equal explicit names in
+// any scope. Emission is then an O(1) value-id lookup. The plan owns only the
+// resolutions in a scoped arena backed by the module block pool; its
+// construction index is discarded from that arena before initialization
+// returns.
 typedef struct loom_print_name_plan_t {
   // Canonical resolution for each module value ID.
   // NULL when the module has no explicit value names.
   loom_print_name_resolution_t* resolutions;
-  // Print-scoped arena owning resolutions.
+  // Print-scoped arena owning resolutions. A NULL block pool marks a zeroed,
+  // unprepared plan; standalone atom printers prepare it on the first SSA ref.
   iree_arena_allocator_t arena;
 } loom_print_name_plan_t;
 
@@ -36,17 +39,18 @@ typedef struct loom_print_name_plan_t {
 iree_status_t loom_print_name_plan_initialize(const loom_module_t* module,
                                               loom_print_name_plan_t* out_plan);
 
-// Releases storage owned by |plan|.
+// Releases storage owned by |plan|, including an unprepared zeroed plan.
 void loom_print_name_plan_deinitialize(loom_print_name_plan_t* plan);
 
 // Prints |value_id|'s canonical SSA reference.
 //
-// A NULL |plan| resolves the single reference directly. This bounded fallback
-// supports standalone type and attribute printing; complete module and
-// operation printers always provide a plan.
-iree_status_t loom_print_name_plan_write_value_ref(
-    const loom_print_name_plan_t* plan, loom_output_stream_t* stream,
-    const loom_module_t* module, loom_value_id_t value_id);
+// A zeroed |plan| is prepared lazily on the first valid reference and must be
+// deinitialized by the caller. All references in a composite type or attribute
+// share that plan; scalar atoms require no module traversal or allocation.
+iree_status_t loom_print_name_plan_write_value_ref(loom_print_name_plan_t* plan,
+                                                   loom_output_stream_t* stream,
+                                                   const loom_module_t* module,
+                                                   loom_value_id_t value_id);
 
 #ifdef __cplusplus
 }  // extern "C"
