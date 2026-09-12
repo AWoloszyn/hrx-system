@@ -12,6 +12,7 @@
 #include "amdf/amdf.h"
 #include "amdf/xdna.h"
 #include "gtest/gtest.h"
+#include "util/device_cache.h"
 #include "util/provider.h"
 
 namespace {
@@ -115,11 +116,7 @@ class XdnaEndpointTest : public ::testing::Test {
     xdna_api_ = QueryXdnaApi(api_);
     ASSERT_NE(xdna_api_, nullptr);
 
-    amdf_instance_create_info_t create_info = {};
-    create_info.type = AMDF_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-    create_info.structure_size = sizeof(create_info);
-    const amdf_status_t status =
-        api_->instance_create(&create_info, &instance_);
+    const amdf_status_t status = GetCtsDeviceCache().GetInstance(&instance_);
     if (amdf_status_domain(status) == AMDF_STATUS_DOMAIN_API &&
         amdf_status_code(status) == AMDF_STATUS_CODE_UNSUPPORTED) {
       GTEST_SKIP() << "platform provider is not implemented";
@@ -129,38 +126,33 @@ class XdnaEndpointTest : public ::testing::Test {
 
   void TearDown() override {
     if (context_ != nullptr) {
-      EXPECT_TRUE(amdf_status_is_ok(xdna_api_->context_destroy(context_)));
-    }
-    if (device_ != nullptr) {
-      EXPECT_TRUE(amdf_status_is_ok(api_->device_destroy(device_)));
-    }
-    if (endpoint_ != nullptr) {
-      EXPECT_TRUE(amdf_status_is_ok(api_->endpoint_close(endpoint_)));
-    }
-    if (instance_ != nullptr) {
-      EXPECT_TRUE(amdf_status_is_ok(api_->instance_destroy(instance_)));
+      ASSERT_EQ(xdna_api_->context_destroy(context_), AMDF_STATUS_OK);
+      context_ = nullptr;
     }
   }
 
-  bool OpenEngine(amdf_engine_kind_t engine_kind) {
+  amdf_status_t OpenEngine(amdf_engine_kind_t engine_kind,
+                           bool* out_engine_found) {
+    *out_engine_found = false;
     uint32_t endpoint_count = 0;
-    if (!amdf_status_is_ok(
-            api_->endpoint_enumerate(instance_, 0, nullptr, &endpoint_count))) {
-      return false;
-    }
+    amdf_status_t status =
+        api_->endpoint_enumerate(instance_, 0, nullptr, &endpoint_count);
+    if (!amdf_status_is_ok(status)) return status;
     std::vector<amdf_endpoint_summary_t> summaries(endpoint_count);
-    if (endpoint_count != 0 &&
-        !amdf_status_is_ok(api_->endpoint_enumerate(
-            instance_, endpoint_count, summaries.data(), &endpoint_count))) {
-      return false;
+    if (endpoint_count != 0) {
+      status = api_->endpoint_enumerate(instance_, endpoint_count,
+                                        summaries.data(), &endpoint_count);
+      if (!amdf_status_is_ok(status)) return status;
     }
-    for (const amdf_endpoint_summary_t& summary : summaries) {
+    for (uint32_t ordinal = 0; ordinal < endpoint_count; ++ordinal) {
+      const amdf_endpoint_summary_t& summary = summaries[ordinal];
       if (summary.engine_kind == engine_kind) {
-        return amdf_status_is_ok(
-            api_->endpoint_open(instance_, &summary.id, &endpoint_));
+        status = GetCtsDeviceCache().OpenEndpoint(summary.id, &endpoint_);
+        *out_engine_found = amdf_status_is_ok(status);
+        return status;
       }
     }
-    return false;
+    return AMDF_STATUS_OK;
   }
 
   amdf_xdna_device_create_info_t MakeDeviceCreateInfo() {
@@ -182,16 +174,24 @@ class XdnaEndpointTest : public ::testing::Test {
     return create_info;
   }
 
+  // Core table borrowed from the CTS provider.
   const amdf_api_t* api_ = nullptr;
+  // XDNA table borrowed from the CTS provider.
   const amdf_xdna_api_t* xdna_api_ = nullptr;
+  // Shared instance used by all device tests.
   amdf_instance_t* instance_ = nullptr;
+  // Shared endpoint selected without activating a device.
   amdf_endpoint_t* endpoint_ = nullptr;
+  // Shared device materialized only by tests that require one.
   amdf_device_t* device_ = nullptr;
+  // Case-owned context for explicit context creation and query coverage.
   amdf_xdna_context_t* context_ = nullptr;
 };
 
 TEST_F(XdnaEndpointTest, ReturnsStableCachedProfile) {
-  if (!OpenEngine(AMDF_ENGINE_KIND_XDNA)) {
+  bool engine_found = false;
+  ASSERT_EQ(OpenEngine(AMDF_ENGINE_KIND_XDNA, &engine_found), AMDF_STATUS_OK);
+  if (!engine_found) {
     GTEST_SKIP() << "no qualified XDNA endpoint present";
   }
 
@@ -227,7 +227,9 @@ TEST_F(XdnaEndpointTest, ReturnsStableCachedProfile) {
 }
 
 TEST_F(XdnaEndpointTest, RejectsMalformedOutputWithoutMutation) {
-  if (!OpenEngine(AMDF_ENGINE_KIND_XDNA)) {
+  bool engine_found = false;
+  ASSERT_EQ(OpenEngine(AMDF_ENGINE_KIND_XDNA, &engine_found), AMDF_STATUS_OK);
+  if (!engine_found) {
     GTEST_SKIP() << "no qualified XDNA endpoint present";
   }
 
@@ -250,7 +252,9 @@ TEST_F(XdnaEndpointTest, RejectsMalformedOutputWithoutMutation) {
 }
 
 TEST_F(XdnaEndpointTest, RejectsGpuEndpointWithoutMutation) {
-  if (!OpenEngine(AMDF_ENGINE_KIND_GPU)) {
+  bool engine_found = false;
+  ASSERT_EQ(OpenEngine(AMDF_ENGINE_KIND_GPU, &engine_found), AMDF_STATUS_OK);
+  if (!engine_found) {
     GTEST_SKIP() << "no GPU endpoint present";
   }
 
@@ -266,7 +270,9 @@ TEST_F(XdnaEndpointTest, RejectsGpuEndpointWithoutMutation) {
 }
 
 TEST_F(XdnaEndpointTest, ValidatesDeviceCreationArgumentsWithoutNativeWork) {
-  if (!OpenEngine(AMDF_ENGINE_KIND_XDNA)) {
+  bool engine_found = false;
+  ASSERT_EQ(OpenEngine(AMDF_ENGINE_KIND_XDNA, &engine_found), AMDF_STATUS_OK);
+  if (!engine_found) {
     GTEST_SKIP() << "no qualified XDNA endpoint present";
   }
 
@@ -292,13 +298,13 @@ TEST_F(XdnaEndpointTest, ValidatesDeviceCreationArgumentsWithoutNativeWork) {
 }
 
 TEST_F(XdnaEndpointTest, ValidatesContextCreationWithoutPublishingOnFailure) {
-  if (!OpenEngine(AMDF_ENGINE_KIND_XDNA)) {
+  bool engine_found = false;
+  ASSERT_EQ(OpenEngine(AMDF_ENGINE_KIND_XDNA, &engine_found), AMDF_STATUS_OK);
+  if (!engine_found) {
     GTEST_SKIP() << "no qualified XDNA endpoint present";
   }
-  const amdf_xdna_device_create_info_t device_create_info =
-      MakeDeviceCreateInfo();
   const amdf_status_t device_status =
-      xdna_api_->device_create(endpoint_, &device_create_info, &device_);
+      GetCtsDeviceCache().GetXdnaDevice(endpoint_, &device_);
   if (amdf_status_domain(device_status) == AMDF_STATUS_DOMAIN_API &&
       amdf_status_code(device_status) == AMDF_STATUS_CODE_UNSUPPORTED) {
     GTEST_SKIP() << "XDNA device materialization is unavailable";
@@ -348,7 +354,9 @@ TEST_F(XdnaEndpointTest, ValidatesContextCreationWithoutPublishingOnFailure) {
 }
 
 TEST_F(XdnaEndpointTest, MaterializesDeviceAndProgramIndependentContext) {
-  if (!OpenEngine(AMDF_ENGINE_KIND_XDNA)) {
+  bool engine_found = false;
+  ASSERT_EQ(OpenEngine(AMDF_ENGINE_KIND_XDNA, &engine_found), AMDF_STATUS_OK);
+  if (!engine_found) {
     GTEST_SKIP() << "no qualified XDNA endpoint present";
   }
   amdf_xdna_endpoint_info_t endpoint_info = {};
@@ -356,9 +364,8 @@ TEST_F(XdnaEndpointTest, MaterializesDeviceAndProgramIndependentContext) {
   endpoint_info.structure_size = sizeof(endpoint_info);
   ASSERT_TRUE(amdf_status_is_ok(
       xdna_api_->endpoint_query_info(endpoint_, &endpoint_info)));
-  const amdf_xdna_device_create_info_t create_info = MakeDeviceCreateInfo();
   const amdf_status_t create_status =
-      xdna_api_->device_create(endpoint_, &create_info, &device_);
+      GetCtsDeviceCache().GetXdnaDevice(endpoint_, &device_);
   if (amdf_status_domain(create_status) == AMDF_STATUS_DOMAIN_API &&
       amdf_status_code(create_status) == AMDF_STATUS_CODE_UNSUPPORTED) {
     GTEST_SKIP() << "XDNA device materialization is unavailable";
@@ -472,12 +479,13 @@ TEST_F(XdnaEndpointTest, MaterializesDeviceAndProgramIndependentContext) {
 }
 
 TEST_F(XdnaEndpointTest, RejectsMalformedDeviceInfoWithoutMutation) {
-  if (!OpenEngine(AMDF_ENGINE_KIND_XDNA)) {
+  bool engine_found = false;
+  ASSERT_EQ(OpenEngine(AMDF_ENGINE_KIND_XDNA, &engine_found), AMDF_STATUS_OK);
+  if (!engine_found) {
     GTEST_SKIP() << "no qualified XDNA endpoint present";
   }
-  const amdf_xdna_device_create_info_t create_info = MakeDeviceCreateInfo();
   const amdf_status_t create_status =
-      xdna_api_->device_create(endpoint_, &create_info, &device_);
+      GetCtsDeviceCache().GetXdnaDevice(endpoint_, &device_);
   if (amdf_status_domain(create_status) == AMDF_STATUS_DOMAIN_API &&
       amdf_status_code(create_status) == AMDF_STATUS_CODE_UNSUPPORTED) {
     GTEST_SKIP() << "XDNA device materialization is unavailable";
@@ -506,13 +514,13 @@ TEST_F(XdnaEndpointTest, RejectsMalformedDeviceInfoWithoutMutation) {
 }
 
 TEST_F(XdnaEndpointTest, RejectsMalformedContextInfoWithoutMutation) {
-  if (!OpenEngine(AMDF_ENGINE_KIND_XDNA)) {
+  bool engine_found = false;
+  ASSERT_EQ(OpenEngine(AMDF_ENGINE_KIND_XDNA, &engine_found), AMDF_STATUS_OK);
+  if (!engine_found) {
     GTEST_SKIP() << "no qualified XDNA endpoint present";
   }
-  const amdf_xdna_device_create_info_t device_create_info =
-      MakeDeviceCreateInfo();
   const amdf_status_t device_status =
-      xdna_api_->device_create(endpoint_, &device_create_info, &device_);
+      GetCtsDeviceCache().GetXdnaDevice(endpoint_, &device_);
   if (amdf_status_domain(device_status) == AMDF_STATUS_DOMAIN_API &&
       amdf_status_code(device_status) == AMDF_STATUS_CODE_UNSUPPORTED) {
     GTEST_SKIP() << "XDNA device materialization is unavailable";

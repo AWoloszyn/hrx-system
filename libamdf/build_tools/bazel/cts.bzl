@@ -25,6 +25,7 @@ def amdf_cts_test_suite(
     """
     tags = tags or []
     common_deps = suites + [
+        "//libamdf/cts/util:device_cache",
         "//libamdf/cts/util:provider_headers",
         "//third_party:google_test",
     ]

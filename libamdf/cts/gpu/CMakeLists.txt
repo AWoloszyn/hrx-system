@@ -18,6 +18,7 @@ iree_cc_library(
   DEPS
     amdf::headers
     iree::third_party::google_test
+    libamdf::cts::util::device_cache
     libamdf::cts::util::provider_headers
   TESTONLY
   PUBLIC
@@ -38,6 +39,7 @@ iree_cc_library(
     ::gpu_device_fixture
     amdf::headers
     iree::third_party::google_test
+    libamdf::cts::util::device_cache
     libamdf::cts::util::provider_headers
   TESTONLY
   ALWAYSLINK
@@ -78,6 +80,7 @@ iree_cc_library(
   DEPS
     amdf::headers
     iree::third_party::google_test
+    libamdf::cts::util::device_cache
     libamdf::cts::util::provider_headers
     ${_gpu_tests_platform_deps}
   TESTONLY
@@ -98,6 +101,7 @@ amdf_cts_test(
     amdf::amdf_static
     amdf::headers
     iree::third_party::google_test
+    libamdf::cts::util::device_cache
     libamdf::cts::util::provider_headers
   LABELS
     "iree-build-requirement=libamdf"
@@ -123,6 +127,7 @@ amdf_cts_test(
     amdf::amdf
     amdf::headers
     iree::third_party::google_test
+    libamdf::cts::util::device_cache
     libamdf::cts::util::provider_headers
   LABELS
     "iree-build-requirement=libamdf"
@@ -146,6 +151,7 @@ amdf_cts_test(
     ::gpu_tests
     amdf::headers
     iree::third_party::google_test
+    libamdf::cts::util::device_cache
     libamdf::cts::util::dynamic_provider
     libamdf::cts::util::provider_headers
   ARGS

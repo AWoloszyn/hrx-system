@@ -543,17 +543,10 @@ class Gfx1151UserQueueMemoryTest : public GpuDeviceFixture {
 
   void RunCopiesBetweenExactAccessAttachments(
       amdf_queue_command_type_t command_type) {
-    children_released_ = RunGfx1151UserQueueMemoryCopies(
+    const bool children_released = RunGfx1151UserQueueMemoryCopies(
         api_, gpu_api_, endpoint_, device_, command_type);
-    ASSERT_TRUE(children_released_);
+    ASSERT_TRUE(children_released);
   }
-
-  void TearDown() override {
-    if (children_released_) GpuDeviceFixture::TearDown();
-  }
-
-  // Parent teardown is safe only after the copy scenario releases its children.
-  bool children_released_ = true;
 };
 
 TEST_F(Gfx1151UserQueueMemoryTest, Pm4CopiesBetweenExactAccessAttachments) {

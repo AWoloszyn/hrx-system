@@ -16,6 +16,7 @@
 #include "amdf/gpu.h"
 #include "amdf/xdna.h"
 #include "gtest/gtest.h"
+#include "util/device_cache.h"
 #include "util/provider.h"
 
 namespace {
@@ -115,11 +116,7 @@ class GpuXdnaMemoryInteropTest : public ::testing::Test {
     xdna_api_ = static_cast<const amdf_xdna_api_t*>(extension_api);
     ASSERT_NE(xdna_api_, nullptr);
 
-    amdf_instance_create_info_t instance_create_info = {};
-    instance_create_info.type = AMDF_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-    instance_create_info.structure_size = sizeof(instance_create_info);
-    amdf_status_t status =
-        api_->instance_create(&instance_create_info, &instance_);
+    amdf_status_t status = GetCtsDeviceCache().GetInstance(&instance_);
     if (amdf_status_code(status) == AMDF_STATUS_CODE_UNSUPPORTED) {
       GTEST_SKIP() << "platform provider is unavailable";
     }
@@ -144,7 +141,7 @@ class GpuXdnaMemoryInteropTest : public ::testing::Test {
         endpoint = &xdna_endpoint_;
       }
       if (endpoint != nullptr) {
-        ASSERT_EQ(api_->endpoint_open(instance_, &summary.id, endpoint),
+        ASSERT_EQ(GetCtsDeviceCache().OpenEndpoint(summary.id, endpoint),
                   AMDF_STATUS_OK);
       }
     }
@@ -162,23 +159,18 @@ class GpuXdnaMemoryInteropTest : public ::testing::Test {
     }
     ASSERT_EQ(status, AMDF_STATUS_OK);
 
-    amdf_gpu_device_create_info_t gpu_create_info = {};
-    gpu_create_info.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_CREATE_INFO;
-    gpu_create_info.structure_size = sizeof(gpu_create_info);
-    gpu_create_info.mode = AMDF_GPU_DEVICE_MODE_INDEPENDENT;
-    ASSERT_EQ(
-        gpu_api_->device_create(gpu_endpoint_, &gpu_create_info, &gpu_device_),
-        AMDF_STATUS_OK);
+    ASSERT_EQ(AcquireGpuDevice(), AMDF_STATUS_OK);
 
-    amdf_xdna_device_create_info_t xdna_create_info = {};
-    xdna_create_info.type = AMDF_STRUCTURE_TYPE_XDNA_DEVICE_CREATE_INFO;
-    xdna_create_info.structure_size = sizeof(xdna_create_info);
-    status = xdna_api_->device_create(xdna_endpoint_, &xdna_create_info,
-                                      &xdna_device_);
+    status = GetCtsDeviceCache().GetXdnaDevice(xdna_endpoint_, &xdna_device_);
     if (amdf_status_code(status) == AMDF_STATUS_CODE_UNSUPPORTED) {
       GTEST_SKIP() << "XDNA ordinary-address-domain creation is unavailable";
     }
     ASSERT_EQ(status, AMDF_STATUS_OK);
+  }
+
+  virtual amdf_status_t AcquireGpuDevice() {
+    return GetCtsDeviceCache().GetGpuDevice(
+        gpu_endpoint_, AMDF_GPU_DEVICE_MODE_INDEPENDENT, &gpu_device_);
   }
 
   void TearDown() override {
@@ -205,32 +197,6 @@ class GpuXdnaMemoryInteropTest : public ::testing::Test {
       EXPECT_EQ(status, AMDF_STATUS_OK);
       if (amdf_status_is_ok(status)) gpu_memory_ = nullptr;
     }
-    if (xdna_memory_ == nullptr && xdna_device_ != nullptr) {
-      const amdf_status_t status = api_->device_destroy(xdna_device_);
-      EXPECT_EQ(status, AMDF_STATUS_OK);
-      if (amdf_status_is_ok(status)) xdna_device_ = nullptr;
-    }
-    if (gpu_memory_ == nullptr && gpu_device_ != nullptr) {
-      const amdf_status_t status = api_->device_destroy(gpu_device_);
-      EXPECT_EQ(status, AMDF_STATUS_OK);
-      if (amdf_status_is_ok(status)) gpu_device_ = nullptr;
-    }
-    if (xdna_device_ == nullptr && xdna_endpoint_ != nullptr) {
-      const amdf_status_t status = api_->endpoint_close(xdna_endpoint_);
-      EXPECT_EQ(status, AMDF_STATUS_OK);
-      if (amdf_status_is_ok(status)) xdna_endpoint_ = nullptr;
-    }
-    if (gpu_device_ == nullptr && gpu_endpoint_ != nullptr) {
-      const amdf_status_t status = api_->endpoint_close(gpu_endpoint_);
-      EXPECT_EQ(status, AMDF_STATUS_OK);
-      if (amdf_status_is_ok(status)) gpu_endpoint_ = nullptr;
-    }
-    if (gpu_endpoint_ == nullptr && xdna_endpoint_ == nullptr &&
-        instance_ != nullptr) {
-      const amdf_status_t status = api_->instance_destroy(instance_);
-      EXPECT_EQ(status, AMDF_STATUS_OK);
-      if (amdf_status_is_ok(status)) instance_ = nullptr;
-    }
   }
 
   amdf_status_t Map(amdf_memory_t* memory, uint64_t byte_length,
@@ -248,22 +214,56 @@ class GpuXdnaMemoryInteropTest : public ::testing::Test {
     return api_->host_mapping_query_info(*out_mapping, out_info);
   }
 
+  // Core table borrowed from the CTS provider.
   const amdf_api_t* api_ = nullptr;
+  // GPU table borrowed from the CTS provider.
   const amdf_gpu_api_t* gpu_api_ = nullptr;
+  // XDNA table borrowed from the CTS provider.
   const amdf_xdna_api_t* xdna_api_ = nullptr;
+  // Shared instance defining the identity scope for both devices.
   amdf_instance_t* instance_ = nullptr;
+  // Shared GPU endpoint.
   amdf_endpoint_t* gpu_endpoint_ = nullptr;
+  // Shared XDNA endpoint.
   amdf_endpoint_t* xdna_endpoint_ = nullptr;
+  // Borrowed GPU owner, except in the explicit source-lifetime scenario.
   amdf_device_t* gpu_device_ = nullptr;
+  // Shared XDNA device surviving each case's imported attachment.
   amdf_device_t* xdna_device_ = nullptr;
+  // Case-owned GPU source backing.
   amdf_memory_t* gpu_memory_ = nullptr;
+  // Case-owned imported attachment to the same physical backing.
   amdf_memory_t* xdna_memory_ = nullptr;
+  // Case-owned host view of the source attachment.
   amdf_host_mapping_t* gpu_mapping_ = nullptr;
+  // Case-owned host view of the imported attachment.
   amdf_host_mapping_t* xdna_mapping_ = nullptr;
+  // Export transport owned until consumed or explicitly released.
   amdf_external_memory_t external_memory_ = {};
 };
 
-TEST_F(GpuXdnaMemoryInteropTest, ImportsGpuSubrangeAndSurvivesSourceTeardown) {
+// This scenario specifically destroys the exporting native device while the
+// imported attachment remains live. Only that source owner is case-local.
+class GpuXdnaMemoryLifetimeTest : public GpuXdnaMemoryInteropTest {
+ protected:
+  amdf_status_t AcquireGpuDevice() override {
+    amdf_gpu_device_create_info_t create_info = {};
+    create_info.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_CREATE_INFO;
+    create_info.structure_size = sizeof(create_info);
+    create_info.mode = AMDF_GPU_DEVICE_MODE_INDEPENDENT;
+    return gpu_api_->device_create(gpu_endpoint_, &create_info, &gpu_device_);
+  }
+
+  void TearDown() override {
+    GpuXdnaMemoryInteropTest::TearDown();
+    if (gpu_device_ != nullptr) {
+      ASSERT_EQ(api_->device_destroy(gpu_device_), AMDF_STATUS_OK);
+      gpu_device_ = nullptr;
+    }
+  }
+};
+
+TEST_F(GpuXdnaMemoryLifetimeTest, ImportsGpuSubrangeAndSurvivesSourceTeardown) {
   const long system_page_size = sysconf(_SC_PAGESIZE);
   ASSERT_GT(system_page_size, 0);
   const uint64_t page_size = static_cast<uint64_t>(system_page_size);
@@ -485,8 +485,6 @@ TEST_F(GpuXdnaMemoryInteropTest, ImportsGpuSubrangeAndSurvivesSourceTeardown) {
   gpu_memory_ = nullptr;
   ASSERT_EQ(api_->device_destroy(gpu_device_), AMDF_STATUS_OK);
   gpu_device_ = nullptr;
-  ASSERT_EQ(api_->endpoint_close(gpu_endpoint_), AMDF_STATUS_OK);
-  gpu_endpoint_ = nullptr;
 
   ASSERT_EQ(
       api_->host_mapping_cache_control(

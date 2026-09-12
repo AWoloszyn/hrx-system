@@ -157,6 +157,7 @@ class AmdfBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
     ):
         del name, visibility
         common_deps = suites + [
+            "//libamdf/cts/util:device_cache",
             "//libamdf/cts/util:provider_headers",
             "//third_party:google_test",
         ]

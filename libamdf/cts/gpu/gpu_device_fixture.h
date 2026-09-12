@@ -12,6 +12,7 @@
 #include "amdf/amdf.h"
 #include "amdf/gpu.h"
 #include "gtest/gtest.h"
+#include "util/device_cache.h"
 #include "util/provider.h"
 
 // Finds a profile for explicit device access without acquiring another owner.
@@ -46,7 +47,7 @@ inline uint32_t FindGpuMemoryProfileOrdinal(
   return AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN;
 }
 
-// Materializes the first selected GPU endpoint and one native device.
+// Borrows the shared device for the selected GPU endpoint and ownership mode.
 class GpuDeviceFixture : public ::testing::Test {
  protected:
   virtual amdf_gpu_device_mode_t GetDeviceMode() const {
@@ -74,11 +75,7 @@ class GpuDeviceFixture : public ::testing::Test {
     gpu_api_ = static_cast<const amdf_gpu_api_t*>(extension_api);
     ASSERT_NE(gpu_api_, nullptr);
 
-    amdf_instance_create_info_t instance_create_info = {};
-    instance_create_info.type = AMDF_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-    instance_create_info.structure_size = sizeof(instance_create_info);
-    amdf_status_t status =
-        api_->instance_create(&instance_create_info, &instance_);
+    amdf_status_t status = GetCtsDeviceCache().GetInstance(&instance_);
     if (amdf_status_domain(status) == AMDF_STATUS_DOMAIN_API &&
         amdf_status_code(status) == AMDF_STATUS_CODE_UNSUPPORTED) {
       GTEST_SKIP() << "platform provider is not implemented";
@@ -96,18 +93,14 @@ class GpuDeviceFixture : public ::testing::Test {
     for (const amdf_endpoint_summary_t& summary : summaries) {
       if (summary.engine_kind != AMDF_ENGINE_KIND_GPU) continue;
       ASSERT_TRUE(amdf_status_is_ok(
-          api_->endpoint_open(instance_, &summary.id, &endpoint_)));
+          GetCtsDeviceCache().OpenEndpoint(summary.id, &endpoint_)));
       bool matches = false;
       status = MatchGpuEndpoint(endpoint_, &matches);
       ASSERT_EQ(status, AMDF_STATUS_OK)
           << "domain=" << amdf_status_domain(status)
           << " code=" << amdf_status_code(status);
       if (matches) break;
-      status = api_->endpoint_close(endpoint_);
-      if (amdf_status_is_ok(status)) endpoint_ = nullptr;
-      ASSERT_EQ(status, AMDF_STATUS_OK)
-          << "domain=" << amdf_status_domain(status)
-          << " code=" << amdf_status_code(status);
+      endpoint_ = nullptr;
     }
     if (endpoint_ == nullptr) {
       GTEST_SKIP() << "no qualified GPU endpoint present";
@@ -125,29 +118,11 @@ class GpuDeviceFixture : public ::testing::Test {
     ASSERT_EQ(status, AMDF_STATUS_OK);
     features_ = capabilities.features;
 
-    amdf_gpu_device_create_info_t device_create_info = {};
-    device_create_info.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_CREATE_INFO;
-    device_create_info.structure_size = sizeof(device_create_info);
-    device_create_info.mode = GetDeviceMode();
-    status = gpu_api_->device_create(endpoint_, &device_create_info, &device_);
+    status =
+        GetCtsDeviceCache().GetGpuDevice(endpoint_, GetDeviceMode(), &device_);
     ASSERT_TRUE(amdf_status_is_ok(status))
         << "domain=" << amdf_status_domain(status)
         << " code=" << amdf_status_code(status);
-  }
-
-  void TearDown() override {
-    if (device_ != nullptr) {
-      ASSERT_EQ(api_->device_destroy(device_), AMDF_STATUS_OK);
-      device_ = nullptr;
-    }
-    if (endpoint_ != nullptr) {
-      ASSERT_EQ(api_->endpoint_close(endpoint_), AMDF_STATUS_OK);
-      endpoint_ = nullptr;
-    }
-    if (instance_ != nullptr) {
-      ASSERT_EQ(api_->instance_destroy(instance_), AMDF_STATUS_OK);
-      instance_ = nullptr;
-    }
   }
 
   uint32_t FindMemoryProfileOrdinal(amdf_memory_class_t memory_class,
@@ -172,11 +147,11 @@ class GpuDeviceFixture : public ::testing::Test {
   const amdf_api_t* api_ = nullptr;
   // GPU table borrowed from the CTS provider.
   const amdf_gpu_api_t* gpu_api_ = nullptr;
-  // Instance owning the endpoint.
+  // Shared instance borrowed from the process-lifetime CTS cache.
   amdf_instance_t* instance_ = nullptr;
-  // Query endpoint borrowed by the device.
+  // Shared query endpoint borrowed from the CTS cache.
   amdf_endpoint_t* endpoint_ = nullptr;
-  // Native device retained until all test children have been released.
+  // Shared native device; each case releases only its workload children.
   amdf_device_t* device_ = nullptr;
   // Cached capabilities of the explicitly selected mode.
   amdf_gpu_device_features_t features_ = 0;

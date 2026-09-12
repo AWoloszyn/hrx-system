@@ -26,6 +26,14 @@ amdf_cc_library(
 )
 
 amdf_cc_library(
+    name = "device_cache",
+    testonly = True,
+    srcs = ["device_cache.cc"],
+    hdrs = ["device_cache.h"],
+    deps = [":provider_headers"],
+)
+
+amdf_cc_library(
     name = "dynamic_provider_posix",
     testonly = True,
     srcs = ["dynamic_provider_posix.cc"],

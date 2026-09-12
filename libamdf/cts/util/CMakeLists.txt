@@ -25,6 +25,22 @@ iree_cc_library(
 )
 endif()
 
+if(AMDF_BUILD)
+iree_cc_library(
+  NAME
+    device_cache
+  HDRS
+    "device_cache.h"
+  SRCS
+    "device_cache.cc"
+  DEPS
+    ::provider_headers
+    amdf::headers
+  TESTONLY
+  PUBLIC
+)
+endif()
+
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND AMDF_BUILD)
 iree_cc_library(
   NAME

@@ -36,7 +36,7 @@ std::array<uint32_t, 6> MakeCopyData32(uint64_t source, uint64_t target) {
 
 // Each device sees the same host pages through its own attachment and queue.
 struct DeviceAccess {
-  // Device owning this attachment; the fixture owns device destruction.
+  // Borrowed device, retained by the cache or the explicit peer-lifetime case.
   amdf_device_t* device = nullptr;
   // Device-specific attachment, owning backing only for the first device.
   amdf_memory_t* memory = nullptr;
@@ -200,11 +200,11 @@ class GpuMemoryInteropTest : public GpuDeviceFixture {
 
   // Registration and execution resources, ordered owner before borrower.
   std::array<DeviceAccess, 2> accesses_;
-  // Second independent device created from the same physical GPU endpoint.
+  // Case-owned peer whose destruction must preserve the shared source owner.
   amdf_device_t* peer_device_ = nullptr;
 };
 
-TEST_F(GpuMemoryInteropTest, SharesBackingAcrossIndependentDevices) {
+TEST_F(GpuMemoryInteropTest, SharedBackingSurvivesIndependentPeerTeardown) {
   uint32_t family_ordinal = UINT32_MAX;
   ASSERT_TRUE(amdf_status_is_ok(FindPm4Family(&family_ordinal)));
   if (family_ordinal == UINT32_MAX) {

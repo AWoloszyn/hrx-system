@@ -18,6 +18,7 @@ amdf_cc_library(
     testonly = True,
     hdrs = ["gpu_device_fixture.h"],
     deps = [
+        "//libamdf/cts/util:device_cache",
         "//libamdf/cts/util:provider_headers",
         "//third_party:google_test",
     ],
@@ -38,6 +39,7 @@ amdf_cc_library(
     ],
     deps = [
         ":gpu_device_fixture",
+        "//libamdf/cts/util:device_cache",
         "//libamdf/cts/util:provider_headers",
         "//third_party:google_test",
     ],
@@ -70,6 +72,7 @@ amdf_cc_library(
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     deps = [
+        "//libamdf/cts/util:device_cache",
         "//libamdf/cts/util:provider_headers",
         "//third_party:google_test",
     ] + select({

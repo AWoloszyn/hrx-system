@@ -432,20 +432,12 @@ TEST_F(GpuLinuxMemoryTest, RejectsUnadvertisedKernelQueueCreation) {
   EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 }
 
-// Registration and queue scenarios share one primary owner. Its native VM
-// binding survives public-device destruction until the process exits.
+// Registration and queue scenarios borrow the process-lifetime primary owner.
 class GpuLinuxProcessMemoryTest : public GpuLinuxMemoryTest {
  protected:
   amdf_gpu_device_mode_t GetDeviceMode() const override {
     return AMDF_GPU_DEVICE_MODE_PROCESS;
   }
-
-  void TearDown() override {
-    if (queue_children_released_) GpuLinuxMemoryTest::TearDown();
-  }
-
-  // A failed queue retirement retains the primary owner.
-  bool queue_children_released_ = true;
 };
 
 TEST_F(GpuLinuxProcessMemoryTest, OwnsMemoryRegistrationsAndQualifiedQueues) {
@@ -597,10 +589,11 @@ TEST_F(GpuLinuxProcessMemoryTest, OwnsMemoryRegistrationsAndQualifiedQueues) {
     for (amdf_queue_command_type_t command_type :
          {AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA, AMDF_QUEUE_COMMAND_TYPE_GPU_PM4}) {
       SCOPED_TRACE(command_type);
+      bool children_released = false;
       ASSERT_NO_FATAL_FAILURE(
-          queue_children_released_ = RunGfx1151UserQueueMemoryCopies(
+          children_released = RunGfx1151UserQueueMemoryCopies(
               api_, gpu_api_, endpoint_, device_, command_type));
-      ASSERT_TRUE(queue_children_released_);
+      ASSERT_TRUE(children_released);
     }
   }
 }

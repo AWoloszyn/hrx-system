@@ -12,9 +12,10 @@
 #include "amdf/amdf.h"
 #include "amdf/xdna.h"
 #include "gtest/gtest.h"
+#include "util/device_cache.h"
 #include "util/provider.h"
 
-// Materializes the first qualified XDNA endpoint, device, and context.
+// Borrows the shared device for the first qualified XDNA endpoint.
 class XdnaDeviceFixture : public ::testing::Test {
  protected:
   void SetUp() override {
@@ -29,11 +30,7 @@ class XdnaDeviceFixture : public ::testing::Test {
     xdna_api_ = static_cast<const amdf_xdna_api_t*>(extension_api);
     ASSERT_NE(xdna_api_, nullptr);
 
-    amdf_instance_create_info_t instance_create_info = {};
-    instance_create_info.type = AMDF_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-    instance_create_info.structure_size = sizeof(instance_create_info);
-    amdf_status_t status =
-        api_->instance_create(&instance_create_info, &instance_);
+    amdf_status_t status = GetCtsDeviceCache().GetInstance(&instance_);
     if (amdf_status_domain(status) == AMDF_STATUS_DOMAIN_API &&
         amdf_status_code(status) == AMDF_STATUS_CODE_UNSUPPORTED) {
       GTEST_SKIP() << "platform provider is not implemented";
@@ -51,7 +48,7 @@ class XdnaDeviceFixture : public ::testing::Test {
     for (const amdf_endpoint_summary_t& summary : summaries) {
       if (summary.engine_kind == AMDF_ENGINE_KIND_XDNA) {
         ASSERT_TRUE(amdf_status_is_ok(
-            api_->endpoint_open(instance_, &summary.id, &endpoint_)));
+            GetCtsDeviceCache().OpenEndpoint(summary.id, &endpoint_)));
         break;
       }
     }
@@ -59,10 +56,7 @@ class XdnaDeviceFixture : public ::testing::Test {
       GTEST_SKIP() << "no qualified XDNA endpoint present";
     }
 
-    amdf_xdna_device_create_info_t device_create_info = {};
-    device_create_info.type = AMDF_STRUCTURE_TYPE_XDNA_DEVICE_CREATE_INFO;
-    device_create_info.structure_size = sizeof(device_create_info);
-    status = xdna_api_->device_create(endpoint_, &device_create_info, &device_);
+    status = GetCtsDeviceCache().GetXdnaDevice(endpoint_, &device_);
     if (amdf_status_domain(status) == AMDF_STATUS_DOMAIN_API &&
         amdf_status_code(status) == AMDF_STATUS_CODE_UNSUPPORTED) {
       GTEST_SKIP() << "XDNA device materialization is unavailable";
@@ -70,35 +64,6 @@ class XdnaDeviceFixture : public ::testing::Test {
     ASSERT_TRUE(amdf_status_is_ok(status))
         << "domain=" << amdf_status_domain(status)
         << " code=" << amdf_status_code(status);
-
-    amdf_xdna_context_create_info_t context_create_info = {};
-    context_create_info.type = AMDF_STRUCTURE_TYPE_XDNA_CONTEXT_CREATE_INFO;
-    context_create_info.structure_size = sizeof(context_create_info);
-    context_create_info.logical_column_count = 1;
-    context_create_info.physical_column_origin =
-        AMDF_XDNA_PHYSICAL_COLUMN_ORIGIN_ANY;
-    context_create_info.acceptable_scheduling_modes =
-        AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED;
-    status =
-        xdna_api_->context_create(device_, &context_create_info, &context_);
-    ASSERT_TRUE(amdf_status_is_ok(status))
-        << "domain=" << amdf_status_domain(status)
-        << " code=" << amdf_status_code(status);
-  }
-
-  void TearDown() override {
-    if (context_ != nullptr) {
-      EXPECT_TRUE(amdf_status_is_ok(xdna_api_->context_destroy(context_)));
-    }
-    if (device_ != nullptr) {
-      EXPECT_TRUE(amdf_status_is_ok(api_->device_destroy(device_)));
-    }
-    if (endpoint_ != nullptr) {
-      EXPECT_TRUE(amdf_status_is_ok(api_->endpoint_close(endpoint_)));
-    }
-    if (instance_ != nullptr) {
-      EXPECT_TRUE(amdf_status_is_ok(api_->instance_destroy(instance_)));
-    }
   }
 
   uint32_t FindMemoryProfileOrdinal(amdf_memory_class_t memory_class,
@@ -131,11 +96,44 @@ class XdnaDeviceFixture : public ::testing::Test {
     return AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN;
   }
 
+  // Core API table borrowed from the CTS provider.
   const amdf_api_t* api_ = nullptr;
+  // XDNA API table borrowed from the CTS provider.
   const amdf_xdna_api_t* xdna_api_ = nullptr;
+  // Shared instance borrowed from the process-lifetime CTS cache.
   amdf_instance_t* instance_ = nullptr;
+  // Shared endpoint borrowed from the CTS cache.
   amdf_endpoint_t* endpoint_ = nullptr;
+  // Shared device; each case releases only its workload children.
   amdf_device_t* device_ = nullptr;
+};
+
+// Cases exercising program activation or placement own a fresh context within
+// the shared device. Device-only memory tests do not acquire execution state.
+class XdnaContextFixture : public XdnaDeviceFixture {
+ protected:
+  void SetUp() override {
+    ASSERT_NO_FATAL_FAILURE(XdnaDeviceFixture::SetUp());
+    if (IsSkipped()) return;
+    amdf_xdna_context_create_info_t create_info = {};
+    create_info.type = AMDF_STRUCTURE_TYPE_XDNA_CONTEXT_CREATE_INFO;
+    create_info.structure_size = sizeof(create_info);
+    create_info.logical_column_count = 1;
+    create_info.physical_column_origin = AMDF_XDNA_PHYSICAL_COLUMN_ORIGIN_ANY;
+    create_info.acceptable_scheduling_modes =
+        AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED;
+    ASSERT_EQ(xdna_api_->context_create(device_, &create_info, &context_),
+              AMDF_STATUS_OK);
+  }
+
+  void TearDown() override {
+    if (context_ != nullptr) {
+      ASSERT_EQ(xdna_api_->context_destroy(context_), AMDF_STATUS_OK);
+      context_ = nullptr;
+    }
+  }
+
+  // Case-owned execution context, released after all of its children.
   amdf_xdna_context_t* context_ = nullptr;
 };
 

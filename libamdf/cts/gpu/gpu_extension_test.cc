@@ -12,6 +12,7 @@
 #include "amdf/amdf.h"
 #include "amdf/gpu.h"
 #include "gtest/gtest.h"
+#include "util/device_cache.h"
 #include "util/provider.h"
 
 namespace {
@@ -104,25 +105,13 @@ class GpuEndpointTest : public ::testing::Test {
     gpu_api_ = QueryGpuApi(api_);
     ASSERT_NE(gpu_api_, nullptr);
 
-    amdf_instance_create_info_t create_info = {};
-    create_info.type = AMDF_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-    create_info.structure_size = sizeof(create_info);
-    ASSERT_TRUE(
-        amdf_status_is_ok(api_->instance_create(&create_info, &instance_)));
+    ASSERT_EQ(GetCtsDeviceCache().GetInstance(&instance_), AMDF_STATUS_OK);
   }
 
   void TearDown() override {
     if (second_device_ != nullptr) {
-      EXPECT_TRUE(amdf_status_is_ok(api_->device_destroy(second_device_)));
-    }
-    if (device_ != nullptr) {
-      EXPECT_TRUE(amdf_status_is_ok(api_->device_destroy(device_)));
-    }
-    if (endpoint_ != nullptr) {
-      EXPECT_TRUE(amdf_status_is_ok(api_->endpoint_close(endpoint_)));
-    }
-    if (instance_ != nullptr) {
-      EXPECT_TRUE(amdf_status_is_ok(api_->instance_destroy(instance_)));
+      ASSERT_EQ(api_->device_destroy(second_device_), AMDF_STATUS_OK);
+      second_device_ = nullptr;
     }
   }
 
@@ -147,7 +136,7 @@ class GpuEndpointTest : public ::testing::Test {
          ++endpoint_ordinal) {
       const amdf_endpoint_summary_t& summary = summaries[endpoint_ordinal];
       if (summary.engine_kind == engine_kind) {
-        status = api_->endpoint_open(instance_, &summary.id, &endpoint_);
+        status = GetCtsDeviceCache().OpenEndpoint(summary.id, &endpoint_);
         if (amdf_status_is_ok(status) && endpoint_ == nullptr) {
           return amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
         }
@@ -173,11 +162,17 @@ class GpuEndpointTest : public ::testing::Test {
     return create_info;
   }
 
+  // Core table borrowed from the CTS provider.
   const amdf_api_t* api_ = nullptr;
+  // GPU table borrowed from the CTS provider.
   const amdf_gpu_api_t* gpu_api_ = nullptr;
+  // Shared instance used by all device tests.
   amdf_instance_t* instance_ = nullptr;
+  // Shared endpoint selected without activating a device.
   amdf_endpoint_t* endpoint_ = nullptr;
+  // Shared device materialized only by tests that require one.
   amdf_device_t* device_ = nullptr;
+  // Case-owned sibling for the explicit independent-device lifetime test.
   amdf_device_t* second_device_ = nullptr;
 };
 
@@ -355,9 +350,8 @@ TEST_F(GpuEndpointTest, MaterializesProgramIndependentDevice) {
   }
   ASSERT_EQ(mode_status, AMDF_STATUS_OK);
 
-  const amdf_gpu_device_create_info_t create_info = MakeDeviceCreateInfo();
-  const amdf_status_t create_status =
-      gpu_api_->device_create(endpoint_, &create_info, &device_);
+  const amdf_status_t create_status = GetCtsDeviceCache().GetGpuDevice(
+      endpoint_, AMDF_GPU_DEVICE_MODE_INDEPENDENT, &device_);
   ASSERT_TRUE(amdf_status_is_ok(create_status))
       << "domain=" << amdf_status_domain(create_status)
       << " code=" << amdf_status_code(create_status);
@@ -403,9 +397,9 @@ TEST_F(GpuEndpointTest, RejectsMalformedDeviceInfoWithoutMutation) {
   }
   ASSERT_EQ(mode_status, AMDF_STATUS_OK);
 
-  const amdf_gpu_device_create_info_t create_info = MakeDeviceCreateInfo();
-  ASSERT_TRUE(amdf_status_is_ok(
-      gpu_api_->device_create(endpoint_, &create_info, &device_)));
+  ASSERT_EQ(GetCtsDeviceCache().GetGpuDevice(
+                endpoint_, AMDF_GPU_DEVICE_MODE_INDEPENDENT, &device_),
+            AMDF_STATUS_OK);
 
   EXPECT_EQ(amdf_status_code(gpu_api_->device_query_info(device_, nullptr)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
@@ -441,8 +435,9 @@ TEST_F(GpuEndpointTest, CreatesIndependentDevicesFromOneEndpoint) {
   ASSERT_EQ(mode_status, AMDF_STATUS_OK);
 
   const amdf_gpu_device_create_info_t create_info = MakeDeviceCreateInfo();
-  ASSERT_TRUE(amdf_status_is_ok(
-      gpu_api_->device_create(endpoint_, &create_info, &device_)));
+  ASSERT_EQ(GetCtsDeviceCache().GetGpuDevice(
+                endpoint_, AMDF_GPU_DEVICE_MODE_INDEPENDENT, &device_),
+            AMDF_STATUS_OK);
   ASSERT_TRUE(amdf_status_is_ok(
       gpu_api_->device_create(endpoint_, &create_info, &second_device_)));
 
