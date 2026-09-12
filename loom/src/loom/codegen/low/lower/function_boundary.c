@@ -75,47 +75,24 @@ static loom_target_abi_kind_t loom_low_lower_function_abi(
   return loom_low_lower_context_bundle(context)->export_plan->abi_kind;
 }
 
-static iree_status_t loom_low_lower_map_direct_argument(
-    loom_low_lower_context_t* context, const loom_op_t* source_op,
-    loom_value_id_t source_argument_id,
-    loom_low_lower_abi_argument_t* out_argument) {
-  *out_argument = (loom_low_lower_abi_argument_t){
-      .kind = LOOM_LOW_LOWER_ABI_ARGUMENT_DIRECT,
-      .abi_type = loom_type_none(),
-      .resource_source_type = loom_type_none(),
-  };
-  return loom_low_lower_map_value(context, source_op, source_argument_id,
-                                  &out_argument->abi_type);
-}
-
-static iree_status_t loom_low_lower_map_argument(
+iree_status_t loom_low_lower_query_argument(
     loom_low_lower_context_t* context, uint16_t source_argument_index,
     loom_value_id_t source_argument_id,
     loom_low_lower_abi_argument_t* out_argument) {
-  uint32_t previous_error_count = context->result->error_count;
+  out_argument->kind = LOOM_LOW_LOWER_ABI_ARGUMENT_DIRECT;
   if (context->policy->map_argument.fn == NULL) {
-    IREE_RETURN_IF_ERROR(
-        loom_low_lower_map_direct_argument(context, context->source_function.op,
-                                           source_argument_id, out_argument));
-  } else {
-    *out_argument = (loom_low_lower_abi_argument_t){
-        .kind = LOOM_LOW_LOWER_ABI_ARGUMENT_DIRECT,
-        .abi_type = loom_type_none(),
-        .resource_source_type = loom_type_none(),
-    };
-    IREE_RETURN_IF_ERROR(context->policy->map_argument.fn(
-        context->policy->map_argument.user_data, context,
-        context->source_function.op, source_argument_index, source_argument_id,
-        out_argument));
+    return loom_low_lower_query_value(context, context->source_function.op,
+                                      source_argument_id,
+                                      &out_argument->abi_type);
   }
+  out_argument->abi_type = loom_type_none();
+  IREE_RETURN_IF_ERROR(context->policy->map_argument.fn(
+      context->policy->map_argument.user_data, context,
+      context->source_function.op, source_argument_index, source_argument_id,
+      out_argument));
 
   IREE_ASSERT(loom_low_lower_abi_argument_kind_is_known(out_argument->kind));
   if (loom_low_lower_type_is_none(out_argument->abi_type)) {
-    if (context->result->error_count == previous_error_count) {
-      IREE_RETURN_IF_ERROR(loom_low_lower_emit_source_type_unsupported(
-          context, context->source_function.op, IREE_SV("source"),
-          loom_module_value_type(context->module, source_argument_id)));
-    }
     return iree_ok_status();
   }
   IREE_ASSERT(loom_low_type_is_register(out_argument->abi_type));
@@ -129,6 +106,20 @@ static iree_status_t loom_low_lower_map_argument(
   if (loom_low_lower_type_is_none(out_argument->resource_source_type)) {
     out_argument->resource_source_type =
         loom_module_value_type(context->module, source_argument_id);
+  }
+  return iree_ok_status();
+}
+
+static iree_status_t loom_low_lower_map_argument(
+    loom_low_lower_context_t* context, uint16_t source_argument_index,
+    loom_value_id_t source_argument_id,
+    loom_low_lower_abi_argument_t* out_argument) {
+  IREE_RETURN_IF_ERROR(loom_low_lower_query_argument(
+      context, source_argument_index, source_argument_id, out_argument));
+  if (loom_low_lower_type_is_none(out_argument->abi_type)) {
+    return loom_low_lower_emit_source_type_unsupported(
+        context, context->source_function.op, IREE_SV("argument"),
+        loom_module_value_type(context->module, source_argument_id));
   }
   return iree_ok_status();
 }

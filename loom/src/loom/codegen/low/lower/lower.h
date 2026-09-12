@@ -147,10 +147,14 @@ typedef enum loom_low_lower_abi_argument_kind_e {
   LOOM_LOW_LOWER_ABI_ARGUMENT_RESOURCE = 1,
 } loom_low_lower_abi_argument_kind_t;
 
+// Direct arguments use only kind and abi_type. Resource arguments additionally
+// describe the low.resource import; those fields are unused for direct
+// arguments.
 typedef struct loom_low_lower_abi_argument_t {
   // ABI path used for the source argument.
   loom_low_lower_abi_argument_kind_t kind;
   // Register type used by the low argument or imported low.resource result.
+  // None indicates that the argument has no native ABI representation.
   loom_type_t abi_type;
   // Resource import kind used when |kind| is RESOURCE.
   loom_low_resource_import_kind_t resource_import_kind;
@@ -169,6 +173,12 @@ typedef struct loom_low_lower_abi_argument_t {
   int64_t resource_cache_swizzle_stride;
 } loom_low_lower_abi_argument_t;
 
+// Queries a native direct argument or resource representation. The caller
+// initializes kind to DIRECT and abi_type to none. A resource mapping also
+// supplies the resource fields; they are otherwise unused and uninitialized.
+// Unsupported arguments leave abi_type none without emitting diagnostics;
+// required boundary lowering owns that diagnostic. Allocation failures
+// propagate normally.
 typedef iree_status_t (*loom_low_lower_map_argument_fn_t)(
     void* user_data, loom_low_lower_context_t* context,
     const loom_op_t* source_function_op, uint16_t source_argument_index,
@@ -177,7 +187,7 @@ typedef iree_status_t (*loom_low_lower_map_argument_fn_t)(
 
 typedef struct loom_low_lower_map_argument_callback_t {
   // Optional callback invoked to map a source function argument to a direct low
-  // argument or target ABI resource. Missing uses direct |map_type| behavior.
+  // argument or target ABI resource. Missing uses the native value query.
   loom_low_lower_map_argument_fn_t fn;
   // Caller-owned payload passed to |fn|.
   void* user_data;
@@ -1364,7 +1374,8 @@ iree_status_t loom_low_lower_record_source_memory_access(
 // target-low policy.
 iree_status_t loom_low_lower_emit_source_type_unsupported(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
-    iree_string_view_t field_name, loom_type_t actual_type);
+    iree_string_view_t field_name,
+    loom_type_t actual_type) IREE_ATTRIBUTE_COLD IREE_ATTRIBUTE_NOINLINE;
 
 // Emits ERR_TARGET_066 when generic lowering would need to change the carrier
 // width of a typed register without a target-defined semantic relation.

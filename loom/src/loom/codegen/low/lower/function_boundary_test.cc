@@ -8,11 +8,13 @@
 
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
+#include "loom/codegen/low/lower/context.h"
 #include "loom/codegen/low/testing/source_workload.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
 #include "loom/ops/func/ops.h"
 #include "loom/ops/low/ops.h"
+#include "loom/target/low_descriptor_registry.h"
 #include "loom/target/registers.h"
 #include "loom/target/test/descriptors.h"
 #include "loom/target/test/low_registry.h"
@@ -46,9 +48,19 @@ class LowLowerFunctionBoundaryTest : public ::testing::Test {
     options_.descriptor_registry = &descriptor_registry_.registry;
     options_.policy = &policy_;
     options_.fact_table = &fact_table_;
+    mapping_context_.module = module_;
+    mapping_context_.options = &options_;
+    mapping_context_.policy = &policy_;
+    mapping_context_.result = &result_;
+    mapping_context_.lowering.fact_table = &fact_table_;
+    IREE_ASSERT_OK(loom_target_low_descriptor_set_select_for_source_lowering(
+        options_.descriptor_registry, loom_target_facts_bundle(&target_facts_),
+        &mapping_context_.descriptor_set));
+    iree_arena_initialize(&block_pool_, &mapping_context_.function_arena);
   }
 
   void TearDown() override {
+    iree_arena_deinitialize(&mapping_context_.function_arena);
     loom_low_lower_result_deinitialize(&result_);
     loom_module_free(module_);
     loom_context_deinitialize(&context_);
@@ -121,6 +133,7 @@ class LowLowerFunctionBoundaryTest : public ::testing::Test {
   loom_low_lower_policy_t policy_ = {};
   loom_low_lower_options_t options_ = {};
   loom_low_lower_result_t result_ = {};
+  loom_low_lower_context_t mapping_context_ = {};
 };
 
 TEST_F(LowLowerFunctionBoundaryTest,
@@ -161,6 +174,26 @@ TEST_F(LowLowerFunctionBoundaryTest,
                                         LOOM_LOCATION_UNKNOWN, &return_op));
 
   ComputeFacts(source_function);
+  mapping_context_.source_function = source_function;
+  loom_low_lower_abi_argument_t resource_argument = {};
+  resource_argument.resource_build_flags =
+      LOOM_LOW_RESOURCE_BUILD_FLAG_HAS_EXTENT;
+  resource_argument.resource_extent = 64;
+  IREE_ASSERT_OK(loom_low_lower_query_argument(
+      &mapping_context_, 0, source_arguments[0], &resource_argument));
+  EXPECT_EQ(resource_argument.kind, LOOM_LOW_LOWER_ABI_ARGUMENT_RESOURCE);
+  EXPECT_EQ(resource_argument.resource_import_kind,
+            LOOM_LOW_RESOURCE_IMPORT_KIND_NATIVE_POINTER);
+  EXPECT_EQ(resource_argument.resource_index, 0);
+  EXPECT_EQ(resource_argument.resource_build_flags, 0u);
+  EXPECT_TRUE(loom_type_is_buffer(resource_argument.resource_source_type));
+  loom_low_lower_abi_argument_t direct_argument = {};
+  IREE_ASSERT_OK(loom_low_lower_query_argument(
+      &mapping_context_, 1, source_arguments[1], &direct_argument));
+  EXPECT_EQ(direct_argument.kind, LOOM_LOW_LOWER_ABI_ARGUMENT_DIRECT);
+  EXPECT_TRUE(loom_low_type_is_register(direct_argument.abi_type));
+  EXPECT_EQ(result_.error_count, 0u);
+
   IREE_ASSERT_OK(
       loom_low_lower_function(module_, source_function, &options_, &result_));
   ASSERT_EQ(result_.error_count, 0u);
@@ -215,6 +248,12 @@ TEST_F(LowLowerFunctionBoundaryTest,
   EXPECT_TRUE(loom_type_is_buffer(module_->types.entries[source_type_id]));
   const loom_value_id_t resource_result = loom_low_resource_result(resource_op);
   ExpectRegister(resource_result, TEST_LOW_CORE_REG_CLASS_ID_TEST_PTR);
+  EXPECT_TRUE(
+      loom_type_equal(resource_argument.abi_type,
+                      loom_module_value_type(module_, resource_result)));
+  EXPECT_TRUE(
+      loom_type_equal(direct_argument.abi_type,
+                      loom_module_value_type(module_, low_arguments[0])));
   EXPECT_TRUE(iree_string_view_equal(
       loom_module_value_name(module_, resource_result), IREE_SV("storage")));
 
@@ -307,6 +346,68 @@ TEST_F(LowLowerFunctionBoundaryTest,
   EXPECT_EQ(module_->symbols.entries[symbol.symbol_id].defining_op,
             result_.low_func_op);
 }
+
+class LowLowerArgumentQueryTest : public LowLowerFunctionBoundaryTest,
+                                  public ::testing::WithParamInterface<bool> {};
+
+TEST_P(LowLowerArgumentQueryTest, OnlyRequiredArgumentsEmitDiagnostics) {
+  if (!GetParam()) {
+    policy_.map_argument = {};
+  }
+  loom_builder_t builder;
+  loom_builder_initialize(module_, &module_->arena, loom_module_block(module_),
+                          &builder);
+  const loom_type_t argument_types[] = {
+      loom_type_scalar(LOOM_SCALAR_TYPE_I32),
+      loom_type_scalar(LOOM_SCALAR_TYPE_F64),
+  };
+  loom_op_t* source_op = nullptr;
+  IREE_ASSERT_OK(loom_func_def_build(
+      &builder, /*build_flags=*/0, /*visibility=*/0, /*retain=*/0, /*cc=*/0,
+      /*purity=*/0, /*temperature=*/0, /*inline_policy=*/0,
+      loom_symbol_ref_null(), /*abi=*/0, loom_named_attr_slice_empty(),
+      LOOM_STRING_ID_INVALID, loom_named_attr_slice_empty(),
+      AddSymbol(IREE_SV("arguments")), argument_types,
+      IREE_ARRAYSIZE(argument_types), nullptr, 0, nullptr, 0, nullptr, 0,
+      LOOM_LOCATION_UNKNOWN, &source_op));
+  const loom_func_like_t function = loom_func_like_cast(module_, source_op);
+  loom_region_t* body = loom_func_like_body(function);
+  loom_builder_initialize(module_, &module_->arena,
+                          loom_region_entry_block(body), &builder);
+  builder.ip.parent_op = source_op;
+  loom_op_t* return_op = nullptr;
+  IREE_ASSERT_OK(loom_func_return_build(&builder, nullptr, 0,
+                                        LOOM_LOCATION_UNKNOWN, &return_op));
+  ComputeFacts(function);
+  mapping_context_.source_function = function;
+  uint16_t argument_count = 0;
+  const loom_value_id_t* arguments =
+      loom_func_like_arg_ids(function, &argument_count);
+  ASSERT_EQ(argument_count, 2u);
+
+  loom_low_lower_abi_argument_t native_argument = {};
+  IREE_ASSERT_OK(loom_low_lower_query_argument(&mapping_context_, 0,
+                                               arguments[0], &native_argument));
+  EXPECT_TRUE(loom_low_type_is_register(native_argument.abi_type));
+  loom_low_lower_abi_argument_t absent_argument = native_argument;
+  IREE_ASSERT_OK(loom_low_lower_query_argument(&mapping_context_, 1,
+                                               arguments[1], &absent_argument));
+  EXPECT_EQ(loom_type_kind(absent_argument.abi_type), LOOM_TYPE_NONE);
+  EXPECT_EQ(result_.error_count, 0u);
+  EXPECT_EQ(mapping_context_.lowering.argument_map, nullptr);
+
+  IREE_ASSERT_OK(
+      loom_low_lower_function_boundary_validate(&mapping_context_, body));
+  EXPECT_EQ(result_.error_count, 1u);
+  EXPECT_TRUE(
+      loom_type_equal(native_argument.abi_type,
+                      mapping_context_.lowering.argument_map[0].abi_type));
+  EXPECT_EQ(loom_type_kind(mapping_context_.lowering.argument_map[1].abi_type),
+            LOOM_TYPE_NONE);
+}
+
+INSTANTIATE_TEST_SUITE_P(DefaultAndTargetMapping, LowLowerArgumentQueryTest,
+                         ::testing::Bool());
 
 }  // namespace
 }  // namespace loom

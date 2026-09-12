@@ -102,9 +102,11 @@ static iree_status_t loom_low_lower_emit(loom_low_lower_context_t* context,
   return iree_diagnostic_emit(context->options->emitter, &emission);
 }
 
-iree_status_t loom_low_lower_emit_source_type_unsupported(
-    loom_low_lower_context_t* context, const loom_op_t* source_op,
-    iree_string_view_t field_name, loom_type_t actual_type) {
+IREE_ATTRIBUTE_COLD IREE_ATTRIBUTE_NOINLINE iree_status_t
+loom_low_lower_emit_source_type_unsupported(loom_low_lower_context_t* context,
+                                            const loom_op_t* source_op,
+                                            iree_string_view_t field_name,
+                                            loom_type_t actual_type) {
   const loom_diagnostic_param_t params[] = {
       loom_param_string(field_name),
       loom_param_type(actual_type),

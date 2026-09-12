@@ -310,8 +310,7 @@ static iree_status_t loom_spirv_map_argument(
     return iree_ok_status();
   }
   if (loom_type_is_vector(source_type)) {
-    return loom_low_lower_emit_source_type_unsupported(
-        context, source_function_op, IREE_SV("argument"), source_type);
+    return iree_ok_status();
   }
 
   *out_argument = (loom_low_lower_abi_argument_t){

@@ -2,6 +2,16 @@
 
 spirv.target<vulkan1_3> @target
 
+// A native vector body representation does not imply a vector argument ABI.
+// ERROR@+1: TARGET/033 {field_name="argument", actual_type="vector<4xi32>"}
+func.def target(@target) @unsupported_vector_argument(%input: vector<4xi32>, %result: i32) -> (i32) {
+  func.return %result : i32
+}
+
+// ====
+
+spirv.target<vulkan1_3> @target
+
 func.def target(@target) @unsupported_scalar_pow_math(%base: f32, %exponent: f32) -> (f32) {
   // ERROR@+1: LOWERING/036 {op_name="scalar.powf", phase_name="legalize-math", policy_name="spirv-math", math_op="powf", lane_domain="scalar", element_type="f32", constraint_key="math.op.native_arithmetic"}
   %result = scalar.powf<afn> %base, %exponent : f32

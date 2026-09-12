@@ -300,6 +300,7 @@ loom_cc_test(
     loom::ir
     loom::ops::func
     loom::ops::low
+    loom::target::low_descriptor_registry
     loom::target::registers
     loom::target::test::descriptors
     loom::target::test::low_registry
