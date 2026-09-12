@@ -22,6 +22,12 @@ namespace {
 // Models only the KFD ioctl dependency; reservations and buffer ownership use
 // the production implementation and real host allocation/mapping operations.
 struct NativeBufferState {
+  // Number of map calls interrupted after completing the device prefix.
+  uint32_t map_interruptions = 0;
+  // Number of unmap calls interrupted after completing the device prefix.
+  uint32_t unmap_interruptions = 0;
+  // Number of free calls interrupted before consuming the allocation.
+  uint32_t free_interruptions = 0;
   // Persistent map error returned before making native progress, or zero.
   int map_error = 0;
   // Persistent map error after establishing access, or zero.
@@ -38,7 +44,7 @@ struct NativeBufferState {
   std::vector<uint32_t> map_progress;
   // Input unmap progress observed by every native call.
   std::vector<uint32_t> unmap_progress;
-  // Number of native free attempts.
+  // Number of native free attempts, including interruptions.
   uint32_t free_count = 0;
   // Whether the native allocation has not yet been consumed by free.
   bool allocation_live = false;
@@ -91,6 +97,11 @@ extern "C" int __wrap_ioctl(int descriptor, unsigned long request, ...) {
         errno = native_state->map_completion_error;
         return -1;
       }
+      if (native_state->map_interruptions != 0) {
+        --native_state->map_interruptions;
+        errno = EINTR;
+        return -1;
+      }
       return 0;
     }
     case AMDKFD_IOC_UNMAP_MEMORY_FROM_GPU: {
@@ -106,6 +117,11 @@ extern "C" int __wrap_ioctl(int descriptor, unsigned long request, ...) {
         return -1;
       }
       unmap->n_success = 1;
+      if (native_state->unmap_interruptions != 0) {
+        --native_state->unmap_interruptions;
+        errno = EINTR;
+        return -1;
+      }
       native_state->access_live = false;
       return 0;
     }
@@ -117,6 +133,11 @@ extern "C" int __wrap_ioctl(int descriptor, unsigned long request, ...) {
       ++native_state->free_count;
       if (native_state->free_error != 0) {
         errno = native_state->free_error;
+        return -1;
+      }
+      if (native_state->free_interruptions != 0) {
+        --native_state->free_interruptions;
+        errno = EINTR;
         return -1;
       }
       native_state->allocation_live = false;
@@ -151,6 +172,9 @@ class KfdBufferNativeTest : public ::testing::Test {
   }
 
   void TearDown() override {
+    native_.map_interruptions = 0;
+    native_.unmap_interruptions = 0;
+    native_.free_interruptions = 0;
     if (buffer_ != nullptr) {
       EXPECT_EQ(amdf_gpu_kfd_buffer_destroy(buffer_), AMDF_STATUS_OK);
     }
@@ -194,6 +218,30 @@ class KfdBufferNativeTest : public ::testing::Test {
   // Address information published together with the buffer.
   amdf_gpu_kfd_buffer_result_t result_ = {};
 };
+
+TEST_F(KfdBufferNativeTest, CompletesInterruptedMapWithNativeProgress) {
+  native_.map_interruptions = 2;
+  ASSERT_EQ(Create(), AMDF_STATUS_OK);
+  EXPECT_EQ(native_.map_progress, (std::vector<uint32_t>{0, 1, 1}));
+  EXPECT_TRUE(native_.unmap_progress.empty());
+  EXPECT_EQ(native_.free_count, 0u);
+}
+
+TEST_F(KfdBufferNativeTest, CompletesInterruptedUnmapBeforeFree) {
+  ASSERT_EQ(Create(), AMDF_STATUS_OK);
+  native_.unmap_interruptions = 2;
+  EXPECT_EQ(Destroy(), AMDF_STATUS_OK);
+  EXPECT_EQ(native_.unmap_progress, (std::vector<uint32_t>{0, 1, 1}));
+  EXPECT_EQ(native_.free_count, 1u);
+}
+
+TEST_F(KfdBufferNativeTest, CompletesInterruptedFreeBeforeConsumingHandle) {
+  ASSERT_EQ(Create(), AMDF_STATUS_OK);
+  native_.free_interruptions = 2;
+  EXPECT_EQ(Destroy(), AMDF_STATUS_OK);
+  EXPECT_EQ(native_.unmap_progress, (std::vector<uint32_t>{0}));
+  EXPECT_EQ(native_.free_count, 3u);
+}
 
 TEST_F(KfdBufferNativeTest, DoesNotRetryNonInterruptionMapFailure) {
   native_.map_error = ENOMEM;

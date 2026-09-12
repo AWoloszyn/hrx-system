@@ -24,7 +24,7 @@ struct amdf_gpu_kfd_buffer_t {
   size_t byte_length;
   // True until the GPU mapping and its unmap synchronization have completed.
   bool mapped;
-  // Native unmap progress retained across an interrupted final synchronization.
+  // Native unmap progress retained when an error interrupts full teardown.
   uint32_t unmap_success_count;
   // Owned CPU VA interval reserving the GPU VA and any CPU backing mapping.
   struct {
@@ -35,6 +35,19 @@ struct amdf_gpu_kfd_buffer_t {
   } reservation;
 };
 
+// Map/unmap retain their completed prefix in the ioctl payload; an interrupted
+// wait must resume with that progress. Free of an ordinary buffer is
+// interrupted before consuming its handle. Other native failures remain
+// terminal results of this call, not reasons to retry.
+static int amdf_gpu_kfd_buffer_ioctl(int descriptor, unsigned long request,
+                                     void* arguments) {
+  int result;
+  do {
+    result = ioctl(descriptor, request, arguments);
+  } while (result == -1 && errno == EINTR);
+  return result;
+}
+
 static amdf_status_t amdf_gpu_kfd_buffer_release_native(
     amdf_gpu_kfd_buffer_t* buffer) {
   if (buffer->mapped) {
@@ -44,8 +57,8 @@ static amdf_status_t amdf_gpu_kfd_buffer_release_native(
         .n_devices = 1,
         .n_success = buffer->unmap_success_count,
     };
-    const int result = ioctl(buffer->device->descriptor,
-                             AMDKFD_IOC_UNMAP_MEMORY_FROM_GPU, &unmap);
+    const int result = amdf_gpu_kfd_buffer_ioctl(
+        buffer->device->descriptor, AMDKFD_IOC_UNMAP_MEMORY_FROM_GPU, &unmap);
     buffer->unmap_success_count = unmap.n_success;
     if (result != 0) return amdf_linux_error(errno);
     if (unmap.n_success != 1) return amdf_linux_error(EPROTO);
@@ -55,8 +68,9 @@ static amdf_status_t amdf_gpu_kfd_buffer_release_native(
     struct kfd_ioctl_free_memory_of_gpu_args release = {
         .handle = buffer->handle,
     };
-    if (ioctl(buffer->device->descriptor, AMDKFD_IOC_FREE_MEMORY_OF_GPU,
-              &release) != 0) {
+    if (amdf_gpu_kfd_buffer_ioctl(buffer->device->descriptor,
+                                  AMDKFD_IOC_FREE_MEMORY_OF_GPU,
+                                  &release) != 0) {
       return amdf_linux_error(errno);
     }
     buffer->handle = 0;
@@ -183,8 +197,8 @@ amdf_status_t amdf_gpu_kfd_buffer_create(
         .device_ids_array_ptr = (uintptr_t)&device->topology.gpu_id,
         .n_devices = 1,
     };
-    const int result =
-        ioctl(device->descriptor, AMDKFD_IOC_MAP_MEMORY_TO_GPU, &map);
+    const int result = amdf_gpu_kfd_buffer_ioctl(
+        device->descriptor, AMDKFD_IOC_MAP_MEMORY_TO_GPU, &map);
     // Mapping can succeed before the final residency/page-table wait fails.
     buffer->mapped = map.n_success != 0;
     if (result != 0) {

@@ -29,7 +29,8 @@ enum amdf_gpu_kfd_buffer_host_access_e {
   AMDF_GPU_KFD_BUFFER_HOST_ACCESS_BORROWED = 2,
 };
 
-// Complete construction parameters for one KFD allocation and GPU mapping.
+// Construction parameters for ordinary GTT, VRAM or registered host storage.
+// Doorbell and MMIO allocations have separate native ownership contracts.
 typedef struct amdf_gpu_kfd_buffer_create_info_t {
   // Native KFD allocation flags.
   uint32_t native_flags;
