@@ -241,12 +241,12 @@ low.func.def target<vm.core>(@target) abi(vm_function) @i32_bitfield_b128_shape(
   %145 = integer.or.i32 %144, %143
   %146 = constant.i32 4294967264
   %147 = integer.add.i32 %121, %146
+  %148 = integer.add.i32 %129, %146
+  %149 = integer.add.i32 %137, %146
+  %150 = integer.add.i32 %145, %146
   buffer.store %output_view, %110, %110, %147, 0, 8
-  %149 = integer.add.i32 %129, %146
-  buffer.store %output_view, %122, %122, %149, 0, 8
-  %151 = integer.add.i32 %137, %146
-  buffer.store %output_view, %130, %130, %151, 0, 8
-  %153 = integer.add.i32 %145, %146
-  buffer.store %output_view, %138, %138, %153, 0, 8
+  buffer.store %output_view, %122, %122, %148, 0, 8
+  buffer.store %output_view, %130, %130, %149, 0, 8
+  buffer.store %output_view, %138, %138, %150, 0, 8
   return
 }
