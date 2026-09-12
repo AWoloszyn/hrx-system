@@ -36,6 +36,19 @@ loom_cc_library(
 )
 
 loom_cc_library(
+    name = "load_coalescing",
+    srcs = ["load_coalescing.c"],
+    hdrs = ["load_coalescing.h"],
+    deps = [
+        "//loom/src/loom/analysis:symbolic_expr",
+        "//loom/src/loom/ops/vector",
+        "//loom/src/loom/ops/view",
+        "//loom/src/loom/rewrite:rewriter",
+        "//runtime/src/iree/base",
+    ],
+)
+
+loom_cc_library(
     name = "target_legalization",
     srcs = ["target_legalization.c"],
     hdrs = ["target_legalization.h"],

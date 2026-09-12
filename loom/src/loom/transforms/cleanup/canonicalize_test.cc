@@ -700,6 +700,7 @@ TEST_F(CanonicalizeTest, DriverAcceptsSeedFacts) {
   loom_canonicalizer_result_t result;
   loom_canonicalizer_options_t options = {
       /*.max_iterations=*/{},
+      /*.flags=*/0,
       /*.target_facts=*/NULL,
       /*.seed_facts=*/&seed_facts,
   };
@@ -786,6 +787,7 @@ TEST_F(CanonicalizeTest, DriverPreservesExplicitTargetFactsAcrossSideRegions) {
   loom_canonicalizer_result_t result;
   loom_canonicalizer_options_t options = {
       /*.max_iterations=*/{},
+      /*.flags=*/0,
       /*.target_facts=*/&target_facts,
       /*.seed_facts=*/&seed_facts,
   };
@@ -856,6 +858,7 @@ TEST_F(CanonicalizeTest, RegionDriverAcceptsSeedFacts) {
   loom_canonicalizer_result_t result;
   loom_canonicalizer_options_t options = {
       /*.max_iterations=*/{},
+      /*.flags=*/0,
       /*.target_facts=*/NULL,
       /*.seed_facts=*/&seed_facts,
   };

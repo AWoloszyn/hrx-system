@@ -37,6 +37,22 @@ loom_cc_library(
 
 loom_cc_library(
   NAME
+    load_coalescing
+  HDRS
+    "load_coalescing.h"
+  SRCS
+    "load_coalescing.c"
+  DEPS
+    iree::base
+    loom::analysis::symbolic_expr
+    loom::ops::vector
+    loom::ops::view
+    loom::rewrite::rewriter
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
     target_legalization
   HDRS
     "target_legalization.h"

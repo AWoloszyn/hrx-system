@@ -14,6 +14,7 @@ loom_check_test_suite(
     test
   SRCS
     "linearize_view_accesses.loom-test"
+    "load_coalescing.loom-test"
 )
 
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

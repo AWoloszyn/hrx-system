@@ -43,6 +43,7 @@ loom_cc_library(
         "//loom/src/loom/rewrite:rewriter",
         "//loom/src/loom/rewrite:type_propagation",
         "//loom/src/loom/target:pass_environment",
+        "//loom/src/loom/transforms/view:load_coalescing",
         "//loom/src/loom/util:fact_table",
         "//loom/src/loom/util:walk",
         "//runtime/src/iree/base",

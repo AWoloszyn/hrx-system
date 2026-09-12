@@ -171,13 +171,22 @@ static iree_status_t loom_target_pipeline_build_canonicalize_body(
   return loom_target_pipeline_build_run(builder, IREE_SV("canonicalize"));
 }
 
+static iree_status_t loom_target_pipeline_build_coalescing_canonicalize_body(
+    loom_builder_t* builder, void* user_data) {
+  (void)user_data;
+  return loom_target_pipeline_build_run_with_string_option(
+      builder, IREE_SV("canonicalize"), IREE_SV("view-loads"),
+      IREE_SV("coalesce"));
+}
+
 static iree_status_t
 loom_target_pipeline_build_cleanup_expanded_target_functions(
     loom_builder_t* builder, void* user_data) {
   (void)user_data;
   loom_op_t* for_op = NULL;
   return loom_target_pipeline_build_for_target_functions(
-      builder, loom_target_pipeline_build_canonicalize_body, NULL, &for_op);
+      builder, loom_target_pipeline_build_coalescing_canonicalize_body, NULL,
+      &for_op);
 }
 
 static iree_status_t loom_target_pipeline_build_source_to_low(
@@ -297,7 +306,9 @@ loom_target_pipeline_build_source_normalization_before_authoring_expansion(
       builder, IREE_SV("normalize-kernel-resources")));
   IREE_RETURN_IF_ERROR(loom_target_pipeline_build_run(
       builder, IREE_SV("promote-private-fragments")));
-  return loom_target_pipeline_build_cleanup(builder);
+  IREE_RETURN_IF_ERROR(
+      loom_target_pipeline_build_coalescing_canonicalize_body(builder, NULL));
+  return loom_target_pipeline_build_run(builder, IREE_SV("cse"));
 }
 
 static iree_status_t
