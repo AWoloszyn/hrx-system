@@ -10,6 +10,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <functional>
+#include <thread>
 
 #include "amdf/amdf.h"
 #include "amdf/gpu.h"
@@ -184,7 +186,8 @@ class UserQueueMemoryScenario {
       : api_(api), gpu_api_(gpu_api), endpoint_(endpoint), device_(device) {}
 
   void RunCopiesBetweenExactAccessAttachments(
-      amdf_queue_command_type_t command_type);
+      amdf_queue_command_type_t command_type,
+      const std::function<void()>& before_publication = {});
 
   bool Release() {
     if (queue_mapping_ != nullptr) {
@@ -350,7 +353,8 @@ class UserQueueMemoryScenario {
 };
 
 void UserQueueMemoryScenario::RunCopiesBetweenExactAccessAttachments(
-    amdf_queue_command_type_t command_type) {
+    amdf_queue_command_type_t command_type,
+    const std::function<void()>& before_publication) {
   uint32_t queue_family_ordinal = UINT32_MAX;
   ASSERT_EQ(FindTransferFamily(command_type, &queue_family_ordinal),
             AMDF_STATUS_OK);
@@ -479,6 +483,13 @@ void UserQueueMemoryScenario::RunCopiesBetweenExactAccessAttachments(
   EXPECT_EQ(queue_status.consumed_index, 0u);
   EXPECT_EQ(queue_status.terminal_status, AMDF_STATUS_OK);
 
+  // Lifecycle cases can close peer devices while this device's memory, queue,
+  // and CPU views are live, before the GPU proves their continued usability.
+  if (before_publication) {
+    before_publication();
+    if (::testing::Test::HasFatalFailure()) return;
+  }
+
   auto* ring = reinterpret_cast<uint32_t*>(
       static_cast<uintptr_t>(mapping_info.ring_address));
   const EncodedQueueStream stream =
@@ -564,6 +575,44 @@ TEST_F(Gfx1151UserQueueMemoryTest, Pm4CopiesBetweenExactAccessAttachments) {
 
 TEST_F(Gfx1151UserQueueMemoryTest, SdmaCopiesBetweenExactAccessAttachments) {
   RunCopiesBetweenExactAccessAttachments(AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA);
+}
+
+TEST_F(Gfx1151UserQueueMemoryTest, ConcurrentDeviceCreationAndRecreation) {
+  amdf_gpu_device_create_info_t create_info = {};
+  create_info.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_CREATE_INFO;
+  create_info.structure_size = sizeof(create_info);
+  // This lifecycle case deliberately creates peers; all ordinary queue and
+  // memory tests continue borrowing the one cached device.
+  UserQueueMemoryScenario survivor(api_, gpu_api_, endpoint_, device_);
+  survivor.RunCopiesBetweenExactAccessAttachments(
+      AMDF_QUEUE_COMMAND_TYPE_GPU_PM4, [&]() {
+        for (size_t generation = 0; generation < 2; ++generation) {
+          std::array<amdf_device_t*, 2> peers = {};
+          std::array<amdf_status_t, 2> statuses = {};
+          std::array<std::thread, 2> threads;
+          for (size_t i = 0; i < peers.size(); ++i) {
+            threads[i] = std::thread([&, i]() {
+              statuses[i] =
+                  gpu_api_->device_create(endpoint_, &create_info, &peers[i]);
+            });
+          }
+          for (auto& thread : threads) thread.join();
+          for (size_t i = 0; i < peers.size(); ++i) {
+            EXPECT_EQ(statuses[i], AMDF_STATUS_OK);
+            if (peers[i] == nullptr) continue;
+            const bool released = RunGfx1151UserQueueMemoryCopies(
+                api_, gpu_api_, endpoint_, peers[i],
+                i == 0 ? AMDF_QUEUE_COMMAND_TYPE_GPU_PM4
+                       : AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA);
+            // An unretired queue retains its entire device chain on failure.
+            if (released) {
+              EXPECT_EQ(api_->device_destroy(peers[i]), AMDF_STATUS_OK);
+            }
+          }
+          ASSERT_FALSE(HasFailure());
+        }
+      });
+  ASSERT_TRUE(survivor.Release());
 }
 
 }  // namespace

@@ -81,6 +81,7 @@ amdf_cc_library(
     srcs = ["instance.c"],
     hdrs = ["instance.h"],
     target_compatible_with = WINDOWS_COMPATIBILITY,
+    visibility = ["//libamdf/src/platform:__pkg__"],
     deps = [
         ":endpoint_snapshot",
         ":kmt_api",

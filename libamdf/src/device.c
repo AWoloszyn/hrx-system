@@ -10,6 +10,8 @@
 
 #include "libamdf/src/allocator.h"
 #include "libamdf/src/endpoint.h"
+#include "libamdf/src/instance.h"
+#include "libamdf/src/platform/instance.h"
 
 amdf_status_t amdf_device_initialize(amdf_device_t* device,
                                      const amdf_device_vtable_t* vtable,
@@ -64,7 +66,10 @@ amdf_status_t AMDF_CALL amdf_device_destroy(amdf_device_t* device) {
   if (amdf_child_tracker_count(&device->children) != 0) {
     return amdf_make_api_status(AMDF_STATUS_CODE_BUSY);
   }
+  amdf_platform_instance_t* platform = device->provider_instance->platform;
+  amdf_platform_instance_lock_native(platform);
   const amdf_status_t status = device->vtable->destroy_native(device);
+  amdf_platform_instance_unlock_native(platform);
   if (amdf_status_is_ok(status)) {
     const amdf_allocator_t host_allocator = device->host_allocator;
     amdf_device_deinitialize(device);

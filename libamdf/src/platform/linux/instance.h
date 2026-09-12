@@ -7,6 +7,8 @@
 #ifndef AMDF_SRC_PLATFORM_LINUX_INSTANCE_H_
 #define AMDF_SRC_PLATFORM_LINUX_INSTANCE_H_
 
+#include <pthread.h>
+
 #include "libamdf/src/platform/instance.h"
 
 struct amdf_platform_instance_t {
@@ -14,6 +16,8 @@ struct amdf_platform_instance_t {
   amdf_allocator_t host_allocator;
   // Owned sysfs root used for discovery without process-global state.
   int sysfs_descriptor;
+  // Serializes cold native connection preparation and device teardown.
+  pthread_mutex_t native_mutex;
 };
 
 #endif  // AMDF_SRC_PLATFORM_LINUX_INSTANCE_H_

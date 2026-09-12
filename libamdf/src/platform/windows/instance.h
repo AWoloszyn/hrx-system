@@ -15,6 +15,8 @@ struct amdf_platform_instance_t {
   amdf_allocator_t host_allocator;
   // Immutable KMT procedure table owned by this platform instance.
   amdf_kmt_api_t kmt;
+  // Serializes cold native connection preparation and device teardown.
+  SRWLOCK native_lock;
 };
 
 #endif  // AMDF_SRC_PLATFORM_WINDOWS_INSTANCE_H_

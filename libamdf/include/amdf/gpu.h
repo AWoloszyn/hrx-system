@@ -53,8 +53,9 @@ typedef uint64_t amdf_gpu_device_features_t;
 enum amdf_gpu_device_feature_bits_e {
   /// REGISTERED_HOST borrows caller pages without copying their contents.
   AMDF_GPU_DEVICE_FEATURE_HOST_REGISTRATION = UINT64_C(1) << 0,
-  /// Destroying a device permits later creation without caller-retained native
-  /// handles or process exit.
+  /// Destroying a device permits later creation within the same instance,
+  /// without caller-retained native handles or process exit. This does not
+  /// imply native process-context reclamation when the instance is destroyed.
   AMDF_GPU_DEVICE_FEATURE_DEVICE_RECREATION = UINT64_C(1) << 1,
   /// LOCAL allocations provide device-local physical placement.
   AMDF_GPU_DEVICE_FEATURE_LOCAL_MEMORY = UINT64_C(1) << 2,

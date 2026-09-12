@@ -14,7 +14,9 @@
 #include "libamdf/src/gpu/endpoint_profile.h"
 #include "libamdf/src/gpu/memory.h"
 #include "libamdf/src/gpu/umd/device.h"
+#include "libamdf/src/gpu/umd/instance.h"
 #include "libamdf/src/instance.h"
+#include "libamdf/src/platform/instance.h"
 #include "libamdf/src/structure.h"
 
 typedef struct amdf_gpu_device_t {
@@ -72,8 +74,9 @@ amdf_status_t AMDF_CALL amdf_gpu_device_create(
     return profile_status;
   }
   amdf_gpu_device_features_t features = 0;
+  amdf_instance_t* instance = amdf_endpoint_get_instance(endpoint);
   const amdf_native_lifetime_t native_lifetime =
-      amdf_instance_native_lifetime(amdf_endpoint_get_instance(endpoint));
+      amdf_instance_native_lifetime(instance);
   const amdf_status_t lifetime_status =
       amdf_gpu_endpoint_profile_query_device_features(
           untyped_profile, native_lifetime, &features);
@@ -90,9 +93,15 @@ amdf_status_t AMDF_CALL amdf_gpu_device_create(
                                   endpoint, AMDF_ENGINE_KIND_GPU);
   amdf_gpu_umd_device_result_t result = {0};
   if (amdf_status_is_ok(status)) {
-    status = amdf_gpu_umd_device_create(amdf_endpoint_get_platform(endpoint),
-                                        host_allocator, native_lifetime,
-                                        &device->umd, &result);
+    amdf_platform_instance_lock_native(instance->platform);
+    status = amdf_gpu_umd_instance_prepare(&instance->gpu, native_lifetime,
+                                           host_allocator);
+    if (amdf_status_is_ok(status)) {
+      status = amdf_gpu_umd_device_create(
+          instance->gpu, amdf_endpoint_get_platform(endpoint), host_allocator,
+          native_lifetime, &device->umd, &result);
+    }
+    amdf_platform_instance_unlock_native(instance->platform);
   }
   if (amdf_status_is_ok(status)) {
     device->info.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_INFO;

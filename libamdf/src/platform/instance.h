@@ -25,6 +25,14 @@ amdf_status_t amdf_platform_instance_create(
 amdf_status_t amdf_platform_instance_destroy(
     amdf_platform_instance_t* instance);
 
+// Serializes cold shared-native preparation and native device teardown.
+// The nonrecursive lock may span native IO. Queue and allocation hot paths do
+// not acquire it. The instance must remain live through the matching unlock.
+void amdf_platform_instance_lock_native(amdf_platform_instance_t* instance);
+
+// Releases the cold native-state lock held by the calling thread.
+void amdf_platform_instance_unlock_native(amdf_platform_instance_t* instance);
+
 // Enumerates a bounded snapshot of normalized execution endpoints. Success and
 // BUFFER_TOO_SMALL publish the output prefix and total together; every other
 // result leaves both outputs unchanged.

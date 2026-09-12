@@ -42,7 +42,8 @@ amdf_status_t amdf_gpu_umd_query_endpoint_profile(
       (amdf_gpu_lifetime_properties_t){
           .supported = true,
           .features = topology.memory_features |
-                      AMDF_GPU_DEVICE_FEATURE_HOST_REGISTRATION,
+                      AMDF_GPU_DEVICE_FEATURE_HOST_REGISTRATION |
+                      AMDF_GPU_DEVICE_FEATURE_DEVICE_RECREATION,
       };
   topology.properties.native_lifetimes[AMDF_NATIVE_LIFETIME_INSTANCE] =
       (amdf_gpu_lifetime_properties_t){

@@ -40,10 +40,12 @@ iree_cc_library(
     libamdf::src::device
     libamdf::src::endpoint
     libamdf::src::gpu::umd::device
+    libamdf::src::gpu::umd::instance
     libamdf::src::gpu::umd::memory
     libamdf::src::host_mapping
     libamdf::src::instance
     libamdf::src::memory
+    libamdf::src::platform
     libamdf::src::structure
   PUBLIC
 )

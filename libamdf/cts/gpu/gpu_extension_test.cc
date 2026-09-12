@@ -433,7 +433,7 @@ TEST_F(GpuEndpointTest, CreatesReclaimableDevicesFromOneEndpoint) {
       gpu_api_->endpoint_query_device_capabilities(endpoint_, &capabilities),
       AMDF_STATUS_OK);
   if (!(capabilities.features & AMDF_GPU_DEVICE_FEATURE_DEVICE_RECREATION)) {
-    GTEST_SKIP() << "native VM acquisition is process-lifetime";
+    GTEST_SKIP() << "device recreation is unavailable";
   }
   const amdf_gpu_device_create_info_t create_info = MakeDeviceCreateInfo();
   ASSERT_EQ(GetCtsDeviceCache().GetGpuDevice(endpoint_, &device_),

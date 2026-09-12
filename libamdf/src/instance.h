@@ -8,7 +8,25 @@
 #define AMDF_SRC_INSTANCE_H_
 
 #include "amdf/amdf.h"
+#include "libamdf/src/child_tracker.h"
 #include "libamdf/src/platform/instance.h"
+
+struct amdf_gpu_umd_instance_t;
+
+struct amdf_instance_t {
+  // Immutable lifetime policy for native resources created by this instance.
+  amdf_native_lifetime_t native_lifetime;
+  // Host allocator copied for this instance and all of its children.
+  amdf_allocator_t host_allocator;
+  // Platform implementation owned by this instance.
+  amdf_platform_instance_t* platform;
+  // Shared GPU native connection state, prepared by explicit device creation.
+  // The platform native-state lock protects preparation; provider teardown
+  // releases it after all endpoints close. NULL means no separate state.
+  struct amdf_gpu_umd_instance_t* gpu;
+  // Number of open children borrowing this instance.
+  amdf_child_tracker_t children;
+};
 
 #ifdef __cplusplus
 extern "C" {

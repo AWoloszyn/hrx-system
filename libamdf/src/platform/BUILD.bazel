@@ -30,6 +30,21 @@ amdf_cc_library(
 )
 
 amdf_cc_library(
+    name = "native_instance",
+    target_compatible_with = select({
+        "@platforms//os:linux": [],
+        "@platforms//os:windows": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    visibility = ["//libamdf/src:__pkg__"],
+    deps = select({
+        "@platforms//os:linux": ["//libamdf/src/platform/linux:instance"],
+        "@platforms//os:windows": ["//libamdf/src/platform/windows:instance"],
+        "//conditions:default": [],
+    }),
+)
+
+amdf_cc_library(
     name = "native_wait",
     target_compatible_with = select({
         "@platforms//os:linux": [],

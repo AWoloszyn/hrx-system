@@ -27,13 +27,13 @@ typedef struct amdf_gpu_kfd_vm_native_api_t {
   amdf_status_t (*unmap)(void* user_data, void* mapping, size_t byte_length);
 } amdf_gpu_kfd_vm_native_api_t;
 
-// Device-owned bootstrap resources, initially zero. Successful acquisition
+// Instance-owned bootstrap resources, initially zero. Successful acquisition
 // leaves these live until release; failed acquisition retains partial progress
-// for the device's ordinary failed-construction cleanup.
+// for the instance's next preparation or teardown attempt.
 typedef struct amdf_gpu_kfd_vm_bootstrap_t {
   // Native operations borrowed until all bootstrap resources are released.
   const amdf_gpu_kfd_vm_native_api_t* native_api;
-  // Fresh device render file borrowed throughout acquisition and release.
+  // Instance render file borrowed throughout acquisition and release.
   int render_descriptor;
   // Owned DRM context; the kernel allocates nonzero context identifiers.
   uint32_t context_identifier;

@@ -310,7 +310,7 @@ enum amdf_native_lifetime_e {
   /// Permits native process-owned state to survive instance destruction until
   /// process exit. This is the default and enables Linux KFD host registration.
   /// KFD's primary VM binding requires coordination with other KFD clients;
-  /// after device destruction a fresh acquisition can fail with native EBUSY.
+  /// after instance destruction a fresh acquisition can fail with native EBUSY.
   AMDF_NATIVE_LIFETIME_PROCESS = 0,
   /// Requires acquired native state to be releasable by instance destruction.
   /// A provider that cannot meet this bound reports UNSUPPORTED when its

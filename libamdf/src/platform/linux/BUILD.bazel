@@ -55,7 +55,9 @@ amdf_cc_library(
     name = "instance",
     srcs = ["instance.c"],
     hdrs = ["instance.h"],
+    linkopts = ["-pthread"],
     target_compatible_with = ["@platforms//os:linux"],
+    visibility = ["//libamdf/src/platform:__pkg__"],
     deps = [
         ":file",
         "//libamdf/src:allocator",

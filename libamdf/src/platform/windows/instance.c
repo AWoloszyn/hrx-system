@@ -19,6 +19,7 @@ amdf_status_t amdf_platform_instance_create(
                   amdf_alignof(amdf_platform_instance_t), (void**)&instance);
   if (!amdf_status_is_ok(status)) return status;
   instance->host_allocator = host_allocator;
+  InitializeSRWLock(&instance->native_lock);
   status = amdf_kmt_api_initialize(&instance->kmt);
   if (amdf_status_is_ok(status)) {
     *out_instance = instance;
@@ -26,6 +27,14 @@ amdf_status_t amdf_platform_instance_create(
     amdf_free(host_allocator, instance);
   }
   return status;
+}
+
+void amdf_platform_instance_lock_native(amdf_platform_instance_t* instance) {
+  AcquireSRWLockExclusive(&instance->native_lock);
+}
+
+void amdf_platform_instance_unlock_native(amdf_platform_instance_t* instance) {
+  ReleaseSRWLockExclusive(&instance->native_lock);
 }
 
 amdf_status_t amdf_platform_instance_destroy(

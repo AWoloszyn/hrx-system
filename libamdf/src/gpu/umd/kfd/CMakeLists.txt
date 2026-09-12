@@ -109,16 +109,63 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
 iree_cc_library(
   NAME
+    instance
+  HDRS
+    "instance.h"
+  SRCS
+    "instance.c"
+  DEPS
+    ::file
+    ::topology
+    ::vm
+    amdf::headers
+    libamdf::src::allocator
+    libamdf::src::gpu::umd::instance
+    libamdf::src::platform::linux::endpoint
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_library(
+  NAME
     device_state
   HDRS
     "device.h"
   DEPS
     ::reset_monitor
     ::topology
-    ::vm
     amdf::headers
     libamdf::src::gpu::umd::device
   PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_test(
+  NAME
+    instance_test
+  SRCS
+    "instance_test.cc"
+  LINKOPTS
+    "-Wl,--wrap=open"
+    "-Wl,--wrap=close"
+    "-Wl,--wrap=ioctl"
+    "-Wl,--wrap=amdf_linux_endpoint_open_file"
+    "-Wl,--wrap=amdf_gpu_kfd_vm_acquire"
+    "-Wl,--wrap=amdf_gpu_kfd_vm_bootstrap_release"
+  DEPS
+    ::instance
+    ::vm
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+    libamdf::src::allocator
+    libamdf::src::platform::linux::endpoint
+    libamdf::src::platform::linux::file
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
 )
 endif()
 
@@ -165,11 +212,10 @@ iree_cc_library(
     "device.c"
   DEPS
     ::device_state
-    ::file
+    ::instance
     ::reset_monitor
     ::topology
     ::user_queue_native
-    ::vm
     amdf::headers
     libamdf::src::allocator
     libamdf::src::gpu::umd::kfd::target::user_queue
@@ -341,6 +387,7 @@ iree_cc_library(
     ::buffer
     ::device
     ::endpoint_profile
+    ::instance
     ::kernel_queue
     ::memory
     ::user_queue

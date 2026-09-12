@@ -13,10 +13,22 @@ package(
 )
 
 amdf_cc_library(
+    name = "instance",
+    hdrs = ["instance.h"],
+    visibility = [
+        "//libamdf/src/gpu:__subpackages__",
+        "//libamdf/src/provider:__pkg__",
+    ],
+)
+
+amdf_cc_library(
     name = "device",
     hdrs = ["device.h"],
     visibility = ["//libamdf/src/gpu:__subpackages__"],
-    deps = ["//libamdf/src/platform"],
+    deps = [
+        ":instance",
+        "//libamdf/src/platform",
+    ],
 )
 
 amdf_cc_library(
@@ -67,6 +79,7 @@ amdf_cc_library(
     deps = [
         ":device",
         ":endpoint_profile",
+        ":instance",
         ":kernel_queue",
         ":memory",
         ":user_queue",

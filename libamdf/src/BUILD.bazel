@@ -75,9 +75,7 @@ amdf_cc_library(
     hdrs = ["instance.h"],
     visibility = ["//libamdf/src:__subpackages__"],
     deps = [
-        ":allocator",
         ":child_tracker",
-        ":structure",
         "//libamdf/src/platform",
     ],
 )
@@ -92,13 +90,10 @@ amdf_cc_test(
     }),
     deps = [
         ":instance",
+        "//libamdf:amdf_static",
         "//third_party:google_test",
         "//third_party:google_test_main",
-    ] + select({
-        "@platforms//os:linux": ["//libamdf/src/platform/linux"],
-        "@platforms//os:windows": ["//libamdf/src/platform/windows"],
-        "//conditions:default": [],
-    }),
+    ],
 )
 
 amdf_cc_library(
@@ -124,6 +119,9 @@ amdf_cc_library(
         ":allocator",
         ":child_tracker",
         ":endpoint",
+        ":instance",
+        "//libamdf/src/platform",
+        "//libamdf/src/platform:native_instance",
     ],
 )
 

@@ -17,6 +17,7 @@ amdf_cc_library(
     srcs = [
         "amdf.c",
         "extension.c",
+        "instance.c",
     ],
     hdrs = ["extension.h"],
     defines = select({
@@ -33,6 +34,8 @@ amdf_cc_library(
     }),
     visibility = ["//libamdf:__pkg__"],
     deps = [
+        "//libamdf/src:allocator",
+        "//libamdf/src:child_tracker",
         "//libamdf/src:core",
         "//libamdf/src:device",
         "//libamdf/src:endpoint",
@@ -40,11 +43,14 @@ amdf_cc_library(
         "//libamdf/src:instance",
         "//libamdf/src:kernel_queue",
         "//libamdf/src:memory",
+        "//libamdf/src:structure",
         "//libamdf/src:user_queue",
+        "//libamdf/src/platform",
     ] + select({
         "//libamdf/config/provider:gpu": [
             "//libamdf/src/gpu",
             "//libamdf/src/gpu:extension",
+            "//libamdf/src/gpu/umd:instance",
         ],
         "//conditions:default": [],
     }) + select({

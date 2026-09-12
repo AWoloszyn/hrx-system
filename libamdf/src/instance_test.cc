@@ -16,6 +16,7 @@ TEST(InstanceLifetimeTest, DefaultsToProcessLifetime) {
   create_info.structure_size = sizeof(create_info);
   amdf_instance_t* instance = nullptr;
   ASSERT_EQ(amdf_instance_create(&create_info, &instance), AMDF_STATUS_OK);
+  EXPECT_EQ(instance->gpu, nullptr);
   EXPECT_EQ(amdf_instance_native_lifetime(instance),
             AMDF_NATIVE_LIFETIME_PROCESS);
   EXPECT_EQ(amdf_instance_destroy(instance), AMDF_STATUS_OK);
@@ -29,6 +30,7 @@ TEST(InstanceLifetimeTest, CopiesPolicyBeforeAnyEndpointIsOpened) {
   amdf_instance_t* instance = nullptr;
   ASSERT_EQ(amdf_instance_create(&create_info, &instance), AMDF_STATUS_OK);
   create_info.native_lifetime = AMDF_NATIVE_LIFETIME_PROCESS;
+  EXPECT_EQ(instance->gpu, nullptr);
   EXPECT_EQ(amdf_instance_native_lifetime(instance),
             AMDF_NATIVE_LIFETIME_INSTANCE);
   EXPECT_EQ(amdf_instance_destroy(instance), AMDF_STATUS_OK);

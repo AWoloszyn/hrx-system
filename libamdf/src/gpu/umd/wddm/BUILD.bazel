@@ -60,6 +60,13 @@ amdf_cc_library(
 )
 
 amdf_cc_library(
+    name = "instance",
+    srcs = ["instance.c"],
+    target_compatible_with = ["@platforms//os:windows"],
+    deps = ["//libamdf/src/gpu/umd:instance"],
+)
+
+amdf_cc_library(
     name = "device",
     srcs = ["device.c"],
     target_compatible_with = ["@platforms//os:windows"],
@@ -91,6 +98,7 @@ amdf_cc_library(
     deps = [
         ":device",
         ":endpoint_profile",
+        ":instance",
         ":kernel_queue",
         ":memory",
         ":user_queue",

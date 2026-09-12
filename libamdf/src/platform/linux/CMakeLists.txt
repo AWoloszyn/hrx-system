@@ -77,6 +77,8 @@ iree_cc_library(
     amdf::headers
     libamdf::src::allocator
     libamdf::src::platform
+  LINKOPTS
+    "-pthread"
   PUBLIC
 )
 endif()

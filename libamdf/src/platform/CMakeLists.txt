@@ -35,6 +35,23 @@ iree_cc_library(
 endif()
 
 if(AMDF_BUILD AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+set(_native_instance_platform_deps "")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  list(APPEND _native_instance_platform_deps libamdf::src::platform::linux::instance)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+  list(APPEND _native_instance_platform_deps libamdf::src::platform::windows::instance)
+endif()
+iree_cc_library(
+  NAME
+    native_instance
+  DEPS
+    amdf::headers
+    ${_native_instance_platform_deps}
+  PUBLIC
+)
+endif()
+
+if(AMDF_BUILD AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
 set(_native_wait_platform_deps "")
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   list(APPEND _native_wait_platform_deps libamdf::src::platform::linux::wait)

@@ -235,8 +235,9 @@ TEST_P(WindowsGpuDeviceRollbackTest,
   std::memset(&result, 0xA5, sizeof(result));
   const amdf_gpu_umd_device_result_t original = result;
 
-  const amdf_status_t status = amdf_gpu_umd_device_create(
-      endpoint_, instance_.host_allocator, GetParam(), &device, &result);
+  const amdf_status_t status =
+      amdf_gpu_umd_device_create(nullptr, endpoint_, instance_.host_allocator,
+                                 GetParam(), &device, &result);
 
   EXPECT_EQ(amdf_status_code(status), AMDF_STATUS_CODE_BUSY);
   EXPECT_EQ(reinterpret_cast<uintptr_t>(device), uintptr_t{1});
@@ -275,9 +276,10 @@ TEST_P(WindowsGpuDeviceRollbackTest,
   amdf_gpu_umd_device_result_t result;
   std::memset(&result, 0xA5, sizeof(result));
   const amdf_gpu_umd_device_result_t original = result;
-  EXPECT_EQ(amdf_gpu_umd_device_create(endpoint_, instance_.host_allocator,
-                                       GetParam(), &device, &result),
-            amdf_kmt_make_status(kFailure));
+  EXPECT_EQ(
+      amdf_gpu_umd_device_create(nullptr, endpoint_, instance_.host_allocator,
+                                 GetParam(), &device, &result),
+      amdf_kmt_make_status(kFailure));
   EXPECT_EQ(reinterpret_cast<uintptr_t>(device), uintptr_t{1});
   EXPECT_EQ(std::memcmp(&result, &original, sizeof(result)), 0);
   EXPECT_EQ(state_.live_allocation_count, 1u);
@@ -301,9 +303,10 @@ TEST_P(WindowsGpuDeviceRollbackTest,
   state_.paging_sync_object = 0x30;
   amdf_gpu_umd_device_t* device = nullptr;
   amdf_gpu_umd_device_result_t result = {};
-  ASSERT_EQ(amdf_gpu_umd_device_create(endpoint_, instance_.host_allocator,
-                                       GetParam(), &device, &result),
-            AMDF_STATUS_OK);
+  ASSERT_EQ(
+      amdf_gpu_umd_device_create(nullptr, endpoint_, instance_.host_allocator,
+                                 GetParam(), &device, &result),
+      AMDF_STATUS_OK);
   EXPECT_EQ(amdf_gpu_umd_device_destroy(device),
             amdf_kmt_make_status(kFailure));
   EXPECT_EQ(state_.live_allocation_count, 2u);

@@ -119,9 +119,7 @@ iree_cc_library(
   SRCS
     "instance.c"
   DEPS
-    ::allocator
     ::child_tracker
-    ::structure
     amdf::headers
     libamdf::src::platform
   PUBLIC
@@ -129,12 +127,6 @@ iree_cc_library(
 endif()
 
 if(AMDF_BUILD AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
-set(_instance_test_platform_deps "")
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  list(APPEND _instance_test_platform_deps libamdf::src::platform::linux)
-elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-  list(APPEND _instance_test_platform_deps libamdf::src::platform::windows)
-endif()
 iree_cc_test(
   NAME
     instance_test
@@ -142,10 +134,10 @@ iree_cc_test(
     "instance_test.cc"
   DEPS
     ::instance
+    amdf::amdf_static
     amdf::headers
     iree::third_party::google_test
     iree::third_party::google_test_main
-    ${_instance_test_platform_deps}
   LABELS
     "iree-build-requirement=libamdf"
 )
@@ -182,7 +174,10 @@ iree_cc_library(
     ::allocator
     ::child_tracker
     ::endpoint
+    ::instance
     amdf::headers
+    libamdf::src::platform
+    libamdf::src::platform::native_instance
   PUBLIC
 )
 endif()

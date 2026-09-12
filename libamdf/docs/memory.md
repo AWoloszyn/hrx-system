@@ -28,11 +28,16 @@ native clients.
 Linux GPU access uses KFD's primary context for process lifetime and a secondary
 context for instance lifetime. Primary contexts support caller-page registration;
 secondary contexts currently do not. Capability queries reflect the instance's
-policy before device creation. The primary GPU VM binding survives teardown;
-creating a replacement device with a fresh native file can fail with `EBUSY`.
-Applications keep that owner alive for their KFD use and coordinate with other
-KFD clients. Windows uses explicitly reclaimable native objects under either
-policy; instance lifetime does not create a separate process GPU address space.
+policy before device creation. Explicit GPU device creation prepares one shared
+KFD connection on the instance and acquires each GPU's VM with a stable render
+file. Execution devices borrow those connections. Closing and recreating devices
+within that instance reuses the exact binding under either policy; closing a
+device does not retain the execution object or any of its memory. Under process
+lifetime the primary VM binding can survive instance destruction, so a new
+instance or another native client with a different render file can encounter
+`EBUSY`. Applications coordinate their primary KFD use. Windows uses explicitly
+reclaimable native objects under either policy; instance lifetime does not create
+a separate process GPU address space.
 
 Discovery is passive. It supplies enough information to select hardware and plan
 memory without creating execution devices, queues, firmware contexts, address

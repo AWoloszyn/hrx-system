@@ -21,6 +21,7 @@ set(_provider_platform_deps "")
 if((AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Windows" OR (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64")))
   list(APPEND _provider_platform_deps libamdf::src::gpu)
   list(APPEND _provider_platform_deps libamdf::src::gpu::extension)
+  list(APPEND _provider_platform_deps libamdf::src::gpu::umd::instance)
 endif()
 if(AMDF_FAMILY_XDNA)
   list(APPEND _provider_platform_deps libamdf::src::xdna)
@@ -35,8 +36,11 @@ iree_cc_library(
   SRCS
     "amdf.c"
     "extension.c"
+    "instance.c"
   DEPS
     amdf::headers
+    libamdf::src::allocator
+    libamdf::src::child_tracker
     libamdf::src::core
     libamdf::src::device
     libamdf::src::endpoint
@@ -44,6 +48,8 @@ iree_cc_library(
     libamdf::src::instance
     libamdf::src::kernel_queue
     libamdf::src::memory
+    libamdf::src::platform
+    libamdf::src::structure
     libamdf::src::user_queue
     ${_provider_platform_deps}
   DEFINES

@@ -7,8 +7,10 @@
 #define _GNU_SOURCE
 #include "libamdf/src/gpu/umd/kfd/device.h"
 
+#include <unistd.h>
+
 #include "libamdf/src/allocator.h"
-#include "libamdf/src/gpu/umd/kfd/file.h"
+#include "libamdf/src/gpu/umd/kfd/instance.h"
 #include "libamdf/src/gpu/umd/kfd/reset_monitor.h"
 #include "libamdf/src/gpu/umd/kfd/target/user_queue.h"
 #include "libamdf/src/gpu/umd/kfd/user_queue_native.h"
@@ -16,17 +18,8 @@
 #include "libamdf/src/platform/linux/host_cache.h"
 
 amdf_status_t amdf_gpu_umd_device_destroy(amdf_gpu_umd_device_t* device) {
-  amdf_status_t status =
-      amdf_gpu_kfd_vm_bootstrap_release(&device->vm_bootstrap);
-  if (amdf_status_is_ok(status)) {
-    status = amdf_gpu_kfd_reset_monitor_deinitialize(&device->reset_monitor);
-  }
-  if (amdf_status_is_ok(status)) {
-    status = amdf_linux_file_close(&device->descriptor);
-  }
-  if (amdf_status_is_ok(status)) {
-    status = amdf_linux_file_close(&device->render_descriptor);
-  }
+  const amdf_status_t status =
+      amdf_gpu_kfd_reset_monitor_deinitialize(&device->reset_monitor);
   if (amdf_status_is_ok(status)) {
     const amdf_allocator_t host_allocator = device->host_allocator;
     amdf_free(host_allocator, device);
@@ -35,8 +28,9 @@ amdf_status_t amdf_gpu_umd_device_destroy(amdf_gpu_umd_device_t* device) {
 }
 
 amdf_status_t amdf_gpu_umd_device_create(
-    amdf_platform_endpoint_t* endpoint, amdf_allocator_t host_allocator,
-    amdf_native_lifetime_t native_lifetime, amdf_gpu_umd_device_t** out_device,
+    amdf_gpu_umd_instance_t* instance, amdf_platform_endpoint_t* endpoint,
+    amdf_allocator_t host_allocator, amdf_native_lifetime_t native_lifetime,
+    amdf_gpu_umd_device_t** out_device,
     amdf_gpu_umd_device_result_t* out_result) {
   amdf_gpu_umd_device_t* device = NULL;
   amdf_status_t status =
@@ -60,34 +54,11 @@ amdf_status_t amdf_gpu_umd_device_create(
       status = amdf_linux_host_cache_query_line_size(&device->cache_line_size);
     }
   }
-  struct kfd_ioctl_get_version_args version = {0};
   if (amdf_status_is_ok(status)) {
-    status = amdf_gpu_kfd_file_open(&device->descriptor, &version);
-  }
-  if (amdf_status_is_ok(status) &&
-      (version.major_version != 1 || version.minor_version < 18 ||
-       (native_lifetime == AMDF_NATIVE_LIFETIME_INSTANCE &&
-        version.minor_version < 19))) {
-    status = amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
-  }
-  if (amdf_status_is_ok(status) &&
-      native_lifetime == AMDF_NATIVE_LIFETIME_INSTANCE) {
-    if (ioctl(device->descriptor, AMDKFD_IOC_CREATE_PROCESS, NULL) != 0) {
-      status = amdf_linux_error(errno);
-    }
-  }
-  if (amdf_status_is_ok(status)) {
-    status = amdf_linux_endpoint_open_file(endpoint, &device->render_descriptor,
-                                           NULL);
-  }
-  if (amdf_status_is_ok(status)) {
-    status = amdf_gpu_kfd_vm_acquire(
-        device->descriptor, device->render_descriptor, &device->topology,
-        device->page_size, amdf_gpu_kfd_vm_default_native_api(),
-        &device->vm_bootstrap);
-  }
-  if (amdf_status_is_ok(status)) {
-    status = amdf_gpu_kfd_vm_bootstrap_release(&device->vm_bootstrap);
+    device->descriptor = amdf_gpu_kfd_instance_descriptor(instance);
+    status = amdf_gpu_kfd_instance_prepare_vm(
+        instance, endpoint, &device->topology, device->page_size,
+        &device->render_descriptor);
   }
   if (amdf_status_is_ok(status)) {
     amdf_gpu_kfd_user_queue_plans_t queue_plans;
@@ -108,13 +79,9 @@ amdf_status_t amdf_gpu_umd_device_create(
     };
     *out_device = device;
   } else {
-    const amdf_status_t release_status = amdf_gpu_umd_device_destroy(device);
-    if (!amdf_status_is_ok(release_status)) {
-      // Native cleanup retains any unreleased backing. Only unpublished host
-      // metadata is abandoned here; the endpoint owns no retry obligation.
-      amdf_free(host_allocator, device);
-      status = release_status;
-    }
+    // Connections belong to the instance. Reset-monitor acquisition is the
+    // final fallible step and leaves no owned context on failure.
+    amdf_free(host_allocator, device);
   }
   return status;
 }

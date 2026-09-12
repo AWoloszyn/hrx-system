@@ -12,10 +12,23 @@ iree_add_all_subdirs()
 if(AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
 iree_cc_library(
   NAME
+    instance
+  HDRS
+    "instance.h"
+  DEPS
+    amdf::headers
+  PUBLIC
+)
+endif()
+
+if(AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_library(
+  NAME
     device
   HDRS
     "device.h"
   DEPS
+    ::instance
     amdf::headers
     libamdf::src::platform
   PUBLIC
@@ -90,6 +103,7 @@ iree_cc_library(
   DEPS
     ::device
     ::endpoint_profile
+    ::instance
     ::kernel_queue
     ::memory
     ::user_queue

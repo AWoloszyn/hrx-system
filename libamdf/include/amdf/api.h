@@ -40,7 +40,9 @@ typedef struct amdf_api_t {
   ///
   /// The caller must have exclusive access. Returns
   /// `AMDF_STATUS_CODE_BUSY` without mutation while a child remains open.
-  /// Destruction performs no implicit device wait.
+  /// Destruction performs no implicit device wait. A native teardown failure
+  /// retains the instance only for another destruction attempt; some native
+  /// connections may already have been released.
   amdf_status_t(AMDF_CALL* instance_destroy)(amdf_instance_t* instance);
 
   /// Enumerates a bounded snapshot of independently selectable AMD endpoints.
@@ -124,8 +126,9 @@ typedef struct amdf_api_t {
   /// the device through memory nor tracks memory to diagnose premature device
   /// destruction. Violating that precondition is undefined behavior.
   /// Caller-submitted work must already be retired before its owning resources
-  /// are destroyed. A native teardown failure leaves the device live
-  /// so destruction can be retried.
+  /// are destroyed. A native teardown failure retains the device only for
+  /// another destruction attempt; some native execution resources may already
+  /// have been released.
   amdf_status_t(AMDF_CALL* device_destroy)(amdf_device_t* device);
 
   /// Copies one immutable memory profile supported by `device`.
