@@ -1,0 +1,176 @@
+// Power-of-two inputs expose exact normal and subnormal result bits without
+// depending on another implementation of exponential approximation.
+func.def public @power_of_two_bits(%shift: i32) -> (i32) {
+  %minimum_exponent = scalar.constant -149 : i32
+  %exponent = scalar.addi %minimum_exponent, %shift : i32
+  %input = scalar.sitofp %exponent : i32 to f32
+  %result = scalar.exp2f<afn> %input : f32
+  %bits = scalar.bitcast %result : f32 to i32
+  func.return %bits : i32
+}
+
+check.case @power_of_two_minimum_subnormal {
+  %shift = check.literal value(0) : i32
+  %actual = func.call @power_of_two_bits(%shift) : (i32) -> (i32)
+  %expected = check.literal value(1) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}
+
+check.case @power_of_two_large_subnormal {
+  %shift = check.literal value(22) : i32
+  %actual = func.call @power_of_two_bits(%shift) : (i32) -> (i32)
+  %expected = check.literal value(4194304) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}
+
+check.case @power_of_two_minimum_normal {
+  %shift = check.literal value(23) : i32
+  %actual = func.call @power_of_two_bits(%shift) : (i32) -> (i32)
+  %expected = check.literal value(8388608) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}
+
+check.case @power_of_two_above_minimum_normal {
+  %shift = check.literal value(24) : i32
+  %actual = func.call @power_of_two_bits(%shift) : (i32) -> (i32)
+  %expected = check.literal value(16777216) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}
+
+check.case @power_of_two_underflow {
+  %shift = check.param.choice values([-1, -2, -851]) : i32
+  %actual = func.call @power_of_two_bits(%shift) : (i32) -> (i32)
+  %expected = check.literal value(0) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}
+
+check.case @power_of_two_overflow {
+  %shift = check.param.choice values([277, 278, 1149]) : i32
+  %actual = func.call @power_of_two_bits(%shift) : (i32) -> (i32)
+  %expected = check.literal value(2139095040) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}
+
+func.def public @exponentials(%input: f32) -> (f32, f32) {
+  %base_two = scalar.exp2f<afn> %input : f32
+  %natural = scalar.expf<afn> %input : f32
+  func.return %base_two, %natural : f32, f32
+}
+
+check.case @exponentials_positive {
+  %input = check.literal value(1.0) : f32
+  %base_two, %natural = func.call @exponentials(%input) : (f32) -> (f32, f32)
+  %expected_two = check.literal value(2.0) : f32
+  %expected_natural = check.literal value(2.7182818284590451) : f32
+  check.expect.equal actual(%base_two) expected(%expected_two) : f32
+  check.expect.close actual(%natural) expected(%expected_natural) atol(0.0) rtol(9.9999999999999995e-07) nan(same) : f32
+  check.return
+}
+
+check.case @exponentials_negative {
+  %input = check.literal value(-1.0) : f32
+  %base_two, %natural = func.call @exponentials(%input) : (f32) -> (f32, f32)
+  %expected_two = check.literal value(0.5) : f32
+  %expected_natural = check.literal value(0.36787944117144233) : f32
+  check.expect.equal actual(%base_two) expected(%expected_two) : f32
+  check.expect.close actual(%natural) expected(%expected_natural) atol(0.0) rtol(9.9999999999999995e-07) nan(same) : f32
+  check.return
+}
+
+check.case @exponentials_positive_zero {
+  %input = check.literal value(0.0) : f32
+  %base_two, %natural = func.call @exponentials(%input) : (f32) -> (f32, f32)
+  %one = check.literal value(1.0) : f32
+  check.expect.equal actual(%base_two) expected(%one) : f32
+  check.expect.equal actual(%natural) expected(%one) : f32
+  check.return
+}
+
+check.case @exponentials_negative_zero {
+  %input = check.literal value(-0.0) : f32
+  %base_two, %natural = func.call @exponentials(%input) : (f32) -> (f32, f32)
+  %one = check.literal value(1.0) : f32
+  check.expect.equal actual(%base_two) expected(%one) : f32
+  check.expect.equal actual(%natural) expected(%one) : f32
+  check.return
+}
+
+check.case @exponentials_subnormal {
+  %input = check.literal value(-90.0) : f32
+  %base_two, %natural = func.call @exponentials(%input) : (f32) -> (f32, f32)
+  %expected_two = check.literal value(8.0779356694631609e-28) : f32
+  %expected_natural = check.literal value(8.1940126239905147e-40) : f32
+  check.expect.equal actual(%base_two) expected(%expected_two) : f32
+  check.expect.close actual(%natural) expected(%expected_natural) atol(1.4012984643248171e-45) rtol(1.0000000000000001e-05) nan(same) : f32
+  check.return
+}
+
+check.case @exponentials_fractional {
+  %input = check.literal value(-0.5) : f32
+  %base_two, %natural = func.call @exponentials(%input) : (f32) -> (f32, f32)
+  %expected_two = check.literal value(0.70710678118654757) : f32
+  %expected_natural = check.literal value(0.60653065971263342) : f32
+  check.expect.close actual(%base_two) expected(%expected_two) atol(0.0) rtol(9.9999999999999995e-07) nan(same) : f32
+  check.expect.close actual(%natural) expected(%expected_natural) atol(0.0) rtol(9.9999999999999995e-07) nan(same) : f32
+  check.return
+}
+
+check.case @exponentials_large_argument {
+  %input = check.literal value(80.0) : f32
+  %base_two, %natural = func.call @exponentials(%input) : (f32) -> (f32, f32)
+  %expected_two = check.literal value(1.2089258196146292e+24) : f32
+  %expected_natural = check.literal value(5.5406223843935098e+34) : f32
+  check.expect.equal actual(%base_two) expected(%expected_two) : f32
+  check.expect.close actual(%natural) expected(%expected_natural) atol(0.0) rtol(5.0000000000000004e-06) nan(same) : f32
+  check.return
+}
+
+func.def public @exponentials_from_bits(%bits: i32) -> (i32, i32) {
+  %input = scalar.bitcast %bits : i32 to f32
+  %base_two = scalar.exp2f<afn> %input : f32
+  %natural = scalar.expf<afn> %input : f32
+  %base_two_bits = scalar.bitcast %base_two : f32 to i32
+  %natural_bits = scalar.bitcast %natural : f32 to i32
+  func.return %base_two_bits, %natural_bits : i32, i32
+}
+
+check.case @exponentials_positive_infinity {
+  %bits = check.literal value(2139095040) : i32
+  %base_two, %natural = func.call @exponentials_from_bits(%bits) : (i32) -> (i32, i32)
+  check.expect.equal actual(%base_two) expected(%bits) : i32
+  check.expect.equal actual(%natural) expected(%bits) : i32
+  check.return
+}
+
+check.case @exponentials_negative_infinity {
+  %bits = check.literal value(-8388608) : i32
+  %base_two, %natural = func.call @exponentials_from_bits(%bits) : (i32) -> (i32, i32)
+  %expected = check.literal value(0) : i32
+  check.expect.equal actual(%base_two) expected(%expected) : i32
+  check.expect.equal actual(%natural) expected(%expected) : i32
+  check.return
+}
+
+func.def public @exponentials_are_nan(%bits: i32) -> (i1, i1) {
+  %input = scalar.bitcast %bits : i32 to f32
+  %base_two = scalar.exp2f<afn> %input : f32
+  %natural = scalar.expf<afn> %input : f32
+  %two_nan = scalar.isnanf %base_two : f32
+  %natural_nan = scalar.isnanf %natural : f32
+  func.return %two_nan, %natural_nan : i1, i1
+}
+
+check.case @exponentials_nan {
+  %bits = check.param.choice values([2143289344, -4194304, 2139095041]) : i32
+  %two_nan, %natural_nan = func.call @exponentials_are_nan(%bits) : (i32) -> (i1, i1)
+  %expected = check.literal value(true) : i1
+  check.expect.equal actual(%two_nan) expected(%expected) : i1
+  check.expect.equal actual(%natural_nan) expected(%expected) : i1
+  check.return
+}

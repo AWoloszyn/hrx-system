@@ -25,6 +25,7 @@ contract under test rather than a target instruction or implementation file.
 | Floating comparisons | `float_comparison.loom`: every predicate at f32/f64, adjacent values, signed zeros, subnormals, infinities, quiet/signaling NaNs in either operand. |
 | Scalar values | `integer.loom`, `integer_boundaries.loom`, `floating.loom`, `division.loom`, `selection.loom`: arithmetic, wrapping overflow, endpoint shifts/rotates, division signs, unary operations, and selection. |
 | Representation and accuracy | `bitfield.loom`, `conversion*.loom`, `narrow.loom`, `rounding.loom`, `float_selectors.loom`, `turns.loom`: widths, field boundaries, floating policies, and fused versus separate rounding. |
+| Exponentials | `exponential.loom`: normal/subnormal powers of two, overflow/underflow, nonfinite inputs, and explicit approximate f32 policies. |
 | Vector lane programs | `vector_fields.loom`: construction, signed and unsigned fields, full-width replacement, lane extraction, and typed stores through portable legalization. |
 | Vector reductions | `vector_reductions.loom`: signed/unsigned extrema, wrapping sums, products, bitwise combining kinds, empty/nonzero initial values, transpose, and reductions over each matrix axis. |
 | Vector recurrences | `vector_recurrence.loom`: freshly constructed loop state, zero-trip preservation, backedge transport, and wrapping lane arithmetic. |

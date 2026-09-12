@@ -87,3 +87,11 @@ func.def @float_bitcasts_f64(%bits: i64, %number: f64) -> (f64, i64) {
   %as_bits = scalar.bitcast %number : f64 to i64
   func.return %as_number, %as_bits : f64, i64
 }
+
+// ====
+
+func.def @exponentials_f32(%input: f32) -> (f32, f32) {
+  %base_two = scalar.exp2f<afn> %input : f32
+  %natural = scalar.expf<afn> %input : f32
+  func.return %base_two, %natural : f32, f32
+}

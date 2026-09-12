@@ -6,6 +6,8 @@
 
 """Source operation correspondence for spec-derived VM instructions."""
 
+import struct
+
 from iree.vm.bytecode.spec.isa.core.buffer import (
     BUFFER_ALLOCATE,
     BUFFER_ATOMIC_CARRIER_SELECTOR,
@@ -26,6 +28,7 @@ from iree.vm.bytecode.spec.isa.core.constant import CONSTANT_I64
 from iree.vm.bytecode.spec.isa.core.float import (
     FLOAT_CLAMP_SELECTOR,
     FLOAT_COMPARE_SELECTOR,
+    FLOAT_MATH_F32_SELECTOR,
     FloatBinaryOperation,
     FloatBinarySemantics,
     FloatClampSemantics,
@@ -568,6 +571,100 @@ def _math_cases():
     assert not remaining, f"math source mappings have no ISA selector: {remaining}"
 
 
+def _exp2_case():
+    # The machine leaf flushes subnormal outputs. Shift those inputs into its
+    # normal interval, then restore the exponent with preserving multiplication.
+    # Adding 64 is exact throughout the f32 interval with a subnormal result.
+    descriptors = {d.mnemonic: d for d in VM_CORE_DESCRIPTOR_SET.descriptors}
+    temporary = ValueRef.temporary
+    constant = descriptors["constant.i32"]
+    emits = [
+        EmitDescriptorOp(
+            descriptor=constant,
+            form=DescriptorEmitForm.CONST,
+            results={"destination_v8": temporary(name)},
+            result_types={"destination_v8": Scalar("f32")},
+            immediates={"bits": struct.unpack("<I", struct.pack("<f", value))[0]},
+        )
+        for name, value in (
+            ("normal_limit", -126.0),
+            ("shift", 64.0),
+            ("zero", 0.0),
+            ("scale", 2.0**-64),
+            ("one", 1.0),
+        )
+    ]
+    predicate = next(v.value for v in FLOAT_COMPARE_SELECTOR.values if v.name == "olt")
+    selector = next(
+        v.value for v in FLOAT_MATH_F32_SELECTOR.values if v.name == "exp2.approx"
+    )
+    source = ValueRef.operand("input")
+    steps = (
+        (
+            "float.compare.f32",
+            "underflow",
+            "i1",
+            (source, temporary("normal_limit")),
+            predicate,
+        ),
+        (
+            "value.select",
+            "input_shift",
+            "f32",
+            (temporary("underflow"), temporary("shift"), temporary("zero")),
+            None,
+        ),
+        (
+            "value.select",
+            "output_scale",
+            "f32",
+            (temporary("underflow"), temporary("scale"), temporary("one")),
+            None,
+        ),
+        ("float.add.f32", "shifted", "f32", (source, temporary("input_shift")), None),
+        ("float.math.unary.f32", "normal", "f32", (temporary("shifted"),), selector),
+        (
+            "float.mul.f32",
+            "result",
+            "f32",
+            (temporary("normal"), temporary("output_scale")),
+            None,
+        ),
+    )
+    for mnemonic, result, result_type, operands, immediate in steps:
+        descriptor = descriptors[mnemonic]
+        operand_fields = (
+            operand.field_name
+            for operand in descriptor.operands
+            if operand.role is OperandRole.OPERAND
+        )
+        emits.append(
+            EmitDescriptorOp(
+                descriptor=descriptor,
+                operands=dict(zip(operand_fields, operands, strict=True)),
+                results={
+                    "destination_v8": ValueRef.result("result")
+                    if result == "result"
+                    else temporary(result)
+                },
+                result_types={"destination_v8": Scalar(result_type)},
+                immediates={descriptor.immediates[0].field_name: immediate}
+                if immediate is not None
+                else {},
+            )
+        )
+    return DescriptorRule(
+        source_op=math.scalar_exp2f,
+        descriptor=descriptors["float.math.unary.f32"],
+        guards=(
+            Guard.value_type("input", Scalar("f32")),
+            Guard.value_type("result", Scalar("f32")),
+            Guard.instance_flags_has_all("fastmath", "afn"),
+        ),
+        emit=tuple(emits),
+    )
+
+
 def _address_cases():
     # Address widths are fixed by vm.core. The shared verifier owns the index
     # domain restrictions; these rules consume that established source contract.
@@ -1001,6 +1098,7 @@ VM_CORE_CONTRACT_FRAGMENT = ContractFragment(
     + tuple(_selected_cases())
     + tuple(_conversion_cases())
     + tuple(_math_cases())
+    + (_exp2_case(),)
     + tuple(_address_cases())
     + tuple(_buffer_cases())
     + tuple(_view_cases())
