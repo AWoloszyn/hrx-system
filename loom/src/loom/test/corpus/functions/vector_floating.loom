@@ -1,0 +1,98 @@
+// Distinct dynamic lanes exercise shared vector-to-scalar legalization.
+// Raw result bits preserve signed zeros and payloads in the expectations.
+func.def public @vector_rounding(%a: f32, %b: f32) -> (i32, i32, i32, i32) {
+  %values = vector.from_elements %a, %b : vector<2xf32>
+  %rounded = vector.roundevenf %values : vector<2xf32>
+  %truncated = vector.truncf %values : vector<2xf32>
+  %r0 = vector.extract %rounded[0] : vector<2xf32> -> f32
+  %r1 = vector.extract %rounded[1] : vector<2xf32> -> f32
+  %t0 = vector.extract %truncated[0] : vector<2xf32> -> f32
+  %t1 = vector.extract %truncated[1] : vector<2xf32> -> f32
+  %rb0 = scalar.bitcast %r0 : f32 to i32
+  %rb1 = scalar.bitcast %r1 : f32 to i32
+  %tb0 = scalar.bitcast %t0 : f32 to i32
+  %tb1 = scalar.bitcast %t1 : f32 to i32
+  func.return %rb0, %rb1, %tb0, %tb1 : i32, i32, i32, i32
+}
+
+check.case @vector_rounding_ties {
+  %a = check.literal value(1.5) : f32
+  %b = check.literal value(-2.5) : f32
+  %r0, %r1, %t0, %t1 = func.call @vector_rounding(%a, %b) : (f32, f32) -> (i32, i32, i32, i32)
+  %two = check.literal value(1073741824) : i32
+  %negative_two = check.literal value(-1073741824) : i32
+  %one = check.literal value(1065353216) : i32
+  check.expect.equal actual(%r0) expected(%two) : i32
+  check.expect.equal actual(%r1) expected(%negative_two) : i32
+  check.expect.equal actual(%t0) expected(%one) : i32
+  check.expect.equal actual(%t1) expected(%negative_two) : i32
+  check.return
+}
+
+check.case @vector_rounding_signed_zero {
+  %a = check.literal value(-0.5) : f32
+  %b = check.literal value(0.5) : f32
+  %r0, %r1, %t0, %t1 = func.call @vector_rounding(%a, %b) : (f32, f32) -> (i32, i32, i32, i32)
+  %negative_zero = check.literal value(-2147483648) : i32
+  %zero = check.literal value(0) : i32
+  check.expect.equal actual(%r0) expected(%negative_zero) : i32
+  check.expect.equal actual(%r1) expected(%zero) : i32
+  check.expect.equal actual(%t0) expected(%negative_zero) : i32
+  check.expect.equal actual(%t1) expected(%zero) : i32
+  check.return
+}
+
+func.def public @vector_signs(%a: i32, %b: i32) -> (i32, i32, i32, i32) {
+  %fa = scalar.bitcast %a : i32 to f32
+  %fb = scalar.bitcast %b : i32 to f32
+  %values = vector.from_elements %fa, %fb : vector<2xf32>
+  %signs = vector.from_elements %fb, %fa : vector<2xf32>
+  %absolute = vector.absf %values : vector<2xf32>
+  %copied = vector.copysignf %values, %signs : vector<2xf32>
+  %a0 = vector.extract %absolute[0] : vector<2xf32> -> f32
+  %a1 = vector.extract %absolute[1] : vector<2xf32> -> f32
+  %c0 = vector.extract %copied[0] : vector<2xf32> -> f32
+  %c1 = vector.extract %copied[1] : vector<2xf32> -> f32
+  %ab0 = scalar.bitcast %a0 : f32 to i32
+  %ab1 = scalar.bitcast %a1 : f32 to i32
+  %cb0 = scalar.bitcast %c0 : f32 to i32
+  %cb1 = scalar.bitcast %c1 : f32 to i32
+  func.return %ab0, %ab1, %cb0, %cb1 : i32, i32, i32, i32
+}
+
+check.case @vector_signs_zeros {
+  %negative_zero = check.literal value(-2147483648) : i32
+  %zero = check.literal value(0) : i32
+  %a0, %a1, %c0, %c1 = func.call @vector_signs(%negative_zero, %zero) : (i32, i32) -> (i32, i32, i32, i32)
+  check.expect.equal actual(%a0) expected(%zero) : i32
+  check.expect.equal actual(%a1) expected(%zero) : i32
+  check.expect.equal actual(%c0) expected(%zero) : i32
+  check.expect.equal actual(%c1) expected(%negative_zero) : i32
+  check.return
+}
+
+check.case @vector_signs_nan_and_subnormal {
+  %nan = check.literal value(2143289345) : i32
+  %negative_tiny = check.literal value(-2147483647) : i32
+  %a0, %a1, %c0, %c1 = func.call @vector_signs(%nan, %negative_tiny) : (i32, i32) -> (i32, i32, i32, i32)
+  %tiny = check.literal value(1) : i32
+  %negative_nan = check.literal value(-4194303) : i32
+  check.expect.equal actual(%a0) expected(%nan) : i32
+  check.expect.equal actual(%a1) expected(%tiny) : i32
+  check.expect.equal actual(%c0) expected(%negative_nan) : i32
+  check.expect.equal actual(%c1) expected(%tiny) : i32
+  check.return
+}
+
+check.case @vector_signs_infinity {
+  %one = check.literal value(1065353216) : i32
+  %negative_infinity = check.literal value(-8388608) : i32
+  %a0, %a1, %c0, %c1 = func.call @vector_signs(%one, %negative_infinity) : (i32, i32) -> (i32, i32, i32, i32)
+  %infinity = check.literal value(2139095040) : i32
+  %negative_one = check.literal value(-1082130432) : i32
+  check.expect.equal actual(%a0) expected(%one) : i32
+  check.expect.equal actual(%a1) expected(%infinity) : i32
+  check.expect.equal actual(%c0) expected(%negative_one) : i32
+  check.expect.equal actual(%c1) expected(%infinity) : i32
+  check.return
+}

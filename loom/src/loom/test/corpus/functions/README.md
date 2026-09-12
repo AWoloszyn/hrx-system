@@ -27,6 +27,7 @@ contract under test rather than a target instruction or implementation file.
 | Representation and accuracy | `bitfield.loom`, `conversion*.loom`, `narrow.loom`, `rounding.loom`, `float_selectors.loom`, `turns.loom`: widths, field boundaries, floating policies, and fused versus separate rounding. |
 | Exponentials | `exponential.loom`: normal/subnormal powers of two, overflow/underflow, nonfinite inputs, and explicit approximate f32 policies. |
 | Vector lane programs | `vector_fields.loom`: construction, signed and unsigned fields, full-width replacement, lane extraction, and typed stores through portable legalization. |
+| Vector floating-point lanes | `vector_floating.loom`: independent lane rounding and sign operations, preserving signed zeros, subnormals, infinities and NaN payloads through scalarization. |
 | Vector reductions | `vector_reductions.loom`: signed/unsigned extrema, wrapping sums, products, bitwise combining kinds, empty/nonzero initial values, transpose, and reductions over each matrix axis. |
 | Vector recurrences | `vector_recurrence.loom`: freshly constructed loop state, zero-trip preservation, backedge transport, and wrapping lane arithmetic. |
 | Control and ownership | `control.loom`, `structured_control.loom`, `calls.loom`, `direct_call.loom`, `spill.loom`, `buffer_calls.loom`: tuple joins, nested loops, while-condition effects, recursion, live values across calls, and returned aliases. |
