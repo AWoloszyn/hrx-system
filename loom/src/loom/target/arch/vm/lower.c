@@ -43,8 +43,7 @@ static iree_status_t loom_vm_map_type(void* user_data,
                                          : VM_CORE_REG_CLASS_ID_VALUE,
         1, source_type, out_low_type);
   }
-  return loom_low_lower_emit_source_type_unsupported(
-      context, source_op, IREE_SV("source"), source_type);
+  return iree_ok_status();
 }
 
 #include "loom/target/arch/vm/contracts/tables.inl"
