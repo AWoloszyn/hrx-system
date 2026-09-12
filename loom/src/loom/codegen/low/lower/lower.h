@@ -102,6 +102,9 @@ typedef iree_status_t (*loom_low_lower_map_type_fn_t)(
 
 typedef struct loom_low_lower_map_type_callback_t {
   // Callback invoked to map one source value type to a low register type.
+  // The caller initializes the output to none. Unsupported types leave it
+  // unchanged without emitting a diagnostic; status reports mapping failures
+  // such as allocation, not absence of a native representation.
   loom_low_lower_map_type_fn_t fn;
   // Caller-owned payload passed to |fn|.
   void* user_data;
@@ -114,7 +117,8 @@ typedef iree_status_t (*loom_low_lower_map_value_fn_t)(
 
 typedef struct loom_low_lower_map_value_callback_t {
   // Optional callback invoked to map one concrete source SSA value to a low
-  // register type. Missing uses |map_type|.
+  // register type. Missing uses |map_type|. Like |map_type|, an unsupported
+  // value leaves the caller-initialized none output without a diagnostic.
   loom_low_lower_map_value_fn_t fn;
   // Caller-owned payload passed to |fn|.
   void* user_data;
@@ -129,7 +133,8 @@ typedef iree_status_t (*loom_low_lower_map_contract_value_fn_t)(
 typedef struct loom_low_lower_map_contract_value_callback_t {
   // Optional callback invoked during read-only contract queries to map one
   // source value into target-low register metadata without creating register
-  // types or formatting diagnostics.
+  // types or formatting diagnostics. An absent mapping uses the ordinary
+  // native value/type mapper.
   loom_low_lower_map_contract_value_fn_t fn;
   // Caller-owned payload passed to |fn|.
   void* user_data;
@@ -786,8 +791,8 @@ typedef struct loom_low_lower_policy_t {
   // when type alone does not determine the target register class.
   loom_low_lower_map_value_callback_t map_value;
   // Optionally maps concrete source SSA values to descriptor register metadata
-  // for read-only target contract queries. Missing means table guards that need
-  // register mapping cannot match.
+  // for read-only target contract queries without constructing register types.
+  // Missing mappings use the native value/type mapper.
   loom_low_lower_map_contract_value_callback_t map_contract_value;
   // Optionally maps source function arguments to non-direct ABI imports.
   loom_low_lower_map_argument_callback_t map_argument;
@@ -1259,16 +1264,15 @@ bool loom_low_lower_lookup_branch_plan(loom_low_lower_context_t* context,
                                        const loom_op_t* source_terminator,
                                        loom_low_lower_plan_t* out_plan);
 
-// Maps |source_type| through the active policy. A policy that rejects a user
-// type emits a diagnostic and returns loom_type_none() in |out_low_type|.
+// Maps |source_type| through the active policy. Emits a diagnostic when the
+// policy returns no native mapping, leaving |out_low_type| as none.
 iree_status_t loom_low_lower_map_type(loom_low_lower_context_t* context,
                                       const loom_op_t* source_op,
                                       loom_type_t source_type,
                                       loom_type_t* out_low_type);
 
-// Maps |source_value_id|'s type through the active policy. A policy that
-// rejects a user value emits a diagnostic and returns loom_type_none() in
-// |out_low_type|.
+// Maps |source_value_id| through the active policy. Emits a diagnostic when
+// the policy returns no native mapping, leaving |out_low_type| as none.
 iree_status_t loom_low_lower_map_value(loom_low_lower_context_t* context,
                                        const loom_op_t* source_op,
                                        loom_value_id_t source_value_id,

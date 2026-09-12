@@ -8,7 +8,6 @@
 
 #include "iree/base/internal/arena.h"
 #include "loom/codegen/low/lower/context.h"
-#include "loom/codegen/low/lower/source_plan.h"
 #include "loom/error/error_catalog.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
@@ -113,13 +112,9 @@ static iree_status_t loom_low_lower_map_argument(
   IREE_ASSERT(loom_low_lower_abi_argument_kind_is_known(out_argument->kind));
   if (loom_low_lower_type_is_none(out_argument->abi_type)) {
     if (context->result->error_count == previous_error_count) {
-      const loom_diagnostic_param_t params[] = {
-          loom_param_string(IREE_SV("argument")),
-          loom_param_u64(source_argument_id),
-      };
-      IREE_RETURN_IF_ERROR(loom_low_lower_emit_target_context_error(
-          context, context->source_function.op, LOOM_ERR_TARGET_027, params,
-          IREE_ARRAYSIZE(params)));
+      IREE_RETURN_IF_ERROR(loom_low_lower_emit_source_type_unsupported(
+          context, context->source_function.op, IREE_SV("source"),
+          loom_module_value_type(context->module, source_argument_id)));
     }
     return iree_ok_status();
   }
@@ -202,13 +197,13 @@ static iree_status_t loom_low_lower_check_function_result(
     loom_value_id_t result_id) {
   if (result_index < returned_values.count) {
     loom_type_t low_type = loom_type_none();
-    return loom_low_lower_source_plan_check_mapped_value(
+    return loom_low_lower_map_value(
         context, return_op, returned_values.values[result_index], &low_type);
   }
 
   loom_type_t low_type = loom_type_none();
-  return loom_low_lower_source_plan_check_mapped_value(
-      context, context->source_function.op, result_id, &low_type);
+  return loom_low_lower_map_value(context, context->source_function.op,
+                                  result_id, &low_type);
 }
 
 iree_status_t loom_low_lower_function_boundary_validate(
@@ -616,9 +611,9 @@ static iree_status_t loom_low_lower_map_decl_signature_types(
     IREE_RETURN_IF_ERROR(loom_low_lower_allocate_emission_array(
         context, argument_count, sizeof(*arg_types), (void**)&arg_types));
     for (uint16_t i = 0; i < argument_count; ++i) {
-      IREE_RETURN_IF_ERROR(loom_low_lower_source_plan_check_mapped_value(
-          context, context->source_function.op, argument_ids[i],
-          &arg_types[i]));
+      IREE_RETURN_IF_ERROR(
+          loom_low_lower_map_value(context, context->source_function.op,
+                                   argument_ids[i], &arg_types[i]));
     }
   }
 
@@ -630,9 +625,9 @@ static iree_status_t loom_low_lower_map_decl_signature_types(
     const loom_value_id_t* result_ids =
         loom_op_const_results(context->source_function.op);
     for (uint16_t i = 0; i < result_count; ++i) {
-      IREE_RETURN_IF_ERROR(loom_low_lower_source_plan_check_mapped_value(
-          context, context->source_function.op, result_ids[i],
-          &result_types[i]));
+      IREE_RETURN_IF_ERROR(
+          loom_low_lower_map_value(context, context->source_function.op,
+                                   result_ids[i], &result_types[i]));
     }
   }
 

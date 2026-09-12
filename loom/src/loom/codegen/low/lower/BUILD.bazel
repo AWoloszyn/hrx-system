@@ -243,6 +243,7 @@ loom_cc_test(
         "//loom/src/loom/ir",
         "//loom/src/loom/ops/scalar",
         "//loom/src/loom/ops/test",
+        "//loom/src/loom/ops/vector",
         "//loom/src/loom/target:low_descriptor_registry",
         "//loom/src/loom/target/test:low_registry",
         "//loom/src/loom/target/test:lower",

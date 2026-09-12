@@ -201,8 +201,7 @@ static iree_status_t loom_x86_map_avx512_type(void* user_data,
                                                      &register_class)) {
     return loom_x86_make_register_type(context, register_class, out_low_type);
   }
-  return loom_low_lower_emit_source_type_unsupported(
-      context, source_op, IREE_SV("source"), source_type);
+  return iree_ok_status();
 }
 
 static iree_status_t loom_x86_map_avx2_type(void* user_data,
@@ -215,8 +214,7 @@ static iree_status_t loom_x86_map_avx2_type(void* user_data,
                                                    &register_class)) {
     return loom_x86_make_register_type(context, register_class, out_low_type);
   }
-  return loom_low_lower_emit_source_type_unsupported(
-      context, source_op, IREE_SV("source"), source_type);
+  return iree_ok_status();
 }
 
 static iree_status_t loom_x86_map_scalar_type(void* user_data,
@@ -229,8 +227,7 @@ static iree_status_t loom_x86_map_scalar_type(void* user_data,
                                                      &register_class)) {
     return loom_x86_make_register_type(context, register_class, out_low_type);
   }
-  return loom_low_lower_emit_source_type_unsupported(
-      context, source_op, IREE_SV("source"), source_type);
+  return iree_ok_status();
 }
 
 static iree_status_t loom_x86_map_packed_dot_type(
@@ -242,8 +239,7 @@ static iree_status_t loom_x86_map_packed_dot_type(
           source_type, /*maximum_vector_bit_width=*/512, &register_class)) {
     return loom_x86_make_register_type(context, register_class, out_low_type);
   }
-  return loom_low_lower_emit_source_type_unsupported(
-      context, source_op, IREE_SV("source"), source_type);
+  return iree_ok_status();
 }
 
 static iree_status_t loom_x86_map_scalar_argument(

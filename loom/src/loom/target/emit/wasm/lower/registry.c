@@ -138,8 +138,7 @@ static iree_status_t loom_wasm_map_type(void* user_data,
   if (loom_wasm_type_is_vector_4xf32(source_type)) {
     return loom_wasm_make_v128_register_type(context, out_low_type);
   }
-  return loom_low_lower_emit_source_type_unsupported(
-      context, source_op, IREE_SV("source"), source_type);
+  return iree_ok_status();
 }
 
 static iree_status_t loom_wasm_map_argument(

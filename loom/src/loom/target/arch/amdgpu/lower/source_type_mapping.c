@@ -439,8 +439,7 @@ iree_status_t loom_amdgpu_map_type(void* user_data,
           out_low_type);
     }
   }
-  return loom_low_lower_emit_source_type_unsupported(
-      context, source_op, IREE_SV("source"), source_type);
+  return iree_ok_status();
 }
 
 iree_status_t loom_amdgpu_map_value(void* user_data,

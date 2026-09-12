@@ -30,26 +30,6 @@
 #include "loom/ops/op_defs.h"
 #include "loom/ops/scf/ops.h"
 
-iree_status_t loom_low_lower_source_plan_check_mapped_value(
-    loom_low_lower_context_t* context, const loom_op_t* source_op,
-    loom_value_id_t source_value_id, loom_type_t* out_low_type) {
-  uint32_t previous_error_count = context->result->error_count;
-  IREE_RETURN_IF_ERROR(loom_low_lower_map_value(context, source_op,
-                                                source_value_id, out_low_type));
-  if (loom_type_kind(*out_low_type) == LOOM_TYPE_NONE) {
-    if (context->result->error_count == previous_error_count) {
-      const loom_diagnostic_param_t params[] = {
-          loom_param_string(IREE_SV("source")),
-          loom_param_u64(source_value_id),
-      };
-      IREE_RETURN_IF_ERROR(loom_low_lower_emit_target_context_error(
-          context, source_op, LOOM_ERR_TARGET_027, params,
-          IREE_ARRAYSIZE(params)));
-    }
-  }
-  return iree_ok_status();
-}
-
 bool loom_low_lower_source_plan_uses_structured_control_flow(
     const loom_low_lower_context_t* context) {
   return context->options->control_flow_lowering ==
@@ -981,7 +961,7 @@ static iree_status_t loom_low_lower_plan_region(
     if (!(skip_entry_block_args && block_index == 0)) {
       for (uint16_t i = 0; i < block->arg_count; ++i) {
         loom_type_t low_type = loom_type_none();
-        IREE_RETURN_IF_ERROR(loom_low_lower_source_plan_check_mapped_value(
+        IREE_RETURN_IF_ERROR(loom_low_lower_map_value(
             context, block_arg_context_op, block->arg_ids[i], &low_type));
         if (loom_low_lower_context_should_stop(context)) {
           return iree_ok_status();

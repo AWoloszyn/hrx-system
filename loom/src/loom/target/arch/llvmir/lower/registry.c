@@ -142,8 +142,7 @@ static iree_status_t loom_llvmir_map_type(void* user_data,
     return loom_low_lower_make_register_type(context, register_class_id,
                                              unit_count, out_low_type);
   }
-  return loom_low_lower_emit_source_type_unsupported(
-      context, source_op, IREE_SV("source"), source_type);
+  return iree_ok_status();
 }
 
 static uint32_t loom_llvmir_kernel_binding_resource_index(

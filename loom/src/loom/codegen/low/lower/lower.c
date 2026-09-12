@@ -295,7 +295,7 @@ static iree_status_t loom_low_lower_map_op_result_types(
       (void**)&result_types));
   const loom_value_id_t* source_results = loom_op_const_results(source_op);
   for (uint16_t i = 0; i < source_op->result_count; ++i) {
-    IREE_RETURN_IF_ERROR(loom_low_lower_source_plan_check_mapped_value(
+    IREE_RETURN_IF_ERROR(loom_low_lower_map_value(
         context, source_op, source_results[i], &result_types[i]));
     if (loom_type_kind(result_types[i]) == LOOM_TYPE_NONE) {
       return iree_ok_status();
@@ -545,7 +545,7 @@ IREE_ATTRIBUTE_NOINLINE static iree_status_t loom_low_lower_structural_op(
             context, source_op->result_count, sizeof(*result_types),
             (void**)&result_types));
         for (uint16_t i = 0; i < source_op->result_count; ++i) {
-          IREE_RETURN_IF_ERROR(loom_low_lower_source_plan_check_mapped_value(
+          IREE_RETURN_IF_ERROR(loom_low_lower_map_value(
               context, source_op, source_results[i], &result_types[i]));
           has_unmapped_result |=
               loom_type_kind(result_types[i]) == LOOM_TYPE_NONE;

@@ -158,6 +158,14 @@ struct loom_low_lower_context_t {
 iree_string_view_t loom_low_lower_context_function_name(
     const loom_low_lower_context_t* context);
 
+// Queries the active policy's native representation for a source value.
+// An unsupported value produces none without a diagnostic. Mapping may allocate
+// register types and function analysis state, but does not rewrite source IR.
+iree_status_t loom_low_lower_query_value(loom_low_lower_context_t* context,
+                                         const loom_op_t* source_op,
+                                         loom_value_id_t source_value_id,
+                                         loom_type_t* out_low_type);
+
 // Returns true when the lowering context has reached its diagnostic limit.
 bool loom_low_lower_context_should_stop(
     const loom_low_lower_context_t* context);

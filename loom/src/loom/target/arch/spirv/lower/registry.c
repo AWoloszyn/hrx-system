@@ -186,8 +186,7 @@ static iree_status_t loom_spirv_map_type(void* user_data,
         context, SPIRV_LOGICAL_CORE_REG_CLASS_ID_PTR_STORAGE_BUFFER,
         out_low_type);
   }
-  return loom_low_lower_emit_source_type_unsupported(
-      context, source_op, IREE_SV("source"), source_type);
+  return iree_ok_status();
 }
 
 static iree_status_t loom_spirv_map_value(void* user_data,
@@ -203,8 +202,7 @@ static iree_status_t loom_spirv_map_value(void* user_data,
         context, source_value_id, &is_workgroup, &register_class_id));
     if (is_workgroup) {
       if (register_class_id == LOOM_LOW_REG_CLASS_NONE) {
-        return loom_low_lower_emit_source_type_unsupported(
-            context, source_op, IREE_SV("source"), source_type);
+        return iree_ok_status();
       }
       return loom_spirv_make_register_type(context, register_class_id,
                                            out_low_type);
@@ -212,8 +210,7 @@ static iree_status_t loom_spirv_map_value(void* user_data,
   }
   if (loom_type_is_vector(source_type)) {
     if (loom_func_return_isa(source_op)) {
-      return loom_low_lower_emit_source_type_unsupported(
-          context, source_op, IREE_SV("source"), source_type);
+      return iree_ok_status();
     }
     loom_vector_fragment_fact_t fragment = {0};
     const loom_value_fact_table_t* fact_table =

@@ -119,12 +119,6 @@ bool loom_low_lower_source_plan_uses_structured_control_flow(
 // Returns true when |kind| carries source-only metadata and emits no Low op.
 bool loom_low_lower_source_plan_op_is_metadata(loom_op_kind_t kind);
 
-// Checks that |source_value_id| has a target-Low type and returns that type.
-// User-facing mapping failures are emitted through the lowering context.
-iree_status_t loom_low_lower_source_plan_check_mapped_value(
-    loom_low_lower_context_t* context, const loom_op_t* source_op,
-    loom_value_id_t source_value_id, loom_type_t* out_low_type);
-
 // Returns true when |source_value_id| needs a materialized target-Low result.
 bool loom_low_lower_source_plan_result_storage_required(
     const loom_low_lower_context_t* context, loom_value_id_t source_value_id);

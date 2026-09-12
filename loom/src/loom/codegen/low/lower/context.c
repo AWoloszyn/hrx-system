@@ -890,24 +890,43 @@ iree_status_t loom_low_lower_map_type(loom_low_lower_context_t* context,
   IREE_RETURN_IF_ERROR(
       context->policy->map_type.fn(context->policy->map_type.user_data, context,
                                    source_op, source_type, out_low_type));
+  if (loom_type_kind(*out_low_type) == LOOM_TYPE_NONE) {
+    return loom_low_lower_emit_source_type_unsupported(
+        context, source_op, IREE_SV("source"), source_type);
+  }
   return iree_ok_status();
+}
+
+iree_status_t loom_low_lower_query_value(loom_low_lower_context_t* context,
+                                         const loom_op_t* source_op,
+                                         loom_value_id_t source_value_id,
+                                         loom_type_t* out_low_type) {
+  *out_low_type = loom_type_none();
+  IREE_ASSERT_LT(source_value_id, context->module->values.count);
+  const loom_type_t source_type =
+      loom_module_value_type(context->module, source_value_id);
+  if (context->policy->map_value.fn == NULL) {
+    return context->policy->map_type.fn(context->policy->map_type.user_data,
+                                        context, source_op, source_type,
+                                        out_low_type);
+  }
+  return context->policy->map_value.fn(context->policy->map_value.user_data,
+                                       context, source_op, source_value_id,
+                                       source_type, out_low_type);
 }
 
 iree_status_t loom_low_lower_map_value(loom_low_lower_context_t* context,
                                        const loom_op_t* source_op,
                                        loom_value_id_t source_value_id,
                                        loom_type_t* out_low_type) {
-  *out_low_type = loom_type_none();
-  IREE_ASSERT_LT(source_value_id, context->module->values.count);
-  const loom_type_t source_type =
-      loom_module_value_type(context->module, source_value_id);
-  if (context->policy->map_value.fn == NULL) {
-    return loom_low_lower_map_type(context, source_op, source_type,
-                                   out_low_type);
+  IREE_RETURN_IF_ERROR(loom_low_lower_query_value(
+      context, source_op, source_value_id, out_low_type));
+  if (loom_type_kind(*out_low_type) == LOOM_TYPE_NONE) {
+    return loom_low_lower_emit_source_type_unsupported(
+        context, source_op, IREE_SV("source"),
+        loom_module_value_type(context->module, source_value_id));
   }
-  return context->policy->map_value.fn(context->policy->map_value.user_data,
-                                       context, source_op, source_value_id,
-                                       source_type, out_low_type);
+  return iree_ok_status();
 }
 
 iree_status_t loom_low_lower_lookup_value(loom_low_lower_context_t* context,

@@ -114,8 +114,7 @@ iree_status_t loom_test_low_lower_map_type(void* user_data,
     return loom_test_low_make_register_type(
         context, TEST_LOW_CORE_REG_CLASS_ID_TEST_I8, 16, out_low_type);
   }
-  return loom_low_lower_emit_source_type_unsupported(
-      context, source_op, IREE_SV("source"), source_type);
+  return iree_ok_status();
 }
 
 iree_status_t loom_test_low_lower_map_argument(
