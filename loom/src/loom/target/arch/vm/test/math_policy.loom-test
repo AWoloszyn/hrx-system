@@ -1,0 +1,29 @@
+// RUN: pass legalize-math
+
+vm.target<core> @vm
+
+func.def target(@vm) @exact_sine(%value: f32) -> (f32) {
+  // ERROR@+1: LOWERING/036 {op_name="scalar.sinf", phase_name="legalize-math", policy_name="vm-math", math_op="sinf", lane_domain="scalar", element_type="f32", constraint_key="math.trig.afn_f32"}
+  %result = scalar.sinf %value : f32
+  func.return %result : f32
+}
+
+// ====
+
+vm.target<core> @vm
+
+func.def target(@vm) @exact_cosine(%value: f32) -> (f32) {
+  // ERROR@+1: LOWERING/036 {op_name="scalar.cosf", phase_name="legalize-math", policy_name="vm-math", math_op="cosf", lane_domain="scalar", element_type="f32", constraint_key="math.trig.afn_f32"}
+  %result = scalar.cosf %value : f32
+  func.return %result : f32
+}
+
+// ====
+
+vm.target<core> @vm
+
+func.def target(@vm) @wide_cosine(%value: f64) -> (f64) {
+  // ERROR@+1: LOWERING/036 {op_name="scalar.cosf", phase_name="legalize-math", policy_name="vm-math", math_op="cosf", lane_domain="scalar", element_type="f64", constraint_key="math.trig.afn_f32"}
+  %result = scalar.cosf<afn> %value : f64
+  func.return %result : f64
+}

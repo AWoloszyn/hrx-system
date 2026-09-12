@@ -29,6 +29,27 @@ static void loom_vm_math_policy_query(
     case LOOM_TARGET_MATH_OP_ROUNDEVENF:
     case LOOM_TARGET_MATH_OP_TRUNCF:
       break;
+    case LOOM_TARGET_MATH_OP_SINF:
+    case LOOM_TARGET_MATH_OP_COSF:
+      // Radian reduction rounds the input before the frozen turn mapping.
+      // It is therefore an approximate source recipe, not an exact sin/cos.
+      if (query->element_type != LOOM_SCALAR_TYPE_F32 ||
+          !iree_any_bit_set(query->fastmath_flags,
+                            LOOM_TARGET_MATH_FASTMATH_FLAG_AFN)) {
+        *out_decision = (loom_target_math_policy_decision_t){
+            .action = LOOM_TARGET_MATH_POLICY_ACTION_REJECT,
+            .constraint_key = IREE_SVL("math.trig.afn_f32"),
+        };
+        return;
+      }
+      *out_decision = (loom_target_math_policy_decision_t){
+          .action = LOOM_TARGET_MATH_POLICY_ACTION_REWRITE,
+          .recipe = query->math_op == LOOM_TARGET_MATH_OP_SINF
+                        ? LOOM_TARGET_MATH_RECIPE_SIN_TURNS_F32
+                        : LOOM_TARGET_MATH_RECIPE_COS_TURNS_F32,
+          .constraint_key = IREE_SVL("math.recipe.trig_turns_f32"),
+      };
+      return;
     case LOOM_TARGET_MATH_OP_SINTURNSF:
     case LOOM_TARGET_MATH_OP_COSTURNSF:
       if (query->element_type != LOOM_SCALAR_TYPE_F32) {

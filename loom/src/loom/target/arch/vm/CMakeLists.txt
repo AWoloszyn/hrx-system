@@ -85,6 +85,7 @@ loom_check_test_suite(
     "test/calls.loom-test"
     "test/effects.loom-test"
     "test/emission.loom-test"
+    "test/math_policy.loom-test"
     "test/scalar.loom-test"
     "test/source_low/buffer_access.loom-test"
     "test/source_low/buffer_calls.loom-test"
