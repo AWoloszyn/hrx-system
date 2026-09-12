@@ -39,7 +39,10 @@ typedef struct loom_vm_function_signature_t {
 // packets occupy the canonical offset-zero prefix; ordinary locals follow,
 // then aligned call snapshots. Overflow entry loads execute once before the
 // branchable body; overflow returns store exact value cells before direct
-// register permutations. All compiler scratch belongs to
+// register permutations. Reference overflow uses an independent local-ref
+// prefix ahead of caller snapshots. Returning a ref through overflow preserves
+// its source in one local-ref slot until all aliased results are published.
+// All compiler scratch belongs to
 // |request|'s arena. Structured frame errors are forwarded to its diagnostic
 // emitter and terminate emission with a failure status.
 // |functions| supplies callable signatures and symbol ordinals; data operands

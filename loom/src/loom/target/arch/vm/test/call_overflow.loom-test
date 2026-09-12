@@ -86,3 +86,74 @@ vm.module core(0.0) {
   }
 
 }
+
+// ====
+
+// Unused direct inputs need no copies. Both overflow publications preserve the
+// same source until the direct result prefix has acquired all of its aliases.
+vm.target<core> @vm
+
+low.func.def public target<vm.core>(@vm) abi(vm_function) @overflow_aliases(%a0: reg<vm.ref : buffer>, %a1: reg<vm.ref : buffer>, %a2: reg<vm.ref : buffer>, %a3: reg<vm.ref : buffer>, %a4: reg<vm.ref : buffer>, %a5: reg<vm.ref : buffer>, %a6: reg<vm.ref : buffer>, %a7: reg<vm.ref : buffer>, %a8: reg<vm.ref : buffer>, %a9: reg<vm.ref : buffer>, %a10: reg<vm.ref : buffer>, %a11: reg<vm.ref : buffer>, %a12: reg<vm.ref : buffer>, %a13: reg<vm.ref : buffer>, %a14: reg<vm.ref : buffer>, %a15: reg<vm.ref : buffer>, %a16: reg<vm.ref : buffer>) -> (reg<vm.ref : buffer>, reg<vm.ref : buffer>, reg<vm.ref : buffer>, reg<vm.ref : buffer>, reg<vm.ref : buffer>, reg<vm.ref : buffer>, reg<vm.ref : buffer>, reg<vm.ref : buffer>, reg<vm.ref : buffer>, reg<vm.ref : buffer>, reg<vm.ref : buffer>, reg<vm.ref : buffer>, reg<vm.ref : buffer>, reg<vm.ref : buffer>, reg<vm.ref : buffer>, reg<vm.ref : buffer>, reg<vm.ref : buffer>, reg<vm.ref : buffer>) asm {
+  return %a16, %a16, %a16, %a16, %a16, %a16, %a16, %a16, %a16, %a16, %a16, %a16, %a16, %a16, %a16, %a16, %a16, %a16
+}
+
+// ----
+vm.module core(0.0) {
+  section strings alignment(8) {
+    string @string0 = "overflow_aliases"
+    string @string1 = "vm"
+    string @string2 = "buffer"
+  }
+
+  section ref_types alignment(8) {
+    namespace @ref_group0 name(@string1) {
+      ref_type @ref_type0 name(@string2)
+    }
+  }
+
+  section signatures alignment(8) {
+    signature @signature0 (ref(@ref_type0), ref(@ref_type0), ref(@ref_type0), ref(@ref_type0), ref(@ref_type0), ref(@ref_type0), ref(@ref_type0), ref(@ref_type0), ref(@ref_type0), ref(@ref_type0), ref(@ref_type0), ref(@ref_type0), ref(@ref_type0), ref(@ref_type0), ref(@ref_type0), ref(@ref_type0), ref(@ref_type0)) -> (ref(@ref_type0), ref(@ref_type0), ref(@ref_type0), ref(@ref_type0), ref(@ref_type0), ref(@ref_type0), ref(@ref_type0), ref(@ref_type0), ref(@ref_type0), ref(@ref_type0), ref(@ref_type0), ref(@ref_type0), ref(@ref_type0), ref(@ref_type0), ref(@ref_type0), ref(@ref_type0), ref(@ref_type0), ref(@ref_type0))
+  }
+
+  section callable_types alignment(8) {
+    callable @callable0 flags([]) depth(0) : @signature0
+  }
+
+  section exports alignment(8) {
+    export @export0 name(@string0) : @callable0 = @function0
+  }
+
+  section functions alignment(8) {
+    func @function0 : @callable0 flags([]) frame(local_bytes = 0, value_registers = 0, ref_registers = 17, function_registers = 0, local_refs = 1, local_functions = 0) {
+    ^bb0:
+      control.block
+      %r16 = ref.abi.argument.load.move 0
+    ^bb1:
+      control.block
+      ref.stack.store.retain %r16, #r0
+      ref.abi.result.store.move %r16, 0
+      %r16 = ref.stack.load.move #r0
+      ref.stack.store.retain %r16, #r0
+      ref.abi.result.store.move %r16, 1
+      %r16 = ref.stack.load.move #r0
+      %r0 = ref.retain %r16
+      %r1 = ref.retain %r16
+      %r2 = ref.retain %r16
+      %r3 = ref.retain %r16
+      %r4 = ref.retain %r16
+      %r5 = ref.retain %r16
+      %r6 = ref.retain %r16
+      %r7 = ref.retain %r16
+      %r8 = ref.retain %r16
+      %r9 = ref.retain %r16
+      %r10 = ref.retain %r16
+      %r11 = ref.retain %r16
+      %r12 = ref.retain %r16
+      %r13 = ref.retain %r16
+      %r14 = ref.retain %r16
+      %r15 = ref.retain %r16
+      control.return
+    }
+  }
+
+}
