@@ -146,6 +146,18 @@ struct FakeNativeState {
     return AMDF_STATUS_OK;
   }
 
+  static amdf_status_t VmFaultQuery(
+      void* user_data, amdf_gpu_umd_device_t*,
+      struct drm_amdgpu_info_gpuvm_fault* out_fault) {
+    auto* self = static_cast<FakeNativeState*>(user_data);
+    ++self->vm_fault.query_count;
+    if (!amdf_status_is_ok(self->vm_fault.query_status)) {
+      return self->vm_fault.query_status;
+    }
+    *out_fault = self->vm_fault.info;
+    return AMDF_STATUS_OK;
+  }
+
   void Reset() {
     for (FakeBuffer& buffer : buffers) buffer = {};
     std::memset(doorbell_mapping.data(), 0, doorbell_mapping.size());
@@ -169,6 +181,7 @@ struct FakeNativeState {
     reset_query_count = 0;
     reset_query_status = AMDF_STATUS_OK;
     reset_state = {};
+    vm_fault = {};
     observed_create = {};
     observed_doorbell_mapping_offset = 0;
     observed_doorbell_mapping_length = 0;
@@ -205,6 +218,15 @@ struct FakeNativeState {
   int reset_query_count = 0;
   amdf_status_t reset_query_status = AMDF_STATUS_OK;
   amdf_gpu_kfd_reset_state_t reset_state = {};
+  // Per-render-VM observation supplied by the native dependency.
+  struct {
+    // Number of native fault queries performed.
+    uint32_t query_count = 0;
+    // Native ioctl result, independent of whether the VM faulted.
+    amdf_status_t query_status = AMDF_STATUS_OK;
+    // Cached fault record returned on successful native observation.
+    drm_amdgpu_info_gpuvm_fault info = {};
+  } vm_fault;
   uint32_t created_queue_identifier = 47;
   uint64_t doorbell_offset = UINT64_C(0x20000080);
   struct kfd_ioctl_create_queue_args observed_create = {};
@@ -333,6 +355,7 @@ class KfdUserQueueTest : public ::testing::Test {
       .queue_destroy = FakeNativeState::QueueDestroy,
       .doorbell_map = FakeNativeState::DoorbellMap,
       .doorbell_unmap = FakeNativeState::DoorbellUnmap,
+      .vm_fault_query = FakeNativeState::VmFaultQuery,
       .reset_query = FakeNativeState::ResetQuery,
   };
   amdf_gpu_umd_device_t device_ = {};
@@ -633,13 +656,66 @@ TEST_F(KfdUserQueueTest, SamplesProgressAndLatchesTerminalFailures) {
 TEST_F(KfdUserQueueTest, ClassifiesDeviceFailure) {
   CreateQueue();
   MapQueue();
-  amdf_atomic_uint64_store_release(ErrorPayload(),
-                                   KFD_EC_MASK(EC_DEVICE_MEMORY_VIOLATION));
+  native_state_.vm_fault.info = {
+      .addr = native_state_.buffers[1].device_address,
+      .status = 0x00800830,
+      .vmhub = AMDGPU_VMHUB_TYPE_GFX,
+  };
   amdf_user_queue_status_t status = {};
   ASSERT_EQ(amdf_gpu_umd_user_queue_query_status(queue_, &status),
             AMDF_STATUS_OK);
   EXPECT_EQ(status.state, AMDF_QUEUE_STATE_DEVICE_LOST);
   EXPECT_EQ(status.terminal_status,
+            amdf_make_api_status(AMDF_STATUS_CODE_DEVICE_LOST));
+  EXPECT_EQ(amdf_atomic_uint64_load_acquire(ErrorPayload()), 0u);
+
+  // A latched failure remains observable even when a subsequent ioctl fails.
+  native_state_.vm_fault.query_status =
+      amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, EIO);
+  ASSERT_EQ(amdf_gpu_umd_user_queue_query_status(queue_, &status),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(status.state, AMDF_QUEUE_STATE_DEVICE_LOST);
+  EXPECT_EQ(native_state_.vm_fault.query_count, 1u);
+  amdf_atomic_uint64_store_release(WriteIndex(), 8);
+  const amdf_wait_deadline_t deadline = {UINT64_MAX, UINT64_MAX};
+  EXPECT_EQ(amdf_gpu_umd_user_queue_wait_consumed(queue_, 8, &deadline),
+            amdf_make_api_status(AMDF_STATUS_CODE_DEVICE_LOST));
+  EXPECT_EQ(amdf_status_code(amdf_gpu_umd_user_queue_destroy(queue_)),
+            AMDF_STATUS_CODE_BUSY);
+  EXPECT_EQ(native_state_.queue_destroy_count, 0);
+  EXPECT_EQ(native_state_.LiveBufferCount(), 5u);
+}
+
+TEST_F(KfdUserQueueTest, PropagatesNativeFaultObservationFailure) {
+  CreateQueue();
+  MapQueue();
+  const amdf_status_t failure = amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, EIO);
+  native_state_.vm_fault.query_status = failure;
+  amdf_user_queue_status_t status;
+  std::memset(&status, 0xA5, sizeof(status));
+  const amdf_user_queue_status_t original_status = status;
+  EXPECT_EQ(amdf_gpu_umd_user_queue_query_status(queue_, &status), failure);
+  EXPECT_EQ(std::memcmp(&status, &original_status, sizeof(status)), 0);
+  amdf_atomic_uint64_store_release(WriteIndex(), 8);
+  const amdf_wait_deadline_t deadline = {UINT64_MAX, UINT64_MAX};
+  EXPECT_EQ(amdf_gpu_umd_user_queue_wait_consumed(queue_, 8, &deadline),
+            failure);
+
+  // Failure to observe is not itself a terminal device failure.
+  native_state_.vm_fault.query_status = AMDF_STATUS_OK;
+  ASSERT_EQ(amdf_gpu_umd_user_queue_query_status(queue_, &status),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(status.state, AMDF_QUEUE_STATE_ACTIVE);
+  EXPECT_EQ(status.terminal_status, AMDF_STATUS_OK);
+}
+
+TEST_F(KfdUserQueueTest, ObservesVmFaultWithoutComputeContextStorage) {
+  CreateQueue(AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA);
+  MapQueue();
+  native_state_.vm_fault.info.status = 0x00800830;
+  amdf_atomic_uint64_store_release(WriteIndex(), 8);
+  const amdf_wait_deadline_t deadline = {UINT64_MAX, UINT64_MAX};
+  EXPECT_EQ(amdf_gpu_umd_user_queue_wait_consumed(queue_, 8, &deadline),
             amdf_make_api_status(AMDF_STATUS_CODE_DEVICE_LOST));
 }
 

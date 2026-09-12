@@ -99,6 +99,23 @@ static amdf_status_t amdf_gpu_kfd_user_queue_reset_query(
   return amdf_gpu_kfd_reset_monitor_query(&device->reset_monitor, out_state);
 }
 
+static amdf_status_t amdf_gpu_kfd_user_queue_vm_fault_query(
+    void* user_data, amdf_gpu_umd_device_t* device,
+    struct drm_amdgpu_info_gpuvm_fault* out_fault) {
+  (void)user_data;
+  struct drm_amdgpu_info_gpuvm_fault fault = {0};
+  struct drm_amdgpu_info query = {
+      .return_pointer = (uintptr_t)&fault,
+      .return_size = sizeof(fault),
+      .query = AMDGPU_INFO_GPUVM_FAULT,
+  };
+  if (ioctl(device->render_descriptor, DRM_IOCTL_AMDGPU_INFO, &query) != 0) {
+    return amdf_linux_error(errno);
+  }
+  *out_fault = fault;
+  return AMDF_STATUS_OK;
+}
+
 static const amdf_gpu_kfd_user_queue_native_api_t
     amdf_gpu_kfd_user_queue_native_api = {
         .buffer_create = amdf_gpu_kfd_user_queue_buffer_create,
@@ -108,6 +125,7 @@ static const amdf_gpu_kfd_user_queue_native_api_t
         .queue_destroy = amdf_gpu_kfd_user_queue_destroy_native,
         .doorbell_map = amdf_gpu_kfd_user_queue_doorbell_map,
         .doorbell_unmap = amdf_gpu_kfd_user_queue_doorbell_unmap,
+        .vm_fault_query = amdf_gpu_kfd_user_queue_vm_fault_query,
         .reset_query = amdf_gpu_kfd_user_queue_reset_query,
 };
 

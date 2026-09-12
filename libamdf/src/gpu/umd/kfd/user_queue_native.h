@@ -7,6 +7,7 @@
 #ifndef AMDF_SRC_GPU_UMD_KFD_USER_QUEUE_NATIVE_H_
 #define AMDF_SRC_GPU_UMD_KFD_USER_QUEUE_NATIVE_H_
 
+#include <drm/amdgpu_drm.h>
 #include <linux/kfd_ioctl.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -65,6 +66,11 @@ typedef struct amdf_gpu_kfd_user_queue_native_api_t {
   // Releases one complete KFD doorbell aperture, retaining it on failure.
   amdf_status_t (*doorbell_unmap)(void* user_data, void* mapping,
                                   size_t byte_length);
+  // Samples the fault cache of the device's own render-file VM, not global
+  // hardware state. Failure leaves the output unchanged.
+  amdf_status_t (*vm_fault_query)(
+      void* user_data, amdf_gpu_umd_device_t* device,
+      struct drm_amdgpu_info_gpuvm_fault* out_fault);
   // Samples the device-epoch reset observer. Failure leaves the output
   // unchanged.
   amdf_status_t (*reset_query)(void* user_data, amdf_gpu_umd_device_t* device,

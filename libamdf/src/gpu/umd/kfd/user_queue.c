@@ -69,7 +69,7 @@ struct amdf_gpu_umd_user_queue_t {
   uint32_t queue_identifier;
   // Proof still required before releasing queue-reachable storage.
   amdf_gpu_kfd_user_queue_retirement_state_t retirement_state;
-  // Sticky provider or firmware failure observed through the control page.
+  // Sticky native VM, provider, or firmware failure.
   amdf_atomic_uint64_t terminal_status;
 };
 
@@ -478,6 +478,16 @@ amdf_status_t amdf_gpu_umd_user_queue_query_status(
   if (queue == NULL || out_status == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
+  // KFD reports memory violations through device events, not the queue's
+  // context-save error payload. The render-file cache observes the same VM
+  // without allocating an event or consulting another process's faults.
+  struct drm_amdgpu_info_gpuvm_fault fault = {0};
+  if (amdf_status_is_ok(
+          amdf_atomic_uint64_load_acquire(&queue->terminal_status))) {
+    const amdf_status_t status = queue->native_api->vm_fault_query(
+        queue->native_api->user_data, queue->device, &fault);
+    if (!amdf_status_is_ok(status)) return status;
+  }
   const uint64_t consumed_index = amdf_atomic_uint64_load_acquire(
       amdf_gpu_kfd_user_queue_read_index(queue));
   const uint64_t producer_index = amdf_atomic_uint64_load_acquire(
@@ -490,6 +500,9 @@ amdf_status_t amdf_gpu_umd_user_queue_query_status(
   }
   if (consumed_index > producer_index) {
     terminal_status = amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
+  }
+  if (fault.status != 0) {
+    terminal_status = amdf_make_api_status(AMDF_STATUS_CODE_DEVICE_LOST);
   }
   if (!amdf_status_is_ok(terminal_status)) {
     amdf_gpu_kfd_user_queue_record_failure(queue, terminal_status);
