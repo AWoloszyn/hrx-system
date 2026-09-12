@@ -221,8 +221,14 @@ IREE_ATTRIBUTE_NOINLINE static iree_status_t loom_vm_function_packet(
                ->immediates[descriptor->immediate_start + i];
       const uint64_t bits = loom_vm_function_immediate(
           frame, immediate, attributes.entries[i].value);
-      memcpy(packet + immediate->encoding_field_id, &bits,
-             immediate->bit_width / 8);
+      if (immediate->bit_width <= 8) {
+        // Packed selector components share a zero-initialized packet byte.
+        packet[immediate->encoding_field_id] |=
+            (uint8_t)(bits << immediate->encoding_id);
+      } else {
+        memcpy(packet + immediate->encoding_field_id, &bits,
+               immediate->bit_width / 8);
+      }
     }
   }
   return iree_io_stream_write(stream, descriptor->encoding_format_id, packet);

@@ -791,7 +791,7 @@ def _i32_bitfield_extract_rules(
                     operands={"value": ValueRef.operand("source")},
                     results={"dst": _RESULT},
                     immediates={
-                        "imm32": AttrProject.i64_attrs_pack_consecutive(
+                        "imm32": AttrProject.attrs_pack_consecutive(
                             "offset",
                             count=2,
                             bit_width=8,

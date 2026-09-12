@@ -412,29 +412,11 @@ static iree_status_t loom_low_lower_rule_build_attrs(
         attrs[i].value = loom_attr_i64((int64_t)packed_value);
         break;
       }
-      case LOOM_LOW_LOWER_ATTR_COPY_I64_ATTRS_PACK_CONSECUTIVE: {
-        IREE_ASSERT_LT(attr_copy->source_attr_index,
-                       source_op->attribute_count);
-        IREE_ASSERT_GT(attr_copy->source_element_count, 0);
-        IREE_ASSERT_GT(attr_copy->source_element_bit_width, 0);
-        const uint32_t packed_bit_count =
-            (uint32_t)attr_copy->source_element_count *
-            attr_copy->source_element_bit_width;
-        IREE_ASSERT_LE(packed_bit_count + attr_copy->target_bit_offset, 63);
-        IREE_ASSERT_LE((uint32_t)attr_copy->source_attr_index +
-                           attr_copy->source_element_count,
-                       source_op->attribute_count);
-        const uint64_t element_mask =
-            (UINT64_C(1) << attr_copy->source_element_bit_width) - 1u;
+      case LOOM_LOW_LOWER_ATTR_COPY_ATTRS_PACK_CONSECUTIVE: {
         uint64_t packed_value = 0;
         for (uint16_t j = 0; j < attr_copy->source_element_count; ++j) {
-          loom_attribute_t source_attr =
-              source_attrs[attr_copy->source_attr_index + j];
-          IREE_ASSERT_EQ(source_attr.kind, LOOM_ATTR_I64);
-          const int64_t source_value = source_attr.i64;
-          IREE_ASSERT_GE(source_value, 0);
-          IREE_ASSERT_LE((uint64_t)source_value, element_mask);
-          packed_value |= (uint64_t)source_value
+          // Integer and enum attributes share the raw integer payload.
+          packed_value |= source_attrs[attr_copy->source_attr_index + j].raw
                           << (j * attr_copy->source_element_bit_width);
         }
         packed_value <<= attr_copy->target_bit_offset;

@@ -4,6 +4,8 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+from itertools import product
+
 from iree.vm.bytecode.spec.isa import ControlFlow, FieldRole, Suspension
 from iree.vm.bytecode.spec.isa.core.constant import CONSTANT_I32, CONSTANT_I64
 from iree.vm.bytecode.spec.isa.core.float import (
@@ -22,7 +24,7 @@ from iree.vm.bytecode.spec.isa.core.integer import (
     IntegerDivisionSemantics,
     IntegerUnarySemantics,
 )
-from iree.vm.bytecode.spec.isa.core.rules import FieldRule, StateAccess
+from iree.vm.bytecode.spec.isa.core.rules import FieldRule, RecordRuleKind, StateAccess
 from iree.vm.bytecode.spec.isa.core.stack import MEMORY_FORMAT_SELECTOR
 from iree.vm.bytecode.spec.specification import SPECIFICATION
 
@@ -220,15 +222,18 @@ def test_selectors_preserve_the_spec_domain_and_encoding():
         if not descriptor.immediates or descriptor.op_kind is DescriptorOpKind.CONST:
             continue
         fields = {
-            field.field.name: (field, offset)
+            offset: field
             for field, offset in zip(
                 instruction.fields, instruction.field_offsets, strict=True
             )
             if field.role is FieldRole.IMMEDIATE
         }
         for immediate in descriptor.immediates:
-            field, offset = fields[immediate.field_name]
-            assert immediate.encoding_field_id == offset
+            field = fields[immediate.encoding_field_id]
+            if field.rule.kind is FieldRule.PACKED_SELECTORS:
+                # Joint domains are checked exhaustively below, including holes.
+                continue
+            assert immediate.field_name == field.field.name
             assert immediate.bit_width == field.field.byte_length * 8
             if field.rule.kind is FieldRule.SELECTOR:
                 expected = {
@@ -256,6 +261,65 @@ def test_selectors_preserve_the_spec_domain_and_encoding():
                     immediate.signed_min,
                     immediate.unsigned_max,
                 ) == field.rule.values
+
+
+def test_packed_selectors_encode_exactly_the_legal_wire_bytes():
+    descriptors = {d.encoding_id: d for d in VM_CORE_DESCRIPTOR_SET.descriptors}
+    domains = {d.name: d for d in VM_CORE_DESCRIPTOR_SET.enum_domains}
+    for instruction in SPECIFICATION.instructions:
+        if instruction.opcode not in descriptors:
+            continue
+        for field, offset in zip(
+            instruction.fields, instruction.field_offsets, strict=True
+        ):
+            if field.rule.kind is not FieldRule.PACKED_SELECTORS:
+                continue
+            immediates = tuple(
+                value
+                for value in descriptors[instruction.opcode].immediates
+                if value.encoding_field_id == offset
+            )
+            used_bits = 0
+            for immediate in immediates:
+                mask = ((1 << immediate.bit_width) - 1) << immediate.encoding_id
+                assert not used_bits & mask
+                assert mask < 256
+                used_bits |= mask
+            projected = {
+                sum(
+                    value.value << immediate.encoding_id
+                    for value, immediate in zip(values, immediates, strict=True)
+                )
+                for values in product(
+                    *(domains[i.enum_domain].values for i in immediates)
+                )
+            }
+            expected = set()
+            for bits in range(256):
+                if bits & field.rule.values[0]:
+                    continue
+                decoded = {
+                    part.name: (bits >> part.bit_offset) & ((1 << part.bit_length) - 1)
+                    for part in field.rule.data
+                }
+                if any(
+                    decoded[part.name]
+                    not in (
+                        part.allowed_values or tuple(v.value for v in part.table.values)
+                    )
+                    for part in field.rule.data
+                ):
+                    continue
+                if any(
+                    tuple(decoded[part.name] for part in rule.data)
+                    not in tuple(zip(rule.values[::2], rule.values[1::2], strict=True))
+                    for rule in instruction.rules
+                    if rule.kind is RecordRuleKind.PACKED_SELECTOR_PAIRS
+                    and field.field.name in rule.fields
+                ):
+                    continue
+                expected.add(bits)
+            assert projected == expected, instruction.mnemonic
 
 
 def test_constant_immediates_preserve_the_wire_bits_and_alignment():

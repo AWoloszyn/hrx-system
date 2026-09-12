@@ -8,6 +8,13 @@
 
 from iree.vm.bytecode.spec.isa.core.buffer import (
     BUFFER_ALLOCATE,
+    BUFFER_ATOMIC_CARRIER_SELECTOR,
+    BUFFER_ATOMIC_CMPXCHG,
+    BUFFER_ATOMIC_KIND_SELECTOR,
+    BUFFER_ATOMIC_ORDERING_SELECTOR,
+    BUFFER_ATOMIC_REDUCE,
+    BUFFER_ATOMIC_RMW,
+    BUFFER_ATOMIC_SCOPE_SELECTOR,
     BUFFER_COMPARE,
     BUFFER_COPY,
     BUFFER_FILL,
@@ -40,11 +47,13 @@ from iree.vm.bytecode.spec.isa.core.integer import (
     IntegerUnaryOperation,
     IntegerUnarySemantics,
 )
+from iree.vm.bytecode.spec.isa.core.rules import RecordRuleKind
 from iree.vm.bytecode.spec.isa.core.stack import MEMORY_FORMAT_SELECTOR
 from iree.vm.bytecode.spec.isa.core.value import VALUE_COPY, VALUE_SELECT
 from iree.vm.bytecode.spec.specification import SPECIFICATION
 
 from loom.dialect import buffer, view
+from loom.dialect.atomic import AtomicKind, AtomicOrdering, AtomicScope
 from loom.dialect.index import ALL_INDEX_OPS, IndexPredicate
 from loom.dialect.index import defs as index
 from loom.dialect.scalar import (
@@ -233,10 +242,49 @@ for source_enum, selector in (
     (IndexPredicate, INTEGER_COMPARE_SELECTOR),
     (comparison.CmpFPredicate, FLOAT_COMPARE_SELECTOR),
     (ClampFMode, FLOAT_CLAMP_SELECTOR),
+    (AtomicOrdering, BUFFER_ATOMIC_ORDERING_SELECTOR),
+    (AtomicScope, BUFFER_ATOMIC_SCOPE_SELECTOR),
 ):
     assert {case.keyword: case.value for case in source_enum.cases} == {
         value.name: value.value for value in selector.values
     }
+
+# Source and machine spellings differ; only the correspondence lives here.
+_ATOMIC_KIND_NAMES = {
+    "xchgi": "exchange.integer",
+    "xchgf": "exchange.float",
+    "addi": "add.integer",
+    "addf": "add.float",
+    "subi": "subtract.integer",
+    "andi": "and.integer",
+    "ori": "or.integer",
+    "xori": "xor.integer",
+    "minsi": "minimum.signed",
+    "maxsi": "maximum.signed",
+    "minui": "minimum.unsigned",
+    "maxui": "maximum.unsigned",
+    "minimumf": "minimum.float",
+    "maximumf": "maximum.float",
+    "minnumf": "minnum.float",
+    "maxnumf": "maxnum.float",
+}
+assert {_ATOMIC_KIND_NAMES[case.keyword]: case.value for case in AtomicKind.cases} == {
+    value.name: value.value for value in BUFFER_ATOMIC_KIND_SELECTOR.values
+}
+_ATOMIC_CARRIERS = {
+    int(value.name[1:]): value.value for value in BUFFER_ATOMIC_CARRIER_SELECTOR.values
+}
+_ATOMIC_ORDERING_PAIR = next(
+    rule.data
+    for rule in BUFFER_ATOMIC_CMPXCHG.rules
+    if rule.kind is RecordRuleKind.PACKED_SELECTOR_PAIRS
+)
+# The shared pack recipe consumes consecutive source attributes.
+_CMPXCHG_ATTR_NAMES = tuple(attr.name for attr in view.view_atomic_cmpxchg.attrs)
+_CMPXCHG_ORDERING_START = _CMPXCHG_ATTR_NAMES.index(_ATOMIC_ORDERING_PAIR[0].name)
+assert _CMPXCHG_ATTR_NAMES[
+    _CMPXCHG_ORDERING_START : _CMPXCHG_ORDERING_START + len(_ATOMIC_ORDERING_PAIR)
+] == tuple(part.name for part in _ATOMIC_ORDERING_PAIR)
 
 VM_CORE_CONTRACT_DIALECT_OPS = {
     "buffer": buffer.ALL_BUFFER_OPS,
@@ -684,10 +732,32 @@ def _view_cases():
             if ScalarType(kind).bitwidth == width
             and str(ScalarType(kind)) in _SCALAR_TYPES
         )
-        for source_op, instruction, operation, value_field in (
+        accesses = (
             (view.view_load, BUFFER_LOAD, SourceMemoryOperation.LOAD, "result"),
             (view.view_store, BUFFER_STORE, SourceMemoryOperation.STORE, "value"),
-        ):
+        )
+        if width in _ATOMIC_CARRIERS:
+            accesses += (
+                (
+                    view.view_atomic_reduce,
+                    BUFFER_ATOMIC_REDUCE,
+                    SourceMemoryOperation.ATOMIC_REDUCE,
+                    "value",
+                ),
+                (
+                    view.view_atomic_rmw,
+                    BUFFER_ATOMIC_RMW,
+                    SourceMemoryOperation.ATOMIC_RMW,
+                    "result",
+                ),
+                (
+                    view.view_atomic_cmpxchg,
+                    BUFFER_ATOMIC_CMPXCHG,
+                    SourceMemoryOperation.ATOMIC_CMPXCHG,
+                    "old",
+                ),
+            )
+        for source_op, instruction, operation, value_field in accesses:
             descriptor = _DESCRIPTORS[instruction.opcode]
             # Prefer the shorter zero-static recipe. The general form adds all
             # signed contributions before the VM checks the final unsigned range.
@@ -735,22 +805,45 @@ def _view_cases():
                             )
                         )
                     coordinate = ValueRef.temporary("offset" if dynamic else "static")
-                operands = {
-                    "buffer_r8": ValueRef.operand("view"),
-                    "base_v8": coordinate,
-                    "index_v8": coordinate,
-                }
+                operands = {"buffer_r8": ValueRef.operand("view")}
                 results = {}
-                if operation == SourceMemoryOperation.STORE:
-                    operands["source_v8"] = ValueRef.operand("value")
+                if instruction in (BUFFER_LOAD, BUFFER_STORE):
+                    operands.update(base_v8=coordinate, index_v8=coordinate)
+                    immediates = {"scale_u8": 0, "format_u8": selector.value}
+                    if operation == SourceMemoryOperation.STORE:
+                        operands["source_v8"] = ValueRef.operand("value")
+                    else:
+                        results["destination_v8"] = ValueRef.result("result")
                 else:
-                    results["destination_v8"] = ValueRef.result("result")
+                    operands["offset_v8"] = coordinate
+                    immediates = {
+                        "carrier": _ATOMIC_CARRIERS[width],
+                        "scope": AttrProject.enum_ordinal("scope"),
+                    }
+                    if instruction is BUFFER_ATOMIC_CMPXCHG:
+                        immediates["orderings"] = AttrProject.attrs_pack_consecutive(
+                            _ATOMIC_ORDERING_PAIR[0].name,
+                            count=len(_ATOMIC_ORDERING_PAIR),
+                            bit_width=_ATOMIC_ORDERING_PAIR[0].bit_length,
+                        )
+                        operands.update(
+                            expected_v8=ValueRef.operand("expected"),
+                            replacement_v8=ValueRef.operand("replacement"),
+                        )
+                    else:
+                        operands["operand_v8"] = ValueRef.operand("value")
+                        immediates.update(
+                            kind=AttrProject.enum_ordinal("kind"),
+                            ordering=AttrProject.enum_ordinal("ordering"),
+                        )
+                    if instruction is not BUFFER_ATOMIC_REDUCE:
+                        results["old_v8"] = ValueRef.result(value_field)
                 emits.append(
                     EmitDescriptorOp(
                         descriptor=descriptor,
                         operands=operands,
                         results=results,
-                        immediates={"scale_u8": 0, "format_u8": selector.value},
+                        immediates=immediates,
                         source_memory=memory,
                         source_memory_byte_offset_materializer=(
                             materializer if zero_static else None

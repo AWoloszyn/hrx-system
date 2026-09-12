@@ -181,9 +181,9 @@ typedef enum loom_low_lower_attr_copy_kind_e {
   LOOM_LOW_LOWER_ATTR_COPY_ENUM_ORDINAL = 15,
   // Emits the source op instance flag bitmask as an i64 packet attribute.
   LOOM_LOW_LOWER_ATTR_COPY_SOURCE_OP_INSTANCE_FLAGS = 16,
-  // Packs contiguous i64 source op attributes into an i64 attribute, with the
-  // first source attribute occupying the least-significant bitfield.
-  LOOM_LOW_LOWER_ATTR_COPY_I64_ATTRS_PACK_CONSECUTIVE = 17,
+  // Packs contiguous integer or enum source attributes into an i64 attribute,
+  // with the first source attribute occupying the least-significant bitfield.
+  LOOM_LOW_LOWER_ATTR_COPY_ATTRS_PACK_CONSECUTIVE = 17,
   // Emits a u32 low-bit mask with width read from one i64 source attribute.
   LOOM_LOW_LOWER_ATTR_COPY_I64_LOW_BIT_MASK = 18,
   // Emits a u32 low-bit mask shifted by another i64 source attribute.

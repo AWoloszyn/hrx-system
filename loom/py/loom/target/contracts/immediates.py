@@ -28,7 +28,7 @@ class AttrProjectKind(Enum):
     I64_LOG2 = "i64_log2"
     I64_ARRAY_ELEMENT = "i64_array_element"
     I64_ARRAY_PACK_ELEMENTS = "i64_array_pack_elements"
-    I64_ATTRS_PACK_CONSECUTIVE = "i64_attrs_pack_consecutive"
+    ATTRS_PACK_CONSECUTIVE = "attrs_pack_consecutive"
     I64_LOW_BIT_MASK = "i64_low_bit_mask"
     I64_SHIFTED_LOW_BIT_MASK = "i64_shifted_low_bit_mask"
     I64_SHIFTED_LOW_BIT_CLEAR_MASK = "i64_shifted_low_bit_clear_mask"
@@ -132,7 +132,7 @@ class AttrProject:
         )
 
     @classmethod
-    def i64_attrs_pack_consecutive(
+    def attrs_pack_consecutive(
         cls,
         source_attr: str,
         *,
@@ -140,8 +140,9 @@ class AttrProject:
         bit_width: int,
         target_bit_offset: int = 0,
     ) -> Self:
+        """Packs consecutive integer or enum attributes, lowest field first."""
         return cls(
-            kind=AttrProjectKind.I64_ATTRS_PACK_CONSECUTIVE,
+            kind=AttrProjectKind.ATTRS_PACK_CONSECUTIVE,
             source_attr=source_attr,
             count=count,
             bit_width=bit_width,
@@ -310,7 +311,7 @@ class AttrProject:
                     f"'{bound_immediate_name}' must be an enum immediate"
                 )
             return
-        if self.kind == AttrProjectKind.I64_ATTRS_PACK_CONSECUTIVE:
+        if self.kind == AttrProjectKind.ATTRS_PACK_CONSECUTIVE:
             if bound_immediate_name is None:
                 raise ValueError(
                     f"{source_op.name}: {subject} must bind one descriptor immediate"
@@ -318,11 +319,6 @@ class AttrProject:
             _require_immediate(descriptor, bound_immediate_name, subject)
             if self.count is None or self.bit_width is None:
                 raise ValueError(f"{source_op.name}: {subject} needs count/bit_width")
-            if attr.attr_type != ATTR_TYPE_I64:
-                raise ValueError(
-                    f"{source_op.name}: {subject} source attr '{self.source_attr}' "
-                    "must be an i64 attr"
-                )
             attr_index = source_op.attrs.index(attr)
             if attr_index + self.count > len(source_op.attrs):
                 raise ValueError(
@@ -330,11 +326,21 @@ class AttrProject:
                     "does not have enough following attrs"
                 )
             for element_attr in source_op.attrs[attr_index : attr_index + self.count]:
-                if element_attr.attr_type != ATTR_TYPE_I64:
+                if element_attr.attr_type not in (ATTR_TYPE_I64, ATTR_TYPE_ENUM):
                     raise ValueError(
                         f"{source_op.name}: {subject} source attr "
-                        f"'{element_attr.name}' must be an i64 attr"
+                        f"'{element_attr.name}' must be an integer or enum attr"
                     )
+                if element_attr.attr_type == ATTR_TYPE_ENUM:
+                    assert element_attr.enum_def is not None
+                    if any(
+                        not 0 <= case.value < 1 << self.bit_width
+                        for case in element_attr.enum_def.cases
+                    ):
+                        raise ValueError(
+                            f"{source_op.name}: {subject} enum '{element_attr.name}' "
+                            "does not fit the packed field"
+                        )
             return
         mask_kinds = (
             AttrProjectKind.I64_LOW_BIT_MASK,

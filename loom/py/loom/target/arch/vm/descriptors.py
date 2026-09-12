@@ -10,6 +10,7 @@ The runtime spec owns opcodes, packet fields, and semantics. This projection
 supplies the interpreter's register and scheduling model, not a second ISA.
 Encoding IDs are byte opcodes, encoding format IDs are packet byte lengths,
 and operand encoding field IDs are byte offsets from the instruction start.
+Immediate encoding IDs are sub-byte shifts within their byte-offset fields.
 """
 
 from pathlib import Path
@@ -17,6 +18,9 @@ from pathlib import Path
 from iree.vm.bytecode.spec.isa import FieldRole, Instruction
 from iree.vm.bytecode.spec.isa.core.buffer import (
     BUFFER_ALLOCATE,
+    BUFFER_ATOMIC_CMPXCHG,
+    BUFFER_ATOMIC_REDUCE,
+    BUFFER_ATOMIC_RMW,
     BUFFER_COMPARE,
     BUFFER_COPY,
     BUFFER_FILL,
@@ -50,7 +54,7 @@ from iree.vm.bytecode.spec.isa.core.integer import (
     IntegerDivisionSemantics,
     IntegerUnarySemantics,
 )
-from iree.vm.bytecode.spec.isa.core.rules import FieldRule, StateAccess
+from iree.vm.bytecode.spec.isa.core.rules import FieldRule, RecordRuleKind, StateAccess
 from iree.vm.bytecode.spec.isa.core.stack import MEMORY_FORMAT_SELECTOR
 from iree.vm.bytecode.spec.isa.core.value import VALUE_COPY, VALUE_SELECT
 from iree.vm.bytecode.spec.specification import SPECIFICATION
@@ -95,6 +99,11 @@ _REGISTER_CLASSES = {
     FieldRule.REGISTER_VALUE: "vm.value",
     FieldRule.REGISTER_REF: "vm.ref",
 }
+_ATOMIC_INSTRUCTIONS = (
+    BUFFER_ATOMIC_REDUCE,
+    BUFFER_ATOMIC_RMW,
+    BUFFER_ATOMIC_CMPXCHG,
+)
 _BUFFER_INSTRUCTIONS = (
     BUFFER_ALLOCATE,
     BUFFER_LENGTH,
@@ -103,6 +112,7 @@ _BUFFER_INSTRUCTIONS = (
     BUFFER_COMPARE,
     BUFFER_LOAD,
     BUFFER_STORE,
+    *_ATOMIC_INSTRUCTIONS,
 )
 
 _INTEGER_TYPES = {32: ScalarTypeKind.I32, 64: ScalarTypeKind.I64}
@@ -152,12 +162,91 @@ _SELECTORS = {
 }
 
 
-def _immediates(instruction: Instruction) -> tuple[Immediate, ...]:
-    immediates = []
+def _packed_immediates(instruction: Instruction):
     for field, offset in zip(
         instruction.fields, instruction.field_offsets, strict=True
     ):
-        if field.role is not FieldRole.IMMEDIATE:
+        if field.rule.kind is not FieldRule.PACKED_SELECTORS:
+            continue
+        paired = ()
+        for rule in instruction.rules:
+            if (
+                rule.kind is RecordRuleKind.PACKED_SELECTOR_PAIRS
+                and field.field.name in rule.fields
+            ):
+                assert not paired
+                paired = rule.data
+                left, right = paired
+                assert right.bit_offset == left.bit_offset + left.bit_length
+                assert right.bit_length == left.bit_length
+                names = [
+                    {value.value: value.name for value in part.table.values}
+                    for part in paired
+                ]
+                domain = EnumDomain(
+                    f"{instruction.mnemonic}.orderings",
+                    tuple(
+                        EnumValue(
+                            f"{names[0][a]}.{names[1][b]}",
+                            a | (b << left.bit_length),
+                        )
+                        for a, b in zip(
+                            rule.values[::2], rule.values[1::2], strict=True
+                        )
+                    ),
+                )
+                yield (
+                    Immediate(
+                        "orderings",
+                        ImmediateKind.ENUM,
+                        bit_width=left.bit_length + right.bit_length,
+                        encoding_field_id=offset,
+                        encoding_id=left.bit_offset,
+                        enum_domain=domain.name,
+                    ),
+                    domain,
+                )
+        for part in field.rule.data:
+            if part in paired:
+                continue
+            domain = EnumDomain(
+                f"{instruction.mnemonic}.{part.name}"
+                if part.allowed_values
+                else part.table.name,
+                tuple(
+                    EnumValue(value.name, value.value)
+                    for value in part.table.values
+                    if not part.allowed_values or value.value in part.allowed_values
+                ),
+            )
+            yield (
+                Immediate(
+                    part.name,
+                    ImmediateKind.ENUM,
+                    bit_width=part.bit_length,
+                    encoding_field_id=offset,
+                    encoding_id=part.bit_offset,
+                    enum_domain=domain.name,
+                ),
+                domain,
+            )
+
+
+_PACKED_IMMEDIATES = {
+    instruction.opcode: tuple(_packed_immediates(instruction))
+    for instruction in _BUFFER_INSTRUCTIONS
+}
+
+
+def _immediates(instruction: Instruction) -> tuple[Immediate, ...]:
+    immediates = [row for row, _ in _PACKED_IMMEDIATES.get(instruction.opcode, ())]
+    for field, offset in zip(
+        instruction.fields, instruction.field_offsets, strict=True
+    ):
+        if (
+            field.role is not FieldRole.IMMEDIATE
+            or field.rule.kind is FieldRule.PACKED_SELECTORS
+        ):
             continue
         bit_width = field.field.byte_length * 8
         minimum, maximum = 0, 0
@@ -243,7 +332,8 @@ def _descriptor(
             InstructionClass.GENERIC_MEMORY
             if instruction.state_effects
             else InstructionClass.SCALAR_ALU,
-        ),
+        )
+        + ((InstructionClass.ATOMIC,) if instruction in _ATOMIC_INSTRUCTIONS else ()),
         asm_forms=(
             AsmForm(
                 results=tuple(
@@ -364,6 +454,13 @@ VM_CORE_DESCRIPTOR_SET = DescriptorSet(
         for instruction in _BUFFER_INSTRUCTIONS
         for field in instruction.fields
         if field.rule.kind is FieldRule.ALLOWED_VALUES
+    )
+    + tuple(
+        {
+            domain.name: domain
+            for fields in _PACKED_IMMEDIATES.values()
+            for _, domain in fields
+        }.values()
     ),
     descriptors=(
         _descriptor(VALUE_COPY, ScalarTypeKind.I64),
