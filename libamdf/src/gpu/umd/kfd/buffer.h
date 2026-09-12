@@ -54,6 +54,16 @@ typedef struct amdf_gpu_kfd_buffer_result_t {
   void* host_pointer;
 } amdf_gpu_kfd_buffer_result_t;
 
+// Prepares a KFD buffer in an already-live owner's initially NULL native slot.
+// Partial allocation, mapping and reservation state remains in `buffer_state`
+// on error for explicit destruction; preparation performs no rollback. The
+// result is written only on success. This transition is one-shot.
+amdf_status_t amdf_gpu_kfd_buffer_prepare(
+    amdf_gpu_umd_device_t* device,
+    const amdf_gpu_kfd_buffer_create_info_t* create_info,
+    amdf_gpu_kfd_buffer_t** buffer_state,
+    amdf_gpu_kfd_buffer_result_t* out_result);
+
 // Creates one KFD allocation with a stable GPU mapping. Failure rolls back
 // locally and leaves both outputs unchanged. A terminal native rollback failure
 // is reported and leaks its unreleased native resources and VA reservation;

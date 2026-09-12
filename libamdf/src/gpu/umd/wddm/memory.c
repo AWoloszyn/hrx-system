@@ -352,10 +352,7 @@ static amdf_status_t amdf_windows_gpu_memory_map_device_address(
       memory->rollback.device_address = map.VirtualAddress;
       memory->rollback.mapped_byte_length = chunk_byte_length;
       memory->rollback.paging_fence_value = map.PagingFenceValue;
-      status = amdf_windows_gpu_memory_rollback_unexpected_mapping(memory);
-      if (amdf_status_is_ok(status)) {
-        status = amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
-      }
+      status = amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
     } else {
       memory->mapped_byte_length += chunk_byte_length;
       if (map.PagingFenceValue > last_paging_fence_value) {
@@ -611,17 +608,17 @@ amdf_status_t amdf_gpu_umd_device_query_memory_profile(
   return AMDF_STATUS_OK;
 }
 
-amdf_status_t amdf_gpu_umd_memory_import(
+amdf_status_t amdf_gpu_umd_memory_prepare_import(
     amdf_gpu_umd_device_t* device, const amdf_memory_profile_t* profile,
     const amdf_memory_import_info_t* import_info,
     const amdf_external_memory_t* external_memory,
-    amdf_gpu_umd_memory_t** out_memory,
+    amdf_gpu_umd_memory_t** memory_state,
     amdf_gpu_umd_memory_result_t* out_result) {
   (void)device;
   (void)profile;
   (void)import_info;
   (void)external_memory;
-  (void)out_memory;
+  (void)memory_state;
   (void)out_result;
   return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
 }
@@ -644,10 +641,10 @@ amdf_status_t amdf_gpu_umd_memory_describe_site(
   return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
 }
 
-amdf_status_t amdf_gpu_umd_memory_create(
+amdf_status_t amdf_gpu_umd_memory_prepare(
     amdf_gpu_umd_device_t* device, const amdf_memory_profile_t* profile,
     const amdf_memory_create_info_t* create_info,
-    amdf_gpu_umd_memory_t** out_memory,
+    amdf_gpu_umd_memory_t** memory_state,
     amdf_gpu_umd_memory_result_t* out_result) {
   amdf_windows_gpu_memory_plan_t plan = {0};
   amdf_windows_gpu_memory_plan(profile, create_info, &plan);
@@ -672,6 +669,7 @@ amdf_status_t amdf_gpu_umd_memory_create(
       amdf_alignof(amdf_gpu_umd_memory_t), (void**)&memory);
   if (!amdf_status_is_ok(status)) return status;
   memory->device = device;
+  *memory_state = memory;
   memory->allocation_capacity = allocation_count;
   memory->maximum_native_allocation_byte_length =
       maximum_native_allocation_byte_length;
@@ -719,16 +717,6 @@ amdf_status_t amdf_gpu_umd_memory_create(
     }
     result.device_address = memory->device_address;
     *out_result = result;
-    *out_memory = memory;
-  } else {
-    const amdf_status_t release_status =
-        amdf_windows_gpu_memory_release_native(memory);
-    if (!amdf_status_is_ok(release_status)) {
-      status = release_status;
-    }
-    // Native release stops before freeing backing that unreleased allocations
-    // can still reference. Only unpublished metadata is unconditionally freed.
-    amdf_free(device->host_allocator, memory);
   }
   return status;
 }
@@ -739,6 +727,10 @@ amdf_status_t amdf_gpu_umd_memory_destroy(amdf_gpu_umd_memory_t* memory) {
     amdf_free(memory->device->host_allocator, memory);
   }
   return status;
+}
+
+void amdf_gpu_umd_memory_abandon(amdf_gpu_umd_memory_t* memory) {
+  amdf_free(memory->device->host_allocator, memory);
 }
 
 amdf_status_t amdf_gpu_umd_memory_map(

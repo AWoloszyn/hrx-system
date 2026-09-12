@@ -105,12 +105,12 @@ void amdf_gpu_kfd_buffer_abandon(amdf_gpu_kfd_buffer_t* buffer) {
   amdf_free(buffer->device->host_allocator, buffer);
 }
 
-amdf_status_t amdf_gpu_kfd_buffer_create(
+amdf_status_t amdf_gpu_kfd_buffer_prepare(
     amdf_gpu_umd_device_t* device,
     const amdf_gpu_kfd_buffer_create_info_t* create_info,
-    amdf_gpu_kfd_buffer_t** out_buffer,
+    amdf_gpu_kfd_buffer_t** buffer_state,
     amdf_gpu_kfd_buffer_result_t* out_result) {
-  if (device == NULL || create_info == NULL || out_buffer == NULL ||
+  if (device == NULL || create_info == NULL || buffer_state == NULL ||
       out_result == NULL || create_info->byte_length == 0 ||
       create_info->alignment < device->page_size ||
       (create_info->alignment & (create_info->alignment - 1)) != 0 ||
@@ -134,6 +134,7 @@ amdf_status_t amdf_gpu_kfd_buffer_create(
                   amdf_alignof(amdf_gpu_kfd_buffer_t), (void**)&buffer);
   if (!amdf_status_is_ok(status)) return status;
   buffer->device = device;
+  *buffer_state = buffer;
   buffer->byte_length = create_info->byte_length;
   buffer->reservation.byte_length =
       create_info->byte_length + create_info->alignment - device->page_size;
@@ -213,9 +214,25 @@ amdf_status_t amdf_gpu_kfd_buffer_create(
         .device_address = address + create_info->host_byte_offset,
         .host_pointer = host_pointer,
     };
-    *out_buffer = buffer;
     *out_result = result;
-  } else {
+  }
+  return status;
+}
+
+amdf_status_t amdf_gpu_kfd_buffer_create(
+    amdf_gpu_umd_device_t* device,
+    const amdf_gpu_kfd_buffer_create_info_t* create_info,
+    amdf_gpu_kfd_buffer_t** out_buffer,
+    amdf_gpu_kfd_buffer_result_t* out_result) {
+  if (out_buffer == NULL) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  }
+  amdf_gpu_kfd_buffer_t* buffer = NULL;
+  amdf_status_t status =
+      amdf_gpu_kfd_buffer_prepare(device, create_info, &buffer, out_result);
+  if (amdf_status_is_ok(status)) {
+    *out_buffer = buffer;
+  } else if (buffer != NULL) {
     const amdf_status_t release_status = amdf_gpu_kfd_buffer_discard(buffer);
     if (!amdf_status_is_ok(release_status)) {
       status = release_status;

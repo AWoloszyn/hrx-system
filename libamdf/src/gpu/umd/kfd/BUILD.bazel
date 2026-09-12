@@ -195,7 +195,9 @@ amdf_cc_test(
     deps = [
         ":buffer",
         ":device_state",
+        ":memory",
         "//libamdf/src:allocator",
+        "//libamdf/src/gpu/umd:memory",
         "//third_party:google_test",
         "//third_party:google_test_main",
     ],

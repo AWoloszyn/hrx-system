@@ -254,10 +254,12 @@ iree_cc_test(
   DEPS
     ::buffer
     ::device_state
+    ::memory
     amdf::headers
     iree::third_party::google_test
     iree::third_party::google_test_main
     libamdf::src::allocator
+    libamdf::src::gpu::umd::memory
   LABELS
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.gpu"

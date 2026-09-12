@@ -65,22 +65,32 @@ amdf_status_t amdf_gpu_umd_device_query_memory_profile(
     amdf_gpu_umd_device_t* device, uint32_t memory_profile_ordinal,
     amdf_memory_profile_t* out_profile);
 
-// Creates physical backing and a stable attachment to `device`.
-amdf_status_t amdf_gpu_umd_memory_create(
+// Prepares physical backing and native access in an already-live owner's
+// initially NULL `memory_state` slot. This is a one-shot transition: native
+// progress remains in that slot on failure for explicit destruction. Failure
+// before metadata allocation leaves the slot NULL. Only success publishes
+// complete properties to `out_result`; no rollback occurs inside preparation.
+amdf_status_t amdf_gpu_umd_memory_prepare(
     amdf_gpu_umd_device_t* device, const amdf_memory_profile_t* profile,
     const amdf_memory_create_info_t* create_info,
-    amdf_gpu_umd_memory_t** out_memory,
+    amdf_gpu_umd_memory_t** memory_state,
     amdf_gpu_umd_memory_result_t* out_result);
 
-// Imports external memory as one complete attachment to `device`.
-amdf_status_t amdf_gpu_umd_memory_import(
+// Prepares native access to borrowed external memory with the same ownership
+// protocol as memory_prepare. Acquired native references are independent of the
+// input's release obligation. This operation never invokes its release
+// callback; the public construction owner consumes the move only after complete
+// success.
+amdf_status_t amdf_gpu_umd_memory_prepare_import(
     amdf_gpu_umd_device_t* device, const amdf_memory_profile_t* profile,
     const amdf_memory_import_info_t* import_info,
     const amdf_external_memory_t* external_memory,
-    amdf_gpu_umd_memory_t** out_memory,
+    amdf_gpu_umd_memory_t** memory_state,
     amdf_gpu_umd_memory_result_t* out_result);
 
-// Exports one logical range as an owned native payload.
+// Exports an owned native payload and its release callback. The public owner
+// fills transport type, logical range, backing identity and provenance from its
+// validated request and profile. Failure leaves the output unchanged.
 amdf_status_t amdf_gpu_umd_memory_export(
     amdf_gpu_umd_memory_t* memory, const amdf_memory_export_info_t* export_info,
     amdf_external_memory_t* out_value);
@@ -90,8 +100,14 @@ amdf_status_t amdf_gpu_umd_memory_describe_site(
     amdf_gpu_umd_memory_t* memory, const amdf_memory_site_query_t* query,
     amdf_memory_site_description_t* out_description);
 
-// Releases a memory attachment and its physical backing.
+// Releases partial or complete native state and its metadata. Failure retains
+// the remaining state with the caller and may leave its backing referenced.
 amdf_status_t amdf_gpu_umd_memory_destroy(amdf_gpu_umd_memory_t* memory);
+
+// Consumes unpublished metadata without attempting any native operation.
+// After terminal cleanup failure, native resources and dependent backing leak;
+// the caller preserves any separately owned backing those resources can reach.
+void amdf_gpu_umd_memory_abandon(amdf_gpu_umd_memory_t* memory);
 
 // Creates one explicit host mapping.
 amdf_status_t amdf_gpu_umd_memory_map(

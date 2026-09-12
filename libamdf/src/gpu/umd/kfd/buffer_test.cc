@@ -16,6 +16,7 @@
 
 #include "gtest/gtest.h"
 #include "libamdf/src/allocator.h"
+#include "libamdf/src/gpu/umd/memory.h"
 
 namespace {
 
@@ -36,6 +37,10 @@ struct NativeBufferState {
   int unmap_error = 0;
   // Persistent free error before consuming the allocation, or zero.
   int free_error = 0;
+  // Export failure before producing a descriptor, or zero when not exercised.
+  int export_error = 0;
+  // Number of backing identity export attempts.
+  uint32_t export_count = 0;
   // Native allocation address within the real host reservation.
   uintptr_t address = 0;
   // Number of buffer metadata allocations returned to the host allocator.
@@ -143,6 +148,11 @@ extern "C" int __wrap_ioctl(int descriptor, unsigned long request, ...) {
       native_state->allocation_live = false;
       return 0;
     }
+    case AMDKFD_IOC_EXPORT_DMABUF:
+      ++native_state->export_count;
+      EXPECT_NE(native_state->export_error, 0);
+      errno = native_state->export_error;
+      return -1;
     default:
       ADD_FAILURE() << "unexpected KFD buffer ioctl: " << request;
       errno = ENOTTY;
@@ -180,7 +190,7 @@ class KfdBufferNativeTest : public ::testing::Test {
     }
     EXPECT_FALSE(native_.allocation_live);
     EXPECT_FALSE(native_.access_live);
-    EXPECT_EQ(native_.metadata_free_count, 1u);
+    EXPECT_EQ(native_.metadata_free_count, expected_metadata_free_count_);
     native_state = nullptr;
   }
 
@@ -217,6 +227,8 @@ class KfdBufferNativeTest : public ::testing::Test {
   amdf_gpu_kfd_buffer_t* buffer_ = nullptr;
   // Address information published together with the buffer.
   amdf_gpu_kfd_buffer_result_t result_ = {};
+  // One buffer header, plus a memory header when exercising its native owner.
+  uint32_t expected_metadata_free_count_ = 1;
 };
 
 TEST_F(KfdBufferNativeTest, CompletesInterruptedMapWithNativeProgress) {
@@ -319,6 +331,79 @@ TEST_F(KfdBufferNativeTest, DestroyFailureRetainsCallerOwnedBuffer) {
   EXPECT_EQ(Destroy(), AMDF_STATUS_OK);
   EXPECT_EQ(native_.unmap_progress, (std::vector<uint32_t>{0}));
   EXPECT_EQ(native_.free_count, 2u);
+}
+
+TEST_F(KfdBufferNativeTest, MemoryOwnerRetainsPartialBufferPreparation) {
+  expected_metadata_free_count_ = 2;
+  native_.map_completion_error = EIO;
+  native_.unmap_error = ENOMEM;
+  const amdf_memory_profile_t profile = {
+      .memory_class = AMDF_MEMORY_CLASS_SYSTEM,
+  };
+  const amdf_memory_create_info_t create_info = {
+      .device_access = AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE,
+      .byte_length = 4096,
+      .minimum_alignment = 4096,
+  };
+  amdf_gpu_umd_memory_t* memory = nullptr;
+  amdf_gpu_umd_memory_result_t result;
+  std::memset(&result, 0xA5, sizeof(result));
+  const amdf_gpu_umd_memory_result_t original_result = result;
+  EXPECT_EQ(amdf_gpu_umd_memory_prepare(&device_, &profile, &create_info,
+                                        &memory, &result),
+            amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, EIO));
+  ASSERT_NE(memory, nullptr);
+  EXPECT_EQ(std::memcmp(&result, &original_result, sizeof(result)), 0);
+  EXPECT_TRUE(native_.unmap_progress.empty());
+  EXPECT_EQ(native_.free_count, 0u);
+  EXPECT_EQ(native_.metadata_free_count, 0u);
+  EXPECT_EQ(amdf_gpu_umd_memory_destroy(memory),
+            amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, ENOMEM));
+  EXPECT_EQ(native_.metadata_free_count, 0u);
+  amdf_gpu_umd_memory_abandon(memory);
+  EXPECT_EQ(native_.metadata_free_count, 2u);
+  EXPECT_EQ(native_.unmap_progress, (std::vector<uint32_t>{0}));
+  EXPECT_EQ(native_.free_count, 0u);
+  EXPECT_TRUE(native_.allocation_live);
+  EXPECT_TRUE(native_.access_live);
+  ReleaseLeakedReservation();
+}
+
+TEST_F(KfdBufferNativeTest, MemoryOwnerRetainsBackingAfterIdentityQueryFails) {
+  expected_metadata_free_count_ = 2;
+  native_.export_error = EIO;
+  native_.free_error = ENOMEM;
+  const amdf_memory_profile_t profile = {
+      .memory_class = AMDF_MEMORY_CLASS_SYSTEM,
+  };
+  const amdf_memory_create_info_t create_info = {
+      .device_access = AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE,
+      .byte_length = 4096,
+      .minimum_alignment = 4096,
+  };
+  amdf_gpu_umd_memory_t* memory = nullptr;
+  amdf_gpu_umd_memory_result_t result;
+  std::memset(&result, 0xA5, sizeof(result));
+  const amdf_gpu_umd_memory_result_t original_result = result;
+  EXPECT_EQ(amdf_gpu_umd_memory_prepare(&device_, &profile, &create_info,
+                                        &memory, &result),
+            amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, EIO));
+  ASSERT_NE(memory, nullptr);
+  EXPECT_EQ(std::memcmp(&result, &original_result, sizeof(result)), 0);
+  EXPECT_EQ(native_.export_count, 1u);
+  EXPECT_TRUE(native_.unmap_progress.empty());
+  EXPECT_EQ(native_.free_count, 0u);
+  EXPECT_EQ(native_.metadata_free_count, 0u);
+  EXPECT_EQ(amdf_gpu_umd_memory_destroy(memory),
+            amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, ENOMEM));
+  EXPECT_EQ(native_.metadata_free_count, 0u);
+  amdf_gpu_umd_memory_abandon(memory);
+  EXPECT_EQ(native_.metadata_free_count, 2u);
+  EXPECT_EQ(native_.unmap_progress, (std::vector<uint32_t>{0}));
+  EXPECT_EQ(native_.free_count, 1u);
+  EXPECT_TRUE(native_.allocation_live);
+  EXPECT_FALSE(native_.access_live);
+  ReleaseLeakedReservation();
 }
 
 TEST(KfdBufferTest, RejectsMalformedConstructionWithoutPublishingOutputs) {
