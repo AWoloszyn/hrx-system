@@ -1814,6 +1814,7 @@ class BuildFileFunctions(object):
         srcs=None,
         copts=None,
         defines=None,
+        linkopts=None,
         data=None,
         deps=None,
         timeout=None,
@@ -1845,6 +1846,9 @@ class BuildFileFunctions(object):
         defines_block, platform_defines_block = self._convert_platform_select_strings(
             name, "DEFINES", defines
         )
+        linkopts_block, platform_linkopts_block = self._convert_platform_select_strings(
+            name, "LINKOPTS", linkopts, expand_locations=True
+        )
         data_block = self._convert_target_list_block("DATA", data, omit_empty=True)
         deps_block, platform_deps_block = self._convert_platform_select_deps(name, deps)
         args_block = self._convert_string_list_block(
@@ -1874,6 +1878,8 @@ class BuildFileFunctions(object):
             self._converter.body += platform_defines_block
         if platform_deps_block:
             self._converter.body += platform_deps_block
+        if platform_linkopts_block:
+            self._converter.body += platform_linkopts_block
         self._converter.body += (
             f"iree_cc_test(\n"
             f"{name_block}"
@@ -1881,6 +1887,7 @@ class BuildFileFunctions(object):
             f"{srcs_block}"
             f"{copts_block}"
             f"{defines_block}"
+            f"{linkopts_block}"
             f"{data_block}"
             f"{deps_block}"
             f"{args_block}"

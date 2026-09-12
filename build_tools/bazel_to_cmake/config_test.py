@@ -1254,6 +1254,36 @@ iree_execution_test_suite(
         self.assertNotIn("@wasi_sdk", converter.body)
         self.assertNotIn("TARGET_FILE:pkg_@wasi_sdk", converter.body)
 
+    def test_cc_test_preserves_platform_link_options_and_locations(self):
+        converter = SimpleNamespace(body="")
+        functions = bazel_to_cmake_converter.BuildFileFunctions(
+            converter=converter,
+            targets=bazel_to_cmake_targets.TargetConverter(repo_map={"@hrx": ""}),
+            build_dir="/repo/pkg",
+            repo_root="/repo",
+        )
+        functions.cc_test(
+            name="native_test",
+            srcs=["native_test.cc"],
+            linkopts=["-Wl,--wrap=open"]
+            + functions.select(
+                {
+                    "@platforms//os:linux": [
+                        "-Wl,--version-script=$(location :exports.map)",
+                    ],
+                    "//conditions:default": [],
+                }
+            ),
+        )
+        self.assertIn("  LINKOPTS\n", converter.body)
+        self.assertIn('"-Wl,--wrap=open"', converter.body)
+        self.assertIn('CMAKE_SYSTEM_NAME STREQUAL "Linux"', converter.body)
+        self.assertIn(
+            "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/exports.map",
+            converter.body,
+        )
+        self.assertNotIn("$(location", converter.body)
+
     def test_cc_test_emits_sanitizer_suppressions(self):
         converter = SimpleNamespace(body="")
         functions = bazel_to_cmake_converter.BuildFileFunctions(
