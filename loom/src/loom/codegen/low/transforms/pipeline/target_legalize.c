@@ -1497,48 +1497,6 @@ static iree_status_t loom_low_target_legalize_verify_final(
   return status;
 }
 
-static iree_status_t loom_low_target_legalize_acquire_final_facts(
-    loom_pass_t* pass, loom_module_t* module,
-    const loom_low_source_selection_t* selection,
-    const loom_greedy_rewrite_driver_t* rewrite_driver,
-    const loom_value_fact_table_t** out_fact_table) {
-  *out_fact_table = loom_greedy_rewrite_driver_fact_table(rewrite_driver);
-  if (pass->value_facts == NULL) {
-    return iree_ok_status();
-  }
-  loom_value_fact_table_t* fact_table = NULL;
-  IREE_RETURN_IF_ERROR(loom_pass_value_facts_acquire(
-      pass, module,
-      loom_pass_value_fact_scope_function_for_target(selection->func,
-                                                     selection->target_facts),
-      &fact_table));
-  *out_fact_table = fact_table;
-  return iree_ok_status();
-}
-
-static iree_status_t loom_low_target_legalize_prepare_rewrite_facts(
-    loom_module_t* module, const loom_low_source_selection_t* selection,
-    const loom_value_fact_table_t* seed_facts,
-    loom_pass_value_fact_owner_t* rewrite_value_facts,
-    loom_value_fact_table_t** out_rewrite_fact_table) {
-  iree_status_t status = loom_pass_value_fact_owner_prepare(
-      rewrite_value_facts, module,
-      loom_pass_value_fact_scope_region_for_target(
-          selection->func, loom_func_like_body(selection->func),
-          selection->func.op, selection->target_facts),
-      out_rewrite_fact_table);
-  if (iree_status_is_ok(status) && seed_facts) {
-    status = loom_value_fact_table_clone_defined_facts(*out_rewrite_fact_table,
-                                                       seed_facts, module);
-  }
-  if (iree_status_is_ok(status)) {
-    status = loom_value_fact_table_compute_region(
-        *out_rewrite_fact_table, module, selection->func,
-        loom_func_like_body(selection->func), selection->func.op);
-  }
-  return status;
-}
-
 static iree_status_t loom_low_target_legalize_function(
     loom_pass_t* pass, loom_module_t* module,
     const loom_low_target_legalize_pass_state_t* pass_state,
@@ -1571,40 +1529,28 @@ static iree_status_t loom_low_target_legalize_function(
   IREE_RETURN_IF_ERROR(
       loom_low_target_legalize_capture_report_source_ops(&state));
 
-  loom_value_fact_table_t* seed_facts = NULL;
-  if (pass->value_facts != NULL) {
-    IREE_RETURN_IF_ERROR(loom_pass_value_facts_acquire(
-        pass, module,
-        loom_pass_value_fact_scope_function_for_target(selection->func,
-                                                       selection->target_facts),
-        &seed_facts));
-  }
+  const loom_pass_value_fact_scope_t fact_scope =
+      loom_pass_value_fact_scope_function_for_target(selection->func,
+                                                     selection->target_facts);
+  loom_value_fact_table_t* fact_table = NULL;
+  IREE_RETURN_IF_ERROR(
+      loom_pass_value_facts_acquire(pass, module, fact_scope, &fact_table));
   state.lower_options = (loom_low_lower_options_t){
       .target_ref = selection->target_ref,
       .target_facts = selection->target_facts,
       .descriptor_registry = descriptor_registry,
       .legality_provider_list = legality_provider_list,
       .policy = selection->policy,
-      .fact_table = seed_facts,
+      .fact_table = fact_table,
       .emitter = pass->diagnostic_emitter,
       .max_errors = pass_state->max_errors,
   };
 
-  loom_pass_value_fact_owner_t rewrite_value_facts = {0};
-  loom_pass_value_fact_owner_initialize(module->arena.block_pool,
-                                        &rewrite_value_facts);
-  loom_value_fact_table_t* rewrite_fact_table = NULL;
-  iree_status_t status = loom_low_target_legalize_prepare_rewrite_facts(
-      module, selection, seed_facts, &rewrite_value_facts, &rewrite_fact_table);
-  if (!iree_status_is_ok(status)) {
-    loom_pass_value_fact_owner_deinitialize(&rewrite_value_facts);
-    return status;
-  }
   iree_arena_allocator_t rewrite_arena;
   iree_arena_initialize(module->arena.block_pool, &rewrite_arena);
   loom_greedy_rewrite_driver_t rewrite_driver;
-  loom_greedy_rewrite_driver_initialize(module, &rewrite_arena,
-                                        rewrite_fact_table, &rewrite_driver);
+  loom_greedy_rewrite_driver_initialize(module, &rewrite_arena, fact_table,
+                                        &rewrite_driver);
 
   state.legalization_context = (loom_target_legalization_context_t){
       .pass = pass,
@@ -1629,15 +1575,21 @@ static iree_status_t loom_low_target_legalize_function(
       .changed = loom_low_target_legalize_changed,
   };
   loom_greedy_rewrite_result_t rewrite_result = {0};
-  status = loom_greedy_rewrite_run_region(&rewrite_driver, selection->func,
-                                          loom_func_like_body(selection->func),
-                                          selection->func.op, &rewrite_options,
-                                          &rewrite_callbacks, &rewrite_result);
+  iree_status_t status = loom_greedy_rewrite_run_region(
+      &rewrite_driver, selection->func, loom_func_like_body(selection->func),
+      selection->func.op, &rewrite_options, &rewrite_callbacks,
+      &rewrite_result);
+  // Queries and rewrites borrow the pass-owned facts. Release their state
+  // before invalidation so final legality can acquire a fresh scope after IR
+  // changes.
+  loom_low_target_legalize_deinitialize_query_scope(&state);
+  loom_greedy_rewrite_driver_deinitialize(&rewrite_driver);
+  iree_arena_deinitialize(&rewrite_arena);
+  if (!iree_status_is_ok(status) || rewrite_result.changed) {
+    loom_pass_value_fact_owner_invalidate(pass->value_facts);
+  }
   if (iree_status_is_ok(status) && rewrite_result.changed) {
     loom_pass_mark_changed(pass);
-    if (pass->value_facts != NULL) {
-      loom_pass_value_fact_owner_invalidate(pass->value_facts);
-    }
   }
 
   // Source legality describes the input to source-to-low. Low functions also
@@ -1649,18 +1601,14 @@ static iree_status_t loom_low_target_legalize_function(
   uint32_t final_error_count = 0;
   if (iree_status_is_ok(status) && state.preflight_error_count == 0 &&
       pass_state->verify_source_legality && is_source_function) {
-    const loom_value_fact_table_t* final_facts = NULL;
-    status = loom_low_target_legalize_acquire_final_facts(
-        pass, module, selection, &rewrite_driver, &final_facts);
+    status =
+        loom_pass_value_facts_acquire(pass, module, fact_scope, &fact_table);
     if (iree_status_is_ok(status)) {
       status = loom_low_target_legalize_verify_final(
-          module, &state, pass_state, final_facts, &final_error_count);
+          module, &state, pass_state, fact_table, &final_error_count);
     }
   }
   loom_low_target_legalize_deinitialize_query_scope(&state);
-  loom_greedy_rewrite_driver_deinitialize(&rewrite_driver);
-  iree_arena_deinitialize(&rewrite_arena);
-  loom_pass_value_fact_owner_deinitialize(&rewrite_value_facts);
   IREE_RETURN_IF_ERROR(status);
 
   loom_low_target_legalize_statistics(pass)->errors +=
