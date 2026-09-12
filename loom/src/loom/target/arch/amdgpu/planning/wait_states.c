@@ -2474,13 +2474,13 @@ static iree_status_t loom_amdgpu_wait_state_build_progress(
                                         &builder->progress);
 }
 
-static bool loom_amdgpu_wait_state_matches_packet(
-    const loom_amdgpu_wait_state_t* wait_state,
-    const loom_low_packet_view_t* packet) {
-  return wait_state->block_index == packet->node->block_index &&
-         wait_state->scheduled_ordinal == packet->node->scheduled_ordinal &&
-         wait_state->node_index == packet->node_index;
-}
+typedef struct loom_amdgpu_wait_state_hazard_query_t {
+  // Borrowed states not yet projected, in scheduled packet order.
+  const loom_amdgpu_wait_state_t* states;
+  // Number of remaining states, including all waits at the next insertion
+  // point.
+  iree_host_size_t remaining_count;
+} loom_amdgpu_wait_state_hazard_query_t;
 
 static void loom_amdgpu_wait_state_hazard_query(
     void* user_data, const loom_low_schedule_table_t* schedule,
@@ -2491,13 +2491,17 @@ static void loom_amdgpu_wait_state_hazard_query(
   (void)schedule;
   (void)allocation;
   (void)progress;
-  const loom_amdgpu_wait_state_builder_t* builder =
-      (const loom_amdgpu_wait_state_builder_t*)user_data;
-  for (iree_host_size_t i = 0; i < builder->state_count; ++i) {
-    const loom_amdgpu_wait_state_t* wait_state = &builder->states[i];
-    if (!loom_amdgpu_wait_state_matches_packet(wait_state, packet)) {
-      continue;
+  loom_amdgpu_wait_state_hazard_query_t* query =
+      (loom_amdgpu_wait_state_hazard_query_t*)user_data;
+  // The common builder visits packets once in order. States were appended in
+  // that same order, including VOPD waits attached to the first paired packet.
+  while (query->remaining_count != 0) {
+    const loom_amdgpu_wait_state_t* wait_state = query->states;
+    if (wait_state->node_index != packet->node_index) {
+      break;
     }
+    ++query->states;
+    --query->remaining_count;
     const uint32_t progress_class_id =
         loom_amdgpu_wait_state_progress_class_id(wait_state);
     const loom_low_packet_hazard_plan_event_t event = {
@@ -2520,8 +2524,12 @@ static void loom_amdgpu_wait_state_hazard_query(
 
 static iree_status_t loom_amdgpu_wait_state_build_hazard_plan(
     loom_amdgpu_wait_state_builder_t* builder) {
+  loom_amdgpu_wait_state_hazard_query_t query = {
+      .states = builder->states,
+      .remaining_count = builder->state_count,
+  };
   const loom_low_packet_hazard_plan_provider_t provider = {
-      .user_data = builder,
+      .user_data = &query,
       .event_count = builder->state_count,
       .query = loom_amdgpu_wait_state_hazard_query,
   };
