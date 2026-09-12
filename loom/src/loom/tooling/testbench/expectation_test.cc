@@ -8,6 +8,7 @@
 
 #include <string.h>
 
+#include <limits>
 #include <string>
 
 #include "iree/base/internal/arena.h"
@@ -91,6 +92,59 @@ class ExpectationTest : public ::testing::Test {
     return std::string(detail.data, detail.size);
   }
 
+  void ExpectScalarClose(loom_scalar_type_t scalar_type,
+                         iree_tooling_value_t actual,
+                         iree_tooling_value_t expected,
+                         loom_testbench_close_expectation_plan_t close,
+                         bool matched) {
+    // Construct the typed slots and schedule consumed by expectation
+    // evaluation.
+    loom_module_t* module = nullptr;
+    IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("scalar_close"),
+                                        &block_pool_, nullptr, host_allocator_,
+                                        &module));
+    loom_testbench_expectation_plan_t expectation = {};
+    expectation.kind = LOOM_TESTBENCH_EXPECTATION_CLOSE;
+    expectation.type = loom_type_scalar(scalar_type);
+    expectation.close = close;
+    IREE_ASSERT_OK(loom_module_define_value(module, expectation.type,
+                                            &expectation.actual_value_id));
+    IREE_ASSERT_OK(loom_module_define_value(module, expectation.type,
+                                            &expectation.expected_value_id));
+    loom_testbench_case_plan_t case_plan = {};
+    case_plan.expectations = &expectation;
+    case_plan.expectation_count = 1;
+    loom_testbench_value_table_t table = {};
+    IREE_ASSERT_OK(loom_testbench_value_table_initialize(
+        module, &case_plan, host_allocator_, &table));
+    loom_testbench_value_t actual_value = {};
+    actual_value.kind = LOOM_TESTBENCH_VALUE_KIND_SCALAR;
+    actual_value.scalar = actual;
+    loom_testbench_value_t expected_value = {};
+    expected_value.kind = LOOM_TESTBENCH_VALUE_KIND_SCALAR;
+    expected_value.scalar = expected;
+    IREE_ASSERT_OK(loom_testbench_value_table_assign_move(
+        &table, expectation.actual_value_id, &actual_value));
+    IREE_ASSERT_OK(loom_testbench_value_table_assign_move(
+        &table, expectation.expected_value_id, &expected_value));
+    loom_testbench_expectation_options_t options = {};
+    loom_testbench_expectation_options_initialize(&options);
+    loom_testbench_expectation_schedule_t schedule = {};
+    IREE_ASSERT_OK(loom_testbench_prepare_case_expectations(
+        &options, &case_plan, &schedule_arena_, &schedule));
+    loom_testbench_expectation_report_t report = {};
+    IREE_ASSERT_OK(loom_testbench_expectation_report_initialize(
+        1, host_allocator_, &report));
+    IREE_ASSERT_OK(loom_testbench_evaluate_case_expectations(&schedule, &table,
+                                                             nullptr, &report));
+    EXPECT_EQ(report.expectation_count, 1u);
+    EXPECT_EQ(report.passed_count, matched ? 1u : 0u);
+    EXPECT_EQ(report.failure_count, matched ? 0u : 1u);
+    loom_testbench_expectation_report_deinitialize(&report);
+    loom_testbench_value_table_deinitialize(&table);
+    loom_module_free(module);
+  }
+
   iree_allocator_t host_allocator_ = iree_allocator_system();
   iree_arena_block_pool_t block_pool_;
   iree_arena_allocator_t plan_arena_;
@@ -98,6 +152,91 @@ class ExpectationTest : public ::testing::Test {
   loom_context_t context_;
   iree_hal_allocator_t* device_allocator_ = nullptr;
 };
+
+TEST_F(ExpectationTest, ComparesNarrowScalarsUsingSourceTypes) {
+  struct FloatFormat {
+    // Source interpretation of the raw scalar carrier.
+    loom_scalar_type_t type;
+    // Encoding of one.
+    uint32_t one;
+    // Encoding of the next value above one.
+    uint32_t next;
+    // Quiet NaN encoding.
+    uint32_t nan;
+  };
+  const FloatFormat formats[] = {
+      {LOOM_SCALAR_TYPE_F8E4M3, 0x38, 0x39, 0x7F},
+      {LOOM_SCALAR_TYPE_F8E5M2, 0x3C, 0x3D, 0x7E},
+      {LOOM_SCALAR_TYPE_F16, 0x3C00, 0x3C01, 0x7E00},
+      {LOOM_SCALAR_TYPE_BF16, 0x3F80, 0x3F81, 0x7FC0},
+  };
+  for (const auto& format : formats) {
+    SCOPED_TRACE(loom_scalar_type_name(format.type));
+    iree_tooling_value_t actual = {};
+    actual.kind = IREE_TOOLING_VALUE_KIND_RAW_U32;
+    actual.storage.u32 = format.one;
+    iree_tooling_value_t expected = actual;
+    loom_testbench_close_expectation_plan_t close = {};
+    close.nan_policy = LOOM_CHECK_EXPECT_CLOSE_NAN_DIFFERENT;
+    ExpectScalarClose(format.type, actual, expected, close, true);
+    actual.storage.u32 = format.next;
+    ExpectScalarClose(format.type, actual, expected, close, false);
+    close.absolute_tolerance = 0.25;
+    ExpectScalarClose(format.type, actual, expected, close, true);
+    close.absolute_tolerance = 0.0;
+    close.relative_tolerance = 0.25;
+    ExpectScalarClose(format.type, actual, expected, close, true);
+    actual.storage.u32 = format.nan;
+    expected.storage.u32 = format.nan;
+    ExpectScalarClose(format.type, actual, expected, close, false);
+    close.nan_policy = LOOM_CHECK_EXPECT_CLOSE_NAN_SAME;
+    ExpectScalarClose(format.type, actual, expected, close, true);
+    expected.storage.u32 = format.one;
+    ExpectScalarClose(format.type, actual, expected, close, false);
+  }
+}
+
+TEST_F(ExpectationTest, ComparesInfinitiesIndependentlyOfTolerance) {
+  const double infinity = std::numeric_limits<double>::infinity();
+  struct Comparison {
+    // Observed scalar value.
+    double actual;
+    // Reference scalar value.
+    double expected;
+    // Whether the values are numerically close.
+    bool matched;
+  };
+  const Comparison comparisons[] = {
+      {infinity, infinity, true},
+      {-infinity, -infinity, true},
+      {infinity, -infinity, false},
+      {-infinity, infinity, false},
+      {1.0, infinity, false},
+      {infinity, 1.0, false},
+      {-1.0, -infinity, false},
+      {-infinity, -1.0, false},
+      {0.0, -0.0, true},
+      {-0.0, 0.0, true},
+  };
+  for (const auto& comparison : comparisons) {
+    SCOPED_TRACE(::testing::Message()
+                 << comparison.actual << " versus " << comparison.expected);
+    for (double tolerance : {0.0, 2.0}) {
+      iree_tooling_value_t actual = {};
+      actual.kind = IREE_TOOLING_VALUE_KIND_F64;
+      actual.storage.f64 = comparison.actual;
+      iree_tooling_value_t expected = {};
+      expected.kind = IREE_TOOLING_VALUE_KIND_F64;
+      expected.storage.f64 = comparison.expected;
+      loom_testbench_close_expectation_plan_t close = {};
+      close.absolute_tolerance = tolerance;
+      close.relative_tolerance = tolerance;
+      close.nan_policy = LOOM_CHECK_EXPECT_CLOSE_NAN_DIFFERENT;
+      ExpectScalarClose(LOOM_SCALAR_TYPE_F64, actual, expected, close,
+                        comparison.matched);
+    }
+  }
+}
 
 TEST_F(ExpectationTest, EvaluatesScalarEqualityFailuresWithDetails) {
   loom_module_t* module = ParseModule(R"(

@@ -371,12 +371,15 @@ static bool loom_testbench_f64_close(double actual, double expected,
     return nan_policy == LOOM_CHECK_EXPECT_CLOSE_NAN_SAME && actual_is_nan &&
            expected_is_nan;
   }
+  if (isinf(actual) || isinf(expected)) {
+    return actual == expected;
+  }
   return fabs(actual - expected) <=
          absolute_tolerance + relative_tolerance * fabs(expected);
 }
 
 static iree_status_t loom_testbench_compare_scalar_close(
-    const loom_testbench_close_expectation_plan_t* close_plan,
+    const loom_testbench_expectation_plan_t* expectation,
     const loom_testbench_value_t* actual,
     const loom_testbench_value_t* expected,
     iree_string_builder_t* detail_builder, bool* out_matched) {
@@ -392,23 +395,50 @@ static iree_status_t loom_testbench_compare_scalar_close(
 
   double actual_f64 = 0.0;
   double expected_f64 = 0.0;
-  switch (actual_value->kind) {
-    case IREE_TOOLING_VALUE_KIND_F32:
+  // Narrow scalars share a raw integer carrier; their interpretation belongs
+  // to the source type retained by expectation planning.
+  const loom_scalar_type_t scalar_type =
+      loom_type_element_type(expectation->type);
+  switch (scalar_type) {
+    case LOOM_SCALAR_TYPE_F8E4M3:
+      actual_f64 =
+          iree_math_f8e4m3fn_to_f32((uint8_t)actual_value->storage.u32);
+      expected_f64 =
+          iree_math_f8e4m3fn_to_f32((uint8_t)expected_value->storage.u32);
+      break;
+    case LOOM_SCALAR_TYPE_F8E5M2:
+      actual_f64 = iree_math_f8e5m2_to_f32((uint8_t)actual_value->storage.u32);
+      expected_f64 =
+          iree_math_f8e5m2_to_f32((uint8_t)expected_value->storage.u32);
+      break;
+    case LOOM_SCALAR_TYPE_F16:
+      actual_f64 = iree_math_f16_to_f32((uint16_t)actual_value->storage.u32);
+      expected_f64 =
+          iree_math_f16_to_f32((uint16_t)expected_value->storage.u32);
+      break;
+    case LOOM_SCALAR_TYPE_BF16:
+      actual_f64 = iree_math_bf16_to_f32((uint16_t)actual_value->storage.u32);
+      expected_f64 =
+          iree_math_bf16_to_f32((uint16_t)expected_value->storage.u32);
+      break;
+    case LOOM_SCALAR_TYPE_F32:
       actual_f64 = (double)actual_value->storage.f32;
       expected_f64 = (double)expected_value->storage.f32;
       break;
-    case IREE_TOOLING_VALUE_KIND_F64:
+    case LOOM_SCALAR_TYPE_F64:
       actual_f64 = actual_value->storage.f64;
       expected_f64 = expected_value->storage.f64;
       break;
     default:
       return iree_string_builder_append_format(
           detail_builder,
-          "close expectation requires f32/f64 scalar values, "
-          "but actual is %s",
-          loom_testbench_tooling_value_kind_name(actual_value->kind));
+          "close expectation requires floating-point scalar values, "
+          "but source type is %s",
+          loom_scalar_type_name(scalar_type));
   }
 
+  const loom_testbench_close_expectation_plan_t* close_plan =
+      &expectation->close;
   *out_matched = loom_testbench_f64_close(
       actual_f64, expected_f64, close_plan->absolute_tolerance,
       close_plan->relative_tolerance, close_plan->nan_policy);
@@ -419,9 +449,8 @@ static iree_status_t loom_testbench_compare_scalar_close(
       detail_builder,
       "actual %s value %.17g is not close to expected %.17g "
       "(atol=%.17g, rtol=%.17g)",
-      loom_testbench_tooling_value_kind_name(actual_value->kind), actual_f64,
-      expected_f64, close_plan->absolute_tolerance,
-      close_plan->relative_tolerance);
+      loom_scalar_type_name(scalar_type), actual_f64, expected_f64,
+      close_plan->absolute_tolerance, close_plan->relative_tolerance);
 }
 
 static void loom_testbench_expectation_buffer_view(
@@ -625,17 +654,17 @@ static iree_status_t loom_testbench_compare_bitwise(
 }
 
 static iree_status_t loom_testbench_compare_close(
-    const loom_testbench_close_expectation_plan_t* close_plan,
+    const loom_testbench_expectation_plan_t* expectation,
     const loom_testbench_value_t* actual,
     const loom_testbench_value_t* expected,
     iree_string_builder_t* detail_builder, bool* out_matched) {
   if (loom_testbench_value_is_scalar(actual) &&
       loom_testbench_value_is_scalar(expected)) {
-    return loom_testbench_compare_scalar_close(close_plan, actual, expected,
+    return loom_testbench_compare_scalar_close(expectation, actual, expected,
                                                detail_builder, out_matched);
   }
-  return loom_testbench_compare_buffer_close(close_plan, actual, expected,
-                                             detail_builder, out_matched);
+  return loom_testbench_compare_buffer_close(
+      &expectation->close, actual, expected, detail_builder, out_matched);
 }
 
 static iree_status_t loom_testbench_value_as_nonnegative_dim(
@@ -1552,7 +1581,7 @@ static iree_status_t loom_testbench_evaluate_single_expectation(
       return loom_testbench_compare_bitwise(actual, expected, detail_builder,
                                             out_matched);
     case LOOM_TESTBENCH_EXPECTATION_CLOSE:
-      return loom_testbench_compare_close(&expectation->close, actual, expected,
+      return loom_testbench_compare_close(expectation, actual, expected,
                                           detail_builder, out_matched);
     case LOOM_TESTBENCH_EXPECTATION_SHAPE:
       return loom_testbench_compare_shape(expectation, table, actual,
