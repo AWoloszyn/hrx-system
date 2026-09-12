@@ -7,6 +7,9 @@
 #include "loom/target/arch/vm/lower.h"
 
 #include "loom/error/error_catalog.h"
+#include "loom/ir/module.h"
+#include "loom/ops/global/ops.h"
+#include "loom/ops/low/ops.h"
 #include "loom/target/arch/vm/contracts/core.h"
 #include "loom/target/arch/vm/contracts/core_lower_rules.h"
 #include "loom/target/arch/vm/descriptors/descriptors.h"
@@ -48,12 +51,62 @@ static iree_status_t loom_vm_map_type(void* user_data,
 
 #include "loom/target/arch/vm/contracts/tables.inl"
 
+// The source symbol distinguishes immutable bytes from process value globals.
+// Keep that symbol in Low; the module writer assigns its final data ordinal.
+static iree_status_t loom_vm_select_op(void* user_data,
+                                       loom_low_lower_context_t* context,
+                                       const loom_op_t* source_op,
+                                       loom_low_lower_plan_t* out_plan) {
+  *out_plan = loom_low_lower_plan_empty();
+  if (!loom_global_load_isa(source_op)) return iree_ok_status();
+  const loom_module_t* module = loom_low_lower_context_module(context);
+  const loom_symbol_ref_t symbol = loom_global_load_global(source_op);
+  const loom_op_t* definition =
+      module->symbols.entries[symbol.symbol_id].defining_op;
+  if (loom_global_rodata_def_isa(definition)) {
+    *out_plan = loom_low_lower_plan_make(
+        VM_CORE_DESCRIPTOR_REF_BUFFER_RODATA_LOAD, NULL);
+  }
+  return iree_ok_status();
+}
+
+static iree_status_t loom_vm_emit_op(void* user_data,
+                                     loom_low_lower_context_t* context,
+                                     const loom_op_t* source_op,
+                                     loom_low_lower_plan_t plan) {
+  loom_builder_t* builder = loom_low_lower_context_builder(context);
+  loom_string_id_t name = LOOM_STRING_ID_INVALID;
+  IREE_RETURN_IF_ERROR(
+      loom_builder_intern_string(builder, IREE_SV("rodata_u16"), &name));
+  const loom_named_attr_t attr = {
+      .name_id = name,
+      .value = loom_attr_symbol(loom_global_load_global(source_op)),
+  };
+  loom_type_t result_type;
+  IREE_RETURN_IF_ERROR(loom_low_lower_make_typed_register_type(
+      context, VM_CORE_REG_CLASS_ID_REF, 1, loom_type_buffer(), &result_type));
+  const loom_low_lower_resolved_descriptor_t descriptor = {
+      .descriptor =
+          &loom_low_lower_context_descriptor_set(context)->descriptors[plan.id],
+  };
+  loom_op_t* low_op = NULL;
+  IREE_RETURN_IF_ERROR(loom_low_lower_emit_resolved_descriptor_op(
+      context, &descriptor, NULL, 0,
+      (loom_named_attr_slice_t){.entries = &attr, .count = 1}, &result_type, 1,
+      NULL, 0, source_op->location, &low_op));
+  return loom_low_lower_bind_value(context,
+                                   loom_global_load_result(source_op).values[0],
+                                   loom_op_results(low_op)[0]);
+}
+
 static const loom_low_lower_policy_t kPolicy = {
     .name = IREE_SVL("vm-lower"),
     .error_catalog = &loom_error_catalog_core,
     .source_type_supported = {.fn = loom_vm_source_type_supported},
     .map_type = {.fn = loom_vm_map_type},
     .contract = LOOM_VM_CORE_CONTRACT,
+    .select_op = {.fn = loom_vm_select_op},
+    .emit_op = {.fn = loom_vm_emit_op},
 };
 
 void loom_vm_low_lower_policy_registry_initialize(

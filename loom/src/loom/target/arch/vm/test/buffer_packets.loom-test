@@ -125,3 +125,63 @@ low.func.def target<vm.core>(@vm) abi(vm_function) @invalid_reduction(%buffer: r
   buffer.atomic.reduce %buffer, %offset, %value, 0, 0, 0, 3
   return
 }
+
+// ====
+
+// RUN: emit vm-dis
+
+vm.target<core> @vm
+
+global.rodata.def @unused = align(128) bytes("abcdef")
+
+global.rodata.def @data = bytes("012345")
+
+// Symbolic and numeric references encode the same immutable root. The
+// declaration ordinal is remapped after unused resources are omitted.
+low.func.def public target<vm.core>(@vm) abi(vm_function) @data_operands() -> (reg<vm.ref : buffer>, reg<vm.ref : buffer>) asm {
+  %symbolic = buffer.rodata.load @data : reg<vm.ref : buffer>
+  %numeric = buffer.rodata.load 1 : reg<vm.ref : buffer>
+  return %symbolic, %numeric
+}
+
+// ----
+vm.module core(0.0) {
+  section strings alignment(8) {
+    string @string0 = "data_operands"
+    string @string1 = "vm"
+    string @string2 = "buffer"
+  }
+
+  section ref_types alignment(8) {
+    namespace @ref_group0 name(@string1) {
+      ref_type @ref_type0 name(@string2)
+    }
+  }
+
+  section signatures alignment(8) {
+    signature @signature0 () -> (ref(@ref_type0), ref(@ref_type0))
+  }
+
+  section callable_types alignment(8) {
+    callable @callable0 flags([]) depth(0) : @signature0
+  }
+
+  section exports alignment(8) {
+    export @export0 name(@string0) : @callable0 = @function0
+  }
+
+  section functions alignment(8) {
+    func @function0 : @callable0 flags([]) frame(local_bytes = 0, value_registers = 0, ref_registers = 2, function_registers = 0, local_refs = 0, local_functions = 0) {
+    ^bb0:
+      control.block
+      %r0 = buffer.rodata.load @rodata0
+      %r1 = buffer.rodata.load @rodata0
+      control.return
+    }
+  }
+
+  section rodata alignment(8) {
+    rodata @rodata0 alignment(1) = hex"012345"
+  }
+
+}

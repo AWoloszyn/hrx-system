@@ -15,7 +15,7 @@
 extern "C" {
 #endif
 
-typedef struct loom_vm_module_function_span_t loom_vm_module_function_span_t;
+typedef struct loom_vm_module_plan_t loom_vm_module_plan_t;
 
 // Exact logical signature retained by module collection for function emission.
 typedef struct loom_vm_function_signature_t {
@@ -42,12 +42,13 @@ typedef struct loom_vm_function_signature_t {
 // register permutations. All compiler scratch belongs to
 // |request|'s arena. Structured frame errors are forwarded to its diagnostic
 // emitter and terminate emission with a failure status.
-// |functions| supplies the module's resolved local ordinals and signatures.
+// |functions| supplies callable signatures and symbol ordinals; data operands
+// append their referenced payload once to its read-only section plan.
 iree_status_t loom_vm_function_emit(
     const loom_target_emit_request_t* request, loom_func_like_t function,
     const loom_target_facts_t* target_facts,
     const loom_vm_function_signature_t* signature,
-    const loom_vm_module_function_span_t* functions, iree_io_stream_t* stream,
+    loom_vm_module_plan_t* functions, iree_io_stream_t* stream,
     iree_vm_bytecode_v0_function_row_t* out_row);
 
 #ifdef __cplusplus

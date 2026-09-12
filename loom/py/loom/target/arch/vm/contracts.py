@@ -56,6 +56,8 @@ from iree.vm.bytecode.spec.specification import SPECIFICATION
 
 from loom.dialect import buffer, view
 from loom.dialect.atomic import AtomicKind, AtomicOrdering, AtomicScope
+from loom.dialect.globals import ALL_GLOBAL_OPS
+from loom.dialect.globals.defs import global_load
 from loom.dialect.index import ALL_INDEX_OPS, IndexPredicate
 from loom.dialect.index import defs as index
 from loom.dialect.scalar import (
@@ -78,6 +80,7 @@ from loom.target.contracts import (
     DirectDescriptorCase,
     EmitDescriptorOp,
     Guard,
+    RecipeRule,
     Scalar,
     SelectDescriptorCase,
     SourceMemoryByteOffsetMaterializer,
@@ -291,6 +294,7 @@ assert _CMPXCHG_ATTR_NAMES[
 
 VM_CORE_CONTRACT_DIALECT_OPS = {
     "buffer": buffer.ALL_BUFFER_OPS,
+    "global": ALL_GLOBAL_OPS,
     "scalar": ALL_SCALAR_OPS,
     "index": ALL_INDEX_OPS,
     "scf": ALL_SCF_OPS,
@@ -1154,6 +1158,7 @@ VM_CORE_CONTRACT_FRAGMENT = ContractFragment(
     + (_log2_case(),)
     + tuple(_address_cases())
     + tuple(_buffer_cases())
+    + (RecipeRule(source_op=global_load),)
     + tuple(_view_cases())
     + select_descriptor_rules(
         (

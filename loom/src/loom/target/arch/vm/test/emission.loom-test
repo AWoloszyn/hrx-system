@@ -2,6 +2,9 @@
 
 vm.target<core> @vm
 
+// An artifact with no data references does not serialize unused payloads.
+global.rodata.def @unused = align(4096) bytes("0123456789abcdef")
+
 // Constant compaction preserves complete cells, including the high zero half
 // of an i32 literal and the sign bit of floating-point negative zero.
 func.def public target(@vm) @constant_cells() -> (i64, i64, i64, i64, i64, i64, i32, f64) {
@@ -48,6 +51,9 @@ vm.module core(0.0) {
       %v7 = constant.i64 0x8000000000000000
       control.return
     }
+  }
+
+  section rodata alignment(8) {
   }
 
 }

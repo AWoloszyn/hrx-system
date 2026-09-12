@@ -36,24 +36,42 @@ typedef struct loom_vm_module_function_t {
   loom_vm_function_signature_t signature;
 } loom_vm_module_function_t;
 
-typedef struct loom_vm_module_function_span_t {
+// Module-local emission plan. Function ordinals come from the symbol walk;
+// data ordinals are assigned on first emitted use, excluding other targets'
+// payloads without a second traversal of function bodies.
+typedef struct loom_vm_module_plan_t {
   // Arena-owned function records in bytecode ordinal order.
   loom_vm_module_function_t* values;
-  // Symbol-indexed local function ordinals; UINT16_MAX marks other symbols.
+  // Symbol-indexed ordinals in the definition's function or rodata table.
+  // UINT16_MAX marks definitions not emitted by this module writer.
   uint16_t* ordinals_by_symbol;
   // Number of records in |values|, bounded by the module symbol ID space.
   uint32_t count;
+  // Read-only payloads retained for the module's data section.
+  struct {
+    // Module symbol IDs in declaration order for numeric Low operands.
+    const loom_symbol_id_t* symbols;
+    // Number of entries in |symbols|.
+    uint32_t symbol_count;
+    // Borrowed definitions in first-use order, with symbol_count capacity.
+    const loom_op_t** values;
+    // Number of definitions in |values|.
+    uint32_t count;
+    // Maximum block alignment, at least the image's eight-byte alignment.
+    uint32_t alignment;
+  } rodata;
   // Whether any signature names the Core buffer reference type.
   bool uses_buffer_type;
-} loom_vm_module_function_span_t;
+} loom_vm_module_plan_t;
 
 // Emits VM functions in a prepared mixed-target module as one immutable .vm
 // artifact. Signature and export tables are sorted for runtime consumption;
 // the common compiler has already resolved the functions participating in the
-// module. Bytes are appended once to a segmented stream and fixed table rows
-// are backpatched. No instruction sizing pass or contiguous image is required.
-// Success transfers the byte sequence to |out_artifact|; failure publishes
-// none.
+// module. Referenced read-only payloads retain their source alignment and map
+// to module-owned immutable buffers. Bytes are appended once to a segmented
+// stream and fixed table rows are backpatched. No instruction sizing pass or
+// contiguous image is required. Success transfers the byte sequence to
+// |out_artifact|; failure publishes none.
 iree_status_t loom_vm_module_emit(const loom_target_emit_request_t* request,
                                   loom_target_emit_artifact_t* out_artifact);
 

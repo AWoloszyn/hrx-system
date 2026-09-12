@@ -11,6 +11,7 @@
 #include "iree/io/vec_stream.h"
 #include "iree/vm/bytecode/wire/module.h"
 #include "loom/ir/module.h"
+#include "loom/ops/global/ops.h"
 #include "loom/ops/low/ops.h"
 #include "loom/target/arch/vm/function.h"
 #include "loom/target/function_version.h"
@@ -85,7 +86,7 @@ static iree_status_t loom_vm_signature_type(loom_type_t type,
 // and library composition belong to the shared compiler, not this writer.
 static iree_status_t loom_vm_module_collect(
     const loom_target_emit_request_t* request,
-    loom_vm_module_function_span_t* out_functions) {
+    loom_vm_module_plan_t* out_functions) {
   const loom_module_t* module = request->module;
   loom_target_function_version_snapshot_t versions = {0};
   IREE_RETURN_IF_ERROR(loom_target_function_version_snapshot_build(
@@ -93,15 +94,26 @@ static iree_status_t loom_vm_module_collect(
   loom_vm_module_function_t* functions = NULL;
   iree_host_size_t storage_size = 0;
   iree_host_size_t ordinals_offset = 0;
+  iree_host_size_t rodata_offset = 0;
+  iree_host_size_t rodata_symbols_offset = 0;
   IREE_RETURN_IF_ERROR(IREE_STRUCT_LAYOUT(
       0, &storage_size,
       IREE_STRUCT_FIELD(module->symbols.count, loom_vm_module_function_t, NULL),
-      IREE_STRUCT_FIELD(module->symbols.count, uint16_t, &ordinals_offset)));
+      IREE_STRUCT_FIELD(module->symbols.count, uint16_t, &ordinals_offset),
+      IREE_STRUCT_FIELD(module->symbols.count, const loom_op_t*,
+                        &rodata_offset),
+      IREE_STRUCT_FIELD(module->symbols.count, loom_symbol_id_t,
+                        &rodata_symbols_offset)));
   IREE_RETURN_IF_ERROR(iree_arena_allocate(request->scratch_arena, storage_size,
                                            (void**)&functions));
   uint16_t* ordinals_by_symbol =
       (uint16_t*)((uint8_t*)functions + ordinals_offset);
   uint32_t count = 0;
+  const loom_op_t** rodata =
+      (const loom_op_t**)((uint8_t*)functions + rodata_offset);
+  loom_symbol_id_t* rodata_symbols =
+      (loom_symbol_id_t*)((uint8_t*)functions + rodata_symbols_offset);
+  uint32_t rodata_count = 0;
   iree_host_size_t descriptor_count = 0;
   iree_status_t status = iree_ok_status();
   for (uint32_t i = 0; i < module->symbols.count && iree_status_is_ok(status);
@@ -109,6 +121,10 @@ static iree_status_t loom_vm_module_collect(
     const loom_symbol_t* symbol = &module->symbols.entries[i];
     loom_op_t* op = symbol->defining_op;
     ordinals_by_symbol[i] = UINT16_MAX;
+    if (loom_global_rodata_def_isa(op)) {
+      rodata_symbols[rodata_count++] = (loom_symbol_id_t)i;
+      continue;
+    }
     if (!loom_low_func_def_isa(op)) continue;
     loom_func_like_t function = loom_func_like_cast(module, op);
     const loom_string_id_t contract = loom_func_like_repr_contract(function);
@@ -180,10 +196,14 @@ static iree_status_t loom_vm_module_collect(
     descriptors += field_count;
   }
   if (iree_status_is_ok(status)) {
-    *out_functions = (loom_vm_module_function_span_t){
+    *out_functions = (loom_vm_module_plan_t){
         .values = functions,
         .ordinals_by_symbol = ordinals_by_symbol,
         .count = count,
+        .rodata = {.symbols = rodata_symbols,
+                   .symbol_count = rodata_count,
+                   .values = rodata,
+                   .alignment = IREE_VM_BYTECODE_IMAGE_ALIGNMENT},
         .uses_buffer_type = uses_buffer_type,
     };
   }
@@ -220,8 +240,8 @@ static iree_status_t loom_vm_stream_patch(iree_io_stream_t* stream,
 }
 
 static iree_status_t loom_vm_module_write(
-    const loom_target_emit_request_t* request,
-    loom_vm_module_function_span_t functions, iree_io_stream_t* stream) {
+    const loom_target_emit_request_t* request, loom_vm_module_plan_t functions,
+    iree_io_stream_t* stream) {
   const uint32_t function_count = functions.count;
   // Separate sorted views preserve function ordinals and avoid sorting exports
   // again when emitting their rows after the callable table.
@@ -243,10 +263,11 @@ static iree_status_t loom_vm_module_write(
       .core_required_minor_u16 = IREE_VM_BYTECODE_CORE_MINOR,
       .section_count_u16 = 3 + (export_count != 0) +
                            (export_count != 0 || functions.uses_buffer_type) +
-                           functions.uses_buffer_type,
+                           functions.uses_buffer_type +
+                           (functions.rodata.symbol_count != 0),
   };
   IREE_RETURN_IF_ERROR(iree_io_stream_write(stream, sizeof(header), &header));
-  iree_vm_bytecode_v0_section_directory_row_t directory[6] = {0};
+  iree_vm_bytecode_v0_section_directory_row_t directory[7] = {0};
   IREE_RETURN_IF_ERROR(iree_io_stream_write(
       stream, header.section_count_u16 * sizeof(directory[0]), directory));
   uint16_t section = 0;
@@ -424,10 +445,54 @@ static iree_status_t loom_vm_module_write(
     }
   }
   IREE_RETURN_IF_ERROR(status);
-  directory[section].byte_length_u64 = iree_io_stream_offset(stream) - start;
+  directory[section++].byte_length_u64 = iree_io_stream_offset(stream) - start;
   IREE_RETURN_IF_ERROR(loom_vm_stream_patch(
       stream, start,
       iree_make_const_byte_span(&functions_header, sizeof(functions_header))));
+  if (functions.rodata.symbol_count) {
+    // Section and block alignment are relative to the serialized image, not
+    // the addresses of segmented output chunks. The loader handles a host
+    // image allocation whose base does not satisfy a stronger block alignment.
+    IREE_RETURN_IF_ERROR(iree_io_stream_fill(
+        stream,
+        -iree_io_stream_offset(stream) & (functions.rodata.alignment - 1),
+        &zero, 1));
+    IREE_RETURN_IF_ERROR(loom_vm_section_begin(
+        stream, IREE_VM_BYTECODE_SECTION_RODATA, &directory[section], &start));
+    directory[section].payload_alignment_u32 = functions.rodata.alignment;
+    const iree_vm_bytecode_v0_rodata_header_t rodata_header = {
+        .block_count_u32 = functions.rodata.count};
+    IREE_RETURN_IF_ERROR(
+        iree_io_stream_write(stream, sizeof(rodata_header), &rodata_header));
+    for (uint32_t i = 0;
+         i < functions.rodata.count && iree_status_is_ok(status); ++i) {
+      const loom_op_t* definition = functions.rodata.values[i];
+      const iree_vm_bytecode_v0_rodata_block_descriptor_t row = {
+          .byte_length_u64 =
+              loom_global_rodata_def_contents(definition).data_length,
+          .minimum_alignment_u32 = (uint32_t)iree_max(
+              1, loom_global_rodata_def_alignment(definition)),
+      };
+      status = iree_io_stream_write(stream, sizeof(row), &row);
+    }
+    for (uint32_t i = 0;
+         i < functions.rodata.count && iree_status_is_ok(status); ++i) {
+      const loom_op_t* definition = functions.rodata.values[i];
+      const uint32_t alignment =
+          (uint32_t)iree_max(1, loom_global_rodata_def_alignment(definition));
+      status = iree_io_stream_fill(
+          stream, -(iree_io_stream_offset(stream) - start) & (alignment - 1),
+          &zero, 1);
+      if (iree_status_is_ok(status)) {
+        const iree_const_byte_span_t contents =
+            loom_global_rodata_def_contents(definition);
+        status =
+            iree_io_stream_write(stream, contents.data_length, contents.data);
+      }
+    }
+    IREE_RETURN_IF_ERROR(status);
+    directory[section].byte_length_u64 = iree_io_stream_offset(stream) - start;
+  }
   return loom_vm_stream_patch(
       stream, sizeof(header),
       iree_make_const_byte_span(
@@ -437,7 +502,7 @@ static iree_status_t loom_vm_module_write(
 iree_status_t loom_vm_module_emit(const loom_target_emit_request_t* request,
                                   loom_target_emit_artifact_t* out_artifact) {
   *out_artifact = (loom_target_emit_artifact_t){0};
-  loom_vm_module_function_span_t functions = {0};
+  loom_vm_module_plan_t functions = {0};
   IREE_RETURN_IF_ERROR(loom_vm_module_collect(request, &functions));
   iree_io_stream_t* stream = NULL;
   IREE_RETURN_IF_ERROR(iree_io_vec_stream_create(

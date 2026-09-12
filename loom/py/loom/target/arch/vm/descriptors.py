@@ -26,6 +26,7 @@ from iree.vm.bytecode.spec.isa.core.buffer import (
     BUFFER_FILL,
     BUFFER_LENGTH,
     BUFFER_LOAD,
+    BUFFER_RODATA_LOAD,
     BUFFER_STORE,
 )
 from iree.vm.bytecode.spec.isa.core.constant import CONSTANT_I32, CONSTANT_I64
@@ -112,6 +113,7 @@ _BUFFER_INSTRUCTIONS = (
     BUFFER_COMPARE,
     BUFFER_LOAD,
     BUFFER_STORE,
+    BUFFER_RODATA_LOAD,
     *_ATOMIC_INSTRUCTIONS,
 )
 
@@ -259,19 +261,28 @@ def _immediates(instruction: Instruction) -> tuple[Immediate, ...]:
         bit_width = field.field.byte_length * 8
         minimum, maximum = 0, 0
         domain = None
+        kind = ImmediateKind.UNSIGNED
+        flags = ()
         if field.rule.kind is FieldRule.SELECTOR:
+            kind = ImmediateKind.ENUM
             domain = field.rule.data.name
         elif field.rule.kind is FieldRule.ALLOWED_VALUES:
+            kind = ImmediateKind.ENUM
             domain = f"{instruction.mnemonic}.{field.field.name}"
         elif field.rule.kind is FieldRule.ANY_BITS:
             maximum = (1 << bit_width) - 1
+        elif field.rule.kind is FieldRule.RODATA_ORDINAL:
+            kind = ImmediateKind.ORDINAL
+            maximum = (1 << bit_width) - 1
+            flags = (ImmediateFlag.SYMBOLIC,)
         else:
             assert field.rule.kind is FieldRule.ALLOWED_RANGE
             minimum, maximum = field.rule.values
         immediates.append(
             Immediate(
                 field.field.name,
-                ImmediateKind.ENUM if domain is not None else ImmediateKind.UNSIGNED,
+                kind,
+                flags=flags,
                 bit_width=bit_width,
                 encoding_field_id=offset,
                 enum_domain=domain,

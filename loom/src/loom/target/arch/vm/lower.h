@@ -20,6 +20,8 @@ extern "C" {
 // Analyzed views alias their buffer carrier; the shared source-memory plan
 // supplies each access's complete byte coordinate without a runtime view
 // object.
+// Read-only data loads retain symbol references until module emission assigns
+// ordinals; value globals are not reinterpreted as byte payloads.
 void loom_vm_low_lower_policy_registry_initialize(
     loom_low_lower_policy_registry_t* out_registry);
 

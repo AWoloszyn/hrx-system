@@ -42,6 +42,7 @@ iree_py_library(
         ":descriptors",
         "//loom/py/loom/dialect:shared",
         "//loom/py/loom/dialect/buffer",
+        "//loom/py/loom/dialect/globals",
         "//loom/py/loom/dialect/index",
         "//loom/py/loom/dialect/scalar",
         "//loom/py/loom/dialect/scf",

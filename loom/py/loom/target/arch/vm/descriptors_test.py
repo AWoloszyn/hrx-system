@@ -7,6 +7,7 @@
 from itertools import product
 
 from iree.vm.bytecode.spec.isa import ControlFlow, FieldRole, Suspension
+from iree.vm.bytecode.spec.isa.core.buffer import BUFFER_RODATA_LOAD
 from iree.vm.bytecode.spec.isa.core.constant import CONSTANT_I32, CONSTANT_I64
 from iree.vm.bytecode.spec.isa.core.float import (
     FloatBinarySemantics,
@@ -45,6 +46,7 @@ from loom.target.low_descriptors import (
     DescriptorOpKind,
     EffectKind,
     ImmediateFlag,
+    ImmediateKind,
     OperandRole,
 )
 
@@ -184,7 +186,11 @@ def test_lowering_uses_the_projected_descriptors():
     )
     emissions = tuple(emit for case in cases for emit in case.emit)
     assert {id(emit.descriptor) for emit in emissions} == {
-        id(descriptor) for descriptor in descriptors
+        id(descriptor)
+        for descriptor in descriptors
+        # Symbol-kind selection uses the C recipe before final table ordinals
+        # exist. Shared source and execution tests exercise that producer.
+        if descriptor.encoding_id != BUFFER_RODATA_LOAD.opcode
     }
     for emit in emissions:
         assert set(emit.operands) == {
@@ -254,6 +260,10 @@ def test_selectors_preserve_the_spec_domain_and_encoding():
                     == field.rule.values
                 )
             elif field.rule.kind is FieldRule.ANY_BITS:
+                assert immediate.unsigned_max == (1 << immediate.bit_width) - 1
+            elif field.rule.kind is FieldRule.RODATA_ORDINAL:
+                assert immediate.kind is ImmediateKind.ORDINAL
+                assert immediate.flags == (ImmediateFlag.SYMBOLIC,)
                 assert immediate.unsigned_max == (1 << immediate.bit_width) - 1
             else:
                 assert field.rule.kind is FieldRule.ALLOWED_RANGE

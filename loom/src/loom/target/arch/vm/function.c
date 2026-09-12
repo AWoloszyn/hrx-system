@@ -13,6 +13,7 @@
 #include "loom/codegen/low/frame.h"
 #include "loom/codegen/low/storage_layout.h"
 #include "loom/error/error_defs.h"
+#include "loom/ops/global/ops.h"
 #include "loom/ops/low/ops.h"
 #include "loom/target/arch/vm/descriptors/descriptors.h"
 #include "loom/target/arch/vm/module.h"
@@ -198,11 +199,49 @@ static uint64_t loom_vm_function_immediate(
   IREE_BUILTIN_UNREACHABLE();
 }
 
+// Bind a data operand while emitting its first consumer, keeping unused and
+// non-VM payloads out of this artifact. Authored numeric ordinals name the
+// declaration-order table; symbols and ordinals share the same final binding.
+static iree_status_t loom_vm_function_rodata(const loom_module_t* module,
+                                             loom_attribute_t value,
+                                             loom_vm_module_plan_t* plan,
+                                             uint64_t* out_ordinal) {
+  loom_symbol_ref_t symbol = value.symbol;
+  if (value.kind != LOOM_ATTR_SYMBOL) {
+    if ((uint64_t)value.i64 >= plan->rodata.symbol_count) {
+      return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                              "VM rodata ordinal exceeds the data table");
+    }
+    symbol = (loom_symbol_ref_t){.symbol_id = plan->rodata.symbols[value.i64]};
+  }
+  const loom_op_t* definition =
+      module->symbols.entries[symbol.symbol_id].defining_op;
+  if (!loom_global_rodata_def_isa(definition)) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "VM rodata operand requires a data definition");
+  }
+  uint16_t* ordinal = &plan->ordinals_by_symbol[symbol.symbol_id];
+  if (*ordinal == UINT16_MAX) {
+    const int64_t alignment = loom_global_rodata_def_alignment(definition);
+    if (alignment > UINT32_MAX) {
+      return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                              "VM rodata alignment exceeds u32");
+    }
+    *ordinal = (uint16_t)plan->rodata.count;
+    plan->rodata.values[plan->rodata.count++] = definition;
+    plan->rodata.alignment =
+        iree_max(plan->rodata.alignment, (uint32_t)alignment);
+  }
+  *out_ordinal = *ordinal;
+  return iree_ok_status();
+}
+
 // Keep field encoding in its own compilation boundary instead of growing the
 // register-allocation scope of frame and control-flow emission.
 IREE_ATTRIBUTE_NOINLINE static iree_status_t loom_vm_function_packet(
     const loom_low_emission_frame_t* frame,
-    const loom_low_schedule_node_t* node, iree_io_stream_t* stream) {
+    const loom_low_schedule_node_t* node, loom_vm_module_plan_t* module_plan,
+    iree_io_stream_t* stream) {
   const loom_low_descriptor_t* descriptor = node->descriptor;
   const loom_low_operand_t* operands =
       frame->target.descriptor_set->operands + descriptor->operand_start;
@@ -262,8 +301,14 @@ IREE_ATTRIBUTE_NOINLINE static iree_status_t loom_vm_function_packet(
         const loom_low_immediate_t* immediate =
             &frame->target.descriptor_set
                  ->immediates[descriptor->immediate_start + i];
-        const uint64_t bits = loom_vm_function_immediate(
-            frame, immediate, attributes.entries[i].value);
+        const loom_attribute_t value = attributes.entries[i].value;
+        uint64_t bits;
+        if (immediate->kind == LOOM_LOW_IMMEDIATE_KIND_ORDINAL) {
+          IREE_RETURN_IF_ERROR(loom_vm_function_rodata(frame->module, value,
+                                                       module_plan, &bits));
+        } else {
+          bits = loom_vm_function_immediate(frame, immediate, value);
+        }
         if (immediate->bit_width <= 8) {
           // Packed selector components share a zero-initialized packet byte.
           packet[immediate->encoding_field_id] |=
@@ -353,8 +398,8 @@ typedef struct loom_vm_call_scratch_t {
 // Reserve the canonical offset-zero packet before projecting local storage.
 static iree_status_t loom_vm_function_prepare_calls(
     const loom_low_emission_frame_t* frame,
-    const loom_vm_module_function_span_t* functions,
-    iree_arena_allocator_t* arena, loom_vm_call_scratch_t* scratch) {
+    const loom_vm_module_plan_t* functions, iree_arena_allocator_t* arena,
+    loom_vm_call_scratch_t* scratch) {
   uint16_t max_arguments = 0, max_results = 0;
   uint32_t packet_bytes = 0;
   for (iree_host_size_t i = 0; i < frame->schedule.call_node_count; ++i) {
@@ -441,9 +486,8 @@ static void loom_vm_function_call_bindings(
 IREE_ATTRIBUTE_NOINLINE static iree_status_t loom_vm_function_call(
     const loom_low_emission_frame_t* frame,
     const loom_low_schedule_node_t* node,
-    const loom_vm_module_function_span_t* functions,
-    loom_vm_call_scratch_t* scratch, iree_io_stream_t* stream,
-    iree_vm_bytecode_v0_function_row_t* out_row) {
+    const loom_vm_module_plan_t* functions, loom_vm_call_scratch_t* scratch,
+    iree_io_stream_t* stream, iree_vm_bytecode_v0_function_row_t* out_row) {
   const uint16_t ordinal =
       functions
           ->ordinals_by_symbol[loom_low_func_call_callee(node->op).symbol_id];
@@ -662,7 +706,7 @@ iree_status_t loom_vm_function_emit(
     const loom_target_emit_request_t* request, loom_func_like_t function,
     const loom_target_facts_t* target_facts,
     const loom_vm_function_signature_t* signature,
-    const loom_vm_module_function_span_t* functions, iree_io_stream_t* stream,
+    loom_vm_module_plan_t* functions, iree_io_stream_t* stream,
     iree_vm_bytecode_v0_function_row_t* out_row) {
   uint16_t argument_count = 0;
   const loom_value_id_t* arguments =
@@ -783,7 +827,7 @@ iree_status_t loom_vm_function_emit(
               .scheduled_node_indices[block->scheduled_node_start + i];
       const loom_low_schedule_node_t* node = &frame.schedule.nodes[node_index];
       if (node->descriptor) {
-        status = loom_vm_function_packet(&frame, node, stream);
+        status = loom_vm_function_packet(&frame, node, functions, stream);
       } else if (loom_low_func_call_isa(node->op)) {
         status = loom_vm_function_call(&frame, node, functions, &call_scratch,
                                        stream, out_row);
