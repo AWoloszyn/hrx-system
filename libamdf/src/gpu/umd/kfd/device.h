@@ -12,6 +12,7 @@
 #include "libamdf/src/gpu/umd/device.h"
 #include "libamdf/src/gpu/umd/kfd/reset_monitor.h"
 #include "libamdf/src/gpu/umd/kfd/topology.h"
+#include "libamdf/src/gpu/umd/kfd/vm.h"
 
 typedef struct amdf_gpu_kfd_user_queue_native_api_t
     amdf_gpu_kfd_user_queue_native_api_t;
@@ -36,6 +37,8 @@ struct amdf_gpu_umd_device_t {
   const amdf_gpu_kfd_user_queue_native_api_t* user_queue_native_api;
   // Physical reset observer owned for every queue-qualified device.
   amdf_gpu_kfd_reset_monitor_t reset_monitor;
+  // Cold VM handover resources, released before device publication.
+  amdf_gpu_kfd_vm_bootstrap_t vm_bootstrap;
 };
 
 #endif  // AMDF_SRC_GPU_UMD_KFD_DEVICE_H_

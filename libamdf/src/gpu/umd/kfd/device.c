@@ -17,7 +17,10 @@
 
 amdf_status_t amdf_gpu_umd_device_destroy(amdf_gpu_umd_device_t* device) {
   amdf_status_t status =
-      amdf_gpu_kfd_reset_monitor_deinitialize(&device->reset_monitor);
+      amdf_gpu_kfd_vm_bootstrap_release(&device->vm_bootstrap);
+  if (amdf_status_is_ok(status)) {
+    status = amdf_gpu_kfd_reset_monitor_deinitialize(&device->reset_monitor);
+  }
   if (amdf_status_is_ok(status)) {
     status = amdf_linux_file_close(&device->descriptor);
   }
@@ -77,13 +80,13 @@ amdf_status_t amdf_gpu_umd_device_create(
         amdf_linux_endpoint_open_file(endpoint, &device->render_descriptor);
   }
   if (amdf_status_is_ok(status)) {
-    struct kfd_ioctl_acquire_vm_args acquire = {
-        .drm_fd = (uint32_t)device->render_descriptor,
-        .gpu_id = device->topology.gpu_id,
-    };
-    if (ioctl(device->descriptor, AMDKFD_IOC_ACQUIRE_VM, &acquire) != 0) {
-      status = amdf_linux_error(errno);
-    }
+    status = amdf_gpu_kfd_vm_acquire(
+        device->descriptor, device->render_descriptor, &device->topology,
+        device->page_size, amdf_gpu_kfd_vm_default_native_api(),
+        &device->vm_bootstrap);
+  }
+  if (amdf_status_is_ok(status)) {
+    status = amdf_gpu_kfd_vm_bootstrap_release(&device->vm_bootstrap);
   }
   if (amdf_status_is_ok(status)) {
     amdf_gpu_kfd_user_queue_plans_t queue_plans;

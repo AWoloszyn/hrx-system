@@ -62,12 +62,35 @@ amdf_cc_test(
 )
 
 amdf_cc_library(
+    name = "vm",
+    srcs = ["vm.c"],
+    hdrs = ["vm.h"],
+    target_compatible_with = KFD_COMPATIBILITY,
+    deps = [
+        ":topology",
+        "//libamdf/src/platform/linux:file",
+    ],
+)
+
+amdf_cc_test(
+    name = "vm_test",
+    srcs = ["vm_test.cc"],
+    target_compatible_with = KFD_COMPATIBILITY,
+    deps = [
+        ":vm",
+        "//third_party:google_test",
+        "//third_party:google_test_main",
+    ],
+)
+
+amdf_cc_library(
     name = "device_state",
     hdrs = ["device.h"],
     target_compatible_with = KFD_COMPATIBILITY,
     deps = [
         ":reset_monitor",
         ":topology",
+        ":vm",
         "//libamdf/src/gpu/umd:device",
     ],
 )
@@ -106,6 +129,7 @@ amdf_cc_library(
         ":reset_monitor",
         ":topology",
         ":user_queue_native",
+        ":vm",
         "//libamdf/src:allocator",
         "//libamdf/src/gpu/umd/kfd/target:user_queue",
         "//libamdf/src/platform/linux:endpoint",
