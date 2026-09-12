@@ -93,6 +93,9 @@ typedef struct loom_low_lowering_frame_t {
   loom_low_lower_abi_argument_t* argument_map;
   // Number of entries in argument_map.
   uint16_t argument_map_count;
+  // Callable result types mapped before source planning, in source result
+  // order. Function-arena storage is retained through Low definition creation.
+  loom_type_t* result_types;
   // Optional source selection and memory report analysis state.
   loom_low_lower_report_state_t report;
   // Source-derived memory access rows copied into options.table_arena.

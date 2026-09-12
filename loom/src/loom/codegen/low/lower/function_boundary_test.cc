@@ -57,9 +57,11 @@ class LowLowerFunctionBoundaryTest : public ::testing::Test {
         options_.descriptor_registry, loom_target_facts_bundle(&target_facts_),
         &mapping_context_.descriptor_set));
     iree_arena_initialize(&block_pool_, &mapping_context_.function_arena);
+    iree_arena_initialize(&block_pool_, &mapping_context_.emission_arena);
   }
 
   void TearDown() override {
+    iree_arena_deinitialize(&mapping_context_.emission_arena);
     iree_arena_deinitialize(&mapping_context_.function_arena);
     loom_low_lower_result_deinitialize(&result_);
     loom_module_free(module_);
@@ -346,6 +348,79 @@ TEST_F(LowLowerFunctionBoundaryTest,
   EXPECT_EQ(module_->symbols.entries[symbol.symbol_id].defining_op,
             result_.low_func_op);
 }
+
+class LowLowerResultMappingTest : public LowLowerFunctionBoundaryTest,
+                                  public ::testing::WithParamInterface<bool> {};
+
+TEST_P(LowLowerResultMappingTest, DefinitionConsumesPreparedResultTypes) {
+  const uint16_t result_count = GetParam() ? 2 : 0;
+  const loom_type_t argument_types[] = {
+      loom_type_scalar(LOOM_SCALAR_TYPE_I32),
+      loom_type_scalar(LOOM_SCALAR_TYPE_F32),
+  };
+  const loom_type_t result_types[] = {argument_types[1], argument_types[0]};
+  const loom_symbol_ref_t symbol = AddSymbol(IREE_SV("permute"));
+  loom_builder_t builder;
+  loom_builder_initialize(module_, &module_->arena, loom_module_block(module_),
+                          &builder);
+  loom_op_t* source_op = nullptr;
+  IREE_ASSERT_OK(loom_func_def_build(
+      &builder, /*build_flags=*/0, /*visibility=*/0, /*retain=*/0, /*cc=*/0,
+      /*purity=*/0, /*temperature=*/0, /*inline_policy=*/0,
+      loom_symbol_ref_null(), /*abi=*/0, loom_named_attr_slice_empty(),
+      LOOM_STRING_ID_INVALID, loom_named_attr_slice_empty(), symbol,
+      argument_types, IREE_ARRAYSIZE(argument_types), result_types,
+      result_count, nullptr, 0, nullptr, 0, LOOM_LOCATION_UNKNOWN, &source_op));
+  mapping_context_.source_function = loom_func_like_cast(module_, source_op);
+  loom_region_t* body = loom_func_like_body(mapping_context_.source_function);
+  loom_block_t* entry = loom_region_entry_block(body);
+  const loom_value_id_t returned_values[] = {entry->arg_ids[1],
+                                             entry->arg_ids[0]};
+  loom_builder_initialize(module_, &module_->arena, entry, &builder);
+  builder.ip.parent_op = source_op;
+  loom_op_t* return_op = nullptr;
+  IREE_ASSERT_OK(loom_func_return_build(&builder, returned_values, result_count,
+                                        LOOM_LOCATION_UNKNOWN, &return_op));
+  ComputeFacts(mapping_context_.source_function);
+
+  uint32_t result_query_count = 0;
+  policy_.map_value = {
+      +[](void* user_data, loom_low_lower_context_t* context,
+          const loom_op_t* source_op, loom_value_id_t source_value,
+          loom_type_t source_type, loom_type_t* out_low_type) -> iree_status_t {
+        (void)source_value;
+        if (loom_func_return_isa(source_op)) {
+          ++*static_cast<uint32_t*>(user_data);
+        }
+        return context->policy->map_type.fn(context->policy->map_type.user_data,
+                                            context, source_op, source_type,
+                                            out_low_type);
+      },
+      &result_query_count,
+  };
+  IREE_ASSERT_OK(
+      loom_low_lower_function_boundary_validate(&mapping_context_, body));
+  ASSERT_EQ(result_.error_count, 0u);
+  EXPECT_EQ(result_query_count, result_count);
+  EXPECT_EQ(mapping_context_.lowering.result_types != nullptr, GetParam());
+
+  loom_low_lower_emission_scope_begin(&mapping_context_);
+  IREE_ASSERT_OK(
+      loom_low_lower_function_boundary_create(&mapping_context_, body, symbol));
+  loom_low_lower_emission_scope_end(&mapping_context_);
+  ASSERT_EQ(result_.error_count, 0u);
+  EXPECT_EQ(result_query_count, result_count);
+  ASSERT_EQ(result_.low_func_op->result_count, result_count);
+  for (uint16_t i = 0; i < result_count; ++i) {
+    EXPECT_TRUE(loom_type_equal(
+        mapping_context_.lowering.result_types[i],
+        loom_module_value_type(module_,
+                               loom_op_const_results(result_.low_func_op)[i])));
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(EmptyAndMultiple, LowLowerResultMappingTest,
+                         ::testing::Bool());
 
 class LowLowerArgumentQueryTest : public LowLowerFunctionBoundaryTest,
                                   public ::testing::WithParamInterface<bool> {};
