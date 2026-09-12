@@ -77,8 +77,8 @@ amdf_status_t amdf_gpu_umd_device_create(
     }
   }
   if (amdf_status_is_ok(status)) {
-    status =
-        amdf_linux_endpoint_open_file(endpoint, &device->render_descriptor);
+    status = amdf_linux_endpoint_open_file(endpoint, &device->render_descriptor,
+                                           NULL);
   }
   if (amdf_status_is_ok(status)) {
     status = amdf_gpu_kfd_vm_acquire(

@@ -104,6 +104,8 @@ typedef struct amdf_api_t {
 
   /// Copies one immutable queue-family record cached while opening `endpoint`.
   ///
+  /// Records describe expected implemented services. Explicit native device
+  /// creation validates the installed driver before making them usable.
   /// `queue_family_ordinal` must be less than the endpoint's reported family
   /// count. The operation is thread-safe and performs no system call,
   /// allocation, device initialization, queue creation, retry, sleep, or

@@ -102,6 +102,27 @@ amdf_cc_test(
 amdf_cc_test(
     name = "endpoint_test",
     srcs = ["endpoint_test.cc"],
+    resource_group = "iree-hal-drivers-amdgpu-tests",
+    tags = [
+        "iree-run-requirement=libamdf.resource.amd_gpu",
+        "iree-run-requirement=libamdf.resource.xdna",
+        "runtime-resource=amd-gpu",
+        "runtime-resource=amd-xdna",
+    ],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":endpoint",
+        ":file",
+        "//libamdf/src:allocator",
+        "//libamdf/src/platform",
+        "//third_party:google_test",
+        "//third_party:google_test_main",
+    ],
+)
+
+amdf_cc_test(
+    name = "endpoint_metadata_test",
+    srcs = ["endpoint_metadata_test.cc"],
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
         ":endpoint",

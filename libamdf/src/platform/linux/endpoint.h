@@ -13,18 +13,20 @@
 struct amdf_platform_endpoint_t {
   // Instance borrowed for fresh device-file identity validation.
   amdf_platform_instance_t* instance;
-  // Query-only DRM file; materialized devices open independent files.
+  // GPU qualification file, or -1 for sysfs-only XDNA discovery. Explicit
+  // native activation opens independent files.
   int descriptor;
   // Immutable identity and PCI properties established on open.
   amdf_endpoint_info_t info;
-  // DRM interface version reported by the opened file.
-  struct {
-    // Major ABI version.
-    uint32_t major_version;
-    // Minor ABI revision.
-    uint32_t minor_version;
-  } driver;
 };
+
+// DRM interface version established on an explicitly opened native file.
+typedef struct amdf_linux_drm_version_t {
+  // Major ABI version.
+  uint32_t major;
+  // Minor ABI revision.
+  uint32_t minor;
+} amdf_linux_drm_version_t;
 
 #ifdef __cplusplus
 extern "C" {
@@ -32,8 +34,11 @@ extern "C" {
 
 // Opens a fresh native file after verifying the endpoint identity. This is
 // deliberately not dup: DRM GEM handle tables and HWCTX ownership are per file.
+// When non-NULL, out_version receives the interface version of that same file.
+// Failure leaves both outputs unchanged.
 amdf_status_t amdf_linux_endpoint_open_file(
-    const amdf_platform_endpoint_t* endpoint, int* out_descriptor);
+    const amdf_platform_endpoint_t* endpoint, int* out_descriptor,
+    amdf_linux_drm_version_t* out_version);
 
 #ifdef __cplusplus
 }  // extern "C"

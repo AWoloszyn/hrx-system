@@ -243,9 +243,12 @@ amdf_status_t amdf_platform_endpoint_enumerate(
   return status;
 }
 
-static amdf_status_t amdf_linux_open_endpoint(
+enum { AMDF_LINUX_DEVICE_PATH_CAPACITY = 64 };
+
+static amdf_status_t amdf_linux_resolve_endpoint(
     amdf_platform_instance_t* instance, const amdf_endpoint_id_t* id,
-    amdf_platform_endpoint_t* endpoint) {
+    amdf_endpoint_info_t* info,
+    char device_path[AMDF_LINUX_DEVICE_PATH_CAPACITY]) {
   char path[64];
   snprintf(path, sizeof(path), "dev/char/%u:%u", (uint32_t)(id->words[0] >> 32),
            (uint32_t)id->words[0]);
@@ -255,11 +258,11 @@ static amdf_status_t amdf_linux_open_endpoint(
     return errno == ENOENT ? amdf_make_api_status(AMDF_STATUS_CODE_NOT_FOUND)
                            : amdf_linux_error(errno);
   }
-  amdf_status_t status = amdf_linux_query_endpoint(node, &endpoint->info);
+  amdf_status_t status = amdf_linux_query_endpoint(node, info);
   const amdf_status_t close_status = amdf_linux_file_close(&node);
   if (!amdf_status_is_ok(close_status)) status = close_status;
   if (!amdf_status_is_ok(status)) return status;
-  if (!amdf_endpoint_id_is_equal(id, &endpoint->info.id)) {
+  if (!amdf_endpoint_id_is_equal(id, &info->id)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_NOT_FOUND);
   }
   char link[512];
@@ -271,7 +274,7 @@ static amdf_status_t amdf_linux_open_endpoint(
   const char* name = strrchr(link, '/');
   if (name == NULL) return amdf_linux_error(EPROTO);
   const char* prefix =
-      endpoint->info.engine_kind == AMDF_ENGINE_KIND_XDNA ? "accel" : "renderD";
+      info->engine_kind == AMDF_ENGINE_KIND_XDNA ? "accel" : "renderD";
   ++name;
   const size_t prefix_length = strlen(prefix);
   if (strncmp(name, prefix, prefix_length) != 0 || name[prefix_length] == 0 ||
@@ -279,37 +282,64 @@ static amdf_status_t amdf_linux_open_endpoint(
           strlen(name + prefix_length)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_NOT_FOUND);
   }
-  snprintf(
-      path, sizeof(path), "/dev/%s/%s",
-      endpoint->info.engine_kind == AMDF_ENGINE_KIND_XDNA ? "accel" : "dri",
-      name);
-  endpoint->descriptor = open(path, O_RDWR | O_CLOEXEC);
-  if (endpoint->descriptor < 0) return amdf_linux_error(errno);
+  const int path_length = snprintf(
+      device_path, AMDF_LINUX_DEVICE_PATH_CAPACITY, "/dev/%s/%s",
+      info->engine_kind == AMDF_ENGINE_KIND_XDNA ? "accel" : "dri", name);
+  return (size_t)path_length < AMDF_LINUX_DEVICE_PATH_CAPACITY
+             ? AMDF_STATUS_OK
+             : amdf_linux_error(EOVERFLOW);
+}
+
+static amdf_status_t amdf_linux_qualify_device_file(
+    int descriptor, const amdf_endpoint_info_t* info,
+    amdf_linux_drm_version_t* out_version) {
   struct stat native_info;
-  if (fstat(endpoint->descriptor, &native_info) != 0) {
+  if (fstat(descriptor, &native_info) != 0) {
     return amdf_linux_error(errno);
   }
   if (!S_ISCHR(native_info.st_mode) ||
-      major(native_info.st_rdev) != (uint32_t)(id->words[0] >> 32) ||
-      minor(native_info.st_rdev) != (uint32_t)id->words[0]) {
+      major(native_info.st_rdev) != (uint32_t)(info->id.words[0] >> 32) ||
+      minor(native_info.st_rdev) != (uint32_t)info->id.words[0]) {
     return amdf_make_api_status(AMDF_STATUS_CODE_NOT_FOUND);
   }
   char driver[32] = {0};
   struct drm_version version = {.name_len = sizeof(driver) - 1, .name = driver};
-  if (ioctl(endpoint->descriptor, DRM_IOCTL_VERSION, &version) != 0) {
+  if (ioctl(descriptor, DRM_IOCTL_VERSION, &version) != 0) {
     return amdf_linux_error(errno);
   }
-  const char* expected_driver =
-      endpoint->info.engine_kind == AMDF_ENGINE_KIND_XDNA
-          ? "amdxdna_accel_driver"
-          : "amdgpu";
+  const char* expected_driver = info->engine_kind == AMDF_ENGINE_KIND_XDNA
+                                    ? "amdxdna_accel_driver"
+                                    : "amdgpu";
   if (version.name_len != strlen(expected_driver) ||
       memcmp(driver, expected_driver, version.name_len) != 0) {
     return amdf_make_api_status(AMDF_STATUS_CODE_NOT_FOUND);
   }
-  endpoint->driver.major_version = (uint32_t)version.version_major;
-  endpoint->driver.minor_version = (uint32_t)version.version_minor;
+  if (version.version_major < 0 || version.version_minor < 0) {
+    return amdf_linux_error(EPROTO);
+  }
+  *out_version = (amdf_linux_drm_version_t){
+      .major = (uint32_t)version.version_major,
+      .minor = (uint32_t)version.version_minor,
+  };
   return AMDF_STATUS_OK;
+}
+
+static amdf_status_t amdf_linux_open_device_file(
+    const amdf_endpoint_info_t* info, const char* path, int* out_descriptor,
+    amdf_linux_drm_version_t* out_version) {
+  int descriptor = open(path, O_RDWR | O_CLOEXEC);
+  if (descriptor < 0) return amdf_linux_error(errno);
+  amdf_linux_drm_version_t version;
+  amdf_status_t status =
+      amdf_linux_qualify_device_file(descriptor, info, &version);
+  if (amdf_status_is_ok(status)) {
+    *out_descriptor = descriptor;
+    if (out_version != NULL) *out_version = version;
+  } else {
+    const amdf_status_t close_status = amdf_linux_file_close(&descriptor);
+    if (!amdf_status_is_ok(close_status)) status = close_status;
+  }
+  return status;
 }
 
 amdf_status_t amdf_platform_endpoint_open(
@@ -322,7 +352,16 @@ amdf_status_t amdf_platform_endpoint_open(
   if (!amdf_status_is_ok(status)) return status;
   endpoint->instance = instance;
   endpoint->descriptor = -1;
-  status = amdf_linux_open_endpoint(instance, id, endpoint);
+  char device_path[AMDF_LINUX_DEVICE_PATH_CAPACITY];
+  status =
+      amdf_linux_resolve_endpoint(instance, id, &endpoint->info, device_path);
+  // GPU profile qualification consumes native DRM information. XDNA expected
+  // properties and publication modes require only sysfs and target tables.
+  if (amdf_status_is_ok(status) &&
+      endpoint->info.engine_kind == AMDF_ENGINE_KIND_GPU) {
+    status = amdf_linux_open_device_file(&endpoint->info, device_path,
+                                         &endpoint->descriptor, NULL);
+  }
   if (amdf_status_is_ok(status)) {
     *out_info = endpoint->info;
     *out_endpoint = endpoint;
@@ -336,18 +375,15 @@ amdf_status_t amdf_platform_endpoint_open(
 }
 
 amdf_status_t amdf_linux_endpoint_open_file(
-    const amdf_platform_endpoint_t* endpoint, int* out_descriptor) {
-  amdf_platform_endpoint_t opened = {.descriptor = -1};
-  amdf_status_t status =
-      amdf_linux_open_endpoint(endpoint->instance, &endpoint->info.id, &opened);
-  if (amdf_status_is_ok(status)) {
-    *out_descriptor = opened.descriptor;
-  } else {
-    const amdf_status_t close_status =
-        amdf_linux_file_close(&opened.descriptor);
-    if (!amdf_status_is_ok(close_status)) status = close_status;
-  }
-  return status;
+    const amdf_platform_endpoint_t* endpoint, int* out_descriptor,
+    amdf_linux_drm_version_t* out_version) {
+  amdf_endpoint_info_t info;
+  char device_path[AMDF_LINUX_DEVICE_PATH_CAPACITY];
+  const amdf_status_t status = amdf_linux_resolve_endpoint(
+      endpoint->instance, &endpoint->info.id, &info, device_path);
+  if (!amdf_status_is_ok(status)) return status;
+  return amdf_linux_open_device_file(&info, device_path, out_descriptor,
+                                     out_version);
 }
 
 amdf_queue_publication_modes_t
@@ -355,9 +391,8 @@ amdf_platform_endpoint_query_queue_publication_modes(
     const amdf_platform_endpoint_t* endpoint,
     amdf_queue_command_type_t command_type) {
   if (command_type == AMDF_QUEUE_COMMAND_TYPE_XDNA &&
-      endpoint->info.engine_kind == AMDF_ENGINE_KIND_XDNA &&
-      endpoint->driver.major_version == 0 &&
-      endpoint->driver.minor_version >= 8) {
+      endpoint->info.engine_kind == AMDF_ENGINE_KIND_XDNA) {
+    // Expected implemented transport; activation qualifies the native ABI.
     return AMDF_QUEUE_PUBLICATION_MODE_KERNEL;
   }
   return 0;

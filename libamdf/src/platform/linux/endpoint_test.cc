@@ -6,7 +6,9 @@
 
 #include "libamdf/src/platform/linux/endpoint.h"
 
+#include <drm/drm.h>
 #include <fcntl.h>
+#include <sys/ioctl.h>
 #include <sys/stat.h>
 
 #include <cstring>
@@ -63,9 +65,26 @@ TEST_F(LinuxEndpointTest, NativeIdentityAndIndependentFiles) {
     EXPECT_TRUE(amdf_endpoint_id_is_equal(&summary.id, &info.id));
     EXPECT_EQ(summary.engine_kind, info.engine_kind);
     EXPECT_STREQ(summary.name, info.name);
-    EXPECT_NE(fcntl(endpoint->descriptor, F_GETFD) & FD_CLOEXEC, 0);
-    ASSERT_EQ(amdf_linux_endpoint_open_file(endpoint, &first), AMDF_STATUS_OK);
-    ASSERT_EQ(amdf_linux_endpoint_open_file(endpoint, &second), AMDF_STATUS_OK);
+    if (info.engine_kind == AMDF_ENGINE_KIND_XDNA) {
+      EXPECT_EQ(endpoint->descriptor, -1);
+    } else {
+      ASSERT_GE(endpoint->descriptor, 0);
+      EXPECT_NE(fcntl(endpoint->descriptor, F_GETFD) & FD_CLOEXEC, 0);
+    }
+    amdf_linux_drm_version_t first_version = {};
+    amdf_linux_drm_version_t second_version = {};
+    ASSERT_EQ(amdf_linux_endpoint_open_file(endpoint, &first, &first_version),
+              AMDF_STATUS_OK);
+    ASSERT_EQ(amdf_linux_endpoint_open_file(endpoint, &second, &second_version),
+              AMDF_STATUS_OK);
+    EXPECT_EQ(first_version.major, second_version.major);
+    EXPECT_EQ(first_version.minor, second_version.minor);
+    struct drm_version native_version = {};
+    ASSERT_EQ(ioctl(first, DRM_IOCTL_VERSION, &native_version), 0);
+    EXPECT_EQ(first_version.major,
+              static_cast<uint32_t>(native_version.version_major));
+    EXPECT_EQ(first_version.minor,
+              static_cast<uint32_t>(native_version.version_minor));
     EXPECT_NE(first, second);
     EXPECT_NE(fcntl(first, F_GETFD) & FD_CLOEXEC, 0);
     EXPECT_NE(fcntl(second, F_GETFD) & FD_CLOEXEC, 0);

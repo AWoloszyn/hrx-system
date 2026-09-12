@@ -80,9 +80,7 @@ amdf_status_t amdf_xdna_umd_device_create(
     amdf_allocator_t host_allocator, amdf_xdna_umd_device_t** out_device,
     amdf_xdna_umd_device_result_t* out_result) {
   if ((profile->execution_capabilities &
-       AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1) == 0 ||
-      endpoint->driver.major_version != 0 ||
-      endpoint->driver.minor_version < 8) {
+       AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1) == 0) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
   amdf_xdna_umd_device_t* device = NULL;
@@ -93,7 +91,12 @@ amdf_status_t amdf_xdna_umd_device_create(
   device->host_allocator = host_allocator;
   device->profile = profile;
   device->descriptor = -1;
-  status = amdf_linux_endpoint_open_file(endpoint, &device->descriptor);
+  amdf_linux_drm_version_t version;
+  status =
+      amdf_linux_endpoint_open_file(endpoint, &device->descriptor, &version);
+  if (amdf_status_is_ok(status) && (version.major != 0 || version.minor < 8)) {
+    status = amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
   if (amdf_status_is_ok(status)) {
     status = amdf_linux_xdna_device_qualify(device, profile);
   }

@@ -143,6 +143,31 @@ iree_cc_test(
     libamdf::src::allocator
     libamdf::src::platform
   LABELS
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "iree-run-requirement=libamdf.resource.xdna"
+    "runtime-resource=amd-gpu"
+    "runtime-resource=amd-xdna"
+    "iree-build-requirement=libamdf"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND AMDF_BUILD)
+iree_cc_test(
+  NAME
+    endpoint_metadata_test
+  SRCS
+    "endpoint_metadata_test.cc"
+  DEPS
+    ::endpoint
+    ::file
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+    libamdf::src::allocator
+    libamdf::src::platform
+  LABELS
     "iree-build-requirement=libamdf"
 )
 endif()
