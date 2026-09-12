@@ -28,6 +28,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_B
 iree_cc_library(
   NAME
     linux_tests
+  HDRS
+    "target/gfx1151/user_queue_memory_test.h"
   SRCS
     "memory_linux_test.cc"
     "memory_xdna_interop_linux_test.cc"

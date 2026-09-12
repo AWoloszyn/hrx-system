@@ -31,6 +31,7 @@ amdf_cc_library(
         "memory_xdna_interop_linux_test.cc",
         "target/gfx1151/user_queue_memory_test.cc",
     ],
+    hdrs = ["target/gfx1151/user_queue_memory_test.h"],
     target_compatible_with = [
         "@platforms//os:linux",
         "@platforms//cpu:x86_64",

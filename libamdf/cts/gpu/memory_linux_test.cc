@@ -15,6 +15,7 @@
 #include "amdf/gpu.h"
 #include "gpu_device_fixture.h"
 #include "gtest/gtest.h"
+#include "libamdf/cts/gpu/target/gfx1151/user_queue_memory_test.h"
 
 namespace {
 
@@ -431,16 +432,23 @@ TEST_F(GpuLinuxMemoryTest, RejectsUnadvertisedKernelQueueCreation) {
   EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 }
 
-// Process mode has one long-lived device in this test process. Its native VM
-// binding survives destruction, so each registration case uses that same owner.
+// Registration and queue scenarios share one primary owner. Its native VM
+// binding survives public-device destruction until the process exits.
 class GpuLinuxProcessMemoryTest : public GpuLinuxMemoryTest {
  protected:
   amdf_gpu_device_mode_t GetDeviceMode() const override {
     return AMDF_GPU_DEVICE_MODE_PROCESS;
   }
+
+  void TearDown() override {
+    if (queue_children_released_) GpuLinuxMemoryTest::TearDown();
+  }
+
+  // A failed queue retirement retains the primary owner.
+  bool queue_children_released_ = true;
 };
 
-TEST_F(GpuLinuxProcessMemoryTest, OwnsMemoryAndOverlappingCallerRegistrations) {
+TEST_F(GpuLinuxProcessMemoryTest, OwnsMemoryRegistrationsAndQualifiedQueues) {
   ASSERT_NE(features_ & AMDF_GPU_DEVICE_FEATURE_HOST_REGISTRATION, 0u);
   EXPECT_EQ(features_ & AMDF_GPU_DEVICE_FEATURE_DEVICE_RECREATION, 0u);
   amdf_gpu_device_info_t device_info = {};
@@ -576,6 +584,25 @@ TEST_F(GpuLinuxProcessMemoryTest, OwnsMemoryAndOverlappingCallerRegistrations) {
   }
   std::memset(caller_pages_, 0x3C, caller_byte_length_);
   EXPECT_EQ(caller_pages_[caller_byte_length_ - 1], 0x3C);
+  ASSERT_EQ(munmap(caller_pages_, caller_byte_length_), 0);
+  caller_pages_ = nullptr;
+
+  amdf_gpu_endpoint_info_t endpoint_info = {};
+  endpoint_info.type = AMDF_STRUCTURE_TYPE_GPU_ENDPOINT_INFO;
+  endpoint_info.structure_size = sizeof(endpoint_info);
+  ASSERT_EQ(gpu_api_->endpoint_query_info(endpoint_, &endpoint_info),
+            AMDF_STATUS_OK);
+  if (endpoint_info.gfx_ip.major == 11 && endpoint_info.gfx_ip.minor == 5 &&
+      endpoint_info.gfx_ip.stepping == 1) {
+    for (amdf_queue_command_type_t command_type :
+         {AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA, AMDF_QUEUE_COMMAND_TYPE_GPU_PM4}) {
+      SCOPED_TRACE(command_type);
+      ASSERT_NO_FATAL_FAILURE(
+          queue_children_released_ = RunGfx1151UserQueueMemoryCopies(
+              api_, gpu_api_, endpoint_, device_, command_type));
+      ASSERT_TRUE(queue_children_released_);
+    }
+  }
 }
 
 }  // namespace

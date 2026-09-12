@@ -4,6 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "libamdf/cts/gpu/target/gfx1151/user_queue_memory_test.h"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -26,7 +28,9 @@ constexpr amdf_queue_roles_t kRequiredQueueRoles =
     AMDF_QUEUE_ROLE_TRANSFER | AMDF_QUEUE_ROLE_CACHE_CONTROL;
 
 struct EncodedQueueStream {
+  // Number of initialized command bytes in the ring.
   size_t byte_length;
+  // Producer frontier in the units defined by the queue format.
   uint64_t published_index;
 };
 
@@ -173,33 +177,23 @@ uint32_t QueueFormatVersion(amdf_queue_command_type_t command_type) {
              : AMDF_GPU_SDMA_QUEUE_FORMAT_VERSION_1;
 }
 
-class Gfx1151UserQueueMemoryTest : public GpuDeviceFixture {
- protected:
+class UserQueueMemoryScenario {
+ public:
+  UserQueueMemoryScenario(const amdf_api_t* api, const amdf_gpu_api_t* gpu_api,
+                          amdf_endpoint_t* endpoint, amdf_device_t* device)
+      : api_(api), gpu_api_(gpu_api), endpoint_(endpoint), device_(device) {}
+
   void RunCopiesBetweenExactAccessAttachments(
       amdf_queue_command_type_t command_type);
-  void DestroyCopyResources();
 
-  amdf_status_t MatchGpuEndpoint(amdf_endpoint_t* endpoint,
-                                 bool* out_matches) const override {
-    amdf_gpu_endpoint_info_t info = {};
-    info.type = AMDF_STRUCTURE_TYPE_GPU_ENDPOINT_INFO;
-    info.structure_size = sizeof(info);
-    const amdf_status_t status = gpu_api_->endpoint_query_info(endpoint, &info);
-    if (amdf_status_is_ok(status)) {
-      *out_matches = info.gfx_ip.major == 11 && info.gfx_ip.minor == 5 &&
-                     info.gfx_ip.stepping == 1;
-    }
-    return status;
-  }
-
-  void TearDown() override {
+  bool Release() {
     if (queue_mapping_ != nullptr) {
       const amdf_status_t status =
           api_->user_queue_mapping_destroy(queue_mapping_);
       EXPECT_EQ(status, AMDF_STATUS_OK);
       if (amdf_status_is_ok(status)) queue_mapping_ = nullptr;
     }
-    if (queue_mapping_ != nullptr) return;
+    if (queue_mapping_ != nullptr) return false;
     if (queue_ != nullptr) {
       const amdf_status_t status = api_->user_queue_destroy(queue_);
       EXPECT_EQ(status, AMDF_STATUS_OK);
@@ -207,16 +201,16 @@ class Gfx1151UserQueueMemoryTest : public GpuDeviceFixture {
     }
     // Workload memory remains attached while native execution may still reach
     // it. A queue that cannot prove destruction retains the complete fixture.
-    if (queue_ != nullptr) return;
+    if (queue_ != nullptr) return false;
 
     DestroyHostMapping(source_mapping_);
     DestroyHostMapping(target_mapping_);
     if (source_mapping_ == nullptr) DestroyMemory(source_memory_);
     if (target_mapping_ == nullptr) DestroyMemory(target_memory_);
-    if (source_memory_ != nullptr || target_memory_ != nullptr) return;
-    GpuDeviceFixture::TearDown();
+    return source_memory_ == nullptr && target_memory_ == nullptr;
   }
 
+ private:
   amdf_status_t FindTransferFamily(amdf_queue_command_type_t command_type,
                                    uint32_t* out_ordinal) const {
     amdf_endpoint_info_t endpoint_info = {};
@@ -256,8 +250,8 @@ class Gfx1151UserQueueMemoryTest : public GpuDeviceFixture {
     constexpr amdf_memory_flags_t kRequiredFlags =
         AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_SHAREABLE |
         AMDF_MEMORY_FLAG_HOST_COHERENT | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
-    const uint32_t profile_ordinal = FindMemoryProfileOrdinal(
-        AMDF_MEMORY_CLASS_SYSTEM,
+    const uint32_t profile_ordinal = FindGpuMemoryProfileOrdinal(
+        api_, device_, AMDF_MEMORY_CLASS_SYSTEM,
         AMDF_MEMORY_PROFILE_ROLE_CREATE | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
         kRequiredFlags, device_access);
     ASSERT_NE(profile_ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
@@ -322,6 +316,14 @@ class Gfx1151UserQueueMemoryTest : public GpuDeviceFixture {
     if (amdf_status_is_ok(status)) memory = nullptr;
   }
 
+  // Core API table borrowed from the enclosing device fixture.
+  const amdf_api_t* api_;
+  // GPU extension table borrowed from the enclosing device fixture.
+  const amdf_gpu_api_t* gpu_api_;
+  // Endpoint borrowed for queue-family discovery.
+  amdf_endpoint_t* endpoint_;
+  // Execution owner borrowed through the release of all children below.
+  amdf_device_t* device_;
   // GPU-readable source attachment retained through queue destruction.
   amdf_memory_t* source_memory_ = nullptr;
   // GPU-writable target attachment retained through queue destruction.
@@ -344,14 +346,7 @@ class Gfx1151UserQueueMemoryTest : public GpuDeviceFixture {
   amdf_host_mapping_info_t target_mapping_info_ = {};
 };
 
-class Gfx1151UserQueueProcessMemoryTest : public Gfx1151UserQueueMemoryTest {
- protected:
-  amdf_gpu_device_mode_t GetDeviceMode() const override {
-    return AMDF_GPU_DEVICE_MODE_PROCESS;
-  }
-};
-
-void Gfx1151UserQueueMemoryTest::RunCopiesBetweenExactAccessAttachments(
+void UserQueueMemoryScenario::RunCopiesBetweenExactAccessAttachments(
     amdf_queue_command_type_t command_type) {
   uint32_t queue_family_ordinal = UINT32_MAX;
   ASSERT_EQ(FindTransferFamily(command_type, &queue_family_ordinal),
@@ -515,27 +510,51 @@ void Gfx1151UserQueueMemoryTest::RunCopiesBetweenExactAccessAttachments(
     EXPECT_EQ(source[i], expected[i]) << "source word " << i;
   }
   EXPECT_EQ(*completion, kCompletionValue);
-  ASSERT_NO_FATAL_FAILURE(DestroyCopyResources());
 }
 
-void Gfx1151UserQueueMemoryTest::DestroyCopyResources() {
-  ASSERT_NE(queue_mapping_, nullptr);
-  ASSERT_EQ(api_->user_queue_mapping_destroy(queue_mapping_), AMDF_STATUS_OK);
-  queue_mapping_ = nullptr;
+}  // namespace
 
-  ASSERT_NE(queue_, nullptr);
-  ASSERT_EQ(api_->user_queue_destroy(queue_), AMDF_STATUS_OK);
-  queue_ = nullptr;
-
-  DestroyHostMapping(source_mapping_);
-  ASSERT_EQ(source_mapping_, nullptr);
-  DestroyHostMapping(target_mapping_);
-  ASSERT_EQ(target_mapping_, nullptr);
-  DestroyMemory(source_memory_);
-  ASSERT_EQ(source_memory_, nullptr);
-  DestroyMemory(target_memory_);
-  ASSERT_EQ(target_memory_, nullptr);
+bool RunGfx1151UserQueueMemoryCopies(const amdf_api_t* api,
+                                     const amdf_gpu_api_t* gpu_api,
+                                     amdf_endpoint_t* endpoint,
+                                     amdf_device_t* device,
+                                     amdf_queue_command_type_t command_type) {
+  UserQueueMemoryScenario scenario(api, gpu_api, endpoint, device);
+  scenario.RunCopiesBetweenExactAccessAttachments(command_type);
+  return scenario.Release();
 }
+
+namespace {
+
+class Gfx1151UserQueueMemoryTest : public GpuDeviceFixture {
+ protected:
+  amdf_status_t MatchGpuEndpoint(amdf_endpoint_t* endpoint,
+                                 bool* out_matches) const override {
+    amdf_gpu_endpoint_info_t info = {};
+    info.type = AMDF_STRUCTURE_TYPE_GPU_ENDPOINT_INFO;
+    info.structure_size = sizeof(info);
+    const amdf_status_t status = gpu_api_->endpoint_query_info(endpoint, &info);
+    if (amdf_status_is_ok(status)) {
+      *out_matches = info.gfx_ip.major == 11 && info.gfx_ip.minor == 5 &&
+                     info.gfx_ip.stepping == 1;
+    }
+    return status;
+  }
+
+  void RunCopiesBetweenExactAccessAttachments(
+      amdf_queue_command_type_t command_type) {
+    children_released_ = RunGfx1151UserQueueMemoryCopies(
+        api_, gpu_api_, endpoint_, device_, command_type);
+    ASSERT_TRUE(children_released_);
+  }
+
+  void TearDown() override {
+    if (children_released_) GpuDeviceFixture::TearDown();
+  }
+
+  // Parent teardown is safe only after the copy scenario releases its children.
+  bool children_released_ = true;
+};
 
 TEST_F(Gfx1151UserQueueMemoryTest, Pm4CopiesBetweenExactAccessAttachments) {
   RunCopiesBetweenExactAccessAttachments(AMDF_QUEUE_COMMAND_TYPE_GPU_PM4);
@@ -543,14 +562,6 @@ TEST_F(Gfx1151UserQueueMemoryTest, Pm4CopiesBetweenExactAccessAttachments) {
 
 TEST_F(Gfx1151UserQueueMemoryTest, SdmaCopiesBetweenExactAccessAttachments) {
   RunCopiesBetweenExactAccessAttachments(AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA);
-}
-
-TEST_F(Gfx1151UserQueueProcessMemoryTest,
-       SdmaThenPm4CopiesBetweenExactAccessAttachments) {
-  ASSERT_NO_FATAL_FAILURE(
-      RunCopiesBetweenExactAccessAttachments(AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA));
-  ASSERT_NO_FATAL_FAILURE(
-      RunCopiesBetweenExactAccessAttachments(AMDF_QUEUE_COMMAND_TYPE_GPU_PM4));
 }
 
 }  // namespace

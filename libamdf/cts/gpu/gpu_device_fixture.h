@@ -14,6 +14,38 @@
 #include "gtest/gtest.h"
 #include "util/provider.h"
 
+// Finds a profile for explicit device access without acquiring another owner.
+inline uint32_t FindGpuMemoryProfileOrdinal(
+    const amdf_api_t* api, amdf_device_t* device,
+    amdf_memory_class_t memory_class,
+    amdf_memory_profile_roles_t required_roles,
+    amdf_memory_flags_t required_flags, amdf_memory_access_t device_access) {
+  for (uint32_t ordinal = 0;; ++ordinal) {
+    amdf_memory_profile_t profile = {};
+    profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
+    profile.structure_size = sizeof(profile);
+    const amdf_status_t status =
+        api->device_query_memory_profile(device, ordinal, &profile);
+    if (amdf_status_code(status) == AMDF_STATUS_CODE_OUT_OF_RANGE) break;
+    if (!amdf_status_is_ok(status)) {
+      ADD_FAILURE() << "memory profile query failed: domain="
+                    << amdf_status_domain(status)
+                    << " code=" << amdf_status_code(status);
+      break;
+    }
+    if (profile.memory_class == memory_class &&
+        (profile.roles & required_roles) == required_roles &&
+        (required_flags & ~profile.supported_flags) == 0 &&
+        (device_access & profile.guaranteed_device_access) ==
+            profile.guaranteed_device_access &&
+        (device_access & ~profile.supported_device_access) == 0) {
+      return ordinal;
+    }
+  }
+  ADD_FAILURE() << "no matching memory profile";
+  return AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN;
+}
+
 // Materializes the first selected GPU endpoint and one native device.
 class GpuDeviceFixture : public ::testing::Test {
  protected:
@@ -105,13 +137,16 @@ class GpuDeviceFixture : public ::testing::Test {
 
   void TearDown() override {
     if (device_ != nullptr) {
-      EXPECT_TRUE(amdf_status_is_ok(api_->device_destroy(device_)));
+      ASSERT_EQ(api_->device_destroy(device_), AMDF_STATUS_OK);
+      device_ = nullptr;
     }
     if (endpoint_ != nullptr) {
-      EXPECT_TRUE(amdf_status_is_ok(api_->endpoint_close(endpoint_)));
+      ASSERT_EQ(api_->endpoint_close(endpoint_), AMDF_STATUS_OK);
+      endpoint_ = nullptr;
     }
     if (instance_ != nullptr) {
-      EXPECT_TRUE(amdf_status_is_ok(api_->instance_destroy(instance_)));
+      ASSERT_EQ(api_->instance_destroy(instance_), AMDF_STATUS_OK);
+      instance_ = nullptr;
     }
   }
 
@@ -128,30 +163,9 @@ class GpuDeviceFixture : public ::testing::Test {
                                     amdf_memory_profile_roles_t required_roles,
                                     amdf_memory_flags_t required_flags,
                                     amdf_memory_access_t device_access) const {
-    for (uint32_t ordinal = 0;; ++ordinal) {
-      amdf_memory_profile_t profile = {};
-      profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
-      profile.structure_size = sizeof(profile);
-      const amdf_status_t status =
-          api_->device_query_memory_profile(device, ordinal, &profile);
-      if (amdf_status_code(status) == AMDF_STATUS_CODE_OUT_OF_RANGE) break;
-      if (!amdf_status_is_ok(status)) {
-        ADD_FAILURE() << "memory profile query failed: domain="
-                      << amdf_status_domain(status)
-                      << " code=" << amdf_status_code(status);
-        break;
-      }
-      if (profile.memory_class == memory_class &&
-          (profile.roles & required_roles) == required_roles &&
-          (required_flags & ~profile.supported_flags) == 0 &&
-          (device_access & profile.guaranteed_device_access) ==
-              profile.guaranteed_device_access &&
-          (device_access & ~profile.supported_device_access) == 0) {
-        return ordinal;
-      }
-    }
-    ADD_FAILURE() << "no matching memory profile";
-    return AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN;
+    return FindGpuMemoryProfileOrdinal(api_, device, memory_class,
+                                       required_roles, required_flags,
+                                       device_access);
   }
 
   // Core table borrowed from the CTS provider.
