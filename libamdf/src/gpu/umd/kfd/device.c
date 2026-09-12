@@ -36,7 +36,7 @@ amdf_status_t amdf_gpu_umd_device_destroy(amdf_gpu_umd_device_t* device) {
 
 amdf_status_t amdf_gpu_umd_device_create(
     amdf_platform_endpoint_t* endpoint, amdf_allocator_t host_allocator,
-    amdf_gpu_device_mode_t mode, amdf_gpu_umd_device_t** out_device,
+    amdf_native_lifetime_t native_lifetime, amdf_gpu_umd_device_t** out_device,
     amdf_gpu_umd_device_result_t* out_result) {
   amdf_gpu_umd_device_t* device = NULL;
   amdf_status_t status =
@@ -46,7 +46,7 @@ amdf_status_t amdf_gpu_umd_device_create(
   device->host_allocator = host_allocator;
   device->descriptor = -1;
   device->render_descriptor = -1;
-  device->mode = mode;
+  device->native_lifetime = native_lifetime;
   device->user_queue_native_api = amdf_gpu_kfd_user_queue_default_native_api();
 
   status = amdf_gpu_kfd_topology_query(endpoint, &device->topology);
@@ -66,11 +66,12 @@ amdf_status_t amdf_gpu_umd_device_create(
   }
   if (amdf_status_is_ok(status) &&
       (version.major_version != 1 || version.minor_version < 18 ||
-       (mode == AMDF_GPU_DEVICE_MODE_INDEPENDENT &&
+       (native_lifetime == AMDF_NATIVE_LIFETIME_INSTANCE &&
         version.minor_version < 19))) {
     status = amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
-  if (amdf_status_is_ok(status) && mode == AMDF_GPU_DEVICE_MODE_INDEPENDENT) {
+  if (amdf_status_is_ok(status) &&
+      native_lifetime == AMDF_NATIVE_LIFETIME_INSTANCE) {
     if (ioctl(device->descriptor, AMDKFD_IOC_CREATE_PROCESS, NULL) != 0) {
       status = amdf_linux_error(errno);
     }

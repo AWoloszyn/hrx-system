@@ -18,6 +18,7 @@ amdf_status_t CtsDeviceCache::GetInstance(amdf_instance_t** out_instance) {
       amdf_instance_create_info_t create_info = {};
       create_info.type = AMDF_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
       create_info.structure_size = sizeof(create_info);
+      create_info.native_lifetime = native_lifetime_;
       initialization_status_ = api_->instance_create(&create_info, &instance_);
     }
   }
@@ -44,16 +45,14 @@ amdf_status_t CtsDeviceCache::OpenEndpoint(const amdf_endpoint_id_t& id,
 
 amdf_status_t CtsDeviceCache::GetDevice(amdf_endpoint_t* endpoint,
                                         amdf_engine_kind_t engine_kind,
-                                        amdf_gpu_device_mode_t gpu_mode,
                                         amdf_device_t** out_device) {
   for (const Device& device : devices_) {
-    if (device.endpoint != endpoint || device.engine_kind != engine_kind ||
-        device.gpu_mode != gpu_mode)
+    if (device.endpoint != endpoint || device.engine_kind != engine_kind)
       continue;
     if (amdf_status_is_ok(device.status)) *out_device = device.handle;
     return device.status;
   }
-  devices_.push_back({endpoint, engine_kind, gpu_mode});
+  devices_.push_back({endpoint, engine_kind});
   Device& device = devices_.back();
   const void* extension = nullptr;
   if (engine_kind == AMDF_ENGINE_KIND_GPU) {
@@ -65,7 +64,6 @@ amdf_status_t CtsDeviceCache::GetDevice(amdf_endpoint_t* endpoint,
       amdf_gpu_device_create_info_t create_info = {};
       create_info.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_CREATE_INFO;
       create_info.structure_size = sizeof(create_info);
-      create_info.mode = gpu_mode;
       device.status =
           gpu_api->device_create(endpoint, &create_info, &device.handle);
     }
@@ -87,15 +85,13 @@ amdf_status_t CtsDeviceCache::GetDevice(amdf_endpoint_t* endpoint,
 }
 
 amdf_status_t CtsDeviceCache::GetGpuDevice(amdf_endpoint_t* endpoint,
-                                           amdf_gpu_device_mode_t mode,
                                            amdf_device_t** out_device) {
-  return GetDevice(endpoint, AMDF_ENGINE_KIND_GPU, mode, out_device);
+  return GetDevice(endpoint, AMDF_ENGINE_KIND_GPU, out_device);
 }
 
 amdf_status_t CtsDeviceCache::GetXdnaDevice(amdf_endpoint_t* endpoint,
                                             amdf_device_t** out_device) {
-  return GetDevice(endpoint, AMDF_ENGINE_KIND_XDNA,
-                   AMDF_GPU_DEVICE_MODE_INDEPENDENT, out_device);
+  return GetDevice(endpoint, AMDF_ENGINE_KIND_XDNA, out_device);
 }
 
 amdf_status_t CtsDeviceCache::Deinitialize() {

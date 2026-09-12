@@ -111,6 +111,14 @@ remain discoverable by wildcard selection; host-only presubmit excludes their
 requirements. Native suites share the AMD hardware resource group because GPU
 CTS also exercises GPU/XDNA interoperability.
 
+Each CTS corpus runs with both native lifetime policies across static, shared,
+and dynamically loaded providers. The `static`, `shared`, and `dynamic` targets
+use the default process lifetime; their `_instance` counterparts require bounded
+instance lifetime. The same test cases query capabilities: host-registration
+scenarios run wherever registration is supported, and native-owner recreation
+scenarios require reclaimable VM acquisition. Ordinary memory, queue, and interop
+cases share one device per endpoint for the duration of each test process.
+
 On a qualified XDNA host, select all XDNA hardware tests, including each CTS
 linkage mode and the native DRM device lifecycle:
 

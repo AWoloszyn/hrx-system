@@ -18,12 +18,17 @@
 // native activation. Workload children remain owned by individual test cases.
 class CtsDeviceCache {
  public:
+  // Configures the serial corpus before any instance is requested.
+  void SetNativeLifetime(amdf_native_lifetime_t native_lifetime) {
+    native_lifetime_ = native_lifetime;
+  }
+  amdf_native_lifetime_t native_lifetime() const { return native_lifetime_; }
+
   amdf_status_t GetInstance(amdf_instance_t** out_instance);
   amdf_status_t OpenEndpoint(const amdf_endpoint_id_t& id,
                              amdf_endpoint_t** out_endpoint);
   // Device requests borrow an endpoint opened by this cache.
   amdf_status_t GetGpuDevice(amdf_endpoint_t* endpoint,
-                             amdf_gpu_device_mode_t mode,
                              amdf_device_t** out_device);
   // Device requests borrow an endpoint opened by this cache.
   amdf_status_t GetXdnaDevice(amdf_endpoint_t* endpoint,
@@ -48,8 +53,6 @@ class CtsDeviceCache {
     amdf_endpoint_t* endpoint;
     // Device family determining the creation API.
     amdf_engine_kind_t engine_kind;
-    // Exact GPU ownership mode; ignored for XDNA.
-    amdf_gpu_device_mode_t gpu_mode;
     // Owned device, null when creation failed.
     amdf_device_t* handle = nullptr;
     // Result of the single device-creation attempt.
@@ -58,11 +61,12 @@ class CtsDeviceCache {
 
   amdf_status_t GetDevice(amdf_endpoint_t* endpoint,
                           amdf_engine_kind_t engine_kind,
-                          amdf_gpu_device_mode_t gpu_mode,
                           amdf_device_t** out_device);
 
   // Core table borrowed from the initialized CTS provider.
   const amdf_api_t* api_ = nullptr;
+  // Native lifetime selected once by the test executable's arguments.
+  amdf_native_lifetime_t native_lifetime_ = AMDF_NATIVE_LIFETIME_PROCESS;
   // Shared instance owned until all cached descendants have been released.
   amdf_instance_t* instance_ = nullptr;
   // Whether the single instance-creation attempt has occurred.
@@ -71,7 +75,7 @@ class CtsDeviceCache {
   amdf_status_t initialization_status_ = AMDF_STATUS_OK;
   // Owned endpoints, opened only when requested by a test.
   std::vector<Endpoint> endpoints_;
-  // Owned devices, keyed by endpoint, family and explicit ownership mode.
+  // Owned devices, keyed by endpoint and family.
   std::vector<Device> devices_;
 };
 

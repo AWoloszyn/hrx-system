@@ -14,6 +14,7 @@
 #include "libamdf/src/gpu/kernel_queue.h"
 #include "libamdf/src/gpu/umd/endpoint_profile.h"
 #include "libamdf/src/gpu/user_queue.h"
+#include "libamdf/src/instance.h"
 #include "libamdf/src/structure.h"
 
 static amdf_status_t AMDF_CALL amdf_gpu_endpoint_query_info(
@@ -46,7 +47,7 @@ static amdf_status_t AMDF_CALL amdf_gpu_endpoint_query_info(
 }
 
 static amdf_status_t AMDF_CALL amdf_gpu_endpoint_query_device_capabilities(
-    amdf_endpoint_t* endpoint, amdf_gpu_device_mode_t mode,
+    amdf_endpoint_t* endpoint,
     amdf_gpu_device_capabilities_t* out_capabilities) {
   if (endpoint == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
@@ -60,7 +61,9 @@ static amdf_status_t AMDF_CALL amdf_gpu_endpoint_query_device_capabilities(
                                               &profile);
   if (!amdf_status_is_ok(status)) return status;
   return amdf_gpu_endpoint_profile_query_device_features(
-      profile, mode, &out_capabilities->features);
+      profile,
+      amdf_instance_native_lifetime(amdf_endpoint_get_instance(endpoint)),
+      &out_capabilities->features);
 }
 
 static const amdf_gpu_api_t amdf_gpu_api_v1 = {

@@ -47,13 +47,9 @@ inline uint32_t FindGpuMemoryProfileOrdinal(
   return AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN;
 }
 
-// Borrows the shared device for the selected GPU endpoint and ownership mode.
+// Borrows the shared device for the selected GPU endpoint and instance policy.
 class GpuDeviceFixture : public ::testing::Test {
  protected:
-  virtual amdf_gpu_device_mode_t GetDeviceMode() const {
-    return AMDF_GPU_DEVICE_MODE_INDEPENDENT;
-  }
-
   // Selects which opened GPU endpoint should back this fixture. A failure
   // leaves `out_matches` unchanged.
   virtual amdf_status_t MatchGpuEndpoint(amdf_endpoint_t* endpoint,
@@ -109,17 +105,16 @@ class GpuDeviceFixture : public ::testing::Test {
     amdf_gpu_device_capabilities_t capabilities = {};
     capabilities.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_CAPABILITIES;
     capabilities.structure_size = sizeof(capabilities);
-    status = gpu_api_->endpoint_query_device_capabilities(
-        endpoint_, GetDeviceMode(), &capabilities);
+    status =
+        gpu_api_->endpoint_query_device_capabilities(endpoint_, &capabilities);
     if (amdf_status_domain(status) == AMDF_STATUS_DOMAIN_API &&
         amdf_status_code(status) == AMDF_STATUS_CODE_UNSUPPORTED) {
-      GTEST_SKIP() << "requested GPU device mode is unavailable";
+      GTEST_SKIP() << "requested native lifetime is unavailable";
     }
     ASSERT_EQ(status, AMDF_STATUS_OK);
     features_ = capabilities.features;
 
-    status =
-        GetCtsDeviceCache().GetGpuDevice(endpoint_, GetDeviceMode(), &device_);
+    status = GetCtsDeviceCache().GetGpuDevice(endpoint_, &device_);
     ASSERT_TRUE(amdf_status_is_ok(status))
         << "domain=" << amdf_status_domain(status)
         << " code=" << amdf_status_code(status);
@@ -153,7 +148,7 @@ class GpuDeviceFixture : public ::testing::Test {
   amdf_endpoint_t* endpoint_ = nullptr;
   // Shared native device; each case releases only its workload children.
   amdf_device_t* device_ = nullptr;
-  // Cached capabilities of the explicitly selected mode.
+  // Cached capabilities under the instance's lifetime policy.
   amdf_gpu_device_features_t features_ = 0;
 };
 

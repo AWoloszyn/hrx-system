@@ -14,7 +14,7 @@
 extern "C" {
 #endif  // __cplusplus
 
-// Creates an independent provider instance.
+// Creates a provider instance with an immutable native lifetime policy.
 amdf_status_t AMDF_CALL
 amdf_instance_create(const amdf_instance_create_info_t* create_info,
                      amdf_instance_t** out_instance);
@@ -32,6 +32,10 @@ amdf_platform_instance_t* amdf_instance_platform(amdf_instance_t* instance);
 
 // Returns the host allocator copied by the instance.
 amdf_allocator_t amdf_instance_host_allocator(const amdf_instance_t* instance);
+
+// Returns the validated native lifetime policy copied by the instance.
+amdf_native_lifetime_t amdf_instance_native_lifetime(
+    const amdf_instance_t* instance);
 
 // Registers an endpoint that borrows the instance.
 amdf_status_t amdf_instance_register_endpoint(amdf_instance_t* instance);

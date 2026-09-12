@@ -17,6 +17,23 @@ application discovers participating engines and memory resources: CPUs, GPUs,
 NPUs, system-memory locations, GPU-local memory, and their supported access
 relationships.
 
+The instance selects a native lifetime policy before any devices are initialized.
+`AMDF_NATIVE_LIFETIME_PROCESS` is the default: kernel-owned state may survive
+instance destruction until process exit. `AMDF_NATIVE_LIFETIME_INSTANCE` requires
+native state to be reclaimable by instance teardown. Either policy permits
+earlier release and leaves public handle ownership unchanged. The policy is
+neither an address-space isolation request nor automatic integration with other
+native clients.
+
+Linux GPU access uses KFD's primary context for process lifetime and a secondary
+context for instance lifetime. Primary contexts support caller-page registration;
+secondary contexts currently do not. Capability queries reflect the instance's
+policy before device creation. The primary GPU VM binding survives teardown;
+creating a replacement device with a fresh native file can fail with `EBUSY`.
+Applications keep that owner alive for their KFD use and coordinate with other
+KFD clients. Windows uses explicitly reclaimable native objects under either
+policy; instance lifetime does not create a separate process GPU address space.
+
 Discovery is passive. It supplies enough information to select hardware and plan
 memory without creating execution devices, queues, firmware contexts, address
 spaces, or device allocations. Placement, alignment and address-width limits,

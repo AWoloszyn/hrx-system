@@ -22,6 +22,7 @@ amdf_cc_library(
         "query_test.cc",
     ],
     deps = [
+        "//libamdf/cts/util:device_cache",
         "//libamdf/cts/util:provider_headers",
         "//third_party:google_test",
     ],

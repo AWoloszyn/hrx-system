@@ -32,44 +32,51 @@ def amdf_cts_test_suite(
     runtime_data = ["//libamdf:amdf_runtime"]
     test_main = ["//libamdf/cts/util:test_main.cc"]
 
-    amdf_cc_test(
-        name = "static",
-        srcs = test_main + ["//libamdf/cts/util:linked_provider.cc"],
-        data = runtime_data,
-        tags = tags,
-        target_compatible_with = target_compatible_with,
-        deps = common_deps + [
-            "//libamdf:amdf_static",
-        ],
-    )
-    amdf_cc_test(
-        name = "shared",
-        srcs = test_main + ["//libamdf/cts/util:linked_provider.cc"],
-        data = ["//libamdf:amdf_shared_artifact"] + runtime_data,
-        tags = tags,
-        target_compatible_with = target_compatible_with,
-        deps = common_deps + [
-            "//libamdf:amdf",
-        ],
-    )
-    amdf_cc_test(
-        name = "dynamic",
-        srcs = test_main,
-        args = [
-            "--amdf_library=$(rootpath //libamdf:amdf_shared_artifact)",
-        ],
-        data = ["//libamdf:amdf_shared_artifact"] + runtime_data,
-        tags = tags,
-        target_compatible_with = target_compatible_with,
-        deps = common_deps + ["//libamdf/cts/util:dynamic_provider"],
-    )
+    for lifetime, suffix in [("process", ""), ("instance", "_instance")]:
+        lifetime_args = ["--amdf_native_lifetime=" + lifetime]
+        amdf_cc_test(
+            name = "static" + suffix,
+            srcs = test_main + ["//libamdf/cts/util:linked_provider.cc"],
+            args = lifetime_args,
+            data = runtime_data,
+            tags = tags,
+            target_compatible_with = target_compatible_with,
+            deps = common_deps + [
+                "//libamdf:amdf_static",
+            ],
+        )
+        amdf_cc_test(
+            name = "shared" + suffix,
+            srcs = test_main + ["//libamdf/cts/util:linked_provider.cc"],
+            args = lifetime_args,
+            data = ["//libamdf:amdf_shared_artifact"] + runtime_data,
+            tags = tags,
+            target_compatible_with = target_compatible_with,
+            deps = common_deps + [
+                "//libamdf:amdf",
+            ],
+        )
+        amdf_cc_test(
+            name = "dynamic" + suffix,
+            srcs = test_main,
+            args = lifetime_args + [
+                "--amdf_library=$(rootpath //libamdf:amdf_shared_artifact)",
+            ],
+            data = ["//libamdf:amdf_shared_artifact"] + runtime_data,
+            tags = tags,
+            target_compatible_with = target_compatible_with,
+            deps = common_deps + ["//libamdf/cts/util:dynamic_provider"],
+        )
     native.test_suite(
         name = name,
         tags = tags,
         tests = [
             ":dynamic",
+            ":dynamic_instance",
             ":shared",
+            ":shared_instance",
             ":static",
+            ":static_instance",
         ],
         visibility = visibility,
     )

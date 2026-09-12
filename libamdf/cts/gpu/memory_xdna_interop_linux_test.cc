@@ -152,13 +152,18 @@ class GpuXdnaMemoryInteropTest : public ::testing::Test {
     amdf_gpu_device_capabilities_t capabilities = {};
     capabilities.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_CAPABILITIES;
     capabilities.structure_size = sizeof(capabilities);
-    status = gpu_api_->endpoint_query_device_capabilities(
-        gpu_endpoint_, AMDF_GPU_DEVICE_MODE_INDEPENDENT, &capabilities);
+    status = gpu_api_->endpoint_query_device_capabilities(gpu_endpoint_,
+                                                          &capabilities);
     if (amdf_status_code(status) == AMDF_STATUS_CODE_UNSUPPORTED) {
-      GTEST_SKIP() << "independent KFD device mode is unavailable";
+      GTEST_SKIP() << "requested native lifetime is unavailable";
     }
     ASSERT_EQ(status, AMDF_STATUS_OK);
 
+    if ((capabilities.features & RequiredGpuFeatures()) !=
+        RequiredGpuFeatures()) {
+      GTEST_SKIP()
+          << "source teardown requires reclaimable native VM acquisition";
+    }
     ASSERT_EQ(AcquireGpuDevice(), AMDF_STATUS_OK);
 
     status = GetCtsDeviceCache().GetXdnaDevice(xdna_endpoint_, &xdna_device_);
@@ -168,9 +173,13 @@ class GpuXdnaMemoryInteropTest : public ::testing::Test {
     ASSERT_EQ(status, AMDF_STATUS_OK);
   }
 
+  virtual amdf_gpu_device_features_t RequiredGpuFeatures() const { return 0; }
+
+  void ImportGpuSubrangeAndReleaseAllocation();
+  void CheckSurvivingImport();
+
   virtual amdf_status_t AcquireGpuDevice() {
-    return GetCtsDeviceCache().GetGpuDevice(
-        gpu_endpoint_, AMDF_GPU_DEVICE_MODE_INDEPENDENT, &gpu_device_);
+    return GetCtsDeviceCache().GetGpuDevice(gpu_endpoint_, &gpu_device_);
   }
 
   void TearDown() override {
@@ -246,11 +255,13 @@ class GpuXdnaMemoryInteropTest : public ::testing::Test {
 // imported attachment remains live. Only that source owner is case-local.
 class GpuXdnaMemoryLifetimeTest : public GpuXdnaMemoryInteropTest {
  protected:
+  amdf_gpu_device_features_t RequiredGpuFeatures() const override {
+    return AMDF_GPU_DEVICE_FEATURE_DEVICE_RECREATION;
+  }
   amdf_status_t AcquireGpuDevice() override {
     amdf_gpu_device_create_info_t create_info = {};
     create_info.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_CREATE_INFO;
     create_info.structure_size = sizeof(create_info);
-    create_info.mode = AMDF_GPU_DEVICE_MODE_INDEPENDENT;
     return gpu_api_->device_create(gpu_endpoint_, &create_info, &gpu_device_);
   }
 
@@ -263,7 +274,7 @@ class GpuXdnaMemoryLifetimeTest : public GpuXdnaMemoryInteropTest {
   }
 };
 
-TEST_F(GpuXdnaMemoryLifetimeTest, ImportsGpuSubrangeAndSurvivesSourceTeardown) {
+void GpuXdnaMemoryInteropTest::ImportGpuSubrangeAndReleaseAllocation() {
   const long system_page_size = sysconf(_SC_PAGESIZE);
   ASSERT_GT(system_page_size, 0);
   const uint64_t page_size = static_cast<uint64_t>(system_page_size);
@@ -487,8 +498,16 @@ TEST_F(GpuXdnaMemoryLifetimeTest, ImportsGpuSubrangeAndSurvivesSourceTeardown) {
   gpu_mapping_ = nullptr;
   ASSERT_EQ(api_->memory_destroy(gpu_memory_), AMDF_STATUS_OK);
   gpu_memory_ = nullptr;
-  ASSERT_EQ(api_->device_destroy(gpu_device_), AMDF_STATUS_OK);
-  gpu_device_ = nullptr;
+}
+
+void GpuXdnaMemoryInteropTest::CheckSurvivingImport() {
+  amdf_host_mapping_info_t info = {};
+  info.type = AMDF_STRUCTURE_TYPE_HOST_MAPPING_INFO;
+  info.structure_size = sizeof(info);
+  ASSERT_EQ(api_->host_mapping_query_info(xdna_mapping_, &info),
+            AMDF_STATUS_OK);
+  auto* xdna_bytes = static_cast<uint8_t*>(info.pointer);
+  const uint64_t page_size = info.byte_length;
 
   ASSERT_EQ(
       api_->host_mapping_cache_control(
@@ -498,6 +517,19 @@ TEST_F(GpuXdnaMemoryLifetimeTest, ImportsGpuSubrangeAndSurvivesSourceTeardown) {
   EXPECT_EQ(xdna_bytes[page_size - 1], 0xC3);
   xdna_bytes[page_size / 2] = 0x7D;
   EXPECT_EQ(xdna_bytes[page_size / 2], 0x7D);
+}
+
+TEST_F(GpuXdnaMemoryInteropTest,
+       ImportsGpuSubrangeAndSurvivesAllocationTeardown) {
+  ASSERT_NO_FATAL_FAILURE(ImportGpuSubrangeAndReleaseAllocation());
+  ASSERT_NO_FATAL_FAILURE(CheckSurvivingImport());
+}
+
+TEST_F(GpuXdnaMemoryLifetimeTest, ImportsGpuSubrangeAndSurvivesSourceTeardown) {
+  ASSERT_NO_FATAL_FAILURE(ImportGpuSubrangeAndReleaseAllocation());
+  ASSERT_EQ(api_->device_destroy(gpu_device_), AMDF_STATUS_OK);
+  gpu_device_ = nullptr;
+  ASSERT_NO_FATAL_FAILURE(CheckSurvivingImport());
 }
 
 TEST_F(GpuXdnaMemoryInteropTest,

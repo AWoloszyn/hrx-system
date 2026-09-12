@@ -257,7 +257,7 @@ amdf_status_t amdf_gpu_umd_device_query_memory_profile(
     if ((profile.roles & AMDF_MEMORY_PROFILE_ROLE_HOST_MAP) != 0) {
       profile.host_mapping = host_mapping;
     }
-  } else if (device->mode == AMDF_GPU_DEVICE_MODE_PROCESS &&
+  } else if (device->native_lifetime == AMDF_NATIVE_LIFETIME_PROCESS &&
              memory_profile_ordinal == ordinal) {
     profile.memory_class = AMDF_MEMORY_CLASS_REGISTERED_HOST;
     profile.roles =

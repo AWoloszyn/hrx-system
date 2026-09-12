@@ -48,24 +48,7 @@ extern "C" {
 #define AMDF_STRUCTURE_TYPE_GPU_USER_QUEUE_CREATE_INFO \
   ((amdf_structure_type_t)0x00020007u)
 
-/// Native context ownership selected explicitly at device creation.
-typedef uint32_t amdf_gpu_device_mode_t;
-enum amdf_gpu_device_mode_e {
-  /// A separately materialized native context. This is the default mode.
-  AMDF_GPU_DEVICE_MODE_INDEPENDENT = 0,
-  /// The native process context, shared with other clients of that context.
-  ///
-  /// This compatibility mode enables primary-context KFD services on Linux,
-  /// including host registration on kernels that reject it in independent
-  /// contexts. It requires application coordination with other KFD clients;
-  /// another acquired DRM VM can prevent creation. The process VM binding
-  /// survives device destruction, so a later device creation may return BUSY
-  /// or native EBUSY. Keep this device alive for the application's KFD use.
-  /// This mode is never selected implicitly for an independent request.
-  AMDF_GPU_DEVICE_MODE_PROCESS = 1,
-};
-
-/// Features implemented for a particular endpoint and device mode.
+/// Features implemented for an endpoint under its instance's lifetime policy.
 typedef uint64_t amdf_gpu_device_features_t;
 enum amdf_gpu_device_feature_bits_e {
   /// REGISTERED_HOST borrows caller pages without copying their contents.
@@ -79,7 +62,7 @@ enum amdf_gpu_device_feature_bits_e {
   AMDF_GPU_DEVICE_FEATURE_HOST_VISIBLE_LOCAL_MEMORY = UINT64_C(1) << 3,
 };
 
-/// Immutable capabilities of one endpoint in one requested device mode.
+/// Immutable capabilities of one endpoint under its instance's lifetime policy.
 typedef struct amdf_gpu_device_capabilities_t {
   /// Must be `AMDF_STRUCTURE_TYPE_GPU_DEVICE_CAPABILITIES`.
   amdf_structure_type_t type;
@@ -87,7 +70,7 @@ typedef struct amdf_gpu_device_capabilities_t {
   uint32_t structure_size;
   /// Optional output extension chain. No extensions are currently defined.
   void* next;
-  /// Features implemented by the provider for the requested mode.
+  /// Features implemented by the provider under the instance's lifetime policy.
   amdf_gpu_device_features_t features;
 } amdf_gpu_device_capabilities_t;
 
@@ -143,7 +126,8 @@ typedef struct amdf_gpu_endpoint_info_t {
 /// Parameters used to materialize one program-independent GPU device.
 ///
 /// A device owns one native GPU execution and address domain. Queue,
-/// executable, and memory policy are selected by later operations.
+/// executable, and memory policy are selected by later operations. Native
+/// lifetime is inherited from the endpoint's instance, not selected per device.
 typedef struct amdf_gpu_device_create_info_t {
   /// Must be `AMDF_STRUCTURE_TYPE_GPU_DEVICE_CREATE_INFO`.
   amdf_structure_type_t type;
@@ -151,10 +135,8 @@ typedef struct amdf_gpu_device_create_info_t {
   uint32_t structure_size;
   /// Optional input extension chain. No extensions are currently defined.
   const void* next;
-  /// Exact native context ownership mode; zero selects INDEPENDENT.
-  amdf_gpu_device_mode_t mode;
   /// Reserved for compatible growth and must be zero.
-  uint32_t reserved;
+  uint64_t reserved;
 } amdf_gpu_device_create_info_t;
 
 /// Immutable identity and reset state of one live GPU device.
@@ -169,11 +151,7 @@ typedef struct amdf_gpu_device_info_t {
   amdf_device_id_t id;
   /// Monotonic provider epoch invalidating state after a device reset.
   uint64_t reset_epoch;
-  /// Native context ownership selected when the device was created.
-  amdf_gpu_device_mode_t mode;
-  /// Reserved for compatible growth and always zero.
-  uint32_t reserved;
-  /// Features implemented for this live device's selected mode.
+  /// Features implemented under the instance's native lifetime policy.
   amdf_gpu_device_features_t features;
 } amdf_gpu_device_info_t;
 
@@ -318,9 +296,9 @@ typedef struct amdf_gpu_api_t {
 
   /// Materializes one program-independent GPU execution and address domain.
   ///
-  /// `endpoint` remains query-only. `create_info->mode` selects the exact
-  /// context ownership; an unsupported mode is rejected without fallback. The
-  /// returned device borrows the endpoint, which must outlive it. No queue,
+  /// `endpoint` remains query-only. Its instance selects the native lifetime;
+  /// an unsupported lifetime is rejected without fallback. The returned device
+  /// borrows the endpoint, which must outlive it. No queue,
   /// executable, command stream, or public memory object is created. Failure
   /// leaves `out_device` unchanged.
   amdf_status_t(AMDF_CALL* device_create)(
@@ -366,14 +344,14 @@ typedef struct amdf_gpu_api_t {
       const amdf_gpu_kernel_queue_submission_info_t* submission_info,
       uint64_t* out_submission);
 
-  /// Copies cached capabilities for an explicit device mode before creation.
+  /// Copies cached capabilities under the instance's native lifetime policy.
   ///
-  /// An unsupported mode returns UNSUPPORTED without modifying the output.
-  /// A supported mode may omit features available in another mode on the same
-  /// endpoint. The operation is thread-safe and performs no system call,
-  /// allocation, device initialization, retry, sleep, or device wait.
+  /// An unsupported lifetime returns UNSUPPORTED without modifying the output.
+  /// A supported lifetime may omit features available under another lifetime
+  /// on the same endpoint. The operation is thread-safe and performs no system
+  /// call, allocation, device initialization, retry, sleep, or device wait.
   amdf_status_t(AMDF_CALL* endpoint_query_device_capabilities)(
-      amdf_endpoint_t* endpoint, amdf_gpu_device_mode_t mode,
+      amdf_endpoint_t* endpoint,
       amdf_gpu_device_capabilities_t* out_capabilities);
 
   /// Acquires one directly published native command queue from a GPU device.

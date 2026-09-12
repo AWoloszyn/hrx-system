@@ -37,13 +37,15 @@ amdf_status_t amdf_gpu_umd_query_endpoint_profile(
     amdf_gpu_endpoint_properties_t properties = {0};
     if (amdf_gpu_wddm_wkmi_endpoint_properties_translate(&provider_properties,
                                                          &properties)) {
-      properties.device_modes[AMDF_GPU_DEVICE_MODE_INDEPENDENT] =
-          (amdf_gpu_device_mode_properties_t){
+      properties.native_lifetimes[AMDF_NATIVE_LIFETIME_INSTANCE] =
+          (amdf_gpu_lifetime_properties_t){
               .supported = true,
               .features = AMDF_GPU_DEVICE_FEATURE_HOST_REGISTRATION |
                           AMDF_GPU_DEVICE_FEATURE_DEVICE_RECREATION |
                           AMDF_GPU_DEVICE_FEATURE_LOCAL_MEMORY,
       };
+      properties.native_lifetimes[AMDF_NATIVE_LIFETIME_PROCESS] =
+          properties.native_lifetimes[AMDF_NATIVE_LIFETIME_INSTANCE];
       if (amdf_gpu_endpoint_profile_initialize(&properties, &profile)) {
         profile_available = true;
       } else {

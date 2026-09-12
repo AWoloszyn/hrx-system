@@ -219,7 +219,7 @@ bool amdf_gpu_endpoint_profile_initialize(
     };
   }
   for (uint32_t i = 0; i < 2; ++i) {
-    profile.device_modes[i] = properties->device_modes[i];
+    profile.native_lifetimes[i] = properties->native_lifetimes[i];
   }
   *out_profile = profile;
   return true;
@@ -231,14 +231,12 @@ const amdf_gpu_endpoint_info_t* amdf_gpu_endpoint_profile_get_info(
 }
 
 amdf_status_t amdf_gpu_endpoint_profile_query_device_features(
-    const amdf_gpu_endpoint_profile_t* profile, amdf_gpu_device_mode_t mode,
+    const amdf_gpu_endpoint_profile_t* profile,
+    amdf_native_lifetime_t native_lifetime,
     amdf_gpu_device_features_t* out_features) {
-  if (mode > AMDF_GPU_DEVICE_MODE_PROCESS) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  }
-  if (!profile->device_modes[mode].supported) {
+  if (!profile->native_lifetimes[native_lifetime].supported) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
-  *out_features = profile->device_modes[mode].features;
+  *out_features = profile->native_lifetimes[native_lifetime].features;
   return AMDF_STATUS_OK;
 }

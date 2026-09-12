@@ -11,6 +11,7 @@
 
 #include "amdf/amdf.h"
 #include "gtest/gtest.h"
+#include "util/device_cache.h"
 #include "util/provider.h"
 
 namespace {
@@ -33,6 +34,7 @@ amdf_instance_create_info_t MakeInstanceCreateInfo() {
   amdf_instance_create_info_t create_info = {};
   create_info.type = AMDF_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
   create_info.structure_size = sizeof(create_info);
+  create_info.native_lifetime = GetCtsDeviceCache().native_lifetime();
   return create_info;
 }
 
@@ -82,6 +84,17 @@ TEST(InstanceTest, ValidatesCreateInfoBeforePlatformInitialization) {
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
   EXPECT_EQ(amdf_status_code(api->instance_destroy(nullptr)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
+
+  create_info = MakeInstanceCreateInfo();
+  create_info.native_lifetime = UINT32_MAX;
+  EXPECT_EQ(amdf_status_code(api->instance_create(&create_info, &instance)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(instance, sentinel);
+  create_info = MakeInstanceCreateInfo();
+  create_info.reserved = 1;
+  EXPECT_EQ(amdf_status_code(api->instance_create(&create_info, &instance)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(instance, sentinel);
 }
 
 TEST(InstanceTest, CreatesAndDestroys) {

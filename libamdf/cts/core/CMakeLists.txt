@@ -20,6 +20,7 @@ iree_cc_library(
   DEPS
     amdf::headers
     iree::third_party::google_test
+    libamdf::cts::util::device_cache
     libamdf::cts::util::provider_headers
   TESTONLY
   ALWAYSLINK
@@ -41,6 +42,8 @@ amdf_cts_test(
     iree::third_party::google_test
     libamdf::cts::util::device_cache
     libamdf::cts::util::provider_headers
+  ARGS
+    "--amdf_native_lifetime=process"
   LABELS
     "iree-build-requirement=libamdf"
 )
@@ -62,6 +65,8 @@ amdf_cts_test(
     iree::third_party::google_test
     libamdf::cts::util::device_cache
     libamdf::cts::util::provider_headers
+  ARGS
+    "--amdf_native_lifetime=process"
   LABELS
     "iree-build-requirement=libamdf"
 )
@@ -83,6 +88,74 @@ amdf_cts_test(
     libamdf::cts::util::dynamic_provider
     libamdf::cts::util::provider_headers
   ARGS
+    "--amdf_native_lifetime=process"
+    "--amdf_library=$<TARGET_FILE:amdf::amdf>"
+  LABELS
+    "iree-build-requirement=libamdf"
+)
+endif()
+
+if(AMDF_BUILD AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+amdf_cts_test(
+  NAME
+    static_instance
+  SRCS
+    "${PROJECT_SOURCE_DIR}/libamdf/cts/util/linked_provider.cc"
+    "${PROJECT_SOURCE_DIR}/libamdf/cts/util/test_main.cc"
+  DEPS
+    ::core_tests
+    amdf::amdf_static
+    amdf::headers
+    iree::third_party::google_test
+    libamdf::cts::util::device_cache
+    libamdf::cts::util::provider_headers
+  ARGS
+    "--amdf_native_lifetime=instance"
+  LABELS
+    "iree-build-requirement=libamdf"
+)
+endif()
+
+if(AMDF_BUILD AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+amdf_cts_test(
+  NAME
+    shared_instance
+  SRCS
+    "${PROJECT_SOURCE_DIR}/libamdf/cts/util/linked_provider.cc"
+    "${PROJECT_SOURCE_DIR}/libamdf/cts/util/test_main.cc"
+  DATA
+    amdf::amdf
+  DEPS
+    ::core_tests
+    amdf::amdf
+    amdf::headers
+    iree::third_party::google_test
+    libamdf::cts::util::device_cache
+    libamdf::cts::util::provider_headers
+  ARGS
+    "--amdf_native_lifetime=instance"
+  LABELS
+    "iree-build-requirement=libamdf"
+)
+endif()
+
+if(AMDF_BUILD AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+amdf_cts_test(
+  NAME
+    dynamic_instance
+  SRCS
+    "${PROJECT_SOURCE_DIR}/libamdf/cts/util/test_main.cc"
+  DATA
+    amdf::amdf
+  DEPS
+    ::core_tests
+    amdf::headers
+    iree::third_party::google_test
+    libamdf::cts::util::device_cache
+    libamdf::cts::util::dynamic_provider
+    libamdf::cts::util::provider_headers
+  ARGS
+    "--amdf_native_lifetime=instance"
     "--amdf_library=$<TARGET_FILE:amdf::amdf>"
   LABELS
     "iree-build-requirement=libamdf"

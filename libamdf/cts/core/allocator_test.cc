@@ -16,6 +16,7 @@
 
 #include "amdf/amdf.h"
 #include "gtest/gtest.h"
+#include "util/device_cache.h"
 #include "util/provider.h"
 
 namespace {
@@ -92,6 +93,7 @@ amdf_instance_create_info_t MakeInstanceCreateInfo(
   create_info.type = AMDF_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
   create_info.structure_size = sizeof(create_info);
   create_info.host_allocator = allocator->MakeAllocator();
+  create_info.native_lifetime = GetCtsDeviceCache().native_lifetime();
   return create_info;
 }
 
@@ -118,6 +120,13 @@ TEST(AllocatorTest, RejectsMalformedConfigurationWithoutPublishingInstance) {
   create_info.type = AMDF_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
   create_info.structure_size = sizeof(create_info);
   create_info.host_allocator.user_data = &allocator;
+  EXPECT_EQ(amdf_status_code(api->instance_create(&create_info, &instance)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(instance, sentinel);
+  EXPECT_EQ(allocator.allocation_attempt_count.load(), 0u);
+
+  create_info = MakeInstanceCreateInfo(&allocator);
+  create_info.native_lifetime = UINT32_MAX;
   EXPECT_EQ(amdf_status_code(api->instance_create(&create_info, &instance)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
   EXPECT_EQ(instance, sentinel);

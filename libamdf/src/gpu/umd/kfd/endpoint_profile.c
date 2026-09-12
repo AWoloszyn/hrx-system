@@ -33,19 +33,19 @@ amdf_status_t amdf_gpu_umd_query_endpoint_profile(
   if (!amdf_status_is_ok(close_status)) status = close_status;
   if (!amdf_status_is_ok(status)) return status;
   // KFD 1.18 is the minimum supported native interface. CREATE_PROCESS arrived
-  // in 1.19; its absence never changes an independent request into primary use.
+  // in 1.19; its absence never changes an INSTANCE request into PROCESS use.
   if (version.major_version != 1 || version.minor_version < 18) {
     *out_available = false;
     return AMDF_STATUS_OK;
   }
-  topology.properties.device_modes[AMDF_GPU_DEVICE_MODE_PROCESS] =
-      (amdf_gpu_device_mode_properties_t){
+  topology.properties.native_lifetimes[AMDF_NATIVE_LIFETIME_PROCESS] =
+      (amdf_gpu_lifetime_properties_t){
           .supported = true,
           .features = topology.memory_features |
                       AMDF_GPU_DEVICE_FEATURE_HOST_REGISTRATION,
       };
-  topology.properties.device_modes[AMDF_GPU_DEVICE_MODE_INDEPENDENT] =
-      (amdf_gpu_device_mode_properties_t){
+  topology.properties.native_lifetimes[AMDF_NATIVE_LIFETIME_INSTANCE] =
+      (amdf_gpu_lifetime_properties_t){
           .supported = version.minor_version >= 19,
           .features = topology.memory_features |
                       AMDF_GPU_DEVICE_FEATURE_DEVICE_RECREATION,

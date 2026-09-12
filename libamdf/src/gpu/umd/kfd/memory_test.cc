@@ -75,9 +75,9 @@ TEST(LinuxGpuMemoryPairTest, DescribesExactLocalQueueSites) {
   EXPECT_EQ(std::memcmp(&description, &original, sizeof(description)), 0);
 }
 
-TEST(LinuxGpuMemoryProfileTest, IndependentDeviceExposesOwnedSystemMemory) {
+TEST(LinuxGpuMemoryProfileTest, InstanceLifetimeExposesOwnedSystemMemory) {
   amdf_gpu_umd_device_t device = {};
-  device.mode = AMDF_GPU_DEVICE_MODE_INDEPENDENT;
+  device.native_lifetime = AMDF_NATIVE_LIFETIME_INSTANCE;
   device.page_size = 4096;
   device.topology.virtual_address.begin = UINT64_C(0x10000);
   device.topology.virtual_address.end = UINT64_C(1) << 48;
@@ -127,9 +127,9 @@ TEST(LinuxGpuMemoryProfileTest, IndependentDeviceExposesOwnedSystemMemory) {
   EXPECT_EQ(unavailable.ordinal, UINT32_MAX);
 }
 
-TEST(LinuxGpuMemoryProfileTest, ProcessDeviceUsesDenseOptionalProfiles) {
+TEST(LinuxGpuMemoryProfileTest, ProcessLifetimeUsesDenseOptionalProfiles) {
   amdf_gpu_umd_device_t device = {};
-  device.mode = AMDF_GPU_DEVICE_MODE_PROCESS;
+  device.native_lifetime = AMDF_NATIVE_LIFETIME_PROCESS;
   device.page_size = 4096;
   device.topology.virtual_address.begin = UINT64_C(0x10000);
   device.topology.virtual_address.end = UINT64_C(1) << 48;

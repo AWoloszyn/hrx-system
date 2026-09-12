@@ -14,6 +14,7 @@
 #include "libamdf/src/gpu/endpoint_profile.h"
 #include "libamdf/src/gpu/memory.h"
 #include "libamdf/src/gpu/umd/device.h"
+#include "libamdf/src/instance.h"
 #include "libamdf/src/structure.h"
 
 typedef struct amdf_gpu_device_t {
@@ -71,10 +72,12 @@ amdf_status_t AMDF_CALL amdf_gpu_device_create(
     return profile_status;
   }
   amdf_gpu_device_features_t features = 0;
-  const amdf_status_t mode_status =
+  const amdf_native_lifetime_t native_lifetime =
+      amdf_instance_native_lifetime(amdf_endpoint_get_instance(endpoint));
+  const amdf_status_t lifetime_status =
       amdf_gpu_endpoint_profile_query_device_features(
-          untyped_profile, create_info->mode, &features);
-  if (!amdf_status_is_ok(mode_status)) return mode_status;
+          untyped_profile, native_lifetime, &features);
+  if (!amdf_status_is_ok(lifetime_status)) return lifetime_status;
 
   const amdf_allocator_t host_allocator =
       amdf_endpoint_host_allocator(endpoint);
@@ -88,7 +91,7 @@ amdf_status_t AMDF_CALL amdf_gpu_device_create(
   amdf_gpu_umd_device_result_t result = {0};
   if (amdf_status_is_ok(status)) {
     status = amdf_gpu_umd_device_create(amdf_endpoint_get_platform(endpoint),
-                                        host_allocator, create_info->mode,
+                                        host_allocator, native_lifetime,
                                         &device->umd, &result);
   }
   if (amdf_status_is_ok(status)) {
@@ -96,7 +99,6 @@ amdf_status_t AMDF_CALL amdf_gpu_device_create(
     device->info.structure_size = sizeof(device->info);
     device->info.id = result.id;
     device->info.reset_epoch = result.reset_epoch;
-    device->info.mode = create_info->mode;
     device->info.features = features;
     *out_device = &device->base;
   } else {

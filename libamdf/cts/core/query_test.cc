@@ -15,9 +15,9 @@ namespace {
 
 static_assert(sizeof(amdf_allocator_t) == 4 * sizeof(void*));
 static_assert(offsetof(amdf_instance_create_info_t, host_allocator) ==
-              sizeof(amdf_input_structure_t));
+              sizeof(amdf_input_structure_t) + 8);
 static_assert(sizeof(amdf_instance_create_info_t) ==
-              sizeof(amdf_input_structure_t) + sizeof(amdf_allocator_t));
+              sizeof(amdf_input_structure_t) + 8 + sizeof(amdf_allocator_t));
 static_assert(sizeof(amdf_external_memory_t) == 80);
 static_assert(offsetof(amdf_external_memory_t, source_byte_offset) == 32);
 static_assert(offsetof(amdf_external_memory_t, release) == 64);

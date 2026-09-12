@@ -82,6 +82,25 @@ amdf_cc_library(
     ],
 )
 
+amdf_cc_test(
+    name = "instance_test",
+    srcs = ["instance_test.cc"],
+    target_compatible_with = select({
+        "@platforms//os:linux": [],
+        "@platforms//os:windows": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [
+        ":instance",
+        "//third_party:google_test",
+        "//third_party:google_test_main",
+    ] + select({
+        "@platforms//os:linux": ["//libamdf/src/platform/linux"],
+        "@platforms//os:windows": ["//libamdf/src/platform/windows"],
+        "//conditions:default": [],
+    }),
+)
+
 amdf_cc_library(
     name = "endpoint",
     srcs = ["endpoint.c"],

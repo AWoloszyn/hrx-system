@@ -42,6 +42,7 @@ iree_cc_library(
     libamdf::src::gpu::umd::device
     libamdf::src::gpu::umd::memory
     libamdf::src::host_mapping
+    libamdf::src::instance
     libamdf::src::memory
     libamdf::src::structure
   PUBLIC
@@ -112,6 +113,7 @@ iree_cc_library(
     amdf::headers
     libamdf::src::endpoint
     libamdf::src::gpu::umd::endpoint_profile
+    libamdf::src::instance
     libamdf::src::structure
   PUBLIC
 )

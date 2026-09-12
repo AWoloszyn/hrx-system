@@ -16,13 +16,13 @@
 extern "C" {
 #endif  // __cplusplus
 
-// Native support and implemented features for one context ownership mode.
-typedef struct amdf_gpu_device_mode_properties_t {
-  // Whether this mode can be explicitly selected during device creation.
+// Native support and implemented features for one lifetime policy.
+typedef struct amdf_gpu_lifetime_properties_t {
+  // Whether native services can honor this instance lifetime policy.
   bool supported;
-  // Features guaranteed for a device created in this mode.
+  // Features guaranteed for a device under this lifetime policy.
   amdf_gpu_device_features_t features;
-} amdf_gpu_device_mode_properties_t;
+} amdf_gpu_lifetime_properties_t;
 
 enum { AMDF_GPU_QUEUE_FAMILY_CAPACITY = 4 };
 
@@ -98,8 +98,8 @@ typedef struct amdf_gpu_endpoint_properties_t {
   // Exact native queue services implemented by the selected UMD.
   amdf_gpu_queue_family_properties_t
       queue_families[AMDF_GPU_QUEUE_FAMILY_CAPACITY];
-  // Capabilities indexed by amdf_gpu_device_mode_t.
-  amdf_gpu_device_mode_properties_t device_modes[2];
+  // Capabilities indexed by amdf_native_lifetime_t.
+  amdf_gpu_lifetime_properties_t native_lifetimes[2];
 } amdf_gpu_endpoint_properties_t;
 
 // Immutable qualified GPU profile owned by one core endpoint.
@@ -110,8 +110,8 @@ typedef struct amdf_gpu_endpoint_profile_t {
   uint32_t queue_family_count;
   // Public queue-family records with dense endpoint-local ordinals.
   amdf_queue_family_info_t queue_families[AMDF_GPU_QUEUE_FAMILY_CAPACITY];
-  // Capabilities indexed by amdf_gpu_device_mode_t.
-  amdf_gpu_device_mode_properties_t device_modes[2];
+  // Capabilities indexed by amdf_native_lifetime_t.
+  amdf_gpu_lifetime_properties_t native_lifetimes[2];
 } amdf_gpu_endpoint_profile_t;
 
 // Validates and normalizes |properties| into |out_profile|.
@@ -123,9 +123,10 @@ bool amdf_gpu_endpoint_profile_initialize(
 const amdf_gpu_endpoint_info_t* amdf_gpu_endpoint_profile_get_info(
     const amdf_gpu_endpoint_profile_t* profile);
 
-// Validates a caller-selected mode and copies its cached features on success.
+// Copies cached features for the instance's validated lifetime on success.
 amdf_status_t amdf_gpu_endpoint_profile_query_device_features(
-    const amdf_gpu_endpoint_profile_t* profile, amdf_gpu_device_mode_t mode,
+    const amdf_gpu_endpoint_profile_t* profile,
+    amdf_native_lifetime_t native_lifetime,
     amdf_gpu_device_features_t* out_features);
 
 #ifdef __cplusplus

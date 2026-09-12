@@ -166,6 +166,14 @@ TEST_F(WindowsGpuEndpointProfileTest,
   EXPECT_EQ(profile.info.gfx_ip.minor, 5u);
   EXPECT_EQ(profile.info.gfx_ip.stepping, 1u);
   EXPECT_EQ(profile.info.compute.wavefront_size, 32u);
+  for (amdf_native_lifetime_t lifetime :
+       {AMDF_NATIVE_LIFETIME_PROCESS, AMDF_NATIVE_LIFETIME_INSTANCE}) {
+    EXPECT_TRUE(profile.native_lifetimes[lifetime].supported);
+    EXPECT_EQ(profile.native_lifetimes[lifetime].features,
+              AMDF_GPU_DEVICE_FEATURE_HOST_REGISTRATION |
+                  AMDF_GPU_DEVICE_FEATURE_DEVICE_RECREATION |
+                  AMDF_GPU_DEVICE_FEATURE_LOCAL_MEMORY);
+  }
   EXPECT_EQ(query_bridge_open_success_count_(), 1u);
   EXPECT_EQ(query_bridge_close_attempt_count_(), 1u);
   EXPECT_EQ(state_.query_bridge_close_success_count(), 1u);

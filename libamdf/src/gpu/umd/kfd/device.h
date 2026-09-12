@@ -21,12 +21,12 @@ typedef struct amdf_gpu_kfd_user_queue_native_api_t
 struct amdf_gpu_umd_device_t {
   // Host allocator copied for device and child metadata.
   amdf_allocator_t host_allocator;
-  // KFD file selecting the primary or independent process context.
+  // KFD file selecting the primary or secondary native context.
   int descriptor;
   // Fresh render file whose VM is acquired by the KFD context.
   int render_descriptor;
-  // Context ownership mode selected at creation.
-  amdf_gpu_device_mode_t mode;
+  // Native lifetime inherited from the provider instance.
+  amdf_native_lifetime_t native_lifetime;
   // Native identity, geometry and address limits established at creation.
   amdf_gpu_kfd_topology_t topology;
   // Native CPU page length in bytes.

@@ -300,7 +300,27 @@ typedef struct amdf_allocator_t {
   amdf_allocator_free_fn_t free;
 } amdf_allocator_t;
 
-/// Parameters used to create an independent provider instance.
+/// Maximum lifetime permitted for native state acquired by an instance.
+///
+/// Resources may be released earlier. This policy neither changes public
+/// handle ownership nor promises a separate virtual address space, exclusive
+/// hardware access, or automatic interoperability with another native client.
+typedef uint32_t amdf_native_lifetime_t;
+enum amdf_native_lifetime_e {
+  /// Permits native process-owned state to survive instance destruction until
+  /// process exit. This is the default and enables Linux KFD host registration.
+  /// KFD's primary VM binding requires coordination with other KFD clients;
+  /// after device destruction a fresh acquisition can fail with native EBUSY.
+  AMDF_NATIVE_LIFETIME_PROCESS = 0,
+  /// Requires acquired native state to be releasable by instance destruction.
+  /// A provider that cannot meet this bound reports UNSUPPORTED when its
+  /// services are queried or constructed; it never falls back to PROCESS.
+  /// Linux KFD secondary contexts currently lack host registration. Windows
+  /// can reclaim native objects under either policy without isolating GPUVA.
+  AMDF_NATIVE_LIFETIME_INSTANCE = 1,
+};
+
+/// Parameters used to create a provider instance without activating devices.
 typedef struct amdf_instance_create_info_t {
   /// Must be `AMDF_STRUCTURE_TYPE_INSTANCE_CREATE_INFO`.
   amdf_structure_type_t type;
@@ -308,6 +328,10 @@ typedef struct amdf_instance_create_info_t {
   uint32_t structure_size;
   /// Optional input extension chain. No extensions are defined in ABI v1.
   const void* next;
+  /// Native lifetime policy copied by the instance; zero selects PROCESS.
+  amdf_native_lifetime_t native_lifetime;
+  /// Reserved for compatible growth and must be zero.
+  uint32_t reserved;
   /// Host allocator copied and used by this instance and all of its children.
   amdf_allocator_t host_allocator;
 } amdf_instance_create_info_t;

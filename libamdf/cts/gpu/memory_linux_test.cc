@@ -15,7 +15,6 @@
 #include "amdf/gpu.h"
 #include "gpu_device_fixture.h"
 #include "gtest/gtest.h"
-#include "libamdf/cts/gpu/target/gfx1151/user_queue_memory_test.h"
 
 namespace {
 
@@ -278,7 +277,7 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
                                      AMDF_MEMORY_FLAG_DEVICE_ADDRESS));
   }
 
-  // Exercises the same allocation/host-view lifecycle in either context mode.
+  // Exercises allocation and host-view lifetime under either instance policy.
   void ExerciseSystemMemory() {
     const amdf_memory_create_info_t create_info = MakeSystemMemoryCreateInfo();
     ASSERT_EQ(api_->memory_create(device_, &create_info, &memories_[0]),
@@ -400,9 +399,9 @@ TEST_F(GpuLinuxMemoryTest, HonorsLocalPlacementCapabilities) {
   ASSERT_NO_FATAL_FAILURE(ExerciseLocalPlacementCapabilities());
 }
 
-TEST_F(GpuLinuxMemoryTest, OmitsRegistrationWhenModeDoesNotSupportIt) {
+TEST_F(GpuLinuxMemoryTest, OmitsRegistrationWhenLifetimeDoesNotSupportIt) {
   if ((features_ & AMDF_GPU_DEVICE_FEATURE_HOST_REGISTRATION) != 0) {
-    GTEST_SKIP() << "selected mode supports host registration";
+    GTEST_SKIP() << "selected lifetime supports host registration";
   }
   for (uint32_t ordinal = 0;; ++ordinal) {
     amdf_memory_profile_t profile = {};
@@ -444,26 +443,16 @@ TEST_F(GpuLinuxMemoryTest, RejectsUnadvertisedKernelQueueCreation) {
   EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 }
 
-// Registration and queue scenarios borrow the process-lifetime primary owner.
-class GpuLinuxProcessMemoryTest : public GpuLinuxMemoryTest {
- protected:
-  amdf_gpu_device_mode_t GetDeviceMode() const override {
-    return AMDF_GPU_DEVICE_MODE_PROCESS;
+TEST_F(GpuLinuxMemoryTest, RegistersOverlappingCallerPagesWithExactAccess) {
+  if (!(features_ & AMDF_GPU_DEVICE_FEATURE_HOST_REGISTRATION)) {
+    GTEST_SKIP()
+        << "host registration is unavailable under this native lifetime";
   }
-};
-
-TEST_F(GpuLinuxProcessMemoryTest, OwnsMemoryRegistrationsAndQualifiedQueues) {
-  ASSERT_NE(features_ & AMDF_GPU_DEVICE_FEATURE_HOST_REGISTRATION, 0u);
-  EXPECT_EQ(features_ & AMDF_GPU_DEVICE_FEATURE_DEVICE_RECREATION, 0u);
   amdf_gpu_device_info_t device_info = {};
   device_info.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_INFO;
   device_info.structure_size = sizeof(device_info);
   ASSERT_EQ(gpu_api_->device_query_info(device_, &device_info), AMDF_STATUS_OK);
-  EXPECT_EQ(device_info.mode, AMDF_GPU_DEVICE_MODE_PROCESS);
   EXPECT_EQ(device_info.features, features_);
-  ASSERT_NO_FATAL_FAILURE(ExerciseSystemMemory());
-  ASSERT_NO_FATAL_FAILURE(ExerciseExactSystemDeviceAccess());
-  ASSERT_NO_FATAL_FAILURE(ExerciseLocalPlacementCapabilities());
   ASSERT_NO_FATAL_FAILURE(AllocateCallerPages());
 
   const long native_page_size = sysconf(_SC_PAGESIZE);
@@ -594,24 +583,6 @@ TEST_F(GpuLinuxProcessMemoryTest, OwnsMemoryRegistrationsAndQualifiedQueues) {
   EXPECT_EQ(caller_pages_[caller_byte_length_ - 1], 0x3C);
   ASSERT_EQ(munmap(caller_pages_, caller_byte_length_), 0);
   caller_pages_ = nullptr;
-
-  amdf_gpu_endpoint_info_t endpoint_info = {};
-  endpoint_info.type = AMDF_STRUCTURE_TYPE_GPU_ENDPOINT_INFO;
-  endpoint_info.structure_size = sizeof(endpoint_info);
-  ASSERT_EQ(gpu_api_->endpoint_query_info(endpoint_, &endpoint_info),
-            AMDF_STATUS_OK);
-  if (endpoint_info.gfx_ip.major == 11 && endpoint_info.gfx_ip.minor == 5 &&
-      endpoint_info.gfx_ip.stepping == 1) {
-    for (amdf_queue_command_type_t command_type :
-         {AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA, AMDF_QUEUE_COMMAND_TYPE_GPU_PM4}) {
-      SCOPED_TRACE(command_type);
-      bool children_released = false;
-      ASSERT_NO_FATAL_FAILURE(
-          children_released = RunGfx1151UserQueueMemoryCopies(
-              api_, gpu_api_, endpoint_, device_, command_type));
-      ASSERT_TRUE(children_released);
-    }
-  }
 }
 
 }  // namespace

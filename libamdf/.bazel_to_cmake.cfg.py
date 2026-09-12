@@ -174,36 +174,41 @@ class AmdfBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
                 1,
             )
 
-        emit_cts_test(
-            name="static",
-            srcs=test_main + ["//libamdf/cts/util:linked_provider.cc"],
-            tags=tags,
-            deps=common_deps
-            + [
-                "//libamdf:amdf_static",
-            ],
-            **kwargs,
-        )
-        emit_cts_test(
-            name="shared",
-            srcs=test_main + ["//libamdf/cts/util:linked_provider.cc"],
-            data=["//libamdf:amdf_shared_artifact"],
-            tags=tags,
-            deps=common_deps
-            + [
-                "//libamdf:amdf",
-            ],
-            **kwargs,
-        )
-        emit_cts_test(
-            name="dynamic",
-            srcs=test_main,
-            args=["--amdf_library=$(rootpath //libamdf:amdf_shared_artifact)"],
-            data=["//libamdf:amdf_shared_artifact"],
-            tags=tags,
-            deps=common_deps + ["//libamdf/cts/util:dynamic_provider"],
-            **kwargs,
-        )
+        for lifetime, suffix in [("process", ""), ("instance", "_instance")]:
+            lifetime_args = ["--amdf_native_lifetime=" + lifetime]
+            emit_cts_test(
+                name="static" + suffix,
+                srcs=test_main + ["//libamdf/cts/util:linked_provider.cc"],
+                args=lifetime_args,
+                tags=tags,
+                deps=common_deps
+                + [
+                    "//libamdf:amdf_static",
+                ],
+                **kwargs,
+            )
+            emit_cts_test(
+                name="shared" + suffix,
+                srcs=test_main + ["//libamdf/cts/util:linked_provider.cc"],
+                args=lifetime_args,
+                data=["//libamdf:amdf_shared_artifact"],
+                tags=tags,
+                deps=common_deps
+                + [
+                    "//libamdf:amdf",
+                ],
+                **kwargs,
+            )
+            emit_cts_test(
+                name="dynamic" + suffix,
+                srcs=test_main,
+                args=lifetime_args
+                + ["--amdf_library=$(rootpath //libamdf:amdf_shared_artifact)"],
+                data=["//libamdf:amdf_shared_artifact"],
+                tags=tags,
+                deps=common_deps + ["//libamdf/cts/util:dynamic_provider"],
+                **kwargs,
+            )
 
 
 def convert_unmatched_target(converter, target):

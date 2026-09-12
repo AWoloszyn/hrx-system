@@ -135,7 +135,8 @@ using ResetBridgeFn = void(__cdecl*)(void);
 using SetBridgeCountFn = void(__cdecl*)(uint32_t);
 using QueryBridgeCountFn = uint32_t(__cdecl*)(void);
 
-class WindowsGpuDeviceRollbackTest : public ::testing::Test {
+class WindowsGpuDeviceRollbackTest
+    : public ::testing::TestWithParam<amdf_native_lifetime_t> {
  protected:
   void SetUp() override {
     current_state = &state_;
@@ -226,7 +227,7 @@ class WindowsGpuDeviceRollbackTest : public ::testing::Test {
   QueryBridgeCountFn query_bridge_close_success_count_ = nullptr;
 };
 
-TEST_F(WindowsGpuDeviceRollbackTest,
+TEST_P(WindowsGpuDeviceRollbackTest,
        FailedBridgeRollbackLeavesNoEndpointCleanupObligation) {
   amdf_gpu_umd_device_t* device =
       reinterpret_cast<amdf_gpu_umd_device_t*>(uintptr_t{1});
@@ -235,8 +236,7 @@ TEST_F(WindowsGpuDeviceRollbackTest,
   const amdf_gpu_umd_device_result_t original = result;
 
   const amdf_status_t status = amdf_gpu_umd_device_create(
-      endpoint_, instance_.host_allocator, AMDF_GPU_DEVICE_MODE_INDEPENDENT,
-      &device, &result);
+      endpoint_, instance_.host_allocator, GetParam(), &device, &result);
 
   EXPECT_EQ(amdf_status_code(status), AMDF_STATUS_CODE_BUSY);
   EXPECT_EQ(reinterpret_cast<uintptr_t>(device), uintptr_t{1});
@@ -267,7 +267,7 @@ TEST_F(WindowsGpuDeviceRollbackTest,
   EXPECT_EQ(state_.live_allocation_count, 0u);
 }
 
-TEST_F(WindowsGpuDeviceRollbackTest,
+TEST_P(WindowsGpuDeviceRollbackTest,
        FailedPagingRollbackLeavesNoEndpointCleanupObligation) {
   set_bridge_close_failures_(0);
   amdf_gpu_umd_device_t* device =
@@ -276,8 +276,7 @@ TEST_F(WindowsGpuDeviceRollbackTest,
   std::memset(&result, 0xA5, sizeof(result));
   const amdf_gpu_umd_device_result_t original = result;
   EXPECT_EQ(amdf_gpu_umd_device_create(endpoint_, instance_.host_allocator,
-                                       AMDF_GPU_DEVICE_MODE_INDEPENDENT,
-                                       &device, &result),
+                                       GetParam(), &device, &result),
             amdf_kmt_make_status(kFailure));
   EXPECT_EQ(reinterpret_cast<uintptr_t>(device), uintptr_t{1});
   EXPECT_EQ(std::memcmp(&result, &original, sizeof(result)), 0);
@@ -296,15 +295,14 @@ TEST_F(WindowsGpuDeviceRollbackTest,
   EXPECT_EQ(state_.live_allocation_count, 0u);
 }
 
-TEST_F(WindowsGpuDeviceRollbackTest,
+TEST_P(WindowsGpuDeviceRollbackTest,
        ExplicitDestroyFailurePreservesPublishedDevice) {
   set_bridge_close_failures_(0);
   state_.paging_sync_object = 0x30;
   amdf_gpu_umd_device_t* device = nullptr;
   amdf_gpu_umd_device_result_t result = {};
   ASSERT_EQ(amdf_gpu_umd_device_create(endpoint_, instance_.host_allocator,
-                                       AMDF_GPU_DEVICE_MODE_INDEPENDENT,
-                                       &device, &result),
+                                       GetParam(), &device, &result),
             AMDF_STATUS_OK);
   EXPECT_EQ(amdf_gpu_umd_device_destroy(device),
             amdf_kmt_make_status(kFailure));
@@ -316,5 +314,9 @@ TEST_F(WindowsGpuDeviceRollbackTest,
   EXPECT_EQ(state_.device_destroy_success_count, 1u);
   EXPECT_EQ(state_.live_allocation_count, 1u);
 }
+
+INSTANTIATE_TEST_SUITE_P(NativeLifetime, WindowsGpuDeviceRollbackTest,
+                         ::testing::Values(AMDF_NATIVE_LIFETIME_PROCESS,
+                                           AMDF_NATIVE_LIFETIME_INSTANCE));
 
 }  // namespace

@@ -6,12 +6,33 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
 #include "gtest/gtest.h"
 #include "util/device_cache.h"
 #include "util/provider.h"
 
 int main(int argument_count, char** argument_values) {
+  const char prefix[] = "--amdf_native_lifetime=";
+  for (int i = 1; i < argument_count; ++i) {
+    if (std::strncmp(argument_values[i], prefix, sizeof(prefix) - 1) != 0) {
+      continue;
+    }
+    const char* value = argument_values[i] + sizeof(prefix) - 1;
+    if (std::strcmp(value, "process") == 0) {
+      GetCtsDeviceCache().SetNativeLifetime(AMDF_NATIVE_LIFETIME_PROCESS);
+    } else if (std::strcmp(value, "instance") == 0) {
+      GetCtsDeviceCache().SetNativeLifetime(AMDF_NATIVE_LIFETIME_INSTANCE);
+    } else {
+      std::fprintf(stderr, "invalid native lifetime: %s\n", value);
+      return EXIT_FAILURE;
+    }
+    for (int j = i; j + 1 < argument_count; ++j) {
+      argument_values[j] = argument_values[j + 1];
+    }
+    argument_values[--argument_count] = nullptr;
+    --i;
+  }
   if (!amdf_cts_provider_initialize(&argument_count, &argument_values)) {
     return EXIT_FAILURE;
   }

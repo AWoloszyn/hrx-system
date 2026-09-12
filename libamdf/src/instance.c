@@ -13,6 +13,8 @@
 #include "libamdf/src/structure.h"
 
 struct amdf_instance_t {
+  // Immutable lifetime policy for native resources created by this instance.
+  amdf_native_lifetime_t native_lifetime;
   // Host allocator copied for this instance and all of its children.
   amdf_allocator_t host_allocator;
   // Platform implementation owned by this instance.
@@ -34,6 +36,11 @@ amdf_instance_create(const amdf_instance_create_info_t* create_info,
     return status;
   }
 
+  if (create_info->native_lifetime > AMDF_NATIVE_LIFETIME_INSTANCE ||
+      create_info->reserved != 0) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  }
+
   amdf_allocator_t host_allocator;
   status =
       amdf_allocator_resolve(&create_info->host_allocator, &host_allocator);
@@ -44,6 +51,7 @@ amdf_instance_create(const amdf_instance_create_info_t* create_info,
                        amdf_alignof(amdf_instance_t), (void**)&instance);
   if (!amdf_status_is_ok(status)) return status;
   instance->host_allocator = host_allocator;
+  instance->native_lifetime = create_info->native_lifetime;
   amdf_child_tracker_initialize(&instance->children);
   status = amdf_platform_instance_create(host_allocator, &instance->platform);
   if (amdf_status_is_ok(status)) {
@@ -89,6 +97,11 @@ amdf_platform_instance_t* amdf_instance_platform(amdf_instance_t* instance) {
 
 amdf_allocator_t amdf_instance_host_allocator(const amdf_instance_t* instance) {
   return instance->host_allocator;
+}
+
+amdf_native_lifetime_t amdf_instance_native_lifetime(
+    const amdf_instance_t* instance) {
+  return instance->native_lifetime;
 }
 
 amdf_status_t amdf_instance_register_endpoint(amdf_instance_t* instance) {
