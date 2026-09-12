@@ -11,13 +11,19 @@ from __future__ import annotations
 import argparse
 import re
 import sys
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
+from heapq import merge
 from pathlib import Path
 from typing import TextIO
 
 SUPPORTED_SUFFIXES = frozenset({".loom", ".loom-test"})
 CONSTANT_NAME_RULE = "constant-name"
+GENERATED_NAME_RULE = "generated-name"
+
+# Names include SSA values, symbols, block labels, aliases and bare identifiers.
+# Literal/comment contents are masked before matching this lexical spelling.
+_NAME_PATTERN = re.compile(r"[%@^#]?[A-Za-z0-9_$][A-Za-z0-9_$.-]*")
 
 _CONSTANT_RESULT_PATTERN = re.compile(
     r"(?P<result>%(?P<name>[A-Za-z_][A-Za-z0-9_]*))\s*=\s*"
@@ -84,18 +90,29 @@ _NUMBER_SIGN_PREFIXES = ("negative", "positive", "minus", "plus", "neg")
 class Finding:
     """One source policy violation."""
 
+    # Authored source file containing the name.
     path: Path
+    # One-based source line.
     line: int
+    # One-based character column.
     column: int
+    # Complete identifier spelling, including its sigil when present.
     name: str
+    # Authoring policy violated by this name.
+    rule: str
 
     def format(self) -> str:
-        return (
-            f"{self.path}:{self.line}:{self.column}: error: constant SSA name "
-            f"%{self.name} spells a numeric literal in English; use a "
-            "program-role name or %c<literal> "
-            f"[{CONSTANT_NAME_RULE}]"
-        )
+        if self.rule == GENERATED_NAME_RULE:
+            message = (
+                f"authored name {self.name} contains '$', which marks "
+                "compiler-generated names; use a name that explains its program role"
+            )
+        else:
+            message = (
+                f"constant SSA name {self.name} spells a numeric literal in English; "
+                "use a program-role name or %c<literal>"
+            )
+        return f"{self.path}:{self.line}:{self.column}: error: {message} [{self.rule}]"
 
 
 class SourceLintError(Exception):
@@ -113,20 +130,19 @@ def _is_spelled_number_sequence(text: str) -> bool:
     # Each state records whether the previous token was numeric. `and` is an
     # interior connector, not a number by itself: this accepts
     # `onehundredandone` while leaving semantic names such as `and_zero` alone.
-    reachable = {(0, False)}
+    # Bit 0 permits a number; bit 1 also permits a following connector.
+    # Direct position indexing keeps long names linear in their spelling length.
+    reachable = bytearray(len(text) + 1)
+    reachable[0] = 1
     for start in range(len(text)):
-        states = tuple(
-            previous_was_number
-            for position, previous_was_number in reachable
-            if position == start
-        )
-        for previous_was_number in states:
-            for word in _NUMBER_WORDS:
-                if text.startswith(word, start):
-                    reachable.add((start + len(word), True))
-            if previous_was_number and text.startswith(_NUMBER_CONNECTOR, start):
-                reachable.add((start + len(_NUMBER_CONNECTOR), False))
-    return (len(text), True) in reachable
+        if not reachable[start]:
+            continue
+        for word in _NUMBER_WORDS:
+            if text.startswith(word, start):
+                reachable[start + len(word)] |= 2
+        if reachable[start] & 2 and text.startswith(_NUMBER_CONNECTOR, start):
+            reachable[start + len(_NUMBER_CONNECTOR)] |= 1
+    return bool(reachable[len(text)] & 2)
 
 
 def _is_spelled_number_or_plural(text: str) -> bool:
@@ -147,17 +163,21 @@ def _is_spelled_number_or_plural(text: str) -> bool:
 
 def _is_spelled_number_constant_name(name: str) -> bool:
     tokens = [token for token in name.lower().split("_") if token]
-    while len(tokens) > 1:
+    first = 0
+    end = len(tokens)
+    while end - first > 1:
         stripped_decorator = False
-        if _NUMBER_NAME_DECORATOR_PATTERN.fullmatch(tokens[0]):
-            tokens.pop(0)
+        if _NUMBER_NAME_DECORATOR_PATTERN.fullmatch(tokens[first]):
+            first += 1
             stripped_decorator = True
-        if len(tokens) > 1 and _NUMBER_NAME_DECORATOR_PATTERN.fullmatch(tokens[-1]):
-            tokens.pop()
+        if end - first > 1 and _NUMBER_NAME_DECORATOR_PATTERN.fullmatch(
+            tokens[end - 1]
+        ):
+            end -= 1
             stripped_decorator = True
         if not stripped_decorator:
             break
-    return _is_spelled_number_or_plural("".join(tokens))
+    return _is_spelled_number_or_plural("".join(tokens[first:end]))
 
 
 def _blank_preserving_newlines(text: str) -> str:
@@ -225,24 +245,47 @@ def _mask_authored_source(path: Path, text: str) -> str:
     return "".join(masked_lines)
 
 
+def _constant_name_findings(source: str) -> Iterator[tuple[int, str, str]]:
+    for match in _CONSTANT_RESULT_PATTERN.finditer(source):
+        if _is_spelled_number_constant_name(match.group("name")):
+            yield match.start("result"), match.group("result"), CONSTANT_NAME_RULE
+
+
+def _generated_name_findings(source: str) -> Iterator[tuple[int, str, str]]:
+    if "$" not in source:
+        return
+    for match in _NAME_PATTERN.finditer(source):
+        if "$" in match.group():
+            yield match.start(), match.group(), GENERATED_NAME_RULE
+
+
 def lint_source(path: Path, text: str) -> list[Finding]:
     """Returns authoring-policy findings for one supported source."""
 
     masked_source = _mask_authored_source(path, text)
     findings: list[Finding] = []
-    for match in _CONSTANT_RESULT_PATTERN.finditer(masked_source):
-        name = match.group("name")
-        if not _is_spelled_number_constant_name(name):
-            continue
-        source_offset = match.start("result")
-        line = masked_source.count("\n", 0, source_offset) + 1
-        line_start = masked_source.rfind("\n", 0, source_offset) + 1
+    line = 1
+    line_start = 0
+    next_newline = masked_source.find("\n")
+    # Both rule streams are source-ordered. Merge and advance the line cursor
+    # once instead of rescanning the file prefix for every diagnostic.
+    matches = merge(
+        _constant_name_findings(masked_source),
+        _generated_name_findings(masked_source),
+        key=lambda match: match[0],
+    )
+    for source_offset, name, rule in matches:
+        while next_newline != -1 and next_newline < source_offset:
+            line += 1
+            line_start = next_newline + 1
+            next_newline = masked_source.find("\n", line_start)
         findings.append(
             Finding(
                 path=path,
                 line=line,
                 column=source_offset - line_start + 1,
                 name=name,
+                rule=rule,
             )
         )
     return findings

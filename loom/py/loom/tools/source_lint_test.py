@@ -10,11 +10,19 @@ from pathlib import Path
 
 import pytest
 
-from loom.tools.source_lint import CONSTANT_NAME_RULE, lint_source, main
+from loom.tools.source_lint import (
+    CONSTANT_NAME_RULE,
+    GENERATED_NAME_RULE,
+    lint_source,
+    main,
+)
 
 
 def _finding_names(source: str, suffix: str = ".loom") -> list[str]:
-    return [finding.name for finding in lint_source(Path("source" + suffix), source)]
+    return [
+        finding.name.removeprefix("%")
+        for finding in lint_source(Path("source" + suffix), source)
+    ]
 
 
 @pytest.mark.parametrize(
@@ -77,7 +85,7 @@ def test_constant_operation_and_assignment_may_span_lines() -> None:
     findings = lint_source(Path("multiline.loom"), source)
 
     assert [(finding.line, finding.column, finding.name) for finding in findings] == [
-        (2, 3, "fivehundredtwelve")
+        (2, 3, "%fivehundredtwelve")
     ]
 
 
@@ -114,9 +122,151 @@ def test_loom_test_expected_output_is_excluded_and_cases_restore_input() -> None
     findings = lint_source(Path("cases.loom-test"), source)
 
     assert [(finding.line, finding.name) for finding in findings] == [
-        (1, "two"),
-        (5, "thirty_two"),
+        (1, "%two"),
+        (5, "%thirty_two"),
     ]
+
+
+@pytest.mark.parametrize("suffix", [".loom", ".loom-test"])
+@pytest.mark.parametrize(
+    ("source", "name"),
+    [
+        ("%double$17$0 = index.constant 2 : index", "%double$17$0"),
+        ("func.return %value$copy : i32", "%value$copy"),
+        ("%17$0 = index.constant 17 : index", "%17$0"),
+        ("%$temporary = index.constant 17 : index", "%$temporary"),
+        ("%trailing$ = index.constant 17 : index", "%trailing$"),
+        ("func.decl @pipeline$config(%value: i32)", "@pipeline$config"),
+        ("func.decl @root::@nested$worker()", "@nested$worker"),
+        ("func.decl @named(%argument$0: i32)", "%argument$0"),
+        ("cfg.br ^block$1", "^block$1"),
+        ("#layout$0 = #encoding.layout.dense", "#layout$0"),
+        ("{field$name = 1}", "field$name"),
+        ("func.decl @shaped(%input: tensor<[%extent$0]xf32>)", "%extent$0"),
+    ],
+)
+def test_dollar_names_fail_in_every_authored_position(
+    suffix: str, source: str, name: str
+) -> None:
+    findings = lint_source(Path("input" + suffix), source)
+
+    assert [(finding.name, finding.rule) for finding in findings] == [
+        (name, GENERATED_NAME_RULE)
+    ]
+    assert findings[0].column == source.index(name) + 1
+
+
+def test_dollar_rule_accepts_comments_strings_and_semantic_names() -> None:
+    source = r"""// %comment$0 and @helper$config are compiler output.
+%sum = llvmir.inline_asm "addl $2, $0", "=r,r,r"(%lhs, %rhs) : (i32, i32) -> i32
+test.string "escaped \" @not_a_symbol$1 // still a string"
+%batch_dim = index.constant 57 : index // %double$17$0
+func.decl @pipeline_worker(%input_count: index)
+"""
+
+    assert lint_source(Path("strings.loom"), source) == []
+
+
+def test_dollar_output_is_allowed_but_each_case_restores_input_checks() -> None:
+    source = """// RUN: roundtrip
+%batch_dim = index.constant 57 : index
+// ----
+%batch_dim$0 = index.constant 57 : index
+// ==== name resolution still requires authored role names
+// RUN: roundtrip
+%double$17$0 = index.constant 2 : index
+// ----
+%double$17$0 = index.constant 2 : index
+// ====
+func.decl @pipeline$config()
+"""
+
+    findings = lint_source(Path("cases.loom-test"), source)
+
+    assert [(finding.line, finding.name) for finding in findings] == [
+        (7, "%double$17$0"),
+        (11, "@pipeline$config"),
+    ]
+
+
+def test_loom_source_has_no_expected_output_section() -> None:
+    source = "// ----\n%output$0 = index.constant 0 : index\n"
+
+    assert _finding_names(source) == ["output$0"]
+
+
+def test_comment_markers_inside_multiline_strings_are_literal_contents() -> None:
+    source = """test.string "multiline
+// ----
+%literal$0
+// ==== still a string
+@literal$config"
+%input$0 = index.constant 0 : index
+"""
+
+    findings = lint_source(Path("multiline.loom"), source)
+
+    assert [(finding.line, finding.name) for finding in findings] == [(6, "%input$0")]
+
+
+def test_rules_report_mixed_findings_in_source_order_with_crlf() -> None:
+    source = (
+        "  %input$0 = index.constant 0 : index\r\n"
+        "  %one = index.constant 1 : index\r\n"
+        "func.decl @helper$config(%arg$2: i32)\r\n"
+        "  %two = index.constant 2 : index\r\n"
+    )
+
+    findings = lint_source(Path("ordered.loom"), source)
+
+    assert [(finding.line, finding.column, finding.rule) for finding in findings] == [
+        (1, 3, GENERATED_NAME_RULE),
+        (2, 3, CONSTANT_NAME_RULE),
+        (3, 11, GENERATED_NAME_RULE),
+        (3, 26, GENERATED_NAME_RULE),
+        (4, 3, CONSTANT_NAME_RULE),
+    ]
+
+
+def test_dense_findings_retain_every_source_position() -> None:
+    count = 4096
+    source = "%input$0 = index.constant 0 : index\n" * count
+
+    findings = lint_source(Path("dense.loom"), source)
+
+    assert [(finding.line, finding.column) for finding in findings] == [
+        (line, 1) for line in range(1, count + 1)
+    ]
+
+
+def test_long_number_names_and_decorators_preserve_classification() -> None:
+    number = "one" * 2048
+    decorated = "i32_" * 2048 + "one" + "_bytes" * 2048
+    semantic = number + "_batch_dim"
+    source = "\n".join(
+        f"%{name} = index.constant 1 : index" for name in [number, decorated, semantic]
+    )
+
+    assert _finding_names(source) == [number, decorated]
+
+
+@pytest.mark.parametrize("suffix", [".loom", ".loom-test"])
+def test_cli_rejects_copied_names_with_a_role_based_remedy(
+    suffix: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source_path = tmp_path / ("copied" + suffix)
+    source_path.write_text(
+        "// copied output\n  %double$17$0 = index.constant 2 : index\n",
+        encoding="utf-8",
+    )
+
+    assert main([str(source_path)]) == 1
+
+    diagnostic = capsys.readouterr().err
+    assert f"{source_path}:2:3: error:" in diagnostic
+    assert "%double$17$0" in diagnostic
+    assert "program role" in diagnostic
+    assert f"[{GENERATED_NAME_RULE}]" in diagnostic
 
 
 def test_cli_reports_source_location_rule_and_remedy(

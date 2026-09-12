@@ -231,6 +231,12 @@ boundary and check failures at the stage that owns them.
 
 ## Test Ownership
 
+Authored `.loom` and `.loom-test` input names describe program roles and contain
+no `$`. Dollar markers distinguish compiler-generated output, not maintained
+source intent. `loom-lint` enforces this for every input case, including compiler
+regressions; generated expectation sections remain exempt. Copying an IR dump
+into a test requires meaningful names rather than preserving its disambiguators.
+
 C++ tests exercise APIs and functionality through focused calls and small,
 valid data fixtures. Authored IR programs, pass regressions, diagnostics, and
 text round trips belong in `.loom-test` files beside the owning subsystem and
