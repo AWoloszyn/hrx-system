@@ -124,3 +124,10 @@ func.def @log2_f32(%value: f32) -> (f32) {
   %result = scalar.log2f<afn> %value : f32
   func.return %result : f32
 }
+
+// ====
+
+func.def @log_f32(%value: f32) -> (f32) {
+  %result = scalar.logf<afn> %value : f32
+  func.return %result : f32
+}

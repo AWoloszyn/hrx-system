@@ -26,7 +26,7 @@ contract under test rather than a target instruction or implementation file.
 | Scalar values | `integer.loom`, `integer_boundaries.loom`, `floating.loom`, `division.loom`, `selection.loom`: arithmetic, wrapping overflow, endpoint shifts/rotates, division signs, unary operations, and selection. |
 | Representation and accuracy | `bitfield.loom`, `conversion*.loom`, `narrow.loom`, `rounding.loom`, `float_selectors.loom`, `turns.loom`: widths, field boundaries, floating policies, and fused versus separate rounding. |
 | Exponentials | `exponential.loom`: normal/subnormal powers of two, overflow/underflow, nonfinite inputs, and explicit approximate f32 policies. |
-| Logarithms | `logarithm.loom`: subnormal normalization, neighbors of one, exceptional-value domains and independent vector lanes. |
+| Logarithms | `logarithm.loom`: base-2 and natural logs, subnormal normalization, neighbors of one, exceptional-value domains and independent vector lanes. |
 | Square roots | `roots.loom`: normal/subnormal inputs, signed zero, negative values, infinities/NaNs, and selected-width rounding of square root followed by reciprocal. |
 | Vector lane programs | `vector_fields.loom`: construction, signed and unsigned fields, full-width replacement, lane extraction, and typed stores through portable legalization. |
 | Vector floating-point lanes | `vector_floating.loom`: independent lane rounding and sign operations, preserving signed zeros, subnormals, infinities and NaN payloads through scalarization. |

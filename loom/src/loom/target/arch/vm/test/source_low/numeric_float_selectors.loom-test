@@ -304,3 +304,31 @@ low.func.def target<vm.core>(@vm) abi(vm_function) @log2_f32(%value: reg<vm.valu
   %result = float.sub.f32 %15, %13
   return %result
 }
+
+// ====
+
+vm.target<core> @vm
+
+func.def target(@vm) @log_f32(%value: f32) -> (f32) {
+  %result = scalar.logf<afn> %value : f32
+  func.return %result : f32
+}
+
+// ----
+low.func.def target<vm.core>(@vm) abi(vm_function) @log_f32(%value: reg<vm.value : f32>) -> (reg<vm.value : f32>) asm {
+  %8 = constant.i32 1060205080 : reg<vm.value : f32>
+  %9 = constant.i32 8388608 : reg<vm.value : f32>
+  %10 = constant.i32 1266679808 : reg<vm.value : f32>
+  %11 = constant.i32 1103101952 : reg<vm.value : f32>
+  %12 = constant.i32 1065353216 : reg<vm.value : f32>
+  %13 = constant.i32 0 : reg<vm.value : f32>
+  %14 = float.abs.f32 %value
+  %15 = float.compare.f32 %14, %9, 3
+  %16 = value.select %15, %10, %12 : reg<vm.value : f32>
+  %17 = value.select %15, %11, %13 : reg<vm.value : f32>
+  %18 = float.mul.f32 %value, %16
+  %19 = float.math.unary.f32 %18, 6
+  %20 = float.sub.f32 %19, %17
+  %result = float.mul.f32 %20, %8
+  return %result
+}
