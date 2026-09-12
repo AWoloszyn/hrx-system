@@ -63,7 +63,12 @@ enum amdf_gpu_device_feature_bits_e {
   AMDF_GPU_DEVICE_FEATURE_HOST_VISIBLE_LOCAL_MEMORY = UINT64_C(1) << 3,
 };
 
-/// Immutable capabilities of one endpoint under its instance's lifetime policy.
+/// Expected capabilities of one endpoint under its instance's lifetime policy.
+///
+/// The immutable snapshot describes hardware and implemented provider support;
+/// it does not qualify the installed native ABI or reserve resources. Explicit
+/// device creation qualifies the native connection and rejects an unsupported
+/// requested lifetime instead of substituting another policy.
 typedef struct amdf_gpu_device_capabilities_t {
   /// Must be `AMDF_STRUCTURE_TYPE_GPU_DEVICE_CAPABILITIES`.
   amdf_structure_type_t type;
@@ -71,7 +76,7 @@ typedef struct amdf_gpu_device_capabilities_t {
   uint32_t structure_size;
   /// Optional output extension chain. No extensions are currently defined.
   void* next;
-  /// Features implemented by the provider under the instance's lifetime policy.
+  /// Expected features under the instance's lifetime policy.
   amdf_gpu_device_features_t features;
 } amdf_gpu_device_capabilities_t;
 
@@ -345,12 +350,14 @@ typedef struct amdf_gpu_api_t {
       const amdf_gpu_kernel_queue_submission_info_t* submission_info,
       uint64_t* out_submission);
 
-  /// Copies cached capabilities under the instance's native lifetime policy.
+  /// Copies expected capabilities under the instance's native lifetime policy.
   ///
-  /// An unsupported lifetime returns UNSUPPORTED without modifying the output.
-  /// A supported lifetime may omit features available under another lifetime
-  /// on the same endpoint. The operation is thread-safe and performs no system
-  /// call, allocation, device initialization, retry, sleep, or device wait.
+  /// A lifetime not implemented by the provider returns UNSUPPORTED without
+  /// modifying the output. A supported lifetime may omit features available
+  /// under another lifetime on the same endpoint. Native ABI admission occurs
+  /// at device creation, not here. The operation is thread-safe and performs no
+  /// system call, allocation, device initialization, retry, sleep, or device
+  /// wait.
   amdf_status_t(AMDF_CALL* endpoint_query_device_capabilities)(
       amdf_endpoint_t* endpoint,
       amdf_gpu_device_capabilities_t* out_capabilities);

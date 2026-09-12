@@ -16,11 +16,11 @@
 extern "C" {
 #endif  // __cplusplus
 
-// Native support and implemented features for one lifetime policy.
+// Expected native support and implemented features for one lifetime policy.
 typedef struct amdf_gpu_lifetime_properties_t {
-  // Whether native services can honor this instance lifetime policy.
+  // Whether the provider implements this policy; activation qualifies its ABI.
   bool supported;
-  // Features guaranteed for a device under this lifetime policy.
+  // Expected features under this lifetime policy.
   amdf_gpu_device_features_t features;
 } amdf_gpu_lifetime_properties_t;
 

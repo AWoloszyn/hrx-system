@@ -9,9 +9,9 @@
 
 #include <unistd.h>
 
-#include "libamdf/src/gpu/umd/kfd/file.h"
 #include "libamdf/src/gpu/umd/kfd/target/user_queue.h"
 #include "libamdf/src/gpu/umd/kfd/topology.h"
+#include "libamdf/src/platform/linux/file.h"
 #include "libamdf/src/platform/linux/host_cache.h"
 
 amdf_status_t amdf_gpu_umd_query_endpoint_profile(
@@ -24,20 +24,10 @@ amdf_status_t amdf_gpu_umd_query_endpoint_profile(
     *out_available = false;
     return AMDF_STATUS_OK;
   }
-  int descriptor = -1;
-  struct kfd_ioctl_get_version_args version = {0};
-  if (amdf_status_is_ok(status)) {
-    status = amdf_gpu_kfd_file_open(&descriptor, &version);
-  }
-  const amdf_status_t close_status = amdf_linux_file_close(&descriptor);
-  if (!amdf_status_is_ok(close_status)) status = close_status;
   if (!amdf_status_is_ok(status)) return status;
-  // KFD 1.18 is the minimum supported native interface. CREATE_PROCESS arrived
-  // in 1.19; its absence never changes an INSTANCE request into PROCESS use.
-  if (version.major_version != 1 || version.minor_version < 18) {
-    *out_available = false;
-    return AMDF_STATUS_OK;
-  }
+  // These are expected implemented policies, not installed-ABI qualification.
+  // Opening /dev/kfd creates process state. Explicit device creation qualifies
+  // the actual connection before selecting its requested lifetime.
   topology.properties.native_lifetimes[AMDF_NATIVE_LIFETIME_PROCESS] =
       (amdf_gpu_lifetime_properties_t){
           .supported = true,
@@ -47,7 +37,7 @@ amdf_status_t amdf_gpu_umd_query_endpoint_profile(
       };
   topology.properties.native_lifetimes[AMDF_NATIVE_LIFETIME_INSTANCE] =
       (amdf_gpu_lifetime_properties_t){
-          .supported = version.minor_version >= 19,
+          .supported = true,
           .features = topology.memory_features |
                       AMDF_GPU_DEVICE_FEATURE_DEVICE_RECREATION,
       };

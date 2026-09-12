@@ -148,6 +148,20 @@ TEST_F(KfdInstanceTest, ProcessLifetimeUsesPrimaryContextWithoutCreateProcess) {
   EXPECT_EQ(native_.Count(Operation::kCreateProcess), 0u);
 }
 
+TEST_F(KfdInstanceTest, ProcessLifetimeRejectsUnsupportedAbiBeforeVmCreation) {
+  for (const auto version :
+       {kfd_ioctl_get_version_args{1, 17}, kfd_ioctl_get_version_args{2, 0}}) {
+    native_.version = version;
+    EXPECT_EQ(Prepare(AMDF_NATIVE_LIFETIME_PROCESS),
+              amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED));
+    EXPECT_EQ(native_.Count(Operation::kCreateProcess), 0u);
+    EXPECT_EQ(native_.Count(Operation::kOpenRender), 0u);
+    EXPECT_EQ(native_.Count(Operation::kAcquire), 0u);
+    ASSERT_EQ(amdf_gpu_umd_instance_destroy(instance_), AMDF_STATUS_OK);
+    instance_ = nullptr;
+  }
+}
+
 TEST_F(KfdInstanceTest, InstanceLifetimeRejectsOldAbiWithoutChangingPolicy) {
   native_.version.minor_version = 18;
   EXPECT_EQ(Prepare(), amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED));

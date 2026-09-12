@@ -312,7 +312,6 @@ iree_cc_library(
   SRCS
     "endpoint_profile.c"
   DEPS
-    ::file
     ::topology
     amdf::headers
     libamdf::src::gpu::endpoint_profile
