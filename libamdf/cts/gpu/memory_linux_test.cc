@@ -334,8 +334,6 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
               AMDF_STATUS_CODE_INVALID_ARGUMENT);
     EXPECT_EQ(amdf_status_code(api_->memory_destroy(memories_[0])),
               AMDF_STATUS_CODE_BUSY);
-    EXPECT_EQ(amdf_status_code(api_->device_destroy(device_)),
-              AMDF_STATUS_CODE_BUSY);
 
     ASSERT_EQ(api_->host_mapping_destroy(mappings_[0]), AMDF_STATUS_OK);
     mappings_[0] = nullptr;

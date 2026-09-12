@@ -200,23 +200,16 @@ amdf_status_t amdf_gpu_memory_create(
       amdf_calloc(host_allocator, sizeof(*memory),
                   amdf_alignof(amdf_gpu_memory_t), (void**)&memory);
   if (!amdf_status_is_ok(status)) return status;
-  status =
-      amdf_memory_initialize(&memory->base, &amdf_gpu_memory_vtable, device);
+  amdf_memory_initialize(&memory->base, &amdf_gpu_memory_vtable, device);
 
   amdf_gpu_umd_memory_result_t result = {0};
-  if (amdf_status_is_ok(status)) {
-    status =
-        amdf_gpu_umd_memory_create(amdf_gpu_device_get_umd(device), profile,
-                                   create_info, &memory->umd, &result);
-  }
+  status = amdf_gpu_umd_memory_create(amdf_gpu_device_get_umd(device), profile,
+                                      create_info, &memory->umd, &result);
   if (amdf_status_is_ok(status)) {
     amdf_gpu_memory_set_info(memory, device, profile,
                              create_info->device_access, result);
     *out_memory = &memory->base;
   } else {
-    if (memory->base.device != NULL) {
-      amdf_memory_deinitialize(&memory->base);
-    }
     amdf_free(host_allocator, memory);
   }
   return status;
@@ -232,23 +225,17 @@ amdf_status_t amdf_gpu_memory_import(
       amdf_calloc(host_allocator, sizeof(*memory),
                   amdf_alignof(amdf_gpu_memory_t), (void**)&memory);
   if (!amdf_status_is_ok(status)) return status;
-  status =
-      amdf_memory_initialize(&memory->base, &amdf_gpu_memory_vtable, device);
+  amdf_memory_initialize(&memory->base, &amdf_gpu_memory_vtable, device);
 
   amdf_gpu_umd_memory_result_t result = {0};
-  if (amdf_status_is_ok(status)) {
-    status = amdf_gpu_umd_memory_import(amdf_gpu_device_get_umd(device),
-                                        profile, import_info, external_memory,
-                                        &memory->umd, &result);
-  }
+  status = amdf_gpu_umd_memory_import(amdf_gpu_device_get_umd(device), profile,
+                                      import_info, external_memory,
+                                      &memory->umd, &result);
   if (amdf_status_is_ok(status)) {
     amdf_gpu_memory_set_info(memory, device, profile,
                              import_info->device_access, result);
     *out_memory = &memory->base;
   } else {
-    if (memory->base.device != NULL) {
-      amdf_memory_deinitialize(&memory->base);
-    }
     amdf_free(host_allocator, memory);
   }
   return status;

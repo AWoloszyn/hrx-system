@@ -48,7 +48,8 @@ struct amdf_device_t {
   amdf_instance_t* provider_instance;
   // Exact engine family implementing this device.
   amdf_engine_kind_t engine_kind;
-  // Number of live children borrowing this device.
+  // Number of live queues, programs, and contexts borrowing this device.
+  // Memory dependencies are caller preconditions and are not counted.
   amdf_child_tracker_t children;
 };
 
@@ -78,7 +79,7 @@ amdf_status_t amdf_device_register_child(amdf_device_t* device);
 // Releases one child borrow.
 void amdf_device_unregister_child(amdf_device_t* device);
 
-// Destroys a device with no remaining children.
+// Destroys a device after dependent memory and tracked children are released.
 amdf_status_t AMDF_CALL amdf_device_destroy(amdf_device_t* device);
 
 #ifdef __cplusplus

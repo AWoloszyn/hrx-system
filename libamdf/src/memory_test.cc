@@ -60,6 +60,8 @@ struct FakeMemory {
   amdf_status_t export_status;
   amdf_status_t map_status;
   amdf_status_t site_status;
+  // Native release result injected before relinquishing backing ownership.
+  amdf_status_t destroy_status;
   uint32_t export_call_count;
   uint32_t map_call_count;
   uint32_t site_description_count;
@@ -114,6 +116,9 @@ static amdf_status_t FakeMemoryMap(amdf_memory_t* memory,
 
 static amdf_status_t FakeMemoryDestroyNative(amdf_memory_t* base_memory) {
   auto* memory = reinterpret_cast<FakeMemory*>(base_memory);
+  if (!amdf_status_is_ok(memory->destroy_status)) {
+    return memory->destroy_status;
+  }
   amdf_external_memory_release(&memory->adopted_external_memory);
   return AMDF_STATUS_OK;
 }
@@ -134,7 +139,7 @@ static amdf_status_t AllocateFakeMemory(FakeDevice* device,
   const amdf_allocator_t host_allocator =
       amdf_device_host_allocator(&device->base);
   FakeMemory* memory = nullptr;
-  amdf_status_t status =
+  const amdf_status_t status =
       amdf_calloc(host_allocator, sizeof(*memory), amdf_alignof(FakeMemory),
                   reinterpret_cast<void**>(&memory));
   if (!amdf_status_is_ok(status)) return status;
@@ -142,6 +147,7 @@ static amdf_status_t AllocateFakeMemory(FakeDevice* device,
   memory->export_status = AMDF_STATUS_OK;
   memory->map_status = amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   memory->site_status = AMDF_STATUS_OK;
+  memory->destroy_status = AMDF_STATUS_OK;
   memory->site_description.capabilities =
       AMDF_MEMORY_SITE_CAPABILITY_READ | AMDF_MEMORY_SITE_CAPABILITY_WRITE |
       AMDF_MEMORY_SITE_CAPABILITY_MAPPING_SOURCE |
@@ -161,39 +167,32 @@ static amdf_status_t AllocateFakeMemory(FakeDevice* device,
   memory->site_description.atomic_reach.scope_64 = AMDF_ATOMIC_SCOPE_DEVICE;
   memory->site_description.release_fixed_cost_nanoseconds = 17;
   memory->site_description.acquire_fixed_cost_nanoseconds = 25;
-  status =
-      amdf_memory_initialize(&memory->base, &kFakeMemoryVtable, &device->base);
-  if (amdf_status_is_ok(status)) {
-    memory->base.info.type = AMDF_STRUCTURE_TYPE_MEMORY_INFO;
-    memory->base.info.structure_size = sizeof(memory->base.info);
-    memory->base.info.memory_profile_ordinal = memory_profile_ordinal;
-    memory->base.info.memory_class = AMDF_MEMORY_CLASS_SYSTEM;
-    memory->base.info.device_access =
-        AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
-    memory->base.info.atomic_operations_32 =
-        device->profile.atomic_operations_32;
-    memory->base.info.atomic_operations_64 =
-        device->profile.atomic_operations_64;
-    memory->base.info.address_domain_ordinal = 0;
-    memory->base.info.flags = AMDF_MEMORY_FLAG_HOST_VISIBLE |
-                              AMDF_MEMORY_FLAG_SHAREABLE |
-                              AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
-    memory->base.info.source_byte_offset = source_byte_offset;
-    memory->base.info.byte_length = byte_length;
-    memory->base.info.alignment = 4096;
-    memory->base.info.native_allocation_byte_length =
-        source_byte_offset + byte_length;
-    memory->base.info.native_allocation_granularity = 4096;
-    memory->base.info.physical_backing_id = backing_id;
-    std::memcpy(memory->base.addresses, device->addresses.data(),
-                sizeof(memory->base.addresses));
-    memory->base.info.address_kinds = device->profile.address_kinds;
-    memory->base.info.reset_epoch = 1;
-    *out_memory = &memory->base;
-  } else {
-    amdf_free(host_allocator, memory);
-  }
-  return status;
+  amdf_memory_initialize(&memory->base, &kFakeMemoryVtable, &device->base);
+  memory->base.info.type = AMDF_STRUCTURE_TYPE_MEMORY_INFO;
+  memory->base.info.structure_size = sizeof(memory->base.info);
+  memory->base.info.memory_profile_ordinal = memory_profile_ordinal;
+  memory->base.info.memory_class = AMDF_MEMORY_CLASS_SYSTEM;
+  memory->base.info.device_access =
+      AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
+  memory->base.info.atomic_operations_32 = device->profile.atomic_operations_32;
+  memory->base.info.atomic_operations_64 = device->profile.atomic_operations_64;
+  memory->base.info.address_domain_ordinal = 0;
+  memory->base.info.flags = AMDF_MEMORY_FLAG_HOST_VISIBLE |
+                            AMDF_MEMORY_FLAG_SHAREABLE |
+                            AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+  memory->base.info.source_byte_offset = source_byte_offset;
+  memory->base.info.byte_length = byte_length;
+  memory->base.info.alignment = 4096;
+  memory->base.info.native_allocation_byte_length =
+      source_byte_offset + byte_length;
+  memory->base.info.native_allocation_granularity = 4096;
+  memory->base.info.physical_backing_id = backing_id;
+  std::memcpy(memory->base.addresses, device->addresses.data(),
+              sizeof(memory->base.addresses));
+  memory->base.info.address_kinds = device->profile.address_kinds;
+  memory->base.info.reset_epoch = 1;
+  *out_memory = &memory->base;
+  return AMDF_STATUS_OK;
 }
 
 static amdf_status_t FakeDeviceQueryMemoryProfile(
@@ -563,9 +562,7 @@ TEST(MemoryExternalTest, CompletesProfileExportImportPairAndReverseTeardown) {
   EXPECT_EQ(pair_info.atomic_reach.scope_64, AMDF_ATOMIC_SCOPE_NONE);
 
   ASSERT_EQ(amdf_memory_destroy(source_memory), AMDF_STATUS_OK);
-  EXPECT_EQ(amdf_child_tracker_count(&source_device.base.children), 0u);
   ASSERT_EQ(amdf_memory_destroy(destination_memory), AMDF_STATUS_OK);
-  EXPECT_EQ(amdf_child_tracker_count(&destination_device.base.children), 0u);
   EXPECT_EQ(transport_release.count, 1u);
 }
 
@@ -622,7 +619,6 @@ TEST(MemoryExternalTest, ImportFailureNeverConsumesInputOrPublishesOutput) {
                           sizeof(external_memory)),
               0);
     EXPECT_EQ(release_state.count, 0u);
-    EXPECT_EQ(amdf_child_tracker_count(&device.base.children), 0u);
   }
 
   amdf_memory_import_info_t invalid_info = import_info;
@@ -778,13 +774,24 @@ TEST(MemoryExternalTest, RawAddressImportAdoptsReleaseUntilTeardown) {
   EXPECT_EQ(release_state.count, 0u);
   const amdf_external_memory_t empty = {};
   EXPECT_EQ(std::memcmp(&external_memory, &empty, sizeof(external_memory)), 0);
-  EXPECT_EQ(amdf_child_tracker_count(&device.base.children), 1u);
+
+  auto* native_memory = reinterpret_cast<FakeMemory*>(memory);
+  const amdf_status_t release_failure =
+      amdf_make_api_status(AMDF_STATUS_CODE_BUSY);
+  native_memory->destroy_status = release_failure;
+  EXPECT_EQ(amdf_memory_destroy(memory), release_failure);
+  EXPECT_EQ(release_state.count, 0u);
+  amdf_memory_info_t memory_info = {};
+  memory_info.type = AMDF_STRUCTURE_TYPE_MEMORY_INFO;
+  memory_info.structure_size = sizeof(memory_info);
+  ASSERT_EQ(amdf_memory_query_info(memory, &memory_info), AMDF_STATUS_OK);
+  EXPECT_EQ(memory_info.byte_length, sizeof(host_storage));
+  native_memory->destroy_status = AMDF_STATUS_OK;
 
   ASSERT_EQ(amdf_memory_destroy(memory), AMDF_STATUS_OK);
   EXPECT_EQ(release_state.count, 1u);
   EXPECT_EQ(release_state.type, AMDF_EXTERNAL_MEMORY_TYPE_HOST_POINTER);
   EXPECT_EQ(release_state.payload.host_pointer, host_storage.data());
-  EXPECT_EQ(amdf_child_tracker_count(&device.base.children), 0u);
 }
 
 TEST(MemoryExternalTest, FailedCreateAndMapPreserveCallerStorage) {

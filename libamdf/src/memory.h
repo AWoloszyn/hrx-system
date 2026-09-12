@@ -40,7 +40,8 @@ struct amdf_memory_t {
   amdf_allocator_t host_allocator;
   // Implementation operations selected before the memory is published.
   const amdf_memory_vtable_t* vtable;
-  // Device borrowed for the lifetime of this memory attachment.
+  // Device borrowed without retention or lifetime tracking. The caller keeps
+  // it live through successful native memory teardown.
   amdf_device_t* device;
   // Immutable properties established before publication.
   amdf_memory_info_t info;
@@ -51,13 +52,10 @@ struct amdf_memory_t {
   amdf_child_tracker_t children;
 };
 
-// Initializes an unpublished memory base and borrows its device.
-amdf_status_t amdf_memory_initialize(amdf_memory_t* memory,
-                                     const amdf_memory_vtable_t* vtable,
-                                     amdf_device_t* device);
-
-// Releases the device borrow held by unpublished or torn-down memory.
-void amdf_memory_deinitialize(amdf_memory_t* memory);
+// Initializes an unpublished memory base with a caller-enforced device borrow.
+void amdf_memory_initialize(amdf_memory_t* memory,
+                            const amdf_memory_vtable_t* vtable,
+                            amdf_device_t* device);
 
 // Registers one child that borrows `memory`.
 amdf_status_t amdf_memory_register_child(amdf_memory_t* memory);

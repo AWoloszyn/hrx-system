@@ -115,12 +115,16 @@ typedef struct amdf_api_t {
       amdf_endpoint_t* endpoint, uint32_t queue_family_ordinal,
       amdf_queue_family_info_t* out_info);
 
-  /// Destroys a materialized device after all of its children are destroyed.
+  /// Destroys a materialized device after its dependent resources are released.
   ///
   /// The caller must have exclusive access. Returns
-  /// `AMDF_STATUS_CODE_BUSY` without native mutation while a child remains
-  /// live. Caller-submitted work must already be retired before its owning
-  /// children are destroyed. A native teardown failure leaves the device live
+  /// `AMDF_STATUS_CODE_BUSY` without native mutation while a queue or context
+  /// remains live. Memory lifetimes are caller preconditions:
+  /// dependent memory must already be destroyed, and libamdf neither retains
+  /// the device through memory nor tracks memory to diagnose premature device
+  /// destruction. Violating that precondition is undefined behavior.
+  /// Caller-submitted work must already be retired before its owning resources
+  /// are destroyed. A native teardown failure leaves the device live
   /// so destruction can be retried.
   amdf_status_t(AMDF_CALL* device_destroy)(amdf_device_t* device);
 
@@ -141,7 +145,8 @@ typedef struct amdf_api_t {
   ///
   /// The selected profile must expose exactly one of CREATE and REGISTER, with
   /// `registered_host_pointer` present exactly for REGISTER. The returned
-  /// memory borrows `device`, which must outlive it. Its copied memory info
+  /// memory borrows `device`, which must outlive it; this dependency is not
+  /// retained or lifetime-tracked. Its copied memory info
   /// reports the exact requested device access, and every bit in
   /// `required_flags` is guaranteed. In particular,
   /// `AMDF_MEMORY_FLAG_DEVICE_ADDRESS` means that all ordinary mapping and
@@ -161,7 +166,8 @@ typedef struct amdf_api_t {
   ///
   /// The selected destination profile must expose IMPORT and accept the exact
   /// requested device access and transport. The returned attachment borrows
-  /// `device` and is completely mapped and ready for every achieved ordinary
+  /// `device`, which must outlive it without retention or lifetime tracking,
+  /// and is completely mapped and ready for every achieved ordinary
   /// use. On success, the implementation has
   /// acquired or adopted the payload lifetime, zeros `inout_external_memory`,
   /// and publishes `out_memory`. Every failure leaves both caller values

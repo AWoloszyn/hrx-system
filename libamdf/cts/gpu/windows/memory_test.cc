@@ -205,8 +205,6 @@ TEST_F(GpuMemoryTest, OwnsStableSystemAddressAndExplicitHostMapping) {
 
   EXPECT_EQ(amdf_status_code(api_->memory_destroy(memory_)),
             AMDF_STATUS_CODE_BUSY);
-  EXPECT_EQ(amdf_status_code(api_->device_destroy(device_)),
-            AMDF_STATUS_CODE_BUSY);
   ASSERT_TRUE(amdf_status_is_ok(api_->host_mapping_destroy(mapping_)));
   mapping_ = nullptr;
   ASSERT_TRUE(amdf_status_is_ok(api_->memory_destroy(memory_)));

@@ -502,23 +502,13 @@ static void amdf_memory_assert_result(
   }
 }
 
-amdf_status_t amdf_memory_initialize(amdf_memory_t* memory,
-                                     const amdf_memory_vtable_t* vtable,
-                                     amdf_device_t* device) {
-  const amdf_status_t status = amdf_device_register_child(device);
-  if (!amdf_status_is_ok(status)) {
-    return status;
-  }
+void amdf_memory_initialize(amdf_memory_t* memory,
+                            const amdf_memory_vtable_t* vtable,
+                            amdf_device_t* device) {
   memory->host_allocator = amdf_device_host_allocator(device);
   memory->vtable = vtable;
   memory->device = device;
   amdf_child_tracker_initialize(&memory->children);
-  return AMDF_STATUS_OK;
-}
-
-void amdf_memory_deinitialize(amdf_memory_t* memory) {
-  amdf_device_unregister_child(memory->device);
-  memory->device = NULL;
 }
 
 amdf_status_t amdf_memory_register_child(amdf_memory_t* memory) {
@@ -933,7 +923,6 @@ amdf_status_t AMDF_CALL amdf_memory_destroy(amdf_memory_t* memory) {
   const amdf_status_t status = memory->vtable->destroy_native(memory);
   if (amdf_status_is_ok(status)) {
     const amdf_allocator_t host_allocator = memory->host_allocator;
-    amdf_memory_deinitialize(memory);
     amdf_free(host_allocator, memory);
   }
   return status;
