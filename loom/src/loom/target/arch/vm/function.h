@@ -28,12 +28,15 @@ typedef struct loom_vm_function_signature_t {
 // builder, then appends its instruction stream exactly once. |out_row| receives
 // its byte length and frame high waters; the module writer owns callable and
 // section-relative offsets. Branches target block markers using signed word
-// offsets patched after emission. The shared allocator owns edge and packet
-// moves, including cycle temporaries. Common allocation repair materializes
-// scalar spills; the scheduler's stack layout owns their byte offsets. Call
-// snapshots follow that durable storage and never overlap it. All compiler
-// scratch belongs to |request|'s arena. Structured frame errors are forwarded
-// to its diagnostic emitter and terminate emission with a failure status.
+// offsets patched after emission. Constants retain canonical Low form until
+// emission chooses an equivalent compact encoding of the complete value cell.
+// Block offsets and byte lengths come from the emitted stream, not nominal
+// sizes. The shared allocator owns edge and packet moves, including cycle
+// temporaries. Common allocation repair materializes scalar spills; the
+// scheduler's stack layout owns their byte offsets. Call snapshots follow that
+// durable storage and never overlap it. All compiler scratch belongs to
+// |request|'s arena. Structured frame errors are forwarded to its diagnostic
+// emitter and terminate emission with a failure status.
 // |function_ordinals_by_symbol| maps module symbol IDs to local function
 // ordinals, with UINT16_MAX for symbols outside this emitted module.
 iree_status_t loom_vm_function_emit(

@@ -209,29 +209,58 @@ IREE_ATTRIBUTE_NOINLINE static iree_status_t loom_vm_function_packet(
                                                          ordinal, NULL);
     packet[operand->encoding_field_id] = (uint8_t)assignment->location_base;
   }
+  iree_host_size_t packet_length = descriptor->encoding_format_id;
   if (descriptor->immediate_count) {
     // Required descriptor immediates and canonical IR dictionaries share name
     // order, established by the projection and Low verifier.
     const loom_named_attr_slice_t attributes =
         loom_low_const_isa(node->op) ? loom_low_const_attrs(node->op)
                                      : loom_low_op_attrs(node->op);
-    for (uint16_t i = 0; i < descriptor->immediate_count; ++i) {
-      const loom_low_immediate_t* immediate =
-          &frame->target.descriptor_set
-               ->immediates[descriptor->immediate_start + i];
-      const uint64_t bits = loom_vm_function_immediate(
-          frame, immediate, attributes.entries[i].value);
-      if (immediate->bit_width <= 8) {
-        // Packed selector components share a zero-initialized packet byte.
-        packet[immediate->encoding_field_id] |=
-            (uint8_t)(bits << immediate->encoding_id);
+    // Keep constants canonical through Low CSE, including those synthesized by
+    // address materializers. Select the shortest encoding of the complete cell
+    // here; its high half also matters to untyped register copies and spills.
+    if (packet[0] == IREE_VM_BYTECODE_OPCODE_CONSTANT_I32 ||
+        packet[0] == IREE_VM_BYTECODE_OPCODE_CONSTANT_I64) {
+      // Verified i32 immediates already have a zero high half.
+      const uint64_t bits = (uint64_t)attributes.entries[0].value.i64;
+      if (bits == 0) {
+        packet[0] = IREE_VM_BYTECODE_OPCODE_CONSTANT_ZERO;
+        packet_length = sizeof(iree_vm_bytecode_constant_zero_t);
+      } else if (bits + UINT64_C(32768) <= UINT64_C(65535)) {
+        packet[0] = IREE_VM_BYTECODE_OPCODE_CONSTANT_S16;
+        memcpy(
+            packet + offsetof(iree_vm_bytecode_constant_s16_t, immediate_i16),
+            &bits, sizeof(int16_t));
+        packet_length = sizeof(iree_vm_bytecode_constant_s16_t);
       } else {
-        memcpy(packet + immediate->encoding_field_id, &bits,
-               immediate->bit_width / 8);
+        if (bits <= UINT32_MAX) {
+          packet[0] = IREE_VM_BYTECODE_OPCODE_CONSTANT_I32;
+          packet_length = sizeof(iree_vm_bytecode_constant_i32_t);
+        }
+        memcpy(packet + offsetof(iree_vm_bytecode_constant_i32_t, bits_u32),
+               &bits,
+               packet_length -
+                   offsetof(iree_vm_bytecode_constant_i32_t, bits_u32));
+      }
+    } else {
+      for (uint16_t i = 0; i < descriptor->immediate_count; ++i) {
+        const loom_low_immediate_t* immediate =
+            &frame->target.descriptor_set
+                 ->immediates[descriptor->immediate_start + i];
+        const uint64_t bits = loom_vm_function_immediate(
+            frame, immediate, attributes.entries[i].value);
+        if (immediate->bit_width <= 8) {
+          // Packed selector components share a zero-initialized packet byte.
+          packet[immediate->encoding_field_id] |=
+              (uint8_t)(bits << immediate->encoding_id);
+        } else {
+          memcpy(packet + immediate->encoding_field_id, &bits,
+                 immediate->bit_width / 8);
+        }
       }
     }
   }
-  return iree_io_stream_write(stream, descriptor->encoding_format_id, packet);
+  return iree_io_stream_write(stream, packet_length, packet);
 }
 
 // Transfers whole value cells between physical registers and frame-local

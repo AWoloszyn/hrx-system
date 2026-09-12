@@ -38,3 +38,55 @@ low.func.def target<vm.core>(@vm) abi(vm_function) @boolean_logic(%a: reg<vm.val
   %exclusive = integer.xor.i32 %a, %b : reg<vm.value : i1>
   return %both, %either, %exclusive
 }
+
+// ====
+
+vm.target<core> @vm
+
+func.def target(@vm) @integer_constant_boundaries() -> (i64, i64, i64, i64, i64, i64, i64, i64) {
+  %c0 = scalar.constant 0 : i64
+  %negative = scalar.constant -1 : i64
+  %signed_min = scalar.constant -32768 : i64
+  %signed_max = scalar.constant 32767 : i64
+  %below_signed = scalar.constant -32769 : i64
+  %above_signed = scalar.constant 32768 : i64
+  %unsigned_max = scalar.constant 4294967295 : i64
+  %above_unsigned = scalar.constant 4294967296 : i64
+  func.return %c0, %negative, %signed_min, %signed_max, %below_signed, %above_signed, %unsigned_max, %above_unsigned : i64, i64, i64, i64, i64, i64, i64, i64
+}
+
+// ----
+low.func.def target<vm.core>(@vm) abi(vm_function) @integer_constant_boundaries() -> (reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>) asm {
+  %c0 = constant.i64 0
+  %negative = constant.i64 -1
+  %signed_min = constant.i64 -32768
+  %signed_max = constant.i64 32767
+  %below_signed = constant.i64 -32769
+  %above_signed = constant.i64 32768
+  %unsigned_max = constant.i64 4294967295
+  %above_unsigned = constant.i64 4294967296
+  return %c0, %negative, %signed_min, %signed_max, %below_signed, %above_signed, %unsigned_max, %above_unsigned
+}
+
+// ====
+
+vm.target<core> @vm
+
+func.def target(@vm) @narrow_integer_constant_boundaries() -> (i32, i32, i32, i32, i32) {
+  %c0 = scalar.constant 0 : i32
+  %negative = scalar.constant -1 : i32
+  %signed_min = scalar.constant -32768 : i32
+  %signed_max = scalar.constant 32767 : i32
+  %above_signed = scalar.constant 32768 : i32
+  func.return %c0, %negative, %signed_min, %signed_max, %above_signed : i32, i32, i32, i32, i32
+}
+
+// ----
+low.func.def target<vm.core>(@vm) abi(vm_function) @narrow_integer_constant_boundaries() -> (reg<vm.value : i32>, reg<vm.value : i32>, reg<vm.value : i32>, reg<vm.value : i32>, reg<vm.value : i32>) asm {
+  %c0 = constant.i32 0
+  %negative = constant.i32 4294967295
+  %signed_min = constant.i32 4294934528
+  %signed_max = constant.i32 32767
+  %above_signed = constant.i32 32768
+  return %c0, %negative, %signed_min, %signed_max, %above_signed
+}

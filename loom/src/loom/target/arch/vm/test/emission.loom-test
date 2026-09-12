@@ -2,6 +2,60 @@
 
 vm.target<core> @vm
 
+// Constant compaction preserves complete cells, including the high zero half
+// of an i32 literal and the sign bit of floating-point negative zero.
+func.def public target(@vm) @constant_cells() -> (i64, i64, i64, i64, i64, i64, i32, f64) {
+  %c0 = scalar.constant 0 : i64
+  %short = scalar.constant -32768 : i64
+  %below_short = scalar.constant -32769 : i64
+  %above_short = scalar.constant 32768 : i64
+  %unsigned_max = scalar.constant 4294967295 : i64
+  %above_unsigned = scalar.constant 4294967296 : i64
+  %narrow_negative = scalar.constant -1 : i32
+  %float_negative_zero = scalar.constant -0.0 : f64
+  func.return %c0, %short, %below_short, %above_short, %unsigned_max, %above_unsigned, %narrow_negative, %float_negative_zero : i64, i64, i64, i64, i64, i64, i32, f64
+}
+
+// ----
+vm.module core(0.0) {
+  section strings alignment(8) {
+    string @string0 = "constant_cells"
+  }
+
+  section signatures alignment(8) {
+    signature @signature0 () -> (i64, i64, i64, i64, i64, i64, i32, f64)
+  }
+
+  section callable_types alignment(8) {
+    callable @callable0 flags([]) depth(0) : @signature0
+  }
+
+  section exports alignment(8) {
+    export @export0 name(@string0) : @callable0 = @function0
+  }
+
+  section functions alignment(8) {
+    func @function0 : @callable0 flags([]) frame(local_bytes = 0, value_registers = 8, ref_registers = 0, function_registers = 0, local_refs = 0, local_functions = 0) {
+    ^bb0:
+      control.block
+      %v0 = constant.zero
+      %v1 = constant.s16 -32768
+      %v2 = constant.i64 0xFFFFFFFFFFFF7FFF
+      %v3 = constant.i32 0x00008000
+      %v4 = constant.i32 0xFFFFFFFF
+      %v5 = constant.i64 0x0000000100000000
+      %v6 = constant.i32 0xFFFFFFFF
+      %v7 = constant.i64 0x8000000000000000
+      control.return
+    }
+  }
+
+}
+
+// ====
+
+vm.target<core> @vm
+
 func.def public target(@vm) @arithmetic(%a: i32, %b: i32, %c: i32) -> (i32) {
   %sum = scalar.addi %a, %b : i32
   %scaled = scalar.muli %sum, %c : i32
