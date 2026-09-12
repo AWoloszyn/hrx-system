@@ -18,6 +18,7 @@
 #include "libamdf/src/gpu/umd/kfd/device.h"
 #include "libamdf/src/platform/linux/dma_buf.h"
 #include "libamdf/src/platform/linux/file.h"
+#include "libamdf/src/platform/linux/host_cache.h"
 
 // One backing handle and GPU attachment, including incomplete teardown state.
 struct amdf_gpu_umd_memory_t {
@@ -399,7 +400,7 @@ amdf_status_t amdf_gpu_umd_memory_create(
   if (amdf_status_is_ok(status)) {
     memory->host_pointer = buffer_result.host_pointer;
     memory->cacheability = (plan.flags & AMDF_MEMORY_FLAG_HOST_COHERENT) != 0
-                               ? AMDF_HOST_CACHEABILITY_COHERENT
+                               ? AMDF_HOST_CACHEABILITY_WRITE_BACK
                                : AMDF_HOST_CACHEABILITY_WRITE_COMBINED;
   }
   if (amdf_status_is_ok(status) &&
@@ -455,33 +456,31 @@ amdf_status_t amdf_gpu_umd_memory_map(
     const amdf_memory_map_info_t* map_info,
     amdf_gpu_umd_host_mapping_t** out_mapping,
     amdf_gpu_umd_host_mapping_result_t* out_result) {
-  const bool coherent = memory->cacheability == AMDF_HOST_CACHEABILITY_COHERENT;
-  const amdf_cache_transition_t release =
-      coherent
-          ? (amdf_cache_transition_t){.kind = AMDF_CACHE_TRANSITION_KIND_NONE}
-          : (amdf_cache_transition_t){
-                .kind = AMDF_CACHE_TRANSITION_KIND_GLOBAL,
-                .executor = AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT,
-                .host_operation = AMDF_HOST_CACHE_OPERATION_FLUSH,
-                .host_fence_after = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
-            };
-  const amdf_cache_transition_t acquire =
-      coherent
-          ? (amdf_cache_transition_t){.kind = AMDF_CACHE_TRANSITION_KIND_NONE}
-          : (amdf_cache_transition_t){
-                .kind = AMDF_CACHE_TRANSITION_KIND_GLOBAL,
-                .executor = AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT,
-                .host_operation = AMDF_HOST_CACHE_OPERATION_INVALIDATE,
-                .host_fence_after = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
-            };
+  const bool write_back =
+      memory->cacheability == AMDF_HOST_CACHEABILITY_WRITE_BACK;
+  const uint32_t line_size = write_back ? memory->device->cache_line_size : 0;
+  const amdf_cache_transition_t flush = {
+      .kind = write_back ? AMDF_CACHE_TRANSITION_KIND_RANGE
+                         : AMDF_CACHE_TRANSITION_KIND_GLOBAL,
+      .executor = AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT,
+      .host_operation = AMDF_HOST_CACHE_OPERATION_FLUSH,
+      .host_instruction = write_back ? AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH
+                                     : AMDF_HOST_CACHE_INSTRUCTION_NONE,
+      .host_fence_before = write_back ? AMDF_HOST_CACHE_FENCE_X86_MFENCE
+                                      : AMDF_HOST_CACHE_FENCE_NONE,
+      .host_fence_after = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
+      .range_granularity = line_size,
+  };
+  amdf_cache_transition_t invalidate = flush;
+  invalidate.host_operation = AMDF_HOST_CACHE_OPERATION_INVALIDATE;
   *out_result = (amdf_gpu_umd_host_mapping_result_t){
       .flags = profile->host_mapping.supported_access,
       .pointer = (uint8_t*)memory->host_pointer + map_info->byte_offset,
       .byte_length = map_info->byte_length,
       .cacheability = memory->cacheability,
-      .cache_line_size = 0,
-      .release = release,
-      .acquire = acquire,
+      .cache_line_size = line_size,
+      .flush = flush,
+      .invalidate = invalidate,
   };
   // The common host-view object owns the borrow; the native mapping persists
   // with memory and needs no separate allocation or per-view native resource.
@@ -491,13 +490,19 @@ amdf_status_t amdf_gpu_umd_memory_map(
 
 amdf_status_t amdf_gpu_umd_host_mapping_cache_control(
     amdf_gpu_umd_host_mapping_t* mapping, amdf_host_cache_operation_t operation,
-    uint64_t byte_offset, uint64_t byte_length) {
-  (void)mapping;
+    uint64_t memory_byte_offset, uint64_t byte_length) {
+  const amdf_gpu_umd_memory_t* memory = (amdf_gpu_umd_memory_t*)mapping;
   (void)operation;
-  (void)byte_offset;
-  // x86 coherent system pages need no host cache-line operation. WC VRAM
-  // mappings still require store-buffer ordering at a host ownership boundary.
-  if (byte_length != 0) _mm_mfence();
+  if (memory->cacheability == AMDF_HOST_CACHEABILITY_WRITE_BACK) {
+    // GPU snooping does not make this backing coherent with other consumers.
+    // Explicit CPU operations cover the requested bytes even on coherent GTT.
+    amdf_linux_host_cache_transfer(
+        (uint8_t*)memory->host_pointer + memory_byte_offset, byte_length,
+        memory->device->cache_line_size);
+  } else if (byte_length != 0) {
+    // WC VRAM views need store-buffer ordering, not a CPU cache-line flush.
+    _mm_mfence();
+  }
   return AMDF_STATUS_OK;
 }
 

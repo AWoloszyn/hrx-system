@@ -219,6 +219,13 @@ operations, or establish that no cache maintenance is needed. Atomic support
 includes the relevant operation, width, and participating domains, not merely
 a property saying that memory supports atomics.
 
+A CPU mapping reports its CPU cacheability and the flush/invalidate operations
+available through that mapping. Those are mechanisms, not requirements for
+every consumer. Ordinary write-back pages can be coherent with a GPU and still
+need flushing before XDNA reads them. An explicit cache-control request performs
+the advertised operation even when one device is host-coherent. A CPU view has
+no device reset epoch; reset validity belongs to each device's access.
+
 Ordering establishes when the consumer may act. Cache coherence does not create
 a producer-to-consumer dependency. The HAL or application supplies that
 dependency through its synchronization and scheduling mechanisms. Libamdf

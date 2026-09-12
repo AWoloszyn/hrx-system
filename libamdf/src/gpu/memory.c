@@ -65,8 +65,9 @@ static amdf_status_t amdf_gpu_host_mapping_cache_control(
     amdf_host_mapping_t* base_mapping, amdf_host_cache_operation_t operation,
     uint64_t byte_offset, uint64_t byte_length) {
   amdf_gpu_host_mapping_t* mapping = (amdf_gpu_host_mapping_t*)base_mapping;
-  return amdf_gpu_umd_host_mapping_cache_control(mapping->umd, operation,
-                                                 byte_offset, byte_length);
+  return amdf_gpu_umd_host_mapping_cache_control(
+      mapping->umd, operation,
+      base_mapping->info.memory_byte_offset + byte_offset, byte_length);
 }
 
 static amdf_status_t amdf_gpu_host_mapping_destroy_native(
@@ -122,9 +123,8 @@ static amdf_status_t amdf_gpu_memory_map(amdf_memory_t* base_memory,
     mapping->base.info.byte_length_granularity =
         profile->host_mapping.byte_length_granularity;
     mapping->base.info.cache_line_size = result.cache_line_size;
-    mapping->base.info.reset_epoch = base_memory->info.reset_epoch;
-    mapping->base.info.release = result.release;
-    mapping->base.info.acquire = result.acquire;
+    mapping->base.info.flush = result.flush;
+    mapping->base.info.invalidate = result.invalidate;
     *out_mapping = &mapping->base;
   } else {
     if (mapping->base.memory != NULL) {

@@ -345,7 +345,7 @@ amdf_status_t amdf_xdna_umd_memory_map(
   result.byte_length = mapping->byte_length;
   result.cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK;
   result.cache_line_size = amdf_windows_host_cache_line_size();
-  result.release = (amdf_cache_transition_t){
+  result.flush = (amdf_cache_transition_t){
       .kind = AMDF_CACHE_TRANSITION_KIND_RANGE,
       .executor = AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT,
       .host_operation = AMDF_HOST_CACHE_OPERATION_FLUSH,
@@ -353,7 +353,7 @@ amdf_status_t amdf_xdna_umd_memory_map(
       .host_fence_after = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
       .range_granularity = result.cache_line_size,
   };
-  result.acquire = (amdf_cache_transition_t){
+  result.invalidate = (amdf_cache_transition_t){
       .kind = AMDF_CACHE_TRANSITION_KIND_RANGE,
       .executor = AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT,
       .host_operation = AMDF_HOST_CACHE_OPERATION_INVALIDATE,

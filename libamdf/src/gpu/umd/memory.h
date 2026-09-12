@@ -54,10 +54,10 @@ typedef struct amdf_gpu_umd_host_mapping_result_t {
   amdf_host_cacheability_t cacheability;
   // Host cache-line length in bytes.
   uint32_t cache_line_size;
-  // Operation releasing host writes to the attached GPU.
-  amdf_cache_transition_t release;
-  // Operation acquiring attached-GPU writes for the host.
-  amdf_cache_transition_t acquire;
+  // Available CPU flush operation, independent of device coherence.
+  amdf_cache_transition_t flush;
+  // Available CPU invalidate operation, independent of device coherence.
+  amdf_cache_transition_t invalidate;
 } amdf_gpu_umd_host_mapping_result_t;
 
 // Copies one immutable memory profile supported by `device`.
@@ -100,10 +100,11 @@ amdf_status_t amdf_gpu_umd_memory_map(
     amdf_gpu_umd_host_mapping_t** out_mapping,
     amdf_gpu_umd_host_mapping_result_t* out_result);
 
-// Performs one host cache ownership transition.
+// Performs one host cache operation over a validated memory-relative range.
+// The common mapping boundary translates its view-relative offset once.
 amdf_status_t amdf_gpu_umd_host_mapping_cache_control(
     amdf_gpu_umd_host_mapping_t* mapping, amdf_host_cache_operation_t operation,
-    uint64_t byte_offset, uint64_t byte_length);
+    uint64_t memory_byte_offset, uint64_t byte_length);
 
 // Releases one explicit host mapping.
 amdf_status_t amdf_gpu_umd_host_mapping_destroy(

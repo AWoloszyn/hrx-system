@@ -121,9 +121,8 @@ static amdf_status_t amdf_xdna_memory_map(
     mapping->base.info.byte_length_granularity =
         profile->host_mapping.byte_length_granularity;
     mapping->base.info.cache_line_size = result.cache_line_size;
-    mapping->base.info.reset_epoch = base_memory->info.reset_epoch;
-    mapping->base.info.release = result.release;
-    mapping->base.info.acquire = result.acquire;
+    mapping->base.info.flush = result.flush;
+    mapping->base.info.invalidate = result.invalidate;
     *out_mapping = &mapping->base;
   } else {
     if (mapping->base.memory != NULL) {

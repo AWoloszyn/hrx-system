@@ -349,6 +349,13 @@ void GpuXdnaMemoryInteropTest::ImportGpuSubrangeAndReleaseAllocation() {
   ASSERT_EQ(Map(gpu_memory_, gpu_memory_info.byte_length, &gpu_mapping_,
                 &gpu_mapping_info),
             AMDF_STATUS_OK);
+  // GPU coherence does not turn CPU cache control into a universal no-op for
+  // the XDNA consumer importing these same pages.
+  EXPECT_EQ(gpu_mapping_info.cacheability, AMDF_HOST_CACHEABILITY_WRITE_BACK);
+  EXPECT_EQ(gpu_mapping_info.flush.kind, AMDF_CACHE_TRANSITION_KIND_RANGE);
+  EXPECT_EQ(gpu_mapping_info.flush.host_instruction,
+            AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH);
+  EXPECT_EQ(gpu_mapping_info.invalidate.kind, AMDF_CACHE_TRANSITION_KIND_RANGE);
   auto* gpu_bytes = static_cast<uint8_t*>(gpu_mapping_info.pointer);
   ASSERT_NE(gpu_bytes, nullptr);
   std::memset(gpu_bytes, 0x11, static_cast<size_t>(page_size));

@@ -537,9 +537,8 @@ typedef uint32_t amdf_host_cacheability_t;
 enum amdf_host_cacheability_e {
   /// The provider cannot describe the mapping's cache behavior.
   AMDF_HOST_CACHEABILITY_UNKNOWN = 0,
-  /// Host and device accesses are mutually coherent without cache control.
-  AMDF_HOST_CACHEABILITY_COHERENT = 1,
-  /// Ordinary host write-back caching requiring explicit ownership transfer.
+  /// Ordinary host write-back caching. Device coherence is a separate property
+  /// of the device's access, not of this CPU mapping.
   AMDF_HOST_CACHEABILITY_WRITE_BACK = 2,
   /// Host write-combined caching intended for sequential stores.
   AMDF_HOST_CACHEABILITY_WRITE_COMBINED = 3,
@@ -687,12 +686,12 @@ typedef struct amdf_host_mapping_info_t {
   uint32_t cache_line_size;
   /// Reserved for future use and always zero.
   uint32_t reserved;
-  /// Device reset epoch in which the mapping remains valid.
-  uint64_t reset_epoch;
-  /// Operation releasing host writes to the attached device.
-  amdf_cache_transition_t release;
-  /// Operation acquiring attached-device writes for host reads.
-  amdf_cache_transition_t acquire;
+  /// Available host flush operation, independent of any consumer's coherence.
+  /// UNKNOWN means unsupported; NONE means no cache operation is necessary.
+  amdf_cache_transition_t flush;
+  /// Available host invalidate operation, independent of consumer coherence.
+  /// UNKNOWN means unsupported; NONE means no cache operation is necessary.
+  amdf_cache_transition_t invalidate;
 } amdf_host_mapping_info_t;
 
 /// One concrete attachment and exact execution family in a pair query.

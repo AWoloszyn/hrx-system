@@ -176,23 +176,21 @@ TEST_F(GpuMemoryTest, OwnsStableSystemAddressAndExplicitHostMapping) {
   EXPECT_EQ(mapping_info.cacheability, AMDF_HOST_CACHEABILITY_WRITE_BACK);
   EXPECT_EQ(mapping_info.byte_length, memory_info.byte_length);
   ASSERT_NE(mapping_info.cache_line_size, 0u);
-  EXPECT_EQ(mapping_info.release.kind, AMDF_CACHE_TRANSITION_KIND_RANGE);
-  EXPECT_EQ(mapping_info.release.executor,
+  EXPECT_EQ(mapping_info.flush.kind, AMDF_CACHE_TRANSITION_KIND_RANGE);
+  EXPECT_EQ(mapping_info.flush.executor,
             AMDF_CACHE_TRANSITION_EXECUTOR_HOST_API);
-  EXPECT_EQ(mapping_info.release.host_operation,
-            AMDF_HOST_CACHE_OPERATION_FLUSH);
-  EXPECT_EQ(mapping_info.release.range_granularity,
-            mapping_info.cache_line_size);
-  EXPECT_EQ(mapping_info.acquire.kind, AMDF_CACHE_TRANSITION_KIND_RANGE);
-  EXPECT_EQ(mapping_info.acquire.executor,
+  EXPECT_EQ(mapping_info.flush.host_operation, AMDF_HOST_CACHE_OPERATION_FLUSH);
+  EXPECT_EQ(mapping_info.flush.range_granularity, mapping_info.cache_line_size);
+  EXPECT_EQ(mapping_info.invalidate.kind, AMDF_CACHE_TRANSITION_KIND_RANGE);
+  EXPECT_EQ(mapping_info.invalidate.executor,
             AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT);
-  EXPECT_EQ(mapping_info.acquire.host_operation,
+  EXPECT_EQ(mapping_info.invalidate.host_operation,
             AMDF_HOST_CACHE_OPERATION_INVALIDATE);
-  EXPECT_EQ(mapping_info.acquire.host_instruction,
+  EXPECT_EQ(mapping_info.invalidate.host_instruction,
             AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH);
-  EXPECT_EQ(mapping_info.acquire.host_fence_after,
+  EXPECT_EQ(mapping_info.invalidate.host_fence_after,
             AMDF_HOST_CACHE_FENCE_X86_MFENCE);
-  EXPECT_EQ(mapping_info.acquire.range_granularity,
+  EXPECT_EQ(mapping_info.invalidate.range_granularity,
             mapping_info.cache_line_size);
 
   std::memset(mapping_info.pointer, 0xA5,
@@ -299,10 +297,16 @@ TEST_F(GpuMemoryTest, RegistersCallerOwnedCoherentHostPages) {
   EXPECT_EQ(
       mapping_info.pointer,
       static_cast<uint8_t*>(registered_host_pointer_) + map_info.byte_offset);
-  EXPECT_EQ(mapping_info.cacheability, AMDF_HOST_CACHEABILITY_COHERENT);
-  EXPECT_EQ(mapping_info.cache_line_size, 0u);
-  EXPECT_EQ(mapping_info.release.kind, AMDF_CACHE_TRANSITION_KIND_NONE);
-  EXPECT_EQ(mapping_info.acquire.kind, AMDF_CACHE_TRANSITION_KIND_NONE);
+  EXPECT_EQ(mapping_info.cacheability, AMDF_HOST_CACHEABILITY_WRITE_BACK);
+  EXPECT_NE(mapping_info.cache_line_size, 0u);
+  EXPECT_EQ(mapping_info.flush.kind, AMDF_CACHE_TRANSITION_KIND_RANGE);
+  EXPECT_EQ(mapping_info.flush.executor,
+            AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT);
+  EXPECT_EQ(mapping_info.flush.host_instruction,
+            AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH);
+  EXPECT_EQ(mapping_info.invalidate.kind, AMDF_CACHE_TRANSITION_KIND_RANGE);
+  EXPECT_EQ(mapping_info.invalidate.host_instruction,
+            AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH);
   EXPECT_TRUE(amdf_status_is_ok(api_->host_mapping_cache_control(
       mapping_, AMDF_HOST_CACHE_OPERATION_FLUSH, 0, mapping_info.byte_length)));
 

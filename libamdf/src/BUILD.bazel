@@ -176,6 +176,21 @@ amdf_cc_library(
     ],
 )
 
+amdf_cc_test(
+    name = "host_mapping_test",
+    srcs = ["host_mapping_test.cc"],
+    deps = [
+        ":host_mapping",
+        ":memory",
+        "//third_party:google_test",
+        "//third_party:google_test_main",
+    ] + select({
+        "@platforms//os:linux": ["//libamdf/src/platform/linux"],
+        "@platforms//os:windows": ["//libamdf/src/platform/windows"],
+        "//conditions:default": [],
+    }),
+)
+
 amdf_cc_library(
     name = "kernel_queue",
     srcs = ["kernel_queue.c"],

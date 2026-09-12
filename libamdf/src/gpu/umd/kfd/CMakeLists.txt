@@ -233,6 +233,7 @@ iree_cc_library(
     libamdf::src::gpu::umd::memory
     libamdf::src::platform::linux::dma_buf
     libamdf::src::platform::linux::file
+    libamdf::src::platform::linux::host_cache
   PUBLIC
 )
 endif()

@@ -237,9 +237,13 @@ typedef struct amdf_api_t {
   /// Copies immutable properties of one live host mapping.
   ///
   /// The copied pointer is borrowed until `host_mapping_destroy` succeeds. Its
-  /// release and acquire recipes state whether a caller can execute cache
-  /// maintenance directly or must invoke `host_mapping_cache_control`. The
-  /// operation is thread-safe and performs no system call, allocation, cache
+  /// flush and invalidate recipes describe available CPU cache operations,
+  /// not requirements relative to one attached device. A device's
+  /// HOST_COHERENT access can make those operations unnecessary for that
+  /// consumer without making the CPU mapping universally coherent. Recipes
+  /// state whether a caller can execute cache maintenance directly or must
+  /// invoke `host_mapping_cache_control`. The operation is thread-safe and
+  /// performs no system call, allocation, cache
   /// transition, or device wait. No output is modified on validation failure.
   amdf_status_t(AMDF_CALL* host_mapping_query_info)(
       amdf_host_mapping_t* mapping, amdf_host_mapping_info_t* out_info);
@@ -251,8 +255,9 @@ typedef struct amdf_api_t {
   /// the complete intersected lines. A non-empty flush requires write access
   /// and a non-empty invalidate requires read access; otherwise the operation
   /// returns `AMDF_STATUS_CODE_FAILED_PRECONDITION`. An empty range is a no-op.
-  /// This operation never waits for device execution or supplies an execution
-  /// dependency.
+  /// A nonempty request executes the advertised operation even when the
+  /// memory's attached device is host-coherent. It never waits for device
+  /// execution or supplies an execution dependency.
   amdf_status_t(AMDF_CALL* host_mapping_cache_control)(
       amdf_host_mapping_t* mapping, amdf_host_cache_operation_t operation,
       uint64_t byte_offset, uint64_t byte_length);

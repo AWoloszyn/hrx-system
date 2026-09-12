@@ -83,8 +83,6 @@ struct amdf_gpu_umd_memory_t {
 struct amdf_gpu_umd_host_mapping_t {
   // Memory borrowed by the generic host-mapping parent.
   amdf_gpu_umd_memory_t* memory;
-  // Byte offset of the mapping within `memory`.
-  uint64_t memory_byte_offset;
   // First byte exposed by this mapping.
   void* pointer;
   // Exposed byte length.
@@ -754,7 +752,6 @@ amdf_status_t amdf_gpu_umd_memory_map(
                   amdf_alignof(amdf_gpu_umd_host_mapping_t), (void**)&mapping);
   if (!amdf_status_is_ok(status)) return status;
   mapping->memory = memory;
-  mapping->memory_byte_offset = map_info->byte_offset;
   mapping->pointer = (uint8_t*)memory->host_pointer + map_info->byte_offset;
   mapping->byte_length = map_info->byte_length;
 
@@ -762,29 +759,28 @@ amdf_status_t amdf_gpu_umd_memory_map(
   result.flags = profile->host_mapping.supported_access;
   result.pointer = mapping->pointer;
   result.byte_length = mapping->byte_length;
-  result.cacheability = (memory->flags & AMDF_MEMORY_FLAG_HOST_COHERENT) != 0
-                            ? AMDF_HOST_CACHEABILITY_COHERENT
-                            : AMDF_HOST_CACHEABILITY_WRITE_BACK;
-  if (result.cacheability == AMDF_HOST_CACHEABILITY_COHERENT) {
-    result.release.kind = AMDF_CACHE_TRANSITION_KIND_NONE;
-    result.acquire.kind = AMDF_CACHE_TRANSITION_KIND_NONE;
-  } else {
-    result.cache_line_size = amdf_windows_host_cache_line_size();
-    result.release = (amdf_cache_transition_t){
-        .kind = AMDF_CACHE_TRANSITION_KIND_RANGE,
-        .executor = AMDF_CACHE_TRANSITION_EXECUTOR_HOST_API,
-        .host_operation = AMDF_HOST_CACHE_OPERATION_FLUSH,
-        .range_granularity = result.cache_line_size,
-    };
-    result.acquire = (amdf_cache_transition_t){
-        .kind = AMDF_CACHE_TRANSITION_KIND_RANGE,
-        .executor = AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT,
-        .host_operation = AMDF_HOST_CACHE_OPERATION_INVALIDATE,
-        .host_instruction = AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH,
-        .host_fence_after = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
-        .range_granularity = result.cache_line_size,
-    };
-  }
+  result.cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK;
+  result.cache_line_size = amdf_windows_host_cache_line_size();
+  const bool coherent = (memory->flags & AMDF_MEMORY_FLAG_HOST_COHERENT) != 0;
+  result.flush = (amdf_cache_transition_t){
+      .kind = AMDF_CACHE_TRANSITION_KIND_RANGE,
+      .executor = coherent ? AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT
+                           : AMDF_CACHE_TRANSITION_EXECUTOR_HOST_API,
+      .host_operation = AMDF_HOST_CACHE_OPERATION_FLUSH,
+      .host_instruction = coherent ? AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH
+                                   : AMDF_HOST_CACHE_INSTRUCTION_NONE,
+      .host_fence_after = coherent ? AMDF_HOST_CACHE_FENCE_X86_MFENCE
+                                   : AMDF_HOST_CACHE_FENCE_NONE,
+      .range_granularity = result.cache_line_size,
+  };
+  result.invalidate = (amdf_cache_transition_t){
+      .kind = AMDF_CACHE_TRANSITION_KIND_RANGE,
+      .executor = AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT,
+      .host_operation = AMDF_HOST_CACHE_OPERATION_INVALIDATE,
+      .host_instruction = AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH,
+      .host_fence_after = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
+      .range_granularity = result.cache_line_size,
+  };
   *out_result = result;
   *out_mapping = mapping;
   return AMDF_STATUS_OK;
@@ -792,16 +788,18 @@ amdf_status_t amdf_gpu_umd_memory_map(
 
 amdf_status_t amdf_gpu_umd_host_mapping_cache_control(
     amdf_gpu_umd_host_mapping_t* mapping, amdf_host_cache_operation_t operation,
-    uint64_t byte_offset, uint64_t byte_length) {
+    uint64_t memory_byte_offset, uint64_t byte_length) {
+  amdf_gpu_umd_memory_t* memory = mapping->memory;
   amdf_status_t status = amdf_windows_host_cache_control(
-      operation, (uint8_t*)mapping->pointer + byte_offset, byte_length);
+      operation, (uint8_t*)memory->host_pointer + memory_byte_offset,
+      byte_length);
   if (!amdf_status_is_ok(status) || byte_length == 0 ||
-      operation != AMDF_HOST_CACHE_OPERATION_FLUSH) {
+      operation != AMDF_HOST_CACHE_OPERATION_FLUSH ||
+      (memory->flags & AMDF_MEMORY_FLAG_HOST_COHERENT) != 0) {
     return status;
   }
 
-  amdf_gpu_umd_memory_t* memory = mapping->memory;
-  uint64_t allocation_byte_offset = mapping->memory_byte_offset + byte_offset;
+  uint64_t allocation_byte_offset = memory_byte_offset;
   uint64_t remaining_byte_length = byte_length;
   while (remaining_byte_length != 0) {
     const uint64_t allocation_index =

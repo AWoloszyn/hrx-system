@@ -165,31 +165,35 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
         ASSERT_NE(mapping_infos_[0].pointer, nullptr);
         EXPECT_EQ(mapping_infos_[0].cacheability,
                   (info.flags & AMDF_MEMORY_FLAG_HOST_COHERENT) != 0
-                      ? AMDF_HOST_CACHEABILITY_COHERENT
+                      ? AMDF_HOST_CACHEABILITY_WRITE_BACK
                       : AMDF_HOST_CACHEABILITY_WRITE_COMBINED);
         if ((info.flags & AMDF_MEMORY_FLAG_HOST_COHERENT) != 0) {
-          EXPECT_EQ(mapping_infos_[0].cache_line_size, 0u);
-          EXPECT_EQ(mapping_infos_[0].release.kind,
-                    AMDF_CACHE_TRANSITION_KIND_NONE);
-          EXPECT_EQ(mapping_infos_[0].acquire.kind,
-                    AMDF_CACHE_TRANSITION_KIND_NONE);
+          EXPECT_NE(mapping_infos_[0].cache_line_size, 0u);
+          EXPECT_EQ(mapping_infos_[0].flush.kind,
+                    AMDF_CACHE_TRANSITION_KIND_RANGE);
+          EXPECT_EQ(mapping_infos_[0].invalidate.kind,
+                    AMDF_CACHE_TRANSITION_KIND_RANGE);
+          EXPECT_EQ(mapping_infos_[0].flush.host_instruction,
+                    AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH);
+          EXPECT_EQ(mapping_infos_[0].invalidate.host_instruction,
+                    AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH);
         } else {
           EXPECT_EQ(mapping_infos_[0].cache_line_size, 0u);
-          EXPECT_EQ(mapping_infos_[0].release.kind,
+          EXPECT_EQ(mapping_infos_[0].flush.kind,
                     AMDF_CACHE_TRANSITION_KIND_GLOBAL);
-          EXPECT_EQ(mapping_infos_[0].release.executor,
+          EXPECT_EQ(mapping_infos_[0].flush.executor,
                     AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT);
-          EXPECT_EQ(mapping_infos_[0].release.host_operation,
+          EXPECT_EQ(mapping_infos_[0].flush.host_operation,
                     AMDF_HOST_CACHE_OPERATION_FLUSH);
-          EXPECT_EQ(mapping_infos_[0].release.host_fence_after,
+          EXPECT_EQ(mapping_infos_[0].flush.host_fence_after,
                     AMDF_HOST_CACHE_FENCE_X86_MFENCE);
-          EXPECT_EQ(mapping_infos_[0].acquire.kind,
+          EXPECT_EQ(mapping_infos_[0].invalidate.kind,
                     AMDF_CACHE_TRANSITION_KIND_GLOBAL);
-          EXPECT_EQ(mapping_infos_[0].acquire.executor,
+          EXPECT_EQ(mapping_infos_[0].invalidate.executor,
                     AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT);
-          EXPECT_EQ(mapping_infos_[0].acquire.host_operation,
+          EXPECT_EQ(mapping_infos_[0].invalidate.host_operation,
                     AMDF_HOST_CACHE_OPERATION_INVALIDATE);
-          EXPECT_EQ(mapping_infos_[0].acquire.host_fence_after,
+          EXPECT_EQ(mapping_infos_[0].invalidate.host_fence_after,
                     AMDF_HOST_CACHE_FENCE_X86_MFENCE);
         }
         const uint8_t value = static_cast<uint8_t>(0x41 + case_ordinal);
@@ -308,11 +312,12 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
     EXPECT_EQ(reinterpret_cast<uintptr_t>(mapping_infos_[0].pointer) &
                   (info.alignment - 1),
               0u);
-    EXPECT_EQ(mapping_infos_[0].cacheability, AMDF_HOST_CACHEABILITY_COHERENT);
-    EXPECT_EQ(mapping_infos_[0].cache_line_size, 0u);
-    EXPECT_EQ(mapping_infos_[0].release.kind, AMDF_CACHE_TRANSITION_KIND_NONE);
-    EXPECT_EQ(mapping_infos_[0].acquire.kind, AMDF_CACHE_TRANSITION_KIND_NONE);
-    EXPECT_EQ(mapping_infos_[0].reset_epoch, info.reset_epoch);
+    EXPECT_EQ(mapping_infos_[0].cacheability,
+              AMDF_HOST_CACHEABILITY_WRITE_BACK);
+    EXPECT_NE(mapping_infos_[0].cache_line_size, 0u);
+    EXPECT_EQ(mapping_infos_[0].flush.kind, AMDF_CACHE_TRANSITION_KIND_RANGE);
+    EXPECT_EQ(mapping_infos_[0].invalidate.kind,
+              AMDF_CACHE_TRANSITION_KIND_RANGE);
     std::memset(mapping_infos_[0].pointer, 0xA5,
                 static_cast<size_t>(info.byte_length));
 
@@ -524,7 +529,7 @@ TEST_F(GpuLinuxMemoryTest, RegistersOverlappingCallerPagesWithExactAccess) {
     EXPECT_EQ(mapping_infos_[case_ordinal].memory_byte_offset, 0u);
     EXPECT_EQ(mapping_infos_[case_ordinal].byte_length, logical_byte_length);
     EXPECT_EQ(mapping_infos_[case_ordinal].cacheability,
-              AMDF_HOST_CACHEABILITY_COHERENT);
+              AMDF_HOST_CACHEABILITY_WRITE_BACK);
     EXPECT_EQ(api_->host_mapping_cache_control(mappings_[case_ordinal],
                                                AMDF_HOST_CACHE_OPERATION_FLUSH,
                                                0, logical_byte_length),

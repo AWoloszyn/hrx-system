@@ -262,6 +262,30 @@ iree_cc_library(
 endif()
 
 if(AMDF_BUILD)
+set(_host_mapping_test_platform_deps "")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  list(APPEND _host_mapping_test_platform_deps libamdf::src::platform::linux)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+  list(APPEND _host_mapping_test_platform_deps libamdf::src::platform::windows)
+endif()
+iree_cc_test(
+  NAME
+    host_mapping_test
+  SRCS
+    "host_mapping_test.cc"
+  DEPS
+    ::host_mapping
+    ::memory
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+    ${_host_mapping_test_platform_deps}
+  LABELS
+    "iree-build-requirement=libamdf"
+)
+endif()
+
+if(AMDF_BUILD)
 iree_cc_library(
   NAME
     kernel_queue

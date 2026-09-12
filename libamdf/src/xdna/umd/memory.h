@@ -58,10 +58,10 @@ typedef struct amdf_xdna_umd_host_mapping_result_t {
   amdf_host_cacheability_t cacheability;
   // Host cache-line length in bytes.
   uint32_t cache_line_size;
-  // Operation releasing host writes to the attached XDNA device.
-  amdf_cache_transition_t release;
-  // Operation acquiring attached-XDNA writes for the host.
-  amdf_cache_transition_t acquire;
+  // Available CPU flush operation, independent of device coherence.
+  amdf_cache_transition_t flush;
+  // Available CPU invalidate operation, independent of device coherence.
+  amdf_cache_transition_t invalidate;
 } amdf_xdna_umd_host_mapping_result_t;
 
 // Copies one immutable memory profile supported by `device`.

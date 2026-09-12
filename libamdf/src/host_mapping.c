@@ -71,8 +71,8 @@ amdf_status_t AMDF_CALL amdf_host_mapping_cache_control(
     return amdf_make_api_status(AMDF_STATUS_CODE_FAILED_PRECONDITION);
   }
   const amdf_cache_transition_t* transition =
-      operation == AMDF_HOST_CACHE_OPERATION_FLUSH ? &mapping->info.release
-                                                   : &mapping->info.acquire;
+      operation == AMDF_HOST_CACHE_OPERATION_FLUSH ? &mapping->info.flush
+                                                   : &mapping->info.invalidate;
   if (transition->kind == AMDF_CACHE_TRANSITION_KIND_UNKNOWN) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }

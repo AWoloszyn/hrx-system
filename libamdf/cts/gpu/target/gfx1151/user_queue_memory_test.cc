@@ -302,8 +302,7 @@ class UserQueueMemoryScenario {
     EXPECT_EQ(mapping_info.byte_length, kMemoryByteLength);
     EXPECT_EQ(mapping_info.flags,
               AMDF_MEMORY_MAP_FLAG_READ | AMDF_MEMORY_MAP_FLAG_WRITE);
-    EXPECT_EQ(mapping_info.cacheability, AMDF_HOST_CACHEABILITY_COHERENT);
-    EXPECT_EQ(mapping_info.reset_epoch, memory_info.reset_epoch);
+    EXPECT_EQ(mapping_info.cacheability, AMDF_HOST_CACHEABILITY_WRITE_BACK);
   }
 
   void DestroyHostMapping(amdf_host_mapping_t*& mapping) {
