@@ -15,6 +15,7 @@ static void loom_vm_math_policy_query(
     case LOOM_TARGET_MATH_OP_MULF:
     case LOOM_TARGET_MATH_OP_CEILF:
     case LOOM_TARGET_MATH_OP_FLOORF:
+    case LOOM_TARGET_MATH_OP_ROUNDF:
     case LOOM_TARGET_MATH_OP_ROUNDEVENF:
     case LOOM_TARGET_MATH_OP_TRUNCF:
       break;
@@ -40,6 +41,14 @@ static void loom_vm_math_policy_query(
     *out_decision = (loom_target_math_policy_decision_t){
         .action = LOOM_TARGET_MATH_POLICY_ACTION_REJECT,
         .constraint_key = IREE_SVL("math.element.f32_f64"),
+    };
+    return;
+  }
+  if (query->math_op == LOOM_TARGET_MATH_OP_ROUNDF) {
+    *out_decision = (loom_target_math_policy_decision_t){
+        .action = LOOM_TARGET_MATH_POLICY_ACTION_REWRITE,
+        .recipe = LOOM_TARGET_MATH_RECIPE_ROUND_AWAY,
+        .constraint_key = IREE_SVL("math.recipe.round_away"),
     };
     return;
   }
