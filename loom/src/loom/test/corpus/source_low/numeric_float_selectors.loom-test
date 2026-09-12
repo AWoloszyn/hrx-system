@@ -95,3 +95,17 @@ func.def @exponentials_f32(%input: f32) -> (f32, f32) {
   %natural = scalar.expf<afn> %input : f32
   func.return %base_two, %natural : f32, f32
 }
+
+// ====
+
+func.def @float_sign_f32(%value: f32) -> (f32) {
+  %result = scalar.signf %value : f32
+  func.return %result : f32
+}
+
+// ====
+
+func.def @float_sign_f64(%value: f64) -> (f64) {
+  %result = scalar.signf %value : f64
+  func.return %result : f64
+}

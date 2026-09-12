@@ -182,6 +182,7 @@ _MATH_SOURCE_OPS = {
     "floor": math.scalar_floorf,
     "round_even": math.scalar_roundevenf,
     "trunc": math.scalar_truncf,
+    "sign": comparison.scalar_signf,
     # Despite the ISA spelling, these are frozen correctly rounded f32
     # mappings shared with source constant folding, including subnormals.
     "sin_turns.approx": math.scalar_sinturnsf,

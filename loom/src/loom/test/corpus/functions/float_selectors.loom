@@ -227,3 +227,67 @@ check.case @clamp_nan_f64_case {
   check.expect.equal actual(%ieee_nan) expected(%yes) : i1
   check.return
 }
+
+// Sign classification returns +0 for either zero and every NaN payload, and
+// signed one for nonzero numbers, including subnormals and infinities.
+func.def public @float_sign_f32(%bits: i32) -> (i32) {
+  %value = scalar.bitcast %bits : i32 to f32
+  %sign = scalar.signf %value : f32
+  %result = scalar.bitcast %sign : f32 to i32
+  func.return %result : i32
+}
+
+check.case @float_sign_f32_zero_and_nan {
+  %bits = check.param.choice values([0, -2147483648, 2143289344, -4194304, 2139095041, -8388607]) : i32
+  %actual = func.call @float_sign_f32(%bits) : (i32) -> (i32)
+  %expected = check.literal value(0) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}
+
+check.case @float_sign_f32_positive {
+  %bits = check.param.choice values([1, 8388607, 8388608, 1065353216, 2139095039, 2139095040]) : i32
+  %actual = func.call @float_sign_f32(%bits) : (i32) -> (i32)
+  %expected = check.literal value(1065353216) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}
+
+check.case @float_sign_f32_negative {
+  %bits = check.param.choice values([-2147483647, -2139095041, -2139095040, -1082130432, -8388609, -8388608]) : i32
+  %actual = func.call @float_sign_f32(%bits) : (i32) -> (i32)
+  %expected = check.literal value(-1082130432) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}
+
+func.def public @float_sign_f64(%bits: i64) -> (i64) {
+  %value = scalar.bitcast %bits : i64 to f64
+  %sign = scalar.signf %value : f64
+  %result = scalar.bitcast %sign : f64 to i64
+  func.return %result : i64
+}
+
+check.case @float_sign_f64_zero_and_nan {
+  %bits = check.param.choice values([0, -9223372036854775808, 9221120237041090560, -2251799813685248, 9218868437227405313, -4503599627370495]) : i64
+  %actual = func.call @float_sign_f64(%bits) : (i64) -> (i64)
+  %expected = check.literal value(0) : i64
+  check.expect.equal actual(%actual) expected(%expected) : i64
+  check.return
+}
+
+check.case @float_sign_f64_positive {
+  %bits = check.param.choice values([1, 4503599627370495, 4503599627370496, 4607182418800017408, 9218868437227405311, 9218868437227405312]) : i64
+  %actual = func.call @float_sign_f64(%bits) : (i64) -> (i64)
+  %expected = check.literal value(4607182418800017408) : i64
+  check.expect.equal actual(%actual) expected(%expected) : i64
+  check.return
+}
+
+check.case @float_sign_f64_negative {
+  %bits = check.param.choice values([-9223372036854775807, -9218868437227405313, -9218868437227405312, -4616189618054758400, -4503599627370497, -4503599627370496]) : i64
+  %actual = func.call @float_sign_f64(%bits) : (i64) -> (i64)
+  %expected = check.literal value(-4616189618054758400) : i64
+  check.expect.equal actual(%actual) expected(%expected) : i64
+  check.return
+}
