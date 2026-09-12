@@ -70,8 +70,8 @@ typedef struct loom_liveness_interval_t {
 // Contiguous half-open range where one value is live within one CFG block.
 //
 // A value may have multiple segments when its uses span mutually exclusive
-// blocks. Segments for each value are ordered by increasing program point and
-// never overlap.
+// blocks. Segments for each value are non-empty, ordered by increasing program
+// point and never overlap.
 typedef struct loom_liveness_segment_t {
   // First program point where the value is live in the block.
   uint32_t start_point;

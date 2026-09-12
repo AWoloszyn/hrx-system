@@ -579,6 +579,29 @@ low.func.def target<test.low.core>(@test_target) @high_pressure(%a0: reg<test.i3
                 LOOM_LIVENESS_PRESSURE_BUDGET_VIOLATION_LIVE_VALUES);
 }
 
+TEST(LivenessSegmentsTest, SparseOverlapAndHalfOpenBoundaries) {
+  const loom_liveness_segment_t segments[] = {
+      {1, 3}, {8, 10},            // First value, with a gap.
+      {0, 1}, {3, 8},  {10, 12},  // Second value touches but never overlaps.
+      {3, 8}, {9, 12},            // Third value overlaps only at the tail.
+  };
+  loom_liveness_analysis_t analysis = {};
+  analysis.segments = segments;
+  analysis.segment_count = IREE_ARRAYSIZE(segments);
+  const loom_liveness_segment_range_t first = {0, 2};
+  const loom_liveness_segment_range_t second = {2, 3};
+  const loom_liveness_segment_range_t third = {5, 2};
+  const loom_liveness_segment_range_t empty = {7, 0};
+  EXPECT_FALSE(loom_liveness_segment_ranges_overlap(&analysis, first, second));
+  EXPECT_FALSE(loom_liveness_segment_ranges_overlap(&analysis, second, first));
+  EXPECT_TRUE(loom_liveness_segment_ranges_overlap(&analysis, first, third));
+  EXPECT_TRUE(loom_liveness_segment_ranges_overlap(&analysis, third, first));
+  EXPECT_TRUE(loom_liveness_segment_ranges_overlap(&analysis, first, first));
+  EXPECT_FALSE(loom_liveness_segment_ranges_overlap(&analysis, first, empty));
+  EXPECT_FALSE(loom_liveness_segment_ranges_overlap(&analysis, empty, first));
+  EXPECT_FALSE(loom_liveness_segment_ranges_overlap(&analysis, empty, empty));
+}
+
 TEST_F(LivenessTest, FormatsMachineReadableJsonSummary) {
   ModulePtr module = ParseModule(R"(
 test.target<low_core> @test_target

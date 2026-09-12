@@ -2061,14 +2061,12 @@ bool loom_liveness_segment_ranges_overlap(
         &analysis->segments[lhs.start + lhs_index];
     const loom_liveness_segment_t* rhs_segment =
         &analysis->segments[rhs.start + rhs_index];
-    if (lhs_segment->start_point < rhs_segment->end_point &&
-        rhs_segment->start_point < lhs_segment->end_point) {
-      return true;
-    }
     if (lhs_segment->end_point <= rhs_segment->start_point) {
       ++lhs_index;
-    } else {
+    } else if (rhs_segment->end_point <= lhs_segment->start_point) {
       ++rhs_index;
+    } else {
+      return true;
     }
   }
   return false;
