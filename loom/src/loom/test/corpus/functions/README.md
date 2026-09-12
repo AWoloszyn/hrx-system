@@ -33,6 +33,7 @@ contract under test rather than a target instruction or implementation file.
 | Control and ownership | `control.loom`, `structured_control.loom`, `calls.loom`, `direct_call.loom`, `spill.loom`, `buffer_calls.loom`: tuple joins, nested loops, while-condition effects, recursion, live values across calls, and returned aliases. |
 | Host buffer calls | `buffer_arguments.loom`: owned results passed into later calls, returned aliases, interleaved scalar/reference results, mutation visibility, and empty allocations. |
 | Memory | `address.loom`, `buffers.loom`, `buffer_access.loom`, `memory_boundaries.loom`, `view_access.loom`: offsets, partial patterns with canaries, same-root copies, unsigned byte ordering, guarded access, typed views, and allocation lifetime. |
+| Masked memory | `masked_memory.loom`: inactive tails beyond a view, dynamic active lanes, untouched canaries, empty views, and compact expand/compress lane ordering. |
 | Atomics | `atomics.loom`: scalar integer and floating reduction/RMW, returned-old values, successful and failed compare-exchange, dynamic subview addresses, and untouched storage. |
 
 Inputs enter through function arguments so execution exercises the compiled
