@@ -25,3 +25,19 @@ func.def @float_arithmetic_f64(%a: f64, %b: f64) -> (f64, f64, f64, f64, f64, f6
   %absolute = scalar.absf %a : f64
   func.return %sum, %difference, %product, %quotient, %remainder, %signed, %negated, %absolute : f64, f64, f64, f64, f64, f64, f64, f64
 }
+
+// ====
+
+func.def @float_arithmetic_f16(%a: f16, %b: f16) -> (f16, f16) {
+  %sum = scalar.addf %a, %b : f16
+  %product = scalar.mulf %a, %b : f16
+  func.return %sum, %product : f16, f16
+}
+
+// ====
+
+func.def @float_arithmetic_bf16(%a: bf16, %b: bf16) -> (bf16, bf16) {
+  %sum = scalar.addf %a, %b : bf16
+  %product = scalar.mulf %a, %b : bf16
+  func.return %sum, %product : bf16, bf16
+}

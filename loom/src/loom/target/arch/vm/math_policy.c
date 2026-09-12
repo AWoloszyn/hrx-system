@@ -13,6 +13,16 @@ static void loom_vm_math_policy_query(
   switch (query->math_op) {
     case LOOM_TARGET_MATH_OP_ADDF:
     case LOOM_TARGET_MATH_OP_MULF:
+      if (query->element_type == LOOM_SCALAR_TYPE_F16 ||
+          query->element_type == LOOM_SCALAR_TYPE_BF16) {
+        *out_decision = (loom_target_math_policy_decision_t){
+            .action = LOOM_TARGET_MATH_POLICY_ACTION_REWRITE,
+            .recipe = LOOM_TARGET_MATH_RECIPE_WIDEN_F32_ROUND,
+            .constraint_key = IREE_SVL("math.recipe.widen_f32_round"),
+        };
+        return;
+      }
+      break;
     case LOOM_TARGET_MATH_OP_CEILF:
     case LOOM_TARGET_MATH_OP_FLOORF:
     case LOOM_TARGET_MATH_OP_ROUNDF:

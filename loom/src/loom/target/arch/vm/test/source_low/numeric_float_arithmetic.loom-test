@@ -56,3 +56,45 @@ low.func.def target<vm.core>(@vm) abi(vm_function) @float_arithmetic_f64(%a: reg
   %absolute = float.abs.f64 %a
   return %sum, %difference, %product, %quotient, %remainder, %signed, %negated, %absolute
 }
+
+// ====
+
+vm.target<core> @vm
+
+func.def target(@vm) @float_arithmetic_f16(%a: f16, %b: f16) -> (f16, f16) {
+  %sum = scalar.addf %a, %b : f16
+  %product = scalar.mulf %a, %b : f16
+  func.return %sum, %product : f16, f16
+}
+
+// ----
+low.func.def target<vm.core>(@vm) abi(vm_function) @float_arithmetic_f16(%a: reg<vm.value : f16>, %b: reg<vm.value : f16>) -> (reg<vm.value : f16>, reg<vm.value : f16>) asm {
+  %18 = conversion.float.extend %a, 2 : reg<vm.value : f32>
+  %19 = conversion.float.extend %b, 2 : reg<vm.value : f32>
+  %20 = float.add.f32 %18, %19
+  %sum = conversion.float.truncate %20, 2 : reg<vm.value : f16>
+  %22 = float.mul.f32 %18, %19
+  %product = conversion.float.truncate %22, 2 : reg<vm.value : f16>
+  return %sum, %product
+}
+
+// ====
+
+vm.target<core> @vm
+
+func.def target(@vm) @float_arithmetic_bf16(%a: bf16, %b: bf16) -> (bf16, bf16) {
+  %sum = scalar.addf %a, %b : bf16
+  %product = scalar.mulf %a, %b : bf16
+  func.return %sum, %product : bf16, bf16
+}
+
+// ----
+low.func.def target<vm.core>(@vm) abi(vm_function) @float_arithmetic_bf16(%a: reg<vm.value : bf16>, %b: reg<vm.value : bf16>) -> (reg<vm.value : bf16>, reg<vm.value : bf16>) asm {
+  %18 = conversion.float.extend %a, 3 : reg<vm.value : f32>
+  %19 = conversion.float.extend %b, 3 : reg<vm.value : f32>
+  %20 = float.add.f32 %18, %19
+  %sum = conversion.float.truncate %20, 3 : reg<vm.value : bf16>
+  %22 = float.mul.f32 %18, %19
+  %product = conversion.float.truncate %22, 3 : reg<vm.value : bf16>
+  return %sum, %product
+}
