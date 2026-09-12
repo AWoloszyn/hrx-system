@@ -119,3 +119,38 @@ check.case @guarded_byte_load_not_taken {
   check.expect.equal actual(%result) expected(%expected) : i32
   check.return
 }
+
+// Combining these reads must preserve their snapshot before the overlapping
+// overwrite. Observing raw bits covers signed zero, subnormals and NaN payloads.
+func.def public @adjacent_half_snapshot(%left_bits: i32, %right_bits: i32, %overwrite: i32) -> (i32, i32, i32) {
+  %byte_base = index.constant 0 : offset
+  %length = index.constant 4 : offset
+  %storage = buffer.alloca<private> align(4) %length : buffer
+  %integer_view = buffer.view %storage[%byte_base] : buffer -> view<2xi16>
+  %left_value = scalar.trunci %left_bits : i32 to i16
+  %right_value = scalar.trunci %right_bits : i32 to i16
+  view.store %left_value, %integer_view[0] : i16, view<2xi16>
+  view.store %right_value, %integer_view[1] : i16, view<2xi16>
+  %view = buffer.view %storage[%byte_base] : buffer -> view<2xf16>
+  %wide_view = buffer.view %storage[%byte_base] : buffer -> view<1xi32>
+  %left = view.load %view[0] : view<2xf16> -> f16
+  %right = view.load %view[1] : view<2xf16> -> f16
+  view.store %overwrite, %wide_view[0] : i32, view<1xi32>
+  %left_raw = scalar.bitcast %left : f16 to i16
+  %right_raw = scalar.bitcast %right : f16 to i16
+  %left_result = scalar.extui %left_raw : i16 to i32
+  %right_result = scalar.extui %right_raw : i16 to i32
+  %after = view.load %wide_view[0] : view<1xi32> -> i32
+  func.return %left_result, %right_result, %after : i32, i32, i32
+}
+
+check.case @adjacent_half_snapshot_bits {
+  %left_bits = check.param.choice values([0, 32768, 1, 31745, 32257, 65535]) : i32
+  %right_bits = check.param.choice values([15360, 64512]) : i32
+  %overwrite = check.literal value(305419896) : i32
+  %left, %right, %after = func.call @adjacent_half_snapshot(%left_bits, %right_bits, %overwrite) : (i32, i32, i32) -> (i32, i32, i32)
+  check.expect.equal actual(%left) expected(%left_bits) : i32
+  check.expect.equal actual(%right) expected(%right_bits) : i32
+  check.expect.equal actual(%after) expected(%overwrite) : i32
+  check.return
+}
