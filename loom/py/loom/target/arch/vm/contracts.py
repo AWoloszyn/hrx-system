@@ -28,7 +28,6 @@ from iree.vm.bytecode.spec.isa.core.constant import CONSTANT_I64
 from iree.vm.bytecode.spec.isa.core.float import (
     FLOAT_CLAMP_SELECTOR,
     FLOAT_COMPARE_SELECTOR,
-    FLOAT_MATH_F32_SELECTOR,
     FloatBinaryOperation,
     FloatBinarySemantics,
     FloatClampSemantics,
@@ -70,7 +69,7 @@ from loom.dialect.scalar import (
 )
 from loom.dialect.scf import ALL_SCF_OPS, scf_select
 from loom.ir import ScalarType, ScalarTypeKind
-from loom.target.arch.vm.descriptors import VM_CORE_DESCRIPTOR_SET
+from loom.target.arch.vm.descriptors import VM_CORE_DESCRIPTOR_SET, scalar_result_type
 from loom.target.contracts import (
     AttrProject,
     ContractFragment,
@@ -572,98 +571,122 @@ def _math_cases():
     assert not remaining, f"math source mappings have no ISA selector: {remaining}"
 
 
+def _f32_math_sequence(source_op, constants, steps, *, guards=()):
+    # Rows name values, instructions and arguments in descriptor order. The
+    # descriptors own field names, selector encodings and fixed result types;
+    # bit-oriented constants/selects carry the source f32 interpretation.
+    descriptors = {d.mnemonic: d for d in VM_CORE_DESCRIPTOR_SET.descriptors}
+    domains = {
+        domain.name: {value.token: value.value for value in domain.values}
+        for domain in VM_CORE_DESCRIPTOR_SET.enum_domains
+    }
+    values = {
+        operand.name: ValueRef.operand(operand.name) for operand in source_op.operands
+    }
+    values.update(
+        {result.name: ValueRef.result(result.name) for result in source_op.results}
+    )
+    constants = tuple(
+        (name, "constant.i32", struct.unpack("<I", struct.pack("<f", value))[0])
+        for name, value in constants
+    )
+    emits = []
+    for result, mnemonic, *arguments in (*constants, *steps):
+        descriptor = descriptors[mnemonic]
+        (form,) = descriptor.asm_forms
+        (output,) = form.results
+        arguments = iter(arguments)
+        operands = {field: values[next(arguments)] for field in form.operands}
+        result_type = scalar_result_type(_INSTRUCTIONS[descriptor.encoding_id])
+        values.setdefault(result, ValueRef.temporary(result))
+        emits.append(
+            EmitDescriptorOp(
+                descriptor=descriptor,
+                operands=operands,
+                results={output: values[result]},
+                result_types={
+                    output: Scalar(
+                        str(ScalarType(result_type))
+                        if result_type is not None
+                        else "f32"
+                    )
+                },
+                immediates={
+                    field.field_name: domains[field.enum_domain][value]
+                    if field.enum_domain
+                    else value
+                    for field, value in zip(
+                        descriptor.immediates, arguments, strict=True
+                    )
+                },
+            )
+        )
+    return DescriptorRule(
+        source_op=source_op,
+        descriptor=descriptors["float.math.unary.f32"],
+        guards=(
+            *(
+                Guard.value_type(field.name, Scalar("f32"))
+                for field in (*source_op.operands, *source_op.results)
+            ),
+            *guards,
+        ),
+        emit=tuple(emits),
+    )
+
+
 def _exp2_case():
     # The machine leaf flushes subnormal outputs. Shift those inputs into its
     # normal interval, then restore the exponent with preserving multiplication.
     # Adding 64 is exact throughout the f32 interval with a subnormal result.
-    descriptors = {d.mnemonic: d for d in VM_CORE_DESCRIPTOR_SET.descriptors}
-    temporary = ValueRef.temporary
-    constant = descriptors["constant.i32"]
-    emits = [
-        EmitDescriptorOp(
-            descriptor=constant,
-            form=DescriptorEmitForm.CONST,
-            results={"destination_v8": temporary(name)},
-            result_types={"destination_v8": Scalar("f32")},
-            immediates={"bits": struct.unpack("<I", struct.pack("<f", value))[0]},
-        )
-        for name, value in (
-            ("normal_limit", -126.0),
-            ("shift", 64.0),
-            ("zero", 0.0),
-            ("scale", 2.0**-64),
+    constants = (
+        ("normal_limit", -126.0),
+        ("shift", 64.0),
+        ("zero", 0.0),
+        ("scale", 2.0**-64),
+        ("one", 1.0),
+    )
+    steps = (
+        ("underflow", "float.compare.f32", "input", "normal_limit", "olt"),
+        ("input_shift", "value.select", "underflow", "shift", "zero"),
+        ("output_scale", "value.select", "underflow", "scale", "one"),
+        ("shifted", "float.add.f32", "input", "input_shift"),
+        ("normal", "float.math.unary.f32", "shifted", "exp2.approx"),
+        ("result", "float.mul.f32", "normal", "output_scale"),
+    )
+    return _f32_math_sequence(
+        math.scalar_exp2f,
+        constants,
+        steps,
+        guards=(Guard.instance_flags_has_all("fastmath", "afn"),),
+    )
+
+
+def _root_cases():
+    # Scaling subnormal inputs by an even power of two preserves the root's
+    # significand. Both results are normal for every positive finite f32 input,
+    # so restoring the exponent is exact, including each rsqrt rounding point.
+    # Negative subnormals must normalize too, to reach the leaf's NaN case.
+    for source_op, leaf, output_scale in (
+        (math.scalar_sqrtf, "sqrt.approx", 2.0**-12),
+        (math.scalar_rsqrtf, "rsqrt.approx", 2.0**12),
+    ):
+        constants = (
+            ("normal_limit", 2.0**-126),
+            ("input_scale", 2.0**24),
+            ("output_scale", output_scale),
             ("one", 1.0),
         )
-    ]
-    predicate = next(v.value for v in FLOAT_COMPARE_SELECTOR.values if v.name == "olt")
-    selector = next(
-        v.value for v in FLOAT_MATH_F32_SELECTOR.values if v.name == "exp2.approx"
-    )
-    source = ValueRef.operand("input")
-    steps = (
-        (
-            "float.compare.f32",
-            "underflow",
-            "i1",
-            (source, temporary("normal_limit")),
-            predicate,
-        ),
-        (
-            "value.select",
-            "input_shift",
-            "f32",
-            (temporary("underflow"), temporary("shift"), temporary("zero")),
-            None,
-        ),
-        (
-            "value.select",
-            "output_scale",
-            "f32",
-            (temporary("underflow"), temporary("scale"), temporary("one")),
-            None,
-        ),
-        ("float.add.f32", "shifted", "f32", (source, temporary("input_shift")), None),
-        ("float.math.unary.f32", "normal", "f32", (temporary("shifted"),), selector),
-        (
-            "float.mul.f32",
-            "result",
-            "f32",
-            (temporary("normal"), temporary("output_scale")),
-            None,
-        ),
-    )
-    for mnemonic, result, result_type, operands, immediate in steps:
-        descriptor = descriptors[mnemonic]
-        operand_fields = (
-            operand.field_name
-            for operand in descriptor.operands
-            if operand.role is OperandRole.OPERAND
+        steps = (
+            ("magnitude", "float.abs.f32", "input"),
+            ("subnormal", "float.compare.f32", "magnitude", "normal_limit", "olt"),
+            ("scale_in", "value.select", "subnormal", "input_scale", "one"),
+            ("scale_out", "value.select", "subnormal", "output_scale", "one"),
+            ("scaled", "float.mul.f32", "input", "scale_in"),
+            ("normal", "float.math.unary.f32", "scaled", leaf),
+            ("result", "float.mul.f32", "normal", "scale_out"),
         )
-        emits.append(
-            EmitDescriptorOp(
-                descriptor=descriptor,
-                operands=dict(zip(operand_fields, operands, strict=True)),
-                results={
-                    "destination_v8": ValueRef.result("result")
-                    if result == "result"
-                    else temporary(result)
-                },
-                result_types={"destination_v8": Scalar(result_type)},
-                immediates={descriptor.immediates[0].field_name: immediate}
-                if immediate is not None
-                else {},
-            )
-        )
-    return DescriptorRule(
-        source_op=math.scalar_exp2f,
-        descriptor=descriptors["float.math.unary.f32"],
-        guards=(
-            Guard.value_type("input", Scalar("f32")),
-            Guard.value_type("result", Scalar("f32")),
-            Guard.instance_flags_has_all("fastmath", "afn"),
-        ),
-        emit=tuple(emits),
-    )
+        yield _f32_math_sequence(source_op, constants, steps)
 
 
 def _address_cases():
@@ -1100,6 +1123,7 @@ VM_CORE_CONTRACT_FRAGMENT = ContractFragment(
     + tuple(_conversion_cases())
     + tuple(_math_cases())
     + (_exp2_case(),)
+    + tuple(_root_cases())
     + tuple(_address_cases())
     + tuple(_buffer_cases())
     + tuple(_view_cases())

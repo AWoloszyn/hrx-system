@@ -132,6 +132,14 @@ _RESULT_TYPES = {
     FloatFmaSemantics: _FLOAT_TYPES,
     FloatMathSemantics: _FLOAT_TYPES,
 }
+
+
+def scalar_result_type(instruction: Instruction) -> ScalarTypeKind | None:
+    """Returns the result type fixed by scalar numeric semantics, if any."""
+    types = _RESULT_TYPES.get(type(instruction.semantics))
+    return types[instruction.semantics.bit_width] if types is not None else None
+
+
 _SCALAR_INSTRUCTIONS = tuple(
     instruction
     for instruction in SPECIFICATION.instructions
@@ -468,12 +476,7 @@ VM_CORE_DESCRIPTOR_SET = DescriptorSet(
         *(_constant_descriptor(op) for op in (CONSTANT_I32, CONSTANT_I64)),
         *(_descriptor(op, ScalarTypeKind.I64) for op in _SCALAR_CONVERSIONS),
         *(
-            _descriptor(
-                instruction,
-                _RESULT_TYPES[type(instruction.semantics)][
-                    instruction.semantics.bit_width
-                ],
-            )
+            _descriptor(instruction, scalar_result_type(instruction))
             for instruction in _SCALAR_INSTRUCTIONS
         ),
         *(

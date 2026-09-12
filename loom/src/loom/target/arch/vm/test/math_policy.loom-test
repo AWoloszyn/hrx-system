@@ -67,3 +67,23 @@ func.def target(@vm) @wide_exp2(%value: f64) -> (f64) {
   %result = scalar.exp2f<afn> %value : f64
   func.return %result : f64
 }
+
+// ====
+
+vm.target<core> @vm
+
+func.def target(@vm) @wide_sqrt(%value: f64) -> (f64) {
+  // ERROR@+1: TARGET/002 {target_key="vm", export_name="wide_sqrt", config_key="vm", function_name="wide_sqrt", op_name="scalar.sqrtf", field_name="input", actual_type="f64", expected_type="f32"}
+  %result = scalar.sqrtf %value : f64
+  func.return %result : f64
+}
+
+// ====
+
+vm.target<core> @vm
+
+func.def target(@vm) @wide_rsqrt(%value: f64) -> (f64) {
+  // ERROR@+1: TARGET/002 {target_key="vm", export_name="wide_rsqrt", config_key="vm", function_name="wide_rsqrt", op_name="scalar.rsqrtf", field_name="input", actual_type="f64", expected_type="f32"}
+  %result = scalar.rsqrtf %value : f64
+  func.return %result : f64
+}

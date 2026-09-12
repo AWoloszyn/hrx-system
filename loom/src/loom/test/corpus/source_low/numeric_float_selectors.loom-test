@@ -109,3 +109,11 @@ func.def @float_sign_f64(%value: f64) -> (f64) {
   %result = scalar.signf %value : f64
   func.return %result : f64
 }
+
+// ====
+
+func.def @roots_f32(%value: f32) -> (f32, f32) {
+  %root = scalar.sqrtf %value : f32
+  %inverse = scalar.rsqrtf %value : f32
+  func.return %root, %inverse : f32, f32
+}

@@ -248,3 +248,33 @@ low.func.def target<vm.core>(@vm) abi(vm_function) @float_sign_f64(%value: reg<v
   %result = float.math.unary.f64 %value, 4
   return %result
 }
+
+// ====
+
+vm.target<core> @vm
+
+func.def target(@vm) @roots_f32(%value: f32) -> (f32, f32) {
+  %root = scalar.sqrtf %value : f32
+  %inverse = scalar.rsqrtf %value : f32
+  func.return %root, %inverse : f32, f32
+}
+
+// ----
+low.func.def target<vm.core>(@vm) abi(vm_function) @roots_f32(%value: reg<vm.value : f32>) -> (reg<vm.value : f32>, reg<vm.value : f32>) asm {
+  %8 = constant.i32 8388608 : reg<vm.value : f32>
+  %9 = constant.i32 1266679808 : reg<vm.value : f32>
+  %10 = constant.i32 964689920 : reg<vm.value : f32>
+  %11 = constant.i32 1065353216 : reg<vm.value : f32>
+  %12 = float.abs.f32 %value
+  %13 = float.compare.f32 %12, %8, 3
+  %14 = value.select %13, %9, %11 : reg<vm.value : f32>
+  %15 = value.select %13, %10, %11 : reg<vm.value : f32>
+  %16 = float.mul.f32 %value, %14
+  %17 = float.math.unary.f32 %16, 9
+  %root = float.mul.f32 %17, %15
+  %21 = constant.i32 1166016512 : reg<vm.value : f32>
+  %26 = value.select %13, %21, %11 : reg<vm.value : f32>
+  %28 = float.math.unary.f32 %16, 8
+  %inverse = float.mul.f32 %28, %26
+  return %root, %inverse
+}
