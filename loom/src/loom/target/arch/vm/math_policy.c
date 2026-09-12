@@ -28,6 +28,7 @@ static void loom_vm_math_policy_query(
     case LOOM_TARGET_MATH_OP_ROUNDF:
     case LOOM_TARGET_MATH_OP_ROUNDEVENF:
     case LOOM_TARGET_MATH_OP_TRUNCF:
+    case LOOM_TARGET_MATH_OP_LOG2F:
       break;
     case LOOM_TARGET_MATH_OP_EXPF:
     case LOOM_TARGET_MATH_OP_SINF:

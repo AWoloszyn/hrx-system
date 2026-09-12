@@ -117,3 +117,10 @@ func.def @roots_f32(%value: f32) -> (f32, f32) {
   %inverse = scalar.rsqrtf %value : f32
   func.return %root, %inverse : f32, f32
 }
+
+// ====
+
+func.def @log2_f32(%value: f32) -> (f32) {
+  %result = scalar.log2f<afn> %value : f32
+  func.return %result : f32
+}

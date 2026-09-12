@@ -689,6 +689,33 @@ def _root_cases():
         yield _f32_math_sequence(source_op, constants, steps)
 
 
+def _log2_case():
+    # Subnormal inputs normalize exactly. Correct the logarithm's exponent
+    # afterward; negative subnormals must reach the leaf's NaN domain case.
+    constants = (
+        ("normal_limit", 2.0**-126),
+        ("input_scale", 2.0**24),
+        ("exponent", 24.0),
+        ("one", 1.0),
+        ("zero", 0.0),
+    )
+    steps = (
+        ("magnitude", "float.abs.f32", "input"),
+        ("subnormal", "float.compare.f32", "magnitude", "normal_limit", "olt"),
+        ("scale", "value.select", "subnormal", "input_scale", "one"),
+        ("correction", "value.select", "subnormal", "exponent", "zero"),
+        ("scaled", "float.mul.f32", "input", "scale"),
+        ("normal", "float.math.unary.f32", "scaled", "log2.approx"),
+        ("result", "float.sub.f32", "normal", "correction"),
+    )
+    return _f32_math_sequence(
+        math.scalar_log2f,
+        constants,
+        steps,
+        guards=(Guard.instance_flags_has_all("fastmath", "afn"),),
+    )
+
+
 def _address_cases():
     # Address widths are fixed by vm.core. The shared verifier owns the index
     # domain restrictions; these rules consume that established source contract.
@@ -1124,6 +1151,7 @@ VM_CORE_CONTRACT_FRAGMENT = ContractFragment(
     + tuple(_math_cases())
     + (_exp2_case(),)
     + tuple(_root_cases())
+    + (_log2_case(),)
     + tuple(_address_cases())
     + tuple(_buffer_cases())
     + tuple(_view_cases())
