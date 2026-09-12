@@ -141,6 +141,23 @@ class LinuxXdnaMemoryRollbackTest : public ::testing::Test {
     return profile;
   }
 
+  void ReleasePreparedState() {
+    ASSERT_NE(memory_, nullptr);
+    EXPECT_TRUE(native_.handle_live);
+    EXPECT_EQ(native_.close_count, 0u);
+    EXPECT_EQ(native_.metadata_free_count, 0u);
+    const amdf_status_t status = amdf_xdna_umd_memory_destroy(memory_);
+    if (native_.close_error != 0) {
+      EXPECT_EQ(status, amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO,
+                                         native_.close_error));
+      EXPECT_EQ(native_.metadata_free_count, 0u);
+      amdf_xdna_umd_memory_abandon(memory_);
+    } else {
+      EXPECT_EQ(status, AMDF_STATUS_OK);
+    }
+    memory_ = nullptr;
+  }
+
   // Native failure and resource-consumption state.
   NativeMemoryState native_;
   // Complete address-translation limits for the test device.
@@ -149,27 +166,29 @@ class LinuxXdnaMemoryRollbackTest : public ::testing::Test {
   };
   // Explicit live native device borrowed by the constructor.
   amdf_xdna_umd_device_t device_ = {};
-  // Output remains unpublished on every modeled failure.
+  // Constructing owner's native state, including failed preparation progress.
   amdf_xdna_umd_memory_t* memory_ = nullptr;
   // Sentinel output unchanged by failed construction.
   amdf_xdna_umd_memory_result_t result_;
 };
 
-TEST_F(LinuxXdnaMemoryRollbackTest, ReportsTerminalOwnedBufferCleanupFailure) {
+TEST_F(LinuxXdnaMemoryRollbackTest, RetainsFailedPreparationUntilOwnerCleanup) {
   const amdf_memory_profile_t profile = QueryProfile(0);
   const amdf_memory_create_info_t create_info = {.byte_length = 4096};
-  EXPECT_EQ(amdf_xdna_umd_memory_create(&device_, &profile, &create_info,
-                                        &memory_, &result_),
-            amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, ENODEV));
+  EXPECT_EQ(amdf_xdna_umd_memory_prepare(&device_, &profile, &create_info,
+                                         &memory_, &result_),
+            amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, EIO));
+  ReleasePreparedState();
 }
 
-TEST_F(LinuxXdnaMemoryRollbackTest, SuccessfulRollbackReportsOriginalFailure) {
+TEST_F(LinuxXdnaMemoryRollbackTest, OwnerCanReleasePartiallyPreparedBuffer) {
   native_.close_error = 0;
   const amdf_memory_profile_t profile = QueryProfile(0);
   const amdf_memory_create_info_t create_info = {.byte_length = 4096};
-  EXPECT_EQ(amdf_xdna_umd_memory_create(&device_, &profile, &create_info,
-                                        &memory_, &result_),
+  EXPECT_EQ(amdf_xdna_umd_memory_prepare(&device_, &profile, &create_info,
+                                         &memory_, &result_),
             amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, EIO));
+  ReleasePreparedState();
 }
 
 TEST_F(LinuxXdnaMemoryRollbackTest, FailedRegistrationLeavesCallerPagesAlone) {
@@ -181,9 +200,10 @@ TEST_F(LinuxXdnaMemoryRollbackTest, FailedRegistrationLeavesCallerPagesAlone) {
       .byte_length = 4096,
       .registered_host_pointer = pages,
   };
-  EXPECT_EQ(amdf_xdna_umd_memory_create(&device_, &profile, &create_info,
-                                        &memory_, &result_),
-            amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, ENODEV));
+  EXPECT_EQ(amdf_xdna_umd_memory_prepare(&device_, &profile, &create_info,
+                                         &memory_, &result_),
+            amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, EIO));
+  ReleasePreparedState();
   unsigned char residency = 0;
   EXPECT_EQ(mincore(pages, 4096, &residency), 0);
   EXPECT_EQ(munmap(pages, 4096), 0);
@@ -209,9 +229,11 @@ TEST_F(LinuxXdnaMemoryRollbackTest,
   };
   const amdf_memory_profile_t profile = QueryProfile(1);
   const amdf_memory_import_info_t import_info = {};
-  EXPECT_EQ(amdf_xdna_umd_memory_import(&device_, &profile, &import_info,
-                                        &external_memory, &memory_, &result_),
-            amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, ENODEV));
+  EXPECT_EQ(
+      amdf_xdna_umd_memory_prepare_import(&device_, &profile, &import_info,
+                                          &external_memory, &memory_, &result_),
+      amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, EIO));
+  ReleasePreparedState();
   EXPECT_EQ(release_count, 0u);
   EXPECT_GE(fcntl(descriptor, F_GETFD), 0);
   EXPECT_GE(native_.backing_descriptor, 0);

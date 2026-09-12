@@ -208,10 +208,10 @@ class WindowsXdnaMemoryTest : public ::testing::Test {
   amdf_memory_profile_t profile_ = {};
 };
 
-TEST_F(WindowsXdnaMemoryTest, PublishesOnlyAfterMapAndOrdinaryResidency) {
+TEST_F(WindowsXdnaMemoryTest, CompletesOnlyAfterMapAndOrdinaryResidency) {
   amdf_xdna_umd_memory_t* memory = nullptr;
   amdf_xdna_umd_memory_result_t result = {};
-  ASSERT_TRUE(amdf_status_is_ok(amdf_xdna_umd_memory_create(
+  ASSERT_TRUE(amdf_status_is_ok(amdf_xdna_umd_memory_prepare(
       &device_, &profile_, &create_info_, &memory, &result)));
   ASSERT_NE(memory, nullptr);
 
@@ -282,15 +282,20 @@ TEST_F(WindowsXdnaMemoryTest,
         FailurePoint::kSecondWait}) {
     state_ = {};
     state_.failure_point = failure_point;
-    amdf_xdna_umd_memory_t* memory =
-        reinterpret_cast<amdf_xdna_umd_memory_t*>(uintptr_t{1});
-    amdf_xdna_umd_memory_result_t result = {};
+    amdf_xdna_umd_memory_t* memory = nullptr;
+    amdf_xdna_umd_memory_result_t result;
+    std::memset(&result, 0xA5, sizeof(result));
+    const amdf_xdna_umd_memory_result_t original_result = result;
 
-    const amdf_status_t status = amdf_xdna_umd_memory_create(
+    const amdf_status_t status = amdf_xdna_umd_memory_prepare(
         &device_, &profile_, &create_info_, &memory, &result);
 
     EXPECT_FALSE(amdf_status_is_ok(status));
-    EXPECT_EQ(reinterpret_cast<uintptr_t>(memory), uintptr_t{1});
+    ASSERT_NE(memory, nullptr);
+    EXPECT_EQ(std::memcmp(&result, &original_result, sizeof(result)), 0);
+    EXPECT_EQ(state_.metadata_free_count, 0u);
+    EXPECT_NE(state_.operations.back(), Operation::kDestroy);
+    EXPECT_EQ(amdf_xdna_umd_memory_destroy(memory), AMDF_STATUS_OK);
     EXPECT_EQ(state_.metadata_free_count, 1u);
     switch (failure_point) {
       case FailurePoint::kCreate:
@@ -348,17 +353,22 @@ TEST_F(WindowsXdnaMemoryTest,
        LeaksBackingWhenRollbackCannotObservePagingCompletion) {
   state_.failure_point = FailurePoint::kFirstWait;
   state_.wait_failures_remaining = 2;
-  amdf_xdna_umd_memory_t* memory =
-      reinterpret_cast<amdf_xdna_umd_memory_t*>(uintptr_t{1});
+  amdf_xdna_umd_memory_t* memory = nullptr;
   amdf_xdna_umd_memory_result_t result;
   std::memset(&result, 0xA5, sizeof(result));
   const amdf_xdna_umd_memory_result_t original_result = result;
 
-  EXPECT_EQ(amdf_xdna_umd_memory_create(&device_, &profile_, &create_info_,
-                                        &memory, &result),
+  EXPECT_EQ(amdf_xdna_umd_memory_prepare(&device_, &profile_, &create_info_,
+                                         &memory, &result),
             amdf_kmt_make_status(kStatusNoMemory));
-  EXPECT_EQ(reinterpret_cast<uintptr_t>(memory), uintptr_t{1});
+  ASSERT_NE(memory, nullptr);
   EXPECT_EQ(std::memcmp(&result, &original_result, sizeof(result)), 0);
+  EXPECT_EQ(state_.metadata_free_count, 0u);
+  EXPECT_EQ(state_.wait_targets, (std::vector<uint64_t>{1}));
+  EXPECT_EQ(amdf_xdna_umd_memory_destroy(memory),
+            amdf_kmt_make_status(kStatusNoMemory));
+  EXPECT_EQ(state_.metadata_free_count, 0u);
+  amdf_xdna_umd_memory_abandon(memory);
   EXPECT_EQ(state_.metadata_free_count, 1u);
   EXPECT_EQ(state_.operations,
             (std::vector<Operation>{Operation::kCreate, Operation::kMap,
@@ -371,7 +381,7 @@ TEST_F(WindowsXdnaMemoryTest,
 TEST_F(WindowsXdnaMemoryTest, KeepsPublishedMemoryLiveAfterDestroyFailure) {
   amdf_xdna_umd_memory_t* memory = nullptr;
   amdf_xdna_umd_memory_result_t result = {};
-  ASSERT_TRUE(amdf_status_is_ok(amdf_xdna_umd_memory_create(
+  ASSERT_TRUE(amdf_status_is_ok(amdf_xdna_umd_memory_prepare(
       &device_, &profile_, &create_info_, &memory, &result)));
   ASSERT_NE(memory, nullptr);
 
@@ -387,17 +397,23 @@ TEST_F(WindowsXdnaMemoryTest,
        ReportsFailedNativeCleanupWithoutRetainingMemory) {
   state_.failure_point = FailurePoint::kMap;
   state_.destroy_failures_remaining = 1;
-  amdf_xdna_umd_memory_t* memory =
-      reinterpret_cast<amdf_xdna_umd_memory_t*>(uintptr_t{1});
+  amdf_xdna_umd_memory_t* memory = nullptr;
   amdf_xdna_umd_memory_result_t result;
   std::memset(&result, 0xA5, sizeof(result));
   const amdf_xdna_umd_memory_result_t original_result = result;
 
-  EXPECT_EQ(amdf_xdna_umd_memory_create(&device_, &profile_, &create_info_,
-                                        &memory, &result),
+  EXPECT_EQ(amdf_xdna_umd_memory_prepare(&device_, &profile_, &create_info_,
+                                         &memory, &result),
             amdf_kmt_make_status(kStatusNoMemory));
-  EXPECT_EQ(reinterpret_cast<uintptr_t>(memory), uintptr_t{1});
+  ASSERT_NE(memory, nullptr);
   EXPECT_EQ(std::memcmp(&result, &original_result, sizeof(result)), 0);
+  EXPECT_EQ(state_.metadata_free_count, 0u);
+  EXPECT_EQ(state_.operations,
+            (std::vector<Operation>{Operation::kCreate, Operation::kMap}));
+  EXPECT_EQ(amdf_xdna_umd_memory_destroy(memory),
+            amdf_kmt_make_status(kStatusNoMemory));
+  EXPECT_EQ(state_.metadata_free_count, 0u);
+  amdf_xdna_umd_memory_abandon(memory);
   EXPECT_EQ(state_.metadata_free_count, 1u);
   EXPECT_EQ(state_.operations,
             (std::vector<Operation>{Operation::kCreate, Operation::kMap,

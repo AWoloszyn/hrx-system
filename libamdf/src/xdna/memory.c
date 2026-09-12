@@ -188,6 +188,20 @@ static void amdf_xdna_memory_set_info(amdf_xdna_memory_t* memory,
   memory->base.info.reset_epoch = amdf_xdna_device_query_reset_epoch(device);
 }
 
+// Rollback belongs to the constructing memory owner. A terminal native error
+// preserves any referenced backing but never retains unpublished bookkeeping.
+static amdf_status_t amdf_xdna_memory_discard(amdf_xdna_memory_t* memory) {
+  amdf_status_t status = AMDF_STATUS_OK;
+  if (memory->umd != NULL) {
+    status = amdf_xdna_umd_memory_destroy(memory->umd);
+    if (!amdf_status_is_ok(status)) {
+      amdf_xdna_umd_memory_abandon(memory->umd);
+    }
+  }
+  amdf_free(amdf_memory_host_allocator(&memory->base), memory);
+  return status;
+}
+
 amdf_status_t amdf_xdna_memory_create(
     amdf_device_t* device, const amdf_memory_profile_t* profile,
     const amdf_memory_create_info_t* create_info, amdf_memory_t** out_memory) {
@@ -201,14 +215,15 @@ amdf_status_t amdf_xdna_memory_create(
 
   amdf_xdna_umd_memory_result_t result = {0};
   status =
-      amdf_xdna_umd_memory_create(amdf_xdna_device_get_umd(device), profile,
-                                  create_info, &memory->umd, &result);
+      amdf_xdna_umd_memory_prepare(amdf_xdna_device_get_umd(device), profile,
+                                   create_info, &memory->umd, &result);
   if (amdf_status_is_ok(status)) {
     amdf_xdna_memory_set_info(memory, device, profile,
                               create_info->device_access, result);
     *out_memory = &memory->base;
   } else {
-    amdf_free(host_allocator, memory);
+    const amdf_status_t release_status = amdf_xdna_memory_discard(memory);
+    if (!amdf_status_is_ok(release_status)) status = release_status;
   }
   return status;
 }
@@ -226,15 +241,20 @@ amdf_status_t amdf_xdna_memory_import(
   amdf_memory_initialize(&memory->base, &amdf_xdna_memory_vtable, device);
 
   amdf_xdna_umd_memory_result_t result = {0};
-  status = amdf_xdna_umd_memory_import(amdf_xdna_device_get_umd(device),
-                                       profile, import_info, external_memory,
-                                       &memory->umd, &result);
+  status = amdf_xdna_umd_memory_prepare_import(
+      amdf_xdna_device_get_umd(device), profile, import_info, external_memory,
+      &memory->umd, &result);
   if (amdf_status_is_ok(status)) {
     amdf_xdna_memory_set_info(memory, device, profile,
                               import_info->device_access, result);
+    if (external_memory->release != NULL) {
+      external_memory->release(external_memory->release_user_data,
+                               external_memory->type, external_memory->payload);
+    }
     *out_memory = &memory->base;
   } else {
-    amdf_free(host_allocator, memory);
+    const amdf_status_t release_status = amdf_xdna_memory_discard(memory);
+    if (!amdf_status_is_ok(release_status)) status = release_status;
   }
   return status;
 }

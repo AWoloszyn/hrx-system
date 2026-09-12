@@ -61,7 +61,14 @@ class LinuxXdnaDeviceTest : public ::testing::Test {
       if (value)
         EXPECT_EQ(amdf_xdna_umd_host_mapping_destroy(value), AMDF_STATUS_OK);
     }
+    if (imported_memory) {
+      EXPECT_EQ(amdf_xdna_umd_memory_destroy(imported_memory), AMDF_STATUS_OK);
+    }
     if (memory) EXPECT_EQ(amdf_xdna_umd_memory_destroy(memory), AMDF_STATUS_OK);
+    if (external_memory.release != nullptr) {
+      external_memory.release(external_memory.release_user_data,
+                              external_memory.type, external_memory.payload);
+    }
     for (auto* value : contexts) {
       if (value) {
         std::cout << "Destroy native context" << std::endl;
@@ -87,6 +94,10 @@ class LinuxXdnaDeviceTest : public ::testing::Test {
   amdf_xdna_umd_context_t* contexts[2] = {};
   // Memory retained until every host view has been destroyed.
   amdf_xdna_umd_memory_t* memory = nullptr;
+  // Independently acquired import, including any partial preparation state.
+  amdf_xdna_umd_memory_t* imported_memory = nullptr;
+  // Owned export retained until all native import preparation has completed.
+  amdf_external_memory_t external_memory = {};
   // Independent host views into the same native attachment.
   amdf_xdna_umd_host_mapping_t* mappings[2] = {};
 };
@@ -147,9 +158,10 @@ TEST_F(LinuxXdnaDeviceTest, ContextsShareDeviceMemoryAndDestroyIndependently) {
       amdf_xdna_umd_device_query_memory_profile(device, 0, &memory_profile),
       AMDF_STATUS_OK);
   std::cout << "Create aligned SHARE attachment" << std::endl;
-  ASSERT_EQ(amdf_xdna_umd_memory_create(device, &memory_profile, &memory_create,
-                                        &memory, &memory_result),
-            AMDF_STATUS_OK);
+  ASSERT_EQ(
+      amdf_xdna_umd_memory_prepare(device, &memory_profile, &memory_create,
+                                   &memory, &memory_result),
+      AMDF_STATUS_OK);
   EXPECT_GE(memory_result.byte_length, memory_create.byte_length);
   EXPECT_EQ(memory_result.device_address % memory_create.minimum_alignment, 0u);
   EXPECT_EQ(memory_result.address_kinds, memory_profile.address_kinds);
@@ -192,6 +204,42 @@ TEST_F(LinuxXdnaDeviceTest, ContextsShareDeviceMemoryAndDestroyIndependently) {
                 map_info.byte_length),
             AMDF_STATUS_OK);
   EXPECT_EQ(static_cast<uint8_t*>(views[1].pointer)[4095], 0xA5);
+
+  amdf_memory_export_info_t export_info = {};
+  export_info.external_memory_type = AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD;
+  export_info.byte_length = memory_result.byte_length;
+  ASSERT_EQ(amdf_xdna_umd_memory_export(memory, &export_info, &external_memory),
+            AMDF_STATUS_OK);
+  // Native export supplies the payload/release obligation; the public owner
+  // qualifies that transport with its validated logical range and identity.
+  external_memory.type = export_info.external_memory_type;
+  external_memory.byte_length = export_info.byte_length;
+  external_memory.source_byte_offset = memory_result.source_byte_offset;
+  external_memory.physical_backing_id = memory_result.physical_backing_id;
+  amdf_memory_profile_t import_profile = {};
+  import_profile.structure_size = sizeof(import_profile);
+  ASSERT_EQ(
+      amdf_xdna_umd_device_query_memory_profile(device, 1, &import_profile),
+      AMDF_STATUS_OK);
+  amdf_memory_import_info_t import_info = {};
+  import_info.device_access = memory_create.device_access;
+  amdf_xdna_umd_memory_result_t import_result = {};
+  uint32_t release_count = 0;
+  amdf_external_memory_t borrowed_external = external_memory;
+  borrowed_external.release = [](void* user_data, amdf_external_memory_type_t,
+                                 amdf_external_memory_payload_t) {
+    ++*static_cast<uint32_t*>(user_data);
+  };
+  borrowed_external.release_user_data = &release_count;
+  ASSERT_EQ(amdf_xdna_umd_memory_prepare_import(
+                device, &import_profile, &import_info, &borrowed_external,
+                &imported_memory, &import_result),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(release_count, 0u);
+  EXPECT_TRUE(amdf_physical_memory_id_is_equal(
+      &import_result.physical_backing_id, &memory_result.physical_backing_id));
+  EXPECT_EQ(static_cast<uint8_t*>(imported_memory->buffer.host_pointer)[1],
+            0xA5);
 
   std::cout << "Destroy sibling context while memory stays live" << std::endl;
   ASSERT_EQ(amdf_xdna_umd_context_destroy(contexts[0]), AMDF_STATUS_OK);

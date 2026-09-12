@@ -36,14 +36,8 @@ amdf_status_t amdf_xdna_umd_memory_destroy(amdf_xdna_umd_memory_t* memory) {
   return status;
 }
 
-static amdf_status_t amdf_linux_xdna_memory_discard(
-    amdf_xdna_umd_memory_t* memory) {
-  const amdf_status_t status = amdf_linux_xdna_buffer_deinitialize(
-      memory->device->descriptor, &memory->buffer);
-  // Failed native release leaves its remaining mappings and GEM references
-  // intact. Unpublished metadata does not become a parent-owned retry record.
+void amdf_xdna_umd_memory_abandon(amdf_xdna_umd_memory_t* memory) {
   amdf_free(memory->device->host_allocator, memory);
-  return status;
 }
 
 static amdf_status_t amdf_linux_xdna_memory_query_dma_buf(
@@ -191,11 +185,11 @@ amdf_status_t amdf_xdna_umd_device_query_memory_profile(
   return AMDF_STATUS_OK;
 }
 
-amdf_status_t amdf_xdna_umd_memory_import(
+amdf_status_t amdf_xdna_umd_memory_prepare_import(
     amdf_xdna_umd_device_t* device, const amdf_memory_profile_t* profile,
     const amdf_memory_import_info_t* import_info,
     const amdf_external_memory_t* external_memory,
-    amdf_xdna_umd_memory_t** out_memory,
+    amdf_xdna_umd_memory_t** memory_state,
     amdf_xdna_umd_memory_result_t* out_result) {
   amdf_assert(external_memory->type == AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD &&
               "selected XDNA import profile must consume DMA-BUF memory");
@@ -230,6 +224,7 @@ amdf_status_t amdf_xdna_umd_memory_import(
                        amdf_alignof(amdf_xdna_umd_memory_t), (void**)&memory);
   if (!amdf_status_is_ok(status)) return status;
   memory->device = device;
+  *memory_state = memory;
   memory->source_byte_offset = external_memory->source_byte_offset;
   memory->physical_backing_id = dma_buf_info.physical_backing_id;
   status = amdf_linux_xdna_buffer_import_dma_buf(
@@ -267,17 +262,7 @@ amdf_status_t amdf_xdna_umd_memory_import(
         .address_kinds = profile->address_kinds,
         .dma_address = dma_address,
     };
-    if (external_memory->release != NULL) {
-      external_memory->release(external_memory->release_user_data,
-                               external_memory->type, external_memory->payload);
-    }
     *out_result = result;
-    *out_memory = memory;
-  } else {
-    const amdf_status_t release_status = amdf_linux_xdna_memory_discard(memory);
-    if (!amdf_status_is_ok(release_status)) {
-      status = release_status;
-    }
   }
   return status;
 }
@@ -335,10 +320,10 @@ amdf_status_t amdf_xdna_umd_memory_describe_site(
   return AMDF_STATUS_OK;
 }
 
-amdf_status_t amdf_xdna_umd_memory_create(
+amdf_status_t amdf_xdna_umd_memory_prepare(
     amdf_xdna_umd_device_t* device, const amdf_memory_profile_t* profile,
     const amdf_memory_create_info_t* create_info,
-    amdf_xdna_umd_memory_t** out_memory,
+    amdf_xdna_umd_memory_t** memory_state,
     amdf_xdna_umd_memory_result_t* out_result) {
   const bool registers_host =
       profile->memory_class == AMDF_MEMORY_CLASS_REGISTERED_HOST;
@@ -385,6 +370,7 @@ amdf_status_t amdf_xdna_umd_memory_create(
                   amdf_alignof(amdf_xdna_umd_memory_t), (void**)&memory);
   if (!amdf_status_is_ok(status)) return status;
   memory->device = device;
+  *memory_state = memory;
   memory->source_byte_offset = source_byte_offset;
   if (registers_host) {
     status = amdf_linux_xdna_buffer_register_host_pages(
@@ -433,12 +419,6 @@ amdf_status_t amdf_xdna_umd_memory_create(
         .dma_address = dma_address,
     };
     *out_result = result;
-    *out_memory = memory;
-  } else {
-    const amdf_status_t release_status = amdf_linux_xdna_memory_discard(memory);
-    if (!amdf_status_is_ok(release_status)) {
-      status = release_status;
-    }
   }
   return status;
 }

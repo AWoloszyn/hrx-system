@@ -222,17 +222,17 @@ amdf_status_t amdf_xdna_umd_device_query_memory_profile(
   return AMDF_STATUS_OK;
 }
 
-amdf_status_t amdf_xdna_umd_memory_import(
+amdf_status_t amdf_xdna_umd_memory_prepare_import(
     amdf_xdna_umd_device_t* device, const amdf_memory_profile_t* profile,
     const amdf_memory_import_info_t* import_info,
     const amdf_external_memory_t* external_memory,
-    amdf_xdna_umd_memory_t** out_memory,
+    amdf_xdna_umd_memory_t** memory_state,
     amdf_xdna_umd_memory_result_t* out_result) {
   (void)device;
   (void)profile;
   (void)import_info;
   (void)external_memory;
-  (void)out_memory;
+  (void)memory_state;
   (void)out_result;
   return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
 }
@@ -256,10 +256,10 @@ amdf_status_t amdf_xdna_umd_memory_describe_site(
   return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
 }
 
-amdf_status_t amdf_xdna_umd_memory_create(
+amdf_status_t amdf_xdna_umd_memory_prepare(
     amdf_xdna_umd_device_t* device, const amdf_memory_profile_t* profile,
     const amdf_memory_create_info_t* create_info,
-    amdf_xdna_umd_memory_t** out_memory,
+    amdf_xdna_umd_memory_t** memory_state,
     amdf_xdna_umd_memory_result_t* out_result) {
   const uint64_t byte_length =
       (create_info->byte_length + AMDF_WINDOWS_XDNA_ALLOCATION_ALIGNMENT - 1) &
@@ -271,6 +271,7 @@ amdf_status_t amdf_xdna_umd_memory_create(
                   amdf_alignof(amdf_xdna_umd_memory_t), (void**)&memory);
   if (!amdf_status_is_ok(status)) return status;
   memory->device = device;
+  *memory_state = memory;
   memory->byte_length = byte_length;
   memory->host_pointer = VirtualAlloc(NULL, (SIZE_T)byte_length,
                                       MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
@@ -303,16 +304,6 @@ amdf_status_t amdf_xdna_umd_memory_create(
     result.device_address = memory->device_address;
     result.address_kinds = UINT64_C(1) << AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE;
     *out_result = result;
-    *out_memory = memory;
-  } else {
-    const amdf_status_t release_status =
-        amdf_windows_xdna_memory_release_native(memory);
-    if (!amdf_status_is_ok(release_status)) {
-      status = release_status;
-    }
-    // Failed native release leaves its allocation and dependent host backing
-    // intact. Unpublished metadata creates no parent-owned retry obligation.
-    amdf_free(device->host_allocator, memory);
   }
   return status;
 }
@@ -323,6 +314,10 @@ amdf_status_t amdf_xdna_umd_memory_destroy(amdf_xdna_umd_memory_t* memory) {
     amdf_free(memory->device->host_allocator, memory);
   }
   return status;
+}
+
+void amdf_xdna_umd_memory_abandon(amdf_xdna_umd_memory_t* memory) {
+  amdf_free(memory->device->host_allocator, memory);
 }
 
 amdf_status_t amdf_xdna_umd_memory_map(
