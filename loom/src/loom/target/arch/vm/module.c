@@ -15,38 +15,6 @@
 #include "loom/target/arch/vm/function.h"
 #include "loom/target/function_version.h"
 
-typedef struct loom_vm_module_function_t {
-  // Borrowed executable function and signature values.
-  loom_func_like_t function;
-  // Function target facts retained by the shared specialization pipeline.
-  const loom_target_facts_t* target_facts;
-  // Source-ordered entry argument IDs in the module.
-  const loom_value_id_t* arguments;
-  // Source-ordered signature result IDs in the module.
-  loom_value_slice_t results;
-  // Public name, or empty for an internal function.
-  iree_string_view_t export_name;
-  // Function ordinal in the emitted image.
-  uint16_t ordinal;
-  // Source-ordered logical argument count.
-  uint16_t argument_count;
-  // Canonical callable ordinal assigned by signature sorting.
-  uint16_t callable_ordinal;
-  // Exact logical fields and their physical argument/result bank counts.
-  loom_vm_function_signature_t signature;
-} loom_vm_module_function_t;
-
-typedef struct loom_vm_module_function_span_t {
-  // Arena-owned function records in bytecode ordinal order.
-  loom_vm_module_function_t* values;
-  // Symbol-indexed local function ordinals; UINT16_MAX marks other symbols.
-  uint16_t* ordinals_by_symbol;
-  // Number of records in |values|, bounded by the module symbol ID space.
-  uint32_t count;
-  // Whether any signature names the Core buffer reference type.
-  bool uses_buffer_type;
-} loom_vm_module_function_span_t;
-
 // A signature is ordered by argument count/types then result
 // count/types, exactly as the wire callable table requires. Ordinals are
 // assigned by sorting once; the runtime performs no hashing or interning.
@@ -444,10 +412,9 @@ static iree_status_t loom_vm_module_write(
         .callable_type_ordinal_u16 = functions.values[i].callable_ordinal,
         .bytecode_offset_u32 = (uint32_t)offset,
     };
-    status = loom_vm_function_emit(request, functions.values[i].function,
-                                   functions.values[i].target_facts,
-                                   &functions.values[i].signature,
-                                   functions.ordinals_by_symbol, stream, &row);
+    status = loom_vm_function_emit(
+        request, functions.values[i].function, functions.values[i].target_facts,
+        &functions.values[i].signature, &functions, stream, &row);
     if (iree_status_is_ok(status)) {
       functions_header.maximum_block_count_u32 = iree_max(
           functions_header.maximum_block_count_u32, row.block_count_u32);

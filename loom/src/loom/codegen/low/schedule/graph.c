@@ -1251,6 +1251,8 @@ iree_status_t loom_low_schedule_fill_nodes(
         node->flags |= LOOM_LOW_SCHEDULE_NODE_FLAG_SOURCE_ORDER_BOUNDARY;
       } else if (loom_low_schedule_op_is_descriptor_packet(op)) {
         node->kind = LOOM_LOW_SCHEDULE_NODE_DESCRIPTOR;
+      } else if (loom_low_func_call_isa(op)) {
+        ++state->call_node_count;
       } else if (op->region_count == 0 &&
                  iree_any_bit_set(node->traits, LOOM_TRAIT_STORAGE_RELATION)) {
         node->flags |= LOOM_LOW_SCHEDULE_NODE_FLAG_STORAGE_SETUP;

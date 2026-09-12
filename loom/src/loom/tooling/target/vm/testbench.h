@@ -36,6 +36,10 @@ typedef struct loom_vm_testbench_t {
   iree_vm_process_t* process;
   // Owned reusable execution storage, never shared by concurrent calls.
   iree_vm_invocation_t* invocation;
+  // Owned reusable argument variants; also the base of the combined IO slab.
+  iree_vm_variant_t* arguments;
+  // Result variants within the IO slab, sized from the immutable case plan.
+  iree_vm_variant_t* results;
   // Borrowed Core descriptors whose provider lives with the linked VM runtime.
   iree_vm_ref_types_t ref_types;
 } loom_vm_testbench_t;

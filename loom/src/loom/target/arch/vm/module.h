@@ -7,11 +7,45 @@
 #ifndef LOOM_TARGET_ARCH_VM_MODULE_H_
 #define LOOM_TARGET_ARCH_VM_MODULE_H_
 
+#include "loom/target/arch/vm/function.h"
 #include "loom/target/provider.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// Module-owned function definitions shared by table and instruction emission.
+typedef struct loom_vm_module_function_t {
+  // Borrowed executable function and signature values.
+  loom_func_like_t function;
+  // Function target facts retained by the shared specialization pipeline.
+  const loom_target_facts_t* target_facts;
+  // Source-ordered entry argument IDs in the module.
+  const loom_value_id_t* arguments;
+  // Source-ordered signature result IDs in the module.
+  loom_value_slice_t results;
+  // Public name, or empty for an internal function.
+  iree_string_view_t export_name;
+  // Function ordinal in the emitted image.
+  uint16_t ordinal;
+  // Source-ordered logical argument count.
+  uint16_t argument_count;
+  // Canonical callable ordinal assigned by signature sorting.
+  uint16_t callable_ordinal;
+  // Exact logical fields and their physical argument/result bank counts.
+  loom_vm_function_signature_t signature;
+} loom_vm_module_function_t;
+
+typedef struct loom_vm_module_function_span_t {
+  // Arena-owned function records in bytecode ordinal order.
+  loom_vm_module_function_t* values;
+  // Symbol-indexed local function ordinals; UINT16_MAX marks other symbols.
+  uint16_t* ordinals_by_symbol;
+  // Number of records in |values|, bounded by the module symbol ID space.
+  uint32_t count;
+  // Whether any signature names the Core buffer reference type.
+  bool uses_buffer_type;
+} loom_vm_module_function_span_t;
 
 // Emits VM functions in a prepared mixed-target module as one immutable .vm
 // artifact. Signature and export tables are sorted for runtime consumption;

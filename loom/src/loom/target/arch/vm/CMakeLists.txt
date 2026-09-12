@@ -82,6 +82,7 @@ loom_check_test_suite(
   SRCS
     "test/assembly.loom-test"
     "test/buffer_packets.loom-test"
+    "test/call_overflow.loom-test"
     "test/calls.loom-test"
     "test/effects.loom-test"
     "test/emission.loom-test"

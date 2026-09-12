@@ -29,6 +29,7 @@ void loom_vm_testbench_initialize(
 void loom_vm_testbench_deinitialize(loom_vm_testbench_t* testbench) {
   iree_vm_invocation_free(testbench->invocation);
   iree_vm_process_release(testbench->process);
+  iree_allocator_free(testbench->host_allocator, testbench->arguments);
   memset(testbench, 0, sizeof(*testbench));
 }
 
@@ -53,6 +54,8 @@ static iree_status_t loom_vm_testbench_compile(loom_vm_testbench_t* testbench,
   }
   loom_target_specialization_request_t* requests = NULL;
   iree_host_size_t request_count = 0;
+  iree_host_size_t max_arguments = 0;
+  iree_host_size_t max_results = 0;
   if (iree_status_is_ok(status)) {
     status = iree_arena_allocate_array(&arena, module->symbols.count,
                                        sizeof(*requests), (void**)&requests);
@@ -68,6 +71,8 @@ static iree_status_t loom_vm_testbench_compile(loom_vm_testbench_t* testbench,
         const loom_testbench_invocation_plan_t* call =
             &case_plan->invocations[j];
         if (call->kind != LOOM_TESTBENCH_INVOCATION_FUNCTION_CALL) continue;
+        max_arguments = iree_max(max_arguments, call->input_count);
+        max_results = iree_max(max_results, call->result_count);
         const loom_func_like_t function = loom_func_like_cast(
             module,
             module->symbols.entries[call->callee_ref.symbol_id].defining_op);
@@ -124,6 +129,26 @@ static iree_status_t loom_vm_testbench_compile(loom_vm_testbench_t* testbench,
   if (iree_status_is_ok(status)) {
     status = iree_byte_sequence_clone(artifact.contents,
                                       testbench->host_allocator, out_contents);
+  }
+  if (iree_status_is_ok(status)) {
+    iree_host_size_t total_size = 0, results_offset = 0;
+    status = IREE_STRUCT_LAYOUT(
+        0, &total_size,
+        IREE_STRUCT_FIELD(max_arguments, iree_vm_variant_t, NULL),
+        IREE_STRUCT_FIELD(max_results, iree_vm_variant_t, &results_offset));
+    if (iree_status_is_ok(status) && total_size) {
+      status = iree_allocator_malloc(testbench->host_allocator, total_size,
+                                     (void**)&testbench->arguments);
+      if (iree_status_is_ok(status)) {
+        testbench->results =
+            (iree_vm_variant_t*)((uint8_t*)testbench->arguments +
+                                 results_offset);
+      }
+    }
+    if (!iree_status_is_ok(status)) {
+      iree_allocator_free(testbench->host_allocator, out_contents->data);
+      *out_contents = iree_byte_span_empty();
+    }
   }
   loom_target_emit_artifact_release(&artifact);
   loom_compile_pipeline_result_deinitialize(&pipeline);
@@ -183,6 +208,8 @@ static iree_status_t loom_vm_testbench_prepare(loom_vm_testbench_t* testbench,
   } else {
     iree_vm_invocation_free(invocation);
     iree_vm_process_release(process);
+    iree_allocator_free(testbench->host_allocator, testbench->arguments);
+    testbench->arguments = testbench->results = NULL;
   }
   return status;
 }
@@ -283,11 +310,6 @@ static iree_status_t loom_vm_testbench_invoke(
     iree_host_size_t input_count, const loom_testbench_value_t* inputs,
     iree_host_size_t result_count, loom_testbench_value_t* out_results) {
   loom_vm_testbench_t* testbench = user_data;
-  if (input_count > IREE_VM_CALL_DIRECT_REGISTER_COUNT ||
-      result_count > IREE_VM_CALL_DIRECT_REGISTER_COUNT) {
-    return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                            "VM test invocation requires overflow marshalling");
-  }
   if (!testbench->process) {
     IREE_RETURN_IF_ERROR(
         loom_vm_testbench_prepare(testbench, invocation->module));
@@ -307,8 +329,8 @@ static iree_status_t loom_vm_testbench_invoke(
           .entries[export_name == LOOM_STRING_ID_INVALID ? symbol->name_id
                                                          : export_name],
       &callee));
-  iree_vm_variant_t arguments[IREE_VM_CALL_DIRECT_REGISTER_COUNT] = {0};
-  iree_vm_variant_t results[IREE_VM_CALL_DIRECT_REGISTER_COUNT] = {0};
+  iree_vm_variant_t* arguments = testbench->arguments;
+  iree_vm_variant_t* results = testbench->results;
   iree_status_t status = iree_ok_status();
   for (iree_host_size_t i = 0; i < parameter_count && iree_status_is_ok(status);
        ++i) {

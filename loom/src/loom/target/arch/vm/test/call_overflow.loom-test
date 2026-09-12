@@ -1,0 +1,88 @@
+// RUN: emit vm-dis
+
+vm.target<core> @vm
+
+// Overflow arguments come from ABI cells, not uninitialized local registers.
+low.func.def target<vm.core>(@vm) abi(vm_function) @wide_identity(%a0: reg<vm.value : i64>, %a1: reg<vm.value : i64>, %a2: reg<vm.value : i64>, %a3: reg<vm.value : i64>, %a4: reg<vm.value : i64>, %a5: reg<vm.value : i64>, %a6: reg<vm.value : i64>, %a7: reg<vm.value : i64>, %a8: reg<vm.value : i64>, %a9: reg<vm.value : i64>, %a10: reg<vm.value : i64>, %a11: reg<vm.value : i64>, %a12: reg<vm.value : i64>, %a13: reg<vm.value : i64>, %a14: reg<vm.value : i64>, %a15: reg<vm.value : i64>, %a16: reg<vm.value : i64>) -> (reg<vm.value : i64>, reg<vm.value : i64>) asm {
+  return %a0, %a16
+}
+
+// The outgoing packet precedes ordinary locals and the saved caller prefix.
+// A local view and a nested call must select disjoint physical byte ranges.
+// The trailing partial local cell must not misalign the saved caller prefix.
+low.func.def public target<vm.core>(@vm) abi(vm_function) @local(%a: reg<vm.value : i64>, %b: reg<vm.value : i64>) -> (reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>) {
+  %storage = low.storage.reserve {byte_alignment = 8, byte_length = 33} : low.storage<stack>
+  %view = low.storage.view %storage {byte_length = 16, offset = 8} : low.storage<stack> -> low.storage<stack>
+  low.spill %a, %view {offset = 8} : reg<vm.value : i64>, low.storage<stack>
+  %first, %last = low.func.call @wide_identity(%a, %a, %a, %a, %a, %a, %a, %a, %a, %a, %a, %a, %a, %a, %a, %a, %b) : (reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>) -> (reg<vm.value : i64>, reg<vm.value : i64>)
+  %original = low.reload %view {offset = 8} : low.storage<stack> -> reg<vm.value : i64>
+  low.return %original, %first, %last : reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>
+}
+
+// ----
+vm.module core(0.0) {
+  section strings alignment(8) {
+    string @string0 = "local"
+  }
+
+  section signatures alignment(8) {
+    signature @signature0 (i64, i64) -> (i64, i64, i64)
+    signature @signature1 (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> (i64, i64)
+  }
+
+  section callable_types alignment(8) {
+    callable @callable0 flags([]) depth(0) : @signature0
+    callable @callable1 flags([]) depth(0) : @signature1
+  }
+
+  section exports alignment(8) {
+    export @export0 name(@string0) : @callable0 = @function1
+  }
+
+  section functions alignment(8) {
+    func @function0 : @callable1 flags([]) frame(local_bytes = 0, value_registers = 17, ref_registers = 0, function_registers = 0, local_refs = 0, local_functions = 0) {
+    ^bb0:
+      control.block
+      %v16 = value.abi.argument.load 0
+    ^bb1:
+      control.block
+      %v1 = value.copy %v16
+      control.return
+    }
+    func @function1 : @callable0 flags([has_call]) frame(local_bytes = 176, value_registers = 16, ref_registers = 0, function_registers = 0, local_refs = 0, local_functions = 0) {
+    ^bb0:
+      control.block
+      stack.store.i64 #v24, %v0.x1
+      stack.store.i64 #v48, %v0.x8
+      stack.store.i64 #v112, %v8.x8
+      stack.store.i64 #v0, %v1.x1
+      %v1.x1 = stack.load.i64 #v48
+      %v2.x1 = stack.load.i64 #v48
+      %v3.x1 = stack.load.i64 #v48
+      %v4.x1 = stack.load.i64 #v48
+      %v5.x1 = stack.load.i64 #v48
+      %v6.x1 = stack.load.i64 #v48
+      %v7.x1 = stack.load.i64 #v48
+      %v8.x1 = stack.load.i64 #v48
+      %v9.x1 = stack.load.i64 #v48
+      %v10.x1 = stack.load.i64 #v48
+      %v11.x1 = stack.load.i64 #v48
+      %v12.x1 = stack.load.i64 #v48
+      %v13.x1 = stack.load.i64 #v48
+      %v14.x1 = stack.load.i64 #v48
+      %v15.x1 = stack.load.i64 #v48
+      control.call @function0 {direct_ref_move_mask = 0x0000}
+      stack.store.i64 #v48, %v0.x1
+      stack.store.i64 #v56, %v1.x1
+      %v0.x8 = stack.load.i64 #v48
+      %v8.x8 = stack.load.i64 #v112
+      %v2.x1 = stack.load.i64 #v24
+      %v3 = value.copy %v0
+      %v0 = value.copy %v2
+      %v2 = value.copy %v1
+      %v1 = value.copy %v3
+      control.return
+    }
+  }
+
+}

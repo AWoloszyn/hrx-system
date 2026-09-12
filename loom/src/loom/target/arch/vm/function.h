@@ -15,6 +15,8 @@
 extern "C" {
 #endif
 
+typedef struct loom_vm_module_function_span_t loom_vm_module_function_span_t;
+
 // Exact logical signature retained by module collection for function emission.
 typedef struct loom_vm_function_signature_t {
   // Physical argument/result counts. Serialization assigns descriptor_base.
@@ -33,17 +35,19 @@ typedef struct loom_vm_function_signature_t {
 // Block offsets and byte lengths come from the emitted stream, not nominal
 // sizes. The shared allocator owns edge and packet moves, including cycle
 // temporaries. Common allocation repair materializes scalar spills; the
-// scheduler's stack layout owns their byte offsets. Call snapshots follow that
-// durable storage and never overlap it. All compiler scratch belongs to
+// scheduler's stack layout owns their relative byte offsets. Outgoing overflow
+// packets occupy the canonical offset-zero prefix; ordinary locals follow,
+// then aligned call snapshots. Overflow entry loads execute once before the
+// branchable body; overflow returns store exact value cells before direct
+// register permutations. All compiler scratch belongs to
 // |request|'s arena. Structured frame errors are forwarded to its diagnostic
 // emitter and terminate emission with a failure status.
-// |function_ordinals_by_symbol| maps module symbol IDs to local function
-// ordinals, with UINT16_MAX for symbols outside this emitted module.
+// |functions| supplies the module's resolved local ordinals and signatures.
 iree_status_t loom_vm_function_emit(
     const loom_target_emit_request_t* request, loom_func_like_t function,
     const loom_target_facts_t* target_facts,
     const loom_vm_function_signature_t* signature,
-    const uint16_t* function_ordinals_by_symbol, iree_io_stream_t* stream,
+    const loom_vm_module_function_span_t* functions, iree_io_stream_t* stream,
     iree_vm_bytecode_v0_function_row_t* out_row);
 
 #ifdef __cplusplus
