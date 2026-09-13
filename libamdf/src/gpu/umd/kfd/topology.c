@@ -277,6 +277,18 @@ static amdf_status_t amdf_gpu_kfd_read_memory(
   return AMDF_STATUS_OK;
 }
 
+amdf_gpu_device_features_t amdf_gpu_kfd_topology_memory_features(
+    const amdf_gpu_kfd_topology_t* topology, bool integrated) {
+  // APU VRAM requests may be redirected to GTT by KFD. System memory remains
+  // available there without promising a physical placement the kernel changes.
+  if (integrated || topology->vram.total_byte_length == 0) return 0;
+  amdf_gpu_device_features_t features = AMDF_GPU_DEVICE_FEATURE_LOCAL_MEMORY;
+  if (topology->vram.visible_byte_length >= topology->vram.total_byte_length) {
+    features |= AMDF_GPU_DEVICE_FEATURE_HOST_VISIBLE_LOCAL_MEMORY;
+  }
+  return features;
+}
+
 amdf_status_t amdf_gpu_kfd_topology_refine_memory(
     int render_descriptor, uint32_t pci_device_id,
     amdf_gpu_kfd_topology_t* topology) {
@@ -299,18 +311,8 @@ amdf_status_t amdf_gpu_kfd_topology_refine_memory(
   topology->virtual_address.begin = device.virtual_address_offset;
   topology->virtual_address.end = device.virtual_address_max;
   topology->virtual_address.alignment = device.virtual_address_alignment;
-  topology->memory_features = 0;
-  // APU VRAM requests may be redirected to GTT by KFD. System memory remains
-  // available there without promising a physical placement the kernel changes.
-  if ((device.ids_flags & AMDGPU_IDS_FLAGS_FUSION) == 0 &&
-      topology->vram.total_byte_length != 0) {
-    topology->memory_features |= AMDF_GPU_DEVICE_FEATURE_LOCAL_MEMORY;
-    if (topology->vram.visible_byte_length >=
-        topology->vram.total_byte_length) {
-      topology->memory_features |=
-          AMDF_GPU_DEVICE_FEATURE_HOST_VISIBLE_LOCAL_MEMORY;
-    }
-  }
+  topology->memory_features = amdf_gpu_kfd_topology_memory_features(
+      topology, (device.ids_flags & AMDGPU_IDS_FLAGS_FUSION) != 0);
   return AMDF_STATUS_OK;
 }
 

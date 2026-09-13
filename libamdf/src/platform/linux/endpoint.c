@@ -351,24 +351,13 @@ amdf_status_t amdf_platform_endpoint_open(
                   amdf_alignof(amdf_platform_endpoint_t), (void**)&endpoint);
   if (!amdf_status_is_ok(status)) return status;
   endpoint->instance = instance;
-  endpoint->descriptor = -1;
   char device_path[AMDF_LINUX_DEVICE_PATH_CAPACITY];
   status =
       amdf_linux_resolve_endpoint(instance, id, &endpoint->info, device_path);
-  // GPU profile qualification consumes native DRM information. XDNA expected
-  // properties and publication modes require only sysfs and target tables.
-  if (amdf_status_is_ok(status) &&
-      endpoint->info.engine_kind == AMDF_ENGINE_KIND_GPU) {
-    status = amdf_linux_open_device_file(&endpoint->info, device_path,
-                                         &endpoint->descriptor, NULL);
-  }
   if (amdf_status_is_ok(status)) {
     *out_info = endpoint->info;
     *out_endpoint = endpoint;
   } else {
-    const amdf_status_t close_status =
-        amdf_linux_file_close(&endpoint->descriptor);
-    if (!amdf_status_is_ok(close_status)) status = close_status;
     amdf_free(instance->host_allocator, endpoint);
   }
   return status;
@@ -399,9 +388,6 @@ amdf_platform_endpoint_query_queue_publication_modes(
 }
 
 amdf_status_t amdf_platform_endpoint_close(amdf_platform_endpoint_t* endpoint) {
-  const amdf_status_t status = amdf_linux_file_close(&endpoint->descriptor);
-  if (amdf_status_is_ok(status)) {
-    amdf_free(endpoint->instance->host_allocator, endpoint);
-  }
-  return status;
+  amdf_free(endpoint->instance->host_allocator, endpoint);
+  return AMDF_STATUS_OK;
 }

@@ -67,8 +67,8 @@ extern "C" {
 #endif
 
 // Reads a coherent cached topology snapshot, including physical heap totals.
-// Native memory features and the virtual-address interval remain zero until
-// refine_memory succeeds on the connection that will consume those facts.
+// Memory features and the virtual-address interval are supplied separately by
+// target expectations or native refinement on the consuming connection.
 // A missing KFD node returns UNSUPPORTED; malformed or changing state is an
 // error.
 amdf_status_t amdf_gpu_kfd_topology_query(
@@ -80,6 +80,10 @@ amdf_status_t amdf_gpu_kfd_topology_query(
 amdf_status_t amdf_gpu_kfd_topology_refine_memory(
     int render_descriptor, uint32_t pci_device_id,
     amdf_gpu_kfd_topology_t* topology);
+
+// Physical placement supported for this package and its cached heap totals.
+amdf_gpu_device_features_t amdf_gpu_kfd_topology_memory_features(
+    const amdf_gpu_kfd_topology_t* topology, bool integrated);
 
 #ifdef __cplusplus
 }  // extern "C"

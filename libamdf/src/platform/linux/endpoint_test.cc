@@ -65,12 +65,6 @@ TEST_F(LinuxEndpointTest, NativeIdentityAndIndependentFiles) {
     EXPECT_TRUE(amdf_endpoint_id_is_equal(&summary.id, &info.id));
     EXPECT_EQ(summary.engine_kind, info.engine_kind);
     EXPECT_STREQ(summary.name, info.name);
-    if (info.engine_kind == AMDF_ENGINE_KIND_XDNA) {
-      EXPECT_EQ(endpoint->descriptor, -1);
-    } else {
-      ASSERT_GE(endpoint->descriptor, 0);
-      EXPECT_NE(fcntl(endpoint->descriptor, F_GETFD) & FD_CLOEXEC, 0);
-    }
     amdf_linux_drm_version_t first_version = {};
     amdf_linux_drm_version_t second_version = {};
     ASSERT_EQ(amdf_linux_endpoint_open_file(endpoint, &first, &first_version),

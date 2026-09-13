@@ -18,6 +18,26 @@ KFD_COMPATIBILITY = [
 ]
 
 amdf_cc_library(
+    name = "memory",
+    srcs = ["memory.c"],
+    hdrs = ["memory.h"],
+    target_compatible_with = KFD_COMPATIBILITY,
+    visibility = ["//libamdf/src/gpu/umd/kfd:__pkg__"],
+    deps = ["//libamdf/src/gpu/umd/kfd:topology"],
+)
+
+amdf_cc_test(
+    name = "memory_test",
+    srcs = ["memory_test.cc"],
+    target_compatible_with = KFD_COMPATIBILITY,
+    deps = [
+        ":memory",
+        "//third_party:google_test",
+        "//third_party:google_test_main",
+    ],
+)
+
+amdf_cc_library(
     name = "queue_plan",
     hdrs = ["queue_plan.h"],
     target_compatible_with = KFD_COMPATIBILITY,

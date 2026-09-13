@@ -13,9 +13,6 @@
 struct amdf_platform_endpoint_t {
   // Instance borrowed for fresh device-file identity validation.
   amdf_platform_instance_t* instance;
-  // GPU qualification file, or -1 for sysfs-only XDNA discovery. Execution
-  // devices never borrow this query descriptor.
-  int descriptor;
   // Immutable identity and PCI properties established on open.
   amdf_endpoint_info_t info;
 };

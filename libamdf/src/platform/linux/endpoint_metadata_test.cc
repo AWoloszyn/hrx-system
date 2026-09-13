@@ -20,27 +20,32 @@
 namespace {
 
 // Sysfs is the dependency fixture; endpoint enumeration/open are the production
-// implementation. There is deliberately no corresponding accelerator device
+// implementation. There is deliberately no corresponding execution device
 // node, so accidental native activation cannot satisfy these tests.
-class LinuxEndpointMetadataTest : public ::testing::Test {
+class LinuxEndpointMetadataTest
+    : public ::testing::TestWithParam<amdf_engine_kind_t> {
  protected:
   void SetUp() override {
     std::string directory = ::testing::TempDir() + "/amdf-sysfs-XXXXXX";
     ASSERT_NE(mkdtemp(directory.data()), nullptr);
     directory_ = directory;
-    const auto node = directory_ / "class/accel/accel987654321";
+    const bool xdna = GetParam() == AMDF_ENGINE_KIND_XDNA;
+    const std::string node_path =
+        xdna ? "class/accel/accel987654321" : "class/drm/renderD987654321";
+    const auto node = directory_ / node_path;
     const auto device = directory_ / "devices/0000:00:00.0";
     std::filesystem::create_directories(node);
     std::filesystem::create_directories(device);
     std::filesystem::create_directories(directory_ / "dev/char");
     std::filesystem::create_directory_symlink("../../../devices/0000:00:00.0",
                                               node / "device");
-    std::filesystem::create_directory_symlink("../../bus/pci/drivers/amdxdna",
-                                              device / "driver");
     std::filesystem::create_directory_symlink(
-        "../../class/accel/accel987654321", directory_ / "dev/char/511:63");
+        xdna ? "../../bus/pci/drivers/amdxdna" : "../../bus/pci/drivers/amdgpu",
+        device / "driver");
+    std::filesystem::create_directory_symlink("../../" + node_path,
+                                              directory_ / "dev/char/511:63");
     WriteAttribute(node / "dev", "511:63\n");
-    WriteAttribute(device / "vendor", "0x1022\n");
+    WriteAttribute(device / "vendor", xdna ? "0x1022\n" : "0x1002\n");
     WriteAttribute(device / "device", "0xffff\n");
     WriteAttribute(device / "subsystem_vendor", "0x1022\n");
     WriteAttribute(device / "subsystem_device", "0xffff\n");
@@ -75,23 +80,24 @@ class LinuxEndpointMetadataTest : public ::testing::Test {
   amdf_platform_endpoint_t* endpoint_ = nullptr;
 };
 
-TEST_F(LinuxEndpointMetadataTest, DiscoversXdnaWithoutAnAcceleratorNode) {
+TEST_P(LinuxEndpointMetadataTest, DiscoversWithoutAnExecutionNode) {
   amdf_endpoint_summary_t summary = {};
   uint32_t count = 0;
   ASSERT_EQ(amdf_platform_endpoint_enumerate(&instance_, 1, &summary, &count),
             AMDF_STATUS_OK);
   ASSERT_EQ(count, 1u);
-  EXPECT_EQ(summary.engine_kind, AMDF_ENGINE_KIND_XDNA);
+  EXPECT_EQ(summary.engine_kind, GetParam());
   amdf_endpoint_info_t info;
   ASSERT_EQ(
       amdf_platform_endpoint_open(&instance_, &summary.id, &endpoint_, &info),
       AMDF_STATUS_OK);
   EXPECT_TRUE(amdf_endpoint_id_is_equal(&summary.id, &info.id));
   EXPECT_STREQ(summary.name, info.name);
-  EXPECT_EQ(endpoint_->descriptor, -1);
   EXPECT_EQ(amdf_platform_endpoint_query_queue_publication_modes(
                 endpoint_, AMDF_QUEUE_COMMAND_TYPE_XDNA),
-            AMDF_QUEUE_PUBLICATION_MODE_KERNEL);
+            GetParam() == AMDF_ENGINE_KIND_XDNA
+                ? AMDF_QUEUE_PUBLICATION_MODE_KERNEL
+                : 0u);
   EXPECT_EQ(amdf_platform_endpoint_query_queue_publication_modes(
                 endpoint_, AMDF_QUEUE_COMMAND_TYPE_GPU_PM4),
             0u);
@@ -105,7 +111,7 @@ TEST_F(LinuxEndpointMetadataTest, DiscoversXdnaWithoutAnAcceleratorNode) {
   EXPECT_EQ(version.minor, UINT32_MAX);
 }
 
-TEST_F(LinuxEndpointMetadataTest, StaleIdentityDoesNotPublishMetadata) {
+TEST_P(LinuxEndpointMetadataTest, StaleIdentityDoesNotPublishMetadata) {
   amdf_endpoint_summary_t summary = {};
   uint32_t count = 0;
   ASSERT_EQ(amdf_platform_endpoint_enumerate(&instance_, 1, &summary, &count),
@@ -122,7 +128,7 @@ TEST_F(LinuxEndpointMetadataTest, StaleIdentityDoesNotPublishMetadata) {
   EXPECT_EQ(std::memcmp(&info, &original, sizeof(info)), 0);
 }
 
-TEST_F(LinuxEndpointMetadataTest, ActivationRevalidatesTheEndpointIdentity) {
+TEST_P(LinuxEndpointMetadataTest, ActivationRevalidatesTheEndpointIdentity) {
   amdf_endpoint_summary_t summary = {};
   uint32_t count = 0;
   ASSERT_EQ(amdf_platform_endpoint_enumerate(&instance_, 1, &summary, &count),
@@ -141,5 +147,9 @@ TEST_F(LinuxEndpointMetadataTest, ActivationRevalidatesTheEndpointIdentity) {
   EXPECT_EQ(version.major, UINT32_MAX);
   EXPECT_EQ(version.minor, UINT32_MAX);
 }
+
+INSTANTIATE_TEST_SUITE_P(EngineKinds, LinuxEndpointMetadataTest,
+                         ::testing::Values(AMDF_ENGINE_KIND_GPU,
+                                           AMDF_ENGINE_KIND_XDNA));
 
 }  // namespace

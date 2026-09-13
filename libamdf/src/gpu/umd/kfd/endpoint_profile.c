@@ -10,6 +10,7 @@
 #include <unistd.h>
 
 #include "libamdf/src/gpu/umd/kfd/memory_profile.h"
+#include "libamdf/src/gpu/umd/kfd/target/memory.h"
 #include "libamdf/src/gpu/umd/kfd/target/user_queue.h"
 #include "libamdf/src/gpu/umd/kfd/topology.h"
 #include "libamdf/src/platform/linux/endpoint.h"
@@ -28,9 +29,13 @@ amdf_status_t amdf_gpu_umd_query_endpoint_profile(
     return AMDF_STATUS_OK;
   }
   if (!amdf_status_is_ok(status)) return status;
-  status = amdf_gpu_kfd_topology_refine_memory(
-      endpoint->descriptor, endpoint->info.pci.device_id, &topology);
-  if (!amdf_status_is_ok(status)) return status;
+  const long page_size = sysconf(_SC_PAGESIZE);
+  if (page_size <= 0 || page_size > UINT32_MAX ||
+      (page_size & (page_size - 1)) != 0 ||
+      !amdf_gpu_kfd_target_memory_initialize(endpoint->info.pci.device_id,
+                                             (uint32_t)page_size, &topology)) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
   // These are expected implemented policies, not installed-ABI qualification.
   // Opening /dev/kfd creates process state. Explicit device creation qualifies
   // the actual connection before selecting its requested lifetime.
@@ -47,11 +52,7 @@ amdf_status_t amdf_gpu_umd_query_endpoint_profile(
           .features = topology.memory_features |
                       AMDF_GPU_DEVICE_FEATURE_DEVICE_RECREATION,
       };
-  const long page_size = sysconf(_SC_PAGESIZE);
   uint32_t cache_line_size = 0;
-  if (page_size <= 0 || (page_size & (page_size - 1)) != 0) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
-  }
   status = amdf_linux_host_cache_query_line_size(&cache_line_size);
   if (!amdf_status_is_ok(status)) return status;
   amdf_gpu_kfd_user_queue_plans_t queue_plans;

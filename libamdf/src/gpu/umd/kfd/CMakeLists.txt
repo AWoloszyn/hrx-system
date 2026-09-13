@@ -334,6 +334,7 @@ iree_cc_library(
     amdf::headers
     libamdf::src::gpu::endpoint_profile
     libamdf::src::gpu::umd::endpoint_profile
+    libamdf::src::gpu::umd::kfd::target::memory
     libamdf::src::gpu::umd::kfd::target::user_queue
     libamdf::src::platform::linux::endpoint
     libamdf::src::platform::linux::file

@@ -26,6 +26,14 @@ implements this query-only layer with public KMT adapter APIs. Builds without a
 native platform provider expose the public headers but do not produce provider
 artifacts.
 
+On Linux, endpoint qualification reads cached sysfs identity, topology and heap
+metadata without opening a render, KFD or accelerator execution file. Expected
+GPU memory limits come from explicit ISA and package descriptions; unknown
+identities fail qualification instead of producing guessed memory capabilities.
+Explicit device creation qualifies the installed native interface and obtains
+the actual memory limits on the retained connection before VM initialization.
+Live scope queries expose those limits without changing the endpoint snapshot.
+
 On x86-64 Windows, the GPU extension qualifies an already opened KMT adapter
 through a private `amdf_wkmi_bridge.dll` runtime companion. The bridge contains
 the pinned binary-only WKMI C++ and CRT ABI behind a versioned C table, retains
