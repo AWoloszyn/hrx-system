@@ -436,7 +436,7 @@ def _float_mask_inline_rule(
                 },
                 results={"mask": ValueRef.result("result")},
                 immediates={
-                    literal_source: ValueProject.float_as_f32_bits(literal_source),
+                    literal_source: ValueProject.float_bits(literal_source),
                 },
             ),
         ),

@@ -390,23 +390,10 @@ def _const_i64_rule(source_op: Op, result_type: TypePattern) -> DescriptorRule:
     return _const_integer_rule(source_op, result_type, "llvmir.const.i64")
 
 
-def _const_float_bits_project(element: str) -> ValueProject:
-    if element == "f16":
-        return ValueProject.float_as_f16_bits("result")
-    if element == "bf16":
-        return ValueProject.float_as_bf16_bits("result")
-    if element == "f32":
-        return ValueProject.float_as_f32_bits("result")
-    if element == "f64":
-        return ValueProject.float_as_f64_bits("result")
-    raise ValueError(f"unsupported LLVMIR float constant type '{element}'")
-
-
 def _const_float_rule(
     source_op: Op, result_type: TypePattern, descriptor_key: str
 ) -> DescriptorRule:
     descriptor = _descriptor(descriptor_key)
-    bits_project = _const_float_bits_project(result_type.element)
     return DescriptorRule(
         source_op=source_op,
         descriptor=descriptor,
@@ -419,7 +406,7 @@ def _const_float_rule(
             EmitDescriptorOp(
                 descriptor=descriptor,
                 results={"dst": ValueRef.result("result")},
-                immediates={"bits": bits_project},
+                immediates={"bits": ValueProject.float_bits("result")},
                 form=DescriptorEmitForm.CONST,
             ),
         ),
@@ -458,7 +445,6 @@ def _vector_const_i_rule(
 def _vector_const_float_rule(element: str, lane_count: int) -> DescriptorRule:
     result_type = _vector_type(element, lane_count)
     descriptor = _descriptor(f"llvmir.const.{_vector_suffix(element, lane_count)}")
-    bits_project = _const_float_bits_project(element)
     return DescriptorRule(
         source_op=vector.vector_constant,
         descriptor=descriptor,
@@ -471,7 +457,7 @@ def _vector_const_float_rule(element: str, lane_count: int) -> DescriptorRule:
             EmitDescriptorOp(
                 descriptor=descriptor,
                 results={"dst": ValueRef.result("result")},
-                immediates={"bits": bits_project},
+                immediates={"bits": ValueProject.float_bits("result")},
                 form=DescriptorEmitForm.CONST,
             ),
         ),

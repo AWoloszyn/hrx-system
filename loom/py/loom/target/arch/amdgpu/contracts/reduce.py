@@ -287,7 +287,7 @@ def _f32_literal_seed_rule(
                 operands={"rhs": ValueRef.operand("input")},
                 results={"dst": ValueRef.temporary("seed")},
                 result_types={"dst": ValueRef.operand("init")},
-                immediates={"imm32": ValueProject.float_as_f32_bits("init")},
+                immediates={"imm32": ValueProject.float_bits("init")},
                 form=DescriptorEmitForm.FIRST_LANE,
             ),
             EmitDescriptorOp(

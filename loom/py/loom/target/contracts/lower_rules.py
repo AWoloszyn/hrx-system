@@ -106,10 +106,7 @@ class LowerAttrCopyKind(Enum):
     VALUE_U32_DIVISOR_MAGIC_MULTIPLIER = "value_u32_divisor_magic_multiplier"
     VALUE_U32_DIVISOR_MAGIC_SHIFT = "value_u32_divisor_magic_shift"
     VALUE_I32_AS_U32_BITS = "value_i32_as_u32_bits"
-    VALUE_FLOAT_AS_F16_BITS = "value_float_as_f16_bits"
-    VALUE_FLOAT_AS_BF16_BITS = "value_float_as_bf16_bits"
-    VALUE_FLOAT_AS_F32_BITS = "value_float_as_f32_bits"
-    VALUE_FLOAT_AS_F64_BITS = "value_float_as_f64_bits"
+    VALUE_FLOAT_BITS = "value_float_bits"
     I64_ARRAY_LANE_BYTE = "i64_array_lane_byte"
     SOURCE_MEMORY_STATIC_BYTE_OFFSET = "source_memory_static_byte_offset"
     SOURCE_MEMORY_STATIC_BYTE_OFFSET_QUOTIENT = (
@@ -1776,14 +1773,8 @@ class _LowerRuleSetCompiler:
             kind = LowerAttrCopyKind.VALUE_U32_DIVISOR_MAGIC_SHIFT
         elif project.kind == ValueProjectKind.I32_AS_U32_BITS:
             kind = LowerAttrCopyKind.VALUE_I32_AS_U32_BITS
-        elif project.kind == ValueProjectKind.FLOAT_AS_F16_BITS:
-            kind = LowerAttrCopyKind.VALUE_FLOAT_AS_F16_BITS
-        elif project.kind == ValueProjectKind.FLOAT_AS_BF16_BITS:
-            kind = LowerAttrCopyKind.VALUE_FLOAT_AS_BF16_BITS
-        elif project.kind == ValueProjectKind.FLOAT_AS_F32_BITS:
-            kind = LowerAttrCopyKind.VALUE_FLOAT_AS_F32_BITS
-        elif project.kind == ValueProjectKind.FLOAT_AS_F64_BITS:
-            kind = LowerAttrCopyKind.VALUE_FLOAT_AS_F64_BITS
+        elif project.kind == ValueProjectKind.FLOAT_BITS:
+            kind = LowerAttrCopyKind.VALUE_FLOAT_BITS
         else:
             raise ValueError(
                 f"{source_op.name}: immediate projection '{project.kind.value}' is "

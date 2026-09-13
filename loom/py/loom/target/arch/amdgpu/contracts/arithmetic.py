@@ -1820,7 +1820,7 @@ def _divf_arcp_literal_lhs_rule(
                 operands={"rhs": ValueRef.temporary("reciprocal")},
                 results={"dst": ValueRef.result("result")},
                 immediates={
-                    "imm32": ValueProject.float_as_f32_bits("lhs"),
+                    "imm32": ValueProject.float_bits("lhs"),
                 },
                 form=_emit_form(type_pattern),
             ),
@@ -2483,7 +2483,7 @@ def _f32_literal_binary_rule(
                 },
                 results={"dst": ValueRef.result("result")},
                 immediates={
-                    "imm32": ValueProject.float_as_f32_bits(literal_source),
+                    "imm32": ValueProject.float_bits(literal_source),
                 },
                 form=_emit_form(type_pattern),
             ),
@@ -2526,7 +2526,7 @@ def _f32_inline_binary_rule(
                 },
                 results={"dst": ValueRef.result("result")},
                 immediates={
-                    "imm32": ValueProject.float_as_f32_bits(literal_source),
+                    "imm32": ValueProject.float_bits(literal_source),
                 },
                 form=_emit_form(type_pattern),
             ),
@@ -3129,7 +3129,7 @@ def _f32_fmaak_literal_rule(
                 },
                 results={"dst": ValueRef.result("result")},
                 immediates={
-                    "imm32": ValueProject.float_as_f32_bits("c"),
+                    "imm32": ValueProject.float_bits("c"),
                 },
                 form=_emit_form(type_pattern),
             ),
@@ -3172,7 +3172,7 @@ def _f32_fmamk_literal_rule(
                 },
                 results={"dst": ValueRef.result("result")},
                 immediates={
-                    "imm32": ValueProject.float_as_f32_bits(literal_source),
+                    "imm32": ValueProject.float_bits(literal_source),
                 },
                 form=_emit_form(type_pattern),
             ),

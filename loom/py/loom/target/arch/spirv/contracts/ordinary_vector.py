@@ -360,18 +360,6 @@ def _select_rule(vector_type: OrdinaryVectorType) -> DescriptorRule:
     )
 
 
-def _float_bits_project(component_type: OrdinaryVectorComponentType) -> ValueProject:
-    if component_type.suffix == "f16":
-        return ValueProject.float_as_f16_bits("result")
-    if component_type.suffix == "bf16":
-        return ValueProject.float_as_bf16_bits("result")
-    if component_type.suffix == "f32":
-        return ValueProject.float_as_f32_bits("result")
-    if component_type.suffix == "f64":
-        return ValueProject.float_as_f64_bits("result")
-    raise ValueError(f"unsupported float component {component_type.suffix}")
-
-
 def _constant_descriptor(
     component_type: OrdinaryVectorComponentType,
     *,
@@ -427,9 +415,7 @@ def _constant_immediates(
         return {}
     if component_type.kind == OrdinaryVectorComponentKind.FLOAT:
         return {
-            f"{component_type.source_types[0]}_bits": _float_bits_project(
-                component_type
-            )
+            f"{component_type.source_types[0]}_bits": ValueProject.float_bits("result")
         }
     if component_type.kind == OrdinaryVectorComponentKind.OFFSET:
         return {"offset64_value": AttrProject.direct("value")}
