@@ -10,7 +10,8 @@
 #include "libamdf/src/xdna/umd/device.h"
 #include "libamdf/src/xdna/umd/drm/buffer.h"
 
-// One independent accel client, ordinary address domain, and firmware heap.
+// One independent accel client and ordinary address domain, with firmware
+// storage when the profile supports transaction-interpreter execution.
 struct amdf_xdna_umd_device_t {
   // Host allocator copied for device and child metadata.
   amdf_allocator_t host_allocator;
@@ -22,9 +23,9 @@ struct amdf_xdna_umd_device_t {
   size_t page_size;
   // Qualified CLFLUSH cache-line length in bytes.
   uint32_t cache_line_size;
-  // Firmware-addressable device heap with its persistent aligned host mapping.
+  // Firmware heap and persistent host mapping for supported interpreter use.
   amdf_linux_xdna_buffer_t heap;
-  // Client-lifetime transaction interpreter PDI, allocated inside the heap.
+  // Interpreter PDI inside the heap, empty when execution is unavailable.
   amdf_linux_xdna_buffer_t bootstrap;
 };
 

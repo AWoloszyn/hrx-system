@@ -23,7 +23,9 @@
 
 namespace {
 
-class LinuxXdnaDeviceTest : public ::testing::Test {
+enum class ExecutionSupport { kUnavailable, kInterpreter };
+
+class LinuxXdnaDeviceTest : public ::testing::TestWithParam<ExecutionSupport> {
  protected:
   void SetUp() override {
     ASSERT_EQ(amdf_platform_instance_create(amdf_allocator_system(), &instance),
@@ -42,16 +44,28 @@ class LinuxXdnaDeviceTest : public ::testing::Test {
           amdf_platform_endpoint_open(instance, &summary.id, &endpoint, &info),
           AMDF_STATUS_OK);
       profile = amdf_xdna_endpoint_profile_select(&info);
-      if (profile != nullptr &&
-          (profile->execution_capabilities &
-           AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1) != 0) {
+      if (profile != nullptr && profile->dma.address_bit_count != 0 &&
+          (GetParam() == ExecutionSupport::kUnavailable ||
+           (profile->execution_capabilities &
+            AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1) != 0)) {
         break;
       }
       ASSERT_EQ(amdf_platform_endpoint_close(endpoint), AMDF_STATUS_OK);
       endpoint = nullptr;
     }
     if (endpoint == nullptr) {
-      GTEST_SKIP() << "No transaction-interpreter XDNA endpoint";
+      GTEST_SKIP()
+          << "No XDNA endpoint supports the requested memory/context use";
+    }
+    if (GetParam() == ExecutionSupport::kUnavailable) {
+      // Remove only provider execution support from the discovered hardware
+      // profile. Ordinary allocation must not need any interpreter metadata.
+      memory_only_profile = *profile;
+      memory_only_profile.execution_capabilities = 0;
+      memory_only_profile.bootstrap = nullptr;
+      memory_only_profile.firmware_heap_byte_length = 0;
+      memory_only_profile.rows = {};
+      profile = &memory_only_profile;
     }
   }
 
@@ -86,8 +100,10 @@ class LinuxXdnaDeviceTest : public ::testing::Test {
   amdf_platform_instance_t* instance = nullptr;
   // Query endpoint borrowed during native device construction.
   amdf_platform_endpoint_t* endpoint = nullptr;
-  // Static target profile selected from the opened endpoint.
+  // Selected hardware profile with this test's provider execution support.
   const amdf_xdna_endpoint_profile_t* profile = nullptr;
+  // Actual hardware/DMA facts with interpreter implementation data removed.
+  amdf_xdna_endpoint_profile_t memory_only_profile = {};
   // Native device owning one ordinary address and BO namespace.
   amdf_xdna_umd_device_t* device = nullptr;
   // Independent scheduling contexts borrowing the native device.
@@ -102,35 +118,44 @@ class LinuxXdnaDeviceTest : public ::testing::Test {
   amdf_xdna_umd_host_mapping_t* mappings[2] = {};
 };
 
-TEST_F(LinuxXdnaDeviceTest, ContextsShareDeviceMemoryAndDestroyIndependently) {
+TEST_P(LinuxXdnaDeviceTest, MemoryDoesNotDependOnSchedulingContexts) {
+  const bool supports_execution = GetParam() == ExecutionSupport::kInterpreter;
   const auto capabilities = amdf_xdna_umd_query_context_capabilities(profile);
   EXPECT_EQ(capabilities.scheduling_modes,
-            AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED);
-  EXPECT_EQ(capabilities.placement_modes,
-            AMDF_XDNA_PLACEMENT_MODE_FIXED_FULL_ARRAY);
+            supports_execution ? AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED : 0u);
+  EXPECT_EQ(
+      capabilities.placement_modes,
+      supports_execution ? AMDF_XDNA_PLACEMENT_MODE_FIXED_FULL_ARRAY : 0u);
   amdf_xdna_umd_device_result_t device_result = {};
   ASSERT_EQ(
       amdf_xdna_umd_device_create(endpoint, profile, amdf_allocator_system(),
                                   &device, &device_result),
       AMDF_STATUS_OK);
   EXPECT_NE(device_result.id.words[0] | device_result.id.words[1], 0u);
-  EXPECT_EQ(device_result.placement_modes,
-            AMDF_XDNA_PLACEMENT_MODE_FIXED_FULL_ARRAY);
-  EXPECT_EQ(reinterpret_cast<uintptr_t>(device->heap.host_pointer) %
-                profile->firmware_heap_byte_length,
-            0u);
+  EXPECT_EQ(device_result.placement_modes, capabilities.placement_modes);
   EXPECT_NE(fcntl(device->descriptor, F_GETFD) & FD_CLOEXEC, 0);
-  EXPECT_EQ(
-      std::memcmp(profile->bootstrap->pdi_bytes, device->bootstrap.host_pointer,
-                  profile->bootstrap->pdi_byte_length),
-      0);
+  if (supports_execution) {
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(device->heap.host_pointer) %
+                  profile->firmware_heap_byte_length,
+              0u);
+    EXPECT_EQ(std::memcmp(profile->bootstrap->pdi_bytes,
+                          device->bootstrap.host_pointer,
+                          profile->bootstrap->pdi_byte_length),
+              0);
+  } else {
+    EXPECT_EQ(device->heap.handle, 0u);
+    EXPECT_EQ(device->heap.host_pointer, nullptr);
+    EXPECT_EQ(device->bootstrap.handle, 0u);
+    EXPECT_EQ(device->bootstrap.host_pointer, nullptr);
+  }
 
   amdf_xdna_context_create_info_t create_info = {};
   create_info.acceptable_scheduling_modes =
       AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED;
   create_info.logical_column_count = 1;
   amdf_xdna_umd_context_result_t results[2] = {};
-  for (size_t i = 0; i < 2; ++i) {
+  const size_t context_count = supports_execution ? 2 : 0;
+  for (size_t i = 0; i < context_count; ++i) {
     create_info.physical_column_origin =
         i == 0 ? profile->info->array.column_origin
                : AMDF_XDNA_PHYSICAL_COLUMN_ORIGIN_ANY;
@@ -143,7 +168,9 @@ TEST_F(LinuxXdnaDeviceTest, ContextsShareDeviceMemoryAndDestroyIndependently) {
     EXPECT_EQ(results[i].physical_column_count,
               profile->info->array.column_count);
   }
-  EXPECT_NE(results[0].id.words[0], results[1].id.words[0]);
+  if (supports_execution) {
+    EXPECT_NE(results[0].id.words[0], results[1].id.words[0]);
+  }
 
   amdf_memory_native_create_info_t memory_create = {};
   memory_create.device_access =
@@ -179,8 +206,9 @@ TEST_F(LinuxXdnaDeviceTest, ContextsShareDeviceMemoryAndDestroyIndependently) {
                                        &map_info, &mappings[i], &views[i]),
               AMDF_STATUS_OK);
   }
-  EXPECT_EQ(reinterpret_cast<uintptr_t>(views[0].pointer),
-            memory_result.device_address + map_info.byte_offset);
+  EXPECT_EQ(views[0].pointer,
+            static_cast<uint8_t*>(memory->buffer.host_pointer) +
+                map_info.byte_offset);
   EXPECT_EQ(views[0].pointer, views[1].pointer);
   std::memset(views[0].pointer, 0xA5, map_info.byte_length);
   ASSERT_EQ(amdf_xdna_umd_host_mapping_cache_control(
@@ -196,7 +224,8 @@ TEST_F(LinuxXdnaDeviceTest, ContextsShareDeviceMemoryAndDestroyIndependently) {
       ioctl(device->descriptor, DRM_IOCTL_AMDXDNA_GET_BO_INFO, &native_info),
       0);
   EXPECT_EQ(native_info.xdna_addr, memory_result.device_address);
-  EXPECT_EQ(native_info.vaddr, memory_result.device_address);
+  EXPECT_EQ(native_info.vaddr,
+            reinterpret_cast<uintptr_t>(memory->buffer.host_pointer));
   EXPECT_EQ(static_cast<uint8_t*>(views[1].pointer)[0], 0xA5);
   EXPECT_EQ(static_cast<uint8_t*>(views[1].pointer)[4095], 0xA5);
   ASSERT_EQ(amdf_xdna_umd_host_mapping_cache_control(
@@ -240,11 +269,22 @@ TEST_F(LinuxXdnaDeviceTest, ContextsShareDeviceMemoryAndDestroyIndependently) {
   EXPECT_EQ(static_cast<uint8_t*>(imported_memory->buffer.host_pointer)[1],
             0xA5);
 
-  std::cout << "Destroy sibling context while memory stays live" << std::endl;
-  ASSERT_EQ(amdf_xdna_umd_context_destroy(contexts[0]), AMDF_STATUS_OK);
-  contexts[0] = nullptr;
+  if (supports_execution) {
+    std::cout << "Destroy sibling context while memory stays live" << std::endl;
+    ASSERT_EQ(amdf_xdna_umd_context_destroy(contexts[0]), AMDF_STATUS_OK);
+    contexts[0] = nullptr;
+    EXPECT_NE(contexts[1], nullptr);
+  }
   EXPECT_EQ(static_cast<uint8_t*>(views[1].pointer)[4095], 0xA5);
-  EXPECT_NE(contexts[1], nullptr);
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    NativeSupport, LinuxXdnaDeviceTest,
+    ::testing::Values(ExecutionSupport::kUnavailable,
+                      ExecutionSupport::kInterpreter),
+    [](const ::testing::TestParamInfo<ExecutionSupport>& info) {
+      return info.param == ExecutionSupport::kUnavailable ? "MemoryOnly"
+                                                          : "Interpreter";
+    });
 
 }  // namespace

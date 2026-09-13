@@ -370,6 +370,20 @@ TEST(LinuxXdnaMemoryProfileTest,
   EXPECT_EQ(profile.ordinal, UINT32_MAX);
 }
 
+TEST(LinuxXdnaMemoryProfileTest, RequiresQualifiedDmaAddressFacts) {
+  const amdf_xdna_endpoint_profile_t endpoint_profile = {};
+  amdf_xdna_umd_device_t device = {};
+  device.page_size = 4096;
+  device.profile = &endpoint_profile;
+  amdf_memory_native_profile_t profile;
+  std::memset(&profile, 0xA5, sizeof(profile));
+  const amdf_memory_native_profile_t original = profile;
+  EXPECT_EQ(amdf_status_code(amdf_xdna_umd_device_query_memory_profile(
+                &device, 0, &profile)),
+            AMDF_STATUS_CODE_OUT_OF_RANGE);
+  EXPECT_EQ(std::memcmp(&profile, &original, sizeof(profile)), 0);
+}
+
 TEST(LinuxXdnaMemoryAddressTest, TranslatesCompleteLogicalRanges) {
   const amdf_xdna_endpoint_profile_t profile = {
       .dma = {.byte_offset = UINT32_C(0x80000000), .address_bit_count = 48},
