@@ -455,14 +455,13 @@ TEST_F(WindowsGpuMemoryTest, ProfileUsesCapturedGpuMmuCapabilities) {
             0u);
 }
 
-TEST_F(WindowsGpuMemoryTest,
-       ProfileQueryPreservesCapturedCapabilityFailureAndOutput) {
-  device_.memory_profile_status = amdf_kmt_make_status(kStatusNoMemory);
+TEST_F(WindowsGpuMemoryTest, MissingMemoryApiDoesNotPublishProfile) {
+  kmt_.reserve_gpu_virtual_address = nullptr;
   amdf_memory_native_profile_t output = {};
   output.ordinal = 73;
 
   EXPECT_EQ(amdf_gpu_umd_device_query_memory_profile(&device_, 0, &output),
-            device_.memory_profile_status);
+            amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE));
   EXPECT_EQ(output.ordinal, 73u);
 }
 

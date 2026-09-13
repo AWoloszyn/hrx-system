@@ -31,6 +31,8 @@ enum class Operation {
 };
 
 struct FakeKmtState {
+  // Native result returned by the GPU memory-capability query.
+  NTSTATUS memory_capabilities_status = kSuccess;
   // Number of paging-queue releases rejected before native consumption.
   uint32_t paging_queue_destroy_failures_remaining = 1;
   // Sync-object handle returned with the paging queue, or zero for malformed
@@ -74,6 +76,9 @@ NTSTATUS APIENTRY FakeQueryAdapterInfo(const D3DKMT_QUERYADAPTERINFO* query) {
   EXPECT_EQ(query->hAdapter, 0x08u);
   EXPECT_EQ(query->Type, KMTQAITYPE_QUERY_GPUMMU_CAPS);
   EXPECT_EQ(query->PrivateDriverDataSize, sizeof(D3DKMT_QUERY_GPUMMU_CAPS));
+  if (current_state->memory_capabilities_status != kSuccess) {
+    return current_state->memory_capabilities_status;
+  }
   auto* gpu_mmu =
       static_cast<D3DKMT_QUERY_GPUMMU_CAPS*>(query->pPrivateDriverData);
   EXPECT_EQ(gpu_mmu->PhysicalAdapterIndex, 0u);
@@ -215,17 +220,46 @@ class WindowsGpuDeviceRollbackTest
     current_state = nullptr;
   }
 
+  // Native dependencies and construction/teardown observations.
   FakeKmtState state_;
+  // Platform instance owning the injected KMT table.
   amdf_platform_instance_t instance_ = {};
+  // Live endpoint owned through native construction rollback.
   amdf_platform_endpoint_t* endpoint_ = nullptr;
+  // Test-owned module reference for inspecting the bridge dependency.
   HMODULE bridge_module_ = nullptr;
+  // Resets bridge observations and failures before each case.
   ResetBridgeFn reset_bridge_ = nullptr;
   // Selects the number of rejected bridge adapter closes.
   SetBridgeCountFn set_bridge_close_failures_ = nullptr;
+  // Queries successful native adapter opens in the bridge.
   QueryBridgeCountFn query_bridge_open_success_count_ = nullptr;
+  // Queries attempted native adapter releases in the bridge.
   QueryBridgeCountFn query_bridge_close_attempt_count_ = nullptr;
+  // Queries successful native adapter releases in the bridge.
   QueryBridgeCountFn query_bridge_close_success_count_ = nullptr;
 };
+
+TEST_P(WindowsGpuDeviceRollbackTest,
+       CapabilityQueryFailureDoesNotPublishOrCreateNativeDevice) {
+  state_.memory_capabilities_status = kFailure;
+  amdf_gpu_umd_device_t* device =
+      reinterpret_cast<amdf_gpu_umd_device_t*>(uintptr_t{1});
+  amdf_gpu_umd_device_result_t result;
+  std::memset(&result, 0xA5, sizeof(result));
+  const amdf_gpu_umd_device_result_t original = result;
+
+  EXPECT_EQ(
+      amdf_gpu_umd_device_create(nullptr, endpoint_, instance_.host_allocator,
+                                 GetParam(), &device, &result),
+      amdf_kmt_make_status(kFailure));
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(device), uintptr_t{1});
+  EXPECT_EQ(std::memcmp(&result, &original, sizeof(result)), 0);
+  EXPECT_EQ(state_.operations,
+            (std::vector<Operation>{Operation::kQueryMemoryCapabilities}));
+  EXPECT_EQ(query_bridge_open_success_count_(), 0u);
+  EXPECT_EQ(query_bridge_close_attempt_count_(), 0u);
+}
 
 TEST_P(WindowsGpuDeviceRollbackTest,
        FailedBridgeRollbackLeavesNoEndpointCleanupObligation) {

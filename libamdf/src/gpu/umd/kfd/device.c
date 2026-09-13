@@ -76,6 +76,11 @@ amdf_status_t amdf_gpu_umd_device_create(
     *out_result = (amdf_gpu_umd_device_result_t){
         .id = {.words = {endpoint->info.id.words[0], (uintptr_t)device}},
         .reset_epoch = 1,
+        .features = device->topology.memory_features |
+                    AMDF_GPU_DEVICE_FEATURE_DEVICE_RECREATION |
+                    (native_lifetime == AMDF_NATIVE_LIFETIME_PROCESS
+                         ? AMDF_GPU_DEVICE_FEATURE_HOST_REGISTRATION
+                         : 0),
     };
     *out_device = device;
   } else {

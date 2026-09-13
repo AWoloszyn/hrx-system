@@ -172,10 +172,11 @@ TEST_F(WindowsGpuEndpointProfileTest,
        {AMDF_NATIVE_LIFETIME_PROCESS, AMDF_NATIVE_LIFETIME_INSTANCE}) {
     EXPECT_TRUE(profile.native_lifetimes[lifetime].supported);
     EXPECT_EQ(profile.native_lifetimes[lifetime].features,
-              AMDF_GPU_DEVICE_FEATURE_HOST_REGISTRATION |
-                  AMDF_GPU_DEVICE_FEATURE_DEVICE_RECREATION |
-                  AMDF_GPU_DEVICE_FEATURE_LOCAL_MEMORY);
+              AMDF_GPU_DEVICE_FEATURE_DEVICE_RECREATION);
   }
+  EXPECT_EQ(profile.memory.status,
+            amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED));
+  EXPECT_EQ(profile.memory.count, 0u);
   EXPECT_EQ(query_bridge_open_success_count_(), 1u);
   EXPECT_EQ(query_bridge_close_attempt_count_(), 1u);
   EXPECT_EQ(state_.query_bridge_close_success_count(), 1u);

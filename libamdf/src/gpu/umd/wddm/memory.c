@@ -464,9 +464,6 @@ amdf_status_t amdf_gpu_umd_device_query_memory_profile(
       !amdf_kmt_api_supports_gpu_memory(device->kmt)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
   }
-  if (!amdf_status_is_ok(device->memory_profile_status)) {
-    return device->memory_profile_status;
-  }
   return amdf_gpu_wddm_query_memory_profile(
       &device->memory_capabilities, memory_profile_ordinal, out_profile);
 }

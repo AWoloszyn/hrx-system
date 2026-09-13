@@ -23,8 +23,6 @@ struct amdf_gpu_umd_device_t {
   D3DKMT_HANDLE adapter;
   // Physical adapter represented by native private records.
   uint32_t physical_adapter_index;
-  // Immutable result of querying the GPU MMU memory capabilities.
-  amdf_status_t memory_profile_status;
   // Exact GPU MMU facts available to immutable memory-profile queries.
   amdf_windows_gpu_memory_capabilities_t memory_capabilities;
   // Loaded WKMI module outliving its borrowed API table and native adapter.

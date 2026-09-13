@@ -24,7 +24,7 @@ typedef struct amdf_gpu_device_t {
   amdf_device_t base;
   // Exact native execution and address-domain state.
   amdf_gpu_umd_device_t* umd;
-  // Immutable identity and reset state returned by the provider.
+  // Immutable identity, reset state, and achieved features from the provider.
   amdf_gpu_device_info_t info;
 } amdf_gpu_device_t;
 
@@ -73,14 +73,13 @@ amdf_status_t AMDF_CALL amdf_gpu_device_create(
   if (!amdf_status_is_ok(profile_status)) {
     return profile_status;
   }
-  amdf_gpu_device_features_t features = 0;
   amdf_instance_t* instance = amdf_endpoint_get_instance(endpoint);
   const amdf_native_lifetime_t native_lifetime =
       amdf_instance_native_lifetime(instance);
-  const amdf_status_t lifetime_status =
-      amdf_gpu_endpoint_profile_query_device_features(
-          untyped_profile, native_lifetime, &features);
-  if (!amdf_status_is_ok(lifetime_status)) return lifetime_status;
+  const amdf_gpu_endpoint_profile_t* profile = untyped_profile;
+  if (!profile->native_lifetimes[native_lifetime].supported) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
 
   const amdf_allocator_t host_allocator =
       amdf_endpoint_host_allocator(endpoint);
@@ -108,7 +107,7 @@ amdf_status_t AMDF_CALL amdf_gpu_device_create(
     device->info.structure_size = sizeof(device->info);
     device->info.id = result.id;
     device->info.reset_epoch = result.reset_epoch;
-    device->info.features = features;
+    device->info.features = result.features;
     *out_device = &device->base;
   } else {
     if (device->base.endpoint != NULL) {

@@ -67,9 +67,10 @@ amdf_status_t amdf_gpu_umd_device_create(
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
   amdf_windows_gpu_memory_capabilities_t memory_capabilities = {0};
-  const amdf_status_t memory_profile_status =
+  const amdf_status_t capabilities_status =
       amdf_windows_gpu_query_memory_capabilities(endpoint,
                                                  &memory_capabilities);
+  if (!amdf_status_is_ok(capabilities_status)) return capabilities_status;
 
   amdf_gpu_umd_device_t* device = NULL;
   amdf_status_t status =
@@ -81,7 +82,6 @@ amdf_status_t amdf_gpu_umd_device_create(
   device->kmt = &endpoint->instance->kmt;
   device->adapter = endpoint->adapter;
   device->physical_adapter_index = endpoint->physical_adapter_index;
-  device->memory_profile_status = memory_profile_status;
   device->memory_capabilities = memory_capabilities;
 
   amdf_wkmi_bridge_gpu_properties_t properties = {0};
@@ -132,6 +132,11 @@ amdf_status_t amdf_gpu_umd_device_create(
     result.id.words[1] =
         ((uint64_t)device->paging_queue << 32) | device->device;
     result.reset_epoch = 1;
+    result.features = AMDF_GPU_DEVICE_FEATURE_DEVICE_RECREATION;
+    if (amdf_kmt_api_supports_gpu_memory(device->kmt)) {
+      result.features |= AMDF_GPU_DEVICE_FEATURE_HOST_REGISTRATION |
+                         AMDF_GPU_DEVICE_FEATURE_LOCAL_MEMORY;
+    }
     *out_result = result;
     *out_device = device;
   } else {

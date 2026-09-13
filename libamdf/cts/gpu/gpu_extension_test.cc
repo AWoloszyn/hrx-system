@@ -357,14 +357,6 @@ TEST_F(GpuEndpointTest, MaterializesProgramIndependentDevice) {
   ASSERT_TRUE(amdf_status_is_ok(gpu_api_->device_query_info(device_, &info)));
   EXPECT_NE(info.id.words[0] | info.id.words[1], 0u);
   EXPECT_EQ(info.reset_epoch, 1u);
-  amdf_gpu_device_capabilities_t capabilities = {};
-  capabilities.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_CAPABILITIES;
-  capabilities.structure_size = sizeof(capabilities);
-  ASSERT_EQ(
-      gpu_api_->endpoint_query_device_capabilities(endpoint_, &capabilities),
-      AMDF_STATUS_OK);
-  EXPECT_EQ(info.features, capabilities.features);
-
   amdf_gpu_device_info_t second_info = {};
   second_info.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_INFO;
   second_info.structure_size = sizeof(second_info);
@@ -426,26 +418,19 @@ TEST_F(GpuEndpointTest, CreatesReclaimableDevicesFromOneEndpoint) {
   }
   ASSERT_EQ(lifetime_status, AMDF_STATUS_OK);
 
-  amdf_gpu_device_capabilities_t capabilities = {};
-  capabilities.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_CAPABILITIES;
-  capabilities.structure_size = sizeof(capabilities);
-  ASSERT_EQ(
-      gpu_api_->endpoint_query_device_capabilities(endpoint_, &capabilities),
-      AMDF_STATUS_OK);
-  if (!(capabilities.features & AMDF_GPU_DEVICE_FEATURE_DEVICE_RECREATION)) {
-    GTEST_SKIP() << "device recreation is unavailable";
-  }
-  const amdf_gpu_device_create_info_t create_info = MakeDeviceCreateInfo();
   ASSERT_EQ(GetCtsDeviceCache().GetGpuDevice(endpoint_, &device_),
             AMDF_STATUS_OK);
-  ASSERT_TRUE(amdf_status_is_ok(
-      gpu_api_->device_create(endpoint_, &create_info, &second_device_)));
-
   amdf_gpu_device_info_t first_info = {};
   first_info.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_INFO;
   first_info.structure_size = sizeof(first_info);
   ASSERT_TRUE(
       amdf_status_is_ok(gpu_api_->device_query_info(device_, &first_info)));
+  if (!(first_info.features & AMDF_GPU_DEVICE_FEATURE_DEVICE_RECREATION)) {
+    GTEST_SKIP() << "device recreation is unavailable";
+  }
+  const amdf_gpu_device_create_info_t create_info = MakeDeviceCreateInfo();
+  ASSERT_TRUE(amdf_status_is_ok(
+      gpu_api_->device_create(endpoint_, &create_info, &second_device_)));
   amdf_gpu_device_info_t second_info = {};
   second_info.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_INFO;
   second_info.structure_size = sizeof(second_info);

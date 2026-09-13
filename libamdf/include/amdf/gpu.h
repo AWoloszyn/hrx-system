@@ -145,7 +145,8 @@ typedef struct amdf_gpu_device_create_info_t {
   uint64_t reserved;
 } amdf_gpu_device_create_info_t;
 
-/// Immutable identity and reset state of one live GPU device.
+/// Immutable identity, reset state, and achieved features of one live GPU
+/// device.
 typedef struct amdf_gpu_device_info_t {
   /// Must be `AMDF_STRUCTURE_TYPE_GPU_DEVICE_INFO`.
   amdf_structure_type_t type;
@@ -157,7 +158,8 @@ typedef struct amdf_gpu_device_info_t {
   amdf_device_id_t id;
   /// Monotonic provider epoch invalidating state after a device reset.
   uint64_t reset_epoch;
-  /// Features implemented under the instance's native lifetime policy.
+  /// Features supported by this materialized device and native lifetime policy.
+  /// These may refine the expected endpoint capabilities without changing them.
   amdf_gpu_device_features_t features;
 } amdf_gpu_device_info_t;
 

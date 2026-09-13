@@ -23,6 +23,8 @@ typedef struct amdf_gpu_umd_device_result_t {
   amdf_device_id_t id;
   // Provider epoch invalidating native state after reset.
   uint64_t reset_epoch;
+  // Features supported by this materialized native device and lifetime policy.
+  amdf_gpu_device_features_t features;
 } amdf_gpu_umd_device_result_t;
 
 // Creates program-independent execution state borrowing the prepared instance

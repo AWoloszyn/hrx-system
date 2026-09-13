@@ -130,7 +130,6 @@ class GpuDeviceFixture : public ::testing::Test {
       GTEST_SKIP() << "requested native lifetime is unavailable";
     }
     ASSERT_EQ(status, AMDF_STATUS_OK);
-    features_ = capabilities.features;
 
     scope_count = 0;
     status = api_->endpoint_enumerate_memory_scopes(endpoint_, 0, nullptr,
@@ -155,6 +154,12 @@ class GpuDeviceFixture : public ::testing::Test {
     ASSERT_TRUE(amdf_status_is_ok(status))
         << "domain=" << amdf_status_domain(status)
         << " code=" << amdf_status_code(status);
+    amdf_gpu_device_info_t device_info = {};
+    device_info.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_INFO;
+    device_info.structure_size = sizeof(device_info);
+    ASSERT_EQ(gpu_api_->device_query_info(device_, &device_info),
+              AMDF_STATUS_OK);
+    features_ = device_info.features;
     memory_access_.device = device_;
     memory_access_.requirements.access =
         AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
@@ -195,7 +200,7 @@ class GpuDeviceFixture : public ::testing::Test {
   amdf_memory_scope_t* local_scope_ = nullptr;
   // Default explicit consumer used by fixture-owned construction requests.
   amdf_memory_device_access_t memory_access_ = {};
-  // Cached capabilities under the instance's lifetime policy.
+  // Achieved capabilities of the shared native device.
   amdf_gpu_device_features_t features_ = 0;
 };
 

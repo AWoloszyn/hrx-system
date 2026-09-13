@@ -42,10 +42,13 @@ amdf_status_t amdf_gpu_umd_query_endpoint_profile(
       properties.native_lifetimes[AMDF_NATIVE_LIFETIME_INSTANCE] =
           (amdf_gpu_lifetime_properties_t){
               .supported = true,
-              .features = AMDF_GPU_DEVICE_FEATURE_HOST_REGISTRATION |
-                          AMDF_GPU_DEVICE_FEATURE_DEVICE_RECREATION |
-                          AMDF_GPU_DEVICE_FEATURE_LOCAL_MEMORY,
+              .features = AMDF_GPU_DEVICE_FEATURE_DEVICE_RECREATION,
       };
+      if (amdf_kmt_api_supports_gpu_memory(&platform_endpoint->instance->kmt)) {
+        properties.native_lifetimes[AMDF_NATIVE_LIFETIME_INSTANCE].features |=
+            AMDF_GPU_DEVICE_FEATURE_HOST_REGISTRATION |
+            AMDF_GPU_DEVICE_FEATURE_LOCAL_MEMORY;
+      }
       properties.native_lifetimes[AMDF_NATIVE_LIFETIME_PROCESS] =
           properties.native_lifetimes[AMDF_NATIVE_LIFETIME_INSTANCE];
       if (amdf_gpu_endpoint_profile_initialize(&properties, &profile)) {
