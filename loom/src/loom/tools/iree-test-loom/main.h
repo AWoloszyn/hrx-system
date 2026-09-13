@@ -13,6 +13,7 @@
 #include "loom/target/provider.h"
 #include "loom/tooling/execution/hal/device_provider.h"
 #include "loom/tooling/execution/session.h"
+#include "loom/tooling/testbench/invocation.h"
 #include "loom/tooling/testbench/requirements.h"
 
 #ifdef __cplusplus
@@ -45,6 +46,8 @@ typedef struct iree_test_loom_configuration_t {
   const loom_target_environment_t* target_environment;
   // Linked device providers available to kernel launches.
   const loom_device_provider_registry_t* device_provider_registry;
+  // Binds ordinary function calls once for all cases in the parsed module.
+  loom_testbench_function_call_provider_callback_t function_call_provider;
   // Appends target-specific requirement providers linked into this runner.
   iree_test_loom_populate_requirement_providers_callback_t
       populate_requirement_providers;

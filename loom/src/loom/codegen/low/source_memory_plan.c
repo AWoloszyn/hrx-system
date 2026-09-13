@@ -889,11 +889,8 @@ static bool loom_low_source_memory_access_add_view_region_expression_terms(
 
   for (iree_host_size_t i = 0; i < expression->term_count; ++i) {
     const loom_symbolic_term_t* expression_term = &expression->terms[i];
-    if (expression_term->coefficient <= 0) {
-      diagnostic->rejection_bits |=
-          LOOM_LOW_SOURCE_MEMORY_ACCESS_REJECTION_VIEW_BASE;
-      return false;
-    }
+    // Byte-coordinate expressions can contain subtraction even when the
+    // layout's element strides are non-negative.
     loom_value_id_t materialized_value =
         loom_low_source_memory_symbolic_term_materialized_value(
             fact_table, expression_term);

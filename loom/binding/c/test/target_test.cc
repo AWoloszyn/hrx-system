@@ -236,6 +236,7 @@ static const loom_target_provider_t kFakeElfProvider = {
         /*.values=*/kFakeElfEmitters,
         /*.count=*/IREE_ARRAYSIZE(kFakeElfEmitters),
     },
+    /*.canonical_module_emitter=*/nullptr,
     /*.pass_registry=*/nullptr,
     /*.contribute_pipeline=*/nullptr,
 };
@@ -257,6 +258,7 @@ static const loom_target_provider_t kFakeWasmProvider = {
         /*.values=*/kFakeWasmEmitters,
         /*.count=*/IREE_ARRAYSIZE(kFakeWasmEmitters),
     },
+    /*.canonical_module_emitter=*/nullptr,
     /*.pass_registry=*/nullptr,
     /*.contribute_pipeline=*/nullptr,
 };

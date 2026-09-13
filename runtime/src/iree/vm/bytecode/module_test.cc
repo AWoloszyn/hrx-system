@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <string>
 #include <vector>
 
 #include "iree/testing/gtest.h"
@@ -111,6 +112,29 @@ TEST_F(VMBytecodeModuleTest, LoadsAndInvokesVerifiedLaunchConfigFixture) {
 TEST_F(VMBytecodeModuleTest, LoadsAndInvokesTrustedLaunchConfigFixture) {
   LoadAndInvokeLaunchConfigFixture(iree_vm_bytecode_module_create_trusted,
                                    launch_config_contents());
+}
+
+TEST_F(VMBytecodeModuleTest, EmptyRodataNeedsNoBufferStorage) {
+  const iree_file_toc_t* source =
+      iree_vm_bytecode_launch_config_testdata_create();
+  std::string text(reinterpret_cast<const char*>(source[0].data),
+                   source[0].size);
+  text.insert(text.rfind('}'), "  section rodata alignment(8) {\n  }\n\n");
+  iree_vm_bytecode_module_fixture_t fixture = {};
+  IREE_ASSERT_OK(iree_vm_bytecode_module_fixture_initialize(
+      iree_make_string_view(text.data(), text.size()), iree_allocator_system(),
+      &fixture));
+  iree_vm_bytecode_module_plan_t plan;
+  IREE_ASSERT_OK(iree_vm_bytecode_module_plan_build(
+      iree_const_cast_byte_span(fixture.contents), &plan));
+  EXPECT_EQ(plan.layout.rodata.count, 0u);
+  EXPECT_EQ(plan.rodata_storage.copy_length, 0u);
+  EXPECT_EQ(plan.rodata_storage.copy_alignment, 0u);
+  LoadAndInvokeLaunchConfigFixture(iree_vm_bytecode_module_create,
+                                   iree_const_cast_byte_span(fixture.contents));
+  LoadAndInvokeLaunchConfigFixture(iree_vm_bytecode_module_create_trusted,
+                                   iree_const_cast_byte_span(fixture.contents));
+  iree_vm_bytecode_module_fixture_deinitialize(&fixture);
 }
 
 TEST_F(VMBytecodeModuleTest, TrustedCreationOmitsSemanticVerification) {

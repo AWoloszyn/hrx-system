@@ -80,6 +80,15 @@ TEST(AssemblerTest, CanonicalSourcesCloseByteForByte) {
   }
 }
 
+TEST(AssemblerTest, EmptyRodataClosesByteForByte) {
+  const iree_file_toc_t* fixture =
+      iree_vm_bytecode_launch_config_testdata_create();
+  std::string source(reinterpret_cast<const char*>(fixture[0].data),
+                     fixture[0].size);
+  source.insert(source.rfind('}'), "  section rodata alignment(8) {\n  }\n\n");
+  VerifyCanonicalSource(iree_make_string_view(source.data(), source.size()));
+}
+
 TEST(AssemblerTest, RejectsSemanticViolations) {
   const iree_file_toc_t* execution =
       iree_vm_bytecode_execution_testdata_create();

@@ -1,0 +1,187 @@
+// RUN: emit vm-dis
+
+vm.target<core> @vm
+
+// Wire order is scale then format; canonical dictionaries store format first.
+// Named and numeric selectors must encode the same unaligned halfword access.
+low.func.def public target<vm.core>(@vm) abi(vm_function) @scaled_half(%base: reg<vm.value : i64>, %index: reg<vm.value : i64>, %value: reg<vm.value : i64>) -> (reg<vm.value : i64>) asm {
+  %length = constant.i64 64
+  %buffer = buffer.allocate %length, 3 : reg<vm.ref : buffer>
+  buffer.store %buffer, %base, %index, %value, 3, "i16.x1"
+  %result = buffer.load %buffer, %base, %index, 3, 4
+  return %result
+}
+
+// ----
+vm.module core(0.0) {
+  section strings alignment(8) {
+    string @string0 = "scaled_half"
+  }
+
+  section signatures alignment(8) {
+    signature @signature0 (i64, i64, i64) -> (i64)
+  }
+
+  section callable_types alignment(8) {
+    callable @callable0 flags([]) depth(0) : @signature0
+  }
+
+  section exports alignment(8) {
+    export @export0 name(@string0) : @callable0 = @function0
+  }
+
+  section functions alignment(8) {
+    func @function0 : @callable0 flags([]) frame(local_bytes = 0, value_registers = 4, ref_registers = 1, function_registers = 0, local_refs = 0, local_functions = 0) {
+    ^bb0:
+      control.block
+      %v3 = constant.s16 64
+      %r0 = buffer.allocate %v3 {minimum_alignment_log2 = 3}
+      buffer.store.i16 %r0, %v0, %v1, %v2.x1 {scale = 3}
+      %v0.x1 = buffer.load.i16 %r0, %v0, %v1 {scale = 3}
+      control.return
+    }
+  }
+
+}
+
+// ====
+
+// RUN: emit vm-dis
+
+vm.target<core> @vm
+
+// Named and numeric immediates share the same packed selector representation.
+low.func.def public target<vm.core>(@vm) abi(vm_function) @atomic_selectors(%buffer: reg<vm.ref : buffer>, %offset: reg<vm.value : i64>, %value: reg<vm.value : i64>, %replacement: reg<vm.value : i64>) -> (reg<vm.value : i64>, reg<vm.value : i64>) asm {
+  buffer.atomic.reduce %buffer, %offset, %value, "i64", "add.integer", "release", "system"
+  %old = buffer.atomic.rmw %buffer, %offset, %value, 1, 2, 1, 3 : reg<vm.value : i64>
+  %exchanged = buffer.atomic.cmpxchg %buffer, %offset, %old, %replacement, "acq_rel.acquire", "i64", "system" : reg<vm.value : i64>
+  return %old, %exchanged
+}
+
+// ----
+vm.module core(0.0) {
+  section strings alignment(8) {
+    string @string0 = "atomic_selectors"
+    string @string1 = "vm"
+    string @string2 = "buffer"
+  }
+
+  section ref_types alignment(8) {
+    namespace @ref_group0 name(@string1) {
+      ref_type @ref_type0 name(@string2)
+    }
+  }
+
+  section signatures alignment(8) {
+    signature @signature0 (ref(@ref_type0), i64, i64, i64) -> (i64, i64)
+  }
+
+  section callable_types alignment(8) {
+    callable @callable0 flags([]) depth(0) : @signature0
+  }
+
+  section exports alignment(8) {
+    export @export0 name(@string0) : @callable0 = @function0
+  }
+
+  section functions alignment(8) {
+    func @function0 : @callable0 flags([]) frame(local_bytes = 0, value_registers = 3, ref_registers = 1, function_registers = 0, local_refs = 0, local_functions = 0) {
+    ^bb0:
+      control.block
+      buffer.atomic.reduce %r0, %v0, %v1 {carrier = i64, kind = add.integer, ordering = release, scope = system}
+      %v1 = buffer.atomic.rmw %r0, %v0, %v1 {carrier = i64, kind = add.integer, ordering = acquire, scope = device}
+      %v0 = buffer.atomic.cmpxchg %r0, %v0, %v1, %v2 {carrier = i64, success_ordering = acq_rel, failure_ordering = acquire, scope = system}
+      %v2 = value.copy %v0
+      %v0 = value.copy %v1
+      %v1 = value.copy %v2
+      control.return
+    }
+  }
+
+}
+
+// ====
+
+// RUN: verify
+
+vm.target<core> @vm
+
+// Failure acquire (8) cannot be paired with success relaxed (0).
+low.func.def target<vm.core>(@vm) abi(vm_function) @invalid_orderings(%buffer: reg<vm.ref : buffer>, %offset: reg<vm.value : i64>, %expected: reg<vm.value : i32>, %replacement: reg<vm.value : i32>) -> (reg<vm.value : i32>) asm {
+  // ERROR@+1: STRUCTURE/027
+  %old = buffer.atomic.cmpxchg %buffer, %offset, %expected, %replacement, 8, 0, 3 : reg<vm.value : i32>
+  return %old
+}
+
+// ====
+
+// RUN: verify
+
+vm.target<core> @vm
+
+// Exchange is an RMW operation, not a reduction selector.
+low.func.def target<vm.core>(@vm) abi(vm_function) @invalid_reduction(%buffer: reg<vm.ref : buffer>, %offset: reg<vm.value : i64>, %value: reg<vm.value : i32>) asm {
+  // ERROR@+1: STRUCTURE/027
+  buffer.atomic.reduce %buffer, %offset, %value, 0, 0, 0, 3
+  return
+}
+
+// ====
+
+// RUN: emit vm-dis
+
+vm.target<core> @vm
+
+global.rodata.def @unused = align(128) bytes("abcdef")
+
+global.rodata.def @data = bytes("012345")
+
+// Symbolic and numeric references encode the same immutable root. The
+// declaration ordinal is remapped after unused resources are omitted.
+low.func.def public target<vm.core>(@vm) abi(vm_function) @data_operands() -> (reg<vm.ref : buffer>, reg<vm.ref : buffer>) asm {
+  %symbolic = buffer.rodata.load @data : reg<vm.ref : buffer>
+  %numeric = buffer.rodata.load 1 : reg<vm.ref : buffer>
+  return %symbolic, %numeric
+}
+
+// ----
+vm.module core(0.0) {
+  section strings alignment(8) {
+    string @string0 = "data_operands"
+    string @string1 = "vm"
+    string @string2 = "buffer"
+  }
+
+  section ref_types alignment(8) {
+    namespace @ref_group0 name(@string1) {
+      ref_type @ref_type0 name(@string2)
+    }
+  }
+
+  section signatures alignment(8) {
+    signature @signature0 () -> (ref(@ref_type0), ref(@ref_type0))
+  }
+
+  section callable_types alignment(8) {
+    callable @callable0 flags([]) depth(0) : @signature0
+  }
+
+  section exports alignment(8) {
+    export @export0 name(@string0) : @callable0 = @function0
+  }
+
+  section functions alignment(8) {
+    func @function0 : @callable0 flags([]) frame(local_bytes = 0, value_registers = 0, ref_registers = 2, function_registers = 0, local_refs = 0, local_functions = 0) {
+    ^bb0:
+      control.block
+      %r0 = buffer.rodata.load @rodata0
+      %r1 = buffer.rodata.load @rodata0
+      control.return
+    }
+  }
+
+  section rodata alignment(8) {
+    rodata @rodata0 alignment(1) = hex"012345"
+  }
+
+}

@@ -1,0 +1,69 @@
+// RUN: emit source-low output=low
+
+vm.target<core> @vm
+
+func.def target(@vm) @arithmetic(%a: i32, %b: i32, %c: i32) -> (i32) {
+  %sum = scalar.addi %a, %b : i32
+  %scaled = scalar.muli %sum, %c : i32
+  %result = scalar.subi %scaled, %b : i32
+  func.return %result : i32
+}
+
+// ----
+low.func.def target<vm.core>(@vm) abi(vm_function) @arithmetic(%a: reg<vm.value : i32>, %b: reg<vm.value : i32>, %c: reg<vm.value : i32>) -> (reg<vm.value : i32>) asm {
+  %sum = integer.add.i32 %a, %b
+  %scaled = integer.mul.i32 %sum, %c
+  %result = integer.sub.i32 %scaled, %b
+  return %result
+}
+
+// ====
+
+vm.target<core> @vm
+
+func.def target(@vm) @arithmetic64(%a: i64, %b: i64, %c: i64) -> (i64) {
+  %sum = scalar.addi %a, %b : i64
+  %scaled = scalar.muli %sum, %c : i64
+  %result = scalar.subi %scaled, %b : i64
+  func.return %result : i64
+}
+
+// ----
+low.func.def target<vm.core>(@vm) abi(vm_function) @arithmetic64(%a: reg<vm.value : i64>, %b: reg<vm.value : i64>, %c: reg<vm.value : i64>) -> (reg<vm.value : i64>) asm {
+  %sum = integer.add.i64 %a, %b
+  %scaled = integer.mul.i64 %sum, %c
+  %result = integer.sub.i64 %scaled, %b
+  return %result
+}
+
+// ====
+
+vm.target<core> @vm
+
+func.def target(@vm) @constant_bits() -> (i32, i64) {
+  %narrow = scalar.constant -1 : i32
+  %wide = scalar.constant -9223372036854775808 : i64
+  func.return %narrow, %wide : i32, i64
+}
+
+// ----
+low.func.def target<vm.core>(@vm) abi(vm_function) @constant_bits() -> (reg<vm.value : i32>, reg<vm.value : i64>) asm {
+  %narrow = constant.i32 4294967295
+  %wide = constant.i64 -9223372036854775808
+  return %narrow, %wide
+}
+
+// ====
+
+vm.target<core> @vm
+
+func.def target(@vm) @compare(%a: i64, %b: i64) -> (i1) {
+  %result = scalar.cmpi ult, %a, %b : i64
+  func.return %result : i1
+}
+
+// ----
+low.func.def target<vm.core>(@vm) abi(vm_function) @compare(%a: reg<vm.value : i64>, %b: reg<vm.value : i64>) -> (reg<vm.value : i1>) asm {
+  %result = integer.compare.i64 %a, %b, 6
+  return %result
+}

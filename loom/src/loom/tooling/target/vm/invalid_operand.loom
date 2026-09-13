@@ -1,0 +1,6 @@
+vm.target<core> @vm
+
+low.func.def public target<vm.core>(@vm) abi(vm_function) @invalid_operand(%lhs: reg<vm.ref : buffer>, %rhs: reg<vm.value : i32>) -> (reg<vm.value : i32>) asm {
+  %sum = integer.add.i32 %lhs, %rhs
+  return %sum
+}

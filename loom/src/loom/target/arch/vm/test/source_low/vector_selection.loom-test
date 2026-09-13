@@ -1,0 +1,44 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/vector_selection.loom-test
+// RUN: emit source-low output=low
+
+vm.target<core> @vm
+
+func.def target(@vm) @whole_vector_select(%condition: i1, %a: f32, %b: f32) -> (f32, f32) {
+  %true_value = vector.from_elements %a, %b : vector<2xf32>
+  %false_value = vector.from_elements %b, %a : vector<2xf32>
+  %selected = scf.select %condition, %true_value, %false_value : vector<2xf32>
+  %first = vector.extract %selected[0] : vector<2xf32> -> f32
+  %second = vector.extract %selected[1] : vector<2xf32> -> f32
+  func.return %first, %second : f32, f32
+}
+
+// ----
+low.func.def target<vm.core>(@vm) abi(vm_function) @whole_vector_select(%condition: reg<vm.value : i1>, %a: reg<vm.value : f32>, %b: reg<vm.value : f32>) -> (reg<vm.value : f32>, reg<vm.value : f32>) asm {
+  %18 = value.select %condition, %a, %b : reg<vm.value : f32>
+  %19 = value.select %condition, %b, %a : reg<vm.value : f32>
+  return %18, %19
+}
+
+// ====
+
+vm.target<core> @vm
+
+func.def target(@vm) @whole_vector_if(%condition: i1, %a: i64, %b: i64) -> (i64, i64) {
+  %true_value = vector.from_elements %a, %b : vector<2xi64>
+  %false_value = vector.from_elements %b, %a : vector<2xi64>
+  %selected = scf.if %condition -> (vector<2xi64>) {
+    scf.yield %true_value : vector<2xi64>
+  } else {
+    scf.yield %false_value : vector<2xi64>
+  }
+  %first = vector.extract %selected[0] : vector<2xi64> -> i64
+  %second = vector.extract %selected[1] : vector<2xi64> -> i64
+  func.return %first, %second : i64, i64
+}
+
+// ----
+low.func.def target<vm.core>(@vm) abi(vm_function) @whole_vector_if(%condition: reg<vm.value : i1>, %a: reg<vm.value : i64>, %b: reg<vm.value : i64>) -> (reg<vm.value : i64>, reg<vm.value : i64>) asm {
+  %19 = value.select %condition, %a, %b
+  %20 = value.select %condition, %b, %a
+  return %19, %20
+}

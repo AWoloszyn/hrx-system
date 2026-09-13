@@ -728,13 +728,15 @@ GLOBAL_FUNCTION_DESCRIPTOR_ROW = _record(
 RODATA_HEADER = _record(
     "rodata_header",
     "Counts module read-only data blocks.",
-    "The count sizes the immediately following block descriptor array.",
+    "The count sizes the immediately following block descriptor array. A "
+    "single-pass emitter may reserve the section before discovering whether "
+    "any instructions reference data; zero blocks require no runtime storage.",
     (
         _field(
             "block_count_u32",
             U32,
             "Number of direct rodata ordinals.",
-            FieldRuleUse(FieldRule.ALLOWED_RANGE, values=(1, 65536)),
+            FieldRuleUse(FieldRule.ALLOWED_RANGE, values=(0, 65536)),
         ),
         _field("zero_padding_u32", U32, "Canonical zero padding.", FieldRule.ZERO),
     ),

@@ -1,0 +1,52 @@
+// The recurrence replaces the entire vector with freshly computed lanes.
+// A runtime trip count preserves the backedge; scalar public values require
+// no particular host vector ABI.
+func.def public @vector_recurrence(%a: i32, %b: i32, %count: i64) -> (i32, i32) {
+  %initial = vector.from_elements %a, %b : vector<2xi32>
+  %begin = index.constant 0 : index
+  %end = index.cast %count : i64 to index
+  %step = index.constant 1 : index
+  %result = scf.for %i = [%begin to %end step %step](%state = %initial : vector<2xi32>) -> (vector<2xi32>) {
+    %x = vector.extract %state[0] : vector<2xi32> -> i32
+    %y = vector.extract %state[1] : vector<2xi32> -> i32
+    %sum = scalar.addi %x, %y : i32
+    %next = vector.from_elements %y, %sum : vector<2xi32>
+    scf.yield %next : vector<2xi32>
+  }
+  %x = vector.extract %result[0] : vector<2xi32> -> i32
+  %y = vector.extract %result[1] : vector<2xi32> -> i32
+  func.return %x, %y : i32, i32
+}
+
+check.case @vector_recurrence_zero_trips {
+  %a = check.param.choice values([-17, 0, 2147483647]) : i32
+  %b = check.param.choice values([-2147483648, 1, 29]) : i32
+  %count = check.literal value(0) : i64
+  %x, %y = func.call @vector_recurrence(%a, %b, %count) : (i32, i32, i64) -> (i32, i32)
+  check.expect.equal actual(%x) expected(%a) : i32
+  check.expect.equal actual(%y) expected(%b) : i32
+  check.return
+}
+
+check.case @vector_recurrence_one_trip {
+  %a = check.literal value(2147483647) : i32
+  %b = check.literal value(1) : i32
+  %count = check.literal value(1) : i64
+  %x, %y = func.call @vector_recurrence(%a, %b, %count) : (i32, i32, i64) -> (i32, i32)
+  %sum = check.literal value(-2147483648) : i32
+  check.expect.equal actual(%x) expected(%b) : i32
+  check.expect.equal actual(%y) expected(%sum) : i32
+  check.return
+}
+
+check.case @vector_recurrence_five_trips {
+  %a = check.literal value(2) : i32
+  %b = check.literal value(3) : i32
+  %count = check.literal value(5) : i64
+  %x, %y = func.call @vector_recurrence(%a, %b, %count) : (i32, i32, i64) -> (i32, i32)
+  %expected_x = check.literal value(21) : i32
+  %expected_y = check.literal value(34) : i32
+  check.expect.equal actual(%x) expected(%expected_x) : i32
+  check.expect.equal actual(%y) expected(%expected_y) : i32
+  check.return
+}

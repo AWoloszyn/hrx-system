@@ -30,6 +30,9 @@ endif()
 if(NOT DEFINED LOOM_TARGET_WASM_DEFAULT)
   set(LOOM_TARGET_WASM_DEFAULT OFF)
 endif()
+if(NOT DEFINED LOOM_TARGET_VM_DEFAULT)
+  set(LOOM_TARGET_VM_DEFAULT OFF)
+endif()
 if(NOT DEFINED LOOM_TARGET_X86_DEFAULT)
   set(LOOM_TARGET_X86_DEFAULT ${LOOM_TARGET_DEFAULTS})
 endif()
@@ -51,6 +54,9 @@ option(LOOM_TARGET_SPIRV
 option(LOOM_TARGET_WASM
   "Enables Loom WebAssembly target support."
   ${LOOM_TARGET_WASM_DEFAULT})
+option(LOOM_TARGET_VM
+  "Enables Loom VM target support."
+  ${LOOM_TARGET_VM_DEFAULT})
 option(LOOM_TARGET_X86
   "Enables Loom x86 target support."
   ${LOOM_TARGET_X86_DEFAULT})
@@ -67,6 +73,9 @@ option(LOOM_TARGET_ARCH_SPIRV
 option(LOOM_TARGET_ARCH_WASM
   "Enables the WebAssembly Loom target architecture slice."
   OFF)
+option(LOOM_TARGET_ARCH_VM
+  "Enables the VM Loom target architecture slice."
+  OFF)
 option(LOOM_TARGET_ARCH_X86
   "Enables the x86 Loom target architecture slice."
   OFF)
@@ -74,6 +83,7 @@ mark_as_advanced(
   LOOM_TARGET_ARCH_AMDGPU
   LOOM_TARGET_ARCH_LLVMIR
   LOOM_TARGET_ARCH_SPIRV
+  LOOM_TARGET_ARCH_VM
   LOOM_TARGET_ARCH_WASM
   LOOM_TARGET_ARCH_X86
 )
@@ -111,6 +121,9 @@ endif()
 if(LOOM_TARGET_WASM)
   set(LOOM_TARGET_ARCH_WASM ON)
   set(LOOM_EMIT_WASM ON)
+endif()
+if(LOOM_TARGET_VM)
+  set(LOOM_TARGET_ARCH_VM ON)
 endif()
 if(LOOM_TARGET_X86)
   set(LOOM_TARGET_ARCH_X86 ON)

@@ -1,0 +1,148 @@
+// Dynamic input bits preserve denormals and exceptional values at the boundary.
+func.def public @logarithms_from_bits(%bits: i32) -> (f32, f32) {
+  %input = scalar.bitcast %bits : i32 to f32
+  %result = scalar.log2f<afn> %input : f32
+  %natural = scalar.logf<afn> %input : f32
+  func.return %result, %natural : f32, f32
+}
+
+check.case @logarithms_minimum_subnormal {
+  %input = check.literal value(1) : i32
+  %actual, %natural = func.call @logarithms_from_bits(%input) : (i32) -> (f32, f32)
+  %expected = check.literal value(-149.0) : f32
+  check.expect.equal actual(%actual) expected(%expected) : f32
+  %expected_natural = check.literal value(-103.27892990343184) : f32
+  check.expect.close actual(%natural) expected(%expected_natural) atol(0.0) rtol(9.9999999999999995e-07) nan(same) : f32
+  check.return
+}
+
+check.case @logarithms_subnormal_non_power {
+  %input = check.literal value(3) : i32
+  %actual, %natural = func.call @logarithms_from_bits(%input) : (i32) -> (f32, f32)
+  %expected = check.literal value(-147.41503749927884) : f32
+  check.expect.close actual(%actual) expected(%expected) atol(0.0) rtol(9.9999999999999995e-07) nan(same) : f32
+  %expected_natural = check.literal value(-102.18031761476374) : f32
+  check.expect.close actual(%natural) expected(%expected_natural) atol(0.0) rtol(9.9999999999999995e-07) nan(same) : f32
+  check.return
+}
+
+check.case @logarithms_normal_boundary {
+  %input = check.param.choice values([8388607, 8388608, 8388609]) : i32
+  %actual, %natural = func.call @logarithms_from_bits(%input) : (i32) -> (f32, f32)
+  %expected = check.literal value(-126.0) : f32
+  check.expect.close actual(%actual) expected(%expected) atol(0.0) rtol(9.9999999999999995e-07) nan(same) : f32
+  %expected_natural = check.literal value(-87.336544750553102) : f32
+  check.expect.close actual(%natural) expected(%expected_natural) atol(0.0) rtol(9.9999999999999995e-07) nan(same) : f32
+  check.return
+}
+
+check.case @logarithms_below_one {
+  %input = check.literal value(1065353215) : i32
+  %actual, %natural = func.call @logarithms_from_bits(%input) : (i32) -> (f32, f32)
+  %expected = check.literal value(-8.5991327994145617e-08) : f32
+  check.expect.close actual(%actual) expected(%expected) atol(0.0) rtol(9.9999999999999995e-07) nan(same) : f32
+  %expected_natural = check.literal value(-5.9604646551747531e-08) : f32
+  check.expect.close actual(%natural) expected(%expected_natural) atol(0.0) rtol(9.9999999999999995e-07) nan(same) : f32
+  check.return
+}
+
+check.case @logarithms_above_one {
+  %input = check.literal value(1065353217) : i32
+  %actual, %natural = func.call @logarithms_from_bits(%input) : (i32) -> (f32, f32)
+  %expected = check.literal value(1.7198264061184464e-07) : f32
+  check.expect.close actual(%actual) expected(%expected) atol(0.0) rtol(9.9999999999999995e-07) nan(same) : f32
+  %expected_natural = check.literal value(1.1920928244535446e-07) : f32
+  check.expect.close actual(%natural) expected(%expected_natural) atol(0.0) rtol(9.9999999999999995e-07) nan(same) : f32
+  check.return
+}
+
+check.case @logarithms_maximum_finite {
+  %input = check.literal value(2139095039) : i32
+  %actual, %natural = func.call @logarithms_from_bits(%input) : (i32) -> (f32, f32)
+  %expected = check.literal value(128.0) : f32
+  check.expect.close actual(%actual) expected(%expected) atol(0.0) rtol(9.9999999999999995e-07) nan(same) : f32
+  %expected_natural = check.literal value(88.722839052068352) : f32
+  check.expect.close actual(%natural) expected(%expected_natural) atol(0.0) rtol(9.9999999999999995e-07) nan(same) : f32
+  check.return
+}
+
+func.def public @logarithm_result_bits(%bits: i32) -> (i32, i32) {
+  %input = scalar.bitcast %bits : i32 to f32
+  %result = scalar.log2f<afn> %input : f32
+  %result_bits = scalar.bitcast %result : f32 to i32
+  %natural = scalar.logf<afn> %input : f32
+  %natural_bits = scalar.bitcast %natural : f32 to i32
+  func.return %result_bits, %natural_bits : i32, i32
+}
+
+check.case @logarithms_one_is_positive_zero {
+  %input = check.literal value(1065353216) : i32
+  %actual, %natural = func.call @logarithm_result_bits(%input) : (i32) -> (i32, i32)
+  %expected = check.literal value(0) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.expect.equal actual(%natural) expected(%expected) : i32
+  check.return
+}
+
+check.case @logarithms_signed_zeros {
+  %input = check.param.choice values([0, -2147483648]) : i32
+  %actual, %natural = func.call @logarithm_result_bits(%input) : (i32) -> (i32, i32)
+  %expected = check.literal value(-8388608) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.expect.equal actual(%natural) expected(%expected) : i32
+  check.return
+}
+
+check.case @logarithms_positive_infinity {
+  %input = check.literal value(2139095040) : i32
+  %actual, %natural = func.call @logarithm_result_bits(%input) : (i32) -> (i32, i32)
+  check.expect.equal actual(%actual) expected(%input) : i32
+  check.expect.equal actual(%natural) expected(%input) : i32
+  check.return
+}
+
+func.def public @logarithms_are_nan(%bits: i32) -> (i1, i1) {
+  %input = scalar.bitcast %bits : i32 to f32
+  %result = scalar.log2f<afn> %input : f32
+  %is_nan = scalar.isnanf %result : f32
+  %natural = scalar.logf<afn> %input : f32
+  %natural_is_nan = scalar.isnanf %natural : f32
+  func.return %is_nan, %natural_is_nan : i1, i1
+}
+
+check.case @logarithms_negative_and_nan {
+  %input = check.param.choice values([-2147483647, -2139095041, -2139095040, -1082130432, -8388608, 2143289344, -4194304, 2139095041, -8388607]) : i32
+  %actual, %natural = func.call @logarithms_are_nan(%input) : (i32) -> (i1, i1)
+  %expected = check.literal value(true) : i1
+  check.expect.equal actual(%actual) expected(%expected) : i1
+  check.expect.equal actual(%natural) expected(%expected) : i1
+  check.return
+}
+
+func.def public @logarithm_vectors(%first_bits: i32, %second_bits: i32) -> (f32, f32, f32, f32) {
+  %first = scalar.bitcast %first_bits : i32 to f32
+  %second = scalar.bitcast %second_bits : i32 to f32
+  %values = vector.from_elements %first, %second : vector<2xf32>
+  %logs = vector.log2f<afn> %values : vector<2xf32>
+  %a = vector.extract %logs[0] : vector<2xf32> -> f32
+  %b = vector.extract %logs[1] : vector<2xf32> -> f32
+  %natural_logs = vector.logf<afn> %values : vector<2xf32>
+  %natural_a = vector.extract %natural_logs[0] : vector<2xf32> -> f32
+  %natural_b = vector.extract %natural_logs[1] : vector<2xf32> -> f32
+  func.return %a, %b, %natural_a, %natural_b : f32, f32, f32, f32
+}
+
+check.case @logarithm_vectors_independent_scales {
+  %normal = check.literal value(1073741824) : i32
+  %tiny = check.literal value(1) : i32
+  %a, %b, %natural_a, %natural_b = func.call @logarithm_vectors(%normal, %tiny) : (i32, i32) -> (f32, f32, f32, f32)
+  %one = check.literal value(1.0) : f32
+  %negative = check.literal value(-149.0) : f32
+  check.expect.equal actual(%a) expected(%one) : f32
+  check.expect.equal actual(%b) expected(%negative) : f32
+  %ln2 = check.literal value(0.69314718055994529) : f32
+  %tiny_log = check.literal value(-103.27892990343184) : f32
+  check.expect.close actual(%natural_a) expected(%ln2) atol(0.0) rtol(9.9999999999999995e-07) nan(same) : f32
+  check.expect.close actual(%natural_b) expected(%tiny_log) atol(0.0) rtol(9.9999999999999995e-07) nan(same) : f32
+  check.return
+}

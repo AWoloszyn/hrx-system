@@ -18,9 +18,13 @@
 #ifndef IREE_TEST_LOOM_HAVE_SPIRV
 #define IREE_TEST_LOOM_HAVE_SPIRV 0
 #endif  // IREE_TEST_LOOM_HAVE_SPIRV
+#ifndef IREE_TEST_LOOM_HAVE_VM
+#define IREE_TEST_LOOM_HAVE_VM 0
+#endif  // IREE_TEST_LOOM_HAVE_VM
 
-#define IREE_TEST_LOOM_HAVE_ANY_PROVIDER \
-  (IREE_TEST_LOOM_HAVE_AMDGPU || IREE_TEST_LOOM_HAVE_SPIRV)
+#define IREE_TEST_LOOM_HAVE_ANY_PROVIDER                      \
+  (IREE_TEST_LOOM_HAVE_AMDGPU || IREE_TEST_LOOM_HAVE_SPIRV || \
+   IREE_TEST_LOOM_HAVE_VM)
 #define IREE_TEST_LOOM_HAVE_ANY_DEVICE_PROVIDER \
   (IREE_TEST_LOOM_HAVE_AMDGPU || IREE_TEST_LOOM_HAVE_SPIRV)
 
@@ -34,6 +38,15 @@
 #include "loom/tooling/target/spirv/device_provider.h"
 #include "loom/tooling/target/spirv/testbench_requirements.h"
 #endif  // IREE_TEST_LOOM_HAVE_SPIRV
+#if IREE_TEST_LOOM_HAVE_VM
+#include "loom/target/arch/vm/provider.h"
+#include "loom/tooling/target/vm/testbench.h"
+
+static const loom_run_execution_provider_t kIreeTestLoomVmProvider = {
+    .name = IREE_SVL("vm"),
+    .target_provider = &loom_vm_target_provider,
+};
+#endif  // IREE_TEST_LOOM_HAVE_VM
 
 #if IREE_TEST_LOOM_HAVE_AMDGPU
 static const loom_run_execution_provider_t kIreeTestLoomAmdgpuProvider = {
@@ -51,6 +64,9 @@ static const loom_run_execution_provider_t kIreeTestLoomSpirvProvider = {
 
 #if IREE_TEST_LOOM_HAVE_ANY_PROVIDER
 static const loom_run_execution_provider_t* const kIreeTestLoomProviders[] = {
+#if IREE_TEST_LOOM_HAVE_VM
+    &kIreeTestLoomVmProvider,
+#endif  // IREE_TEST_LOOM_HAVE_VM
 #if IREE_TEST_LOOM_HAVE_AMDGPU
     &kIreeTestLoomAmdgpuProvider,
 #endif  // IREE_TEST_LOOM_HAVE_AMDGPU
@@ -154,7 +170,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  const iree_test_loom_configuration_t configuration = {
+  iree_test_loom_configuration_t configuration = {
       .tool_name = "iree-test-loom",
       .register_context =
           loom_run_execution_environment_register_context_callback(
@@ -170,7 +186,20 @@ int main(int argc, char** argv) {
           loom_run_execution_environment_low_descriptor_registry_callback(
               &environment),
   };
+#if IREE_TEST_LOOM_HAVE_VM
+  loom_vm_testbench_t vm_testbench;
+  loom_vm_testbench_initialize(configuration.target_environment,
+                               iree_allocator_system(), &vm_testbench);
+  configuration.function_call_provider =
+      (loom_testbench_function_call_provider_callback_t){
+          .fn = loom_vm_testbench_invocation_provider,
+          .user_data = &vm_testbench,
+      };
+#endif  // IREE_TEST_LOOM_HAVE_VM
   int exit_code = iree_test_loom_main(argc, argv, &configuration);
+#if IREE_TEST_LOOM_HAVE_VM
+  loom_vm_testbench_deinitialize(&vm_testbench);
+#endif  // IREE_TEST_LOOM_HAVE_VM
   loom_run_execution_environment_deinitialize(&environment);
   return exit_code;
 }

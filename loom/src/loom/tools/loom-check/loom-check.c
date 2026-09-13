@@ -32,6 +32,9 @@
 #ifndef LOOM_CHECK_HAVE_TARGET_WASM
 #define LOOM_CHECK_HAVE_TARGET_WASM 0
 #endif  // LOOM_CHECK_HAVE_TARGET_WASM
+#ifndef LOOM_CHECK_HAVE_TARGET_VM
+#define LOOM_CHECK_HAVE_TARGET_VM 0
+#endif  // LOOM_CHECK_HAVE_TARGET_VM
 #ifndef LOOM_CHECK_HAVE_EMIT_WASM
 #define LOOM_CHECK_HAVE_EMIT_WASM 0
 #endif  // LOOM_CHECK_HAVE_EMIT_WASM
@@ -57,6 +60,9 @@
 #if LOOM_CHECK_HAVE_TARGET_WASM
 #include "loom/target/arch/wasm/check/provider.h"
 #endif  // LOOM_CHECK_HAVE_TARGET_WASM
+#if LOOM_CHECK_HAVE_TARGET_VM
+#include "loom/target/arch/vm/check.h"
+#endif  // LOOM_CHECK_HAVE_TARGET_VM
 #if LOOM_CHECK_HAVE_EMIT_WASM
 #include "loom/target/emit/wasm/check/provider.h"
 #endif  // LOOM_CHECK_HAVE_EMIT_WASM
@@ -87,6 +93,9 @@ static const loom_check_provider_t* const kLoomCheckProviders[] = {
 #if LOOM_CHECK_HAVE_TARGET_WASM
     &loom_wasm_check_provider,
 #endif  // LOOM_CHECK_HAVE_TARGET_WASM
+#if LOOM_CHECK_HAVE_TARGET_VM
+    &loom_vm_check_provider,
+#endif  // LOOM_CHECK_HAVE_TARGET_VM
 #if LOOM_CHECK_HAVE_EMIT_WASM
     &loom_wasm_emit_check_provider,
 #endif  // LOOM_CHECK_HAVE_EMIT_WASM

@@ -143,6 +143,7 @@ TEST_F(TargetProviderTest, ContributesPassIrByPhase) {
       /*.low_asm_diagnostic_provider_list=*/{},
       /*.low_verify_provider_list=*/{},
       /*.emitter_list=*/{},
+      /*.canonical_module_emitter=*/nullptr,
       /*.pass_registry=*/{},
       /*.contribute_pipeline=*/ContributeMaterialization,
   };
@@ -159,6 +160,7 @@ TEST_F(TargetProviderTest, ContributesPassIrByPhase) {
       /*.low_asm_diagnostic_provider_list=*/{},
       /*.low_verify_provider_list=*/{},
       /*.emitter_list=*/{},
+      /*.canonical_module_emitter=*/nullptr,
       /*.pass_registry=*/{},
       /*.contribute_pipeline=*/ContributePreparation,
   };
@@ -234,6 +236,7 @@ TEST_F(TargetProviderTest, ComposesTargetPassRegistries) {
       /*.low_asm_diagnostic_provider_list=*/{},
       /*.low_verify_provider_list=*/{},
       /*.emitter_list=*/{},
+      /*.canonical_module_emitter=*/nullptr,
       /*.pass_registry=*/&first_registry,
   };
   static const loom_target_provider_t second_provider = {
@@ -249,6 +252,7 @@ TEST_F(TargetProviderTest, ComposesTargetPassRegistries) {
       /*.low_asm_diagnostic_provider_list=*/{},
       /*.low_verify_provider_list=*/{},
       /*.emitter_list=*/{},
+      /*.canonical_module_emitter=*/nullptr,
       /*.pass_registry=*/&second_registry,
   };
   static const loom_target_provider_t* const providers[] = {

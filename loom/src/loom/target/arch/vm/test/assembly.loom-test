@@ -1,0 +1,63 @@
+// RUN: roundtrip
+
+vm.target<core> @vm
+
+low.func.def target<vm.core>(@vm) abi(vm_function) @arithmetic(%a: reg<vm.value : i32>, %b: reg<vm.value : i32>) -> (reg<vm.value : i32>) asm {
+  %sum = integer.add.i32 %a, %b
+  %product = integer.mul.i32 %sum, %a
+  return %product
+}
+
+// ====
+
+vm.target<core> @vm
+
+low.func.def target<vm.core>(@vm) abi(vm_function) @arithmetic64(%a: reg<vm.value : i64>, %b: reg<vm.value : i64>) -> (reg<vm.value : i64>) asm {
+  %sum = integer.add.i64 %a, %b
+  %result = integer.sub.i64 %sum, %a
+  return %result
+}
+
+// ====
+
+vm.target<core> @vm
+
+low.func.def target<vm.core>(@vm) abi(vm_function) @constants() -> (reg<vm.value : i32>, reg<vm.value : i64>) asm {
+  %narrow = constant.i32 4294967295
+  %wide = constant.i64 -9223372036854775808
+  return %narrow, %wide
+}
+
+// ====
+
+vm.target<core> @vm
+
+low.func.def target<vm.core>(@vm) abi(vm_function) @compare(%a: reg<vm.value : i32>, %b: reg<vm.value : i32>) -> (reg<vm.value : i1>) asm {
+  %result = integer.compare.i32 %a, %b, "slt"
+  return %result
+}
+
+// ====
+
+vm.target<core> @vm
+
+low.func.def target<vm.core>(@vm) abi(vm_function) @typed_cells(%a: reg<vm.value : f32>, %b: reg<vm.value : i1>) -> (reg<vm.value : f32>, reg<vm.value : f64>, reg<vm.value : i1>) asm {
+  %narrow = constant.i32 1067450368 : reg<vm.value : f32>
+  %wide = constant.i64 4751297606877446144 : reg<vm.value : f64>
+  %yes = constant.i32 1 : reg<vm.value : i1>
+  %sum = float.add.f32 %a, %narrow
+  %both = integer.and.i32 %b, %yes : reg<vm.value : i1>
+  return %sum, %wide, %both
+}
+
+// ====
+
+vm.target<core> @vm
+
+low.func.def target<vm.core>(@vm) abi(vm_function) @float_selectors(%a: reg<vm.value : f32>, %b: reg<vm.value : f32>, %c: reg<vm.value : f32>) -> (reg<vm.value : i32>, reg<vm.value : i1>) asm {
+  %minimum = float.minmax.f32 %a, %b, "minimum"
+  %fused = float.fma.f32 %minimum, %b, %c
+  %unordered = float.compare.f32 %fused, %a, "uno"
+  %bits = value.copy %fused : reg<vm.value : i32>
+  return %bits, %unordered
+}

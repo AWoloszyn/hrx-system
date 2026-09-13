@@ -241,6 +241,16 @@ static bool loom_scalar_match_contractable_mulf(loom_rewriter_t* rewriter,
 static iree_status_t loom_scalar_materialize_or_reuse_i64_constant(
     loom_op_t* op, loom_rewriter_t* rewriter, loom_value_id_t candidate,
     int64_t value, loom_type_t type, loom_value_id_t* out_value_id) {
+  // Integer rewrites use i64 intermediates, but their constants must remain
+  // in the result type's domain after wrapping arithmetic. Logical i1 keeps
+  // its zero/one spelling instead of the signed one-bit domain.
+  const int32_t bit_width =
+      loom_scalar_type_bitwidth(loom_type_element_type(type));
+  const loom_value_facts_t facts =
+      bit_width == 1
+          ? loom_value_facts_exact_i64((uint64_t)value & 1)
+          : loom_value_facts_make_signed_raw_bits((uint64_t)value, bit_width);
+  value = facts.range_lo;
   int64_t candidate_value = 0;
   if (candidate != LOOM_VALUE_ID_INVALID &&
       loom_scalar_query_exact_i64(rewriter, candidate, &candidate_value) &&
@@ -249,9 +259,8 @@ static iree_status_t loom_scalar_materialize_or_reuse_i64_constant(
     return iree_ok_status();
   }
 
-  IREE_RETURN_IF_ERROR(
-      loom_rewriter_build_constant(rewriter, loom_value_facts_exact_i64(value),
-                                   type, op->location, out_value_id));
+  IREE_RETURN_IF_ERROR(loom_rewriter_build_constant(
+      rewriter, facts, type, op->location, out_value_id));
   return iree_ok_status();
 }
 

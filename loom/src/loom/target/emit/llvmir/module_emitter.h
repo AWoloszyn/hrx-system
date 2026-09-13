@@ -30,8 +30,10 @@ extern "C" {
 #endif
 
 typedef struct loom_llvmir_emit_low_module_options_t {
-  // Selected target-low function ops to emit. NULL emits every target-low
-  // function definition in module body order.
+  // Selected target-low function ops to consider for emission. NULL considers
+  // every target-low function definition in module body order. Functions with
+  // a concrete non-LLVMIR codegen target remain in the module but are not
+  // emitted.
   loom_op_t* const* entry_ops;
   // Number of entries in |entry_ops|. Zero keeps the default all-entry
   // behavior.
@@ -47,6 +49,9 @@ void loom_llvmir_emit_low_module_options_initialize(
     loom_llvmir_emit_low_module_options_t* out_options);
 
 // Emits target-low function bodies in |module| as one structured LLVMIR module.
+// Concrete targets select LLVMIR code generation; targetless assembly must
+// select the LLVMIR representation contract. Other codegen targets remain in
+// the shared module for their respective emitters.
 //
 // Infrastructure and API contract failures return a non-OK status. User IR
 // emission failures are reported through |diagnostic_emitter| and return OK

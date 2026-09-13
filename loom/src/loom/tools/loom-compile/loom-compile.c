@@ -97,10 +97,10 @@ IREE_FLAG(string, format, "",
           "select the canonical format for the inferred product and target.");
 IREE_FLAG(string, target, "",
           "Optional compilation target in family:selector form, such as "
-          "'amdgpu:gfx11-generic' or 'spirv:vulkan1.3+bda'. When present, "
-          "every materialized kernel entry is specialized to that exact "
-          "configured profile before the pass pipeline. Authored targets "
-          "remain compatibility requirements.");
+          "'amdgpu:gfx11-generic' or 'spirv:vulkan1.3+bda'. Selects the exact "
+          "profile for kernel entries or the public/retained functions of a "
+          "module and their callees. Authored targets remain compatibility "
+          "requirements; target-free source needs no target attributes.");
 IREE_FLAG_LIST(string, root,
                "Root symbol to materialize before compilation. Repeat for "
                "multiple roots. Roots must infer one homogeneous product. "
@@ -243,6 +243,38 @@ static iree_status_t loom_compile_parse_input_module(
   parse_options.filename = filename;
   parse_options.source = loom_tooling_file_contents_string_view(*out_contents);
   return loom_run_module_parse(session, &parse_options, out_run_module);
+}
+
+static iree_status_t loom_compile_verify_input_module(
+    const loom_target_low_descriptor_registry_t* low_registry,
+    loom_run_module_t* run_module) {
+  const loom_target_entry_options_t options = {
+      .diagnostic_sink = {.fn = loom_diagnostic_stderr_sink},
+      .source_resolver = loom_run_module_source_resolver(run_module),
+      .max_errors = 20,
+  };
+  loom_verify_result_t result = {0};
+  IREE_RETURN_IF_ERROR(loom_target_entry_verify_module(
+      run_module->module, &options, options.max_errors, &result));
+  if (result.error_count != 0) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "input module failed verification");
+  }
+
+  loom_target_entry_diagnostic_emitter_t emitter = {0};
+  loom_target_entry_diagnostic_emitter_initialize(
+      run_module->module, &options, LOOM_EMITTER_VERIFIER, &emitter);
+  loom_low_verify_scratch_t scratch =
+      loom_low_verify_scratch_for_module(run_module->module);
+  loom_low_verify_result_t low_result = {0};
+  IREE_RETURN_IF_ERROR(loom_target_entry_verify_low_module(
+      run_module->module, low_registry, &options, &emitter, options.max_errors,
+      loom_low_verify_provider_list_empty(), &scratch, &low_result));
+  if (low_result.error_count != 0) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "input module failed Low verification");
+  }
+  return iree_ok_status();
 }
 
 static iree_status_t loom_compile_append_config_flags(
@@ -435,6 +467,7 @@ static iree_status_t loom_compile_run_pass_pipeline(
     const loom_target_environment_t* target_environment,
     loom_run_session_t* session, loom_run_module_t* run_module,
     loom_compile_default_pipeline_t default_pipeline,
+    const loom_compile_request_t* request,
     const loom_compile_options_t* compile_options,
     loom_compile_report_capture_t* compile_report_capture,
     const loom_pass_trace_options_t* trace_options,
@@ -465,9 +498,46 @@ static iree_status_t loom_compile_run_pass_pipeline(
   pipeline_options.report = compile_options->report;
   pipeline_options.trace_options = trace_options;
 
-  return loom_compile_run_pipeline(run_module->module, &pipeline_options,
-                                   loom_run_session_block_pool(session),
-                                   out_result);
+  // Selected roots are public or retained by module linking. Specialization
+  // owns their transitive callees and carries facts directly through emission,
+  // without projecting target definitions back into the authored module.
+  iree_arena_allocator_t arena;
+  iree_arena_initialize(loom_run_session_block_pool(session), &arena);
+  iree_status_t status = iree_ok_status();
+  if (request->product == LOOM_COMPILE_PRODUCT_MODULE &&
+      request->explicit_target.target_profile != NULL) {
+    loom_module_t* module = run_module->module;
+    loom_target_specialization_request_t* specializations = NULL;
+    status = iree_arena_allocate_array(&arena, module->symbols.count,
+                                       sizeof(*specializations),
+                                       (void**)&specializations);
+    if (iree_status_is_ok(status)) {
+      iree_host_size_t count = 0;
+      for (iree_host_size_t i = 0; i < module->symbols.count; ++i) {
+        const loom_symbol_t* symbol = &module->symbols.entries[i];
+        const loom_func_like_t function =
+            loom_func_like_cast(module, symbol->defining_op);
+        if (loom_func_like_body(function) == NULL ||
+            (loom_func_like_is_module_internal(function) &&
+             !iree_any_bit_set(symbol->flags, LOOM_SYMBOL_FLAG_RETAIN))) {
+          continue;
+        }
+        specializations[count++] = (loom_target_specialization_request_t){
+            .function_name = module->strings.entries[symbol->name_id],
+            .target_profile = request->explicit_target.target_profile,
+        };
+      }
+      pipeline_options.target_specializations =
+          (loom_target_specialization_request_list_t){specializations, count};
+    }
+  }
+  if (iree_status_is_ok(status)) {
+    status = loom_compile_run_pipeline(run_module->module, &pipeline_options,
+                                       loom_run_session_block_pool(session),
+                                       out_result);
+  }
+  iree_arena_deinitialize(&arena);
+  return status;
 }
 
 static iree_status_t loom_compile_write_bytes(iree_string_view_t path,
@@ -1058,6 +1128,10 @@ int main(int argc, char** argv) {
         &input_filename_storage, &run_module);
   }
   if (iree_status_is_ok(status)) {
+    status = loom_compile_verify_input_module(
+        loom_run_session_low_descriptor_registry(&session), &run_module);
+  }
+  if (iree_status_is_ok(status)) {
     status =
         loom_compile_materialize_config_set(&session, &run_module, &config_set);
   }
@@ -1088,6 +1162,7 @@ int main(int argc, char** argv) {
     }
   }
   if (iree_status_is_ok(status) &&
+      request.product == LOOM_COMPILE_PRODUCT_KERNEL &&
       request.explicit_target.target_profile != NULL) {
     status = loom_compile_specialize_explicit_target(
         compile_environment->target_environment, &session, &run_module,
@@ -1175,9 +1250,9 @@ int main(int argc, char** argv) {
     if (run_pipeline) {
       status = loom_compile_run_pass_pipeline(
           compile_environment->target_environment, &session, &run_module,
-          LOOM_COMPILE_DEFAULT_PIPELINE_PREPARED_LOW, &compile_options,
-          &compile_report_capture, loom_tooling_pass_trace_options(&pass_trace),
-          &pipeline_result);
+          LOOM_COMPILE_DEFAULT_PIPELINE_PREPARED_LOW, &request,
+          &compile_options, &compile_report_capture,
+          loom_tooling_pass_trace_options(&pass_trace), &pipeline_result);
     }
     status =
         iree_status_join(status, loom_tooling_pass_trace_close(&pass_trace));

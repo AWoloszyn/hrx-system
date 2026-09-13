@@ -1,0 +1,34 @@
+# Copyright 2026 The IREE Authors
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+load("//loom/build_tools/bazel:build_defs.bzl", "loom_target_contract_table_cc_libraries")
+
+package(
+    default_visibility = ["//loom/src/loom/target/arch/vm:__subpackages__"],
+    features = ["layering_check"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+loom_target_contract_table_cc_libraries(
+    name = "core",
+    args = [
+        "--contract-fragment=vm.core",
+        "--contract-index=LOOM_VM_CORE_CONTRACT:vm.core",
+    ],
+    contract_deps = ["//loom/src/loom/target:contract"],
+    generator = "//loom/py/loom/gen/target/contracts:vm_contract_table_family",
+    index_output = "tables.inl",
+    lower_rule_deps = [
+        "//loom/src/loom/codegen/low/lower",
+        "//loom/src/loom/ops/buffer",
+        "//loom/src/loom/ops/global",
+        "//loom/src/loom/ops/index",
+        "//loom/src/loom/ops/scalar",
+        "//loom/src/loom/ops/scf",
+        "//loom/src/loom/ops/view",
+        "//loom/src/loom/target/arch/vm/descriptors:descriptors_ids",
+    ],
+)

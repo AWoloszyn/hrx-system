@@ -72,6 +72,7 @@ SnapshotCodegenFormat = EnumDef(
         EnumCase("spirv", 2, doc="SPIR-V emission target."),
         EnumCase("low_native", 4, doc="Native low dialect code emission target."),
         EnumCase("wasm", 5, doc="WebAssembly module emission target."),
+        EnumCase("vm", 6, doc="Portable VM bytecode emission target."),
     ],
     doc="Primary codegen representation emitted for a target snapshot.",
     c_type="loom_target_codegen_format_t",
@@ -88,6 +89,7 @@ _ARTIFACT_FORMAT_CASES = [
     EnumCase("wasm_binary", 6, doc="WebAssembly binary module artifact."),
     EnumCase("llvmir_text", 7, doc="Textual LLVM IR module artifact."),
     EnumCase("llvmir_bitcode", 8, doc="LLVM bitcode module artifact."),
+    EnumCase("vm_binary", 9, doc="Portable VM bytecode module artifact."),
 ]
 
 ArtifactFormatAttr = EnumDef(
@@ -112,6 +114,7 @@ ExportAbiKind = EnumDef(
             6,
             doc="Reusable command-program materialization ABI.",
         ),
+        EnumCase("vm_function", 7, doc="Portable VM host function ABI."),
     ],
     doc="Callable or package ABI used by an export plan.",
     c_type="loom_target_abi_kind_t",

@@ -3795,6 +3795,13 @@ static iree_status_t loom_llvmir_emit_low_function_into_module(
       function_version ? function_version->function_target_facts : NULL,
       module_state->descriptor_registry, module_state->diagnostic_emitter,
       &target));
+  // Concrete targets select their artifact backend; targetless assembly is
+  // selected by its representation contract below.
+  const loom_target_bundle_t* bundle = loom_low_resolved_target_bundle(&target);
+  if (bundle &&
+      bundle->snapshot->codegen_format != LOOM_TARGET_CODEGEN_FORMAT_LLVMIR) {
+    return iree_ok_status();
+  }
   if (target.descriptor_set == NULL) {
     ++module_state->error_count;
     return iree_ok_status();

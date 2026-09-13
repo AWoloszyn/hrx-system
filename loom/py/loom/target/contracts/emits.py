@@ -320,8 +320,11 @@ class EmitDescriptorOp:
         if self.source_memory is not None and self.form not in (
             DescriptorEmitForm.AUTO,
             DescriptorEmitForm.OP,
+            DescriptorEmitForm.CONST,
         ):
-            raise ValueError(f"{source_op.name}: source memory requires an op emit")
+            raise ValueError(
+                f"{source_op.name}: source memory requires an op or constant emit"
+            )
         if self.source_memory is not None:
             self.source_memory.validate(source_op)
         if self.source_memory_byte_offset_materializer is not None:

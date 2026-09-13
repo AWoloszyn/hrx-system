@@ -12,6 +12,7 @@ package(
 )
 
 GENERATOR_VISIBILITY = [
+    "//loom/src/loom/target/arch/vm/contracts:__pkg__",
     "//loom/py/loom/gen:__subpackages__",
     "//loom/src/loom/target/arch/amdgpu/contracts:__pkg__",
     "//loom/src/loom/target/arch/llvmir/contracts:__pkg__",
@@ -132,6 +133,16 @@ iree_py_binary(
     deps = [
         ":contract_table_family",
         "//loom/py/loom/target/test:contracts",
+    ],
+)
+
+iree_py_binary(
+    name = "vm_contract_table_family",
+    main_module = "loom.gen.target.contracts.contract_table_family",
+    visibility = GENERATOR_VISIBILITY,
+    deps = [
+        ":contract_table_family",
+        "//loom/py/loom/target/arch/vm:contracts",
     ],
 )
 

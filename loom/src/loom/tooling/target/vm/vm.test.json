@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "rejects a target opcode with incompatible source registers",
+      "run": {
+        "tool": "loom-compile",
+        "args": ["{srcdir}/invalid_operand.loom", "--format=vm", "--output={tmp}/invalid.vm"]
+      },
+      "exit": 1,
+      "stderr": {"contains": ["input module failed Low verification"]},
+      "files": [{"path": "{tmp}/invalid.vm", "exists": false}]
+    },
+    {
+      "name": "compiles target-free functions and private callees into standalone VM bytecode",
+      "steps": [
+        {
+          "name": "compile",
+          "run": {
+            "tool": "loom-compile",
+            "args": ["{srcdir}/module.loom", "--target=vm:core", "--output={tmp}/module.vm", "--dump-ir-after-all", "--dump-ir-output={tmp}/module.ir"]
+          },
+          "files": [{"path": "{tmp}/module.ir", "contains": ["vm.target<core>", "integer.mul.i32"]}]
+        },
+        {
+          "name": "disassemble",
+          "run": {
+            "tool": "vm-dis",
+            "args": ["{tmp}/module.vm"]
+          },
+          "stdout": {
+            "contains": [
+              "vm.module core(0.0)",
+              "\"arithmetic\"",
+              "\"swap\"",
+              "control.call",
+              "integer.mul.i32",
+              "value.copy",
+              "control.return"
+            ],
+            "not_contains": ["\"multiply\""]
+          }
+        }
+      ]
+    },
+    {
+      "name": "specializes selected roots and their callees without retaining other exports",
+      "steps": [
+        {
+          "name": "compile",
+          "run": {
+            "tool": "loom-compile",
+            "args": ["{srcdir}/module.loom", "--root=arithmetic", "--target=vm:core", "--output={tmp}/selected.vm"]
+          }
+        },
+        {
+          "name": "disassemble",
+          "run": {
+            "tool": "vm-dis",
+            "args": ["{tmp}/selected.vm"]
+          },
+          "stdout": {
+            "contains": ["\"arithmetic\"", "control.call", "integer.mul.i32"],
+            "not_contains": ["\"swap\"", "\"multiply\""]
+          }
+        }
+      ]
+    },
+    {
+      "name": "rejects colliding host export names",
+      "run": {
+        "tool": "loom-compile",
+        "args": ["{srcdir}/duplicate_exports.loom", "--format=vm", "--output={tmp}/invalid.vm"]
+      },
+      "exit": 1,
+      "stderr": {"contains": ["duplicate VM export 'collision'"]}
+    },
+    {
+      "name": "rejects an explicitly empty export name",
+      "run": {
+        "tool": "loom-compile",
+        "args": ["{srcdir}/empty_export.loom", "--format=vm", "--output={tmp}/invalid.vm"]
+      },
+      "exit": 1,
+      "stderr": {"contains": ["VM export names must not be empty"]}
+    },
+    {
+      "name": "rejects storage exceeding the Core frame extent",
+      "run": {
+        "tool": "loom-compile",
+        "args": ["{srcdir}/invalid_storage.loom", "--root=oversized", "--format=vm", "--output={tmp}/invalid.vm"]
+      },
+      "exit": 1,
+      "stderr": {"contains": ["VM local storage exceeds 65535 bytes"]}
+    },
+    {
+      "name": "rejects a narrow scalar spill that does not hold a complete value cell",
+      "run": {
+        "tool": "loom-compile",
+        "args": ["{srcdir}/invalid_storage.loom", "--root=short", "--format=vm", "--output={tmp}/invalid.vm"]
+      },
+      "exit": 1,
+      "stderr": {"contains": ["VM register transfer exceeds its storage span"]}
+    },
+    {
+      "name": "rejects workgroup storage in a Core host function",
+      "run": {
+        "tool": "loom-compile",
+        "args": ["{srcdir}/invalid_storage.loom", "--root=wrong_space", "--format=vm", "--output={tmp}/invalid.vm"]
+      },
+      "exit": 1,
+      "stderr": {"contains": ["VM local storage requires the stack space"]}
+    }
+  ]
+}

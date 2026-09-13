@@ -1,0 +1,18 @@
+// Invocation aborts are not compiler-visible effects. Unused division and
+// addition are both removable, and division does not prevent function purity.
+// RUN: pass low-dce
+
+vm.target<core> @vm
+
+low.func.def pure target<vm.core>(@vm) abi(vm_function) @remove_dead_arithmetic(%dividend: reg<vm.value : i32>, %divisor: reg<vm.value : i32>) -> (reg<vm.value : i32>) asm {
+  %unused_sum = integer.add.i32 %dividend, %divisor
+  %unused_quotient = integer.div.s32 %dividend, %divisor
+  return %dividend
+}
+
+// ----
+vm.target<core> @vm
+
+low.func.def pure target<vm.core>(@vm) abi(vm_function) @remove_dead_arithmetic(%dividend: reg<vm.value : i32>, %divisor: reg<vm.value : i32>) -> (reg<vm.value : i32>) {
+  low.return %dividend : reg<vm.value : i32>
+}

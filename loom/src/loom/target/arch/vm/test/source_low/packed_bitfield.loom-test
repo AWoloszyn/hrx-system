@@ -1,0 +1,252 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/packed_bitfield.loom-test
+// RUN: emit source-low output=low
+
+vm.target<core> @target
+
+func.def target(@target) @i32_bitfield_extractu(%input: buffer, %output: buffer) {
+  %buffer_base = index.constant 0 : offset
+  %input_view = buffer.view %input[%buffer_base] : buffer -> view<1xi32>
+  %output_view = buffer.view %output[%buffer_base] : buffer -> view<1xi32>
+  %loaded = vector.load %input_view[0] : view<1xi32> -> vector<1xi32>
+  %nibble = vector.bitfield.extractu %loaded {offset = 4, width = 4} : vector<1xi32> -> vector<1xi32>
+  vector.store %nibble, %output_view[0] : vector<1xi32>, view<1xi32>
+  func.return
+}
+
+// ----
+low.func.def target<vm.core>(@target) abi(vm_function) @i32_bitfield_extractu(%input_view: reg<vm.ref : buffer>, %output_view: reg<vm.ref : buffer>) asm {
+  %17 = constant.i64 0
+  %18 = buffer.load %input_view, %17, %17, 0, 8 : reg<vm.value : i32>
+  %19 = constant.i32 4
+  %20 = integer.shift.right.u32 %18, %19
+  %21 = constant.i32 15
+  %22 = integer.and.i32 %20, %21
+  buffer.store %output_view, %17, %17, %22, 0, 8
+  return
+}
+
+// ====
+
+vm.target<core> @target
+
+func.def target(@target) @i32_bitfield_extracts(%input: buffer, %output: buffer) {
+  %buffer_base = index.constant 0 : offset
+  %input_view = buffer.view %input[%buffer_base] : buffer -> view<1xi32>
+  %output_view = buffer.view %output[%buffer_base] : buffer -> view<1xi32>
+  %loaded = vector.load %input_view[0] : view<1xi32> -> vector<1xi32>
+  %nibble = vector.bitfield.extracts %loaded {offset = 4, width = 4} : vector<1xi32> -> vector<1xi32>
+  vector.store %nibble, %output_view[0] : vector<1xi32>, view<1xi32>
+  func.return
+}
+
+// ----
+low.func.def target<vm.core>(@target) abi(vm_function) @i32_bitfield_extracts(%input_view: reg<vm.ref : buffer>, %output_view: reg<vm.ref : buffer>) asm {
+  %17 = constant.i64 0
+  %18 = buffer.load %input_view, %17, %17, 0, 8 : reg<vm.value : i32>
+  %19 = constant.i32 24
+  %20 = integer.shift.left.i32 %18, %19
+  %21 = constant.i32 28
+  %22 = integer.shift.right.s32 %20, %21
+  buffer.store %output_view, %17, %17, %22, 0, 8
+  return
+}
+
+// ====
+
+vm.target<core> @target
+
+func.def target(@target) @i32_bitfield_extractu_full_width_alias(%input: buffer, %output: buffer) {
+  %buffer_base = index.constant 0 : offset
+  %input_view = buffer.view %input[%buffer_base] : buffer -> view<1xi32>
+  %output_view = buffer.view %output[%buffer_base] : buffer -> view<1xi32>
+  %loaded = vector.load %input_view[0] : view<1xi32> -> vector<1xi32>
+  %bits = vector.bitfield.extractu %loaded {offset = 0, width = 32} : vector<1xi32> -> vector<1xi32>
+  vector.store %bits, %output_view[0] : vector<1xi32>, view<1xi32>
+  func.return
+}
+
+// ----
+low.func.def target<vm.core>(@target) abi(vm_function) @i32_bitfield_extractu_full_width_alias(%input_view: reg<vm.ref : buffer>, %output_view: reg<vm.ref : buffer>) asm {
+  %13 = constant.i64 0
+  %14 = buffer.load %input_view, %13, %13, 0, 8 : reg<vm.value : i32>
+  buffer.store %output_view, %13, %13, %14, 0, 8
+  return
+}
+
+// ====
+
+vm.target<core> @target
+
+func.def target(@target) @i32_bitfield_extracts_top_aligned(%input: buffer, %output: buffer) {
+  %buffer_base = index.constant 0 : offset
+  %input_view = buffer.view %input[%buffer_base] : buffer -> view<1xi32>
+  %output_view = buffer.view %output[%buffer_base] : buffer -> view<1xi32>
+  %loaded = vector.load %input_view[0] : view<1xi32> -> vector<1xi32>
+  %nibble = vector.bitfield.extracts %loaded {offset = 28, width = 4} : vector<1xi32> -> vector<1xi32>
+  vector.store %nibble, %output_view[0] : vector<1xi32>, view<1xi32>
+  func.return
+}
+
+// ----
+low.func.def target<vm.core>(@target) abi(vm_function) @i32_bitfield_extracts_top_aligned(%input_view: reg<vm.ref : buffer>, %output_view: reg<vm.ref : buffer>) asm {
+  %15 = constant.i64 0
+  %16 = buffer.load %input_view, %15, %15, 0, 8 : reg<vm.value : i32>
+  %17 = constant.i32 28
+  %18 = integer.shift.right.s32 %16, %17
+  buffer.store %output_view, %15, %15, %18, 0, 8
+  return
+}
+
+// ====
+
+vm.target<core> @target
+
+func.def target(@target) @i32_bitfield_insert(%field_buffer: buffer, %base_buffer: buffer, %output: buffer) {
+  %buffer_base = index.constant 0 : offset
+  %field_view = buffer.view %field_buffer[%buffer_base] : buffer -> view<1xi32>
+  %base_view = buffer.view %base_buffer[%buffer_base] : buffer -> view<1xi32>
+  %output_view = buffer.view %output[%buffer_base] : buffer -> view<1xi32>
+  %field = vector.load %field_view[0] : view<1xi32> -> vector<1xi32>
+  %base = vector.load %base_view[0] : view<1xi32> -> vector<1xi32>
+  %inserted = vector.bitfield.insert %field into %base {offset = 8, width = 4} : vector<1xi32>, vector<1xi32>
+  vector.store %inserted, %output_view[0] : vector<1xi32>, view<1xi32>
+  func.return
+}
+
+// ----
+low.func.def target<vm.core>(@target) abi(vm_function) @i32_bitfield_insert(%field_view: reg<vm.ref : buffer>, %base_view: reg<vm.ref : buffer>, %output_view: reg<vm.ref : buffer>) asm {
+  %27 = constant.i64 0
+  %28 = buffer.load %field_view, %27, %27, 0, 8 : reg<vm.value : i32>
+  %30 = buffer.load %base_view, %27, %27, 0, 8 : reg<vm.value : i32>
+  %31 = constant.i32 15
+  %32 = integer.and.i32 %28, %31
+  %33 = constant.i32 8
+  %34 = integer.shift.left.i32 %32, %33
+  %35 = constant.i32 4294963455
+  %36 = integer.and.i32 %30, %35
+  %37 = integer.or.i32 %36, %34
+  buffer.store %output_view, %27, %27, %37, 0, 8
+  return
+}
+
+// ====
+
+vm.target<core> @target
+
+func.def target(@target) @i32_bitfield_insert_offset0(%field_buffer: buffer, %base_buffer: buffer, %output: buffer) {
+  %buffer_base = index.constant 0 : offset
+  %field_view = buffer.view %field_buffer[%buffer_base] : buffer -> view<1xi32>
+  %base_view = buffer.view %base_buffer[%buffer_base] : buffer -> view<1xi32>
+  %output_view = buffer.view %output[%buffer_base] : buffer -> view<1xi32>
+  %field = vector.load %field_view[0] : view<1xi32> -> vector<1xi32>
+  %base = vector.load %base_view[0] : view<1xi32> -> vector<1xi32>
+  %inserted = vector.bitfield.insert %field into %base {offset = 0, width = 4} : vector<1xi32>, vector<1xi32>
+  vector.store %inserted, %output_view[0] : vector<1xi32>, view<1xi32>
+  func.return
+}
+
+// ----
+low.func.def target<vm.core>(@target) abi(vm_function) @i32_bitfield_insert_offset0(%field_view: reg<vm.ref : buffer>, %base_view: reg<vm.ref : buffer>, %output_view: reg<vm.ref : buffer>) asm {
+  %25 = constant.i64 0
+  %26 = buffer.load %field_view, %25, %25, 0, 8 : reg<vm.value : i32>
+  %28 = buffer.load %base_view, %25, %25, 0, 8 : reg<vm.value : i32>
+  %29 = constant.i32 15
+  %30 = integer.and.i32 %26, %29
+  %31 = constant.i32 4294967280
+  %32 = integer.and.i32 %28, %31
+  %33 = integer.or.i32 %32, %30
+  buffer.store %output_view, %25, %25, %33, 0, 8
+  return
+}
+
+// ====
+
+vm.target<core> @target
+
+func.def target(@target) @i32_bitfield_insert_full_width_alias(%field_buffer: buffer, %base_buffer: buffer, %output: buffer) {
+  %buffer_base = index.constant 0 : offset
+  %field_view = buffer.view %field_buffer[%buffer_base] : buffer -> view<1xi32>
+  %base_view = buffer.view %base_buffer[%buffer_base] : buffer -> view<1xi32>
+  %output_view = buffer.view %output[%buffer_base] : buffer -> view<1xi32>
+  %field = vector.load %field_view[0] : view<1xi32> -> vector<1xi32>
+  %base = vector.load %base_view[0] : view<1xi32> -> vector<1xi32>
+  %inserted = vector.bitfield.insert %field into %base {offset = 0, width = 32} : vector<1xi32>, vector<1xi32>
+  vector.store %inserted, %output_view[0] : vector<1xi32>, view<1xi32>
+  func.return
+}
+
+// ----
+low.func.def target<vm.core>(@target) abi(vm_function) @i32_bitfield_insert_full_width_alias(%field_view: reg<vm.ref : buffer>, %base_buffer: reg<vm.ref : buffer>, %output_view: reg<vm.ref : buffer>) asm {
+  %25 = constant.i64 0
+  %26 = buffer.load %field_view, %25, %25, 0, 8 : reg<vm.value : i32>
+  buffer.store %output_view, %25, %25, %26, 0, 8
+  return
+}
+
+// ====
+
+vm.target<core> @target
+
+func.def target(@target) @i32_bitfield_b128_shape(%input: buffer, %output: buffer) {
+  %buffer_base = index.constant 0 : offset
+  %input_view = buffer.view %input[%buffer_base] : buffer -> view<4xi32>
+  %output_view = buffer.view %output[%buffer_base] : buffer -> view<4xi32>
+  %loaded = vector.load %input_view[0] : view<4xi32> -> vector<4xi32>
+  %low = vector.bitfield.extractu %loaded {offset = 0, width = 4} : vector<4xi32> -> vector<4xi32>
+  %high = vector.bitfield.extractu %loaded {offset = 4, width = 2} : vector<4xi32> -> vector<4xi32>
+  %merged = vector.bitfield.insert %high into %low {offset = 4, width = 2} : vector<4xi32>, vector<4xi32>
+  %bias = vector.constant 32 : vector<4xi32>
+  %result = vector.subi %merged, %bias : vector<4xi32>
+  vector.store %result, %output_view[0] : vector<4xi32>, view<4xi32>
+  func.return
+}
+
+// ----
+low.func.def target<vm.core>(@target) abi(vm_function) @i32_bitfield_b128_shape(%input_view: reg<vm.ref : buffer>, %output_view: reg<vm.ref : buffer>) asm {
+  %110 = constant.i64 0
+  %111 = buffer.load %input_view, %110, %110, 0, 8 : reg<vm.value : i32>
+  %112 = constant.i32 4
+  %113 = integer.shift.right.u32 %111, %112
+  %114 = constant.i32 3
+  %115 = integer.and.i32 %113, %114
+  %116 = constant.i32 15
+  %117 = integer.and.i32 %111, %116
+  %118 = integer.shift.left.i32 %115, %112
+  %119 = constant.i32 4294967247
+  %120 = integer.and.i32 %117, %119
+  %121 = integer.or.i32 %120, %118
+  %122 = constant.i64 4
+  %123 = buffer.load %input_view, %122, %122, 0, 8 : reg<vm.value : i32>
+  %124 = integer.shift.right.u32 %123, %112
+  %125 = integer.and.i32 %124, %114
+  %126 = integer.and.i32 %123, %116
+  %127 = integer.shift.left.i32 %125, %112
+  %128 = integer.and.i32 %126, %119
+  %129 = integer.or.i32 %128, %127
+  %130 = constant.i64 8
+  %131 = buffer.load %input_view, %130, %130, 0, 8 : reg<vm.value : i32>
+  %132 = integer.shift.right.u32 %131, %112
+  %133 = integer.and.i32 %132, %114
+  %134 = integer.and.i32 %131, %116
+  %135 = integer.shift.left.i32 %133, %112
+  %136 = integer.and.i32 %134, %119
+  %137 = integer.or.i32 %136, %135
+  %138 = constant.i64 12
+  %139 = buffer.load %input_view, %138, %138, 0, 8 : reg<vm.value : i32>
+  %140 = integer.shift.right.u32 %139, %112
+  %141 = integer.and.i32 %140, %114
+  %142 = integer.and.i32 %139, %116
+  %143 = integer.shift.left.i32 %141, %112
+  %144 = integer.and.i32 %142, %119
+  %145 = integer.or.i32 %144, %143
+  %146 = constant.i32 4294967264
+  %147 = integer.add.i32 %121, %146
+  %148 = integer.add.i32 %129, %146
+  %149 = integer.add.i32 %137, %146
+  %150 = integer.add.i32 %145, %146
+  buffer.store %output_view, %110, %110, %147, 0, 8
+  buffer.store %output_view, %122, %122, %148, 0, 8
+  buffer.store %output_view, %130, %130, %149, 0, 8
+  buffer.store %output_view, %138, %138, %150, 0, 8
+  return
+}

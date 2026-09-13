@@ -73,6 +73,7 @@ from loom.target.low_descriptors import (
     ConstraintKind,
     Descriptor,
     DescriptorOpKind,
+    EffectKind,
     OperandRole,
 )
 
@@ -95,9 +96,10 @@ class LowerAttrCopyKind(Enum):
 
     DIRECT = "direct"
     ENUM_ORDINAL = "enum_ordinal"
+    I64_LOG2 = "i64_log2"
     I64_ARRAY_ELEMENT = "i64_array_element"
     I64_ARRAY_PACK_ELEMENTS = "i64_array_pack_elements"
-    I64_ATTRS_PACK_CONSECUTIVE = "i64_attrs_pack_consecutive"
+    ATTRS_PACK_CONSECUTIVE = "attrs_pack_consecutive"
     I64_LITERAL = "i64_literal"
     VALUE_EXACT_I64 = "value_exact_i64"
     VALUE_EXACT_I64_NEGATE = "value_exact_i64_negate"
@@ -131,6 +133,7 @@ LOWER_EMIT_FLAG_ACCUMULATE_SEED_FIRST_LANE = 1 << 3
 LOWER_EMIT_FLAG_ACCUMULATE_TREE_BALANCED = 1 << 4
 LOWER_EMIT_FLAG_ACCUMULATE_SKIP_FIRST_LANE = 1 << 5
 LOWER_EMIT_FLAG_RESULT_DESCRIPTOR_TYPE = 1 << 6
+LOWER_EMIT_FLAG_RECORD_SOURCE_MEMORY = 1 << 7
 LOWER_SOURCE_MEMORY_NONE = 0
 LOWER_RULE_FLAG_CONTRACT_ONLY = 1 << 0
 LOWER_RULE_FLAG_ORDINAL_VALUE_ALIAS = 1 << 1
@@ -1444,9 +1447,12 @@ class _LowerRuleSetCompiler:
 
         source_memory_ordinal = LOWER_SOURCE_MEMORY_NONE
         if emit.source_memory is not None:
-            if emit_kind != LowerEmitKind.DESCRIPTOR_OP:
+            if emit_kind not in (
+                LowerEmitKind.DESCRIPTOR_OP,
+                LowerEmitKind.DESCRIPTOR_CONST,
+            ):
                 raise ValueError(
-                    f"{source_op.name}: source-memory emits must use descriptor-op form"
+                    f"{source_op.name}: source-memory emits require op or constant form"
                 )
             source_memory_ordinal = self._append_source_memory(
                 source_op,
@@ -1454,6 +1460,11 @@ class _LowerRuleSetCompiler:
                 emit.source_memory_byte_offset_materializer,
                 emit.source_memory_address_materializer,
             )
+            if any(
+                effect.kind in (EffectKind.READ, EffectKind.WRITE)
+                for effect in emit.descriptor.effects
+            ):
+                flags |= LOWER_EMIT_FLAG_RECORD_SOURCE_MEMORY
 
         self._emits.append(
             LowerEmit(
@@ -1633,6 +1644,12 @@ class _LowerRuleSetCompiler:
                 target_name=target_name,
                 source_attr_index=source_attr_index,
             )
+        if project.kind == AttrProjectKind.I64_LOG2:
+            return LowerAttrCopy(
+                kind=LowerAttrCopyKind.I64_LOG2,
+                target_name=target_name,
+                source_attr_index=source_attr_index,
+            )
         if project.kind == AttrProjectKind.I64_ARRAY_ELEMENT:
             if project.element is None:
                 raise ValueError(
@@ -1663,13 +1680,13 @@ class _LowerRuleSetCompiler:
                 source_element_bit_width=project.bit_width,
                 target_bit_offset=project.target_bit_offset,
             )
-        if project.kind == AttrProjectKind.I64_ATTRS_PACK_CONSECUTIVE:
+        if project.kind == AttrProjectKind.ATTRS_PACK_CONSECUTIVE:
             if project.count is None or project.bit_width is None:
                 raise ValueError(
-                    f"{source_op.name}: i64-attrs pack projection needs payload"
+                    f"{source_op.name}: attrs pack projection needs payload"
                 )
             return LowerAttrCopy(
-                kind=LowerAttrCopyKind.I64_ATTRS_PACK_CONSECUTIVE,
+                kind=LowerAttrCopyKind.ATTRS_PACK_CONSECUTIVE,
                 target_name=target_name,
                 source_attr_index=source_attr_index,
                 source_element_count=project.count,

@@ -1,0 +1,241 @@
+func.def noinline @make_buffer(%length: offset, %pattern: i32) -> (buffer) {
+  %origin = index.constant 0 : offset
+  %storage = buffer.alloca<private> align(4) %length : buffer
+  buffer.fill %pattern, %storage[%origin], %length : i32
+  func.return %storage : buffer
+}
+
+func.def noinline @swap_buffers(%a: buffer, %tag: i32, %b: buffer) -> (buffer, i32, buffer) {
+  %step = scalar.constant 1 : i32
+  %next = scalar.addi %tag, %step : i32
+  func.return %b, %next, %a : buffer, i32, buffer
+}
+
+func.def noinline @nested_buffers(%a: buffer, %tag: i32, %b: buffer) -> (buffer, i32, buffer) {
+  %first, %next, %second = func.call @swap_buffers(%a, %tag, %b) : (buffer, i32, buffer) -> (buffer, i32, buffer)
+  func.return %first, %next, %second : buffer, i32, buffer
+}
+
+func.def noinline @duplicate_buffer(%storage: buffer) -> (buffer, buffer) {
+  func.return %storage, %storage : buffer, buffer
+}
+
+func.def noinline @store_buffer(%value: i32, %storage: buffer) {
+  %origin = index.constant 0 : offset
+  buffer.store.i8 %value, %storage[%origin]
+  func.return
+}
+
+func.def public @buffer_call_loop(%count: i32, %first_pattern: i32, %second_pattern: i32) -> (i32, i32, i32, i32, i32, i64) {
+  %length = index.constant 8 : offset
+  %origin = index.constant 0 : offset
+  %first = func.call @make_buffer(%length, %first_pattern) : (offset, i32) -> (buffer)
+  %second = func.call @make_buffer(%length, %second_pattern) : (offset, i32) -> (buffer)
+  %begin = scalar.constant 0 : i32
+  %tag, %left, %right = scf.while(%current = %begin : i32, %a = %first : buffer, %b = %second : buffer) -> (i32, buffer, buffer) {
+    %keep_going = scalar.cmpi slt, %current, %count : i32
+    scf.condition %keep_going, %current, %a, %b : i1, i32, buffer, buffer
+  } do(%current: i32, %a: buffer, %b: buffer) {
+    %next_a, %next_tag, %next_b = func.call @nested_buffers(%a, %current, %b) : (buffer, i32, buffer) -> (buffer, i32, buffer)
+    scf.yield %next_tag, %next_a, %next_b : i32, buffer, buffer
+  }
+  %alias_a, %alias_b = func.call @duplicate_buffer(%left) : (buffer) -> (buffer, buffer)
+  %changed = scalar.constant 127 : i32
+  func.call @store_buffer(%changed, %alias_a) : (i32, buffer)
+  %alias_value = buffer.load.i8.u %alias_b[%origin]
+  %right_value = buffer.load.i8.u %right[%origin]
+  %first_value = buffer.load.i8.u %first[%origin]
+  %second_value = buffer.load.i8.u %second[%origin]
+  %size = buffer.length %left
+  %size_value = index.cast %size : offset to i64
+  func.return %tag, %alias_value, %right_value, %first_value, %second_value, %size_value : i32, i32, i32, i32, i32, i64
+}
+
+check.case @buffer_call_odd_loop {
+  %count = check.param.choice values([1, 3, 7]) : i32
+  %first = check.literal value(17) : i32
+  %second = check.literal value(34) : i32
+  %tag, %alias, %right, %original_first, %original_second, %size = func.call @buffer_call_loop(%count, %first, %second) : (i32, i32, i32) -> (i32, i32, i32, i32, i32, i64)
+  %changed = check.literal value(127) : i32
+  %length = check.literal value(8) : i64
+  check.expect.equal actual(%tag) expected(%count) : i32
+  check.expect.equal actual(%alias) expected(%changed) : i32
+  check.expect.equal actual(%right) expected(%first) : i32
+  check.expect.equal actual(%original_first) expected(%first) : i32
+  check.expect.equal actual(%original_second) expected(%changed) : i32
+  check.expect.equal actual(%size) expected(%length) : i64
+  check.return
+}
+
+check.case @buffer_call_even_loop {
+  %count = check.param.choice values([0, 2, 8]) : i32
+  %first = check.literal value(17) : i32
+  %second = check.literal value(34) : i32
+  %tag, %alias, %right, %original_first, %original_second, %size = func.call @buffer_call_loop(%count, %first, %second) : (i32, i32, i32) -> (i32, i32, i32, i32, i32, i64)
+  %changed = check.literal value(127) : i32
+  %length = check.literal value(8) : i64
+  check.expect.equal actual(%tag) expected(%count) : i32
+  check.expect.equal actual(%alias) expected(%changed) : i32
+  check.expect.equal actual(%right) expected(%second) : i32
+  check.expect.equal actual(%original_first) expected(%changed) : i32
+  check.expect.equal actual(%original_second) expected(%second) : i32
+  check.expect.equal actual(%size) expected(%length) : i64
+  check.return
+}
+
+func.def noinline @permute_buffers(%a: buffer, %tag: i32, %b: buffer, %c: buffer) -> (buffer, i32, buffer, buffer) {
+  func.return %a, %tag, %c, %b : buffer, i32, buffer, buffer
+}
+
+func.def public @buffer_return_cycle(%pattern: i32) -> (i32, i64, i64, i64) {
+  %small = index.constant 4 : offset
+  %medium = index.constant 8 : offset
+  %large = index.constant 12 : offset
+  %a = func.call @make_buffer(%small, %pattern) : (offset, i32) -> (buffer)
+  %b = func.call @make_buffer(%medium, %pattern) : (offset, i32) -> (buffer)
+  %c = func.call @make_buffer(%large, %pattern) : (offset, i32) -> (buffer)
+  %first, %tag, %second, %third = func.call @permute_buffers(%a, %pattern, %b, %c) : (buffer, i32, buffer, buffer) -> (buffer, i32, buffer, buffer)
+  %first_length = buffer.length %first
+  %second_length = buffer.length %second
+  %third_length = buffer.length %third
+  %first_value = index.cast %first_length : offset to i64
+  %second_value = index.cast %second_length : offset to i64
+  %third_value = index.cast %third_length : offset to i64
+  func.return %tag, %first_value, %second_value, %third_value : i32, i64, i64, i64
+}
+
+check.case @buffer_return_cycle_case {
+  %pattern = check.literal value(34) : i32
+  %tag, %first, %second, %third = func.call @buffer_return_cycle(%pattern) : (i32) -> (i32, i64, i64, i64)
+  %small = check.literal value(4) : i64
+  %medium = check.literal value(8) : i64
+  %large = check.literal value(12) : i64
+  check.expect.equal actual(%tag) expected(%pattern) : i32
+  check.expect.equal actual(%first) expected(%small) : i64
+  check.expect.equal actual(%second) expected(%large) : i64
+  check.expect.equal actual(%third) expected(%medium) : i64
+  check.return
+}
+
+// Rotate a wide tuple of interleaved buffers and tags while preserving aliases.
+func.def noinline @rotate_buffer_pairs(%b0: buffer, %t0: i64, %b1: buffer, %t1: i64, %b2: buffer, %t2: i64, %b3: buffer, %t3: i64, %b4: buffer, %t4: i64, %b5: buffer, %t5: i64, %b6: buffer, %t6: i64, %b7: buffer, %t7: i64, %b8: buffer, %t8: i64, %b9: buffer, %t9: i64, %b10: buffer, %t10: i64, %b11: buffer, %t11: i64, %b12: buffer, %t12: i64, %b13: buffer, %t13: i64, %b14: buffer, %t14: i64, %b15: buffer, %t15: i64) -> (buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64) {
+  func.return %b15, %t15, %b0, %t0, %b1, %t1, %b2, %t2, %b3, %t3, %b4, %t4, %b5, %t5, %b6, %t6, %b7, %t7, %b8, %t8, %b9, %t9, %b10, %t10, %b11, %t11, %b12, %t12, %b13, %t13, %b14, %t14 : buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64
+}
+
+func.def public @wide_mixed_call(%bias: i64) -> (i64, i64, i64, i64, i64) {
+  %small = index.constant 4 : offset
+  %large = index.constant 8 : offset
+  %pattern = scalar.constant 0 : i32
+  %a = func.call @make_buffer(%small, %pattern) : (offset, i32) -> (buffer)
+  %b = func.call @make_buffer(%large, %pattern) : (offset, i32) -> (buffer)
+  %c1 = scalar.constant 1 : i64
+  %t1 = scalar.addi %bias, %c1 : i64
+  %c2 = scalar.constant 2 : i64
+  %t2 = scalar.addi %bias, %c2 : i64
+  %c3 = scalar.constant 3 : i64
+  %t3 = scalar.addi %bias, %c3 : i64
+  %c4 = scalar.constant 4 : i64
+  %t4 = scalar.addi %bias, %c4 : i64
+  %c5 = scalar.constant 5 : i64
+  %t5 = scalar.addi %bias, %c5 : i64
+  %c6 = scalar.constant 6 : i64
+  %t6 = scalar.addi %bias, %c6 : i64
+  %c7 = scalar.constant 7 : i64
+  %t7 = scalar.addi %bias, %c7 : i64
+  %c8 = scalar.constant 8 : i64
+  %t8 = scalar.addi %bias, %c8 : i64
+  %c9 = scalar.constant 9 : i64
+  %t9 = scalar.addi %bias, %c9 : i64
+  %c10 = scalar.constant 10 : i64
+  %t10 = scalar.addi %bias, %c10 : i64
+  %c11 = scalar.constant 11 : i64
+  %t11 = scalar.addi %bias, %c11 : i64
+  %c12 = scalar.constant 12 : i64
+  %t12 = scalar.addi %bias, %c12 : i64
+  %c13 = scalar.constant 13 : i64
+  %t13 = scalar.addi %bias, %c13 : i64
+  %c14 = scalar.constant 14 : i64
+  %t14 = scalar.addi %bias, %c14 : i64
+  %c15 = scalar.constant 15 : i64
+  %t15 = scalar.addi %bias, %c15 : i64
+  %r0, %v0, %r1, %v1, %r2, %v2, %r3, %v3, %r4, %v4, %r5, %v5, %r6, %v6, %r7, %v7, %r8, %v8, %r9, %v9, %r10, %v10, %r11, %v11, %r12, %v12, %r13, %v13, %r14, %v14, %r15, %v15 = func.call @rotate_buffer_pairs(%a, %bias, %b, %t1, %a, %t2, %b, %t3, %a, %t4, %b, %t5, %a, %t6, %b, %t7, %a, %t8, %b, %t9, %a, %t10, %b, %t11, %a, %t12, %b, %t13, %a, %t14, %b, %t15) : (buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64) -> (buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64, buffer, i64)
+  %length0 = buffer.length %r0
+  %size0 = index.cast %length0 : offset to i64
+  %length1 = buffer.length %r1
+  %size1 = index.cast %length1 : offset to i64
+  %length2 = buffer.length %r2
+  %size2 = index.cast %length2 : offset to i64
+  %length3 = buffer.length %r3
+  %size3 = index.cast %length3 : offset to i64
+  %length4 = buffer.length %r4
+  %size4 = index.cast %length4 : offset to i64
+  %length5 = buffer.length %r5
+  %size5 = index.cast %length5 : offset to i64
+  %length6 = buffer.length %r6
+  %size6 = index.cast %length6 : offset to i64
+  %length7 = buffer.length %r7
+  %size7 = index.cast %length7 : offset to i64
+  %length8 = buffer.length %r8
+  %size8 = index.cast %length8 : offset to i64
+  %length9 = buffer.length %r9
+  %size9 = index.cast %length9 : offset to i64
+  %length10 = buffer.length %r10
+  %size10 = index.cast %length10 : offset to i64
+  %length11 = buffer.length %r11
+  %size11 = index.cast %length11 : offset to i64
+  %length12 = buffer.length %r12
+  %size12 = index.cast %length12 : offset to i64
+  %length13 = buffer.length %r13
+  %size13 = index.cast %length13 : offset to i64
+  %length14 = buffer.length %r14
+  %size14 = index.cast %length14 : offset to i64
+  %length15 = buffer.length %r15
+  %size15 = index.cast %length15 : offset to i64
+  %length_sum1 = scalar.addi %size0, %size1 : i64
+  %tag_sum1 = scalar.addi %v0, %v1 : i64
+  %length_sum2 = scalar.addi %length_sum1, %size2 : i64
+  %tag_sum2 = scalar.addi %tag_sum1, %v2 : i64
+  %length_sum3 = scalar.addi %length_sum2, %size3 : i64
+  %tag_sum3 = scalar.addi %tag_sum2, %v3 : i64
+  %length_sum4 = scalar.addi %length_sum3, %size4 : i64
+  %tag_sum4 = scalar.addi %tag_sum3, %v4 : i64
+  %length_sum5 = scalar.addi %length_sum4, %size5 : i64
+  %tag_sum5 = scalar.addi %tag_sum4, %v5 : i64
+  %length_sum6 = scalar.addi %length_sum5, %size6 : i64
+  %tag_sum6 = scalar.addi %tag_sum5, %v6 : i64
+  %length_sum7 = scalar.addi %length_sum6, %size7 : i64
+  %tag_sum7 = scalar.addi %tag_sum6, %v7 : i64
+  %length_sum8 = scalar.addi %length_sum7, %size8 : i64
+  %tag_sum8 = scalar.addi %tag_sum7, %v8 : i64
+  %length_sum9 = scalar.addi %length_sum8, %size9 : i64
+  %tag_sum9 = scalar.addi %tag_sum8, %v9 : i64
+  %length_sum10 = scalar.addi %length_sum9, %size10 : i64
+  %tag_sum10 = scalar.addi %tag_sum9, %v10 : i64
+  %length_sum11 = scalar.addi %length_sum10, %size11 : i64
+  %tag_sum11 = scalar.addi %tag_sum10, %v11 : i64
+  %length_sum12 = scalar.addi %length_sum11, %size12 : i64
+  %tag_sum12 = scalar.addi %tag_sum11, %v12 : i64
+  %length_sum13 = scalar.addi %length_sum12, %size13 : i64
+  %tag_sum13 = scalar.addi %tag_sum12, %v13 : i64
+  %length_sum14 = scalar.addi %length_sum13, %size14 : i64
+  %tag_sum14 = scalar.addi %tag_sum13, %v14 : i64
+  %length_sum15 = scalar.addi %length_sum14, %size15 : i64
+  %tag_sum15 = scalar.addi %tag_sum14, %v15 : i64
+  func.return %v0, %v15, %length_sum15, %tag_sum15, %size0 : i64, i64, i64, i64, i64
+}
+
+check.case @wide_mixed_call_case {
+  %bias = check.literal value(100) : i64
+  %first, %last, %length_sum, %tag_sum, %first_length = func.call @wide_mixed_call(%bias) : (i64) -> (i64, i64, i64, i64, i64)
+  %expected_first = check.literal value(115) : i64
+  %expected_last = check.literal value(114) : i64
+  %expected_lengths = check.literal value(96) : i64
+  %expected_tags = check.literal value(1720) : i64
+  %expected_first_length = check.literal value(8) : i64
+  check.expect.equal actual(%first) expected(%expected_first) : i64
+  check.expect.equal actual(%last) expected(%expected_last) : i64
+  check.expect.equal actual(%length_sum) expected(%expected_lengths) : i64
+  check.expect.equal actual(%tag_sum) expected(%expected_tags) : i64
+  check.expect.equal actual(%first_length) expected(%expected_first_length) : i64
+  check.return
+}

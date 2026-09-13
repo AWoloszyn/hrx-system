@@ -246,7 +246,7 @@ loom_check_test_suite(
         self.assertNotIn('"test/source_low/a.loom-test"', cmake)
         self.assertNotIn("iree_native_test(", cmake)
 
-    def test_ignored_rule_accepts_opaque_loaded_value(self):
+    def test_ignored_rule_accepts_loaded_and_inline_execution_profiles(self):
         repo_root = Path(__file__).resolve().parents[2]
         loom = bazel_to_cmake_config.include_project(
             str(repo_root / ".bazel_to_cmake.cfg.py"),
@@ -258,6 +258,7 @@ loom_check_test_suite(
             """
 load(
     "//loom/build_tools/bazel:defs.bzl",
+    "loom_execution_profile",
     "loom_test",
 )
 load(
@@ -270,6 +271,17 @@ loom_test(
     srcs = ["one.loom", "two.loom"],
     execution_profile = TEST_EXECUTION_POLICY,
 )
+
+loom_test(
+    name = "inline_profile_test",
+    srcs = ["one.loom"],
+    execution_profile = loom_execution_profile(
+        name = "reference",
+        target_family = "vm",
+        target_class = "cpu",
+        executor = "reference",
+    ),
+)
 """,
             repo_cfg,
             str(repo_root / "loom/src/loom/tooling/target/amdgpu/test"),
@@ -277,6 +289,7 @@ loom_test(
         )
 
         self.assertNotIn("one_test", cmake)
+        self.assertNotIn("inline_profile_test", cmake)
 
     def test_unhandled_loaded_rule_fails_loudly(self):
         repo_root = Path(__file__).resolve().parents[2]

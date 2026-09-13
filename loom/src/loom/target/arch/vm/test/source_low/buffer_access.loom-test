@@ -1,0 +1,56 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/buffer_access.loom-test
+// RUN: emit source-low output=low
+
+vm.target<core> @vm
+
+func.def target(@vm) @byte_checksum(%byte_count: i64, %byte_start: i64, %pattern: i32) -> (i32) {
+  %length = index.cast %byte_count : i64 to offset
+  %start = index.cast %byte_start : i64 to offset
+  %extent = index.add %length, %start : offset
+  %storage = buffer.alloca<private> align(8) %extent : buffer
+  %begin = index.constant 0 : offset
+  %stride = index.constant 1 : offset
+  scf.for %i = [%begin to %length step %stride] {
+    %position = index.add %start, %i : offset
+    buffer.store.i8 %pattern, %storage[%position]
+  }
+  %initial = scalar.constant 0 : i32
+  %checksum = scf.for %i = [%begin to %length step %stride](%sum = %initial : i32) -> (i32) {
+    %position = index.add %start, %i : offset
+    %byte = buffer.load.i8.u %storage[%position]
+    %next = scalar.addi %sum, %byte : i32
+    scf.yield %next : i32
+  }
+  func.return %checksum : i32
+}
+
+// ----
+low.func.def target<vm.core>(@vm) abi(vm_function) @byte_checksum(%length: reg<vm.value : i64>, %start: reg<vm.value : i64>, %pattern: reg<vm.value : i32>) -> (reg<vm.value : i32>) asm {
+  %extent = integer.add.i64 %length, %start
+  %storage = buffer.allocate %extent, 3 : reg<vm.ref : buffer>
+  %begin = constant.i64 0
+  %stride = constant.i64 1
+  low.br ^_bb1(%begin: reg<vm.value : i64>)
+^_bb1(%i$33: reg<vm.value : i64>):
+  %40 = integer.compare.i64 %i$33, %length, 6
+  low.cond_br %40, ^_bb2, ^_bb3 : reg<vm.value : i1>
+^_bb2:
+  %position$41 = integer.add.i64 %start, %i$33
+  buffer.store %storage, %position$41, %position$41, %pattern, 0, 0
+  %42 = integer.add.i64 %i$33, %stride
+  low.br ^_bb1(%42: reg<vm.value : i64>)
+^_bb3:
+  %initial = constant.i32 0
+  low.br ^_bb4(%begin: reg<vm.value : i64>, %initial: reg<vm.value : i32>)
+^_bb4(%i$34: reg<vm.value : i64>, %sum: reg<vm.value : i32>):
+  %44 = integer.compare.i64 %i$34, %length, 6
+  low.cond_br %44, ^_bb5, ^_bb6 : reg<vm.value : i1>
+^_bb5:
+  %position$45 = integer.add.i64 %start, %i$34
+  %byte = buffer.load %storage, %position$45, %position$45, 0, 0 : reg<vm.value : i32>
+  %next = integer.add.i32 %sum, %byte
+  %48 = integer.add.i64 %i$34, %stride
+  low.br ^_bb4(%48: reg<vm.value : i64>, %next: reg<vm.value : i32>)
+^_bb6:
+  return %sum
+}

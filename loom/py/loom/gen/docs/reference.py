@@ -102,6 +102,7 @@ DIALECT_REFERENCE_SPECS = (
     DialectReferenceSpec("llvmir", "target"),
     DialectReferenceSpec("amdgpu", "target"),
     DialectReferenceSpec("spirv", "target"),
+    DialectReferenceSpec("vm", "target"),
     DialectReferenceSpec("x86", "target"),
     DialectReferenceSpec("wasm", "target"),
     DialectReferenceSpec("test", None),

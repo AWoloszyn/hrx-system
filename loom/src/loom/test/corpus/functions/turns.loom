@@ -1,0 +1,166 @@
+// Turn-domain trigonometry has a frozen f32 mapping shared with source folding.
+// Dynamic payloads exercise the compiled operations, including their low bits.
+func.def public @turns(%bits: i32) -> (i32, i32) {
+  %value = scalar.bitcast %bits : i32 to f32
+  %sin = scalar.sinturnsf %value : f32
+  %cos = scalar.costurnsf %value : f32
+  %sin_bits = scalar.bitcast %sin : f32 to i32
+  %cos_bits = scalar.bitcast %cos : f32 to i32
+  func.return %sin_bits, %cos_bits : i32, i32
+}
+
+check.case @turns_integral {
+  %input = check.param.choice values([0, 1065353216, 1258291200]) : i32
+  %sin, %cos = func.call @turns(%input) : (i32) -> (i32, i32)
+  %expected_sin = check.literal value(0) : i32
+  check.expect.equal actual(%sin) expected(%expected_sin) : i32
+  %expected_cos = check.literal value(1065353216) : i32
+  check.expect.equal actual(%cos) expected(%expected_cos) : i32
+  check.return
+}
+
+check.case @turns_quarter {
+  %input = check.literal value(1048576000) : i32
+  %sin, %cos = func.call @turns(%input) : (i32) -> (i32, i32)
+  %expected_sin = check.literal value(1065353216) : i32
+  check.expect.equal actual(%sin) expected(%expected_sin) : i32
+  %expected_cos = check.literal value(0) : i32
+  check.expect.equal actual(%cos) expected(%expected_cos) : i32
+  check.return
+}
+
+check.case @turns_negative_zero {
+  %input = check.literal value(-2147483648) : i32
+  %sin, %cos = func.call @turns(%input) : (i32) -> (i32, i32)
+  %expected_sin = check.literal value(-2147483648) : i32
+  check.expect.equal actual(%sin) expected(%expected_sin) : i32
+  %expected_cos = check.literal value(1065353216) : i32
+  check.expect.equal actual(%cos) expected(%expected_cos) : i32
+  check.return
+}
+
+check.case @turns_subnormal {
+  %input = check.literal value(1) : i32
+  %sin, %cos = func.call @turns(%input) : (i32) -> (i32, i32)
+  %expected_sin = check.literal value(6) : i32
+  check.expect.equal actual(%sin) expected(%expected_sin) : i32
+  %expected_cos = check.literal value(1065353216) : i32
+  check.expect.equal actual(%cos) expected(%expected_cos) : i32
+  check.return
+}
+
+check.case @turns_nonfinite {
+  %input = check.param.choice values([2139095040, -8388608, 2143289344]) : i32
+  %sin, %cos = func.call @turns(%input) : (i32) -> (i32, i32)
+  %expected_sin = check.literal value(2143289344) : i32
+  check.expect.equal actual(%sin) expected(%expected_sin) : i32
+  %expected_cos = check.literal value(2143289344) : i32
+  check.expect.equal actual(%cos) expected(%expected_cos) : i32
+  check.return
+}
+
+check.case @turns_frozen_sine {
+  %input = check.literal value(1180433910) : i32
+  %sin, %cos = func.call @turns(%input) : (i32) -> (i32, i32)
+  %expected_sin = check.literal value(1031482228) : i32
+  check.expect.equal actual(%sin) expected(%expected_sin) : i32
+  check.return
+}
+
+check.case @turns_frozen_cosine {
+  %input = check.literal value(-976397844) : i32
+  %sin, %cos = func.call @turns(%input) : (i32) -> (i32, i32)
+  %expected_cos = check.literal value(1031482228) : i32
+  check.expect.equal actual(%cos) expected(%expected_cos) : i32
+  check.return
+}
+
+// Radian reduction is approximate, unlike the exact turn-domain mapping.
+// Ordinary inputs use mathematical expected values, not the same recipe.
+func.def public @radians(%value: f32) -> (f32, f32) {
+  %sin = scalar.sinf<afn> %value : f32
+  %cos = scalar.cosf<afn> %value : f32
+  func.return %sin, %cos : f32, f32
+}
+
+check.case @radians_positive {
+  %input = check.literal value(1.0) : f32
+  %sin, %cos = func.call @radians(%input) : (f32) -> (f32, f32)
+  %expected_sin = check.literal value(0.8414709848078965) : f32
+  %expected_cos = check.literal value(0.54030230586813977) : f32
+  check.expect.close actual(%sin) expected(%expected_sin) atol(9.9999999999999995e-07) rtol(0.0) nan(same) : f32
+  check.expect.close actual(%cos) expected(%expected_cos) atol(9.9999999999999995e-07) rtol(0.0) nan(same) : f32
+  check.return
+}
+
+check.case @radians_negative {
+  %input = check.literal value(-1.0) : f32
+  %sin, %cos = func.call @radians(%input) : (f32) -> (f32, f32)
+  %expected_sin = check.literal value(-0.8414709848078965) : f32
+  %expected_cos = check.literal value(0.54030230586813977) : f32
+  check.expect.close actual(%sin) expected(%expected_sin) atol(9.9999999999999995e-07) rtol(0.0) nan(same) : f32
+  check.expect.close actual(%cos) expected(%expected_cos) atol(9.9999999999999995e-07) rtol(0.0) nan(same) : f32
+  check.return
+}
+
+check.case @radians_zero {
+  %input = check.literal value(0.0) : f32
+  %sin, %cos = func.call @radians(%input) : (f32) -> (f32, f32)
+  check.expect.bitwise actual(%sin) expected(%input) : f32
+  %one = check.literal value(1.0) : f32
+  check.expect.equal actual(%cos) expected(%one) : f32
+  check.return
+}
+
+check.case @radians_negative_zero {
+  %input = check.literal value(-0.0) : f32
+  %sin, %cos = func.call @radians(%input) : (f32) -> (f32, f32)
+  check.expect.bitwise actual(%sin) expected(%input) : f32
+  %one = check.literal value(1.0) : f32
+  check.expect.equal actual(%cos) expected(%one) : f32
+  check.return
+}
+
+func.def public @radians_classify(%bits: i32) -> (i1, i1) {
+  %input = scalar.bitcast %bits : i32 to f32
+  %sin = scalar.sinf<afn> %input : f32
+  %cos = scalar.cosf<afn> %input : f32
+  %sin_nan = scalar.isnanf %sin : f32
+  %cos_nan = scalar.isnanf %cos : f32
+  func.return %sin_nan, %cos_nan : i1, i1
+}
+
+check.case @radians_nonfinite {
+  %input = check.param.choice values([2139095040, -8388608, 2143289344]) : i32
+  %sin_nan, %cos_nan = func.call @radians_classify(%input) : (i32) -> (i1, i1)
+  %expected = check.literal value(true) : i1
+  check.expect.equal actual(%sin_nan) expected(%expected) : i1
+  check.expect.equal actual(%cos_nan) expected(%expected) : i1
+  check.return
+}
+
+// Pair rotation combines the approximate leaves with ordinary arithmetic,
+// matching the scalar component of the shared attention TEMPLATE.
+func.def public @rotate_pair(%even: f32, %odd: f32, %angle: f32) -> (f32, f32) {
+  %sin = scalar.sinf<afn> %angle : f32
+  %cos = scalar.cosf<afn> %angle : f32
+  %even_cos = scalar.mulf %even, %cos : f32
+  %odd_sin = scalar.mulf %odd, %sin : f32
+  %rotated_even = scalar.subf %even_cos, %odd_sin : f32
+  %even_sin = scalar.mulf %even, %sin : f32
+  %odd_cos = scalar.mulf %odd, %cos : f32
+  %rotated_odd = scalar.addf %even_sin, %odd_cos : f32
+  func.return %rotated_even, %rotated_odd : f32, f32
+}
+
+check.case @rotate_pair_one_radian {
+  %even = check.literal value(2.0) : f32
+  %odd = check.literal value(3.0) : f32
+  %angle = check.literal value(1.0) : f32
+  %result_even, %result_odd = func.call @rotate_pair(%even, %odd, %angle) : (f32, f32, f32) -> (f32, f32)
+  %expected_even = check.literal value(-1.4438083426874098) : f32
+  %expected_odd = check.literal value(3.3038488872202123) : f32
+  check.expect.close actual(%result_even) expected(%expected_even) atol(9.9999999999999995e-07) rtol(0.0) nan(same) : f32
+  check.expect.close actual(%result_odd) expected(%expected_odd) atol(9.9999999999999995e-07) rtol(0.0) nan(same) : f32
+  check.return
+}

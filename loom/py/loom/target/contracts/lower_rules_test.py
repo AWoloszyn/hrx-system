@@ -13,6 +13,7 @@ from loom.dialect.scalar import ALL_SCALAR_OPS
 from loom.dialect.scalar import analysis as scalar_analysis
 from loom.dialect.scalar import arithmetic as scalar_arithmetic
 from loom.dialect.scalar import bitwise as scalar_bitwise
+from loom.dialect.scalar import comparison as scalar_comparison
 from loom.dialect.scalar import conversion as scalar_conversion
 from loom.dialect.vector import ALL_VECTOR_OPS
 from loom.dialect.vector import defs as vector
@@ -1230,7 +1231,7 @@ def test_compile_lower_rule_set_compiles_consecutive_i64_attr_pack() -> None:
                         descriptor=TEST_LOW_CONST_I32_DESCRIPTOR,
                         results={"dst": ValueRef.result("result")},
                         immediates={
-                            "i32_value": AttrProject.i64_attrs_pack_consecutive(
+                            "i32_value": AttrProject.attrs_pack_consecutive(
                                 "offset",
                                 count=2,
                                 bit_width=8,
@@ -1246,7 +1247,7 @@ def test_compile_lower_rule_set_compiles_consecutive_i64_attr_pack() -> None:
 
     assert len(compiled.attr_copies) == 1
     attr_copy = compiled.attr_copies[0]
-    assert attr_copy.kind == LowerAttrCopyKind.I64_ATTRS_PACK_CONSECUTIVE
+    assert attr_copy.kind == LowerAttrCopyKind.ATTRS_PACK_CONSECUTIVE
     assert attr_copy.source_attr_index == 0
     assert attr_copy.source_element_count == 2
     assert attr_copy.source_element_bit_width == 8
@@ -1265,7 +1266,7 @@ def test_compile_lower_rule_set_compiles_consecutive_i64_attr_pack() -> None:
                             descriptor=TEST_LOW_CONST_I32_DESCRIPTOR,
                             results={"dst": ValueRef.result("result")},
                             immediates={
-                                "i32_value": AttrProject.i64_attrs_pack_consecutive(
+                                "i32_value": AttrProject.attrs_pack_consecutive(
                                     "overflow",
                                     count=1,
                                     bit_width=8,
@@ -1276,7 +1277,20 @@ def test_compile_lower_rule_set_compiles_consecutive_i64_attr_pack() -> None:
                 )
             ],
         ),
-        "source attr 'overflow' must be an i64 attr",
+        "source attr 'overflow' must be an integer or enum attr",
+    )
+
+
+def test_consecutive_attr_pack_accepts_only_fitting_enum_ordinals() -> None:
+    projection = AttrProject.attrs_pack_consecutive("predicate", count=1, bit_width=4)
+    projection.validate(
+        scalar_comparison.scalar_cmpi, TEST_LOW_CONST_I32_DESCRIPTOR, "i32_value"
+    )
+    _expect_value_error(
+        lambda: replace(projection, bit_width=1).validate(
+            scalar_comparison.scalar_cmpi, TEST_LOW_CONST_I32_DESCRIPTOR, "i32_value"
+        ),
+        "enum 'predicate' does not fit the packed field",
     )
 
 

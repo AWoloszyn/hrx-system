@@ -1,0 +1,142 @@
+// Seventeen distinct sixteen-result calls keep 272 values live into a loop.
+// Values must survive nested calls and loop backedges even when register
+// pressure requires spills; call argument storage must not clobber them.
+func.def noinline @fanout(%a: i64) -> (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) {
+  func.return %a, %a, %a, %a, %a, %a, %a, %a, %a, %a, %a, %a, %a, %a, %a, %a : i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64
+}
+
+func.def noinline @sum(%v0: i64, %v1: i64, %v2: i64, %v3: i64, %v4: i64, %v5: i64, %v6: i64, %v7: i64, %v8: i64, %v9: i64, %v10: i64, %v11: i64, %v12: i64, %v13: i64, %v14: i64, %v15: i64) -> (i64) {
+  %s1 = scalar.addi %v0, %v1 : i64
+  %s2 = scalar.addi %s1, %v2 : i64
+  %s3 = scalar.addi %s2, %v3 : i64
+  %s4 = scalar.addi %s3, %v4 : i64
+  %s5 = scalar.addi %s4, %v5 : i64
+  %s6 = scalar.addi %s5, %v6 : i64
+  %s7 = scalar.addi %s6, %v7 : i64
+  %s8 = scalar.addi %s7, %v8 : i64
+  %s9 = scalar.addi %s8, %v9 : i64
+  %s10 = scalar.addi %s9, %v10 : i64
+  %s11 = scalar.addi %s10, %v11 : i64
+  %s12 = scalar.addi %s11, %v12 : i64
+  %s13 = scalar.addi %s12, %v13 : i64
+  %s14 = scalar.addi %s13, %v14 : i64
+  %s15 = scalar.addi %s14, %v15 : i64
+  func.return %s15 : i64
+}
+
+func.def public @pressure(%a: i64, %count: i32) -> (i64) {
+  %c0 = scalar.constant 0 : i64
+  %a0 = scalar.addi %a, %c0 : i64
+  %r0_0, %r0_1, %r0_2, %r0_3, %r0_4, %r0_5, %r0_6, %r0_7, %r0_8, %r0_9, %r0_10, %r0_11, %r0_12, %r0_13, %r0_14, %r0_15 = func.call @fanout(%a0) : (i64) -> (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64)
+  %c1 = scalar.constant 1 : i64
+  %a1 = scalar.addi %a, %c1 : i64
+  %r1_0, %r1_1, %r1_2, %r1_3, %r1_4, %r1_5, %r1_6, %r1_7, %r1_8, %r1_9, %r1_10, %r1_11, %r1_12, %r1_13, %r1_14, %r1_15 = func.call @fanout(%a1) : (i64) -> (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64)
+  %c2 = scalar.constant 2 : i64
+  %a2 = scalar.addi %a, %c2 : i64
+  %r2_0, %r2_1, %r2_2, %r2_3, %r2_4, %r2_5, %r2_6, %r2_7, %r2_8, %r2_9, %r2_10, %r2_11, %r2_12, %r2_13, %r2_14, %r2_15 = func.call @fanout(%a2) : (i64) -> (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64)
+  %c3 = scalar.constant 3 : i64
+  %a3 = scalar.addi %a, %c3 : i64
+  %r3_0, %r3_1, %r3_2, %r3_3, %r3_4, %r3_5, %r3_6, %r3_7, %r3_8, %r3_9, %r3_10, %r3_11, %r3_12, %r3_13, %r3_14, %r3_15 = func.call @fanout(%a3) : (i64) -> (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64)
+  %c4 = scalar.constant 4 : i64
+  %a4 = scalar.addi %a, %c4 : i64
+  %r4_0, %r4_1, %r4_2, %r4_3, %r4_4, %r4_5, %r4_6, %r4_7, %r4_8, %r4_9, %r4_10, %r4_11, %r4_12, %r4_13, %r4_14, %r4_15 = func.call @fanout(%a4) : (i64) -> (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64)
+  %c5 = scalar.constant 5 : i64
+  %a5 = scalar.addi %a, %c5 : i64
+  %r5_0, %r5_1, %r5_2, %r5_3, %r5_4, %r5_5, %r5_6, %r5_7, %r5_8, %r5_9, %r5_10, %r5_11, %r5_12, %r5_13, %r5_14, %r5_15 = func.call @fanout(%a5) : (i64) -> (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64)
+  %c6 = scalar.constant 6 : i64
+  %a6 = scalar.addi %a, %c6 : i64
+  %r6_0, %r6_1, %r6_2, %r6_3, %r6_4, %r6_5, %r6_6, %r6_7, %r6_8, %r6_9, %r6_10, %r6_11, %r6_12, %r6_13, %r6_14, %r6_15 = func.call @fanout(%a6) : (i64) -> (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64)
+  %c7 = scalar.constant 7 : i64
+  %a7 = scalar.addi %a, %c7 : i64
+  %r7_0, %r7_1, %r7_2, %r7_3, %r7_4, %r7_5, %r7_6, %r7_7, %r7_8, %r7_9, %r7_10, %r7_11, %r7_12, %r7_13, %r7_14, %r7_15 = func.call @fanout(%a7) : (i64) -> (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64)
+  %c8 = scalar.constant 8 : i64
+  %a8 = scalar.addi %a, %c8 : i64
+  %r8_0, %r8_1, %r8_2, %r8_3, %r8_4, %r8_5, %r8_6, %r8_7, %r8_8, %r8_9, %r8_10, %r8_11, %r8_12, %r8_13, %r8_14, %r8_15 = func.call @fanout(%a8) : (i64) -> (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64)
+  %c9 = scalar.constant 9 : i64
+  %a9 = scalar.addi %a, %c9 : i64
+  %r9_0, %r9_1, %r9_2, %r9_3, %r9_4, %r9_5, %r9_6, %r9_7, %r9_8, %r9_9, %r9_10, %r9_11, %r9_12, %r9_13, %r9_14, %r9_15 = func.call @fanout(%a9) : (i64) -> (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64)
+  %c10 = scalar.constant 10 : i64
+  %a10 = scalar.addi %a, %c10 : i64
+  %r10_0, %r10_1, %r10_2, %r10_3, %r10_4, %r10_5, %r10_6, %r10_7, %r10_8, %r10_9, %r10_10, %r10_11, %r10_12, %r10_13, %r10_14, %r10_15 = func.call @fanout(%a10) : (i64) -> (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64)
+  %c11 = scalar.constant 11 : i64
+  %a11 = scalar.addi %a, %c11 : i64
+  %r11_0, %r11_1, %r11_2, %r11_3, %r11_4, %r11_5, %r11_6, %r11_7, %r11_8, %r11_9, %r11_10, %r11_11, %r11_12, %r11_13, %r11_14, %r11_15 = func.call @fanout(%a11) : (i64) -> (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64)
+  %c12 = scalar.constant 12 : i64
+  %a12 = scalar.addi %a, %c12 : i64
+  %r12_0, %r12_1, %r12_2, %r12_3, %r12_4, %r12_5, %r12_6, %r12_7, %r12_8, %r12_9, %r12_10, %r12_11, %r12_12, %r12_13, %r12_14, %r12_15 = func.call @fanout(%a12) : (i64) -> (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64)
+  %c13 = scalar.constant 13 : i64
+  %a13 = scalar.addi %a, %c13 : i64
+  %r13_0, %r13_1, %r13_2, %r13_3, %r13_4, %r13_5, %r13_6, %r13_7, %r13_8, %r13_9, %r13_10, %r13_11, %r13_12, %r13_13, %r13_14, %r13_15 = func.call @fanout(%a13) : (i64) -> (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64)
+  %c14 = scalar.constant 14 : i64
+  %a14 = scalar.addi %a, %c14 : i64
+  %r14_0, %r14_1, %r14_2, %r14_3, %r14_4, %r14_5, %r14_6, %r14_7, %r14_8, %r14_9, %r14_10, %r14_11, %r14_12, %r14_13, %r14_14, %r14_15 = func.call @fanout(%a14) : (i64) -> (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64)
+  %c15 = scalar.constant 15 : i64
+  %a15 = scalar.addi %a, %c15 : i64
+  %r15_0, %r15_1, %r15_2, %r15_3, %r15_4, %r15_5, %r15_6, %r15_7, %r15_8, %r15_9, %r15_10, %r15_11, %r15_12, %r15_13, %r15_14, %r15_15 = func.call @fanout(%a15) : (i64) -> (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64)
+  %c16 = scalar.constant 16 : i64
+  %a16 = scalar.addi %a, %c16 : i64
+  %r16_0, %r16_1, %r16_2, %r16_3, %r16_4, %r16_5, %r16_6, %r16_7, %r16_8, %r16_9, %r16_10, %r16_11, %r16_12, %r16_13, %r16_14, %r16_15 = func.call @fanout(%a16) : (i64) -> (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64)
+  %c0_i32 = scalar.constant 0 : i32
+  %c1_i32 = scalar.constant 1 : i32
+  %initial = scalar.constant 0 : i64
+  %remaining, %result = scf.while(%before = %count : i32, %acc = %initial : i64) -> (i32, i64) {
+    %condition = scalar.cmpi sgt, %before, %c0_i32 : i32
+    scf.condition %condition, %before, %acc : i1, i32, i64
+  } do(%current: i32, %carried: i64) {
+    %sum0 = func.call @sum(%r0_0, %r0_1, %r0_2, %r0_3, %r0_4, %r0_5, %r0_6, %r0_7, %r0_8, %r0_9, %r0_10, %r0_11, %r0_12, %r0_13, %r0_14, %r0_15) : (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> (i64)
+    %sum1 = func.call @sum(%r1_0, %r1_1, %r1_2, %r1_3, %r1_4, %r1_5, %r1_6, %r1_7, %r1_8, %r1_9, %r1_10, %r1_11, %r1_12, %r1_13, %r1_14, %r1_15) : (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> (i64)
+    %sum2 = func.call @sum(%r2_0, %r2_1, %r2_2, %r2_3, %r2_4, %r2_5, %r2_6, %r2_7, %r2_8, %r2_9, %r2_10, %r2_11, %r2_12, %r2_13, %r2_14, %r2_15) : (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> (i64)
+    %sum3 = func.call @sum(%r3_0, %r3_1, %r3_2, %r3_3, %r3_4, %r3_5, %r3_6, %r3_7, %r3_8, %r3_9, %r3_10, %r3_11, %r3_12, %r3_13, %r3_14, %r3_15) : (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> (i64)
+    %sum4 = func.call @sum(%r4_0, %r4_1, %r4_2, %r4_3, %r4_4, %r4_5, %r4_6, %r4_7, %r4_8, %r4_9, %r4_10, %r4_11, %r4_12, %r4_13, %r4_14, %r4_15) : (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> (i64)
+    %sum5 = func.call @sum(%r5_0, %r5_1, %r5_2, %r5_3, %r5_4, %r5_5, %r5_6, %r5_7, %r5_8, %r5_9, %r5_10, %r5_11, %r5_12, %r5_13, %r5_14, %r5_15) : (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> (i64)
+    %sum6 = func.call @sum(%r6_0, %r6_1, %r6_2, %r6_3, %r6_4, %r6_5, %r6_6, %r6_7, %r6_8, %r6_9, %r6_10, %r6_11, %r6_12, %r6_13, %r6_14, %r6_15) : (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> (i64)
+    %sum7 = func.call @sum(%r7_0, %r7_1, %r7_2, %r7_3, %r7_4, %r7_5, %r7_6, %r7_7, %r7_8, %r7_9, %r7_10, %r7_11, %r7_12, %r7_13, %r7_14, %r7_15) : (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> (i64)
+    %sum8 = func.call @sum(%r8_0, %r8_1, %r8_2, %r8_3, %r8_4, %r8_5, %r8_6, %r8_7, %r8_8, %r8_9, %r8_10, %r8_11, %r8_12, %r8_13, %r8_14, %r8_15) : (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> (i64)
+    %sum9 = func.call @sum(%r9_0, %r9_1, %r9_2, %r9_3, %r9_4, %r9_5, %r9_6, %r9_7, %r9_8, %r9_9, %r9_10, %r9_11, %r9_12, %r9_13, %r9_14, %r9_15) : (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> (i64)
+    %sum10 = func.call @sum(%r10_0, %r10_1, %r10_2, %r10_3, %r10_4, %r10_5, %r10_6, %r10_7, %r10_8, %r10_9, %r10_10, %r10_11, %r10_12, %r10_13, %r10_14, %r10_15) : (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> (i64)
+    %sum11 = func.call @sum(%r11_0, %r11_1, %r11_2, %r11_3, %r11_4, %r11_5, %r11_6, %r11_7, %r11_8, %r11_9, %r11_10, %r11_11, %r11_12, %r11_13, %r11_14, %r11_15) : (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> (i64)
+    %sum12 = func.call @sum(%r12_0, %r12_1, %r12_2, %r12_3, %r12_4, %r12_5, %r12_6, %r12_7, %r12_8, %r12_9, %r12_10, %r12_11, %r12_12, %r12_13, %r12_14, %r12_15) : (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> (i64)
+    %sum13 = func.call @sum(%r13_0, %r13_1, %r13_2, %r13_3, %r13_4, %r13_5, %r13_6, %r13_7, %r13_8, %r13_9, %r13_10, %r13_11, %r13_12, %r13_13, %r13_14, %r13_15) : (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> (i64)
+    %sum14 = func.call @sum(%r14_0, %r14_1, %r14_2, %r14_3, %r14_4, %r14_5, %r14_6, %r14_7, %r14_8, %r14_9, %r14_10, %r14_11, %r14_12, %r14_13, %r14_14, %r14_15) : (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> (i64)
+    %sum15 = func.call @sum(%r15_0, %r15_1, %r15_2, %r15_3, %r15_4, %r15_5, %r15_6, %r15_7, %r15_8, %r15_9, %r15_10, %r15_11, %r15_12, %r15_13, %r15_14, %r15_15) : (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> (i64)
+    %sum16 = func.call @sum(%r16_0, %r16_1, %r16_2, %r16_3, %r16_4, %r16_5, %r16_6, %r16_7, %r16_8, %r16_9, %r16_10, %r16_11, %r16_12, %r16_13, %r16_14, %r16_15) : (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> (i64)
+    %total1 = scalar.addi %sum0, %sum1 : i64
+    %total2 = scalar.addi %total1, %sum2 : i64
+    %total3 = scalar.addi %total2, %sum3 : i64
+    %total4 = scalar.addi %total3, %sum4 : i64
+    %total5 = scalar.addi %total4, %sum5 : i64
+    %total6 = scalar.addi %total5, %sum6 : i64
+    %total7 = scalar.addi %total6, %sum7 : i64
+    %total8 = scalar.addi %total7, %sum8 : i64
+    %total9 = scalar.addi %total8, %sum9 : i64
+    %total10 = scalar.addi %total9, %sum10 : i64
+    %total11 = scalar.addi %total10, %sum11 : i64
+    %total12 = scalar.addi %total11, %sum12 : i64
+    %total13 = scalar.addi %total12, %sum13 : i64
+    %total14 = scalar.addi %total13, %sum14 : i64
+    %total15 = scalar.addi %total14, %sum15 : i64
+    %total16 = scalar.addi %total15, %sum16 : i64
+    %next = scalar.subi %current, %c1_i32 : i32
+    %next_total = scalar.addi %carried, %total16 : i64
+    scf.yield %next, %next_total : i32, i64
+  }
+  func.return %result : i64
+}
+
+check.case @spilled_call_results {
+  %a = check.literal value(4294967297) : i64
+  %count = check.literal value(3) : i32
+  %actual = func.call @pressure(%a, %count) : (i64, i32) -> (i64)
+  %expected = check.literal value(3504693320880) : i64
+  check.expect.equal actual(%actual) expected(%expected) : i64
+  check.return
+}
+
+check.case @skip_spill_consumers {
+  %a = check.literal value(-7) : i64
+  %count = check.literal value(0) : i32
+  %actual = func.call @pressure(%a, %count) : (i64, i32) -> (i64)
+  %expected = check.literal value(0) : i64
+  check.expect.equal actual(%actual) expected(%expected) : i64
+  check.return
+}

@@ -31,8 +31,10 @@ typedef struct loom_spirv_emit_low_module_options_t {
   // Optional compiler-owned function versions participating in emission. The
   // list and its version objects are borrowed for the call.
   const loom_function_version_list_t* function_versions;
-  // Selected target-low function ops to emit. NULL emits every target-low
-  // function definition in the module.
+  // Selected target-low function ops to consider for emission. NULL considers
+  // every target-low function definition in the module. Functions with a
+  // concrete non-SPIR-V codegen target remain in the module but are not
+  // emitted.
   loom_op_t* const* entry_ops;
   // Number of entries in |entry_ops|. Zero keeps the default all-entry
   // behavior.
@@ -44,10 +46,12 @@ void loom_spirv_emit_low_module_options_initialize(
 
 // Emits target-low function bodies in |module| as one SPIR-V module.
 //
-// SPIR-V modules may contain multiple entry points. By default every
-// target-low function definition is emitted. Callers may provide |options| to
-// select one or more entries when an artifact container describes a narrower
-// dispatch set than the whole source module.
+// SPIR-V modules may contain multiple entry points. Concrete targets select
+// SPIR-V code generation; targetless assembly must select the SPIR-V
+// representation contract. Other codegen targets remain in the shared module
+// for their respective emitters. Callers may provide |options| to select one or
+// more entries when an artifact container describes a narrower dispatch set
+// than the whole source module.
 //
 // Every emitted function must resolve to the same SPIR-V module contract. Raw
 // BDA HAL kernel entries must also share one dispatch ABI layout because the

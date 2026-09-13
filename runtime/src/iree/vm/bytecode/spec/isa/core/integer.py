@@ -33,13 +33,43 @@ from iree.vm.bytecode.spec.version import CORE_0
 
 
 class IntegerBinaryOperation(enum.Enum):
-    ADD = "add"
-    SUB = "sub"
-    MUL = "mul"
+    ADD = "add.i"
+    SUB = "sub.i"
+    MUL = "mul.i"
+    MIN_SIGNED = "min.s"
+    MIN_UNSIGNED = "min.u"
+    MAX_SIGNED = "max.s"
+    MAX_UNSIGNED = "max.u"
+    AND = "and.i"
+    OR = "or.i"
+    XOR = "xor.i"
+    SHIFT_LEFT = "shift.left.i"
+    SHIFT_RIGHT_SIGNED = "shift.right.s"
+    SHIFT_RIGHT_UNSIGNED = "shift.right.u"
+    ROTATE_LEFT = "rotate.left.i"
+    ROTATE_RIGHT = "rotate.right.i"
 
 
 class IntegerBinarySemantics(NamedTuple):
     operation: IntegerBinaryOperation
+    bit_width: int
+
+
+class IntegerUnaryOperation(enum.Enum):
+    NEGATE = "neg.i"
+    ABSOLUTE = "abs.s"
+    COUNT_LEADING_ZEROS = "count.leading.zeros.i"
+    COUNT_TRAILING_ZEROS = "count.trailing.zeros.i"
+    POPULATION_COUNT = "popcount.i"
+
+
+class IntegerUnarySemantics(NamedTuple):
+    operation: IntegerUnaryOperation
+    bit_width: int
+
+
+class IntegerCompareSemantics(NamedTuple):
+    # Width of the integer operands; the result is a canonical boolean cell.
     bit_width: int
 
 
@@ -145,25 +175,18 @@ def _result_contract(bit_width: int, result: str) -> str:
     return f"{result}{suffix}"
 
 
-_SOURCE_BINARY_OPERATION = {
-    "integer.add": IntegerBinaryOperation.ADD,
-    "integer.sub": IntegerBinaryOperation.SUB,
-    "integer.mul": IntegerBinaryOperation.MUL,
-}
-
-
 class _BinaryDefinition(NamedTuple):
     opcode: int
-    mnemonic: str
+    operation: IntegerBinaryOperation
+    bit_width: int
     summary: str
     result: str
     expression: str
 
 
 def _binary(definition: _BinaryDefinition) -> Instruction:
-    opcode, mnemonic, summary, result, expression = definition
-    bit_width = 32 if mnemonic.endswith("32") else 64
-    operation = _SOURCE_BINARY_OPERATION.get(mnemonic.rsplit(".", 1)[0])
+    opcode, operation, bit_width, summary, result, expression = definition
+    mnemonic = f"integer.{operation.value}{bit_width}"
     return Instruction(
         opcode=opcode,
         mnemonic=mnemonic,
@@ -171,11 +194,7 @@ def _binary(definition: _BinaryDefinition) -> Instruction:
         family=INTEGER_FAMILY,
         summary=summary,
         fields=_binary_fields(),
-        semantics=(
-            IntegerBinarySemantics(operation, bit_width)
-            if operation is not None
-            else None
-        ),
+        semantics=IntegerBinarySemantics(operation, bit_width),
         behavior=(
             f"Reads both operands before computing the selected {bit_width}-bit result."
         ),
@@ -193,210 +212,240 @@ def _binary(definition: _BinaryDefinition) -> Instruction:
 _REGULAR_BINARY_DEFINITIONS = (
     _BinaryDefinition(
         0x40,
-        "integer.add.i32",
+        IntegerBinaryOperation.ADD,
+        32,
         "Adds low 32-bit patterns modulo 2^32.",
         "destination_v8 receives the low 32 sum bits and clears its high half.",
         "left + right",
     ),
     _BinaryDefinition(
         0x41,
-        "integer.add.i64",
+        IntegerBinaryOperation.ADD,
+        64,
         "Adds complete 64-bit patterns modulo 2^64.",
         "destination_v8 receives the low 64 sum bits.",
         "left + right",
     ),
     _BinaryDefinition(
         0x42,
-        "integer.sub.i32",
+        IntegerBinaryOperation.SUB,
+        32,
         "Subtracts low 32-bit patterns modulo 2^32.",
         "destination_v8 receives the low 32 difference bits and clears its high half.",
         "left - right",
     ),
     _BinaryDefinition(
         0x43,
-        "integer.sub.i64",
+        IntegerBinaryOperation.SUB,
+        64,
         "Subtracts complete 64-bit patterns modulo 2^64.",
         "destination_v8 receives the low 64 difference bits.",
         "left - right",
     ),
     _BinaryDefinition(
         0x44,
-        "integer.mul.i32",
+        IntegerBinaryOperation.MUL,
+        32,
         "Multiplies low 32-bit patterns and retains the low 32 product bits.",
         "destination_v8 receives the low 32 product bits and clears its high half.",
         "left * right",
     ),
     _BinaryDefinition(
         0x45,
-        "integer.mul.i64",
+        IntegerBinaryOperation.MUL,
+        64,
         "Multiplies complete 64-bit patterns and retains the low 64 product bits.",
         "destination_v8 receives the low 64 product bits.",
         "left * right",
     ),
     _BinaryDefinition(
         0x52,
-        "integer.min.s32",
+        IntegerBinaryOperation.MIN_SIGNED,
+        32,
         "Selects the lesser signed two's-complement 32-bit operand.",
         "destination_v8 receives the selected low bits and clears its high half.",
         "signed_w(left, 32) <= signed_w(right, 32) ? left : right",
     ),
     _BinaryDefinition(
         0x53,
-        "integer.min.s64",
+        IntegerBinaryOperation.MIN_SIGNED,
+        64,
         "Selects the lesser signed two's-complement 64-bit operand.",
         "destination_v8 receives the selected complete operand bits.",
         "signed_w(left, 64) <= signed_w(right, 64) ? left : right",
     ),
     _BinaryDefinition(
         0x54,
-        "integer.min.u32",
+        IntegerBinaryOperation.MIN_UNSIGNED,
+        32,
         "Selects the lesser unsigned 32-bit operand.",
         "destination_v8 receives the selected low bits and clears its high half.",
         "left <= right ? left : right",
     ),
     _BinaryDefinition(
         0x55,
-        "integer.min.u64",
+        IntegerBinaryOperation.MIN_UNSIGNED,
+        64,
         "Selects the lesser unsigned 64-bit operand.",
         "destination_v8 receives the selected complete operand bits.",
         "left <= right ? left : right",
     ),
     _BinaryDefinition(
         0x56,
-        "integer.max.s32",
+        IntegerBinaryOperation.MAX_SIGNED,
+        32,
         "Selects the greater signed two's-complement 32-bit operand.",
         "destination_v8 receives the selected low bits and clears its high half.",
         "signed_w(left, 32) >= signed_w(right, 32) ? left : right",
     ),
     _BinaryDefinition(
         0x57,
-        "integer.max.s64",
+        IntegerBinaryOperation.MAX_SIGNED,
+        64,
         "Selects the greater signed two's-complement 64-bit operand.",
         "destination_v8 receives the selected complete operand bits.",
         "signed_w(left, 64) >= signed_w(right, 64) ? left : right",
     ),
     _BinaryDefinition(
         0x58,
-        "integer.max.u32",
+        IntegerBinaryOperation.MAX_UNSIGNED,
+        32,
         "Selects the greater unsigned 32-bit operand.",
         "destination_v8 receives the selected low bits and clears its high half.",
         "left >= right ? left : right",
     ),
     _BinaryDefinition(
         0x59,
-        "integer.max.u64",
+        IntegerBinaryOperation.MAX_UNSIGNED,
+        64,
         "Selects the greater unsigned 64-bit operand.",
         "destination_v8 receives the selected complete operand bits.",
         "left >= right ? left : right",
     ),
     _BinaryDefinition(
         0x5A,
-        "integer.and.i32",
+        IntegerBinaryOperation.AND,
+        32,
         "Computes bitwise AND over the low 32 bits.",
         "destination_v8 receives the AND bits and clears its high half.",
         "left & right",
     ),
     _BinaryDefinition(
         0x5B,
-        "integer.and.i64",
+        IntegerBinaryOperation.AND,
+        64,
         "Computes bitwise AND over all 64 bits.",
         "destination_v8 receives the complete 64-bit AND result.",
         "left & right",
     ),
     _BinaryDefinition(
         0x5C,
-        "integer.or.i32",
+        IntegerBinaryOperation.OR,
+        32,
         "Computes bitwise OR over the low 32 bits.",
         "destination_v8 receives the OR bits and clears its high half.",
         "left | right",
     ),
     _BinaryDefinition(
         0x5D,
-        "integer.or.i64",
+        IntegerBinaryOperation.OR,
+        64,
         "Computes bitwise OR over all 64 bits.",
         "destination_v8 receives the complete 64-bit OR result.",
         "left | right",
     ),
     _BinaryDefinition(
         0x5E,
-        "integer.xor.i32",
+        IntegerBinaryOperation.XOR,
+        32,
         "Computes bitwise XOR over the low 32 bits.",
         "destination_v8 receives the XOR bits and clears its high half.",
         "left ^ right",
     ),
     _BinaryDefinition(
         0x5F,
-        "integer.xor.i64",
+        IntegerBinaryOperation.XOR,
+        64,
         "Computes bitwise XOR over all 64 bits.",
         "destination_v8 receives the complete 64-bit XOR result.",
         "left ^ right",
     ),
     _BinaryDefinition(
         0x60,
-        "integer.shift.left.i32",
+        IntegerBinaryOperation.SHIFT_LEFT,
+        32,
         "Shifts low 32 bits left by the count's low five bits.",
         "destination_v8 receives the shifted bits and clears its high half.",
         "left << (right & 31)",
     ),
     _BinaryDefinition(
         0x61,
-        "integer.shift.left.i64",
+        IntegerBinaryOperation.SHIFT_LEFT,
+        64,
         "Shifts all 64 bits left by the count's low six bits.",
         "destination_v8 receives the complete shifted result.",
         "left << (right & 63)",
     ),
     _BinaryDefinition(
         0x62,
-        "integer.shift.right.s32",
+        IntegerBinaryOperation.SHIFT_RIGHT_SIGNED,
+        32,
         "Sign-fills low 32 bits right by the count's low five bits.",
         "destination_v8 receives the arithmetic shift and clears its high half.",
         "asr_w(left, right & 31, 32)",
     ),
     _BinaryDefinition(
         0x63,
-        "integer.shift.right.s64",
+        IntegerBinaryOperation.SHIFT_RIGHT_SIGNED,
+        64,
         "Sign-fills all 64 bits right by the count's low six bits.",
         "destination_v8 receives the complete arithmetic shift.",
         "asr_w(left, right & 63, 64)",
     ),
     _BinaryDefinition(
         0x64,
-        "integer.shift.right.u32",
+        IntegerBinaryOperation.SHIFT_RIGHT_UNSIGNED,
+        32,
         "Logically shifts low 32 bits right by the count's low five bits.",
         "destination_v8 receives the logical shift and clears its high half.",
         "left >> (right & 31)",
     ),
     _BinaryDefinition(
         0x65,
-        "integer.shift.right.u64",
+        IntegerBinaryOperation.SHIFT_RIGHT_UNSIGNED,
+        64,
         "Logically shifts all 64 bits right by the count's low six bits.",
         "destination_v8 receives the complete logical shift.",
         "left >> (right & 63)",
     ),
     _BinaryDefinition(
         0x66,
-        "integer.rotate.left.i32",
+        IntegerBinaryOperation.ROTATE_LEFT,
+        32,
         "Rotates low 32 bits left by the count's low five bits.",
         "destination_v8 receives the rotated bits and clears its high half.",
         "rotl_w(left, right & 31, 32)",
     ),
     _BinaryDefinition(
         0x67,
-        "integer.rotate.left.i64",
+        IntegerBinaryOperation.ROTATE_LEFT,
+        64,
         "Rotates all 64 bits left by the count's low six bits.",
         "destination_v8 receives the complete rotated result.",
         "rotl_w(left, right & 63, 64)",
     ),
     _BinaryDefinition(
         0x68,
-        "integer.rotate.right.i32",
+        IntegerBinaryOperation.ROTATE_RIGHT,
+        32,
         "Rotates low 32 bits right by the count's low five bits.",
         "destination_v8 receives the rotated bits and clears its high half.",
         "rotr_w(left, right & 31, 32)",
     ),
     _BinaryDefinition(
         0x69,
-        "integer.rotate.right.i64",
+        IntegerBinaryOperation.ROTATE_RIGHT,
+        64,
         "Rotates all 64 bits right by the count's low six bits.",
         "destination_v8 receives the complete rotated result.",
         "rotr_w(left, right & 63, 64)",
@@ -406,14 +455,21 @@ _REGULAR_BINARY_DEFINITIONS = (
 _REGULAR_BINARY_INSTRUCTIONS = tuple(map(_binary, _REGULAR_BINARY_DEFINITIONS))
 
 
-class _DivisionKind(enum.Enum):
+class IntegerDivisionOperation(enum.Enum):
     SIGNED_QUOTIENT = ("div", "s")
     UNSIGNED_QUOTIENT = ("div", "u")
     SIGNED_REMAINDER = ("rem", "s")
     UNSIGNED_REMAINDER = ("rem", "u")
 
 
-def _division(opcode: int, kind: _DivisionKind, bit_width: int) -> Instruction:
+class IntegerDivisionSemantics(NamedTuple):
+    operation: IntegerDivisionOperation
+    bit_width: int
+
+
+def _division(
+    opcode: int, kind: IntegerDivisionOperation, bit_width: int
+) -> Instruction:
     operation, signedness = kind.value
     is_signed = signedness == "s"
     is_remainder = operation == "rem"
@@ -477,7 +533,7 @@ def _division(opcode: int, kind: _DivisionKind, bit_width: int) -> Instruction:
         family=INTEGER_FAMILY,
         summary=f"Computes the {interpretation} {bit_width}-bit {result_name}.",
         fields=_binary_fields(),
-        semantics=None,
+        semantics=IntegerDivisionSemantics(kind, bit_width),
         behavior=behavior,
         success=(
             _result_contract(
@@ -509,29 +565,30 @@ def _division(opcode: int, kind: _DivisionKind, bit_width: int) -> Instruction:
 _DIVISION_INSTRUCTIONS = tuple(
     _division(opcode, kind, bit_width)
     for opcode, kind, bit_width in (
-        (0x46, _DivisionKind.SIGNED_QUOTIENT, 32),
-        (0x47, _DivisionKind.SIGNED_QUOTIENT, 64),
-        (0x48, _DivisionKind.UNSIGNED_QUOTIENT, 32),
-        (0x49, _DivisionKind.UNSIGNED_QUOTIENT, 64),
-        (0x4A, _DivisionKind.SIGNED_REMAINDER, 32),
-        (0x4B, _DivisionKind.SIGNED_REMAINDER, 64),
-        (0x4C, _DivisionKind.UNSIGNED_REMAINDER, 32),
-        (0x4D, _DivisionKind.UNSIGNED_REMAINDER, 64),
+        (0x46, IntegerDivisionOperation.SIGNED_QUOTIENT, 32),
+        (0x47, IntegerDivisionOperation.SIGNED_QUOTIENT, 64),
+        (0x48, IntegerDivisionOperation.UNSIGNED_QUOTIENT, 32),
+        (0x49, IntegerDivisionOperation.UNSIGNED_QUOTIENT, 64),
+        (0x4A, IntegerDivisionOperation.SIGNED_REMAINDER, 32),
+        (0x4B, IntegerDivisionOperation.SIGNED_REMAINDER, 64),
+        (0x4C, IntegerDivisionOperation.UNSIGNED_REMAINDER, 32),
+        (0x4D, IntegerDivisionOperation.UNSIGNED_REMAINDER, 64),
     )
 )
 
 
 class _UnaryDefinition(NamedTuple):
     opcode: int
-    mnemonic: str
+    operation: IntegerUnaryOperation
+    bit_width: int
     summary: str
     result: str
     expression: str
 
 
 def _unary(definition: _UnaryDefinition) -> Instruction:
-    opcode, mnemonic, summary, result, expression = definition
-    bit_width = 32 if mnemonic.endswith("32") else 64
+    opcode, operation, bit_width, summary, result, expression = definition
+    mnemonic = f"integer.{operation.value}{bit_width}"
     return Instruction(
         opcode=opcode,
         mnemonic=mnemonic,
@@ -547,7 +604,7 @@ def _unary(definition: _UnaryDefinition) -> Instruction:
             _value("source_v8", FieldRole.OPERAND, "Source value-register ordinal."),
             _padding(),
         ),
-        semantics=None,
+        semantics=IntegerUnarySemantics(operation, bit_width),
         behavior=f"Reads source_v8 and computes the selected {bit_width}-bit result.",
         success=(result,),
         assembly=f"%v<destination> = {mnemonic} %v<source>",
@@ -562,70 +619,80 @@ def _unary(definition: _UnaryDefinition) -> Instruction:
 _UNARY_DEFINITIONS = (
     _UnaryDefinition(
         0x4E,
-        "integer.neg.i32",
+        IntegerUnaryOperation.NEGATE,
+        32,
         "Computes two's-complement negation modulo 2^32.",
         "destination_v8 receives the modular negation and clears its high half.",
         "0 - bits",
     ),
     _UnaryDefinition(
         0x4F,
-        "integer.neg.i64",
+        IntegerUnaryOperation.NEGATE,
+        64,
         "Computes two's-complement negation modulo 2^64.",
         "destination_v8 receives the complete modular negation.",
         "0 - bits",
     ),
     _UnaryDefinition(
         0x50,
-        "integer.abs.s32",
+        IntegerUnaryOperation.ABSOLUTE,
+        32,
         "Computes modular signed 32-bit absolute value.",
         "destination_v8 receives abs(source); INT32_MIN retains its bits.",
         "bit_is_set(bits, 31) ? 0 - bits : bits",
     ),
     _UnaryDefinition(
         0x51,
-        "integer.abs.s64",
+        IntegerUnaryOperation.ABSOLUTE,
+        64,
         "Computes modular signed 64-bit absolute value.",
         "destination_v8 receives abs(source); INT64_MIN retains its bits.",
         "bit_is_set(bits, 63) ? 0 - bits : bits",
     ),
     _UnaryDefinition(
         0x6A,
-        "integer.count.leading.zeros.i32",
+        IntegerUnaryOperation.COUNT_LEADING_ZEROS,
+        32,
         "Counts leading zeroes in the low 32 bits.",
         "destination_v8 receives 32 for zero or the exact count with high bits clear.",
         "bits == 0 ? 32 : count_leading_zeros(bits, 32)",
     ),
     _UnaryDefinition(
         0x6B,
-        "integer.count.leading.zeros.i64",
+        IntegerUnaryOperation.COUNT_LEADING_ZEROS,
+        64,
         "Counts leading zeroes in all 64 bits.",
         "destination_v8 receives 64 for zero or the exact count.",
         "bits == 0 ? 64 : count_leading_zeros(bits, 64)",
     ),
     _UnaryDefinition(
         0x6C,
-        "integer.count.trailing.zeros.i32",
+        IntegerUnaryOperation.COUNT_TRAILING_ZEROS,
+        32,
         "Counts trailing zeroes in the low 32 bits.",
         "destination_v8 receives 32 for zero or the exact count with high bits clear.",
         "bits == 0 ? 32 : count_trailing_zeros(bits, 32)",
     ),
     _UnaryDefinition(
         0x6D,
-        "integer.count.trailing.zeros.i64",
+        IntegerUnaryOperation.COUNT_TRAILING_ZEROS,
+        64,
         "Counts trailing zeroes in all 64 bits.",
         "destination_v8 receives 64 for zero or the exact count.",
         "bits == 0 ? 64 : count_trailing_zeros(bits, 64)",
     ),
     _UnaryDefinition(
         0x6E,
-        "integer.popcount.i32",
+        IntegerUnaryOperation.POPULATION_COUNT,
+        32,
         "Counts one bits in the low 32 bits.",
         "destination_v8 receives the population count with high bits clear.",
         "population_count(bits, 32)",
     ),
     _UnaryDefinition(
         0x6F,
-        "integer.popcount.i64",
+        IntegerUnaryOperation.POPULATION_COUNT,
+        64,
         "Counts one bits in all 64 bits.",
         "destination_v8 receives the population count.",
         "population_count(bits, 64)",
@@ -657,7 +724,7 @@ def _compare(opcode: int, bit_width: int) -> Instruction:
             ),
             _padding(element_count=3),
         ),
-        semantics=None,
+        semantics=IntegerCompareSemantics(bit_width),
         behavior=(
             f"Compares the selected low {bit_width} bits using equality, signed "
             "ordering, or unsigned ordering selected by predicate_u8."

@@ -655,6 +655,11 @@ typedef struct loom_low_schedule_table_t {
   const loom_low_schedule_node_t* nodes;
   // Number of schedule nodes.
   iree_host_size_t node_count;
+  // Source-ordered low.func.call node indices retained for ABI frame planning.
+  const uint32_t* call_node_indices;
+  // Number of entries in |call_node_indices|. Leaves have no call-table
+  // storage.
+  iree_host_size_t call_node_count;
   // Stable ordering dependency graph consumed by scheduling and target
   // planning.
   loom_low_schedule_dependency_graph_t dependencies;

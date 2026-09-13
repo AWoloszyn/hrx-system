@@ -23,6 +23,7 @@ SUPPORTED_VALUES = [
     "amdgpu",
     "llvmir",
     "spirv",
+    "vm",
     "wasm",
     "x86",
 ]

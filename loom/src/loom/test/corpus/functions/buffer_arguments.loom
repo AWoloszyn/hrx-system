@@ -1,0 +1,87 @@
+func.def public @create_host_buffer(%byte_length: i64, %pattern: i32) -> (buffer) {
+  %length = index.cast %byte_length : i64 to offset
+  %origin = index.constant 0 : offset
+  %storage = buffer.alloca<private> align(1) %length : buffer
+  buffer.fill %pattern, %storage[%origin], %length : i32
+  func.return %storage : buffer
+}
+
+func.def public @host_buffer_length(%storage: buffer) -> (i64) {
+  %length = buffer.length %storage
+  %result = index.cast %length : offset to i64
+  func.return %result : i64
+}
+
+check.case @host_buffer_length_case {
+  %length = check.param.choice values([0, 1, 7, 64]) : i64
+  %pattern = check.literal value(17) : i32
+  %storage = func.call @create_host_buffer(%length, %pattern) : (i64, i32) -> (buffer)
+  %actual = func.call @host_buffer_length(%storage) : (buffer) -> (i64)
+  check.expect.equal actual(%actual) expected(%length) : i64
+  check.return
+}
+
+func.def public @host_buffer_aliases(%storage: buffer, %tag: i32) -> (buffer, i32, buffer) {
+  func.return %storage, %tag, %storage : buffer, i32, buffer
+}
+
+func.def public @host_buffer_store(%storage: buffer, %position: i64, %value: i32) {
+  %offset = index.cast %position : i64 to offset
+  buffer.store.i8 %value, %storage[%offset]
+  func.return
+}
+
+func.def public @host_buffer_load(%storage: buffer, %position: i64) -> (i32) {
+  %offset = index.cast %position : i64 to offset
+  %result = buffer.load.i8.u %storage[%offset]
+  func.return %result : i32
+}
+
+// Each call crosses the host boundary. Both returned aliases and the original
+// binding must see writes after the producer's invocation has finished.
+check.case @host_buffer_aliases_case {
+  %length = check.literal value(8) : i64
+  %pattern = check.literal value(-1) : i32
+  %storage = func.call @create_host_buffer(%length, %pattern) : (i64, i32) -> (buffer)
+  %tag = check.literal value(73) : i32
+  %left, %returned_tag, %right = func.call @host_buffer_aliases(%storage, %tag) : (buffer, i32) -> (buffer, i32, buffer)
+  %position = check.param.choice values([0, 3, 7]) : i64
+  %before = func.call @host_buffer_load(%right, %position) : (buffer, i64) -> (i32)
+  %changed = check.literal value(165) : i32
+  func.call @host_buffer_store(%left, %position, %changed) : (buffer, i64, i32)
+  %alias_value = func.call @host_buffer_load(%right, %position) : (buffer, i64) -> (i32)
+  %original_value = func.call @host_buffer_load(%storage, %position) : (buffer, i64) -> (i32)
+  %expected_before = check.literal value(255) : i32
+  check.expect.equal actual(%before) expected(%expected_before) : i32
+  check.expect.equal actual(%alias_value) expected(%changed) : i32
+  check.expect.equal actual(%original_value) expected(%changed) : i32
+  check.expect.equal actual(%returned_tag) expected(%tag) : i32
+  check.return
+}
+
+func.def public @host_buffer_swap(%left: buffer, %right: buffer) -> (buffer, buffer) {
+  func.return %right, %left : buffer, buffer
+}
+
+check.case @host_buffer_swap_case {
+  %short_length = check.literal value(3) : i64
+  %long_length = check.literal value(13) : i64
+  %first_pattern = check.literal value(-1) : i32
+  %second_pattern = check.literal value(0) : i32
+  %first = func.call @create_host_buffer(%short_length, %first_pattern) : (i64, i32) -> (buffer)
+  %second = func.call @create_host_buffer(%long_length, %second_pattern) : (i64, i32) -> (buffer)
+  %left, %right = func.call @host_buffer_swap(%first, %second) : (buffer, buffer) -> (buffer, buffer)
+  %left_length = func.call @host_buffer_length(%left) : (buffer) -> (i64)
+  %right_length = func.call @host_buffer_length(%right) : (buffer) -> (i64)
+  %position = check.literal value(1) : i64
+  %changed = check.literal value(42) : i32
+  func.call @host_buffer_store(%left, %position, %changed) : (buffer, i64, i32)
+  %original_first = func.call @host_buffer_load(%first, %position) : (buffer, i64) -> (i32)
+  %original_second = func.call @host_buffer_load(%second, %position) : (buffer, i64) -> (i32)
+  %unchanged = check.literal value(255) : i32
+  check.expect.equal actual(%left_length) expected(%long_length) : i64
+  check.expect.equal actual(%right_length) expected(%short_length) : i64
+  check.expect.equal actual(%original_first) expected(%unchanged) : i32
+  check.expect.equal actual(%original_second) expected(%changed) : i32
+  check.return
+}

@@ -1,0 +1,162 @@
+// Results use raw bits to observe signed zero and selected-width rounding.
+// The reciprocal root rounds after both square root and division by the root.
+func.def public @roots_f32(%bits: i32) -> (i32, i32) {
+  %value = scalar.bitcast %bits : i32 to f32
+  %root = scalar.sqrtf %value : f32
+  %inverse = scalar.rsqrtf %value : f32
+  %root_bits = scalar.bitcast %root : f32 to i32
+  %inverse_bits = scalar.bitcast %inverse : f32 to i32
+  func.return %root_bits, %inverse_bits : i32, i32
+}
+
+check.case @roots_positive_zero {
+  %input = check.literal value(0) : i32
+  %root, %inverse = func.call @roots_f32(%input) : (i32) -> (i32, i32)
+  %zero = check.literal value(0) : i32
+  %infinity = check.literal value(2139095040) : i32
+  check.expect.equal actual(%root) expected(%zero) : i32
+  check.expect.equal actual(%inverse) expected(%infinity) : i32
+  check.return
+}
+
+check.case @roots_negative_zero {
+  %input = check.literal value(-2147483648) : i32
+  %root, %inverse = func.call @roots_f32(%input) : (i32) -> (i32, i32)
+  %infinity = check.literal value(-8388608) : i32
+  check.expect.equal actual(%root) expected(%input) : i32
+  check.expect.equal actual(%inverse) expected(%infinity) : i32
+  check.return
+}
+
+check.case @roots_minimum_subnormal {
+  %input = check.literal value(1) : i32
+  %root, %inverse = func.call @roots_f32(%input) : (i32) -> (i32, i32)
+  %expected_root = check.literal value(439682291) : i32
+  %expected_inverse = check.literal value(1689584883) : i32
+  check.expect.equal actual(%root) expected(%expected_root) : i32
+  check.expect.equal actual(%inverse) expected(%expected_inverse) : i32
+  check.return
+}
+
+check.case @roots_subnormal_even_exponent {
+  // sqrt(2^-148) and its reciprocal are exact powers of two.
+  %input = check.literal value(2) : i32
+  %root, %inverse = func.call @roots_f32(%input) : (i32) -> (i32, i32)
+  %expected_root = check.literal value(444596224) : i32
+  %expected_inverse = check.literal value(1686110208) : i32
+  check.expect.equal actual(%root) expected(%expected_root) : i32
+  check.expect.equal actual(%inverse) expected(%expected_inverse) : i32
+  check.return
+}
+
+check.case @roots_maximum_subnormal {
+  %input = check.literal value(8388607) : i32
+  %root, %inverse = func.call @roots_f32(%input) : (i32) -> (i32, i32)
+  %expected_root = check.literal value(536870911) : i32
+  %expected_inverse = check.literal value(1593835521) : i32
+  check.expect.equal actual(%root) expected(%expected_root) : i32
+  check.expect.equal actual(%inverse) expected(%expected_inverse) : i32
+  check.return
+}
+
+check.case @roots_minimum_normal_neighbors {
+  %input = check.param.choice values([8388608, 8388609]) : i32
+  %root, %inverse = func.call @roots_f32(%input) : (i32) -> (i32, i32)
+  %expected_root = check.literal value(536870912) : i32
+  %expected_inverse = check.literal value(1593835520) : i32
+  check.expect.equal actual(%root) expected(%expected_root) : i32
+  check.expect.equal actual(%inverse) expected(%expected_inverse) : i32
+  check.return
+}
+
+check.case @roots_irrational {
+  %input = check.literal value(1073741824) : i32
+  %root, %inverse = func.call @roots_f32(%input) : (i32) -> (i32, i32)
+  %expected_root = check.literal value(1068827891) : i32
+  %expected_inverse = check.literal value(1060439283) : i32
+  check.expect.equal actual(%root) expected(%expected_root) : i32
+  check.expect.equal actual(%inverse) expected(%expected_inverse) : i32
+  check.return
+}
+
+check.case @roots_exact_square {
+  // sqrt(9) is exact; division of one by that root is not.
+  %input = check.literal value(1091567616) : i32
+  %root, %inverse = func.call @roots_f32(%input) : (i32) -> (i32, i32)
+  %expected_root = check.literal value(1077936128) : i32
+  %expected_inverse = check.literal value(1051372203) : i32
+  check.expect.equal actual(%root) expected(%expected_root) : i32
+  check.expect.equal actual(%inverse) expected(%expected_inverse) : i32
+  check.return
+}
+
+check.case @roots_maximum_finite {
+  %input = check.literal value(2139095039) : i32
+  %root, %inverse = func.call @roots_f32(%input) : (i32) -> (i32, i32)
+  %expected_root = check.literal value(1602224127) : i32
+  %expected_inverse = check.literal value(528482305) : i32
+  check.expect.equal actual(%root) expected(%expected_root) : i32
+  check.expect.equal actual(%inverse) expected(%expected_inverse) : i32
+  check.return
+}
+
+check.case @roots_positive_infinity {
+  %input = check.literal value(2139095040) : i32
+  %root, %inverse = func.call @roots_f32(%input) : (i32) -> (i32, i32)
+  %zero = check.literal value(0) : i32
+  check.expect.equal actual(%root) expected(%input) : i32
+  check.expect.equal actual(%inverse) expected(%zero) : i32
+  check.return
+}
+
+// NaN payloads are not a source guarantee. Observe classification instead of
+// imposing one target's canonical payload on all targets in the shared corpus.
+func.def public @roots_nan_f32(%bits: i32) -> (i1, i1) {
+  %value = scalar.bitcast %bits : i32 to f32
+  %root = scalar.sqrtf %value : f32
+  %inverse = scalar.rsqrtf %value : f32
+  %root_nan = scalar.isnanf %root : f32
+  %inverse_nan = scalar.isnanf %inverse : f32
+  func.return %root_nan, %inverse_nan : i1, i1
+}
+
+check.case @roots_negative_and_nan {
+  %input = check.param.choice values([-2147483647, -2139095041, -2139095040, -1082130432, -8388609, -8388608, 2143289344, -4194304, 2139095041, -8388607]) : i32
+  %root_nan, %inverse_nan = func.call @roots_nan_f32(%input) : (i32) -> (i1, i1)
+  %yes = check.literal value(true) : i1
+  check.expect.equal actual(%root_nan) expected(%yes) : i1
+  check.expect.equal actual(%inverse_nan) expected(%yes) : i1
+  check.return
+}
+
+func.def public @vector_roots_f32(%a: i32, %b: i32) -> (i32, i32, i32, i32) {
+  %first = scalar.bitcast %a : i32 to f32
+  %second = scalar.bitcast %b : i32 to f32
+  %values = vector.from_elements %first, %second : vector<2xf32>
+  %roots = vector.sqrtf %values : vector<2xf32>
+  %inverses = vector.rsqrtf %values : vector<2xf32>
+  %root0 = vector.extract %roots[0] : vector<2xf32> -> f32
+  %root1 = vector.extract %roots[1] : vector<2xf32> -> f32
+  %inverse0 = vector.extract %inverses[0] : vector<2xf32> -> f32
+  %inverse1 = vector.extract %inverses[1] : vector<2xf32> -> f32
+  %rb0 = scalar.bitcast %root0 : f32 to i32
+  %rb1 = scalar.bitcast %root1 : f32 to i32
+  %ib0 = scalar.bitcast %inverse0 : f32 to i32
+  %ib1 = scalar.bitcast %inverse1 : f32 to i32
+  func.return %rb0, %rb1, %ib0, %ib1 : i32, i32, i32, i32
+}
+
+check.case @vector_roots_independent_scales {
+  %normal = check.literal value(1082130432) : i32
+  %tiny = check.literal value(1) : i32
+  %root0, %root1, %inverse0, %inverse1 = func.call @vector_roots_f32(%normal, %tiny) : (i32, i32) -> (i32, i32, i32, i32)
+  %two = check.literal value(1073741824) : i32
+  %half = check.literal value(1056964608) : i32
+  %tiny_root = check.literal value(439682291) : i32
+  %large_inverse = check.literal value(1689584883) : i32
+  check.expect.equal actual(%root0) expected(%two) : i32
+  check.expect.equal actual(%root1) expected(%tiny_root) : i32
+  check.expect.equal actual(%inverse0) expected(%half) : i32
+  check.expect.equal actual(%inverse1) expected(%large_inverse) : i32
+  check.return
+}

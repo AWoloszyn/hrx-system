@@ -1,0 +1,51 @@
+# Copyright 2026 The IREE Authors
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+load("//build_tools/testing:build_defs.bzl", "iree_execution_test_suite")
+load("//loom/build_tools/bazel:build_defs.bzl", "loom_cc_library", "loom_config_compatible_with")
+
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["layering_check"],
+    licenses = ["notice"],
+)
+
+loom_cc_library(
+    name = "testbench",
+    srcs = ["testbench.c"],
+    hdrs = ["testbench.h"],
+    deps = [
+        "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/ops/func",
+        "//loom/src/loom/rewrite:module_projection",
+        "//loom/src/loom/target:provider",
+        "//loom/src/loom/target/arch/vm:module",
+        "//loom/src/loom/target/arch/vm:provider",
+        "//loom/src/loom/tooling/compile:pipeline",
+        "//loom/src/loom/tooling/testbench:invocation",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/hal",
+        "//runtime/src/iree/vm",
+        "//runtime/src/iree/vm/bytecode:module",
+    ],
+)
+
+iree_execution_test_suite(
+    name = "tools_test",
+    data = [
+        "duplicate_exports.loom",
+        "empty_export.loom",
+        "invalid_operand.loom",
+        "invalid_storage.loom",
+        "module.loom",
+    ],
+    manifests = ["vm.test.json"],
+    target_compatible_with = loom_config_compatible_with(["//loom/config/target/arch:vm"]),
+    tools = {
+        "loom-compile": "//loom/src/loom/tools/loom-compile",
+        "vm-dis": "//tools:vm-dis",
+    },
+)

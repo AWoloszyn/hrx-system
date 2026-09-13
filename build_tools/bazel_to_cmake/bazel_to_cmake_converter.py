@@ -1232,6 +1232,11 @@ class BuildFileFunctions(object):
         # declarations for the configurations it supports.
         pass
 
+    def loom_execution_profile(self, **kwargs):
+        # Execution profiles are metadata for the Bazel-owned loom_test rule.
+        # Accept inline declarations as well as profiles loaded from .bzl files.
+        return kwargs
+
     def config_setting(self, **kwargs):
         pass
 

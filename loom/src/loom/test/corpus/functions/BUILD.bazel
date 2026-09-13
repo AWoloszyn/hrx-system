@@ -1,0 +1,29 @@
+# Copyright 2026 The IREE Authors
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+load("//loom/build_tools/bazel:defs.bzl", "loom_execution_profile", "loom_test")
+load("//loom/requirements:defs.bzl", "TARGET_ARCH_VM")
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],
+)
+
+_SOURCES = glob(["*.loom"])
+
+exports_files(_SOURCES)
+
+loom_test(
+    name = "vm_test",
+    srcs = _SOURCES,
+    execution_profile = loom_execution_profile(
+        name = "vm",
+        build_requirements = [TARGET_ARCH_VM],
+        executor = "reference",
+        target_class = "cpu",
+        target_family = "vm",
+    ),
+)

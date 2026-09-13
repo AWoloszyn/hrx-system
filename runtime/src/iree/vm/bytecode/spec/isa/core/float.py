@@ -30,6 +30,55 @@ from iree.vm.bytecode.spec.schema import (
 from iree.vm.bytecode.spec.version import CORE_0
 
 
+class FloatBinaryOperation(enum.Enum):
+    ADD = "add"
+    SUB = "sub"
+    MUL = "mul"
+    DIV = "div"
+    REM = "rem"
+    COPY_SIGN = "copysign"
+
+
+class FloatBinarySemantics(NamedTuple):
+    operation: FloatBinaryOperation
+    bit_width: int
+
+
+class FloatUnaryOperation(enum.Enum):
+    NEGATE = "neg"
+    ABSOLUTE = "abs"
+
+
+class FloatUnarySemantics(NamedTuple):
+    operation: FloatUnaryOperation
+    bit_width: int
+
+
+class FloatMinmaxSemantics(NamedTuple):
+    bit_width: int
+
+
+class FloatCompareSemantics(NamedTuple):
+    bit_width: int
+
+
+class FloatClassifySemantics(NamedTuple):
+    bit_width: int
+
+
+class FloatClampSemantics(NamedTuple):
+    bit_width: int
+
+
+class FloatFmaSemantics(NamedTuple):
+    bit_width: int
+
+
+class FloatMathSemantics(NamedTuple):
+    # The instruction's selector defines the exact mapping at this width.
+    bit_width: int
+
+
 def _selector(
     name: str, summary: str, values: tuple[tuple[str, int, str], ...]
 ) -> NumericTable:
@@ -403,15 +452,16 @@ class _FloatDataPath(enum.Enum):
 
 class _BinaryDefinition(NamedTuple):
     opcode: int
-    mnemonic: str
+    operation: FloatBinaryOperation
+    bit_width: int
     summary: str
     expression: str
     data_path: _FloatDataPath = _FloatDataPath.ARITHMETIC
 
 
 def _binary(definition: _BinaryDefinition) -> Instruction:
-    opcode, mnemonic, summary, expression, data_path = definition
-    width = 32 if mnemonic.endswith("32") else 64
+    opcode, operation, width, summary, expression, data_path = definition
+    mnemonic = f"float.{operation.value}.f{width}"
     read = "read_float_bits" if data_path == _FloatDataPath.RAW_BITS else "read_float"
     write = (
         "write_float_bits" if data_path == _FloatDataPath.RAW_BITS else "write_float"
@@ -431,7 +481,7 @@ def _binary(definition: _BinaryDefinition) -> Instruction:
             _value("left_v8", FieldRole.OPERAND, "Left value-register ordinal."),
             _value("right_v8", FieldRole.OPERAND, "Right value-register ordinal."),
         ),
-        semantics=None,
+        semantics=FloatBinarySemantics(operation, width),
         behavior=f"Reads both operands before evaluating one {width}-bit result.",
         success=(_result(width),),
         assembly=f"%v<destination> = {mnemonic} %v<left>, %v<right>",
@@ -448,55 +498,64 @@ def _binary(definition: _BinaryDefinition) -> Instruction:
 _BINARY_DEFINITIONS = (
     _BinaryDefinition(
         0x80,
-        "float.add.f32",
+        FloatBinaryOperation.ADD,
+        32,
         "Adds two f32 values with one selected-width rounding.",
         "left + right",
     ),
     _BinaryDefinition(
         0x81,
-        "float.add.f64",
+        FloatBinaryOperation.ADD,
+        64,
         "Adds two f64 values with one selected-width rounding.",
         "left + right",
     ),
     _BinaryDefinition(
         0x82,
-        "float.sub.f32",
+        FloatBinaryOperation.SUB,
+        32,
         "Subtracts two f32 values with one selected-width rounding.",
         "left - right",
     ),
     _BinaryDefinition(
         0x83,
-        "float.sub.f64",
+        FloatBinaryOperation.SUB,
+        64,
         "Subtracts two f64 values with one selected-width rounding.",
         "left - right",
     ),
     _BinaryDefinition(
         0x84,
-        "float.mul.f32",
+        FloatBinaryOperation.MUL,
+        32,
         "Multiplies two f32 values with one selected-width rounding.",
         "left * right",
     ),
     _BinaryDefinition(
         0x85,
-        "float.mul.f64",
+        FloatBinaryOperation.MUL,
+        64,
         "Multiplies two f64 values with one selected-width rounding.",
         "left * right",
     ),
     _BinaryDefinition(
         0x86,
-        "float.div.f32",
+        FloatBinaryOperation.DIV,
+        32,
         "Divides two f32 values with IEEE non-stop semantics.",
         "left / right",
     ),
     _BinaryDefinition(
         0x87,
-        "float.div.f64",
+        FloatBinaryOperation.DIV,
+        64,
         "Divides two f64 values with IEEE non-stop semantics.",
         "left / right",
     ),
     _BinaryDefinition(
         0x88,
-        "float.rem.f32",
+        FloatBinaryOperation.REM,
+        32,
         "Computes width-matched f32 fmod. A numeric result has the dividend's sign, "
         "including zero; a zero divisor or infinite dividend produces an arithmetic "
         "NaN, while an infinite divisor returns a finite dividend unchanged.",
@@ -504,7 +563,8 @@ _BINARY_DEFINITIONS = (
     ),
     _BinaryDefinition(
         0x89,
-        "float.rem.f64",
+        FloatBinaryOperation.REM,
+        64,
         "Computes width-matched f64 fmod. A numeric result has the dividend's sign, "
         "including zero; a zero divisor or infinite dividend produces an arithmetic "
         "NaN, while an infinite divisor returns a finite dividend unchanged.",
@@ -512,14 +572,16 @@ _BINARY_DEFINITIONS = (
     ),
     _BinaryDefinition(
         0x96,
-        "float.copysign.f32",
+        FloatBinaryOperation.COPY_SIGN,
+        32,
         "Copies the raw f32 sign while preserving every non-sign payload bit.",
         "(left & 0x7FFFFFFF) | (right & 0x80000000)",
         _FloatDataPath.RAW_BITS,
     ),
     _BinaryDefinition(
         0x97,
-        "float.copysign.f64",
+        FloatBinaryOperation.COPY_SIGN,
+        64,
         "Copies the raw f64 sign while preserving every non-sign payload bit.",
         "(left & 0x7FFFFFFFFFFFFFFF) | (right & 0x8000000000000000)",
         _FloatDataPath.RAW_BITS,
@@ -529,14 +591,15 @@ _BINARY_DEFINITIONS = (
 
 class _SignDefinition(NamedTuple):
     opcode: int
-    mnemonic: str
+    operation: FloatUnaryOperation
+    bit_width: int
     summary: str
     expression: str
 
 
 def _sign_unary(definition: _SignDefinition) -> Instruction:
-    opcode, mnemonic, summary, expression = definition
-    width = 32 if mnemonic.endswith("32") else 64
+    opcode, operation, width, summary, expression = definition
+    mnemonic = f"float.{operation.value}.f{width}"
     return Instruction(
         opcode=opcode,
         mnemonic=mnemonic,
@@ -552,7 +615,7 @@ def _sign_unary(definition: _SignDefinition) -> Instruction:
             _value("source_v8", FieldRole.OPERAND, "Source value-register ordinal."),
             _padding(),
         ),
-        semantics=None,
+        semantics=FloatUnarySemantics(operation, width),
         behavior=(
             "Transforms the raw payload without floating arithmetic, quieting NaNs, "
             "or raising a floating exception."
@@ -572,20 +635,30 @@ def _sign_unary(definition: _SignDefinition) -> Instruction:
 
 _SIGN_DEFINITIONS = (
     _SignDefinition(
-        0x8A, "float.neg.f32", "Toggles the raw f32 sign bit.", "bits ^ 0x80000000"
+        0x8A,
+        FloatUnaryOperation.NEGATE,
+        32,
+        "Toggles the raw f32 sign bit.",
+        "bits ^ 0x80000000",
     ),
     _SignDefinition(
         0x8B,
-        "float.neg.f64",
+        FloatUnaryOperation.NEGATE,
+        64,
         "Toggles the raw f64 sign bit.",
         "bits ^ 0x8000000000000000",
     ),
     _SignDefinition(
-        0x8C, "float.abs.f32", "Clears the raw f32 sign bit.", "bits & 0x7FFFFFFF"
+        0x8C,
+        FloatUnaryOperation.ABSOLUTE,
+        32,
+        "Clears the raw f32 sign bit.",
+        "bits & 0x7FFFFFFF",
     ),
     _SignDefinition(
         0x8D,
-        "float.abs.f64",
+        FloatUnaryOperation.ABSOLUTE,
+        64,
         "Clears the raw f64 sign bit.",
         "bits & 0x7FFFFFFFFFFFFFFF",
     ),
@@ -594,7 +667,7 @@ _SIGN_DEFINITIONS = (
 
 class _SelectedBinaryDefinition(NamedTuple):
     opcode: int
-    mnemonic: str
+    bit_width: int
     selector_name: str
     selector: NumericTable
     summary: str
@@ -603,8 +676,8 @@ class _SelectedBinaryDefinition(NamedTuple):
 
 
 def _selected_binary(definition: _SelectedBinaryDefinition) -> Instruction:
-    opcode, mnemonic, selector_name, selector, summary, result, evaluator = definition
-    width = 32 if mnemonic.endswith("32") else 64
+    opcode, width, selector_name, selector, summary, result, evaluator = definition
+    mnemonic = f"{selector.name}.f{width}"
     reads = "read_float_bits"
     if selector is FLOAT_COMPARE_SELECTOR:
         publish = "values[destination_v8] = canonical_bool(result);\n"
@@ -632,7 +705,11 @@ def _selected_binary(definition: _SelectedBinaryDefinition) -> Instruction:
             ),
             _padding(element_count=3),
         ),
-        semantics=None,
+        semantics=(
+            FloatCompareSemantics(width)
+            if selector is FLOAT_COMPARE_SELECTOR
+            else FloatMinmaxSemantics(width)
+        ),
         behavior=(
             f"Evaluates the selected {width}-bit {selector.name} operation under "
             "the selector's exact contract."
@@ -655,7 +732,7 @@ def _selected_binary(definition: _SelectedBinaryDefinition) -> Instruction:
 _SELECTED_BINARY_DEFINITIONS = (
     _SelectedBinaryDefinition(
         0x8E,
-        "float.minmax.f32",
+        32,
         "selector_u8",
         FLOAT_MINMAX_SELECTOR,
         "Selects f32 IEEE or number-selecting minimum/maximum.",
@@ -669,7 +746,7 @@ _SELECTED_BINARY_DEFINITIONS = (
     ),
     _SelectedBinaryDefinition(
         0x8F,
-        "float.minmax.f64",
+        64,
         "selector_u8",
         FLOAT_MINMAX_SELECTOR,
         "Selects f64 IEEE or number-selecting minimum/maximum.",
@@ -683,7 +760,7 @@ _SELECTED_BINARY_DEFINITIONS = (
     ),
     _SelectedBinaryDefinition(
         0x90,
-        "float.compare.f32",
+        32,
         "predicate_u8",
         FLOAT_COMPARE_SELECTOR,
         "Evaluates one ordered or unordered raw-payload f32 predicate.",
@@ -696,7 +773,7 @@ _SELECTED_BINARY_DEFINITIONS = (
     ),
     _SelectedBinaryDefinition(
         0x91,
-        "float.compare.f64",
+        64,
         "predicate_u8",
         FLOAT_COMPARE_SELECTOR,
         "Evaluates one ordered or unordered raw-payload f64 predicate.",
@@ -732,7 +809,7 @@ def _classify(opcode: int, width: int) -> Instruction:
                 FLOAT_CLASSIFY_SELECTOR,
             ),
         ),
-        semantics=None,
+        semantics=FloatClassifySemantics(width),
         behavior=(
             "Tests raw exponent and significand bits for NaN, infinity, or finite "
             "without performing floating arithmetic."
@@ -776,7 +853,7 @@ def _clamp(opcode: int, width: int) -> Instruction:
             ),
             _padding(U16),
         ),
-        semantics=None,
+        semantics=FloatClampSemantics(width),
         behavior=(
             "Ordered mode applies two ordered comparisons and selects, preserving a "
             "NaN value bit-for-bit and ignoring a NaN bound. Number mode composes "
@@ -826,7 +903,7 @@ def _math_unary(opcode: int, width: int) -> Instruction:
                 selector,
             ),
         ),
-        semantics=None,
+        semantics=FloatMathSemantics(width),
         behavior=(
             "Evaluates the selector's frozen mapping under the family floating "
             "profile. Approximate f32 leaves have selector-specific denormal and NaN "
@@ -866,7 +943,7 @@ def _fma(opcode: int, width: int) -> Instruction:
             _value("c_v8", FieldRole.OPERAND, "Addend C payload."),
             _padding(element_count=3),
         ),
-        semantics=None,
+        semantics=FloatFmaSemantics(width),
         behavior=(
             "Computes infinitely precise a*b+c and rounds once to selected width."
         ),

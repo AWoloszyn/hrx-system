@@ -593,6 +593,41 @@ TEST_F(SourceMemoryPlanTest, DynamicDenseLoadFactorsScaledViewBase) {
   EXPECT_EQ(plan.dynamic_terms[0].byte_shift, 2u);
 }
 
+TEST_F(SourceMemoryPlanTest, SubtractedViewBaseKeepsSignedByteTerms) {
+  loom_value_id_t buffer = DefineBufferArg();
+  loom_value_id_t offset = DefineOffsetArg();
+  loom_value_id_t end = loom_index_constant_result(BuildOffsetConstant(64));
+  loom_op_t* base_op = nullptr;
+  IREE_ASSERT_OK(loom_index_sub_build(&builder_, end, offset,
+                                      loom_type_scalar(LOOM_SCALAR_TYPE_OFFSET),
+                                      LOOM_LOCATION_UNKNOWN, &base_op));
+  loom_op_t* view_op = nullptr;
+  IREE_ASSERT_OK(loom_buffer_view_build(
+      &builder_, buffer, loom_index_sub_result(base_op),
+      ViewType1D(LOOM_SCALAR_TYPE_I32, 1, BuildDenseLayout()),
+      LOOM_LOCATION_UNKNOWN, &view_op));
+  int64_t indices[] = {0};
+  loom_op_t* load_op = nullptr;
+  IREE_ASSERT_OK(loom_view_load_build(
+      &builder_, 0, loom_buffer_view_result(view_op), nullptr, 0, indices,
+      IREE_ARRAYSIZE(indices), 0, 0, loom_type_scalar(LOOM_SCALAR_TYPE_I32),
+      LOOM_LOCATION_UNKNOWN, &load_op));
+
+  loom_value_fact_table_t facts = {};
+  ComputeFacts(&facts);
+  loom_low_source_memory_access_plan_t plan = {};
+  loom_low_source_memory_access_diagnostic_t diagnostic = {};
+  ASSERT_TRUE(BuildPlan(&facts, load_op, &plan, &diagnostic));
+  EXPECT_EQ(plan.root_value_id, buffer);
+  EXPECT_EQ(plan.static_byte_offset, 64);
+  EXPECT_EQ(plan.dynamic_view_base_value_id, loom_index_sub_result(base_op));
+  ASSERT_EQ(plan.dynamic_term_count, 1u);
+  EXPECT_EQ(plan.dynamic_terms[0].index, offset);
+  EXPECT_EQ(plan.dynamic_terms[0].byte_stride, -1);
+  EXPECT_EQ(plan.dynamic_terms[0].byte_shift,
+            LOOM_LOW_SOURCE_MEMORY_ACCESS_BYTE_SHIFT_NONE);
+}
+
 TEST_F(SourceMemoryPlanTest,
        DynamicDenseLoadPreservesConstrainedAffineViewBaseWithStaticSuffix) {
   loom_value_id_t buffer = DefineBufferArg();

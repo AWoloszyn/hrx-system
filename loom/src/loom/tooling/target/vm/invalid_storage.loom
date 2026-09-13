@@ -1,0 +1,17 @@
+vm.target<core> @vm
+
+low.func.def public target<vm.core>(@vm) abi(vm_function) @oversized() asm {
+  %storage = storage {byte_alignment = 8, byte_length = 65536} : low.storage<stack>
+  return
+}
+
+low.func.def public target<vm.core>(@vm) abi(vm_function) @short(%value: reg<vm.value : i32>) {
+  %storage = low.storage.reserve {byte_alignment = 4, byte_length = 4} : low.storage<stack>
+  low.spill %value, %storage : reg<vm.value : i32>, low.storage<stack>
+  low.return
+}
+
+low.func.def public target<vm.core>(@vm) abi(vm_function) @wrong_space() asm {
+  %storage = storage {byte_alignment = 8, byte_length = 8} : low.storage<workgroup>
+  return
+}

@@ -1,0 +1,141 @@
+// Only one source element exists. A dynamic mask selects the first load while
+// the absent second element always comes from the passthrough value.
+func.def public @masked_tail_load(%active: i1, %value: i32, %old: i32) -> (i32, i32) {
+  %length = index.constant 4 : offset
+  %base = index.constant 0 : offset
+  %storage = buffer.alloca<private> align(4) %length : buffer
+  %view = buffer.view %storage[%base] : buffer -> view<1xi32>
+  view.store %value, %view[0] : i32, view<1xi32>
+  %inactive = scalar.constant false : i1
+  %mask = vector.from_elements %active, %inactive : vector<2xi1>
+  %passthrough = vector.splat %old : vector<2xi32>
+  %loaded = vector.load.mask %view[0], %mask, %passthrough : view<1xi32>, vector<2xi1>, vector<2xi32>
+  %first = vector.extract %loaded[0] : vector<2xi32> -> i32
+  %second = vector.extract %loaded[1] : vector<2xi32> -> i32
+  func.return %first, %second : i32, i32
+}
+
+check.case @masked_tail_load_active {
+  %active = check.literal value(true) : i1
+  %value = check.param.choice values([-7, 0, 23]) : i32
+  %old = check.param.choice values([55, 99]) : i32
+  %first, %second = func.call @masked_tail_load(%active, %value, %old) : (i1, i32, i32) -> (i32, i32)
+  check.expect.equal actual(%first) expected(%value) : i32
+  check.expect.equal actual(%second) expected(%old) : i32
+  check.return
+}
+
+check.case @masked_tail_load_inactive {
+  %active = check.literal value(false) : i1
+  %value = check.param.choice values([-7, 0, 23]) : i32
+  %old = check.param.choice values([55, 99]) : i32
+  %first, %second = func.call @masked_tail_load(%active, %value, %old) : (i1, i32, i32) -> (i32, i32)
+  check.expect.equal actual(%first) expected(%old) : i32
+  check.expect.equal actual(%second) expected(%old) : i32
+  check.return
+}
+
+// The target view ends before the adjacent canary. Inactive lanes neither
+// write past that view nor change the initialized first element.
+func.def public @masked_tail_store(%active: i1, %value: i32) -> (i32, i32) {
+  %length = index.constant 8 : offset
+  %base = index.constant 0 : offset
+  %storage = buffer.alloca<private> align(4) %length : buffer
+  %all = buffer.view %storage[%base] : buffer -> view<2xi32>
+  %target = buffer.view %storage[%base] : buffer -> view<1xi32>
+  %initial = scalar.constant 19 : i32
+  %canary = scalar.constant 91 : i32
+  view.store %initial, %all[0] : i32, view<2xi32>
+  view.store %canary, %all[1] : i32, view<2xi32>
+  %inactive = scalar.constant false : i1
+  %mask = vector.from_elements %active, %inactive : vector<2xi1>
+  %values = vector.splat %value : vector<2xi32>
+  vector.store.mask %values, %target[0], %mask : vector<2xi32>, view<1xi32>, vector<2xi1>
+  %first = view.load %all[0] : view<2xi32> -> i32
+  %second = view.load %all[1] : view<2xi32> -> i32
+  func.return %first, %second : i32, i32
+}
+
+check.case @masked_tail_store_active {
+  %active = check.literal value(true) : i1
+  %value = check.param.choice values([-7, 0, 23]) : i32
+  %first, %second = func.call @masked_tail_store(%active, %value) : (i1, i32) -> (i32, i32)
+  %canary = check.literal value(91) : i32
+  check.expect.equal actual(%first) expected(%value) : i32
+  check.expect.equal actual(%second) expected(%canary) : i32
+  check.return
+}
+
+check.case @masked_tail_store_inactive {
+  %active = check.literal value(false) : i1
+  %value = check.param.choice values([-7, 0, 23]) : i32
+  %first, %second = func.call @masked_tail_store(%active, %value) : (i1, i32) -> (i32, i32)
+  %initial = check.literal value(19) : i32
+  %canary = check.literal value(91) : i32
+  check.expect.equal actual(%first) expected(%initial) : i32
+  check.expect.equal actual(%second) expected(%canary) : i32
+  check.return
+}
+
+// No element exists at this origin, but an all-false mask performs no access.
+func.def public @masked_empty_view(%value: i32) -> (i32, i32) {
+  %length = index.constant 0 : offset
+  %storage = buffer.alloca<private> align(4) %length : buffer
+  %view = buffer.view %storage[%length] : buffer -> view<0xi32>
+  %mask = vector.constant false : vector<2xi1>
+  %values = vector.splat %value : vector<2xi32>
+  vector.store.mask %values, %view[7], %mask : vector<2xi32>, view<0xi32>, vector<2xi1>
+  %loaded = vector.load.mask %view[7], %mask, %values : view<0xi32>, vector<2xi1>, vector<2xi32>
+  %first = vector.extract %loaded[0] : vector<2xi32> -> i32
+  %second = vector.extract %loaded[1] : vector<2xi32> -> i32
+  func.return %first, %second : i32, i32
+}
+
+check.case @masked_empty_view_no_access {
+  %value = check.param.choice values([-7, 0, 23]) : i32
+  %first, %second = func.call @masked_empty_view(%value) : (i32) -> (i32, i32)
+  check.expect.equal actual(%first) expected(%value) : i32
+  check.expect.equal actual(%second) expected(%value) : i32
+  check.return
+}
+
+// Two active lanes of a four-lane vector consume two compact memory elements.
+// Checking the expanded lanes separately prevents inverse errors in expansion
+// and compression from canceling each other in the round trip.
+func.def public @compact_masked_memory(%left: i32, %right: i32, %old: i32) -> (i32, i32, i32, i32, i32, i32) {
+  %length = index.constant 8 : offset
+  %base = index.constant 0 : offset
+  %input = buffer.alloca<private> align(4) %length : buffer
+  %output = buffer.alloca<private> align(4) %length : buffer
+  %source = buffer.view %input[%base] : buffer -> view<2xi32>
+  %target = buffer.view %output[%base] : buffer -> view<2xi32>
+  view.store %left, %source[0] : i32, view<2xi32>
+  view.store %right, %source[1] : i32, view<2xi32>
+  %active = scalar.constant true : i1
+  %inactive = scalar.constant false : i1
+  %mask = vector.from_elements %inactive, %active, %inactive, %active : vector<4xi1>
+  %passthrough = vector.splat %old : vector<4xi32>
+  %loaded = vector.load.expand %source[0], %mask, %passthrough : view<2xi32>, vector<4xi1>, vector<4xi32>
+  %lane0 = vector.extract %loaded[0] : vector<4xi32> -> i32
+  %lane1 = vector.extract %loaded[1] : vector<4xi32> -> i32
+  %lane2 = vector.extract %loaded[2] : vector<4xi32> -> i32
+  %lane3 = vector.extract %loaded[3] : vector<4xi32> -> i32
+  vector.store.compress %loaded, %target[0], %mask : vector<4xi32>, view<2xi32>, vector<4xi1>
+  %first = view.load %target[0] : view<2xi32> -> i32
+  %second = view.load %target[1] : view<2xi32> -> i32
+  func.return %lane0, %lane1, %lane2, %lane3, %first, %second : i32, i32, i32, i32, i32, i32
+}
+
+check.case @compact_masked_memory_lane_order {
+  %left = check.param.choice values([-7, 0, 23]) : i32
+  %right = check.param.choice values([55, 99]) : i32
+  %old = check.literal value(123) : i32
+  %lane0, %lane1, %lane2, %lane3, %first, %second = func.call @compact_masked_memory(%left, %right, %old) : (i32, i32, i32) -> (i32, i32, i32, i32, i32, i32)
+  check.expect.equal actual(%lane0) expected(%old) : i32
+  check.expect.equal actual(%lane1) expected(%left) : i32
+  check.expect.equal actual(%lane2) expected(%old) : i32
+  check.expect.equal actual(%lane3) expected(%right) : i32
+  check.expect.equal actual(%first) expected(%left) : i32
+  check.expect.equal actual(%second) expected(%right) : i32
+  check.return
+}

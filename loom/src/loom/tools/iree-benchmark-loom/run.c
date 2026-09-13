@@ -395,6 +395,12 @@ iree_status_t iree_benchmark_loom_run_file(
     }
     loom_testbench_case_execution_options_t execution_options = {0};
     loom_testbench_case_execution_options_initialize(&execution_options);
+    const loom_testbench_function_call_provider_callback_t function_calls =
+        options->configuration->function_call_provider;
+    if (iree_status_is_ok(status) && function_calls.fn) {
+      execution_options.invocation.function_call =
+          function_calls.fn(function_calls.user_data, &module_plan);
+    }
     execution_options.materializer.host_allocator = allocator;
     execution_options.materializer.open_read_file =
         (loom_testbench_file_open_callback_t){

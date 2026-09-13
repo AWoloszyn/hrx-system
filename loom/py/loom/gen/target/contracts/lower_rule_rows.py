@@ -627,9 +627,10 @@ def attr_copy_row(
     if row.kind in (
         LowerAttrCopyKind.DIRECT,
         LowerAttrCopyKind.ENUM_ORDINAL,
+        LowerAttrCopyKind.I64_LOG2,
         LowerAttrCopyKind.I64_ARRAY_ELEMENT,
         LowerAttrCopyKind.I64_ARRAY_PACK_ELEMENTS,
-        LowerAttrCopyKind.I64_ATTRS_PACK_CONSECUTIVE,
+        LowerAttrCopyKind.ATTRS_PACK_CONSECUTIVE,
         LowerAttrCopyKind.I64_ARRAY_LANE_BYTE,
         LowerAttrCopyKind.I64_LOW_BIT_MASK,
         LowerAttrCopyKind.I64_SHIFTED_LOW_BIT_MASK,
@@ -662,7 +663,7 @@ def attr_copy_row(
         )
     if row.kind in (
         LowerAttrCopyKind.I64_ARRAY_PACK_ELEMENTS,
-        LowerAttrCopyKind.I64_ATTRS_PACK_CONSECUTIVE,
+        LowerAttrCopyKind.ATTRS_PACK_CONSECUTIVE,
         LowerAttrCopyKind.I64_ARRAY_LANE_BYTE,
     ):
         _append_field(
@@ -673,7 +674,7 @@ def attr_copy_row(
         )
     if row.kind in (
         LowerAttrCopyKind.I64_ARRAY_PACK_ELEMENTS,
-        LowerAttrCopyKind.I64_ATTRS_PACK_CONSECUTIVE,
+        LowerAttrCopyKind.ATTRS_PACK_CONSECUTIVE,
     ):
         _append_field(
             fields,
