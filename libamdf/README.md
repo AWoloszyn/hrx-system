@@ -21,10 +21,12 @@ An explicit provider instance owns the native platform state retained across
 calls and can enumerate fixed-stride summaries of independently selectable AMD
 execution endpoints. Opening an endpoint caches immutable identity and available
 family-specific qualification without creating a device, address space,
-paging queue, allocation, executable, or hardware queue. The Windows provider
-implements this query-only layer with public KMT adapter APIs. Builds without a
-native platform provider expose the public headers but do not produce provider
-artifacts.
+paging queue, allocation, executable, or hardware queue, and without waking an
+idle device. This permits host metadata storage, OS metadata handles and bounded
+metadata queries; it does not imply zero system calls. If family qualification
+fails, core endpoint identity remains queryable, but the failed family profile
+is not published as a partial record. Builds without a native platform provider
+expose the public headers but do not produce provider artifacts.
 
 On Linux, endpoint qualification reads cached sysfs identity, topology and heap
 metadata without opening a render, KFD or accelerator execution file. Expected
@@ -35,14 +37,18 @@ the actual memory limits on the retained connection before VM initialization.
 Live scope queries expose those limits without changing the endpoint snapshot.
 
 On x86-64 Windows, the GPU extension qualifies an already opened KMT adapter
-through a private `amdf_wkmi_bridge.dll` runtime companion. The bridge contains
-the pinned binary-only WKMI C++ and CRT ABI behind a versioned C table, retains
-no adapter state, and unloads before endpoint open returns. GPU information
-queries copy the cached exact GFX identity, ASIC revision, active compute
-geometry, LDS limit, and XCC topology without loading a library or entering the
-driver. GPU endpoints advertise kernel-published PM4 and SDMA families only
-when the loaded KMT and WKMI surfaces provide hardware-scheduled queues for
-the selected engine.
+through adapter metadata queries and a private `amdf_wkmi_bridge.dll` runtime
+companion. KMT adapter handles and the graphics kernel's process bookkeeping
+are distinct from the driver process context and GPU address domain acquired
+by explicit device creation. The bridge contains the pinned binary-only WKMI
+C++ and CRT ABI behind a versioned C table. Successful qualification releases
+the temporary WKMI adapter state and unloads the bridge before endpoint open
+returns. GPU information queries copy the cached exact GFX identity, ASIC
+revision, active compute geometry, LDS limit, and XCC topology without loading
+a library or entering the driver. Expected memory profiles are qualified as a
+complete set at the same boundary. GPU endpoints advertise kernel-published
+PM4 and SDMA families only when the loaded KMT and WKMI surfaces provide
+hardware-scheduled queues for the selected engine.
 
 Each opened endpoint also reports a dense immutable set of native queue
 families. A family identifies its accepted command representation (PM4, SDMA,
