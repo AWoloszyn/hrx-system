@@ -354,7 +354,30 @@ static iree_status_t loom_vector_to_scalar_lower_scalar_extract(
       &state, source, source_type, source_indices, &materialized,
       &replacement));
   if (loom_pass_has_error_diagnostics(pass)) return iree_ok_status();
-  if (!materialized) return iree_ok_status();
+  if (!materialized) {
+    loom_op_t* load =
+        loom_vector_to_scalar_value_def_op(rewriter->module, source);
+    if (!load || !loom_vector_load_isa(load) ||
+        !loom_type_is_all_static(source_type)) {
+      return iree_ok_status();
+    }
+    // A read that cannot move to this extraction still defines a snapshot.
+    // Expand it at its original position, then select its captured SSA lanes.
+    bool rewritten = false;
+    IREE_RETURN_IF_ERROR(loom_vector_descriptor_to_scalar_rewrite_op(
+        pass, rewriter, load, &rewritten));
+    if (!rewritten || loom_pass_has_error_diagnostics(pass)) {
+      return iree_ok_status();
+    }
+    loom_builder_set_before(&rewriter->builder, op);
+    source = loom_vector_extract_source(op);
+    IREE_RETURN_IF_ERROR(loom_vector_to_scalar_try_materialize_def_lane(
+        &state, source, source_type, source_indices, &materialized,
+        &replacement));
+    if (!materialized || loom_pass_has_error_diagnostics(pass)) {
+      return iree_ok_status();
+    }
+  }
   return loom_vector_to_scalar_replace_one_result(&state, replacement);
 }
 

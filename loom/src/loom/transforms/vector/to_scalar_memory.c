@@ -489,46 +489,62 @@ static loom_value_id_t loom_vector_to_scalar_store_offsets(
   return loom_memory_access_offsets(loom_vector_to_scalar_memory_access(state));
 }
 
-static iree_status_t loom_vector_to_scalar_emit_view_store_lane(
+typedef struct loom_vector_to_scalar_store_lane_t {
+  // Scalar payload consumed by this lane's store.
+  loom_value_id_t value;
+  // Captured mask lane, or invalid for an unconditional store.
+  loom_value_id_t condition;
+  // Destination coordinates, including captured scatter offsets.
+  loom_vector_to_scalar_view_indices_t indices;
+} loom_vector_to_scalar_store_lane_t;
+
+static iree_status_t loom_vector_to_scalar_prepare_store_lane(
     loom_vector_to_scalar_state_t* state,
-    loom_vector_to_scalar_index_list_t lane_indices) {
-  loom_value_id_t lane = LOOM_VALUE_ID_INVALID;
+    loom_vector_to_scalar_index_list_t lane_indices,
+    loom_vector_to_scalar_store_lane_t* out_lane) {
+  out_lane->condition = LOOM_VALUE_ID_INVALID;
+  if (loom_vector_to_scalar_store_is_masked(state)) {
+    IREE_RETURN_IF_ERROR(loom_vector_to_scalar_materialize_lane(
+        state, loom_vector_to_scalar_store_mask(state), lane_indices,
+        &out_lane->condition));
+  }
   IREE_RETURN_IF_ERROR(loom_vector_to_scalar_materialize_lane(
-      state, loom_vector_to_scalar_store_value(state), lane_indices, &lane));
-  loom_vector_to_scalar_view_indices_t view_indices = {0};
-  IREE_RETURN_IF_ERROR(loom_vector_to_scalar_build_view_indices(
+      state, loom_vector_to_scalar_store_value(state), lane_indices,
+      &out_lane->value));
+  return loom_vector_to_scalar_build_view_indices(
       state, lane_indices, !loom_vector_to_scalar_store_is_scatter(state),
       loom_vector_to_scalar_store_offsets(state),
       /*add_last_axis_offset=*/false, (loom_vector_to_scalar_index_term_t){0},
-      &view_indices));
+      &out_lane->indices);
+}
+
+// Emits one top-level store or conditional; nested regions contain only the
+// scalar write and their yields. Static expansion anchors later reads before
+// this top-level operation while appending writes in lane order.
+static iree_status_t loom_vector_to_scalar_emit_prepared_store_lane(
+    loom_vector_to_scalar_state_t* state,
+    const loom_vector_to_scalar_store_lane_t* lane) {
+  loom_op_t* if_op = NULL;
+  loom_builder_ip_t saved;
+  if (lane->condition != LOOM_VALUE_ID_INVALID) {
+    IREE_RETURN_IF_ERROR(loom_scf_if_build(
+        &state->rewriter->builder, LOOM_SCF_IF_BUILD_FLAG_HAS_ELSE_REGION,
+        lane->condition, NULL, 0, NULL, 0, state->location, &if_op));
+    saved = loom_builder_enter_region(&state->rewriter->builder, if_op,
+                                      loom_scf_if_then_region(if_op));
+  }
+
   loom_op_t* store_op = NULL;
   loom_vector_memory_cache_policy_t cache_policy =
       loom_vector_to_scalar_memory_cache_policy(state);
-  return loom_view_store_build(
-      &state->rewriter->builder, cache_policy.build_flags, lane,
-      loom_vector_to_scalar_memory_view(state), view_indices.dynamic_indices,
-      view_indices.dynamic_index_count, view_indices.static_indices,
-      view_indices.static_index_count, cache_policy.cache_scope,
-      cache_policy.cache_temporal, state->location, &store_op);
-}
+  IREE_RETURN_IF_ERROR(loom_view_store_build(
+      &state->rewriter->builder, cache_policy.build_flags, lane->value,
+      loom_vector_to_scalar_memory_view(state), lane->indices.dynamic_indices,
+      lane->indices.dynamic_index_count, lane->indices.static_indices,
+      lane->indices.static_index_count, cache_policy.cache_scope,
+      cache_policy.cache_temporal, state->location, &store_op));
+  if (!if_op) return iree_ok_status();
 
-static iree_status_t loom_vector_to_scalar_emit_masked_view_store_lane(
-    loom_vector_to_scalar_state_t* state,
-    loom_vector_to_scalar_index_list_t lane_indices) {
-  loom_value_id_t condition = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_vector_to_scalar_materialize_lane(
-      state, loom_vector_to_scalar_store_mask(state), lane_indices,
-      &condition));
-
-  loom_op_t* if_op = NULL;
-  IREE_RETURN_IF_ERROR(loom_scf_if_build(
-      &state->rewriter->builder, LOOM_SCF_IF_BUILD_FLAG_HAS_ELSE_REGION,
-      condition, NULL, 0, NULL, 0, state->location, &if_op));
-
-  loom_builder_ip_t saved = loom_builder_enter_region(
-      &state->rewriter->builder, if_op, loom_scf_if_then_region(if_op));
-  IREE_RETURN_IF_ERROR(
-      loom_vector_to_scalar_emit_view_store_lane(state, lane_indices));
   loom_op_t* then_yield = NULL;
   IREE_RETURN_IF_ERROR(loom_scf_yield_build(&state->rewriter->builder, NULL, 0,
                                             state->location, &then_yield));
@@ -546,10 +562,10 @@ static iree_status_t loom_vector_to_scalar_emit_masked_view_store_lane(
 static iree_status_t loom_vector_to_scalar_emit_store_lane(
     loom_vector_to_scalar_state_t* state,
     loom_vector_to_scalar_index_list_t indices) {
-  if (loom_vector_to_scalar_store_is_masked(state)) {
-    return loom_vector_to_scalar_emit_masked_view_store_lane(state, indices);
-  }
-  return loom_vector_to_scalar_emit_view_store_lane(state, indices);
+  loom_vector_to_scalar_store_lane_t lane;
+  IREE_RETURN_IF_ERROR(
+      loom_vector_to_scalar_prepare_store_lane(state, indices, &lane));
+  return loom_vector_to_scalar_emit_prepared_store_lane(state, &lane);
 }
 
 static iree_status_t loom_vector_to_scalar_emit_store_compress_lane(
@@ -613,6 +629,11 @@ static iree_status_t loom_vector_to_scalar_lower_static_memory_store(
     IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
         state->rewriter->arena, rank, sizeof(int64_t), (void**)&indices));
   }
+  // A vector store consumes SSA snapshots, including its mask and offsets.
+  // Insert operand materializations before the first emitted write, and append
+  // writes before the original op. The two positions keep every read ahead of
+  // every write without retaining a separate array of prepared lanes.
+  loom_op_t* first_store = state->op;
   for (uint16_t ordinal = 0; ordinal < element_count; ++ordinal) {
     loom_vector_to_scalar_indices_from_ordinal(state->vector_type,
                                                (int64_t)ordinal, indices);
@@ -620,8 +641,14 @@ static iree_status_t loom_vector_to_scalar_lower_static_memory_store(
         .static_indices = indices,
         .rank = rank,
     };
+    loom_builder_set_before(&state->rewriter->builder, first_store);
+    loom_vector_to_scalar_store_lane_t lane;
     IREE_RETURN_IF_ERROR(
-        loom_vector_to_scalar_emit_store_lane(state, index_list));
+        loom_vector_to_scalar_prepare_store_lane(state, index_list, &lane));
+    loom_builder_set_before(&state->rewriter->builder, state->op);
+    IREE_RETURN_IF_ERROR(
+        loom_vector_to_scalar_emit_prepared_store_lane(state, &lane));
+    if (ordinal == 0) first_store = state->op->prev_op;
   }
   return iree_ok_status();
 }
