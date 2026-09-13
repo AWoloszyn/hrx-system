@@ -96,12 +96,14 @@ static iree_status_t loom_vm_module_collect(
   iree_host_size_t ordinals_offset = 0;
   iree_host_size_t rodata_offset = 0;
   iree_host_size_t rodata_symbols_offset = 0;
+  // Pointer-bearing arrays precede the two-byte symbol and ordinal arrays so
+  // each field keeps its native alignment without inter-array padding.
   IREE_RETURN_IF_ERROR(IREE_STRUCT_LAYOUT(
       0, &storage_size,
       IREE_STRUCT_FIELD(module->symbols.count, loom_vm_module_function_t, NULL),
-      IREE_STRUCT_FIELD(module->symbols.count, uint16_t, &ordinals_offset),
       IREE_STRUCT_FIELD(module->symbols.count, const loom_op_t*,
                         &rodata_offset),
+      IREE_STRUCT_FIELD(module->symbols.count, uint16_t, &ordinals_offset),
       IREE_STRUCT_FIELD(module->symbols.count, loom_symbol_id_t,
                         &rodata_symbols_offset)));
   IREE_RETURN_IF_ERROR(iree_arena_allocate(request->scratch_arena, storage_size,
