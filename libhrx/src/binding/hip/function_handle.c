@@ -52,7 +52,8 @@ static void iree_hip_function_handle_record_retain(uintptr_t value) {
 
 static void iree_hip_function_handle_record_release(
     iree_hip_function_handle_record_t* record) {
-  if (!record || iree_atomic_ref_count_dec(&record->ref_count) != 1) return;
+  if (!record) return;
+  if (iree_atomic_ref_count_dec(&record->ref_count) != 1) return;
   iree_hal_streaming_module_release(record->module);
   iree_allocator_free(record->host_allocator, record);
 }
