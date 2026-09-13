@@ -160,6 +160,8 @@ TEST_F(XdnaMemoryTest, OwnsStableAddressAndExplicitHostMapping) {
                 device_, create_info.memory_profile_ordinal, &profile),
             AMDF_STATUS_OK);
   EXPECT_EQ(memory_info.address_kinds, profile.address_kinds);
+  ASSERT_GT(profile.device_address.address_bit_count, 0u);
+  ASSERT_LE(profile.device_address.address_bit_count, 64u);
   EXPECT_NE(memory_info.address_kinds &
                 (UINT64_C(1) << AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE),
             0u);
@@ -172,13 +174,10 @@ TEST_F(XdnaMemoryTest, OwnsStableAddressAndExplicitHostMapping) {
     if ((memory_info.address_kinds & (UINT64_C(1) << kind)) != 0) {
       ASSERT_EQ(status, AMDF_STATUS_OK);
       EXPECT_EQ(queried_address & (memory_info.alignment - 1), 0u);
-      if (profile.device_address.address_bit_count !=
-          AMDF_MEMORY_ADDRESS_BIT_COUNT_UNKNOWN) {
-        EXPECT_GE(queried_address, profile.device_address.minimum_address);
-        ASSERT_LE(queried_address, profile.device_address.maximum_address);
-        EXPECT_LE(memory_info.byte_length - 1,
-                  profile.device_address.maximum_address - queried_address);
-      }
+      EXPECT_GE(queried_address, profile.device_address.minimum_address);
+      ASSERT_LE(queried_address, profile.device_address.maximum_address);
+      EXPECT_LE(memory_info.byte_length - 1,
+                profile.device_address.maximum_address - queried_address);
       uint64_t repeated_address = 0;
       ASSERT_EQ(api_->memory_query_address(memory_, kind, &repeated_address),
                 AMDF_STATUS_OK);

@@ -132,29 +132,24 @@ static void amdf_memory_profile_assert_valid(
   (void)import_zero;
 
   if ((profile->supported_flags & AMDF_MEMORY_FLAG_DEVICE_ADDRESS) != 0) {
-    amdf_assert(profile->device_address.address_domain_ordinal !=
-                    AMDF_ADDRESS_DOMAIN_ORDINAL_NONE &&
-                profile->device_address.address_bit_count <= 64 &&
-                amdf_memory_is_power_of_two(
-                    profile->device_address.minimum_alignment) &&
-                "addressable profiles must report a domain and alignment");
-    if (profile->device_address.address_bit_count ==
-        AMDF_MEMORY_ADDRESS_BIT_COUNT_UNKNOWN) {
-      amdf_assert(profile->device_address.minimum_address == 0 &&
-                  profile->device_address.maximum_address == 0 &&
-                  "unknown address envelopes must leave numeric bounds zero");
-    } else {
-      const uint64_t address_width_maximum =
-          profile->device_address.address_bit_count == 64
-              ? UINT64_MAX
-              : (UINT64_C(1) << profile->device_address.address_bit_count) - 1;
-      (void)address_width_maximum;
-      amdf_assert(profile->device_address.minimum_address <=
-                      profile->device_address.maximum_address &&
-                  profile->device_address.maximum_address <=
-                      address_width_maximum &&
-                  "known address envelopes must fit their native width");
-    }
+    amdf_assert(
+        profile->device_address.address_domain_ordinal !=
+            AMDF_ADDRESS_DOMAIN_ORDINAL_NONE &&
+        profile->device_address.address_bit_count != 0 &&
+        profile->device_address.address_bit_count <= 64 &&
+        amdf_memory_is_power_of_two(
+            profile->device_address.minimum_alignment) &&
+        "addressable profiles must report a domain, width and alignment");
+    const uint64_t address_width_maximum =
+        profile->device_address.address_bit_count == 64
+            ? UINT64_MAX
+            : (UINT64_C(1) << profile->device_address.address_bit_count) - 1;
+    (void)address_width_maximum;
+    amdf_assert(profile->device_address.minimum_address <=
+                    profile->device_address.maximum_address &&
+                profile->device_address.maximum_address <=
+                    address_width_maximum &&
+                "address envelopes must fit their native width");
   } else {
     amdf_assert(
         profile->device_address.address_domain_ordinal ==
@@ -491,14 +486,11 @@ static void amdf_memory_assert_result(
     const uint64_t address = memory->addresses[kind];
     amdf_assert((address & (memory->info.alignment - 1)) == 0 &&
                 "every memory address must satisfy the achieved alignment");
-    if (profile->device_address.address_bit_count !=
-        AMDF_MEMORY_ADDRESS_BIT_COUNT_UNKNOWN) {
-      amdf_assert(address >= profile->device_address.minimum_address &&
-                  address <= profile->device_address.maximum_address &&
-                  memory->info.byte_length - 1 <=
-                      profile->device_address.maximum_address - address &&
-                  "every memory range must fit the selected numeric envelope");
-    }
+    amdf_assert(address >= profile->device_address.minimum_address &&
+                address <= profile->device_address.maximum_address &&
+                memory->info.byte_length - 1 <=
+                    profile->device_address.maximum_address - address &&
+                "every memory range must fit the selected numeric envelope");
   }
 }
 

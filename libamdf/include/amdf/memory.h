@@ -299,9 +299,6 @@ typedef struct amdf_external_memory_support_t {
 /// Indicates that a profile or attachment has no ordinary address domain.
 #define AMDF_ADDRESS_DOMAIN_ORDINAL_NONE UINT32_MAX
 
-/// Indicates that a provider cannot report a numeric device-address envelope.
-#define AMDF_MEMORY_ADDRESS_BIT_COUNT_UNKNOWN 0u
-
 /// Limits for one way of constructing a memory attachment.
 typedef struct amdf_memory_construction_capabilities_t {
   /// Maximum logical attachment length accepted by this operation.
@@ -326,12 +323,12 @@ typedef struct amdf_memory_construction_capabilities_t {
 typedef struct amdf_memory_address_capabilities_t {
   /// Device-local ordinary address-domain ordinal.
   uint32_t address_domain_ordinal;
-  /// Maximum significant width across produced address kinds, or
-  /// `AMDF_MEMORY_ADDRESS_BIT_COUNT_UNKNOWN` when the provider cannot query it.
+  /// Maximum significant width across produced address kinds. Nonzero for
+  /// addressable profiles; zero when the profile produces no device address.
   uint32_t address_bit_count;
-  /// Inclusive lower bound when `address_bit_count` is known, otherwise zero.
+  /// Inclusive lower bound, or zero for profiles without device addresses.
   uint64_t minimum_address;
-  /// Inclusive upper bound when `address_bit_count` is known, otherwise zero.
+  /// Inclusive upper bound, or zero for profiles without device addresses.
   uint64_t maximum_address;
   /// Minimum power-of-two alignment common to all produced address kinds.
   uint64_t minimum_alignment;

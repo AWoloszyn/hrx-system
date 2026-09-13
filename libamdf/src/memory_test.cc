@@ -708,31 +708,6 @@ TEST(MemoryExternalTest, CompletesProfileExportImportPairAndReverseTeardown) {
   EXPECT_EQ(transport_release.count, 1u);
 }
 
-TEST(MemoryExternalTest, AcceptsUnknownNumericDeviceAddressEnvelope) {
-  FakeDevice device;
-  InitializeFakeDevice(31, &device);
-  device.profile.device_address.address_bit_count =
-      AMDF_MEMORY_ADDRESS_BIT_COUNT_UNKNOWN;
-  device.profile.device_address.minimum_address = 0;
-  device.profile.device_address.maximum_address = 0;
-
-  amdf_memory_profile_t profile = {};
-  profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
-  profile.structure_size = sizeof(profile);
-  ASSERT_EQ(amdf_device_query_memory_profile(&device.base, 0, &profile),
-            AMDF_STATUS_OK);
-  EXPECT_EQ(profile.device_address.address_bit_count,
-            AMDF_MEMORY_ADDRESS_BIT_COUNT_UNKNOWN);
-
-  amdf_memory_t* memory = nullptr;
-  const amdf_memory_create_info_t create_info = MakeMemoryCreateInfo();
-  ASSERT_EQ(amdf_memory_create(&device.base, &create_info, &memory),
-            AMDF_STATUS_OK);
-  ASSERT_NE(memory, nullptr);
-  EXPECT_EQ(memory->addresses[AMDF_MEMORY_ADDRESS_GPU], UINT64_C(0x100000));
-  EXPECT_EQ(amdf_memory_destroy(memory), AMDF_STATUS_OK);
-}
-
 TEST(MemoryExternalTest, ImportFailureNeverConsumesInputOrPublishesOutput) {
   FakeDevice device;
   InitializeFakeDevice(41, &device);
