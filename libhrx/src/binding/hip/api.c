@@ -14601,7 +14601,9 @@ static hipError_t iree_hip_module_launch_kernel(
   iree_hal_streaming_symbol_t* symbol = NULL;
   if (result == hipSuccess) {
     result = iree_hip_resolve_function_symbol(context, f, &symbol, &module);
-    if (result != hipSuccess) result = hipErrorInvalidHandle;
+    if (result != hipSuccess && result != hipErrorInvalidDevice) {
+      result = hipErrorInvalidDeviceFunction;
+    }
   }
   if (result == hipSuccess &&
       (!symbol->module || symbol->module->context != context)) {
