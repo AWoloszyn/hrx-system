@@ -514,10 +514,24 @@ static iree_status_t loom_compile_request_select_format(
       *out_format = IREE_SV("loom-command");
       out_producer->kind = LOOM_COMPILE_PRODUCER_COMMAND;
       return iree_ok_status();
-    case LOOM_COMPILE_PRODUCT_MODULE:
+    case LOOM_COMPILE_PRODUCT_MODULE: {
+      const loom_target_provider_t* provider =
+          target_fact_type != NULL
+              ? loom_target_environment_lookup_fact_provider(target_environment,
+                                                             target_fact_type)
+              : NULL;
+      if (provider != NULL && provider->canonical_module_emitter != NULL) {
+        out_producer->kind = LOOM_COMPILE_PRODUCER_TARGET_EMITTER;
+        out_producer->value.target_emitter = provider->canonical_module_emitter;
+        *out_format =
+            provider->canonical_module_emitter->public_artifact_format;
+        return iree_ok_status();
+      }
       return iree_make_status(
           IREE_STATUS_INVALID_ARGUMENT,
-          "module product has no canonical format; pass --format");
+          "module product requires --format or a --target with a canonical "
+          "module format");
+    }
   }
   return iree_make_status(IREE_STATUS_INTERNAL,
                           "compile product selection is invalid");
@@ -546,7 +560,7 @@ iree_status_t loom_compile_request_resolve(
   IREE_RETURN_IF_ERROR(loom_compile_request_select_explicit_target(
       options->target, target_environment, &explicit_target));
   if (explicit_target.target_profile != NULL &&
-      root_summary.product != LOOM_COMPILE_PRODUCT_KERNEL) {
+      root_summary.product == LOOM_COMPILE_PRODUCT_COMMAND) {
     const iree_string_view_t product_name =
         loom_compile_product_name(root_summary.product);
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,

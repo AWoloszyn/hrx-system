@@ -88,6 +88,7 @@ static const loom_target_provider_t kTestProvider = {
     /*.low_asm_diagnostic_provider_list=*/{},
     /*.low_verify_provider_list=*/{},
     /*.emitter_list=*/{},
+    /*.canonical_module_emitter=*/nullptr,
     /*.pass_registry=*/nullptr,
     /*.contribute_pipeline=*/nullptr,
 };

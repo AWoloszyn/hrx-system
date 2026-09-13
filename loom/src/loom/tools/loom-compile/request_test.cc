@@ -330,7 +330,7 @@ TEST_F(CompileRequestTest, RejectsUnknownProduct) {
                                    &environment_, &request));
 }
 
-TEST_F(CompileRequestTest, ModuleRequiresExplicitFormat) {
+TEST_F(CompileRequestTest, ModuleFormatSelection) {
   ModulePtr module = Parse(R"(
 func.def public @Function123() {
   func.return
@@ -350,6 +350,23 @@ func.def public @Function123() {
   EXPECT_EQ(request.product, LOOM_COMPILE_PRODUCT_MODULE);
   EXPECT_EQ(request.producer.kind, LOOM_COMPILE_PRODUCER_TARGET_EMITTER);
   EXPECT_EQ(request.producer.value.target_emitter, &kDiagnosticEmitter);
+
+  options.format = iree_string_view_empty();
+  options.target = IREE_SV("TargetFamily123:Target456");
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      loom_compile_request_resolve(module.get(), &options, &registry,
+                                   &environment_, &request));
+
+  target_provider_.canonical_module_emitter = &kDiagnosticEmitter;
+  IREE_ASSERT_OK(loom_compile_request_resolve(module.get(), &options, &registry,
+                                              &environment_, &request));
+  EXPECT_EQ(request.product, LOOM_COMPILE_PRODUCT_MODULE);
+  EXPECT_EQ(request.producer.kind, LOOM_COMPILE_PRODUCER_TARGET_EMITTER);
+  EXPECT_EQ(request.producer.value.target_emitter, &kDiagnosticEmitter);
+  EXPECT_EQ(request.explicit_target.target_profile, &kTargetProfile);
+  EXPECT_TRUE(
+      iree_string_view_equal(request.format, IREE_SV("DiagnosticFormat123")));
 }
 
 TEST_F(CompileRequestTest, ExplicitTargetSpecializesUntargetedKernel) {

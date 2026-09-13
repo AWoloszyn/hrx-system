@@ -44,6 +44,15 @@ static iree_status_t loom_vm_select_profile(
   return iree_ok_status();
 }
 
+static iree_status_t loom_vm_materialize_definition(
+    loom_builder_t* builder, const loom_resolved_target_t* resolved_target,
+    loom_symbol_ref_t symbol, loom_location_id_t location) {
+  loom_op_t* target_op = NULL;
+  return loom_vm_target_build(
+      builder, (loom_vm_target_kind_t)resolved_target->facts->selector, symbol,
+      location, &target_op);
+}
+
 static void loom_vm_descriptor_registry_initialize(
     loom_target_low_descriptor_registry_t* out_registry) {
   static const loom_low_descriptor_set_provider_t kProviders[] = {
@@ -67,9 +76,11 @@ static const loom_target_emitter_t* const loom_vm_emitters[] = {
 
 const loom_target_provider_t loom_vm_target_provider = {
     .profile_type = &kProfileType,
+    .materialize_definition = loom_vm_materialize_definition,
     .select_profile = loom_vm_select_profile,
     .emitter_list = {.values = loom_vm_emitters,
                      .count = IREE_ARRAYSIZE(loom_vm_emitters)},
+    .canonical_module_emitter = &loom_vm_emitter,
     .select_low_call_policy = loom_target_select_low_call_policy_direct,
     .register_context = loom_vm_ops_register_dialect,
     .initialize_math_policy_registry = loom_vm_math_policy_registry_initialize,

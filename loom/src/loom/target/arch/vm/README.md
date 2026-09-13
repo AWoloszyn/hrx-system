@@ -8,9 +8,7 @@ machine description and bytecode emission, not a separate compiler pipeline.
 ## Compile a function
 
 ```mlir
-vm.target<core> @vm
-
-func.def public target(@vm) @arithmetic(%a: i32, %b: i32, %c: i32) -> (i32) {
+func.def public @arithmetic(%a: i32, %b: i32, %c: i32) -> (i32) {
   %sum = scalar.addi %a, %b : i32
   %scaled = scalar.muli %sum, %c : i32
   func.return %scaled : i32
@@ -20,15 +18,16 @@ func.def public target(@vm) @arithmetic(%a: i32, %b: i32, %c: i32) -> (i32) {
 With a VM-enabled compiler, save this as `arithmetic.loom` and run:
 
 ```sh
-loom-compile arithmetic.loom --format=vm --output=arithmetic.vm
+loom-compile arithmetic.loom --target=vm:core --output=arithmetic.vm
 vm-dis arithmetic.vm
 ```
 
-`@vm` is an ordinary user-chosen target symbol. `core` selects the VM profile.
-The target supplies the calling convention during lowering; no explicit ABI
-attribute is needed. A public function exports its symbol name unless an
-explicit export name overrides it. Internal callees are compiled into the same
-module without becoming host-callable exports.
+`--target=vm:core` selects the VM profile and its default `.vm` output format.
+The source needs no target declaration or attributes. The shared compiler
+specializes public functions and their callees for the selected profile, which
+supplies the calling convention during lowering. A public function exports its
+symbol name unless an explicit export name overrides it. Internal callees are
+compiled into the same module without becoming host-callable exports.
 
 The output contains the instruction stream, logical VM signatures, sorted
 callable and export tables, and referenced read-only data. It is independent of

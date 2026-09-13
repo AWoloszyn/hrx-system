@@ -311,6 +311,10 @@ struct loom_target_provider_t {
   loom_low_verify_provider_list_t low_verify_provider_list;
   // Optional target-owned emitters contributed by this target.
   loom_target_emitter_list_t emitter_list;
+  // Default emitter for ordinary function modules compiled for this family,
+  // or NULL when callers must select an explicit format. Borrows an emitter
+  // with the provider's lifetime; kernel artifact selection is independent.
+  const loom_target_emitter_t* canonical_module_emitter;
   // Optional target-owned pass descriptors contributed by this target.
   const loom_pass_registry_t* pass_registry;
   // Optional pass-pipeline contribution callback.

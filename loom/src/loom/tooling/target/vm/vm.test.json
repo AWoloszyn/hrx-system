@@ -12,14 +12,15 @@
       "files": [{"path": "{tmp}/invalid.vm", "exists": false}]
     },
     {
-      "name": "compiles an authored module into standalone VM bytecode",
+      "name": "compiles target-free functions and private callees into standalone VM bytecode",
       "steps": [
         {
           "name": "compile",
           "run": {
             "tool": "loom-compile",
-            "args": ["{srcdir}/module.loom", "--format=vm", "--output={tmp}/module.vm"]
-          }
+            "args": ["{srcdir}/module.loom", "--target=vm:core", "--output={tmp}/module.vm", "--dump-ir-after-all", "--dump-ir-output={tmp}/module.ir"]
+          },
+          "files": [{"path": "{tmp}/module.ir", "contains": ["vm.target<core>", "integer.mul.i32"]}]
         },
         {
           "name": "disassemble",
@@ -32,10 +33,35 @@
               "vm.module core(0.0)",
               "\"arithmetic\"",
               "\"swap\"",
+              "control.call",
               "integer.mul.i32",
               "value.copy",
               "control.return"
-            ]
+            ],
+            "not_contains": ["\"multiply\""]
+          }
+        }
+      ]
+    },
+    {
+      "name": "specializes selected roots and their callees without retaining other exports",
+      "steps": [
+        {
+          "name": "compile",
+          "run": {
+            "tool": "loom-compile",
+            "args": ["{srcdir}/module.loom", "--root=arithmetic", "--target=vm:core", "--output={tmp}/selected.vm"]
+          }
+        },
+        {
+          "name": "disassemble",
+          "run": {
+            "tool": "vm-dis",
+            "args": ["{tmp}/selected.vm"]
+          },
+          "stdout": {
+            "contains": ["\"arithmetic\"", "control.call", "integer.mul.i32"],
+            "not_contains": ["\"swap\"", "\"multiply\""]
           }
         }
       ]

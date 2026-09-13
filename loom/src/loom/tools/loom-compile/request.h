@@ -99,8 +99,9 @@ static inline bool loom_compile_request_is_command(
 // never probes a producer by compiling. With explicit roots, an explicit
 // product only validates the inferred product and cannot reinterpret them. With
 // no roots, an explicit product selects that product's canonical root policy.
-// An omitted format selects the unique configured kernel artifact provider for
-// the selected target or the target-independent command format.
+// An omitted format selects the unique configured kernel artifact provider,
+// the selected target family's canonical module emitter, or the
+// target-independent command format.
 iree_status_t loom_compile_request_resolve(
     const loom_module_t* module, const loom_compile_request_options_t* options,
     const loom_artifact_provider_registry_t* artifact_provider_registry,
