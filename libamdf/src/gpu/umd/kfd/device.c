@@ -46,8 +46,7 @@ amdf_status_t amdf_gpu_umd_device_create(
   status = amdf_gpu_kfd_topology_query(endpoint, &device->topology);
   const long page_size = sysconf(_SC_PAGESIZE);
   if (amdf_status_is_ok(status)) {
-    if (page_size <= 0 || (page_size & (page_size - 1)) != 0 ||
-        (uint64_t)page_size != device->topology.virtual_address.alignment) {
+    if (page_size <= 0 || (page_size & (page_size - 1)) != 0) {
       status = amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
     } else {
       device->page_size = (size_t)page_size;

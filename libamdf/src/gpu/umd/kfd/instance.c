@@ -81,7 +81,7 @@ int amdf_gpu_kfd_instance_descriptor(const amdf_gpu_umd_instance_t* instance) {
 
 amdf_status_t amdf_gpu_kfd_instance_prepare_vm(
     amdf_gpu_umd_instance_t* instance, amdf_platform_endpoint_t* endpoint,
-    const amdf_gpu_kfd_topology_t* topology, size_t page_size,
+    amdf_gpu_kfd_topology_t* topology, size_t page_size,
     int* out_render_descriptor) {
   amdf_gpu_kfd_vm_binding_t* binding = instance->bindings;
   while (binding != NULL && binding->gpu_id != topology->gpu_id) {
@@ -107,15 +107,25 @@ amdf_status_t amdf_gpu_kfd_instance_prepare_vm(
         amdf_linux_endpoint_open_file(endpoint, &binding->descriptor, NULL);
     if (!amdf_status_is_ok(status)) return status;
   }
+  // Bootstrap and later memory mappings consume this connection's installed
+  // aperture, including native reservations and administrator-selected limits.
+  amdf_gpu_kfd_topology_t native_topology = *topology;
+  status = amdf_gpu_kfd_topology_refine_memory(
+      binding->descriptor, endpoint->info.pci.device_id, &native_topology);
+  if (!amdf_status_is_ok(status)) return status;
+  if (page_size != native_topology.virtual_address.alignment) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
   if (!binding->acquired) {
     status = amdf_gpu_kfd_vm_acquire(
-        instance->descriptor, binding->descriptor, topology, page_size,
+        instance->descriptor, binding->descriptor, &native_topology, page_size,
         amdf_gpu_kfd_vm_default_native_api(), &binding->bootstrap);
     if (!amdf_status_is_ok(status)) return status;
     binding->acquired = true;
     status = amdf_gpu_kfd_vm_bootstrap_release(&binding->bootstrap);
     if (!amdf_status_is_ok(status)) return status;
   }
+  *topology = native_topology;
   *out_render_descriptor = binding->descriptor;
   return AMDF_STATUS_OK;
 }

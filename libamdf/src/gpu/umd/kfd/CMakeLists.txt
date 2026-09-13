@@ -335,6 +335,7 @@ iree_cc_library(
     libamdf::src::gpu::endpoint_profile
     libamdf::src::gpu::umd::endpoint_profile
     libamdf::src::gpu::umd::kfd::target::user_queue
+    libamdf::src::platform::linux::endpoint
     libamdf::src::platform::linux::file
     libamdf::src::platform::linux::host_cache
   PUBLIC

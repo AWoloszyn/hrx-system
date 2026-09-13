@@ -12,6 +12,7 @@
 #include "libamdf/src/gpu/umd/kfd/memory_profile.h"
 #include "libamdf/src/gpu/umd/kfd/target/user_queue.h"
 #include "libamdf/src/gpu/umd/kfd/topology.h"
+#include "libamdf/src/platform/linux/endpoint.h"
 #include "libamdf/src/platform/linux/file.h"
 #include "libamdf/src/platform/linux/host_cache.h"
 
@@ -26,6 +27,9 @@ amdf_status_t amdf_gpu_umd_query_endpoint_profile(
     *out_available = false;
     return AMDF_STATUS_OK;
   }
+  if (!amdf_status_is_ok(status)) return status;
+  status = amdf_gpu_kfd_topology_refine_memory(
+      endpoint->descriptor, endpoint->info.pci.device_id, &topology);
   if (!amdf_status_is_ok(status)) return status;
   // These are expected implemented policies, not installed-ABI qualification.
   // Opening /dev/kfd creates process state. Explicit device creation qualifies

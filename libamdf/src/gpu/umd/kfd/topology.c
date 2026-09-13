@@ -249,28 +249,9 @@ static amdf_status_t amdf_gpu_kfd_query_sdma(
   return status;
 }
 
-static amdf_status_t amdf_gpu_kfd_query_memory(
+static amdf_status_t amdf_gpu_kfd_read_memory(
     const amdf_platform_endpoint_t* endpoint,
     amdf_gpu_kfd_topology_t* topology) {
-  struct drm_amdgpu_info_device device = {0};
-  struct drm_amdgpu_info query = {
-      .return_pointer = (uintptr_t)&device,
-      .return_size = sizeof(device),
-      .query = AMDGPU_INFO_DEV_INFO,
-  };
-  if (ioctl(endpoint->descriptor, DRM_IOCTL_AMDGPU_INFO, &query) != 0) {
-    return amdf_linux_error(errno);
-  }
-  if (device.device_id != endpoint->info.pci.device_id ||
-      device.virtual_address_offset >= device.virtual_address_max ||
-      device.virtual_address_alignment == 0 ||
-      (device.virtual_address_alignment &
-       (device.virtual_address_alignment - 1)) != 0) {
-    return amdf_linux_error(EPROTO);
-  }
-  topology->virtual_address.begin = device.virtual_address_offset;
-  topology->virtual_address.end = device.virtual_address_max;
-  topology->virtual_address.alignment = device.virtual_address_alignment;
   // These sysfs totals format the same cached real/visible VRAM sizes used by
   // INFO_MEMORY, without issuing a native query or sampling allocation usage.
   char path[64];
@@ -291,11 +272,41 @@ static amdf_status_t amdf_gpu_kfd_query_memory(
   const amdf_status_t close_status = amdf_linux_file_close(&directory);
   if (!amdf_status_is_ok(close_status)) status = close_status;
   if (!amdf_status_is_ok(status)) return status;
+  topology->vram.total_byte_length = total_vram;
+  topology->vram.visible_byte_length = visible_vram;
+  return AMDF_STATUS_OK;
+}
+
+amdf_status_t amdf_gpu_kfd_topology_refine_memory(
+    int render_descriptor, uint32_t pci_device_id,
+    amdf_gpu_kfd_topology_t* topology) {
+  struct drm_amdgpu_info_device device = {0};
+  struct drm_amdgpu_info query = {
+      .return_pointer = (uintptr_t)&device,
+      .return_size = sizeof(device),
+      .query = AMDGPU_INFO_DEV_INFO,
+  };
+  if (ioctl(render_descriptor, DRM_IOCTL_AMDGPU_INFO, &query) != 0) {
+    return amdf_linux_error(errno);
+  }
+  if (device.device_id != pci_device_id ||
+      device.virtual_address_offset >= device.virtual_address_max ||
+      device.virtual_address_alignment == 0 ||
+      (device.virtual_address_alignment &
+       (device.virtual_address_alignment - 1)) != 0) {
+    return amdf_linux_error(EPROTO);
+  }
+  topology->virtual_address.begin = device.virtual_address_offset;
+  topology->virtual_address.end = device.virtual_address_max;
+  topology->virtual_address.alignment = device.virtual_address_alignment;
+  topology->memory_features = 0;
   // APU VRAM requests may be redirected to GTT by KFD. System memory remains
   // available there without promising a physical placement the kernel changes.
-  if ((device.ids_flags & AMDGPU_IDS_FLAGS_FUSION) == 0 && total_vram != 0) {
+  if ((device.ids_flags & AMDGPU_IDS_FLAGS_FUSION) == 0 &&
+      topology->vram.total_byte_length != 0) {
     topology->memory_features |= AMDF_GPU_DEVICE_FEATURE_LOCAL_MEMORY;
-    if (visible_vram >= total_vram) {
+    if (topology->vram.visible_byte_length >=
+        topology->vram.total_byte_length) {
       topology->memory_features |=
           AMDF_GPU_DEVICE_FEATURE_HOST_VISIBLE_LOCAL_MEMORY;
     }
@@ -361,7 +372,7 @@ amdf_status_t amdf_gpu_kfd_topology_query(
     status = amdf_gpu_kfd_query_sdma(endpoint, &topology);
   }
   if (amdf_status_is_ok(status) && found) {
-    status = amdf_gpu_kfd_query_memory(endpoint, &topology);
+    status = amdf_gpu_kfd_read_memory(endpoint, &topology);
   }
   uint32_t final_generation = 0;
   if (amdf_status_is_ok(status)) {

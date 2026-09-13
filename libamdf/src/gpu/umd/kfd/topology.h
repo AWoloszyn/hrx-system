@@ -18,6 +18,13 @@ typedef struct amdf_gpu_kfd_topology_t {
   uint32_t gpu_id;
   // Physical placement features supported by the native device.
   amdf_gpu_device_features_t memory_features;
+  // Cached physical heap totals, independent of current allocation usage.
+  struct {
+    // Physical VRAM capacity in bytes, not KFD's possibly substituted GTT size.
+    uint64_t total_byte_length;
+    // CPU-visible VRAM capacity in bytes.
+    uint64_t visible_byte_length;
+  } vram;
   // Number of native compute queues exposed by this KFD node.
   uint32_t compute_queue_count;
   // Native SDMA engines and exact packet-ABI identity.
@@ -59,12 +66,20 @@ typedef struct amdf_gpu_kfd_topology_t {
 extern "C" {
 #endif
 
-// Reads a coherent topology snapshot and native DRM memory/address facts.
+// Reads a coherent cached topology snapshot, including physical heap totals.
+// Native memory features and the virtual-address interval remain zero until
+// refine_memory succeeds on the connection that will consume those facts.
 // A missing KFD node returns UNSUPPORTED; malformed or changing state is an
 // error.
 amdf_status_t amdf_gpu_kfd_topology_query(
     const amdf_platform_endpoint_t* endpoint,
     amdf_gpu_kfd_topology_t* out_topology);
+
+// Refines cached topology with the native memory placement and usable address
+// interval of this exact render connection. Failure leaves topology unchanged.
+amdf_status_t amdf_gpu_kfd_topology_refine_memory(
+    int render_descriptor, uint32_t pci_device_id,
+    amdf_gpu_kfd_topology_t* topology);
 
 #ifdef __cplusplus
 }  // extern "C"
