@@ -619,37 +619,31 @@ amdf_status_t amdf_memory_scope_plan_initialize(
   return status;
 }
 
-amdf_status_t AMDF_CALL amdf_memory_scope_query_profile(
-    amdf_memory_scope_t* scope, uint32_t profile_ordinal, uint32_t access_count,
-    const amdf_memory_endpoint_access_t* accesses,
-    amdf_memory_profile_t* out_profile,
+static amdf_status_t amdf_memory_scope_query_access_profile(
+    amdf_memory_scope_t* scope, uint32_t profile_ordinal,
+    const amdf_memory_access_query_t* query, amdf_memory_profile_t* out_profile,
     amdf_memory_access_capabilities_t* out_access_capabilities) {
-  if (scope == NULL || (access_count != 0 && out_access_capabilities == NULL)) {
+  if (scope == NULL || (query->count != 0 && out_access_capabilities == NULL)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
   amdf_status_t status = amdf_structure_validate_output(
       out_profile, AMDF_STRUCTURE_TYPE_MEMORY_PROFILE, sizeof(*out_profile));
   if (!amdf_status_is_ok(status)) return status;
-  for (uint32_t i = 0; amdf_status_is_ok(status) && i < access_count; ++i) {
+  for (uint32_t i = 0; amdf_status_is_ok(status) && i < query->count; ++i) {
     status = amdf_structure_validate_output(
         &out_access_capabilities[i],
         AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES,
         sizeof(out_access_capabilities[i]));
   }
   if (!amdf_status_is_ok(status)) return status;
-  const amdf_memory_access_query_t query = {
-      .kind = AMDF_MEMORY_ACCESS_QUERY_EXPECTED,
-      .count = access_count,
-      .accesses.endpoints = accesses,
-  };
   amdf_memory_scope_plan_t plan;
-  status = amdf_memory_scope_plan_initialize(scope, profile_ordinal, &query,
+  status = amdf_memory_scope_plan_initialize(scope, profile_ordinal, query,
                                              NULL, &plan);
   if (!amdf_status_is_ok(status)) return status;
   plan.profile.structure_size = out_profile->structure_size;
   plan.profile.next = out_profile->next;
   *out_profile = plan.profile;
-  for (uint32_t i = 0; i < access_count; ++i) {
+  for (uint32_t i = 0; i < query->count; ++i) {
     const amdf_memory_native_profile_t* native = &plan.native_profiles[i];
     out_access_capabilities[i] = (amdf_memory_access_capabilities_t){
         .type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES,
@@ -667,6 +661,34 @@ amdf_status_t AMDF_CALL amdf_memory_scope_query_profile(
   }
   amdf_memory_scope_plan_deinitialize(&plan);
   return AMDF_STATUS_OK;
+}
+
+amdf_status_t AMDF_CALL amdf_memory_scope_query_profile(
+    amdf_memory_scope_t* scope, uint32_t profile_ordinal, uint32_t access_count,
+    const amdf_memory_endpoint_access_t* accesses,
+    amdf_memory_profile_t* out_profile,
+    amdf_memory_access_capabilities_t* out_access_capabilities) {
+  const amdf_memory_access_query_t query = {
+      .kind = AMDF_MEMORY_ACCESS_QUERY_EXPECTED,
+      .count = access_count,
+      .accesses.endpoints = accesses,
+  };
+  return amdf_memory_scope_query_access_profile(
+      scope, profile_ordinal, &query, out_profile, out_access_capabilities);
+}
+
+amdf_status_t AMDF_CALL amdf_memory_scope_query_device_profile(
+    amdf_memory_scope_t* scope, uint32_t profile_ordinal, uint32_t access_count,
+    const amdf_memory_device_access_t* accesses,
+    amdf_memory_profile_t* out_profile,
+    amdf_memory_access_capabilities_t* out_access_capabilities) {
+  const amdf_memory_access_query_t query = {
+      .kind = AMDF_MEMORY_ACCESS_QUERY_LIVE,
+      .count = access_count,
+      .accesses.devices = accesses,
+  };
+  return amdf_memory_scope_query_access_profile(
+      scope, profile_ordinal, &query, out_profile, out_access_capabilities);
 }
 
 void amdf_memory_scope_plan_deinitialize(amdf_memory_scope_plan_t* plan) {

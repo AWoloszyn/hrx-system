@@ -326,6 +326,8 @@ iree_cc_test(
     ::host_mapping
     ::instance
     ::memory
+    ::memory_scope
+    ::memory_scope_state
     amdf::headers
     iree::third_party::google_test
     iree::third_party::google_test_main

@@ -93,6 +93,13 @@ amdf_status_t AMDF_CALL amdf_memory_scope_query_profile(
     amdf_memory_profile_t* out_profile,
     amdf_memory_access_capabilities_t* out_access_capabilities);
 
+// Queries complete backing and caller-ordered live access capabilities.
+amdf_status_t AMDF_CALL amdf_memory_scope_query_device_profile(
+    amdf_memory_scope_t* scope, uint32_t profile_ordinal, uint32_t access_count,
+    const amdf_memory_device_access_t* accesses,
+    amdf_memory_profile_t* out_profile,
+    amdf_memory_access_capabilities_t* out_access_capabilities);
+
 // Validates the complete consumer set and selects native contracts before any
 // backing allocation. An optional external value constrains import selection.
 // Success publishes owned temporary metadata; failure leaves output unchanged.

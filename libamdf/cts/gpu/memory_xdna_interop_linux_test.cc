@@ -37,8 +37,8 @@ const amdf_external_memory_support_t* FindDmaBufSupport(
 }
 
 amdf_status_t FindDmaBufProfile(
-    const amdf_api_t* api, amdf_memory_scope_t* scope,
-    amdf_endpoint_t* endpoint, amdf_memory_profile_roles_t required_roles,
+    const amdf_api_t* api, amdf_memory_scope_t* scope, amdf_device_t* device,
+    amdf_memory_profile_roles_t required_roles,
     amdf_memory_flags_t required_memory_flags,
     amdf_memory_access_requirements_t requirements,
     amdf_external_memory_support_flags_t required_external_flags,
@@ -47,11 +47,11 @@ amdf_status_t FindDmaBufProfile(
     amdf_memory_profile_t profile = {};
     profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
     profile.structure_size = sizeof(profile);
-    const amdf_memory_endpoint_access_t access = {endpoint, requirements};
+    const amdf_memory_device_access_t access = {device, requirements};
     amdf_memory_access_capabilities_t capabilities = {};
     capabilities.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES;
     capabilities.structure_size = sizeof(capabilities);
-    const amdf_status_t status = api->memory_scope_query_profile(
+    const amdf_status_t status = api->memory_scope_query_device_profile(
         scope, ordinal, 1, &access, &profile, &capabilities);
     if (amdf_status_code(status) == AMDF_STATUS_CODE_OUT_OF_RANGE) {
       *out_ordinal = AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN;
@@ -210,10 +210,7 @@ class GpuXdnaMemoryInteropTest : public ::testing::Test {
   void FindJointProfile(amdf_memory_profile_roles_t role,
                         amdf_memory_profile_t* out_profile,
                         amdf_memory_access_capabilities_t* capabilities) {
-    const amdf_memory_endpoint_access_t endpoints[] = {
-        {xdna_endpoint_, xdna_access_.requirements},
-        {gpu_endpoint_, gpu_access_.requirements},
-    };
+    const amdf_memory_device_access_t devices[] = {xdna_access_, gpu_access_};
     out_profile->ordinal = AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN;
     for (uint32_t ordinal = 0;; ++ordinal) {
       amdf_memory_profile_t profile = {};
@@ -224,8 +221,8 @@ class GpuXdnaMemoryInteropTest : public ::testing::Test {
         capabilities[i].type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES;
         capabilities[i].structure_size = sizeof(capabilities[i]);
       }
-      const amdf_status_t status = api_->memory_scope_query_profile(
-          system_scope_, ordinal, 2, endpoints, &profile, capabilities);
+      const amdf_status_t status = api_->memory_scope_query_device_profile(
+          system_scope_, ordinal, 2, devices, &profile, capabilities);
       if (amdf_status_code(status) == AMDF_STATUS_CODE_OUT_OF_RANGE) break;
       if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED))
         continue;
@@ -361,7 +358,7 @@ void GpuXdnaMemoryInteropTest::ImportGpuSubrangeAndReleaseAllocation() {
   uint32_t gpu_profile_ordinal = AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN;
   amdf_memory_profile_t gpu_profile = {};
   ASSERT_EQ(
-      FindDmaBufProfile(api_, system_scope_, gpu_endpoint_,
+      FindDmaBufProfile(api_, system_scope_, gpu_device_,
                         AMDF_MEMORY_PROFILE_ROLE_CREATE |
                             AMDF_MEMORY_PROFILE_ROLE_EXPORT |
                             AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
@@ -386,7 +383,7 @@ void GpuXdnaMemoryInteropTest::ImportGpuSubrangeAndReleaseAllocation() {
   amdf_memory_profile_t xdna_profile = {};
   ASSERT_EQ(
       FindDmaBufProfile(
-          api_, system_scope_, xdna_endpoint_,
+          api_, system_scope_, xdna_device_,
           AMDF_MEMORY_PROFILE_ROLE_IMPORT | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
           kXdnaRequiredFlags, xdna_access_.requirements,
           AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_IMPORT |
@@ -752,11 +749,10 @@ TEST_F(GpuXdnaMemoryInteropTest,
   amdf_memory_access_capabilities_t capabilities[2] = {};
   ASSERT_NO_FATAL_FAILURE(FindJointProfile(AMDF_MEMORY_PROFILE_ROLE_REGISTER,
                                            &profile, capabilities));
-  amdf_gpu_device_capabilities_t gpu_capabilities = {};
-  gpu_capabilities.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_CAPABILITIES;
+  amdf_gpu_device_info_t gpu_capabilities = {};
+  gpu_capabilities.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_INFO;
   gpu_capabilities.structure_size = sizeof(gpu_capabilities);
-  ASSERT_EQ(gpu_api_->endpoint_query_device_capabilities(gpu_endpoint_,
-                                                         &gpu_capabilities),
+  ASSERT_EQ(gpu_api_->device_query_info(gpu_device_, &gpu_capabilities),
             AMDF_STATUS_OK);
   if ((gpu_capabilities.features & AMDF_GPU_DEVICE_FEATURE_HOST_REGISTRATION) ==
       0) {
@@ -852,7 +848,7 @@ TEST_F(GpuXdnaMemoryInteropTest,
   amdf_memory_profile_t xdna_profile = {};
   ASSERT_EQ(
       FindDmaBufProfile(
-          api_, system_scope_, xdna_endpoint_,
+          api_, system_scope_, xdna_device_,
           AMDF_MEMORY_PROFILE_ROLE_IMPORT | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
           AMDF_MEMORY_FLAG_HOST_VISIBLE, xdna_access_.requirements,
           AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_IMPORT |
@@ -865,7 +861,7 @@ TEST_F(GpuXdnaMemoryInteropTest,
   amdf_memory_profile_t gpu_profile = {};
   ASSERT_EQ(
       FindDmaBufProfile(
-          api_, system_scope_, gpu_endpoint_,
+          api_, system_scope_, gpu_device_,
           AMDF_MEMORY_PROFILE_ROLE_CREATE | AMDF_MEMORY_PROFILE_ROLE_EXPORT,
           AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_SHAREABLE,
           gpu_access_.requirements, AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_EXPORT,

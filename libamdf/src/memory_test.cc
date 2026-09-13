@@ -18,6 +18,7 @@
 #include "libamdf/src/device.h"
 #include "libamdf/src/host_mapping.h"
 #include "libamdf/src/instance.h"
+#include "libamdf/src/memory_scope.h"
 
 namespace {
 
@@ -491,6 +492,103 @@ class MemoryTest : public ::testing::Test {
 using MemoryConstructionTest = MemoryTest;
 using MemoryAddressTest = MemoryTest;
 using MemoryExternalTest = MemoryTest;
+
+TEST_F(MemoryConstructionTest, LiveProfileConstrainsTheConstructedAccessSet) {
+  FakeDevice devices[2];
+  amdf_memory_device_access_t accesses[2];
+  amdf_memory_access_capabilities_t capabilities[2] = {};
+  for (uint32_t i = 0; i < 2; ++i) {
+    InitializeFakeDevice(i + 1, &instance_, &devices[i]);
+    accesses[i] = devices[i].request;
+    capabilities[i].type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES;
+    capabilities[i].structure_size = sizeof(capabilities[i]);
+  }
+  // The second consumer narrows the joint length while retaining its own
+  // address envelope. Selection and publication must preserve both facts.
+  devices[1].profile.import.maximum_byte_length = 8192;
+  devices[1].profile.device_address.maximum_address = (UINT64_C(1) << 40) - 1;
+  amdf_memory_profile_t profile = {};
+  profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
+  profile.structure_size = sizeof(profile);
+  ASSERT_EQ(amdf_memory_scope_query_device_profile(
+                &instance_.system_memory_scope, 0, 2, accesses, &profile,
+                capabilities),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(profile.allocation.maximum_byte_length, 8192u);
+  for (uint32_t i = 0; i < 2; ++i) {
+    EXPECT_EQ(capabilities[i].device_address.maximum_address,
+              devices[i].profile.device_address.maximum_address);
+    EXPECT_EQ(devices[i].create_call_count, 0u);
+    EXPECT_EQ(devices[i].import_call_count, 0u);
+  }
+
+  amdf_memory_create_info_t create_info = MakeMemoryCreateInfo(devices[0]);
+  create_info.access_count = 2;
+  create_info.accesses = accesses;
+  create_info.byte_length = profile.allocation.maximum_byte_length + 1;
+  amdf_memory_t* memory = nullptr;
+  EXPECT_EQ(amdf_status_code(amdf_memory_create(&instance_.system_memory_scope,
+                                                &create_info, &memory)),
+            AMDF_STATUS_CODE_UNSUPPORTED);
+  EXPECT_EQ(memory, nullptr);
+  EXPECT_EQ(devices[0].create_call_count, 0u);
+  EXPECT_EQ(devices[1].import_call_count, 0u);
+  create_info.byte_length = profile.allocation.maximum_byte_length;
+  ASSERT_EQ(
+      amdf_memory_create(&instance_.system_memory_scope, &create_info, &memory),
+      AMDF_STATUS_OK);
+  EXPECT_EQ(memory->info.byte_length, create_info.byte_length);
+  EXPECT_EQ(memory->info.access_count, 2u);
+  EXPECT_EQ(devices[0].create_call_count, 1u);
+  EXPECT_EQ(devices[1].import_call_count, 1u);
+  EXPECT_EQ(amdf_memory_destroy(memory), AMDF_STATUS_OK);
+}
+
+TEST_F(MemoryConstructionTest, LiveProfileFailurePublishesNoPartialOutputs) {
+  FakeDevice devices[2];
+  amdf_memory_device_access_t accesses[2];
+  amdf_memory_access_capabilities_t capabilities[2] = {};
+  for (uint32_t i = 0; i < 2; ++i) {
+    InitializeFakeDevice(i + 1, &instance_, &devices[i]);
+    accesses[i] = devices[i].request;
+    capabilities[i].type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES;
+    capabilities[i].structure_size = sizeof(capabilities[i]);
+    capabilities[i].device_address.maximum_address = 73 + i;
+  }
+  amdf_memory_profile_t profile = {};
+  profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
+  profile.structure_size = sizeof(profile);
+  profile.ordinal = 91;
+  const amdf_memory_profile_t original_profile = profile;
+  amdf_memory_access_capabilities_t original_capabilities[2];
+  std::memcpy(original_capabilities, capabilities, sizeof(capabilities));
+  const auto expect_failure = [&](amdf_status_code_t code) {
+    EXPECT_EQ(amdf_status_code(amdf_memory_scope_query_device_profile(
+                  &instance_.system_memory_scope, 0, 2, accesses, &profile,
+                  capabilities)),
+              code);
+    EXPECT_EQ(std::memcmp(&profile, &original_profile, sizeof(profile)), 0);
+    EXPECT_EQ(
+        std::memcmp(capabilities, original_capabilities, sizeof(capabilities)),
+        0);
+  };
+  accesses[1].device = nullptr;
+  expect_failure(AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  accesses[1].device = accesses[0].device;
+  expect_failure(AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  accesses[1] = devices[1].request;
+  amdf_instance_t other_instance = {};
+  devices[1].base.provider_instance = &other_instance;
+  expect_failure(AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  devices[1].base.provider_instance = &instance_;
+  devices[1].profile_status =
+      amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
+  expect_failure(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
+  for (uint32_t i = 0; i < 2; ++i) {
+    EXPECT_EQ(devices[i].create_call_count, 0u);
+    EXPECT_EQ(devices[i].import_call_count, 0u);
+  }
+}
 
 TEST_F(MemoryConstructionTest,
        NativeRoundingDoesNotExpandTheSharedLogicalRange) {

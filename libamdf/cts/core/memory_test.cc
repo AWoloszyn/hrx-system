@@ -106,6 +106,25 @@ class HostMemoryTest : public ::testing::Test {
   std::vector<uint8_t> storage_;
 };
 
+TEST_F(HostMemoryTest, LiveProfileWithoutDevicesDescribesCpuOnlyStorage) {
+  amdf_memory_profile_t expected = {};
+  ASSERT_NO_FATAL_FAILURE(
+      FindProfile(AMDF_MEMORY_PROFILE_ROLE_CREATE, &expected));
+  amdf_memory_profile_t live = {};
+  live.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
+  live.structure_size = sizeof(live);
+  ASSERT_EQ(api_->memory_scope_query_device_profile(scope_, expected.ordinal, 0,
+                                                    nullptr, &live, nullptr),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(std::memcmp(&live, &expected, sizeof(live)), 0);
+  const amdf_memory_profile_t original = live;
+  EXPECT_EQ(amdf_status_code(api_->memory_scope_query_device_profile(
+                scope_, scope_info_.memory_profile_count, 0, nullptr, &live,
+                nullptr)),
+            AMDF_STATUS_CODE_OUT_OF_RANGE);
+  EXPECT_EQ(std::memcmp(&live, &original, sizeof(live)), 0);
+}
+
 TEST_F(HostMemoryTest, AllocatesOneBackingWithoutAnAccelerator) {
   amdf_memory_profile_t profile = {};
   ASSERT_NO_FATAL_FAILURE(

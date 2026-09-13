@@ -93,12 +93,9 @@ class XdnaDeviceFixture : public ::testing::Test {
   amdf_status_t QueryMemoryProfile(
       uint32_t ordinal, amdf_memory_profile_t* out_profile,
       amdf_memory_access_capabilities_t* out_capabilities) const {
-    const amdf_memory_endpoint_access_t access = {
-        .endpoint = endpoint_,
-        .requirements = memory_access_.requirements,
-    };
-    return api_->memory_scope_query_profile(system_scope_, ordinal, 1, &access,
-                                            out_profile, out_capabilities);
+    return api_->memory_scope_query_device_profile(system_scope_, ordinal, 1,
+                                                   &memory_access_, out_profile,
+                                                   out_capabilities);
   }
 
   uint32_t FindMemoryProfileOrdinal(amdf_memory_profile_roles_t required_roles,

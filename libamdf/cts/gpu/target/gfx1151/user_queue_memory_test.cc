@@ -264,7 +264,7 @@ class UserQueueMemoryScenario {
          .flags =
              AMDF_MEMORY_FLAG_HOST_COHERENT | AMDF_MEMORY_FLAG_DEVICE_ADDRESS}};
     const uint32_t profile_ordinal = FindGpuMemoryProfileOrdinal(
-        api_, system_scope_, endpoint_,
+        api_, system_scope_, device_,
         AMDF_MEMORY_PROFILE_ROLE_CREATE | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
         kRequiredFlags, access.requirements);
     ASSERT_NE(profile_ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);

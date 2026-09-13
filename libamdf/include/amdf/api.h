@@ -193,6 +193,27 @@ typedef struct amdf_api_t {
       amdf_memory_profile_t* out_profile,
       amdf_memory_access_capabilities_t* out_access_capabilities);
 
+  /// Queries a scope contract for explicitly initialized device consumers.
+  ///
+  /// Devices are unique and belong to the scope's instance. The caller keeps
+  /// them live during this call. Scope ordinals, CPU-only zero-count behavior,
+  /// output initialization, caller order and failure publication follow
+  /// memory_scope_query_profile. These complete capabilities use the live
+  /// devices' qualified state and may refine the expected endpoint contract
+  /// without changing it. The caller may adapt its request or reject the
+  /// devices before acquiring memory.
+  ///
+  /// This thread-safe metadata query performs no native operation, activation,
+  /// mapping or synchronization. Temporary host storage scales with the access
+  /// set. The result is not a resource reservation; construction can still
+  /// fail from exhaustion or native errors, and never weakens explicit
+  /// requirements to match a capability refinement.
+  amdf_status_t(AMDF_CALL* memory_scope_query_device_profile)(
+      amdf_memory_scope_t* scope, uint32_t profile_ordinal,
+      uint32_t access_count, const amdf_memory_device_access_t* accesses,
+      amdf_memory_profile_t* out_profile,
+      amdf_memory_access_capabilities_t* out_access_capabilities);
+
   /// Creates one backing with every requested live-device access established.
   ///
   /// The selected profile exposes exactly one of CREATE and REGISTER, with

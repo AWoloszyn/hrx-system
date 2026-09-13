@@ -15,13 +15,13 @@
 #include "util/device_cache.h"
 #include "util/provider.h"
 
-// Finds a backing profile qualified for the requested endpoint access.
+// Finds a backing profile qualified for the requested live device access.
 inline uint32_t FindGpuMemoryProfileOrdinal(
-    const amdf_api_t* api, amdf_memory_scope_t* scope,
-    amdf_endpoint_t* endpoint, amdf_memory_profile_roles_t required_roles,
+    const amdf_api_t* api, amdf_memory_scope_t* scope, amdf_device_t* device,
+    amdf_memory_profile_roles_t required_roles,
     amdf_memory_flags_t required_flags,
     amdf_memory_access_requirements_t requirements) {
-  const amdf_memory_endpoint_access_t access = {endpoint, requirements};
+  const amdf_memory_device_access_t access = {device, requirements};
   for (uint32_t ordinal = 0;; ++ordinal) {
     amdf_memory_profile_t profile = {};
     profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
@@ -29,7 +29,7 @@ inline uint32_t FindGpuMemoryProfileOrdinal(
     amdf_memory_access_capabilities_t capabilities = {};
     capabilities.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES;
     capabilities.structure_size = sizeof(capabilities);
-    const amdf_status_t status = api->memory_scope_query_profile(
+    const amdf_status_t status = api->memory_scope_query_device_profile(
         scope, ordinal, 1, &access, &profile, &capabilities);
     if (amdf_status_code(status) == AMDF_STATUS_CODE_OUT_OF_RANGE) break;
     if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) continue;
@@ -171,16 +171,16 @@ class GpuDeviceFixture : public ::testing::Test {
       amdf_memory_access_requirements_t requirements,
       amdf_memory_profile_t* out_profile,
       amdf_memory_access_capabilities_t* out_capabilities) const {
-    const amdf_memory_endpoint_access_t access = {endpoint_, requirements};
-    return api_->memory_scope_query_profile(scope, ordinal, 1, &access,
-                                            out_profile, out_capabilities);
+    const amdf_memory_device_access_t access = {device_, requirements};
+    return api_->memory_scope_query_device_profile(
+        scope, ordinal, 1, &access, out_profile, out_capabilities);
   }
 
   uint32_t FindMemoryProfileOrdinal(
       amdf_memory_scope_t* scope, amdf_memory_profile_roles_t required_roles,
       amdf_memory_flags_t required_flags,
       amdf_memory_access_requirements_t requirements) const {
-    return FindGpuMemoryProfileOrdinal(api_, scope, endpoint_, required_roles,
+    return FindGpuMemoryProfileOrdinal(api_, scope, device_, required_roles,
                                        required_flags, requirements);
   }
 

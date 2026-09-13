@@ -89,11 +89,24 @@ zero capacity and null storage returns the required count with
 
 `memory_scope_query_profile` takes the intended endpoints and their access
 requirements. Its backing profile and per-consumer capability array describe
-one jointly supported request, in caller order. `memory_create` and
-`memory_import` take that scope and explicitly initialized devices in the same
-order. An empty consumer array requests CPU-only storage; it does not mean
-access for every discovered device. The resulting memory owns its immutable
-access array, not a mutable membership list.
+one jointly supported request, in caller order. After explicit device creation,
+`memory_scope_query_device_profile` takes the live devices and returns their
+qualified contract for the same scope ordinal. Both queries return complete
+records; the second can refine the first without changing the endpoint snapshot.
+Neither reserves resources or guarantees that a later allocation cannot fail.
+
+For example, a HAL can filter endpoints using expected registration support,
+create the selected GPU and NPU, then query their joint live profile before
+allocating caller-owned storage. That profile supplies the page-cover granularity
+and supported alignment used for registration. If the live contract cannot meet
+the HAL's requirements, the HAL can reject it before acquiring memory.
+
+`memory_create` and `memory_import` take the same scope and explicitly initialized
+devices in the same order. They qualify the live contract and establish every
+requested property before publishing the resource. An empty consumer array
+requests CPU-only storage; it does not mean access for every discovered device.
+The resulting memory owns its immutable access array, not a mutable membership
+list.
 
 ## Backing and resource handles
 
