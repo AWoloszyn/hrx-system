@@ -66,6 +66,26 @@ check.case @integer_constants_i32_boundaries {
   check.return
 }
 
+// Negating INT32_MIN during subtraction canonicalization must wrap at i32,
+// not create an out-of-domain positive i32 literal from an i64 intermediate.
+func.def public @subtract_i32_minimum(%value: i32) -> (i32) {
+  %minimum = scalar.constant -2147483648 : i32
+  %result = scalar.subi %value, %minimum : i32
+  func.return %result : i32
+}
+
+check.case @subtract_i32_minimum_wraps {
+  %zero = check.literal value(0) : i32
+  %negative_one = check.literal value(-1) : i32
+  %from_zero = func.call @subtract_i32_minimum(%zero) : (i32) -> (i32)
+  %from_negative = func.call @subtract_i32_minimum(%negative_one) : (i32) -> (i32)
+  %minimum = check.literal value(-2147483648) : i32
+  %maximum = check.literal value(2147483647) : i32
+  check.expect.equal actual(%from_zero) expected(%minimum) : i32
+  check.expect.equal actual(%from_negative) expected(%maximum) : i32
+  check.return
+}
+
 func.def public @integer_constants_narrow() -> (i1, i1, i8, i8, i16, i16) {
   %yes = scalar.constant true : i1
   %no = scalar.constant false : i1
