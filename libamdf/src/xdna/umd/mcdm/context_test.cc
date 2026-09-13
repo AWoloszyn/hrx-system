@@ -15,6 +15,8 @@
 #include "gtest/gtest.h"
 #include "libamdf/src/allocator.h"
 #include "libamdf/src/xdna/endpoint_profile.h"
+#include "libamdf/src/xdna/target/npu4/bootstrap.h"
+#include "libamdf/src/xdna/target/npu5/bootstrap.h"
 #include "libamdf/src/xdna/umd/mcdm/context.h"
 #include "libamdf/src/xdna/umd/mcdm/device.h"
 
@@ -31,6 +33,8 @@ enum class Operation {
 struct FakeKmtState {
   // Native status returned while qualifying the private context ABI.
   NTSTATUS query_status = kSuccess;
+  // Standard KMD build identity; zero exercises explicit private-tag admission.
+  uint64_t driver_version = 0;
   // Private wire-ABI tag returned by the installed miniport.
   uint32_t private_info[2] = {0, 3};
   // Number of context ABI queries.
@@ -52,10 +56,17 @@ FakeKmtState* current_state = nullptr;
 NTSTATUS APIENTRY FakeQueryAdapterInfo(const D3DKMT_QUERYADAPTERINFO* query) {
   ++current_state->query_count;
   EXPECT_EQ(query->hAdapter, 0x08u);
-  EXPECT_EQ(query->Type, KMTQAITYPE_UMDRIVERPRIVATE);
-  EXPECT_EQ(query->PrivateDriverDataSize, sizeof(current_state->private_info));
   if (current_state->query_status != kSuccess)
     return current_state->query_status;
+  if (query->Type == KMTQAITYPE_KMD_DRIVER_VERSION) {
+    EXPECT_EQ(query->PrivateDriverDataSize, sizeof(D3DKMT_KMD_DRIVER_VERSION));
+    auto* version =
+        static_cast<D3DKMT_KMD_DRIVER_VERSION*>(query->pPrivateDriverData);
+    version->DriverVersion.QuadPart = current_state->driver_version;
+    return kSuccess;
+  }
+  EXPECT_EQ(query->Type, KMTQAITYPE_UMDRIVERPRIVATE);
+  EXPECT_EQ(query->PrivateDriverDataSize, sizeof(current_state->private_info));
   std::memcpy(query->pPrivateDriverData, current_state->private_info,
               sizeof(current_state->private_info));
   return kSuccess;
@@ -70,9 +81,13 @@ FakeCreateContextVirtual(D3DKMT_CREATECONTEXTVIRTUAL* create) {
   EXPECT_NE(create->pPrivateDriverData, nullptr);
   EXPECT_GT(create->PrivateDriverDataSize, 0u);
   create->hContext = current_state->next_context++;
-  const uint32_t cookie = create->hContext + 0x100;
-  std::memcpy(static_cast<uint8_t*>(create->pPrivateDriverData) + 0x40, &cookie,
-              sizeof(cookie));
+  const uint32_t cookie = create->hContext - 0x30;
+  const bool metadata =
+      current_state->driver_version == UINT64_C(0x0020000000CB00F0);
+  if (metadata) EXPECT_EQ(create->PrivateDriverDataSize, 272u);
+  std::memcpy(static_cast<uint8_t*>(create->pPrivateDriverData) +
+                  (metadata ? 0x30 : 0x40),
+              &cookie, sizeof(cookie));
   current_state->created_contexts.push_back(create->hContext);
   return kSuccess;
 }
@@ -135,6 +150,7 @@ class WindowsXdnaContextTest : public ::testing::Test {
     profile_.execution_capabilities =
         AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1;
     profile_.info = &endpoint_info_;
+    profile_.bootstrap = &amdf_xdna_npu5_bootstrap;
     device_.profile = &profile_;
     create_info_.logical_column_count = 1;
     create_info_.physical_column_origin = AMDF_XDNA_PHYSICAL_COLUMN_ORIGIN_ANY;
@@ -164,7 +180,7 @@ TEST_F(WindowsXdnaContextTest, CreatesTwoContextsAndDestroysIndependently) {
     EXPECT_EQ(results[i].physical_column_count, 0u);
   }
   EXPECT_NE(results[0].id.words[0], results[1].id.words[0]);
-  EXPECT_EQ(state_.query_count, 2u);
+  EXPECT_EQ(state_.query_count, 4u);
   EXPECT_EQ(state_.created_contexts, (std::vector<D3DKMT_HANDLE>{0x30, 0x31}));
 
   ASSERT_EQ(amdf_xdna_umd_context_destroy(contexts[0]), AMDF_STATUS_OK);
@@ -175,6 +191,40 @@ TEST_F(WindowsXdnaContextTest, CreatesTwoContextsAndDestroysIndependently) {
   contexts[1] = nullptr;
   EXPECT_EQ(state_.destroyed_contexts,
             (std::vector<D3DKMT_HANDLE>{0x30, 0x31}));
+}
+
+TEST_F(WindowsXdnaContextTest, CreatesMetadataContextWithZeroCookie) {
+  state_.driver_version = UINT64_C(0x0020000000CB00F0);
+  profile_.bootstrap = &amdf_xdna_npu4_bootstrap;
+  amdf_xdna_umd_context_t* context = nullptr;
+  amdf_xdna_umd_context_result_t result = {};
+  ASSERT_EQ(
+      amdf_xdna_umd_context_create(&device_, &create_info_, &context, &result),
+      AMDF_STATUS_OK);
+  EXPECT_EQ(state_.query_count, 1u);
+  EXPECT_EQ(context->command_aperture_cookie, 0u);
+  EXPECT_EQ(context->native_abi->submission_header_byte_length, 88u);
+  EXPECT_EQ(amdf_xdna_umd_context_destroy(context), AMDF_STATUS_OK);
+  EXPECT_EQ(state_.destroyed_contexts, (std::vector<D3DKMT_HANDLE>{0x30}));
+}
+
+TEST_F(WindowsXdnaContextTest,
+       RejectsUnrepresentableNativeCookieWithoutPublishing) {
+  state_.driver_version = UINT64_C(0x0020000000CB00F0);
+  state_.next_context = 0x130;
+  profile_.bootstrap = &amdf_xdna_npu4_bootstrap;
+  auto* const sentinel =
+      reinterpret_cast<amdf_xdna_umd_context_t*>(uintptr_t{1});
+  amdf_xdna_umd_context_t* context = sentinel;
+  amdf_xdna_umd_context_result_t result;
+  std::memset(&result, 0xA5, sizeof(result));
+  const auto original = result;
+  EXPECT_EQ(amdf_status_code(amdf_xdna_umd_context_create(
+                &device_, &create_info_, &context, &result)),
+            AMDF_STATUS_CODE_INTERNAL);
+  EXPECT_EQ(context, sentinel);
+  EXPECT_EQ(std::memcmp(&result, &original, sizeof(result)), 0);
+  EXPECT_EQ(state_.destroyed_contexts, (std::vector<D3DKMT_HANDLE>{0x130}));
 }
 
 TEST_F(WindowsXdnaContextTest,
@@ -235,7 +285,7 @@ TEST_F(WindowsXdnaContextTest, QualifiesPrivateAbiBeforeContextPreparation) {
     EXPECT_EQ(context, sentinel);
     EXPECT_EQ(std::memcmp(&result, &original, sizeof(result)), 0);
   }
-  EXPECT_EQ(state_.query_count, 3u);
+  EXPECT_EQ(state_.query_count, 5u);
   EXPECT_EQ(allocator_state.allocation_call_count, 0u);
   EXPECT_TRUE(state_.created_contexts.empty());
 }
@@ -343,6 +393,35 @@ TEST_F(WindowsXdnaContextTest, RollsBackHostExhaustionAtEachConstructionStep) {
   }
   EXPECT_EQ(state_.created_contexts, (std::vector<D3DKMT_HANDLE>{0x30}));
   EXPECT_EQ(state_.destroyed_contexts, state_.created_contexts);
+}
+
+TEST_F(WindowsXdnaContextTest, ReportsMalformedContextRollbackFailureLocally) {
+  FaultAllocatorState allocator_state = {};
+  device_.host_allocator = {
+      .user_data = &allocator_state,
+      .allocate = FaultAllocate,
+      .free = FaultFree,
+  };
+  state_.driver_version = UINT64_C(0x0020000000CB00F0);
+  state_.next_context = 0x130;
+  state_.destroy_failures_remaining = 1;
+  profile_.bootstrap = &amdf_xdna_npu4_bootstrap;
+  auto* const sentinel =
+      reinterpret_cast<amdf_xdna_umd_context_t*>(uintptr_t{1});
+  amdf_xdna_umd_context_t* context = sentinel;
+  amdf_xdna_umd_context_result_t result;
+  std::memset(&result, 0xA5, sizeof(result));
+  const auto original = result;
+
+  EXPECT_EQ(
+      amdf_xdna_umd_context_create(&device_, &create_info_, &context, &result),
+      amdf_kmt_make_status(kFailure));
+  EXPECT_EQ(context, sentinel);
+  EXPECT_EQ(std::memcmp(&result, &original, sizeof(result)), 0);
+  EXPECT_EQ(allocator_state.live_allocation_count, 0u);
+  EXPECT_TRUE(state_.destroyed_contexts.empty());
+  EXPECT_EQ(state_.operations,
+            (std::vector<Operation>{Operation::kDestroyContext}));
 }
 
 TEST_F(WindowsXdnaContextTest, ExplicitDestroyFailureRetainsPublishedOwner) {

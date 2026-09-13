@@ -190,6 +190,12 @@ static const uint8_t amdf_xdna_npu5_bootstrap_admission_transaction[] = {
 };
 
 const amdf_xdna_bootstrap_t amdf_xdna_npu5_bootstrap = {
+    .context =
+        {
+            .uuid = {0xFD, 0xCC, 0xC6, 0x7B, 0x88, 0xFD, 0x7C, 0x88, 0x81, 0x8C,
+                     0x44, 0xB2, 0xFC, 0x5D, 0x18, 0x84},
+            .operations_per_cycle = 0x800,
+        },
     .pdi_bytes = amdf_xdna_npu5_bootstrap_pdi,
     .pdi_byte_length = sizeof(amdf_xdna_npu5_bootstrap_pdi),
     .admission_transaction_bytes =

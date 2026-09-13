@@ -10,23 +10,28 @@
 #include <stdint.h>
 
 #include "amdf/amdf.h"
+#include "libamdf/src/xdna/bootstrap.h"
+#include "libamdf/src/xdna/umd/mcdm/native_abi.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
 
-// Builds the exact NPU5 legacy context record around the provider-owned image.
-// Replaces its partition width and first candidate starting column; the other
-// candidate starting columns remain fixed. These are admission inputs, not a
-// guarantee of the native context's achieved placement.
+// Builds the admitted context representation for the native ABI and bootstrap.
+// Metadata-only drivers receive no xclbin or application kernel description.
+// The retained xclbin ABI requires a matching embedded bootstrap image.
+// Partition inputs never guarantee achieved placement. Outputs are unchanged on
+// failure.
 amdf_status_t amdf_windows_xdna_legacy_context_build(
-    uint32_t partition_column_count, uint32_t first_start_column,
-    amdf_allocator_t host_allocator, uint8_t** out_data,
-    uint32_t* out_data_size);
+    const amdf_windows_xdna_native_abi_t* abi,
+    const amdf_xdna_bootstrap_t* bootstrap, uint32_t partition_column_count,
+    uint32_t first_start_column, amdf_allocator_t host_allocator,
+    uint8_t** out_data, uint32_t* out_data_size);
 
-// Reads the command-aperture cookie written back by context creation.
-amdf_status_t amdf_windows_xdna_legacy_context_query_command_aperture_cookie(
-    const uint8_t* data, uint32_t data_size, uint32_t* out_cookie);
+// Reads the uint32 command-aperture cookie after successful native creation.
+// The record was built with this ABI; zero is a valid native context ID.
+uint32_t amdf_windows_xdna_legacy_context_query_command_aperture_cookie(
+    const amdf_windows_xdna_native_abi_t* abi, const uint8_t* data);
 
 #ifdef __cplusplus
 }  // extern "C"

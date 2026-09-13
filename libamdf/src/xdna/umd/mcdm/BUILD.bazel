@@ -16,10 +16,29 @@ package(
 MCDM_COMPATIBILITY = ["@platforms//os:windows"]
 
 amdf_cc_library(
+    name = "native_abi",
+    srcs = ["native_abi.c"],
+    hdrs = ["native_abi.h"],
+    target_compatible_with = MCDM_COMPATIBILITY,
+    deps = ["//libamdf/src/platform/windows:kmt_api"],
+)
+
+amdf_cc_library(
     name = "bootstrap_image",
     srcs = ["npu5_legacy_bootstrap_image.c"],
     hdrs = ["npu5_legacy_bootstrap_image.h"],
     target_compatible_with = MCDM_COMPATIBILITY,
+)
+
+amdf_cc_test(
+    name = "native_abi_test",
+    srcs = ["native_abi_test.cc"],
+    target_compatible_with = MCDM_COMPATIBILITY,
+    deps = [
+        ":native_abi",
+        "//third_party:google_test",
+        "//third_party:google_test_main",
+    ],
 )
 
 amdf_cc_library(
@@ -29,7 +48,9 @@ amdf_cc_library(
     target_compatible_with = MCDM_COMPATIBILITY,
     deps = [
         ":bootstrap_image",
+        ":native_abi",
         "//libamdf/src:allocator",
+        "//libamdf/src/xdna:bootstrap",
     ],
 )
 
@@ -50,6 +71,7 @@ amdf_cc_library(
     target_compatible_with = MCDM_COMPATIBILITY,
     deps = [
         ":device_state",
+        ":native_abi",
         "//libamdf/src/xdna/umd:context",
     ],
 )
@@ -145,6 +167,7 @@ amdf_cc_library(
         ":device_state",
         ":kernel_execution",
         ":legacy_context",
+        ":native_abi",
         "//libamdf/src:allocator",
         "//libamdf/src/xdna/umd:context",
     ],
@@ -203,6 +226,8 @@ amdf_cc_test(
         ":device_state",
         "//libamdf/src:allocator",
         "//libamdf/src/xdna:endpoint_profile",
+        "//libamdf/src/xdna/target/npu4:bootstrap",
+        "//libamdf/src/xdna/target/npu5:bootstrap",
         "//libamdf/src/xdna/umd:context",
         "//third_party:google_test",
         "//third_party:google_test_main",
@@ -216,6 +241,8 @@ amdf_cc_test(
     deps = [
         ":legacy_context",
         "//libamdf/src:allocator",
+        "//libamdf/src/xdna/target/npu4:bootstrap",
+        "//libamdf/src/xdna/target/npu5:bootstrap",
         "//third_party:google_test",
         "//third_party:google_test_main",
     ],

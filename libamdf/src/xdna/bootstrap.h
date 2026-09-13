@@ -15,6 +15,14 @@ extern "C" {
 
 // Immutable target bootstrap consumed by native execution providers.
 typedef struct amdf_xdna_bootstrap_t {
+  // Native context-admission identity and accounting for this bootstrap.
+  struct {
+    // UUID naming the bootstrap, independent of application executable images.
+    uint8_t uuid[16];
+    // Nominal native admission accounting, not the application's operation
+    // count.
+    uint32_t operations_per_cycle;
+  } context;
   // Provider-independent PDI bytes copied into native device storage. Fabric
   // effects belong only to interpreter transport and leave application data
   // routes unclaimed after admission.

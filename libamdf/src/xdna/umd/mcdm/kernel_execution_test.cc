@@ -31,6 +31,8 @@ struct NativeState {
   std::vector<Allocation> allocations = {Allocation{}};
   // Independent firmware address returned for the private instruction heap.
   uint64_t firmware_address = UINT64_C(0x8000000);
+  // Native envelope prefix qualified independently of the device profile.
+  uint32_t header_byte_length = 104;
   // CPU-visible native progress fence.
   volatile uint64_t progress = 0;
   // Native opcodes observed in publication order.
@@ -72,6 +74,7 @@ NTSTATUS APIENTRY CreateAllocation(D3DKMT_CREATEALLOCATION* create) {
   if (allocation.pointer == nullptr) return static_cast<NTSTATUS>(0xC0000017u);
   if (allocation.type == 0x3323) {
     EXPECT_EQ(allocation.byte_length, AMDF_WINDOWS_XDNA_PRIVATE_APERTURE_SIZE);
+    EXPECT_EQ(ReadU32(info->pPrivateDriverData, 0x28), 0x01000001u);
     std::memcpy(static_cast<uint8_t*>(info->pPrivateDriverData) + 0x30,
                 &native_state->firmware_address, sizeof(uint64_t));
   }
@@ -129,9 +132,11 @@ NTSTATUS APIENTRY Submit(const D3DKMT_SUBMITCOMMANDTOHWQUEUE* submit) {
     EXPECT_EQ(response[1], native_state->firmware_address);
     response[0] = native_state->initialize_result;
   } else if (opcode == 3) {
-    EXPECT_EQ(submit->CommandLength, 4200u);
-    native_state->instruction_address = ReadU64(bytes, 104 + 0x10);
-    native_state->instruction_word_count = ReadU32(bytes, 104 + 0x18);
+    EXPECT_EQ(submit->CommandLength, 4096u + native_state->header_byte_length);
+    native_state->instruction_address =
+        ReadU64(bytes, native_state->header_byte_length + 0x10);
+    native_state->instruction_word_count =
+        ReadU32(bytes, native_state->header_byte_length + 0x18);
     auto* response = reinterpret_cast<uint64_t*>(ReadU64(bytes, 0x38));
     *response = 4;
   } else {
@@ -141,10 +146,13 @@ NTSTATUS APIENTRY Submit(const D3DKMT_SUBMITCOMMANDTOHWQUEUE* submit) {
   return 0;
 }
 
-class WindowsXdnaKernelExecutionTest : public ::testing::Test {
+class WindowsXdnaKernelExecutionTest
+    : public ::testing::TestWithParam<uint32_t> {
  protected:
   void SetUp() override {
     native_state = &native_;
+    native_.header_byte_length = GetParam();
+    abi_.submission_header_byte_length = GetParam();
     kmt_.create_allocation = CreateAllocation;
     kmt_.destroy_allocation = DestroyAllocation;
     kmt_.map_gpu_virtual_address = MapAddress;
@@ -207,7 +215,8 @@ class WindowsXdnaKernelExecutionTest : public ::testing::Test {
     device_.paging_sync_object = 12;
     context_.device = &device_;
     context_.handle = 13;
-    context_.command_aperture_cookie = 14;
+    context_.command_aperture_cookie = 0;
+    context_.native_abi = &abi_;
     ASSERT_EQ(amdf_windows_xdna_kernel_execution_create(
                   &context_, &context_.kernel_execution),
               AMDF_STATUS_OK);
@@ -232,6 +241,8 @@ class WindowsXdnaKernelExecutionTest : public ::testing::Test {
     native_state = nullptr;
   }
 
+  // Resolved wire facts borrowed by the already admitted native context.
+  amdf_windows_xdna_native_abi_t abi_ = {};
   // Native allocation and submission observations.
   NativeState native_;
   // Procedures supplied at the existing platform dependency boundary.
@@ -248,7 +259,7 @@ class WindowsXdnaKernelExecutionTest : public ::testing::Test {
   amdf_xdna_umd_memory_t* memory_ = nullptr;
 };
 
-TEST_F(WindowsXdnaKernelExecutionTest,
+TEST_P(WindowsXdnaKernelExecutionTest,
        OwnsOneApertureAndSubmitsImmutableRanges) {
   amdf_xdna_umd_memory_result_t result = {};
   ASSERT_EQ(amdf_xdna_umd_memory_prepare_private(&context_, &profile_, &create_,
@@ -290,7 +301,7 @@ TEST_F(WindowsXdnaKernelExecutionTest,
   EXPECT_EQ(native_.allocations.size(), 4u);
 }
 
-TEST_F(WindowsXdnaKernelExecutionTest,
+TEST_P(WindowsXdnaKernelExecutionTest,
        InvalidFirmwareAddressNeverReachesBootstrap) {
   native_.firmware_address += 4096;
   amdf_xdna_umd_memory_result_t result = {};
@@ -302,7 +313,7 @@ TEST_F(WindowsXdnaKernelExecutionTest,
   EXPECT_TRUE(native_.opcodes.empty());
 }
 
-TEST_F(WindowsXdnaKernelExecutionTest, FailedBootstrapDoesNotPublishMemory) {
+TEST_P(WindowsXdnaKernelExecutionTest, FailedBootstrapDoesNotPublishMemory) {
   native_.initialize_result = 0;
   amdf_xdna_umd_memory_result_t result = {};
   result.device_address = UINT64_MAX;
@@ -312,5 +323,8 @@ TEST_F(WindowsXdnaKernelExecutionTest, FailedBootstrapDoesNotPublishMemory) {
   EXPECT_EQ(result.device_address, UINT64_MAX);
   EXPECT_EQ(native_.opcodes, (std::vector<uint64_t>{2, 5}));
 }
+
+INSTANTIATE_TEST_SUITE_P(NativeLayouts, WindowsXdnaKernelExecutionTest,
+                         ::testing::Values(88u, 104u));
 
 }  // namespace

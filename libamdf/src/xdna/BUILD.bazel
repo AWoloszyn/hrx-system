@@ -36,6 +36,7 @@ amdf_cc_library(
     ],
     deps = [
         ":bootstrap",
+        "//libamdf/src/xdna/target/npu4:bootstrap",
         "//libamdf/src/xdna/target/npu5:bootstrap",
     ],
 )

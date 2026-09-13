@@ -30,21 +30,26 @@ typedef struct amdf_windows_xdna_legacy_submission_t {
 
 // Builds the context-aperture publication record.
 void amdf_windows_xdna_legacy_submission_build_aperture(
+    uint32_t header_byte_length,
     const amdf_windows_xdna_private_allocation_t* instruction_allocation,
     amdf_windows_xdna_legacy_submission_t* out_submission);
 
 // Builds the program-independent context initialization record.
 void amdf_windows_xdna_legacy_submission_build_context_initialize(
+    uint32_t header_byte_length,
     const amdf_windows_xdna_private_allocation_t* command_allocation,
     amdf_windows_xdna_legacy_submission_t* out_submission);
 
-// Builds the instruction-aperture watermark update record.
-void amdf_windows_xdna_legacy_submission_build_watermark(
+// Reports live instruction bytes for native accounting; it is not retirement.
+void amdf_windows_xdna_legacy_submission_build_accounting(
+    uint32_t header_byte_length,
     const amdf_windows_xdna_private_allocation_t* instruction_allocation,
-    uint64_t watermark, amdf_windows_xdna_legacy_submission_t* out_submission);
+    uint64_t live_byte_length,
+    amdf_windows_xdna_legacy_submission_t* out_submission);
 
 // Builds the private execution record adjoining one ERT packet.
 void amdf_windows_xdna_legacy_submission_build_execute(
+    uint32_t header_byte_length,
     const amdf_windows_xdna_private_allocation_t* execution_allocation,
     const amdf_windows_xdna_private_allocation_t* command_allocation,
     const amdf_xdna_transaction_interpreter_packet_t* packet,

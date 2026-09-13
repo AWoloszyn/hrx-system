@@ -135,11 +135,13 @@ static amdf_status_t amdf_windows_xdna_memory_map_device_address(
   map.hPagingQueue = memory->device->paging_queue;
   map.hAllocation = memory->allocation;
   map.MinimumAddress = address_capabilities->minimum_address;
+  // Both the native VA and its shim-DMA translation must fit the advertised
+  // envelope. Reserve the target's DMA bias before requesting a native range.
+  const uint64_t maximum_address = address_capabilities->maximum_address -
+                                   memory->device->profile->dma.byte_offset;
   // KMT takes an exclusive, page-aligned end; zero leaves a full-width range
   // unconstrained. The public envelope uses an inclusive final byte.
-  map.MaximumAddress = address_capabilities->maximum_address == UINT64_MAX
-                           ? 0
-                           : address_capabilities->maximum_address + 1;
+  map.MaximumAddress = maximum_address == UINT64_MAX ? 0 : maximum_address + 1;
   map.SizeInPages = memory->byte_length / AMDF_WINDOWS_KMT_PAGE_SIZE;
   map.Protection.Write = (device_access & AMDF_MEMORY_ACCESS_WRITE) != 0;
   map.Protection.Execute = (device_access & AMDF_MEMORY_ACCESS_EXECUTE) != 0;
@@ -156,11 +158,10 @@ static amdf_status_t amdf_windows_xdna_memory_map_device_address(
     memory->pending_paging_fence = 0;
     memory->device_address = map.VirtualAddress;
     if (memory->device_address < address_capabilities->minimum_address ||
-        memory->device_address > address_capabilities->maximum_address ||
-        memory->byte_length - 1 >
-            address_capabilities->maximum_address - memory->device_address ||
-        (memory->device_address &
-         (AMDF_WINDOWS_XDNA_ALLOCATION_ALIGNMENT - 1)) != 0) {
+        memory->device_address > maximum_address ||
+        memory->byte_length - 1 > maximum_address - memory->device_address ||
+        (memory->device_address & (AMDF_WINDOWS_XDNA_ADDRESS_ALIGNMENT - 1)) !=
+            0) {
       status = amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
     }
   }
@@ -342,9 +343,9 @@ amdf_status_t amdf_xdna_umd_memory_prepare(
     const amdf_memory_native_create_info_t* create_info,
     amdf_xdna_umd_memory_t** memory_state,
     amdf_xdna_umd_memory_result_t* out_result) {
-  const uint64_t byte_length =
-      (create_info->byte_length + AMDF_WINDOWS_XDNA_ALLOCATION_ALIGNMENT - 1) &
-      ~(AMDF_WINDOWS_XDNA_ALLOCATION_ALIGNMENT - 1);
+  const uint64_t byte_length = (create_info->byte_length +
+                                AMDF_WINDOWS_XDNA_ALLOCATION_GRANULARITY - 1) &
+                               ~(AMDF_WINDOWS_XDNA_ALLOCATION_GRANULARITY - 1);
 
   amdf_xdna_umd_memory_t* memory = NULL;
   amdf_status_t status =
@@ -375,15 +376,17 @@ amdf_status_t amdf_xdna_umd_memory_prepare(
     result.flags = profile->guaranteed_flags;
     result.source_byte_offset = 0;
     result.byte_length = memory->byte_length;
-    result.alignment = AMDF_WINDOWS_XDNA_ALLOCATION_ALIGNMENT;
+    result.alignment = AMDF_WINDOWS_XDNA_ADDRESS_ALIGNMENT;
     result.native_allocation_byte_length = memory->byte_length;
     result.native_allocation_granularity =
-        AMDF_WINDOWS_XDNA_ALLOCATION_ALIGNMENT;
+        AMDF_WINDOWS_XDNA_ALLOCATION_GRANULARITY;
     result.physical_backing_id.words[0] =
         (uint64_t)(uintptr_t)memory->host_pointer;
     result.physical_backing_id.words[1] = memory->byte_length;
     result.device_address = memory->device_address;
-    result.address_kinds = UINT64_C(1) << AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE;
+    result.address_kinds = profile->address_kinds;
+    result.dma_address =
+        memory->device_address + device->profile->dma.byte_offset;
     *out_result = result;
   }
   return status;

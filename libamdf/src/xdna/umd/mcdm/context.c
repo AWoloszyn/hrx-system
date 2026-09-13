@@ -43,19 +43,6 @@ amdf_status_t amdf_xdna_umd_context_destroy(amdf_xdna_umd_context_t* context) {
   return AMDF_STATUS_OK;
 }
 
-static amdf_status_t amdf_windows_xdna_query_legacy_context_abi(
-    const amdf_xdna_umd_device_t* device) {
-  uint32_t private_info[2] = {0};
-  const amdf_status_t status = amdf_kmt_query_adapter_info(
-      device->kmt, device->adapter, KMTQAITYPE_UMDRIVERPRIVATE, private_info,
-      sizeof(private_info));
-  if (!amdf_status_is_ok(status)) return status;
-  if (private_info[0] != 0 || private_info[1] != 3) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
-  }
-  return AMDF_STATUS_OK;
-}
-
 amdf_status_t amdf_xdna_umd_context_create(
     amdf_xdna_umd_device_t* device,
     const amdf_xdna_context_create_info_t* create_info,
@@ -77,13 +64,16 @@ amdf_status_t amdf_xdna_umd_context_create(
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
 
-  amdf_status_t status = amdf_windows_xdna_query_legacy_context_abi(device);
+  const amdf_windows_xdna_native_abi_t* native_abi = NULL;
+  amdf_status_t status = amdf_windows_xdna_native_abi_query(
+      device->kmt, device->adapter, &native_abi);
   if (!amdf_status_is_ok(status)) return status;
   uint8_t* context_data = NULL;
   uint32_t context_data_size = 0;
   status = amdf_windows_xdna_legacy_context_build(
-      create_info->logical_column_count, profile->info->array.column_origin,
-      device->host_allocator, &context_data, &context_data_size);
+      native_abi, profile->bootstrap, create_info->logical_column_count,
+      profile->info->array.column_origin, device->host_allocator, &context_data,
+      &context_data_size);
   if (!amdf_status_is_ok(status)) {
     return status;
   }
@@ -96,6 +86,7 @@ amdf_status_t amdf_xdna_umd_context_create(
     return status;
   }
   context->device = device;
+  context->native_abi = native_abi;
 
   D3DKMT_CREATECONTEXTVIRTUAL create = {0};
   create.hDevice = device->device;
@@ -111,8 +102,12 @@ amdf_status_t amdf_xdna_umd_context_create(
     if (context->handle == 0) {
       status = amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
     } else {
-      status = amdf_windows_xdna_legacy_context_query_command_aperture_cookie(
-          context_data, context_data_size, &context->command_aperture_cookie);
+      context->command_aperture_cookie =
+          amdf_windows_xdna_legacy_context_query_command_aperture_cookie(
+              native_abi, context_data);
+      if (context->command_aperture_cookie > UINT8_MAX) {
+        status = amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
+      }
     }
   }
   amdf_free(device->host_allocator, context_data);

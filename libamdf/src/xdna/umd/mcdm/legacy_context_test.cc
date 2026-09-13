@@ -11,8 +11,15 @@
 
 #include "gtest/gtest.h"
 #include "libamdf/src/allocator.h"
+#include "libamdf/src/xdna/target/npu4/bootstrap.h"
+#include "libamdf/src/xdna/target/npu5/bootstrap.h"
 
 namespace {
+
+constexpr amdf_windows_xdna_native_abi_t kXclbinAbi = {
+    AMDF_WINDOWS_XDNA_CONTEXT_ENCODING_XCLBIN, 0x40, 104};
+constexpr amdf_windows_xdna_native_abi_t kMetadataAbi = {
+    AMDF_WINDOWS_XDNA_CONTEXT_ENCODING_METADATA, 0x30, 88};
 
 uint32_t ReadU32(const uint8_t* data, size_t offset) {
   uint32_t value = 0;
@@ -31,7 +38,8 @@ TEST(XdnaLegacyContextTest, BuildsExactNpu5CompatibilityRecord) {
   uint8_t* data = nullptr;
   uint32_t data_size = 0;
   ASSERT_TRUE(amdf_status_is_ok(amdf_windows_xdna_legacy_context_build(
-      3, 0, host_allocator, &data, &data_size)));
+      &kXclbinAbi, &amdf_xdna_npu5_bootstrap, 3, 0, host_allocator, &data,
+      &data_size)));
   ASSERT_NE(data, nullptr);
   EXPECT_EQ(data_size, 9578u);
 
@@ -62,16 +70,14 @@ TEST(XdnaLegacyContextTest, BuildsExactNpu5CompatibilityRecord) {
   EXPECT_EQ(ReadU32(data, kTailOffset + 0x374), 3u);
   EXPECT_EQ(ReadU32(data, kTailOffset + 0x378), 4u);
 
-  uint32_t cookie = UINT32_MAX;
-  ASSERT_TRUE(amdf_status_is_ok(
+  uint32_t cookie =
       amdf_windows_xdna_legacy_context_query_command_aperture_cookie(
-          data, data_size, &cookie)));
+          &kXclbinAbi, data);
   EXPECT_EQ(cookie, 0u);
   constexpr uint32_t kReturnedCookie = 0x12345678u;
   std::memcpy(data + 0x40, &kReturnedCookie, sizeof(kReturnedCookie));
-  ASSERT_TRUE(amdf_status_is_ok(
-      amdf_windows_xdna_legacy_context_query_command_aperture_cookie(
-          data, data_size, &cookie)));
+  cookie = amdf_windows_xdna_legacy_context_query_command_aperture_cookie(
+      &kXclbinAbi, data);
   EXPECT_EQ(cookie, kReturnedCookie);
   amdf_free(host_allocator, data);
 }
@@ -81,13 +87,49 @@ TEST(XdnaLegacyContextTest, ValidatesOutputStorage) {
   uint8_t* data = reinterpret_cast<uint8_t*>(uintptr_t{1});
   uint32_t data_size = UINT32_MAX;
   EXPECT_EQ(amdf_status_code(amdf_windows_xdna_legacy_context_build(
-                1, 0, host_allocator, nullptr, &data_size)),
+                &kXclbinAbi, &amdf_xdna_npu5_bootstrap, 1, 0, host_allocator,
+                nullptr, &data_size)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
   EXPECT_EQ(data_size, UINT32_MAX);
   EXPECT_EQ(amdf_status_code(amdf_windows_xdna_legacy_context_build(
-                1, 0, host_allocator, &data, nullptr)),
+                &kXclbinAbi, &amdf_xdna_npu5_bootstrap, 1, 0, host_allocator,
+                &data, nullptr)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
   EXPECT_EQ(data, reinterpret_cast<uint8_t*>(uintptr_t{1}));
+}
+
+TEST(XdnaLegacyContextTest, BuildsAdmissionMetadataWithoutAnImageContainer) {
+  uint8_t* data = nullptr;
+  uint32_t size = 0;
+  ASSERT_EQ(amdf_windows_xdna_legacy_context_build(
+                &kMetadataAbi, &amdf_xdna_npu4_bootstrap, 4, 0,
+                amdf_allocator_system(), &data, &size),
+            AMDF_STATUS_OK);
+  ASSERT_EQ(size, 272u);
+  EXPECT_EQ(std::memcmp(data, amdf_xdna_npu4_bootstrap.context.uuid, 16), 0);
+  EXPECT_EQ(ReadU64(data, 0x38), 0x04000000u);
+  EXPECT_EQ(ReadU64(data, 0x40), 0x48u);
+  EXPECT_NE(ReadU64(data, 0x50), 0u);
+  EXPECT_EQ(ReadU64(data, 0xB0), 0u);
+  EXPECT_EQ(ReadU32(data, 0x100), 16384u);
+  EXPECT_EQ(ReadU32(data, 0x104), 1u);
+  EXPECT_EQ(ReadU32(data, 0x108), 4u);
+  EXPECT_EQ(ReadU32(data, 0x10C), 0u);
+  EXPECT_EQ(amdf_windows_xdna_legacy_context_query_command_aperture_cookie(
+                &kMetadataAbi, data),
+            0u);
+  amdf_free(amdf_allocator_system(), data);
+}
+
+TEST(XdnaLegacyContextTest, RejectsAnUnqualifiedBootstrapContainerPair) {
+  uint8_t* data = nullptr;
+  uint32_t size = 0;
+  EXPECT_EQ(amdf_status_code(amdf_windows_xdna_legacy_context_build(
+                &kXclbinAbi, &amdf_xdna_npu4_bootstrap, 4, 0,
+                amdf_allocator_system(), &data, &size)),
+            AMDF_STATUS_CODE_UNSUPPORTED);
+  EXPECT_EQ(data, nullptr);
+  EXPECT_EQ(size, 0u);
 }
 
 }  // namespace

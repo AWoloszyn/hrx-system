@@ -14,7 +14,10 @@
 extern "C" {
 #endif  // __cplusplus
 
-#define AMDF_WINDOWS_XDNA_ALLOCATION_ALIGNMENT UINT64_C(65536)
+// Standard host backing is rounded to the Windows allocation granularity.
+#define AMDF_WINDOWS_XDNA_ALLOCATION_GRANULARITY UINT64_C(65536)
+// KMT chooses a GPU VA on CPU-page boundaries, independently of backing size.
+#define AMDF_WINDOWS_XDNA_ADDRESS_ALIGNMENT UINT64_C(4096)
 
 // Derives complete memory capabilities from qualified target facts.
 // This metadata query performs no native operation or device activation.

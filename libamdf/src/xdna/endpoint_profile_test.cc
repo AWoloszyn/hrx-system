@@ -54,7 +54,7 @@ TEST(XdnaEndpointProfileTest, SelectsPublishedStaticProfiles) {
            AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED,
        6u, 6u, false, "amd.xdna.phoenix.1502_00"},
       {0x17F0u, 0x10u, AMDF_XDNA_ARCHITECTURE_AIE2P, 0u, 8u,
-       AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED, 32u, 16u, false,
+       AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED, 32u, 16u, true,
        "amd.xdna.strix.17f0_10"},
       {0x17F0u, 0x11u, AMDF_XDNA_ARCHITECTURE_AIE2P, 0u, 8u,
        AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED, 32u, 16u, true,
@@ -105,7 +105,7 @@ TEST(XdnaEndpointProfileTest, SelectsPublishedStaticProfiles) {
       EXPECT_NE(profile->execution_capabilities, 0u);
       ASSERT_NE(profile->bootstrap, nullptr);
       EXPECT_NE(profile->bootstrap->pdi_bytes, nullptr);
-      EXPECT_EQ(profile->bootstrap->pdi_byte_length, 2000u);
+      EXPECT_GT(profile->bootstrap->pdi_byte_length, 0u);
       EXPECT_EQ(profile->firmware_heap_byte_length, 64u * 1024u * 1024u);
       EXPECT_EQ(profile->transaction.device_generation, 4u);
       EXPECT_EQ(profile->rows.shim_origin, 0u);

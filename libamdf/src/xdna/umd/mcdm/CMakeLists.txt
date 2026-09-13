@@ -12,6 +12,21 @@ iree_add_all_subdirs()
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
 iree_cc_library(
   NAME
+    native_abi
+  HDRS
+    "native_abi.h"
+  SRCS
+    "native_abi.c"
+  DEPS
+    amdf::headers
+    libamdf::src::platform::windows::kmt_api
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_library(
+  NAME
     bootstrap_image
   HDRS
     "npu5_legacy_bootstrap_image.h"
@@ -20,6 +35,23 @@ iree_cc_library(
   DEPS
     amdf::headers
   PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_test(
+  NAME
+    native_abi_test
+  SRCS
+    "native_abi_test.cc"
+  DEPS
+    ::native_abi
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.xdna"
 )
 endif()
 
@@ -33,8 +65,10 @@ iree_cc_library(
     "legacy_context.c"
   DEPS
     ::bootstrap_image
+    ::native_abi
     amdf::headers
     libamdf::src::allocator
+    libamdf::src::xdna::bootstrap
   PUBLIC
 )
 endif()
@@ -62,6 +96,7 @@ iree_cc_library(
     "context.h"
   DEPS
     ::device_state
+    ::native_abi
     amdf::headers
     libamdf::src::xdna::umd::context
   PUBLIC
@@ -189,6 +224,7 @@ iree_cc_library(
     ::device_state
     ::kernel_execution
     ::legacy_context
+    ::native_abi
     amdf::headers
     libamdf::src::allocator
     libamdf::src::xdna::umd::context
@@ -266,6 +302,8 @@ iree_cc_test(
     iree::third_party::google_test_main
     libamdf::src::allocator
     libamdf::src::xdna::endpoint_profile
+    libamdf::src::xdna::target::npu4::bootstrap
+    libamdf::src::xdna::target::npu5::bootstrap
     libamdf::src::xdna::umd::context
   LABELS
     "iree-build-requirement=libamdf"
@@ -285,6 +323,8 @@ iree_cc_test(
     iree::third_party::google_test
     iree::third_party::google_test_main
     libamdf::src::allocator
+    libamdf::src::xdna::target::npu4::bootstrap
+    libamdf::src::xdna::target::npu5::bootstrap
   LABELS
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.xdna"

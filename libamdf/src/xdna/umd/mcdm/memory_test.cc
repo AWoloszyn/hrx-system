@@ -41,11 +41,11 @@ enum class Operation {
 
 struct FakeKmtState {
   // Exclusive device-address limit expected in the native mapping request.
-  uint64_t address_limit = UINT64_C(1) << 48;
+  uint64_t address_limit = (UINT64_C(1) << 48) - UINT64_C(0x80000000);
   // Native allocation length expected after logical-length rounding.
   uint64_t byte_length = 65536;
   // Native mapping base returned when no malformed-alignment failure is set.
-  uint64_t mapped_address = UINT64_C(0x12340000);
+  uint64_t mapped_address = UINT64_C(0x13000);
   // Native operation selected for a failure response.
   FailurePoint failure_point = FailurePoint::kNone;
   // Number of allocation release calls rejected before consuming the handle.
@@ -173,6 +173,7 @@ class WindowsXdnaMemoryTest : public ::testing::Test {
     };
     device_.kmt = &kmt_;
     endpoint_profile_.dma.address_bit_count = 48;
+    endpoint_profile_.dma.byte_offset = UINT32_C(0x80000000);
     device_.profile = &endpoint_profile_;
     device_.device = 0x10;
     device_.paging_queue = 0x30;
@@ -235,11 +236,13 @@ TEST_F(WindowsXdnaMemoryTest, CompletesOnlyAfterMapAndOrdinaryResidency) {
   EXPECT_EQ(result.flags,
             AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS);
   EXPECT_EQ(result.byte_length, UINT64_C(65536));
-  EXPECT_EQ(result.alignment, UINT64_C(65536));
+  EXPECT_EQ(result.alignment, UINT64_C(4096));
   EXPECT_TRUE(amdf_physical_memory_id_is_valid(&result.physical_backing_id));
-  EXPECT_EQ(result.device_address, UINT64_C(0x12340000));
-  EXPECT_EQ(result.address_kinds, UINT64_C(1)
-                                      << AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE);
+  EXPECT_EQ(result.device_address, UINT64_C(0x13000));
+  EXPECT_EQ(result.address_kinds,
+            (UINT64_C(1) << AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE) |
+                (UINT64_C(1) << AMDF_MEMORY_ADDRESS_XDNA_DMA));
+  EXPECT_EQ(result.dma_address, UINT64_C(0x80013000));
   EXPECT_EQ(result.address_kinds, profile_.address_kinds);
 
   amdf_memory_map_info_t map_info = {};
@@ -278,9 +281,12 @@ TEST_F(WindowsXdnaMemoryTest, ExposesExactSystemMemoryProfile) {
   EXPECT_EQ(profile_.device_address.minimum_address, UINT64_C(65536));
   EXPECT_EQ(profile_.device_address.maximum_address, (UINT64_C(1) << 48) - 1);
   EXPECT_EQ(profile_.allocation.maximum_byte_length,
-            (UINT64_C(1) << 48) - UINT64_C(65536));
-  EXPECT_EQ(profile_.allocation.minimum_alignment, UINT64_C(65536));
-  EXPECT_EQ(profile_.allocation.maximum_alignment, UINT64_C(65536));
+            (UINT64_C(1) << 48) - UINT64_C(0x80000000) - UINT64_C(65536));
+  EXPECT_EQ(profile_.allocation.minimum_alignment, UINT64_C(4096));
+  EXPECT_EQ(profile_.allocation.maximum_alignment, UINT64_C(4096));
+  EXPECT_EQ(profile_.device_address.minimum_alignment, UINT64_C(4096));
+  EXPECT_EQ(profile_.allocation.native_byte_length_granularity,
+            UINT64_C(65536));
   EXPECT_TRUE(state_.operations.empty());
 }
 
@@ -298,21 +304,24 @@ TEST_F(WindowsXdnaMemoryTest, ConstrainsAndChecksCompleteNativeAddressRanges) {
     amdf_status_code_t status_code;
   };
   const RangeCase cases[] = {
-      {32, (UINT64_C(1) << 32) - 65536, 4097, 65536, AMDF_STATUS_CODE_OK},
-      {48, (UINT64_C(1) << 48) - 65536, 4097, 65536, AMDF_STATUS_CODE_OK},
+      {32, (UINT64_C(1) << 32) - 0x80000000 - 65536, 4097, 65536,
+       AMDF_STATUS_CODE_OK},
+      {48, (UINT64_C(1) << 48) - 0x80000000 - 65536, 4097, 65536,
+       AMDF_STATUS_CODE_OK},
+      {48, (UINT64_C(1) << 48) - 65536, 4097, 65536, AMDF_STATUS_CODE_INTERNAL},
       {48, 0, 4097, 65536, AMDF_STATUS_CODE_INTERNAL},
       {48, UINT64_C(1) << 48, 4097, 65536, AMDF_STATUS_CODE_INTERNAL},
-      {48, (UINT64_C(1) << 48) - 65536, 65537, 131072,
+      {48, (UINT64_C(1) << 48) - 0x80000000 - 65536, 65537, 131072,
        AMDF_STATUS_CODE_INTERNAL},
-      {64, UINT64_MAX - 65535, 4097, 65536, AMDF_STATUS_CODE_OK},
-      {64, UINT64_MAX - 65535, 65537, 131072, AMDF_STATUS_CODE_INTERNAL},
+      {64, UINT64_MAX - 0x80000000 - 65535, 4097, 65536, AMDF_STATUS_CODE_OK},
+      {64, UINT64_MAX - 0x80000000 - 65535, 65537, 131072,
+       AMDF_STATUS_CODE_INTERNAL},
   };
   for (const RangeCase& test : cases) {
     SCOPED_TRACE(test.address);
     state_ = {};
-    state_.address_limit = test.address_bit_count == 64
-                               ? 0
-                               : UINT64_C(1) << test.address_bit_count;
+    state_.address_limit = (UINT64_MAX >> (64 - test.address_bit_count)) -
+                           endpoint_profile_.dma.byte_offset + 1;
     state_.mapped_address = test.address;
     state_.byte_length = test.native_byte_length;
     endpoint_profile_.dma.address_bit_count = test.address_bit_count;
@@ -333,6 +342,8 @@ TEST_F(WindowsXdnaMemoryTest, ConstrainsAndChecksCompleteNativeAddressRanges) {
     ASSERT_NE(memory, nullptr);
     if (amdf_status_is_ok(status)) {
       EXPECT_EQ(result.device_address, test.address);
+      EXPECT_EQ(result.dma_address,
+                test.address + endpoint_profile_.dma.byte_offset);
       EXPECT_EQ(result.byte_length, test.native_byte_length);
     } else {
       EXPECT_EQ(std::memcmp(&result, &original, sizeof(result)), 0);

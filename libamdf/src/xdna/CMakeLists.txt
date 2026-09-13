@@ -46,6 +46,7 @@ iree_cc_library(
   DEPS
     ::bootstrap
     amdf::headers
+    libamdf::src::xdna::target::npu4::bootstrap
     libamdf::src::xdna::target::npu5::bootstrap
   PUBLIC
 )

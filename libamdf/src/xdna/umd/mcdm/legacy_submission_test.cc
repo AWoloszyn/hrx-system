@@ -29,7 +29,11 @@ uint64_t ReadU64(const void* bytes, size_t offset) {
   return value;
 }
 
-TEST(WindowsXdnaLegacySubmissionTest, BuildsContextLifecycleRecords) {
+class WindowsXdnaSubmissionLayoutTest
+    : public ::testing::TestWithParam<uint32_t> {};
+
+TEST_P(WindowsXdnaSubmissionLayoutTest, BuildsContextLifecycleRecords) {
+  const uint32_t header_length = GetParam();
   std::array<uint8_t, 4096> command_bytes = {};
   for (size_t i = 0; i < 512; ++i) {
     command_bytes[i] = static_cast<uint8_t>(i);
@@ -42,34 +46,39 @@ TEST(WindowsXdnaLegacySubmissionTest, BuildsContextLifecycleRecords) {
   command.host_pointer = command_bytes.data();
 
   amdf_windows_xdna_legacy_submission_t aperture = {};
-  amdf_windows_xdna_legacy_submission_build_aperture(&instruction, &aperture);
-  EXPECT_EQ(aperture.byte_length, 104u);
+  amdf_windows_xdna_legacy_submission_build_aperture(header_length,
+                                                     &instruction, &aperture);
+  EXPECT_EQ(aperture.byte_length, header_length);
   EXPECT_EQ(ReadU64(aperture.bytes, 0x00), 2u);
   EXPECT_EQ(ReadU64(aperture.bytes, 0x08), 0x10u);
   EXPECT_EQ(ReadU64(aperture.bytes, 0x10), UINT64_C(0x4000000));
 
   amdf_windows_xdna_legacy_submission_t initialize = {};
-  amdf_windows_xdna_legacy_submission_build_context_initialize(&command,
-                                                               &initialize);
-  EXPECT_EQ(initialize.byte_length, 624u);
+  amdf_windows_xdna_legacy_submission_build_context_initialize(
+      header_length, &command, &initialize);
+  EXPECT_EQ(initialize.byte_length, header_length + 520u);
   EXPECT_EQ(ReadU64(initialize.bytes, 0x00), 5u);
   EXPECT_EQ(ReadU64(initialize.bytes, 0x28), 0x20u);
   EXPECT_EQ(ReadU32(initialize.bytes, 0x30), 0u);
   EXPECT_EQ(ReadU32(initialize.bytes, 0x34), 8u);
   EXPECT_EQ(ReadU64(initialize.bytes, 0x38),
             reinterpret_cast<uintptr_t>(command_bytes.data()));
-  EXPECT_EQ(std::memcmp(initialize.bytes + 104, command_bytes.data(), 512), 0);
+  EXPECT_EQ(
+      std::memcmp(initialize.bytes + header_length, command_bytes.data(), 512),
+      0);
 
-  amdf_windows_xdna_legacy_submission_t watermark = {};
-  amdf_windows_xdna_legacy_submission_build_watermark(
-      &instruction, UINT64_C(0x20000), &watermark);
-  EXPECT_EQ(watermark.byte_length, 104u);
-  EXPECT_EQ(ReadU64(watermark.bytes, 0x00), 9u);
-  EXPECT_EQ(ReadU64(watermark.bytes, 0x08), 0x10u);
-  EXPECT_EQ(ReadU64(watermark.bytes, 0x10), UINT64_C(0x20000));
+  amdf_windows_xdna_legacy_submission_t accounting = {};
+  amdf_windows_xdna_legacy_submission_build_accounting(
+      header_length, &instruction, UINT64_C(0x20000), &accounting);
+  EXPECT_EQ(accounting.byte_length, header_length);
+  EXPECT_EQ(ReadU64(accounting.bytes, 0x00), 9u);
+  EXPECT_EQ(ReadU64(accounting.bytes, 0x08), 0x10u);
+  EXPECT_EQ(ReadU64(accounting.bytes, 0x10), UINT64_C(0x20000));
 }
 
-TEST(WindowsXdnaLegacySubmissionTest, BuildsInstructionRangeExecutionRecords) {
+TEST_P(WindowsXdnaSubmissionLayoutTest,
+       BuildsInstructionRangeExecutionRecords) {
+  const uint32_t header_length = GetParam();
   amdf_xdna_transaction_interpreter_packet_t packet = {};
   amdf_xdna_transaction_interpreter_packet_build(UINT64_C(0x04008000), 300,
                                                  &packet);
@@ -87,9 +96,9 @@ TEST(WindowsXdnaLegacySubmissionTest, BuildsInstructionRangeExecutionRecords) {
   command.allocation = 0x20;
   command.host_pointer = command_bytes.data();
   amdf_windows_xdna_legacy_submission_t submission = {};
-  amdf_windows_xdna_legacy_submission_build_execute(&execution, &command,
-                                                    &packet, &submission);
-  EXPECT_EQ(submission.byte_length, 616u);
+  amdf_windows_xdna_legacy_submission_build_execute(
+      header_length, &execution, &command, &packet, &submission);
+  EXPECT_EQ(submission.byte_length, header_length + 512u);
   EXPECT_EQ(ReadU64(submission.bytes, 0x00), 3u);
   EXPECT_EQ(ReadU64(submission.bytes, 0x08), 0x30u);
   EXPECT_EQ(ReadU64(submission.bytes, 0x10), 68u);
@@ -98,10 +107,13 @@ TEST(WindowsXdnaLegacySubmissionTest, BuildsInstructionRangeExecutionRecords) {
   EXPECT_EQ(ReadU32(submission.bytes, 0x34), 8u);
   EXPECT_EQ(ReadU64(submission.bytes, 0x38),
             reinterpret_cast<uintptr_t>(command_bytes.data() + 8));
-  EXPECT_EQ(
-      std::memcmp(submission.bytes + 104, packet.bytes, sizeof(packet.bytes)),
-      0);
+  EXPECT_EQ(std::memcmp(submission.bytes + header_length, packet.bytes,
+                        sizeof(packet.bytes)),
+            0);
 }
+
+INSTANTIATE_TEST_SUITE_P(NativeLayouts, WindowsXdnaSubmissionLayoutTest,
+                         ::testing::Values(88u, 104u));
 
 TEST(WindowsXdnaLegacySubmissionTest, ReadsInitializationBooleanResponse) {
   // The driver writes only the low 32 bits of the eight-byte response cell.

@@ -96,12 +96,89 @@ _Static_assert(offsetof(amdf_windows_xdna_legacy_context_header_t,
 _Static_assert(AMDF_WINDOWS_XDNA_LEGACY_CONTEXT_TAIL_SIZE == 0x37C,
                "legacy context tail layout must match the NPU5 ABI");
 
+// Metadata-only native envelope. The driver reaches admission through
+// record[0x40] + 0x78 + record[record[0x40] + 0x68]. The skipped-payload
+// length is zero: the kernel consumes neither xclbin nor kernel records.
+typedef struct amdf_windows_xdna_metadata_context_t {
+  // UUID identifying the native bootstrap rather than application code.
+  uint8_t bootstrap_uuid[16];
+  // Zero selects default native quality-of-service policy.
+  uint8_t quality_of_service[0x20];
+  // Driver-written context ID, including zero.
+  uint32_t command_aperture_cookie;
+  // Native alignment preceding the firmware aperture address.
+  uint32_t reserved_0034;
+  // Firmware-visible base requested for this context's instruction window.
+  uint64_t command_aperture_base;
+  // Byte offset of the native metadata-container header within this record.
+  uint64_t container_byte_offset;
+  // Number of bytes following native container offset 0x70.
+  uint64_t bytes_after_0070;
+  // Process creating the native context.
+  uint64_t process_id;
+  // Unused native container state; no image or kernel-description payload.
+  uint8_t reserved_0058[0x58];
+  // Bytes skipped before the admission metadata, zero in this representation.
+  uint64_t skipped_payload_byte_length;
+  // Unused native container size field.
+  uint64_t reserved_00b8;
+  // Native partition name, empty for program-independent admission.
+  uint8_t partition_name[0x40];
+  // Nominal accounting from the selected native bootstrap.
+  uint32_t operations_per_cycle;
+  // A nonempty candidate list is required even though the driver replaces it.
+  uint32_t start_column_count;
+  // Requested logical partition extent.
+  uint32_t column_count;
+  // Admission input only; this is not a binding placement guarantee.
+  uint32_t first_start_column;
+} amdf_windows_xdna_metadata_context_t;
+
+_Static_assert(sizeof(amdf_windows_xdna_metadata_context_t) == 0x110,
+               "metadata context record must match its native ABI");
+_Static_assert(offsetof(amdf_windows_xdna_metadata_context_t,
+                        skipped_payload_byte_length) == 0xB0,
+               "metadata skip length must match the native locator");
+_Static_assert(offsetof(amdf_windows_xdna_metadata_context_t, partition_name) ==
+                   0xC0,
+               "admission metadata must follow the container header");
+
+static amdf_status_t amdf_windows_xdna_metadata_context_build(
+    const amdf_xdna_bootstrap_t* bootstrap, uint32_t partition_column_count,
+    uint32_t first_start_column, amdf_allocator_t host_allocator,
+    uint8_t** out_data, uint32_t* out_data_size) {
+  amdf_windows_xdna_metadata_context_t* data = NULL;
+  const amdf_status_t status = amdf_calloc(
+      host_allocator, sizeof(*data),
+      amdf_alignof(amdf_windows_xdna_metadata_context_t), (void**)&data);
+  if (!amdf_status_is_ok(status)) return status;
+  memcpy(data->bootstrap_uuid, bootstrap->context.uuid,
+         sizeof(data->bootstrap_uuid));
+  data->command_aperture_base = UINT64_C(0x04000000);
+  data->container_byte_offset = 0x48;
+  data->bytes_after_0070 = sizeof(*data) - 0x70;
+  data->process_id = GetCurrentProcessId();
+  data->operations_per_cycle = bootstrap->context.operations_per_cycle;
+  data->start_column_count = 1;
+  data->column_count = partition_column_count;
+  data->first_start_column = first_start_column;
+  *out_data = (uint8_t*)data;
+  *out_data_size = sizeof(*data);
+  return AMDF_STATUS_OK;
+}
+
 amdf_status_t amdf_windows_xdna_legacy_context_build(
-    uint32_t partition_column_count, uint32_t first_start_column,
-    amdf_allocator_t host_allocator, uint8_t** out_data,
-    uint32_t* out_data_size) {
+    const amdf_windows_xdna_native_abi_t* abi,
+    const amdf_xdna_bootstrap_t* bootstrap, uint32_t partition_column_count,
+    uint32_t first_start_column, amdf_allocator_t host_allocator,
+    uint8_t** out_data, uint32_t* out_data_size) {
   if (out_data == NULL || out_data_size == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  }
+  if (abi->context_encoding == AMDF_WINDOWS_XDNA_CONTEXT_ENCODING_METADATA) {
+    return amdf_windows_xdna_metadata_context_build(
+        bootstrap, partition_column_count, first_start_column, host_allocator,
+        out_data, out_data_size);
   }
   const size_t xclbin_uuid_offset = 0x1A0;
   if (amdf_windows_xdna_npu5_legacy_bootstrap_image_size <
@@ -109,6 +186,13 @@ amdf_status_t amdf_windows_xdna_legacy_context_build(
       memcmp(amdf_windows_xdna_npu5_legacy_bootstrap_image, "xclbin2\0", 8) !=
           0) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
+  }
+  // The retained container is qualified only for its matching bootstrap. A
+  // different target does not inherit it merely by selecting the same wire ABI.
+  if (memcmp(bootstrap->context.uuid,
+             amdf_windows_xdna_npu5_legacy_bootstrap_image + xclbin_uuid_offset,
+             sizeof(bootstrap->context.uuid)) != 0) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
 
   const size_t total_size = sizeof(amdf_windows_xdna_legacy_context_header_t) +
@@ -148,7 +232,7 @@ amdf_status_t amdf_windows_xdna_legacy_context_build(
   tail.kernel_register_byte_length = UINT64_C(0x10000);
   tail.kernel_argument_count = 8;
   tail.kernel_id = UINT64_C(0x901);
-  tail.partition.operations_per_cycle = 0x800;
+  tail.partition.operations_per_cycle = bootstrap->context.operations_per_cycle;
   tail.partition.start_column_count = 4;
   tail.partition.column_count = partition_column_count;
   tail.partition.start_columns[0] = first_start_column;
@@ -163,15 +247,9 @@ amdf_status_t amdf_windows_xdna_legacy_context_build(
   return AMDF_STATUS_OK;
 }
 
-amdf_status_t amdf_windows_xdna_legacy_context_query_command_aperture_cookie(
-    const uint8_t* data, uint32_t data_size, uint32_t* out_cookie) {
-  if (data == NULL ||
-      data_size < sizeof(amdf_windows_xdna_legacy_context_header_t) ||
-      out_cookie == NULL) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  }
-  const amdf_windows_xdna_legacy_context_header_t* header =
-      (const amdf_windows_xdna_legacy_context_header_t*)data;
-  *out_cookie = header->command_aperture_cookie;
-  return AMDF_STATUS_OK;
+uint32_t amdf_windows_xdna_legacy_context_query_command_aperture_cookie(
+    const amdf_windows_xdna_native_abi_t* abi, const uint8_t* data) {
+  uint32_t cookie;
+  memcpy(&cookie, data + abi->context_cookie_byte_offset, sizeof(cookie));
+  return cookie;
 }
