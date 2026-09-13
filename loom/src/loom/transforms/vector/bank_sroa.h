@@ -19,7 +19,9 @@ extern "C" {
 const loom_pass_info_t* loom_vector_bank_sroa_pass_info(void);
 
 // Replaces statically addressed loop-carried vector banks with one carried
-// scalar or tail-vector value per bank slot.
+// scalar or tail-vector value per bank slot. Both insert-based updates and
+// whole-bank replacements preserve the recurrence. Loops with aggregate uses
+// that cannot be split remain unchanged for subsequent target lowering.
 iree_status_t loom_vector_bank_sroa_run(loom_pass_t* pass,
                                         loom_module_t* module,
                                         loom_func_like_t function);

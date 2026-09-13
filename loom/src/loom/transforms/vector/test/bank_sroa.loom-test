@@ -288,14 +288,13 @@ func.def @zero_extent_unselected_bank_is_unchanged(%initial: vector<0x2x4xf32>) 
 // ====
 // RUN: pass sroa-vector-banks
 
-func.def @nested_region_bank_escape_is_rejected(%initial: vector<2x2x4xf32>, %condition: i1) {
+func.def @nested_region_bank_escape_is_unchanged(%initial: vector<2x2x4xf32>, %condition: i1) {
   %loop_begin = index.constant 0 : index
   %loop_end = index.constant 1 : index
   %loop_step = index.constant 1 : index
   %result = scf.for %i = [%loop_begin to %loop_end step %loop_step](%bank = %initial : vector<2x2x4xf32>) -> (vector<2x2x4xf32>) {
     %top_level = vector.extract %bank[0, 0] : vector<2x2x4xf32> -> vector<4xf32>
     scf.if %condition {
-      // ERROR@+1: LOWERING/047 {op_name="vector.extract", phase_name="sroa-vector-banks", slot="0", reason="an aggregate state has a non-prefix or nested-region use"}
       %nested = vector.extract %bank[0, 1] : vector<2x2x4xf32> -> vector<4xf32>
       test.use %nested : vector<4xf32>
     }
@@ -310,12 +309,11 @@ func.def @nested_region_bank_escape_is_rejected(%initial: vector<2x2x4xf32>, %co
 // ====
 // RUN: pass sroa-vector-banks
 
-func.def @dynamic_prefix_is_rejected(%initial: vector<2x2x4xf32>, %dynamic: index) {
+func.def @dynamic_prefix_is_unchanged(%initial: vector<2x2x4xf32>, %dynamic: index) {
   %loop_begin = index.constant 0 : index
   %loop_end = index.constant 1 : index
   %loop_step = index.constant 1 : index
   %result = scf.for %i = [%loop_begin to %loop_end step %loop_step](%bank = %initial : vector<2x2x4xf32>) -> (vector<2x2x4xf32>) {
-    // ERROR@+1: LOWERING/047 {op_name="vector.extract", phase_name="sroa-vector-banks", slot="0", reason="the access has a dynamic prefix index"}
     %value = vector.extract %bank[%dynamic, 0] : vector<2x2x4xf32> -> vector<4xf32>
     %updated = vector.insert %value into %bank[0, 0] : vector<4xf32>, vector<2x2x4xf32>
     scf.yield %updated : vector<2x2x4xf32>
@@ -328,7 +326,7 @@ func.def @dynamic_prefix_is_rejected(%initial: vector<2x2x4xf32>, %dynamic: inde
 // ====
 // RUN: pass sroa-vector-banks
 
-func.def @aggregate_result_escape_is_rejected(%initial: vector<2x2x4xf32>) {
+func.def @aggregate_result_escape_is_unchanged(%initial: vector<2x2x4xf32>) {
   %loop_begin = index.constant 0 : index
   %loop_end = index.constant 1 : index
   %loop_step = index.constant 1 : index
@@ -337,7 +335,87 @@ func.def @aggregate_result_escape_is_rejected(%initial: vector<2x2x4xf32>) {
     %updated = vector.insert %value into %bank[0, 0] : vector<4xf32>, vector<2x2x4xf32>
     scf.yield %updated : vector<2x2x4xf32>
   }
-  // ERROR@+1: LOWERING/047 {op_name="test.use", phase_name="sroa-vector-banks", slot="0", reason="the aggregate result has a non-extract use"}
   test.use %result : vector<2x2x4xf32>
   func.return
+}
+
+// ====
+// RUN: pass sroa-vector-banks,canonicalize
+
+// A freshly constructed next state is not an insert chain from the old state.
+func.def @rank1_reconstructed_state(%a: i32, %b: i32, %end: index) -> (i32, i32) {
+  %initial = vector.from_elements %a, %b : vector<2xi32>
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %result = scf.for %i = [%begin to %end step %step](%state = %initial : vector<2xi32>) -> (vector<2xi32>) {
+    %x = vector.extract %state[0] : vector<2xi32> -> i32
+    %y = vector.extract %state[1] : vector<2xi32> -> i32
+    %sum = scalar.addi %x, %y : i32
+    %next = vector.from_elements %y, %sum : vector<2xi32>
+    scf.yield %next : vector<2xi32>
+  }
+  %x = vector.extract %result[0] : vector<2xi32> -> i32
+  %y = vector.extract %result[1] : vector<2xi32> -> i32
+  func.return %x, %y : i32, i32
+}
+
+// ----
+func.def @rank1_reconstructed_state(%a: i32, %b: i32, %end: index) -> (i32, i32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %result_slot_0, %result_slot_1 = scf.for %i = [%begin to %end step %step](%state_slot_0 = %a : i32, %state_slot_1 = %b : i32) -> (i32, i32) {
+    %sum = scalar.addi %state_slot_0, %state_slot_1 : i32
+    scf.yield %state_slot_1, %sum : i32, i32
+  }
+  func.return %result_slot_0, %result_slot_1 : i32, i32
+}
+
+// ====
+// RUN: pass sroa-vector-banks
+
+// Scalar observations do not force an aggregate used by vector arithmetic to
+// split. Targets may retain the native vector representation.
+func.def @rank1_native_vector_use(%initial: vector<4xf32>, %bias: vector<4xf32>, %end: index) -> (f32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %result = scf.for %i = [%begin to %end step %step](%state = %initial : vector<4xf32>) -> (vector<4xf32>) {
+    %observed = vector.extract %state[0] : vector<4xf32> -> f32
+    test.use %observed : f32
+    %next = vector.addf %state, %bias : vector<4xf32>
+    scf.yield %next : vector<4xf32>
+  }
+  %value = vector.extract %result[0] : vector<4xf32> -> f32
+  func.return %value : f32
+}
+
+// ====
+// RUN: pass sroa-vector-banks,canonicalize
+
+// Replacing a higher-rank bank preserves each trailing vector payload.
+func.def @rank2_replaced_state(%initial: vector<2x2xi32>, %replacement: vector<2x2xi32>, %end: index) -> (vector<2xi32>, vector<2xi32>) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %result = scf.for %i = [%begin to %end step %step](%state = %initial : vector<2x2xi32>) -> (vector<2x2xi32>) {
+    %observed = vector.extract %state[0] : vector<2x2xi32> -> vector<2xi32>
+    test.use %observed : vector<2xi32>
+    scf.yield %replacement : vector<2x2xi32>
+  }
+  %x = vector.extract %result[0] : vector<2x2xi32> -> vector<2xi32>
+  %y = vector.extract %result[1] : vector<2x2xi32> -> vector<2xi32>
+  func.return %x, %y : vector<2xi32>, vector<2xi32>
+}
+
+// ----
+func.def @rank2_replaced_state(%initial: vector<2x2xi32>, %replacement: vector<2x2xi32>, %end: index) -> (vector<2xi32>, vector<2xi32>) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %initial_slot_0 = vector.extract %initial[0] : vector<2x2xi32> -> vector<2xi32>
+  %initial_slot_1 = vector.extract %initial[1] : vector<2x2xi32> -> vector<2xi32>
+  %result_slot_0, %result_slot_1 = scf.for %i = [%begin to %end step %step](%state_slot_0 = %initial_slot_0 : vector<2xi32>, %state_slot_1 = %initial_slot_1 : vector<2xi32>) -> (vector<2xi32>, vector<2xi32>) {
+    test.use %state_slot_0 : vector<2xi32>
+    %20 = vector.extract %replacement[0] : vector<2x2xi32> -> vector<2xi32>
+    %21 = vector.extract %replacement[1] : vector<2x2xi32> -> vector<2xi32>
+    scf.yield %20, %21 : vector<2xi32>, vector<2xi32>
+  }
+  func.return %result_slot_0, %result_slot_1 : vector<2xi32>, vector<2xi32>
 }

@@ -9,7 +9,6 @@
 #include <inttypes.h>
 #include <stdint.h>
 
-#include "loom/error/error_catalog.h"
 #include "loom/ir/attribute.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
@@ -61,8 +60,6 @@ const loom_pass_info_t* loom_vector_bank_sroa_pass_info(void) {
 //===----------------------------------------------------------------------===//
 
 typedef struct loom_vector_bank_sroa_bank_t {
-  // Original loop-carried ordinal.
-  uint16_t ordinal;
   // Number of leading dimensions used to address one payload slot.
   uint8_t prefix_rank;
   // Number of statically addressed payload slots.
@@ -124,24 +121,6 @@ typedef struct loom_vector_bank_sroa_context_t {
   // Typed pass statistics.
   loom_vector_bank_sroa_statistics_t* statistics;
 } loom_vector_bank_sroa_context_t;
-
-static iree_status_t loom_vector_bank_sroa_emit_error(
-    loom_vector_bank_sroa_context_t* context, loom_op_t* op, uint16_t slot,
-    iree_string_view_t reason) {
-  loom_diagnostic_param_t params[] = {
-      loom_param_string(loom_op_name(context->module, op)),
-      loom_param_string(context->pass->info->name),
-      loom_param_u32(slot),
-      loom_param_string(reason),
-  };
-  loom_diagnostic_emission_t emission = {
-      .op = op,
-      .error = LOOM_ERR_LOWERING_047,
-      .params = params,
-      .param_count = IREE_ARRAYSIZE(params),
-  };
-  return iree_diagnostic_emit(context->pass->diagnostic_emitter, &emission);
-}
 
 static bool loom_vector_bank_sroa_state_bank(
     const loom_vector_bank_sroa_plan_t* plan, loom_value_id_t value,
@@ -212,35 +191,23 @@ static bool loom_vector_bank_sroa_static_access_ordinal(
 }
 
 static iree_status_t loom_vector_bank_sroa_prepare_access(
-    loom_vector_bank_sroa_context_t* context, loom_op_t* access_op,
+    loom_vector_bank_sroa_context_t* context,
     loom_vector_bank_sroa_bank_t* bank, loom_attribute_t static_indices,
     loom_value_slice_t dynamic_indices, loom_type_t payload_type,
-    uint16_t* out_slot) {
-  *out_slot = 0;
+    bool* out_supported) {
+  *out_supported = false;
   uint8_t bank_rank = loom_type_rank(bank->bank_type);
-  if (!loom_type_is_all_static(bank->bank_type)) {
-    return loom_vector_bank_sroa_emit_error(
-        context, access_op, bank->ordinal,
-        IREE_SV("the bank has a dynamic extent"));
-  }
-  if (static_indices.kind != LOOM_ATTR_I64_ARRAY || static_indices.count == 0 ||
-      static_indices.count > bank_rank || !static_indices.i64_array) {
-    return loom_vector_bank_sroa_emit_error(
-        context, access_op, bank->ordinal,
-        IREE_SV("the access does not select a non-empty leading prefix"));
-  }
-  if (dynamic_indices.count != 0) {
-    return loom_vector_bank_sroa_emit_error(
-        context, access_op, bank->ordinal,
-        IREE_SV("the access has a dynamic prefix index"));
+  if (!loom_type_is_all_static(bank->bank_type) ||
+      static_indices.kind != LOOM_ATTR_I64_ARRAY || static_indices.count == 0 ||
+      static_indices.count > bank_rank || !static_indices.i64_array ||
+      dynamic_indices.count != 0) {
+    return iree_ok_status();
   }
   for (uint16_t axis = 0; axis < static_indices.count; ++axis) {
     int64_t index = static_indices.i64_array[axis];
     int64_t extent = loom_type_dim_static_size_at(bank->bank_type, axis);
     if (index < 0 || index == INT64_MIN || index >= extent) {
-      return loom_vector_bank_sroa_emit_error(
-          context, access_op, bank->ordinal,
-          IREE_SV("the static prefix index is outside the bank extent"));
+      return iree_ok_status();
     }
   }
 
@@ -254,9 +221,7 @@ static iree_status_t loom_vector_bank_sroa_prepare_access(
     for (uint8_t axis = 0; axis < bank->prefix_rank; ++axis) {
       int64_t extent = loom_type_dim_static_size_at(bank->bank_type, axis);
       if (extent <= 0 || (uint64_t)slot_count * (uint64_t)extent > UINT16_MAX) {
-        return loom_vector_bank_sroa_emit_error(
-            context, access_op, bank->ordinal,
-            IREE_SV("the static prefix has no representable payload slots"));
+        return iree_ok_status();
       }
       slot_count *= (uint32_t)extent;
     }
@@ -264,12 +229,9 @@ static iree_status_t loom_vector_bank_sroa_prepare_access(
     bank->active = true;
   }
 
-  if (!loom_vector_bank_sroa_static_access_ordinal(
-          bank, static_indices, dynamic_indices, payload_type, out_slot)) {
-    return loom_vector_bank_sroa_emit_error(
-        context, access_op, bank->ordinal,
-        IREE_SV("the access prefix or payload type differs from the bank"));
-  }
+  uint16_t slot = 0;
+  *out_supported = loom_vector_bank_sroa_static_access_ordinal(
+      bank, static_indices, dynamic_indices, payload_type, &slot);
   return iree_ok_status();
 }
 
@@ -298,16 +260,16 @@ static bool loom_vector_bank_sroa_loop_shape(loom_op_t* op,
 
 static iree_status_t loom_vector_bank_sroa_scan_states(
     loom_vector_bank_sroa_context_t* context, loom_op_t* loop,
-    loom_vector_bank_sroa_plan_t* plan) {
+    loom_vector_bank_sroa_plan_t* plan, bool* out_supported) {
+  *out_supported = false;
   const loom_value_id_t* results = loom_op_const_results(loop);
   loom_value_slice_t iter_args = loom_scf_for_iter_args(loop);
   for (uint16_t i = 0; i < plan->carried_count; ++i) {
     loom_type_t bank_type = loom_module_value_type(context->module, results[i]);
     plan->banks[i] = (loom_vector_bank_sroa_bank_t){
-        .ordinal = i,
         .bank_type = bank_type,
     };
-    if (!loom_type_is_vector(bank_type) || loom_type_rank(bank_type) < 2) {
+    if (!loom_type_is_vector(bank_type) || loom_type_rank(bank_type) == 0) {
       continue;
     }
     loom_value_id_t body_arg =
@@ -330,41 +292,37 @@ static iree_status_t loom_vector_bank_sroa_scan_states(
         loom_vector_bank_sroa_state_bank(
             plan, loom_vector_extract_source(child_op), &bank_ordinal)) {
       loom_vector_bank_sroa_bank_t* bank = &plan->banks[bank_ordinal];
-      uint16_t slot = 0;
+      bool supported = false;
       IREE_RETURN_IF_ERROR(loom_vector_bank_sroa_prepare_access(
-          context, child_op, bank, loom_vector_extract_static_indices(child_op),
+          context, bank, loom_vector_extract_static_indices(child_op),
           loom_vector_extract_indices(child_op),
           loom_module_value_type(context->module,
                                  loom_vector_extract_result(child_op)),
-          &slot));
-      (void)slot;
+          &supported));
+      if (!supported) return iree_ok_status();
       continue;
     }
     if (loom_vector_insert_isa(child_op) &&
         loom_vector_bank_sroa_state_bank(
             plan, loom_vector_insert_dest(child_op), &bank_ordinal)) {
       loom_vector_bank_sroa_bank_t* bank = &plan->banks[bank_ordinal];
-      uint16_t slot = 0;
+      bool supported = false;
       IREE_RETURN_IF_ERROR(loom_vector_bank_sroa_prepare_access(
-          context, child_op, bank, loom_vector_insert_static_indices(child_op),
+          context, bank, loom_vector_insert_static_indices(child_op),
           loom_vector_insert_indices(child_op),
           loom_module_value_type(context->module,
                                  loom_vector_insert_value(child_op)),
-          &slot));
-      (void)slot;
+          &supported));
+      if (!supported) return iree_ok_status();
       loom_value_id_t result = loom_vector_insert_result(child_op);
-      if (result >= plan->value_snapshot_count) {
-        return iree_make_status(
-            IREE_STATUS_OUT_OF_RANGE,
-            "vector.insert result is outside pass snapshot");
-      }
       plan->state_bank_by_value[result] = bank_ordinal;
     }
   }
+  *out_supported = true;
   return iree_ok_status();
 }
 
-static iree_status_t loom_vector_bank_sroa_validate_state_uses(
+static bool loom_vector_bank_sroa_state_uses_are_supported(
     loom_vector_bank_sroa_context_t* context,
     const loom_vector_bank_sroa_plan_t* plan, loom_value_id_t state,
     uint16_t bank_ordinal) {
@@ -372,9 +330,7 @@ static iree_status_t loom_vector_bank_sroa_validate_state_uses(
   const loom_value_t* value = loom_module_value(context->module, state);
   if (loom_value_has_attribute_uses(value) ||
       loom_module_value_has_type_uses(context->module, state)) {
-    return loom_vector_bank_sroa_emit_error(
-        context, plan->yield, bank_ordinal,
-        IREE_SV("an aggregate state escapes through an attribute or type"));
+    return false;
   }
 
   const loom_use_t* use = NULL;
@@ -406,15 +362,13 @@ static iree_status_t loom_vector_bank_sroa_validate_state_uses(
     if (!recognized ||
         !loom_vector_bank_sroa_static_access_ordinal(
             bank, static_indices, dynamic_indices, payload_type, &slot)) {
-      return loom_vector_bank_sroa_emit_error(
-          context, user, bank_ordinal,
-          IREE_SV("an aggregate state has a non-prefix or nested-region use"));
+      return false;
     }
   }
-  return iree_ok_status();
+  return true;
 }
 
-static iree_status_t loom_vector_bank_sroa_validate_result_uses(
+static bool loom_vector_bank_sroa_result_uses_are_supported(
     loom_vector_bank_sroa_context_t* context, loom_op_t* loop,
     const loom_vector_bank_sroa_plan_t* plan, uint16_t bank_ordinal) {
   const loom_vector_bank_sroa_bank_t* bank = &plan->banks[bank_ordinal];
@@ -422,18 +376,14 @@ static iree_status_t loom_vector_bank_sroa_validate_result_uses(
   const loom_value_t* value = loom_module_value(context->module, result);
   if (loom_value_has_attribute_uses(value) ||
       loom_module_value_has_type_uses(context->module, result)) {
-    return loom_vector_bank_sroa_emit_error(
-        context, loop, bank_ordinal,
-        IREE_SV("the aggregate result escapes through an attribute or type"));
+    return false;
   }
 
   const loom_use_t* use = NULL;
   loom_value_for_each_use(value, use) {
     loom_op_t* user = loom_use_user_op(*use);
     if (!loom_vector_extract_isa(user) || loom_use_operand_index(*use) != 0) {
-      return loom_vector_bank_sroa_emit_error(
-          context, user, bank_ordinal,
-          IREE_SV("the aggregate result has a non-extract use"));
+      return false;
     }
     uint16_t slot = 0;
     if (!loom_vector_bank_sroa_static_access_ordinal(
@@ -442,12 +392,10 @@ static iree_status_t loom_vector_bank_sroa_validate_result_uses(
             loom_module_value_type(context->module,
                                    loom_vector_extract_result(user)),
             &slot)) {
-      return loom_vector_bank_sroa_emit_error(
-          context, user, bank_ordinal,
-          IREE_SV("the aggregate result has an incompatible extract"));
+      return false;
     }
   }
-  return iree_ok_status();
+  return true;
 }
 
 static iree_status_t loom_vector_bank_sroa_plan_loop(
@@ -480,45 +428,33 @@ static iree_status_t loom_vector_bank_sroa_plan_loop(
       out_plan->state_bank_by_value, 0xFF,
       out_plan->value_snapshot_count * sizeof(*out_plan->state_bank_by_value));
 
+  bool supported = false;
   IREE_RETURN_IF_ERROR(
-      loom_vector_bank_sroa_scan_states(context, loop, out_plan));
-  if (loom_pass_has_error_diagnostics(context->pass)) return iree_ok_status();
+      loom_vector_bank_sroa_scan_states(context, loop, out_plan, &supported));
+  if (!supported) return iree_ok_status();
 
-  loom_value_slice_t yielded = loom_scf_yield_values(yield);
   uint32_t expanded_count = 0;
+  uint16_t active_bank_count = 0;
   for (uint16_t i = 0; i < out_plan->carried_count; ++i) {
     loom_vector_bank_sroa_bank_t* bank = &out_plan->banks[i];
     if (!bank->active) {
-      if (expanded_count == UINT16_MAX) {
-        return loom_vector_bank_sroa_emit_error(
-            context, loop, i,
-            IREE_SV("the expanded loop result count exceeds uint16"));
+      if (expanded_count + 1 >= UINT16_MAX) {
+        return iree_ok_status();
       }
       ++expanded_count;
       continue;
     }
-    ++out_plan->active_bank_count;
-    uint16_t yielded_bank = UINT16_MAX;
-    if (!loom_vector_bank_sroa_state_bank(out_plan, yielded.values[i],
-                                          &yielded_bank) ||
-        yielded_bank != i) {
-      return loom_vector_bank_sroa_emit_error(
-          context, yield, i,
-          IREE_SV("the yielded aggregate is not a known bank state"));
-    }
+    ++active_bank_count;
     if (loop->tied_result_count != 0) {
-      return loom_vector_bank_sroa_emit_error(
-          context, loop, i, IREE_SV("the loop carries tied-result metadata"));
+      return iree_ok_status();
     }
-    if (expanded_count > UINT16_MAX - bank->slot_count) {
-      return loom_vector_bank_sroa_emit_error(
-          context, loop, i,
-          IREE_SV("the expanded loop result count exceeds uint16"));
+    // The body also has an induction variable in its uint16 argument list.
+    if (expanded_count + bank->slot_count >= UINT16_MAX) {
+      return iree_ok_status();
     }
     expanded_count += bank->slot_count;
   }
-  if (out_plan->active_bank_count == 0) return iree_ok_status();
-  out_plan->expanded_count = (uint16_t)expanded_count;
+  if (active_bank_count == 0) return iree_ok_status();
 
   for (loom_value_id_t state = 0; state < out_plan->value_snapshot_count;
        ++state) {
@@ -526,16 +462,20 @@ static iree_status_t loom_vector_bank_sroa_plan_loop(
     if (bank_ordinal == UINT16_MAX || !out_plan->banks[bank_ordinal].active) {
       continue;
     }
-    IREE_RETURN_IF_ERROR(loom_vector_bank_sroa_validate_state_uses(
-        context, out_plan, state, bank_ordinal));
-    if (loom_pass_has_error_diagnostics(context->pass)) return iree_ok_status();
+    if (!loom_vector_bank_sroa_state_uses_are_supported(context, out_plan,
+                                                        state, bank_ordinal)) {
+      return iree_ok_status();
+    }
   }
   for (uint16_t i = 0; i < out_plan->carried_count; ++i) {
     if (!out_plan->banks[i].active) continue;
-    IREE_RETURN_IF_ERROR(
-        loom_vector_bank_sroa_validate_result_uses(context, loop, out_plan, i));
-    if (loom_pass_has_error_diagnostics(context->pass)) return iree_ok_status();
+    if (!loom_vector_bank_sroa_result_uses_are_supported(context, loop,
+                                                         out_plan, i)) {
+      return iree_ok_status();
+    }
   }
+  out_plan->expanded_count = (uint16_t)expanded_count;
+  out_plan->active_bank_count = active_bank_count;
   return iree_ok_status();
 }
 
@@ -765,12 +705,27 @@ static iree_status_t loom_vector_bank_sroa_clone_body(
     }
     loom_value_id_t yielded_state = old_yielded.values[i];
     loom_value_id_t* slots = state_slots[yielded_state];
-    if (!slots) {
-      return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                              "vector bank yielded state is unavailable");
+    if (slots) {
+      memcpy(&new_yielded[bank->expanded_base], slots,
+             (iree_host_size_t)bank->slot_count * sizeof(*slots));
+    } else {
+      // A recurrence can replace the entire bank, not just insert into its
+      // previous state. Project the cloned replacement at the backedge.
+      loom_value_id_t replacement = LOOM_VALUE_ID_INVALID;
+      IREE_RETURN_IF_ERROR(
+          loom_ir_remap_resolve_value(&remap, yielded_state, &replacement));
+      for (uint16_t slot = 0; slot < bank->slot_count; ++slot) {
+        int64_t indices[LOOM_TYPE_MAX_RANK] = {0};
+        loom_vector_bank_sroa_slot_indices(bank, slot, indices);
+        loom_op_t* extract_op = NULL;
+        IREE_RETURN_IF_ERROR(loom_vector_extract_build(
+            &context->rewriter->builder, replacement, NULL, 0, indices,
+            bank->prefix_rank, bank->payload_type, plan->yield->location,
+            &extract_op));
+        new_yielded[bank->expanded_base + slot] =
+            loom_vector_extract_result(extract_op);
+      }
     }
-    memcpy(&new_yielded[bank->expanded_base], slots,
-           (iree_host_size_t)bank->slot_count * sizeof(*slots));
   }
   loom_op_t* new_yield = NULL;
   return loom_scf_yield_build(&context->rewriter->builder, new_yielded,

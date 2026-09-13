@@ -478,27 +478,6 @@ ERR_LOWERING_046 = ErrorDef(
     ),
 )
 
-# ERR_LOWERING_047: Vector bank scalarization contract failed.
-ERR_LOWERING_047 = ErrorDef(
-    domain=ErrorDomain.LOWERING,
-    code=47,
-    severity=Severity.ERROR,
-    summary="Vector bank scalarization contract failed.",
-    message=(
-        "{phase_name} cannot scalarize carried slot {slot} of {op_name}: {reason}"
-    ),
-    params=(
-        ErrorParam("op_name", ParamKind.STRING),
-        ErrorParam("phase_name", ParamKind.STRING),
-        ErrorParam("slot", ParamKind.U32),
-        ErrorParam("reason", ParamKind.STRING),
-    ),
-    fix_hint=(
-        "Address the bank only through one static leading-index prefix and "
-        "keep the aggregate inside its scf.for recurrence"
-    ),
-)
-
 # ERR_LOWERING_048: Template application target condition is unresolved.
 ERR_LOWERING_048 = ErrorDef(
     domain=ErrorDomain.LOWERING,
@@ -679,7 +658,6 @@ ALL_LOWERING_ERRORS: tuple[ErrorDef, ...] = (
     ERR_LOWERING_044,
     ERR_LOWERING_045,
     ERR_LOWERING_046,
-    ERR_LOWERING_047,
     ERR_LOWERING_048,
     ERR_LOWERING_049,
     ERR_LOWERING_050,
