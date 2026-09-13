@@ -75,6 +75,20 @@ struct Elf64SectionHeader {
 static_assert(sizeof(Elf64SectionHeader) == 64,
               "ELF64 section header must be 64 bytes");
 
+struct Elf64ProgramHeader {
+  uint32_t type;              // Segment type.
+  uint32_t flags;             // Segment flags.
+  uint64_t offset;            // File offset.
+  uint64_t virtual_address;   // Virtual address.
+  uint64_t physical_address;  // Physical address.
+  uint64_t file_size;         // Bytes stored in the file.
+  uint64_t memory_size;       // Bytes present in memory.
+  uint64_t alignment;         // Required alignment.
+};
+
+static_assert(sizeof(Elf64ProgramHeader) == 56,
+              "ELF64 program header must be 56 bytes");
+
 struct Elf64Symbol {
   uint32_t name;           // Symbol name offset.
   uint8_t info;            // Symbol binding and type.
@@ -101,7 +115,7 @@ std::vector<uint8_t> MakeMinimalAmdgpuElf(uint32_t machine = 0x041,
   header.abiversion = 4;
   header.machine = 224;
   header.version = 1;
-  header.shoff = sizeof(Elf64Header);
+  header.ehsize = sizeof(Elf64Header);
   header.flags = machine | (generic_version << 24) | feature_flags;
   std::vector<uint8_t> elf(sizeof(header), 0);
   memcpy(elf.data(), &header, sizeof(header));
@@ -416,6 +430,71 @@ TEST(FatBinaryTest, SelectsRawElfWithCompatibleFeatures) {
   EXPECT_STREQ(extract.matches[0].code_object_target_key,
                "gfx942:sramecc+:xnack-");
   iree_hal_streaming_fat_binary_extract_reset(&extract);
+}
+
+TEST(FatBinaryTest, MeasuresSectionDataAfterSectionTable) {
+  std::vector<uint8_t> elf = MakeMinimalAmdgpuElf();
+  Elf64SectionHeader section = {
+      /*.name=*/0,
+      /*.type=*/1,
+      /*.flags=*/0,
+      /*.address=*/0,
+      /*.offset=*/sizeof(Elf64Header) + sizeof(Elf64SectionHeader),
+      /*.size=*/17,
+      /*.link=*/0,
+      /*.info=*/0,
+      /*.address_alignment=*/1,
+      /*.entry_size=*/0,
+  };
+  AppendBytes(elf, &section, sizeof(section));
+  elf.resize(section.offset + section.size, uint8_t{0xA5});
+
+  Elf64Header header;
+  memcpy(&header, elf.data(), sizeof(header));
+  header.shoff = sizeof(Elf64Header);
+  header.shentsize = sizeof(Elf64SectionHeader);
+  header.shnum = 1;
+  memcpy(elf.data(), &header, sizeof(header));
+
+  char target_key[64] = {};
+  size_t measured_size = 0;
+  IREE_EXPECT_OK(iree_hal_streaming_fat_binary_describe_amdgpu_elf(
+      iree_make_const_byte_span(elf.data(), elf.size()), sizeof(target_key),
+      target_key, &measured_size));
+  EXPECT_EQ(elf.size(), measured_size);
+}
+
+TEST(FatBinaryTest, MeasuresProgramSegmentWithoutSectionTable) {
+  std::vector<uint8_t> elf = MakeMinimalAmdgpuElf();
+  Elf64ProgramHeader program = {
+      /*.type=*/1,
+      /*.flags=*/0,
+      /*.offset=*/sizeof(Elf64Header) + sizeof(Elf64ProgramHeader) + 8,
+      /*.virtual_address=*/0,
+      /*.physical_address=*/0,
+      /*.file_size=*/29,
+      /*.memory_size=*/29,
+      /*.alignment=*/8,
+  };
+  AppendBytes(elf, &program, sizeof(program));
+  elf.resize(program.offset + program.file_size, uint8_t{0x5A});
+
+  Elf64Header header;
+  memcpy(&header, elf.data(), sizeof(header));
+  header.phoff = sizeof(Elf64Header);
+  header.phentsize = sizeof(Elf64ProgramHeader);
+  header.phnum = 1;
+  header.shoff = 0;
+  header.shentsize = 0;
+  header.shnum = 0;
+  memcpy(elf.data(), &header, sizeof(header));
+
+  char target_key[64] = {};
+  size_t measured_size = 0;
+  IREE_EXPECT_OK(iree_hal_streaming_fat_binary_describe_amdgpu_elf(
+      iree_make_const_byte_span(elf.data(), elf.size()), sizeof(target_key),
+      target_key, &measured_size));
+  EXPECT_EQ(elf.size(), measured_size);
 }
 
 TEST(FatBinaryTest, FiltersIncompatibleConcatenatedElfFeatures) {

@@ -30,6 +30,11 @@ const char* CandidateLibPath() {
   return "libamdhip64.so";
 }
 
+bool HasConfiguredCandidateLib() {
+  const char* environment_path = std::getenv("HRX_TEST_LIBAMDHIP64");
+  return environment_path && *environment_path != '\0';
+}
+
 template <typename T>
 T ResolveHipSymbol(void* library, const char* name) {
   return reinterpret_cast<T>(dlsym(library, name));
@@ -60,6 +65,21 @@ using HipGraphGetNodesFn = hipError_t (*)(hipGraph_t graph,
                                           hipGraphNode_t* nodes,
                                           size_t* node_count);
 using HipGraphDestroyFn = hipError_t (*)(hipGraph_t graph);
+using HipGraphInstantiateFn = hipError_t (*)(hipGraphExec_t* graph_exec,
+                                             hipGraph_t graph,
+                                             hipGraphNode_t* error_node,
+                                             char* log_buffer,
+                                             size_t log_buffer_size);
+using HipGraphExecDestroyFn = hipError_t (*)(hipGraphExec_t graph_exec);
+using HipGraphLaunchFn = hipError_t (*)(hipGraphExec_t graph_exec,
+                                        hipStream_t stream);
+using HipGraphKernelNodeGetParamsFn = hipError_t (*)(hipGraphNode_t node,
+                                                     void* node_params);
+using HipGraphKernelNodeSetParamsFn = hipError_t (*)(hipGraphNode_t node,
+                                                     const void* node_params);
+using HipGraphExecKernelNodeSetParamsFn =
+    hipError_t (*)(hipGraphExec_t graph_exec, hipGraphNode_t node,
+                   const hipKernelNodeParams* node_params);
 
 using HipModuleLoadDataExFn = hipError_t (*)(hipModule_t* module,
                                              const void* image,
@@ -204,6 +224,20 @@ struct HipApi {
     HRX_RESOLVE_HIP_API(graph_get_nodes, HipGraphGetNodesFn,
                         "hipGraphGetNodes");
     HRX_RESOLVE_HIP_API(graph_destroy, HipGraphDestroyFn, "hipGraphDestroy");
+    HRX_RESOLVE_HIP_API(graph_instantiate, HipGraphInstantiateFn,
+                        "hipGraphInstantiate");
+    HRX_RESOLVE_HIP_API(graph_exec_destroy, HipGraphExecDestroyFn,
+                        "hipGraphExecDestroy");
+    HRX_RESOLVE_HIP_API(graph_launch, HipGraphLaunchFn, "hipGraphLaunch");
+    HRX_RESOLVE_HIP_API(graph_kernel_node_get_params,
+                        HipGraphKernelNodeGetParamsFn,
+                        "hipGraphKernelNodeGetParams");
+    HRX_RESOLVE_HIP_API(graph_kernel_node_set_params,
+                        HipGraphKernelNodeSetParamsFn,
+                        "hipGraphKernelNodeSetParams");
+    HRX_RESOLVE_HIP_API(graph_exec_kernel_node_set_params,
+                        HipGraphExecKernelNodeSetParamsFn,
+                        "hipGraphExecKernelNodeSetParams");
     HRX_RESOLVE_HIP_API(module_load_data_ex, HipModuleLoadDataExFn,
                         "hipModuleLoadDataEx");
     HRX_RESOLVE_HIP_API(module_load_fat_binary, HipModuleLoadFatBinaryFn,
@@ -273,8 +307,11 @@ struct HipApi {
            memcpy && stream_create && stream_destroy && stream_synchronize &&
            event_create && event_destroy && stream_begin_capture &&
            stream_end_capture && graph_get_nodes && graph_destroy &&
-           module_load_data_ex && module_load_fat_binary && module_unload &&
-           module_get_function && module_get_global && module_get_tex_ref &&
+           graph_instantiate && graph_exec_destroy && graph_launch &&
+           graph_kernel_node_get_params && graph_kernel_node_set_params &&
+           graph_exec_kernel_node_set_params && module_load_data_ex &&
+           module_load_fat_binary && module_unload && module_get_function &&
+           module_get_global && module_get_tex_ref &&
            module_get_function_count && module_launch_kernel &&
            ext_module_launch_kernel && library_load_data &&
            library_load_from_file && library_unload && library_get_kernel &&
@@ -307,6 +344,12 @@ struct HipApi {
   HipStreamEndCaptureFn stream_end_capture = nullptr;
   HipGraphGetNodesFn graph_get_nodes = nullptr;
   HipGraphDestroyFn graph_destroy = nullptr;
+  HipGraphInstantiateFn graph_instantiate = nullptr;
+  HipGraphExecDestroyFn graph_exec_destroy = nullptr;
+  HipGraphLaunchFn graph_launch = nullptr;
+  HipGraphKernelNodeGetParamsFn graph_kernel_node_get_params = nullptr;
+  HipGraphKernelNodeSetParamsFn graph_kernel_node_set_params = nullptr;
+  HipGraphExecKernelNodeSetParamsFn graph_exec_kernel_node_set_params = nullptr;
   HipModuleLoadDataExFn module_load_data_ex = nullptr;
   HipModuleLoadFatBinaryFn module_load_fat_binary = nullptr;
   HipModuleUnloadFn module_unload = nullptr;
@@ -349,12 +392,19 @@ class HipModuleLibraryExecutionTest : public ::testing::Test {
   void SetUp() override {
     library_ = dlopen(CandidateLibPath(), RTLD_NOW | RTLD_LOCAL);
     if (!library_) {
+      if (HasConfiguredCandidateLib()) {
+        FAIL() << "cannot dlopen configured HIP library " << CandidateLibPath()
+               << ": " << dlerror();
+      }
       GTEST_SKIP() << "cannot dlopen " << CandidateLibPath() << ": "
                    << dlerror();
     }
     ASSERT_TRUE(api_.Resolve(library_));
     const hipError_t init_result = api_.init(/*flags=*/0);
     if (init_result != hipSuccess) {
+      if (HasConfiguredCandidateLib()) {
+        FAIL() << "hipInit failed for configured HIP library: " << init_result;
+      }
       GTEST_SKIP() << "hipInit failed: " << init_result;
     }
     ASSERT_EQ(hipSuccess, api_.get_device(&device_));
@@ -568,6 +618,14 @@ TEST_F(HipModuleLibraryExecutionTest,
   EXPECT_EQ(hipSuccess, api_.free(output));
   EXPECT_EQ(hipSuccess, api_.free(input));
   EXPECT_EQ(hipSuccess, api_.library_unload(library));
+
+  const char* stale_name = nullptr;
+  EXPECT_EQ(hipErrorInvalidHandle, api_.kernel_get_name(&stale_name, kernel));
+  EXPECT_EQ(hipErrorInvalidDeviceFunction,
+            api_.module_launch_kernel(function, 1, 1, 1, 1, 1, 1, 0,
+                                      /*stream=*/nullptr,
+                                      /*arguments=*/nullptr,
+                                      /*extra=*/nullptr));
 }
 
 TEST_F(HipModuleLibraryExecutionTest,
@@ -753,6 +811,59 @@ TEST_F(HipModuleLibraryExecutionTest,
   for (size_t i = 0; i < 100; ++i) EXPECT_EQ(i + 1, values[i]);
   for (size_t i = 100; i < values.size(); ++i) EXPECT_EQ(0u, values[i]);
 
+  hipStream_t capture_stream = nullptr;
+  ASSERT_EQ(hipSuccess, api_.stream_create(&capture_stream));
+  ASSERT_EQ(hipSuccess, api_.stream_begin_capture(capture_stream,
+                                                  hipStreamCaptureModeGlobal));
+  void* capture_arguments[] = {&local_size, &output_argument};
+  ASSERT_EQ(hipSuccess,
+            api_.ext_module_launch_kernel(
+                exact_function, /*global_size_x=*/100, /*global_size_y=*/1,
+                /*global_size_z=*/1, /*local_size_x=*/local_size,
+                /*local_size_y=*/1, /*local_size_z=*/1,
+                /*shared_memory_bytes=*/0, capture_stream, capture_arguments,
+                /*extra=*/nullptr, /*start_event=*/nullptr,
+                /*stop_event=*/nullptr, /*flags=*/0));
+  hipGraph_t exact_graph = nullptr;
+  ASSERT_EQ(hipSuccess, api_.stream_end_capture(capture_stream, &exact_graph));
+  capture_arguments[0] = nullptr;
+  capture_arguments[1] = nullptr;
+
+  size_t exact_node_count = 1;
+  hipGraphNode_t exact_node = nullptr;
+  ASSERT_EQ(hipSuccess,
+            api_.graph_get_nodes(exact_graph, &exact_node, &exact_node_count));
+  ASSERT_EQ(1u, exact_node_count);
+  hipKernelNodeParams captured_params = {};
+  ASSERT_EQ(hipSuccess,
+            api_.graph_kernel_node_get_params(exact_node, &captured_params));
+  EXPECT_EQ(exact_function, captured_params.func);
+  EXPECT_EQ(2u, captured_params.gridDim.x);
+  EXPECT_EQ(64u, captured_params.blockDim.x);
+  ASSERT_NE(nullptr, captured_params.extra);
+  ASSERT_EQ(hipSuccess,
+            api_.graph_kernel_node_set_params(exact_node, &captured_params));
+
+  hipGraphExec_t exact_exec = nullptr;
+  ASSERT_EQ(hipSuccess, api_.graph_instantiate(&exact_exec, exact_graph,
+                                               /*error_node=*/nullptr,
+                                               /*log_buffer=*/nullptr,
+                                               /*log_buffer_size=*/0));
+  ASSERT_EQ(hipSuccess, api_.graph_exec_kernel_node_set_params(
+                            exact_exec, exact_node, &captured_params));
+  ASSERT_EQ(hipSuccess, api_.memcpy(output, zeros.data(), sizeof(zeros),
+                                    hipMemcpyHostToDevice));
+  ASSERT_EQ(hipSuccess, api_.graph_launch(exact_exec, capture_stream));
+  ASSERT_EQ(hipSuccess, api_.stream_synchronize(capture_stream));
+  values.fill(0);
+  ASSERT_EQ(hipSuccess, api_.memcpy(values.data(), output, sizeof(values),
+                                    hipMemcpyDeviceToHost));
+  for (size_t i = 0; i < 100; ++i) EXPECT_EQ(i + 1, values[i]);
+  for (size_t i = 100; i < values.size(); ++i) EXPECT_EQ(0u, values[i]);
+  EXPECT_EQ(hipSuccess, api_.graph_exec_destroy(exact_exec));
+  EXPECT_EQ(hipSuccess, api_.graph_destroy(exact_graph));
+  EXPECT_EQ(hipSuccess, api_.stream_destroy(capture_stream));
+
   hipFunction_t size_function = nullptr;
   ASSERT_EQ(hipSuccess, api_.module_get_function(&size_function, module,
                                                  "hrx_report_dispatch_size"));
@@ -774,7 +885,7 @@ TEST_F(HipModuleLibraryExecutionTest,
             api_.memcpy(reported_geometry.data(), reported_size,
                         sizeof(reported_geometry), hipMemcpyDeviceToHost));
   EXPECT_EQ(17u, reported_geometry[0]);
-  EXPECT_EQ(64u, reported_geometry[1]);
+  EXPECT_EQ(17u, reported_geometry[1]);
   EXPECT_EQ(hipSuccess, api_.free(reported_size));
 
   hipModule_t hip_module = nullptr;
@@ -795,6 +906,20 @@ TEST_F(HipModuleLibraryExecutionTest,
                 /*shared_memory_bytes=*/0, /*stream=*/nullptr,
                 uniform_arguments, /*extra=*/nullptr,
                 /*start_event=*/nullptr, /*stop_event=*/nullptr, /*flags=*/0));
+  ASSERT_EQ(hipSuccess,
+            api_.ext_module_launch_kernel(
+                uniform_function, /*global_size_x=*/17, /*global_size_y=*/1,
+                /*global_size_z=*/1, /*local_size_x=*/64,
+                /*local_size_y=*/1, /*local_size_z=*/1,
+                /*shared_memory_bytes=*/0, /*stream=*/nullptr,
+                uniform_arguments, /*extra=*/nullptr,
+                /*start_event=*/nullptr, /*stop_event=*/nullptr, /*flags=*/0));
+  ASSERT_EQ(hipSuccess, api_.device_synchronize());
+  uint32_t uniform_output = 0;
+  ASSERT_EQ(hipSuccess,
+            api_.memcpy(&uniform_output, output, sizeof(uniform_output),
+                        hipMemcpyDeviceToHost));
+  EXPECT_EQ(uniform_value, uniform_output);
 
   hipStream_t stream = nullptr;
   ASSERT_EQ(hipSuccess, api_.stream_create(&stream));

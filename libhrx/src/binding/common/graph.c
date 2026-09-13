@@ -1148,7 +1148,6 @@ iree_status_t iree_hal_streaming_graph_add_kernel_node(
   iree_hal_streaming_graph_kernel_node_attrs_t* attrs = &node->attrs.kernel;
   attrs->symbol = symbol;
   attrs->module = symbol->module;
-  iree_hal_streaming_module_retain(attrs->module);
   memcpy(attrs->grid_dim, params->grid_dim, sizeof(params->grid_dim));
   memcpy(attrs->block_dim, params->block_dim, sizeof(params->block_dim));
   memcpy(attrs->workitem_count, params->workitem_count,
@@ -1227,7 +1226,16 @@ iree_status_t iree_hal_streaming_graph_add_kernel_node(
   }
   IREE_RETURN_AND_END_ZONE_IF_ERROR(z0, unpack_status);
 
+  // The node does not own the module until all argument processing succeeds.
+  // This keeps arena-allocated but unlinked nodes from leaking module
+  // ownership on malformed argument lists.
+  iree_hal_streaming_module_retain(attrs->module);
   iree_status_t status = iree_hal_streaming_graph_add_node(graph, node);
+  if (!iree_status_is_ok(status)) {
+    iree_hal_streaming_module_release(attrs->module);
+    attrs->module = NULL;
+    attrs->symbol = NULL;
+  }
   if (iree_status_is_ok(status) && out_node) {
     *out_node = node;
   }
