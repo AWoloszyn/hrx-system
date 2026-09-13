@@ -1,0 +1,72 @@
+// RUN: pass vector-to-scalar,canonicalize
+
+// A runtime index selects SSA lanes without spilling the vector to memory.
+func.def @dynamic_extract(%a: f32, %b: f32, %c: f32, %index: index) -> (f32) {
+  %vector = vector.from_elements %a, %b, %c : vector<3xf32>
+  %result = vector.extract %vector[%index] : vector<3xf32> -> f32
+  func.return %result : f32
+}
+
+// ----
+func.def @dynamic_extract(%a: f32, %b: f32, %c: f32, %index: index) -> (f32) {
+  %7 = index.constant 0 : index
+  %8 = index.cmp eq, %index, %7 : index
+  %9 = scf.select %8, %a, %c : f32
+  %10 = index.constant 1 : index
+  %11 = index.cmp eq, %index, %10 : index
+  %result = scf.select %11, %b, %9 : f32
+  func.return %result : f32
+}
+
+// ====
+
+// Logical coordinates are linearized using the source vector's shape.
+func.def @dynamic_matrix_extract(%a: i32, %b: i32, %c: i32, %d: i32, %row: index, %column: index) -> (i32) {
+  %vector = vector.from_elements %a, %b, %c, %d : vector<2x2xi32>
+  %result = vector.extract %vector[%row, %column] : vector<2x2xi32> -> i32
+  func.return %result : i32
+}
+
+// ----
+func.def @dynamic_matrix_extract(%a: i32, %b: i32, %c: i32, %d: i32, %row: index, %column: index) -> (i32) {
+  %9 = index.constant 2 : index
+  %21 = index.madd %row, %9, %column : index
+  %12 = index.constant 0 : index
+  %13 = index.cmp eq, %21, %12 : index
+  %14 = scf.select %13, %a, %d : i32
+  %15 = index.constant 1 : index
+  %16 = index.cmp eq, %21, %15 : index
+  %17 = scf.select %16, %b, %14 : i32
+  %18 = index.constant 2 : index
+  %19 = index.cmp eq, %21, %18 : index
+  %result = scf.select %19, %c, %17 : i32
+  func.return %result : i32
+}
+
+// ====
+
+// Singleton selection disappears without creating a comparison or a select.
+func.def @dynamic_singleton(%value: i64, %index: index) -> (i64) {
+  %vector = vector.from_elements %value : vector<1xi64>
+  %result = vector.extract %vector[%index] : vector<1xi64> -> i64
+  func.return %result : i64
+}
+
+// ----
+func.def @dynamic_singleton(%value: i64, %index: index) -> (i64) {
+  func.return %value : i64
+}
+
+// ====
+
+// Static extraction remains a direct SSA substitution.
+func.def @static_extract(%a: f32, %b: f32, %c: f32) -> (f32) {
+  %vector = vector.from_elements %a, %b, %c : vector<3xf32>
+  %result = vector.extract %vector[1] : vector<3xf32> -> f32
+  func.return %result : f32
+}
+
+// ----
+func.def @static_extract(%a: f32, %b: f32, %c: f32) -> (f32) {
+  func.return %b : f32
+}
