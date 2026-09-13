@@ -37,19 +37,30 @@ static amdf_status_t amdf_gpu_kfd_read_attribute(int directory,
   return amdf_status_is_ok(close_status) ? status : close_status;
 }
 
-static amdf_status_t amdf_gpu_kfd_read_number(int directory, const char* name,
-                                              uint32_t* out_value) {
+static amdf_status_t amdf_gpu_kfd_read_number64(int directory, const char* name,
+                                                uint64_t* out_value) {
   char text[32];
   const amdf_status_t status =
       amdf_gpu_kfd_read_attribute(directory, name, text, sizeof(text));
   if (!amdf_status_is_ok(status)) return status;
   char* end = NULL;
   errno = 0;
-  const unsigned long value = strtoul(text, &end, 10);
-  if (errno || value > UINT32_MAX || end == text ||
+  const unsigned long long value = strtoull(text, &end, 10);
+  if (errno || text[0] < '0' || text[0] > '9' || end == text ||
       (*end != 0 && (*end != '\n' || end[1] != 0))) {
     return amdf_linux_error(EPROTO);
   }
+  *out_value = (uint64_t)value;
+  return AMDF_STATUS_OK;
+}
+
+static amdf_status_t amdf_gpu_kfd_read_number(int directory, const char* name,
+                                              uint32_t* out_value) {
+  uint64_t value = 0;
+  const amdf_status_t status =
+      amdf_gpu_kfd_read_number64(directory, name, &value);
+  if (!amdf_status_is_ok(status)) return status;
+  if (value > UINT32_MAX) return amdf_linux_error(EPROTO);
   *out_value = (uint32_t)value;
   return AMDF_STATUS_OK;
 }
@@ -260,20 +271,31 @@ static amdf_status_t amdf_gpu_kfd_query_memory(
   topology->virtual_address.begin = device.virtual_address_offset;
   topology->virtual_address.end = device.virtual_address_max;
   topology->virtual_address.alignment = device.virtual_address_alignment;
-  struct drm_amdgpu_memory_info memory = {0};
-  query.return_pointer = (uintptr_t)&memory;
-  query.return_size = sizeof(memory);
-  query.query = AMDGPU_INFO_MEMORY;
-  if (ioctl(endpoint->descriptor, DRM_IOCTL_AMDGPU_INFO, &query) != 0) {
-    return amdf_linux_error(errno);
+  // These sysfs totals format the same cached real/visible VRAM sizes used by
+  // INFO_MEMORY, without issuing a native query or sampling allocation usage.
+  char path[64];
+  snprintf(path, sizeof(path), "dev/char/%u:%u/device",
+           (uint32_t)(endpoint->info.id.words[0] >> 32),
+           (uint32_t)endpoint->info.id.words[0]);
+  int directory = openat(endpoint->instance->sysfs_descriptor, path,
+                         O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+  if (directory < 0) return amdf_linux_error(errno);
+  uint64_t total_vram = 0;
+  uint64_t visible_vram = 0;
+  amdf_status_t status =
+      amdf_gpu_kfd_read_number64(directory, "mem_info_vram_total", &total_vram);
+  if (amdf_status_is_ok(status)) {
+    status = amdf_gpu_kfd_read_number64(directory, "mem_info_vis_vram_total",
+                                        &visible_vram);
   }
+  const amdf_status_t close_status = amdf_linux_file_close(&directory);
+  if (!amdf_status_is_ok(close_status)) status = close_status;
+  if (!amdf_status_is_ok(status)) return status;
   // APU VRAM requests may be redirected to GTT by KFD. System memory remains
   // available there without promising a physical placement the kernel changes.
-  if ((device.ids_flags & AMDGPU_IDS_FLAGS_FUSION) == 0 &&
-      memory.vram.total_heap_size != 0) {
+  if ((device.ids_flags & AMDGPU_IDS_FLAGS_FUSION) == 0 && total_vram != 0) {
     topology->memory_features |= AMDF_GPU_DEVICE_FEATURE_LOCAL_MEMORY;
-    if (memory.cpu_accessible_vram.total_heap_size >=
-        memory.vram.total_heap_size) {
+    if (visible_vram >= total_vram) {
       topology->memory_features |=
           AMDF_GPU_DEVICE_FEATURE_HOST_VISIBLE_LOCAL_MEMORY;
     }
@@ -338,6 +360,9 @@ amdf_status_t amdf_gpu_kfd_topology_query(
   if (amdf_status_is_ok(status) && found) {
     status = amdf_gpu_kfd_query_sdma(endpoint, &topology);
   }
+  if (amdf_status_is_ok(status) && found) {
+    status = amdf_gpu_kfd_query_memory(endpoint, &topology);
+  }
   uint32_t final_generation = 0;
   if (amdf_status_is_ok(status)) {
     status = amdf_gpu_kfd_read_number(topology_directory, "generation_id",
@@ -355,8 +380,6 @@ amdf_status_t amdf_gpu_kfd_topology_query(
   if (amdf_status_is_ok(status) && !found) {
     status = amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
-  if (amdf_status_is_ok(status))
-    status = amdf_gpu_kfd_query_memory(endpoint, &topology);
   if (amdf_status_is_ok(status)) *out_topology = topology;
   return status;
 }
