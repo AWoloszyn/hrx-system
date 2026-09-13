@@ -234,6 +234,7 @@ static amdf_status_t amdf_memory_allocate(
       plan->host_allocator, plan->access_count, &memory);
   if (!amdf_status_is_ok(status)) return status;
   memory->backing_access_ordinal = plan->backing_access_ordinal;
+  memory->scope = plan->scope;
   memory->host_mapping = plan->profile.host_mapping;
   for (uint32_t i = 0; i < plan->access_count; ++i) {
     memory->accesses[i].device = accesses[i].device;
@@ -287,6 +288,11 @@ static amdf_status_t amdf_memory_prepare_access(
       .minimum_alignment = create_info->minimum_alignment,
       .registered_host_pointer = create_info->registered_host_pointer,
   };
+  if (plan->scope->kind == AMDF_MEMORY_SCOPE_KIND_PRIVATE) {
+    return plan->scope->owner.private_storage.vtable->prepare(
+        plan->scope, memory, &plan->native_profiles[ordinal], &native_info,
+        out_info);
+  }
   return create_info->accesses[ordinal].device->vtable->memory_prepare(
       memory, ordinal, &plan->native_profiles[ordinal], &native_info, out_info);
 }

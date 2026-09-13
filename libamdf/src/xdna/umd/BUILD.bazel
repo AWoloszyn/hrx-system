@@ -53,3 +53,12 @@ amdf_cc_library(
     ],
 )
 
+amdf_cc_library(
+    name = "kernel_queue",
+    hdrs = ["kernel_queue.h"],
+    visibility = ["//libamdf/src/xdna:__subpackages__"],
+    deps = [
+        ":context",
+        "//libamdf/src:wait",
+    ],
+)

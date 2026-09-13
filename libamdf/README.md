@@ -71,16 +71,34 @@ constructed for that endpoint. Missing families mean the loaded provider has
 no matching implementation, not that the silicon necessarily lacks the
 capability. `endpoint_query_queue_family_info` copies records cached during
 endpoint open and performs no allocation, system call, device initialization,
-queue creation, retry, sleep, or device wait.
+queue creation, retry, sleep, or device wait. A Windows endpoint advertises the
+kernel-mediated XDNA family only when the loaded KMT surface contains every
+operation required to construct and publish to that queue.
 
-A materialized XDNA device can own system-memory backing with one stable XDNA
-virtual address on qualified Windows x86-64 systems. Memory creation publishes
-the address only after mapping and ordinary residency have completed, without
-using the fatal `MustSucceed` residency mode. Explicit host mappings expose
+System memory scopes provide backing with one stable XDNA virtual address for
+each requested live consumer on qualified Windows x86-64 systems. Memory creation
+publishes the address only after mapping and ordinary residency have completed,
+without using the fatal `MustSucceed` residency mode. Explicit host mappings expose
 write-back cached pages and require range-scoped flush or invalidate operations
 when ownership moves between the host and XDNA. Placement classes or properties
 that the provider cannot fully satisfy fail explicitly instead of silently
 degrading.
+
+An XDNA context exposes its private instruction-memory scope through the same
+memory API. The caller allocates executable backing, maps and publishes its own
+bytes, and submits a memory handle, access ordinal, byte offset, and byte length.
+ELF loading, PDI construction, relocation, argument layout and array scheduling
+remain above libamdf. Instruction addresses and lengths satisfy the endpoint's
+cached execution limits; submission does not read or modify instruction bytes.
+
+The qualified NPU5 path exposes a kernel-mediated XDNA queue with one instruction
+range per submission and one unretired submission at a time. Submission is a
+bounded native publication call: it performs no allocation, transaction
+parsing, lowering, binding resolution, command transcription, retry, sleep, or
+host wait. The queue owns mandatory platform packet storage. Status queries and
+waits release the submitted memory borrow only after native fence completion
+and command-result inspection. Indirectly referenced memory is resident for its
+allocation lifetime and is not enumerated on each submission.
 
 The build produces two link modes from one implementation:
 

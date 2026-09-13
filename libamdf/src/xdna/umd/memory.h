@@ -18,6 +18,7 @@ extern "C" {
 typedef struct amdf_xdna_umd_memory_t amdf_xdna_umd_memory_t;
 typedef struct amdf_xdna_umd_host_mapping_t amdf_xdna_umd_host_mapping_t;
 typedef struct amdf_xdna_umd_device_t amdf_xdna_umd_device_t;
+typedef struct amdf_xdna_umd_context_t amdf_xdna_umd_context_t;
 
 // Native memory properties established before publication.
 typedef struct amdf_xdna_umd_memory_result_t {
@@ -69,6 +70,22 @@ typedef struct amdf_xdna_umd_host_mapping_result_t {
 amdf_status_t amdf_xdna_umd_device_query_memory_profile(
     amdf_xdna_umd_device_t* device, uint32_t memory_profile_ordinal,
     amdf_memory_native_profile_t* out_profile);
+
+// Copies the complete private storage contract of an admitted context. This
+// consumes cached admission facts and performs no native operation.
+void amdf_xdna_umd_context_query_memory_profile(
+    amdf_xdna_umd_context_t* context,
+    amdf_memory_native_profile_t* out_profile);
+
+// Prepares one context-qualified private allocation in the public memory
+// owner's slot. The context is borrowed, never retained. Partial native state
+// follows the same local rollback protocol as ordinary memory preparation.
+amdf_status_t amdf_xdna_umd_memory_prepare_private(
+    amdf_xdna_umd_context_t* context,
+    const amdf_memory_native_profile_t* profile,
+    const amdf_memory_native_create_info_t* create_info,
+    amdf_xdna_umd_memory_t** memory_state,
+    amdf_xdna_umd_memory_result_t* out_result);
 
 // Prepares physical backing and native access in an already-live owner's
 // initially NULL `memory_state` slot. This is a one-shot transition: native

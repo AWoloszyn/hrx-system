@@ -267,7 +267,8 @@ TEST_F(WindowsXdnaContextTest,
   EXPECT_TRUE(state_.destroyed_contexts.empty());
 }
 
-TEST_F(WindowsXdnaContextTest, DestroysNativeContextBeforeHostMetadata) {
+TEST_F(WindowsXdnaContextTest,
+       DestroysNativeContextBeforePrivateExecutionStorage) {
   FaultAllocatorState allocator_state = {.operations = &state_.operations};
   device_.host_allocator = {
       .user_data = &allocator_state,
@@ -280,19 +281,46 @@ TEST_F(WindowsXdnaContextTest, DestroysNativeContextBeforeHostMetadata) {
       amdf_xdna_umd_context_create(&device_, &create_info_, &context, &result),
       AMDF_STATUS_OK);
   ASSERT_NE(context, nullptr);
-  EXPECT_EQ(allocator_state.live_allocation_count, 1u);
+  EXPECT_EQ(allocator_state.live_allocation_count, 2u);
   state_.operations.clear();
 
   ASSERT_EQ(amdf_xdna_umd_context_destroy(context), AMDF_STATUS_OK);
 
   EXPECT_EQ(state_.operations,
             (std::vector<Operation>{Operation::kDestroyContext,
+                                    Operation::kFreeHostAllocation,
                                     Operation::kFreeHostAllocation}));
   EXPECT_EQ(allocator_state.live_allocation_count, 0u);
 }
 
+TEST_F(WindowsXdnaContextTest, ReleasesFailedRollbackWithoutPublishingOutputs) {
+  FaultAllocatorState allocator_state = {.failure_call = 3};
+  device_.host_allocator = {
+      .user_data = &allocator_state,
+      .allocate = FaultAllocate,
+      .free = FaultFree,
+  };
+  state_.destroy_failures_remaining = 1;
+  auto* const context_sentinel =
+      reinterpret_cast<amdf_xdna_umd_context_t*>(uintptr_t{1});
+  amdf_xdna_umd_context_t* context = context_sentinel;
+  amdf_xdna_umd_context_result_t result;
+  std::memset(&result, 0xA5, sizeof(result));
+  amdf_xdna_umd_context_result_t expected_result = result;
+
+  EXPECT_EQ(
+      amdf_xdna_umd_context_create(&device_, &create_info_, &context, &result),
+      amdf_kmt_make_status(kFailure));
+  EXPECT_EQ(context, context_sentinel);
+  EXPECT_EQ(std::memcmp(&result, &expected_result, sizeof(result)), 0);
+  EXPECT_EQ(allocator_state.live_allocation_count, 0u);
+  EXPECT_TRUE(state_.destroyed_contexts.empty());
+  EXPECT_EQ(state_.operations,
+            (std::vector<Operation>{Operation::kDestroyContext}));
+}
+
 TEST_F(WindowsXdnaContextTest, RollsBackHostExhaustionAtEachConstructionStep) {
-  for (uint32_t failure_call : {1u, 2u}) {
+  for (uint32_t failure_call : {1u, 2u, 3u}) {
     FaultAllocatorState allocator_state = {.failure_call = failure_call};
     device_.host_allocator = {
         .user_data = &allocator_state,
@@ -313,7 +341,7 @@ TEST_F(WindowsXdnaContextTest, RollsBackHostExhaustionAtEachConstructionStep) {
     EXPECT_EQ(std::memcmp(&result, &original, sizeof(result)), 0);
     EXPECT_EQ(allocator_state.live_allocation_count, 0u);
   }
-  EXPECT_TRUE(state_.created_contexts.empty());
+  EXPECT_EQ(state_.created_contexts, (std::vector<D3DKMT_HANDLE>{0x30}));
   EXPECT_EQ(state_.destroyed_contexts, state_.created_contexts);
 }
 
@@ -333,7 +361,8 @@ TEST_F(WindowsXdnaContextTest, ExplicitDestroyFailureRetainsPublishedOwner) {
   EXPECT_EQ(amdf_xdna_umd_context_destroy(context),
             amdf_kmt_make_status(kFailure));
   EXPECT_EQ(context->handle, 0x30u);
-  EXPECT_EQ(allocator_state.live_allocation_count, 1u);
+  EXPECT_NE(context->kernel_execution, nullptr);
+  EXPECT_EQ(allocator_state.live_allocation_count, 2u);
   EXPECT_TRUE(state_.destroyed_contexts.empty());
 
   EXPECT_EQ(amdf_xdna_umd_context_destroy(context), AMDF_STATUS_OK);

@@ -45,7 +45,6 @@ iree_cc_library(
     "endpoint_profile.c"
   DEPS
     ::bootstrap
-    ::transaction_interpreter
     amdf::headers
     libamdf::src::xdna::target::npu5::bootstrap
   PUBLIC
@@ -71,7 +70,9 @@ iree_cc_library(
     libamdf::src::host_mapping
     libamdf::src::memory
     libamdf::src::memory_profile
+    libamdf::src::memory_scope_state
     libamdf::src::structure
+    libamdf::src::xdna::umd::context
     libamdf::src::xdna::umd::device
     libamdf::src::xdna::umd::memory
   PUBLIC
@@ -102,6 +103,34 @@ endif()
 if(AMDF_BUILD AND AMDF_FAMILY_XDNA)
 iree_cc_library(
   NAME
+    kernel_queue
+  HDRS
+    "kernel_queue.h"
+  SRCS
+    "kernel_queue.c"
+  DEPS
+    ::context
+    ::device
+    amdf::headers
+    libamdf::src::allocator
+    libamdf::src::atomics
+    libamdf::src::device
+    libamdf::src::endpoint
+    libamdf::src::kernel_queue
+    libamdf::src::memory
+    libamdf::src::memory_resource
+    libamdf::src::memory_scope_state
+    libamdf::src::platform::wait
+    libamdf::src::structure
+    libamdf::src::wait
+    libamdf::src::xdna::umd::kernel_queue
+  PUBLIC
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_library(
+  NAME
     extension
   HDRS
     "extension.h"
@@ -111,6 +140,7 @@ iree_cc_library(
     ::context
     ::device
     ::endpoint_profile
+    ::kernel_queue
     amdf::headers
     libamdf::src::endpoint
     libamdf::src::platform
@@ -167,6 +197,34 @@ iree_cc_test(
     amdf::headers
     iree::third_party::google_test
     iree::third_party::google_test_main
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.xdna"
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_test(
+  NAME
+    kernel_queue_test
+  SRCS
+    "kernel_queue_test.cc"
+  DEPS
+    ::context
+    ::device
+    ::endpoint_profile
+    ::kernel_queue
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+    libamdf::src::allocator
+    libamdf::src::child_tracker
+    libamdf::src::device
+    libamdf::src::endpoint
+    libamdf::src::kernel_queue
+    libamdf::src::memory_resource
+    libamdf::src::memory_scope_state
+    libamdf::src::xdna::umd::kernel_queue
   LABELS
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.xdna"

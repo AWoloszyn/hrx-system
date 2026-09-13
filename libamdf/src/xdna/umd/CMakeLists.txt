@@ -66,4 +66,18 @@ iree_cc_library(
 )
 endif()
 
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_library(
+  NAME
+    kernel_queue
+  HDRS
+    "kernel_queue.h"
+  DEPS
+    ::context
+    amdf::headers
+    libamdf::src::wait
+  PUBLIC
+)
+endif()
+
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

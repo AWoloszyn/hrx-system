@@ -14,17 +14,20 @@
 #include "libamdf/src/structure.h"
 #include "libamdf/src/xdna/device.h"
 #include "libamdf/src/xdna/endpoint_profile.h"
+#include "libamdf/src/xdna/memory.h"
 
 struct amdf_xdna_context_t {
   // Ordinary-address-domain device borrowed for the context lifetime.
   amdf_device_t* device;
   // Native scheduling, placement, completion, and private execution state.
   amdf_xdna_umd_context_t* umd;
+  // Borrowed descriptor for caller-owned context-qualified instruction storage.
+  amdf_memory_scope_t memory_scope;
   // Immutable identity and logical admission returned by the provider.
   amdf_xdna_context_info_t info;
   // Fixed backing, exposed only when the device supports a placement mode.
   amdf_xdna_context_placement_info_t placement_info;
-  // Number of live children borrowing this context.
+  // Number of live queues borrowing this context.
   amdf_child_tracker_t children;
 };
 
@@ -134,6 +137,8 @@ amdf_status_t AMDF_CALL amdf_xdna_context_create(
     context->placement_info.structure_size = sizeof(context->placement_info);
     context->placement_info.column_origin = result.physical_column_origin;
     context->placement_info.column_count = result.physical_column_count;
+    amdf_xdna_memory_scope_initialize(device, context->umd,
+                                      &context->memory_scope);
     *out_context = context;
   } else {
     if (context->device != NULL) {
@@ -186,6 +191,24 @@ amdf_status_t AMDF_CALL amdf_xdna_context_query_placement_info(
 
 amdf_device_t* amdf_xdna_context_get_device(amdf_xdna_context_t* context) {
   return context->device;
+}
+
+amdf_memory_scope_t* amdf_xdna_context_get_memory_scope(
+    amdf_xdna_context_t* context) {
+  return &context->memory_scope;
+}
+
+amdf_status_t AMDF_CALL amdf_xdna_context_enumerate_memory_scopes(
+    amdf_xdna_context_t* context, uint32_t capacity,
+    amdf_memory_scope_t** scopes, uint32_t* out_count) {
+  if (context == NULL || out_count == NULL ||
+      (capacity != 0 && scopes == NULL)) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  }
+  if (capacity != 0) scopes[0] = &context->memory_scope;
+  *out_count = 1;
+  return capacity == 0 ? amdf_make_api_status(AMDF_STATUS_CODE_BUFFER_TOO_SMALL)
+                       : AMDF_STATUS_OK;
 }
 
 const amdf_xdna_context_info_t* amdf_xdna_context_get_info(

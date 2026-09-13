@@ -13,7 +13,7 @@
 
 #define AMDF_WINDOWS_KMT_PAGE_SIZE UINT64_C(4096)
 
-// Installed NPU5 allocation-private wire record.
+// Native allocation-private wire record.
 typedef struct amdf_windows_xdna_private_allocation_wire_t {
   // Unresolved field fixed at zero.
   uint64_t reserved_0000;
@@ -33,12 +33,15 @@ typedef struct amdf_windows_xdna_private_allocation_wire_t {
   uint32_t xcl_flags;
   // Unresolved field fixed at zero.
   uint32_t reserved_002c;
-  // Unresolved field fixed at zero.
-  uint64_t reserved_0030;
+  // Context-qualified firmware base returned for an instruction aperture.
+  uint64_t firmware_address;
 } amdf_windows_xdna_private_allocation_wire_t;
 
 _Static_assert(sizeof(amdf_windows_xdna_private_allocation_wire_t) == 56,
                "XDNA private allocation record must match the installed ABI");
+_Static_assert(offsetof(amdf_windows_xdna_private_allocation_wire_t,
+                        firmware_address) == 0x30,
+               "XDNA firmware address must match the native reply offset");
 
 static amdf_status_t amdf_windows_xdna_private_allocation_wait_for_paging(
     amdf_windows_xdna_private_allocation_t* allocation) {
@@ -157,6 +160,7 @@ amdf_status_t amdf_windows_xdna_private_allocation_realize(
     if (amdf_status_is_ok(status)) {
       allocation->resource = create.hResource;
       allocation->allocation = allocation_info.hAllocation;
+      allocation->firmware_address = private_data.firmware_address;
       allocation->realization_phase = 1;
       if (allocation->allocation == 0) {
         status = amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
@@ -285,6 +289,7 @@ amdf_status_t amdf_windows_xdna_private_allocation_destroy(
     allocation->allocation = 0;
   }
   allocation->device_address = 0;
+  allocation->firmware_address = 0;
   memset(&allocation->descriptor, 0, sizeof(allocation->descriptor));
   allocation->realization_phase = 0;
   allocation->device = NULL;

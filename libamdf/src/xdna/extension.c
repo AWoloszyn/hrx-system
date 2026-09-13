@@ -14,6 +14,7 @@
 #include "libamdf/src/xdna/context.h"
 #include "libamdf/src/xdna/device.h"
 #include "libamdf/src/xdna/endpoint_profile.h"
+#include "libamdf/src/xdna/kernel_queue.h"
 #include "libamdf/src/xdna/umd/device.h"
 #include "libamdf/src/xdna/umd/memory_profile.h"
 
@@ -73,11 +74,39 @@ static const amdf_xdna_api_t amdf_xdna_api_v1 = {
     .endpoint_query_info = amdf_xdna_endpoint_query_info,
     .device_create = amdf_xdna_device_create,
     .device_query_info = amdf_xdna_device_query_info,
+    .kernel_queue_create = amdf_xdna_kernel_queue_create,
+    .kernel_queue_submit = amdf_xdna_kernel_queue_submit,
     .context_create = amdf_xdna_context_create,
     .context_query_info = amdf_xdna_context_query_info,
     .context_query_placement_info = amdf_xdna_context_query_placement_info,
+    .context_enumerate_memory_scopes =
+        amdf_xdna_context_enumerate_memory_scopes,
     .context_destroy = amdf_xdna_context_destroy,
 };
+
+uint32_t amdf_xdna_extension_query_endpoint_queue_families(
+    const amdf_xdna_endpoint_profile_t* profile,
+    const amdf_platform_endpoint_t* platform_endpoint, uint32_t capacity,
+    amdf_queue_family_info_t* out_families) {
+  if (profile == NULL || profile->info->instruction.maximum_byte_length == 0 ||
+      capacity == 0) {
+    return 0;
+  }
+  const amdf_queue_publication_modes_t publication_modes =
+      amdf_platform_endpoint_query_queue_publication_modes(
+          platform_endpoint, AMDF_QUEUE_COMMAND_TYPE_XDNA);
+  if (publication_modes == 0) {
+    return 0;
+  }
+  out_families[0].type = AMDF_STRUCTURE_TYPE_QUEUE_FAMILY_INFO;
+  out_families[0].structure_size = sizeof(out_families[0]);
+  out_families[0].ordinal = 0;
+  out_families[0].command_type = AMDF_QUEUE_COMMAND_TYPE_XDNA;
+  out_families[0].publication_modes = publication_modes;
+  out_families[0].format_version = AMDF_XDNA_QUEUE_FORMAT_VERSION_1;
+  out_families[0].roles = AMDF_QUEUE_ROLE_COMPUTE;
+  return 1;
+}
 
 amdf_status_t amdf_xdna_extension_query(uint32_t minimum_version,
                                         uint32_t maximum_version,

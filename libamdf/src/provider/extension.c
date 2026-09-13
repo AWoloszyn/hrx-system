@@ -103,6 +103,12 @@ uint32_t amdf_extension_query_endpoint_queue_families(
           out_families);
     }
 #endif  // AMDF_HAVE_GPU
+#if defined(AMDF_HAVE_XDNA)
+    case AMDF_ENGINE_KIND_XDNA:
+      return amdf_xdna_extension_query_endpoint_queue_families(
+          amdf_xdna_endpoint_profile_select(endpoint_info),
+          amdf_endpoint_get_platform(endpoint), capacity, out_families);
+#endif  // AMDF_HAVE_XDNA
     default:
       return 0;
   }

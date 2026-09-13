@@ -10,6 +10,9 @@
 #include "libamdf/src/xdna/umd/context.h"
 #include "libamdf/src/xdna/umd/mcdm/device.h"
 
+typedef struct amdf_windows_xdna_kernel_execution_t
+    amdf_windows_xdna_kernel_execution_t;
+
 // Concrete Windows state backing one schedulable XDNA context.
 struct amdf_xdna_umd_context_t {
   // Ordinary-address-domain device borrowed through context destruction.
@@ -18,6 +21,8 @@ struct amdf_xdna_umd_context_t {
   D3DKMT_HANDLE handle;
   // Driver-returned command aperture selector; zero is a valid value.
   uint32_t command_aperture_cookie;
+  // Lazily prepared context-local instruction and kernel-queue state.
+  amdf_windows_xdna_kernel_execution_t* kernel_execution;
 };
 
 #endif  // AMDF_SRC_XDNA_UMD_MCDM_CONTEXT_H_

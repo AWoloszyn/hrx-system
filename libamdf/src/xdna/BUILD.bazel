@@ -36,7 +36,6 @@ amdf_cc_library(
     ],
     deps = [
         ":bootstrap",
-        ":transaction_interpreter",
         "//libamdf/src/xdna/target/npu5:bootstrap",
     ],
 )
@@ -59,7 +58,9 @@ amdf_cc_library(
         "//libamdf/src:host_mapping",
         "//libamdf/src:memory",
         "//libamdf/src:memory_profile",
+        "//libamdf/src:memory_scope_state",
         "//libamdf/src:structure",
+        "//libamdf/src/xdna/umd:context",
         "//libamdf/src/xdna/umd:device",
         "//libamdf/src/xdna/umd:memory",
     ],
@@ -81,6 +82,28 @@ amdf_cc_library(
 )
 
 amdf_cc_library(
+    name = "kernel_queue",
+    srcs = ["kernel_queue.c"],
+    hdrs = ["kernel_queue.h"],
+    deps = [
+        ":context",
+        ":device",
+        "//libamdf/src:allocator",
+        "//libamdf/src:atomics",
+        "//libamdf/src:device",
+        "//libamdf/src:endpoint",
+        "//libamdf/src:kernel_queue",
+        "//libamdf/src:memory",
+        "//libamdf/src:memory_resource",
+        "//libamdf/src:memory_scope_state",
+        "//libamdf/src:structure",
+        "//libamdf/src:wait",
+        "//libamdf/src/platform:wait",
+        "//libamdf/src/xdna/umd:kernel_queue",
+    ],
+)
+
+amdf_cc_library(
     name = "extension",
     srcs = ["extension.c"],
     hdrs = ["extension.h"],
@@ -89,6 +112,7 @@ amdf_cc_library(
         ":context",
         ":device",
         ":endpoint_profile",
+        ":kernel_queue",
         "//libamdf/src:endpoint",
         "//libamdf/src:structure",
         "//libamdf/src/platform",
@@ -132,3 +156,23 @@ amdf_cc_test(
     ],
 )
 
+amdf_cc_test(
+    name = "kernel_queue_test",
+    srcs = ["kernel_queue_test.cc"],
+    deps = [
+        ":context",
+        ":device",
+        ":endpoint_profile",
+        ":kernel_queue",
+        "//libamdf/src:allocator",
+        "//libamdf/src:child_tracker",
+        "//libamdf/src:device",
+        "//libamdf/src:endpoint",
+        "//libamdf/src:kernel_queue",
+        "//libamdf/src:memory_resource",
+        "//libamdf/src:memory_scope_state",
+        "//libamdf/src/xdna/umd:kernel_queue",
+        "//third_party:google_test",
+        "//third_party:google_test_main",
+    ],
+)

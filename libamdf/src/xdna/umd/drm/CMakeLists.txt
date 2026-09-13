@@ -134,6 +134,7 @@ iree_cc_library(
     "memory.c"
   DEPS
     ::buffer
+    ::context_state
     ::device_state
     ::memory_profile
     amdf::headers
@@ -171,13 +172,62 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
 iree_cc_library(
   NAME
+    kernel_queue
+  SRCS
+    "kernel_queue.c"
+  DEPS
+    ::buffer
+    ::context_state
+    ::device_state
+    ::elf_packet
+    amdf::headers
+    libamdf::src::allocator
+    libamdf::src::atomics
+    libamdf::src::platform::linux::file
+    libamdf::src::platform::linux::host_cache
+    libamdf::src::platform::wait
+    libamdf::src::wait
+    libamdf::src::xdna::umd::kernel_queue
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_library(
+  NAME
     drm
   DEPS
     ::context
     ::device
+    ::kernel_queue
     ::memory
     amdf::headers
   PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_test(
+  NAME
+    kernel_queue_test
+  SRCS
+    "kernel_queue_test.cc"
+  LINKOPTS
+    "-Wl,--wrap=ioctl"
+  DEPS
+    ::context_state
+    ::elf_packet
+    ::kernel_queue
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+    libamdf::src::allocator
+    libamdf::src::atomics
+    libamdf::src::wait
+    libamdf::src::xdna::umd::kernel_queue
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.xdna"
 )
 endif()
 
@@ -210,6 +260,20 @@ iree_cc_test(
     "iree-build-requirement=libamdf.xdna"
   RESOURCE_GROUP
     iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_library(
+  NAME
+    elf_packet
+  HDRS
+    "elf_packet.h"
+  SRCS
+    "elf_packet.c"
+  DEPS
+    amdf::headers
+  PUBLIC
 )
 endif()
 

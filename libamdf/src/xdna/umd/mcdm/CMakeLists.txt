@@ -109,12 +109,55 @@ iree_cc_library(
   SRCS
     "memory.c"
   DEPS
+    ::context_state
     ::device_state
+    ::kernel_execution
     ::memory_profile
+    ::private_allocation
     amdf::headers
     libamdf::src::allocator
     libamdf::src::platform::windows::host_cache
     libamdf::src::xdna::umd::memory
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_library(
+  NAME
+    legacy_submission
+  HDRS
+    "legacy_submission.h"
+  SRCS
+    "legacy_submission.c"
+  DEPS
+    ::private_allocation
+    amdf::headers
+    libamdf::src::xdna::transaction_interpreter
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_library(
+  NAME
+    kernel_execution
+  HDRS
+    "kernel_execution.h"
+  SRCS
+    "kernel_execution.c"
+  DEPS
+    ::context_state
+    ::device_state
+    ::legacy_submission
+    ::private_allocation
+    amdf::headers
+    libamdf::src::allocator
+    libamdf::src::atomics
+    libamdf::src::platform::wait
+    libamdf::src::wait
+    libamdf::src::xdna::transaction_interpreter
+    libamdf::src::xdna::umd::context
   PUBLIC
 )
 endif()
@@ -144,6 +187,7 @@ iree_cc_library(
   DEPS
     ::context_state
     ::device_state
+    ::kernel_execution
     ::legacy_context
     amdf::headers
     libamdf::src::allocator
@@ -155,10 +199,28 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
 iree_cc_library(
   NAME
+    kernel_queue
+  SRCS
+    "kernel_queue.c"
+  DEPS
+    ::context_state
+    ::device_state
+    ::kernel_execution
+    amdf::headers
+    libamdf::src::allocator
+    libamdf::src::xdna::umd::kernel_queue
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_library(
+  NAME
     mcdm
   DEPS
     ::context
     ::device
+    ::kernel_queue
     ::memory
     amdf::headers
   PUBLIC
@@ -232,6 +294,23 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
 iree_cc_test(
   NAME
+    legacy_submission_test
+  SRCS
+    "legacy_submission_test.cc"
+  DEPS
+    ::legacy_submission
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.xdna"
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_test(
+  NAME
     memory_test
   SRCS
     "memory_test.cc"
@@ -261,6 +340,29 @@ iree_cc_test(
     amdf::headers
     iree::third_party::google_test
     iree::third_party::google_test_main
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.xdna"
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_test(
+  NAME
+    kernel_execution_test
+  SRCS
+    "kernel_execution_test.cc"
+  DEPS
+    ::context_state
+    ::device_state
+    ::kernel_execution
+    ::memory
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+    libamdf::src::allocator
+    libamdf::src::xdna::endpoint_profile
+    libamdf::src::xdna::umd::memory
   LABELS
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.xdna"

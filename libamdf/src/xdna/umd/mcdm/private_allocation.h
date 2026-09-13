@@ -54,6 +54,9 @@ typedef struct amdf_windows_xdna_private_allocation_t {
   void* host_pointer;
   // Stable XDNA virtual address, or zero when not requested.
   uint64_t device_address;
+  // Context-qualified firmware base returned for an instruction aperture;
+  // zero for allocation roles without a firmware address. Not a KMT GPU VA.
+  uint64_t firmware_address;
   // Immutable descriptor captured during initialization.
   amdf_windows_xdna_private_allocation_descriptor_t descriptor;
   // Fence value of an accepted paging operation awaiting observation.

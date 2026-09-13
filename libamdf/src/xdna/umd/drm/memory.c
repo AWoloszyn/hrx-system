@@ -14,6 +14,7 @@
 #include "libamdf/src/platform/linux/dma_buf.h"
 #include "libamdf/src/platform/linux/file.h"
 #include "libamdf/src/platform/linux/host_cache.h"
+#include "libamdf/src/xdna/umd/drm/context.h"
 #include "libamdf/src/xdna/umd/drm/device.h"
 #include "libamdf/src/xdna/umd/drm/memory.h"
 #include "libamdf/src/xdna/umd/drm/memory_profile.h"
@@ -85,6 +86,101 @@ amdf_status_t amdf_xdna_umd_device_query_memory_profile(
     amdf_memory_native_profile_t* out_profile) {
   return amdf_linux_xdna_query_memory_profile(
       device->profile, device->page_size, memory_profile_ordinal, out_profile);
+}
+
+void amdf_xdna_umd_context_query_memory_profile(
+    amdf_xdna_umd_context_t* context,
+    amdf_memory_native_profile_t* out_profile) {
+  const uint64_t page_size = context->device->page_size;
+  const uint64_t heap_byte_length = context->device->heap.byte_length;
+  const uint64_t maximum_address =
+      (UINT64_C(1) << context->device->profile->dma.address_bit_count) - 1;
+  *out_profile = (amdf_memory_native_profile_t){
+      .ordinal = 0,
+      .memory_class = AMDF_MEMORY_CLASS_PRIVATE,
+      .roles =
+          AMDF_MEMORY_PROFILE_ROLE_CREATE | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
+      .guaranteed_flags =
+          AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS,
+      .supported_flags =
+          AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS,
+      .guaranteed_device_access = AMDF_MEMORY_ACCESS_READ |
+                                  AMDF_MEMORY_ACCESS_WRITE |
+                                  AMDF_MEMORY_ACCESS_EXECUTE,
+      .supported_device_access = AMDF_MEMORY_ACCESS_READ |
+                                 AMDF_MEMORY_ACCESS_WRITE |
+                                 AMDF_MEMORY_ACCESS_EXECUTE,
+      .device_address =
+          {
+              .address_domain_ordinal = AMDF_ADDRESS_DOMAIN_ORDINAL_NONE,
+              .address_bit_count =
+                  context->device->profile->dma.address_bit_count,
+              .maximum_address = maximum_address,
+              .minimum_alignment = page_size,
+          },
+      .allocation =
+          {
+              .maximum_byte_length = heap_byte_length,
+              .byte_length_granularity = 1,
+              .minimum_alignment = page_size,
+              .maximum_alignment = page_size,
+              .native_byte_length_granularity = page_size,
+          },
+      .host_mapping =
+          {
+              .maximum_byte_length = heap_byte_length,
+              .byte_offset_granularity = 1,
+              .byte_length_granularity = 1,
+              .supported_access =
+                  AMDF_MEMORY_MAP_FLAG_READ | AMDF_MEMORY_MAP_FLAG_WRITE,
+          },
+      .address_kinds = (UINT64_C(1) << AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE) |
+                       (UINT64_C(1) << AMDF_MEMORY_ADDRESS_XDNA_DMA),
+  };
+}
+
+amdf_status_t amdf_xdna_umd_memory_prepare_private(
+    amdf_xdna_umd_context_t* context,
+    const amdf_memory_native_profile_t* profile,
+    const amdf_memory_native_create_info_t* create_info,
+    amdf_xdna_umd_memory_t** memory_state,
+    amdf_xdna_umd_memory_result_t* out_result) {
+  amdf_xdna_umd_device_t* device = context->device;
+  amdf_xdna_umd_memory_t* memory = NULL;
+  amdf_status_t status =
+      amdf_calloc(device->host_allocator, sizeof(*memory),
+                  amdf_alignof(amdf_xdna_umd_memory_t), (void**)&memory);
+  if (!amdf_status_is_ok(status)) return status;
+  memory->device = device;
+  *memory_state = memory;
+  const size_t byte_length =
+      (create_info->byte_length + device->page_size - 1) &
+      ~(device->page_size - 1);
+  status = amdf_linux_xdna_buffer_create(device->descriptor, AMDXDNA_BO_DEV,
+                                         byte_length, &memory->buffer);
+  if (amdf_status_is_ok(status)) {
+    status = amdf_linux_xdna_buffer_attach(device->descriptor,
+                                           device->page_size, device->page_size,
+                                           &device->heap, &memory->buffer);
+  }
+  uint64_t dma_address = 0;
+  if (amdf_status_is_ok(status)) {
+    status = amdf_linux_xdna_memory_translate_dma_address(
+        memory, 0, create_info->byte_length, &dma_address);
+  }
+  if (amdf_status_is_ok(status)) {
+    *out_result = (amdf_xdna_umd_memory_result_t){
+        .flags = profile->guaranteed_flags,
+        .byte_length = create_info->byte_length,
+        .alignment = device->page_size,
+        .native_allocation_byte_length = byte_length,
+        .native_allocation_granularity = device->page_size,
+        .device_address = memory->buffer.device_address,
+        .address_kinds = profile->address_kinds,
+        .dma_address = dma_address,
+    };
+  }
+  return status;
 }
 
 amdf_status_t amdf_xdna_umd_memory_prepare_import(

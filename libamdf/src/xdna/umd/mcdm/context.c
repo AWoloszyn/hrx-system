@@ -8,9 +8,18 @@
 
 #include "libamdf/src/allocator.h"
 #include "libamdf/src/xdna/umd/mcdm/context.h"
+#include "libamdf/src/xdna/umd/mcdm/kernel_execution.h"
 #include "libamdf/src/xdna/umd/mcdm/legacy_context.h"
 
 amdf_status_t amdf_xdna_umd_context_destroy(amdf_xdna_umd_context_t* context) {
+  if (context->kernel_execution != NULL) {
+    const amdf_status_t status =
+        amdf_windows_xdna_kernel_execution_prepare_context_destroy(
+            context->kernel_execution);
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
+  }
   if (context->handle != 0) {
     D3DKMT_DESTROYCONTEXT destroy = {0};
     destroy.hContext = context->handle;
@@ -20,6 +29,14 @@ amdf_status_t amdf_xdna_umd_context_destroy(amdf_xdna_umd_context_t* context) {
       return status;
     }
     context->handle = 0;
+  }
+  if (context->kernel_execution != NULL) {
+    const amdf_status_t status =
+        amdf_windows_xdna_kernel_execution_destroy(context->kernel_execution);
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
+    context->kernel_execution = NULL;
   }
   const amdf_allocator_t host_allocator = context->device->host_allocator;
   amdf_free(host_allocator, context);
@@ -100,6 +117,10 @@ amdf_status_t amdf_xdna_umd_context_create(
   }
   amdf_free(device->host_allocator, context_data);
 
+  if (amdf_status_is_ok(status)) {
+    status = amdf_windows_xdna_kernel_execution_create(
+        context, &context->kernel_execution);
+  }
   if (amdf_status_is_ok(status)) {
     amdf_xdna_umd_context_result_t result = {0};
     result.id.words[0] = (uintptr_t)context;

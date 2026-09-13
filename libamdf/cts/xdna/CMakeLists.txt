@@ -51,6 +51,7 @@ iree_cc_library(
   NAME
     xdna_tests
   SRCS
+    "kernel_queue_test.cc"
     "memory_test.cc"
     "xdna_extension_test.cc"
   DEPS

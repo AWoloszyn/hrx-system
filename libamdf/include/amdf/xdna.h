@@ -36,6 +36,14 @@ typedef struct amdf_xdna_context_t amdf_xdna_context_t;
 #define AMDF_STRUCTURE_TYPE_XDNA_DEVICE_INFO \
   ((amdf_structure_type_t)0x00010003u)
 
+/// An `amdf_xdna_kernel_queue_create_info_t` input structure.
+#define AMDF_STRUCTURE_TYPE_XDNA_KERNEL_QUEUE_CREATE_INFO \
+  ((amdf_structure_type_t)0x00010008u)
+
+/// An `amdf_xdna_kernel_queue_submission_info_t` input structure.
+#define AMDF_STRUCTURE_TYPE_XDNA_KERNEL_QUEUE_SUBMISSION_INFO \
+  ((amdf_structure_type_t)0x00010009u)
+
 /// An `amdf_xdna_context_create_info_t` input structure.
 #define AMDF_STRUCTURE_TYPE_XDNA_CONTEXT_CREATE_INFO \
   ((amdf_structure_type_t)0x0001000Au)
@@ -86,18 +94,41 @@ enum amdf_xdna_placement_mode_bits_e {
   /// physical array, including when its logical column count is smaller. The
   /// only explicit origin accepted is `array.column_origin`. ANY is also
   /// accepted and provides the same fixed backing. Fixed geometry grants
-  /// neither
-  /// exclusive ownership nor uninterrupted residency. Reset may discard state.
+  /// neither exclusive ownership nor uninterrupted residency. Reset may discard
+  /// state.
   AMDF_XDNA_PLACEMENT_MODE_FIXED_FULL_ARRAY = 1u << 0,
 };
 
-/// First XDNA kernel-published command-object format.
+/// Public target-native byte encodings accepted by an XDNA endpoint.
+typedef uint32_t amdf_xdna_binary_format_t;
+enum amdf_xdna_binary_format_e {
+  /// No public encoding is available for this role.
+  AMDF_XDNA_BINARY_FORMAT_UNKNOWN = 0,
+  /// A device-generation-specific AIE transaction stream.
+  AMDF_XDNA_BINARY_FORMAT_TRANSACTION = 2,
+};
+
+/// First public contract for AIE transaction-header version 0.1.
+#define AMDF_XDNA_TRANSACTION_FORMAT_VERSION_0_1 1u
+
+/// First XDNA kernel-published instruction-range format.
 #define AMDF_XDNA_QUEUE_FORMAT_VERSION_1 1u
+
+/// One exact public target-native byte encoding.
+typedef struct amdf_xdna_binary_format_info_t {
+  /// Transaction stream or `AMDF_XDNA_BINARY_FORMAT_UNKNOWN`.
+  amdf_xdna_binary_format_t format;
+  /// Version defining the complete byte encoding.
+  uint32_t version;
+} amdf_xdna_binary_format_info_t;
 
 /// Immutable compiler target and expected native admission of one endpoint.
 ///
 /// This record combines hardware/compiler facts with the native provider's
-/// expected services, not reservations or live resource allocation.
+/// expected services, not reservations or live resource allocation. Nonzero
+/// instruction limits describe native range submission. Memory placement and
+/// residency are separate scope contracts. Queue publication remains a
+/// separate queue-family capability.
 typedef struct amdf_xdna_endpoint_info_t {
   /// Must be `AMDF_STRUCTURE_TYPE_XDNA_ENDPOINT_INFO`.
   amdf_structure_type_t type;
@@ -139,6 +170,17 @@ typedef struct amdf_xdna_endpoint_info_t {
     /// Maximum contexts simultaneously carrying hardware or firmware state.
     uint32_t maximum_hardware_context_count;
   } context;
+  /// Opaque target-native instruction submission contract.
+  struct {
+    /// Maximum bytes in one instruction range; zero without execution.
+    uint64_t maximum_byte_length;
+    /// Required power-of-two instruction address alignment in bytes.
+    uint32_t address_alignment;
+    /// Required multiple of the instruction byte length.
+    uint32_t byte_length_granularity;
+    /// Native encoding supplied by the caller, never parsed by libamdf.
+    amdf_xdna_binary_format_info_t format;
+  } instruction;
   /// Exact NUL-terminated compiler target and device-profile identifier.
   char target_id[AMDF_XDNA_TARGET_ID_CAPACITY];
 } amdf_xdna_endpoint_info_t;
@@ -252,6 +294,53 @@ typedef struct amdf_xdna_context_placement_info_t {
   uint32_t column_count;
 } amdf_xdna_context_placement_info_t;
 
+/// Parameters used to acquire one kernel-mediated XDNA queue.
+typedef struct amdf_xdna_kernel_queue_create_info_t {
+  /// Must be `AMDF_STRUCTURE_TYPE_XDNA_KERNEL_QUEUE_CREATE_INFO`.
+  amdf_structure_type_t type;
+  /// Must be at least `sizeof(amdf_xdna_kernel_queue_create_info_t)`.
+  uint32_t structure_size;
+  /// Optional input extension chain. No extensions are currently defined.
+  const void* next;
+  /// Endpoint-local XDNA family supporting kernel publication.
+  uint32_t queue_family_ordinal;
+  /// Reserved for compatible growth and must be zero.
+  uint32_t reserved;
+} amdf_xdna_kernel_queue_create_info_t;
+
+/// One caller-owned target-native instruction range.
+typedef struct amdf_xdna_kernel_command_t {
+  /// Caller-owned private memory from the queue's exact context. The memory
+  /// and its instruction bytes remain live and immutable through retirement.
+  amdf_memory_t* memory;
+  /// Consumer granting EXECUTE access and a firmware address.
+  uint32_t access_ordinal;
+  /// Reserved for compatible growth and must be zero.
+  uint32_t reserved;
+  /// Offset of opaque target-native instructions. The resulting firmware
+  /// address satisfies the endpoint's instruction.address_alignment.
+  uint64_t byte_offset;
+  /// Nonzero instruction length satisfying the endpoint's instruction limits.
+  uint64_t byte_length;
+} amdf_xdna_kernel_command_t;
+
+/// One bounded kernel-mediated XDNA submission.
+typedef struct amdf_xdna_kernel_queue_submission_info_t {
+  /// Must be `AMDF_STRUCTURE_TYPE_XDNA_KERNEL_QUEUE_SUBMISSION_INFO`.
+  amdf_structure_type_t type;
+  /// Must be at least `sizeof(amdf_xdna_kernel_queue_submission_info_t)`.
+  uint32_t structure_size;
+  /// Optional input extension chain. No extensions are currently defined.
+  const void* next;
+  /// Number of descriptors in `commands`, bounded by the queue's command limit.
+  uint32_t command_count;
+  /// Reserved for compatible growth and must be zero.
+  uint32_t reserved;
+  /// Borrowed descriptors consumed before return. Accepted instruction ranges
+  /// remain borrowed through checked native retirement.
+  const amdf_xdna_kernel_command_t* commands;
+} amdf_xdna_kernel_queue_submission_info_t;
+
 /// Immutable entry-point table for one negotiated XDNA extension version.
 ///
 /// Tables grow only by appending fields. The table and every function pointer
@@ -294,6 +383,36 @@ typedef struct amdf_xdna_api_t {
   amdf_status_t(AMDF_CALL* device_query_info)(
       amdf_device_t* device, amdf_xdna_device_info_t* out_info);
 
+  /// Acquires one kernel-mediated queue from an XDNA context.
+  ///
+  /// The returned queue borrows `context`, which must outlive it. Creation
+  /// selects an advertised `XDNA + KERNEL` family and allocates all bounded
+  /// submission bookkeeping before publication. It may configure and wait for
+  /// provider-owned firmware bootstrap work. Failure leaves `out_queue`
+  /// unchanged; any unfinished bootstrap ownership remains with the context.
+  amdf_status_t(AMDF_CALL* kernel_queue_create)(
+      amdf_xdna_context_t* context,
+      const amdf_xdna_kernel_queue_create_info_t* create_info,
+      amdf_kernel_queue_t** out_queue);
+
+  /// Publishes opaque instruction ranges from caller-owned private memory.
+  ///
+  /// Each memory resource must come from the queue's exact context scope and
+  /// grant EXECUTE access. Caller writes must be published before submission;
+  /// libamdf neither reads, copies nor modifies instruction bytes. The native
+  /// provider fills its preallocated transport packet with address and length.
+  /// Submission performs no allocation, format parsing, lowering, relocation,
+  /// binding resolution, retry, sleep or host wait. Native retirement releases
+  /// the memory borrow after consuming the command result.
+  /// Native rejection leaves `out_submission` unchanged.
+  /// The caller retains memory reachable through opaque device addresses;
+  /// native command retirement does not prove that user-mode work scheduled
+  /// by those commands has stopped accessing that memory.
+  amdf_status_t(AMDF_CALL* kernel_queue_submit)(
+      amdf_kernel_queue_t* queue,
+      const amdf_xdna_kernel_queue_submission_info_t* submission_info,
+      uint64_t* out_submission);
+
   /// Admits one program-independent schedulable context beneath `device`.
   ///
   /// The returned context borrows the ordinary-address-domain device, which
@@ -328,12 +447,26 @@ typedef struct amdf_xdna_api_t {
       amdf_xdna_context_t* context,
       amdf_xdna_context_placement_info_t* out_info);
 
+  /// Enumerates borrowed private memory scopes of this live context.
+  ///
+  /// A private scope accepts only the context's exact device as its consumer.
+  /// Its addresses are qualified by this context, not interchangeable with
+  /// addresses from another context on the same device. The caller destroys
+  /// all memory obtained from this scope before destroying the context; the
+  /// library neither retains the context nor tracks its private allocations.
+  /// Querying performs no allocation or native operation. `out_count` receives
+  /// the total count on success and BUFFER_TOO_SMALL. A zero-capacity call may
+  /// pass NULL for `scopes`.
+  amdf_status_t(AMDF_CALL* context_enumerate_memory_scopes)(
+      amdf_xdna_context_t* context, uint32_t capacity,
+      amdf_memory_scope_t** scopes, uint32_t* out_count);
+
   /// Destroys one context after all context-local children are gone.
   ///
-  /// Returns `AMDF_STATUS_CODE_BUSY` without native mutation while children
-  /// remain live. A native teardown failure leaves the context
-  /// live so destruction can be retried. The caller must otherwise have
-  /// exclusive access.
+  /// Returns `AMDF_STATUS_CODE_BUSY` without native mutation while a queue
+  /// remains live. Private-memory lifetime is a caller precondition. A native
+  /// teardown failure leaves the context live so destruction can be retried.
+  /// The caller must otherwise have exclusive access.
   amdf_status_t(AMDF_CALL* context_destroy)(amdf_xdna_context_t* context);
 } amdf_xdna_api_t;
 

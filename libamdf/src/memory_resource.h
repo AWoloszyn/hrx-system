@@ -61,6 +61,9 @@ typedef struct amdf_memory_access_state_t {
 struct amdf_memory_t {
   // Host allocator copied for direct terminal teardown.
   amdf_allocator_t host_allocator;
+  // Exact allocation scope borrowed without retention. Its execution owner
+  // qualifies PRIVATE addresses and must outlive this resource.
+  amdf_memory_scope_t* scope;
   // Immutable properties established before publication.
   amdf_memory_info_t info;
   // Caller-ordered records in this allocation's tail. CPU-only memory reserves

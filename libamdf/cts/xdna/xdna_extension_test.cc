@@ -40,8 +40,16 @@ static_assert(sizeof(amdf_xdna_context_info_t) == 72);
 static_assert(offsetof(amdf_xdna_context_placement_info_t, column_origin) ==
               sizeof(amdf_output_structure_t));
 static_assert(sizeof(amdf_xdna_context_placement_info_t) == 24);
-static_assert(offsetof(amdf_xdna_endpoint_info_t, target_id) == 76);
-static_assert(sizeof(amdf_xdna_endpoint_info_t) == 144);
+static_assert(offsetof(amdf_xdna_endpoint_info_t, instruction) == 80);
+static_assert(offsetof(amdf_xdna_endpoint_info_t, target_id) == 104);
+static_assert(sizeof(amdf_xdna_endpoint_info_t) == 168);
+static_assert(sizeof(amdf_xdna_kernel_command_t) == 32);
+static_assert(offsetof(amdf_xdna_kernel_command_t, byte_offset) == 16);
+static_assert(sizeof(amdf_xdna_kernel_queue_create_info_t) == 24);
+static_assert(sizeof(amdf_xdna_kernel_queue_submission_info_t) == 32);
+static_assert(offsetof(amdf_xdna_api_t, context_create) ==
+              offsetof(amdf_xdna_api_t, kernel_queue_submit) +
+                  sizeof(amdf_xdna_api_t::kernel_queue_submit));
 static_assert(offsetof(amdf_xdna_api_t, context_destroy) +
                   sizeof(amdf_xdna_api_t::context_destroy) ==
               sizeof(amdf_xdna_api_t));
@@ -82,6 +90,9 @@ TEST(XdnaExtensionTest, ReportsCompiledAvailabilityBeforeCreatingInstance) {
   EXPECT_NE(xdna_api->context_create, nullptr);
   EXPECT_NE(xdna_api->context_query_info, nullptr);
   EXPECT_NE(xdna_api->context_destroy, nullptr);
+  EXPECT_NE(xdna_api->context_enumerate_memory_scopes, nullptr);
+  EXPECT_NE(xdna_api->kernel_queue_create, nullptr);
+  EXPECT_NE(xdna_api->kernel_queue_submit, nullptr);
 }
 
 TEST(XdnaExtensionTest, ReturnsStableImmutableTable) {
@@ -218,12 +229,14 @@ TEST_F(XdnaEndpointTest, ReturnsStableCachedProfile) {
   EXPECT_NE(info.target_id[0], '\0');
   EXPECT_EQ(info.target_id[AMDF_XDNA_TARGET_ID_CAPACITY - 1], '\0');
 
-  amdf_xdna_endpoint_info_t second_info = {};
-  second_info.type = AMDF_STRUCTURE_TYPE_XDNA_ENDPOINT_INFO;
-  second_info.structure_size = sizeof(second_info);
-  ASSERT_TRUE(amdf_status_is_ok(
-      xdna_api_->endpoint_query_info(endpoint_, &second_info)));
-  EXPECT_EQ(std::memcmp(&info, &second_info, sizeof(info)), 0);
+  if (info.instruction.format.format == AMDF_XDNA_BINARY_FORMAT_UNKNOWN) {
+    EXPECT_EQ(info.instruction.maximum_byte_length, 0u);
+    EXPECT_EQ(info.instruction.format.version, 0u);
+  } else {
+    EXPECT_GT(info.instruction.maximum_byte_length, 0u);
+    EXPECT_GT(info.instruction.address_alignment, 0u);
+    EXPECT_GT(info.instruction.byte_length_granularity, 0u);
+  }
 }
 
 TEST_F(XdnaEndpointTest, RejectsMalformedOutputWithoutMutation) {

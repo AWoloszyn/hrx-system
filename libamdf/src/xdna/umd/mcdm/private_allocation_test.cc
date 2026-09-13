@@ -31,14 +31,25 @@ enum class Operation {
 };
 
 struct FakeKmtState {
+  // Host lock storage supplied by the native dependency.
   std::array<uint8_t, 8192> host_bytes = {};
+  // Exact allocation-private request before the driver writes its reply.
   std::array<uint8_t, 56> private_data = {};
+  // Firmware aperture base returned independently of the GPU VA mapping.
+  uint64_t firmware_address = 0;
+  // Residency policy captured from the native request.
   D3DDDI_MAKERESIDENT_FLAGS resident_flags = {};
+  // Allocation-relative cache publication offset.
   uint64_t invalidated_offset = 0;
+  // Length of the cache publication request.
   uint64_t invalidated_length = 0;
+  // One-based native paging wait that fails, or zero for success.
   uint32_t fail_wait_call = 0;
+  // Number of paging waits observed.
   uint32_t wait_count = 0;
+  // Requested paging fence values in call order.
   std::vector<uint64_t> wait_targets;
+  // Native operation order observed during realization and teardown.
   std::vector<Operation> operations;
 };
 
@@ -68,6 +79,10 @@ NTSTATUS APIENTRY FakeCreateAllocation(D3DKMT_CREATEALLOCATION* create) {
               g_fake_state->private_data.size());
   create->hResource = create->Flags.CreateResource ? 0x21 : 0;
   create->pAllocationInfo2[0].hAllocation = 0x20;
+  std::memcpy(
+      static_cast<uint8_t*>(create->pAllocationInfo2[0].pPrivateDriverData) +
+          0x30,
+      &g_fake_state->firmware_address, sizeof(uint64_t));
   return 0;
 }
 
@@ -216,6 +231,44 @@ TEST_F(WindowsXdnaPrivateAllocationTest,
             Operation::kUnlock);
   EXPECT_EQ(state_.operations.back(), Operation::kDestroy);
   EXPECT_EQ(allocation.device, nullptr);
+}
+
+TEST_F(WindowsXdnaPrivateAllocationTest,
+       PreservesFirmwareAddressAcrossPagingWaits) {
+  const amdf_windows_xdna_private_allocation_descriptor_t descriptor = {
+      .requested_byte_length = 8192,
+      .allocation_byte_length = 8192,
+      .type = 0x3323,
+      .policy = 2,
+      .xcl_flags = 0x010e0001,
+      .selector = 1,
+      .flags = AMDF_WINDOWS_XDNA_PRIVATE_ALLOCATION_FLAG_DEVICE_ADDRESS,
+  };
+  for (uint32_t fail_wait : {0u, 1u, 2u}) {
+    state_ = {};
+    state_.firmware_address = UINT64_C(0x8000000);
+    state_.fail_wait_call = fail_wait;
+    amdf_windows_xdna_private_allocation_t allocation = {};
+    amdf_windows_xdna_private_allocation_initialize(&device_, &descriptor,
+                                                    &allocation);
+    EXPECT_EQ(allocation.firmware_address, 0u);
+    const amdf_status_t status =
+        amdf_windows_xdna_private_allocation_realize(&allocation);
+    EXPECT_EQ(amdf_status_is_ok(status), fail_wait == 0);
+    EXPECT_EQ(allocation.firmware_address, state_.firmware_address);
+    EXPECT_EQ(ReadU64(state_.private_data.data(), 0x30), 0u);
+    if (fail_wait != 0) {
+      // The resumed paging operation has no allocation reply to reread.
+      ASSERT_EQ(amdf_windows_xdna_private_allocation_realize(&allocation),
+                AMDF_STATUS_OK);
+    }
+    EXPECT_EQ(allocation.firmware_address, state_.firmware_address);
+    EXPECT_EQ(allocation.device_address, UINT64_C(0x12340000));
+    EXPECT_NE(allocation.firmware_address, allocation.device_address);
+    ASSERT_EQ(amdf_windows_xdna_private_allocation_destroy(&allocation),
+              AMDF_STATUS_OK);
+    EXPECT_EQ(allocation.firmware_address, 0u);
+  }
 }
 
 TEST_F(WindowsXdnaPrivateAllocationTest,

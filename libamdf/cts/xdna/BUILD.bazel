@@ -44,6 +44,7 @@ amdf_cc_library(
     name = "xdna_tests",
     testonly = True,
     srcs = [
+        "kernel_queue_test.cc",
         "memory_test.cc",
         "xdna_extension_test.cc",
     ],

@@ -11,7 +11,9 @@
 
 #include "libamdf/src/allocator.h"
 #include "libamdf/src/platform/windows/host_cache.h"
+#include "libamdf/src/xdna/umd/mcdm/context.h"
 #include "libamdf/src/xdna/umd/mcdm/device.h"
+#include "libamdf/src/xdna/umd/mcdm/kernel_execution.h"
 #include "libamdf/src/xdna/umd/mcdm/memory_profile.h"
 
 #define AMDF_WINDOWS_KMT_PAGE_SIZE UINT64_C(4096)
@@ -19,6 +21,10 @@
 struct amdf_xdna_umd_memory_t {
   // Device borrowed while this attachment remains live.
   amdf_xdna_umd_device_t* device;
+  // Borrowed context for private instruction memory, NULL for ordinary backing.
+  amdf_xdna_umd_context_t* context;
+  // Context-qualified native backing owned directly by this memory resource.
+  amdf_windows_xdna_private_allocation_t private_allocation;
   // KMT resource owning the allocation, or zero for an ungrouped allocation.
   D3DKMT_HANDLE resource;
   // KMT physical allocation attached to the XDNA device.
@@ -44,6 +50,15 @@ struct amdf_xdna_umd_host_mapping_t {
 
 static amdf_status_t amdf_windows_xdna_memory_release_native(
     amdf_xdna_umd_memory_t* memory) {
+  if (memory->context != NULL) {
+    amdf_status_t status = amdf_windows_xdna_kernel_execution_release_memory(
+        memory->context->kernel_execution);
+    if (amdf_status_is_ok(status)) {
+      status = amdf_windows_xdna_private_allocation_destroy(
+          &memory->private_allocation);
+    }
+    return status;
+  }
   if (memory->pending_paging_fence != 0) {
     const amdf_status_t status = amdf_kmt_wait_for_paging(
         memory->device->kmt, memory->device->device,
@@ -186,6 +201,106 @@ amdf_status_t amdf_xdna_umd_device_query_memory_profile(
   }
   return amdf_windows_xdna_query_memory_profile(
       device->profile, memory_profile_ordinal, out_profile);
+}
+
+void amdf_xdna_umd_context_query_memory_profile(
+    amdf_xdna_umd_context_t* context,
+    amdf_memory_native_profile_t* out_profile) {
+  const uint64_t byte_length = AMDF_WINDOWS_XDNA_PRIVATE_APERTURE_SIZE -
+                               AMDF_WINDOWS_XDNA_PRIVATE_BOOTSTRAP_SIZE;
+  *out_profile = (amdf_memory_native_profile_t){
+      .ordinal = 0,
+      .memory_class = AMDF_MEMORY_CLASS_PRIVATE,
+      .roles =
+          AMDF_MEMORY_PROFILE_ROLE_CREATE | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
+      .guaranteed_flags =
+          AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS,
+      .supported_flags =
+          AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS,
+      .guaranteed_device_access = AMDF_MEMORY_ACCESS_READ |
+                                  AMDF_MEMORY_ACCESS_WRITE |
+                                  AMDF_MEMORY_ACCESS_EXECUTE,
+      .supported_device_access = AMDF_MEMORY_ACCESS_READ |
+                                 AMDF_MEMORY_ACCESS_WRITE |
+                                 AMDF_MEMORY_ACCESS_EXECUTE,
+      .device_address =
+          {
+              .address_domain_ordinal = AMDF_ADDRESS_DOMAIN_ORDINAL_NONE,
+              .address_bit_count =
+                  context->device->profile->dma.address_bit_count,
+              .maximum_address =
+                  (UINT64_C(1)
+                   << context->device->profile->dma.address_bit_count) -
+                  1,
+              .minimum_alignment = AMDF_WINDOWS_KMT_PAGE_SIZE,
+          },
+      .allocation =
+          {
+              .maximum_byte_length = byte_length,
+              .byte_length_granularity = byte_length,
+              .minimum_alignment = AMDF_WINDOWS_KMT_PAGE_SIZE,
+              .maximum_alignment = AMDF_WINDOWS_KMT_PAGE_SIZE,
+              .native_byte_length_granularity = AMDF_WINDOWS_KMT_PAGE_SIZE,
+          },
+      .host_mapping =
+          {
+              .maximum_byte_length = byte_length,
+              .byte_offset_granularity = 1,
+              .byte_length_granularity = 1,
+              .supported_access =
+                  AMDF_MEMORY_MAP_FLAG_READ | AMDF_MEMORY_MAP_FLAG_WRITE,
+          },
+      .address_kinds = UINT64_C(1) << AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE,
+  };
+}
+
+amdf_status_t amdf_xdna_umd_memory_prepare_private(
+    amdf_xdna_umd_context_t* context,
+    const amdf_memory_native_profile_t* profile,
+    const amdf_memory_native_create_info_t* create_info,
+    amdf_xdna_umd_memory_t** memory_state,
+    amdf_xdna_umd_memory_result_t* out_result) {
+  amdf_xdna_umd_device_t* device = context->device;
+  amdf_xdna_umd_memory_t* memory = NULL;
+  amdf_status_t status =
+      amdf_calloc(device->host_allocator, sizeof(*memory),
+                  amdf_alignof(amdf_xdna_umd_memory_t), (void**)&memory);
+  if (!amdf_status_is_ok(status)) return status;
+  memory->device = device;
+  memory->context = context;
+  *memory_state = memory;
+  const amdf_windows_xdna_private_allocation_descriptor_t descriptor = {
+      .requested_byte_length = AMDF_WINDOWS_XDNA_PRIVATE_APERTURE_SIZE,
+      .allocation_byte_length = AMDF_WINDOWS_XDNA_PRIVATE_APERTURE_SIZE,
+      .type = 0x3323,
+      .policy = 2,
+      .xcl_flags = ((context->command_aperture_cookie | 0x100u) << 16) | 1u,
+      .selector = 1,
+      .flags = AMDF_WINDOWS_XDNA_PRIVATE_ALLOCATION_FLAG_DEVICE_ADDRESS,
+  };
+  amdf_windows_xdna_private_allocation_initialize(device, &descriptor,
+                                                  &memory->private_allocation);
+  status = amdf_windows_xdna_kernel_execution_prepare_memory(
+      context->kernel_execution, &memory->private_allocation);
+  const uint64_t prefix = AMDF_WINDOWS_XDNA_PRIVATE_BOOTSTRAP_SIZE;
+  if (amdf_status_is_ok(status)) {
+    memory->host_pointer =
+        (uint8_t*)memory->private_allocation.host_pointer + prefix;
+    memory->byte_length = create_info->byte_length;
+    memory->device_address =
+        memory->private_allocation.firmware_address + prefix;
+    *out_result = (amdf_xdna_umd_memory_result_t){
+        .flags = profile->guaranteed_flags,
+        .source_byte_offset = prefix,
+        .byte_length = create_info->byte_length,
+        .alignment = AMDF_WINDOWS_KMT_PAGE_SIZE,
+        .native_allocation_byte_length = descriptor.allocation_byte_length,
+        .native_allocation_granularity = AMDF_WINDOWS_KMT_PAGE_SIZE,
+        .device_address = memory->device_address,
+        .address_kinds = profile->address_kinds,
+    };
+  }
+  return status;
 }
 
 amdf_status_t amdf_xdna_umd_memory_prepare_import(

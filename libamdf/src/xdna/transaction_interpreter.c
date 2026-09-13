@@ -20,7 +20,6 @@ static void amdf_xdna_transaction_interpreter_write_u64(uint8_t* bytes,
 
 void amdf_xdna_transaction_interpreter_packet_build(
     uint64_t instruction_address, uint32_t instruction_byte_length,
-    const uint64_t* binding_addresses, uint32_t binding_count,
     amdf_xdna_transaction_interpreter_packet_t* out_packet) {
   memset(out_packet, 0, sizeof(*out_packet));
   // NEW state, START_CU opcode, CU packet type, and sixteen payload words.
@@ -33,8 +32,4 @@ void amdf_xdna_transaction_interpreter_packet_build(
                                               instruction_address);
   amdf_xdna_transaction_interpreter_write_u32(
       out_packet->bytes + 0x18, instruction_byte_length / sizeof(uint32_t));
-  for (uint32_t i = 0; i < binding_count; ++i) {
-    amdf_xdna_transaction_interpreter_write_u64(
-        out_packet->bytes + 0x1C + i * sizeof(uint64_t), binding_addresses[i]);
-  }
 }

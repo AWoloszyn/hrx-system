@@ -43,8 +43,8 @@ TEST(XdnaEndpointProfileTest, SelectsPublishedStaticProfiles) {
     uint32_t maximum_live_context_count;
     // Maximum hardware-resident contexts.
     uint32_t maximum_hardware_context_count;
-    // Expected native interpreter capabilities.
-    amdf_xdna_execution_capabilities_t execution_capabilities;
+    // Whether an instruction submission contract is qualified.
+    bool supports_execution;
     // Stable compiler target identifier.
     const char* target_id;
   };
@@ -52,16 +52,15 @@ TEST(XdnaEndpointProfileTest, SelectsPublishedStaticProfiles) {
       {0x1502u, 0x00u, AMDF_XDNA_ARCHITECTURE_AIE2, 1u, 4u,
        AMDF_XDNA_SCHEDULING_MODE_SPATIAL |
            AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED,
-       6u, 6u, 0u, "amd.xdna.phoenix.1502_00"},
+       6u, 6u, false, "amd.xdna.phoenix.1502_00"},
       {0x17F0u, 0x10u, AMDF_XDNA_ARCHITECTURE_AIE2P, 0u, 8u,
-       AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED, 32u, 16u, 0u,
+       AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED, 32u, 16u, false,
        "amd.xdna.strix.17f0_10"},
       {0x17F0u, 0x11u, AMDF_XDNA_ARCHITECTURE_AIE2P, 0u, 8u,
-       AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED, 32u, 16u,
-       AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1,
+       AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED, 32u, 16u, true,
        "amd.xdna.strix_halo.17f0_11"},
       {0x17F0u, 0x20u, AMDF_XDNA_ARCHITECTURE_AIE2P, 0u, 8u,
-       AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED, 32u, 16u, 0u,
+       AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED, 32u, 16u, false,
        "amd.xdna.krackan.17f0_20"},
   };
 
@@ -95,18 +94,18 @@ TEST(XdnaEndpointProfileTest, SelectsPublishedStaticProfiles) {
               test_case.maximum_live_context_count);
     EXPECT_EQ(profile_info->context.maximum_hardware_context_count,
               test_case.maximum_hardware_context_count);
-    if (test_case.execution_capabilities == 0) {
+    if (!test_case.supports_execution) {
       EXPECT_EQ(profile->execution_capabilities, 0u);
       EXPECT_EQ(profile->bootstrap, nullptr);
       EXPECT_EQ(profile->firmware_heap_byte_length, 0u);
+      EXPECT_EQ(profile_info->instruction.maximum_byte_length, 0u);
+      EXPECT_EQ(profile_info->instruction.format.format,
+                AMDF_XDNA_BINARY_FORMAT_UNKNOWN);
     } else {
-      EXPECT_EQ(profile->execution_capabilities,
-                AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1);
+      EXPECT_NE(profile->execution_capabilities, 0u);
       ASSERT_NE(profile->bootstrap, nullptr);
       EXPECT_NE(profile->bootstrap->pdi_bytes, nullptr);
       EXPECT_EQ(profile->bootstrap->pdi_byte_length, 2000u);
-      EXPECT_NE(profile->bootstrap->admission_transaction_bytes, nullptr);
-      EXPECT_EQ(profile->bootstrap->admission_transaction_byte_length, 20u);
       EXPECT_EQ(profile->firmware_heap_byte_length, 64u * 1024u * 1024u);
       EXPECT_EQ(profile->transaction.device_generation, 4u);
       EXPECT_EQ(profile->rows.shim_origin, 0u);
@@ -115,6 +114,14 @@ TEST(XdnaEndpointProfileTest, SelectsPublishedStaticProfiles) {
       EXPECT_EQ(profile->rows.memory_count, 1u);
       EXPECT_EQ(profile->rows.core_origin, 2u);
       EXPECT_EQ(profile->rows.core_count, 4u);
+      EXPECT_EQ(profile_info->instruction.maximum_byte_length,
+                UINT32_MAX & ~uint64_t{3});
+      EXPECT_EQ(profile_info->instruction.address_alignment, 32u * 1024u);
+      EXPECT_EQ(profile_info->instruction.byte_length_granularity, 4u);
+      EXPECT_EQ(profile_info->instruction.format.format,
+                AMDF_XDNA_BINARY_FORMAT_TRANSACTION);
+      EXPECT_EQ(profile_info->instruction.format.version,
+                AMDF_XDNA_TRANSACTION_FORMAT_VERSION_0_1);
     }
     EXPECT_STREQ(profile_info->target_id, test_case.target_id);
   }

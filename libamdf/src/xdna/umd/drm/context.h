@@ -21,6 +21,12 @@ struct amdf_xdna_umd_context_t {
   uint32_t handle;
   // Context's user-owned DRM timeline sync object, or zero after destruction.
   uint32_t completion_syncobj;
+  // Exclusive lease for one public queue and its native timeline.
+  amdf_atomic_uint32_t queue_leased;
+  // First observed terminal firmware or bootstrap-admission failure.
+  amdf_atomic_uint64_t terminal_status;
+  // Last native sequence plus one, assigned under the exclusive queue lease.
+  uint64_t last_native_sequence;
 };
 
 #endif  // AMDF_SRC_XDNA_UMD_DRM_CONTEXT_H_

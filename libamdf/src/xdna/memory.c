@@ -235,3 +235,48 @@ amdf_status_t amdf_xdna_memory_prepare_import(
   }
   return status;
 }
+
+static void amdf_xdna_memory_scope_query_profile(
+    amdf_memory_scope_t* scope, amdf_memory_native_profile_t* out_profile) {
+  amdf_xdna_umd_context_query_memory_profile(scope->owner.private_storage.owner,
+                                             out_profile);
+}
+
+static amdf_status_t amdf_xdna_memory_scope_prepare(
+    amdf_memory_scope_t* scope, amdf_memory_t* memory,
+    const amdf_memory_native_profile_t* profile,
+    const amdf_memory_native_create_info_t* create_info,
+    amdf_memory_info_t* out_info) {
+  memory->accesses[0].vtable = &amdf_xdna_memory_vtable;
+  amdf_xdna_umd_memory_t* native = NULL;
+  amdf_xdna_umd_memory_result_t result = {0};
+  const amdf_status_t status = amdf_xdna_umd_memory_prepare_private(
+      scope->owner.private_storage.owner, profile, create_info, &native,
+      &result);
+  memory->accesses[0].native = native;
+  if (amdf_status_is_ok(status)) {
+    amdf_xdna_memory_set_info(memory, 0, scope->owner.private_storage.device,
+                              profile, create_info->device_access, result,
+                              out_info);
+  }
+  return status;
+}
+
+static const amdf_memory_scope_vtable_t amdf_xdna_memory_scope_vtable = {
+    .query_profile = amdf_xdna_memory_scope_query_profile,
+    .prepare = amdf_xdna_memory_scope_prepare,
+};
+
+void amdf_xdna_memory_scope_initialize(amdf_device_t* device,
+                                       amdf_xdna_umd_context_t* context,
+                                       amdf_memory_scope_t* scope) {
+  *scope = (amdf_memory_scope_t){
+      .kind = AMDF_MEMORY_SCOPE_KIND_PRIVATE,
+      .owner.private_storage =
+          {
+              .device = device,
+              .vtable = &amdf_xdna_memory_scope_vtable,
+              .owner = context,
+          },
+  };
+}

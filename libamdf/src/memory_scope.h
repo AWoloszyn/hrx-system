@@ -9,8 +9,22 @@
 
 #include "libamdf/src/memory_profile.h"
 
-// Ordinary storage descriptors are embedded in their existing lifetime owner.
-// Neither descriptor enumerates, retains or tracks allocated memory resources.
+// Cold operations for storage qualified by a live execution owner. The owner
+// embeds its scope; these callbacks neither create nor retain execution state.
+typedef struct amdf_memory_scope_vtable_t {
+  // Copies the complete private allocation contract without native operations.
+  void (*query_profile)(amdf_memory_scope_t* scope,
+                        amdf_memory_native_profile_t* out_profile);
+  // Prepares native state in the memory owner, including partial progress on
+  // failure. Common construction owns rollback before publication.
+  amdf_status_t (*prepare)(amdf_memory_scope_t* scope, amdf_memory_t* memory,
+                           const amdf_memory_native_profile_t* profile,
+                           const amdf_memory_native_create_info_t* create_info,
+                           amdf_memory_info_t* out_info);
+} amdf_memory_scope_vtable_t;
+
+// Storage descriptors are embedded in their existing lifetime owner. They
+// neither enumerate, retain nor track allocated memory resources.
 struct amdf_memory_scope_t {
   // Storage locality and the active owner variant.
   amdf_memory_scope_kind_t kind;
@@ -20,6 +34,15 @@ struct amdf_memory_scope_t {
     amdf_instance_t* instance;
     // Owner and physical location of a LOCAL scope.
     amdf_endpoint_t* endpoint;
+    // Explicitly live execution owner of a PRIVATE scope.
+    struct {
+      // Ordinary-address-domain device borrowed by the execution owner.
+      amdf_device_t* device;
+      // Cold native storage operations supplied by that owner.
+      const amdf_memory_scope_vtable_t* vtable;
+      // Execution owner borrowed for allocation and context-qualified use.
+      void* owner;
+    } private_storage;
   } owner;
 };
 
@@ -46,6 +69,8 @@ typedef struct amdf_memory_access_query_t {
 // Cold construction selection. Native profiles are retained through setup so
 // preparation consumes the selected contracts without repeating selection.
 typedef struct amdf_memory_scope_plan_t {
+  // Exact borrowed scope selected by the caller, retained through construction.
+  amdf_memory_scope_t* scope;
   // Allocator owning temporary native profile storage.
   amdf_allocator_t host_allocator;
   // Complete backing capabilities of the selected scope contract.
@@ -64,7 +89,7 @@ typedef struct amdf_memory_scope_plan_t {
 extern "C" {
 #endif  // __cplusplus
 
-// Returns the existing provider instance borrowed by a valid ordinary scope.
+// Returns the existing provider instance borrowed by a valid scope.
 amdf_instance_t* amdf_memory_scope_instance(const amdf_memory_scope_t* scope);
 
 // Enumerates borrowed instance-owned system storage descriptors.

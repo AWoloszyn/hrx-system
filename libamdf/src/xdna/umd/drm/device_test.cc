@@ -23,7 +23,7 @@
 
 namespace {
 
-enum class ExecutionSupport { kUnavailable, kInterpreter };
+enum class ExecutionSupport { kUnavailable, kElfInstructions };
 
 class LinuxXdnaDeviceTest : public ::testing::TestWithParam<ExecutionSupport> {
  protected:
@@ -47,7 +47,7 @@ class LinuxXdnaDeviceTest : public ::testing::TestWithParam<ExecutionSupport> {
       if (profile != nullptr && profile->dma.address_bit_count != 0 &&
           (GetParam() == ExecutionSupport::kUnavailable ||
            (profile->execution_capabilities &
-            AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1) != 0)) {
+            AMDF_XDNA_EXECUTION_CAPABILITY_ELF_INSTRUCTIONS) != 0)) {
         break;
       }
       ASSERT_EQ(amdf_platform_endpoint_close(endpoint), AMDF_STATUS_OK);
@@ -59,7 +59,8 @@ class LinuxXdnaDeviceTest : public ::testing::TestWithParam<ExecutionSupport> {
     }
     if (GetParam() == ExecutionSupport::kUnavailable) {
       // Remove only provider execution support from the discovered hardware
-      // profile. Ordinary allocation must not need any interpreter metadata.
+      // profile. Ordinary allocation must not need any instruction execution
+      // metadata.
       memory_only_profile = *profile;
       memory_only_profile.execution_capabilities = 0;
       memory_only_profile.bootstrap = nullptr;
@@ -102,7 +103,7 @@ class LinuxXdnaDeviceTest : public ::testing::TestWithParam<ExecutionSupport> {
   amdf_platform_endpoint_t* endpoint = nullptr;
   // Selected hardware profile with this test's provider execution support.
   const amdf_xdna_endpoint_profile_t* profile = nullptr;
-  // Actual hardware/DMA facts with interpreter implementation data removed.
+  // Actual hardware/DMA facts with execution implementation data removed.
   amdf_xdna_endpoint_profile_t memory_only_profile = {};
   // Native device owning one ordinary address and BO namespace.
   amdf_xdna_umd_device_t* device = nullptr;
@@ -119,7 +120,8 @@ class LinuxXdnaDeviceTest : public ::testing::TestWithParam<ExecutionSupport> {
 };
 
 TEST_P(LinuxXdnaDeviceTest, MemoryDoesNotDependOnSchedulingContexts) {
-  const bool supports_execution = GetParam() == ExecutionSupport::kInterpreter;
+  const bool supports_execution =
+      GetParam() == ExecutionSupport::kElfInstructions;
   const auto capabilities = amdf_xdna_umd_query_context_capabilities(profile);
   EXPECT_EQ(capabilities.scheduling_modes,
             supports_execution ? AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED : 0u);
@@ -138,15 +140,9 @@ TEST_P(LinuxXdnaDeviceTest, MemoryDoesNotDependOnSchedulingContexts) {
     EXPECT_EQ(reinterpret_cast<uintptr_t>(device->heap.host_pointer) %
                   profile->firmware_heap_byte_length,
               0u);
-    EXPECT_EQ(std::memcmp(profile->bootstrap->pdi_bytes,
-                          device->bootstrap.host_pointer,
-                          profile->bootstrap->pdi_byte_length),
-              0);
   } else {
     EXPECT_EQ(device->heap.handle, 0u);
     EXPECT_EQ(device->heap.host_pointer, nullptr);
-    EXPECT_EQ(device->bootstrap.handle, 0u);
-    EXPECT_EQ(device->bootstrap.host_pointer, nullptr);
   }
 
   amdf_xdna_context_create_info_t create_info = {};
@@ -281,10 +277,10 @@ TEST_P(LinuxXdnaDeviceTest, MemoryDoesNotDependOnSchedulingContexts) {
 INSTANTIATE_TEST_SUITE_P(
     NativeSupport, LinuxXdnaDeviceTest,
     ::testing::Values(ExecutionSupport::kUnavailable,
-                      ExecutionSupport::kInterpreter),
+                      ExecutionSupport::kElfInstructions),
     [](const ::testing::TestParamInfo<ExecutionSupport>& info) {
       return info.param == ExecutionSupport::kUnavailable ? "MemoryOnly"
-                                                          : "Interpreter";
+                                                          : "ElfInstructions";
     });
 
 }  // namespace

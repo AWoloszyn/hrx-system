@@ -16,6 +16,9 @@
 #include "libamdf/src/structure.h"
 
 amdf_instance_t* amdf_memory_scope_instance(const amdf_memory_scope_t* scope) {
+  if (scope->kind == AMDF_MEMORY_SCOPE_KIND_PRIVATE) {
+    return scope->owner.private_storage.device->provider_instance;
+  }
   return scope->kind == AMDF_MEMORY_SCOPE_KIND_SYSTEM
              ? scope->owner.instance
              : amdf_endpoint_get_instance(scope->owner.endpoint);
@@ -561,6 +564,7 @@ amdf_status_t amdf_memory_scope_plan_initialize(
   }
   amdf_instance_t* instance = amdf_memory_scope_instance(scope);
   amdf_memory_scope_plan_t plan = {
+      .scope = scope,
       .host_allocator = instance->host_allocator,
       .access_count = query->count,
   };
@@ -581,7 +585,21 @@ amdf_status_t amdf_memory_scope_plan_initialize(
       : profile_ordinal == 1 ? AMDF_MEMORY_PROFILE_ROLE_REGISTER
                              : AMDF_MEMORY_PROFILE_ROLE_IMPORT;
   bool found = true;
-  if (query->count == 0) {
+  if (scope->kind == AMDF_MEMORY_SCOPE_KIND_PRIVATE) {
+    amdf_device_t* owner_device = scope->owner.private_storage.device;
+    found =
+        query->count == 1 &&
+        (query->kind == AMDF_MEMORY_ACCESS_QUERY_LIVE
+             ? query->accesses.devices[0].device == owner_device
+             : query->accesses.endpoints[0].endpoint == owner_device->endpoint);
+    if (found) {
+      scope->owner.private_storage.vtable->query_profile(
+          scope, &plan.native_profiles[0]);
+      found = amdf_memory_native_profile_supports_access(
+          &plan.native_profiles[0],
+          amdf_memory_access_query_requirements(query, 0));
+    }
+  } else if (query->count == 0) {
     plan.native_profiles[0] =
         amdf_memory_host_profile(instance, profile_ordinal);
   } else if (role == AMDF_MEMORY_PROFILE_ROLE_CREATE) {

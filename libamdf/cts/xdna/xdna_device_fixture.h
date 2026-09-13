@@ -143,7 +143,7 @@ class XdnaDeviceFixture : public ::testing::Test {
   amdf_memory_device_access_t memory_access_ = {};
 };
 
-// Cases exercising program activation or placement own a fresh context within
+// Cases exercising native execution or placement own a fresh context within
 // the shared device. Device-only memory tests do not acquire execution state.
 class XdnaContextFixture : public XdnaDeviceFixture {
  protected:

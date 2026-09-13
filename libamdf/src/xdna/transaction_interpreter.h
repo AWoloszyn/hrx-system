@@ -16,7 +16,6 @@ extern "C" {
 // Fixed version 1 transaction-interpreter calling convention.
 enum {
   AMDF_XDNA_TRANSACTION_INTERPRETER_PACKET_SIZE = 68,
-  AMDF_XDNA_TRANSACTION_INTERPRETER_MAXIMUM_BINDING_COUNT = 5,
   AMDF_XDNA_TRANSACTION_INTERPRETER_HEADER_NEW = 0x30010001,
   AMDF_XDNA_TRANSACTION_INTERPRETER_STATE_COMPLETED = 4,
 };
@@ -27,12 +26,11 @@ typedef struct amdf_xdna_transaction_interpreter_packet_t {
   uint8_t bytes[AMDF_XDNA_TRANSACTION_INTERPRETER_PACKET_SIZE];
 } amdf_xdna_transaction_interpreter_packet_t;
 
-// Encodes a validated transaction and at most five resolved binding addresses.
-// Instruction byte length is a nonzero multiple of four. Unused bindings are
-// zero. No allocation, validation, or native operation occurs here.
+// Frames a validated instruction range using the legacy interpreter envelope.
+// Instruction byte length is a nonzero multiple of four. The unused argument
+// area is zero. No allocation, validation, or native operation occurs here.
 void amdf_xdna_transaction_interpreter_packet_build(
     uint64_t instruction_address, uint32_t instruction_byte_length,
-    const uint64_t* binding_addresses, uint32_t binding_count,
     amdf_xdna_transaction_interpreter_packet_t* out_packet);
 
 #ifdef __cplusplus

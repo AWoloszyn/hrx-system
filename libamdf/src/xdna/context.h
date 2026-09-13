@@ -30,6 +30,15 @@ amdf_status_t AMDF_CALL amdf_xdna_context_query_placement_info(
 // Returns the ordinary-address-domain device borrowed by one context.
 amdf_device_t* amdf_xdna_context_get_device(amdf_xdna_context_t* context);
 
+// Returns the exact borrowed private descriptor of a live context.
+amdf_memory_scope_t* amdf_xdna_context_get_memory_scope(
+    amdf_xdna_context_t* context);
+
+// Enumerates complete private storage descriptors without native operations.
+amdf_status_t AMDF_CALL amdf_xdna_context_enumerate_memory_scopes(
+    amdf_xdna_context_t* context, uint32_t capacity,
+    amdf_memory_scope_t** scopes, uint32_t* out_count);
+
 // Returns immutable information borrowed from one XDNA context.
 const amdf_xdna_context_info_t* amdf_xdna_context_get_info(
     const amdf_xdna_context_t* context);

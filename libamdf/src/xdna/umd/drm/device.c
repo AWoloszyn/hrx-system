@@ -8,7 +8,6 @@
 
 #include <drm/amdxdna_accel.h>
 #include <stddef.h>
-#include <string.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 
@@ -22,7 +21,7 @@ amdf_xdna_umd_context_capabilities_t amdf_xdna_umd_query_context_capabilities(
     const amdf_xdna_endpoint_profile_t* profile) {
   amdf_xdna_umd_context_capabilities_t capabilities = {0};
   if ((profile->execution_capabilities &
-       AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1) != 0) {
+       AMDF_XDNA_EXECUTION_CAPABILITY_ELF_INSTRUCTIONS) != 0) {
     capabilities.scheduling_modes = AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED;
     capabilities.placement_modes = AMDF_XDNA_PLACEMENT_MODE_FIXED_FULL_ARRAY;
   }
@@ -30,12 +29,8 @@ amdf_xdna_umd_context_capabilities_t amdf_xdna_umd_query_context_capabilities(
 }
 
 amdf_status_t amdf_xdna_umd_device_destroy(amdf_xdna_umd_device_t* device) {
-  amdf_status_t status = amdf_linux_xdna_buffer_deinitialize(
-      device->descriptor, &device->bootstrap);
-  if (amdf_status_is_ok(status)) {
-    status =
-        amdf_linux_xdna_buffer_deinitialize(device->descriptor, &device->heap);
-  }
+  amdf_status_t status =
+      amdf_linux_xdna_buffer_deinitialize(device->descriptor, &device->heap);
   if (amdf_status_is_ok(status)) {
     status = amdf_linux_file_close(&device->descriptor);
   }
@@ -46,7 +41,7 @@ amdf_status_t amdf_xdna_umd_device_destroy(amdf_xdna_umd_device_t* device) {
   return status;
 }
 
-static amdf_status_t amdf_linux_xdna_device_prepare_interpreter(
+static amdf_status_t amdf_linux_xdna_device_prepare_execution(
     amdf_xdna_umd_device_t* device) {
   const amdf_xdna_endpoint_profile_t* profile = device->profile;
   struct amdxdna_drm_query_aie_metadata metadata = {0};
@@ -78,25 +73,6 @@ static amdf_status_t amdf_linux_xdna_device_prepare_interpreter(
     status = amdf_linux_xdna_buffer_attach(
         device->descriptor, profile->firmware_heap_byte_length,
         device->page_size, NULL, &device->heap);
-  }
-  if (amdf_status_is_ok(status)) {
-    const size_t length =
-        (profile->bootstrap->pdi_byte_length + device->page_size - 1) &
-        ~(device->page_size - 1);
-    status = amdf_linux_xdna_buffer_create(device->descriptor, AMDXDNA_BO_DEV,
-                                           length, &device->bootstrap);
-  }
-  if (amdf_status_is_ok(status)) {
-    status = amdf_linux_xdna_buffer_attach(device->descriptor,
-                                           device->page_size, device->page_size,
-                                           &device->heap, &device->bootstrap);
-  }
-  if (amdf_status_is_ok(status)) {
-    memcpy(device->bootstrap.host_pointer, profile->bootstrap->pdi_bytes,
-           profile->bootstrap->pdi_byte_length);
-    amdf_linux_host_cache_transfer(device->bootstrap.host_pointer,
-                                   profile->bootstrap->pdi_byte_length,
-                                   device->cache_line_size);
   }
   return status;
 }
@@ -130,8 +106,8 @@ amdf_status_t amdf_xdna_umd_device_create(
   }
   if (amdf_status_is_ok(status) &&
       (profile->execution_capabilities &
-       AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1) != 0) {
-    status = amdf_linux_xdna_device_prepare_interpreter(device);
+       AMDF_XDNA_EXECUTION_CAPABILITY_ELF_INSTRUCTIONS) != 0) {
+    status = amdf_linux_xdna_device_prepare_execution(device);
   }
   if (amdf_status_is_ok(status)) {
     amdf_xdna_umd_device_result_t result = {0};
@@ -143,16 +119,17 @@ amdf_status_t amdf_xdna_umd_device_create(
     *out_result = result;
     *out_device = device;
   } else {
-    const amdf_status_t release_status = amdf_xdna_umd_device_destroy(device);
+    // Construction has no context or accepted work. Close the local file even
+    // if heap cleanup fails; neither native owner borrows device metadata.
+    const amdf_status_t release_status =
+        amdf_linux_xdna_buffer_deinitialize(device->descriptor, &device->heap);
+    const amdf_status_t close_status =
+        amdf_linux_file_close(&device->descriptor);
+    amdf_free(host_allocator, device);
     if (!amdf_status_is_ok(release_status)) {
-      // Native cleanup retains unreleased mappings; the independent file
-      // can close without retaining this unpublished host metadata.
-      const amdf_status_t close_status =
-          amdf_linux_file_close(&device->descriptor);
-      amdf_free(host_allocator, device);
       status = release_status;
-      if (!amdf_status_is_ok(close_status)) status = close_status;
     }
+    if (!amdf_status_is_ok(close_status)) status = close_status;
   }
   return status;
 }

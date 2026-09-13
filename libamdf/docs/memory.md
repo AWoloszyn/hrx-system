@@ -87,6 +87,17 @@ are borrowed descriptors, not additional objects to destroy. Enumeration with
 zero capacity and null storage returns the required count with
 `BUFFER_TOO_SMALL` when any scopes exist.
 
+For XDNA instruction storage, `context_enumerate_memory_scopes` returns a private
+scope borrowed from the explicitly created context. A HAL queries that scope
+with the context's device and EXECUTE access, allocates its instruction backing
+with `memory_create`, maps and publishes the bytes, then submits a memory range.
+The allocation profile supplies its size and alignment requirements, including
+when the native path admits only one full aperture for that context. The HAL
+suballocates the usable range; libamdf owns no slab allocator. Native bootstrap
+storage is excluded from the allocation's public address and usable extent.
+The HAL retires work and destroys its mappings and memory before destroying the
+context. No allocation retains that execution owner.
+
 `memory_scope_query_profile` takes the intended endpoints and their access
 requirements. Its backing profile and per-consumer capability array describe
 one jointly supported request, in caller order. After explicit device creation,

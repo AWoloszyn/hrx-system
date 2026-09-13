@@ -33,8 +33,7 @@ amdf_status_t amdf_xdna_umd_context_destroy(amdf_xdna_umd_context_t* context) {
     }
     context->completion_syncobj = 0;
   }
-  const amdf_allocator_t host_allocator = context->device->host_allocator;
-  amdf_free(host_allocator, context);
+  amdf_free(context->device->host_allocator, context);
   return AMDF_STATUS_OK;
 }
 
@@ -62,8 +61,8 @@ amdf_status_t amdf_xdna_umd_context_create(
   context->handle = AMDXDNA_INVALID_CTX_HANDLE;
 
   struct amdxdna_qos_info qos = {.priority = AMDXDNA_QOS_NORMAL_PRIORITY};
-  // The transaction-interpreter firmware admits the complete physical array.
-  // The public logical width remains the program and command admission limit.
+  // Full-array admission establishes fixed placement independently of the
+  // opaque instructions callers subsequently submit.
   struct amdxdna_drm_create_hwctx create = {
       .qos_p = (uintptr_t)&qos,
       .num_tiles = profile->info->array.column_count * profile->rows.core_count,
