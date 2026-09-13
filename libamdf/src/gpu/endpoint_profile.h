@@ -117,9 +117,7 @@ typedef struct amdf_gpu_endpoint_profile_t {
   amdf_gpu_lifetime_properties_t native_lifetimes[2];
   // Expected memory contracts qualified without constructing a native device.
   struct {
-    // Terminal qualification result; failure publishes no memory profiles.
-    amdf_status_t status;
-    // Number of dense native placement/acquisition profiles in values.
+    // Number of complete profiles; zero when memory operations are unavailable.
     uint32_t count;
     // Complete native profiles for this instance's lifetime policy.
     amdf_memory_native_profile_t values[AMDF_GPU_MEMORY_PROFILE_CAPACITY];

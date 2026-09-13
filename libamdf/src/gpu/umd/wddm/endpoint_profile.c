@@ -70,24 +70,21 @@ amdf_status_t amdf_gpu_umd_query_endpoint_profile(
   }
   if (!amdf_status_is_ok(release_status)) status = release_status;
 
-  if (amdf_status_is_ok(status)) {
-    if (profile_available) {
-      profile.memory.status =
-          amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
-      if (amdf_kmt_api_supports_gpu_memory(&platform_endpoint->instance->kmt)) {
-        amdf_windows_gpu_memory_capabilities_t capabilities;
-        profile.memory.status = amdf_windows_gpu_query_memory_capabilities(
-            platform_endpoint, &capabilities);
-        for (uint32_t i = 0; amdf_status_is_ok(profile.memory.status) &&
-                             i < AMDF_GPU_MEMORY_PROFILE_CAPACITY;
-             ++i) {
-          profile.memory.status = amdf_gpu_wddm_query_memory_profile(
-              &capabilities, i, &profile.memory.values[i]);
-          if (amdf_status_is_ok(profile.memory.status)) ++profile.memory.count;
-        }
-      }
-      *out_profile = profile;
+  if (amdf_status_is_ok(status) && profile_available &&
+      amdf_kmt_api_supports_gpu_memory(&platform_endpoint->instance->kmt)) {
+    amdf_windows_gpu_memory_capabilities_t capabilities;
+    status = amdf_windows_gpu_query_memory_capabilities(platform_endpoint,
+                                                        &capabilities);
+    for (uint32_t i = 0;
+         amdf_status_is_ok(status) && i < AMDF_GPU_MEMORY_PROFILE_CAPACITY;
+         ++i) {
+      status = amdf_gpu_wddm_query_memory_profile(&capabilities, i,
+                                                  &profile.memory.values[i]);
+      if (amdf_status_is_ok(status)) ++profile.memory.count;
     }
+  }
+  if (amdf_status_is_ok(status)) {
+    if (profile_available) *out_profile = profile;
     *out_available = profile_available;
   }
   return status;

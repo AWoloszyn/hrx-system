@@ -17,6 +17,7 @@
 namespace {
 
 constexpr NTSTATUS kSuccess = 0;
+constexpr NTSTATUS kFailure = static_cast<NTSTATUS>(0xC0000001u);
 
 using ResetBridgeFn = void(__cdecl*)(void);
 using SetBridgeCountFn = void(__cdecl*)(uint32_t);
@@ -27,9 +28,41 @@ struct FakeKmtState {
   QueryBridgeCountFn query_bridge_close_success_count = nullptr;
   // Number of successfully closed endpoint adapters.
   uint32_t adapter_close_success_count = 0;
+  // Native result returned by memory-capability qualification.
+  NTSTATUS memory_capabilities_status = kSuccess;
+  // Native address width used to build complete expected memory profiles.
+  uint32_t virtual_address_bit_count = 48;
+  // Number of native memory-capability queries.
+  uint32_t memory_query_count = 0;
 };
 
 FakeKmtState* current_state = nullptr;
+
+NTSTATUS APIENTRY FakeQueryAdapterInfo(const D3DKMT_QUERYADAPTERINFO* query) {
+  ++current_state->memory_query_count;
+  EXPECT_EQ(query->hAdapter, 0x08u);
+  EXPECT_EQ(query->Type, KMTQAITYPE_QUERY_GPUMMU_CAPS);
+  EXPECT_EQ(query->PrivateDriverDataSize, sizeof(D3DKMT_QUERY_GPUMMU_CAPS));
+  if (current_state->memory_capabilities_status != kSuccess) {
+    return current_state->memory_capabilities_status;
+  }
+  auto* gpu_mmu =
+      static_cast<D3DKMT_QUERY_GPUMMU_CAPS*>(query->pPrivateDriverData);
+  EXPECT_EQ(gpu_mmu->PhysicalAdapterIndex, 0u);
+  gpu_mmu->Caps.VirtualAddressBitCount =
+      current_state->virtual_address_bit_count;
+  gpu_mmu->Caps.Flags.ReadOnlyMemorySupported = 1;
+  gpu_mmu->Caps.Flags.NoExecuteMemorySupported = 1;
+  gpu_mmu->Caps.Flags.CacheCoherentMemorySupported = 1;
+  return kSuccess;
+}
+
+// These native dependencies are present but must never be invoked by discovery.
+template <typename Arguments>
+NTSTATUS APIENTRY UnexpectedMemoryOperation(Arguments*) {
+  ADD_FAILURE() << "memory acquisition is not part of endpoint qualification";
+  return kFailure;
+}
 
 NTSTATUS APIENTRY FakeCloseAdapter(const D3DKMT_CLOSEADAPTER* close) {
   EXPECT_EQ(close->hAdapter, 0x08u);
@@ -108,6 +141,19 @@ class WindowsGpuEndpointProfileTest : public ::testing::Test {
     current_state = nullptr;
   }
 
+  void EnableMemoryOperations() {
+    instance_.kmt.query_adapter_info = FakeQueryAdapterInfo;
+    instance_.kmt.create_allocation = UnexpectedMemoryOperation;
+    instance_.kmt.destroy_allocation = UnexpectedMemoryOperation;
+    instance_.kmt.map_gpu_virtual_address = UnexpectedMemoryOperation;
+    instance_.kmt.make_resident = UnexpectedMemoryOperation;
+    instance_.kmt.wait_from_cpu = UnexpectedMemoryOperation;
+    instance_.kmt.reserve_gpu_virtual_address = UnexpectedMemoryOperation;
+    instance_.kmt.free_gpu_virtual_address = UnexpectedMemoryOperation;
+    instance_.kmt.evict = UnexpectedMemoryOperation;
+    instance_.kmt.invalidate_cache = UnexpectedMemoryOperation;
+  }
+
   // Native dependency observations for the active test.
   FakeKmtState state_;
   // Platform instance owning the injected KMT table.
@@ -174,8 +220,6 @@ TEST_F(WindowsGpuEndpointProfileTest,
     EXPECT_EQ(profile.native_lifetimes[lifetime].features,
               AMDF_GPU_DEVICE_FEATURE_DEVICE_RECREATION);
   }
-  EXPECT_EQ(profile.memory.status,
-            amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED));
   EXPECT_EQ(profile.memory.count, 0u);
   EXPECT_EQ(query_bridge_open_success_count_(), 1u);
   EXPECT_EQ(query_bridge_close_attempt_count_(), 1u);
@@ -184,6 +228,75 @@ TEST_F(WindowsGpuEndpointProfileTest,
   EXPECT_EQ(amdf_platform_endpoint_close(endpoint_), AMDF_STATUS_OK);
   endpoint_ = nullptr;
   EXPECT_EQ(state_.adapter_close_success_count, 1u);
+}
+
+TEST_F(WindowsGpuEndpointProfileTest, PublishesEveryQualifiedMemoryProfile) {
+  set_bridge_close_failures_(0);
+  EnableMemoryOperations();
+  amdf_gpu_endpoint_profile_t profile = {};
+  bool available = false;
+  ASSERT_EQ(amdf_gpu_umd_query_endpoint_profile(
+                endpoint_, AMDF_NATIVE_LIFETIME_PROCESS,
+                instance_.host_allocator, &profile, &available),
+            AMDF_STATUS_OK);
+  ASSERT_TRUE(available);
+  ASSERT_EQ(profile.memory.count, 3u);
+  EXPECT_EQ(state_.memory_query_count, 1u);
+  for (uint32_t i = 0; i < profile.memory.count; ++i) {
+    EXPECT_EQ(profile.memory.values[i].ordinal, i);
+    EXPECT_EQ(profile.memory.values[i].device_address.address_bit_count, 48u);
+    EXPECT_EQ(profile.memory.values[i].device_address.maximum_address,
+              (UINT64_C(1) << 48) - 1);
+  }
+  EXPECT_EQ(profile.memory.values[0].memory_class, AMDF_MEMORY_CLASS_SYSTEM);
+  EXPECT_EQ(profile.memory.values[1].memory_class, AMDF_MEMORY_CLASS_LOCAL);
+  EXPECT_EQ(
+      profile.memory.values[2].roles,
+      AMDF_MEMORY_PROFILE_ROLE_REGISTER | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP);
+  for (amdf_native_lifetime_t lifetime :
+       {AMDF_NATIVE_LIFETIME_PROCESS, AMDF_NATIVE_LIFETIME_INSTANCE}) {
+    EXPECT_EQ(profile.native_lifetimes[lifetime].features,
+              AMDF_GPU_DEVICE_FEATURE_DEVICE_RECREATION |
+                  AMDF_GPU_DEVICE_FEATURE_LOCAL_MEMORY |
+                  AMDF_GPU_DEVICE_FEATURE_HOST_REGISTRATION);
+  }
+}
+
+TEST_F(WindowsGpuEndpointProfileTest,
+       FailedMemoryQualificationDoesNotPublishPartialProfile) {
+  set_bridge_close_failures_(0);
+  EnableMemoryOperations();
+  state_.memory_capabilities_status = kFailure;
+  amdf_gpu_endpoint_profile_t profile;
+  std::memset(&profile, 0xA5, sizeof(profile));
+  const amdf_gpu_endpoint_profile_t original = profile;
+  bool available = false;
+  EXPECT_EQ(amdf_gpu_umd_query_endpoint_profile(
+                endpoint_, AMDF_NATIVE_LIFETIME_PROCESS,
+                instance_.host_allocator, &profile, &available),
+            amdf_kmt_make_status(kFailure));
+  EXPECT_EQ(std::memcmp(&profile, &original, sizeof(profile)), 0);
+  EXPECT_FALSE(available);
+  EXPECT_EQ(state_.memory_query_count, 1u);
+  EXPECT_EQ(state_.query_bridge_close_success_count(), 1u);
+}
+
+TEST_F(WindowsGpuEndpointProfileTest,
+       MalformedNativeCapabilitiesDoNotPublishPartialProfile) {
+  set_bridge_close_failures_(0);
+  EnableMemoryOperations();
+  state_.virtual_address_bit_count = 0;
+  amdf_gpu_endpoint_profile_t profile;
+  std::memset(&profile, 0xA5, sizeof(profile));
+  const amdf_gpu_endpoint_profile_t original = profile;
+  bool available = false;
+  EXPECT_EQ(amdf_gpu_umd_query_endpoint_profile(
+                endpoint_, AMDF_NATIVE_LIFETIME_PROCESS,
+                instance_.host_allocator, &profile, &available),
+            amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL));
+  EXPECT_EQ(std::memcmp(&profile, &original, sizeof(profile)), 0);
+  EXPECT_FALSE(available);
+  EXPECT_EQ(state_.query_bridge_close_success_count(), 1u);
 }
 
 }  // namespace

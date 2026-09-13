@@ -87,7 +87,6 @@ static amdf_status_t amdf_gpu_endpoint_query_memory_profile(
       endpoint, AMDF_ENGINE_KIND_GPU, &untyped_profile);
   if (!amdf_status_is_ok(status)) return status;
   const amdf_gpu_endpoint_profile_t* profile = untyped_profile;
-  if (!amdf_status_is_ok(profile->memory.status)) return profile->memory.status;
   if (profile_ordinal >= profile->memory.count) {
     return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
   }
