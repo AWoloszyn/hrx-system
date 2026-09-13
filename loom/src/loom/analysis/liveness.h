@@ -70,8 +70,8 @@ typedef struct loom_liveness_interval_t {
 // Contiguous half-open range where one value is live within one CFG block.
 //
 // A value may have multiple segments when its uses span mutually exclusive
-// blocks. Segments for each value are ordered by increasing program point and
-// never overlap.
+// blocks. Segments for each value are non-empty, ordered by increasing program
+// point and never overlap.
 typedef struct loom_liveness_segment_t {
   // First program point where the value is live in the block.
   uint32_t start_point;
@@ -346,7 +346,8 @@ loom_liveness_segment_range_t loom_liveness_segment_range_for_value_ordinal(
     loom_value_ordinal_t value_ordinal);
 
 // Returns true when two non-empty sparse segment ranges overlap at any program
-// point. Both ranges must belong to |analysis|.
+// point. Both ranges must belong to |analysis|. Empty ranges and segments whose
+// half-open endpoints only touch never overlap.
 bool loom_liveness_segment_ranges_overlap(
     const loom_liveness_analysis_t* analysis, loom_liveness_segment_range_t lhs,
     loom_liveness_segment_range_t rhs);

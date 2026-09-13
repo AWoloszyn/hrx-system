@@ -503,6 +503,46 @@ TEST(Printf, FloatRoundingBoundary) {
   ExpectMatchesLibc("%.1g", 0.0095);
 }
 
+TEST(Printf, FloatFractionRoundingBeyondIntegerPrecision) {
+  // Scaling these fractions to 17 decimal places exceeds binary64's exact
+  // integer range. The multiplication error contains whole decimal units,
+  // including negative corrections, not just a final rounding direction.
+  const double values[] = {0x1.ffffffffffffcp-1,
+                           0x1.ffffffffffffep-1,
+                           0x1.fffffffffffffp-1,
+                           0x1.fffffcp-1,
+                           0x1.0000000000001p-1,
+                           0.1,
+                           0.0001};
+  for (double magnitude : values) {
+    for (double sign : {-1.0, 1.0}) {
+      const double value = magnitude * sign;
+      ExpectMatchesLibc("%.17f", value);
+      ExpectMatchesLibc("%.17g", value);
+      const std::string text = Format("%.17g", value);
+      double parsed_value = 0.0;
+      ASSERT_TRUE(iree_string_view_atod(iree_make_cstring_view(text.c_str()),
+                                        &parsed_value));
+      EXPECT_EQ(parsed_value, value) << text;
+    }
+  }
+}
+
+TEST(Printf, FloatGeneralLeadingFractionalZeros) {
+  // %g counts significant digits, including those beyond the fixed formatter's
+  // fractional-place limit. Decimal neighbors must retain every binary bit.
+  for (double value :
+       {0.00012345678901234567, 0.0012345678901234567, 0.012345678901234567}) {
+    ExpectMatchesLibc("%.17g", value);
+    ExpectMatchesLibc("%#.17g", value);
+    const std::string text = Format("%.17g", value);
+    double parsed_value = 0.0;
+    ASSERT_TRUE(iree_string_view_atod(iree_make_cstring_view(text.c_str()),
+                                      &parsed_value));
+    EXPECT_EQ(parsed_value, value) << text;
+  }
+}
+
 TEST(Printf, FloatLargePrecision) {
   // Precisions beyond 17 significant digits produce trailing zeros. These
   // previously caused a stack buffer overflow when the zeros were written

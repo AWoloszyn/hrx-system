@@ -2,6 +2,51 @@
 
 test.target<low_core> @test_target
 
+func.def target(@test_target) @unanswered_select_contract_preserves_native_selection(%condition: i1, %a: vector<2xf32>, %b: vector<2xf32>) -> (vector<2xf32>) {
+  %selected = scf.select %condition, %a, %b : vector<2xf32>
+  func.return %selected : vector<2xf32>
+}
+
+// ----
+COMPILE-REPORT: summary artifact=none status=OK function=- backend=- bundle=- export=- export_symbol=- config=- lowered=-
+COMPILE-REPORT: target_legalization legal=0 rewritten=0 target_rewritten=0 reference_rewritten=0 deferred=0 invalid_ir=0 unsupported=0 unhandled=1 rows=1
+COMPILE-REPORT: target_legalization[0] function=unanswered_select_contract_preserves_native_selection source_op=scf.select mode=eager policy=prefer-native action=unhandled outcome=unhandled contract=unhandled legalizer=- strategy=none bundle=test_target config=test_target source_rejections=0x00000000 source_rejection_detail=0 target_rejections=0x00000000 missing_features=0x00000000 missing_facts=0x00000000 created_ops=0 erased_ops=0
+
+// ====
+// RUN: compile-report target-legalize{policy=require-native}
+
+test.target<low_core> @test_target
+
+func.def target(@test_target) @unanswered_select_contract_does_not_reject_native_selection(%condition: i1, %a: vector<2xf32>, %b: vector<2xf32>) -> (vector<2xf32>) {
+  %selected = scf.select %condition, %a, %b : vector<2xf32>
+  func.return %selected : vector<2xf32>
+}
+
+// ----
+COMPILE-REPORT: summary artifact=none status=OK function=- backend=- bundle=- export=- export_symbol=- config=- lowered=-
+COMPILE-REPORT: target_legalization legal=0 rewritten=0 target_rewritten=0 reference_rewritten=0 deferred=0 invalid_ir=0 unsupported=0 unhandled=1 rows=1
+COMPILE-REPORT: target_legalization[0] function=unanswered_select_contract_does_not_reject_native_selection source_op=scf.select mode=eager policy=require-native action=unhandled outcome=unhandled contract=unhandled legalizer=- strategy=none bundle=test_target config=test_target source_rejections=0x00000000 source_rejection_detail=0 target_rejections=0x00000000 missing_features=0x00000000 missing_facts=0x00000000 created_ops=0 erased_ops=0
+
+// ====
+// RUN: compile-report target-legalize{policy=reference-only}
+
+test.target<low_core> @test_target
+
+func.def target(@test_target) @reference_policy_requests_whole_vector_scalarization(%condition: i1, %a: vector<2xf32>, %b: vector<2xf32>) -> (vector<2xf32>) {
+  %selected = scf.select %condition, %a, %b : vector<2xf32>
+  func.return %selected : vector<2xf32>
+}
+
+// ----
+COMPILE-REPORT: summary artifact=none status=OK function=- backend=- bundle=- export=- export_symbol=- config=- lowered=-
+COMPILE-REPORT: target_legalization legal=0 rewritten=1 target_rewritten=0 reference_rewritten=1 deferred=0 invalid_ir=0 unsupported=0 unhandled=0 rows=1
+COMPILE-REPORT: target_legalization[0] function=reference_policy_requests_whole_vector_scalarization source_op=scf.select mode=eager policy=reference-only action=rewritten outcome=reference-fallback contract=unhandled legalizer=vector strategy=reference bundle=test_target config=test_target source_rejections=0x00000000 source_rejection_detail=0 target_rejections=0x00000000 missing_features=0x00000000 missing_facts=0x00000000 created_ops=7 erased_ops=1
+
+// ====
+// RUN: compile-report target-legalize
+
+test.target<low_core> @test_target
+
 func.def target(@test_target) @records_reduce_axes_reference_rewrite(%v: vector<4xi32>, %init: i32) -> (i32) {
   %r = vector.reduce.axes<addi> %v, %init axes [0] : vector<4xi32>, i32
   func.return %r : i32

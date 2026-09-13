@@ -35,6 +35,9 @@ iree_status_t loom_vector_to_scalar_build_load_expand_lane(
     loom_vector_to_scalar_state_t* state,
     loom_vector_to_scalar_index_list_t indices, loom_value_id_t* out_lane);
 
+// Expands dense, masked and scatter stores into scalar view stores. Fixed-shape
+// expansion places value, mask and destination-coordinate materializations
+// before all writes so one lane cannot overwrite another lane's input snapshot.
 iree_status_t loom_vector_to_scalar_lower_memory_store(
     loom_vector_to_scalar_state_t* state);
 

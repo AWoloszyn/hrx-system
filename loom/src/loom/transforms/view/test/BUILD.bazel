@@ -14,5 +14,8 @@ package(
 
 loom_check_test_suite(
     name = "test",
-    srcs = ["linearize_view_accesses.loom-test"],
+    srcs = [
+        "linearize_view_accesses.loom-test",
+        "load_coalescing.loom-test",
+    ],
 )

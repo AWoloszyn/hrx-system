@@ -22,6 +22,9 @@ const loom_pass_info_t* loom_low_target_legalize_pass_info(void);
 iree_status_t loom_low_target_legalize_create(loom_pass_t* pass,
                                               iree_string_view_t options);
 
+// Legalizes target-bound functions using the pass-owned value-fact workspace.
+// Rewrites borrow and incrementally maintain the selected function's facts;
+// changes invalidate that scope before any final source-legality query.
 iree_status_t loom_low_target_legalize_run(loom_pass_t* pass,
                                            loom_module_t* module);
 

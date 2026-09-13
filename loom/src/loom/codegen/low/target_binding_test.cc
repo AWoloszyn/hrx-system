@@ -227,9 +227,13 @@ low.func.def target<test.low.core>(@generic) @kernel() {
       LookupFunctionOp(module.get(), IREE_SV("kernel"));
 
   loom_low_resolved_target_t exact_target = {};
+  loom_symbol_fact_table_t emission_facts;
+  loom_symbol_fact_table_initialize(&emission_facts, &analysis_arena_);
   IREE_ASSERT_OK(loom_low_resolve_function_target(
-      module.get(), &symbol_facts_, function_op, exact_facts, &registry_,
+      module.get(), &emission_facts, function_op, exact_facts, &registry_,
       iree_diagnostic_emitter_t{}, &exact_target));
+  EXPECT_EQ(emission_facts.entries, nullptr);
+  EXPECT_EQ(emission_facts.states, nullptr);
   EXPECT_EQ(exact_target.target_facts, exact_facts);
   EXPECT_TRUE(
       iree_string_view_equal(exact_target.target_name, IREE_SV("exact")));
@@ -283,6 +287,48 @@ low.func.def target<test.low.core> @kernel() {
   EXPECT_TRUE(iree_string_view_equal(target.target_name, IREE_SV("exact")));
   EXPECT_EQ(target.feature_bits, 7u);
   ASSERT_NE(target.descriptor_set, nullptr);
+}
+
+TEST_F(LowTargetBindingTest, KernelRefinementDoesNotRebuildSymbolFacts) {
+  ModulePtr module = ParseModule(R"(
+test.target<low_core> @target { max_flat_workgroup_size = 64 }
+low.kernel.def target<test.low.core>(@target) workgroup_size(32, 1, 1) @kernel() {
+  low.return
+}
+low.kernel.def target<test.low.core>(@target) workgroup_size(128, 1, 1) @too_large() {
+  low.return
+}
+)");
+
+  const auto* target = LookupTargetFacts(module.get(), IREE_SV("target"));
+  for (auto name : {IREE_SV("kernel"), IREE_SV("too_large")}) {
+    const auto* function = LookupFunctionFacts(module.get(), name);
+    const auto* facts = RefineFunctionFacts(module.get(), function, target);
+    loom_symbol_fact_table_t emission_facts;
+    loom_symbol_fact_table_initialize(&emission_facts, &analysis_arena_);
+    DiagnosticCapture capture;
+    loom_low_resolved_target_t resolved = {};
+    const iree_diagnostic_emitter_t emitter = {CaptureDiagnostic, &capture};
+    IREE_ASSERT_OK(loom_low_resolve_function_target(
+        module.get(), &emission_facts, function->func_op, facts, &registry_,
+        emitter, &resolved));
+    EXPECT_EQ(emission_facts.entries, nullptr);
+    EXPECT_EQ(emission_facts.states, nullptr);
+    EXPECT_EQ(facts->storage.export_plan.hal_kernel.required_workgroup_size.x,
+              0u);
+    if (iree_string_view_equal(name, IREE_SV("kernel"))) {
+      EXPECT_EQ(capture.error, nullptr);
+      ASSERT_NE(resolved.descriptor_set, nullptr);
+      const auto& size = resolved.target_facts->storage.export_plan.hal_kernel
+                             .required_workgroup_size;
+      EXPECT_EQ(size.x, 32u);
+      EXPECT_EQ(size.y, 1u);
+      EXPECT_EQ(size.z, 1u);
+    } else {
+      EXPECT_EQ(capture.error, LOOM_ERR_TARGET_025);
+      EXPECT_EQ(resolved.descriptor_set, nullptr);
+    }
+  }
 }
 
 TEST_F(LowTargetBindingTest, TargetlessFunctionUsesPortableRepresentation) {

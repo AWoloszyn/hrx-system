@@ -247,7 +247,7 @@ function(loom_target_contract_table_cc_libraries)
   cmake_parse_arguments(
     _RULE
     "TESTONLY"
-    "NAME;GENERATOR"
+    "NAME;GENERATOR;INDEX_OUTPUT"
     "ARGS;INPUTS;CONTRACT_DEPS;LOWER_RULE_DEPS"
     ${ARGN}
   )
@@ -286,6 +286,12 @@ function(loom_target_contract_table_cc_libraries)
     "${_LOWER_RULE_SOURCE}"
     "${_LOWER_RULE_HEADER}"
   )
+  set(_INDEX_ARGS)
+  if(_RULE_INDEX_OUTPUT)
+    set(_INDEX_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${_RULE_INDEX_OUTPUT}")
+    list(APPEND _OUTPUTS "${_INDEX_OUTPUT}")
+    list(APPEND _INDEX_ARGS "--index-output=${_INDEX_OUTPUT}")
+  endif()
   iree_package_name(_PACKAGE_NAME)
   set(_GEN_TARGET "${_PACKAGE_NAME}_${_RULE_NAME}_gen")
   set(_GEN_STAMP
@@ -304,6 +310,7 @@ function(loom_target_contract_table_cc_libraries)
       "--contract-header=${_CONTRACT_HEADER}"
       "--lower-rule-source=${_LOWER_RULE_SOURCE}"
       "--lower-rule-header=${_LOWER_RULE_HEADER}"
+      ${_INDEX_ARGS}
     COMMAND
       "${CMAKE_COMMAND}" -E touch "${_GEN_STAMP}"
     DEPENDS
@@ -335,7 +342,7 @@ function(loom_target_contract_file_family)
   cmake_parse_arguments(
     _RULE
     ""
-    "NAME;GENERATOR;COMMENT"
+    "NAME;GENERATOR;COMMENT;INDEX_OUTPUT"
     "FRAGMENTS;ARGS;INPUTS"
     ${ARGN}
   )
@@ -377,6 +384,11 @@ function(loom_target_contract_file_family)
       "--lower-rule-header"
     )
   endforeach()
+
+  if(_RULE_INDEX_OUTPUT)
+    list(APPEND _OUTPUTS "${_RULE_INDEX_OUTPUT}")
+    list(APPEND _OUTPUT_FLAGS "--index-output")
+  endif()
 
   _loom_generated_files(
     NAME "${_RULE_NAME}"

@@ -66,6 +66,18 @@ func.def target(@test_target) @rejects_unsupported_source_op_in_final_mode(%v: v
 }
 
 // ====
+// RUN: pass target-legalize{mode=complete},source-to-low
+
+test.target<low_core> @test_target
+
+// Completion leaves target legality to the next lowering boundary.
+func.def target(@test_target) @rejects_unsupported_source_op_after_completion(%v: vector<4xf32>) -> (vector<4xf32>) {
+  // ERROR@+1: TARGET/001 {op_name="vector.logisticf"}
+  %r = vector.logisticf %v : vector<4xf32>
+  func.return %r : vector<4xf32>
+}
+
+// ====
 // RUN: pass target-legalize{mode=final}
 
 test.target<low_core> @test_target
@@ -106,7 +118,7 @@ func.def target(@test_target) @rejects_assume_range_contradicting_exact_facts() 
 }
 
 // ====
-// RUN: pass target-legalize
+// RUN: pass target-legalize{mode=final}
 
 test.target<low_core> @test_target
 

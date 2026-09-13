@@ -197,18 +197,6 @@ def _integer_constant_rule(scalar_pair: IntegerAluTypePair) -> DescriptorRule:
     )
 
 
-def _float_constant_bits_project(scalar: FloatConstantType) -> ValueProject:
-    if scalar.source_type == "f16":
-        return ValueProject.float_as_f16_bits("result")
-    if scalar.source_type == "bf16":
-        return ValueProject.float_as_bf16_bits("result")
-    if scalar.source_type == "f32":
-        return ValueProject.float_as_f32_bits("result")
-    if scalar.source_type == "f64":
-        return ValueProject.float_as_f64_bits("result")
-    raise ValueError(f"unsupported SPIR-V float constant type {scalar.source_type}")
-
-
 def _float_constant_rule(scalar: FloatConstantType) -> DescriptorRule:
     descriptor = _descriptor(f"spirv.op_constant.{scalar.suffix}")
     return DescriptorRule(
@@ -225,7 +213,7 @@ def _float_constant_rule(scalar: FloatConstantType) -> DescriptorRule:
                 descriptor=descriptor,
                 results={"dst": ValueRef.result("result")},
                 immediates={
-                    f"{scalar.source_type}_bits": _float_constant_bits_project(scalar)
+                    f"{scalar.source_type}_bits": ValueProject.float_bits("result")
                 },
                 form=DescriptorEmitForm.CONST,
             ),

@@ -39,7 +39,9 @@ typedef struct iree_io_vec_block_t {
   ((block_size) - offsetof(iree_io_vec_block_t, contents))
 
 typedef struct iree_io_vec_stream_t {
+  // Base stream interface and reference count.
   iree_io_stream_t base;
+  // Allocator owning the stream and its detached or retained blocks.
   iree_allocator_t host_allocator;
   // Current offset within the stream. block_pos is the block containing the
   // offset.
@@ -87,8 +89,8 @@ IREE_API_EXPORT iree_status_t iree_io_vec_stream_create(
 
   iree_io_vec_stream_t* stream = NULL;
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
-      z0,
-      iree_allocator_malloc(host_allocator, sizeof(*stream), (void**)&stream));
+      z0, iree_allocator_malloc_uninitialized(host_allocator, sizeof(*stream),
+                                              (void**)&stream));
   iree_atomic_ref_count_init(&stream->base.ref_count);
   stream->base.vtable = &iree_io_vec_stream_vtable;
   stream->base.mode = mode;
@@ -259,15 +261,21 @@ static void iree_io_vec_stream_assert_valid(iree_io_vec_stream_t* stream) {
 
 // Extends the stream up to the new total length.
 // The current stream offset is not changed though both block_head and
-// block_tail may be.
-static iree_status_t iree_io_vec_stream_extend(
-    iree_io_vec_stream_t* stream, iree_io_stream_pos_t new_length) {
+// block_tail may be. When zero_fill is false, the caller initializes every
+// new byte before exposing the stream. A failed extension zeroes any bytes
+// already added so the partially extended stream remains readable.
+static iree_status_t iree_io_vec_stream_extend(iree_io_vec_stream_t* stream,
+                                               iree_io_stream_pos_t new_length,
+                                               bool zero_fill) {
   IREE_ASSERT_ARGUMENT(stream);
   if (!new_length) return iree_ok_status();
   if (stream->length >= new_length) return iree_ok_status();
   IREE_TRACE_ZONE_BEGIN(z0);
   IREE_TRACE_ZONE_APPEND_VALUE_I64(z0, new_length);
 
+  iree_io_vec_block_t* initialization_block = stream->block_tail;
+  iree_host_size_t initialization_offset =
+      initialization_block ? initialization_block->length : 0;
   // Determine how many bytes we need to allocate and then allocate blocks up
   // until we reach that new total. We'll fill the current block (if any) first
   // and that may be all we need.
@@ -288,8 +296,8 @@ static iree_status_t iree_io_vec_stream_extend(
   while (remaining_bytes > 0) {
     // Allocate a new block.
     iree_io_vec_block_t* block = NULL;
-    status = iree_allocator_malloc(stream->host_allocator, stream->block_size,
-                                   (void**)&block);
+    status = iree_allocator_malloc_uninitialized(
+        stream->host_allocator, stream->block_size, (void**)&block);
     if (!iree_status_is_ok(status)) break;
     iree_host_size_t block_bytes = iree_min(remaining_bytes, block_capacity);
     block->prev = stream->block_tail;
@@ -307,9 +315,16 @@ static iree_status_t iree_io_vec_stream_extend(
     block->capacity = block_capacity;
     block->length = block_bytes;
     remaining_bytes -= block_bytes;
-    // NOTE: iree_allocator_malloc guarantees contents are zeroed.
   }
-  IREE_ASSERT_EQ(stream->length, new_length);
+  if (zero_fill || !iree_status_is_ok(status)) {
+    if (!initialization_block) initialization_block = stream->block_head;
+    for (; initialization_block;
+         initialization_block = initialization_block->next) {
+      memset(&initialization_block->contents[initialization_offset], 0,
+             initialization_block->length - initialization_offset);
+      initialization_offset = 0;
+    }
+  }
   if (!stream->block_pos) {
     // If we just allocated the stream then set the offset 0 block.
     stream->block_pos = stream->block_head;
@@ -359,10 +374,10 @@ static iree_status_t iree_io_vec_stream_seek(
                             (uint32_t)seek_mode, seek_offset, new_offset);
   }
 
-  // Extend the stream if the new offset is off the current end. This will
-  // allocate new empty blocks with zeroed contents.
+  // Seeking beyond the current end exposes zero-filled bytes without touching
+  // unused capacity in the final block.
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
-      z0, iree_io_vec_stream_extend(stream, new_offset));
+      z0, iree_io_vec_stream_extend(stream, new_offset, /*zero_fill=*/true));
 
   // If the stream is not allocated then bail (seeking to offset 0 of an empty
   // stream doesn't allocate anything).
@@ -439,6 +454,11 @@ static iree_status_t iree_io_vec_stream_read(
     }
   }
 
+  if (read_bytes == 0) {
+    IREE_TRACE_ZONE_END(z0);
+    return iree_ok_status();
+  }
+
   // Copy bytes from blocks for the entire read length.
   uint8_t* buffer_ptr = (uint8_t*)buffer;
   iree_host_size_t read_offset = 0;
@@ -481,7 +501,8 @@ static iree_status_t iree_io_vec_stream_write(iree_io_stream_t* base_stream,
 
   // Extend the stream storage up to the final size from the current position.
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
-      z0, iree_io_vec_stream_extend(stream, stream->offset + buffer_length));
+      z0, iree_io_vec_stream_extend(stream, stream->offset + buffer_length,
+                                    /*zero_fill=*/false));
 
   // Copy the source buffer to the blocks.
   iree_host_size_t remaining_bytes = buffer_length;
@@ -555,8 +576,8 @@ static iree_status_t iree_io_vec_stream_fill(iree_io_stream_t* base_stream,
   // Grow the stream to the entire new length (if needed).
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0,
-      iree_io_vec_stream_extend(stream,
-                                stream->offset + count * pattern_length),
+      iree_io_vec_stream_extend(stream, stream->offset + count * pattern_length,
+                                /*zero_fill=*/false),
       "growing stream to fill bounds");
 
   // TODO(benvanik): efficient fill - we should be able to partition into

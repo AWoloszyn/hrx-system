@@ -26,6 +26,10 @@ extern "C" {
 
 struct loom_low_schedule_table_t;
 
+// Commits a coalesced assignment whose location already fits its register class
+// capacity. Coalescing checks new ranges or inherits an existing same-class
+// assignment; the callback owns liveness, storage leases and active-set
+// updates.
 typedef iree_status_t (*loom_low_allocation_coalescing_append_assignment_fn_t)(
     void* user_data, const loom_low_allocation_assignment_t* assignment,
     const loom_value_id_t* ignored_storage_lease_value_ids,

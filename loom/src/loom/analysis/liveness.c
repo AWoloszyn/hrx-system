@@ -2054,24 +2054,22 @@ bool loom_liveness_segment_ranges_overlap(
   IREE_ASSERT_ARGUMENT(analysis);
   IREE_ASSERT_LE((uint64_t)lhs.start + lhs.count, analysis->segment_count);
   IREE_ASSERT_LE((uint64_t)rhs.start + rhs.count, analysis->segment_count);
-  uint32_t lhs_index = 0;
-  uint32_t rhs_index = 0;
-  while (lhs_index < lhs.count && rhs_index < rhs.count) {
-    const loom_liveness_segment_t* lhs_segment =
-        &analysis->segments[lhs.start + lhs_index];
-    const loom_liveness_segment_t* rhs_segment =
-        &analysis->segments[rhs.start + rhs_index];
-    if (lhs_segment->start_point < rhs_segment->end_point &&
-        rhs_segment->start_point < lhs_segment->end_point) {
+  if (lhs.count == 0 || rhs.count == 0) return false;
+  const loom_liveness_segment_t* lhs_segment = &analysis->segments[lhs.start];
+  const loom_liveness_segment_t* rhs_segment = &analysis->segments[rhs.start];
+  const loom_liveness_segment_t* lhs_end = lhs_segment + lhs.count;
+  const loom_liveness_segment_t* rhs_end = rhs_segment + rhs.count;
+  // Both cursors are valid at entry. Only the advanced cursor can become
+  // exhausted; the other segment remains available for the next comparison.
+  for (;;) {
+    if (lhs_segment->end_point <= rhs_segment->start_point) {
+      if (++lhs_segment == lhs_end) return false;
+    } else if (rhs_segment->end_point <= lhs_segment->start_point) {
+      if (++rhs_segment == rhs_end) return false;
+    } else {
       return true;
     }
-    if (lhs_segment->end_point <= rhs_segment->start_point) {
-      ++lhs_index;
-    } else {
-      ++rhs_index;
-    }
   }
-  return false;
 }
 
 const loom_liveness_block_info_t* loom_liveness_block_info_for_block(

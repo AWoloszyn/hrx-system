@@ -186,7 +186,7 @@ llvmir.target<object> @target {triple = "amdgcn-amd-amdhsa"}
 func.def target(@target) @f32_guarded_arcp_reciprocal_scale(%amax: f32) -> (f32) {
   %fallback_scale = scalar.constant 0.0 : f32
   %reciprocal_numerator = scalar.constant 1.0 : f32
-  %inverse_scale_limit = scalar.constant 0.007874015700000001 : f32
+  %inverse_scale_limit = scalar.constant 0.0078740157000000005 : f32
   %scale_limit = scalar.constant 127.0 : f32
   %d = scalar.mulf<nnan|ninf|nsz|arcp> %amax, %inverse_scale_limit : f32
   %zero_for_cmp = scalar.subf %d, %d : f32

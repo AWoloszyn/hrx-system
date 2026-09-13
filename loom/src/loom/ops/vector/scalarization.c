@@ -11,12 +11,11 @@
 
 #define LOOM_VECTOR_SCALARIZATION_OP_INDEX(op_kind) \
   ((uint8_t)((op_kind) & 0xFFu))
-#define LOOM_VECTOR_SCALARIZATION_ROW(vector_op, scalar_op, flags_, \
-                                      seed_operand_index_)          \
-  [LOOM_VECTOR_SCALARIZATION_OP_INDEX(vector_op)] = {               \
-      .lane_op_kind = (scalar_op),                                  \
-      .flags = (flags_),                                            \
-      .seed_operand_index = (seed_operand_index_),                  \
+#define LOOM_VECTOR_SCALARIZATION_ROW(vector_op, scalar_op, \
+                                      seed_operand_index_)  \
+  [LOOM_VECTOR_SCALARIZATION_OP_INDEX(vector_op)] = {       \
+      .lane_op_kind = (scalar_op),                          \
+      .seed_operand_index = (seed_operand_index_),          \
   },
 
 const loom_vector_scalarization_t

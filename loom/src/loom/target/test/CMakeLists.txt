@@ -83,6 +83,8 @@ loom_cc_library(
     lower
   HDRS
     "lower.h"
+  TEXTUAL_HDRS
+    "${IREE_BINARY_DIR}/loom/src/loom/target/test/contracts/tables.inl"
   SRCS
     "lower/registry.c"
   DEPS

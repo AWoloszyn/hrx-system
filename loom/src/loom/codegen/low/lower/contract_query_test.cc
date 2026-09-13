@@ -91,28 +91,37 @@ loom_target_facts_t MakeTargetFacts() {
   return facts;
 }
 
-loom_target_contract_fragment_t MakeContractFragmentForOp(
-    loom_op_kind_t source_op_kind,
-    loom_target_contract_fragment_op_span_t* op_spans,
-    loom_target_contract_fragment_case_t* cases,
-    loom_target_contract_descriptor_rule_t* descriptor_rules) {
-  op_spans[0].op_kind = source_op_kind;
-  op_spans[0].case_start = 0;
-  op_spans[0].case_count = 1;
-  cases[0].system = LOOM_TARGET_CONTRACT_SYSTEM_DESCRIPTOR_RULE;
-  cases[0].row_index = 0;
-  descriptor_rules[0].rule_index = 0;
+const loom_target_contract_descriptor_rule_t kContractDescriptorRules[] = {{0}};
+const loom_target_contract_fragment_t kContractFragment = {
+    LOOM_TARGET_CONTRACT_FRAGMENT_FLAG_TARGET_QUERY,
+    1,
+    kContractDescriptorRules,
+    0,
+    nullptr,
+};
+const loom_target_contract_binding_t kContractBindings[] = {
+    {&kContractFragment, 0}};
+const loom_target_contract_case_t kContractCases[] = {
+    {LOOM_TARGET_CONTRACT_SYSTEM_DESCRIPTOR_RULE, 0, 0},
+};
 
-  loom_target_contract_fragment_t fragment = {};
-  fragment.op_span_count = 1;
-  fragment.flags = LOOM_TARGET_CONTRACT_FRAGMENT_FLAG_TARGET_QUERY;
-  fragment.op_spans = op_spans;
-  fragment.case_count = 1;
-  fragment.cases = cases;
-  fragment.descriptor_rule_count = 1;
-  fragment.descriptor_rules = descriptor_rules;
-  return fragment;
-}
+template <loom_op_kind_t OpKind>
+class SingleOpContract {
+ public:
+  SingleOpContract() { entries_[loom_op_dialect_index(OpKind)] = {0, 1}; }
+  const loom_target_contract_index_t* index() const { return &index_; }
+
+ private:
+  // One populated op span in this fixture's source dialect.
+  loom_target_contract_op_entry_t entries_[(OpKind & 0xFF) + 1] = {};
+  // Dense dialect table borrowed by the index.
+  loom_target_contract_dialect_table_t dialect_ = {IREE_ARRAYSIZE(entries_),
+                                                   entries_};
+  // Query-ready index, with the same representation as generated policy tables.
+  loom_target_contract_index_t index_ = {
+      OpKind >> 8, 1, &dialect_, 1, kContractCases, 1, kContractBindings,
+  };
+};
 
 class LowContractQuerySourceMemoryTest : public ::testing::Test {
  protected:
@@ -328,28 +337,10 @@ TEST(LowContractQueryTest, ContractIndexDescriptorRuleSelectsLegalCase) {
   rule_set.emit_count = 1;
   const loom_low_lower_rule_set_t* rule_sets[] = {&rule_set};
 
-  loom_target_contract_fragment_op_span_t op_spans[1] = {};
-  loom_target_contract_fragment_case_t cases[1] = {};
-  loom_target_contract_descriptor_rule_t descriptor_rules[1] = {};
-  loom_target_contract_fragment_t fragment = MakeContractFragmentForOp(
-      kSourceOpKind, op_spans, cases, descriptor_rules);
-  const loom_target_contract_binding_t bindings[] = {
-      {
-          &fragment,
-          0,
-      },
-  };
-
-  iree_arena_block_pool_t block_pool;
-  iree_arena_block_pool_initialize(4096, iree_allocator_system(), &block_pool);
-  iree_arena_allocator_t arena;
-  iree_arena_initialize(&block_pool, &arena);
-  loom_target_contract_index_t index = {};
-  IREE_ASSERT_OK(loom_target_contract_index_compose(
-      bindings, IREE_ARRAYSIZE(bindings), &index, &arena));
+  SingleOpContract<kSourceOpKind> contract;
 
   const loom_low_lower_contract_query_options_t options = {
-      /*.contract_index=*/&index,
+      /*.contract_index=*/contract.index(),
       /*.rule_sets=*/
       {
           /*.count=*/IREE_ARRAYSIZE(rule_sets),
@@ -379,9 +370,6 @@ TEST(LowContractQueryTest, ContractIndexDescriptorRuleSelectsLegalCase) {
   EXPECT_EQ(result.rule_set_index, 0);
   EXPECT_EQ(result.rule_index, 0);
   EXPECT_EQ(result.selected_descriptor, &kDescriptor);
-
-  iree_arena_deinitialize(&arena);
-  iree_arena_block_pool_deinitialize(&block_pool);
 }
 
 TEST(LowContractQueryTest, ContractIndexDescriptorRuleReportsRejectedCase) {
@@ -456,28 +444,15 @@ TEST(LowContractQueryTest, ContractIndexDescriptorRuleReportsRejectedCase) {
   rule_set.diagnostic_count = 1;
   const loom_low_lower_rule_set_t* rule_sets[] = {&rule_set};
 
-  loom_target_contract_fragment_op_span_t op_spans[1] = {};
-  loom_target_contract_fragment_case_t cases[1] = {};
-  loom_target_contract_descriptor_rule_t descriptor_rules[1] = {};
-  loom_target_contract_fragment_t fragment = MakeContractFragmentForOp(
-      kSourceOpKind, op_spans, cases, descriptor_rules);
-  const loom_target_contract_binding_t bindings[] = {
-      {
-          &fragment,
-          0,
-      },
-  };
+  SingleOpContract<kSourceOpKind> contract;
 
   iree_arena_block_pool_t block_pool;
   iree_arena_block_pool_initialize(4096, iree_allocator_system(), &block_pool);
   iree_arena_allocator_t arena;
   iree_arena_initialize(&block_pool, &arena);
-  loom_target_contract_index_t index = {};
-  IREE_ASSERT_OK(loom_target_contract_index_compose(
-      bindings, IREE_ARRAYSIZE(bindings), &index, &arena));
 
   const loom_low_lower_contract_query_options_t options = {
-      /*.contract_index=*/&index,
+      /*.contract_index=*/contract.index(),
       /*.rule_sets=*/
       {
           /*.count=*/IREE_ARRAYSIZE(rule_sets),
@@ -608,28 +583,15 @@ TEST_F(LowContractQuerySourceMemoryTest,
   rule_set.emit_count = 1;
   const loom_low_lower_rule_set_t* rule_sets[] = {&rule_set};
 
-  loom_target_contract_fragment_op_span_t op_spans[1] = {};
-  loom_target_contract_fragment_case_t cases[1] = {};
-  loom_target_contract_descriptor_rule_t descriptor_rules[1] = {};
-  loom_target_contract_fragment_t fragment = MakeContractFragmentForOp(
-      LOOM_OP_VECTOR_LOAD, op_spans, cases, descriptor_rules);
-  const loom_target_contract_binding_t bindings[] = {
-      {
-          &fragment,
-          0,
-      },
-  };
+  SingleOpContract<LOOM_OP_VECTOR_LOAD> contract;
 
   iree_arena_block_pool_t block_pool;
   iree_arena_block_pool_initialize(4096, iree_allocator_system(), &block_pool);
   iree_arena_allocator_t arena;
   iree_arena_initialize(&block_pool, &arena);
-  loom_target_contract_index_t index = {};
-  IREE_ASSERT_OK(loom_target_contract_index_compose(
-      bindings, IREE_ARRAYSIZE(bindings), &index, &arena));
 
   const loom_low_lower_contract_query_options_t options = {
-      /*.contract_index=*/&index,
+      /*.contract_index=*/contract.index(),
       /*.rule_sets=*/
       {
           /*.count=*/IREE_ARRAYSIZE(rule_sets),

@@ -15,8 +15,11 @@ loom_target_contract_table_cc_libraries(
     generic_core
   GENERATOR
     loom::py::loom::gen::target::contracts::llvmir_contract_table_family
+  INDEX_OUTPUT
+    "tables.inl"
   ARGS
     "--contract-fragment=llvmir.generic.core"
+    "--contract-index=LOOM_LLVMIR_GENERIC_CONTRACT:llvmir.generic.core"
   CONTRACT_DEPS
     loom::target::contract
   LOWER_RULE_DEPS

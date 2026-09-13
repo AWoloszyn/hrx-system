@@ -93,6 +93,9 @@ typedef struct loom_low_lowering_frame_t {
   loom_low_lower_abi_argument_t* argument_map;
   // Number of entries in argument_map.
   uint16_t argument_map_count;
+  // Callable result types mapped before source planning, in source result
+  // order. Function-arena storage is retained through Low definition creation.
+  loom_type_t* result_types;
   // Optional source selection and memory report analysis state.
   loom_low_lower_report_state_t report;
   // Source-derived memory access rows copied into options.table_arena.
@@ -148,8 +151,6 @@ struct loom_low_lower_context_t {
   loom_low_lower_module_state_t* module_state;
   // Function-local state for this source-to-low lowering run.
   loom_low_lowering_frame_t lowering;
-  // Dense root contract index composed from the active policy shards.
-  loom_target_contract_index_t contract_index;
   // Builder used while emitting the low function.
   loom_builder_t builder;
   // Emitted target-low function operation, or NULL before emission starts.
@@ -159,6 +160,14 @@ struct loom_low_lower_context_t {
 // Returns the source function name used in source-to-low diagnostics/reports.
 iree_string_view_t loom_low_lower_context_function_name(
     const loom_low_lower_context_t* context);
+
+// Queries the active policy's native representation for a source value.
+// An unsupported value produces none without a diagnostic. Mapping may allocate
+// register types and function analysis state, but does not rewrite source IR.
+iree_status_t loom_low_lower_query_value(loom_low_lower_context_t* context,
+                                         const loom_op_t* source_op,
+                                         loom_value_id_t source_value_id,
+                                         loom_type_t* out_low_type);
 
 // Returns true when the lowering context has reached its diagnostic limit.
 bool loom_low_lower_context_should_stop(

@@ -81,13 +81,15 @@ void loom_amdgpu_hal_kernel_library_deinitialize(
 
 // Emits |module| into an allocator-owned AMDGPU HAL kernel library.
 //
-// |module| must already contain the prepared target-low entries intended for
-// the artifact. Target records are resolved through the linked descriptor
-// registry without materializing companion target records in the IR.
-// |out_emitted| is false when target preflight or diagnostics rejected the
-// module; status remains reserved for infrastructure failures. The caller owns
-// |out_library| when |out_emitted| is true and must release it with
-// loom_amdgpu_hal_kernel_library_deinitialize.
+// |module| must be verified and contain the prepared target-low entries
+// intended for the artifact. Emission consumes those invariants without
+// repeating module verification. Other targets may have functions in the same
+// module; only selected AMDGPU entries participate in native emission. Target
+// records are resolved through the linked descriptor registry without
+// materializing companion target records in the IR. |out_emitted| is false when
+// target preflight or diagnostics rejected the module; status remains reserved
+// for infrastructure failures. The caller owns |out_library| when |out_emitted|
+// is true and must release it with loom_amdgpu_hal_kernel_library_deinitialize.
 iree_status_t loom_amdgpu_emit_hal_kernel_library(
     loom_module_t* module,
     const loom_amdgpu_hal_kernel_library_options_t* options,

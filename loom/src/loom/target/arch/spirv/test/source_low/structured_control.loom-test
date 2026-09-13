@@ -12,7 +12,7 @@ pass.pipeline<module> @__loom_check_source_low pipeline {
     where target {
       normalize-kernel-resources
       promote-private-fragments
-      canonicalize
+      canonicalize(view-loads = "coalesce")
       cse
     }
   }
@@ -22,7 +22,7 @@ pass.pipeline<module> @__loom_check_source_low pipeline {
     if changed {
       for func {
         where target {
-          canonicalize
+          canonicalize(view-loads = "coalesce")
         }
       }
     }
@@ -46,7 +46,7 @@ pass.pipeline<module> @__loom_check_source_low pipeline {
       }
     }
   }
-  target-legalize(mode = "eager")
+  target-legalize(mode = "complete")
   if changed {
     for func {
       where target {

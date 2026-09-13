@@ -14,8 +14,11 @@ loom_target_contract_table_cc_libraries(
     core
   GENERATOR
     loom::py::loom::gen::target::contracts::test_low_contract_table_family
+  INDEX_OUTPUT
+    "tables.inl"
   ARGS
     "--contract-fragment=test_low_core"
+    "--contract-index=LOOM_TEST_LOW_CONTRACT:test_low_core"
   CONTRACT_DEPS
     loom::target::contract
   LOWER_RULE_DEPS

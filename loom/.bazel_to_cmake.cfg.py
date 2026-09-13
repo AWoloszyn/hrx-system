@@ -978,6 +978,7 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         name,
         generator,
         args=None,
+        index_output=None,
         inputs=None,
         contract_deps=None,
         lower_rule_deps=None,
@@ -995,6 +996,7 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
 
         name_block = self._convert_string_arg_block("NAME", name, quote=False)
         generator_block = self._convert_single_target_block("GENERATOR", generator)
+        index_block = self._convert_string_arg_block("INDEX_OUTPUT", index_output)
         args_block, platform_args_block = self._convert_platform_select_strings(
             name,
             "ARGS",
@@ -1024,6 +1026,7 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             f"loom_target_contract_table_cc_libraries(\n"
             f"{name_block}"
             f"{generator_block}"
+            f"{index_block}"
             f"{args_block}"
             f"{inputs_block}"
             f"{contract_deps_block}"
@@ -1039,6 +1042,7 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         generator,
         fragments,
         args=None,
+        index_output=None,
         inputs=None,
         comment=None,
         tags=None,
@@ -1054,6 +1058,7 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
 
         name_block = self._convert_string_arg_block("NAME", name, quote=False)
         generator_block = self._convert_single_target_block("GENERATOR", generator)
+        index_block = self._convert_string_arg_block("INDEX_OUTPUT", index_output)
         fragments_block = self._convert_string_list_block(
             "FRAGMENTS",
             [
@@ -1085,6 +1090,7 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             f"loom_target_contract_file_family(\n"
             f"{name_block}"
             f"{generator_block}"
+            f"{index_block}"
             f"{fragments_block}"
             f"{args_block}"
             f"{inputs_block}"

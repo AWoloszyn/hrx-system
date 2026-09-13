@@ -7,8 +7,10 @@
 // Vector-to-scalar reference lowering.
 //
 // This pass exposes vector lane semantics using scalar ops and scf.for loops
-// while preserving function ABI. Vector arguments/results/calls/returns remain
-// vector-typed; vector.extract/vector.insert/vector.from_elements are the
+// while preserving function ABI. Whole-vector scf.select uses the same lane
+// program as vector.select with an unchanged scalar condition. Vector
+// arguments/results/calls/returns remain vector-typed;
+// vector.extract/vector.insert/vector.from_elements are the
 // aggregate boundary ops used to move between vector values and scalar lane
 // programs.
 
@@ -130,7 +132,9 @@ uint32_t loom_vector_fragment_store_to_scalar_reference_rejection_bits(
     loom_pass_t* pass, loom_rewriter_t* rewriter, loom_op_t* op);
 
 // Rewrites one scalar-result vector.extract when its lane can be rematerialized
-// from the source producer tree.
+// from the source producer tree. Fixed dense loads that cannot move to the use
+// are expanded at their original position so extracted lanes retain their
+// snapshot across intervening writes and calls.
 iree_status_t loom_vector_extract_to_scalar_rewrite_op(
     loom_pass_t* pass, loom_rewriter_t* rewriter, loom_op_t* op,
     bool* out_rewritten);

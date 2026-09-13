@@ -21,6 +21,7 @@ loom_cc_library(
     name = "lower",
     srcs = ["registry.c"],
     hdrs = ["lower.h"],
+    textual_hdrs = ["//loom/src/loom/target/arch/llvmir/contracts:tables.inl"],
     visibility = _LLVMIR_ROOT_VISIBILITY,
     deps = [
         "//loom/src/loom/codegen/low/lower",

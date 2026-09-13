@@ -1175,6 +1175,10 @@ iree_status_t loom_amdgpu_legalize_oversized_vector_store(
     return iree_ok_status();
   }
 
+  // AMDGPU memory lowering owns stores that do not need packetization here.
+  // Retain them for that lowering instead of invoking scalar reference stores.
+  out_result->action = LOOM_TARGET_LEGALIZER_ACTION_DEFER;
+
   loom_vector_memory_footprint_t store_footprint = {0};
   if (!loom_vector_memory_footprint_describe(
           loom_amdgpu_vector_packet_fact_context(context), context->module, op,

@@ -119,6 +119,41 @@ class AllocationCheckerTest : public ::testing::Test {
     return result;
   }
 
+  void ConfigureTiedCopies() {
+    // a is overwritten by b, then b is copied to c before c is overwritten
+    // by d. The allocator reserves a's storage through b and c's through d.
+    static constexpr uint32_t kStarts[] = {0, 1, 2, 4};
+    static constexpr uint32_t kEnds[] = {1, 3, 4, 5};
+    static constexpr uint32_t kStorageEnds[] = {3, 3, 5, 5};
+    for (uint32_t i = 0; i < 4; ++i) {
+      value_ids_[i] = i + 1;
+      interval_indices_[i] = assignment_indices_[i] = i;
+      intervals_[i] =
+          MakeInterval(value_ids_[i], kStarts[i], kEnds[i], value_class_);
+      assignments_[i] = MakeAssignment(value_ids_[i], kStarts[i],
+                                       kStorageEnds[i], 0, i, value_class_);
+      unit_start_points_[i] = kStarts[i];
+      unit_end_points_[i] = kStorageEnds[i];
+    }
+    frame_.schedule.value_count = 4;
+    frame_.allocation.liveness.interval_count = 4;
+    frame_.allocation.liveness.value_count = 4;
+    frame_.allocation.placement.value_count = 4;
+    frame_.allocation.assignment_count = 4;
+    frame_.allocation.unit_point_count = 4;
+    relations_[0] =
+        MakeAliasRelation(1, 0, LOOM_LOW_PLACEMENT_RELATION_FLAG_HARD);
+    relations_[0].cause = LOOM_LOW_PLACEMENT_CAUSE_TIED_RESULT;
+    relations_[1] =
+        MakeAliasRelation(2, 1, LOOM_LOW_PLACEMENT_RELATION_FLAG_PREFERRED);
+    relations_[1].cause = LOOM_LOW_PLACEMENT_CAUSE_LOW_COPY;
+    relations_[2] =
+        MakeAliasRelation(3, 2, LOOM_LOW_PLACEMENT_RELATION_FLAG_HARD);
+    relations_[2].cause = LOOM_LOW_PLACEMENT_CAUSE_TIED_RESULT;
+    frame_.allocation.placement.relations = relations_;
+    frame_.allocation.placement.relation_count = 3;
+  }
+
   void ConfigureRefinedReservation(uint32_t temporary_end_point) {
     intervals_[0] = MakeInterval(value_ids_[0], /*start_point=*/2,
                                  /*end_point=*/4, value_class_);
@@ -150,13 +185,14 @@ class AllocationCheckerTest : public ::testing::Test {
   loom_low_reg_class_t reg_class_ = {};
   loom_low_descriptor_set_t descriptor_set_ = {};
   loom_liveness_value_class_t value_class_ = {};
-  loom_value_id_t value_ids_[2] = {};
-  uint32_t interval_indices_[2] = {};
-  uint32_t assignment_indices_[2] = {};
-  loom_liveness_interval_t intervals_[2] = {};
-  loom_low_allocation_assignment_t assignments_[2] = {};
-  uint32_t unit_start_points_[3] = {};
-  uint32_t unit_end_points_[3] = {};
+  loom_value_id_t value_ids_[4] = {};
+  uint32_t interval_indices_[4] = {};
+  uint32_t assignment_indices_[4] = {};
+  loom_liveness_interval_t intervals_[4] = {};
+  loom_low_allocation_assignment_t assignments_[4] = {};
+  uint32_t unit_start_points_[4] = {};
+  uint32_t unit_end_points_[4] = {};
+  loom_low_placement_relation_t relations_[3] = {};
   loom_low_emission_frame_t frame_ = {};
 };
 
@@ -197,6 +233,96 @@ TEST_F(AllocationCheckerTest, AcceptsExplicitStorageAlias) {
   frame_.allocation.placement.relation_count = 1;
   const loom_low_allocation_check_result_t result = Check();
   EXPECT_EQ(result.violation_count, 0u);
+}
+
+TEST_F(AllocationCheckerTest, AcceptsCopyOfDestructiveSuccessor) {
+  ConfigureTiedCopies();
+  EXPECT_EQ(Check().violation_count, 0u);
+}
+
+TEST_F(AllocationCheckerTest, RejectsOverwriteOfLiveCopiedValue) {
+  for (uint32_t live_end : {4u, 5u}) {
+    SCOPED_TRACE(live_end);
+    ConfigureTiedCopies();
+    // b can die at d's write, but not remain live afterward. Mandatory
+    // storage identities alone cannot justify overwriting b's old bits.
+    intervals_[1].end_point = live_end;
+    assignments_[0].end_point = unit_end_points_[0] = live_end;
+    assignments_[1].end_point = unit_end_points_[1] = live_end;
+    const auto result = Check();
+    if (live_end == 4) {
+      EXPECT_EQ(result.violation_count, 0u);
+    } else {
+      EXPECT_GT(result.violation_count, 0u);
+      EXPECT_EQ(result.first_violation.kind,
+                LOOM_LOW_ALLOCATION_CHECK_VIOLATION_STORAGE_CONFLICT);
+    }
+  }
+}
+
+TEST_F(AllocationCheckerTest, RejectsUnrelatedStorageReuseThroughTiedChain) {
+  ConfigureTiedCopies();
+  relations_[1].flags = LOOM_LOW_PLACEMENT_RELATION_FLAG_PREFERRED;
+  const auto result = Check();
+  EXPECT_GT(result.violation_count, 0u);
+  EXPECT_EQ(result.first_violation.kind,
+            LOOM_LOW_ALLOCATION_CHECK_VIOLATION_STORAGE_CONFLICT);
+}
+
+TEST_F(AllocationCheckerTest, RejectsOverwriteOfLiveCopySource) {
+  ConfigureTiedCopies();
+  // c copies a before b overwrites a, and still needs those old bits afterward.
+  relations_[1].source_ordinal = 0;
+  intervals_[0].end_point = 2;
+  assignments_[0].end_point = unit_end_points_[0] = 4;
+  intervals_[1].start_point = assignments_[1].start_point =
+      unit_start_points_[1] = 2;
+  intervals_[1].end_point = assignments_[1].end_point = unit_end_points_[1] = 4;
+  intervals_[2].start_point = assignments_[2].start_point =
+      unit_start_points_[2] = 1;
+  const auto result = Check();
+  EXPECT_GT(result.violation_count, 0u);
+  EXPECT_EQ(result.first_violation.kind,
+            LOOM_LOW_ALLOCATION_CHECK_VIOLATION_STORAGE_CONFLICT);
+}
+
+TEST_F(AllocationCheckerTest, HardAliasesPreserveSubrangeOffsets) {
+  for (uint32_t copy_location : {0u, 1u}) {
+    SCOPED_TRACE(copy_location);
+    ConfigureTiedCopies();
+    frame_.schedule.value_count = 3;
+    frame_.allocation.liveness.interval_count = 3;
+    frame_.allocation.liveness.value_count = 3;
+    frame_.allocation.placement.value_count = 3;
+    frame_.allocation.assignment_count = 3;
+    frame_.allocation.placement.relation_count = 2;
+    intervals_[0].unit_count = 2;
+    intervals_[0].end_point = 4;
+    assignments_[0].unit_count = assignments_[0].location_count = 2;
+    assignments_[0].end_point = 4;
+    assignments_[1].location_base = 1;
+    assignments_[1].unit_point_start = 2;
+    assignments_[2].location_base = copy_location;
+    assignments_[2].unit_point_start = 3;
+    assignments_[2].end_point = 4;
+    unit_start_points_[1] = 0;
+    unit_start_points_[2] = 1;
+    unit_start_points_[3] = 2;
+    unit_end_points_[0] = unit_end_points_[3] = 4;
+    unit_end_points_[1] = unit_end_points_[2] = 3;
+    relations_[0].kind = LOOM_LOW_PLACEMENT_RELATION_SUBRANGE;
+    relations_[0].source_unit_offset = 1;
+    // Only a's second unit is overwritten by b and copied into c. The first
+    // unit remains independently live and cannot share c's location.
+    const auto result = Check();
+    if (copy_location == 1) {
+      EXPECT_EQ(result.violation_count, 0u);
+    } else {
+      EXPECT_GT(result.violation_count, 0u);
+      EXPECT_EQ(result.first_violation.kind,
+                LOOM_LOW_ALLOCATION_CHECK_VIOLATION_STORAGE_CONFLICT);
+    }
+  }
 }
 
 TEST_F(AllocationCheckerTest, RejectsFixedLocationMismatch) {

@@ -86,10 +86,7 @@ _ATTR_COPY_VALUE_REF_KINDS = frozenset(
         LowerAttrCopyKind.VALUE_U32_DIVISOR_MAGIC_MULTIPLIER,
         LowerAttrCopyKind.VALUE_U32_DIVISOR_MAGIC_SHIFT,
         LowerAttrCopyKind.VALUE_I32_AS_U32_BITS,
-        LowerAttrCopyKind.VALUE_FLOAT_AS_F16_BITS,
-        LowerAttrCopyKind.VALUE_FLOAT_AS_BF16_BITS,
-        LowerAttrCopyKind.VALUE_FLOAT_AS_F32_BITS,
-        LowerAttrCopyKind.VALUE_FLOAT_AS_F64_BITS,
+        LowerAttrCopyKind.VALUE_FLOAT_BITS,
     )
 )
 

@@ -79,6 +79,22 @@ TEST(PassBuiltinRegistryTest, ValidatesBuiltinOptionSchemas) {
   IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
                         loom_pass_descriptor_validate_options(
                             canonicalize, IREE_SV("max-iterations=0")));
+  IREE_ASSERT_OK(loom_pass_descriptor_validate_options(
+      canonicalize, IREE_SV("view-loads=coalesce")));
+  IREE_ASSERT_OK(loom_pass_descriptor_validate_options(
+      canonicalize, IREE_SV("view-loads=preserve")));
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
+                        loom_pass_descriptor_validate_options(
+                            canonicalize, IREE_SV("view-loads=invalid")));
+
+  const loom_pass_descriptor_t* math =
+      LookupBuiltinPass(IREE_SV("legalize-math"));
+  ASSERT_NE(math, nullptr);
+  IREE_ASSERT_OK(
+      loom_pass_descriptor_validate_options(math, IREE_SV("max-iterations=4")));
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
+                        loom_pass_descriptor_validate_options(
+                            math, IREE_SV("view-loads=coalesce")));
 
   const loom_pass_descriptor_t* allocation =
       LookupBuiltinPass(IREE_SV("low-materialize-allocation"));

@@ -14,6 +14,7 @@
 #include "loom/ir/module.h"
 #include "loom/ops/func/ops.h"
 #include "loom/target/low_descriptor_registry.h"
+#include "loom/target/registers.h"
 
 typedef struct loom_low_lower_contract_query_state_t {
   // Mutable lowering context backing the read-only contract query.
@@ -64,11 +65,21 @@ static iree_status_t loom_low_lower_source_query_map_value(
       (loom_low_lower_contract_query_state_t*)user_data;
   const loom_low_lower_map_contract_value_callback_t map_contract_value =
       state->context->policy->map_contract_value;
-  if (map_contract_value.fn == NULL) {
-    return iree_ok_status();
+  if (map_contract_value.fn != NULL) {
+    IREE_RETURN_IF_ERROR(
+        map_contract_value.fn(map_contract_value.user_data, state->environment,
+                              source_op, source_value_id, out_mapped_value));
+    if (out_mapped_value->is_register) return iree_ok_status();
   }
-  return map_contract_value.fn(map_contract_value.user_data, state->environment,
-                               source_op, source_value_id, out_mapped_value);
+  loom_type_t low_type = loom_type_none();
+  IREE_RETURN_IF_ERROR(loom_low_lower_query_value(state->context, source_op,
+                                                  source_value_id, &low_type));
+  if (loom_type_kind(low_type) != LOOM_TYPE_NONE) {
+    *out_mapped_value = loom_low_lower_rule_mapped_value_register(
+        loom_low_register_type_class_id(low_type),
+        loom_low_register_type_unit_count(low_type));
+  }
+  return iree_ok_status();
 }
 
 static iree_status_t loom_low_lower_source_query_can_materialize(
@@ -135,8 +146,8 @@ static iree_status_t loom_low_lower_source_query_contract(
       .environment = &query_environment,
   };
   const loom_low_lower_contract_query_options_t query_options = {
-      .contract_index = &context->contract_index,
-      .rule_sets = context->policy->rule_sets,
+      .contract_index = context->policy->contract.index,
+      .rule_sets = context->policy->contract.rule_sets,
       .map_value =
           {
               .fn = loom_low_lower_source_query_map_value,
@@ -231,12 +242,6 @@ iree_status_t loom_low_lower_source_query_scope_create(
                                         : NULL,
                                     &scope->context.function_arena,
                                     &scope->context.lowering.condition_query);
-  }
-  if (iree_status_is_ok(status)) {
-    status = loom_target_contract_index_compose(
-        scope->context.policy->contract_bindings,
-        scope->context.policy->contract_binding_count,
-        &scope->context.contract_index, &scope->context.function_arena);
   }
   if (!iree_status_is_ok(status)) {
     loom_low_lower_source_query_scope_deinitialize(scope);

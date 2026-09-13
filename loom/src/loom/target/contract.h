@@ -12,10 +12,9 @@
 // bundle and descriptor set. Unsupported program forms are reported as compact
 // query results; non-OK status is reserved for infrastructure failures.
 //
-// Target packages provide generated contract fragments in rodata. A lowering
-// run composes the active fragment set into a small dense root index so hot
-// queries use direct dialect/op lookup without linking or scanning unrelated
-// targets.
+// Target packages provide generated contract fragments and dense indices in
+// rodata. Queries use direct dialect/op lookup; index construction and fragment
+// composition happen at build time, independently for each target policy.
 
 #ifndef LOOM_TARGET_CONTRACT_H_
 #define LOOM_TARGET_CONTRACT_H_
@@ -181,26 +180,6 @@ typedef struct loom_target_contract_case_t {
   uint16_t row_index;
 } loom_target_contract_case_t;
 
-typedef struct loom_target_contract_fragment_case_t {
-  // Contract system that owns the selected row.
-  loom_target_contract_system_t system;
-  // Reserved byte for future row flags while keeping the case 4 bytes.
-  uint8_t reserved;
-  // Fragment-local system-specific row index, or LOOM_TARGET_CONTRACT_ROW_NONE.
-  uint16_t row_index;
-} loom_target_contract_fragment_case_t;
-
-typedef struct loom_target_contract_fragment_op_span_t {
-  // Source operation kind owning this case span.
-  loom_op_kind_t op_kind;
-  // First fragment-local case row for |op_kind|.
-  uint16_t case_start;
-  // Number of contiguous fragment-local case rows for |op_kind|.
-  uint16_t case_count;
-} loom_target_contract_fragment_op_span_t;
-static_assert(sizeof(loom_target_contract_fragment_op_span_t) == 6,
-              "loom_target_contract_fragment_op_span_t must be 6 bytes");
-
 typedef struct loom_target_contract_descriptor_rule_t {
   // Descriptor-rule row in the target-owned rule interpreter table.
   uint16_t rule_index;
@@ -233,18 +212,8 @@ enum loom_target_contract_fragment_flag_bits_e {
 };
 
 typedef struct loom_target_contract_fragment_t {
-  // Number of populated source-op spans.
-  uint16_t op_span_count;
   // Fragment behavior flags.
   loom_target_contract_fragment_flags_t flags;
-  // Reserved byte available to future fragment-wide behavior flags.
-  uint8_t reserved;
-  // Source-op spans sorted by operation kind.
-  const loom_target_contract_fragment_op_span_t* op_spans;
-  // Number of generic case rows.
-  uint16_t case_count;
-  // Fragment-local generic case rows referenced by source-op spans.
-  const loom_target_contract_fragment_case_t* cases;
   // Number of descriptor-rule rows.
   uint16_t descriptor_rule_count;
   // Descriptor-rule row pool.
@@ -307,11 +276,6 @@ loom_target_contract_index_lookup_kind(
   }
   return dialect_table->op_entries[op_index];
 }
-
-// Composes |bindings| into a dense root index allocated from |arena|.
-iree_status_t loom_target_contract_index_compose(
-    const loom_target_contract_binding_t* bindings, uint16_t binding_count,
-    loom_target_contract_index_t* out_index, iree_arena_allocator_t* arena);
 
 // Returns an empty target contract query result.
 static inline loom_target_contract_query_result_t

@@ -432,6 +432,10 @@ static const loom_target_legalizer_rule_t kAmdgpuLegalizerRules[] = {
         .legalize = loom_amdgpu_legalize_oversized_vector_store,
     },
     {
+        .root_kind = LOOM_OP_VECTOR_FRAGMENT_STORE,
+        .legalize = loom_amdgpu_retain_native_vector_op,
+    },
+    {
         .root_kind = LOOM_OP_VECTOR_REDUCE,
         .legalize = loom_amdgpu_legalize_oversized_vector_reduce,
     },

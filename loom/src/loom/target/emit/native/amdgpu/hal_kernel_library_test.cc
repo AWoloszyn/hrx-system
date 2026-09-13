@@ -1004,7 +1004,7 @@ TEST_F(AmdgpuHalKernelLibraryTest,
       FindDiagnostic(capture, LOOM_ERR_TARGET_051);
   ASSERT_NE(diagnostic, nullptr);
   EXPECT_EQ(GetStringParam(*diagnostic, 0), "loom_kernel");
-  EXPECT_EQ(GetStringParam(*diagnostic, 1), "gfx_target");
+  EXPECT_EQ(GetStringParam(*diagnostic, 1), "gfx1100");
   ASSERT_EQ(diagnostic->params.size(), 4u);
   ASSERT_EQ(diagnostic->params[2].kind, LOOM_PARAM_U64);
   EXPECT_EQ(diagnostic->params[2].u64, 65540u);
@@ -1056,7 +1056,7 @@ TEST_F(AmdgpuHalKernelLibraryTest,
         FindDiagnostic(capture, LOOM_ERR_TARGET_051);
     ASSERT_NE(diagnostic, nullptr);
     EXPECT_EQ(GetStringParam(*diagnostic, 0), "loom_kernel");
-    EXPECT_EQ(GetStringParam(*diagnostic, 1), "gfx_target");
+    EXPECT_EQ(GetStringParam(*diagnostic, 1), processor_name);
     ASSERT_EQ(diagnostic->params.size(), 4u);
     ASSERT_EQ(diagnostic->params[2].kind, LOOM_PARAM_U64);
     EXPECT_EQ(diagnostic->params[2].u64, 327681u);

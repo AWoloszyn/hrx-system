@@ -59,6 +59,7 @@ iree_py_library(
   NAME
     contract_table_family
   SRCS
+    "contract_index.py"
     "contract_table_family.py"
   DEPS
     loom::py::loom::gen::target::contracts::contract_fragments

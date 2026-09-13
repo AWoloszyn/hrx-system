@@ -1202,8 +1202,8 @@ static iree_status_t loom_low_lower_rule_match_map_value_from_lowering(
   *out_mapped_value = loom_low_lower_rule_mapped_value_none();
   loom_low_lower_context_t* context = (loom_low_lower_context_t*)user_data;
   loom_type_t low_type = loom_type_none();
-  IREE_RETURN_IF_ERROR(
-      loom_low_lower_map_value(context, source_op, source_value_id, &low_type));
+  IREE_RETURN_IF_ERROR(loom_low_lower_query_value(context, source_op,
+                                                  source_value_id, &low_type));
   if (!loom_low_type_is_register(low_type)) {
     return iree_ok_status();
   }
@@ -1255,7 +1255,8 @@ static iree_status_t loom_low_lower_rule_descriptor_maps_initialize(
   context->lowering.rule_descriptor_maps = NULL;
   context->lowering.rule_descriptor_map_count = 0;
 
-  const loom_low_lower_rule_set_list_t rule_sets = context->policy->rule_sets;
+  const loom_low_lower_rule_set_list_t rule_sets =
+      context->policy->contract.rule_sets;
   if (rule_sets.count == 0) {
     return iree_ok_status();
   }

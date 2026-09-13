@@ -16,6 +16,7 @@ loom_check_test_suite(
     name = "test",
     srcs = [
         "bank_sroa.loom-test",
+        "dynamic_extract.loom-test",
         "memory_footprint.loom-test",
         "memory_to_scalar.loom-test",
         "reduce_axes_to_scalar.loom-test",

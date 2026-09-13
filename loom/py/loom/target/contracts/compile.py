@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import NamedTuple
 
 from loom.dsl import Dialect, Op
 from loom.target.contracts.fragments import ContractFragment
@@ -69,6 +70,63 @@ class CompiledContractFragment:
     cases: tuple[CompiledCase, ...]
     descriptor_rules: tuple[CompiledDescriptorRule, ...]
     descriptor_matrices: tuple[CompiledDescriptorMatrix, ...]
+
+
+class CompiledIndexCase(NamedTuple):
+    """Case row retaining its owning fragment's ordinal and local row."""
+
+    system: ContractSystem
+    binding_index: int
+    row_index: int
+
+
+class CompiledContractIndex(NamedTuple):
+    """Dense dialect/op lookup with cases in binding precedence order."""
+
+    dialect_base_id: int
+    dialects: tuple[tuple[tuple[int, int], ...], ...]
+    cases: tuple[CompiledIndexCase, ...]
+
+
+def compile_contract_index(
+    fragments: Sequence[CompiledContractFragment],
+) -> CompiledContractIndex:
+    """Composes immutable fragments once, preserving each op's rule order.
+
+    Dialect and op holes have empty spans. Binding order breaks ties between
+    fragments; case order within each fragment is unchanged. Compact C field
+    limits are checked here instead of during function lowering.
+    """
+    if len(fragments) > 0xFF:
+        raise ValueError("contract index binding count exceeds uint8_t")
+    cases_by_op: dict[int, list[CompiledIndexCase]] = {}
+    for binding_index, fragment in enumerate(fragments):
+        for span in fragment.op_spans:
+            cases_by_op.setdefault(span.op_kind, []).extend(
+                CompiledIndexCase(case.system, binding_index, case.row_index)
+                for case in fragment.cases[
+                    span.case_start : span.case_start + span.case_count
+                ]
+            )
+    if not cases_by_op:
+        return CompiledContractIndex(0, (), ())
+    dialect_base_id = min(cases_by_op) >> 8
+    dialect_count = (max(cases_by_op) >> 8) - dialect_base_id + 1
+    if dialect_count > 0xFF:
+        raise ValueError("contract index dialect span exceeds uint8_t")
+    dialects: list[list[tuple[int, int]]] = [[] for _ in range(dialect_count)]
+    cases: list[CompiledIndexCase] = []
+    for op_kind, op_cases in sorted(cases_by_op.items()):
+        dialect = dialects[(op_kind >> 8) - dialect_base_id]
+        op_index = op_kind & 0xFF
+        dialect.extend([(CONTRACT_ROW_NONE, 0)] * (op_index + 1 - len(dialect)))
+        dialect[op_index] = (len(cases), len(op_cases))
+        cases.extend(op_cases)
+    if len(cases) > 0xFFFF:
+        raise ValueError("contract index case count exceeds uint16_t")
+    return CompiledContractIndex(
+        dialect_base_id, tuple(tuple(dialect) for dialect in dialects), tuple(cases)
+    )
 
 
 def compile_contract_fragment(

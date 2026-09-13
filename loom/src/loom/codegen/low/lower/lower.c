@@ -295,7 +295,7 @@ static iree_status_t loom_low_lower_map_op_result_types(
       (void**)&result_types));
   const loom_value_id_t* source_results = loom_op_const_results(source_op);
   for (uint16_t i = 0; i < source_op->result_count; ++i) {
-    IREE_RETURN_IF_ERROR(loom_low_lower_source_plan_check_mapped_value(
+    IREE_RETURN_IF_ERROR(loom_low_lower_map_value(
         context, source_op, source_results[i], &result_types[i]));
     if (loom_type_kind(result_types[i]) == LOOM_TYPE_NONE) {
       return iree_ok_status();
@@ -545,7 +545,7 @@ IREE_ATTRIBUTE_NOINLINE static iree_status_t loom_low_lower_structural_op(
             context, source_op->result_count, sizeof(*result_types),
             (void**)&result_types));
         for (uint16_t i = 0; i < source_op->result_count; ++i) {
-          IREE_RETURN_IF_ERROR(loom_low_lower_source_plan_check_mapped_value(
+          IREE_RETURN_IF_ERROR(loom_low_lower_map_value(
               context, source_op, source_results[i], &result_types[i]));
           has_unmapped_result |=
               loom_type_kind(result_types[i]) == LOOM_TYPE_NONE;
@@ -1285,12 +1285,6 @@ iree_status_t loom_low_lower_function(loom_module_t* module,
     loom_low_lowering_frame_deinitialize(&context);
     iree_arena_deinitialize(&context.function_arena);
     return iree_ok_status();
-  }
-  if (iree_status_is_ok(status)) {
-    status = loom_target_contract_index_compose(
-        context.policy->contract_bindings,
-        context.policy->contract_binding_count, &context.contract_index,
-        &context.function_arena);
   }
 
   loom_vector_memory_footprint_result_t footprint_result = {0};

@@ -1,5 +1,34 @@
 // RUN: pass promote-private-fragments,dce
 
+// Raw buffer users observe stores that a view-local promotion would erase.
+func.def @keeps_raw_observable_storage(%value: i32) -> (i32, i32) {
+  %base_offset = index.constant 0 : offset
+  %length = index.constant 16 : offset
+  %storage = buffer.alloca<private> align(4) %length : buffer
+  %view = buffer.view %storage[%base_offset] : buffer -> view<4xi32>
+  view.store %value, %view[0] : i32, view<4xi32>
+  %loaded = view.load %view[0] : view<4xi32> -> i32
+  %byte = buffer.load.i8.u %storage[%base_offset]
+  func.return %loaded, %byte : i32, i32
+}
+
+// ====
+
+// A different view can overwrite the value that view-local forwarding sees.
+func.def @keeps_shared_view_storage(%first: i32, %second: i8) -> (i32) {
+  %base_offset = index.constant 0 : offset
+  %length = index.constant 16 : offset
+  %storage = buffer.alloca<private> align(4) %length : buffer
+  %words = buffer.view %storage[%base_offset] : buffer -> view<4xi32>
+  %bytes = buffer.view %storage[%base_offset] : buffer -> view<16xi8>
+  view.store %first, %words[0] : i32, view<4xi32>
+  view.store %second, %bytes[0] : i8, view<16xi8>
+  %loaded = view.load %words[0] : view<4xi32> -> i32
+  func.return %loaded : i32
+}
+
+// ====
+
 func.def @promote_static_fragment_load(%input: buffer, %output: buffer) {
   %base = index.constant 0 : offset
   %input_view = buffer.view %input[%base] : buffer -> view<4xf32>

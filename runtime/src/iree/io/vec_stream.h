@@ -23,7 +23,9 @@ extern "C" {
 // Blocks of |block_size| (16-byte aligned) are allocated each time growth is
 // required and writes will be split to fit into blocks. To retrieve the data
 // from the stream use iree_io_vec_stream_enumerate_blocks or seek and read it
-// back.
+// back. Seeking past the end exposes zero-filled bytes; unused block capacity
+// is not initialized. If growth fails, the stream may be partially extended,
+// with the additional bytes zero-filled and its original offset unchanged.
 IREE_API_EXPORT iree_status_t iree_io_vec_stream_create(
     iree_io_stream_mode_t mode, iree_host_size_t block_size,
     iree_allocator_t host_allocator, iree_io_stream_t** out_stream);

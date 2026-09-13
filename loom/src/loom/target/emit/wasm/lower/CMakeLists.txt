@@ -15,6 +15,8 @@ loom_cc_library(
     lower
   HDRS
     "lower.h"
+  TEXTUAL_HDRS
+    "${IREE_BINARY_DIR}/loom/src/loom/target/emit/wasm/contracts/tables.inl"
   SRCS
     "registry.c"
   DEPS

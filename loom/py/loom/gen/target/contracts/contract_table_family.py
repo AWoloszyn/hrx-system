@@ -27,6 +27,7 @@ from loom.gen.support.files import write_text_file  # noqa: E402
 from loom.gen.target.contracts.contract_fragments import (  # noqa: E402
     generate_contract_fragment_from_lower_rules,
 )
+from loom.gen.target.contracts.contract_index import generate_contract_index  # noqa: E402
 from loom.gen.target.contracts.lower_rules import (  # noqa: E402
     generate_lower_rule_set_from_compiled,
 )
@@ -71,7 +72,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=Path,
         help="Generated lower-rule source path; may be repeated.",
     )
+    parser.add_argument(
+        "--contract-index",
+        action="append",
+        default=[],
+        metavar="NAME:KEY,KEY",
+        help="C initializer name and ordered fragment keys; may be repeated.",
+    )
+    parser.add_argument("--index-output", type=Path, help="Private policy index include.")
     args = parser.parse_args(argv)
+    if bool(args.contract_index) != bool(args.index_output):
+        parser.error("--contract-index and --index-output must be supplied together")
 
     family_count = len(args.contract_fragment)
     for flag_name, paths in (
@@ -83,6 +94,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if len(paths) != family_count:
             parser.error(f"{flag_name} has {len(paths)} values for {family_count} contract fragments")
 
+    compiled_fragments = {}
+    lower_rule_keys = set()
     for (
         contract_fragment,
         contract_header,
@@ -113,6 +126,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             fragment,
             compiled=lower_rules,
         )
+        compiled_fragments[registration.key] = (fragment, generated_contract.compiled)
+        lower_rule_keys.add(fragment.name)
         for path, contents in (
             (contract_header, generated_contract.header),
             (contract_source, generated_contract.source),
@@ -120,6 +135,31 @@ def main(argv: Sequence[str] | None = None) -> int:
             (lower_rule_source, generated_lower_rules.source),
         ):
             write_text_file(path, contents)
+    index_sources = []
+    initializer_names = set()
+    for specification in args.contract_index:
+        name, separator, keys = specification.partition(":")
+        if not separator or not keys or name in initializer_names:
+            parser.error(f"invalid or duplicate contract index: {specification}")
+        initializer_names.add(name)
+        fragments = []
+        for key in keys.split(","):
+            registration = resolve_contract_fragment(key)
+            if registration.key not in compiled_fragments:
+                # Metadata-only fragments have no ordinary rule pool output.
+                fragment = registration.load()
+                dialect_ops = registration.load_dialect_ops()
+                lower_rules = compile_lower_rule_set(fragment, dialect_ops=dialect_ops)
+                generated = generate_contract_fragment_from_lower_rules(
+                    fragment,
+                    dialect_ops=dialect_ops,
+                    lower_rules=lower_rules,
+                )
+                compiled_fragments[registration.key] = (fragment, generated.compiled)
+            fragments.append(compiled_fragments[registration.key])
+        index_sources.append(generate_contract_index(name, fragments, lower_rule_keys))
+    if args.index_output:
+        write_text_file(args.index_output, "\n".join(index_sources))
     return 0
 
 

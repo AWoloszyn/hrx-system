@@ -922,8 +922,12 @@ loom_cc_test(
     iree::testing::gtest_main
     loom::codegen::low::testing::source_workload
     loom::codegen::low::testing::source_workload_pipeline
+    loom::error::emitter
+    loom::error::error_defs
     loom::ir
     loom::pass::builtin_registry
+    loom::pass::registry
+    loom::pass::types
     loom::target::test::low_registry
     loom::target::test::lower
     loom::testing::module_ptr

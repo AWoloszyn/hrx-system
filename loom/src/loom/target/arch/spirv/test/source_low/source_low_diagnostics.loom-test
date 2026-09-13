@@ -2,6 +2,16 @@
 
 spirv.target<vulkan1_3> @target
 
+// A native vector body representation does not imply a vector argument ABI.
+// ERROR@+1: TARGET/033 {field_name="argument", actual_type="vector<4xi32>"}
+func.def target(@target) @unsupported_vector_argument(%input: vector<4xi32>, %result: i32) -> (i32) {
+  func.return %result : i32
+}
+
+// ====
+
+spirv.target<vulkan1_3> @target
+
 func.def target(@target) @unsupported_scalar_pow_math(%base: f32, %exponent: f32) -> (f32) {
   // ERROR@+1: LOWERING/036 {op_name="scalar.powf", phase_name="legalize-math", policy_name="spirv-math", math_op="powf", lane_domain="scalar", element_type="f32", constraint_key="math.op.native_arithmetic"}
   %result = scalar.powf<afn> %base, %exponent : f32
@@ -365,17 +375,6 @@ func.def target(@target) @ordinary_vector_rejects_rank_two(%a: i32, %b: i32, %c:
   // ERROR@+1: TARGET/002 {field_name="result", actual_type="vector<2x2xi32>"}
   %value = vector.from_elements %a, %b, %c, %d : vector<2x2xi32>
   func.return %value : vector<2x2xi32>
-}
-
-// ====
-
-spirv.target<vulkan1_3> @target
-
-func.def target(@target) @ordinary_vector_rejects_dynamic_extract(%a: i32, %b: i32, %c: i32, %d: i32, %lane: index) -> (i32) {
-  %value = vector.from_elements %a, %b, %c, %d : vector<4xi32>
-  // ERROR@+1: TARGET/004 {subject_role="operand_segment", subject_name="indices", constraint_key="operand_segment_count", expected_count="0"}
-  %result = vector.extract %value[%lane] : vector<4xi32> -> i32
-  func.return %result : i32
 }
 
 // ====

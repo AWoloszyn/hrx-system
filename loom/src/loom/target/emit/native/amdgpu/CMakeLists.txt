@@ -599,7 +599,6 @@ loom_cc_library(
     loom::codegen::low::frame
     loom::codegen::low::storage_layout
     loom::codegen::low::target_binding
-    loom::codegen::low::verify
     loom::error::diagnostic
     loom::error::error_defs
     loom::ir

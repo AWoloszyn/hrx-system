@@ -576,46 +576,50 @@ func.def target(@target) @vector_quantize_round_f32_to_i8x4(%values: vector<4xf3
 
 // ----
 low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @vector_quantize_round_f32_to_i8x4(%values: reg<amdgpu.vgpr x4>, %inverse_scale: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
-  %20 = slice %values[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %22 = v_mul_f32 %20, %inverse_scale
-  %23 = slice %values[1] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %25 = v_mul_f32 %23, %inverse_scale
-  %26 = slice %values[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %28 = v_mul_f32 %26, %inverse_scale
-  %29 = slice %values[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %31 = v_mul_f32 %29, %inverse_scale
-  %33 = v_mov_b32 1258291200
-  %39 = v_and_b32_lit %22, 2147483647
-  %41 = v_and_b32_lit %25, 2147483647
-  %43 = v_and_b32_lit %28, 2147483647
-  %45 = v_and_b32_lit %31, 2147483647
-  %49 = v_cmp_lt_f32 %39, %33
-  %52 = v_cmp_lt_f32 %41, %33
-  %55 = v_cmp_lt_f32 %43, %33
-  %58 = v_cmp_lt_f32 %45, %33
-  %61 = v_add_f32_src0_inline %39, 1056964608
-  %63 = v_add_f32_src0_inline %41, 1056964608
-  %65 = v_add_f32_src0_inline %43, 1056964608
-  %67 = v_add_f32_src0_inline %45, 1056964608
-  %70 = v_trunc_f32 %61
-  %72 = v_trunc_f32 %63
-  %74 = v_trunc_f32 %65
-  %76 = v_trunc_f32 %67
-  %80 = v_bfi_b32_src0_lit %70, %22, 2147483647
-  %83 = v_bfi_b32_src0_lit %72, %25, 2147483647
-  %86 = v_bfi_b32_src0_lit %74, %28, 2147483647
-  %89 = v_bfi_b32_src0_lit %76, %31, 2147483647
-  %94 = v_cndmask_b32 %22, %80, %49
-  %98 = v_cndmask_b32 %25, %83, %52
-  %102 = v_cndmask_b32 %28, %86, %55
-  %106 = v_cndmask_b32 %31, %89, %58
-  %109 = v_cvt_i32_f32 %94
-  %111 = v_cvt_i32_f32 %98
-  %113 = v_cvt_i32_f32 %102
-  %115 = v_cvt_i32_f32 %106
-  %121 = v_perm_b32_src2_lit %109, %111, 4
-  %122 = v_perm_b32_src2_lit %113, %115, 4
-  %packed = v_perm_b32_src2_lit %121, %122, 16778500
+  %21 = slice %values[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %23 = v_mul_f32 %21, %inverse_scale
+  %24 = slice %values[1] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %26 = v_mul_f32 %24, %inverse_scale
+  %27 = slice %values[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %29 = v_mul_f32 %27, %inverse_scale
+  %30 = slice %values[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %32 = v_mul_f32 %30, %inverse_scale
+  %39 = v_mov_b32 1065353216
+  %45 = v_trunc_f32 %23
+  %47 = v_trunc_f32 %26
+  %49 = v_trunc_f32 %29
+  %51 = v_trunc_f32 %32
+  %55 = v_sub_f32 %23, %45
+  %58 = v_sub_f32 %26, %47
+  %61 = v_sub_f32 %29, %49
+  %64 = v_sub_f32 %32, %51
+  %67 = v_and_b32_lit %55, 2147483647
+  %69 = v_and_b32_lit %58, 2147483647
+  %71 = v_and_b32_lit %61, 2147483647
+  %73 = v_and_b32_lit %64, 2147483647
+  %76 = v_cmp_ge_f32_src1_inline %67 {rhs = 1056964608}
+  %78 = v_cmp_ge_f32_src1_inline %69 {rhs = 1056964608}
+  %80 = v_cmp_ge_f32_src1_inline %71 {rhs = 1056964608}
+  %82 = v_cmp_ge_f32_src1_inline %73 {rhs = 1056964608}
+  %86 = v_bfi_b32_src0_lit %39, %23, 2147483647
+  %89 = v_bfi_b32_src0_lit %39, %26, 2147483647
+  %92 = v_bfi_b32_src0_lit %39, %29, 2147483647
+  %95 = v_bfi_b32_src0_lit %39, %32, 2147483647
+  %99 = v_add_f32 %45, %86
+  %102 = v_add_f32 %47, %89
+  %105 = v_add_f32 %49, %92
+  %108 = v_add_f32 %51, %95
+  %113 = v_cndmask_b32 %45, %99, %76
+  %117 = v_cndmask_b32 %47, %102, %78
+  %121 = v_cndmask_b32 %49, %105, %80
+  %125 = v_cndmask_b32 %51, %108, %82
+  %128 = v_cvt_i32_f32 %113
+  %130 = v_cvt_i32_f32 %117
+  %132 = v_cvt_i32_f32 %121
+  %134 = v_cvt_i32_f32 %125
+  %140 = v_perm_b32_src2_lit %128, %130, 4
+  %141 = v_perm_b32_src2_lit %132, %134, 4
+  %packed = v_perm_b32_src2_lit %140, %141, 16778500
   return %packed
 }
 

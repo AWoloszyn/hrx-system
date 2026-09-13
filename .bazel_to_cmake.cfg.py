@@ -14,6 +14,12 @@ REPO_MAP = {
     "@hrx": "",
 }
 
+# Root tool aliases whose executables share a runtime package.
+TARGET_MAPPINGS = {
+    "//tools:vm-as": ["iree::tools::vm::vm-as"],
+    "//tools:vm-dis": ["iree::tools::vm::vm-dis"],
+}
+
 PROJECTS = bazel_to_cmake_config.include_projects(
     __file__,
     [

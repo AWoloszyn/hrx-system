@@ -452,22 +452,9 @@ static iree_status_t loom_low_allocation_interval_assignment_append_assignment(
                             "%u",
                             (unsigned)assignment->value_id);
   }
-  if (loom_low_allocation_location_kind_is_register_like(
-          assignment->location_kind)) {
-    bool valid_range = false;
-    IREE_RETURN_IF_ERROR(
-        loom_low_allocation_target_constraints_validate_register_location_capacity(
-            state->context->target_constraints,
-            assignment->descriptor_reg_class_id, assignment->location_kind,
-            assignment->location_base, assignment->location_count,
-            IREE_SV("assignment"), state->context->function_op, &valid_range));
-    if (!valid_range) {
-      return iree_make_status(
-          IREE_STATUS_FAILED_PRECONDITION,
-          "low allocation produced an assignment outside register-class "
-          "capacity");
-    }
-  }
+  // Fixed locations are validated when resolved; search and coalescing only
+  // select locations within the resolved capacity. Committing that selection
+  // updates allocation state without repeating the input-boundary checks.
   const uint32_t assignment_index = (uint32_t)state->result.assignment_count;
   loom_low_allocation_assignment_t stored_assignment = *assignment;
   const loom_liveness_interval_t* semantic_interval =

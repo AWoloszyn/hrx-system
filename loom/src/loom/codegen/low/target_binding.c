@@ -262,23 +262,16 @@ static iree_status_t loom_low_resolve_function_target_facts(
     loom_low_resolved_target_t* out_target) {
   const loom_func_like_t low_func =
       loom_func_like_const_cast(module, low_func_op);
-  const loom_symbol_ref_t func_ref = loom_func_like_callee(low_func);
-
-  const loom_symbol_facts_base_t* base_facts = NULL;
-  iree_status_t status = loom_symbol_fact_table_lookup_ref(
-      fact_table, module, func_ref, &base_facts);
-  const loom_func_symbol_facts_t* func_facts =
-      iree_status_is_ok(status) ? loom_func_symbol_facts_cast(base_facts)
-                                : NULL;
-  if (iree_status_is_ok(status) && func_facts == NULL) {
-    status = iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "low function symbol must resolve to func symbol facts");
-  }
+  iree_status_t status = iree_ok_status();
   bool contract_valid = function_target_facts != NULL;
-  if (iree_status_is_ok(status) && function_target_facts != NULL) {
+  if (function_target_facts != NULL) {
     out_target->target_facts = function_target_facts;
-  } else if (iree_status_is_ok(status)) {
+  } else {
+    const loom_symbol_facts_base_t* base_facts = NULL;
+    IREE_RETURN_IF_ERROR(loom_symbol_fact_table_lookup_ref(
+        fact_table, module, loom_func_like_callee(low_func), &base_facts));
+    const loom_func_symbol_facts_t* func_facts =
+        loom_func_symbol_facts_cast(base_facts);
     status = loom_target_function_contract_resolve_facts(
         module, fact_table, func_facts, emitter, fact_table->arena,
         &contract_valid, &out_target->target_facts);
@@ -287,7 +280,7 @@ static iree_status_t loom_low_resolve_function_target_facts(
   if (iree_status_is_ok(status) && contract_valid &&
       loom_low_kernel_def_static_workgroup_size(low_func_op, &workgroup_size)) {
     status = loom_target_function_contract_refine_hal_workgroup_size(
-        func_facts, out_target->target_name, &workgroup_size,
+        low_func_op, out_target->target_name, &workgroup_size,
         out_target->target_facts, emitter, fact_table->arena, &contract_valid,
         &out_target->target_facts);
   }

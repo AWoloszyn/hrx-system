@@ -23,10 +23,21 @@ typedef struct loom_canonicalizer_state_t loom_canonicalizer_state_t;
 // Default maximum number of canonicalizer fixed-point iterations.
 #define LOOM_CANONICALIZER_DEFAULT_MAX_ITERATIONS 10
 
+// Optional canonicalization rewrites selected by the owning pipeline phase.
+enum loom_canonicalizer_flag_bits_e {
+  // Combine adjacent view loads into vector loads. Enabled only by cleanup
+  // before target legalization; ordinary cleanup preserves scalar loads.
+  LOOM_CANONICALIZER_FLAG_COALESCE_VIEW_LOADS = 1u << 0,
+};
+typedef uint32_t loom_canonicalizer_flags_t;
+
 // Canonicalizer driver options. Zero-initialized options use defaults.
 typedef struct loom_canonicalizer_options_t {
   // Maximum number of fixed-point iterations. Zero selects the default.
   uint32_t max_iterations;
+
+  // Optional representation-changing rewrites allowed by the caller's phase.
+  loom_canonicalizer_flags_t flags;
 
   // Optional immutable target facts used by target-sensitive fact inference.
   const loom_target_facts_t* target_facts;

@@ -78,6 +78,9 @@ iree_string_view_t loom_low_allocation_check_violation_kind_name(
 //
 // This is test-only infrastructure. Production frame construction and target
 // emission never invoke the checker or retain checker-specific state.
+// Mandatory per-unit storage identities are checked transitively. Optional
+// aliases justify equal contents only until either endpoint is overwritten;
+// an extended storage reservation does not extend the old SSA value's identity.
 iree_status_t loom_low_allocation_check_frame(
     const loom_low_emission_frame_t* frame, iree_arena_allocator_t* arena,
     loom_low_allocation_check_result_t* out_result);

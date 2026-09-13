@@ -177,7 +177,9 @@ int64_t loom_vector_to_scalar_shifted_integer_mask_value(int32_t bit_width,
   mask <<= (uint64_t)offset;
   if (bit_width < 64) mask &= (UINT64_C(1) << (uint32_t)bit_width) - 1;
   if (bit_width == 1) return (mask & 1) ? 1 : 0;
-  return (int64_t)mask;
+  // Constants use signed lane values, including masks reaching the sign bit.
+  const uint64_t sign_bit = UINT64_C(1) << (bit_width - 1);
+  return (int64_t)((mask ^ sign_bit) - sign_bit);
 }
 
 iree_status_t loom_vector_to_scalar_build_integer_mask(
@@ -663,20 +665,6 @@ typedef iree_status_t (*loom_vector_to_scalar_lane_lowerer_t)(
     loom_vector_to_scalar_state_t* state,
     loom_vector_to_scalar_index_list_t indices, loom_value_id_t* out_lane);
 
-static iree_status_t loom_vector_to_scalar_build_bitfield_extractu_lane(
-    loom_vector_to_scalar_state_t* state,
-    loom_vector_to_scalar_index_list_t indices, loom_value_id_t* out_lane) {
-  return loom_vector_to_scalar_build_bitfield_extract_lane(
-      state, indices, /*signed_extract=*/false, out_lane);
-}
-
-static iree_status_t loom_vector_to_scalar_build_bitfield_extracts_lane(
-    loom_vector_to_scalar_state_t* state,
-    loom_vector_to_scalar_index_list_t indices, loom_value_id_t* out_lane) {
-  return loom_vector_to_scalar_build_bitfield_extract_lane(
-      state, indices, /*signed_extract=*/true, out_lane);
-}
-
 static iree_status_t loom_vector_to_scalar_build_bitunpacku_lane(
     loom_vector_to_scalar_state_t* state,
     loom_vector_to_scalar_index_list_t indices, loom_value_id_t* out_lane) {
@@ -706,8 +694,6 @@ static const loom_vector_to_scalar_lane_lowerer_t
         loom_vector_to_scalar_build_interleave_lane,
         loom_vector_to_scalar_build_deinterleave_lane,
         loom_vector_to_scalar_build_bitcast_lane,
-        loom_vector_to_scalar_build_bitfield_extractu_lane,
-        loom_vector_to_scalar_build_bitfield_extracts_lane,
         loom_vector_to_scalar_build_bitfield_insert_lane,
         loom_vector_to_scalar_build_dot2f_lane,
         loom_vector_to_scalar_build_dot4i_lane,
@@ -763,15 +749,14 @@ bool loom_vector_to_scalar_can_materialize_def_lane(
     }
 
     if (loom_vector_from_elements_isa(def_op)) {
-      if (loom_vector_to_scalar_indices_are_dynamic(indices) ||
-          !loom_type_is_all_static(vector_type)) {
-        return false;
+      const loom_value_slice_t elements =
+          loom_vector_from_elements_elements(def_op);
+      if (loom_vector_to_scalar_indices_are_dynamic(indices)) {
+        return elements.count != 0;
       }
       const int64_t ordinal = loom_vector_to_scalar_linear_ordinal_static(
           vector_type, indices.static_indices);
       if (ordinal < 0) return false;
-      const loom_value_slice_t elements =
-          loom_vector_from_elements_elements(def_op);
       if (ordinal >= (int64_t)elements.count) return false;
       return true;
     }
@@ -883,19 +868,51 @@ static iree_status_t loom_vector_to_scalar_can_rematerialize_def_at_use(
   return iree_ok_status();
 }
 
-static bool loom_vector_to_scalar_try_from_elements_lane(
-    loom_op_t* def_op, loom_type_t vector_type,
-    loom_vector_to_scalar_index_list_t indices, loom_value_id_t* out_lane) {
-  if (!loom_vector_from_elements_isa(def_op)) return false;
-  if (loom_vector_to_scalar_indices_are_dynamic(indices)) return false;
-  if (!loom_type_is_all_static(vector_type)) return false;
-  int64_t ordinal = loom_vector_to_scalar_linear_ordinal_static(
-      vector_type, indices.static_indices);
-  if (ordinal < 0) return false;
+static iree_status_t loom_vector_to_scalar_try_from_elements_lane(
+    loom_vector_to_scalar_state_t* state, loom_op_t* def_op,
+    loom_type_t vector_type, loom_vector_to_scalar_index_list_t indices,
+    bool* out_materialized, loom_value_id_t* out_lane) {
   loom_value_slice_t elements = loom_vector_from_elements_elements(def_op);
-  if (ordinal >= (int64_t)elements.count) return false;
-  *out_lane = loom_value_slice_get(elements, (uint16_t)ordinal);
-  return true;
+  if (!loom_vector_to_scalar_indices_are_dynamic(indices)) {
+    int64_t ordinal = loom_vector_to_scalar_linear_ordinal_static(
+        vector_type, indices.static_indices);
+    if (ordinal < 0 || ordinal >= (int64_t)elements.count) {
+      return iree_ok_status();
+    }
+    *out_lane = loom_value_slice_get(elements, (uint16_t)ordinal);
+    *out_materialized = true;
+    return iree_ok_status();
+  }
+  if (elements.count == 0) return iree_ok_status();
+
+  loom_vector_to_scalar_index_term_t ordinal;
+  IREE_RETURN_IF_ERROR(loom_vector_to_scalar_linear_ordinal_term(
+      state, vector_type, indices, &ordinal));
+  // The final lane needs no comparison: every valid index selects one lane.
+  // Selecting existing SSA values preserves their bits and memory snapshots.
+  loom_value_id_t lane = loom_value_slice_get(elements, elements.count - 1);
+  iree_status_t status = iree_ok_status();
+  for (uint16_t i = 0; i + 1 < elements.count && iree_status_is_ok(status);
+       ++i) {
+    loom_value_id_t condition = LOOM_VALUE_ID_INVALID;
+    status = loom_vector_to_scalar_build_index_term_cmp(
+        state, LOOM_INDEX_CMP_PREDICATE_EQ, ordinal,
+        loom_vector_to_scalar_static_term(i), &condition);
+    if (iree_status_is_ok(status)) {
+      loom_op_t* select_op = NULL;
+      status =
+          loom_scf_select_build(&state->rewriter->builder, condition,
+                                loom_value_slice_get(elements, i), lane,
+                                loom_vector_to_scalar_lane_type(vector_type),
+                                state->location, &select_op);
+      if (iree_status_is_ok(status)) lane = loom_scf_select_result(select_op);
+    }
+  }
+  if (iree_status_is_ok(status)) {
+    *out_lane = lane;
+    *out_materialized = true;
+  }
+  return status;
 }
 
 static iree_status_t
@@ -978,10 +995,9 @@ iree_status_t loom_vector_to_scalar_try_materialize_def_lane(
   if (!can_rematerialize) {
     return iree_ok_status();
   }
-  if (loom_vector_to_scalar_try_from_elements_lane(def_op, vector_type, indices,
-                                                   out_lane)) {
-    *out_materialized = true;
-    return iree_ok_status();
+  if (loom_vector_from_elements_isa(def_op)) {
+    return loom_vector_to_scalar_try_from_elements_lane(
+        state, def_op, vector_type, indices, out_materialized, out_lane);
   }
   if (loom_vector_splat_isa(def_op)) {
     *out_lane = loom_vector_splat_scalar(def_op);

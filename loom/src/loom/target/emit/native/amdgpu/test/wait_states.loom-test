@@ -709,3 +709,28 @@ low.func.def target<amdgpu.cdna4.core>(@gfx950_target) @gfx950_sdwa_dst_sel_waw_
 // ----
 amdgpu.wait_state_plan states=1 progress=3 hazards=1
 state[0] reason=dst_sel_forwarding_use action=amdgpu.s_nop at=b0:n1/o1 producer=n0 consumer=n1 required=1 observed=0 residual=1
+
+// ====
+
+// RUN: emit amdgpu-wait-state-plan @wait_records_across_empty_blocks strategy=source
+
+// Packet order crosses an intermediate block with no waits. Each dependent
+// pair still contributes its own record after packets without hazard events.
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @wait_records_across_empty_blocks(%lhs: reg<amdgpu.vgpr>, %rhs: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
+  %sum = v_add_f32 %lhs, %rhs
+  %product = v_mul_f32 %sum, %rhs
+  low.br ^gap(%product: reg<amdgpu.vgpr>)
+^gap(%carried: reg<amdgpu.vgpr>):
+  low.br ^next(%carried: reg<amdgpu.vgpr>)
+^next(%input: reg<amdgpu.vgpr>):
+  %next_sum = v_add_f32 %input, %rhs
+  %next_product = v_mul_f32 %next_sum, %rhs
+  return %next_product
+}
+
+// ----
+amdgpu.wait_state_plan states=2 progress=5 hazards=2
+state[0] reason=delay_alu_dependency action=amdgpu.s_delay_alu at=b0:n1/o1 producer=n0 consumer=n1 required=4 observed=1 residual=3 delay_alu=0x0001
+state[1] reason=delay_alu_dependency action=amdgpu.s_delay_alu at=b2:n5/o1 producer=n4 consumer=n5 required=4 observed=1 residual=3 delay_alu=0x0001

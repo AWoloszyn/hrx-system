@@ -48,7 +48,27 @@
 #include "loom/transforms/vector/to_scalar.h"
 #include "loom/transforms/view/linearize_view_accesses.h"
 
+static const loom_pass_option_enum_value_t kCanonicalizeViewLoadValues[] = {
+    {.value = IREE_SVL("coalesce")},
+    {.value = IREE_SVL("preserve")},
+};
+
 static const loom_pass_option_schema_t kCanonicalizeOptionSchema[] = {
+    {
+        .name = IREE_SVL("max-iterations"),
+        .kind = LOOM_PASS_OPTION_SCHEMA_UINT32,
+        .minimum_uint32 = 1,
+        .maximum_uint32 = UINT32_MAX,
+    },
+    {
+        .name = IREE_SVL("view-loads"),
+        .kind = LOOM_PASS_OPTION_SCHEMA_ENUM,
+        .enum_values = kCanonicalizeViewLoadValues,
+        .enum_value_count = IREE_ARRAYSIZE(kCanonicalizeViewLoadValues),
+    },
+};
+
+static const loom_pass_option_schema_t kMathLegalizeOptionSchema[] = {
     {
         .name = IREE_SVL("max-iterations"),
         .kind = LOOM_PASS_OPTION_SCHEMA_UINT32,
@@ -216,6 +236,7 @@ static const loom_pass_requirement_def_t kLowSourceToLowRequirements[] = {
 };
 
 static const loom_pass_option_enum_value_t kLowTargetLegalizeModeValues[] = {
+    {.value = IREE_SVL("complete")},
     {.value = IREE_SVL("eager")},
     {.value = IREE_SVL("final")},
 };
@@ -381,8 +402,8 @@ static const loom_pass_descriptor_t kBuiltinPassDescriptors[] = {
         .info = loom_math_legalize_pass_info,
         .function_run = loom_math_legalize_run,
         .create = loom_math_legalize_create,
-        .option_schema = kCanonicalizeOptionSchema,
-        .option_schema_count = IREE_ARRAYSIZE(kCanonicalizeOptionSchema),
+        .option_schema = kMathLegalizeOptionSchema,
+        .option_schema_count = IREE_ARRAYSIZE(kMathLegalizeOptionSchema),
     },
     {
         .key = IREE_SVL("licm"),

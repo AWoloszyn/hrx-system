@@ -19,56 +19,6 @@
 // Quantized lane programs
 //===----------------------------------------------------------------------===//
 
-iree_status_t loom_vector_to_scalar_build_bitfield_extract_lane(
-    loom_vector_to_scalar_state_t* state,
-    loom_vector_to_scalar_index_list_t indices, bool signed_extract,
-    loom_value_id_t* out_lane) {
-  loom_value_id_t source =
-      signed_extract ? loom_vector_bitfield_extracts_source(state->op)
-                     : loom_vector_bitfield_extractu_source(state->op);
-  int64_t offset = signed_extract
-                       ? loom_vector_bitfield_extracts_offset(state->op)
-                       : loom_vector_bitfield_extractu_offset(state->op);
-  int64_t width = signed_extract
-                      ? loom_vector_bitfield_extracts_width(state->op)
-                      : loom_vector_bitfield_extractu_width(state->op);
-  loom_type_t source_type =
-      loom_module_value_type(state->rewriter->module, source);
-  loom_type_t source_scalar_type = loom_vector_to_scalar_lane_type(source_type);
-  int32_t source_width =
-      loom_scalar_type_bitwidth(loom_type_element_type(source_scalar_type));
-
-  loom_value_id_t source_lane = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_vector_to_scalar_materialize_lane(
-      state, source, indices, &source_lane));
-
-  loom_value_id_t extracted = LOOM_VALUE_ID_INVALID;
-  if (signed_extract) {
-    loom_value_id_t shifted_left = LOOM_VALUE_ID_INVALID;
-    IREE_RETURN_IF_ERROR(loom_vector_to_scalar_build_scalar_shift(
-        state, LOOM_OP_SCALAR_SHLI, source_lane, source_scalar_type,
-        source_width - offset - width, &shifted_left));
-    IREE_RETURN_IF_ERROR(loom_vector_to_scalar_build_scalar_shift(
-        state, LOOM_OP_SCALAR_SHRSI, shifted_left, source_scalar_type,
-        source_width - width, &extracted));
-  } else {
-    loom_value_id_t shifted = LOOM_VALUE_ID_INVALID;
-    IREE_RETURN_IF_ERROR(loom_vector_to_scalar_build_scalar_shift(
-        state, LOOM_OP_SCALAR_SHRUI, source_lane, source_scalar_type, offset,
-        &shifted));
-    loom_value_id_t mask = LOOM_VALUE_ID_INVALID;
-    IREE_RETURN_IF_ERROR(loom_vector_to_scalar_build_integer_mask(
-        state, source_scalar_type, width, &mask));
-    IREE_RETURN_IF_ERROR(loom_vector_to_scalar_build_scalar_binary(
-        state, LOOM_OP_SCALAR_ANDI, shifted, mask, source_scalar_type,
-        &extracted));
-  }
-
-  return loom_vector_to_scalar_cast_integer_lane(
-      state, extracted, source_scalar_type, state->result_scalar_type,
-      signed_extract, out_lane);
-}
-
 iree_status_t loom_vector_to_scalar_build_bitfield_insert_lane(
     loom_vector_to_scalar_state_t* state,
     loom_vector_to_scalar_index_list_t indices, loom_value_id_t* out_lane) {

@@ -20,7 +20,6 @@ loom_cc_library(
   DEPS
     iree::base
     loom::target::arch::spirv::descriptors::low_registry
-    loom::target::arch::spirv::low_verify
     loom::target::arch::spirv::profile
     loom::target::emit::spirv::module_builder
     loom::target::emit::spirv::module_emitter

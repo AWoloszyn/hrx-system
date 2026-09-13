@@ -998,6 +998,16 @@ static int iree_printf_format_fixed(char* buffer, double value, int precision,
       iree_printf_mul_error(fractional_part, frac_scale, frac_scaled);
   uint64_t frac_digits = (uint64_t)frac_scaled;
   double remainder = (frac_scaled - (double)frac_digits) + mul_error;
+  // Above 2^53 the scaled product can lose whole integer units. Apply those
+  // first so the remaining fraction is in [0, 1) for nearest-even rounding.
+  int64_t correction = (int64_t)remainder;
+  if ((double)correction > remainder) --correction;
+  if (correction < 0) {
+    frac_digits -= (uint64_t)-correction;
+  } else {
+    frac_digits += (uint64_t)correction;
+  }
+  remainder -= (double)correction;
   if (remainder > 0.5) {
     frac_digits++;
   } else if (remainder == 0.5) {
@@ -1217,6 +1227,34 @@ static int iree_printf_format_exponential(
   return position;
 }
 
+// Emits %g's fixed notation from the significant digits already rounded for
+// notation selection. Leading fractional zeros do not consume precision.
+static int iree_printf_format_significant_fixed(
+    char* buffer, iree_printf_decimal_digits_t digits, int digit_count,
+    int precision, bool force_decimal_point, int* out_trailing_zeros) {
+  char significant_digits[IREE_PRINTF_MAX_FLOAT_PRECISION];
+  for (int i = digit_count - 1; i >= 0; --i) {
+    significant_digits[i] = '0' + (char)(digits.significand % 10);
+    digits.significand /= 10;
+  }
+  int final_power = digits.exponent - digit_count + 1;
+  if (final_power > 0) final_power = 0;
+  int position = 0;
+  for (int power = digits.exponent > 0 ? digits.exponent : 0;
+       power >= final_power; --power) {
+    if (power == -1) buffer[position++] = '.';
+    int index = digits.exponent - power;
+    buffer[position++] =
+        index >= 0 && index < digit_count ? significant_digits[index] : '0';
+  }
+  *out_trailing_zeros = precision - digits.exponent - 1 + final_power;
+  if (*out_trailing_zeros < 0) *out_trailing_zeros = 0;
+  if (final_power == 0 && (*out_trailing_zeros > 0 || force_decimal_point)) {
+    buffer[position++] = '.';
+  }
+  return position;
+}
+
 // Entry point for floating-point formatting. Handles sign, special values
 // (NaN, Inf), and dispatches to the appropriate formatter.
 static void iree_printf_format_float(iree_printf_output_t* out,
@@ -1313,18 +1351,17 @@ static void iree_printf_format_float(iree_printf_output_t* out,
     int sig_precision = precision;
     if (sig_precision == 0) sig_precision = 1;  // %g with precision 0 is 1.
 
-    int exponent = 0;
+    int effective_sig_precision = sig_precision;
+    if (effective_sig_precision > IREE_PRINTF_MAX_FLOAT_PRECISION) {
+      effective_sig_precision = IREE_PRINTF_MAX_FLOAT_PRECISION;
+    }
+    iree_printf_decimal_digits_t digits = {0};
     if (value != 0.0) {
-      int effective_sig_precision = sig_precision;
-      if (effective_sig_precision > IREE_PRINTF_MAX_FLOAT_PRECISION) {
-        effective_sig_precision = IREE_PRINTF_MAX_FLOAT_PRECISION;
-      }
-      exponent =
-          iree_printf_extract_significant_digits(value, effective_sig_precision)
-              .exponent;
+      digits = iree_printf_extract_significant_digits(value,
+                                                      effective_sig_precision);
     }
 
-    if (exponent < -4 || exponent >= sig_precision) {
+    if (digits.exponent < -4 || digits.exponent >= sig_precision) {
       // Use exponential notation. Precision for %e is sig_precision - 1
       // (significant digits minus the one before the decimal point).
       length = iree_printf_format_exponential(
@@ -1332,12 +1369,9 @@ static void iree_printf_format_float(iree_printf_output_t* out,
           &trailing_zeros, &exponent_offset);
       has_exponent_suffix = true;
     } else {
-      // Use fixed notation. Precision for %f is sig_precision - exponent - 1
-      // (digits after the decimal point to get the right significant digits).
-      int f_precision = sig_precision - exponent - 1;
-      if (f_precision < 0) f_precision = 0;
-      length = iree_printf_format_fixed(buffer, value, f_precision,
-                                        force_decimal_point, &trailing_zeros);
+      length = iree_printf_format_significant_fixed(
+          buffer, digits, effective_sig_precision, sig_precision,
+          force_decimal_point, &trailing_zeros);
     }
 
     // Strip trailing zeros after the decimal point (unless '#' flag).

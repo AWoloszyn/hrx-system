@@ -102,6 +102,9 @@ typedef iree_status_t (*loom_low_lower_map_type_fn_t)(
 
 typedef struct loom_low_lower_map_type_callback_t {
   // Callback invoked to map one source value type to a low register type.
+  // The caller initializes the output to none. Unsupported types leave it
+  // unchanged without emitting a diagnostic; status reports mapping failures
+  // such as allocation, not absence of a native representation.
   loom_low_lower_map_type_fn_t fn;
   // Caller-owned payload passed to |fn|.
   void* user_data;
@@ -114,7 +117,8 @@ typedef iree_status_t (*loom_low_lower_map_value_fn_t)(
 
 typedef struct loom_low_lower_map_value_callback_t {
   // Optional callback invoked to map one concrete source SSA value to a low
-  // register type. Missing uses |map_type|.
+  // register type. Missing uses |map_type|. Like |map_type|, an unsupported
+  // value leaves the caller-initialized none output without a diagnostic.
   loom_low_lower_map_value_fn_t fn;
   // Caller-owned payload passed to |fn|.
   void* user_data;
@@ -129,7 +133,8 @@ typedef iree_status_t (*loom_low_lower_map_contract_value_fn_t)(
 typedef struct loom_low_lower_map_contract_value_callback_t {
   // Optional callback invoked during read-only contract queries to map one
   // source value into target-low register metadata without creating register
-  // types or formatting diagnostics.
+  // types or formatting diagnostics. An absent mapping uses the ordinary
+  // native value/type mapper.
   loom_low_lower_map_contract_value_fn_t fn;
   // Caller-owned payload passed to |fn|.
   void* user_data;
@@ -142,10 +147,14 @@ typedef enum loom_low_lower_abi_argument_kind_e {
   LOOM_LOW_LOWER_ABI_ARGUMENT_RESOURCE = 1,
 } loom_low_lower_abi_argument_kind_t;
 
+// Direct arguments use only kind and abi_type. Resource arguments additionally
+// describe the low.resource import; those fields are unused for direct
+// arguments.
 typedef struct loom_low_lower_abi_argument_t {
   // ABI path used for the source argument.
   loom_low_lower_abi_argument_kind_t kind;
   // Register type used by the low argument or imported low.resource result.
+  // None indicates that the argument has no native ABI representation.
   loom_type_t abi_type;
   // Resource import kind used when |kind| is RESOURCE.
   loom_low_resource_import_kind_t resource_import_kind;
@@ -164,6 +173,12 @@ typedef struct loom_low_lower_abi_argument_t {
   int64_t resource_cache_swizzle_stride;
 } loom_low_lower_abi_argument_t;
 
+// Queries a native direct argument or resource representation. The caller
+// initializes kind to DIRECT and abi_type to none. A resource mapping also
+// supplies the resource fields; they are otherwise unused and uninitialized.
+// Unsupported arguments leave abi_type none without emitting diagnostics;
+// required boundary lowering owns that diagnostic. Allocation failures
+// propagate normally.
 typedef iree_status_t (*loom_low_lower_map_argument_fn_t)(
     void* user_data, loom_low_lower_context_t* context,
     const loom_op_t* source_function_op, uint16_t source_argument_index,
@@ -172,7 +187,7 @@ typedef iree_status_t (*loom_low_lower_map_argument_fn_t)(
 
 typedef struct loom_low_lower_map_argument_callback_t {
   // Optional callback invoked to map a source function argument to a direct low
-  // argument or target ABI resource. Missing uses direct |map_type| behavior.
+  // argument or target ABI resource. Missing uses the native value query.
   loom_low_lower_map_argument_fn_t fn;
   // Caller-owned payload passed to |fn|.
   void* user_data;
@@ -760,6 +775,17 @@ typedef struct loom_low_lower_finalize_module_callback_t {
   void* user_data;
 } loom_low_lower_finalize_module_callback_t;
 
+// Immutable rule selection tables. The index and rule-set order are generated
+// together: ordinary bindings name ordinals in this exact rule-set list;
+// metadata-only bindings have no ordinary rule pool.
+typedef struct loom_low_lower_contract_t {
+  // Direct source-op lookup, or NULL for callback-only policies.
+  const loom_target_contract_index_t* index;
+  // Rule pools in selection order. Overlapping rules retain first-match
+  // precedence; failed diagnostics use the most-specific rejected candidate.
+  loom_low_lower_rule_set_list_t rule_sets;
+} loom_low_lower_contract_t;
+
 typedef struct loom_low_lower_policy_t {
   // Stable policy name used in diagnostics and status messages.
   iree_string_view_t name;
@@ -775,8 +801,8 @@ typedef struct loom_low_lower_policy_t {
   // when type alone does not determine the target register class.
   loom_low_lower_map_value_callback_t map_value;
   // Optionally maps concrete source SSA values to descriptor register metadata
-  // for read-only target contract queries. Missing means table guards that need
-  // register mapping cannot match.
+  // for read-only target contract queries without constructing register types.
+  // Missing mappings use the native value/type mapper.
   loom_low_lower_map_contract_value_callback_t map_contract_value;
   // Optionally maps source function arguments to non-direct ABI imports.
   loom_low_lower_map_argument_callback_t map_argument;
@@ -802,15 +828,8 @@ typedef struct loom_low_lower_policy_t {
   // Low declaration import kind for target-bound source imports, or zero when
   // this policy does not lower import declarations.
   loom_low_func_decl_import_kind_t import_decl_kind;
-  // Optional table-driven source-op lowering rule sets in selection order. Rule
-  // sets may overlap; the first matching rule wins and failed diagnostics use
-  // the most-specific rejected candidate.
-  loom_low_lower_rule_set_list_t rule_sets;
-  // Active contract fragments composed into a dense root index for direct
-  // source-op lookup and read-only legality queries.
-  const loom_target_contract_binding_t* contract_bindings;
-  // Number of active contract fragments.
-  uint16_t contract_binding_count;
+  // Generated source-op selection tables shared by all uses of this policy.
+  loom_low_lower_contract_t contract;
   // Optional observer of the compiler-owned source-plan traversal. The
   // observer sees the current op only and must not recursively inspect the
   // source function.
@@ -1255,16 +1274,15 @@ bool loom_low_lower_lookup_branch_plan(loom_low_lower_context_t* context,
                                        const loom_op_t* source_terminator,
                                        loom_low_lower_plan_t* out_plan);
 
-// Maps |source_type| through the active policy. A policy that rejects a user
-// type emits a diagnostic and returns loom_type_none() in |out_low_type|.
+// Maps |source_type| through the active policy. Emits a diagnostic when the
+// policy returns no native mapping, leaving |out_low_type| as none.
 iree_status_t loom_low_lower_map_type(loom_low_lower_context_t* context,
                                       const loom_op_t* source_op,
                                       loom_type_t source_type,
                                       loom_type_t* out_low_type);
 
-// Maps |source_value_id|'s type through the active policy. A policy that
-// rejects a user value emits a diagnostic and returns loom_type_none() in
-// |out_low_type|.
+// Maps |source_value_id| through the active policy. Emits a diagnostic when
+// the policy returns no native mapping, leaving |out_low_type| as none.
 iree_status_t loom_low_lower_map_value(loom_low_lower_context_t* context,
                                        const loom_op_t* source_op,
                                        loom_value_id_t source_value_id,
@@ -1356,7 +1374,8 @@ iree_status_t loom_low_lower_record_source_memory_access(
 // target-low policy.
 iree_status_t loom_low_lower_emit_source_type_unsupported(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
-    iree_string_view_t field_name, loom_type_t actual_type);
+    iree_string_view_t field_name,
+    loom_type_t actual_type) IREE_ATTRIBUTE_COLD IREE_ATTRIBUTE_NOINLINE;
 
 // Emits ERR_TARGET_066 when generic lowering would need to change the carrier
 // width of a typed register without a target-defined semantic relation.

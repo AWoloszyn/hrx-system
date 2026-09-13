@@ -165,47 +165,39 @@ typedef enum loom_low_lower_attr_copy_kind_e {
   // Emits an exact signed i32 source value fact as a zero-extended u32 packet
   // attribute bit pattern.
   LOOM_LOW_LOWER_ATTR_COPY_VALUE_I32_AS_U32_BITS = 10,
-  // Emits an exact float source value fact as a rounded f32 packet attribute
-  // bit pattern.
-  LOOM_LOW_LOWER_ATTR_COPY_VALUE_FLOAT_AS_F32_BITS = 11,
-  // Emits an exact float source value fact as an f64 packet attribute bit
-  // pattern.
-  LOOM_LOW_LOWER_ATTR_COPY_VALUE_FLOAT_AS_F64_BITS = 12,
+  // Encodes an exact float fact in the source value's scalar element format
+  // as a zero-extended bit pattern. Uniform vectors use their element value;
+  // exact canonical NaNs are materializable, but unknown NaN payloads are not.
+  LOOM_LOW_LOWER_ATTR_COPY_VALUE_FLOAT_BITS = 11,
   // Expands one i64_array lane ordinal into one byte-lane immediate:
   // source_attr[source_element_index] * source_element_count + literal_i64.
-  LOOM_LOW_LOWER_ATTR_COPY_I64_ARRAY_LANE_BYTE = 13,
+  LOOM_LOW_LOWER_ATTR_COPY_I64_ARRAY_LANE_BYTE = 12,
   // Emits the selected source-memory static byte offset as an i64 attribute.
-  LOOM_LOW_LOWER_ATTR_COPY_SOURCE_MEMORY_STATIC_BYTE_OFFSET = 14,
+  LOOM_LOW_LOWER_ATTR_COPY_SOURCE_MEMORY_STATIC_BYTE_OFFSET = 13,
   // Emits one selected source-memory dynamic term byte stride as an i64
   // attribute.
-  LOOM_LOW_LOWER_ATTR_COPY_SOURCE_MEMORY_DYNAMIC_BYTE_STRIDE = 15,
-  // Emits an exact float source value fact as a rounded f16 packet attribute
-  // bit pattern.
-  LOOM_LOW_LOWER_ATTR_COPY_VALUE_FLOAT_AS_F16_BITS = 16,
-  // Emits an exact float source value fact as a rounded bf16 packet attribute
-  // bit pattern.
-  LOOM_LOW_LOWER_ATTR_COPY_VALUE_FLOAT_AS_BF16_BITS = 17,
+  LOOM_LOW_LOWER_ATTR_COPY_SOURCE_MEMORY_DYNAMIC_BYTE_STRIDE = 14,
   // Emits a source enum attribute ordinal as an i64 packet attribute.
-  LOOM_LOW_LOWER_ATTR_COPY_ENUM_ORDINAL = 18,
+  LOOM_LOW_LOWER_ATTR_COPY_ENUM_ORDINAL = 15,
   // Emits the source op instance flag bitmask as an i64 packet attribute.
-  LOOM_LOW_LOWER_ATTR_COPY_SOURCE_OP_INSTANCE_FLAGS = 19,
+  LOOM_LOW_LOWER_ATTR_COPY_SOURCE_OP_INSTANCE_FLAGS = 16,
   // Packs contiguous i64 source op attributes into an i64 attribute, with the
   // first source attribute occupying the least-significant bitfield.
-  LOOM_LOW_LOWER_ATTR_COPY_I64_ATTRS_PACK_CONSECUTIVE = 20,
+  LOOM_LOW_LOWER_ATTR_COPY_I64_ATTRS_PACK_CONSECUTIVE = 17,
   // Emits a u32 low-bit mask with width read from one i64 source attribute.
-  LOOM_LOW_LOWER_ATTR_COPY_I64_LOW_BIT_MASK = 21,
+  LOOM_LOW_LOWER_ATTR_COPY_I64_LOW_BIT_MASK = 18,
   // Emits a u32 low-bit mask shifted by another i64 source attribute.
-  LOOM_LOW_LOWER_ATTR_COPY_I64_SHIFTED_LOW_BIT_MASK = 22,
+  LOOM_LOW_LOWER_ATTR_COPY_I64_SHIFTED_LOW_BIT_MASK = 19,
   // Emits the u32 inverse of a shifted low-bit mask.
-  LOOM_LOW_LOWER_ATTR_COPY_I64_SHIFTED_LOW_BIT_CLEAR_MASK = 23,
+  LOOM_LOW_LOWER_ATTR_COPY_I64_SHIFTED_LOW_BIT_CLEAR_MASK = 20,
   // Emits literal_i64 minus one i64 source attribute.
-  LOOM_LOW_LOWER_ATTR_COPY_I64_LITERAL_MINUS_ATTR = 24,
+  LOOM_LOW_LOWER_ATTR_COPY_I64_LITERAL_MINUS_ATTR = 21,
   // Emits literal_i64 minus two i64 source attributes.
-  LOOM_LOW_LOWER_ATTR_COPY_I64_LITERAL_MINUS_ATTRS = 25,
+  LOOM_LOW_LOWER_ATTR_COPY_I64_LITERAL_MINUS_ATTRS = 22,
   // Emits selected source-memory static byte offset divided by literal_i64.
-  LOOM_LOW_LOWER_ATTR_COPY_SOURCE_MEMORY_STATIC_BYTE_OFFSET_QUOTIENT = 26,
+  LOOM_LOW_LOWER_ATTR_COPY_SOURCE_MEMORY_STATIC_BYTE_OFFSET_QUOTIENT = 23,
   // Emits selected source-memory static byte offset modulo literal_i64.
-  LOOM_LOW_LOWER_ATTR_COPY_SOURCE_MEMORY_STATIC_BYTE_OFFSET_REMAINDER = 27,
+  LOOM_LOW_LOWER_ATTR_COPY_SOURCE_MEMORY_STATIC_BYTE_OFFSET_REMAINDER = 24,
 } loom_low_lower_attr_copy_kind_t;
 
 typedef struct loom_low_lower_attr_copy_t {

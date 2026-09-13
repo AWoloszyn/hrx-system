@@ -15,11 +15,11 @@ func.def target(@target) @i32_bitfield_extractu(%input: buffer, %output: buffer)
 
 // ----
 low.func.def target<llvmir.generic.core>(@target) abi(object_function) @i32_bitfield_extractu(%input_view: reg<llvmir.ptr>, %output_view: reg<llvmir.ptr>) asm {
-  %16 = load.i32 %input_view, 0
-  %17 = const.i32 4
-  %18 = lshr.i32 %16, %17
-  %19 = const.i32 15
-  %nibble = and.i32 %18, %19
+  %17 = load.i32 %input_view, 0
+  %18 = const.i32 4
+  %19 = lshr.i32 %17, %18
+  %20 = const.i32 15
+  %nibble = and.i32 %19, %20
   store.i32 %nibble, %output_view, 0
   return
 }
@@ -40,11 +40,11 @@ func.def target(@target) @i32_bitfield_extracts(%input: buffer, %output: buffer)
 
 // ----
 low.func.def target<llvmir.generic.core>(@target) abi(object_function) @i32_bitfield_extracts(%input_view: reg<llvmir.ptr>, %output_view: reg<llvmir.ptr>) asm {
-  %16 = load.i32 %input_view, 0
-  %17 = const.i32 24
-  %18 = shl.i32 %16, %17
-  %19 = const.i32 28
-  %nibble = ashr.i32 %18, %19
+  %17 = load.i32 %input_view, 0
+  %18 = const.i32 24
+  %19 = shl.i32 %17, %18
+  %20 = const.i32 28
+  %nibble = ashr.i32 %19, %20
   store.i32 %nibble, %output_view, 0
   return
 }
@@ -86,9 +86,9 @@ func.def target(@target) @i32_bitfield_extracts_top_aligned(%input: buffer, %out
 
 // ----
 low.func.def target<llvmir.generic.core>(@target) abi(object_function) @i32_bitfield_extracts_top_aligned(%input_view: reg<llvmir.ptr>, %output_view: reg<llvmir.ptr>) asm {
-  %14 = load.i32 %input_view, 0
-  %15 = const.i32 28
-  %nibble = ashr.i32 %14, %15
+  %15 = load.i32 %input_view, 0
+  %16 = const.i32 28
+  %nibble = ashr.i32 %15, %16
   store.i32 %nibble, %output_view, 0
   return
 }
@@ -190,39 +190,39 @@ func.def target(@target) @i32_bitfield_b128_shape(%input: buffer, %output: buffe
 
 // ----
 low.func.def target<llvmir.generic.core>(@target) abi(object_function) @i32_bitfield_b128_shape(%input_view: reg<llvmir.ptr>, %output_view: reg<llvmir.ptr>) asm {
-  %86 = load.i32 %input_view, 0
-  %87 = const.i32 4
-  %88 = lshr.i32 %86, %87
-  %89 = const.i32 3
-  %90 = and.i32 %88, %89
-  %91 = const.i32 15
-  %92 = and.i32 %86, %91
-  %93 = shl.i32 %90, %87
-  %94 = const.i32 -49
-  %95 = and.i32 %92, %94
-  %96 = or.i32 %95, %93
-  %97 = load.i32 %input_view, 4
-  %98 = lshr.i32 %97, %87
-  %99 = and.i32 %98, %89
-  %100 = and.i32 %97, %91
-  %101 = shl.i32 %99, %87
-  %102 = and.i32 %100, %94
-  %103 = or.i32 %102, %101
-  %104 = load.i32 %input_view, 8
-  %105 = lshr.i32 %104, %87
-  %106 = and.i32 %105, %89
-  %107 = and.i32 %104, %91
-  %108 = shl.i32 %106, %87
-  %109 = and.i32 %107, %94
-  %110 = or.i32 %109, %108
-  %111 = load.i32 %input_view, 12
-  %112 = lshr.i32 %111, %87
-  %113 = and.i32 %112, %89
-  %114 = and.i32 %111, %91
-  %115 = shl.i32 %113, %87
-  %116 = and.i32 %114, %94
-  %117 = or.i32 %116, %115
-  %merged = from_elements.v4i32 %96, %103, %110, %117
+  %94 = load.i32 %input_view, 0
+  %95 = const.i32 4
+  %96 = lshr.i32 %94, %95
+  %97 = const.i32 3
+  %98 = and.i32 %96, %97
+  %99 = const.i32 15
+  %100 = and.i32 %94, %99
+  %101 = shl.i32 %98, %95
+  %102 = const.i32 -49
+  %103 = and.i32 %100, %102
+  %104 = or.i32 %103, %101
+  %105 = load.i32 %input_view, 4
+  %106 = lshr.i32 %105, %95
+  %107 = and.i32 %106, %97
+  %108 = and.i32 %105, %99
+  %109 = shl.i32 %107, %95
+  %110 = and.i32 %108, %102
+  %111 = or.i32 %110, %109
+  %112 = load.i32 %input_view, 8
+  %113 = lshr.i32 %112, %95
+  %114 = and.i32 %113, %97
+  %115 = and.i32 %112, %99
+  %116 = shl.i32 %114, %95
+  %117 = and.i32 %115, %102
+  %118 = or.i32 %117, %116
+  %119 = load.i32 %input_view, 12
+  %120 = lshr.i32 %119, %95
+  %121 = and.i32 %120, %97
+  %122 = and.i32 %119, %99
+  %123 = shl.i32 %121, %95
+  %124 = and.i32 %122, %102
+  %125 = or.i32 %124, %123
+  %merged = from_elements.v4i32 %104, %111, %118, %125
   %bias = const.v4i32 32
   %result = sub.v4i32 %merged, %bias
   store.v4i32 %result, %output_view, 0

@@ -26,6 +26,18 @@
 extern "C" {
 #endif
 
+// Queries the native ABI representation of a source function argument without
+// emitting diagnostics or recording a required boundary mapping. An unsupported
+// argument has abi_type none; other output fields are then unused. The default
+// direct ABI uses the native value query when the policy has no argument
+// mapper. A target may support a native value without supporting it as an ABI
+// argument. Allocation failures while constructing a native type propagate
+// normally.
+iree_status_t loom_low_lower_query_argument(
+    loom_low_lower_context_t* context, uint16_t source_argument_index,
+    loom_value_id_t source_argument_id,
+    loom_low_lower_abi_argument_t* out_argument);
+
 // Validates and maps the source callable signature into function-local state.
 // This must run before source-plan construction and low callable creation.
 iree_status_t loom_low_lower_function_boundary_validate(

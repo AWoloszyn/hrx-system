@@ -112,6 +112,13 @@ loom_low_allocation_edge_alias_destination_used_after_candidate_definition(
   const loom_value_t* candidate_value =
       loom_module_value(context->placement->module, candidate_value_id);
   if (loom_value_is_block_arg(candidate_value)) {
+    // A backedge consumes the old source but defines both header arguments
+    // again. No use of the old source after that edge does not prove that the
+    // newly defined arguments may alias: they can have distinct entry values
+    // and be read together in this iteration, including on the loop exit.
+    *out_used_after = candidate_value_id != destination_value_id &&
+                      loom_value_def_block(candidate_value) ==
+                          loom_value_def_block(destination_value);
     return iree_ok_status();
   }
   const loom_op_t* candidate_op = loom_value_def_op(candidate_value);

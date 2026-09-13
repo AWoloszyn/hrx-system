@@ -16,6 +16,7 @@ loom_cc_library(
     name = "lower",
     srcs = ["registry.c"],
     hdrs = ["lower.h"],
+    textual_hdrs = ["//loom/src/loom/target/emit/wasm/contracts:tables.inl"],
     visibility = ["//loom/src/loom/target/arch/wasm:__pkg__"],
     deps = [
         "//loom/src/loom/codegen/low/lower",

@@ -253,7 +253,7 @@ low.kernel.def target<test.low.core>(@test_target) export("dispatch") linkage(de
   };
   const loom_target_facts_t* launch_facts = nullptr;
   IREE_ASSERT_OK(loom_target_function_contract_refine_hal_workgroup_size(
-      func_facts, IREE_SV("test_target"), &required_workgroup_size,
+      func_facts->func_op, IREE_SV("test_target"), &required_workgroup_size,
       function_target_facts, iree_diagnostic_emitter_t{}, &analysis_arena_,
       &valid, &launch_facts));
   ASSERT_TRUE(valid);

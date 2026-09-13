@@ -437,16 +437,16 @@ func.def @access_after_memory_scalarization_checks_masked_vector_memory(%input: 
     scf.yield %23 : f32
   }
   %loaded = vector.from_elements %15, %19 : vector<2xf32>
+  %9 = vector.extract %value[0] : vector<2xf32> -> f32
+  %11 = vector.extract %value[1] : vector<2xf32> -> f32
+  %12 = index.constant 1 : index
+  %13 = index.add %origin, %12 : index
   scf.if %14 {
-    %9 = vector.extract %value[0] : vector<2xf32> -> f32
     sanitizer.assert.access<write> %output[%origin] : view<16xf32>
     view.store %9, %output[%origin] : f32, view<16xf32>
   } else {
   }
   scf.if %18 {
-    %11 = vector.extract %value[1] : vector<2xf32> -> f32
-    %12 = index.constant 1 : index
-    %13 = index.add %origin, %12 : index
     sanitizer.assert.access<write> %output[%13] : view<16xf32>
     view.store %11, %output[%13] : f32, view<16xf32>
   } else {
@@ -475,9 +475,9 @@ func.def @access_after_memory_scalarization_checks_per_lane_vector_memory(%input
   %18 = view.load %input[%17] : view<16xf32> -> f32
   %loaded = vector.from_elements %15, %18 : vector<2xf32>
   %7 = vector.extract %value[0] : vector<2xf32> -> f32
+  %10 = vector.extract %value[1] : vector<2xf32> -> f32
   sanitizer.assert.access<write> %output[%14] : view<16xf32>
   view.store %7, %output[%14] : f32, view<16xf32>
-  %10 = vector.extract %value[1] : vector<2xf32> -> f32
   sanitizer.assert.access<write> %output[%17] : view<16xf32>
   view.store %10, %output[%17] : f32, view<16xf32>
   func.return %loaded : vector<2xf32>
@@ -597,6 +597,38 @@ func.def @access_only_rejects_rank2_vector_atomic_memory(%view: view<4x4xi32>, %
   // ERROR@+1: SUBRANGE/020 {op_name="vector.atomic.reduce", vector_rank="2"}
   vector.atomic.reduce<addi> %value, %view[0, 0][%offsets] {ordering = relaxed, scope = workgroup} : vector<2x2xi32>, view<4x4xi32>, vector<2x2xindex>
   func.return
+}
+
+// ====
+
+// RUN: pass vector-memory-to-scalar,canonicalize,cse,sanitizer-insert-assertions{checks=access}
+// The invalid tail lane disappears, while the first lane's assertions remain
+// conditional on its runtime mask for both reads and writes.
+func.def @masked_tail_access_assertions(%input: view<1xi32>, %output: view<1xi32>, %active: i1, %value: i32) -> (vector<2xi32>) {
+  %inactive = scalar.constant false : i1
+  %mask = vector.from_elements %active, %inactive : vector<2xi1>
+  %values = vector.splat %value : vector<2xi32>
+  %loaded = vector.load.mask %input[0], %mask, %values : view<1xi32>, vector<2xi1>, vector<2xi32>
+  vector.store.mask %values, %output[0], %mask : vector<2xi32>, view<1xi32>, vector<2xi1>
+  func.return %loaded : vector<2xi32>
+}
+
+// ----
+func.def @masked_tail_access_assertions(%input: view<1xi32>, %output: view<1xi32>, %active: i1, %value: i32) -> (vector<2xi32>) {
+  %9 = scf.if %active -> (i32) {
+    sanitizer.assert.access<read> %input[0] : view<1xi32>
+    %10 = view.load %input[0] : view<1xi32> -> i32
+    scf.yield %10 : i32
+  } else {
+    scf.yield %value : i32
+  }
+  %loaded = vector.from_elements %9, %value : vector<2xi32>
+  scf.if %active {
+    sanitizer.assert.access<write> %output[0] : view<1xi32>
+    view.store %value, %output[0] : i32, view<1xi32>
+  } else {
+  }
+  func.return %loaded : vector<2xi32>
 }
 
 // ====

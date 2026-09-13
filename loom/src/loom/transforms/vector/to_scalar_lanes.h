@@ -109,6 +109,10 @@ iree_status_t loom_vector_to_scalar_build_lane(
     loom_vector_to_scalar_state_t* state,
     loom_vector_to_scalar_index_list_t indices, loom_value_id_t* out_lane);
 
+// Materializes one logical lane, reusing scalar operands for constructed
+// vectors and selecting between them when the lane indices are dynamic.
+// Indices have the source access's in-bounds precondition; this does not insert
+// runtime bounds checks or rematerialize memory reads across ordering barriers.
 iree_status_t loom_vector_to_scalar_materialize_lane(
     loom_vector_to_scalar_state_t* state, loom_value_id_t value,
     loom_vector_to_scalar_index_list_t indices, loom_value_id_t* out_lane);

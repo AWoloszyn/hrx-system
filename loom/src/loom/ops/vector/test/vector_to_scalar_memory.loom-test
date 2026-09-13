@@ -364,8 +364,8 @@ func.def @store_static(%buffer: buffer, %byte_offset: offset, %value: vector<2xf
   %layout = encoding.layout.dense : encoding<layout>
   %view = buffer.view %buffer[%byte_offset] : buffer -> view<8xf32, %layout>
   %5 = vector.extract %value[0] : vector<2xf32> -> f32
-  view.store %5, %view[3] {cache_scope = system, cache_temporal = writeback} : f32, view<8xf32, %layout>
   %6 = vector.extract %value[1] : vector<2xf32> -> f32
+  view.store %5, %view[3] {cache_scope = system, cache_temporal = writeback} : f32, view<8xf32, %layout>
   view.store %6, %view[4] {cache_scope = system, cache_temporal = writeback} : f32, view<8xf32, %layout>
   func.return
 }
@@ -407,14 +407,14 @@ func.def @store_mask_static(%buffer: buffer, %byte_offset: offset, %mask: vector
   %layout = encoding.layout.dense : encoding<layout>
   %view = buffer.view %buffer[%byte_offset] : buffer -> view<8xf32, %layout>
   %6 = vector.extract %mask[0] : vector<2xi1> -> i1
+  %7 = vector.extract %value[0] : vector<2xf32> -> f32
+  %8 = vector.extract %mask[1] : vector<2xi1> -> i1
+  %9 = vector.extract %value[1] : vector<2xf32> -> f32
   scf.if %6 {
-    %7 = vector.extract %value[0] : vector<2xf32> -> f32
     view.store %7, %view[3] {cache_scope = system, cache_temporal = writeback} : f32, view<8xf32, %layout>
   } else {
   }
-  %8 = vector.extract %mask[1] : vector<2xi1> -> i1
   scf.if %8 {
-    %9 = vector.extract %value[1] : vector<2xf32> -> f32
     view.store %9, %view[4] {cache_scope = system, cache_temporal = writeback} : f32, view<8xf32, %layout>
   } else {
   }
@@ -438,9 +438,9 @@ func.def @store_mask_dynamic(%n: index, %buffer: buffer, %byte_offset: offset, %
   %9 = index.constant 1 : index
   scf.for %10 = [%8 to %n step %9] {
     %11 = vector.extract %mask[%10] : vector<[%n]xi1> -> i1
+    %12 = vector.extract %value[%10] : vector<[%n]xf32> -> f32
+    %13 = index.add %origin, %10 : index
     scf.if %11 {
-      %12 = vector.extract %value[%10] : vector<[%n]xf32> -> f32
-      %13 = index.add %origin, %10 : index
       view.store %12, %view[%13] : f32, view<[%n]xf32, %layout>
     } else {
     }
@@ -553,11 +553,11 @@ func.def @scatter_static(%buffer: buffer, %byte_offset: offset, %value: vector<2
   %7 = vector.extract %offsets[0] : vector<2xindex> -> index
   %8 = index.constant 3 : index
   %9 = index.add %8, %7 : index
-  view.store %6, %view[%9] {cache_scope = system, cache_temporal = writeback} : f32, view<8xf32, %layout>
   %10 = vector.extract %value[1] : vector<2xf32> -> f32
   %11 = vector.extract %offsets[1] : vector<2xindex> -> index
   %12 = index.constant 3 : index
   %13 = index.add %12, %11 : index
+  view.store %6, %view[%9] {cache_scope = system, cache_temporal = writeback} : f32, view<8xf32, %layout>
   view.store %10, %view[%13] {cache_scope = system, cache_temporal = writeback} : f32, view<8xf32, %layout>
   func.return
 }
@@ -600,22 +600,22 @@ func.def @scatter_mask_static(%buffer: buffer, %byte_offset: offset, %mask: vect
   %layout = encoding.layout.dense : encoding<layout>
   %view = buffer.view %buffer[%byte_offset] : buffer -> view<8xf32, %layout>
   %7 = vector.extract %mask[0] : vector<2xi1> -> i1
+  %8 = vector.extract %value[0] : vector<2xf32> -> f32
+  %9 = vector.extract %offsets[0] : vector<2xi32> -> i32
+  %10 = index.cast %9 : i32 to index
+  %11 = index.constant 3 : index
+  %12 = index.add %11, %10 : index
+  %13 = vector.extract %mask[1] : vector<2xi1> -> i1
+  %14 = vector.extract %value[1] : vector<2xf32> -> f32
+  %15 = vector.extract %offsets[1] : vector<2xi32> -> i32
+  %16 = index.cast %15 : i32 to index
+  %17 = index.constant 3 : index
+  %18 = index.add %17, %16 : index
   scf.if %7 {
-    %8 = vector.extract %value[0] : vector<2xf32> -> f32
-    %9 = vector.extract %offsets[0] : vector<2xi32> -> i32
-    %10 = index.cast %9 : i32 to index
-    %11 = index.constant 3 : index
-    %12 = index.add %11, %10 : index
     view.store %8, %view[%12] {cache_scope = system, cache_temporal = writeback} : f32, view<8xf32, %layout>
   } else {
   }
-  %13 = vector.extract %mask[1] : vector<2xi1> -> i1
   scf.if %13 {
-    %14 = vector.extract %value[1] : vector<2xf32> -> f32
-    %15 = vector.extract %offsets[1] : vector<2xi32> -> i32
-    %16 = index.cast %15 : i32 to index
-    %17 = index.constant 3 : index
-    %18 = index.add %17, %16 : index
     view.store %14, %view[%18] {cache_scope = system, cache_temporal = writeback} : f32, view<8xf32, %layout>
   } else {
   }
@@ -639,10 +639,10 @@ func.def @scatter_mask_dynamic(%n: index, %buffer: buffer, %byte_offset: offset,
   %10 = index.constant 1 : index
   scf.for %11 = [%9 to %n step %10] {
     %12 = vector.extract %mask[%11] : vector<[%n]xi1> -> i1
+    %13 = vector.extract %value[%11] : vector<[%n]xf32> -> f32
+    %14 = vector.extract %offsets[%11] : vector<[%n]xindex> -> index
+    %15 = index.add %origin, %14 : index
     scf.if %12 {
-      %13 = vector.extract %value[%11] : vector<[%n]xf32> -> f32
-      %14 = vector.extract %offsets[%11] : vector<[%n]xindex> -> index
-      %15 = index.add %origin, %14 : index
       view.store %13, %view[%15] : f32, view<[%n]xf32, %layout>
     } else {
     }

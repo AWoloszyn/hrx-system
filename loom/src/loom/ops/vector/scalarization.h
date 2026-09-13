@@ -15,25 +15,17 @@
 extern "C" {
 #endif
 
-typedef enum loom_vector_scalarization_flag_bits_e {
-  LOOM_VECTOR_SCALARIZATION_FLAG_NONE = 0u,
-  // The scalar lane op has the same fixed operand, result, attribute, and
-  // instance-flag shape and can be cloned mechanically per vector lane.
-  LOOM_VECTOR_SCALARIZATION_FLAG_MECHANICAL = 1u << 0,
-} loom_vector_scalarization_flag_bits_t;
-typedef uint8_t loom_vector_scalarization_flags_t;
-
+// The scalar lane op has the same fixed operand, result, attribute, and
+// instance-flag shape and can be cloned mechanically per vector lane.
 typedef struct loom_vector_scalarization_t {
   // Scalar operation with the same per-lane numeric semantics.
   loom_op_kind_t lane_op_kind;
-  // Bitfield of LOOM_VECTOR_SCALARIZATION_FLAG_* values.
-  loom_vector_scalarization_flags_t flags;
   // Preferred result-compatible operand for dynamic reconstruction, or
   // UINT8_MAX when reconstruction should start from an empty aggregate.
   uint8_t seed_operand_index;
 } loom_vector_scalarization_t;
 
-static_assert(sizeof(loom_vector_scalarization_t) == 4,
+static_assert(sizeof(loom_vector_scalarization_t) <= 4,
               "vector scalarization rows must remain compact");
 
 // Generated dense scalarization rows indexed by vector dialect op ordinal.

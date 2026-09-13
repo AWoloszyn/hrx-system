@@ -81,6 +81,8 @@ typedef struct tracking_allocator_t {
   iree_host_size_t allocation_count;
   // Number of successful free commands.
   iree_host_size_t free_count;
+  // Successful allocation limit before failure, or zero for no limit.
+  iree_host_size_t allocation_limit = 0;
 } tracking_allocator_t;
 
 static iree_status_t tracking_allocator_ctl(void* self,
@@ -91,7 +93,10 @@ static iree_status_t tracking_allocator_ctl(void* self,
   const bool is_allocation = command == IREE_ALLOCATOR_COMMAND_MALLOC ||
                              command == IREE_ALLOCATOR_COMMAND_CALLOC ||
                              command == IREE_ALLOCATOR_COMMAND_REALLOC;
-  if (allocator->fail_allocations && is_allocation) {
+  if (is_allocation &&
+      (allocator->fail_allocations ||
+       (allocator->allocation_limit != 0 &&
+        allocator->allocation_count >= allocator->allocation_limit))) {
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                             "intentional allocation failure");
   }
@@ -100,6 +105,11 @@ static iree_status_t tracking_allocator_ctl(void* self,
   if (iree_status_is_ok(status)) {
     if (is_allocation) {
       ++allocator->allocation_count;
+      if (command == IREE_ALLOCATOR_COMMAND_MALLOC) {
+        const auto* allocation_params =
+            static_cast<const iree_allocator_alloc_params_t*>(params);
+        memset(*inout_ptr, 0xCD, allocation_params->byte_length);
+      }
     } else if (command == IREE_ALLOCATOR_COMMAND_FREE) {
       ++allocator->free_count;
     }
@@ -147,6 +157,12 @@ TEST(VecStreamTest, Empty) {
   EXPECT_EQ(iree_io_stream_offset(stream.get()), 0);
   EXPECT_EQ(iree_io_stream_length(stream.get()), 0);
   EXPECT_TRUE(iree_io_stream_is_eos(stream.get()));
+  uint8_t buffer = 0xCD;
+  iree_host_size_t length = 1;
+  IREE_ASSERT_OK(
+      iree_io_stream_read(stream.get(), sizeof(buffer), &buffer, &length));
+  EXPECT_EQ(length, 0);
+  EXPECT_EQ(buffer, 0xCD);
 }
 
 TEST(VecStreamTest, SeekSet) {
@@ -559,6 +575,77 @@ TEST(VecStreamTest, Write) {
   EXPECT_THAT(data,
               ElementsAre(write_buffer[0], write_buffer[1], write_buffer[2],
                           write_buffer[3], write_buffer[4]));
+}
+
+TEST(VecStreamTest, WriteSeekAndFillUninitializedBlocks) {
+  tracking_allocator_t allocator_state = {iree_allocator_system(), false, 0, 0};
+  iree_io_stream_t* raw_stream = nullptr;
+  IREE_ASSERT_OK(iree_io_vec_stream_create(
+      IREE_IO_STREAM_MODE_READABLE | IREE_IO_STREAM_MODE_WRITABLE, 1024,
+      make_tracking_allocator(&allocator_state), &raw_stream));
+  StreamPtr stream(raw_stream, iree_io_stream_release);
+
+  std::vector<uint8_t> expected(37, 0x12);
+  IREE_ASSERT_OK(
+      iree_io_stream_write(stream.get(), expected.size(), expected.data()));
+  // Expose both the first block's unused tail and multiple new blocks.
+  expected.resize(2503, 0);
+  IREE_ASSERT_OK(iree_io_stream_seek(stream.get(), IREE_IO_STREAM_SEEK_SET,
+                                     expected.size()));
+  const uint8_t pattern = 0xAB;
+  expected.resize(expected.size() + 2000, pattern);
+  IREE_ASSERT_OK(iree_io_stream_fill(stream.get(), 2000, &pattern, 1));
+  // Patching existing bytes preserves the adjacent initialized gap.
+  const uint8_t patch[] = {1, 2, 3, 4};
+  IREE_ASSERT_OK(
+      iree_io_stream_seek(stream.get(), IREE_IO_STREAM_SEEK_SET, 975));
+  IREE_ASSERT_OK(iree_io_stream_write(stream.get(), sizeof(patch), patch));
+  std::copy(std::begin(patch), std::end(patch), expected.begin() + 975);
+  IREE_ASSERT_OK(iree_io_stream_seek(stream.get(), IREE_IO_STREAM_SEEK_SET, 0));
+  std::vector<uint8_t> actual(expected.size());
+  IREE_ASSERT_OK(iree_io_stream_read(stream.get(), actual.size(), actual.data(),
+                                     /*out_buffer_length=*/nullptr));
+  EXPECT_EQ(actual, expected);
+}
+
+TEST(VecStreamTest, GrowthFailureLeavesInitializedContents) {
+  tracking_allocator_t allocator_state = {iree_allocator_system(), false, 0, 0};
+  iree_io_stream_t* raw_stream = nullptr;
+  IREE_ASSERT_OK(iree_io_vec_stream_create(
+      IREE_IO_STREAM_MODE_READABLE | IREE_IO_STREAM_MODE_WRITABLE, 1024,
+      make_tracking_allocator(&allocator_state), &raw_stream));
+  StreamPtr stream(raw_stream, iree_io_stream_release);
+  const uint8_t prefix[] = {1, 2, 3};
+  IREE_ASSERT_OK(iree_io_stream_write(stream.get(), sizeof(prefix), prefix));
+  allocator_state.allocation_limit = allocator_state.allocation_count + 1;
+  const std::vector<uint8_t> input(3000, 0xEF);
+  EXPECT_THAT(
+      Status(iree_io_stream_write(stream.get(), input.size(), input.data())),
+      StatusIs(StatusCode::kResourceExhausted));
+  EXPECT_EQ(iree_io_stream_offset(stream.get()), sizeof(prefix));
+  const auto length = iree_io_stream_length(stream.get());
+  ASSERT_GT(length, sizeof(prefix));
+  ASSERT_LT(length, sizeof(prefix) + input.size());
+  std::vector<uint8_t> expected(length, 0);
+  std::copy(std::begin(prefix), std::end(prefix), expected.begin());
+  IREE_ASSERT_OK(iree_io_stream_seek(stream.get(), IREE_IO_STREAM_SEEK_SET, 0));
+  std::vector<uint8_t> actual(expected.size());
+  IREE_ASSERT_OK(iree_io_stream_read(stream.get(), actual.size(), actual.data(),
+                                     /*out_buffer_length=*/nullptr));
+  EXPECT_EQ(actual, expected);
+
+  // The partially extended stream remains usable after allocation recovers.
+  allocator_state.allocation_limit = 0;
+  IREE_ASSERT_OK(
+      iree_io_stream_write(stream.get(), input.size(), input.data()));
+  expected.insert(expected.end(), input.begin(), input.end());
+  IREE_ASSERT_OK(iree_io_stream_seek(stream.get(), IREE_IO_STREAM_SEEK_SET, 0));
+  actual.resize(expected.size());
+  IREE_ASSERT_OK(iree_io_stream_read(stream.get(), actual.size(), actual.data(),
+                                     /*out_buffer_length=*/nullptr));
+  EXPECT_EQ(actual, expected);
+  stream.reset();
+  EXPECT_EQ(allocator_state.allocation_count, allocator_state.free_count);
 }
 
 TEST(VecStreamTest, MoveEmptyContentsLeavesReusableStream) {

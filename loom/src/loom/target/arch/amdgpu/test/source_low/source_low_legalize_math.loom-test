@@ -9,13 +9,14 @@ func.def target(@target) @scalar_roundf_round_away(%input: f32) -> (f32) {
 
 // ----
 low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @scalar_roundf_round_away(%input: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
-  %13 = v_mov_b32 1258291200
-  %14 = v_and_b32_lit %input, 2147483647
-  %15 = v_cmp_lt_f32 %14, %13
-  %16 = v_add_f32_src0_inline %14, 1056964608
-  %17 = v_trunc_f32 %16
-  %18 = v_bfi_b32_src0_lit %17, %input, 2147483647
-  %result = v_cndmask_b32 %input, %18, %15
+  %14 = v_mov_b32 1065353216
+  %15 = v_trunc_f32 %input
+  %16 = v_sub_f32 %input, %15
+  %17 = v_and_b32_lit %16, 2147483647
+  %18 = v_cmp_ge_f32_src1_inline %17 {rhs = 1056964608}
+  %19 = v_bfi_b32_src0_lit %14, %input, 2147483647
+  %20 = v_add_f32 %15, %19
+  %result = v_cndmask_b32 %15, %20, %18
   return %result
 }
 
@@ -30,22 +31,24 @@ func.def target(@target) @vector_roundf_round_away(%input: vector<2xf32>) -> (ve
 
 // ----
 low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @vector_roundf_round_away(%input: reg<amdgpu.vgpr x2>) -> (reg<amdgpu.vgpr x2>) asm {
-  %13 = v_mov_b32 1258291200
-  %16 = slice %input[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
-  %17 = v_and_b32_lit %16, 2147483647
-  %18 = slice %input[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
-  %19 = v_and_b32_lit %18, 2147483647
-  %23 = v_cmp_lt_f32 %17, %13
-  %26 = v_cmp_lt_f32 %19, %13
-  %29 = v_add_f32_src0_inline %17, 1056964608
-  %31 = v_add_f32_src0_inline %19, 1056964608
-  %34 = v_trunc_f32 %29
-  %36 = v_trunc_f32 %31
-  %40 = v_bfi_b32_src0_lit %34, %16, 2147483647
-  %43 = v_bfi_b32_src0_lit %36, %18, 2147483647
-  %48 = v_cndmask_b32 %16, %40, %23
-  %52 = v_cndmask_b32 %18, %43, %26
-  %result = concat(%48, %52) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %17 = v_mov_b32 1065353216
+  %20 = slice %input[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %21 = v_trunc_f32 %20
+  %22 = slice %input[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %23 = v_trunc_f32 %22
+  %27 = v_sub_f32 %20, %21
+  %30 = v_sub_f32 %22, %23
+  %33 = v_and_b32_lit %27, 2147483647
+  %35 = v_and_b32_lit %30, 2147483647
+  %38 = v_cmp_ge_f32_src1_inline %33 {rhs = 1056964608}
+  %40 = v_cmp_ge_f32_src1_inline %35 {rhs = 1056964608}
+  %44 = v_bfi_b32_src0_lit %17, %20, 2147483647
+  %47 = v_bfi_b32_src0_lit %17, %22, 2147483647
+  %51 = v_add_f32 %21, %44
+  %54 = v_add_f32 %23, %47
+  %59 = v_cndmask_b32 %21, %51, %38
+  %63 = v_cndmask_b32 %23, %54, %40
+  %result = concat(%59, %63) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
   return %result
 }
 

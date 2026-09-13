@@ -154,7 +154,7 @@ static loom_type_t loom_low_lower_rule_type_pattern_exact_type(
                              loom_dim_pack_static(pattern->static_dim0), 0);
 }
 
-static double loom_low_lower_rule_attr_copy_exact_float(
+static uint64_t loom_low_lower_rule_attr_copy_float_bits(
     loom_low_lower_context_t* context,
     const loom_low_lower_rule_set_t* rule_set, const loom_op_t* source_op,
     const loom_low_lower_attr_copy_t* attr_copy) {
@@ -173,7 +173,29 @@ static double loom_low_lower_rule_attr_copy_exact_float(
   const bool has_value =
       loom_value_facts_as_exact_float(scalar_type, facts, &value);
   IREE_ASSERT(has_value);
-  return value;
+  switch (scalar_type) {
+    case LOOM_SCALAR_TYPE_F8E4M3:
+      return iree_math_f32_to_f8e4m3fn((float)value);
+    case LOOM_SCALAR_TYPE_F8E5M2:
+      return iree_math_f32_to_f8e5m2((float)value);
+    case LOOM_SCALAR_TYPE_F16:
+      return iree_math_f32_to_f16((float)value);
+    case LOOM_SCALAR_TYPE_BF16:
+      return iree_math_f32_to_bf16((float)value);
+    case LOOM_SCALAR_TYPE_F32: {
+      const float f32_value = (float)value;
+      uint32_t bits = 0;
+      memcpy(&bits, &f32_value, sizeof(bits));
+      return bits;
+    }
+    case LOOM_SCALAR_TYPE_F64: {
+      uint64_t bits = 0;
+      memcpy(&bits, &value, sizeof(bits));
+      return bits;
+    }
+    default:
+      IREE_BUILTIN_UNREACHABLE();
+  }
 }
 
 static void loom_low_lower_rule_set_projected_bits_attr(
@@ -624,39 +646,9 @@ static iree_status_t loom_low_lower_rule_build_attrs(
             (int64_t)((uint64_t)bit_pattern << attr_copy->target_bit_offset));
         break;
       }
-      case LOOM_LOW_LOWER_ATTR_COPY_VALUE_FLOAT_AS_F16_BITS: {
-        const float f32_value =
-            (float)loom_low_lower_rule_attr_copy_exact_float(
-                context, rule_set, source_op, attr_copy);
-        const uint16_t bit_pattern = iree_math_f32_to_f16(f32_value);
-        loom_low_lower_rule_set_projected_bits_attr(attr_copy, bit_pattern,
-                                                    &attrs[i]);
-        break;
-      }
-      case LOOM_LOW_LOWER_ATTR_COPY_VALUE_FLOAT_AS_BF16_BITS: {
-        const float f32_value =
-            (float)loom_low_lower_rule_attr_copy_exact_float(
-                context, rule_set, source_op, attr_copy);
-        const uint16_t bit_pattern = iree_math_f32_to_bf16(f32_value);
-        loom_low_lower_rule_set_projected_bits_attr(attr_copy, bit_pattern,
-                                                    &attrs[i]);
-        break;
-      }
-      case LOOM_LOW_LOWER_ATTR_COPY_VALUE_FLOAT_AS_F32_BITS: {
-        const float f32_value =
-            (float)loom_low_lower_rule_attr_copy_exact_float(
-                context, rule_set, source_op, attr_copy);
-        uint32_t bit_pattern = 0;
-        memcpy(&bit_pattern, &f32_value, sizeof(bit_pattern));
-        loom_low_lower_rule_set_projected_bits_attr(attr_copy, bit_pattern,
-                                                    &attrs[i]);
-        break;
-      }
-      case LOOM_LOW_LOWER_ATTR_COPY_VALUE_FLOAT_AS_F64_BITS: {
-        const double f64_value = loom_low_lower_rule_attr_copy_exact_float(
+      case LOOM_LOW_LOWER_ATTR_COPY_VALUE_FLOAT_BITS: {
+        const uint64_t bit_pattern = loom_low_lower_rule_attr_copy_float_bits(
             context, rule_set, source_op, attr_copy);
-        uint64_t bit_pattern = 0;
-        memcpy(&bit_pattern, &f64_value, sizeof(bit_pattern));
         loom_low_lower_rule_set_projected_bits_attr(attr_copy, bit_pattern,
                                                     &attrs[i]);
         break;

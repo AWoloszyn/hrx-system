@@ -16,6 +16,8 @@ loom_cc_library(
   HDRS
     "contraction.h"
     "lower.h"
+  TEXTUAL_HDRS
+    "${IREE_BINARY_DIR}/loom/src/loom/target/arch/x86/contracts/tables.inl"
   SRCS
     "contraction.c"
     "registry.c"

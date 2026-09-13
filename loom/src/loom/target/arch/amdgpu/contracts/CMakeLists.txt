@@ -15,6 +15,8 @@ loom_target_contract_file_family(
     contract_tables_gen
   GENERATOR
     loom::py::loom::gen::target::contracts::amdgpu_contract_table_family
+  INDEX_OUTPUT
+    "tables.inl"
   FRAGMENTS
     "arithmetic=amdgpu.arithmetic"
     "async=amdgpu.async"
@@ -26,6 +28,8 @@ loom_target_contract_file_family(
     "reduce=amdgpu.reduce"
     "sanitizer=amdgpu.sanitizer"
     "view=amdgpu.view"
+  ARGS
+    "--contract-index=LOOM_AMDGPU_CONTRACT:amdgpu.arithmetic,amdgpu.buffer,amdgpu.config,amdgpu.integer,amdgpu.compare,amdgpu.dot,amdgpu.reduce,amdgpu.async,amdgpu.sanitizer,amdgpu.view,amdgpu.matrix"
   COMMENT
     "Generating AMDGPU contract table families"
 )

@@ -1,0 +1,84 @@
+// RUN: pass canonicalize{view-loads=coalesce}
+
+func.def @adjacent_f16_view_loads_to_vector_load(%input: buffer, %base: index) -> (f16, f16) {
+  %byte_base = index.constant 0 : offset
+  %element_stride = index.constant 1 : index
+  %view = buffer.view %input[%byte_base] : buffer -> view<32xf16>
+  %next = index.add %base, %element_stride : index
+  %a = view.load %view[%base] : view<32xf16> -> f16
+  %b = view.load %view[%next] : view<32xf16> -> f16
+  func.return %a, %b : f16, f16
+}
+
+// ----
+func.def @adjacent_f16_view_loads_to_vector_load(%input: buffer, %base: index) -> (f16, f16) {
+  %byte_base = index.constant 0 : offset
+  %view = buffer.view %input[%byte_base] : buffer -> view<32xf16>
+  %10 = vector.load %view[%base] : view<32xf16> -> vector<2xf16>
+  %a = vector.extract %10[0] : vector<2xf16> -> f16
+  %b = vector.extract %10[1] : vector<2xf16> -> f16
+  func.return %a, %b : f16, f16
+}
+
+// ====
+
+func.def @non_adjacent_f16_view_loads_stay_scalar(%input: buffer, %base: index) -> (f16, f16) {
+  %byte_base = index.constant 0 : offset
+  %element_stride = index.constant 2 : index
+  %view = buffer.view %input[%byte_base] : buffer -> view<32xf16>
+  %next = index.add %base, %element_stride : index
+  %a = view.load %view[%base] : view<32xf16> -> f16
+  %b = view.load %view[%next] : view<32xf16> -> f16
+  func.return %a, %b : f16, f16
+}
+
+// ====
+
+func.def @different_roots_stay_scalar(%left: view<2xf16>, %right: view<2xf16>) -> (f16, f16) {
+  %a = view.load %left[0] : view<2xf16> -> f16
+  %b = view.load %right[1] : view<2xf16> -> f16
+  func.return %a, %b : f16, f16
+}
+
+// ====
+
+func.def @different_cache_policies_stay_scalar(%view: view<2xf16>) -> (f16, f16) {
+  %a = view.load %view[0] {cache_scope = device, cache_temporal = regular} : view<2xf16> -> f16
+  %b = view.load %view[1] {cache_scope = system, cache_temporal = regular} : view<2xf16> -> f16
+  func.return %a, %b : f16, f16
+}
+
+// ====
+
+func.def @intervening_write_stays_between_reads(%view: view<2xf16>, %replacement: f16) -> (f16, f16) {
+  %a = view.load %view[0] : view<2xf16> -> f16
+  view.store %replacement, %view[1] : f16, view<2xf16>
+  %b = view.load %view[1] : view<2xf16> -> f16
+  func.return %a, %b : f16, f16
+}
+
+// ====
+
+func.def @different_rows_stay_scalar(%view: view<2x4xf16>, %column: index) -> (f16, f16) {
+  %column_step = index.constant 1 : index
+  %next = index.add %column, %column_step : index
+  %a = view.load %view[0, %column] : view<2x4xf16> -> f16
+  %b = view.load %view[1, %next] : view<2x4xf16> -> f16
+  func.return %a, %b : f16, f16
+}
+
+// ====
+
+func.def @bf16_pair_preserves_cache_policy(%view: view<4xbf16>) -> (bf16, bf16) {
+  %a = view.load %view[2] {cache_scope = device, cache_temporal = non_temporal} : view<4xbf16> -> bf16
+  %b = view.load %view[3] {cache_scope = device, cache_temporal = non_temporal} : view<4xbf16> -> bf16
+  func.return %a, %b : bf16, bf16
+}
+
+// ----
+func.def @bf16_pair_preserves_cache_policy(%view: view<4xbf16>) -> (bf16, bf16) {
+  %5 = vector.load %view[2] {cache_scope = device, cache_temporal = non_temporal} : view<4xbf16> -> vector<2xbf16>
+  %a = vector.extract %5[0] : vector<2xbf16> -> bf16
+  %b = vector.extract %5[1] : vector<2xbf16> -> bf16
+  func.return %a, %b : bf16, bf16
+}

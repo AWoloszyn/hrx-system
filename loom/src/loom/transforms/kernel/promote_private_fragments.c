@@ -193,6 +193,9 @@ static bool loom_promote_private_fragments_is_private_rank1_view(
   const loom_value_t* buffer_value =
       loom_module_value(module, loom_buffer_view_buffer(view_op));
   if (loom_value_is_block_arg(buffer_value)) return false;
+  // Promotion reasons about this view's users only. Another storage user can
+  // observe erased writes or clobber values forwarded through the view.
+  if (!loom_value_has_single_use(buffer_value)) return false;
   loom_op_t* alloca_op = loom_value_def_op(buffer_value);
   if (!loom_buffer_alloca_isa(alloca_op)) return false;
   if (loom_buffer_alloca_memory_space(alloca_op) !=

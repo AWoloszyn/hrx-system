@@ -58,10 +58,6 @@ static const loom_vector_to_scalar_descriptor_t
      LOOM_VECTOR_TO_SCALAR_LANE_DEINTERLEAVE, UINT8_MAX),
     LOOM_VECTOR_TO_SCALAR_DESCRIPTOR_ROW(BITCAST, LOOM_OP_SCALAR_BITCAST,
      LOOM_VECTOR_TO_SCALAR_LANE_BITCAST, UINT8_MAX),
-    LOOM_VECTOR_TO_SCALAR_DESCRIPTOR_ROW(BITFIELD_EXTRACTU, LOOM_OP_KIND_UNKNOWN,
-     LOOM_VECTOR_TO_SCALAR_LANE_BITFIELD_EXTRACTU, UINT8_MAX),
-    LOOM_VECTOR_TO_SCALAR_DESCRIPTOR_ROW(BITFIELD_EXTRACTS, LOOM_OP_KIND_UNKNOWN,
-     LOOM_VECTOR_TO_SCALAR_LANE_BITFIELD_EXTRACTS, UINT8_MAX),
     LOOM_VECTOR_TO_SCALAR_DESCRIPTOR_ROW(BITFIELD_INSERT, LOOM_OP_KIND_UNKNOWN,
      LOOM_VECTOR_TO_SCALAR_LANE_BITFIELD_INSERT, 1),
     LOOM_VECTOR_TO_SCALAR_DESCRIPTOR_ROW(DOT2F, LOOM_OP_KIND_UNKNOWN,
@@ -106,11 +102,12 @@ static bool loom_vector_to_scalar_descriptor_is_empty(
 
 bool loom_vector_to_scalar_resolve_descriptor(
     loom_op_kind_t kind, loom_vector_to_scalar_descriptor_t* out_descriptor) {
+  // Both forms select each payload lane. Generic lane materialization keeps
+  // scf.select's scalar condition unchanged instead of extracting a mask lane.
+  if (kind == LOOM_OP_SCF_SELECT) kind = LOOM_OP_VECTOR_SELECT;
   const loom_vector_scalarization_t* scalarization =
       loom_vector_scalarization_lookup(kind);
-  if (scalarization != NULL &&
-      iree_all_bits_set(scalarization->flags,
-                        LOOM_VECTOR_SCALARIZATION_FLAG_MECHANICAL)) {
+  if (scalarization != NULL) {
     *out_descriptor = (loom_vector_to_scalar_descriptor_t){
         .lane_op_kind = scalarization->lane_op_kind,
         .lane_kind = LOOM_VECTOR_TO_SCALAR_LANE_GENERIC,

@@ -138,8 +138,7 @@ static iree_status_t loom_wasm_map_type(void* user_data,
   if (loom_wasm_type_is_vector_4xf32(source_type)) {
     return loom_wasm_make_v128_register_type(context, out_low_type);
   }
-  return loom_low_lower_emit_source_type_unsupported(
-      context, source_op, IREE_SV("source"), source_type);
+  return iree_ok_status();
 }
 
 static iree_status_t loom_wasm_map_argument(
@@ -171,13 +170,7 @@ static iree_status_t loom_wasm_map_argument(
                             &out_argument->abi_type);
 }
 
-static const loom_low_lower_rule_set_t* const kWasmRuleSets[] = {
-    &loom_wasm_core_simd128_lower_rule_set,
-};
-
-static const loom_target_contract_binding_t kWasmContractBindings[] = {
-    {&loom_wasm_core_simd128_contract_fragment, 0},
-};
+#include "loom/target/emit/wasm/contracts/tables.inl"
 
 static const loom_low_lower_policy_t kWasmLowLowerPolicy = {
     .name = IREE_SVL("wasm-lower"),
@@ -186,13 +179,7 @@ static const loom_low_lower_policy_t kWasmLowLowerPolicy = {
     .map_argument = {.fn = loom_wasm_map_argument, .user_data = NULL},
     .source_type_supported = {.fn = loom_wasm_source_type_supported,
                               .user_data = NULL},
-    .rule_sets =
-        {
-            .count = IREE_ARRAYSIZE(kWasmRuleSets),
-            .values = kWasmRuleSets,
-        },
-    .contract_bindings = kWasmContractBindings,
-    .contract_binding_count = IREE_ARRAYSIZE(kWasmContractBindings),
+    .contract = LOOM_WASM_CONTRACT,
 };
 
 const loom_low_lower_policy_t* loom_wasm_low_lower_policy(void) {

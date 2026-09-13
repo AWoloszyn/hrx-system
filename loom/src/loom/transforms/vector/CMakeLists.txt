@@ -19,7 +19,6 @@ loom_cc_library(
   DEPS
     iree::base
     iree::base::internal::arena
-    loom::error::error_defs
     loom::ir
     loom::ops::op_defs
     loom::ops::scf
@@ -155,6 +154,7 @@ loom_cc_library(
     iree::base
     loom::ir
     loom::ops::kernel
+    loom::ops::scf
     loom::ops::vector
     loom::target::legalization
   PUBLIC
