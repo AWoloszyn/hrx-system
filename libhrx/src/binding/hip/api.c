@@ -28,6 +28,7 @@
 
 #include "binding/hip/binding_internal.h"
 #include "binding/hip/blocking_printf_provider.h"
+#include "binding/hip/error_state.h"
 #include "binding/hip/execution_context.h"
 #include "binding/hip/execution_resource.h"
 #include "binding/hip/execution_resource_descriptor.h"
@@ -867,6 +868,11 @@ static iree_hal_streaming_context_limit_t iree_hip_limit_to_internal(
       return IREE_HAL_STREAMING_CONTEXT_LIMIT_MAX_L2_FETCH_GRANULARITY;
     case hipLimitPersistingL2CacheSize:
       return IREE_HAL_STREAMING_CONTEXT_LIMIT_PERSISTING_L2_CACHE_SIZE;
+    case hipExtLimitScratchMin:
+    case hipExtLimitScratchMax:
+    case hipExtLimitScratchCurrent:
+      // The streaming context does not expose a mutable queue-scratch budget.
+      return (iree_hal_streaming_context_limit_t)-1;
     default:
       // Return an invalid value that will trigger error in internal API.
       return (iree_hal_streaming_context_limit_t)-1;
@@ -892,16 +898,6 @@ static inline hrx_device_t iree_hip_hrx_device_from_context(
   return context && context->device_entry ? context->device_entry->hrx_device
                                           : NULL;
 }
-
-//===----------------------------------------------------------------------===//
-// Thread-local error tracking
-//===----------------------------------------------------------------------===//
-
-// Thread-local error state for HIP.
-static IREE_THREAD_LOCAL struct {
-  hipError_t last_error;
-  bool sticky;
-} iree_hip_thread_error = {hipSuccess, false};
 
 static iree_slim_mutex_t iree_hip_global_init_mutex;
 static iree_once_flag iree_hip_global_init_mutex_once = IREE_ONCE_FLAG_INIT;
@@ -981,42 +977,10 @@ static hipError_t iree_hip_get_per_thread_stream_state(
   return hipSuccess;
 }
 
-static void iree_hip_thread_error_set(hipError_t error, bool sticky) {
-  if (iree_hip_thread_error.sticky && !sticky) return;
-  iree_hip_thread_error.last_error = error;
-  iree_hip_thread_error.sticky = sticky;
-}
-
-static hipError_t iree_hip_thread_error_get_and_clear(void) {
-  hipError_t error = iree_hip_thread_error.last_error;
-  if (!iree_hip_thread_error.sticky) {
-    iree_hip_thread_error.last_error = hipSuccess;
-  }
-  return error;
-}
-
-static hipError_t iree_hip_thread_error_peek(void) {
-  return iree_hip_thread_error.last_error;
-}
-
 // Helper macro to set thread-local error and return.
-#define HIP_RETURN_ERROR(error)               \
-  do {                                        \
-    hipError_t _err = (error);                \
-    if (_err != hipSuccess) {                 \
-      iree_hip_thread_error_set(_err, false); \
-    }                                         \
-    return _err;                              \
-  } while (0)
-
-// Helper macro to set sticky thread-local error and return.
-#define HIP_RETURN_STICKY_ERROR(error)       \
-  do {                                       \
-    hipError_t _err = (error);               \
-    if (_err != hipSuccess) {                \
-      iree_hip_thread_error_set(_err, true); \
-    }                                        \
-    return _err;                             \
+#define HIP_RETURN_ERROR(error)                   \
+  do {                                            \
+    return iree_hip_error_state_publish((error)); \
   } while (0)
 
 #define _GET_ARG_COUNT_2(_1, _2, COUNT, ...) COUNT
@@ -1027,8 +991,7 @@ static hipError_t iree_hip_thread_error_peek(void) {
     iree_status_t _status = (status);                       \
     if (!iree_status_is_ok(_status)) {                      \
       hipError_t _err = iree_status_to_hip_result(_status); \
-      iree_hip_thread_error_set(_err, false);               \
-      return _err;                                          \
+      return iree_hip_error_state_publish(_err);            \
     }                                                       \
   } while (0)
 #define HIP_RETURN_STATUS_2(status, error)                               \
@@ -1036,8 +999,7 @@ static hipError_t iree_hip_thread_error_peek(void) {
     iree_status_t _status = (status);                                    \
     if (!iree_status_is_ok(_status)) {                                   \
       hipError_t _err = iree_status_to_fixed_hip_result(_status, error); \
-      iree_hip_thread_error_set(_err, false);                            \
-      return _err;                                                       \
+      return iree_hip_error_state_publish(_err);                         \
     }                                                                    \
   } while (0)
 
@@ -1055,8 +1017,7 @@ static hipError_t iree_hip_thread_error_peek(void) {
     if (!iree_status_is_ok(_status)) {                          \
       hipError_t _err = iree_status_to_hip_result(_status);     \
       IREE_TRACE_ZONE_END(zone);                                \
-      iree_hip_thread_error_set(_err, false);                   \
-      return _err;                                              \
+      return iree_hip_error_state_publish(_err);                \
     }                                                           \
   } while (0)
 #define HIP_RETURN_STATUS_AND_END_ZONE_IF_ERROR_3(zone, status, error)   \
@@ -1065,8 +1026,7 @@ static hipError_t iree_hip_thread_error_peek(void) {
     if (!iree_status_is_ok(_status)) {                                   \
       hipError_t _err = iree_status_to_fixed_hip_result(_status, error); \
       IREE_TRACE_ZONE_END(zone);                                         \
-      iree_hip_thread_error_set(_err, false);                            \
-      return _err;                                                       \
+      return iree_hip_error_state_publish(_err);                         \
     }                                                                    \
   } while (0)
 
@@ -1460,8 +1420,9 @@ static bool iree_hip_no_visible_devices_requested(void) {
 }
 
 static hipError_t iree_hip_ensure_initialized(void) {
-  if (iree_hip_thread_error.sticky) {
-    return iree_hip_thread_error_peek();
+  const hipError_t fatal_result = iree_hip_error_state_fatal_result();
+  if (IREE_UNLIKELY(fatal_result != hipSuccess)) {
+    return iree_hip_error_state_publish(fatal_result);
   }
   if (iree_hip_no_visible_devices_requested()) {
     return hipErrorNoDevice;
@@ -1759,7 +1720,7 @@ static hipError_t iree_hip_order_legacy_stream_dependencies(
 //
 // Multi-GPU: Initializes all available devices in the system.
 //
-// Note: Unlike CUDA, HIP currently requires flags to be 0.
+// HIP requires flags to be zero.
 //
 // See also: hipGetDeviceCount, hipSetDevice, hipDeviceReset.
 HIPAPI hipError_t hipInit(unsigned int flags) {
@@ -1798,6 +1759,7 @@ HIPAPI hipError_t hipHALDeinit(void) {
   iree_hal_streaming_cleanup_global();
   iree_atomic_store(&iree_hip_runtime_initialized, 0,
                     iree_memory_order_release);
+  iree_hip_error_state_reset();
   iree_slim_mutex_unlock(&iree_hip_global_init_mutex);
   IREE_TRACE_ZONE_END(z0);
   HIP_RETURN_ERROR(result);
@@ -1965,6 +1927,7 @@ HIPAPI hipError_t hipSetValidDevices(int* device_arr, int len) {
   if (len < 0 || len > device_count || (len > 0 && !device_arr)) {
     HIP_RETURN_ERROR(hipErrorInvalidValue);
   }
+  if (len == 0) return hipSuccess;
 
   for (int i = 0; i < len; ++i) {
     if (device_arr[i] < 0 || device_arr[i] >= device_count) {
@@ -1975,8 +1938,7 @@ HIPAPI hipError_t hipSetValidDevices(int* device_arr, int len) {
   // The valid-device list selects the initial device for this thread. An
   // explicit hipSetDevice call takes precedence over later preference lists.
   if (iree_hip_device_was_explicitly_selected) return hipSuccess;
-  const int selected_device = len > 0 ? device_arr[0] : 0;
-  return iree_hip_set_current_device(selected_device,
+  return iree_hip_set_current_device(device_arr[0],
                                      /*explicit_selection=*/false);
 }
 
@@ -2350,13 +2312,6 @@ HIPAPI hipError_t hipGetDeviceProperties(hipDeviceProp_t* prop, int device) {
   return hipSuccess;
 }
 
-// Alias for ROCm 6.0.0+ compatibility - exports the versioned symbol.
-// Modern HIP runtimes expect this versioned symbol for ABI stability.
-HIPAPI hipError_t hipGetDevicePropertiesR0600(hipDeviceProp_t* prop,
-                                              int device) {
-  return hipGetDeviceProperties(prop, device);
-}
-
 // Gets a specific attribute of a compute device.
 //
 // Parameters:
@@ -2417,8 +2372,6 @@ HIPAPI hipError_t hipDeviceGetAttribute(int* value, hipDeviceAttribute_t attr,
   // Map attributes to device properties.
   const bool is_gfx1100 = strncmp(device_obj->gcn_arch_name, "gfx1100", 7) == 0;
   const bool is_gfx942 = strncmp(device_obj->gcn_arch_name, "gfx942", 6) == 0;
-  const iree_hal_physical_device_identity_t* physical_identity =
-      iree_hip_physical_device_identity(device_obj);
   switch (attr) {
     case hipDeviceAttributeAccessPolicyMaxWindowSize:
       // A zero maximum advertises that persisting access-policy windows are
@@ -2514,7 +2467,9 @@ HIPAPI hipError_t hipDeviceGetAttribute(int* value, hipDeviceAttribute_t attr,
       break;
     case hipDeviceAttributePciBusId:
     case hipDeviceAttributePciDeviceId:
-    case hipDeviceAttributePciDomainID:
+    case hipDeviceAttributePciDomainID: {
+      const iree_hal_physical_device_identity_t* physical_identity =
+          iree_hip_physical_device_identity(device_obj);
       if (!physical_identity ||
           !iree_all_bits_set(
               physical_identity->flags,
@@ -2529,6 +2484,7 @@ HIPAPI hipError_t hipDeviceGetAttribute(int* value, hipDeviceAttribute_t attr,
         *value = physical_identity->pci.domain;
       }
       break;
+    }
     case hipDeviceAttributeUnifiedAddressing:
       *value = 1;
       break;
@@ -3653,9 +3609,6 @@ HIPAPI hipError_t hipDeviceSynchronize(void) {
       "[HIP_API] hipDeviceSynchronize() returned %d (sync_count=%d)\n", result,
       sync_count);
   IREE_TRACE_ZONE_END(z0);
-  if (result == hipErrorIllegalAddress) {
-    HIP_RETURN_STICKY_ERROR(result);
-  }
   HIP_RETURN_ERROR(result);
 }
 
@@ -3710,8 +3663,7 @@ HIPAPI hipError_t hipDeviceReset(void) {
   hipError_t result = hipDevicePrimaryCtxReset(current_device);
 
   IREE_TRACE_ZONE_END(z0);
-  iree_hip_thread_error_set(result, false);
-  return result;
+  return iree_hip_error_state_publish(result);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3759,12 +3711,10 @@ HIPAPI hipError_t hipSetDeviceFlags(unsigned int flags) {
     HIP_RETURN_ERROR(init_result);
   }
 
-  // Host mapping and local-memory resize are fixed backend properties. Device
-  // flag updates retain only the scheduling mode, as reported by HIP on this
-  // architecture.
+  // These are caller-selected primary-context flags, not device capabilities.
+  // Host-mapping support is reported independently through device properties.
   const iree_hal_streaming_context_flags_t internal_flags =
-      iree_hal_streaming_hip_context_flags_to_internal(flags &
-                                                       hipDeviceScheduleMask);
+      iree_hal_streaming_hip_context_flags_to_internal(flags);
   HIP_RETURN_STATUS_AND_END_ZONE_IF_ERROR(
       z0,
       iree_hal_streaming_device_set_primary_context_flags(
@@ -3803,7 +3753,13 @@ HIPAPI hipError_t hipGetDeviceFlags(unsigned int* flags) {
     HIP_RETURN_ERROR(init_result);
   }
 
-  *flags = iree_hip_context_flags_from_internal(context->flags);
+  iree_hal_streaming_context_flags_t internal_flags = {0};
+  HIP_RETURN_STATUS_AND_END_ZONE_IF_ERROR(
+      z0,
+      iree_hal_streaming_device_primary_context_state(context->device_ordinal,
+                                                      &internal_flags, NULL),
+      hipErrorInvalidDevice);
+  *flags = iree_hip_context_flags_from_internal(internal_flags);
 
   IREE_TRACE_ZONE_END(z0);
   return hipSuccess;
@@ -4799,22 +4755,7 @@ HIPAPI hipError_t hipCtxDisablePeerAccess(hipCtx_t peerContext) {
 // See also: hipDeviceSetLimit, hipDeviceGetAttribute.
 HIPAPI hipError_t hipDeviceGetLimit(size_t* pValue, hipLimit_t limit) {
   IREE_TRACE_ZONE_BEGIN(z0);
-  if (!pValue) {
-    IREE_TRACE_ZONE_END(z0);
-    HIP_RETURN_ERROR(hipErrorInvalidValue);
-  }
-  if (limit == hipLimitRange) {
-    IREE_TRACE_ZONE_END(z0);
-    HIP_RETURN_ERROR(hipErrorInvalidValue);
-  }
-  if (iree_hip_limit_to_internal(limit) ==
-      (iree_hal_streaming_context_limit_t)-1) {
-    IREE_TRACE_ZONE_END(z0);
-    HIP_RETURN_ERROR(hipErrorUnsupportedLimit);
-  }
 
-  // Get current context.
-  // Ensure initialization and get context.
   iree_hal_streaming_context_t* context = NULL;
   hipError_t init_result = iree_hip_ensure_context(&context);
   if (init_result != hipSuccess) {
@@ -4822,9 +4763,24 @@ HIPAPI hipError_t hipDeviceGetLimit(size_t* pValue, hipLimit_t limit) {
     HIP_RETURN_ERROR(init_result);
   }
 
+  if (!pValue) {
+    IREE_TRACE_ZONE_END(z0);
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
+  }
+  if ((int)limit < (int)hipLimitStackSize || limit >= hipLimitRange) {
+    IREE_TRACE_ZONE_END(z0);
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
+  }
+  const iree_hal_streaming_context_limit_t internal_limit =
+      iree_hip_limit_to_internal(limit);
+  if (internal_limit == (iree_hal_streaming_context_limit_t)-1) {
+    IREE_TRACE_ZONE_END(z0);
+    HIP_RETURN_ERROR(hipErrorUnsupportedLimit);
+  }
+
   // Get the limit value using internal API.
-  iree_status_t status = iree_hal_streaming_context_limit(
-      context, iree_hip_limit_to_internal(limit), pValue);
+  iree_status_t status =
+      iree_hal_streaming_context_limit(context, internal_limit, pValue);
 
   hipError_t result = iree_status_to_hip_result(status);
   IREE_TRACE_ZONE_END(z0);
@@ -4862,18 +4818,6 @@ HIPAPI hipError_t hipDeviceGetLimit(size_t* pValue, hipLimit_t limit) {
 HIPAPI hipError_t hipDeviceSetLimit(hipLimit_t limit, size_t value) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  if (limit == hipLimitRange) {
-    IREE_TRACE_ZONE_END(z0);
-    HIP_RETURN_ERROR(hipErrorInvalidValue);
-  }
-  if (iree_hip_limit_to_internal(limit) ==
-      (iree_hal_streaming_context_limit_t)-1) {
-    IREE_TRACE_ZONE_END(z0);
-    HIP_RETURN_ERROR(hipErrorUnsupportedLimit);
-  }
-
-  // Get current context.
-  // Ensure initialization and get context.
   iree_hal_streaming_context_t* context = NULL;
   hipError_t init_result = iree_hip_ensure_context(&context);
   if (init_result != hipSuccess) {
@@ -4881,9 +4825,20 @@ HIPAPI hipError_t hipDeviceSetLimit(hipLimit_t limit, size_t value) {
     HIP_RETURN_ERROR(init_result);
   }
 
+  if ((int)limit < (int)hipLimitStackSize || limit >= hipLimitRange) {
+    IREE_TRACE_ZONE_END(z0);
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
+  }
+  const iree_hal_streaming_context_limit_t internal_limit =
+      iree_hip_limit_to_internal(limit);
+  if (internal_limit == (iree_hal_streaming_context_limit_t)-1) {
+    IREE_TRACE_ZONE_END(z0);
+    HIP_RETURN_ERROR(hipErrorUnsupportedLimit);
+  }
+
   // Set the limit value using internal API.
-  iree_status_t status = iree_hal_streaming_context_set_limit(
-      context, iree_hip_limit_to_internal(limit), value);
+  iree_status_t status =
+      iree_hal_streaming_context_set_limit(context, internal_limit, value);
 
   hipError_t result = iree_status_to_hip_result(status);
   IREE_TRACE_ZONE_END(z0);
@@ -7611,8 +7566,7 @@ HIPAPI hipError_t hipMemcpy2D(void* dst, size_t dpitch, const void* src,
   }
 
   IREE_TRACE_ZONE_END(z0);
-  iree_hip_thread_error_set(result, false);
-  return result;
+  return iree_hip_error_state_publish(result);
 }
 
 static hipError_t iree_hip_resolve_memcpy3d_array_params(
@@ -11453,7 +11407,7 @@ HIPAPI int hipGetStreamDeviceId(hipStream_t stream) {
       iree_hip_resolve_registered_stream(stream, &resolved_stream);
   if (init_result != hipSuccess) {
     IREE_TRACE_ZONE_END(z0);
-    iree_hip_thread_error_set(init_result, false);
+    iree_hip_error_state_publish(init_result);
     return -1;
   }
 
@@ -11521,7 +11475,7 @@ HIPAPI hipError_t hipStreamSynchronize(hipStream_t stream) {
     iree_hip_resolved_stream_release(&resolved_stream);
     hipError_t result = iree_status_to_hip_result(status);
     IREE_TRACE_ZONE_END(z0);
-    return result;
+    return iree_hip_error_state_publish(result);
   }
 
   if (iree_hip_context_invalidate_stream_blocking_capture(
@@ -11536,7 +11490,7 @@ HIPAPI hipError_t hipStreamSynchronize(hipStream_t stream) {
   iree_hip_resolved_stream_release(&resolved_stream);
   hipError_t result = iree_status_to_hip_result(status);
   IREE_TRACE_ZONE_END(z0);
-  return result;
+  return iree_hip_error_state_publish(result);
 }
 
 // Queries the completion status of operations in a stream.
@@ -11601,7 +11555,7 @@ HIPAPI hipError_t hipStreamQuery(hipStream_t stream) {
   hipError_t result = iree_status_is_ok(status)
                           ? (is_complete == 0 ? hipSuccess : hipErrorNotReady)
                           : iree_status_to_hip_result(status);
-  return result;
+  return iree_hip_error_state_publish(result);
 }
 
 // Makes a stream wait for an event to complete.
@@ -12339,7 +12293,7 @@ HIPAPI hipError_t hipEventSynchronize(hipEvent_t event) {
   iree_hal_streaming_event_release(streaming_event);
   hipError_t result = iree_status_to_hip_result(status);
   IREE_TRACE_ZONE_END(z0);
-  return result;
+  return iree_hip_error_state_publish(result);
 }
 
 // Queries the completion status of an event.
@@ -12414,7 +12368,7 @@ HIPAPI hipError_t hipEventQuery(hipEvent_t event) {
   hipError_t result = iree_status_is_ok(status)
                           ? (is_complete == 0 ? hipSuccess : hipErrorNotReady)
                           : iree_status_to_hip_result(status);
-  return result;
+  return iree_hip_error_state_publish(result);
 }
 
 // Invalidates the stream capture |event|'s last record went into. An event
@@ -13836,7 +13790,11 @@ HIPAPI hipError_t hipExtLaunchKernel(const void* function_address,
   iree_hip_resolved_stream_t resolved_stream = {0};
   hipError_t result =
       iree_hip_resolve_registered_stream(stream, &resolved_stream);
-  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+  if (result != hipSuccess) {
+    HIP_RETURN_ERROR(result == hipErrorInvalidResourceHandle
+                         ? hipErrorInvalidValue
+                         : result);
+  }
 
   iree_hal_streaming_event_t* start_event = NULL;
   if (startEvent) {
@@ -13938,22 +13896,17 @@ HIPAPI hipError_t hipExtLaunchKernel(const void* function_address,
 //
 // Note: Check device properties with hipDeviceGetAttribute() to determine
 // maximum grid/block dimensions and shared memory limits.
-// Counter for tracking hipModuleLaunchKernel calls (for debugging NaN issue)
-static int g_module_launch_count = 0;
-
 HIPAPI hipError_t hipModuleLaunchKernel(
     hipFunction_t f, unsigned int gridDimX, unsigned int gridDimY,
     unsigned int gridDimZ, unsigned int blockDimX, unsigned int blockDimY,
     unsigned int blockDimZ, unsigned int sharedMemBytes, hipStream_t stream,
     void** kernelParams, void** extra) {
   IREE_TRACE_ZONE_BEGIN(z0);
-  int launch_num = ++g_module_launch_count;
   HIP_DEBUG_LOG(
-      "[HIP_API] hipModuleLaunchKernel #%d: f=%p grid=(%u,%u,%u) "
+      "[HIP_API] hipModuleLaunchKernel: f=%p grid=(%u,%u,%u) "
       "block=(%u,%u,%u) shared=%u stream=%p extra=%p kernelParams=%p\n",
-      launch_num, (void*)f, gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY,
-      blockDimZ, sharedMemBytes, (void*)stream, (void*)extra,
-      (void*)kernelParams);
+      (void*)f, gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ,
+      sharedMemBytes, (void*)stream, (void*)extra, (void*)kernelParams);
 
 #if IREE_HIP_VERBOSE_DEBUG
   // Debug: dump the extra buffer contents to understand the kernel ABI
@@ -13985,7 +13938,9 @@ HIPAPI hipError_t hipModuleLaunchKernel(
       iree_hip_resolve_registered_stream(stream, &resolved_stream);
   if (init_result != hipSuccess) {
     IREE_TRACE_ZONE_END(z0);
-    HIP_RETURN_ERROR(init_result);
+    HIP_RETURN_ERROR(init_result == hipErrorInvalidResourceHandle
+                         ? hipErrorContextIsDestroyed
+                         : init_result);
   }
   iree_hal_streaming_context_t* context = resolved_stream.context;
   iree_hal_streaming_stream_t* stream_obj = resolved_stream.stream;
@@ -14067,11 +14022,10 @@ HIPAPI hipError_t hipModuleLaunchKernel(
     iree_host_size_t buf_len = 0;
     iree_status_format(status, sizeof(buf), buf, &buf_len);
     fprintf(stderr,
-            "[HRX] hipModuleLaunchKernel FAILED #%d symbol=%p buffer=%p "
+            "[HRX] hipModuleLaunchKernel FAILED symbol=%p buffer=%p "
             "buffer_size=%zu grid=(%u,%u,%u) block=(%u,%u,%u): %.*s\n",
-            launch_num, (void*)symbol, params_ptr, params_size, gridDimX,
-            gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ, (int)buf_len,
-            buf);
+            (void*)symbol, params_ptr, params_size, gridDimX, gridDimY,
+            gridDimZ, blockDimX, blockDimY, blockDimZ, (int)buf_len, buf);
     fflush(stderr);
   }
 
@@ -24944,59 +24898,81 @@ enum {
   IREE_HIP_DEVICE_PROPERTIES_R0600_VERSION = 600,
 };
 
-HIPAPI hipError_t hipGetProcAddress(const char* symbol, void** pfn,
-                                    int hipVersion, uint64_t flags,
-                                    void* symbolStatus) {
-  if (!symbol || symbol[0] == '\0' || !pfn ||
+static hipError_t iree_hip_symbol_lookup(const char* symbol, void** function,
+                                         uint64_t flags, void* symbol_status) {
+  if (function) *function = NULL;
+  if (symbol_status) *(int*)symbol_status = 1;
+  if (!symbol || symbol[0] == '\0' || !function ||
       flags > IREE_HIP_PROC_ADDRESS_PER_THREAD_DEFAULT_STREAM) {
-    HIP_RETURN_ERROR(hipErrorInvalidValue);
+    return hipErrorInvalidValue;
+  }
+
+  // Resolve against this library rather than the process-global scope. A
+  // consumer may load the runtime with RTLD_LOCAL, in which case its symbols
+  // are intentionally absent from the process-global namespace.
+  void* handle = iree_hip_self_dl_handle();
+  if (!handle) return hipErrorSharedObjectInitFailed;
+
+  char stream_per_thread_symbol[256];
+  const size_t symbol_length = strlen(symbol);
+  if (flags == IREE_HIP_PROC_ADDRESS_PER_THREAD_DEFAULT_STREAM &&
+      symbol_length <= sizeof(stream_per_thread_symbol) - sizeof("_spt") &&
+      (symbol_length < 4 || strcmp(symbol + symbol_length - 4, "_spt") != 0)) {
+    snprintf(stream_per_thread_symbol, sizeof(stream_per_thread_symbol),
+             "%s_spt", symbol);
+    *function = dlsym(handle, stream_per_thread_symbol);
+  }
+  if (!*function) *function = dlsym(handle, symbol);
+  if (symbol_status) *(int*)symbol_status = *function ? 0 : 1;
+  return *function ? hipSuccess : hipErrorNotFound;
+}
+
+hipError_t iree_hip_proc_address_lookup(const char* symbol, void** function,
+                                        int hip_version, uint64_t flags,
+                                        void* symbol_status) {
+  if (!symbol || symbol[0] == '\0' || !function ||
+      flags > IREE_HIP_PROC_ADDRESS_PER_THREAD_DEFAULT_STREAM) {
+    return hipErrorInvalidValue;
   }
 
   const char* resolved_symbol = symbol;
   if (strcmp(symbol, "hipGetDeviceProperties") == 0) {
-    resolved_symbol = hipVersion >= IREE_HIP_DEVICE_PROPERTIES_R0600_VERSION
+    resolved_symbol = hip_version >= IREE_HIP_DEVICE_PROPERTIES_R0600_VERSION
                           ? "hipGetDevicePropertiesR0600"
                           : "hipGetDevicePropertiesR0000";
     flags = IREE_HIP_PROC_ADDRESS_DEFAULT;
   } else if (strcmp(symbol, "hipChooseDevice") == 0) {
-    resolved_symbol = hipVersion >= IREE_HIP_DEVICE_PROPERTIES_R0600_VERSION
+    resolved_symbol = hip_version >= IREE_HIP_DEVICE_PROPERTIES_R0600_VERSION
                           ? "hipChooseDeviceR0600"
                           : "hipChooseDeviceR0000";
     flags = IREE_HIP_PROC_ADDRESS_DEFAULT;
   }
+  return iree_hip_symbol_lookup(resolved_symbol, function, flags,
+                                symbol_status);
+}
 
-  // Resolve symbols against this library, not the process-global scope. A
-  // consumer may dlopen us with RTLD_LOCAL (Triton's AMD backend does exactly
-  // this), so our symbols never enter the global namespace and a
-  // dlsym(dlopen(NULL), ...) lookup would spuriously fail with
-  // hipErrorNotFound. Fall back to the global scope only if the self-handle
-  // could not be established.
-  void* handle = iree_hip_self_dl_handle();
-  bool close_handle = false;
-  if (!handle) {
-    handle = dlopen(NULL, RTLD_LAZY);
-    close_handle = handle != NULL;
+hipError_t iree_hip_driver_entry_point_lookup(const char* symbol,
+                                              void** function, uint64_t flags,
+                                              void* symbol_status) {
+  return iree_hip_symbol_lookup(symbol, function, flags, symbol_status);
+}
+
+hipError_t iree_hip_normalize_spt_lookup_flags(uint64_t flags,
+                                               uint64_t* out_flags) {
+  if (!out_flags || flags > IREE_HIP_PROC_ADDRESS_PER_THREAD_DEFAULT_STREAM) {
+    return hipErrorInvalidValue;
   }
-  if (!handle) {
-    *pfn = NULL;
-    if (symbolStatus) *(int*)symbolStatus = 1;
-    HIP_RETURN_ERROR(hipErrorSharedObjectInitFailed);
-  }
-  char stream_per_thread_symbol[256];
-  *pfn = NULL;
-  size_t symbol_length = strlen(resolved_symbol);
-  if (flags == IREE_HIP_PROC_ADDRESS_PER_THREAD_DEFAULT_STREAM &&
-      symbol_length <= sizeof(stream_per_thread_symbol) - sizeof("_spt") &&
-      (symbol_length < 4 ||
-       strcmp(resolved_symbol + symbol_length - 4, "_spt") != 0)) {
-    snprintf(stream_per_thread_symbol, sizeof(stream_per_thread_symbol),
-             "%s_spt", resolved_symbol);
-    *pfn = dlsym(handle, stream_per_thread_symbol);
-  }
-  if (!*pfn) *pfn = dlsym(handle, resolved_symbol);
-  if (close_handle) dlclose(handle);
-  if (symbolStatus) *(int*)symbolStatus = *pfn ? 0 : 1;
-  HIP_RETURN_ERROR(*pfn ? hipSuccess : hipErrorNotFound);
+  *out_flags = flags == IREE_HIP_PROC_ADDRESS_DEFAULT
+                   ? IREE_HIP_PROC_ADDRESS_PER_THREAD_DEFAULT_STREAM
+                   : flags;
+  return hipSuccess;
+}
+
+HIPAPI hipError_t hipGetProcAddress(const char* symbol, void** function,
+                                    int hip_version, uint64_t flags,
+                                    void* symbol_status) {
+  return iree_hip_error_state_publish(iree_hip_proc_address_lookup(
+      symbol, function, hip_version, flags, symbol_status));
 }
 
 // Driver API version of hipGetErrorString.
@@ -25071,7 +25047,7 @@ HIPAPI hipError_t hipDrvGetErrorName(hipError_t hipError,
 //
 // See also: hipPeekAtLastError, hipGetErrorString, hipGetErrorName.
 HIPAPI hipError_t hipGetLastError(void) {
-  return iree_hip_thread_error_get_and_clear();
+  return iree_hip_error_state_get_and_clear();
 }
 
 // Gets the last error and clears it.
@@ -25093,7 +25069,7 @@ HIPAPI hipError_t hipGetLastError(void) {
 //
 // See also: hipGetLastError, hipPeekAtLastError, hipGetErrorString.
 HIPAPI hipError_t hipExtGetLastError(void) {
-  return iree_hip_thread_error_get_and_clear();
+  return iree_hip_error_state_get_and_clear();
 }
 
 // Gets the last error without clearing it.
@@ -25112,7 +25088,7 @@ HIPAPI hipError_t hipExtGetLastError(void) {
 //
 // See also: hipGetLastError, hipGetErrorString.
 HIPAPI hipError_t hipPeekAtLastError(void) {
-  return iree_hip_thread_error_peek();
+  return iree_hip_error_state_peek();
 }
 
 //===----------------------------------------------------------------------===//
