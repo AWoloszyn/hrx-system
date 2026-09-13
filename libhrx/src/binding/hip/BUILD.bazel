@@ -35,6 +35,16 @@ _HIP_GPU_COMPATIBILITY = _LINUX_COMPATIBILITY + select({
 })
 
 hrx_cc_library(
+    name = "hip_dso_test_util",
+    testonly = True,
+    srcs = ["hip_dso_test_util.cc"],
+    hdrs = ["hip_dso_test_util.h"],
+    includes = ["../.."],
+    target_compatible_with = _LINUX_COMPATIBILITY,
+    deps = ["//build_tools/bazel:dl"],
+)
+
+hrx_cc_library(
     name = "printf_format",
     srcs = ["printf_format.c"],
     hdrs = ["printf_format.h"],
@@ -337,7 +347,8 @@ hrx_cc_test(
     ],
     target_compatible_with = _HIP_GPU_COMPATIBILITY,
     deps = [
-        "//build_tools/bazel:dl",
+        ":hip_dso_test_util",
+        "//build_tools/bazel:pthreads",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
     ],
