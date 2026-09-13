@@ -116,9 +116,11 @@ static amdf_status_t FakeMemoryExport(
 }
 
 static amdf_status_t FakeMemoryDescribeSite(
-    amdf_memory_t* base_memory, uint32_t queue_family_ordinal,
+    amdf_memory_t* base_memory, uint32_t access_ordinal,
+    uint32_t queue_family_ordinal,
     amdf_memory_site_description_t* out_description) {
   auto* memory = static_cast<FakeMemory*>(base_memory->native);
+  EXPECT_EQ(access_ordinal, 0u);
   ++memory->site_description_count;
   memory->last_queue_family_ordinal = queue_family_ordinal;
   if (!amdf_status_is_ok(memory->site_status)) {
@@ -174,7 +176,7 @@ static amdf_status_t PrepareFakeMemory(amdf_memory_t* base_memory,
                                        uint64_t source_byte_offset,
                                        uint64_t byte_length,
                                        amdf_physical_memory_id_t backing_id) {
-  auto* device = reinterpret_cast<FakeDevice*>(base_memory->device);
+  auto* device = reinterpret_cast<FakeDevice*>(base_memory->accesses[0].device);
   const amdf_allocator_t host_allocator =
       amdf_device_host_allocator(&device->base);
   FakeMemory* memory = nullptr;
@@ -211,14 +213,16 @@ static amdf_status_t PrepareFakeMemory(amdf_memory_t* base_memory,
   base_memory->info.structure_size = sizeof(base_memory->info);
   base_memory->info.memory_profile_ordinal = memory_profile_ordinal;
   base_memory->info.memory_class = AMDF_MEMORY_CLASS_SYSTEM;
-  base_memory->info.device_access =
+  base_memory->accesses[0].info.access =
       AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
-  base_memory->info.atomic_operations_32 = device->profile.atomic_operations_32;
-  base_memory->info.atomic_operations_64 = device->profile.atomic_operations_64;
-  base_memory->info.address_domain_ordinal = 0;
-  base_memory->info.flags = AMDF_MEMORY_FLAG_HOST_VISIBLE |
-                            AMDF_MEMORY_FLAG_SHAREABLE |
-                            AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+  base_memory->accesses[0].info.atomic_operations_32 =
+      device->profile.atomic_operations_32;
+  base_memory->accesses[0].info.atomic_operations_64 =
+      device->profile.atomic_operations_64;
+  base_memory->accesses[0].info.address_domain_ordinal = 0;
+  base_memory->info.flags =
+      AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_SHAREABLE;
+  base_memory->accesses[0].info.flags = AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
   base_memory->info.source_byte_offset = source_byte_offset;
   base_memory->info.byte_length = byte_length;
   base_memory->info.alignment = 4096;
@@ -226,10 +230,10 @@ static amdf_status_t PrepareFakeMemory(amdf_memory_t* base_memory,
       source_byte_offset + byte_length;
   base_memory->info.native_allocation_granularity = 4096;
   base_memory->info.physical_backing_id = backing_id;
-  std::memcpy(base_memory->addresses, device->addresses.data(),
-              sizeof(base_memory->addresses));
-  base_memory->info.address_kinds = device->profile.address_kinds;
-  base_memory->info.reset_epoch = 1;
+  std::memcpy(base_memory->accesses[0].addresses, device->addresses.data(),
+              sizeof(base_memory->accesses[0].addresses));
+  base_memory->accesses[0].info.address_kinds = device->profile.address_kinds;
+  base_memory->accesses[0].info.reset_epoch = 1;
   return AMDF_STATUS_OK;
 }
 
@@ -250,7 +254,7 @@ static amdf_status_t FakeDeviceQueryMemoryProfile(
 static amdf_status_t FakeDeviceMemoryPrepare(
     amdf_memory_t* memory, const amdf_memory_profile_t* profile,
     const amdf_memory_create_info_t* create_info) {
-  auto* device = reinterpret_cast<FakeDevice*>(memory->device);
+  auto* device = reinterpret_cast<FakeDevice*>(memory->accesses[0].device);
   memory->vtable = &kFakeMemoryVtable;
   ++device->create_call_count;
   const amdf_status_t status =
@@ -264,7 +268,7 @@ static amdf_status_t FakeDeviceMemoryPrepareImport(
     const amdf_memory_import_info_t* import_info,
     const amdf_external_memory_t* external_memory,
     amdf_external_memory_t** out_external_memory_lease) {
-  auto* device = reinterpret_cast<FakeDevice*>(memory->device);
+  auto* device = reinterpret_cast<FakeDevice*>(memory->accesses[0].device);
   memory->vtable = &kFakeMemoryVtable;
   ++device->import_call_count;
   if (device->import_failure_stage == ImportFailureStage::kBeforeAttachment) {
@@ -540,28 +544,68 @@ TEST(MemoryAddressTest, QueriesCachedAddressAndRejectsUnavailableConsumers) {
   amdf_memory_t* memory = nullptr;
   ASSERT_EQ(amdf_memory_create(&device.base, &create_info, &memory),
             AMDF_STATUS_OK);
+  amdf_memory_info_t memory_info = {};
+  memory_info.type = AMDF_STRUCTURE_TYPE_MEMORY_INFO;
+  memory_info.structure_size = sizeof(memory_info);
+  ASSERT_EQ(amdf_memory_query_info(memory, &memory_info), AMDF_STATUS_OK);
+  EXPECT_EQ(memory_info.access_count, 1u);
+  EXPECT_EQ(memory_info.flags & AMDF_MEMORY_ACCESS_FLAGS, 0u);
+  amdf_memory_access_info_t access_info = {};
+  access_info.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_INFO;
+  access_info.structure_size = sizeof(access_info);
+  ASSERT_EQ(amdf_memory_query_access_info(memory, 0, &access_info),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(access_info.ordinal, 0u);
+  EXPECT_EQ(access_info.access, create_info.device_access);
+  EXPECT_EQ(access_info.flags, AMDF_MEMORY_FLAG_DEVICE_ADDRESS);
+  EXPECT_EQ(access_info.address_kinds, UINT64_C(1) << AMDF_MEMORY_ADDRESS_GPU);
+  EXPECT_EQ(access_info.reset_epoch, 1u);
+  const amdf_memory_access_info_t original_access_info = access_info;
+  EXPECT_EQ(
+      amdf_status_code(amdf_memory_query_access_info(memory, 1, &access_info)),
+      AMDF_STATUS_CODE_OUT_OF_RANGE);
+  EXPECT_EQ(
+      std::memcmp(&access_info, &original_access_info, sizeof(access_info)), 0);
+  EXPECT_EQ(
+      amdf_status_code(amdf_memory_query_access_info(nullptr, 0, &access_info)),
+      AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(
+      std::memcmp(&access_info, &original_access_info, sizeof(access_info)), 0);
+  EXPECT_EQ(amdf_status_code(amdf_memory_query_access_info(memory, 0, nullptr)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  access_info.type = AMDF_STRUCTURE_TYPE_NONE;
+  const amdf_memory_access_info_t invalid_access_info = access_info;
+  EXPECT_EQ(
+      amdf_status_code(amdf_memory_query_access_info(memory, 0, &access_info)),
+      AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(
+      std::memcmp(&access_info, &invalid_access_info, sizeof(access_info)), 0);
   uint64_t address = 0;
   EXPECT_EQ(
-      amdf_memory_query_address(memory, AMDF_MEMORY_ADDRESS_GPU, &address),
+      amdf_memory_query_address(memory, 0, AMDF_MEMORY_ADDRESS_GPU, &address),
       AMDF_STATUS_OK);
+  EXPECT_EQ(address, UINT64_C(0x100000));
+  EXPECT_EQ(amdf_status_code(amdf_memory_query_address(
+                memory, 1, AMDF_MEMORY_ADDRESS_GPU, &address)),
+            AMDF_STATUS_CODE_OUT_OF_RANGE);
   EXPECT_EQ(address, UINT64_C(0x100000));
   for (amdf_memory_address_kind_t kind :
        {AMDF_MEMORY_ADDRESS_XDNA_DMA, AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE}) {
     EXPECT_EQ(
-        amdf_status_code(amdf_memory_query_address(memory, kind, &address)),
+        amdf_status_code(amdf_memory_query_address(memory, 0, kind, &address)),
         AMDF_STATUS_CODE_UNSUPPORTED);
     EXPECT_EQ(address, UINT64_C(0x100000));
   }
-  EXPECT_EQ(
-      amdf_status_code(amdf_memory_query_address(memory, UINT32_MAX, &address)),
-      AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(address, UINT64_C(0x100000));
-  EXPECT_EQ(amdf_status_code(amdf_memory_query_address(
-                nullptr, AMDF_MEMORY_ADDRESS_GPU, &address)),
+  EXPECT_EQ(amdf_status_code(
+                amdf_memory_query_address(memory, 0, UINT32_MAX, &address)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
   EXPECT_EQ(address, UINT64_C(0x100000));
   EXPECT_EQ(amdf_status_code(amdf_memory_query_address(
-                memory, AMDF_MEMORY_ADDRESS_GPU, nullptr)),
+                nullptr, 0, AMDF_MEMORY_ADDRESS_GPU, &address)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(address, UINT64_C(0x100000));
+  EXPECT_EQ(amdf_status_code(amdf_memory_query_address(
+                memory, 0, AMDF_MEMORY_ADDRESS_GPU, nullptr)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
   const auto* native = static_cast<const FakeMemory*>(memory->native);
   EXPECT_EQ(native->map_call_count, 0u);
@@ -587,15 +631,15 @@ TEST(MemoryAddressTest, KeepsDistinctConsumerAddressesIncludingZero) {
   for (int iteration = 0; iteration < 2; ++iteration) {
     uint64_t address = UINT64_MAX;
     EXPECT_EQ(amdf_memory_query_address(
-                  memory, AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE, &address),
+                  memory, 0, AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE, &address),
               AMDF_STATUS_OK);
     EXPECT_EQ(address, 0u);
-    EXPECT_EQ(amdf_memory_query_address(memory, AMDF_MEMORY_ADDRESS_XDNA_DMA,
+    EXPECT_EQ(amdf_memory_query_address(memory, 0, AMDF_MEMORY_ADDRESS_XDNA_DMA,
                                         &address),
               AMDF_STATUS_OK);
     EXPECT_EQ(address, UINT64_C(0x80000000));
     EXPECT_EQ(amdf_status_code(amdf_memory_query_address(
-                  memory, AMDF_MEMORY_ADDRESS_GPU, &address)),
+                  memory, 0, AMDF_MEMORY_ADDRESS_GPU, &address)),
               AMDF_STATUS_CODE_UNSUPPORTED);
     EXPECT_EQ(address, UINT64_C(0x80000000));
   }

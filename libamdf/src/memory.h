@@ -23,7 +23,8 @@ typedef struct amdf_memory_vtable_t {
                                    amdf_external_memory_t* out_value);
   // Describes one concrete attachment and exact local queue family.
   amdf_status_t (*describe_site)(
-      amdf_memory_t* memory, uint32_t queue_family_ordinal,
+      amdf_memory_t* memory, uint32_t access_ordinal,
+      uint32_t queue_family_ordinal,
       amdf_memory_site_description_t* out_description);
   // Creates one explicit host mapping. Failure releases every partial resource;
   // success returns one complete mapping.
@@ -38,19 +39,36 @@ typedef struct amdf_memory_vtable_t {
   void (*abandon_native)(amdf_memory_t* memory);
 } amdf_memory_vtable_t;
 
+// Immutable consumer facts, indexed directly by the caller's access ordinal.
+typedef struct amdf_memory_access_state_t {
+  // Device borrowed without retention or lifetime tracking. The caller keeps
+  // it live through successful native memory teardown.
+  amdf_device_t* device;
+  // Complete consumer properties established before publication.
+  amdf_memory_access_info_t info;
+  // Cached interface bases; info.address_kinds identifies available entries.
+  uint64_t addresses[AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE + 1];
+} amdf_memory_access_state_t;
+
+// Properties of physical backing, independent of any consumer's access.
+#define AMDF_MEMORY_BACKING_FLAGS                                  \
+  (AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_LOCAL | \
+   AMDF_MEMORY_FLAG_SHAREABLE)
+
+// Properties established separately for each device consumer.
+#define AMDF_MEMORY_ACCESS_FLAGS                                     \
+  (AMDF_MEMORY_FLAG_QUEUE_STORAGE | AMDF_MEMORY_FLAG_HOST_COHERENT | \
+   AMDF_MEMORY_FLAG_DEVICE_ADDRESS)
+
 struct amdf_memory_t {
   // Host allocator copied for direct terminal teardown.
   amdf_allocator_t host_allocator;
   // Implementation operations selected before the memory is published.
   const amdf_memory_vtable_t* vtable;
-  // Device borrowed without retention or lifetime tracking. The caller keeps
-  // it live through successful native memory teardown.
-  amdf_device_t* device;
   // Immutable properties established before publication.
   amdf_memory_info_t info;
-  // Cached bases indexed by consuming interface. Availability is recorded in
-  // info.address_kinds; an unavailable entry is never consumed.
-  uint64_t addresses[AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE + 1];
+  // info.access_count records in the tail of this same allocation.
+  amdf_memory_access_state_t* accesses;
   // Number of live mappings and commands borrowing this memory.
   amdf_child_tracker_t children;
   // Owned family-native state, including partial preparation. Interpretation
@@ -86,10 +104,15 @@ amdf_status_t AMDF_CALL amdf_memory_import(
 amdf_status_t AMDF_CALL amdf_memory_query_info(amdf_memory_t* memory,
                                                amdf_memory_info_t* out_info);
 
+// Copies immutable properties of one established device access.
+amdf_status_t AMDF_CALL
+amdf_memory_query_access_info(amdf_memory_t* memory, uint32_t access_ordinal,
+                              amdf_memory_access_info_t* out_info);
+
 // Returns a cached address for an established consuming interface.
 amdf_status_t AMDF_CALL amdf_memory_query_address(
-    amdf_memory_t* memory, amdf_memory_address_kind_t kind,
-    uint64_t* out_address);
+    amdf_memory_t* memory, uint32_t access_ordinal,
+    amdf_memory_address_kind_t kind, uint64_t* out_address);
 
 // Exports one logical range as a move-owned external value.
 amdf_status_t AMDF_CALL amdf_memory_export(

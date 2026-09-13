@@ -138,9 +138,9 @@ class GpuKernelQueueTest : public GpuDeviceFixture {
         api_->memory_create(device_, &create_info, &memory_)));
 
     uint64_t address = 0;
-    EXPECT_EQ(
-        api_->memory_query_address(memory_, AMDF_MEMORY_ADDRESS_GPU, &address),
-        AMDF_STATUS_OK);
+    EXPECT_EQ(api_->memory_query_address(memory_, 0, AMDF_MEMORY_ADDRESS_GPU,
+                                         &address),
+              AMDF_STATUS_OK);
     return address;
   }
 
@@ -182,13 +182,19 @@ class GpuKernelQueueTest : public GpuDeviceFixture {
     memory_info.structure_size = sizeof(memory_info);
     EXPECT_TRUE(amdf_status_is_ok(
         api_->memory_query_info(local_memory_, &memory_info)));
-    EXPECT_EQ(memory_info.flags & create_info.required_flags,
-              create_info.required_flags);
-    EXPECT_EQ(memory_info.device_access, create_info.device_access);
+    amdf_memory_access_info_t access_info = {};
+    access_info.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_INFO;
+    access_info.structure_size = sizeof(access_info);
+    EXPECT_EQ(api_->memory_query_access_info(local_memory_, 0, &access_info),
+              AMDF_STATUS_OK);
+    EXPECT_EQ(
+        (memory_info.flags | access_info.flags) & create_info.required_flags,
+        create_info.required_flags);
+    EXPECT_EQ(access_info.access, create_info.device_access);
     EXPECT_GE(memory_info.byte_length, kMemoryByteLength);
     uint64_t address = 0;
-    EXPECT_EQ(api_->memory_query_address(local_memory_, AMDF_MEMORY_ADDRESS_GPU,
-                                         &address),
+    EXPECT_EQ(api_->memory_query_address(local_memory_, 0,
+                                         AMDF_MEMORY_ADDRESS_GPU, &address),
               AMDF_STATUS_OK);
     return address;
   }
@@ -257,6 +263,13 @@ TEST_F(GpuKernelQueueTest, ExecutesMaterializedCopyData) {
   EXPECT_EQ(invalid_submission, 42u);
   command_descriptor.byte_length = sizeof(command);
 
+  command_descriptor.access_ordinal = 1;
+  EXPECT_EQ(amdf_status_code(gpu_api_->kernel_queue_submit(
+                queue_, &submission_info, &invalid_submission)),
+            AMDF_STATUS_CODE_OUT_OF_RANGE);
+  EXPECT_EQ(invalid_submission, 42u);
+  command_descriptor.access_ordinal = 0;
+
   uint64_t submission = 42;
   ASSERT_TRUE(amdf_status_is_ok(
       gpu_api_->kernel_queue_submit(queue_, &submission_info, &submission)));
@@ -274,7 +287,7 @@ TEST_F(GpuKernelQueueTest, ExecutesMaterializedCopyData) {
             AMDF_STATUS_CODE_BUSY);
 
   ASSERT_TRUE(amdf_status_is_ok(api_->kernel_queue_wait(
-      queue_, submission, UINT64_C(5000000000), UINT64_C(50000))));
+      queue_, submission, AMDF_TIMEOUT_INFINITE, UINT64_C(50000))));
   amdf_kernel_queue_status_t queue_status = {};
   queue_status.type = AMDF_STRUCTURE_TYPE_KERNEL_QUEUE_STATUS;
   queue_status.structure_size = sizeof(queue_status);
@@ -343,9 +356,10 @@ TEST_F(GpuKernelQueueTest, ExecutesMaterializedSdmaCopy) {
       mapping_, AMDF_HOST_CACHE_OPERATION_FLUSH, 0, kMemoryByteLength)));
 
   const amdf_gpu_kernel_command_t command_descriptor = {
-      memory_,
-      kCommandByteOffset,
-      sizeof(command),
+      .memory = memory_,
+      .access_ordinal = 0,
+      .byte_offset = kCommandByteOffset,
+      .byte_length = sizeof(command),
   };
   amdf_gpu_kernel_queue_submission_info_t submission_info = {};
   submission_info.type = AMDF_STRUCTURE_TYPE_GPU_KERNEL_QUEUE_SUBMISSION_INFO;
@@ -357,7 +371,7 @@ TEST_F(GpuKernelQueueTest, ExecutesMaterializedSdmaCopy) {
       gpu_api_->kernel_queue_submit(queue_, &submission_info, &submission)));
   indirect_memory_may_be_in_use_ = true;
   ASSERT_TRUE(amdf_status_is_ok(api_->kernel_queue_wait(
-      queue_, submission, UINT64_C(5000000000), UINT64_C(50000))));
+      queue_, submission, AMDF_TIMEOUT_INFINITE, UINT64_C(50000))));
   indirect_memory_may_be_in_use_ = false;
 
   ASSERT_TRUE(amdf_status_is_ok(api_->host_mapping_cache_control(
@@ -415,9 +429,10 @@ TEST_F(GpuKernelQueueTest, CopiesThroughDeviceLocalExecutableMemory) {
       mapping_, AMDF_HOST_CACHE_OPERATION_FLUSH, 0, kMemoryByteLength)));
 
   const amdf_gpu_kernel_command_t command_descriptor = {
-      memory_,
-      kCommandByteOffset,
-      sizeof(command),
+      .memory = memory_,
+      .access_ordinal = 0,
+      .byte_offset = kCommandByteOffset,
+      .byte_length = sizeof(command),
   };
   amdf_gpu_kernel_queue_submission_info_t submission_info = {};
   submission_info.type = AMDF_STRUCTURE_TYPE_GPU_KERNEL_QUEUE_SUBMISSION_INFO;
@@ -430,7 +445,7 @@ TEST_F(GpuKernelQueueTest, CopiesThroughDeviceLocalExecutableMemory) {
   indirect_memory_may_be_in_use_ = true;
 
   ASSERT_TRUE(amdf_status_is_ok(api_->kernel_queue_wait(
-      queue_, submission, UINT64_C(5000000000), UINT64_C(50000))));
+      queue_, submission, AMDF_TIMEOUT_INFINITE, UINT64_C(50000))));
   indirect_memory_may_be_in_use_ = false;
   ASSERT_TRUE(amdf_status_is_ok(api_->host_mapping_cache_control(
       mapping_, AMDF_HOST_CACHE_OPERATION_INVALIDATE, kTargetByteOffset,
@@ -500,9 +515,10 @@ TEST_F(GpuKernelQueueTest, ExecutesDeviceLocalCommandStream) {
       mapping_, AMDF_HOST_CACHE_OPERATION_FLUSH, 0, kMemoryByteLength)));
 
   const amdf_gpu_kernel_command_t upload_descriptor = {
-      memory_,
-      kCommandByteOffset,
-      sizeof(upload_command),
+      .memory = memory_,
+      .access_ordinal = 0,
+      .byte_offset = kCommandByteOffset,
+      .byte_length = sizeof(upload_command),
   };
   amdf_gpu_kernel_queue_submission_info_t submission_info = {};
   submission_info.type = AMDF_STRUCTURE_TYPE_GPU_KERNEL_QUEUE_SUBMISSION_INFO;
@@ -514,7 +530,7 @@ TEST_F(GpuKernelQueueTest, ExecutesDeviceLocalCommandStream) {
       queue_, &submission_info, &upload_submission)));
   indirect_memory_may_be_in_use_ = true;
   ASSERT_TRUE(amdf_status_is_ok(api_->kernel_queue_wait(
-      queue_, upload_submission, UINT64_C(5000000000), UINT64_C(50000))));
+      queue_, upload_submission, AMDF_TIMEOUT_INFINITE, UINT64_C(50000))));
   indirect_memory_may_be_in_use_ = false;
   ASSERT_TRUE(amdf_status_is_ok(api_->host_mapping_cache_control(
       mapping_, AMDF_HOST_CACHE_OPERATION_INVALIDATE,
@@ -524,9 +540,10 @@ TEST_F(GpuKernelQueueTest, ExecutesDeviceLocalCommandStream) {
             0);
 
   const amdf_gpu_kernel_command_t local_command_descriptor = {
-      local_memory_,
-      kLocalByteOffset,
-      sizeof(local_command),
+      .memory = local_memory_,
+      .access_ordinal = 0,
+      .byte_offset = kLocalByteOffset,
+      .byte_length = sizeof(local_command),
   };
   submission_info.commands = &local_command_descriptor;
   uint64_t local_submission = 0;
@@ -536,7 +553,7 @@ TEST_F(GpuKernelQueueTest, ExecutesDeviceLocalCommandStream) {
   EXPECT_EQ(amdf_status_code(api_->memory_destroy(local_memory_)),
             AMDF_STATUS_CODE_BUSY);
   ASSERT_TRUE(amdf_status_is_ok(api_->kernel_queue_wait(
-      queue_, local_submission, UINT64_C(5000000000), UINT64_C(50000))));
+      queue_, local_submission, AMDF_TIMEOUT_INFINITE, UINT64_C(50000))));
   indirect_memory_may_be_in_use_ = false;
 
   ASSERT_TRUE(amdf_status_is_ok(api_->host_mapping_cache_control(

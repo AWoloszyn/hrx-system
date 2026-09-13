@@ -23,10 +23,10 @@ static_assert(sizeof(amdf_memory_create_info_t) == 56);
 static_assert(offsetof(amdf_memory_info_t, memory_profile_ordinal) ==
               sizeof(amdf_output_structure_t));
 static_assert(offsetof(amdf_memory_info_t, memory_class) == 20);
-static_assert(offsetof(amdf_memory_info_t, atomic_operations_32) == 32);
-static_assert(offsetof(amdf_memory_info_t, physical_backing_id) == 120);
-static_assert(offsetof(amdf_memory_info_t, address_kinds) == 136);
-static_assert(sizeof(amdf_memory_info_t) == 152);
+static_assert(offsetof(amdf_memory_info_t, access_count) == 24);
+static_assert(offsetof(amdf_memory_info_t, physical_backing_id) == 80);
+static_assert(offsetof(amdf_memory_access_info_t, address_kinds) == 72);
+static_assert(sizeof(amdf_memory_info_t) == 96);
 static_assert(offsetof(amdf_memory_map_info_t, byte_offset) ==
               sizeof(amdf_input_structure_t));
 static_assert(sizeof(amdf_memory_map_info_t) == 40);
@@ -137,11 +137,17 @@ TEST_F(XdnaMemoryTest, OwnsStableAddressAndExplicitHostMapping) {
   memory_info.structure_size = sizeof(memory_info);
   ASSERT_TRUE(
       amdf_status_is_ok(api_->memory_query_info(memory_, &memory_info)));
+  amdf_memory_access_info_t access_info = {};
+  access_info.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_INFO;
+  access_info.structure_size = sizeof(access_info);
+  ASSERT_EQ(api_->memory_query_access_info(memory_, 0, &access_info),
+            AMDF_STATUS_OK);
   EXPECT_EQ(memory_info.memory_class, AMDF_MEMORY_CLASS_SYSTEM);
-  EXPECT_EQ(memory_info.flags & create_info.required_flags,
-            create_info.required_flags);
-  EXPECT_EQ(memory_info.device_access, create_info.device_access);
-  EXPECT_EQ(memory_info.address_domain_ordinal, 0u);
+  EXPECT_EQ(
+      (memory_info.flags | access_info.flags) & create_info.required_flags,
+      create_info.required_flags);
+  EXPECT_EQ(access_info.access, create_info.device_access);
+  EXPECT_EQ(access_info.address_domain_ordinal, 0u);
   EXPECT_GE(memory_info.native_allocation_byte_length, memory_info.byte_length);
   EXPECT_NE(memory_info.native_allocation_granularity, 0u);
   EXPECT_GE(memory_info.byte_length, create_info.byte_length);
@@ -149,7 +155,7 @@ TEST_F(XdnaMemoryTest, OwnsStableAddressAndExplicitHostMapping) {
   EXPECT_EQ(memory_info.alignment & (memory_info.alignment - 1), 0u);
   uint64_t address = 0;
   ASSERT_EQ(api_->memory_query_address(
-                memory_, AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE, &address),
+                memory_, 0, AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE, &address),
             AMDF_STATUS_OK);
   EXPECT_NE(address, 0u);
   EXPECT_EQ(address & (memory_info.alignment - 1), 0u);
@@ -159,10 +165,10 @@ TEST_F(XdnaMemoryTest, OwnsStableAddressAndExplicitHostMapping) {
   ASSERT_EQ(api_->device_query_memory_profile(
                 device_, create_info.memory_profile_ordinal, &profile),
             AMDF_STATUS_OK);
-  EXPECT_EQ(memory_info.address_kinds, profile.address_kinds);
+  EXPECT_EQ(access_info.address_kinds, profile.address_kinds);
   ASSERT_GT(profile.device_address.address_bit_count, 0u);
   ASSERT_LE(profile.device_address.address_bit_count, 64u);
-  EXPECT_NE(memory_info.address_kinds &
+  EXPECT_NE(access_info.address_kinds &
                 (UINT64_C(1) << AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE),
             0u);
   for (amdf_memory_address_kind_t kind :
@@ -170,8 +176,8 @@ TEST_F(XdnaMemoryTest, OwnsStableAddressAndExplicitHostMapping) {
         AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE}) {
     uint64_t queried_address = UINT64_MAX;
     const amdf_status_t status =
-        api_->memory_query_address(memory_, kind, &queried_address);
-    if ((memory_info.address_kinds & (UINT64_C(1) << kind)) != 0) {
+        api_->memory_query_address(memory_, 0, kind, &queried_address);
+    if ((access_info.address_kinds & (UINT64_C(1) << kind)) != 0) {
       ASSERT_EQ(status, AMDF_STATUS_OK);
       EXPECT_EQ(queried_address & (memory_info.alignment - 1), 0u);
       EXPECT_GE(queried_address, profile.device_address.minimum_address);
@@ -179,7 +185,7 @@ TEST_F(XdnaMemoryTest, OwnsStableAddressAndExplicitHostMapping) {
       EXPECT_LE(memory_info.byte_length - 1,
                 profile.device_address.maximum_address - queried_address);
       uint64_t repeated_address = 0;
-      ASSERT_EQ(api_->memory_query_address(memory_, kind, &repeated_address),
+      ASSERT_EQ(api_->memory_query_address(memory_, 0, kind, &repeated_address),
                 AMDF_STATUS_OK);
       EXPECT_EQ(repeated_address, queried_address);
     } else {
@@ -193,7 +199,21 @@ TEST_F(XdnaMemoryTest, OwnsStableAddressAndExplicitHostMapping) {
   device_info.structure_size = sizeof(device_info);
   ASSERT_TRUE(
       amdf_status_is_ok(xdna_api_->device_query_info(device_, &device_info)));
-  EXPECT_EQ(memory_info.reset_epoch, device_info.reset_epoch);
+  EXPECT_EQ(access_info.reset_epoch, device_info.reset_epoch);
+  EXPECT_TRUE(amdf_device_id_is_equal(&access_info.device_id, &device_info.id));
+  EXPECT_EQ(memory_info.access_count, 1u);
+  EXPECT_EQ(access_info.ordinal, 0u);
+
+  amdf_memory_access_info_t repeated_access_info = access_info;
+  ASSERT_EQ(api_->memory_query_access_info(memory_, 0, &repeated_access_info),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(
+      std::memcmp(&access_info, &repeated_access_info, sizeof(access_info)), 0);
+  EXPECT_EQ(amdf_status_code(api_->memory_query_access_info(
+                memory_, memory_info.access_count, &repeated_access_info)),
+            AMDF_STATUS_CODE_OUT_OF_RANGE);
+  EXPECT_EQ(
+      std::memcmp(&access_info, &repeated_access_info, sizeof(access_info)), 0);
 
   amdf_memory_info_t second_memory_info = {};
   second_memory_info.type = AMDF_STRUCTURE_TYPE_MEMORY_INFO;

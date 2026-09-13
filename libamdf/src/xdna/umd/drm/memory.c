@@ -308,10 +308,10 @@ amdf_status_t amdf_xdna_umd_memory_describe_site(
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
   amdf_memory_site_description_t description = {0};
-  if ((query->memory_info->device_access & AMDF_MEMORY_ACCESS_READ) != 0) {
+  if ((query->access_info->access & AMDF_MEMORY_ACCESS_READ) != 0) {
     description.capabilities |= AMDF_MEMORY_SITE_CAPABILITY_READ;
   }
-  if ((query->memory_info->device_access & AMDF_MEMORY_ACCESS_WRITE) != 0) {
+  if ((query->access_info->access & AMDF_MEMORY_ACCESS_WRITE) != 0) {
     description.capabilities |= AMDF_MEMORY_SITE_CAPABILITY_WRITE;
   }
   description.release.kind = AMDF_CACHE_TRANSITION_KIND_NONE;

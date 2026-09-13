@@ -30,9 +30,9 @@ static_assert(offsetof(amdf_gpu_device_info_t, reset_epoch) == 32);
 static_assert(offsetof(amdf_gpu_device_info_t, features) == 40);
 static_assert(sizeof(amdf_gpu_device_info_t) == 48);
 static_assert(sizeof(amdf_gpu_device_capabilities_t) == 24);
-static_assert(sizeof(amdf_gpu_queue_scratch_t) == 32);
-static_assert(sizeof(amdf_gpu_user_queue_create_info_t) == 80);
-static_assert(sizeof(amdf_gpu_kernel_command_t) == 24);
+static_assert(sizeof(amdf_gpu_queue_scratch_t) == 40);
+static_assert(sizeof(amdf_gpu_user_queue_create_info_t) == 88);
+static_assert(sizeof(amdf_gpu_kernel_command_t) == 32);
 static_assert(sizeof(amdf_gpu_kernel_queue_create_info_t) == 24);
 static_assert(sizeof(amdf_gpu_kernel_queue_submission_info_t) == 32);
 static_assert(offsetof(amdf_gpu_api_t, user_queue_create) +

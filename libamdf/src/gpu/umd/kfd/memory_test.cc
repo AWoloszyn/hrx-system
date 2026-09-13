@@ -24,8 +24,8 @@ static amdf_memory_profile_t QueryProfile(amdf_gpu_umd_device_t* device,
 }
 
 TEST(LinuxGpuMemoryPairTest, DescribesExactLocalQueueSites) {
-  const amdf_memory_info_t memory_info = {
-      .device_access = AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE,
+  const amdf_memory_access_info_t access_info = {
+      .access = AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE,
   };
   amdf_queue_family_info_t family = {
       .command_type = AMDF_QUEUE_COMMAND_TYPE_GPU_PM4,
@@ -36,7 +36,7 @@ TEST(LinuxGpuMemoryPairTest, DescribesExactLocalQueueSites) {
       .cache_transition_kinds = AMDF_CACHE_TRANSITION_KINDS_GLOBAL,
   };
   const amdf_memory_site_query_t query = {
-      .memory_info = &memory_info,
+      .access_info = &access_info,
       .queue_family_info = &family,
   };
   amdf_memory_site_description_t description = {};

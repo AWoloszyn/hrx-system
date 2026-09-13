@@ -138,9 +138,15 @@ TEST_F(XdnaLinuxMemoryTest,
       .structure_size = sizeof(amdf_memory_info_t),
   };
   ASSERT_EQ(api_->memory_query_info(memories_[0], &first_info), AMDF_STATUS_OK);
+  amdf_memory_access_info_t first_access_info = {};
+  first_access_info.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_INFO;
+  first_access_info.structure_size = sizeof(first_access_info);
+  ASSERT_EQ(api_->memory_query_access_info(memories_[0], 0, &first_access_info),
+            AMDF_STATUS_OK);
   EXPECT_EQ(first_info.memory_class, AMDF_MEMORY_CLASS_REGISTERED_HOST);
-  EXPECT_EQ(first_info.device_access, device_access);
-  EXPECT_EQ(first_info.flags & required_flags, required_flags);
+  EXPECT_EQ(first_access_info.access, device_access);
+  EXPECT_EQ((first_info.flags | first_access_info.flags) & required_flags,
+            required_flags);
   EXPECT_EQ(first_info.source_byte_offset, 3u);
   EXPECT_EQ(first_info.byte_length, create_info.byte_length);
   EXPECT_EQ(first_info.alignment, 1u);
@@ -155,7 +161,7 @@ TEST_F(XdnaLinuxMemoryTest,
   uint64_t first_address = 0;
   ASSERT_EQ(
       api_->memory_query_address(
-          memories_[0], AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE, &first_address),
+          memories_[0], 0, AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE, &first_address),
       AMDF_STATUS_OK);
   EXPECT_EQ(first_address & (page_size_ - 1), first_info.source_byte_offset);
   ASSERT_EQ(MapMemory(memories_[0], 0, create_info.byte_length),
@@ -178,7 +184,7 @@ TEST_F(XdnaLinuxMemoryTest,
   uint64_t second_address = 0;
   ASSERT_EQ(
       api_->memory_query_address(
-          memories_[1], AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE, &second_address),
+          memories_[1], 0, AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE, &second_address),
       AMDF_STATUS_OK);
   EXPECT_EQ(second_address & (page_size_ - 1), second_info.source_byte_offset);
   ASSERT_EQ(MapMemory(memories_[1], 1, create_info.byte_length),
@@ -259,7 +265,14 @@ TEST_F(XdnaLinuxMemoryTest,
   };
   ASSERT_EQ(api_->memory_query_info(memories_[0], &source_info),
             AMDF_STATUS_OK);
-  EXPECT_EQ(source_info.flags & owned_flags, owned_flags);
+  amdf_memory_access_info_t source_access_info = {};
+  source_access_info.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_INFO;
+  source_access_info.structure_size = sizeof(source_access_info);
+  ASSERT_EQ(
+      api_->memory_query_access_info(memories_[0], 0, &source_access_info),
+      AMDF_STATUS_OK);
+  EXPECT_EQ((source_info.flags | source_access_info.flags) & owned_flags,
+            owned_flags);
   ASSERT_TRUE(
       amdf_physical_memory_id_is_valid(&source_info.physical_backing_id));
   ASSERT_EQ(MapMemory(memories_[0], 0, native_byte_length), AMDF_STATUS_OK);

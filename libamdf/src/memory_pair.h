@@ -47,8 +47,8 @@ static inline bool amdf_memory_compatibility_domain_is_equal(
 
 // Provider-neutral input to one local memory-site description.
 typedef struct amdf_memory_site_query_t {
-  // Borrowed immutable properties of the local attachment.
-  const amdf_memory_info_t* memory_info;
+  // Borrowed immutable facts of the selected device access.
+  const amdf_memory_access_info_t* access_info;
   // Borrowed immutable properties of the exact local queue family.
   const amdf_queue_family_info_t* queue_family_info;
 } amdf_memory_site_query_t;

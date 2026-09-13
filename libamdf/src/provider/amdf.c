@@ -33,6 +33,7 @@ static const amdf_api_t amdf_api_v1 = {
     .memory_create = amdf_memory_create,
     .memory_import = amdf_memory_import,
     .memory_query_info = amdf_memory_query_info,
+    .memory_query_access_info = amdf_memory_query_access_info,
     .memory_export = amdf_memory_export,
     .external_memory_release = amdf_external_memory_release,
     .memory_query_pair_info = amdf_memory_query_pair_info,

@@ -130,8 +130,8 @@ class GpuMemoryInteropTest : public GpuDeviceFixture {
     access.memory_info.structure_size = sizeof(access.memory_info);
     status = api_->memory_query_info(access.memory, &access.memory_info);
     if (!amdf_status_is_ok(status)) return status;
-    status = api_->memory_query_address(access.memory, AMDF_MEMORY_ADDRESS_GPU,
-                                        &access.address);
+    status = api_->memory_query_address(
+        access.memory, 0, AMDF_MEMORY_ADDRESS_GPU, &access.address);
     if (!amdf_status_is_ok(status)) return status;
 
     amdf_memory_map_info_t map_info = {};

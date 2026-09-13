@@ -339,8 +339,14 @@ void GpuXdnaMemoryInteropTest::ImportGpuSubrangeAndReleaseAllocation() {
   gpu_memory_info.structure_size = sizeof(gpu_memory_info);
   ASSERT_EQ(api_->memory_query_info(gpu_memory_, &gpu_memory_info),
             AMDF_STATUS_OK);
+  amdf_memory_access_info_t gpu_access_info = {};
+  gpu_access_info.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_INFO;
+  gpu_access_info.structure_size = sizeof(gpu_access_info);
+  ASSERT_EQ(api_->memory_query_access_info(gpu_memory_, 0, &gpu_access_info),
+            AMDF_STATUS_OK);
   EXPECT_EQ(gpu_memory_info.memory_profile_ordinal, gpu_profile_ordinal);
-  EXPECT_EQ(gpu_memory_info.flags & kGpuRequiredFlags, kGpuRequiredFlags);
+  EXPECT_EQ((gpu_memory_info.flags | gpu_access_info.flags) & kGpuRequiredFlags,
+            kGpuRequiredFlags);
   ASSERT_GE(gpu_memory_info.byte_length, backing_byte_length);
   ASSERT_TRUE(
       amdf_physical_memory_id_is_valid(&gpu_memory_info.physical_backing_id));
@@ -412,15 +418,23 @@ void GpuXdnaMemoryInteropTest::ImportGpuSubrangeAndReleaseAllocation() {
   xdna_memory_info.structure_size = sizeof(xdna_memory_info);
   ASSERT_EQ(api_->memory_query_info(xdna_memory_, &xdna_memory_info),
             AMDF_STATUS_OK);
+  amdf_memory_access_info_t xdna_access_info = {};
+  xdna_access_info.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_INFO;
+  xdna_access_info.structure_size = sizeof(xdna_access_info);
+  ASSERT_EQ(api_->memory_query_access_info(xdna_memory_, 0, &xdna_access_info),
+            AMDF_STATUS_OK);
   EXPECT_EQ(xdna_memory_info.memory_profile_ordinal, xdna_profile_ordinal);
-  EXPECT_EQ(xdna_memory_info.flags & kXdnaRequiredFlags, kXdnaRequiredFlags);
+  EXPECT_EQ(
+      (xdna_memory_info.flags | xdna_access_info.flags) & kXdnaRequiredFlags,
+      kXdnaRequiredFlags);
   EXPECT_EQ(xdna_memory_info.source_byte_offset, page_size);
   EXPECT_EQ(xdna_memory_info.byte_length, page_size);
   EXPECT_GE(xdna_memory_info.alignment, page_size);
   uint64_t xdna_address = 0;
-  ASSERT_EQ(api_->memory_query_address(
-                xdna_memory_, AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE, &xdna_address),
-            AMDF_STATUS_OK);
+  ASSERT_EQ(
+      api_->memory_query_address(
+          xdna_memory_, 0, AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE, &xdna_address),
+      AMDF_STATUS_OK);
   EXPECT_EQ(xdna_address & (page_size - 1), 0u);
   EXPECT_TRUE(
       amdf_physical_memory_id_is_equal(&xdna_memory_info.physical_backing_id,

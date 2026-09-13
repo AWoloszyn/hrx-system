@@ -31,10 +31,10 @@ static_assert(sizeof(amdf_memory_create_info_t) == 56);
 static_assert(offsetof(amdf_memory_info_t, memory_profile_ordinal) ==
               sizeof(amdf_output_structure_t));
 static_assert(offsetof(amdf_memory_info_t, memory_class) == 20);
-static_assert(offsetof(amdf_memory_info_t, atomic_operations_32) == 32);
-static_assert(offsetof(amdf_memory_info_t, physical_backing_id) == 120);
-static_assert(offsetof(amdf_memory_info_t, address_kinds) == 136);
-static_assert(sizeof(amdf_memory_info_t) == 152);
+static_assert(offsetof(amdf_memory_info_t, access_count) == 24);
+static_assert(offsetof(amdf_memory_info_t, physical_backing_id) == 80);
+static_assert(offsetof(amdf_memory_access_info_t, address_kinds) == 72);
+static_assert(sizeof(amdf_memory_info_t) == 96);
 
 class GpuMemoryTest : public GpuDeviceFixture {
  protected:
@@ -135,14 +135,20 @@ TEST_F(GpuMemoryTest, OwnsStableSystemAddressAndExplicitHostMapping) {
   memory_info.structure_size = sizeof(memory_info);
   ASSERT_TRUE(
       amdf_status_is_ok(api_->memory_query_info(memory_, &memory_info)));
+  amdf_memory_access_info_t access_info = {};
+  access_info.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_INFO;
+  access_info.structure_size = sizeof(access_info);
+  ASSERT_EQ(api_->memory_query_access_info(memory_, 0, &access_info),
+            AMDF_STATUS_OK);
   EXPECT_EQ(memory_info.memory_class, AMDF_MEMORY_CLASS_SYSTEM);
-  EXPECT_EQ(memory_info.flags & create_info.required_flags,
-            create_info.required_flags);
+  EXPECT_EQ(
+      (memory_info.flags | access_info.flags) & create_info.required_flags,
+      create_info.required_flags);
   EXPECT_GE(memory_info.byte_length, create_info.byte_length);
   EXPECT_GE(memory_info.alignment, create_info.minimum_alignment);
   uint64_t address = 0;
   ASSERT_EQ(
-      api_->memory_query_address(memory_, AMDF_MEMORY_ADDRESS_GPU, &address),
+      api_->memory_query_address(memory_, 0, AMDF_MEMORY_ADDRESS_GPU, &address),
       AMDF_STATUS_OK);
   EXPECT_EQ(address & (memory_info.alignment - 1), 0u);
   EXPECT_NE(memory_info.physical_backing_id.words[0] |
@@ -154,7 +160,10 @@ TEST_F(GpuMemoryTest, OwnsStableSystemAddressAndExplicitHostMapping) {
   device_info.structure_size = sizeof(device_info);
   ASSERT_TRUE(
       amdf_status_is_ok(gpu_api_->device_query_info(device_, &device_info)));
-  EXPECT_EQ(memory_info.reset_epoch, device_info.reset_epoch);
+  EXPECT_EQ(access_info.reset_epoch, device_info.reset_epoch);
+  EXPECT_TRUE(amdf_device_id_is_equal(&access_info.device_id, &device_info.id));
+  EXPECT_EQ(memory_info.access_count, 1u);
+  EXPECT_EQ(access_info.ordinal, 0u);
 
   amdf_memory_map_info_t map_info = {};
   map_info.type = AMDF_STRUCTURE_TYPE_MEMORY_MAP_INFO;
@@ -231,15 +240,21 @@ TEST_F(GpuMemoryTest, CreatesDeviceLocalExecutableMemory) {
   memory_info.structure_size = sizeof(memory_info);
   ASSERT_TRUE(
       amdf_status_is_ok(api_->memory_query_info(memory_, &memory_info)));
+  amdf_memory_access_info_t access_info = {};
+  access_info.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_INFO;
+  access_info.structure_size = sizeof(access_info);
+  ASSERT_EQ(api_->memory_query_access_info(memory_, 0, &access_info),
+            AMDF_STATUS_OK);
   EXPECT_EQ(memory_info.memory_class, AMDF_MEMORY_CLASS_LOCAL);
-  EXPECT_EQ(memory_info.flags & create_info.required_flags,
-            create_info.required_flags);
-  EXPECT_EQ(memory_info.device_access, create_info.device_access);
+  EXPECT_EQ(
+      (memory_info.flags | access_info.flags) & create_info.required_flags,
+      create_info.required_flags);
+  EXPECT_EQ(access_info.access, create_info.device_access);
   EXPECT_GE(memory_info.byte_length, create_info.byte_length);
   EXPECT_GE(memory_info.alignment, create_info.minimum_alignment);
   uint64_t address = 0;
   ASSERT_EQ(
-      api_->memory_query_address(memory_, AMDF_MEMORY_ADDRESS_GPU, &address),
+      api_->memory_query_address(memory_, 0, AMDF_MEMORY_ADDRESS_GPU, &address),
       AMDF_STATUS_OK);
   EXPECT_EQ(address & (memory_info.alignment - 1), 0u);
   EXPECT_NE(address, 0u);

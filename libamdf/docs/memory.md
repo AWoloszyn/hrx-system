@@ -156,14 +156,17 @@ not require another public memory attachment or allocate a new copy.
 The address-query kind identifies the interface that consumes the number:
 
 ```c
-api->memory_query_address(memory, AMDF_MEMORY_ADDRESS_GPU, &gpu_address);
-api->memory_query_address(memory, AMDF_MEMORY_ADDRESS_XDNA_DMA, &dma_address);
-api->memory_query_address(memory, AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE,
+api->memory_query_address(memory, gpu_access, AMDF_MEMORY_ADDRESS_GPU,
+                          &gpu_address);
+api->memory_query_address(memory, xdna_access, AMDF_MEMORY_ADDRESS_XDNA_DMA,
+                          &dma_address);
+api->memory_query_address(memory, xdna_access, AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE,
                           &firmware_address);
 ```
 
-Each call returns a status; the example omits propagation. Profiles report
-supported address kinds, and memory info reports the kinds established for the
+Each call returns a status; the example omits propagation. Access ordinals index
+the memory's immutable consumer records directly. Profiles report supported
+address kinds, and each access info reports the kinds established for the
 whole logical range. Unsupported kinds fail without modifying the output. The
 GPU kind is for ordinary GPU addressing. The XDNA DMA kind includes the native
 translation needed by shim DMA descriptors; the firmware kind is for native

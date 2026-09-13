@@ -336,23 +336,31 @@ amdf_status_t AMDF_CALL amdf_gpu_kernel_queue_submit(
 
   const amdf_gpu_kernel_command_t* command = &submission_info->commands[0];
   amdf_memory_t* memory = command->memory;
-  if (memory == NULL || memory->device != base_queue->device ||
-      command->byte_length == 0 || (command->byte_offset & 3) != 0 ||
-      (command->byte_length & 3) != 0 ||
+  if (memory == NULL || command->reserved != 0 || command->byte_length == 0 ||
+      (command->byte_offset & 3) != 0 || (command->byte_length & 3) != 0 ||
       command->byte_offset > memory->info.byte_length ||
       command->byte_length > memory->info.byte_length - command->byte_offset) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
-  if ((memory->info.flags & AMDF_MEMORY_FLAG_DEVICE_ADDRESS) == 0 ||
-      (memory->info.device_access & AMDF_MEMORY_ACCESS_EXECUTE) == 0) {
+  if (command->access_ordinal >= memory->info.access_count) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
+  }
+  const amdf_memory_access_state_t* access =
+      &memory->accesses[command->access_ordinal];
+  if (access->device != base_queue->device) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  }
+  if ((access->info.address_kinds & (UINT64_C(1) << AMDF_MEMORY_ADDRESS_GPU)) ==
+          0 ||
+      (access->info.access & AMDF_MEMORY_ACCESS_EXECUTE) == 0) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
-  if (memory->info.reset_epoch != base_queue->info.reset_epoch ||
+  if (access->info.reset_epoch != base_queue->info.reset_epoch ||
       base_queue->info.reset_epoch !=
           amdf_gpu_device_query_reset_epoch(base_queue->device)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_FAILED_PRECONDITION);
   }
-  if (memory->addresses[AMDF_MEMORY_ADDRESS_GPU] >
+  if (access->addresses[AMDF_MEMORY_ADDRESS_GPU] >
       UINT64_MAX - command->byte_offset) {
     return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
   }
@@ -381,7 +389,7 @@ amdf_status_t AMDF_CALL amdf_gpu_kernel_queue_submit(
   if (amdf_status_is_ok(status)) {
     status = amdf_gpu_umd_kernel_queue_submit(
         queue->umd,
-        memory->addresses[AMDF_MEMORY_ADDRESS_GPU] + command->byte_offset,
+        access->addresses[AMDF_MEMORY_ADDRESS_GPU] + command->byte_offset,
         command->byte_length, &native_submission);
   }
   if (!amdf_status_is_ok(status)) {

@@ -192,12 +192,17 @@ typedef struct amdf_gpu_device_info_t {
 /// Scratch backing borrowed by one directly published compute queue.
 ///
 /// An all-zero value disables scratch and accepts only commands whose private
-/// segment is empty. Otherwise `memory` must be an attachment to the queue's
-/// device with a stable device address. The queue borrows it until destruction
-/// succeeds, preventing the scratch backing from being released early.
+/// segment is empty. Otherwise the selected access must belong to the queue's
+/// device and provide read/write permission and a stable GPU address. The queue
+/// borrows the memory until destruction succeeds, preventing the scratch
+/// backing from being released early.
 typedef struct amdf_gpu_queue_scratch_t {
-  /// Memory attachment borrowed for the queue lifetime, or NULL when disabled.
+  /// Memory resource borrowed for the queue lifetime, or NULL when disabled.
   amdf_memory_t* memory;
+  /// Resource-local access for the queue's device, or zero when disabled.
+  uint32_t access_ordinal;
+  /// Reserved for compatible growth; always zero.
+  uint32_t reserved;
   /// Byte offset from the attachment's stable device base.
   uint64_t byte_offset;
   /// Nonzero scratch backing length in bytes, or zero when disabled.
@@ -239,8 +244,12 @@ typedef struct amdf_gpu_user_queue_create_info_t {
 /// address; it never reads, validates, copies, hashes, or transcribes the
 /// command bytes.
 typedef struct amdf_gpu_kernel_command_t {
-  /// Memory attachment borrowed until the accepted submission retires.
+  /// Memory resource borrowed until the accepted submission retires.
   amdf_memory_t* memory;
+  /// Resource-local access for the queue's device.
+  uint32_t access_ordinal;
+  /// Reserved for compatible growth; always zero.
+  uint32_t reserved;
   /// Dword-aligned byte offset from the attachment's stable device base.
   uint64_t byte_offset;
   /// Nonzero dword-aligned command length.

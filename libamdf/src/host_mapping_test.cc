@@ -46,7 +46,9 @@ class HostMappingTest : public ::testing::Test {
   void SetUp() override {
     // The memory dependency is host-coherent for its GPU. Its CPU mapping
     // still advertises real operations needed by a noncoherent consumer.
-    memory_.info.flags = AMDF_MEMORY_FLAG_HOST_COHERENT;
+    memory_.accesses = &access_;
+    memory_.info.access_count = 1;
+    access_.info.flags = AMDF_MEMORY_FLAG_HOST_COHERENT;
     ASSERT_EQ(amdf_host_mapping_initialize(&mapping_.base,
                                            &kNativeMappingVtable, &memory_),
               AMDF_STATUS_OK);
@@ -63,6 +65,8 @@ class HostMappingTest : public ::testing::Test {
 
   // Backing dependency with no native allocation required by this boundary.
   amdf_memory_t memory_ = {};
+  // GPU coherence facts are separate from CPU cache-control mechanisms.
+  amdf_memory_access_state_t access_ = {};
   // Recording native dependency behind the real common mapping operations.
   NativeMapping mapping_ = {};
 };

@@ -248,6 +248,7 @@ class UserQueueMemoryScenario {
   void CreateMappedSystemMemory(amdf_memory_access_t device_access,
                                 amdf_memory_t*& memory,
                                 amdf_memory_info_t& memory_info,
+                                amdf_memory_access_info_t& access_info,
                                 amdf_host_mapping_t*& mapping,
                                 amdf_host_mapping_info_t& mapping_info) {
     constexpr amdf_memory_flags_t kRequiredFlags =
@@ -273,17 +274,22 @@ class UserQueueMemoryScenario {
     memory_info.type = AMDF_STRUCTURE_TYPE_MEMORY_INFO;
     memory_info.structure_size = sizeof(memory_info);
     ASSERT_EQ(api_->memory_query_info(memory, &memory_info), AMDF_STATUS_OK);
+    access_info.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_INFO;
+    access_info.structure_size = sizeof(access_info);
+    ASSERT_EQ(api_->memory_query_access_info(memory, 0, &access_info),
+              AMDF_STATUS_OK);
     EXPECT_EQ(memory_info.memory_profile_ordinal, profile_ordinal);
     EXPECT_EQ(memory_info.memory_class, AMDF_MEMORY_CLASS_SYSTEM);
-    EXPECT_EQ(memory_info.device_access, device_access);
-    EXPECT_EQ(memory_info.flags & kRequiredFlags, kRequiredFlags);
+    EXPECT_EQ(access_info.access, device_access);
+    EXPECT_EQ((memory_info.flags | access_info.flags) & kRequiredFlags,
+              kRequiredFlags);
     EXPECT_EQ(memory_info.byte_length, kMemoryByteLength);
     EXPECT_EQ(memory_info.native_allocation_byte_length, kMemoryByteLength);
     EXPECT_GE(memory_info.alignment, create_info.minimum_alignment);
     uint64_t address = 0;
-    ASSERT_EQ(
-        api_->memory_query_address(memory, AMDF_MEMORY_ADDRESS_GPU, &address),
-        AMDF_STATUS_OK);
+    ASSERT_EQ(api_->memory_query_address(memory, 0, AMDF_MEMORY_ADDRESS_GPU,
+                                         &address),
+              AMDF_STATUS_OK);
     EXPECT_NE(address, 0u);
     EXPECT_EQ(address & (sizeof(uint32_t) - 1), 0u);
     EXPECT_NE(memory_info.physical_backing_id.words[0] |
@@ -346,6 +352,10 @@ class UserQueueMemoryScenario {
   amdf_memory_info_t source_memory_info_ = {};
   // Immutable properties of the target attachment.
   amdf_memory_info_t target_memory_info_ = {};
+  // Prepared GPU access to the source backing.
+  amdf_memory_access_info_t source_access_info_ = {};
+  // Prepared GPU access to the target backing.
+  amdf_memory_access_info_t target_access_info_ = {};
   // Host-view properties of the source attachment.
   amdf_host_mapping_info_t source_mapping_info_ = {};
   // Host-view properties of the target attachment.
@@ -362,17 +372,18 @@ void UserQueueMemoryScenario::RunCopiesBetweenExactAccessAttachments(
 
   ASSERT_NO_FATAL_FAILURE(CreateMappedSystemMemory(
       AMDF_MEMORY_ACCESS_READ, source_memory_, source_memory_info_,
-      source_mapping_, source_mapping_info_));
+      source_access_info_, source_mapping_, source_mapping_info_));
   ASSERT_NO_FATAL_FAILURE(CreateMappedSystemMemory(
       AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE, target_memory_,
-      target_memory_info_, target_mapping_, target_mapping_info_));
+      target_memory_info_, target_access_info_, target_mapping_,
+      target_mapping_info_));
   uint64_t source_address = 0;
   uint64_t target_address = 0;
-  ASSERT_EQ(api_->memory_query_address(source_memory_, AMDF_MEMORY_ADDRESS_GPU,
-                                       &source_address),
+  ASSERT_EQ(api_->memory_query_address(
+                source_memory_, 0, AMDF_MEMORY_ADDRESS_GPU, &source_address),
             AMDF_STATUS_OK);
-  ASSERT_EQ(api_->memory_query_address(target_memory_, AMDF_MEMORY_ADDRESS_GPU,
-                                       &target_address),
+  ASSERT_EQ(api_->memory_query_address(
+                target_memory_, 0, AMDF_MEMORY_ADDRESS_GPU, &target_address),
             AMDF_STATUS_OK);
   EXPECT_NE(source_address, target_address);
   EXPECT_FALSE(amdf_physical_memory_id_is_equal(
@@ -425,9 +436,9 @@ void UserQueueMemoryScenario::RunCopiesBetweenExactAccessAttachments(
   EXPECT_EQ(queue_info.metadata.command_type, AMDF_QUEUE_COMMAND_TYPE_UNKNOWN);
   EXPECT_EQ(queue_info.metadata_ring_byte_length, 0u);
   EXPECT_TRUE(amdf_device_id_is_equal(&queue_info.device_id,
-                                      &source_memory_info_.device_id));
+                                      &source_access_info_.device_id));
   EXPECT_TRUE(amdf_device_id_is_equal(&queue_info.device_id,
-                                      &target_memory_info_.device_id));
+                                      &target_access_info_.device_id));
 
   ASSERT_EQ(api_->user_queue_map(queue_, nullptr, &queue_mapping_),
             AMDF_STATUS_OK);

@@ -181,7 +181,7 @@ typedef struct amdf_api_t {
       amdf_external_memory_t* inout_external_memory,
       amdf_memory_t** out_memory);
 
-  /// Copies immutable properties cached when `memory` was created.
+  /// Copies immutable backing properties cached when `memory` was created.
   ///
   /// The operation is thread-safe and performs no system call, allocation,
   /// mapping mutation, retry, sleep, or device wait. The caller initializes
@@ -189,6 +189,17 @@ typedef struct amdf_api_t {
   /// validation fails.
   amdf_status_t(AMDF_CALL* memory_query_info)(amdf_memory_t* memory,
                                               amdf_memory_info_t* out_info);
+
+  /// Copies immutable facts of one established device access.
+  ///
+  /// The ordinal is below memory info's `access_count`. Device-taking create
+  /// and import establish one access at ordinal zero. An out-of-range ordinal
+  /// returns OUT_OF_RANGE. The caller initializes `out_info` and its extension
+  /// chain; failure leaves it unchanged. This thread-safe metadata query
+  /// performs no allocation, native query, mapping or synchronization.
+  amdf_status_t(AMDF_CALL* memory_query_access_info)(
+      amdf_memory_t* memory, uint32_t access_ordinal,
+      amdf_memory_access_info_t* out_info);
 
   /// Exports one logical range as a move-owned external-memory value.
   ///
@@ -210,7 +221,8 @@ typedef struct amdf_api_t {
 
   /// Copies the exact directional relation between two concrete attachments.
   ///
-  /// The producer and consumer sites name exact queue families. Defined
+  /// The producer and consumer sites name exact device accesses and queue
+  /// families. An out-of-range access ordinal returns OUT_OF_RANGE. Defined
   /// engine-specific execution-site extensions may refine those sites. Both
   /// attachments must belong to one provider instance and have equal valid
   /// physical identities. A scope or identity mismatch returns
@@ -399,16 +411,17 @@ typedef struct amdf_api_t {
   /// The address names logical byte zero; offsets below the memory's reported
   /// byte_length are valid. The caller retains the memory through every use.
   /// Kinds identify consuming interfaces, not independently selectable address
-  /// spaces. The memory info's address_kinds reports the established kinds;
-  /// zero is a valid address value, not an indication of availability.
+  /// spaces. The selected access info's address_kinds reports established
+  /// kinds; zero is a valid address value, not an indication of availability.
   /// An unknown kind is INVALID_ARGUMENT; a known but unavailable kind is
-  /// UNSUPPORTED. Every failure leaves `out_address` unchanged.
+  /// UNSUPPORTED. An out-of-range access ordinal returns OUT_OF_RANGE.
+  /// Every failure leaves `out_address` unchanged.
   ///
   /// This thread-safe metadata query performs no allocation, native query,
   /// mapping, pinning, synchronization, or address-to-handle lookup.
   amdf_status_t(AMDF_CALL* memory_query_address)(
-      amdf_memory_t* memory, amdf_memory_address_kind_t kind,
-      uint64_t* out_address);
+      amdf_memory_t* memory, uint32_t access_ordinal,
+      amdf_memory_address_kind_t kind, uint64_t* out_address);
 } amdf_api_t;
 
 /// Function type used to acquire the immutable API table.

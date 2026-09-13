@@ -111,14 +111,21 @@ class GpuUserQueueTest : public ::testing::Test {
   }
 
   void InitializeScratch() {
-    scratch_.device = &consumer_.base;
+    scratch_.accesses = scratch_accesses_;
+    scratch_.info.access_count = 2;
+    scratch_accesses_[0].device = &producer_.base;
+    scratch_accesses_[1].device = &consumer_.base;
     scratch_.info.type = AMDF_STRUCTURE_TYPE_MEMORY_INFO;
     scratch_.info.structure_size = sizeof(scratch_.info);
-    scratch_.info.flags = AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
-    scratch_.info.address_kinds = UINT64_C(1) << AMDF_MEMORY_ADDRESS_GPU;
+    scratch_accesses_[1].info.access =
+        AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
+    scratch_accesses_[1].info.flags = AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+    scratch_accesses_[1].info.address_kinds = UINT64_C(1)
+                                              << AMDF_MEMORY_ADDRESS_GPU;
     scratch_.info.byte_length = 16384;
-    scratch_.addresses[AMDF_MEMORY_ADDRESS_GPU] = UINT64_C(0x800000);
-    scratch_.info.reset_epoch = consumer_.info.reset_epoch;
+    scratch_accesses_[1].addresses[AMDF_MEMORY_ADDRESS_GPU] =
+        UINT64_C(0x800000);
+    scratch_accesses_[1].info.reset_epoch = consumer_.info.reset_epoch;
     amdf_child_tracker_initialize(&scratch_.children);
   }
 
@@ -131,6 +138,7 @@ class GpuUserQueueTest : public ::testing::Test {
     create_info.required_capabilities =
         AMDF_USER_QUEUE_CAPABILITY_HOST_PRODUCER;
     create_info.scratch.memory = const_cast<amdf_memory_t*>(&scratch_);
+    create_info.scratch.access_ordinal = 1;
     create_info.scratch.byte_offset = 4096;
     create_info.scratch.byte_length = 8192;
     create_info.scratch.maximum_private_segment_byte_length = 256;
@@ -143,6 +151,8 @@ class GpuUserQueueTest : public ::testing::Test {
   TestGpuDevice consumer_;
   TestGpuDevice producer_;
   amdf_memory_t scratch_ = {};
+  // Prepared access facts supplied by the memory dependency, in caller order.
+  amdf_memory_access_state_t scratch_accesses_[2] = {};
   amdf_user_queue_t* queue_ = nullptr;
   amdf_user_queue_mapping_t* mapping_ = nullptr;
 };
@@ -155,7 +165,7 @@ TEST_F(GpuUserQueueTest, RetainsScratchAndMappingsAcrossDestroyRetries) {
   EXPECT_EQ(amdf_child_tracker_count(&consumer_.base.children), 1u);
   EXPECT_EQ(amdf_child_tracker_count(&scratch_.children), 1u);
   EXPECT_EQ(consumer_state_.observed_create.scratch.device_address,
-            scratch_.addresses[AMDF_MEMORY_ADDRESS_GPU] +
+            scratch_accesses_[1].addresses[AMDF_MEMORY_ADDRESS_GPU] +
                 create_info.scratch.byte_offset);
   EXPECT_EQ(consumer_state_.observed_create.scratch.byte_length,
             create_info.scratch.byte_length);
@@ -304,6 +314,43 @@ TEST_F(GpuUserQueueTest, RejectsNonPowerOfTwoRingWithoutPublishingOutput) {
             AMDF_STATUS_CODE_OUT_OF_RANGE);
   EXPECT_EQ(queue_, sentinel);
   queue_ = nullptr;
+}
+
+TEST_F(GpuUserQueueTest, ValidatesTheSelectedScratchAccess) {
+  amdf_gpu_user_queue_create_info_t create_info = MakeCreateInfo();
+  create_info.scratch.access_ordinal = 2;
+  EXPECT_EQ(amdf_status_code(amdf_gpu_user_queue_create(&consumer_.base,
+                                                        &create_info, &queue_)),
+            AMDF_STATUS_CODE_OUT_OF_RANGE);
+  EXPECT_EQ(queue_, nullptr);
+
+  create_info.scratch.access_ordinal = 0;
+  EXPECT_EQ(amdf_status_code(amdf_gpu_user_queue_create(&consumer_.base,
+                                                        &create_info, &queue_)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(queue_, nullptr);
+
+  create_info.scratch.access_ordinal = 1;
+  scratch_accesses_[1].info.access = AMDF_MEMORY_ACCESS_READ;
+  EXPECT_EQ(amdf_status_code(amdf_gpu_user_queue_create(&consumer_.base,
+                                                        &create_info, &queue_)),
+            AMDF_STATUS_CODE_UNSUPPORTED);
+  EXPECT_EQ(queue_, nullptr);
+
+  scratch_accesses_[1].info.access |= AMDF_MEMORY_ACCESS_WRITE;
+  scratch_accesses_[1].info.reset_epoch = consumer_.info.reset_epoch + 1;
+  EXPECT_EQ(amdf_status_code(amdf_gpu_user_queue_create(&consumer_.base,
+                                                        &create_info, &queue_)),
+            AMDF_STATUS_CODE_FAILED_PRECONDITION);
+  EXPECT_EQ(queue_, nullptr);
+
+  scratch_accesses_[1].info.reset_epoch = consumer_.info.reset_epoch;
+  scratch_accesses_[1].info.address_kinds =
+      UINT64_C(1) << AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE;
+  EXPECT_EQ(amdf_status_code(amdf_gpu_user_queue_create(&consumer_.base,
+                                                        &create_info, &queue_)),
+            AMDF_STATUS_CODE_UNSUPPORTED);
+  EXPECT_EQ(queue_, nullptr);
 }
 
 }  // namespace

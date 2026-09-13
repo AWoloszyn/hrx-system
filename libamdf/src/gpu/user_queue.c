@@ -170,12 +170,15 @@ static amdf_status_t amdf_gpu_user_queue_validate_scratch(
     amdf_device_t* device, const amdf_queue_family_info_t* family_info,
     const amdf_gpu_queue_scratch_t* scratch,
     amdf_gpu_umd_queue_scratch_t* out_scratch) {
-  const bool disabled = scratch->memory == NULL && scratch->byte_offset == 0 &&
+  const bool disabled = scratch->memory == NULL &&
+                        scratch->access_ordinal == 0 &&
+                        scratch->reserved == 0 && scratch->byte_offset == 0 &&
                         scratch->byte_length == 0 &&
                         scratch->maximum_private_segment_byte_length == 0 &&
                         scratch->maximum_wave_count == 0;
   if (disabled) return AMDF_STATUS_OK;
-  if (scratch->memory == NULL || scratch->byte_length == 0 ||
+  if (scratch->memory == NULL || scratch->reserved != 0 ||
+      scratch->byte_length == 0 ||
       scratch->maximum_private_segment_byte_length == 0 ||
       scratch->maximum_wave_count == 0) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
@@ -184,25 +187,34 @@ static amdf_status_t amdf_gpu_user_queue_validate_scratch(
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
   const amdf_memory_t* memory = scratch->memory;
-  if (memory->device != device) {
+  if (scratch->access_ordinal >= memory->info.access_count) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
+  }
+  const amdf_memory_access_state_t* access =
+      &memory->accesses[scratch->access_ordinal];
+  if (access->device != device) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
-  if ((memory->info.flags & AMDF_MEMORY_FLAG_DEVICE_ADDRESS) == 0) {
+  if ((access->info.address_kinds & (UINT64_C(1) << AMDF_MEMORY_ADDRESS_GPU)) ==
+          0 ||
+      (access->info.access &
+       (AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE)) !=
+          (AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
   if (scratch->byte_offset > memory->info.byte_length ||
       scratch->byte_length > memory->info.byte_length - scratch->byte_offset ||
-      memory->addresses[AMDF_MEMORY_ADDRESS_GPU] >
+      access->addresses[AMDF_MEMORY_ADDRESS_GPU] >
           UINT64_MAX - scratch->byte_offset) {
     return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
   }
   const amdf_gpu_device_info_t* device_info = amdf_gpu_device_get_info(device);
-  if (memory->info.reset_epoch != device_info->reset_epoch) {
+  if (access->info.reset_epoch != device_info->reset_epoch) {
     return amdf_make_api_status(AMDF_STATUS_CODE_FAILED_PRECONDITION);
   }
   *out_scratch = (amdf_gpu_umd_queue_scratch_t){
       .device_address =
-          memory->addresses[AMDF_MEMORY_ADDRESS_GPU] + scratch->byte_offset,
+          access->addresses[AMDF_MEMORY_ADDRESS_GPU] + scratch->byte_offset,
       .byte_length = scratch->byte_length,
       .maximum_private_segment_byte_length =
           scratch->maximum_private_segment_byte_length,

@@ -33,17 +33,19 @@ static amdf_status_t amdf_gpu_memory_export(
 }
 
 static amdf_status_t amdf_gpu_memory_describe_site(
-    amdf_memory_t* memory, uint32_t queue_family_ordinal,
+    amdf_memory_t* memory, uint32_t access_ordinal,
+    uint32_t queue_family_ordinal,
     amdf_memory_site_description_t* out_description) {
   amdf_queue_family_info_t queue_family_info = {
       .type = AMDF_STRUCTURE_TYPE_QUEUE_FAMILY_INFO,
       .structure_size = sizeof(queue_family_info),
   };
   const amdf_status_t status = amdf_endpoint_query_queue_family_info(
-      memory->device->endpoint, queue_family_ordinal, &queue_family_info);
+      memory->accesses[access_ordinal].device->endpoint, queue_family_ordinal,
+      &queue_family_info);
   if (!amdf_status_is_ok(status)) return status;
   const amdf_memory_site_query_t query = {
-      .memory_info = &memory->info,
+      .access_info = &memory->accesses[access_ordinal].info,
       .queue_family_info = &queue_family_info,
   };
   return amdf_gpu_umd_memory_describe_site(memory->native, &query,
@@ -159,13 +161,14 @@ static void amdf_gpu_memory_set_info(amdf_memory_t* memory,
   memory->info.structure_size = sizeof(memory->info);
   memory->info.memory_profile_ordinal = profile->ordinal;
   memory->info.memory_class = profile->memory_class;
-  memory->info.device_access = device_access;
-  memory->info.atomic_operations_32 = result.atomic_operations_32;
-  memory->info.atomic_operations_64 = result.atomic_operations_64;
-  memory->info.address_domain_ordinal =
+  memory->accesses[0].info.access = device_access;
+  memory->accesses[0].info.atomic_operations_32 = result.atomic_operations_32;
+  memory->accesses[0].info.atomic_operations_64 = result.atomic_operations_64;
+  memory->accesses[0].info.address_domain_ordinal =
       profile->device_address.address_domain_ordinal;
-  memory->info.device_id = amdf_gpu_device_get_info(device)->id;
-  memory->info.flags = result.flags;
+  memory->accesses[0].info.device_id = amdf_gpu_device_get_info(device)->id;
+  memory->info.flags = result.flags & AMDF_MEMORY_BACKING_FLAGS;
+  memory->accesses[0].info.flags = result.flags & AMDF_MEMORY_ACCESS_FLAGS;
   memory->info.source_byte_offset = result.source_byte_offset;
   memory->info.byte_length = result.byte_length;
   memory->info.alignment = result.alignment;
@@ -174,12 +177,14 @@ static void amdf_gpu_memory_set_info(amdf_memory_t* memory,
   memory->info.native_allocation_granularity =
       result.native_allocation_granularity;
   memory->info.physical_backing_id = result.physical_backing_id;
-  memory->addresses[AMDF_MEMORY_ADDRESS_GPU] = result.device_address;
-  memory->info.address_kinds =
+  memory->accesses[0].addresses[AMDF_MEMORY_ADDRESS_GPU] =
+      result.device_address;
+  memory->accesses[0].info.address_kinds =
       (result.flags & AMDF_MEMORY_FLAG_DEVICE_ADDRESS) != 0
           ? UINT64_C(1) << AMDF_MEMORY_ADDRESS_GPU
           : 0;
-  memory->info.reset_epoch = amdf_gpu_device_query_reset_epoch(device);
+  memory->accesses[0].info.reset_epoch =
+      amdf_gpu_device_query_reset_epoch(device);
 }
 
 amdf_status_t amdf_gpu_memory_prepare(
@@ -188,12 +193,12 @@ amdf_status_t amdf_gpu_memory_prepare(
   memory->vtable = &amdf_gpu_memory_vtable;
   amdf_gpu_umd_memory_t* native = NULL;
   amdf_gpu_umd_memory_result_t result = {0};
-  const amdf_status_t status =
-      amdf_gpu_umd_memory_prepare(amdf_gpu_device_get_umd(memory->device),
-                                  profile, create_info, &native, &result);
+  const amdf_status_t status = amdf_gpu_umd_memory_prepare(
+      amdf_gpu_device_get_umd(memory->accesses[0].device), profile, create_info,
+      &native, &result);
   memory->native = native;
   if (amdf_status_is_ok(status)) {
-    amdf_gpu_memory_set_info(memory, memory->device, profile,
+    amdf_gpu_memory_set_info(memory, memory->accesses[0].device, profile,
                              create_info->device_access, result);
   }
   return status;
@@ -208,11 +213,11 @@ amdf_status_t amdf_gpu_memory_prepare_import(
   amdf_gpu_umd_memory_t* native = NULL;
   amdf_gpu_umd_memory_result_t result = {0};
   const amdf_status_t status = amdf_gpu_umd_memory_prepare_import(
-      amdf_gpu_device_get_umd(memory->device), profile, import_info,
+      amdf_gpu_device_get_umd(memory->accesses[0].device), profile, import_info,
       external_memory, &native, &result);
   memory->native = native;
   if (amdf_status_is_ok(status)) {
-    amdf_gpu_memory_set_info(memory, memory->device, profile,
+    amdf_gpu_memory_set_info(memory, memory->accesses[0].device, profile,
                              import_info->device_access, result);
     // The UMD acquires a native reference independent of the input transport.
     *out_external_memory_lease = NULL;

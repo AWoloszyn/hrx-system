@@ -135,15 +135,21 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
       info.type = AMDF_STRUCTURE_TYPE_MEMORY_INFO;
       info.structure_size = sizeof(info);
       ASSERT_EQ(api_->memory_query_info(memories_[0], &info), AMDF_STATUS_OK);
+      amdf_memory_access_info_t access_info = {};
+      access_info.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_INFO;
+      access_info.structure_size = sizeof(access_info);
+      ASSERT_EQ(api_->memory_query_access_info(memories_[0], 0, &access_info),
+                AMDF_STATUS_OK);
       EXPECT_EQ(info.memory_profile_ordinal,
                 create_info.memory_profile_ordinal);
       EXPECT_EQ(info.memory_class, memory_class);
-      EXPECT_EQ(info.device_access, create_info.device_access);
-      EXPECT_EQ(info.flags & profile.guaranteed_flags,
+      EXPECT_EQ(access_info.access, create_info.device_access);
+      EXPECT_EQ((info.flags | access_info.flags) & profile.guaranteed_flags,
                 profile.guaranteed_flags);
-      EXPECT_EQ(info.flags & create_info.required_flags,
+      EXPECT_EQ((info.flags | access_info.flags) & create_info.required_flags,
                 create_info.required_flags);
-      EXPECT_EQ(info.flags & ~profile.supported_flags, 0u);
+      EXPECT_EQ((info.flags | access_info.flags) & ~profile.supported_flags,
+                0u);
       EXPECT_EQ(info.source_byte_offset, 0u);
       EXPECT_EQ(info.byte_length, info.native_allocation_byte_length);
       EXPECT_EQ(info.native_allocation_byte_length %
@@ -152,7 +158,7 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
       EXPECT_GE(info.byte_length, create_info.byte_length);
       EXPECT_GE(info.alignment, create_info.minimum_alignment);
       uint64_t address = 0;
-      ASSERT_EQ(api_->memory_query_address(memories_[0],
+      ASSERT_EQ(api_->memory_query_address(memories_[0], 0,
                                            AMDF_MEMORY_ADDRESS_GPU, &address),
                 AMDF_STATUS_OK);
       EXPECT_EQ(address & (info.alignment - 1), 0u);
@@ -164,10 +170,12 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
             AMDF_STATUS_OK);
         ASSERT_NE(mapping_infos_[0].pointer, nullptr);
         EXPECT_EQ(mapping_infos_[0].cacheability,
-                  (info.flags & AMDF_MEMORY_FLAG_HOST_COHERENT) != 0
+                  ((info.flags | access_info.flags) &
+                   AMDF_MEMORY_FLAG_HOST_COHERENT) != 0
                       ? AMDF_HOST_CACHEABILITY_WRITE_BACK
                       : AMDF_HOST_CACHEABILITY_WRITE_COMBINED);
-        if ((info.flags & AMDF_MEMORY_FLAG_HOST_COHERENT) != 0) {
+        if (((info.flags | access_info.flags) &
+             AMDF_MEMORY_FLAG_HOST_COHERENT) != 0) {
           EXPECT_NE(mapping_infos_[0].cache_line_size, 0u);
           EXPECT_EQ(mapping_infos_[0].flush.kind,
                     AMDF_CACHE_TRANSITION_KIND_RANGE);
@@ -290,14 +298,19 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
     info.type = AMDF_STRUCTURE_TYPE_MEMORY_INFO;
     info.structure_size = sizeof(info);
     ASSERT_EQ(api_->memory_query_info(memories_[0], &info), AMDF_STATUS_OK);
+    amdf_memory_access_info_t access_info = {};
+    access_info.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_INFO;
+    access_info.structure_size = sizeof(access_info);
+    ASSERT_EQ(api_->memory_query_access_info(memories_[0], 0, &access_info),
+              AMDF_STATUS_OK);
     EXPECT_EQ(info.memory_class, AMDF_MEMORY_CLASS_SYSTEM);
-    EXPECT_EQ(info.flags & create_info.required_flags,
+    EXPECT_EQ((info.flags | access_info.flags) & create_info.required_flags,
               create_info.required_flags);
     EXPECT_GE(info.byte_length, create_info.byte_length);
     ASSERT_GE(info.alignment, create_info.minimum_alignment);
     uint64_t address = 0;
-    ASSERT_EQ(api_->memory_query_address(memories_[0], AMDF_MEMORY_ADDRESS_GPU,
-                                         &address),
+    ASSERT_EQ(api_->memory_query_address(memories_[0], 0,
+                                         AMDF_MEMORY_ADDRESS_GPU, &address),
               AMDF_STATUS_OK);
     EXPECT_NE(address, 0u);
     EXPECT_EQ(address & (info.alignment - 1), 0u);
@@ -345,8 +358,8 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
     amdf_memory_info_t after = info;
     ASSERT_EQ(api_->memory_query_info(memories_[0], &after), AMDF_STATUS_OK);
     uint64_t address_after = 0;
-    ASSERT_EQ(api_->memory_query_address(memories_[0], AMDF_MEMORY_ADDRESS_GPU,
-                                         &address_after),
+    ASSERT_EQ(api_->memory_query_address(
+                  memories_[0], 0, AMDF_MEMORY_ADDRESS_GPU, &address_after),
               AMDF_STATUS_OK);
     EXPECT_EQ(address_after, address);
     ASSERT_EQ(MapMemory(memories_[0], 0, 0, info.byte_length,
@@ -494,9 +507,15 @@ TEST_F(GpuLinuxMemoryTest, RegistersOverlappingCallerPagesWithExactAccess) {
     info.structure_size = sizeof(info);
     ASSERT_EQ(api_->memory_query_info(memories_[case_ordinal], &info),
               AMDF_STATUS_OK);
+    amdf_memory_access_info_t access_info = {};
+    access_info.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_INFO;
+    access_info.structure_size = sizeof(access_info);
+    ASSERT_EQ(api_->memory_query_access_info(memories_[case_ordinal], 0,
+                                             &access_info),
+              AMDF_STATUS_OK);
     EXPECT_EQ(info.memory_class, AMDF_MEMORY_CLASS_REGISTERED_HOST);
-    EXPECT_EQ(info.device_access, create_info.device_access);
-    EXPECT_EQ(info.flags & create_info.required_flags,
+    EXPECT_EQ(access_info.access, create_info.device_access);
+    EXPECT_EQ((info.flags | access_info.flags) & create_info.required_flags,
               create_info.required_flags);
     EXPECT_EQ(info.source_byte_offset, kCallerOffsets[case_ordinal]);
     EXPECT_EQ(info.byte_length, logical_byte_length);
@@ -507,7 +526,7 @@ TEST_F(GpuLinuxMemoryTest, RegistersOverlappingCallerPagesWithExactAccess) {
         ((kCallerOffsets[case_ordinal] + logical_byte_length + page_size - 1) /
          page_size) *
             page_size);
-    ASSERT_EQ(api_->memory_query_address(memories_[case_ordinal],
+    ASSERT_EQ(api_->memory_query_address(memories_[case_ordinal], 0,
                                          AMDF_MEMORY_ADDRESS_GPU,
                                          &addresses[case_ordinal]),
               AMDF_STATUS_OK);

@@ -429,7 +429,7 @@ typedef struct amdf_memory_create_info_t {
   void* registered_host_pointer;
 } amdf_memory_create_info_t;
 
-/// Immutable properties of one live device memory attachment.
+/// Immutable backing properties of one live memory resource.
 typedef struct amdf_memory_info_t {
   /// Must be `AMDF_STRUCTURE_TYPE_MEMORY_INFO`.
   amdf_structure_type_t type;
@@ -442,17 +442,11 @@ typedef struct amdf_memory_info_t {
   uint32_t memory_profile_ordinal;
   /// Achieved physical placement class.
   amdf_memory_class_t memory_class;
-  /// Exact device read, write, and execute access of this attachment.
-  amdf_memory_access_t device_access;
-  /// Atomic operations supported by 32-bit words in this target attachment.
-  amdf_atomic_operations_t atomic_operations_32;
-  /// Atomic operations supported by 64-bit words in this target attachment.
-  amdf_atomic_operations_t atomic_operations_64;
-  /// Ordinary device-address domain containing `device_address`.
-  uint32_t address_domain_ordinal;
-  /// Identity of the live device owning this attachment.
-  amdf_device_id_t device_id;
-  /// Achieved attachment properties.
+  /// Number of immutable device accesses, indexed by resource-local ordinal.
+  uint32_t access_count;
+  /// Reserved for compatible growth; always zero.
+  uint32_t reserved;
+  /// Achieved backing properties: HOST_VISIBLE, DEVICE_LOCAL and SHAREABLE.
   amdf_memory_flags_t flags;
   /// Byte offset of logical byte zero in the physical backing.
   uint64_t source_byte_offset;
@@ -467,13 +461,40 @@ typedef struct amdf_memory_info_t {
   uint64_t native_allocation_granularity;
   /// Identity shared by attachments to the same physical backing, when known.
   amdf_physical_memory_id_t physical_backing_id;
+} amdf_memory_info_t;
+
+/// Immutable facts of one established device access to a memory resource.
+typedef struct amdf_memory_access_info_t {
+  /// Must be `AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_INFO`.
+  amdf_structure_type_t type;
+  /// Must be at least `sizeof(amdf_memory_access_info_t)`.
+  uint32_t structure_size;
+  /// Optional output extension chain. No extensions are currently defined.
+  void* next;
+  /// Resource-local ordinal identifying this access.
+  uint32_t ordinal;
+  /// Exact established device permissions.
+  amdf_memory_access_t access;
+  /// Identity of the required live consumer, not an allocation owner.
+  amdf_device_id_t device_id;
+  /// Established access properties: QUEUE_STORAGE, HOST_COHERENT and
+  /// DEVICE_ADDRESS. Backing properties belong to amdf_memory_info_t.
+  amdf_memory_flags_t flags;
+  /// Supported atomic operations on naturally aligned 32-bit words.
+  amdf_atomic_operations_t atomic_operations_32;
+  /// Supported atomic operations on naturally aligned 64-bit words.
+  amdf_atomic_operations_t atomic_operations_64;
+  /// Consumer-local address domain, or NONE without an address.
+  uint32_t address_domain_ordinal;
+  /// Reserved for compatible growth; always zero.
+  uint32_t reserved;
   /// Address kinds established for the complete logical range. Each set bit
   /// guarantees that memory_query_address succeeds for that kind. Zero means
   /// no device address was established; unsupported kinds have no address.
   amdf_memory_address_kinds_t address_kinds;
-  /// Device reset epoch in which the attachment and address remain valid.
+  /// Device reset epoch in which this access and its addresses remain valid.
   uint64_t reset_epoch;
-} amdf_memory_info_t;
+} amdf_memory_access_info_t;
 
 /// Parameters used to attach typed external memory to one device.
 typedef struct amdf_memory_import_info_t {
@@ -703,8 +724,8 @@ typedef struct amdf_memory_site_t {
   amdf_memory_t* memory;
   /// Exact queue family used for memory access and cache transitions.
   uint32_t queue_family_ordinal;
-  /// Reserved for future use and always zero.
-  uint32_t reserved;
+  /// Resource-local access ordinal identifying the consuming device.
+  uint32_t access_ordinal;
 } amdf_memory_site_t;
 
 /// Directional capabilities of one concrete shared-backing memory pair.

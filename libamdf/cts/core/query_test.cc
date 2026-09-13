@@ -91,6 +91,7 @@ TEST(QueryApiTest, NegotiatesSupportedVersion) {
   EXPECT_NE(api->memory_create, nullptr);
   EXPECT_NE(api->memory_import, nullptr);
   EXPECT_NE(api->memory_query_info, nullptr);
+  EXPECT_NE(api->memory_query_access_info, nullptr);
   EXPECT_NE(api->memory_query_address, nullptr);
   EXPECT_NE(api->memory_export, nullptr);
   EXPECT_NE(api->external_memory_release, nullptr);
