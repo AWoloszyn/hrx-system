@@ -177,7 +177,9 @@ int64_t loom_vector_to_scalar_shifted_integer_mask_value(int32_t bit_width,
   mask <<= (uint64_t)offset;
   if (bit_width < 64) mask &= (UINT64_C(1) << (uint32_t)bit_width) - 1;
   if (bit_width == 1) return (mask & 1) ? 1 : 0;
-  return (int64_t)mask;
+  // Constants use signed lane values, including masks reaching the sign bit.
+  const uint64_t sign_bit = UINT64_C(1) << (bit_width - 1);
+  return (int64_t)((mask ^ sign_bit) - sign_bit);
 }
 
 iree_status_t loom_vector_to_scalar_build_integer_mask(

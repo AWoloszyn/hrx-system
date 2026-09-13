@@ -216,6 +216,7 @@ static const loom_pass_requirement_def_t kLowSourceToLowRequirements[] = {
 };
 
 static const loom_pass_option_enum_value_t kLowTargetLegalizeModeValues[] = {
+    {.value = IREE_SVL("complete")},
     {.value = IREE_SVL("eager")},
     {.value = IREE_SVL("final")},
 };

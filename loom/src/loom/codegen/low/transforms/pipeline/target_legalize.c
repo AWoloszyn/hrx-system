@@ -38,6 +38,9 @@ typedef struct loom_low_target_legalize_pass_state_t {
   loom_target_legalization_mode_t mode;
   // Strategy policy controlling native/reference legalizer participation.
   loom_target_legalization_policy_t policy;
+  // Verify source legality here when this pass is the final consumer. Composed
+  // pipelines leave verification to source-to-low after structural lowering.
+  bool verify_source_legality;
   // True when max_iterations was explicitly provided.
   bool has_max_iterations_option;
   // True when max_errors was explicitly provided.
@@ -59,7 +62,10 @@ static const loom_pass_option_def_t kLowTargetLegalizeOptions[] = {
               "means no limit.")},
     {IREE_SVL("max-iterations"),
      IREE_SVL("Maximum number of target legalization worklist iterations.")},
-    {IREE_SVL("mode"), IREE_SVL("Legalization phase: eager or final.")},
+    {IREE_SVL("mode"),
+     IREE_SVL(
+         "Legalization phase: eager (partial rewrites), complete (finish "
+         "rewrites), or final (finish rewrites and verify source legality).")},
     {IREE_SVL("policy"),
      IREE_SVL("Legalization strategy policy: prefer-native, reference-only, "
               "or require-native.")},
@@ -137,12 +143,15 @@ static iree_status_t loom_low_target_legalize_parse_mode(
   }
   if (iree_string_view_equal(value, IREE_SV("eager"))) {
     context->state->mode = LOOM_TARGET_LEGALIZATION_MODE_EAGER;
+  } else if (iree_string_view_equal(value, IREE_SV("complete"))) {
+    context->state->mode = LOOM_TARGET_LEGALIZATION_MODE_FINAL;
   } else if (iree_string_view_equal(value, IREE_SV("final"))) {
     context->state->mode = LOOM_TARGET_LEGALIZATION_MODE_FINAL;
+    context->state->verify_source_legality = true;
   } else {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "target-legalize option 'mode' expected 'eager' "
-                            "or 'final', got '%.*s'",
+                            "or 'complete' or 'final', got '%.*s'",
                             (int)value.size, value.data);
   }
   context->state->has_mode_option = true;
@@ -1029,6 +1038,7 @@ static bool loom_low_target_legalize_should_record_final_rejection(
     const loom_target_legalizer_entry_t* entry) {
   return state->legalization_context.mode ==
              LOOM_TARGET_LEGALIZATION_MODE_FINAL &&
+         state->pass_state->verify_source_legality &&
          entry->provider_strategy == LOOM_TARGET_LEGALIZER_STRATEGY_REFERENCE;
 }
 
@@ -1630,9 +1640,15 @@ static iree_status_t loom_low_target_legalize_function(
     }
   }
 
+  // Source legality describes the input to source-to-low. Low functions also
+  // participate in rewriting (for example, to discharge assumptions), but their
+  // register, storage, and instruction contracts belong to Low verification.
+  const bool is_source_function =
+      selection->func.op->kind == LOOM_OP_FUNC_DEF ||
+      selection->func.op->kind == LOOM_OP_KERNEL_DEF;
   uint32_t final_error_count = 0;
   if (iree_status_is_ok(status) && state.preflight_error_count == 0 &&
-      pass_state->mode == LOOM_TARGET_LEGALIZATION_MODE_FINAL) {
+      pass_state->verify_source_legality && is_source_function) {
     const loom_value_fact_table_t* final_facts = NULL;
     status = loom_low_target_legalize_acquire_final_facts(
         pass, module, selection, &rewrite_driver, &final_facts);

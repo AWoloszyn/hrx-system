@@ -46,7 +46,7 @@ pass.pipeline<module> @__loom_check_source_low pipeline {
       }
     }
   }
-  target-legalize(mode = "eager")
+  target-legalize(mode = "complete")
   if changed {
     for func {
       where target {
@@ -146,7 +146,7 @@ pass.pipeline<module> @__loom_check_source_low pipeline {
       }
     }
   }
-  target-legalize(mode = "eager")
+  target-legalize(mode = "complete")
   if changed {
     for func {
       where target {
@@ -295,7 +295,7 @@ pass.pipeline<module> @__loom_check_prepared_low pipeline {
       }
     }
   }
-  target-legalize(mode = "eager")
+  target-legalize(mode = "complete")
   if changed {
     for func {
       where target {

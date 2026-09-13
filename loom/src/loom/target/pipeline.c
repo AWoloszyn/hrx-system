@@ -436,8 +436,10 @@ static iree_status_t loom_target_pipeline_build_source_low_body(
       builder,
       loom_target_pipeline_build_source_safe_normalization_after_legalize,
       user_data, &for_op));
+  // Finish reference rewrites before CFG finalization. Source-to-low owns
+  // legality verification after the remaining structural and target passes.
   IREE_RETURN_IF_ERROR(
-      loom_target_pipeline_build_target_legalize(builder, IREE_SV("eager")));
+      loom_target_pipeline_build_target_legalize(builder, IREE_SV("complete")));
   // Module legalization may mutate any target function. Normalize the full
   // target set only when it did so before function-local CFG finalization.
   loom_op_t* if_changed_op = NULL;
