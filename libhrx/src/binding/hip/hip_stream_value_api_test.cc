@@ -33,7 +33,12 @@ const char* CandidateLibPath() {
 }
 
 using HipInitFn = hipError_t (*)(unsigned int flags);
+using HipDeviceGetAttributeFn = hipError_t (*)(int* value,
+                                               hipDeviceAttribute_t attribute,
+                                               int device);
 using HipMallocFn = hipError_t (*)(void** pointer, size_t size);
+using HipExtMallocWithFlagsFn = hipError_t (*)(void** pointer, size_t size,
+                                               unsigned int flags);
 using HipFreeFn = hipError_t (*)(void* pointer);
 using HipMallocHostFn = hipError_t (*)(void** pointer, size_t size);
 using HipFreeHostFn = hipError_t (*)(void* pointer);
@@ -84,8 +89,12 @@ struct HipRuntimeApi {
   void* library = nullptr;
   // Initializes the runtime.
   HipInitFn init = nullptr;
+  // Queries one device capability.
+  HipDeviceGetAttributeFn device_get_attribute = nullptr;
   // Allocates device-visible memory.
   HipMallocFn malloc = nullptr;
+  // Allocates device-visible memory with an explicit allocation mode.
+  HipExtMallocWithFlagsFn ext_malloc_with_flags = nullptr;
   // Releases device-visible memory.
   HipFreeFn free = nullptr;
   // Allocates host-visible memory.
@@ -168,14 +177,19 @@ class HipStreamValueApiTest : public testing::Test {
  protected:
   void SetUp() override {
     if (!api_.library) {
-      api_.library = dlopen(CandidateLibPath(), RTLD_LAZY | RTLD_LOCAL);
-      if (!api_.library) {
-        GTEST_SKIP() << "cannot dlopen " << CandidateLibPath() << ": "
-                     << dlerror();
-      }
+      const char* library_path = CandidateLibPath();
+      ASSERT_NE(nullptr, library_path)
+          << "the build must provide the libamdhip64 artifact under test";
+      api_.library = dlopen(library_path, RTLD_LAZY | RTLD_LOCAL);
+      ASSERT_NE(nullptr, api_.library)
+          << "cannot dlopen " << library_path << ": " << dlerror();
 
       api_.init = ResolveHipSymbol<HipInitFn>(api_.library, "hipInit");
+      api_.device_get_attribute = ResolveHipSymbol<HipDeviceGetAttributeFn>(
+          api_.library, "hipDeviceGetAttribute");
       api_.malloc = ResolveHipSymbol<HipMallocFn>(api_.library, "hipMalloc");
+      api_.ext_malloc_with_flags = ResolveHipSymbol<HipExtMallocWithFlagsFn>(
+          api_.library, "hipExtMallocWithFlags");
       api_.free = ResolveHipSymbol<HipFreeFn>(api_.library, "hipFree");
       api_.malloc_host =
           ResolveHipSymbol<HipMallocHostFn>(api_.library, "hipMallocHost");
@@ -219,7 +233,9 @@ class HipStreamValueApiTest : public testing::Test {
     }
 
     ASSERT_NE(nullptr, api_.init);
+    ASSERT_NE(nullptr, api_.device_get_attribute);
     ASSERT_NE(nullptr, api_.malloc);
+    ASSERT_NE(nullptr, api_.ext_malloc_with_flags);
     ASSERT_NE(nullptr, api_.free);
     ASSERT_NE(nullptr, api_.malloc_host);
     ASSERT_NE(nullptr, api_.free_host);
@@ -242,10 +258,13 @@ class HipStreamValueApiTest : public testing::Test {
     ASSERT_NE(nullptr, api_.graph_exec_destroy);
     ASSERT_NE(nullptr, api_.graph_destroy);
 
-    const hipError_t init_result = api_.init(/*flags=*/0);
-    if (init_result != hipSuccess) {
-      GTEST_SKIP() << "hipInit failed: " << init_result;
-    }
+    ASSERT_EQ(hipSuccess, api_.init(/*flags=*/0));
+    int can_use_stream_wait_value = 0;
+    ASSERT_EQ(hipSuccess,
+              api_.device_get_attribute(&can_use_stream_wait_value,
+                                        hipDeviceAttributeCanUseStreamWaitValue,
+                                        /*device=*/0));
+    supports_value_waits_ = can_use_stream_wait_value != 0;
   }
 
   void TearDown() override {
@@ -280,6 +299,22 @@ class HipStreamValueApiTest : public testing::Test {
     return pointer;
   }
 
+  void* AllocateSignal() {
+    void* pointer = nullptr;
+    EXPECT_EQ(hipSuccess, api_.ext_malloc_with_flags(&pointer, sizeof(uint64_t),
+                                                     hipMallocSignalMemory));
+    if (pointer) allocations_.push_back(pointer);
+    return pointer;
+  }
+
+  bool CheckWaitSupport(hipStream_t stream, void* signal) {
+    if (supports_value_waits_) return true;
+    EXPECT_EQ(hipErrorNotSupported,
+              api_.wait_value_32(stream, signal, 0, hipStreamWaitValueEq,
+                                 UINT32_MAX));
+    return false;
+  }
+
   void* AllocateHost(size_t size) {
     void* pointer = nullptr;
     EXPECT_EQ(hipSuccess, api_.malloc_host(&pointer, size));
@@ -305,6 +340,7 @@ class HipStreamValueApiTest : public testing::Test {
   std::vector<void*> host_allocations_;
   std::vector<hipGraph_t> graphs_;
   std::vector<hipGraphExec_t> graph_executables_;
+  bool supports_value_waits_ = false;
 };
 
 HipRuntimeApi HipStreamValueApiTest::api_;
@@ -340,17 +376,10 @@ TEST_F(HipStreamValueApiTest, ExecutesScalarWritesThroughPublicDso) {
 
 TEST_F(HipStreamValueApiTest, ExecutesEveryWaitPredicateAtBothWidths) {
   hipStream_t stream = CreateStream();
-  void* allocation = Allocate(48);
+  void* signal = AllocateSignal();
   ASSERT_NE(nullptr, stream);
-  ASSERT_NE(nullptr, allocation);
-
-  const uint32_t initial_32[] = {7, 9, 4, 5};
-  const uint64_t initial_64[] = {7, 9, 4, 5};
-  ASSERT_EQ(hipSuccess, api_.memcpy(allocation, initial_32, sizeof(initial_32),
-                                    hipMemcpyHostToDevice));
-  ASSERT_EQ(hipSuccess,
-            api_.memcpy(static_cast<uint8_t*>(allocation) + 16, initial_64,
-                        sizeof(initial_64), hipMemcpyHostToDevice));
+  ASSERT_NE(nullptr, signal);
+  if (!CheckWaitSupport(stream, signal)) return;
 
   const unsigned int predicates[] = {
       hipStreamWaitValueGte,
@@ -358,20 +387,27 @@ TEST_F(HipStreamValueApiTest, ExecutesEveryWaitPredicateAtBothWidths) {
       hipStreamWaitValueAnd,
       hipStreamWaitValueNor,
   };
+  const uint32_t initial_32[] = {7, 9, 4, 5};
+  const uint64_t initial_64[] = {7, 9, 4, 5};
   const uint32_t expected_32[] = {5, 9, 4, 5};
   const uint64_t expected_64[] = {5, 9, 4, 5};
   const uint32_t masks_32[] = {UINT32_MAX, UINT32_MAX, UINT32_MAX, 0xFu};
   const uint64_t masks_64[] = {UINT64_MAX, UINT64_MAX, UINT64_MAX, 0xFu};
   for (size_t i = 0; i < 4; ++i) {
-    EXPECT_EQ(hipSuccess, api_.wait_value_32(
-                              stream, static_cast<uint8_t*>(allocation) + i * 4,
-                              expected_32[i], predicates[i], masks_32[i]));
-    EXPECT_EQ(hipSuccess,
-              api_.wait_value_64(stream,
-                                 static_cast<uint8_t*>(allocation) + 16 + i * 8,
-                                 expected_64[i], predicates[i], masks_64[i]));
+    ASSERT_EQ(hipSuccess,
+              api_.memcpy(signal, &initial_32[i], sizeof(initial_32[i]),
+                          hipMemcpyHostToDevice));
+    EXPECT_EQ(hipSuccess, api_.wait_value_32(stream, signal, expected_32[i],
+                                             predicates[i], masks_32[i]));
+    ASSERT_EQ(hipSuccess, api_.stream_synchronize(stream));
+
+    ASSERT_EQ(hipSuccess,
+              api_.memcpy(signal, &initial_64[i], sizeof(initial_64[i]),
+                          hipMemcpyHostToDevice));
+    EXPECT_EQ(hipSuccess, api_.wait_value_64(stream, signal, expected_64[i],
+                                             predicates[i], masks_64[i]));
+    ASSERT_EQ(hipSuccess, api_.stream_synchronize(stream));
   }
-  EXPECT_EQ(hipSuccess, api_.stream_synchronize(stream));
 }
 
 TEST_F(HipStreamValueApiTest, ExecutesSystemScopeOperationsOnHostMemory) {
@@ -385,6 +421,7 @@ TEST_F(HipStreamValueApiTest, ExecutesSystemScopeOperationsOnHostMemory) {
                             &device_pointer, host_allocation, /*flags=*/0));
   ASSERT_NE(nullptr, device_pointer);
   std::memset(host_allocation, 0, 16);
+  if (!CheckWaitSupport(stream, device_pointer)) return;
 
   void* value_32 = device_pointer;
   void* value_64 = static_cast<uint8_t*>(device_pointer) + 8;
@@ -532,16 +569,21 @@ TEST_F(HipStreamValueApiTest, BatchDoesNotInterleaveWithSameStreamCall) {
 TEST_F(HipStreamValueApiTest, IndependentStreamWaitsDoNotShareAQueueLane) {
   hipStream_t stream_a = CreateStream();
   hipStream_t stream_b = CreateStream();
-  void* allocation = Allocate(24);
+  void* value_x = AllocateSignal();
+  void* value_y = AllocateSignal();
+  void* value_x_64 = AllocateSignal();
+  void* value_y_64 = AllocateSignal();
   ASSERT_NE(nullptr, stream_a);
   ASSERT_NE(nullptr, stream_b);
-  ASSERT_NE(nullptr, allocation);
-  ASSERT_EQ(hipSuccess, api_.memset(allocation, 0, 24));
-
-  void* value_x = allocation;
-  void* value_y = static_cast<uint8_t*>(allocation) + 4;
-  void* value_x_64 = static_cast<uint8_t*>(allocation) + 8;
-  void* value_y_64 = static_cast<uint8_t*>(allocation) + 16;
+  ASSERT_NE(nullptr, value_x);
+  ASSERT_NE(nullptr, value_y);
+  ASSERT_NE(nullptr, value_x_64);
+  ASSERT_NE(nullptr, value_y_64);
+  ASSERT_EQ(hipSuccess, api_.memset(value_x, 0, sizeof(uint64_t)));
+  ASSERT_EQ(hipSuccess, api_.memset(value_y, 0, sizeof(uint64_t)));
+  ASSERT_EQ(hipSuccess, api_.memset(value_x_64, 0, sizeof(uint64_t)));
+  ASSERT_EQ(hipSuccess, api_.memset(value_y_64, 0, sizeof(uint64_t)));
+  if (!CheckWaitSupport(stream_a, value_x)) return;
   ASSERT_EQ(hipSuccess, api_.wait_value_32(stream_a, value_x, 1,
                                            hipStreamWaitValueEq, UINT32_MAX));
   ASSERT_EQ(hipSuccess, api_.wait_value_64(stream_a, value_x_64, 1,
@@ -572,6 +614,30 @@ TEST_F(HipStreamValueApiTest, IndependentStreamWaitsDoNotShareAQueueLane) {
 
   EXPECT_EQ(hipSuccess, api_.stream_synchronize(stream_b));
   EXPECT_EQ(hipSuccess, api_.stream_synchronize(stream_a));
+}
+
+TEST_F(HipStreamValueApiTest, CompletedWaitLanesRecycleAcrossLiveStreams) {
+  void* signal = AllocateSignal();
+  ASSERT_NE(nullptr, signal);
+  const uint32_t ready_value = 1;
+  ASSERT_EQ(hipSuccess, api_.memcpy(signal, &ready_value, sizeof(ready_value),
+                                    hipMemcpyHostToDevice));
+
+  hipStream_t first_stream = CreateStream();
+  ASSERT_NE(nullptr, first_stream);
+  if (!CheckWaitSupport(first_stream, signal)) return;
+
+  // Keep more logical streams alive than the hardware queue identity space.
+  // Each satisfied wait completes before the next stream submits, so a
+  // completion-aware implementation needs only one reusable wait lane.
+  constexpr int kStreamCount = 300;
+  for (int i = 0; i < kStreamCount; ++i) {
+    hipStream_t stream = i == 0 ? first_stream : CreateStream();
+    ASSERT_NE(nullptr, stream);
+    ASSERT_EQ(hipSuccess, api_.wait_value_32(stream, signal, ready_value,
+                                             hipStreamWaitValueEq, UINT32_MAX));
+    ASSERT_EQ(hipSuccess, api_.stream_synchronize(stream));
+  }
 }
 
 TEST_F(HipStreamValueApiTest, CapturedDefaultWritesReplayAtBothWidths) {
@@ -642,9 +708,10 @@ TEST_F(HipStreamValueApiTest, UnsupportedWaitInvalidatesCapture) {
 
 TEST_F(HipStreamValueApiTest, CaptureBeginRacesValueWaitSubmission) {
   hipStream_t stream = CreateStream();
-  void* allocation = Allocate(sizeof(uint32_t));
+  void* allocation = AllocateSignal();
   ASSERT_NE(nullptr, stream);
   ASSERT_NE(nullptr, allocation);
+  if (!CheckWaitSupport(stream, allocation)) return;
 
   for (int iteration = 0; iteration < 64; ++iteration) {
     ASSERT_EQ(hipSuccess, api_.memset(allocation, 0, sizeof(uint32_t)));
@@ -681,10 +748,11 @@ TEST_F(HipStreamValueApiTest, CaptureBeginRacesValueWaitSubmission) {
 
 TEST_F(HipStreamValueApiTest, CaptureEndRacesValueWaitSubmission) {
   hipStream_t stream = CreateStream();
-  void* allocation = Allocate(sizeof(uint32_t));
+  void* allocation = AllocateSignal();
   ASSERT_NE(nullptr, stream);
   ASSERT_NE(nullptr, allocation);
   ASSERT_EQ(hipSuccess, api_.memset(allocation, 0, sizeof(uint32_t)));
+  if (!CheckWaitSupport(stream, allocation)) return;
 
   for (int iteration = 0; iteration < 64; ++iteration) {
     ASSERT_EQ(hipSuccess,
@@ -811,11 +879,12 @@ TEST_F(HipStreamValueApiTest, BatchTargetLookupRacesFreeWithoutPartialCommit) {
 TEST_F(HipStreamValueApiTest, StreamTeardownCompletesAfterIndependentProducer) {
   hipStream_t wait_stream = CreateStream();
   hipStream_t producer_stream = CreateStream();
-  void* allocation = Allocate(sizeof(uint32_t));
+  void* allocation = AllocateSignal();
   ASSERT_NE(nullptr, wait_stream);
   ASSERT_NE(nullptr, producer_stream);
   ASSERT_NE(nullptr, allocation);
   ASSERT_EQ(hipSuccess, api_.memset(allocation, 0, sizeof(uint32_t)));
+  if (!CheckWaitSupport(wait_stream, allocation)) return;
   ASSERT_EQ(hipSuccess, api_.wait_value_32(wait_stream, allocation, 1,
                                            hipStreamWaitValueEq, UINT32_MAX));
 
