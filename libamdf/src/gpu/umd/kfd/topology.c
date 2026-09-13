@@ -66,8 +66,9 @@ static amdf_status_t amdf_gpu_kfd_read_number(int directory, const char* name,
 }
 
 // KFD topology properties are decimal name/value records. Baseline endpoint
-// fields are mandatory, including fields for which zero is meaningful. The
-// SDMA group is optional on older kernels but must be complete when present.
+// fields are mandatory, including fields for which zero is meaningful. Compute
+// storage and SDMA groups are independently optional on older kernels, but each
+// group must be complete when present.
 static amdf_status_t amdf_gpu_kfd_read_node(
     int directory, const amdf_platform_endpoint_t* endpoint,
     amdf_gpu_kfd_topology_t* topology, bool* out_matches) {
@@ -87,10 +88,10 @@ static amdf_status_t amdf_gpu_kfd_read_node(
     ARRAYS_PER_ENGINE,
     XCC_COUNT,
     COMPUTE_QUEUE_COUNT,
-    CONTEXT_SAVE_RESTORE_SIZE,
-    CONTROL_STACK_SIZE,
     REQUIRED_PROPERTY_COUNT,
-    SDMA_ENGINE_COUNT = REQUIRED_PROPERTY_COUNT,
+    CONTEXT_SAVE_RESTORE_SIZE = REQUIRED_PROPERTY_COUNT,
+    CONTROL_STACK_SIZE,
+    SDMA_ENGINE_COUNT,
     SDMA_XGMI_ENGINE_COUNT,
     SDMA_QUEUE_COUNT_PER_ENGINE,
     PROPERTY_COUNT,
@@ -152,9 +153,14 @@ static amdf_status_t amdf_gpu_kfd_read_node(
     return AMDF_STATUS_OK;
   }
   const uint32_t required_properties = (1u << REQUIRED_PROPERTY_COUNT) - 1;
-  const uint32_t sdma_properties =
-      ((1u << PROPERTY_COUNT) - 1) & ~required_properties;
+  const uint32_t compute_storage_properties =
+      (1u << CONTEXT_SAVE_RESTORE_SIZE) | (1u << CONTROL_STACK_SIZE);
+  const uint32_t sdma_properties = (1u << SDMA_ENGINE_COUNT) |
+                                   (1u << SDMA_XGMI_ENGINE_COUNT) |
+                                   (1u << SDMA_QUEUE_COUNT_PER_ENGINE);
   if ((present & required_properties) != required_properties ||
+      ((present & compute_storage_properties) != 0 &&
+       (present & compute_storage_properties) != compute_storage_properties) ||
       ((present & sdma_properties) != 0 &&
        (present & sdma_properties) != sdma_properties)) {
     return amdf_linux_error(EPROTO);

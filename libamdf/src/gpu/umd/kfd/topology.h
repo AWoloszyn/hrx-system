@@ -47,9 +47,10 @@ typedef struct amdf_gpu_kfd_topology_t {
       bool exact;
     } ip;
   } sdma;
-  // Required per-XCC context-save/restore area length in bytes.
+  // Native per-XCC context-save/restore bytes, or zero when not reported.
+  // Compute queue plans require this group; memory and SDMA do not.
   uint32_t context_save_restore_byte_length;
-  // Required per-XCC control-stack length in bytes.
+  // Native per-XCC control-stack bytes, or zero when not reported.
   uint32_t control_stack_byte_length;
   // Ordinary GPU virtual-address interval reported by DRM.
   struct {

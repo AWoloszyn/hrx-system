@@ -39,6 +39,19 @@ amdf_cc_library(
     ],
 )
 
+amdf_cc_test(
+    name = "topology_test",
+    srcs = ["topology_test.cc"],
+    target_compatible_with = KFD_COMPATIBILITY,
+    deps = [
+        ":topology",
+        "//libamdf/src/platform/linux:endpoint",
+        "//libamdf/src/platform/linux:file",
+        "//third_party:google_test",
+        "//third_party:google_test_main",
+    ],
+)
+
 amdf_cc_library(
     name = "reset_monitor",
     srcs = ["reset_monitor.c"],
