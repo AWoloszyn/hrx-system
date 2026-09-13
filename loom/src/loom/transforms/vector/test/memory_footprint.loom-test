@@ -1006,6 +1006,52 @@ func.def @scalar_view_atomic_rejects_unproven_origin_while_prefetch_is_ignored(%
 
 // ====
 
+// A statically short view is valid when only its existing lanes are active.
+func.def @static_masked_tail(%view: view<1xi32>, %old: vector<2xi32>) {
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %mask = vector.mask.range [%c0 to %c1 step %c1] : index -> vector<2xi1>
+  %loaded = vector.load.mask %view[0], %mask, %old : view<1xi32>, vector<2xi1>, vector<2xi32>
+  vector.store.mask %old, %view[0], %mask : vector<2xi32>, view<1xi32>, vector<2xi1>
+  %expanded = vector.load.expand %view[0], %mask, %old : view<1xi32>, vector<2xi1>, vector<2xi32>
+  vector.store.compress %old, %view[0], %mask : vector<2xi32>, view<1xi32>, vector<2xi1>
+  func.return
+}
+
+// ====
+
+// The active-lane analysis, not a maximum-footprint structural check, rejects
+// accesses whose actual active range exceeds the view.
+func.def @static_masked_tail_active_overflow(%view: view<1xi32>, %old: vector<2xi32>) {
+  %mask = vector.constant true : vector<2xi1>
+  // ERROR@+1: SUBRANGE/010
+  %loaded = vector.load.mask %view[0], %mask, %old : view<1xi32>, vector<2xi1>, vector<2xi32>
+  func.return
+}
+
+// ====
+
+func.def @static_compact_tail_active_overflow(%view: view<1xi32>, %value: vector<2xi32>) {
+  %mask = vector.constant true : vector<2xi1>
+  // ERROR@+1: SUBRANGE/010
+  vector.store.compress %value, %view[0], %mask : vector<2xi32>, view<1xi32>, vector<2xi1>
+  func.return
+}
+
+// ====
+
+// An empty mask does not access even an origin beyond an empty view.
+func.def @static_masked_empty_access(%view: view<0xi32>, %old: vector<2xi32>) {
+  %mask = vector.constant false : vector<2xi1>
+  %loaded = vector.load.mask %view[7], %mask, %old : view<0xi32>, vector<2xi1>, vector<2xi32>
+  vector.store.mask %old, %view[7], %mask : vector<2xi32>, view<0xi32>, vector<2xi1>
+  %expanded = vector.load.expand %view[7], %mask, %old : view<0xi32>, vector<2xi1>, vector<2xi32>
+  vector.store.compress %old, %view[7], %mask : vector<2xi32>, view<0xi32>, vector<2xi1>
+  func.return
+}
+
+// ====
+
 func.def @mask_range_tail_uses_upper_bound(%buffer: buffer, %base: offset, %n: index, %iv: index, %old: vector<16xf32>) {
   %layout = encoding.layout.dense : encoding<layout>
   %c1 = index.constant 1 : index

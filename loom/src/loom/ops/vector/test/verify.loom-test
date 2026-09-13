@@ -482,13 +482,40 @@ func.def @load_expand_mask_shape_mismatch(%buffer: buffer, %offset: offset, %mas
 
 // ====
 
-// Until mask facts prove a smaller popcount, static checks conservatively use
-// the full rank-1 vector length as the maximum compact memory footprint.
-func.def @store_compress_static_footprint_out_of_bounds(%buffer: buffer, %offset: offset, %mask: vector<4xi1>, %value: vector<4xf32>) {
+// The compact footprint depends on the active lane count, not vector length.
+// Structural verification has no mask facts and cannot reject a partial run.
+func.def @store_compress_partial_footprint(%buffer: buffer, %offset: offset, %mask: vector<4xi1>, %value: vector<4xf32>) {
   %layout = encoding.layout.dense : encoding<layout>
   %view = buffer.view %buffer[%offset] : buffer -> view<4xf32, %layout>
-  // ERROR@+1: SUBRANGE/004
   vector.store.compress %value, %view[2], %mask : vector<4xf32>, view<4xf32, %layout>, vector<4xi1>
+  func.return
+}
+
+// ====
+
+// Masked dense loads/stores and compact loads can also have inactive tails.
+func.def @masked_partial_footprints(%view: view<1xi32>, %mask: vector<2xi1>, %old: vector<2xi32>) -> (vector<2xi32>, vector<2xi32>) {
+  %loaded = vector.load.mask %view[0], %mask, %old : view<1xi32>, vector<2xi1>, vector<2xi32>
+  vector.store.mask %old, %view[0], %mask : vector<2xi32>, view<1xi32>, vector<2xi1>
+  %expanded = vector.load.expand %view[0], %mask, %old : view<1xi32>, vector<2xi1>, vector<2xi32>
+  func.return %loaded, %expanded : vector<2xi32>, vector<2xi32>
+}
+
+// ====
+
+// A mask does not relax the structural correspondence of vector and view axes.
+func.def @masked_rank_mismatch(%view: view<1xi32>, %mask: vector<2x2xi1>, %old: vector<2x2xi32>) {
+  // ERROR@+1: TYPE/004 "rank no greater than view rank"
+  %loaded = vector.load.mask %view[0], %mask, %old : view<1xi32>, vector<2x2xi1>, vector<2x2xi32>
+  func.return
+}
+
+// ====
+
+// A mask also leaves the full-rank origin requirement intact.
+func.def @masked_origin_rank_mismatch(%view: view<1x1xi32>, %mask: vector<2xi1>, %value: vector<2xi32>) {
+  // ERROR@+1: SUBRANGE/001
+  vector.store.mask %value, %view[0], %mask : vector<2xi32>, view<1x1xi32>, vector<2xi1>
   func.return
 }
 

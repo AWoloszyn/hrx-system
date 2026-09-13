@@ -506,7 +506,7 @@ static bool loom_vector_find_static_memory_access_out_of_bounds(
 static iree_status_t loom_vector_verify_memory_access(
     const loom_module_t* module, iree_diagnostic_emitter_t emitter,
     const loom_op_t* op, iree_string_view_t vector_name, bool vector_is_result,
-    loom_type_t view_type, loom_type_t vector_type,
+    loom_type_t view_type, loom_type_t vector_type, loom_value_id_t mask,
     loom_attribute_t static_indices, uint16_t dynamic_index_count) {
   if (!loom_type_is_view(view_type) || !loom_type_is_vector(vector_type)) {
     return iree_ok_status();
@@ -531,6 +531,11 @@ static iree_status_t loom_vector_verify_memory_access(
         emitter, op, vector_is_result, vector_name, vector_type,
         IREE_SV("rank no greater than view rank"));
   }
+
+  // Masked accesses require only their active lanes to fit. Structural
+  // verification has no mask facts; the memory-footprint analysis owns those
+  // bounds, including the active-element count of expand/compress operations.
+  if (mask != LOOM_VALUE_ID_INVALID) return iree_ok_status();
 
   loom_vector_memory_access_t access;
   if (!loom_vector_memory_access_describe(
@@ -744,8 +749,8 @@ iree_status_t loom_vector_load_verify(const loom_module_t* module,
       loom_module_value_type(module, loom_vector_load_result(op));
   IREE_RETURN_IF_ERROR(loom_vector_verify_memory_access(
       module, emitter, op, IREE_SV("result"), /*vector_is_result=*/true,
-      view_type, result_type, loom_vector_load_static_indices(op),
-      loom_vector_load_indices(op).count));
+      view_type, result_type, LOOM_VALUE_ID_INVALID,
+      loom_vector_load_static_indices(op), loom_vector_load_indices(op).count));
   return loom_vector_verify_optional_cache_policy(
       emitter, op, loom_vector_load_cache_scope_ATTR_INDEX,
       loom_vector_load_cache_temporal_ATTR_INDEX,
@@ -761,7 +766,8 @@ iree_status_t loom_vector_store_verify(const loom_module_t* module,
       loom_module_value_type(module, loom_vector_store_value(op));
   IREE_RETURN_IF_ERROR(loom_vector_verify_memory_access(
       module, emitter, op, IREE_SV("value"), /*vector_is_result=*/false,
-      view_type, value_type, loom_vector_store_static_indices(op),
+      view_type, value_type, LOOM_VALUE_ID_INVALID,
+      loom_vector_store_static_indices(op),
       loom_vector_store_indices(op).count));
   return loom_vector_verify_optional_cache_policy(
       emitter, op, loom_vector_store_cache_scope_ATTR_INDEX,
@@ -794,7 +800,8 @@ iree_status_t loom_vector_load_mask_verify(const loom_module_t* module,
       loom_module_value_type(module, loom_vector_load_mask_result(op));
   IREE_RETURN_IF_ERROR(loom_vector_verify_memory_access(
       module, emitter, op, IREE_SV("result"), /*vector_is_result=*/true,
-      view_type, result_type, loom_vector_load_mask_static_indices(op),
+      view_type, result_type, loom_vector_load_mask_mask(op),
+      loom_vector_load_mask_static_indices(op),
       loom_vector_load_mask_indices(op).count));
   return loom_vector_verify_optional_cache_policy(
       emitter, op, loom_vector_load_mask_cache_scope_ATTR_INDEX,
@@ -811,7 +818,8 @@ iree_status_t loom_vector_store_mask_verify(const loom_module_t* module,
       loom_module_value_type(module, loom_vector_store_mask_value(op));
   IREE_RETURN_IF_ERROR(loom_vector_verify_memory_access(
       module, emitter, op, IREE_SV("value"), /*vector_is_result=*/false,
-      view_type, value_type, loom_vector_store_mask_static_indices(op),
+      view_type, value_type, loom_vector_store_mask_mask(op),
+      loom_vector_store_mask_static_indices(op),
       loom_vector_store_mask_indices(op).count));
   return loom_vector_verify_optional_cache_policy(
       emitter, op, loom_vector_store_mask_cache_scope_ATTR_INDEX,
@@ -832,7 +840,8 @@ iree_status_t loom_vector_load_expand_verify(
   }
   IREE_RETURN_IF_ERROR(loom_vector_verify_memory_access(
       module, emitter, op, IREE_SV("result"), /*vector_is_result=*/true,
-      view_type, result_type, loom_vector_load_expand_static_indices(op),
+      view_type, result_type, loom_vector_load_expand_mask(op),
+      loom_vector_load_expand_static_indices(op),
       loom_vector_load_expand_indices(op).count));
   return loom_vector_verify_optional_cache_policy(
       emitter, op, loom_vector_load_expand_cache_scope_ATTR_INDEX,
@@ -853,7 +862,8 @@ iree_status_t loom_vector_store_compress_verify(
   }
   IREE_RETURN_IF_ERROR(loom_vector_verify_memory_access(
       module, emitter, op, IREE_SV("value"), /*vector_is_result=*/false,
-      view_type, value_type, loom_vector_store_compress_static_indices(op),
+      view_type, value_type, loom_vector_store_compress_mask(op),
+      loom_vector_store_compress_static_indices(op),
       loom_vector_store_compress_indices(op).count));
   return loom_vector_verify_optional_cache_policy(
       emitter, op, loom_vector_store_compress_cache_scope_ATTR_INDEX,
