@@ -42,8 +42,10 @@ static amdf_status_t amdf_xdna_context_validate_create_info(
     return status;
   }
 
+  const amdf_xdna_endpoint_profile_t* profile =
+      amdf_xdna_device_get_profile(device);
   const amdf_xdna_endpoint_info_t* endpoint_info =
-      amdf_xdna_endpoint_profile_get_info(amdf_xdna_device_get_profile(device));
+      amdf_xdna_endpoint_profile_get_info(profile);
   const amdf_xdna_scheduling_modes_t known_scheduling_modes =
       AMDF_XDNA_SCHEDULING_MODE_EXCLUSIVE | AMDF_XDNA_SCHEDULING_MODE_SPATIAL |
       AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED;
@@ -52,8 +54,11 @@ static amdf_status_t amdf_xdna_context_validate_create_info(
           0) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
+  const amdf_xdna_umd_context_capabilities_t context_capabilities =
+      amdf_xdna_umd_query_context_capabilities(profile);
   if ((create_info->acceptable_scheduling_modes &
-       endpoint_info->context.scheduling_modes) == 0) {
+       endpoint_info->context.scheduling_modes &
+       context_capabilities.scheduling_modes) == 0) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
   if (create_info->logical_column_count <

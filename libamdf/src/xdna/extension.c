@@ -38,8 +38,10 @@ static amdf_status_t AMDF_CALL amdf_xdna_endpoint_query_info(
   const uint32_t structure_size = out_info->structure_size;
   void* const next = out_info->next;
   *out_info = *amdf_xdna_endpoint_profile_get_info(profile);
-  out_info->context.placement_modes =
-      amdf_xdna_umd_query_context_placement_modes(profile);
+  const amdf_xdna_umd_context_capabilities_t context_capabilities =
+      amdf_xdna_umd_query_context_capabilities(profile);
+  out_info->context.scheduling_modes &= context_capabilities.scheduling_modes;
+  out_info->context.placement_modes = context_capabilities.placement_modes;
   out_info->structure_size = structure_size;
   out_info->next = next;
   return AMDF_STATUS_OK;

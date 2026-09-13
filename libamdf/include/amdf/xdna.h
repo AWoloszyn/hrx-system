@@ -121,6 +121,9 @@ typedef struct amdf_xdna_endpoint_info_t {
   /// Context resource and scheduling limits independent of current occupancy.
   struct {
     /// Exclusive, spatial, and time-sliced modes accepted by the endpoint.
+    /// Zero means context creation is unsupported, independently of ordinary
+    /// device memory services. The remaining limits describe target capacity,
+    /// not availability of an execution path through the native provider.
     amdf_xdna_scheduling_modes_t scheduling_modes;
     /// Expected binding placement contracts, independent of occupancy.
     /// Device creation reports effective support; this snapshot is immutable.

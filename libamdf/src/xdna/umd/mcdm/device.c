@@ -10,26 +10,15 @@
 #include "libamdf/src/platform/windows/endpoint.h"
 #include "libamdf/src/xdna/umd/mcdm/device.h"
 
-amdf_xdna_placement_modes_t amdf_xdna_umd_query_context_placement_modes(
+amdf_xdna_umd_context_capabilities_t amdf_xdna_umd_query_context_capabilities(
     const amdf_xdna_endpoint_profile_t* profile) {
-  (void)profile;
+  amdf_xdna_umd_context_capabilities_t capabilities = {0};
+  if ((profile->execution_capabilities &
+       AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1) != 0) {
+    capabilities.scheduling_modes = AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED;
+  }
   // The native admission record does not establish binding physical placement.
-  return 0;
-}
-
-static amdf_status_t amdf_windows_xdna_query_legacy_context_abi(
-    const amdf_platform_endpoint_t* endpoint) {
-  uint32_t private_info[2] = {0};
-  const amdf_status_t status = amdf_kmt_query_adapter_info(
-      &endpoint->instance->kmt, endpoint->adapter, KMTQAITYPE_UMDRIVERPRIVATE,
-      private_info, sizeof(private_info));
-  if (!amdf_status_is_ok(status)) {
-    return status;
-  }
-  if (private_info[0] != 0 || private_info[1] != 3) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
-  }
-  return AMDF_STATUS_OK;
+  return capabilities;
 }
 
 static amdf_status_t amdf_windows_xdna_device_release_native(
@@ -64,26 +53,20 @@ amdf_status_t amdf_xdna_umd_device_create(
     const amdf_xdna_endpoint_profile_t* profile,
     amdf_allocator_t host_allocator, amdf_xdna_umd_device_t** out_device,
     amdf_xdna_umd_device_result_t* out_result) {
-  if (!amdf_kmt_api_supports_device_contexts(&endpoint->instance->kmt)) {
+  if (!amdf_kmt_api_supports_paging_devices(&endpoint->instance->kmt)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
-  }
-  if ((profile->execution_capabilities &
-       AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1) == 0) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
-  }
-  amdf_status_t status = amdf_windows_xdna_query_legacy_context_abi(endpoint);
-  if (!amdf_status_is_ok(status)) {
-    return status;
   }
 
   amdf_xdna_umd_device_t* device = NULL;
-  status = amdf_calloc(host_allocator, sizeof(*device),
-                       amdf_alignof(amdf_xdna_umd_device_t), (void**)&device);
+  amdf_status_t status =
+      amdf_calloc(host_allocator, sizeof(*device),
+                  amdf_alignof(amdf_xdna_umd_device_t), (void**)&device);
   if (!amdf_status_is_ok(status)) return status;
   device->host_allocator = host_allocator;
   device->profile = profile;
   amdf_kmt_device_status_initialize(&device->status);
   device->kmt = &endpoint->instance->kmt;
+  device->adapter = endpoint->adapter;
 
   D3DKMT_CREATEDEVICE create_device = {0};
   create_device.hAdapter = endpoint->adapter;

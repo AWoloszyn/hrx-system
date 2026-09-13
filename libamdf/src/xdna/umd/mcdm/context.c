@@ -26,12 +26,33 @@ amdf_status_t amdf_xdna_umd_context_destroy(amdf_xdna_umd_context_t* context) {
   return AMDF_STATUS_OK;
 }
 
+static amdf_status_t amdf_windows_xdna_query_legacy_context_abi(
+    const amdf_xdna_umd_device_t* device) {
+  uint32_t private_info[2] = {0};
+  const amdf_status_t status = amdf_kmt_query_adapter_info(
+      device->kmt, device->adapter, KMTQAITYPE_UMDRIVERPRIVATE, private_info,
+      sizeof(private_info));
+  if (!amdf_status_is_ok(status)) return status;
+  if (private_info[0] != 0 || private_info[1] != 3) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
+  return AMDF_STATUS_OK;
+}
+
 amdf_status_t amdf_xdna_umd_context_create(
     amdf_xdna_umd_device_t* device,
     const amdf_xdna_context_create_info_t* create_info,
     amdf_xdna_umd_context_t** out_context,
     amdf_xdna_umd_context_result_t* out_result) {
   const amdf_xdna_endpoint_profile_t* profile = device->profile;
+  // Device/paging resources also serve ordinary memory and do not establish
+  // support for this context's interpreter bootstrap or private wire ABI.
+  if ((profile->execution_capabilities &
+       AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1) == 0 ||
+      device->kmt->create_context_virtual == NULL ||
+      device->kmt->destroy_context == NULL) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
   if ((create_info->acceptable_scheduling_modes &
        AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED) == 0 ||
       create_info->physical_column_origin !=
@@ -39,9 +60,11 @@ amdf_status_t amdf_xdna_umd_context_create(
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
 
+  amdf_status_t status = amdf_windows_xdna_query_legacy_context_abi(device);
+  if (!amdf_status_is_ok(status)) return status;
   uint8_t* context_data = NULL;
   uint32_t context_data_size = 0;
-  amdf_status_t status = amdf_windows_xdna_legacy_context_build(
+  status = amdf_windows_xdna_legacy_context_build(
       create_info->logical_column_count, profile->info->array.column_origin,
       device->host_allocator, &context_data, &context_data_size);
   if (!amdf_status_is_ok(status)) {

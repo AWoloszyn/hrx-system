@@ -14,6 +14,7 @@
 #include "gtest/gtest.h"
 #include "util/device_cache.h"
 #include "util/provider.h"
+#include "xdna_device_fixture.h"
 
 namespace {
 
@@ -207,7 +208,6 @@ TEST_F(XdnaEndpointTest, ReturnsStableCachedProfile) {
   EXPECT_GT(info.array.column_count, 0u);
   EXPECT_GT(info.array.row_count, 0u);
   EXPECT_GT(info.array.column_stride, 0u);
-  EXPECT_NE(info.context.scheduling_modes, 0u);
   EXPECT_GT(info.context.minimum_column_count, 0u);
   EXPECT_LE(info.context.minimum_column_count,
             info.context.maximum_column_count);
@@ -339,12 +339,6 @@ TEST_F(XdnaEndpointTest, ValidatesContextCreationWithoutPublishingOnFailure) {
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
   EXPECT_EQ(output, sentinel);
 
-  create_info = MakeContextCreateInfo(0);
-  EXPECT_EQ(amdf_status_code(
-                xdna_api_->context_create(device_, &create_info, &output)),
-            AMDF_STATUS_CODE_OUT_OF_RANGE);
-  EXPECT_EQ(output, sentinel);
-
   create_info = MakeContextCreateInfo();
   create_info.acceptable_scheduling_modes = UINT32_MAX;
   EXPECT_EQ(amdf_status_code(
@@ -400,6 +394,24 @@ TEST_F(XdnaEndpointTest, MaterializesDeviceAndProgramIndependentContext) {
 
   const amdf_xdna_context_create_info_t context_create_info =
       MakeContextCreateInfo();
+  if ((endpoint_info.context.scheduling_modes &
+       context_create_info.acceptable_scheduling_modes) == 0) {
+    auto* const sentinel = reinterpret_cast<amdf_xdna_context_t*>(uintptr_t{1});
+    amdf_xdna_context_t* output = sentinel;
+    EXPECT_EQ(amdf_status_code(xdna_api_->context_create(
+                  device_, &context_create_info, &output)),
+              AMDF_STATUS_CODE_UNSUPPORTED);
+    EXPECT_EQ(output, sentinel);
+    return;
+  }
+  const amdf_xdna_context_create_info_t invalid_context_create_info =
+      MakeContextCreateInfo(0);
+  auto* const sentinel = reinterpret_cast<amdf_xdna_context_t*>(uintptr_t{1});
+  amdf_xdna_context_t* output = sentinel;
+  EXPECT_EQ(amdf_status_code(xdna_api_->context_create(
+                device_, &invalid_context_create_info, &output)),
+            AMDF_STATUS_CODE_OUT_OF_RANGE);
+  EXPECT_EQ(output, sentinel);
   ASSERT_TRUE(amdf_status_is_ok(
       xdna_api_->context_create(device_, &context_create_info, &context_)));
   amdf_xdna_context_info_t context_info = {};
@@ -513,24 +525,9 @@ TEST_F(XdnaEndpointTest, RejectsMalformedDeviceInfoWithoutMutation) {
   EXPECT_EQ(info.reset_epoch, UINT64_MAX);
 }
 
-TEST_F(XdnaEndpointTest, RejectsMalformedContextInfoWithoutMutation) {
-  bool engine_found = false;
-  ASSERT_EQ(OpenEngine(AMDF_ENGINE_KIND_XDNA, &engine_found), AMDF_STATUS_OK);
-  if (!engine_found) {
-    GTEST_SKIP() << "no qualified XDNA endpoint present";
-  }
-  const amdf_status_t device_status =
-      GetCtsDeviceCache().GetXdnaDevice(endpoint_, &device_);
-  if (amdf_status_domain(device_status) == AMDF_STATUS_DOMAIN_API &&
-      amdf_status_code(device_status) == AMDF_STATUS_CODE_UNSUPPORTED) {
-    GTEST_SKIP() << "XDNA device materialization is unavailable";
-  }
-  ASSERT_TRUE(amdf_status_is_ok(device_status));
-  const amdf_xdna_context_create_info_t context_create_info =
-      MakeContextCreateInfo();
-  ASSERT_TRUE(amdf_status_is_ok(
-      xdna_api_->context_create(device_, &context_create_info, &context_)));
+using XdnaContextTest = XdnaContextFixture;
 
+TEST_F(XdnaContextTest, RejectsMalformedContextInfoWithoutMutation) {
   EXPECT_EQ(amdf_status_code(xdna_api_->context_query_info(context_, nullptr)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
   EXPECT_EQ(amdf_status_code(

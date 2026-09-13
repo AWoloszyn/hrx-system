@@ -115,6 +115,15 @@ class XdnaContextFixture : public XdnaDeviceFixture {
   void SetUp() override {
     ASSERT_NO_FATAL_FAILURE(XdnaDeviceFixture::SetUp());
     if (IsSkipped()) return;
+    amdf_xdna_endpoint_info_t endpoint_info = {};
+    endpoint_info.type = AMDF_STRUCTURE_TYPE_XDNA_ENDPOINT_INFO;
+    endpoint_info.structure_size = sizeof(endpoint_info);
+    ASSERT_EQ(xdna_api_->endpoint_query_info(endpoint_, &endpoint_info),
+              AMDF_STATUS_OK);
+    if ((endpoint_info.context.scheduling_modes &
+         AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED) == 0) {
+      GTEST_SKIP() << "time-sliced XDNA contexts are unavailable";
+    }
     amdf_xdna_context_create_info_t create_info = {};
     create_info.type = AMDF_STRUCTURE_TYPE_XDNA_CONTEXT_CREATE_INFO;
     create_info.structure_size = sizeof(create_info);

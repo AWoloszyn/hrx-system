@@ -29,6 +29,12 @@ enum class Operation {
 };
 
 struct FakeKmtState {
+  // Native status returned while qualifying the private context ABI.
+  NTSTATUS query_status = kSuccess;
+  // Private wire-ABI tag returned by the installed miniport.
+  uint32_t private_info[2] = {0, 3};
+  // Number of context ABI queries.
+  uint32_t query_count = 0;
   // Next context handle returned by native creation.
   D3DKMT_HANDLE next_context = 0x30;
   // Number of context destruction calls rejected before consumption.
@@ -42,6 +48,18 @@ struct FakeKmtState {
 };
 
 FakeKmtState* current_state = nullptr;
+
+NTSTATUS APIENTRY FakeQueryAdapterInfo(const D3DKMT_QUERYADAPTERINFO* query) {
+  ++current_state->query_count;
+  EXPECT_EQ(query->hAdapter, 0x08u);
+  EXPECT_EQ(query->Type, KMTQAITYPE_UMDRIVERPRIVATE);
+  EXPECT_EQ(query->PrivateDriverDataSize, sizeof(current_state->private_info));
+  if (current_state->query_status != kSuccess)
+    return current_state->query_status;
+  std::memcpy(query->pPrivateDriverData, current_state->private_info,
+              sizeof(current_state->private_info));
+  return kSuccess;
+}
 
 NTSTATUS APIENTRY
 FakeCreateContextVirtual(D3DKMT_CREATECONTEXTVIRTUAL* create) {
@@ -106,10 +124,12 @@ class WindowsXdnaContextTest : public ::testing::Test {
  protected:
   void SetUp() override {
     current_state = &state_;
+    kmt_.query_adapter_info = FakeQueryAdapterInfo;
     kmt_.create_context_virtual = FakeCreateContextVirtual;
     kmt_.destroy_context = FakeDestroyContext;
     device_.host_allocator = amdf_allocator_system();
     device_.kmt = &kmt_;
+    device_.adapter = 0x08;
     device_.device = 0x10;
     endpoint_info_.array.column_count = 8;
     profile_.execution_capabilities =
@@ -144,6 +164,7 @@ TEST_F(WindowsXdnaContextTest, CreatesTwoContextsAndDestroysIndependently) {
     EXPECT_EQ(results[i].physical_column_count, 0u);
   }
   EXPECT_NE(results[0].id.words[0], results[1].id.words[0]);
+  EXPECT_EQ(state_.query_count, 2u);
   EXPECT_EQ(state_.created_contexts, (std::vector<D3DKMT_HANDLE>{0x30, 0x31}));
 
   ASSERT_EQ(amdf_xdna_umd_context_destroy(contexts[0]), AMDF_STATUS_OK);
@@ -154,6 +175,69 @@ TEST_F(WindowsXdnaContextTest, CreatesTwoContextsAndDestroysIndependently) {
   contexts[1] = nullptr;
   EXPECT_EQ(state_.destroyed_contexts,
             (std::vector<D3DKMT_HANDLE>{0x30, 0x31}));
+}
+
+TEST_F(WindowsXdnaContextTest,
+       RejectsUnavailableInterpreterAndContextProceduresBeforePreparation) {
+  FaultAllocatorState allocator_state = {};
+  device_.host_allocator = {
+      .user_data = &allocator_state,
+      .allocate = FaultAllocate,
+      .free = FaultFree,
+  };
+  for (uint32_t unavailable : {0u, 1u, 2u}) {
+    profile_.execution_capabilities =
+        unavailable == 0
+            ? 0
+            : AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1;
+    kmt_.create_context_virtual =
+        unavailable == 1 ? nullptr : FakeCreateContextVirtual;
+    kmt_.destroy_context = unavailable == 2 ? nullptr : FakeDestroyContext;
+    auto* const sentinel =
+        reinterpret_cast<amdf_xdna_umd_context_t*>(uintptr_t{1});
+    amdf_xdna_umd_context_t* context = sentinel;
+    amdf_xdna_umd_context_result_t result;
+    std::memset(&result, 0xA5, sizeof(result));
+    const amdf_xdna_umd_context_result_t original = result;
+    EXPECT_EQ(amdf_status_code(amdf_xdna_umd_context_create(
+                  &device_, &create_info_, &context, &result)),
+              AMDF_STATUS_CODE_UNSUPPORTED);
+    EXPECT_EQ(context, sentinel);
+    EXPECT_EQ(std::memcmp(&result, &original, sizeof(result)), 0);
+  }
+  EXPECT_EQ(state_.query_count, 0u);
+  EXPECT_EQ(allocator_state.allocation_call_count, 0u);
+  EXPECT_TRUE(state_.created_contexts.empty());
+}
+
+TEST_F(WindowsXdnaContextTest, QualifiesPrivateAbiBeforeContextPreparation) {
+  FaultAllocatorState allocator_state = {};
+  device_.host_allocator = {
+      .user_data = &allocator_state,
+      .allocate = FaultAllocate,
+      .free = FaultFree,
+  };
+  for (uint32_t failure : {0u, 1u, 2u}) {
+    state_.query_status = failure == 0 ? kFailure : kSuccess;
+    state_.private_info[0] = failure == 1 ? 1 : 0;
+    state_.private_info[1] = failure == 2 ? 4 : 3;
+    auto* const sentinel =
+        reinterpret_cast<amdf_xdna_umd_context_t*>(uintptr_t{1});
+    amdf_xdna_umd_context_t* context = sentinel;
+    amdf_xdna_umd_context_result_t result;
+    std::memset(&result, 0xA5, sizeof(result));
+    const amdf_xdna_umd_context_result_t original = result;
+    EXPECT_EQ(amdf_xdna_umd_context_create(&device_, &create_info_, &context,
+                                           &result),
+              failure == 0
+                  ? amdf_kmt_make_status(kFailure)
+                  : amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED));
+    EXPECT_EQ(context, sentinel);
+    EXPECT_EQ(std::memcmp(&result, &original, sizeof(result)), 0);
+  }
+  EXPECT_EQ(state_.query_count, 3u);
+  EXPECT_EQ(allocator_state.allocation_call_count, 0u);
+  EXPECT_TRUE(state_.created_contexts.empty());
 }
 
 TEST_F(WindowsXdnaContextTest,

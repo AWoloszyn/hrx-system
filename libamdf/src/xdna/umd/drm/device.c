@@ -18,12 +18,15 @@
 #include "libamdf/src/platform/linux/host_cache.h"
 #include "libamdf/src/xdna/umd/drm/device.h"
 
-amdf_xdna_placement_modes_t amdf_xdna_umd_query_context_placement_modes(
+amdf_xdna_umd_context_capabilities_t amdf_xdna_umd_query_context_capabilities(
     const amdf_xdna_endpoint_profile_t* profile) {
-  return (profile->execution_capabilities &
-          AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1) != 0
-             ? AMDF_XDNA_PLACEMENT_MODE_FIXED_FULL_ARRAY
-             : 0;
+  amdf_xdna_umd_context_capabilities_t capabilities = {0};
+  if ((profile->execution_capabilities &
+       AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1) != 0) {
+    capabilities.scheduling_modes = AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED;
+    capabilities.placement_modes = AMDF_XDNA_PLACEMENT_MODE_FIXED_FULL_ARRAY;
+  }
+  return capabilities;
 }
 
 amdf_status_t amdf_xdna_umd_device_destroy(amdf_xdna_umd_device_t* device) {

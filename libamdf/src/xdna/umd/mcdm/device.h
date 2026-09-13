@@ -21,6 +21,8 @@ struct amdf_xdna_umd_device_t {
   const amdf_xdna_endpoint_profile_t* profile;
   // KMT table borrowed from the endpoint's platform instance.
   const amdf_kmt_api_t* kmt;
+  // Endpoint-owned adapter borrowed for context ABI qualification.
+  D3DKMT_HANDLE adapter;
   // Logical KMT device owning paging and execution state.
   D3DKMT_HANDLE device;
   // Confirmed execution failure shared by this device's execution paths.

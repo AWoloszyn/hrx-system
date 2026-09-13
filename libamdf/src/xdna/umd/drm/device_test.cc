@@ -103,7 +103,10 @@ class LinuxXdnaDeviceTest : public ::testing::Test {
 };
 
 TEST_F(LinuxXdnaDeviceTest, ContextsShareDeviceMemoryAndDestroyIndependently) {
-  EXPECT_EQ(amdf_xdna_umd_query_context_placement_modes(profile),
+  const auto capabilities = amdf_xdna_umd_query_context_capabilities(profile);
+  EXPECT_EQ(capabilities.scheduling_modes,
+            AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED);
+  EXPECT_EQ(capabilities.placement_modes,
             AMDF_XDNA_PLACEMENT_MODE_FIXED_FULL_ARRAY);
   amdf_xdna_umd_device_result_t device_result = {};
   ASSERT_EQ(

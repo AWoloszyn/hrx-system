@@ -27,9 +27,17 @@ typedef struct amdf_xdna_umd_device_result_t {
   amdf_xdna_placement_modes_t placement_modes;
 } amdf_xdna_umd_device_result_t;
 
-// Returns expected context placement contracts from the profile and implemented
+// Expected context admission through the implemented native provider.
+typedef struct amdf_xdna_umd_context_capabilities_t {
+  // Scheduling contracts supported for the target-native execution path.
+  amdf_xdna_scheduling_modes_t scheduling_modes;
+  // Binding physical placement contracts available to those contexts.
+  amdf_xdna_placement_modes_t placement_modes;
+} amdf_xdna_umd_context_capabilities_t;
+
+// Returns expected context admission contracts from the profile and implemented
 // native provider. Performs no allocation, native query or device activation.
-amdf_xdna_placement_modes_t amdf_xdna_umd_query_context_placement_modes(
+amdf_xdna_umd_context_capabilities_t amdf_xdna_umd_query_context_capabilities(
     const amdf_xdna_endpoint_profile_t* profile);
 
 // Creates one native XDNA ordinary-address domain and allocation namespace.

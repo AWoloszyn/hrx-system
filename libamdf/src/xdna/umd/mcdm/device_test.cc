@@ -23,7 +23,6 @@ constexpr NTSTATUS kSuccess = 0;
 constexpr NTSTATUS kFailure = static_cast<NTSTATUS>(0xC0000001u);
 
 enum class Operation {
-  kQueryAdapter,
   kCreateDevice,
   kCreatePagingQueue,
   kDestroyPagingQueue,
@@ -71,13 +70,9 @@ void AMDF_CALL Free(void* user_data, void* allocation) {
 }
 
 NTSTATUS APIENTRY FakeQueryAdapterInfo(const D3DKMT_QUERYADAPTERINFO* query) {
-  current_state->operations.push_back(Operation::kQueryAdapter);
-  EXPECT_EQ(query->Type, KMTQAITYPE_UMDRIVERPRIVATE);
-  EXPECT_EQ(query->PrivateDriverDataSize, sizeof(uint32_t) * 2);
-  auto* private_info = static_cast<uint32_t*>(query->pPrivateDriverData);
-  private_info[0] = 0;
-  private_info[1] = 3;
-  return kSuccess;
+  (void)query;
+  ADD_FAILURE() << "ordinary device creation needs no private context ABI";
+  return kFailure;
 }
 
 NTSTATUS APIENTRY FakeCreateDevice(D3DKMT_CREATEDEVICE* create) {
@@ -189,8 +184,36 @@ class WindowsXdnaDeviceRollbackTest : public ::testing::Test {
 };
 
 TEST_F(WindowsXdnaDeviceRollbackTest,
+       CreatesPagingDeviceWithoutInterpreterOrContextProcedures) {
+  profile_.execution_capabilities = 0;
+  const auto capabilities = amdf_xdna_umd_query_context_capabilities(&profile_);
+  EXPECT_EQ(capabilities.scheduling_modes, 0u);
+  EXPECT_EQ(capabilities.placement_modes, 0u);
+  instance_.kmt.create_context_virtual = nullptr;
+  instance_.kmt.destroy_context = nullptr;
+  state_.paging_sync_object = 0x21;
+  state_.paging_queue_destroy_failures_remaining = 0;
+  amdf_xdna_umd_device_t* device = nullptr;
+  amdf_xdna_umd_device_result_t result = {};
+  ASSERT_EQ(
+      amdf_xdna_umd_device_create(endpoint_, &profile_,
+                                  instance_.host_allocator, &device, &result),
+      AMDF_STATUS_OK);
+  ASSERT_NE(device, nullptr);
+  EXPECT_EQ(state_.operations,
+            (std::vector<Operation>{Operation::kCreateDevice,
+                                    Operation::kCreatePagingQueue}));
+  EXPECT_EQ(amdf_xdna_umd_device_destroy(device), AMDF_STATUS_OK);
+  EXPECT_EQ(state_.paging_queue_destroy_success_count, 1u);
+  EXPECT_EQ(state_.device_destroy_success_count, 1u);
+}
+
+TEST_F(WindowsXdnaDeviceRollbackTest,
        ReportsNoFixedPlacementBeforeAndAfterDeviceCreation) {
-  EXPECT_EQ(amdf_xdna_umd_query_context_placement_modes(&profile_), 0u);
+  const auto capabilities = amdf_xdna_umd_query_context_capabilities(&profile_);
+  EXPECT_EQ(capabilities.scheduling_modes,
+            AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED);
+  EXPECT_EQ(capabilities.placement_modes, 0u);
   EXPECT_TRUE(state_.operations.empty());
   state_.paging_sync_object = 0x21;
   state_.paging_queue_destroy_failures_remaining = 0;
@@ -221,11 +244,10 @@ TEST_F(WindowsXdnaDeviceRollbackTest,
   EXPECT_EQ(reinterpret_cast<uintptr_t>(device), uintptr_t{1});
   EXPECT_EQ(std::memcmp(&result, &original_result, sizeof(result)), 0);
   EXPECT_EQ(state_.live_allocation_count, 1u);
-  EXPECT_EQ(
-      state_.operations,
-      (std::vector<Operation>{
-          Operation::kQueryAdapter, Operation::kCreateDevice,
-          Operation::kCreatePagingQueue, Operation::kDestroyPagingQueue}));
+  EXPECT_EQ(state_.operations,
+            (std::vector<Operation>{Operation::kCreateDevice,
+                                    Operation::kCreatePagingQueue,
+                                    Operation::kDestroyPagingQueue}));
   EXPECT_EQ(state_.paging_queue_destroy_success_count, 0u);
   EXPECT_EQ(state_.device_destroy_success_count, 0u);
   EXPECT_EQ(state_.adapter_close_success_count, 0u);
@@ -234,9 +256,8 @@ TEST_F(WindowsXdnaDeviceRollbackTest,
   endpoint_ = nullptr;
   EXPECT_EQ(state_.operations,
             (std::vector<Operation>{
-                Operation::kQueryAdapter, Operation::kCreateDevice,
-                Operation::kCreatePagingQueue, Operation::kDestroyPagingQueue,
-                Operation::kCloseAdapter}));
+                Operation::kCreateDevice, Operation::kCreatePagingQueue,
+                Operation::kDestroyPagingQueue, Operation::kCloseAdapter}));
   EXPECT_EQ(state_.paging_queue_destroy_success_count, 0u);
   EXPECT_EQ(state_.device_destroy_success_count, 0u);
   EXPECT_EQ(state_.adapter_close_success_count, 1u);
