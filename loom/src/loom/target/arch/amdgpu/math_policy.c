@@ -185,8 +185,8 @@ static void loom_amdgpu_math_policy_query(
       *out_decision =
           loom_amdgpu_math_query_has_afn(query)
               ? loom_amdgpu_math_keep(IREE_SV("math.op.native_approx_f32"))
-              : loom_amdgpu_math_rewrite(LOOM_TARGET_MATH_RECIPE_ROUND_AWAY_F32,
-                                         IREE_SV("math.recipe.round_away_f32"));
+              : loom_amdgpu_math_rewrite(LOOM_TARGET_MATH_RECIPE_ROUND_AWAY,
+                                         IREE_SV("math.recipe.round_away"));
       return;
     case LOOM_TARGET_MATH_OP_CEILF:
     case LOOM_TARGET_MATH_OP_FLOORF:

@@ -158,8 +158,8 @@ iree_string_view_t loom_target_math_recipe_name(
       return IREE_SV("tanh-logistic-f32");
     case LOOM_TARGET_MATH_RECIPE_POW_LOG2_EXP2_F32:
       return IREE_SV("pow-log2-exp2-f32");
-    case LOOM_TARGET_MATH_RECIPE_ROUND_AWAY_F32:
-      return IREE_SV("round-away-f32");
+    case LOOM_TARGET_MATH_RECIPE_ROUND_AWAY:
+      return IREE_SV("round-away");
     case LOOM_TARGET_MATH_RECIPE_UNKNOWN:
       return IREE_SV("unknown");
   }

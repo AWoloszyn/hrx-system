@@ -439,12 +439,12 @@ TEST(CompileReportFormatTest, FormatsMathAndTargetLegalization) {
   math.target_bundle_name = IREE_SVL("test_target");
   math.target_config_name = IREE_SVL("test_o0");
   math.policy_name = IREE_SVL("amdgpu-math");
-  math.constraint_key = IREE_SVL("math.recipe.round_away_f32");
+  math.constraint_key = IREE_SVL("math.recipe.round_away");
   math.math_op = LOOM_TARGET_MATH_OP_ROUNDF;
   math.lane_domain = LOOM_TARGET_MATH_LANE_DOMAIN_SCALAR;
   math.element_type = LOOM_SCALAR_TYPE_F32;
   math.action = LOOM_TARGET_COMPILE_REPORT_MATH_ACTION_REWRITTEN;
-  math.recipe = LOOM_TARGET_MATH_RECIPE_ROUND_AWAY_F32;
+  math.recipe = LOOM_TARGET_MATH_RECIPE_ROUND_AWAY;
   math.created_op_count = 10;
   math.erased_op_count = 1;
   IREE_ASSERT_OK(loom_target_compile_report_record_math_row(&report, &math));
@@ -519,8 +519,7 @@ TEST(CompileReportFormatTest, FormatsMathAndTargetLegalization) {
       LookupObject(root, IREE_SV("math_legalization"));
   const iree_string_view_t math_row =
       LookupArrayElement(LookupObject(math_json, IREE_SV("rows")), /*index=*/0);
-  ExpectObjectValueEquals(math_row, IREE_SV("recipe"),
-                          IREE_SV("round-away-f32"));
+  ExpectObjectValueEquals(math_row, IREE_SV("recipe"), IREE_SV("round-away"));
   ExpectObjectUint64Equals(math_row, IREE_SV("created_op_count"), 10);
   const iree_string_view_t legalization_json =
       LookupObject(root, IREE_SV("target_legalization"));

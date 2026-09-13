@@ -69,8 +69,8 @@ typedef struct loom_math_legalize_lane_builders_t {
   loom_math_legalize_clampf_build_fn_t clampf;
   // Builds a lane-wise ordered floating-point comparison.
   loom_math_legalize_cmpf_build_fn_t cmpf;
-  // Ordered-less-than predicate for the source cmpf dialect.
-  uint8_t cmpf_ordered_less_predicate;
+  // Ordered-greater-or-equal predicate for the source cmpf dialect.
+  uint8_t cmpf_ordered_greater_equal_predicate;
   // Builds a scalar or lane-wise value select.
   loom_math_legalize_select_build_fn_t select;
   // Builds a lane-wise absolute value in the source lane domain.
@@ -182,7 +182,7 @@ static const loom_math_legalize_lane_builders_t kScalarLaneBuilders = {
     .fmaf = loom_scalar_fmaf_build,
     .clampf = loom_math_legalize_scalar_clampf_build,
     .cmpf = loom_math_legalize_scalar_cmpf_build,
-    .cmpf_ordered_less_predicate = LOOM_SCALAR_CMPF_PREDICATE_OLT,
+    .cmpf_ordered_greater_equal_predicate = LOOM_SCALAR_CMPF_PREDICATE_OGE,
     .select = loom_scf_select_build,
     .absf = loom_scalar_absf_build,
     .copysignf = loom_math_legalize_scalar_copysignf_build,
@@ -205,7 +205,7 @@ static const loom_math_legalize_lane_builders_t kVectorLaneBuilders = {
     .fmaf = loom_vector_fmaf_build,
     .clampf = loom_math_legalize_vector_clampf_build,
     .cmpf = loom_math_legalize_vector_cmpf_build,
-    .cmpf_ordered_less_predicate = LOOM_VECTOR_CMPF_PREDICATE_OLT,
+    .cmpf_ordered_greater_equal_predicate = LOOM_VECTOR_CMPF_PREDICATE_OGE,
     .select = loom_vector_select_build,
     .absf = loom_vector_absf_build,
     .copysignf = loom_vector_copysignf_build,
@@ -779,34 +779,41 @@ static iree_status_t loom_math_legalize_build_round_away(
     loom_builder_t* builder, const loom_math_legalize_source_t* source,
     loom_value_id_t* out_value) {
   loom_value_id_t half = LOOM_VALUE_ID_INVALID;
-  loom_value_id_t f32_integral_limit = LOOM_VALUE_ID_INVALID;
+  loom_value_id_t one = LOOM_VALUE_ID_INVALID;
+  loom_value_id_t truncated = LOOM_VALUE_ID_INVALID;
+  loom_value_id_t remainder = LOOM_VALUE_ID_INVALID;
   loom_value_id_t magnitude = LOOM_VALUE_ID_INVALID;
   loom_value_id_t needs_rounding = LOOM_VALUE_ID_INVALID;
-  loom_value_id_t biased_magnitude = LOOM_VALUE_ID_INVALID;
-  loom_value_id_t truncated = LOOM_VALUE_ID_INVALID;
+  loom_value_id_t increment = LOOM_VALUE_ID_INVALID;
   loom_value_id_t rounded = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(
       loom_math_legalize_build_constant(builder, source, 0.5, &half));
-  // F32 values at or above 2^23 are already integral; adding 0.5 may perturb
-  // odd integral values because the addition rounds to nearest-even.
-  IREE_RETURN_IF_ERROR(loom_math_legalize_build_constant(
-      builder, source, 8388608.0, &f32_integral_limit));
+  IREE_RETURN_IF_ERROR(
+      loom_math_legalize_build_constant(builder, source, 1.0, &one));
+  // For finite inputs, subtracting the integral part is exact. Adding 0.5 is
+  // not: the representable value immediately below 0.5 would round up to 1.
   IREE_RETURN_IF_ERROR(loom_math_legalize_build_unary(
-      builder, source, source->lane_builders->absf, source->input, &magnitude));
-  IREE_RETURN_IF_ERROR(loom_math_legalize_build_cmpf(
-      builder, source, source->lane_builders->cmpf_ordered_less_predicate,
-      magnitude, f32_integral_limit, &needs_rounding));
-  IREE_RETURN_IF_ERROR(loom_math_legalize_build_binary(
-      builder, source, source->lane_builders->addf, magnitude, half,
-      &biased_magnitude));
-  IREE_RETURN_IF_ERROR(loom_math_legalize_build_unary(
-      builder, source, source->lane_builders->truncf, biased_magnitude,
+      builder, source, source->lane_builders->truncf, source->input,
       &truncated));
   IREE_RETURN_IF_ERROR(loom_math_legalize_build_binary(
-      builder, source, source->lane_builders->copysignf, truncated,
-      source->input, &rounded));
+      builder, source, source->lane_builders->subf, source->input, truncated,
+      &remainder));
+  IREE_RETURN_IF_ERROR(loom_math_legalize_build_unary(
+      builder, source, source->lane_builders->absf, remainder, &magnitude));
+  IREE_RETURN_IF_ERROR(loom_math_legalize_build_cmpf(
+      builder, source,
+      source->lane_builders->cmpf_ordered_greater_equal_predicate, magnitude,
+      half, &needs_rounding));
+  IREE_RETURN_IF_ERROR(loom_math_legalize_build_binary(
+      builder, source, source->lane_builders->copysignf, one, source->input,
+      &increment));
+  // An integral value, infinity or NaN selects the truncation unchanged.
+  // This also preserves the sign of zero without a width-dependent cutoff.
+  IREE_RETURN_IF_ERROR(loom_math_legalize_build_binary(
+      builder, source, source->lane_builders->addf, truncated, increment,
+      &rounded));
   return loom_math_legalize_build_select(builder, source, needs_rounding,
-                                         rounded, source->input, out_value);
+                                         rounded, truncated, out_value);
 }
 
 static iree_status_t loom_math_legalize_binary_source_initialize(
@@ -925,7 +932,7 @@ static iree_status_t loom_math_legalize_build_recipe(
     case LOOM_TARGET_MATH_RECIPE_POW_LOG2_EXP2_F32:
       return loom_math_legalize_build_pow_log2_exp2(&rewriter->builder, &source,
                                                     out_value);
-    case LOOM_TARGET_MATH_RECIPE_ROUND_AWAY_F32:
+    case LOOM_TARGET_MATH_RECIPE_ROUND_AWAY:
       return loom_math_legalize_build_round_away(&rewriter->builder, &source,
                                                  out_value);
     case LOOM_TARGET_MATH_RECIPE_SIN_TURNS_F32:
@@ -989,7 +996,7 @@ static bool loom_math_legalize_elementwise_recipe_is_supported(
     case LOOM_TARGET_MATH_RECIPE_COS_TURNS_F32:
     case LOOM_TARGET_MATH_RECIPE_TANH_LOGISTIC_F32:
     case LOOM_TARGET_MATH_RECIPE_POW_LOG2_EXP2_F32:
-    case LOOM_TARGET_MATH_RECIPE_ROUND_AWAY_F32:
+    case LOOM_TARGET_MATH_RECIPE_ROUND_AWAY:
     case LOOM_TARGET_MATH_RECIPE_ERF_RATIONAL_F32:
     case LOOM_TARGET_MATH_RECIPE_LOGISTIC_EXP2_F32:
     case LOOM_TARGET_MATH_RECIPE_SILU_LOGISTIC_F32:
