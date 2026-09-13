@@ -322,13 +322,11 @@ hrx_status_t hrx_buffer_table_find_range(hrx_buffer_table_t* table,
                          "no buffer contains the requested range");
 }
 
-hrx_status_t hrx_buffer_table_find_range_retain(hrx_buffer_table_t* table,
-                                                uint64_t any_ptr, size_t size,
-                                                hrx_buffer_t* out_buffer,
-                                                size_t* out_offset) {
-  IREE_ASSERT_ARGUMENT(out_buffer);
-  *out_buffer = NULL;
-  if (out_offset) *out_offset = 0;
+hrx_status_t hrx_buffer_table_find_range_retain(
+    hrx_buffer_table_t* table, uint64_t any_ptr, size_t size,
+    hrx_buffer_table_retained_ref_t* out_ref) {
+  IREE_ASSERT_ARGUMENT(out_ref);
+  memset(out_ref, 0, sizeof(*out_ref));
 
   if (size == 0) {
     return hrx_make_status(HRX_STATUS_INVALID_ARGUMENT,
@@ -343,7 +341,11 @@ hrx_status_t hrx_buffer_table_find_range_retain(hrx_buffer_table_t* table,
       hrx_buffer_table_find_range_locked(table, any_ptr, size);
   if (entry) {
     hrx_buffer_retain(entry->buffer);
-    hrx_buffer_table_fill_result(entry, any_ptr, out_buffer, out_offset, NULL);
+    out_ref->buffer = entry->buffer;
+    out_ref->device_ptr = entry->device_ptr;
+    out_ref->host_ptr = entry->host_ptr;
+    out_ref->size = entry->size;
+    hrx_buffer_table_fill_result(entry, any_ptr, NULL, &out_ref->offset, NULL);
     iree_slim_mutex_unlock(&table->mutex);
     return hrx_ok_status();
   }

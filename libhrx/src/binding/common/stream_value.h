@@ -14,6 +14,7 @@ extern "C" {
 #endif
 
 typedef struct iree_hal_streaming_stream_t iree_hal_streaming_stream_t;
+typedef struct iree_hal_streaming_context_t iree_hal_streaming_context_t;
 
 // Operation represented by one stream-value batch entry.
 typedef enum iree_hal_streaming_value_operation_kind_e {
@@ -44,15 +45,21 @@ typedef struct iree_hal_streaming_value_operation_t {
   iree_hal_streaming_value_operation_params_t params;
 } iree_hal_streaming_value_operation_t;
 
-// Returns true when |family_spec| can dedicate an exact queue to each logical
-// stream that uses a memory wait. Waits must consume no dispatch resources so
-// kernels that satisfy their predicates can continue to execute.
+// Returns true when |family_spec| can dedicate an exact queue to a memory wait.
+// Waits must consume no dispatch resources so kernels that satisfy their
+// predicates can continue to execute.
 bool iree_hal_streaming_queue_family_supports_value_waits(
     const iree_hal_queue_family_spec_t* family_spec);
 
+// Releases context-owned value-wait lanes after all context work is complete.
+// Synchronization: none; the context must be exclusively owned.
+void iree_hal_streaming_value_wait_lanes_deinitialize(
+    iree_hal_streaming_context_t* context);
+
 // Enqueues |operations| as one ordered stream transaction. All resources and
 // command storage are prepared before the transaction is submitted. Batches
-// containing a wait use an independently progressing queue owned by |stream|.
+// containing a wait use an independently progressing context-owned queue that
+// is recycled after the accepted operation reaches the stream timeline.
 // Synchronization: flushes pending stream commands before enqueueing.
 iree_status_t iree_hal_streaming_queue_value_operations(
     iree_hal_streaming_stream_t* stream, iree_host_size_t operation_count,
