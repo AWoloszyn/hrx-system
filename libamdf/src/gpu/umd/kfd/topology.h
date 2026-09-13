@@ -28,7 +28,7 @@ typedef struct amdf_gpu_kfd_topology_t {
     uint32_t xgmi_engine_count;
     // Number of constructible queues per SDMA engine.
     uint32_t queue_count_per_engine;
-    // DRM IP discovery version used to select exact packet encodings.
+    // Cached IP discovery version used to select exact packet encodings.
     struct {
       // SDMA IP major version.
       uint32_t major;
@@ -36,7 +36,7 @@ typedef struct amdf_gpu_kfd_topology_t {
       uint32_t minor;
       // SDMA IP revision.
       uint32_t revision;
-      // Whether DRM supplied the full discovery version.
+      // Whether sysfs supplied the full discovery version.
       bool exact;
     } ip;
   } sdma;

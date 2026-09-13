@@ -204,33 +204,38 @@ static amdf_status_t amdf_gpu_kfd_query_sdma(
       topology->sdma.xgmi_engine_count == 0) {
     return AMDF_STATUS_OK;
   }
-  struct drm_amdgpu_info_hw_ip sdma = {0};
-  struct drm_amdgpu_info query = {
-      .return_pointer = (uintptr_t)&sdma,
-      .return_size = sizeof(sdma),
-      .query = AMDGPU_INFO_HW_IP_INFO,
-      .query_hw_ip =
-          {
-              .type = AMDGPU_HW_IP_DMA,
-              .ip_instance = 0,
-          },
-  };
-  if (ioctl(endpoint->descriptor, DRM_IOCTL_AMDGPU_INFO, &query) != 0) {
-    // Older kernels may expose KFD SDMA counts without the exact DRM discovery
-    // version. Other GPU services remain usable, but no packet ABI is selected.
-    return errno == EINVAL || errno == ENODEV ? AMDF_STATUS_OK
-                                              : amdf_linux_error(errno);
+  // Hardware ID 42 is SDMA0. These cached discovery bytes are the same version
+  // returned by HW_IP_INFO for SDMA instance zero, without a native query. The
+  // numeric hardware-ID path also works before sysfs added named IP symlinks.
+  char path[128];
+  snprintf(path, sizeof(path), "dev/char/%u:%u/device/ip_discovery/die/0/42/0",
+           (uint32_t)(endpoint->info.id.words[0] >> 32),
+           (uint32_t)endpoint->info.id.words[0]);
+  int directory = openat(endpoint->instance->sysfs_descriptor, path,
+                         O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+  if (directory < 0) {
+    // A provider without discovery metadata cannot select an exact packet ABI.
+    // Missing fields inside a present record, however, are errors.
+    return errno == ENOENT ? AMDF_STATUS_OK : amdf_linux_error(errno);
   }
-  if ((sdma.ip_discovery_version & UINT32_C(0xff000000)) != 0) {
-    return amdf_linux_error(EPROTO);
+  const char* attributes[] = {"major", "minor", "revision"};
+  uint32_t values[3] = {0};
+  amdf_status_t status = AMDF_STATUS_OK;
+  for (uint32_t i = 0; i < 3 && amdf_status_is_ok(status); ++i) {
+    status = amdf_gpu_kfd_read_number(directory, attributes[i], &values[i]);
+    if (amdf_status_is_ok(status) && values[i] > UINT8_MAX) {
+      status = amdf_linux_error(EPROTO);
+    }
   }
-  if (sdma.ip_discovery_version != 0) {
-    topology->sdma.ip.major = (sdma.ip_discovery_version >> 16) & 0xff;
-    topology->sdma.ip.minor = (sdma.ip_discovery_version >> 8) & 0xff;
-    topology->sdma.ip.revision = sdma.ip_discovery_version & 0xff;
+  const amdf_status_t close_status = amdf_linux_file_close(&directory);
+  if (!amdf_status_is_ok(close_status)) status = close_status;
+  if (amdf_status_is_ok(status) && (values[0] | values[1] | values[2]) != 0) {
+    topology->sdma.ip.major = values[0];
+    topology->sdma.ip.minor = values[1];
+    topology->sdma.ip.revision = values[2];
     topology->sdma.ip.exact = true;
   }
-  return AMDF_STATUS_OK;
+  return status;
 }
 
 static amdf_status_t amdf_gpu_kfd_query_memory(
@@ -330,6 +335,9 @@ amdf_status_t amdf_gpu_kfd_topology_query(
     const amdf_status_t close_status = amdf_linux_file_close(&node);
     if (!amdf_status_is_ok(close_status)) status = close_status;
   }
+  if (amdf_status_is_ok(status) && found) {
+    status = amdf_gpu_kfd_query_sdma(endpoint, &topology);
+  }
   uint32_t final_generation = 0;
   if (amdf_status_is_ok(status)) {
     status = amdf_gpu_kfd_read_number(topology_directory, "generation_id",
@@ -349,8 +357,6 @@ amdf_status_t amdf_gpu_kfd_topology_query(
   }
   if (amdf_status_is_ok(status))
     status = amdf_gpu_kfd_query_memory(endpoint, &topology);
-  if (amdf_status_is_ok(status))
-    status = amdf_gpu_kfd_query_sdma(endpoint, &topology);
   if (amdf_status_is_ok(status)) *out_topology = topology;
   return status;
 }
