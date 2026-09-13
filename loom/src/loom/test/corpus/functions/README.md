@@ -31,6 +31,7 @@ contract under test rather than a target instruction or implementation file.
 | Read-only module data | `rodata.loom`: runtime indexing, copying into independent writable storage, empty/aligned payloads, and immutable roots returned across invocation boundaries. |
 | Vector lane programs | `vector_fields.loom`: construction, signed and unsigned fields, full-width replacement, lane extraction, and typed stores through portable legalization. |
 | Vector floating-point lanes | `vector_floating.loom`: independent lane rounding and sign operations, preserving signed zeros, subnormals, infinities and NaN payloads through scalarization. |
+| Whole-vector selection | `vector_selection.loom`: scalar conditions and yield-only branches select every lane together, preserving floating payload bits and full-width integers. |
 | Vector reductions | `vector_reductions.loom`: signed/unsigned extrema, wrapping sums, products, bitwise combining kinds, empty/nonzero initial values, transpose, and reductions over each matrix axis. |
 | Vector recurrences | `vector_recurrence.loom`: freshly constructed loop state, zero-trip preservation, backedge transport, and wrapping lane arithmetic. |
 | Control and ownership | `control.loom`, `structured_control.loom`, `calls.loom`, `direct_call.loom`, `spill.loom`, `buffer_calls.loom`: tuple joins, nested loops, while-condition effects, recursion, live values across calls, and returned aliases. |

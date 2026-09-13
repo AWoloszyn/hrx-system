@@ -116,6 +116,7 @@ loom_check_test_suite(
     "test/source_low/packed_payload_offsets.loom-test"
     "test/source_low/rodata.loom-test"
     "test/source_low/scalar_selection.loom-test"
+    "test/source_low/vector_selection.loom-test"
     "test/source_low/view_access.loom-test"
     "test/storage.loom-test"
   DATA
@@ -143,6 +144,7 @@ loom_check_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/packed_payload_offsets.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/rodata.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/scalar_selection.loom-test"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/vector_selection.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/view_access.loom-test"
   TEST_NAME_PREFIX_TO_STRIP
     "test/"
