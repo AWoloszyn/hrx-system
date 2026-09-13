@@ -417,6 +417,106 @@ static iree_status_t loom_scalar_legalize_extui(
   return iree_ok_status();
 }
 
+static iree_status_t loom_scalar_legalize_bitfield_extract(
+    const loom_target_legalizer_entry_t* entry,
+    loom_target_legalization_context_t* context, loom_op_t* op,
+    loom_target_legalizer_result_t* out_result) {
+  (void)entry;
+  const bool signed_extract = op->kind == LOOM_OP_SCALAR_BITFIELD_EXTRACTS;
+  loom_value_id_t value = signed_extract
+                              ? loom_scalar_bitfield_extracts_source(op)
+                              : loom_scalar_bitfield_extractu_source(op);
+  const int64_t offset = signed_extract
+                             ? loom_scalar_bitfield_extracts_offset(op)
+                             : loom_scalar_bitfield_extractu_offset(op);
+  const int64_t width = signed_extract
+                            ? loom_scalar_bitfield_extracts_width(op)
+                            : loom_scalar_bitfield_extractu_width(op);
+  const loom_type_t source_type =
+      loom_module_value_type(context->module, value);
+  const loom_type_t result_type =
+      loom_module_value_type(context->module, loom_op_results(op)[0]);
+  const int32_t source_width =
+      loom_scalar_type_bitwidth(loom_type_element_type(source_type));
+  const int32_t result_width =
+      loom_scalar_type_bitwidth(loom_type_element_type(result_type));
+  const int32_t working_width =
+      width == source_width ? source_width : (source_width <= 32 ? 32 : 64);
+  const loom_type_t working_type = working_width == source_width
+                                       ? source_type
+                                       : loom_type_scalar(LOOM_SCALAR_TYPE_I32);
+  loom_rewriter_t* rewriter = context->rewriter;
+  loom_builder_t* builder = &rewriter->builder;
+  loom_builder_set_before(builder, op);
+  const loom_value_id_t value_checkpoint =
+      loom_rewriter_value_checkpoint(rewriter);
+
+  // A full-width field needs only the result cast. Partial fields use a 32/64
+  // bit carrier even when the source is narrow. Signed extraction moves the
+  // field's sign bit to the carrier's sign bit before arithmetic shifting;
+  // unsigned extraction uses a mask to expose the result's known zero bits.
+  loom_op_t* scalar_op = NULL;
+  if (source_width < working_width) {
+    IREE_RETURN_IF_ERROR(loom_scalar_extui_build(
+        builder, value, source_type, working_type, op->location, &scalar_op));
+    value = loom_scalar_extui_result(scalar_op);
+  }
+  if (signed_extract && working_width - offset - width != 0) {
+    loom_value_id_t shift = LOOM_VALUE_ID_INVALID;
+    IREE_RETURN_IF_ERROR(loom_scalar_legalize_build_scalar_constant(
+        builder, op->location, working_type, working_width - offset - width,
+        &shift));
+    IREE_RETURN_IF_ERROR(loom_scalar_shli_build(
+        builder, 0, value, shift, working_type, op->location, &scalar_op));
+    value = loom_scalar_shli_result(scalar_op);
+  }
+  const int64_t right_shift = signed_extract ? working_width - width : offset;
+  if (right_shift != 0) {
+    loom_value_id_t shift = LOOM_VALUE_ID_INVALID;
+    IREE_RETURN_IF_ERROR(loom_scalar_legalize_build_scalar_constant(
+        builder, op->location, working_type, right_shift, &shift));
+    if (signed_extract) {
+      IREE_RETURN_IF_ERROR(loom_scalar_shrsi_build(
+          builder, value, shift, working_type, op->location, &scalar_op));
+    } else {
+      IREE_RETURN_IF_ERROR(loom_scalar_shrui_build(
+          builder, value, shift, working_type, op->location, &scalar_op));
+    }
+    value = loom_op_results(scalar_op)[0];
+  }
+  if (!signed_extract && width < source_width - offset) {
+    loom_value_id_t mask = LOOM_VALUE_ID_INVALID;
+    IREE_RETURN_IF_ERROR(loom_scalar_legalize_build_scalar_constant(
+        builder, op->location, working_type, UINT64_MAX >> (64 - width),
+        &mask));
+    IREE_RETURN_IF_ERROR(loom_scalar_andi_build(
+        builder, value, mask, working_type, op->location, &scalar_op));
+    value = loom_scalar_andi_result(scalar_op);
+  }
+  if (result_width < working_width) {
+    IREE_RETURN_IF_ERROR(loom_scalar_trunci_build(
+        builder, value, working_type, result_type, op->location, &scalar_op));
+    value = loom_scalar_trunci_result(scalar_op);
+  } else if (result_width > working_width) {
+    if (signed_extract) {
+      IREE_RETURN_IF_ERROR(loom_scalar_extsi_build(
+          builder, value, working_type, result_type, op->location, &scalar_op));
+    } else {
+      IREE_RETURN_IF_ERROR(loom_scalar_extui_build(
+          builder, value, working_type, result_type, op->location, &scalar_op));
+    }
+    value = loom_op_results(scalar_op)[0];
+  }
+  IREE_RETURN_IF_ERROR(loom_rewriter_preserve_result_names_on_new_values(
+      rewriter, op, &value, 1, value_checkpoint));
+  IREE_RETURN_IF_ERROR(
+      loom_rewriter_replace_all_uses_and_erase(rewriter, op, &value, 1));
+  *out_result = (loom_target_legalizer_result_t){
+      .action = LOOM_TARGET_LEGALIZER_ACTION_REWRITTEN,
+  };
+  return iree_ok_status();
+}
+
 static iree_status_t loom_scalar_legalize_fmai(
     const loom_target_legalizer_entry_t* entry,
     loom_target_legalization_context_t* context, loom_op_t* op,
@@ -463,6 +563,14 @@ static iree_status_t loom_scalar_legalize_fmai(
 }
 
 static const loom_target_legalizer_rule_t kScalarLegalizerRules[] = {
+    {
+        .root_kind = LOOM_OP_SCALAR_BITFIELD_EXTRACTU,
+        .legalize = loom_scalar_legalize_bitfield_extract,
+    },
+    {
+        .root_kind = LOOM_OP_SCALAR_BITFIELD_EXTRACTS,
+        .legalize = loom_scalar_legalize_bitfield_extract,
+    },
     {
         .root_kind = LOOM_OP_SCALAR_EXTF,
         .legalize = loom_scalar_legalize_extf,

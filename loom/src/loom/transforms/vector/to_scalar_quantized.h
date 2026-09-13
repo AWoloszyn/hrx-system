@@ -15,11 +15,6 @@
 extern "C" {
 #endif
 
-iree_status_t loom_vector_to_scalar_build_bitfield_extract_lane(
-    loom_vector_to_scalar_state_t* state,
-    loom_vector_to_scalar_index_list_t indices, bool signed_extract,
-    loom_value_id_t* out_lane);
-
 iree_status_t loom_vector_to_scalar_build_bitfield_insert_lane(
     loom_vector_to_scalar_state_t* state,
     loom_vector_to_scalar_index_list_t indices, loom_value_id_t* out_lane);

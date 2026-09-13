@@ -663,20 +663,6 @@ typedef iree_status_t (*loom_vector_to_scalar_lane_lowerer_t)(
     loom_vector_to_scalar_state_t* state,
     loom_vector_to_scalar_index_list_t indices, loom_value_id_t* out_lane);
 
-static iree_status_t loom_vector_to_scalar_build_bitfield_extractu_lane(
-    loom_vector_to_scalar_state_t* state,
-    loom_vector_to_scalar_index_list_t indices, loom_value_id_t* out_lane) {
-  return loom_vector_to_scalar_build_bitfield_extract_lane(
-      state, indices, /*signed_extract=*/false, out_lane);
-}
-
-static iree_status_t loom_vector_to_scalar_build_bitfield_extracts_lane(
-    loom_vector_to_scalar_state_t* state,
-    loom_vector_to_scalar_index_list_t indices, loom_value_id_t* out_lane) {
-  return loom_vector_to_scalar_build_bitfield_extract_lane(
-      state, indices, /*signed_extract=*/true, out_lane);
-}
-
 static iree_status_t loom_vector_to_scalar_build_bitunpacku_lane(
     loom_vector_to_scalar_state_t* state,
     loom_vector_to_scalar_index_list_t indices, loom_value_id_t* out_lane) {
@@ -706,8 +692,6 @@ static const loom_vector_to_scalar_lane_lowerer_t
         loom_vector_to_scalar_build_interleave_lane,
         loom_vector_to_scalar_build_deinterleave_lane,
         loom_vector_to_scalar_build_bitcast_lane,
-        loom_vector_to_scalar_build_bitfield_extractu_lane,
-        loom_vector_to_scalar_build_bitfield_extracts_lane,
         loom_vector_to_scalar_build_bitfield_insert_lane,
         loom_vector_to_scalar_build_dot2f_lane,
         loom_vector_to_scalar_build_dot4i_lane,

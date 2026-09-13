@@ -1420,8 +1420,8 @@ func.def @dynamic_concat(%full: index, %left_n: index, %right_n: index, %left: v
 
 // ====
 
-// Bitfield extract/insert lower to explicit scalar shift, mask, and merge
-// sequences so packed quantized registers have a target-independent oracle.
+// Extraction preserves the scalar operation, field attributes, and result
+// element type. Insertion has no scalar counterpart and emits a lane merge.
 func.def @static_bitfields(%bytes: vector<2xi8>, %zero: vector<2xi8>) -> (vector<2xi8>) {
   %lo = vector.bitfield.extractu %bytes {offset = 0, width = 4} : vector<2xi8> -> vector<2xi8>
   %hi = vector.bitfield.extracts %bytes {offset = 4, width = 4} : vector<2xi8> -> vector<2xi32>
@@ -1432,39 +1432,33 @@ func.def @static_bitfields(%bytes: vector<2xi8>, %zero: vector<2xi8>) -> (vector
 
 // ----
 func.def @static_bitfields(%bytes: vector<2xi8>, %zero: vector<2xi8>) -> (vector<2xi8>) {
-  %29 = vector.extract %bytes[0] : vector<2xi8> -> i8
-  %30 = scalar.constant 4 : i8
-  %31 = scalar.shrsi %29, %30 : i8
-  %32 = scalar.extsi %31 : i8 to i32
-  %33 = vector.extract %bytes[1] : vector<2xi8> -> i8
-  %34 = scalar.constant 4 : i8
-  %35 = scalar.shrsi %33, %34 : i8
-  %36 = scalar.extsi %35 : i8 to i32
-  %hi = vector.from_elements %32, %36 : vector<2xi32>
+  %27 = vector.extract %bytes[0] : vector<2xi8> -> i8
+  %28 = scalar.bitfield.extracts %27 {offset = 4, width = 4} : i8 -> i32
+  %29 = vector.extract %bytes[1] : vector<2xi8> -> i8
+  %30 = scalar.bitfield.extracts %29 {offset = 4, width = 4} : i8 -> i32
+  %hi = vector.from_elements %28, %30 : vector<2xi32>
   test.use %hi : vector<2xi32>
   %6 = vector.extract %bytes[0] : vector<2xi8> -> i8
-  %7 = scalar.constant 15 : i8
-  %8 = scalar.andi %6, %7 : i8
-  %9 = vector.extract %zero[0] : vector<2xi8> -> i8
-  %10 = scalar.constant 15 : i8
-  %11 = scalar.andi %8, %10 : i8
-  %12 = scalar.constant 15 : i8
-  %13 = scalar.constant -1 : i8
-  %14 = scalar.xori %12, %13 : i8
-  %15 = scalar.andi %9, %14 : i8
-  %16 = scalar.ori %15, %11 : i8
-  %17 = vector.extract %bytes[1] : vector<2xi8> -> i8
-  %18 = scalar.constant 15 : i8
-  %19 = scalar.andi %17, %18 : i8
-  %20 = vector.extract %zero[1] : vector<2xi8> -> i8
+  %7 = scalar.bitfield.extractu %6 {offset = 0, width = 4} : i8 -> i8
+  %8 = vector.extract %zero[0] : vector<2xi8> -> i8
+  %9 = scalar.constant 15 : i8
+  %10 = scalar.andi %7, %9 : i8
+  %11 = scalar.constant 15 : i8
+  %12 = scalar.constant -1 : i8
+  %13 = scalar.xori %11, %12 : i8
+  %14 = scalar.andi %8, %13 : i8
+  %15 = scalar.ori %14, %10 : i8
+  %16 = vector.extract %bytes[1] : vector<2xi8> -> i8
+  %17 = scalar.bitfield.extractu %16 {offset = 0, width = 4} : i8 -> i8
+  %18 = vector.extract %zero[1] : vector<2xi8> -> i8
+  %19 = scalar.constant 15 : i8
+  %20 = scalar.andi %17, %19 : i8
   %21 = scalar.constant 15 : i8
-  %22 = scalar.andi %19, %21 : i8
-  %23 = scalar.constant 15 : i8
-  %24 = scalar.constant -1 : i8
-  %25 = scalar.xori %23, %24 : i8
-  %26 = scalar.andi %20, %25 : i8
-  %27 = scalar.ori %26, %22 : i8
-  %r = vector.from_elements %16, %27 : vector<2xi8>
+  %22 = scalar.constant -1 : i8
+  %23 = scalar.xori %21, %22 : i8
+  %24 = scalar.andi %18, %23 : i8
+  %25 = scalar.ori %24, %20 : i8
+  %r = vector.from_elements %15, %25 : vector<2xi8>
   func.return %r : vector<2xi8>
 }
 

@@ -33,15 +33,6 @@ _SCALAR_COUNTERPART_EXCLUSIONS = frozenset(
     }
 )
 
-# These ops have a semantic scalar counterpart, but the reference lowering
-# intentionally expands their behavior into primitive scalar operations.
-_MECHANICAL_LOWERING_EXCLUSIONS = frozenset(
-    {
-        "vector.bitfield.extracts",
-        "vector.bitfield.extractu",
-    }
-)
-
 # Accumulator-style operations prefer their addend as the dynamic aggregate
 # seed. Other multi-operand elementwise ops use their first result-compatible
 # operand, while unary ops deliberately use no source seed so producer chains
@@ -58,7 +49,6 @@ class VectorScalarizationRow:
 
     vector_op: Op
     scalar_op: Op
-    mechanical: bool
     seed_operand_index: int
 
 
@@ -156,10 +146,9 @@ def collect_vector_scalarization_rows(
     scalar_ops_by_suffix = {_op_suffix(op): op for op in scalar_ops}
     vector_op_names = {op.name for op in vector_ops}
     stale_counterpart_exclusions = sorted(_SCALAR_COUNTERPART_EXCLUSIONS - vector_op_names)
-    stale_mechanical_exclusions = sorted(_MECHANICAL_LOWERING_EXCLUSIONS - vector_op_names)
     stale_seed_preferences = sorted(set(_PREFERRED_SEED_OPERANDS) - vector_op_names)
-    if stale_counterpart_exclusions or stale_mechanical_exclusions or stale_seed_preferences:
-        raise ValueError(f"stale vector scalarization exclusions: {stale_counterpart_exclusions + stale_mechanical_exclusions}; stale seed preferences: {stale_seed_preferences}")
+    if stale_counterpart_exclusions or stale_seed_preferences:
+        raise ValueError(f"stale vector scalarization exclusions: {stale_counterpart_exclusions}; stale seed preferences: {stale_seed_preferences}")
 
     rows: list[VectorScalarizationRow] = []
     missing_counterparts: list[str] = []
@@ -178,7 +167,6 @@ def collect_vector_scalarization_rows(
             VectorScalarizationRow(
                 vector_op=vector_op,
                 scalar_op=scalar_op,
-                mechanical=vector_op.name not in _MECHANICAL_LOWERING_EXCLUSIONS,
                 seed_operand_index=_seed_operand_index(vector_op),
             )
         )
@@ -195,9 +183,8 @@ def generate_vector_scalarization_rows() -> str:
         "",
     ]
     for row in collect_vector_scalarization_rows():
-        flags = "LOOM_VECTOR_SCALARIZATION_FLAG_MECHANICAL" if row.mechanical else "LOOM_VECTOR_SCALARIZATION_FLAG_NONE"
         seed_operand_index = "UINT8_MAX" if row.seed_operand_index == _NO_SEED_OPERAND else str(row.seed_operand_index)
-        lines.append(f"LOOM_VECTOR_SCALARIZATION_ROW({c_enum_name(row.vector_op)}, {c_enum_name(row.scalar_op)}, {flags}, {seed_operand_index})")
+        lines.append(f"LOOM_VECTOR_SCALARIZATION_ROW({c_enum_name(row.vector_op)}, {c_enum_name(row.scalar_op)}, {seed_operand_index})")
     lines.extend(["", "// clang-format on", ""])
     return "\n".join(lines)
 
