@@ -108,5 +108,28 @@ TEST_F(SourceLoweringStressTest, GeneratedSupportedSourceLowersAndPacketizes) {
             IREE_ARRAYSIZE(kScales) * kSeedCountPerScale);
 }
 
+TEST_F(SourceLoweringStressTest, CopiedDestructiveResultKeepsStorageIdentity) {
+  // Generates a materialized copy, destructive result, and coalesced copy
+  // whose storage reservations overlap without overwriting a live value.
+  static constexpr uint8_t kInput[] = {0x29, 0xca, 0x4a};
+  const loom_low_source_workload_config_t workload_config =
+      loom_low_source_workload_config_make(4);
+  loom_module_t* module_raw = nullptr;
+  IREE_ASSERT_OK(loom_low_source_workload_generate_fuzz_module(
+      kInput, IREE_ARRAYSIZE(kInput), &workload_config, &context_, &block_pool_,
+      &module_raw));
+  ModulePtr module(module_raw);
+  const loom_low_source_workload_pipeline_options_t pipeline_options = {
+      /*.pass_registry=*/loom_pass_builtin_registry(),
+      /*.descriptor_registry=*/&descriptor_registry_.registry,
+      /*.policy_registry=*/&policy_registry_,
+      /*.schedule_strategy=*/LOOM_LOW_SCHEDULE_STRATEGY_PRESSURE,
+  };
+  loom_low_source_workload_pipeline_counters_t counters = {};
+  IREE_ASSERT_OK(loom_low_source_workload_run_pipeline(
+      module.get(), &pipeline_options, &block_pool_, &counters));
+  EXPECT_EQ(counters.allocation_check_count, 1u);
+}
+
 }  // namespace
 }  // namespace loom
