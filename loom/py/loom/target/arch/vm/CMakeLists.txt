@@ -63,6 +63,8 @@ iree_py_test(
     loom::py::loom::target::arch::vm::contracts
     loom::py::loom::target::arch::vm::descriptors
     iree::vm::bytecode::spec::model
+  IMPORTS
+    "../../../../../../runtime/src"
   PACKAGE_DIRS
     "${PROJECT_SOURCE_DIR}/loom/py"
     "${PROJECT_BINARY_DIR}/loom/py"
