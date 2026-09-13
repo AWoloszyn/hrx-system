@@ -12,6 +12,25 @@ iree_add_all_subdirs()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 iree_cc_library(
   NAME
+    hip_dso_test_util
+  HDRS
+    "hip_dso_test_util.h"
+  SRCS
+    "hip_dso_test_util.cc"
+  DEPS
+    ${CMAKE_DL_LIBS}
+    libhrx_defs
+  TESTONLY
+  INCLUDES
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>"
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/../..>"
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+iree_cc_library(
+  NAME
     printf_format
   HDRS
     "printf_format.h"
@@ -19,6 +38,7 @@ iree_cc_library(
     "printf_format.c"
   DEPS
     iree::base
+    iree::base::internal
     libhrx_defs
   INCLUDES
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>"
@@ -247,6 +267,38 @@ iree_cc_library(
   PUBLIC
 )
 
+iree_cc_library(
+  NAME
+    error_state
+  HDRS
+    "api.h"
+    "error_state.h"
+  SRCS
+    "error_state.c"
+  DEPS
+    iree::base
+    libhrx_defs
+  INCLUDES
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>"
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/../..>"
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
+    device_properties
+  HDRS
+    "device_properties.h"
+  SRCS
+    "device_properties.c"
+  DEPS
+    libhrx_defs
+  INCLUDES
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>"
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/../..>"
+  PUBLIC
+)
+
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 iree_cc_library(
   NAME
@@ -263,6 +315,8 @@ iree_cc_library(
     "api_metadata.c"
   DEPS
     ::blocking_printf_provider
+    ::device_properties
+    ::error_state
     ::execution_context
     ::execution_resource
     ::execution_resource_descriptor
@@ -362,7 +416,7 @@ iree_cc_test(
 )
 endif()
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_HAL_DRIVER_AMDGPU)
 iree_cc_test(
   NAME
     hip_device_attribute_validation_api_test
@@ -375,6 +429,7 @@ iree_cc_test(
     ::amdhip64
   DEPS
     ${CMAKE_DL_LIBS}
+    ::hip_dso_test_util
     iree::testing::gtest
     iree::testing::gtest_main
     libhrx_defs
@@ -386,7 +441,7 @@ iree_cc_test(
 )
 endif()
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_HAL_DRIVER_AMDGPU)
 iree_cc_test(
   NAME
     hip_unified_addressing_attribute_api_test
@@ -397,6 +452,7 @@ iree_cc_test(
     ::amdhip64
   DEPS
     ${CMAKE_DL_LIBS}
+    ::hip_dso_test_util
     iree::testing::gtest
     iree::testing::gtest_main
     libhrx_defs
@@ -408,7 +464,7 @@ iree_cc_test(
 )
 endif()
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_HAL_DRIVER_AMDGPU)
 iree_cc_test(
   NAME
     hip_device_attribute_no_device_api_test
@@ -421,6 +477,7 @@ iree_cc_test(
     ::amdhip64
   DEPS
     ${CMAKE_DL_LIBS}
+    ::hip_dso_test_util
     iree::testing::gtest
     iree::testing::gtest_main
     libhrx_defs
@@ -458,7 +515,28 @@ iree_cc_test(
 )
 endif()
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_HAL_DRIVER_AMDGPU)
+iree_cc_test(
+  NAME
+    hip_device_contracts_api_test
+  SRCS
+    "hip_device_contracts_api_test.cc"
+  DATA
+    ::amdhip64
+  DEPS
+    ::hip_dso_test_util
+    iree::testing::gtest
+    iree::testing::gtest_main
+    libhrx_defs
+  ENV
+    "HRX_TEST_LIBAMDHIP64=$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>"
+  LABELS
+    "iree-run-requirement=runtime.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_HAL_DRIVER_AMDGPU)
 iree_cc_test(
   NAME
     hip_get_proc_address_test
@@ -468,15 +546,19 @@ iree_cc_test(
     ::amdhip64
   DEPS
     ${CMAKE_DL_LIBS}
+    ::hip_dso_test_util
     iree::testing::gtest
     iree::testing::gtest_main
     libhrx_defs
   ENV
     "HRX_TEST_LIBAMDHIP64=$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>"
+  LABELS
+    "iree-run-requirement=runtime.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
 )
 endif()
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_HAL_DRIVER_AMDGPU)
 iree_cc_test(
   NAME
     hip_launch_validation_api_test
@@ -486,6 +568,7 @@ iree_cc_test(
     ::amdhip64
   DEPS
     ${CMAKE_DL_LIBS}
+    ::hip_dso_test_util
     ::launch_params
     iree::testing::gtest
     iree::testing::gtest_main
@@ -493,6 +576,9 @@ iree_cc_test(
     libhrx_defs
   ENV
     "HRX_TEST_LIBAMDHIP64=$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>"
+  LABELS
+    "iree-run-requirement=runtime.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
   SANITIZER_SUPPRESSIONS
     lsan
     rocm
@@ -576,6 +662,30 @@ iree_cc_test(
     libhrx_defs
 )
 
+iree_cc_test(
+  NAME
+    error_state_test
+  SRCS
+    "error_state_test.cc"
+  DEPS
+    ::error_state
+    iree::testing::gtest
+    iree::testing::gtest_main
+    libhrx_defs
+)
+
+iree_cc_test(
+  NAME
+    device_properties_test
+  SRCS
+    "device_properties_test.cc"
+  DEPS
+    ::device_properties
+    iree::testing::gtest
+    iree::testing::gtest_main
+    libhrx_defs
+)
+
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 iree_cc_test(
   NAME
@@ -595,8 +705,18 @@ endif()
 # Point HIP DSO tests at the shared object built in this tree so they dlopen()
 # the exact artifact under test, and make sure that artifact is built first.
 # The build-tree path is only valid for the in-tree CTest run.
+if(TARGET libhrx_src_binding_hip_hip_dso_test_util.objects)
+  target_compile_definitions(libhrx_src_binding_hip_hip_dso_test_util.objects
+    PRIVATE
+      "HRX_TEST_LIBAMDHIP64_PATH=\"$<TARGET_FILE:libhrx_src_binding_hip_amdhip64>\""
+  )
+  add_dependencies(libhrx_src_binding_hip_hip_dso_test_util.objects
+    libhrx_src_binding_hip_amdhip64
+  )
+endif()
 foreach(_hrx_hip_dso_test
     libhrx_src_binding_hip_hip_api_name_test
+    libhrx_src_binding_hip_hip_device_contracts_api_test
     libhrx_src_binding_hip_hip_device_attribute_no_device_api_test
     libhrx_src_binding_hip_hip_device_attribute_validation_api_test
     libhrx_src_binding_hip_hip_get_proc_address_test
