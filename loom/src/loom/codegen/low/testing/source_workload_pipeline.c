@@ -149,7 +149,8 @@ static iree_status_t loom_low_source_workload_prepare_low_functions(
           &program, module, loom_func_like_cast(module, low_func_ops[i]),
           &interpreter_options, &run_result);
       if (iree_status_is_ok(status) && run_result.error_count != 0) {
-        break;
+        status = iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                  "packetization preparation produced errors");
       }
     }
   }
