@@ -602,6 +602,41 @@ TEST(LivenessSegmentsTest, SparseOverlapAndHalfOpenBoundaries) {
   EXPECT_FALSE(loom_liveness_segment_ranges_overlap(&analysis, empty, empty));
 }
 
+TEST(LivenessSegmentsTest, ExhaustiveSmallSparseSets) {
+  // Enumerate every live/dead pattern over six program points. Coalesce
+  // adjacent points into the sorted nonempty segments produced by liveness.
+  const auto append = [](uint32_t bits, loom_liveness_segment_t* segments,
+                         uint32_t& count) {
+    const uint32_t start = count;
+    for (uint32_t point = 0; point < 6;) {
+      if ((bits & (1u << point)) == 0) {
+        ++point;
+        continue;
+      }
+      const uint32_t begin = point;
+      do {
+        ++point;
+      } while (point < 6 && (bits & (1u << point)) != 0);
+      segments[count++] = {begin, point};
+    }
+    return loom_liveness_segment_range_t{start, count - start};
+  };
+  for (uint32_t lhs_bits = 0; lhs_bits < 64; ++lhs_bits) {
+    for (uint32_t rhs_bits = 0; rhs_bits < 64; ++rhs_bits) {
+      loom_liveness_segment_t segments[6] = {};
+      uint32_t count = 0;
+      const auto lhs = append(lhs_bits, segments, count);
+      const auto rhs = append(rhs_bits, segments, count);
+      loom_liveness_analysis_t analysis = {};
+      analysis.segments = count == 0 ? nullptr : segments;
+      analysis.segment_count = count;
+      EXPECT_EQ(loom_liveness_segment_ranges_overlap(&analysis, lhs, rhs),
+                (lhs_bits & rhs_bits) != 0)
+          << "lhs=" << lhs_bits << ", rhs=" << rhs_bits;
+    }
+  }
+}
+
 TEST_F(LivenessTest, FormatsMachineReadableJsonSummary) {
   ModulePtr module = ParseModule(R"(
 test.target<low_core> @test_target
