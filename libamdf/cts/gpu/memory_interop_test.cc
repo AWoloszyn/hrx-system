@@ -198,7 +198,7 @@ class GpuMemoryInteropTest : public GpuDeviceFixture {
         access.queue, &submission, &access.pending_submission);
     if (!amdf_status_is_ok(status)) return status;
     status = api_->kernel_queue_wait(access.queue, access.pending_submission,
-                                     UINT64_C(5000000000), UINT64_C(50000));
+                                     AMDF_TIMEOUT_INFINITE, UINT64_C(50000));
     if (amdf_status_is_ok(status)) access.pending_submission = 0;
     return status;
   }
