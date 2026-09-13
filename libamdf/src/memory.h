@@ -33,6 +33,9 @@ typedef struct amdf_memory_vtable_t {
                        amdf_host_mapping_t** out_mapping);
   // Releases the exact native state owned by a memory implementation.
   amdf_status_t (*destroy_native)(amdf_memory_t* memory);
+  // Discards unpublished native metadata without native calls. Any surviving
+  // native resources retain their dependent backing after terminal failure.
+  void (*abandon_native)(amdf_memory_t* memory);
 } amdf_memory_vtable_t;
 
 struct amdf_memory_t {
@@ -50,12 +53,10 @@ struct amdf_memory_t {
   uint64_t addresses[AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE + 1];
   // Number of live mappings and commands borrowing this memory.
   amdf_child_tracker_t children;
+  // Owned family-native state, including partial preparation. Interpretation
+  // and release belong to vtable; no public memory subtype is required.
+  void* native;
 };
-
-// Initializes an unpublished memory base with a caller-enforced device borrow.
-void amdf_memory_initialize(amdf_memory_t* memory,
-                            const amdf_memory_vtable_t* vtable,
-                            amdf_device_t* device);
 
 // Registers one child that borrows `memory`.
 amdf_status_t amdf_memory_register_child(amdf_memory_t* memory);

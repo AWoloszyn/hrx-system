@@ -8,7 +8,6 @@
 #define AMDF_SRC_GPU_MEMORY_H_
 
 #include "amdf/amdf.h"
-#include "libamdf/src/gpu/umd/memory.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -19,19 +18,18 @@ amdf_status_t amdf_gpu_device_query_memory_profile(
     amdf_device_t* device, uint32_t memory_profile_ordinal,
     amdf_memory_profile_t* out_profile);
 
-// Creates memory attached to one GPU device.
-amdf_status_t amdf_gpu_memory_create(
-    amdf_device_t* device, const amdf_memory_profile_t* profile,
-    const amdf_memory_create_info_t* create_info, amdf_memory_t** out_memory);
+// Prepares native state in the common memory owner, including on failure.
+amdf_status_t amdf_gpu_memory_prepare(
+    amdf_memory_t* memory, const amdf_memory_profile_t* profile,
+    const amdf_memory_create_info_t* create_info);
 
-// Imports external memory into one GPU device, or reports it unsupported.
-amdf_status_t amdf_gpu_memory_import(
-    amdf_device_t* device, const amdf_memory_profile_t* profile,
+// Prepares imported state without consuming the input. Success reports no
+// external lease: the native provider acquires its own backing reference.
+amdf_status_t amdf_gpu_memory_prepare_import(
+    amdf_memory_t* memory, const amdf_memory_profile_t* profile,
     const amdf_memory_import_info_t* import_info,
-    const amdf_external_memory_t* external_memory, amdf_memory_t** out_memory);
-
-// Returns the native GPU attachment borrowed from one GPU memory object.
-amdf_gpu_umd_memory_t* amdf_gpu_memory_get_umd(amdf_memory_t* memory);
+    const amdf_external_memory_t* external_memory,
+    amdf_external_memory_t** out_external_memory_lease);
 
 #ifdef __cplusplus
 }  // extern "C"

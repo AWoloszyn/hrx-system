@@ -502,13 +502,31 @@ static void amdf_memory_assert_result(
   }
 }
 
-void amdf_memory_initialize(amdf_memory_t* memory,
-                            const amdf_memory_vtable_t* vtable,
-                            amdf_device_t* device) {
-  memory->host_allocator = amdf_device_host_allocator(device);
-  memory->vtable = vtable;
+static amdf_status_t amdf_memory_allocate(amdf_device_t* device,
+                                          amdf_memory_t** out_memory) {
+  const amdf_allocator_t host_allocator = amdf_device_host_allocator(device);
+  amdf_memory_t* memory = NULL;
+  const amdf_status_t status =
+      amdf_calloc(host_allocator, sizeof(*memory), amdf_alignof(amdf_memory_t),
+                  (void**)&memory);
+  if (!amdf_status_is_ok(status)) return status;
+  memory->host_allocator = host_allocator;
   memory->device = device;
   amdf_child_tracker_initialize(&memory->children);
+  *out_memory = memory;
+  return AMDF_STATUS_OK;
+}
+
+// The constructing owner contains all partial native progress. Terminal
+// cleanup failure can leak native backing, never unpublished bookkeeping.
+static amdf_status_t amdf_memory_discard(amdf_memory_t* memory) {
+  amdf_status_t status = AMDF_STATUS_OK;
+  if (memory->native != NULL) {
+    status = memory->vtable->destroy_native(memory);
+    if (!amdf_status_is_ok(status)) memory->vtable->abandon_native(memory);
+  }
+  amdf_free(memory->host_allocator, memory);
+  return status;
 }
 
 amdf_status_t amdf_memory_register_child(amdf_memory_t* memory) {
@@ -604,14 +622,18 @@ amdf_status_t AMDF_CALL amdf_memory_create(
   }
 
   amdf_memory_t* memory = NULL;
-  status =
-      device->vtable->memory_create(device, &profile, create_info, &memory);
+  status = amdf_memory_allocate(device, &memory);
+  if (!amdf_status_is_ok(status)) return status;
+  status = device->vtable->memory_prepare(memory, &profile, create_info);
   if (amdf_status_is_ok(status)) {
     amdf_memory_assert_result(
         memory, &profile, capabilities, create_info->required_flags,
         create_info->device_access, create_info->byte_length,
         create_info->minimum_alignment);
     *out_memory = memory;
+  } else {
+    const amdf_status_t release_status = amdf_memory_discard(memory);
+    if (!amdf_status_is_ok(release_status)) status = release_status;
   }
   return status;
 }
@@ -655,8 +677,12 @@ amdf_status_t AMDF_CALL amdf_memory_import(
   }
 
   amdf_memory_t* memory = NULL;
-  status = device->vtable->memory_import(device, &profile, import_info,
-                                         inout_external_memory, &memory);
+  status = amdf_memory_allocate(device, &memory);
+  if (!amdf_status_is_ok(status)) return status;
+  amdf_external_memory_t* external_memory_lease = NULL;
+  status = device->vtable->memory_prepare_import(memory, &profile, import_info,
+                                                 inout_external_memory,
+                                                 &external_memory_lease);
   if (amdf_status_is_ok(status)) {
     amdf_memory_assert_result(
         memory, &profile, &profile.import, import_info->required_flags,
@@ -665,8 +691,16 @@ amdf_status_t AMDF_CALL amdf_memory_import(
     amdf_assert(memory->info.byte_length ==
                     inout_external_memory->byte_length &&
                 "import must preserve the exact external logical range");
-    memset(inout_external_memory, 0, sizeof(*inout_external_memory));
+    if (external_memory_lease != NULL) {
+      *external_memory_lease = *inout_external_memory;
+      memset(inout_external_memory, 0, sizeof(*inout_external_memory));
+    } else {
+      amdf_external_memory_release(inout_external_memory);
+    }
     *out_memory = memory;
+  } else {
+    const amdf_status_t release_status = amdf_memory_discard(memory);
+    if (!amdf_status_is_ok(release_status)) status = release_status;
   }
   return status;
 }

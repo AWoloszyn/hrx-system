@@ -19,20 +19,21 @@ typedef struct amdf_device_vtable_t {
   amdf_status_t (*query_memory_profile)(amdf_device_t* device,
                                         uint32_t memory_profile_ordinal,
                                         amdf_memory_profile_t* out_profile);
-  // Creates physical memory attached to this device. Failure releases every
-  // partial resource; success returns one complete attachment.
-  amdf_status_t (*memory_create)(amdf_device_t* device,
-                                 const amdf_memory_profile_t* profile,
-                                 const amdf_memory_create_info_t* create_info,
-                                 amdf_memory_t** out_memory);
-  // Imports external memory as a ready attachment to this device. Success owns
-  // the input release obligation by either invoking or adopting its callback;
-  // failure invokes no callback and releases every partial native resource.
-  amdf_status_t (*memory_import)(amdf_device_t* device,
-                                 const amdf_memory_profile_t* profile,
-                                 const amdf_memory_import_info_t* import_info,
-                                 const amdf_external_memory_t* external_memory,
-                                 amdf_memory_t** out_memory);
+  // Prepares native state in the already-allocated memory owner. Every return
+  // leaves partial state there for common rollback; only success fills facts.
+  amdf_status_t (*memory_prepare)(amdf_memory_t* memory,
+                                  const amdf_memory_profile_t* profile,
+                                  const amdf_memory_create_info_t* create_info);
+  // Prepares an import without consuming its input release obligation. Success
+  // returns an empty native lease slot when the input must remain live through
+  // memory teardown, or NULL when an independent native reference was acquired.
+  // Common construction commits that move only after complete success. Failure
+  // leaves the lease output unchanged and partial native state on memory.
+  amdf_status_t (*memory_prepare_import)(
+      amdf_memory_t* memory, const amdf_memory_profile_t* profile,
+      const amdf_memory_import_info_t* import_info,
+      const amdf_external_memory_t* external_memory,
+      amdf_external_memory_t** out_external_memory_lease);
   // Releases the exact native state owned by a device implementation.
   amdf_status_t (*destroy_native)(amdf_device_t* device);
 } amdf_device_vtable_t;
