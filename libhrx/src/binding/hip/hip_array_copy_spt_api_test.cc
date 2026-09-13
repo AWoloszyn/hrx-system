@@ -337,7 +337,7 @@ TEST_F(HipArrayCopySptApiTest, CopiesPitchedRegionsThroughAllEntryPoints) {
   ASSERT_EQ(hipSuccess, api_.memcpy_from_array_spt(
                             packed.data(), array_, kXOffset, kYOffset,
                             packed.size(), hipMemcpyDeviceToHost));
-  std::array<uint8_t, kArrayWidth* kArrayHeight> array_contents = {};
+  std::array<uint8_t, kArrayWidth * kArrayHeight> array_contents = {};
   for (size_t row = 0; row < kCopyHeight; ++row) {
     std::memcpy(
         array_contents.data() + (kYOffset + row) * kArrayWidth + kXOffset,
