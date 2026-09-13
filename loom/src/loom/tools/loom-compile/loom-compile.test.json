@@ -2,6 +2,22 @@
   "version": 1,
   "cases": [
     {
+      "name": "rejects invalid source before target selection",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "--pipeline=none",
+          "--output={tmp}/invalid.bin"
+        ],
+        "stdin": {
+          "text": "func.def public @out_of_domain() -> (i32) {\n  %value = scalar.constant 2147483648 : i32\n  func.return %value : i32\n}\n"
+        }
+      },
+      "exit": 1,
+      "stderr": {"contains": ["STRUCTURE/014", "input module failed verification"]},
+      "files": [{"path": "{tmp}/invalid.bin", "exists": false}]
+    },
+    {
       "name": "prints agent documentation",
       "run": {
         "tool": "loom-compile",

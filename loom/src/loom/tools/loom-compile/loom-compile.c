@@ -245,6 +245,38 @@ static iree_status_t loom_compile_parse_input_module(
   return loom_run_module_parse(session, &parse_options, out_run_module);
 }
 
+static iree_status_t loom_compile_verify_input_module(
+    const loom_target_low_descriptor_registry_t* low_registry,
+    loom_run_module_t* run_module) {
+  const loom_target_entry_options_t options = {
+      .diagnostic_sink = {.fn = loom_diagnostic_stderr_sink},
+      .source_resolver = loom_run_module_source_resolver(run_module),
+      .max_errors = 20,
+  };
+  loom_verify_result_t result = {0};
+  IREE_RETURN_IF_ERROR(loom_target_entry_verify_module(
+      run_module->module, &options, options.max_errors, &result));
+  if (result.error_count != 0) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "input module failed verification");
+  }
+
+  loom_target_entry_diagnostic_emitter_t emitter = {0};
+  loom_target_entry_diagnostic_emitter_initialize(
+      run_module->module, &options, LOOM_EMITTER_VERIFIER, &emitter);
+  loom_low_verify_scratch_t scratch =
+      loom_low_verify_scratch_for_module(run_module->module);
+  loom_low_verify_result_t low_result = {0};
+  IREE_RETURN_IF_ERROR(loom_target_entry_verify_low_module(
+      run_module->module, low_registry, &options, &emitter, options.max_errors,
+      loom_low_verify_provider_list_empty(), &scratch, &low_result));
+  if (low_result.error_count != 0) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "input module failed Low verification");
+  }
+  return iree_ok_status();
+}
+
 static iree_status_t loom_compile_append_config_flags(
     loom_tooling_config_set_t* config_set) {
   iree_flag_string_list_t assignments = FLAG_config_list();
@@ -1056,6 +1088,10 @@ int main(int argc, char** argv) {
     status = loom_compile_parse_input_module(
         argc, argv, &session, &source_path_options, allocator, &contents,
         &input_filename_storage, &run_module);
+  }
+  if (iree_status_is_ok(status)) {
+    status = loom_compile_verify_input_module(
+        loom_run_session_low_descriptor_registry(&session), &run_module);
   }
   if (iree_status_is_ok(status)) {
     status =

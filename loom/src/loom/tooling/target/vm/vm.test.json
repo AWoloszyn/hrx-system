@@ -2,6 +2,16 @@
   "version": 1,
   "cases": [
     {
+      "name": "rejects a target opcode with incompatible source registers",
+      "run": {
+        "tool": "loom-compile",
+        "args": ["{srcdir}/invalid_operand.loom", "--format=vm", "--output={tmp}/invalid.vm"]
+      },
+      "exit": 1,
+      "stderr": {"contains": ["input module failed Low verification"]},
+      "files": [{"path": "{tmp}/invalid.vm", "exists": false}]
+    },
+    {
       "name": "compiles an authored module into standalone VM bytecode",
       "steps": [
         {
