@@ -125,8 +125,8 @@ static void loom_amdgpu_math_policy_query(
         return;
       }
       *out_decision =
-          loom_amdgpu_math_rewrite(LOOM_TARGET_MATH_RECIPE_WIDEN_F32_ROUND_BF16,
-                                   IREE_SV("math.recipe.widen_f32_round_bf16"));
+          loom_amdgpu_math_rewrite(LOOM_TARGET_MATH_RECIPE_WIDEN_F32_ROUND,
+                                   IREE_SV("math.recipe.widen_f32_round"));
       return;
     }
     *out_decision = loom_amdgpu_math_keep(IREE_SV("math.basic.keep"));

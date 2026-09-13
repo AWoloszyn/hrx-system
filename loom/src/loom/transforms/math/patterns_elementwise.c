@@ -816,7 +816,7 @@ static iree_status_t loom_math_legalize_build_round_away(
                                          rounded, truncated, out_value);
 }
 
-static iree_status_t loom_math_legalize_binary_source_initialize(
+static void loom_math_legalize_binary_source_initialize(
     const loom_math_legalize_recipe_context_t* context, const loom_op_t* op,
     loom_math_legalize_binary_source_t* out_source) {
   *out_source = (loom_math_legalize_binary_source_t){
@@ -833,28 +833,28 @@ static iree_status_t loom_math_legalize_binary_source_initialize(
       out_source->fastmath_flags = loom_scalar_addf_fastmath(op);
       out_source->lane_builders = &kScalarLaneBuilders;
       out_source->binary_build = loom_scalar_addf_build;
-      return iree_ok_status();
+      return;
     case LOOM_OP_SCALAR_MULF:
       out_source->lhs = loom_scalar_mulf_lhs(op);
       out_source->rhs = loom_scalar_mulf_rhs(op);
       out_source->fastmath_flags = loom_scalar_mulf_fastmath(op);
       out_source->lane_builders = &kScalarLaneBuilders;
       out_source->binary_build = loom_scalar_mulf_build;
-      return iree_ok_status();
+      return;
     case LOOM_OP_VECTOR_ADDF:
       out_source->lhs = loom_vector_addf_lhs(op);
       out_source->rhs = loom_vector_addf_rhs(op);
       out_source->fastmath_flags = loom_vector_addf_fastmath(op);
       out_source->lane_builders = &kVectorLaneBuilders;
       out_source->binary_build = loom_vector_addf_build;
-      return iree_ok_status();
+      return;
     case LOOM_OP_VECTOR_MULF:
       out_source->lhs = loom_vector_mulf_lhs(op);
       out_source->rhs = loom_vector_mulf_rhs(op);
       out_source->fastmath_flags = loom_vector_mulf_fastmath(op);
       out_source->lane_builders = &kVectorLaneBuilders;
       out_source->binary_build = loom_vector_mulf_build;
-      return iree_ok_status();
+      return;
     default:
       break;
   }
@@ -862,12 +862,14 @@ static iree_status_t loom_math_legalize_binary_source_initialize(
   IREE_BUILTIN_UNREACHABLE();
 }
 
-static iree_status_t loom_math_legalize_build_widen_f32_round_bf16(
+// Addition and multiplication of f16/bf16 operands round correctly through IEEE
+// f32 arithmetic with gradual underflow.
+// Other arithmetic requires its own proof against intermediate rounding.
+static iree_status_t loom_math_legalize_build_widen_f32_round(
     loom_builder_t* builder, const loom_math_legalize_recipe_context_t* context,
     const loom_op_t* op, loom_value_id_t* out_value) {
   loom_math_legalize_binary_source_t source;
-  IREE_RETURN_IF_ERROR(
-      loom_math_legalize_binary_source_initialize(context, op, &source));
+  loom_math_legalize_binary_source_initialize(context, op, &source);
 
   loom_value_id_t wide_lhs = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_math_legalize_build_cast(
@@ -910,10 +912,9 @@ static iree_status_t loom_math_legalize_build_gelu_logistic(
 static iree_status_t loom_math_legalize_build_recipe(
     const loom_math_legalize_recipe_context_t* context, loom_op_t* op,
     loom_rewriter_t* rewriter, loom_value_id_t* out_value) {
-  if (context->decision.recipe ==
-      LOOM_TARGET_MATH_RECIPE_WIDEN_F32_ROUND_BF16) {
-    return loom_math_legalize_build_widen_f32_round_bf16(
-        &rewriter->builder, context, op, out_value);
+  if (context->decision.recipe == LOOM_TARGET_MATH_RECIPE_WIDEN_F32_ROUND) {
+    return loom_math_legalize_build_widen_f32_round(&rewriter->builder, context,
+                                                    op, out_value);
   }
 
   loom_math_legalize_source_t source;
@@ -962,7 +963,7 @@ static iree_status_t loom_math_legalize_build_recipe(
     case LOOM_TARGET_MATH_RECIPE_GELU_LOGISTIC_F32:
       return loom_math_legalize_build_gelu_logistic(&rewriter->builder, &source,
                                                     op, out_value);
-    case LOOM_TARGET_MATH_RECIPE_WIDEN_F32_ROUND_BF16:
+    case LOOM_TARGET_MATH_RECIPE_WIDEN_F32_ROUND:
       IREE_ASSERT_UNREACHABLE("recipe is not elementwise math legalization");
       IREE_BUILTIN_UNREACHABLE();
     case LOOM_TARGET_MATH_RECIPE_UNKNOWN:
@@ -1004,7 +1005,7 @@ static bool loom_math_legalize_elementwise_recipe_is_supported(
     case LOOM_TARGET_MATH_RECIPE_GELU_TANH_F32:
     case LOOM_TARGET_MATH_RECIPE_GELU_ERF_F32:
     case LOOM_TARGET_MATH_RECIPE_GELU_LOGISTIC_F32:
-    case LOOM_TARGET_MATH_RECIPE_WIDEN_F32_ROUND_BF16:
+    case LOOM_TARGET_MATH_RECIPE_WIDEN_F32_ROUND:
       return true;
     case LOOM_TARGET_MATH_RECIPE_UNKNOWN:
       return false;
