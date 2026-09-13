@@ -1118,9 +1118,10 @@ iree_status_t iree_hal_streaming_context_symbol_map_lookup(
   }
 
   *out_symbol = NULL;
+  iree_status_t missing_symbol_status = iree_make_status(
+      IREE_STATUS_NOT_FOUND, "registered symbol `%s` is absent from the module",
+      registration->device_name);
   iree_slim_mutex_unlock(&map->mutex);
   iree_slim_mutex_unlock(&map->registry->mutex);
-  return iree_make_status(IREE_STATUS_NOT_FOUND,
-                          "registered symbol `%s` is absent from the module",
-                          registration->device_name);
+  return missing_symbol_status;
 }

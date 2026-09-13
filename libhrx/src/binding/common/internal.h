@@ -1129,10 +1129,10 @@ static bool iree_hal_streaming_graph_node_is_recordable(
 typedef struct iree_hal_streaming_graph_kernel_node_attrs_t {
   // HIP kernel function address used for parameter query APIs.
   void* hip_function;
-  // HIP kernel parameter pointer array captured by graph node APIs.
-  void** hip_kernel_params;
-  // HIP extra launch parameter array captured by graph node APIs.
-  void** hip_extra;
+  // Native argument image size exposed through |hip_extra_storage|.
+  size_t hip_argument_size;
+  // Graph-owned HIP launch tokens reconstructed by parameter query APIs.
+  void* hip_extra_storage[5];
   // Resolved executable symbol used for graph launch.
   iree_hal_streaming_symbol_t* symbol;
   // Module retained to keep |symbol| and its executable metadata alive.
