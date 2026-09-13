@@ -9,6 +9,7 @@
 
 #include "amdf/amdf.h"
 #include "libamdf/src/child_tracker.h"
+#include "libamdf/src/memory_profile.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -16,24 +17,25 @@ extern "C" {
 
 typedef struct amdf_device_vtable_t {
   // Copies one immutable memory profile into caller-private result storage.
-  amdf_status_t (*query_memory_profile)(amdf_device_t* device,
-                                        uint32_t memory_profile_ordinal,
-                                        amdf_memory_profile_t* out_profile);
+  amdf_status_t (*query_memory_profile)(
+      amdf_device_t* device, uint32_t memory_profile_ordinal,
+      amdf_memory_native_profile_t* out_profile);
   // Prepares native state in the already-allocated memory owner. Every return
   // leaves partial state there for common rollback; only success fills facts.
-  amdf_status_t (*memory_prepare)(amdf_memory_t* memory,
-                                  const amdf_memory_profile_t* profile,
-                                  const amdf_memory_create_info_t* create_info);
-  // Prepares an import without consuming its input release obligation. Success
-  // returns an empty native lease slot when the input must remain live through
-  // memory teardown, or NULL when an independent native reference was acquired.
-  // Common construction commits that move only after complete success. Failure
-  // leaves the lease output unchanged and partial native state on memory.
+  amdf_status_t (*memory_prepare)(
+      amdf_memory_t* memory, uint32_t access_ordinal,
+      const amdf_memory_native_profile_t* profile,
+      const amdf_memory_native_create_info_t* create_info,
+      amdf_memory_info_t* out_info);
+  // Acquires an independent native backing reference without consuming input.
+  // Every return leaves partial state in the selected slot for common rollback;
+  // only success publishes native backing facts and complete access facts.
   amdf_status_t (*memory_prepare_import)(
-      amdf_memory_t* memory, const amdf_memory_profile_t* profile,
-      const amdf_memory_import_info_t* import_info,
+      amdf_memory_t* memory, uint32_t access_ordinal,
+      const amdf_memory_native_profile_t* profile,
+      const amdf_memory_native_import_info_t* import_info,
       const amdf_external_memory_t* external_memory,
-      amdf_external_memory_t** out_external_memory_lease);
+      amdf_memory_info_t* out_info);
   // Releases the exact native state owned by a device implementation.
   amdf_status_t (*destroy_native)(amdf_device_t* device);
 } amdf_device_vtable_t;

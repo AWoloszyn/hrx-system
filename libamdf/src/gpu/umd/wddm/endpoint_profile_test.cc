@@ -134,7 +134,8 @@ TEST_F(WindowsGpuEndpointProfileTest,
   bool available = true;
 
   const amdf_status_t status = amdf_gpu_umd_query_endpoint_profile(
-      endpoint_, instance_.host_allocator, &profile, &available);
+      endpoint_, AMDF_NATIVE_LIFETIME_PROCESS, instance_.host_allocator,
+      &profile, &available);
 
   EXPECT_EQ(amdf_status_code(status), AMDF_STATUS_CODE_BUSY);
   EXPECT_EQ(std::memcmp(&profile, &sentinel_profile, sizeof(profile)), 0);
@@ -158,7 +159,8 @@ TEST_F(WindowsGpuEndpointProfileTest,
   bool available = false;
 
   EXPECT_EQ(amdf_gpu_umd_query_endpoint_profile(
-                endpoint_, instance_.host_allocator, &profile, &available),
+                endpoint_, AMDF_NATIVE_LIFETIME_PROCESS,
+                instance_.host_allocator, &profile, &available),
             AMDF_STATUS_OK);
 
   EXPECT_TRUE(available);

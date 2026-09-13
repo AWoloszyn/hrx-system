@@ -20,6 +20,9 @@ amdf_status_t amdf_xdna_extension_query(uint32_t minimum_version,
                                         uint32_t maximum_version,
                                         const void** out_extension_api);
 
+// Installs metadata queries that consume the endpoint's selected target facts.
+void amdf_xdna_extension_initialize_endpoint(amdf_endpoint_t* endpoint);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

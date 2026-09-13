@@ -16,6 +16,7 @@ iree_cc_library(
   SRCS
     "allocator_test.cc"
     "discovery_test.cc"
+    "memory_test.cc"
     "query_test.cc"
   DEPS
     amdf::headers

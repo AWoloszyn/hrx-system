@@ -48,6 +48,8 @@ iree_cc_library(
     libamdf::src::instance
     libamdf::src::kernel_queue
     libamdf::src::memory
+    libamdf::src::memory_scope
+    libamdf::src::memory_scope_state
     libamdf::src::platform
     libamdf::src::structure
     libamdf::src::user_queue

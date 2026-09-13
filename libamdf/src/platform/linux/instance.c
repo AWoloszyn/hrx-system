@@ -8,18 +8,24 @@
 #include "libamdf/src/platform/linux/instance.h"
 
 #include <fcntl.h>
+#include <unistd.h>
 
 #include "libamdf/src/allocator.h"
 #include "libamdf/src/platform/linux/file.h"
 
 amdf_status_t amdf_platform_instance_create(
     amdf_allocator_t host_allocator, amdf_platform_instance_t** out_instance) {
+  const long page_size = sysconf(_SC_PAGESIZE);
+  if (page_size <= 0 || (page_size & (page_size - 1)) != 0) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
   amdf_platform_instance_t* instance = NULL;
   amdf_status_t status =
       amdf_calloc(host_allocator, sizeof(*instance),
                   amdf_alignof(amdf_platform_instance_t), (void**)&instance);
   if (!amdf_status_is_ok(status)) return status;
   instance->host_allocator = host_allocator;
+  instance->page_size = (size_t)page_size;
   const int mutex_error = pthread_mutex_init(&instance->native_mutex, NULL);
   if (mutex_error != 0) {
     amdf_free(host_allocator, instance);
@@ -56,6 +62,11 @@ void amdf_platform_instance_lock_native(amdf_platform_instance_t* instance) {
   const int error = pthread_mutex_lock(&instance->native_mutex);
   amdf_assert(error == 0);
   (void)error;
+}
+
+uint64_t amdf_platform_instance_host_allocation_granularity(
+    const amdf_platform_instance_t* instance) {
+  return instance->page_size;
 }
 
 void amdf_platform_instance_unlock_native(amdf_platform_instance_t* instance) {

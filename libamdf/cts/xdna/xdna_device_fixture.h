@@ -37,6 +37,26 @@ class XdnaDeviceFixture : public ::testing::Test {
     }
     ASSERT_TRUE(amdf_status_is_ok(status));
 
+    uint32_t scope_count = 0;
+    ASSERT_EQ(amdf_status_code(api_->instance_enumerate_memory_scopes(
+                  instance_, 0, nullptr, &scope_count)),
+              AMDF_STATUS_CODE_BUFFER_TOO_SMALL);
+    std::vector<amdf_memory_scope_t*> scopes(scope_count);
+    ASSERT_EQ(api_->instance_enumerate_memory_scopes(
+                  instance_, scope_count, scopes.data(), &scope_count),
+              AMDF_STATUS_OK);
+    for (amdf_memory_scope_t* scope : scopes) {
+      amdf_memory_scope_info_t info = {};
+      info.type = AMDF_STRUCTURE_TYPE_MEMORY_SCOPE_INFO;
+      info.structure_size = sizeof(info);
+      ASSERT_EQ(api_->memory_scope_query_info(scope, &info), AMDF_STATUS_OK);
+      if (info.kind == AMDF_MEMORY_SCOPE_KIND_SYSTEM) {
+        system_scope_ = scope;
+        break;
+      }
+    }
+    ASSERT_NE(system_scope_, nullptr);
+
     uint32_t endpoint_count = 0;
     ASSERT_TRUE(amdf_status_is_ok(
         api_->endpoint_enumerate(instance_, 0, nullptr, &endpoint_count)));
@@ -64,31 +84,45 @@ class XdnaDeviceFixture : public ::testing::Test {
     ASSERT_TRUE(amdf_status_is_ok(status))
         << "domain=" << amdf_status_domain(status)
         << " code=" << amdf_status_code(status);
+    memory_access_.device = device_;
+    memory_access_.requirements.access =
+        AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
+    memory_access_.requirements.flags = AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
   }
 
-  uint32_t FindMemoryProfileOrdinal(amdf_memory_class_t memory_class,
-                                    amdf_memory_profile_roles_t required_roles,
-                                    amdf_memory_flags_t required_flags,
-                                    amdf_memory_access_t device_access) const {
+  amdf_status_t QueryMemoryProfile(
+      uint32_t ordinal, amdf_memory_profile_t* out_profile,
+      amdf_memory_access_capabilities_t* out_capabilities) const {
+    const amdf_memory_endpoint_access_t access = {
+        .endpoint = endpoint_,
+        .requirements = memory_access_.requirements,
+    };
+    return api_->memory_scope_query_profile(system_scope_, ordinal, 1, &access,
+                                            out_profile, out_capabilities);
+  }
+
+  uint32_t FindMemoryProfileOrdinal(amdf_memory_profile_roles_t required_roles,
+                                    amdf_memory_flags_t required_flags) const {
     for (uint32_t ordinal = 0;; ++ordinal) {
       amdf_memory_profile_t profile = {};
       profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
       profile.structure_size = sizeof(profile);
+      amdf_memory_access_capabilities_t capabilities = {};
+      capabilities.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES;
+      capabilities.structure_size = sizeof(capabilities);
       const amdf_status_t status =
-          api_->device_query_memory_profile(device_, ordinal, &profile);
+          QueryMemoryProfile(ordinal, &profile, &capabilities);
       if (amdf_status_code(status) == AMDF_STATUS_CODE_OUT_OF_RANGE) break;
+      if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED))
+        continue;
       if (!amdf_status_is_ok(status)) {
         ADD_FAILURE() << "memory profile query failed: domain="
                       << amdf_status_domain(status)
                       << " code=" << amdf_status_code(status);
         break;
       }
-      if (profile.memory_class == memory_class &&
-          (profile.roles & required_roles) == required_roles &&
-          (required_flags & ~profile.supported_flags) == 0 &&
-          (device_access & profile.guaranteed_device_access) ==
-              profile.guaranteed_device_access &&
-          (device_access & ~profile.supported_device_access) == 0) {
+      if ((profile.roles & required_roles) == required_roles &&
+          (required_flags & ~profile.supported_flags) == 0) {
         return ordinal;
       }
     }
@@ -106,6 +140,10 @@ class XdnaDeviceFixture : public ::testing::Test {
   amdf_endpoint_t* endpoint_ = nullptr;
   // Shared device; each case releases only its workload children.
   amdf_device_t* device_ = nullptr;
+  // Borrowed system storage descriptor, discovered before device activation.
+  amdf_memory_scope_t* system_scope_ = nullptr;
+  // Explicit device access used by case-owned memory construction requests.
+  amdf_memory_device_access_t memory_access_ = {};
 };
 
 // Cases exercising program activation or placement own a fresh context within

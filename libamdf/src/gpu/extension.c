@@ -79,17 +79,36 @@ static const amdf_gpu_api_t amdf_gpu_api_v1 = {
     .user_queue_create = amdf_gpu_user_queue_create,
 };
 
+static amdf_status_t amdf_gpu_endpoint_query_memory_profile(
+    amdf_endpoint_t* endpoint, uint32_t profile_ordinal,
+    amdf_memory_native_profile_t* out_profile) {
+  const void* untyped_profile = NULL;
+  amdf_status_t status = amdf_endpoint_query_engine_profile(
+      endpoint, AMDF_ENGINE_KIND_GPU, &untyped_profile);
+  if (!amdf_status_is_ok(status)) return status;
+  const amdf_gpu_endpoint_profile_t* profile = untyped_profile;
+  if (!amdf_status_is_ok(profile->memory.status)) return profile->memory.status;
+  if (profile_ordinal >= profile->memory.count) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
+  }
+  *out_profile = profile->memory.values[profile_ordinal];
+  return AMDF_STATUS_OK;
+}
+
 void amdf_gpu_extension_initialize_endpoint(amdf_endpoint_t* endpoint) {
   const amdf_endpoint_info_t* endpoint_info =
       amdf_endpoint_get_cached_info(endpoint);
   if (endpoint_info->engine_kind != AMDF_ENGINE_KIND_GPU) {
     return;
   }
+  amdf_endpoint_set_memory_profile_query(
+      endpoint, amdf_gpu_endpoint_query_memory_profile);
 
   amdf_gpu_endpoint_profile_t profile = {0};
   bool profile_available = false;
   const amdf_status_t status = amdf_gpu_umd_query_endpoint_profile(
       amdf_endpoint_get_platform(endpoint),
+      amdf_instance_native_lifetime(amdf_endpoint_get_instance(endpoint)),
       amdf_endpoint_host_allocator(endpoint), &profile, &profile_available);
   if (!amdf_status_is_ok(status)) {
     amdf_endpoint_store_engine_profile_error(endpoint, status);

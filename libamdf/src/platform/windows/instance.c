@@ -33,6 +33,14 @@ void amdf_platform_instance_lock_native(amdf_platform_instance_t* instance) {
   AcquireSRWLockExclusive(&instance->native_lock);
 }
 
+uint64_t amdf_platform_instance_host_allocation_granularity(
+    const amdf_platform_instance_t* instance) {
+  (void)instance;
+  SYSTEM_INFO info;
+  GetSystemInfo(&info);
+  return info.dwAllocationGranularity;
+}
+
 void amdf_platform_instance_unlock_native(amdf_platform_instance_t* instance) {
   ReleaseSRWLockExclusive(&instance->native_lock);
 }

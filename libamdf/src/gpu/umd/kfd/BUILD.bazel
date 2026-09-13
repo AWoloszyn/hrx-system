@@ -204,12 +204,24 @@ amdf_cc_test(
 )
 
 amdf_cc_library(
+    name = "memory_profile",
+    srcs = ["memory_profile.c"],
+    hdrs = ["memory_profile.h"],
+    target_compatible_with = KFD_COMPATIBILITY,
+    deps = [
+        ":topology",
+        "//libamdf/src:memory_profile",
+    ],
+)
+
+amdf_cc_library(
     name = "memory",
     srcs = ["memory.c"],
     target_compatible_with = KFD_COMPATIBILITY,
     deps = [
         ":buffer",
         ":device_state",
+        ":memory_profile",
         ":topology",
         "//libamdf/src:allocator",
         "//libamdf/src/gpu/umd:memory",
@@ -237,6 +249,7 @@ amdf_cc_library(
     srcs = ["endpoint_profile.c"],
     target_compatible_with = KFD_COMPATIBILITY,
     deps = [
+        ":memory_profile",
         ":topology",
         "//libamdf/src/gpu:endpoint_profile",
         "//libamdf/src/gpu/umd:endpoint_profile",

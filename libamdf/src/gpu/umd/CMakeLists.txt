@@ -58,6 +58,7 @@ iree_cc_library(
   DEPS
     amdf::headers
     libamdf::src::memory_pair
+    libamdf::src::memory_profile
   PUBLIC
 )
 endif()

@@ -9,14 +9,16 @@
 
 #include <unistd.h>
 
+#include "libamdf/src/gpu/umd/kfd/memory_profile.h"
 #include "libamdf/src/gpu/umd/kfd/target/user_queue.h"
 #include "libamdf/src/gpu/umd/kfd/topology.h"
 #include "libamdf/src/platform/linux/file.h"
 #include "libamdf/src/platform/linux/host_cache.h"
 
 amdf_status_t amdf_gpu_umd_query_endpoint_profile(
-    amdf_platform_endpoint_t* endpoint, amdf_allocator_t host_allocator,
-    amdf_gpu_endpoint_profile_t* out_profile, bool* out_available) {
+    amdf_platform_endpoint_t* endpoint, amdf_native_lifetime_t native_lifetime,
+    amdf_allocator_t host_allocator, amdf_gpu_endpoint_profile_t* out_profile,
+    bool* out_available) {
   (void)host_allocator;
   amdf_gpu_kfd_topology_t topology = {0};
   amdf_status_t status = amdf_gpu_kfd_topology_query(endpoint, &topology);
@@ -59,6 +61,17 @@ amdf_status_t amdf_gpu_umd_query_endpoint_profile(
   amdf_gpu_endpoint_profile_t profile;
   if (!amdf_gpu_endpoint_profile_initialize(&topology.properties, &profile)) {
     return amdf_linux_error(EPROTO);
+  }
+  profile.memory.count =
+      1 +
+      ((topology.memory_features & AMDF_GPU_DEVICE_FEATURE_LOCAL_MEMORY) != 0) +
+      (native_lifetime == AMDF_NATIVE_LIFETIME_PROCESS);
+  for (uint32_t i = 0; i < profile.memory.count; ++i) {
+    const amdf_status_t memory_status = amdf_gpu_kfd_query_memory_profile(
+        &topology, (size_t)page_size, native_lifetime, i,
+        &profile.memory.values[i]);
+    amdf_assert(amdf_status_is_ok(memory_status));
+    (void)memory_status;
   }
   *out_profile = profile;
   *out_available = true;

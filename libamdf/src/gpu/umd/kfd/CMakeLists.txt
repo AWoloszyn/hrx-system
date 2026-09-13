@@ -269,12 +269,29 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
 iree_cc_library(
   NAME
+    memory_profile
+  HDRS
+    "memory_profile.h"
+  SRCS
+    "memory_profile.c"
+  DEPS
+    ::topology
+    amdf::headers
+    libamdf::src::memory_profile
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_library(
+  NAME
     memory
   SRCS
     "memory.c"
   DEPS
     ::buffer
     ::device_state
+    ::memory_profile
     ::topology
     amdf::headers
     libamdf::src::allocator
@@ -312,6 +329,7 @@ iree_cc_library(
   SRCS
     "endpoint_profile.c"
   DEPS
+    ::memory_profile
     ::topology
     amdf::headers
     libamdf::src::gpu::endpoint_profile

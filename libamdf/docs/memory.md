@@ -80,6 +80,21 @@ construction method, access, alignment, host mapping, and sharing. A profile is
 a valid combination, not a collection of independently composable flags that
 can accidentally describe an impossible request.
 
+`instance_enumerate_memory_scopes` returns instance-visible scopes, while
+`endpoint_enumerate_memory_scopes` returns physical-local scopes and
+`device_enumerate_memory_scopes` returns scopes requiring a live device. These
+are borrowed descriptors, not additional objects to destroy. Enumeration with
+zero capacity and null storage returns the required count with
+`BUFFER_TOO_SMALL` when any scopes exist.
+
+`memory_scope_query_profile` takes the intended endpoints and their access
+requirements. Its backing profile and per-consumer capability array describe
+one jointly supported request, in caller order. `memory_create` and
+`memory_import` take that scope and explicitly initialized devices in the same
+order. An empty consumer array requests CPU-only storage; it does not mean
+access for every discovered device. The resulting memory owns its immutable
+access array, not a mutable membership list.
+
 ## Backing and resource handles
 
 An `amdf_memory_t` represents one backing store and the access established for
@@ -233,6 +248,16 @@ every consumer. Ordinary write-back pages can be coherent with a GPU and still
 need flushing before XDNA reads them. An explicit cache-control request performs
 the advertised operation even when one device is host-coherent. A CPU view has
 no device reset epoch; reset validity belongs to each device's access.
+
+`memory_query_pair_info` describes the required transitions between two sites.
+A DEVICE site selects `{memory, access_ordinal, queue_family_ordinal}`; a HOST
+site selects an `amdf_host_mapping_t`. That mapping supplies its own backing,
+range and cache behavior, without another memory argument or a synthetic CPU
+device. Two sites on one memory handle share backing even without an external
+physical identity. Distinct imported handles require qualified matching
+identities. Pair queries only read metadata; they neither perform the reported
+cache operations nor supply ordering. Native host API requirements remain
+native operations, including Windows allocation-cache publication.
 
 Ordering establishes when the consumer may act. Cache coherence does not create
 a producer-to-consumer dependency. The HAL or application supplies that

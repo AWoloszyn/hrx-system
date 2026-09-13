@@ -8,21 +8,10 @@
 #define AMDF_SRC_GPU_UMD_WDDM_DEVICE_H_
 
 #include "libamdf/src/gpu/umd/device.h"
+#include "libamdf/src/gpu/umd/wddm/memory_profile.h"
 #include "libamdf/src/gpu/umd/wddm/wkmi/adapter.h"
 #include "libamdf/src/platform/windows/device_status.h"
 #include "libamdf/src/platform/windows/kmt_api.h"
-
-// Immutable KMT memory capabilities captured for one physical GPU adapter.
-typedef struct amdf_windows_gpu_memory_capabilities_t {
-  // Native GPU virtual-address width in bits.
-  uint32_t virtual_address_bit_count;
-  // Nonzero when GPU mappings can deny device writes.
-  uint32_t read_only_memory_supported;
-  // Nonzero when GPU mappings can deny instruction fetches.
-  uint32_t no_execute_memory_supported;
-  // Nonzero when the GPU MMU supports coherent system-memory mappings.
-  uint32_t cache_coherent_memory_supported;
-} amdf_windows_gpu_memory_capabilities_t;
 
 // Concrete Windows state backing one program-independent GPU device.
 struct amdf_gpu_umd_device_t {

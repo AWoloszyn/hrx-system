@@ -25,6 +25,18 @@ amdf_cc_library(
 )
 
 amdf_cc_library(
+    name = "host_memory",
+    srcs = ["host_memory.c"],
+    target_compatible_with = ["@platforms//os:linux"],
+    visibility = ["//libamdf/src/platform:__pkg__"],
+    deps = [
+        ":file",
+        ":host_cache",
+        "//libamdf/src/platform:host_memory",
+    ],
+)
+
+amdf_cc_library(
     name = "file",
     hdrs = ["file.h"],
     target_compatible_with = ["@platforms//os:linux"],

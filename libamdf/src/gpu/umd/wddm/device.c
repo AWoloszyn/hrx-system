@@ -10,32 +10,8 @@
 
 #include "libamdf/src/allocator.h"
 #include "libamdf/src/gpu/umd/wddm/device.h"
+#include "libamdf/src/gpu/umd/wddm/memory_profile.h"
 #include "libamdf/src/platform/windows/endpoint.h"
-
-static amdf_status_t amdf_windows_gpu_query_memory_capabilities(
-    const amdf_platform_endpoint_t* endpoint,
-    amdf_windows_gpu_memory_capabilities_t* out_capabilities) {
-  D3DKMT_QUERY_GPUMMU_CAPS query = {0};
-  query.PhysicalAdapterIndex = endpoint->physical_adapter_index;
-  const amdf_status_t status = amdf_kmt_query_adapter_info(
-      &endpoint->instance->kmt, endpoint->adapter, KMTQAITYPE_QUERY_GPUMMU_CAPS,
-      &query, sizeof(query));
-  if (!amdf_status_is_ok(status)) return status;
-  if (query.Caps.VirtualAddressBitCount == 0 ||
-      query.Caps.VirtualAddressBitCount > 64) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
-  }
-
-  const amdf_windows_gpu_memory_capabilities_t capabilities = {
-      .virtual_address_bit_count = query.Caps.VirtualAddressBitCount,
-      .read_only_memory_supported = query.Caps.Flags.ReadOnlyMemorySupported,
-      .no_execute_memory_supported = query.Caps.Flags.NoExecuteMemorySupported,
-      .cache_coherent_memory_supported =
-          query.Caps.Flags.CacheCoherentMemorySupported,
-  };
-  *out_capabilities = capabilities;
-  return AMDF_STATUS_OK;
-}
 
 static amdf_status_t amdf_gpu_wddm_device_release_native(
     amdf_gpu_umd_device_t* device) {

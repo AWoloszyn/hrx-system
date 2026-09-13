@@ -33,6 +33,17 @@ amdf_cc_library(
 )
 
 amdf_cc_library(
+    name = "host_memory",
+    srcs = ["host_memory.c"],
+    target_compatible_with = WINDOWS_COMPATIBILITY,
+    visibility = ["//libamdf/src/platform:__pkg__"],
+    deps = [
+        ":host_cache",
+        "//libamdf/src/platform:host_memory",
+    ],
+)
+
+amdf_cc_library(
     name = "kmt_api",
     srcs = ["kmt_api.c"],
     hdrs = ["kmt_api.h"],

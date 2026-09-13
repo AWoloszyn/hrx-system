@@ -18,6 +18,7 @@ amdf_cc_library(
     srcs = ["endpoint_profile.c"],
     hdrs = ["endpoint_profile.h"],
     visibility = ["//libamdf/src/gpu:__subpackages__"],
+    deps = ["//libamdf/src:memory_profile"],
 )
 
 amdf_cc_library(
@@ -38,6 +39,7 @@ amdf_cc_library(
         "//libamdf/src:host_mapping",
         "//libamdf/src:instance",
         "//libamdf/src:memory",
+        "//libamdf/src:memory_profile",
         "//libamdf/src:structure",
         "//libamdf/src/gpu/umd:device",
         "//libamdf/src/gpu/umd:instance",

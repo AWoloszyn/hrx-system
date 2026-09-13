@@ -15,6 +15,26 @@
 #include "libamdf/src/xdna/device.h"
 #include "libamdf/src/xdna/endpoint_profile.h"
 #include "libamdf/src/xdna/umd/device.h"
+#include "libamdf/src/xdna/umd/memory_profile.h"
+
+static amdf_status_t amdf_xdna_endpoint_query_memory_profile(
+    amdf_endpoint_t* endpoint, uint32_t profile_ordinal,
+    amdf_memory_native_profile_t* out_profile) {
+  const amdf_xdna_endpoint_profile_t* target =
+      amdf_xdna_endpoint_profile_select(
+          amdf_endpoint_get_cached_info(endpoint));
+  if (target == NULL) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
+  return amdf_xdna_umd_query_endpoint_memory_profile(
+      amdf_endpoint_get_platform(endpoint), target, profile_ordinal,
+      out_profile);
+}
+
+void amdf_xdna_extension_initialize_endpoint(amdf_endpoint_t* endpoint) {
+  amdf_endpoint_set_memory_profile_query(
+      endpoint, amdf_xdna_endpoint_query_memory_profile);
+}
 
 static amdf_status_t AMDF_CALL amdf_xdna_endpoint_query_info(
     amdf_endpoint_t* endpoint, amdf_xdna_endpoint_info_t* out_info) {

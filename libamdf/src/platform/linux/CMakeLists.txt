@@ -26,6 +26,21 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND AMDF_BUILD)
 iree_cc_library(
   NAME
+    host_memory
+  SRCS
+    "host_memory.c"
+  DEPS
+    ::file
+    ::host_cache
+    amdf::headers
+    libamdf::src::platform::host_memory
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND AMDF_BUILD)
+iree_cc_library(
+  NAME
     file
   HDRS
     "file.h"

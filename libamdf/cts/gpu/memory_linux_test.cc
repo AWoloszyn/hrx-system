@@ -21,7 +21,7 @@ namespace {
 struct DeviceAccessCase {
   // Exact device permissions requested for this case.
   amdf_memory_access_t access;
-  // Physical properties added for this case.
+  // Consumer properties added for this case.
   amdf_memory_flags_t additional_flags;
 };
 
@@ -58,14 +58,17 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
     amdf_memory_create_info_t info = {};
     info.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
     info.structure_size = sizeof(info);
-    info.device_access = AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
-    info.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE |
-                          AMDF_MEMORY_FLAG_HOST_COHERENT |
-                          AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+    memory_access_.requirements.access =
+        AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
+    memory_access_.requirements.flags =
+        AMDF_MEMORY_FLAG_HOST_COHERENT | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+    info.access_count = 1;
+    info.accesses = &memory_access_;
+    info.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
     info.memory_profile_ordinal = FindMemoryProfileOrdinal(
-        AMDF_MEMORY_CLASS_SYSTEM,
+        system_scope_,
         AMDF_MEMORY_PROFILE_ROLE_CREATE | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
-        info.required_flags, info.device_access);
+        info.required_flags, memory_access_.requirements);
     info.byte_length = 4097;
     info.minimum_alignment = 1024 * 1024;
     return info;
@@ -100,34 +103,48 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
     std::memset(caller_pages_, 0x5A, caller_byte_length_);
   }
 
-  void ExerciseOwnedAccessMatrix(amdf_memory_class_t memory_class,
+  void ExerciseOwnedAccessMatrix(amdf_memory_scope_t* scope,
+                                 amdf_memory_class_t memory_class,
                                  amdf_memory_flags_t required_flags) {
     const bool map_memory =
         (required_flags & AMDF_MEMORY_FLAG_HOST_VISIBLE) != 0;
     for (size_t case_ordinal = 0; case_ordinal < kDeviceAccessCases.size();
          ++case_ordinal) {
       const DeviceAccessCase& access_case = kDeviceAccessCases[case_ordinal];
+      const amdf_memory_device_access_t access = {
+          device_,
+          {.access = access_case.access,
+           .flags = AMDF_MEMORY_FLAG_DEVICE_ADDRESS |
+                    (memory_class == AMDF_MEMORY_CLASS_SYSTEM
+                         ? AMDF_MEMORY_FLAG_HOST_COHERENT
+                         : 0) |
+                    access_case.additional_flags},
+      };
       amdf_memory_create_info_t create_info = {};
       create_info.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
       create_info.structure_size = sizeof(create_info);
-      create_info.device_access = access_case.access;
-      create_info.required_flags =
-          required_flags | access_case.additional_flags;
+      create_info.access_count = 1;
+      create_info.accesses = &access;
+      create_info.required_flags = required_flags;
       create_info.memory_profile_ordinal = FindMemoryProfileOrdinal(
-          memory_class,
+          scope,
           AMDF_MEMORY_PROFILE_ROLE_CREATE |
               (map_memory ? AMDF_MEMORY_PROFILE_ROLE_HOST_MAP : 0),
-          create_info.required_flags, create_info.device_access);
+          create_info.required_flags, access.requirements);
       create_info.byte_length = 4097;
       create_info.minimum_alignment = 1024 * 1024;
 
       amdf_memory_profile_t profile = {};
       profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
       profile.structure_size = sizeof(profile);
-      ASSERT_EQ(api_->device_query_memory_profile(
-                    device_, create_info.memory_profile_ordinal, &profile),
-                AMDF_STATUS_OK);
-      ASSERT_EQ(api_->memory_create(device_, &create_info, &memories_[0]),
+      amdf_memory_access_capabilities_t capabilities = {};
+      capabilities.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES;
+      capabilities.structure_size = sizeof(capabilities);
+      ASSERT_EQ(
+          QueryMemoryProfile(scope, create_info.memory_profile_ordinal,
+                             access.requirements, &profile, &capabilities),
+          AMDF_STATUS_OK);
+      ASSERT_EQ(api_->memory_create(scope, &create_info, &memories_[0]),
                 AMDF_STATUS_OK)
           << "access case " << case_ordinal;
 
@@ -143,15 +160,20 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
       EXPECT_EQ(info.memory_profile_ordinal,
                 create_info.memory_profile_ordinal);
       EXPECT_EQ(info.memory_class, memory_class);
-      EXPECT_EQ(access_info.access, create_info.device_access);
-      EXPECT_EQ((info.flags | access_info.flags) & profile.guaranteed_flags,
+      EXPECT_EQ(access_info.access, access.requirements.access);
+      EXPECT_EQ(info.flags & profile.guaranteed_flags,
                 profile.guaranteed_flags);
-      EXPECT_EQ((info.flags | access_info.flags) & create_info.required_flags,
+      EXPECT_EQ(info.flags & create_info.required_flags,
                 create_info.required_flags);
-      EXPECT_EQ((info.flags | access_info.flags) & ~profile.supported_flags,
-                0u);
+      EXPECT_EQ(info.flags & ~profile.supported_flags, 0u);
+      EXPECT_EQ(access_info.flags & capabilities.guaranteed_flags,
+                capabilities.guaranteed_flags);
+      EXPECT_EQ(access_info.flags & access.requirements.flags,
+                access.requirements.flags);
+      EXPECT_EQ(access_info.flags & ~capabilities.supported_flags, 0u);
       EXPECT_EQ(info.source_byte_offset, 0u);
-      EXPECT_EQ(info.byte_length, info.native_allocation_byte_length);
+      EXPECT_EQ(info.byte_length, create_info.byte_length);
+      EXPECT_GE(info.native_allocation_byte_length, info.byte_length);
       EXPECT_EQ(info.native_allocation_byte_length %
                     profile.allocation.native_byte_length_granularity,
                 0u);
@@ -236,63 +258,51 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
   }
 
   void ExerciseExactSystemDeviceAccess() {
-    ASSERT_NO_FATAL_FAILURE(ExerciseOwnedAccessMatrix(
-        AMDF_MEMORY_CLASS_SYSTEM, AMDF_MEMORY_FLAG_HOST_VISIBLE |
-                                      AMDF_MEMORY_FLAG_HOST_COHERENT |
-                                      AMDF_MEMORY_FLAG_DEVICE_ADDRESS));
+    ASSERT_NO_FATAL_FAILURE(
+        ExerciseOwnedAccessMatrix(system_scope_, AMDF_MEMORY_CLASS_SYSTEM,
+                                  AMDF_MEMORY_FLAG_HOST_VISIBLE));
 
     amdf_memory_create_info_t create_info = MakeSystemMemoryCreateInfo();
-    create_info.device_access = AMDF_MEMORY_ACCESS_WRITE;
+    memory_access_.requirements.access = AMDF_MEMORY_ACCESS_WRITE;
     amdf_memory_t* output = reinterpret_cast<amdf_memory_t*>(uintptr_t{1});
-    EXPECT_EQ(api_->memory_create(device_, &create_info, &output),
+    EXPECT_EQ(api_->memory_create(system_scope_, &create_info, &output),
               amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED));
     EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
   }
 
   void ExerciseLocalPlacementCapabilities() {
     if ((features_ & AMDF_GPU_DEVICE_FEATURE_LOCAL_MEMORY) == 0) {
-      for (uint32_t ordinal = 0;; ++ordinal) {
-        amdf_memory_profile_t profile = {};
-        profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
-        profile.structure_size = sizeof(profile);
-        const amdf_status_t status =
-            api_->device_query_memory_profile(device_, ordinal, &profile);
-        if (amdf_status_code(status) == AMDF_STATUS_CODE_OUT_OF_RANGE) break;
-        ASSERT_EQ(status, AMDF_STATUS_OK);
-        EXPECT_NE(profile.memory_class, AMDF_MEMORY_CLASS_LOCAL);
-      }
+      EXPECT_EQ(local_scope_, nullptr);
       return;
     }
+    ASSERT_NE(local_scope_, nullptr);
     ASSERT_NO_FATAL_FAILURE(ExerciseOwnedAccessMatrix(
-        AMDF_MEMORY_CLASS_LOCAL,
-        AMDF_MEMORY_FLAG_DEVICE_LOCAL | AMDF_MEMORY_FLAG_DEVICE_ADDRESS));
+        local_scope_, AMDF_MEMORY_CLASS_LOCAL, AMDF_MEMORY_FLAG_DEVICE_LOCAL));
 
     if ((features_ & AMDF_GPU_DEVICE_FEATURE_HOST_VISIBLE_LOCAL_MEMORY) == 0) {
       amdf_memory_create_info_t create_info = MakeSystemMemoryCreateInfo();
-      create_info.device_access = AMDF_MEMORY_ACCESS_READ;
-      create_info.required_flags = AMDF_MEMORY_FLAG_DEVICE_LOCAL |
-                                   AMDF_MEMORY_FLAG_HOST_VISIBLE |
-                                   AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+      memory_access_.requirements.access = AMDF_MEMORY_ACCESS_READ;
+      memory_access_.requirements.flags = AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+      create_info.required_flags =
+          AMDF_MEMORY_FLAG_DEVICE_LOCAL | AMDF_MEMORY_FLAG_HOST_VISIBLE;
       create_info.memory_profile_ordinal = FindMemoryProfileOrdinal(
-          AMDF_MEMORY_CLASS_LOCAL, AMDF_MEMORY_PROFILE_ROLE_CREATE,
-          AMDF_MEMORY_FLAG_DEVICE_LOCAL | AMDF_MEMORY_FLAG_DEVICE_ADDRESS,
-          create_info.device_access);
+          local_scope_, AMDF_MEMORY_PROFILE_ROLE_CREATE,
+          AMDF_MEMORY_FLAG_DEVICE_LOCAL, memory_access_.requirements);
       amdf_memory_t* output = reinterpret_cast<amdf_memory_t*>(uintptr_t{1});
-      EXPECT_EQ(api_->memory_create(device_, &create_info, &output),
+      EXPECT_EQ(api_->memory_create(local_scope_, &create_info, &output),
                 amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED));
       EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
       return;
     }
     ASSERT_NO_FATAL_FAILURE(ExerciseOwnedAccessMatrix(
-        AMDF_MEMORY_CLASS_LOCAL, AMDF_MEMORY_FLAG_DEVICE_LOCAL |
-                                     AMDF_MEMORY_FLAG_HOST_VISIBLE |
-                                     AMDF_MEMORY_FLAG_DEVICE_ADDRESS));
+        local_scope_, AMDF_MEMORY_CLASS_LOCAL,
+        AMDF_MEMORY_FLAG_DEVICE_LOCAL | AMDF_MEMORY_FLAG_HOST_VISIBLE));
   }
 
   // Exercises allocation and host-view lifetime under either instance policy.
   void ExerciseSystemMemory() {
     const amdf_memory_create_info_t create_info = MakeSystemMemoryCreateInfo();
-    ASSERT_EQ(api_->memory_create(device_, &create_info, &memories_[0]),
+    ASSERT_EQ(api_->memory_create(system_scope_, &create_info, &memories_[0]),
               AMDF_STATUS_OK);
     amdf_memory_info_t info = {};
     info.type = AMDF_STRUCTURE_TYPE_MEMORY_INFO;
@@ -382,9 +392,9 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
     memories_[0] = nullptr;
   }
 
-  // Owned attachments released after every host view.
+  // Owned backing handles released after every host view.
   std::array<amdf_memory_t*, 4> memories_ = {};
-  // Explicit views borrowing the attachments above.
+  // Explicit views borrowing the memory handles above.
   std::array<amdf_host_mapping_t*, 4> mappings_ = {};
   // Cached properties of each explicit view.
   std::array<amdf_host_mapping_info_t, 4> mapping_infos_ = {};
@@ -406,7 +416,7 @@ TEST_F(GpuLinuxMemoryTest, RejectsUnachievableSystemPlacement) {
   amdf_memory_create_info_t info = MakeSystemMemoryCreateInfo();
   info.required_flags |= AMDF_MEMORY_FLAG_DEVICE_LOCAL;
   amdf_memory_t* output = reinterpret_cast<amdf_memory_t*>(uintptr_t{1});
-  EXPECT_EQ(api_->memory_create(device_, &info, &output),
+  EXPECT_EQ(api_->memory_create(system_scope_, &info, &output),
             amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED));
   EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 }
@@ -423,9 +433,14 @@ TEST_F(GpuLinuxMemoryTest, OmitsRegistrationWhenLifetimeDoesNotSupportIt) {
     amdf_memory_profile_t profile = {};
     profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
     profile.structure_size = sizeof(profile);
+    amdf_memory_access_capabilities_t capabilities = {};
+    capabilities.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES;
+    capabilities.structure_size = sizeof(capabilities);
     const amdf_status_t status =
-        api_->device_query_memory_profile(device_, ordinal, &profile);
+        QueryMemoryProfile(system_scope_, ordinal, memory_access_.requirements,
+                           &profile, &capabilities);
     if (amdf_status_code(status) == AMDF_STATUS_CODE_OUT_OF_RANGE) break;
+    if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) continue;
     ASSERT_EQ(status, AMDF_STATUS_OK);
     EXPECT_NE(profile.roles & AMDF_MEMORY_PROFILE_ROLE_REGISTER,
               AMDF_MEMORY_PROFILE_ROLE_REGISTER);
@@ -476,30 +491,36 @@ TEST_F(GpuLinuxMemoryTest, RegistersOverlappingCallerPagesWithExactAccess) {
   const size_t page_size = static_cast<size_t>(native_page_size);
   constexpr std::array<size_t, 4> kCallerOffsets = {3, 19, 35, 51};
   const uint64_t logical_byte_length = page_size * 4 + 17;
-  const amdf_memory_flags_t base_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE |
-                                         AMDF_MEMORY_FLAG_HOST_COHERENT |
-                                         AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+  const amdf_memory_flags_t base_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
   std::array<amdf_memory_info_t, 4> memory_infos = {};
   std::array<uint64_t, 4> addresses = {};
   for (size_t case_ordinal = 0; case_ordinal < kDeviceAccessCases.size();
        ++case_ordinal) {
     const DeviceAccessCase& access_case = kDeviceAccessCases[case_ordinal];
+    const amdf_memory_device_access_t access = {
+        device_,
+        {.access = access_case.access,
+         .flags = AMDF_MEMORY_FLAG_HOST_COHERENT |
+                  AMDF_MEMORY_FLAG_DEVICE_ADDRESS |
+                  access_case.additional_flags},
+    };
     amdf_memory_create_info_t create_info = {};
     create_info.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
     create_info.structure_size = sizeof(create_info);
-    create_info.device_access = access_case.access;
-    create_info.required_flags = base_flags | access_case.additional_flags;
+    create_info.access_count = 1;
+    create_info.accesses = &access;
+    create_info.required_flags = base_flags;
     create_info.memory_profile_ordinal = FindMemoryProfileOrdinal(
-        AMDF_MEMORY_CLASS_REGISTERED_HOST,
+        system_scope_,
         AMDF_MEMORY_PROFILE_ROLE_REGISTER | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
-        create_info.required_flags, create_info.device_access);
+        create_info.required_flags, access.requirements);
     create_info.byte_length = logical_byte_length;
     create_info.minimum_alignment = 1;
     create_info.registered_host_pointer =
         caller_pages_ + kCallerOffsets[case_ordinal];
-    ASSERT_EQ(
-        api_->memory_create(device_, &create_info, &memories_[case_ordinal]),
-        AMDF_STATUS_OK)
+    ASSERT_EQ(api_->memory_create(system_scope_, &create_info,
+                                  &memories_[case_ordinal]),
+              AMDF_STATUS_OK)
         << "access case " << case_ordinal;
 
     amdf_memory_info_t& info = memory_infos[case_ordinal];
@@ -513,8 +534,10 @@ TEST_F(GpuLinuxMemoryTest, RegistersOverlappingCallerPagesWithExactAccess) {
     ASSERT_EQ(api_->memory_query_access_info(memories_[case_ordinal], 0,
                                              &access_info),
               AMDF_STATUS_OK);
-    EXPECT_EQ(info.memory_class, AMDF_MEMORY_CLASS_REGISTERED_HOST);
-    EXPECT_EQ(access_info.access, create_info.device_access);
+    EXPECT_EQ(info.memory_class, AMDF_MEMORY_CLASS_SYSTEM);
+    EXPECT_EQ(access_info.access, access.requirements.access);
+    EXPECT_EQ(access_info.flags & access.requirements.flags,
+              access.requirements.flags);
     EXPECT_EQ((info.flags | access_info.flags) & create_info.required_flags,
               create_info.required_flags);
     EXPECT_EQ(info.source_byte_offset, kCallerOffsets[case_ordinal]);
@@ -582,15 +605,22 @@ TEST_F(GpuLinuxMemoryTest, RegistersOverlappingCallerPagesWithExactAccess) {
   invalid_access.structure_size = sizeof(invalid_access);
   invalid_access.memory_profile_ordinal =
       memory_infos[0].memory_profile_ordinal;
-  invalid_access.device_access = AMDF_MEMORY_ACCESS_WRITE;
+  const amdf_memory_device_access_t write_only_access = {
+      device_,
+      {.access = AMDF_MEMORY_ACCESS_WRITE,
+       .flags =
+           AMDF_MEMORY_FLAG_HOST_COHERENT | AMDF_MEMORY_FLAG_DEVICE_ADDRESS}};
+  invalid_access.access_count = 1;
+  invalid_access.accesses = &write_only_access;
   invalid_access.required_flags = base_flags;
   invalid_access.byte_length = 1;
   invalid_access.minimum_alignment = 1;
   invalid_access.registered_host_pointer = caller_pages_ + 67;
   amdf_memory_t* invalid_output =
       reinterpret_cast<amdf_memory_t*>(uintptr_t{1});
-  EXPECT_EQ(api_->memory_create(device_, &invalid_access, &invalid_output),
-            amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED));
+  EXPECT_EQ(
+      api_->memory_create(system_scope_, &invalid_access, &invalid_output),
+      amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED));
   EXPECT_EQ(reinterpret_cast<uintptr_t>(invalid_output), uintptr_t{1});
 
   for (amdf_host_mapping_t*& mapping : mappings_) {

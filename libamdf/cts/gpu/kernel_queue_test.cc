@@ -121,21 +121,24 @@ class GpuKernelQueueTest : public GpuDeviceFixture {
   }
 
   uint64_t CreateCommandMemory() {
+    const amdf_memory_device_access_t access = {
+        device_,
+        {.access = AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE |
+                   AMDF_MEMORY_ACCESS_EXECUTE,
+         .flags = AMDF_MEMORY_FLAG_DEVICE_ADDRESS}};
     amdf_memory_create_info_t create_info = {};
     create_info.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
     create_info.structure_size = sizeof(create_info);
-    create_info.device_access = AMDF_MEMORY_ACCESS_READ |
-                                AMDF_MEMORY_ACCESS_WRITE |
-                                AMDF_MEMORY_ACCESS_EXECUTE;
-    create_info.required_flags =
-        AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+    create_info.access_count = 1;
+    create_info.accesses = &access;
+    create_info.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
     create_info.memory_profile_ordinal = FindMemoryProfileOrdinal(
-        AMDF_MEMORY_CLASS_SYSTEM,
+        system_scope_,
         AMDF_MEMORY_PROFILE_ROLE_CREATE | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
-        create_info.required_flags, create_info.device_access);
+        create_info.required_flags, access.requirements);
     create_info.byte_length = kMemoryByteLength;
     EXPECT_TRUE(amdf_status_is_ok(
-        api_->memory_create(device_, &create_info, &memory_)));
+        api_->memory_create(system_scope_, &create_info, &memory_)));
 
     uint64_t address = 0;
     EXPECT_EQ(api_->memory_query_address(memory_, 0, AMDF_MEMORY_ADDRESS_GPU,
@@ -162,20 +165,23 @@ class GpuKernelQueueTest : public GpuDeviceFixture {
   }
 
   uint64_t CreateLocalExecutableMemory() {
+    const amdf_memory_device_access_t access = {
+        device_,
+        {.access = AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE |
+                   AMDF_MEMORY_ACCESS_EXECUTE,
+         .flags = AMDF_MEMORY_FLAG_DEVICE_ADDRESS}};
     amdf_memory_create_info_t create_info = {};
     create_info.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
     create_info.structure_size = sizeof(create_info);
-    create_info.device_access = AMDF_MEMORY_ACCESS_READ |
-                                AMDF_MEMORY_ACCESS_WRITE |
-                                AMDF_MEMORY_ACCESS_EXECUTE;
-    create_info.required_flags =
-        AMDF_MEMORY_FLAG_DEVICE_LOCAL | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+    create_info.access_count = 1;
+    create_info.accesses = &access;
+    create_info.required_flags = AMDF_MEMORY_FLAG_DEVICE_LOCAL;
     create_info.memory_profile_ordinal = FindMemoryProfileOrdinal(
-        AMDF_MEMORY_CLASS_LOCAL, AMDF_MEMORY_PROFILE_ROLE_CREATE,
-        create_info.required_flags, create_info.device_access);
+        local_scope_, AMDF_MEMORY_PROFILE_ROLE_CREATE,
+        create_info.required_flags, access.requirements);
     create_info.byte_length = kMemoryByteLength;
     EXPECT_TRUE(amdf_status_is_ok(
-        api_->memory_create(device_, &create_info, &local_memory_)));
+        api_->memory_create(local_scope_, &create_info, &local_memory_)));
 
     amdf_memory_info_t memory_info = {};
     memory_info.type = AMDF_STRUCTURE_TYPE_MEMORY_INFO;
@@ -190,7 +196,9 @@ class GpuKernelQueueTest : public GpuDeviceFixture {
     EXPECT_EQ(
         (memory_info.flags | access_info.flags) & create_info.required_flags,
         create_info.required_flags);
-    EXPECT_EQ(access_info.access, create_info.device_access);
+    EXPECT_EQ(access_info.access, access.requirements.access);
+    EXPECT_EQ(access_info.flags & access.requirements.flags,
+              access.requirements.flags);
     EXPECT_GE(memory_info.byte_length, kMemoryByteLength);
     uint64_t address = 0;
     EXPECT_EQ(api_->memory_query_address(local_memory_, 0,
@@ -199,10 +207,15 @@ class GpuKernelQueueTest : public GpuDeviceFixture {
     return address;
   }
 
+  // System backing for commands and host-visible results.
   amdf_memory_t* memory_ = nullptr;
+  // Local backing reached indirectly by submitted GPU commands.
   amdf_memory_t* local_memory_ = nullptr;
+  // Host view of system backing.
   amdf_host_mapping_t* mapping_ = nullptr;
+  // Case-owned kernel-mediated queue.
   amdf_kernel_queue_t* queue_ = nullptr;
+  // Failed completion cannot establish that indirect resources are idle.
   bool indirect_memory_may_be_in_use_ = false;
 };
 

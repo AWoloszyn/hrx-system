@@ -14,6 +14,7 @@
 #include "libamdf/src/instance.h"
 #include "libamdf/src/kernel_queue.h"
 #include "libamdf/src/memory.h"
+#include "libamdf/src/memory_scope.h"
 #include "libamdf/src/provider/extension.h"
 #include "libamdf/src/user_queue.h"
 
@@ -29,7 +30,11 @@ static const amdf_api_t amdf_api_v1 = {
     .query_extension = amdf_extension_query,
     .endpoint_query_queue_family_info = amdf_endpoint_query_queue_family_info,
     .device_destroy = amdf_device_destroy,
-    .device_query_memory_profile = amdf_device_query_memory_profile,
+    .instance_enumerate_memory_scopes = amdf_instance_enumerate_memory_scopes,
+    .endpoint_enumerate_memory_scopes = amdf_endpoint_enumerate_memory_scopes,
+    .device_enumerate_memory_scopes = amdf_device_enumerate_memory_scopes,
+    .memory_scope_query_info = amdf_memory_scope_query_info,
+    .memory_scope_query_profile = amdf_memory_scope_query_profile,
     .memory_create = amdf_memory_create,
     .memory_import = amdf_memory_import,
     .memory_query_info = amdf_memory_query_info,

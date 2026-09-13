@@ -70,6 +70,7 @@ iree_cc_library(
     libamdf::src::endpoint
     libamdf::src::host_mapping
     libamdf::src::memory
+    libamdf::src::memory_profile
     libamdf::src::structure
     libamdf::src::xdna::umd::device
     libamdf::src::xdna::umd::memory
@@ -115,6 +116,7 @@ iree_cc_library(
     libamdf::src::platform
     libamdf::src::structure
     libamdf::src::xdna::umd::device
+    libamdf::src::xdna::umd::memory_profile
   PUBLIC
 )
 endif()

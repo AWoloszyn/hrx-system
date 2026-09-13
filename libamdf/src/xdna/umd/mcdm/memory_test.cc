@@ -179,17 +179,12 @@ class WindowsXdnaMemoryTest : public ::testing::Test {
     device_.paging_sync_object = 0x40;
     device_.paging_fence = &paging_fence_;
 
-    create_info_.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
-    create_info_.structure_size = sizeof(create_info_);
-    create_info_.memory_profile_ordinal = 0;
     create_info_.device_access =
         AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
     create_info_.required_flags =
         AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
     create_info_.byte_length = 4097;
     create_info_.minimum_alignment = 4096;
-    profile_.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
-    profile_.structure_size = sizeof(profile_);
     ASSERT_TRUE(amdf_status_is_ok(
         amdf_xdna_umd_device_query_memory_profile(&device_, 0, &profile_)));
   }
@@ -218,9 +213,9 @@ class WindowsXdnaMemoryTest : public ::testing::Test {
   // Monitored fence exposed to the production paging wait.
   volatile uint64_t paging_fence_ = 0;
   // System-memory request for an unaligned logical byte length.
-  amdf_memory_create_info_t create_info_ = {};
+  amdf_memory_native_create_info_t create_info_ = {};
   // Profile queried from the production native provider.
-  amdf_memory_profile_t profile_ = {};
+  amdf_memory_native_profile_t profile_ = {};
 };
 
 TEST_F(WindowsXdnaMemoryTest, CompletesOnlyAfterMapAndOrdinaryResidency) {
@@ -254,7 +249,7 @@ TEST_F(WindowsXdnaMemoryTest, CompletesOnlyAfterMapAndOrdinaryResidency) {
   amdf_xdna_umd_host_mapping_t* mapping = nullptr;
   amdf_xdna_umd_host_mapping_result_t map_result = {};
   ASSERT_TRUE(amdf_status_is_ok(amdf_xdna_umd_memory_map(
-      memory, &profile_, &map_info, &mapping, &map_result)));
+      memory, &profile_.host_mapping, &map_info, &mapping, &map_result)));
   ASSERT_NE(mapping, nullptr);
   EXPECT_NE(map_result.pointer, nullptr);
   EXPECT_EQ(map_result.byte_length, map_info.byte_length);
@@ -350,7 +345,7 @@ TEST_F(WindowsXdnaMemoryTest, ConstrainsAndChecksCompleteNativeAddressRanges) {
 
 TEST_F(WindowsXdnaMemoryTest, RequiresAddressGeometryBeforeAdvertisingMemory) {
   endpoint_profile_.dma.address_bit_count = 0;
-  const amdf_memory_profile_t original = profile_;
+  const amdf_memory_native_profile_t original = profile_;
   EXPECT_EQ(amdf_status_code(amdf_xdna_umd_device_query_memory_profile(
                 &device_, 0, &profile_)),
             AMDF_STATUS_CODE_OUT_OF_RANGE);

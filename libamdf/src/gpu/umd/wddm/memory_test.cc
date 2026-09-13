@@ -250,17 +250,12 @@ class WindowsGpuMemoryTest : public ::testing::Test {
     device_.wkmi_adapter.native =
         reinterpret_cast<amdf_wkmi_bridge_gpu_adapter_t*>(&state_);
 
-    create_info_.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
-    create_info_.structure_size = sizeof(create_info_);
-    create_info_.memory_profile_ordinal = 1;
     create_info_.device_access =
         AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
     create_info_.required_flags =
         AMDF_MEMORY_FLAG_DEVICE_LOCAL | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
     create_info_.byte_length = 65536;
     create_info_.minimum_alignment = 65536;
-    profile_.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
-    profile_.structure_size = sizeof(profile_);
     ASSERT_EQ(amdf_gpu_umd_device_query_memory_profile(&device_, 1, &profile_),
               AMDF_STATUS_OK);
   }
@@ -276,9 +271,9 @@ class WindowsGpuMemoryTest : public ::testing::Test {
   // Live device state borrowed by the memory attachment under test.
   amdf_gpu_umd_device_t device_ = {};
   // Device-local allocation request used by the lifecycle witness.
-  amdf_memory_create_info_t create_info_ = {};
+  amdf_memory_native_create_info_t create_info_ = {};
   // Device-local profile passed through the trusted UMD boundary.
-  amdf_memory_profile_t profile_ = {};
+  amdf_memory_native_profile_t profile_ = {};
 };
 
 TEST_F(WindowsGpuMemoryTest,
@@ -338,7 +333,6 @@ TEST_F(WindowsGpuMemoryTest,
   state_.allocation_handle = 0;
   state_.resource_handle = 0x21;
   state_.destroy_status = kStatusNoMemory;
-  create_info_.memory_profile_ordinal = 0;
   create_info_.required_flags =
       AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
   ASSERT_EQ(amdf_gpu_umd_device_query_memory_profile(&device_, 0, &profile_),
@@ -440,9 +434,7 @@ TEST_F(WindowsGpuMemoryTest, ProfileUsesCapturedGpuMmuCapabilities) {
   EXPECT_EQ(profile_.allocation.maximum_byte_length, UINT64_C(1) << 47);
   EXPECT_EQ(profile_.allocation.maximum_alignment, UINT64_C(1) << 47);
   EXPECT_EQ(profile_.supported_flags & AMDF_MEMORY_FLAG_HOST_COHERENT, 0u);
-  amdf_memory_profile_t system_profile = {};
-  system_profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
-  system_profile.structure_size = sizeof(system_profile);
+  amdf_memory_native_profile_t system_profile = {};
   ASSERT_EQ(
       amdf_gpu_umd_device_query_memory_profile(&device_, 0, &system_profile),
       AMDF_STATUS_OK);
@@ -452,9 +444,7 @@ TEST_F(WindowsGpuMemoryTest, ProfileUsesCapturedGpuMmuCapabilities) {
   device_.memory_capabilities.read_only_memory_supported = 0;
   device_.memory_capabilities.no_execute_memory_supported = 0;
   device_.memory_capabilities.cache_coherent_memory_supported = 0;
-  amdf_memory_profile_t restricted_profile = {};
-  restricted_profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
-  restricted_profile.structure_size = sizeof(restricted_profile);
+  amdf_memory_native_profile_t restricted_profile = {};
   ASSERT_EQ(amdf_gpu_umd_device_query_memory_profile(&device_, 0,
                                                      &restricted_profile),
             AMDF_STATUS_OK);
@@ -468,9 +458,7 @@ TEST_F(WindowsGpuMemoryTest, ProfileUsesCapturedGpuMmuCapabilities) {
 TEST_F(WindowsGpuMemoryTest,
        ProfileQueryPreservesCapturedCapabilityFailureAndOutput) {
   device_.memory_profile_status = amdf_kmt_make_status(kStatusNoMemory);
-  amdf_memory_profile_t output = {};
-  output.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
-  output.structure_size = sizeof(output);
+  amdf_memory_native_profile_t output = {};
   output.ordinal = 73;
 
   EXPECT_EQ(amdf_gpu_umd_device_query_memory_profile(&device_, 0, &output),

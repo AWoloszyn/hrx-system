@@ -18,10 +18,23 @@ amdf_cc_library(
     hdrs = ["device.h"],
     target_compatible_with = ["@platforms//os:windows"],
     deps = [
+        ":memory_profile",
         "//libamdf/src/gpu/umd:device",
         "//libamdf/src/gpu/umd/wddm/wkmi:adapter",
         "//libamdf/src/platform/windows:device_status",
         "//libamdf/src/platform/windows:kmt_api",
+    ],
+)
+
+amdf_cc_library(
+    name = "memory_profile",
+    srcs = ["memory_profile.c"],
+    hdrs = ["memory_profile.h"],
+    target_compatible_with = ["@platforms//os:windows"],
+    deps = [
+        "//libamdf/src:memory_profile",
+        "//libamdf/src/platform",
+        "//libamdf/src/platform/windows:endpoint",
     ],
 )
 
@@ -31,6 +44,7 @@ amdf_cc_library(
     target_compatible_with = ["@platforms//os:windows"],
     deps = [
         ":device_state",
+        ":memory_profile",
         "//libamdf/src:allocator",
         "//libamdf/src/gpu/umd:memory",
         "//libamdf/src/platform/windows:host_cache",
@@ -72,6 +86,7 @@ amdf_cc_library(
     target_compatible_with = ["@platforms//os:windows"],
     deps = [
         ":device_state",
+        ":memory_profile",
         "//libamdf/src:allocator",
         "//libamdf/src/platform/windows:endpoint",
     ],
@@ -83,6 +98,7 @@ amdf_cc_library(
     target_compatible_with = ["@platforms//os:windows"],
     visibility = ["//libamdf/src/gpu/umd:__pkg__"],
     deps = [
+        ":memory_profile",
         "//libamdf/src/gpu:endpoint_profile",
         "//libamdf/src/gpu/umd:endpoint_profile",
         "//libamdf/src/gpu/umd/wddm/wkmi:adapter",

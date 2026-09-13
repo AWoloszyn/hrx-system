@@ -18,12 +18,12 @@ typedef uint32_t amdf_memory_class_t;
 enum amdf_memory_class_e {
   /// No placement class. This value is never accepted by memory creation.
   AMDF_MEMORY_CLASS_UNKNOWN = 0,
-  /// Provider-owned system memory accessible through a host mapping.
+  /// System memory accessible through a host mapping, including borrowed pages.
   AMDF_MEMORY_CLASS_SYSTEM = 1,
   /// Device-local physical memory that may not be host visible.
   AMDF_MEMORY_CLASS_LOCAL = 2,
-  /// Caller-owned host memory registered with a device.
-  AMDF_MEMORY_CLASS_REGISTERED_HOST = 3,
+  /// Native-private storage qualified by its live scope owner.
+  AMDF_MEMORY_CLASS_PRIVATE = 3,
 };
 
 /// Required or achieved properties of a memory attachment.
@@ -334,6 +334,60 @@ typedef struct amdf_memory_address_capabilities_t {
   uint64_t minimum_alignment;
 } amdf_memory_address_capabilities_t;
 
+/// Exact access requirements, shared by passive discovery and construction.
+typedef struct amdf_memory_access_requirements_t {
+  /// Exact device permissions; construction never silently widens them.
+  amdf_memory_access_t access;
+  /// Reserved for compatible growth; must be zero.
+  uint32_t reserved;
+  /// Required access properties: QUEUE_STORAGE, HOST_COHERENT, DEVICE_ADDRESS.
+  amdf_memory_flags_t flags;
+  /// Interfaces whose complete logical-range addresses must be established.
+  amdf_memory_address_kinds_t address_kinds;
+} amdf_memory_access_requirements_t;
+
+/// One intended consumer without any activation or lifetime extension.
+typedef struct amdf_memory_endpoint_access_t {
+  /// Borrowed passive endpoint identifying the intended consumer.
+  amdf_endpoint_t* endpoint;
+  /// Required access contract, with no activation implied.
+  amdf_memory_access_requirements_t requirements;
+} amdf_memory_endpoint_access_t;
+
+/// One explicitly initialized consumer of a memory resource.
+typedef struct amdf_memory_device_access_t {
+  /// Borrowed live device. The caller keeps it live through memory release.
+  amdf_device_t* device;
+  /// Access established completely before successful construction returns.
+  amdf_memory_access_requirements_t requirements;
+} amdf_memory_device_access_t;
+
+/// Complete expected access for one endpoint in a selected scope contract.
+typedef struct amdf_memory_access_capabilities_t {
+  /// Must be `AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES`.
+  amdf_structure_type_t type;
+  /// Must be at least `sizeof(amdf_memory_access_capabilities_t)`.
+  uint32_t structure_size;
+  /// Optional output extension chain. No extensions are currently defined.
+  void* next;
+  /// Permissions present for every construction of this contract.
+  amdf_memory_access_t guaranteed_access;
+  /// Permissions the contract can establish.
+  amdf_memory_access_t supported_access;
+  /// Access properties present for every construction.
+  amdf_memory_flags_t guaranteed_flags;
+  /// Access properties which may be required.
+  amdf_memory_flags_t supported_flags;
+  /// Atomic operations on naturally aligned 32-bit words.
+  amdf_atomic_operations_t atomic_operations_32;
+  /// Atomic operations on naturally aligned 64-bit words.
+  amdf_atomic_operations_t atomic_operations_64;
+  /// Complete numeric envelope covering the reported address kinds.
+  amdf_memory_address_capabilities_t device_address;
+  /// Interfaces whose complete logical-range addresses can be established.
+  amdf_memory_address_kinds_t address_kinds;
+} amdf_memory_access_capabilities_t;
+
 /// Range and access capabilities of explicit host mappings.
 typedef struct amdf_host_mapping_capabilities_t {
   /// Maximum logical mapping length in bytes.
@@ -373,16 +427,6 @@ typedef struct amdf_memory_profile_t {
   amdf_memory_flags_t guaranteed_flags;
   /// Properties which callers may require from this profile.
   amdf_memory_flags_t supported_flags;
-  /// Device access present in every attachment using this profile.
-  amdf_memory_access_t guaranteed_device_access;
-  /// Device access bits which may be selected for this profile.
-  amdf_memory_access_t supported_device_access;
-  /// Atomic operations supported by 32-bit words in this target placement.
-  amdf_atomic_operations_t atomic_operations_32;
-  /// Atomic operations supported by 64-bit words in this target placement.
-  amdf_atomic_operations_t atomic_operations_64;
-  /// Ordinary address domain and envelope covering every produced address kind.
-  amdf_memory_address_capabilities_t device_address;
   /// Provider-owned physical allocation limits, or all-zero without CREATE.
   amdf_memory_construction_capabilities_t allocation;
   /// Caller-owned host registration limits, or all-zero without REGISTER.
@@ -398,11 +442,36 @@ typedef struct amdf_memory_profile_t {
   /// Type-specific external-memory support records.
   amdf_external_memory_support_t
       external_memory_support[AMDF_MEMORY_PROFILE_EXTERNAL_SUPPORT_CAPACITY];
-  /// Address kinds established when construction obtains DEVICE_ADDRESS.
-  amdf_memory_address_kinds_t address_kinds;
 } amdf_memory_profile_t;
 
-/// Parameters used to create physical backing and attach it to one device.
+/// Storage locality and lifetime owner of a borrowed scope.
+typedef uint32_t amdf_memory_scope_kind_t;
+enum amdf_memory_scope_kind_e {
+  /// System storage for a supported set of consumers, owned by the instance.
+  AMDF_MEMORY_SCOPE_KIND_SYSTEM = 0,
+  /// Storage local to one physical endpoint, owned by that passive endpoint.
+  AMDF_MEMORY_SCOPE_KIND_LOCAL = 1,
+  /// Storage qualified by a particular live native device or context owner.
+  AMDF_MEMORY_SCOPE_KIND_PRIVATE = 2,
+};
+
+/// Complete immutable facts of one borrowed storage scope.
+typedef struct amdf_memory_scope_info_t {
+  /// Must be `AMDF_STRUCTURE_TYPE_MEMORY_SCOPE_INFO`.
+  amdf_structure_type_t type;
+  /// Must be at least `sizeof(amdf_memory_scope_info_t)`.
+  uint32_t structure_size;
+  /// Optional output extension chain. No extensions are currently defined.
+  void* next;
+  /// Storage and owner class.
+  amdf_memory_scope_kind_t kind;
+  /// Number of stable scope-local profile ordinals.
+  uint32_t memory_profile_count;
+  /// Physical storage endpoint for LOCAL; all zero otherwise.
+  amdf_endpoint_id_t physical_endpoint_id;
+} amdf_memory_scope_info_t;
+
+/// Parameters obtaining one backing and all requested live-device accesses.
 typedef struct amdf_memory_create_info_t {
   /// Must be `AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO`.
   amdf_structure_type_t type;
@@ -410,15 +479,17 @@ typedef struct amdf_memory_create_info_t {
   uint32_t structure_size;
   /// Optional input extension chain. No extensions are currently defined.
   const void* next;
-  /// Dense device memory-profile ordinal selected for construction. A CREATE
+  /// Scope-local memory-profile ordinal selected for construction. A CREATE
   /// profile requires `registered_host_pointer` to be `NULL`; a REGISTER
   /// profile requires it to be non-`NULL`.
   uint32_t memory_profile_ordinal;
-  /// Exact device read, write, and execute access required on the attachment.
-  amdf_memory_access_t device_access;
-  /// Required properties that must all be achieved.
+  /// Number of entries in accesses; zero requests CPU-only system memory.
+  uint32_t access_count;
+  /// Required backing properties: HOST_VISIBLE, DEVICE_LOCAL and SHAREABLE.
   amdf_memory_flags_t required_flags;
-  /// Minimum usable byte length. The achieved allocation may be larger.
+  /// Logical byte length established for every requested consumer. Native
+  /// allocation rounding is reported separately and grants no additional
+  /// access.
   uint64_t byte_length;
   /// Minimum power-of-two allocation-base alignment in every supported address
   /// space, or zero for provider policy.
@@ -427,6 +498,10 @@ typedef struct amdf_memory_create_info_t {
   /// keeps this address range backed by the same live pages until
   /// `memory_destroy` succeeds. Registration does not take ownership.
   void* registered_host_pointer;
+  /// Caller-ordered consumers, consumed during the call and not retained.
+  /// Devices must be unique and belong to the scope's instance. NULL at zero
+  /// count. Each device remains a caller-enforced lifetime dependency.
+  const amdf_memory_device_access_t* accesses;
 } amdf_memory_create_info_t;
 
 /// Immutable backing properties of one live memory resource.
@@ -496,7 +571,7 @@ typedef struct amdf_memory_access_info_t {
   uint64_t reset_epoch;
 } amdf_memory_access_info_t;
 
-/// Parameters used to attach typed external memory to one device.
+/// Parameters obtaining external backing and all requested live-device access.
 typedef struct amdf_memory_import_info_t {
   /// Must be `AMDF_STRUCTURE_TYPE_MEMORY_IMPORT_INFO`.
   amdf_structure_type_t type;
@@ -504,16 +579,20 @@ typedef struct amdf_memory_import_info_t {
   uint32_t structure_size;
   /// Optional input extension chain. No extensions are currently defined.
   const void* next;
-  /// Dense destination-device memory profile with the IMPORT role.
+  /// Scope-local profile with the IMPORT role.
   uint32_t memory_profile_ordinal;
-  /// Exact device read, write, and execute access required on the attachment.
-  amdf_memory_access_t device_access;
-  /// Required properties that must all be achieved.
+  /// Number of entries in accesses.
+  uint32_t access_count;
+  /// Required backing properties: HOST_VISIBLE, DEVICE_LOCAL and SHAREABLE.
   amdf_memory_flags_t required_flags;
   /// Minimum power-of-two destination device-address alignment, or zero for
   /// profile policy. A nonzero external source offset must be divisible by
   /// this value.
   uint64_t minimum_alignment;
+  /// Caller-ordered unique consumers, consumed during the call and not
+  /// retained. Each device belongs to the scope's instance and outlives the
+  /// memory.
+  const amdf_memory_device_access_t* accesses;
 } amdf_memory_import_info_t;
 
 /// Parameters used to export one logical memory range.
@@ -712,7 +791,16 @@ typedef struct amdf_host_mapping_info_t {
   amdf_cache_transition_t invalidate;
 } amdf_host_mapping_info_t;
 
-/// One concrete attachment and exact execution family in a pair query.
+/// Kind of concrete access participating in a directional pair query.
+typedef uint32_t amdf_memory_site_kind_t;
+enum amdf_memory_site_kind_e {
+  /// An initialized device access and its exact queue family.
+  AMDF_MEMORY_SITE_KIND_DEVICE = 0,
+  /// A live host mapping, including its range and CPU cache behavior.
+  AMDF_MEMORY_SITE_KIND_HOST = 1,
+};
+
+/// One concrete device access or host mapping in a pair query.
 typedef struct amdf_memory_site_t {
   /// Must be `AMDF_STRUCTURE_TYPE_MEMORY_SITE`.
   amdf_structure_type_t type;
@@ -720,12 +808,24 @@ typedef struct amdf_memory_site_t {
   uint32_t structure_size;
   /// Optional input extension chain. No extensions are currently defined.
   const void* next;
-  /// Borrowed concrete memory attachment.
-  amdf_memory_t* memory;
-  /// Exact queue family used for memory access and cache transitions.
-  uint32_t queue_family_ordinal;
-  /// Resource-local access ordinal identifying the consuming device.
-  uint32_t access_ordinal;
+  /// Selects the active member of `value`.
+  amdf_memory_site_kind_t kind;
+  /// Reserved for future use and must be zero.
+  uint32_t reserved;
+  /// Borrowed access selected by `kind`; its owner must outlive the query.
+  union {
+    /// Exact initialized device access and execution family.
+    struct {
+      /// Memory containing the immutable device access.
+      amdf_memory_t* memory;
+      /// Resource-local access ordinal identifying the consuming device.
+      uint32_t access_ordinal;
+      /// Exact queue family used for access and cache transitions.
+      uint32_t queue_family_ordinal;
+    } device;
+    /// Host mapping supplying memory identity, range and cache behavior.
+    amdf_host_mapping_t* host_mapping;
+  } value;
 } amdf_memory_site_t;
 
 /// Directional capabilities of one concrete shared-backing memory pair.

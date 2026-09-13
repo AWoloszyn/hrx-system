@@ -131,53 +131,98 @@ typedef struct amdf_api_t {
   /// have been released.
   amdf_status_t(AMDF_CALL* device_destroy)(amdf_device_t* device);
 
-  /// Copies one immutable memory profile supported by `device`.
+  /// Enumerates borrowed system-storage scopes owned by the instance.
   ///
-  /// Profiles are fixed for the device lifetime and each describe one complete
-  /// placement, construction, access, address, host-view, and transport
-  /// contract. The operation is thread-safe and performs no allocation, native
-  /// query, mapping mutation, retry, sleep, or device wait. An unavailable
-  /// ordinal returns `AMDF_STATUS_CODE_OUT_OF_RANGE`. The caller initializes
-  /// `out_profile` and its complete extension chain. Failure leaves it
-  /// byte-for-byte unchanged.
-  amdf_status_t(AMDF_CALL* device_query_memory_profile)(
-      amdf_device_t* device, uint32_t memory_profile_ordinal,
-      amdf_memory_profile_t* out_profile);
+  /// This metadata-only operation activates no device. Capacity zero permits
+  /// NULL storage. Success and BUFFER_TOO_SMALL publish the available prefix
+  /// and full required count together; every other failure leaves outputs
+  /// unchanged. A nonempty zero-capacity query returns BUFFER_TOO_SMALL.
+  /// Returned scopes remain valid while the instance lives.
+  amdf_status_t(AMDF_CALL* instance_enumerate_memory_scopes)(
+      amdf_instance_t* instance, uint32_t capacity,
+      amdf_memory_scope_t** scopes, uint32_t* out_count);
 
-  /// Creates physical backing and one stable attachment to `device`.
+  /// Enumerates borrowed physical-local scopes owned by a passive endpoint.
   ///
-  /// The selected profile must expose exactly one of CREATE and REGISTER, with
-  /// `registered_host_pointer` present exactly for REGISTER. The returned
-  /// memory borrows `device`, which must outlive it; this dependency is not
-  /// retained or lifetime-tracked. Its copied memory info
-  /// reports the exact requested device access, and every bit in
-  /// `required_flags` is guaranteed. In particular,
-  /// `AMDF_MEMORY_FLAG_DEVICE_ADDRESS` means that all ordinary mapping and
-  /// residency work has completed and the address is ready for any supported
-  /// consumer when this cold call returns. This operation performs no queue
-  /// submission, command inspection, retry, or device-wide synchronization.
-  /// Registered host memory borrows the supplied pages without copying their
-  /// contents. If the pointer came from a host mapping, that source mapping
-  /// and its memory must outlive the registration. Independent registrations
-  /// do not transfer ownership or establish execution or cache dependencies.
-  /// Failure leaves `out_memory` unchanged.
+  /// The count/prefix protocol matches instance_enumerate_memory_scopes.
+  /// No device is activated. A local allocation requires its storage device
+  /// to be explicitly initialized and included in the requested access set.
+  /// Returned scopes remain valid while the endpoint lives.
+  amdf_status_t(AMDF_CALL* endpoint_enumerate_memory_scopes)(
+      amdf_endpoint_t* endpoint, uint32_t capacity,
+      amdf_memory_scope_t** scopes, uint32_t* out_count);
+
+  /// Enumerates borrowed native-private scopes owned by a live device.
+  ///
+  /// The count/prefix protocol matches instance_enumerate_memory_scopes.
+  /// This operation creates no resources. A device without private scopes
+  /// returns an empty set; it does not repeat instance or endpoint scopes.
+  /// Context-private scopes are retrieved through their owning extension.
+  amdf_status_t(AMDF_CALL* device_enumerate_memory_scopes)(
+      amdf_device_t* device, uint32_t capacity, amdf_memory_scope_t** scopes,
+      uint32_t* out_count);
+
+  /// Copies complete immutable facts of a borrowed scope.
+  ///
+  /// This thread-safe metadata query performs no native operation or
+  /// allocation. The caller initializes the output header and extension
+  /// chain. Failure leaves all output bytes unchanged.
+  amdf_status_t(AMDF_CALL* memory_scope_query_info)(
+      amdf_memory_scope_t* scope, amdf_memory_scope_info_t* out_info);
+
+  /// Queries a scope contract for the complete intended endpoint access set.
+  ///
+  /// Endpoints belong to the scope's instance and need not have live devices.
+  /// Repeated endpoints describe distinct intended device consumers.
+  /// Zero count permits NULL arrays and requests CPU-only
+  /// storage. The caller initializes the profile and exactly access_count
+  /// output capability records. Success publishes complete backing facts and
+  /// one capability record per input, preserving caller order. No output is
+  /// modified on failure. An ordinal outside the scope's profile count returns
+  /// OUT_OF_RANGE; a valid profile unable to satisfy the set returns
+  /// UNSUPPORTED. Metadata work scales with the access set; no native
+  /// allocation, mapping, device activation or execution occurs.
+  ///
+  /// These are complete expected capabilities, not a reservation against
+  /// exhaustion or a guarantee against installed-driver incompatibility.
+  /// Construction qualifies the explicitly live devices and establishes every
+  /// requested property before publishing memory.
+  amdf_status_t(AMDF_CALL* memory_scope_query_profile)(
+      amdf_memory_scope_t* scope, uint32_t profile_ordinal,
+      uint32_t access_count, const amdf_memory_endpoint_access_t* accesses,
+      amdf_memory_profile_t* out_profile,
+      amdf_memory_access_capabilities_t* out_access_capabilities);
+
+  /// Creates one backing with every requested live-device access established.
+  ///
+  /// The selected profile exposes exactly one of CREATE and REGISTER, with
+  /// registered_host_pointer present exactly for REGISTER. The resource
+  /// borrows the scope and all requested devices, which the caller keeps live
+  /// through memory release without hidden retention or lifetime tracking.
+  /// Access ordinals preserve request order. Exact permissions, required
+  /// properties, mapping and residency are established before publication.
+  /// No device is implicitly activated and no access is deferred to first use.
+  ///
+  /// Registered pages remain caller-owned and backed by the same live pages
+  /// through successful memory release. If they came from a host mapping, that
+  /// mapping and its backing must also remain live. Construction performs no
+  /// command inspection, queue submission or device-wide synchronization.
+  /// Failure leaves out_memory unchanged and creates no public cleanup owner.
   amdf_status_t(AMDF_CALL* memory_create)(
-      amdf_device_t* device, const amdf_memory_create_info_t* create_info,
+      amdf_memory_scope_t* scope, const amdf_memory_create_info_t* create_info,
       amdf_memory_t** out_memory);
 
-  /// Attaches one move-owned external-memory value to `device`.
+  /// Acquires external backing and establishes the requested live access set.
   ///
-  /// The selected destination profile must expose IMPORT and accept the exact
-  /// requested device access and transport. The returned attachment borrows
-  /// `device`, which must outlive it without retention or lifetime tracking,
-  /// and is completely mapped and ready for every achieved ordinary
-  /// use. On success, the implementation has
-  /// acquired or adopted the payload lifetime, zeros `inout_external_memory`,
-  /// and publishes `out_memory`. Every failure leaves both caller values
-  /// byte-for-byte unchanged and requires no cleanup of a partial attachment.
-  /// This operation performs no queue submission or device-wide wait.
+  /// The selected scope profile exposes IMPORT and accepts the transport and
+  /// all requirements. The same caller-enforced lifetime and readiness rules
+  /// as memory_create apply. Complete success acquires the native backing
+  /// references, consumes and zeros inout_external_memory, and publishes one
+  /// memory handle. Every failure leaves both caller values byte-for-byte
+  /// unchanged. This cold operation performs no queue submission or
+  /// device-wide wait.
   amdf_status_t(AMDF_CALL* memory_import)(
-      amdf_device_t* device, const amdf_memory_import_info_t* import_info,
+      amdf_memory_scope_t* scope, const amdf_memory_import_info_t* import_info,
       amdf_external_memory_t* inout_external_memory,
       amdf_memory_t** out_memory);
 
@@ -192,8 +237,8 @@ typedef struct amdf_api_t {
 
   /// Copies immutable facts of one established device access.
   ///
-  /// The ordinal is below memory info's `access_count`. Device-taking create
-  /// and import establish one access at ordinal zero. An out-of-range ordinal
+  /// The ordinal is below memory info's `access_count` and preserves the
+  /// construction request's consumer order. An out-of-range ordinal
   /// returns OUT_OF_RANGE. The caller initializes `out_info` and its extension
   /// chain; failure leaves it unchanged. This thread-safe metadata query
   /// performs no allocation, native query, mapping or synchronization.
@@ -219,18 +264,24 @@ typedef struct amdf_api_t {
   /// exclusive access to the value.
   void(AMDF_CALL* external_memory_release)(amdf_external_memory_t* value);
 
-  /// Copies the exact directional relation between two concrete attachments.
+  /// Copies the exact directional relation between two concrete access sites.
   ///
-  /// The producer and consumer sites name exact device accesses and queue
-  /// families. An out-of-range access ordinal returns OUT_OF_RANGE. Defined
-  /// engine-specific execution-site extensions may refine those sites. Both
-  /// attachments must belong to one provider instance and have equal valid
-  /// physical identities. A scope or identity mismatch returns
+  /// Each site names either a device access and queue family or a host mapping.
+  /// An out-of-range access ordinal returns OUT_OF_RANGE. Sites on one memory
+  /// handle share backing directly, including CPU-only memory without a
+  /// physical identity. Different memory handles must belong to one provider
+  /// instance and have equal valid physical identities. A scope or identity
+  /// mismatch returns
   /// `AMDF_STATUS_CODE_FAILED_PRECONDITION`; an unavailable identity returns
   /// `AMDF_STATUS_CODE_UNSUPPORTED`. Equal addresses or physical identities do
   /// not imply reach, visibility, or atomics. Common code composes
   /// independently reported local facts and gives neither implementation the
-  /// other one's object. The operation performs no native query, import,
+  /// other one's object. Host transitions account for the mapping's available
+  /// operations and the selected peer's coherence, not other device accesses
+  /// in the resource. The result describes visibility over corresponding bytes
+  /// reachable by both sites; callers select those ranges and provide ordering.
+  /// It does not establish synchronization or report host atomic capabilities.
+  /// The operation performs no native query, import,
   /// mapping, cache transition, synchronization, or wait. Failure leaves
   /// `out_info` byte-for-byte unchanged.
   amdf_status_t(AMDF_CALL* memory_query_pair_info)(

@@ -11,6 +11,7 @@
 #include <stdint.h>
 
 #include "amdf/gpu.h"
+#include "libamdf/src/memory_profile.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -25,6 +26,8 @@ typedef struct amdf_gpu_lifetime_properties_t {
 } amdf_gpu_lifetime_properties_t;
 
 enum { AMDF_GPU_QUEUE_FAMILY_CAPACITY = 4 };
+
+enum { AMDF_GPU_MEMORY_PROFILE_CAPACITY = 3 };
 
 // Native service properties for one constructible GPU queue family.
 typedef struct amdf_gpu_queue_family_properties_t {
@@ -112,6 +115,15 @@ typedef struct amdf_gpu_endpoint_profile_t {
   amdf_queue_family_info_t queue_families[AMDF_GPU_QUEUE_FAMILY_CAPACITY];
   // Capabilities indexed by amdf_native_lifetime_t.
   amdf_gpu_lifetime_properties_t native_lifetimes[2];
+  // Expected memory contracts qualified without constructing a native device.
+  struct {
+    // Terminal qualification result; failure publishes no memory profiles.
+    amdf_status_t status;
+    // Number of dense native placement/acquisition profiles in values.
+    uint32_t count;
+    // Complete native profiles for this instance's lifetime policy.
+    amdf_memory_native_profile_t values[AMDF_GPU_MEMORY_PROFILE_CAPACITY];
+  } memory;
 } amdf_gpu_endpoint_profile_t;
 
 // Validates and normalizes |properties| into |out_profile|.

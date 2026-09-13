@@ -182,8 +182,13 @@ uint32_t QueueFormatVersion(amdf_queue_command_type_t command_type) {
 class UserQueueMemoryScenario {
  public:
   UserQueueMemoryScenario(const amdf_api_t* api, const amdf_gpu_api_t* gpu_api,
-                          amdf_endpoint_t* endpoint, amdf_device_t* device)
-      : api_(api), gpu_api_(gpu_api), endpoint_(endpoint), device_(device) {}
+                          amdf_endpoint_t* endpoint, amdf_device_t* device,
+                          amdf_memory_scope_t* system_scope)
+      : api_(api),
+        gpu_api_(gpu_api),
+        endpoint_(endpoint),
+        device_(device),
+        system_scope_(system_scope) {}
 
   void RunCopiesBetweenExactAccessAttachments(
       amdf_queue_command_type_t command_type,
@@ -252,23 +257,28 @@ class UserQueueMemoryScenario {
                                 amdf_host_mapping_t*& mapping,
                                 amdf_host_mapping_info_t& mapping_info) {
     constexpr amdf_memory_flags_t kRequiredFlags =
-        AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_SHAREABLE |
-        AMDF_MEMORY_FLAG_HOST_COHERENT | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+        AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_SHAREABLE;
+    const amdf_memory_device_access_t access = {
+        device_,
+        {.access = device_access,
+         .flags =
+             AMDF_MEMORY_FLAG_HOST_COHERENT | AMDF_MEMORY_FLAG_DEVICE_ADDRESS}};
     const uint32_t profile_ordinal = FindGpuMemoryProfileOrdinal(
-        api_, device_, AMDF_MEMORY_CLASS_SYSTEM,
+        api_, system_scope_, endpoint_,
         AMDF_MEMORY_PROFILE_ROLE_CREATE | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
-        kRequiredFlags, device_access);
+        kRequiredFlags, access.requirements);
     ASSERT_NE(profile_ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
 
     amdf_memory_create_info_t create_info = {};
     create_info.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
     create_info.structure_size = sizeof(create_info);
     create_info.memory_profile_ordinal = profile_ordinal;
-    create_info.device_access = device_access;
+    create_info.access_count = 1;
+    create_info.accesses = &access;
     create_info.required_flags = kRequiredFlags;
     create_info.byte_length = kMemoryByteLength;
     create_info.minimum_alignment = 4096;
-    ASSERT_EQ(api_->memory_create(device_, &create_info, &memory),
+    ASSERT_EQ(api_->memory_create(system_scope_, &create_info, &memory),
               AMDF_STATUS_OK);
 
     memory_info.type = AMDF_STRUCTURE_TYPE_MEMORY_INFO;
@@ -281,6 +291,8 @@ class UserQueueMemoryScenario {
     EXPECT_EQ(memory_info.memory_profile_ordinal, profile_ordinal);
     EXPECT_EQ(memory_info.memory_class, AMDF_MEMORY_CLASS_SYSTEM);
     EXPECT_EQ(access_info.access, device_access);
+    EXPECT_EQ(access_info.flags & access.requirements.flags,
+              access.requirements.flags);
     EXPECT_EQ((memory_info.flags | access_info.flags) & kRequiredFlags,
               kRequiredFlags);
     EXPECT_EQ(memory_info.byte_length, kMemoryByteLength);
@@ -336,6 +348,8 @@ class UserQueueMemoryScenario {
   amdf_endpoint_t* endpoint_;
   // Execution owner borrowed through the release of all children below.
   amdf_device_t* device_;
+  // Shared system placement scope borrowed through memory destruction.
+  amdf_memory_scope_t* system_scope_;
   // GPU-readable source attachment retained through queue destruction.
   amdf_memory_t* source_memory_ = nullptr;
   // GPU-writable target attachment retained through queue destruction.
@@ -549,8 +563,10 @@ bool RunGfx1151UserQueueMemoryCopies(const amdf_api_t* api,
                                      const amdf_gpu_api_t* gpu_api,
                                      amdf_endpoint_t* endpoint,
                                      amdf_device_t* device,
+                                     amdf_memory_scope_t* system_scope,
                                      amdf_queue_command_type_t command_type) {
-  UserQueueMemoryScenario scenario(api, gpu_api, endpoint, device);
+  UserQueueMemoryScenario scenario(api, gpu_api, endpoint, device,
+                                   system_scope);
   scenario.RunCopiesBetweenExactAccessAttachments(command_type);
   return scenario.Release();
 }
@@ -575,7 +591,7 @@ class Gfx1151UserQueueMemoryTest : public GpuDeviceFixture {
   void RunCopiesBetweenExactAccessAttachments(
       amdf_queue_command_type_t command_type) {
     const bool children_released = RunGfx1151UserQueueMemoryCopies(
-        api_, gpu_api_, endpoint_, device_, command_type);
+        api_, gpu_api_, endpoint_, device_, system_scope_, command_type);
     ASSERT_TRUE(children_released);
   }
 };
@@ -594,7 +610,8 @@ TEST_F(Gfx1151UserQueueMemoryTest, ConcurrentDeviceCreationAndRecreation) {
   create_info.structure_size = sizeof(create_info);
   // This lifecycle case deliberately creates peers; all ordinary queue and
   // memory tests continue borrowing the one cached device.
-  UserQueueMemoryScenario survivor(api_, gpu_api_, endpoint_, device_);
+  UserQueueMemoryScenario survivor(api_, gpu_api_, endpoint_, device_,
+                                   system_scope_);
   survivor.RunCopiesBetweenExactAccessAttachments(
       AMDF_QUEUE_COMMAND_TYPE_GPU_PM4, [&]() {
         for (size_t generation = 0; generation < 2; ++generation) {
@@ -612,7 +629,7 @@ TEST_F(Gfx1151UserQueueMemoryTest, ConcurrentDeviceCreationAndRecreation) {
             EXPECT_EQ(statuses[i], AMDF_STATUS_OK);
             if (peers[i] == nullptr) continue;
             const bool released = RunGfx1151UserQueueMemoryCopies(
-                api_, gpu_api_, endpoint_, peers[i],
+                api_, gpu_api_, endpoint_, peers[i], system_scope_,
                 i == 0 ? AMDF_QUEUE_COMMAND_TYPE_GPU_PM4
                        : AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA);
             // An unretired queue retains its entire device chain on failure.

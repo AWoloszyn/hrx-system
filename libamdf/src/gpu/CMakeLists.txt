@@ -19,6 +19,7 @@ iree_cc_library(
     "endpoint_profile.c"
   DEPS
     amdf::headers
+    libamdf::src::memory_profile
   PUBLIC
 )
 endif()
@@ -45,6 +46,7 @@ iree_cc_library(
     libamdf::src::host_mapping
     libamdf::src::instance
     libamdf::src::memory
+    libamdf::src::memory_profile
     libamdf::src::platform
     libamdf::src::structure
   PUBLIC

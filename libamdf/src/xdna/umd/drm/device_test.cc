@@ -145,8 +145,7 @@ TEST_F(LinuxXdnaDeviceTest, ContextsShareDeviceMemoryAndDestroyIndependently) {
   }
   EXPECT_NE(results[0].id.words[0], results[1].id.words[0]);
 
-  amdf_memory_create_info_t memory_create = {};
-  memory_create.memory_profile_ordinal = 0;
+  amdf_memory_native_create_info_t memory_create = {};
   memory_create.device_access =
       AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
   memory_create.required_flags =
@@ -154,9 +153,7 @@ TEST_F(LinuxXdnaDeviceTest, ContextsShareDeviceMemoryAndDestroyIndependently) {
   memory_create.byte_length = 4097;
   memory_create.minimum_alignment = 4096;
   amdf_xdna_umd_memory_result_t memory_result = {};
-  amdf_memory_profile_t memory_profile = {};
-  memory_profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
-  memory_profile.structure_size = sizeof(memory_profile);
+  amdf_memory_native_profile_t memory_profile = {};
   ASSERT_EQ(
       amdf_xdna_umd_device_query_memory_profile(device, 0, &memory_profile),
       AMDF_STATUS_OK);
@@ -178,8 +175,8 @@ TEST_F(LinuxXdnaDeviceTest, ContextsShareDeviceMemoryAndDestroyIndependently) {
   map_info.flags = AMDF_MEMORY_MAP_FLAG_READ | AMDF_MEMORY_MAP_FLAG_WRITE;
   amdf_xdna_umd_host_mapping_result_t views[2] = {};
   for (size_t i = 0; i < 2; ++i) {
-    ASSERT_EQ(amdf_xdna_umd_memory_map(memory, &memory_profile, &map_info,
-                                       &mappings[i], &views[i]),
+    ASSERT_EQ(amdf_xdna_umd_memory_map(memory, &memory_profile.host_mapping,
+                                       &map_info, &mappings[i], &views[i]),
               AMDF_STATUS_OK);
   }
   EXPECT_EQ(reinterpret_cast<uintptr_t>(views[0].pointer),
@@ -219,12 +216,11 @@ TEST_F(LinuxXdnaDeviceTest, ContextsShareDeviceMemoryAndDestroyIndependently) {
   external_memory.byte_length = export_info.byte_length;
   external_memory.source_byte_offset = memory_result.source_byte_offset;
   external_memory.physical_backing_id = memory_result.physical_backing_id;
-  amdf_memory_profile_t import_profile = {};
-  import_profile.structure_size = sizeof(import_profile);
+  amdf_memory_native_profile_t import_profile = {};
   ASSERT_EQ(
       amdf_xdna_umd_device_query_memory_profile(device, 1, &import_profile),
       AMDF_STATUS_OK);
-  amdf_memory_import_info_t import_info = {};
+  amdf_memory_native_import_info_t import_info = {};
   import_info.device_access = memory_create.device_access;
   amdf_xdna_umd_memory_result_t import_result = {};
   uint32_t release_count = 0;

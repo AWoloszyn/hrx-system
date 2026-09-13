@@ -10,6 +10,7 @@
 #include <stddef.h>
 
 #include "amdf/amdf.h"
+#include "libamdf/src/memory_profile.h"
 #include "libamdf/src/platform/endpoint.h"
 
 #ifdef __cplusplus
@@ -17,6 +18,12 @@ extern "C" {
 #endif  // __cplusplus
 
 enum { AMDF_ENDPOINT_QUEUE_FAMILY_CAPACITY = 4 };
+
+// Derives a complete expected native memory profile from cached endpoint facts.
+// This operation performs no allocation, native query or device activation.
+typedef amdf_status_t (*amdf_endpoint_memory_profile_query_fn_t)(
+    amdf_endpoint_t* endpoint, uint32_t profile_ordinal,
+    amdf_memory_native_profile_t* out_profile);
 
 // Opens one query-only endpoint identity directly.
 amdf_status_t AMDF_CALL amdf_endpoint_open(amdf_instance_t* instance,
@@ -27,6 +34,20 @@ amdf_status_t AMDF_CALL amdf_endpoint_open(amdf_instance_t* instance,
 void amdf_endpoint_set_queue_families(
     amdf_endpoint_t* endpoint, uint32_t queue_family_count,
     const amdf_queue_family_info_t* queue_families);
+
+// Installs the family-qualified memory metadata query during endpoint open.
+void amdf_endpoint_set_memory_profile_query(
+    amdf_endpoint_t* endpoint, amdf_endpoint_memory_profile_query_fn_t query);
+
+// Queries native memory facts without constructing an execution device.
+// The caller supplies private result storage; failure leaves it unchanged.
+amdf_status_t amdf_endpoint_query_memory_profile(
+    amdf_endpoint_t* endpoint, uint32_t profile_ordinal,
+    amdf_memory_native_profile_t* out_profile);
+
+// Returns the embedded local descriptor after its storage has been qualified.
+amdf_memory_scope_t* amdf_endpoint_local_memory_scope(
+    amdf_endpoint_t* endpoint);
 
 // Copies immutable endpoint properties cached during open.
 amdf_status_t AMDF_CALL amdf_endpoint_query_info(

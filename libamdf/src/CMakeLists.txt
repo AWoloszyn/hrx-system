@@ -120,6 +120,7 @@ iree_cc_library(
     "instance.c"
   DEPS
     ::child_tracker
+    ::memory_scope_state
     amdf::headers
     libamdf::src::platform
   PUBLIC
@@ -155,6 +156,8 @@ iree_cc_library(
     ::allocator
     ::child_tracker
     ::instance
+    ::memory_profile
+    ::memory_scope_state
     ::structure
     amdf::headers
     libamdf::src::platform
@@ -175,9 +178,93 @@ iree_cc_library(
     ::child_tracker
     ::endpoint
     ::instance
+    ::memory_profile
     amdf::headers
     libamdf::src::platform
     libamdf::src::platform::native_instance
+  PUBLIC
+)
+endif()
+
+if(AMDF_BUILD)
+iree_cc_library(
+  NAME
+    memory_profile
+  HDRS
+    "memory_profile.h"
+  DEPS
+    amdf::headers
+  PUBLIC
+)
+endif()
+
+if(AMDF_BUILD)
+iree_cc_library(
+  NAME
+    memory_scope_state
+  HDRS
+    "memory_scope.h"
+  DEPS
+    ::memory_profile
+    amdf::headers
+  PUBLIC
+)
+endif()
+
+if(AMDF_BUILD)
+iree_cc_library(
+  NAME
+    memory_scope
+  SRCS
+    "memory_scope.c"
+  DEPS
+    ::allocator
+    ::device
+    ::endpoint
+    ::instance
+    ::memory_profile
+    ::memory_scope_state
+    ::structure
+    amdf::headers
+    libamdf::src::platform
+    libamdf::src::platform::native_instance
+  PUBLIC
+)
+endif()
+
+if(AMDF_BUILD)
+iree_cc_library(
+  NAME
+    memory_resource
+  HDRS
+    "memory_resource.h"
+  SRCS
+    "memory_resource.c"
+  DEPS
+    ::allocator
+    ::child_tracker
+    ::memory_pair
+    amdf::headers
+  PUBLIC
+)
+endif()
+
+if(AMDF_BUILD)
+iree_cc_library(
+  NAME
+    host_memory
+  HDRS
+    "host_memory.h"
+  SRCS
+    "host_memory.c"
+  DEPS
+    ::allocator
+    ::host_mapping
+    ::memory_profile
+    ::memory_resource
+    amdf::headers
+    libamdf::src::platform::host_memory
+    libamdf::src::platform::native_host_memory
   PUBLIC
 )
 endif()
@@ -194,7 +281,14 @@ iree_cc_library(
     ::allocator
     ::child_tracker
     ::device
+    ::host_mapping
+    ::host_memory
+    ::instance
     ::memory_pair
+    ::memory_profile
+    ::memory_resource
+    ::memory_scope
+    ::memory_scope_state
     ::structure
     amdf::headers
   PUBLIC
@@ -229,6 +323,8 @@ iree_cc_test(
     ::allocator
     ::child_tracker
     ::device
+    ::host_mapping
+    ::instance
     ::memory
     amdf::headers
     iree::third_party::google_test
@@ -249,7 +345,7 @@ iree_cc_library(
     "host_mapping.c"
   DEPS
     ::allocator
-    ::memory
+    ::memory_resource
     ::structure
     amdf::headers
   PUBLIC

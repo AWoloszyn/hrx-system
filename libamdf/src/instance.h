@@ -9,6 +9,7 @@
 
 #include "amdf/amdf.h"
 #include "libamdf/src/child_tracker.h"
+#include "libamdf/src/memory_scope.h"
 #include "libamdf/src/platform/instance.h"
 
 struct amdf_gpu_umd_instance_t;
@@ -24,6 +25,8 @@ struct amdf_instance_t {
   // The platform native-state lock protects preparation; provider teardown
   // releases it after all endpoints close. NULL means no separate state.
   struct amdf_gpu_umd_instance_t* gpu;
+  // Fixed borrowed system-storage descriptor, not a memory-resource registry.
+  amdf_memory_scope_t system_memory_scope;
   // Number of open children borrowing this instance.
   amdf_child_tracker_t children;
 };

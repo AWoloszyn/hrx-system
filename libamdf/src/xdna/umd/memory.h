@@ -9,6 +9,7 @@
 
 #include "amdf/amdf.h"
 #include "libamdf/src/memory_pair.h"
+#include "libamdf/src/memory_profile.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -67,7 +68,7 @@ typedef struct amdf_xdna_umd_host_mapping_result_t {
 // Copies one immutable memory profile supported by `device`.
 amdf_status_t amdf_xdna_umd_device_query_memory_profile(
     amdf_xdna_umd_device_t* device, uint32_t memory_profile_ordinal,
-    amdf_memory_profile_t* out_profile);
+    amdf_memory_native_profile_t* out_profile);
 
 // Prepares physical backing and native access in an already-live owner's
 // initially NULL `memory_state` slot. This is a one-shot transition: native
@@ -75,8 +76,8 @@ amdf_status_t amdf_xdna_umd_device_query_memory_profile(
 // before metadata allocation leaves the slot NULL. Only success publishes
 // complete properties to `out_result`; no rollback occurs inside preparation.
 amdf_status_t amdf_xdna_umd_memory_prepare(
-    amdf_xdna_umd_device_t* device, const amdf_memory_profile_t* profile,
-    const amdf_memory_create_info_t* create_info,
+    amdf_xdna_umd_device_t* device, const amdf_memory_native_profile_t* profile,
+    const amdf_memory_native_create_info_t* create_info,
     amdf_xdna_umd_memory_t** memory_state,
     amdf_xdna_umd_memory_result_t* out_result);
 
@@ -86,8 +87,8 @@ amdf_status_t amdf_xdna_umd_memory_prepare(
 // callback; the public construction owner consumes the move only after complete
 // success.
 amdf_status_t amdf_xdna_umd_memory_prepare_import(
-    amdf_xdna_umd_device_t* device, const amdf_memory_profile_t* profile,
-    const amdf_memory_import_info_t* import_info,
+    amdf_xdna_umd_device_t* device, const amdf_memory_native_profile_t* profile,
+    const amdf_memory_native_import_info_t* import_info,
     const amdf_external_memory_t* external_memory,
     amdf_xdna_umd_memory_t** memory_state,
     amdf_xdna_umd_memory_result_t* out_result);
@@ -116,7 +117,8 @@ void amdf_xdna_umd_memory_abandon(amdf_xdna_umd_memory_t* memory);
 
 // Creates one explicit host mapping.
 amdf_status_t amdf_xdna_umd_memory_map(
-    amdf_xdna_umd_memory_t* memory, const amdf_memory_profile_t* profile,
+    amdf_xdna_umd_memory_t* memory,
+    const amdf_host_mapping_capabilities_t* capabilities,
     const amdf_memory_map_info_t* map_info,
     amdf_xdna_umd_host_mapping_t** out_mapping,
     amdf_xdna_umd_host_mapping_result_t* out_result);

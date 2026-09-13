@@ -25,6 +25,11 @@ amdf_status_t amdf_platform_instance_create(
 amdf_status_t amdf_platform_instance_destroy(
     amdf_platform_instance_t* instance);
 
+// Returns the system virtual-memory allocation granularity in bytes. This
+// queries host facts only and initializes no accelerator or address space.
+uint64_t amdf_platform_instance_host_allocation_granularity(
+    const amdf_platform_instance_t* instance);
+
 // Serializes cold shared-native preparation and native device teardown.
 // The nonrecursive lock may span native IO. Queue and allocation hot paths do
 // not acquire it. The instance must remain live through the matching unlock.

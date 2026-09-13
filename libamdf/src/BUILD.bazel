@@ -76,6 +76,7 @@ amdf_cc_library(
     visibility = ["//libamdf/src:__subpackages__"],
     deps = [
         ":child_tracker",
+        ":memory_scope_state",
         "//libamdf/src/platform",
     ],
 )
@@ -105,6 +106,8 @@ amdf_cc_library(
         ":allocator",
         ":child_tracker",
         ":instance",
+        ":memory_profile",
+        ":memory_scope_state",
         ":structure",
         "//libamdf/src/platform",
     ],
@@ -120,8 +123,66 @@ amdf_cc_library(
         ":child_tracker",
         ":endpoint",
         ":instance",
+        ":memory_profile",
         "//libamdf/src/platform",
         "//libamdf/src/platform:native_instance",
+    ],
+)
+
+amdf_cc_library(
+    name = "memory_profile",
+    hdrs = ["memory_profile.h"],
+    visibility = ["//libamdf/src:__subpackages__"],
+)
+
+amdf_cc_library(
+    name = "memory_scope_state",
+    hdrs = ["memory_scope.h"],
+    visibility = ["//libamdf/src:__subpackages__"],
+    deps = [":memory_profile"],
+)
+
+amdf_cc_library(
+    name = "memory_scope",
+    srcs = ["memory_scope.c"],
+    visibility = ["//libamdf/src:__subpackages__"],
+    deps = [
+        ":allocator",
+        ":device",
+        ":endpoint",
+        ":instance",
+        ":memory_profile",
+        ":memory_scope_state",
+        ":structure",
+        "//libamdf/src/platform",
+        "//libamdf/src/platform:native_instance",
+    ],
+)
+
+amdf_cc_library(
+    name = "memory_resource",
+    srcs = ["memory_resource.c"],
+    hdrs = ["memory_resource.h"],
+    visibility = ["//libamdf/src:__subpackages__"],
+    deps = [
+        ":allocator",
+        ":child_tracker",
+        ":memory_pair",
+    ],
+)
+
+amdf_cc_library(
+    name = "host_memory",
+    srcs = ["host_memory.c"],
+    hdrs = ["host_memory.h"],
+    visibility = ["//libamdf/src:__subpackages__"],
+    deps = [
+        ":allocator",
+        ":host_mapping",
+        ":memory_profile",
+        ":memory_resource",
+        "//libamdf/src/platform:host_memory",
+        "//libamdf/src/platform:native_host_memory",
     ],
 )
 
@@ -134,7 +195,14 @@ amdf_cc_library(
         ":allocator",
         ":child_tracker",
         ":device",
+        ":host_mapping",
+        ":host_memory",
+        ":instance",
         ":memory_pair",
+        ":memory_profile",
+        ":memory_resource",
+        ":memory_scope",
+        ":memory_scope_state",
         ":structure",
     ],
 )
@@ -152,6 +220,8 @@ amdf_cc_test(
         ":allocator",
         ":child_tracker",
         ":device",
+        ":host_mapping",
+        ":instance",
         ":memory",
         "//third_party:google_test",
         "//third_party:google_test_main",
@@ -169,7 +239,7 @@ amdf_cc_library(
     visibility = ["//libamdf/src:__subpackages__"],
     deps = [
         ":allocator",
-        ":memory",
+        ":memory_resource",
         ":structure",
     ],
 )

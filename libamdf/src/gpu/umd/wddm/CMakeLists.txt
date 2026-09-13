@@ -16,6 +16,7 @@ iree_cc_library(
   HDRS
     "device.h"
   DEPS
+    ::memory_profile
     amdf::headers
     libamdf::src::gpu::umd::device
     libamdf::src::gpu::umd::wddm::wkmi::adapter
@@ -28,11 +29,29 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
 iree_cc_library(
   NAME
+    memory_profile
+  HDRS
+    "memory_profile.h"
+  SRCS
+    "memory_profile.c"
+  DEPS
+    amdf::headers
+    libamdf::src::memory_profile
+    libamdf::src::platform
+    libamdf::src::platform::windows::endpoint
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_library(
+  NAME
     memory
   SRCS
     "memory.c"
   DEPS
     ::device_state
+    ::memory_profile
     amdf::headers
     libamdf::src::allocator
     libamdf::src::gpu::umd::memory
@@ -94,6 +113,7 @@ iree_cc_library(
     "device.c"
   DEPS
     ::device_state
+    ::memory_profile
     amdf::headers
     libamdf::src::allocator
     libamdf::src::platform::windows::endpoint
@@ -108,6 +128,7 @@ iree_cc_library(
   SRCS
     "endpoint_profile.c"
   DEPS
+    ::memory_profile
     amdf::headers
     libamdf::src::gpu::endpoint_profile
     libamdf::src::gpu::umd::endpoint_profile

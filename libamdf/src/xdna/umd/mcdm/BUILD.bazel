@@ -66,11 +66,25 @@ amdf_cc_library(
 )
 
 amdf_cc_library(
+    name = "memory_profile",
+    srcs = ["memory_profile.c"],
+    hdrs = ["memory_profile.h"],
+    target_compatible_with = MCDM_COMPATIBILITY,
+    deps = [
+        "//libamdf/src:memory_profile",
+        "//libamdf/src/platform/windows:endpoint",
+        "//libamdf/src/xdna:endpoint_profile",
+        "//libamdf/src/xdna/umd:memory_profile",
+    ],
+)
+
+amdf_cc_library(
     name = "memory",
     srcs = ["memory.c"],
     target_compatible_with = MCDM_COMPATIBILITY,
     deps = [
         ":device_state",
+        ":memory_profile",
         "//libamdf/src:allocator",
         "//libamdf/src/platform/windows:host_cache",
         "//libamdf/src/xdna/umd:memory",

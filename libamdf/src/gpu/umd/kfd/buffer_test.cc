@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <linux/kfd_ioctl.h>
 #include <sys/mman.h>
+#include <unistd.h>
 
 #include <cstdarg>
 #include <cstring>
@@ -173,6 +174,9 @@ class KfdBufferNativeTest : public ::testing::Test {
       amdf_free(amdf_allocator_system(), allocation);
     };
     device_.descriptor = 17;
+    device_.render_descriptor = memfd_create("amdf-kfd-buffer", MFD_CLOEXEC);
+    ASSERT_GE(device_.render_descriptor, 0);
+    ASSERT_EQ(ftruncate(device_.render_descriptor, 4096), 0);
     device_.page_size = 4096;
     device_.topology.gpu_id = 19;
     device_.topology.virtual_address.end = UINT64_MAX;
@@ -191,6 +195,9 @@ class KfdBufferNativeTest : public ::testing::Test {
     EXPECT_FALSE(native_.allocation_live);
     EXPECT_FALSE(native_.access_live);
     EXPECT_EQ(native_.metadata_free_count, expected_metadata_free_count_);
+    if (device_.render_descriptor >= 0) {
+      EXPECT_EQ(close(device_.render_descriptor), 0);
+    }
     native_state = nullptr;
   }
 
@@ -337,10 +344,10 @@ TEST_F(KfdBufferNativeTest, MemoryOwnerRetainsPartialBufferPreparation) {
   expected_metadata_free_count_ = 2;
   native_.map_completion_error = EIO;
   native_.unmap_error = ENOMEM;
-  const amdf_memory_profile_t profile = {
-      .memory_class = AMDF_MEMORY_CLASS_SYSTEM,
-  };
-  const amdf_memory_create_info_t create_info = {
+  amdf_memory_native_profile_t profile;
+  ASSERT_EQ(amdf_gpu_umd_device_query_memory_profile(&device_, 0, &profile),
+            AMDF_STATUS_OK);
+  const amdf_memory_native_create_info_t create_info = {
       .device_access = AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE,
       .byte_length = 4096,
       .minimum_alignment = 4096,
@@ -373,10 +380,10 @@ TEST_F(KfdBufferNativeTest, MemoryOwnerRetainsBackingAfterIdentityQueryFails) {
   expected_metadata_free_count_ = 2;
   native_.export_error = EIO;
   native_.free_error = ENOMEM;
-  const amdf_memory_profile_t profile = {
-      .memory_class = AMDF_MEMORY_CLASS_SYSTEM,
-  };
-  const amdf_memory_create_info_t create_info = {
+  amdf_memory_native_profile_t profile;
+  ASSERT_EQ(amdf_gpu_umd_device_query_memory_profile(&device_, 0, &profile),
+            AMDF_STATUS_OK);
+  const amdf_memory_native_create_info_t create_info = {
       .device_access = AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE,
       .byte_length = 4096,
       .minimum_alignment = 4096,

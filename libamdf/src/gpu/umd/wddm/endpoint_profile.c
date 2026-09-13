@@ -8,14 +8,16 @@
 
 #include <stddef.h>
 
+#include "libamdf/src/gpu/umd/wddm/memory_profile.h"
 #include "libamdf/src/gpu/umd/wddm/wkmi/adapter.h"
 #include "libamdf/src/gpu/umd/wddm/wkmi/endpoint_properties.h"
 #include "libamdf/src/platform/windows/endpoint.h"
 
 amdf_status_t amdf_gpu_umd_query_endpoint_profile(
     amdf_platform_endpoint_t* platform_endpoint,
-    amdf_allocator_t host_allocator, amdf_gpu_endpoint_profile_t* out_profile,
-    bool* out_available) {
+    amdf_native_lifetime_t native_lifetime, amdf_allocator_t host_allocator,
+    amdf_gpu_endpoint_profile_t* out_profile, bool* out_available) {
+  (void)native_lifetime;
   amdf_gpu_wddm_wkmi_loader_t loader = {0};
   amdf_gpu_wddm_wkmi_adapter_t adapter = {0};
   bool profile_available = false;
@@ -67,6 +69,20 @@ amdf_status_t amdf_gpu_umd_query_endpoint_profile(
 
   if (amdf_status_is_ok(status)) {
     if (profile_available) {
+      profile.memory.status =
+          amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+      if (amdf_kmt_api_supports_gpu_memory(&platform_endpoint->instance->kmt)) {
+        amdf_windows_gpu_memory_capabilities_t capabilities;
+        profile.memory.status = amdf_windows_gpu_query_memory_capabilities(
+            platform_endpoint, &capabilities);
+        for (uint32_t i = 0; amdf_status_is_ok(profile.memory.status) &&
+                             i < AMDF_GPU_MEMORY_PROFILE_CAPACITY;
+             ++i) {
+          profile.memory.status = amdf_gpu_wddm_query_memory_profile(
+              &capabilities, i, &profile.memory.values[i]);
+          if (amdf_status_is_ok(profile.memory.status)) ++profile.memory.count;
+        }
+      }
       *out_profile = profile;
     }
     *out_available = profile_available;

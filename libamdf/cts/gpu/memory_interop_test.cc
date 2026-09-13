@@ -104,27 +104,28 @@ class GpuMemoryInteropTest : public GpuDeviceFixture {
 
   amdf_status_t CreateAccess(DeviceAccess& access, uint32_t family_ordinal,
                              void* registered_host_pointer) {
+    const amdf_memory_device_access_t device_access = {
+        access.device,
+        {.access = AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE |
+                   AMDF_MEMORY_ACCESS_EXECUTE,
+         .flags = AMDF_MEMORY_FLAG_DEVICE_ADDRESS}};
     amdf_memory_create_info_t memory_info = {};
     memory_info.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
     memory_info.structure_size = sizeof(memory_info);
-    memory_info.device_access = AMDF_MEMORY_ACCESS_READ |
-                                AMDF_MEMORY_ACCESS_WRITE |
-                                AMDF_MEMORY_ACCESS_EXECUTE;
-    memory_info.required_flags =
-        AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+    memory_info.access_count = 1;
+    memory_info.accesses = &device_access;
+    memory_info.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
     const bool is_registration = registered_host_pointer != nullptr;
     memory_info.memory_profile_ordinal = FindMemoryProfileOrdinal(
-        access.device,
-        is_registration ? AMDF_MEMORY_CLASS_REGISTERED_HOST
-                        : AMDF_MEMORY_CLASS_SYSTEM,
+        system_scope_,
         (is_registration ? AMDF_MEMORY_PROFILE_ROLE_REGISTER
                          : AMDF_MEMORY_PROFILE_ROLE_CREATE) |
             AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
-        memory_info.required_flags, memory_info.device_access);
+        memory_info.required_flags, device_access.requirements);
     memory_info.byte_length = kMemoryByteLength;
     memory_info.registered_host_pointer = registered_host_pointer;
     amdf_status_t status =
-        api_->memory_create(access.device, &memory_info, &access.memory);
+        api_->memory_create(system_scope_, &memory_info, &access.memory);
     if (!amdf_status_is_ok(status)) return status;
     access.memory_info.type = AMDF_STRUCTURE_TYPE_MEMORY_INFO;
     access.memory_info.structure_size = sizeof(access.memory_info);

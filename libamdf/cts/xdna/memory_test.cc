@@ -19,7 +19,7 @@ static_assert(offsetof(amdf_memory_create_info_t, memory_profile_ordinal) ==
               sizeof(amdf_input_structure_t));
 static_assert(offsetof(amdf_memory_create_info_t, required_flags) == 24);
 static_assert(offsetof(amdf_memory_create_info_t, byte_length) == 32);
-static_assert(sizeof(amdf_memory_create_info_t) == 56);
+static_assert(sizeof(amdf_memory_create_info_t) == 64);
 static_assert(offsetof(amdf_memory_info_t, memory_profile_ordinal) ==
               sizeof(amdf_output_structure_t));
 static_assert(offsetof(amdf_memory_info_t, memory_class) == 20);
@@ -53,14 +53,12 @@ class XdnaMemoryTest : public XdnaDeviceFixture {
     amdf_memory_create_info_t create_info = {};
     create_info.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
     create_info.structure_size = sizeof(create_info);
-    create_info.device_access =
-        AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
-    create_info.required_flags =
-        AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+    create_info.access_count = 1;
+    create_info.accesses = &memory_access_;
+    create_info.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
     create_info.memory_profile_ordinal = FindMemoryProfileOrdinal(
-        AMDF_MEMORY_CLASS_SYSTEM,
         AMDF_MEMORY_PROFILE_ROLE_CREATE | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
-        create_info.required_flags, create_info.device_access);
+        create_info.required_flags);
     create_info.byte_length = 4097;
     create_info.minimum_alignment = 4096;
     return create_info;
@@ -77,56 +75,53 @@ TEST_F(XdnaMemoryTest, ValidatesCreationArgumentsWithoutNativeAllocation) {
       amdf_status_code(api_->memory_create(nullptr, &create_info, &output)),
       AMDF_STATUS_CODE_INVALID_ARGUMENT);
   EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
-  EXPECT_EQ(amdf_status_code(api_->memory_create(device_, nullptr, &output)),
-            AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
   EXPECT_EQ(
-      amdf_status_code(api_->memory_create(device_, &create_info, nullptr)),
+      amdf_status_code(api_->memory_create(system_scope_, nullptr, &output)),
       AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
+  EXPECT_EQ(amdf_status_code(
+                api_->memory_create(system_scope_, &create_info, nullptr)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
 
   create_info.type = AMDF_STRUCTURE_TYPE_NONE;
-  EXPECT_EQ(
-      amdf_status_code(api_->memory_create(device_, &create_info, &output)),
-      AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(amdf_status_code(
+                api_->memory_create(system_scope_, &create_info, &output)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
   EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 
   create_info = MakeMemoryCreateInfo();
   create_info.byte_length = 0;
-  EXPECT_EQ(
-      amdf_status_code(api_->memory_create(device_, &create_info, &output)),
-      AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(amdf_status_code(
+                api_->memory_create(system_scope_, &create_info, &output)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
   EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 
   create_info = MakeMemoryCreateInfo();
   create_info.minimum_alignment = 3;
-  EXPECT_EQ(
-      amdf_status_code(api_->memory_create(device_, &create_info, &output)),
-      AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(amdf_status_code(
+                api_->memory_create(system_scope_, &create_info, &output)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
   EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 
   create_info = MakeMemoryCreateInfo();
   create_info.required_flags = UINT64_C(1) << 63;
-  EXPECT_EQ(
-      amdf_status_code(api_->memory_create(device_, &create_info, &output)),
-      AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(amdf_status_code(
+                api_->memory_create(system_scope_, &create_info, &output)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
   EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 
   create_info = MakeMemoryCreateInfo();
   create_info.registered_host_pointer = &create_info;
-  EXPECT_EQ(
-      amdf_status_code(api_->memory_create(device_, &create_info, &output)),
-      AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(amdf_status_code(
+                api_->memory_create(system_scope_, &create_info, &output)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
   EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 }
 
 TEST_F(XdnaMemoryTest, OwnsStableAddressAndExplicitHostMapping) {
   const amdf_memory_create_info_t create_info = MakeMemoryCreateInfo();
   const amdf_status_t create_status =
-      api_->memory_create(device_, &create_info, &memory_);
-  if (amdf_status_domain(create_status) == AMDF_STATUS_DOMAIN_API &&
-      amdf_status_code(create_status) == AMDF_STATUS_CODE_UNSUPPORTED) {
-    GTEST_SKIP() << "XDNA host-visible device memory is unavailable";
-  }
+      api_->memory_create(system_scope_, &create_info, &memory_);
   ASSERT_TRUE(amdf_status_is_ok(create_status))
       << "domain=" << amdf_status_domain(create_status)
       << " code=" << amdf_status_code(create_status);
@@ -146,11 +141,11 @@ TEST_F(XdnaMemoryTest, OwnsStableAddressAndExplicitHostMapping) {
   EXPECT_EQ(
       (memory_info.flags | access_info.flags) & create_info.required_flags,
       create_info.required_flags);
-  EXPECT_EQ(access_info.access, create_info.device_access);
+  EXPECT_EQ(access_info.access, memory_access_.requirements.access);
   EXPECT_EQ(access_info.address_domain_ordinal, 0u);
   EXPECT_GE(memory_info.native_allocation_byte_length, memory_info.byte_length);
   EXPECT_NE(memory_info.native_allocation_granularity, 0u);
-  EXPECT_GE(memory_info.byte_length, create_info.byte_length);
+  EXPECT_EQ(memory_info.byte_length, create_info.byte_length);
   ASSERT_GE(memory_info.alignment, create_info.minimum_alignment);
   EXPECT_EQ(memory_info.alignment & (memory_info.alignment - 1), 0u);
   uint64_t address = 0;
@@ -162,12 +157,15 @@ TEST_F(XdnaMemoryTest, OwnsStableAddressAndExplicitHostMapping) {
   amdf_memory_profile_t profile = {};
   profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
   profile.structure_size = sizeof(profile);
-  ASSERT_EQ(api_->device_query_memory_profile(
-                device_, create_info.memory_profile_ordinal, &profile),
+  amdf_memory_access_capabilities_t access_capabilities = {};
+  access_capabilities.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES;
+  access_capabilities.structure_size = sizeof(access_capabilities);
+  ASSERT_EQ(QueryMemoryProfile(create_info.memory_profile_ordinal, &profile,
+                               &access_capabilities),
             AMDF_STATUS_OK);
-  EXPECT_EQ(access_info.address_kinds, profile.address_kinds);
-  ASSERT_GT(profile.device_address.address_bit_count, 0u);
-  ASSERT_LE(profile.device_address.address_bit_count, 64u);
+  EXPECT_EQ(access_info.address_kinds, access_capabilities.address_kinds);
+  ASSERT_GT(access_capabilities.device_address.address_bit_count, 0u);
+  ASSERT_LE(access_capabilities.device_address.address_bit_count, 64u);
   EXPECT_NE(access_info.address_kinds &
                 (UINT64_C(1) << AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE),
             0u);
@@ -180,10 +178,13 @@ TEST_F(XdnaMemoryTest, OwnsStableAddressAndExplicitHostMapping) {
     if ((access_info.address_kinds & (UINT64_C(1) << kind)) != 0) {
       ASSERT_EQ(status, AMDF_STATUS_OK);
       EXPECT_EQ(queried_address & (memory_info.alignment - 1), 0u);
-      EXPECT_GE(queried_address, profile.device_address.minimum_address);
-      ASSERT_LE(queried_address, profile.device_address.maximum_address);
-      EXPECT_LE(memory_info.byte_length - 1,
-                profile.device_address.maximum_address - queried_address);
+      EXPECT_GE(queried_address,
+                access_capabilities.device_address.minimum_address);
+      ASSERT_LE(queried_address,
+                access_capabilities.device_address.maximum_address);
+      EXPECT_LE(
+          memory_info.byte_length - 1,
+          access_capabilities.device_address.maximum_address - queried_address);
       uint64_t repeated_address = 0;
       ASSERT_EQ(api_->memory_query_address(memory_, 0, kind, &repeated_address),
                 AMDF_STATUS_OK);
@@ -237,7 +238,7 @@ TEST_F(XdnaMemoryTest, OwnsStableAddressAndExplicitHostMapping) {
   map_info.type = AMDF_STRUCTURE_TYPE_MEMORY_MAP_INFO;
   map_info.structure_size = sizeof(map_info);
   map_info.byte_offset = 32;
-  map_info.byte_length = 4096;
+  map_info.byte_length = memory_info.byte_length - map_info.byte_offset;
   map_info.flags = AMDF_MEMORY_MAP_FLAG_READ | AMDF_MEMORY_MAP_FLAG_WRITE;
   ASSERT_TRUE(
       amdf_status_is_ok(api_->memory_map(memory_, &map_info, &mapping_)));
@@ -340,11 +341,7 @@ TEST_F(XdnaMemoryTest, OwnsStableAddressAndExplicitHostMapping) {
 TEST_F(XdnaMemoryTest, RejectsInvalidMappingRequestsBeforeNativeMapping) {
   const amdf_memory_create_info_t create_info = MakeMemoryCreateInfo();
   const amdf_status_t create_status =
-      api_->memory_create(device_, &create_info, &memory_);
-  if (amdf_status_domain(create_status) == AMDF_STATUS_DOMAIN_API &&
-      amdf_status_code(create_status) == AMDF_STATUS_CODE_UNSUPPORTED) {
-    GTEST_SKIP() << "XDNA host-visible device memory is unavailable";
-  }
+      api_->memory_create(system_scope_, &create_info, &memory_);
   ASSERT_TRUE(amdf_status_is_ok(create_status));
 
   amdf_memory_map_info_t map_info = {};

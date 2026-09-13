@@ -25,6 +25,35 @@ endif()
 if(AMDF_BUILD)
 iree_cc_library(
   NAME
+    host_memory
+  HDRS
+    "host_memory.h"
+  DEPS
+    amdf::headers
+  PUBLIC
+)
+endif()
+
+if(AMDF_BUILD AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+set(_native_host_memory_platform_deps "")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  list(APPEND _native_host_memory_platform_deps libamdf::src::platform::linux::host_memory)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+  list(APPEND _native_host_memory_platform_deps libamdf::src::platform::windows::host_memory)
+endif()
+iree_cc_library(
+  NAME
+    native_host_memory
+  DEPS
+    amdf::headers
+    ${_native_host_memory_platform_deps}
+  PUBLIC
+)
+endif()
+
+if(AMDF_BUILD)
+iree_cc_library(
+  NAME
     wait
   HDRS
     "wait.h"

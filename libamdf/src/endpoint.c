@@ -12,6 +12,7 @@
 #include "libamdf/src/allocator.h"
 #include "libamdf/src/child_tracker.h"
 #include "libamdf/src/instance.h"
+#include "libamdf/src/memory_scope.h"
 #include "libamdf/src/platform/endpoint.h"
 #include "libamdf/src/structure.h"
 
@@ -28,6 +29,10 @@ struct amdf_endpoint_t {
   amdf_status_t engine_profile_status;
   // Whether an engine extension resolved `engine_profile_status`.
   bool engine_profile_resolved;
+  // Family-qualified query consuming cached memory metadata only.
+  amdf_endpoint_memory_profile_query_fn_t query_memory_profile;
+  // Borrowed physical-local descriptor, published only for supported storage.
+  amdf_memory_scope_t local_memory_scope;
   // Immutable endpoint-local native queue families.
   struct {
     // Records owned inline for the lifetime of this endpoint.
@@ -57,6 +62,8 @@ amdf_status_t AMDF_CALL amdf_endpoint_open(amdf_instance_t* instance,
                   amdf_alignof(amdf_endpoint_t), (void**)&endpoint);
   if (!amdf_status_is_ok(status)) return status;
   amdf_child_tracker_initialize(&endpoint->children);
+  endpoint->local_memory_scope.kind = AMDF_MEMORY_SCOPE_KIND_LOCAL;
+  endpoint->local_memory_scope.owner.endpoint = endpoint;
   status = amdf_instance_register_endpoint(instance);
   if (amdf_status_is_ok(status)) {
     endpoint->instance = instance;
@@ -91,6 +98,25 @@ void amdf_endpoint_set_queue_families(
 const amdf_endpoint_info_t* amdf_endpoint_get_cached_info(
     const amdf_endpoint_t* endpoint) {
   return &endpoint->info;
+}
+
+void amdf_endpoint_set_memory_profile_query(
+    amdf_endpoint_t* endpoint, amdf_endpoint_memory_profile_query_fn_t query) {
+  endpoint->query_memory_profile = query;
+}
+
+amdf_memory_scope_t* amdf_endpoint_local_memory_scope(
+    amdf_endpoint_t* endpoint) {
+  return &endpoint->local_memory_scope;
+}
+
+amdf_status_t amdf_endpoint_query_memory_profile(
+    amdf_endpoint_t* endpoint, uint32_t profile_ordinal,
+    amdf_memory_native_profile_t* out_profile) {
+  if (endpoint->query_memory_profile == NULL) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
+  return endpoint->query_memory_profile(endpoint, profile_ordinal, out_profile);
 }
 
 amdf_platform_endpoint_t* amdf_endpoint_get_platform(

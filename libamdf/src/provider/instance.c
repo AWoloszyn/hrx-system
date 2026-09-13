@@ -45,6 +45,8 @@ amdf_instance_create(const amdf_instance_create_info_t* create_info,
   if (!amdf_status_is_ok(status)) return status;
   instance->host_allocator = host_allocator;
   instance->native_lifetime = create_info->native_lifetime;
+  instance->system_memory_scope.kind = AMDF_MEMORY_SCOPE_KIND_SYSTEM;
+  instance->system_memory_scope.owner.instance = instance;
   amdf_child_tracker_initialize(&instance->children);
   status = amdf_platform_instance_create(host_allocator, &instance->platform);
   if (amdf_status_is_ok(status)) {

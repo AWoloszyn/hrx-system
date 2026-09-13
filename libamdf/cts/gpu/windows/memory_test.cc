@@ -27,7 +27,7 @@ static_assert(offsetof(amdf_memory_create_info_t, memory_profile_ordinal) ==
               sizeof(amdf_input_structure_t));
 static_assert(offsetof(amdf_memory_create_info_t, required_flags) == 24);
 static_assert(offsetof(amdf_memory_create_info_t, byte_length) == 32);
-static_assert(sizeof(amdf_memory_create_info_t) == 56);
+static_assert(sizeof(amdf_memory_create_info_t) == 64);
 static_assert(offsetof(amdf_memory_info_t, memory_profile_ordinal) ==
               sizeof(amdf_output_structure_t));
 static_assert(offsetof(amdf_memory_info_t, memory_class) == 20);
@@ -64,21 +64,26 @@ class GpuMemoryTest : public GpuDeviceFixture {
     amdf_memory_create_info_t create_info = {};
     create_info.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
     create_info.structure_size = sizeof(create_info);
-    create_info.device_access =
+    memory_access_.requirements.access =
         AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
-    create_info.required_flags =
-        AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+    memory_access_.requirements.flags = AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+    create_info.access_count = 1;
+    create_info.accesses = &memory_access_;
+    create_info.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
     create_info.memory_profile_ordinal = FindMemoryProfileOrdinal(
-        AMDF_MEMORY_CLASS_SYSTEM,
+        system_scope_,
         AMDF_MEMORY_PROFILE_ROLE_CREATE | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
-        create_info.required_flags, create_info.device_access);
+        create_info.required_flags, memory_access_.requirements);
     create_info.byte_length = 4097;
     create_info.minimum_alignment = 1024 * 1024;
     return create_info;
   }
 
+  // Case-owned backing, released after its host view.
   amdf_memory_t* memory_ = nullptr;
+  // Explicit host view borrowing memory_.
   amdf_host_mapping_t* mapping_ = nullptr;
+  // Caller storage retained until the registration is gone.
   void* registered_host_pointer_ = nullptr;
 };
 
@@ -87,47 +92,46 @@ TEST_F(GpuMemoryTest, ValidatesPlacementRequirementsBeforeNativeAllocation) {
   amdf_memory_t* output = reinterpret_cast<amdf_memory_t*>(uintptr_t{1});
 
   create_info.required_flags |= AMDF_MEMORY_FLAG_SHAREABLE;
-  EXPECT_EQ(
-      amdf_status_code(api_->memory_create(device_, &create_info, &output)),
-      AMDF_STATUS_CODE_UNSUPPORTED);
+  EXPECT_EQ(amdf_status_code(
+                api_->memory_create(system_scope_, &create_info, &output)),
+            AMDF_STATUS_CODE_UNSUPPORTED);
   EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 
   create_info = MakeSystemMemoryCreateInfo();
   create_info.required_flags |= AMDF_MEMORY_FLAG_DEVICE_LOCAL;
-  EXPECT_EQ(
-      amdf_status_code(api_->memory_create(device_, &create_info, &output)),
-      AMDF_STATUS_CODE_UNSUPPORTED);
+  EXPECT_EQ(amdf_status_code(
+                api_->memory_create(system_scope_, &create_info, &output)),
+            AMDF_STATUS_CODE_UNSUPPORTED);
   EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 
   create_info = MakeSystemMemoryCreateInfo();
+  ASSERT_NE(local_scope_, nullptr);
   create_info.memory_profile_ordinal = FindMemoryProfileOrdinal(
-      AMDF_MEMORY_CLASS_LOCAL, AMDF_MEMORY_PROFILE_ROLE_CREATE,
-      AMDF_MEMORY_FLAG_DEVICE_LOCAL | AMDF_MEMORY_FLAG_DEVICE_ADDRESS,
-      create_info.device_access);
+      local_scope_, AMDF_MEMORY_PROFILE_ROLE_CREATE,
+      AMDF_MEMORY_FLAG_DEVICE_LOCAL, memory_access_.requirements);
   create_info.required_flags |= AMDF_MEMORY_FLAG_HOST_VISIBLE;
-  EXPECT_EQ(
-      amdf_status_code(api_->memory_create(device_, &create_info, &output)),
-      AMDF_STATUS_CODE_UNSUPPORTED);
+  EXPECT_EQ(amdf_status_code(
+                api_->memory_create(local_scope_, &create_info, &output)),
+            AMDF_STATUS_CODE_UNSUPPORTED);
   EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 
   create_info = MakeSystemMemoryCreateInfo();
   create_info.memory_profile_ordinal = FindMemoryProfileOrdinal(
-      AMDF_MEMORY_CLASS_REGISTERED_HOST,
+      system_scope_,
       AMDF_MEMORY_PROFILE_ROLE_REGISTER | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
-      AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS,
-      create_info.device_access);
+      AMDF_MEMORY_FLAG_HOST_VISIBLE, memory_access_.requirements);
   create_info.byte_length = 4096;
   create_info.registered_host_pointer = &create_info;
-  EXPECT_EQ(
-      amdf_status_code(api_->memory_create(device_, &create_info, &output)),
-      AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  EXPECT_EQ(amdf_status_code(
+                api_->memory_create(system_scope_, &create_info, &output)),
+            AMDF_STATUS_CODE_INVALID_ARGUMENT);
   EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 }
 
 TEST_F(GpuMemoryTest, OwnsStableSystemAddressAndExplicitHostMapping) {
   const amdf_memory_create_info_t create_info = MakeSystemMemoryCreateInfo();
-  ASSERT_TRUE(
-      amdf_status_is_ok(api_->memory_create(device_, &create_info, &memory_)));
+  ASSERT_TRUE(amdf_status_is_ok(
+      api_->memory_create(system_scope_, &create_info, &memory_)));
   ASSERT_NE(memory_, nullptr);
 
   amdf_memory_info_t memory_info = {};
@@ -219,22 +223,26 @@ TEST_F(GpuMemoryTest, OwnsStableSystemAddressAndExplicitHostMapping) {
 }
 
 TEST_F(GpuMemoryTest, CreatesDeviceLocalExecutableMemory) {
+  ASSERT_NE(local_scope_, nullptr);
+  const amdf_memory_device_access_t access = {
+      device_,
+      {.access = AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE |
+                 AMDF_MEMORY_ACCESS_EXECUTE,
+       .flags = AMDF_MEMORY_FLAG_DEVICE_ADDRESS}};
   amdf_memory_create_info_t create_info = {};
   create_info.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
   create_info.structure_size = sizeof(create_info);
-  create_info.device_access = AMDF_MEMORY_ACCESS_READ |
-                              AMDF_MEMORY_ACCESS_WRITE |
-                              AMDF_MEMORY_ACCESS_EXECUTE;
-  create_info.required_flags =
-      AMDF_MEMORY_FLAG_DEVICE_LOCAL | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
-  create_info.memory_profile_ordinal = FindMemoryProfileOrdinal(
-      AMDF_MEMORY_CLASS_LOCAL, AMDF_MEMORY_PROFILE_ROLE_CREATE,
-      create_info.required_flags, create_info.device_access);
+  create_info.access_count = 1;
+  create_info.accesses = &access;
+  create_info.required_flags = AMDF_MEMORY_FLAG_DEVICE_LOCAL;
+  create_info.memory_profile_ordinal =
+      FindMemoryProfileOrdinal(local_scope_, AMDF_MEMORY_PROFILE_ROLE_CREATE,
+                               create_info.required_flags, access.requirements);
   create_info.byte_length = 4097;
   create_info.minimum_alignment = 1024 * 1024;
 
-  ASSERT_TRUE(
-      amdf_status_is_ok(api_->memory_create(device_, &create_info, &memory_)));
+  ASSERT_TRUE(amdf_status_is_ok(
+      api_->memory_create(local_scope_, &create_info, &memory_)));
   amdf_memory_info_t memory_info = {};
   memory_info.type = AMDF_STRUCTURE_TYPE_MEMORY_INFO;
   memory_info.structure_size = sizeof(memory_info);
@@ -249,7 +257,9 @@ TEST_F(GpuMemoryTest, CreatesDeviceLocalExecutableMemory) {
   EXPECT_EQ(
       (memory_info.flags | access_info.flags) & create_info.required_flags,
       create_info.required_flags);
-  EXPECT_EQ(access_info.access, create_info.device_access);
+  EXPECT_EQ(access_info.access, access.requirements.access);
+  EXPECT_EQ(access_info.flags & access.requirements.flags,
+            access.requirements.flags);
   EXPECT_GE(memory_info.byte_length, create_info.byte_length);
   EXPECT_GE(memory_info.alignment, create_info.minimum_alignment);
   uint64_t address = 0;
@@ -277,23 +287,26 @@ TEST_F(GpuMemoryTest, RegistersCallerOwnedCoherentHostPages) {
       nullptr, kByteLength, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
   ASSERT_NE(registered_host_pointer_, nullptr);
 
+  const amdf_memory_device_access_t access = {
+      device_,
+      {.access = AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE,
+       .flags =
+           AMDF_MEMORY_FLAG_HOST_COHERENT | AMDF_MEMORY_FLAG_DEVICE_ADDRESS}};
   amdf_memory_create_info_t create_info = {};
   create_info.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
   create_info.structure_size = sizeof(create_info);
-  create_info.device_access =
-      AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
-  create_info.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE |
-                               AMDF_MEMORY_FLAG_HOST_COHERENT |
-                               AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+  create_info.access_count = 1;
+  create_info.accesses = &access;
+  create_info.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
   create_info.memory_profile_ordinal = FindMemoryProfileOrdinal(
-      AMDF_MEMORY_CLASS_REGISTERED_HOST,
+      system_scope_,
       AMDF_MEMORY_PROFILE_ROLE_REGISTER | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
-      create_info.required_flags, create_info.device_access);
+      create_info.required_flags, access.requirements);
   create_info.byte_length = kByteLength;
   create_info.minimum_alignment = kByteLength;
   create_info.registered_host_pointer = registered_host_pointer_;
-  ASSERT_TRUE(
-      amdf_status_is_ok(api_->memory_create(device_, &create_info, &memory_)));
+  ASSERT_TRUE(amdf_status_is_ok(
+      api_->memory_create(system_scope_, &create_info, &memory_)));
 
   amdf_memory_map_info_t map_info = {};
   map_info.type = AMDF_STRUCTURE_TYPE_MEMORY_MAP_INFO;

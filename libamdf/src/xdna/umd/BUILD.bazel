@@ -33,9 +33,23 @@ amdf_cc_library(
 )
 
 amdf_cc_library(
+    name = "memory_profile",
+    hdrs = ["memory_profile.h"],
+    visibility = ["//libamdf/src/xdna:__subpackages__"],
+    deps = [
+        "//libamdf/src:memory_profile",
+        "//libamdf/src/platform",
+        "//libamdf/src/xdna:endpoint_profile",
+    ],
+)
+
+amdf_cc_library(
     name = "memory",
     hdrs = ["memory.h"],
     visibility = ["//libamdf/src/xdna:__subpackages__"],
-    deps = ["//libamdf/src:memory_pair"],
+    deps = [
+        "//libamdf/src:memory_pair",
+        "//libamdf/src:memory_profile",
+    ],
 )
 

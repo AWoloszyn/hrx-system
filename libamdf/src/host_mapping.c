@@ -7,7 +7,7 @@
 #include "libamdf/src/host_mapping.h"
 
 #include "libamdf/src/allocator.h"
-#include "libamdf/src/memory.h"
+#include "libamdf/src/memory_resource.h"
 #include "libamdf/src/structure.h"
 
 amdf_status_t amdf_host_mapping_initialize(

@@ -12,8 +12,8 @@
 #include "libamdf/src/allocator.h"
 #include "libamdf/src/platform/windows/host_cache.h"
 #include "libamdf/src/xdna/umd/mcdm/device.h"
+#include "libamdf/src/xdna/umd/mcdm/memory_profile.h"
 
-#define AMDF_WINDOWS_XDNA_ALLOCATION_ALIGNMENT UINT64_C(65536)
 #define AMDF_WINDOWS_KMT_PAGE_SIZE UINT64_C(4096)
 
 struct amdf_xdna_umd_memory_t {
@@ -180,68 +180,17 @@ static amdf_status_t amdf_windows_xdna_memory_make_resident(
 
 amdf_status_t amdf_xdna_umd_device_query_memory_profile(
     amdf_xdna_umd_device_t* device, uint32_t memory_profile_ordinal,
-    amdf_memory_profile_t* out_profile) {
-  if (memory_profile_ordinal != 0 ||
-      !amdf_kmt_api_supports_memory(device->kmt) ||
-      device->profile->dma.address_bit_count == 0) {
+    amdf_memory_native_profile_t* out_profile) {
+  if (!amdf_kmt_api_supports_memory(device->kmt)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
   }
-  const uint32_t address_bit_count = device->profile->dma.address_bit_count;
-  const uint64_t maximum_address = UINT64_MAX >> (64 - address_bit_count);
-  const uint64_t address_capacity =
-      maximum_address - AMDF_WINDOWS_XDNA_ALLOCATION_ALIGNMENT + 1;
-  const uint64_t maximum_byte_length =
-      (address_capacity < SIZE_MAX ? address_capacity : SIZE_MAX) &
-      ~(AMDF_WINDOWS_XDNA_ALLOCATION_ALIGNMENT - 1);
-  *out_profile = (amdf_memory_profile_t){
-      .type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE,
-      .structure_size = out_profile->structure_size,
-      .next = out_profile->next,
-      .ordinal = 0,
-      .address_kinds = UINT64_C(1) << AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE,
-      .memory_class = AMDF_MEMORY_CLASS_SYSTEM,
-      .roles =
-          AMDF_MEMORY_PROFILE_ROLE_CREATE | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
-      .guaranteed_flags =
-          AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS,
-      .supported_flags =
-          AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS,
-      .guaranteed_device_access =
-          AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE,
-      .supported_device_access =
-          AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE,
-      .device_address =
-          {
-              .address_domain_ordinal = 0,
-              .address_bit_count = address_bit_count,
-              .minimum_address = AMDF_WINDOWS_XDNA_ALLOCATION_ALIGNMENT,
-              .maximum_address = maximum_address,
-              .minimum_alignment = AMDF_WINDOWS_XDNA_ALLOCATION_ALIGNMENT,
-          },
-      .allocation =
-          {
-              .maximum_byte_length = maximum_byte_length,
-              .byte_length_granularity = 1,
-              .minimum_alignment = AMDF_WINDOWS_XDNA_ALLOCATION_ALIGNMENT,
-              .maximum_alignment = AMDF_WINDOWS_XDNA_ALLOCATION_ALIGNMENT,
-              .native_byte_length_granularity =
-                  AMDF_WINDOWS_XDNA_ALLOCATION_ALIGNMENT,
-          },
-      .host_mapping =
-          {
-              .maximum_byte_length = maximum_byte_length,
-              .byte_offset_granularity = 1,
-              .byte_length_granularity = 1,
-              .supported_access =
-                  AMDF_MEMORY_MAP_FLAG_READ | AMDF_MEMORY_MAP_FLAG_WRITE,
-          },
-  };
-  return AMDF_STATUS_OK;
+  return amdf_windows_xdna_query_memory_profile(
+      device->profile, memory_profile_ordinal, out_profile);
 }
 
 amdf_status_t amdf_xdna_umd_memory_prepare_import(
-    amdf_xdna_umd_device_t* device, const amdf_memory_profile_t* profile,
-    const amdf_memory_import_info_t* import_info,
+    amdf_xdna_umd_device_t* device, const amdf_memory_native_profile_t* profile,
+    const amdf_memory_native_import_info_t* import_info,
     const amdf_external_memory_t* external_memory,
     amdf_xdna_umd_memory_t** memory_state,
     amdf_xdna_umd_memory_result_t* out_result) {
@@ -274,8 +223,8 @@ amdf_status_t amdf_xdna_umd_memory_describe_site(
 }
 
 amdf_status_t amdf_xdna_umd_memory_prepare(
-    amdf_xdna_umd_device_t* device, const amdf_memory_profile_t* profile,
-    const amdf_memory_create_info_t* create_info,
+    amdf_xdna_umd_device_t* device, const amdf_memory_native_profile_t* profile,
+    const amdf_memory_native_create_info_t* create_info,
     amdf_xdna_umd_memory_t** memory_state,
     amdf_xdna_umd_memory_result_t* out_result) {
   const uint64_t byte_length =
@@ -338,7 +287,8 @@ void amdf_xdna_umd_memory_abandon(amdf_xdna_umd_memory_t* memory) {
 }
 
 amdf_status_t amdf_xdna_umd_memory_map(
-    amdf_xdna_umd_memory_t* memory, const amdf_memory_profile_t* profile,
+    amdf_xdna_umd_memory_t* memory,
+    const amdf_host_mapping_capabilities_t* capabilities,
     const amdf_memory_map_info_t* map_info,
     amdf_xdna_umd_host_mapping_t** out_mapping,
     amdf_xdna_umd_host_mapping_result_t* out_result) {
@@ -352,7 +302,7 @@ amdf_status_t amdf_xdna_umd_memory_map(
   mapping->byte_length = map_info->byte_length;
 
   amdf_xdna_umd_host_mapping_result_t result = {0};
-  result.flags = profile->host_mapping.supported_access;
+  result.flags = capabilities->supported_access;
   result.pointer = mapping->pointer;
   result.byte_length = mapping->byte_length;
   result.cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK;

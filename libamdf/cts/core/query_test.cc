@@ -21,12 +21,17 @@ static_assert(sizeof(amdf_instance_create_info_t) ==
 static_assert(sizeof(amdf_external_memory_t) == 80);
 static_assert(offsetof(amdf_external_memory_t, source_byte_offset) == 32);
 static_assert(offsetof(amdf_external_memory_t, release) == 64);
-static_assert(sizeof(amdf_memory_profile_t) == 536);
-static_assert(offsetof(amdf_memory_profile_t, atomic_operations_32) == 56);
-static_assert(offsetof(amdf_memory_profile_t, external_memory_support) == 288);
-static_assert(sizeof(amdf_memory_import_info_t) == 40);
+static_assert(sizeof(amdf_memory_profile_t) == 472);
+static_assert(offsetof(amdf_memory_profile_t, allocation) == 48);
+static_assert(offsetof(amdf_memory_profile_t, external_memory_support) == 232);
+static_assert(sizeof(amdf_memory_scope_info_t) == 40);
+static_assert(sizeof(amdf_memory_access_requirements_t) == 24);
+static_assert(sizeof(amdf_memory_access_capabilities_t) == 96);
+static_assert(sizeof(amdf_memory_create_info_t) == 64);
+static_assert(sizeof(amdf_memory_import_info_t) == 48);
 static_assert(sizeof(amdf_memory_export_info_t) == 40);
-static_assert(sizeof(amdf_memory_site_t) == 32);
+static_assert(sizeof(amdf_memory_site_t) == 40);
+static_assert(offsetof(amdf_memory_site_t, value) == 24);
 static_assert(sizeof(amdf_memory_pair_info_t) == 120);
 static_assert(offsetof(amdf_endpoint_info_t, queue_family_count) ==
               offsetof(amdf_endpoint_info_t, name) +
@@ -87,7 +92,11 @@ TEST(QueryApiTest, NegotiatesSupportedVersion) {
   EXPECT_NE(api->query_extension, nullptr);
   EXPECT_NE(api->endpoint_query_queue_family_info, nullptr);
   EXPECT_NE(api->device_destroy, nullptr);
-  EXPECT_NE(api->device_query_memory_profile, nullptr);
+  EXPECT_NE(api->instance_enumerate_memory_scopes, nullptr);
+  EXPECT_NE(api->endpoint_enumerate_memory_scopes, nullptr);
+  EXPECT_NE(api->device_enumerate_memory_scopes, nullptr);
+  EXPECT_NE(api->memory_scope_query_info, nullptr);
+  EXPECT_NE(api->memory_scope_query_profile, nullptr);
   EXPECT_NE(api->memory_create, nullptr);
   EXPECT_NE(api->memory_import, nullptr);
   EXPECT_NE(api->memory_query_info, nullptr);

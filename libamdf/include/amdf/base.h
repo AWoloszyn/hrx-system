@@ -201,6 +201,10 @@ enum amdf_structure_type_e {
   AMDF_STRUCTURE_TYPE_USER_QUEUE_STATUS = 17,
   /// An `amdf_memory_access_info_t` output structure.
   AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_INFO = 18,
+  /// An `amdf_memory_scope_info_t` output structure.
+  AMDF_STRUCTURE_TYPE_MEMORY_SCOPE_INFO = 19,
+  /// An `amdf_memory_access_capabilities_t` output structure.
+  AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES = 20,
 };
 
 /// Identifier of an optional API table compiled into the providing library.
@@ -240,6 +244,9 @@ typedef struct amdf_endpoint_t amdf_endpoint_t;
 
 /// Live engine context and address domain materialized from an endpoint.
 typedef struct amdf_device_t amdf_device_t;
+
+/// Borrowed storage contract embedded in an instance, endpoint or native owner.
+typedef struct amdf_memory_scope_t amdf_memory_scope_t;
 
 /// Physical backing and its established device accesses.
 typedef struct amdf_memory_t amdf_memory_t;

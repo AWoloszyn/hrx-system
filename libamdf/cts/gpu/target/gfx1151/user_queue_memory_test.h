@@ -17,6 +17,7 @@ bool RunGfx1151UserQueueMemoryCopies(const amdf_api_t* api,
                                      const amdf_gpu_api_t* gpu_api,
                                      amdf_endpoint_t* endpoint,
                                      amdf_device_t* device,
+                                     amdf_memory_scope_t* system_scope,
                                      amdf_queue_command_type_t command_type);
 
 #endif  // AMDF_CTS_GPU_TARGET_GFX1151_USER_QUEUE_MEMORY_TEST_H_

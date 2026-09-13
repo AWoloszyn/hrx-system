@@ -45,7 +45,10 @@ amdf_cc_library(
     name = "memory",
     hdrs = ["memory.h"],
     visibility = ["//libamdf/src/gpu:__subpackages__"],
-    deps = ["//libamdf/src:memory_pair"],
+    deps = [
+        "//libamdf/src:memory_pair",
+        "//libamdf/src:memory_profile",
+    ],
 )
 
 amdf_cc_library(

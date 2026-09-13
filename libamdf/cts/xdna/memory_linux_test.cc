@@ -101,37 +101,38 @@ class XdnaLinuxMemoryTest : public XdnaDeviceFixture {
 TEST_F(XdnaLinuxMemoryTest,
        RegistersArbitraryOverlappingCallerSubrangesWithoutTakingOwnership) {
   ASSERT_NO_FATAL_FAILURE(AllocateCallerPages());
-  const amdf_memory_flags_t required_flags =
-      AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+  const amdf_memory_flags_t required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
   const amdf_memory_access_t device_access =
       AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
   const uint32_t profile_ordinal = FindMemoryProfileOrdinal(
-      AMDF_MEMORY_CLASS_REGISTERED_HOST,
       AMDF_MEMORY_PROFILE_ROLE_REGISTER | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
-      required_flags, device_access);
+      required_flags);
   ASSERT_NE(profile_ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
 
   amdf_memory_create_info_t create_info = {
       .type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO,
       .structure_size = sizeof(amdf_memory_create_info_t),
       .memory_profile_ordinal = profile_ordinal,
-      .device_access = device_access,
+      .access_count = 1,
       .required_flags = required_flags,
       .byte_length = caller_byte_length_ / 2 + 17,
       .minimum_alignment = 1,
       .registered_host_pointer = caller_pages_ + 3,
+      .accesses = &memory_access_,
   };
 
   amdf_memory_t* output = reinterpret_cast<amdf_memory_t*>(uintptr_t{1});
   amdf_memory_create_info_t unsupported_info = create_info;
-  unsupported_info.device_access = AMDF_MEMORY_ACCESS_READ;
+  amdf_memory_device_access_t unsupported_access = memory_access_;
+  unsupported_access.requirements.access = AMDF_MEMORY_ACCESS_READ;
+  unsupported_info.accesses = &unsupported_access;
   EXPECT_EQ(amdf_status_code(
-                api_->memory_create(device_, &unsupported_info, &output)),
+                api_->memory_create(system_scope_, &unsupported_info, &output)),
             AMDF_STATUS_CODE_UNSUPPORTED);
   EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
   EXPECT_EQ(caller_pages_[3], 0x5A);
 
-  ASSERT_EQ(api_->memory_create(device_, &create_info, &memories_[0]),
+  ASSERT_EQ(api_->memory_create(system_scope_, &create_info, &memories_[0]),
             AMDF_STATUS_OK);
   amdf_memory_info_t first_info = {
       .type = AMDF_STRUCTURE_TYPE_MEMORY_INFO,
@@ -143,7 +144,7 @@ TEST_F(XdnaLinuxMemoryTest,
   first_access_info.structure_size = sizeof(first_access_info);
   ASSERT_EQ(api_->memory_query_access_info(memories_[0], 0, &first_access_info),
             AMDF_STATUS_OK);
-  EXPECT_EQ(first_info.memory_class, AMDF_MEMORY_CLASS_REGISTERED_HOST);
+  EXPECT_EQ(first_info.memory_class, AMDF_MEMORY_CLASS_SYSTEM);
   EXPECT_EQ(first_access_info.access, device_access);
   EXPECT_EQ((first_info.flags | first_access_info.flags) & required_flags,
             required_flags);
@@ -171,7 +172,7 @@ TEST_F(XdnaLinuxMemoryTest,
 
   create_info.registered_host_pointer = caller_pages_ + 19;
   create_info.byte_length = caller_byte_length_ / 2;
-  ASSERT_EQ(api_->memory_create(device_, &create_info, &memories_[1]),
+  ASSERT_EQ(api_->memory_create(system_scope_, &create_info, &memories_[1]),
             AMDF_STATUS_OK);
   amdf_memory_info_t second_info = {
       .type = AMDF_STRUCTURE_TYPE_MEMORY_INFO,
@@ -229,35 +230,30 @@ TEST_F(XdnaLinuxMemoryTest,
   const uint64_t native_byte_length = page_size_ * 3;
   const uint64_t source_byte_offset = page_size_ + 13;
   const uint64_t logical_byte_length = page_size_ - 29;
-  const amdf_memory_flags_t owned_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE |
-                                          AMDF_MEMORY_FLAG_SHAREABLE |
-                                          AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
-  const amdf_memory_flags_t imported_flags =
-      AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
-  const amdf_memory_access_t device_access =
-      AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
+  const amdf_memory_flags_t owned_flags =
+      AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_SHAREABLE;
+  const amdf_memory_flags_t imported_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
   const uint32_t owned_profile_ordinal = FindMemoryProfileOrdinal(
-      AMDF_MEMORY_CLASS_SYSTEM,
       AMDF_MEMORY_PROFILE_ROLE_CREATE | AMDF_MEMORY_PROFILE_ROLE_EXPORT |
           AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
-      owned_flags, device_access);
+      owned_flags);
   ASSERT_NE(owned_profile_ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
   const uint32_t imported_profile_ordinal = FindMemoryProfileOrdinal(
-      AMDF_MEMORY_CLASS_SYSTEM,
       AMDF_MEMORY_PROFILE_ROLE_IMPORT | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
-      imported_flags, device_access);
+      imported_flags);
   ASSERT_NE(imported_profile_ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
 
   const amdf_memory_create_info_t create_info = {
       .type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO,
       .structure_size = sizeof(amdf_memory_create_info_t),
       .memory_profile_ordinal = owned_profile_ordinal,
-      .device_access = device_access,
+      .access_count = 1,
       .required_flags = owned_flags,
       .byte_length = native_byte_length,
       .minimum_alignment = page_size_,
+      .accesses = &memory_access_,
   };
-  ASSERT_EQ(api_->memory_create(device_, &create_info, &memories_[0]),
+  ASSERT_EQ(api_->memory_create(system_scope_, &create_info, &memories_[0]),
             AMDF_STATUS_OK);
   amdf_memory_info_t source_info = {
       .type = AMDF_STRUCTURE_TYPE_MEMORY_INFO,
@@ -307,14 +303,15 @@ TEST_F(XdnaLinuxMemoryTest,
       .type = AMDF_STRUCTURE_TYPE_MEMORY_IMPORT_INFO,
       .structure_size = sizeof(amdf_memory_import_info_t),
       .memory_profile_ordinal = imported_profile_ordinal,
-      .device_access = device_access,
+      .access_count = 1,
       .required_flags = imported_flags,
       .minimum_alignment = 1,
+      .accesses = &memory_access_,
   };
   const amdf_external_memory_t empty_external_memory = {};
   for (size_t i = 0; i < 2; ++i) {
-    ASSERT_EQ(api_->memory_import(device_, &import_info, &external_memories_[i],
-                                  &memories_[i + 1]),
+    ASSERT_EQ(api_->memory_import(system_scope_, &import_info,
+                                  &external_memories_[i], &memories_[i + 1]),
               AMDF_STATUS_OK);
     EXPECT_EQ(std::memcmp(&external_memories_[i], &empty_external_memory,
                           sizeof(empty_external_memory)),
