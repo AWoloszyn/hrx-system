@@ -6,10 +6,12 @@
 
 #include <limits.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "binding/hip/api.h"
 #include "binding/hip/binding_internal.h"
+#include "binding/hip/function_handle.h"
 #include "common/fat_binary.h"
 #include "common/module.h"
 #include "iree/base/threading/call_once.h"
@@ -17,6 +19,8 @@
 typedef struct iree_hip_library_kernel_t {
   // Streaming symbol represented by this kernel handle. Unowned.
   iree_hal_streaming_symbol_t* symbol;
+  // Opaque function handle retired when the library is unloaded.
+  void* handle;
   // NUL-terminated name valid until the owning library is unloaded.
   char* name;
 } iree_hip_library_kernel_t;
@@ -54,8 +58,8 @@ struct hipLibrary_st {
   char* source_file_name;
   // Deferred source-validation error reported by the first code query.
   hipError_t source_error;
-  // Loaded streaming module. Set only in the built state.
-  iree_hal_streaming_module_t* module;
+  // Loaded streaming module published when the state reaches built.
+  iree_atomic_intptr_t module;
   // Complete result of the first build attempt. Guarded by |build_mutex|.
   hipError_t build_result;
   // Function records in module export order.
@@ -82,7 +86,9 @@ static void iree_hip_library_registry_ensure_initialized(void) {
 }
 
 static void iree_hip_library_destroy(hipLibrary_t library) {
-  iree_hal_streaming_module_release(library->module);
+  iree_hal_streaming_module_release(
+      (iree_hal_streaming_module_t*)(uintptr_t)iree_atomic_load(
+          &library->module, iree_memory_order_relaxed));
   iree_slim_mutex_deinitialize(&library->build_mutex);
   iree_allocator_free(library->host_allocator, library->source_storage);
   iree_allocator_free(library->host_allocator, library->source_file_name);
@@ -102,6 +108,14 @@ static void iree_hip_library_release(hipLibrary_t library) {
   }
 }
 
+// Returns the immutable module published by the completed lazy build. The
+// caller must retain the library for the duration of the borrow.
+static iree_hal_streaming_module_t* iree_hip_library_module(
+    hipLibrary_t library) {
+  return (iree_hal_streaming_module_t*)(uintptr_t)iree_atomic_load(
+      &library->module, iree_memory_order_acquire);
+}
+
 static iree_status_t iree_hip_library_create(
     iree_hip_library_source_type_t source_type, const void* source_data,
     iree_host_size_t source_data_length, void* source_storage,
@@ -116,6 +130,7 @@ static iree_status_t iree_hip_library_create(
                                              (void**)&library));
   memset(library, 0, sizeof(*library));
   iree_atomic_ref_count_init(&library->ref_count);
+  iree_atomic_store(&library->module, 0, iree_memory_order_relaxed);
   iree_slim_mutex_initialize(&library->build_mutex);
   library->state = IREE_HIP_LIBRARY_STATE_UNBUILT;
   library->source_type = source_type;
@@ -201,6 +216,12 @@ static iree_status_t iree_hip_library_populate_kernels(
     iree_hal_streaming_symbol_t* symbol = &module->symbols[i];
     if (symbol->type != IREE_HAL_STREAMING_SYMBOL_TYPE_FUNCTION) continue;
     library->kernels[kernel_ordinal].symbol = symbol;
+    iree_status_t status = iree_hip_function_handle_create(
+        module, symbol, &library->kernels[kernel_ordinal].handle);
+    if (!iree_status_is_ok(status)) {
+      iree_hip_function_handle_retire_module(module);
+      return status;
+    }
     library->kernels[kernel_ordinal].name = next_name;
     memcpy(next_name, symbol->name.data, symbol->name.size);
     next_name[symbol->name.size] = '\0';
@@ -285,7 +306,8 @@ static hipError_t iree_hip_library_acquire_ready(hipLibrary_t handle,
       result = iree_hip_status_to_result(status);
     }
     if (result == hipSuccess) {
-      library->module = module;
+      iree_atomic_store(&library->module, (intptr_t)module,
+                        iree_memory_order_release);
       library->state = IREE_HIP_LIBRARY_STATE_BUILT;
     } else {
       iree_hal_streaming_module_release(module);
@@ -307,51 +329,33 @@ static hipError_t iree_hip_library_acquire_ready(hipLibrary_t handle,
   return result;
 }
 
-// Kernel handles are tagged streaming symbols and deliberately remain direct
-// handles on the launch path. Query APIs recover their library ownership from
-// the cold-path registry before dereferencing them, which also rejects stale or
-// fabricated handles without adding work to dispatch.
+// Resolves a kernel through the O(1) function-handle table before consulting
+// the cold-path library registry for library-specific metadata ownership.
 static hipError_t iree_hip_library_acquire_for_kernel(
     hipKernel_t kernel, hipError_t null_error, hipLibrary_t* out_library,
     iree_hal_streaming_symbol_t** out_symbol) {
   *out_library = NULL;
   *out_symbol = NULL;
   if (!kernel) return null_error;
-  if (!iree_hal_streaming_symbol_has_tag(kernel)) return hipErrorInvalidHandle;
 
-  const uintptr_t candidate =
-      (uintptr_t)iree_hal_streaming_symbol_untag(kernel);
+  iree_hal_streaming_symbol_t* symbol = NULL;
+  iree_hal_streaming_module_t* module = NULL;
+  if (!iree_hip_function_handle_lookup(kernel, &symbol, &module)) {
+    return hipErrorInvalidHandle;
+  }
   iree_hip_library_registry_ensure_initialized();
   iree_slim_mutex_lock(&iree_hip_library_registry_mutex);
   for (hipLibrary_t library = iree_hip_library_registry_head; library;
        library = library->next) {
-    iree_hal_streaming_module_t* module = library->module;
-    if (!module || module->symbol_count == 0) continue;
-    if (module->symbol_count > UINTPTR_MAX / sizeof(*module->symbols)) continue;
-    const uintptr_t begin = (uintptr_t)module->symbols;
-    const uintptr_t byte_length =
-        module->symbol_count * sizeof(*module->symbols);
-    if (begin > UINTPTR_MAX - byte_length) continue;
-    const uintptr_t end = begin + byte_length;
-    if (candidate < begin || candidate >= end ||
-        (candidate - begin) % sizeof(*module->symbols) != 0) {
-      continue;
-    }
+    if (iree_hip_library_module(library) != module) continue;
     iree_hip_library_retain(library);
     *out_library = library;
-    *out_symbol = (iree_hal_streaming_symbol_t*)candidate;
+    *out_symbol = symbol;
     break;
   }
   iree_slim_mutex_unlock(&iree_hip_library_registry_mutex);
-
-  if (!*out_symbol ||
-      (*out_symbol)->type != IREE_HAL_STREAMING_SYMBOL_TYPE_FUNCTION) {
-    iree_hip_library_release(*out_library);
-    *out_library = NULL;
-    *out_symbol = NULL;
-    return hipErrorInvalidHandle;
-  }
-  return hipSuccess;
+  iree_hal_streaming_module_release(module);
+  return *out_library ? hipSuccess : hipErrorInvalidHandle;
 }
 
 static hipError_t iree_hip_library_validate_jit_options(
@@ -396,8 +400,9 @@ static hipError_t iree_hip_library_validate_kernel_device(hipLibrary_t library,
       !iree_hal_streaming_device_entry((iree_host_size_t)device)) {
     return hipErrorInvalidDevice;
   }
-  if (!library->module || !library->module->context ||
-      library->module->context->device_ordinal !=
+  iree_hal_streaming_module_t* module = iree_hip_library_module(library);
+  if (!module || !module->context ||
+      module->context->device_ordinal !=
           (iree_hal_streaming_device_ordinal_t)device) {
     return hipErrorMissingConfiguration;
   }
@@ -429,8 +434,8 @@ static iree_status_t iree_hip_library_try_get_managed_global(
   iree_device_size_t byte_count = 0;
   iree_status_t status =
       iree_hal_streaming_module_try_initialize_managed_global(
-          library->module, name, managed_name, out_found, out_host_pointer,
-          &byte_count);
+          iree_hip_library_module(library), name, managed_name, out_found,
+          out_host_pointer, &byte_count);
   iree_allocator_free(library->host_allocator, managed_name);
   if (iree_status_is_ok(status) && *out_found) {
     if (IREE_UNLIKELY((iree_device_size_t)(size_t)byte_count != byte_count)) {
@@ -518,6 +523,9 @@ HIPAPI hipError_t hipLibraryLoadFromFile(
       true, library_options, library_option_values, library_option_count,
       &binary_is_preserved);
   if (result != hipSuccess) return result;
+  FILE* source_file = fopen(file_name, "rb");
+  if (!source_file) return hipErrorFileNotFound;
+  fclose(source_file);
   return iree_hip_library_register(IREE_HIP_LIBRARY_SOURCE_TYPE_FILE, NULL,
                                    binary_is_preserved, file_name, library);
 }
@@ -528,9 +536,16 @@ HIPAPI hipError_t hipLibraryUnload(hipLibrary_t library) {
       iree_hip_library_registry_remove(library, &removed_library);
   if (result != hipSuccess) return result;
 
-  if (removed_library->module) {
-    iree_status_t status = iree_hal_streaming_context_synchronize(
-        removed_library->module->context);
+  // A lookup that began before registry removal may still be completing the
+  // one-time build. Wait for that transition before reading the publication.
+  iree_slim_mutex_lock(&removed_library->build_mutex);
+  iree_hal_streaming_module_t* module =
+      iree_hip_library_module(removed_library);
+  iree_slim_mutex_unlock(&removed_library->build_mutex);
+  if (module) {
+    iree_hip_function_handle_retire_module(module);
+    iree_status_t status =
+        iree_hal_streaming_context_synchronize(module->context);
     result = iree_hip_status_to_result(status);
   }
   iree_hip_library_release(removed_library);
@@ -540,6 +555,7 @@ HIPAPI hipError_t hipLibraryUnload(hipLibrary_t library) {
 HIPAPI hipError_t hipLibraryGetKernel(hipKernel_t* kernel, hipLibrary_t library,
                                       const char* name) {
   if (!kernel || !library || !name || !name[0]) return hipErrorInvalidValue;
+  *kernel = NULL;
   hipLibrary_t retained_library = NULL;
   hipError_t result =
       iree_hip_library_acquire_ready(library, &retained_library);
@@ -547,9 +563,17 @@ HIPAPI hipError_t hipLibraryGetKernel(hipKernel_t* kernel, hipLibrary_t library,
 
   iree_hal_streaming_symbol_t* symbol = NULL;
   iree_status_t status = iree_hal_streaming_module_function(
-      retained_library->module, name, &symbol);
+      iree_hip_library_module(retained_library), name, &symbol);
   if (iree_status_is_ok(status)) {
-    *kernel = (hipKernel_t)iree_hal_streaming_symbol_tag(symbol);
+    for (unsigned int i = 0; i < retained_library->kernel_count; ++i) {
+      if (retained_library->kernels[i].symbol != symbol) continue;
+      *kernel = (hipKernel_t)retained_library->kernels[i].handle;
+      break;
+    }
+    if (!*kernel) {
+      status = iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                                "library kernel metadata is incomplete");
+    }
   }
   result = iree_hip_status_to_result(status);
   iree_hip_library_release(retained_library);
@@ -580,8 +604,7 @@ HIPAPI hipError_t hipLibraryEnumerateKernels(hipKernel_t* kernels,
   const unsigned int write_count =
       iree_min(kernel_count, retained_library->kernel_count);
   for (unsigned int i = 0; i < write_count; ++i) {
-    kernels[i] = (hipKernel_t)iree_hal_streaming_symbol_tag(
-        retained_library->kernels[i].symbol);
+    kernels[i] = (hipKernel_t)retained_library->kernels[i].handle;
   }
   iree_hip_library_release(retained_library);
   return hipSuccess;
@@ -609,8 +632,8 @@ HIPAPI hipError_t hipLibraryGetGlobal(void** device_pointer, size_t* byte_count,
   iree_hal_streaming_deviceptr_t address = 0;
   iree_device_size_t size = 0;
   if (iree_status_is_ok(status) && !managed_found) {
-    status = iree_hal_streaming_module_global(retained_library->module, name,
-                                              &address, &size);
+    status = iree_hal_streaming_module_global(
+        iree_hip_library_module(retained_library), name, &address, &size);
   }
   if (iree_status_is_ok(status) && !managed_found &&
       (address > UINTPTR_MAX || size > SIZE_MAX)) {
@@ -664,7 +687,7 @@ HIPAPI hipError_t hipKernelGetFunction(hipFunction_t* function,
   hipError_t result = iree_hip_library_acquire_for_kernel(
       kernel, hipErrorInvalidValue, &library, &symbol);
   if (result != hipSuccess) return result;
-  *function = (hipFunction_t)iree_hal_streaming_symbol_tag(symbol);
+  *function = (hipFunction_t)kernel;
   iree_hip_library_release(library);
   return hipSuccess;
 }
@@ -846,9 +869,8 @@ HIPAPI hipError_t hipKernelSetAttribute(hipFunction_attribute attribute,
     }
   }
   if (result == hipSuccess) {
-    result = hipFuncSetAttribute(
-        (hipFunction_t)iree_hal_streaming_symbol_tag(symbol),
-        (hipFuncAttribute_t)attribute, value);
+    result = hipFuncSetAttribute((hipFunction_t)kernel,
+                                 (hipFuncAttribute_t)attribute, value);
   }
   iree_hip_library_release(library);
   return result;
