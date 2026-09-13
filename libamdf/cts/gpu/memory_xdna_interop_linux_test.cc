@@ -6,6 +6,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <sys/mman.h>
 #include <unistd.h>
 
 #include <cstdint>
@@ -206,6 +207,37 @@ class GpuXdnaMemoryInteropTest : public ::testing::Test {
   void ImportGpuSubrangeAndReleaseAllocation();
   void CheckSurvivingImport();
 
+  void FindJointProfile(amdf_memory_profile_roles_t role,
+                        amdf_memory_profile_t* out_profile,
+                        amdf_memory_access_capabilities_t* capabilities) {
+    const amdf_memory_endpoint_access_t endpoints[] = {
+        {xdna_endpoint_, xdna_access_.requirements},
+        {gpu_endpoint_, gpu_access_.requirements},
+    };
+    out_profile->ordinal = AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN;
+    for (uint32_t ordinal = 0;; ++ordinal) {
+      amdf_memory_profile_t profile = {};
+      profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
+      profile.structure_size = sizeof(profile);
+      for (uint32_t i = 0; i < 2; ++i) {
+        capabilities[i] = {};
+        capabilities[i].type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES;
+        capabilities[i].structure_size = sizeof(capabilities[i]);
+      }
+      const amdf_status_t status = api_->memory_scope_query_profile(
+          system_scope_, ordinal, 2, endpoints, &profile, capabilities);
+      if (amdf_status_code(status) == AMDF_STATUS_CODE_OUT_OF_RANGE) break;
+      if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED))
+        continue;
+      ASSERT_EQ(status, AMDF_STATUS_OK);
+      if ((profile.roles & role) != 0 &&
+          (profile.supported_flags & AMDF_MEMORY_FLAG_HOST_VISIBLE) != 0) {
+        *out_profile = profile;
+        break;
+      }
+    }
+  }
+
   virtual amdf_status_t AcquireGpuDevice() {
     return GetCtsDeviceCache().GetGpuDevice(gpu_endpoint_, &gpu_device_);
   }
@@ -233,6 +265,9 @@ class GpuXdnaMemoryInteropTest : public ::testing::Test {
       const amdf_status_t status = api_->memory_destroy(gpu_memory_);
       EXPECT_EQ(status, AMDF_STATUS_OK);
       if (amdf_status_is_ok(status)) gpu_memory_ = nullptr;
+    }
+    if (gpu_memory_ == nullptr && caller_pages_.pointer != nullptr) {
+      EXPECT_EQ(munmap(caller_pages_.pointer, caller_pages_.byte_length), 0);
     }
   }
 
@@ -275,6 +310,13 @@ class GpuXdnaMemoryInteropTest : public ::testing::Test {
   amdf_device_t* xdna_device_ = nullptr;
   // Case-owned GPU source backing.
   amdf_memory_t* gpu_memory_ = nullptr;
+  // Caller-owned pages kept alive through release of their joint registration.
+  struct {
+    // Complete page-aligned reservation, or null when not used by this case.
+    uint8_t* pointer = nullptr;
+    // Complete reservation length in bytes, including unregistered guards.
+    size_t byte_length = 0;
+  } caller_pages_;
   // Case-owned imported attachment to the same physical backing.
   amdf_memory_t* xdna_memory_ = nullptr;
   // Case-owned host view of the source attachment.
@@ -594,34 +636,15 @@ TEST_F(GpuXdnaMemoryInteropTest,
       {gpu_endpoint_, gpu_access_.requirements},
   };
   const amdf_memory_device_access_t devices[] = {xdna_access_, gpu_access_};
-  uint32_t profile_ordinal = AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN;
   amdf_memory_profile_t profile = {};
   amdf_memory_access_capabilities_t capabilities[2] = {};
-  for (uint32_t ordinal = 0;; ++ordinal) {
-    profile = {};
-    profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
-    profile.structure_size = sizeof(profile);
-    for (auto& access : capabilities) {
-      access = {};
-      access.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES;
-      access.structure_size = sizeof(access);
-    }
-    const amdf_status_t status = api_->memory_scope_query_profile(
-        system_scope_, ordinal, 2, endpoints, &profile, capabilities);
-    if (amdf_status_code(status) == AMDF_STATUS_CODE_OUT_OF_RANGE) break;
-    if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) continue;
-    ASSERT_EQ(status, AMDF_STATUS_OK);
-    if ((profile.roles & AMDF_MEMORY_PROFILE_ROLE_CREATE) != 0 &&
-        (profile.supported_flags & AMDF_MEMORY_FLAG_HOST_VISIBLE) != 0) {
-      profile_ordinal = ordinal;
-      break;
-    }
-  }
-  ASSERT_NE(profile_ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
+  ASSERT_NO_FATAL_FAILURE(FindJointProfile(AMDF_MEMORY_PROFILE_ROLE_CREATE,
+                                           &profile, capabilities));
+  ASSERT_NE(profile.ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
   const amdf_memory_create_info_t create_info = {
       .type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO,
       .structure_size = sizeof(create_info),
-      .memory_profile_ordinal = profile_ordinal,
+      .memory_profile_ordinal = profile.ordinal,
       .access_count = 2,
       .required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE,
       .byte_length = 8195,
@@ -637,7 +660,7 @@ TEST_F(GpuXdnaMemoryInteropTest,
   EXPECT_EQ(info.access_count, 2u);
   EXPECT_EQ(info.byte_length, create_info.byte_length);
   EXPECT_GT(info.native_allocation_byte_length, info.byte_length);
-  EXPECT_EQ(info.memory_profile_ordinal, profile_ordinal);
+  EXPECT_EQ(info.memory_profile_ordinal, profile.ordinal);
   for (uint32_t i = 0; i < 2; ++i) {
     amdf_memory_access_info_t access = {};
     access.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_INFO;
@@ -721,6 +744,102 @@ TEST_F(GpuXdnaMemoryInteropTest,
                 AMDF_HOST_CACHE_OPERATION_INVALIDATE);
     }
   }
+}
+
+TEST_F(GpuXdnaMemoryInteropTest,
+       RegistersCallerPagesWithJointAccessAndPreservesCallerOwnership) {
+  amdf_memory_profile_t profile = {};
+  amdf_memory_access_capabilities_t capabilities[2] = {};
+  ASSERT_NO_FATAL_FAILURE(FindJointProfile(AMDF_MEMORY_PROFILE_ROLE_REGISTER,
+                                           &profile, capabilities));
+  amdf_gpu_device_capabilities_t gpu_capabilities = {};
+  gpu_capabilities.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_CAPABILITIES;
+  gpu_capabilities.structure_size = sizeof(gpu_capabilities);
+  ASSERT_EQ(gpu_api_->endpoint_query_device_capabilities(gpu_endpoint_,
+                                                         &gpu_capabilities),
+            AMDF_STATUS_OK);
+  if ((gpu_capabilities.features & AMDF_GPU_DEVICE_FEATURE_HOST_REGISTRATION) ==
+      0) {
+    EXPECT_EQ(profile.ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
+    return;
+  }
+  ASSERT_NE(profile.ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
+
+  // The same single-GPU native contract cannot promise a common pointer for
+  // two independent registrations, even when both name this physical endpoint.
+  const amdf_memory_endpoint_access_t gpu_endpoints[] = {
+      {gpu_endpoint_, gpu_access_.requirements},
+      {gpu_endpoint_, gpu_access_.requirements},
+  };
+  amdf_memory_profile_t rejected = profile;
+  EXPECT_EQ(amdf_status_code(api_->memory_scope_query_profile(
+                system_scope_, profile.ordinal, 2, gpu_endpoints, &rejected,
+                capabilities)),
+            AMDF_STATUS_CODE_UNSUPPORTED);
+  EXPECT_EQ(std::memcmp(&rejected, &profile, sizeof(profile)), 0);
+
+  const long native_page_size = sysconf(_SC_PAGESIZE);
+  ASSERT_GT(native_page_size, 0);
+  const size_t page_size = static_cast<size_t>(native_page_size);
+  const size_t reservation_length = page_size * 3;
+  void* pages = mmap(nullptr, reservation_length, PROT_READ | PROT_WRITE,
+                     MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  ASSERT_NE(pages, MAP_FAILED);
+  std::memset(pages, 0x7B, reservation_length);
+  const amdf_memory_device_access_t devices[] = {xdna_access_, gpu_access_};
+  const amdf_memory_create_info_t create_info = {
+      .type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO,
+      .structure_size = sizeof(create_info),
+      .memory_profile_ordinal = profile.ordinal,
+      .access_count = 2,
+      .required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE,
+      .byte_length = page_size + 17,
+      .minimum_alignment = 1,
+      .registered_host_pointer = static_cast<uint8_t*>(pages) + 3,
+      .accesses = devices,
+  };
+  // An exceptional failed construction may leave native pins behind. Preserve
+  // caller pages until process exit unless a published owner can release them.
+  ASSERT_EQ(api_->memory_create(system_scope_, &create_info, &gpu_memory_),
+            AMDF_STATUS_OK);
+  caller_pages_.pointer = static_cast<uint8_t*>(pages);
+  caller_pages_.byte_length = reservation_length;
+  amdf_memory_info_t info = {};
+  info.type = AMDF_STRUCTURE_TYPE_MEMORY_INFO;
+  info.structure_size = sizeof(info);
+  ASSERT_EQ(api_->memory_query_info(gpu_memory_, &info), AMDF_STATUS_OK);
+  EXPECT_EQ(info.access_count, 2u);
+  EXPECT_EQ(info.byte_length, create_info.byte_length);
+  EXPECT_EQ(info.source_byte_offset, 3u);
+  uint64_t gpu_address = 0;
+  uint64_t xdna_address = 0;
+  ASSERT_EQ(api_->memory_query_address(gpu_memory_, 1, AMDF_MEMORY_ADDRESS_GPU,
+                                       &gpu_address),
+            AMDF_STATUS_OK);
+  ASSERT_EQ(api_->memory_query_address(
+                gpu_memory_, 0, AMDF_MEMORY_ADDRESS_XDNA_DMA, &xdna_address),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(gpu_address % page_size, 3u);
+  EXPECT_EQ(xdna_address % page_size, 3u);
+  amdf_host_mapping_info_t mapping = {};
+  ASSERT_EQ(Map(gpu_memory_, info.byte_length, &gpu_mapping_, &mapping),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(mapping.pointer, create_info.registered_host_pointer);
+  std::memset(mapping.pointer, 0x39, mapping.byte_length);
+  ASSERT_EQ(api_->host_mapping_destroy(gpu_mapping_), AMDF_STATUS_OK);
+  gpu_mapping_ = nullptr;
+  uint64_t stable_address = 0;
+  ASSERT_EQ(api_->memory_query_address(gpu_memory_, 1, AMDF_MEMORY_ADDRESS_GPU,
+                                       &stable_address),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(stable_address, gpu_address);
+  ASSERT_EQ(api_->memory_destroy(gpu_memory_), AMDF_STATUS_OK);
+  gpu_memory_ = nullptr;
+  EXPECT_EQ(caller_pages_.pointer[2], 0x7B);
+  EXPECT_EQ(caller_pages_.pointer[3], 0x39);
+  EXPECT_EQ(caller_pages_.pointer[2 + create_info.byte_length], 0x39);
+  EXPECT_EQ(caller_pages_.pointer[3 + create_info.byte_length], 0x7B);
+  std::memset(caller_pages_.pointer, 0x45, reservation_length);
 }
 
 TEST_F(GpuXdnaMemoryInteropTest,

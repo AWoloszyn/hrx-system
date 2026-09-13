@@ -64,6 +64,8 @@ struct FakeDevice {
   ImportFailureStage import_failure_stage;
   // Number of calls into native allocation preparation.
   uint32_t create_call_count;
+  // Caller pages received by the last native registration preparation.
+  void* registered_host_pointer;
   // Number of calls into native import preparation.
   uint32_t import_call_count;
   // Native destruction status copied into each prepared allocation.
@@ -285,8 +287,12 @@ static amdf_status_t FakeDeviceMemoryPrepare(
       reinterpret_cast<FakeDevice*>(memory->accesses[access_ordinal].device);
   memory->accesses[access_ordinal].vtable = &kFakeMemoryVtable;
   ++device->create_call_count;
+  device->registered_host_pointer = create_info->registered_host_pointer;
+  const bool registration =
+      (profile->roles & AMDF_MEMORY_PROFILE_ROLE_REGISTER) != 0;
   const uint64_t granularity =
-      profile->allocation.native_byte_length_granularity;
+      registration ? profile->registration.native_byte_length_granularity
+                   : profile->allocation.native_byte_length_granularity;
   const uint64_t native_length =
       (create_info->byte_length + granularity - 1) & ~(granularity - 1);
   const amdf_status_t status = PrepareFakeMemory(
@@ -730,6 +736,95 @@ TEST_F(MemoryConstructionTest,
       EXPECT_EQ(devices[2].abandon_call_count, 0u);
       EXPECT_EQ(allocations.live_count, 0u);
     }
+  }
+}
+
+TEST_F(MemoryConstructionTest,
+       RegistersTheSameCallerPagesAndRollsBackPartialConsumers) {
+  alignas(4096) std::array<uint8_t, 8192> pages = {};
+  for (uint32_t failing_consumer = 0; failing_consumer <= 3;
+       ++failing_consumer) {
+    SCOPED_TRACE(failing_consumer);
+    AllocationState allocations;
+    instance_.host_allocator = allocations.allocator();
+    std::array<FakeDevice, 3> devices;
+    std::array<amdf_memory_device_access_t, 3> accesses;
+    std::vector<uint64_t> release_order;
+    for (uint32_t i = 0; i < devices.size(); ++i) {
+      InitializeFakeDevice(i + 1, &instance_, &devices[i]);
+      auto& device = devices[i];
+      device.profile.roles =
+          AMDF_MEMORY_PROFILE_ROLE_REGISTER | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP;
+      device.profile.registration = device.profile.allocation;
+      device.profile.registration.registered_host_pointer_alignment = 1;
+      device.profile.allocation = {};
+      device.profile.import = {};
+      device.profile.external_memory_support_count = 0;
+      device.profile.supported_flags &= ~AMDF_MEMORY_FLAG_SHAREABLE;
+      if (i != 0) {
+        device.base.engine_kind = AMDF_ENGINE_KIND_XDNA;
+        device.profile.address_kinds = UINT64_C(1)
+                                       << AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE;
+      }
+      if (i == failing_consumer) {
+        device.create_status =
+            amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
+      }
+      device.release_order = &release_order;
+      accesses[i] = device.request;
+    }
+    amdf_memory_create_info_t info = MakeMemoryCreateInfo(devices[0]);
+    info.memory_profile_ordinal = 1;
+    info.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
+    info.byte_length = 4099;
+    info.registered_host_pointer = pages.data();
+    info.access_count = accesses.size();
+    info.accesses = accesses.data();
+    auto* const sentinel = reinterpret_cast<amdf_memory_t*>(uintptr_t{1});
+    amdf_memory_t* memory = sentinel;
+    const amdf_status_t status =
+        amdf_memory_create(&instance_.system_memory_scope, &info, &memory);
+    if (failing_consumer == 3) {
+      ASSERT_EQ(status, AMDF_STATUS_OK);
+      EXPECT_EQ(memory->info.byte_length, info.byte_length);
+      EXPECT_EQ(memory->info.access_count, accesses.size());
+      EXPECT_EQ(amdf_memory_destroy(memory), AMDF_STATUS_OK);
+    } else {
+      EXPECT_EQ(amdf_status_code(status), AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
+      EXPECT_EQ(memory, sentinel);
+    }
+    const uint32_t prepared_count =
+        failing_consumer < 3 ? failing_consumer + 1 : 3;
+    std::vector<uint64_t> expected_order;
+    for (uint32_t i = prepared_count; i != 0; --i) {
+      expected_order.push_back(i);
+    }
+    EXPECT_EQ(release_order, expected_order);
+    for (uint32_t i = 0; i < devices.size(); ++i) {
+      EXPECT_EQ(devices[i].create_call_count, i < prepared_count ? 1u : 0u);
+      EXPECT_EQ(devices[i].registered_host_pointer,
+                i < prepared_count ? pages.data() : nullptr);
+      EXPECT_EQ(devices[i].import_call_count, 0u);
+      EXPECT_EQ(devices[i].export_release.count, 0u);
+      EXPECT_EQ(devices[i].abandon_call_count, 0u);
+    }
+    EXPECT_EQ(allocations.live_count, 0u);
+    // Independently registering another GPU cannot establish one common GPU
+    // pointer. Reject that joint contract before any native preparation.
+    devices[1].profile.address_kinds = UINT64_C(1) << AMDF_MEMORY_ADDRESS_GPU;
+    devices[1].base.engine_kind = AMDF_ENGINE_KIND_GPU;
+    memory = sentinel;
+    EXPECT_EQ(amdf_status_code(amdf_memory_create(
+                  &instance_.system_memory_scope, &info, &memory)),
+              AMDF_STATUS_CODE_UNSUPPORTED);
+    EXPECT_EQ(memory, sentinel);
+    EXPECT_EQ(release_order, expected_order);
+    for (uint32_t i = 0; i < devices.size(); ++i) {
+      EXPECT_EQ(devices[i].create_call_count, i < prepared_count ? 1u : 0u);
+    }
+    if (memory != sentinel)
+      EXPECT_EQ(amdf_memory_destroy(memory), AMDF_STATUS_OK);
+    EXPECT_EQ(allocations.live_count, 0u);
   }
 }
 

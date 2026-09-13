@@ -361,12 +361,23 @@ static amdf_status_t amdf_memory_scope_select_acquisition(
     const amdf_external_memory_support_t* transport,
     amdf_memory_scope_plan_t* plan, bool* out_found) {
   bool found = true;
+  bool has_gpu_address = false;
   amdf_status_t status = AMDF_STATUS_OK;
   for (uint32_t i = 0; amdf_status_is_ok(status) && found && i < query->count;
        ++i) {
     status =
         amdf_memory_access_find_profile(query, i, memory_class, role, transport,
                                         &plan->native_profiles[i], &found);
+    if (amdf_status_is_ok(status) && found &&
+        role == AMDF_MEMORY_PROFILE_ROLE_REGISTER &&
+        (plan->native_profiles[i].address_kinds &
+         (UINT64_C(1) << AMDF_MEMORY_ADDRESS_GPU)) != 0) {
+      // Independent registrations reserve independent GPU virtual addresses.
+      // One ordinary GPU pointer requires coordinated peer mapping, not a
+      // second invocation of this per-consumer registration strategy.
+      found = !has_gpu_address;
+      has_gpu_address = true;
+    }
   }
   if (amdf_status_is_ok(status)) *out_found = found;
   return status;
