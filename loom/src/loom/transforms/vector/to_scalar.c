@@ -723,6 +723,12 @@ static iree_status_t loom_vector_to_scalar_lower_descriptor_op(
     return iree_ok_status();
   }
 
+  // Whole-value operations also accept scalars, which are already terminal.
+  if (!loom_type_is_vector(
+          loom_module_value_type(rewriter->module, loom_op_results(op)[0]))) {
+    return iree_ok_status();
+  }
+
   loom_vector_to_scalar_state_t state = {0};
   IREE_RETURN_IF_ERROR(loom_vector_to_scalar_prepare_state(
       pass, rewriter, op, &descriptor, 0, &state));

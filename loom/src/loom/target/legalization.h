@@ -82,6 +82,10 @@ typedef enum loom_target_legalizer_strategy_e {
 enum loom_target_legalizer_entry_flag_bits_e {
   // Calls this legalizer even when the target contract already accepts the op.
   LOOM_TARGET_LEGALIZER_ENTRY_FLAG_REWRITE_LEGAL = 1u << 0,
+  // Requires an explicit unsupported contract before applying the recipe or
+  // rejecting it under require-native. An unanswered query can still have a
+  // native lowering. Reference-only explicitly requests the recipe instead.
+  LOOM_TARGET_LEGALIZER_ENTRY_FLAG_REQUIRE_CONTRACT_REJECTION = 1u << 1,
 };
 typedef uint32_t loom_target_legalizer_entry_flags_t;
 

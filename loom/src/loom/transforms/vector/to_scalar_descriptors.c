@@ -102,6 +102,9 @@ static bool loom_vector_to_scalar_descriptor_is_empty(
 
 bool loom_vector_to_scalar_resolve_descriptor(
     loom_op_kind_t kind, loom_vector_to_scalar_descriptor_t* out_descriptor) {
+  // Both forms select each payload lane. Generic lane materialization keeps
+  // scf.select's scalar condition unchanged instead of extracting a mask lane.
+  if (kind == LOOM_OP_SCF_SELECT) kind = LOOM_OP_VECTOR_SELECT;
   const loom_vector_scalarization_t* scalarization =
       loom_vector_scalarization_lookup(kind);
   if (scalarization != NULL) {

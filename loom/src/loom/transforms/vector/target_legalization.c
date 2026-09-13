@@ -9,6 +9,7 @@
 #include "loom/ir/module.h"
 #include "loom/ir/types.h"
 #include "loom/ops/kernel/ops.h"
+#include "loom/ops/scf/ops.h"
 #include "loom/ops/vector/memory.h"
 #include "loom/ops/vector/ops.h"
 #include "loom/transforms/vector/to_scalar.h"
@@ -298,6 +299,11 @@ static iree_status_t loom_vector_legalize_extract(
 }
 
 static const loom_target_legalizer_rule_t kVectorLegalizerRules[] = {
+    {
+        .root_kind = LOOM_OP_SCF_SELECT,
+        .flags = LOOM_TARGET_LEGALIZER_ENTRY_FLAG_REQUIRE_CONTRACT_REJECTION,
+        .legalize = loom_vector_legalize_descriptor,
+    },
     {
         .root_kind = LOOM_OP_VECTOR_REDUCE,
         .legalize = loom_vector_legalize_reduce,

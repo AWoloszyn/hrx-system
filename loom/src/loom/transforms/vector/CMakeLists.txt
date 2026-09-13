@@ -154,6 +154,7 @@ loom_cc_library(
     iree::base
     loom::ir
     loom::ops::kernel
+    loom::ops::scf
     loom::ops::vector
     loom::target::legalization
   PUBLIC

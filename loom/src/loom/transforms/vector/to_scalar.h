@@ -7,8 +7,10 @@
 // Vector-to-scalar reference lowering.
 //
 // This pass exposes vector lane semantics using scalar ops and scf.for loops
-// while preserving function ABI. Vector arguments/results/calls/returns remain
-// vector-typed; vector.extract/vector.insert/vector.from_elements are the
+// while preserving function ABI. Whole-vector scf.select uses the same lane
+// program as vector.select with an unchanged scalar condition. Vector
+// arguments/results/calls/returns remain vector-typed;
+// vector.extract/vector.insert/vector.from_elements are the
 // aggregate boundary ops used to move between vector values and scalar lane
 // programs.
 

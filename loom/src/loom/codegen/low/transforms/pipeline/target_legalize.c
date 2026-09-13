@@ -1336,6 +1336,14 @@ static iree_status_t loom_low_target_legalize_rewrite_op(
     if (loom_low_target_legalize_should_skip_entry(state, entry)) {
       continue;
     }
+    if (iree_any_bit_set(
+            entry->flags,
+            LOOM_TARGET_LEGALIZER_ENTRY_FLAG_REQUIRE_CONTRACT_REJECTION) &&
+        query_result.outcome == LOOM_TARGET_CONTRACT_QUERY_UNHANDLED &&
+        state->legalization_context.policy !=
+            LOOM_TARGET_LEGALIZATION_POLICY_REFERENCE_ONLY) {
+      continue;
+    }
     driver->rewriter.flags = 0;
     const uint64_t created_op_count_before = driver->rewriter.created_op_count;
     const uint64_t erased_op_count_before = driver->rewriter.erased_op_count;
