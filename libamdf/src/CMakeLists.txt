@@ -318,7 +318,10 @@ iree_cc_test(
   NAME
     memory_test
   SRCS
+    "memory_construction_test.cc"
     "memory_test.cc"
+    "memory_test_fixture.cc"
+    "memory_test_fixture.h"
   DEPS
     ::allocator
     ::child_tracker

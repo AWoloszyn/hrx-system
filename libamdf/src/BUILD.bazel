@@ -215,7 +215,12 @@ amdf_cc_library(
 
 amdf_cc_test(
     name = "memory_test",
-    srcs = ["memory_test.cc"],
+    srcs = [
+        "memory_construction_test.cc",
+        "memory_test.cc",
+        "memory_test_fixture.cc",
+        "memory_test_fixture.h",
+    ],
     deps = [
         ":allocator",
         ":child_tracker",
