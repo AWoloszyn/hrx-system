@@ -44,6 +44,7 @@ package_group(
     name = "benchmark_users",
     packages = [
         "//build_tools/...",
+        "//libamdf/...",
         "//libhrx/...",
         "//loom/...",
         "//runtime/...",

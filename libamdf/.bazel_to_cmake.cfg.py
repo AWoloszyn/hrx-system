@@ -73,6 +73,13 @@ class AmdfBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         )
         self.cc_test(deps=(deps or []) + ["//libamdf:headers"], **kwargs)
 
+    def amdf_cc_benchmark(self, deps=None, **kwargs):
+        kwargs = self._apply_amdf_cmake_policy(kwargs, include_run_requirements=True)
+        self.cc_binary_benchmark(
+            deps=(deps or []) + ["//libamdf:headers", "//third_party:google_benchmark"],
+            **kwargs,
+        )
+
     def amdf_windows_sidecar_library(self, **kwargs):
         kwargs = dict(kwargs)
         kwargs["target_compatible_with"] = (

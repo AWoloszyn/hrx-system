@@ -10,6 +10,7 @@ load("//libamdf/build_tools/bazel:cc.bzl", "amdf_cc_library")
 package(
     default_visibility = [
         "//experimental/xdna/cts:__pkg__",
+        "//libamdf/benchmarks:__subpackages__",
         "//libamdf/cts:__subpackages__",
     ],
     features = ["layering_check"],

@@ -26,6 +26,7 @@ PACKAGE_POLICIES = [
     package_policy(
         packages = [
             "libamdf",
+            "libamdf/benchmarks/...",
             "libamdf/cts/...",
             "libamdf/examples/...",
             "libamdf/src/...",
@@ -56,13 +57,17 @@ PACKAGE_POLICIES = [
         resource_group = "iree-hal-drivers-amdgpu-tests",
     ),
     package_policy(
-        packages = ["libamdf/cts/xdna/..."],
+        packages = [
+            "libamdf/benchmarks/xdna/...",
+            "libamdf/cts/xdna/...",
+        ],
         run_requirements = [XDNA_RESOURCE],
         # GPU CTS includes GPU/XDNA interop and competes for this device too.
         resource_group = "iree-hal-drivers-amdgpu-tests",
     ),
     package_policy(
         packages = [
+            "libamdf/benchmarks/xdna/...",
             "libamdf/cts/xdna/...",
             "libamdf/src/xdna/...",
         ],
