@@ -765,12 +765,18 @@ TEST_F(GpuXdnaMemoryInteropTest,
   }
   ASSERT_NE(profile.ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
 
-  // The same single-GPU native contract cannot promise a common pointer for
-  // two independent registrations, even when both name this physical endpoint.
-  const amdf_memory_endpoint_access_t gpu_endpoints[] = {
+  // Prospective devices may share one native VM. The complete registration
+  // contract still requires equal exact permissions for its shared backing.
+  amdf_memory_endpoint_access_t gpu_endpoints[] = {
       {gpu_endpoint_, gpu_access_.requirements},
       {gpu_endpoint_, gpu_access_.requirements},
   };
+  amdf_memory_profile_t shared = profile;
+  ASSERT_EQ(
+      api_->memory_scope_query_profile(system_scope_, profile.ordinal, 2,
+                                       gpu_endpoints, &shared, capabilities),
+      AMDF_STATUS_OK);
+  gpu_endpoints[1].requirements.access = AMDF_MEMORY_ACCESS_READ;
   amdf_memory_profile_t rejected = profile;
   EXPECT_EQ(amdf_status_code(api_->memory_scope_query_profile(
                 system_scope_, profile.ordinal, 2, gpu_endpoints, &rejected,

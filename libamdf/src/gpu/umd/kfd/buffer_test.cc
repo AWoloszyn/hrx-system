@@ -55,6 +55,10 @@ struct NativeBufferState {
   uint32_t export_count = 0;
   // Native allocation address within the real host reservation.
   uintptr_t address = 0;
+  // Page-covered length expected at the native allocation boundary.
+  size_t byte_length = 4096;
+  // Exact allocation arguments before the dependency publishes its handle.
+  kfd_ioctl_alloc_memory_of_gpu_args allocation = {};
   // Number of buffer metadata allocations returned to the host allocator.
   uint32_t metadata_free_count = 0;
   // Input map progress observed by every native call.
@@ -90,8 +94,9 @@ extern "C" int __wrap_ioctl(int descriptor, unsigned long request, ...) {
       auto* allocate =
           static_cast<kfd_ioctl_alloc_memory_of_gpu_args*>(argument);
       EXPECT_EQ(allocate->gpu_id, 19u);
-      EXPECT_EQ(allocate->size, 4096u);
+      EXPECT_EQ(allocate->size, native_state->byte_length);
       EXPECT_FALSE(native_state->allocation_live);
+      native_state->allocation = *allocate;
       allocate->handle = 0x1234;
       native_state->address = allocate->va_addr;
       native_state->allocation_live = true;
@@ -298,6 +303,43 @@ TEST_F(KfdBufferNativeTest, PartialGroupMapRollsBackOnlyTheMappedPrefix) {
   EXPECT_EQ(native_.map_progress, (std::vector<uint32_t>{0}));
   EXPECT_EQ(native_.unmap_progress, (std::vector<uint32_t>{0}));
   EXPECT_EQ(native_.free_count, 1u);
+}
+
+TEST_F(KfdBufferNativeTest, RegisteredGroupPreservesCallerPagesThroughUnmap) {
+  void* pages = mmap(nullptr, 12288, PROT_READ | PROT_WRITE,
+                     MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  ASSERT_NE(pages, MAP_FAILED);
+  std::memset(pages, 0xA7, 12288);
+  amdf_gpu_umd_device_t peer = device_;
+  peer.topology.gpu_id = 23;
+  amdf_gpu_umd_device_t* peers[] = {&peer};
+  create_info_.peer_count = 1;
+  create_info_.peer_devices = peers;
+  create_info_.native_flags =
+      KFD_IOC_ALLOC_MEM_FLAGS_USERPTR | KFD_IOC_ALLOC_MEM_FLAGS_COHERENT;
+  create_info_.host_access = AMDF_GPU_KFD_BUFFER_HOST_ACCESS_BORROWED;
+  create_info_.host_byte_offset = 2051;
+  create_info_.host_pointer = static_cast<uint8_t*>(pages) + 2051;
+  create_info_.byte_length = 8192;
+  native_.byte_length = 8192;
+  native_.gpu_ids = {19, 23};
+  ASSERT_EQ(Create(), AMDF_STATUS_OK);
+  EXPECT_EQ(native_.allocation.flags, create_info_.native_flags);
+  EXPECT_EQ(native_.allocation.mmap_offset, reinterpret_cast<uintptr_t>(pages));
+  EXPECT_EQ(result_.device_address, native_.address + 2051);
+  EXPECT_EQ(result_.host_pointer, create_info_.host_pointer);
+  native_.unmap_completion_error = EIO;
+  EXPECT_EQ(Destroy(), amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, EIO));
+  EXPECT_EQ(native_.free_count, 0u);
+  EXPECT_EQ(static_cast<uint8_t*>(pages)[2051], 0xA7);
+  // The dependency resolves its injected final-sync failure; the owner resumes
+  // from the consumed prefix, without replaying either mapping or allocation.
+  native_.unmap_completion_error = 0;
+  ASSERT_EQ(Destroy(), AMDF_STATUS_OK);
+  EXPECT_EQ(native_.unmap_progress, (std::vector<uint32_t>{0, 2}));
+  EXPECT_EQ(native_.free_count, 1u);
+  std::memset(pages, 0x69, 12288);
+  EXPECT_EQ(munmap(pages, 12288), 0);
 }
 
 TEST_F(KfdBufferNativeTest, GroupRetainsProgressThroughFinalSynchronization) {

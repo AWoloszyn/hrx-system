@@ -8,7 +8,10 @@
 
 // GTT allocations can be mapped into a fixed set of VMs in one KFD context.
 // Scope validation qualifies this immutable compatibility identity by instance.
-static const char amdf_gpu_kfd_gtt_allocation_domain = 0;
+static const char amdf_gpu_kfd_gtt_construction_domain = 0;
+
+// Caller pages use one USERPTR handle and GPU VA for the complete VM group.
+static const char amdf_gpu_kfd_userptr_construction_domain = 0;
 
 static uint64_t amdf_gpu_kfd_maximum_byte_length(
     const amdf_gpu_kfd_topology_t* topology, size_t page_size) {
@@ -82,7 +85,7 @@ amdf_status_t amdf_gpu_kfd_query_memory_profile(
   };
   uint32_t ordinal = 0;
   if (memory_profile_ordinal == ordinal++) {
-    profile.allocation_domain = &amdf_gpu_kfd_gtt_allocation_domain;
+    profile.construction_domain = &amdf_gpu_kfd_gtt_construction_domain;
     profile.memory_class = AMDF_MEMORY_CLASS_SYSTEM;
     profile.roles = AMDF_MEMORY_PROFILE_ROLE_CREATE |
                     AMDF_MEMORY_PROFILE_ROLE_EXPORT |
@@ -133,6 +136,7 @@ amdf_status_t amdf_gpu_kfd_query_memory_profile(
     }
   } else if (native_lifetime == AMDF_NATIVE_LIFETIME_PROCESS &&
              memory_profile_ordinal == ordinal) {
+    profile.construction_domain = &amdf_gpu_kfd_userptr_construction_domain;
     profile.memory_class = AMDF_MEMORY_CLASS_SYSTEM;
     profile.roles =
         AMDF_MEMORY_PROFILE_ROLE_REGISTER | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP;

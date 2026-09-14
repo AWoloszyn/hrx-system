@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <array>
+#include <cstdlib>
 #include <cstring>
 #include <vector>
 
@@ -12,7 +13,9 @@
 
 namespace {
 
-class GpuMemoryGroupTest : public GpuDeviceFixture {
+class GpuMemoryGroupTest
+    : public GpuDeviceFixture,
+      public ::testing::WithParamInterface<amdf_memory_profile_roles_t> {
  protected:
   void TearDown() override {
     if (mapping_ != nullptr) {
@@ -23,16 +26,26 @@ class GpuMemoryGroupTest : public GpuDeviceFixture {
       ASSERT_EQ(api_->memory_destroy(memory_), AMDF_STATUS_OK);
       memory_ = nullptr;
     }
+    std::free(caller_storage_);
+    caller_storage_ = nullptr;
     GpuDeviceFixture::TearDown();
   }
 
+  // Original caller allocation, freed only after successful native teardown.
+  uint8_t* caller_storage_ = nullptr;
   // Complete group allocation owned by this case, not by the device cache.
   amdf_memory_t* memory_ = nullptr;
   // Explicit host view released before its backing.
   amdf_host_mapping_t* mapping_ = nullptr;
 };
 
-TEST_F(GpuMemoryGroupTest, AllocatesOneSystemBackingForTwoPhysicalConsumers) {
+INSTANTIATE_TEST_SUITE_P(Acquisition, GpuMemoryGroupTest,
+                         ::testing::Values(AMDF_MEMORY_PROFILE_ROLE_CREATE,
+                                           AMDF_MEMORY_PROFILE_ROLE_REGISTER));
+
+TEST_P(GpuMemoryGroupTest, OneSystemBackingForTwoPhysicalConsumers) {
+  const amdf_memory_profile_roles_t role = GetParam();
+  const bool registered = role == AMDF_MEMORY_PROFILE_ROLE_REGISTER;
   uint32_t endpoint_count = 0;
   ASSERT_EQ(api_->endpoint_enumerate(instance_, 0, nullptr, &endpoint_count),
             AMDF_STATUS_OK);
@@ -79,9 +92,8 @@ TEST_F(GpuMemoryGroupTest, AllocatesOneSystemBackingForTwoPhysicalConsumers) {
         &profile, capabilities.data());
     if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) continue;
     ASSERT_EQ(status, AMDF_STATUS_OK);
-    if ((profile.roles & (AMDF_MEMORY_PROFILE_ROLE_CREATE |
-                          AMDF_MEMORY_PROFILE_ROLE_HOST_MAP)) !=
-        (AMDF_MEMORY_PROFILE_ROLE_CREATE | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP)) {
+    if ((profile.roles & (role | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP)) !=
+        (role | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP)) {
       continue;
     }
     if ((profile.supported_flags & AMDF_MEMORY_FLAG_HOST_VISIBLE) == 0)
@@ -90,7 +102,7 @@ TEST_F(GpuMemoryGroupTest, AllocatesOneSystemBackingForTwoPhysicalConsumers) {
     break;
   }
   if (selected == AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN) {
-    GTEST_SKIP() << "no joint allocation profile for this physical pair";
+    GTEST_SKIP() << "no joint construction profile for this physical pair";
   }
   amdf_device_t* peer_device = nullptr;
   const amdf_status_t activation =
@@ -112,18 +124,47 @@ TEST_F(GpuMemoryGroupTest, AllocatesOneSystemBackingForTwoPhysicalConsumers) {
   create_info.access_count = accesses.size();
   create_info.accesses = accesses.data();
   create_info.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
-  create_info.byte_length = profile.allocation.native_byte_length_granularity;
-  create_info.minimum_alignment = profile.allocation.minimum_alignment;
+
+  const auto& construction =
+      registered ? profile.registration : profile.allocation;
+  create_info.byte_length = construction.native_byte_length_granularity;
+  create_info.minimum_alignment = construction.minimum_alignment;
   ASSERT_NE(create_info.byte_length, 0u);
-  ASSERT_LE(create_info.byte_length, profile.allocation.maximum_byte_length);
+  ASSERT_LE(create_info.byte_length, construction.maximum_byte_length);
+  size_t caller_offset = 0;
+  size_t caller_length = 0;
+  uint8_t* caller_storage = nullptr;
+  if (registered) {
+    const uint64_t alignment = construction.registered_host_pointer_alignment;
+    ASSERT_NE(alignment, 0u);
+    // Use the queried host-pointer alignment, not an OS page-size assumption.
+    // The preceding/trailing storage keeps the full native page cover live.
+    const uint64_t granularity = construction.native_byte_length_granularity;
+    ASSERT_LE(granularity, SIZE_MAX / 4);
+    ASSERT_LE(alignment, granularity);
+    caller_length = static_cast<size_t>(granularity * 4);
+    caller_storage = static_cast<uint8_t*>(std::malloc(caller_length));
+    ASSERT_NE(caller_storage, nullptr);
+    std::memset(caller_storage, 0xA7, caller_length);
+    const uintptr_t candidate =
+        reinterpret_cast<uintptr_t>(caller_storage) + granularity + 1;
+    const uintptr_t pointer =
+        candidate + (alignment - candidate % alignment) % alignment;
+    caller_offset = pointer - reinterpret_cast<uintptr_t>(caller_storage);
+    create_info.registered_host_pointer = caller_storage + caller_offset;
+  }
+  // Failed native rollback can retain pins. Only a published registration
+  // establishes a teardown path that permits this fixture to free the pages.
   ASSERT_EQ(api_->memory_create(system_scope_, &create_info, &memory_),
             AMDF_STATUS_OK);
+  caller_storage_ = caller_storage;
   amdf_memory_info_t memory_info = {};
   memory_info.type = AMDF_STRUCTURE_TYPE_MEMORY_INFO;
   memory_info.structure_size = sizeof(memory_info);
   ASSERT_EQ(api_->memory_query_info(memory_, &memory_info), AMDF_STATUS_OK);
   EXPECT_EQ(memory_info.access_count, accesses.size());
   EXPECT_EQ(memory_info.byte_length, create_info.byte_length);
+  uint64_t common_address = 0;
   for (uint32_t i = 0; i < accesses.size(); ++i) {
     amdf_memory_access_info_t access_info = {};
     access_info.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_INFO;
@@ -136,6 +177,8 @@ TEST_F(GpuMemoryGroupTest, AllocatesOneSystemBackingForTwoPhysicalConsumers) {
     ASSERT_EQ(api_->memory_query_address(memory_, i, AMDF_MEMORY_ADDRESS_GPU,
                                          &address),
               AMDF_STATUS_OK);
+    if (i == 0) common_address = address;
+    EXPECT_EQ(address, common_address);
     EXPECT_GE(address, capabilities[i].device_address.minimum_address);
     EXPECT_LE(address, capabilities[i].device_address.maximum_address);
     EXPECT_EQ(address % capabilities[i].device_address.minimum_alignment, 0u);
@@ -151,7 +194,24 @@ TEST_F(GpuMemoryGroupTest, AllocatesOneSystemBackingForTwoPhysicalConsumers) {
   mapping_info.structure_size = sizeof(mapping_info);
   ASSERT_EQ(api_->host_mapping_query_info(mapping_, &mapping_info),
             AMDF_STATUS_OK);
+  if (registered) {
+    EXPECT_EQ(mapping_info.pointer, create_info.registered_host_pointer);
+  }
   std::memset(mapping_info.pointer, 0x5A, mapping_info.byte_length);
+  if (registered) {
+    ASSERT_EQ(api_->host_mapping_destroy(mapping_), AMDF_STATUS_OK);
+    mapping_ = nullptr;
+    ASSERT_EQ(api_->memory_destroy(memory_), AMDF_STATUS_OK);
+    memory_ = nullptr;
+    for (size_t i = 0; i < caller_length; ++i) {
+      const uint8_t expected =
+          i >= caller_offset && i < caller_offset + create_info.byte_length
+              ? 0x5A
+              : 0xA7;
+      ASSERT_EQ(caller_storage_[i], expected) << "byte " << i;
+    }
+    std::memset(caller_storage_, 0x69, caller_length);
+  }
 }
 
 }  // namespace

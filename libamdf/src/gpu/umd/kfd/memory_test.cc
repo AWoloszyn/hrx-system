@@ -83,7 +83,7 @@ TEST(LinuxGpuMemoryProfileTest, InstanceLifetimeExposesOwnedSystemMemory) {
   const amdf_memory_native_profile_t profile = QueryProfile(&device, 0);
   EXPECT_EQ(profile.ordinal, 0u);
   EXPECT_EQ(profile.memory_class, AMDF_MEMORY_CLASS_SYSTEM);
-  EXPECT_NE(profile.allocation_domain, nullptr);
+  EXPECT_NE(profile.construction_domain, nullptr);
   EXPECT_EQ(profile.roles, AMDF_MEMORY_PROFILE_ROLE_CREATE |
                                AMDF_MEMORY_PROFILE_ROLE_EXPORT |
                                AMDF_MEMORY_PROFILE_ROLE_HOST_MAP);
@@ -135,7 +135,7 @@ TEST(LinuxGpuMemoryProfileTest, ProcessLifetimeUsesDenseOptionalProfiles) {
       AMDF_GPU_DEVICE_FEATURE_HOST_VISIBLE_LOCAL_MEMORY;
 
   const amdf_memory_native_profile_t local_profile = QueryProfile(&device, 1);
-  EXPECT_EQ(local_profile.allocation_domain, nullptr);
+  EXPECT_EQ(local_profile.construction_domain, nullptr);
   EXPECT_EQ(local_profile.memory_class, AMDF_MEMORY_CLASS_LOCAL);
   EXPECT_EQ(local_profile.roles, AMDF_MEMORY_PROFILE_ROLE_CREATE |
                                      AMDF_MEMORY_PROFILE_ROLE_HOST_MAP);
@@ -154,7 +154,9 @@ TEST(LinuxGpuMemoryProfileTest, ProcessLifetimeUsesDenseOptionalProfiles) {
 
   const amdf_memory_native_profile_t registered_profile =
       QueryProfile(&device, 2);
-  EXPECT_EQ(registered_profile.allocation_domain, nullptr);
+  EXPECT_NE(registered_profile.construction_domain, nullptr);
+  EXPECT_NE(registered_profile.construction_domain,
+            QueryProfile(&device, 0).construction_domain);
   EXPECT_EQ(registered_profile.memory_class, AMDF_MEMORY_CLASS_SYSTEM);
   EXPECT_EQ(registered_profile.roles, AMDF_MEMORY_PROFILE_ROLE_REGISTER |
                                           AMDF_MEMORY_PROFILE_ROLE_HOST_MAP);

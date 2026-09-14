@@ -152,14 +152,19 @@ details owned by the resource. External import and export serve interoperability
 ordinary sharing within the fabric does not require the application to assemble
 an export/import chain.
 
-Linux GPU system allocations use one KFD backing handle mapped into the complete
-requested GPU group at a common virtual address. The native allocation fixes
-read, write, and execute permissions, so this path requires the same exact
-permissions for every participating GPU. Scope queries qualify that combination
-before construction. The memory resource owns the fixed mapping set; releasing
-it unmaps every participating VM before freeing the backing. Other engines can
-join through their supported external-memory transport without changing the
-application's scope-based construction call.
+Linux GPU system allocations and caller-page registrations use one KFD backing
+handle mapped into the complete requested GPU group at a common virtual address.
+The native allocation fixes read, write, and execute permissions, so this path
+requires the same exact permissions for every participating GPU. Scope queries
+qualify that combination before construction. The memory resource owns the fixed
+mapping set; releasing it unmaps every participating VM before releasing the
+native backing handle. Other engines join allocated backing through their
+supported external-memory transport. For registration, other engines register
+the same original caller pages, not an exported allocation or a copy. Both paths
+use the same scope-based call.
+Registration preserves the requested subpage offset in each GPU address and
+exposes only the logical range; the caller retains the original storage until
+all native mappings are released.
 
 Resource operations identify memory with its opaque handle and an explicit
 range: conceptually `{memory, offset, length}`. Host-mapping operations similarly
