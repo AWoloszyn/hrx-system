@@ -184,7 +184,11 @@ class GpuXdnaMemoryInteropTest : public ::testing::Test {
       GTEST_SKIP()
           << "source teardown requires reclaimable native VM acquisition";
     }
-    ASSERT_EQ(AcquireGpuDevice(), AMDF_STATUS_OK);
+    status = AcquireGpuDevice();
+    if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
+      GTEST_SKIP() << "native GPU activation is unavailable for this lifetime";
+    }
+    ASSERT_EQ(status, AMDF_STATUS_OK);
 
     status = GetCtsDeviceCache().GetXdnaDevice(xdna_endpoint_, &xdna_device_);
     if (amdf_status_code(status) == AMDF_STATUS_CODE_UNSUPPORTED) {

@@ -151,6 +151,11 @@ class GpuDeviceFixture : public ::testing::Test {
     }
 
     status = GetCtsDeviceCache().GetGpuDevice(endpoint_, &device_);
+    // Passive capabilities describe the provider; activation admits the
+    // installed native ABI under the requested lifetime policy.
+    if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
+      GTEST_SKIP() << "native GPU activation is unavailable for this lifetime";
+    }
     ASSERT_TRUE(amdf_status_is_ok(status))
         << "domain=" << amdf_status_domain(status)
         << " code=" << amdf_status_code(status);

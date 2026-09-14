@@ -162,6 +162,17 @@ class GpuEndpointTest : public ::testing::Test {
     return create_info;
   }
 
+  void SetUpDevice() {
+    const amdf_status_t status =
+        GetCtsDeviceCache().GetGpuDevice(endpoint_, &device_);
+    // The installed native ABI is qualified only at explicit activation.
+    if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
+      GTEST_SKIP() << "native GPU activation is unavailable for this lifetime";
+    }
+    ASSERT_EQ(status, AMDF_STATUS_OK) << "domain=" << amdf_status_domain(status)
+                                      << " code=" << amdf_status_code(status);
+  }
+
   // Core table borrowed from the CTS provider.
   const amdf_api_t* api_ = nullptr;
   // GPU table borrowed from the CTS provider.
@@ -344,11 +355,8 @@ TEST_F(GpuEndpointTest, MaterializesProgramIndependentDevice) {
   }
   ASSERT_EQ(lifetime_status, AMDF_STATUS_OK);
 
-  const amdf_status_t create_status =
-      GetCtsDeviceCache().GetGpuDevice(endpoint_, &device_);
-  ASSERT_TRUE(amdf_status_is_ok(create_status))
-      << "domain=" << amdf_status_domain(create_status)
-      << " code=" << amdf_status_code(create_status);
+  ASSERT_NO_FATAL_FAILURE(SetUpDevice());
+  if (IsSkipped()) return;
   ASSERT_NE(device_, nullptr);
 
   amdf_gpu_device_info_t info = {};
@@ -382,8 +390,8 @@ TEST_F(GpuEndpointTest, RejectsMalformedDeviceInfoWithoutMutation) {
   }
   ASSERT_EQ(lifetime_status, AMDF_STATUS_OK);
 
-  ASSERT_EQ(GetCtsDeviceCache().GetGpuDevice(endpoint_, &device_),
-            AMDF_STATUS_OK);
+  ASSERT_NO_FATAL_FAILURE(SetUpDevice());
+  if (IsSkipped()) return;
 
   EXPECT_EQ(amdf_status_code(gpu_api_->device_query_info(device_, nullptr)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
@@ -418,8 +426,8 @@ TEST_F(GpuEndpointTest, CreatesReclaimableDevicesFromOneEndpoint) {
   }
   ASSERT_EQ(lifetime_status, AMDF_STATUS_OK);
 
-  ASSERT_EQ(GetCtsDeviceCache().GetGpuDevice(endpoint_, &device_),
-            AMDF_STATUS_OK);
+  ASSERT_NO_FATAL_FAILURE(SetUpDevice());
+  if (IsSkipped()) return;
   amdf_gpu_device_info_t first_info = {};
   first_info.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_INFO;
   first_info.structure_size = sizeof(first_info);
