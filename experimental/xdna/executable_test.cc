@@ -12,8 +12,9 @@
 #include <memory>
 #include <vector>
 
-#include "iree/hal/drivers/amd/xdna/image/aie2p/strix_halo.h"
+#include "iree/hal/drivers/amd/xdna/image/aie2p/npu2.h"
 #include "iree/hal/drivers/amd/xdna/image/testdata/mul_i32.h"
+#include "iree/hal/drivers/amd/xdna/image/testdata/mul_i32_npu4.h"
 #include "iree/hal/drivers/amd/xdna/image/testing/aie2p_image_fixture.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
@@ -54,7 +55,8 @@ class XdnaExecutableTest : public ::testing::Test {
   ExecutablePtr LoadCanonical() {
     ByteSequencePtr sequence = LoadMulI32Image();
     iree_hal_amd_xdna_aie2p_target_t target;
-    IREE_CHECK_OK(iree_hal_amd_xdna_aie2p_strix_halo_target_initialize(
+    IREE_CHECK_OK(iree_hal_amd_xdna_aie2p_npu2_target_initialize(
+        IREE_SV("amd.xdna.strix_halo.17f0_11"),
         /*context_column_count=*/1, &target));
     iree_hal_executable_t* executable = nullptr;
     IREE_CHECK_OK(iree_hal_amd_xdna_executable_create(
@@ -134,11 +136,57 @@ TEST_F(XdnaExecutableTest, LoadsCanonicalImageAndReflection) {
   }
 }
 
+TEST_F(XdnaExecutableTest, CanonicalImagesRequireTheirExactDeviceProfile) {
+  const iree_file_toc_t* images[] = {
+      iree_hal_amd_xdna_test_mul_i32_npu4_create(),
+      iree_hal_amd_xdna_test_mul_i32_create(),
+  };
+  const iree_string_view_t target_ids[] = {
+      IREE_SVL("amd.xdna.strix.17f0_10"),
+      IREE_SVL("amd.xdna.strix_halo.17f0_11"),
+  };
+  for (size_t image_ordinal = 0; image_ordinal < 2; ++image_ordinal) {
+    const auto* begin =
+        reinterpret_cast<const uint8_t*>(images[image_ordinal]->data);
+    ByteSequencePtr sequence = MakeOwnedByteSequence(
+        std::vector<uint8_t>(begin, begin + images[image_ordinal]->size));
+    for (size_t target_ordinal = 0; target_ordinal < 2; ++target_ordinal) {
+      SCOPED_TRACE(::testing::Message() << "image=" << image_ordinal
+                                        << " target=" << target_ordinal);
+      iree_hal_amd_xdna_aie2p_target_t target;
+      IREE_ASSERT_OK(iree_hal_amd_xdna_aie2p_npu2_target_initialize(
+          target_ids[target_ordinal], 1, &target));
+      auto* executable = reinterpret_cast<iree_hal_executable_t*>(uintptr_t{1});
+      auto* sentinel = executable;
+      Status status(iree_hal_amd_xdna_executable_create(
+          &queue_family_, sequence.get(), &target, iree_allocator_system(),
+          &executable));
+      if (image_ordinal != target_ordinal) {
+        EXPECT_EQ(status.code(), StatusCode::kFailedPrecondition);
+        EXPECT_EQ(executable, sentinel);
+        continue;
+      }
+      IREE_ASSERT_OK(status);
+      ExecutablePtr owned_executable(executable);
+      iree_hal_executable_function_t function;
+      IREE_ASSERT_OK(iree_hal_executable_lookup_function_by_name(
+          executable, IREE_SV("mul_i32"), &function));
+      iree_hal_amd_xdna_executable_entry_t entry;
+      IREE_ASSERT_OK(iree_hal_amd_xdna_executable_query_entry(
+          executable, function, &entry));
+      EXPECT_EQ(entry.binding_count, 3u);
+      EXPECT_EQ(entry.native.relocation_count, 3u);
+      EXPECT_GT(entry.array.data_length, 0u);
+      EXPECT_GT(entry.native.control.data_length, 0u);
+    }
+  }
+}
+
 TEST_F(XdnaExecutableTest, RejectsMismatchedTargetWithoutPublishing) {
   ByteSequencePtr sequence = LoadMulI32Image();
   iree_hal_amd_xdna_aie2p_target_t target;
-  IREE_ASSERT_OK(
-      iree_hal_amd_xdna_aie2p_strix_halo_target_initialize(1, &target));
+  IREE_ASSERT_OK(iree_hal_amd_xdna_aie2p_npu2_target_initialize(
+      IREE_SV("amd.xdna.strix_halo.17f0_11"), 1, &target));
   ++target.identity.policy_id;
   auto* executable = reinterpret_cast<iree_hal_executable_t*>(uintptr_t{1});
   auto* sentinel = executable;
@@ -152,8 +200,8 @@ TEST_F(XdnaExecutableTest, RejectsMismatchedTargetWithoutPublishing) {
 TEST_F(XdnaExecutableTest, AllocationFailureDoesNotPublish) {
   ByteSequencePtr sequence = LoadMulI32Image();
   iree_hal_amd_xdna_aie2p_target_t target;
-  IREE_ASSERT_OK(
-      iree_hal_amd_xdna_aie2p_strix_halo_target_initialize(1, &target));
+  IREE_ASSERT_OK(iree_hal_amd_xdna_aie2p_npu2_target_initialize(
+      IREE_SV("amd.xdna.strix_halo.17f0_11"), 1, &target));
   auto* executable = reinterpret_cast<iree_hal_executable_t*>(uintptr_t{1});
   auto* sentinel = executable;
   IREE_EXPECT_STATUS_IS(StatusCode::kInvalidArgument,

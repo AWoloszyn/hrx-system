@@ -40,11 +40,11 @@ iree_cc_library(
 
 iree_cc_library(
   NAME
-    strix_halo
+    npu2
   HDRS
-    "strix_halo.h"
+    "npu2.h"
   SRCS
-    "strix_halo.c"
+    "npu2.c"
   DEPS
     ::program_format
     ::target
@@ -86,7 +86,7 @@ iree_cc_test(
     "native_image_test.cc"
   DEPS
     ::native_image
-    ::strix_halo
+    ::npu2
     ::transaction
     iree::base
     iree::hal::drivers::amd::xdna::image
@@ -98,12 +98,12 @@ iree_cc_test(
 
 iree_cc_test(
   NAME
-    strix_halo_test
+    npu2_test
   SRCS
-    "strix_halo_test.cc"
+    "npu2_test.cc"
   DEPS
+    ::npu2
     ::program_format
-    ::strix_halo
     ::target
     iree::base
     iree::testing::gtest

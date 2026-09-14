@@ -25,4 +25,20 @@ iree_c_embed_data(
   PUBLIC
 )
 
+iree_c_embed_data(
+  NAME
+    mul_i32_npu4
+  SRCS
+    "mul_i32_npu4.xdna"
+  C_FILE_OUTPUT
+    "mul_i32_npu4.c"
+  H_FILE_OUTPUT
+    "mul_i32_npu4.h"
+  IDENTIFIER
+    "iree_hal_amd_xdna_test_mul_i32_npu4"
+  TESTONLY
+  FLATTEN
+  PUBLIC
+)
+
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

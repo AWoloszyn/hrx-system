@@ -12,7 +12,7 @@
 #include <vector>
 
 #include "experimental/xdna/executable.h"
-#include "iree/hal/drivers/amd/xdna/image/aie2p/strix_halo.h"
+#include "iree/hal/drivers/amd/xdna/image/aie2p/npu2.h"
 #include "iree/hal/drivers/amd/xdna/image/directory.h"
 #include "iree/hal/drivers/amd/xdna/image/format.h"
 #include "iree/hal/drivers/amd/xdna/image/testdata/mul_i32.h"
@@ -58,7 +58,8 @@ class XdnaPreparedCommandTest : public ::testing::Test {
 
     ByteSequencePtr sequence = LoadMulI32Image();
     iree_hal_amd_xdna_aie2p_target_t target;
-    IREE_CHECK_OK(iree_hal_amd_xdna_aie2p_strix_halo_target_initialize(
+    IREE_CHECK_OK(iree_hal_amd_xdna_aie2p_npu2_target_initialize(
+        IREE_SV("amd.xdna.strix_halo.17f0_11"),
         /*context_column_count=*/1, &target));
     IREE_CHECK_OK(iree_hal_amd_xdna_executable_create(
         &queue_family_, sequence.get(), &target, iree_allocator_system(),
@@ -299,8 +300,8 @@ TEST_F(XdnaPreparedCommandTest, BoundsUnrestrictedOffsetsByTheActualBuffer) {
       iree_hal_amd_xdna_elf_encode_binding_record(&contract, record_storage));
   ByteSequencePtr sequence = MakeOwnedByteSequence(bytes);
   iree_hal_amd_xdna_aie2p_target_t target;
-  IREE_ASSERT_OK(
-      iree_hal_amd_xdna_aie2p_strix_halo_target_initialize(1, &target));
+  IREE_ASSERT_OK(iree_hal_amd_xdna_aie2p_npu2_target_initialize(
+      IREE_SV("amd.xdna.strix_halo.17f0_11"), 1, &target));
   iree_hal_executable_t* executable = nullptr;
   IREE_ASSERT_OK(iree_hal_amd_xdna_executable_create(
       &queue_family_, sequence.get(), &target, iree_allocator_system(),

@@ -4,13 +4,13 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree/hal/drivers/amd/xdna/image/aie2p/strix_halo.h"
+#include "iree/hal/drivers/amd/xdna/image/aie2p/npu2.h"
 
 #include <inttypes.h>
 
 enum {
-  IREE_HAL_AMD_XDNA_AIE2P_STRIX_HALO_COLUMN_COUNT = 8,
-  IREE_HAL_AMD_XDNA_AIE2P_STRIX_HALO_ROW_COUNT = 6,
+  IREE_HAL_AMD_XDNA_AIE2P_NPU2_COLUMN_COUNT = 8,
+  IREE_HAL_AMD_XDNA_AIE2P_NPU2_ROW_COUNT = 6,
   IREE_HAL_AMD_XDNA_AIE2P_NPU2_SHIM_ROW = 0,
   IREE_HAL_AMD_XDNA_AIE2P_NPU2_MEMORY_ROW = 1,
   IREE_HAL_AMD_XDNA_AIE2P_NPU2_FIRST_COMPUTE_ROW = 2,
@@ -350,8 +350,8 @@ static iree_status_t iree_hal_amd_xdna_aie2p_npu2_resolve_tile_memory(
     iree_hal_amd_xdna_image_tile_placement_t* out_placement) {
   (void)user_data;
   *out_placement = (iree_hal_amd_xdna_image_tile_placement_t){0};
-  if (destination->column >= IREE_HAL_AMD_XDNA_AIE2P_STRIX_HALO_COLUMN_COUNT ||
-      destination->row >= IREE_HAL_AMD_XDNA_AIE2P_STRIX_HALO_ROW_COUNT ||
+  if (destination->column >= IREE_HAL_AMD_XDNA_AIE2P_NPU2_COLUMN_COUNT ||
+      destination->row >= IREE_HAL_AMD_XDNA_AIE2P_NPU2_ROW_COUNT ||
       byte_length == 0) {
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                             "AIE2P TILE placement exceeds the NPU2 array");
@@ -423,9 +423,8 @@ static iree_status_t iree_hal_amd_xdna_aie2p_npu2_resolve_tile_memory(
     const int32_t owner_row =
         (int32_t)destination->row + windows[i].owner_row_delta;
     if (owner_column < 0 ||
-        owner_column >= IREE_HAL_AMD_XDNA_AIE2P_STRIX_HALO_COLUMN_COUNT ||
-        owner_row < 0 ||
-        owner_row >= IREE_HAL_AMD_XDNA_AIE2P_STRIX_HALO_ROW_COUNT ||
+        owner_column >= IREE_HAL_AMD_XDNA_AIE2P_NPU2_COLUMN_COUNT ||
+        owner_row < 0 || owner_row >= IREE_HAL_AMD_XDNA_AIE2P_NPU2_ROW_COUNT ||
         iree_hal_amd_xdna_aie2p_npu2_tile_kind((uint32_t)owner_row) !=
             windows[i].owner_kind) {
       return iree_make_status(
@@ -463,22 +462,46 @@ static iree_status_t iree_hal_amd_xdna_aie2p_npu2_validate_dma_task_wait(
   return iree_ok_status();
 }
 
-iree_status_t iree_hal_amd_xdna_aie2p_strix_halo_target_initialize(
-    uint16_t context_column_count,
+// Canonical compiler deployment identities sharing the NPU2 native contract.
+static const struct {
+  // Exact passive endpoint key, independent of native platform transport.
+  iree_string_view_t target_id;
+  // Compiler-owned identity serialized in the image ABI note.
+  uint64_t device_profile_id;
+} iree_hal_amd_xdna_aie2p_npu2_profiles[] = {
+    {IREE_SVL("amd.xdna.strix.17f0_10"), UINT64_C(0x5354524958000001)},
+    {IREE_SVL("amd.xdna.strix_halo.17f0_11"), UINT64_C(0x535848414C4F0001)},
+};
+
+iree_status_t iree_hal_amd_xdna_aie2p_npu2_target_initialize(
+    iree_string_view_t target_id, uint16_t context_column_count,
     iree_hal_amd_xdna_aie2p_target_t* out_target) {
   IREE_ASSERT_ARGUMENT(out_target);
-  *out_target = (iree_hal_amd_xdna_aie2p_target_t){0};
+  uint64_t device_profile_id = 0;
+  for (iree_host_size_t i = 0;
+       i < IREE_ARRAYSIZE(iree_hal_amd_xdna_aie2p_npu2_profiles); ++i) {
+    if (iree_string_view_equal(
+            target_id, iree_hal_amd_xdna_aie2p_npu2_profiles[i].target_id)) {
+      device_profile_id =
+          iree_hal_amd_xdna_aie2p_npu2_profiles[i].device_profile_id;
+      break;
+    }
+  }
+  if (device_profile_id == 0) {
+    return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
+                            "no NPU2 image target for '%.*s'",
+                            (int)target_id.size, target_id.data);
+  }
   if (context_column_count == 0 ||
-      context_column_count > IREE_HAL_AMD_XDNA_AIE2P_STRIX_HALO_COLUMN_COUNT) {
-    return iree_make_status(
-        IREE_STATUS_OUT_OF_RANGE,
-        "Strix Halo XDNA context column count must be in [1, 8]");
+      context_column_count > IREE_HAL_AMD_XDNA_AIE2P_NPU2_COLUMN_COUNT) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "NPU2 XDNA context column count must be in [1, 8]");
   }
   *out_target = (iree_hal_amd_xdna_aie2p_target_t){
       .identity =
           {
               .device_profile_revision = 1,
-              .device_profile_id = UINT64_C(0x535848414C4F0001),
+              .device_profile_id = device_profile_id,
               .firmware_abi_id = UINT64_C(0x4E5055320006000C),
               .policy_id = UINT64_C(0x413250504C414E01),
           },
@@ -486,7 +509,7 @@ iree_status_t iree_hal_amd_xdna_aie2p_strix_halo_target_initialize(
       .context =
           {
               .column_count = context_column_count,
-              .row_count = IREE_HAL_AMD_XDNA_AIE2P_STRIX_HALO_ROW_COUNT,
+              .row_count = IREE_HAL_AMD_XDNA_AIE2P_NPU2_ROW_COUNT,
           },
       .native =
           {
@@ -518,5 +541,5 @@ iree_status_t iree_hal_amd_xdna_aie2p_strix_halo_target_initialize(
               .fn = iree_hal_amd_xdna_aie2p_npu2_validate_dma_task_wait,
           },
   };
-  return iree_hal_amd_xdna_aie2p_target_validate(out_target);
+  return iree_ok_status();
 }

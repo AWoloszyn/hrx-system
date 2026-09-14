@@ -13,7 +13,7 @@
 #include <memory>
 #include <vector>
 
-#include "iree/hal/drivers/amd/xdna/image/aie2p/strix_halo.h"
+#include "iree/hal/drivers/amd/xdna/image/aie2p/npu2.h"
 #include "iree/hal/drivers/amd/xdna/image/aie2p/transaction.h"
 #include "iree/hal/drivers/amd/xdna/image/testdata/mul_i32.h"
 #include "iree/hal/drivers/amd/xdna/image/testing/aie2p_image_fixture.h"
@@ -254,7 +254,8 @@ TEST(Aie2pNativeImageTest, RejectsRelocationsOutsideShimAddressFields) {
 
 TEST(Aie2pNativeImageTest, LowersCanonicalMulI32Image) {
   iree_hal_amd_xdna_aie2p_target_t target;
-  IREE_ASSERT_OK(iree_hal_amd_xdna_aie2p_strix_halo_target_initialize(
+  IREE_ASSERT_OK(iree_hal_amd_xdna_aie2p_npu2_target_initialize(
+      IREE_SV("amd.xdna.strix_halo.17f0_11"),
       /*context_column_count=*/1, &target));
   ImagePtr image = CreateImage(LoadMulI32ImageBytes(), &target);
   NativeImagePtr native_image = CreateNativeImage(image.get(), &target);

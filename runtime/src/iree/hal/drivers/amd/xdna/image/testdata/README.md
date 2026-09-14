@@ -18,3 +18,16 @@ It does not establish concurrent or repeated dispatch behavior.
 
 SHA-256:
 `2085441fa886afc38ee8e850e6bcc5baeeb08cddaf8fe31c8fa11aa2c06cb3e7`
+
+`mul_i32_npu4.xdna` is a separate canonical Loom image for Strix NPU4
+`amd.xdna.strix.17f0_10`. Its entry, context geometry and binding arithmetic
+match the contract above. A 270-byte resident worker consumes successive FIFO
+records; ARRAY initializes it once and finite CONTROL invocations complete at
+the output DMA wait. Binding addresses are cold relocations. The intact image
+uses profile ID `0x5354524958000001`, revision 1, rather than Halo's identity.
+Both images exercise exact device admission and native lowering in the consumer
+tests. Host-side fixture coverage alone does not establish native execution.
+
+Producer: Loom commit `4f5d05550c78b94dbd691baaa3a1beafec8c0d5d`.
+SHA-256:
+`216a871bb644695b0bad35cb52a0d8a59b529973042a30e4d9abfc58f394ee04`.

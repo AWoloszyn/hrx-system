@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "iree/hal/drivers/amd/xdna/image/aie2p/strix_halo.h"
+#include "iree/hal/drivers/amd/xdna/image/aie2p/npu2.h"
 
 #include <array>
 #include <cstdint>
@@ -21,13 +21,31 @@ using iree::StatusCode;
 using iree::testing::status::StatusIs;
 using testing::HasSubstr;
 
-static iree_hal_amd_xdna_aie2p_target_t MakeTarget(
-    uint16_t context_column_count = 3) {
-  iree_hal_amd_xdna_aie2p_target_t target;
-  IREE_CHECK_OK(iree_hal_amd_xdna_aie2p_strix_halo_target_initialize(
-      context_column_count, &target));
-  return target;
-}
+struct DeviceProfile {
+  // Canonical endpoint key under test.
+  const char* target_id;
+  // Independent compiler identity expected for that endpoint.
+  uint64_t identity;
+};
+
+class Aie2pNpu2Test : public ::testing::TestWithParam<DeviceProfile> {
+ protected:
+  iree_hal_amd_xdna_aie2p_target_t MakeTarget(
+      uint16_t context_column_count = 3) {
+    iree_hal_amd_xdna_aie2p_target_t target;
+    IREE_CHECK_OK(iree_hal_amd_xdna_aie2p_npu2_target_initialize(
+        iree_make_cstring_view(GetParam().target_id), context_column_count,
+        &target));
+    return target;
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    Devices, Aie2pNpu2Test,
+    ::testing::Values(DeviceProfile{"amd.xdna.strix.17f0_10",
+                                    UINT64_C(0x5354524958000001)},
+                      DeviceProfile{"amd.xdna.strix_halo.17f0_11",
+                                    UINT64_C(0x535848414C4F0001)}));
 
 template <size_t N>
 static Status ValidateRecord(const iree_hal_amd_xdna_aie2p_target_t* target,
@@ -66,10 +84,11 @@ static void ExpectStatus(const Status& status, StatusCode expected_code,
   EXPECT_THAT(status.ToString(), HasSubstr(expected_message_substring));
 }
 
-TEST(Aie2pStrixHaloTest, InitializesExactTargetFacts) {
+TEST_P(Aie2pNpu2Test, InitializesExactTargetFacts) {
   const iree_hal_amd_xdna_aie2p_target_t target = MakeTarget();
   EXPECT_EQ(target.identity.device_profile_revision, 1u);
-  EXPECT_EQ(target.identity.device_profile_id, UINT64_C(0x535848414C4F0001));
+  EXPECT_EQ(target.identity.device_profile_id, GetParam().identity);
+  IREE_EXPECT_OK(iree_hal_amd_xdna_aie2p_target_validate(&target));
   EXPECT_EQ(target.identity.firmware_abi_id, UINT64_C(0x4E5055320006000C));
   EXPECT_EQ(target.identity.policy_id, UINT64_C(0x413250504C414E01));
   EXPECT_EQ(target.supported_capabilities,
@@ -86,19 +105,30 @@ TEST(Aie2pStrixHaloTest, InitializesExactTargetFacts) {
   EXPECT_NE(target.dma_task_wait_validator.fn, nullptr);
 }
 
-TEST(Aie2pStrixHaloTest, RejectsInvalidContextWidths) {
-  iree_hal_amd_xdna_aie2p_target_t target;
+TEST_P(Aie2pNpu2Test, RejectsInvalidContextWidths) {
+  iree_hal_amd_xdna_aie2p_target_t target = MakeTarget();
   IREE_EXPECT_STATUS_IS(
       StatusCode::kOutOfRange,
-      iree_hal_amd_xdna_aie2p_strix_halo_target_initialize(0, &target));
-  EXPECT_EQ(target.context.column_count, 0u);
+      iree_hal_amd_xdna_aie2p_npu2_target_initialize(
+          iree_make_cstring_view(GetParam().target_id), 0, &target));
+  EXPECT_EQ(target.context.column_count, 3u);
   IREE_EXPECT_STATUS_IS(
       StatusCode::kOutOfRange,
-      iree_hal_amd_xdna_aie2p_strix_halo_target_initialize(9, &target));
-  EXPECT_EQ(target.context.column_count, 0u);
+      iree_hal_amd_xdna_aie2p_npu2_target_initialize(
+          iree_make_cstring_view(GetParam().target_id), 9, &target));
+  EXPECT_EQ(target.context.column_count, 3u);
 }
 
-TEST(Aie2pStrixHaloTest, ResolvesProgramAndDataMemoryOwners) {
+TEST_P(Aie2pNpu2Test, RejectsUnknownDeviceWithoutPublishing) {
+  iree_hal_amd_xdna_aie2p_target_t target = MakeTarget();
+  IREE_EXPECT_STATUS_IS(StatusCode::kUnimplemented,
+                        iree_hal_amd_xdna_aie2p_npu2_target_initialize(
+                            IREE_SV("amd.xdna.strix.17f0_ff"), 1, &target));
+  EXPECT_EQ(target.identity.device_profile_id, GetParam().identity);
+  EXPECT_EQ(target.context.column_count, 3u);
+}
+
+TEST_P(Aie2pNpu2Test, ResolvesProgramAndDataMemoryOwners) {
   const iree_hal_amd_xdna_aie2p_target_t target = MakeTarget();
   iree_hal_amd_xdna_image_tile_placement_t placement;
 
@@ -141,7 +171,7 @@ TEST(Aie2pStrixHaloTest, ResolvesProgramAndDataMemoryOwners) {
   EXPECT_EQ(placement.available_capacity, 512u * 1024u - 0x40u);
 }
 
-TEST(Aie2pStrixHaloTest, RejectsUnimplementedTileMemoryWindows) {
+TEST_P(Aie2pNpu2Test, RejectsUnimplementedTileMemoryWindows) {
   const iree_hal_amd_xdna_aie2p_target_t target = MakeTarget();
   iree_hal_amd_xdna_image_tile_placement_t placement;
 
@@ -180,7 +210,7 @@ TEST(Aie2pStrixHaloTest, RejectsUnimplementedTileMemoryWindows) {
               StatusIs(StatusCode::kOutOfRange));
 }
 
-TEST(Aie2pStrixHaloTest, ValidatesExactRegisterCorpus) {
+TEST_P(Aie2pNpu2Test, ValidatesExactRegisterCorpus) {
   const iree_hal_amd_xdna_aie2p_target_t target = MakeTarget();
 
   iree_hal_amd_xdna_aie2p_register_write32_t write = {
@@ -231,7 +261,7 @@ TEST(Aie2pStrixHaloTest, ValidatesExactRegisterCorpus) {
                StatusCode::kPermissionDenied, "selects reserved NPU2 bits");
 }
 
-TEST(Aie2pStrixHaloTest, RejectsRegisterRangesOutsideLogicalContext) {
+TEST_P(Aie2pNpu2Test, RejectsRegisterRangesOutsideLogicalContext) {
   const iree_hal_amd_xdna_aie2p_target_t target = MakeTarget();
   iree_hal_amd_xdna_aie2p_register_write32_t write = {
       /*.address=*/UINT32_C(0x0621D000),
@@ -255,7 +285,7 @@ TEST(Aie2pStrixHaloTest, RejectsRegisterRangesOutsideLogicalContext) {
                StatusCode::kOutOfRange, "exceeds the image context");
 }
 
-TEST(Aie2pStrixHaloTest, ValidatesDmaTaskWaitChannelsByTileKind) {
+TEST_P(Aie2pNpu2Test, ValidatesDmaTaskWaitChannelsByTileKind) {
   const iree_hal_amd_xdna_aie2p_target_t target = MakeTarget();
   iree_hal_amd_xdna_aie2p_dma_task_wait_t wait = {
       /*.column=*/0,

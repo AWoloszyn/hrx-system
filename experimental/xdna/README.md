@@ -7,11 +7,12 @@ libamdf owns native device admission, scoped memory, and range submission.
 See [XDNA native execution](../../libamdf/docs/xdna.md) for that boundary.
 
 `iree-xdna-run` executes one entry from an intact Loom `.xdna` file through the
-experimental adapters and libamdf. Its image target currently admits Strix Halo
-`17f0:11`. The platform transport is native Linux DRM or Windows MCDM; the
-Linux path has no XRT, HSA, or ROCr dependency. The library also supports native
-NPU4 `17f0:10` execution on Windows, but this runner rejects that endpoint until
-the compiler and image loader supply its matching profile and executable.
+experimental adapters and libamdf. It selects the image target from the
+enumerated endpoint: Strix NPU4 `17f0:10` or Strix Halo NPU5 `17f0:11`.
+The ELF must match that device's exact compiler profile identity; the shared
+NPU2 array architecture does not make the images interchangeable. The platform
+transport is native Linux DRM or Windows MCDM; the Linux path has no XRT, HSA,
+or ROCr dependency.
 
 From a checkout configured with libamdf and the XDNA family enabled:
 
@@ -27,7 +28,9 @@ iree-bazel-run --config=asan //experimental/xdna:iree-xdna-run -- \
 For this fixture, the caller supplies three 64-byte files containing sixteen
 little-endian i32 values each. The first two are inputs; the third initializes
 the output. Compare `mul-output.bin` with the elementwise products, retaining
-the low 32 bits of each result.
+the low 32 bits of each result. On Strix NPU4, select the adjacent
+`mul_i32_npu4.xdna` fixture instead; it has the same binding arithmetic and the
+matching device identity.
 
 `--columns` selects the logical context size; image qualification requires an
 exact match. `--entry` names an export and defaults to ordinal zero when

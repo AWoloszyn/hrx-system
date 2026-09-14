@@ -17,7 +17,7 @@
 #include "iree/base/byte_sequence.h"
 #include "iree/base/tooling/flags.h"
 #include "iree/hal/api.h"
-#include "iree/hal/drivers/amd/xdna/image/aie2p/strix_halo.h"
+#include "iree/hal/drivers/amd/xdna/image/aie2p/npu2.h"
 #include "iree/io/file_contents.h"
 
 IREE_FLAG(string, image, "", "Complete canonical .xdna executable file.");
@@ -291,7 +291,8 @@ static iree_status_t iree_xdna_run_open_endpoint(iree_xdna_run_t* run) {
   return status;
 }
 
-static iree_status_t iree_xdna_run_create_device(iree_xdna_run_t* run) {
+static iree_status_t iree_xdna_run_create_device(
+    iree_xdna_run_t* run, iree_hal_amd_xdna_aie2p_target_t* out_target) {
   amdf_xdna_endpoint_info_t xdna_info = {
       .type = AMDF_STRUCTURE_TYPE_XDNA_ENDPOINT_INFO,
       .structure_size = sizeof(xdna_info),
@@ -299,11 +300,9 @@ static iree_status_t iree_xdna_run_create_device(iree_xdna_run_t* run) {
   IREE_RETURN_IF_ERROR(IREE_HAL_AMD_STATUS_FROM_AMDF(
       run->xdna_api->endpoint_query_info(run->endpoint, &xdna_info),
       "xdna.endpoint_query_info"));
-  if (strcmp(xdna_info.target_id, "amd.xdna.strix_halo.17f0_11") != 0) {
-    return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                            "runner has no image target for %s",
-                            xdna_info.target_id);
-  }
+  IREE_RETURN_IF_ERROR(iree_hal_amd_xdna_aie2p_npu2_target_initialize(
+      iree_make_cstring_view(xdna_info.target_id), (uint16_t)FLAG_columns,
+      out_target));
   if (xdna_info.instruction.maximum_byte_length == 0) {
     return iree_make_status(
         IREE_STATUS_UNAVAILABLE,
@@ -694,13 +693,13 @@ static iree_status_t iree_xdna_run_prepare_invocation(
       "host_mapping_cache_control(instructions)");
 }
 
-static iree_status_t iree_xdna_run_execute(
-    iree_xdna_run_t* run, iree_byte_sequence_t* image,
-    const iree_hal_amd_xdna_aie2p_target_t* target) {
+static iree_status_t iree_xdna_run_execute(iree_xdna_run_t* run,
+                                           iree_byte_sequence_t* image) {
   IREE_RETURN_IF_ERROR(iree_xdna_run_open_endpoint(run));
-  IREE_RETURN_IF_ERROR(iree_xdna_run_create_device(run));
+  iree_hal_amd_xdna_aie2p_target_t target;
+  IREE_RETURN_IF_ERROR(iree_xdna_run_create_device(run, &target));
   IREE_RETURN_IF_ERROR(iree_hal_amd_xdna_executable_create(
-      &run->queue_family, image, target, run->host_allocator,
+      &run->queue_family, image, &target, run->host_allocator,
       &run->executable));
   iree_hal_executable_function_t function =
       iree_hal_executable_function_from_index(0);
@@ -892,15 +891,11 @@ static iree_status_t iree_xdna_run_main(void) {
   }
   iree_xdna_run_t run = {.host_allocator = iree_allocator_system()};
   IREE_RETURN_IF_ERROR(iree_xdna_run_select_binding_memory(&run));
-  iree_hal_amd_xdna_aie2p_target_t target;
-  IREE_RETURN_IF_ERROR(iree_hal_amd_xdna_aie2p_strix_halo_target_initialize(
-      (uint16_t)FLAG_columns, &target));
   iree_byte_sequence_t* image = NULL;
   IREE_RETURN_IF_ERROR(iree_xdna_run_load_image(
       iree_make_cstring_view(FLAG_image), run.host_allocator, &image));
   iree_status_t status = iree_xdna_run_load_bindings(&run);
-  if (iree_status_is_ok(status))
-    status = iree_xdna_run_execute(&run, image, &target);
+  if (iree_status_is_ok(status)) status = iree_xdna_run_execute(&run, image);
   const iree_status_t cleanup_status = iree_xdna_run_deinitialize(&run);
   if (iree_status_is_ok(cleanup_status)) {
     fprintf(stderr, "All native resources released\n");
