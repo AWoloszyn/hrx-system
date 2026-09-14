@@ -24,8 +24,13 @@ namespace {
 // Both canonical compiler fixtures multiply sixteen low-32-bit integer pairs.
 constexpr size_t kElementCount = 16;
 constexpr size_t kBindingByteLength = kElementCount * sizeof(uint32_t);
+constexpr size_t kBindingByteOffset = kBindingByteLength;
+constexpr size_t kBindingStorageByteLength = 3 * kBindingByteLength;
+constexpr uint8_t kGuardValue = 0xA5;
 
-class XdnaExecutionTest : public XdnaContextFixture {
+class XdnaExecutionTest
+    : public XdnaContextFixture,
+      public ::testing::WithParamInterface<amdf_memory_profile_roles_t> {
  protected:
   struct MappedMemory {
     // Case-owned allocation; its context and device outlive it.
@@ -141,9 +146,35 @@ class XdnaExecutionTest : public XdnaContextFixture {
   void CreateBindings() {
     memory_access_.requirements.address_kinds = uint64_t{1}
                                                 << AMDF_MEMORY_ADDRESS_XDNA_DMA;
-    const uint32_t profile_ordinal = FindMemoryProfileOrdinal(
-        AMDF_MEMORY_PROFILE_ROLE_CREATE | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
-        AMDF_MEMORY_FLAG_HOST_VISIBLE);
+    if (GetParam() == AMDF_MEMORY_PROFILE_ROLE_REGISTER) {
+      amdf_memory_scope_info_t scope_info = {};
+      scope_info.type = AMDF_STRUCTURE_TYPE_MEMORY_SCOPE_INFO;
+      scope_info.structure_size = sizeof(scope_info);
+      ASSERT_EQ(api_->memory_scope_query_info(system_scope_, &scope_info),
+                AMDF_STATUS_OK);
+      amdf_memory_profile_roles_t available_roles = 0;
+      for (uint32_t ordinal = 0; ordinal < scope_info.memory_profile_count;
+           ++ordinal) {
+        amdf_memory_profile_t profile = {};
+        profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
+        profile.structure_size = sizeof(profile);
+        amdf_memory_access_capabilities_t capabilities = {};
+        capabilities.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES;
+        capabilities.structure_size = sizeof(capabilities);
+        const amdf_status_t status =
+            QueryMemoryProfile(ordinal, &profile, &capabilities);
+        if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED))
+          continue;
+        ASSERT_EQ(status, AMDF_STATUS_OK);
+        available_roles |= profile.roles;
+      }
+      if ((available_roles & AMDF_MEMORY_PROFILE_ROLE_REGISTER) == 0) {
+        GTEST_SKIP() << "XDNA host registration is not advertised";
+      }
+    }
+    const uint32_t profile_ordinal =
+        FindMemoryProfileOrdinal(GetParam() | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
+                                 AMDF_MEMORY_FLAG_HOST_VISIBLE);
     ASSERT_NE(profile_ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
     for (size_t i = 0; i < bindings_.size(); ++i) {
       auto& binding = bindings_[i];
@@ -154,11 +185,22 @@ class XdnaExecutionTest : public XdnaContextFixture {
       create.access_count = 1;
       create.accesses = &memory_access_;
       create.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
-      create.byte_length = kBindingByteLength;
+      create.byte_length = kBindingStorageByteLength;
+      if (GetParam() == AMDF_MEMORY_PROFILE_ROLE_REGISTER) {
+        create.registered_host_pointer =
+            binding.caller_storage.data() + kBindingByteLength;
+        create.minimum_alignment = kBindingByteLength;
+      }
       ASSERT_EQ(
           api_->memory_create(system_scope_, &create, &binding.storage.memory),
           AMDF_STATUS_OK);
-      ASSERT_NO_FATAL_FAILURE(MapMemory(kBindingByteLength, &binding.storage));
+      ASSERT_NO_FATAL_FAILURE(
+          MapMemory(kBindingStorageByteLength, &binding.storage));
+      if (GetParam() == AMDF_MEMORY_PROFILE_ROLE_REGISTER) {
+        ASSERT_EQ(binding.storage.pointer, create.registered_host_pointer);
+      }
+      std::memset(binding.storage.pointer, kGuardValue,
+                  kBindingStorageByteLength);
       IREE_ASSERT_OK(iree_hal_heap_buffer_wrap(
           iree_hal_buffer_placement_undefined(),
           IREE_HAL_MEMORY_TYPE_HOST_LOCAL | IREE_HAL_MEMORY_TYPE_HOST_VISIBLE |
@@ -166,16 +208,19 @@ class XdnaExecutionTest : public XdnaContextFixture {
           IREE_HAL_MEMORY_ACCESS_READ | IREE_HAL_MEMORY_ACCESS_WRITE |
               IREE_HAL_MEMORY_ACCESS_UNALIGNED,
           IREE_HAL_BUFFER_USAGE_STORAGE, kBindingByteLength,
-          iree_make_byte_span(binding.storage.pointer, kBindingByteLength),
+          iree_make_byte_span(binding.storage.pointer + kBindingByteOffset,
+                              kBindingByteLength),
           iree_hal_buffer_release_callback_null(), iree_allocator_system(),
           &binding.buffer));
       prepared_bindings_[i].buffer_ref =
           iree_hal_make_buffer_ref(binding.buffer, 0, kBindingByteLength);
       prepared_bindings_[i].memory = binding.storage.memory;
+      prepared_bindings_[i].memory_byte_offset = kBindingByteOffset;
       ASSERT_EQ(api_->memory_query_address(
                     binding.storage.memory, 0, AMDF_MEMORY_ADDRESS_XDNA_DMA,
                     &prepared_bindings_[i].device_address),
                 AMDF_STATUS_OK);
+      prepared_bindings_[i].device_address += kBindingByteOffset;
     }
   }
 
@@ -269,6 +314,11 @@ class XdnaExecutionTest : public XdnaContextFixture {
   amdf_kernel_queue_t* queue_ = nullptr;
   // Native and HAL owners for the three canonical bindings.
   struct Binding {
+    // Optional caller-owned backing. Registration begins inside this array
+    // and remains live until the native memory handle is destroyed.
+    alignas(kBindingByteLength)
+        std::array<uint8_t, kBindingByteLength +
+                                kBindingStorageByteLength> caller_storage = {};
     // Native memory and its explicit host view.
     MappedMemory storage;
     // HAL wrapper borrowing storage until preparation has been destroyed.
@@ -281,8 +331,9 @@ class XdnaExecutionTest : public XdnaContextFixture {
       prepared_bindings_ = {};
 };
 
-TEST_F(XdnaExecutionTest, ReusesImmutableInstructionsWithChangingInputs) {
+TEST_P(XdnaExecutionTest, ReusesImmutableInstructionsWithChangingInputs) {
   ASSERT_NO_FATAL_FAILURE(CreateBindings());
+  if (IsSkipped()) return;
   ASSERT_NO_FATAL_FAILURE(PrepareInstructions());
   const std::vector<uint8_t> original_instructions(
       instructions_.pointer, instructions_.pointer + instruction_byte_length_);
@@ -299,16 +350,19 @@ TEST_F(XdnaExecutionTest, ReusesImmutableInstructionsWithChangingInputs) {
       const uint32_t lhs = values[(i + iteration) % kElementCount];
       const uint32_t rhs = values[(i * 3 + iteration + 5) % kElementCount];
       expected[i] = lhs * rhs;
-      iree_unaligned_store_le_u32(bindings_[0].storage.pointer + i * 4, lhs);
-      iree_unaligned_store_le_u32(bindings_[1].storage.pointer + i * 4, rhs);
+      iree_unaligned_store_le_u32(
+          bindings_[0].storage.pointer + kBindingByteOffset + i * 4, lhs);
+      iree_unaligned_store_le_u32(
+          bindings_[1].storage.pointer + kBindingByteOffset + i * 4, rhs);
       // Every output must change; neither zero-fill nor stale output can pass.
-      iree_unaligned_store_le_u32(bindings_[2].storage.pointer + i * 4,
-                                  ~expected[i]);
+      iree_unaligned_store_le_u32(
+          bindings_[2].storage.pointer + kBindingByteOffset + i * 4,
+          ~expected[i]);
     }
     for (auto& binding : bindings_) {
       ASSERT_EQ(api_->host_mapping_cache_control(
                     binding.storage.mapping, AMDF_HOST_CACHE_OPERATION_FLUSH, 0,
-                    kBindingByteLength),
+                    kBindingStorageByteLength),
                 AMDF_STATUS_OK);
     }
     amdf_xdna_kernel_queue_submission_info_t submit = {};
@@ -331,15 +385,30 @@ TEST_F(XdnaExecutionTest, ReusesImmutableInstructionsWithChangingInputs) {
     ASSERT_EQ(api_->kernel_queue_query_status(queue_, &status), AMDF_STATUS_OK);
     ASSERT_EQ(status.retired_submission, submission);
     ASSERT_EQ(status.terminal_status, AMDF_STATUS_OK);
-    ASSERT_EQ(api_->host_mapping_cache_control(
-                  bindings_[2].storage.mapping,
-                  AMDF_HOST_CACHE_OPERATION_INVALIDATE, 0, kBindingByteLength),
-              AMDF_STATUS_OK);
+    for (auto& binding : bindings_) {
+      ASSERT_EQ(
+          api_->host_mapping_cache_control(binding.storage.mapping,
+                                           AMDF_HOST_CACHE_OPERATION_INVALIDATE,
+                                           0, kBindingStorageByteLength),
+          AMDF_STATUS_OK);
+      for (size_t i = 0; i < kBindingByteLength; ++i) {
+        ASSERT_EQ(binding.storage.pointer[i], kGuardValue) << "prefix " << i;
+        ASSERT_EQ(binding.storage.pointer[2 * kBindingByteLength + i],
+                  kGuardValue)
+            << "suffix " << i;
+      }
+    }
     for (size_t i = 0; i < kElementCount; ++i) {
-      EXPECT_EQ(
-          iree_unaligned_load_le_u32(bindings_[2].storage.pointer + i * 4),
-          expected[i])
+      ASSERT_EQ(iree_unaligned_load_le_u32(bindings_[2].storage.pointer +
+                                           kBindingByteOffset + i * 4),
+                expected[i])
           << "element " << i;
+      ASSERT_EQ(iree_unaligned_load_le_u32(bindings_[0].storage.pointer +
+                                           kBindingByteOffset + i * 4),
+                values[(i + iteration) % kElementCount]);
+      ASSERT_EQ(iree_unaligned_load_le_u32(bindings_[1].storage.pointer +
+                                           kBindingByteOffset + i * 4),
+                values[(i * 3 + iteration + 5) % kElementCount]);
     }
     ASSERT_EQ(api_->host_mapping_cache_control(
                   instructions_.mapping, AMDF_HOST_CACHE_OPERATION_INVALIDATE,
@@ -350,5 +419,14 @@ TEST_F(XdnaExecutionTest, ReusesImmutableInstructionsWithChangingInputs) {
               0);
   }
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    MemoryBacking, XdnaExecutionTest,
+    ::testing::Values(AMDF_MEMORY_PROFILE_ROLE_CREATE,
+                      AMDF_MEMORY_PROFILE_ROLE_REGISTER),
+    [](const ::testing::TestParamInfo<amdf_memory_profile_roles_t>& info) {
+      return info.param == AMDF_MEMORY_PROFILE_ROLE_CREATE ? "Allocated"
+                                                           : "Registered";
+    });
 
 }  // namespace
