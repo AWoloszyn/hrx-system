@@ -16,6 +16,17 @@ typedef struct amdf_gpu_kfd_topology_t {
   amdf_gpu_endpoint_properties_t properties;
   // KFD node identity used by memory and queue ioctls.
   uint32_t gpu_id;
+  // Physical local-memory reachability reported by the installed driver.
+  struct {
+    // Cached native DRM hive identity; zero when this GPU has no hive.
+    uint64_t hive_id;
+    // Native xGMI peer mapping policy for this hive.
+    bool hive_sharing_enabled;
+    // Number of GPU backing owners reachable through directed PCIe links.
+    uint32_t count;
+    // Owned GPU identities in consumer-to-backing direction, excluding CPUs.
+    uint32_t* gpu_ids;
+  } memory_peers;
   // Physical placement features supported by the native device.
   amdf_gpu_device_features_t memory_features;
   // Cached physical heap totals, independent of current allocation usage.
@@ -67,14 +78,20 @@ typedef struct amdf_gpu_kfd_topology_t {
 extern "C" {
 #endif
 
-// Reads a coherent cached topology snapshot, including physical heap totals.
+// Reads a coherent cached topology snapshot, including physical heap totals
+// and owned peer metadata. Success transfers discovery metadata to the caller;
+// failure leaves the output unchanged. No execution resources are acquired.
 // Memory features and the virtual-address interval are supplied separately by
 // target expectations or native refinement on the consuming connection.
 // A missing KFD node returns UNSUPPORTED; malformed or changing state is an
 // error.
-amdf_status_t amdf_gpu_kfd_topology_query(
-    const amdf_platform_endpoint_t* endpoint,
+amdf_status_t amdf_gpu_kfd_topology_initialize(
+    const amdf_platform_endpoint_t* endpoint, amdf_allocator_t host_allocator,
     amdf_gpu_kfd_topology_t* out_topology);
+
+// Releases only peer metadata owned by a successful initialization.
+void amdf_gpu_kfd_topology_deinitialize(amdf_gpu_kfd_topology_t* topology,
+                                        amdf_allocator_t host_allocator);
 
 // Refines cached topology with the native memory placement and usable address
 // interval of this exact render connection. Failure leaves topology unchanged.

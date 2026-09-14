@@ -130,6 +130,7 @@ iree_cc_library(
   DEPS
     ::memory_profile
     amdf::headers
+    libamdf::src::allocator
     libamdf::src::gpu::endpoint_profile
     libamdf::src::gpu::umd::endpoint_profile
     libamdf::src::gpu::umd::wddm::wkmi::adapter

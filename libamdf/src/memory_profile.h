@@ -58,11 +58,18 @@ typedef struct amdf_memory_native_profile_t {
       external_memory_support[AMDF_MEMORY_PROFILE_EXTERNAL_SUPPORT_CAPACITY];
   // Address interfaces established when DEVICE_ADDRESS is achieved.
   amdf_memory_address_kinds_t address_kinds;
-  // Instance-qualified native construction compatibility. Equal non-NULL tokens
-  // admit one backing for the same CREATE or REGISTER role and equal exact
-  // permissions across consumers.
-  // The token is immutable metadata, not an owner or an implementation ID.
-  const void* construction_domain;
+  // Instance-qualified protocol for preparing one backing across consumers.
+  struct {
+    // Matching non-NULL operations admit qualification through this protocol.
+    // Projects the candidate's complete access to the selected backing using
+    // cached metadata only. False leaves the output unchanged. The candidate
+    // and output may alias. This performs no allocation or native operation.
+    bool (*query_access)(const struct amdf_memory_native_profile_t* backing,
+                         const struct amdf_memory_native_profile_t* candidate,
+                         struct amdf_memory_native_profile_t* out_profile);
+    // Immutable native metadata borrowed from the queried endpoint or device.
+    const void* data;
+  } construction;
 } amdf_memory_native_profile_t;
 
 // Explicit consumer group selected for one native backing preparation.

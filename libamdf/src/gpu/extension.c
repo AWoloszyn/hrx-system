@@ -103,19 +103,15 @@ void amdf_gpu_extension_initialize_endpoint(amdf_endpoint_t* endpoint) {
   amdf_endpoint_set_memory_profile_query(
       endpoint, amdf_gpu_endpoint_query_memory_profile);
 
-  amdf_gpu_endpoint_profile_t profile = {0};
-  bool profile_available = false;
-  const amdf_status_t status = amdf_gpu_umd_query_endpoint_profile(
+  amdf_gpu_endpoint_profile_t* profile = NULL;
+  const amdf_status_t status = amdf_gpu_umd_create_endpoint_profile(
       amdf_endpoint_get_platform(endpoint),
       amdf_instance_native_lifetime(amdf_endpoint_get_instance(endpoint)),
-      amdf_endpoint_host_allocator(endpoint), &profile, &profile_available);
+      amdf_endpoint_host_allocator(endpoint), &profile);
   if (!amdf_status_is_ok(status)) {
     amdf_endpoint_store_engine_profile_error(endpoint, status);
-  } else if (!profile_available) {
-    amdf_endpoint_store_engine_profile_error(
-        endpoint, amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED));
   } else {
-    amdf_endpoint_store_engine_profile(endpoint, &profile, sizeof(profile));
+    amdf_endpoint_store_engine_profile(endpoint, profile);
   }
 }
 

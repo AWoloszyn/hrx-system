@@ -32,6 +32,7 @@ amdf_cc_library(
     target_compatible_with = KFD_COMPATIBILITY,
     visibility = ["//libamdf/src/gpu/umd/kfd:__subpackages__"],
     deps = [
+        "//libamdf/src:allocator",
         "//libamdf/src/gpu:endpoint_profile",
         "//libamdf/src/platform",
         "//libamdf/src/platform/linux:endpoint",
@@ -44,7 +45,10 @@ amdf_cc_test(
     srcs = ["topology_test.cc"],
     target_compatible_with = KFD_COMPATIBILITY,
     deps = [
+        ":endpoint_profile",
         ":topology",
+        "//libamdf/src:allocator",
+        "//libamdf/src/gpu/umd:endpoint_profile",
         "//libamdf/src/platform/linux:endpoint",
         "//libamdf/src/platform/linux:file",
         "//third_party:google_test",
@@ -264,6 +268,7 @@ amdf_cc_library(
     deps = [
         ":memory_profile",
         ":topology",
+        "//libamdf/src:allocator",
         "//libamdf/src/gpu:endpoint_profile",
         "//libamdf/src/gpu/umd:endpoint_profile",
         "//libamdf/src/gpu/umd/kfd/target:memory",

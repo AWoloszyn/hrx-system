@@ -8,15 +8,16 @@
 
 #include <stddef.h>
 
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/gpu/umd/wddm/memory_profile.h"
 #include "libamdf/src/gpu/umd/wddm/wkmi/adapter.h"
 #include "libamdf/src/gpu/umd/wddm/wkmi/endpoint_properties.h"
 #include "libamdf/src/platform/windows/endpoint.h"
 
-amdf_status_t amdf_gpu_umd_query_endpoint_profile(
+amdf_status_t amdf_gpu_umd_create_endpoint_profile(
     amdf_platform_endpoint_t* platform_endpoint,
     amdf_native_lifetime_t native_lifetime, amdf_allocator_t host_allocator,
-    amdf_gpu_endpoint_profile_t* out_profile, bool* out_available) {
+    amdf_gpu_endpoint_profile_t** out_profile) {
   (void)native_lifetime;
   amdf_gpu_wddm_wkmi_loader_t loader = {0};
   amdf_gpu_wddm_wkmi_adapter_t adapter = {0};
@@ -43,7 +44,7 @@ amdf_status_t amdf_gpu_umd_query_endpoint_profile(
           (amdf_gpu_lifetime_properties_t){
               .supported = true,
               .features = AMDF_GPU_DEVICE_FEATURE_DEVICE_RECREATION,
-      };
+          };
       if (amdf_kmt_api_supports_gpu_memory(&platform_endpoint->instance->kmt)) {
         properties.native_lifetimes[AMDF_NATIVE_LIFETIME_INSTANCE].features |=
             AMDF_GPU_DEVICE_FEATURE_HOST_REGISTRATION |
@@ -83,9 +84,18 @@ amdf_status_t amdf_gpu_umd_query_endpoint_profile(
       if (amdf_status_is_ok(status)) ++profile.memory.count;
     }
   }
+  if (amdf_status_is_ok(status) && !profile_available) {
+    status = amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
+  amdf_gpu_endpoint_profile_t* owned_profile = NULL;
   if (amdf_status_is_ok(status)) {
-    if (profile_available) *out_profile = profile;
-    *out_available = profile_available;
+    status = amdf_malloc(host_allocator, sizeof(profile),
+                         amdf_alignof(amdf_gpu_endpoint_profile_t),
+                         (void**)&owned_profile);
+  }
+  if (amdf_status_is_ok(status)) {
+    *owned_profile = profile;
+    *out_profile = owned_profile;
   }
   return status;
 }

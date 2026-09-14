@@ -166,6 +166,22 @@ Registration preserves the requested subpage offset in each GPU address and
 exposes only the logical range; the caller retains the original storage until
 all native mappings are released.
 
+GPU-local sharing is relative to the chosen placement. Selecting GPU A's local
+scope and naming consumers B and A allocates in A's VRAM or HBM, with access
+records remaining in B,A order. The joint profile qualifies B's ability to reach
+that backing; B need not offer a local heap itself. Selecting B's local scope
+asks a different question and can produce a different result.
+
+On Linux, KFD admits local peer access within an enabled xGMI hive or through
+its directed PCIe peer links. PCIe admission accounts for the backing GPU's
+visible BAR, consumer DMA addressability, and platform peer-routing support.
+Hive membership does not imply PCIe reachability, and a PCIe edge does not imply
+the reverse edge. Passive profiles carry the driver's cached topology; explicit
+device creation refreshes it for live queries. Unsupported consumer sets are
+rejected before allocating backing. Supported local groups use the same fixed
+mapping owner, common GPU address, exact permissions and ordered release as
+system groups, without host staging or an application export/import chain.
+
 Resource operations identify memory with its opaque handle and an explicit
 range: conceptually `{memory, offset, length}`. Host-mapping operations similarly
 use their mapping handle. Libamdf does not reverse-map arbitrary physical or

@@ -83,7 +83,7 @@ TEST(LinuxGpuMemoryProfileTest, InstanceLifetimeExposesOwnedSystemMemory) {
   const amdf_memory_native_profile_t profile = QueryProfile(&device, 0);
   EXPECT_EQ(profile.ordinal, 0u);
   EXPECT_EQ(profile.memory_class, AMDF_MEMORY_CLASS_SYSTEM);
-  EXPECT_NE(profile.construction_domain, nullptr);
+  EXPECT_NE(profile.construction.query_access, nullptr);
   EXPECT_EQ(profile.roles, AMDF_MEMORY_PROFILE_ROLE_CREATE |
                                AMDF_MEMORY_PROFILE_ROLE_EXPORT |
                                AMDF_MEMORY_PROFILE_ROLE_HOST_MAP);
@@ -135,7 +135,7 @@ TEST(LinuxGpuMemoryProfileTest, ProcessLifetimeUsesDenseOptionalProfiles) {
       AMDF_GPU_DEVICE_FEATURE_HOST_VISIBLE_LOCAL_MEMORY;
 
   const amdf_memory_native_profile_t local_profile = QueryProfile(&device, 1);
-  EXPECT_EQ(local_profile.construction_domain, nullptr);
+  EXPECT_NE(local_profile.construction.query_access, nullptr);
   EXPECT_EQ(local_profile.memory_class, AMDF_MEMORY_CLASS_LOCAL);
   EXPECT_EQ(local_profile.roles, AMDF_MEMORY_PROFILE_ROLE_CREATE |
                                      AMDF_MEMORY_PROFILE_ROLE_HOST_MAP);
@@ -154,9 +154,14 @@ TEST(LinuxGpuMemoryProfileTest, ProcessLifetimeUsesDenseOptionalProfiles) {
 
   const amdf_memory_native_profile_t registered_profile =
       QueryProfile(&device, 2);
-  EXPECT_NE(registered_profile.construction_domain, nullptr);
-  EXPECT_NE(registered_profile.construction_domain,
-            QueryProfile(&device, 0).construction_domain);
+  EXPECT_NE(registered_profile.construction.query_access, nullptr);
+  const amdf_memory_native_profile_t allocated_profile =
+      QueryProfile(&device, 0);
+  EXPECT_EQ(registered_profile.construction.query_access,
+            allocated_profile.construction.query_access);
+  amdf_memory_native_profile_t projected = {};
+  EXPECT_FALSE(registered_profile.construction.query_access(
+      &registered_profile, &allocated_profile, &projected));
   EXPECT_EQ(registered_profile.memory_class, AMDF_MEMORY_CLASS_SYSTEM);
   EXPECT_EQ(registered_profile.roles, AMDF_MEMORY_PROFILE_ROLE_REGISTER |
                                           AMDF_MEMORY_PROFILE_ROLE_HOST_MAP);
@@ -196,6 +201,67 @@ TEST(LinuxGpuMemoryProfileTest, ProcessLifetimeUsesDenseOptionalProfiles) {
   const amdf_memory_native_profile_t dense_registered_profile =
       QueryProfile(&device, 1);
   EXPECT_EQ(dense_registered_profile.memory_class, AMDF_MEMORY_CLASS_SYSTEM);
+}
+
+TEST(LinuxGpuMemoryProfileTest, QualifiesLocalBackingByHiveOrDirectedPciPeer) {
+  amdf_gpu_umd_device_t source = {};
+  source.page_size = 4096;
+  source.topology.gpu_id = 41;
+  source.topology.memory_features = AMDF_GPU_DEVICE_FEATURE_LOCAL_MEMORY;
+  source.topology.virtual_address.begin = UINT64_C(0x10000);
+  source.topology.virtual_address.end = UINT64_C(1) << 48;
+  source.topology.memory_peers.hive_id = UINT64_C(11827785098739261628);
+  source.topology.memory_peers.hive_sharing_enabled = true;
+  amdf_gpu_umd_device_t consumer = source;
+  consumer.topology.gpu_id = 73;
+  consumer.topology.memory_features = 0;
+  consumer.topology.virtual_address.begin = UINT64_C(0x20000);
+  consumer.topology.virtual_address.end = UINT64_C(1) << 47;
+  const auto backing = QueryProfile(&source, 1);
+  auto candidate = QueryProfile(&consumer, 0);
+  const auto original_candidate = candidate;
+  ASSERT_TRUE(
+      backing.construction.query_access(&backing, &candidate, &candidate));
+  EXPECT_EQ(candidate.memory_class, AMDF_MEMORY_CLASS_LOCAL);
+  EXPECT_EQ(candidate.roles, AMDF_MEMORY_PROFILE_ROLE_CREATE);
+  EXPECT_EQ(candidate.guaranteed_flags & AMDF_MEMORY_FLAG_HOST_COHERENT, 0u);
+  EXPECT_EQ(candidate.supported_flags & AMDF_MEMORY_FLAG_HOST_COHERENT, 0u);
+  EXPECT_EQ(candidate.device_address.maximum_address, (UINT64_C(1) << 47) - 1);
+  EXPECT_EQ(candidate.allocation.maximum_byte_length,
+            original_candidate.allocation.maximum_byte_length);
+  EXPECT_EQ(candidate.construction.data, &consumer.topology);
+
+  auto expect_unreachable = [&]() {
+    auto output = original_candidate;
+    EXPECT_FALSE(backing.construction.query_access(
+        &backing, &original_candidate, &output));
+    EXPECT_EQ(std::memcmp(&output, &original_candidate, sizeof(output)), 0);
+  };
+  consumer.topology.memory_peers.hive_id ^= UINT64_C(1) << 40;
+  expect_unreachable();
+  consumer.topology.memory_peers.hive_id = source.topology.memory_peers.hive_id;
+  source.topology.memory_peers.hive_sharing_enabled = false;
+  expect_unreachable();
+  source.topology.memory_peers.hive_id = 0;
+  consumer.topology.memory_peers.hive_id = 0;
+  expect_unreachable();
+
+  uint32_t backing_gpu_id = source.topology.gpu_id;
+  consumer.topology.memory_peers.count = 1;
+  consumer.topology.memory_peers.gpu_ids = &backing_gpu_id;
+  EXPECT_TRUE(backing.construction.query_access(&backing, &original_candidate,
+                                                &candidate));
+  // B can access A's heap; this does not imply A can access B's heap.
+  consumer.topology.memory_features = AMDF_GPU_DEVICE_FEATURE_LOCAL_MEMORY;
+  const auto reverse_backing = QueryProfile(&consumer, 1);
+  const auto reverse_candidate = QueryProfile(&source, 0);
+  EXPECT_FALSE(reverse_backing.construction.query_access(
+      &reverse_backing, &reverse_candidate, &candidate));
+
+  consumer.topology.memory_peers.count = 0;
+  consumer.topology.gpu_id = source.topology.gpu_id;
+  EXPECT_TRUE(backing.construction.query_access(&backing, &original_candidate,
+                                                &candidate));
 }
 
 }  // namespace

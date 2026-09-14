@@ -7,7 +7,6 @@
 #include "libamdf/src/endpoint.h"
 
 #include <stddef.h>
-#include <string.h>
 
 #include "libamdf/src/allocator.h"
 #include "libamdf/src/child_tracker.h"
@@ -23,7 +22,7 @@ struct amdf_endpoint_t {
   amdf_platform_endpoint_t* platform;
   // Immutable properties cached while opening the platform endpoint.
   amdf_endpoint_info_t info;
-  // Immutable engine profile copied during provider qualification.
+  // Complete immutable metadata allocation owned after provider qualification.
   void* engine_profile;
   // Cached result of the engine-profile qualification attempt.
   amdf_status_t engine_profile_status;
@@ -133,16 +132,10 @@ amdf_instance_t* amdf_endpoint_get_instance(const amdf_endpoint_t* endpoint) {
 }
 
 void amdf_endpoint_store_engine_profile(amdf_endpoint_t* endpoint,
-                                        const void* profile,
-                                        size_t profile_byte_length) {
+                                        void* profile) {
   amdf_assert(!endpoint->engine_profile_resolved);
-  endpoint->engine_profile_status =
-      amdf_malloc(amdf_endpoint_host_allocator(endpoint), profile_byte_length,
-                  amdf_alignof(max_align_t), &endpoint->engine_profile);
-  if (amdf_status_is_ok(endpoint->engine_profile_status)) {
-    memcpy(endpoint->engine_profile, profile, profile_byte_length);
-    endpoint->engine_profile_status = AMDF_STATUS_OK;
-  }
+  endpoint->engine_profile = profile;
+  endpoint->engine_profile_status = AMDF_STATUS_OK;
   endpoint->engine_profile_resolved = true;
 }
 

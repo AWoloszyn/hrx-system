@@ -74,10 +74,10 @@ amdf_allocator_t amdf_endpoint_host_allocator(const amdf_endpoint_t* endpoint);
 // Returns the provider instance borrowed by `endpoint`.
 amdf_instance_t* amdf_endpoint_get_instance(const amdf_endpoint_t* endpoint);
 
-// Copies one immutable engine profile or caches the allocation failure.
+// Adopts one complete immutable profile allocated with the endpoint allocator.
+// Its full metadata extent belongs to this one allocation, freed on close.
 void amdf_endpoint_store_engine_profile(amdf_endpoint_t* endpoint,
-                                        const void* profile,
-                                        size_t profile_byte_length);
+                                        void* profile);
 
 // Caches a terminal engine-profile qualification failure.
 void amdf_endpoint_store_engine_profile_error(amdf_endpoint_t* endpoint,

@@ -6,12 +6,47 @@
 
 #include "libamdf/src/gpu/umd/kfd/memory_profile.h"
 
-// GTT allocations can be mapped into a fixed set of VMs in one KFD context.
-// Scope validation qualifies this immutable compatibility identity by instance.
-static const char amdf_gpu_kfd_gtt_construction_domain = 0;
-
-// Caller pages use one USERPTR handle and GPU VA for the complete VM group.
-static const char amdf_gpu_kfd_userptr_construction_domain = 0;
+// KFD maps a fixed consumer set into the backing owner's native allocation.
+// Local placement is directional: the consumer must reach the selected source,
+// regardless of whether it offers a local allocation scope of its own.
+static bool amdf_gpu_kfd_query_group_access(
+    const amdf_memory_native_profile_t* backing,
+    const amdf_memory_native_profile_t* candidate,
+    amdf_memory_native_profile_t* out_profile) {
+  const amdf_memory_profile_roles_t role =
+      (backing->roles & AMDF_MEMORY_PROFILE_ROLE_REGISTER) != 0
+          ? AMDF_MEMORY_PROFILE_ROLE_REGISTER
+          : AMDF_MEMORY_PROFILE_ROLE_CREATE;
+  if (candidate->memory_class != AMDF_MEMORY_CLASS_SYSTEM ||
+      (candidate->roles & role) == 0) {
+    return false;
+  }
+  if (backing->memory_class == AMDF_MEMORY_CLASS_SYSTEM) {
+    *out_profile = *candidate;
+    return true;
+  }
+  const amdf_gpu_kfd_topology_t* source = backing->construction.data;
+  const amdf_gpu_kfd_topology_t* consumer = candidate->construction.data;
+  bool reachable =
+      source->gpu_id == consumer->gpu_id ||
+      (source->memory_peers.hive_id != 0 &&
+       source->memory_peers.hive_id == consumer->memory_peers.hive_id &&
+       source->memory_peers.hive_sharing_enabled &&
+       consumer->memory_peers.hive_sharing_enabled);
+  for (uint32_t i = 0; !reachable && i < consumer->memory_peers.count; ++i) {
+    reachable = consumer->memory_peers.gpu_ids[i] == source->gpu_id;
+  }
+  if (!reachable) return false;
+  amdf_memory_native_profile_t profile = *backing;
+  profile.ordinal = candidate->ordinal;
+  profile.device_address = candidate->device_address;
+  profile.allocation = candidate->allocation;
+  profile.construction = candidate->construction;
+  // The backing determines VRAM cache semantics. In particular, a consumer's
+  // GTT profile must not add HOST_COHERENT to an access of local memory.
+  *out_profile = profile;
+  return true;
+}
 
 static uint64_t amdf_gpu_kfd_maximum_byte_length(
     const amdf_gpu_kfd_topology_t* topology, size_t page_size) {
@@ -48,6 +83,11 @@ amdf_status_t amdf_gpu_kfd_query_memory_profile(
   amdf_memory_native_profile_t profile = {
       .ordinal = memory_profile_ordinal,
       .address_kinds = UINT64_C(1) << AMDF_MEMORY_ADDRESS_GPU,
+      .construction =
+          {
+              .query_access = amdf_gpu_kfd_query_group_access,
+              .data = topology,
+          },
   };
   const uint64_t maximum_byte_length =
       amdf_gpu_kfd_maximum_byte_length(topology, page_size);
@@ -85,7 +125,6 @@ amdf_status_t amdf_gpu_kfd_query_memory_profile(
   };
   uint32_t ordinal = 0;
   if (memory_profile_ordinal == ordinal++) {
-    profile.construction_domain = &amdf_gpu_kfd_gtt_construction_domain;
     profile.memory_class = AMDF_MEMORY_CLASS_SYSTEM;
     profile.roles = AMDF_MEMORY_PROFILE_ROLE_CREATE |
                     AMDF_MEMORY_PROFILE_ROLE_EXPORT |
@@ -136,7 +175,6 @@ amdf_status_t amdf_gpu_kfd_query_memory_profile(
     }
   } else if (native_lifetime == AMDF_NATIVE_LIFETIME_PROCESS &&
              memory_profile_ordinal == ordinal) {
-    profile.construction_domain = &amdf_gpu_kfd_userptr_construction_domain;
     profile.memory_class = AMDF_MEMORY_CLASS_SYSTEM;
     profile.roles =
         AMDF_MEMORY_PROFILE_ROLE_REGISTER | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP;

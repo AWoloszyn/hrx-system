@@ -20,6 +20,16 @@ namespace {
 
 using MemoryConstructionTest = MemoryTest;
 
+// Native group metadata is qualified before preparation, not by the common
+// memory layer interpreting a native domain or implementation identity.
+static bool QueryGroupAccess(const amdf_memory_native_profile_t* backing,
+                             const amdf_memory_native_profile_t* candidate,
+                             amdf_memory_native_profile_t* out_profile) {
+  if (backing->construction.data != candidate->construction.data) return false;
+  *out_profile = *candidate;
+  return true;
+}
+
 struct AllocationState {
   // Allocation attempt to fail, or UINT32_MAX when all allocations succeed.
   uint32_t failure_ordinal = UINT32_MAX;
@@ -89,7 +99,7 @@ TEST_P(MemoryGroupTest, NativeGroupUsesOneOwnerWithoutExternalTransport) {
   amdf_memory_device_access_t accesses[2];
   for (uint32_t i = 0; i < 2; ++i) {
     InitializeGroupDevice(i + 1, &devices[i]);
-    devices[i].profile.construction_domain = devices;
+    devices[i].profile.construction = {QueryGroupAccess, devices};
     devices[i].profile.roles &= ~AMDF_MEMORY_PROFILE_ROLE_IMPORT;
     devices[i].profile.external_memory_support_count = 0;
     accesses[i] = devices[i].request;
@@ -140,7 +150,7 @@ TEST_P(MemoryGroupTest, NativeGroupRejectsIncompatibleContractsBeforeCreate) {
   amdf_memory_device_access_t accesses[2];
   for (uint32_t i = 0; i < 2; ++i) {
     InitializeGroupDevice(i + 1, &devices[i]);
-    devices[i].profile.construction_domain = devices;
+    devices[i].profile.construction = {QueryGroupAccess, devices};
     devices[i].profile.roles &= ~AMDF_MEMORY_PROFILE_ROLE_IMPORT;
     devices[i].profile.external_memory_support_count = 0;
     accesses[i] = devices[i].request;
@@ -161,9 +171,9 @@ TEST_P(MemoryGroupTest, NativeGroupRejectsIncompatibleContractsBeforeCreate) {
   accesses[1].requirements.access = AMDF_MEMORY_ACCESS_READ;
   expect_rejection();
   accesses[1] = devices[1].request;
-  devices[1].profile.construction_domain = &devices[1];
+  devices[1].profile.construction = {QueryGroupAccess, &devices[1]};
   expect_rejection();
-  devices[1].profile.construction_domain = devices;
+  devices[1].profile.construction = {QueryGroupAccess, devices};
   devices[0].profile.device_address.maximum_address = 0x1FFFF;
   devices[1].profile.device_address.minimum_address = 0x20000;
   expect_rejection();
@@ -174,7 +184,7 @@ TEST_P(MemoryGroupTest, NativeGroupIntersectsTheSharedAddressEnvelope) {
   amdf_memory_device_access_t accesses[2];
   for (uint32_t i = 0; i < 2; ++i) {
     InitializeGroupDevice(i + 1, &devices[i]);
-    devices[i].profile.construction_domain = devices;
+    devices[i].profile.construction = {QueryGroupAccess, devices};
     accesses[i] = devices[i].request;
   }
   devices[0].profile.device_address.maximum_address = 0x11FFFF;
@@ -198,6 +208,36 @@ TEST_P(MemoryGroupTest, NativeGroupIntersectsTheSharedAddressEnvelope) {
   EXPECT_EQ(devices[1].create_call_count, 0u);
 }
 
+TEST_P(MemoryGroupTest, NativeGroupRejectsNarrowedPeerAccess) {
+  FakeDevice devices[2];
+  amdf_memory_device_access_t accesses[2];
+  for (uint32_t i = 0; i < 2; ++i) {
+    InitializeGroupDevice(i + 1, &devices[i]);
+    devices[i].profile.external_memory_support_count = 0;
+    devices[i].profile.construction.query_access =
+        [](const amdf_memory_native_profile_t* backing,
+           const amdf_memory_native_profile_t* candidate,
+           amdf_memory_native_profile_t* out_profile) {
+          (void)backing;
+          *out_profile = *candidate;
+          out_profile->supported_device_access = AMDF_MEMORY_ACCESS_READ;
+          return true;
+        };
+    accesses[i] = devices[i].request;
+  }
+  amdf_memory_create_info_t info = MakeGroupCreateInfo(devices[0]);
+  info.access_count = 2;
+  info.accesses = accesses;
+  auto* const sentinel = reinterpret_cast<amdf_memory_t*>(uintptr_t{1});
+  amdf_memory_t* memory = sentinel;
+  EXPECT_EQ(amdf_status_code(amdf_memory_create(&instance_.system_memory_scope,
+                                                &info, &memory)),
+            AMDF_STATUS_CODE_UNSUPPORTED);
+  EXPECT_EQ(memory, sentinel);
+  EXPECT_EQ(devices[0].create_call_count, 0u);
+  EXPECT_EQ(devices[1].create_call_count, 0u);
+}
+
 TEST_F(MemoryConstructionTest,
        NativeGroupPrecedesExternalConsumersAndOutlivesThem) {
   for (bool fail_import : {false, true}) {
@@ -211,8 +251,8 @@ TEST_F(MemoryConstructionTest,
     }
     // Place the external consumer first to exercise nonzero backing ownership.
     devices[0].profile.roles &= ~AMDF_MEMORY_PROFILE_ROLE_CREATE;
-    devices[1].profile.construction_domain = devices;
-    devices[2].profile.construction_domain = devices;
+    devices[1].profile.construction = {QueryGroupAccess, devices};
+    devices[2].profile.construction = {QueryGroupAccess, devices};
     if (fail_import) {
       devices[0].import_failure_stage = ImportFailureStage::kAfterAttachment;
     }
@@ -245,7 +285,7 @@ TEST_P(MemoryGroupTest, NativeGroupFailureRollsBackOneOwner) {
   amdf_memory_device_access_t accesses[2];
   for (uint32_t i = 0; i < 2; ++i) {
     InitializeGroupDevice(i + 1, &devices[i]);
-    devices[i].profile.construction_domain = devices;
+    devices[i].profile.construction = {QueryGroupAccess, devices};
     accesses[i] = devices[i].request;
   }
   devices[0].create_status =
@@ -531,7 +571,7 @@ TEST_F(MemoryConstructionTest,
                                          << AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE;
         }
         if (grouped && i != 0)
-          device.profile.construction_domain = devices.data();
+          device.profile.construction = {QueryGroupAccess, devices.data()};
         if (i == failing_consumer) {
           device.create_status =
               amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);

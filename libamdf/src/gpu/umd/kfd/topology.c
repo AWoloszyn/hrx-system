@@ -16,6 +16,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 
+#include "libamdf/src/allocator.h"
 #include "libamdf/src/platform/linux/endpoint.h"
 #include "libamdf/src/platform/linux/file.h"
 
@@ -88,6 +89,7 @@ static amdf_status_t amdf_gpu_kfd_read_node(
     ARRAYS_PER_ENGINE,
     XCC_COUNT,
     COMPUTE_QUEUE_COUNT,
+    P2P_LINK_COUNT,
     REQUIRED_PROPERTY_COUNT,
     CONTEXT_SAVE_RESTORE_SIZE = REQUIRED_PROPERTY_COUNT,
     CONTROL_STACK_SIZE,
@@ -112,6 +114,7 @@ static amdf_status_t amdf_gpu_kfd_read_node(
       "simd_arrays_per_engine",
       "num_xcc",
       "num_cp_queues",
+      "p2p_links_count",
       "cwsr_size",
       "ctl_stack_size",
       "num_sdma_engines",
@@ -204,6 +207,7 @@ static amdf_status_t amdf_gpu_kfd_read_node(
           },
   };
   topology->compute_queue_count = values[COMPUTE_QUEUE_COUNT];
+  topology->memory_peers.count = values[P2P_LINK_COUNT];
   topology->sdma.engine_count = values[SDMA_ENGINE_COUNT];
   topology->sdma.xgmi_engine_count = values[SDMA_XGMI_ENGINE_COUNT];
   topology->sdma.queue_count_per_engine = values[SDMA_QUEUE_COUNT_PER_ENGINE];
@@ -275,12 +279,110 @@ static amdf_status_t amdf_gpu_kfd_read_memory(
     status = amdf_gpu_kfd_read_number64(directory, "mem_info_vis_vram_total",
                                         &visible_vram);
   }
+  uint64_t hive_id = 0;
+  if (amdf_status_is_ok(status)) {
+    status = amdf_gpu_kfd_read_number64(
+        directory, "xgmi_hive_info/xgmi_hive_id", &hive_id);
+    if (status == amdf_linux_error(ENOENT)) status = AMDF_STATUS_OK;
+  }
+  uint32_t hive_sharing_enabled = 0;
+  if (amdf_status_is_ok(status) && hive_id != 0) {
+    status = amdf_gpu_kfd_read_number(endpoint->instance->sysfs_descriptor,
+                                      "module/amdgpu/parameters/use_xgmi_p2p",
+                                      &hive_sharing_enabled);
+  }
   const amdf_status_t close_status = amdf_linux_file_close(&directory);
   if (!amdf_status_is_ok(close_status)) status = close_status;
   if (!amdf_status_is_ok(status)) return status;
   topology->vram.total_byte_length = total_vram;
   topology->vram.visible_byte_length = visible_vram;
+  topology->memory_peers.hive_id = hive_id;
+  topology->memory_peers.hive_sharing_enabled = hive_sharing_enabled != 0;
   return AMDF_STATUS_OK;
+}
+
+// KFD publishes an indirect peer edge only after the backing owner's BAR,
+// consumer DMA aperture and platform P2P admission checks. The edge is stored
+// on the consumer and points to the backing node; the reverse is independent.
+static amdf_status_t amdf_gpu_kfd_read_peer_link(int node,
+                                                 uint32_t node_ordinal,
+                                                 uint32_t link_ordinal,
+                                                 uint32_t* out_backing_node,
+                                                 bool* out_enabled) {
+  char path[64];
+  snprintf(path, sizeof(path), "p2p_links/%u/properties", link_ordinal);
+  char text[2048];
+  const amdf_status_t status =
+      amdf_gpu_kfd_read_attribute(node, path, text, sizeof(text));
+  if (!amdf_status_is_ok(status)) return status;
+  const char* names[] = {"type", "node_from", "node_to", "flags"};
+  uint32_t values[4] = {0};
+  uint32_t present = 0;
+  char* cursor = text;
+  while (*cursor != 0) {
+    char* separator = strchr(cursor, ' ');
+    if (separator == NULL) return amdf_linux_error(EPROTO);
+    *separator = 0;
+    char* end = NULL;
+    errno = 0;
+    const unsigned long long value = strtoull(separator + 1, &end, 10);
+    if (errno || separator[1] < '0' || separator[1] > '9' ||
+        end == separator + 1 || *end != '\n') {
+      return amdf_linux_error(EPROTO);
+    }
+    for (uint32_t i = 0; i < 4; ++i) {
+      if (strcmp(cursor, names[i]) != 0) continue;
+      if (value > UINT32_MAX || (present & (1u << i)) != 0) {
+        return amdf_linux_error(EPROTO);
+      }
+      values[i] = (uint32_t)value;
+      present |= 1u << i;
+      break;
+    }
+    cursor = end + 1;
+  }
+  if (present != 15 || values[1] != node_ordinal) {
+    return amdf_linux_error(EPROTO);
+  }
+  *out_backing_node = values[2];
+  *out_enabled = values[0] == HSA_IOLINK_TYPE_PCIEXPRESS &&
+                 (values[3] & (HSA_IOLINK_FLAGS_ENABLED |
+                               HSA_IOLINK_FLAGS_NO_PEER_TO_PEER_DMA)) ==
+                     HSA_IOLINK_FLAGS_ENABLED;
+  return AMDF_STATUS_OK;
+}
+
+static amdf_status_t amdf_gpu_kfd_read_memory_peers(
+    int nodes, int node, uint32_t node_ordinal, amdf_allocator_t host_allocator,
+    amdf_gpu_kfd_topology_t* topology) {
+  const uint32_t link_count = topology->memory_peers.count;
+  topology->memory_peers.count = 0;
+  if (link_count == 0) return AMDF_STATUS_OK;
+  amdf_status_t status = amdf_malloc(
+      host_allocator, (uint64_t)link_count * sizeof(uint32_t),
+      amdf_alignof(uint32_t), (void**)&topology->memory_peers.gpu_ids);
+  for (uint32_t i = 0; amdf_status_is_ok(status) && i < link_count; ++i) {
+    uint32_t backing_node = 0;
+    bool enabled = false;
+    status = amdf_gpu_kfd_read_peer_link(node, node_ordinal, i, &backing_node,
+                                         &enabled);
+    if (!amdf_status_is_ok(status) || !enabled) continue;
+    char path[64];
+    snprintf(path, sizeof(path), "%u/gpu_id", backing_node);
+    uint32_t gpu_id = 0;
+    status = amdf_gpu_kfd_read_number(nodes, path, &gpu_id);
+    if (amdf_status_is_ok(status) && gpu_id != 0) {
+      topology->memory_peers.gpu_ids[topology->memory_peers.count++] = gpu_id;
+    }
+  }
+  return status;
+}
+
+void amdf_gpu_kfd_topology_deinitialize(amdf_gpu_kfd_topology_t* topology,
+                                        amdf_allocator_t host_allocator) {
+  amdf_free(host_allocator, topology->memory_peers.gpu_ids);
+  topology->memory_peers.gpu_ids = NULL;
+  topology->memory_peers.count = 0;
 }
 
 amdf_gpu_device_features_t amdf_gpu_kfd_topology_memory_features(
@@ -322,8 +424,8 @@ amdf_status_t amdf_gpu_kfd_topology_refine_memory(
   return AMDF_STATUS_OK;
 }
 
-amdf_status_t amdf_gpu_kfd_topology_query(
-    const amdf_platform_endpoint_t* endpoint,
+amdf_status_t amdf_gpu_kfd_topology_initialize(
+    const amdf_platform_endpoint_t* endpoint, amdf_allocator_t host_allocator,
     amdf_gpu_kfd_topology_t* out_topology) {
   int topology_directory =
       openat(endpoint->instance->sysfs_descriptor, "class/kfd/kfd/topology",
@@ -371,7 +473,19 @@ amdf_status_t amdf_gpu_kfd_topology_query(
     status = amdf_gpu_kfd_read_number(node, "gpu_id", &gpu_id);
     if (amdf_status_is_ok(status) && gpu_id != 0) {
       status = amdf_gpu_kfd_read_node(node, endpoint, &topology, &found);
-      if (found) topology.gpu_id = gpu_id;
+      if (amdf_status_is_ok(status) && found) {
+        topology.gpu_id = gpu_id;
+        char* end = NULL;
+        errno = 0;
+        const unsigned long node_ordinal = strtoul(entry->d_name, &end, 10);
+        if (errno || *end != 0 || node_ordinal > UINT32_MAX) {
+          status = amdf_linux_error(EPROTO);
+        } else {
+          status = amdf_gpu_kfd_read_memory_peers(dirfd(directory), node,
+                                                  (uint32_t)node_ordinal,
+                                                  host_allocator, &topology);
+        }
+      }
     }
     const amdf_status_t close_status = amdf_linux_file_close(&node);
     if (!amdf_status_is_ok(close_status)) status = close_status;
@@ -399,6 +513,10 @@ amdf_status_t amdf_gpu_kfd_topology_query(
   if (amdf_status_is_ok(status) && !found) {
     status = amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
-  if (amdf_status_is_ok(status)) *out_topology = topology;
+  if (amdf_status_is_ok(status)) {
+    *out_topology = topology;
+  } else {
+    amdf_gpu_kfd_topology_deinitialize(&topology, host_allocator);
+  }
   return status;
 }

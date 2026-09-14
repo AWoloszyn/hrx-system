@@ -207,8 +207,8 @@ static amdf_status_t amdf_memory_access_find_profile(
     const amdf_memory_access_query_t* query, uint32_t access_ordinal,
     amdf_memory_class_t memory_class, amdf_memory_profile_roles_t role,
     const amdf_external_memory_support_t* transport,
-    const void* construction_domain, amdf_memory_native_profile_t* out_profile,
-    bool* out_found) {
+    const amdf_memory_native_profile_t* backing,
+    amdf_memory_native_profile_t* out_profile, bool* out_found) {
   bool found = false;
   amdf_memory_native_profile_t profile;
   amdf_status_t status = AMDF_STATUS_OK;
@@ -216,10 +216,14 @@ static amdf_status_t amdf_memory_access_find_profile(
     status = amdf_memory_access_query_native_profile(query, access_ordinal,
                                                      ordinal, &profile);
     if (!amdf_status_is_ok(status)) continue;
+    if (backing != NULL &&
+        (profile.construction.query_access !=
+             backing->construction.query_access ||
+         !backing->construction.query_access(backing, &profile, &profile))) {
+      continue;
+    }
     if (profile.memory_class != memory_class ||
         (profile.roles & role) != role ||
-        (construction_domain != NULL &&
-         profile.construction_domain != construction_domain) ||
         !amdf_memory_native_profile_supports_access(
             &profile,
             amdf_memory_access_query_requirements(query, access_ordinal))) {
@@ -387,11 +391,16 @@ static amdf_status_t amdf_memory_scope_select_acquisition(
         // Independent GPU registrations reserve different ordinary addresses.
         // Only a shared native construction contract can promise one pointer.
         found =
-            owner->construction_domain != NULL &&
-            owner->construction_domain ==
-                plan->native_profiles[i].construction_domain &&
+            owner->construction.query_access != NULL &&
+            owner->construction.query_access ==
+                plan->native_profiles[i].construction.query_access &&
             amdf_memory_access_query_requirements(query, gpu_owner)->access ==
-                amdf_memory_access_query_requirements(query, i)->access;
+                amdf_memory_access_query_requirements(query, i)->access &&
+            owner->construction.query_access(owner, &plan->native_profiles[i],
+                                             &plan->native_profiles[i]) &&
+            amdf_memory_native_profile_supports_access(
+                &plan->native_profiles[i],
+                amdf_memory_access_query_requirements(query, i));
         if (found) {
           plan->backing_access_ordinal = gpu_owner;
           plan->backing_access_ordinals[0] = gpu_owner;
@@ -439,7 +448,7 @@ static amdf_status_t amdf_memory_scope_select_allocation(
     }
     for (uint32_t i = 0;
          amdf_status_is_ok(status) &&
-         source_profile.construction_domain != NULL && i < query->count;
+         source_profile.construction.query_access != NULL && i < query->count;
          ++i) {
       if (i == source ||
           amdf_memory_access_query_requirements(query, i)->access !=
@@ -449,8 +458,7 @@ static amdf_status_t amdf_memory_scope_select_allocation(
       bool member_found = false;
       status = amdf_memory_access_find_profile(
           query, i, memory_class, AMDF_MEMORY_PROFILE_ROLE_CREATE, NULL,
-          source_profile.construction_domain, &plan->native_profiles[i],
-          &member_found);
+          &source_profile, &plan->native_profiles[i], &member_found);
       if (amdf_status_is_ok(status) && member_found) {
         plan->native_owner_ordinals[i] = source;
         plan->backing_access_ordinals[plan->backing_access_count++] = i;

@@ -13,9 +13,16 @@
 
 namespace {
 
+struct GroupAcquisition {
+  // Physical placement of the backing, independent of consumer order.
+  amdf_memory_class_t memory_class;
+  // Native acquisition role exercised within the selected scope.
+  amdf_memory_profile_roles_t role;
+};
+
 class GpuMemoryGroupTest
     : public GpuDeviceFixture,
-      public ::testing::WithParamInterface<amdf_memory_profile_roles_t> {
+      public ::testing::WithParamInterface<GroupAcquisition> {
  protected:
   void TearDown() override {
     if (mapping_ != nullptr) {
@@ -39,12 +46,20 @@ class GpuMemoryGroupTest
   amdf_host_mapping_t* mapping_ = nullptr;
 };
 
-INSTANTIATE_TEST_SUITE_P(Acquisition, GpuMemoryGroupTest,
-                         ::testing::Values(AMDF_MEMORY_PROFILE_ROLE_CREATE,
-                                           AMDF_MEMORY_PROFILE_ROLE_REGISTER));
+INSTANTIATE_TEST_SUITE_P(
+    Acquisition, GpuMemoryGroupTest,
+    ::testing::Values(GroupAcquisition{AMDF_MEMORY_CLASS_SYSTEM,
+                                       AMDF_MEMORY_PROFILE_ROLE_CREATE},
+                      GroupAcquisition{AMDF_MEMORY_CLASS_SYSTEM,
+                                       AMDF_MEMORY_PROFILE_ROLE_REGISTER},
+                      GroupAcquisition{AMDF_MEMORY_CLASS_LOCAL,
+                                       AMDF_MEMORY_PROFILE_ROLE_CREATE}));
 
-TEST_P(GpuMemoryGroupTest, OneSystemBackingForTwoPhysicalConsumers) {
-  const amdf_memory_profile_roles_t role = GetParam();
+TEST_P(GpuMemoryGroupTest, OneBackingForTwoPhysicalConsumers) {
+  const amdf_memory_profile_roles_t role = GetParam().role;
+  const bool local = GetParam().memory_class == AMDF_MEMORY_CLASS_LOCAL;
+  amdf_memory_scope_t* scope = local ? local_scope_ : system_scope_;
+  if (scope == nullptr) GTEST_SKIP() << "no local backing scope";
   const bool registered = role == AMDF_MEMORY_PROFILE_ROLE_REGISTER;
   uint32_t endpoint_count = 0;
   ASSERT_EQ(api_->endpoint_enumerate(instance_, 0, nullptr, &endpoint_count),
@@ -71,12 +86,11 @@ TEST_P(GpuMemoryGroupTest, OneSystemBackingForTwoPhysicalConsumers) {
       .address_kinds = UINT64_C(1) << AMDF_MEMORY_ADDRESS_GPU,
   };
   const std::array<amdf_memory_endpoint_access_t, 2> expected_accesses = {
-      {{endpoint_, requirements}, {peer_endpoint, requirements}}};
+      {{peer_endpoint, requirements}, {endpoint_, requirements}}};
   amdf_memory_scope_info_t scope_info = {};
   scope_info.type = AMDF_STRUCTURE_TYPE_MEMORY_SCOPE_INFO;
   scope_info.structure_size = sizeof(scope_info);
-  ASSERT_EQ(api_->memory_scope_query_info(system_scope_, &scope_info),
-            AMDF_STATUS_OK);
+  ASSERT_EQ(api_->memory_scope_query_info(scope, &scope_info), AMDF_STATUS_OK);
   amdf_memory_profile_t profile = {};
   profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
   profile.structure_size = sizeof(profile);
@@ -88,15 +102,17 @@ TEST_P(GpuMemoryGroupTest, OneSystemBackingForTwoPhysicalConsumers) {
   uint32_t selected = AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN;
   for (uint32_t i = 0; i < scope_info.memory_profile_count; ++i) {
     const amdf_status_t status = api_->memory_scope_query_profile(
-        system_scope_, i, expected_accesses.size(), expected_accesses.data(),
-        &profile, capabilities.data());
+        scope, i, expected_accesses.size(), expected_accesses.data(), &profile,
+        capabilities.data());
     if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) continue;
     ASSERT_EQ(status, AMDF_STATUS_OK);
-    if ((profile.roles & (role | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP)) !=
-        (role | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP)) {
+    const auto required_roles =
+        role | (local ? 0 : AMDF_MEMORY_PROFILE_ROLE_HOST_MAP);
+    if ((profile.roles & required_roles) != required_roles) {
       continue;
     }
-    if ((profile.supported_flags & AMDF_MEMORY_FLAG_HOST_VISIBLE) == 0)
+    if (!local &&
+        (profile.supported_flags & AMDF_MEMORY_FLAG_HOST_VISIBLE) == 0)
       continue;
     selected = i;
     break;
@@ -112,10 +128,10 @@ TEST_P(GpuMemoryGroupTest, OneSystemBackingForTwoPhysicalConsumers) {
   }
   ASSERT_EQ(activation, AMDF_STATUS_OK);
   const std::array<amdf_memory_device_access_t, 2> accesses = {
-      {{device_, requirements}, {peer_device, requirements}}};
+      {{peer_device, requirements}, {device_, requirements}}};
   ASSERT_EQ(api_->memory_scope_query_device_profile(
-                system_scope_, selected, accesses.size(), accesses.data(),
-                &profile, capabilities.data()),
+                scope, selected, accesses.size(), accesses.data(), &profile,
+                capabilities.data()),
             AMDF_STATUS_OK);
   amdf_memory_create_info_t create_info = {};
   create_info.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
@@ -123,7 +139,8 @@ TEST_P(GpuMemoryGroupTest, OneSystemBackingForTwoPhysicalConsumers) {
   create_info.memory_profile_ordinal = selected;
   create_info.access_count = accesses.size();
   create_info.accesses = accesses.data();
-  create_info.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
+  create_info.required_flags =
+      local ? AMDF_MEMORY_FLAG_DEVICE_LOCAL : AMDF_MEMORY_FLAG_HOST_VISIBLE;
 
   const auto& construction =
       registered ? profile.registration : profile.allocation;
@@ -155,14 +172,14 @@ TEST_P(GpuMemoryGroupTest, OneSystemBackingForTwoPhysicalConsumers) {
   }
   // Failed native rollback can retain pins. Only a published registration
   // establishes a teardown path that permits this fixture to free the pages.
-  ASSERT_EQ(api_->memory_create(system_scope_, &create_info, &memory_),
-            AMDF_STATUS_OK);
+  ASSERT_EQ(api_->memory_create(scope, &create_info, &memory_), AMDF_STATUS_OK);
   caller_storage_ = caller_storage;
   amdf_memory_info_t memory_info = {};
   memory_info.type = AMDF_STRUCTURE_TYPE_MEMORY_INFO;
   memory_info.structure_size = sizeof(memory_info);
   ASSERT_EQ(api_->memory_query_info(memory_, &memory_info), AMDF_STATUS_OK);
   EXPECT_EQ(memory_info.access_count, accesses.size());
+  EXPECT_EQ(memory_info.memory_class, GetParam().memory_class);
   EXPECT_EQ(memory_info.byte_length, create_info.byte_length);
   uint64_t common_address = 0;
   for (uint32_t i = 0; i < accesses.size(); ++i) {
@@ -183,6 +200,7 @@ TEST_P(GpuMemoryGroupTest, OneSystemBackingForTwoPhysicalConsumers) {
     EXPECT_LE(address, capabilities[i].device_address.maximum_address);
     EXPECT_EQ(address % capabilities[i].device_address.minimum_alignment, 0u);
   }
+  if (local) return;
   amdf_memory_map_info_t map_info = {};
   map_info.type = AMDF_STRUCTURE_TYPE_MEMORY_MAP_INFO;
   map_info.structure_size = sizeof(map_info);

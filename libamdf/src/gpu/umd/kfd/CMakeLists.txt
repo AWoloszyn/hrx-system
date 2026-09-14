@@ -32,6 +32,7 @@ iree_cc_library(
     "topology.c"
   DEPS
     amdf::headers
+    libamdf::src::allocator
     libamdf::src::gpu::endpoint_profile
     libamdf::src::platform
     libamdf::src::platform::linux::endpoint
@@ -47,10 +48,13 @@ iree_cc_test(
   SRCS
     "topology_test.cc"
   DEPS
+    ::endpoint_profile
     ::topology
     amdf::headers
     iree::third_party::google_test
     iree::third_party::google_test_main
+    libamdf::src::allocator
+    libamdf::src::gpu::umd::endpoint_profile
     libamdf::src::platform::linux::endpoint
     libamdf::src::platform::linux::file
   LABELS
@@ -351,6 +355,7 @@ iree_cc_library(
     ::memory_profile
     ::topology
     amdf::headers
+    libamdf::src::allocator
     libamdf::src::gpu::endpoint_profile
     libamdf::src::gpu::umd::endpoint_profile
     libamdf::src::gpu::umd::kfd::target::memory

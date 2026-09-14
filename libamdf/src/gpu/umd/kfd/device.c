@@ -22,6 +22,7 @@ amdf_status_t amdf_gpu_umd_device_destroy(amdf_gpu_umd_device_t* device) {
       amdf_gpu_kfd_reset_monitor_deinitialize(&device->reset_monitor);
   if (amdf_status_is_ok(status)) {
     const amdf_allocator_t host_allocator = device->host_allocator;
+    amdf_gpu_kfd_topology_deinitialize(&device->topology, host_allocator);
     amdf_free(host_allocator, device);
   }
   return status;
@@ -43,7 +44,8 @@ amdf_status_t amdf_gpu_umd_device_create(
   device->native_lifetime = native_lifetime;
   device->user_queue_native_api = amdf_gpu_kfd_user_queue_default_native_api();
 
-  status = amdf_gpu_kfd_topology_query(endpoint, &device->topology);
+  status = amdf_gpu_kfd_topology_initialize(endpoint, host_allocator,
+                                            &device->topology);
   const long page_size = sysconf(_SC_PAGESIZE);
   if (amdf_status_is_ok(status)) {
     if (page_size <= 0 || (page_size & (page_size - 1)) != 0) {
@@ -85,6 +87,7 @@ amdf_status_t amdf_gpu_umd_device_create(
   } else {
     // Connections belong to the instance. Reset-monitor acquisition is the
     // final fallible step and leaves no owned context on failure.
+    amdf_gpu_kfd_topology_deinitialize(&device->topology, host_allocator);
     amdf_free(host_allocator, device);
   }
   return status;
