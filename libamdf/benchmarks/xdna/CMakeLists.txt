@@ -15,12 +15,12 @@ iree_cc_binary_benchmark(
     memory_benchmark
   SRCS
     "${PROJECT_SOURCE_DIR}/libamdf/cts/util/linked_provider.cc"
-    "memory_benchmark.cc"
+    "main.cc"
   DEPS
     amdf::amdf
     amdf::headers
     iree::third_party::google_benchmark
-    libamdf::cts::util::device_cache
+    libamdf::benchmarks::memory_benchmark
     libamdf::cts::util::provider_headers
   TESTONLY
   LABELS

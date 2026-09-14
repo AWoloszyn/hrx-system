@@ -45,6 +45,7 @@ PACKAGE_POLICIES = [
     ),
     package_policy(
         packages = [
+            "libamdf/benchmarks/gpu/...",
             "libamdf/cts/gpu/...",
             "libamdf/src/gpu/...",
         ],
@@ -52,7 +53,10 @@ PACKAGE_POLICIES = [
         forbidden_deps = ["//libamdf/src/xdna/..."],
     ),
     package_policy(
-        packages = ["libamdf/cts/gpu/..."],
+        packages = [
+            "libamdf/benchmarks/gpu/...",
+            "libamdf/cts/gpu/...",
+        ],
         run_requirements = [AMDGPU_RESOURCE],
         resource_group = "iree-hal-drivers-amdgpu-tests",
     ),

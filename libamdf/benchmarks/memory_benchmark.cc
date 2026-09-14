@@ -4,9 +4,12 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "memory_benchmark.h"
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <vector>
 
 #include "amdf/amdf.h"
@@ -32,10 +35,13 @@ void Check(bool condition, const char* message) {
 }
 
 // All benchmark repetitions borrow one shared ordinary device. Scope/profile
-// discovery and activation are outside both measured regions.
+// discovery and activation are outside every measured region.
 class MemoryBenchmark {
  public:
-  void Initialize() {
+  void Initialize(amdf_engine_kind_t engine_kind) {
+    address_kind_ = engine_kind == AMDF_ENGINE_KIND_GPU
+                        ? AMDF_MEMORY_ADDRESS_GPU
+                        : AMDF_MEMORY_ADDRESS_XDNA_DMA;
     CheckStatus(amdf_cts_provider_query_api()(AMDF_ABI_VERSION_1,
                                               AMDF_ABI_VERSION_LATEST, &api_),
                 "query_api");
@@ -50,21 +56,22 @@ class MemoryBenchmark {
         "endpoint_enumerate");
     amdf_endpoint_t* endpoint = nullptr;
     for (const auto& summary : summaries) {
-      if (summary.engine_kind != AMDF_ENGINE_KIND_XDNA) continue;
+      if (summary.engine_kind != engine_kind) continue;
       CheckStatus(GetCtsDeviceCache().OpenEndpoint(summary.id, &endpoint),
                   "endpoint_open");
       break;
     }
     if (!endpoint) return;
     const amdf_status_t status =
-        GetCtsDeviceCache().GetXdnaDevice(endpoint, &access_.device);
+        engine_kind == AMDF_ENGINE_KIND_GPU
+            ? GetCtsDeviceCache().GetGpuDevice(endpoint, &access_.device)
+            : GetCtsDeviceCache().GetXdnaDevice(endpoint, &access_.device);
     if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) return;
     CheckStatus(status, "device_create");
     access_.requirements.access =
         AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
     access_.requirements.flags = AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
-    access_.requirements.address_kinds = uint64_t{1}
-                                         << AMDF_MEMORY_ADDRESS_XDNA_DMA;
+    access_.requirements.address_kinds = uint64_t{1} << address_kind_;
 
     count = 0;
     Check(
@@ -117,19 +124,43 @@ class MemoryBenchmark {
     create_info_.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
   }
 
+  // Measures acquisition, mapping/address lookup, and complete release without
+  // touching the mapping. Native allocation may itself initialize the backing.
+  void Allocation(benchmark::State& state) {
+    if (!CheckAvailable(state)) return;
+    const size_t byte_length = static_cast<size_t>(state.range(0));
+    CheckMemory(byte_length);
+    for (auto iteration : state) {
+      (void)iteration;
+      Acquire(byte_length);
+      Release();
+    }
+    state.SetBytesProcessed(state.iterations() * byte_length);
+  }
+
+  // Measures the allocation lifecycle including the first full host write,
+  // without an explicit publication operation.
+  void Initialization(benchmark::State& state) {
+    if (!CheckAvailable(state)) return;
+    const size_t byte_length = static_cast<size_t>(state.range(0));
+    CheckMemory(byte_length);
+    uint8_t value = 0;
+    for (auto iteration : state) {
+      (void)iteration;
+      Acquire(byte_length);
+      InitializeMemory(byte_length, value++);
+      Release();
+    }
+    state.SetBytesProcessed(state.iterations() * byte_length);
+  }
+
   // Measures acquisition, mapping/address lookup, initialization, publication,
   // and complete release, with no hidden device creation or live allocation
   // pool.
   void Lifecycle(benchmark::State& state) {
-    if (!scope_) {
-      state.SkipWithMessage("native XDNA host-visible allocation unavailable");
-      return;
-    }
+    if (!CheckAvailable(state)) return;
     const size_t byte_length = static_cast<size_t>(state.range(0));
-    Acquire(byte_length);
-    Publish(byte_length, 0xA5);
-    Verify(byte_length, 0xA5);
-    Release();
+    CheckMemory(byte_length);
     uint8_t value = 0;
     for (auto iteration : state) {
       (void)iteration;
@@ -143,10 +174,7 @@ class MemoryBenchmark {
   // Measures only CPU initialization and explicit publication of retained
   // resident backing. No command submission or device completion is implied.
   void Publication(benchmark::State& state) {
-    if (!scope_) {
-      state.SkipWithMessage("native XDNA host-visible allocation unavailable");
-      return;
-    }
+    if (!CheckAvailable(state)) return;
     const size_t byte_length = static_cast<size_t>(state.range(0));
     Acquire(byte_length);
     Publish(byte_length, 0xA5);
@@ -163,6 +191,21 @@ class MemoryBenchmark {
   }
 
  private:
+  bool CheckAvailable(benchmark::State& state) const {
+    if (scope_) return true;
+    state.SkipWithMessage("native host-visible allocation unavailable");
+    return false;
+  }
+
+  void CheckMemory(size_t byte_length) {
+    Acquire(byte_length);
+    InitializeMemory(byte_length, 0x5A);
+    Verify(byte_length, 0x5A);
+    Publish(byte_length, 0xA5);
+    Verify(byte_length, 0xA5);
+    Release();
+  }
+
   void Acquire(size_t byte_length) {
     create_info_.byte_length = byte_length;
     CheckStatus(api_->memory_create(scope_, &create_info_, &memory_),
@@ -179,14 +222,18 @@ class MemoryBenchmark {
     CheckStatus(api_->host_mapping_query_info(mapping_, &info), "mapping_info");
     pointer_ = static_cast<uint8_t*>(info.pointer);
     uint64_t address = 0;
-    CheckStatus(api_->memory_query_address(
-                    memory_, 0, AMDF_MEMORY_ADDRESS_XDNA_DMA, &address),
+    CheckStatus(api_->memory_query_address(memory_, 0, address_kind_, &address),
                 "memory_address");
     benchmark::DoNotOptimize(address);
   }
 
-  void Publish(size_t byte_length, uint8_t value) {
+  void InitializeMemory(size_t byte_length, uint8_t value) {
     std::memset(pointer_, value, byte_length);
+    benchmark::ClobberMemory();
+  }
+
+  void Publish(size_t byte_length, uint8_t value) {
+    InitializeMemory(byte_length, value);
     CheckStatus(api_->host_mapping_cache_control(
                     mapping_, AMDF_HOST_CACHE_OPERATION_FLUSH, 0, byte_length),
                 "memory_publication");
@@ -210,8 +257,10 @@ class MemoryBenchmark {
   const amdf_api_t* api_ = nullptr;
   // Instance-owned system scope, borrowed through the shared test device cache.
   amdf_memory_scope_t* scope_ = nullptr;
-  // Explicit live XDNA consumer and its required DMA address contract.
+  // Explicit live consumer and its required device address contract.
   amdf_memory_device_access_t access_ = {};
+  // Native address kind selected by the benchmark's device family.
+  amdf_memory_address_kind_t address_kind_ = AMDF_MEMORY_ADDRESS_GPU;
   // Qualified allocation request; only byte length changes between cases.
   amdf_memory_create_info_t create_info_ = {};
   // One case-owned resident allocation, never shared between repetitions.
@@ -224,7 +273,8 @@ class MemoryBenchmark {
 
 }  // namespace
 
-int main(int argument_count, char** argument_values) {
+int RunMemoryBenchmarks(amdf_engine_kind_t engine_kind, int argument_count,
+                        char** argument_values) {
   if (!amdf_cts_provider_initialize(&argument_count, &argument_values)) {
     return EXIT_FAILURE;
   }
@@ -233,15 +283,29 @@ int main(int argument_count, char** argument_values) {
     return EXIT_FAILURE;
   }
   MemoryBenchmark fixture;
-  fixture.Initialize();
+  fixture.Initialize(engine_kind);
+  const std::string prefix =
+      engine_kind == AMDF_ENGINE_KIND_GPU ? "GpuMemory/" : "XdnaMemory/";
   benchmark::RegisterBenchmark(
-      "XdnaMemory/Lifecycle",
+      (prefix + "Allocation").c_str(),
+      [&fixture](benchmark::State& state) { fixture.Allocation(state); })
+      ->Arg(4096)
+      ->Arg(1048576)
+      ->UseRealTime();
+  benchmark::RegisterBenchmark(
+      (prefix + "Initialization").c_str(),
+      [&fixture](benchmark::State& state) { fixture.Initialization(state); })
+      ->Arg(4096)
+      ->Arg(1048576)
+      ->UseRealTime();
+  benchmark::RegisterBenchmark(
+      (prefix + "Lifecycle").c_str(),
       [&fixture](benchmark::State& state) { fixture.Lifecycle(state); })
       ->Arg(4096)
       ->Arg(1048576)
       ->UseRealTime();
   benchmark::RegisterBenchmark(
-      "XdnaMemory/Publication",
+      (prefix + "Publication").c_str(),
       [&fixture](benchmark::State& state) { fixture.Publication(state); })
       ->Arg(4096)
       ->Arg(1048576)
