@@ -80,8 +80,21 @@ cleanup stops at its ownership boundary and returns failure.
 
 The adapter tests use real image parsing and caller-owned storage without a
 fake native provider. CLI tests exercise host argument and file ownership
-without creating a device. Native execution is an explicit operator action.
-Crash-continuity capture, kernel logging, and input/output retention belong to
-the surrounding run harness. Host-side image tests and native driver execution
-are distinct from end-to-end admission of a matching compiler image on each
-hardware profile.
+without creating a device.
+
+The native consumer tests in `cts/` select the matching canonical compiler
+image, allocate data and instruction backing through the public memory scopes,
+and execute three different inputs through one cold-prepared command. They
+check all 48 integer products, native retirement, byte-for-byte instruction
+immutability, and caller-ordered teardown. Each output is poisoned before its
+submission so missing writes cannot pass. Both process- and instance-scoped
+native lifetimes use the shared CTS device owner.
+
+```sh
+iree-bazel-test --config=asan //experimental/xdna/cts/...
+iree-cmake-test -R '^iree/experimental/xdna/cts/'
+```
+
+These tests carry the XDNA hardware requirement and share the AMDGPU resource
+group with native and interop CTS. The same sources run on Linux and Windows;
+hosts without an XDNA endpoint or a matching compiler fixture report a skip.

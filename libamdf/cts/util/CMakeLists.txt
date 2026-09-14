@@ -41,6 +41,24 @@ iree_cc_library(
 )
 endif()
 
+if(AMDF_BUILD)
+iree_cc_library(
+  NAME
+    linked_test_main
+  SRCS
+    "linked_provider.cc"
+    "test_main.cc"
+  DEPS
+    ::device_cache
+    ::provider_headers
+    amdf::amdf_static
+    amdf::headers
+    iree::third_party::google_test
+  TESTONLY
+  PUBLIC
+)
+endif()
+
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND AMDF_BUILD)
 iree_cc_library(
   NAME

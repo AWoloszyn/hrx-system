@@ -17,6 +17,7 @@ amdf_cc_library(
     name = "xdna_device_fixture",
     testonly = True,
     hdrs = ["xdna_device_fixture.h"],
+    visibility = ["//experimental/xdna/cts:__pkg__"],
     deps = [
         "//libamdf/cts/util:device_cache",
         "//libamdf/cts/util:provider_headers",

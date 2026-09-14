@@ -4,6 +4,8 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+import os
+
 import bazel_to_cmake_config
 import bazel_to_cmake_converter
 import bazel_to_cmake_requirements
@@ -13,19 +15,25 @@ class XdnaBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
     def _custom_initialize(self):
         self._xdna_policy = bazel_to_cmake_requirements.load_project_policy(
             self._repo_root, "experimental/xdna"
-        ).collect("experimental/xdna")
+        )
 
-    def _apply_xdna_policy(self, kwargs):
+    def _apply_xdna_policy(self, kwargs, include_run_requirements=False):
+        package_name = os.path.relpath(self._build_dir, self._repo_root).replace(
+            "\\", "/"
+        )
+        policy = self._xdna_policy.collect(package_name)
         kwargs = dict(kwargs)
         kwargs["target_compatible_with"] = (
             bazel_to_cmake_requirements.append_cmake_conditions(
                 kwargs.get("target_compatible_with"),
-                self._xdna_policy.cmake_conditions(),
+                policy.cmake_conditions(),
             )
         )
-        kwargs["tags"] = list(kwargs.get("tags") or []) + self._xdna_policy.tags(
-            include_run_requirements=False
+        kwargs["tags"] = list(kwargs.get("tags") or []) + policy.tags(
+            include_run_requirements=include_run_requirements
         )
+        if include_run_requirements and policy.resource_group:
+            kwargs.setdefault("resource_group", policy.resource_group)
         return kwargs
 
     def xdna_cc_library(self, deps=[], **kwargs):
@@ -40,7 +48,8 @@ class XdnaBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
 
     def xdna_cc_test(self, deps=[], **kwargs):
         self.cc_test(
-            deps=deps + ["//runtime/src:defines"], **self._apply_xdna_policy(kwargs)
+            deps=deps + ["//runtime/src:defines"],
+            **self._apply_xdna_policy(kwargs, include_run_requirements=True),
         )
 
     def xdna_execution_test_suite(self, **kwargs):
