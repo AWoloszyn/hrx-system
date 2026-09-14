@@ -270,7 +270,50 @@ class XdnaExecutionTest
                     &prepared_bindings_[i].device_address),
                 AMDF_STATUS_OK);
       prepared_bindings_[i].device_address += kBindingByteOffset;
+      ASSERT_NO_FATAL_FAILURE(QueryHostCacheOperations(i));
     }
+  }
+
+  void QueryHostCacheOperations(size_t ordinal) {
+    auto& binding = bindings_[ordinal];
+    amdf_memory_site_t host = {};
+    host.type = AMDF_STRUCTURE_TYPE_MEMORY_SITE;
+    host.structure_size = sizeof(host);
+    host.kind = AMDF_MEMORY_SITE_KIND_HOST;
+    host.value.host_mapping = binding.storage.mapping;
+    amdf_memory_site_t device = {};
+    device.type = AMDF_STRUCTURE_TYPE_MEMORY_SITE;
+    device.structure_size = sizeof(device);
+    device.kind = AMDF_MEMORY_SITE_KIND_DEVICE;
+    device.value.device.memory = binding.storage.memory;
+    device.value.device.queue_family_ordinal = queue_family_.ordinal;
+    amdf_memory_pair_info_t pair = {};
+    pair.type = AMDF_STRUCTURE_TYPE_MEMORY_PAIR_INFO;
+    pair.structure_size = sizeof(pair);
+    ASSERT_EQ(api_->memory_query_pair_info(&host, &device, &pair),
+              AMDF_STATUS_OK);
+    ASSERT_NE(pair.flags & AMDF_MEMORY_PAIR_FLAG_SHARED_BACKING_REACHABLE, 0u);
+    ASSERT_EQ(pair.release.kind, AMDF_CACHE_TRANSITION_KIND_RANGE);
+    ASSERT_EQ(pair.release.executor,
+              AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT);
+    ASSERT_EQ(pair.release.host_operation, AMDF_HOST_CACHE_OPERATION_FLUSH);
+    ASSERT_EQ(pair.acquire.kind, AMDF_CACHE_TRANSITION_KIND_NONE);
+    ASSERT_EQ(pair.atomic_reach.scope_32, AMDF_ATOMIC_SCOPE_NONE);
+    ASSERT_EQ(pair.atomic_reach.scope_64, AMDF_ATOMIC_SCOPE_NONE);
+    binding.host_cache.publish = pair.release.host_operation;
+
+    ASSERT_EQ(api_->memory_query_pair_info(&device, &host, &pair),
+              AMDF_STATUS_OK);
+    ASSERT_NE(pair.flags & AMDF_MEMORY_PAIR_FLAG_SHARED_BACKING_REACHABLE, 0u);
+    ASSERT_EQ(pair.release.kind, AMDF_CACHE_TRANSITION_KIND_NONE);
+    ASSERT_EQ(pair.acquire.kind, AMDF_CACHE_TRANSITION_KIND_RANGE);
+    ASSERT_EQ(pair.acquire.executor,
+              AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT);
+    ASSERT_EQ(pair.acquire.host_operation,
+              AMDF_HOST_CACHE_OPERATION_INVALIDATE);
+    ASSERT_EQ(pair.atomic_reach.scope_32, AMDF_ATOMIC_SCOPE_NONE);
+    ASSERT_EQ(pair.atomic_reach.scope_64, AMDF_ATOMIC_SCOPE_NONE);
+    binding.host_cache.acquire = pair.acquire.host_operation;
   }
 
   void RequireDmaBuf(const amdf_memory_profile_t& profile,
@@ -492,9 +535,9 @@ class XdnaExecutionTest
       iree_unaligned_store_le_u32(storage.pointer + kBindingByteOffset + i * 4,
                                   values[i]);
     }
-    ASSERT_EQ(api_->host_mapping_cache_control(storage.mapping,
-                                               AMDF_HOST_CACHE_OPERATION_FLUSH,
-                                               0, kBindingStorageByteLength),
+    ASSERT_EQ(api_->host_mapping_cache_control(
+                  storage.mapping, bindings_[ordinal].host_cache.publish, 0,
+                  kBindingStorageByteLength),
               AMDF_STATUS_OK);
   }
 
@@ -503,7 +546,7 @@ class XdnaExecutionTest
       SCOPED_TRACE(ordinal);
       const auto& storage = bindings_[ordinal].storage;
       ASSERT_EQ(api_->host_mapping_cache_control(
-                    storage.mapping, AMDF_HOST_CACHE_OPERATION_INVALIDATE, 0,
+                    storage.mapping, bindings_[ordinal].host_cache.acquire, 0,
                     kBindingStorageByteLength),
                 AMDF_STATUS_OK);
       for (size_t i = 0; i < kBindingByteLength; ++i) {
@@ -562,6 +605,13 @@ class XdnaExecutionTest
     MappedMemory storage;
     // HAL wrapper borrowing storage until preparation has been destroyed.
     iree_hal_buffer_t* buffer = nullptr;
+    // Directional operations selected once from the concrete host/device pair.
+    struct {
+      // Releases CPU writes before the program reads through DMA.
+      amdf_host_cache_operation_t publish = 0;
+      // Makes completed DMA writes visible before CPU verification.
+      amdf_host_cache_operation_t acquire = 0;
+    } host_cache;
   };
   // Lhs, rhs and output backing, independent of instruction storage.
   std::array<Binding, 3> bindings_;

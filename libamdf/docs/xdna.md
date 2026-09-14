@@ -25,6 +25,13 @@ their native mappings and residency. The caller maintains visibility, ordering,
 and lifetime, including references followed by device-side streaming after a
 kernel submission retires. Completion does not discover those references.
 
+For CPU/NPU interchange, the caller queries `memory_query_pair_info` with its
+concrete host mapping and device access plus queue-family ordinal. The result
+selects the host publication or invalidation operation; XDNA DMA requires no
+additional device cache transition. The caller publishes inputs before use and
+acquires outputs after the program finishes the relevant DMA and its ordering
+edge completes. The query itself neither flushes caches nor orders execution.
+
 ## Native requirements
 
 | Boundary | Linux modern DRM | Windows MCDM |

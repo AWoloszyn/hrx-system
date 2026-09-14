@@ -512,4 +512,67 @@ TEST_F(WindowsXdnaMemoryTest,
   ReleaseLeakedBacking();
 }
 
+TEST(WindowsXdnaMemoryPairTest, DescribesAchievedPermissionsWithoutAtomics) {
+  amdf_memory_access_info_t access = {};
+  const amdf_queue_family_info_t family = {
+      .command_type = AMDF_QUEUE_COMMAND_TYPE_XDNA,
+      .format_version = AMDF_XDNA_QUEUE_FORMAT_VERSION_1,
+      .roles = AMDF_QUEUE_ROLE_COMPUTE,
+  };
+  const amdf_memory_site_query_t query = {
+      .access_info = &access,
+      .queue_family_info = &family,
+  };
+  const amdf_memory_access_t permission_sets[] = {
+      AMDF_MEMORY_ACCESS_READ, AMDF_MEMORY_ACCESS_WRITE,
+      AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE};
+  for (amdf_memory_access_t permissions : permission_sets) {
+    access.access = permissions;
+    amdf_memory_site_description_t description = {};
+    ASSERT_EQ(amdf_xdna_umd_memory_describe_site(nullptr, &query, &description),
+              AMDF_STATUS_OK);
+    amdf_memory_site_capabilities_t expected = 0;
+    if (permissions & AMDF_MEMORY_ACCESS_READ)
+      expected |= AMDF_MEMORY_SITE_CAPABILITY_READ;
+    if (permissions & AMDF_MEMORY_ACCESS_WRITE)
+      expected |= AMDF_MEMORY_SITE_CAPABILITY_WRITE;
+    EXPECT_EQ(description.capabilities, expected);
+    EXPECT_EQ(description.release.kind, AMDF_CACHE_TRANSITION_KIND_NONE);
+    EXPECT_EQ(description.acquire.kind, AMDF_CACHE_TRANSITION_KIND_NONE);
+    EXPECT_FALSE(
+        amdf_memory_compatibility_domain_is_valid(&description.atomic_domain));
+    EXPECT_EQ(description.atomic_reach.scope_32, AMDF_ATOMIC_SCOPE_NONE);
+    EXPECT_EQ(description.atomic_reach.scope_64, AMDF_ATOMIC_SCOPE_NONE);
+  }
+}
+
+TEST(WindowsXdnaMemoryPairTest, RejectsUnqualifiedFamiliesWithoutOutput) {
+  const amdf_memory_access_info_t access = {
+      .access = AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE,
+  };
+  const amdf_queue_family_info_t families[] = {
+      {.command_type = AMDF_QUEUE_COMMAND_TYPE_GPU_PM4,
+       .format_version = AMDF_XDNA_QUEUE_FORMAT_VERSION_1,
+       .roles = AMDF_QUEUE_ROLE_COMPUTE},
+      {.command_type = AMDF_QUEUE_COMMAND_TYPE_XDNA,
+       .format_version = AMDF_XDNA_QUEUE_FORMAT_VERSION_1 + 1,
+       .roles = AMDF_QUEUE_ROLE_COMPUTE},
+      {.command_type = AMDF_QUEUE_COMMAND_TYPE_XDNA,
+       .format_version = AMDF_XDNA_QUEUE_FORMAT_VERSION_1,
+       .roles = AMDF_QUEUE_ROLE_TRANSFER},
+  };
+  for (const auto& family : families) {
+    const amdf_memory_site_query_t query = {
+        .access_info = &access,
+        .queue_family_info = &family,
+    };
+    amdf_memory_site_description_t description;
+    std::memset(&description, 0xA5, sizeof(description));
+    const auto original = description;
+    EXPECT_EQ(amdf_xdna_umd_memory_describe_site(nullptr, &query, &description),
+              amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED));
+    EXPECT_EQ(std::memcmp(&description, &original, sizeof(description)), 0);
+  }
+}
+
 }  // namespace

@@ -333,9 +333,26 @@ amdf_status_t amdf_xdna_umd_memory_describe_site(
     amdf_xdna_umd_memory_t* memory, const amdf_memory_site_query_t* query,
     amdf_memory_site_description_t* out_description) {
   (void)memory;
-  (void)query;
-  (void)out_description;
-  return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  const amdf_queue_family_info_t* family = query->queue_family_info;
+  if (family->command_type != AMDF_QUEUE_COMMAND_TYPE_XDNA ||
+      family->format_version != AMDF_XDNA_QUEUE_FORMAT_VERSION_1 ||
+      (family->roles & AMDF_QUEUE_ROLE_COMPUTE) == 0) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
+  amdf_memory_site_description_t description = {0};
+  if ((query->access_info->access & AMDF_MEMORY_ACCESS_READ) != 0) {
+    description.capabilities |= AMDF_MEMORY_SITE_CAPABILITY_READ;
+  }
+  if ((query->access_info->access & AMDF_MEMORY_ACCESS_WRITE) != 0) {
+    description.capabilities |= AMDF_MEMORY_SITE_CAPABILITY_WRITE;
+  }
+  // Shim DMA accesses resident system backing without another device cache
+  // transition. The program must finish the relevant DMA before the caller's
+  // ordering edge; host publication/invalidation belongs to its mapping.
+  description.release.kind = AMDF_CACHE_TRANSITION_KIND_NONE;
+  description.acquire.kind = AMDF_CACHE_TRANSITION_KIND_NONE;
+  *out_description = description;
+  return AMDF_STATUS_OK;
 }
 
 amdf_status_t amdf_xdna_umd_memory_prepare(
