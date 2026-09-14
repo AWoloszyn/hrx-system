@@ -65,13 +65,17 @@ amdf_cc_library(
 amdf_cc_library(
     name = "gpu_tests",
     testonly = True,
-    srcs = ["gpu_extension_test.cc"],
+    srcs = [
+        "gpu_extension_test.cc",
+        "memory_group_test.cc",
+    ],
     target_compatible_with = ["@platforms//cpu:x86_64"] + select({
         "@platforms//os:linux": [],
         "@platforms//os:windows": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     deps = [
+        ":gpu_device_fixture",
         "//libamdf/cts/util:device_cache",
         "//libamdf/cts/util:provider_headers",
         "//third_party:google_test",

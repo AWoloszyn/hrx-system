@@ -32,6 +32,12 @@ enum amdf_gpu_kfd_buffer_host_access_e {
 // Construction parameters for ordinary GTT, VRAM or registered host storage.
 // Doorbell and MMIO allocations have separate native ownership contracts.
 typedef struct amdf_gpu_kfd_buffer_create_info_t {
+  // Number of additional live consumers in this instance's native context.
+  uint32_t peer_count;
+  // Borrowed devices with the same exact access permissions as the owner.
+  // Duplicate native GPU IDs are mapped only once. NULL when peer_count is
+  // zero.
+  amdf_gpu_umd_device_t* const* peer_devices;
   // Native KFD allocation flags.
   uint32_t native_flags;
   // Page-covered native backing length in bytes.
@@ -64,9 +70,9 @@ amdf_status_t amdf_gpu_kfd_buffer_prepare(
     amdf_gpu_kfd_buffer_t** buffer_state,
     amdf_gpu_kfd_buffer_result_t* out_result);
 
-// Creates one KFD allocation with a stable GPU mapping. Failure rolls back
-// locally and leaves both outputs unchanged. A terminal native rollback failure
-// is reported and leaks its unreleased native resources and VA reservation;
+// Creates one KFD allocation with stable mappings in the complete GPU group.
+// Failure rolls back locally and leaves both outputs unchanged. A terminal
+// native rollback failure leaks unreleased native resources and VA reservation;
 // buffer metadata is freed without transferring cleanup to another owner.
 amdf_status_t amdf_gpu_kfd_buffer_create(
     amdf_gpu_umd_device_t* device,

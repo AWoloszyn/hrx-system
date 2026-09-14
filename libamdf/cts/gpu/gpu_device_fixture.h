@@ -22,7 +22,19 @@ inline uint32_t FindGpuMemoryProfileOrdinal(
     amdf_memory_flags_t required_flags,
     amdf_memory_access_requirements_t requirements) {
   const amdf_memory_device_access_t access = {device, requirements};
-  for (uint32_t ordinal = 0;; ++ordinal) {
+  amdf_memory_scope_info_t scope_info = {};
+  scope_info.type = AMDF_STRUCTURE_TYPE_MEMORY_SCOPE_INFO;
+  scope_info.structure_size = sizeof(scope_info);
+  const amdf_status_t scope_status =
+      api->memory_scope_query_info(scope, &scope_info);
+  if (!amdf_status_is_ok(scope_status)) {
+    ADD_FAILURE() << "memory scope query failed: domain="
+                  << amdf_status_domain(scope_status)
+                  << " code=" << amdf_status_code(scope_status);
+    return AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN;
+  }
+  for (uint32_t ordinal = 0; ordinal < scope_info.memory_profile_count;
+       ++ordinal) {
     amdf_memory_profile_t profile = {};
     profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
     profile.structure_size = sizeof(profile);
@@ -31,7 +43,6 @@ inline uint32_t FindGpuMemoryProfileOrdinal(
     capabilities.structure_size = sizeof(capabilities);
     const amdf_status_t status = api->memory_scope_query_device_profile(
         scope, ordinal, 1, &access, &profile, &capabilities);
-    if (amdf_status_code(status) == AMDF_STATUS_CODE_OUT_OF_RANGE) break;
     if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) continue;
     if (!amdf_status_is_ok(status)) {
       ADD_FAILURE() << "memory profile query failed: domain="

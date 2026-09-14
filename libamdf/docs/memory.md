@@ -152,6 +152,15 @@ details owned by the resource. External import and export serve interoperability
 ordinary sharing within the fabric does not require the application to assemble
 an export/import chain.
 
+Linux GPU system allocations use one KFD backing handle mapped into the complete
+requested GPU group at a common virtual address. The native allocation fixes
+read, write, and execute permissions, so this path requires the same exact
+permissions for every participating GPU. Scope queries qualify that combination
+before construction. The memory resource owns the fixed mapping set; releasing
+it unmaps every participating VM before freeing the backing. Other engines can
+join through their supported external-memory transport without changing the
+application's scope-based construction call.
+
 Resource operations identify memory with its opaque handle and an explicit
 range: conceptually `{memory, offset, length}`. Host-mapping operations similarly
 use their mapping handle. Libamdf does not reverse-map arbitrary physical or

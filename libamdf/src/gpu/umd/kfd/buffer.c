@@ -22,8 +22,8 @@ struct amdf_gpu_kfd_buffer_t {
   uint64_t handle;
   // Page-covered native backing length in bytes.
   size_t byte_length;
-  // True until the GPU mapping and its unmap synchronization have completed.
-  bool mapped;
+  // Mapped GPU-ID prefix, retained through final unmap synchronization.
+  uint32_t mapped_gpu_count;
   // Native unmap progress retained when an error interrupts full teardown.
   uint32_t unmap_success_count;
   // Owned CPU VA interval reserving the GPU VA and any CPU backing mapping.
@@ -33,6 +33,8 @@ struct amdf_gpu_kfd_buffer_t {
     // Complete reserved interval length, including alignment padding.
     size_t byte_length;
   } reservation;
+  // Immutable unique GPU IDs in owner-first native map order.
+  uint32_t gpu_ids[];
 };
 
 // Map/unmap retain their completed prefix in the ioctl payload; an interrupted
@@ -50,19 +52,21 @@ static int amdf_gpu_kfd_buffer_ioctl(int descriptor, unsigned long request,
 
 static amdf_status_t amdf_gpu_kfd_buffer_release_native(
     amdf_gpu_kfd_buffer_t* buffer) {
-  if (buffer->mapped) {
+  if (buffer->mapped_gpu_count != 0) {
     struct kfd_ioctl_unmap_memory_from_gpu_args unmap = {
         .handle = buffer->handle,
-        .device_ids_array_ptr = (uintptr_t)&buffer->device->topology.gpu_id,
-        .n_devices = 1,
+        .device_ids_array_ptr = (uintptr_t)buffer->gpu_ids,
+        .n_devices = buffer->mapped_gpu_count,
         .n_success = buffer->unmap_success_count,
     };
     const int result = amdf_gpu_kfd_buffer_ioctl(
         buffer->device->descriptor, AMDKFD_IOC_UNMAP_MEMORY_FROM_GPU, &unmap);
     buffer->unmap_success_count = unmap.n_success;
     if (result != 0) return amdf_linux_error(errno);
-    if (unmap.n_success != 1) return amdf_linux_error(EPROTO);
-    buffer->mapped = false;
+    if (unmap.n_success != buffer->mapped_gpu_count) {
+      return amdf_linux_error(EPROTO);
+    }
+    buffer->mapped_gpu_count = 0;
   }
   if (buffer->handle != 0) {
     struct kfd_ioctl_free_memory_of_gpu_args release = {
@@ -129,12 +133,30 @@ amdf_status_t amdf_gpu_kfd_buffer_prepare(
   }
 
   amdf_gpu_kfd_buffer_t* buffer = NULL;
-  amdf_status_t status =
-      amdf_calloc(device->host_allocator, sizeof(*buffer),
-                  amdf_alignof(amdf_gpu_kfd_buffer_t), (void**)&buffer);
+  amdf_status_t status = amdf_calloc_with_trailing(
+      device->host_allocator, sizeof(*buffer),
+      ((size_t)create_info->peer_count + 1) * sizeof(*buffer->gpu_ids),
+      amdf_alignof(amdf_gpu_kfd_buffer_t), (void**)&buffer);
   if (!amdf_status_is_ok(status)) return status;
   buffer->device = device;
   *buffer_state = buffer;
+  uint32_t gpu_count = 1;
+  buffer->gpu_ids[0] = device->topology.gpu_id;
+  uint64_t minimum_address = device->topology.virtual_address.begin;
+  uint64_t end_address = device->topology.virtual_address.end;
+  for (uint32_t i = 0; i < create_info->peer_count; ++i) {
+    const amdf_gpu_kfd_topology_t* topology =
+        &create_info->peer_devices[i]->topology;
+    uint32_t j = 0;
+    while (j < gpu_count && buffer->gpu_ids[j] != topology->gpu_id) ++j;
+    if (j == gpu_count) buffer->gpu_ids[gpu_count++] = topology->gpu_id;
+    if (topology->virtual_address.begin > minimum_address) {
+      minimum_address = topology->virtual_address.begin;
+    }
+    if (topology->virtual_address.end < end_address) {
+      end_address = topology->virtual_address.end;
+    }
+  }
   buffer->byte_length = create_info->byte_length;
   buffer->reservation.byte_length =
       create_info->byte_length + create_info->alignment - device->page_size;
@@ -150,10 +172,8 @@ amdf_status_t amdf_gpu_kfd_buffer_prepare(
   if (amdf_status_is_ok(status)) {
     address = ((uintptr_t)reservation + create_info->alignment - 1) &
               ~(create_info->alignment - 1);
-    const amdf_gpu_kfd_topology_t* topology = &device->topology;
-    if (address < topology->virtual_address.begin ||
-        address >= topology->virtual_address.end ||
-        create_info->byte_length > topology->virtual_address.end - address) {
+    if (address < minimum_address || address >= end_address ||
+        create_info->byte_length > end_address - address) {
       status = amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
     }
   }
@@ -195,16 +215,16 @@ amdf_status_t amdf_gpu_kfd_buffer_prepare(
   if (amdf_status_is_ok(status)) {
     struct kfd_ioctl_map_memory_to_gpu_args map = {
         .handle = buffer->handle,
-        .device_ids_array_ptr = (uintptr_t)&device->topology.gpu_id,
-        .n_devices = 1,
+        .device_ids_array_ptr = (uintptr_t)buffer->gpu_ids,
+        .n_devices = gpu_count,
     };
     const int result = amdf_gpu_kfd_buffer_ioctl(
         device->descriptor, AMDKFD_IOC_MAP_MEMORY_TO_GPU, &map);
     // Mapping can succeed before the final residency/page-table wait fails.
-    buffer->mapped = map.n_success != 0;
+    buffer->mapped_gpu_count = map.n_success;
     if (result != 0) {
       status = amdf_linux_error(errno);
-    } else if (map.n_success != 1) {
+    } else if (map.n_success != gpu_count) {
       status = amdf_linux_error(EPROTO);
     }
   }

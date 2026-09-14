@@ -6,6 +6,10 @@
 
 #include "libamdf/src/gpu/umd/kfd/memory_profile.h"
 
+// GTT allocations can be mapped into a fixed set of VMs in one KFD context.
+// Scope validation qualifies this immutable compatibility identity by instance.
+static const char amdf_gpu_kfd_gtt_allocation_domain = 0;
+
 static uint64_t amdf_gpu_kfd_maximum_byte_length(
     const amdf_gpu_kfd_topology_t* topology, size_t page_size) {
   const uint64_t virtual_address_span =
@@ -78,6 +82,7 @@ amdf_status_t amdf_gpu_kfd_query_memory_profile(
   };
   uint32_t ordinal = 0;
   if (memory_profile_ordinal == ordinal++) {
+    profile.allocation_domain = &amdf_gpu_kfd_gtt_allocation_domain;
     profile.memory_class = AMDF_MEMORY_CLASS_SYSTEM;
     profile.roles = AMDF_MEMORY_PROFILE_ROLE_CREATE |
                     AMDF_MEMORY_PROFILE_ROLE_EXPORT |

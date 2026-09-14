@@ -196,10 +196,12 @@ static void amdf_xdna_memory_set_info(
 }
 
 amdf_status_t amdf_xdna_memory_prepare(
-    amdf_memory_t* memory, uint32_t access_ordinal,
-    const amdf_memory_native_profile_t* profile,
+    amdf_memory_t* memory, const amdf_memory_native_group_t* group,
     const amdf_memory_native_create_info_t* create_info,
     amdf_memory_info_t* out_info) {
+  const uint32_t access_ordinal = group->access_ordinals[0];
+  const amdf_memory_native_profile_t* profile =
+      &group->profiles[access_ordinal];
   memory->accesses[access_ordinal].vtable = &amdf_xdna_memory_vtable;
   amdf_xdna_umd_memory_t* native = NULL;
   amdf_xdna_umd_memory_result_t result = {0};

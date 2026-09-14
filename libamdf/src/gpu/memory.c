@@ -26,12 +26,18 @@ typedef struct amdf_gpu_host_mapping_t {
 _Static_assert(offsetof(amdf_gpu_host_mapping_t, base) == 0,
                "GPU mapping base must be the first field");
 
+static amdf_gpu_umd_memory_t* amdf_gpu_memory_native(amdf_memory_t* memory,
+                                                     uint32_t access_ordinal) {
+  return memory->accesses[memory->accesses[access_ordinal].native_owner_ordinal]
+      .native;
+}
+
 static amdf_status_t amdf_gpu_memory_export(
     amdf_memory_t* memory, uint32_t access_ordinal,
     const amdf_memory_export_info_t* export_info,
     amdf_external_memory_t* out_value) {
-  return amdf_gpu_umd_memory_export(memory->accesses[access_ordinal].native,
-                                    export_info, out_value);
+  return amdf_gpu_umd_memory_export(
+      amdf_gpu_memory_native(memory, access_ordinal), export_info, out_value);
 }
 
 static amdf_status_t amdf_gpu_memory_describe_site(
@@ -51,7 +57,7 @@ static amdf_status_t amdf_gpu_memory_describe_site(
       .queue_family_info = &queue_family_info,
   };
   return amdf_gpu_umd_memory_describe_site(
-      memory->accesses[access_ordinal].native, &query, out_description);
+      amdf_gpu_memory_native(memory, access_ordinal), &query, out_description);
 }
 
 static amdf_status_t amdf_gpu_host_mapping_cache_control(
@@ -94,7 +100,7 @@ static amdf_status_t amdf_gpu_memory_map(
   amdf_gpu_umd_host_mapping_result_t result = {0};
   if (amdf_status_is_ok(status)) {
     status =
-        amdf_gpu_umd_memory_map(memory->accesses[access_ordinal].native,
+        amdf_gpu_umd_memory_map(amdf_gpu_memory_native(memory, access_ordinal),
                                 capabilities, map_info, &mapping->umd, &result);
   }
   if (amdf_status_is_ok(status)) {
@@ -198,21 +204,42 @@ static void amdf_gpu_memory_set_info(
 }
 
 amdf_status_t amdf_gpu_memory_prepare(
-    amdf_memory_t* memory, uint32_t access_ordinal,
-    const amdf_memory_native_profile_t* profile,
+    amdf_memory_t* memory, const amdf_memory_native_group_t* group,
     const amdf_memory_native_create_info_t* create_info,
     amdf_memory_info_t* out_info) {
+  const uint32_t access_ordinal = group->access_ordinals[0];
+  const amdf_memory_native_profile_t* profile =
+      &group->profiles[access_ordinal];
+  const uint32_t peer_count = group->access_count - 1;
+  amdf_gpu_umd_device_t** peer_devices = NULL;
+  if (peer_count != 0) {
+    const amdf_status_t status = amdf_calloc_array(
+        memory->host_allocator, peer_count, sizeof(*peer_devices),
+        amdf_alignof(amdf_gpu_umd_device_t*), (void**)&peer_devices);
+    if (!amdf_status_is_ok(status)) return status;
+    for (uint32_t i = 0; i < peer_count; ++i) {
+      peer_devices[i] = amdf_gpu_device_get_umd(
+          memory->accesses[group->access_ordinals[i + 1]].device);
+    }
+  }
   memory->accesses[access_ordinal].vtable = &amdf_gpu_memory_vtable;
   amdf_gpu_umd_memory_t* native = NULL;
   amdf_gpu_umd_memory_result_t result = {0};
   const amdf_status_t status = amdf_gpu_umd_memory_prepare(
-      amdf_gpu_device_get_umd(memory->accesses[access_ordinal].device), profile,
-      create_info, &native, &result);
+      amdf_gpu_device_get_umd(memory->accesses[access_ordinal].device),
+      peer_count, peer_devices, profile, create_info, &native, &result);
+  amdf_free(memory->host_allocator, peer_devices);
   memory->accesses[access_ordinal].native = native;
   if (amdf_status_is_ok(status)) {
-    amdf_gpu_memory_set_info(memory, access_ordinal,
-                             memory->accesses[access_ordinal].device, profile,
-                             create_info->device_access, result, out_info);
+    for (uint32_t i = 0; i < group->access_count; ++i) {
+      const uint32_t ordinal = group->access_ordinals[i];
+      memory->accesses[ordinal].vtable = &amdf_gpu_memory_vtable;
+      amdf_memory_info_t member_info = {0};
+      amdf_gpu_memory_set_info(
+          memory, ordinal, memory->accesses[ordinal].device,
+          &group->profiles[ordinal], create_info->device_access, result,
+          i == 0 ? out_info : &member_info);
+    }
   }
   return status;
 }

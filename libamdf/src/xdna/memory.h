@@ -28,8 +28,7 @@ void amdf_xdna_memory_scope_initialize(amdf_device_t* device,
 
 // Prepares native state in the common memory owner, including on failure.
 amdf_status_t amdf_xdna_memory_prepare(
-    amdf_memory_t* memory, uint32_t access_ordinal,
-    const amdf_memory_native_profile_t* profile,
+    amdf_memory_t* memory, const amdf_memory_native_group_t* group,
     const amdf_memory_native_create_info_t* create_info,
     amdf_memory_info_t* out_info);
 

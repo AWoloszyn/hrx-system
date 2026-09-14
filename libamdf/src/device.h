@@ -23,8 +23,7 @@ typedef struct amdf_device_vtable_t {
   // Prepares native state in the already-allocated memory owner. Every return
   // leaves partial state there for common rollback; only success fills facts.
   amdf_status_t (*memory_prepare)(
-      amdf_memory_t* memory, uint32_t access_ordinal,
-      const amdf_memory_native_profile_t* profile,
+      amdf_memory_t* memory, const amdf_memory_native_group_t* group,
       const amdf_memory_native_create_info_t* create_info,
       amdf_memory_info_t* out_info);
   // Acquires an independent native backing reference without consuming input.

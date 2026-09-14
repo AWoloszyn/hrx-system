@@ -11,6 +11,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cstdarg>
 #include <cstring>
 #include <vector>
@@ -34,8 +35,18 @@ struct NativeBufferState {
   int map_error = 0;
   // Persistent map error after establishing access, or zero.
   int map_completion_error = 0;
+  // Maximum mapped prefix before map_completion_error; UINT32_MAX maps all.
+  uint32_t map_completion_count = UINT32_MAX;
   // Persistent unmap error before consuming access, or zero.
   int unmap_error = 0;
+  // Persistent unmap error after prefix progress or final synchronization.
+  int unmap_completion_error = 0;
+  // Maximum unmapped prefix before unmap_completion_error.
+  uint32_t unmap_completion_count = UINT32_MAX;
+  // Exact unique native participants, including the backing owner first.
+  std::vector<uint32_t> gpu_ids = {19};
+  // Mapping prefix established by the dependency, including pending sync.
+  uint32_t mapped_gpu_count = 0;
   // Persistent free error before consuming the allocation, or zero.
   int free_error = 0;
   // Export failure before producing a descriptor, or zero when not exercised.
@@ -89,16 +100,20 @@ extern "C" int __wrap_ioctl(int descriptor, unsigned long request, ...) {
     case AMDKFD_IOC_MAP_MEMORY_TO_GPU: {
       auto* map = static_cast<kfd_ioctl_map_memory_to_gpu_args*>(argument);
       EXPECT_EQ(map->handle, 0x1234u);
-      EXPECT_EQ(map->n_devices, 1u);
-      EXPECT_EQ(*reinterpret_cast<const uint32_t*>(map->device_ids_array_ptr),
-                19u);
+      EXPECT_EQ(map->n_devices, native_state->gpu_ids.size());
+      const auto* gpu_ids =
+          reinterpret_cast<const uint32_t*>(map->device_ids_array_ptr);
+      EXPECT_EQ(std::vector<uint32_t>(gpu_ids, gpu_ids + map->n_devices),
+                native_state->gpu_ids);
       native_state->map_progress.push_back(map->n_success);
       if (native_state->map_error != 0) {
         errno = native_state->map_error;
         return -1;
       }
-      map->n_success = 1;
-      native_state->access_live = true;
+      map->n_success =
+          std::min(map->n_devices, native_state->map_completion_count);
+      native_state->mapped_gpu_count = map->n_success;
+      native_state->access_live = map->n_success != 0;
       if (native_state->map_completion_error != 0) {
         errno = native_state->map_completion_error;
         return -1;
@@ -114,15 +129,24 @@ extern "C" int __wrap_ioctl(int descriptor, unsigned long request, ...) {
       auto* unmap =
           static_cast<kfd_ioctl_unmap_memory_from_gpu_args*>(argument);
       EXPECT_EQ(unmap->handle, 0x1234u);
-      EXPECT_EQ(unmap->n_devices, 1u);
-      EXPECT_EQ(*reinterpret_cast<const uint32_t*>(unmap->device_ids_array_ptr),
-                19u);
+      EXPECT_EQ(unmap->n_devices, native_state->mapped_gpu_count);
+      const auto* gpu_ids =
+          reinterpret_cast<const uint32_t*>(unmap->device_ids_array_ptr);
+      EXPECT_EQ(std::vector<uint32_t>(gpu_ids, gpu_ids + unmap->n_devices),
+                std::vector<uint32_t>(native_state->gpu_ids.begin(),
+                                      native_state->gpu_ids.begin() +
+                                          native_state->mapped_gpu_count));
       native_state->unmap_progress.push_back(unmap->n_success);
       if (native_state->unmap_error != 0) {
         errno = native_state->unmap_error;
         return -1;
       }
-      unmap->n_success = 1;
+      unmap->n_success =
+          std::min(unmap->n_devices, native_state->unmap_completion_count);
+      if (native_state->unmap_completion_error != 0) {
+        errno = native_state->unmap_completion_error;
+        return -1;
+      }
       if (native_state->unmap_interruptions != 0) {
         --native_state->unmap_interruptions;
         errno = EINTR;
@@ -246,6 +270,94 @@ TEST_F(KfdBufferNativeTest, CompletesInterruptedMapWithNativeProgress) {
   EXPECT_EQ(native_.free_count, 0u);
 }
 
+TEST_F(KfdBufferNativeTest, MapsTheUniqueGroupInOneNativeOperation) {
+  amdf_gpu_umd_device_t peer = device_;
+  peer.topology.gpu_id = 23;
+  amdf_gpu_umd_device_t* peers[] = {&peer, &device_, &peer};
+  create_info_.peer_count = 3;
+  create_info_.peer_devices = peers;
+  native_.gpu_ids = {19, 23};
+  ASSERT_EQ(Create(), AMDF_STATUS_OK);
+  EXPECT_EQ(native_.map_progress, (std::vector<uint32_t>{0}));
+  EXPECT_EQ(Destroy(), AMDF_STATUS_OK);
+  EXPECT_EQ(native_.unmap_progress, (std::vector<uint32_t>{0}));
+  EXPECT_EQ(native_.free_count, 1u);
+}
+
+TEST_F(KfdBufferNativeTest, PartialGroupMapRollsBackOnlyTheMappedPrefix) {
+  amdf_gpu_umd_device_t peer = device_;
+  peer.topology.gpu_id = 23;
+  amdf_gpu_umd_device_t* peers[] = {&peer};
+  create_info_.peer_count = 1;
+  create_info_.peer_devices = peers;
+  native_.gpu_ids = {19, 23};
+  native_.map_completion_count = 1;
+  native_.map_completion_error = EIO;
+  EXPECT_EQ(Create(), amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, EIO));
+  EXPECT_EQ(buffer_, nullptr);
+  EXPECT_EQ(native_.map_progress, (std::vector<uint32_t>{0}));
+  EXPECT_EQ(native_.unmap_progress, (std::vector<uint32_t>{0}));
+  EXPECT_EQ(native_.free_count, 1u);
+}
+
+TEST_F(KfdBufferNativeTest, GroupRetainsProgressThroughFinalSynchronization) {
+  amdf_gpu_umd_device_t peer = device_;
+  peer.topology.gpu_id = 23;
+  amdf_gpu_umd_device_t* peers[] = {&peer};
+  create_info_.peer_count = 1;
+  create_info_.peer_devices = peers;
+  native_.gpu_ids = {19, 23};
+  native_.map_interruptions = 1;
+  ASSERT_EQ(Create(), AMDF_STATUS_OK);
+  EXPECT_EQ(native_.map_progress, (std::vector<uint32_t>{0, 2}));
+  native_.unmap_completion_count = 1;
+  native_.unmap_completion_error = EIO;
+  EXPECT_EQ(Destroy(), amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, EIO));
+  EXPECT_EQ(native_.free_count, 0u);
+  EXPECT_EQ(native_.metadata_free_count, 0u);
+  native_.unmap_completion_count = 2;
+  EXPECT_EQ(Destroy(), amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, EIO));
+  EXPECT_EQ(native_.free_count, 0u);
+  EXPECT_EQ(native_.metadata_free_count, 0u);
+  native_.unmap_completion_error = 0;
+  EXPECT_EQ(Destroy(), AMDF_STATUS_OK);
+  EXPECT_EQ(native_.unmap_progress, (std::vector<uint32_t>{0, 1, 2}));
+  EXPECT_EQ(native_.free_count, 1u);
+}
+
+TEST_F(KfdBufferNativeTest, FailedGroupUnmapPreservesBackingAndReservation) {
+  amdf_gpu_umd_device_t peer = device_;
+  peer.topology.gpu_id = 23;
+  amdf_gpu_umd_device_t* peers[] = {&peer};
+  create_info_.peer_count = 1;
+  create_info_.peer_devices = peers;
+  native_.gpu_ids = {19, 23};
+  native_.map_completion_error = EIO;
+  native_.unmap_completion_count = 1;
+  native_.unmap_completion_error = ENOMEM;
+  EXPECT_EQ(Create(), amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, ENOMEM));
+  EXPECT_EQ(buffer_, nullptr);
+  EXPECT_EQ(native_.unmap_progress, (std::vector<uint32_t>{0}));
+  EXPECT_EQ(native_.free_count, 0u);
+  EXPECT_EQ(native_.metadata_free_count, 1u);
+  ReleaseLeakedReservation();
+}
+
+TEST_F(KfdBufferNativeTest, ChecksEveryLiveAddressEnvelopeBeforeAllocation) {
+  amdf_gpu_umd_device_t peer = device_;
+  peer.topology.gpu_id = 23;
+  peer.topology.virtual_address.end = 4096;
+  amdf_gpu_umd_device_t* peers[] = {&peer};
+  create_info_.peer_count = 1;
+  create_info_.peer_devices = peers;
+  EXPECT_EQ(amdf_status_code(Create()), AMDF_STATUS_CODE_OUT_OF_RANGE);
+  EXPECT_EQ(buffer_, nullptr);
+  EXPECT_EQ(native_.address, 0u);
+  EXPECT_TRUE(native_.map_progress.empty());
+  EXPECT_TRUE(native_.unmap_progress.empty());
+  EXPECT_EQ(native_.free_count, 0u);
+}
+
 TEST_F(KfdBufferNativeTest, CompletesInterruptedUnmapBeforeFree) {
   ASSERT_EQ(Create(), AMDF_STATUS_OK);
   native_.unmap_interruptions = 2;
@@ -356,8 +468,8 @@ TEST_F(KfdBufferNativeTest, MemoryOwnerRetainsPartialBufferPreparation) {
   amdf_gpu_umd_memory_result_t result;
   std::memset(&result, 0xA5, sizeof(result));
   const amdf_gpu_umd_memory_result_t original_result = result;
-  EXPECT_EQ(amdf_gpu_umd_memory_prepare(&device_, &profile, &create_info,
-                                        &memory, &result),
+  EXPECT_EQ(amdf_gpu_umd_memory_prepare(&device_, 0, nullptr, &profile,
+                                        &create_info, &memory, &result),
             amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, EIO));
   ASSERT_NE(memory, nullptr);
   EXPECT_EQ(std::memcmp(&result, &original_result, sizeof(result)), 0);
@@ -392,8 +504,8 @@ TEST_F(KfdBufferNativeTest, MemoryOwnerRetainsBackingAfterIdentityQueryFails) {
   amdf_gpu_umd_memory_result_t result;
   std::memset(&result, 0xA5, sizeof(result));
   const amdf_gpu_umd_memory_result_t original_result = result;
-  EXPECT_EQ(amdf_gpu_umd_memory_prepare(&device_, &profile, &create_info,
-                                        &memory, &result),
+  EXPECT_EQ(amdf_gpu_umd_memory_prepare(&device_, 0, nullptr, &profile,
+                                        &create_info, &memory, &result),
             amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, EIO));
   ASSERT_NE(memory, nullptr);
   EXPECT_EQ(std::memcmp(&result, &original_result, sizeof(result)), 0);

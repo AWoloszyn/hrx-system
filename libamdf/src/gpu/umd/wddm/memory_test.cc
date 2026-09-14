@@ -280,8 +280,8 @@ TEST_F(WindowsGpuMemoryTest,
        DestroyRetriesAcceptedUnmapWithoutSubmittingItAgain) {
   amdf_gpu_umd_memory_t* memory = nullptr;
   amdf_gpu_umd_memory_result_t result = {};
-  ASSERT_EQ(amdf_gpu_umd_memory_prepare(&device_, &profile_, &create_info_,
-                                        &memory, &result),
+  ASSERT_EQ(amdf_gpu_umd_memory_prepare(&device_, 0, nullptr, &profile_,
+                                        &create_info_, &memory, &result),
             AMDF_STATUS_OK);
   ASSERT_NE(memory, nullptr);
   EXPECT_EQ(result.device_address, UINT64_C(0x100000));
@@ -320,8 +320,8 @@ TEST_F(WindowsGpuMemoryTest, MapsExactReadExecuteAccessWithoutWrite) {
   amdf_gpu_umd_memory_t* memory = nullptr;
   amdf_gpu_umd_memory_result_t result = {};
 
-  ASSERT_EQ(amdf_gpu_umd_memory_prepare(&device_, &profile_, &create_info_,
-                                        &memory, &result),
+  ASSERT_EQ(amdf_gpu_umd_memory_prepare(&device_, 0, nullptr, &profile_,
+                                        &create_info_, &memory, &result),
             AMDF_STATUS_OK);
   ASSERT_NE(memory, nullptr);
   EXPECT_EQ(amdf_gpu_umd_memory_destroy(memory), AMDF_STATUS_OK);
@@ -341,8 +341,8 @@ TEST_F(WindowsGpuMemoryTest,
   amdf_gpu_umd_memory_result_t result;
   std::memset(&result, 0xA5, sizeof(result));
   const amdf_gpu_umd_memory_result_t original_result = result;
-  EXPECT_EQ(amdf_gpu_umd_memory_prepare(&device_, &profile_, &create_info_,
-                                        &memory, &result),
+  EXPECT_EQ(amdf_gpu_umd_memory_prepare(&device_, 0, nullptr, &profile_,
+                                        &create_info_, &memory, &result),
             amdf_kmt_make_status(STATUS_INVALID_HANDLE));
   ASSERT_NE(memory, nullptr);
   EXPECT_EQ(std::memcmp(&result, &original_result, sizeof(result)), 0);
@@ -375,8 +375,8 @@ TEST_F(WindowsGpuMemoryTest, MalformedUngroupedAllocationReleasesValidHandles) {
   amdf_gpu_umd_memory_result_t result;
   std::memset(&result, 0xA5, sizeof(result));
   const amdf_gpu_umd_memory_result_t original_result = result;
-  EXPECT_EQ(amdf_gpu_umd_memory_prepare(&device_, &profile_, &create_info_,
-                                        &memory, &result),
+  EXPECT_EQ(amdf_gpu_umd_memory_prepare(&device_, 0, nullptr, &profile_,
+                                        &create_info_, &memory, &result),
             amdf_kmt_make_status(STATUS_INVALID_HANDLE));
   ASSERT_NE(memory, nullptr);
   EXPECT_EQ(std::memcmp(&result, &original_result, sizeof(result)), 0);
@@ -402,8 +402,8 @@ TEST_F(WindowsGpuMemoryTest, UnexpectedMappingRemainsWithConstructingOwner) {
   amdf_gpu_umd_memory_result_t result;
   std::memset(&result, 0xA5, sizeof(result));
   const amdf_gpu_umd_memory_result_t original_result = result;
-  EXPECT_EQ(amdf_gpu_umd_memory_prepare(&device_, &profile_, &create_info_,
-                                        &memory, &result),
+  EXPECT_EQ(amdf_gpu_umd_memory_prepare(&device_, 0, nullptr, &profile_,
+                                        &create_info_, &memory, &result),
             amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL));
   ASSERT_NE(memory, nullptr);
   EXPECT_EQ(std::memcmp(&result, &original_result, sizeof(result)), 0);

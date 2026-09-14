@@ -207,7 +207,8 @@ static amdf_status_t amdf_memory_access_find_profile(
     const amdf_memory_access_query_t* query, uint32_t access_ordinal,
     amdf_memory_class_t memory_class, amdf_memory_profile_roles_t role,
     const amdf_external_memory_support_t* transport,
-    amdf_memory_native_profile_t* out_profile, bool* out_found) {
+    const void* allocation_domain, amdf_memory_native_profile_t* out_profile,
+    bool* out_found) {
   bool found = false;
   amdf_memory_native_profile_t profile;
   amdf_status_t status = AMDF_STATUS_OK;
@@ -217,6 +218,8 @@ static amdf_status_t amdf_memory_access_find_profile(
     if (!amdf_status_is_ok(status)) continue;
     if (profile.memory_class != memory_class ||
         (profile.roles & role) != role ||
+        (allocation_domain != NULL &&
+         profile.allocation_domain != allocation_domain) ||
         !amdf_memory_native_profile_supports_access(
             &profile,
             amdf_memory_access_query_requirements(query, access_ordinal))) {
@@ -368,9 +371,9 @@ static amdf_status_t amdf_memory_scope_select_acquisition(
   amdf_status_t status = AMDF_STATUS_OK;
   for (uint32_t i = 0; amdf_status_is_ok(status) && found && i < query->count;
        ++i) {
-    status =
-        amdf_memory_access_find_profile(query, i, memory_class, role, transport,
-                                        &plan->native_profiles[i], &found);
+    status = amdf_memory_access_find_profile(query, i, memory_class, role,
+                                             transport, NULL,
+                                             &plan->native_profiles[i], &found);
     if (amdf_status_is_ok(status) && found &&
         role == AMDF_MEMORY_PROFILE_ROLE_REGISTER &&
         (plan->native_profiles[i].address_kinds &
@@ -386,9 +389,9 @@ static amdf_status_t amdf_memory_scope_select_acquisition(
   return status;
 }
 
-// An ordinary shared allocation uses an explicitly requested native consumer
-// to allocate backing, then imports references into the other consumers. A
-// producer/transport combination is selected entirely from native contracts.
+// A compatible native group obtains one backing and its participating mappings
+// together. Other consumers import references through a qualified transport.
+// Both choices are metadata contracts, not native implementation identities.
 static amdf_status_t amdf_memory_scope_select_allocation(
     amdf_memory_scope_t* scope, const amdf_memory_access_query_t* query,
     amdf_memory_class_t memory_class, amdf_memory_scope_plan_t* plan,
@@ -409,11 +412,36 @@ static amdf_status_t amdf_memory_scope_select_allocation(
     amdf_memory_native_profile_t source_profile;
     status = amdf_memory_access_find_profile(
         query, source, memory_class, AMDF_MEMORY_PROFILE_ROLE_CREATE, NULL,
-        &source_profile, &source_found);
+        NULL, &source_profile, &source_found);
     if (!amdf_status_is_ok(status) || !source_found) continue;
-    if (query->count == 1) {
-      plan->native_profiles[source] = source_profile;
-      plan->backing_access_ordinal = source;
+    plan->native_profiles[source] = source_profile;
+    plan->backing_access_ordinal = source;
+    plan->backing_access_count = 1;
+    plan->backing_access_ordinals[0] = source;
+    for (uint32_t i = 0; i < query->count; ++i) {
+      plan->native_owner_ordinals[i] = i;
+    }
+    for (uint32_t i = 0;
+         amdf_status_is_ok(status) &&
+         source_profile.allocation_domain != NULL && i < query->count;
+         ++i) {
+      if (i == source ||
+          amdf_memory_access_query_requirements(query, i)->access !=
+              amdf_memory_access_query_requirements(query, source)->access) {
+        continue;
+      }
+      bool member_found = false;
+      status = amdf_memory_access_find_profile(
+          query, i, memory_class, AMDF_MEMORY_PROFILE_ROLE_CREATE, NULL,
+          source_profile.allocation_domain, &plan->native_profiles[i],
+          &member_found);
+      if (amdf_status_is_ok(status) && member_found) {
+        plan->native_owner_ordinals[i] = source;
+        plan->backing_access_ordinals[plan->backing_access_count++] = i;
+      }
+    }
+    if (amdf_status_is_ok(status) &&
+        plan->backing_access_count == query->count) {
       found = true;
       continue;
     }
@@ -428,10 +456,10 @@ static amdf_status_t amdf_memory_scope_select_allocation(
       for (uint32_t i = 0;
            amdf_status_is_ok(status) && consumers_found && i < query->count;
            ++i) {
-        if (i == source) continue;
+        if (plan->native_owner_ordinals[i] == source) continue;
         status = amdf_memory_access_find_profile(
             query, i, memory_class, AMDF_MEMORY_PROFILE_ROLE_IMPORT, transport,
-            &plan->native_profiles[i], &consumers_found);
+            NULL, &plan->native_profiles[i], &consumers_found);
       }
       if (amdf_status_is_ok(status) && consumers_found) {
         plan->native_profiles[source] = source_profile;
@@ -473,12 +501,16 @@ static bool amdf_memory_scope_merge_profile(amdf_memory_profile_roles_t role,
   for (uint32_t i = 0; i < plan->access_count; ++i) {
     if (i == plan->backing_access_ordinal) continue;
     const amdf_memory_native_profile_t* consumer = &plan->native_profiles[i];
+    const bool coordinated =
+        role == AMDF_MEMORY_PROFILE_ROLE_CREATE &&
+        plan->native_owner_ordinals[i] == plan->backing_access_ordinal;
     const amdf_memory_construction_capabilities_t* consumer_construction =
-        role == AMDF_MEMORY_PROFILE_ROLE_REGISTER ? &consumer->registration
-                                                  : &consumer->import;
+        coordinated                                 ? &consumer->allocation
+        : role == AMDF_MEMORY_PROFILE_ROLE_REGISTER ? &consumer->registration
+                                                    : &consumer->import;
     if (!amdf_memory_merge_construction(consumer_construction, construction))
       return false;
-    if (role == AMDF_MEMORY_PROFILE_ROLE_CREATE) {
+    if (role == AMDF_MEMORY_PROFILE_ROLE_CREATE && !coordinated) {
       const amdf_external_memory_support_t* support =
           amdf_memory_native_profile_find_transport(
               consumer, plan->shared_external_type,
@@ -492,6 +524,26 @@ static bool amdf_memory_scope_merge_profile(amdf_memory_profile_roles_t role,
         construction->maximum_byte_length = amdf_memory_minimum(
             construction->maximum_byte_length, support->maximum_byte_length);
       }
+    }
+  }
+  if (plan->backing_access_count > 1) {
+    uint64_t minimum_address = 0;
+    uint64_t maximum_address = UINT64_MAX;
+    for (uint32_t i = 0; i < plan->backing_access_count; ++i) {
+      const amdf_memory_address_capabilities_t* address =
+          &plan->native_profiles[plan->backing_access_ordinals[i]]
+               .device_address;
+      if (address->minimum_address > minimum_address) {
+        minimum_address = address->minimum_address;
+      }
+      if (address->maximum_address < maximum_address) {
+        maximum_address = address->maximum_address;
+      }
+    }
+    if (minimum_address > maximum_address) return false;
+    const uint64_t span_minus_one = maximum_address - minimum_address;
+    if (span_minus_one < construction->maximum_byte_length) {
+      construction->maximum_byte_length = span_minus_one + 1;
     }
   }
   return construction->byte_length_granularity <=
@@ -569,14 +621,22 @@ amdf_status_t amdf_memory_scope_plan_initialize(
       .access_count = query->count,
   };
   const size_t count = query->count == 0 ? 1 : query->count;
-  if (count > SIZE_MAX / sizeof(*plan.native_profiles)) {
+  const size_t plan_stride =
+      sizeof(*plan.native_profiles) + 2 * sizeof(*plan.native_owner_ordinals);
+  if (count > SIZE_MAX / plan_stride) {
     return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
   }
-  status =
-      amdf_calloc(plan.host_allocator, count * sizeof(*plan.native_profiles),
-                  amdf_alignof(amdf_memory_native_profile_t),
-                  (void**)&plan.native_profiles);
+  status = amdf_calloc(plan.host_allocator, count * plan_stride,
+                       amdf_alignof(amdf_memory_native_profile_t),
+                       (void**)&plan.native_profiles);
   if (!amdf_status_is_ok(status)) return status;
+  plan.native_owner_ordinals = (uint32_t*)(plan.native_profiles + count);
+  plan.backing_access_ordinals = plan.native_owner_ordinals + count;
+  plan.backing_access_count = 1;
+  plan.backing_access_ordinals[0] = 0;
+  for (uint32_t i = 0; i < query->count; ++i) {
+    plan.native_owner_ordinals[i] = i;
+  }
   const amdf_memory_class_t memory_class =
       scope->kind == AMDF_MEMORY_SCOPE_KIND_SYSTEM ? AMDF_MEMORY_CLASS_SYSTEM
                                                    : AMDF_MEMORY_CLASS_LOCAL;

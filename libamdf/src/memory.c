@@ -238,6 +238,7 @@ static amdf_status_t amdf_memory_allocate(
   memory->host_mapping = plan->profile.host_mapping;
   for (uint32_t i = 0; i < plan->access_count; ++i) {
     memory->accesses[i].device = accesses[i].device;
+    memory->accesses[i].native_owner_ordinal = plan->native_owner_ordinals[i];
     memory->accesses[i].info.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_INFO;
     memory->accesses[i].info.structure_size = sizeof(memory->accesses[i].info);
     memory->accesses[i].info.ordinal = i;
@@ -280,7 +281,16 @@ static amdf_status_t amdf_memory_prepare_access(
     amdf_memory_info_t* out_info) {
   const amdf_memory_access_requirements_t* requirements =
       &create_info->accesses[ordinal].requirements;
-  const amdf_memory_native_create_info_t native_info = {
+  const amdf_memory_native_group_t group = {
+      .access_count = ordinal == plan->backing_access_ordinal
+                          ? plan->backing_access_count
+                          : 1,
+      .access_ordinals = ordinal == plan->backing_access_ordinal
+                             ? plan->backing_access_ordinals
+                             : &ordinal,
+      .profiles = plan->native_profiles,
+  };
+  amdf_memory_native_create_info_t native_info = {
       .device_access = requirements->access,
       .required_flags = create_info->required_flags |
                         amdf_memory_required_access_flags(requirements),
@@ -288,13 +298,17 @@ static amdf_status_t amdf_memory_prepare_access(
       .minimum_alignment = create_info->minimum_alignment,
       .registered_host_pointer = create_info->registered_host_pointer,
   };
+  for (uint32_t i = 1; i < group.access_count; ++i) {
+    native_info.required_flags |= amdf_memory_required_access_flags(
+        &create_info->accesses[group.access_ordinals[i]].requirements);
+  }
   if (plan->scope->kind == AMDF_MEMORY_SCOPE_KIND_PRIVATE) {
     return plan->scope->owner.private_storage.vtable->prepare(
         plan->scope, memory, &plan->native_profiles[ordinal], &native_info,
         out_info);
   }
   return create_info->accesses[ordinal].device->vtable->memory_prepare(
-      memory, ordinal, &plan->native_profiles[ordinal], &native_info, out_info);
+      memory, &group, &native_info, out_info);
 }
 
 static amdf_status_t amdf_memory_prepare(
@@ -324,7 +338,7 @@ static amdf_status_t amdf_memory_prepare(
   }
   for (uint32_t i = 0; amdf_status_is_ok(status) && i < plan->access_count;
        ++i) {
-    if (i == backing) continue;
+    if (plan->native_owner_ordinals[i] == backing) continue;
     amdf_memory_info_t native_info = {0};
     if (plan->shared_external_type != 0) {
       status = amdf_memory_prepare_import_access(

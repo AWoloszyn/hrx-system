@@ -43,6 +43,9 @@ amdf_status_t amdf_memory_resource_allocate(amdf_allocator_t host_allocator,
   memory->host_allocator = host_allocator;
   memory->accesses = (amdf_memory_access_state_t*)(memory + 1);
   memory->info.access_count = access_count;
+  for (uint32_t i = 0; i < count; ++i) {
+    memory->accesses[i].native_owner_ordinal = i;
+  }
   amdf_child_tracker_initialize(&memory->children);
   *out_memory = memory;
   return AMDF_STATUS_OK;

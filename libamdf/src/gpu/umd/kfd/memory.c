@@ -239,7 +239,9 @@ amdf_status_t amdf_gpu_umd_memory_describe_site(
 }
 
 amdf_status_t amdf_gpu_umd_memory_prepare(
-    amdf_gpu_umd_device_t* device, const amdf_memory_native_profile_t* profile,
+    amdf_gpu_umd_device_t* device, uint32_t peer_count,
+    amdf_gpu_umd_device_t* const* peer_devices,
+    const amdf_memory_native_profile_t* profile,
     const amdf_memory_native_create_info_t* create_info,
     amdf_gpu_umd_memory_t** memory_state,
     amdf_gpu_umd_memory_result_t* out_result) {
@@ -256,6 +258,8 @@ amdf_status_t amdf_gpu_umd_memory_prepare(
   const bool registered =
       (profile->roles & AMDF_MEMORY_PROFILE_ROLE_REGISTER) != 0;
   const amdf_gpu_kfd_buffer_create_info_t buffer_create_info = {
+      .peer_count = peer_count,
+      .peer_devices = peer_devices,
       .native_flags = plan.native_flags,
       .byte_length = plan.byte_length,
       .alignment = plan.alignment,

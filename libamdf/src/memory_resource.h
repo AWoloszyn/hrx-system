@@ -54,6 +54,9 @@ typedef struct amdf_memory_access_state_t {
   const amdf_memory_vtable_t* vtable;
   // Owned native state, including partial preparation, released through vtable.
   void* native;
+  // Direct index of the access owning native state for this consumer. Only
+  // that slot has a non-NULL native pointer; address metadata remains local.
+  uint32_t native_owner_ordinal;
   // Native contract used for this access, distinct from the scope ordinal.
   uint32_t native_profile_ordinal;
 } amdf_memory_access_state_t;

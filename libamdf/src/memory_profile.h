@@ -58,7 +58,21 @@ typedef struct amdf_memory_native_profile_t {
       external_memory_support[AMDF_MEMORY_PROFILE_EXTERNAL_SUPPORT_CAPACITY];
   // Address interfaces established when DEVICE_ADDRESS is achieved.
   amdf_memory_address_kinds_t address_kinds;
+  // Instance-qualified native allocation compatibility. Equal non-NULL tokens
+  // admit one CREATE backing with equal exact permissions across consumers.
+  // The token is immutable metadata, not an owner or an implementation ID.
+  const void* allocation_domain;
 } amdf_memory_native_profile_t;
+
+// Explicit consumer group selected for one native backing preparation.
+typedef struct amdf_memory_native_group_t {
+  // Number of participating access records, always at least one.
+  uint32_t access_count;
+  // Borrowed caller access ordinals, with the native owner first.
+  const uint32_t* access_ordinals;
+  // Borrowed selected profiles indexed by the original caller access ordinal.
+  const amdf_memory_native_profile_t* profiles;
+} amdf_memory_native_group_t;
 
 // Validated geometry and permissions passed to one native backing preparer.
 typedef struct amdf_memory_native_create_info_t {

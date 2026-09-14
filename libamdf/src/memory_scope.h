@@ -79,6 +79,13 @@ typedef struct amdf_memory_scope_plan_t {
   uint32_t access_count;
   // Native backing preparer in caller order; zero for CPU-only backing.
   uint32_t backing_access_ordinal;
+  // Number of consumers prepared together by the backing's native owner.
+  uint32_t backing_access_count;
+  // Borrowed slice of plan storage naming that group, with its owner first.
+  uint32_t* backing_access_ordinals;
+  // Native ownership slot for each access; ordinary independent accesses own
+  // themselves, while coordinated consumers share the backing owner's slot.
+  uint32_t* native_owner_ordinals;
   // Native transport used between preparers; zero when none is required.
   amdf_external_memory_type_t shared_external_type;
   // One selected native profile per access, or one host profile at zero count.

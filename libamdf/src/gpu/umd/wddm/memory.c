@@ -502,10 +502,16 @@ amdf_status_t amdf_gpu_umd_memory_describe_site(
 }
 
 amdf_status_t amdf_gpu_umd_memory_prepare(
-    amdf_gpu_umd_device_t* device, const amdf_memory_native_profile_t* profile,
+    amdf_gpu_umd_device_t* device, uint32_t peer_count,
+    amdf_gpu_umd_device_t* const* peer_devices,
+    const amdf_memory_native_profile_t* profile,
     const amdf_memory_native_create_info_t* create_info,
     amdf_gpu_umd_memory_t** memory_state,
     amdf_gpu_umd_memory_result_t* out_result) {
+  // This provider selects independent native preparations, not allocation
+  // groups. Its selected profiles therefore always supply an empty peer set.
+  (void)peer_count;
+  (void)peer_devices;
   amdf_windows_gpu_memory_plan_t plan = {0};
   amdf_windows_gpu_memory_plan(profile, create_info, &plan);
 

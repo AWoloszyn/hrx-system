@@ -71,8 +71,12 @@ amdf_status_t amdf_gpu_umd_device_query_memory_profile(
 // progress remains in that slot on failure for explicit destruction. Failure
 // before metadata allocation leaves the slot NULL. Only success publishes
 // complete properties to `out_result`; no rollback occurs inside preparation.
+// Peers are a borrowed span from the selected allocation domain in the same
+// instance, with identical exact permissions. A zero count supplies NULL.
 amdf_status_t amdf_gpu_umd_memory_prepare(
-    amdf_gpu_umd_device_t* device, const amdf_memory_native_profile_t* profile,
+    amdf_gpu_umd_device_t* device, uint32_t peer_count,
+    amdf_gpu_umd_device_t* const* peer_devices,
+    const amdf_memory_native_profile_t* profile,
     const amdf_memory_native_create_info_t* create_info,
     amdf_gpu_umd_memory_t** memory_state,
     amdf_gpu_umd_memory_result_t* out_result);

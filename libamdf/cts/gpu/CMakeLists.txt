@@ -77,7 +77,9 @@ iree_cc_library(
     gpu_tests
   SRCS
     "gpu_extension_test.cc"
+    "memory_group_test.cc"
   DEPS
+    ::gpu_device_fixture
     amdf::headers
     iree::third_party::google_test
     libamdf::cts::util::device_cache
