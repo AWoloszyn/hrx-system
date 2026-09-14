@@ -98,3 +98,42 @@ iree-cmake-test -R '^iree/experimental/xdna/cts/'
 These tests carry the XDNA hardware requirement and share the AMDGPU resource
 group with native and interop CTS. The same sources run on Linux and Windows;
 hosts without an XDNA endpoint or a matching compiler fixture report a skip.
+
+## Warm execution benchmarks
+
+`benchmarks/execution_benchmark` measures native publication of the same
+canonical multiplication program. It retains one device, context, queue and
+set of allocations across every row and repetition. Image loading, cold
+relocation, instruction publication and the first initialization command all
+finish before measurement. Later submissions reuse immutable instructions and
+resident data addresses; libamdf receives only the prepared command range.
+
+| Row | Timed region |
+| --- | --- |
+| `XdnaExecution/Submit` | One native submission, excluding its completion wait. |
+| `XdnaExecution/SubmitAndWait` | The same submission plus native completion wait. |
+
+Each iteration publishes changed inputs and poisoned output before timing.
+After completion, outside timing, the caller checks native retirement, all
+input/output values, and guard regions. It also checks instruction immutability
+around each repetition. Completion waits use the infinite timeout contract;
+unexpected native errors or incorrect output terminate the benchmark instead
+of producing later samples. Successful execution checks complete teardown.
+
+The generated smoke test uses the XDNA hardware requirement and shared AMDGPU
+resource group, like the native CTS:
+
+```sh
+iree-bazel-test --config=asan \
+  //experimental/xdna/benchmarks:execution_benchmark_test
+iree-cmake-test -R '^iree/experimental/xdna/benchmarks/'
+```
+
+Performance runs use an optimized, non-sanitized build of the exact benchmark
+target. After building, run its executable with fixed iteration counts, for
+example `--benchmark_min_time=200x --benchmark_repetitions=5`, and retain JSON
+with `--benchmark_out=execution.json --benchmark_out_format=json`. Fixed counts
+bound the untimed completion and verification work in submit-only rows.
+Measurements require an otherwise idle device and host, separate from builds
+and other hardware jobs. The two rows describe warm kernel-mediated dispatch,
+not cold setup, pipelined throughput, or autonomous user-mode scheduling.

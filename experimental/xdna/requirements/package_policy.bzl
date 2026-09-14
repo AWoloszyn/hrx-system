@@ -16,7 +16,10 @@ PACKAGE_POLICIES = [
         build_requirements = REQUIREMENTS,
     ),
     package_policy(
-        packages = ["experimental/xdna/cts/..."],
+        packages = [
+            "experimental/xdna/benchmarks/...",
+            "experimental/xdna/cts/...",
+        ],
         run_requirements = [XDNA_RESOURCE],
         # Shares native devices with libamdf and GPU/XDNA interop CTS.
         resource_group = "iree-hal-drivers-amdgpu-tests",

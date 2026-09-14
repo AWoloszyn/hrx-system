@@ -38,7 +38,10 @@ xdna_cc_library(
     name = "executable",
     srcs = ["executable.c"],
     hdrs = ["executable.h"],
-    visibility = ["//experimental/xdna/cts:__pkg__"],
+    visibility = [
+        "//experimental/xdna/benchmarks:__pkg__",
+        "//experimental/xdna/cts:__pkg__",
+    ],
     deps = [
         "//runtime/src/iree/base",
         "//runtime/src/iree/hal",
@@ -68,7 +71,10 @@ xdna_cc_library(
     name = "prepared_command",
     srcs = ["prepared_command.c"],
     hdrs = ["prepared_command.h"],
-    visibility = ["//experimental/xdna/cts:__pkg__"],
+    visibility = [
+        "//experimental/xdna/benchmarks:__pkg__",
+        "//experimental/xdna/cts:__pkg__",
+    ],
     deps = [
         ":executable",
         "//libamdf:headers",

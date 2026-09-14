@@ -55,6 +55,12 @@ class XdnaBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
     def xdna_execution_test_suite(self, **kwargs):
         self.iree_execution_test_suite(**self._apply_xdna_policy(kwargs))
 
+    def xdna_cc_benchmark(self, deps=[], **kwargs):
+        self.cc_binary_benchmark(
+            deps=deps + ["//runtime/src:defines", "//third_party:google_benchmark"],
+            **self._apply_xdna_policy(kwargs, include_run_requirements=True),
+        )
+
 
 PROJECT_CONFIG = bazel_to_cmake_config.ProjectConfig(
     name="experimental",
