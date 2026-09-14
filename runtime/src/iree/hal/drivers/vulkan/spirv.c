@@ -59,7 +59,7 @@ static iree_status_t iree_hal_vulkan_spirv_next_instruction(
   const uint32_t header = spirv_words[*inout_word_offset];
   const uint16_t word_count = (uint16_t)(header >> 16);
   const uint16_t opcode = (uint16_t)(header & 0xFFFFu);
-  if (word_count == 0 || *inout_word_offset > spirv_word_count - word_count) {
+  if (word_count == 0 || word_count > spirv_word_count - *inout_word_offset) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "SPIR-V instruction at word %" PRIhsz
                             " exceeds module length",
