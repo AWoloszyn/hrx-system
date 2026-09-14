@@ -264,6 +264,214 @@ TEST_F(XdnaEndpointTest, RejectsMalformedOutputWithoutMutation) {
   EXPECT_EQ(info.architecture, UINT32_MAX);
 }
 
+class XdnaMemoryDiscoveryTest : public XdnaEndpointTest {
+ protected:
+  void TearDown() override {
+    if (mapping_)
+      ASSERT_EQ(api_->host_mapping_destroy(mapping_), AMDF_STATUS_OK);
+    if (memory_) ASSERT_EQ(api_->memory_destroy(memory_), AMDF_STATUS_OK);
+    XdnaEndpointTest::TearDown();
+  }
+
+  // Case-owned backing, released before the cache destroys its device.
+  amdf_memory_t* memory_ = nullptr;
+  // Case-owned host view borrowing memory_.
+  amdf_host_mapping_t* mapping_ = nullptr;
+};
+
+TEST_F(XdnaMemoryDiscoveryTest, SelectsExpectedProfileThenUsesLiveLimits) {
+  bool engine_found = false;
+  ASSERT_EQ(OpenEngine(AMDF_ENGINE_KIND_XDNA, &engine_found), AMDF_STATUS_OK);
+  if (!engine_found) GTEST_SKIP() << "no qualified XDNA endpoint present";
+
+  uint32_t count = 0;
+  ASSERT_EQ(
+      api_->instance_enumerate_memory_scopes(instance_, 0, nullptr, &count),
+      amdf_make_api_status(AMDF_STATUS_CODE_BUFFER_TOO_SMALL));
+  std::vector<amdf_memory_scope_t*> system_scopes(count);
+  ASSERT_EQ(api_->instance_enumerate_memory_scopes(
+                instance_, count, system_scopes.data(), &count),
+            AMDF_STATUS_OK);
+  amdf_memory_scope_t* system_scope = nullptr;
+  amdf_memory_scope_info_t scope_info = {};
+  scope_info.type = AMDF_STRUCTURE_TYPE_MEMORY_SCOPE_INFO;
+  scope_info.structure_size = sizeof(scope_info);
+  for (auto* scope : system_scopes) {
+    ASSERT_EQ(api_->memory_scope_query_info(scope, &scope_info),
+              AMDF_STATUS_OK);
+    if (scope_info.kind == AMDF_MEMORY_SCOPE_KIND_SYSTEM) {
+      system_scope = scope;
+      break;
+    }
+  }
+  ASSERT_NE(system_scope, nullptr);
+
+  count = 0;
+  const auto endpoint_scope_status =
+      api_->endpoint_enumerate_memory_scopes(endpoint_, 0, nullptr, &count);
+  ASSERT_EQ(endpoint_scope_status,
+            count == 0
+                ? AMDF_STATUS_OK
+                : amdf_make_api_status(AMDF_STATUS_CODE_BUFFER_TOO_SMALL));
+  std::vector<amdf_memory_scope_t*> local_scopes(count);
+  ASSERT_EQ(api_->endpoint_enumerate_memory_scopes(endpoint_, count,
+                                                   local_scopes.data(), &count),
+            AMDF_STATUS_OK);
+  for (auto* scope : local_scopes) {
+    amdf_memory_scope_info_t info = {};
+    info.type = AMDF_STRUCTURE_TYPE_MEMORY_SCOPE_INFO;
+    info.structure_size = sizeof(info);
+    ASSERT_EQ(api_->memory_scope_query_info(scope, &info), AMDF_STATUS_OK);
+    EXPECT_EQ(info.kind, AMDF_MEMORY_SCOPE_KIND_LOCAL);
+    EXPECT_NE(scope, system_scope);
+  }
+
+  const amdf_memory_endpoint_access_t endpoint_access = {
+      .endpoint = endpoint_,
+      .requirements =
+          {
+              .access = AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE,
+              .flags = AMDF_MEMORY_FLAG_DEVICE_ADDRESS,
+              .address_kinds = UINT64_C(1) << AMDF_MEMORY_ADDRESS_XDNA_DMA,
+          },
+  };
+  amdf_memory_profile_t expected = {};
+  expected.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
+  expected.structure_size = sizeof(expected);
+  amdf_memory_access_capabilities_t expected_access = {};
+  expected_access.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES;
+  expected_access.structure_size = sizeof(expected_access);
+  uint32_t selected_ordinal = AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN;
+  constexpr auto required_roles =
+      AMDF_MEMORY_PROFILE_ROLE_CREATE | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP;
+  for (uint32_t ordinal = 0; ordinal < scope_info.memory_profile_count;
+       ++ordinal) {
+    const auto status = api_->memory_scope_query_profile(
+        system_scope, ordinal, 1, &endpoint_access, &expected,
+        &expected_access);
+    if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) continue;
+    ASSERT_EQ(status, AMDF_STATUS_OK);
+    if ((expected.roles & required_roles) == required_roles &&
+        (expected.supported_flags & AMDF_MEMORY_FLAG_HOST_VISIBLE)) {
+      selected_ordinal = ordinal;
+      break;
+    }
+  }
+  ASSERT_NE(selected_ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
+  ASSERT_EQ(expected.ordinal, selected_ordinal);
+  ASSERT_GT(expected_access.device_address.address_bit_count, 0u);
+  ASSERT_LE(expected_access.device_address.address_bit_count, 64u);
+  ASSERT_EQ(expected_access.address_kinds &
+                endpoint_access.requirements.address_kinds,
+            endpoint_access.requirements.address_kinds);
+
+  // Activation is explicit, after passive filtering. The suite still borrows
+  // its one ordinary device when another case requested it first.
+  const auto device_status =
+      GetCtsDeviceCache().GetXdnaDevice(endpoint_, &device_);
+  if (device_status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED))
+    GTEST_SKIP() << "XDNA device materialization is unavailable";
+  ASSERT_EQ(device_status, AMDF_STATUS_OK);
+  const amdf_memory_device_access_t device_access = {
+      .device = device_,
+      .requirements = endpoint_access.requirements,
+  };
+  amdf_memory_profile_t live = {};
+  live.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
+  live.structure_size = sizeof(live);
+  amdf_memory_access_capabilities_t live_access = {};
+  live_access.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES;
+  live_access.structure_size = sizeof(live_access);
+  ASSERT_EQ(api_->memory_scope_query_device_profile(
+                system_scope, selected_ordinal, 1, &device_access, &live,
+                &live_access),
+            AMDF_STATUS_OK);
+  ASSERT_EQ(live.roles & required_roles, required_roles);
+  ASSERT_NE(live.supported_flags & AMDF_MEMORY_FLAG_HOST_VISIBLE, 0u);
+  ASSERT_EQ(
+      live_access.address_kinds & device_access.requirements.address_kinds,
+      device_access.requirements.address_kinds);
+
+  amdf_memory_profile_t repeated = expected;
+  amdf_memory_access_capabilities_t repeated_access = expected_access;
+  ASSERT_EQ(api_->memory_scope_query_profile(system_scope, selected_ordinal, 1,
+                                             &endpoint_access, &repeated,
+                                             &repeated_access),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(std::memcmp(&expected, &repeated, sizeof(expected)), 0);
+  EXPECT_EQ(
+      std::memcmp(&expected_access, &repeated_access, sizeof(expected_access)),
+      0);
+
+  count = 0;
+  const auto device_scope_status =
+      api_->device_enumerate_memory_scopes(device_, 0, nullptr, &count);
+  ASSERT_EQ(device_scope_status,
+            count == 0
+                ? AMDF_STATUS_OK
+                : amdf_make_api_status(AMDF_STATUS_CODE_BUFFER_TOO_SMALL));
+  std::vector<amdf_memory_scope_t*> private_scopes(count);
+  ASSERT_EQ(api_->device_enumerate_memory_scopes(device_, count,
+                                                 private_scopes.data(), &count),
+            AMDF_STATUS_OK);
+  for (auto* scope : private_scopes) {
+    amdf_memory_scope_info_t info = {};
+    info.type = AMDF_STRUCTURE_TYPE_MEMORY_SCOPE_INFO;
+    info.structure_size = sizeof(info);
+    ASSERT_EQ(api_->memory_scope_query_info(scope, &info), AMDF_STATUS_OK);
+    EXPECT_EQ(info.kind, AMDF_MEMORY_SCOPE_KIND_PRIVATE);
+    EXPECT_NE(scope, system_scope);
+    for (auto* local_scope : local_scopes) EXPECT_NE(scope, local_scope);
+  }
+
+  const uint64_t granularity = live.allocation.byte_length_granularity;
+  ASSERT_GT(granularity, 0u);
+  amdf_memory_create_info_t create = {};
+  create.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
+  create.structure_size = sizeof(create);
+  create.memory_profile_ordinal = live.ordinal;
+  create.access_count = 1;
+  create.accesses = &device_access;
+  create.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
+  create.byte_length = ((4097 + granularity - 1) / granularity) * granularity;
+  create.minimum_alignment = live.allocation.minimum_alignment;
+  ASSERT_LE(create.byte_length, live.allocation.maximum_byte_length);
+  ASSERT_EQ(api_->memory_create(system_scope, &create, &memory_),
+            AMDF_STATUS_OK);
+  uint64_t address = 0;
+  ASSERT_EQ(api_->memory_query_address(memory_, 0, AMDF_MEMORY_ADDRESS_XDNA_DMA,
+                                       &address),
+            AMDF_STATUS_OK);
+  const auto& envelope = live_access.device_address;
+  EXPECT_GE(address, envelope.minimum_address);
+  ASSERT_LE(address, envelope.maximum_address);
+  EXPECT_LE(create.byte_length - 1, envelope.maximum_address - address);
+  ASSERT_GT(envelope.minimum_alignment, 0u);
+  EXPECT_EQ(address % envelope.minimum_alignment, 0u);
+
+  const auto& host = live.host_mapping;
+  ASSERT_GT(host.byte_length_granularity, 0u);
+  amdf_memory_map_info_t map = {};
+  map.type = AMDF_STRUCTURE_TYPE_MEMORY_MAP_INFO;
+  map.structure_size = sizeof(map);
+  map.flags = AMDF_MEMORY_MAP_FLAG_READ | AMDF_MEMORY_MAP_FLAG_WRITE;
+  ASSERT_EQ(map.flags & host.supported_access, map.flags);
+  map.byte_length = (create.byte_length / host.byte_length_granularity) *
+                    host.byte_length_granularity;
+  ASSERT_GT(map.byte_length, 0u);
+  ASSERT_LE(map.byte_length, host.maximum_byte_length);
+  ASSERT_EQ(api_->memory_map(memory_, &map, &mapping_), AMDF_STATUS_OK);
+  amdf_host_mapping_info_t mapping = {};
+  mapping.type = AMDF_STRUCTURE_TYPE_HOST_MAPPING_INFO;
+  mapping.structure_size = sizeof(mapping);
+  ASSERT_EQ(api_->host_mapping_query_info(mapping_, &mapping), AMDF_STATUS_OK);
+  ASSERT_EQ(mapping.byte_length, map.byte_length);
+  auto* bytes = static_cast<uint8_t*>(mapping.pointer);
+  ASSERT_NE(bytes, nullptr);
+  std::memset(bytes, 0xA5, mapping.byte_length);
+  for (uint64_t i = 0; i < mapping.byte_length; ++i) ASSERT_EQ(bytes[i], 0xA5);
+}
+
 TEST_F(XdnaEndpointTest, RejectsGpuEndpointWithoutMutation) {
   bool engine_found = false;
   ASSERT_EQ(OpenEngine(AMDF_ENGINE_KIND_GPU, &engine_found), AMDF_STATUS_OK);
