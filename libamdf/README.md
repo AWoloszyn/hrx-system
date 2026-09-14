@@ -1,17 +1,79 @@
 # libamdf
 
+libamdf is a small, portable C library for native AMD GPU and NPU access. It
+provides the memory, capabilities, and execution resources for a unified
+CPU/GPU/NPU fabric, with executable loading, command construction, scheduling,
+and memory policy owned by the calling runtime, typically a hardware
+abstraction layer (HAL).
+
+The goal is one program across three execution domains. A CPU handles control,
+a GPU prepares data and performs parallel computation, and an NPU executes
+streaming and matrix workloads. Shared backing, explicit visibility, and
+caller-owned lifetimes let those engines cooperate without turning each
+boundary into a tensor copy or a separate runtime session.
+
+libamdf targets RDNA and CDNA GPUs and XDNA NPUs on Linux, and RDNA GPUs and
+XDNA NPUs on Windows. A common API exposes topology, locality, access, and
+native queue capabilities so a HAL selects mechanisms by what they provide.
+
+## What a common fabric enables
+
+A compact model occupies one shared backing. GPU shaders prepare bounded
+windows of weights in the layout needed by NPU workers, overlapping preparation
+with computation. NPU results feed subsequent GPU or NPU work directly.
+Expanded working storage follows the size of the pipeline window rather than
+the size of another complete model copy.
+
+On the NPU, tensor and channel state remain in SRAM as tile programs change
+roles. Device-side transfers prefetch code while useful work continues.
+Program lifetime follows the active computation; data lifetime follows the
+values still needed by the pipeline. The compiler chooses between a larger
+resident executable and a sequence of streamed programs.
+
+Channels connect those stages at the granularity of useful data. Consumers
+start from ready shards, independent readers retain their own uses, and storage
+returns to a producer after its last reader finishes. Dynamic work enters
+queues alongside data readiness. The CPU participates in application control
+without acting as a payload relay or the scheduler of every internal stage.
+
+[Loom](../loom/README.md) brings these pieces together in one language and
+pipeline model. Arithmetic, communication, engine selection, and resource
+reuse are part of the same program. libamdf supplies its native foundation
+and remains independently usable by other compilers and runtimes.
+
+[One fabric for CPU, GPU, and NPU programs](docs/fabric.md) develops these
+scenarios and the architecture that makes them possible.
+
+## A small boundary beneath the runtime
+
+libamdf establishes backing and access through scope-taking memory operations.
+The caller holds a memory handle and uses explicit ranges and addresses.
+Discovery is passive, device creation is explicit, and allocation establishes
+the requested consumer access before publishing the resource. The HAL owns
+suballocation and retires memory before destroying its required native owners.
+
+Execution uses caller-prepared native commands. A user queue exposes queue
+state and doorbells; a kernel-mediated queue supplies the required platform
+transport. GPU packet construction and XDNA executable loading, relocation,
+and scheduling stay above the library. XDNA data memory is resident for its
+allocation lifetime, without a per-invocation list of indirect data buffers.
+
+This is the device-access foundation for a runtime that owns its execution
+model. It replaces the need to adopt XRT or ROCr for native access while
+keeping the compiler, loader, and scheduler with their caller. Family-selective
+builds keep dependencies aligned with the hardware an application uses.
+Static, shared-linked, and runtime-loaded clients share one C ABI.
+
+The [memory design](docs/memory.md) describes storage, access, and ownership.
+The [XDNA execution design](docs/xdna.md) describes instruction storage and the
+native Linux and Windows submission boundaries.
+
+## Native platform surface
+
 libamdf is the portable C boundary for native AMD GPU and XDNA device access.
 It isolates operating-system and driver-private mechanisms behind an
 unloadable library while leaving executable formats, command construction,
 scheduling, and memory policy in the calling runtime.
-
-The [memory design](docs/memory.md) describes the scope-based fabric contract,
-resource and address lifetimes, and CPU/GPU/NPU caller scenarios. It defines the
-selected design; the implementation overview below describes available provider
-paths rather than qualification of every design capability. The
-[XDNA execution contract](docs/xdna.md) follows instruction storage and native
-submission through Linux DRM and Windows MCDM, separating platform requirements
-from HAL-owned executable and scheduling policy.
 
 The base public surface is `include/amdf/amdf.h`. `amdf_query_api` negotiates an
 ABI version and returns an immutable API table. Optional family surfaces in
@@ -103,6 +165,8 @@ waits release the submitted memory borrow only after native fence completion
 and command-result inspection. Indirectly referenced memory is resident for its
 allocation lifetime and is not enumerated on each submission.
 
+## Building and embedding
+
 The build produces two link modes from one implementation:
 
 - `//libamdf:amdf` and `amdf::amdf` consume the shared library.
@@ -138,6 +202,8 @@ iree-cmake-configure -DAMDF_BUILD=ON -DIREE_HAL_DRIVER_AMDGPU=OFF -DLIBHRX_BUILD
 iree-cmake-build amdf amdf_static
 iree-cmake-test -R '^libamdf/' -LE 'manual|runtime-resource='
 ```
+
+## Verification
 
 Hardware-backed tests declare the `libamdf.resource.amd_gpu` or
 `libamdf.resource.xdna` run requirement. CMake exposes the corresponding
