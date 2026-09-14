@@ -24,7 +24,7 @@ TEST(Aie2pTransactionTest, MatchesIndependentTransaction01Encoding) {
       /*.column_count=*/5,
       /*.memory_tile_row_count=*/1,
   };
-  std::array<uint8_t, 160> storage = {};
+  std::array<uint8_t, 112> storage = {};
   iree_hal_amd_xdna_aie2p_transaction_writer_t writer;
   IREE_ASSERT_OK(iree_hal_amd_xdna_aie2p_transaction_writer_initialize(
       &kTarget, iree_make_byte_span(storage.data(), storage.size()), &writer));
@@ -53,21 +53,16 @@ TEST(Aie2pTransactionTest, MatchesIndependentTransaction01Encoding) {
       iree_hal_amd_xdna_aie2p_transaction_writer_append_block_write32(
           &writer, 0x00021000, 6, 7,
           iree_make_const_byte_span(kBlockWords.data(), sizeof(kBlockWords))));
-  IREE_ASSERT_OK(
-      iree_hal_amd_xdna_aie2p_transaction_writer_append_address_patch(
-          &writer, 0x00033000, 2, 0x80));
   iree_const_byte_span_t transaction = iree_const_byte_span_empty();
   IREE_ASSERT_OK(iree_hal_amd_xdna_aie2p_transaction_writer_finalize(
       &writer, &transaction));
 
-  constexpr std::array<uint32_t, 40> kExpectedWords = {
-      0x06040100, 0x00000105, 0x00000005, 0x000000A0, 0x00000000, 0x00000000,
+  constexpr std::array<uint32_t, 28> kExpectedWords = {
+      0x06040100, 0x00000105, 0x00000004, 0x00000070, 0x00000000, 0x00000000,
       0x06400DEF, 0x00000000, 0x00000042, 0x00000018, 0x00000003, 0x00000000,
       0x00012340, 0x00000000, 0x000000AB, 0x000000FF, 0x0000001C, 0x00000080,
       0x00000010, 0x00010200, 0x03040500, 0x00000001, 0x00000706, 0x00021000,
-      0x0000001C, 0xDEADBEEF, 0x12345678, 0x9ABCDEF0, 0x00000081, 0x00000030,
-      0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00033000, 0x00000000,
-      0x00000002, 0x00000000, 0x00000080, 0x00000000,
+      0x0000001C, 0xDEADBEEF, 0x12345678, 0x9ABCDEF0,
   };
   ASSERT_EQ(transaction.data_length, sizeof(kExpectedWords));
   EXPECT_EQ(

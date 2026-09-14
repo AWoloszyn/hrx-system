@@ -13,7 +13,6 @@ typedef enum iree_hal_amd_xdna_aie2p_transaction_opcode_e {
   IREE_HAL_AMD_XDNA_AIE2P_TRANSACTION_OPCODE_BLOCK_WRITE32 = 1,
   IREE_HAL_AMD_XDNA_AIE2P_TRANSACTION_OPCODE_MASK_WRITE32 = 3,
   IREE_HAL_AMD_XDNA_AIE2P_TRANSACTION_OPCODE_DMA_TASK_WAIT = 128,
-  IREE_HAL_AMD_XDNA_AIE2P_TRANSACTION_OPCODE_ADDRESS_PATCH = 129,
 } iree_hal_amd_xdna_aie2p_transaction_opcode_t;
 
 static iree_status_t iree_hal_amd_xdna_aie2p_transaction_writer_reserve(
@@ -157,24 +156,6 @@ iree_status_t iree_hal_amd_xdna_aie2p_transaction_writer_append_dma_task_wait(
                                   ((uint32_t)wait->dma_channel << 24));
   iree_hal_amd_xdna_aie2p_transaction_writer_commit(
       writer, IREE_HAL_AMD_XDNA_AIE2P_TRANSACTION_DMA_TASK_WAIT_SIZE);
-  return iree_ok_status();
-}
-
-iree_status_t iree_hal_amd_xdna_aie2p_transaction_writer_append_address_patch(
-    iree_hal_amd_xdna_aie2p_transaction_writer_t* writer,
-    uint64_t register_address, uint64_t argument_ordinal, int64_t addend) {
-  uint8_t* operation = NULL;
-  IREE_RETURN_IF_ERROR(iree_hal_amd_xdna_aie2p_transaction_writer_reserve(
-      writer, IREE_HAL_AMD_XDNA_AIE2P_TRANSACTION_ADDRESS_PATCH_SIZE,
-      &operation));
-  operation[0] = IREE_HAL_AMD_XDNA_AIE2P_TRANSACTION_OPCODE_ADDRESS_PATCH;
-  iree_unaligned_store_le_u32(
-      operation + 4, IREE_HAL_AMD_XDNA_AIE2P_TRANSACTION_ADDRESS_PATCH_SIZE);
-  iree_unaligned_store_le_u64(operation + 24, register_address);
-  iree_unaligned_store_le_u64(operation + 32, argument_ordinal);
-  iree_unaligned_store_le_u64(operation + 40, (uint64_t)addend);
-  iree_hal_amd_xdna_aie2p_transaction_writer_commit(
-      writer, IREE_HAL_AMD_XDNA_AIE2P_TRANSACTION_ADDRESS_PATCH_SIZE);
   return iree_ok_status();
 }
 

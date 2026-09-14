@@ -33,8 +33,6 @@ enum {
   IREE_HAL_AMD_XDNA_AIE2P_TRANSACTION_REGISTER_BLOCK_WRITE32_HEADER_SIZE = 16,
   // Serialized byte length of a DMA task-wait operation.
   IREE_HAL_AMD_XDNA_AIE2P_TRANSACTION_DMA_TASK_WAIT_SIZE = 16,
-  // Serialized byte length of a runtime address-patch operation.
-  IREE_HAL_AMD_XDNA_AIE2P_TRANSACTION_ADDRESS_PATCH_SIZE = 48,
 };
 
 // Complete context-specific fields encoded in a transaction 0.1 header.
@@ -94,11 +92,6 @@ iree_status_t iree_hal_amd_xdna_aie2p_transaction_writer_append_block_write32(
 iree_status_t iree_hal_amd_xdna_aie2p_transaction_writer_append_dma_task_wait(
     iree_hal_amd_xdna_aie2p_transaction_writer_t* writer,
     const iree_hal_amd_xdna_aie2p_dma_task_wait_t* wait);
-
-// Appends one runtime buffer-address patch.
-iree_status_t iree_hal_amd_xdna_aie2p_transaction_writer_append_address_patch(
-    iree_hal_amd_xdna_aie2p_transaction_writer_t* writer,
-    uint64_t register_address, uint64_t argument_ordinal, int64_t addend);
 
 // Finalizes the header and returns the written prefix of |storage|.
 iree_status_t iree_hal_amd_xdna_aie2p_transaction_writer_finalize(
