@@ -102,6 +102,7 @@ class XdnaExecutionTest
     if (memory->mapping) {
       ASSERT_EQ(api_->host_mapping_destroy(memory->mapping), AMDF_STATUS_OK);
       memory->mapping = nullptr;
+      memory->pointer = nullptr;
     }
     if (memory->memory) {
       ASSERT_EQ(api_->memory_destroy(memory->memory), AMDF_STATUS_OK);
@@ -122,6 +123,10 @@ class XdnaExecutionTest
       binding.buffer = nullptr;
       ASSERT_NO_FATAL_FAILURE(DestroyMemory(&binding.storage));
     }
+    if (external_memory_.type != AMDF_EXTERNAL_MEMORY_TYPE_NONE) {
+      api_->external_memory_release(&external_memory_);
+    }
+    ASSERT_NO_FATAL_FAILURE(DestroyMemory(&export_source_));
     iree_hal_executable_release(executable_);
     executable_ = nullptr;
     XdnaContextFixture::TearDown();
@@ -146,7 +151,7 @@ class XdnaExecutionTest
   void CreateBindings() {
     memory_access_.requirements.address_kinds = uint64_t{1}
                                                 << AMDF_MEMORY_ADDRESS_XDNA_DMA;
-    if (GetParam() == AMDF_MEMORY_PROFILE_ROLE_REGISTER) {
+    if (GetParam() != AMDF_MEMORY_PROFILE_ROLE_CREATE) {
       amdf_memory_scope_info_t scope_info = {};
       scope_info.type = AMDF_STRUCTURE_TYPE_MEMORY_SCOPE_INFO;
       scope_info.structure_size = sizeof(scope_info);
@@ -168,8 +173,9 @@ class XdnaExecutionTest
         ASSERT_EQ(status, AMDF_STATUS_OK);
         available_roles |= profile.roles;
       }
-      if ((available_roles & AMDF_MEMORY_PROFILE_ROLE_REGISTER) == 0) {
-        GTEST_SKIP() << "XDNA host registration is not advertised";
+      if ((available_roles & GetParam()) == 0) {
+        GTEST_SKIP() << "XDNA memory role " << GetParam()
+                     << " is not advertised";
       }
     }
     const uint32_t profile_ordinal =
@@ -178,26 +184,32 @@ class XdnaExecutionTest
     ASSERT_NE(profile_ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
     for (size_t i = 0; i < bindings_.size(); ++i) {
       auto& binding = bindings_[i];
-      amdf_memory_create_info_t create = {};
-      create.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
-      create.structure_size = sizeof(create);
-      create.memory_profile_ordinal = profile_ordinal;
-      create.access_count = 1;
-      create.accesses = &memory_access_;
-      create.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
-      create.byte_length = kBindingStorageByteLength;
-      if (GetParam() == AMDF_MEMORY_PROFILE_ROLE_REGISTER) {
-        create.registered_host_pointer =
-            binding.caller_storage.data() + kBindingByteLength;
-        create.minimum_alignment = kBindingByteLength;
-      }
-      ASSERT_EQ(
-          api_->memory_create(system_scope_, &create, &binding.storage.memory),
-          AMDF_STATUS_OK);
-      ASSERT_NO_FATAL_FAILURE(
-          MapMemory(kBindingStorageByteLength, &binding.storage));
-      if (GetParam() == AMDF_MEMORY_PROFILE_ROLE_REGISTER) {
-        ASSERT_EQ(binding.storage.pointer, create.registered_host_pointer);
+      if (GetParam() == AMDF_MEMORY_PROFILE_ROLE_IMPORT) {
+        ASSERT_NO_FATAL_FAILURE(
+            ImportMemory(profile_ordinal, &binding.storage));
+        if (IsSkipped()) return;
+      } else {
+        amdf_memory_create_info_t create = {};
+        create.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
+        create.structure_size = sizeof(create);
+        create.memory_profile_ordinal = profile_ordinal;
+        create.access_count = 1;
+        create.accesses = &memory_access_;
+        create.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
+        create.byte_length = kBindingStorageByteLength;
+        if (GetParam() == AMDF_MEMORY_PROFILE_ROLE_REGISTER) {
+          create.registered_host_pointer =
+              binding.caller_storage.data() + kBindingByteLength;
+          create.minimum_alignment = kBindingByteLength;
+        }
+        ASSERT_EQ(api_->memory_create(system_scope_, &create,
+                                      &binding.storage.memory),
+                  AMDF_STATUS_OK);
+        ASSERT_NO_FATAL_FAILURE(
+            MapMemory(kBindingStorageByteLength, &binding.storage));
+        if (GetParam() == AMDF_MEMORY_PROFILE_ROLE_REGISTER) {
+          ASSERT_EQ(binding.storage.pointer, create.registered_host_pointer);
+        }
       }
       std::memset(binding.storage.pointer, kGuardValue,
                   kBindingStorageByteLength);
@@ -221,6 +233,103 @@ class XdnaExecutionTest
                     &prepared_bindings_[i].device_address),
                 AMDF_STATUS_OK);
       prepared_bindings_[i].device_address += kBindingByteOffset;
+    }
+  }
+
+  void RequireDmaBuf(const amdf_memory_profile_t& profile,
+                     amdf_external_memory_support_flags_t required_flags) {
+    for (uint32_t i = 0; i < profile.external_memory_support_count; ++i) {
+      const auto& support = profile.external_memory_support[i];
+      if (support.type == AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD &&
+          (support.flags & required_flags) == required_flags) {
+        return;
+      }
+    }
+    GTEST_SKIP() << "XDNA DMA-BUF source ranges are not advertised";
+  }
+
+  void ImportMemory(uint32_t profile_ordinal, MappedMemory* memory) {
+    amdf_memory_profile_t profile = {};
+    profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
+    profile.structure_size = sizeof(profile);
+    amdf_memory_access_capabilities_t capabilities = {};
+    capabilities.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES;
+    capabilities.structure_size = sizeof(capabilities);
+    ASSERT_EQ(QueryMemoryProfile(profile_ordinal, &profile, &capabilities),
+              AMDF_STATUS_OK);
+    RequireDmaBuf(profile, AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_IMPORT |
+                               AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_SOURCE_OFFSET);
+    if (IsSkipped()) return;
+    const auto source_flags =
+        AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_SHAREABLE;
+    const uint32_t source_ordinal = FindMemoryProfileOrdinal(
+        AMDF_MEMORY_PROFILE_ROLE_CREATE | AMDF_MEMORY_PROFILE_ROLE_EXPORT |
+            AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
+        source_flags);
+    ASSERT_NE(source_ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
+    ASSERT_EQ(QueryMemoryProfile(source_ordinal, &profile, &capabilities),
+              AMDF_STATUS_OK);
+    RequireDmaBuf(profile, AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_EXPORT |
+                               AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_SOURCE_OFFSET);
+    if (IsSkipped()) return;
+    const uint64_t source_offset =
+        profile.allocation.native_byte_length_granularity + kBindingByteLength;
+    amdf_memory_create_info_t create = {};
+    create.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
+    create.structure_size = sizeof(create);
+    create.memory_profile_ordinal = source_ordinal;
+    create.access_count = 1;
+    create.accesses = &memory_access_;
+    create.required_flags = source_flags;
+    create.byte_length = source_offset + kBindingStorageByteLength;
+    ASSERT_EQ(
+        api_->memory_create(system_scope_, &create, &export_source_.memory),
+        AMDF_STATUS_OK);
+    ASSERT_NO_FATAL_FAILURE(MapMemory(create.byte_length, &export_source_));
+    std::memset(export_source_.pointer, kGuardValue, create.byte_length);
+    std::memset(export_source_.pointer + source_offset, 0x3C,
+                kBindingStorageByteLength);
+    ASSERT_EQ(api_->host_mapping_cache_control(export_source_.mapping,
+                                               AMDF_HOST_CACHE_OPERATION_FLUSH,
+                                               0, create.byte_length),
+              AMDF_STATUS_OK);
+    amdf_memory_export_info_t export_info = {};
+    export_info.type = AMDF_STRUCTURE_TYPE_MEMORY_EXPORT_INFO;
+    export_info.structure_size = sizeof(export_info);
+    export_info.external_memory_type = AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD;
+    export_info.byte_offset = source_offset;
+    export_info.byte_length = kBindingStorageByteLength;
+    ASSERT_EQ(api_->memory_export(export_source_.memory, &export_info,
+                                  &external_memory_),
+              AMDF_STATUS_OK);
+    const auto identity = external_memory_.physical_backing_id;
+    ASSERT_TRUE(amdf_physical_memory_id_is_valid(&identity));
+    ASSERT_EQ(external_memory_.source_byte_offset, source_offset);
+    amdf_memory_import_info_t import_info = {};
+    import_info.type = AMDF_STRUCTURE_TYPE_MEMORY_IMPORT_INFO;
+    import_info.structure_size = sizeof(import_info);
+    import_info.memory_profile_ordinal = profile_ordinal;
+    import_info.access_count = 1;
+    import_info.accesses = &memory_access_;
+    import_info.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
+    import_info.minimum_alignment = kBindingByteLength;
+    ASSERT_EQ(api_->memory_import(system_scope_, &import_info,
+                                  &external_memory_, &memory->memory),
+              AMDF_STATUS_OK);
+    const amdf_external_memory_t empty = {};
+    ASSERT_EQ(std::memcmp(&external_memory_, &empty, sizeof(empty)), 0);
+    ASSERT_NO_FATAL_FAILURE(DestroyMemory(&export_source_));
+    amdf_memory_info_t info = {};
+    info.type = AMDF_STRUCTURE_TYPE_MEMORY_INFO;
+    info.structure_size = sizeof(info);
+    ASSERT_EQ(api_->memory_query_info(memory->memory, &info), AMDF_STATUS_OK);
+    ASSERT_TRUE(
+        amdf_physical_memory_id_is_equal(&info.physical_backing_id, &identity));
+    ASSERT_EQ(info.source_byte_offset, source_offset);
+    ASSERT_EQ(info.byte_length, kBindingStorageByteLength);
+    ASSERT_NO_FATAL_FAILURE(MapMemory(kBindingStorageByteLength, memory));
+    for (size_t i = 0; i < kBindingStorageByteLength; ++i) {
+      ASSERT_EQ(memory->pointer[i], 0x3C) << "imported byte " << i;
     }
   }
 
@@ -308,6 +417,10 @@ class XdnaExecutionTest
   iree_host_size_t instruction_byte_length_ = 0;
   // One private instruction allocation; the caller owns its lifetime.
   MappedMemory instructions_;
+  // Temporary export source, released before imported bindings are used.
+  MappedMemory export_source_;
+  // Move-owned DMA-BUF value, consumed by import or released at teardown.
+  amdf_external_memory_t external_memory_ = {};
   // Immutable command ranges retaining only the executable and HAL buffers.
   iree_hal_amd_xdna_prepared_command_t* prepared_ = nullptr;
   // Native queue borrowing this case's context.
@@ -423,10 +536,17 @@ TEST_P(XdnaExecutionTest, ReusesImmutableInstructionsWithChangingInputs) {
 INSTANTIATE_TEST_SUITE_P(
     MemoryBacking, XdnaExecutionTest,
     ::testing::Values(AMDF_MEMORY_PROFILE_ROLE_CREATE,
-                      AMDF_MEMORY_PROFILE_ROLE_REGISTER),
+                      AMDF_MEMORY_PROFILE_ROLE_REGISTER,
+                      AMDF_MEMORY_PROFILE_ROLE_IMPORT),
     [](const ::testing::TestParamInfo<amdf_memory_profile_roles_t>& info) {
-      return info.param == AMDF_MEMORY_PROFILE_ROLE_CREATE ? "Allocated"
-                                                           : "Registered";
+      switch (info.param) {
+        case AMDF_MEMORY_PROFILE_ROLE_CREATE:
+          return "Allocated";
+        case AMDF_MEMORY_PROFILE_ROLE_REGISTER:
+          return "Registered";
+        default:
+          return "Imported";
+      }
     });
 
 }  // namespace
