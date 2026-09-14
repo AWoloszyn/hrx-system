@@ -27,9 +27,18 @@ constexpr size_t kBindingByteLength = kElementCount * sizeof(uint32_t);
 constexpr size_t kBindingByteOffset = kBindingByteLength;
 constexpr size_t kBindingStorageByteLength = 3 * kBindingByteLength;
 constexpr uint8_t kGuardValue = 0xA5;
+using BindingValues = std::array<uint32_t, kElementCount>;
+using PreparedBindings =
+    std::array<iree_hal_amd_xdna_prepared_command_binding_t, 3>;
+
+// Unsigned arithmetic gives exact low bits for signed and overflowing products.
+constexpr BindingValues kValues = {
+    0,          1,          2,          3,          7,          31,
+    65535,      65536,      0x7FFFFFFF, 0x80000000, 0x80000001, 0xFFFFFFFD,
+    0xFFFFFFFE, 0xFFFFFFFF, 0x12345678, 0x87654321};
 
 class XdnaExecutionTest
-    : public XdnaContextFixture,
+    : public XdnaDeviceFixture,
       public ::testing::WithParamInterface<amdf_memory_profile_roles_t> {
  protected:
   struct MappedMemory {
@@ -41,13 +50,32 @@ class XdnaExecutionTest
     uint8_t* pointer = nullptr;
   };
 
+  struct Execution {
+    // Case-owned context borrowing the shared ordinary device.
+    amdf_xdna_context_t* context = nullptr;
+    // Private instruction allocation, released before its exact context.
+    MappedMemory instructions;
+    // Mapped extent covering initialization and execution ranges.
+    iree_host_size_t byte_length = 0;
+    // Immutable command instance retaining the executable and HAL buffers.
+    iree_hal_amd_xdna_prepared_command_t* prepared = nullptr;
+    // Native transport lease borrowing this execution's context.
+    amdf_kernel_queue_t* queue = nullptr;
+    // Test-only byte oracle captured after cold preparation.
+    std::vector<uint8_t> original_instructions;
+  };
+
   void SetUp() override {
-    ASSERT_NO_FATAL_FAILURE(XdnaContextFixture::SetUp());
+    ASSERT_NO_FATAL_FAILURE(XdnaDeviceFixture::SetUp());
     if (IsSkipped()) return;
     amdf_xdna_endpoint_info_t info = {};
     info.type = AMDF_STRUCTURE_TYPE_XDNA_ENDPOINT_INFO;
     info.structure_size = sizeof(info);
     ASSERT_EQ(xdna_api_->endpoint_query_info(endpoint_, &info), AMDF_STATUS_OK);
+    if ((info.context.scheduling_modes &
+         AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED) == 0) {
+      GTEST_SKIP() << "time-sliced XDNA contexts are unavailable";
+    }
     instruction_alignment_ = info.instruction.address_alignment;
 
     const iree_file_toc_t* image = nullptr;
@@ -110,14 +138,23 @@ class XdnaExecutionTest
     }
   }
 
-  void TearDown() override {
-    if (queue_) {
-      ASSERT_EQ(api_->kernel_queue_destroy(queue_), AMDF_STATUS_OK);
-      queue_ = nullptr;
+  void DestroyExecution(Execution* execution) {
+    if (execution->queue) {
+      ASSERT_EQ(api_->kernel_queue_destroy(execution->queue), AMDF_STATUS_OK);
+      execution->queue = nullptr;
     }
-    iree_hal_amd_xdna_prepared_command_destroy(prepared_);
-    prepared_ = nullptr;
-    ASSERT_NO_FATAL_FAILURE(DestroyMemory(&instructions_));
+    iree_hal_amd_xdna_prepared_command_destroy(execution->prepared);
+    execution->prepared = nullptr;
+    ASSERT_NO_FATAL_FAILURE(DestroyMemory(&execution->instructions));
+    if (execution->context) {
+      ASSERT_EQ(xdna_api_->context_destroy(execution->context), AMDF_STATUS_OK);
+      execution->context = nullptr;
+    }
+  }
+
+  void TearDown() override {
+    ASSERT_NO_FATAL_FAILURE(DestroyExecution(&first_));
+    ASSERT_NO_FATAL_FAILURE(DestroyExecution(&second_));
     for (auto& binding : bindings_) {
       iree_hal_buffer_release(binding.buffer);
       binding.buffer = nullptr;
@@ -129,7 +166,7 @@ class XdnaExecutionTest
     ASSERT_NO_FATAL_FAILURE(DestroyMemory(&export_source_));
     iree_hal_executable_release(executable_);
     executable_ = nullptr;
-    XdnaContextFixture::TearDown();
+    XdnaDeviceFixture::TearDown();
   }
 
   void MapMemory(uint64_t byte_length, MappedMemory* memory) {
@@ -333,15 +370,27 @@ class XdnaExecutionTest
     }
   }
 
-  void PrepareInstructions() {
+  void PrepareExecution(const PreparedBindings& bindings,
+                        Execution* execution) {
+    amdf_xdna_context_create_info_t context_create = {};
+    context_create.type = AMDF_STRUCTURE_TYPE_XDNA_CONTEXT_CREATE_INFO;
+    context_create.structure_size = sizeof(context_create);
+    context_create.logical_column_count = 1;
+    context_create.physical_column_origin =
+        AMDF_XDNA_PHYSICAL_COLUMN_ORIGIN_ANY;
+    context_create.acceptable_scheduling_modes =
+        AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED;
+    ASSERT_EQ(xdna_api_->context_create(device_, &context_create,
+                                        &execution->context),
+              AMDF_STATUS_OK);
     IREE_ASSERT_OK(iree_hal_amd_xdna_prepared_command_query_storage_size(
         executable_, function_, instruction_alignment_,
-        &instruction_byte_length_));
+        &execution->byte_length));
     amdf_memory_scope_t* scope = nullptr;
     uint32_t count = 0;
-    ASSERT_EQ(
-        xdna_api_->context_enumerate_memory_scopes(context_, 1, &scope, &count),
-        AMDF_STATUS_OK);
+    ASSERT_EQ(xdna_api_->context_enumerate_memory_scopes(execution->context, 1,
+                                                         &scope, &count),
+              AMDF_STATUS_OK);
     amdf_memory_device_access_t access = {};
     access.device = device_;
     access.requirements.access = AMDF_MEMORY_ACCESS_READ |
@@ -369,37 +418,118 @@ class XdnaExecutionTest
     create.accesses = &access;
     create.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
     create.byte_length =
-        ((instruction_byte_length_ + granularity - 1) / granularity) *
+        ((execution->byte_length + granularity - 1) / granularity) *
         granularity;
     create.minimum_alignment = profile.allocation.minimum_alignment;
-    ASSERT_EQ(api_->memory_create(scope, &create, &instructions_.memory),
+    auto& instructions = execution->instructions;
+    ASSERT_EQ(api_->memory_create(scope, &create, &instructions.memory),
               AMDF_STATUS_OK);
     uint64_t firmware_address = 0;
-    ASSERT_EQ(api_->memory_query_address(instructions_.memory, 0,
+    ASSERT_EQ(api_->memory_query_address(instructions.memory, 0,
                                          AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE,
                                          &firmware_address),
               AMDF_STATUS_OK);
     ASSERT_EQ(firmware_address % instruction_alignment_, 0u);
-    ASSERT_NO_FATAL_FAILURE(
-        MapMemory(instruction_byte_length_, &instructions_));
+    ASSERT_NO_FATAL_FAILURE(MapMemory(execution->byte_length, &instructions));
     amdf_xdna_kernel_command_t storage = {};
-    storage.memory = instructions_.memory;
-    storage.byte_length = instruction_byte_length_;
+    storage.memory = instructions.memory;
+    storage.byte_length = execution->byte_length;
     IREE_ASSERT_OK(iree_hal_amd_xdna_prepared_command_create(
         executable_, function_, instruction_alignment_, &storage,
-        iree_make_byte_span(instructions_.pointer, instruction_byte_length_),
-        prepared_bindings_.size(), prepared_bindings_.data(),
-        iree_allocator_system(), &prepared_));
-    ASSERT_EQ(api_->host_mapping_cache_control(instructions_.mapping,
+        iree_make_byte_span(instructions.pointer, execution->byte_length),
+        bindings.size(), bindings.data(), iree_allocator_system(),
+        &execution->prepared));
+    execution->original_instructions.assign(
+        instructions.pointer, instructions.pointer + execution->byte_length);
+    ASSERT_EQ(api_->host_mapping_cache_control(instructions.mapping,
                                                AMDF_HOST_CACHE_OPERATION_FLUSH,
-                                               0, instruction_byte_length_),
+                                               0, execution->byte_length),
               AMDF_STATUS_OK);
     amdf_xdna_kernel_queue_create_info_t queue_create = {};
     queue_create.type = AMDF_STRUCTURE_TYPE_XDNA_KERNEL_QUEUE_CREATE_INFO;
     queue_create.structure_size = sizeof(queue_create);
     queue_create.queue_family_ordinal = queue_family_.ordinal;
-    ASSERT_EQ(xdna_api_->kernel_queue_create(context_, &queue_create, &queue_),
+    ASSERT_EQ(xdna_api_->kernel_queue_create(execution->context, &queue_create,
+                                             &execution->queue),
               AMDF_STATUS_OK);
+    amdf_kernel_queue_info_t queue_info = {};
+    queue_info.type = AMDF_STRUCTURE_TYPE_KERNEL_QUEUE_INFO;
+    queue_info.structure_size = sizeof(queue_info);
+    ASSERT_EQ(api_->kernel_queue_query_info(execution->queue, &queue_info),
+              AMDF_STATUS_OK);
+    ASSERT_EQ(queue_info.queue_family_ordinal, queue_family_.ordinal);
+    ASSERT_EQ(queue_info.command_type, AMDF_QUEUE_COMMAND_TYPE_XDNA);
+    ASSERT_GE(queue_info.maximum_pending_submission_count, 1u);
+    ASSERT_GE(queue_info.maximum_command_count, 1u);
+  }
+
+  void RunExecution(const Execution& execution,
+                    const amdf_xdna_kernel_command_t* command) {
+    amdf_xdna_kernel_queue_submission_info_t submit = {};
+    submit.type = AMDF_STRUCTURE_TYPE_XDNA_KERNEL_QUEUE_SUBMISSION_INFO;
+    submit.structure_size = sizeof(submit);
+    submit.command_count = 1;
+    submit.commands = command;
+    uint64_t submission = 0;
+    ASSERT_EQ(
+        xdna_api_->kernel_queue_submit(execution.queue, &submit, &submission),
+        AMDF_STATUS_OK);
+    ASSERT_EQ(api_->kernel_queue_wait(execution.queue, submission,
+                                      AMDF_TIMEOUT_INFINITE, 0),
+              AMDF_STATUS_OK);
+    amdf_kernel_queue_status_t status = {};
+    status.type = AMDF_STRUCTURE_TYPE_KERNEL_QUEUE_STATUS;
+    status.structure_size = sizeof(status);
+    ASSERT_EQ(api_->kernel_queue_query_status(execution.queue, &status),
+              AMDF_STATUS_OK);
+    ASSERT_EQ(status.retired_submission, submission);
+    ASSERT_EQ(status.terminal_status, AMDF_STATUS_OK);
+  }
+
+  void WriteBinding(size_t ordinal, const BindingValues& values) {
+    auto& storage = bindings_[ordinal].storage;
+    for (size_t i = 0; i < kElementCount; ++i) {
+      iree_unaligned_store_le_u32(storage.pointer + kBindingByteOffset + i * 4,
+                                  values[i]);
+    }
+    ASSERT_EQ(api_->host_mapping_cache_control(storage.mapping,
+                                               AMDF_HOST_CACHE_OPERATION_FLUSH,
+                                               0, kBindingStorageByteLength),
+              AMDF_STATUS_OK);
+  }
+
+  void VerifyBindings(const std::array<BindingValues, 3>& expected) {
+    for (size_t ordinal = 0; ordinal < bindings_.size(); ++ordinal) {
+      SCOPED_TRACE(ordinal);
+      const auto& storage = bindings_[ordinal].storage;
+      ASSERT_EQ(api_->host_mapping_cache_control(
+                    storage.mapping, AMDF_HOST_CACHE_OPERATION_INVALIDATE, 0,
+                    kBindingStorageByteLength),
+                AMDF_STATUS_OK);
+      for (size_t i = 0; i < kBindingByteLength; ++i) {
+        ASSERT_EQ(storage.pointer[i], kGuardValue) << "prefix " << i;
+        ASSERT_EQ(storage.pointer[2 * kBindingByteLength + i], kGuardValue)
+            << "suffix " << i;
+      }
+      for (size_t i = 0; i < kElementCount; ++i) {
+        ASSERT_EQ(iree_unaligned_load_le_u32(storage.pointer +
+                                             kBindingByteOffset + i * 4),
+                  expected[ordinal][i])
+            << "element " << i;
+      }
+    }
+  }
+
+  void VerifyInstructions(const Execution& execution) {
+    ASSERT_EQ(
+        api_->host_mapping_cache_control(execution.instructions.mapping,
+                                         AMDF_HOST_CACHE_OPERATION_INVALIDATE,
+                                         0, execution.byte_length),
+        AMDF_STATUS_OK);
+    ASSERT_EQ(
+        std::memcmp(execution.original_instructions.data(),
+                    execution.instructions.pointer, execution.byte_length),
+        0);
   }
 
   // Executable-only family metadata; native queues are managed through libamdf.
@@ -413,18 +543,14 @@ class XdnaExecutionTest
       iree_hal_executable_function_invalid();
   // Storage requirements derived from the endpoint and executable.
   iree_host_size_t instruction_alignment_ = 0;
-  // Mapped length covering initialization and execution ranges.
-  iree_host_size_t instruction_byte_length_ = 0;
-  // One private instruction allocation; the caller owns its lifetime.
-  MappedMemory instructions_;
+  // Primary execution owner used by every case.
+  Execution first_;
+  // Independently prepared execution sharing only ordinary data and device.
+  Execution second_;
   // Temporary export source, released before imported bindings are used.
   MappedMemory export_source_;
   // Move-owned DMA-BUF value, consumed by import or released at teardown.
   amdf_external_memory_t external_memory_ = {};
-  // Immutable command ranges retaining only the executable and HAL buffers.
-  iree_hal_amd_xdna_prepared_command_t* prepared_ = nullptr;
-  // Native queue borrowing this case's context.
-  amdf_kernel_queue_t* queue_ = nullptr;
   // Native and HAL owners for the three canonical bindings.
   struct Binding {
     // Optional caller-owned backing. Registration begins inside this array
@@ -440,96 +566,120 @@ class XdnaExecutionTest
   // Lhs, rhs and output backing, independent of instruction storage.
   std::array<Binding, 3> bindings_;
   // Cold DMA addresses resolved through the public memory handles.
-  std::array<iree_hal_amd_xdna_prepared_command_binding_t, 3>
-      prepared_bindings_ = {};
+  PreparedBindings prepared_bindings_ = {};
 };
 
 TEST_P(XdnaExecutionTest, ReusesImmutableInstructionsWithChangingInputs) {
   ASSERT_NO_FATAL_FAILURE(CreateBindings());
   if (IsSkipped()) return;
-  ASSERT_NO_FATAL_FAILURE(PrepareInstructions());
-  const std::vector<uint8_t> original_instructions(
-      instructions_.pointer, instructions_.pointer + instruction_byte_length_);
-  // Unsigned arithmetic gives the exact low bits for signed and overflowing
-  // products without invoking host signed-overflow undefined behavior.
-  constexpr std::array<uint32_t, kElementCount> values = {
-      0,          1,          2,          3,          7,          31,
-      65535,      65536,      0x7FFFFFFF, 0x80000000, 0x80000001, 0xFFFFFFFD,
-      0xFFFFFFFE, 0xFFFFFFFF, 0x12345678, 0x87654321};
+  ASSERT_NO_FATAL_FAILURE(PrepareExecution(prepared_bindings_, &first_));
   for (uint32_t iteration = 0; iteration < 3; ++iteration) {
     SCOPED_TRACE(iteration);
-    std::array<uint32_t, kElementCount> expected;
+    std::array<BindingValues, 3> expected;
+    BindingValues poisoned;
     for (size_t i = 0; i < kElementCount; ++i) {
-      const uint32_t lhs = values[(i + iteration) % kElementCount];
-      const uint32_t rhs = values[(i * 3 + iteration + 5) % kElementCount];
-      expected[i] = lhs * rhs;
-      iree_unaligned_store_le_u32(
-          bindings_[0].storage.pointer + kBindingByteOffset + i * 4, lhs);
-      iree_unaligned_store_le_u32(
-          bindings_[1].storage.pointer + kBindingByteOffset + i * 4, rhs);
+      expected[0][i] = kValues[(i + iteration) % kElementCount];
+      expected[1][i] = kValues[(i * 3 + iteration + 5) % kElementCount];
+      expected[2][i] = expected[0][i] * expected[1][i];
       // Every output must change; neither zero-fill nor stale output can pass.
-      iree_unaligned_store_le_u32(
-          bindings_[2].storage.pointer + kBindingByteOffset + i * 4,
-          ~expected[i]);
+      poisoned[i] = ~expected[2][i];
     }
-    for (auto& binding : bindings_) {
-      ASSERT_EQ(api_->host_mapping_cache_control(
-                    binding.storage.mapping, AMDF_HOST_CACHE_OPERATION_FLUSH, 0,
-                    kBindingStorageByteLength),
-                AMDF_STATUS_OK);
-    }
-    amdf_xdna_kernel_queue_submission_info_t submit = {};
-    submit.type = AMDF_STRUCTURE_TYPE_XDNA_KERNEL_QUEUE_SUBMISSION_INFO;
-    submit.structure_size = sizeof(submit);
-    submit.command_count = 1;
-    submit.commands =
+    ASSERT_NO_FATAL_FAILURE(WriteBinding(0, expected[0]));
+    ASSERT_NO_FATAL_FAILURE(WriteBinding(1, expected[1]));
+    ASSERT_NO_FATAL_FAILURE(WriteBinding(2, poisoned));
+    const auto* command =
         iteration == 0
-            ? iree_hal_amd_xdna_prepared_command_initialization(prepared_)
-            : iree_hal_amd_xdna_prepared_command_execution(prepared_);
-    uint64_t submission = 0;
-    ASSERT_EQ(xdna_api_->kernel_queue_submit(queue_, &submit, &submission),
+            ? iree_hal_amd_xdna_prepared_command_initialization(first_.prepared)
+            : iree_hal_amd_xdna_prepared_command_execution(first_.prepared);
+    ASSERT_NO_FATAL_FAILURE(RunExecution(first_, command));
+    ASSERT_NO_FATAL_FAILURE(VerifyBindings(expected));
+    ASSERT_NO_FATAL_FAILURE(VerifyInstructions(first_));
+  }
+}
+
+TEST_P(XdnaExecutionTest, SharesDataAcrossIndependentContextLifetimes) {
+  ASSERT_NO_FATAL_FAILURE(CreateBindings());
+  if (IsSkipped()) return;
+  ASSERT_NO_FATAL_FAILURE(PrepareExecution(prepared_bindings_, &first_));
+  // A: (lhs, rhs) -> intermediate; B: (intermediate, rhs) -> lhs.
+  const PreparedBindings consumer_bindings = {
+      prepared_bindings_[2], prepared_bindings_[1], prepared_bindings_[0]};
+  ASSERT_NO_FATAL_FAILURE(PrepareExecution(consumer_bindings, &second_));
+  ASSERT_NE(first_.context, second_.context);
+  ASSERT_NE(first_.instructions.memory, second_.instructions.memory);
+
+  std::array<amdf_memory_info_t, 3> original_info = {};
+  for (size_t ordinal = 0; ordinal < bindings_.size(); ++ordinal) {
+    auto& info = original_info[ordinal];
+    info.type = AMDF_STRUCTURE_TYPE_MEMORY_INFO;
+    info.structure_size = sizeof(info);
+    ASSERT_EQ(api_->memory_query_info(bindings_[ordinal].storage.memory, &info),
               AMDF_STATUS_OK);
+  }
+
+  std::array<BindingValues, 3> expected;
+  BindingValues poisoned;
+  for (size_t i = 0; i < kElementCount; ++i) {
+    expected[0][i] = kValues[i];
+    // Odd nonunit factors keep the second computation distinct modulo 2^32.
+    expected[1][i] = static_cast<uint32_t>(i * 2 + 3);
+    expected[2][i] = expected[0][i] * expected[1][i];
+    poisoned[i] = ~expected[2][i];
+  }
+  ASSERT_NO_FATAL_FAILURE(WriteBinding(0, expected[0]));
+  ASSERT_NO_FATAL_FAILURE(WriteBinding(1, expected[1]));
+  ASSERT_NO_FATAL_FAILURE(WriteBinding(2, poisoned));
+  ASSERT_NO_FATAL_FAILURE(RunExecution(
+      first_,
+      iree_hal_amd_xdna_prepared_command_initialization(first_.prepared)));
+  // The consumer sees the producer's bytes directly. There is no CPU payload
+  // access or cache transition between these fully retired finite commands.
+  ASSERT_NO_FATAL_FAILURE(RunExecution(
+      second_,
+      iree_hal_amd_xdna_prepared_command_initialization(second_.prepared)));
+  for (size_t i = 0; i < kElementCount; ++i) {
+    expected[0][i] = expected[2][i] * expected[1][i];
+  }
+  ASSERT_NO_FATAL_FAILURE(VerifyBindings(expected));
+  ASSERT_NO_FATAL_FAILURE(VerifyInstructions(first_));
+  ASSERT_NO_FATAL_FAILURE(VerifyInstructions(second_));
+  ASSERT_NO_FATAL_FAILURE(DestroyExecution(&first_));
+
+  // Shared backing borrows the ordinary device, not the departed producer.
+  for (size_t ordinal = 0; ordinal < bindings_.size(); ++ordinal) {
+    amdf_memory_info_t info = {};
+    info.type = AMDF_STRUCTURE_TYPE_MEMORY_INFO;
+    info.structure_size = sizeof(info);
+    ASSERT_EQ(api_->memory_query_info(bindings_[ordinal].storage.memory, &info),
+              AMDF_STATUS_OK);
+    ASSERT_EQ(info.byte_length, original_info[ordinal].byte_length);
+    ASSERT_EQ(info.source_byte_offset,
+              original_info[ordinal].source_byte_offset);
+    ASSERT_TRUE(amdf_physical_memory_id_is_equal(
+        &info.physical_backing_id,
+        &original_info[ordinal].physical_backing_id));
+    uint64_t address = 0;
     ASSERT_EQ(
-        api_->kernel_queue_wait(queue_, submission, AMDF_TIMEOUT_INFINITE, 0),
+        api_->memory_query_address(bindings_[ordinal].storage.memory, 0,
+                                   AMDF_MEMORY_ADDRESS_XDNA_DMA, &address),
         AMDF_STATUS_OK);
-    amdf_kernel_queue_status_t status = {};
-    status.type = AMDF_STRUCTURE_TYPE_KERNEL_QUEUE_STATUS;
-    status.structure_size = sizeof(status);
-    ASSERT_EQ(api_->kernel_queue_query_status(queue_, &status), AMDF_STATUS_OK);
-    ASSERT_EQ(status.retired_submission, submission);
-    ASSERT_EQ(status.terminal_status, AMDF_STATUS_OK);
-    for (auto& binding : bindings_) {
-      ASSERT_EQ(
-          api_->host_mapping_cache_control(binding.storage.mapping,
-                                           AMDF_HOST_CACHE_OPERATION_INVALIDATE,
-                                           0, kBindingStorageByteLength),
-          AMDF_STATUS_OK);
-      for (size_t i = 0; i < kBindingByteLength; ++i) {
-        ASSERT_EQ(binding.storage.pointer[i], kGuardValue) << "prefix " << i;
-        ASSERT_EQ(binding.storage.pointer[2 * kBindingByteLength + i],
-                  kGuardValue)
-            << "suffix " << i;
-      }
-    }
+    ASSERT_EQ(address + kBindingByteOffset,
+              prepared_bindings_[ordinal].device_address);
+  }
+  for (uint32_t iteration = 0; iteration < 2; ++iteration) {
+    SCOPED_TRACE(iteration);
     for (size_t i = 0; i < kElementCount; ++i) {
-      ASSERT_EQ(iree_unaligned_load_le_u32(bindings_[2].storage.pointer +
-                                           kBindingByteOffset + i * 4),
-                expected[i])
-          << "element " << i;
-      ASSERT_EQ(iree_unaligned_load_le_u32(bindings_[0].storage.pointer +
-                                           kBindingByteOffset + i * 4),
-                values[(i + iteration) % kElementCount]);
-      ASSERT_EQ(iree_unaligned_load_le_u32(bindings_[1].storage.pointer +
-                                           kBindingByteOffset + i * 4),
-                values[(i * 3 + iteration + 5) % kElementCount]);
+      expected[1][i] += 2;
+      expected[0][i] = expected[2][i] * expected[1][i];
+      poisoned[i] = ~expected[0][i];
     }
-    ASSERT_EQ(api_->host_mapping_cache_control(
-                  instructions_.mapping, AMDF_HOST_CACHE_OPERATION_INVALIDATE,
-                  0, instruction_byte_length_),
-              AMDF_STATUS_OK);
-    ASSERT_EQ(std::memcmp(original_instructions.data(), instructions_.pointer,
-                          original_instructions.size()),
-              0);
+    ASSERT_NO_FATAL_FAILURE(WriteBinding(0, poisoned));
+    ASSERT_NO_FATAL_FAILURE(WriteBinding(1, expected[1]));
+    ASSERT_NO_FATAL_FAILURE(RunExecution(
+        second_,
+        iree_hal_amd_xdna_prepared_command_execution(second_.prepared)));
+    ASSERT_NO_FATAL_FAILURE(VerifyBindings(expected));
+    ASSERT_NO_FATAL_FAILURE(VerifyInstructions(second_));
   }
 }
 
