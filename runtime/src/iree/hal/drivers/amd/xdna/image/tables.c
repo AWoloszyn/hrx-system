@@ -367,8 +367,11 @@ static iree_status_t iree_hal_amd_xdna_image_decode_bindings(
                                 "XDNA binding %" PRIhsz " is malformed", i);
       break;
     }
+    // The contract needs one representable range, not storage covering every
+    // permitted offset. The caller checks its actual offset and length when
+    // binding a resource.
     if (binding->minimum_byte_length >
-        UINT64_MAX - binding->maximum_byte_offset) {
+        UINT64_MAX - binding->minimum_byte_offset) {
       status = iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                                 "XDNA binding %" PRIhsz " range overflows", i);
       break;

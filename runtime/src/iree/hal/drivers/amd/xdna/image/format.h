@@ -364,13 +364,14 @@ typedef struct iree_hal_amd_xdna_elf_binding_record_t {
   iree_hal_amd_xdna_elf_binding_access_t access;
   // Required visibility and cache behavior.
   iree_hal_amd_xdna_elf_binding_usage_t usage;
-  // Minimum resource byte length.
+  // Minimum submitted binding-range byte length.
   uint64_t minimum_byte_length;
   // Minimum base-address alignment in bytes.
   uint64_t minimum_alignment;
-  // Minimum legal resource-relative byte offset.
+  // Minimum legal offset of the submitted range within its logical resource.
   uint64_t minimum_byte_offset;
-  // Maximum legal resource-relative byte offset.
+  // Maximum legal offset of the submitted range within its logical resource.
+  // UINT64_MAX adds no upper bound beyond the resource's actual extent.
   uint64_t maximum_byte_offset;
 } iree_hal_amd_xdna_elf_binding_record_t;
 

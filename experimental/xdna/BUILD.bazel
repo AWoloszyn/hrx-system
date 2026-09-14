@@ -84,6 +84,8 @@ xdna_cc_test(
         "//libamdf:headers",
         "//runtime/src/iree/base",
         "//runtime/src/iree/hal",
+        "//runtime/src/iree/hal/drivers/amd/xdna/image:directory",
+        "//runtime/src/iree/hal/drivers/amd/xdna/image:format",
         "//runtime/src/iree/hal/drivers/amd/xdna/image/aie2p:strix_halo",
         "//runtime/src/iree/hal/drivers/amd/xdna/image/testdata:mul_i32",
         "//runtime/src/iree/hal/drivers/amd/xdna/image/testing:aie2p_image_fixture",

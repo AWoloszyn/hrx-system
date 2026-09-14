@@ -8,10 +8,13 @@
 
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "experimental/xdna/executable.h"
 #include "iree/hal/drivers/amd/xdna/image/aie2p/strix_halo.h"
+#include "iree/hal/drivers/amd/xdna/image/directory.h"
+#include "iree/hal/drivers/amd/xdna/image/format.h"
 #include "iree/hal/drivers/amd/xdna/image/testdata/mul_i32.h"
 #include "iree/hal/drivers/amd/xdna/image/testing/aie2p_image_fixture.h"
 #include "iree/testing/gtest.h"
@@ -257,6 +260,67 @@ TEST_F(XdnaPreparedCommandTest, RejectsMalformedBindingRanges) {
 TEST_F(XdnaPreparedCommandTest, RejectsBindingCountMismatch) {
   IREE_EXPECT_STATUS_IS(StatusCode::kInvalidArgument,
                         CreatePrepared(bindings_.size() - 1, bindings_.data()));
+}
+
+TEST_F(XdnaPreparedCommandTest, BoundsUnrestrictedOffsetsByTheActualBuffer) {
+  ByteSequencePtr original_sequence = LoadMulI32Image();
+  iree_hal_amd_xdna_image_directory_t* raw_directory = nullptr;
+  IREE_ASSERT_OK(iree_hal_amd_xdna_image_directory_create(
+      original_sequence.get(), iree_allocator_system(), &raw_directory));
+  std::unique_ptr<iree_hal_amd_xdna_image_directory_t,
+                  decltype(&iree_hal_amd_xdna_image_directory_destroy)>
+      directory(raw_directory, iree_hal_amd_xdna_image_directory_destroy);
+  uint64_t binding_table_offset = 0;
+  for (iree_host_size_t i = 0;
+       i <
+       iree_hal_amd_xdna_image_directory_program_header_count(directory.get());
+       ++i) {
+    const auto* header =
+        iree_hal_amd_xdna_image_directory_program_header(directory.get(), i);
+    if (header->type == IREE_HAL_AMD_XDNA_ELF_PROGRAM_TYPE_BINDINGS) {
+      binding_table_offset = header->file_range.offset;
+    }
+  }
+  ASSERT_NE(binding_table_offset, 0u);
+  const iree_file_toc_t* file = iree_hal_amd_xdna_test_mul_i32_create();
+  const auto* begin = reinterpret_cast<const uint8_t*>(file->data);
+  std::vector<uint8_t> bytes(begin, begin + file->size);
+  iree_byte_span_t record_storage =
+      iree_make_byte_span(bytes.data() + binding_table_offset +
+                              IREE_HAL_AMD_XDNA_ELF_TABLE_HEADER_SIZE,
+                          IREE_HAL_AMD_XDNA_ELF_BINDING_RECORD_SIZE);
+  iree_hal_amd_xdna_elf_binding_record_t contract;
+  IREE_ASSERT_OK(iree_hal_amd_xdna_elf_decode_binding_record(
+      iree_make_const_byte_span(record_storage.data,
+                                record_storage.data_length),
+      &contract));
+  contract.maximum_byte_offset = UINT64_MAX;
+  IREE_ASSERT_OK(
+      iree_hal_amd_xdna_elf_encode_binding_record(&contract, record_storage));
+  ByteSequencePtr sequence = MakeOwnedByteSequence(bytes);
+  iree_hal_amd_xdna_aie2p_target_t target;
+  IREE_ASSERT_OK(
+      iree_hal_amd_xdna_aie2p_strix_halo_target_initialize(1, &target));
+  iree_hal_executable_t* executable = nullptr;
+  IREE_ASSERT_OK(iree_hal_amd_xdna_executable_create(
+      &queue_family_, sequence.get(), &target, iree_allocator_system(),
+      &executable));
+  iree_hal_executable_release(executable_);
+  executable_ = executable;
+
+  const iree_device_size_t offset =
+      kBufferStorageByteLength - kBindingByteLengths[0];
+  bindings_[0].buffer_ref.offset = offset;
+  bindings_[0].memory_byte_offset += offset;
+  bindings_[0].device_address += offset;
+  IREE_ASSERT_OK(CreatePrepared());
+  DestroyPrepared();
+
+  // The image permits this offset, but the selected range exceeds its buffer.
+  ++bindings_[0].buffer_ref.offset;
+  IREE_EXPECT_STATUS_IS(StatusCode::kOutOfRange, CreatePrepared());
+  EXPECT_EQ(prepared_command_, nullptr);
+  for (uint8_t byte : instructions_) EXPECT_EQ(byte, 0xCC);
 }
 
 TEST_F(XdnaPreparedCommandTest, EnforcesBindingAccess) {

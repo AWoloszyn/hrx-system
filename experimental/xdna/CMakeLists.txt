@@ -112,6 +112,8 @@ iree_cc_test(
     iree::base
     iree::hal
     iree::hal::drivers::amd::xdna::image::aie2p::strix_halo
+    iree::hal::drivers::amd::xdna::image::directory
+    iree::hal::drivers::amd::xdna::image::format
     iree::hal::drivers::amd::xdna::image::testdata::mul_i32
     iree::hal::drivers::amd::xdna::image::testing::aie2p_image_fixture
     iree::testing::gtest

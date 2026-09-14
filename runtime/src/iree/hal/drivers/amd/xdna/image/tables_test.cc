@@ -551,9 +551,32 @@ TEST(ImageTablesTest, RejectsMalformedBindings) {
     std::vector<uint8_t> bytes = make_valid_image();
     iree_unaligned_store_le_u64(bytes.data() + first_binding_offset + 24,
                                 UINT64_MAX);
+    iree_unaligned_store_le_u64(bytes.data() + first_binding_offset + 40, 1);
     iree_unaligned_store_le_u64(bytes.data() + first_binding_offset + 48, 1);
     expect_status(open_tables_status(bytes), StatusCode::kOutOfRange,
                   "range overflows");
+  }
+}
+
+TEST(ImageTablesTest, AcceptsBindingOffsetBoundsWithRepresentableRanges) {
+  const uint32_t binding_offset =
+      kBindingOffset + IREE_HAL_AMD_XDNA_ELF_TABLE_HEADER_SIZE;
+  for (uint64_t minimum_offset : {UINT64_C(0), UINT64_MAX - 64}) {
+    std::vector<uint8_t> bytes = make_valid_image();
+    iree_unaligned_store_le_u64(bytes.data() + binding_offset + 40,
+                                minimum_offset);
+    iree_unaligned_store_le_u64(bytes.data() + binding_offset + 48, UINT64_MAX);
+    DirectoryPtr directory = open_directory(bytes);
+    iree_hal_amd_xdna_image_tables_t* raw_tables = nullptr;
+    IREE_ASSERT_OK(iree_hal_amd_xdna_image_tables_create(
+        directory.get(), iree_allocator_system(), &raw_tables));
+    TablesPtr tables(raw_tables);
+    const auto* binding =
+        iree_hal_amd_xdna_image_tables_binding(tables.get(), 0);
+    ASSERT_NE(binding, nullptr);
+    EXPECT_EQ(binding->minimum_byte_length, 64u);
+    EXPECT_EQ(binding->minimum_byte_offset, minimum_offset);
+    EXPECT_EQ(binding->maximum_byte_offset, UINT64_MAX);
   }
 }
 
