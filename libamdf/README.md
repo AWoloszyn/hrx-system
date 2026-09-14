@@ -8,7 +8,10 @@ scheduling, and memory policy in the calling runtime.
 The [memory design](docs/memory.md) describes the scope-based fabric contract,
 resource and address lifetimes, and CPU/GPU/NPU caller scenarios. It defines the
 selected design; the implementation overview below describes available provider
-paths rather than qualification of every design capability.
+paths rather than qualification of every design capability. The
+[XDNA execution contract](docs/xdna.md) follows instruction storage and native
+submission through Linux DRM and Windows MCDM, separating platform requirements
+from HAL-owned executable and scheduling policy.
 
 The base public surface is `include/amdf/amdf.h`. `amdf_query_api` negotiates an
 ABI version and returns an immutable API table. Optional family surfaces in
@@ -91,8 +94,8 @@ ELF loading, PDI construction, relocation, argument layout and array scheduling
 remain above libamdf. Instruction addresses and lengths satisfy the endpoint's
 cached execution limits; submission does not read or modify instruction bytes.
 
-The qualified NPU5 path exposes a kernel-mediated XDNA queue with one instruction
-range per submission and one unretired submission at a time. Submission is a
+The NPU4 and NPU5 profiles expose kernel-mediated XDNA queues with one instruction
+range per submission and one unretired submission per queue. Submission is a
 bounded native publication call: it performs no allocation, transaction
 parsing, lowering, binding resolution, command transcription, retry, sleep, or
 host wait. The queue owns mandatory platform packet storage. Status queries and
