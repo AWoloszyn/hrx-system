@@ -13,12 +13,9 @@ using iree_hal_streaming_any_ptr_t = uint64_t;
 using iree_hal_streaming_buffer_table_t = hrx_buffer_table_t;
 
 #include <algorithm>
-#include <condition_variable>
 #include <cstdint>
-#include <mutex>
 #include <numeric>
 #include <random>
-#include <thread>
 #include <vector>
 
 #include "iree/base/api.h"
@@ -125,38 +122,6 @@ struct EntryCallbackState {
   int call_count;
 };
 
-class TestPreparationState {
- public:
-  bool TryAcquire() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (is_closing_) return false;
-    ++active_count_;
-    return true;
-  }
-
-  void Release() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    --active_count_;
-    if (active_count_ == 0) notification_.notify_all();
-  }
-
-  void BeginClose() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    is_closing_ = true;
-  }
-
-  void AwaitIdle() {
-    std::unique_lock<std::mutex> lock(mutex_);
-    notification_.wait(lock, [this] { return active_count_ == 0; });
-  }
-
- private:
-  std::mutex mutex_;
-  std::condition_variable notification_;
-  size_t active_count_ = 0;
-  bool is_closing_ = false;
-};
-
 static hrx_status_t AcceptEntryCallback(const hrx_buffer_table_entry_t* entry,
                                         size_t offset, void* user_data) {
   auto* state = static_cast<EntryCallbackState*>(user_data);
@@ -173,25 +138,6 @@ static hrx_status_t RejectEntryCallback(const hrx_buffer_table_entry_t* entry,
   (void)user_data;
   return hrx_make_status(HRX_STATUS_FAILED_PRECONDITION,
                          "entry is unavailable");
-}
-
-static hrx_status_t AcquirePreparationCallback(
-    const hrx_buffer_table_entry_t* entry, size_t offset, void* user_data) {
-  (void)offset;
-  (void)user_data;
-  auto* state = static_cast<TestPreparationState*>(entry->user_data);
-  return state->TryAcquire() ? hrx_ok_status()
-                             : hrx_make_status(HRX_STATUS_FAILED_PRECONDITION,
-                                               "allocation is closing");
-}
-
-static hrx_status_t ClosePreparationCallback(
-    const hrx_buffer_table_entry_t* entry, size_t offset, void* user_data) {
-  (void)offset;
-  (void)user_data;
-  auto* state = static_cast<TestPreparationState*>(entry->user_data);
-  state->BeginClose();
-  return hrx_ok_status();
 }
 
 // Helper to create a dummy buffer with the given device pointer.
@@ -955,87 +901,6 @@ TEST(BufferTableTest, RejectedRemovalDoesNotReserveOrRemove) {
       iree_hal_streaming_buffer_table_remove(table, buffer->device_ptr));
   iree_hal_streaming_buffer_table_free(table);
   FreeDummyBuffer(buffer, allocator);
-}
-
-TEST(BufferTableTest, ClosingOneEntryDoesNotBlockAnotherEntry) {
-  iree_allocator_t allocator = iree_allocator_system();
-  iree_hal_streaming_buffer_table_t* table = nullptr;
-  IREE_ASSERT_OK(iree_hal_streaming_buffer_table_allocate(allocator, &table));
-
-  hrx_buffer_t first_buffer = nullptr;
-  IREE_ASSERT_OK(iree_allocator_malloc(allocator, sizeof(*first_buffer),
-                                       (void**)&first_buffer));
-  memset(first_buffer, 0, sizeof(*first_buffer));
-  iree_atomic_ref_count_init(&first_buffer->ref_count);
-  first_buffer->size = 4096;
-  hrx_buffer_t second_buffer = nullptr;
-  IREE_ASSERT_OK(iree_allocator_malloc(allocator, sizeof(*second_buffer),
-                                       (void**)&second_buffer));
-  memset(second_buffer, 0, sizeof(*second_buffer));
-  iree_atomic_ref_count_init(&second_buffer->ref_count);
-  second_buffer->size = 4096;
-
-  constexpr uint64_t kFirstPointer = UINT64_C(0x100000000);
-  constexpr uint64_t kSecondPointer = UINT64_C(0x200000000);
-  TestPreparationState first_state;
-  TestPreparationState second_state;
-  IREE_ASSERT_OK(BufferTableStatus(
-      hrx_buffer_table_insert(table, kFirstPointer, /*host_ptr=*/nullptr,
-                              first_buffer->size, first_buffer, &first_state)));
-  IREE_ASSERT_OK(BufferTableStatus(hrx_buffer_table_insert(
-      table, kSecondPointer, /*host_ptr=*/nullptr, second_buffer->size,
-      second_buffer, &second_state)));
-
-  hrx_buffer_table_retained_ref_t first_ref = {};
-  IREE_ASSERT_OK(BufferTableStatus(hrx_buffer_table_find_range_retain_if(
-      table, kFirstPointer, /*size=*/8, AcquirePreparationCallback,
-      /*callback_user_data=*/nullptr, &first_ref)));
-
-  std::mutex phase_mutex;
-  std::condition_variable phase_notification;
-  bool first_entry_removed = false;
-  hrx_status_t close_status = hrx_ok_status();
-  std::thread close_thread([&] {
-    hrx_buffer_table_entry_t removed_entry = {};
-    close_status = hrx_buffer_table_remove_reserved_if(
-        table, kFirstPointer, ClosePreparationCallback,
-        /*callback_user_data=*/nullptr, &removed_entry,
-        /*out_offset=*/nullptr);
-    {
-      std::lock_guard<std::mutex> lock(phase_mutex);
-      first_entry_removed = true;
-    }
-    phase_notification.notify_all();
-    if (hrx_status_is_ok(close_status)) {
-      first_state.AwaitIdle();
-      hrx_buffer_table_cancel_reserved_insert(table);
-    }
-  });
-
-  {
-    std::unique_lock<std::mutex> lock(phase_mutex);
-    phase_notification.wait(lock, [&] { return first_entry_removed; });
-  }
-  hrx_buffer_table_retained_ref_t second_ref = {};
-  hrx_status_t second_lookup_status = hrx_buffer_table_find_range_retain_if(
-      table, kSecondPointer, /*size=*/8, AcquirePreparationCallback,
-      /*callback_user_data=*/nullptr, &second_ref);
-  if (hrx_status_is_ok(second_lookup_status)) {
-    second_state.Release();
-    hrx_buffer_release(second_ref.buffer);
-  }
-
-  first_state.Release();
-  hrx_buffer_release(first_ref.buffer);
-  close_thread.join();
-  IREE_EXPECT_OK(BufferTableStatus(close_status));
-  IREE_EXPECT_OK(BufferTableStatus(second_lookup_status));
-
-  IREE_ASSERT_OK(
-      BufferTableStatus(hrx_buffer_table_remove(table, kSecondPointer)));
-  hrx_buffer_release(first_buffer);
-  hrx_buffer_release(second_buffer);
-  iree_hal_streaming_buffer_table_free(table);
 }
 
 TEST(BufferTableTest, MixedOperations) {

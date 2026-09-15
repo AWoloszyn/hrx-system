@@ -25,6 +25,17 @@ hrx_cc_library(
 )
 
 hrx_cc_library(
+    name = "allocation_preparation",
+    srcs = ["allocation_preparation.c"],
+    hdrs = ["allocation_preparation.h"],
+    includes = [".."],
+    deps = [
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/threading",
+    ],
+)
+
+hrx_cc_library(
     name = "execution_resource",
     srcs = ["execution_resource.c"],
     hdrs = ["execution_resource.h"],
@@ -101,6 +112,7 @@ hrx_cc_library(
     ],
     textual_hdrs = ["//build_tools/amdgpu:elf_machine_map.inl"],
     deps = [
+        ":allocation_preparation",
         ":amdgpu_architecture",
         ":execution_resource",
         ":function_attributes",
@@ -124,6 +136,16 @@ hrx_cc_test(
     srcs = ["amdgpu_architecture_test.cc"],
     deps = [
         ":amdgpu_architecture",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+hrx_cc_test(
+    name = "allocation_preparation_test",
+    srcs = ["allocation_preparation_test.cc"],
+    deps = [
+        ":allocation_preparation",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
     ],

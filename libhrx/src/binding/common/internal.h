@@ -7,6 +7,7 @@
 #ifndef IREE_EXPERIMENTAL_STREAMING_INTERNAL_H_
 #define IREE_EXPERIMENTAL_STREAMING_INTERNAL_H_
 
+#include "common/allocation_preparation.h"
 #include "common/event_timestamp_pool.h"
 #include "common/execution_resource.h"
 #include "common/fat_binary.h"
@@ -1027,17 +1028,8 @@ typedef struct iree_hal_streaming_buffer_t {
   // True when the allocation was created by hipMallocManaged.
   bool is_managed;
 
-  // Serializes operation preparation admission and allocation closure.
-  iree_slim_mutex_t preparation_mutex;
-
-  // Wakes allocation teardown after the final admitted preparation completes.
-  iree_notification_t preparation_notification;
-
-  // Number of admitted operations not yet recorded or rejected.
-  iree_host_size_t active_preparation_count;
-
-  // True while the allocation is removed from public lookup for teardown.
-  bool is_closing;
+  // Coordinates operation preparation leases with allocation teardown.
+  iree_hal_streaming_allocation_preparation_t preparation;
 
   // Number of managed-memory metadata pages tracked for this allocation.
   iree_host_size_t managed_page_count;
