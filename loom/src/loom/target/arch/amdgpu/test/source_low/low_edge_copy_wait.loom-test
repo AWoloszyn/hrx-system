@@ -117,3 +117,46 @@ low.func.def target<amdgpu.rdna3.core>(@target) @packed_edge_preserves_coalesced
   s_waitcnt vmcnt(63) lgkmcnt(0)
   v_add_u32 v0, v4, v0
   s_endpgm
+
+// ====
+// RUN: emit amdgpu-assembly @successor_argument_reuses_store_base strategy=source amdgpu.sgpr=6 fixed=%address:physical_register:0:1 fixed=%value:physical_register:1:1 fixed=%store_base:physical_register:0:2 fixed=%first_base:physical_register:2:2 fixed=%second_base:physical_register:4:2
+
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @successor_argument_reuses_store_base(%address: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr>, %store_base: reg<amdgpu.sgpr x2>, %first_base: reg<amdgpu.sgpr x2>, %second_base: reg<amdgpu.sgpr x2>, %condition: reg<amdgpu.scc>) asm {
+  global_store_b32_saddr %address, %value, %store_base
+  low.cond_br %condition, ^first, ^second : reg<amdgpu.scc>
+^first:
+  low.br ^consume(%first_base: reg<amdgpu.sgpr x2>)
+^second:
+  low.br ^consume(%second_base: reg<amdgpu.sgpr x2>)
+^consume(%joined_base: reg<amdgpu.sgpr x2>):
+  global_store_b32_saddr %address, %value, %joined_base {offset = 4}
+  global_store_b32_saddr %address, %value, %first_base {offset = 8}
+  global_store_b32_saddr %address, %value, %second_base {offset = 12}
+  return
+}
+
+// A successor argument has no defining schedule node. Its allocation reuses
+// an earlier store's leased scalar pair across a diamond. Both incoming pairs
+// remain live at the join, so neither can alias the argument. Each edge copy
+// must finish the first store before overwriting its pair.
+// ----
+  global_store_b32 v0, v1, s[0:1] offset:0
+  s_cbranch_scc0 .Lbb2
+.Lbb1:
+  s_waitcnt_vscnt vscnt(0)
+  s_mov_b32 s0, s2
+  s_mov_b32 s1, s3
+  s_branch .Lbb3
+.Lbb2:
+  s_waitcnt_vscnt vscnt(0)
+  s_mov_b32 s0, s4
+  s_mov_b32 s1, s5
+.Lbb3:
+  s_waitcnt_vscnt vscnt(0)
+  global_store_b32 v0, v1, s[0:1] offset:4
+  global_store_b32 v0, v1, s[2:3] offset:8
+  global_store_b32 v0, v1, s[4:5] offset:12
+  s_waitcnt_vscnt vscnt(0)
+  s_endpgm

@@ -202,18 +202,29 @@ static bool loom_low_allocation_try_packet_at_program_point(
   *out_scheduled_ordinal = LOOM_LOW_STORAGE_LEASE_ORDINAL_NONE;
 
   const loom_low_schedule_table_t* schedule = state->lease_table->schedule;
-  for (iree_host_size_t i = 0; i < liveness->block_count; ++i) {
-    const loom_liveness_block_info_t* block_info = &liveness->blocks[i];
-    if (program_point < block_info->start_point ||
-        program_point >= block_info->end_point) {
-      continue;
+  // Liveness retains ordered, disjoint block extents. Locate the first extent
+  // ending after the point, then exclude the gap before its start. This also
+  // excludes empty extents without scanning preceding blocks for every lease.
+  iree_host_size_t lower = 0;
+  iree_host_size_t upper = liveness->block_count;
+  while (lower < upper) {
+    const iree_host_size_t middle = lower + (upper - lower) / 2;
+    if (liveness->blocks[middle].end_point <= program_point) {
+      lower = middle + 1;
+    } else {
+      upper = middle;
     }
+  }
+  if (lower < liveness->block_count) {
+    const loom_liveness_block_info_t* block_info = &liveness->blocks[lower];
+    if (program_point < block_info->start_point) return false;
     const uint32_t scheduled_ordinal = program_point - block_info->start_point;
-    if (scheduled_ordinal >= schedule->blocks[i].scheduled_node_count) {
+    if (scheduled_ordinal >= schedule->blocks[lower].scheduled_node_count) {
       return false;
     }
     const uint64_t packet_index =
-        (uint64_t)schedule->blocks[i].scheduled_node_start + scheduled_ordinal;
+        (uint64_t)schedule->blocks[lower].scheduled_node_start +
+        scheduled_ordinal;
     if (packet_index >= schedule->scheduled_node_count ||
         packet_index > IREE_HOST_SIZE_MAX) {
       return false;
@@ -225,7 +236,7 @@ static bool loom_low_allocation_try_packet_at_program_point(
     }
     *out_packet_index = (iree_host_size_t)packet_index;
     *out_node_index = node_index;
-    *out_block_index = (uint32_t)i;
+    *out_block_index = (uint32_t)lower;
     *out_scheduled_ordinal = scheduled_ordinal;
     return true;
   }
