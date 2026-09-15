@@ -174,15 +174,11 @@ loom_low_memory_space_t loom_low_memory_access_normalize_space(
 bool loom_low_memory_access_spaces_may_alias(loom_low_memory_space_t left,
                                              loom_low_memory_space_t right);
 
-// Builds the conservative low access summary represented by descriptor effect
-// |effect|. The returned summary has memory-space precision only.
-loom_low_memory_access_summary_t loom_low_memory_access_summary_from_effect(
-    const loom_low_effect_t* effect);
-
-// Builds a conservative synthetic summary for structural low ops whose traits
-// describe memory behavior but whose descriptors are unavailable or absent.
-loom_low_memory_access_summary_t loom_low_memory_access_summary_synthetic(
-    loom_low_memory_space_t memory_space);
+// Returns an immutable, process-lifetime summary with normalized memory-space
+// precision only. Descriptor and structural effects without a more precise
+// access summary share these records without allocating or copying payloads.
+const loom_low_memory_access_summary_t*
+loom_low_memory_access_summary_for_space(loom_low_memory_space_t memory_space);
 
 // Returns true when two summaries must be conservatively treated as possibly
 // touching the same memory.
