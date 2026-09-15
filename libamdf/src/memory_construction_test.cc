@@ -644,8 +644,9 @@ TEST_F(MemoryConstructionTest,
                     : i < prepared_count;
         EXPECT_EQ(devices[i].create_call_count, prepared ? 1u : 0u);
       }
-      if (memory != sentinel)
+      if (memory != sentinel) {
         EXPECT_EQ(amdf_memory_destroy(memory), AMDF_STATUS_OK);
+      }
       EXPECT_EQ(allocations.live_count, 0u);
     }
   }

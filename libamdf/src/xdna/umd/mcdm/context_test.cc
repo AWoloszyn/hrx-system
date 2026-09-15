@@ -84,7 +84,9 @@ FakeCreateContextVirtual(D3DKMT_CREATECONTEXTVIRTUAL* create) {
   const uint32_t cookie = create->hContext - 0x30;
   const bool metadata =
       current_state->driver_version == UINT64_C(0x0020000000CB00F0);
-  if (metadata) EXPECT_EQ(create->PrivateDriverDataSize, 272u);
+  if (metadata) {
+    EXPECT_EQ(create->PrivateDriverDataSize, 272u);
+  }
   std::memcpy(static_cast<uint8_t*>(create->pPrivateDriverData) +
                   (metadata ? 0x30 : 0x40),
               &cookie, sizeof(cookie));

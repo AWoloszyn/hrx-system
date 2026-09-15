@@ -230,9 +230,12 @@ TEST_F(XdnaEndpointTest, RejectsMalformedOutputWithoutMutation) {
 class XdnaMemoryDiscoveryTest : public XdnaEndpointTest {
  protected:
   void TearDown() override {
-    if (mapping_)
+    if (mapping_) {
       ASSERT_EQ(api_->host_mapping_destroy(mapping_), AMDF_STATUS_OK);
-    if (memory_) ASSERT_EQ(api_->memory_destroy(memory_), AMDF_STATUS_OK);
+    }
+    if (memory_) {
+      ASSERT_EQ(api_->memory_destroy(memory_), AMDF_STATUS_OK);
+    }
     XdnaEndpointTest::TearDown();
   }
 

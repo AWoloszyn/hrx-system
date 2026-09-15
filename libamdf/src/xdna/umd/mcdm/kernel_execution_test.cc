@@ -230,8 +230,9 @@ class WindowsXdnaKernelExecutionTest
   }
 
   void TearDown() override {
-    if (memory_ != nullptr)
+    if (memory_ != nullptr) {
       EXPECT_EQ(amdf_xdna_umd_memory_destroy(memory_), AMDF_STATUS_OK);
+    }
     EXPECT_EQ(amdf_windows_xdna_kernel_execution_prepare_context_destroy(
                   context_.kernel_execution),
               AMDF_STATUS_OK);

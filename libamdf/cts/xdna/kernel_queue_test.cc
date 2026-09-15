@@ -33,14 +33,21 @@ std::array<uint8_t, 64> MakeNoOpTransaction() {
 class XdnaKernelQueueTest : public XdnaContextFixture {
  protected:
   void TearDown() override {
-    if (queue_) EXPECT_EQ(api_->kernel_queue_destroy(queue_), AMDF_STATUS_OK);
-    if (mapping_)
+    if (queue_) {
+      EXPECT_EQ(api_->kernel_queue_destroy(queue_), AMDF_STATUS_OK);
+    }
+    if (mapping_) {
       EXPECT_EQ(api_->host_mapping_destroy(mapping_), AMDF_STATUS_OK);
-    if (memory_) EXPECT_EQ(api_->memory_destroy(memory_), AMDF_STATUS_OK);
-    if (sibling_.memory)
+    }
+    if (memory_) {
+      EXPECT_EQ(api_->memory_destroy(memory_), AMDF_STATUS_OK);
+    }
+    if (sibling_.memory) {
       EXPECT_EQ(api_->memory_destroy(sibling_.memory), AMDF_STATUS_OK);
-    if (sibling_.context)
+    }
+    if (sibling_.context) {
       EXPECT_EQ(xdna_api_->context_destroy(sibling_.context), AMDF_STATUS_OK);
+    }
     XdnaContextFixture::TearDown();
   }
 

@@ -31,10 +31,12 @@ class LinuxEndpointTest : public ::testing::Test {
   void TearDown() override {
     EXPECT_EQ(amdf_linux_file_close(&first), AMDF_STATUS_OK);
     EXPECT_EQ(amdf_linux_file_close(&second), AMDF_STATUS_OK);
-    if (endpoint)
+    if (endpoint) {
       EXPECT_EQ(amdf_platform_endpoint_close(endpoint), AMDF_STATUS_OK);
-    if (instance)
+    }
+    if (instance) {
       EXPECT_EQ(amdf_platform_instance_destroy(instance), AMDF_STATUS_OK);
+    }
   }
 
   // Instance owned until the test has released all native files.

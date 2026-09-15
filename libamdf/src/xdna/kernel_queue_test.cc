@@ -132,7 +132,9 @@ class XdnaKernelQueueTest : public ::testing::Test {
 
   void TearDown() override {
     context.native.queue.progress = context.native.queue.submitted;
-    if (queue) EXPECT_EQ(amdf_kernel_queue_destroy(queue), AMDF_STATUS_OK);
+    if (queue) {
+      EXPECT_EQ(amdf_kernel_queue_destroy(queue), AMDF_STATUS_OK);
+    }
     EXPECT_EQ(amdf_child_tracker_count(&memory->children), 0u);
     amdf_free(amdf_allocator_system(), memory);
     EXPECT_EQ(amdf_child_tracker_count(&device.base.children), 0u);

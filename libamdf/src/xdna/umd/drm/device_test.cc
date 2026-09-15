@@ -73,13 +73,16 @@ class LinuxXdnaDeviceTest : public ::testing::TestWithParam<ExecutionSupport> {
   void TearDown() override {
     std::cout << "Release host views and memory" << std::endl;
     for (auto* value : mappings) {
-      if (value)
+      if (value) {
         EXPECT_EQ(amdf_xdna_umd_host_mapping_destroy(value), AMDF_STATUS_OK);
+      }
     }
     if (imported_memory) {
       EXPECT_EQ(amdf_xdna_umd_memory_destroy(imported_memory), AMDF_STATUS_OK);
     }
-    if (memory) EXPECT_EQ(amdf_xdna_umd_memory_destroy(memory), AMDF_STATUS_OK);
+    if (memory) {
+      EXPECT_EQ(amdf_xdna_umd_memory_destroy(memory), AMDF_STATUS_OK);
+    }
     if (external_memory.release != nullptr) {
       external_memory.release(external_memory.release_user_data,
                               external_memory.type, external_memory.payload);
@@ -90,11 +93,15 @@ class LinuxXdnaDeviceTest : public ::testing::TestWithParam<ExecutionSupport> {
         EXPECT_EQ(amdf_xdna_umd_context_destroy(value), AMDF_STATUS_OK);
       }
     }
-    if (device) EXPECT_EQ(amdf_xdna_umd_device_destroy(device), AMDF_STATUS_OK);
-    if (endpoint)
+    if (device) {
+      EXPECT_EQ(amdf_xdna_umd_device_destroy(device), AMDF_STATUS_OK);
+    }
+    if (endpoint) {
       EXPECT_EQ(amdf_platform_endpoint_close(endpoint), AMDF_STATUS_OK);
-    if (instance)
+    }
+    if (instance) {
       EXPECT_EQ(amdf_platform_instance_destroy(instance), AMDF_STATUS_OK);
+    }
   }
 
   // Native instance retained across early assertion exits.
