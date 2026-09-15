@@ -804,13 +804,39 @@ TEST_F(LowAsmParserTest, RejectsExplicitTiedResultMismatch) {
   const auto& diagnostics = ParseExpectErrors(
       "low.func.def target<test.low.core> @tied_mismatch() asm {\n"
       "  %c0 = test.const.i32 7\n"
-      "  %bad = test.tied.any %c0 : reg<test.i64>\n"
+      "  %bad = test.tied.any %c0 : %c0 as reg<test.i64>\n"
       "}\n");
   const CapturedDiagnostic* diagnostic = FindDiagnostic(
       capture_, loom_error_def_lookup(LOOM_ERROR_DOMAIN_PARSE, 34));
   ASSERT_NE(diagnostic, nullptr);
   EXPECT_EQ(GetStringParam(*diagnostic, 0),
             "result type annotation must match tied operand type");
+  (void)diagnostics;
+}
+
+TEST_F(LowAsmParserTest, RejectsTieToValueOutsidePacketOperands) {
+  const auto& diagnostics = ParseExpectErrors(
+      "low.func.def target<test.low.core> @invalid_tie("
+      "%outside: reg<test.i32>) asm {\n"
+      "  %c0 = test.const.i32 7\n"
+      "  %bad = test.tied.any %c0 : %outside as reg<test.i32>\n"
+      "}\n");
+  const CapturedDiagnostic* diagnostic = FindDiagnostic(
+      capture_, loom_error_def_lookup(LOOM_ERROR_DOMAIN_PARSE, 1));
+  ASSERT_NE(diagnostic, nullptr);
+  EXPECT_EQ(GetStringParam(*diagnostic, 0), "outside");
+  (void)diagnostics;
+}
+
+TEST_F(LowAsmParserTest, RejectsTiedResultWithoutType) {
+  const auto& diagnostics = ParseExpectErrors(
+      "low.func.def target<test.low.core> @invalid_tie("
+      "%src: reg<test.i32>) asm {\n"
+      "  %bad = test.tied.any %src : %src\n"
+      "}\n");
+  const CapturedDiagnostic* diagnostic = FindDiagnostic(
+      capture_, loom_error_def_lookup(LOOM_ERROR_DOMAIN_PARSE, 3));
+  ASSERT_NE(diagnostic, nullptr);
   (void)diagnostics;
 }
 

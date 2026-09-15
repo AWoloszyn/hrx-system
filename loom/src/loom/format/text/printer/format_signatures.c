@@ -91,7 +91,7 @@ iree_status_t loom_print_result_type_list(
 
     const loom_tied_result_t* tied = loom_op_tied_results(op);
     bool is_tied = false;
-    for (uint8_t t = 0; t < op->tied_result_count; ++t) {
+    for (uint16_t t = 0; t < op->tied_result_count; ++t) {
       if (tied[t].result_index == j) {
         if (tied[t].operand_index >= tied_operand_count || !tied_operand_ids) {
           return iree_make_status(

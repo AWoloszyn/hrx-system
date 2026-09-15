@@ -11,6 +11,13 @@
 // package. This interface keeps that boundary explicit: parser/printer code
 // receives packet shapes, build hooks, and print hooks from an environment
 // supplied by the tool or compiler pipeline.
+//
+// Packet result annotations use the canonical result-list syntax after `:`:
+// `reg<...>` defines an independent result and `%operand as reg<...>` defines
+// an ownership tie. An explicit list supplies every result's type and the
+// complete ownership tie set. Without a list, the descriptor supplies both
+// types and default ties. Physical instruction constraints apply in either
+// form; a physical register tie need not consume the source's IR ownership.
 
 #ifndef LOOM_FORMAT_TEXT_LOW_ASM_H_
 #define LOOM_FORMAT_TEXT_LOW_ASM_H_
@@ -116,8 +123,9 @@ typedef struct loom_text_low_asm_diagnostic_t {
 } loom_text_low_asm_diagnostic_t;
 
 typedef enum loom_text_low_asm_statement_kind_e {
-  // Unknown or uninitialized statement kind. Printers may use this to report
-  // that a canonical operation has no lossless low asm spelling.
+  // Unknown or uninitialized statement kind. A valid Low body operation left
+  // unknown by both the descriptor environment and structural vocabulary is
+  // an assembly coverage error.
   LOOM_TEXT_LOW_ASM_STATEMENT_UNKNOWN = 0,
   // Descriptor-backed packet printed as an instruction mnemonic.
   LOOM_TEXT_LOW_ASM_STATEMENT_PACKET = 1,
@@ -159,6 +167,13 @@ enum loom_text_low_asm_structural_build_flag_bits_e {
 };
 typedef uint32_t loom_text_low_asm_structural_build_flags_t;
 
+enum loom_text_low_asm_packet_build_flag_bits_e {
+  // No result annotation was authored. Infer ownership ties from the packet
+  // descriptor. Explicit result annotations instead carry the complete tie set.
+  LOOM_TEXT_LOW_ASM_PACKET_BUILD_FLAG_INFER_TIES = 1u << 0,
+};
+typedef uint32_t loom_text_low_asm_packet_build_flags_t;
+
 typedef struct loom_text_low_asm_structural_attribute_t {
   // Surface attribute name to print in the structural intrinsic dictionary.
   iree_string_view_t name;
@@ -187,6 +202,9 @@ typedef struct loom_text_low_asm_statement_t {
   const loom_value_id_t* results;
   // Number of SSA results in |results|.
   uint16_t result_count;
+  // Ownership ties differ from descriptor inference, requiring a complete
+  // result annotation even when the result types alone could be inferred.
+  bool requires_result_tie_annotation;
   // SSA operands consumed by a packet statement, or return values for returns.
   const loom_value_id_t* operands;
   // Number of SSA values in |operands|.
@@ -208,9 +226,10 @@ typedef struct loom_text_low_asm_statement_t {
 // Contract for descriptor-backed statement descriptions.
 //
 // A describe callback is called after the canonical IR has been verified by the
-// owning low dialect/descriptor registry. It either returns UNKNOWN for a valid
-// operation that has no lossless low asm spelling, or returns a fully
-// well-formed statement:
+// owning low dialect/descriptor registry. It returns UNKNOWN for operations
+// outside its vocabulary, or a fully well-formed statement. Valid Low body
+// operations must have a lossless spelling through this environment or the
+// shared canonical structural vocabulary:
 // - PACKET result/operand counts match |packet| and all result/operand IDs are
 //   valid in the module value table.
 // - PACKET immediate attributes are canonical for |packet|; missing optional
@@ -277,9 +296,11 @@ typedef iree_status_t (*loom_text_low_asm_operand_segment_descriptor_fn_t)(
 typedef iree_status_t (*loom_text_low_asm_build_packet_fn_t)(
     const loom_text_low_asm_environment_state_t* state, loom_builder_t* builder,
     const loom_text_low_asm_packet_descriptor_t* packet,
+    loom_text_low_asm_packet_build_flags_t build_flags,
     const loom_value_id_t* operands, iree_host_size_t operand_count,
     loom_named_attr_slice_t attributes, const loom_type_t* result_types,
-    iree_host_size_t result_count, loom_location_id_t location,
+    iree_host_size_t result_count, const loom_tied_result_t* tied_results,
+    iree_host_size_t tied_result_count, loom_location_id_t location,
     loom_op_t** out_op);
 
 typedef iree_status_t (*loom_text_low_asm_build_return_fn_t)(

@@ -9,6 +9,7 @@
 #include <inttypes.h>
 
 #include "loom/format/text/printer/atoms.h"
+#include "loom/format/text/printer/format_signatures.h"
 #include "loom/format/text/printer/regions.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
@@ -290,7 +291,7 @@ static bool loom_print_low_asm_should_print_immediate_attr(
 static iree_status_t loom_print_low_asm_result_types_require_annotation(
     loom_print_context_t* ctx, const loom_text_low_asm_statement_t* statement,
     bool* out_required) {
-  *out_required = false;
+  *out_required = statement->requires_result_tie_annotation;
   for (uint16_t i = 0; i < statement->result_count; ++i) {
     loom_value_id_t result = statement->results[i];
     bool annotation_required = false;
@@ -573,16 +574,10 @@ static iree_status_t loom_print_low_asm_result_type_annotation(
   }
 
   IREE_RETURN_IF_ERROR(loom_print_emit_cstr(ctx, ":", false));
-  for (uint16_t i = 0; i < statement->result_count; ++i) {
-    if (i > 0) {
-      IREE_RETURN_IF_ERROR(loom_print_emit_cstr(ctx, ",", false));
-    }
-    IREE_RETURN_IF_ERROR(loom_print_space_if_needed(ctx));
-    IREE_RETURN_IF_ERROR(loom_print_type(
-        ctx, loom_module_value_type(ctx->module, statement->results[i])));
-    loom_print_did_write(ctx);
-  }
-  return iree_ok_status();
+  const loom_format_element_t result_list = {0};
+  return loom_print_result_type_list(ctx, statement->op,
+                                     loom_op_vtable(ctx->module, statement->op),
+                                     &result_list);
 }
 
 static iree_status_t loom_print_low_asm_packet(

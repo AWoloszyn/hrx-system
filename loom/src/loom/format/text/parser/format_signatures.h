@@ -16,6 +16,16 @@
 extern "C" {
 #endif
 
+// Parses one body result annotation: a type or `%operand as type`. Records
+// authored ties and their operand source spans in |parsed| without defining
+// result values. Canonical operations and Low assembly share this syntax.
+iree_status_t loom_parse_body_result_type(loom_parser_t* parser,
+                                          const loom_value_id_t* operands,
+                                          iree_host_size_t operand_count,
+                                          uint16_t result_index,
+                                          loom_parsed_op_t* parsed,
+                                          loom_type_t* out_type);
+
 iree_status_t loom_parse_format_result_type(
     loom_parser_t* parser, const loom_op_vtable_t* vtable,
     loom_token_t op_name_token, const loom_format_element_t* element,

@@ -42,10 +42,10 @@ low.func.def target<test.low.core>(@test_target) @partial_register_pair(%ptr: re
 
 test.target<low_core> @test_target
 
-low.func.def target<test.low.core>(@test_target) @type_changing_tied_result_requires_materialization(%src: reg<test.i32>) -> (reg<test.i64>) {
+low.func.def target<test.low.core>(@test_target) @type_changing_tied_result_requires_materialization(%src: reg<test.i32>) -> (reg<test.i64>) asm {
   // ERROR@+1: TARGET/057 {function_name="type_changing_tied_result_requires_materialization", op_name="test.pass.any", result_index="0", result_type="reg<test.i64>", operand_index="0", operand_type="reg<test.i32>"}
-  %changed = low.op<test.pass.any>(%src) : (reg<test.i32>) -> %src as reg<test.i64>
-  low.return %changed : reg<test.i64>
+  %changed = test.pass.any %src : %src as reg<test.i64>
+  return %changed
 }
 
 // ====
@@ -312,4 +312,25 @@ low.func.def target<test.low.core>(@test_target) @branch(%cond: reg<test.i32>) {
   low.return
 ^else:
   low.return
+}
+
+// ====
+
+test.target<low_core> @test_target
+
+// An authored tie consumes its operand even without a descriptor tie.
+low.func.def target<test.low.core>(@test_target) @authored_tie(%lhs: reg<test.i32>, %rhs: reg<test.i32>) -> (reg<test.i32>) asm {
+  %sum = test.add.i32 %lhs, %rhs : %rhs as reg<test.i32>
+  return %sum
+}
+
+// ====
+
+test.target<low_core> @test_target
+
+// An instruction's physical register constraint does not require consuming
+// the source value. Explicit independent results preserve its ownership.
+low.func.def target<test.low.core>(@test_target) @independent_result(%src: reg<test.i32>) -> (reg<test.i32>, reg<test.i32>) asm {
+  %result = test.tied.any %src : reg<test.i32>
+  return %result, %src
 }

@@ -1034,9 +1034,11 @@ static iree_status_t loom_low_descriptor_text_asm_build_tied_results(
 static iree_status_t loom_low_descriptor_text_asm_build_packet(
     const loom_text_low_asm_environment_state_t* state, loom_builder_t* builder,
     const loom_text_low_asm_packet_descriptor_t* packet,
+    loom_text_low_asm_packet_build_flags_t build_flags,
     const loom_value_id_t* operands, iree_host_size_t operand_count,
     loom_named_attr_slice_t attributes, const loom_type_t* result_types,
-    iree_host_size_t result_count, loom_location_id_t location,
+    iree_host_size_t result_count, const loom_tied_result_t* tied_results,
+    iree_host_size_t tied_result_count, loom_location_id_t location,
     loom_op_t** out_op) {
   (void)state;
   const bool operand_count_matches =
@@ -1061,10 +1063,11 @@ static iree_status_t loom_low_descriptor_text_asm_build_packet(
         builder, descriptor_set, descriptor, attributes, result_types[0],
         location, out_op);
   }
-  const loom_tied_result_t* tied_results = NULL;
-  iree_host_size_t tied_result_count = 0;
-  IREE_RETURN_IF_ERROR(loom_low_descriptor_text_asm_build_tied_results(
-      builder, packet, &tied_results, &tied_result_count));
+  if (iree_any_bit_set(build_flags,
+                       LOOM_TEXT_LOW_ASM_PACKET_BUILD_FLAG_INFER_TIES)) {
+    IREE_RETURN_IF_ERROR(loom_low_descriptor_text_asm_build_tied_results(
+        builder, packet, &tied_results, &tied_result_count));
+  }
   return loom_low_build_resolved_descriptor_op(
       builder, descriptor_set, descriptor, operands, operand_count, attributes,
       result_types, result_count, tied_results, tied_result_count, location,
@@ -1258,17 +1261,17 @@ static bool loom_low_descriptor_text_asm_tied_result_equal(
          lhs.has_type_change == rhs.has_type_change;
 }
 
-static iree_status_t loom_low_descriptor_text_asm_validate_tied_results(
-    const loom_text_low_asm_packet_descriptor_t* packet, const loom_op_t* op) {
+static iree_status_t
+loom_low_descriptor_text_asm_tied_results_require_annotation(
+    const loom_text_low_asm_packet_descriptor_t* packet, const loom_op_t* op,
+    bool* out_required) {
+  *out_required = false;
   iree_host_size_t expected_count = 0;
   IREE_RETURN_IF_ERROR(
       loom_low_descriptor_text_asm_tied_result_count(packet, &expected_count));
   if (op->tied_result_count != expected_count) {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "low asm packet '%.*s' expects %" PRIhsz " tied results but op has %u",
-        (int)packet->descriptor_key.size, packet->descriptor_key.data,
-        expected_count, op->tied_result_count);
+    *out_required = true;
+    return iree_ok_status();
   }
 
   const loom_tied_result_t* actual_ties = loom_op_tied_results(op);
@@ -1285,11 +1288,8 @@ static iree_status_t loom_low_descriptor_text_asm_validate_tied_results(
       }
     }
     if (!found) {
-      return iree_make_status(
-          IREE_STATUS_INVALID_ARGUMENT,
-          "low asm packet '%.*s' is missing tied result %u -> operand %u",
-          (int)packet->descriptor_key.size, packet->descriptor_key.data,
-          expected_tie.result_index, expected_tie.operand_index);
+      *out_required = true;
+      return iree_ok_status();
     }
   }
   return iree_ok_status();
@@ -1381,6 +1381,7 @@ static iree_status_t loom_low_descriptor_text_asm_describe_packet(
 
   const loom_value_id_t* results = loom_op_const_results(op);
   const loom_value_id_t* operands = loom_op_const_operands(op);
+  bool requires_result_tie_annotation = false;
   if (is_const) {
     if (op->result_count != 1 || op->operand_count != 0 ||
         op->tied_result_count != 0) {
@@ -1398,7 +1399,8 @@ static iree_status_t loom_low_descriptor_text_asm_describe_packet(
       return iree_ok_status();
     }
     IREE_RETURN_IF_ERROR(
-        loom_low_descriptor_text_asm_validate_tied_results(&packet, op));
+        loom_low_descriptor_text_asm_tied_results_require_annotation(
+            &packet, op, &requires_result_tie_annotation));
   }
 
   *out_statement = (loom_text_low_asm_statement_t){
@@ -1407,6 +1409,7 @@ static iree_status_t loom_low_descriptor_text_asm_describe_packet(
       .packet = packet,
       .results = results,
       .result_count = op->result_count,
+      .requires_result_tie_annotation = requires_result_tie_annotation,
       .operands = operands,
       .operand_count = op->operand_count,
       .attributes = attrs,

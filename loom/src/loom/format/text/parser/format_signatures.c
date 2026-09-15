@@ -81,15 +81,20 @@ static iree_status_t loom_parse_format_append_symbol_result(
 }
 
 static iree_status_t loom_parse_format_resolve_tied_result_operand(
-    loom_parser_t* parser, const loom_parsed_op_t* parsed,
-    loom_token_t ssa_token, uint16_t* out_operand_index) {
+    loom_parser_t* parser, const loom_value_id_t* operands,
+    iree_host_size_t operand_count, loom_token_t ssa_token,
+    uint16_t* out_operand_index) {
   loom_value_id_t operand_id = LOOM_VALUE_ID_INVALID;
   LOOM_PARSE_RESOLVE_VALUE(parser, ssa_token, &operand_id);
 
-  for (uint16_t operand_index = 0; operand_index < parsed->operand_count;
+  for (iree_host_size_t operand_index = 0; operand_index < operand_count;
        ++operand_index) {
-    if (parsed->operand_ids[operand_index] == operand_id) {
-      *out_operand_index = operand_index;
+    if (operands[operand_index] == operand_id) {
+      if (operand_index > UINT16_MAX) {
+        return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                                "tied operand index exceeds uint16_t range");
+      }
+      *out_operand_index = (uint16_t)operand_index;
       return iree_ok_status();
     }
   }
@@ -99,6 +104,44 @@ static iree_status_t loom_parse_format_resolve_tied_result_operand(
   };
   return loom_parser_emit(parser, LOOM_ERR_PARSE_001, params,
                           IREE_ARRAYSIZE(params), ssa_token);
+}
+
+iree_status_t loom_parse_body_result_type(loom_parser_t* parser,
+                                          const loom_value_id_t* operands,
+                                          iree_host_size_t operand_count,
+                                          uint16_t result_index,
+                                          loom_parsed_op_t* parsed,
+                                          loom_type_t* out_type) {
+  if (!loom_tokenizer_at(&parser->tokenizer, LOOM_TOKEN_SSA_VALUE)) {
+    return loom_parse_type(parser, LOOM_TYPE_PARSE_BODY, out_type);
+  }
+
+  const uint32_t errors_before = parser->error_count;
+  loom_token_t ssa_token = loom_tokenizer_next(&parser->tokenizer);
+  if (!loom_tokenizer_try_consume_keyword(&parser->tokenizer, IREE_SV("as"))) {
+    return loom_parser_emit_unexpected_token(
+        parser, ssa_token, IREE_SV("a result type or '%operand as type'"));
+  }
+  uint16_t operand_index = UINT16_MAX;
+  IREE_RETURN_IF_ERROR(loom_parse_format_resolve_tied_result_operand(
+      parser, operands, operand_count, ssa_token, &operand_index));
+  if (parser->error_count > errors_before) return iree_ok_status();
+
+  IREE_RETURN_IF_ERROR(loom_parse_type(parser, LOOM_TYPE_PARSE_BODY, out_type));
+  if (parser->error_count > errors_before) return iree_ok_status();
+
+  loom_type_t operand_type =
+      loom_module_value_type(parser->module, operands[operand_index]);
+  loom_tied_result_t tied = {
+      .result_index = result_index,
+      .operand_index = operand_index,
+      .has_type_change = !loom_type_equal(operand_type, *out_type),
+  };
+  IREE_RETURN_IF_ERROR(
+      loom_parsed_op_add_tied_result(parsed, &parser->parser_arena, tied));
+  return loom_parsed_op_add_field_span(
+      parsed, &parser->parser_arena, LOOM_LOCATION_FIELD_OPERAND, operand_index,
+      ssa_token, ssa_token.line, ssa_token.end_column);
 }
 
 static iree_status_t loom_parse_format_resolve_symbol_tied_result_operand(
@@ -183,50 +226,16 @@ static iree_status_t loom_parse_format_lhs_result_type_list(
       }
     }
 
-    if (loom_tokenizer_at(&parser->tokenizer, LOOM_TOKEN_SSA_VALUE)) {
-      loom_token_t ssa_token = loom_tokenizer_peek(&parser->tokenizer);
-      loom_tokenizer_next(&parser->tokenizer);
-      if (loom_tokenizer_try_consume_keyword(&parser->tokenizer,
-                                             IREE_SV("as"))) {
-        uint16_t operand_index = UINT16_MAX;
-        IREE_RETURN_IF_ERROR(loom_parse_format_resolve_tied_result_operand(
-            parser, parsed, ssa_token, &operand_index));
-        if (parser->error_count > errors_before) {
-          return iree_ok_status();
-        }
-
-        loom_type_t type = {0};
-        IREE_RETURN_IF_ERROR(loom_parse_type(parser, type_mode, &type));
-
-        loom_value_id_t operand_id = parsed->operand_ids[operand_index];
-        loom_type_t operand_type =
-            loom_module_value_type(parser->module, operand_id);
-        loom_tied_result_t tied = {
-            .result_index = result_index,
-            .operand_index = operand_index,
-            .has_type_change = !loom_type_equal(operand_type, type),
-        };
-        IREE_RETURN_IF_ERROR(loom_parsed_op_add_tied_result(
-            parsed, &parser->parser_arena, tied));
-        IREE_RETURN_IF_ERROR(loom_parsed_op_add_field_span(
-            parsed, &parser->parser_arena, LOOM_LOCATION_FIELD_OPERAND,
-            operand_index, ssa_token, ssa_token.line, ssa_token.end_column));
-
-        IREE_RETURN_IF_ERROR(loom_parse_format_assign_lhs_result_type(
-            parser, vtable, op_name_token, parsed, result_index, type));
-      } else {
-        return loom_parser_emit_unexpected_token(
-            parser, ssa_token, IREE_SV("a result type or '%operand as type'"));
-      }
-    } else {
-      loom_type_t type = {0};
-      IREE_RETURN_IF_ERROR(loom_parse_type(parser, type_mode, &type));
-      IREE_RETURN_IF_ERROR(loom_parse_format_assign_lhs_result_type(
-          parser, vtable, op_name_token, parsed, result_index, type));
-    }
+    loom_type_t type = {0};
+    IREE_RETURN_IF_ERROR(loom_parse_body_result_type(
+        parser, parsed->operand_ids, parsed->operand_count, result_index,
+        parsed, &type));
     if (parser->error_count > errors_before) {
       return iree_ok_status();
     }
+    IREE_RETURN_IF_ERROR(loom_parse_format_assign_lhs_result_type(
+        parser, vtable, op_name_token, parsed, result_index, type));
+    if (parser->error_count > errors_before) return iree_ok_status();
     ++result_index;
   }
 
