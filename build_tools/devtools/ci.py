@@ -77,6 +77,8 @@ AMDGPU_DEVICE_BINARY_PREBUILT_OPTIONS = (
     "-DIREE_HAL_AMDGPU_DEVICE_TOOLCHAIN=none",
 )
 BAZEL_COMMANDS = {
+    "iree-bazel-xdna": ("xdna", None),
+    "iree-bazel-xdna-asan": ("xdna", "asan"),
     "iree-bazel-cpu": ("cpu", None),
     "iree-bazel-repository-build": ("repository-build", None),
     "iree-bazel-repository-integration": ("repository-integration", None),
@@ -93,6 +95,8 @@ BAZEL_COMMANDS = {
     "iree-bazel-vulkan": ("vulkan", None),
 }
 CMAKE_COMMANDS = {
+    "iree-cmake-xdna": ("xdna", None),
+    "iree-cmake-xdna-asan": ("xdna", "asan"),
     "iree-cmake-cpu": ("cpu", None),
     "iree-cmake-repository-build": ("repository-build", None),
     "iree-cmake-cpu-asan": ("cpu", "asan"),
@@ -242,6 +246,7 @@ def bazel_configure_step(
     *,
     enabled_loom_targets: tuple[str, ...] | None = None,
     enabled_loom_importers: tuple[str, ...] | None = None,
+    extra_options: tuple[str, ...] = (),
 ) -> CiStep:
     enabled_driver_set = validate_enabled_drivers(enabled_drivers)
     command = ["bazel", "configure"]
@@ -261,7 +266,7 @@ def bazel_configure_step(
         command.append(
             "--//loom/config/import:enable=" + ",".join(enabled_loom_importers)
         )
-    return CiStep("Configure Bazel", dev_command(*command))
+    return CiStep("Configure Bazel", dev_command(*command, *extra_options))
 
 
 def bazel_build_step(
@@ -325,6 +330,7 @@ def cmake_configure_step(
     amdgpu_device_binary_mode: str = "source",
     sanitizer: str | None = None,
     build_tests: bool | None = None,
+    extra_options: tuple[str, ...] = (),
 ) -> CiStep:
     enabled_driver_set = validate_enabled_drivers(enabled_drivers)
     tests_enabled = (
@@ -370,7 +376,9 @@ def cmake_configure_step(
     if sanitizer is not None:
         command.append("-DIREE_ENABLE_ASSERTIONS=ON")
         command.extend(CMAKE_SANITIZER_OPTIONS[sanitizer])
-    return CiStep("Configure CMake", cmake_dev_command(command_name, *command))
+    return CiStep(
+        "Configure CMake", cmake_dev_command(command_name, *command, *extra_options)
+    )
 
 
 def cmake_build_step(
@@ -511,6 +519,32 @@ def cpu_config_steps(targets: tuple[str, ...], config: str) -> list[CiStep]:
             )
         ]
     raise ValueError(f"unknown Bazel sanitizer config: {config}")
+
+
+def xdna_steps(targets: tuple[str, ...], config: str | None) -> list[CiStep]:
+    config_name = f" / {config.upper()}" if config is not None else ""
+    # The ELF consumers need the base runtime, not GPU drivers or ROCr.
+    options = (
+        "--//libamdf/config:enabled=true",
+        "--//libamdf/config:families=xdna",
+        "--//runtime/config/hal:drivers=task",
+    )
+    return [
+        bazel_configure_step(extra_options=options),
+        bazel_build_step(
+            f"Build IREE / XDNA{config_name}",
+            targets,
+            config=config,
+            bazel_options=options,
+        ),
+        bazel_test_step(
+            f"Test IREE / XDNA{config_name}",
+            targets,
+            config=config,
+            test_tag_filters=ci_config.XDNA_BAZEL_TEST_TAG_FILTERS,
+            bazel_options=options,
+        ),
+    ]
 
 
 def amdgpu_build_and_test_steps(
@@ -662,6 +696,53 @@ def cmake_repository_build_steps(command_name: str) -> list[CiStep]:
     ]
 
 
+def cmake_xdna_steps(command_name: str, sanitizer: str | None) -> list[CiStep]:
+    sanitizer_name = f" with {sanitizer.upper()}" if sanitizer is not None else ""
+    package_regex = combine_ctest_regex(
+        ci_config.AMDF_CTEST_REGEX, ci_config.XDNA_CTEST_PACKAGE_REGEX
+    )
+    return [
+        cmake_configure_step(
+            command_name,
+            sanitizer=sanitizer,
+            extra_options=(
+                "-DAMDF_BUILD=ON",
+                "-DAMDF_FAMILY_RDNA=OFF",
+                "-DAMDF_FAMILY_CDNA=OFF",
+                "-DAMDF_FAMILY_XDNA=ON",
+                "-DLOOM_BUILD=OFF",
+            ),
+        ),
+        cmake_build_step(
+            command_name,
+            f"Build IREE CMake XDNA{sanitizer_name}",
+            ci_config.XDNA_CMAKE_BUILD_TARGETS
+            + (
+                cmake_runtime_resource_build_target(
+                    ci_config.XDNA_CTEST_RESOURCE_LABEL
+                ),
+            ),
+        ),
+        cmake_test_step(
+            command_name,
+            f"Test IREE CMake XDNA package tests{sanitizer_name}",
+            regex=package_regex,
+            label_exclude_regex=combine_ctest_regex(
+                ci_config.CTEST_MANUAL_LABEL_EXCLUDE_REGEX,
+                ci_config.CTEST_RESOURCE_LABEL_EXCLUDE_REGEX,
+            ),
+            parallelism=1,
+        ),
+        cmake_test_step(
+            command_name,
+            f"Test IREE CMake XDNA resource tests{sanitizer_name}",
+            label_regex=ci_config.XDNA_CTEST_RESOURCE_LABEL,
+            label_exclude_regex=ci_config.CTEST_MANUAL_LABEL_EXCLUDE_REGEX,
+            parallelism=1,
+        ),
+    ]
+
+
 def cmake_amdgpu_steps(
     command_name: str, sanitizer: str | None, target_selector: str
 ) -> list[CiStep]:
@@ -806,6 +887,8 @@ def cmake_target_steps(
         return cmake_repository_build_steps(command_name)
     if target_group == "amdgpu":
         return cmake_amdgpu_steps(command_name, sanitizer, amdgpu_target_selector)
+    if target_group == "xdna":
+        return cmake_xdna_steps(command_name, sanitizer)
     if target_group == "loom-amdgpu":
         if sanitizer is not None:
             raise ValueError("Loom AMDGPU CMake CI does not support sanitizers")
@@ -986,6 +1069,11 @@ def _steps_from_args(args: argparse.Namespace) -> list[CiStep]:
         )
 
     bazel_target, sanitizer = BAZEL_COMMANDS[args.command]
+    if bazel_target == "xdna":
+        return xdna_steps(
+            tuple(args.target) if args.target else ci_config.XDNA_BAZEL_TARGETS,
+            sanitizer,
+        )
     if bazel_target == "loom-amdgpu":
         if args.target:
             raise ValueError("--target is not supported by Loom AMDGPU CI")

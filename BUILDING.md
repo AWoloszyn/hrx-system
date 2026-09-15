@@ -352,6 +352,7 @@ python build_tools/devtools/ci.py iree-bazel-amdgpu --amdgpu-target gfx942 --kee
 python build_tools/devtools/ci.py iree-bazel-amdgpu-asan --amdgpu-target gfx942 --keep-going
 python build_tools/devtools/ci.py iree-bazel-amdgpu-tsan --amdgpu-target gfx942 --keep-going
 python build_tools/devtools/ci.py iree-bazel-amdgpu-ubsan --amdgpu-target gfx942 --keep-going
+python build_tools/devtools/ci.py iree-bazel-xdna-asan
 
 python build_tools/devtools/ci.py iree-cmake-cpu --keep-going
 python build_tools/devtools/ci.py iree-cmake-cpu-sanitizers --keep-going
@@ -359,6 +360,7 @@ python build_tools/devtools/ci.py iree-cmake-vulkan --keep-going
 python build_tools/devtools/ci.py iree-cmake-vulkan-sanitizers --keep-going
 python build_tools/devtools/ci.py iree-cmake-amdgpu --amdgpu-target gfx942 --keep-going
 python build_tools/devtools/ci.py iree-cmake-amdgpu-sanitizers --amdgpu-target gfx942 --keep-going
+python build_tools/devtools/ci.py iree-cmake-xdna-asan
 ```
 
 AMDGPU commands default to `gfx942`. `--amdgpu-target` accepts an exact target
@@ -366,6 +368,16 @@ or family selector and applies it to both the runtime HAL target set and Loom's
 `iree_hal`-derived compiler target set. Bazel AMDGPU commands build both source
 trees, then run the union of tests that require the AMDGPU HAL at build time or
 an AMD GPU at execution time.
+
+XDNA commands configure an XDNA-only libamdf and include its CTS and the
+experimental ELF execution consumers. They need the native XDNA driver and
+access to the assigned NPU, but not ROCr, XRT, or an AMDGPU device compiler.
+Both Bazel and CMake select the existing XDNA resource metadata and serialize
+native tests through the shared AMD resource group. The commands without the
+`-asan` suffix use the ordinary host configuration, including on Windows.
+These commands do not provision devices or assign a cross-job hardware lease;
+the runner supplies those before invoking them. A run that skips every native
+test is not hardware qualification.
 
 AMDGPU Bazel sanitizer configurations are separate CI jobs so they build and
 test independently. Aggregate CPU Bazel and CMake commands remain available as
