@@ -262,6 +262,9 @@ iree_cc_test(
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
+  SANITIZER_SUPPRESSIONS
+    lsan
+    vulkan
 )
 endif()
 
@@ -284,6 +287,9 @@ iree_cc_test(
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
+  SANITIZER_SUPPRESSIONS
+    lsan
+    vulkan
 )
 endif()
 
@@ -306,6 +312,9 @@ iree_cc_test(
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
+  SANITIZER_SUPPRESSIONS
+    lsan
+    vulkan
 )
 endif()
 
@@ -328,6 +337,9 @@ iree_cc_test(
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
+  SANITIZER_SUPPRESSIONS
+    lsan
+    vulkan
 )
 endif()
 
@@ -352,6 +364,9 @@ iree_cc_test(
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
+  SANITIZER_SUPPRESSIONS
+    lsan
+    vulkan
 )
 endif()
 
@@ -376,6 +391,9 @@ iree_cc_test(
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
+  SANITIZER_SUPPRESSIONS
+    lsan
+    vulkan
 )
 endif()
 
@@ -401,6 +419,9 @@ iree_cc_test(
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
+  SANITIZER_SUPPRESSIONS
+    lsan
+    vulkan
 )
 endif()
 
@@ -423,6 +444,9 @@ iree_cc_test(
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
+  SANITIZER_SUPPRESSIONS
+    lsan
+    vulkan
 )
 endif()
 
@@ -446,6 +470,9 @@ iree_cc_test(
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
+  SANITIZER_SUPPRESSIONS
+    lsan
+    vulkan
 )
 endif()
 
@@ -468,6 +495,9 @@ iree_cc_test(
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
+  SANITIZER_SUPPRESSIONS
+    lsan
+    vulkan
 )
 endif()
 
@@ -490,6 +520,9 @@ iree_cc_test(
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
+  SANITIZER_SUPPRESSIONS
+    lsan
+    vulkan
 )
 endif()
 
@@ -512,6 +545,9 @@ iree_cc_test(
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
+  SANITIZER_SUPPRESSIONS
+    lsan
+    vulkan
 )
 endif()
 
@@ -534,6 +570,9 @@ iree_cc_test(
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
+  SANITIZER_SUPPRESSIONS
+    lsan
+    vulkan
 )
 endif()
 
@@ -556,6 +595,9 @@ iree_cc_test(
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
+  SANITIZER_SUPPRESSIONS
+    lsan
+    vulkan
 )
 endif()
 
@@ -581,6 +623,9 @@ iree_cc_test(
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
+  SANITIZER_SUPPRESSIONS
+    lsan
+    vulkan
 )
 endif()
 
@@ -610,6 +655,9 @@ iree_cc_test(
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
+  SANITIZER_SUPPRESSIONS
+    lsan
+    vulkan
 )
 endif()
 
@@ -633,6 +681,9 @@ iree_cc_test(
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
+  SANITIZER_SUPPRESSIONS
+    lsan
+    vulkan
 )
 endif()
 
@@ -655,6 +706,9 @@ iree_cc_test(
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
+  SANITIZER_SUPPRESSIONS
+    lsan
+    vulkan
 )
 endif()
 
@@ -677,6 +731,9 @@ iree_cc_test(
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
+  SANITIZER_SUPPRESSIONS
+    lsan
+    vulkan
 )
 endif()
 
@@ -701,6 +758,9 @@ iree_cc_test(
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
+  SANITIZER_SUPPRESSIONS
+    lsan
+    vulkan
 )
 endif()
 
@@ -723,6 +783,9 @@ iree_cc_test(
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
+  SANITIZER_SUPPRESSIONS
+    lsan
+    vulkan
 )
 endif()
 
@@ -746,6 +809,9 @@ iree_cc_test(
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
+  SANITIZER_SUPPRESSIONS
+    lsan
+    vulkan
 )
 endif()
 
@@ -769,6 +835,9 @@ iree_cc_test(
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
+  SANITIZER_SUPPRESSIONS
+    lsan
+    vulkan
 )
 endif()
 
@@ -791,6 +860,9 @@ iree_cc_test(
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
+  SANITIZER_SUPPRESSIONS
+    lsan
+    vulkan
 )
 endif()
 

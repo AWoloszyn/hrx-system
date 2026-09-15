@@ -7,6 +7,7 @@
 # Focused CTS coverage for the Vulkan HAL.
 
 load("//build_tools/embed_data:build_defs.bzl", "iree_c_embed_data")
+load("//build_tools/sanitizer:suppressions.bzl", "vulkan_suppressions")
 load("//build_tools/spirv:asm_module.bzl", "iree_spirv_asm_module")
 load("//runtime/build_tools/bazel:cc.bzl", "iree_runtime_cc_library")
 load("//runtime/build_tools/bazel:cc_test.bzl", "iree_runtime_cc_test")
@@ -96,6 +97,7 @@ iree_c_embed_data(
 iree_runtime_cc_test(
     name = "core_driver_tests",
     srcs = ["//runtime/src/iree/hal/cts/util:test_main.cc"],
+    sanitizer_suppressions = vulkan_suppressions,
     deps = [
         ":backends",
         "//runtime/src/iree/base/tooling:flags",
@@ -109,6 +111,7 @@ iree_runtime_cc_test(
 iree_runtime_cc_test(
     name = "core_semaphore_tests",
     srcs = ["//runtime/src/iree/hal/cts/util:test_main.cc"],
+    sanitizer_suppressions = vulkan_suppressions,
     deps = [
         ":backends",
         "//runtime/src/iree/base/tooling:flags",
@@ -122,6 +125,7 @@ iree_runtime_cc_test(
 iree_runtime_cc_test(
     name = "core_semaphore_thread_tests",
     srcs = ["//runtime/src/iree/hal/cts/util:test_main.cc"],
+    sanitizer_suppressions = vulkan_suppressions,
     deps = [
         ":backends",
         "//runtime/src/iree/base/tooling:flags",
@@ -135,6 +139,7 @@ iree_runtime_cc_test(
 iree_runtime_cc_test(
     name = "buffer_tests",
     srcs = ["//runtime/src/iree/hal/cts/util:test_main.cc"],
+    sanitizer_suppressions = vulkan_suppressions,
     deps = [
         ":backends",
         "//runtime/src/iree/base/tooling:flags",
@@ -151,6 +156,7 @@ iree_runtime_cc_test(
         "allocator_guardrail_test.cc",
         "//runtime/src/iree/hal/cts/util:test_main.cc",
     ],
+    sanitizer_suppressions = vulkan_suppressions,
     deps = [
         ":backends",
         "//runtime/src/iree/base/tooling:flags",
@@ -168,6 +174,7 @@ iree_runtime_cc_test(
         "allocator_virtual_memory_test.cc",
         "//runtime/src/iree/hal/cts/util:test_main.cc",
     ],
+    sanitizer_suppressions = vulkan_suppressions,
     deps = [
         ":backends",
         ":bda_spirv_test_spv",
@@ -185,6 +192,7 @@ iree_runtime_cc_test(
         "profiling_test.cc",
         "//runtime/src/iree/hal/cts/util:test_main.cc",
     ],
+    sanitizer_suppressions = vulkan_suppressions,
     deps = [
         ":backends",
         "//runtime/src/iree/base/tooling:flags",
@@ -200,6 +208,7 @@ iree_runtime_cc_test(
 iree_runtime_cc_test(
     name = "command_buffer_basic_tests",
     srcs = ["//runtime/src/iree/hal/cts/util:test_main.cc"],
+    sanitizer_suppressions = vulkan_suppressions,
     deps = [
         ":backends",
         "//runtime/src/iree/base/tooling:flags",
@@ -213,6 +222,7 @@ iree_runtime_cc_test(
 iree_runtime_cc_test(
     name = "command_buffer_atomic_tests",
     srcs = ["//runtime/src/iree/hal/cts/util:test_main.cc"],
+    sanitizer_suppressions = vulkan_suppressions,
     deps = [
         ":backends",
         ":replay_cache_backends",
@@ -227,6 +237,7 @@ iree_runtime_cc_test(
 iree_runtime_cc_test(
     name = "command_buffer_fill_buffer_tests",
     srcs = ["//runtime/src/iree/hal/cts/util:test_main.cc"],
+    sanitizer_suppressions = vulkan_suppressions,
     deps = [
         ":backends",
         "//runtime/src/iree/base/tooling:flags",
@@ -240,6 +251,7 @@ iree_runtime_cc_test(
 iree_runtime_cc_test(
     name = "command_buffer_update_buffer_tests",
     srcs = ["//runtime/src/iree/hal/cts/util:test_main.cc"],
+    sanitizer_suppressions = vulkan_suppressions,
     deps = [
         ":backends",
         "//runtime/src/iree/base/tooling:flags",
@@ -253,6 +265,7 @@ iree_runtime_cc_test(
 iree_runtime_cc_test(
     name = "command_buffer_copy_buffer_tests",
     srcs = ["//runtime/src/iree/hal/cts/util:test_main.cc"],
+    sanitizer_suppressions = vulkan_suppressions,
     deps = [
         ":backends",
         "//runtime/src/iree/base/tooling:flags",
@@ -266,6 +279,7 @@ iree_runtime_cc_test(
 iree_runtime_cc_test(
     name = "command_buffer_transient_buffer_tests",
     srcs = ["//runtime/src/iree/hal/cts/util:test_main.cc"],
+    sanitizer_suppressions = vulkan_suppressions,
     deps = [
         ":backends",
         "//runtime/src/iree/base/tooling:flags",
@@ -279,6 +293,7 @@ iree_runtime_cc_test(
 iree_runtime_cc_test(
     name = "command_buffer_stress_tests",
     srcs = ["//runtime/src/iree/hal/cts/util:test_main.cc"],
+    sanitizer_suppressions = vulkan_suppressions,
     deps = [
         ":backends",
         "//runtime/src/iree/base/tooling:flags",
@@ -295,6 +310,7 @@ iree_runtime_cc_test(
         "bda_dispatch_validation_test.cc",
         "//runtime/src/iree/hal/cts/util:test_main.cc",
     ],
+    sanitizer_suppressions = vulkan_suppressions,
     tags = [
         "vulkan_uses_vk_khr_buffer_device_address",
     ],
@@ -315,6 +331,7 @@ iree_runtime_cc_test(
         "bda_spirv_test.cc",
         "//runtime/src/iree/hal/cts/util:test_main.cc",
     ],
+    sanitizer_suppressions = vulkan_suppressions,
     tags = [
         "vulkan_uses_vk_khr_buffer_device_address",
     ],
@@ -336,6 +353,7 @@ iree_runtime_cc_test(
 iree_runtime_cc_test(
     name = "file_tests",
     srcs = ["//runtime/src/iree/hal/cts/util:test_main.cc"],
+    sanitizer_suppressions = vulkan_suppressions,
     deps = [
         ":backends",
         ":vulkan_file_test",
@@ -350,6 +368,7 @@ iree_runtime_cc_test(
 iree_runtime_cc_test(
     name = "queue_tests",
     srcs = ["//runtime/src/iree/hal/cts/util:test_main.cc"],
+    sanitizer_suppressions = vulkan_suppressions,
     deps = [
         ":backends",
         "//runtime/src/iree/base/tooling:flags",
@@ -363,6 +382,7 @@ iree_runtime_cc_test(
 iree_runtime_cc_test(
     name = "queue_alloca_tests",
     srcs = ["//runtime/src/iree/hal/cts/util:test_main.cc"],
+    sanitizer_suppressions = vulkan_suppressions,
     deps = [
         ":backends",
         "//runtime/src/iree/base/tooling:flags",
@@ -379,6 +399,7 @@ iree_runtime_cc_test(
         "atomic_submission_test.cc",
         "//runtime/src/iree/hal/cts/util:test_main.cc",
     ],
+    sanitizer_suppressions = vulkan_suppressions,
     deps = [
         ":backends",
         "//runtime/src/iree/base/tooling:flags",
@@ -393,6 +414,7 @@ iree_runtime_cc_test(
 iree_runtime_cc_test(
     name = "queue_host_call_tests",
     srcs = ["//runtime/src/iree/hal/cts/util:test_main.cc"],
+    sanitizer_suppressions = vulkan_suppressions,
     deps = [
         ":backends",
         "//runtime/src/iree/base/tooling:flags",
@@ -406,6 +428,7 @@ iree_runtime_cc_test(
 iree_runtime_cc_test(
     name = "queue_transfer_tests",
     srcs = ["//runtime/src/iree/hal/cts/util:test_main.cc"],
+    sanitizer_suppressions = vulkan_suppressions,
     deps = [
         ":backends",
         "//runtime/src/iree/base/tooling:flags",
@@ -423,6 +446,7 @@ iree_runtime_cc_test(
         "queue_descriptor_cache_test.cc",
         "//runtime/src/iree/hal/cts/util:test_main.cc",
     ],
+    sanitizer_suppressions = vulkan_suppressions,
     deps = [
         ":backends",
         "//runtime/src/iree/base/tooling:flags",
@@ -436,6 +460,7 @@ iree_runtime_cc_test(
 iree_runtime_cc_test(
     name = "semaphore_submission_tests",
     srcs = ["//runtime/src/iree/hal/cts/util:test_main.cc"],
+    sanitizer_suppressions = vulkan_suppressions,
     deps = [
         ":backends",
         "//runtime/src/iree/base/tooling:flags",
