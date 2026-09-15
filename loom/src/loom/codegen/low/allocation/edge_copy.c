@@ -6,6 +6,7 @@
 
 #include "loom/codegen/low/allocation/edge_copy.h"
 
+#include "loom/codegen/low/allocation/storage.h"
 #include "loom/codegen/low/allocation/unit_location.h"
 #include "loom/ops/low/ops.h"
 
@@ -101,9 +102,17 @@ static void loom_low_allocation_edge_copy_record_segment(
           &context->move_plan->context.assignment_map, destination_ordinal,
           &destination_assignment_index);
 
+  const loom_low_allocation_copy_kind_t kind =
+      loom_low_allocation_storage_assignment_subranges_equal(
+          context->move_plan->context.descriptor_set, source_assignment,
+          source_unit_offset, destination_assignment, destination_unit_offset,
+          unit_count)
+          ? LOOM_LOW_ALLOCATION_COPY_COALESCED
+          : LOOM_LOW_ALLOCATION_COPY_MATERIALIZED;
   builder->plan.copies[builder->plan.copy_count++] =
       (loom_low_allocation_edge_copy_t){
           .payload_index = payload_index,
+          .kind = kind,
           .source_value_id =
               loom_low_placement_value_id(context->placement, source_ordinal),
           .destination_value_id = loom_low_placement_value_id(
@@ -115,6 +124,7 @@ static void loom_low_allocation_edge_copy_record_segment(
           .unit_count = unit_count,
       };
 
+  if (kind == LOOM_LOW_ALLOCATION_COPY_COALESCED) return;
   loom_low_move_t* raw_moves =
       loom_low_allocation_move_plan_raw_moves(context->move_plan);
   for (uint32_t i = 0; i < unit_count; ++i) {

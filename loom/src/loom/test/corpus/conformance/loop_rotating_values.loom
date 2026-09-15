@@ -1,0 +1,679 @@
+// Register-carried inputs rotate through ordinary SCF state. The guarded
+// future load covers exactly the finite input domain, including empty inputs
+// and tails shorter than the rotation depth or unroll factor. Each lane checks
+// sum((i + 1) * (32 * i + lane + 1), i in [0, count)) against an independent
+// closed form. Backedge copies consume their source before the next iteration.
+
+kernel.def @rotate_values_d1_u1() {
+  %unit = index.constant 1 : index
+  %width = index.constant 32 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%count0: index, %input: buffer, %output: buffer) {
+  %count = index.assume %count0 [range(%count0, 0, 257)] : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %row_stride = index.constant 128 : offset
+  %lead = index.constant 0 : index
+  %unroll = index.constant 1 : index
+  %initial = scalar.constant 0 : i32
+  %lane = kernel.workitem.id<x> : index
+  %input_aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %output_aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %source, %destination = buffer.assume.noalias %input_aligned, %output_aligned : buffer, buffer
+  %total = scf.for %record = [%begin to %count step %step](%sum = %initial : i32) -> (i32) unroll(%unroll) {
+    %future_record = index.add %record, %lead : index
+    %has_future = index.cmp slt, %future_record, %count : index
+    %future = scf.if %has_future -> (i32) {
+      %future_offset = index.scale %future_record, %row_stride : index, offset -> offset
+      %future_view = buffer.view %source[%future_offset] : buffer -> view<32xi32>
+      %loaded = view.load %future_view[%lane] : view<32xi32> -> i32
+      scf.yield %loaded : i32
+    } else {
+      scf.yield %initial : i32
+    }
+    %weight_index = index.add %record, %step : index
+    %weight = index.cast %weight_index : index to i32
+    %weighted = scalar.muli %future, %weight : i32
+    %updated = scalar.addi %sum, %weighted : i32
+    scf.yield %updated : i32
+  }
+  %output_view = buffer.view %destination[%base] : buffer -> view<32xi32>
+  view.store %total, %output_view[%lane] : i32, view<32xi32>
+  kernel.return
+}
+
+check.case public @rotate_values_d1_u1_n0 {
+  %count = check.literal value(0) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(0) step(0) : tensor<32xi32>
+  kernel.launch @rotate_values_d1_u1(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d1_u1_n1 {
+  %count = check.literal value(1) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(1) step(1) : tensor<32xi32>
+  kernel.launch @rotate_values_d1_u1(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d1_u1_n2 {
+  %count = check.literal value(2) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(67) step(3) : tensor<32xi32>
+  kernel.launch @rotate_values_d1_u1(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d1_u1_n3 {
+  %count = check.literal value(3) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(262) step(6) : tensor<32xi32>
+  kernel.launch @rotate_values_d1_u1(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d1_u1_n8 {
+  %count = check.literal value(8) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(5412) step(36) : tensor<32xi32>
+  kernel.launch @rotate_values_d1_u1(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d1_u1_n257 {
+  %count = check.literal value(257) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(181092737) step(33153) : tensor<32xi32>
+  kernel.launch @rotate_values_d1_u1(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+kernel.def @rotate_values_d1_u2() {
+  %unit = index.constant 1 : index
+  %width = index.constant 32 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%count0: index, %input: buffer, %output: buffer) {
+  %count = index.assume %count0 [range(%count0, 0, 257)] : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %row_stride = index.constant 128 : offset
+  %lead = index.constant 0 : index
+  %unroll = index.constant 2 : index
+  %initial = scalar.constant 0 : i32
+  %lane = kernel.workitem.id<x> : index
+  %input_aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %output_aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %source, %destination = buffer.assume.noalias %input_aligned, %output_aligned : buffer, buffer
+  %total = scf.for %record = [%begin to %count step %step](%sum = %initial : i32) -> (i32) unroll(%unroll) {
+    %future_record = index.add %record, %lead : index
+    %has_future = index.cmp slt, %future_record, %count : index
+    %future = scf.if %has_future -> (i32) {
+      %future_offset = index.scale %future_record, %row_stride : index, offset -> offset
+      %future_view = buffer.view %source[%future_offset] : buffer -> view<32xi32>
+      %loaded = view.load %future_view[%lane] : view<32xi32> -> i32
+      scf.yield %loaded : i32
+    } else {
+      scf.yield %initial : i32
+    }
+    %weight_index = index.add %record, %step : index
+    %weight = index.cast %weight_index : index to i32
+    %weighted = scalar.muli %future, %weight : i32
+    %updated = scalar.addi %sum, %weighted : i32
+    scf.yield %updated : i32
+  }
+  %output_view = buffer.view %destination[%base] : buffer -> view<32xi32>
+  view.store %total, %output_view[%lane] : i32, view<32xi32>
+  kernel.return
+}
+
+check.case public @rotate_values_d1_u2_n0 {
+  %count = check.literal value(0) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(0) step(0) : tensor<32xi32>
+  kernel.launch @rotate_values_d1_u2(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d1_u2_n1 {
+  %count = check.literal value(1) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(1) step(1) : tensor<32xi32>
+  kernel.launch @rotate_values_d1_u2(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d1_u2_n2 {
+  %count = check.literal value(2) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(67) step(3) : tensor<32xi32>
+  kernel.launch @rotate_values_d1_u2(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d1_u2_n3 {
+  %count = check.literal value(3) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(262) step(6) : tensor<32xi32>
+  kernel.launch @rotate_values_d1_u2(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d1_u2_n8 {
+  %count = check.literal value(8) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(5412) step(36) : tensor<32xi32>
+  kernel.launch @rotate_values_d1_u2(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d1_u2_n257 {
+  %count = check.literal value(257) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(181092737) step(33153) : tensor<32xi32>
+  kernel.launch @rotate_values_d1_u2(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+kernel.def @rotate_values_d2_u1() {
+  %unit = index.constant 1 : index
+  %width = index.constant 32 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%count0: index, %input: buffer, %output: buffer) {
+  %count = index.assume %count0 [range(%count0, 0, 257)] : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %row_stride = index.constant 128 : offset
+  %lead = index.constant 1 : index
+  %unroll = index.constant 1 : index
+  %initial = scalar.constant 0 : i32
+  %lane = kernel.workitem.id<x> : index
+  %input_aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %output_aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %source, %destination = buffer.assume.noalias %input_aligned, %output_aligned : buffer, buffer
+  %startup0 = index.constant 0 : index
+  %has_startup0 = index.cmp slt, %startup0, %count : index
+  %seed0 = scf.if %has_startup0 -> (i32) {
+    %row0 = index.scale %startup0, %row_stride : index, offset -> offset
+    %view0 = buffer.view %source[%row0] : buffer -> view<32xi32>
+    %loaded0 = view.load %view0[%lane] : view<32xi32> -> i32
+    scf.yield %loaded0 : i32
+  } else {
+    scf.yield %initial : i32
+  }
+  %last0, %total = scf.for %record = [%begin to %count step %step](%current0 = %seed0 : i32, %sum = %initial : i32) -> (i32, i32) unroll(%unroll) {
+    %future_record = index.add %record, %lead : index
+    %has_future = index.cmp slt, %future_record, %count : index
+    %future = scf.if %has_future -> (i32) {
+      %future_offset = index.scale %future_record, %row_stride : index, offset -> offset
+      %future_view = buffer.view %source[%future_offset] : buffer -> view<32xi32>
+      %loaded = view.load %future_view[%lane] : view<32xi32> -> i32
+      scf.yield %loaded : i32
+    } else {
+      scf.yield %initial : i32
+    }
+    %weight_index = index.add %record, %step : index
+    %weight = index.cast %weight_index : index to i32
+    %weighted = scalar.muli %current0, %weight : i32
+    %updated = scalar.addi %sum, %weighted : i32
+    scf.yield %future, %updated : i32, i32
+  }
+  %output_view = buffer.view %destination[%base] : buffer -> view<32xi32>
+  view.store %total, %output_view[%lane] : i32, view<32xi32>
+  kernel.return
+}
+
+check.case public @rotate_values_d2_u1_n0 {
+  %count = check.literal value(0) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(0) step(0) : tensor<32xi32>
+  kernel.launch @rotate_values_d2_u1(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d2_u1_n1 {
+  %count = check.literal value(1) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(1) step(1) : tensor<32xi32>
+  kernel.launch @rotate_values_d2_u1(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d2_u1_n2 {
+  %count = check.literal value(2) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(67) step(3) : tensor<32xi32>
+  kernel.launch @rotate_values_d2_u1(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d2_u1_n3 {
+  %count = check.literal value(3) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(262) step(6) : tensor<32xi32>
+  kernel.launch @rotate_values_d2_u1(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d2_u1_n8 {
+  %count = check.literal value(8) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(5412) step(36) : tensor<32xi32>
+  kernel.launch @rotate_values_d2_u1(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d2_u1_n257 {
+  %count = check.literal value(257) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(181092737) step(33153) : tensor<32xi32>
+  kernel.launch @rotate_values_d2_u1(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+kernel.def @rotate_values_d2_u2() {
+  %unit = index.constant 1 : index
+  %width = index.constant 32 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%count0: index, %input: buffer, %output: buffer) {
+  %count = index.assume %count0 [range(%count0, 0, 257)] : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %row_stride = index.constant 128 : offset
+  %lead = index.constant 1 : index
+  %unroll = index.constant 2 : index
+  %initial = scalar.constant 0 : i32
+  %lane = kernel.workitem.id<x> : index
+  %input_aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %output_aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %source, %destination = buffer.assume.noalias %input_aligned, %output_aligned : buffer, buffer
+  %startup0 = index.constant 0 : index
+  %has_startup0 = index.cmp slt, %startup0, %count : index
+  %seed0 = scf.if %has_startup0 -> (i32) {
+    %row0 = index.scale %startup0, %row_stride : index, offset -> offset
+    %view0 = buffer.view %source[%row0] : buffer -> view<32xi32>
+    %loaded0 = view.load %view0[%lane] : view<32xi32> -> i32
+    scf.yield %loaded0 : i32
+  } else {
+    scf.yield %initial : i32
+  }
+  %last0, %total = scf.for %record = [%begin to %count step %step](%current0 = %seed0 : i32, %sum = %initial : i32) -> (i32, i32) unroll(%unroll) {
+    %future_record = index.add %record, %lead : index
+    %has_future = index.cmp slt, %future_record, %count : index
+    %future = scf.if %has_future -> (i32) {
+      %future_offset = index.scale %future_record, %row_stride : index, offset -> offset
+      %future_view = buffer.view %source[%future_offset] : buffer -> view<32xi32>
+      %loaded = view.load %future_view[%lane] : view<32xi32> -> i32
+      scf.yield %loaded : i32
+    } else {
+      scf.yield %initial : i32
+    }
+    %weight_index = index.add %record, %step : index
+    %weight = index.cast %weight_index : index to i32
+    %weighted = scalar.muli %current0, %weight : i32
+    %updated = scalar.addi %sum, %weighted : i32
+    scf.yield %future, %updated : i32, i32
+  }
+  %output_view = buffer.view %destination[%base] : buffer -> view<32xi32>
+  view.store %total, %output_view[%lane] : i32, view<32xi32>
+  kernel.return
+}
+
+check.case public @rotate_values_d2_u2_n0 {
+  %count = check.literal value(0) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(0) step(0) : tensor<32xi32>
+  kernel.launch @rotate_values_d2_u2(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d2_u2_n1 {
+  %count = check.literal value(1) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(1) step(1) : tensor<32xi32>
+  kernel.launch @rotate_values_d2_u2(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d2_u2_n2 {
+  %count = check.literal value(2) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(67) step(3) : tensor<32xi32>
+  kernel.launch @rotate_values_d2_u2(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d2_u2_n3 {
+  %count = check.literal value(3) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(262) step(6) : tensor<32xi32>
+  kernel.launch @rotate_values_d2_u2(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d2_u2_n8 {
+  %count = check.literal value(8) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(5412) step(36) : tensor<32xi32>
+  kernel.launch @rotate_values_d2_u2(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d2_u2_n257 {
+  %count = check.literal value(257) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(181092737) step(33153) : tensor<32xi32>
+  kernel.launch @rotate_values_d2_u2(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+kernel.def @rotate_values_d4_u1() {
+  %unit = index.constant 1 : index
+  %width = index.constant 32 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%count0: index, %input: buffer, %output: buffer) {
+  %count = index.assume %count0 [range(%count0, 0, 257)] : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %row_stride = index.constant 128 : offset
+  %lead = index.constant 3 : index
+  %unroll = index.constant 1 : index
+  %initial = scalar.constant 0 : i32
+  %lane = kernel.workitem.id<x> : index
+  %input_aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %output_aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %source, %destination = buffer.assume.noalias %input_aligned, %output_aligned : buffer, buffer
+  %startup0 = index.constant 0 : index
+  %has_startup0 = index.cmp slt, %startup0, %count : index
+  %seed0 = scf.if %has_startup0 -> (i32) {
+    %row0 = index.scale %startup0, %row_stride : index, offset -> offset
+    %view0 = buffer.view %source[%row0] : buffer -> view<32xi32>
+    %loaded0 = view.load %view0[%lane] : view<32xi32> -> i32
+    scf.yield %loaded0 : i32
+  } else {
+    scf.yield %initial : i32
+  }
+  %startup1 = index.constant 1 : index
+  %has_startup1 = index.cmp slt, %startup1, %count : index
+  %seed1 = scf.if %has_startup1 -> (i32) {
+    %row1 = index.scale %startup1, %row_stride : index, offset -> offset
+    %view1 = buffer.view %source[%row1] : buffer -> view<32xi32>
+    %loaded1 = view.load %view1[%lane] : view<32xi32> -> i32
+    scf.yield %loaded1 : i32
+  } else {
+    scf.yield %initial : i32
+  }
+  %startup2 = index.constant 2 : index
+  %has_startup2 = index.cmp slt, %startup2, %count : index
+  %seed2 = scf.if %has_startup2 -> (i32) {
+    %row2 = index.scale %startup2, %row_stride : index, offset -> offset
+    %view2 = buffer.view %source[%row2] : buffer -> view<32xi32>
+    %loaded2 = view.load %view2[%lane] : view<32xi32> -> i32
+    scf.yield %loaded2 : i32
+  } else {
+    scf.yield %initial : i32
+  }
+  %last0, %last1, %last2, %total = scf.for %record = [%begin to %count step %step](%current0 = %seed0 : i32, %current1 = %seed1 : i32, %current2 = %seed2 : i32, %sum = %initial : i32) -> (i32, i32, i32, i32) unroll(%unroll) {
+    %future_record = index.add %record, %lead : index
+    %has_future = index.cmp slt, %future_record, %count : index
+    %future = scf.if %has_future -> (i32) {
+      %future_offset = index.scale %future_record, %row_stride : index, offset -> offset
+      %future_view = buffer.view %source[%future_offset] : buffer -> view<32xi32>
+      %loaded = view.load %future_view[%lane] : view<32xi32> -> i32
+      scf.yield %loaded : i32
+    } else {
+      scf.yield %initial : i32
+    }
+    %weight_index = index.add %record, %step : index
+    %weight = index.cast %weight_index : index to i32
+    %weighted = scalar.muli %current0, %weight : i32
+    %updated = scalar.addi %sum, %weighted : i32
+    scf.yield %current1, %current2, %future, %updated : i32, i32, i32, i32
+  }
+  %output_view = buffer.view %destination[%base] : buffer -> view<32xi32>
+  view.store %total, %output_view[%lane] : i32, view<32xi32>
+  kernel.return
+}
+
+check.case public @rotate_values_d4_u1_n0 {
+  %count = check.literal value(0) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(0) step(0) : tensor<32xi32>
+  kernel.launch @rotate_values_d4_u1(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d4_u1_n1 {
+  %count = check.literal value(1) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(1) step(1) : tensor<32xi32>
+  kernel.launch @rotate_values_d4_u1(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d4_u1_n2 {
+  %count = check.literal value(2) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(67) step(3) : tensor<32xi32>
+  kernel.launch @rotate_values_d4_u1(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d4_u1_n3 {
+  %count = check.literal value(3) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(262) step(6) : tensor<32xi32>
+  kernel.launch @rotate_values_d4_u1(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d4_u1_n8 {
+  %count = check.literal value(8) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(5412) step(36) : tensor<32xi32>
+  kernel.launch @rotate_values_d4_u1(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d4_u1_n257 {
+  %count = check.literal value(257) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(181092737) step(33153) : tensor<32xi32>
+  kernel.launch @rotate_values_d4_u1(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+kernel.def @rotate_values_d4_u2() {
+  %unit = index.constant 1 : index
+  %width = index.constant 32 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%count0: index, %input: buffer, %output: buffer) {
+  %count = index.assume %count0 [range(%count0, 0, 257)] : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %row_stride = index.constant 128 : offset
+  %lead = index.constant 3 : index
+  %unroll = index.constant 2 : index
+  %initial = scalar.constant 0 : i32
+  %lane = kernel.workitem.id<x> : index
+  %input_aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %output_aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %source, %destination = buffer.assume.noalias %input_aligned, %output_aligned : buffer, buffer
+  %startup0 = index.constant 0 : index
+  %has_startup0 = index.cmp slt, %startup0, %count : index
+  %seed0 = scf.if %has_startup0 -> (i32) {
+    %row0 = index.scale %startup0, %row_stride : index, offset -> offset
+    %view0 = buffer.view %source[%row0] : buffer -> view<32xi32>
+    %loaded0 = view.load %view0[%lane] : view<32xi32> -> i32
+    scf.yield %loaded0 : i32
+  } else {
+    scf.yield %initial : i32
+  }
+  %startup1 = index.constant 1 : index
+  %has_startup1 = index.cmp slt, %startup1, %count : index
+  %seed1 = scf.if %has_startup1 -> (i32) {
+    %row1 = index.scale %startup1, %row_stride : index, offset -> offset
+    %view1 = buffer.view %source[%row1] : buffer -> view<32xi32>
+    %loaded1 = view.load %view1[%lane] : view<32xi32> -> i32
+    scf.yield %loaded1 : i32
+  } else {
+    scf.yield %initial : i32
+  }
+  %startup2 = index.constant 2 : index
+  %has_startup2 = index.cmp slt, %startup2, %count : index
+  %seed2 = scf.if %has_startup2 -> (i32) {
+    %row2 = index.scale %startup2, %row_stride : index, offset -> offset
+    %view2 = buffer.view %source[%row2] : buffer -> view<32xi32>
+    %loaded2 = view.load %view2[%lane] : view<32xi32> -> i32
+    scf.yield %loaded2 : i32
+  } else {
+    scf.yield %initial : i32
+  }
+  %last0, %last1, %last2, %total = scf.for %record = [%begin to %count step %step](%current0 = %seed0 : i32, %current1 = %seed1 : i32, %current2 = %seed2 : i32, %sum = %initial : i32) -> (i32, i32, i32, i32) unroll(%unroll) {
+    %future_record = index.add %record, %lead : index
+    %has_future = index.cmp slt, %future_record, %count : index
+    %future = scf.if %has_future -> (i32) {
+      %future_offset = index.scale %future_record, %row_stride : index, offset -> offset
+      %future_view = buffer.view %source[%future_offset] : buffer -> view<32xi32>
+      %loaded = view.load %future_view[%lane] : view<32xi32> -> i32
+      scf.yield %loaded : i32
+    } else {
+      scf.yield %initial : i32
+    }
+    %weight_index = index.add %record, %step : index
+    %weight = index.cast %weight_index : index to i32
+    %weighted = scalar.muli %current0, %weight : i32
+    %updated = scalar.addi %sum, %weighted : i32
+    scf.yield %current1, %current2, %future, %updated : i32, i32, i32, i32
+  }
+  %output_view = buffer.view %destination[%base] : buffer -> view<32xi32>
+  view.store %total, %output_view[%lane] : i32, view<32xi32>
+  kernel.return
+}
+
+check.case public @rotate_values_d4_u2_n0 {
+  %count = check.literal value(0) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(0) step(0) : tensor<32xi32>
+  kernel.launch @rotate_values_d4_u2(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d4_u2_n1 {
+  %count = check.literal value(1) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(1) step(1) : tensor<32xi32>
+  kernel.launch @rotate_values_d4_u2(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d4_u2_n2 {
+  %count = check.literal value(2) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(67) step(3) : tensor<32xi32>
+  kernel.launch @rotate_values_d4_u2(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d4_u2_n3 {
+  %count = check.literal value(3) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(262) step(6) : tensor<32xi32>
+  kernel.launch @rotate_values_d4_u2(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d4_u2_n8 {
+  %count = check.literal value(8) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(5412) step(36) : tensor<32xi32>
+  kernel.launch @rotate_values_d4_u2(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+check.case public @rotate_values_d4_u2_n257 {
+  %count = check.literal value(257) : index
+  %input = check.generate.iota offset(1) step(1) : tensor<8224xi32>
+  %output = check.generate.fill value(-99) : tensor<32xi32>
+  %expected = check.generate.iota offset(181092737) step(33153) : tensor<32xi32>
+  kernel.launch @rotate_values_d4_u2(%count, %input, %output) : (index, tensor<8224xi32>, tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}

@@ -102,6 +102,7 @@ loom_cc_library(
   DEPS
     ::assignment_map
     ::move_plan
+    ::storage
     ::table
     ::unit_location
     iree::base

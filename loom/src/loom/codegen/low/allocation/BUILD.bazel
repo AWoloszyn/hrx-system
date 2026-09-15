@@ -95,6 +95,7 @@ loom_cc_library(
     deps = [
         ":assignment_map",
         ":move_plan",
+        ":storage",
         ":table",
         ":unit_location",
         "//loom/src/loom/analysis:liveness",

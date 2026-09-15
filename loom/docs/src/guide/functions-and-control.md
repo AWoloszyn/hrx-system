@@ -258,6 +258,13 @@ alignment, and synchronization contracts. Rotating a view does not establish
 completion of an asynchronous producer; consumption and storage reuse follow
 the program's completion dependencies.
 
+Scalar values can rotate through the same carried tuple. A loop may issue a
+future input load before computing with an older carried input. On AMDGPU,
+completion waits account for register copies used to carry those values: a
+copied input is ready in the next iteration, while a value forwarded in place
+retains its pending dependency. The future load can remain outstanding during
+independent arithmetic, then completes before its result is read or copied.
+
 LLVM IR text, bitcode, and object emission preserve this loop-carried state,
 including the byte origins selected by `scf.for` and `scf.while`. The
 [artifact workflow](../workflows/compile-artifacts.md) describes how to select

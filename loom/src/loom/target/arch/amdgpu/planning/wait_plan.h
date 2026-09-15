@@ -149,11 +149,11 @@ iree_string_view_t loom_amdgpu_wait_plan_reason_name(
 iree_string_view_t loom_amdgpu_wait_plan_residual_action_name(
     uint16_t action_id);
 
-// Builds an AMDGPU wait-counter plan from a successful schedule. When
-// |allocation| is provided, the plan also materializes target storage-release
-// actions requested by allocation, such as outstanding memory reads whose
-// destination registers have not yet been written and memory packets whose
-// scalar or vector sources have not yet been consumed by the memory pipe. The
+// Builds an AMDGPU wait-counter plan from a successful schedule and allocation.
+// Coalesced edge segments forward pending completion dependencies; materialized
+// segments consume their sources before establishing ready destination values.
+// The plan also materializes target storage-release actions requested by
+// allocation, including pending result writes and issued memory source reads.
 // Builder state is allocated from |transient_arena| and may be discarded after
 // this function returns. The caller must keep |schedule| and |allocation|
 // immutable and |arena| alive for as long as |out_plan| is used.
