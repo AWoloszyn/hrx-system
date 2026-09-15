@@ -117,6 +117,7 @@ kernel.def @async_gather_two_groups() {
 }
 
 check.case public @async_gather_finite_counts {
+  check.requires<hal.amdgpu.descriptor_set> {descriptor_set = "amdgpu.cdna3.core"}
   %count = check.param.choice values([0, 1, 2, 3, 8, 127, 128, 257]) : index
   %input = check.generate.iota offset(1) step(1) : tensor<257x64xi32>
   %reference = check.generate.fill value(-1) : tensor<64xi32>
@@ -130,6 +131,7 @@ check.case public @async_gather_finite_counts {
 // Input[record, lane] = 1 + 64*record + lane, so N records produce
 // N*(64-lane) + 32*N*(N-1) after mirrored-lane consumption.
 check.case public @async_gather_repeated_reuse {
+  check.requires<hal.amdgpu.descriptor_set> {descriptor_set = "amdgpu.cdna3.core"}
   %count = check.literal value(257) : index
   %input = check.generate.iota offset(1) step(1) : tensor<257x64xi32>
   %output = check.generate.fill value(-1) : tensor<64xi32>
@@ -140,6 +142,7 @@ check.case public @async_gather_repeated_reuse {
 }
 
 check.case public @async_gather_distinct_groups {
+  check.requires<hal.amdgpu.descriptor_set> {descriptor_set = "amdgpu.cdna3.core"}
   %input = check.generate.iota offset(1) step(1) : tensor<257x64xi32>
   %output = check.generate.fill value(-1) : tensor<64xi32>
   %expected = check.generate.iota offset(192) step(-2) : tensor<64xi32>
