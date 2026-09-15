@@ -606,6 +606,98 @@ static bool iree_hal_streaming_context_has_enabled_peer(
   return enabled;
 }
 
+iree_status_t iree_hal_streaming_memory_buffer_for_context(
+    iree_hal_streaming_context_t* execution_context,
+    iree_hal_streaming_buffer_t* buffer, bool allow_peer_device_allocation,
+    iree_hal_buffer_t** out_buffer) {
+  IREE_ASSERT_ARGUMENT(execution_context);
+  IREE_ASSERT_ARGUMENT(buffer);
+  IREE_ASSERT_ARGUMENT(out_buffer);
+  *out_buffer = NULL;
+
+  if (buffer->context == execution_context) {
+    *out_buffer = buffer->buffer;
+    return iree_ok_status();
+  }
+
+  const iree_hal_memory_type_t memory_type =
+      (iree_hal_memory_type_t)buffer->memory_type;
+  const bool import_host_allocation =
+      iree_all_bits_set(memory_type, IREE_HAL_MEMORY_TYPE_HOST_LOCAL |
+                                         IREE_HAL_MEMORY_TYPE_DEVICE_VISIBLE);
+  const bool import_device_allocation =
+      allow_peer_device_allocation &&
+      iree_any_bit_set(memory_type, IREE_HAL_MEMORY_TYPE_DEVICE_LOCAL);
+  if (!buffer->is_managed && !import_host_allocation &&
+      !import_device_allocation) {
+    return iree_status_from_code(IREE_STATUS_NOT_FOUND);
+  }
+  if (buffer->is_managed &&
+      (!buffer->host_ptr ||
+       (uint64_t)(uintptr_t)buffer->host_ptr != buffer->device_ptr)) {
+    return iree_make_status(
+        IREE_STATUS_UNIMPLEMENTED,
+        "cross-device managed memory requires one stable host/device address");
+  }
+  if (!buffer->buffer || buffer->device_ptr == 0 || buffer->size == 0) {
+    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                            "allocation is missing device import metadata");
+  }
+
+  iree_status_t status = iree_ok_status();
+  iree_slim_mutex_lock(&buffer->context_import_mutex);
+  for (iree_hal_streaming_context_import_t* import = buffer->context_imports;
+       import; import = import->next) {
+    if (import->context == execution_context) {
+      *out_buffer = import->buffer;
+      iree_slim_mutex_unlock(&buffer->context_import_mutex);
+      return iree_ok_status();
+    }
+  }
+
+  iree_hal_buffer_params_t params = {
+      .usage = iree_hal_buffer_allowed_usage(buffer->buffer),
+      .access = iree_hal_buffer_allowed_access(buffer->buffer),
+      .type = memory_type,
+      .queue_family_affinity = IREE_HAL_QUEUE_FAMILY_AFFINITY_ANY,
+      .min_alignment = 0,
+  };
+  iree_hal_external_buffer_t external_buffer = {
+      .type = import_host_allocation
+                  ? IREE_HAL_EXTERNAL_BUFFER_TYPE_HOST_ALLOCATION
+                  : IREE_HAL_EXTERNAL_BUFFER_TYPE_DEVICE_ALLOCATION,
+      .flags = IREE_HAL_EXTERNAL_BUFFER_FLAG_NONE,
+      .size = buffer->size,
+  };
+  if (import_host_allocation) {
+    external_buffer.handle.host_allocation.ptr = buffer->host_ptr;
+  } else {
+    external_buffer.handle.device_allocation.ptr = buffer->device_ptr;
+  }
+
+  iree_hal_buffer_t* imported_buffer = NULL;
+  status = iree_hal_allocator_import_buffer(
+      execution_context->device_allocator, params, &external_buffer,
+      iree_hal_buffer_release_callback_null(), &imported_buffer);
+  iree_hal_streaming_context_import_t* import = NULL;
+  if (iree_status_is_ok(status)) {
+    status = iree_allocator_malloc(buffer->context->host_allocator,
+                                   sizeof(*import), (void**)&import);
+  }
+  if (iree_status_is_ok(status)) {
+    import->next = buffer->context_imports;
+    import->context = execution_context;
+    iree_hal_streaming_context_retain(execution_context);
+    import->buffer = imported_buffer;
+    buffer->context_imports = import;
+    imported_buffer = NULL;
+    *out_buffer = import->buffer;
+  }
+  iree_slim_mutex_unlock(&buffer->context_import_mutex);
+  iree_hal_buffer_release(imported_buffer);
+  return status;
+}
+
 iree_status_t iree_hal_streaming_memory_lookup_range_retain_for_context(
     iree_hal_streaming_context_t* execution_context,
     iree_hal_streaming_deviceptr_t device_ptr, iree_device_size_t size,
@@ -710,40 +802,21 @@ iree_status_t iree_hal_streaming_memory_lookup_range_retain_for_context(
         "cross-context stream value target memory type is not importable");
   }
 
-  iree_hal_buffer_t* imported_buffer = NULL;
   if (iree_status_is_ok(result)) {
-    iree_hal_buffer_params_t params = {
-        .usage = iree_hal_buffer_allowed_usage(out_ref->buffer),
-        .access = iree_hal_buffer_allowed_access(out_ref->buffer),
-        .type = out_ref->memory_type,
-        .queue_family_affinity = IREE_HAL_QUEUE_FAMILY_AFFINITY_ANY,
-        .min_alignment = 0,
-    };
-    iree_hal_external_buffer_t external_buffer = {
-        .type = is_host_import
-                    ? IREE_HAL_EXTERNAL_BUFFER_TYPE_HOST_ALLOCATION
-                    : IREE_HAL_EXTERNAL_BUFFER_TYPE_DEVICE_ALLOCATION,
-        .flags = IREE_HAL_EXTERNAL_BUFFER_FLAG_NONE,
-        .size = out_ref->allocation_size,
-    };
-    if (is_host_import) {
-      external_buffer.handle.host_allocation.ptr = out_ref->host_pointer;
-    } else {
-      external_buffer.handle.device_allocation.ptr = out_ref->device_pointer;
+    iree_hal_buffer_t* imported_buffer = NULL;
+    result = iree_hal_streaming_memory_buffer_for_context(
+        execution_context, out_ref->owner_wrapper,
+        /*allow_peer_device_allocation=*/true, &imported_buffer);
+    if (iree_status_is_ok(result)) {
+      iree_hal_buffer_retain(imported_buffer);
+      iree_hal_buffer_release(out_ref->buffer);
+      out_ref->buffer = imported_buffer;
+      out_ref->is_cross_context = true;
     }
-    result = iree_hal_allocator_import_buffer(
-        execution_context->device_allocator, params, &external_buffer,
-        iree_hal_buffer_release_callback_null(), &imported_buffer);
   }
-  if (iree_status_is_ok(result)) {
-    iree_hal_buffer_release(out_ref->buffer);
-    out_ref->buffer = imported_buffer;
-    imported_buffer = NULL;
-    out_ref->is_cross_context = true;
-  } else {
+  if (!iree_status_is_ok(result)) {
     iree_hal_streaming_retained_buffer_ref_deinitialize(out_ref);
   }
-  iree_hal_buffer_release(imported_buffer);
   return result;
 }
 
