@@ -77,6 +77,8 @@ AMDGPU_DEVICE_BINARY_PREBUILT_OPTIONS = (
     "-DIREE_HAL_AMDGPU_DEVICE_TOOLCHAIN=none",
 )
 BAZEL_COMMANDS = {
+    "iree-bazel-amd-client": ("amd-client", None),
+    "iree-bazel-amd-client-asan": ("amd-client", "asan"),
     "iree-bazel-xdna": ("xdna", None),
     "iree-bazel-xdna-asan": ("xdna", "asan"),
     "iree-bazel-cpu": ("cpu", None),
@@ -542,6 +544,27 @@ def xdna_steps(targets: tuple[str, ...], config: str | None) -> list[CiStep]:
             targets,
             config=config,
             test_tag_filters=ci_config.XDNA_BAZEL_TEST_TAG_FILTERS,
+            bazel_options=options,
+        ),
+    ]
+
+
+def amd_client_steps(targets: tuple[str, ...], config: str | None) -> list[CiStep]:
+    config_name = f" / {config.upper()}" if config is not None else ""
+    options = ci_config.AMD_CLIENT_BAZEL_OPTIONS
+    return [
+        bazel_configure_step(extra_options=options),
+        bazel_build_step(
+            f"Build IREE / AMD RDNA+XDNA{config_name}",
+            targets,
+            config=config,
+            bazel_options=options,
+        ),
+        bazel_test_step(
+            f"Test IREE / AMD RDNA+XDNA{config_name}",
+            targets,
+            config=config,
+            test_tag_filters=ci_config.AMD_CLIENT_BAZEL_TEST_TAG_FILTERS,
             bazel_options=options,
         ),
     ]
@@ -1069,6 +1092,11 @@ def _steps_from_args(args: argparse.Namespace) -> list[CiStep]:
         )
 
     bazel_target, sanitizer = BAZEL_COMMANDS[args.command]
+    if bazel_target == "amd-client":
+        return amd_client_steps(
+            tuple(args.target) if args.target else ci_config.AMD_CLIENT_BAZEL_TARGETS,
+            sanitizer,
+        )
     if bazel_target == "xdna":
         return xdna_steps(
             tuple(args.target) if args.target else ci_config.XDNA_BAZEL_TARGETS,

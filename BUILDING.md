@@ -358,6 +358,7 @@ python build_tools/devtools/ci.py iree-bazel-amdgpu-asan --amdgpu-target gfx942 
 python build_tools/devtools/ci.py iree-bazel-amdgpu-tsan --amdgpu-target gfx942 --keep-going
 python build_tools/devtools/ci.py iree-bazel-amdgpu-ubsan --amdgpu-target gfx942 --keep-going
 python build_tools/devtools/ci.py iree-bazel-xdna-asan
+python build_tools/devtools/ci.py iree-bazel-amd-client-asan
 
 python build_tools/devtools/ci.py iree-cmake-cpu --keep-going
 python build_tools/devtools/ci.py iree-cmake-cpu-sanitizers --keep-going
@@ -383,6 +384,27 @@ native tests through the shared AMD resource group. The commands without the
 These commands do not provision devices or assign a cross-job hardware lease;
 the runner supplies those before invoking them. A run that skips every native
 test is not hardware qualification.
+
+The Linux and Windows **AMD RDNA+XDNA** Bazel workflows exercise the native
+client configuration through `iree-bazel-amd-client[-asan]`. Both libamdf
+families are compiled, including their tests, while XDNA is the only admitted
+hardware test resource. The test phase runs libamdf's host-only coverage for
+both families and the XDNA CTS and ELF execution consumers. GPU hardware tests
+remain compiled but are excluded by their resource requirement. Build support
+and available execution resources are independent.
+
+The selected packages are `//libamdf/...` and `//experimental/xdna/...`.
+Common runtime code enters through the ELF consumers' dependencies. The
+ROCr-backed AMDGPU HAL and its Loom execution suites are not enabled; these
+jobs require neither ROCr nor a GPU target selector. CDNA, SPIR-V, LLVMIR,
+WASM, and optional importers are disabled, and the repository-wide CPU and
+libhrx suites are outside the test scope.
+
+Linux runs with ASAN on the gfx1150 NPU pool and requires access to the assigned
+`/dev/accel/accel0`; Windows runs natively with clang-cl on the gfx1151 pool.
+XDNA tests reuse their devices and the existing AMD test resource group. The
+runner supplies exclusive native device access. The unsuffixed command is the
+Windows reproduction form.
 
 AMDGPU Bazel sanitizer configurations are separate CI jobs so they build and
 test independently. Aggregate CPU Bazel and CMake commands remain available as

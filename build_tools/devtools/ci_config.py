@@ -158,6 +158,25 @@ XDNA_BAZEL_TARGETS = AMDF_BAZEL_TARGETS + ("//experimental/xdna/...",)
 XDNA_BAZEL_TEST_TAG_FILTERS = (AMDF_BUILD_REQUIREMENT_TAG, XDNA_RUN_REQUIREMENT_TAG)
 XDNA_CMAKE_BUILD_TARGETS = ("libamdf/all", "experimental/xdna/all")
 XDNA_CTEST_PACKAGE_REGEX = r"^iree/experimental/xdna/"
+# Compile both client families; only XDNA requires native hardware for execution.
+# Common runtime components enter through the ELF consumers' dependencies.
+AMD_CLIENT_BAZEL_OPTIONS = (
+    "--//libamdf/config:enabled=true",
+    "--//libamdf/config:families=rdna,xdna",
+    "--//runtime/config/hal:drivers=task",
+    "--//loom/config/target:enable=amdgpu,x86",
+    "--//loom/config/execute:enable=iree_hal",
+    "--//loom/config/import:enable=",
+    "--//loom/config/emit:enable=",
+)
+AMD_CLIENT_BAZEL_TARGETS = (
+    *AMDF_BAZEL_TARGETS,
+    "//experimental/xdna/...",
+)
+AMD_CLIENT_BAZEL_TEST_TAG_FILTERS = (
+    *XDNA_BAZEL_TEST_TAG_FILTERS,
+    "-iree-run-requirement=libamdf.resource.amd_gpu",
+)
 AMDGPU_CMAKE_DRIVER_TARGETS = ("runtime/src/iree/hal/drivers/amdgpu/all",)
 DEFAULT_AMDGPU_TARGET_SELECTOR = "gfx942"
 AMDGPU_BUILD_REQUIREMENT_TAG = "iree-build-requirement=runtime.hal.amdgpu"
