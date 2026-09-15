@@ -529,6 +529,11 @@ typedef struct loom_value_fact_view_reference_t {
   // SSA value that represents the root storage identity.
   loom_value_id_t root_value_id;
 
+  // Buffer SSA value that materializes the root, including its authored
+  // alignment and alias assumptions. INVALID when no single buffer is shared
+  // by every incoming view. Availability at a use is a dominance question.
+  loom_value_id_t buffer_value_id;
+
   // Comparable alias scope for disjointness proofs, or NONE.
   loom_value_fact_alias_scope_id_t alias_scope_id;
 

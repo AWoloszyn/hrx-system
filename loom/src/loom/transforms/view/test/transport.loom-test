@@ -1,0 +1,454 @@
+// RUN: pass decompose-view-transports,canonicalize,cse,dce
+
+func.def @counted_rotation(%input: buffer, %count: index) -> (f32, i64) {
+  %buffer = buffer.assume.alignment %input {minimum_alignment = 64} : buffer
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base0 = index.constant 0 : offset
+  %base1 = index.constant 64 : offset
+  %left = buffer.view %buffer[%base0] : buffer -> view<16xf32>
+  %right = buffer.view %buffer[%base1] : buffer -> view<16xf32>
+  %last0, %last1 = scf.for %i = [%begin to %count step %step](%a = %left : view<16xf32>, %b = %right : view<16xf32>) -> (view<16xf32>, view<16xf32>) {
+    %value = view.load %a[0] : view<16xf32> -> f32
+    view.store %value, %b[0] : f32, view<16xf32>
+    scf.yield %b, %a : view<16xf32>, view<16xf32>
+  }
+  %result = view.load %last0[0] : view<16xf32> -> f32
+  %alignment = test.fact_view_root_min_alignment %last0 : view<16xf32> -> i64
+  func.return %result, %alignment : f32, i64
+}
+
+// ----
+func.def @counted_rotation(%input: buffer, %count: index) -> (f32, i64) {
+  %buffer = buffer.assume.alignment %input {minimum_alignment = 64} : buffer
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base0 = index.constant 0 : offset
+  %base1 = index.constant 64 : offset
+  %last0_offset, %last1_offset = scf.for %i = [%begin to %count step %step](%a_offset = %base0 : offset, %b_offset = %base1 : offset) -> (offset, offset) {
+    %a = buffer.view %buffer[%a_offset] : buffer -> view<16xf32>
+    %b = buffer.view %buffer[%b_offset] : buffer -> view<16xf32>
+    %value = view.load %a[0] : view<16xf32> -> f32
+    view.store %value, %b[0] : f32, view<16xf32>
+    scf.yield %b_offset, %a_offset : offset, offset
+  }
+  %last0 = buffer.view %buffer[%last0_offset] : buffer -> view<16xf32>
+  %result = view.load %last0[0] : view<16xf32> -> f32
+  %alignment = scalar.constant 64 : i64
+  func.return %result, %alignment : f32, i64
+}
+
+// ====
+
+func.def @selected_views(%input: buffer, %condition: i1) -> (f32) {
+  %base0 = index.constant 0 : offset
+  %base1 = index.constant 64 : offset
+  %left = buffer.view %input[%base0] : buffer -> view<16xf32>
+  %right = buffer.view %input[%base1] : buffer -> view<16xf32>
+  %selected = scf.select %condition, %left, %right : view<16xf32>
+  %result = view.load %selected[3] : view<16xf32> -> f32
+  func.return %result : f32
+}
+
+// ----
+func.def @selected_views(%input: buffer, %condition: i1) -> (f32) {
+  %base0 = index.constant 0 : offset
+  %base1 = index.constant 64 : offset
+  %selected_offset = scf.select %condition, %base0, %base1 : offset
+  %selected = buffer.view %input[%selected_offset] : buffer -> view<16xf32>
+  %result = view.load %selected[3] : view<16xf32> -> f32
+  func.return %result : f32
+}
+
+// ====
+
+func.def @lookup_views(%input: buffer, %selector: index) -> (f32, i32) {
+  %base0 = index.constant 0 : offset
+  %base1 = index.constant 64 : offset
+  %tag0 = scalar.constant 7 : i32
+  %tag1 = scalar.constant 9 : i32
+  %left = buffer.view %input[%base0] : buffer -> view<16xf32>
+  %right = buffer.view %input[%base1] : buffer -> view<16xf32>
+  %selected, %tag = scf.lookup %selector {
+    0 = (%left, %tag0),
+    4 = (%right, %tag1)
+  } default(%left, %tag1) : view<16xf32>, i32
+  %result = view.load %selected[3] : view<16xf32> -> f32
+  func.return %result, %tag : f32, i32
+}
+
+// ----
+func.def @lookup_views(%input: buffer, %selector: index) -> (f32, i32) {
+  %base0 = index.constant 0 : offset
+  %base1 = index.constant 64 : offset
+  %tag0 = scalar.constant 7 : i32
+  %tag1 = scalar.constant 9 : i32
+  %selected_offset, %tag = scf.lookup %selector {
+    0 = (%base0, %tag0),
+    4 = (%base1, %tag1)
+  } default(%base0, %tag1) : offset, i32
+  %selected = buffer.view %input[%selected_offset] : buffer -> view<16xf32>
+  %result = view.load %selected[3] : view<16xf32> -> f32
+  func.return %result, %tag : f32, i32
+}
+
+// ====
+
+func.def @branch_views(%input: buffer, %condition: i1, %index: index) -> (f32) {
+  %base0 = index.constant 0 : offset
+  %base1 = index.constant 64 : offset
+  %selected = scf.if %condition -> (view<16xf32>) {
+    %left = buffer.view %input[%base0] : buffer -> view<16xf32>
+    %old = view.load %left[0] : view<16xf32> -> f32
+    view.store %old, %left[1] : f32, view<16xf32>
+    scf.yield %left : view<16xf32>
+  } else {
+    %right = buffer.view %input[%base1] : buffer -> view<16xf32>
+    scf.yield %right : view<16xf32>
+  }
+  %result = view.load %selected[%index] : view<16xf32> -> f32
+  func.return %result : f32
+}
+
+// ----
+func.def @branch_views(%input: buffer, %condition: i1, %index: index) -> (f32) {
+  %base0 = index.constant 0 : offset
+  %base1 = index.constant 64 : offset
+  %selected_offset = scf.if %condition -> (offset) {
+    %left = buffer.view %input[%base0] : buffer -> view<16xf32>
+    %old = view.load %left[0] : view<16xf32> -> f32
+    view.store %old, %left[1] : f32, view<16xf32>
+    scf.yield %base0 : offset
+  } else {
+    scf.yield %base1 : offset
+  }
+  %selected = buffer.view %input[%selected_offset] : buffer -> view<16xf32>
+  %result = view.load %selected[%index] : view<16xf32> -> f32
+  func.return %result : f32
+}
+
+// ====
+
+func.def @while_rotation(%input: buffer, %count: index) -> (f32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base0 = index.constant 0 : offset
+  %base1 = index.constant 64 : offset
+  %left = buffer.view %input[%base0] : buffer -> view<16xf32>
+  %right = buffer.view %input[%base1] : buffer -> view<16xf32>
+  %last0, %last1, %last_i = scf.while(%a = %left : view<16xf32>, %b = %right : view<16xf32>, %i = %begin : index) -> (view<16xf32>, view<16xf32>, index) {
+    %more = index.cmp slt, %i, %count : index
+    scf.condition %more, %a, %b, %i : i1, view<16xf32>, view<16xf32>, index
+  } do(%current0: view<16xf32>, %current1: view<16xf32>, %current_i: index) {
+    %next = index.add %current_i, %step : index
+    scf.yield %current1, %current0, %next : view<16xf32>, view<16xf32>, index
+  }
+  %result = view.load %last0[0] : view<16xf32> -> f32
+  func.return %result : f32
+}
+
+// ----
+func.def @while_rotation(%input: buffer, %count: index) -> (f32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base0 = index.constant 0 : offset
+  %base1 = index.constant 64 : offset
+  %last0_offset, %last1_offset, %last_i = scf.while(%a_offset = %base0 : offset, %b_offset = %base1 : offset, %i = %begin : index) -> (offset, offset, index) {
+    %more = index.cmp slt, %i, %count : index
+    scf.condition %more, %a_offset, %b_offset, %i : i1, offset, offset, index
+  } do(%current0_offset: offset, %current1_offset: offset, %current_i: index) {
+    %next = index.add %current_i, %step : index
+    scf.yield %current1_offset, %current0_offset, %next : offset, offset, index
+  }
+  %last0 = buffer.view %input[%last0_offset] : buffer -> view<16xf32>
+  %result = view.load %last0[0] : view<16xf32> -> f32
+  func.return %result : f32
+}
+
+// ====
+
+func.def @cfg_rotation(%input: buffer, %count: index) -> (f32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base0 = index.constant 0 : offset
+  %base1 = index.constant 64 : offset
+  %left = buffer.view %input[%base0] : buffer -> view<16xf32>
+  %right = buffer.view %input[%base1] : buffer -> view<16xf32>
+  cfg.br ^header(%begin: index, %left: view<16xf32>, %right: view<16xf32>)
+^header(%i: index, %a: view<16xf32>, %b: view<16xf32>):
+  %more = index.cmp slt, %i, %count : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %next = index.add %i, %step : index
+  cfg.br ^header(%next: index, %b: view<16xf32>, %a: view<16xf32>)
+^exit:
+  %result = view.load %a[0] : view<16xf32> -> f32
+  func.return %result : f32
+}
+
+// ----
+func.def @cfg_rotation(%input: buffer, %count: index) -> (f32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base0 = index.constant 0 : offset
+  %base1 = index.constant 64 : offset
+  cfg.br ^header(%begin: index, %base0: offset, %base1: offset)
+^header(%i: index, %a_offset: offset, %b_offset: offset):
+  %a = buffer.view %input[%a_offset] : buffer -> view<16xf32>
+  %more = index.cmp slt, %i, %count : index
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %next = index.add %i, %step : index
+  cfg.br ^header(%next: index, %b_offset: offset, %a_offset: offset)
+^exit:
+  %result = view.load %a[0] : view<16xf32> -> f32
+  func.return %result : f32
+}
+
+// ====
+
+func.def @project_carried_view(%input: buffer, %count: index, %row: index, %condition: i1) -> (f32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base0 = index.constant 0 : offset
+  %base1 = index.constant 64 : offset
+  %left = buffer.view %input[%base0] : buffer -> view<16xf32>
+  %right = buffer.view %input[%base1] : buffer -> view<16xf32>
+  %last0, %last1 = scf.for %i = [%begin to %count step %step](%a = %left : view<16xf32>, %b = %right : view<16xf32>) -> (view<16xf32>, view<16xf32>) {
+    %part0 = view.subview %a[%row] : view<16xf32> -> view<4xf32>
+    %part1 = view.subview %b[0] : view<16xf32> -> view<4xf32>
+    %chosen = scf.select %condition, %part0, %part1 : view<4xf32>
+    %value = view.load %chosen[0] : view<4xf32> -> f32
+    view.store %value, %a[0] : f32, view<16xf32>
+    scf.yield %b, %a : view<16xf32>, view<16xf32>
+  }
+  %result = view.load %last0[0] : view<16xf32> -> f32
+  func.return %result : f32
+}
+
+// ----
+func.def @project_carried_view(%input: buffer, %count: index, %row: index, %condition: i1) -> (f32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base0 = index.constant 0 : offset
+  %base1 = index.constant 64 : offset
+  %last0_offset, %last1_offset = scf.for %i = [%begin to %count step %step](%a_offset = %base0 : offset, %b_offset = %base1 : offset) -> (offset, offset) {
+    %a = buffer.view %input[%a_offset] : buffer -> view<16xf32>
+    %26 = index.cast %a_offset : offset to i64
+    %27 = index.cast %row : index to i64
+    %32 = scalar.constant 2 : i64
+    %33 = scalar.shli %27, %32 : i64
+    %30 = scalar.addi %26, %33 : i64
+    %31 = index.cast %30 : i64 to offset
+    %chosen_offset = scf.select %condition, %31, %b_offset : offset
+    %chosen = buffer.view %input[%chosen_offset] : buffer -> view<4xf32>
+    %value = view.load %chosen[0] : view<4xf32> -> f32
+    view.store %value, %a[0] : f32, view<16xf32>
+    scf.yield %b_offset, %a_offset : offset, offset
+  }
+  %last0 = buffer.view %input[%last0_offset] : buffer -> view<16xf32>
+  %result = view.load %last0[0] : view<16xf32> -> f32
+  func.return %result : f32
+}
+
+// ====
+
+// Dynamic layout and dimension SSA remain attached to reconstructed views.
+func.def @dynamic_shape(%input: buffer, %count: index, %size: index, %layout: encoding<layout>) -> (f32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base0 = index.constant 0 : offset
+  %base1 = index.constant 64 : offset
+  %left = buffer.view %input[%base0] : buffer -> view<[%size]xf32, %layout>
+  %right = buffer.view %input[%base1] : buffer -> view<[%size]xf32, %layout>
+  %last0, %last1 = scf.for %i = [%begin to %count step %step](%a = %left : view<[%size]xf32, %layout>, %b = %right : view<[%size]xf32, %layout>) -> (view<[%size]xf32, %layout>, view<[%size]xf32, %layout>) {
+    scf.yield %b, %a : view<[%size]xf32, %layout>, view<[%size]xf32, %layout>
+  }
+  %result = view.load %last0[0] : view<[%size]xf32, %layout> -> f32
+  func.return %result : f32
+}
+
+// ----
+func.def @dynamic_shape(%input: buffer, %count: index, %size: index, %layout: encoding<layout>) -> (f32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base0 = index.constant 0 : offset
+  %base1 = index.constant 64 : offset
+  %last0_offset, %last1_offset = scf.for %i = [%begin to %count step %step](%a_offset = %base0 : offset, %b_offset = %base1 : offset) -> (offset, offset) {
+    scf.yield %b_offset, %a_offset : offset, offset
+  }
+  %last0 = buffer.view %input[%last0_offset] : buffer -> view<[%size]xf32, %layout>
+  %result = view.load %last0[0] : view<[%size]xf32, %layout> -> f32
+  func.return %result : f32
+}
+
+// ====
+
+// RUN: pass decompose-view-transports
+
+// Distinct buffer SSA values do not supply a common materializer even when
+// their root identity and every other view fact happen to match.
+func.def @different_materializers(%input: buffer, %condition: i1) -> (view<16xf32>) {
+  %base0 = index.constant 0 : offset
+  %base1 = index.constant 64 : offset
+  %first = buffer.assume.noalias %input : buffer
+  %second = buffer.assume.noalias %input : buffer
+  %left = buffer.view %first[%base0] : buffer -> view<16xf32>
+  %right = buffer.view %second[%base1] : buffer -> view<16xf32>
+  %selected = scf.select %condition, %left, %right : view<16xf32>
+  func.return %selected : view<16xf32>
+}
+
+// ----
+func.def @different_materializers(%input: buffer, %condition: i1) -> (view<16xf32>) {
+  %base0 = index.constant 0 : offset
+  %base1 = index.constant 64 : offset
+  %first = buffer.assume.noalias %input : buffer
+  %second = buffer.assume.noalias %input : buffer
+  %left = buffer.view %first[%base0] : buffer -> view<16xf32>
+  %right = buffer.view %second[%base1] : buffer -> view<16xf32>
+  %selected = scf.select %condition, %left, %right : view<16xf32>
+  func.return %selected : view<16xf32>
+}
+
+// ====
+
+// RUN: pass decompose-view-transports
+
+func.def @different_roots(%first: buffer, %second: buffer, %condition: i1) -> (view<16xf32>) {
+  %base = index.constant 0 : offset
+  %left = buffer.view %first[%base] : buffer -> view<16xf32>
+  %right = buffer.view %second[%base] : buffer -> view<16xf32>
+  %selected = scf.select %condition, %left, %right : view<16xf32>
+  func.return %selected : view<16xf32>
+}
+
+// ----
+func.def @different_roots(%first: buffer, %second: buffer, %condition: i1) -> (view<16xf32>) {
+  %base = index.constant 0 : offset
+  %left = buffer.view %first[%base] : buffer -> view<16xf32>
+  %right = buffer.view %second[%base] : buffer -> view<16xf32>
+  %selected = scf.select %condition, %left, %right : view<16xf32>
+  func.return %selected : view<16xf32>
+}
+
+// ====
+
+// RUN: pass decompose-view-transports,canonicalize,cse,dce
+
+func.def @refined_rotation(%input: buffer, %count: index) -> (i32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base0 = index.constant 0 : offset
+  %base1 = index.constant 4 : offset
+  %left = buffer.view %input[%base0] : buffer -> view<1xi32>
+  %right = buffer.view %input[%base1] : buffer -> view<1xi32>
+  %last0, %last1 = scf.for %i = [%begin to %count step %step](%a = %left : view<1xi32>, %b = %right : view<1xi32>) -> (view<1xi32>, view<1xi32>) {
+    %refined = view.refine %a : view<1xi32> -> view<1xi32>
+    scf.yield %b, %refined : view<1xi32>, view<1xi32>
+  }
+  %result = view.load %last0[0] : view<1xi32> -> i32
+  func.return %result : i32
+}
+
+// ----
+func.def @refined_rotation(%input: buffer, %count: index) -> (i32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base0 = index.constant 0 : offset
+  %base1 = index.constant 4 : offset
+  %last0_offset, %last1_offset = scf.for %i = [%begin to %count step %step](%a_offset = %base0 : offset, %b_offset = %base1 : offset) -> (offset, offset) {
+    scf.yield %b_offset, %a_offset : offset, offset
+  }
+  %last0 = buffer.view %input[%last0_offset] : buffer -> view<1xi32>
+  %result = view.load %last0[0] : view<1xi32> -> i32
+  func.return %result : i32
+}
+
+// ====
+
+// RUN: pass decompose-view-transports
+
+// An unknown layout makes the projection recipe unavailable. Its whole
+// dependent rotation remains intact while an independent selection decomposes.
+func.def @unavailable_projection(%input: buffer, %count: index, %row: index, %condition: i1, %layout: encoding<layout>) -> (view<16xf32, %layout>, view<1xi32>) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base0 = index.constant 0 : offset
+  %base1 = index.constant 64 : offset
+  %left = buffer.view %input[%base0] : buffer -> view<16xf32, %layout>
+  %right = buffer.view %input[%base1] : buffer -> view<16xf32, %layout>
+  %last0, %last1 = scf.for %i = [%begin to %count step %step](%a = %left : view<16xf32, %layout>, %b = %right : view<16xf32, %layout>) -> (view<16xf32, %layout>, view<16xf32, %layout>) {
+    %projected = view.subview %a[%row] : view<16xf32, %layout> -> view<16xf32, %layout>
+    scf.yield %b, %projected : view<16xf32, %layout>, view<16xf32, %layout>
+  }
+  %first = buffer.view %input[%base0] : buffer -> view<1xi32>
+  %second = buffer.view %input[%base1] : buffer -> view<1xi32>
+  %selected = scf.select %condition, %first, %second : view<1xi32>
+  func.return %last0, %selected : view<16xf32, %layout>, view<1xi32>
+}
+
+// ----
+func.def @unavailable_projection(%input: buffer, %count: index, %row: index, %condition: i1, %layout: encoding<layout>) -> (view<16xf32, %layout>, view<1xi32>) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base0 = index.constant 0 : offset
+  %base1 = index.constant 64 : offset
+  %left = buffer.view %input[%base0] : buffer -> view<16xf32, %layout>
+  %right = buffer.view %input[%base1] : buffer -> view<16xf32, %layout>
+  %last0, %last1 = scf.for %i = [%begin to %count step %step](%a = %left : view<16xf32, %layout>, %b = %right : view<16xf32, %layout>) -> (view<16xf32, %layout>, view<16xf32, %layout>) {
+    %projected = view.subview %a[%row] : view<16xf32, %layout> -> view<16xf32, %layout>
+    scf.yield %b, %projected : view<16xf32, %layout>, view<16xf32, %layout>
+  }
+  %first = buffer.view %input[%base0] : buffer -> view<1xi32>
+  %second = buffer.view %input[%base1] : buffer -> view<1xi32>
+  %selected_offset = scf.select %condition, %base0, %base1 : offset
+  %selected = buffer.view %input[%selected_offset] : buffer -> view<1xi32>
+  func.return %last0, %selected : view<16xf32, %layout>, view<1xi32>
+}
+
+// ====
+
+// RUN: pass decompose-view-transports
+
+// A memory recurrence needs no carried tuple, even in a function that selects
+// views after the loop.
+func.def @memory_recurrence(%input: buffer, %condition: i1) -> (i32) {
+  %base0 = index.constant 0 : offset
+  %base1 = index.constant 4 : offset
+  %left = buffer.view %input[%base0] : buffer -> view<1xi32>
+  %right = buffer.view %input[%base1] : buffer -> view<1xi32>
+  %cleared = scalar.constant 0 : i32
+  scf.while {
+    %value = view.load %left[0] : view<1xi32> -> i32
+    %pending = scalar.cmpi ne, %value, %cleared : i32
+    scf.condition %pending : i1
+  } do {
+    view.store %cleared, %left[0] : i32, view<1xi32>
+    scf.yield
+  }
+  %selected = scf.select %condition, %left, %right : view<1xi32>
+  %result = view.load %selected[0] : view<1xi32> -> i32
+  func.return %result : i32
+}
+
+// ----
+func.def @memory_recurrence(%input: buffer, %condition: i1) -> (i32) {
+  %base0 = index.constant 0 : offset
+  %base1 = index.constant 4 : offset
+  %left = buffer.view %input[%base0] : buffer -> view<1xi32>
+  %right = buffer.view %input[%base1] : buffer -> view<1xi32>
+  %cleared = scalar.constant 0 : i32
+  scf.while {
+    %value = view.load %left[0] : view<1xi32> -> i32
+    %pending = scalar.cmpi ne, %value, %cleared : i32
+    scf.condition %pending : i1
+  } do {
+    view.store %cleared, %left[0] : i32, view<1xi32>
+    scf.yield
+  }
+  %selected_offset = scf.select %condition, %base0, %base1 : offset
+  %selected = buffer.view %input[%selected_offset] : buffer -> view<1xi32>
+  %result = view.load %selected[0] : view<1xi32> -> i32
+  func.return %result : i32
+}

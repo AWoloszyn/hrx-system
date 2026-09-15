@@ -83,6 +83,12 @@ logical coordinates while retaining the same storage root and address layout:
 shape or layout facts of the same view and byte base. Neither operation is an
 allocation or a data movement.
 
+Views over a common buffer can be carried through structured loops or selected
+as whole values. Their storage identity stays fixed while the chosen byte
+origin changes. [Rotating views over reusable storage](functions-and-control.md#rotate-views-over-reusable-storage)
+shows how to reuse two slots, preserve a live exit view, and handle empty or
+partially unrolled loops.
+
 ## State storage facts at the boundary that knows them
 
 External buffer parameters do not become independent merely because their SSA

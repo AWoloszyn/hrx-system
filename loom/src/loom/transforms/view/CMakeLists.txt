@@ -53,6 +53,35 @@ loom_cc_library(
 
 loom_cc_library(
   NAME
+    transport
+  HDRS
+    "transport.h"
+  SRCS
+    "transport.c"
+  DEPS
+    iree::base
+    iree::base::internal
+    loom::analysis::symbolic_expr
+    loom::analysis::view_regions
+    loom::ir
+    loom::ir::facts
+    loom::ops::buffer
+    loom::ops::index
+    loom::ops::op_defs
+    loom::ops::scalar
+    loom::ops::scf
+    loom::pass::types
+    loom::pass::value_facts
+    loom::rewrite::rewriter
+    loom::util::cfg_graph
+    loom::util::dominance
+    loom::util::fact_table
+    loom::util::walk
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
     target_legalization
   HDRS
     "target_legalization.h"

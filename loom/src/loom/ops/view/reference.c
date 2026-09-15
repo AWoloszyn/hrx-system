@@ -37,6 +37,9 @@ static loom_value_fact_view_reference_t loom_view_join_reference_fields(
       .static_element_byte_count = lhs.static_element_byte_count,
       .memory_space = lhs.memory_space,
       .root_value_id = lhs.root_value_id,
+      .buffer_value_id = lhs.buffer_value_id == rhs.buffer_value_id
+                             ? lhs.buffer_value_id
+                             : LOOM_VALUE_ID_INVALID,
       .alias_scope_id = lhs.alias_scope_id == rhs.alias_scope_id
                             ? lhs.alias_scope_id
                             : LOOM_VALUE_FACT_ALIAS_SCOPE_ID_NONE,
@@ -481,6 +484,7 @@ static loom_value_fact_view_reference_t loom_view_default_view_reference(
           loom_view_static_element_byte_count(source_type),
       .memory_space = LOOM_VALUE_FACT_MEMORY_SPACE_UNKNOWN,
       .root_value_id = source_value_id,
+      .buffer_value_id = LOOM_VALUE_ID_INVALID,
       .alias_scope_id = LOOM_VALUE_FACT_ALIAS_SCOPE_ID_NONE,
       .nullability = LOOM_VALUE_FACT_REFERENCE_NULLABILITY_UNKNOWN,
   };
@@ -511,6 +515,7 @@ iree_status_t loom_view_reference_make_buffer_view(
   view_reference.root_minimum_alignment = buffer_reference.minimum_alignment;
   view_reference.memory_space = buffer_reference.memory_space;
   view_reference.root_value_id = buffer_reference.root_value_id;
+  view_reference.buffer_value_id = buffer_value_id;
   view_reference.alias_scope_id = buffer_reference.alias_scope_id;
   view_reference.nullability = buffer_reference.nullability;
   return loom_value_facts_make_view_reference(context, view_reference, out);
@@ -545,6 +550,7 @@ iree_status_t loom_view_reference_make_subview(
       source_reference.root_minimum_alignment;
   view_reference.memory_space = source_reference.memory_space;
   view_reference.root_value_id = source_reference.root_value_id;
+  view_reference.buffer_value_id = source_reference.buffer_value_id;
   view_reference.alias_scope_id = source_reference.alias_scope_id;
   view_reference.nullability = source_reference.nullability;
   return loom_value_facts_make_view_reference(context, view_reference, out);

@@ -1,0 +1,145 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/view_transport.loom-test
+// RUN: emit source-low output=low
+
+amdgpu.target<gfx11-generic> @target
+
+func.def target(@target) @wide_subview_selection(%input: buffer, %byte_base0: offset, %condition: i1) -> (i32) {
+  %byte_base = index.assume %byte_base0 [range(%byte_base0, 2147483648, 4294967296), mul(%byte_base0, 4)] : offset
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %root = buffer.view %aligned[%byte_base] : buffer -> view<4xi32>
+  %first = view.subview %root[1] : view<4xi32> -> view<1xi32>
+  %second = view.subview %root[2] : view<4xi32> -> view<1xi32>
+  %selected = scf.select %condition, %first, %second : view<1xi32>
+  %value = view.load %selected[0] : view<1xi32> -> i32
+  func.return %value : i32
+}
+
+// ----
+low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @wide_subview_selection(%byte_base: reg<amdgpu.sgpr x2>, %condition: reg<amdgpu.scc>) -> (reg<amdgpu.vgpr>) asm {
+  %selected = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %24 = s_mov_b32 4
+  %25 = s_mov_b32 0
+  %27 = slice %byte_base[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %28 = slice %byte_base[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %31 = s_add_u32 %27, %24
+  %32 = s_addc_u32 %28, %25
+  %34 = s_mov_b32 8
+  %41 = s_add_u32 %27, %34
+  %42 = s_addc_u32 %28, %25
+  %46 = s_cselect_b32 %31, %41, %condition
+  %49 = s_cselect_b32 %32, %42, %condition
+  %51 = v_mov_b32 0
+  %52 = slice %selected[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %53 = slice %selected[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %56 = s_add_u32 %52, %46
+  %57 = s_addc_u32 %53, %49
+  %58 = concat(%56, %57) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  %value = global_load_b32_saddr %51, %58
+  return %value
+}
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+func.def public target(@target) @rotate_buffer_views(%input: buffer, %count_input: index, %seed: i32) -> (i32) {
+  %count = index.assume %count_input [range(%count_input, 0, 257)] : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %depth = scalar.constant 4 : i32
+  %storage = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %offset0 = index.constant 0 : offset
+  %slot0 = buffer.view %storage[%offset0] : buffer -> view<1xi32>
+  %ordinal0 = scalar.constant 0 : i32
+  %initial0 = scalar.addi %seed, %ordinal0 : i32
+  view.store %initial0, %slot0[0] : i32, view<1xi32>
+  %offset1 = index.constant 4 : offset
+  %slot1 = buffer.view %storage[%offset1] : buffer -> view<1xi32>
+  %ordinal1 = scalar.constant 1 : i32
+  %initial1 = scalar.addi %seed, %ordinal1 : i32
+  view.store %initial1, %slot1[0] : i32, view<1xi32>
+  %offset2 = index.constant 8 : offset
+  %slot2 = buffer.view %storage[%offset2] : buffer -> view<1xi32>
+  %ordinal2 = scalar.constant 2 : i32
+  %initial2 = scalar.addi %seed, %ordinal2 : i32
+  view.store %initial2, %slot2[0] : i32, view<1xi32>
+  %offset3 = index.constant 12 : offset
+  %slot3 = buffer.view %storage[%offset3] : buffer -> view<1xi32>
+  %ordinal3 = scalar.constant 3 : i32
+  %initial3 = scalar.addi %seed, %ordinal3 : i32
+  view.store %initial3, %slot3[0] : i32, view<1xi32>
+  %unroll = index.constant 2 : index
+  %last0, %last1, %last2, %last3 = scf.for %record = [%begin to %count step %step](%current0 = %slot0 : view<1xi32>, %current1 = %slot1 : view<1xi32>, %current2 = %slot2 : view<1xi32>, %current3 = %slot3 : view<1xi32>) -> (view<1xi32>, view<1xi32>, view<1xi32>, view<1xi32>) unroll(%unroll) {
+    %number = index.cast %record : index to i32
+    %future = scalar.addi %number, %depth : i32
+    %value = scalar.addi %seed, %future : i32
+    %refined = view.refine %current0 : view<1xi32> -> view<1xi32>
+    view.store %value, %refined[0] : i32, view<1xi32>
+    scf.yield %current1, %current2, %current3, %refined : view<1xi32>, view<1xi32>, view<1xi32>, view<1xi32>
+  }
+  %value0 = view.load %last0[0] : view<1xi32> -> i32
+  func.return %value0 : i32
+}
+
+// ----
+low.func.def public target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @rotate_buffer_views(%count: reg<amdgpu.sgpr>, %seed: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>) asm {
+  %last0 = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %begin = s_mov_b32 0
+  %depth = s_mov_b32 4
+  %108 = v_mov_b32_copy %seed
+  %109 = v_mov_b32 0
+  global_store_b32_saddr %109, %108, %last0
+  %ordinal1 = s_mov_b32 1
+  %initial1 = s_add_u32 %seed, %ordinal1
+  %113 = v_mov_b32_copy %initial1
+  global_store_b32_saddr %109, %113, %last0 {offset = 4}
+  %offset2 = s_mov_b32 8
+  %ordinal2 = s_mov_b32 2
+  %initial2 = s_add_u32 %seed, %ordinal2
+  %118 = v_mov_b32_copy %initial2
+  global_store_b32_saddr %109, %118, %last0 {offset = 8}
+  %offset3 = s_mov_b32 12
+  %ordinal3 = s_mov_b32 3
+  %initial3 = s_add_u32 %seed, %ordinal3
+  %123 = v_mov_b32_copy %initial3
+  global_store_b32_saddr %109, %123, %last0 {offset = 12}
+  low.br ^_bb1(%begin: reg<amdgpu.sgpr>, %begin: reg<amdgpu.sgpr>, %depth: reg<amdgpu.sgpr>, %offset2: reg<amdgpu.sgpr>, %offset3: reg<amdgpu.sgpr>)
+^_bb1(%number: reg<amdgpu.sgpr>, %current0_offset: reg<amdgpu.sgpr>, %current1_offset: reg<amdgpu.sgpr>, %current2_offset: reg<amdgpu.sgpr>, %current3_offset: reg<amdgpu.sgpr>):
+  %126 = s_cmp_lt_i32 %number, %count
+  low.cond_br %126, ^_bb2, ^_bb6 : reg<amdgpu.scc>
+^_bb2:
+  %future = s_add_u32 %number, %depth
+  %value = s_add_u32 %seed, %future
+  %129 = v_mov_b32_copy %value
+  %131 = slice %last0[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %132 = slice %last0[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %134 = s_add_u32 %131, %current0_offset
+  %135 = s_addc_u32 %132, %begin
+  %136 = concat(%134, %135) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  global_store_b32_saddr %109, %129, %136
+  %number_1 = s_add_u32 %number, %ordinal1
+  %139 = s_cmp_lt_i32 %number_1, %count
+  low.cond_br %139, ^_bb3, ^_bb4 : reg<amdgpu.scc>
+^_bb3:
+  %future_1 = s_add_u32 %number_1, %depth
+  %value_1 = s_add_u32 %seed, %future_1
+  %142 = v_mov_b32_copy %value_1
+  %147 = s_add_u32 %131, %current1_offset
+  %148 = s_addc_u32 %132, %begin
+  %149 = concat(%147, %148) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  global_store_b32_saddr %109, %142, %149
+  low.br ^_bb5(%current2_offset: reg<amdgpu.sgpr>, %current3_offset: reg<amdgpu.sgpr>, %current0_offset: reg<amdgpu.sgpr>, %current1_offset: reg<amdgpu.sgpr>)
+^_bb4:
+  low.br ^_bb5(%current1_offset: reg<amdgpu.sgpr>, %current2_offset: reg<amdgpu.sgpr>, %current3_offset: reg<amdgpu.sgpr>, %current0_offset: reg<amdgpu.sgpr>)
+^_bb5(%100: reg<amdgpu.sgpr>, %101: reg<amdgpu.sgpr>, %102: reg<amdgpu.sgpr>, %103: reg<amdgpu.sgpr>):
+  %150 = s_add_u32 %number, %ordinal2
+  low.br ^_bb1(%150: reg<amdgpu.sgpr>, %100: reg<amdgpu.sgpr>, %101: reg<amdgpu.sgpr>, %102: reg<amdgpu.sgpr>, %103: reg<amdgpu.sgpr>)
+^_bb6:
+  %152 = slice %last0[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %153 = slice %last0[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %155 = s_add_u32 %152, %current0_offset
+  %156 = s_addc_u32 %153, %begin
+  %157 = concat(%155, %156) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  %value0 = global_load_b32_saddr %109, %157
+  return %value0
+}

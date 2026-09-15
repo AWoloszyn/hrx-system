@@ -352,6 +352,7 @@ static uint32_t loom_value_fact_hash_view_reference(
   hash = loom_value_fact_hash_i64(reference.static_element_byte_count, hash);
   hash = loom_value_fact_hash_u32((uint32_t)reference.memory_space, hash);
   hash = loom_value_fact_hash_u32(reference.root_value_id, hash);
+  hash = loom_value_fact_hash_u32(reference.buffer_value_id, hash);
   hash = loom_value_fact_hash_u32(reference.alias_scope_id, hash);
   return loom_value_fact_hash_u32(reference.nullability, hash);
 }
@@ -386,6 +387,7 @@ static bool loom_value_fact_view_reference_equal(
          lhs.static_element_byte_count == rhs.static_element_byte_count &&
          lhs.memory_space == rhs.memory_space &&
          lhs.root_value_id == rhs.root_value_id &&
+         lhs.buffer_value_id == rhs.buffer_value_id &&
          lhs.alias_scope_id == rhs.alias_scope_id &&
          lhs.nullability == rhs.nullability;
 }
@@ -857,6 +859,7 @@ static bool loom_value_fact_table_view_reference_equal(
          lhs.static_element_byte_count == rhs.static_element_byte_count &&
          lhs.memory_space == rhs.memory_space &&
          lhs.root_value_id == rhs.root_value_id &&
+         lhs.buffer_value_id == rhs.buffer_value_id &&
          lhs.alias_scope_id == rhs.alias_scope_id &&
          lhs.nullability == rhs.nullability;
 }

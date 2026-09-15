@@ -225,6 +225,39 @@ This spelling preserves recurrence edges. A scheduler can distinguish the two
 independent recurrence chains, an unroller can interleave their producers, and
 reports can attribute pressure to the values that actually stay live.
 
+## Rotate views over reusable storage
+
+Loop-carried state can include views over one buffer. Construct the slots from
+the same buffer value, carrying any alignment or alias assumptions established
+by the caller. Each view retains its shape and layout while its byte origin
+rotates through the loop. The backing allocation remains outside the loop.
+
+The yield tuple supplies the next state simultaneously. For example,
+`scf.yield %next, %current` exchanges the two views: each operand denotes the
+view from the current iteration. It does not copy their stored elements.
+
+This example uses two private slots to compute `1 + 7 * trip_count`. Each
+iteration consumes the current slot, writes the next slot, and rotates their
+roles. The caller supplies a trip count in `[0, 257]`:
+
+**Source:** [`rotating-views.loom`](https://github.com/ROCm/hrx-system/blob/main/loom/docs/examples/guide/functions-and-control/rotating-views.loom)
+
+```loom title="rotating-views.loom"
+--8<-- "examples/guide/functions-and-control/rotating-views.loom"
+```
+
+With zero iterations, `%last` is the initial `%first` view and the result is
+`1`. After three iterations, `%last` identifies the last written slot and the
+result is `22`. The returned views remain usable after the loop; they retain
+the lifetime of their backing storage. A view is non-owning, so returning a
+view never extends an allocation's lifetime.
+
+Views can also pass through `scf.while`, region yields, and whole-value
+selection. The [memory guide](buffers-views-memory.md) describes their storage,
+alignment, and synchronization contracts. Rotating a view does not establish
+completion of an asynchronous producer; consumption and storage reuse follow
+the program's completion dependencies.
+
 ## Unrolling is a loop policy
 
 Keep the source loop when the algorithm is a loop. Request full local unrolling
@@ -242,6 +275,13 @@ are insufficient, the request fails with the unresolved bounds rather than
 silently leaving a loop that the author required to be unrolled. More specific
 unroll schedules can express linear, interleaved, or recurrence-aware body
 ordering without changing the logical loop.
+
+`unroll(%factor)` requests partial unrolling with a specialized positive factor.
+The two-slot example uses factor two with a runtime trip count. Each copied
+iteration advances the whole carried tuple once. Empty ranges execute no body,
+and a remainder executes only the iterations in the original half-open range:
+three iterations still produce `22`, including the final view identity.
+Unrolling preserves the program's data and completion dependencies.
 
 ## Select among whole values
 

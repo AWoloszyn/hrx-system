@@ -517,6 +517,7 @@ static loom_value_fact_view_reference_t loom_view_region_default_reference(
           loom_view_region_static_element_byte_count(view_type),
       .memory_space = LOOM_VALUE_FACT_MEMORY_SPACE_UNKNOWN,
       .root_value_id = value_id,
+      .buffer_value_id = LOOM_VALUE_ID_INVALID,
       .alias_scope_id = LOOM_VALUE_FACT_ALIAS_SCOPE_ID_NONE,
       .nullability = LOOM_VALUE_FACT_REFERENCE_NULLABILITY_UNKNOWN,
   };
