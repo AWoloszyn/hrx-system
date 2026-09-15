@@ -67,8 +67,9 @@ independent:
 | Linux or macOS | macOS x86-64 | `--config=macos-x86_64` |
 | macOS | Native, Xcode/Command Line Tools | None |
 
-Destination configs set only `--platforms`. Native builds infer their
-destination from the host, so adding a matching destination config is optional.
+Destination configs select `--platforms` independently of the compiler. Native
+builds infer their destination from the host, so adding a matching destination
+config is optional.
 For example, a native MSVC build needs only `--config=windows-msvc`; adding
 `--config=windows-x86_64` produces the same selection in either flag order.
 `windows-clang-cl` explicitly selects the default Windows compiler. MSVC requires
@@ -90,12 +91,16 @@ a specified execution environment; these local configurations do not define one.
 Cross-built executables run on their destination OS. Transfer the executable,
 dependent libraries, debug artifacts, and consumer runfiles to that host.
 Linux `bazel run` and `bazel test` cannot execute Windows or macOS binaries.
-Starlark test wrappers require a matching test execution platform even during
-build analysis; build their source binary targets when only producing artifacts.
-For example,
+The Windows destination preset permits building test wrappers without a Windows
+executor; `bazel test` retains execution-platform qualification. This separates
+artifact production from execution without registering a remote executor or
+changing the host toolchain used by generators.
+
+Other destination presets retain Bazel's requirement for a matching test
+execution platform even during wrapper build analysis. Their source binary
+targets can be built independently. For example,
 `//runtime/src/iree/hal/drivers/task/executable/elf:elf_module_test_binary`
-is the artifact target for the `:elf_module_test` wrapper. Destination selection
-does not configure a remote executor or test runner.
+is the artifact target for the `:elf_module_test` wrapper.
 
 ### Windows targets
 
