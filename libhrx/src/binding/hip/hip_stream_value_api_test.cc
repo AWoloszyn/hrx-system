@@ -610,6 +610,38 @@ TEST_F(HipStreamValueApiTest, ExecutesMaximumBatchCount) {
   EXPECT_EQ(256u, observed);
 }
 
+TEST_F(HipStreamValueApiTest, ExecutesMaximumBatchAcrossUniqueAllocations) {
+  hipStream_t stream = CreateStream();
+  ASSERT_NE(nullptr, stream);
+
+  constexpr size_t kOperationCount = 256;
+  std::vector<void*> allocations;
+  allocations.reserve(kOperationCount);
+  std::vector<hipStreamBatchMemOpParams> parameters(kOperationCount);
+  for (size_t i = 0; i < kOperationCount; ++i) {
+    void* allocation = Allocate(sizeof(uint32_t));
+    ASSERT_NE(nullptr, allocation);
+    allocations.push_back(allocation);
+    parameters[i].writeValue.operation = hipStreamMemOpWriteValue32;
+    parameters[i].writeValue.address = (hipDeviceptr_t)(uintptr_t)allocation;
+    parameters[i].writeValue.value = static_cast<uint32_t>(i + 1);
+    parameters[i].writeValue.flags = hipStreamWriteValueDefault;
+  }
+
+  ASSERT_EQ(
+      hipSuccess,
+      api_.batch_mem_op(stream, static_cast<unsigned int>(parameters.size()),
+                        parameters.data(), /*flags=*/0));
+  ASSERT_EQ(hipSuccess, api_.stream_synchronize(stream));
+
+  for (size_t i = 0; i < kOperationCount; ++i) {
+    uint32_t observed = 0;
+    ASSERT_EQ(hipSuccess, api_.memcpy(&observed, allocations[i],
+                                      sizeof(observed), hipMemcpyDeviceToHost));
+    EXPECT_EQ(i + 1, observed);
+  }
+}
+
 TEST_F(HipStreamValueApiTest, BatchDoesNotInterleaveWithSameStreamCall) {
   hipStream_t stream = CreateStream();
   void* allocation = Allocate(sizeof(uint32_t));
