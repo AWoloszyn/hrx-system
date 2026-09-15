@@ -2540,6 +2540,17 @@ iree_status_t iree_hal_streaming_update_capture_dependencies(
     iree_host_size_t dependency_count,
     iree_hal_streaming_capture_dependencies_mode_t mode);
 
+// Ensures capture-frontier storage for |required_capacity| entries. The caller
+// must hold |stream->mutex|.
+iree_status_t iree_hal_streaming_capture_reserve_dependencies_locked(
+    iree_hal_streaming_stream_t* stream, iree_host_size_t required_capacity);
+
+// Replaces the active capture frontier with |node|. The caller must hold
+// |stream->mutex| and must reserve at least one dependency slot before adding
+// the node to the graph.
+iree_status_t iree_hal_streaming_capture_set_last_node_locked(
+    iree_hal_streaming_stream_t* stream, iree_hal_streaming_graph_node_t* node);
+
 iree_status_t iree_hal_streaming_capture_set_last_node(
     iree_hal_streaming_stream_t* stream, iree_hal_streaming_graph_node_t* node);
 
