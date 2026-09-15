@@ -19,9 +19,12 @@ TEST(AllocationPreparationTest, ClosingRejectsNewLeasesUntilReopened) {
   iree_hal_streaming_allocation_preparation_t preparation;
   iree_hal_streaming_allocation_preparation_initialize(&preparation);
 
-  EXPECT_TRUE(
-      iree_hal_streaming_allocation_preparation_try_acquire(&preparation));
-  iree_hal_streaming_allocation_preparation_release(&preparation);
+  const bool initially_acquired =
+      iree_hal_streaming_allocation_preparation_try_acquire(&preparation);
+  EXPECT_TRUE(initially_acquired);
+  if (initially_acquired) {
+    iree_hal_streaming_allocation_preparation_release(&preparation);
+  }
 
   iree_hal_streaming_allocation_preparation_begin_close(&preparation);
   EXPECT_FALSE(
@@ -29,9 +32,12 @@ TEST(AllocationPreparationTest, ClosingRejectsNewLeasesUntilReopened) {
   iree_hal_streaming_allocation_preparation_await_idle(&preparation);
 
   iree_hal_streaming_allocation_preparation_reopen(&preparation);
-  EXPECT_TRUE(
-      iree_hal_streaming_allocation_preparation_try_acquire(&preparation));
-  iree_hal_streaming_allocation_preparation_release(&preparation);
+  const bool acquired_after_reopen =
+      iree_hal_streaming_allocation_preparation_try_acquire(&preparation);
+  EXPECT_TRUE(acquired_after_reopen);
+  if (acquired_after_reopen) {
+    iree_hal_streaming_allocation_preparation_release(&preparation);
+  }
 
   iree_hal_streaming_allocation_preparation_deinitialize(&preparation);
 }
@@ -42,8 +48,9 @@ TEST(AllocationPreparationTest, ClosingOneAllocationDoesNotBlockAnother) {
   iree_hal_streaming_allocation_preparation_t second_preparation;
   iree_hal_streaming_allocation_preparation_initialize(&second_preparation);
 
-  ASSERT_TRUE(iree_hal_streaming_allocation_preparation_try_acquire(
-      &first_preparation));
+  const bool first_acquired =
+      iree_hal_streaming_allocation_preparation_try_acquire(&first_preparation);
+  EXPECT_TRUE(first_acquired);
   iree_hal_streaming_allocation_preparation_begin_close(&first_preparation);
 
   std::mutex phase_mutex;
@@ -64,11 +71,17 @@ TEST(AllocationPreparationTest, ClosingOneAllocationDoesNotBlockAnother) {
   }
   EXPECT_FALSE(iree_hal_streaming_allocation_preparation_try_acquire(
       &first_preparation));
-  EXPECT_TRUE(iree_hal_streaming_allocation_preparation_try_acquire(
-      &second_preparation));
-  iree_hal_streaming_allocation_preparation_release(&second_preparation);
+  const bool second_acquired =
+      iree_hal_streaming_allocation_preparation_try_acquire(
+          &second_preparation);
+  EXPECT_TRUE(second_acquired);
+  if (second_acquired) {
+    iree_hal_streaming_allocation_preparation_release(&second_preparation);
+  }
 
-  iree_hal_streaming_allocation_preparation_release(&first_preparation);
+  if (first_acquired) {
+    iree_hal_streaming_allocation_preparation_release(&first_preparation);
+  }
   close_thread.join();
 
   iree_hal_streaming_allocation_preparation_deinitialize(&second_preparation);
