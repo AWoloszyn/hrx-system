@@ -177,6 +177,9 @@ AMD_CLIENT_BAZEL_TEST_TAG_FILTERS = (
     *XDNA_BAZEL_TEST_TAG_FILTERS,
     "-iree-run-requirement=libamdf.resource.amd_gpu",
 )
+# Preserve case-level execution and skips: a successful hardware test target
+# can contain only skipped cases when its runner lacks an admitted device.
+AMD_CLIENT_BAZEL_TEST_OPTIONS = ("--test_output=all",)
 AMDGPU_CMAKE_DRIVER_TARGETS = ("runtime/src/iree/hal/drivers/amdgpu/all",)
 DEFAULT_AMDGPU_TARGET_SELECTOR = "gfx942"
 AMDGPU_BUILD_REQUIREMENT_TAG = "iree-build-requirement=runtime.hal.amdgpu"

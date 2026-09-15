@@ -565,7 +565,7 @@ def amd_client_steps(targets: tuple[str, ...], config: str | None) -> list[CiSte
             targets,
             config=config,
             test_tag_filters=ci_config.AMD_CLIENT_BAZEL_TEST_TAG_FILTERS,
-            bazel_options=options,
+            bazel_options=options + ci_config.AMD_CLIENT_BAZEL_TEST_OPTIONS,
         ),
     ]
 
