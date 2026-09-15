@@ -2754,8 +2754,7 @@ static iree_status_t loom_amdgpu_wait_plan_handle_physical_write_range(
       allocation->storage_lease_unit_index,
       builder->schedule->target.descriptor_set, descriptor_reg_class_id,
       location_kind, location_base, location_count, program_point,
-      (uint64_t)program_point + 1u,
-      /*flags=*/0, incoming_selection, &query);
+      (uint64_t)program_point + 1u, incoming_selection, &query);
   uint32_t storage_lease_index = 0;
   while (loom_low_allocation_storage_lease_unit_query_next(
       &query, &storage_lease_index)) {

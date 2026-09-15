@@ -432,7 +432,6 @@ static bool loom_low_allocation_storage_lease_index_conflicts(
       candidate->location_kind, candidate->location_base,
       candidate->location_count, (uint64_t)candidate->start_point + 1u,
       candidate->end_point,
-      LOOM_LOW_ALLOCATION_STORAGE_LEASE_QUERY_FLAG_UNRELEASED,
       /*selection=*/NULL, &query);
   uint32_t storage_lease_index = 0;
   while (loom_low_allocation_storage_lease_unit_query_next(
@@ -752,7 +751,6 @@ iree_status_t loom_low_allocation_storage_lease_state_record_release_actions(
       candidate->location_kind, candidate->location_base,
       candidate->location_count, (uint64_t)candidate->start_point + 1u,
       candidate->end_point,
-      LOOM_LOW_ALLOCATION_STORAGE_LEASE_QUERY_FLAG_UNRELEASED,
       /*selection=*/NULL, &query);
   uint32_t storage_lease_index = 0;
   while (loom_low_allocation_storage_lease_unit_query_next(
