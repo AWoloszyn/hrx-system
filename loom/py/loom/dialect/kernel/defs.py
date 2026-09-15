@@ -862,7 +862,7 @@ kernel_subgroup_size = Op(
     name="kernel.subgroup.size",
     group=kernel_ops,
     phase=OpPhase.EXECUTABLE,
-    doc="Read the invocation count of the current subgroup.",
+    doc=("Read the execution width of the current subgroup. The width includes inactive lanes and may exceed the workgroup's invocation count."),
     results=[Result("result", INDEX, doc="Current subgroup size.")],
     traits=[PURE, HasAncestor("kernel.def")],
     facts="loom_kernel_subgroup_size_facts",

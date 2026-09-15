@@ -1,0 +1,168 @@
+// RUN: pass canonicalize
+
+// A workgroup with one active invocation still runs at the target's subgroup
+// width. Before that width is bound, only the lane and subgroup count fold.
+kernel.def @unbound_single_invocation() {
+  %c1 = index.constant 1 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%c1, %c1, %c1) : index
+} launch() {
+  %width = kernel.subgroup.size : index
+  %lane = kernel.subgroup.lane.id : index
+  %subgroup = kernel.subgroup.id : index
+  %count = kernel.subgroup.count : index
+  test.use %width, %lane, %subgroup, %count : index, index, index, index
+  kernel.return
+}
+
+// ----
+kernel.def @unbound_single_invocation() {
+  %c1 = index.constant 1 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%c1, %c1, %c1) : index
+} launch() {
+  %width = kernel.subgroup.size : index
+  %lane = index.constant 0 : index
+  %subgroup = index.constant 0 : index
+  %count = index.constant 1 : index
+  test.use %width, %lane, %subgroup, %count : index, index, index, index
+  kernel.return
+}
+
+// ====
+
+// A partial subgroup bounds active lanes without fixing its execution width.
+kernel.def @unbound_partial_subgroup() {
+  %c1 = index.constant 1 : index
+  %c3 = index.constant 3 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%c3, %c1, %c1) : index
+} launch() {
+  %width = kernel.subgroup.size : index
+  %lane = kernel.subgroup.lane.id : index
+  %subgroup = kernel.subgroup.id : index
+  %count = kernel.subgroup.count : index
+  %lane_hi = test.fact_range_hi %lane : index -> i64
+  %subgroup_hi = test.fact_range_hi %subgroup : index -> i64
+  %count_lo = test.fact_range_lo %count : index -> i64
+  %count_hi = test.fact_range_hi %count : index -> i64
+  test.use %width, %lane_hi, %subgroup_hi, %count_lo, %count_hi : index, i64, i64, i64, i64
+  kernel.return
+}
+
+// ----
+kernel.def @unbound_partial_subgroup() {
+  %c1 = index.constant 1 : index
+  %c3 = index.constant 3 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%c3, %c1, %c1) : index
+} launch() {
+  %width = kernel.subgroup.size : index
+  %lane_hi = scalar.constant 2 : i64
+  %subgroup_hi = scalar.constant 2 : i64
+  %count_lo = scalar.constant 1 : i64
+  %count_hi = scalar.constant 3 : i64
+  test.use %width, %lane_hi, %subgroup_hi, %count_lo, %count_hi : index, i64, i64, i64, i64
+  kernel.return
+}
+
+// ====
+
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @bound_single_invocation() {
+  %c1 = index.constant 1 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%c1, %c1, %c1) : index
+} launch() {
+  %width = kernel.subgroup.size : index
+  %lane = kernel.subgroup.lane.id : index
+  %subgroup = kernel.subgroup.id : index
+  %count = kernel.subgroup.count : index
+  test.use %width, %lane, %subgroup, %count : index, index, index, index
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @bound_single_invocation() {
+  %c1 = index.constant 1 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%c1, %c1, %c1) : index
+} launch() {
+  %width = index.constant 64 : index
+  %lane = index.constant 0 : index
+  %subgroup = index.constant 0 : index
+  %count = index.constant 1 : index
+  test.use %width, %lane, %subgroup, %count : index, index, index, index
+  kernel.return
+}
+
+// ====
+
+// The final partial subgroup still contributes to the subgroup count.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @bound_partial_final_subgroup() {
+  %c1 = index.constant 1 : index
+  %workgroup_size = index.constant 65 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%workgroup_size, %c1, %c1) : index
+} launch() {
+  %width = kernel.subgroup.size : index
+  %lane = kernel.subgroup.lane.id : index
+  %subgroup = kernel.subgroup.id : index
+  %count = kernel.subgroup.count : index
+  %lane_hi = test.fact_range_hi %lane : index -> i64
+  %subgroup_hi = test.fact_range_hi %subgroup : index -> i64
+  test.use %width, %lane_hi, %subgroup_hi, %count : index, i64, i64, index
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+// The final partial subgroup still contributes to the subgroup count.
+kernel.def target(@device) @bound_partial_final_subgroup() {
+  %c1 = index.constant 1 : index
+  %workgroup_size = index.constant 65 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%workgroup_size, %c1, %c1) : index
+} launch() {
+  %width = index.constant 64 : index
+  %count = index.constant 2 : index
+  %lane_hi = scalar.constant 63 : i64
+  %subgroup_hi = scalar.constant 1 : i64
+  test.use %width, %lane_hi, %subgroup_hi, %count : index, i64, i64, index
+  kernel.return
+}
+
+// ====
+
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 32}
+
+kernel.def target(@device) @bound_multidimensional_workgroup() {
+  %c1 = index.constant 1 : index
+  %x = index.constant 16 : index
+  %y = index.constant 4 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%x, %y, %c1) : index
+} launch() {
+  %width = kernel.subgroup.size : index
+  %lane = kernel.subgroup.lane.id : index
+  %subgroup = kernel.subgroup.id : index
+  %count = kernel.subgroup.count : index
+  %lane_hi = test.fact_range_hi %lane : index -> i64
+  %subgroup_hi = test.fact_range_hi %subgroup : index -> i64
+  test.use %width, %lane_hi, %subgroup_hi, %count : index, i64, i64, index
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 32}
+
+kernel.def target(@device) @bound_multidimensional_workgroup() {
+  %c1 = index.constant 1 : index
+  %x = index.constant 16 : index
+  %y = index.constant 4 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%x, %y, %c1) : index
+} launch() {
+  %width = index.constant 32 : index
+  %count = index.constant 2 : index
+  %lane_hi = scalar.constant 31 : i64
+  %subgroup_hi = scalar.constant 1 : i64
+  test.use %width, %lane_hi, %subgroup_hi, %count : index, i64, i64, index
+  kernel.return
+}

@@ -574,24 +574,19 @@ static loom_value_facts_t loom_kernel_launch_workitem_dispatch_id_facts(
 }
 
 static uint32_t loom_kernel_max_subgroup_size(
-    const loom_fact_context_t* context, const loom_module_t* module) {
+    const loom_fact_context_t* context) {
   const uint32_t fixed_subgroup_size =
       loom_kernel_context_fixed_subgroup_size(context);
   if (fixed_subgroup_size != 0) {
     return fixed_subgroup_size;
   }
-  uint32_t max_subgroup_size = LOOM_KERNEL_DEFAULT_MAX_SUBGROUP_SIZE;
-  const uint32_t max_flat_workgroup_size =
-      loom_kernel_context_max_flat_workgroup_size(context, module);
-  if (max_flat_workgroup_size != 0) {
-    max_subgroup_size = iree_min(max_subgroup_size, max_flat_workgroup_size);
-  }
-  return max_subgroup_size;
+  // A partial workgroup limits active lanes, not the subgroup execution width.
+  return LOOM_KERNEL_DEFAULT_MAX_SUBGROUP_SIZE;
 }
 
 static uint32_t loom_kernel_max_subgroup_lane_count(
     const loom_fact_context_t* context, const loom_module_t* module) {
-  uint32_t max_lane_count = loom_kernel_max_subgroup_size(context, module);
+  uint32_t max_lane_count = loom_kernel_max_subgroup_size(context);
   const uint32_t max_flat_workgroup_size =
       loom_kernel_context_max_flat_workgroup_size(context, module);
   if (max_flat_workgroup_size != 0) {
@@ -642,8 +637,7 @@ static uint32_t loom_kernel_min_subgroup_count(
                                                      &flat_workgroup_size)) {
     return 1;
   }
-  const uint32_t max_subgroup_size =
-      loom_kernel_max_subgroup_size(context, module);
+  const uint32_t max_subgroup_size = loom_kernel_max_subgroup_size(context);
   if (max_subgroup_size == 0) {
     return 1;
   }
@@ -814,6 +808,7 @@ iree_status_t loom_kernel_subgroup_size_facts(
     loom_fact_context_t* context, const loom_module_t* module,
     const loom_op_t* op, const loom_value_facts_t* operand_facts,
     loom_value_facts_t* result_facts) {
+  (void)module;
   (void)op;
   (void)operand_facts;
   const uint32_t fixed_subgroup_size =
@@ -822,8 +817,7 @@ iree_status_t loom_kernel_subgroup_size_facts(
     result_facts[0] = loom_value_facts_exact_i64((int64_t)fixed_subgroup_size);
     return iree_ok_status();
   }
-  const uint32_t max_subgroup_size =
-      loom_kernel_max_subgroup_size(context, module);
+  const uint32_t max_subgroup_size = loom_kernel_max_subgroup_size(context);
   result_facts[0] = loom_value_facts_make(1, (int64_t)max_subgroup_size, 1);
   loom_value_facts_mark_workgroup_uniform(&result_facts[0]);
   return iree_ok_status();

@@ -652,7 +652,7 @@ kernel.def @default_hal_query_facts() {
   %dispatch_id_lo = scalar.constant 0 : i64
   %dispatch_id_hi = scalar.constant 0 : i64
   %subgroup_size_lo = scalar.constant 1 : i64
-  %subgroup_size_hi = scalar.constant 1 : i64
+  %subgroup_size_hi = scalar.constant 128 : i64
   %workgroup_size_positive = scalar.constant true : i1
   %workgroup_count_positive = scalar.constant true : i1
   %subgroup_size_positive = scalar.constant true : i1
