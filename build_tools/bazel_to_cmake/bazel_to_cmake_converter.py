@@ -1140,6 +1140,9 @@ class BuildFileFunctions(object):
     def string_list_flag(self, *args, **kwargs):
         pass
 
+    def iree_string_list_flag(self, *args, **kwargs):
+        pass
+
     def declare_requirements(self, *args, **kwargs):
         pass
 

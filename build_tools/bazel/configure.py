@@ -20,7 +20,7 @@ from pathlib import Path, PurePath
 
 LOOM_EXECUTE_SUBSTRATES = ("iree_hal",)
 LOOM_IMPORTERS = ("mlir", "tilelang")
-LOOM_TARGETS = ("amdgpu", "llvmir", "spirv", "wasm", "x86")
+LOOM_TARGETS = ("amdgpu", "llvmir", "spirv", "vm", "wasm", "x86")
 LOOM_EMITTERS = ("amdgpu", "llvmir", "spirv", "wasm")
 HOST_DRIVERS = ("task",)
 DEFAULT_LOOM_EXECUTE = LOOM_EXECUTE_SUBSTRATES
@@ -64,6 +64,7 @@ LOOM_TARGET_DEFINES = {
     "LOOM_TARGET_AMDGPU": "amdgpu",
     "LOOM_TARGET_LLVMIR": "llvmir",
     "LOOM_TARGET_SPIRV": "spirv",
+    "LOOM_TARGET_VM": "vm",
     "LOOM_TARGET_WASM": "wasm",
     "LOOM_TARGET_X86": "x86",
 }

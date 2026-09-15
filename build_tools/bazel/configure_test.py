@@ -267,6 +267,23 @@ class ConfigureBazelTest(unittest.TestCase):
         self.assertIn("common --repo_env=IREE_HAL_AMDGPU_DEVICE_TOOLCHAIN=none", config)
         self.assertNotIn("IREE_ROCM_PATH", config)
 
+    def test_portable_vm_target_option_configures_target_scope(self):
+        args = self.configure_bazel.parse_arguments(["-DLOOM_TARGET_VM=ON"])
+        config = self.configure_bazel.generate_config(args)
+
+        self.assertIn(
+            "build --//loom/config/target:enable=amdgpu,llvmir,spirv,vm,x86",
+            config,
+        )
+
+    def test_native_vm_target_option_configures_target_scope(self):
+        args = self.configure_bazel.parse_arguments(
+            ["--//loom/config/target:enable=vm,x86"]
+        )
+        config = self.configure_bazel.generate_config(args)
+
+        self.assertIn("build --//loom/config/target:enable=vm,x86", config)
+
     def test_portable_loom_target_option_removes_default_target(self):
         args = self.configure_bazel.parse_arguments(["-DLOOM_TARGET_AMDGPU=OFF"])
         config = self.configure_bazel.generate_config(args)
