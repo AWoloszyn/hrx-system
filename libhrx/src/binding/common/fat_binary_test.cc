@@ -290,12 +290,14 @@ TEST(FatBinaryTest, VisitsDefinedGlobalObjects) {
 }
 
 TEST(FatBinaryTest, VisitsGlobalObjectsWithExtendedSectionCount) {
+  constexpr size_t kExtendedSectionCount = 0xff00;
   std::vector<uint8_t> elf = MakeAmdgpuElfWithGlobalSymbols();
   Elf64Header header;
   memcpy(&header, elf.data(), sizeof(header));
   Elf64SectionHeader section_zero;
   memcpy(&section_zero, elf.data() + header.shoff, sizeof(section_zero));
-  section_zero.size = header.shnum;
+  section_zero.size = kExtendedSectionCount;
+  elf.resize(header.shoff + kExtendedSectionCount * header.shentsize, 0);
   memcpy(elf.data() + header.shoff, &section_zero, sizeof(section_zero));
   header.shnum = 0;
   memcpy(elf.data(), &header, sizeof(header));
@@ -316,12 +318,13 @@ TEST(FatBinaryTest, VisitsGlobalObjectsWithExtendedSectionCount) {
 }
 
 TEST(FatBinaryTest, RejectsExtendedSectionCountPastTable) {
+  constexpr size_t kExtendedSectionCount = 0xff00;
   std::vector<uint8_t> elf = MakeAmdgpuElfWithGlobalSymbols();
   Elf64Header header;
   memcpy(&header, elf.data(), sizeof(header));
   Elf64SectionHeader section_zero;
   memcpy(&section_zero, elf.data() + header.shoff, sizeof(section_zero));
-  section_zero.size = header.shnum + 1;
+  section_zero.size = kExtendedSectionCount;
   memcpy(elf.data() + header.shoff, &section_zero, sizeof(section_zero));
   header.shnum = 0;
   memcpy(elf.data(), &header, sizeof(header));
