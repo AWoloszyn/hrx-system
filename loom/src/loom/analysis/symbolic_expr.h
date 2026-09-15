@@ -15,6 +15,9 @@
 // analysis fail; the defining SSA result remains a symbolic variable and range
 // facts stay attached. This lets consumers such as view alias analysis prove
 // the common affine cases while preserving a conservative escape hatch.
+// Address casts expand through their input only when its range proves the cast
+// preserves numeric value; truncation and unsigned reinterpretation otherwise
+// retain the cast result as a symbolic variable.
 //
 // Storage is caller-owned. The context memoizes value-to-expression queries and
 // owns a reusable scratch term buffer so fixed-point analyses can query without

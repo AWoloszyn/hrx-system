@@ -793,10 +793,37 @@ static iree_status_t loom_symbolic_expr_expansion_prepare_frame(
       *out_complete = true;
       break;
     }
-    case LOOM_OP_INDEX_CAST:
+    case LOOM_OP_INDEX_CAST: {
+      const loom_value_id_t input = loom_index_cast_input(defining_op);
+      loom_value_facts_t input_facts;
+      IREE_RETURN_IF_ERROR(loom_symbolic_expr_context_lookup_facts(
+          context, input, &input_facts));
+      int64_t input_lower_bound = 0;
+      int64_t input_upper_bound = 0;
+      (void)loom_value_facts_scalar_type_domain(
+          loom_type_element_type(
+              loom_module_value_type(context->module, input)),
+          &input_lower_bound, &input_upper_bound);
+      input_facts = loom_value_facts_clamp_domain(
+          input_facts, input_lower_bound, input_upper_bound);
+      int64_t result_lower_bound = 0;
+      int64_t result_upper_bound = 0;
+      (void)loom_value_facts_scalar_type_domain(
+          loom_type_element_type(value->type), &result_lower_bound,
+          &result_upper_bound);
+      // Narrowing and unsigned interpretation can change the numeric value.
+      // Only a range contained in the destination domain makes this cast an
+      // identity; otherwise its result remains an independent symbolic term.
+      if (input_facts.range_lo < result_lower_bound ||
+          input_facts.range_hi > result_upper_bound) {
+        *out_complete = true;
+        return loom_symbolic_expr_value(context, frame->value_id,
+                                        out_expression);
+      }
       frame->kind = LOOM_SYMBOLIC_EXPR_EXPANSION_IDENTITY;
-      frame->operand_values[0] = loom_index_cast_input(defining_op);
+      frame->operand_values[0] = input;
       break;
+    }
     case LOOM_OP_INDEX_ASSUME: {
       loom_value_slice_t values = loom_index_assume_values(defining_op);
       uint16_t result_index = loom_value_def_index(value);
