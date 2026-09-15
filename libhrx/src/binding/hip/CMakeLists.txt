@@ -9,6 +9,23 @@
 
 iree_add_all_subdirs()
 
+iree_cc_library(
+  NAME
+    array_lifetime
+  HDRS
+    "array_lifetime.h"
+  SRCS
+    "array_lifetime.c"
+  DEPS
+    iree::base
+    iree::base::threading
+    libhrx_defs
+  INCLUDES
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>"
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/../..>"
+  PUBLIC
+)
+
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 iree_cc_library(
   NAME
@@ -281,6 +298,7 @@ iree_cc_library(
     "api.c"
     "api_metadata.c"
   DEPS
+    ::array_lifetime
     ::blocking_printf_provider
     ::execution_context
     ::execution_resource
@@ -307,6 +325,18 @@ iree_cc_library(
   PUBLIC
 )
 endif()
+
+iree_cc_test(
+  NAME
+    array_lifetime_test
+  SRCS
+    "array_lifetime_test.cc"
+  DEPS
+    ::array_lifetime
+    iree::testing::gtest
+    iree::testing::gtest_main
+    libhrx_defs
+)
 
 iree_cc_test(
   NAME

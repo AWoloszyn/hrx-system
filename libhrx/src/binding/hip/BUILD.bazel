@@ -35,6 +35,17 @@ _HIP_GPU_COMPATIBILITY = _LINUX_COMPATIBILITY + select({
 })
 
 hrx_cc_library(
+    name = "array_lifetime",
+    srcs = ["array_lifetime.c"],
+    hdrs = ["array_lifetime.h"],
+    includes = ["../.."],
+    deps = [
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/threading",
+    ],
+)
+
+hrx_cc_library(
     name = "hip_dso_test_util",
     testonly = True,
     srcs = ["hip_dso_test_util.cc"],
@@ -243,6 +254,7 @@ hrx_cc_shared_library(
     ],
     target_compatible_with = _LINUX_COMPATIBILITY,
     deps = [
+        ":array_lifetime",
         ":blocking_printf_provider",
         ":execution_context",
         ":execution_resource",
@@ -254,6 +266,17 @@ hrx_cc_shared_library(
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/threading",
         "//runtime/src/iree/hal",
+    ],
+)
+
+hrx_cc_test(
+    name = "array_lifetime_test",
+    srcs = ["array_lifetime_test.cc"],
+    deps = [
+        ":array_lifetime",
+        "//build_tools/bazel:pthreads",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
     ],
 )
 
