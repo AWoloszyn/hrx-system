@@ -290,13 +290,13 @@ iree_status_t iree_hal_amdgpu_atomic_memory_validate_required_cells(
   const iree_device_size_t alignment = requires_64_bit ? 8 : 4;
   if (IREE_UNLIKELY(((uintptr_t)target_pointer % alignment) != 0)) {
     return iree_make_status(
-        IREE_STATUS_FAILED_PRECONDITION,
+        IREE_STATUS_INCOMPATIBLE,
         "AMDGPU atomic target address is not naturally aligned "
         "(address=0x%" PRIxPTR ", alignment=%" PRIdsz ")",
         (uintptr_t)target_pointer, alignment);
   }
   if (IREE_UNLIKELY(!iree_all_bits_set(available_cells, required_cells))) {
-    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+    return iree_make_status(IREE_STATUS_INCOMPATIBLE,
                             "AMDGPU atomic target memory cells 0x%08" PRIx32
                             " do not satisfy requirements 0x%08" PRIx32,
                             available_cells, required_cells);
