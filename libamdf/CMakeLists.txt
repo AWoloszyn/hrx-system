@@ -11,6 +11,10 @@ iree_setup_c_src_root(
   PACKAGE_ROOT_PREFIX "libamdf"
 )
 set(IREE_IMPLICIT_DEFS_CC_DEPS)
+# Private C++ tests and tools use standard designated initializers.
+set(IREE_CXX_STANDARD 20)
+# These clients use headers, not C++ modules requiring dependency scans.
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 include("${PROJECT_SOURCE_DIR}/libamdf/build_tools/cmake/amdf_cts.cmake")
 include("${PROJECT_SOURCE_DIR}/libamdf/build_tools/cmake/amdf_library.cmake")

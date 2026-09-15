@@ -25,6 +25,9 @@ def _with_amdf_compiler_options(copts, conlyopts, cxxopts):
         copts = copts,
         conlyopts = conlyopts,
         cxxopts = cxxopts,
+        # C++ clients in this package use standard designated initializers.
+        # This is private build policy, not a requirement on the public C ABI.
+        cxx_standard = "c++20",
     )
 
 amdf_cc_attrs = struct(
