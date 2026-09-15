@@ -813,6 +813,75 @@ void loom_value_facts_apply_predicate(loom_value_facts_t* facts,
   facts->flags |= preserved_predicate_flags;
 }
 
+bool loom_value_facts_refine_relation(uint8_t predicate_kind,
+                                      loom_value_facts_t lhs_facts,
+                                      loom_value_facts_t rhs_facts,
+                                      loom_value_facts_t* lhs_result,
+                                      loom_value_facts_t* rhs_result) {
+  switch ((loom_predicate_kind_t)predicate_kind) {
+    case LOOM_PREDICATE_EQ: {
+      const int64_t range_lo = iree_max(lhs_facts.range_lo, rhs_facts.range_lo);
+      const int64_t range_hi = iree_min(lhs_facts.range_hi, rhs_facts.range_hi);
+      if (lhs_result) {
+        lhs_result->range_lo = range_lo;
+        lhs_result->range_hi = range_hi;
+      }
+      if (rhs_result) {
+        rhs_result->range_lo = range_lo;
+        rhs_result->range_hi = range_hi;
+      }
+      break;
+    }
+    case LOOM_PREDICATE_LT:
+      if (lhs_result && rhs_facts.range_hi > INT64_MIN) {
+        lhs_result->range_hi =
+            iree_min(lhs_result->range_hi, rhs_facts.range_hi - 1);
+      }
+      if (rhs_result && lhs_facts.range_lo < INT64_MAX) {
+        rhs_result->range_lo =
+            iree_max(rhs_result->range_lo, lhs_facts.range_lo + 1);
+      }
+      break;
+    case LOOM_PREDICATE_LE:
+      if (lhs_result) {
+        lhs_result->range_hi =
+            iree_min(lhs_result->range_hi, rhs_facts.range_hi);
+      }
+      if (rhs_result) {
+        rhs_result->range_lo =
+            iree_max(rhs_result->range_lo, lhs_facts.range_lo);
+      }
+      break;
+    case LOOM_PREDICATE_GT:
+      if (lhs_result && rhs_facts.range_lo < INT64_MAX) {
+        lhs_result->range_lo =
+            iree_max(lhs_result->range_lo, rhs_facts.range_lo + 1);
+      }
+      if (rhs_result && lhs_facts.range_hi > INT64_MIN) {
+        rhs_result->range_hi =
+            iree_min(rhs_result->range_hi, lhs_facts.range_hi - 1);
+      }
+      break;
+    case LOOM_PREDICATE_GE:
+      if (lhs_result) {
+        lhs_result->range_lo =
+            iree_max(lhs_result->range_lo, rhs_facts.range_lo);
+      }
+      if (rhs_result) {
+        rhs_result->range_hi =
+            iree_min(rhs_result->range_hi, lhs_facts.range_hi);
+      }
+      break;
+    default:
+      return false;
+  }
+  if (lhs_result) loom_value_facts_recompute_flags(lhs_result);
+  if (rhs_result && rhs_result != lhs_result) {
+    loom_value_facts_recompute_flags(rhs_result);
+  }
+  return true;
+}
+
 //===----------------------------------------------------------------------===//
 // Transfer functions: binary arithmetic
 //===----------------------------------------------------------------------===//
