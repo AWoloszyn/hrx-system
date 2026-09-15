@@ -345,7 +345,8 @@ typedef struct amdf_xdna_kernel_queue_submission_info_t {
 ///
 /// Tables grow only by appending fields. The table and every function pointer
 /// covered by `structure_size` remain valid until the providing library is
-/// unloaded.
+/// unloaded. The per-method cost guarantees follow amdf_api_t and apply to
+/// first use as well as subsequent calls.
 typedef struct amdf_xdna_api_t {
   /// Size in bytes of this table version.
   uint32_t structure_size;
@@ -360,6 +361,8 @@ typedef struct amdf_xdna_api_t {
   /// no system call, firmware transaction, allocation, retry, sleep, or device
   /// wait. The caller initializes `out_info` and its complete extension chain;
   /// no output is modified when validation or qualification fails.
+  /// The cached profile is read without locking, lazy initialization or
+  /// ownership-counter updates.
   amdf_status_t(AMDF_CALL* endpoint_query_info)(
       amdf_endpoint_t* endpoint, amdf_xdna_endpoint_info_t* out_info);
 
@@ -369,6 +372,9 @@ typedef struct amdf_xdna_api_t {
   /// returned device borrows the endpoint, which must outlive it. No context
   /// placement, scheduling, executable, PDI, xclbin, transaction, or control
   /// bytes are accepted or parsed. Failure leaves `out_device` unchanged.
+  /// This cold boundary may allocate and enter the driver. It establishes
+  /// ordinary address and native ABI state instead of deferring them to a
+  /// memory query or first submission.
   amdf_status_t(AMDF_CALL* device_create)(
       amdf_endpoint_t* endpoint,
       const amdf_xdna_device_create_info_t* create_info,
@@ -380,6 +386,8 @@ typedef struct amdf_xdna_api_t {
   /// device initialization, retry, sleep, or device wait. The caller
   /// initializes `out_info` and its complete extension chain. No output is
   /// modified when validation or engine compatibility fails.
+  /// Reset observation may use atomic loads; this query takes no lock,
+  /// initializes no state and updates no ownership counters.
   amdf_status_t(AMDF_CALL* device_query_info)(
       amdf_device_t* device, amdf_xdna_device_info_t* out_info);
 
@@ -390,6 +398,8 @@ typedef struct amdf_xdna_api_t {
   /// submission bookkeeping before publication. It may configure and wait for
   /// provider-owned firmware bootstrap work. Failure leaves `out_queue`
   /// unchanged; any unfinished bootstrap ownership remains with the context.
+  /// Native packet storage, completion resources and required bootstrap are
+  /// ready before success. Their costs never move to first submission or wait.
   amdf_status_t(AMDF_CALL* kernel_queue_create)(
       amdf_xdna_context_t* context,
       const amdf_xdna_kernel_queue_create_info_t* create_info,
@@ -402,12 +412,20 @@ typedef struct amdf_xdna_api_t {
   /// libamdf neither reads, copies nor modifies instruction bytes. The native
   /// provider fills its preallocated transport packet with address and length.
   /// Submission performs no allocation, format parsing, lowering, relocation,
-  /// binding resolution, retry, sleep or host wait. Native retirement releases
-  /// the memory borrow after consuming the command result.
+  /// binding resolution, native submission retry, sleep or host wait. Native
+  /// retirement releases the memory borrow after consuming the command result.
   /// Native rejection leaves `out_submission` unchanged.
   /// The caller retains memory reachable through opaque device addresses;
   /// native command retirement does not prove that user-mode work scheduled
   /// by those commands has stopped accessing that memory.
+  ///
+  /// This hot path takes no library lock and performs no lazy initialization,
+  /// mapping, pinning or indirect-buffer scan. It is thread-safe with other
+  /// submissions and progress operations. Queue-slot contention returns BUSY
+  /// rather than waiting; command-memory borrow counters use atomics and may
+  /// contend. This is not a wait-free guarantee. Native publication may enter
+  /// the driver and publish the queue-owned packet's cache lines, not the
+  /// caller's instruction or data bytes.
   amdf_status_t(AMDF_CALL* kernel_queue_submit)(
       amdf_kernel_queue_t* queue,
       const amdf_xdna_kernel_queue_submission_info_t* submission_info,
@@ -423,6 +441,9 @@ typedef struct amdf_xdna_api_t {
   /// leaves `out_context` unchanged and creates no caller cleanup obligation.
   /// Construction releases its unpublished state locally; a native cleanup
   /// failure is reported without transferring that state to `device`.
+  /// This cold operation may allocate and enter the native driver. Mandatory
+  /// queue bootstrap can occur during kernel_queue_create, but never during
+  /// a metadata query or first submission.
   amdf_status_t(AMDF_CALL* context_create)(
       amdf_device_t* device, const amdf_xdna_context_create_info_t* create_info,
       amdf_xdna_context_t** out_context);
@@ -433,6 +454,8 @@ typedef struct amdf_xdna_api_t {
   /// native initialization, retry, sleep, or device wait. The caller
   /// initializes `out_info` and its complete extension chain. No output is
   /// modified when validation fails.
+  /// It takes no lock, performs no lazy initialization and updates no
+  /// ownership counters.
   amdf_status_t(AMDF_CALL* context_query_info)(
       amdf_xdna_context_t* context, amdf_xdna_context_info_t* out_info);
 
@@ -443,6 +466,8 @@ typedef struct amdf_xdna_api_t {
   /// The operation is thread-safe and performs no system call, allocation,
   /// initialization, retry or wait. The caller initializes `out_info`; every
   /// failure leaves it unchanged.
+  /// It reads the established placement without locking, lazy initialization
+  /// or ownership-counter updates; it does not re-query firmware placement.
   amdf_status_t(AMDF_CALL* context_query_placement_info)(
       amdf_xdna_context_t* context,
       amdf_xdna_context_placement_info_t* out_info);
@@ -457,6 +482,8 @@ typedef struct amdf_xdna_api_t {
   /// Querying performs no allocation or native operation. `out_count` receives
   /// the total count on success and BUFFER_TOO_SMALL. A zero-capacity call may
   /// pass NULL for `scopes`.
+  /// The scope is established by context_create. Enumeration takes no lock,
+  /// initializes no state and updates no ownership counters.
   amdf_status_t(AMDF_CALL* context_enumerate_memory_scopes)(
       amdf_xdna_context_t* context, uint32_t capacity,
       amdf_memory_scope_t** scopes, uint32_t* out_count);

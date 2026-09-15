@@ -19,6 +19,13 @@ extern "C" {
 ///
 /// Tables grow only by appending fields. The table and every function pointer
 /// reachable from it remain valid until the providing library is unloaded.
+///
+/// Per-method cost guarantees apply to every call, including first use and
+/// failure paths. They constrain libamdf-owned work, not OS scheduling or the
+/// internals of a native driver call explicitly required by the operation.
+/// Thread safety does not authorize hidden locking, allocation or lazy setup
+/// on methods that exclude those costs. Resource creation owns preparation;
+/// metadata access, publication and waiting retain their separate contracts.
 typedef struct amdf_api_t {
   /// Size in bytes of this table version.
   uint32_t structure_size;
@@ -72,7 +79,9 @@ typedef struct amdf_api_t {
 
   /// Copies immutable cached properties without a system call or device wait.
   ///
-  /// The operation is thread-safe. The caller initializes `out_info` and its
+  /// The operation is thread-safe and performs no allocation, locking or lazy
+  /// initialization. It reads the snapshot established by endpoint_open, not
+  /// live driver state. The caller initializes `out_info` and its
   /// complete extension chain before the call. No output is modified when
   /// validation fails.
   amdf_status_t(AMDF_CALL* endpoint_query_info)(amdf_endpoint_t* endpoint,
@@ -98,7 +107,8 @@ typedef struct amdf_api_t {
   /// This operation is thread-safe, bounded constant time, and inert. It
   /// performs no allocation, system call, device discovery, dependent-library
   /// load, or other observable initialization. The returned table remains
-  /// valid until the providing library is unloaded.
+  /// valid until the providing library is unloaded. No lock or one-time
+  /// initialization guard is acquired, including on the first call.
   amdf_status_t(AMDF_CALL* query_extension)(amdf_extension_id_t extension_id,
                                             uint32_t minimum_version,
                                             uint32_t maximum_version,
@@ -111,7 +121,8 @@ typedef struct amdf_api_t {
   /// `queue_family_ordinal` must be less than the endpoint's reported family
   /// count. The operation is thread-safe and performs no system call,
   /// allocation, device initialization, queue creation, retry, sleep, or
-  /// device wait. The caller initializes `out_info` and its complete extension
+  /// device wait. It acquires no lock and initializes no cached state. The
+  /// caller initializes `out_info` and its complete extension
   /// chain. No output is modified on failure.
   amdf_status_t(AMDF_CALL* endpoint_query_queue_family_info)(
       amdf_endpoint_t* endpoint, uint32_t queue_family_ordinal,
@@ -137,7 +148,9 @@ typedef struct amdf_api_t {
   /// NULL storage. Success and BUFFER_TOO_SMALL publish the available prefix
   /// and full required count together; every other failure leaves outputs
   /// unchanged. A nonempty zero-capacity query returns BUFFER_TOO_SMALL.
-  /// Returned scopes remain valid while the instance lives.
+  /// Returned scopes remain valid while the instance lives. Scope descriptors
+  /// are prepared by the owner; enumeration allocates nothing and performs no
+  /// locking, native query or lazy initialization.
   amdf_status_t(AMDF_CALL* instance_enumerate_memory_scopes)(
       amdf_instance_t* instance, uint32_t capacity,
       amdf_memory_scope_t** scopes, uint32_t* out_count);
@@ -147,7 +160,8 @@ typedef struct amdf_api_t {
   /// The count/prefix protocol matches instance_enumerate_memory_scopes.
   /// No device is activated. A local allocation requires its storage device
   /// to be explicitly initialized and included in the requested access set.
-  /// Returned scopes remain valid while the endpoint lives.
+  /// Returned scopes remain valid while the endpoint lives. This reads cached
+  /// profiles without allocation, locking, native queries or lazy setup.
   amdf_status_t(AMDF_CALL* endpoint_enumerate_memory_scopes)(
       amdf_endpoint_t* endpoint, uint32_t capacity,
       amdf_memory_scope_t** scopes, uint32_t* out_count);
@@ -158,6 +172,7 @@ typedef struct amdf_api_t {
   /// This operation creates no resources. A device without private scopes
   /// returns an empty set; it does not repeat instance or endpoint scopes.
   /// Context-private scopes are retrieved through their owning extension.
+  /// Enumeration performs no allocation, locking, native query or lazy setup.
   amdf_status_t(AMDF_CALL* device_enumerate_memory_scopes)(
       amdf_device_t* device, uint32_t capacity, amdf_memory_scope_t** scopes,
       uint32_t* out_count);
@@ -165,8 +180,9 @@ typedef struct amdf_api_t {
   /// Copies complete immutable facts of a borrowed scope.
   ///
   /// This thread-safe metadata query performs no native operation or
-  /// allocation. The caller initializes the output header and extension
-  /// chain. Failure leaves all output bytes unchanged.
+  /// allocation, locking or lazy initialization. The caller initializes the
+  /// output header and extension chain. Failure leaves all output bytes
+  /// unchanged.
   amdf_status_t(AMDF_CALL* memory_scope_query_info)(
       amdf_memory_scope_t* scope, amdf_memory_scope_info_t* out_info);
 
@@ -182,6 +198,8 @@ typedef struct amdf_api_t {
   /// OUT_OF_RANGE; a valid profile unable to satisfy the set returns
   /// UNSUPPORTED. Metadata work scales with the access set; no native
   /// allocation, mapping, device activation or execution occurs.
+  /// This is a cold planning query: temporary host allocation is permitted,
+  /// unlike the allocation-free queries on an established memory handle.
   ///
   /// These are complete expected capabilities, not a reservation against
   /// exhaustion or a guarantee against installed-driver incompatibility.
@@ -252,7 +270,8 @@ typedef struct amdf_api_t {
   /// The operation is thread-safe and performs no system call, allocation,
   /// mapping mutation, retry, sleep, or device wait. The caller initializes
   /// `out_info` and its complete extension chain. No output is modified when
-  /// validation fails.
+  /// validation fails. It reads immutable storage without locking, lazy
+  /// initialization or ownership-counter updates.
   amdf_status_t(AMDF_CALL* memory_query_info)(amdf_memory_t* memory,
                                               amdf_memory_info_t* out_info);
 
@@ -262,7 +281,9 @@ typedef struct amdf_api_t {
   /// construction request's consumer order. An out-of-range ordinal
   /// returns OUT_OF_RANGE. The caller initializes `out_info` and its extension
   /// chain; failure leaves it unchanged. This thread-safe metadata query
-  /// performs no allocation, native query, mapping or synchronization.
+  /// performs no allocation, native query, mapping, locking, lazy
+  /// initialization or ownership-counter update. The ordinal directly indexes
+  /// retained facts; no search over the other consumers is required.
   amdf_status_t(AMDF_CALL* memory_query_access_info)(
       amdf_memory_t* memory, uint32_t access_ordinal,
       amdf_memory_access_info_t* out_info);
@@ -302,9 +323,10 @@ typedef struct amdf_api_t {
   /// in the resource. The result describes visibility over corresponding bytes
   /// reachable by both sites; callers select those ranges and provide ordering.
   /// It does not establish synchronization or report host atomic capabilities.
-  /// The operation performs no native query, import,
-  /// mapping, cache transition, synchronization, or wait. Failure leaves
-  /// `out_info` byte-for-byte unchanged.
+  /// The operation performs no allocation, native query, import, mapping,
+  /// cache transition, locking, lazy initialization or wait. It composes the
+  /// two sites' retained facts without scanning other allocations or consumers.
+  /// Failure leaves `out_info` byte-for-byte unchanged.
   amdf_status_t(AMDF_CALL* memory_query_pair_info)(
       const amdf_memory_site_t* producer_site,
       const amdf_memory_site_t* consumer_site,
@@ -330,8 +352,9 @@ typedef struct amdf_api_t {
   /// consumer without making the CPU mapping universally coherent. Recipes
   /// state whether a caller can execute cache maintenance directly or must
   /// invoke `host_mapping_cache_control`. The operation is thread-safe and
-  /// performs no system call, allocation, cache
-  /// transition, or device wait. No output is modified on validation failure.
+  /// performs no system call, allocation, locking, lazy initialization, cache
+  /// transition or ownership-counter update. No output is modified on
+  /// validation failure.
   amdf_status_t(AMDF_CALL* host_mapping_query_info)(
       amdf_host_mapping_t* mapping, amdf_host_mapping_info_t* out_info);
 
@@ -345,6 +368,11 @@ typedef struct amdf_api_t {
   /// A nonempty request executes the advertised operation even when the
   /// memory's attached device is host-coherent. It never waits for device
   /// execution or supplies an execution dependency.
+  /// The mapping's cache recipe and native entry points are prepared before
+  /// this call. No allocation, locking or lazy initialization occurs. Work
+  /// scales with the affected cache lines or native allocation spans. A recipe
+  /// requiring HOST_API execution may enter the driver; this is not a blanket
+  /// syscall-free operation.
   amdf_status_t(AMDF_CALL* host_mapping_cache_control)(
       amdf_host_mapping_t* mapping, amdf_host_cache_operation_t operation,
       uint64_t byte_offset, uint64_t byte_length);
@@ -370,7 +398,8 @@ typedef struct amdf_api_t {
   ///
   /// The operation is thread-safe and performs no system call, allocation,
   /// native progress query, retry, sleep, or device wait. No output is modified
-  /// when validation fails.
+  /// when validation fails. It acquires no lock, initializes no state and
+  /// updates no ownership counters.
   amdf_status_t(AMDF_CALL* kernel_queue_query_info)(
       amdf_kernel_queue_t* queue, amdf_kernel_queue_info_t* out_info);
 
@@ -378,13 +407,16 @@ typedef struct amdf_api_t {
   ///
   /// The operation may retire completed submissions and release their command
   /// borrows. It is thread-safe with submission and other status operations. It
-  /// performs no allocation, system call, retry, sleep, or active polling. No
+  /// performs no allocation, system call, sleep, or active polling. No
   /// output is modified when validation fails. ACTIVE means no terminal failure
   /// has been observed, not that a fresh native health check was performed.
   /// Rejection and timeout errors do not themselves mark a queue failed. A
   /// terminal failure remains sticky and is not itself retirement proof.
   /// Providers without a mapped completion fence report cached progress;
   /// `kernel_queue_wait`, including a zero-time wait, refreshes that progress.
+  /// This path takes no library lock and performs no lazy initialization. It
+  /// may atomically claim retirement and update a command-memory borrow count;
+  /// those updates can contend, so this is not a wait-free guarantee.
   amdf_status_t(AMDF_CALL* kernel_queue_query_status)(
       amdf_kernel_queue_t* queue, amdf_kernel_queue_status_t* out_status);
 
@@ -400,6 +432,10 @@ typedef struct amdf_api_t {
   /// A native wait error is returned even if progress concurrently advances;
   /// callers use `kernel_queue_query_status` to determine retirement and
   /// whether a terminal failure was observed before deciding to retry.
+  /// This is the explicit synchronization path. It may query clocks, poll,
+  /// yield, enter native waits and serialize access to a reusable wait event.
+  /// Contention consumes the same deadline. Queue creation prepares wait
+  /// resources; waiting performs no library allocation or lazy resource setup.
   amdf_status_t(AMDF_CALL* kernel_queue_wait)(
       amdf_kernel_queue_t* queue, uint64_t submission,
       uint64_t timeout_nanoseconds, uint64_t poll_duration_nanoseconds);
@@ -416,7 +452,8 @@ typedef struct amdf_api_t {
   ///
   /// The operation is thread-safe and performs no system call, allocation,
   /// native progress query, retry, sleep, or device wait. No output is modified
-  /// when validation fails.
+  /// when validation fails. It acquires no lock, initializes no state and
+  /// updates no ownership counters.
   amdf_status_t(AMDF_CALL* user_queue_query_info)(
       amdf_user_queue_t* queue, amdf_user_queue_info_t* out_info);
 
@@ -434,7 +471,9 @@ typedef struct amdf_api_t {
   ///
   /// The operation is thread-safe and performs no system call, allocation,
   /// native progress query, retry, sleep, or device wait. No output is modified
-  /// when validation fails.
+  /// when validation fails. The mapped addresses were established by
+  /// user_queue_map; this query takes no lock, initializes no state and
+  /// updates no ownership counters.
   amdf_status_t(AMDF_CALL* user_queue_mapping_query_info)(
       amdf_user_queue_mapping_t* mapping,
       amdf_user_queue_mapping_info_t* out_info);
@@ -453,6 +492,9 @@ typedef struct amdf_api_t {
   /// failure has been observed. A terminal failure is sticky and does not by
   /// itself prove that published commands retired. No output is modified when
   /// validation or the native observation fails.
+  /// Unlike kernel_queue_query_status, this operation may query the native
+  /// driver for queue or VM faults. It takes no library lock and performs no
+  /// lazy initialization; terminal-state updates may use atomics.
   amdf_status_t(AMDF_CALL* user_queue_query_status)(
       amdf_user_queue_t* queue, amdf_user_queue_status_t* out_status);
 
@@ -465,6 +507,8 @@ typedef struct amdf_api_t {
   /// deadline. `poll_duration_nanoseconds` is clipped to that timeout; zero
   /// disables active polling. `AMDF_TIMEOUT_INFINITE` requests no deadline. A
   /// timeout observes but never cancels work.
+  /// This synchronization path may query clocks, poll, yield and enter the
+  /// native driver. It performs no library allocation or lazy resource setup.
   amdf_status_t(AMDF_CALL* user_queue_wait_consumed)(
       amdf_user_queue_t* queue, uint64_t published_index,
       uint64_t timeout_nanoseconds, uint64_t poll_duration_nanoseconds);
@@ -490,7 +534,11 @@ typedef struct amdf_api_t {
   /// Every failure leaves `out_address` unchanged.
   ///
   /// This thread-safe metadata query performs no allocation, native query,
-  /// mapping, pinning, synchronization, or address-to-handle lookup.
+  /// mapping, pinning, locking, lazy initialization or ownership-counter
+  /// update. It directly indexes the access record and address kind,
+  /// independent of allocation size or the number of other consumers and
+  /// allocations. There is no address-to-handle lookup or first-use
+  /// mapping/residency work.
   amdf_status_t(AMDF_CALL* memory_query_address)(
       amdf_memory_t* memory, uint32_t access_ordinal,
       amdf_memory_address_kind_t kind, uint64_t* out_address);
@@ -509,7 +557,8 @@ typedef amdf_status_t(AMDF_CALL* amdf_query_api_fn_t)(
 ///
 /// This function is thread-safe, bounded constant time, and inert. It performs
 /// no allocation, system call, device discovery, dependent-library load, or
-/// other observable initialization.
+/// other observable initialization. No lock or one-time initialization guard
+/// is acquired, including on the first call.
 AMDF_API amdf_status_t AMDF_CALL
 amdf_query_api(amdf_abi_version_t minimum_version,
                amdf_abi_version_t maximum_version, const amdf_api_t** out_api);

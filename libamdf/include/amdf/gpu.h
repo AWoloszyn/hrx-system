@@ -308,6 +308,8 @@ typedef struct amdf_gpu_api_t {
   /// thread-safe and performs no system call, allocation, provider-library
   /// load, retry, sleep, or device wait. The caller initializes `out_info` and
   /// its complete extension chain.
+  /// Cached facts are read without locking, lazy initialization or
+  /// ownership-counter updates.
   amdf_status_t(AMDF_CALL* endpoint_query_info)(
       amdf_endpoint_t* endpoint, amdf_gpu_endpoint_info_t* out_info);
 
@@ -318,6 +320,9 @@ typedef struct amdf_gpu_api_t {
   /// borrows the endpoint, which must outlive it. No queue,
   /// executable, command stream, or public memory object is created. Failure
   /// leaves `out_device` unchanged.
+  /// This cold boundary may allocate, load native dependencies, serialize
+  /// shared connection setup and enter the driver. Address-domain preparation
+  /// completes here instead of during a query or first submission.
   amdf_status_t(AMDF_CALL* device_create)(
       amdf_endpoint_t* endpoint,
       const amdf_gpu_device_create_info_t* create_info,
@@ -329,6 +334,8 @@ typedef struct amdf_gpu_api_t {
   /// device initialization, retry, sleep, or device wait. The caller
   /// initializes `out_info` and its complete extension chain. No output is
   /// modified when validation or engine compatibility fails.
+  /// Reset observation may use atomic loads; this query takes no lock,
+  /// initializes no state and updates no ownership counters.
   amdf_status_t(AMDF_CALL* device_query_info)(amdf_device_t* device,
                                               amdf_gpu_device_info_t* out_info);
 
@@ -338,6 +345,8 @@ typedef struct amdf_gpu_api_t {
   /// selects an advertised `GPU_PM4 + KERNEL` or `GPU_SDMA + KERNEL` family
   /// and allocates every bounded submission resource before publication.
   /// Failure leaves `out_queue` unchanged.
+  /// Native command and completion resources are ready before success; neither
+  /// submission nor waiting allocates them on first use.
   amdf_status_t(AMDF_CALL* kernel_queue_create)(
       amdf_device_t* device,
       const amdf_gpu_kernel_queue_create_info_t* create_info,
@@ -351,11 +360,18 @@ typedef struct amdf_gpu_api_t {
   /// registers memory borrows before native acceptance and releases them only
   /// when queue progress later retires the returned submission. It performs no
   /// allocation, command-byte access, native-format parsing, lowering,
-  /// transcription, retry, sleep, or host wait. Native rejection leaves
-  /// `out_submission` unchanged. Because command bytes are opaque, the caller
-  /// keeps every indirectly referenced memory or native object live until the
-  /// submission retires; only the command-memory attachments are retained by
-  /// libamdf itself.
+  /// transcription, native submission retry, sleep, or host wait. Native
+  /// rejection leaves `out_submission` unchanged. Because command bytes are
+  /// opaque, the caller keeps every indirectly referenced memory or native
+  /// object live until the submission retires; only the command-memory
+  /// attachments are retained by libamdf itself.
+  ///
+  /// This hot path takes no library lock and performs no lazy initialization,
+  /// mapping, pinning or indirect-buffer scan. It is thread-safe with other
+  /// submissions and progress operations. Queue-slot contention returns BUSY
+  /// rather than waiting; command-memory borrow counters use atomics and may
+  /// contend. This is not a wait-free guarantee. Native publication may enter
+  /// the driver; it does not initialize a host scheduler or translate commands.
   amdf_status_t(AMDF_CALL* kernel_queue_submit)(
       amdf_kernel_queue_t* queue,
       const amdf_gpu_kernel_queue_submission_info_t* submission_info,
@@ -369,6 +385,8 @@ typedef struct amdf_gpu_api_t {
   /// at device creation, not here. The operation is thread-safe and performs no
   /// system call, allocation, device initialization, retry, sleep, or device
   /// wait.
+  /// It reads retained profile facts without locking, lazy initialization or
+  /// ownership-counter updates.
   amdf_status_t(AMDF_CALL* endpoint_query_device_capabilities)(
       amdf_endpoint_t* endpoint,
       amdf_gpu_device_capabilities_t* out_capabilities);
@@ -380,6 +398,9 @@ typedef struct amdf_gpu_api_t {
   /// sidecar before publication. The returned queue borrows `device` and any
   /// supplied scratch memory, which must outlive it. Commands are published
   /// through a mapping from the base API. Failure leaves `out_queue` unchanged.
+  /// This is a cold allocation boundary. Once explicitly mapped, publication
+  /// consists of caller-owned native ring and doorbell operations, without a
+  /// libamdf submit call or first-publication setup.
   amdf_status_t(AMDF_CALL* user_queue_create)(
       amdf_device_t* device,
       const amdf_gpu_user_queue_create_info_t* create_info,

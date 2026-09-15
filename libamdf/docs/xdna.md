@@ -94,7 +94,8 @@ amdf_status_t publish_instructions(
 
 NPU4 and NPU5 queues admit one instruction range per submission and one
 unretired submission per queue. The publication call performs no allocation,
-instruction parsing, relocation, argument resolution, retry, sleep or host wait.
+instruction parsing, relocation, argument resolution, native submission retry,
+sleep or host wait.
 The queue preallocates its mandatory native packet storage. Multiple contexts
 can independently own backing for different resident programs or queues.
 

@@ -23,6 +23,8 @@ typedef struct amdf_memory_vtable_t {
                                    const amdf_memory_export_info_t* export_info,
                                    amdf_external_memory_t* out_value);
   // Describes one concrete attachment and exact local queue family.
+  // Hot metadata path: reads retained facts without locks, allocation, lazy
+  // setup, native queries or scans over other resources or access records.
   amdf_status_t (*describe_site)(
       amdf_memory_t* memory, uint32_t access_ordinal,
       uint32_t queue_family_ordinal,
@@ -80,10 +82,13 @@ struct amdf_memory_t {
   amdf_child_tracker_t children;
 };
 
-// Registers one child that borrows `memory`.
+// Registers one child that borrows `memory`. Used by command publication:
+// atomic bookkeeping only, without locks, allocation or lazy initialization.
+// The shared borrow counter may contend; this is not a wait-free operation.
 amdf_status_t amdf_memory_register_child(amdf_memory_t* memory);
 
-// Releases one child borrow.
+// Releases one child borrow. Also runs on no-syscall command retirement paths;
+// performs only atomic bookkeeping, with the same contention contract above.
 void amdf_memory_unregister_child(amdf_memory_t* memory);
 
 // Returns the host allocator copied by the memory attachment.

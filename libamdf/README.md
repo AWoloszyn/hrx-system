@@ -125,6 +125,8 @@ Focused design documents describe the contracts:
   and caller-owned lifetimes.
 - [XDNA execution](docs/xdna.md): instruction storage, submission and the native
   Linux and Windows requirements.
+- [Performance contracts](docs/performance.md): method-level preparation,
+  allocation, locking, native-call and steady-state cost guarantees.
 
 ## Building and embedding
 
