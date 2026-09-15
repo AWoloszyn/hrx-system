@@ -59,6 +59,7 @@ loom_check_test_suite(
     loom_check_file_test
   SRCS
     "test/assembly.loom-test"
+    "test/copies.loom-test"
 )
 endif()
 
