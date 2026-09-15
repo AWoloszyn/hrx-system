@@ -32,8 +32,8 @@ struct amdf_windows_xdna_kernel_execution_t {
   amdf_xdna_umd_device_t* device;
   // KMT context borrowed from the owning public context.
   D3DKMT_HANDLE context;
-  // Native prefix preceding the copied command, resolved during admission.
-  uint32_t submission_header_byte_length;
+  // Native wire layout and buffer policy resolved during context admission.
+  amdf_windows_xdna_native_abi_t native_abi;
   // First observed command or bootstrap failure, scoped to this context.
   amdf_atomic_uint64_t terminal_status;
   // Serializes native preparation, private binding, and queue leasing.
@@ -52,7 +52,7 @@ struct amdf_windows_xdna_kernel_execution_t {
   HANDLE wait_event;
   // Native submission registered to signal `wait_event`, or zero when idle.
   uint64_t wait_event_submission;
-  // Shared completion and context-initialization allocation.
+  // Native completion and context-initialization allocation.
   amdf_windows_xdna_private_allocation_t command_allocation;
   // Native transport packet reused under the context's exclusive queue lease.
   amdf_windows_xdna_private_allocation_t packet_allocation;
@@ -236,7 +236,8 @@ static amdf_status_t amdf_windows_xdna_kernel_execution_publish_aperture(
     const amdf_windows_xdna_private_allocation_t* allocation) {
   amdf_windows_xdna_legacy_submission_t submission;
   amdf_windows_xdna_legacy_submission_build_aperture(
-      execution->submission_header_byte_length, allocation, &submission);
+      execution->native_abi.submission_header_byte_length, allocation,
+      &submission);
   return amdf_windows_xdna_kernel_execution_submit_preparation(
       execution, allocation->device_address,
       (uint32_t)allocation->descriptor.allocation_byte_length, &submission);
@@ -266,11 +267,14 @@ static amdf_status_t amdf_windows_xdna_kernel_execution_activate_context(
         (uint64_t*)execution->command_allocation.host_pointer;
     command_words[0] = 1;
     command_words[1] = firmware_address;
+    if (execution->native_abi.context_encoding ==
+        AMDF_WINDOWS_XDNA_CONTEXT_ENCODING_DIRECT) {
+      command_words[2] = execution->device->profile->bootstrap->pdi_byte_length;
+    }
   }
   amdf_windows_xdna_legacy_submission_t submission;
   amdf_windows_xdna_legacy_submission_build_context_initialize(
-      execution->submission_header_byte_length, &execution->command_allocation,
-      &submission);
+      &execution->native_abi, &execution->command_allocation, &submission);
   amdf_status_t status = amdf_windows_xdna_kernel_execution_submit_preparation(
       execution, 0, 0, &submission);
   if (amdf_status_is_ok(status)) {
@@ -377,7 +381,7 @@ amdf_status_t amdf_windows_xdna_kernel_execution_prepare_memory(
   if (amdf_status_is_ok(status)) {
     amdf_windows_xdna_legacy_submission_t submission;
     amdf_windows_xdna_legacy_submission_build_accounting(
-        execution->submission_header_byte_length, allocation,
+        &execution->native_abi, allocation,
         allocation->descriptor.allocation_byte_length, &submission);
     status = amdf_windows_xdna_kernel_execution_submit_preparation(
         execution, 0, 0, &submission);
@@ -404,18 +408,27 @@ amdf_status_t amdf_windows_xdna_kernel_execution_release_memory(
 
 static void amdf_windows_xdna_kernel_execution_initialize_storage(
     amdf_windows_xdna_kernel_execution_t* execution) {
+  const bool direct = execution->native_abi.context_encoding ==
+                      AMDF_WINDOWS_XDNA_CONTEXT_ENCODING_DIRECT;
   const amdf_windows_xdna_private_allocation_descriptor_t command_descriptor = {
       .requested_byte_length = 4096,
       .allocation_byte_length = 4096,
-      .type = 0x332B,
-      .policy = 0,
-      .flags = AMDF_WINDOWS_XDNA_PRIVATE_ALLOCATION_FLAG_SHARED_RESOURCE,
+      .type = direct ? 0x332C : 0x332B,
+      .policy = direct ? 2 : 0,
+      .xcl_flags = direct ? 0x02000000 : 0,
+      .flags =
+          (direct ? AMDF_WINDOWS_XDNA_PRIVATE_ALLOCATION_FLAG_DEVICE_ADDRESS
+                  : 0) |
+          ((!direct || execution->native_abi.shared_kernel_buffers)
+               ? AMDF_WINDOWS_XDNA_PRIVATE_ALLOCATION_FLAG_SHARED_RESOURCE
+               : 0),
   };
   amdf_windows_xdna_private_allocation_initialize(
       execution->device, &command_descriptor, &execution->command_allocation);
 
   const amdf_windows_xdna_private_allocation_descriptor_t packet_descriptor = {
-      .requested_byte_length = 4096 + execution->submission_header_byte_length,
+      .requested_byte_length =
+          4096 + execution->native_abi.submission_header_byte_length,
       .allocation_byte_length =
           AMDF_WINDOWS_XDNA_KERNEL_EXECUTION_ALLOCATION_SIZE,
       .type = 0x3328,
@@ -441,8 +454,7 @@ amdf_status_t amdf_windows_xdna_kernel_execution_create(
   if (!amdf_status_is_ok(status)) return status;
   execution->device = device;
   execution->context = context->handle;
-  execution->submission_header_byte_length =
-      context->native_abi->submission_header_byte_length;
+  execution->native_abi = context->native_abi;
   amdf_atomic_uint64_initialize(&execution->terminal_status, AMDF_STATUS_OK);
   InitializeSRWLock(&execution->state_lock);
   InitializeSRWLock(&execution->wait_lock);
@@ -576,7 +588,7 @@ amdf_status_t amdf_windows_xdna_kernel_execution_submit(
       instruction_address, instruction_byte_length, packet);
   amdf_windows_xdna_legacy_submission_t submission;
   amdf_windows_xdna_legacy_submission_build_execute(
-      execution->submission_header_byte_length, &execution->packet_allocation,
+      &execution->native_abi, &execution->packet_allocation,
       &execution->command_allocation, packet, &submission);
   const amdf_status_t status = amdf_windows_xdna_private_allocation_publish(
       &execution->packet_allocation, 0, sizeof(*packet));

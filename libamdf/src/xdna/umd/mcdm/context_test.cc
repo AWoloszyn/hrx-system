@@ -8,6 +8,7 @@
 
 #include <malloc.h>
 
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -26,17 +27,38 @@ constexpr NTSTATUS kSuccess = 0;
 constexpr NTSTATUS kFailure = static_cast<NTSTATUS>(0xC0000001u);
 
 enum class Operation {
+  kNone,
+  kCreateKernelBuffer,
+  kMapKernelBuffer,
+  kMakeKernelBufferResident,
+  kLockKernelBuffer,
+  kCreateContext,
   kDestroyContext,
+  kUnlockKernelBuffer,
+  kDestroyKernelBuffer,
   kFreeHostAllocation,
 };
 
 struct FakeKmtState {
   // Native status returned while qualifying the private context ABI.
   NTSTATUS query_status = kSuccess;
-  // Standard KMD build identity; zero exercises explicit private-tag admission.
+  // Standard KMD build identity; zero exercises private-query admission.
   uint64_t driver_version = 0;
-  // Private wire-ABI tag returned by the installed miniport.
+  // Native reserved word and hardware kind, not an ABI tag.
   uint32_t private_info[2] = {0, 3};
+  // Current protocol requires the expanded private-query record.
+  bool current_protocol = false;
+  // Current native allocation policy reported by the query.
+  uint8_t unshared_kernel_buffers = 0;
+  // Native dependency failure injected before the selected operation accepts
+  // work.
+  Operation failure = Operation::kNone;
+  // Kernel buffer backing supplied by the native allocation dependency.
+  alignas(4096) std::array<uint8_t, 4096> kernel_buffer = {};
+  // Whether the native allocation is still owned.
+  bool kernel_buffer_live = false;
+  // Whether the native host lock is still owned.
+  bool kernel_buffer_locked = false;
   // Number of context ABI queries.
   uint32_t query_count = 0;
   // Next context handle returned by native creation.
@@ -66,14 +88,38 @@ NTSTATUS APIENTRY FakeQueryAdapterInfo(const D3DKMT_QUERYADAPTERINFO* query) {
     return kSuccess;
   }
   EXPECT_EQ(query->Type, KMTQAITYPE_UMDRIVERPRIVATE);
-  EXPECT_EQ(query->PrivateDriverDataSize, sizeof(current_state->private_info));
+  if (current_state->current_protocol && query->PrivateDriverDataSize < 12) {
+    return static_cast<NTSTATUS>(0xC0000023u);
+  }
   std::memcpy(query->pPrivateDriverData, current_state->private_info,
               sizeof(current_state->private_info));
+  if (current_state->current_protocol) {
+    static_cast<uint8_t*>(query->pPrivateDriverData)[8] =
+        current_state->unshared_kernel_buffers;
+  }
   return kSuccess;
 }
 
 NTSTATUS APIENTRY
 FakeCreateContextVirtual(D3DKMT_CREATECONTEXTVIRTUAL* create) {
+  if (current_state->current_protocol) {
+    current_state->operations.push_back(Operation::kCreateContext);
+    EXPECT_TRUE(current_state->kernel_buffer_live);
+    EXPECT_TRUE(current_state->kernel_buffer_locked);
+    EXPECT_EQ(create->PrivateDriverDataSize, 160u);
+    const auto* bytes = static_cast<const uint8_t*>(create->pPrivateDriverData);
+    uint64_t allocation_handle = 0;
+    uint64_t host_address = 0;
+    uint32_t columns = 0;
+    std::memcpy(&allocation_handle, bytes + 0x68, sizeof(allocation_handle));
+    std::memcpy(&host_address, bytes + 0x78, sizeof(host_address));
+    std::memcpy(&columns, bytes + 0x54, sizeof(columns));
+    EXPECT_EQ(allocation_handle, 0x80u);
+    EXPECT_EQ(host_address,
+              reinterpret_cast<uintptr_t>(current_state->kernel_buffer.data()));
+    EXPECT_EQ(columns, 1u);
+    if (current_state->failure == Operation::kCreateContext) return kFailure;
+  }
   EXPECT_EQ(create->hDevice, 0x10u);
   EXPECT_EQ(create->NodeOrdinal, 0u);
   EXPECT_EQ(create->EngineAffinity, 1u);
@@ -88,9 +134,62 @@ FakeCreateContextVirtual(D3DKMT_CREATECONTEXTVIRTUAL* create) {
     EXPECT_EQ(create->PrivateDriverDataSize, 272u);
   }
   std::memcpy(static_cast<uint8_t*>(create->pPrivateDriverData) +
-                  (metadata ? 0x30 : 0x40),
+                  (metadata                          ? 0x30
+                   : current_state->current_protocol ? 0x44
+                                                     : 0x40),
               &cookie, sizeof(cookie));
   current_state->created_contexts.push_back(create->hContext);
+  return kSuccess;
+}
+
+NTSTATUS APIENTRY FakeCreateAllocation(D3DKMT_CREATEALLOCATION* create) {
+  current_state->operations.push_back(Operation::kCreateKernelBuffer);
+  if (current_state->failure == Operation::kCreateKernelBuffer) return kFailure;
+  EXPECT_FALSE(current_state->kernel_buffer_live);
+  EXPECT_EQ(create->Flags.CreateShared,
+            current_state->unshared_kernel_buffers == 0);
+  EXPECT_EQ(create->Flags.CreateResource, create->Flags.CreateShared);
+  create->pAllocationInfo2->hAllocation = 0x80;
+  if (create->Flags.CreateResource) create->hResource = 0x81;
+  current_state->kernel_buffer_live = true;
+  return kSuccess;
+}
+
+NTSTATUS APIENTRY FakeMapAddress(D3DDDI_MAPGPUVIRTUALADDRESS* map) {
+  current_state->operations.push_back(Operation::kMapKernelBuffer);
+  if (current_state->failure == Operation::kMapKernelBuffer) return kFailure;
+  EXPECT_TRUE(current_state->kernel_buffer_live);
+  map->VirtualAddress = 0x100000000;
+  return kSuccess;
+}
+
+NTSTATUS APIENTRY FakeMakeResident(D3DDDI_MAKERESIDENT*) {
+  current_state->operations.push_back(Operation::kMakeKernelBufferResident);
+  return current_state->failure == Operation::kMakeKernelBufferResident
+             ? kFailure
+             : kSuccess;
+}
+
+NTSTATUS APIENTRY FakeLock(D3DKMT_LOCK2* lock) {
+  current_state->operations.push_back(Operation::kLockKernelBuffer);
+  if (current_state->failure == Operation::kLockKernelBuffer) return kFailure;
+  lock->pData = current_state->kernel_buffer.data();
+  current_state->kernel_buffer_locked = true;
+  return kSuccess;
+}
+
+NTSTATUS APIENTRY FakeUnlock(const D3DKMT_UNLOCK2*) {
+  current_state->operations.push_back(Operation::kUnlockKernelBuffer);
+  EXPECT_TRUE(current_state->kernel_buffer_locked);
+  current_state->kernel_buffer_locked = false;
+  return kSuccess;
+}
+
+NTSTATUS APIENTRY FakeDestroyAllocation(const D3DKMT_DESTROYALLOCATION2*) {
+  current_state->operations.push_back(Operation::kDestroyKernelBuffer);
+  EXPECT_TRUE(current_state->kernel_buffer_live);
+  EXPECT_FALSE(current_state->kernel_buffer_locked);
+  current_state->kernel_buffer_live = false;
   return kSuccess;
 }
 
@@ -144,6 +243,17 @@ class WindowsXdnaContextTest : public ::testing::Test {
     kmt_.query_adapter_info = FakeQueryAdapterInfo;
     kmt_.create_context_virtual = FakeCreateContextVirtual;
     kmt_.destroy_context = FakeDestroyContext;
+    kmt_.create_allocation = FakeCreateAllocation;
+    kmt_.destroy_allocation = FakeDestroyAllocation;
+    kmt_.map_gpu_virtual_address = FakeMapAddress;
+    kmt_.make_resident = FakeMakeResident;
+    kmt_.lock = FakeLock;
+    kmt_.unlock = FakeUnlock;
+    kmt_.wait_from_cpu =
+        [](const D3DKMT_WAITFORSYNCHRONIZATIONOBJECTFROMCPU*) -> NTSTATUS {
+      ADD_FAILURE() << "Paging dependency completes synchronously";
+      return kFailure;
+    };
     device_.host_allocator = amdf_allocator_system();
     device_.kmt = &kmt_;
     device_.adapter = 0x08;
@@ -205,9 +315,109 @@ TEST_F(WindowsXdnaContextTest, CreatesMetadataContextWithZeroCookie) {
       AMDF_STATUS_OK);
   EXPECT_EQ(state_.query_count, 1u);
   EXPECT_EQ(context->command_aperture_cookie, 0u);
-  EXPECT_EQ(context->native_abi->submission_header_byte_length, 88u);
+  EXPECT_EQ(context->native_abi.submission_header_byte_length, 88u);
   EXPECT_EQ(amdf_xdna_umd_context_destroy(context), AMDF_STATUS_OK);
   EXPECT_EQ(state_.destroyed_contexts, (std::vector<D3DKMT_HANDLE>{0x30}));
+}
+
+TEST_F(WindowsXdnaContextTest,
+       RetainsCurrentKernelBufferUntilContextDestruction) {
+  state_.current_protocol = true;
+  for (uint8_t unshared : {uint8_t{0}, uint8_t{1}}) {
+    state_.unshared_kernel_buffers = unshared;
+    state_.operations.clear();
+    amdf_xdna_umd_context_t* context = nullptr;
+    amdf_xdna_umd_context_result_t result = {};
+    ASSERT_EQ(amdf_xdna_umd_context_create(&device_, &create_info_, &context,
+                                           &result),
+              AMDF_STATUS_OK);
+    EXPECT_EQ(state_.operations,
+              (std::vector<Operation>{
+                  Operation::kCreateKernelBuffer, Operation::kMapKernelBuffer,
+                  Operation::kMakeKernelBufferResident,
+                  Operation::kLockKernelBuffer, Operation::kCreateContext}));
+    EXPECT_TRUE(state_.kernel_buffer_live);
+    EXPECT_TRUE(state_.kernel_buffer_locked);
+    state_.operations.clear();
+    EXPECT_EQ(amdf_xdna_umd_context_destroy(context), AMDF_STATUS_OK);
+    EXPECT_EQ(state_.operations,
+              (std::vector<Operation>{Operation::kDestroyContext,
+                                      Operation::kUnlockKernelBuffer,
+                                      Operation::kDestroyKernelBuffer}));
+    EXPECT_FALSE(state_.kernel_buffer_live);
+    EXPECT_FALSE(state_.kernel_buffer_locked);
+  }
+}
+
+TEST_F(WindowsXdnaContextTest, RollsBackCurrentKernelBufferBeforePublication) {
+  state_.current_protocol = true;
+  for (Operation failure :
+       {Operation::kCreateKernelBuffer, Operation::kMapKernelBuffer,
+        Operation::kMakeKernelBufferResident, Operation::kLockKernelBuffer,
+        Operation::kCreateContext}) {
+    state_.failure = failure;
+    auto* const sentinel =
+        reinterpret_cast<amdf_xdna_umd_context_t*>(uintptr_t{1});
+    amdf_xdna_umd_context_t* context = sentinel;
+    amdf_xdna_umd_context_result_t result;
+    std::memset(&result, 0xA5, sizeof(result));
+    const auto original = result;
+    EXPECT_EQ(amdf_xdna_umd_context_create(&device_, &create_info_, &context,
+                                           &result),
+              amdf_kmt_make_status(kFailure));
+    EXPECT_EQ(context, sentinel);
+    EXPECT_EQ(std::memcmp(&result, &original, sizeof(result)), 0);
+    EXPECT_FALSE(state_.kernel_buffer_live);
+    EXPECT_FALSE(state_.kernel_buffer_locked);
+    EXPECT_TRUE(state_.created_contexts.empty());
+  }
+}
+
+TEST_F(WindowsXdnaContextTest, ReleasesCurrentKernelBufferOnHostExhaustion) {
+  state_.current_protocol = true;
+  for (uint32_t failure_call : {1u, 2u, 3u}) {
+    FaultAllocatorState allocator_state = {.failure_call = failure_call};
+    device_.host_allocator = {
+        .user_data = &allocator_state,
+        .allocate = FaultAllocate,
+        .free = FaultFree,
+    };
+    auto* const sentinel =
+        reinterpret_cast<amdf_xdna_umd_context_t*>(uintptr_t{1});
+    amdf_xdna_umd_context_t* context = sentinel;
+    amdf_xdna_umd_context_result_t result;
+    std::memset(&result, 0xA5, sizeof(result));
+    const auto original = result;
+    EXPECT_EQ(amdf_status_code(amdf_xdna_umd_context_create(
+                  &device_, &create_info_, &context, &result)),
+              AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
+    EXPECT_EQ(context, sentinel);
+    EXPECT_EQ(std::memcmp(&result, &original, sizeof(result)), 0);
+    EXPECT_EQ(allocator_state.live_allocation_count, 0u);
+    EXPECT_FALSE(state_.kernel_buffer_live);
+    EXPECT_FALSE(state_.kernel_buffer_locked);
+    EXPECT_EQ(state_.destroyed_contexts, state_.created_contexts);
+  }
+}
+
+TEST_F(WindowsXdnaContextTest,
+       RetainsKernelBufferWhenNativeContextRemainsLive) {
+  state_.current_protocol = true;
+  amdf_xdna_umd_context_t* context = nullptr;
+  amdf_xdna_umd_context_result_t result = {};
+  ASSERT_EQ(
+      amdf_xdna_umd_context_create(&device_, &create_info_, &context, &result),
+      AMDF_STATUS_OK);
+  state_.destroy_failures_remaining = 1;
+  EXPECT_EQ(amdf_xdna_umd_context_destroy(context),
+            amdf_kmt_make_status(kFailure));
+  EXPECT_TRUE(state_.kernel_buffer_live);
+  EXPECT_TRUE(state_.kernel_buffer_locked);
+  EXPECT_TRUE(state_.destroyed_contexts.empty());
+  EXPECT_EQ(amdf_xdna_umd_context_destroy(context), AMDF_STATUS_OK);
+  EXPECT_FALSE(state_.kernel_buffer_live);
+  EXPECT_FALSE(state_.kernel_buffer_locked);
+  EXPECT_EQ(state_.destroyed_contexts, state_.created_contexts);
 }
 
 TEST_F(WindowsXdnaContextTest,
@@ -272,7 +482,7 @@ TEST_F(WindowsXdnaContextTest, QualifiesPrivateAbiBeforeContextPreparation) {
   for (uint32_t failure : {0u, 1u, 2u}) {
     state_.query_status = failure == 0 ? kFailure : kSuccess;
     state_.private_info[0] = failure == 1 ? 1 : 0;
-    state_.private_info[1] = failure == 2 ? 4 : 3;
+    state_.private_info[1] = failure == 2 ? UINT32_MAX : 3;
     auto* const sentinel =
         reinterpret_cast<amdf_xdna_umd_context_t*>(uintptr_t{1});
     amdf_xdna_umd_context_t* context = sentinel;

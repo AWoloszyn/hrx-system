@@ -91,6 +91,7 @@ iree_cc_library(
   DEPS
     ::bootstrap_image
     ::native_abi
+    ::private_allocation
     amdf::headers
     libamdf::src::allocator
     libamdf::src::xdna::bootstrap
@@ -122,6 +123,7 @@ iree_cc_library(
   DEPS
     ::device_state
     ::native_abi
+    ::private_allocation
     amdf::headers
     libamdf::src::xdna::umd::context
   PUBLIC
@@ -191,6 +193,7 @@ iree_cc_library(
   SRCS
     "legacy_submission.c"
   DEPS
+    ::native_abi
     ::private_allocation
     amdf::headers
     libamdf::src::xdna::transaction_interpreter

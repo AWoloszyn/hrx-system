@@ -38,8 +38,8 @@ TEST(XdnaLegacyContextTest, BuildsExactNpu5CompatibilityRecord) {
   uint8_t* data = nullptr;
   uint32_t data_size = 0;
   ASSERT_TRUE(amdf_status_is_ok(amdf_windows_xdna_legacy_context_build(
-      &kXclbinAbi, &amdf_xdna_npu5_bootstrap, 3, 0, host_allocator, &data,
-      &data_size)));
+      &kXclbinAbi, &amdf_xdna_npu5_bootstrap, 3, 0, nullptr, host_allocator,
+      &data, &data_size)));
   ASSERT_NE(data, nullptr);
   EXPECT_EQ(data_size, 9578u);
 
@@ -87,13 +87,13 @@ TEST(XdnaLegacyContextTest, ValidatesOutputStorage) {
   uint8_t* data = reinterpret_cast<uint8_t*>(uintptr_t{1});
   uint32_t data_size = UINT32_MAX;
   EXPECT_EQ(amdf_status_code(amdf_windows_xdna_legacy_context_build(
-                &kXclbinAbi, &amdf_xdna_npu5_bootstrap, 1, 0, host_allocator,
-                nullptr, &data_size)),
+                &kXclbinAbi, &amdf_xdna_npu5_bootstrap, 1, 0, nullptr,
+                host_allocator, nullptr, &data_size)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
   EXPECT_EQ(data_size, UINT32_MAX);
   EXPECT_EQ(amdf_status_code(amdf_windows_xdna_legacy_context_build(
-                &kXclbinAbi, &amdf_xdna_npu5_bootstrap, 1, 0, host_allocator,
-                &data, nullptr)),
+                &kXclbinAbi, &amdf_xdna_npu5_bootstrap, 1, 0, nullptr,
+                host_allocator, &data, nullptr)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
   EXPECT_EQ(data, reinterpret_cast<uint8_t*>(uintptr_t{1}));
 }
@@ -102,7 +102,7 @@ TEST(XdnaLegacyContextTest, BuildsAdmissionMetadataWithoutAnImageContainer) {
   uint8_t* data = nullptr;
   uint32_t size = 0;
   ASSERT_EQ(amdf_windows_xdna_legacy_context_build(
-                &kMetadataAbi, &amdf_xdna_npu4_bootstrap, 4, 0,
+                &kMetadataAbi, &amdf_xdna_npu4_bootstrap, 4, 0, nullptr,
                 amdf_allocator_system(), &data, &size),
             AMDF_STATUS_OK);
   ASSERT_EQ(size, 272u);
@@ -125,7 +125,7 @@ TEST(XdnaLegacyContextTest, RejectsAnUnqualifiedBootstrapContainerPair) {
   uint8_t* data = nullptr;
   uint32_t size = 0;
   EXPECT_EQ(amdf_status_code(amdf_windows_xdna_legacy_context_build(
-                &kXclbinAbi, &amdf_xdna_npu4_bootstrap, 4, 0,
+                &kXclbinAbi, &amdf_xdna_npu4_bootstrap, 4, 0, nullptr,
                 amdf_allocator_system(), &data, &size)),
             AMDF_STATUS_CODE_UNSUPPORTED);
   EXPECT_EQ(data, nullptr);

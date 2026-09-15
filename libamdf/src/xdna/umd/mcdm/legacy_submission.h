@@ -11,6 +11,7 @@
 
 #include "amdf/amdf.h"
 #include "libamdf/src/xdna/transaction_interpreter.h"
+#include "libamdf/src/xdna/umd/mcdm/native_abi.h"
 #include "libamdf/src/xdna/umd/mcdm/private_allocation.h"
 
 #ifdef __cplusplus
@@ -18,7 +19,7 @@ extern "C" {
 #endif  // __cplusplus
 
 // Maximum private record accepted by the retained native submission ABI.
-#define AMDF_WINDOWS_XDNA_LEGACY_SUBMISSION_CAPACITY 624u
+#define AMDF_WINDOWS_XDNA_LEGACY_SUBMISSION_CAPACITY 640u
 
 // Bounded private record passed beside one KMT command submission.
 typedef struct amdf_windows_xdna_legacy_submission_t {
@@ -36,20 +37,20 @@ void amdf_windows_xdna_legacy_submission_build_aperture(
 
 // Builds the program-independent context initialization record.
 void amdf_windows_xdna_legacy_submission_build_context_initialize(
-    uint32_t header_byte_length,
+    const amdf_windows_xdna_native_abi_t* abi,
     const amdf_windows_xdna_private_allocation_t* command_allocation,
     amdf_windows_xdna_legacy_submission_t* out_submission);
 
 // Reports live instruction bytes for native accounting; it is not retirement.
 void amdf_windows_xdna_legacy_submission_build_accounting(
-    uint32_t header_byte_length,
+    const amdf_windows_xdna_native_abi_t* abi,
     const amdf_windows_xdna_private_allocation_t* instruction_allocation,
     uint64_t live_byte_length,
     amdf_windows_xdna_legacy_submission_t* out_submission);
 
 // Builds the private execution record adjoining one ERT packet.
 void amdf_windows_xdna_legacy_submission_build_execute(
-    uint32_t header_byte_length,
+    const amdf_windows_xdna_native_abi_t* abi,
     const amdf_windows_xdna_private_allocation_t* execution_allocation,
     const amdf_windows_xdna_private_allocation_t* command_allocation,
     const amdf_xdna_transaction_interpreter_packet_t* packet,

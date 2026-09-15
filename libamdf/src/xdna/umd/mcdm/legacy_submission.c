@@ -44,49 +44,68 @@ void amdf_windows_xdna_legacy_submission_build_aperture(
       instruction_allocation->descriptor.allocation_byte_length);
 }
 
+static void amdf_windows_xdna_legacy_submission_write_response(
+    const amdf_windows_xdna_native_abi_t* abi,
+    const amdf_windows_xdna_private_allocation_t* command_allocation,
+    uint32_t byte_offset, amdf_windows_xdna_legacy_submission_t* submission) {
+  amdf_windows_xdna_legacy_write_u64(submission->bytes, 0x28,
+                                     command_allocation->allocation);
+  size_t response_byte_offset = 0x30;
+  if (abi->context_encoding == AMDF_WINDOWS_XDNA_CONTEXT_ENCODING_DIRECT) {
+    amdf_windows_xdna_legacy_write_u64(submission->bytes, 0x30,
+                                       command_allocation->device_address);
+    response_byte_offset = 0x38;
+  }
+  amdf_windows_xdna_legacy_write_u32(submission->bytes, response_byte_offset,
+                                     byte_offset);
+  amdf_windows_xdna_legacy_write_u32(submission->bytes,
+                                     response_byte_offset + 4, 8);
+  amdf_windows_xdna_legacy_write_u64(
+      submission->bytes, response_byte_offset + 8,
+      (uint64_t)(uintptr_t)command_allocation->host_pointer + byte_offset);
+}
+
 void amdf_windows_xdna_legacy_submission_build_context_initialize(
-    uint32_t header_byte_length,
+    const amdf_windows_xdna_native_abi_t* abi,
     const amdf_windows_xdna_private_allocation_t* command_allocation,
     amdf_windows_xdna_legacy_submission_t* out_submission) {
   amdf_windows_xdna_legacy_submission_initialize(
-      header_byte_length +
+      abi->submission_header_byte_length +
           AMDF_WINDOWS_XDNA_LEGACY_SUBMISSION_COMMAND_COPY_SIZE + 8,
       out_submission);
   amdf_windows_xdna_legacy_write_u64(out_submission->bytes, 0x00, 5);
-  amdf_windows_xdna_legacy_write_u64(out_submission->bytes, 0x28,
-                                     command_allocation->allocation);
-  amdf_windows_xdna_legacy_write_u32(out_submission->bytes, 0x30, 0);
-  amdf_windows_xdna_legacy_write_u32(out_submission->bytes, 0x34, 8);
-  amdf_windows_xdna_legacy_write_u64(
-      out_submission->bytes, 0x38,
-      (uint64_t)(uintptr_t)command_allocation->host_pointer);
-  memcpy(out_submission->bytes + header_byte_length,
+  amdf_windows_xdna_legacy_submission_write_response(abi, command_allocation, 0,
+                                                     out_submission);
+  memcpy(out_submission->bytes + abi->submission_header_byte_length,
          command_allocation->host_pointer,
          AMDF_WINDOWS_XDNA_LEGACY_SUBMISSION_COMMAND_COPY_SIZE);
 }
 
 void amdf_windows_xdna_legacy_submission_build_accounting(
-    uint32_t header_byte_length,
+    const amdf_windows_xdna_native_abi_t* abi,
     const amdf_windows_xdna_private_allocation_t* instruction_allocation,
     uint64_t live_byte_length,
     amdf_windows_xdna_legacy_submission_t* out_submission) {
-  amdf_windows_xdna_legacy_submission_initialize(header_byte_length,
-                                                 out_submission);
+  amdf_windows_xdna_legacy_submission_initialize(
+      abi->submission_header_byte_length, out_submission);
   amdf_windows_xdna_legacy_write_u64(out_submission->bytes, 0x00, 9);
-  amdf_windows_xdna_legacy_write_u64(out_submission->bytes, 0x08,
-                                     instruction_allocation->allocation);
+  // The direct protocol accounts for the context, not an allocation handle.
+  if (abi->context_encoding != AMDF_WINDOWS_XDNA_CONTEXT_ENCODING_DIRECT) {
+    amdf_windows_xdna_legacy_write_u64(out_submission->bytes, 0x08,
+                                       instruction_allocation->allocation);
+  }
   amdf_windows_xdna_legacy_write_u64(out_submission->bytes, 0x10,
                                      live_byte_length);
 }
 
 void amdf_windows_xdna_legacy_submission_build_execute(
-    uint32_t header_byte_length,
+    const amdf_windows_xdna_native_abi_t* abi,
     const amdf_windows_xdna_private_allocation_t* execution_allocation,
     const amdf_windows_xdna_private_allocation_t* command_allocation,
     const amdf_xdna_transaction_interpreter_packet_t* packet,
     amdf_windows_xdna_legacy_submission_t* out_submission) {
   amdf_windows_xdna_legacy_submission_initialize(
-      header_byte_length +
+      abi->submission_header_byte_length +
           AMDF_WINDOWS_XDNA_LEGACY_SUBMISSION_COMMAND_COPY_SIZE,
       out_submission);
   amdf_windows_xdna_legacy_write_u64(out_submission->bytes, 0x00, 3);
@@ -94,14 +113,10 @@ void amdf_windows_xdna_legacy_submission_build_execute(
                                      execution_allocation->allocation);
   amdf_windows_xdna_legacy_write_u64(out_submission->bytes, 0x10,
                                      sizeof(*packet));
-  amdf_windows_xdna_legacy_write_u64(out_submission->bytes, 0x28,
-                                     command_allocation->allocation);
-  amdf_windows_xdna_legacy_write_u32(out_submission->bytes, 0x30, 8);
-  amdf_windows_xdna_legacy_write_u32(out_submission->bytes, 0x34, 8);
-  amdf_windows_xdna_legacy_write_u64(
-      out_submission->bytes, 0x38,
-      (uint64_t)(uintptr_t)command_allocation->host_pointer + 8);
-  memcpy(out_submission->bytes + header_byte_length, packet, sizeof(*packet));
+  amdf_windows_xdna_legacy_submission_write_response(abi, command_allocation, 8,
+                                                     out_submission);
+  memcpy(out_submission->bytes + abi->submission_header_byte_length, packet,
+         sizeof(*packet));
 }
 
 amdf_status_t amdf_windows_xdna_legacy_submission_query_initialize_result(

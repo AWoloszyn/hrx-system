@@ -34,6 +34,8 @@ class WindowsXdnaSubmissionLayoutTest
 
 TEST_P(WindowsXdnaSubmissionLayoutTest, BuildsContextLifecycleRecords) {
   const uint32_t header_length = GetParam();
+  const amdf_windows_xdna_native_abi_t abi = {
+      AMDF_WINDOWS_XDNA_CONTEXT_ENCODING_XCLBIN, 0, header_length};
   std::array<uint8_t, 4096> command_bytes = {};
   for (size_t i = 0; i < 512; ++i) {
     command_bytes[i] = static_cast<uint8_t>(i);
@@ -54,8 +56,8 @@ TEST_P(WindowsXdnaSubmissionLayoutTest, BuildsContextLifecycleRecords) {
   EXPECT_EQ(ReadU64(aperture.bytes, 0x10), UINT64_C(0x4000000));
 
   amdf_windows_xdna_legacy_submission_t initialize = {};
-  amdf_windows_xdna_legacy_submission_build_context_initialize(
-      header_length, &command, &initialize);
+  amdf_windows_xdna_legacy_submission_build_context_initialize(&abi, &command,
+                                                               &initialize);
   EXPECT_EQ(initialize.byte_length, header_length + 520u);
   EXPECT_EQ(ReadU64(initialize.bytes, 0x00), 5u);
   EXPECT_EQ(ReadU64(initialize.bytes, 0x28), 0x20u);
@@ -69,7 +71,7 @@ TEST_P(WindowsXdnaSubmissionLayoutTest, BuildsContextLifecycleRecords) {
 
   amdf_windows_xdna_legacy_submission_t accounting = {};
   amdf_windows_xdna_legacy_submission_build_accounting(
-      header_length, &instruction, UINT64_C(0x20000), &accounting);
+      &abi, &instruction, UINT64_C(0x20000), &accounting);
   EXPECT_EQ(accounting.byte_length, header_length);
   EXPECT_EQ(ReadU64(accounting.bytes, 0x00), 9u);
   EXPECT_EQ(ReadU64(accounting.bytes, 0x08), 0x10u);
@@ -79,6 +81,8 @@ TEST_P(WindowsXdnaSubmissionLayoutTest, BuildsContextLifecycleRecords) {
 TEST_P(WindowsXdnaSubmissionLayoutTest,
        BuildsInstructionRangeExecutionRecords) {
   const uint32_t header_length = GetParam();
+  const amdf_windows_xdna_native_abi_t abi = {
+      AMDF_WINDOWS_XDNA_CONTEXT_ENCODING_XCLBIN, 0, header_length};
   amdf_xdna_transaction_interpreter_packet_t packet = {};
   amdf_xdna_transaction_interpreter_packet_build(UINT64_C(0x04008000), 300,
                                                  &packet);
@@ -96,8 +100,8 @@ TEST_P(WindowsXdnaSubmissionLayoutTest,
   command.allocation = 0x20;
   command.host_pointer = command_bytes.data();
   amdf_windows_xdna_legacy_submission_t submission = {};
-  amdf_windows_xdna_legacy_submission_build_execute(
-      header_length, &execution, &command, &packet, &submission);
+  amdf_windows_xdna_legacy_submission_build_execute(&abi, &execution, &command,
+                                                    &packet, &submission);
   EXPECT_EQ(submission.byte_length, header_length + 512u);
   EXPECT_EQ(ReadU64(submission.bytes, 0x00), 3u);
   EXPECT_EQ(ReadU64(submission.bytes, 0x08), 0x30u);

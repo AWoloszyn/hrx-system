@@ -69,6 +69,7 @@ amdf_cc_library(
     deps = [
         ":bootstrap_image",
         ":native_abi",
+        ":private_allocation",
         "//libamdf/src:allocator",
         "//libamdf/src/xdna:bootstrap",
     ],
@@ -92,6 +93,7 @@ amdf_cc_library(
     deps = [
         ":device_state",
         ":native_abi",
+        ":private_allocation",
         "//libamdf/src/xdna/umd:context",
     ],
 )
@@ -142,6 +144,7 @@ amdf_cc_library(
     hdrs = ["legacy_submission.h"],
     target_compatible_with = MCDM_COMPATIBILITY,
     deps = [
+        ":native_abi",
         ":private_allocation",
         "//libamdf/src/xdna:transaction_interpreter",
     ],

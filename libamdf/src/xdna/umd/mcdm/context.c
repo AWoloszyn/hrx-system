@@ -38,6 +38,9 @@ amdf_status_t amdf_xdna_umd_context_destroy(amdf_xdna_umd_context_t* context) {
     }
     context->kernel_execution = NULL;
   }
+  const amdf_status_t buffer_status =
+      amdf_windows_xdna_private_allocation_destroy(&context->kernel_buffer);
+  if (!amdf_status_is_ok(buffer_status)) return buffer_status;
   const amdf_allocator_t host_allocator = context->device->host_allocator;
   amdf_free(host_allocator, context);
   return AMDF_STATUS_OK;
@@ -64,29 +67,54 @@ amdf_status_t amdf_xdna_umd_context_create(
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
 
-  const amdf_windows_xdna_native_abi_t* native_abi = NULL;
+  amdf_windows_xdna_native_abi_t native_abi = {0};
   amdf_status_t status = amdf_windows_xdna_native_abi_query(
       device->kmt, device->adapter, &native_abi);
   if (!amdf_status_is_ok(status)) return status;
-  uint8_t* context_data = NULL;
-  uint32_t context_data_size = 0;
-  status = amdf_windows_xdna_legacy_context_build(
-      native_abi, profile->bootstrap, create_info->logical_column_count,
-      profile->info->array.column_origin, device->host_allocator, &context_data,
-      &context_data_size);
-  if (!amdf_status_is_ok(status)) {
-    return status;
+  if (native_abi.context_encoding ==
+          AMDF_WINDOWS_XDNA_CONTEXT_ENCODING_DIRECT &&
+      (!amdf_kmt_api_supports_memory(device->kmt) ||
+       device->kmt->lock == NULL || device->kmt->unlock == NULL)) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
-
   amdf_xdna_umd_context_t* context = NULL;
   status = amdf_calloc(device->host_allocator, sizeof(*context),
                        amdf_alignof(amdf_xdna_umd_context_t), (void**)&context);
-  if (!amdf_status_is_ok(status)) {
-    amdf_free(device->host_allocator, context_data);
-    return status;
-  }
+  if (!amdf_status_is_ok(status)) return status;
   context->device = device;
   context->native_abi = native_abi;
+
+  if (native_abi.context_encoding ==
+      AMDF_WINDOWS_XDNA_CONTEXT_ENCODING_DIRECT) {
+    const amdf_windows_xdna_private_allocation_descriptor_t descriptor = {
+        .requested_byte_length = 4096,
+        .allocation_byte_length = 4096,
+        .type = 0x332C,
+        .policy = 2,
+        .xcl_flags = 0x02000000,
+        .flags =
+            AMDF_WINDOWS_XDNA_PRIVATE_ALLOCATION_FLAG_DEVICE_ADDRESS |
+            (native_abi.shared_kernel_buffers
+                 ? AMDF_WINDOWS_XDNA_PRIVATE_ALLOCATION_FLAG_SHARED_RESOURCE
+                 : 0),
+    };
+    amdf_windows_xdna_private_allocation_initialize(device, &descriptor,
+                                                    &context->kernel_buffer);
+    status =
+        amdf_windows_xdna_private_allocation_realize(&context->kernel_buffer);
+    if (amdf_status_is_ok(status)) {
+      status =
+          amdf_windows_xdna_private_allocation_lock(&context->kernel_buffer);
+    }
+  }
+  uint8_t* context_data = NULL;
+  uint32_t context_data_size = 0;
+  if (amdf_status_is_ok(status)) {
+    status = amdf_windows_xdna_legacy_context_build(
+        &native_abi, profile->bootstrap, create_info->logical_column_count,
+        profile->info->array.column_origin, &context->kernel_buffer,
+        device->host_allocator, &context_data, &context_data_size);
+  }
 
   D3DKMT_CREATECONTEXTVIRTUAL create = {0};
   create.hDevice = device->device;
@@ -96,7 +124,9 @@ amdf_status_t amdf_xdna_umd_context_create(
   create.pPrivateDriverData = context_data;
   create.PrivateDriverDataSize = context_data_size;
   create.ClientHint = (D3DKMT_CLIENTHINT)25;
-  status = amdf_kmt_make_status(device->kmt->create_context_virtual(&create));
+  if (amdf_status_is_ok(status)) {
+    status = amdf_kmt_make_status(device->kmt->create_context_virtual(&create));
+  }
   if (amdf_status_is_ok(status)) {
     context->handle = create.hContext;
     if (context->handle == 0) {
@@ -104,7 +134,7 @@ amdf_status_t amdf_xdna_umd_context_create(
     } else {
       context->command_aperture_cookie =
           amdf_windows_xdna_legacy_context_query_command_aperture_cookie(
-              native_abi, context_data);
+              &native_abi, context_data);
       if (context->command_aperture_cookie > UINT8_MAX) {
         status = amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
       }
@@ -126,8 +156,8 @@ amdf_status_t amdf_xdna_umd_context_create(
   } else {
     const amdf_status_t release_status = amdf_xdna_umd_context_destroy(context);
     if (!amdf_status_is_ok(release_status)) {
-      // Failed construction has no execution storage or accepted work. A
-      // native handle leak does not require retaining this host bookkeeping.
+      // No execution work was accepted. A failed native release leaks its
+      // backing; retaining unreachable host bookkeeping cannot recover it.
       amdf_free(device->host_allocator, context);
       status = release_status;
     }

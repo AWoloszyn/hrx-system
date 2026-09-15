@@ -24,6 +24,10 @@ struct Allocation {
   uint64_t byte_length = 0;
   // Actual page-aligned host storage supplied by the native dependency.
   void* pointer = nullptr;
+  // GPU VA supplied by mapping this exact allocation.
+  uint64_t device_address = 0;
+  // Whether the native dependency has made this allocation resident.
+  bool resident = false;
 };
 
 struct NativeState {
@@ -100,12 +104,17 @@ NTSTATUS APIENTRY MapAddress(D3DDDI_MAPGPUVIRTUALADDRESS* map) {
   map->VirtualAddress =
       UINT64_C(0x100000000) + uint64_t(map->hAllocation) * 0x4000000;
   map->PagingFenceValue = 0;
+  native_state->allocations[map->hAllocation].device_address =
+      map->VirtualAddress;
   return 0;
 }
 
 NTSTATUS APIENTRY MakeResident(D3DDDI_MAKERESIDENT* resident) {
   EXPECT_EQ(resident->Flags.MustSucceed, 0u);
   resident->PagingFenceValue = 0;
+  for (uint32_t i = 0; i < resident->NumAllocations; ++i) {
+    native_state->allocations[resident->AllocationList[i]].resident = true;
+  }
   return 0;
 }
 
@@ -126,12 +135,35 @@ NTSTATUS APIENTRY CreateQueue(D3DKMT_CREATEHWQUEUE* create) {
 NTSTATUS APIENTRY Submit(const D3DKMT_SUBMITCOMMANDTOHWQUEUE* submit) {
   const void* bytes = submit->pPrivateDriverData;
   const uint64_t opcode = ReadU64(bytes, 0);
+  const bool current_protocol = native_state->header_byte_length == 120;
+  const size_t response_address_offset = current_protocol ? 0x40 : 0x38;
   native_state->opcodes.push_back(opcode);
+  if (current_protocol && (opcode == 5 || opcode == 3)) {
+    const auto& response_allocation =
+        native_state->allocations[ReadU64(bytes, 0x28)];
+    EXPECT_EQ(response_allocation.type, 0x332Cu);
+    EXPECT_TRUE(response_allocation.resident);
+    EXPECT_NE(response_allocation.device_address, 0u);
+    EXPECT_EQ(ReadU64(bytes, 0x30), response_allocation.device_address);
+    EXPECT_EQ(ReadU64(bytes, 0x40),
+              reinterpret_cast<uintptr_t>(response_allocation.pointer) +
+                  ReadU32(bytes, 0x38));
+  }
   if (opcode == 2 || opcode == 9) {
     EXPECT_EQ(ReadU64(bytes, 0x10), AMDF_WINDOWS_XDNA_PRIVATE_APERTURE_SIZE);
+    if (current_protocol && opcode == 9) {
+      EXPECT_EQ(ReadU64(bytes, 0x08), 0u);
+    }
   } else if (opcode == 5) {
-    auto* response = reinterpret_cast<uint64_t*>(ReadU64(bytes, 0x38));
+    EXPECT_EQ(submit->PrivateDriverDataSize,
+              native_state->header_byte_length + 520);
+    auto* response =
+        reinterpret_cast<uint64_t*>(ReadU64(bytes, response_address_offset));
     EXPECT_EQ(response[1], native_state->firmware_address);
+    if (current_protocol) {
+      EXPECT_EQ(ReadU64(bytes, 0x80), native_state->firmware_address);
+      EXPECT_GT(ReadU32(bytes, 0x88), 0u);
+    }
     response[0] = native_state->initialize_result;
   } else if (opcode == 3) {
     EXPECT_EQ(submit->CommandLength, 4096u + native_state->header_byte_length);
@@ -139,7 +171,10 @@ NTSTATUS APIENTRY Submit(const D3DKMT_SUBMITCOMMANDTOHWQUEUE* submit) {
         ReadU64(bytes, native_state->header_byte_length + 0x10);
     native_state->instruction_word_count =
         ReadU32(bytes, native_state->header_byte_length + 0x18);
-    auto* response = reinterpret_cast<uint64_t*>(ReadU64(bytes, 0x38));
+    EXPECT_EQ(submit->PrivateDriverDataSize,
+              native_state->header_byte_length + 512);
+    auto* response =
+        reinterpret_cast<uint64_t*>(ReadU64(bytes, response_address_offset));
     *response = native_state->execution_result;
   } else {
     ADD_FAILURE() << "Unexpected native opcode " << opcode;
@@ -155,6 +190,10 @@ class WindowsXdnaKernelExecutionTest
     native_state = &native_;
     native_.header_byte_length = GetParam();
     abi_.submission_header_byte_length = GetParam();
+    abi_.context_encoding = GetParam() == 120
+                                ? AMDF_WINDOWS_XDNA_CONTEXT_ENCODING_DIRECT
+                                : AMDF_WINDOWS_XDNA_CONTEXT_ENCODING_XCLBIN;
+    abi_.shared_kernel_buffers = true;
     kmt_.create_allocation = CreateAllocation;
     kmt_.destroy_allocation = DestroyAllocation;
     kmt_.map_gpu_virtual_address = MapAddress;
@@ -218,7 +257,7 @@ class WindowsXdnaKernelExecutionTest
     context_.device = &device_;
     context_.handle = 13;
     context_.command_aperture_cookie = 0;
-    context_.native_abi = &abi_;
+    context_.native_abi = abi_;
     ASSERT_EQ(amdf_windows_xdna_kernel_execution_create(
                   &context_, &context_.kernel_execution),
               AMDF_STATUS_OK);
@@ -379,6 +418,6 @@ TEST_P(WindowsXdnaKernelExecutionTest, FailedBootstrapDoesNotPublishMemory) {
 }
 
 INSTANTIATE_TEST_SUITE_P(NativeLayouts, WindowsXdnaKernelExecutionTest,
-                         ::testing::Values(88u, 104u));
+                         ::testing::Values(88u, 104u, 120u));
 
 }  // namespace

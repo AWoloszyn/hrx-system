@@ -52,7 +52,11 @@ identity selects device capabilities; it does not identify the installed
 driver's private wire layouts. A private query returning a hardware kind, or
 succeeding without writing a reply, does not establish protocol compatibility.
 The provider must establish the matching context, allocation and submission
-contracts together. Native context ID zero is valid.
+contracts together. The current protocol admits a partition directly by width,
+without an embedded xclbin, and retains a small native kernel buffer for the
+context's lifetime. Its adapter query also determines the kernel-buffer sharing
+policy. Older metadata and embedded-image admission protocols remain separate
+wire encodings of the same public context API. Native context ID zero is valid.
 
 Windows initialization loads a target-selected native bootstrap independently
 of application code. The NPU4 bootstrap only asserts four core resets; it does

@@ -167,13 +167,79 @@ static amdf_status_t amdf_windows_xdna_metadata_context_build(
   return AMDF_STATUS_OK;
 }
 
+// Fixed direct-width native context record. Its kernel buffer is native
+// context storage, not an application program or a per-submission BO list.
+typedef struct amdf_windows_xdna_direct_context_t {
+  // Optional image identity; zero for a program-independent partition.
+  uint8_t uuid[16];
+  // Zero selects the native default quality-of-service policy.
+  uint8_t quality_of_service[0x30];
+  // Reserved context configuration, zero for the ordinary native path.
+  uint32_t reserved_0040;
+  // Context ID returned by native creation, including zero.
+  uint32_t command_aperture_cookie;
+  // Size of the native instruction aperture in bytes.
+  uint64_t command_aperture_byte_length;
+  // Process creating the native context.
+  uint32_t process_id;
+  // Requested logical partition width in columns.
+  uint32_t column_count;
+  // Reserved native placement and proxy configuration; all zero.
+  uint32_t reserved_0058[4];
+  // Native allocation handle retained by the context owner.
+  uint64_t kernel_buffer_allocation;
+  // Byte offset within the kernel buffer allocation.
+  uint32_t kernel_buffer_byte_offset;
+  // Byte length of the kernel buffer.
+  uint32_t kernel_buffer_byte_length;
+  // Locked CPU pointer retained through native context destruction.
+  uint64_t kernel_buffer_host_address;
+  // Optional native configuration, zero on the direct-width path.
+  uint8_t reserved_0080[0x20];
+} amdf_windows_xdna_direct_context_t;
+
+_Static_assert(sizeof(amdf_windows_xdna_direct_context_t) == 0xA0,
+               "direct context must match the native wire record");
+_Static_assert(offsetof(amdf_windows_xdna_direct_context_t,
+                        kernel_buffer_allocation) == 0x68,
+               "direct context buffer must match the native wire offset");
+
+static amdf_status_t amdf_windows_xdna_direct_context_build(
+    uint32_t partition_column_count,
+    const amdf_windows_xdna_private_allocation_t* kernel_buffer,
+    amdf_allocator_t host_allocator, uint8_t** out_data,
+    uint32_t* out_data_size) {
+  amdf_windows_xdna_direct_context_t* data = NULL;
+  const amdf_status_t status = amdf_calloc(
+      host_allocator, sizeof(*data),
+      amdf_alignof(amdf_windows_xdna_direct_context_t), (void**)&data);
+  if (!amdf_status_is_ok(status)) return status;
+  data->command_aperture_byte_length = UINT64_C(0x04000000);
+  data->process_id = GetCurrentProcessId();
+  data->column_count = partition_column_count;
+  data->kernel_buffer_allocation = kernel_buffer->allocation;
+  data->kernel_buffer_byte_length =
+      (uint32_t)kernel_buffer->descriptor.allocation_byte_length;
+  data->kernel_buffer_host_address = (uintptr_t)kernel_buffer->host_pointer;
+  *out_data = (uint8_t*)data;
+  *out_data_size = sizeof(*data);
+  return AMDF_STATUS_OK;
+}
+
 amdf_status_t amdf_windows_xdna_legacy_context_build(
     const amdf_windows_xdna_native_abi_t* abi,
     const amdf_xdna_bootstrap_t* bootstrap, uint32_t partition_column_count,
-    uint32_t first_start_column, amdf_allocator_t host_allocator,
-    uint8_t** out_data, uint32_t* out_data_size) {
+    uint32_t first_start_column,
+    const amdf_windows_xdna_private_allocation_t* kernel_buffer,
+    amdf_allocator_t host_allocator, uint8_t** out_data,
+    uint32_t* out_data_size) {
   if (out_data == NULL || out_data_size == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  }
+  if (abi->context_encoding == AMDF_WINDOWS_XDNA_CONTEXT_ENCODING_DIRECT) {
+    return amdf_windows_xdna_direct_context_build(partition_column_count,
+                                                  kernel_buffer, host_allocator,
+                                                  out_data, out_data_size);
   }
   if (abi->context_encoding == AMDF_WINDOWS_XDNA_CONTEXT_ENCODING_METADATA) {
     return amdf_windows_xdna_metadata_context_build(

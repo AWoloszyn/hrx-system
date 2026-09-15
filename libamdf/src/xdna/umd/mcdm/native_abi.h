@@ -17,9 +17,10 @@ extern "C" {
 typedef enum amdf_windows_xdna_context_encoding_e {
   AMDF_WINDOWS_XDNA_CONTEXT_ENCODING_XCLBIN = 0,
   AMDF_WINDOWS_XDNA_CONTEXT_ENCODING_METADATA = 1,
+  AMDF_WINDOWS_XDNA_CONTEXT_ENCODING_DIRECT = 2,
 } amdf_windows_xdna_context_encoding_t;
 
-// Immutable native wire facts resolved before context construction.
+// Native wire facts and allocation policy resolved before context construction.
 typedef struct amdf_windows_xdna_native_abi_t {
   // Context-private payload representation consumed by the miniport.
   amdf_windows_xdna_context_encoding_t context_encoding;
@@ -27,15 +28,17 @@ typedef struct amdf_windows_xdna_native_abi_t {
   uint32_t context_cookie_byte_offset;
   // Fixed prefix preceding the 512-byte command copy in submission records.
   uint32_t submission_header_byte_length;
+  // Whether driver kernel buffers require CreateResource and CreateShared.
+  bool shared_kernel_buffers;
 } amdf_windows_xdna_native_abi_t;
 
 // Queries the adapter's driver identity and resolves an inspected native ABI.
-// No device or context is created. Success publishes a process-lifetime table;
-// failure leaves the output unchanged. Private-query success without a written
-// response is not an ABI version.
+// No device or context is created. Success publishes the resolved facts by
+// value; failure leaves the output unchanged. Private-query success without a
+// written response is not an ABI version.
 amdf_status_t amdf_windows_xdna_native_abi_query(
     const amdf_kmt_api_t* kmt, D3DKMT_HANDLE adapter,
-    const amdf_windows_xdna_native_abi_t** out_abi);
+    amdf_windows_xdna_native_abi_t* out_abi);
 
 #ifdef __cplusplus
 }  // extern "C"

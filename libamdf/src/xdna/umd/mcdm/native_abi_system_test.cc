@@ -17,8 +17,7 @@
 namespace {
 
 // Borrowed native procedure for this serial hardware test. The observer
-// forwards each production query unchanged; it neither fabricates responses nor
-// probes alternative buffer sizes after a native rejection.
+// forwards each production query unchanged and records the native responses.
 PFND3DKMT_QUERYADAPTERINFO native_query = nullptr;
 
 NTSTATUS APIENTRY ObserveQuery(const D3DKMT_QUERYADAPTERINFO* query) {
@@ -87,11 +86,16 @@ TEST_F(WindowsXdnaNativeAbiSystemTest, ResolvesAbiBeforeDeviceCreation) {
       // on device, context, paging or allocation creation visible here.
       amdf_kmt_api_t query_api = {};
       query_api.query_adapter_info = ObserveQuery;
-      const amdf_windows_xdna_native_abi_t* abi = nullptr;
+      amdf_windows_xdna_native_abi_t abi = {};
       ASSERT_EQ(amdf_windows_xdna_native_abi_query(&query_api,
                                                    endpoint_->adapter, &abi),
                 AMDF_STATUS_OK);
-      ASSERT_NE(abi, nullptr);
+      EXPECT_GT(abi.submission_header_byte_length, 0u);
+      std::cout << "Native context encoding=" << abi.context_encoding
+                << " submission header bytes="
+                << abi.submission_header_byte_length
+                << " shared kernel buffers=" << abi.shared_kernel_buffers
+                << std::endl;
     }
     ASSERT_EQ(amdf_platform_endpoint_close(endpoint_), AMDF_STATUS_OK);
     endpoint_ = nullptr;
