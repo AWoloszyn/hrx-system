@@ -48,6 +48,7 @@ using HipGetDeviceCountFn = hipError_t (*)(int* device_count);
 using HipGetDevicePropertiesFn = hipError_t (*)(hipDeviceProp_t* properties,
                                                 int device);
 using HipDeviceSynchronizeFn = hipError_t (*)(void);
+using HipGetLastErrorFn = hipError_t (*)(void);
 using HipMallocFn = hipError_t (*)(hipDeviceptr_t* pointer, size_t size);
 using HipFreeFn = hipError_t (*)(hipDeviceptr_t pointer);
 using HipMemcpyFn = hipError_t (*)(void* target, const void* source,
@@ -81,6 +82,8 @@ using HipGraphExecKernelNodeSetParamsFn =
     hipError_t (*)(hipGraphExec_t graph_exec, hipGraphNode_t node,
                    const hipKernelNodeParams* node_params);
 
+using HipModuleLoadFn = hipError_t (*)(hipModule_t* module,
+                                       const char* file_name);
 using HipModuleLoadDataExFn = hipError_t (*)(hipModule_t* module,
                                              const void* image,
                                              unsigned int option_count,
@@ -208,6 +211,7 @@ struct HipApi {
                         "hipGetDeviceProperties");
     HRX_RESOLVE_HIP_API(device_synchronize, HipDeviceSynchronizeFn,
                         "hipDeviceSynchronize");
+    HRX_RESOLVE_HIP_API(get_last_error, HipGetLastErrorFn, "hipGetLastError");
     HRX_RESOLVE_HIP_API(malloc, HipMallocFn, "hipMalloc");
     HRX_RESOLVE_HIP_API(free, HipFreeFn, "hipFree");
     HRX_RESOLVE_HIP_API(memcpy, HipMemcpyFn, "hipMemcpy");
@@ -238,6 +242,7 @@ struct HipApi {
     HRX_RESOLVE_HIP_API(graph_exec_kernel_node_set_params,
                         HipGraphExecKernelNodeSetParamsFn,
                         "hipGraphExecKernelNodeSetParams");
+    HRX_RESOLVE_HIP_API(module_load, HipModuleLoadFn, "hipModuleLoad");
     HRX_RESOLVE_HIP_API(module_load_data_ex, HipModuleLoadDataExFn,
                         "hipModuleLoadDataEx");
     HRX_RESOLVE_HIP_API(module_load_fat_binary, HipModuleLoadFatBinaryFn,
@@ -303,25 +308,26 @@ struct HipApi {
                         "__hipRegisterManagedVar");
 #undef HRX_RESOLVE_HIP_API
     return init && deinit && get_device && set_device && get_device_count &&
-           get_device_properties && device_synchronize && malloc && free &&
-           memcpy && stream_create && stream_destroy && stream_synchronize &&
-           event_create && event_destroy && stream_begin_capture &&
-           stream_end_capture && graph_get_nodes && graph_destroy &&
-           graph_instantiate && graph_exec_destroy && graph_launch &&
-           graph_kernel_node_get_params && graph_kernel_node_set_params &&
-           graph_exec_kernel_node_set_params && module_load_data_ex &&
-           module_load_fat_binary && module_unload && module_get_function &&
-           module_get_global && module_get_tex_ref &&
-           module_get_function_count && module_launch_kernel &&
-           ext_module_launch_kernel && library_load_data &&
-           library_load_from_file && library_unload && library_get_kernel &&
-           library_get_kernel_count && library_enumerate_kernels &&
-           library_get_global && kernel_get_function && kernel_get_library &&
-           kernel_get_name && kernel_get_param_info && kernel_get_attribute &&
-           link_create && link_add_data && link_add_file && link_complete &&
-           link_destroy && get_symbol_address && get_symbol_size &&
-           memcpy_to_symbol && memcpy_from_symbol && get_func_by_symbol &&
-           register_fat_binary && unregister_fat_binary && register_function &&
+           get_device_properties && device_synchronize && get_last_error &&
+           malloc && free && memcpy && stream_create && stream_destroy &&
+           stream_synchronize && event_create && event_destroy &&
+           stream_begin_capture && stream_end_capture && graph_get_nodes &&
+           graph_destroy && graph_instantiate && graph_exec_destroy &&
+           graph_launch && graph_kernel_node_get_params &&
+           graph_kernel_node_set_params && graph_exec_kernel_node_set_params &&
+           module_load && module_load_data_ex && module_load_fat_binary &&
+           module_unload && module_get_function && module_get_global &&
+           module_get_tex_ref && module_get_function_count &&
+           module_launch_kernel && ext_module_launch_kernel &&
+           library_load_data && library_load_from_file && library_unload &&
+           library_get_kernel && library_get_kernel_count &&
+           library_enumerate_kernels && library_get_global &&
+           kernel_get_function && kernel_get_library && kernel_get_name &&
+           kernel_get_param_info && kernel_get_attribute && link_create &&
+           link_add_data && link_add_file && link_complete && link_destroy &&
+           get_symbol_address && get_symbol_size && memcpy_to_symbol &&
+           memcpy_from_symbol && get_func_by_symbol && register_fat_binary &&
+           unregister_fat_binary && register_function &&
            register_managed_variable;
   }
 
@@ -332,6 +338,7 @@ struct HipApi {
   HipGetDeviceCountFn get_device_count = nullptr;
   HipGetDevicePropertiesFn get_device_properties = nullptr;
   HipDeviceSynchronizeFn device_synchronize = nullptr;
+  HipGetLastErrorFn get_last_error = nullptr;
   HipMallocFn malloc = nullptr;
   HipFreeFn free = nullptr;
   HipMemcpyFn memcpy = nullptr;
@@ -350,6 +357,7 @@ struct HipApi {
   HipGraphKernelNodeGetParamsFn graph_kernel_node_get_params = nullptr;
   HipGraphKernelNodeSetParamsFn graph_kernel_node_set_params = nullptr;
   HipGraphExecKernelNodeSetParamsFn graph_exec_kernel_node_set_params = nullptr;
+  HipModuleLoadFn module_load = nullptr;
   HipModuleLoadDataExFn module_load_data_ex = nullptr;
   HipModuleLoadFatBinaryFn module_load_fat_binary = nullptr;
   HipModuleUnloadFn module_unload = nullptr;
@@ -630,6 +638,7 @@ TEST_F(HipModuleLibraryExecutionTest,
 
 TEST_F(HipModuleLibraryExecutionTest,
        LazyLibraryOwnsInputsCachesFailuresAndSelectsOnFirstQuery) {
+  (void)api_.get_last_error();
   std::array<uint8_t, 64> malformed_image = {};
   hipLibrary_t malformed_library = nullptr;
   ASSERT_EQ(hipSuccess,
@@ -643,6 +652,7 @@ TEST_F(HipModuleLibraryExecutionTest,
   unsigned int count = 0;
   EXPECT_EQ(hipErrorInvalidImage,
             api_.library_get_kernel_count(&count, malformed_library));
+  EXPECT_EQ(hipErrorInvalidImage, api_.get_last_error());
   EXPECT_EQ(hipErrorInvalidImage,
             api_.library_get_kernel_count(&count, malformed_library));
   EXPECT_EQ(hipSuccess, api_.library_unload(malformed_library));
@@ -679,6 +689,11 @@ TEST_F(HipModuleLibraryExecutionTest,
   ASSERT_EQ(hipSuccess,
             api_.library_get_kernel_count(&count, preserved_library));
   EXPECT_GT(count, 0u);
+  hipKernel_t missing_kernel = nullptr;
+  EXPECT_EQ(hipErrorNotFound,
+            api_.library_get_kernel(&missing_kernel, preserved_library,
+                                    "__hrx_missing_kernel"));
+  EXPECT_EQ(hipErrorNotFound, api_.get_last_error());
   EXPECT_EQ(hipSuccess, api_.library_unload(preserved_library));
 
   hipLibraryOption host_table_option =
@@ -725,6 +740,26 @@ TEST_F(HipModuleLibraryExecutionTest,
                 /*library_option_values=*/nullptr,
                 /*library_option_count=*/0));
   EXPECT_TRUE(image_path.Remove());
+  EXPECT_EQ(hipErrorInvalidValue,
+            api_.library_load_from_file(
+                &invalid_library, image_path.path().c_str(),
+                /*jit_options=*/nullptr, /*jit_option_values=*/nullptr,
+                /*jit_option_count=*/0, /*library_options=*/nullptr,
+                /*library_option_values=*/nullptr,
+                /*library_option_count=*/0));
+  EXPECT_EQ(hipErrorInvalidValue, api_.get_last_error());
+
+  hipModule_t missing_module = nullptr;
+  EXPECT_EQ(hipErrorFileNotFound,
+            api_.module_load(&missing_module, image_path.path().c_str()));
+  EXPECT_EQ(hipErrorFileNotFound, api_.get_last_error());
+
+  hipModule_t malformed_module = nullptr;
+  EXPECT_EQ(hipErrorInvalidImage,
+            api_.module_load_data_ex(&malformed_module, malformed_image.data(),
+                                     /*option_count=*/0, /*options=*/nullptr,
+                                     /*option_values=*/nullptr));
+  EXPECT_EQ(hipErrorInvalidImage, api_.get_last_error());
 
   int device_count = 0;
   ASSERT_EQ(hipSuccess, api_.get_device_count(&device_count));
@@ -1123,6 +1158,12 @@ TEST_F(HipModuleLibraryExecutionTest,
   ASSERT_EQ(hipSuccess,
             api_.link_create(/*option_count=*/0, /*options=*/nullptr,
                              /*option_values=*/nullptr, &state));
+  EXPECT_EQ(hipErrorInvalidImage,
+            api_.link_add_data(state, hipJitInputSpirv, /*data=*/nullptr,
+                               /*size=*/0, /*name=*/nullptr,
+                               /*option_count=*/0, /*options=*/nullptr,
+                               /*option_values=*/nullptr));
+  EXPECT_EQ(hipErrorInvalidImage, api_.get_last_error());
   std::vector<uint32_t> transient_spirv(std::begin(kNoopSpirv),
                                         std::end(kNoopSpirv));
   ASSERT_EQ(hipSuccess,

@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "binding/hip/api.h"
+#include "binding/hip/error_state.h"
 #include "binding/hip/spirv_linker_compiler.h"
 #include "iree/base/api.h"
 #include "iree/base/internal/atomics.h"
@@ -235,18 +236,18 @@ static hipError_t iree_hip_link_compiler_status_to_result(
 
 HIPAPI hipError_t hipLinkCreate(unsigned int numOptions, hipJitOption* options,
                                 void** optionValues, hipLinkState_t* stateOut) {
-  if (!stateOut) return hipErrorInvalidValue;
+  if (!stateOut) HIP_RETURN_ERROR(hipErrorInvalidValue);
   *stateOut = NULL;
   hipError_t result =
       iree_hip_link_validate_options(numOptions, options, optionValues);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
 
   hipLinkState_t state = NULL;
   iree_status_t status = iree_allocator_malloc(iree_allocator_system(),
                                                sizeof(*state), (void**)&state);
   if (!iree_status_is_ok(status)) {
     iree_status_ignore(status);
-    return hipErrorOutOfMemory;
+    HIP_RETURN_ERROR(hipErrorOutOfMemory);
   }
   memset(state, 0, sizeof(*state));
   iree_atomic_ref_count_init(&state->ref_count);
@@ -255,7 +256,7 @@ HIPAPI hipError_t hipLinkCreate(unsigned int numOptions, hipJitOption* options,
   result = iree_hip_link_copy_options(numOptions, options, optionValues, state);
   if (result != hipSuccess) {
     iree_hip_link_state_release(state);
-    return result;
+    HIP_RETURN_ERROR(result);
   }
 
   iree_hip_link_registry_ensure_initialized();
@@ -264,43 +265,45 @@ HIPAPI hipError_t hipLinkCreate(unsigned int numOptions, hipJitOption* options,
   iree_hip_link_registry_head = state;
   iree_slim_mutex_unlock(&iree_hip_link_registry_mutex);
   *stateOut = state;
-  return hipSuccess;
+  HIP_RETURN_ERROR(hipSuccess);
 }
 
 HIPAPI hipError_t hipLinkAddData(hipLinkState_t state, hipJitInputType type,
                                  void* data, size_t size, const char* name,
                                  unsigned int numOptions, hipJitOption* options,
                                  void** optionValues) {
-  if (!data || size == 0) return hipErrorInvalidImage;
-  if (type != hipJitInputSpirv) return hipErrorInvalidValue;
+  if (!data || size == 0) HIP_RETURN_ERROR(hipErrorInvalidImage);
+  if (type != hipJitInputSpirv) HIP_RETURN_ERROR(hipErrorInvalidValue);
   hipError_t result =
       iree_hip_link_validate_options(numOptions, options, optionValues);
-  if (result != hipSuccess) return result;
-  if (numOptions != 0) return hipErrorNotSupported;
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+  if (numOptions != 0) HIP_RETURN_ERROR(hipErrorNotSupported);
 
   hipLinkState_t retained_state = NULL;
   result = iree_hip_link_state_acquire(state, &retained_state);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
   iree_slim_mutex_lock(&retained_state->mutex);
   result = iree_hip_link_append_input(retained_state, data, size, name);
   iree_slim_mutex_unlock(&retained_state->mutex);
   iree_hip_link_state_release(retained_state);
-  return result;
+  HIP_RETURN_ERROR(result);
 }
 
 HIPAPI hipError_t hipLinkAddFile(hipLinkState_t state, hipJitInputType type,
                                  const char* path, unsigned int numOptions,
                                  hipJitOption* options, void** optionValues) {
-  if (!state) return hipErrorInvalidHandle;
-  if (type != hipJitInputSpirv || !path) return hipErrorInvalidValue;
+  if (!state) HIP_RETURN_ERROR(hipErrorInvalidHandle);
+  if (type != hipJitInputSpirv || !path) {
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
+  }
   hipError_t result =
       iree_hip_link_validate_options(numOptions, options, optionValues);
-  if (result != hipSuccess) return result;
-  if (numOptions != 0) return hipErrorNotSupported;
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+  if (numOptions != 0) HIP_RETURN_ERROR(hipErrorNotSupported);
 
   hipLinkState_t retained_state = NULL;
   result = iree_hip_link_state_acquire(state, &retained_state);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
 
   FILE* file = fopen(path, "rb");
   uint8_t* data = NULL;
@@ -331,17 +334,17 @@ HIPAPI hipError_t hipLinkAddFile(hipLinkState_t state, hipJitInputType type,
   if (file) fclose(file);
   iree_allocator_free(iree_allocator_system(), data);
   iree_hip_link_state_release(retained_state);
-  return result;
+  HIP_RETURN_ERROR(result);
 }
 
 HIPAPI hipError_t hipLinkComplete(hipLinkState_t state, void** hipBinOut,
                                   size_t* sizeOut) {
-  if (!hipBinOut || !sizeOut) return hipErrorInvalidValue;
+  if (!hipBinOut || !sizeOut) HIP_RETURN_ERROR(hipErrorInvalidValue);
   *hipBinOut = NULL;
   *sizeOut = 0;
   hipLinkState_t retained_state = NULL;
   hipError_t result = iree_hip_link_state_acquire(state, &retained_state);
-  if (result != hipSuccess) return hipErrorInvalidValue;
+  if (result != hipSuccess) HIP_RETURN_ERROR(hipErrorInvalidValue);
 
   int device_ordinal = 0;
   result = hipGetDevice(&device_ordinal);
@@ -351,7 +354,7 @@ HIPAPI hipError_t hipLinkComplete(hipLinkState_t state, void** hipBinOut,
   }
   if (result != hipSuccess) {
     iree_hip_link_state_release(retained_state);
-    return result;
+    HIP_RETURN_ERROR(result);
   }
   static const char kTargetPrefix[] = "amdgcn-amd-amdhsa--";
   char target_isa[sizeof(kTargetPrefix) + sizeof(properties.gcnArchName)];
@@ -359,7 +362,7 @@ HIPAPI hipError_t hipLinkComplete(hipLinkState_t state, void** hipBinOut,
                                      kTargetPrefix, properties.gcnArchName);
   if (target_length < 0 || (size_t)target_length >= sizeof(target_isa)) {
     iree_hip_link_state_release(retained_state);
-    return hipErrorInvalidConfiguration;
+    HIP_RETURN_ERROR(hipErrorInvalidConfiguration);
   }
 
   iree_slim_mutex_lock(&retained_state->mutex);
@@ -405,11 +408,11 @@ HIPAPI hipError_t hipLinkComplete(hipLinkState_t state, void** hipBinOut,
   iree_slim_mutex_unlock(&retained_state->mutex);
   result = iree_hip_link_compiler_status_to_result(status);
   iree_hip_link_state_release(retained_state);
-  return result;
+  HIP_RETURN_ERROR(result);
 }
 
 HIPAPI hipError_t hipLinkDestroy(hipLinkState_t state) {
-  if (!state) return hipErrorInvalidValue;
+  if (!state) HIP_RETURN_ERROR(hipErrorInvalidValue);
   iree_hip_link_registry_ensure_initialized();
   iree_slim_mutex_lock(&iree_hip_link_registry_mutex);
   hipLinkState_t* link = &iree_hip_link_registry_head;
@@ -417,7 +420,7 @@ HIPAPI hipError_t hipLinkDestroy(hipLinkState_t state) {
   const bool found = *link != NULL;
   if (found) *link = state->next;
   iree_slim_mutex_unlock(&iree_hip_link_registry_mutex);
-  if (!found) return hipErrorInvalidValue;
+  if (!found) HIP_RETURN_ERROR(hipErrorInvalidValue);
   iree_hip_link_state_release(state);
-  return hipSuccess;
+  HIP_RETURN_ERROR(hipSuccess);
 }

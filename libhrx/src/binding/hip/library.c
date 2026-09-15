@@ -11,6 +11,7 @@
 
 #include "binding/hip/api.h"
 #include "binding/hip/binding_internal.h"
+#include "binding/hip/error_state.h"
 #include "binding/hip/function_handle.h"
 #include "common/fat_binary.h"
 #include "common/module.h"
@@ -494,18 +495,19 @@ HIPAPI hipError_t hipLibraryLoadData(hipLibrary_t* library, const void* code,
                                      hipLibraryOption* library_options,
                                      void** library_option_values,
                                      unsigned int library_option_count) {
-  if (!library || !code) return hipErrorInvalidValue;
+  if (!library || !code) HIP_RETURN_ERROR(hipErrorInvalidValue);
   *library = NULL;
   hipError_t result = iree_hip_library_validate_jit_options(
       jit_options, jit_option_values, jit_option_count);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
   bool binary_is_preserved = false;
   result = iree_hip_library_validate_options(
       false, library_options, library_option_values, library_option_count,
       &binary_is_preserved);
-  if (result != hipSuccess) return result;
-  return iree_hip_library_register(IREE_HIP_LIBRARY_SOURCE_TYPE_DATA, code,
-                                   binary_is_preserved, NULL, library);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+  HIP_RETURN_ERROR(iree_hip_library_register(IREE_HIP_LIBRARY_SOURCE_TYPE_DATA,
+                                             code, binary_is_preserved, NULL,
+                                             library));
 }
 
 HIPAPI hipError_t hipLibraryLoadFromFile(
@@ -513,28 +515,31 @@ HIPAPI hipError_t hipLibraryLoadFromFile(
     void** jit_option_values, unsigned int jit_option_count,
     hipLibraryOption* library_options, void** library_option_values,
     unsigned int library_option_count) {
-  if (!library || !file_name || !file_name[0]) return hipErrorInvalidValue;
+  if (!library || !file_name || !file_name[0]) {
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
+  }
   *library = NULL;
   hipError_t result = iree_hip_library_validate_jit_options(
       jit_options, jit_option_values, jit_option_count);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
   bool binary_is_preserved = false;
   result = iree_hip_library_validate_options(
       true, library_options, library_option_values, library_option_count,
       &binary_is_preserved);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
   FILE* source_file = fopen(file_name, "rb");
-  if (!source_file) return hipErrorFileNotFound;
+  if (!source_file) HIP_RETURN_ERROR(hipErrorInvalidValue);
   fclose(source_file);
-  return iree_hip_library_register(IREE_HIP_LIBRARY_SOURCE_TYPE_FILE, NULL,
-                                   binary_is_preserved, file_name, library);
+  HIP_RETURN_ERROR(iree_hip_library_register(IREE_HIP_LIBRARY_SOURCE_TYPE_FILE,
+                                             NULL, binary_is_preserved,
+                                             file_name, library));
 }
 
 HIPAPI hipError_t hipLibraryUnload(hipLibrary_t library) {
   hipLibrary_t removed_library = NULL;
   hipError_t result =
       iree_hip_library_registry_remove(library, &removed_library);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
 
   // A lookup that began before registry removal may still be completing the
   // one-time build. Wait for that transition before reading the publication.
@@ -549,17 +554,19 @@ HIPAPI hipError_t hipLibraryUnload(hipLibrary_t library) {
     result = iree_hip_status_to_result(status);
   }
   iree_hip_library_release(removed_library);
-  return result;
+  HIP_RETURN_ERROR(result);
 }
 
 HIPAPI hipError_t hipLibraryGetKernel(hipKernel_t* kernel, hipLibrary_t library,
                                       const char* name) {
-  if (!kernel || !library || !name || !name[0]) return hipErrorInvalidValue;
+  if (!kernel || !library || !name || !name[0]) {
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
+  }
   *kernel = NULL;
   hipLibrary_t retained_library = NULL;
   hipError_t result =
       iree_hip_library_acquire_ready(library, &retained_library);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
 
   iree_hal_streaming_symbol_t* symbol = NULL;
   iree_status_t status = iree_hal_streaming_module_function(
@@ -577,29 +584,29 @@ HIPAPI hipError_t hipLibraryGetKernel(hipKernel_t* kernel, hipLibrary_t library,
   }
   result = iree_hip_status_to_result(status);
   iree_hip_library_release(retained_library);
-  return result;
+  HIP_RETURN_ERROR(result);
 }
 
 HIPAPI hipError_t hipLibraryGetKernelCount(unsigned int* count,
                                            hipLibrary_t library) {
-  if (!count || !library) return hipErrorInvalidValue;
+  if (!count || !library) HIP_RETURN_ERROR(hipErrorInvalidValue);
   hipLibrary_t retained_library = NULL;
   hipError_t result =
       iree_hip_library_acquire_ready(library, &retained_library);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
   *count = retained_library->kernel_count;
   iree_hip_library_release(retained_library);
-  return hipSuccess;
+  HIP_RETURN_ERROR(hipSuccess);
 }
 
 HIPAPI hipError_t hipLibraryEnumerateKernels(hipKernel_t* kernels,
                                              unsigned int kernel_count,
                                              hipLibrary_t library) {
-  if (!kernels || !library) return hipErrorInvalidValue;
+  if (!kernels || !library) HIP_RETURN_ERROR(hipErrorInvalidValue);
   hipLibrary_t retained_library = NULL;
   hipError_t result =
       iree_hip_library_acquire_ready(library, &retained_library);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
 
   const unsigned int write_count =
       iree_min(kernel_count, retained_library->kernel_count);
@@ -607,18 +614,18 @@ HIPAPI hipError_t hipLibraryEnumerateKernels(hipKernel_t* kernels,
     kernels[i] = (hipKernel_t)retained_library->kernels[i].handle;
   }
   iree_hip_library_release(retained_library);
-  return hipSuccess;
+  HIP_RETURN_ERROR(hipSuccess);
 }
 
 HIPAPI hipError_t hipLibraryGetGlobal(void** device_pointer, size_t* byte_count,
                                       hipLibrary_t library, const char* name) {
   if ((!device_pointer && !byte_count) || !name || !name[0]) {
-    return hipErrorInvalidValue;
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
   }
   hipLibrary_t retained_library = NULL;
   hipError_t result =
       iree_hip_library_acquire_ready(library, &retained_library);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
 
   bool managed_found = false;
   void* managed_pointer = NULL;
@@ -647,18 +654,18 @@ HIPAPI hipError_t hipLibraryGetGlobal(void** device_pointer, size_t* byte_count,
   }
   result = iree_hip_status_to_result(status);
   iree_hip_library_release(retained_library);
-  return result;
+  HIP_RETURN_ERROR(result);
 }
 
 HIPAPI hipError_t hipLibraryGetManaged(void** host_pointer, size_t* byte_count,
                                        hipLibrary_t library, const char* name) {
   if ((!host_pointer && !byte_count) || !name || !name[0]) {
-    return hipErrorInvalidValue;
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
   }
   hipLibrary_t retained_library = NULL;
   hipError_t result =
       iree_hip_library_acquire_ready(library, &retained_library);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
 
   bool found = false;
   void* managed_pointer = NULL;
@@ -676,42 +683,42 @@ HIPAPI hipError_t hipLibraryGetManaged(void** host_pointer, size_t* byte_count,
 
   result = iree_hip_status_to_result(status);
   iree_hip_library_release(retained_library);
-  return result;
+  HIP_RETURN_ERROR(result);
 }
 
 HIPAPI hipError_t hipKernelGetFunction(hipFunction_t* function,
                                        hipKernel_t kernel) {
-  if (!function) return hipErrorInvalidValue;
+  if (!function) HIP_RETURN_ERROR(hipErrorInvalidValue);
   hipLibrary_t library = NULL;
   iree_hal_streaming_symbol_t* symbol = NULL;
   hipError_t result = iree_hip_library_acquire_for_kernel(
       kernel, hipErrorInvalidValue, &library, &symbol);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
   *function = (hipFunction_t)kernel;
   iree_hip_library_release(library);
-  return hipSuccess;
+  HIP_RETURN_ERROR(hipSuccess);
 }
 
 HIPAPI hipError_t hipKernelGetLibrary(hipLibrary_t* library,
                                       hipKernel_t kernel) {
-  if (!library) return hipErrorInvalidValue;
+  if (!library) HIP_RETURN_ERROR(hipErrorInvalidValue);
   hipLibrary_t owning_library = NULL;
   iree_hal_streaming_symbol_t* symbol = NULL;
   hipError_t result = iree_hip_library_acquire_for_kernel(
       kernel, hipErrorInvalidValue, &owning_library, &symbol);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
   *library = owning_library;
   iree_hip_library_release(owning_library);
-  return hipSuccess;
+  HIP_RETURN_ERROR(hipSuccess);
 }
 
 HIPAPI hipError_t hipKernelGetName(const char** name, hipKernel_t kernel) {
-  if (!name) return hipErrorInvalidValue;
+  if (!name) HIP_RETURN_ERROR(hipErrorInvalidValue);
   hipLibrary_t library = NULL;
   iree_hal_streaming_symbol_t* symbol = NULL;
   hipError_t result = iree_hip_library_acquire_for_kernel(
       kernel, hipErrorInvalidValue, &library, &symbol);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
 
   result = hipErrorInvalidHandle;
   for (unsigned int i = 0; i < library->kernel_count; ++i) {
@@ -721,19 +728,19 @@ HIPAPI hipError_t hipKernelGetName(const char** name, hipKernel_t kernel) {
     break;
   }
   iree_hip_library_release(library);
-  return result;
+  HIP_RETURN_ERROR(result);
 }
 
 HIPAPI hipError_t hipKernelGetParamInfo(hipKernel_t kernel,
                                         size_t parameter_index,
                                         size_t* parameter_offset,
                                         size_t* parameter_size) {
-  if (!parameter_offset) return hipErrorInvalidValue;
+  if (!parameter_offset) HIP_RETURN_ERROR(hipErrorInvalidValue);
   hipLibrary_t library = NULL;
   iree_hal_streaming_symbol_t* symbol = NULL;
   hipError_t result = iree_hip_library_acquire_for_kernel(
       kernel, hipErrorInvalidValue, &library, &symbol);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
 
   const iree_hal_streaming_parameter_info_t* parameters = &symbol->parameters;
   const size_t parameter_count =
@@ -761,24 +768,24 @@ HIPAPI hipError_t hipKernelGetParamInfo(hipKernel_t kernel,
     }
   }
   iree_hip_library_release(library);
-  return result;
+  HIP_RETURN_ERROR(result);
 }
 
 HIPAPI hipError_t hipKernelGetAttribute(int* value,
                                         hipFunction_attribute attribute,
                                         hipKernel_t kernel,
                                         hipDevice_t device) {
-  if (!value) return hipErrorInvalidValue;
+  if (!value) HIP_RETURN_ERROR(hipErrorInvalidValue);
   hipLibrary_t library = NULL;
   iree_hal_streaming_symbol_t* symbol = NULL;
   hipError_t result = iree_hip_library_acquire_for_kernel(
       kernel, hipErrorInvalidHandle, &library, &symbol);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
 
   result = iree_hip_library_validate_kernel_device(library, device);
   if (result != hipSuccess) {
     iree_hip_library_release(library);
-    return result;
+    HIP_RETURN_ERROR(result);
   }
 
   switch ((hipFuncAttribute_t)attribute) {
@@ -837,7 +844,7 @@ HIPAPI hipError_t hipKernelGetAttribute(int* value,
   }
 
   iree_hip_library_release(library);
-  return result;
+  HIP_RETURN_ERROR(result);
 }
 
 HIPAPI hipError_t hipKernelSetAttribute(hipFunction_attribute attribute,
@@ -847,7 +854,7 @@ HIPAPI hipError_t hipKernelSetAttribute(hipFunction_attribute attribute,
   iree_hal_streaming_symbol_t* symbol = NULL;
   hipError_t result = iree_hip_library_acquire_for_kernel(
       kernel, hipErrorInvalidValue, &library, &symbol);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
 
   result = iree_hip_library_validate_kernel_device(library, device);
   if (result == hipSuccess) {
@@ -873,5 +880,5 @@ HIPAPI hipError_t hipKernelSetAttribute(hipFunction_attribute attribute,
                                  (hipFuncAttribute_t)attribute, value);
   }
   iree_hip_library_release(library);
-  return result;
+  HIP_RETURN_ERROR(result);
 }
