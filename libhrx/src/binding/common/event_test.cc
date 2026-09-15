@@ -715,35 +715,57 @@ TEST_F(CpuStreamingContextTest,
   };
   IREE_ASSERT_OK(iree_hal_streaming_stream_wait_semaphores(stream, prior_wait));
 
-  iree_status_t first_status = iree_ok_status();
+  std::atomic<iree_status_code_t> first_status_code = IREE_STATUS_UNKNOWN;
+  std::atomic<bool> first_finished = false;
   first_thread = std::thread([&] {
-    first_status = iree_hal_streaming_execute_host_operation(
+    iree_status_t status = iree_hal_streaming_execute_host_operation(
         stream, WaitInHostOperation, &first_gate);
+    first_status_code.store(iree_status_code(status),
+                            std::memory_order_release);
+    iree_status_ignore(status);
+    first_finished.store(true, std::memory_order_release);
   });
-  while (StreamPendingValue(stream) < 2) std::this_thread::yield();
+  while (StreamPendingValue(stream) < 2 &&
+         !first_finished.load(std::memory_order_acquire)) {
+    std::this_thread::yield();
+  }
+  ASSERT_GE(StreamPendingValue(stream), 2u);
 
-  iree_status_t second_status = iree_ok_status();
+  std::atomic<iree_status_code_t> second_status_code = IREE_STATUS_UNKNOWN;
+  std::atomic<bool> second_finished = false;
   second_thread = std::thread([&] {
-    second_status = iree_hal_streaming_execute_host_operation(
+    iree_status_t status = iree_hal_streaming_execute_host_operation(
         stream, WaitInHostOperation, &second_gate);
+    second_status_code.store(iree_status_code(status),
+                             std::memory_order_release);
+    iree_status_ignore(status);
+    second_finished.store(true, std::memory_order_release);
   });
-  while (StreamPendingValue(stream) < 3) std::this_thread::yield();
+  while (StreamPendingValue(stream) < 3 &&
+         !second_finished.load(std::memory_order_acquire)) {
+    std::this_thread::yield();
+  }
+  ASSERT_GE(StreamPendingValue(stream), 3u);
 
   IREE_ASSERT_OK(SignalGate(prior_gate, prior_value));
-  while (!first_gate.entered.load(std::memory_order_acquire)) {
+  while (!first_gate.entered.load(std::memory_order_acquire) &&
+         !first_finished.load(std::memory_order_acquire)) {
     std::this_thread::yield();
   }
+  ASSERT_TRUE(first_gate.entered.load(std::memory_order_acquire));
   EXPECT_FALSE(second_gate.entered.load(std::memory_order_acquire));
   first_gate.release.store(true, std::memory_order_release);
-  while (!second_gate.entered.load(std::memory_order_acquire)) {
+  while (!second_gate.entered.load(std::memory_order_acquire) &&
+         !second_finished.load(std::memory_order_acquire)) {
     std::this_thread::yield();
   }
+  ASSERT_TRUE(second_gate.entered.load(std::memory_order_acquire));
   second_gate.release.store(true, std::memory_order_release);
 
   first_thread.join();
   second_thread.join();
-  IREE_EXPECT_OK(first_status);
-  IREE_EXPECT_OK(second_status);
+  EXPECT_EQ(IREE_STATUS_OK, first_status_code.load(std::memory_order_acquire));
+  EXPECT_EQ(IREE_STATUS_OK, second_status_code.load(std::memory_order_acquire));
 }
 
 // The records a graph launch enqueues run through the same helper as a direct
