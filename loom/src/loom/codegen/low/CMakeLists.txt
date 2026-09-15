@@ -980,6 +980,35 @@ loom_cc_fuzz(
 
 loom_cc_library(
   NAME
+    register_parts
+  HDRS
+    "register_parts.h"
+  SRCS
+    "register_parts.c"
+  DEPS
+    iree::base
+    iree::base::internal::arena
+    loom::error::emitter
+    loom::ir
+    loom::util::adaptive_sort
+  PUBLIC
+)
+
+loom_cc_test(
+  NAME
+    register_parts_test
+  SRCS
+    "register_parts_test.cc"
+  DEPS
+    ::register_parts
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::ir
+)
+
+loom_cc_library(
+  NAME
     verify
   HDRS
     "verify.h"
@@ -987,6 +1016,7 @@ loom_cc_library(
     "verify.c"
   DEPS
     ::packet
+    ::register_parts
     ::storage_layout
     ::target_binding
     iree::base

@@ -1,0 +1,137 @@
+// CSE introduces a later-listed full-register definition. The Low checker
+// consumes its defined parts independently of block layout.
+// RUN: pass cse
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @reverse_full_mask(%row: reg<test.i32>) -> (reg<test.i32>) asm {
+  low.br ^define
+^use:
+  %local_bytes = test.add.i32 %row, %row
+  return %local_bytes
+^define:
+  %row_bytes = test.add.i32 %row, %row
+  low.br ^use
+}
+
+// ----
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @reverse_full_mask(%row: reg<test.i32>) -> (reg<test.i32>) asm {
+  low.br ^define
+^use:
+  return %row_bytes
+^define:
+  %row_bytes = test.add.i32 %row, %row
+  low.br ^use
+}
+
+// ====
+
+// A loop header's definition is available to its later dynamic uses even
+// when the body is listed first.
+// RUN: pass cse
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @reverse_loop_mask(%condition: reg<test.i32>, %row: reg<test.i32>) -> (reg<test.i32>) asm {
+  low.br ^header
+^body:
+  %body_bytes = test.add.i32 %row, %row
+  %body_result = test.add.i32 %body_bytes, %row
+  low.br ^header
+^exit:
+  %exit_bytes = test.add.i32 %row, %row
+  return %exit_bytes
+^header:
+  %row_bytes = test.add.i32 %row, %row
+  low.cond_br %condition, ^body, ^exit : reg<test.i32>
+}
+
+// ----
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @reverse_loop_mask(%condition: reg<test.i32>, %row: reg<test.i32>) -> (reg<test.i32>) asm {
+  low.br ^header
+^body:
+  %body_result = test.add.i32 %row_bytes, %row
+  low.br ^header
+^exit:
+  return %row_bytes
+^header:
+  %row_bytes = test.add.i32 %row, %row
+  low.cond_br %condition, ^body, ^exit : reg<test.i32>
+}
+
+// ====
+
+// Removing a redundant join argument exposes a later-listed tied source.
+// Distinct loads keep both incoming paths and the definition's block intact.
+// RUN: pass cfg-simplify
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @reverse_tied_mask(%choose: reg<test.i32>, %route: reg<test.i32>, %row: reg<test.i32>, %address: reg<test.ptr>, %other_address: reg<test.ptr>) -> (reg<test.i32>) asm {
+  low.cond_br %choose, ^define, ^warmup : reg<test.i32>
+^use(%incoming: reg<test.i32>):
+  %updated = test.write.high16.i32 %incoming, %address
+  return %updated
+^warmup:
+  %prefetched = test.write.low16.i32 %address
+  low.br ^define
+^define:
+  %row_bytes = test.add.i32 %row, %row
+  low.cond_br %route, ^left, ^right : reg<test.i32>
+^left:
+  %left_half = test.write.low16.i32 %address
+  low.br ^use(%row_bytes: reg<test.i32>)
+^right:
+  %right_half = test.write.low16.i32 %other_address
+  low.br ^use(%row_bytes: reg<test.i32>)
+}
+
+// ----
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @reverse_tied_mask(%choose: reg<test.i32>, %route: reg<test.i32>, %row: reg<test.i32>, %address: reg<test.ptr>, %other_address: reg<test.ptr>) -> (reg<test.i32>) asm {
+  low.cond_br %choose, ^define, ^warmup : reg<test.i32>
+^use:
+  %updated = test.write.high16.i32 %row_bytes, %address
+  return %updated
+^warmup:
+  %prefetched = test.write.low16.i32 %address
+  low.br ^define
+^define:
+  %row_bytes = test.add.i32 %row, %row
+  low.cond_br %route, ^left, ^right : reg<test.i32>
+^left:
+  %left_half = test.write.low16.i32 %address
+  low.br ^use
+^right:
+  %right_half = test.write.low16.i32 %other_address
+  low.br ^use
+}
+
+// ====
+
+// Later facts cannot turn an actual partial definition into a full register.
+// RUN: verify
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @partial_use_stays_invalid(%address: reg<test.ptr>) -> (reg<test.i32>) asm {
+  %low_half = test.write.low16.i32 %address
+  // ERROR@+1: DOMINANCE/011 {required_mask="3", defined_mask="1"}
+  return %low_half
+}
+
+// ====
+
+// A tied write requires the preserved half to exist. Defining the other half
+// later is a different SSA value and does not repair the earlier use.
+// RUN: verify
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @missing_preserved_half(%address: reg<test.ptr>) -> (reg<test.i32>) asm {
+  %low_half = test.write.low16.i32 %address
+  // ERROR@+1: DOMINANCE/011 {required_mask="2", defined_mask="1"}
+  %still_low = test.write.low16.tied.i32 %low_half, %address
+  %full = test.write.high16.i32 %still_low, %address
+  return %full
+}

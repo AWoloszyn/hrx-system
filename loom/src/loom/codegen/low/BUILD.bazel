@@ -903,11 +903,37 @@ loom_cc_fuzz(
 )
 
 loom_cc_library(
+    name = "register_parts",
+    srcs = ["register_parts.c"],
+    hdrs = ["register_parts.h"],
+    deps = [
+        "//loom/src/loom/error:emitter",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/util:adaptive_sort",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_test(
+    name = "register_parts_test",
+    srcs = ["register_parts_test.cc"],
+    deps = [
+        ":register_parts",
+        "//loom/src/loom/ir",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+loom_cc_library(
     name = "verify",
     srcs = ["verify.c"],
     hdrs = ["verify.h"],
     deps = [
         ":packet",
+        ":register_parts",
         ":storage_layout",
         ":target_binding",
         "//loom/src/loom/error:emitter",

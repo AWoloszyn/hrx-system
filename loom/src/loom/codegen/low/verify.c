@@ -11,6 +11,7 @@
 
 #include "iree/base/internal/arena.h"
 #include "loom/codegen/low/packet.h"
+#include "loom/codegen/low/register_parts.h"
 #include "loom/codegen/low/storage_layout.h"
 #include "loom/error/error_catalog.h"
 #include "loom/ir/context.h"
@@ -44,6 +45,8 @@ typedef struct loom_low_function_verify_state_t {
   iree_string_view_t function_name;
   const loom_op_t* function_op;
   loom_region_t* body;
+  // Defined register masks and sparse deferred continuation/use facts.
+  loom_low_register_parts_t register_parts;
   // Packed storage sizes accumulated during the existing verifier walk.
   loom_low_storage_layout_space_sizes_t storage_space_sizes;
   void** provider_states;
@@ -1022,26 +1025,23 @@ static iree_status_t loom_low_verify_emit_undefined_register_part(
                               params, IREE_ARRAYSIZE(params), NULL, 0);
 }
 
-static loom_low_register_part_mask_t loom_low_verify_value_defined_mask(
-    const loom_low_function_verify_state_t* function_state,
-    loom_value_id_t value_id) {
-  const loom_value_u32_scratch_t* scratch =
-      function_state->state->scratch->value_scratch;
-  IREE_ASSERT_EQ(scratch->state, LOOM_VALUE_U32_SCRATCH_STATE_ACQUIRED_ZEROED);
-  IREE_ASSERT(value_id != LOOM_VALUE_ID_INVALID &&
-              value_id < function_state->state->module->values.count);
-  return loom_value_u32_scratch_load(scratch, value_id);
-}
-
-static void loom_low_verify_set_value_defined_mask(
-    loom_low_function_verify_state_t* function_state, loom_value_id_t value_id,
-    loom_low_register_part_mask_t mask) {
-  loom_value_u32_scratch_t* scratch =
-      function_state->state->scratch->value_scratch;
-  IREE_ASSERT_EQ(scratch->state, LOOM_VALUE_U32_SCRATCH_STATE_ACQUIRED_ZEROED);
-  IREE_ASSERT(value_id != LOOM_VALUE_ID_INVALID &&
-              value_id < function_state->state->module->values.count);
-  loom_value_u32_scratch_store(scratch, value_id, mask);
+static iree_status_t loom_low_verify_resolve_register_parts(
+    loom_low_function_verify_state_t* function_state) {
+  loom_low_register_parts_t* parts = &function_state->register_parts;
+  IREE_RETURN_IF_ERROR(loom_low_register_parts_resolve(parts));
+  for (iree_host_size_t i = 0; i < parts->requirements.count; ++i) {
+    if (loom_low_verify_should_stop(function_state->state)) break;
+    const loom_low_register_part_requirement_t* requirement =
+        &parts->requirements.values[i];
+    uint32_t mask = loom_low_register_parts_mask(parts, requirement->value);
+    if ((mask & requirement->mask) != requirement->mask) {
+      IREE_RETURN_IF_ERROR(loom_low_verify_emit_undefined_register_part(
+          function_state, requirement->op, requirement->op_name,
+          requirement->field_ref, requirement->field_name, requirement->mask,
+          mask));
+    }
+  }
+  return iree_ok_status();
 }
 
 static loom_low_register_part_mask_t
@@ -1482,17 +1482,16 @@ static iree_status_t loom_low_verify_descriptor_register_parts(
     if (required_mask == 0) {
       continue;
     }
-    const loom_low_register_part_mask_t defined_mask =
-        loom_low_verify_value_defined_mask(function_state, field.value_id);
-    if ((defined_mask & required_mask) == required_mask) {
-      continue;
-    }
-    IREE_RETURN_IF_ERROR(loom_low_verify_emit_undefined_register_part(
-        function_state, op, descriptor_key, field.field_ref, field.field_name,
-        required_mask, defined_mask));
-    if (loom_low_verify_should_stop(function_state->state)) {
-      return iree_ok_status();
-    }
+    const loom_low_register_part_requirement_t requirement = {
+        .op = op,
+        .op_name = descriptor_key,
+        .field_name = field.field_name,
+        .field_ref = field.field_ref,
+        .value = field.value_id,
+        .mask = required_mask,
+    };
+    IREE_RETURN_IF_ERROR(loom_low_register_parts_require(
+        &function_state->register_parts, &requirement));
   }
 
   if (has_variadic_operands) {
@@ -1513,17 +1512,16 @@ static iree_status_t loom_low_verify_descriptor_register_parts(
       if (required_mask == 0) {
         continue;
       }
-      const loom_low_register_part_mask_t defined_mask =
-          loom_low_verify_value_defined_mask(function_state, field.value_id);
-      if ((defined_mask & required_mask) == required_mask) {
-        continue;
-      }
-      IREE_RETURN_IF_ERROR(loom_low_verify_emit_undefined_register_part(
-          function_state, op, descriptor_key, field.field_ref, field.field_name,
-          required_mask, defined_mask));
-      if (loom_low_verify_should_stop(function_state->state)) {
-        return iree_ok_status();
-      }
+      const loom_low_register_part_requirement_t requirement = {
+          .op = op,
+          .op_name = descriptor_key,
+          .field_name = field.field_name,
+          .field_ref = field.field_ref,
+          .value = field.value_id,
+          .mask = required_mask,
+      };
+      IREE_RETURN_IF_ERROR(loom_low_register_parts_require(
+          &function_state->register_parts, &requirement));
     }
   }
 
@@ -1543,11 +1541,15 @@ static iree_status_t loom_low_verify_descriptor_register_parts(
       loom_low_packet_field_t tied_field;
       IREE_RETURN_IF_ERROR(loom_low_verify_descriptor_packet_field(
           function_state, op, descriptor, tied_operand_index, &tied_field));
-      result_mask |= loom_low_verify_value_defined_mask(function_state,
-                                                        tied_field.value_id);
+      IREE_RETURN_IF_ERROR(loom_low_register_parts_continue(
+          &function_state->register_parts, field.value_id, tied_field.value_id,
+          result_mask,
+          loom_low_verify_register_full_mask_for_type(function_state,
+                                                      field.type)));
+    } else {
+      loom_low_register_parts_define(&function_state->register_parts,
+                                     field.value_id, result_mask);
     }
-    loom_low_verify_set_value_defined_mask(function_state, field.value_id,
-                                           result_mask);
   }
   return iree_ok_status();
 }
@@ -1562,8 +1564,8 @@ static iree_status_t loom_low_verify_define_full_register_results(
     const loom_low_register_part_mask_t result_mask =
         loom_low_verify_register_full_mask_for_type(function_state, type);
     if (result_mask != 0) {
-      loom_low_verify_set_value_defined_mask(function_state, value_id,
-                                             result_mask);
+      loom_low_register_parts_define(&function_state->register_parts, value_id,
+                                     result_mask);
     }
   }
   return iree_ok_status();
@@ -1582,18 +1584,17 @@ static iree_status_t loom_low_verify_structural_register_parts(
     if (required_mask == 0) {
       continue;
     }
-    const loom_low_register_part_mask_t defined_mask =
-        loom_low_verify_value_defined_mask(function_state, value_id);
-    if ((defined_mask & required_mask) == required_mask) {
-      continue;
-    }
-    IREE_RETURN_IF_ERROR(loom_low_verify_emit_undefined_register_part(
-        function_state, op, op_name,
-        loom_diagnostic_field_ref(LOOM_DIAGNOSTIC_FIELD_OPERAND, i),
-        IREE_SV("operand"), required_mask, defined_mask));
-    if (loom_low_verify_should_stop(function_state->state)) {
-      return iree_ok_status();
-    }
+    const loom_low_register_part_requirement_t requirement = {
+        .op = op,
+        .op_name = op_name,
+        .field_name = IREE_SV("operand"),
+        .field_ref =
+            loom_diagnostic_field_ref(LOOM_DIAGNOSTIC_FIELD_OPERAND, i),
+        .value = value_id,
+        .mask = required_mask,
+    };
+    IREE_RETURN_IF_ERROR(loom_low_register_parts_require(
+        &function_state->register_parts, &requirement));
   }
 
   return loom_low_verify_define_full_register_results(function_state, op);
@@ -2015,7 +2016,8 @@ static iree_status_t loom_low_verify_initialize_block_arg_masks(
       const loom_low_register_part_mask_t mask =
           loom_low_verify_register_full_mask_for_type(function_state, type);
       if (mask != 0) {
-        loom_low_verify_set_value_defined_mask(function_state, value_id, mask);
+        loom_low_register_parts_define(&function_state->register_parts,
+                                       value_id, mask);
       }
     }
     loom_op_t* op = NULL;
@@ -2053,6 +2055,11 @@ static iree_status_t loom_low_verify_function(loom_low_verify_state_t* state,
       .target = &target,
       .function_op = low_func_op,
       .body = body,
+      .register_parts =
+          {
+              .masks = state->scratch->value_scratch,
+              .arena = &state->walk_arena,
+          },
       .function_name =
           loom_low_verify_function_name(state->module, low_func_op),
   };
@@ -2078,6 +2085,9 @@ static iree_status_t loom_low_verify_function(loom_low_verify_state_t* state,
         state->module, body, LOOM_WALK_PRE_ORDER,
         (loom_walk_callback_t){loom_low_verify_walk_op, &function_state},
         &state->walk_arena, &walk_result);
+  }
+  if (iree_status_is_ok(status) && !loom_low_verify_should_stop(state)) {
+    status = loom_low_verify_resolve_register_parts(&function_state);
   }
   if (iree_status_is_ok(status)) {
     status = loom_low_verify_workgroup_storage_limit(&function_state);
