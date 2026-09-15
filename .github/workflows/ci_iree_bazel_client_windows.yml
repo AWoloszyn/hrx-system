@@ -89,6 +89,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           "$PWD\.venv\Scripts" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
+      - name: Check native accelerator access
+        shell: powershell
+        run: |
+          $accelerators = @(Get-PnpDevice -Class ComputeAccelerator -PresentOnly -ErrorAction Stop)
+          $accelerators | Format-Table Status, Class, FriendlyName, InstanceId -AutoSize
+          if (-not ($accelerators | Where-Object Status -eq 'OK')) {
+            throw 'The AMD client runner requires a healthy native compute accelerator.'
+          }
+
       - name: Build and test the AMD client
         id: client_ci
         shell: cmd
