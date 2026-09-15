@@ -92,6 +92,13 @@ kernel.def @async_gather_two_groups() {
   %scratch = buffer.alloca<workgroup> align(16) %storage_bytes : buffer
   %slot0 = buffer.view %scratch[%base] : buffer -> view<64x1x1xi32>
   %slot1 = buffer.view %scratch[%slot_bytes] : buffer -> view<64x1x1xi32>
+  // Seed both destinations so a misaddressed transfer cannot inherit a valid
+  // result from unspecified LDS contents.
+  %unwritten0 = scalar.constant -1 : i32
+  %unwritten1 = scalar.constant -2 : i32
+  view.store %unwritten0, %slot0[%lane, %c0, %c0] : i32, view<64x1x1xi32>
+  view.store %unwritten1, %slot1[%lane, %c0, %c0] : i32, view<64x1x1xi32>
+  kernel.barrier<workgroup> scope(workgroup) ordering(acq_rel)
   %source0 = view.subview %source_base[%c0, %lane] : view<257x64xi32> -> view<1x1xi32>
   %copy0 = kernel.async.gather %source0 to %slot0 {cache_scope = device, cache_temporal = regular} : view<1x1xi32> to view<64x1x1xi32> -> kernel.async.token
   %group0 = kernel.async.group %copy0 : kernel.async.token -> kernel.async.group
