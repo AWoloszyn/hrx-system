@@ -138,10 +138,9 @@ typedef struct loom_low_memory_access_record_t {
   // Low op whose descriptor memory effect is refined by |summary|.
   const loom_op_t* op;
   // Source-derived memory access summary for the recorded low op position.
+  // Optional payloads borrow the table's retained arena independently of this
+  // record, so copying records does not invalidate their summaries.
   loom_low_memory_access_summary_t summary;
-  // Inline interval storage borrowed by |summary| when interval precision is
-  // available.
-  loom_low_byte_interval_t byte_interval;
 } loom_low_memory_access_record_t;
 
 typedef struct loom_low_memory_access_table_t {

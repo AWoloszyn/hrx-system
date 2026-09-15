@@ -10,6 +10,7 @@
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
 #include "loom/codegen/low/function.h"
+#include "loom/codegen/low/memory_access_builder.h"
 #include "loom/codegen/low/text_asm.h"
 #include "loom/error/diagnostic.h"
 #include "loom/format/text/parser.h"
@@ -98,9 +99,9 @@ class LowMemoryAccessIrTest : public ::testing::Test {
 TEST_F(LowMemoryAccessIrTest, AttachesAndReconstructsStridedInterval) {
   ModulePtr module = ParseModule(R"(
 test.target<low_core> @target
-low.func.def target<test.low.core>(@target) @memory_access(%lhs: reg<test.i32>, %rhs: reg<test.i32>) -> (reg<test.i32>) asm {
-  %sum = low.op<test.add.i32>(%lhs, %rhs) : (reg<test.i32>, reg<test.i32>) -> reg<test.i32>
-  return %sum : reg<test.i32>
+low.func.def target<test.low.core>(@target) @memory_access(%address: reg<test.ptr>) -> (reg<test.i32 x4>) asm {
+  %loaded = test.load.v4i32 %address
+  return %loaded
 }
 )");
   ASSERT_NE(module, nullptr);
@@ -158,12 +159,121 @@ low.func.def target<test.low.core>(@target) @memory_access(%lhs: reg<test.i32>, 
   iree_arena_deinitialize(&arena);
 }
 
+TEST_F(LowMemoryAccessIrTest, PublishesOwnedIntervalsAcrossCollectorChunks) {
+  ModulePtr module = ParseModule(R"(
+test.target<low_core> @target
+low.func.def target<test.low.core>(@target) @memory_access(%address: reg<test.ptr>, %value: reg<test.i32 x4>) asm {
+  test.store.v4i32 %address, %value
+  test.store.v4i32 %address, %value
+  test.store.v4i32 %address, %value
+  test.store.v4i32 %address, %value
+  test.store.v4i32 %address, %value
+  test.store.v4i32 %address, %value
+  test.store.v4i32 %address, %value
+  test.store.v4i32 %address, %value
+  test.store.v4i32 %address, %value
+  test.store.v4i32 %address, %value
+  test.store.v4i32 %address, %value
+  test.store.v4i32 %address, %value
+  test.store.v4i32 %address, %value
+  test.store.v4i32 %address, %value
+  test.store.v4i32 %address, %value
+  test.store.v4i32 %address, %value
+  test.store.v4i32 %address, %value
+  return
+}
+)");
+  ASSERT_NE(module, nullptr);
+  loom_op_t* function_op = FindLowFunction(module.get());
+  ASSERT_NE(function_op, nullptr);
+  loom_block_t* block =
+      loom_region_entry_block(loom_low_function_body(function_op));
+
+  iree_arena_allocator_t scratch_arena;
+  iree_arena_allocator_t arena;
+  iree_arena_initialize(&block_pool_, &scratch_arena);
+  iree_arena_initialize(&block_pool_, &arena);
+  loom_low_memory_access_builder_t builder = {};
+  loom_low_byte_interval_t interval = {
+      /*.begin_facts=*/loom_value_facts_exact_i64(0),
+      /*.end_facts=*/loom_value_facts_exact_i64(16),
+      /*.begin_expr_id=*/LOOM_LOW_MEMORY_EXPR_ID_NONE,
+      /*.end_expr_id=*/LOOM_LOW_MEMORY_EXPR_ID_NONE,
+      /*.precision_flags=*/LOOM_LOW_BYTE_INTERVAL_PRECISION_BEGIN_RANGE |
+          LOOM_LOW_BYTE_INTERVAL_PRECISION_END_RANGE |
+          LOOM_LOW_BYTE_INTERVAL_PRECISION_EXACT_LENGTH,
+  };
+  const loom_low_byte_interval_t expected_interval = interval;
+  loom_op_t* op = nullptr;
+  loom_block_for_each_op(block, op) {
+    if (!loom_low_op_isa(op)) continue;
+    loom_low_memory_access_record_t record = {};
+    record.position.block_index = 0;
+    record.position.block_ordinal = op->block_ordinal;
+    record.op = op;
+    record.summary =
+        *loom_low_memory_access_summary_for_space(LOOM_LOW_MEMORY_SPACE_GLOBAL);
+    record.summary.alias_root_id = 1;
+    record.summary.precision_flags |= LOOM_LOW_MEMORY_ACCESS_PRECISION_ROOT;
+    if (builder.count % 2 == 0) {
+      record.summary.precision_flags |=
+          LOOM_LOW_MEMORY_ACCESS_PRECISION_INTERVAL;
+      record.summary.byte_interval = &interval;
+    }
+    IREE_ASSERT_OK(loom_low_memory_access_builder_append(&builder, &record,
+                                                         &scratch_arena));
+  }
+  loom_low_memory_access_table_t table = {};
+  IREE_ASSERT_OK(loom_low_memory_access_builder_finish(&builder, function_op,
+                                                       &arena, &table));
+  iree_arena_reset(&scratch_arena);
+  interval = {};
+
+  ASSERT_EQ(table.count, 17u);
+  EXPECT_EQ(table.function_op, function_op);
+  op = block->first_op;
+  for (iree_host_size_t i = 0; i < table.count; ++i, op = op->next_op) {
+    const loom_low_memory_access_record_t& record = table.values[i];
+    EXPECT_EQ(record.op, op);
+    EXPECT_EQ(record.position.block_index, 0);
+    EXPECT_EQ(record.position.block_ordinal, op->block_ordinal);
+    EXPECT_EQ(record.summary.alias_root_id, 1u);
+    if (i % 2 != 0) {
+      EXPECT_EQ(record.summary.byte_interval, nullptr);
+      continue;
+    }
+    ASSERT_NE(record.summary.byte_interval, nullptr);
+    const loom_low_byte_interval_t& actual = *record.summary.byte_interval;
+    EXPECT_EQ(actual.begin_facts.range_lo,
+              expected_interval.begin_facts.range_lo);
+    EXPECT_EQ(actual.begin_facts.range_hi,
+              expected_interval.begin_facts.range_hi);
+    EXPECT_EQ(actual.begin_facts.known_divisor,
+              expected_interval.begin_facts.known_divisor);
+    EXPECT_EQ(actual.end_facts.range_lo, expected_interval.end_facts.range_lo);
+    EXPECT_EQ(actual.end_facts.range_hi, expected_interval.end_facts.range_hi);
+    EXPECT_EQ(actual.end_facts.known_divisor,
+              expected_interval.end_facts.known_divisor);
+    EXPECT_EQ(actual.begin_facts.flags, expected_interval.begin_facts.flags);
+    EXPECT_EQ(actual.end_facts.flags, expected_interval.end_facts.flags);
+    EXPECT_EQ(actual.begin_facts.extension_id,
+              expected_interval.begin_facts.extension_id);
+    EXPECT_EQ(actual.end_facts.extension_id,
+              expected_interval.end_facts.extension_id);
+    EXPECT_EQ(actual.begin_expr_id, expected_interval.begin_expr_id);
+    EXPECT_EQ(actual.end_expr_id, expected_interval.end_expr_id);
+    EXPECT_EQ(actual.precision_flags, expected_interval.precision_flags);
+  }
+  iree_arena_deinitialize(&scratch_arena);
+  iree_arena_deinitialize(&arena);
+}
+
 TEST_F(LowMemoryAccessIrTest, RejectsUnsupportedUnserializablePrecision) {
   ModulePtr module = ParseModule(R"(
 test.target<low_core> @target
-low.func.def target<test.low.core>(@target) @memory_access(%lhs: reg<test.i32>, %rhs: reg<test.i32>) -> (reg<test.i32>) asm {
-  %sum = low.op<test.add.i32>(%lhs, %rhs) : (reg<test.i32>, reg<test.i32>) -> reg<test.i32>
-  return %sum : reg<test.i32>
+low.func.def target<test.low.core>(@target) @memory_access(%address: reg<test.ptr>) -> (reg<test.i32 x4>) asm {
+  %loaded = test.load.v4i32 %address
+  return %loaded
 }
 )");
   ASSERT_NE(module, nullptr);
@@ -186,9 +296,9 @@ low.func.def target<test.low.core>(@target) @memory_access(%lhs: reg<test.i32>, 
 TEST_F(LowMemoryAccessIrTest, RejectsFieldsWithoutMatchingPrecision) {
   ModulePtr module = ParseModule(R"(
 test.target<low_core> @target
-low.func.def target<test.low.core>(@target) @memory_access(%lhs: reg<test.i32>, %rhs: reg<test.i32>) -> (reg<test.i32>) asm {
-  %sum = low.op<test.add.i32>(%lhs, %rhs) : (reg<test.i32>, reg<test.i32>) -> reg<test.i32>
-  return %sum : reg<test.i32>
+low.func.def target<test.low.core>(@target) @memory_access(%address: reg<test.ptr>) -> (reg<test.i32 x4>) asm {
+  %loaded = test.load.v4i32 %address
+  return %loaded
 }
 )");
   ASSERT_NE(module, nullptr);
@@ -210,9 +320,9 @@ low.func.def target<test.low.core>(@target) @memory_access(%lhs: reg<test.i32>, 
 TEST_F(LowMemoryAccessIrTest, RejectsMalformedFieldCount) {
   ModulePtr module = ParseModule(R"(
 test.target<low_core> @target
-low.func.def target<test.low.core>(@target) @memory_access(%lhs: reg<test.i32>, %rhs: reg<test.i32>) -> (reg<test.i32>) asm {
-  %sum = low.op<test.add.i32>(%lhs, %rhs) memory_access([0, 3]) : (reg<test.i32>, reg<test.i32>) -> reg<test.i32>
-  return %sum : reg<test.i32>
+low.func.def target<test.low.core>(@target) @memory_access(%address: reg<test.ptr>) -> (reg<test.i32 x4>) asm {
+  %loaded = low.op<test.load.v4i32>(%address) memory_access([0, 3]) : (reg<test.ptr>) -> reg<test.i32 x4>
+  return %loaded
 }
 )");
   ASSERT_NE(module, nullptr);
@@ -231,9 +341,9 @@ low.func.def target<test.low.core>(@target) @memory_access(%lhs: reg<test.i32>, 
 TEST_F(LowMemoryAccessIrTest, RejectsUnsupportedVersion) {
   ModulePtr module = ParseModule(R"(
 test.target<low_core> @target
-low.func.def target<test.low.core>(@target) @memory_access(%lhs: reg<test.i32>, %rhs: reg<test.i32>) -> (reg<test.i32>) asm {
-  %sum = low.op<test.add.i32>(%lhs, %rhs) memory_access([1, 3, 7, -1, 35, 64, 0, 16, 0, 0, 0, 0, 0]) : (reg<test.i32>, reg<test.i32>) -> reg<test.i32>
-  return %sum : reg<test.i32>
+low.func.def target<test.low.core>(@target) @memory_access(%address: reg<test.ptr>) -> (reg<test.i32 x4>) asm {
+  %loaded = low.op<test.load.v4i32>(%address) memory_access([1, 3, 7, -1, 35, 64, 0, 16, 0, 0, 0, 0, 0]) : (reg<test.ptr>) -> reg<test.i32 x4>
+  return %loaded
 }
 )");
   ASSERT_NE(module, nullptr);
@@ -252,9 +362,9 @@ low.func.def target<test.low.core>(@target) @memory_access(%lhs: reg<test.i32>, 
 TEST_F(LowMemoryAccessIrTest, RejectsSentinelPreciseAliasRoot) {
   ModulePtr module = ParseModule(R"(
 test.target<low_core> @target
-low.func.def target<test.low.core>(@target) @memory_access(%lhs: reg<test.i32>, %rhs: reg<test.i32>) -> (reg<test.i32>) asm {
-  %sum = low.op<test.add.i32>(%lhs, %rhs) memory_access([0, 3, 4294967295, -1, 35, 64, 0, 16, 0, 0, 0, 0, 0]) : (reg<test.i32>, reg<test.i32>) -> reg<test.i32>
-  return %sum : reg<test.i32>
+low.func.def target<test.low.core>(@target) @memory_access(%address: reg<test.ptr>) -> (reg<test.i32 x4>) asm {
+  %loaded = low.op<test.load.v4i32>(%address) memory_access([0, 3, 4294967295, -1, 35, 64, 0, 16, 0, 0, 0, 0, 0]) : (reg<test.ptr>) -> reg<test.i32 x4>
+  return %loaded
 }
 )");
   ASSERT_NE(module, nullptr);
@@ -273,9 +383,9 @@ low.func.def target<test.low.core>(@target) @memory_access(%lhs: reg<test.i32>, 
 TEST_F(LowMemoryAccessIrTest, RejectsImpreciseConcreteSpace) {
   ModulePtr module = ParseModule(R"(
 test.target<low_core> @target
-low.func.def target<test.low.core>(@target) @memory_access(%lhs: reg<test.i32>, %rhs: reg<test.i32>) -> (reg<test.i32>) asm {
-  %sum = low.op<test.add.i32>(%lhs, %rhs) memory_access([0, 3, 7, -1, 2, 0, 0, 0, 0, 0, 0, 0, 0]) : (reg<test.i32>, reg<test.i32>) -> reg<test.i32>
-  return %sum : reg<test.i32>
+low.func.def target<test.low.core>(@target) @memory_access(%address: reg<test.ptr>) -> (reg<test.i32 x4>) asm {
+  %loaded = low.op<test.load.v4i32>(%address) memory_access([0, 3, 7, -1, 2, 0, 0, 0, 0, 0, 0, 0, 0]) : (reg<test.ptr>) -> reg<test.i32 x4>
+  return %loaded
 }
 )");
   ASSERT_NE(module, nullptr);

@@ -326,6 +326,20 @@ loom_cc_library(
 
 loom_cc_library(
   NAME
+    memory_access_builder
+  HDRS
+    "memory_access_builder.h"
+  SRCS
+    "memory_access_builder.c"
+  DEPS
+    ::memory_access
+    iree::base
+    iree::base::internal::arena
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
     memory_access_ir
   HDRS
     "memory_access_ir.h"
@@ -359,6 +373,7 @@ loom_cc_test(
     "memory_access_ir_test.cc"
   DEPS
     ::function
+    ::memory_access_builder
     ::memory_access_ir
     ::text_asm
     iree::base::internal::arena

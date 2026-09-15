@@ -323,6 +323,17 @@ loom_cc_library(
 )
 
 loom_cc_library(
+    name = "memory_access_builder",
+    srcs = ["memory_access_builder.c"],
+    hdrs = ["memory_access_builder.h"],
+    deps = [
+        ":memory_access",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_library(
     name = "memory_access_ir",
     srcs = ["memory_access_ir.c"],
     hdrs = ["memory_access_ir.h"],
@@ -351,6 +362,7 @@ loom_cc_test(
     srcs = ["memory_access_ir_test.cc"],
     deps = [
         ":function",
+        ":memory_access_builder",
         ":memory_access_ir",
         ":text_asm",
         "//loom/src/loom/error:diagnostic",

@@ -202,7 +202,8 @@ iree_status_t loom_low_memory_access_ir_attach(
 }
 
 static iree_status_t loom_low_memory_access_ir_decode(
-    const loom_op_t* low_op, loom_low_memory_access_record_t* out_record) {
+    const loom_op_t* low_op, loom_low_byte_interval_t* out_interval,
+    loom_low_memory_access_summary_t* out_summary) {
   const loom_attribute_t attr = loom_low_op_memory_access(low_op);
   if (attr.kind != LOOM_ATTR_I64_ARRAY ||
       attr.count != LOOM_LOW_MEMORY_ACCESS_IR_FIELD_COUNT ||
@@ -311,7 +312,7 @@ static iree_status_t loom_low_memory_access_ir_decode(
           IREE_STATUS_INVALID_ARGUMENT,
           "low.op memory_access bounded interval is malformed");
     }
-    out_record->byte_interval = (loom_low_byte_interval_t){
+    *out_interval = (loom_low_byte_interval_t){
         .begin_facts = loom_value_facts_make(begin_lo, begin_hi, 1),
         .end_facts = loom_value_facts_make(end_lo, end_hi, 1),
         .begin_expr_id = LOOM_LOW_MEMORY_EXPR_ID_NONE,
@@ -319,7 +320,7 @@ static iree_status_t loom_low_memory_access_ir_decode(
         .precision_flags =
             (loom_low_byte_interval_precision_flags_t)interval_precision,
     };
-    summary.byte_interval = &out_record->byte_interval;
+    summary.byte_interval = out_interval;
   } else if (fields[LOOM_LOW_MEMORY_ACCESS_IR_FIELD_INTERVAL_PRECISION_FLAGS] !=
                  0 ||
              fields[LOOM_LOW_MEMORY_ACCESS_IR_FIELD_INTERVAL_BEGIN_LO] != 0 ||
@@ -330,7 +331,7 @@ static iree_status_t loom_low_memory_access_ir_decode(
         IREE_STATUS_INVALID_ARGUMENT,
         "low.op memory_access has bounded interval fields without precision");
   }
-  out_record->summary = summary;
+  *out_summary = summary;
   return iree_ok_status();
 }
 
@@ -365,11 +366,13 @@ iree_status_t loom_low_memory_access_table_build_from_ir(
       arena, record_count, sizeof(*records), (void**)&records));
   memset(records, 0, record_count * sizeof(*records));
   iree_host_size_t record_index = 0;
-  for (uint16_t block_index = 0; block_index < body->block_count;
+  iree_status_t status = iree_ok_status();
+  for (uint16_t block_index = 0;
+       block_index < body->block_count && iree_status_is_ok(status);
        ++block_index) {
     const loom_block_t* block = loom_region_const_block(body, block_index);
-    const loom_op_t* op = NULL;
-    loom_block_for_each_op(block, op) {
+    for (const loom_op_t* op = block->first_op;
+         op != NULL && iree_status_is_ok(status); op = op->next_op) {
       if (!loom_low_op_isa(op) ||
           loom_attr_is_absent(loom_low_op_memory_access(op))) {
         continue;
@@ -380,14 +383,26 @@ iree_status_t loom_low_memory_access_table_build_from_ir(
           .block_ordinal = op->block_ordinal,
       };
       record->op = op;
-      IREE_RETURN_IF_ERROR(loom_low_memory_access_ir_decode(op, record));
+      loom_low_byte_interval_t interval;
+      status =
+          loom_low_memory_access_ir_decode(op, &interval, &record->summary);
+      if (iree_status_is_ok(status) && record->summary.byte_interval != NULL) {
+        loom_low_byte_interval_t* owned_interval = NULL;
+        status = iree_arena_allocate(arena, sizeof(*owned_interval),
+                                     (void**)&owned_interval);
+        if (iree_status_is_ok(status)) {
+          *owned_interval = interval;
+          record->summary.byte_interval = owned_interval;
+        }
+      }
     }
   }
-  IREE_ASSERT_EQ(record_index, record_count);
-  *out_table = (loom_low_memory_access_table_t){
-      .function_op = low_func_op,
-      .values = records,
-      .count = record_count,
-  };
-  return iree_ok_status();
+  if (iree_status_is_ok(status)) {
+    *out_table = (loom_low_memory_access_table_t){
+        .function_op = low_func_op,
+        .values = records,
+        .count = record_count,
+    };
+  }
+  return status;
 }

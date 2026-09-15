@@ -843,12 +843,6 @@ iree_status_t loom_low_lower_record_memory_access_summary(
   if (context->options->table_arena == NULL) {
     return iree_ok_status();
   }
-  IREE_ASSERT_LT(context->lowering.memory_access_record_count,
-                 context->lowering.memory_access_record_capacity);
-
-  loom_low_memory_access_record_t* record =
-      &context->lowering.memory_access_records
-           [context->lowering.memory_access_record_count++];
   loom_region_t* low_body = loom_low_lower_context_low_body(context);
   uint16_t block_index = LOOM_BLOCK_REGION_INDEX_INVALID;
   IREE_ASSERT(low_body != NULL);
@@ -856,7 +850,7 @@ iree_status_t loom_low_lower_record_memory_access_summary(
       loom_region_try_block_index(low_body, low_op->parent_block, &block_index);
   IREE_ASSERT(found_block_index);
   (void)found_block_index;
-  *record = (loom_low_memory_access_record_t){
+  const loom_low_memory_access_record_t record = {
       .position =
           {
               .block_index = block_index,
@@ -865,11 +859,9 @@ iree_status_t loom_low_lower_record_memory_access_summary(
       .op = low_op,
       .summary = *summary,
   };
-  if (summary->byte_interval != NULL) {
-    record->byte_interval = *summary->byte_interval;
-    record->summary.byte_interval = &record->byte_interval;
-  }
-  return iree_ok_status();
+  return loom_low_memory_access_builder_append(
+      &context->lowering.memory_access_builder, &record,
+      &context->function_arena);
 }
 
 iree_status_t loom_low_lower_record_source_memory_access(

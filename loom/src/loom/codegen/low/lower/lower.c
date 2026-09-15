@@ -1444,12 +1444,10 @@ iree_status_t loom_low_lower_function(loom_module_t* module,
           loom_op_vtable(module, context.low_func_op));
     }
     if (iree_status_is_ok(status) && context.result->error_count == 0 &&
-        context.lowering.memory_access_record_count != 0) {
-      out_result->memory_access_table = (loom_low_memory_access_table_t){
-          .function_op = context.low_func_op,
-          .values = context.lowering.memory_access_records,
-          .count = context.lowering.memory_access_record_count,
-      };
+        options->table_arena != NULL) {
+      status = loom_low_memory_access_builder_finish(
+          &context.lowering.memory_access_builder, context.low_func_op,
+          options->table_arena, &out_result->memory_access_table);
     }
   }
 
