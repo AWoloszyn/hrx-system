@@ -31,29 +31,49 @@ bool loom_low_memory_access_spaces_may_alias(loom_low_memory_space_t left,
          right == LOOM_LOW_MEMORY_SPACE_GENERIC;
 }
 
-loom_low_memory_access_summary_t loom_low_memory_access_summary_from_effect(
-    const loom_low_effect_t* effect) {
-  const loom_low_memory_space_t memory_space =
-      loom_low_memory_access_normalize_space(effect->memory_space);
-  loom_low_memory_access_precision_flags_t precision_flags = 0;
-  if (memory_space != LOOM_LOW_MEMORY_SPACE_GENERIC) {
-    precision_flags |= LOOM_LOW_MEMORY_ACCESS_PRECISION_SPACE;
-  }
-  return (loom_low_memory_access_summary_t){
-      .memory_space = memory_space,
+const loom_low_memory_access_summary_t*
+loom_low_memory_access_summary_for_space(loom_low_memory_space_t memory_space) {
+  static const loom_low_memory_access_summary_t generic = {
+      .memory_space = LOOM_LOW_MEMORY_SPACE_GENERIC,
       .alias_root_id = LOOM_LOW_MEMORY_ALIAS_ID_NONE,
       .alias_group_id = LOOM_LOW_MEMORY_ALIAS_ID_NONE,
-      .precision_flags = precision_flags,
-      .byte_interval = NULL,
   };
-}
-
-loom_low_memory_access_summary_t loom_low_memory_access_summary_synthetic(
-    loom_low_memory_space_t memory_space) {
-  loom_low_effect_t effect = {
-      .memory_space = memory_space,
+  static const loom_low_memory_access_summary_t global = {
+      .memory_space = LOOM_LOW_MEMORY_SPACE_GLOBAL,
+      .alias_root_id = LOOM_LOW_MEMORY_ALIAS_ID_NONE,
+      .alias_group_id = LOOM_LOW_MEMORY_ALIAS_ID_NONE,
+      .precision_flags = LOOM_LOW_MEMORY_ACCESS_PRECISION_SPACE,
   };
-  return loom_low_memory_access_summary_from_effect(&effect);
+  static const loom_low_memory_access_summary_t workgroup = {
+      .memory_space = LOOM_LOW_MEMORY_SPACE_WORKGROUP,
+      .alias_root_id = LOOM_LOW_MEMORY_ALIAS_ID_NONE,
+      .alias_group_id = LOOM_LOW_MEMORY_ALIAS_ID_NONE,
+      .precision_flags = LOOM_LOW_MEMORY_ACCESS_PRECISION_SPACE,
+  };
+  static const loom_low_memory_access_summary_t stack = {
+      .memory_space = LOOM_LOW_MEMORY_SPACE_STACK,
+      .alias_root_id = LOOM_LOW_MEMORY_ALIAS_ID_NONE,
+      .alias_group_id = LOOM_LOW_MEMORY_ALIAS_ID_NONE,
+      .precision_flags = LOOM_LOW_MEMORY_ACCESS_PRECISION_SPACE,
+  };
+  static const loom_low_memory_access_summary_t wasm_memory = {
+      .memory_space = LOOM_LOW_MEMORY_SPACE_WASM_MEMORY,
+      .alias_root_id = LOOM_LOW_MEMORY_ALIAS_ID_NONE,
+      .alias_group_id = LOOM_LOW_MEMORY_ALIAS_ID_NONE,
+      .precision_flags = LOOM_LOW_MEMORY_ACCESS_PRECISION_SPACE,
+  };
+  switch (memory_space) {
+    case LOOM_LOW_MEMORY_SPACE_GLOBAL:
+      return &global;
+    case LOOM_LOW_MEMORY_SPACE_WORKGROUP:
+      return &workgroup;
+    case LOOM_LOW_MEMORY_SPACE_STACK:
+      return &stack;
+    case LOOM_LOW_MEMORY_SPACE_WASM_MEMORY:
+      return &wasm_memory;
+    default:
+      return &generic;
+  }
 }
 
 static bool loom_low_byte_intervals_have_range(

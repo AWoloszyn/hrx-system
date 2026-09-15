@@ -121,5 +121,24 @@ TEST(MemoryAccessTest, IntervalEnvelopeRequiresComparableRoot) {
   EXPECT_TRUE(loom_low_memory_access_summaries_may_alias(&left, &right));
 }
 
+TEST(MemoryAccessTest, SharedSpaceSummariesPreserveConservativeAliasing) {
+  const auto* global =
+      loom_low_memory_access_summary_for_space(LOOM_LOW_MEMORY_SPACE_GLOBAL);
+  const auto* workgroup =
+      loom_low_memory_access_summary_for_space(LOOM_LOW_MEMORY_SPACE_WORKGROUP);
+  const auto* generic =
+      loom_low_memory_access_summary_for_space(LOOM_LOW_MEMORY_SPACE_NONE);
+  loom_low_byte_interval_t interval;
+  const auto precise = MakeIntervalSummary(&interval, /*alias_root_id=*/11,
+                                           /*begin_bytes=*/32,
+                                           /*end_bytes=*/48);
+
+  EXPECT_FALSE(loom_low_memory_access_summaries_may_alias(global, workgroup));
+  EXPECT_FALSE(loom_low_memory_access_summaries_may_alias(global, &precise));
+  EXPECT_TRUE(loom_low_memory_access_summaries_may_alias(workgroup, &precise));
+  EXPECT_TRUE(loom_low_memory_access_summaries_may_alias(generic, &precise));
+  EXPECT_TRUE(loom_low_memory_access_summaries_may_alias(generic, global));
+}
+
 }  // namespace
 }  // namespace loom

@@ -26,27 +26,23 @@ static uint32_t* loom_low_schedule_dependency_detail_index_mutable_at(
     loom_low_schedule_dependency_detail_index_t* detail_index,
     uint32_t detail_ordinal) {
   IREE_ASSERT_LT(detail_ordinal, detail_index->dependency_count);
-  loom_low_schedule_dependency_detail_segment_t* segment =
-      (loom_low_schedule_dependency_detail_segment_t*)
-          loom_segmented_storage_segment(
-              &detail_index->dependency_indices,
-              detail_ordinal >>
-                  LOOM_LOW_SCHEDULE_DEPENDENCY_DETAIL_SEGMENT_SHIFT);
-  return &segment->rows[detail_ordinal &
-                        LOOM_LOW_SCHEDULE_DEPENDENCY_DETAIL_SEGMENT_MASK];
+  uint32_t* segment = (uint32_t*)loom_segmented_storage_segment(
+      &detail_index->dependency_indices,
+      detail_ordinal >> LOOM_LOW_SCHEDULE_DEPENDENCY_DETAIL_SEGMENT_SHIFT);
+  return &segment[detail_ordinal &
+                  LOOM_LOW_SCHEDULE_DEPENDENCY_DETAIL_SEGMENT_MASK];
 }
 
 static loom_low_schedule_dependency_group_t*
 loom_low_schedule_dependency_index_mutable_group_at(
     loom_low_schedule_dependency_index_t* index, uint32_t group_index) {
   IREE_ASSERT_LT(group_index, index->group_count);
-  loom_low_schedule_dependency_group_segment_t* segment =
-      (loom_low_schedule_dependency_group_segment_t*)
-          loom_segmented_storage_segment(
-              &index->groups,
-              group_index >> LOOM_LOW_SCHEDULE_DEPENDENCY_GROUP_SEGMENT_SHIFT);
-  return &segment->rows[group_index &
-                        LOOM_LOW_SCHEDULE_DEPENDENCY_GROUP_SEGMENT_MASK];
+  loom_low_schedule_dependency_group_t* segment =
+      (loom_low_schedule_dependency_group_t*)loom_segmented_storage_segment(
+          &index->groups,
+          group_index >> LOOM_LOW_SCHEDULE_DEPENDENCY_GROUP_SEGMENT_SHIFT);
+  return &segment[group_index &
+                  LOOM_LOW_SCHEDULE_DEPENDENCY_GROUP_SEGMENT_MASK];
 }
 
 static void loom_low_schedule_dependency_index_count_raw_dependencies(
@@ -185,14 +181,6 @@ iree_status_t loom_low_schedule_dependency_index_initialize(
   *out_detail_index = (loom_low_schedule_dependency_detail_index_t){
       .dependency_count = (uint32_t)graph->count,
   };
-  loom_segmented_storage_initialize(
-      sizeof(loom_low_schedule_dependency_group_segment_t),
-      iree_alignof(loom_low_schedule_dependency_group_segment_t),
-      &out_index->groups);
-  loom_segmented_storage_initialize(
-      sizeof(loom_low_schedule_dependency_detail_segment_t),
-      iree_alignof(loom_low_schedule_dependency_detail_segment_t),
-      &out_detail_index->dependency_indices);
 
   const iree_host_size_t node_sentinel_count = (iree_host_size_t)node_count + 1;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -215,6 +203,13 @@ iree_status_t loom_low_schedule_dependency_index_initialize(
       graph, node_count, out_detail_index->producer_dependency_starts,
       out_indegrees);
   const uint32_t dependency_count = (uint32_t)graph->count;
+  // These indexes have complete domains before allocation. A short domain
+  // occupies one short segment without changing the fixed index mapping.
+  loom_segmented_storage_initialize(
+      iree_min(iree_max(dependency_count, 1u),
+               LOOM_LOW_SCHEDULE_DEPENDENCY_DETAIL_SEGMENT_CAPACITY) *
+          sizeof(uint32_t),
+      64, &out_detail_index->dependency_indices);
   uint32_t* producer_cursors = NULL;
   uint32_t* last_producer_nodes = NULL;
   if (node_count != 0) {
@@ -237,6 +232,11 @@ iree_status_t loom_low_schedule_dependency_index_initialize(
   out_index->group_count = loom_low_schedule_dependency_index_count_groups(
       graph, node_count, out_detail_index->producer_dependency_starts,
       out_detail_index, last_producer_nodes, out_index->producer_group_starts);
+  loom_segmented_storage_initialize(
+      iree_min(iree_max(out_index->group_count, 1u),
+               LOOM_LOW_SCHEDULE_DEPENDENCY_GROUP_SEGMENT_CAPACITY) *
+          sizeof(loom_low_schedule_dependency_group_t),
+      64, &out_index->groups);
   if (out_index->group_count == 0) return iree_ok_status();
 
   IREE_RETURN_IF_ERROR(loom_low_schedule_dependency_index_allocate_segments(

@@ -26,9 +26,6 @@
 extern "C" {
 #endif
 
-#define LOOM_LOW_SCHEDULE_EFFECT_MEMORY_SPACE_COUNT \
-  ((uint32_t)LOOM_LOW_MEMORY_SPACE_WASM_MEMORY + 1u)
-
 #define LOOM_LOW_SCHEDULE_PAIR_AFFINITY_RECORD_NONE UINT32_MAX
 
 typedef struct loom_low_schedule_hazard_state_t {
@@ -308,12 +305,13 @@ typedef struct loom_low_schedule_build_state_t {
   } storage_reads;
   // Scratch effect-frontier read node indices, reused for each block.
   uint32_t* effect_read_nodes;
-  // Scratch effect-frontier read summaries, parallel to effect_read_nodes.
-  loom_low_memory_access_summary_t* effect_read_summaries;
+  // Borrowed summaries for effect_read_nodes. Each summary belongs to the
+  // function's memory-access table or immutable memory-space summary storage.
+  const loom_low_memory_access_summary_t** effect_read_summaries;
   // Scratch effect-frontier write node indices, reused for each block.
   uint32_t* effect_write_nodes;
-  // Scratch effect-frontier write summaries, parallel to effect_write_nodes.
-  loom_low_memory_access_summary_t* effect_write_summaries;
+  // Borrowed summaries for effect_write_nodes, with the same owners as reads.
+  const loom_low_memory_access_summary_t** effect_write_summaries;
   // Optional source-derived memory access records for the function.
   const loom_low_memory_access_record_t* memory_access_records;
   // Per-resource aggregate resource pressure, dense by descriptor resource id

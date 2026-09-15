@@ -41,15 +41,21 @@ static loom_low_schedule_ready_keys_t MakeKeys(uint64_t source,
 }
 
 TEST_F(ScheduleReadyFrontierTest, InitializesEveryNodeAfterWorkspaceReuse) {
-  for (uint32_t node_capacity : {0u, 1u, 511u, 512u, 513u, 5000u}) {
+  for (uint32_t node_capacity : {0u, 1u, 30u, 511u, 512u, 513u, 5000u}) {
     SCOPED_TRACE(node_capacity);
     const auto checkpoint = iree_arena_checkpoint_save(&arena_);
     for (int repetition = 0; repetition < 2; ++repetition) {
       iree_arena_checkpoint_restore(&checkpoint);
+      const auto allocation_before = arena_.used_allocation_size;
       loom_low_schedule_ready_frontier_t frontier;
       IREE_ASSERT_OK(loom_low_schedule_ready_frontier_initialize(
           node_capacity, /*descriptor_count=*/1,
           LOOM_LOW_SCHEDULE_READY_VIEW_COUNT, &arena_, &frontier));
+      if (node_capacity == 30) {
+        // A small function's complete ready state fits within 4 KiB, including
+        // all priority views and descriptor membership.
+        EXPECT_LE(arena_.used_allocation_size - allocation_before, 4096u);
+      }
       EXPECT_EQ(loom_low_schedule_ready_frontier_count(&frontier), 0u);
       EXPECT_FALSE(
           loom_low_schedule_ready_frontier_contains(&frontier, node_capacity));

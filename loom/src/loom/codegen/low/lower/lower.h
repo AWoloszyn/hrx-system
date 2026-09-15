@@ -1357,8 +1357,9 @@ typedef enum loom_low_lower_memory_access_record_bits_e {
 typedef uint32_t loom_low_lower_memory_access_record_flags_t;
 
 // Records a source-derived memory summary for an emitted low memory packet.
-// The row is copied into options.table_arena when provided. PRESERVE also
-// attaches the summary to the low op for later scheduling.
+// When options.table_arena is provided, records and present interval payloads
+// are collected in scratch and published there as exactly sized arrays after
+// lowering. PRESERVE also attaches the summary to the low op for scheduling.
 iree_status_t loom_low_lower_record_memory_access_summary(
     loom_low_lower_context_t* context, loom_op_t* low_op,
     const loom_low_memory_access_summary_t* summary,

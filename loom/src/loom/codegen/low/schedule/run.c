@@ -486,6 +486,7 @@ static iree_status_t loom_low_schedule_verify_structural_state_reads(
 static iree_status_t loom_low_schedule_initialize_descriptor_tables(
     loom_low_schedule_build_state_t* state, iree_host_size_t node_count) {
   iree_host_size_t effect_use_capacity = 0;
+  iree_host_size_t structural_memory_node_count = 0;
   iree_host_size_t hazard_use_capacity = 0;
   bool has_state_reg_class = false;
   bool has_resource_uses = false;
@@ -566,8 +567,12 @@ static iree_status_t loom_low_schedule_initialize_descriptor_tables(
     if (node->descriptor != NULL) {
       max_descriptor_operand_count =
           iree_max(max_descriptor_operand_count, node->operand_count);
-    } else if (loom_low_func_call_isa(node->op)) {
-      state->call_node_indices[call_index++] = (uint32_t)node_index;
+    } else {
+      if (loom_low_func_call_isa(node->op)) {
+        state->call_node_indices[call_index++] = (uint32_t)node_index;
+      }
+      structural_memory_node_count += iree_any_bit_set(
+          node->traits, LOOM_TRAIT_READS_MEMORY | LOOM_TRAIT_WRITES_MEMORY);
     }
     const loom_low_schedule_class_t* schedule_class = node->schedule_class;
     has_resource_uses |=
@@ -642,7 +647,11 @@ static iree_status_t loom_low_schedule_initialize_descriptor_tables(
     state->effect_use_capacity = effect_use_capacity;
   }
   iree_host_size_t effect_read_capacity = 0;
-  if (!iree_host_size_checked_add(effect_use_capacity, node_count,
+  // Each descriptor effect can contribute at most one frontier entry; a
+  // structural memory node contributes one generic read or write. Reuse this
+  // bound for both frontiers without reserving slots for arithmetic nodes.
+  if (!iree_host_size_checked_add(effect_use_capacity,
+                                  structural_memory_node_count,
                                   &effect_read_capacity)) {
     return iree_make_status(
         IREE_STATUS_OUT_OF_RANGE,

@@ -65,6 +65,7 @@ loom_cc_library(
     loom::codegen::low::descriptor_traits
     loom::codegen::low::descriptors
     loom::codegen::low::memory_access
+    loom::codegen::low::memory_access_builder
     loom::codegen::low::memory_access_ir
     loom::codegen::low::source_memory_plan
     loom::codegen::low::target_binding
