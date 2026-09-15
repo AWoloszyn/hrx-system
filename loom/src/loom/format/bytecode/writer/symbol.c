@@ -637,6 +637,12 @@ iree_status_t loom_bytecode_write_symbols_section(
       }
     }
     IREE_RETURN_IF_ERROR(loom_bytecode_emit_u16_le(builder, bytecode_flags));
+    const loom_location_id_t location =
+        numbering->location_mode == LOOM_BYTECODE_LOCATION_MODE_NO_LOCATIONS ||
+                !symbol->defining_op
+            ? LOOM_LOCATION_UNKNOWN
+            : symbol->defining_op->location;
+    IREE_RETURN_IF_ERROR(loom_bytecode_emit_uvarint(builder, location));
     if (linkage.is_import) {
       uint32_t import_module_string_id = 0;
       IREE_RETURN_IF_ERROR(loom_bytecode_numbering_intern_module_string(

@@ -3234,7 +3234,7 @@ class TestLocationCrossFormatRoundTrip:
             "test.func @negate(%input: f32) -> (f32) {\n"
             '  %neg0 = test.neg %input : f32 loc("model.loom":42:3 to 42:58)\n'
             '  test.yield %neg0 : f32 loc("model.loom":43:3 to 43:28)\n'
-            "}\n"
+            '} loc("model.loom":41:1 to 44:2)\n'
         )
 
     def test_opaque_location_survives_bytecode(self) -> None:
@@ -3242,7 +3242,7 @@ class TestLocationCrossFormatRoundTrip:
             "test.func @negate(%input: f32) -> (f32) {\n"
             '  %neg0 = test.neg %input : f32 loc(opaque<"torch", "node_id=42">)\n'
             '  test.yield %neg0 : f32 loc("model.loom":3:3 to 3:28)\n'
-            "}\n"
+            '} loc(opaque<"torch", "node_id=func">)\n'
         )
 
     def test_fused_location_survives_bytecode(self) -> None:
@@ -3250,7 +3250,7 @@ class TestLocationCrossFormatRoundTrip:
             "test.func @negate(%input: f32) -> (f32) {\n"
             '  %neg0 = test.neg %input : f32 loc(fused<"a.loom":1:1, "b.loom":2:2>)\n'
             '  test.yield %neg0 : f32 loc("model.loom":3:3 to 3:28)\n'
-            "}\n"
+            '} loc(fused<"a.loom":1:1, "b.loom":3:2>)\n'
         )
 
 

@@ -486,8 +486,47 @@ TEST(FactsFitBitCount, UnsignedRange) {
 }
 
 //===----------------------------------------------------------------------===//
-// Signed extension
+// Integer wrapping and signed extension
 //===----------------------------------------------------------------------===//
+
+TEST(FactsWrapInteger, ExactAndRangedLowBits) {
+  for (int64_t divisor : {1, 2, 3, 6, 16, 256, 512}) {
+    for (int64_t lo : {-300, -128, -32, 0, 30, 120, 255}) {
+      for (int64_t length : {0, 4, 20, 300}) {
+        loom_value_facts_t source =
+            loom_value_facts_make(lo, lo + length, divisor);
+        if (length != 0) loom_value_facts_mark_lane_varying(&source);
+        loom_value_facts_t result = loom_value_facts_wrap_integer(source, 8);
+        for (int64_t value = lo; value <= lo + length; ++value) {
+          if (value % source.known_divisor != 0) continue;
+          const int64_t bits = (uint64_t)value & 255;
+          const int64_t wrapped = bits >= 128 ? bits - 256 : bits;
+          EXPECT_LE(result.range_lo, wrapped);
+          EXPECT_GE(result.range_hi, wrapped);
+          EXPECT_EQ(wrapped % result.known_divisor, 0);
+        }
+        EXPECT_EQ(loom_value_facts_is_lane_varying(result), length != 0);
+      }
+    }
+  }
+}
+
+TEST(FactsWrapInteger, LogicalAndWideDomains) {
+  EXPECT_EQ(
+      loom_value_facts_wrap_integer(loom_value_facts_exact_i64(2), 1).range_lo,
+      0);
+  EXPECT_EQ(
+      loom_value_facts_wrap_integer(loom_value_facts_exact_i64(-1), 1).range_lo,
+      1);
+  loom_value_facts_t source = loom_value_facts_make(INT64_MIN, INT64_MAX, 6);
+  loom_value_facts_t result = loom_value_facts_wrap_integer(source, 64);
+  EXPECT_EQ(result.range_lo, INT64_MIN);
+  EXPECT_EQ(result.range_hi, INT64_MAX);
+  EXPECT_EQ(result.known_divisor, 2);
+  source = loom_value_facts_make(0, 60, 6);
+  EXPECT_TRUE(loom_value_facts_equal(loom_value_facts_wrap_integer(source, 64),
+                                     source));
+}
 
 TEST(FactsSignExtend, LogicalExactValues) {
   loom_value_facts_t zero =
@@ -1402,6 +1441,16 @@ TEST(AbsiTransfer, SpanningZero) {
   loom_value_facts_absi(&a, &out);
   EXPECT_EQ(out.range_lo, 0);
   EXPECT_EQ(out.range_hi, 10);
+}
+
+TEST(AbsiTransfer, MinimumSignedValueMayRemainNegative) {
+  for (int64_t hi : {INT64_MIN, INT64_C(-1), INT64_C(1)}) {
+    loom_value_facts_t input = loom_value_facts_make(INT64_MIN, hi, 1);
+    loom_value_facts_t output;
+    loom_value_facts_absi(&input, &output);
+    EXPECT_EQ(output.range_lo, INT64_MIN);
+    EXPECT_FALSE(loom_value_facts_is_non_negative(output));
+  }
 }
 
 //===----------------------------------------------------------------------===//

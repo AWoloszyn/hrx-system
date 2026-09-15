@@ -363,6 +363,14 @@ bool loom_value_facts_make_unsigned_raw_bits(uint64_t raw_bits,
 loom_value_facts_t loom_value_facts_make_signed_raw_bits(uint64_t raw_bits,
                                                          int32_t bit_count);
 
+// Wraps an integer transfer result to its verified width in [1, 64]. Exact
+// values retain their low bits in the signed domain (0/1 for i1). Ranges that
+// may wrap expand to the type domain and retain only divisors of 2^bit_count.
+// A full i64 range may represent overflow in the width-independent transfer;
+// its divisibility is weakened too. Execution distribution is preserved.
+loom_value_facts_t loom_value_facts_wrap_integer(loom_value_facts_t facts,
+                                                 int32_t bit_count);
+
 // Returns facts for a signed extension from |source_bit_count|. Fixed-width
 // integer facts already use their signed numeric domain except for logical i1
 // facts, whose 0/1 domain is mapped to 0/-1. The source bit count comes from a
@@ -803,6 +811,16 @@ bool loom_value_facts_predicate_conflict(
 // that the predicate is legal for the value type.
 void loom_value_facts_apply_predicate(loom_value_facts_t* facts,
                                       const loom_predicate_t* predicate);
+
+// Refines either side of an integer equality or ordered relation using the
+// counterpart's interval. NULL result pointers leave that side read-only.
+// Input facts are snapshots, allowing result pointers to alias their sources.
+// Returns false for predicate kinds that do not refine a pair of intervals.
+bool loom_value_facts_refine_relation(uint8_t predicate_kind,
+                                      loom_value_facts_t lhs_facts,
+                                      loom_value_facts_t rhs_facts,
+                                      loom_value_facts_t* lhs_result,
+                                      loom_value_facts_t* rhs_result);
 
 //===----------------------------------------------------------------------===//
 // Transfer functions

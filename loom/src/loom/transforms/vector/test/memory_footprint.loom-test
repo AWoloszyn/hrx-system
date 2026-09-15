@@ -1,5 +1,41 @@
 // RUN: pass vector-memory-footprint
 
+// A folded origin need not retain the SSA identity from the guard. The
+// guard still proves that at least one element exists.
+func.def @guarded_first_element(%buffer: buffer, %base: offset, %lane0: index, %length0: index, %pattern: i8) {
+  %lane = index.assume %lane0 [range(%lane0, 0, 255)] : index
+  %length = index.assume %length0 [range(%length0, 0, 1)] : index
+  %view = buffer.view %buffer[%base] : buffer -> view<[%length]xi8>
+  %in_bounds = index.cmp ult, %lane, %length : index
+  cfg.cond_br %in_bounds, ^store, ^exit
+^store:
+  %origin = index.constant 0 : index
+  view.store %pattern, %view[%origin] : i8, view<[%length]xi8>
+  cfg.br ^exit
+^exit:
+  func.return
+}
+
+// ====
+
+// A non-strict comparison allows lane=length=0 and cannot justify a store.
+func.def @weak_guard_does_not_prove_first_element(%buffer: buffer, %base: offset, %lane0: index, %length0: index, %pattern: i8) {
+  %lane = index.assume %lane0 [range(%lane0, 0, 255)] : index
+  %length = index.assume %length0 [range(%length0, 0, 1)] : index
+  %view = buffer.view %buffer[%base] : buffer -> view<[%length]xi8>
+  %in_bounds = index.cmp ule, %lane, %length : index
+  cfg.cond_br %in_bounds, ^store, ^exit
+^store:
+  %origin = index.constant 0 : index
+  // ERROR@+1: SUBRANGE/024 "view.store" "upper bound"
+  view.store %pattern, %view[%origin] : i8, view<[%length]xi8>
+  cfg.br ^exit
+^exit:
+  func.return
+}
+
+// ====
+
 func.def @static_dense_load_in_bounds(%buffer: buffer, %base: offset) {
   %layout = encoding.layout.dense : encoding<layout>
   %view = buffer.view %buffer[%base] : buffer -> view<8xf32, %layout>

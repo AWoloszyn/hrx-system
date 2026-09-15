@@ -85,6 +85,14 @@ static uint16_t loom_bytecode_symbol_policy_lookup_symbol(
                               (loom_string_id_t)source_name_id);
 }
 
+static iree_status_t loom_bytecode_symbol_policy_project_location(
+    loom_bytecode_symbol_policy_materializer_t* materializer,
+    loom_location_id_t source_location, loom_location_id_t* out_location) {
+  (void)materializer;
+  *out_location = source_location;
+  return iree_ok_status();
+}
+
 static iree_status_t loom_bytecode_symbol_policy_project_symbol_ordinal(
     const loom_bytecode_symbol_policy_materializer_t* materializer,
     uint32_t source_symbol_ordinal, loom_symbol_ref_t* out_target_ref) {

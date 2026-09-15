@@ -1030,6 +1030,9 @@ class BytecodeReader:
             offset += 1
             flags = struct.unpack_from("<H", sym_data, offset)[0]
             offset += 2
+            location_id, offset = decode_varint(sym_data, offset)
+            if location_id >= len(module.locations):
+                raise BytecodeError("symbol location_id is out of range")
 
             name = self._strings[name_id]
             self._validate_symbol_header(flags, kind, visibility)
@@ -1220,6 +1223,7 @@ class BytecodeReader:
                     tied_results=tied_results,
                     attributes=op_attrs,
                     regions=regions,
+                    location_id=location_id,
                     comments=op_comments,
                     leading_blank_line=op_leading_blank_line,
                 )
@@ -1296,6 +1300,7 @@ class BytecodeReader:
                     operands=[],
                     results=result_ids,
                     attributes=op_attrs,
+                    location_id=location_id,
                     comments=op_comments,
                     leading_blank_line=op_leading_blank_line,
                 )
@@ -1319,6 +1324,7 @@ class BytecodeReader:
                         flags,
                         source_module,
                         source_symbol,
+                        location_id,
                     )
                 )
                 decoded_region_payload_count += region_payload_count
@@ -1445,6 +1451,7 @@ class BytecodeReader:
         flags: int,
         source_module: str,
         source_symbol: str,
+        location_id: int,
     ) -> tuple[int, int, int]:
         """Read one RECORD symbol payload and append it to ``module``."""
         op_table_index_plus1, offset = decode_varint(sym_data, offset)
@@ -1481,6 +1488,7 @@ class BytecodeReader:
             results=[],
             attributes=op_attrs,
             regions=record_regions,
+            location_id=location_id,
             comments=op_comments,
             leading_blank_line=op_leading_blank_line,
         )

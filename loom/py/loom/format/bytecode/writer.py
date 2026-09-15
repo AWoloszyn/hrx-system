@@ -179,7 +179,7 @@ BYTECODE_IR_KIND_BY_TYPE_KIND: dict[int, TypeKind] = {
 
 # File magic and version.
 MAGIC = b"LOOM"
-FORMAT_VERSION = 35
+FORMAT_VERSION = 36
 PRODUCER = "loom-py"
 
 SYMBOL_INTERFACE_BITS = {
@@ -2131,6 +2131,11 @@ class BytecodeWriter:
             ):
                 bytecode_flags |= _SYMBOL_FLAG_PREDICATES
             buf.write_u16_le(bytecode_flags)
+            buf.write_varint(
+                0
+                if self._location_mode == LOCATION_MODE_NO_LOCATIONS
+                else symbol.op.location_id
+            )
 
             # Import metadata: source module and symbol for cross-module refs.
             if symbol.flags & SYMBOL_FLAG_IMPORT:

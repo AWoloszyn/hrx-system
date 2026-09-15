@@ -289,20 +289,35 @@ TEST(SpirvTest, ParsesMultipleComputeEntryPoints) {
 }
 
 TEST(SpirvTest, RejectsTruncatedInstruction) {
-  static constexpr uint32_t kTruncatedModule[] = {
-      0x07230203u,
-      0x00010600u,
-      0u,
-      8u,
-      0u,
-      // OpMemoryModel declares four words but only has two trailing words.
-      0x0004000eu,
-      5348u,
-  };
-  IREE_EXPECT_STATUS_IS(
-      StatusCode::kInvalidArgument,
-      iree_hal_vulkan_spirv_verify_module(kTruncatedModule,
-                                          IREE_ARRAYSIZE(kTruncatedModule)));
+  // Both operand analysis and metadata parsing must reject the extent before
+  // reading operands. Counts larger than the entire module must not underflow
+  // the bounds check; smaller counts can still exceed the remaining words.
+  for (uint32_t opcode : {/*OpMemoryModel=*/14u, /*OpModuleProcessed=*/330u}) {
+    SCOPED_TRACE(opcode);
+    for (uint32_t word_count : {0u, 3u, 8u, 0xFFFFu}) {
+      SCOPED_TRACE(word_count);
+      const uint32_t words[] = {
+          0x07230203u, 0x00010600u, 0u, 8u, 0u, (word_count << 16) | opcode,
+          5348u,
+      };
+      IREE_EXPECT_STATUS_IS(
+          StatusCode::kInvalidArgument,
+          iree_hal_vulkan_spirv_verify_module(words, IREE_ARRAYSIZE(words)));
+
+      iree_hal_vulkan_spirv_module_analysis_t analysis = {};
+      IREE_EXPECT_STATUS_IS(StatusCode::kInvalidArgument,
+                            iree_hal_vulkan_spirv_analyze_module(
+                                words, IREE_ARRAYSIZE(words), &analysis));
+
+      iree_hal_vulkan_spirv_bda_dispatch_metadata_t metadata = {};
+      IREE_EXPECT_STATUS_IS(StatusCode::kInvalidArgument,
+                            iree_hal_vulkan_spirv_parse_bda_dispatch_metadata(
+                                words, IREE_ARRAYSIZE(words),
+                                iree_allocator_system(), &metadata));
+      iree_hal_vulkan_spirv_bda_dispatch_metadata_deinitialize(
+          &metadata, iree_allocator_system());
+    }
+  }
 }
 
 TEST(SpirvTest, RejectsTruncatedEntryPointOperands) {

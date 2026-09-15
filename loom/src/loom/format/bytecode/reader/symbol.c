@@ -748,6 +748,16 @@ loom_bytecode_symbol_decode(loom_bytecode_symbol_validator_t* reader,
       &reader->decoder, &table->cursor, &visibility));
   IREE_RETURN_IF_ERROR(loom_bytecode_reader_read_u16_le(
       &reader->decoder, &table->cursor, &flags));
+  const uint64_t location_offset =
+      loom_bytecode_reader_cursor_absolute_position(&table->cursor);
+  uint64_t location_id = 0;
+  IREE_RETURN_IF_ERROR(loom_bytecode_reader_read_uvarint_inline(
+      &reader->decoder, &table->cursor, &location_id));
+  if (location_id != 0 && location_id >= reader->view.locations.count) {
+    return loom_bytecode_reader_emit_table_ref(
+        &reader->decoder, IREE_SV("LOCATIONS"), location_id,
+        reader->view.locations.count, location_offset);
+  }
   if (kind >= LOOM_BYTECODE_SYMBOL_COUNT_) {
     return loom_bytecode_reader_emit_enum_value(
         &reader->decoder, IREE_SV("symbol_kind"), kind,

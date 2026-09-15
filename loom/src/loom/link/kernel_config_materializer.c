@@ -168,7 +168,7 @@ static iree_status_t loom_link_kernel_config_build_declaration(
   IREE_RETURN_IF_ERROR(loom_builder_allocate_segmented_op(
       builder, LOOM_OP_KERNEL_DECL, (uint16_t)operand_count, operand_segments,
       IREE_ARRAYSIZE(operand_segments), /*result_count=*/0, /*region_count=*/0,
-      /*tied_result_count=*/0, vtable->attribute_count, LOOM_LOCATION_NONE,
+      /*tied_result_count=*/0, vtable->attribute_count, header->location,
       &declaration));
   if (operand_count != 0) {
     memcpy(loom_op_operands(declaration), header->signature_values,
@@ -312,7 +312,7 @@ static iree_status_t loom_link_kernel_config_build_helper(
       header->workload_argument_count, result_types,
       IREE_ARRAYSIZE(result_types), /*tied_results=*/NULL,
       /*tied_result_count=*/0, /*predicates=*/NULL,
-      /*predicates_count=*/0, LOOM_LOCATION_NONE, &helper_op));
+      /*predicates_count=*/0, header->location, &helper_op));
   const loom_func_like_t helper = loom_func_like_cast(module, helper_op);
   IREE_RETURN_IF_ERROR(loom_link_kernel_config_configure_helper_arguments(
       module, header, helper, scratch_arena));

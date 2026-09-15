@@ -330,6 +330,14 @@ def main() -> None:
         raise ValueError("expected the C loom-format binary path")
     source_module, register_type = _interop_module()
     loaded_module = _roundtrip_through_c(Path(sys.argv[1]), source_module)
+    source_symbols = {symbol.name: symbol for symbol in source_module.symbols}
+    for symbol in loaded_module.symbols:
+        source_op = source_symbols[symbol.name].op
+        assert source_op is not None and source_op.location_id != 0
+        assert symbol.op is not None
+        assert loaded_module.locations.get(symbol.op.location_id) == (
+            source_module.locations.get(source_op.location_id)
+        )
     entry_block = _assert_module_structure(loaded_module, register_type)
     _assert_enum_and_symbol_attrs(entry_block)
     _assert_parameterized_attrs(entry_block)

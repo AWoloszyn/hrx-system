@@ -1,5 +1,45 @@
 // RUN: pass canonicalize
 
+// Wrapping arithmetic must materialize signed, width-correct literals before
+// signed comparisons or extensions consume the result.
+func.def @wrapping_constant_arithmetic() -> (i32, i32, i32, i8, i16, i32, i32, i1, i64) {
+  %maximum = scalar.constant 2147483647 : i32
+  %minimum = scalar.constant -2147483648 : i32
+  %c7 = scalar.constant 7 : i32
+  %c1 = scalar.constant 1 : i32
+  %c2 = scalar.constant 2 : i32
+  %c0 = scalar.constant 0 : i32
+  %sum = scalar.addi %maximum, %c7 : i32
+  %difference = scalar.subi %minimum, %c1 : i32
+  %product = scalar.muli %maximum, %c2 : i32
+  %small = scalar.constant -128 : i8
+  %negative = scalar.negi %small : i8
+  %half = scalar.constant -32768 : i16
+  %absolute = scalar.absi %half : i16
+  %fused = scalar.fmai %maximum, %c2, %c7 : i32
+  %shift = scalar.constant 31 : i32
+  %shifted = scalar.shli %c1, %shift : i32
+  %less = scalar.cmpi slt, %sum, %c0 : i32
+  %extended = scalar.extsi %sum : i32 to i64
+  func.return %sum, %difference, %product, %negative, %absolute, %fused, %shifted, %less, %extended : i32, i32, i32, i8, i16, i32, i32, i1, i64
+}
+
+// ----
+func.def @wrapping_constant_arithmetic() -> (i32, i32, i32, i8, i16, i32, i32, i1, i64) {
+  %sum = scalar.constant -2147483642 : i32
+  %difference = scalar.constant 2147483647 : i32
+  %product = scalar.constant -2 : i32
+  %negative = scalar.constant -128 : i8
+  %absolute = scalar.constant -32768 : i16
+  %fused = scalar.constant 5 : i32
+  %shifted = scalar.constant -2147483648 : i32
+  %less = scalar.constant true : i1
+  %extended = scalar.constant -2147483642 : i64
+  func.return %sum, %difference, %product, %negative, %absolute, %fused, %shifted, %less, %extended : i32, i32, i32, i8, i16, i32, i32, i1, i64
+}
+
+// ====
+
 // addi: 3 + 4 = 7.
 func.def @addi() -> (i32) {
   %a = scalar.constant 3 : i32

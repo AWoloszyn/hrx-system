@@ -111,6 +111,13 @@ static iree_status_t loom_bytecode_symbol_policy_project_symbol_ordinal(
   return iree_ok_status();
 }
 
+static iree_status_t loom_bytecode_symbol_policy_project_location(
+    loom_bytecode_symbol_policy_materializer_t* materializer,
+    loom_location_id_t source_location, loom_location_id_t* out_location) {
+  return loom_bytecode_selected_table_materialize_location(
+      materializer->tables, source_location, out_location);
+}
+
 static void loom_bytecode_symbol_policy_resolve_defining_op(
     loom_bytecode_symbol_policy_materializer_t* materializer,
     iree_host_size_t symbol_ordinal, uint64_t op_table_index_plus1,
@@ -347,7 +354,7 @@ iree_status_t loom_bytecode_selected_function_header_materialize(
       materializer, &cursor, source_symbol_ordinal,
       entry_header.name_string_ordinal, entry_header.flags,
       entry_header.import_module_id, entry_header.import_symbol_id,
-      out_header));
+      entry_header.location, out_header));
   return loom_bytecode_reader_expect_empty(&materializer->decoder, &cursor,
                                            IREE_SV("symbol_entry"));
 }

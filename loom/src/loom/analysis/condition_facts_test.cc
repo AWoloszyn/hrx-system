@@ -311,6 +311,36 @@ TEST_F(ConditionFactsTest, AppliesSwappedConstantRelationToValueFacts) {
   EXPECT_EQ(induction_facts.range_hi, 100);
 }
 
+TEST_F(ConditionFactsTest, AppliesBothSidesOfDynamicIntervalRelation) {
+  loom_value_id_t lane = DefineIndexValue();
+  loom_value_id_t length = DefineIndexValue();
+  DefineFacts(lane, loom_value_facts_make(0, 255, 1));
+  DefineFacts(length, loom_value_facts_make(0, 1, 1));
+  loom_op_t* compare =
+      BuildIndexCompare(LOOM_INDEX_CMP_PREDICATE_ULT, lane, length);
+  ASSERT_TRUE(Query(loom_index_cmp_result(compare)));
+
+  loom_value_facts_t lane_facts =
+      loom_value_fact_table_lookup(&fact_table_, lane);
+  loom_value_facts_t length_facts =
+      loom_value_fact_table_lookup(&fact_table_, length);
+  EXPECT_TRUE(loom_condition_fact_set_apply_to_value_facts(
+      &condition_facts_, &fact_table_, lane, &lane_facts));
+  EXPECT_TRUE(loom_condition_fact_set_apply_to_value_facts(
+      &condition_facts_, &fact_table_, length, &length_facts));
+  EXPECT_TRUE(loom_value_facts_is_zero(lane_facts));
+  EXPECT_TRUE(loom_value_facts_is_exact(length_facts));
+  EXPECT_EQ(length_facts.range_lo, 1);
+
+  // The opposite edge does not prove a positive length: lane=length=0
+  // satisfies it and must remain possible.
+  ASSERT_TRUE(Query(loom_index_cmp_result(compare), /*assumed_truth=*/false));
+  length_facts = loom_value_fact_table_lookup(&fact_table_, length);
+  loom_condition_fact_set_apply_to_value_facts(&condition_facts_, &fact_table_,
+                                               length, &length_facts);
+  EXPECT_EQ(length_facts.range_lo, 0);
+}
+
 TEST_F(ConditionFactsTest, EdgeFactsProveWiderScalarCompareTrue) {
   loom_value_id_t lane = DefineI32Value();
   loom_value_id_t outer_bound = DefineI32Value();

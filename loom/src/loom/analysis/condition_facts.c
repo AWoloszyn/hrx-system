@@ -1048,9 +1048,15 @@ bool loom_condition_integer_relation_apply_to_value_facts(
           relation, fact_table, value_id, &predicate)) {
     return false;
   }
-  if (predicate.arg_tags[1] != LOOM_PRED_ARG_CONST) return false;
-  loom_value_facts_apply_predicate(inout_facts, &predicate);
-  return true;
+  if (predicate.arg_tags[1] == LOOM_PRED_ARG_CONST) {
+    loom_value_facts_apply_predicate(inout_facts, &predicate);
+    return true;
+  }
+  return loom_value_facts_refine_relation(
+      predicate.kind, *inout_facts,
+      loom_value_fact_table_lookup(fact_table,
+                                   (loom_value_id_t)predicate.args[1]),
+      inout_facts, NULL);
 }
 
 bool loom_condition_fact_set_apply_to_value_facts(
