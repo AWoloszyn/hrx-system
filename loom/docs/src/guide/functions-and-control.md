@@ -258,6 +258,11 @@ alignment, and synchronization contracts. Rotating a view does not establish
 completion of an asynchronous producer; consumption and storage reuse follow
 the program's completion dependencies.
 
+LLVM IR text, bitcode, and object emission preserve this loop-carried state,
+including the byte origins selected by `scf.for` and `scf.while`. The
+[artifact workflow](../workflows/compile-artifacts.md) describes how to select
+an output format for the program's target.
+
 ## Unrolling is a loop policy
 
 Keep the source loop when the algorithm is a loop. Request full local unrolling

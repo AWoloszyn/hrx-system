@@ -17,3 +17,27 @@ low.func.def target<llvmir.generic.core>(@target) abi(object_function) @multi_re
   %sum = add.i32 %lhs, %rhs
   return %sum, %lhs
 }
+
+// ====
+
+llvmir.target<object> @target {triple = "x86_64-unknown-linux-gnu"}
+
+// Pointer registers do not retain an address space across a CFG edge. Source
+// view transport carries byte offsets over a dominating buffer instead.
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @pointer_phi(%input: reg<llvmir.ptr>) -> (reg<llvmir.i32>) asm {
+  low.br ^body(%input: reg<llvmir.ptr>)
+^body(%carried: reg<llvmir.ptr>):
+  // ERROR@+1: TARGET/056 {function_name="pointer_phi", value_kind="block_argument", expected_constraint="non-pointer block argument"}
+  %value = load.i32 %carried, 0
+  return %value
+}
+
+// ====
+
+llvmir.target<object> @target {triple = "x86_64-unknown-linux-gnu"}
+
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @entry_pointer_phi(%input: reg<llvmir.ptr>) asm {
+^entry:
+  // ERROR@+1: TARGET/056 {function_name="entry_pointer_phi", value_kind="block_argument", expected_constraint="non-pointer block argument"}
+  low.br ^entry(%input: reg<llvmir.ptr>)
+}
