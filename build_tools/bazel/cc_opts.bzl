@@ -45,7 +45,6 @@ _CLANG_COPTS = [
 _CLANG_CONLYOPTS = []
 
 _CLANG_CXXOPTS = [
-    "-std=c++17",
     "-fno-exceptions",
     "-fno-rtti",
     "-Wno-c++20-extensions",
@@ -79,7 +78,6 @@ _GCC_CONLYOPTS = [
 ]
 
 _GCC_CXXOPTS = [
-    "-std=c++17",
     "-fno-exceptions",
     "-fno-rtti",
     "-Wno-invalid-offsetof",
@@ -130,7 +128,6 @@ _MSVC_CONLYOPTS = []
 
 _MSVC_CXXOPTS = [
     "/GR-",
-    "/std:c++17",
     "/Zc:__cplusplus",
 ]
 
@@ -179,12 +176,15 @@ def _compiler_options(
 def _iree_code_compiler_options(
         copts = None,
         conlyopts = None,
-        cxxopts = None):
+        cxxopts = None,
+        cxx_standard = "c++17"):
     """Returns compiler options for first-party IREE C/C++ targets.
 
     Callers pass through target-specific options exactly as they would on a
     native C/C++ rule. This helper prepends IREE's compiler-conditioned policy
     while preserving configurable values such as `select()` expressions.
+    Project wrappers may select their C++ standard without appending a second
+    conflicting language-mode option. The repository default remains C++17.
     """
     return struct(
         copts = _append(
@@ -207,10 +207,10 @@ def _iree_code_compiler_options(
         ),
         cxxopts = _append(
             _compiler_options(
-                _CLANG_CXXOPTS,
-                _GCC_CXXOPTS,
-                _CLANG_CL_CXXOPTS,
-                _MSVC_CXXOPTS,
+                ["-std=" + cxx_standard] + _CLANG_CXXOPTS,
+                ["-std=" + cxx_standard] + _GCC_CXXOPTS,
+                ["/std:" + cxx_standard] + _CLANG_CL_CXXOPTS,
+                ["/std:" + cxx_standard] + _MSVC_CXXOPTS,
             ),
             cxxopts,
         ),

@@ -28,7 +28,7 @@ import sys
 import textwrap
 import urllib.error
 import urllib.request
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable
 
 DEFAULT_REGISTRY_URL = "https://bcr.bazel.build"
@@ -52,6 +52,7 @@ class Dependency:
     strip_prefix: str = ""
     source_url: str = ""
     build_file: str = ""
+    downloaded_file_path: str = ""
     patches: tuple[str, ...] = ()
     patch_args: tuple[str, ...] = ()
 
@@ -72,12 +73,14 @@ class ModuleParser:
     def __init__(self, repo_root: Path):
         self.repo_root = repo_root
         self.dependencies: list[Dependency] = []
+        # Root-module overrides apply independently of declaration/include order.
+        self._single_version_overrides: dict[str, dict[str, Any]] = {}
         self._active_files: set[Path] = set()
         self._parsed_files: set[Path] = set()
 
     def parse(self, module_file: Path) -> list[Dependency]:
         self._parse_file(module_file.resolve())
-        return self.dependencies
+        return [self._apply_single_version_override(dep) for dep in self.dependencies]
 
     def _parse_file(self, module_file: Path) -> None:
         if module_file in self._parsed_files:
@@ -111,7 +114,7 @@ class ModuleParser:
             "multiple_version_override": self._ignore,
             "override_repo": self._ignore,
             "register_toolchains": self._ignore,
-            "single_version_override": self._ignore,
+            "single_version_override": self._single_version_override,
             "use_extension": lambda *_args, **_kwargs: DummyModuleExtension(),
             "use_repo": self._ignore,
             "use_repo_rule": lambda repo_rule_label, repo_rule_name: self._repo_rule(
@@ -124,6 +127,37 @@ class ModuleParser:
 
     def _include(self, label: str) -> None:
         self._parse_file(self._resolve_label(label))
+
+    def _single_version_override(self, **kwargs: Any) -> None:
+        name = _required_string(kwargs, "module_name", "single_version_override")
+        if name in self._single_version_overrides:
+            raise ValueError(f"duplicate single_version_override for {name}")
+        self._single_version_overrides[name] = kwargs
+
+    def _apply_single_version_override(self, dependency: Dependency) -> Dependency:
+        if dependency.kind != "bazel_dep":
+            return dependency
+        override = self._single_version_overrides.get(dependency.module_name)
+        if override is None:
+            return dependency
+        context = f"single_version_override({dependency.module_name})"
+        _validate_known_fields(
+            override,
+            context=context,
+            known_fields={"module_name", "version", "patches", "patch_strip"},
+        )
+        patches = _optional_string_list(override, "patches", context)
+        patch_strip = override.get("patch_strip", 0)
+        if type(patch_strip) is not int or patch_strip < 0:
+            raise ValueError(f"{context} requires a nonnegative integer patch_strip")
+        patch_args = [f"-p{patch_strip}"] if patches else []
+        _validate_patch_configuration(patches, patch_args, context)
+        return dataclasses.replace(
+            dependency,
+            version=_optional_string(override, "version", "") or dependency.version,
+            patches=tuple(patches),
+            patch_args=tuple(patch_args),
+        )
 
     def _bazel_dep(
         self,
@@ -170,6 +204,10 @@ class ModuleParser:
     ) -> Callable[..., None]:
         if repo_rule_name == "http_archive":
             return lambda **kwargs: self._http_archive(
+                module_file, collect_source_deps, **kwargs
+            )
+        if repo_rule_name == "http_file":
+            return lambda **kwargs: self._http_file(
                 module_file, collect_source_deps, **kwargs
             )
         if repo_rule_name == "rocm_repository":
@@ -230,6 +268,48 @@ class ModuleParser:
                 build_file=build_file,
                 patches=tuple(patches),
                 patch_args=tuple(patch_args),
+            )
+        )
+
+    def _http_file(
+        self,
+        module_file: Path,
+        collect_source_deps: bool,
+        **kwargs: Any,
+    ) -> None:
+        if not collect_source_deps:
+            return
+        _validate_known_fields(
+            kwargs,
+            context="http_file",
+            known_fields={
+                "downloaded_file_path",
+                "integrity",
+                "name",
+                "sha256",
+                "url",
+                "urls",
+            },
+        )
+        name = _required_string(kwargs, "name", "http_file")
+        urls = _urls_from_kwargs(kwargs, f"http_file({name})")
+        sha256 = _sha256_from_kwargs(kwargs, f"http_file({name})")
+        downloaded_file_path = _required_string(
+            kwargs, "downloaded_file_path", f"http_file({name})"
+        )
+        _validate_downloaded_file_path(downloaded_file_path, f"http_file({name})")
+        self.dependencies.append(
+            Dependency(
+                name=name,
+                kind="http_file",
+                owner=self._owner_for_module_file(module_file),
+                module_name=name,
+                repo_name=name,
+                version="",
+                dev_dependency=False,
+                urls=tuple(urls),
+                sha256=sha256,
+                downloaded_file_path=downloaded_file_path,
             )
         )
 
@@ -313,7 +393,7 @@ class LockResolver:
         self.existing_lock = existing_lock
 
     def resolve_for_update(self, dependency: Dependency) -> Dependency:
-        if dependency.kind in {"http_archive", "rocm_repository"}:
+        if dependency.kind in {"http_archive", "http_file", "rocm_repository"}:
             return dependency
         if dependency.kind != "bazel_dep":
             raise ValueError(f"unsupported dependency kind: {dependency.kind}")
@@ -331,7 +411,7 @@ class LockResolver:
         )
 
     def resolve_for_check(self, dependency: Dependency) -> Dependency:
-        if dependency.kind in {"http_archive", "rocm_repository"}:
+        if dependency.kind in {"http_archive", "http_file", "rocm_repository"}:
             return dependency
         if dependency.kind != "bazel_dep":
             raise ValueError(f"unsupported dependency kind: {dependency.kind}")
@@ -544,6 +624,13 @@ def render_cmake_lock(dependencies: Iterable[Dependency]) -> str:
         _append_cmake_scalar(lines, identifier, "SHA256", dependency.sha256)
         _append_cmake_scalar(lines, identifier, "STRIP_PREFIX", dependency.strip_prefix)
         _append_cmake_scalar(lines, identifier, "BUILD_FILE", dependency.build_file)
+        if dependency.kind == "http_file":
+            _append_cmake_scalar(
+                lines,
+                identifier,
+                "DOWNLOADED_FILE_PATH",
+                dependency.downloaded_file_path,
+            )
         _append_cmake_list(lines, identifier, "PATCHES", dependency.patches)
         _append_cmake_list(lines, identifier, "PATCH_ARGS", dependency.patch_args)
         lines.append("")
@@ -630,6 +717,21 @@ def _optional_string(kwargs: dict[str, Any], name: str, default: str) -> str:
     if not isinstance(value, str):
         raise ValueError(f"{name} must be a string")
     return value
+
+
+def _validate_downloaded_file_path(value: str, context: str) -> None:
+    path = PurePosixPath(value)
+    if (
+        "\\" in value
+        or re.match(r"^[A-Za-z]:", value)
+        or path.is_absolute()
+        or ".." in path.parts
+        or value.endswith("/")
+        or not path.name
+    ):
+        raise ValueError(
+            f"{context} downloaded_file_path must remain inside its repository"
+        )
 
 
 def _optional_string_list(kwargs: dict[str, Any], name: str, context: str) -> list[str]:

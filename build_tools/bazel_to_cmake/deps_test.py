@@ -186,6 +186,59 @@ class DepsTest(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("MODULE.cmake.lock is stale", result.stderr)
 
+    def test_module_override_applies_across_include_order(self):
+        override = textwrap.dedent("""\
+            single_version_override(
+                module_name = "demo",
+                version = "2.0",
+                patches = ["//patches:fix.patch"],
+                patch_strip = 2,
+            )
+            """)
+        include = 'include("//build_tools/third_party:deps.MODULE.bazel")\n'
+        for module in (override + include, include + override):
+            with self.subTest(module=module), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                _write_module_files(root, 'bazel_dep(name = "demo", version = "1.0")')
+                (root / "MODULE.bazel").write_text(module, encoding="utf-8")
+                parsed = deps.ModuleParser(root).parse(root / "MODULE.bazel")
+                self.assertEqual(parsed[0].version, "2.0")
+                self.assertEqual(parsed[0].patches, ("//patches:fix.patch",))
+                self.assertEqual(parsed[0].patch_args, ("-p2",))
+
+    def test_patch_only_module_override_preserves_requested_version(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _write_module_files(
+                root,
+                """\
+                bazel_dep(name = "demo", version = "1.0")
+                single_version_override(
+                    module_name = "demo",
+                    patches = ["//patches:fix.patch"],
+                )
+                """,
+            )
+            parsed = deps.ModuleParser(root).parse(root / "MODULE.bazel")
+            self.assertEqual(parsed[0].version, "1.0")
+            self.assertEqual(parsed[0].patch_args, ("-p0",))
+
+    def test_module_override_rejects_unhandled_source_changes(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _write_module_files(
+                root,
+                """\
+                bazel_dep(name = "demo", version = "1.0")
+                single_version_override(
+                    module_name = "demo",
+                    patch_cmds = ["change-the-source"],
+                )
+                """,
+            )
+            with self.assertRaisesRegex(ValueError, "patch_cmds"):
+                deps.ModuleParser(root).parse(root / "MODULE.bazel")
+
     def test_http_archive_preserves_patch_configuration(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -220,6 +273,115 @@ class DepsTest(unittest.TestCase):
                 ["//build_tools/third_party/archive:fix.patch"],
             )
             self.assertEqual(lock["archive_dep"]["PATCH_ARGS"], ["-p1"])
+
+    def test_http_file_preserves_downloaded_file_path(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _write_module_files(
+                root,
+                """\
+                http_file = use_repo_rule(
+                    "@bazel_tools//tools/build_defs/repo:http.bzl",
+                    "http_file",
+                )
+
+                http_file(
+                    name = "binary_input",
+                    downloaded_file_path = "lib/binary.lib",
+                    sha256 = "3333333333333333333333333333333333333333333333333333333333333333",
+                    urls = ["https://example.com/binary.lib"],
+                )
+                """,
+            )
+
+            parsed = deps.ModuleParser(root).parse(root / "MODULE.bazel")
+
+            self.assertEqual(parsed[0].kind, "http_file")
+            self.assertEqual(parsed[0].downloaded_file_path, "lib/binary.lib")
+            lock = deps.parse_cmake_lock(_write_lock(root, parsed))
+            self.assertEqual(
+                lock["binary_input"]["DOWNLOADED_FILE_PATH"],
+                "lib/binary.lib",
+            )
+
+    def test_http_file_rejects_escaping_download_path(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _write_module_files(
+                root,
+                """\
+                http_file = use_repo_rule(
+                    "@bazel_tools//tools/build_defs/repo:http.bzl",
+                    "http_file",
+                )
+
+                http_file(
+                    name = "binary_input",
+                    downloaded_file_path = "../binary.lib",
+                    sha256 = "3333333333333333333333333333333333333333333333333333333333333333",
+                    url = "https://example.com/binary.lib",
+                )
+                """,
+            )
+
+            with self.assertRaisesRegex(ValueError, "must remain inside"):
+                deps.ModuleParser(root).parse(root / "MODULE.bazel")
+
+    def test_downloaded_file_path_rejects_nonlocal_files(self):
+        invalid_paths = [
+            "/binary.lib",
+            "C:/binary.lib",
+            "C:binary.lib",
+            "directory/../binary.lib",
+            "directory\\binary.lib",
+            "directory/",
+        ]
+        for path in invalid_paths:
+            with self.subTest(path=path):
+                with self.assertRaisesRegex(ValueError, "must remain inside"):
+                    deps._validate_downloaded_file_path(path, "http_file(test)")
+
+    def test_check_mode_fails_when_http_file_path_is_stale(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _write_module_files(
+                root,
+                """\
+                http_file = use_repo_rule(
+                    "@bazel_tools//tools/build_defs/repo:http.bzl",
+                    "http_file",
+                )
+
+                http_file(
+                    name = "binary_input",
+                    downloaded_file_path = "current.lib",
+                    sha256 = "3333333333333333333333333333333333333333333333333333333333333333",
+                    url = "https://example.com/binary.lib",
+                )
+                """,
+            )
+            _write_lock(
+                root,
+                [
+                    deps.Dependency(
+                        name="binary_input",
+                        kind="http_file",
+                        owner="shared",
+                        module_name="binary_input",
+                        repo_name="binary_input",
+                        version="",
+                        dev_dependency=False,
+                        urls=("https://example.com/binary.lib",),
+                        sha256="3" * 64,
+                        downloaded_file_path="old.lib",
+                    ),
+                ],
+            )
+
+            result = self._run_deps(root, "--check")
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("MODULE.cmake.lock is stale", result.stderr)
 
     def test_rocm_repository_locks_pinned_sources_only(self):
         with tempfile.TemporaryDirectory() as temp_dir:
