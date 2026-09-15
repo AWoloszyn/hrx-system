@@ -34,6 +34,9 @@ typedef enum loom_low_packet_progress_action_e {
   LOOM_LOW_PACKET_PROGRESS_ACTION_ADVANCE = 1,
   // Packet resets the progress class to its target-defined origin.
   LOOM_LOW_PACKET_PROGRESS_ACTION_RESET = 2,
+  // Packet bounds outstanding work in the progress class by |units|. This
+  // does not identify completed producers or advance elapsed-work progress.
+  LOOM_LOW_PACKET_PROGRESS_ACTION_BOUND = 3,
 } loom_low_packet_progress_action_t;
 
 // Target-emitted progress fact for the current packet.
@@ -44,7 +47,8 @@ typedef struct loom_low_packet_progress_event_t {
   iree_string_view_t progress_class_name;
   // Progress operation performed by the packet.
   loom_low_packet_progress_action_t action;
-  // Units advanced. Must be non-zero for ADVANCE and zero for RESET.
+  // Units advanced for ADVANCE, zero for RESET, or nonzero outstanding-work
+  // upper bound for BOUND.
   uint32_t units;
 } loom_low_packet_progress_event_t;
 
@@ -92,7 +96,8 @@ typedef struct loom_low_packet_progress_record_t {
   iree_string_view_t progress_class_name;
   // Progress operation performed by the packet.
   loom_low_packet_progress_action_t action;
-  // Units advanced. Zero for RESET.
+  // Units advanced for ADVANCE, zero for RESET, or nonzero outstanding-work
+  // upper bound for BOUND.
   uint32_t units;
 } loom_low_packet_progress_record_t;
 
@@ -186,8 +191,9 @@ loom_low_packet_progress_class_chain_index_lookup(
 
 // Returns progress units completed after |start_packet_index| and before
 // |end_packet_index| for |progress_class_id|. A RESET completes all progress
-// preceding it and returns UINT32_MAX. Missing progress/index/class data
-// returns 0.
+// preceding it and returns UINT32_MAX. BOUND records do not contribute elapsed
+// progress: interpreting their completion guarantees requires target ordering
+// and producer state. Missing progress/index/class data returns 0.
 uint32_t loom_low_packet_progress_class_chain_index_observed_progress(
     const loom_low_packet_progress_class_chain_index_t* index,
     iree_host_size_t start_packet_index, iree_host_size_t end_packet_index,
@@ -211,8 +217,8 @@ loom_low_packet_progress_class_range_index_lookup(
 
 // Returns progress units completed after |start_packet_index| and before
 // |end_packet_index| using prefix range summaries. A RESET completes all
-// progress preceding it and returns UINT32_MAX. Missing
-// progress/index/class data returns 0.
+// progress preceding it and returns UINT32_MAX. BOUND records do not contribute
+// elapsed progress. Missing progress/index/class data returns 0.
 uint32_t loom_low_packet_progress_class_range_index_observed_progress(
     const loom_low_packet_progress_class_range_index_t* index,
     iree_host_size_t start_packet_index, iree_host_size_t end_packet_index,

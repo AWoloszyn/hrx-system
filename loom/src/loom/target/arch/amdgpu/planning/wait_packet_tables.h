@@ -53,16 +53,21 @@ const loom_low_descriptor_t* loom_amdgpu_wait_packet_resolve_descriptor(
     const loom_low_descriptor_set_t* descriptor_set,
     const loom_amdgpu_wait_packet_descriptor_template_t* packet_descriptor);
 
-// Returns the logical counters fully drained by an explicit wait packet
-// already present in scheduled low IR. Descriptor effects describe the counters
-// the packet can encode; this helper interprets the packet's concrete
-// immediate attributes. Only zero thresholds establish full completion;
-// partial thresholds and fields left unconstrained do not reset a counter.
-uint32_t loom_amdgpu_wait_packet_explicit_counter_mask(
+// Concrete logical-counter bounds decoded once from an explicit wait packet.
+typedef struct loom_amdgpu_wait_packet_bounds_t {
+  // Remaining-work upper bounds by logical counter slot. UINT16_MAX leaves
+  // the counter unconstrained; zero proves full completion.
+  uint16_t target_counts[LOOM_AMDGPU_WAIT_COUNTER_SLOT_COUNT];
+} loom_amdgpu_wait_packet_bounds_t;
+
+// Decodes an explicit packet's concrete immediate attributes into retained
+// logical-counter bounds. Returns the mask of fully drained counters; partial
+// bounds and unconstrained fields never establish a counter reset.
+uint32_t loom_amdgpu_wait_packet_decode_bounds(
     const loom_low_descriptor_set_t* descriptor_set,
     const loom_low_descriptor_t* descriptor,
     const loom_amdgpu_wait_packet_target_t* target, const loom_module_t* module,
-    const loom_op_t* op);
+    const loom_op_t* op, loom_amdgpu_wait_packet_bounds_t* out_bounds);
 
 #ifdef __cplusplus
 }  // extern "C"

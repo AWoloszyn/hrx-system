@@ -41,6 +41,8 @@ iree_string_view_t loom_low_packet_progress_action_name(
       return IREE_SV("advance");
     case LOOM_LOW_PACKET_PROGRESS_ACTION_RESET:
       return IREE_SV("reset");
+    case LOOM_LOW_PACKET_PROGRESS_ACTION_BOUND:
+      return IREE_SV("bound");
     case LOOM_LOW_PACKET_PROGRESS_ACTION_UNKNOWN:
     default:
       return IREE_SV("unknown");

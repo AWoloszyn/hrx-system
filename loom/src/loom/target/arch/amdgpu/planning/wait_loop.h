@@ -59,22 +59,24 @@ typedef struct loom_amdgpu_wait_loop_node_t {
 } loom_amdgpu_wait_loop_node_t;
 
 typedef enum loom_amdgpu_wait_loop_cyclic_frontier_flag_bits_e {
-  // The block has a proven fixed-point incoming counter state.
+  // The block has a proven upper bound on its incoming pending suffix.
   LOOM_AMDGPU_WAIT_LOOP_CYCLIC_FRONTIER_FLAG_VALID = 1u << 0,
 } loom_amdgpu_wait_loop_cyclic_frontier_flag_bits_t;
 typedef uint8_t loom_amdgpu_wait_loop_cyclic_frontier_flags_t;
 
-// One stable incoming counter epoch reconstructed for a canonical loop block.
+// One stable incoming counter epoch derived for a canonical loop block.
+// The trailing producer list bounds the pending suffix on each backedge.
+// Partial waits may retire a prefix without invalidating the bound or order.
 typedef struct loom_amdgpu_wait_loop_cyclic_frontier_t {
-  // Fixed-point validity flags. A valid frontier may have no outstanding work.
+  // Bound validity flags. A valid frontier may have no outstanding work.
   loom_amdgpu_wait_loop_cyclic_frontier_flags_t flags;
   // First scheduled ordinal in the trailing producer epoch.
   uint32_t producer_start_ordinal;
-  // Outstanding packets entering the next execution of the block.
+  // Upper bound on outstanding packets entering the next block execution.
   uint32_t outstanding_count;
-  // Outstanding writes entering the next execution of the block.
+  // Upper bound on outstanding writes entering the next block execution.
   uint32_t outstanding_write_count;
-  // Outstanding workgroup writes entering the next execution of the block.
+  // Upper bound on outstanding workgroup writes entering the next execution.
   uint32_t outstanding_workgroup_write_count;
 } loom_amdgpu_wait_loop_cyclic_frontier_t;
 

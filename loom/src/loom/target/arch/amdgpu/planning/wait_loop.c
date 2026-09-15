@@ -439,8 +439,10 @@ static bool loom_amdgpu_wait_loop_analyze_cyclic_frontier(
   if (!reset_establishes_epoch && !consumers_cover_epoch) return false;
 
   // Once the trailing epoch begins, every progress operation must be part of
-  // that stable epoch. A later reset or dependency needs a more general
-  // counter dataflow model and therefore keeps conservative wait placement.
+  // that stable epoch. Nonzero bounds can retire an ordered prefix without
+  // changing the producer identities or their upper bound. A later reset or
+  // dependency needs a more general counter dataflow model and therefore keeps
+  // conservative wait placement.
   for (uint32_t i = first_producer_ordinal; i < block->scheduled_node_count;
        ++i) {
     const uint32_t packet_index = block->scheduled_node_start + i;
