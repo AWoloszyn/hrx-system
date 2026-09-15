@@ -11815,10 +11815,21 @@ HIPAPI hipError_t hipStreamWaitValue64(hipStream_t stream, void* ptr,
 }
 
 typedef struct iree_hip_stream_value_decoded_operation_t {
+  // Raw address named by the public operation.
   const void* address;
+  // Width of the naturally aligned target cell.
   iree_host_size_t byte_length;
+  // Byte offset of |address| into the assigned target.
+  iree_device_size_t target_offset;
+  // Original operation ordinal before address sorting.
+  uint16_t operation_index;
+  // Retained target ordinal assigned after address sorting.
+  uint16_t target_index;
+  // True for a wait operation and false for a write operation.
   bool is_wait;
+  // Validated wait parameters when |is_wait| is true.
   iree_hal_atomic_wait_params_t wait;
+  // Validated write parameters when |is_wait| is false.
   iree_hip_stream_value_write_params_t write;
 } iree_hip_stream_value_decoded_operation_t;
 
@@ -11831,6 +11842,8 @@ typedef struct iree_hip_stream_value_prepared_batch_t {
   hrx_buffer_t* owners;
   // Unique retained targets used while resolving operation addresses.
   iree_hip_stream_value_target_t* targets;
+  // Decoded operations retained until target ranges have been indexed.
+  iree_hip_stream_value_decoded_operation_t* decoded_operations;
   // Number of operations represented by this batch.
   iree_host_size_t operation_count;
   // Number of initialized entries in |targets|.
@@ -11847,6 +11860,9 @@ typedef struct iree_hip_stream_value_prepared_batch_t {
   // Inline retained target storage.
   iree_hip_stream_value_target_t
       inline_targets[IREE_HIP_STREAM_VALUE_INLINE_BATCH_CAPACITY];
+  // Inline decoded-operation storage.
+  iree_hip_stream_value_decoded_operation_t
+      inline_decoded_operations[IREE_HIP_STREAM_VALUE_INLINE_BATCH_CAPACITY];
 } iree_hip_stream_value_prepared_batch_t;
 
 static hipError_t iree_hip_stream_value_operation_decode(
@@ -11904,31 +11920,62 @@ static hipError_t iree_hip_stream_value_operation_decode(
 
   out_operation->address = address;
   out_operation->byte_length = byte_length;
+  out_operation->target_index = UINT16_MAX;
   out_operation->is_wait = is_wait;
   out_operation->wait = wait_params;
   out_operation->write = write_params;
   return hipSuccess;
 }
 
-static bool iree_hip_stream_value_target_contains(
-    const iree_hip_stream_value_target_t* target, const void* address,
-    iree_host_size_t byte_length, iree_device_size_t* out_offset) {
-  const uint64_t address_value = (uint64_t)(uintptr_t)address;
-  const uint64_t allocation_bases[] = {
-      target->buffer_ref.device_pointer,
-      (uint64_t)(uintptr_t)target->buffer_ref.host_pointer,
-  };
-  for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(allocation_bases); ++i) {
-    const uint64_t allocation_base = allocation_bases[i];
-    if (allocation_base == 0 || address_value < allocation_base) continue;
-    const uint64_t offset = address_value - allocation_base;
-    if (offset <= target->buffer_ref.allocation_size &&
-        byte_length <= target->buffer_ref.allocation_size - offset) {
-      *out_offset = (iree_device_size_t)offset;
-      return true;
+static int iree_hip_stream_value_compare_decoded_operations(
+    const void* lhs_ptr, const void* rhs_ptr) {
+  const iree_hip_stream_value_decoded_operation_t* lhs =
+      (const iree_hip_stream_value_decoded_operation_t*)lhs_ptr;
+  const iree_hip_stream_value_decoded_operation_t* rhs =
+      (const iree_hip_stream_value_decoded_operation_t*)rhs_ptr;
+  const uint64_t lhs_address = (uint64_t)(uintptr_t)lhs->address;
+  const uint64_t rhs_address = (uint64_t)(uintptr_t)rhs->address;
+  if (lhs_address < rhs_address) return -1;
+  if (lhs_address > rhs_address) return 1;
+  return lhs->operation_index < rhs->operation_index
+             ? -1
+             : lhs->operation_index > rhs->operation_index;
+}
+
+static iree_host_size_t iree_hip_stream_value_address_lower_bound(
+    const iree_hip_stream_value_decoded_operation_t* decoded_operations,
+    iree_host_size_t operation_count, uint64_t address) {
+  iree_host_size_t low = 0;
+  iree_host_size_t high = operation_count;
+  while (low < high) {
+    const iree_host_size_t middle = low + (high - low) / 2;
+    if ((uint64_t)(uintptr_t)decoded_operations[middle].address < address) {
+      low = middle + 1;
+    } else {
+      high = middle;
     }
   }
-  return false;
+  return low;
+}
+
+static void iree_hip_stream_value_assign_target_range(
+    iree_hip_stream_value_prepared_batch_t* batch, uint64_t allocation_base,
+    iree_device_size_t allocation_size, uint16_t target_index) {
+  if (allocation_base == 0) return;
+  iree_host_size_t position = iree_hip_stream_value_address_lower_bound(
+      batch->decoded_operations, batch->operation_count, allocation_base);
+  for (; position < batch->operation_count; ++position) {
+    iree_hip_stream_value_decoded_operation_t* decoded =
+        &batch->decoded_operations[position];
+    const uint64_t target_offset =
+        (uint64_t)(uintptr_t)decoded->address - allocation_base;
+    if (target_offset >= allocation_size) break;
+    if (decoded->target_index == UINT16_MAX &&
+        decoded->byte_length <= allocation_size - target_offset) {
+      decoded->target_index = target_index;
+      decoded->target_offset = (iree_device_size_t)target_offset;
+    }
+  }
 }
 
 static void iree_hip_stream_value_operation_initialize_decoded(
@@ -11968,14 +12015,17 @@ static hipError_t iree_hip_stream_value_prepared_batch_initialize(
   out_batch->operations = out_batch->inline_operations;
   out_batch->owners = out_batch->inline_owners;
   out_batch->targets = out_batch->inline_targets;
+  out_batch->decoded_operations = out_batch->inline_decoded_operations;
   out_batch->operation_count = operation_count;
 
   if (operation_count > IREE_HIP_STREAM_VALUE_INLINE_BATCH_CAPACITY) {
     iree_host_size_t operations_size = 0;
     iree_host_size_t owners_size = 0;
     iree_host_size_t targets_size = 0;
+    iree_host_size_t decoded_operations_size = 0;
     iree_host_size_t owners_offset = 0;
     iree_host_size_t targets_offset = 0;
+    iree_host_size_t decoded_operations_offset = 0;
     iree_host_size_t total_size = 0;
     if (IREE_UNLIKELY(
             !iree_host_size_checked_mul(
@@ -11993,6 +12043,16 @@ static hipError_t iree_hip_stream_value_prepared_batch_initialize(
                                         sizeof(iree_hip_stream_value_target_t),
                                         &targets_size) ||
             !iree_host_size_checked_add(targets_offset, targets_size,
+                                        &decoded_operations_offset) ||
+            !iree_host_size_checked_align(decoded_operations_offset,
+                                          iree_max_align_t,
+                                          &decoded_operations_offset) ||
+            !iree_host_size_checked_mul(
+                operation_count,
+                sizeof(iree_hip_stream_value_decoded_operation_t),
+                &decoded_operations_size) ||
+            !iree_host_size_checked_add(decoded_operations_offset,
+                                        decoded_operations_size,
                                         &total_size))) {
       return hipErrorInvalidValue;
     }
@@ -12007,37 +12067,66 @@ static hipError_t iree_hip_stream_value_prepared_batch_initialize(
         (iree_hip_stream_value_target_t*)((uint8_t*)
                                               out_batch->allocated_storage +
                                           targets_offset);
+    out_batch->decoded_operations =
+        (iree_hip_stream_value_decoded_operation_t*)((uint8_t*)out_batch
+                                                         ->allocated_storage +
+                                                     decoded_operations_offset);
   }
 
   hipError_t result = hipSuccess;
   for (iree_host_size_t i = 0; i < operation_count; ++i) {
-    iree_hip_stream_value_decoded_operation_t decoded;
-    result = iree_hip_stream_value_operation_decode(&param_array[i], &decoded);
+    iree_hip_stream_value_decoded_operation_t* decoded =
+        &out_batch->decoded_operations[i];
+    result = iree_hip_stream_value_operation_decode(&param_array[i], decoded);
     if (result != hipSuccess) break;
-    out_batch->contains_wait |= decoded.is_wait;
+    decoded->operation_index = (uint16_t)i;
+    out_batch->contains_wait |= decoded->is_wait;
+  }
 
-    iree_host_size_t target_index = 0;
-    iree_device_size_t target_offset = 0;
-    for (; target_index < out_batch->target_count; ++target_index) {
-      if (iree_hip_stream_value_target_contains(
-              &out_batch->targets[target_index], decoded.address,
-              decoded.byte_length, &target_offset)) {
-        break;
-      }
-    }
-    if (target_index == out_batch->target_count) {
+  if (result == hipSuccess) {
+    qsort(out_batch->decoded_operations, operation_count,
+          sizeof(*out_batch->decoded_operations),
+          iree_hip_stream_value_compare_decoded_operations);
+  }
+  for (iree_host_size_t position = 0;
+       result == hipSuccess && position < operation_count; ++position) {
+    iree_hip_stream_value_decoded_operation_t* decoded =
+        &out_batch->decoded_operations[position];
+    if (decoded->target_index == UINT16_MAX) {
+      const uint16_t target_index = (uint16_t)out_batch->target_count;
       result = iree_hip_stream_value_target_initialize(
-          context, decoded.address, decoded.byte_length,
+          context, decoded->address, decoded->byte_length,
           &out_batch->targets[out_batch->target_count]);
       if (result != hipSuccess) break;
-      target_offset =
-          out_batch->targets[out_batch->target_count].buffer_ref.offset;
       ++out_batch->target_count;
+      const iree_hal_streaming_retained_buffer_ref_t* buffer_ref =
+          &out_batch->targets[target_index].buffer_ref;
+      iree_hip_stream_value_assign_target_range(
+          out_batch, buffer_ref->device_pointer, buffer_ref->allocation_size,
+          target_index);
+      const uint64_t host_pointer =
+          (uint64_t)(uintptr_t)buffer_ref->host_pointer;
+      if (host_pointer != buffer_ref->device_pointer) {
+        iree_hip_stream_value_assign_target_range(
+            out_batch, host_pointer, buffer_ref->allocation_size, target_index);
+      }
     }
+  }
+
+  for (iree_host_size_t position = 0;
+       result == hipSuccess && position < operation_count; ++position) {
+    const iree_hip_stream_value_decoded_operation_t* decoded =
+        &out_batch->decoded_operations[position];
+    if (IREE_UNLIKELY(decoded->target_index == UINT16_MAX)) {
+      result = hipErrorInvalidValue;
+      break;
+    }
+    const iree_hip_stream_value_target_t* target =
+        &out_batch->targets[decoded->target_index];
     iree_hip_stream_value_operation_initialize_decoded(
-        &decoded, &out_batch->targets[target_index], target_offset,
-        &out_batch->operations[i]);
-    out_batch->owners[i] = out_batch->targets[target_index].buffer_ref.owner;
+        decoded, target, decoded->target_offset,
+        &out_batch->operations[decoded->operation_index]);
+    out_batch->owners[decoded->operation_index] = target->buffer_ref.owner;
   }
   if (result != hipSuccess) {
     iree_hip_stream_value_prepared_batch_deinitialize(out_batch);
