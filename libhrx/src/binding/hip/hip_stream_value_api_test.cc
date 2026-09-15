@@ -354,6 +354,16 @@ class HipStreamValueApiTest : public testing::Test {
                                         hipDeviceAttributeCanUseStreamWaitValue,
                                         /*device=*/0));
     supports_value_waits_ = can_use_stream_wait_value != 0;
+    if (const char* expected_wait_support =
+            std::getenv("HRX_TEST_EXPECT_STREAM_VALUE_WAITS")) {
+      ASSERT_TRUE(std::strcmp(expected_wait_support, "0") == 0 ||
+                  std::strcmp(expected_wait_support, "1") == 0)
+          << "HRX_TEST_EXPECT_STREAM_VALUE_WAITS must be 0 or 1";
+      ASSERT_EQ(std::strcmp(expected_wait_support, "1") == 0,
+                supports_value_waits_)
+          << "runner stream memory wait capability differs from its configured "
+             "expectation";
+    }
   }
 
   void TearDown() override {
@@ -561,7 +571,9 @@ TEST_F(HipStreamValueApiTest, ExecutesEveryWaitPredicateAtBothWidths) {
   void* signal = AllocateSignal();
   ASSERT_NE(nullptr, stream);
   ASSERT_NE(nullptr, signal);
-  if (!CheckWaitSupport(stream, signal)) return;
+  if (!CheckWaitSupport(stream, signal)) {
+    GTEST_SKIP() << "stream memory waits are unsupported on this runner";
+  }
 
   const unsigned int predicates[] = {
       hipStreamWaitValueGte,
@@ -592,7 +604,7 @@ TEST_F(HipStreamValueApiTest, ExecutesEveryWaitPredicateAtBothWidths) {
   }
 }
 
-TEST_F(HipStreamValueApiTest, ExecutesSystemScopeOperationsOnHostMemory) {
+TEST_F(HipStreamValueApiTest, ExecutesSystemScopeWritesOnHostMemory) {
   hipStream_t stream = CreateStream();
   void* host_allocation = AllocateHost(16);
   ASSERT_NE(nullptr, stream);
@@ -603,7 +615,6 @@ TEST_F(HipStreamValueApiTest, ExecutesSystemScopeOperationsOnHostMemory) {
                             &device_pointer, host_allocation, /*flags=*/0));
   ASSERT_NE(nullptr, device_pointer);
   std::memset(host_allocation, 0, 16);
-  if (!CheckWaitSupport(stream, device_pointer)) return;
 
   void* value_32 = device_pointer;
   void* value_64 = static_cast<uint8_t*>(device_pointer) + 8;
@@ -628,11 +639,33 @@ TEST_F(HipStreamValueApiTest, ExecutesSystemScopeOperationsOnHostMemory) {
               sizeof(observed_64));
   EXPECT_EQ(10u, observed_32);
   EXPECT_EQ(15u, observed_64);
+}
 
-  EXPECT_EQ(hipSuccess, api_.wait_value_32(stream, value_32, observed_32,
+TEST_F(HipStreamValueApiTest, ExecutesSystemScopeWaitsOnHostMemory) {
+  hipStream_t stream = CreateStream();
+  void* host_allocation = AllocateHost(16);
+  ASSERT_NE(nullptr, stream);
+  ASSERT_NE(nullptr, host_allocation);
+
+  hipDeviceptr_t device_pointer = nullptr;
+  ASSERT_EQ(hipSuccess, api_.host_get_device_pointer(
+                            &device_pointer, host_allocation, /*flags=*/0));
+  ASSERT_NE(nullptr, device_pointer);
+  if (!CheckWaitSupport(stream, device_pointer)) {
+    GTEST_SKIP() << "stream memory waits are unsupported on this runner";
+  }
+
+  constexpr uint32_t kValue32 = 10;
+  constexpr uint64_t kValue64 = 15;
+  std::memcpy(host_allocation, &kValue32, sizeof(kValue32));
+  std::memcpy(static_cast<uint8_t*>(host_allocation) + 8, &kValue64,
+              sizeof(kValue64));
+
+  EXPECT_EQ(hipSuccess, api_.wait_value_32(stream, device_pointer, kValue32,
                                            hipStreamWaitValueEq, UINT32_MAX));
-  EXPECT_EQ(hipSuccess, api_.wait_value_64(stream, value_64, observed_64,
-                                           hipStreamWaitValueEq, UINT64_MAX));
+  EXPECT_EQ(hipSuccess, api_.wait_value_64(
+                            stream, static_cast<uint8_t*>(device_pointer) + 8,
+                            kValue64, hipStreamWaitValueEq, UINT64_MAX));
   EXPECT_EQ(hipSuccess, api_.stream_synchronize(stream));
 }
 
@@ -797,7 +830,9 @@ TEST_F(HipStreamValueApiTest, IndependentStreamWaitsDoNotShareAQueueLane) {
   ASSERT_EQ(hipSuccess, api_.memset(value_y, 0, sizeof(uint64_t)));
   ASSERT_EQ(hipSuccess, api_.memset(value_x_64, 0, sizeof(uint64_t)));
   ASSERT_EQ(hipSuccess, api_.memset(value_y_64, 0, sizeof(uint64_t)));
-  if (!CheckWaitSupport(stream_a, value_x)) return;
+  if (!CheckWaitSupport(stream_a, value_x)) {
+    GTEST_SKIP() << "stream memory waits are unsupported on this runner";
+  }
   ASSERT_EQ(hipSuccess, api_.wait_value_32(stream_a, value_x, 1,
                                            hipStreamWaitValueEq, UINT32_MAX));
   ASSERT_EQ(hipSuccess, api_.wait_value_64(stream_a, value_x_64, 1,
@@ -836,7 +871,9 @@ TEST_F(HipStreamValueApiTest, SameStreamPendingWaitsShareAQueueLane) {
   ASSERT_NE(nullptr, wait_stream);
   ASSERT_NE(nullptr, signal);
   ASSERT_EQ(hipSuccess, api_.memset(signal, 0, sizeof(uint32_t)));
-  if (!CheckWaitSupport(wait_stream, signal)) return;
+  if (!CheckWaitSupport(wait_stream, signal)) {
+    GTEST_SKIP() << "stream memory waits are unsupported on this runner";
+  }
 
   // Queue more unresolved waits than the backend's dynamic queue identity
   // space. Ordered waits on one logical stream must remain on one sticky lane
@@ -865,7 +902,9 @@ TEST_F(HipStreamValueApiTest, CompletedWaitLanesRecycleAcrossLiveStreams) {
 
   hipStream_t first_stream = CreateStream();
   ASSERT_NE(nullptr, first_stream);
-  if (!CheckWaitSupport(first_stream, signal)) return;
+  if (!CheckWaitSupport(first_stream, signal)) {
+    GTEST_SKIP() << "stream memory waits are unsupported on this runner";
+  }
 
   // Keep more logical streams alive than the hardware queue identity space.
   // Each satisfied wait completes before the next stream submits, so a
@@ -1175,7 +1214,9 @@ TEST_F(HipStreamValueApiTest, CaptureBeginRacesValueWaitSubmission) {
   void* allocation = AllocateSignal();
   ASSERT_NE(nullptr, stream);
   ASSERT_NE(nullptr, allocation);
-  if (!CheckWaitSupport(stream, allocation)) return;
+  if (!CheckWaitSupport(stream, allocation)) {
+    GTEST_SKIP() << "stream memory waits are unsupported on this runner";
+  }
 
   for (int iteration = 0; iteration < 64; ++iteration) {
     ASSERT_EQ(hipSuccess, api_.memset(allocation, 0, sizeof(uint32_t)));
@@ -1216,7 +1257,9 @@ TEST_F(HipStreamValueApiTest, CaptureEndRacesValueWaitSubmission) {
   ASSERT_NE(nullptr, stream);
   ASSERT_NE(nullptr, allocation);
   ASSERT_EQ(hipSuccess, api_.memset(allocation, 0, sizeof(uint32_t)));
-  if (!CheckWaitSupport(stream, allocation)) return;
+  if (!CheckWaitSupport(stream, allocation)) {
+    GTEST_SKIP() << "stream memory waits are unsupported on this runner";
+  }
 
   for (int iteration = 0; iteration < 64; ++iteration) {
     ASSERT_EQ(hipSuccess,
@@ -1348,7 +1391,9 @@ TEST_F(HipStreamValueApiTest, StreamTeardownCompletesAfterIndependentProducer) {
   ASSERT_NE(nullptr, producer_stream);
   ASSERT_NE(nullptr, allocation);
   ASSERT_EQ(hipSuccess, api_.memset(allocation, 0, sizeof(uint32_t)));
-  if (!CheckWaitSupport(wait_stream, allocation)) return;
+  if (!CheckWaitSupport(wait_stream, allocation)) {
+    GTEST_SKIP() << "stream memory waits are unsupported on this runner";
+  }
   ASSERT_EQ(hipSuccess, api_.wait_value_32(wait_stream, allocation, 1,
                                            hipStreamWaitValueEq, UINT32_MAX));
 
