@@ -168,11 +168,15 @@ function(iree_cc_library)
     add_library(${_OBJECTS_NAME} OBJECT)
     if(_RULE_SHARED OR BUILD_SHARED_LIBS)
       add_library(${_NAME} SHARED "$<TARGET_OBJECTS:${_OBJECTS_NAME}>")
+      set(_LINKOPTS_SCOPE PRIVATE)
       if(_RULE_WINDOWS_DEF_FILE AND WIN32)
         target_sources(${_NAME} PRIVATE "${_RULE_WINDOWS_DEF_FILE}")
       endif()
     else()
       add_library(${_NAME} STATIC "$<TARGET_OBJECTS:${_OBJECTS_NAME}>")
+      # An archive has no native link step. Its declared link requirements
+      # belong to the executable or shared library that consumes its objects.
+      set(_LINKOPTS_SCOPE INTERFACE)
       if(_RULE_WINDOWS_DEF_FILE AND WIN32)
         message(SEND_ERROR "If specifying a .def file library must be shared")
       endif()
@@ -245,6 +249,7 @@ function(iree_cc_library)
     target_link_options(${_NAME}
       PRIVATE
         ${IREE_DEFAULT_LINKOPTS}
+      ${_LINKOPTS_SCOPE}
         ${_RULE_LINKOPTS}
     )
     target_link_libraries(${_NAME}
