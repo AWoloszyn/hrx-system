@@ -830,28 +830,44 @@ TEST_F(HipArrayCopySptApiTest, NoOpAndDeviceCopyDoNotDrainPerThreadStream) {
 TEST_F(HipArrayCopySptApiTest, SynchronousCopyRejectsCaptureBeforeMutation) {
   constexpr size_t kWidth = 8;
   AllocateArray(kWidth, 1);
-  AllocateHost(kWidth);
-  auto* source = static_cast<uint8_t*>(host_pointer_);
+  const std::array<uint8_t, kWidth> original = {1, 2, 3, 4, 5, 6, 7, 8};
+  const std::array<uint8_t, kWidth> replacement = {9,  10, 11, 12,
+                                                   13, 14, 15, 16};
+  ASSERT_EQ(hipSuccess, api_.memcpy_to_array(array_, 0, 0, original.data(),
+                                             kWidth, hipMemcpyHostToDevice));
+
+  const auto expect_original_contents = [&] {
+    std::array<uint8_t, kWidth> actual = {};
+    ASSERT_EQ(hipSuccess,
+              api_.memcpy_from_array_spt(actual.data(), array_, 0, 0, kWidth,
+                                         hipMemcpyDeviceToHost));
+    EXPECT_EQ(original, actual);
+  };
+
   ASSERT_EQ(hipSuccess,
             api_.stream_begin_capture(hipStreamPerThread,
                                       hipStreamCaptureModeThreadLocal));
-  EXPECT_EQ(hipErrorStreamCaptureImplicit,
-            api_.memcpy_2d_to_array_spt(array_, 0, 0, source, kWidth, kWidth, 1,
-                                        hipMemcpyHostToDevice));
+  EXPECT_EQ(
+      hipErrorStreamCaptureImplicit,
+      api_.memcpy_2d_to_array_spt(array_, 0, 0, replacement.data(), kWidth,
+                                  kWidth, 1, hipMemcpyHostToDevice));
   hipGraph_t graph = nullptr;
   EXPECT_EQ(hipErrorStreamCaptureInvalidated,
             api_.stream_end_capture(hipStreamPerThread, &graph));
   EXPECT_EQ(nullptr, graph);
+  expect_original_contents();
 
   ASSERT_EQ(hipSuccess, api_.stream_create(&stream_));
   ASSERT_EQ(hipSuccess, api_.stream_begin_capture(
                             stream_, hipStreamCaptureModeThreadLocal));
-  EXPECT_EQ(hipErrorStreamCaptureImplicit,
-            api_.memcpy_2d_to_array_spt(array_, 0, 0, source, kWidth, kWidth, 1,
-                                        hipMemcpyHostToDevice));
+  EXPECT_EQ(
+      hipErrorStreamCaptureImplicit,
+      api_.memcpy_2d_to_array_spt(array_, 0, 0, replacement.data(), kWidth,
+                                  kWidth, 1, hipMemcpyHostToDevice));
   EXPECT_EQ(hipErrorStreamCaptureInvalidated,
             api_.stream_end_capture(stream_, &graph));
   EXPECT_EQ(nullptr, graph);
+  expect_original_contents();
 }
 
 TEST_F(HipArrayCopySptApiTest, CopiesPackedRowsAtRepresentativeHeights) {
