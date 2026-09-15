@@ -6,6 +6,7 @@
 
 #include <iomanip>
 #include <iostream>
+#include <string>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -29,8 +30,13 @@ NTSTATUS APIENTRY ObserveQuery(const D3DKMT_QUERYADAPTERINFO* query) {
     const auto* version = static_cast<const D3DKMT_KMD_DRIVER_VERSION*>(
         query->pPrivateDriverData);
     const uint64_t value = version->DriverVersion.QuadPart;
-    std::cout << " driver=" << (value >> 48) << '.' << ((value >> 32) & 0xffff)
-              << '.' << ((value >> 16) & 0xffff) << '.' << (value & 0xffff);
+    const std::string driver_version = std::to_string(value >> 48) + '.' +
+                                       std::to_string((value >> 32) & 0xffff) +
+                                       '.' +
+                                       std::to_string((value >> 16) & 0xffff) +
+                                       '.' + std::to_string(value & 0xffff);
+    ::testing::Test::RecordProperty("kmd_driver_version", driver_version);
+    std::cout << " driver=" << driver_version;
   }
   std::cout << std::endl;
   return status;
@@ -91,6 +97,12 @@ TEST_F(WindowsXdnaNativeAbiSystemTest, ResolvesAbiBeforeDeviceCreation) {
                                                    endpoint_->adapter, &abi),
                 AMDF_STATUS_OK);
       EXPECT_GT(abi.submission_header_byte_length, 0u);
+      RecordProperty("context_encoding",
+                     static_cast<int>(abi.context_encoding));
+      RecordProperty("submission_header_byte_length",
+                     static_cast<int>(abi.submission_header_byte_length));
+      RecordProperty("shared_kernel_buffers",
+                     abi.shared_kernel_buffers ? 1 : 0);
       std::cout << "Native context encoding=" << abi.context_encoding
                 << " submission header bytes="
                 << abi.submission_header_byte_length
