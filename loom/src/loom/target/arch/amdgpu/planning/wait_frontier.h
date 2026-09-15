@@ -188,6 +188,15 @@ uint32_t loom_amdgpu_wait_frontier_memory_dependency_mask(
     const loom_amdgpu_wait_frontier_t* frontier,
     const loom_amdgpu_wait_frontier_node_t* node);
 
+// Returns true when incoming memory state proves |producer_node|'s work in
+// |counter_mask| complete. The producer must be in a different block from the
+// active consumer. Untracked counters and possibly pending aliasing work are
+// inconclusive. Unresolved predecessors and backedges retain conservative
+// state.
+bool loom_amdgpu_wait_frontier_producer_is_complete(
+    const loom_amdgpu_wait_frontier_t* frontier, uint32_t producer_node,
+    uint32_t counter_mask);
+
 // Returns the single known completion-order class for outstanding VMEM writes
 // overlapping |assignment|. UNKNOWN represents either an unclassified write or
 // writes from multiple classes; NONE means no outstanding write overlaps.

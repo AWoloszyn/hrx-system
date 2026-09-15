@@ -506,3 +506,185 @@ low.func.def target<amdgpu.rdna3.core>(@target) @retired_history_before_pending_
   s_waitcnt vmcnt(63) lgkmcnt(0)
   v_add_u32 v4, v1, v2
   s_endpgm
+
+// ====
+
+// The incoming frontier carries a coupled full drain through an intermediate
+// block. The later scalar use needs no second LGKM wait.
+// RUN: emit amdgpu-assembly @transitive_coupled_completion strategy=source
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @transitive_coupled_completion(%base: reg<amdgpu.sgpr x2>, %offset: reg<amdgpu.sgpr>, %address: reg<amdgpu.vgpr>) asm {
+  %scalar = s_load_dword %base, %offset
+  %local = ds_read_b32 %address
+  low.br ^consume_local
+^consume_local:
+  %local_sum = v_add_u32 %local, %address
+  low.br ^finish
+^finish:
+  %scalar_sum = s_add_u32 %scalar, %offset
+  %sum = v_add_u32 %scalar_sum, %local_sum
+  ds_write_b32 %address, %sum {offset = 4}
+  return
+}
+
+// ----
+  s_load_dword s3, s[0:1], s2 offset:0
+  ds_read_b32 v1, v0 offset:0
+.Lbb1:
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  v_add_u32 v1, v1, v0
+.Lbb2:
+  s_add_u32 s0, s3, s2
+  v_add_u32 v1, s0, v1
+  ds_write_b32 v0, v1 offset:4
+  s_endpgm
+
+// ====
+
+// Separate hardware counters preserve the scalar dependency through the same
+// CFG: completing LDS in the intermediate block cannot complete SMEM.
+// RUN: emit amdgpu-assembly @transitive_independent_completion strategy=source
+amdgpu.target<gfx1201> @target
+
+low.func.def target<amdgpu.rdna4.core>(@target) @transitive_independent_completion(%base: reg<amdgpu.sgpr x2>, %offset: reg<amdgpu.sgpr>, %address: reg<amdgpu.vgpr>) asm {
+  %scalar = s_load_dword %base, %offset
+  %local = ds_read_b32 %address
+  low.br ^consume_local
+^consume_local:
+  %local_sum = v_add_u32 %local, %address
+  low.br ^finish
+^finish:
+  %scalar_sum = s_add_u32 %scalar, %offset
+  %sum = v_add_u32 %scalar_sum, %local_sum
+  ds_write_b32 %address, %sum {offset = 4}
+  return
+}
+
+// ----
+  s_load_dword s3, s[0:1], s2 offset:0
+  ds_read_b32 v1, v0 offset:0
+.Lbb1:
+  s_wait_dscnt dscnt(0)
+  v_add_u32 v1, v1, v0
+.Lbb2:
+  s_wait_kmcnt kmcnt(0)
+  s_add_u32 s0, s3, s2
+  v_add_u32 v1, s0, v1
+  ds_write_b32 v0, v1 offset:4
+  s_endpgm
+
+// ====
+
+// Both incoming paths complete the shared counter. The merge consumes their
+// resolved states, including completion of the unused scalar dependency.
+// RUN: emit amdgpu-assembly @transitive_completion_on_both_paths strategy=source
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @transitive_completion_on_both_paths(%base: reg<amdgpu.sgpr x2>, %offset: reg<amdgpu.sgpr>, %address: reg<amdgpu.vgpr>, %limit: reg<amdgpu.sgpr>) asm {
+  %scalar = s_load_dword %base, %offset
+  %local = ds_read_b32 %address
+  %condition = s_cmp_lt_i32 %offset, %limit
+  low.cond_br %condition, ^first, ^second : reg<amdgpu.scc>
+^first:
+  %first_sum = v_add_u32 %local, %address
+  low.br ^join
+^second:
+  %second_sum = v_add_u32 %local, %address
+  low.br ^join
+^join:
+  %sum = v_add_u32 %scalar, %local
+  ds_write_b32 %address, %sum {offset = 4}
+  return
+}
+
+// ----
+  s_load_dword s4, s[0:1], s2 offset:0
+  ds_read_b32 v1, v0 offset:0
+  s_cmp_lt_i32 s2, s3
+  s_delay_alu instid0(SALU_CYCLE_1)
+  s_cbranch_scc0 .Lbb2
+.Lbb1:
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  v_add_u32 v2, v1, v0
+  s_branch .Lbb3
+.Lbb2:
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  v_add_u32 v2, v1, v0
+.Lbb3:
+  v_add_u32 v1, s4, v1
+  ds_write_b32 v0, v1 offset:4
+  s_endpgm
+
+// ====
+
+// A later load repopulates the outgoing scalar counter after a coupled drain.
+// Completion of the earlier load cannot cover this new producer at the join.
+// RUN: emit amdgpu-assembly @transitive_completion_before_new_producer strategy=source
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @transitive_completion_before_new_producer(%base: reg<amdgpu.sgpr x2>, %offset: reg<amdgpu.sgpr>, %address: reg<amdgpu.vgpr>) asm {
+  %scalar = s_load_dword %base, %offset
+  %local = ds_read_b32 %address
+  low.br ^consume_local
+^consume_local:
+  %local_sum = v_add_u32 %local, %address
+  %later = s_load_dword %base, %offset {offset = 4}
+  low.br ^finish
+^finish:
+  %scalar_sum = s_add_u32 %scalar, %later
+  %sum = v_add_u32 %scalar_sum, %local_sum
+  ds_write_b32 %address, %sum {offset = 8}
+  return
+}
+
+// ----
+  s_load_dword s3, s[0:1], s2 offset:0
+  ds_read_b32 v1, v0 offset:0
+.Lbb1:
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  v_add_u32 v1, v1, v0
+  s_load_dword s4, s[0:1], s2 offset:4
+.Lbb2:
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  s_add_u32 s0, s3, s4
+  v_add_u32 v1, s0, v1
+  ds_write_b32 v0, v1 offset:8
+  s_endpgm
+
+// ====
+
+// A not-yet-processed incoming arm contributes conservative static state.
+// The earlier resolved arm alone cannot discharge the merged dependency.
+// RUN: emit amdgpu-assembly @completion_before_unresolved_predecessor strategy=source
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @completion_before_unresolved_predecessor(%address: reg<amdgpu.vgpr>, %lhs: reg<amdgpu.sgpr>, %rhs: reg<amdgpu.sgpr>) asm {
+  %loaded = ds_read_b32 %address
+  %condition = s_cmp_lt_i32 %lhs, %rhs
+  low.cond_br %condition, ^drained, ^pending : reg<amdgpu.scc>
+^drained:
+  s_waitcnt {lgkmcnt = 0}
+  low.br ^join
+^join:
+  %sum = v_add_u32 %loaded, %address
+  ds_write_b32 %address, %sum {offset = 4}
+  return
+^pending:
+  low.br ^join
+}
+
+// ----
+  ds_read_b32 v1, v0 offset:0
+  s_cmp_lt_i32 s0, s1
+  s_delay_alu instid0(SALU_CYCLE_1)
+  s_cbranch_scc0 .Lbb3
+.Lbb1:
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+.Lbb2:
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  v_add_u32 v1, v1, v0
+  ds_write_b32 v0, v1 offset:4
+  s_endpgm
+.Lbb3:
+  s_branch .Lbb2

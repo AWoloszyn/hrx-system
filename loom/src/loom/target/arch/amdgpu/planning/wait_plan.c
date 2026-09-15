@@ -3028,12 +3028,15 @@ static iree_status_t loom_amdgpu_wait_plan_handle_consumer(
           }
         }
       } else {
-        // Across block boundaries, the producer is safe only if a wait in its
-        // own block drained it before control could reach the consumer block.
+        // A producer-block or current-block drain proves completion directly.
+        // The incoming frontier also retains full drains through intermediate
+        // blocks, with conservative state for every unresolved incoming path.
         if (loom_amdgpu_wait_plan_producer_is_drained(
                 builder, link->producer_node, counter_mask) ||
             loom_amdgpu_wait_plan_current_block_satisfies_producer(
-                builder, link->producer_node, counter_mask)) {
+                builder, link->producer_node, counter_mask) ||
+            loom_amdgpu_wait_frontier_producer_is_complete(
+                &builder->frontier, link->producer_node, counter_mask)) {
           continue;
         }
         target_count = 0;

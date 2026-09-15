@@ -1047,6 +1047,23 @@ uint32_t loom_amdgpu_wait_frontier_memory_dependency_mask(
   return prior_writes | prior_reads;
 }
 
+bool loom_amdgpu_wait_frontier_producer_is_complete(
+    const loom_amdgpu_wait_frontier_t* frontier, uint32_t producer_node,
+    uint32_t counter_mask) {
+  const loom_amdgpu_wait_frontier_node_t* node =
+      &frontier->nodes[producer_node];
+  const uint32_t tracked_counter_mask =
+      node->read_counter_mask | node->write_counter_mask;
+  if (!iree_all_bits_set(tracked_counter_mask, counter_mask)) return false;
+  const uint32_t pending_reads = loom_amdgpu_wait_frontier_memory_query(
+      frontier, node->read_space_flags,
+      LOOM_AMDGPU_WAIT_MEMORY_ACCESS_FLAG_READ);
+  const uint32_t pending_writes = loom_amdgpu_wait_frontier_memory_query(
+      frontier, node->write_space_flags,
+      LOOM_AMDGPU_WAIT_MEMORY_ACCESS_FLAG_WRITE);
+  return !iree_any_bit_set(pending_reads | pending_writes, counter_mask);
+}
+
 loom_amdgpu_vmem_result_order_class_t
 loom_amdgpu_wait_frontier_query_vmem_result(
     const loom_amdgpu_wait_frontier_t* frontier,
