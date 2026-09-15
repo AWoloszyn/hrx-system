@@ -56,6 +56,31 @@ iree_cc_test(
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_test(
+  NAME
+    native_abi_system_test
+  SRCS
+    "native_abi_system_test.cc"
+  DEPS
+    ::native_abi
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+    libamdf::src::allocator
+    libamdf::src::platform
+    libamdf::src::platform::windows::endpoint
+    libamdf::src::xdna::endpoint_profile
+  LABELS
+    "iree-run-requirement=libamdf.resource.xdna"
+    "runtime-resource=amd-xdna"
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.xdna"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
 iree_cc_library(
   NAME
     legacy_context

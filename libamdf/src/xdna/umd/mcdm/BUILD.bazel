@@ -41,6 +41,26 @@ amdf_cc_test(
     ],
 )
 
+amdf_cc_test(
+    name = "native_abi_system_test",
+    srcs = ["native_abi_system_test.cc"],
+    resource_group = "iree-hal-drivers-amdgpu-tests",
+    tags = [
+        "iree-run-requirement=libamdf.resource.xdna",
+        "runtime-resource=amd-xdna",
+    ],
+    target_compatible_with = MCDM_COMPATIBILITY,
+    deps = [
+        ":native_abi",
+        "//libamdf/src:allocator",
+        "//libamdf/src/platform",
+        "//libamdf/src/platform/windows:endpoint",
+        "//libamdf/src/xdna:endpoint_profile",
+        "//third_party:google_test",
+        "//third_party:google_test_main",
+    ],
+)
+
 amdf_cc_library(
     name = "legacy_context",
     srcs = ["legacy_context.c"],
