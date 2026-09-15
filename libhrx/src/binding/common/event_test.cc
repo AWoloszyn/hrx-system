@@ -5,10 +5,12 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <thread>
 #include <utility>
 
 #include "common/internal.h"
@@ -661,6 +663,87 @@ TEST_F(CpuStreamingContextTest, CrossContextWaitOrdersCurrentAndLaterStreams) {
   IREE_ASSERT_OK(SignalGate(gate, gate_value));
   IREE_ASSERT_OK(iree_hal_streaming_stream_synchronize(current_stream));
   IREE_ASSERT_OK(iree_hal_streaming_stream_synchronize(later_stream));
+}
+
+struct HostOperationGate {
+  // Set after the operation begins executing.
+  std::atomic<bool> entered = false;
+  // Set by the test to let the operation complete.
+  std::atomic<bool> release = false;
+};
+
+iree_status_t WaitInHostOperation(void* user_data) {
+  auto* gate = static_cast<HostOperationGate*>(user_data);
+  gate->entered.store(true, std::memory_order_release);
+  while (!gate->release.load(std::memory_order_acquire)) {
+    std::this_thread::yield();
+  }
+  return iree_ok_status();
+}
+
+uint64_t StreamPendingValue(iree_hal_streaming_stream_t* stream) {
+  iree_slim_mutex_lock(&stream->mutex);
+  const uint64_t value = stream->pending_value;
+  iree_slim_mutex_unlock(&stream->mutex);
+  return value;
+}
+
+TEST_F(CpuStreamingContextTest,
+       HostOperationsReserveTheirTimelineBeforeWaiting) {
+  iree_hal_streaming_stream_t* stream = nullptr;
+  std::thread first_thread;
+  std::thread second_thread;
+  HostOperationGate first_gate;
+  HostOperationGate second_gate;
+  ScopeExit cleanup([&] {
+    first_gate.release.store(true, std::memory_order_release);
+    second_gate.release.store(true, std::memory_order_release);
+    IREE_EXPECT_OK(ReleaseAllGates());
+    if (first_thread.joinable()) first_thread.join();
+    if (second_thread.joinable()) second_thread.join();
+    iree_hal_streaming_stream_release(stream);
+  });
+
+  IREE_ASSERT_OK(CreateNonBlockingStream(context_, &stream));
+  iree_hal_semaphore_t* prior_gate = nullptr;
+  IREE_ASSERT_OK(CreateGate(/*release_value=*/1, &prior_gate));
+  uint64_t prior_value = 1;
+  const iree_hal_semaphore_list_t prior_wait = {
+      /*.count=*/1,
+      /*.semaphores=*/&prior_gate,
+      /*.payload_values=*/&prior_value,
+  };
+  IREE_ASSERT_OK(iree_hal_streaming_stream_wait_semaphores(stream, prior_wait));
+
+  iree_status_t first_status = iree_ok_status();
+  first_thread = std::thread([&] {
+    first_status = iree_hal_streaming_execute_host_operation(
+        stream, WaitInHostOperation, &first_gate);
+  });
+  while (StreamPendingValue(stream) < 2) std::this_thread::yield();
+
+  iree_status_t second_status = iree_ok_status();
+  second_thread = std::thread([&] {
+    second_status = iree_hal_streaming_execute_host_operation(
+        stream, WaitInHostOperation, &second_gate);
+  });
+  while (StreamPendingValue(stream) < 3) std::this_thread::yield();
+
+  IREE_ASSERT_OK(SignalGate(prior_gate, prior_value));
+  while (!first_gate.entered.load(std::memory_order_acquire)) {
+    std::this_thread::yield();
+  }
+  EXPECT_FALSE(second_gate.entered.load(std::memory_order_acquire));
+  first_gate.release.store(true, std::memory_order_release);
+  while (!second_gate.entered.load(std::memory_order_acquire)) {
+    std::this_thread::yield();
+  }
+  second_gate.release.store(true, std::memory_order_release);
+
+  first_thread.join();
+  second_thread.join();
+  IREE_EXPECT_OK(first_status);
+  IREE_EXPECT_OK(second_status);
 }
 
 // The records a graph launch enqueues run through the same helper as a direct

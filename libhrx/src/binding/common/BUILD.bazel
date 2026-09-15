@@ -149,6 +149,7 @@ hrx_cc_test(
     srcs = ["event_test.cc"],
     deps = [
         ":common",
+        "//build_tools/bazel:pthreads",
         "//libhrx/src/libhrx:hrx_static",
         "//runtime/src/iree/base",
         "//runtime/src/iree/hal",
