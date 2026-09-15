@@ -1654,18 +1654,15 @@ static iree_status_t iree_hal_streaming_graph_record_partition(
             &attrs->pattern, attrs->pattern_size, attrs->flags);
         break;
       }
-      case IREE_HAL_STREAMING_GRAPH_NODE_TYPE_ATOMIC_STORE: {
-        const iree_hal_streaming_graph_atomic_store_node_attrs_t* attrs =
-            &node->attrs.atomic_store;
-        status = iree_hal_command_buffer_atomic_store(
-            command_buffer,
+      case IREE_HAL_STREAMING_GRAPH_NODE_TYPE_BATCH_MEM_OP: {
+        const iree_hal_streaming_graph_batch_mem_op_node_attrs_t* attrs =
+            &node->attrs.batch_mem_op;
+        status = iree_hal_streaming_command_buffer_append_value_operations(
+            command_buffer, attrs->operation_count, attrs->operations,
             IREE_HAL_EXECUTION_STAGE_DISPATCH |
                 IREE_HAL_EXECUTION_STAGE_TRANSFER |
                 IREE_HAL_EXECUTION_STAGE_ATOMIC,
-            IREE_HAL_EXECUTION_STAGE_ATOMIC,
-            iree_hal_make_buffer_ref(attrs->target_buffer, attrs->target_offset,
-                                     attrs->params.width / 8),
-            attrs->params);
+            IREE_HAL_EXECUTION_STAGE_ATOMIC);
         break;
       }
       default: {

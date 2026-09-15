@@ -426,6 +426,15 @@ static iree_status_t iree_hal_streaming_value_operation_target_ref(
   return iree_ok_status();
 }
 
+iree_status_t iree_hal_streaming_value_operation_validate(
+    const iree_hal_streaming_value_operation_t* operation) {
+  iree_hal_buffer_ref_t target_ref = {0};
+  IREE_RETURN_IF_ERROR(
+      iree_hal_streaming_value_operation_target_ref(operation, &target_ref));
+  return iree_hal_buffer_validate_range(target_ref.buffer, target_ref.offset,
+                                        target_ref.length);
+}
+
 static iree_status_t iree_hal_streaming_append_value_operation(
     iree_hal_command_buffer_t* command_buffer,
     const iree_hal_streaming_value_operation_t* operation,
@@ -454,6 +463,28 @@ static iree_status_t iree_hal_streaming_append_value_operation(
   }
 }
 
+iree_status_t iree_hal_streaming_command_buffer_append_value_operations(
+    iree_hal_command_buffer_t* command_buffer, iree_host_size_t operation_count,
+    const iree_hal_streaming_value_operation_t* operations,
+    iree_hal_execution_stage_t initial_source_stage,
+    iree_hal_execution_stage_t target_stage) {
+  IREE_ASSERT_ARGUMENT(command_buffer);
+  if (IREE_UNLIKELY(operation_count == 0 || !operations)) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "stream value operation batch is empty");
+  }
+
+  iree_status_t status = iree_ok_status();
+  for (iree_host_size_t i = 0; i < operation_count && iree_status_is_ok(status);
+       ++i) {
+    const iree_hal_execution_stage_t source_stage =
+        i == 0 ? initial_source_stage : IREE_HAL_EXECUTION_STAGE_ATOMIC;
+    status = iree_hal_streaming_append_value_operation(
+        command_buffer, &operations[i], source_stage, target_stage);
+  }
+  return status;
+}
+
 static iree_status_t iree_hal_streaming_record_value_operations(
     iree_hal_device_t* device, const iree_hal_queue_family_t* queue_family,
     iree_host_size_t operation_count,
@@ -472,13 +503,10 @@ static iree_status_t iree_hal_streaming_record_value_operations(
   if (iree_status_is_ok(status)) {
     status = iree_hal_command_buffer_begin(command_buffer);
   }
-  for (iree_host_size_t i = 0; i < operation_count && iree_status_is_ok(status);
-       ++i) {
-    const iree_hal_execution_stage_t source_stage =
-        i == 0 ? IREE_HAL_EXECUTION_STAGE_COMMAND_ISSUE
-               : IREE_HAL_EXECUTION_STAGE_ATOMIC;
-    status = iree_hal_streaming_append_value_operation(
-        command_buffer, &operations[i], source_stage,
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_streaming_command_buffer_append_value_operations(
+        command_buffer, operation_count, operations,
+        IREE_HAL_EXECUTION_STAGE_COMMAND_ISSUE,
         IREE_HAL_EXECUTION_STAGE_ATOMIC);
   }
   if (iree_status_is_ok(status)) {
@@ -534,13 +562,10 @@ static iree_status_t iree_hal_streaming_record_write_batch_locked(
   if (iree_status_is_ok(status)) {
     status = iree_hal_command_buffer_begin(command_buffer);
   }
-  for (iree_host_size_t i = 0; i < operation_count && iree_status_is_ok(status);
-       ++i) {
-    const iree_hal_execution_stage_t source_stage =
-        i == 0 ? IREE_HAL_EXECUTION_STAGE_COMMAND_ISSUE
-               : IREE_HAL_EXECUTION_STAGE_ATOMIC;
-    status = iree_hal_streaming_append_value_operation(
-        command_buffer, &operations[i], source_stage,
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_streaming_command_buffer_append_value_operations(
+        command_buffer, operation_count, operations,
+        IREE_HAL_EXECUTION_STAGE_COMMAND_ISSUE,
         IREE_HAL_EXECUTION_STAGE_ATOMIC | IREE_HAL_EXECUTION_STAGE_DISPATCH |
             IREE_HAL_EXECUTION_STAGE_TRANSFER);
   }
@@ -648,9 +673,7 @@ iree_status_t iree_hal_streaming_queue_value_operations(
   // recording, but such a failure only discards that new batch.
   for (iree_host_size_t i = 0; i < operation_count && iree_status_is_ok(status);
        ++i) {
-    iree_hal_buffer_ref_t target_ref = {0};
-    status = iree_hal_streaming_value_operation_target_ref(&operations[i],
-                                                           &target_ref);
+    status = iree_hal_streaming_value_operation_validate(&operations[i]);
   }
 
   // Snapshot an attached stream and reject known capture state before doing
