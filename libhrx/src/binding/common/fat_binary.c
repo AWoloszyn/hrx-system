@@ -54,11 +54,13 @@
 #define HRX_ELF_HSA_ABI_VERSION_V5 3
 #define HRX_ELF_HSA_ABI_VERSION_V6 4
 
+#define HRX_ELF_SHT_NULL 0
 #define HRX_ELF_SHT_SYMTAB 2
 #define HRX_ELF_SHT_STRTAB 3
 #define HRX_ELF_SHT_NOBITS 8
 #define HRX_ELF_SHT_DYNSYM 11
 #define HRX_ELF_SHN_UNDEF 0
+#define HRX_ELF_SHN_LORESERVE 0xff00u
 #define HRX_ELF_PN_XNUM UINT16_MAX
 #define HRX_ELF_STB_GLOBAL 1
 #define HRX_ELF_STB_WEAK 2
@@ -571,8 +573,15 @@ static iree_status_t hrx_fat_elf_view_initialize(iree_const_byte_span_t elf,
 
   uint64_t section_count = header->shnum;
   uint64_t program_count = header->phnum;
-  const bool needs_section_zero = (header->shnum == 0 && header->shoff != 0) ||
-                                  header->phnum == HRX_ELF_PN_XNUM;
+  if (IREE_UNLIKELY(header->shnum >= HRX_ELF_SHN_LORESERVE)) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "ELF section count uses a reserved header value");
+  }
+  const bool uses_extended_section_count =
+      header->shnum == 0 && header->shoff != 0;
+  const bool uses_extended_program_count = header->phnum == HRX_ELF_PN_XNUM;
+  const bool needs_section_zero =
+      uses_extended_section_count || uses_extended_program_count;
   if (needs_section_zero) {
     if (IREE_UNLIKELY(header->shoff == 0 ||
                       header->shentsize < sizeof(hrx_elf64_section_header_t))) {
@@ -586,8 +595,26 @@ static iree_status_t hrx_fat_elf_view_initialize(iree_const_byte_span_t elf,
         &section_zero_offset, NULL));
     hrx_elf64_section_header_t section_zero;
     memcpy(&section_zero, elf.data + section_zero_offset, sizeof(section_zero));
-    if (header->shnum == 0) section_count = section_zero.size;
-    if (header->phnum == HRX_ELF_PN_XNUM) program_count = section_zero.info;
+    if (IREE_UNLIKELY(section_zero.type != HRX_ELF_SHT_NULL)) {
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "ELF section zero must have null type");
+    }
+    if (uses_extended_section_count) {
+      if (IREE_UNLIKELY(section_zero.size < HRX_ELF_SHN_LORESERVE)) {
+        return iree_make_status(
+            IREE_STATUS_INVALID_ARGUMENT,
+            "ELF extended section count is below the reserved range");
+      }
+      section_count = section_zero.size;
+    }
+    if (uses_extended_program_count) {
+      if (IREE_UNLIKELY(section_zero.info < HRX_ELF_PN_XNUM)) {
+        return iree_make_status(
+            IREE_STATUS_INVALID_ARGUMENT,
+            "ELF extended program count is below the reserved value");
+      }
+      program_count = section_zero.info;
+    }
   }
 
   if (IREE_UNLIKELY(section_count > IREE_HOST_SIZE_MAX)) {
