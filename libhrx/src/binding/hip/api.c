@@ -11504,10 +11504,9 @@ static hipError_t iree_hip_stream_value_target_initialize(
         byte_length, &out_target->buffer_ref);
   }
   if (!iree_status_is_ok(status)) {
-    const hipError_t result =
-        iree_status_to_fixed_hip_result(status, hipErrorInvalidValue);
+    iree_status_free(status);
     iree_hip_stream_value_target_deinitialize(out_target);
-    return result;
+    return hipErrorInvalidValue;
   }
   return hipSuccess;
 }
