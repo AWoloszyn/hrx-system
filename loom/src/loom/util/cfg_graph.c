@@ -196,7 +196,9 @@ static iree_status_t loom_cfg_graph_build_traversal(
   // them for traversal frames so only the retained order needs new storage.
   iree_host_size_t stack_count = 1;
   iree_host_size_t order_count = 0;
+  uint16_t preorder_count = 1;
   graph->blocks[0].reachable = true;
+  graph->blocks[0].preorder = 0;
   stack_blocks[0] = 0;
   stack_successor_positions[0] = 0;
   while (stack_count > 0) {
@@ -209,6 +211,8 @@ static iree_status_t loom_cfg_graph_build_traversal(
       uint16_t successor_index = successors.values[(*next_position)++];
       if (!graph->blocks[successor_index].reachable) {
         graph->blocks[successor_index].reachable = true;
+        graph->blocks[successor_index].preorder = preorder_count++;
+        graph->blocks[successor_index].parent = block_index;
         stack_blocks[stack_count] = successor_index;
         stack_successor_positions[stack_count++] = 0;
       }
@@ -249,6 +253,8 @@ iree_status_t loom_cfg_graph_build(const loom_module_t* module,
            (iree_host_size_t)region->block_count * sizeof(*out_graph->blocks));
     for (uint16_t block_index = 0; block_index < region->block_count;
          ++block_index) {
+      out_graph->blocks[block_index].preorder = UINT16_MAX;
+      out_graph->blocks[block_index].parent = UINT16_MAX;
       out_graph->blocks[block_index].block =
           loom_region_const_block(region, block_index);
       const loom_block_t* block = out_graph->blocks[block_index].block;

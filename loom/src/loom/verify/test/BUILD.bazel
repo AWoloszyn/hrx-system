@@ -9,18 +9,13 @@ load("//loom/build_tools/bazel:loom_check.bzl", "loom_check_test_suite")
 package(
     default_visibility = ["//visibility:public"],
     features = ["layering_check"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 loom_check_test_suite(
     name = "test",
     srcs = [
-        "allocation.loom-test",
-        "allocation_aliases.loom-test",
-        "allocation_fragmentation.loom-test",
-        "allocation_preferences.loom-test",
-        "hazard_plan.loom-test",
-        "packet.loom-test",
-        "register_parts.loom-test",
+        "dominance.loom-test",
+        "unreachable_definitions.loom-test",
     ],
 )

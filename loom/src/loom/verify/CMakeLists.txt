@@ -43,6 +43,8 @@ loom_cc_library(
     loom::ops::special_values
     loom::target::registers
     loom::util::adaptive_sort
+    loom::util::cfg_dominance
+    loom::util::cfg_graph
   PUBLIC
 )
 

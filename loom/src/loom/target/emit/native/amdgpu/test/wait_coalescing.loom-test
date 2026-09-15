@@ -1,0 +1,194 @@
+// Coalesced slices change virtual ownership without emitting instructions.
+// Their result-release waits share one boundary and keep the strictest bound.
+// RUN: emit amdgpu-assembly @tuple_slice_waits strategy=source
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @tuple_slice_waits(%address: reg<amdgpu.vgpr>) asm {
+  %first = ds_read_b128 %address
+  %second = ds_read_b128 %address {offset = 16}
+  %values = concat(%first, %second) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %left = slice %values[0] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  %right = slice %values[4] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  %sum = v_add_u32 %left, %right
+  ds_write_b32 %address, %sum {offset = 32}
+  return
+}
+
+// ----
+  ds_read_b128 v[8:11], v0 offset:0
+  ds_read_b128 v[12:15], v0 offset:16
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  v_add_u32 v1, v8, v12
+  ds_write_b32 v0, v1 offset:32
+  s_endpgm
+
+// ====
+
+// An intervening ALU instruction separates completion boundaries, preserving
+// the partial wait before the first use and the full wait before the second.
+// RUN: emit amdgpu-assembly @alu_separates_slice_waits strategy=source
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @alu_separates_slice_waits(%address: reg<amdgpu.vgpr>) asm {
+  %first = ds_read_b128 %address
+  %second = ds_read_b128 %address {offset = 16}
+  %left = slice %first[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %incremented = v_add_u32 %left, %address
+  %right = slice %second[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %sum = v_add_u32 %incremented, %right
+  ds_write_b32 %address, %sum {offset = 32}
+  return
+}
+
+// ----
+  ds_read_b128 v[4:7], v0 offset:0
+  ds_read_b128 v[8:11], v0 offset:16
+  s_waitcnt vmcnt(63) lgkmcnt(1)
+  v_add_u32 v1, v4, v0
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  s_delay_alu instid0(VALU_DEP_1)
+  v_add_u32 v1, v1, v8
+  ds_write_b32 v0, v1 offset:32
+  s_endpgm
+
+// ====
+
+// A slice that materializes a physical move is a hardware consumer, not a
+// zero-work boundary. Completion of the second load stays after that move.
+// RUN: emit amdgpu-assembly @materialized_slice_separates_waits strategy=source fixed=%left:physical_register:20:1 fixed=%right:physical_register:21:1
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @materialized_slice_separates_waits(%address: reg<amdgpu.vgpr>) asm {
+  %first = ds_read_b128 %address
+  %second = ds_read_b128 %address {offset = 16}
+  %left = slice %first[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %right = slice %second[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %sum = v_add_u32 %left, %right
+  ds_write_b32 %address, %sum {offset = 32}
+  return
+}
+
+// ----
+  ds_read_b128 v[4:7], v0 offset:0
+  ds_read_b128 v[8:11], v0 offset:16
+  s_waitcnt vmcnt(63) lgkmcnt(1)
+  v_mov_b32 v20, v4
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  v_mov_b32 v21, v8
+  s_delay_alu instid0(VALU_DEP_1) | instid1(VALU_DEP_2)
+  v_add_u32 v1, v20, v21
+  ds_write_b32 v0, v1 offset:32
+  s_endpgm
+
+// ====
+
+// Even a fallthrough edge separates insertion points: its successor has its
+// own entry frontier, so a successor wait cannot join the predecessor's group.
+// RUN: emit amdgpu-assembly @block_entry_separates_waits strategy=source
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @block_entry_separates_waits(%address: reg<amdgpu.vgpr>) asm {
+  %first = ds_read_b128 %address
+  %second = ds_read_b128 %address {offset = 16}
+  %values = concat(%first, %second) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %left = slice %values[0] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  low.br ^finish
+^finish:
+  %right = slice %values[4] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  %sum = v_add_u32 %left, %right
+  ds_write_b32 %address, %sum {offset = 32}
+  return
+}
+
+// ----
+  ds_read_b128 v[8:11], v0 offset:0
+  ds_read_b128 v[12:15], v0 offset:16
+  s_waitcnt vmcnt(63) lgkmcnt(1)
+.Lbb1:
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  v_add_u32 v1, v8, v12
+  ds_write_b32 v0, v1 offset:32
+  s_endpgm
+
+// ====
+
+// Authored waits keep their own insertion points and spelling. This loose
+// bound cannot retire the remaining load or be folded into a planned wait.
+// RUN: emit amdgpu-assembly @authored_wait_separates_groups strategy=source
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @authored_wait_separates_groups(%address: reg<amdgpu.vgpr>) asm {
+  %first = ds_read_b128 %address
+  %second = ds_read_b128 %address {offset = 16}
+  %values = concat(%first, %second) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %left = slice %values[0] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  s_waitcnt {lgkmcnt = 2}
+  %right = slice %values[4] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  %sum = v_add_u32 %left, %right
+  ds_write_b32 %address, %sum {offset = 32}
+  return
+}
+
+// ----
+  ds_read_b128 v[8:11], v0 offset:0
+  ds_read_b128 v[12:15], v0 offset:16
+  s_waitcnt vmcnt(63) lgkmcnt(1)
+  s_waitcnt vmcnt(63) lgkmcnt(2)
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  v_add_u32 v1, v8, v12
+  ds_write_b32 v0, v1 offset:32
+  s_endpgm
+
+// ====
+
+// Different counters at a shared zero-work boundary can use one combined
+// hardware wait without changing either logical completion requirement.
+// RUN: emit amdgpu-assembly @mixed_counter_slices strategy=source
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @mixed_counter_slices(%address: reg<amdgpu.vgpr>, %base: reg<amdgpu.sgpr x2>) asm {
+  %local = ds_read_b128 %address
+  %global = global_load_b128_saddr %address, %base
+  %values = concat(%local, %global) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %left = slice %values[0] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  %right = slice %values[4] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  %sum = v_add_u32 %left, %right
+  ds_write_b32 %address, %sum {offset = 32}
+  return
+}
+
+// ----
+  ds_read_b128 v[8:11], v0 offset:0
+  global_load_b128 v[12:15], v0, s[0:1] offset:0
+  s_waitcnt vmcnt(0) lgkmcnt(0)
+  v_add_u32 v1, v8, v12
+  ds_write_b32 v0, v1 offset:32
+  s_endpgm
+
+// ====
+
+// Address-state overlays are emitted before a packet's waits. A later wait
+// therefore stays after its overlay even when the preceding slice is free.
+// RUN: emit amdgpu-assembly @address_state_separates_waits strategy=source fixed=%high_address:physical_register:268:1
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @address_state_separates_waits(%address: reg<amdgpu.vgpr>, %high_address: reg<amdgpu.vgpr>) asm {
+  %first = ds_read_b128 %address
+  %second = ds_read_b128 %address {offset = 16}
+  %values = concat(%first, %second) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>
+  %left = slice %values[0] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
+  ds_write_b128 %high_address, %second {offset = 32}
+  ds_write_b32 %address, %left {offset = 48}
+  return
+}
+
+// ----
+  ds_read_b128 v[8:11], v0 offset:0
+  ds_read_b128 v[12:15], v0 offset:16
+  s_wait_dscnt dscnt(1)
+  s_set_vgpr_msb 1
+  s_wait_dscnt dscnt(0)
+  ds_write_b128 v12, v[12:15] offset:32
+  s_set_vgpr_msb 256
+  ds_write_b32 v0, v8 offset:48
+  s_endpgm

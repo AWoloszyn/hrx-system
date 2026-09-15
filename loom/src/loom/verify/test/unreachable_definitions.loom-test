@@ -1,0 +1,71 @@
+// Unreachable declaration storage crosses multiple growth boundaries.
+// RUN: verify
+func.def @many_dead_definitions(%row: i32) {
+  func.return
+^dead:
+  %lane_0_bytes = test.addi %row, %row : i32
+  %lane_1_bytes = test.addi %row, %row : i32
+  %lane_2_bytes = test.addi %row, %row : i32
+  %lane_3_bytes = test.addi %row, %row : i32
+  %lane_4_bytes = test.addi %row, %row : i32
+  %lane_5_bytes = test.addi %row, %row : i32
+  %lane_6_bytes = test.addi %row, %row : i32
+  %lane_7_bytes = test.addi %row, %row : i32
+  %lane_8_bytes = test.addi %row, %row : i32
+  %lane_9_bytes = test.addi %row, %row : i32
+  %lane_10_bytes = test.addi %row, %row : i32
+  %lane_11_bytes = test.addi %row, %row : i32
+  %lane_12_bytes = test.addi %row, %row : i32
+  %lane_13_bytes = test.addi %row, %row : i32
+  %lane_14_bytes = test.addi %row, %row : i32
+  %lane_15_bytes = test.addi %row, %row : i32
+  %lane_16_bytes = test.addi %row, %row : i32
+  %lane_17_bytes = test.addi %row, %row : i32
+  %lane_18_bytes = test.addi %row, %row : i32
+  %lane_19_bytes = test.addi %row, %row : i32
+  %lane_20_bytes = test.addi %row, %row : i32
+  %lane_21_bytes = test.addi %row, %row : i32
+  %lane_22_bytes = test.addi %row, %row : i32
+  %lane_23_bytes = test.addi %row, %row : i32
+  %lane_24_bytes = test.addi %row, %row : i32
+  %lane_25_bytes = test.addi %row, %row : i32
+  %lane_26_bytes = test.addi %row, %row : i32
+  %lane_27_bytes = test.addi %row, %row : i32
+  %lane_28_bytes = test.addi %row, %row : i32
+  %lane_29_bytes = test.addi %row, %row : i32
+  %lane_30_bytes = test.addi %row, %row : i32
+  %lane_31_bytes = test.addi %row, %row : i32
+  %lane_32_bytes = test.addi %row, %row : i32
+  %lane_33_bytes = test.addi %row, %row : i32
+  %lane_34_bytes = test.addi %row, %row : i32
+  %lane_35_bytes = test.addi %row, %row : i32
+  %lane_36_bytes = test.addi %row, %row : i32
+  %lane_37_bytes = test.addi %row, %row : i32
+  %lane_38_bytes = test.addi %row, %row : i32
+  %lane_39_bytes = test.addi %row, %row : i32
+  %lane_40_bytes = test.addi %row, %row : i32
+  %lane_41_bytes = test.addi %row, %row : i32
+  %lane_42_bytes = test.addi %row, %row : i32
+  %lane_43_bytes = test.addi %row, %row : i32
+  %lane_44_bytes = test.addi %row, %row : i32
+  %lane_45_bytes = test.addi %row, %row : i32
+  %lane_46_bytes = test.addi %row, %row : i32
+  %lane_47_bytes = test.addi %row, %row : i32
+  %lane_48_bytes = test.addi %row, %row : i32
+  %lane_49_bytes = test.addi %row, %row : i32
+  %lane_50_bytes = test.addi %row, %row : i32
+  %lane_51_bytes = test.addi %row, %row : i32
+  %lane_52_bytes = test.addi %row, %row : i32
+  %lane_53_bytes = test.addi %row, %row : i32
+  %lane_54_bytes = test.addi %row, %row : i32
+  %lane_55_bytes = test.addi %row, %row : i32
+  %lane_56_bytes = test.addi %row, %row : i32
+  %lane_57_bytes = test.addi %row, %row : i32
+  %lane_58_bytes = test.addi %row, %row : i32
+  %lane_59_bytes = test.addi %row, %row : i32
+  %lane_60_bytes = test.addi %row, %row : i32
+  %lane_61_bytes = test.addi %row, %row : i32
+  %lane_62_bytes = test.addi %row, %row : i32
+  %lane_63_bytes = test.addi %row, %row : i32
+  func.return
+}

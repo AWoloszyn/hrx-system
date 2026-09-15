@@ -178,6 +178,14 @@ TEST_F(CfgGraphTest, BuildsSuccessorsAndPredecessorsForDiamond) {
   EXPECT_EQ(graph.reverse_postorder.values[1], 2u);
   EXPECT_EQ(graph.reverse_postorder.values[2], 1u);
   EXPECT_EQ(graph.reverse_postorder.values[3], 3u);
+  EXPECT_EQ(graph.blocks[0].preorder, 0u);
+  EXPECT_EQ(graph.blocks[1].preorder, 1u);
+  EXPECT_EQ(graph.blocks[3].preorder, 2u);
+  EXPECT_EQ(graph.blocks[2].preorder, 3u);
+  EXPECT_EQ(graph.blocks[0].parent, UINT16_MAX);
+  EXPECT_EQ(graph.blocks[1].parent, 0u);
+  EXPECT_EQ(graph.blocks[3].parent, 1u);
+  EXPECT_EQ(graph.blocks[2].parent, 0u);
 }
 
 TEST_F(CfgGraphTest, ReachabilitySkipsUnreachableBlocks) {
@@ -201,6 +209,8 @@ TEST_F(CfgGraphTest, ReachabilitySkipsUnreachableBlocks) {
   EXPECT_TRUE(loom_cfg_graph_block_is_reachable(&graph, 0));
   EXPECT_TRUE(loom_cfg_graph_block_is_reachable(&graph, 1));
   EXPECT_FALSE(loom_cfg_graph_block_is_reachable(&graph, 2));
+  EXPECT_EQ(graph.blocks[2].preorder, UINT16_MAX);
+  EXPECT_EQ(graph.blocks[2].parent, UINT16_MAX);
   ASSERT_EQ(graph.reverse_postorder.count, 2u);
   EXPECT_EQ(graph.reverse_postorder.values[0], 0u);
   EXPECT_EQ(graph.reverse_postorder.values[1], 1u);

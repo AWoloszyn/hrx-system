@@ -46,7 +46,7 @@ typedef struct loom_amdgpu_address_state_plan_t {
   const loom_low_schedule_table_t* schedule;
   // Allocation table this plan was built from.
   const loom_low_allocation_table_t* allocation;
-  // Planned transitions in scheduled insertion order.
+  // Planned transitions in scheduled insertion order, at most one per node.
   const loom_amdgpu_address_state_transition_t* transitions;
   // Number of entries in |transitions|.
   iree_host_size_t transition_count;

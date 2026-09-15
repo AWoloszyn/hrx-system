@@ -12,22 +12,16 @@
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
 #include "loom/ops/op_defs.h"
+#include "loom/util/cfg_dominance.h"
 #include "loom/util/cfg_graph.h"
-
-#define LOOM_CFG_DOMINATOR_INVALID UINT16_MAX
-#define LOOM_CFG_DOMINATOR_INTERVAL_INVALID UINT32_MAX
 
 struct loom_cfg_dominance_region_t {
   // Region described by graph and dominator arrays.
   const loom_region_t* region;
   // Dense control-flow graph for region.
   loom_cfg_graph_t graph;
-  // Immediate dominator per dense block index.
-  uint16_t* immediate_dominators;
-  // Packed inclusive dominator-tree preorder ranges per dense block index.
-  uint32_t* dominator_intervals;
-  // True when graph is well-formed enough for CFG dominance queries.
-  bool available;
+  // Indexed dominator tree for the graph snapshot.
+  loom_cfg_dominance_t dominance;
   // Next cached CFG region in loom_dominance_info_t::cfg_regions.
   struct loom_cfg_dominance_region_t* next;
 };
@@ -94,195 +88,6 @@ const loom_op_t* loom_op_ancestor_at_depth(const loom_op_t* op,
 // CFG dominance construction
 //===----------------------------------------------------------------------===//
 
-typedef struct loom_cfg_traversal_frame_t {
-  // Block currently on the iterative traversal stack.
-  uint16_t block_index;
-  // Next adjacent block position to visit from block_index.
-  iree_host_size_t next_position;
-} loom_cfg_traversal_frame_t;
-
-typedef struct loom_cfg_dominance_working_set_t {
-  // Reachable block indices in reverse postorder.
-  uint16_t* rpo_order;
-  // Number of reachable entries in rpo_order.
-  iree_host_size_t rpo_count;
-  // Reverse-postorder position per dense block index.
-  iree_host_size_t* rpo_numbers;
-  // Reusable stack with graph->block_count entries.
-  loom_cfg_traversal_frame_t* traversal_stack;
-} loom_cfg_dominance_working_set_t;
-
-static iree_status_t loom_cfg_dominance_initialize_working_set(
-    const loom_cfg_graph_t* graph, iree_arena_allocator_t* arena,
-    loom_cfg_dominance_working_set_t* out_working_set) {
-  memset(out_working_set, 0, sizeof(*out_working_set));
-  if (graph->block_count == 0) return iree_ok_status();
-
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, graph->block_count, sizeof(*out_working_set->traversal_stack),
-      (void**)&out_working_set->traversal_stack));
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, graph->block_count, sizeof(*out_working_set->rpo_order),
-      (void**)&out_working_set->rpo_order));
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, graph->block_count, sizeof(*out_working_set->rpo_numbers),
-      (void**)&out_working_set->rpo_numbers));
-
-  // Interval construction later reuses these mutable arrays. Keep the shared
-  // graph's retained traversal available to its other consumers.
-  out_working_set->rpo_count = graph->reverse_postorder.count;
-  memcpy(out_working_set->rpo_order, graph->reverse_postorder.values,
-         out_working_set->rpo_count * sizeof(*out_working_set->rpo_order));
-  for (iree_host_size_t i = 0; i < out_working_set->rpo_count; ++i) {
-    out_working_set->rpo_numbers[out_working_set->rpo_order[i]] = i;
-  }
-  return iree_ok_status();
-}
-
-static uint16_t loom_cfg_dominance_intersect(
-    const uint16_t* immediate_dominators, const iree_host_size_t* rpo_numbers,
-    uint16_t lhs, uint16_t rhs) {
-  while (lhs != rhs) {
-    while (rpo_numbers[lhs] > rpo_numbers[rhs]) {
-      lhs = immediate_dominators[lhs];
-    }
-    while (rpo_numbers[rhs] > rpo_numbers[lhs]) {
-      rhs = immediate_dominators[rhs];
-    }
-  }
-  return lhs;
-}
-
-static void loom_cfg_dominance_compute_intervals(
-    loom_cfg_dominance_region_t* cache,
-    loom_cfg_dominance_working_set_t* working_set) {
-  const iree_host_size_t block_count = cache->graph.block_count;
-  if (working_set->rpo_count == 0) return;
-
-  // Reuse the RPO-number array as child counts and then child starts. RPO order
-  // is no longer needed after immediate dominators have converged, so reuse it
-  // as the compact child table.
-  memset(working_set->rpo_numbers, 0,
-         block_count * sizeof(*working_set->rpo_numbers));
-  for (uint16_t block_index = 1; block_index < block_count; ++block_index) {
-    uint16_t immediate_dominator = cache->immediate_dominators[block_index];
-    if (immediate_dominator != LOOM_CFG_DOMINATOR_INVALID) {
-      ++working_set->rpo_numbers[immediate_dominator];
-    }
-  }
-  iree_host_size_t child_count = 0;
-  for (iree_host_size_t block_index = 0; block_index < block_count;
-       ++block_index) {
-    iree_host_size_t block_child_count = working_set->rpo_numbers[block_index];
-    working_set->rpo_numbers[block_index] = child_count;
-    child_count += block_child_count;
-    cache->dominator_intervals[block_index] =
-        (uint32_t)working_set->rpo_numbers[block_index];
-  }
-  for (uint16_t block_index = 1; block_index < block_count; ++block_index) {
-    uint16_t immediate_dominator = cache->immediate_dominators[block_index];
-    if (immediate_dominator == LOOM_CFG_DOMINATOR_INVALID) continue;
-    uint32_t child_position = cache->dominator_intervals[immediate_dominator]++;
-    working_set->rpo_order[child_position] = block_index;
-  }
-  for (iree_host_size_t block_index = 0; block_index < block_count;
-       ++block_index) {
-    cache->dominator_intervals[block_index] =
-        LOOM_CFG_DOMINATOR_INTERVAL_INVALID;
-  }
-
-  iree_host_size_t stack_count = 0;
-  uint32_t preorder = 0;
-  cache->dominator_intervals[0] = preorder++;
-  working_set->traversal_stack[stack_count++] = (loom_cfg_traversal_frame_t){
-      .block_index = 0,
-      .next_position = working_set->rpo_numbers[0],
-  };
-  while (stack_count > 0) {
-    loom_cfg_traversal_frame_t* frame =
-        &working_set->traversal_stack[stack_count - 1];
-    iree_host_size_t child_end =
-        (iree_host_size_t)frame->block_index + 1 < block_count
-            ? working_set->rpo_numbers[frame->block_index + 1]
-            : child_count;
-    if (frame->next_position < child_end) {
-      uint16_t child_index = working_set->rpo_order[frame->next_position++];
-      cache->dominator_intervals[child_index] = preorder++;
-      working_set->traversal_stack[stack_count++] =
-          (loom_cfg_traversal_frame_t){
-              .block_index = child_index,
-              .next_position = working_set->rpo_numbers[child_index],
-          };
-      continue;
-    }
-
-    uint16_t block_preorder =
-        (uint16_t)cache->dominator_intervals[frame->block_index];
-    uint16_t block_last_preorder = (uint16_t)(preorder - 1);
-    cache->dominator_intervals[frame->block_index] =
-        (uint32_t)block_preorder | ((uint32_t)block_last_preorder << 16);
-    --stack_count;
-  }
-}
-
-static iree_status_t loom_cfg_dominance_compute(
-    loom_cfg_dominance_region_t* cache, iree_arena_allocator_t* arena) {
-  iree_host_size_t block_count = cache->graph.block_count;
-  if (block_count == 0) return iree_ok_status();
-
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, block_count, sizeof(*cache->immediate_dominators),
-      (void**)&cache->immediate_dominators));
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, block_count, sizeof(*cache->dominator_intervals),
-      (void**)&cache->dominator_intervals));
-  for (iree_host_size_t i = 0; i < block_count; ++i) {
-    cache->immediate_dominators[i] = LOOM_CFG_DOMINATOR_INVALID;
-    cache->dominator_intervals[i] = LOOM_CFG_DOMINATOR_INTERVAL_INVALID;
-  }
-
-  if (cache->graph.malformed) return iree_ok_status();
-
-  loom_cfg_dominance_working_set_t working_set;
-  IREE_RETURN_IF_ERROR(loom_cfg_dominance_initialize_working_set(
-      &cache->graph, arena, &working_set));
-  if (working_set.rpo_count == 0) return iree_ok_status();
-
-  cache->immediate_dominators[0] = 0;
-  bool changed = true;
-  while (changed) {
-    changed = false;
-    for (iree_host_size_t rpo_index = 1; rpo_index < working_set.rpo_count;
-         ++rpo_index) {
-      uint16_t block_index = working_set.rpo_order[rpo_index];
-      uint16_t new_idom = LOOM_CFG_DOMINATOR_INVALID;
-      loom_cfg_block_index_span_t predecessors =
-          loom_cfg_graph_predecessors(&cache->graph, block_index);
-      for (iree_host_size_t i = 0; i < predecessors.count; ++i) {
-        uint16_t predecessor_index = predecessors.values[i];
-        if (cache->immediate_dominators[predecessor_index] ==
-            LOOM_CFG_DOMINATOR_INVALID) {
-          continue;
-        }
-        new_idom =
-            new_idom == LOOM_CFG_DOMINATOR_INVALID
-                ? predecessor_index
-                : loom_cfg_dominance_intersect(cache->immediate_dominators,
-                                               working_set.rpo_numbers,
-                                               predecessor_index, new_idom);
-      }
-      if (cache->immediate_dominators[block_index] != new_idom) {
-        cache->immediate_dominators[block_index] = new_idom;
-        changed = true;
-      }
-    }
-  }
-
-  loom_cfg_dominance_compute_intervals(cache, &working_set);
-  cache->available = true;
-  return iree_ok_status();
-}
-
 static iree_status_t loom_dominance_info_add_cfg_region(
     loom_dominance_info_t* info, const loom_region_t* region) {
   loom_cfg_dominance_region_t* cache = NULL;
@@ -292,7 +97,8 @@ static iree_status_t loom_dominance_info_add_cfg_region(
   cache->region = region;
   IREE_RETURN_IF_ERROR(
       loom_cfg_graph_build(info->module, region, info->arena, &cache->graph));
-  IREE_RETURN_IF_ERROR(loom_cfg_dominance_compute(cache, info->arena));
+  IREE_RETURN_IF_ERROR(
+      loom_cfg_dominance_build(&cache->graph, info->arena, &cache->dominance));
   cache->next = info->cfg_regions;
   info->cfg_regions = cache;
   return iree_ok_status();
@@ -329,24 +135,6 @@ static const loom_cfg_dominance_region_t* loom_dominance_lookup_cfg_region(
   return NULL;
 }
 
-static bool loom_cfg_region_block_dominates(
-    const loom_cfg_dominance_region_t* cache, uint16_t dominator_index,
-    uint16_t dominated_index) {
-  if (!cache || !cache->available) return false;
-  if (dominator_index == dominated_index) return true;
-  uint32_t dominator_interval = cache->dominator_intervals[dominator_index];
-  uint32_t dominated_interval = cache->dominator_intervals[dominated_index];
-  if (dominator_interval == LOOM_CFG_DOMINATOR_INTERVAL_INVALID ||
-      dominated_interval == LOOM_CFG_DOMINATOR_INTERVAL_INVALID) {
-    return false;
-  }
-  uint16_t dominator_preorder = (uint16_t)dominator_interval;
-  uint16_t dominator_last_preorder = (uint16_t)(dominator_interval >> 16);
-  uint16_t dominated_preorder = (uint16_t)dominated_interval;
-  return dominator_preorder <= dominated_preorder &&
-         dominated_preorder <= dominator_last_preorder;
-}
-
 bool loom_dominates_block(const loom_dominance_info_t* info,
                           const loom_block_t* dominator_block,
                           const loom_block_t* dominated_block) {
@@ -361,7 +149,9 @@ bool loom_dominates_block(const loom_dominance_info_t* info,
 
   const loom_cfg_dominance_region_t* cache =
       loom_dominance_lookup_cfg_region(info, region);
-  if (!cache) return false;
+  if (!cache || !cache->dominance.available) {
+    return false;
+  }
   iree_host_size_t dominator_index =
       loom_cfg_graph_block_index(&cache->graph, dominator_block);
   iree_host_size_t dominated_index =
@@ -370,8 +160,8 @@ bool loom_dominates_block(const loom_dominance_info_t* info,
       dominated_index == IREE_HOST_SIZE_MAX) {
     return false;
   }
-  return loom_cfg_region_block_dominates(cache, (uint16_t)dominator_index,
-                                         (uint16_t)dominated_index);
+  return loom_cfg_dominance_block_dominates(
+      &cache->dominance, (uint16_t)dominator_index, (uint16_t)dominated_index);
 }
 
 const loom_block_t* loom_dominance_immediate_dominator_block(
@@ -390,11 +180,14 @@ const loom_block_t* loom_dominance_immediate_dominator_block(
 
   const loom_cfg_dominance_region_t* cache =
       loom_dominance_lookup_cfg_region(info, region);
-  if (!cache || !cache->available) return NULL;
+  if (!cache || !cache->dominance.available) {
+    return NULL;
+  }
   iree_host_size_t block_index =
       loom_cfg_graph_block_index(&cache->graph, block);
   if (block_index == IREE_HOST_SIZE_MAX) return NULL;
-  uint16_t immediate_dominator = cache->immediate_dominators[block_index];
+  uint16_t immediate_dominator =
+      cache->dominance.immediate_dominators[block_index];
   if (immediate_dominator == LOOM_CFG_DOMINATOR_INVALID ||
       immediate_dominator == block_index ||
       immediate_dominator >= cache->graph.block_count) {

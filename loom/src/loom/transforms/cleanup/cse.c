@@ -555,22 +555,6 @@ static void loom_cse_stack_push(loom_cse_stack_t* stack, loom_block_t* block,
 // Region child frame pushing
 //===----------------------------------------------------------------------===//
 
-static loom_cse_scope_t* loom_cse_cfg_scope_parent_for_block(
-    const loom_dominance_info_t* dominance, loom_region_t* region,
-    loom_cse_scope_t* parent_scope, loom_cse_scope_t** block_scopes,
-    const loom_block_t* block) {
-  const loom_block_t* immediate_dominator =
-      loom_dominance_immediate_dominator_block(dominance, block);
-  uint16_t immediate_dominator_index = 0;
-  if (!loom_region_try_block_index(region, immediate_dominator,
-                                   &immediate_dominator_index)) {
-    return parent_scope;
-  }
-  return block_scopes[immediate_dominator_index]
-             ? block_scopes[immediate_dominator_index]
-             : parent_scope;
-}
-
 // Returns true when mutable state observed in a dominating scope may have
 // changed before a later dynamic execution of |block|. A single edge from the
 // immediate dominator is the only inter-block path that is unconditionally
@@ -595,60 +579,6 @@ static bool loom_cse_cfg_block_blocks_stateful_parent_lookup(
          immediate_dominator_index;
 }
 
-static iree_status_t loom_cse_compute_cfg_block_order(
-    iree_arena_allocator_t* arena, const loom_dominance_info_t* dominance,
-    loom_region_t* region, uint16_t** out_order) {
-  *out_order = NULL;
-  if (region->block_count == 0) return iree_ok_status();
-
-  uint16_t* order = NULL;
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, region->block_count, sizeof(*order), (void**)&order));
-  bool* scheduled = NULL;
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, region->block_count, sizeof(*scheduled), (void**)&scheduled));
-  memset(scheduled, 0,
-         (iree_host_size_t)region->block_count * sizeof(*scheduled));
-
-  uint16_t scheduled_count = 0;
-  while (scheduled_count < region->block_count) {
-    bool made_progress = false;
-    for (uint16_t block_index = 0; block_index < region->block_count;
-         ++block_index) {
-      if (scheduled[block_index]) continue;
-
-      const loom_block_t* block = loom_region_const_block(region, block_index);
-      const loom_block_t* immediate_dominator =
-          loom_dominance_immediate_dominator_block(dominance, block);
-      uint16_t immediate_dominator_index = 0;
-      const bool has_same_region_dominator = loom_region_try_block_index(
-          region, immediate_dominator, &immediate_dominator_index);
-      if (has_same_region_dominator && !scheduled[immediate_dominator_index]) {
-        continue;
-      }
-
-      scheduled[block_index] = true;
-      order[scheduled_count++] = block_index;
-      made_progress = true;
-    }
-
-    if (!made_progress) {
-      // Malformed CFG dominance should already be rejected by verification.
-      // Keep CSE conservative by scheduling the remaining blocks in region
-      // order; their scopes fall back to the nearest known parent scope.
-      for (uint16_t block_index = 0; block_index < region->block_count;
-           ++block_index) {
-        if (scheduled[block_index]) continue;
-        scheduled[block_index] = true;
-        order[scheduled_count++] = block_index;
-      }
-    }
-  }
-
-  *out_order = order;
-  return iree_ok_status();
-}
-
 static iree_status_t loom_cse_push_cfg_region_block_frames(
     loom_cse_stack_t* stack, iree_arena_allocator_t* pass_arena,
     iree_arena_allocator_t* scope_arena, const loom_dominance_info_t* dominance,
@@ -660,9 +590,6 @@ static iree_status_t loom_cse_push_cfg_region_block_frames(
   IREE_RETURN_IF_ERROR(
       iree_arena_allocate_array(scope_arena, region->block_count,
                                 sizeof(*block_scopes), (void**)&block_scopes));
-  memset(block_scopes, 0,
-         (iree_host_size_t)region->block_count * sizeof(*block_scopes));
-
   loom_cfg_graph_t cfg_graph = {0};
   IREE_RETURN_IF_ERROR(
       loom_cfg_graph_build(dominance->module, region, scope_arena, &cfg_graph));
@@ -671,26 +598,58 @@ static iree_status_t loom_cse_push_cfg_region_block_frames(
        ++block_index) {
     loom_block_t* block = loom_region_block(region, block_index);
     IREE_RETURN_IF_ERROR(loom_cse_scope_allocate(
-        scope_arena, /*parent=*/NULL,
+        scope_arena, parent_scope,
         loom_cse_cfg_block_blocks_stateful_parent_lookup(&cfg_graph, dominance,
                                                          region, block_index),
         block, &block_scopes[block_index]));
   }
-  for (uint16_t block_index = 0; block_index < region->block_count;
-       ++block_index) {
-    loom_block_t* block = loom_region_block(region, block_index);
-    block_scopes[block_index]->parent = loom_cse_cfg_scope_parent_for_block(
-        dominance, region, parent_scope, block_scopes, block);
+
+  // Scope invalidation makes sibling visitation order observable. Preserve
+  // region-order scans that visit a block once its immediate dominator has
+  // been visited, without rescanning unscheduled blocks. A child joins its
+  // dominator's scan round if it appears later in region order; otherwise it
+  // joins the next round. Reverse postorder computes each round exactly once.
+  uint16_t* rounds = NULL;
+  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+      pass_arena, (iree_host_size_t)region->block_count * 2, sizeof(*rounds),
+      (void**)&rounds));
+  uint16_t* round_ends = rounds + region->block_count;
+  memset(rounds, 0,
+         (iree_host_size_t)region->block_count * 2 * sizeof(*rounds));
+  for (iree_host_size_t i = 0; i < cfg_graph.reverse_postorder.count; ++i) {
+    uint16_t block_index = cfg_graph.reverse_postorder.values[i];
+    const loom_block_t* block = loom_region_const_block(region, block_index);
+    const loom_block_t* immediate_dominator =
+        loom_dominance_immediate_dominator_block(dominance, block);
+    uint16_t immediate_dominator_index = 0;
+    if (loom_region_try_block_index(region, immediate_dominator,
+                                    &immediate_dominator_index)) {
+      block_scopes[block_index]->parent =
+          block_scopes[immediate_dominator_index];
+      rounds[block_index] = rounds[immediate_dominator_index] +
+                            (block_index < immediate_dominator_index);
+    }
   }
 
-  uint16_t* order = NULL;
-  IREE_RETURN_IF_ERROR(
-      loom_cse_compute_cfg_block_order(pass_arena, dominance, region, &order));
-  for (int32_t i = (int32_t)region->block_count - 1; i >= 0; --i) {
-    uint16_t block_index = order[i];
-    loom_cse_stack_push(stack, loom_region_block(region, block_index),
-                        block_scopes[block_index]);
+  // Roots and unreachable blocks remain in round zero. Stable counting order
+  // by round then region index gives dominator-first order in linear time.
+  for (uint16_t i = 0; i < region->block_count; ++i) {
+    ++round_ends[rounds[i]];
   }
+  for (uint16_t i = 1; i < region->block_count; ++i) {
+    round_ends[i] += round_ends[i - 1];
+  }
+  const iree_host_size_t stack_end = stack->count + region->block_count;
+  for (int32_t i = (int32_t)region->block_count - 1; i >= 0; --i) {
+    uint16_t ordered_index = --round_ends[rounds[i]];
+    loom_block_t* block = loom_region_block(region, (uint16_t)i);
+    stack->frames[stack_end - 1 - ordered_index] = (loom_cse_frame_t){
+        .block = block,
+        .next_op = block->first_op,
+        .scope = block_scopes[i],
+    };
+  }
+  stack->count = stack_end;
   return iree_ok_status();
 }
 

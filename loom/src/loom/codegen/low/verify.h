@@ -132,6 +132,9 @@ static inline loom_low_verify_scratch_t loom_low_verify_scratch_for_module(
 // each low.func target resolves to a descriptor set and that descriptor-backed
 // low.op/low.const packets match the selected descriptor rows. Verification is
 // logically read-only on IR but mutates |scratch|.
+// Register-part requirements are independent of source block order: incomplete
+// tied continuations and unsatisfied uses are retained during the body walk,
+// then resolved without revisiting IR. Generic verification owns SSA dominance.
 iree_status_t loom_low_verify_module(const loom_module_t* module,
                                      const loom_low_verify_options_t* options,
                                      loom_low_verify_scratch_t* scratch,

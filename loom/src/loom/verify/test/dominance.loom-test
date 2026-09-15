@@ -1,0 +1,376 @@
+// A dominating definition may appear after its use in source block order.
+// CSE produces that layout from authored input with locally defined operands.
+// RUN: pass cse
+func.def @reverse_layout(%row: i32) -> (i32) {
+  cfg.br ^define
+^use:
+  %local_bytes = test.addi %row, %row : i32
+  func.return %local_bytes : i32
+^define:
+  %row_bytes = test.addi %row, %row : i32
+  cfg.br ^use
+}
+
+// ----
+func.def @reverse_layout(%row: i32) -> (i32) {
+  cfg.br ^define
+^use:
+  func.return %row_bytes : i32
+^define:
+  %row_bytes = test.addi %row, %row : i32
+  cfg.br ^use
+}
+
+// ====
+
+// Loop headers dominate their bodies regardless of source layout or backedges.
+// RUN: pass cse
+func.def @reverse_loop(%condition: i1, %row: i32) -> (i32) {
+  cfg.br ^header
+^body:
+  %body_bytes = test.addi %row, %row : i32
+  test.use %body_bytes : i32
+  cfg.br ^header
+^exit:
+  %exit_bytes = test.addi %row, %row : i32
+  func.return %exit_bytes : i32
+^header:
+  %row_bytes = test.addi %row, %row : i32
+  cfg.cond_br %condition, ^body, ^exit
+}
+
+// ----
+func.def @reverse_loop(%condition: i1, %row: i32) -> (i32) {
+  cfg.br ^header
+^body:
+  test.use %row_bytes : i32
+  cfg.br ^header
+^exit:
+  func.return %row_bytes : i32
+^header:
+  %row_bytes = test.addi %row, %row : i32
+  cfg.cond_br %condition, ^body, ^exit
+}
+
+// ====
+
+// A diamond inherits entry definitions but neither sibling's local values.
+// RUN: verify
+func.def @sibling_scope(%condition: i1, %row: i32) -> (i32) {
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  %left_bytes = test.addi %row, %row : i32
+  func.return %left_bytes : i32
+^right:
+  // ERROR@+1: DOMINANCE/001
+  func.return %left_bytes : i32
+}
+
+// ====
+
+// Visiting a predecessor does not make its values available at a merge.
+// RUN: verify
+func.def @merge_scope(%condition: i1, %row: i32) -> (i32) {
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  %left_bytes = test.addi %row, %row : i32
+  cfg.br ^merge
+^right:
+  cfg.br ^merge
+^merge:
+  // ERROR@+1: DOMINANCE/001
+  func.return %left_bytes : i32
+}
+
+// ====
+
+// Block arguments are definitions, not region-wide declarations.
+// RUN: verify
+func.def @block_argument_scope(%condition: i1, %row: i32) -> (i32) {
+  cfg.cond_br %condition, ^left_entry, ^right
+^left_entry:
+  cfg.br ^left(%row: i32)
+^left(%left_row: i32):
+  func.return %left_row : i32
+^right:
+  // ERROR@+1: DOMINANCE/001
+  func.return %left_row : i32
+}
+
+// ====
+
+// Explicit join arguments carry values from each predecessor legally.
+// RUN: verify
+func.def @join_argument(%condition: i1, %row: i32) -> (i32) {
+  cfg.cond_br %condition, ^left, ^right
+^merge(%selected_row: i32):
+  func.return %selected_row : i32
+^left:
+  %left_bytes = test.addi %row, %row : i32
+  cfg.br ^merge(%left_bytes: i32)
+^right:
+  cfg.br ^merge(%row: i32)
+}
+
+// ====
+
+// Nested structured regions inherit the containing block's actual dominators.
+// RUN: pass cse
+func.def @nested_reverse_layout(%condition: i1, %row: i32) {
+  cfg.br ^define
+^use:
+  scf.if %condition {
+    %local_bytes = test.addi %row, %row : i32
+    test.use %local_bytes : i32
+  } else {
+    test.use %row : i32
+  }
+  func.return
+^define:
+  %row_bytes = test.addi %row, %row : i32
+  cfg.br ^use
+}
+
+// ----
+func.def @nested_reverse_layout(%condition: i1, %row: i32) {
+  cfg.br ^define
+^use:
+  scf.if %condition {
+    test.use %row_bytes : i32
+  } else {
+    test.use %row : i32
+  }
+  func.return
+^define:
+  %row_bytes = test.addi %row, %row : i32
+  cfg.br ^use
+}
+
+// ====
+
+// Nesting does not turn a sibling definition into an enclosing definition.
+// RUN: verify
+func.def @nested_sibling_scope(%condition: i1, %row: i32) {
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  %left_bytes = test.addi %row, %row : i32
+  func.return
+^right:
+  scf.if %condition {
+    // ERROR@+1: DOMINANCE/001
+    test.use %left_bytes : i32
+  } else {
+  }
+  func.return
+}
+
+// ====
+
+// Authored forward SSA references are rejected at the parsing boundary.
+// RUN: verify
+func.def @same_block_order(%row: i32) -> (i32) {
+  // ERROR@+1: PARSE/001
+  test.use %row_bytes : i32
+  %row_bytes = test.addi %row, %row : i32
+  func.return %row_bytes : i32
+}
+
+// ====
+
+// Unreachable code is still verified, with its own arguments and local values.
+// RUN: verify
+func.def @unreachable_local(%row: i32) -> (i32) {
+  func.return %row : i32
+^dead(%dead_row: i32):
+  %dead_bytes = test.addi %dead_row, %dead_row : i32
+  func.return %dead_bytes : i32
+}
+
+// ====
+
+// Non-returning inlining may leave dead code using former live definitions.
+// Dead blocks retain region scope; inter-block dominance is vacuous there.
+// RUN: verify
+func.def @unreachable_capture(%row: i32) -> (i32) {
+  func.return %row : i32
+^dead:
+  func.return %row : i32
+}
+
+// ====
+
+// SSA references embedded in types obey the same CFG visibility as operands.
+// RUN: pass cse
+func.def @reverse_encoding(%buffer: buffer, %offset: offset) {
+  cfg.br ^define
+^use:
+  %layout = encoding.layout.dense : encoding<layout>
+  %view = buffer.view %buffer[%offset] : buffer -> view<4xf32, %layout>
+  func.return
+^define:
+  %source_layout = encoding.layout.dense : encoding<layout>
+  cfg.br ^use
+}
+
+// ----
+func.def @reverse_encoding(%buffer: buffer, %offset: offset) {
+  cfg.br ^define
+^use:
+  %view = buffer.view %buffer[%offset] : buffer -> view<4xf32, %source_layout>
+  func.return
+^define:
+  %source_layout = encoding.layout.dense : encoding<layout>
+  cfg.br ^use
+}
+
+// ====
+
+// RUN: verify
+func.def @sibling_encoding(%condition: i1, %buffer: buffer, %offset: offset) {
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  %left_layout = encoding.layout.dense : encoding<layout>
+  func.return
+^right:
+  // ERROR@+1: ENCODING/004
+  %view = buffer.view %buffer[%offset] : buffer -> view<4xf32, %left_layout>
+  func.return
+}
+
+// ====
+
+// Dependent block arguments can reference their sibling layout argument.
+// RUN: verify
+func.def @reverse_dependent_arguments(%buffer: buffer, %offset: offset) {
+  cfg.br ^define
+^use(%layout: encoding<layout>, %view: view<4xf32, %layout>):
+  func.return
+^define:
+  %source_layout = encoding.layout.dense : encoding<layout>
+  %source_view = buffer.view %buffer[%offset] : buffer -> view<4xf32, %source_layout>
+  cfg.br ^use(%source_layout: encoding<layout>, %source_view: view<4xf32, %source_layout>)
+}
+
+// ====
+
+// Two-entry cycles do not make either entry dominate the other.
+// RUN: verify
+func.def @irreducible_siblings(%condition: i1, %row: i32) {
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  %left_bytes = test.addi %row, %row : i32
+  cfg.cond_br %condition, ^right, ^exit
+^right:
+  // ERROR@+1: DOMINANCE/001
+  test.use %left_bytes : i32
+  cfg.cond_br %condition, ^left, ^exit
+^exit:
+  func.return
+}
+
+// ====
+
+// A dead definition still cannot flow into reachable code.
+// RUN: verify
+func.def @dead_definition_in_reachable_use(%row: i32) -> (i32) {
+  cfg.br ^live
+^dead:
+  %dead_row = test.constant 7 : i32
+  func.return %dead_row : i32
+^live:
+  // ERROR@+1: DOMINANCE/001
+  func.return %dead_row : i32
+}
+
+// ====
+
+// Nested regions in dead code retain cross-block captures from their region.
+// RUN: verify
+func.def @nested_dead_capture(%condition: i1, %row: i32) {
+  func.return
+^first_dead:
+  %dead_bytes = test.addi %row, %row : i32
+  func.return
+^second_dead:
+  scf.if %condition {
+    test.use %dead_bytes : i32
+  } else {
+  }
+  func.return
+}
+
+// ====
+
+// The caller's tail becomes unreachable when its non-returning callee is
+// inlined. Its local result and successor use remain structurally valid.
+// RUN: pass inline-callables
+func.def inline @spin() {
+  cfg.br ^loop
+^loop:
+  cfg.br ^loop
+}
+
+func.def @nonreturning_continuation(%row: i32) -> (i32) {
+  func.call @spin() : ()
+  %row_bytes = test.addi %row, %row : i32
+  cfg.br ^exit
+^exit:
+  func.return %row_bytes : i32
+}
+
+// ----
+func.def @nonreturning_continuation(%row: i32) -> (i32) {
+  cfg.br ^_bb1
+^_bb1:
+  cfg.br ^_bb2
+^_bb2:
+  cfg.br ^_bb2
+^_bb3:
+  %row_bytes = test.addi %row, %row : i32
+  cfg.br ^exit
+^exit:
+  func.return %row_bytes : i32
+}
+
+// ====
+
+// Consuming on one branch must not poison a mutually exclusive sibling.
+// RUN: verify
+func.def @sibling_consumption(%condition: i1, %resource: pool<16>) {
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  %left_resource = test.resource.move %resource : pool<16> -> pool<16>
+  test.resource.release %left_resource : pool<16>
+  func.return
+^right:
+  test.resource.borrow %resource : pool<16>
+  func.return
+}
+
+// ====
+
+// Consumption checks use CFG reachability even when the use is listed first.
+// RUN: verify
+func.def @nonlexical_consumption(%resource: pool<16>) {
+  cfg.br ^consume
+^use:
+  // ERROR@+1: DOMINANCE/002
+  test.resource.borrow %resource : pool<16>
+  func.return
+^consume:
+  %moved_resource = test.resource.move %resource : pool<16> -> pool<16>
+  test.resource.release %moved_resource : pool<16>
+  cfg.br ^use
+}
+
+// ====
+
+// Malformed successor placement must be diagnosed before dialect callbacks.
+// RUN: verify
+func.def @operation_after_branch(%row: i32) -> (i32) {
+  cfg.br ^exit(%row: i32)
+  // ERROR@+1: STRUCTURE/012
+  %row_bytes = test.addi %row, %row : i32
+^exit(%result: i32):
+  func.return %result : i32
+}
