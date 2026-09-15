@@ -988,6 +988,133 @@ TEST(FactsApplyPredicate, ComposedTilePredicate) {
   EXPECT_TRUE(loom_value_facts_divisible_by(f, 16));
 }
 
+TEST(FactsApplyPredicate, BoundsRetainDivisibility) {
+  struct TestCase {
+    // Predicate applied to multiples of four in [-64, 64].
+    loom_predicate_kind_t kind;
+    // Predicate's literal operand.
+    int64_t constant;
+    // Inclusive refined lower bound.
+    int64_t lower;
+    // Inclusive refined upper bound.
+    int64_t upper;
+  };
+  const TestCase cases[] = {
+      {LOOM_PREDICATE_LT, 64, -64, 60},   {LOOM_PREDICATE_LE, 63, -64, 60},
+      {LOOM_PREDICATE_LT, -60, -64, -64}, {LOOM_PREDICATE_LE, -61, -64, -64},
+      {LOOM_PREDICATE_GT, -64, -60, 64},  {LOOM_PREDICATE_GE, -63, -60, 64},
+      {LOOM_PREDICATE_GT, 60, 64, 64},    {LOOM_PREDICATE_GE, 61, 64, 64},
+      {LOOM_PREDICATE_MIN, 1, 4, 64},     {LOOM_PREDICATE_MAX, -1, -64, -4},
+      {LOOM_PREDICATE_NE, -64, -60, 64},  {LOOM_PREDICATE_NE, 64, -64, 60},
+  };
+  for (const TestCase& test_case : cases) {
+    SCOPED_TRACE(test_case.kind);
+    SCOPED_TRACE(test_case.constant);
+    loom_value_facts_t facts = loom_value_facts_make(-64, 64, 4);
+    loom_value_facts_mark_workgroup_uniform(&facts);
+    const loom_predicate_t predicate =
+        make_predicate_1(test_case.kind, test_case.constant);
+    loom_value_facts_apply_predicate(&facts, &predicate);
+    EXPECT_EQ(facts.range_lo, test_case.lower);
+    EXPECT_EQ(facts.range_hi, test_case.upper);
+    EXPECT_EQ(facts.known_divisor, 4);
+    EXPECT_TRUE(loom_value_facts_is_workgroup_uniform(facts));
+    EXPECT_EQ(loom_value_facts_is_exact(facts),
+              test_case.lower == test_case.upper);
+  }
+}
+
+TEST(FactsApplyPredicate, DivisorAndRangeOrderAgree) {
+  const loom_predicate_t range = make_predicate_range(-11, 23);
+  const loom_predicate_t multiple = make_predicate_1(LOOM_PREDICATE_MUL, 6);
+  loom_value_facts_t range_first = loom_value_facts_unknown();
+  loom_value_facts_apply_predicate(&range_first, &range);
+  loom_value_facts_apply_predicate(&range_first, &multiple);
+  loom_value_facts_t divisor_first = loom_value_facts_unknown();
+  loom_value_facts_apply_predicate(&divisor_first, &multiple);
+  loom_value_facts_apply_predicate(&divisor_first, &range);
+  EXPECT_TRUE(loom_value_facts_equal(range_first, divisor_first));
+  EXPECT_EQ(range_first.range_lo, -6);
+  EXPECT_EQ(range_first.range_hi, 18);
+  EXPECT_EQ(range_first.known_divisor, 6);
+}
+
+TEST(FactsApplyPredicate, NotEqualPreservesEarlierNonzeroConstraint) {
+  loom_value_facts_t facts = loom_value_facts_make(-8, 8, 4);
+  const loom_predicate_t nonzero = make_predicate_1(LOOM_PREDICATE_NE, 0);
+  const loom_predicate_t exclude_upper = make_predicate_1(LOOM_PREDICATE_NE, 8);
+  loom_value_facts_apply_predicate(&facts, &nonzero);
+  loom_value_facts_apply_predicate(&facts, &exclude_upper);
+  EXPECT_EQ(facts.range_lo, -8);
+  EXPECT_EQ(facts.range_hi, 4);
+  EXPECT_TRUE(loom_value_facts_is_non_zero(facts));
+}
+
+TEST(FactsApplyPredicate, DivisibleRangesMatchEnumeratedIntegers) {
+  for (int64_t divisor = 1; divisor <= 8; ++divisor) {
+    for (int64_t lower = -16; lower <= 16; ++lower) {
+      for (int64_t upper = lower; upper <= 16; ++upper) {
+        SCOPED_TRACE(divisor);
+        SCOPED_TRACE(lower);
+        SCOPED_TRACE(upper);
+        int64_t expected_lower = INT64_MAX;
+        int64_t expected_upper = INT64_MIN;
+        for (int64_t value = lower; value <= upper; ++value) {
+          if (value % divisor != 0) continue;
+          if (expected_lower == INT64_MAX) expected_lower = value;
+          expected_upper = value;
+        }
+        // Empty branch domains have no representable bottom in this lattice.
+        if (expected_lower > expected_upper) continue;
+        loom_value_facts_t facts = loom_value_facts_make(-32, 32, divisor);
+        const loom_predicate_t predicate = make_predicate_range(lower, upper);
+        loom_value_facts_apply_predicate(&facts, &predicate);
+        EXPECT_EQ(facts.range_lo, expected_lower);
+        EXPECT_EQ(facts.range_hi, expected_upper);
+      }
+    }
+  }
+}
+
+TEST(FactsApplyPredicate, DivisibleBoundsPreserveUnboundedAndOverflowDomains) {
+  struct TestCase {
+    // Inclusive incoming lower bound.
+    int64_t lower;
+    // Inclusive incoming upper bound.
+    int64_t upper;
+    // Known divisor applied to the interval.
+    int64_t divisor;
+    // Inclusive refined lower bound.
+    int64_t expected_lower;
+    // Inclusive refined upper bound.
+    int64_t expected_upper;
+  };
+  const TestCase cases[] = {
+      {INT64_MIN, INT64_MAX, 4, INT64_MIN, INT64_MAX},
+      {INT64_MIN, -1, 4, INT64_MIN, -4},
+      {1, INT64_MAX, 4, 4, INT64_MAX},
+      {INT64_MAX - 1, INT64_MAX, 4, INT64_MAX - 1, INT64_MAX},
+      {INT64_MIN, INT64_MIN + 1, 3, INT64_MIN, INT64_MIN + 1},
+      {INT64_MIN + 1, INT64_MAX - 1, INT64_MAX, -INT64_MAX, 0},
+      {-3, -1, 4, -3, -1},
+      {1, 3, 4, 1, 3},
+      {-1, 1, 4, 0, 0},
+  };
+  for (const TestCase& test_case : cases) {
+    SCOPED_TRACE(test_case.lower);
+    SCOPED_TRACE(test_case.upper);
+    SCOPED_TRACE(test_case.divisor);
+    loom_value_facts_t facts = loom_value_facts_make(
+        test_case.lower, test_case.upper, test_case.divisor);
+    const loom_predicate_t predicate =
+        make_predicate_range(test_case.lower, test_case.upper);
+    loom_value_facts_apply_predicate(&facts, &predicate);
+    EXPECT_EQ(facts.range_lo, test_case.expected_lower);
+    EXPECT_EQ(facts.range_hi, test_case.expected_upper);
+    EXPECT_EQ(facts.known_divisor, test_case.divisor);
+  }
+}
+
 //===----------------------------------------------------------------------===//
 // Execution distribution
 //===----------------------------------------------------------------------===//

@@ -267,12 +267,14 @@ typedef struct loom_value_facts_t {
   // a host double carrying the value rounded to its declared scalar type (via
   // memcpy); range_hi == range_lo. The declared type is stored in the IR.
   int64_t range_lo;
+  // Inclusive upper bound, or the same encoded double as range_lo for an exact
+  // floating-point value. INT64_MAX represents an unbounded upper endpoint.
   int64_t range_hi;
 
-  // Largest known divisor (>= 1). GCD semantics: if the value is
-  // known to be a multiple of both 16 and 24, known_divisor =
-  // gcd(16, 24) = 8. For exact integer values, known_divisor = |value|
-  // (or 1 if value is 0 or INT64_MIN). Default (unknown): 1.
+  // Known divisor (>= 1). Joining alternative values takes the GCD; applying
+  // another multiple predicate takes the LCM when representable. Exact integer
+  // constructors use |value| (or 1 for zero and INT64_MIN); predicate
+  // refinement may retain a weaker divisor. Default (unknown): 1.
   int64_t known_divisor;
 
   // Cached predicate bitflags. Derived from range/divisor but cheaper
@@ -822,9 +824,10 @@ bool loom_value_facts_predicate_conflict(
     loom_value_facts_t facts, const loom_predicate_t* predicate,
     loom_value_fact_predicate_conflict_t* out_conflict);
 
-// Tightens facts using a single predicate constraint. Modifies the facts in
-// place and recomputes flags afterward. The caller is responsible for enforcing
-// that the predicate is legal for the value type.
+// Tightens facts using a single predicate constraint, combining finite integer
+// bounds with the known divisor. Unbounded endpoints remain unbounded. Modifies
+// the facts in place and recomputes flags afterward. The caller is responsible
+// for enforcing that the predicate is legal for the value type.
 void loom_value_facts_apply_predicate(loom_value_facts_t* facts,
                                       const loom_predicate_t* predicate);
 

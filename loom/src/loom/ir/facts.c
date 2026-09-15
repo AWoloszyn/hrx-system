@@ -678,6 +678,30 @@ bool loom_value_facts_predicate_conflict(
                                                        out_conflict);
 }
 
+// A literal bound and a known divisor describe the same value. Tighten finite
+// endpoints to possible multiples so consumers need not rediscover this fact.
+static void loom_value_facts_refine_divisible_range(loom_value_facts_t* facts) {
+  const int64_t divisor = facts->known_divisor;
+  if (divisor <= 1 || loom_value_facts_is_float(*facts)) return;
+  int64_t lower = facts->range_lo;
+  int64_t upper = facts->range_hi;
+  if (lower != INT64_MIN) {
+    const int64_t remainder = lower % divisor;
+    const int64_t adjustment = remainder > 0 ? divisor - remainder : -remainder;
+    if (!iree_checked_add_i64(lower, adjustment, &lower)) return;
+  }
+  if (upper != INT64_MAX) {
+    const int64_t remainder = upper % divisor;
+    const int64_t adjustment = remainder < 0 ? divisor + remainder : remainder;
+    if (!iree_checked_sub_i64(upper, adjustment, &upper)) return;
+  }
+  // The lattice has no empty set. Contradictory predicates retain their
+  // conservative interval instead of manufacturing an exact value.
+  if (lower > upper) return;
+  facts->range_lo = lower;
+  facts->range_hi = upper;
+}
+
 void loom_value_facts_apply_predicate(loom_value_facts_t* facts,
                                       const loom_predicate_t* predicate) {
   // This scalar fact lattice can consume predicates with literal bounds. Value
@@ -725,11 +749,10 @@ void loom_value_facts_apply_predicate(loom_value_facts_t* facts,
                  facts->range_lo < facts->range_hi && constant > INT64_MIN) {
         facts->range_hi = constant - 1;
       }
-      loom_value_facts_recompute_flags(facts);
       if (constant == 0) {
-        facts->flags |= LOOM_VALUE_FACT_NON_ZERO;
+        preserved_predicate_flags |= LOOM_VALUE_FACT_NON_ZERO;
       }
-      return;
+      break;
 
     case LOOM_PREDICATE_LT:
       // a < N → range_hi = min(range_hi, N - 1).
@@ -809,6 +832,7 @@ void loom_value_facts_apply_predicate(loom_value_facts_t* facts,
       break;
   }
 
+  loom_value_facts_refine_divisible_range(facts);
   loom_value_facts_recompute_flags(facts);
   facts->flags |= preserved_predicate_flags;
 }
