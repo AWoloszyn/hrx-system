@@ -9,6 +9,13 @@
 
 iree_add_all_subdirs()
 
+loom_check_test_suite(
+  NAME
+    test
+  SRCS
+    "callgraph_specialization.loom-test"
+)
+
 loom_low_descriptor_cc_library(
   NAME
     descriptors

@@ -19,6 +19,9 @@ extern "C" {
 const loom_pass_info_t* loom_target_callgraph_specialization_pass_info(void);
 
 // Extends invocation-local target versions through retained semantic callees.
+// Public definitions keep their own contexts; visible callers cannot bind an
+// unbound public entry. Private dependencies reachable from an unbound entry
+// preserve their original definitions while bound callers use private versions.
 iree_status_t loom_target_callgraph_specialization_run(loom_pass_t* pass,
                                                        loom_module_t* module);
 

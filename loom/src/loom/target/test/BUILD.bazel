@@ -9,11 +9,17 @@ load(
     "loom_cc_library",
     "loom_low_descriptor_cc_library",
 )
+load("//loom/build_tools/bazel:loom_check.bzl", "loom_check_test_suite")
 
 package(
     default_visibility = ["//visibility:public"],
     features = ["layering_check"],
     licenses = ["notice"],  # Apache 2.0
+)
+
+loom_check_test_suite(
+    name = "test",
+    srcs = ["callgraph_specialization.loom-test"],
 )
 
 _TEST_LOW_LOWER_VISIBILITY = [

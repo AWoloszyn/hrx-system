@@ -16,6 +16,7 @@
 #include "loom/format/text/parser.h"
 #include "loom/format/text/printer.h"
 #include "loom/ir/context.h"
+#include "loom/ir/function_version.h"
 #include "loom/ir/module.h"
 #include "loom/pass/builtin_registry.h"
 #include "loom/pass/report.h"
@@ -581,16 +582,20 @@ static iree_status_t loom_check_execute_pass_with_output(
           legalizer_provider_list, iree_arena_allocator(&diagnostic_arena),
           &legalizer_registry_storage);
     }
+    loom_function_version_owner_t function_versions;
+    loom_function_version_owner_initialize(&diagnostic_arena,
+                                           &function_versions);
     loom_pass_tool_run_options_t run_options = {
         .registry = pass_registry,
-        .environment = loom_low_pass_environment_storage_initialize(
+        .environment = loom_low_pass_environment_storage_initialize_mutable(
             &low_registry.registry, low_lower_policy_registry_ref,
             environment ? &environment->low_legality_provider_list : NULL,
             loom_target_legalizer_registry_storage_registry(
                 &legalizer_registry_storage),
             math_policy_registry_ref, compile_report_ref,
             environment ? environment->target_environment : NULL,
-            /*function_versions=*/NULL, &low_pass_environment_storage),
+            &function_versions, &low_pass_environment_storage),
+        .function_versions = &function_versions.list,
         .predicate_provider =
             loom_target_pass_predicate_provider(&predicate_storage),
         .block_pool = block_pool,

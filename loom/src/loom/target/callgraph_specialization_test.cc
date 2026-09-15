@@ -694,7 +694,7 @@ func.def public target(@wave32) @root() {
 }
 
 TEST_F(TargetCallgraphSpecializationTest,
-       RejectsMultipleContextsForExternallyReachableCalleeBeforeMutation) {
+       KeepsUnboundPublicDefinitionIndependentOfProfileBoundCallers) {
   ModulePtr module = Parse(R"(
 func.def public @shared() {
   func.return
@@ -727,10 +727,10 @@ func.def public @wave64_root() {
   EXPECT_FALSE(
       Run(module.get(), &specialization.function_versions, &collector));
 
-  ASSERT_EQ(collector.errors.size(), 1u);
-  EXPECT_EQ(collector.errors[0], LOOM_ERR_TARGET_069);
-  ASSERT_EQ(collector.strings.size(), 1u);
-  EXPECT_EQ(collector.strings[0], "shared");
+  EXPECT_TRUE(collector.errors.empty());
+  EXPECT_EQ(Version(specialization.function_versions,
+                    Function(module.get(), IREE_SV("shared"))),
+            nullptr);
   EXPECT_EQ(specialization.function_versions.list.count, 2u);
   EXPECT_EQ(module->symbols.count, symbol_count);
   EXPECT_EQ(module->strings.count, string_count);
