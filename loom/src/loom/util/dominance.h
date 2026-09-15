@@ -6,7 +6,7 @@
 
 // Dominance queries for loom IR.
 //
-// For structured regions (no LOOM_REGION_INSTANCE_FLAG_CFG), dominance
+// For single-block structured regions, dominance
 // is read directly from the IR structure via parent_op chains — no
 // precomputation required. Each query walks the ancestry of the two
 // ops to determine their relationship:
@@ -15,12 +15,12 @@
 //   Ancestor scope:  an op in an enclosing region dominates all ops
 //                    in nested regions, unless an isolated-from-above
 //                    boundary intervenes.
-//   Entry block:     block 0 of a multi-block region dominates all
-//                    sibling blocks.
 //
-// For CFG regions, the dominance info struct caches a computed block graph and
-// dominator tree from predecessor edges. The query API is identical — callers
-// don't need to know which strategy is in use.
+// For CFG or multi-block regions, the dominance info struct caches a block
+// graph and the shared CFG dominator tree. Entry dominates reachable blocks;
+// unreachable blocks dominate only themselves. Region caches cover the entire
+// requested region tree. Bulk single-region consumers use cfg_dominance.h
+// directly to retain indexed queries without cache or ancestry lookup.
 //
 // Usage:
 //
@@ -107,8 +107,8 @@ const loom_op_t* loom_op_ancestor_at_depth(const loom_op_t* op,
 //   - Ancestor scope: a dominates b if a is in an enclosing scope
 //     (reachable via b's parent_op chain) and no isolated-from-above
 //     boundary is crossed.
-//   - Entry block dominance: an op in block 0 of a multi-block region
-//     dominates ops in sibling blocks of the same region.
+//   - Different blocks: the defining block must dominate the use block in the
+//     region's CFG, independently of their source order.
 //
 // Both ops must have valid parent_op/parent_block pointers (set by
 // the builder or loom_module_compute_uses).
@@ -117,9 +117,9 @@ bool loom_dominates_op(const loom_dominance_info_t* info, const loom_op_t* a,
 
 // Does block |a| dominate block |b| within their shared region?
 //
-// For CFG regions this uses the cached dominator tree. For structured
-// multi-block regions this follows the region entry-block rule. A block
-// dominates itself. Blocks from different regions never dominate each other.
+// Multi-block and CFG regions use the cached dominator tree. A block dominates
+// itself, including when unreachable. Blocks from different regions never
+// dominate each other.
 bool loom_dominates_block(const loom_dominance_info_t* info,
                           const loom_block_t* a, const loom_block_t* b);
 

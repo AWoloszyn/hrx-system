@@ -8,6 +8,8 @@
 
 #include "loom/error/error_catalog.h"
 #include "loom/ir/module_record.h"
+#include "loom/util/cfg_dominance.h"
+#include "loom/util/cfg_graph.h"
 #include "loom/verify/verify_constraints.h"
 #include "loom/verify/verify_diagnostics.h"
 #include "loom/verify/verify_ownership.h"
@@ -145,6 +147,80 @@ loom_verify_command_effect_scope(loom_verify_state_t* state,
   loom_verify_emit_non_command_effect(state, op, vtable);
 }
 
+// Region-local declarations used only when a CFG has unreachable blocks.
+// Unreachability removes inter-block ordering requirements, not lexical region
+// boundaries or definition-before-use within each block. Retain the direct
+// definitions once so entering a dead block never rescans its siblings.
+typedef struct loom_verify_unreachable_definitions_t {
+  // Direct block arguments/results, excluding all nested-region definitions.
+  loom_value_id_t* values;
+  // Number of retained definitions.
+  iree_host_size_t count;
+  // Allocated entries in values.
+  iree_host_size_t capacity;
+  // Starting value offset per block, followed by the region's ending offset.
+  iree_host_size_t* block_offsets;
+} loom_verify_unreachable_definitions_t;
+
+static iree_status_t loom_verify_append_definitions(
+    loom_verify_state_t* state, const loom_value_id_t* values,
+    iree_host_size_t count,
+    loom_verify_unreachable_definitions_t* definitions) {
+  if (count == 0) return iree_ok_status();
+  if (definitions->count + count > definitions->capacity) {
+    IREE_RETURN_IF_ERROR(iree_arena_grow_array(
+        &state->arena, definitions->count, definitions->count + count,
+        sizeof(*definitions->values), &definitions->capacity,
+        (void**)&definitions->values));
+  }
+  memcpy(definitions->values + definitions->count, values,
+         count * sizeof(*definitions->values));
+  definitions->count += count;
+  return iree_ok_status();
+}
+
+static iree_status_t loom_verify_collect_unreachable_definitions(
+    loom_verify_state_t* state, const loom_region_t* region,
+    loom_verify_unreachable_definitions_t* definitions) {
+  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+      &state->arena, (iree_host_size_t)region->block_count + 1,
+      sizeof(*definitions->block_offsets),
+      (void**)&definitions->block_offsets));
+  iree_status_t status = iree_ok_status();
+  for (uint16_t b = 0; iree_status_is_ok(status) && b < region->block_count;
+       ++b) {
+    const loom_block_t* block = loom_region_const_block(region, b);
+    definitions->block_offsets[b] = definitions->count;
+    for (uint16_t a = 0; iree_status_is_ok(status) && a < block->arg_count;
+         ++a) {
+      loom_value_id_t value = loom_block_arg_id(block, a);
+      status = loom_verify_append_definitions(state, &value, 1, definitions);
+    }
+    for (const loom_op_t* op = block->first_op; iree_status_is_ok(status) && op;
+         op = op->next_op) {
+      status = loom_verify_append_definitions(state, loom_op_const_results(op),
+                                              op->result_count, definitions);
+    }
+  }
+  definitions->block_offsets[region->block_count] = definitions->count;
+  return status;
+}
+
+static void loom_verify_set_definition_visibility(
+    loom_verify_state_t* state,
+    const loom_verify_unreachable_definitions_t* definitions,
+    iree_host_size_t begin, iree_host_size_t end, bool visible) {
+  for (iree_host_size_t i = begin; i < end; ++i) {
+    loom_value_id_t value = definitions->values[i];
+    if (value == LOOM_VALUE_ID_INVALID) continue;
+    if (visible) {
+      loom_bitset_set(state->defined_bits, state->defined_bits_length, value);
+    } else {
+      loom_bitset_clear(state->defined_bits, state->defined_bits_length, value);
+    }
+  }
+}
+
 static iree_status_t loom_verify_region(
     loom_verify_state_t* state, loom_region_t* region,
     const loom_verify_region_contract_t* contract) {
@@ -161,6 +237,24 @@ static iree_status_t loom_verify_region(
     IREE_RETURN_IF_ERROR(loom_verify_emit_single_block_region(
         state, contract, region->block_count));
   }
+  // Single-block regions need only the ordinary lexical scope. Multi-block
+  // regions share one graph between dominance and consumed-value queries.
+  // Keep the indexed tree local: per-use checks remain a definition bit test.
+  loom_cfg_graph_t graph = {0};
+  loom_cfg_dominance_t dominance = {0};
+  iree_host_size_t* block_scope_ends = NULL;
+  const iree_host_size_t region_watermark = state->defined_stack_count;
+  if (region->block_count > 1) {
+    IREE_RETURN_IF_ERROR(
+        loom_cfg_graph_build(state->module, region, &state->arena, &graph));
+    IREE_RETURN_IF_ERROR(
+        loom_cfg_dominance_build(&graph, &state->arena, &dominance));
+    if (dominance.available) {
+      IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+          &state->arena, region->block_count, sizeof(*block_scope_ends),
+          (void**)&block_scope_ends));
+    }
+  }
   const loom_region_t* saved_region = state->region_scope.current;
   loom_consumption_region_query_t* saved_consumption_query =
       state->region_scope.consumption_query;
@@ -168,8 +262,13 @@ static iree_status_t loom_verify_region(
       state->region_scope.command_effects_only;
   loom_consumption_region_query_t consumption_query;
   state->region_scope.current = region;
-  loom_consumption_region_query_initialize(state->module, region, &state->arena,
-                                           &consumption_query);
+  if (region->block_count > 1) {
+    loom_consumption_region_query_initialize_with_cfg_graph(
+        state->module, region, &graph, &state->arena, &consumption_query);
+  } else {
+    loom_consumption_region_query_initialize(state->module, region,
+                                             &state->arena, &consumption_query);
+  }
   state->region_scope.consumption_query = &consumption_query;
   if (contract && iree_any_bit_set(contract->descriptor->flags,
                                    LOOM_REGION_COMMAND_EFFECTS_ONLY)) {
@@ -182,8 +281,45 @@ static iree_status_t loom_verify_region(
     scope_pushed = true;
   }
 
-  for (uint16_t b = 0; iree_status_is_ok(status) && b < region->block_count;
-       ++b) {
+  uint16_t source_block_index = 0;
+  loom_verify_unreachable_definitions_t unreachable_definitions = {0};
+  for (uint16_t position = 0;
+       iree_status_is_ok(status) && position < region->block_count;
+       ++position) {
+    uint16_t b;
+    iree_host_size_t block_watermark = region_watermark;
+    if (position < dominance.preorder.count) {
+      b = dominance.preorder.values[position];
+      if (b != 0) {
+        block_watermark = block_scope_ends[dominance.immediate_dominators[b]];
+      }
+    } else {
+      // On a malformed CFG, check every block locally and let the structural
+      // verifier diagnose its edges. Valid unreachable blocks are checked after
+      // reachable ones, with region-local declarations available independently
+      // of source order.
+      while (dominance.available &&
+             graph.blocks[source_block_index].reachable) {
+        ++source_block_index;
+      }
+      b = source_block_index++;
+    }
+    loom_verify_restore_definitions(state, block_watermark);
+    if (dominance.available && position >= dominance.preorder.count) {
+      if (!unreachable_definitions.block_offsets) {
+        status = loom_verify_collect_unreachable_definitions(
+            state, region, &unreachable_definitions);
+        if (!iree_status_is_ok(status)) break;
+        loom_verify_set_definition_visibility(state, &unreachable_definitions,
+                                              0, unreachable_definitions.count,
+                                              /*visible=*/true);
+      }
+      // This block still establishes its own definitions in operation order.
+      loom_verify_set_definition_visibility(
+          state, &unreachable_definitions,
+          unreachable_definitions.block_offsets[b],
+          unreachable_definitions.block_offsets[b + 1], /*visible=*/false);
+    }
     loom_block_t* block = loom_region_block(region, b);
     // Define block arguments, then validate any SSA encoding
     // references in their types (encoding values must be visible
@@ -237,8 +373,21 @@ static iree_status_t loom_verify_region(
             loom_verify_emit_wrong_terminator(state, contract, terminator_op);
       }
     }
+    if (block_scope_ends) {
+      block_scope_ends[b] = state->defined_stack_count;
+    }
+    if (unreachable_definitions.block_offsets) {
+      loom_verify_restore_definitions(state, region_watermark);
+      loom_verify_set_definition_visibility(
+          state, &unreachable_definitions,
+          unreachable_definitions.block_offsets[b],
+          unreachable_definitions.block_offsets[b + 1], /*visible=*/true);
+    }
   }
 
+  loom_verify_set_definition_visibility(state, &unreachable_definitions, 0,
+                                        unreachable_definitions.count,
+                                        /*visible=*/false);
   if (scope_pushed) {
     loom_verify_pop_scope(state);
   }

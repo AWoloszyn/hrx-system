@@ -57,16 +57,21 @@ iree_status_t loom_verify_push_scope(loom_verify_state_t* state) {
   return iree_ok_status();
 }
 
-void loom_verify_pop_scope(loom_verify_state_t* state) {
-  if (state->scope_depth == 0) return;
-  --state->scope_depth;
-  iree_host_size_t watermark = state->scope_watermarks[state->scope_depth];
+void loom_verify_restore_definitions(loom_verify_state_t* state,
+                                     iree_host_size_t watermark) {
   // Clear all defined bits for values defined in the scope we're leaving.
   for (iree_host_size_t i = watermark; i < state->defined_stack_count; ++i) {
     loom_bitset_clear(state->defined_bits, state->defined_bits_length,
                       state->defined_stack[i]);
   }
   state->defined_stack_count = watermark;
+}
+
+void loom_verify_pop_scope(loom_verify_state_t* state) {
+  if (state->scope_depth == 0) return;
+  --state->scope_depth;
+  loom_verify_restore_definitions(state,
+                                  state->scope_watermarks[state->scope_depth]);
 }
 
 iree_status_t loom_verify_define_value(loom_verify_state_t* state,

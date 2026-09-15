@@ -44,6 +44,8 @@ loom_cc_library(
         "//loom/src/loom/ops:special_values",
         "//loom/src/loom/target:registers",
         "//loom/src/loom/util:adaptive_sort",
+        "//loom/src/loom/util:cfg_dominance",
+        "//loom/src/loom/util:cfg_graph",
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/internal:arena",
         "//runtime/src/iree/base/internal:unicode",

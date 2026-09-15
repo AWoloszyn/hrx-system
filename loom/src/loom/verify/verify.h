@@ -4,13 +4,13 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// Single-pass O(N) IR verifier for loom modules.
+// Structural, type, SSA-availability and ownership verification for Loom IR.
 //
 // ==========================================================================
 // Overview
 // ==========================================================================
 //
-// The verifier walks every operation in a module exactly once, checking:
+// The verifier checks each operation and recursively verifies its regions:
 //
 //   Structural consistency
 //     Operand/result/attr/region counts match the op vtable.
@@ -31,8 +31,9 @@
 //
 //   SSA dominance
 //     Every use of a value is dominated by its definition. In loom's
-//     structured IR, this means: defined in the same block before the
-//     use, or defined in an ancestor block/region.
+//     structured IR, values are visible after their definition and in nested
+//     regions. In multi-block regions, the defining block must also dominate
+//     the use block; source block order has no semantic significance.
 //
 //   Linear ownership transfers
 //     Operands consumed by tied or moved results are not used after the
@@ -49,24 +50,34 @@
 //     invoked after all table-driven checks pass.
 //
 // ==========================================================================
-// Single-pass design
+// Analysis and scope ownership
 // ==========================================================================
 //
-// The verifier makes exactly one walk over the IR: module body →
-// blocks → ops, recursing into regions. Total cost is O(N) where N
-// is the number of ops. There are no separate passes for dominance,
-// type checking, or constraint verification — everything is checked
-// as each op is visited.
+// Canonical type and symbol facts are prepared before the operation walk.
+// Single-block regions need no CFG analysis. Each multi-block region builds
+// one graph and dominator tree, shared with its ownership queries. Graph
+// extraction is linear in the region's operations and successor edges;
+// dominance construction takes O(B + E log B) time and O(B) additional arena
+// space for B blocks and E edges. Dialect callbacks and ownership queries have
+// their own costs; this is not a whole-verifier constant-work-per-op guarantee.
 //
 // SSA scope tracking uses a bitset (one bit per value_id in the
-// module) with a watermark stack for region entry/exit:
+// module) and definition-stack watermarks:
 //
 //   Enter region: push current defined-list watermark.
+//   Enter block:  restore the immediate dominator's ending watermark.
 //   Process ops:  set defined bit for each result, check operands.
 //   Exit region:  pop watermark, clear bits for values defined inside.
 //
-// This gives O(1) dominance checks (bit test) and O(values-in-region)
-// cleanup on region exit, which is linear in the total IR size.
+// Blocks are visited in dominator-tree preorder, preserving only ancestor
+// definitions between reachable blocks. Unreachable blocks can reference direct
+// definitions from other blocks in their region: inter-block dominance is
+// vacuous there, including for continuations made dead by non-returning calls.
+// A linear declaration inventory is retained only for regions with unreachable
+// blocks. Their own local definitions still become visible in operation order;
+// nested regions retain their lexical boundaries. CFG depth does not
+// consume the nested-region scope limit or the C call stack. Every definition
+// is pushed and removed once, and each operand availability check is O(1).
 //
 // ==========================================================================
 // Diagnostics

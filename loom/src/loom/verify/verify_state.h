@@ -193,6 +193,10 @@ iree_status_t loom_verify_pending_diagnostic_status(loom_verify_state_t* state);
 
 iree_status_t loom_verify_push_scope(loom_verify_state_t* state);
 void loom_verify_pop_scope(loom_verify_state_t* state);
+// Removes definitions after a retained stack watermark. CFG block scopes use
+// this independently of the fixed nested-region scope stack.
+void loom_verify_restore_definitions(loom_verify_state_t* state,
+                                     iree_host_size_t watermark);
 iree_status_t loom_verify_define_value(loom_verify_state_t* state,
                                        loom_value_id_t value_id);
 void loom_verify_consume_value(loom_verify_state_t* state,

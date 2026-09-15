@@ -7,11 +7,12 @@
 // Arena-backed control-flow graph extraction for Loom regions.
 //
 // The graph is a dense view over a single region's ordered block table.
-// Successor edges are read from successor-bearing terminators. Malformed edges
-// such as NULL targets, targets outside the region, or successor-bearing ops
-// before the block terminator set graph->malformed and are omitted from the
-// adjacency lists so analyses can answer conservatively while the verifier owns
-// user-facing diagnostics.
+// Null targets and targets outside the region set graph->malformed and are
+// omitted from adjacency. Misplaced successor-bearing ops and invalid selector
+// metadata also mark the graph malformed, retaining their in-region edges.
+// Analyses can answer conservatively while verification owns diagnostics.
+// Entry reachability, DFS parents/preorder and reverse postorder are retained
+// by the same construction walk for downstream analyses.
 
 #ifndef LOOM_UTIL_CFG_GRAPH_H_
 #define LOOM_UTIL_CFG_GRAPH_H_
@@ -78,6 +79,11 @@ typedef struct loom_cfg_block_info_t {
   iree_host_size_t predecessor_edge_start;
   // True when the block is reachable from the region entry block.
   bool reachable;
+  // Entry-rooted DFS preorder, or UINT16_MAX for an unreachable block.
+  uint16_t preorder;
+  // Dense DFS-tree parent index, or UINT16_MAX for the entry/unreachable
+  // blocks.
+  uint16_t parent;
 } loom_cfg_block_info_t;
 
 // Dense CFG adjacency for one region.
