@@ -239,7 +239,7 @@ static void iree_hip_array_registry_lock(void) {
 static hipError_t iree_hip_array_retain(hipArray_const_t array,
                                         struct hipArray_st** out);
 
-static void iree_hip_array_destroy(struct hipArray_st* array);
+static hipError_t iree_hip_array_destroy(struct hipArray_st* array);
 
 static void iree_hip_array_release(struct hipArray_st* array);
 
@@ -5673,7 +5673,8 @@ HIPAPI hipError_t hipFreeArray(hipArray_t array) {
     HIP_RETURN_ERROR(hipErrorContextIsDestroyed);
   }
   iree_hip_array_lifetime_await_idle(&removed_array->lifetime);
-  iree_hip_array_destroy(removed_array);
+  hipError_t result = iree_hip_array_destroy(removed_array);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
   return hipSuccess;
 }
 
@@ -8376,20 +8377,21 @@ static hipError_t iree_hip_array_format_to_desc(hipArray_Format format,
   return hipSuccess;
 }
 
-static void iree_hip_array_destroy(struct hipArray_st* array) {
+static hipError_t iree_hip_array_destroy(struct hipArray_st* array) {
   iree_hal_streaming_context_t* context = array->context;
   const iree_hal_streaming_deviceptr_t device_ptr = array->device_ptr;
   array->magic = 0;
   array->context = NULL;
   array->buffer = NULL;
   array->device_ptr = 0;
-  if (context && device_ptr) {
-    iree_status_ignore(
-        iree_hal_streaming_memory_free_device(context, device_ptr));
-  }
+  iree_status_t status =
+      context && device_ptr
+          ? iree_hal_streaming_memory_free_device(context, device_ptr)
+          : iree_ok_status();
   iree_hal_streaming_context_release(context);
   iree_hip_array_lifetime_deinitialize(&array->lifetime);
   free(array);
+  return iree_status_to_hip_result(status);
 }
 
 static void iree_hip_array_release(struct hipArray_st* array) {
