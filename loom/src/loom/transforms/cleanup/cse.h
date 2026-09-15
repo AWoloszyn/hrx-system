@@ -32,6 +32,9 @@ const loom_pass_info_t* loom_cse_pass_info(void);
 //   - Convergent barriers clear occupied slots, including tombstones. Total
 //     full-table invalidation work is bounded by block insertions, with one
 //     retained slot index per possible insertion.
+//   - Full and read barriers use path-compressed ancestor indexes to skip
+//     scopes with no pending entries, with logarithmic amortized query cost.
+//     Insertion rearms the active block after nested regions finish.
 //   - CFG dominance: each multiblock region's graph is built once. Scope
 //     construction consumes its indexed immediate dominators directly.
 //     Stateful lookup stops at joins and backedges; pure candidates remain

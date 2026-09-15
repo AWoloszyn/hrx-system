@@ -431,6 +431,12 @@ static void loom_cse_table_invalidate_all(loom_cse_table_t* table) {
 // This bounds peak scope memory to the largest root region rather than the
 // sum of all root regions across the function.
 
+typedef enum loom_cse_invalidation_kind_e {
+  LOOM_CSE_INVALIDATE_ALL = 0,
+  LOOM_CSE_INVALIDATE_READS = 1,
+  LOOM_CSE_INVALIDATE_COUNT = 2,
+} loom_cse_invalidation_kind_t;
+
 typedef struct loom_cse_scope_t {
   // CSE candidates defined in this block.
   loom_cse_table_t table;
@@ -438,6 +444,9 @@ typedef struct loom_cse_scope_t {
   bool blocks_stateful_parent_lookup;
   // Dominating scope whose candidates may be visible in this block.
   struct loom_cse_scope_t* parent;
+  // Path-compressed ancestor with pending slots for each invalidation kind.
+  // Self means inspect this table first; NULL means no pending ancestor.
+  struct loom_cse_scope_t* pending_ancestors[LOOM_CSE_INVALIDATE_COUNT];
 } loom_cse_scope_t;
 
 // Allocates a new scope with a hash table sized for |block|.
@@ -450,10 +459,28 @@ static iree_status_t loom_cse_scope_allocate(iree_arena_allocator_t* arena,
       iree_arena_allocate(arena, sizeof(loom_cse_scope_t), (void**)out_scope));
   (*out_scope)->parent = parent;
   (*out_scope)->blocks_stateful_parent_lookup = blocks_stateful_parent_lookup;
+  // CFG scopes are allocated before their dominators run. Resolve empty scopes
+  // lazily so a future dominator insertion cannot be hidden by an early skip.
+  for (int i = 0; i < LOOM_CSE_INVALIDATE_COUNT; ++i) {
+    (*out_scope)->pending_ancestors[i] = *out_scope;
+  }
   iree_host_size_t capacity = iree_host_size_next_power_of_two(
       iree_max((iree_host_size_t)block->op_count * 2, 16));
   return loom_cse_table_initialize(arena, capacity, block->op_count,
                                    &(*out_scope)->table);
+}
+
+static void loom_cse_scope_insert(loom_cse_scope_t* scope, loom_op_t* op,
+                                  uint32_t hash, loom_trait_flags_t traits,
+                                  uint64_t state_dependency_bits) {
+  loom_cse_table_insert(&scope->table, op, hash, traits, state_dependency_bits);
+  // Only the active block inserts. Its nested descendants have finished before
+  // it resumes, and its CFG descendants have not started, so no later query
+  // can reuse a descendant shortcut that skipped this insertion.
+  scope->pending_ancestors[LOOM_CSE_INVALIDATE_ALL] = scope;
+  if (!iree_any_bit_set(traits, LOOM_TRAIT_PURE)) {
+    scope->pending_ancestors[LOOM_CSE_INVALIDATE_READS] = scope;
+  }
 }
 
 // Walks the scope chain looking for an equivalent op. Stateful expressions may
@@ -471,9 +498,41 @@ static loom_op_t* loom_cse_scope_lookup(const loom_cse_scope_t* scope,
   return NULL;
 }
 
-// Propagates write barrier up the entire scope chain.
+// Finds the nearest scope with pending slots, compressing cleared ancestors.
+// A live scope becomes empty only by draining insertion-owned slot lists.
+// Empty self-markers follow the canonical parent once, then retain the result.
+// Combined with rearming at insertion, path compression bounds ancestor work
+// amortized logarithmically rather than charging every barrier for scope depth.
+static loom_cse_scope_t* loom_cse_scope_find_pending(
+    loom_cse_scope_t* scope, loom_cse_invalidation_kind_t kind) {
+  loom_cse_scope_t* pending = scope;
+  while (pending) {
+    loom_cse_scope_t* next = pending->pending_ancestors[kind];
+    if (next != pending) {
+      pending = next;
+      continue;
+    }
+    iree_host_size_t count = kind == LOOM_CSE_INVALIDATE_ALL
+                                 ? pending->table.occupied.count
+                                 : pending->table.non_pure.count;
+    if (count != 0) {
+      break;
+    }
+    pending = pending->parent;
+  }
+  while (scope != pending) {
+    loom_cse_scope_t* next = scope->pending_ancestors[kind];
+    scope->pending_ancestors[kind] = pending;
+    scope = next == scope ? scope->parent : next;
+  }
+  return pending;
+}
+
+// Propagates a write barrier only to scopes with pending read slots.
 static void loom_cse_scope_invalidate_reads(loom_cse_scope_t* scope) {
-  for (loom_cse_scope_t* s = scope; s; s = s->parent) {
+  for (loom_cse_scope_t* s =
+           loom_cse_scope_find_pending(scope, LOOM_CSE_INVALIDATE_READS);
+       s; s = loom_cse_scope_find_pending(s, LOOM_CSE_INVALIDATE_READS)) {
     loom_cse_table_invalidate_reads(&s->table);
   }
 }
@@ -487,9 +546,11 @@ static void loom_cse_scope_invalidate_state_dependencies(
   }
 }
 
-// Propagates an execution-state barrier up the entire scope chain.
+// Propagates an execution-state barrier only to scopes with occupied slots.
 static void loom_cse_scope_invalidate_all(loom_cse_scope_t* scope) {
-  for (loom_cse_scope_t* s = scope; s; s = s->parent) {
+  for (loom_cse_scope_t* s =
+           loom_cse_scope_find_pending(scope, LOOM_CSE_INVALIDATE_ALL);
+       s; s = loom_cse_scope_find_pending(s, LOOM_CSE_INVALIDATE_ALL)) {
     loom_cse_table_invalidate_all(&s->table);
   }
 }
@@ -927,7 +988,7 @@ iree_status_t loom_cse_run(loom_pass_t* pass, loom_module_t* module,
         loom_pass_mark_changed(pass);
         ++statistics->expressions_eliminated;
       } else {
-        loom_cse_table_insert(&frame->scope->table, op, hash, traits,
+        loom_cse_scope_insert(frame->scope, op, hash, traits,
                               low_state.dependencies);
       }
     }
