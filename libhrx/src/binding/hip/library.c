@@ -216,7 +216,7 @@ static iree_status_t iree_hip_library_populate_kernels(
     iree_hal_streaming_symbol_t* symbol = &module->symbols[i];
     if (symbol->type != IREE_HAL_STREAMING_SYMBOL_TYPE_FUNCTION) continue;
     library->kernels[kernel_ordinal].symbol = symbol;
-    iree_status_t status = iree_hip_function_handle_create(
+    iree_status_t status = iree_hip_function_handle_get_or_create(
         module, symbol, &library->kernels[kernel_ordinal].handle);
     if (!iree_status_is_ok(status)) {
       iree_hip_function_handle_retire_module(module);

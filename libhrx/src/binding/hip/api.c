@@ -12905,8 +12905,8 @@ static hipError_t iree_hip_live_module_create_function_handle(
   iree_status_t status = iree_ok_status();
   const bool owns_symbol = module && symbol->module == module;
   if (owns_symbol) {
-    status =
-        iree_hip_function_handle_create(module, symbol, (void**)out_function);
+    status = iree_hip_function_handle_get_or_create(module, symbol,
+                                                    (void**)out_function);
   }
   iree_slim_mutex_unlock(&iree_hip_live_module_mutex);
   if (!owns_symbol) return hipErrorInvalidResourceHandle;
@@ -15169,52 +15169,17 @@ static uint32_t iree_hip_occupancy_maximum_dynamic_memory(
       &symbol->function_attributes);
 }
 
-// Resolves a driver-style module function against the current context. The
+// Resolves either public function representation for occupancy queries. The
 // context and symbol outputs are borrowed; |out_module| is retained on success
-// and must be released by the caller. Outputs are unchanged on failure except
-// that |out_module| may be set to NULL.
-static hipError_t iree_hip_resolve_module_occupancy_function(
-    hipFunction_t function, iree_hal_streaming_context_t** out_context,
+// and must be released by the caller. The two API families supply their own
+// null and invalid-handle results while sharing the same ownership path.
+static hipError_t iree_hip_resolve_occupancy_function(
+    const void* function, hipError_t null_result, hipError_t invalid_result,
+    iree_hal_streaming_context_t** out_context,
     iree_hal_streaming_symbol_t** out_symbol,
     iree_hal_streaming_module_t** out_module) {
   if (!function) {
-    return hipErrorInvalidValue;
-  }
-
-  iree_hal_streaming_context_t* context = NULL;
-  hipError_t result = iree_hip_ensure_context(&context);
-  if (result != hipSuccess) {
-    return result;
-  }
-  if (!context->device_entry) {
-    return hipErrorInvalidDevice;
-  }
-
-  iree_hal_streaming_symbol_t* symbol = NULL;
-  if (!iree_hip_function_handle_lookup(function, &symbol, out_module)) {
-    return hipErrorInvalidHandle;
-  }
-  if ((*out_module)->context != context) {
-    iree_hal_streaming_module_release(*out_module);
-    *out_module = NULL;
-    return hipErrorInvalidDevice;
-  }
-
-  *out_context = context;
-  *out_symbol = symbol;
-  return hipSuccess;
-}
-
-// Resolves a compiler-registered host function against the current context. The
-// context and symbol outputs are borrowed; |out_module| is retained on success
-// and must be released by the caller. Outputs are unchanged on failure except
-// that |out_module| may be set to NULL.
-static hipError_t iree_hip_resolve_runtime_occupancy_function(
-    const void* function, iree_hal_streaming_context_t** out_context,
-    iree_hal_streaming_symbol_t** out_symbol,
-    iree_hal_streaming_module_t** out_module) {
-  if (!function) {
-    return hipErrorInvalidDeviceFunction;
+    return null_result;
   }
 
   iree_hal_streaming_context_t* context = NULL;
@@ -15230,7 +15195,7 @@ static hipError_t iree_hip_resolve_runtime_occupancy_function(
   result =
       iree_hip_resolve_function_symbol(context, function, &symbol, out_module);
   if (result != hipSuccess) {
-    return hipErrorInvalidDeviceFunction;
+    return result == hipErrorInvalidDevice ? result : invalid_result;
   }
 
   *out_context = context;
@@ -15317,8 +15282,9 @@ HIPAPI hipError_t hipModuleOccupancyMaxActiveBlocksPerMultiprocessor(
   iree_hal_streaming_context_t* context = NULL;
   iree_hal_streaming_symbol_t* symbol = NULL;
   iree_hal_streaming_module_t* module = NULL;
-  hipError_t result =
-      iree_hip_resolve_module_occupancy_function(f, &context, &symbol, &module);
+  hipError_t result = iree_hip_resolve_occupancy_function(
+      f, hipErrorInvalidValue, hipErrorInvalidHandle, &context, &symbol,
+      &module);
   if (result == hipSuccess) {
     result = iree_hip_query_max_active_blocks(context, symbol, blockSize,
                                               dynSharedMemPerBlk, numBlocks);
@@ -15351,8 +15317,9 @@ HIPAPI hipError_t hipModuleOccupancyMaxPotentialBlockSize(
   iree_hal_streaming_context_t* context = NULL;
   iree_hal_streaming_symbol_t* symbol = NULL;
   iree_hal_streaming_module_t* module = NULL;
-  hipError_t result =
-      iree_hip_resolve_module_occupancy_function(f, &context, &symbol, &module);
+  hipError_t result = iree_hip_resolve_occupancy_function(
+      f, hipErrorInvalidValue, hipErrorInvalidHandle, &context, &symbol,
+      &module);
   if (result == hipSuccess) {
     result =
         iree_hip_select_optimal_occupancy(context, symbol, dynSharedMemPerBlk,
@@ -15388,8 +15355,9 @@ HIPAPI hipError_t hipOccupancyMaxActiveBlocksPerMultiprocessor(
   iree_hal_streaming_context_t* context = NULL;
   iree_hal_streaming_symbol_t* symbol = NULL;
   iree_hal_streaming_module_t* module = NULL;
-  hipError_t result = iree_hip_resolve_runtime_occupancy_function(
-      f, &context, &symbol, &module);
+  hipError_t result = iree_hip_resolve_occupancy_function(
+      f, hipErrorInvalidDeviceFunction, hipErrorInvalidDeviceFunction, &context,
+      &symbol, &module);
   if (result == hipSuccess) {
     result = iree_hip_query_max_active_blocks(context, symbol, blockSize,
                                               dynSharedMemPerBlk, numBlocks);
@@ -15423,8 +15391,9 @@ HIPAPI hipError_t hipOccupancyAvailableDynamicSMemPerBlock(
   iree_hal_streaming_context_t* context = NULL;
   iree_hal_streaming_symbol_t* symbol = NULL;
   iree_hal_streaming_module_t* module = NULL;
-  hipError_t result = iree_hip_resolve_runtime_occupancy_function(
-      f, &context, &symbol, &module);
+  hipError_t result = iree_hip_resolve_occupancy_function(
+      f, hipErrorInvalidDeviceFunction, hipErrorInvalidDeviceFunction, &context,
+      &symbol, &module);
   if (result != hipSuccess) {
     HIP_RETURN_ERROR(result);
   }
@@ -15471,8 +15440,9 @@ HIPAPI hipError_t hipOccupancyMaxPotentialBlockSize(int* gridSize,
   iree_hal_streaming_context_t* context = NULL;
   iree_hal_streaming_symbol_t* symbol = NULL;
   iree_hal_streaming_module_t* module = NULL;
-  hipError_t result = iree_hip_resolve_runtime_occupancy_function(
-      f, &context, &symbol, &module);
+  hipError_t result = iree_hip_resolve_occupancy_function(
+      f, hipErrorInvalidDeviceFunction, hipErrorInvalidDeviceFunction, &context,
+      &symbol, &module);
   if (result == hipSuccess) {
     result =
         iree_hip_select_optimal_occupancy(context, symbol, dynSharedMemPerBlk,

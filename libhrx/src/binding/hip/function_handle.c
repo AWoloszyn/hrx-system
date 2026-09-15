@@ -78,13 +78,30 @@ static iree_status_t iree_hip_function_handle_allocate_token(
   return iree_ok_status();
 }
 
-iree_status_t iree_hip_function_handle_create(
+static iree_hip_function_handle_record_t* iree_hip_function_handle_find_locked(
+    iree_hal_streaming_module_t* module, iree_hal_streaming_symbol_t* symbol) {
+  iree_hip_function_handle_record_t* record = iree_hip_function_handle_head;
+  while (record && (record->module != module || record->symbol != symbol)) {
+    record = record->next;
+  }
+  return record;
+}
+
+iree_status_t iree_hip_function_handle_get_or_create(
     iree_hal_streaming_module_t* module, iree_hal_streaming_symbol_t* symbol,
     void** out_handle) {
   IREE_ASSERT_ARGUMENT(module);
   IREE_ASSERT_ARGUMENT(symbol);
   IREE_ASSERT_ARGUMENT(out_handle);
   *out_handle = NULL;
+
+  iree_hip_function_handle_ensure_initialized();
+  iree_slim_mutex_lock(&iree_hip_function_handle_mutex);
+  iree_hip_function_handle_record_t* existing_record =
+      iree_hip_function_handle_find_locked(module, symbol);
+  if (existing_record) *out_handle = (void*)existing_record->handle;
+  iree_slim_mutex_unlock(&iree_hip_function_handle_mutex);
+  if (existing_record) return iree_ok_status();
 
   iree_hip_function_handle_record_t* record = NULL;
   IREE_RETURN_IF_ERROR(iree_allocator_malloc(module->host_allocator,
@@ -96,22 +113,26 @@ iree_status_t iree_hip_function_handle_create(
   record->symbol = symbol;
   record->host_allocator = module->host_allocator;
 
-  iree_hip_function_handle_ensure_initialized();
   iree_slim_mutex_lock(&iree_hip_function_handle_mutex);
-  iree_status_t status =
-      iree_hip_function_handle_allocate_token(&record->handle);
-  if (iree_status_is_ok(status)) {
+  existing_record = iree_hip_function_handle_find_locked(module, symbol);
+  iree_status_t status = iree_ok_status();
+  if (existing_record) {
+    *out_handle = (void*)existing_record->handle;
+  } else {
+    status = iree_hip_function_handle_allocate_token(&record->handle);
+  }
+  if (!existing_record && iree_status_is_ok(status)) {
     status = iree_hip_handle_registry_insert_value(
         &iree_hip_function_handle_registry, record->handle, (uintptr_t)record);
   }
-  if (iree_status_is_ok(status)) {
+  if (!existing_record && iree_status_is_ok(status)) {
     record->next = iree_hip_function_handle_head;
     iree_hip_function_handle_head = record;
     *out_handle = (void*)record->handle;
   }
   iree_slim_mutex_unlock(&iree_hip_function_handle_mutex);
 
-  if (!iree_status_is_ok(status)) {
+  if (existing_record || !iree_status_is_ok(status)) {
     iree_hip_function_handle_record_release(record);
   }
   return status;

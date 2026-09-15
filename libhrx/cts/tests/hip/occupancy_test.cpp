@@ -46,6 +46,10 @@ using HipModuleOccupancyMaxActiveBlocksWithFlagsFn =
 using HipModuleOccupancyMaxPotentialBlockSizeFn =
     hipError_t (*)(int* grid_size, int* block_size, hipFunction_t function,
                    size_t dynamic_shared_memory_size, int block_size_limit);
+using HipModuleOccupancyMaxPotentialBlockSizeWithFlagsFn =
+    hipError_t (*)(int* grid_size, int* block_size, hipFunction_t function,
+                   size_t dynamic_shared_memory_size, int block_size_limit,
+                   unsigned int flags);
 using HipOccupancyMaxActiveBlocksFn =
     hipError_t (*)(int* block_count, const void* function, int block_size,
                    size_t dynamic_shared_memory_size);
@@ -66,6 +70,8 @@ using HipRegisterFunctionFn = void (*)(
     const char* device_name, unsigned int thread_limit,
     HipCompilerIndex* thread_index, HipCompilerIndex* block_index,
     dim3* block_dimensions, dim3* grid_dimensions, int* shared_memory_size);
+using HipGetFuncBySymbolFn = hipError_t (*)(hipFunction_t* function,
+                                            const void* symbol);
 
 struct ScopedModule {
   ~ScopedModule() {
@@ -123,6 +129,9 @@ TEST(HipOccupancyTest, LoadedAndRegisteredFunctionsUseExactQueueOccupancy) {
   const auto module_max_potential =
       ResolveHipSymbol<HipModuleOccupancyMaxPotentialBlockSizeFn>(
           library, "hipModuleOccupancyMaxPotentialBlockSize");
+  const auto module_max_potential_with_flags =
+      ResolveHipSymbol<HipModuleOccupancyMaxPotentialBlockSizeWithFlagsFn>(
+          library, "hipModuleOccupancyMaxPotentialBlockSizeWithFlags");
   const auto runtime_max_active =
       ResolveHipSymbol<HipOccupancyMaxActiveBlocksFn>(
           library, "hipOccupancyMaxActiveBlocksPerMultiprocessor");
@@ -138,6 +147,8 @@ TEST(HipOccupancyTest, LoadedAndRegisteredFunctionsUseExactQueueOccupancy) {
       library, "__hipUnregisterFatBinary");
   const auto register_function =
       ResolveHipSymbol<HipRegisterFunctionFn>(library, "__hipRegisterFunction");
+  const auto get_func_by_symbol =
+      ResolveHipSymbol<HipGetFuncBySymbolFn>(library, "hipGetFuncBySymbol");
 
   ASSERT_NE(nullptr, init);
   ASSERT_NE(nullptr, get_device);
@@ -148,12 +159,14 @@ TEST(HipOccupancyTest, LoadedAndRegisteredFunctionsUseExactQueueOccupancy) {
   ASSERT_NE(nullptr, module_max_active);
   ASSERT_NE(nullptr, module_max_active_with_flags);
   ASSERT_NE(nullptr, module_max_potential);
+  ASSERT_NE(nullptr, module_max_potential_with_flags);
   ASSERT_NE(nullptr, runtime_max_active);
   ASSERT_NE(nullptr, runtime_max_potential);
   ASSERT_NE(nullptr, available_dynamic_memory);
   ASSERT_NE(nullptr, register_fat_binary);
   ASSERT_NE(nullptr, unregister_fat_binary);
   ASSERT_NE(nullptr, register_function);
+  ASSERT_NE(nullptr, get_func_by_symbol);
 
   const hipError_t init_result = init(/*flags=*/0);
   if (init_result != hipSuccess) {
@@ -232,6 +245,42 @@ TEST(HipOccupancyTest, LoadedAndRegisteredFunctionsUseExactQueueOccupancy) {
                     /*shared_memory_size=*/nullptr);
   const void* registered_function =
       reinterpret_cast<const void*>(&OccupancyHostStub);
+  hipFunction_t registered_module_function = nullptr;
+  ASSERT_EQ(hipSuccess, get_func_by_symbol(&registered_module_function,
+                                           registered_function));
+
+  int registered_module_active_blocks = 0;
+  ASSERT_EQ(hipSuccess,
+            module_max_active(&registered_module_active_blocks,
+                              registered_module_function, probe_block_size,
+                              /*dynamic_shared_memory_size=*/0));
+  EXPECT_EQ(module_active_blocks, registered_module_active_blocks);
+  int registered_flagged_active_blocks = 0;
+  ASSERT_EQ(hipSuccess,
+            module_max_active_with_flags(
+                &registered_flagged_active_blocks, registered_module_function,
+                probe_block_size, /*dynamic_shared_memory_size=*/0,
+                hipOccupancyDisableCachingOverride));
+  EXPECT_EQ(module_active_blocks, registered_flagged_active_blocks);
+
+  int registered_module_grid_size = 0;
+  int registered_module_block_size = 0;
+  ASSERT_EQ(hipSuccess, module_max_potential(&registered_module_grid_size,
+                                             &registered_module_block_size,
+                                             registered_module_function,
+                                             /*dynamic_shared_memory_size=*/0,
+                                             /*block_size_limit=*/0));
+  EXPECT_EQ(module_grid_size, registered_module_grid_size);
+  EXPECT_EQ(module_block_size, registered_module_block_size);
+  int registered_flagged_grid_size = 0;
+  int registered_flagged_block_size = 0;
+  ASSERT_EQ(hipSuccess,
+            module_max_potential_with_flags(
+                &registered_flagged_grid_size, &registered_flagged_block_size,
+                registered_module_function, /*dynamic_shared_memory_size=*/0,
+                /*block_size_limit=*/0, hipOccupancyDisableCachingOverride));
+  EXPECT_EQ(module_grid_size, registered_flagged_grid_size);
+  EXPECT_EQ(module_block_size, registered_flagged_block_size);
 
   int runtime_active_blocks = 0;
   ASSERT_EQ(hipSuccess,
