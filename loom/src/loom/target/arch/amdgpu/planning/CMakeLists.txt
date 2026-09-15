@@ -248,6 +248,7 @@ loom_cc_library(
   SRCS
     "wait_plan.c"
   DEPS
+    ::address_state
     ::structural_packet
     ::wait_counters
     ::wait_frontier

@@ -133,6 +133,7 @@ loom_check_test_suite(
     "test/packet_json.loom-test"
     "test/spill_lowering.loom-test"
     "test/vopd_plan.loom-test"
+    "test/wait_coalescing.loom-test"
     "test/wait_completion.loom-test"
     "test/wait_plan.loom-test"
     "test/wait_states.loom-test"
@@ -315,6 +316,7 @@ loom_cc_benchmark(
     loom::ops::low
     loom::ops::op_registry
     loom::target::arch::amdgpu::hal::kernel_abi
+    loom::target::arch::amdgpu::planning::address_state
     loom::target::arch::amdgpu::planning::descriptor_semantics
     loom::target::arch::amdgpu::planning::occupancy
     loom::target::arch::amdgpu::planning::packet_plan

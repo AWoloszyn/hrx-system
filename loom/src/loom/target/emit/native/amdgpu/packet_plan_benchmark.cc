@@ -33,6 +33,7 @@
 #include "loom/ops/low/ops.h"
 #include "loom/ops/op_registry.h"
 #include "loom/target/arch/amdgpu/hal/kernel_abi.h"
+#include "loom/target/arch/amdgpu/planning/address_state.h"
 #include "loom/target/arch/amdgpu/planning/descriptor_semantics.h"
 #include "loom/target/arch/amdgpu/planning/occupancy.h"
 #include "loom/target/arch/amdgpu/planning/packet_plan.h"
@@ -440,7 +441,7 @@ struct PlanMetrics {
 
 class PacketPlanFixture {
  public:
-  explicit PacketPlanFixture(const FixtureSpec& spec) {
+  PacketPlanFixture(const FixtureSpec& spec, PlanComponent component) {
     iree_arena_block_pool_initialize(kArenaBlockSize, iree_allocator_system(),
                                      &module_block_pool_);
     iree_arena_block_pool_initialize(kArenaBlockSize, iree_allocator_system(),
@@ -569,6 +570,11 @@ class PacketPlanFixture {
     }
 
     analysis_ = AnalyzeFrame(frame_);
+    if (component == PlanComponent::kWait) {
+      AbortOnError(loom_amdgpu_address_state_plan_build(
+          &frame_.schedule, &frame_.allocation, &frame_arena_,
+          &address_state_));
+    }
   }
 
   ~PacketPlanFixture() {
@@ -589,6 +595,9 @@ class PacketPlanFixture {
   PacketPlanFixture& operator=(const PacketPlanFixture&) = delete;
 
   const loom_low_emission_frame_t& frame() const { return frame_; }
+  const loom_amdgpu_address_state_plan_t& address_state() const {
+    return address_state_;
+  }
   iree_arena_allocator_t* plan_arena() { return &plan_arena_; }
   iree_arena_allocator_t* transient_arena() { return &transient_arena_; }
   iree_host_size_t frame_arena_used_bytes() const {
@@ -609,6 +618,8 @@ class PacketPlanFixture {
   loom_target_low_descriptor_registry_t target_registry_ = {};
   loom_module_t* module_ = nullptr;
   loom_low_emission_frame_t frame_ = {};
+  // Address-state input prepared before the measured wait-planning stage.
+  loom_amdgpu_address_state_plan_t address_state_ = {};
   FrameAnalysis analysis_ = {};
 };
 
@@ -621,7 +632,8 @@ static PlanMetrics BuildReferencePlan(PacketPlanFixture& fixture,
     loom_amdgpu_wait_plan_t plan = {};
     AbortOnError(loom_amdgpu_wait_plan_build(
         &fixture.frame().schedule, &fixture.frame().allocation,
-        fixture.plan_arena(), fixture.transient_arena(), &plan));
+        &fixture.address_state(), fixture.plan_arena(),
+        fixture.transient_arena(), &plan));
     metrics.wait_action_count = plan.action_count;
     metrics.hazard_record_count = plan.hazard_plan.record_count;
     metrics.progress_record_count = plan.progress.record_count;
@@ -690,7 +702,7 @@ static void RecordMetrics(benchmark::State& state,
 
 static void BenchmarkPlan(benchmark::State& state, const FixtureSpec& spec,
                           PlanComponent component) {
-  PacketPlanFixture fixture(spec);
+  PacketPlanFixture fixture(spec, component);
   const PlanMetrics reference_metrics = BuildReferencePlan(fixture, component);
   for (auto _ : state) {
     iree_arena_reset(fixture.plan_arena());
@@ -699,7 +711,8 @@ static void BenchmarkPlan(benchmark::State& state, const FixtureSpec& spec,
       loom_amdgpu_wait_plan_t plan = {};
       AbortOnError(loom_amdgpu_wait_plan_build(
           &fixture.frame().schedule, &fixture.frame().allocation,
-          fixture.plan_arena(), fixture.transient_arena(), &plan));
+          &fixture.address_state(), fixture.plan_arena(),
+          fixture.transient_arena(), &plan));
       benchmark::DoNotOptimize(plan);
     } else {
       loom_amdgpu_packet_plan_t plan = {};

@@ -217,6 +217,7 @@ loom_cc_library(
     hdrs = ["wait_plan.h"],
     visibility = _AMDGPU_ROOT_VISIBILITY + _AMDGPU_LOWER_VISIBILITY,
     deps = [
+        ":address_state",
         ":structural_packet",
         ":wait_counters",
         ":wait_frontier",

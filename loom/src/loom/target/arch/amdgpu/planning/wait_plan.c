@@ -83,8 +83,10 @@ typedef enum loom_amdgpu_wait_node_state_flag_bits_e {
   LOOM_AMDGPU_WAIT_NODE_STATE_XCNT_IMPLICIT_DRAIN = 1u << 14,
   // Counter-only packet whose decoded bounds occupy the wait payload.
   LOOM_AMDGPU_WAIT_NODE_STATE_EXPLICIT_WAIT = 1u << 15,
+  // Structural packet emits no native instructions or physical moves.
+  LOOM_AMDGPU_WAIT_NODE_STATE_ZERO_NATIVE_WORK = 1u << 16,
 } loom_amdgpu_wait_node_state_flag_bits_t;
-typedef uint16_t loom_amdgpu_wait_node_state_flags_t;
+typedef uint32_t loom_amdgpu_wait_node_state_flags_t;
 
 typedef struct loom_amdgpu_wait_node_state_t {
   // Classification flags for this schedule node.
@@ -223,6 +225,15 @@ typedef struct loom_amdgpu_wait_plan_builder_t {
   const loom_amdgpu_wait_loop_cyclic_frontier_t* cyclic_frontiers;
   // Storage-release actions grouped by insertion node.
   loom_low_storage_release_action_index_t storage_release_action_index;
+  // Canonical insertion points within native-instruction boundaries.
+  struct {
+    // Borrowed address-state overlay built before wait planning.
+    const loom_amdgpu_address_state_plan_t* address_state;
+    // Next address-state transition in scheduled order.
+    iree_host_size_t address_state_cursor;
+    // First planned wait since the preceding native work or block boundary.
+    uint32_t anchor_node;
+  } insertion;
   // DFS visit epoch per value while forwarding SSA wait dependencies.
   uint32_t* dependency_visit_epochs;
   // Explicit worklist used with |dependency_visit_epochs|.
@@ -538,7 +549,7 @@ static loom_amdgpu_structural_packet_flags_t
 loom_amdgpu_wait_plan_classify_structural_node(
     const loom_amdgpu_wait_plan_builder_t* builder, uint32_t node_index) {
   const loom_low_schedule_node_t* node = &builder->schedule->nodes[node_index];
-  if (node->kind != LOOM_LOW_SCHEDULE_NODE_STRUCTURAL || node->op == NULL) {
+  if (node->kind != LOOM_LOW_SCHEDULE_NODE_STRUCTURAL) {
     return 0;
   }
   return loom_amdgpu_structural_packet_analyze(
@@ -657,6 +668,16 @@ static bool loom_amdgpu_wait_plan_action_is_residual_hazard(
 static iree_status_t loom_amdgpu_wait_plan_append_action(
     loom_amdgpu_wait_plan_builder_t* builder,
     loom_amdgpu_wait_plan_action_t action) {
+  // Logical progress and producer/consumer provenance retain their original
+  // nodes. Only concrete insertion shares the boundary before a zero-work run.
+  if (action.kind == LOOM_AMDGPU_WAIT_PLAN_ACTION_PLANNED) {
+    if (builder->insertion.anchor_node == LOOM_LOW_SCHEDULE_NODE_NONE) {
+      builder->insertion.anchor_node = action.node_index;
+    }
+    action.node_index = builder->insertion.anchor_node;
+    action.scheduled_ordinal =
+        builder->schedule->nodes[action.node_index].scheduled_ordinal;
+  }
   if (builder->action_stream.tail_count ==
       LOOM_AMDGPU_WAIT_PLAN_ACTIONS_PER_SEGMENT) {
     builder->action_stream.tail = NULL;
@@ -1720,6 +1741,11 @@ static iree_status_t loom_amdgpu_wait_plan_finish_node_classification(
         0u);
     const loom_amdgpu_structural_packet_flags_t structural_flags =
         loom_amdgpu_wait_plan_classify_structural_node(builder, (uint32_t)i);
+    if (node->kind == LOOM_LOW_SCHEDULE_NODE_STRUCTURAL &&
+        !iree_any_bit_set(structural_flags,
+                          LOOM_AMDGPU_STRUCTURAL_PACKET_FLAG_MATERIALIZES)) {
+      node_state->flags |= LOOM_AMDGPU_WAIT_NODE_STATE_ZERO_NATIVE_WORK;
+    }
     if (iree_any_bit_set(
             structural_flags,
             LOOM_AMDGPU_STRUCTURAL_PACKET_FLAG_FORWARDS_DEPENDENCIES)) {
@@ -3643,6 +3669,7 @@ static iree_status_t loom_amdgpu_wait_plan_build_actions(
   for (iree_host_size_t block_index = 0; block_index < schedule->block_count;
        ++block_index) {
     const loom_low_schedule_block_t* block = &schedule->blocks[block_index];
+    builder->insertion.anchor_node = LOOM_LOW_SCHEDULE_NODE_NONE;
     ++builder->block_epoch;
     builder->current_block_full_drain_counter_mask = 0;
     builder->xcnt_group = LOOM_AMDGPU_WAIT_XCNT_GROUP_NONE;
@@ -3672,8 +3699,22 @@ static iree_status_t loom_amdgpu_wait_plan_build_actions(
       const uint32_t node_index =
           schedule->scheduled_node_indices[packet_index];
       IREE_ASSERT_LT(node_index, schedule->node_count);
+      const loom_amdgpu_address_state_plan_t* address_state =
+          builder->insertion.address_state;
+      if (builder->insertion.address_state_cursor <
+              address_state->transition_count &&
+          address_state->transitions[builder->insertion.address_state_cursor]
+                  .node_index == node_index) {
+        // The emitter places this transition before this node's wait packets.
+        builder->insertion.anchor_node = LOOM_LOW_SCHEDULE_NODE_NONE;
+        ++builder->insertion.address_state_cursor;
+      }
       IREE_RETURN_IF_ERROR(
           loom_amdgpu_wait_plan_process_node(builder, node_index));
+      if (!iree_any_bit_set(builder->node_states[node_index].flags,
+                            LOOM_AMDGPU_WAIT_NODE_STATE_ZERO_NATIVE_WORK)) {
+        builder->insertion.anchor_node = LOOM_LOW_SCHEDULE_NODE_NONE;
+      }
     }
     loom_amdgpu_wait_plan_verify_cyclic_frontiers(builder,
                                                   (uint16_t)block_index);
@@ -3848,6 +3889,7 @@ static iree_status_t loom_amdgpu_wait_plan_build_common_tables(
 iree_status_t loom_amdgpu_wait_plan_build(
     const loom_low_schedule_table_t* schedule,
     const loom_low_allocation_table_t* allocation,
+    const loom_amdgpu_address_state_plan_t* address_state,
     iree_arena_allocator_t* arena, iree_arena_allocator_t* transient_arena,
     loom_amdgpu_wait_plan_t* out_plan) {
   *out_plan = (loom_amdgpu_wait_plan_t){0};
@@ -3856,6 +3898,7 @@ iree_status_t loom_amdgpu_wait_plan_build(
       .allocation = allocation,
       .arena = arena,
       .transient_arena = transient_arena,
+      .insertion = {.address_state = address_state},
       .processor_properties =
           loom_amdgpu_target_processor_properties_from_resolved_target(
               &schedule->target),

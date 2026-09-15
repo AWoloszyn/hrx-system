@@ -50,7 +50,6 @@ low.func.def target<amdgpu.rdna3_5.core>(@target) @concat_reservation_preserves_
   ds_read_b128 v[48:51], v47 offset:0
   ds_read_b128 v[56:59], v47 offset:16
   ds_read_b128 v[52:55], v47 offset:32
-  s_waitcnt vmcnt(63) lgkmcnt(2)
   s_waitcnt vmcnt(63) lgkmcnt(0)
   global_store_b32 v47, v48, s[0:1] offset:0
   global_store_b32 v47, v56, s[0:1] offset:4

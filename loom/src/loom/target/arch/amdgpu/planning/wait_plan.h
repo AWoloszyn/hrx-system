@@ -21,6 +21,7 @@
 #include "loom/codegen/low/allocation.h"
 #include "loom/codegen/low/packet_hazard_plan.h"
 #include "loom/codegen/low/schedule/types.h"
+#include "loom/target/arch/amdgpu/planning/address_state.h"
 #include "loom/target/arch/amdgpu/planning/wait_counters.h"
 
 #ifdef __cplusplus
@@ -156,12 +157,16 @@ iree_string_view_t loom_amdgpu_wait_plan_residual_action_name(
 // segments consume their sources before establishing ready destination values.
 // The plan also materializes target storage-release actions requested by
 // allocation, including pending result writes and issued memory source reads.
+// Planned waits share insertion points across zero-instruction packets, but
+// never across block entries or transitions retained in |address_state|.
+// The address-state overlay is borrowed only for this call.
 // Builder state is allocated from |transient_arena| and may be discarded after
 // this function returns. The caller must keep |schedule| and |allocation|
 // immutable and |arena| alive for as long as |out_plan| is used.
 iree_status_t loom_amdgpu_wait_plan_build(
     const loom_low_schedule_table_t* schedule,
     const loom_low_allocation_table_t* allocation,
+    const loom_amdgpu_address_state_plan_t* address_state,
     iree_arena_allocator_t* arena, iree_arena_allocator_t* transient_arena,
     loom_amdgpu_wait_plan_t* out_plan);
 
