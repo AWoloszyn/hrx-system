@@ -47,6 +47,7 @@ from loom.target.contracts import (
     DescriptorRule,
     Guard,
     Scalar,
+    SourceMemoryAddressCoordinateType,
     SourceMemoryAddressMaterializer,
     SourceMemoryConstraint,
     SourceMemoryOperation,
@@ -71,6 +72,7 @@ def _atomic_memory_contract(
     source_scalar: StorageBufferScalar,
     address_scalar: StorageBufferScalar,
     storage_class: AtomicStorageClass,
+    coordinate_type: SourceMemoryAddressCoordinateType,
 ) -> tuple[SourceMemoryConstraint, SourceMemoryAddressMaterializer]:
     if storage_class.suffix == "storage_buffer":
         return (
@@ -80,7 +82,7 @@ def _atomic_memory_contract(
     if storage_class.suffix == "workgroup":
         return (
             workgroup_source_memory(operation, source_scalar),
-            workgroup_address_materializer(address_scalar),
+            workgroup_address_materializer(address_scalar, coordinate_type),
         )
     raise ValueError(f"unknown atomic storage class '{storage_class.suffix}'")
 
@@ -89,6 +91,7 @@ def _integer_atomic_rule(
     form: str,
     scalar: AtomicIntegerScalar,
     storage_class: AtomicStorageClass,
+    coordinate_type: SourceMemoryAddressCoordinateType,
     scope: AtomicScope,
     ordering: AtomicOrdering,
     operation: AtomicIntegerOperation,
@@ -115,6 +118,7 @@ def _integer_atomic_rule(
         storage_scalar,
         storage_scalar,
         storage_class,
+        coordinate_type,
     )
     scalar_type = Scalar(scalar.source_type)
     results = {"old": ValueRef.result("result")} if form == "rmw" else {}
@@ -155,6 +159,7 @@ def _integer_atomic_rule(
 def _integer_atomic_cmpxchg_rule(
     scalar: AtomicIntegerScalar,
     storage_class: AtomicStorageClass,
+    coordinate_type: SourceMemoryAddressCoordinateType,
     scope: AtomicScope,
     success_ordering: AtomicOrdering,
     failure_ordering: AtomicOrdering,
@@ -176,6 +181,7 @@ def _integer_atomic_cmpxchg_rule(
         storage_scalar,
         storage_scalar,
         storage_class,
+        coordinate_type,
     )
     scalar_type = Scalar(scalar.source_type)
     return DescriptorRule(
@@ -212,10 +218,17 @@ def _integer_atomic_cmpxchg_rule(
     )
 
 
-def _integer_atomic_rules() -> tuple[DescriptorRule, ...]:
+def _integer_atomic_rules(
+    coordinate_type: SourceMemoryAddressCoordinateType,
+) -> tuple[DescriptorRule, ...]:
     rules: list[DescriptorRule] = []
     for scalar in ATOMIC_INTEGER_SCALARS:
         for storage_class in ATOMIC_STORAGE_CLASSES:
+            if (
+                storage_class.suffix == "storage_buffer"
+                and coordinate_type == SourceMemoryAddressCoordinateType.INDEX
+            ):
+                continue
             for scope in ATOMIC_SCOPES:
                 for ordering in scope.orderings:
                     for operation in ATOMIC_INTEGER_OPERATIONS:
@@ -225,6 +238,7 @@ def _integer_atomic_rules() -> tuple[DescriptorRule, ...]:
                                     "reduce",
                                     scalar,
                                     storage_class,
+                                    coordinate_type,
                                     scope,
                                     ordering,
                                     operation,
@@ -235,6 +249,7 @@ def _integer_atomic_rules() -> tuple[DescriptorRule, ...]:
                                 "rmw",
                                 scalar,
                                 storage_class,
+                                coordinate_type,
                                 scope,
                                 ordering,
                                 operation,
@@ -245,6 +260,7 @@ def _integer_atomic_rules() -> tuple[DescriptorRule, ...]:
                         _integer_atomic_cmpxchg_rule(
                             scalar,
                             storage_class,
+                            coordinate_type,
                             scope,
                             success_ordering,
                             failure_ordering,
@@ -261,6 +277,7 @@ def _float_atomic_rule(
     strategy: str,
     scalar: AtomicFloatScalar,
     storage_class: AtomicStorageClass,
+    coordinate_type: SourceMemoryAddressCoordinateType,
     scope: AtomicScope,
     ordering: AtomicOrdering,
     operation: AtomicFloatOperation,
@@ -295,6 +312,7 @@ def _float_atomic_rule(
         storage_scalar,
         address_scalar,
         storage_class,
+        coordinate_type,
     )
     scalar_type = Scalar(scalar.source_type)
     results = {"old": ValueRef.result("result")} if form == "rmw" else {}
@@ -335,6 +353,7 @@ def _float_atomic_rule(
 def _float_atomic_cmpxchg_rule(
     scalar: AtomicFloatScalar,
     storage_class: AtomicStorageClass,
+    coordinate_type: SourceMemoryAddressCoordinateType,
     scope: AtomicScope,
     success_ordering: AtomicOrdering,
     failure_ordering: AtomicOrdering,
@@ -362,6 +381,7 @@ def _float_atomic_cmpxchg_rule(
         storage_scalar,
         address_scalar,
         storage_class,
+        coordinate_type,
     )
     scalar_type = Scalar(scalar.source_type)
     return DescriptorRule(
@@ -398,10 +418,17 @@ def _float_atomic_cmpxchg_rule(
     )
 
 
-def _float_atomic_rules() -> tuple[DescriptorRule, ...]:
+def _float_atomic_rules(
+    coordinate_type: SourceMemoryAddressCoordinateType,
+) -> tuple[DescriptorRule, ...]:
     rules: list[DescriptorRule] = []
     for scalar in ATOMIC_FLOAT_SCALARS:
         for storage_class in ATOMIC_STORAGE_CLASSES:
+            if (
+                storage_class.suffix == "storage_buffer"
+                and coordinate_type == SourceMemoryAddressCoordinateType.INDEX
+            ):
+                continue
             for scope in ATOMIC_SCOPES:
                 for ordering in scope.orderings:
                     for operation in ATOMIC_FLOAT_OPERATIONS:
@@ -413,6 +440,7 @@ def _float_atomic_rules() -> tuple[DescriptorRule, ...]:
                                         "native",
                                         scalar,
                                         storage_class,
+                                        coordinate_type,
                                         scope,
                                         ordering,
                                         operation,
@@ -424,6 +452,7 @@ def _float_atomic_rules() -> tuple[DescriptorRule, ...]:
                                     "native",
                                     scalar,
                                     storage_class,
+                                    coordinate_type,
                                     scope,
                                     ordering,
                                     operation,
@@ -438,6 +467,7 @@ def _float_atomic_rules() -> tuple[DescriptorRule, ...]:
                                     "bitcast",
                                     scalar,
                                     storage_class,
+                                    coordinate_type,
                                     scope,
                                     ordering,
                                     operation,
@@ -451,6 +481,7 @@ def _float_atomic_rules() -> tuple[DescriptorRule, ...]:
                                     "cas",
                                     scalar,
                                     storage_class,
+                                    coordinate_type,
                                     scope,
                                     ordering,
                                     operation,
@@ -462,6 +493,7 @@ def _float_atomic_rules() -> tuple[DescriptorRule, ...]:
                                 "cas",
                                 scalar,
                                 storage_class,
+                                coordinate_type,
                                 scope,
                                 ordering,
                                 operation,
@@ -474,6 +506,7 @@ def _float_atomic_rules() -> tuple[DescriptorRule, ...]:
                         _float_atomic_cmpxchg_rule(
                             scalar,
                             storage_class,
+                            coordinate_type,
                             scope,
                             success_ordering,
                             failure_ordering,
@@ -485,7 +518,14 @@ def _float_atomic_rules() -> tuple[DescriptorRule, ...]:
     return tuple(rules)
 
 
-SPIRV_ATOMIC_CONTRACT_CASES = (
-    *_integer_atomic_rules(),
-    *_float_atomic_rules(),
+SPIRV_ATOMIC_CONTRACT_CASES = tuple(
+    rule
+    for coordinate_type in (
+        SourceMemoryAddressCoordinateType.INDEX,
+        SourceMemoryAddressCoordinateType.OFFSET,
+    )
+    for rule in (
+        *_integer_atomic_rules(coordinate_type),
+        *_float_atomic_rules(coordinate_type),
+    )
 )

@@ -65,6 +65,13 @@ typedef struct loom_spirv_packet_row_t {
   uint32_t opcode;
   // Form-specific packet literals selected by form.
   union {
+    // Logical access-chain coordinate units.
+    struct {
+      // Exact right shift converting a byte offset to an element index.
+      // Byte-coordinate packets require an offset divisible by the element
+      // width. Zero also represents an already-materialized element index.
+      uint8_t coordinate_byte_shift;
+    } access_chain;
     // Scalar-constant packet literals.
     struct {
       // Number of literal words emitted for the constant.

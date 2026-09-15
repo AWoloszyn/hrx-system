@@ -129,6 +129,7 @@ from loom.target.contracts import (
     GuardDiagnostic,
     ResultTypeBinding,
     Scalar,
+    SourceMemoryAddressCoordinateType,
     SourceMemoryAddressLayout,
     SourceMemoryConstraint,
     SourceMemoryDynamicIndexSource,
@@ -1067,11 +1068,14 @@ def _view_store_rule(scalar: StorageBufferScalar) -> DescriptorRule:
 
 def _view_load_workgroup_integer_carrier_rule(
     scalar: StorageBufferScalar,
+    coordinate_type: SourceMemoryAddressCoordinateType,
 ) -> DescriptorRule:
     float_type, integer_type, integer_scalar = _float_integer_carrier(scalar)
     descriptor = _descriptor(f"spirv.op_load.workgroup.{integer_scalar.suffix}")
     bitcast_descriptor = _descriptor(_integer_view_key(integer_type, float_type))
-    address_materializer = _workgroup_address_materializer(integer_scalar)
+    address_materializer = _workgroup_address_materializer(
+        integer_scalar, coordinate_type
+    )
     return DescriptorRule(
         source_op=view.view_load,
         descriptor=descriptor,
@@ -1107,11 +1111,14 @@ def _view_load_workgroup_integer_carrier_rule(
 
 def _view_store_workgroup_integer_carrier_rule(
     scalar: StorageBufferScalar,
+    coordinate_type: SourceMemoryAddressCoordinateType,
 ) -> DescriptorRule:
     float_type, integer_type, integer_scalar = _float_integer_carrier(scalar)
     descriptor = _descriptor(f"spirv.op_store.workgroup.{integer_scalar.suffix}")
     bitcast_descriptor = _descriptor(_integer_view_key(float_type, integer_type))
-    address_materializer = _workgroup_address_materializer(integer_scalar)
+    address_materializer = _workgroup_address_materializer(
+        integer_scalar, coordinate_type
+    )
     return DescriptorRule(
         source_op=view.view_store,
         descriptor=descriptor,
@@ -1146,11 +1153,14 @@ def _view_store_workgroup_integer_carrier_rule(
     )
 
 
-def _view_load_workgroup_rule(scalar: StorageBufferScalar) -> DescriptorRule:
+def _view_load_workgroup_rule(
+    scalar: StorageBufferScalar,
+    coordinate_type: SourceMemoryAddressCoordinateType,
+) -> DescriptorRule:
     scalar_type = Scalar(scalar.source_type)
     view_type = View(scalar.source_type)
     descriptor = _descriptor(f"spirv.op_load.workgroup.{scalar.suffix}")
-    address_materializer = _workgroup_address_materializer(scalar)
+    address_materializer = _workgroup_address_materializer(scalar, coordinate_type)
     return DescriptorRule(
         source_op=view.view_load,
         descriptor=descriptor,
@@ -1176,11 +1186,14 @@ def _view_load_workgroup_rule(scalar: StorageBufferScalar) -> DescriptorRule:
     )
 
 
-def _view_store_workgroup_rule(scalar: StorageBufferScalar) -> DescriptorRule:
+def _view_store_workgroup_rule(
+    scalar: StorageBufferScalar,
+    coordinate_type: SourceMemoryAddressCoordinateType,
+) -> DescriptorRule:
     scalar_type = Scalar(scalar.source_type)
     view_type = View(scalar.source_type)
     descriptor = _descriptor(f"spirv.op_store.workgroup.{scalar.suffix}")
-    address_materializer = _workgroup_address_materializer(scalar)
+    address_materializer = _workgroup_address_materializer(scalar, coordinate_type)
     return DescriptorRule(
         source_op=view.view_store,
         descriptor=descriptor,
@@ -1225,11 +1238,19 @@ def _storage_buffer_rules() -> tuple[ContractCase, ...]:
         rules.append(_workgroup_subview_rule(scalar))
         rules.append(_view_load_rule(scalar))
         rules.append(_view_store_rule(scalar))
-        rules.append(_view_load_workgroup_rule(scalar))
-        rules.append(_view_store_workgroup_rule(scalar))
-        if scalar.source_type in _FLOAT_ALU_TYPE_BY_SOURCE_TYPE:
-            rules.append(_view_load_workgroup_integer_carrier_rule(scalar))
-            rules.append(_view_store_workgroup_integer_carrier_rule(scalar))
+        for coordinate_type in (
+            SourceMemoryAddressCoordinateType.INDEX,
+            SourceMemoryAddressCoordinateType.OFFSET,
+        ):
+            rules.append(_view_load_workgroup_rule(scalar, coordinate_type))
+            rules.append(_view_store_workgroup_rule(scalar, coordinate_type))
+            if scalar.source_type in _FLOAT_ALU_TYPE_BY_SOURCE_TYPE:
+                rules.append(
+                    _view_load_workgroup_integer_carrier_rule(scalar, coordinate_type)
+                )
+                rules.append(
+                    _view_store_workgroup_integer_carrier_rule(scalar, coordinate_type)
+                )
     return tuple(rules)
 
 

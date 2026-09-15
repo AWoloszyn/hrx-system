@@ -365,6 +365,17 @@ def test_generation_offsets_storage_buffer_address_before_pointer_conversion() -
     assert "LOOM_SPIRV_VALUE_CLASS_STORAGE_BUFFER_ADDRESS" in access_row.operand_types[0]
 
 
+def test_workgroup_byte_coordinates_preserve_width_until_element_conversion() -> None:
+    for scalar in STORAGE_BUFFER_SCALARS:
+        byte_row = _packet_row(f"spirv.op_access_chain.workgroup.{scalar.suffix}.byte_offset")
+        index_row = _packet_row(f"spirv.op_access_chain.workgroup.{scalar.suffix}.element_index")
+        assert byte_row.result_type == index_row.result_type
+        assert byte_row.operand_types[0] == index_row.operand_types[0]
+        assert "LOOM_SPIRV_VALUE_CLASS_OFFSET64" in byte_row.operand_types[1]
+        assert 1 << byte_row.coordinate_byte_shift == scalar.byte_width
+        assert index_row.coordinate_byte_shift == 0
+
+
 def test_generation_emits_coordinate_arithmetic_packet_rows() -> None:
     tables = generate_tables()
 

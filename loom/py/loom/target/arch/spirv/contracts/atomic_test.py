@@ -21,7 +21,11 @@ from loom.target.arch.spirv.atomic import (
 from loom.target.arch.spirv.contracts.logical_core import (
     SPIRV_LOGICAL_CORE_CONTRACT_FRAGMENT,
 )
-from loom.target.contracts import DescriptorRule, GuardKind
+from loom.target.contracts import (
+    DescriptorRule,
+    GuardKind,
+    SourceMemoryAddressCoordinateType,
+)
 
 
 def _atomic_rules() -> tuple[DescriptorRule, ...]:
@@ -169,6 +173,9 @@ def _expected_rule_signatures() -> Counter[tuple[str, ...]]:
                                 scope.source_keyword,
                             )
                         ] += 1
+    for signature in expected:
+        if ".workgroup." in signature[1]:
+            expected[signature] *= 2
     return expected
 
 
@@ -178,6 +185,21 @@ def test_atomic_contract_rule_matrix_is_complete() -> None:
 
     assert len(actual) == 1946
     assert actual == expected
+
+
+def test_atomic_addresses_cover_units_in_index_first_order() -> None:
+    coordinate_types = {}
+    for rule in _atomic_rules():
+        materializer = rule.emit[0].source_memory_address_materializer
+        assert materializer is not None
+        coordinate_types.setdefault(_rule_signature(rule), []).append(
+            materializer.coordinate_type
+        )
+    for signature, actual in coordinate_types.items():
+        expected = [SourceMemoryAddressCoordinateType.OFFSET]
+        if ".workgroup." in signature[1]:
+            expected.insert(0, SourceMemoryAddressCoordinateType.INDEX)
+        assert actual == expected
 
 
 def test_native_float_rules_precede_integer_fallbacks() -> None:

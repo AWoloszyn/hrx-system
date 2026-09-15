@@ -1,0 +1,263 @@
+// Runtime-selected byte offsets address two disjoint workgroup slots.
+// Static reads of both slots verify the dynamic address conversion.
+
+kernel.def @workgroup_byte_offsets_i8() {
+  %unit = index.constant 1 : index
+  %width = index.constant 32 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%output: buffer) {
+  %base = index.constant 0 : offset
+  %second_slot = index.constant 32 : offset
+  %storage_bytes = index.constant 64 : offset
+  %lane = kernel.workitem.id<x> : index
+  %half = index.constant 16 : index
+  %in_first_half = index.cmp slt, %lane, %half : index
+  %selected_offset = scf.select %in_first_half, %base, %second_slot : offset
+  %other_offset = scf.select %in_first_half, %second_slot, %base : offset
+  %scratch = buffer.alloca<workgroup> align(1) %storage_bytes : buffer
+  %selected = buffer.view %scratch[%selected_offset] : buffer -> view<32xi8>
+  %other = buffer.view %scratch[%other_offset] : buffer -> view<32xi8>
+  %value = index.cast %lane : index to i8
+  %bias = scalar.constant 32 : i8
+  %other_value = scalar.addi %value, %bias : i8
+  view.store %value, %selected[%lane] : i8, view<32xi8>
+  view.store %other_value, %other[%lane] : i8, view<32xi8>
+  %first_view = buffer.view %scratch[%base] : buffer -> view<32xi8>
+  %second_view = buffer.view %scratch[%second_slot] : buffer -> view<32xi8>
+  %first = view.load %first_view[%lane] : view<32xi8> -> i8
+  %second = view.load %second_view[%lane] : view<32xi8> -> i8
+  %selected_loaded = view.load %selected[%lane] : view<32xi8> -> i8
+  %first_expected = scf.select %in_first_half, %value, %other_value : i8
+  %second_expected = scf.select %in_first_half, %other_value, %value : i8
+  %first_ok = scalar.cmpi eq, %first, %first_expected : i8
+  %second_ok = scalar.cmpi eq, %second, %second_expected : i8
+  %dynamic_ok = scalar.cmpi eq, %selected_loaded, %value : i8
+  %slots_ok = scalar.andi %first_ok, %second_ok : i1
+  %all_ok = scalar.andi %slots_ok, %dynamic_ok : i1
+  %success = scalar.constant 1 : i32
+  %failure = scalar.constant 0 : i32
+  %result = scf.select %all_ok, %success, %failure : i32
+  %output_aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %output_view = buffer.view %output_aligned[%base] : buffer -> view<32xi32>
+  view.store %result, %output_view[%lane] : i32, view<32xi32>
+  kernel.return
+}
+
+check.case public @workgroup_byte_offsets_i8_case {
+  %output = check.generate.fill value(-1) : tensor<32xi32>
+  %expected = check.generate.fill value(1) : tensor<32xi32>
+  kernel.launch @workgroup_byte_offsets_i8(%output) : (tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+kernel.def @workgroup_byte_offsets_i16() {
+  %unit = index.constant 1 : index
+  %width = index.constant 32 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%output: buffer) {
+  %base = index.constant 0 : offset
+  %second_slot = index.constant 64 : offset
+  %storage_bytes = index.constant 128 : offset
+  %lane = kernel.workitem.id<x> : index
+  %half = index.constant 16 : index
+  %in_first_half = index.cmp slt, %lane, %half : index
+  %selected_offset = scf.select %in_first_half, %base, %second_slot : offset
+  %other_offset = scf.select %in_first_half, %second_slot, %base : offset
+  %scratch = buffer.alloca<workgroup> align(2) %storage_bytes : buffer
+  %selected = buffer.view %scratch[%selected_offset] : buffer -> view<32xi16>
+  %other = buffer.view %scratch[%other_offset] : buffer -> view<32xi16>
+  %value = index.cast %lane : index to i16
+  %bias = scalar.constant 32 : i16
+  %other_value = scalar.addi %value, %bias : i16
+  view.store %value, %selected[%lane] : i16, view<32xi16>
+  view.store %other_value, %other[%lane] : i16, view<32xi16>
+  %first_view = buffer.view %scratch[%base] : buffer -> view<32xi16>
+  %second_view = buffer.view %scratch[%second_slot] : buffer -> view<32xi16>
+  %first = view.load %first_view[%lane] : view<32xi16> -> i16
+  %second = view.load %second_view[%lane] : view<32xi16> -> i16
+  %selected_loaded = view.load %selected[%lane] : view<32xi16> -> i16
+  %first_expected = scf.select %in_first_half, %value, %other_value : i16
+  %second_expected = scf.select %in_first_half, %other_value, %value : i16
+  %first_ok = scalar.cmpi eq, %first, %first_expected : i16
+  %second_ok = scalar.cmpi eq, %second, %second_expected : i16
+  %dynamic_ok = scalar.cmpi eq, %selected_loaded, %value : i16
+  %slots_ok = scalar.andi %first_ok, %second_ok : i1
+  %all_ok = scalar.andi %slots_ok, %dynamic_ok : i1
+  %success = scalar.constant 1 : i32
+  %failure = scalar.constant 0 : i32
+  %result = scf.select %all_ok, %success, %failure : i32
+  %output_aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %output_view = buffer.view %output_aligned[%base] : buffer -> view<32xi32>
+  view.store %result, %output_view[%lane] : i32, view<32xi32>
+  kernel.return
+}
+
+check.case public @workgroup_byte_offsets_i16_case {
+  %output = check.generate.fill value(-1) : tensor<32xi32>
+  %expected = check.generate.fill value(1) : tensor<32xi32>
+  kernel.launch @workgroup_byte_offsets_i16(%output) : (tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+kernel.def @workgroup_byte_offsets_i32() {
+  %unit = index.constant 1 : index
+  %width = index.constant 32 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%output: buffer) {
+  %base = index.constant 0 : offset
+  %second_slot = index.constant 128 : offset
+  %storage_bytes = index.constant 256 : offset
+  %lane = kernel.workitem.id<x> : index
+  %half = index.constant 16 : index
+  %in_first_half = index.cmp slt, %lane, %half : index
+  %selected_offset = scf.select %in_first_half, %base, %second_slot : offset
+  %other_offset = scf.select %in_first_half, %second_slot, %base : offset
+  %scratch = buffer.alloca<workgroup> align(4) %storage_bytes : buffer
+  %selected = buffer.view %scratch[%selected_offset] : buffer -> view<32xi32>
+  %other = buffer.view %scratch[%other_offset] : buffer -> view<32xi32>
+  %value = index.cast %lane : index to i32
+  %bias = scalar.constant 32 : i32
+  %other_value = scalar.addi %value, %bias : i32
+  view.store %value, %selected[%lane] : i32, view<32xi32>
+  view.store %other_value, %other[%lane] : i32, view<32xi32>
+  %first_view = buffer.view %scratch[%base] : buffer -> view<32xi32>
+  %second_view = buffer.view %scratch[%second_slot] : buffer -> view<32xi32>
+  %first = view.load %first_view[%lane] : view<32xi32> -> i32
+  %second = view.load %second_view[%lane] : view<32xi32> -> i32
+  %selected_loaded = view.load %selected[%lane] : view<32xi32> -> i32
+  %first_expected = scf.select %in_first_half, %value, %other_value : i32
+  %second_expected = scf.select %in_first_half, %other_value, %value : i32
+  %first_ok = scalar.cmpi eq, %first, %first_expected : i32
+  %second_ok = scalar.cmpi eq, %second, %second_expected : i32
+  %dynamic_ok = scalar.cmpi eq, %selected_loaded, %value : i32
+  %slots_ok = scalar.andi %first_ok, %second_ok : i1
+  %all_ok = scalar.andi %slots_ok, %dynamic_ok : i1
+  %success = scalar.constant 1 : i32
+  %failure = scalar.constant 0 : i32
+  %result = scf.select %all_ok, %success, %failure : i32
+  %output_aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %output_view = buffer.view %output_aligned[%base] : buffer -> view<32xi32>
+  view.store %result, %output_view[%lane] : i32, view<32xi32>
+  kernel.return
+}
+
+check.case public @workgroup_byte_offsets_i32_case {
+  %output = check.generate.fill value(-1) : tensor<32xi32>
+  %expected = check.generate.fill value(1) : tensor<32xi32>
+  kernel.launch @workgroup_byte_offsets_i32(%output) : (tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+kernel.def @workgroup_byte_offsets_i64() {
+  %unit = index.constant 1 : index
+  %width = index.constant 32 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%output: buffer) {
+  %base = index.constant 0 : offset
+  %second_slot = index.constant 256 : offset
+  %storage_bytes = index.constant 512 : offset
+  %lane = kernel.workitem.id<x> : index
+  %half = index.constant 16 : index
+  %in_first_half = index.cmp slt, %lane, %half : index
+  %selected_offset = scf.select %in_first_half, %base, %second_slot : offset
+  %other_offset = scf.select %in_first_half, %second_slot, %base : offset
+  %scratch = buffer.alloca<workgroup> align(8) %storage_bytes : buffer
+  %selected = buffer.view %scratch[%selected_offset] : buffer -> view<32xi64>
+  %other = buffer.view %scratch[%other_offset] : buffer -> view<32xi64>
+  %value = index.cast %lane : index to i64
+  %bias = scalar.constant 32 : i64
+  %other_value = scalar.addi %value, %bias : i64
+  view.store %value, %selected[%lane] : i64, view<32xi64>
+  view.store %other_value, %other[%lane] : i64, view<32xi64>
+  %first_view = buffer.view %scratch[%base] : buffer -> view<32xi64>
+  %second_view = buffer.view %scratch[%second_slot] : buffer -> view<32xi64>
+  %first = view.load %first_view[%lane] : view<32xi64> -> i64
+  %second = view.load %second_view[%lane] : view<32xi64> -> i64
+  %selected_loaded = view.load %selected[%lane] : view<32xi64> -> i64
+  %first_expected = scf.select %in_first_half, %value, %other_value : i64
+  %second_expected = scf.select %in_first_half, %other_value, %value : i64
+  %first_ok = scalar.cmpi eq, %first, %first_expected : i64
+  %second_ok = scalar.cmpi eq, %second, %second_expected : i64
+  %dynamic_ok = scalar.cmpi eq, %selected_loaded, %value : i64
+  %slots_ok = scalar.andi %first_ok, %second_ok : i1
+  %all_ok = scalar.andi %slots_ok, %dynamic_ok : i1
+  %success = scalar.constant 1 : i32
+  %failure = scalar.constant 0 : i32
+  %result = scf.select %all_ok, %success, %failure : i32
+  %output_aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %output_view = buffer.view %output_aligned[%base] : buffer -> view<32xi32>
+  view.store %result, %output_view[%lane] : i32, view<32xi32>
+  kernel.return
+}
+
+check.case public @workgroup_byte_offsets_i64_case {
+  %output = check.generate.fill value(-1) : tensor<32xi32>
+  %expected = check.generate.fill value(1) : tensor<32xi32>
+  kernel.launch @workgroup_byte_offsets_i64(%output) : (tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}
+
+kernel.def @workgroup_byte_offsets_atomic_i32() {
+  %unit = index.constant 1 : index
+  %width = index.constant 32 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%output: buffer) {
+  %base = index.constant 0 : offset
+  %second_slot = index.constant 128 : offset
+  %storage_bytes = index.constant 256 : offset
+  %lane = kernel.workitem.id<x> : index
+  %half = index.constant 16 : index
+  %in_first_half = index.cmp slt, %lane, %half : index
+  %selected_offset = scf.select %in_first_half, %base, %second_slot : offset
+  %other_offset = scf.select %in_first_half, %second_slot, %base : offset
+  %scratch = buffer.alloca<workgroup> align(4) %storage_bytes : buffer
+  %selected = buffer.view %scratch[%selected_offset] : buffer -> view<32xi32>
+  %other = buffer.view %scratch[%other_offset] : buffer -> view<32xi32>
+  %value = index.cast %lane : index to i32
+  %bias = scalar.constant 32 : i32
+  %other_value = scalar.addi %value, %bias : i32
+  view.store %value, %selected[%lane] : i32, view<32xi32>
+  view.store %other_value, %other[%lane] : i32, view<32xi32>
+  %increment = scalar.constant 3 : i32
+  %after_add = scalar.addi %value, %increment : i32
+  %after_reduce = scalar.addi %after_add, %increment : i32
+  %after_exchange = scalar.addi %after_reduce, %increment : i32
+  %old = view.atomic.rmw<addi> %increment, %selected[%lane] {ordering = relaxed, scope = workgroup} : i32, view<32xi32> -> i32
+  view.atomic.reduce<addi> %increment, %selected[%lane] {ordering = relaxed, scope = workgroup} : i32, view<32xi32>
+  %exchanged = view.atomic.cmpxchg %after_reduce, %after_exchange, %selected[%lane] {failure_ordering = relaxed, scope = workgroup, success_ordering = relaxed} : i32, view<32xi32> -> i32
+  %old_ok = scalar.cmpi eq, %old, %value : i32
+  %exchanged_ok = scalar.cmpi eq, %exchanged, %after_reduce : i32
+  %atomics_ok = scalar.andi %old_ok, %exchanged_ok : i1
+  %first_view = buffer.view %scratch[%base] : buffer -> view<32xi32>
+  %second_view = buffer.view %scratch[%second_slot] : buffer -> view<32xi32>
+  %first = view.load %first_view[%lane] : view<32xi32> -> i32
+  %second = view.load %second_view[%lane] : view<32xi32> -> i32
+  %selected_loaded = view.load %selected[%lane] : view<32xi32> -> i32
+  %first_expected = scf.select %in_first_half, %after_exchange, %other_value : i32
+  %second_expected = scf.select %in_first_half, %other_value, %after_exchange : i32
+  %first_ok = scalar.cmpi eq, %first, %first_expected : i32
+  %second_ok = scalar.cmpi eq, %second, %second_expected : i32
+  %dynamic_ok = scalar.cmpi eq, %selected_loaded, %after_exchange : i32
+  %slots_ok = scalar.andi %first_ok, %second_ok : i1
+  %memory_ok = scalar.andi %slots_ok, %dynamic_ok : i1
+  %all_ok = scalar.andi %memory_ok, %atomics_ok : i1
+  %success = scalar.constant 1 : i32
+  %failure = scalar.constant 0 : i32
+  %result = scf.select %all_ok, %success, %failure : i32
+  %output_aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %output_view = buffer.view %output_aligned[%base] : buffer -> view<32xi32>
+  view.store %result, %output_view[%lane] : i32, view<32xi32>
+  kernel.return
+}
+
+check.case public @workgroup_byte_offsets_atomic_i32_case {
+  %output = check.generate.fill value(-1) : tensor<32xi32>
+  %expected = check.generate.fill value(1) : tensor<32xi32>
+  kernel.launch @workgroup_byte_offsets_atomic_i32(%output) : (tensor<32xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<32xi32>
+  check.return
+}

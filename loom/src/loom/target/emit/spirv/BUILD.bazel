@@ -270,6 +270,7 @@ loom_check_test_suite(
         "test/source_structured_control.loom-test",
         "test/storage_buffer_abi.loom-test",
         "test/structured_control.loom-test",
+        "test/workgroup_byte_offsets.loom-test",
         "test/workgroup_storage.loom-test",
     ],
     data = _SPIRV_TOOL_DATA + [

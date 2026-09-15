@@ -735,6 +735,18 @@ static iree_status_t loom_spirv_emit_access_chain_packet(
   loom_spirv_module_value_ref_t operands[2] = {0};
   IREE_RETURN_IF_ERROR(
       loom_spirv_emit_load_packet_operands(state, packet, row, operands));
+  uint32_t element_index_id = operands[1].id;
+  if (row->payload.access_chain.coordinate_byte_shift != 0) {
+    // The byte-coordinate packet contract requires exact division. Keep the
+    // offset's full width until it has been converted to array coordinates.
+    uint32_t shift_id = 0;
+    IREE_RETURN_IF_ERROR(loom_spirv_emit_u64_constant(
+        state->type_context, row->payload.access_chain.coordinate_byte_shift,
+        &shift_id));
+    IREE_RETURN_IF_ERROR(loom_spirv_module_emit_binary_result(
+        state->builder, LOOM_SPIRV_OP_SHIFT_RIGHT_LOGICAL, operands[1].type_id,
+        element_index_id, shift_id, &element_index_id));
+  }
   uint32_t result_type_id = 0;
   IREE_RETURN_IF_ERROR(loom_spirv_emit_type_id_for_value_type(
       state->type_context, loom_spirv_packet_row_result_type(row),
@@ -747,7 +759,7 @@ static iree_status_t loom_spirv_emit_access_chain_packet(
       result_type_id,
       result_id,
       operands[0].id,
-      operands[1].id,
+      element_index_id,
   };
   IREE_RETURN_IF_ERROR(loom_spirv_binary_write_instruction(
       loom_spirv_emit_section(state, LOOM_SPIRV_MODULE_SECTION_FUNCTION),

@@ -6,6 +6,8 @@
 
 """SPIR-V logical memory constraints and address materializers."""
 
+from dataclasses import replace
+
 from loom.error.spirv import ERR_SPIRV_028, ERR_SPIRV_029
 from loom.error.target import ERR_TARGET_050
 from loom.target.arch.spirv.contracts.descriptor_rule import (
@@ -159,7 +161,21 @@ def _workgroup_address_diagnostic(
 
 def workgroup_address_materializer(
     scalar: StorageBufferScalar,
+    coordinate_type: SourceMemoryAddressCoordinateType,
 ) -> SourceMemoryAddressMaterializer:
+    if coordinate_type == SourceMemoryAddressCoordinateType.OFFSET:
+        # The shared access plan proves alignment and the complete byte range.
+        # The address packet converts aligned bytes to typed array elements.
+        return replace(
+            storage_buffer_address_materializer(scalar),
+            address=logical_core_descriptor(
+                f"spirv.op_access_chain.workgroup.{scalar.suffix}.byte_offset"
+            ),
+            base=SourceMemoryAddressBase.BASE_VIEW,
+            coordinate_minimum=0,
+            coordinate_maximum=((2**31) - 1) * scalar.byte_width,
+            diagnostic=_workgroup_address_diagnostic(scalar),
+        )
     return SourceMemoryAddressMaterializer(
         const_coordinate=logical_core_descriptor("spirv.op_constant.i32"),
         add_coordinate=logical_core_descriptor("spirv.op_iadd.i32"),

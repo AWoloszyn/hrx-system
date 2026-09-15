@@ -1,0 +1,153 @@
+// RUN: emit spirv-dis input=source-low validate
+// REQUIRES: spirv-dis, spirv-val
+
+spirv.target<vulkan1_3> @target
+
+func.def target(@target) @workgroup_byte_offset_i32(%value: i32, %byte_offset0: offset) -> (i32) {
+  %byte_length = index.constant 128 : offset
+  %byte_offset = index.assume %byte_offset0 [range(%byte_offset0, 0, 124), mul(%byte_offset0, 4)] : offset
+  %scratch = buffer.alloca<workgroup> align(4) %byte_length : buffer
+  %scratch_view = buffer.view %scratch[%byte_offset] : buffer -> view<1xi32>
+  view.store %value, %scratch_view[0] : i32, view<1xi32>
+  %loaded = view.load %scratch_view[0] : view<1xi32> -> i32
+  func.return %loaded : i32
+}
+
+// ----
+               OpCapability Shader
+               OpCapability VulkanMemoryModel
+               OpCapability PhysicalStorageBufferAddresses
+               OpCapability Int64
+               OpExtension "SPV_KHR_vulkan_memory_model"
+               OpExtension "SPV_KHR_physical_storage_buffer"
+               OpMemoryModel PhysicalStorageBuffer64 Vulkan
+               OpEntryPoint GLCompute %workgroup_byte_offset_i32 "workgroup_byte_offset_i32"
+               OpExecutionMode %workgroup_byte_offset_i32 LocalSize 1 1 1
+               OpName %workgroup_byte_offset_i32 "workgroup_byte_offset_i32"
+               OpName %value "value"
+               OpName %byte_offset "byte_offset"
+               OpName %scratch_view "scratch_view"
+               OpName %loaded "loaded"
+               OpMemberDecorate %_struct_5 0 Offset 0
+               OpDecorate %_struct_5 Block
+               OpDecorate %4 DescriptorSet 0
+               OpDecorate %4 Binding 0
+               OpMemberDecorate %_struct_10 0 Offset 0
+               OpDecorate %_struct_10 Block
+               OpDecorate %8 DescriptorSet 0
+               OpDecorate %8 Binding 1
+               OpDecorate %13 DescriptorSet 0
+               OpDecorate %13 Binding 2
+               OpDecorate %_arr_int_uint_32 ArrayStride 4
+        %int = OpTypeInt 32 1
+      %int_0 = OpConstant %int 0
+  %_struct_5 = OpTypeStruct %int
+%_ptr_StorageBuffer__struct_5 = OpTypePointer StorageBuffer %_struct_5
+%_ptr_StorageBuffer_int = OpTypePointer StorageBuffer %int
+          %4 = OpVariable %_ptr_StorageBuffer__struct_5 StorageBuffer
+      %ulong = OpTypeInt 64 0
+ %_struct_10 = OpTypeStruct %ulong
+%_ptr_StorageBuffer__struct_10 = OpTypePointer StorageBuffer %_struct_10
+%_ptr_StorageBuffer_ulong = OpTypePointer StorageBuffer %ulong
+          %8 = OpVariable %_ptr_StorageBuffer__struct_10 StorageBuffer
+         %13 = OpVariable %_ptr_StorageBuffer__struct_5 StorageBuffer
+       %void = OpTypeVoid
+         %15 = OpTypeFunction %void
+       %uint = OpTypeInt 32 0
+    %uint_32 = OpConstant %uint 32
+%_arr_int_uint_32 = OpTypeArray %int %uint_32
+%_ptr_Workgroup__arr_int_uint_32 = OpTypePointer Workgroup %_arr_int_uint_32
+%scratch_view = OpVariable %_ptr_Workgroup__arr_int_uint_32 Workgroup
+    %ulong_2 = OpConstant %ulong 2
+%_ptr_Workgroup_int = OpTypePointer Workgroup %int
+%workgroup_byte_offset_i32 = OpFunction %void None %15
+         %16 = OpLabel
+         %17 = OpAccessChain %_ptr_StorageBuffer_int %4 %int_0
+      %value = OpLoad %int %17 Aligned 4
+         %19 = OpAccessChain %_ptr_StorageBuffer_ulong %8 %int_0
+%byte_offset = OpLoad %ulong %19 Aligned 8
+         %27 = OpShiftRightLogical %ulong %byte_offset %ulong_2
+         %29 = OpAccessChain %_ptr_Workgroup_int %scratch_view %27
+               OpStore %29 %value Aligned 4
+     %loaded = OpLoad %int %29 Aligned 4
+         %31 = OpAccessChain %_ptr_StorageBuffer_int %13 %int_0
+               OpStore %31 %loaded Aligned 4
+               OpReturn
+               OpFunctionEnd
+
+// ====
+
+spirv.target<vulkan1_3> @target
+
+func.def target(@target) @workgroup_byte_offset_i64(%value: i64, %byte_offset0: offset) -> (i64) {
+  %byte_length = index.constant 256 : offset
+  %byte_offset = index.assume %byte_offset0 [range(%byte_offset0, 0, 248), mul(%byte_offset0, 8)] : offset
+  %scratch = buffer.alloca<workgroup> align(8) %byte_length : buffer
+  %scratch_view = buffer.view %scratch[%byte_offset] : buffer -> view<1xi64>
+  view.store %value, %scratch_view[0] : i64, view<1xi64>
+  %loaded = view.load %scratch_view[0] : view<1xi64> -> i64
+  func.return %loaded : i64
+}
+
+// ----
+               OpCapability Shader
+               OpCapability VulkanMemoryModel
+               OpCapability PhysicalStorageBufferAddresses
+               OpCapability Int64
+               OpExtension "SPV_KHR_vulkan_memory_model"
+               OpExtension "SPV_KHR_physical_storage_buffer"
+               OpMemoryModel PhysicalStorageBuffer64 Vulkan
+               OpEntryPoint GLCompute %workgroup_byte_offset_i64 "workgroup_byte_offset_i64"
+               OpExecutionMode %workgroup_byte_offset_i64 LocalSize 1 1 1
+               OpName %workgroup_byte_offset_i64 "workgroup_byte_offset_i64"
+               OpName %value "value"
+               OpName %byte_offset "byte_offset"
+               OpName %scratch_view "scratch_view"
+               OpName %loaded "loaded"
+               OpMemberDecorate %_struct_6 0 Offset 0
+               OpDecorate %_struct_6 Block
+               OpDecorate %4 DescriptorSet 0
+               OpDecorate %4 Binding 0
+               OpMemberDecorate %_struct_11 0 Offset 0
+               OpDecorate %_struct_11 Block
+               OpDecorate %9 DescriptorSet 0
+               OpDecorate %9 Binding 1
+               OpDecorate %14 DescriptorSet 0
+               OpDecorate %14 Binding 2
+               OpDecorate %_arr_long_uint_32 ArrayStride 8
+        %int = OpTypeInt 32 1
+      %int_0 = OpConstant %int 0
+       %long = OpTypeInt 64 1
+  %_struct_6 = OpTypeStruct %long
+%_ptr_StorageBuffer__struct_6 = OpTypePointer StorageBuffer %_struct_6
+%_ptr_StorageBuffer_long = OpTypePointer StorageBuffer %long
+          %4 = OpVariable %_ptr_StorageBuffer__struct_6 StorageBuffer
+      %ulong = OpTypeInt 64 0
+ %_struct_11 = OpTypeStruct %ulong
+%_ptr_StorageBuffer__struct_11 = OpTypePointer StorageBuffer %_struct_11
+%_ptr_StorageBuffer_ulong = OpTypePointer StorageBuffer %ulong
+          %9 = OpVariable %_ptr_StorageBuffer__struct_11 StorageBuffer
+         %14 = OpVariable %_ptr_StorageBuffer__struct_6 StorageBuffer
+       %void = OpTypeVoid
+         %16 = OpTypeFunction %void
+       %uint = OpTypeInt 32 0
+    %uint_32 = OpConstant %uint 32
+%_arr_long_uint_32 = OpTypeArray %long %uint_32
+%_ptr_Workgroup__arr_long_uint_32 = OpTypePointer Workgroup %_arr_long_uint_32
+%scratch_view = OpVariable %_ptr_Workgroup__arr_long_uint_32 Workgroup
+    %ulong_3 = OpConstant %ulong 3
+%_ptr_Workgroup_long = OpTypePointer Workgroup %long
+%workgroup_byte_offset_i64 = OpFunction %void None %16
+         %17 = OpLabel
+         %18 = OpAccessChain %_ptr_StorageBuffer_long %4 %int_0
+      %value = OpLoad %long %18 Aligned 8
+         %20 = OpAccessChain %_ptr_StorageBuffer_ulong %9 %int_0
+%byte_offset = OpLoad %ulong %20 Aligned 8
+         %28 = OpShiftRightLogical %ulong %byte_offset %ulong_3
+         %30 = OpAccessChain %_ptr_Workgroup_long %scratch_view %28
+               OpStore %30 %value Aligned 8
+     %loaded = OpLoad %long %30 Aligned 8
+         %32 = OpAccessChain %_ptr_StorageBuffer_long %14 %int_0
+               OpStore %32 %loaded Aligned 8
+               OpReturn
+               OpFunctionEnd
