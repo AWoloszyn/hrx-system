@@ -298,6 +298,96 @@ func.def @convergent_barriers_pure_cse() -> (i32, i32, i32) {
 
 // ====
 
+// Full invalidation permits equivalent candidates within each new participant
+// epoch, never across it. Empty epochs and reused hash slots remain valid.
+// RUN: pass cse
+func.def @successive_convergent_epochs(%value: i32) -> (i32, i32, i32, i32) {
+  %before = test.addi %value, %value : i32
+  %first_barrier = test.convergent %value : i32
+  %empty_barrier = test.convergent %value : i32
+  %middle = test.addi %value, %value : i32
+  %middle_duplicate = test.addi %value, %value : i32
+  %last_barrier = test.convergent %middle : i32
+  %after = test.addi %value, %value : i32
+  %after_duplicate = test.addi %value, %value : i32
+  func.return %before, %middle_duplicate, %after, %after_duplicate : i32, i32, i32, i32
+}
+
+// ----
+func.def @successive_convergent_epochs(%value: i32) -> (i32, i32, i32, i32) {
+  %before = test.addi %value, %value : i32
+  %first_barrier = test.convergent %value : i32
+  %empty_barrier = test.convergent %value : i32
+  %middle = test.addi %value, %value : i32
+  %last_barrier = test.convergent %middle : i32
+  %after = test.addi %value, %value : i32
+  func.return %before, %middle, %after, %after : i32, i32, i32, i32
+}
+
+// ====
+
+// Selective read invalidation leaves a tombstone, and the equivalent reload
+// reuses its slot. Full invalidation must clear that occupied slot exactly as
+// it clears a pure candidate, then permit fresh within-epoch elimination.
+// RUN: pass cse
+func.def @convergent_after_read_reinsertion(%buffer: buffer, %offset: offset, %value: i32) -> (i32, i32, i32, i32) {
+  %layout = encoding.layout.dense : encoding<layout>
+  %view = buffer.view %buffer[%offset] : buffer -> view<1xi32, %layout>
+  %before = view.load %view[0] : view<1xi32, %layout> -> i32
+  view.store %value, %view[0] : i32, view<1xi32, %layout>
+  %middle = view.load %view[0] : view<1xi32, %layout> -> i32
+  %barrier = test.convergent %value : i32
+  %after = view.load %view[0] : view<1xi32, %layout> -> i32
+  %duplicate = view.load %view[0] : view<1xi32, %layout> -> i32
+  func.return %before, %middle, %after, %duplicate : i32, i32, i32, i32
+}
+
+// ----
+func.def @convergent_after_read_reinsertion(%buffer: buffer, %offset: offset, %value: i32) -> (i32, i32, i32, i32) {
+  %layout = encoding.layout.dense : encoding<layout>
+  %view = buffer.view %buffer[%offset] : buffer -> view<1xi32, %layout>
+  %before = view.load %view[0] : view<1xi32, %layout> -> i32
+  view.store %value, %view[0] : i32, view<1xi32, %layout>
+  %middle = view.load %view[0] : view<1xi32, %layout> -> i32
+  %barrier = test.convergent %value : i32
+  %after = view.load %view[0] : view<1xi32, %layout> -> i32
+  func.return %before, %middle, %after, %after : i32, i32, i32, i32
+}
+
+// ====
+
+// Nested convergent effects invalidate parent membership before child lookup.
+// The nested scope and later outer scope each retain their own fresh candidate.
+// RUN: pass cse
+func.def @nested_convergent_clears_parent(%condition: i1, %value: i32) -> (i32, i32) {
+  %before = test.addi %value, %value : i32
+  scf.if %condition {
+    %barrier = test.convergent %value : i32
+    %inner = test.addi %value, %value : i32
+    %duplicate = test.addi %value, %value : i32
+    test.use %inner, %duplicate : i32, i32
+  } else {
+  }
+  %after = test.addi %value, %value : i32
+  %after_duplicate = test.addi %value, %value : i32
+  func.return %before, %after_duplicate : i32, i32
+}
+
+// ----
+func.def @nested_convergent_clears_parent(%condition: i1, %value: i32) -> (i32, i32) {
+  %before = test.addi %value, %value : i32
+  scf.if %condition {
+    %barrier = test.convergent %value : i32
+    %inner = test.addi %value, %value : i32
+    test.use %inner, %inner : i32, i32
+  } else {
+  }
+  %after = test.addi %value, %value : i32
+  func.return %before, %after : i32, i32
+}
+
+// ====
+
 // CSE must not merge producers whose results are later consumed by tied-result
 // ops. The tied users are linear ownership transfers: replacing %rhs_copy with
 // %lhs_copy would make both tied ops consume the same storage.

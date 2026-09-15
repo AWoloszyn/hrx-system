@@ -29,6 +29,9 @@ const loom_pass_info_t* loom_cse_pass_info(void);
 //     DFS frame stack, safe on arbitrarily nested input.
 //   - Tombstone-based write barriers: PURE ops survive writes, non-PURE
 //     ops (reads) are invalidated without breaking probe chains.
+//   - Convergent barriers clear occupied slots, including tombstones. Total
+//     full-table invalidation work is bounded by block insertions, with one
+//     retained slot index per possible insertion.
 //   - Entry block dominance: in multi-block regions, the entry block's
 //     CSE candidates are visible to all successor blocks.
 //   - Deep attribute comparison: pointer-valued attribute kinds

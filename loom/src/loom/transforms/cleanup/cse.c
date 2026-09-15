@@ -141,8 +141,11 @@ static bool loom_cse_ops_equal(const loom_module_t* module, const loom_op_t* a,
 //===----------------------------------------------------------------------===//
 
 typedef struct loom_cse_low_state_t {
+  // Architectural state contributing to expression identity without SSA edges.
   uint64_t dependencies;
+  // Architectural state read by the packet.
   uint64_t reads;
+  // Architectural state written by the packet.
   uint64_t writes;
 } loom_cse_low_state_t;
 
@@ -249,50 +252,51 @@ typedef struct loom_cse_entry_t {
   uint64_t state_dependency_bits;
 } loom_cse_entry_t;
 
-typedef struct loom_cse_table_t {
-  loom_cse_entry_t* entries;
-  // Slots containing live non-PURE entries, used for O(non-pure) write
-  // barriers.
-  iree_host_size_t* non_pure_slots;
-  // Slots containing live entries whose identity depends on target state.
-  iree_host_size_t* state_dependency_slots;
-  // Always a power of 2.
-  iree_host_size_t capacity;
-  // Live entries only (excludes tombstones).
+typedef struct loom_cse_slot_list_t {
+  // Slot indices stored in the scope arena.
+  iree_host_size_t* slots;
+  // Number of recorded slot indices.
   iree_host_size_t count;
-  // Count of live non-PURE slot entries.
-  iree_host_size_t non_pure_slot_count;
-  // Count of live target-state-dependent slot entries.
-  iree_host_size_t state_dependency_slot_count;
-  // Capacity of non_pure_slots.
-  iree_host_size_t non_pure_slot_capacity;
-  // Capacity of state_dependency_slots.
-  iree_host_size_t state_dependency_slot_capacity;
+} loom_cse_slot_list_t;
+
+typedef struct loom_cse_table_t {
+  // Open-addressed candidate entries owned by the scope arena.
+  loom_cse_entry_t* entries;
+  // Every nonempty slot, including tombstones, since the last full barrier.
+  // Each NULL-to-live insertion records its slot once; reuse adds no entry.
+  loom_cse_slot_list_t occupied;
+  // Non-PURE insertion slots since the last write barrier. Selective state
+  // invalidation can leave stale indices, checked against the current entry.
+  loom_cse_slot_list_t non_pure;
+  // Target-state-dependent insertion slots, compacted during state writes.
+  loom_cse_slot_list_t state_dependencies;
+  // Number of entry slots, always a power of two.
+  iree_host_size_t capacity;
+  // Maximum block insertions and capacity of each slot list.
+  iree_host_size_t insertion_capacity;
 } loom_cse_table_t;
 
 static iree_status_t loom_cse_table_initialize(iree_arena_allocator_t* arena,
                                                iree_host_size_t capacity,
                                                iree_host_size_t max_entry_count,
                                                loom_cse_table_t* table) {
-  table->entries = NULL;
-  table->non_pure_slots = NULL;
-  table->state_dependency_slots = NULL;
-  table->capacity = capacity;
-  table->count = 0;
-  table->non_pure_slot_count = 0;
-  table->state_dependency_slot_count = 0;
-  table->non_pure_slot_capacity = max_entry_count;
-  table->state_dependency_slot_capacity = max_entry_count;
+  *table = (loom_cse_table_t){
+      .capacity = capacity,
+      .insertion_capacity = max_entry_count,
+  };
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       arena, capacity, sizeof(loom_cse_entry_t), (void**)&table->entries));
   memset(table->entries, 0, capacity * sizeof(loom_cse_entry_t));
   if (max_entry_count > 0) {
     IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
         arena, max_entry_count, sizeof(iree_host_size_t),
-        (void**)&table->non_pure_slots));
+        (void**)&table->occupied.slots));
     IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
         arena, max_entry_count, sizeof(iree_host_size_t),
-        (void**)&table->state_dependency_slots));
+        (void**)&table->non_pure.slots));
+    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+        arena, max_entry_count, sizeof(iree_host_size_t),
+        (void**)&table->state_dependencies.slots));
   }
   return iree_ok_status();
 }
@@ -326,41 +330,42 @@ static void loom_cse_table_insert(loom_cse_table_t* table, loom_op_t* op,
          table->entries[slot].op != LOOM_CSE_TOMBSTONE) {
     slot = (slot + 1) & mask;
   }
+  if (!table->entries[slot].op) {
+    IREE_ASSERT_LT(table->occupied.count, table->insertion_capacity);
+    table->occupied.slots[table->occupied.count++] = slot;
+  }
   table->entries[slot] = (loom_cse_entry_t){
       .op = op,
       .hash = hash,
       .traits = traits,
       .state_dependency_bits = state_dependency_bits,
   };
-  ++table->count;
   if (!(traits & LOOM_TRAIT_PURE)) {
-    IREE_ASSERT(table->non_pure_slot_count < table->non_pure_slot_capacity);
-    table->non_pure_slots[table->non_pure_slot_count++] = slot;
+    IREE_ASSERT_LT(table->non_pure.count, table->insertion_capacity);
+    table->non_pure.slots[table->non_pure.count++] = slot;
   }
   if (state_dependency_bits != 0) {
-    IREE_ASSERT(table->state_dependency_slot_count <
-                table->state_dependency_slot_capacity);
-    table->state_dependency_slots[table->state_dependency_slot_count++] = slot;
+    IREE_ASSERT_LT(table->state_dependencies.count, table->insertion_capacity);
+    table->state_dependencies.slots[table->state_dependencies.count++] = slot;
   }
 }
 
 // Evicts all non-PURE entries from the table by replacing them with
 // tombstones. PURE entries (no memory effects) survive write barriers
 // because their results don't depend on mutable resource state.
-// The non_pure_slots side list avoids scanning the full hash table capacity on
+// The non-PURE slot list avoids scanning the full hash table capacity on
 // every write in large blocks that alternate reads and writes.
 static void loom_cse_table_invalidate_reads(loom_cse_table_t* table) {
-  if (table->non_pure_slot_count == 0) return;
-  for (iree_host_size_t i = 0; i < table->non_pure_slot_count; ++i) {
-    iree_host_size_t slot = table->non_pure_slots[i];
+  if (table->non_pure.count == 0) return;
+  for (iree_host_size_t i = 0; i < table->non_pure.count; ++i) {
+    iree_host_size_t slot = table->non_pure.slots[i];
     loom_op_t* op = table->entries[slot].op;
     if (op && op != LOOM_CSE_TOMBSTONE &&
         !(table->entries[slot].traits & LOOM_TRAIT_PURE)) {
       table->entries[slot].op = LOOM_CSE_TOMBSTONE;
-      --table->count;
     }
   }
-  table->non_pure_slot_count = 0;
+  table->non_pure.count = 0;
 }
 
 // Evicts entries whose identity depends on target state written by the current
@@ -368,33 +373,36 @@ static void loom_cse_table_invalidate_reads(loom_cse_table_t* table) {
 // the side list.
 static void loom_cse_table_invalidate_state_dependencies(
     loom_cse_table_t* table, uint64_t state_write_bits) {
-  if (state_write_bits == 0 || table->state_dependency_slot_count == 0) return;
+  if (state_write_bits == 0 || table->state_dependencies.count == 0) return;
   iree_host_size_t live_slot_count = 0;
-  for (iree_host_size_t i = 0; i < table->state_dependency_slot_count; ++i) {
-    iree_host_size_t slot = table->state_dependency_slots[i];
+  for (iree_host_size_t i = 0; i < table->state_dependencies.count; ++i) {
+    iree_host_size_t slot = table->state_dependencies.slots[i];
     loom_cse_entry_t* entry = &table->entries[slot];
     if (!entry->op || entry->op == LOOM_CSE_TOMBSTONE) {
       continue;
     }
     if ((entry->state_dependency_bits & state_write_bits) != 0) {
       entry->op = LOOM_CSE_TOMBSTONE;
-      --table->count;
       continue;
     }
-    table->state_dependency_slots[live_slot_count++] = slot;
+    table->state_dependencies.slots[live_slot_count++] = slot;
   }
-  table->state_dependency_slot_count = live_slot_count;
+  table->state_dependencies.count = live_slot_count;
 }
 
 // Evicts every entry from the table. This is used for execution-state barriers:
 // a pure value materialized under one dynamic participant set may not be
 // reusable after a later convergent operation changes that set.
+// Each cleared slot was recorded by an insertion, so total clearing work is
+// bounded by block insertions instead of barriers times hash-table capacity.
 static void loom_cse_table_invalidate_all(loom_cse_table_t* table) {
-  if (table->count == 0) return;
-  memset(table->entries, 0, table->capacity * sizeof(*table->entries));
-  table->count = 0;
-  table->non_pure_slot_count = 0;
-  table->state_dependency_slot_count = 0;
+  if (table->occupied.count == 0) return;
+  for (iree_host_size_t i = 0; i < table->occupied.count; ++i) {
+    table->entries[table->occupied.slots[i]].op = NULL;
+  }
+  table->occupied.count = 0;
+  table->non_pure.count = 0;
+  table->state_dependencies.count = 0;
 }
 
 //===----------------------------------------------------------------------===//
