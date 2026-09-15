@@ -141,7 +141,7 @@ iree_status_t iree_hal_streaming_context_create(
   context->host_allocator = host_allocator;
   iree_slim_mutex_initialize(&context->mutex);
   iree_slim_mutex_initialize(&context->pending_free_mutex);
-  iree_slim_mutex_initialize(&context->capture_transition_mutex);
+  iree_hal_streaming_capture_admission_initialize(&context->capture_admission);
   iree_slim_mutex_initialize(&context->value_wait_lane_mutex);
 
   // Initialize global list pointers.
@@ -348,7 +348,8 @@ static void iree_hal_streaming_context_destroy(
       &context->timestamp_pool);
   iree_hal_streaming_value_wait_lanes_deinitialize(context);
   iree_slim_mutex_deinitialize(&context->value_wait_lane_mutex);
-  iree_slim_mutex_deinitialize(&context->capture_transition_mutex);
+  iree_hal_streaming_capture_admission_deinitialize(
+      &context->capture_admission);
 
   iree_status_ignore(context->loop_status);
   iree_hal_allocator_release(context->device_allocator);

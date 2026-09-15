@@ -2326,9 +2326,11 @@ iree_status_t iree_hal_streaming_begin_capture(
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                             "stream execution context has been destroyed");
   }
-  iree_slim_mutex_lock(&context->capture_transition_mutex);
+  iree_hal_streaming_capture_admission_begin_transition(
+      &context->capture_admission);
   iree_status_t status = iree_hal_streaming_begin_capture_impl(stream, mode);
-  iree_slim_mutex_unlock(&context->capture_transition_mutex);
+  iree_hal_streaming_capture_admission_end_transition(
+      &context->capture_admission);
   iree_hal_streaming_context_release(context);
   return status;
 }
@@ -2406,10 +2408,12 @@ iree_status_t iree_hal_streaming_begin_capture_to_graph(
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                             "stream execution context has been destroyed");
   }
-  iree_slim_mutex_lock(&context->capture_transition_mutex);
+  iree_hal_streaming_capture_admission_begin_transition(
+      &context->capture_admission);
   iree_status_t status = iree_hal_streaming_begin_capture_to_graph_impl(
       stream, graph, dependencies, dependency_count, mode);
-  iree_slim_mutex_unlock(&context->capture_transition_mutex);
+  iree_hal_streaming_capture_admission_end_transition(
+      &context->capture_admission);
   iree_hal_streaming_context_release(context);
   return status;
 }
@@ -2799,9 +2803,11 @@ iree_status_t iree_hal_streaming_end_capture(
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                             "stream execution context has been destroyed");
   }
-  iree_slim_mutex_lock(&context->capture_transition_mutex);
+  iree_hal_streaming_capture_admission_begin_transition(
+      &context->capture_admission);
   iree_status_t status = iree_hal_streaming_end_capture_impl(stream, out_graph);
-  iree_slim_mutex_unlock(&context->capture_transition_mutex);
+  iree_hal_streaming_capture_admission_end_transition(
+      &context->capture_admission);
   iree_hal_streaming_context_release(context);
   return status;
 }

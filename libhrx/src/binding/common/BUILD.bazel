@@ -36,6 +36,18 @@ hrx_cc_library(
 )
 
 hrx_cc_library(
+    name = "capture_admission",
+    srcs = ["capture_admission.c"],
+    hdrs = ["capture_admission.h"],
+    includes = [".."],
+    deps = [
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal",
+        "//runtime/src/iree/base/threading",
+    ],
+)
+
+hrx_cc_library(
     name = "execution_resource",
     srcs = ["execution_resource.c"],
     hdrs = ["execution_resource.h"],
@@ -114,6 +126,7 @@ hrx_cc_library(
     deps = [
         ":allocation_preparation",
         ":amdgpu_architecture",
+        ":capture_admission",
         ":execution_resource",
         ":function_attributes",
         "//build_tools/bazel:pthreads",
@@ -136,6 +149,16 @@ hrx_cc_test(
     srcs = ["amdgpu_architecture_test.cc"],
     deps = [
         ":amdgpu_architecture",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+hrx_cc_test(
+    name = "capture_admission_test",
+    srcs = ["capture_admission_test.cc"],
+    deps = [
+        ":capture_admission",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
     ],
