@@ -522,12 +522,11 @@ TEST_F(HipStreamValueApiTest, RejectsIncompatibleImportedBatchTargets) {
   parameters[1].writeValue.value64 = 1;
   parameters[1].writeValue.flags = hipStreamWriteValueDefault;
 
-  // Submission is deferred until the next stream operation. The second call
-  // flushes the incompatible imported target and must report an invalid target
-  // instead of misclassifying the initialized runtime as uninitialized.
+  // Submission is deferred until the stream is flushed. Synchronization must
+  // preserve the incompatible imported target as an invalid value instead of
+  // misclassifying the initialized runtime as uninitialized.
   ASSERT_EQ(hipSuccess, api_.batch_mem_op(stream, 2, parameters, /*flags=*/0));
-  EXPECT_EQ(hipErrorInvalidValue,
-            api_.batch_mem_op(stream, 2, parameters, /*flags=*/0));
+  EXPECT_EQ(hipErrorInvalidValue, api_.stream_synchronize(stream));
   cleanup();
 }
 
