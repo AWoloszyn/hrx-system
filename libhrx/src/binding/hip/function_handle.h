@@ -13,9 +13,9 @@
 extern "C" {
 #endif  // __cplusplus
 
-// Creates an opaque public handle for |symbol|. The handle remains resolvable
-// until all handles for |module| are retired.
-iree_status_t iree_hip_function_handle_create(
+// Returns the stable opaque public handle for |symbol|, creating it on the
+// first query. The handle remains resolvable until |module| is retired.
+iree_status_t iree_hip_function_handle_get_or_create(
     iree_hal_streaming_module_t* module, iree_hal_streaming_symbol_t* symbol,
     void** out_handle);
 

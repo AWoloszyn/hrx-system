@@ -30,8 +30,8 @@ class FunctionHandleTest : public ::testing::Test {
 
 TEST_F(FunctionHandleTest, RejectsStaleAndFabricatedHandles) {
   void* first_handle = nullptr;
-  IREE_ASSERT_OK(
-      iree_hip_function_handle_create(&module_, &symbol_, &first_handle));
+  IREE_ASSERT_OK(iree_hip_function_handle_get_or_create(&module_, &symbol_,
+                                                        &first_handle));
 
   iree_hal_streaming_symbol_t* resolved_symbol = nullptr;
   iree_hal_streaming_module_t* resolved_module = nullptr;
@@ -49,15 +49,16 @@ TEST_F(FunctionHandleTest, RejectsStaleAndFabricatedHandles) {
       &resolved_symbol, &resolved_module));
 
   void* second_handle = nullptr;
-  IREE_ASSERT_OK(
-      iree_hip_function_handle_create(&module_, &symbol_, &second_handle));
+  IREE_ASSERT_OK(iree_hip_function_handle_get_or_create(&module_, &symbol_,
+                                                        &second_handle));
   EXPECT_NE(first_handle, second_handle);
   iree_hip_function_handle_retire_module(&module_);
 }
 
 TEST_F(FunctionHandleTest, ConcurrentLookupAndRetirementPreserveOwner) {
   void* handle = nullptr;
-  IREE_ASSERT_OK(iree_hip_function_handle_create(&module_, &symbol_, &handle));
+  IREE_ASSERT_OK(
+      iree_hip_function_handle_get_or_create(&module_, &symbol_, &handle));
 
   constexpr int kThreadCount = 8;
   std::atomic<bool> start{false};
@@ -96,6 +97,32 @@ TEST_F(FunctionHandleTest, ConcurrentLookupAndRetirementPreserveOwner) {
   iree_hal_streaming_module_t* resolved_module = nullptr;
   EXPECT_FALSE(iree_hip_function_handle_lookup(handle, &resolved_symbol,
                                                &resolved_module));
+}
+
+TEST_F(FunctionHandleTest, ReusesHandleForModuleSymbol) {
+  void* expected_handle = nullptr;
+  IREE_ASSERT_OK(iree_hip_function_handle_get_or_create(&module_, &symbol_,
+                                                        &expected_handle));
+
+  constexpr int kThreadCount = 8;
+  std::atomic<bool> start{false};
+  std::vector<void*> handles(kThreadCount, nullptr);
+  std::vector<std::thread> threads;
+  threads.reserve(kThreadCount);
+  for (int i = 0; i < kThreadCount; ++i) {
+    threads.emplace_back([&, i] {
+      while (!start.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+      }
+      IREE_EXPECT_OK(iree_hip_function_handle_get_or_create(&module_, &symbol_,
+                                                            &handles[i]));
+    });
+  }
+
+  start.store(true, std::memory_order_release);
+  for (std::thread& thread : threads) thread.join();
+  for (void* handle : handles) EXPECT_EQ(expected_handle, handle);
+  iree_hip_function_handle_retire_module(&module_);
 }
 
 }  // namespace
