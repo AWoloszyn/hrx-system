@@ -630,6 +630,23 @@ class TestMalformedLocationMode:
 
 
 class TestMalformedSymbolSection:
+    def test_out_of_range_location_is_rejected(self) -> None:
+        data = bytearray(write_module(_make_single_op_body_module()))
+        data[_first_symbol_flags_offset(data) + 2] = 127
+        with pytest.raises(BytecodeError, match="symbol location_id"):
+            read_module(bytes(data))
+
+    def test_no_locations_rejects_symbol_location(self) -> None:
+        data = bytearray(
+            write_module(
+                _make_single_op_body_module(),
+                location_mode=LOCATION_MODE_NO_LOCATIONS,
+            )
+        )
+        data[_first_symbol_flags_offset(data) + 2] = 1
+        with pytest.raises(BytecodeError, match="symbol location_id"):
+            read_module(bytes(data))
+
     def test_predicates_flag_on_nonfunction_symbol_is_rejected(self) -> None:
         data = bytearray(write_module(_make_single_op_body_module()))
         flags_offset = _first_symbol_flags_offset(data)
@@ -2411,11 +2428,17 @@ class TestLocationRoundTrips:
         )
         block = Block(arg_ids=[x], ops=[yield_op])
         body = Region(blocks=[block])
-        func_op = Operation(name="func.def", attributes={"callee": "f"}, regions=[body])
+        func_op = Operation(
+            name="func.def",
+            attributes={"callee": "f"},
+            regions=[body],
+            location_id=loc_id,
+        )
         module.add_symbol(Symbol(name="f", kind=SymbolKind.FUNC_DEF, op=func_op))
         loaded = _roundtrip(module)
         loaded_sym_op = loaded.symbols[0].op
         assert loaded_sym_op is not None
+        assert loaded_sym_op.location_id == loc_id
         assert loaded_sym_op.regions
         loaded_op = loaded_sym_op.regions[0].blocks[0].ops[0]
         assert loaded_op.location_id != 0

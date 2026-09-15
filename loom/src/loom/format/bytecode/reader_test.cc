@@ -1436,6 +1436,7 @@ class ReaderTest : public ::testing::Test {
     loom_location_id_t location_id = LOOM_LOCATION_UNKNOWN;
     IREE_CHECK_OK(loom_module_add_location(
         module, loom_location_file_range(source_id, 1, 1, 1, 2), &location_id));
+    AddSimpleFunction(module, "located")->location = location_id;
     return module;
   }
 
@@ -1871,6 +1872,7 @@ class ReaderTest : public ::testing::Test {
   PredicateOffsets FirstFunctionPredicateOffsets(
       const std::vector<uint8_t>& bytes) {
     size_t offset = FirstSymbolFlagsOffset(bytes) + sizeof(uint16_t);
+    ReadUVarint(bytes, &offset);  // location_id
     ReadUVarint(bytes, &offset);  // def_op_table_index_plus1
     SkipSourceTrivia(bytes, &offset);
     offset += 1;  // calling_convention
@@ -1919,6 +1921,7 @@ class ReaderTest : public ::testing::Test {
       offset += 1;  // visibility
       uint16_t flags = ReadU16LE(bytes, offset);
       offset += 2;
+      ReadUVarint(bytes, &offset);  // location_id
       if (flags & LOOM_BYTECODE_SYMBOL_FLAG_IMPORT) {
         ReadUVarint(bytes, &offset);
         ReadUVarint(bytes, &offset);
@@ -2367,8 +2370,9 @@ class ReaderTest : public ::testing::Test {
 
     ReadUVarint(bytes, &offset);  // name_id
     EXPECT_EQ(bytes[offset++], LOOM_BYTECODE_SYMBOL_GLOBAL);
-    offset += 1;                 // visibility
-    offset += sizeof(uint16_t);  // flags
+    offset += 1;                  // visibility
+    offset += sizeof(uint16_t);   // flags
+    ReadUVarint(bytes, &offset);  // location_id
 
     GlobalPayloadOffsets payload_offsets;
     payload_offsets.op_table_index_plus1 = offset;
@@ -2745,9 +2749,11 @@ TEST_F(ReaderTest, ZeroArgumentBodyRetainsSignatureBindingContract) {
 }
 
 TEST_F(ReaderTest, MaterializesExactIndexedSymbolSelection) {
-  loom_module_t* module = CreateModule("selected_reader");
-  AddSimpleFunction(module, "rejected");
-  AddSimpleFunction(module, "selected");
+  loom_module_t* module = CreateLocatedModule();
+  loom_location_id_t selected_location = LOOM_LOCATION_UNKNOWN;
+  IREE_ASSERT_OK(loom_module_add_location(
+      module, loom_location_file_range(0, 8, 1, 10, 2), &selected_location));
+  AddSimpleFunction(module, "selected")->location = selected_location;
   auto bytes = WriteModule(module);
 
   iree_arena_allocator_t metadata_arena;
@@ -2774,6 +2780,14 @@ TEST_F(ReaderTest, MaterializesExactIndexedSymbolSelection) {
       selected_module->strings.entries[selected_symbol->name_id],
       IREE_SV("selected")));
   ASSERT_NE(selected_symbol->defining_op, nullptr);
+  ASSERT_NE(selected_symbol->defining_op->location, LOOM_LOCATION_UNKNOWN);
+  const loom_location_entry_t& location =
+      selected_module->locations
+          .entries[selected_symbol->defining_op->location];
+  EXPECT_EQ(location.kind, LOOM_LOCATION_FILE);
+  EXPECT_EQ(location.file.start_line, 8u);
+  EXPECT_EQ(location.file.end_line, 10u);
+  EXPECT_EQ(selected_module->locations.count, 2u);
   EXPECT_EQ(loom_test_func_callee(selected_symbol->defining_op).symbol_id, 0u);
   loom_region_t* body = loom_test_func_body(selected_symbol->defining_op);
   ASSERT_NE(body, nullptr);
@@ -4207,6 +4221,9 @@ TEST_F(ReaderTest, ReadsLocationTablesWithModuleSources) {
   EXPECT_EQ(file_location.file.source_id, 0u);
   EXPECT_EQ(file_location.file.start_line, 1u);
   EXPECT_EQ(file_location.file.end_col, 2u);
+  ASSERT_EQ(read_module->symbols.count, 1u);
+  ASSERT_NE(read_module->symbols.entries[0].defining_op, nullptr);
+  EXPECT_EQ(read_module->symbols.entries[0].defining_op->location, 1u);
 
   loom_module_free(read_module);
   loom_context_deinitialize(&read_context);
@@ -4676,6 +4693,42 @@ TEST_F(ReaderTest, CanonicalRoundTripPreservesLocations) {
   loom_module_t* module = CreateLocatedModule();
   ExpectCanonicalBytecodeRoundTrip(module);
   loom_module_free(module);
+}
+
+TEST_F(ReaderTest, PreservesGlobalAndRecordDefinitionLocations) {
+  for (loom_module_t* module :
+       {CreateGlobalModule(), CreateTestRecordWithFutureEnumOrdinal()}) {
+    loom_source_id_t source_id = LOOM_SOURCE_ID_INVALID;
+    IREE_ASSERT_OK(loom_module_register_source(
+        module, IREE_SV("definitions.loom"), &source_id));
+    loom_location_id_t location_id = LOOM_LOCATION_UNKNOWN;
+    IREE_ASSERT_OK(loom_module_add_location(
+        module, loom_location_file_range(source_id, 4, 1, 4, 30),
+        &location_id));
+    module->symbols.entries[0].defining_op->location = location_id;
+    auto bytes = WriteModule(module);
+    iree_arena_allocator_t arena;
+    iree_arena_initialize(&block_pool_, &arena);
+    loom_bytecode_file_metadata_t metadata = {};
+    std::vector<std::string> errors;
+    EXPECT_EQ(ReadIndex(bytes, &arena, &metadata, &errors).error_count, 0u);
+    loom_module_t* selected_module = nullptr;
+    EXPECT_EQ(MaterializeModuleSymbols(bytes, &metadata, {0}, &selected_module,
+                                       &errors)
+                  .error_count,
+              0u);
+    ASSERT_NE(selected_module, nullptr);
+    const loom_location_id_t selected_location =
+        selected_module->symbols.entries[0].defining_op->location;
+    ASSERT_NE(selected_location, LOOM_LOCATION_UNKNOWN);
+    EXPECT_EQ(
+        selected_module->locations.entries[selected_location].file.start_line,
+        4u);
+    ExpectCanonicalBytecodeRoundTrip(module);
+    loom_module_free(selected_module);
+    iree_arena_deinitialize(&arena);
+    loom_module_free(module);
+  }
 }
 
 TEST_F(ReaderTest, RejectsInvalidBodyValueReference) {
@@ -5360,6 +5413,34 @@ TEST_F(ReaderTest, RejectsInvalidLocationTableReference) {
 
   ExpectReadError(bytes, "ERR_BYTECODE_012");
 
+  loom_module_free(module);
+}
+
+TEST_F(ReaderTest, RejectsInvalidSymbolLocationReference) {
+  loom_module_t* module = CreateLocatedModule();
+  auto bytes = WriteModule(module);
+  bytes[FirstSymbolFlagsOffset(bytes) + sizeof(uint16_t)] = 0x7F;
+  ExpectReadError(bytes, "ERR_BYTECODE_012");
+  loom_module_free(module);
+}
+
+TEST_F(ReaderTest, NoLocationsModeStripsSymbolLocation) {
+  loom_module_t* module = CreateLocatedModule();
+  loom_bytecode_write_options_t options = {{0}};
+  options.location_mode = LOOM_BYTECODE_LOCATION_MODE_NO_LOCATIONS;
+  auto bytes = WriteModule(module, &options);
+  loom_module_t* read_module = nullptr;
+  std::vector<std::string> errors;
+  const loom_bytecode_read_result_t result =
+      ReadModule(bytes, &read_module, &errors);
+  EXPECT_EQ(result.error_count, 0u);
+  ASSERT_NE(read_module, nullptr);
+  EXPECT_EQ(read_module->symbols.entries[0].defining_op->location,
+            LOOM_LOCATION_UNKNOWN);
+  loom_module_free(read_module);
+
+  bytes[FirstSymbolFlagsOffset(bytes) + sizeof(uint16_t)] = 1;
+  ExpectReadError(bytes, "ERR_BYTECODE_012");
   loom_module_free(module);
 }
 

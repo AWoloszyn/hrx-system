@@ -85,7 +85,7 @@ extern "C" {
 
 #define LOOM_BYTECODE_MAGIC "LOOM"
 #define LOOM_BYTECODE_MAGIC_LENGTH 4
-#define LOOM_BYTECODE_FORMAT_VERSION 35
+#define LOOM_BYTECODE_FORMAT_VERSION 36
 
 #define LOOM_BYTECODE_SOURCE_TRIVIA_LEADING_BLANK_LINE (1u << 0)
 #define LOOM_BYTECODE_SOURCE_TRIVIA_COMMENT_COUNT_SHIFT 1
@@ -541,6 +541,8 @@ typedef enum loom_bytecode_section_kind_e {
 //                            EXECUTABLE=6, RECORD=7)
 //   [visibility: byte]      (PUBLIC=0, PRIVATE=1)
 //   [flags: u16]            (see loom_bytecode_symbol_flag_bits_e)
+//   [location_id: varint]   Defining op's LOCATIONS index; zero if unknown or
+//                           when the file uses no_locations mode.
 //
 //   // Import metadata. Present when LOOM_BYTECODE_SYMBOL_FLAG_IMPORT is
 //   // set in flags. Identifies the source module and symbol name

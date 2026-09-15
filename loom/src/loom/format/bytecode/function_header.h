@@ -31,6 +31,8 @@ typedef struct loom_bytecode_symbol_entry_header_t {
   uint8_t visibility;
   // Validated wire symbol flags.
   uint16_t flags;
+  // Defining operation location in the output module.
+  loom_location_id_t location;
   // Projected import module string, or invalid when not imported.
   loom_string_id_t import_module_id;
   // Projected import symbol string, or invalid when not imported.
@@ -55,6 +57,8 @@ typedef struct loom_bytecode_function_header_t {
   const loom_func_like_vtable_t* func_like;
   // Canonical operation kind corresponding to vtable.
   loom_op_kind_t op_kind;
+  // Defining operation location in the output module.
+  loom_location_id_t location;
   // Authored source comments and vertical separation.
   loom_bytecode_source_trivia_t source_trivia;
   // Function calling convention byte.

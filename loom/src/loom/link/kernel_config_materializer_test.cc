@@ -375,6 +375,22 @@ kernel.def target(@dispatch_target) @dispatch_rows(%element_count: index) {
     EXPECT_TRUE(loom_func_def_isa(
         configuration_module->symbols.entries[configuration_function.symbol_id]
             .defining_op));
+    for (loom_symbol_ref_t projected :
+         {configuration_kernel, configuration_function}) {
+      const loom_op_t* op =
+          configuration_module->symbols.entries[projected.symbol_id]
+              .defining_op;
+      ASSERT_NE(op->location, LOOM_LOCATION_UNKNOWN);
+      const loom_location_entry_t& location =
+          configuration_module->locations.entries[op->location];
+      const loom_op_t* source_op =
+          FindSymbol(source_module, IREE_SV("dispatch_rows"))->defining_op;
+      const loom_location_entry_t& source_location =
+          source_module->locations.entries[source_op->location];
+      EXPECT_EQ(location.kind, LOOM_LOCATION_FILE);
+      EXPECT_EQ(location.file.start_line, source_location.file.start_line);
+      EXPECT_EQ(location.file.end_line, source_location.file.end_line);
+    }
     EXPECT_EQ(
         configuration_module->symbols.entries[configuration_function.symbol_id]
             .defining_op->result_count,

@@ -1381,6 +1381,7 @@ TEST_F(WriterTest, GlobalSymbolWritesDefiningOpPayload) {
   EXPECT_EQ(bytes[offset++], LOOM_BYTECODE_SYMBOL_GLOBAL);
   offset += 1;                 // visibility
   offset += sizeof(uint16_t);  // flags
+  EXPECT_EQ(ReadUVarint(bytes, &offset), LOOM_LOCATION_UNKNOWN);
   EXPECT_NE(ReadUVarint(bytes, &offset), 0u);
   SkipSourceTrivia(bytes, &offset);
   EXPECT_EQ(ReadUVarint(bytes, &offset), 1u);
@@ -1446,6 +1447,7 @@ TEST_F(WriterTest, GlobalSymbolWritesDeclarationLocalValues) {
   EXPECT_EQ(bytes[offset++], LOOM_BYTECODE_SYMBOL_GLOBAL);
   offset += 1;                 // visibility
   offset += sizeof(uint16_t);  // flags
+  EXPECT_EQ(ReadUVarint(bytes, &offset), LOOM_LOCATION_UNKNOWN);
   EXPECT_NE(ReadUVarint(bytes, &offset), 0u);
   SkipSourceTrivia(bytes, &offset);
   EXPECT_EQ(ReadUVarint(bytes, &offset), 1u);

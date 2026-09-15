@@ -523,6 +523,7 @@ class TestFileHeader:
                     name="func.def",
                     attributes={"callee": "f"},
                     regions=[body],
+                    location_id=loc_id,
                 ),
             )
         )
@@ -532,6 +533,7 @@ class TestFileHeader:
         )
         loaded_sym_op = loaded.symbols[0].op
         assert loaded_sym_op is not None
+        assert loaded_sym_op.location_id == 0
         loaded_op = loaded_sym_op.regions[0].blocks[0].ops[0]
         assert loaded_op.location_id == 0
 
