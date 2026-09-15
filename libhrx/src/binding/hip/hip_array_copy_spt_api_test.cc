@@ -264,6 +264,7 @@ TEST_F(HipArrayCopySptApiTest, CopiesPitchedRegionsThroughAllEntryPoints) {
   constexpr size_t kCopyHeight = 3;
   constexpr size_t kXOffset = 2;
   constexpr size_t kYOffset = 1;
+  constexpr size_t kArrayElementCount = kArrayWidth * kArrayHeight;
   AllocateArray(kArrayWidth, kArrayHeight);
   AllocateHost(2 * kPitch * kCopyHeight);
   auto* host = static_cast<uint8_t*>(host_pointer_);
@@ -337,7 +338,7 @@ TEST_F(HipArrayCopySptApiTest, CopiesPitchedRegionsThroughAllEntryPoints) {
   ASSERT_EQ(hipSuccess, api_.memcpy_from_array_spt(
                             packed.data(), array_, kXOffset, kYOffset,
                             packed.size(), hipMemcpyDeviceToHost));
-  std::array<uint8_t, kArrayWidth * kArrayHeight> array_contents = {};
+  std::array<uint8_t, kArrayElementCount> array_contents = {};
   for (size_t row = 0; row < kCopyHeight; ++row) {
     std::memcpy(
         array_contents.data() + (kYOffset + row) * kArrayWidth + kXOffset,
@@ -397,6 +398,59 @@ TEST_F(HipArrayCopySptApiTest, LegacySentinelCapturesOnPerThreadStream) {
   EXPECT_EQ(hipSuccess, api_.graph_get_nodes(graph, nullptr, &node_count));
   EXPECT_EQ(1u, node_count);
   EXPECT_EQ(hipSuccess, api_.graph_destroy(graph));
+}
+
+TEST_F(HipArrayCopySptApiTest, RelaxedCaptureEndSerializesWithAsyncCopies) {
+  constexpr size_t kIterations = 64;
+  constexpr size_t kWidth = 8;
+  AllocateArray(kWidth, 1);
+  AllocateHost(kWidth);
+  auto* host = static_cast<uint8_t*>(host_pointer_);
+  ASSERT_EQ(hipSuccess,
+            api_.memcpy_2d_to_array_spt(array_, 0, 0, host, kWidth, kWidth, 1,
+                                        hipMemcpyHostToDevice));
+  ASSERT_EQ(hipSuccess, api_.stream_create(&stream_));
+
+  for (size_t iteration = 0; iteration < kIterations; ++iteration) {
+    ASSERT_EQ(hipSuccess,
+              api_.stream_begin_capture(stream_, hipStreamCaptureModeRelaxed));
+    std::atomic<bool> start = false;
+    hipError_t copy_result = hipErrorUnknown;
+    hipError_t end_result = hipErrorUnknown;
+    hipGraph_t graph = nullptr;
+    std::thread copy_thread([&] {
+      while (!start.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+      }
+      if (iteration % 2 == 0) {
+        copy_result = api_.memcpy_2d_to_array_async_spt(
+            array_, 0, 0, host, kWidth, kWidth, 1, hipMemcpyHostToDevice,
+            stream_);
+      } else {
+        copy_result = api_.memcpy_2d_from_array_async_spt(
+            host, kWidth, array_, 0, 0, kWidth, 1, hipMemcpyDeviceToHost,
+            stream_);
+      }
+    });
+    std::thread end_thread([&] {
+      while (!start.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+      }
+      end_result = api_.stream_end_capture(stream_, &graph);
+    });
+    start.store(true, std::memory_order_release);
+    copy_thread.join();
+    end_thread.join();
+
+    ASSERT_EQ(hipSuccess, copy_result) << "iteration " << iteration;
+    ASSERT_EQ(hipSuccess, end_result) << "iteration " << iteration;
+    ASSERT_NE(nullptr, graph) << "iteration " << iteration;
+    size_t node_count = 0;
+    ASSERT_EQ(hipSuccess, api_.graph_get_nodes(graph, nullptr, &node_count));
+    EXPECT_LE(node_count, 1u) << "iteration " << iteration;
+    EXPECT_EQ(hipSuccess, api_.graph_destroy(graph));
+    ASSERT_EQ(hipSuccess, api_.stream_synchronize(stream_));
+  }
 }
 
 struct FillGate {

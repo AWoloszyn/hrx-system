@@ -7241,18 +7241,30 @@ static hipError_t iree_hip_validate_2d_copy_shape(size_t dst_pitch,
   return hipSuccess;
 }
 
-static hipError_t iree_hip_capture_memcpy3d_node(
-    iree_hal_streaming_stream_t* stream, const hipMemcpy3DParms* params) {
+typedef struct iree_hip_capture_memcpy3d_t {
+  // Copy parameters retained by the caller for the recording callback.
+  const hipMemcpy3DParms* params;
+  // Exact HIP result produced while constructing the graph operation.
+  hipError_t result;
+} iree_hip_capture_memcpy3d_t;
+
+static iree_status_t iree_hip_capture_record_memcpy3d_node(
+    iree_hal_streaming_graph_t* graph,
+    iree_hal_streaming_graph_node_t** dependencies,
+    iree_host_size_t dependency_count, void* user_data,
+    iree_hal_streaming_graph_node_t** out_terminal_node) {
+  iree_hip_capture_memcpy3d_t* capture =
+      (iree_hip_capture_memcpy3d_t*)user_data;
   hipGraphNode_t node = NULL;
   // A graph created by stream capture is owned by the stream but is not a
   // public graph handle until capture ends. Record directly against that owned
   // graph instead of applying public-handle validation to an unpublished graph.
-  hipError_t result = iree_hip_graph_add_memcpy_node(
-      &node, stream->capture_graph,
-      (const hipGraphNode_t*)stream->capture_dependencies,
-      stream->capture_dependency_count, params);
-  if (result != hipSuccess) {
-    return result;
+  capture->result = iree_hip_graph_add_memcpy_node(
+      &node, graph, (const hipGraphNode_t*)dependencies, dependency_count,
+      capture->params);
+  if (capture->result != hipSuccess) {
+    return iree_make_status(IREE_STATUS_ABORTED,
+                            "captured memory copy construction failed");
   }
 
   iree_hal_streaming_graph_node_t* terminal_node =
@@ -7263,12 +7275,25 @@ static hipError_t iree_hip_capture_memcpy3d_node(
     terminal_node = post_callback;
   }
 
-  iree_status_t status =
-      iree_hal_streaming_capture_set_last_node(stream, terminal_node);
-  if (!iree_status_is_ok(status)) {
-    result = iree_status_to_hip_result(status);
+  *out_terminal_node = terminal_node;
+  return iree_ok_status();
+}
+
+static hipError_t iree_hip_capture_memcpy3d_node(
+    iree_hal_streaming_stream_t* stream, const hipMemcpy3DParms* params,
+    bool* out_was_capturing) {
+  iree_hip_capture_memcpy3d_t capture = {
+      .params = params,
+      .result = hipSuccess,
+  };
+  iree_status_t status = iree_hal_streaming_capture_try_record_node(
+      stream, iree_hip_capture_record_memcpy3d_node, &capture,
+      out_was_capturing);
+  if (capture.result != hipSuccess) {
+    iree_status_ignore(status);
+    return capture.result;
   }
-  return result;
+  return iree_status_to_hip_result(status);
 }
 
 static hipError_t iree_hip_memcpy2d_to_3d_params(const hip_Memcpy2D* copy,
@@ -7455,27 +7480,28 @@ HIPAPI hipError_t hipMemcpy2DAsync(void* dst, size_t dpitch, const void* src,
     HIP_RETURN_ERROR(kind_result);
   }
 
-  if (stream_obj->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE) {
-    hipMemcpy3DParms params;
-    memset(&params, 0, sizeof(params));
-    params.srcPtr.ptr = (void*)src;
-    params.srcPtr.pitch = spitch;
-    params.srcPtr.xsize = width;
-    params.srcPtr.ysize = height;
-    params.dstPtr.ptr = dst;
-    params.dstPtr.pitch = dpitch;
-    params.dstPtr.xsize = width;
-    params.dstPtr.ysize = height;
-    params.extent.width = width;
-    params.extent.height = height;
-    params.extent.depth = 1;
-    params.kind = requested_kind;
-
-    hipError_t result = iree_hip_capture_memcpy3d_node(stream_obj, &params);
+  hipMemcpy3DParms params;
+  memset(&params, 0, sizeof(params));
+  params.srcPtr.ptr = (void*)src;
+  params.srcPtr.pitch = spitch;
+  params.srcPtr.xsize = width;
+  params.srcPtr.ysize = height;
+  params.dstPtr.ptr = dst;
+  params.dstPtr.pitch = dpitch;
+  params.dstPtr.xsize = width;
+  params.dstPtr.ysize = height;
+  params.extent.width = width;
+  params.extent.height = height;
+  params.extent.depth = 1;
+  params.kind = requested_kind;
+  bool was_capturing = false;
+  hipError_t capture_result =
+      iree_hip_capture_memcpy3d_node(stream_obj, &params, &was_capturing);
+  if (capture_result != hipSuccess || was_capturing) {
     iree_hip_resolved_stream_release(&resolved_stream);
     IREE_TRACE_ZONE_END(z0);
-    if (result != hipSuccess) {
-      HIP_RETURN_ERROR(result);
+    if (capture_result != hipSuccess) {
+      HIP_RETURN_ERROR(capture_result);
     }
     return hipSuccess;
   }
@@ -7862,8 +7888,10 @@ static hipError_t iree_hip_memcpy3d_internal(
     iree_hip_memcpy3d_array_ownership_release(&array_ownership);
     return hipErrorStreamCaptureImplicit;
   }
-  if (stream_obj->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE) {
-    result = iree_hip_capture_memcpy3d_node(stream_obj, original_params);
+  bool was_capturing = false;
+  result = iree_hip_capture_memcpy3d_node(stream_obj, original_params,
+                                          &was_capturing);
+  if (result != hipSuccess || was_capturing) {
     iree_hip_resolved_stream_release(&resolved_stream);
     iree_hip_memcpy3d_array_ownership_release(&array_ownership);
     return result;
@@ -10281,22 +10309,23 @@ HIPAPI hipError_t hipMemcpyPeerAsync(void* dst, int dstDeviceId,
   }
   iree_hal_streaming_stream_t* stream_obj = resolved_stream.stream;
 
-  if (stream_obj->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE) {
-    hipMemcpy3DParms params;
-    memset(&params, 0, sizeof(params));
-    params.dstPtr.ptr = dst;
-    params.dstPtr.pitch = sizeBytes;
-    params.dstPtr.xsize = sizeBytes;
-    params.dstPtr.ysize = 1;
-    params.srcPtr.ptr = (void*)src;
-    params.srcPtr.pitch = sizeBytes;
-    params.srcPtr.xsize = sizeBytes;
-    params.srcPtr.ysize = 1;
-    params.extent.width = sizeBytes;
-    params.extent.height = 1;
-    params.extent.depth = 1;
-    params.kind = hipMemcpyDeviceToDevice;
-    result = iree_hip_capture_memcpy3d_node(stream_obj, &params);
+  hipMemcpy3DParms params;
+  memset(&params, 0, sizeof(params));
+  params.dstPtr.ptr = dst;
+  params.dstPtr.pitch = sizeBytes;
+  params.dstPtr.xsize = sizeBytes;
+  params.dstPtr.ysize = 1;
+  params.srcPtr.ptr = (void*)src;
+  params.srcPtr.pitch = sizeBytes;
+  params.srcPtr.xsize = sizeBytes;
+  params.srcPtr.ysize = 1;
+  params.extent.width = sizeBytes;
+  params.extent.height = 1;
+  params.extent.depth = 1;
+  params.kind = hipMemcpyDeviceToDevice;
+  bool was_capturing = false;
+  result = iree_hip_capture_memcpy3d_node(stream_obj, &params, &was_capturing);
+  if (result != hipSuccess || was_capturing) {
     iree_hip_resolved_stream_release(&resolved_stream);
     IREE_TRACE_ZONE_END(z0);
     HIP_RETURN_ERROR(result);
