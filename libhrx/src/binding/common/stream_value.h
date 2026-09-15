@@ -45,6 +45,19 @@ typedef struct iree_hal_streaming_value_operation_t {
   iree_hal_streaming_value_operation_params_t params;
 } iree_hal_streaming_value_operation_t;
 
+// Validates one fully resolved operation, including its target range.
+iree_status_t iree_hal_streaming_value_operation_validate(
+    const iree_hal_streaming_value_operation_t* operation);
+
+// Appends |operations| to an open command buffer. The first operation is
+// ordered after |initial_source_stage| and subsequent operations are ordered
+// after the preceding atomic operation.
+iree_status_t iree_hal_streaming_command_buffer_append_value_operations(
+    iree_hal_command_buffer_t* command_buffer, iree_host_size_t operation_count,
+    const iree_hal_streaming_value_operation_t* operations,
+    iree_hal_execution_stage_t initial_source_stage,
+    iree_hal_execution_stage_t target_stage);
+
 // Returns true when |family_spec| can dedicate an exact queue to a memory wait.
 // Waits must consume no dispatch resources so kernels that satisfy their
 // predicates can continue to execute.

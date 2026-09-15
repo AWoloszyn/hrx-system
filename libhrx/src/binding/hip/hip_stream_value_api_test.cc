@@ -83,6 +83,22 @@ using HipGraphLaunchFn = hipError_t (*)(hipGraphExec_t executable,
                                         hipStream_t stream);
 using HipGraphExecDestroyFn = hipError_t (*)(hipGraphExec_t executable);
 using HipGraphDestroyFn = hipError_t (*)(hipGraph_t graph);
+using HipCtxGetCurrentFn = hipError_t (*)(hipCtx_t* context);
+using HipGraphCreateFn = hipError_t (*)(hipGraph_t* graph, unsigned int flags);
+using HipGraphGetNodesFn = hipError_t (*)(hipGraph_t graph,
+                                          hipGraphNode_t* nodes,
+                                          size_t* node_count);
+using HipGraphNodeGetTypeFn = hipError_t (*)(hipGraphNode_t node,
+                                             hipGraphNodeType* type);
+using HipGraphAddBatchMemOpNodeFn = hipError_t (*)(
+    hipGraphNode_t* node, hipGraph_t graph, const hipGraphNode_t* dependencies,
+    size_t dependency_count, const void* params);
+using HipGraphBatchMemOpNodeGetParamsFn = hipError_t (*)(hipGraphNode_t node,
+                                                         void* params);
+using HipGraphBatchMemOpNodeSetParamsFn = hipError_t (*)(hipGraphNode_t node,
+                                                         const void* params);
+using HipGraphExecBatchMemOpNodeSetParamsFn = hipError_t (*)(
+    hipGraphExec_t executable, hipGraphNode_t node, const void* params);
 
 struct HipRuntimeApi {
   // Handle returned by dlopen for the HIP runtime instance.
@@ -137,6 +153,25 @@ struct HipRuntimeApi {
   HipGraphExecDestroyFn graph_exec_destroy = nullptr;
   // Destroys a graph template.
   HipGraphDestroyFn graph_destroy = nullptr;
+  // Returns the current context.
+  HipCtxGetCurrentFn ctx_get_current = nullptr;
+  // Creates an empty graph template.
+  HipGraphCreateFn graph_create = nullptr;
+  // Enumerates public graph nodes.
+  HipGraphGetNodesFn graph_get_nodes = nullptr;
+  // Queries a public graph node type.
+  HipGraphNodeGetTypeFn graph_node_get_type = nullptr;
+  // Adds a batch memory operation node.
+  HipGraphAddBatchMemOpNodeFn graph_add_batch_mem_op_node = nullptr;
+  // Queries a batch memory operation node.
+  HipGraphBatchMemOpNodeGetParamsFn graph_batch_mem_op_node_get_params =
+      nullptr;
+  // Updates a batch memory operation node.
+  HipGraphBatchMemOpNodeSetParamsFn graph_batch_mem_op_node_set_params =
+      nullptr;
+  // Updates a batch node in an instantiated graph.
+  HipGraphExecBatchMemOpNodeSetParamsFn
+      graph_exec_batch_mem_op_node_set_params = nullptr;
 };
 
 template <typename T>
@@ -230,6 +265,26 @@ class HipStreamValueApiTest : public testing::Test {
           api_.library, "hipGraphExecDestroy");
       api_.graph_destroy =
           ResolveHipSymbol<HipGraphDestroyFn>(api_.library, "hipGraphDestroy");
+      api_.ctx_get_current = ResolveHipSymbol<HipCtxGetCurrentFn>(
+          api_.library, "hipCtxGetCurrent");
+      api_.graph_create =
+          ResolveHipSymbol<HipGraphCreateFn>(api_.library, "hipGraphCreate");
+      api_.graph_get_nodes = ResolveHipSymbol<HipGraphGetNodesFn>(
+          api_.library, "hipGraphGetNodes");
+      api_.graph_node_get_type = ResolveHipSymbol<HipGraphNodeGetTypeFn>(
+          api_.library, "hipGraphNodeGetType");
+      api_.graph_add_batch_mem_op_node =
+          ResolveHipSymbol<HipGraphAddBatchMemOpNodeFn>(
+              api_.library, "hipGraphAddBatchMemOpNode");
+      api_.graph_batch_mem_op_node_get_params =
+          ResolveHipSymbol<HipGraphBatchMemOpNodeGetParamsFn>(
+              api_.library, "hipGraphBatchMemOpNodeGetParams");
+      api_.graph_batch_mem_op_node_set_params =
+          ResolveHipSymbol<HipGraphBatchMemOpNodeSetParamsFn>(
+              api_.library, "hipGraphBatchMemOpNodeSetParams");
+      api_.graph_exec_batch_mem_op_node_set_params =
+          ResolveHipSymbol<HipGraphExecBatchMemOpNodeSetParamsFn>(
+              api_.library, "hipGraphExecBatchMemOpNodeSetParams");
     }
 
     ASSERT_NE(nullptr, api_.init);
@@ -257,6 +312,14 @@ class HipStreamValueApiTest : public testing::Test {
     ASSERT_NE(nullptr, api_.graph_launch);
     ASSERT_NE(nullptr, api_.graph_exec_destroy);
     ASSERT_NE(nullptr, api_.graph_destroy);
+    ASSERT_NE(nullptr, api_.ctx_get_current);
+    ASSERT_NE(nullptr, api_.graph_create);
+    ASSERT_NE(nullptr, api_.graph_get_nodes);
+    ASSERT_NE(nullptr, api_.graph_node_get_type);
+    ASSERT_NE(nullptr, api_.graph_add_batch_mem_op_node);
+    ASSERT_NE(nullptr, api_.graph_batch_mem_op_node_get_params);
+    ASSERT_NE(nullptr, api_.graph_batch_mem_op_node_set_params);
+    ASSERT_NE(nullptr, api_.graph_exec_batch_mem_op_node_set_params);
 
     ASSERT_EQ(hipSuccess, api_.init(/*flags=*/0));
     int can_use_stream_wait_value = 0;
@@ -692,7 +755,7 @@ TEST_F(HipStreamValueApiTest, CompletedWaitLanesRecycleAcrossLiveStreams) {
   }
 }
 
-TEST_F(HipStreamValueApiTest, CapturedDefaultWritesReplayAtBothWidths) {
+TEST_F(HipStreamValueApiTest, CapturedWritesAreVisibleBatchNodes) {
   hipStream_t stream = CreateStream();
   void* allocation = Allocate(16);
   ASSERT_NE(nullptr, stream);
@@ -711,6 +774,42 @@ TEST_F(HipStreamValueApiTest, CapturedDefaultWritesReplayAtBothWidths) {
   ASSERT_EQ(hipSuccess, api_.stream_end_capture(stream, &graph));
   ASSERT_NE(nullptr, graph);
   graphs_.push_back(graph);
+
+  size_t node_count = 0;
+  ASSERT_EQ(hipSuccess,
+            api_.graph_get_nodes(graph, /*nodes=*/nullptr, &node_count));
+  ASSERT_EQ(2u, node_count);
+  std::vector<hipGraphNode_t> nodes(node_count);
+  ASSERT_EQ(hipSuccess, api_.graph_get_nodes(graph, nodes.data(), &node_count));
+  bool saw_value_32 = false;
+  bool saw_value_64 = false;
+  for (hipGraphNode_t node : nodes) {
+    hipGraphNodeType type = hipGraphNodeTypeEmpty;
+    ASSERT_EQ(hipSuccess, api_.graph_node_get_type(node, &type));
+    EXPECT_EQ(hipGraphNodeTypeBatchMemOp, type);
+    hipBatchMemOpNodeParams params = {};
+    ASSERT_EQ(hipSuccess,
+              api_.graph_batch_mem_op_node_get_params(node, &params));
+    ASSERT_EQ(1u, params.count);
+    ASSERT_NE(nullptr, params.paramArray);
+    if (params.paramArray[0].operation == hipStreamMemOpWriteValue32) {
+      EXPECT_EQ((hipDeviceptr_t)(uintptr_t)allocation,
+                params.paramArray[0].writeValue.address);
+      EXPECT_EQ(13u, params.paramArray[0].writeValue.value);
+      saw_value_32 = true;
+    } else if (params.paramArray[0].operation == hipStreamMemOpWriteValue64) {
+      EXPECT_EQ(
+          (hipDeviceptr_t)(uintptr_t)(static_cast<uint8_t*>(allocation) + 8),
+          params.paramArray[0].writeValue.address);
+      EXPECT_EQ(29u, params.paramArray[0].writeValue.value64);
+      saw_value_64 = true;
+    } else {
+      ADD_FAILURE() << "unexpected captured operation "
+                    << params.paramArray[0].operation;
+    }
+  }
+  EXPECT_TRUE(saw_value_32);
+  EXPECT_TRUE(saw_value_64);
 
   hipGraphExec_t executable = nullptr;
   ASSERT_EQ(hipSuccess,
@@ -737,6 +836,158 @@ TEST_F(HipStreamValueApiTest, CapturedDefaultWritesReplayAtBothWidths) {
   }
 }
 
+TEST_F(HipStreamValueApiTest, CapturedWriteBatchReplaysAsOneNode) {
+  hipStream_t stream = CreateStream();
+  void* allocation = Allocate(8);
+  ASSERT_NE(nullptr, stream);
+  ASSERT_NE(nullptr, allocation);
+  ASSERT_EQ(hipSuccess, api_.memset(allocation, 0, 8));
+
+  hipStreamBatchMemOpParams operations[2] = {};
+  operations[0].writeValue.operation = hipStreamMemOpWriteValue64;
+  operations[0].writeValue.address = (hipDeviceptr_t)(uintptr_t)allocation;
+  operations[0].writeValue.value64 = 5;
+  operations[0].writeValue.flags = hipExtStreamWriteValueIncrement;
+  operations[1].writeValue.operation = hipStreamMemOpWriteValue64;
+  operations[1].writeValue.address = (hipDeviceptr_t)(uintptr_t)allocation;
+  operations[1].writeValue.value64 = 2;
+  operations[1].writeValue.flags = hipExtStreamWriteValueDecrement;
+
+  ASSERT_EQ(hipSuccess,
+            api_.stream_begin_capture(stream, hipStreamCaptureModeGlobal));
+  ASSERT_EQ(hipSuccess, api_.batch_mem_op(stream, 2, operations, /*flags=*/0));
+  hipGraph_t graph = nullptr;
+  ASSERT_EQ(hipSuccess, api_.stream_end_capture(stream, &graph));
+  ASSERT_NE(nullptr, graph);
+  graphs_.push_back(graph);
+
+  size_t node_count = 1;
+  hipGraphNode_t node = nullptr;
+  ASSERT_EQ(hipSuccess, api_.graph_get_nodes(graph, &node, &node_count));
+  ASSERT_EQ(1u, node_count);
+  ASSERT_NE(nullptr, node);
+  hipGraphNodeType type = hipGraphNodeTypeEmpty;
+  ASSERT_EQ(hipSuccess, api_.graph_node_get_type(node, &type));
+  EXPECT_EQ(hipGraphNodeTypeBatchMemOp, type);
+  hipBatchMemOpNodeParams params = {};
+  ASSERT_EQ(hipSuccess, api_.graph_batch_mem_op_node_get_params(node, &params));
+  ASSERT_EQ(2u, params.count);
+  ASSERT_NE(nullptr, params.paramArray);
+  EXPECT_EQ(hipExtStreamWriteValueIncrement,
+            params.paramArray[0].writeValue.flags);
+  EXPECT_EQ(hipExtStreamWriteValueDecrement,
+            params.paramArray[1].writeValue.flags);
+
+  hipGraphExec_t executable = nullptr;
+  ASSERT_EQ(hipSuccess,
+            api_.graph_instantiate(&executable, graph, /*error_node=*/nullptr,
+                                   /*log_buffer=*/nullptr, /*buffer_size=*/0));
+  ASSERT_NE(nullptr, executable);
+  graph_executables_.push_back(executable);
+  for (int replay = 0; replay < 2; ++replay) {
+    const uint64_t initial_value = 10;
+    ASSERT_EQ(hipSuccess,
+              api_.memcpy(allocation, &initial_value, sizeof(initial_value),
+                          hipMemcpyHostToDevice));
+    ASSERT_EQ(hipSuccess, api_.graph_launch(executable, stream));
+    ASSERT_EQ(hipSuccess, api_.stream_synchronize(stream));
+    uint64_t observed = 0;
+    ASSERT_EQ(hipSuccess, api_.memcpy(&observed, allocation, sizeof(observed),
+                                      hipMemcpyDeviceToHost));
+    EXPECT_EQ(13u, observed);
+  }
+}
+
+TEST_F(HipStreamValueApiTest, DirectBatchNodeSupportsTemplateAndExecUpdates) {
+  hipStream_t stream = CreateStream();
+  void* allocation = Allocate(16);
+  ASSERT_NE(nullptr, stream);
+  ASSERT_NE(nullptr, allocation);
+
+  hipCtx_t context = nullptr;
+  ASSERT_EQ(hipSuccess, api_.ctx_get_current(&context));
+  ASSERT_NE(nullptr, context);
+  hipGraph_t graph = nullptr;
+  ASSERT_EQ(hipSuccess, api_.graph_create(&graph, /*flags=*/0));
+  ASSERT_NE(nullptr, graph);
+  graphs_.push_back(graph);
+
+  hipStreamBatchMemOpParams operations[2] = {};
+  for (int i = 0; i < 2; ++i) {
+    operations[i].writeValue.operation = hipStreamMemOpWriteValue64;
+    operations[i].writeValue.address =
+        (hipDeviceptr_t)(uintptr_t)(static_cast<uint8_t*>(allocation) +
+                                    i * sizeof(uint64_t));
+    operations[i].writeValue.value64 = 3 + i * 2;
+    operations[i].writeValue.flags = hipStreamWriteValueDefault;
+  }
+  hipBatchMemOpNodeParams params = {
+      /*.ctx=*/context,
+      /*.count=*/1,
+      /*.paramArray=*/operations,
+      /*.flags=*/0,
+  };
+  hipGraphNode_t node = nullptr;
+  ASSERT_EQ(hipSuccess, api_.graph_add_batch_mem_op_node(
+                            &node, graph, /*dependencies=*/nullptr,
+                            /*dependency_count=*/0, &params));
+  ASSERT_NE(nullptr, node);
+
+  operations[0].writeValue.value64 = 11;
+  operations[1].writeValue.value64 = 13;
+  params.count = 2;
+  ASSERT_EQ(hipSuccess, api_.graph_batch_mem_op_node_set_params(node, &params));
+  hipBatchMemOpNodeParams queried_params = {};
+  ASSERT_EQ(hipSuccess,
+            api_.graph_batch_mem_op_node_get_params(node, &queried_params));
+  ASSERT_EQ(2u, queried_params.count);
+  ASSERT_EQ(hipSuccess,
+            api_.graph_batch_mem_op_node_set_params(node, &queried_params));
+  hipGraphExec_t executable = nullptr;
+  ASSERT_EQ(hipSuccess,
+            api_.graph_instantiate(&executable, graph, /*error_node=*/nullptr,
+                                   /*log_buffer=*/nullptr, /*buffer_size=*/0));
+  ASSERT_NE(nullptr, executable);
+  graph_executables_.push_back(executable);
+
+  operations[0].writeValue.value64 = 17;
+  operations[1].writeValue.value64 = 19;
+  ASSERT_EQ(hipSuccess, api_.graph_exec_batch_mem_op_node_set_params(
+                            executable, node, &params));
+
+  hipBatchMemOpNodeParams observed_params = {};
+  ASSERT_EQ(hipSuccess,
+            api_.graph_batch_mem_op_node_get_params(node, &observed_params));
+  ASSERT_EQ(2u, observed_params.count);
+  ASSERT_NE(nullptr, observed_params.paramArray);
+  EXPECT_EQ(11u, observed_params.paramArray[0].writeValue.value64);
+  EXPECT_EQ(13u, observed_params.paramArray[1].writeValue.value64);
+
+  ASSERT_EQ(hipSuccess, api_.memset(allocation, 0, 16));
+  ASSERT_EQ(hipSuccess, api_.graph_launch(executable, stream));
+  ASSERT_EQ(hipSuccess, api_.stream_synchronize(stream));
+  uint64_t observed[2] = {};
+  ASSERT_EQ(hipSuccess, api_.memcpy(observed, allocation, sizeof(observed),
+                                    hipMemcpyDeviceToHost));
+  EXPECT_EQ(17u, observed[0]);
+  EXPECT_EQ(19u, observed[1]);
+
+  hipGraphExec_t template_executable = nullptr;
+  ASSERT_EQ(hipSuccess,
+            api_.graph_instantiate(&template_executable, graph,
+                                   /*error_node=*/nullptr,
+                                   /*log_buffer=*/nullptr, /*buffer_size=*/0));
+  ASSERT_NE(nullptr, template_executable);
+  graph_executables_.push_back(template_executable);
+  ASSERT_EQ(hipSuccess, api_.memset(allocation, 0, 16));
+  ASSERT_EQ(hipSuccess, api_.graph_launch(template_executable, stream));
+  ASSERT_EQ(hipSuccess, api_.stream_synchronize(stream));
+  ASSERT_EQ(hipSuccess, api_.memcpy(observed, allocation, sizeof(observed),
+                                    hipMemcpyDeviceToHost));
+  EXPECT_EQ(11u, observed[0]);
+  EXPECT_EQ(13u, observed[1]);
+}
+
 TEST_F(HipStreamValueApiTest, UnsupportedWaitInvalidatesCapture) {
   hipStream_t stream = CreateStream();
   void* allocation = Allocate(8);
@@ -756,6 +1007,42 @@ TEST_F(HipStreamValueApiTest, UnsupportedWaitInvalidatesCapture) {
   EXPECT_EQ(hipErrorStreamCaptureInvalidated,
             api_.stream_end_capture(stream, &graph));
   EXPECT_EQ(nullptr, graph);
+}
+
+TEST_F(HipStreamValueApiTest, WaitInBatchInvalidatesCaptureWithoutWrites) {
+  hipStream_t stream = CreateStream();
+  void* allocation = Allocate(8);
+  ASSERT_NE(nullptr, stream);
+  ASSERT_NE(nullptr, allocation);
+  ASSERT_EQ(hipSuccess, api_.memset(allocation, 0, 8));
+
+  hipStreamBatchMemOpParams operations[2] = {};
+  operations[0].writeValue.operation = hipStreamMemOpWriteValue32;
+  operations[0].writeValue.address = (hipDeviceptr_t)(uintptr_t)allocation;
+  operations[0].writeValue.value = 47;
+  operations[0].writeValue.flags = hipStreamWriteValueDefault;
+  operations[1].waitValue.operation = hipStreamMemOpWaitValue32;
+  operations[1].waitValue.address = (hipDeviceptr_t)(uintptr_t)allocation;
+  operations[1].waitValue.value = 47;
+  operations[1].waitValue.flags = hipStreamWaitValueEq;
+
+  ASSERT_EQ(hipSuccess,
+            api_.stream_begin_capture(stream, hipStreamCaptureModeGlobal));
+  EXPECT_EQ(hipErrorStreamCaptureUnsupported,
+            api_.batch_mem_op(stream, 2, operations, /*flags=*/0));
+  hipStreamCaptureStatus capture_status = hipStreamCaptureStatusNone;
+  EXPECT_EQ(hipSuccess, api_.stream_is_capturing(stream, &capture_status));
+  EXPECT_EQ(hipStreamCaptureStatusInvalidated, capture_status);
+
+  hipGraph_t graph = nullptr;
+  EXPECT_EQ(hipErrorStreamCaptureInvalidated,
+            api_.stream_end_capture(stream, &graph));
+  EXPECT_EQ(nullptr, graph);
+
+  uint32_t observed = 1;
+  ASSERT_EQ(hipSuccess, api_.memcpy(&observed, allocation, sizeof(observed),
+                                    hipMemcpyDeviceToHost));
+  EXPECT_EQ(0u, observed);
 }
 
 TEST_F(HipStreamValueApiTest, CaptureBeginRacesValueWaitSubmission) {

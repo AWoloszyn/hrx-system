@@ -14,6 +14,7 @@
 #include "common/function_attributes.h"
 #include "common/hrx_bridge.h"
 #include "common/stream.h"
+#include "common/stream_value.h"
 #include "iree/async/frontier_tracker.h"
 #include "iree/async/util/proactor_pool.h"
 #include "iree/base/api.h"
@@ -1155,15 +1156,14 @@ enum iree_hal_streaming_graph_node_type_e {
       2 | IREE_HAL_STREAMING_GRAPH_NODE_TYPE_RECORDABLE,
   IREE_HAL_STREAMING_GRAPH_NODE_TYPE_MEMSET =
       3 | IREE_HAL_STREAMING_GRAPH_NODE_TYPE_RECORDABLE,
-  IREE_HAL_STREAMING_GRAPH_NODE_TYPE_ATOMIC_STORE =
-      4 | IREE_HAL_STREAMING_GRAPH_NODE_TYPE_RECORDABLE,
   IREE_HAL_STREAMING_GRAPH_NODE_TYPE_HOST_CALL = 4,
   IREE_HAL_STREAMING_GRAPH_NODE_TYPE_GRAPH = 5,
   IREE_HAL_STREAMING_GRAPH_NODE_TYPE_EVENT_WAIT = 6,
   IREE_HAL_STREAMING_GRAPH_NODE_TYPE_EVENT_RECORD = 7,
   IREE_HAL_STREAMING_GRAPH_NODE_TYPE_MEM_ALLOC = 8,
   IREE_HAL_STREAMING_GRAPH_NODE_TYPE_MEM_FREE = 9,
-  IREE_HAL_STREAMING_GRAPH_NODE_TYPE_BATCH_MEM_OP = 10,
+  IREE_HAL_STREAMING_GRAPH_NODE_TYPE_BATCH_MEM_OP =
+      10 | IREE_HAL_STREAMING_GRAPH_NODE_TYPE_RECORDABLE,
 };
 typedef uint8_t iree_hal_streaming_graph_node_type_t;
 
@@ -1364,17 +1364,6 @@ typedef struct iree_hal_streaming_graph_memset_node_attrs_t {
   iree_device_size_t hip_pitch;
 } iree_hal_streaming_graph_memset_node_attrs_t;
 
-typedef struct iree_hal_streaming_graph_atomic_store_node_attrs_t {
-  // HRX allocation retaining the target's physical backing.
-  hrx_buffer_t owner;
-  // HAL buffer valid in the graph's execution context and retained by the node.
-  iree_hal_buffer_t* target_buffer;
-  // Byte offset of the atomic cell in |target_buffer|.
-  iree_device_size_t target_offset;
-  // Atomic value, width, scope, and ordering semantics captured for replay.
-  iree_hal_atomic_store_params_t params;
-} iree_hal_streaming_graph_atomic_store_node_attrs_t;
-
 typedef struct iree_hal_streaming_graph_host_call_node_attrs_t {
   // Host callback function.
   void (*fn)(void* user_data);
@@ -1426,6 +1415,14 @@ typedef struct iree_hal_streaming_graph_batch_mem_op_node_attrs_t {
   iree_host_size_t param_array_size;
   // Number of operation array bytes reserved at |param_array|.
   iree_host_size_t param_array_capacity;
+  // Resolved generic operations recorded when this graph executes.
+  iree_hal_streaming_value_operation_t* operations;
+  // Number of valid entries in |operations| and |owners|.
+  iree_host_size_t operation_count;
+  // Number of entries reserved in |operations| and |owners|.
+  iree_host_size_t operation_capacity;
+  // HRX allocation retained for each corresponding operation target.
+  hrx_buffer_t* owners;
 } iree_hal_streaming_graph_batch_mem_op_node_attrs_t;
 
 // Graph node structure.
@@ -1455,7 +1452,6 @@ typedef struct iree_hal_streaming_graph_node_t {
     iree_hal_streaming_graph_kernel_node_attrs_t kernel;
     iree_hal_streaming_graph_memcpy_node_attrs_t memcpy;
     iree_hal_streaming_graph_memset_node_attrs_t memset;
-    iree_hal_streaming_graph_atomic_store_node_attrs_t atomic_store;
     iree_hal_streaming_graph_host_call_node_attrs_t host;
     iree_hal_streaming_graph_child_graph_node_attrs_t child_graph;
     iree_hal_streaming_graph_event_node_attrs_t event;
@@ -2486,16 +2482,6 @@ iree_status_t iree_hal_streaming_graph_add_fill_ptr_node(
     uint32_t pattern, iree_host_size_t pattern_size, iree_device_size_t count,
     iree_hal_streaming_graph_node_t** out_node);
 
-// Adds an internal atomic store node used to preserve stream-write ordering and
-// coherence semantics during graph capture. The graph retains |target|.
-iree_status_t iree_hal_streaming_graph_add_atomic_store_node(
-    iree_hal_streaming_graph_t* graph,
-    iree_hal_streaming_graph_node_t** dependencies,
-    iree_host_size_t dependency_count,
-    const iree_hal_streaming_retained_buffer_ref_t* target,
-    iree_hal_atomic_store_params_t params,
-    iree_hal_streaming_graph_node_t** out_node);
-
 iree_status_t iree_hal_streaming_graph_add_host_call_node(
     iree_hal_streaming_graph_t* graph,
     iree_hal_streaming_graph_node_t** dependencies,
@@ -2522,12 +2508,16 @@ iree_status_t iree_hal_streaming_graph_add_batch_mem_op_node(
     iree_host_size_t dependency_count, const void* params,
     iree_host_size_t params_size, const void* param_array,
     iree_host_size_t param_array_size,
+    const iree_hal_streaming_value_operation_t* operations,
+    const hrx_buffer_t* owners, iree_host_size_t operation_count,
     iree_hal_streaming_graph_node_t** out_node);
 
 iree_status_t iree_hal_streaming_graph_set_batch_mem_op_node_params(
     iree_hal_streaming_graph_node_t* node, const void* params,
     iree_host_size_t params_size, const void* param_array,
-    iree_host_size_t param_array_size);
+    iree_host_size_t param_array_size,
+    const iree_hal_streaming_value_operation_t* operations,
+    const hrx_buffer_t* owners, iree_host_size_t operation_count);
 
 iree_status_t iree_hal_streaming_graph_destroy_node(
     iree_hal_streaming_graph_node_t* node);
