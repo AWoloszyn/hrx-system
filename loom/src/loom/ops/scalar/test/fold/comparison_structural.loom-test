@@ -64,8 +64,9 @@ func.def @cmpi_range_proof(%x: i32, %y: i32) -> (i1, i1) {
 
 // ====
 
-// cmpi uses symbolic linear cancellation for relation proofs.
-func.def @cmpi_symbolic_order(%x: i32) -> (i1) {
+// At x=2147483642, x+8 wraps negative while x+4 stays positive. The signed
+// comparison therefore cannot fold to true through linear cancellation.
+func.def @cmpi_wrapping_order(%x: i32) -> (i1) {
   %c4 = scalar.constant 4 : i32
   %c8 = scalar.constant 8 : i32
   %lhs = scalar.addi %x, %c4 : i32
@@ -74,9 +75,61 @@ func.def @cmpi_symbolic_order(%x: i32) -> (i1) {
   func.return %r : i1
 }
 // ----
-func.def @cmpi_symbolic_order(%x: i32) -> (i1) {
-  %r = scalar.constant true : i1
+func.def @cmpi_wrapping_order(%x: i32) -> (i1) {
+  %c4 = scalar.constant 4 : i32
+  %c8 = scalar.constant 8 : i32
+  %lhs = scalar.addi %x, %c4 : i32
+  %rhs = scalar.addi %x, %c8 : i32
+  %r = scalar.cmpi slt, %lhs, %rhs : i32
   func.return %r : i1
+}
+
+// ====
+
+func.def @cmpi_nonwrapping_order(%value: i32) -> (i1) {
+  %bounded = scalar.assume %value [range(%value, 0, 1024)] : i32
+  %c4 = scalar.constant 4 : i32
+  %c8 = scalar.constant 8 : i32
+  %lhs = scalar.addi %bounded, %c4 : i32
+  %rhs = scalar.addi %bounded, %c8 : i32
+  %result = scalar.cmpi slt, %lhs, %rhs : i32
+  func.return %result : i1
+}
+
+// ----
+func.def @cmpi_nonwrapping_order(%value: i32) -> (i1) {
+  %result = scalar.constant true : i1
+  func.return %result : i1
+}
+
+// ====
+
+// An explicit no-signed-wrap contract permits integer-order cancellation.
+func.def @cmpi_nsw_order(%value: i32) -> (i1) {
+  %c4 = scalar.constant 4 : i32
+  %c8 = scalar.constant 8 : i32
+  %lhs = scalar.addi<nsw> %value, %c4 : i32
+  %rhs = scalar.addi<nsw> %value, %c8 : i32
+  %result = scalar.cmpi slt, %lhs, %rhs : i32
+  func.return %result : i1
+}
+
+// ----
+func.def @cmpi_nsw_order(%value: i32) -> (i1) {
+  %result = scalar.constant true : i1
+  func.return %result : i1
+}
+
+// ====
+
+// No unsigned wrap does not guarantee signed ordering across the sign bit.
+func.def @cmpi_nuw_does_not_imply_signed_order(%value: i32) -> (i1) {
+  %c4 = scalar.constant 4 : i32
+  %c8 = scalar.constant 8 : i32
+  %lhs = scalar.addi<nuw> %value, %c4 : i32
+  %rhs = scalar.addi<nuw> %value, %c8 : i32
+  %result = scalar.cmpi slt, %lhs, %rhs : i32
+  func.return %result : i1
 }
 
 // ====

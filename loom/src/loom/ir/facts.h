@@ -365,20 +365,19 @@ bool loom_value_facts_make_unsigned_raw_bits(uint64_t raw_bits,
 loom_value_facts_t loom_value_facts_make_signed_raw_bits(uint64_t raw_bits,
                                                          int32_t bit_count);
 
-// Wraps an integer transfer result to its verified width in [1, 64]. Exact
-// values retain their low bits in the signed domain (0/1 for i1). Ranges that
-// may wrap expand to the type domain and retain only divisors of 2^bit_count.
-// A full i64 range may represent overflow in the width-independent transfer;
-// its divisibility is weakened too. Execution distribution is preserved.
-loom_value_facts_t loom_value_facts_wrap_integer(loom_value_facts_t facts,
-                                                 int32_t bit_count);
-
 // Returns facts for a signed extension from |source_bit_count|. Fixed-width
 // integer facts already use their signed numeric domain except for logical i1
 // facts, whose 0/1 domain is mapped to 0/-1. The source bit count comes from a
 // verified fixed-width integer type.
 loom_value_facts_t loom_value_facts_sign_extend(loom_value_facts_t source_facts,
                                                 int32_t source_bit_count);
+
+// Interprets a mathematical integer result modulo 2^bit_count, where bit_count
+// is a fixed-width integer width in [1, 64]. One-bit results use [0, 1]; wider
+// results use the signed domain. Retains exact values and non-crossing ranges,
+// and reduces divisibility to the factors preserved by modular arithmetic.
+loom_value_facts_t loom_value_facts_wrap_integer(
+    loom_value_facts_t source_facts, int32_t bit_count);
 
 // Returns conservative unsigned range facts for a value with |bit_count|
 // meaningful bits.

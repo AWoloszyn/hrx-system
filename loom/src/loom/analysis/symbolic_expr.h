@@ -18,6 +18,10 @@
 // Address casts expand through their input only when its range proves the cast
 // preserves numeric value; truncation and unsigned reinterpretation otherwise
 // retain the cast result as a symbolic variable.
+// Fixed-width arithmetic expands only when its mathematical range fits the
+// result domain or an explicit no-signed-wrap contract permits the relation.
+// Potentially wrapping results remain independent symbols, so integer-order
+// proofs cannot cancel arithmetic across a modular boundary.
 //
 // Storage is caller-owned. The context memoizes value-to-expression queries and
 // owns a reusable scratch term buffer so fixed-point analyses can query without

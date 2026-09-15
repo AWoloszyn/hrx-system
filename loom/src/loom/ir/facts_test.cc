@@ -558,6 +558,89 @@ TEST(FactsSignExtend, WiderSignedDomainIsIdentity) {
       loom_value_facts_equal(loom_value_facts_sign_extend(source, 8), source));
 }
 
+//===----------------------------------------------------------------------===//
+// Fixed-width integer wrapping
+//===----------------------------------------------------------------------===//
+
+TEST(FactsWrapInteger, ExactBitPatterns) {
+  for (int32_t bit_count : {1, 4, 8, 16, 32, 64}) {
+    for (int64_t value :
+         {INT64_MIN, int64_t{-257}, int64_t{-129}, int64_t{-1}, int64_t{0},
+          int64_t{1}, int64_t{128}, int64_t{256}, INT64_MAX}) {
+      SCOPED_TRACE(bit_count);
+      SCOPED_TRACE(value);
+      loom_value_facts_t result = loom_value_facts_wrap_integer(
+          loom_value_facts_exact_i64(value), bit_count);
+      const uint64_t mask =
+          bit_count == 64 ? UINT64_MAX : (UINT64_C(1) << bit_count) - 1;
+      const uint64_t bits = (uint64_t)value & mask;
+      EXPECT_TRUE(loom_value_facts_is_exact(result));
+      EXPECT_EQ((uint64_t)result.range_lo & mask, bits);
+      if (bit_count == 1) {
+        EXPECT_GE(result.range_lo, 0);
+        EXPECT_LE(result.range_hi, 1);
+      } else if (bit_count < 64) {
+        EXPECT_GE(result.range_lo, -(INT64_C(1) << (bit_count - 1)));
+        EXPECT_LT(result.range_hi, INT64_C(1) << (bit_count - 1));
+      }
+    }
+  }
+}
+
+TEST(FactsWrapInteger, RangesAndDivisibility) {
+  struct TestCase {
+    // Mathematical source range and divisor before fixed-width wrapping.
+    loom_value_facts_t source;
+    // Fixed-width destination bit count.
+    int32_t bit_count;
+    // Expected signed range minimum, or logical minimum for i1.
+    int64_t minimum;
+    // Expected signed range maximum, or logical maximum for i1.
+    int64_t maximum;
+    // Divisor retained after possible modular reduction.
+    int64_t divisor;
+  };
+  const TestCase cases[] = {
+      {loom_value_facts_make(0, 120, 3), 8, 0, 120, 3},
+      {loom_value_facts_make(120, 143, 1), 8, -128, 127, 1},
+      {loom_value_facts_make(130, 140, 1), 8, -126, -116, 1},
+      {loom_value_facts_make(-140, -130, 1), 8, 116, 126, 1},
+      {loom_value_facts_make(250, 260, 1), 8, -6, 4, 1},
+      {loom_value_facts_make(120, 400, 1), 8, -128, 127, 1},
+      {loom_value_facts_make(126, 132, 3), 8, -128, 127, 1},
+      {loom_value_facts_make(120, 144, 12), 8, -128, 127, 4},
+      {loom_value_facts_make(0, 1024, 512), 8, -128, 127, 256},
+      {loom_value_facts_make(2, 3, 1), 1, 0, 1, 1},
+      {loom_value_facts_make(0, 2, 2), 1, 0, 1, 2},
+      {loom_value_facts_make(16, int64_t{INT32_MAX} + 16, 1), 32, INT32_MIN,
+       INT32_MAX, 1},
+      {loom_value_facts_make(INT64_MIN, INT64_MAX, 3), 64, INT64_MIN, INT64_MAX,
+       1},
+      {loom_value_facts_make(INT64_MIN, INT64_MAX, 12), 64, INT64_MIN,
+       INT64_MAX, 4},
+      {loom_value_facts_make(0, INT64_MAX, 3), 64, INT64_MIN, INT64_MAX, 1},
+  };
+  for (const TestCase& test_case : cases) {
+    SCOPED_TRACE(test_case.bit_count);
+    SCOPED_TRACE(test_case.source.range_lo);
+    SCOPED_TRACE(test_case.source.range_hi);
+    loom_value_facts_t result =
+        loom_value_facts_wrap_integer(test_case.source, test_case.bit_count);
+    EXPECT_EQ(result.range_lo, test_case.minimum);
+    EXPECT_EQ(result.range_hi, test_case.maximum);
+    EXPECT_EQ(result.known_divisor, test_case.divisor);
+  }
+}
+
+TEST(FactsWrapInteger, PreservesDistributionButNotNonzero) {
+  loom_value_facts_t source = loom_value_facts_make(250, 260, 1);
+  loom_value_facts_mark_workgroup_uniform(&source);
+  loom_value_facts_t result = loom_value_facts_wrap_integer(source, 8);
+  EXPECT_TRUE(loom_value_facts_is_workgroup_uniform(result));
+  EXPECT_FALSE(loom_value_facts_is_non_zero(result));
+  EXPECT_FALSE(loom_value_facts_is_non_negative(result));
+}
+
 TEST(FactsMaximum, NonNegativeFiniteRange) {
   int64_t maximum = -1;
   EXPECT_TRUE(loom_value_facts_as_non_negative_i64_maximum(

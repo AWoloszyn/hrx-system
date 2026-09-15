@@ -638,6 +638,10 @@ typedef struct loom_symbolic_expr_expansion_frame_t {
   // Producer values consumed in operation-specific order.
   loom_value_id_t operand_values[3];
 
+  // Fixed-width result domain that must preserve the mathematical expression,
+  // or zero for address arithmetic and operations with no signed wrap.
+  uint8_t integer_bit_count;
+
   // Partial expression retained while a later operand is expanded.
   loom_symbolic_expr_t intermediate_expression;
 
@@ -927,6 +931,20 @@ static iree_status_t loom_symbolic_expr_expansion_prepare_frame(
       return loom_symbolic_expr_value(context, frame->value_id, out_expression);
   }
   if (!*out_complete) {
+    const loom_scalar_type_t scalar_type = loom_type_element_type(
+        loom_module_value_type(context->module, frame->value_id));
+    const bool no_signed_wrap =
+        (frame->kind == LOOM_SYMBOLIC_EXPR_EXPANSION_ADD ||
+         frame->kind == LOOM_SYMBOLIC_EXPR_EXPANSION_SUBTRACT ||
+         frame->kind == LOOM_SYMBOLIC_EXPR_EXPANSION_MULTIPLY ||
+         frame->kind == LOOM_SYMBOLIC_EXPR_EXPANSION_MULTIPLY_ADD) &&
+        iree_any_bit_set(defining_op->instance_flags,
+                         LOOM_SCALAR_INTOVERFLOWFLAGS_NSW);
+    if (loom_scalar_type_is_integer(scalar_type) &&
+        frame->kind != LOOM_SYMBOLIC_EXPR_EXPANSION_ASSUME && !no_signed_wrap) {
+      frame->integer_bit_count =
+          (uint8_t)loom_scalar_type_bitwidth(scalar_type);
+    }
     frame->stage = LOOM_SYMBOLIC_EXPR_EXPANSION_STAGE_FIRST_OPERAND;
   }
   return iree_ok_status();
@@ -1134,6 +1152,26 @@ iree_status_t loom_symbolic_expr_from_value(
     if (!iree_status_is_ok(status) || !frame_complete) continue;
 
     loom_value_id_t completed_value = frames[frame_count - 1].value_id;
+    const uint8_t bit_count = frames[frame_count - 1].integer_bit_count;
+    if (bit_count != 0) {
+      // Check the mathematical result before replacing its facts with the
+      // producer's wrapped range. A potentially wrapping result remains its
+      // own symbol; downstream comparisons cannot cancel across this boundary.
+      bool fits = bit_count == 1 ? loom_value_facts_fit_unsigned_bit_count(
+                                       expression.facts, 1)
+                                 : loom_value_facts_fit_signed_bit_count(
+                                       expression.facts, bit_count);
+      if (bit_count == 64 &&
+          frames[frame_count - 1].kind !=
+              LOOM_SYMBOLIC_EXPR_EXPANSION_IDENTITY &&
+          frames[frame_count - 1].kind != LOOM_SYMBOLIC_EXPR_EXPANSION_SELECT &&
+          !loom_value_facts_is_exact(expression.facts) &&
+          (expression.facts.range_lo == INT64_MIN ||
+           expression.facts.range_hi == INT64_MAX)) {
+        fits = false;
+      }
+      if (!fits) expression.flags &= ~LOOM_SYMBOLIC_EXPR_FLAG_LINEAR;
+    }
     if (!loom_symbolic_expr_is_linear(&expression)) {
       status = loom_symbolic_expr_value(context, completed_value, &expression);
     }

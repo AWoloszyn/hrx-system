@@ -226,6 +226,7 @@ TEST_F(SymbolicExprTest, MemoGrowthPreservesOuterExpansion) {
 
 TEST_F(SymbolicExprTest, DeepProducerChainExpandsIteratively) {
   loom_value_id_t source = DefineI64Value();
+  DefineFacts(source, loom_value_facts_make(-1024, 1024, 1));
   loom_value_id_t value = source;
   for (int i = 0; i < 4096; ++i) {
     loom_op_t* negate_op = nullptr;

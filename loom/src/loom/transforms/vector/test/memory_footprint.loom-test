@@ -1584,3 +1584,71 @@ kernel.def @scalar_store_tail_origin_proven_after_scf_to_cfg() {
 ^_bb5:
   kernel.return
 }
+
+// ====
+
+// At row=268435455, the i32 end wraps to zero while the index origin is
+// 4294967280. A zero-length view does not permit a sixteen-element load.
+func.def @wrapping_payload_end_is_not_an_address_end(%buffer: buffer, %base: offset, %row0: i32) {
+  %row = scalar.assume %row0 [range(%row0, 0, 268435455)] : i32
+  %c16_i32 = scalar.constant 16 : i32
+  %payload_origin = scalar.muli %row, %c16_i32 : i32
+  %payload_end = scalar.addi %payload_origin, %c16_i32 : i32
+  %end = index.cast %payload_end : i32 to index
+  %row_index = index.cast %row : i32 to index
+  %c16 = index.constant 16 : index
+  %origin = index.mul %row_index, %c16 : index
+  %view = buffer.view %buffer[%base] : buffer -> view<[%end]xf16>
+  // ERROR@+1: SUBRANGE/010 {op_name="vector.load", vector_extent="16"}
+  %loaded = vector.load %view[%origin] : view<[%end]xf16> -> vector<16xf16>
+  test.use %loaded : vector<16xf16>
+  func.return
+}
+
+// ====
+
+// Narrowing through an integer payload preserves low bits, not numeric value.
+// At origin=255 the i8 round trip is -1 and the view extent is only 15.
+func.def @narrowing_payload_is_not_an_address_identity(%buffer: buffer, %base: offset, %origin0: index) {
+  %origin = index.assume %origin0 [range(%origin0, 0, 255)] : index
+  %payload = index.cast %origin : index to i8
+  %round_trip = index.cast %payload : i8 to index
+  %c16 = index.constant 16 : index
+  %end = index.add %round_trip, %c16 : index
+  %view = buffer.view %buffer[%base] : buffer -> view<[%end]xf16>
+  // ERROR@+1: SUBRANGE/010 {op_name="vector.load", vector_extent="16"}
+  %loaded = vector.load %view[%origin] : view<[%end]xf16> -> vector<16xf16>
+  test.use %loaded : vector<16xf16>
+  func.return
+}
+
+// ====
+
+func.def @representable_payload_preserves_address_identity(%buffer: buffer, %base: offset, %origin0: index) {
+  %origin = index.assume %origin0 [range(%origin0, 0, 111)] : index
+  %payload = index.cast %origin : index to i8
+  %round_trip = index.cast %payload : i8 to index
+  %c16 = index.constant 16 : index
+  %end = index.add %round_trip, %c16 : index
+  %view = buffer.view %buffer[%base] : buffer -> view<[%end]xf16>
+  %loaded = vector.load %view[%origin] : view<[%end]xf16> -> vector<16xf16>
+  test.use %loaded : vector<16xf16>
+  func.return
+}
+
+// ====
+
+// Wrapping end=origin+16 admits large origins after signed overflow even when
+// the end itself is constrained below the view extent.
+func.def @wrapping_end_does_not_bound_origin(%buffer: buffer, %base: offset, %origin0: i32) {
+  %origin_bounded = scalar.assume %origin0 [range(%origin0, 0, 2147483647)] : i32
+  %c16 = scalar.constant 16 : i32
+  %end0 = scalar.addi %origin_bounded, %c16 : i32
+  %origin_scalar, %end = scalar.assume %origin_bounded, %end0 [le(%end0, 64)] : i32, i32
+  %origin = index.cast %origin_scalar : i32 to index
+  %view = buffer.view %buffer[%base] : buffer -> view<64xf16>
+  // ERROR@+1: SUBRANGE/010 {op_name="vector.load", vector_extent="16", view_bound="64", required_origin_upper_bound="48"}
+  %loaded = vector.load %view[%origin] : view<64xf16> -> vector<16xf16>
+  test.use %loaded : vector<16xf16>
+  func.return
+}

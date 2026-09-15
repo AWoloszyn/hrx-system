@@ -29,8 +29,11 @@
 static void loom_scalar_wrap_result_facts(const loom_module_t* module,
                                           const loom_op_t* op,
                                           loom_value_facts_t* facts) {
-  loom_type_t result_type =
-      loom_module_value_type(module, loom_op_results(op)[0]);
+  if (iree_any_bit_set(op->instance_flags, LOOM_SCALAR_INTOVERFLOWFLAGS_NSW)) {
+    return;
+  }
+  const loom_type_t result_type =
+      loom_module_value_type(module, loom_op_const_results(op)[0]);
   *facts = loom_value_facts_wrap_integer(
       *facts, loom_scalar_type_bitwidth(loom_type_element_type(result_type)));
 }
@@ -49,7 +52,7 @@ static void loom_scalar_wrap_result_facts(const loom_module_t* module,
   BINARY_FACTS(name, transfer_fn,                \
                loom_scalar_wrap_result_facts(module, op, &result_facts[0]);)
 
-#define UNARY_FACTS(name, transfer_fn)                                 \
+#define WRAPPING_UNARY_FACTS(name, transfer_fn)                        \
   iree_status_t name(loom_fact_context_t* context,                     \
                      const loom_module_t* module, const loom_op_t* op, \
                      const loom_value_facts_t* operand_facts,          \
@@ -163,8 +166,8 @@ BINARY_FACTS(loom_scalar_divsi_facts, loom_value_facts_divsi)
 BINARY_FACTS(loom_scalar_divui_facts, loom_value_facts_divui)
 BINARY_FACTS(loom_scalar_remsi_facts, loom_value_facts_remsi)
 BINARY_FACTS(loom_scalar_remui_facts, loom_value_facts_remui)
-UNARY_FACTS(loom_scalar_negi_facts, loom_value_facts_negi)
-UNARY_FACTS(loom_scalar_absi_facts, loom_value_facts_absi)
+WRAPPING_UNARY_FACTS(loom_scalar_negi_facts, loom_value_facts_negi)
+WRAPPING_UNARY_FACTS(loom_scalar_absi_facts, loom_value_facts_absi)
 BINARY_FACTS(loom_scalar_minsi_facts, loom_value_facts_minsi)
 BINARY_FACTS(loom_scalar_maxsi_facts, loom_value_facts_maxsi)
 BINARY_FACTS(loom_scalar_minui_facts, loom_value_facts_minui)
