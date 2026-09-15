@@ -7,8 +7,10 @@
 #include "common/graph.h"
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <cstring>
+#include <thread>
 
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
@@ -466,6 +468,158 @@ struct ProbedHostAllocator {
     return iree_allocator_t{this, &ProbedHostAllocator::Control};
   }
 };
+
+struct CaptureRecordGate {
+  // Set once the recorder is executing under the stream mutex.
+  std::atomic<bool> entered = false;
+  // Set by the test after a concurrent capture end has started.
+  std::atomic<bool> release = false;
+  // Existing graph node published as the terminal capture frontier.
+  iree_hal_streaming_graph_node_t* terminal_node = nullptr;
+};
+
+iree_status_t RecordGatedCaptureNode(
+    iree_hal_streaming_graph_t* graph,
+    iree_hal_streaming_graph_node_t** dependencies,
+    iree_host_size_t dependency_count, void* user_data,
+    iree_hal_streaming_graph_node_t** out_terminal_node) {
+  (void)graph;
+  (void)dependencies;
+  (void)dependency_count;
+  auto* gate = static_cast<CaptureRecordGate*>(user_data);
+  gate->entered.store(true, std::memory_order_release);
+  while (!gate->release.load(std::memory_order_acquire)) {
+    std::this_thread::yield();
+  }
+  *out_terminal_node = gate->terminal_node;
+  return iree_ok_status();
+}
+
+iree_status_t FailCaptureNodeRecording(
+    iree_hal_streaming_graph_t* graph,
+    iree_hal_streaming_graph_node_t** dependencies,
+    iree_host_size_t dependency_count, void* user_data,
+    iree_hal_streaming_graph_node_t** out_terminal_node) {
+  (void)graph;
+  (void)dependencies;
+  (void)dependency_count;
+  (void)user_data;
+  (void)out_terminal_node;
+  return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                          "injected capture construction failure");
+}
+
+// Initializes the minimum production-shaped capture state needed to exercise
+// capture recording and termination without creating a device.
+class CaptureTransactionTestState {
+ public:
+  CaptureTransactionTestState() {
+    iree_slim_mutex_initialize(&context_.stream_list_mutex);
+    iree_slim_mutex_initialize(&stream_.mutex);
+    iree_atomic_store(&context_.capture_stream_count, 1,
+                      iree_memory_order_release);
+    context_.streams = streams_;
+    context_.stream_count = 1;
+    context_.host_allocator = iree_allocator_system();
+    streams_[0] = &stream_;
+
+    IREE_CHECK_OK(iree_allocator_malloc(iree_allocator_system(), sizeof(*node_),
+                                        (void**)&node_));
+    memset(node_, 0, sizeof(*node_));
+    IREE_CHECK_OK(iree_allocator_malloc(
+        iree_allocator_system(),
+        sizeof(iree_hal_streaming_node_block_t) + sizeof(node_block_->nodes[0]),
+        (void**)&node_block_));
+    memset(node_block_, 0,
+           sizeof(*node_block_) + sizeof(node_block_->nodes[0]));
+    node_block_->capacity = 1;
+    node_block_->count = 1;
+    node_block_->nodes[0] = node_;
+    node_->graph = &graph_;
+    node_->type = IREE_HAL_STREAMING_GRAPH_NODE_TYPE_EMPTY;
+    graph_.host_allocator = iree_allocator_system();
+    graph_.node_blocks = node_block_;
+    graph_.current_node_block = node_block_;
+    graph_.node_count = 1;
+    graph_.next_clone_source_node_index = 1;
+
+    stream_.context = &context_;
+    stream_.host_allocator = iree_allocator_system();
+    stream_.capture_status = IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE;
+    stream_.capture_mode = IREE_HAL_STREAMING_CAPTURE_MODE_RELAXED;
+    stream_.capture_graph = &graph_;
+    stream_.capture_origin = true;
+    stream_.capture_joined_to_origin = true;
+  }
+
+  ~CaptureTransactionTestState() {
+    iree_allocator_free(stream_.host_allocator, stream_.capture_dependencies);
+    iree_allocator_free(iree_allocator_system(), node_block_);
+    iree_allocator_free(iree_allocator_system(), node_);
+    iree_slim_mutex_deinitialize(&stream_.mutex);
+    iree_slim_mutex_deinitialize(&context_.stream_list_mutex);
+  }
+
+  iree_hal_streaming_context_t* context() { return &context_; }
+  iree_hal_streaming_stream_t* stream() { return &stream_; }
+  iree_hal_streaming_graph_t* graph() { return &graph_; }
+  iree_hal_streaming_graph_node_t* node() { return node_; }
+
+ private:
+  iree_hal_streaming_context_t context_ = {};
+  iree_hal_streaming_stream_t stream_ = {};
+  iree_hal_streaming_stream_t* streams_[1] = {};
+  iree_hal_streaming_graph_t graph_ = {};
+  iree_hal_streaming_graph_node_t* node_ = nullptr;
+  iree_hal_streaming_node_block_t* node_block_ = nullptr;
+};
+
+TEST(GraphTest, CaptureRecordingSerializesTermination) {
+  CaptureTransactionTestState state;
+  CaptureRecordGate gate;
+  gate.terminal_node = state.node();
+  bool was_capturing = false;
+  iree_status_t record_status = iree_ok_status();
+  std::thread record_thread([&] {
+    record_status = iree_hal_streaming_capture_try_record_node(
+        state.stream(), RecordGatedCaptureNode, &gate, &was_capturing);
+  });
+  while (!gate.entered.load(std::memory_order_acquire)) {
+    std::this_thread::yield();
+  }
+
+  std::atomic<bool> end_started = false;
+  iree_hal_streaming_graph_t* captured_graph = nullptr;
+  iree_status_t end_status = iree_ok_status();
+  std::thread end_thread([&] {
+    end_started.store(true, std::memory_order_release);
+    end_status =
+        iree_hal_streaming_end_capture(state.stream(), &captured_graph);
+  });
+  while (!end_started.load(std::memory_order_acquire)) {
+    std::this_thread::yield();
+  }
+  gate.release.store(true, std::memory_order_release);
+  record_thread.join();
+  end_thread.join();
+
+  IREE_EXPECT_OK(record_status);
+  IREE_EXPECT_OK(end_status);
+  EXPECT_TRUE(was_capturing);
+  EXPECT_EQ(state.graph(), captured_graph);
+}
+
+TEST(GraphTest, CaptureRecordingFailureInvalidatesCapture) {
+  CaptureTransactionTestState state;
+  bool was_capturing = false;
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_RESOURCE_EXHAUSTED,
+      iree_hal_streaming_capture_try_record_node(
+          state.stream(), FailCaptureNodeRecording, nullptr, &was_capturing));
+  EXPECT_TRUE(was_capturing);
+  EXPECT_EQ(IREE_HAL_STREAMING_CAPTURE_STATUS_INVALIDATED,
+            state.stream()->capture_status);
+}
 
 void InitializeSingleCopySymbol(uint16_t direct_arg_bytes,
                                 uint16_t destination_offset,

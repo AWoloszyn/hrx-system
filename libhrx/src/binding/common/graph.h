@@ -65,6 +65,16 @@ typedef struct iree_hal_streaming_graph_user_object_ref_t {
   iree_hal_streaming_graph_user_object_release_fn_t release;
 } iree_hal_streaming_graph_user_object_ref_t;
 
+// Records one logical operation into an active stream capture. The callback
+// may add multiple graph nodes but must return the terminal node representing
+// the operation. The stream capture transaction invalidates the capture if the
+// callback fails after partially mutating the graph.
+typedef iree_status_t (*iree_hal_streaming_capture_record_node_fn_t)(
+    iree_hal_streaming_graph_t* graph,
+    iree_hal_streaming_graph_node_t** dependencies,
+    iree_host_size_t dependency_count, void* user_data,
+    iree_hal_streaming_graph_node_t** out_terminal_node);
+
 // Graph structure (template).
 typedef struct iree_hal_streaming_graph_t {
   iree_atomic_ref_count_t ref_count;
@@ -113,6 +123,15 @@ typedef struct iree_hal_streaming_graph_t {
   // Host allocator used for graph object allocation.
   iree_allocator_t host_allocator;
 } iree_hal_streaming_graph_t;
+
+// Attempts to record one logical operation into |stream|'s active capture.
+// Returns |*out_was_capturing| false without invoking |record_fn| when the
+// stream is not capturing. Status validation, graph mutation, and frontier
+// publication are serialized with capture termination.
+iree_status_t iree_hal_streaming_capture_try_record_node(
+    iree_hal_streaming_stream_t* stream,
+    iree_hal_streaming_capture_record_node_fn_t record_fn, void* user_data,
+    bool* out_was_capturing);
 
 // Type of partition - determines how nodes are executed.
 enum iree_hal_streaming_graph_partition_type_e {

@@ -2046,6 +2046,64 @@ iree_status_t iree_hal_streaming_graph_instantiate(
 static iree_status_t iree_hal_streaming_grow_capture_dependencies(
     iree_hal_streaming_stream_t* stream, iree_host_size_t required_capacity);
 
+iree_status_t iree_hal_streaming_capture_try_record_node(
+    iree_hal_streaming_stream_t* stream,
+    iree_hal_streaming_capture_record_node_fn_t record_fn, void* user_data,
+    bool* out_was_capturing) {
+  IREE_ASSERT_ARGUMENT(stream);
+  IREE_ASSERT_ARGUMENT(record_fn);
+  IREE_ASSERT_ARGUMENT(out_was_capturing);
+  *out_was_capturing = false;
+
+  iree_slim_mutex_lock(&stream->mutex);
+  if (stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_NONE) {
+    iree_slim_mutex_unlock(&stream->mutex);
+    return iree_ok_status();
+  }
+
+  *out_was_capturing = true;
+  if (stream->capture_status != IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE ||
+      !stream->capture_graph) {
+    iree_slim_mutex_unlock(&stream->mutex);
+    return iree_make_status(IREE_STATUS_DATA_LOSS,
+                            "stream capture has been invalidated");
+  }
+
+  // Reserve the one-entry terminal frontier before allowing the callback to
+  // mutate the graph. Once recording starts, any failure invalidates capture:
+  // graph arenas can own staging allocations in addition to visible nodes, so
+  // removing only the nodes cannot restore the complete pre-call state.
+  iree_status_t status = iree_ok_status();
+  if (stream->capture_dependency_capacity == 0) {
+    status = iree_hal_streaming_grow_capture_dependencies(stream, 1);
+  }
+  iree_hal_streaming_graph_node_t* terminal_node = NULL;
+  if (iree_status_is_ok(status)) {
+    status =
+        record_fn(stream->capture_graph, stream->capture_dependencies,
+                  stream->capture_dependency_count, user_data, &terminal_node);
+    if (!iree_status_is_ok(status)) {
+      iree_hal_streaming_stream_set_capture_status(
+          stream, IREE_HAL_STREAMING_CAPTURE_STATUS_INVALIDATED);
+    } else if (!iree_hal_streaming_graph_node_is_active_in_graph(
+                   stream->capture_graph, terminal_node)) {
+      status = iree_make_status(
+          IREE_STATUS_INVALID_ARGUMENT,
+          "capture recorder returned a node outside the active graph");
+      iree_hal_streaming_stream_set_capture_status(
+          stream, IREE_HAL_STREAMING_CAPTURE_STATUS_INVALIDATED);
+    } else {
+      if (!stream->capture_origin) {
+        stream->capture_joined_to_origin = false;
+      }
+      stream->capture_dependencies[0] = terminal_node;
+      stream->capture_dependency_count = 1;
+    }
+  }
+  iree_slim_mutex_unlock(&stream->mutex);
+  return status;
+}
+
 iree_status_t iree_hal_streaming_begin_capture(
     iree_hal_streaming_stream_t* stream,
     iree_hal_streaming_capture_mode_t mode) {
