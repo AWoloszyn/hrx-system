@@ -114,3 +114,24 @@ func.def @scalar_i64_compare_all_predicates_vgpr_select(%lhs_values: vector<2xi6
   %uge_result = scf.select %uge, %true_value, %false_value : f32
   func.return %eq_result, %ne_result, %slt_result, %sle_result, %sgt_result, %sge_result, %ult_result, %ule_result, %ugt_result, %uge_result : f32, f32, f32, f32, f32, f32, f32, f32, f32, f32
 }
+
+// ====
+
+func.def @scalar_i64_addi_uniform(%lhs: i64, %rhs: i64) -> (i64) {
+  %result = scalar.addi %lhs, %rhs : i64
+  func.return %result : i64
+}
+
+// ====
+
+func.def @scalar_i64_muli_uniform(%lhs: i64, %rhs: i64) -> (i64) {
+  %result = scalar.muli %lhs, %rhs : i64
+  func.return %result : i64
+}
+
+// ====
+
+func.def @scalar_i64_shli_uniform(%lhs: i64, %rhs: i64) -> (i64) {
+  %result = scalar.shli %lhs, %rhs : i64
+  func.return %result : i64
+}

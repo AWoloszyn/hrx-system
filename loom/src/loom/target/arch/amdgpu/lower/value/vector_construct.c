@@ -1289,7 +1289,7 @@ static iree_status_t loom_amdgpu_lower_vector_iota(
     IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_scale_u32(
         context, source_op, low_step, i, LOOM_AMDGPU_VGPR_SCALE_U32_FLAG_NONE,
         lane_type, &scaled_step));
-    IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+    IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
         context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_ADD_U32, low_base,
         scaled_step, lane_type, &lanes[i]));
   }
@@ -1419,7 +1419,7 @@ static iree_status_t loom_amdgpu_lower_vector_from_16bit_elements(
       loom_value_id_t high_lane = LOOM_VALUE_ID_INVALID;
       IREE_RETURN_IF_ERROR(loom_amdgpu_lower_vector_from_16bit_element_lane(
           context, source_op, plan, lane_base + 1u, 16, lane_type, &high_lane));
-      IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+      IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
           context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_OR_B32, packed,
           high_lane, lane_type, &packed));
     }
@@ -1489,7 +1489,7 @@ static iree_status_t loom_amdgpu_lower_vector_from_packed_integer_elements(
         packed = shifted;
         continue;
       }
-      IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+      IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
           context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_OR_B32, packed,
           shifted, lane_type, &packed));
     }
@@ -1648,9 +1648,9 @@ static iree_status_t loom_amdgpu_replace_packed_vector_register_lane(
         context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_LSHLREV_B32_LIT,
         lane_bit_offset, inserted, register_type, &inserted));
   }
-  return loom_amdgpu_emit_vgpr_binary(
-      context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_OR_B32, preserved,
-      inserted, register_type, out_register);
+  return loom_amdgpu_emit_binary(context, source_op,
+                                 LOOM_AMDGPU_DESCRIPTOR_REF_V_OR_B32, preserved,
+                                 inserted, register_type, out_register);
 }
 
 static iree_status_t loom_amdgpu_lower_packed_vector_insert(

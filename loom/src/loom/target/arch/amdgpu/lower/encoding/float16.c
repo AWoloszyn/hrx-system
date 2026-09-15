@@ -45,7 +45,7 @@ iree_status_t loom_amdgpu_emit_f32_to_bf16_lane_with_descriptors(
     IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary_immediate(
         context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_ADD_U32_LIT, lsb,
         UINT32_C(0x7FFF), lane_type, &bias));
-    IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+    IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
         context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_ADD_U32, source_lane,
         bias, lane_type, &rounded));
   }
@@ -331,9 +331,9 @@ iree_status_t loom_amdgpu_emit_packed_u16_lane_pair(
   IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_shift(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_LSHLREV_B32_LIT, 16,
       high_lane, lane_type, &high_bits));
-  return loom_amdgpu_emit_vgpr_binary(
-      context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_OR_B32, low_bits,
-      high_bits, lane_type, out_packed);
+  return loom_amdgpu_emit_binary(context, source_op,
+                                 LOOM_AMDGPU_DESCRIPTOR_REF_V_OR_B32, low_bits,
+                                 high_bits, lane_type, out_packed);
 }
 
 iree_status_t loom_amdgpu_emit_f32_pair_to_packed_bf16(

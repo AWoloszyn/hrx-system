@@ -105,7 +105,7 @@ static iree_status_t loom_amdgpu_emit_fragment_memory_packed_b16_load_packet(
   IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_shift(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_LSHLREV_B32_LIT, 16,
       low_elements[1], vgpr_type, &high_element));
-  return loom_amdgpu_emit_vgpr_binary(
+  return loom_amdgpu_emit_binary(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_OR_B32, low_elements[0],
       high_element, vgpr_type, out_low_packet);
 }
@@ -152,7 +152,7 @@ loom_amdgpu_emit_fragment_memory_packed_16bit_result_load_packet(
   IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_shift(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_LSHLREV_B32_LIT, 16,
       low_elements[1], vgpr_type, &high_element));
-  return loom_amdgpu_emit_vgpr_binary(
+  return loom_amdgpu_emit_binary(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_OR_B32, low_elements[0],
       high_element, vgpr_type, out_low_packet);
 }
@@ -231,9 +231,9 @@ static iree_status_t loom_amdgpu_emit_fragment_memory_apply_f32_scale(
   if (low_scale == LOOM_VALUE_ID_INVALID) {
     return iree_ok_status();
   }
-  return loom_amdgpu_emit_vgpr_binary(
-      context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_MUL_F32, low_source,
-      low_scale, vgpr_type, out_scaled);
+  return loom_amdgpu_emit_binary(context, source_op,
+                                 LOOM_AMDGPU_DESCRIPTOR_REF_V_MUL_F32,
+                                 low_source, low_scale, vgpr_type, out_scaled);
 }
 
 static iree_status_t

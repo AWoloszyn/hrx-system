@@ -260,8 +260,8 @@ iree_status_t loom_amdgpu_materialize_structural_operand(
     loom_value_id_t source_value_id, loom_value_id_t low_value_id,
     loom_type_t required_low_type, loom_value_id_t* out_low_value_id);
 
-// Emits one binary SGPR descriptor op.
-iree_status_t loom_amdgpu_emit_sgpr_binary(
+// Emits one binary descriptor op with the selected register result type.
+iree_status_t loom_amdgpu_emit_binary(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
     loom_amdgpu_descriptor_ref_t descriptor_ref, loom_value_id_t lhs,
     loom_value_id_t rhs, loom_type_t lane_type, loom_value_id_t* out_value);
@@ -328,12 +328,6 @@ iree_status_t loom_amdgpu_emit_sgpr64_add_u32_offset(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
     loom_value_id_t low_base, loom_value_id_t low_offset,
     loom_value_id_t* out_low_sum);
-
-// Emits one binary VGPR descriptor op.
-iree_status_t loom_amdgpu_emit_vgpr_binary(
-    loom_low_lower_context_t* context, const loom_op_t* source_op,
-    loom_amdgpu_descriptor_ref_t descriptor_ref, loom_value_id_t lhs,
-    loom_value_id_t rhs, loom_type_t lane_type, loom_value_id_t* out_value);
 
 // Emits one unary VGPR descriptor op.
 iree_status_t loom_amdgpu_emit_vgpr_unary(
@@ -415,13 +409,6 @@ iree_status_t loom_amdgpu_emit_vgpr64_sub(loom_low_lower_context_t* context,
                                           loom_value_id_t low_lhs,
                                           loom_value_id_t low_rhs,
                                           loom_value_id_t* out_low_difference);
-
-// Emits the low 64 bits of a VGPR x2 multiply.
-iree_status_t loom_amdgpu_emit_vgpr64_mul_lo(loom_low_lower_context_t* context,
-                                             const loom_op_t* source_op,
-                                             loom_value_id_t low_lhs,
-                                             loom_value_id_t low_rhs,
-                                             loom_value_id_t* out_low_product);
 
 // Emits a VGPR x2 left shift by a one-unit VGPR shift amount.
 iree_status_t loom_amdgpu_emit_vgpr64_shl(loom_low_lower_context_t* context,

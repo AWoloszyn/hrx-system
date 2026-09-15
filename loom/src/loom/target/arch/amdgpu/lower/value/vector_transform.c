@@ -175,10 +175,10 @@ iree_status_t loom_amdgpu_lower_vector_transform(
           const loom_value_id_t rhs = lanes[rhs_index];
           loom_value_id_t sum = LOOM_VALUE_ID_INVALID;
           loom_value_id_t difference = LOOM_VALUE_ID_INVALID;
-          IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+          IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
               context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_ADD_F32, lhs,
               rhs, result_lane_type, &sum));
-          IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+          IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
               context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_SUB_F32, lhs,
               rhs, result_lane_type, &difference));
           lanes[lhs_index] = sum;

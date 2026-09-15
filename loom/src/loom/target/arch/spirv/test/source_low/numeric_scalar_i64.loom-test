@@ -185,3 +185,48 @@ func.def target(@target) @scalar_i64_compare_all_predicates_vgpr_select(%lhs_val
   %uge_result = scf.select %uge, %true_value, %false_value : f32
   func.return %eq_result, %ne_result, %slt_result, %sle_result, %sgt_result, %sge_result, %ult_result, %ule_result, %ugt_result, %uge_result : f32, f32, f32, f32, f32, f32, f32, f32, f32, f32
 }
+
+// ====
+
+spirv.target<vulkan1_3> @target
+
+func.def target(@target) @scalar_i64_addi_uniform(%lhs: i64, %rhs: i64) -> (i64) {
+  %result = scalar.addi %lhs, %rhs : i64
+  func.return %result : i64
+}
+
+// ----
+low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @scalar_i64_addi_uniform(%lhs: reg<spirv.id : i64>, %rhs: reg<spirv.id : i64>) -> (reg<spirv.id : i64>) asm {
+  %result = OpIAdd.i64 %lhs, %rhs
+  return %result
+}
+
+// ====
+
+spirv.target<vulkan1_3> @target
+
+func.def target(@target) @scalar_i64_muli_uniform(%lhs: i64, %rhs: i64) -> (i64) {
+  %result = scalar.muli %lhs, %rhs : i64
+  func.return %result : i64
+}
+
+// ----
+low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @scalar_i64_muli_uniform(%lhs: reg<spirv.id : i64>, %rhs: reg<spirv.id : i64>) -> (reg<spirv.id : i64>) asm {
+  %result = OpIMul.i64 %lhs, %rhs
+  return %result
+}
+
+// ====
+
+spirv.target<vulkan1_3> @target
+
+func.def target(@target) @scalar_i64_shli_uniform(%lhs: i64, %rhs: i64) -> (i64) {
+  %result = scalar.shli %lhs, %rhs : i64
+  func.return %result : i64
+}
+
+// ----
+low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @scalar_i64_shli_uniform(%lhs: reg<spirv.id : i64>, %rhs: reg<spirv.id : i64>) -> (reg<spirv.id : i64>) asm {
+  %result = OpShiftLeftLogical.i64 %lhs, %rhs
+  return %result
+}

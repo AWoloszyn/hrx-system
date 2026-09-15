@@ -1470,7 +1470,7 @@ static iree_status_t loom_amdgpu_vector_fp8_scale_f32_lanes(
   IREE_RETURN_IF_ERROR(
       loom_amdgpu_vector_fp8_emit_state_ensure_f32_scale(state));
   for (uint32_t i = 0; i < lane_count; ++i) {
-    IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+    IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
         state->context, state->source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_MUL_F32,
         low_lanes[i], state->low_f32_scale, state->result_lane_type,
         &low_lanes[i]));

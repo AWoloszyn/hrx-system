@@ -314,11 +314,11 @@ static iree_status_t loom_amdgpu_repair_scalar_cttz_zero(
                : LOOM_AMDGPU_DESCRIPTOR_REF_S_MOV_B32,
       semantic_bit_width, lane_type, &low_width));
   if (use_vgpr) {
-    return loom_amdgpu_emit_vgpr_binary(
+    return loom_amdgpu_emit_binary(
         context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_MIN_U32,
         low_native_count, low_width, lane_type, out_low_count);
   }
-  return loom_amdgpu_emit_sgpr_binary(
+  return loom_amdgpu_emit_binary(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_S_MIN_U32,
       low_native_count, low_width, lane_type, out_low_count);
 }
@@ -360,7 +360,7 @@ static iree_status_t loom_amdgpu_emit_scalar_cttz_vgpr_b64(
   IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary_immediate(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_ADD_U32_LIT, high_count,
       /*immediate=*/32, vgpr_type, &high_count));
-  return loom_amdgpu_emit_vgpr_binary(
+  return loom_amdgpu_emit_binary(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_MIN_U32, low_count,
       high_count, vgpr_type, out_low_count);
 }

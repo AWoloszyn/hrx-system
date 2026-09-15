@@ -998,12 +998,12 @@ static iree_status_t loom_amdgpu_sanitizer_build_repeat_failure_summary(
     } else {
       if (select_fault_address) {
         loom_value_id_t changed_failure_mask = LOOM_VALUE_ID_INVALID;
-        IREE_RETURN_IF_ERROR(loom_amdgpu_emit_sgpr_binary(
+        IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
             context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_S_XOR_B64,
             repeat_failure_mask, out_summary->failure_mask, mask_type,
             &changed_failure_mask));
         loom_value_id_t first_repeat_failure_mask = LOOM_VALUE_ID_INVALID;
-        IREE_RETURN_IF_ERROR(loom_amdgpu_emit_sgpr_binary(
+        IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
             context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_S_AND_B64,
             repeat_failure_mask, changed_failure_mask, mask_type,
             &first_repeat_failure_mask));
