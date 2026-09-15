@@ -1092,6 +1092,53 @@ iree_status_t iree_hal_streaming_stream_synchronize_flushed(
                                                     /*flush_context=*/false);
 }
 
+iree_status_t iree_hal_streaming_execute_host_operation(
+    iree_hal_streaming_stream_t* stream,
+    iree_hal_streaming_host_operation_fn_t fn, void* user_data) {
+  IREE_ASSERT_ARGUMENT(stream);
+  IREE_ASSERT_ARGUMENT(fn);
+  IREE_TRACE_ZONE_BEGIN(z0);
+
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(z0,
+                                    iree_hal_streaming_stream_flush(stream));
+
+  uint64_t wait_value = 0;
+  uint64_t signal_value = 0;
+  iree_slim_mutex_lock(&stream->mutex);
+  iree_status_t status = iree_hal_streaming_stream_reserve_next_value_locked(
+      stream, &wait_value, &signal_value);
+  if (iree_status_is_ok(status)) {
+    // Claim the timeline point before waiting. Later submissions may proceed
+    // concurrently, but they will wait for this operation's terminal signal.
+    stream->pending_value = signal_value;
+  }
+  iree_slim_mutex_unlock(&stream->mutex);
+
+  if (iree_status_is_ok(status) && wait_value != 0) {
+    status = iree_hal_semaphore_wait(stream->timeline_semaphore, wait_value,
+                                     iree_infinite_timeout(),
+                                     IREE_ASYNC_WAIT_FLAG_NONE);
+  }
+  if (iree_status_is_ok(status)) {
+    status = fn(user_data);
+    if (!iree_status_is_ok(status)) {
+      iree_hal_semaphore_fail(stream->timeline_semaphore,
+                              iree_status_clone(status));
+    }
+  }
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_semaphore_signal(stream->timeline_semaphore, signal_value,
+                                       /*frontier=*/NULL);
+    if (!iree_status_is_ok(status)) {
+      iree_hal_semaphore_fail(stream->timeline_semaphore,
+                              iree_status_clone(status));
+    }
+  }
+
+  IREE_TRACE_ZONE_END(z0);
+  return status;
+}
+
 iree_status_t iree_hal_streaming_stream_wait_submitted(
     iree_hal_streaming_stream_t* stream) {
   IREE_ASSERT_ARGUMENT(stream);

@@ -227,6 +227,18 @@ hrx_cc_library(
     ],
 )
 
+hrx_cc_library(
+    name = "staged_copy",
+    srcs = ["staged_copy.c"],
+    hdrs = ["staged_copy.h"],
+    includes = ["../.."],
+    deps = [
+        "//libhrx/src/binding/common",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/hal",
+    ],
+)
+
 hrx_cc_shared_library(
     name = "amdhip64",
     srcs = [
@@ -261,6 +273,7 @@ hrx_cc_shared_library(
         ":execution_resource_descriptor",
         ":handle_registry",
         ":launch_params",
+        ":staged_copy",
         ":stream",
         "//libhrx/src/binding/common",
         "//runtime/src/iree/base",

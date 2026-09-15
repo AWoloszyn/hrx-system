@@ -18,6 +18,8 @@
 namespace {
 
 using HipInitFn = hipError_t (*)(unsigned int flags);
+using HipGetDeviceCountFn = hipError_t (*)(int* count);
+using HipSetDeviceFn = hipError_t (*)(int device_id);
 using HipMallocFn = hipError_t (*)(hipDeviceptr_t* pointer, size_t size);
 using HipFreeFn = hipError_t (*)(hipDeviceptr_t pointer);
 using HipHostAllocFn = hipError_t (*)(void** pointer, size_t size,
@@ -30,6 +32,9 @@ using HipMallocArrayFn = hipError_t (*)(hipArray_t* array,
 using HipFreeArrayFn = hipError_t (*)(hipArray_t array);
 using HipMemcpyFn = hipError_t (*)(void* destination, const void* source,
                                    size_t size, hipMemcpyKind kind);
+using HipMemcpyAsyncFn = hipError_t (*)(void* destination, const void* source,
+                                        size_t size, hipMemcpyKind kind,
+                                        hipStream_t stream);
 using HipMemcpy3DAsyncFn = hipError_t (*)(const hipMemcpy3DParms* parameters,
                                           hipStream_t stream);
 using HipMemcpy2DFromArrayAsyncSptFn = hipError_t (*)(
@@ -71,6 +76,10 @@ using HipGraphDestroyFn = hipError_t (*)(hipGraph_t graph);
 struct HipRuntimeApi {
   // Initializes the exact runtime under test.
   HipInitFn init = nullptr;
+  // Queries devices available to the exact runtime under test.
+  HipGetDeviceCountFn get_device_count = nullptr;
+  // Selects the current device for the calling thread.
+  HipSetDeviceFn set_device = nullptr;
   // Allocates device memory used by device-to-device copies.
   HipMallocFn malloc = nullptr;
   // Releases device allocations.
@@ -85,6 +94,8 @@ struct HipRuntimeApi {
   HipFreeArrayFn free_array = nullptr;
   // Performs synchronous memory copies used for result verification.
   HipMemcpyFn memcpy = nullptr;
+  // Enqueues ordinary memory copies used to produce stream-ordered input.
+  HipMemcpyAsyncFn memcpy_async = nullptr;
   // Performs generic asynchronous 3D memory copies.
   HipMemcpy3DAsyncFn memcpy_3d_async = nullptr;
   // Copies pitched array contents asynchronously on an SPT stream.
@@ -125,6 +136,8 @@ class HipArrayCopySptApiTest : public testing::Test {
   api_.field = dso_.Resolve<decltype(api_.field)>(symbol); \
   ASSERT_NE(nullptr, api_.field) << dso_.error()
     HRX_RESOLVE_HIP_FIELD(init, "hipInit");
+    HRX_RESOLVE_HIP_FIELD(get_device_count, "hipGetDeviceCount");
+    HRX_RESOLVE_HIP_FIELD(set_device, "hipSetDevice");
     HRX_RESOLVE_HIP_FIELD(malloc, "hipMalloc");
     HRX_RESOLVE_HIP_FIELD(free, "hipFree");
     HRX_RESOLVE_HIP_FIELD(host_alloc, "hipHostAlloc");
@@ -132,6 +145,7 @@ class HipArrayCopySptApiTest : public testing::Test {
     HRX_RESOLVE_HIP_FIELD(malloc_array, "hipMallocArray");
     HRX_RESOLVE_HIP_FIELD(free_array, "hipFreeArray");
     HRX_RESOLVE_HIP_FIELD(memcpy, "hipMemcpy");
+    HRX_RESOLVE_HIP_FIELD(memcpy_async, "hipMemcpyAsync");
     HRX_RESOLVE_HIP_FIELD(memcpy_3d_async, "hipMemcpy3DAsync");
     HRX_RESOLVE_HIP_FIELD(memcpy_2d_from_array_async_spt,
                           "hipMemcpy2DFromArrayAsync_spt");
@@ -494,6 +508,21 @@ void FillAfterRelease(void* user_data) {
   }
 }
 
+struct WaitGate {
+  // Set after the callback begins executing.
+  std::atomic<bool> entered = false;
+  // Set by the test to let the callback return.
+  std::atomic<bool> release = false;
+};
+
+void WaitForRelease(void* user_data) {
+  auto* gate = static_cast<WaitGate*>(user_data);
+  gate->entered.store(true, std::memory_order_release);
+  while (!gate->release.load(std::memory_order_acquire)) {
+    std::this_thread::yield();
+  }
+}
+
 TEST_F(HipArrayCopySptApiTest, StridedCopyWaitsForLegacyProducer) {
   constexpr size_t kWidth = 7;
   constexpr size_t kHeight = 3;
@@ -531,6 +560,111 @@ TEST_F(HipArrayCopySptApiTest, StridedCopyWaitsForLegacyProducer) {
   }
 }
 
+TEST_F(HipArrayCopySptApiTest, CrossDeviceCopiesUseTheSelectedStream) {
+  constexpr size_t kWidth = 32;
+  int device_count = 0;
+  ASSERT_EQ(hipSuccess, api_.get_device_count(&device_count));
+  if (device_count < 2) GTEST_SKIP() << "requires two devices";
+
+  const hipChannelFormatDesc descriptor = {
+      /*.x=*/8,
+      /*.y=*/0,
+      /*.z=*/0,
+      /*.w=*/0,
+      /*.f=*/hipChannelFormatKindUnsigned,
+  };
+  hipArray_t destination_array = nullptr;
+  ASSERT_EQ(hipSuccess, api_.set_device(/*device_id=*/0));
+  ASSERT_EQ(hipSuccess,
+            api_.malloc_array(&destination_array, &descriptor, kWidth, 1,
+                              /*flags=*/0));
+
+  hipDeviceptr_t source_device = nullptr;
+  void* source_host = nullptr;
+  ASSERT_EQ(hipSuccess, api_.set_device(/*device_id=*/1));
+  ASSERT_EQ(hipSuccess, api_.malloc(&source_device, kWidth));
+  ASSERT_EQ(hipSuccess,
+            api_.host_alloc(&source_host, kWidth, hipHostMallocDefault));
+  auto* source = static_cast<uint8_t*>(source_host);
+  for (size_t i = 0; i < kWidth; ++i) {
+    source[i] = static_cast<uint8_t>(i + 1);
+  }
+
+  hipStream_t explicit_stream = nullptr;
+  ASSERT_EQ(hipSuccess, api_.stream_create(&explicit_stream));
+  const std::array<hipStream_t, 4> stream_arguments = {
+      nullptr, hipStreamLegacy, hipStreamPerThread, explicit_stream};
+  for (hipStream_t stream_argument : stream_arguments) {
+    const std::array<uint8_t, kWidth> zero = {};
+    ASSERT_EQ(hipSuccess, api_.set_device(/*device_id=*/1));
+    ASSERT_EQ(hipSuccess, api_.memcpy(source_device, zero.data(), zero.size(),
+                                      hipMemcpyHostToDevice));
+    WaitGate gate;
+    std::atomic<bool> copy_invoked = false;
+    std::atomic<bool> thread_finished = false;
+    hipError_t set_device_result = hipErrorUnknown;
+    hipError_t launch_result = hipErrorUnknown;
+    hipError_t producer_result = hipErrorUnknown;
+    hipError_t copy_result = hipErrorUnknown;
+    hipError_t synchronize_result = hipErrorUnknown;
+    std::thread copy_thread([&] {
+      set_device_result = api_.set_device(/*device_id=*/1);
+      const hipStream_t selected_stream = stream_argument == explicit_stream
+                                              ? explicit_stream
+                                              : hipStreamPerThread;
+      if (set_device_result == hipSuccess) {
+        launch_result =
+            api_.launch_host_function(selected_stream, WaitForRelease, &gate);
+      }
+      if (launch_result == hipSuccess) {
+        producer_result =
+            api_.memcpy_async(source_device, source, kWidth,
+                              hipMemcpyHostToDevice, selected_stream);
+        if (producer_result == hipSuccess) {
+          copy_invoked.store(true, std::memory_order_release);
+          copy_result = api_.memcpy_2d_to_array_async_spt(
+              destination_array, 0, 0, source_device, kWidth, kWidth, 1,
+              hipMemcpyDeviceToDevice, stream_argument);
+          synchronize_result = api_.stream_synchronize(selected_stream);
+        }
+      }
+      thread_finished.store(true, std::memory_order_release);
+    });
+
+    while (!gate.entered.load(std::memory_order_acquire) &&
+           !thread_finished.load(std::memory_order_acquire)) {
+      std::this_thread::yield();
+    }
+    while (!copy_invoked.load(std::memory_order_acquire) &&
+           !thread_finished.load(std::memory_order_acquire)) {
+      std::this_thread::yield();
+    }
+    EXPECT_TRUE(gate.entered.load(std::memory_order_acquire));
+    EXPECT_TRUE(copy_invoked.load(std::memory_order_acquire));
+    gate.release.store(true, std::memory_order_release);
+    copy_thread.join();
+
+    ASSERT_EQ(hipSuccess, set_device_result);
+    ASSERT_EQ(hipSuccess, launch_result);
+    ASSERT_EQ(hipSuccess, producer_result);
+    ASSERT_EQ(hipSuccess, copy_result);
+    ASSERT_EQ(hipSuccess, synchronize_result);
+    std::array<uint8_t, kWidth> destination = {};
+    ASSERT_EQ(hipSuccess, api_.set_device(/*device_id=*/0));
+    ASSERT_EQ(hipSuccess, api_.memcpy_2d_from_array_spt(
+                              destination.data(), kWidth, destination_array, 0,
+                              0, kWidth, 1, hipMemcpyDeviceToHost));
+    EXPECT_EQ(0, std::memcmp(source, destination.data(), kWidth));
+  }
+
+  ASSERT_EQ(hipSuccess, api_.set_device(/*device_id=*/1));
+  EXPECT_EQ(hipSuccess, api_.stream_destroy(explicit_stream));
+  EXPECT_EQ(hipSuccess, api_.free(source_device));
+  EXPECT_EQ(hipSuccess, api_.free_host(source_host));
+  ASSERT_EQ(hipSuccess, api_.set_device(/*device_id=*/0));
+  EXPECT_EQ(hipSuccess, api_.free_array(destination_array));
+}
+
 TEST_F(HipArrayCopySptApiTest, ContiguousCopyWaitsForLegacyProducer) {
   constexpr size_t kWidth = 9;
   constexpr size_t kHeight = 4;
@@ -561,21 +695,6 @@ TEST_F(HipArrayCopySptApiTest, ContiguousCopyWaitsForLegacyProducer) {
                             destination, kWidth, array_, 0, 0, kWidth, kHeight,
                             hipMemcpyDeviceToHost));
   EXPECT_EQ(0, std::memcmp(source, destination, kWidth * kHeight));
-}
-
-struct WaitGate {
-  // Set after the callback begins executing.
-  std::atomic<bool> entered = false;
-  // Set by the test to let the callback return.
-  std::atomic<bool> release = false;
-};
-
-void WaitForRelease(void* user_data) {
-  auto* gate = static_cast<WaitGate*>(user_data);
-  gate->entered.store(true, std::memory_order_release);
-  while (!gate->release.load(std::memory_order_acquire)) {
-    std::this_thread::yield();
-  }
 }
 
 TEST_F(HipArrayCopySptApiTest, PageableCopiesWaitOnlyForTheirSelectedStream) {
