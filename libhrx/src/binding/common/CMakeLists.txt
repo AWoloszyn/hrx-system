@@ -11,6 +11,23 @@ iree_add_all_subdirs()
 
 iree_cc_library(
   NAME
+    allocation_preparation
+  HDRS
+    "allocation_preparation.h"
+  SRCS
+    "allocation_preparation.c"
+  DEPS
+    iree::base
+    iree::base::threading
+    libhrx_defs
+  INCLUDES
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>"
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/..>"
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
     execution_resource
   HDRS
     "execution_resource.h"
@@ -92,6 +109,7 @@ iree_cc_library(
     "stream_value.c"
     "tls.c"
   DEPS
+    ::allocation_preparation
     ::execution_resource
     ::function_attributes
     iree::async
@@ -114,6 +132,18 @@ iree_cc_library(
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../libhrx>"
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/../../libhrx>"
   PUBLIC
+)
+
+iree_cc_test(
+  NAME
+    allocation_preparation_test
+  SRCS
+    "allocation_preparation_test.cc"
+  DEPS
+    ::allocation_preparation
+    iree::testing::gtest
+    iree::testing::gtest_main
+    libhrx_defs
 )
 
 iree_cc_test(
