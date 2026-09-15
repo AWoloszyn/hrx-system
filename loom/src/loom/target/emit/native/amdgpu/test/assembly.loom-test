@@ -4172,20 +4172,19 @@ low.func.def target<amdgpu.rdna4.core>(@gfx12_target) @gfx12_vopd_commutes_binar
 
 // ====
 
-// RUN: emit amdgpu-assembly @gfx11_wait_before_storage_reserve strategy=source
+// RUN: emit amdgpu-assembly @gfx11_static_storage_precedes_load strategy=source
 amdgpu.target<gfx1100> @gfx11_target
 
-low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @gfx11_wait_before_storage_reserve(%kernarg: reg<amdgpu.sgpr x2>) asm {
+low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @gfx11_static_storage_precedes_load(%kernarg: reg<amdgpu.sgpr x2>) asm {
   %loaded = s_load_dwordx8_offset_only %kernarg
   %storage = storage {byte_alignment = 16, byte_length = 64} : low.storage<workgroup>
   return
 }
 
-// The storage reservation emits no instruction, but wait planning may use it
-// as an ordering anchor. Assembly must visit the anchor just like encoding.
+// Static storage moves to the entry prefix before scheduling. Its declaration
+// has no runtime action requiring the otherwise unused load to complete.
 // ----
   s_load_dwordx8 s[8:15], s[0:1] offset:0
-  s_waitcnt vmcnt(63) lgkmcnt(0)
   s_endpgm
 
 // ====

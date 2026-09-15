@@ -246,6 +246,7 @@ loom_cc_library(
     loom::ir
     loom::ops::low
     loom::ops::type_registry
+    loom::rewrite::rewriter
   PUBLIC
 )
 
@@ -806,6 +807,7 @@ loom_cc_library(
     ::packet
     ::planning_statistics
     ::rematerialization
+    ::storage_layout
     ::storage_lease
     iree::base
     iree::base::internal::arena

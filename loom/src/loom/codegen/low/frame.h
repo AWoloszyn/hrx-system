@@ -159,6 +159,8 @@ iree_status_t loom_low_emission_frame_build(
 
 // Builds an emission frame and greedily materializes target-lowerable spill
 // traffic until the final frame contains no spill assignments or spill plans.
+// Static storage reservations first move to the entry prefix in declaration
+// order. Repair appends new reservations so target-lowered offsets stay stable.
 // Each iteration materializes the accepted allocation snapshot as a batch.
 // Individual plan traffic is recomputed from the current IR while consuming
 // that batch because earlier spill rewrites can make later allocation-time
