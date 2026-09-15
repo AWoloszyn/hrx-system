@@ -11696,9 +11696,14 @@ static hipError_t iree_hip_enqueue_stream_value_write(
   };
   const hrx_buffer_t owner = target.buffer_ref.owner;
 
-  iree_slim_mutex_lock(&resolved_stream.context->capture_transition_mutex);
-  result = iree_hip_order_legacy_stream_dependencies(resolved_stream.context,
-                                                     resolved_stream.stream);
+  status = iree_hal_streaming_capture_admission_enter(
+      &resolved_stream.context->capture_admission);
+  const bool admitted = iree_status_is_ok(status);
+  if (!admitted) result = iree_status_to_hip_result(status);
+  if (result == hipSuccess) {
+    result = iree_hip_order_legacy_stream_dependencies(resolved_stream.context,
+                                                       resolved_stream.stream);
+  }
   if (result == hipSuccess) {
     bool captured = false;
     result = iree_hip_stream_value_try_capture_batch(
@@ -11709,7 +11714,10 @@ static hipError_t iree_hip_enqueue_stream_value_write(
       result = iree_hip_stream_value_status_to_result(status);
     }
   }
-  iree_slim_mutex_unlock(&resolved_stream.context->capture_transition_mutex);
+  if (admitted) {
+    iree_hal_streaming_capture_admission_leave(
+        &resolved_stream.context->capture_admission);
+  }
 
   iree_hip_stream_value_target_deinitialize(&target);
   iree_hip_resolved_stream_release(&resolved_stream);
@@ -11747,8 +11755,13 @@ static hipError_t iree_hip_enqueue_stream_value_wait(
   }
   wait_params.flags |= iree_hip_stream_value_target_scope(&target);
 
-  iree_slim_mutex_lock(&resolved_stream.context->capture_transition_mutex);
-  result = iree_hip_stream_value_reject_capture(resolved_stream.stream);
+  status = iree_hal_streaming_capture_admission_enter(
+      &resolved_stream.context->capture_admission);
+  const bool admitted = iree_status_is_ok(status);
+  if (!admitted) result = iree_status_to_hip_result(status);
+  if (result == hipSuccess) {
+    result = iree_hip_stream_value_reject_capture(resolved_stream.stream);
+  }
   if (result == hipSuccess) {
     result = iree_hip_order_legacy_stream_dependencies(resolved_stream.context,
                                                        resolved_stream.stream);
@@ -11761,7 +11774,10 @@ static hipError_t iree_hip_enqueue_stream_value_wait(
                                                        1, &operation);
     result = iree_hip_stream_value_status_to_result(status);
   }
-  iree_slim_mutex_unlock(&resolved_stream.context->capture_transition_mutex);
+  if (admitted) {
+    iree_hal_streaming_capture_admission_leave(
+        &resolved_stream.context->capture_admission);
+  }
 
   iree_hip_stream_value_target_deinitialize(&target);
   iree_hip_resolved_stream_release(&resolved_stream);
@@ -12046,7 +12062,15 @@ HIPAPI hipError_t hipStreamBatchMemOp(hipStream_t stream, unsigned int count,
       resolved_stream.context, count, param_array, &batch);
 
   iree_status_t status = iree_ok_status();
-  iree_slim_mutex_lock(&resolved_stream.context->capture_transition_mutex);
+  bool admitted = false;
+  if (result == hipSuccess) {
+    status = iree_hal_streaming_capture_admission_enter(
+        &resolved_stream.context->capture_admission);
+    admitted = iree_status_is_ok(status);
+  }
+  if (result == hipSuccess && !admitted) {
+    result = iree_status_to_hip_result(status);
+  }
   if (result == hipSuccess) {
     result = iree_hip_order_legacy_stream_dependencies(resolved_stream.context,
                                                        resolved_stream.stream);
@@ -12072,7 +12096,10 @@ HIPAPI hipError_t hipStreamBatchMemOp(hipStream_t stream, unsigned int count,
       result = iree_hip_stream_value_status_to_result(status);
     }
   }
-  iree_slim_mutex_unlock(&resolved_stream.context->capture_transition_mutex);
+  if (admitted) {
+    iree_hal_streaming_capture_admission_leave(
+        &resolved_stream.context->capture_admission);
+  }
 
   iree_hip_stream_value_prepared_batch_deinitialize(&batch);
   iree_hip_resolved_stream_release(&resolved_stream);

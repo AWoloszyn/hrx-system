@@ -8,6 +8,7 @@
 #define IREE_EXPERIMENTAL_STREAMING_INTERNAL_H_
 
 #include "common/allocation_preparation.h"
+#include "common/capture_admission.h"
 #include "common/event_timestamp_pool.h"
 #include "common/execution_resource.h"
 #include "common/fat_binary.h"
@@ -298,9 +299,9 @@ struct iree_hal_streaming_context_t {
 
   // Number of streams in this context with capture state other than NONE.
   iree_atomic_int32_t capture_stream_count;
-  // Serializes capture-state transitions with API operations whose stream
+  // Coordinates capture-state transitions with operations whose stream
   // ordering and capture disposition must be decided as one transaction.
-  iree_slim_mutex_t capture_transition_mutex;
+  iree_hal_streaming_capture_admission_t capture_admission;
 
   // Idle exact queues available for an atomic wait submission.
   iree_hal_streaming_value_wait_lane_t* idle_value_wait_lanes;
