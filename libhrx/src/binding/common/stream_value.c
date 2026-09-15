@@ -194,9 +194,10 @@ static void iree_hal_streaming_destroy_value_wait_lanes(
   }
 }
 
-// Acquires a queue that remains exclusive until the submission using it has
-// completed. Acquisition is a cold path and preserves the stream's scheduling
-// domain; completed queues are recycled across logical stream lifetimes.
+// Acquires a queue that remains exclusive to |stream_id| until all accepted
+// waits on it have completed. Acquisition is a cold path and preserves the
+// stream's scheduling domain; completed queues are recycled across logical
+// stream lifetimes.
 static iree_status_t iree_hal_streaming_acquire_value_wait_lane(
     iree_hal_streaming_context_t* context,
     const iree_hal_queue_family_t* family, iree_hal_queue_priority_t priority,
