@@ -26,6 +26,7 @@ amdf_cc_library(
     deps = [
         "//libamdf/src/gpu/umd/kfd:topology",
         "//libamdf/src/gpu/umd/kfd/target:queue_plan",
+        "//third_party:linux_kfd_uapi",
     ],
 )
 
@@ -38,5 +39,6 @@ amdf_cc_library(
     deps = [
         "//libamdf/src/gpu/umd/kfd:topology",
         "//libamdf/src/gpu/umd/kfd/target:queue_plan",
+        "//third_party:linux_kfd_uapi",
     ],
 )

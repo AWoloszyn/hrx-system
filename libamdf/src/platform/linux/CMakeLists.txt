@@ -107,6 +107,7 @@ iree_cc_library(
   SRCS
     "endpoint.c"
   DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_drm_uapi>
     ::file
     ::instance
     amdf::headers
@@ -152,6 +153,7 @@ iree_cc_test(
   SRCS
     "endpoint_test.cc"
   DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_drm_uapi>
     ::endpoint
     ::file
     amdf::headers

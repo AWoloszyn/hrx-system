@@ -16,6 +16,7 @@ iree_cc_library(
   HDRS
     "file.h"
   DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_kfd_uapi>
     amdf::headers
     libamdf::src::platform::linux::file
   PUBLIC
@@ -31,6 +32,8 @@ iree_cc_library(
   SRCS
     "topology.c"
   DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_amdgpu_uapi>
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_kfd_uapi>
     amdf::headers
     libamdf::src::allocator
     libamdf::src::gpu::endpoint_profile
@@ -72,6 +75,7 @@ iree_cc_library(
   SRCS
     "reset_monitor.c"
   DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_amdgpu_uapi>
     amdf::headers
     libamdf::src::atomics
     libamdf::src::platform::linux::file
@@ -105,6 +109,9 @@ iree_cc_library(
   SRCS
     "vm.c"
   DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_amdgpu_uapi>
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_drm_uapi>
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_kfd_uapi>
     ::topology
     amdf::headers
     libamdf::src::platform::linux::file
@@ -119,6 +126,9 @@ iree_cc_test(
   SRCS
     "vm_test.cc"
   DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_amdgpu_uapi>
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_drm_uapi>
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_kfd_uapi>
     ::vm
     amdf::headers
     iree::third_party::google_test
@@ -178,6 +188,8 @@ iree_cc_test(
     "-Wl,--wrap=amdf_gpu_kfd_vm_acquire"
     "-Wl,--wrap=amdf_gpu_kfd_vm_bootstrap_release"
   DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_amdgpu_uapi>
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_kfd_uapi>
     ::instance
     ::vm
     amdf::headers
@@ -201,6 +213,8 @@ iree_cc_library(
   SRCS
     "user_queue_native.c"
   DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_amdgpu_uapi>
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_kfd_uapi>
     ::buffer
     ::device_state
     ::reset_monitor
@@ -258,6 +272,7 @@ iree_cc_library(
   SRCS
     "buffer.c"
   DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_kfd_uapi>
     ::device_state
     amdf::headers
     libamdf::src::allocator
@@ -275,6 +290,7 @@ iree_cc_test(
   LINKOPTS
     "-Wl,--wrap=ioctl"
   DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_kfd_uapi>
     ::buffer
     ::device_state
     ::memory
@@ -312,6 +328,7 @@ iree_cc_library(
   SRCS
     "memory.c"
   DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_kfd_uapi>
     ::buffer
     ::device_state
     ::memory_profile
@@ -387,6 +404,7 @@ iree_cc_library(
   SRCS
     "user_queue.c"
   DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_kfd_uapi>
     ::buffer
     ::device_state
     ::user_queue_native
@@ -408,6 +426,7 @@ iree_cc_test(
   SRCS
     "user_queue_test.cc"
   DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_kfd_uapi>
     ::device_state
     ::user_queue
     ::user_queue_native

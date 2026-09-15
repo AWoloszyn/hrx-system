@@ -23,7 +23,11 @@ amdf_cc_library(
     srcs = ["buffer.c"],
     hdrs = ["buffer.h"],
     target_compatible_with = DRM_COMPATIBILITY,
-    deps = ["//libamdf/src/platform/linux:file"],
+    deps = [
+        "//libamdf/src/platform/linux:file",
+        "//third_party:linux_drm_uapi",
+        "//third_party:linux_xdna_uapi",
+    ],
 )
 
 amdf_cc_test(
@@ -34,6 +38,7 @@ amdf_cc_test(
         ":buffer",
         "//third_party:google_test",
         "//third_party:google_test_main",
+        "//third_party:linux_xdna_uapi",
     ],
 )
 
@@ -55,6 +60,7 @@ amdf_cc_library(
         ":device_state",
         "//libamdf/src:atomics",
         "//libamdf/src/xdna/umd:context",
+        "//third_party:linux_xdna_uapi",
     ],
 )
 
@@ -70,6 +76,7 @@ amdf_cc_library(
         "//libamdf/src/platform/linux:file",
         "//libamdf/src/platform/linux:host_cache",
         "//libamdf/src/xdna/umd:device",
+        "//third_party:linux_xdna_uapi",
     ],
 )
 
@@ -83,6 +90,7 @@ amdf_cc_library(
         "//libamdf/src:allocator",
         "//libamdf/src/platform/linux:file",
         "//libamdf/src/xdna/umd:context",
+        "//third_party:linux_xdna_uapi",
     ],
 )
 
@@ -114,6 +122,7 @@ amdf_cc_library(
         "//libamdf/src/platform/linux:file",
         "//libamdf/src/platform/linux:host_cache",
         "//libamdf/src/xdna/umd:memory",
+        "//third_party:linux_xdna_uapi",
     ],
 )
 
@@ -129,6 +138,8 @@ amdf_cc_test(
         "//libamdf/src/xdna/umd:memory",
         "//third_party:google_test",
         "//third_party:google_test_main",
+        "//third_party:linux_drm_uapi",
+        "//third_party:linux_xdna_uapi",
     ],
 )
 
@@ -148,6 +159,7 @@ amdf_cc_library(
         "//libamdf/src/platform/linux:file",
         "//libamdf/src/platform/linux:host_cache",
         "//libamdf/src/xdna/umd:kernel_queue",
+        "//third_party:linux_xdna_uapi",
     ],
 )
 
@@ -178,6 +190,7 @@ amdf_cc_test(
         "//libamdf/src/xdna/umd:kernel_queue",
         "//third_party:google_test",
         "//third_party:google_test_main",
+        "//third_party:linux_xdna_uapi",
     ],
 )
 
@@ -205,6 +218,7 @@ amdf_cc_test(
         "//libamdf/src/xdna/umd:memory",
         "//third_party:google_test",
         "//third_party:google_test_main",
+        "//third_party:linux_xdna_uapi",
     ],
 )
 

@@ -148,6 +148,11 @@ with the `AMDF_FAMILY_*` CMake options or the
 select individual members through `//libamdf/config/family:rdna`, `:cdna`, and
 `:xdna` without interpreting the setting themselves.
 
+Linux builds use pinned userspace driver protocol headers instead of depending
+on the host's installed DRM/KFD/XDNA header versions. These are private build
+inputs: libamdf does not link libdrm, and installed clients need only the public
+amdf headers. Runtime driver capabilities are still queried independently.
+
 For a host-only build and test of libamdf without the legacy AMDGPU HAL:
 
 ```bash

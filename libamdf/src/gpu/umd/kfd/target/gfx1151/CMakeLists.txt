@@ -18,6 +18,7 @@ iree_cc_library(
   SRCS
     "pm4_queue.c"
   DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_kfd_uapi>
     amdf::headers
     libamdf::src::gpu::umd::kfd::target::queue_plan
     libamdf::src::gpu::umd::kfd::topology
@@ -34,6 +35,7 @@ iree_cc_library(
   SRCS
     "sdma_queue.c"
   DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_kfd_uapi>
     amdf::headers
     libamdf::src::gpu::umd::kfd::target::queue_plan
     libamdf::src::gpu::umd::kfd::topology

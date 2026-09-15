@@ -18,6 +18,8 @@ iree_cc_library(
   SRCS
     "buffer.c"
   DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_drm_uapi>
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_xdna_uapi>
     amdf::headers
     libamdf::src::platform::linux::file
   PUBLIC
@@ -31,6 +33,7 @@ iree_cc_test(
   SRCS
     "buffer_test.cc"
   DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_xdna_uapi>
     ::buffer
     amdf::headers
     iree::third_party::google_test
@@ -62,6 +65,7 @@ iree_cc_library(
   HDRS
     "context.h"
   DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_xdna_uapi>
     ::device_state
     amdf::headers
     libamdf::src::atomics
@@ -77,6 +81,7 @@ iree_cc_library(
   SRCS
     "device.c"
   DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_xdna_uapi>
     ::buffer
     ::device_state
     amdf::headers
@@ -96,6 +101,7 @@ iree_cc_library(
   SRCS
     "context.c"
   DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_xdna_uapi>
     ::context_state
     ::device_state
     amdf::headers
@@ -133,6 +139,7 @@ iree_cc_library(
   SRCS
     "memory.c"
   DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_xdna_uapi>
     ::buffer
     ::context_state
     ::device_state
@@ -156,6 +163,8 @@ iree_cc_test(
   LINKOPTS
     "-Wl,--wrap=ioctl"
   DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_drm_uapi>
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_xdna_uapi>
     ::device_state
     ::memory
     amdf::headers
@@ -176,6 +185,7 @@ iree_cc_library(
   SRCS
     "kernel_queue.c"
   DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_xdna_uapi>
     ::buffer
     ::context_state
     ::device_state
@@ -215,6 +225,7 @@ iree_cc_test(
   LINKOPTS
     "-Wl,--wrap=ioctl"
   DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_xdna_uapi>
     ::context_state
     ::elf_packet
     ::kernel_queue
@@ -238,6 +249,7 @@ iree_cc_test(
   SRCS
     "device_test.cc"
   DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_xdna_uapi>
     ::context
     ::context_state
     ::device
