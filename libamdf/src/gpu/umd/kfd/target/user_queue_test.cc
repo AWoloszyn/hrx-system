@@ -10,7 +10,7 @@
 
 namespace {
 
-static amdf_gpu_kfd_topology_t MakeQualifiedTopology() {
+static amdf_gpu_kfd_topology_t MakeTopology() {
   amdf_gpu_kfd_topology_t topology = {};
   topology.properties.gfx_ip = {11, 5, 1};
   topology.properties.compute.wavefront_size = 32;
@@ -28,7 +28,7 @@ static amdf_gpu_kfd_topology_t MakeQualifiedTopology() {
 }
 
 TEST(KfdTargetUserQueueTest, KeepsSupportedPlansDense) {
-  amdf_gpu_kfd_topology_t topology = MakeQualifiedTopology();
+  amdf_gpu_kfd_topology_t topology = MakeTopology();
   amdf_gpu_kfd_user_queue_plans_t plans;
   amdf_gpu_kfd_target_user_queue_plans_initialize(&topology, 4096, 64, &plans);
   ASSERT_EQ(plans.count, 2u);
@@ -43,16 +43,52 @@ TEST(KfdTargetUserQueueTest, KeepsSupportedPlansDense) {
   EXPECT_EQ(plans.values[0].family.command_type,
             AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA);
 
-  topology = MakeQualifiedTopology();
+  topology = MakeTopology();
   topology.sdma.engine_count = 0;
   amdf_gpu_kfd_target_user_queue_plans_initialize(&topology, 4096, 64, &plans);
   ASSERT_EQ(plans.count, 1u);
   EXPECT_EQ(plans.values[0].family.command_type,
             AMDF_QUEUE_COMMAND_TYPE_GPU_PM4);
 
-  topology.properties.gfx_ip.stepping = 0;
+  topology.properties.gfx_ip.major = 0;
   amdf_gpu_kfd_target_user_queue_plans_initialize(&topology, 4096, 64, &plans);
   EXPECT_EQ(plans.count, 0u);
+}
+
+TEST(KfdTargetUserQueueTest, ComputeAndDmaUseIndependentEngineRequirements) {
+  amdf_gpu_kfd_topology_t topology = MakeTopology();
+  // A compute layout this implementation cannot initialize must not suppress
+  // a supported SDMA engine, which has no compute CWSR storage.
+  topology.properties.gfx_ip = {};
+  topology.properties.topology.xcc_count = 8;
+  topology.context_save_restore_byte_length = 0;
+  topology.control_stack_byte_length = 0;
+  amdf_gpu_kfd_user_queue_plans_t plans;
+  amdf_gpu_kfd_target_user_queue_plans_initialize(&topology, 4096, 64, &plans);
+  ASSERT_EQ(plans.count, 1u);
+  EXPECT_EQ(plans.values[0].family.command_type,
+            AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA);
+  EXPECT_EQ(plans.values[0].compute.context_storage.byte_length, 0u);
+
+  // Conversely, lack of a native SDMA IP query does not invalidate compute.
+  topology = MakeTopology();
+  topology.sdma.ip.exact = false;
+  amdf_gpu_kfd_target_user_queue_plans_initialize(&topology, 4096, 64, &plans);
+  ASSERT_EQ(plans.count, 1u);
+  EXPECT_EQ(plans.values[0].family.command_type,
+            AMDF_QUEUE_COMMAND_TYPE_GPU_PM4);
+}
+
+TEST(KfdTargetUserQueueTest,
+     RejectsUnrepresentableWaveStorageWithoutLosingDma) {
+  amdf_gpu_kfd_topology_t topology = MakeTopology();
+  topology.properties.compute.compute_unit_count = UINT32_MAX;
+  topology.properties.compute.maximum_wave_count_per_compute_unit = UINT32_MAX;
+  amdf_gpu_kfd_user_queue_plans_t plans;
+  amdf_gpu_kfd_target_user_queue_plans_initialize(&topology, 4096, 64, &plans);
+  ASSERT_EQ(plans.count, 1u);
+  EXPECT_EQ(plans.values[0].family.command_type,
+            AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA);
 }
 
 }  // namespace

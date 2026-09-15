@@ -48,6 +48,21 @@ amdf_cc_library(
     ],
 )
 
+[amdf_cc_library(
+    name = name,
+    srcs = [name + ".c"],
+    hdrs = [name + ".h"],
+    target_compatible_with = KFD_COMPATIBILITY,
+    deps = [
+        ":queue_plan",
+        "//libamdf/src/gpu/umd/kfd:topology",
+        "//third_party:linux_kfd_uapi",
+    ],
+) for name in [
+    "pm4_queue",
+    "sdma_queue",
+]]
+
 amdf_cc_library(
     name = "user_queue",
     srcs = ["user_queue.c"],
@@ -55,10 +70,10 @@ amdf_cc_library(
     target_compatible_with = KFD_COMPATIBILITY,
     visibility = ["//libamdf/src/gpu/umd/kfd:__pkg__"],
     deps = [
+        ":pm4_queue",
         ":queue_plan",
+        ":sdma_queue",
         "//libamdf/src/gpu/umd/kfd:topology",
-        "//libamdf/src/gpu/umd/kfd/target/gfx1151:pm4_queue",
-        "//libamdf/src/gpu/umd/kfd/target/gfx1151:sdma_queue",
     ],
 )
 

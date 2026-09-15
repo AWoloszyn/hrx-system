@@ -58,16 +58,50 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
 iree_cc_library(
   NAME
+    pm4_queue
+  HDRS
+    "pm4_queue.h"
+  SRCS
+    "pm4_queue.c"
+  DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_kfd_uapi>
+    ::queue_plan
+    amdf::headers
+    libamdf::src::gpu::umd::kfd::topology
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_library(
+  NAME
+    sdma_queue
+  HDRS
+    "sdma_queue.h"
+  SRCS
+    "sdma_queue.c"
+  DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_kfd_uapi>
+    ::queue_plan
+    amdf::headers
+    libamdf::src::gpu::umd::kfd::topology
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_library(
+  NAME
     user_queue
   HDRS
     "user_queue.h"
   SRCS
     "user_queue.c"
   DEPS
+    ::pm4_queue
     ::queue_plan
+    ::sdma_queue
     amdf::headers
-    libamdf::src::gpu::umd::kfd::target::gfx1151::pm4_queue
-    libamdf::src::gpu::umd::kfd::target::gfx1151::sdma_queue
     libamdf::src::gpu::umd::kfd::topology
   PUBLIC
 )

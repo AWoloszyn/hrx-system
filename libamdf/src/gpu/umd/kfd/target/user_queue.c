@@ -6,8 +6,8 @@
 
 #include "libamdf/src/gpu/umd/kfd/target/user_queue.h"
 
-#include "libamdf/src/gpu/umd/kfd/target/gfx1151/pm4_queue.h"
-#include "libamdf/src/gpu/umd/kfd/target/gfx1151/sdma_queue.h"
+#include "libamdf/src/gpu/umd/kfd/target/pm4_queue.h"
+#include "libamdf/src/gpu/umd/kfd/target/sdma_queue.h"
 
 _Static_assert(AMDF_GPU_QUEUE_FAMILY_CAPACITY >= 2,
                "target queue plan capacity must fit PM4 and SDMA");
@@ -17,12 +17,19 @@ void amdf_gpu_kfd_target_user_queue_plans_initialize(
     uint32_t cache_line_size, amdf_gpu_kfd_user_queue_plans_t* out_plans) {
   amdf_gpu_kfd_user_queue_plans_t plans = {0};
   amdf_gpu_kfd_user_queue_plan_t plan = {0};
-  if (amdf_gpu_kfd_gfx1151_pm4_queue_plan(topology, page_size, cache_line_size,
-                                          &plan)) {
+  // KFD uses the shared GFX11 compute MQD and CWSR layout across ASICs. Its
+  // storage sizes come from topology, not the product's GFX minor/stepping.
+  if (topology->properties.gfx_ip.major == 11 &&
+      amdf_gpu_kfd_pm4_queue_plan(topology, page_size, cache_line_size,
+                                  &plan)) {
     plans.values[plans.count++] = plan;
   }
-  if (amdf_gpu_kfd_gfx1151_sdma_queue_plan(topology, page_size, cache_line_size,
-                                           &plan)) {
+  // SDMA is a separate engine: its ring ABI does not depend on compute IP or
+  // the number of compute XCCs. SDMA6.0 and 6.1 share this native queue layout.
+  if (topology->sdma.ip.exact && topology->sdma.ip.major == 6 &&
+      topology->sdma.ip.minor <= 1 &&
+      amdf_gpu_kfd_sdma_queue_plan(topology, page_size, cache_line_size,
+                                   &plan)) {
     plans.values[plans.count++] = plan;
   }
   *out_plans = plans;

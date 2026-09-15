@@ -493,6 +493,26 @@ TEST_F(KfdUserQueueTest, PublishesExactNativeQueueAndHostMapping) {
       0);
 }
 
+TEST_F(KfdUserQueueTest, ComputeStorageUsesReportedTopologyAcrossGfx11) {
+  device_.topology.properties.gfx_ip = {11, 0, 0};
+  device_.topology.properties.compute.compute_unit_count = 3;
+  device_.topology.properties.compute.maximum_wave_count_per_compute_unit = 17;
+  device_.topology.context_save_restore_byte_length = 16384;
+  device_.topology.control_stack_byte_length = 8192;
+  CreateQueue();
+  ASSERT_NE(queue_, nullptr);
+  EXPECT_EQ(native_state_.observed_create.ctx_save_restore_size, 16384u);
+  EXPECT_EQ(native_state_.observed_create.ctl_stack_size, 8192u);
+  const auto* header =
+      reinterpret_cast<const struct kfd_context_save_area_header*>(
+          native_state_.buffers[3].storage.data());
+  EXPECT_EQ(header->debug_offset, 16384u);
+  // Three CUs with 17 waves each need 1632 bytes, rounded to the native
+  // 64-byte debugger alignment. The whole allocation remains page aligned.
+  EXPECT_EQ(header->debug_size, 1664u);
+  EXPECT_EQ(native_state_.buffers[3].byte_length, 20480u);
+}
+
 TEST_F(KfdUserQueueTest, SdmaConstructionPublishesOnlyAfterSuccess) {
   const amdf_gpu_umd_user_queue_create_info_t create_info =
       MakeCreateInfo(AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA);
@@ -587,7 +607,7 @@ TEST_F(KfdUserQueueTest, PublishesExactSdmaQueueAndHostMapping) {
             (std::vector<size_t>{2, 1, 0}));
 }
 
-TEST_F(KfdUserQueueTest, RejectsUnqualifiedQueueWithoutPublishingOutputs) {
+TEST_F(KfdUserQueueTest, RejectsUnsupportedQueueWithoutPublishingOutputs) {
   amdf_gpu_umd_user_queue_create_info_t create_info = MakeCreateInfo();
   auto* const sentinel =
       reinterpret_cast<amdf_gpu_umd_user_queue_t*>(uintptr_t{1});
@@ -596,11 +616,11 @@ TEST_F(KfdUserQueueTest, RejectsUnqualifiedQueueWithoutPublishingOutputs) {
   std::memset(&result, 0xA5, sizeof(result));
   const amdf_gpu_umd_user_queue_result_t original_result = result;
 
-  device_.topology.properties.gfx_ip.stepping = 0;
+  device_.topology.properties.topology.xcc_count = 2;
   EXPECT_EQ(amdf_status_code(amdf_gpu_umd_user_queue_create(
                 &device_, &create_info, &queue, &result)),
             AMDF_STATUS_CODE_UNSUPPORTED);
-  device_.topology.properties.gfx_ip.stepping = 1;
+  device_.topology.properties.topology.xcc_count = 1;
   create_info.priority = AMDF_QUEUE_PRIORITY_HIGH;
   EXPECT_EQ(amdf_status_code(amdf_gpu_umd_user_queue_create(
                 &device_, &create_info, &queue, &result)),
