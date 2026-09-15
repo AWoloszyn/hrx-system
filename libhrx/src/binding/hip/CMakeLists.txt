@@ -287,6 +287,23 @@ iree_cc_library(
 
 iree_cc_library(
   NAME
+    status_conversion
+  HDRS
+    "api.h"
+    "status_conversion.h"
+  SRCS
+    "status_conversion.c"
+  DEPS
+    iree::base
+    libhrx_defs
+  INCLUDES
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>"
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/../..>"
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
     device_properties
   HDRS
     "device_properties.h"
@@ -324,6 +341,7 @@ iree_cc_library(
     ::execution_resource_descriptor
     ::handle_registry
     ::launch_params
+    ::status_conversion
     ::stream
     iree::base
     iree::base::threading
@@ -673,6 +691,18 @@ iree_cc_test(
     "error_state_test.cc"
   DEPS
     ::error_state
+    iree::testing::gtest
+    iree::testing::gtest_main
+    libhrx_defs
+)
+
+iree_cc_test(
+  NAME
+    status_conversion_test
+  SRCS
+    "status_conversion_test.cc"
+  DEPS
+    ::status_conversion
     iree::testing::gtest
     iree::testing::gtest_main
     libhrx_defs
