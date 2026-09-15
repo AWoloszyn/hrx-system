@@ -350,6 +350,33 @@ loom_value_facts_t loom_value_facts_sign_extend(loom_value_facts_t source_facts,
   return result_facts;
 }
 
+loom_value_facts_t loom_value_facts_wrap_integer(loom_value_facts_t facts,
+                                                 int32_t bit_count) {
+  const int64_t domain_lo = bit_count == 1 ? 0
+                            : bit_count == 64
+                                ? INT64_MIN
+                                : -(INT64_C(1) << (bit_count - 1));
+  const int64_t domain_hi = bit_count == 1 ? 1 : INT64_MAX >> (64 - bit_count);
+  if (facts.range_lo >= domain_lo && facts.range_hi <= domain_hi &&
+      !(facts.range_lo == INT64_MIN && facts.range_hi == INT64_MAX)) {
+    return facts;
+  }
+  if (loom_value_facts_is_exact(facts)) {
+    return bit_count == 1
+               ? loom_value_facts_exact_i64((uint64_t)facts.range_lo & 1)
+               : loom_value_facts_make_signed_raw_bits((uint64_t)facts.range_lo,
+                                                       bit_count);
+  }
+  // Subtracting multiples of 2^width preserves only the power-of-two part
+  // of the mathematical divisor, capped at the modulus itself.
+  int64_t divisor = facts.known_divisor & -facts.known_divisor;
+  if (bit_count < 63) divisor = iree_min(divisor, INT64_C(1) << bit_count);
+  loom_value_facts_t result =
+      loom_value_facts_make(domain_lo, domain_hi, divisor);
+  loom_value_facts_propagate_unary_distribution(facts, &result);
+  return result;
+}
+
 loom_value_facts_t loom_value_facts_make_unsigned_bit_count_range(
     int64_t bit_count) {
   if (bit_count <= 0 || bit_count > 63) {
@@ -1477,8 +1504,8 @@ void loom_value_facts_absi(const loom_value_facts_t* input,
     int64_t lo, hi;
     if (!iree_checked_sub_i64(0, in_hi, &lo) ||
         !iree_checked_sub_i64(0, in_lo, &hi)) {
-      // Overflow: abs preserves divisibility, result is non-negative.
-      *out = loom_value_facts_make(0, INT64_MAX, in_divisor);
+      // INT64_MIN remains negative under fixed-width absolute value.
+      *out = loom_value_facts_make(INT64_MIN, INT64_MAX, in_divisor);
       loom_value_facts_propagate_unary_distribution(input_facts, out);
       return;
     }
@@ -1489,8 +1516,8 @@ void loom_value_facts_absi(const loom_value_facts_t* input,
   // Range spans zero: result is [0, max(|lo|, hi)].
   int64_t neg_lo;
   if (!iree_checked_sub_i64(0, in_lo, &neg_lo)) {
-    // Overflow on negating lo: result is non-negative with known divisor.
-    *out = loom_value_facts_make(0, INT64_MAX, in_divisor);
+    // The range includes INT64_MIN, whose absolute value may wrap.
+    *out = loom_value_facts_make(INT64_MIN, INT64_MAX, in_divisor);
     loom_value_facts_propagate_unary_distribution(input_facts, out);
     return;
   }

@@ -1,5 +1,26 @@
 // RUN: pass canonicalize
 
+// Wrapping can cross the sign boundary and destroys odd divisor factors.
+func.def @wrapping_range(%x: i8) -> (i64, i64, i64) {
+  %bounded = scalar.assume %x [range(%x, 30, 60), mul(%x, 6)] : i8
+  %factor = scalar.constant 3 : i8
+  %product = scalar.muli %bounded, %factor : i8
+  %lo = test.fact_range_lo %product : i8 -> i64
+  %hi = test.fact_range_hi %product : i8 -> i64
+  %divisor = test.fact_divisor %product : i8 -> i64
+  func.return %lo, %hi, %divisor : i64, i64, i64
+}
+
+// ----
+func.def @wrapping_range(%x: i8) -> (i64, i64, i64) {
+  %lo = scalar.constant -128 : i64
+  %hi = scalar.constant 127 : i64
+  %divisor = scalar.constant 2 : i64
+  func.return %lo, %hi, %divisor : i64, i64, i64
+}
+
+// ====
+
 // muli by constant 64 sets divisibility to 64.
 func.def @muli_divisibility(%x: index) -> (i64) {
   %c64 = index.constant 64 : index

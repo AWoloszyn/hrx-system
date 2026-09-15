@@ -1,5 +1,26 @@
 // Unflagged integer arithmetic keeps low result bits on overflow. Shift
 // counts stay in [0, width), where every target must agree on the result.
+// The same contract applies while folding constants as during execution.
+func.def public @folded_wrapping_i32(%salt: i32) -> (i32, i1) {
+  %maximum = scalar.constant 2147483647 : i32
+  %delta = scalar.constant 7 : i32
+  %wrapped = scalar.addi %maximum, %delta : i32
+  %result = scalar.addi %salt, %wrapped : i32
+  %c0 = scalar.constant 0 : i32
+  %negative = scalar.cmpi slt, %wrapped, %c0 : i32
+  func.return %result, %negative : i32, i1
+}
+
+check.case @folded_wrapping_i32_signed_result {
+  %salt = check.literal value(39) : i32
+  %value, %negative = func.call @folded_wrapping_i32(%salt) : (i32) -> (i32, i1)
+  %expected = check.literal value(-2147483603) : i32
+  %yes = check.literal value(true) : i1
+  check.expect.equal actual(%value) expected(%expected) : i32
+  check.expect.equal actual(%negative) expected(%yes) : i1
+  check.return
+}
+
 func.def public @wrapping_i32(%a: i32, %b: i32) -> (i32, i32, i32) {
   %sum = scalar.addi %a, %b : i32
   %difference = scalar.subi %a, %b : i32
