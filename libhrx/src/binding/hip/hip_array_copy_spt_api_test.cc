@@ -30,6 +30,8 @@ using HipMallocArrayFn = hipError_t (*)(hipArray_t* array,
 using HipFreeArrayFn = hipError_t (*)(hipArray_t array);
 using HipMemcpyFn = hipError_t (*)(void* destination, const void* source,
                                    size_t size, hipMemcpyKind kind);
+using HipMemcpy3DAsyncFn = hipError_t (*)(const hipMemcpy3DParms* parameters,
+                                          hipStream_t stream);
 using HipMemcpy2DFromArrayAsyncSptFn = hipError_t (*)(
     void* destination, size_t destination_pitch, hipArray_const_t source,
     size_t source_x_offset, size_t source_y_offset, size_t width, size_t height,
@@ -50,6 +52,9 @@ using HipMemcpyFromArraySptFn = hipError_t (*)(
     void* destination, hipArray_const_t source, size_t source_x_offset,
     size_t source_y_offset, size_t count, hipMemcpyKind kind);
 using HipStreamCreateFn = hipError_t (*)(hipStream_t* stream);
+using HipStreamCreateWithPriorityFn = hipError_t (*)(hipStream_t* stream,
+                                                     unsigned int flags,
+                                                     int priority);
 using HipStreamDestroyFn = hipError_t (*)(hipStream_t stream);
 using HipStreamSynchronizeFn = hipError_t (*)(hipStream_t stream);
 using HipLaunchHostFuncFn = hipError_t (*)(hipStream_t stream, hipHostFn_t fn,
@@ -80,6 +85,8 @@ struct HipRuntimeApi {
   HipFreeArrayFn free_array = nullptr;
   // Performs synchronous memory copies used for result verification.
   HipMemcpyFn memcpy = nullptr;
+  // Performs generic asynchronous 3D memory copies.
+  HipMemcpy3DAsyncFn memcpy_3d_async = nullptr;
   // Copies pitched array contents asynchronously on an SPT stream.
   HipMemcpy2DFromArrayAsyncSptFn memcpy_2d_from_array_async_spt = nullptr;
   // Copies pitched array contents synchronously on PTDS.
@@ -92,6 +99,8 @@ struct HipRuntimeApi {
   HipMemcpyFromArraySptFn memcpy_from_array_spt = nullptr;
   // Creates explicit streams used for stale-handle validation.
   HipStreamCreateFn stream_create = nullptr;
+  // Creates explicit streams on a selected hardware-priority queue.
+  HipStreamCreateWithPriorityFn stream_create_with_priority = nullptr;
   // Destroys explicit streams.
   HipStreamDestroyFn stream_destroy = nullptr;
   // Waits for a selected stream timeline.
@@ -123,6 +132,7 @@ class HipArrayCopySptApiTest : public testing::Test {
     HRX_RESOLVE_HIP_FIELD(malloc_array, "hipMallocArray");
     HRX_RESOLVE_HIP_FIELD(free_array, "hipFreeArray");
     HRX_RESOLVE_HIP_FIELD(memcpy, "hipMemcpy");
+    HRX_RESOLVE_HIP_FIELD(memcpy_3d_async, "hipMemcpy3DAsync");
     HRX_RESOLVE_HIP_FIELD(memcpy_2d_from_array_async_spt,
                           "hipMemcpy2DFromArrayAsync_spt");
     HRX_RESOLVE_HIP_FIELD(memcpy_2d_from_array_spt, "hipMemcpy2DFromArray_spt");
@@ -131,6 +141,8 @@ class HipArrayCopySptApiTest : public testing::Test {
     HRX_RESOLVE_HIP_FIELD(memcpy_2d_to_array_spt, "hipMemcpy2DToArray_spt");
     HRX_RESOLVE_HIP_FIELD(memcpy_from_array_spt, "hipMemcpyFromArray_spt");
     HRX_RESOLVE_HIP_FIELD(stream_create, "hipStreamCreate");
+    HRX_RESOLVE_HIP_FIELD(stream_create_with_priority,
+                          "hipStreamCreateWithPriority");
     HRX_RESOLVE_HIP_FIELD(stream_destroy, "hipStreamDestroy");
     HRX_RESOLVE_HIP_FIELD(stream_synchronize, "hipStreamSynchronize");
     HRX_RESOLVE_HIP_FIELD(launch_host_function, "hipLaunchHostFunc");
@@ -564,6 +576,59 @@ void WaitForRelease(void* user_data) {
   while (!gate->release.load(std::memory_order_acquire)) {
     std::this_thread::yield();
   }
+}
+
+TEST_F(HipArrayCopySptApiTest, PageableCopiesWaitOnlyForTheirSelectedStream) {
+  constexpr size_t kWidth = 8;
+  AllocateArray(kWidth, 1);
+  AllocateHost(kWidth);
+  auto* source = static_cast<uint8_t*>(host_pointer_);
+  for (size_t i = 0; i < kWidth; ++i) {
+    source[i] = static_cast<uint8_t>(i + 1);
+  }
+  ASSERT_EQ(hipSuccess, api_.malloc(&device_pointer_, kWidth));
+  ASSERT_EQ(hipSuccess, api_.memcpy(device_pointer_, source, kWidth,
+                                    hipMemcpyHostToDevice));
+  ASSERT_EQ(hipSuccess,
+            api_.memcpy_2d_to_array_spt(array_, 0, 0, source, kWidth, kWidth, 1,
+                                        hipMemcpyHostToDevice));
+
+  // A non-default priority selects a distinct hardware queue. This keeps the
+  // blocked callback from physically obstructing the default queue while
+  // preserving the distinction between a selected-stream wait and a
+  // context-wide wait.
+  ASSERT_EQ(hipSuccess, api_.stream_create_with_priority(
+                            &stream_, hipStreamNonBlocking, /*priority=*/-1));
+  WaitGate gate;
+  ASSERT_EQ(hipSuccess,
+            api_.launch_host_function(stream_, WaitForRelease, &gate));
+  while (!gate.entered.load(std::memory_order_acquire)) {
+    std::this_thread::yield();
+  }
+
+  std::array<uint8_t, kWidth> generic_destination = {};
+  hipMemcpy3DParms parameters = {};
+  parameters.srcPtr.ptr = device_pointer_;
+  parameters.srcPtr.pitch = kWidth;
+  parameters.srcPtr.xsize = kWidth;
+  parameters.srcPtr.ysize = 1;
+  parameters.dstPtr.ptr = generic_destination.data();
+  parameters.dstPtr.pitch = kWidth;
+  parameters.dstPtr.xsize = kWidth;
+  parameters.dstPtr.ysize = 1;
+  parameters.extent = {/*.width=*/kWidth, /*.height=*/1, /*.depth=*/1};
+  parameters.kind = hipMemcpyDeviceToHost;
+  EXPECT_EQ(hipSuccess, api_.memcpy_3d_async(&parameters, nullptr));
+
+  std::array<uint8_t, kWidth> array_destination = {};
+  EXPECT_EQ(hipSuccess, api_.memcpy_2d_from_array_async_spt(
+                            array_destination.data(), kWidth, array_, 0, 0,
+                            kWidth, 1, hipMemcpyDeviceToHost, hipStreamLegacy));
+
+  gate.release.store(true, std::memory_order_release);
+  ASSERT_EQ(hipSuccess, api_.stream_synchronize(stream_));
+  EXPECT_EQ(0, std::memcmp(source, generic_destination.data(), kWidth));
+  EXPECT_EQ(0, std::memcmp(source, array_destination.data(), kWidth));
 }
 
 TEST_F(HipArrayCopySptApiTest, NoOpAndDeviceCopyDoNotDrainPerThreadStream) {
