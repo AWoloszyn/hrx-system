@@ -426,6 +426,28 @@ TEST_F(HipArrayCopySptApiTest, LegacySentinelCapturesOnPerThreadStream) {
   EXPECT_EQ(hipSuccess, api_.graph_destroy(graph));
 }
 
+TEST_F(HipArrayCopySptApiTest,
+       CapturedZeroExtentPrecedesOrdinaryOperandValidation) {
+  ASSERT_EQ(hipSuccess,
+            api_.stream_begin_capture(hipStreamPerThread,
+                                      hipStreamCaptureModeThreadLocal));
+  const hipMemcpyKind invalid_kind = static_cast<hipMemcpyKind>(-1);
+  EXPECT_EQ(hipSuccess,
+            api_.memcpy_2d_to_array_async_spt(nullptr, 0, 0, nullptr, 0, 0, 1,
+                                              invalid_kind, nullptr));
+  EXPECT_EQ(hipSuccess,
+            api_.memcpy_2d_from_array_async_spt(nullptr, 0, nullptr, 0, 0, 1, 0,
+                                                invalid_kind, nullptr));
+
+  hipGraph_t graph = nullptr;
+  ASSERT_EQ(hipSuccess, api_.stream_end_capture(hipStreamPerThread, &graph));
+  ASSERT_NE(nullptr, graph);
+  size_t node_count = 0;
+  ASSERT_EQ(hipSuccess, api_.graph_get_nodes(graph, nullptr, &node_count));
+  EXPECT_EQ(0u, node_count);
+  EXPECT_EQ(hipSuccess, api_.graph_destroy(graph));
+}
+
 TEST_F(HipArrayCopySptApiTest, RelaxedCaptureEndSerializesWithAsyncCopies) {
   constexpr size_t kIterations = 64;
   constexpr size_t kWidth = 8;
@@ -819,6 +841,87 @@ TEST_F(HipArrayCopySptApiTest, SynchronousCopyRejectsCaptureBeforeMutation) {
   EXPECT_EQ(hipErrorStreamCaptureInvalidated,
             api_.stream_end_capture(stream_, &graph));
   EXPECT_EQ(nullptr, graph);
+}
+
+TEST_F(HipArrayCopySptApiTest,
+       SynchronousCopyInvalidatesCapturesOwnedByAnotherThread) {
+  int device_count = 0;
+  ASSERT_EQ(hipSuccess, api_.get_device_count(&device_count));
+  ASSERT_GT(device_count, 0);
+  const int capture_device = device_count > 1 ? 1 : 0;
+  const std::array<hipStreamCaptureMode, 2> capture_modes = {
+      hipStreamCaptureModeThreadLocal, hipStreamCaptureModeRelaxed};
+  for (size_t iteration = 0; iteration < capture_modes.size(); ++iteration) {
+    std::atomic<bool> capture_started = false;
+    std::atomic<bool> release_capture = false;
+    hipError_t set_device_result = hipErrorUnknown;
+    hipError_t stream_create_result = hipErrorUnknown;
+    hipError_t begin_result = hipErrorUnknown;
+    hipError_t end_result = hipErrorUnknown;
+    hipError_t stream_destroy_result = hipErrorUnknown;
+    hipGraph_t graph = nullptr;
+    std::thread capture_thread([&] {
+      hipStream_t capture_stream = nullptr;
+      set_device_result = api_.set_device(capture_device);
+      if (set_device_result == hipSuccess) {
+        stream_create_result = api_.stream_create(&capture_stream);
+      }
+      if (stream_create_result == hipSuccess) {
+        begin_result =
+            api_.stream_begin_capture(capture_stream, capture_modes[iteration]);
+      }
+      capture_started.store(true, std::memory_order_release);
+      while (!release_capture.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+      }
+      if (begin_result == hipSuccess) {
+        end_result = api_.stream_end_capture(capture_stream, &graph);
+      }
+      if (capture_stream) {
+        stream_destroy_result = api_.stream_destroy(capture_stream);
+      }
+    });
+
+    while (!capture_started.load(std::memory_order_acquire)) {
+      std::this_thread::yield();
+    }
+    hipError_t main_set_device_result = hipErrorUnknown;
+    hipError_t copy_result = hipErrorUnknown;
+    hipError_t repeated_copy_result = hipErrorUnknown;
+    if (begin_result == hipSuccess) {
+      main_set_device_result = api_.set_device(/*device_id=*/0);
+      if (main_set_device_result == hipSuccess) {
+        const hipMemcpyKind invalid_kind = static_cast<hipMemcpyKind>(-1);
+        if (iteration == 0) {
+          copy_result = api_.memcpy_2d_to_array_spt(nullptr, 0, 0, nullptr, 0,
+                                                    0, 0, invalid_kind);
+          repeated_copy_result = api_.memcpy_2d_to_array_spt(
+              nullptr, 0, 0, nullptr, 0, 0, 0, invalid_kind);
+        } else {
+          copy_result = api_.memcpy_from_array_spt(nullptr, nullptr, 0, 0, 0,
+                                                   invalid_kind);
+          repeated_copy_result = api_.memcpy_from_array_spt(nullptr, nullptr, 0,
+                                                            0, 0, invalid_kind);
+        }
+      }
+    }
+    release_capture.store(true, std::memory_order_release);
+    capture_thread.join();
+
+    EXPECT_EQ(hipSuccess, set_device_result);
+    EXPECT_EQ(hipSuccess, stream_create_result);
+    EXPECT_EQ(hipSuccess, begin_result);
+    EXPECT_EQ(hipSuccess, main_set_device_result);
+    EXPECT_EQ(hipErrorStreamCaptureImplicit, copy_result);
+    EXPECT_EQ(hipErrorStreamCaptureImplicit, repeated_copy_result);
+    EXPECT_EQ(hipErrorStreamCaptureInvalidated, end_result);
+    EXPECT_EQ(nullptr, graph);
+    EXPECT_EQ(hipSuccess, stream_destroy_result);
+    if (graph) {
+      EXPECT_EQ(hipSuccess, api_.graph_destroy(graph));
+    }
+  }
+  ASSERT_EQ(hipSuccess, api_.set_device(/*device_id=*/0));
 }
 
 TEST_F(HipArrayCopySptApiTest, ConcurrentCopyAndFreeRetainArrayStorage) {

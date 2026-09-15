@@ -2150,6 +2150,30 @@ iree_status_t iree_hal_streaming_capture_try_record_node(
   return status;
 }
 
+iree_status_t iree_hal_streaming_capture_try_record_noop(
+    iree_hal_streaming_stream_t* stream, bool* out_was_capturing) {
+  IREE_ASSERT_ARGUMENT(stream);
+  IREE_ASSERT_ARGUMENT(out_was_capturing);
+  *out_was_capturing = false;
+
+  iree_slim_mutex_lock(&stream->mutex);
+  if (stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_NONE) {
+    iree_slim_mutex_unlock(&stream->mutex);
+    return iree_ok_status();
+  }
+
+  *out_was_capturing = true;
+  if (stream->capture_status != IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE ||
+      !stream->capture_graph) {
+    iree_slim_mutex_unlock(&stream->mutex);
+    return iree_make_status(IREE_STATUS_DATA_LOSS,
+                            "stream capture has been invalidated");
+  }
+
+  iree_slim_mutex_unlock(&stream->mutex);
+  return iree_ok_status();
+}
+
 iree_status_t iree_hal_streaming_begin_capture(
     iree_hal_streaming_stream_t* stream,
     iree_hal_streaming_capture_mode_t mode) {

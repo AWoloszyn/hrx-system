@@ -621,6 +621,19 @@ TEST(GraphTest, CaptureRecordingFailureInvalidatesCapture) {
             state.stream()->capture_status);
 }
 
+TEST(GraphTest, CaptureNoOpPreservesFrontier) {
+  CaptureTransactionTestState state;
+  bool was_capturing = false;
+  IREE_EXPECT_OK(iree_hal_streaming_capture_try_record_noop(state.stream(),
+                                                            &was_capturing));
+  EXPECT_TRUE(was_capturing);
+  EXPECT_EQ(IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE,
+            state.stream()->capture_status);
+  EXPECT_EQ(0u, state.stream()->capture_dependency_count);
+  EXPECT_EQ(0u, state.stream()->capture_dependency_capacity);
+  EXPECT_EQ(1u, state.graph()->node_count);
+}
+
 void InitializeSingleCopySymbol(uint16_t direct_arg_bytes,
                                 uint16_t destination_offset,
                                 iree_hal_streaming_parameter_op_t* operation,

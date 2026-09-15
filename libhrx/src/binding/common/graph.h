@@ -133,6 +133,12 @@ iree_status_t iree_hal_streaming_capture_try_record_node(
     iree_hal_streaming_capture_record_node_fn_t record_fn, void* user_data,
     bool* out_was_capturing);
 
+// Records a successful no-op when |stream| is actively capturing. The capture
+// frontier is unchanged and no graph storage is allocated. Returns
+// |*out_was_capturing| false when the stream is not capturing.
+iree_status_t iree_hal_streaming_capture_try_record_noop(
+    iree_hal_streaming_stream_t* stream, bool* out_was_capturing);
+
 // Type of partition - determines how nodes are executed.
 enum iree_hal_streaming_graph_partition_type_e {
   // Can go in command buffer (count 1 may also be optimizable into a queue op).
