@@ -26,6 +26,7 @@
 #include <unistd.h>
 #endif
 
+#include "binding/hip/array_lifetime.h"
 #include "binding/hip/binding_internal.h"
 #include "binding/hip/blocking_printf_provider.h"
 #include "binding/hip/execution_context.h"
@@ -172,8 +173,8 @@ static hipError_t iree_hip_graph_add_memcpy_node_1d(
 #define IREE_HIP_ARRAY_MAX_3D_HEIGHT IREE_HIP_ARRAY_MAX_DIMENSION
 #define IREE_HIP_ARRAY_MAX_3D_DEPTH IREE_HIP_ARRAY_MAX_DIMENSION
 struct hipArray_st {
-  // References held by the registry and active API callers.
-  iree_atomic_ref_count_t ref_count;
+  // Active-use leases drained by the thread closing the public handle.
+  iree_hip_array_lifetime_t lifetime;
   // Next live array handle in the process registry.
   struct hipArray_st* next_live_array;
   // Magic value used to reject invalid or freed handles.
@@ -234,6 +235,8 @@ static void iree_hip_array_registry_lock(void) {
 static hipError_t iree_hip_array_retain(hipArray_const_t array,
                                         struct hipArray_st** out);
 
+static void iree_hip_array_destroy(struct hipArray_st* array);
+
 static void iree_hip_array_release(struct hipArray_st* array);
 
 static hipError_t iree_hip_array_byte_range_to_elements(
@@ -266,6 +269,7 @@ static bool iree_hip_array_registry_remove(hipArray_t array,
   while (*current) {
     if (*current == array) {
       if (out_array) *out_array = *current;
+      iree_hip_array_lifetime_begin_close(&array->lifetime);
       *current = array->next_live_array;
       array->next_live_array = NULL;
       removed = true;
@@ -286,9 +290,8 @@ static bool iree_hip_array_registry_lookup(hipArray_const_t array,
   for (struct hipArray_st* current = iree_hip_array_registry_head; current;
        current = current->next_live_array) {
     if (current == array && current->magic == IREE_HIP_ARRAY_MAGIC) {
-      iree_atomic_ref_count_inc(&current->ref_count);
-      if (out) *out = current;
-      found = true;
+      found = iree_hip_array_lifetime_try_acquire(&current->lifetime);
+      if (found && out) *out = current;
       break;
     }
   }
@@ -5521,7 +5524,8 @@ HIPAPI hipError_t hipFreeArray(hipArray_t array) {
   if (!iree_hip_array_registry_remove(array, &removed_array)) {
     HIP_RETURN_ERROR(hipErrorContextIsDestroyed);
   }
-  iree_hip_array_release(removed_array);
+  iree_hip_array_lifetime_await_idle(&removed_array->lifetime);
+  iree_hip_array_destroy(removed_array);
   return hipSuccess;
 }
 
@@ -8192,13 +8196,12 @@ static void iree_hip_array_destroy(struct hipArray_st* array) {
         iree_hal_streaming_memory_free_device(context, device_ptr));
   }
   iree_hal_streaming_context_release(context);
+  iree_hip_array_lifetime_deinitialize(&array->lifetime);
   free(array);
 }
 
 static void iree_hip_array_release(struct hipArray_st* array) {
-  if (array && iree_atomic_ref_count_dec(&array->ref_count) == 1) {
-    iree_hip_array_destroy(array);
-  }
+  if (array) iree_hip_array_lifetime_release(&array->lifetime);
 }
 
 static hipError_t iree_hip_array_retain(hipArray_const_t array,
@@ -8709,7 +8712,7 @@ static hipError_t iree_hip_array_create(hipArray_t* array,
   }
 
   new_array->magic = IREE_HIP_ARRAY_MAGIC;
-  iree_atomic_ref_count_init(&new_array->ref_count);
+  iree_hip_array_lifetime_initialize(&new_array->lifetime);
   new_array->desc = *desc;
   new_array->public_extent = public_extent;
   new_array->extent = extent;
