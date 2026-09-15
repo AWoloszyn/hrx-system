@@ -21,7 +21,7 @@ const loom_pass_info_t* loom_cse_pass_info(void);
 // Iterative DFS over the region nesting tree with a scope chain of
 // hash tables. For each eligible op (has results, no regions, no
 // writes/unknown-effects/non-determinism), computes a content-aware
-// hash and looks up the scope chain for a structurally equivalent op.
+// hash and queries visible scope tables for a structurally equivalent op.
 // If found, replaces all uses and erases the duplicate.
 //
 // Key properties:
@@ -39,6 +39,12 @@ const loom_pass_info_t* loom_cse_pass_info(void);
 //     construction consumes its indexed immediate dominators directly.
 //     Stateful lookup stops at joins and backedges; pure candidates remain
 //     visible in dominated blocks.
+//   - Local-table misses use a copy-on-write hash radix to visit only ancestor
+//     tables with live candidates of that hash. Radix paths are bounded by
+//     the 32-bit hash width; structural collisions still use table equality.
+//     Index publication is lazy, so childless blocks keep the local fast path.
+//     Permanently expired insertion identities use path-compressed links;
+//     slot reuse cannot revive stale candidates in shared scope snapshots.
 //   - Deep attribute comparison: pointer-valued attribute kinds
 //     (I64_ARRAY, PREDICATE_LIST, DICT) are compared by content via
 //     loom_attribute_equal, not by pointer identity.

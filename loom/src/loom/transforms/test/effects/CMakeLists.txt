@@ -15,6 +15,7 @@ loom_check_test_suite(
   SRCS
     "canonicalize.loom-test"
     "cse.loom-test"
+    "cse_scopes.loom-test"
     "dce.loom-test"
     "verify.loom-test"
 )

@@ -75,6 +75,7 @@ loom_cc_library(
     "cse.c"
   DEPS
     iree::base
+    iree::base::internal
     loom::analysis::ownership
     loom::codegen::low::function
     loom::codegen::low::pipeline::pass_environment
