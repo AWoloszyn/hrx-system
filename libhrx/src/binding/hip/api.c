@@ -12529,10 +12529,6 @@ static void iree_hip_stream_value_wait_operation_initialize(
 static hipError_t iree_hip_stream_value_status_to_result(iree_status_t status) {
   if (!iree_status_is_ok(status)) {
     const iree_status_code_t status_code = iree_status_code(status);
-    if (status_code == IREE_STATUS_INCOMPATIBLE) {
-      iree_status_free(status);
-      return hipErrorInvalidValue;
-    }
     if (status_code == IREE_STATUS_ABORTED ||
         status_code == IREE_STATUS_DATA_LOSS) {
       iree_status_free(status);
