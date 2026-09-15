@@ -157,7 +157,8 @@ class AmdfBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
     def amdf_cts_test_suite(
         self,
         name,
-        suites,
+        srcs,
+        deps,
         tags=None,
         resource_group=None,
         visibility=None,
@@ -168,7 +169,16 @@ class AmdfBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             dict(kwargs, tags=tags, resource_group=resource_group),
             include_run_requirements=True,
         )
-        common_deps = suites + ["//libamdf/cts/util:test_main"]
+        corpus_name = name + "_cases"
+        self.amdf_cc_library(
+            name=corpus_name,
+            testonly=True,
+            srcs=srcs,
+            deps=deps,
+            alwayslink=True,
+            **kwargs,
+        )
+        common_deps = [":" + corpus_name, "//libamdf/cts/util:test_main"]
         for mode in ("static", "shared", "dynamic"):
             binary_name = name + "_" + mode + "_bin"
             data = None if mode == "static" else ["//libamdf:amdf_shared_artifact"]

@@ -12,7 +12,7 @@
 
 #include "amdf/amdf.h"
 #include "gtest/gtest.h"
-#include "xdna_device_fixture.h"
+#include "libamdf/cts/xdna/xdna_device_fixture.h"
 
 namespace {
 

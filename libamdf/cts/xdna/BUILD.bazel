@@ -17,7 +17,10 @@ amdf_cc_library(
     name = "xdna_device_fixture",
     testonly = True,
     hdrs = ["xdna_device_fixture.h"],
-    visibility = ["//experimental/xdna/cts:__pkg__"],
+    visibility = [
+        "//experimental/xdna/cts:__pkg__",
+        "//libamdf/cts/xdna:__subpackages__",
+    ],
     deps = [
         "//libamdf/cts/util:device_cache",
         "//libamdf/cts/util:provider_headers",
@@ -25,49 +28,34 @@ amdf_cc_library(
     ],
 )
 
-amdf_cc_library(
-    name = "linux_tests",
-    testonly = True,
-    srcs = ["memory_linux_test.cc"],
-    target_compatible_with = [
-        "@platforms//os:linux",
-        "@platforms//cpu:x86_64",
-    ],
-    deps = [
-        ":xdna_device_fixture",
-        "//libamdf/cts/util:provider_headers",
-        "//third_party:google_test",
-    ],
-    alwayslink = True,
-)
-
-amdf_cc_library(
-    name = "xdna_tests",
-    testonly = True,
-    srcs = [
-        "kernel_queue_test.cc",
-        "memory_test.cc",
-        "xdna_extension_test.cc",
-    ],
-    deps = [
-        ":xdna_device_fixture",
-        "//libamdf/cts/util:device_cache",
-        "//libamdf/cts/util:provider_headers",
-        "//third_party:google_test",
-    ] + select({
-        "@platforms//os:linux": [":linux_tests"],
-        "//conditions:default": [],
-    }),
-    alwayslink = True,
-)
-
-amdf_cts_test_suite(
-    name = "xdna",
-    suites = [":xdna_tests"],
+[amdf_cts_test_suite(
+    name = name,
+    srcs = [name + "_test.cc"],
     target_compatible_with = select({
         "@platforms//os:linux": [],
         "@platforms//os:windows": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":xdna_device_fixture",
+        "//libamdf/cts/util:device_cache",
+        "//libamdf/cts/util:provider_headers",
+        "//third_party:google_test",
+    ],
+) for name in [
+    "kernel_queue",
+    "memory",
+    "xdna_extension",
+]]
+
+test_suite(
+    name = "xdna",
+    tests = [
+        ":kernel_queue",
+        ":memory",
+        ":xdna_extension",
+        "//libamdf/cts/xdna/linux:memory",
+    ],
     visibility = ["//visibility:public"],
 )

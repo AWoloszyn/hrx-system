@@ -25,42 +25,18 @@ iree_cc_library(
 )
 endif()
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
 iree_cc_library(
   NAME
-    linux_tests
-  SRCS
-    "memory_linux_test.cc"
-  DEPS
-    ::xdna_device_fixture
-    amdf::headers
-    iree::third_party::google_test
-    libamdf::cts::util::provider_headers
-  TESTONLY
-  ALWAYSLINK
-  PUBLIC
-)
-endif()
-
-if(AMDF_BUILD AND AMDF_FAMILY_XDNA)
-set(_xdna_tests_platform_deps "")
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  list(APPEND _xdna_tests_platform_deps ::linux_tests)
-endif()
-iree_cc_library(
-  NAME
-    xdna_tests
+    kernel_queue_cases
   SRCS
     "kernel_queue_test.cc"
-    "memory_test.cc"
-    "xdna_extension_test.cc"
   DEPS
     ::xdna_device_fixture
     amdf::headers
     iree::third_party::google_test
     libamdf::cts::util::device_cache
     libamdf::cts::util::provider_headers
-    ${_xdna_tests_platform_deps}
   TESTONLY
   ALWAYSLINK
   PUBLIC
@@ -70,9 +46,9 @@ endif()
 if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
 amdf_cts_binary(
   NAME
-    xdna_static_bin
+    kernel_queue_static_bin
   DEPS
-    ::xdna_tests
+    ::kernel_queue_cases
     amdf::headers
     libamdf::cts::util::static_provider
     libamdf::cts::util::test_main
@@ -83,11 +59,11 @@ endif()
 if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
 iree_native_test(
   NAME
-    "xdna_static"
+    "kernel_queue_static"
   ARGS
     "--amdf_native_lifetime=process"
   SRC
-    ::xdna_static_bin
+    ::kernel_queue_static_bin
   LABELS
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.xdna"
@@ -101,11 +77,11 @@ endif()
 if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
 iree_native_test(
   NAME
-    "xdna_static_instance"
+    "kernel_queue_static_instance"
   ARGS
     "--amdf_native_lifetime=instance"
   SRC
-    ::xdna_static_bin
+    ::kernel_queue_static_bin
   LABELS
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.xdna"
@@ -119,11 +95,11 @@ endif()
 if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
 amdf_cts_binary(
   NAME
-    xdna_shared_bin
+    kernel_queue_shared_bin
   DATA
     amdf::amdf
   DEPS
-    ::xdna_tests
+    ::kernel_queue_cases
     amdf::headers
     libamdf::cts::util::shared_provider
     libamdf::cts::util::test_main
@@ -134,11 +110,11 @@ endif()
 if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
 iree_native_test(
   NAME
-    "xdna_shared"
+    "kernel_queue_shared"
   ARGS
     "--amdf_native_lifetime=process"
   SRC
-    ::xdna_shared_bin
+    ::kernel_queue_shared_bin
   DATA
     "amdf::amdf"
   LABELS
@@ -154,11 +130,11 @@ endif()
 if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
 iree_native_test(
   NAME
-    "xdna_shared_instance"
+    "kernel_queue_shared_instance"
   ARGS
     "--amdf_native_lifetime=instance"
   SRC
-    ::xdna_shared_bin
+    ::kernel_queue_shared_bin
   DATA
     "amdf::amdf"
   LABELS
@@ -174,11 +150,11 @@ endif()
 if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
 amdf_cts_binary(
   NAME
-    xdna_dynamic_bin
+    kernel_queue_dynamic_bin
   DATA
     amdf::amdf
   DEPS
-    ::xdna_tests
+    ::kernel_queue_cases
     amdf::headers
     libamdf::cts::util::dynamic_provider
     libamdf::cts::util::test_main
@@ -189,12 +165,12 @@ endif()
 if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
 iree_native_test(
   NAME
-    "xdna_dynamic"
+    "kernel_queue_dynamic"
   ARGS
     "--amdf_native_lifetime=process"
     "--amdf_library={{$<TARGET_FILE:amdf::amdf>}}"
   SRC
-    ::xdna_dynamic_bin
+    ::kernel_queue_dynamic_bin
   DATA
     "amdf::amdf"
   LABELS
@@ -210,12 +186,370 @@ endif()
 if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
 iree_native_test(
   NAME
-    "xdna_dynamic_instance"
+    "kernel_queue_dynamic_instance"
   ARGS
     "--amdf_native_lifetime=instance"
     "--amdf_library={{$<TARGET_FILE:amdf::amdf>}}"
   SRC
-    ::xdna_dynamic_bin
+    ::kernel_queue_dynamic_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.xdna"
+    "iree-run-requirement=libamdf.resource.xdna"
+    "runtime-resource=amd-xdna"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_cc_library(
+  NAME
+    memory_cases
+  SRCS
+    "memory_test.cc"
+  DEPS
+    ::xdna_device_fixture
+    amdf::headers
+    iree::third_party::google_test
+    libamdf::cts::util::device_cache
+    libamdf::cts::util::provider_headers
+  TESTONLY
+  ALWAYSLINK
+  PUBLIC
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+amdf_cts_binary(
+  NAME
+    memory_static_bin
+  DEPS
+    ::memory_cases
+    amdf::headers
+    libamdf::cts::util::static_provider
+    libamdf::cts::util::test_main
+  TESTONLY
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "memory_static"
+  ARGS
+    "--amdf_native_lifetime=process"
+  SRC
+    ::memory_static_bin
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.xdna"
+    "iree-run-requirement=libamdf.resource.xdna"
+    "runtime-resource=amd-xdna"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "memory_static_instance"
+  ARGS
+    "--amdf_native_lifetime=instance"
+  SRC
+    ::memory_static_bin
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.xdna"
+    "iree-run-requirement=libamdf.resource.xdna"
+    "runtime-resource=amd-xdna"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+amdf_cts_binary(
+  NAME
+    memory_shared_bin
+  DATA
+    amdf::amdf
+  DEPS
+    ::memory_cases
+    amdf::headers
+    libamdf::cts::util::shared_provider
+    libamdf::cts::util::test_main
+  TESTONLY
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "memory_shared"
+  ARGS
+    "--amdf_native_lifetime=process"
+  SRC
+    ::memory_shared_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.xdna"
+    "iree-run-requirement=libamdf.resource.xdna"
+    "runtime-resource=amd-xdna"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "memory_shared_instance"
+  ARGS
+    "--amdf_native_lifetime=instance"
+  SRC
+    ::memory_shared_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.xdna"
+    "iree-run-requirement=libamdf.resource.xdna"
+    "runtime-resource=amd-xdna"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+amdf_cts_binary(
+  NAME
+    memory_dynamic_bin
+  DATA
+    amdf::amdf
+  DEPS
+    ::memory_cases
+    amdf::headers
+    libamdf::cts::util::dynamic_provider
+    libamdf::cts::util::test_main
+  TESTONLY
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "memory_dynamic"
+  ARGS
+    "--amdf_native_lifetime=process"
+    "--amdf_library={{$<TARGET_FILE:amdf::amdf>}}"
+  SRC
+    ::memory_dynamic_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.xdna"
+    "iree-run-requirement=libamdf.resource.xdna"
+    "runtime-resource=amd-xdna"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "memory_dynamic_instance"
+  ARGS
+    "--amdf_native_lifetime=instance"
+    "--amdf_library={{$<TARGET_FILE:amdf::amdf>}}"
+  SRC
+    ::memory_dynamic_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.xdna"
+    "iree-run-requirement=libamdf.resource.xdna"
+    "runtime-resource=amd-xdna"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_cc_library(
+  NAME
+    xdna_extension_cases
+  SRCS
+    "xdna_extension_test.cc"
+  DEPS
+    ::xdna_device_fixture
+    amdf::headers
+    iree::third_party::google_test
+    libamdf::cts::util::device_cache
+    libamdf::cts::util::provider_headers
+  TESTONLY
+  ALWAYSLINK
+  PUBLIC
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+amdf_cts_binary(
+  NAME
+    xdna_extension_static_bin
+  DEPS
+    ::xdna_extension_cases
+    amdf::headers
+    libamdf::cts::util::static_provider
+    libamdf::cts::util::test_main
+  TESTONLY
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "xdna_extension_static"
+  ARGS
+    "--amdf_native_lifetime=process"
+  SRC
+    ::xdna_extension_static_bin
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.xdna"
+    "iree-run-requirement=libamdf.resource.xdna"
+    "runtime-resource=amd-xdna"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "xdna_extension_static_instance"
+  ARGS
+    "--amdf_native_lifetime=instance"
+  SRC
+    ::xdna_extension_static_bin
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.xdna"
+    "iree-run-requirement=libamdf.resource.xdna"
+    "runtime-resource=amd-xdna"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+amdf_cts_binary(
+  NAME
+    xdna_extension_shared_bin
+  DATA
+    amdf::amdf
+  DEPS
+    ::xdna_extension_cases
+    amdf::headers
+    libamdf::cts::util::shared_provider
+    libamdf::cts::util::test_main
+  TESTONLY
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "xdna_extension_shared"
+  ARGS
+    "--amdf_native_lifetime=process"
+  SRC
+    ::xdna_extension_shared_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.xdna"
+    "iree-run-requirement=libamdf.resource.xdna"
+    "runtime-resource=amd-xdna"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "xdna_extension_shared_instance"
+  ARGS
+    "--amdf_native_lifetime=instance"
+  SRC
+    ::xdna_extension_shared_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.xdna"
+    "iree-run-requirement=libamdf.resource.xdna"
+    "runtime-resource=amd-xdna"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+amdf_cts_binary(
+  NAME
+    xdna_extension_dynamic_bin
+  DATA
+    amdf::amdf
+  DEPS
+    ::xdna_extension_cases
+    amdf::headers
+    libamdf::cts::util::dynamic_provider
+    libamdf::cts::util::test_main
+  TESTONLY
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "xdna_extension_dynamic"
+  ARGS
+    "--amdf_native_lifetime=process"
+    "--amdf_library={{$<TARGET_FILE:amdf::amdf>}}"
+  SRC
+    ::xdna_extension_dynamic_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.xdna"
+    "iree-run-requirement=libamdf.resource.xdna"
+    "runtime-resource=amd-xdna"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "xdna_extension_dynamic_instance"
+  ARGS
+    "--amdf_native_lifetime=instance"
+    "--amdf_library={{$<TARGET_FILE:amdf::amdf>}}"
+  SRC
+    ::xdna_extension_dynamic_bin
   DATA
     "amdf::amdf"
   LABELS

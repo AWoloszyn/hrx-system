@@ -66,7 +66,13 @@ PACKAGE_POLICIES = [
             "libamdf/cts/xdna/...",
         ],
         run_requirements = [XDNA_RESOURCE],
-        # GPU CTS includes GPU/XDNA interop and competes for this device too.
+        # Cross-engine interop shares the same native resource lock.
+        resource_group = "iree-hal-drivers-amdgpu-tests",
+    ),
+    package_policy(
+        packages = ["libamdf/cts/interop/gpu_xdna/..."],
+        build_requirements = [LIBAMDF_GPU, LIBAMDF_XDNA],
+        run_requirements = [AMDGPU_RESOURCE, XDNA_RESOURCE],
         resource_group = "iree-hal-drivers-amdgpu-tests",
     ),
     package_policy(

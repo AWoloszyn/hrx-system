@@ -177,16 +177,17 @@ Hardware-backed tests declare the `libamdf.resource.amd_gpu` or
 `libamdf.resource.xdna` run requirement. CMake exposes the corresponding
 `runtime-resource=amd-gpu` and `runtime-resource=amd-xdna` labels. These tests
 remain discoverable by wildcard selection; host-only presubmit excludes their
-requirements. Native suites share the AMD hardware resource group because GPU
-CTS also exercises GPU/XDNA interoperability.
+requirements. GPU/XDNA interoperability has a separate corpus requiring both
+families and both resources. Native suites share the AMD hardware resource group
+with those interop cases.
 
 Each CTS corpus compiles once and links static, shared, and dynamically loaded
 executables. Separate test invocations run each executable with process and
-instance native lifetimes. For example, `//libamdf/cts/core:core_static` and
-`:core_static_instance` run the same binary with different lifetime arguments.
+instance native lifetimes. For example, `//libamdf/cts/core:memory_static` and
+`:memory_static_instance` run the same binary with different lifetime arguments.
 The same test cases query capabilities: host-registration scenarios run wherever
-registration is supported, and native-owner recreation
-scenarios require reclaimable VM acquisition. Ordinary memory, queue, and interop
+registration is supported, and native-owner recreation scenarios require
+reclaimable VM acquisition. Ordinary memory, queue, and interop
 cases share one device per endpoint for the duration of each test process.
 
 The XDNA command configures, builds and tests the library and its ELF consumers,

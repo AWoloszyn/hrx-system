@@ -9,11 +9,12 @@
 load("//build_tools/bazel:cc_attrs.bzl", "cc_attrs")
 load("//build_tools/bazel:executable.bzl", "iree_executable_test")
 load("//libamdf/requirements:package_policy.bzl", "apply_amdf_test_policy")
-load(":cc.bzl", "amdf_cc_binary")
+load(":cc.bzl", "amdf_cc_binary", "amdf_cc_library")
 
 def amdf_cts_test_suite(
         name,
-        suites,
+        srcs,
+        deps,
         tags = None,
         resource_group = None,
         target_compatible_with = None,
@@ -22,7 +23,8 @@ def amdf_cts_test_suite(
 
     Args:
       name: Aggregate test-suite target name.
-      suites: Test-only libraries containing the common test corpus.
+      srcs: Sources for one independently selectable conformance corpus.
+      deps: Public API and test-helper dependencies of the corpus.
       tags: Additional tags applied to every generated test target.
       resource_group: Shared native resource used by the test invocations.
       target_compatible_with: Constraints required by every test mode.
@@ -37,7 +39,16 @@ def amdf_cts_test_suite(
         policy["tags"],
         policy.get("resource_group"),
     )
-    common_deps = suites + ["//libamdf/cts/util:test_main"]
+    corpus_name = name + "_cases"
+    amdf_cc_library(
+        name = corpus_name,
+        testonly = True,
+        srcs = srcs,
+        deps = deps,
+        alwayslink = True,
+        target_compatible_with = target_compatible_with,
+    )
+    common_deps = [":" + corpus_name, "//libamdf/cts/util:test_main"]
     runtime_data = ["//libamdf:amdf_runtime"]
     tests = []
     for mode in ["static", "shared", "dynamic"]:

@@ -33,7 +33,6 @@ iree_cc_library(
     "target/gfx1151/user_queue_memory_test.h"
   SRCS
     "memory_linux_test.cc"
-    "memory_xdna_interop_linux_test.cc"
     "target/gfx1151/user_queue_memory_test.cc"
   DEPS
     ::gpu_device_fixture
@@ -66,15 +65,15 @@ iree_cc_library(
 endif()
 
 if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
-set(_gpu_tests_platform_deps "")
+set(_gpu_cases_platform_deps "")
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  list(APPEND _gpu_tests_platform_deps ::linux_tests)
+  list(APPEND _gpu_cases_platform_deps ::linux_tests)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-  list(APPEND _gpu_tests_platform_deps ::windows_tests)
+  list(APPEND _gpu_cases_platform_deps ::windows_tests)
 endif()
 iree_cc_library(
   NAME
-    gpu_tests
+    gpu_cases
   SRCS
     "gpu_extension_test.cc"
     "memory_group_test.cc"
@@ -84,7 +83,7 @@ iree_cc_library(
     iree::third_party::google_test
     libamdf::cts::util::device_cache
     libamdf::cts::util::provider_headers
-    ${_gpu_tests_platform_deps}
+    ${_gpu_cases_platform_deps}
   TESTONLY
   ALWAYSLINK
   PUBLIC
@@ -96,7 +95,7 @@ amdf_cts_binary(
   NAME
     gpu_static_bin
   DEPS
-    ::gpu_tests
+    ::gpu_cases
     amdf::headers
     libamdf::cts::util::static_provider
     libamdf::cts::util::test_main
@@ -147,7 +146,7 @@ amdf_cts_binary(
   DATA
     amdf::amdf
   DEPS
-    ::gpu_tests
+    ::gpu_cases
     amdf::headers
     libamdf::cts::util::shared_provider
     libamdf::cts::util::test_main
@@ -202,7 +201,7 @@ amdf_cts_binary(
   DATA
     amdf::amdf
   DEPS
-    ::gpu_tests
+    ::gpu_cases
     amdf::headers
     libamdf::cts::util::dynamic_provider
     libamdf::cts::util::test_main

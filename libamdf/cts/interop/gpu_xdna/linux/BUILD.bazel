@@ -12,34 +12,17 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-[amdf_cts_test_suite(
-    name = name,
-    srcs = [name + "_test.cc"],
-    target_compatible_with = select({
-        "@platforms//os:linux": [],
-        "@platforms//os:windows": [],
-        "//conditions:default": ["@platforms//:incompatible"],
-    }),
+amdf_cts_test_suite(
+    name = "memory",
+    srcs = ["memory_test.cc"],
+    target_compatible_with = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         "//libamdf/cts/util:device_cache",
         "//libamdf/cts/util:provider_headers",
         "//third_party:google_test",
     ],
-) for name in [
-    "allocator",
-    "discovery",
-    "memory",
-    "query",
-]]
-
-test_suite(
-    name = "core",
-    tests = [
-        ":allocator",
-        ":discovery",
-        ":memory",
-        ":query",
-    ],
-    visibility = ["//visibility:public"],
 )

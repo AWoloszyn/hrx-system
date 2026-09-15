@@ -17,8 +17,8 @@
 #include "amdf/gpu.h"
 #include "amdf/xdna.h"
 #include "gtest/gtest.h"
-#include "util/device_cache.h"
-#include "util/provider.h"
+#include "libamdf/cts/util/device_cache.h"
+#include "libamdf/cts/util/provider.h"
 
 namespace {
 
