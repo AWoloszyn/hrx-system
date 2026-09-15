@@ -374,6 +374,32 @@ TEST_F(HipStreamValueApiTest, ExecutesScalarWritesThroughPublicDso) {
   EXPECT_EQ(11u, observed_64);
 }
 
+TEST_F(HipStreamValueApiTest, PublishesFinalWriteWithoutHostFlush) {
+  hipStream_t stream = CreateStream();
+  void* host_allocation = AllocateHost(sizeof(uint32_t));
+  ASSERT_NE(nullptr, stream);
+  ASSERT_NE(nullptr, host_allocation);
+
+  hipDeviceptr_t device_pointer = nullptr;
+  ASSERT_EQ(hipSuccess, api_.host_get_device_pointer(
+                            &device_pointer, host_allocation, /*flags=*/0));
+  ASSERT_NE(nullptr, device_pointer);
+  auto* observed_value = static_cast<uint32_t*>(host_allocation);
+  __atomic_store_n(observed_value, 0u, __ATOMIC_RELEASE);
+
+  constexpr uint32_t kExpectedValue = 0x13579BDFu;
+  ASSERT_EQ(hipSuccess,
+            api_.write_value_32(stream, device_pointer, kExpectedValue,
+                                hipStreamWriteValueDefault));
+
+  // This deliberately performs no stream query or synchronization: the write
+  // API must arrange submission of its final batch without another HIP call.
+  while (__atomic_load_n(observed_value, __ATOMIC_ACQUIRE) != kExpectedValue) {
+    std::this_thread::yield();
+  }
+  EXPECT_EQ(kExpectedValue, __atomic_load_n(observed_value, __ATOMIC_ACQUIRE));
+}
+
 TEST_F(HipStreamValueApiTest, ExecutesEveryWaitPredicateAtBothWidths) {
   hipStream_t stream = CreateStream();
   void* signal = AllocateSignal();
