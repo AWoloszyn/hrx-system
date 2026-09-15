@@ -30,7 +30,9 @@ iree_status_t loom_low_register_parts_continue(loom_low_register_parts_t* parts,
                                                uint32_t full_mask) {
   uint32_t mask = written_mask | loom_low_register_parts_mask(parts, source);
   loom_low_register_parts_define(parts, result, mask);
-  if ((mask & full_mask) == full_mask) return iree_ok_status();
+  if ((mask & full_mask) == full_mask) {
+    return iree_ok_status();
+  }
   if (parts->continuations.count == parts->continuations.capacity) {
     IREE_RETURN_IF_ERROR(iree_arena_grow_array(
         parts->arena, parts->continuations.count,
@@ -47,7 +49,9 @@ iree_status_t loom_low_register_parts_require(
     loom_low_register_parts_t* parts,
     const loom_low_register_part_requirement_t* requirement) {
   uint32_t mask = loom_low_register_parts_mask(parts, requirement->value);
-  if ((mask & requirement->mask) == requirement->mask) return iree_ok_status();
+  if ((mask & requirement->mask) == requirement->mask) {
+    return iree_ok_status();
+  }
   if (parts->requirements.count == parts->requirements.capacity) {
     IREE_RETURN_IF_ERROR(iree_arena_grow_array(
         parts->arena, parts->requirements.count, parts->requirements.count + 1,
@@ -90,7 +94,9 @@ static iree_host_size_t loom_low_register_parts_find_source(
 iree_status_t loom_low_register_parts_resolve(
     loom_low_register_parts_t* parts) {
   const iree_host_size_t count = parts->continuations.count;
-  if (count == 0) return iree_ok_status();
+  if (count == 0) {
+    return iree_ok_status();
+  }
   loom_low_register_parts_sort(parts->continuations.values, count);
   iree_host_size_t* stack = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(

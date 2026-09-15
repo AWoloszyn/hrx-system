@@ -47,7 +47,9 @@ iree_status_t loom_cfg_dominance_build(const loom_cfg_graph_t* graph,
 static inline bool loom_cfg_dominance_block_dominates(
     const loom_cfg_dominance_t* dominance, uint16_t dominator,
     uint16_t dominated) {
-  if (dominator == dominated) return true;
+  if (dominator == dominated) {
+    return true;
+  }
   uint32_t interval = dominance->intervals[dominator];
   uint32_t other = dominance->intervals[dominated];
   return interval != UINT32_MAX && other != UINT32_MAX &&

@@ -114,11 +114,15 @@ class CfgDominanceTest : public ::testing::Test {
     for (size_t removed = 0; removed < count; ++removed) {
       std::vector<bool> reachable(count);
       std::vector<uint16_t> pending;
-      if (removed != 0) pending.push_back(0);
+      if (removed != 0) {
+        pending.push_back(0);
+      }
       while (!pending.empty()) {
         uint16_t current = pending.back();
         pending.pop_back();
-        if (current == removed || reachable[current]) continue;
+        if (current == removed || reachable[current]) {
+          continue;
+        }
         reachable[current] = true;
         auto successors = loom_cfg_graph_successors(graph, current);
         for (size_t i = 0; i < successors.count; ++i) {
@@ -142,7 +146,9 @@ class CfgDominanceTest : public ::testing::Test {
         parent = 0;
       } else if (graph->blocks[block].reachable) {
         for (uint16_t ancestor = 0; ancestor < count; ++ancestor) {
-          if (ancestor == block || !expected[ancestor][block]) continue;
+          if (ancestor == block || !expected[ancestor][block]) {
+            continue;
+          }
           if (parent == LOOM_CFG_DOMINATOR_INVALID ||
               depth[ancestor] > depth[parent]) {
             parent = ancestor;
@@ -158,7 +164,9 @@ class CfgDominanceTest : public ::testing::Test {
       EXPECT_FALSE(seen[block]);
       seen[block] = true;
       EXPECT_EQ(static_cast<uint16_t>(dominance.intervals[block]), i);
-      if (block != 0) EXPECT_TRUE(seen[dominance.immediate_dominators[block]]);
+      if (block != 0) {
+        EXPECT_TRUE(seen[dominance.immediate_dominators[block]]);
+      }
     }
     iree_arena_reset(&arena_);
   }
@@ -192,8 +200,9 @@ TEST_F(CfgDominanceTest, EveryThreeBlockGraph) {
     std::vector<std::vector<uint16_t>> edges(3);
     for (uint16_t source = 0; source < 3; ++source) {
       for (uint16_t target = 0; target < 3; ++target) {
-        if (mask & (1u << (source * 3 + target)))
+        if (mask & (1u << (source * 3 + target))) {
           edges[source].push_back(target);
+        }
       }
     }
     CheckAgainstReachability(Graph(std::move(edges)));
@@ -209,8 +218,9 @@ TEST_F(CfgDominanceTest, ArbitraryGraphsAgainstReachability) {
     std::vector<std::vector<uint16_t>> edges(count);
     for (auto& successors : edges) {
       const size_t successor_count = random() % 5;
-      for (size_t i = 0; i < successor_count; ++i)
+      for (size_t i = 0; i < successor_count; ++i) {
         successors.push_back(random() % count);
+      }
     }
     CheckAgainstReachability(Graph(std::move(edges)));
   }
@@ -220,7 +230,9 @@ TEST_F(CfgDominanceTest, FullBlockIndexRangeWithoutRecursiveStack) {
   constexpr size_t count = UINT16_MAX;
   std::vector<std::vector<uint16_t>> edges(count);
   edges[0].push_back(count - 1);
-  for (size_t i = count - 1; i > 1; --i) edges[i].push_back(i - 1);
+  for (size_t i = count - 1; i > 1; --i) {
+    edges[i].push_back(i - 1);
+  }
   Graph fixture(std::move(edges));
   loom_cfg_dominance_t dominance;
   IREE_ASSERT_OK(loom_cfg_dominance_build(fixture.get(), &arena_, &dominance));

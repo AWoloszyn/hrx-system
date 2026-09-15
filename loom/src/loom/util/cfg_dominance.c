@@ -60,7 +60,9 @@ static void loom_cfg_dominance_number_tree(iree_host_size_t block_count,
   for (iree_host_size_t i = block_count; i > 1; --i) {
     uint16_t block_index = (uint16_t)(i - 1);
     uint16_t parent = dominance->immediate_dominators[block_index];
-    if (parent == LOOM_CFG_DOMINATOR_INVALID) continue;
+    if (parent == LOOM_CFG_DOMINATOR_INVALID) {
+      continue;
+    }
     records[block_index].bucket_next = records[parent].bucket_head;
     records[parent].bucket_head = block_index;
   }
@@ -90,7 +92,9 @@ iree_status_t loom_cfg_dominance_build(const loom_cfg_graph_t* graph,
                                        iree_arena_allocator_t* arena,
                                        loom_cfg_dominance_t* out_dominance) {
   memset(out_dominance, 0, sizeof(*out_dominance));
-  if (graph->malformed) return iree_ok_status();
+  if (graph->malformed) {
+    return iree_ok_status();
+  }
   const iree_host_size_t block_count = graph->block_count;
   if (block_count == 0) {
     out_dominance->available = true;
@@ -135,7 +139,9 @@ iree_status_t loom_cfg_dominance_build(const loom_cfg_graph_t* graph,
         loom_cfg_graph_predecessors(graph, block_index);
     for (iree_host_size_t p = 0; p < predecessors.count; ++p) {
       uint16_t predecessor = predecessors.values[p];
-      if (!graph->blocks[predecessor].reachable) continue;
+      if (!graph->blocks[predecessor].reachable) {
+        continue;
+      }
       uint16_t label = loom_cfg_dominance_evaluate(records, predecessor, stack);
       if (records[label].preorder < record->preorder) {
         record->preorder = records[label].preorder;

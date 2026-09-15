@@ -68,7 +68,9 @@ void loom_verify_restore_definitions(loom_verify_state_t* state,
 }
 
 void loom_verify_pop_scope(loom_verify_state_t* state) {
-  if (state->scope_depth == 0) return;
+  if (state->scope_depth == 0) {
+    return;
+  }
   --state->scope_depth;
   loom_verify_restore_definitions(state,
                                   state->scope_watermarks[state->scope_depth]);

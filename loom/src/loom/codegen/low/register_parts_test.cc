@@ -168,7 +168,9 @@ TEST_F(RegisterPartsTest, ArbitraryGraphsAgainstFixedPoint) {
     while (changed) {
       changed = false;
       for (size_t i = 0; i < count; ++i) {
-        if (sources[i] < 0) continue;
+        if (sources[i] < 0) {
+          continue;
+        }
         uint32_t mask = expected[i] | expected[sources[i]];
         changed |= mask != expected[i];
         expected[i] = mask;

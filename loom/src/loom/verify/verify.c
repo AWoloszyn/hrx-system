@@ -166,7 +166,9 @@ static iree_status_t loom_verify_append_definitions(
     loom_verify_state_t* state, const loom_value_id_t* values,
     iree_host_size_t count,
     loom_verify_unreachable_definitions_t* definitions) {
-  if (count == 0) return iree_ok_status();
+  if (count == 0) {
+    return iree_ok_status();
+  }
   if (definitions->count + count > definitions->capacity) {
     IREE_RETURN_IF_ERROR(iree_arena_grow_array(
         &state->arena, definitions->count, definitions->count + count,
@@ -212,7 +214,9 @@ static void loom_verify_set_definition_visibility(
     iree_host_size_t begin, iree_host_size_t end, bool visible) {
   for (iree_host_size_t i = begin; i < end; ++i) {
     loom_value_id_t value = definitions->values[i];
-    if (value == LOOM_VALUE_ID_INVALID) continue;
+    if (value == LOOM_VALUE_ID_INVALID) {
+      continue;
+    }
     if (visible) {
       loom_bitset_set(state->defined_bits, state->defined_bits_length, value);
     } else {
@@ -309,7 +313,9 @@ static iree_status_t loom_verify_region(
       if (!unreachable_definitions.block_offsets) {
         status = loom_verify_collect_unreachable_definitions(
             state, region, &unreachable_definitions);
-        if (!iree_status_is_ok(status)) break;
+        if (!iree_status_is_ok(status)) {
+          break;
+        }
         loom_verify_set_definition_visibility(state, &unreachable_definitions,
                                               0, unreachable_definitions.count,
                                               /*visible=*/true);

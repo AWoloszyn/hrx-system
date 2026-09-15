@@ -149,7 +149,9 @@ bool loom_dominates_block(const loom_dominance_info_t* info,
 
   const loom_cfg_dominance_region_t* cache =
       loom_dominance_lookup_cfg_region(info, region);
-  if (!cache || !cache->dominance.available) return false;
+  if (!cache || !cache->dominance.available) {
+    return false;
+  }
   iree_host_size_t dominator_index =
       loom_cfg_graph_block_index(&cache->graph, dominator_block);
   iree_host_size_t dominated_index =
@@ -178,7 +180,9 @@ const loom_block_t* loom_dominance_immediate_dominator_block(
 
   const loom_cfg_dominance_region_t* cache =
       loom_dominance_lookup_cfg_region(info, region);
-  if (!cache || !cache->dominance.available) return NULL;
+  if (!cache || !cache->dominance.available) {
+    return NULL;
+  }
   iree_host_size_t block_index =
       loom_cfg_graph_block_index(&cache->graph, block);
   if (block_index == IREE_HOST_SIZE_MAX) return NULL;

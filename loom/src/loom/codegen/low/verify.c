@@ -1030,7 +1030,9 @@ static iree_status_t loom_low_verify_resolve_register_parts(
   loom_low_register_parts_t* parts = &function_state->register_parts;
   IREE_RETURN_IF_ERROR(loom_low_register_parts_resolve(parts));
   for (iree_host_size_t i = 0; i < parts->requirements.count; ++i) {
-    if (loom_low_verify_should_stop(function_state->state)) break;
+    if (loom_low_verify_should_stop(function_state->state)) {
+      break;
+    }
     const loom_low_register_part_requirement_t* requirement =
         &parts->requirements.values[i];
     uint32_t mask = loom_low_register_parts_mask(parts, requirement->value);
