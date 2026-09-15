@@ -53,7 +53,8 @@ typedef struct hrx_buffer_table_retained_ref_t {
 
 // Validates or acquires entry-local state while the table lock is held.
 // Implementations must not wait for work that can require another table
-// operation to complete.
+// operation to complete. A callback returning an error must release any state
+// it acquired before returning.
 typedef hrx_status_t (*hrx_buffer_table_entry_callback_t)(
     const hrx_buffer_table_entry_t* entry, size_t offset, void* user_data);
 
