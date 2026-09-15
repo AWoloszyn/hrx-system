@@ -426,25 +426,29 @@ TEST_F(LowAsmPrinterTest, RejectsMissingPrintEnvironment) {
   loom_module_free(module);
 }
 
-TEST_F(LowAsmPrinterTest, RequiredOptionalLowAsmRejectsCanonicalFallback) {
+TEST_F(LowAsmPrinterTest, PrintsCanonicalSpillsAndReloads) {
   const char* source =
       "test.target<low_core> @test_target\n"
       "\n"
       "low.func.def target<test.low.core>(@test_target) "
-      "@spill(%value: reg<test.i32>) -> (reg<test.i32>) {\n"
-      "  %slot = low.storage.reserve "
-      "{byte_alignment = 4, byte_length = 4} : low.storage<private>\n"
+      "@spill(%value: reg<test.i32>) -> (reg<test.i32>) asm {\n"
+      "  %slot = storage "
+      "{byte_alignment = 4, byte_length = 16} : low.storage<private>\n"
       "  low.spill %value, %slot : reg<test.i32>, low.storage<private>\n"
-      "  low.return %value : reg<test.i32>\n"
+      "  %first = low.reload %slot : low.storage<private> -> "
+      "reg<test.i32>\n"
+      "  low.spill %first, %slot {offset = 8} : "
+      "reg<test.i32>, low.storage<private>\n"
+      "  %second = low.reload %slot {offset = 8} : "
+      "low.storage<private> -> reg<test.i32>\n"
+      "  return %second\n"
       "}\n";
   loom_module_t* module = ParseOk(source);
   ASSERT_NE(module, nullptr);
   EXPECT_EQ(PrintModule(module), source);
-  IREE_EXPECT_STATUS_IS(
-      IREE_STATUS_UNIMPLEMENTED,
-      PrintModuleStatus(
-          module, /*configure_environment=*/true,
-          LOOM_TEXT_PRINT_DEFAULT | LOOM_TEXT_PRINT_REQUIRE_LOW_ASM));
+  EXPECT_EQ(PrintModule(module, LOOM_TEXT_PRINT_DEFAULT |
+                                    LOOM_TEXT_PRINT_REQUIRE_LOW_ASM),
+            source);
   loom_module_free(module);
 }
 

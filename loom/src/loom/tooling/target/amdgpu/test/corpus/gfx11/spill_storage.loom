@@ -4,201 +4,201 @@
 // One active lane makes a true comparison mask equal to one.
 amdgpu.target<gfx11-generic> @spill_target
 
-low.func.def schedule(locked) target<amdgpu.gfx11.generic.core>(@spill_target) @spill_snapshot(%input: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) {
-  %uniform = low.op<amdgpu.v_readfirstlane_b32>(%input) : (reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr>
-  %bound = low.const<amdgpu.s_mov_b32> {imm32 = 64} : reg<amdgpu.sgpr>
-  %condition = low.op<amdgpu.s_cmp_lt_u32>(%uniform, %bound) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.scc>
+low.func.def schedule(locked) target<amdgpu.gfx11.generic.core>(@spill_target) @spill_snapshot(%input: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
+  %uniform = v_readfirstlane_b32 %input
+  %bound = s_mov_b32 64
+  %condition = s_cmp_lt_u32 %uniform, %bound
   low.cond_br %condition, ^body, ^exit : reg<amdgpu.scc>
 ^body:
-  %storage = low.storage.reserve {byte_alignment = 16, byte_length = 16} : low.storage<private>
-  %limit0 = low.const<amdgpu.v_mov_b32> {imm32 = 60} : reg<amdgpu.vgpr>
-  %mask0 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit0) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
+  %storage = storage {byte_alignment = 16, byte_length = 16} : low.storage<private>
+  %limit0 = v_mov_b32 60
+  %mask0 = v_cmp_lt_u32 %input, %limit0
   low.spill %mask0, %storage : reg<amdgpu.sgpr x2>, low.storage<private>
-  %limit1 = low.const<amdgpu.v_mov_b32> {imm32 = 1} : reg<amdgpu.vgpr>
-  %mask1 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit1) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit2 = low.const<amdgpu.v_mov_b32> {imm32 = 2} : reg<amdgpu.vgpr>
-  %mask2 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit2) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit3 = low.const<amdgpu.v_mov_b32> {imm32 = 3} : reg<amdgpu.vgpr>
-  %mask3 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit3) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit4 = low.const<amdgpu.v_mov_b32> {imm32 = 4} : reg<amdgpu.vgpr>
-  %mask4 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit4) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit5 = low.const<amdgpu.v_mov_b32> {imm32 = 5} : reg<amdgpu.vgpr>
-  %mask5 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit5) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit6 = low.const<amdgpu.v_mov_b32> {imm32 = 6} : reg<amdgpu.vgpr>
-  %mask6 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit6) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit7 = low.const<amdgpu.v_mov_b32> {imm32 = 7} : reg<amdgpu.vgpr>
-  %mask7 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit7) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit8 = low.const<amdgpu.v_mov_b32> {imm32 = 8} : reg<amdgpu.vgpr>
-  %mask8 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit8) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit9 = low.const<amdgpu.v_mov_b32> {imm32 = 9} : reg<amdgpu.vgpr>
-  %mask9 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit9) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit10 = low.const<amdgpu.v_mov_b32> {imm32 = 10} : reg<amdgpu.vgpr>
-  %mask10 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit10) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit11 = low.const<amdgpu.v_mov_b32> {imm32 = 11} : reg<amdgpu.vgpr>
-  %mask11 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit11) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit12 = low.const<amdgpu.v_mov_b32> {imm32 = 12} : reg<amdgpu.vgpr>
-  %mask12 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit12) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit13 = low.const<amdgpu.v_mov_b32> {imm32 = 13} : reg<amdgpu.vgpr>
-  %mask13 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit13) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit14 = low.const<amdgpu.v_mov_b32> {imm32 = 14} : reg<amdgpu.vgpr>
-  %mask14 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit14) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit15 = low.const<amdgpu.v_mov_b32> {imm32 = 15} : reg<amdgpu.vgpr>
-  %mask15 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit15) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit16 = low.const<amdgpu.v_mov_b32> {imm32 = 16} : reg<amdgpu.vgpr>
-  %mask16 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit16) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit17 = low.const<amdgpu.v_mov_b32> {imm32 = 17} : reg<amdgpu.vgpr>
-  %mask17 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit17) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit18 = low.const<amdgpu.v_mov_b32> {imm32 = 18} : reg<amdgpu.vgpr>
-  %mask18 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit18) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit19 = low.const<amdgpu.v_mov_b32> {imm32 = 19} : reg<amdgpu.vgpr>
-  %mask19 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit19) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit20 = low.const<amdgpu.v_mov_b32> {imm32 = 20} : reg<amdgpu.vgpr>
-  %mask20 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit20) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit21 = low.const<amdgpu.v_mov_b32> {imm32 = 21} : reg<amdgpu.vgpr>
-  %mask21 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit21) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit22 = low.const<amdgpu.v_mov_b32> {imm32 = 22} : reg<amdgpu.vgpr>
-  %mask22 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit22) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit23 = low.const<amdgpu.v_mov_b32> {imm32 = 23} : reg<amdgpu.vgpr>
-  %mask23 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit23) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit24 = low.const<amdgpu.v_mov_b32> {imm32 = 24} : reg<amdgpu.vgpr>
-  %mask24 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit24) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit25 = low.const<amdgpu.v_mov_b32> {imm32 = 25} : reg<amdgpu.vgpr>
-  %mask25 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit25) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit26 = low.const<amdgpu.v_mov_b32> {imm32 = 26} : reg<amdgpu.vgpr>
-  %mask26 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit26) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit27 = low.const<amdgpu.v_mov_b32> {imm32 = 27} : reg<amdgpu.vgpr>
-  %mask27 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit27) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit28 = low.const<amdgpu.v_mov_b32> {imm32 = 28} : reg<amdgpu.vgpr>
-  %mask28 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit28) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit29 = low.const<amdgpu.v_mov_b32> {imm32 = 29} : reg<amdgpu.vgpr>
-  %mask29 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit29) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit30 = low.const<amdgpu.v_mov_b32> {imm32 = 30} : reg<amdgpu.vgpr>
-  %mask30 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit30) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit31 = low.const<amdgpu.v_mov_b32> {imm32 = 31} : reg<amdgpu.vgpr>
-  %mask31 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit31) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit32 = low.const<amdgpu.v_mov_b32> {imm32 = 32} : reg<amdgpu.vgpr>
-  %mask32 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit32) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit33 = low.const<amdgpu.v_mov_b32> {imm32 = 33} : reg<amdgpu.vgpr>
-  %mask33 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit33) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit34 = low.const<amdgpu.v_mov_b32> {imm32 = 34} : reg<amdgpu.vgpr>
-  %mask34 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit34) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit35 = low.const<amdgpu.v_mov_b32> {imm32 = 35} : reg<amdgpu.vgpr>
-  %mask35 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit35) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit36 = low.const<amdgpu.v_mov_b32> {imm32 = 36} : reg<amdgpu.vgpr>
-  %mask36 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit36) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit37 = low.const<amdgpu.v_mov_b32> {imm32 = 37} : reg<amdgpu.vgpr>
-  %mask37 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit37) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit38 = low.const<amdgpu.v_mov_b32> {imm32 = 38} : reg<amdgpu.vgpr>
-  %mask38 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit38) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit39 = low.const<amdgpu.v_mov_b32> {imm32 = 39} : reg<amdgpu.vgpr>
-  %mask39 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit39) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit40 = low.const<amdgpu.v_mov_b32> {imm32 = 40} : reg<amdgpu.vgpr>
-  %mask40 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit40) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit41 = low.const<amdgpu.v_mov_b32> {imm32 = 41} : reg<amdgpu.vgpr>
-  %mask41 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit41) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit42 = low.const<amdgpu.v_mov_b32> {imm32 = 42} : reg<amdgpu.vgpr>
-  %mask42 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit42) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit43 = low.const<amdgpu.v_mov_b32> {imm32 = 43} : reg<amdgpu.vgpr>
-  %mask43 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit43) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit44 = low.const<amdgpu.v_mov_b32> {imm32 = 44} : reg<amdgpu.vgpr>
-  %mask44 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit44) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit45 = low.const<amdgpu.v_mov_b32> {imm32 = 45} : reg<amdgpu.vgpr>
-  %mask45 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit45) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit46 = low.const<amdgpu.v_mov_b32> {imm32 = 46} : reg<amdgpu.vgpr>
-  %mask46 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit46) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit47 = low.const<amdgpu.v_mov_b32> {imm32 = 47} : reg<amdgpu.vgpr>
-  %mask47 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit47) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit48 = low.const<amdgpu.v_mov_b32> {imm32 = 48} : reg<amdgpu.vgpr>
-  %mask48 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit48) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit49 = low.const<amdgpu.v_mov_b32> {imm32 = 49} : reg<amdgpu.vgpr>
-  %mask49 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit49) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit50 = low.const<amdgpu.v_mov_b32> {imm32 = 50} : reg<amdgpu.vgpr>
-  %mask50 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit50) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit51 = low.const<amdgpu.v_mov_b32> {imm32 = 51} : reg<amdgpu.vgpr>
-  %mask51 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit51) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit52 = low.const<amdgpu.v_mov_b32> {imm32 = 52} : reg<amdgpu.vgpr>
-  %mask52 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit52) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit53 = low.const<amdgpu.v_mov_b32> {imm32 = 53} : reg<amdgpu.vgpr>
-  %mask53 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit53) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit54 = low.const<amdgpu.v_mov_b32> {imm32 = 54} : reg<amdgpu.vgpr>
-  %mask54 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit54) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit55 = low.const<amdgpu.v_mov_b32> {imm32 = 55} : reg<amdgpu.vgpr>
-  %mask55 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit55) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit56 = low.const<amdgpu.v_mov_b32> {imm32 = 56} : reg<amdgpu.vgpr>
-  %mask56 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit56) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit57 = low.const<amdgpu.v_mov_b32> {imm32 = 57} : reg<amdgpu.vgpr>
-  %mask57 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit57) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit58 = low.const<amdgpu.v_mov_b32> {imm32 = 58} : reg<amdgpu.vgpr>
-  %mask58 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit58) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %limit59 = low.const<amdgpu.v_mov_b32> {imm32 = 59} : reg<amdgpu.vgpr>
-  %mask59 = low.op<amdgpu.v_cmp_ult_u32>(%input, %limit59) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.sgpr x2>
-  %and1 = low.op<amdgpu.s_and_b64>(%mask0, %mask1) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and2 = low.op<amdgpu.s_and_b64>(%and1, %mask2) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and3 = low.op<amdgpu.s_and_b64>(%and2, %mask3) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and4 = low.op<amdgpu.s_and_b64>(%and3, %mask4) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and5 = low.op<amdgpu.s_and_b64>(%and4, %mask5) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and6 = low.op<amdgpu.s_and_b64>(%and5, %mask6) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and7 = low.op<amdgpu.s_and_b64>(%and6, %mask7) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and8 = low.op<amdgpu.s_and_b64>(%and7, %mask8) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and9 = low.op<amdgpu.s_and_b64>(%and8, %mask9) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and10 = low.op<amdgpu.s_and_b64>(%and9, %mask10) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and11 = low.op<amdgpu.s_and_b64>(%and10, %mask11) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and12 = low.op<amdgpu.s_and_b64>(%and11, %mask12) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and13 = low.op<amdgpu.s_and_b64>(%and12, %mask13) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and14 = low.op<amdgpu.s_and_b64>(%and13, %mask14) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and15 = low.op<amdgpu.s_and_b64>(%and14, %mask15) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and16 = low.op<amdgpu.s_and_b64>(%and15, %mask16) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and17 = low.op<amdgpu.s_and_b64>(%and16, %mask17) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and18 = low.op<amdgpu.s_and_b64>(%and17, %mask18) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and19 = low.op<amdgpu.s_and_b64>(%and18, %mask19) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and20 = low.op<amdgpu.s_and_b64>(%and19, %mask20) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and21 = low.op<amdgpu.s_and_b64>(%and20, %mask21) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and22 = low.op<amdgpu.s_and_b64>(%and21, %mask22) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and23 = low.op<amdgpu.s_and_b64>(%and22, %mask23) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and24 = low.op<amdgpu.s_and_b64>(%and23, %mask24) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and25 = low.op<amdgpu.s_and_b64>(%and24, %mask25) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and26 = low.op<amdgpu.s_and_b64>(%and25, %mask26) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and27 = low.op<amdgpu.s_and_b64>(%and26, %mask27) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and28 = low.op<amdgpu.s_and_b64>(%and27, %mask28) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and29 = low.op<amdgpu.s_and_b64>(%and28, %mask29) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and30 = low.op<amdgpu.s_and_b64>(%and29, %mask30) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and31 = low.op<amdgpu.s_and_b64>(%and30, %mask31) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and32 = low.op<amdgpu.s_and_b64>(%and31, %mask32) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and33 = low.op<amdgpu.s_and_b64>(%and32, %mask33) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and34 = low.op<amdgpu.s_and_b64>(%and33, %mask34) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and35 = low.op<amdgpu.s_and_b64>(%and34, %mask35) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and36 = low.op<amdgpu.s_and_b64>(%and35, %mask36) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and37 = low.op<amdgpu.s_and_b64>(%and36, %mask37) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and38 = low.op<amdgpu.s_and_b64>(%and37, %mask38) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and39 = low.op<amdgpu.s_and_b64>(%and38, %mask39) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and40 = low.op<amdgpu.s_and_b64>(%and39, %mask40) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and41 = low.op<amdgpu.s_and_b64>(%and40, %mask41) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and42 = low.op<amdgpu.s_and_b64>(%and41, %mask42) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and43 = low.op<amdgpu.s_and_b64>(%and42, %mask43) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and44 = low.op<amdgpu.s_and_b64>(%and43, %mask44) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and45 = low.op<amdgpu.s_and_b64>(%and44, %mask45) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and46 = low.op<amdgpu.s_and_b64>(%and45, %mask46) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and47 = low.op<amdgpu.s_and_b64>(%and46, %mask47) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and48 = low.op<amdgpu.s_and_b64>(%and47, %mask48) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and49 = low.op<amdgpu.s_and_b64>(%and48, %mask49) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and50 = low.op<amdgpu.s_and_b64>(%and49, %mask50) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and51 = low.op<amdgpu.s_and_b64>(%and50, %mask51) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and52 = low.op<amdgpu.s_and_b64>(%and51, %mask52) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and53 = low.op<amdgpu.s_and_b64>(%and52, %mask53) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and54 = low.op<amdgpu.s_and_b64>(%and53, %mask54) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and55 = low.op<amdgpu.s_and_b64>(%and54, %mask55) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and56 = low.op<amdgpu.s_and_b64>(%and55, %mask56) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and57 = low.op<amdgpu.s_and_b64>(%and56, %mask57) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and58 = low.op<amdgpu.s_and_b64>(%and57, %mask58) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %and59 = low.op<amdgpu.s_and_b64>(%and58, %mask59) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
+  %limit1 = v_mov_b32 1
+  %mask1 = v_cmp_lt_u32 %input, %limit1
+  %limit2 = v_mov_b32 2
+  %mask2 = v_cmp_lt_u32 %input, %limit2
+  %limit3 = v_mov_b32 3
+  %mask3 = v_cmp_lt_u32 %input, %limit3
+  %limit4 = v_mov_b32 4
+  %mask4 = v_cmp_lt_u32 %input, %limit4
+  %limit5 = v_mov_b32 5
+  %mask5 = v_cmp_lt_u32 %input, %limit5
+  %limit6 = v_mov_b32 6
+  %mask6 = v_cmp_lt_u32 %input, %limit6
+  %limit7 = v_mov_b32 7
+  %mask7 = v_cmp_lt_u32 %input, %limit7
+  %limit8 = v_mov_b32 8
+  %mask8 = v_cmp_lt_u32 %input, %limit8
+  %limit9 = v_mov_b32 9
+  %mask9 = v_cmp_lt_u32 %input, %limit9
+  %limit10 = v_mov_b32 10
+  %mask10 = v_cmp_lt_u32 %input, %limit10
+  %limit11 = v_mov_b32 11
+  %mask11 = v_cmp_lt_u32 %input, %limit11
+  %limit12 = v_mov_b32 12
+  %mask12 = v_cmp_lt_u32 %input, %limit12
+  %limit13 = v_mov_b32 13
+  %mask13 = v_cmp_lt_u32 %input, %limit13
+  %limit14 = v_mov_b32 14
+  %mask14 = v_cmp_lt_u32 %input, %limit14
+  %limit15 = v_mov_b32 15
+  %mask15 = v_cmp_lt_u32 %input, %limit15
+  %limit16 = v_mov_b32 16
+  %mask16 = v_cmp_lt_u32 %input, %limit16
+  %limit17 = v_mov_b32 17
+  %mask17 = v_cmp_lt_u32 %input, %limit17
+  %limit18 = v_mov_b32 18
+  %mask18 = v_cmp_lt_u32 %input, %limit18
+  %limit19 = v_mov_b32 19
+  %mask19 = v_cmp_lt_u32 %input, %limit19
+  %limit20 = v_mov_b32 20
+  %mask20 = v_cmp_lt_u32 %input, %limit20
+  %limit21 = v_mov_b32 21
+  %mask21 = v_cmp_lt_u32 %input, %limit21
+  %limit22 = v_mov_b32 22
+  %mask22 = v_cmp_lt_u32 %input, %limit22
+  %limit23 = v_mov_b32 23
+  %mask23 = v_cmp_lt_u32 %input, %limit23
+  %limit24 = v_mov_b32 24
+  %mask24 = v_cmp_lt_u32 %input, %limit24
+  %limit25 = v_mov_b32 25
+  %mask25 = v_cmp_lt_u32 %input, %limit25
+  %limit26 = v_mov_b32 26
+  %mask26 = v_cmp_lt_u32 %input, %limit26
+  %limit27 = v_mov_b32 27
+  %mask27 = v_cmp_lt_u32 %input, %limit27
+  %limit28 = v_mov_b32 28
+  %mask28 = v_cmp_lt_u32 %input, %limit28
+  %limit29 = v_mov_b32 29
+  %mask29 = v_cmp_lt_u32 %input, %limit29
+  %limit30 = v_mov_b32 30
+  %mask30 = v_cmp_lt_u32 %input, %limit30
+  %limit31 = v_mov_b32 31
+  %mask31 = v_cmp_lt_u32 %input, %limit31
+  %limit32 = v_mov_b32 32
+  %mask32 = v_cmp_lt_u32 %input, %limit32
+  %limit33 = v_mov_b32 33
+  %mask33 = v_cmp_lt_u32 %input, %limit33
+  %limit34 = v_mov_b32 34
+  %mask34 = v_cmp_lt_u32 %input, %limit34
+  %limit35 = v_mov_b32 35
+  %mask35 = v_cmp_lt_u32 %input, %limit35
+  %limit36 = v_mov_b32 36
+  %mask36 = v_cmp_lt_u32 %input, %limit36
+  %limit37 = v_mov_b32 37
+  %mask37 = v_cmp_lt_u32 %input, %limit37
+  %limit38 = v_mov_b32 38
+  %mask38 = v_cmp_lt_u32 %input, %limit38
+  %limit39 = v_mov_b32 39
+  %mask39 = v_cmp_lt_u32 %input, %limit39
+  %limit40 = v_mov_b32 40
+  %mask40 = v_cmp_lt_u32 %input, %limit40
+  %limit41 = v_mov_b32 41
+  %mask41 = v_cmp_lt_u32 %input, %limit41
+  %limit42 = v_mov_b32 42
+  %mask42 = v_cmp_lt_u32 %input, %limit42
+  %limit43 = v_mov_b32 43
+  %mask43 = v_cmp_lt_u32 %input, %limit43
+  %limit44 = v_mov_b32 44
+  %mask44 = v_cmp_lt_u32 %input, %limit44
+  %limit45 = v_mov_b32 45
+  %mask45 = v_cmp_lt_u32 %input, %limit45
+  %limit46 = v_mov_b32 46
+  %mask46 = v_cmp_lt_u32 %input, %limit46
+  %limit47 = v_mov_b32 47
+  %mask47 = v_cmp_lt_u32 %input, %limit47
+  %limit48 = v_mov_b32 48
+  %mask48 = v_cmp_lt_u32 %input, %limit48
+  %limit49 = v_mov_b32 49
+  %mask49 = v_cmp_lt_u32 %input, %limit49
+  %limit50 = v_mov_b32 50
+  %mask50 = v_cmp_lt_u32 %input, %limit50
+  %limit51 = v_mov_b32 51
+  %mask51 = v_cmp_lt_u32 %input, %limit51
+  %limit52 = v_mov_b32 52
+  %mask52 = v_cmp_lt_u32 %input, %limit52
+  %limit53 = v_mov_b32 53
+  %mask53 = v_cmp_lt_u32 %input, %limit53
+  %limit54 = v_mov_b32 54
+  %mask54 = v_cmp_lt_u32 %input, %limit54
+  %limit55 = v_mov_b32 55
+  %mask55 = v_cmp_lt_u32 %input, %limit55
+  %limit56 = v_mov_b32 56
+  %mask56 = v_cmp_lt_u32 %input, %limit56
+  %limit57 = v_mov_b32 57
+  %mask57 = v_cmp_lt_u32 %input, %limit57
+  %limit58 = v_mov_b32 58
+  %mask58 = v_cmp_lt_u32 %input, %limit58
+  %limit59 = v_mov_b32 59
+  %mask59 = v_cmp_lt_u32 %input, %limit59
+  %and1 = s_and_b64 %mask0, %mask1
+  %and2 = s_and_b64 %and1, %mask2
+  %and3 = s_and_b64 %and2, %mask3
+  %and4 = s_and_b64 %and3, %mask4
+  %and5 = s_and_b64 %and4, %mask5
+  %and6 = s_and_b64 %and5, %mask6
+  %and7 = s_and_b64 %and6, %mask7
+  %and8 = s_and_b64 %and7, %mask8
+  %and9 = s_and_b64 %and8, %mask9
+  %and10 = s_and_b64 %and9, %mask10
+  %and11 = s_and_b64 %and10, %mask11
+  %and12 = s_and_b64 %and11, %mask12
+  %and13 = s_and_b64 %and12, %mask13
+  %and14 = s_and_b64 %and13, %mask14
+  %and15 = s_and_b64 %and14, %mask15
+  %and16 = s_and_b64 %and15, %mask16
+  %and17 = s_and_b64 %and16, %mask17
+  %and18 = s_and_b64 %and17, %mask18
+  %and19 = s_and_b64 %and18, %mask19
+  %and20 = s_and_b64 %and19, %mask20
+  %and21 = s_and_b64 %and20, %mask21
+  %and22 = s_and_b64 %and21, %mask22
+  %and23 = s_and_b64 %and22, %mask23
+  %and24 = s_and_b64 %and23, %mask24
+  %and25 = s_and_b64 %and24, %mask25
+  %and26 = s_and_b64 %and25, %mask26
+  %and27 = s_and_b64 %and26, %mask27
+  %and28 = s_and_b64 %and27, %mask28
+  %and29 = s_and_b64 %and28, %mask29
+  %and30 = s_and_b64 %and29, %mask30
+  %and31 = s_and_b64 %and30, %mask31
+  %and32 = s_and_b64 %and31, %mask32
+  %and33 = s_and_b64 %and32, %mask33
+  %and34 = s_and_b64 %and33, %mask34
+  %and35 = s_and_b64 %and34, %mask35
+  %and36 = s_and_b64 %and35, %mask36
+  %and37 = s_and_b64 %and36, %mask37
+  %and38 = s_and_b64 %and37, %mask38
+  %and39 = s_and_b64 %and38, %mask39
+  %and40 = s_and_b64 %and39, %mask40
+  %and41 = s_and_b64 %and40, %mask41
+  %and42 = s_and_b64 %and41, %mask42
+  %and43 = s_and_b64 %and42, %mask43
+  %and44 = s_and_b64 %and43, %mask44
+  %and45 = s_and_b64 %and44, %mask45
+  %and46 = s_and_b64 %and45, %mask46
+  %and47 = s_and_b64 %and46, %mask47
+  %and48 = s_and_b64 %and47, %mask48
+  %and49 = s_and_b64 %and48, %mask49
+  %and50 = s_and_b64 %and49, %mask50
+  %and51 = s_and_b64 %and50, %mask51
+  %and52 = s_and_b64 %and51, %mask52
+  %and53 = s_and_b64 %and52, %mask53
+  %and54 = s_and_b64 %and53, %mask54
+  %and55 = s_and_b64 %and54, %mask55
+  %and56 = s_and_b64 %and55, %mask56
+  %and57 = s_and_b64 %and56, %mask57
+  %and58 = s_and_b64 %and57, %mask58
+  %and59 = s_and_b64 %and58, %mask59
   %snapshot = low.reload %storage : low.storage<private> -> reg<amdgpu.sgpr x2>
-  %result = low.op<amdgpu.s_xor_b64>(%and59, %snapshot) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x2>
-  %word = low.slice %result[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
-  %value = low.op<amdgpu.v_mov_b32_copy>(%word) : (reg<amdgpu.sgpr>) -> reg<amdgpu.vgpr>
-  low.return %value : reg<amdgpu.vgpr>
+  %result = s_xor_b64 %and59, %snapshot
+  %word = slice %result[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %value = v_mov_b32_copy %word
+  return %value
 ^exit:
-  %zero = low.const<amdgpu.v_mov_b32> {imm32 = 0} : reg<amdgpu.vgpr>
-  low.return %zero : reg<amdgpu.vgpr>
+  %zero = v_mov_b32 0
+  return %zero
 }
 
 kernel.def target(@spill_target) @spill_snapshot_kernel() {

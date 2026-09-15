@@ -8,13 +8,13 @@ low.func.def target<vm.core>(@vm) abi(vm_function) @identity(%a: reg<vm.value : 
 
 // A view owns no storage. Its offset and the spill's relative offset select a
 // whole cell in the reservation; calls use separate scratch beyond that span.
-low.func.def public target<vm.core>(@vm) abi(vm_function) @local(%a: reg<vm.value : i64>, %b: reg<vm.value : i64>) -> (reg<vm.value : i64>, reg<vm.value : i64>) {
-  %storage = low.storage.reserve {byte_alignment = 8, byte_length = 32} : low.storage<stack>
-  %view = low.storage.view %storage {byte_length = 16, offset = 8} : low.storage<stack> -> low.storage<stack>
+low.func.def public target<vm.core>(@vm) abi(vm_function) @local(%a: reg<vm.value : i64>, %b: reg<vm.value : i64>) -> (reg<vm.value : i64>, reg<vm.value : i64>) asm {
+  %storage = storage {byte_alignment = 8, byte_length = 32} : low.storage<stack>
+  %view = storage_view %storage {offset = 8, byte_length = 16} : low.storage<stack> -> low.storage<stack>
   low.spill %a, %view {offset = 8} : reg<vm.value : i64>, low.storage<stack>
   %result = low.func.call @identity(%b) : (reg<vm.value : i64>) -> (reg<vm.value : i64>)
   %original = low.reload %view {offset = 8} : low.storage<stack> -> reg<vm.value : i64>
-  low.return %original, %result : reg<vm.value : i64>, reg<vm.value : i64>
+  return %original, %result
 }
 
 // ----
