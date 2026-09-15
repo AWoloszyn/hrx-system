@@ -2278,7 +2278,7 @@ static iree_hal_queue_t* iree_hal_amdgpu_logical_device_queue(
   return &physical_device->host_queues[queue_ordinal].base;
 }
 
-static iree_status_t iree_hal_amdgpu_logical_device_allocate_dynamic_queue(
+static iree_status_t iree_hal_amdgpu_logical_device_create_dynamic_queue(
     iree_hal_amdgpu_logical_device_t* logical_device,
     iree_hal_amdgpu_physical_device_t* physical_device,
     const iree_hal_queue_params_t* params,
@@ -2299,7 +2299,7 @@ static iree_status_t iree_hal_amdgpu_logical_device_allocate_dynamic_queue(
       .queue_index = queue_index,
   };
   iree_hal_amdgpu_host_queue_t* queue = NULL;
-  iree_status_t status = iree_hal_amdgpu_physical_device_allocate_host_queue(
+  iree_status_t status = iree_hal_amdgpu_physical_device_create_host_queue(
       physical_device, params, queue_axis, release_slot, &queue);
   if (iree_status_is_ok(status)) {
     status = iree_hal_amdgpu_logical_device_check_failure(logical_device);
@@ -2383,9 +2383,8 @@ static iree_status_t iree_hal_amdgpu_logical_device_acquire_queue(
       return iree_ok_status();
     }
 
-    iree_status_t status =
-        iree_hal_amdgpu_logical_device_allocate_dynamic_queue(
-            logical_device, physical_device, params, &queue);
+    iree_status_t status = iree_hal_amdgpu_logical_device_create_dynamic_queue(
+        logical_device, physical_device, params, &queue);
     if (iree_status_is_ok(status)) {
       physical_device->cooperative_queue.queue = queue;
       iree_hal_queue_retain(&queue->base);
@@ -2396,7 +2395,7 @@ static iree_status_t iree_hal_amdgpu_logical_device_acquire_queue(
   }
 
   iree_hal_amdgpu_host_queue_t* queue = NULL;
-  iree_status_t status = iree_hal_amdgpu_logical_device_allocate_dynamic_queue(
+  iree_status_t status = iree_hal_amdgpu_logical_device_create_dynamic_queue(
       logical_device, physical_device, params, &queue);
   if (iree_status_is_ok(status)) *out_queue = &queue->base;
   return status;
