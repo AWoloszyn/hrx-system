@@ -293,6 +293,7 @@ iree_cc_library(
   SRCS
     "device_properties.c"
   DEPS
+    libhrx::src::binding::common::amdgpu_architecture
     libhrx_defs
   INCLUDES
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>"
