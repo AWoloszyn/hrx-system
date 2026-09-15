@@ -118,6 +118,7 @@ jobs:
       run_id: ${{ inputs.run_id || '' }}
       artifact_set: ${{ inputs.artifact_set || 'core' }}
       amdgpu_targets: gfx942
+      expect_stream_value_waits: false
       device: gpu:0
       ctest_exclude_regex: ""
       ctest_label_regex: runtime-resource=amd-gpu
@@ -143,6 +144,7 @@ jobs:
       name: Linux / CMake / GPU gfx1201
       runner_labels: '["self-hosted", "Linux", "X64", "gpu_navi4x"]'
       artifact_run_id: ${{ github.run_id }}
+      expect_stream_value_waits: true
       device: gpu:0
       ctest_exclude_regex: ""
       ctest_label_regex: runtime-resource=amd-gpu

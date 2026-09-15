@@ -1088,6 +1088,7 @@ fi
             gfx942_block,
         )
         self.assertIn("amdgpu_targets: gfx942", gfx942_block)
+        self.assertIn("expect_stream_value_waits: false", gfx942_block)
         self.assertNotIn("artifact_run_id", gfx942_block)
         self.assertNotIn("gfx1201", gfx942_block)
 
@@ -1103,6 +1104,7 @@ fi
             gfx1201_block,
         )
         self.assertIn("artifact_run_id: ${{ github.run_id }}", gfx1201_block)
+        self.assertIn("expect_stream_value_waits: true", gfx1201_block)
 
         summary_block = self.workflow_job_block(
             ".github/workflows/ci_core_linux.yml", "summary"
@@ -1139,6 +1141,7 @@ fi
                     reusable_block,
                     r"(?m)^\s+runs-on: \$\{\{ fromJSON\(inputs\.runner_labels\) \}\}$",
                 )
+                self.assertIn("HRX_TEST_EXPECT_STREAM_VALUE_WAITS:", reusable_block)
 
     def test_core_gpu_source_workflow_builds_instead_of_downloading(self):
         block = self.workflow_job_block(
