@@ -18,17 +18,37 @@ extern "C" {
 #endif
 
 typedef struct hrx_buffer_table_entry_t {
+  // Base device address of the allocation.
   uint64_t device_ptr;
+  // Base host address of the allocation, or NULL when not host-addressable.
   void* host_ptr;
+  // Allocation length in bytes.
   size_t size;
+  // Borrowed allocation handle owned by the inserting caller.
   hrx_buffer_t buffer;
+  // Opaque payload owned by the inserting caller.
   void* user_data;
 } hrx_buffer_table_entry_t;
 
+typedef struct hrx_buffer_table_range_index_t {
+  // Base address of one device or host allocation alias.
+  uint64_t base;
+  // Index of the owning entry in |hrx_buffer_table_t.entries|.
+  size_t entry_index;
+} hrx_buffer_table_range_index_t;
+
 typedef struct hrx_buffer_table_t {
+  // Guards entries, the range index, and insertion reservations.
   iree_slim_mutex_t mutex;
+  // Dense allocation entries in unspecified order.
   hrx_buffer_table_entry_t* entries;
+  // Address-sorted device and distinct host aliases for |entries|.
+  hrx_buffer_table_range_index_t* range_index;
+  // Number of initialized entries in |entries|.
   size_t count;
+  // Number of initialized aliases in |range_index|.
+  size_t range_count;
+  // Entry capacity; |range_index| has twice this capacity.
   size_t capacity;
   // Slots promised to callers that require allocation-free rollback.
   size_t reserved_insert_count;
@@ -65,14 +85,6 @@ hrx_status_t hrx_buffer_table_insert(hrx_buffer_table_t* table,
                                      uint64_t device_ptr, void* host_ptr,
                                      size_t size, hrx_buffer_t buffer,
                                      void* user_data);
-
-// Like hrx_buffer_table_insert, but treats an already-registered pointer as
-// success (returns OK). Genuine failures (e.g. out-of-memory growing the
-// table) are propagated to the caller instead of being silently dropped.
-hrx_status_t hrx_buffer_table_insert_if_new(hrx_buffer_table_t* table,
-                                            uint64_t device_ptr, void* host_ptr,
-                                            size_t size, hrx_buffer_t buffer,
-                                            void* user_data);
 
 // Reserves capacity for one future insertion. Regular insertions cannot consume
 // the reserved slot. A successful call must be paired with either

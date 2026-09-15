@@ -20,25 +20,49 @@ void hrx_buffer_table_deinitialize(hrx_buffer_table_t* table) {
   IREE_ASSERT(table->reserved_insert_count == 0);
   iree_slim_mutex_deinitialize(&table->mutex);
   free(table->entries);
+  free(table->range_index);
   memset(table, 0, sizeof(*table));
 }
 
-static size_t hrx_buffer_table_find_index(hrx_buffer_table_t* table,
-                                          uint64_t any_ptr) {
-  for (size_t i = 0; i < table->count; ++i) {
-    hrx_buffer_table_entry_t* e = &table->entries[i];
-    if (any_ptr >= e->device_ptr &&
-        any_ptr - e->device_ptr < (uint64_t)e->size) {
-      return i;
-    }
-    if (e->host_ptr) {
-      uint64_t host_addr = (uint64_t)(uintptr_t)e->host_ptr;
-      if (any_ptr >= host_addr && any_ptr - host_addr < (uint64_t)e->size) {
-        return i;
-      }
+static size_t hrx_buffer_table_range_lower_bound(
+    const hrx_buffer_table_t* table, uint64_t base) {
+  size_t low = 0;
+  size_t high = table->range_count;
+  while (low < high) {
+    const size_t middle = low + (high - low) / 2;
+    if (table->range_index[middle].base < base) {
+      low = middle + 1;
+    } else {
+      high = middle;
     }
   }
-  return table->count;
+  return low;
+}
+
+static size_t hrx_buffer_table_range_upper_bound(
+    const hrx_buffer_table_t* table, uint64_t address) {
+  size_t low = 0;
+  size_t high = table->range_count;
+  while (low < high) {
+    const size_t middle = low + (high - low) / 2;
+    if (table->range_index[middle].base <= address) {
+      low = middle + 1;
+    } else {
+      high = middle;
+    }
+  }
+  return low;
+}
+
+static size_t hrx_buffer_table_find_index_locked(
+    const hrx_buffer_table_t* table, uint64_t any_ptr) {
+  const size_t upper_bound = hrx_buffer_table_range_upper_bound(table, any_ptr);
+  if (upper_bound == 0) return table->count;
+  const hrx_buffer_table_range_index_t* range =
+      &table->range_index[upper_bound - 1];
+  const hrx_buffer_table_entry_t* entry = &table->entries[range->entry_index];
+  return any_ptr - range->base < (uint64_t)entry->size ? range->entry_index
+                                                       : table->count;
 }
 
 static hrx_status_t hrx_buffer_table_grow(hrx_buffer_table_t* table) {
@@ -54,13 +78,36 @@ static hrx_status_t hrx_buffer_table_grow(hrx_buffer_table_t* table) {
     return hrx_make_status(HRX_STATUS_OUT_OF_MEMORY,
                            "buffer table allocation size overflow");
   }
+  if (new_cap > SIZE_MAX / 2 ||
+      new_cap * 2 > SIZE_MAX / sizeof(hrx_buffer_table_range_index_t)) {
+    return hrx_make_status(HRX_STATUS_OUT_OF_MEMORY,
+                           "buffer table range index size overflow");
+  }
   hrx_buffer_table_entry_t* new_entries =
-      realloc(table->entries, new_cap * sizeof(hrx_buffer_table_entry_t));
+      malloc(new_cap * sizeof(hrx_buffer_table_entry_t));
   if (!new_entries) {
     return hrx_make_status(HRX_STATUS_OUT_OF_MEMORY,
                            "buffer table grow failed");
   }
+  hrx_buffer_table_range_index_t* new_range_index =
+      malloc(new_cap * 2 * sizeof(hrx_buffer_table_range_index_t));
+  if (!new_range_index) {
+    free(new_entries);
+    return hrx_make_status(HRX_STATUS_OUT_OF_MEMORY,
+                           "buffer table range index grow failed");
+  }
+  if (table->count > 0) {
+    memcpy(new_entries, table->entries,
+           table->count * sizeof(hrx_buffer_table_entry_t));
+  }
+  if (table->range_count > 0) {
+    memcpy(new_range_index, table->range_index,
+           table->range_count * sizeof(hrx_buffer_table_range_index_t));
+  }
+  free(table->entries);
+  free(table->range_index);
   table->entries = new_entries;
+  table->range_index = new_range_index;
   table->capacity = new_cap;
   return hrx_ok_status();
 }
@@ -84,21 +131,73 @@ static hrx_status_t hrx_buffer_table_ensure_insert_capacity_locked(
   return hrx_ok_status();
 }
 
-static hrx_status_t hrx_buffer_table_validate_insert_locked(
-    hrx_buffer_table_t* table, uint64_t device_ptr, void* host_ptr) {
-  if (hrx_buffer_table_find_index(table, device_ptr) < table->count) {
-    return hrx_make_status(HRX_STATUS_ALREADY_EXISTS,
-                           "device pointer already registered");
+static bool hrx_buffer_table_range_overlaps_locked(
+    const hrx_buffer_table_t* table, uint64_t base, size_t size) {
+  const size_t position = hrx_buffer_table_range_lower_bound(table, base);
+  if (position > 0) {
+    const hrx_buffer_table_range_index_t* previous =
+        &table->range_index[position - 1];
+    const hrx_buffer_table_entry_t* previous_entry =
+        &table->entries[previous->entry_index];
+    if (base - previous->base < (uint64_t)previous_entry->size) return true;
   }
+  return position < table->range_count &&
+         table->range_index[position].base - base < (uint64_t)size;
+}
 
-  if (host_ptr && (uint64_t)(uintptr_t)host_ptr != device_ptr) {
-    uint64_t host_addr = (uint64_t)(uintptr_t)host_ptr;
-    if (hrx_buffer_table_find_index(table, host_addr) < table->count) {
-      return hrx_make_status(HRX_STATUS_ALREADY_EXISTS,
-                             "host pointer already registered");
-    }
+static hrx_status_t hrx_buffer_table_validate_insert_locked(
+    hrx_buffer_table_t* table, uint64_t device_ptr, void* host_ptr,
+    size_t size) {
+  if (size == 0 || device_ptr == 0 ||
+      (uint64_t)size > UINT64_MAX - device_ptr) {
+    return hrx_make_status(HRX_STATUS_INVALID_ARGUMENT,
+                           "device allocation range is invalid");
+  }
+  const uint64_t host_address = (uint64_t)(uintptr_t)host_ptr;
+  if (host_ptr && host_address != device_ptr &&
+      ((uint64_t)size > UINT64_MAX - host_address ||
+       (device_ptr < host_address + (uint64_t)size &&
+        host_address < device_ptr + (uint64_t)size))) {
+    return hrx_make_status(HRX_STATUS_INVALID_ARGUMENT,
+                           "host allocation alias range is invalid");
+  }
+  if (hrx_buffer_table_range_overlaps_locked(table, device_ptr, size) ||
+      (host_ptr && host_address != device_ptr &&
+       hrx_buffer_table_range_overlaps_locked(table, host_address, size))) {
+    return hrx_make_status(HRX_STATUS_ALREADY_EXISTS,
+                           "allocation range already registered");
   }
   return hrx_ok_status();
+}
+
+static void hrx_buffer_table_insert_range_locked(hrx_buffer_table_t* table,
+                                                 uint64_t base,
+                                                 size_t entry_index) {
+  const size_t position = hrx_buffer_table_range_lower_bound(table, base);
+  IREE_ASSERT(table->range_count < table->capacity * 2);
+  if (position < table->range_count) {
+    memmove(&table->range_index[position + 1], &table->range_index[position],
+            (table->range_count - position) * sizeof(*table->range_index));
+  }
+  table->range_index[position] = (hrx_buffer_table_range_index_t){
+      .base = base,
+      .entry_index = entry_index,
+  };
+  ++table->range_count;
+}
+
+static void hrx_buffer_table_remove_entry_ranges_locked(
+    hrx_buffer_table_t* table, size_t entry_index, size_t last_entry_index) {
+  size_t output_index = 0;
+  for (size_t i = 0; i < table->range_count; ++i) {
+    hrx_buffer_table_range_index_t range = table->range_index[i];
+    if (range.entry_index == entry_index) continue;
+    if (range.entry_index == last_entry_index) {
+      range.entry_index = entry_index;
+    }
+    table->range_index[output_index++] = range;
+  }
+  table->range_count = output_index;
 }
 
 hrx_status_t hrx_buffer_table_insert(hrx_buffer_table_t* table,
@@ -107,8 +206,8 @@ hrx_status_t hrx_buffer_table_insert(hrx_buffer_table_t* table,
                                      void* user_data) {
   iree_slim_mutex_lock(&table->mutex);
 
-  hrx_status_t status =
-      hrx_buffer_table_validate_insert_locked(table, device_ptr, host_ptr);
+  hrx_status_t status = hrx_buffer_table_validate_insert_locked(
+      table, device_ptr, host_ptr, size);
   if (hrx_status_is_ok(status)) {
     status = hrx_buffer_table_ensure_insert_capacity_locked(
         table, /*additional_reservations=*/1);
@@ -118,31 +217,23 @@ hrx_status_t hrx_buffer_table_insert(hrx_buffer_table_t* table,
     return status;
   }
 
-  table->entries[table->count++] = (hrx_buffer_table_entry_t){
+  const size_t entry_index = table->count;
+  table->entries[entry_index] = (hrx_buffer_table_entry_t){
       .device_ptr = device_ptr,
       .host_ptr = host_ptr,
       .size = size,
       .buffer = buffer,
       .user_data = user_data,
   };
+  hrx_buffer_table_insert_range_locked(table, device_ptr, entry_index);
+  const uint64_t host_address = (uint64_t)(uintptr_t)host_ptr;
+  if (host_ptr && host_address != device_ptr) {
+    hrx_buffer_table_insert_range_locked(table, host_address, entry_index);
+  }
+  ++table->count;
 
   iree_slim_mutex_unlock(&table->mutex);
   return hrx_ok_status();
-}
-
-hrx_status_t hrx_buffer_table_insert_if_new(hrx_buffer_table_t* table,
-                                            uint64_t device_ptr, void* host_ptr,
-                                            size_t size, hrx_buffer_t buffer,
-                                            void* user_data) {
-  hrx_status_t status = hrx_buffer_table_insert(table, device_ptr, host_ptr,
-                                                size, buffer, user_data);
-  if (!hrx_status_is_ok(status) &&
-      hrx_status_code(status) == HRX_STATUS_ALREADY_EXISTS) {
-    // Already registered — that is the intended idempotent outcome here.
-    hrx_status_ignore(status);
-    return hrx_ok_status();
-  }
-  return status;
 }
 
 hrx_status_t hrx_buffer_table_reserve_insert(hrx_buffer_table_t* table) {
@@ -165,17 +256,24 @@ hrx_status_t hrx_buffer_table_insert_reserved(hrx_buffer_table_t* table,
   IREE_ASSERT(table->reserved_insert_count > 0);
   --table->reserved_insert_count;
 
-  hrx_status_t status =
-      hrx_buffer_table_validate_insert_locked(table, device_ptr, host_ptr);
+  hrx_status_t status = hrx_buffer_table_validate_insert_locked(
+      table, device_ptr, host_ptr, size);
   if (hrx_status_is_ok(status)) {
     IREE_ASSERT(table->count < table->capacity);
-    table->entries[table->count++] = (hrx_buffer_table_entry_t){
+    const size_t entry_index = table->count;
+    table->entries[entry_index] = (hrx_buffer_table_entry_t){
         .device_ptr = device_ptr,
         .host_ptr = host_ptr,
         .size = size,
         .buffer = buffer,
         .user_data = user_data,
     };
+    hrx_buffer_table_insert_range_locked(table, device_ptr, entry_index);
+    const uint64_t host_address = (uint64_t)(uintptr_t)host_ptr;
+    if (host_ptr && host_address != device_ptr) {
+      hrx_buffer_table_insert_range_locked(table, host_address, entry_index);
+    }
+    ++table->count;
   }
 
   iree_slim_mutex_unlock(&table->mutex);
@@ -193,18 +291,19 @@ hrx_status_t hrx_buffer_table_remove(hrx_buffer_table_t* table,
                                      uint64_t any_ptr) {
   iree_slim_mutex_lock(&table->mutex);
 
-  size_t idx = hrx_buffer_table_find_index(table, any_ptr);
+  size_t idx = hrx_buffer_table_find_index_locked(table, any_ptr);
   if (idx >= table->count) {
     iree_slim_mutex_unlock(&table->mutex);
     return hrx_make_status(HRX_STATUS_NOT_FOUND,
                            "pointer not found in buffer table");
   }
 
-  if (idx < table->count - 1) {
-    memmove(&table->entries[idx], &table->entries[idx + 1],
-            (table->count - idx - 1) * sizeof(hrx_buffer_table_entry_t));
+  const size_t last_index = table->count - 1;
+  hrx_buffer_table_remove_entry_ranges_locked(table, idx, last_index);
+  if (idx != last_index) {
+    table->entries[idx] = table->entries[last_index];
   }
-  table->count--;
+  --table->count;
 
   iree_slim_mutex_unlock(&table->mutex);
   return hrx_ok_status();
@@ -237,7 +336,7 @@ hrx_status_t hrx_buffer_table_find(hrx_buffer_table_t* table, uint64_t any_ptr,
                                    void** out_user_data) {
   iree_slim_mutex_lock(&table->mutex);
 
-  size_t idx = hrx_buffer_table_find_index(table, any_ptr);
+  size_t idx = hrx_buffer_table_find_index_locked(table, any_ptr);
   if (idx >= table->count) {
     iree_slim_mutex_unlock(&table->mutex);
     if (out_buffer) {
@@ -262,27 +361,16 @@ hrx_status_t hrx_buffer_table_find(hrx_buffer_table_t* table, uint64_t any_ptr,
 // Returns the matching entry while |table->mutex| is held by the caller.
 static hrx_buffer_table_entry_t* hrx_buffer_table_find_range_locked(
     hrx_buffer_table_t* table, uint64_t any_ptr, size_t size) {
-  for (size_t i = 0; i < table->count; ++i) {
-    hrx_buffer_table_entry_t* entry = &table->entries[i];
-    if (any_ptr >= entry->device_ptr) {
-      const uint64_t offset = any_ptr - entry->device_ptr;
-      if (offset <= (uint64_t)entry->size &&
-          (uint64_t)size <= (uint64_t)entry->size - offset) {
-        return entry;
-      }
-    }
-    if (entry->host_ptr) {
-      const uint64_t host_start = (uint64_t)(uintptr_t)entry->host_ptr;
-      if (any_ptr >= host_start) {
-        const uint64_t offset = any_ptr - host_start;
-        if (offset <= (uint64_t)entry->size &&
-            (uint64_t)size <= (uint64_t)entry->size - offset) {
-          return entry;
-        }
-      }
-    }
-  }
-  return NULL;
+  const size_t upper_bound = hrx_buffer_table_range_upper_bound(table, any_ptr);
+  if (upper_bound == 0) return NULL;
+  const hrx_buffer_table_range_index_t* range =
+      &table->range_index[upper_bound - 1];
+  hrx_buffer_table_entry_t* entry = &table->entries[range->entry_index];
+  const uint64_t offset = any_ptr - range->base;
+  return offset <= (uint64_t)entry->size &&
+                 (uint64_t)size <= (uint64_t)entry->size - offset
+             ? entry
+             : NULL;
 }
 
 hrx_status_t hrx_buffer_table_find_range(hrx_buffer_table_t* table,
@@ -380,7 +468,7 @@ hrx_status_t hrx_buffer_table_remove_reserved_if(
   if (out_offset) *out_offset = 0;
 
   iree_slim_mutex_lock(&table->mutex);
-  const size_t index = hrx_buffer_table_find_index(table, any_ptr);
+  const size_t index = hrx_buffer_table_find_index_locked(table, any_ptr);
   if (index >= table->count) {
     iree_slim_mutex_unlock(&table->mutex);
     return hrx_make_status(HRX_STATUS_NOT_FOUND,
@@ -395,9 +483,10 @@ hrx_status_t hrx_buffer_table_remove_reserved_if(
   if (hrx_status_is_ok(status)) {
     *out_entry = *entry;
     if (out_offset) *out_offset = offset;
-    if (index < table->count - 1) {
-      memmove(&table->entries[index], &table->entries[index + 1],
-              (table->count - index - 1) * sizeof(*table->entries));
+    const size_t last_index = table->count - 1;
+    hrx_buffer_table_remove_entry_ranges_locked(table, index, last_index);
+    if (index != last_index) {
+      table->entries[index] = table->entries[last_index];
     }
     --table->count;
     ++table->reserved_insert_count;

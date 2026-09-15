@@ -250,6 +250,125 @@ TEST(BufferTableTest, DoubleInsert) {
   FreeDummyBuffer(buffer2, allocator);
 }
 
+TEST(BufferTableTest, RejectsOverlappingRanges) {
+  iree_allocator_t allocator = iree_allocator_system();
+  iree_hal_streaming_buffer_table_t* table = nullptr;
+  IREE_ASSERT_OK(iree_hal_streaming_buffer_table_allocate(allocator, &table));
+
+  auto* existing =
+      CreateDummyBuffer(UINT64_C(0x100000000), 0x1000, allocator,
+                        reinterpret_cast<void*>(UINT64_C(0x200000000)));
+  auto* interior = CreateDummyBuffer(UINT64_C(0x100000800), 0x1000, allocator);
+  auto* enclosing = CreateDummyBuffer(UINT64_C(0x0FFFFFF00), 0x2000, allocator);
+  auto* alias_overlap =
+      CreateDummyBuffer(UINT64_C(0x300000000), 0x1000, allocator,
+                        reinterpret_cast<void*>(UINT64_C(0x200000800)));
+
+  IREE_ASSERT_OK(iree_hal_streaming_buffer_table_insert(table, existing));
+  EXPECT_THAT(Status(iree_hal_streaming_buffer_table_insert(table, interior)),
+              StatusIs(StatusCode::kAlreadyExists));
+  EXPECT_THAT(Status(iree_hal_streaming_buffer_table_insert(table, enclosing)),
+              StatusIs(StatusCode::kAlreadyExists));
+  EXPECT_THAT(
+      Status(iree_hal_streaming_buffer_table_insert(table, alias_overlap)),
+      StatusIs(StatusCode::kAlreadyExists));
+
+  iree_hal_streaming_buffer_table_free(table);
+  FreeDummyBuffer(existing, allocator);
+  FreeDummyBuffer(interior, allocator);
+  FreeDummyBuffer(enclosing, allocator);
+  FreeDummyBuffer(alias_overlap, allocator);
+}
+
+TEST(BufferTableTest, RejectsInvalidAllocationRanges) {
+  iree_allocator_t allocator = iree_allocator_system();
+  iree_hal_streaming_buffer_table_t* table = nullptr;
+  IREE_ASSERT_OK(iree_hal_streaming_buffer_table_allocate(allocator, &table));
+
+  auto* null_device = CreateDummyBuffer(0, 0x1000, allocator);
+  auto* empty = CreateDummyBuffer(UINT64_C(0x100000000), 0, allocator);
+  auto* device_overflow = CreateDummyBuffer(UINT64_MAX, 1, allocator);
+  auto* host_overflow =
+      CreateDummyBuffer(UINT64_C(0x100000000), 2, allocator,
+                        reinterpret_cast<void*>(UINT64_MAX - 1));
+
+  for (auto* buffer : {null_device, empty, device_overflow, host_overflow}) {
+    EXPECT_THAT(Status(iree_hal_streaming_buffer_table_insert(table, buffer)),
+                StatusIs(StatusCode::kInvalidArgument));
+  }
+
+  iree_hal_streaming_buffer_table_free(table);
+  FreeDummyBuffer(null_device, allocator);
+  FreeDummyBuffer(empty, allocator);
+  FreeDummyBuffer(device_overflow, allocator);
+  FreeDummyBuffer(host_overflow, allocator);
+}
+
+TEST(BufferTableTest, IndexesOutOfOrderDeviceAndHostRanges) {
+  iree_allocator_t allocator = iree_allocator_system();
+  iree_hal_streaming_buffer_table_t* table = nullptr;
+  IREE_ASSERT_OK(iree_hal_streaming_buffer_table_allocate(allocator, &table));
+
+  auto* high =
+      CreateDummyBuffer(UINT64_C(0x300000000), 0x1000, allocator,
+                        reinterpret_cast<void*>(UINT64_C(0x400000000)));
+  auto* low = CreateDummyBuffer(UINT64_C(0x100000000), 0x1000, allocator,
+                                reinterpret_cast<void*>(UINT64_C(0x200000000)));
+  IREE_ASSERT_OK(iree_hal_streaming_buffer_table_insert(table, high));
+  IREE_ASSERT_OK(iree_hal_streaming_buffer_table_insert(table, low));
+
+  iree_hal_streaming_buffer_t* found = nullptr;
+  IREE_EXPECT_OK(iree_hal_streaming_buffer_table_lookup(
+      table, UINT64_C(0x100000800), &found));
+  EXPECT_EQ(low, found);
+  IREE_EXPECT_OK(iree_hal_streaming_buffer_table_lookup(
+      table, UINT64_C(0x400000800), &found));
+  EXPECT_EQ(high, found);
+
+  iree_hal_streaming_buffer_table_free(table);
+  FreeDummyBuffer(high, allocator);
+  FreeDummyBuffer(low, allocator);
+}
+
+TEST(BufferTableTest, RemovalRepairsMovedEntryAliases) {
+  iree_allocator_t allocator = iree_allocator_system();
+  iree_hal_streaming_buffer_table_t* table = nullptr;
+  IREE_ASSERT_OK(iree_hal_streaming_buffer_table_allocate(allocator, &table));
+
+  auto* first =
+      CreateDummyBuffer(UINT64_C(0x100000000), 0x1000, allocator,
+                        reinterpret_cast<void*>(UINT64_C(0x200000000)));
+  auto* middle =
+      CreateDummyBuffer(UINT64_C(0x300000000), 0x1000, allocator,
+                        reinterpret_cast<void*>(UINT64_C(0x400000000)));
+  auto* last =
+      CreateDummyBuffer(UINT64_C(0x500000000), 0x1000, allocator,
+                        reinterpret_cast<void*>(UINT64_C(0x600000000)));
+  IREE_ASSERT_OK(iree_hal_streaming_buffer_table_insert(table, first));
+  IREE_ASSERT_OK(iree_hal_streaming_buffer_table_insert(table, middle));
+  IREE_ASSERT_OK(iree_hal_streaming_buffer_table_insert(table, last));
+
+  IREE_ASSERT_OK(
+      iree_hal_streaming_buffer_table_remove(table, UINT64_C(0x100000000)));
+  iree_hal_streaming_buffer_t* found = nullptr;
+  IREE_EXPECT_OK(iree_hal_streaming_buffer_table_lookup(
+      table, UINT64_C(0x500000800), &found));
+  EXPECT_EQ(last, found);
+  IREE_EXPECT_OK(iree_hal_streaming_buffer_table_lookup(
+      table, UINT64_C(0x600000800), &found));
+  EXPECT_EQ(last, found);
+  IREE_ASSERT_OK(
+      iree_hal_streaming_buffer_table_remove(table, UINT64_C(0x600000000)));
+  IREE_EXPECT_OK(iree_hal_streaming_buffer_table_lookup(
+      table, UINT64_C(0x400000800), &found));
+  EXPECT_EQ(middle, found);
+
+  iree_hal_streaming_buffer_table_free(table);
+  FreeDummyBuffer(first, allocator);
+  FreeDummyBuffer(middle, allocator);
+  FreeDummyBuffer(last, allocator);
+}
+
 TEST(BufferTableTest, LookupMissing) {
   iree_allocator_t allocator = iree_allocator_system();
   iree_hal_streaming_buffer_table_t* table = nullptr;
