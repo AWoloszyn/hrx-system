@@ -1029,6 +1029,29 @@ PACKAGE_POLICIES = [
         self.assertIn("iree_native_test(", converter.body)
         self.assertIn("endif()", converter.body)
 
+    def test_executable_test_preserves_resource_lock(self):
+        for resource_group in (None, "shared-device", "shared-storage"):
+            with self.subTest(resource_group=resource_group):
+                converter = SimpleNamespace(body="")
+                functions = bazel_to_cmake_converter.BuildFileFunctions(
+                    converter=converter,
+                    targets=bazel_to_cmake_targets.TargetConverter(
+                        repo_map={"@hrx": ""}
+                    ),
+                    build_dir="",
+                )
+                functions.iree_executable_test(
+                    name="invocation",
+                    src="//tools:runner",
+                    resource_group=resource_group,
+                )
+                if resource_group is None:
+                    self.assertNotIn("RESOURCE_GROUP", converter.body)
+                else:
+                    self.assertIn(
+                        "RESOURCE_GROUP\n    " + resource_group, converter.body
+                    )
+
     def test_native_test_converts_location_args_to_file_locators(self):
         converter = SimpleNamespace(body="")
         functions = bazel_to_cmake_converter.BuildFileFunctions(

@@ -2794,6 +2794,7 @@ class BuildFileFunctions(object):
         env=None,
         sanitizer_suppressions=None,
         tags=None,
+        resource_group=None,
         timeout=None,
         target_compatible_with=None,
     ):
@@ -2810,6 +2811,9 @@ class BuildFileFunctions(object):
             "ENV", self._convert_native_test_env(env), sort=False
         )
         labels_block = self._convert_string_list_block("LABELS", tags)
+        resource_group_block = self._convert_string_arg_block(
+            "RESOURCE_GROUP", resource_group, quote=False
+        )
         sanitizer_suppressions_block = self._convert_sanitizer_suppressions_block(
             sanitizer_suppressions
         )
@@ -2824,6 +2828,7 @@ class BuildFileFunctions(object):
             f"{data_block}"
             f"{env_block}"
             f"{labels_block}"
+            f"{resource_group_block}"
             f"{sanitizer_suppressions_block}"
             f"{timeout_block}"
             f")\n\n"
