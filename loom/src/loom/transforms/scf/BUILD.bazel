@@ -13,6 +13,18 @@ package(
 )
 
 loom_cc_library(
+    name = "scf_body",
+    srcs = ["scf_body.c"],
+    hdrs = ["scf_body.h"],
+    deps = [
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops:op_defs",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_library(
     name = "scf_to_cfg",
     srcs = ["scf_to_cfg.c"],
     hdrs = ["scf_to_cfg.h"],
@@ -62,6 +74,7 @@ loom_cc_library(
     srcs = ["scf_unroll_tile.c"],
     hdrs = ["scf_unroll_tile.h"],
     deps = [
+        ":scf_body",
         "//loom/src/loom/analysis:movement",
         "//loom/src/loom/error:emitter",
         "//loom/src/loom/error:error_defs",

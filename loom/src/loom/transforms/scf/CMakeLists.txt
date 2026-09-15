@@ -11,6 +11,21 @@ iree_add_all_subdirs()
 
 loom_cc_library(
   NAME
+    scf_body
+  HDRS
+    "scf_body.h"
+  SRCS
+    "scf_body.c"
+  DEPS
+    iree::base
+    iree::base::internal::arena
+    loom::ir
+    loom::ops::op_defs
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
     scf_to_cfg
   HDRS
     "scf_to_cfg.h"
@@ -68,6 +83,7 @@ loom_cc_library(
   SRCS
     "scf_unroll_tile.c"
   DEPS
+    ::scf_body
     iree::base
     loom::analysis::movement
     loom::error::emitter
