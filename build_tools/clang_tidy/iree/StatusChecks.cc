@@ -602,6 +602,10 @@ class BorrowedStatusParameterAnalyzer {
     if (!Expression) {
       return;
     }
+    if (isa<AbstractConditionalOperator>(Expression)) {
+      analyzeExpression(Expression, /*transferred=*/true);
+      return;
+    }
     if (const auto* Call = dyn_cast<CallExpr>(Expression);
         Call && IsKnownStatusClone(CalleeName(Call))) {
       for (const Expr* Arg : Call->arguments()) {
