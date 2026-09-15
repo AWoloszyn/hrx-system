@@ -561,6 +561,17 @@ static inline void loom_value_facts_mark_lane_predicate(
                   LOOM_VALUE_FACT_LANE_PREDICATE | LOOM_VALUE_FACT_BOOLEAN;
 }
 
+// Marks scalar predicates as lane predicates and other values as lane-varying.
+static inline void loom_value_facts_mark_lane_distribution_for_type(
+    loom_type_t type, loom_value_facts_t* facts) {
+  if (loom_type_is_scalar(type) &&
+      loom_type_element_type(type) == LOOM_SCALAR_TYPE_I1) {
+    loom_value_facts_mark_lane_predicate(facts);
+  } else {
+    loom_value_facts_mark_lane_varying(facts);
+  }
+}
+
 static inline void loom_value_facts_mark_subgroup_lane_mask(
     loom_value_facts_t* facts) {
   facts->flags &= ~LOOM_VALUE_FACT_LANE_PREDICATE;
@@ -733,7 +744,12 @@ static inline void loom_value_facts_meet(
   *out = loom_value_facts_make(
       a->range_lo < b->range_lo ? a->range_lo : b->range_lo,
       a->range_hi > b->range_hi ? a->range_hi : b->range_hi,
-      iree_math_gcd_i64(a->known_divisor, b->known_divisor));
+      // Exact zero is divisible by every positive divisor. Its stored divisor
+      // is one because the fact representation requires a positive value.
+      loom_value_facts_is_zero(*a) ? b->known_divisor
+      : loom_value_facts_is_zero(*b)
+          ? a->known_divisor
+          : iree_math_gcd_i64(a->known_divisor, b->known_divisor));
   if (preserves_subgroup_lane_mask) {
     loom_value_facts_mark_subgroup_lane_mask(out);
   }

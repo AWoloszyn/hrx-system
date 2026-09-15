@@ -1,0 +1,215 @@
+// RUN: pass canonicalize
+
+// Four offsets form one finite orbit; no source assumption supplies the range.
+func.def @four_offsets(%count: index) -> (i64) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 128 : offset
+  %seed2 = index.constant 256 : offset
+  %seed3 = index.constant 384 : offset
+  %last0, %last1, %last2, %last3 = scf.for %iv = [%begin to %count step %step](%slot0 = %seed0 : offset, %slot1 = %seed1 : offset, %slot2 = %seed2 : offset, %slot3 = %seed3 : offset) -> (offset, offset, offset, offset) {
+    %check0_lower = test.fact_range_lo %slot0 : offset -> i64
+    %check0_upper = test.fact_range_hi %slot0 : offset -> i64
+    %check0_divisor = test.fact_divisor %slot0 : offset -> i64
+    test.use %check0_lower, %check0_upper, %check0_divisor : i64, i64, i64
+    scf.yield %slot1, %slot2, %slot3, %slot0 : offset, offset, offset, offset
+  }
+  %result = test.fact_range_hi %last0 : offset -> i64
+  func.return %result : i64
+}
+
+// ----
+func.def @four_offsets(%count: index) -> (i64) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 128 : offset
+  %seed2 = index.constant 256 : offset
+  %seed3 = index.constant 384 : offset
+  %last0, %last1, %last2, %last3 = scf.for %iv = [%begin to %count step %step](%slot0 = %seed0 : offset, %slot1 = %seed1 : offset, %slot2 = %seed2 : offset, %slot3 = %seed3 : offset) -> (offset, offset, offset, offset) {
+    %check0_lower = scalar.constant 0 : i64
+    %check0_upper = scalar.constant 384 : i64
+    %check0_divisor = scalar.constant 128 : i64
+    test.use %check0_lower, %check0_upper, %check0_divisor : i64, i64, i64
+    scf.yield %slot1, %slot2, %slot3, %slot0 : offset, offset, offset, offset
+  }
+  %result = scalar.constant 384 : i64
+  func.return %result : i64
+}
+
+// ====
+
+// Cycle length does not increase the number of body fact iterations.
+func.def @seven_offsets(%count: index) -> (i64) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 128 : offset
+  %seed2 = index.constant 256 : offset
+  %seed3 = index.constant 384 : offset
+  %seed4 = index.constant 512 : offset
+  %seed5 = index.constant 640 : offset
+  %seed6 = index.constant 768 : offset
+  %last0, %last1, %last2, %last3, %last4, %last5, %last6 = scf.for %iv = [%begin to %count step %step](%slot0 = %seed0 : offset, %slot1 = %seed1 : offset, %slot2 = %seed2 : offset, %slot3 = %seed3 : offset, %slot4 = %seed4 : offset, %slot5 = %seed5 : offset, %slot6 = %seed6 : offset) -> (offset, offset, offset, offset, offset, offset, offset) {
+    %check0_lower = test.fact_range_lo %slot0 : offset -> i64
+    %check0_upper = test.fact_range_hi %slot0 : offset -> i64
+    %check0_divisor = test.fact_divisor %slot0 : offset -> i64
+    test.use %check0_lower, %check0_upper, %check0_divisor : i64, i64, i64
+    scf.yield %slot1, %slot2, %slot3, %slot4, %slot5, %slot6, %slot0 : offset, offset, offset, offset, offset, offset, offset
+  }
+  %result = test.fact_range_hi %last0 : offset -> i64
+  func.return %result : i64
+}
+
+// ----
+func.def @seven_offsets(%count: index) -> (i64) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 128 : offset
+  %seed2 = index.constant 256 : offset
+  %seed3 = index.constant 384 : offset
+  %seed4 = index.constant 512 : offset
+  %seed5 = index.constant 640 : offset
+  %seed6 = index.constant 768 : offset
+  %last0, %last1, %last2, %last3, %last4, %last5, %last6 = scf.for %iv = [%begin to %count step %step](%slot0 = %seed0 : offset, %slot1 = %seed1 : offset, %slot2 = %seed2 : offset, %slot3 = %seed3 : offset, %slot4 = %seed4 : offset, %slot5 = %seed5 : offset, %slot6 = %seed6 : offset) -> (offset, offset, offset, offset, offset, offset, offset) {
+    %check0_lower = scalar.constant 0 : i64
+    %check0_upper = scalar.constant 768 : i64
+    %check0_divisor = scalar.constant 128 : i64
+    test.use %check0_lower, %check0_upper, %check0_divisor : i64, i64, i64
+    scf.yield %slot1, %slot2, %slot3, %slot4, %slot5, %slot6, %slot0 : offset, offset, offset, offset, offset, offset, offset
+  }
+  %result = scalar.constant 768 : i64
+  func.return %result : i64
+}
+
+// ====
+
+// Separate cycles and an invariant argument retain separate domains.
+func.def @independent_cycles(%count: index) -> (i64) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 128 : offset
+  %seed2 = index.constant 256 : offset
+  %seed3 = index.constant 384 : offset
+  %seed4 = index.constant 1024 : offset
+  %seed5 = index.constant 1536 : offset
+  %seed6 = index.constant 4096 : offset
+  %last0, %last1, %last2, %last3, %last4, %last5, %last6 = scf.for %iv = [%begin to %count step %step](%slot0 = %seed0 : offset, %slot1 = %seed1 : offset, %slot2 = %seed2 : offset, %slot3 = %seed3 : offset, %slot4 = %seed4 : offset, %slot5 = %seed5 : offset, %slot6 = %seed6 : offset) -> (offset, offset, offset, offset, offset, offset, offset) {
+    %check0_lower = test.fact_range_lo %slot0 : offset -> i64
+    %check0_upper = test.fact_range_hi %slot0 : offset -> i64
+    %check0_divisor = test.fact_divisor %slot0 : offset -> i64
+    test.use %check0_lower, %check0_upper, %check0_divisor : i64, i64, i64
+    %check1_lower = test.fact_range_lo %slot4 : offset -> i64
+    %check1_upper = test.fact_range_hi %slot4 : offset -> i64
+    %check1_divisor = test.fact_divisor %slot4 : offset -> i64
+    test.use %check1_lower, %check1_upper, %check1_divisor : i64, i64, i64
+    %check2_lower = test.fact_range_lo %slot6 : offset -> i64
+    %check2_upper = test.fact_range_hi %slot6 : offset -> i64
+    %check2_divisor = test.fact_divisor %slot6 : offset -> i64
+    test.use %check2_lower, %check2_upper, %check2_divisor : i64, i64, i64
+    scf.yield %slot1, %slot2, %slot3, %slot0, %slot5, %slot4, %slot6 : offset, offset, offset, offset, offset, offset, offset
+  }
+  %result = test.fact_range_hi %last0 : offset -> i64
+  func.return %result : i64
+}
+
+// ----
+func.def @independent_cycles(%count: index) -> (i64) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 128 : offset
+  %seed2 = index.constant 256 : offset
+  %seed3 = index.constant 384 : offset
+  %seed4 = index.constant 1024 : offset
+  %seed5 = index.constant 1536 : offset
+  %last0, %last1, %last2, %last3, %last4, %last5 = scf.for %iv = [%begin to %count step %step](%slot0 = %seed0 : offset, %slot1 = %seed1 : offset, %slot2 = %seed2 : offset, %slot3 = %seed3 : offset, %slot4 = %seed4 : offset, %slot5 = %seed5 : offset) -> (offset, offset, offset, offset, offset, offset) {
+    %check0_lower = scalar.constant 0 : i64
+    %check0_upper = scalar.constant 384 : i64
+    %check0_divisor = scalar.constant 128 : i64
+    test.use %check0_lower, %check0_upper, %check0_divisor : i64, i64, i64
+    %check1_lower = scalar.constant 1024 : i64
+    %check1_upper = scalar.constant 1536 : i64
+    %check1_divisor = scalar.constant 512 : i64
+    test.use %check1_lower, %check1_upper, %check1_divisor : i64, i64, i64
+    %check2_lower = scalar.constant 4096 : i64
+    %check2_upper = scalar.constant 4096 : i64
+    %check2_divisor = scalar.constant 4096 : i64
+    test.use %check2_lower, %check2_upper, %check2_divisor : i64, i64, i64
+    scf.yield %slot1, %slot2, %slot3, %slot0, %slot5, %slot4 : offset, offset, offset, offset, offset, offset
+  }
+  %result = scalar.constant 384 : i64
+  func.return %result : i64
+}
+
+// ====
+
+// An arithmetic update breaks the forwarding cycle and still requires widening.
+func.def @changing_offsets(%count: index) -> (i64) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 128 : offset
+  %seed2 = index.constant 256 : offset
+  %seed3 = index.constant 384 : offset
+  %last0, %last1, %last2, %last3 = scf.for %iv = [%begin to %count step %step](%slot0 = %seed0 : offset, %slot1 = %seed1 : offset, %slot2 = %seed2 : offset, %slot3 = %seed3 : offset) -> (offset, offset, offset, offset) {
+    %check0_lower = test.fact_range_lo %slot0 : offset -> i64
+    %check0_upper = test.fact_range_hi %slot0 : offset -> i64
+    %check0_divisor = test.fact_divisor %slot0 : offset -> i64
+    test.use %check0_lower, %check0_upper, %check0_divisor : i64, i64, i64
+    %incremented = index.add %slot0, %seed1 : offset
+    scf.yield %slot1, %slot2, %slot3, %incremented : offset, offset, offset, offset
+  }
+  %result = test.fact_range_hi %last0 : offset -> i64
+  func.return %result : i64
+}
+
+// ----
+func.def @changing_offsets(%count: index) -> (i64) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 128 : offset
+  %seed2 = index.constant 256 : offset
+  %seed3 = index.constant 384 : offset
+  %last0, %last1, %last2, %last3 = scf.for %iv = [%begin to %count step %step](%slot0 = %seed0 : offset, %slot1 = %seed1 : offset, %slot2 = %seed2 : offset, %slot3 = %seed3 : offset) -> (offset, offset, offset, offset) {
+    %check0_lower = scalar.constant -9223372036854775808 : i64
+    %check0_upper = scalar.constant 9223372036854775807 : i64
+    %check0_divisor = scalar.constant 1 : i64
+    test.use %check0_lower, %check0_upper, %check0_divisor : i64, i64, i64
+    %incremented = index.add %slot0, %seed1 : offset
+    scf.yield %slot1, %slot2, %slot3, %incremented : offset, offset, offset, offset
+  }
+  %result = scalar.constant 9223372036854775807 : i64
+  func.return %result : i64
+}
+
+// ====
+
+// Zero-trip results retain the original per-position input facts.
+func.def @zero_trip_offsets() -> (i64) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 128 : offset
+  %seed2 = index.constant 256 : offset
+  %seed3 = index.constant 384 : offset
+  %last0, %last1, %last2, %last3 = scf.for %iv = [%begin to %begin step %step](%slot0 = %seed0 : offset, %slot1 = %seed1 : offset, %slot2 = %seed2 : offset, %slot3 = %seed3 : offset) -> (offset, offset, offset, offset) {
+    %check0_lower = test.fact_range_lo %slot0 : offset -> i64
+    %check0_upper = test.fact_range_hi %slot0 : offset -> i64
+    %check0_divisor = test.fact_divisor %slot0 : offset -> i64
+    test.use %check0_lower, %check0_upper, %check0_divisor : i64, i64, i64
+    scf.yield %slot1, %slot2, %slot3, %slot0 : offset, offset, offset, offset
+  }
+  %result = test.fact_range_hi %last0 : offset -> i64
+  func.return %result : i64
+}
+
+// ----
+func.def @zero_trip_offsets() -> (i64) {
+  %result = scalar.constant 0 : i64
+  func.return %result : i64
+}

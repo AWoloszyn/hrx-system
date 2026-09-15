@@ -947,6 +947,13 @@ iree_status_t loom_value_fact_table_clone_defined_facts(
     loom_value_fact_table_t* target, const loom_value_fact_table_t* source,
     const loom_module_t* module);
 
+// Propagates retained materialization and contextual origins through declared
+// value-alias and fact-identity operations. Numeric facts are computed
+// separately.
+iree_status_t loom_value_fact_table_propagate_origins(
+    loom_value_fact_table_t* table, const loom_module_t* module,
+    const loom_op_t* op);
+
 // Computes facts for a single op. Ordinary ops call their vtable fact inference
 // function; LoopLike and RegionBranch ops visit their nested regions and
 // summarize the values returned to the parent results. Ops without either form

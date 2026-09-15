@@ -16,6 +16,7 @@ loom_check_test_suite(
     name = "test",
     srcs = [
         "facts.loom-test",
+        "rotation_facts.loom-test",
         "verify.loom-test",
     ],
 )

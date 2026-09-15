@@ -177,15 +177,19 @@ loom_cc_library(
   NAME
     fact_table
   HDRS
+    "fact_cfg.h"
     "fact_table.h"
   SRCS
+    "fact_cfg.c"
     "fact_table.c"
+    "fact_table_compute.c"
   DEPS
     ::cfg_graph
     ::numeric_format
     iree::base
     iree::base::internal
     iree::base::internal::arena
+    loom::analysis::scc
     loom::ir
     loom::ir::facts
     loom::ops::op_defs

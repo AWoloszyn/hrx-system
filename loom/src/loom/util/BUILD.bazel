@@ -152,11 +152,19 @@ loom_cc_test(
 
 loom_cc_library(
     name = "fact_table",
-    srcs = ["fact_table.c"],
-    hdrs = ["fact_table.h"],
+    srcs = [
+        "fact_cfg.c",
+        "fact_table.c",
+        "fact_table_compute.c",
+    ],
+    hdrs = [
+        "fact_cfg.h",
+        "fact_table.h",
+    ],
     deps = [
         ":cfg_graph",
         ":numeric_format",
+        "//loom/src/loom/analysis:scc",
         "//loom/src/loom/ir",
         "//loom/src/loom/ir:facts",
         "//loom/src/loom/ops:op_defs",

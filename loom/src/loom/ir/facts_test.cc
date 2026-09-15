@@ -631,6 +631,23 @@ TEST(FactsMeet, WithUnknown) {
   EXPECT_TRUE(loom_value_facts_is_unknown(out));
 }
 
+TEST(FactsMeet, ExactZeroPreservesCommonDivisibility) {
+  loom_value_facts_t zero = loom_value_facts_exact_i64(0);
+  loom_value_facts_t slots = loom_value_facts_make(128, 384, 128);
+  loom_value_facts_t forward;
+  loom_value_facts_meet(&zero, &slots, &forward);
+  EXPECT_EQ(forward.range_lo, 0);
+  EXPECT_EQ(forward.range_hi, 384);
+  EXPECT_EQ(forward.known_divisor, 128);
+  loom_value_facts_t reverse;
+  loom_value_facts_meet(&slots, &zero, &reverse);
+  EXPECT_TRUE(loom_value_facts_equal(forward, reverse));
+  loom_value_facts_t both_zero;
+  loom_value_facts_meet(&zero, &zero, &both_zero);
+  EXPECT_TRUE(loom_value_facts_is_zero(both_zero));
+  EXPECT_EQ(both_zero.known_divisor, 1);
+}
+
 TEST(FactsMeet, OverlappingRanges) {
   loom_value_facts_t a = loom_value_facts_make(0, 100, 8);
   loom_value_facts_t b = loom_value_facts_make(50, 200, 12);
