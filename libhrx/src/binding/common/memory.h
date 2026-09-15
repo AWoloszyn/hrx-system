@@ -8,6 +8,7 @@
 #define IREE_EXPERIMENTAL_STREAMING_MEMORY_H_
 
 #include "iree/base/api.h"
+#include "iree/hal/api.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -15,6 +16,15 @@ extern "C" {
 
 typedef struct iree_hal_streaming_buffer_t iree_hal_streaming_buffer_t;
 typedef struct iree_hal_streaming_context_t iree_hal_streaming_context_t;
+
+// Returns the HAL buffer representing |buffer| in |execution_context|.
+// Cross-context device-local imports are admitted only when the caller has
+// already established peer access. The returned buffer is borrowed from the
+// allocation and remains valid while the allocation remains live.
+iree_status_t iree_hal_streaming_memory_buffer_for_context(
+    iree_hal_streaming_context_t* execution_context,
+    iree_hal_streaming_buffer_t* buffer, bool allow_peer_device_allocation,
+    iree_hal_buffer_t** out_buffer);
 
 // Allocates queue-visible host staging memory.
 iree_status_t iree_hal_streaming_memory_allocate_host_staging(
