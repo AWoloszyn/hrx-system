@@ -18,11 +18,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files([
-    "linked_provider.cc",
-    "test_main.cc",
-])
-
 amdf_cc_library(
     name = "provider_headers",
     testonly = True,
@@ -39,17 +34,42 @@ amdf_cc_library(
 )
 
 amdf_cc_library(
-    name = "linked_test_main",
+    name = "test_main",
     testonly = True,
-    srcs = [
-        "linked_provider.cc",
-        "test_main.cc",
-    ],
+    srcs = ["test_main.cc"],
     deps = [
         ":device_cache",
         ":provider_headers",
-        "//libamdf:amdf_static",
         "//third_party:google_test",
+    ],
+)
+
+amdf_cc_library(
+    name = "static_provider",
+    testonly = True,
+    srcs = ["linked_provider.cc"],
+    deps = [
+        ":provider_headers",
+        "//libamdf:amdf_static",
+    ],
+)
+
+amdf_cc_library(
+    name = "shared_provider",
+    testonly = True,
+    srcs = ["linked_provider.cc"],
+    deps = [
+        ":provider_headers",
+        "//libamdf:amdf",
+    ],
+)
+
+amdf_cc_library(
+    name = "linked_test_main",
+    testonly = True,
+    deps = [
+        ":static_provider",
+        ":test_main",
     ],
 )
 

@@ -159,63 +159,47 @@ class AmdfBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         name,
         suites,
         tags=None,
+        resource_group=None,
         visibility=None,
         **kwargs,
     ):
-        del name, visibility
-        common_deps = suites + [
-            "//libamdf/cts/util:device_cache",
-            "//libamdf/cts/util:provider_headers",
-            "//third_party:google_test",
-        ]
-        test_main = ["//libamdf/cts/util:test_main.cc"]
-
-        def emit_cts_test(**test_kwargs):
+        del visibility
+        policy = self._apply_amdf_cmake_policy(
+            dict(kwargs, tags=tags, resource_group=resource_group),
+            include_run_requirements=True,
+        )
+        common_deps = suites + ["//libamdf/cts/util:test_main"]
+        for mode in ("static", "shared", "dynamic"):
+            binary_name = name + "_" + mode + "_bin"
+            data = None if mode == "static" else ["//libamdf:amdf_shared_artifact"]
             body_start = len(self._converter.body)
-            self.amdf_cc_test(**test_kwargs)
+            self.amdf_cc_binary(
+                name=binary_name,
+                testonly=True,
+                data=data,
+                deps=common_deps + ["//libamdf/cts/util:" + mode + "_provider"],
+                **kwargs,
+            )
             emitted_body = self._converter.body[body_start:]
             self._converter.body = self._converter.body[:body_start]
             self._converter.body += emitted_body.replace(
-                "iree_cc_test(",
-                "amdf_cts_test(",
+                "iree_cc_binary(",
+                "amdf_cts_binary(",
                 1,
             )
-
-        for lifetime, suffix in [("process", ""), ("instance", "_instance")]:
-            lifetime_args = ["--amdf_native_lifetime=" + lifetime]
-            emit_cts_test(
-                name="static" + suffix,
-                srcs=test_main + ["//libamdf/cts/util:linked_provider.cc"],
-                args=lifetime_args,
-                tags=tags,
-                deps=common_deps
-                + [
-                    "//libamdf:amdf_static",
-                ],
-                **kwargs,
+            provider_args = (
+                ["--amdf_library=$(rootpath //libamdf:amdf_shared_artifact)"]
+                if mode == "dynamic"
+                else []
             )
-            emit_cts_test(
-                name="shared" + suffix,
-                srcs=test_main + ["//libamdf/cts/util:linked_provider.cc"],
-                args=lifetime_args,
-                data=["//libamdf:amdf_shared_artifact"],
-                tags=tags,
-                deps=common_deps
-                + [
-                    "//libamdf:amdf",
-                ],
-                **kwargs,
-            )
-            emit_cts_test(
-                name="dynamic" + suffix,
-                srcs=test_main,
-                args=lifetime_args
-                + ["--amdf_library=$(rootpath //libamdf:amdf_shared_artifact)"],
-                data=["//libamdf:amdf_shared_artifact"],
-                tags=tags,
-                deps=common_deps + ["//libamdf/cts/util:dynamic_provider"],
-                **kwargs,
-            )
+            for lifetime, suffix in (("process", ""), ("instance", "_instance")):
+                self.iree_executable_test(
+                    name=name + "_" + mode + suffix,
+                    src=":" + binary_name,
+                    args=["--amdf_native_lifetime=" + lifetime] + provider_args,
+                    data=data,
+                    **policy,
+                )
 
 
 def convert_unmatched_target(converter, target):

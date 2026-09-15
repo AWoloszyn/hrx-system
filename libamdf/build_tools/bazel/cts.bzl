@@ -6,12 +6,16 @@
 
 """Cross-linkage conformance matrix for the public libamdf ABI."""
 
-load(":cc_test.bzl", "amdf_cc_test")
+load("//build_tools/bazel:cc_attrs.bzl", "cc_attrs")
+load("//build_tools/bazel:executable.bzl", "iree_executable_test")
+load("//libamdf/requirements:package_policy.bzl", "apply_amdf_test_policy")
+load(":cc.bzl", "amdf_cc_binary")
 
 def amdf_cts_test_suite(
         name,
         suites,
         tags = None,
+        resource_group = None,
         target_compatible_with = None,
         visibility = None):
     """Runs a CTS corpus through static, shared, and loaded providers.
@@ -20,63 +24,53 @@ def amdf_cts_test_suite(
       name: Aggregate test-suite target name.
       suites: Test-only libraries containing the common test corpus.
       tags: Additional tags applied to every generated test target.
+      resource_group: Shared native resource used by the test invocations.
       target_compatible_with: Constraints required by every test mode.
       visibility: Visibility of the aggregate test suite.
     """
-    tags = tags or []
-    common_deps = suites + [
-        "//libamdf/cts/util:device_cache",
-        "//libamdf/cts/util:provider_headers",
-        "//third_party:google_test",
-    ]
+    policy = apply_amdf_test_policy({
+        "tags": tags or [],
+        "resource_group": resource_group,
+        "target_compatible_with": target_compatible_with,
+    })
+    test_tags = cc_attrs.with_resource_group_tags(
+        policy["tags"],
+        policy.get("resource_group"),
+    )
+    common_deps = suites + ["//libamdf/cts/util:test_main"]
     runtime_data = ["//libamdf:amdf_runtime"]
-    test_main = ["//libamdf/cts/util:test_main.cc"]
-
-    for lifetime, suffix in [("process", ""), ("instance", "_instance")]:
-        lifetime_args = ["--amdf_native_lifetime=" + lifetime]
-        amdf_cc_test(
-            name = "static" + suffix,
-            srcs = test_main + ["//libamdf/cts/util:linked_provider.cc"],
-            args = lifetime_args,
-            data = runtime_data,
-            tags = tags,
+    tests = []
+    for mode in ["static", "shared", "dynamic"]:
+        binary_name = name + "_" + mode + "_bin"
+        data = runtime_data
+        if mode != "static":
+            data = data + ["//libamdf:amdf_shared_artifact"]
+        amdf_cc_binary(
+            name = binary_name,
+            testonly = True,
+            data = data,
+            deps = common_deps + ["//libamdf/cts/util:" + mode + "_provider"],
             target_compatible_with = target_compatible_with,
-            deps = common_deps + [
-                "//libamdf:amdf_static",
-            ],
         )
-        amdf_cc_test(
-            name = "shared" + suffix,
-            srcs = test_main + ["//libamdf/cts/util:linked_provider.cc"],
-            args = lifetime_args,
-            data = ["//libamdf:amdf_shared_artifact"] + runtime_data,
-            tags = tags,
-            target_compatible_with = target_compatible_with,
-            deps = common_deps + [
-                "//libamdf:amdf",
-            ],
-        )
-        amdf_cc_test(
-            name = "dynamic" + suffix,
-            srcs = test_main,
-            args = lifetime_args + [
+        provider_args = []
+        if mode == "dynamic":
+            provider_args = [
                 "--amdf_library=$(rootpath //libamdf:amdf_shared_artifact)",
-            ],
-            data = ["//libamdf:amdf_shared_artifact"] + runtime_data,
-            tags = tags,
-            target_compatible_with = target_compatible_with,
-            deps = common_deps + ["//libamdf/cts/util:dynamic_provider"],
-        )
+            ]
+        for lifetime, suffix in [("process", ""), ("instance", "_instance")]:
+            test_name = name + "_" + mode + suffix
+            iree_executable_test(
+                name = test_name,
+                src = ":" + binary_name,
+                args = ["--amdf_native_lifetime=" + lifetime] + provider_args,
+                data = data,
+                tags = test_tags,
+                target_compatible_with = policy["target_compatible_with"],
+                visibility = visibility,
+            )
+            tests.append(":" + test_name)
     native.test_suite(
         name = name,
-        tags = tags,
-        tests = [
-            ":dynamic",
-            ":dynamic_instance",
-            ":shared",
-            ":shared_instance",
-            ":static",
-            ":static_instance",
-        ],
+        tests = tests,
         visibility = visibility,
     )

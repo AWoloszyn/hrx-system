@@ -44,16 +44,57 @@ endif()
 if(AMDF_BUILD)
 iree_cc_library(
   NAME
-    linked_test_main
+    test_main
   SRCS
-    "linked_provider.cc"
     "test_main.cc"
   DEPS
     ::device_cache
     ::provider_headers
-    amdf::amdf_static
     amdf::headers
     iree::third_party::google_test
+  TESTONLY
+  PUBLIC
+)
+endif()
+
+if(AMDF_BUILD)
+iree_cc_library(
+  NAME
+    static_provider
+  SRCS
+    "linked_provider.cc"
+  DEPS
+    ::provider_headers
+    amdf::amdf_static
+    amdf::headers
+  TESTONLY
+  PUBLIC
+)
+endif()
+
+if(AMDF_BUILD)
+iree_cc_library(
+  NAME
+    shared_provider
+  SRCS
+    "linked_provider.cc"
+  DEPS
+    ::provider_headers
+    amdf::amdf
+    amdf::headers
+  TESTONLY
+  PUBLIC
+)
+endif()
+
+if(AMDF_BUILD)
+iree_cc_library(
+  NAME
+    linked_test_main
+  DEPS
+    ::static_provider
+    ::test_main
+    amdf::headers
   TESTONLY
   PUBLIC
 )

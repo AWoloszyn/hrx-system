@@ -68,21 +68,26 @@ iree_cc_library(
 endif()
 
 if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
-amdf_cts_test(
+amdf_cts_binary(
   NAME
-    static
-  SRCS
-    "${PROJECT_SOURCE_DIR}/libamdf/cts/util/linked_provider.cc"
-    "${PROJECT_SOURCE_DIR}/libamdf/cts/util/test_main.cc"
+    xdna_static_bin
   DEPS
     ::xdna_tests
-    amdf::amdf_static
     amdf::headers
-    iree::third_party::google_test
-    libamdf::cts::util::device_cache
-    libamdf::cts::util::provider_headers
+    libamdf::cts::util::static_provider
+    libamdf::cts::util::test_main
+  TESTONLY
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "xdna_static"
   ARGS
     "--amdf_native_lifetime=process"
+  SRC
+    ::xdna_static_bin
   LABELS
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.xdna"
@@ -94,23 +99,13 @@ amdf_cts_test(
 endif()
 
 if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
-amdf_cts_test(
+iree_native_test(
   NAME
-    shared
-  SRCS
-    "${PROJECT_SOURCE_DIR}/libamdf/cts/util/linked_provider.cc"
-    "${PROJECT_SOURCE_DIR}/libamdf/cts/util/test_main.cc"
-  DATA
-    amdf::amdf
-  DEPS
-    ::xdna_tests
-    amdf::amdf
-    amdf::headers
-    iree::third_party::google_test
-    libamdf::cts::util::device_cache
-    libamdf::cts::util::provider_headers
+    "xdna_static_instance"
   ARGS
-    "--amdf_native_lifetime=process"
+    "--amdf_native_lifetime=instance"
+  SRC
+    ::xdna_static_bin
   LABELS
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.xdna"
@@ -122,77 +117,86 @@ amdf_cts_test(
 endif()
 
 if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
-amdf_cts_test(
+amdf_cts_binary(
   NAME
-    dynamic
-  SRCS
-    "${PROJECT_SOURCE_DIR}/libamdf/cts/util/test_main.cc"
+    xdna_shared_bin
   DATA
     amdf::amdf
   DEPS
     ::xdna_tests
     amdf::headers
-    iree::third_party::google_test
-    libamdf::cts::util::device_cache
+    libamdf::cts::util::shared_provider
+    libamdf::cts::util::test_main
+  TESTONLY
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "xdna_shared"
+  ARGS
+    "--amdf_native_lifetime=process"
+  SRC
+    ::xdna_shared_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.xdna"
+    "iree-run-requirement=libamdf.resource.xdna"
+    "runtime-resource=amd-xdna"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "xdna_shared_instance"
+  ARGS
+    "--amdf_native_lifetime=instance"
+  SRC
+    ::xdna_shared_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.xdna"
+    "iree-run-requirement=libamdf.resource.xdna"
+    "runtime-resource=amd-xdna"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+amdf_cts_binary(
+  NAME
+    xdna_dynamic_bin
+  DATA
+    amdf::amdf
+  DEPS
+    ::xdna_tests
+    amdf::headers
     libamdf::cts::util::dynamic_provider
-    libamdf::cts::util::provider_headers
+    libamdf::cts::util::test_main
+  TESTONLY
+)
+endif()
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "xdna_dynamic"
   ARGS
     "--amdf_native_lifetime=process"
-    "--amdf_library=$<TARGET_FILE:amdf::amdf>"
-  LABELS
-    "iree-build-requirement=libamdf"
-    "iree-build-requirement=libamdf.xdna"
-    "iree-run-requirement=libamdf.resource.xdna"
-    "runtime-resource=amd-xdna"
-  RESOURCE_GROUP
-    iree-hal-drivers-amdgpu-tests
-)
-endif()
-
-if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
-amdf_cts_test(
-  NAME
-    static_instance
-  SRCS
-    "${PROJECT_SOURCE_DIR}/libamdf/cts/util/linked_provider.cc"
-    "${PROJECT_SOURCE_DIR}/libamdf/cts/util/test_main.cc"
-  DEPS
-    ::xdna_tests
-    amdf::amdf_static
-    amdf::headers
-    iree::third_party::google_test
-    libamdf::cts::util::device_cache
-    libamdf::cts::util::provider_headers
-  ARGS
-    "--amdf_native_lifetime=instance"
-  LABELS
-    "iree-build-requirement=libamdf"
-    "iree-build-requirement=libamdf.xdna"
-    "iree-run-requirement=libamdf.resource.xdna"
-    "runtime-resource=amd-xdna"
-  RESOURCE_GROUP
-    iree-hal-drivers-amdgpu-tests
-)
-endif()
-
-if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
-amdf_cts_test(
-  NAME
-    shared_instance
-  SRCS
-    "${PROJECT_SOURCE_DIR}/libamdf/cts/util/linked_provider.cc"
-    "${PROJECT_SOURCE_DIR}/libamdf/cts/util/test_main.cc"
+    "--amdf_library={{$<TARGET_FILE:amdf::amdf>}}"
+  SRC
+    ::xdna_dynamic_bin
   DATA
-    amdf::amdf
-  DEPS
-    ::xdna_tests
-    amdf::amdf
-    amdf::headers
-    iree::third_party::google_test
-    libamdf::cts::util::device_cache
-    libamdf::cts::util::provider_headers
-  ARGS
-    "--amdf_native_lifetime=instance"
+    "amdf::amdf"
   LABELS
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.xdna"
@@ -204,23 +208,16 @@ amdf_cts_test(
 endif()
 
 if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
-amdf_cts_test(
+iree_native_test(
   NAME
-    dynamic_instance
-  SRCS
-    "${PROJECT_SOURCE_DIR}/libamdf/cts/util/test_main.cc"
-  DATA
-    amdf::amdf
-  DEPS
-    ::xdna_tests
-    amdf::headers
-    iree::third_party::google_test
-    libamdf::cts::util::device_cache
-    libamdf::cts::util::dynamic_provider
-    libamdf::cts::util::provider_headers
+    "xdna_dynamic_instance"
   ARGS
     "--amdf_native_lifetime=instance"
-    "--amdf_library=$<TARGET_FILE:amdf::amdf>"
+    "--amdf_library={{$<TARGET_FILE:amdf::amdf>}}"
+  SRC
+    ::xdna_dynamic_bin
+  DATA
+    "amdf::amdf"
   LABELS
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.xdna"
