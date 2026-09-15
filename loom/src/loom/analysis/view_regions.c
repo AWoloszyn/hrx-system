@@ -109,17 +109,15 @@ static void loom_view_region_expression_refine_facts(
   }
 }
 
-static void loom_view_region_constant_from_facts_or_value(
-    loom_value_facts_t facts, int64_t fallback_value,
-    loom_symbolic_expr_t* out_expression) {
+static void loom_view_region_expression_from_facts(
+    loom_value_facts_t facts, loom_symbolic_expr_t* out_expression) {
   int64_t exact_value = 0;
   if (loom_view_region_facts_exact_i64(facts, &exact_value)) {
     loom_symbolic_expr_constant(exact_value, out_expression);
     out_expression->facts = facts;
     return;
   }
-  loom_symbolic_expr_constant(fallback_value, out_expression);
-  loom_view_region_expression_refine_facts(out_expression, facts);
+  loom_symbolic_expr_unknown(facts, out_expression);
 }
 
 static bool loom_view_region_expr_is_constant(
@@ -529,8 +527,7 @@ static iree_status_t loom_view_region_build_default(
     loom_type_t view_type, loom_value_fact_view_reference_t reference,
     loom_view_region_t* out_region) {
   loom_symbolic_expr_t begin = {0};
-  loom_view_region_constant_from_facts_or_value(reference.base_byte_offset, 0,
-                                                &begin);
+  loom_view_region_expression_from_facts(reference.base_byte_offset, &begin);
 
   loom_symbolic_expr_t length = {0};
   IREE_RETURN_IF_ERROR(loom_view_region_footprint_expr(

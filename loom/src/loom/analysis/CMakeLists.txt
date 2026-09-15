@@ -1032,7 +1032,9 @@ loom_cc_test(
     loom::ops::buffer
     loom::ops::encoding
     loom::ops::index
+    loom::ops::scf
     loom::ops::test
+    loom::ops::type_registry
     loom::ops::vector
     loom::ops::view
     loom::util::fact_table

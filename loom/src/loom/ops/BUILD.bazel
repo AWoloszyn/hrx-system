@@ -273,6 +273,7 @@ loom_cc_library(
         "//loom/src/loom/ir",
         "//loom/src/loom/ops/buffer",
         "//loom/src/loom/ops/vector",
+        "//loom/src/loom/ops/view",
         "//loom/src/loom/util:fact_table",
         "//runtime/src/iree/base",
     ],

@@ -17,7 +17,9 @@
 #include "loom/ops/buffer/ops.h"
 #include "loom/ops/encoding/ops.h"
 #include "loom/ops/index/ops.h"
+#include "loom/ops/scf/ops.h"
 #include "loom/ops/test/ops.h"
+#include "loom/ops/type_registry.h"
 #include "loom/ops/vector/ops.h"
 #include "loom/ops/view/ops.h"
 #include "loom/util/fact_table.h"
@@ -36,8 +38,10 @@ class ViewRegionsTest : public ::testing::Test {
     RegisterDialect(LOOM_DIALECT_BUFFER, loom_buffer_dialect_vtables);
     RegisterDialect(LOOM_DIALECT_ENCODING, loom_encoding_dialect_vtables);
     RegisterDialect(LOOM_DIALECT_INDEX, loom_index_dialect_vtables);
+    RegisterDialect(LOOM_DIALECT_SCF, loom_scf_dialect_vtables);
     RegisterDialect(LOOM_DIALECT_TEST, loom_test_dialect_vtables);
     RegisterDialect(LOOM_DIALECT_VECTOR, loom_vector_dialect_vtables);
+    RegisterDialect(LOOM_DIALECT_VIEW, loom_view_dialect_vtables);
     IREE_ASSERT_OK(loom_context_finalize(&context_));
 
     IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("test"),
@@ -203,6 +207,7 @@ class ViewRegionsTest : public ::testing::Test {
   void ComputeFacts(loom_value_fact_table_t* out_facts) {
     IREE_ASSERT_OK(loom_value_fact_table_initialize(out_facts, &analysis_arena_,
                                                     module_->values.count));
+    loom_type_registry_configure_fact_context(&out_facts->context);
     IREE_ASSERT_OK(
         loom_value_fact_table_compute(out_facts, module_, function_));
   }
@@ -246,15 +251,72 @@ class ViewRegionsTest : public ::testing::Test {
     IREE_ASSERT_OK(loom_view_region_table_analyze(out_table));
   }
 
+  // Pool backing module and analysis arenas.
   iree_arena_block_pool_t block_pool_;
+  // Arena retaining the fact and region analysis results.
   iree_arena_allocator_t analysis_arena_;
+  // Context with the source dialects used by these programs.
   loom_context_t context_;
+  // Owned module containing the analyzed function.
   loom_module_t* module_ = nullptr;
+  // Function containing the source memory operations.
   loom_func_like_t function_;
+  // Local value numbering retained through region analysis.
   loom_local_value_domain_t value_domain_ = {};
+  // Symbolic expressions shared by analyzed view regions.
   loom_symbolic_expr_context_t expression_context_ = {};
+  // Builder positioned in the function body.
   loom_builder_t builder_;
 };
+
+TEST_F(ViewRegionsTest, SelectedViewRetainsUnknownRootRelativeOffset) {
+  loom_value_id_t buffer = DefineBufferArg();
+  loom_value_id_t condition = LOOM_VALUE_ID_INVALID;
+  IREE_ASSERT_OK(loom_builder_define_block_arg(
+      &builder_, loom_region_entry_block(loom_func_like_body(function_)),
+      loom_type_scalar(LOOM_SCALAR_TYPE_I1), &condition));
+  loom_value_id_t layout = BuildDenseLayout();
+  loom_type_t view_type = ViewType1D(16, layout);
+  loom_value_id_t zero = loom_index_constant_result(BuildOffsetConstant(0));
+  loom_value_id_t second_offset =
+      loom_index_constant_result(BuildOffsetConstant(128));
+  loom_op_t* first_view = nullptr;
+  IREE_ASSERT_OK(loom_buffer_view_build(&builder_, buffer, zero, view_type,
+                                        LOOM_LOCATION_UNKNOWN, &first_view));
+  loom_op_t* second_view = nullptr;
+  IREE_ASSERT_OK(loom_buffer_view_build(&builder_, buffer, second_offset,
+                                        view_type, LOOM_LOCATION_UNKNOWN,
+                                        &second_view));
+  loom_op_t* select = nullptr;
+  IREE_ASSERT_OK(loom_scf_select_build(
+      &builder_, condition, loom_buffer_view_result(first_view),
+      loom_buffer_view_result(second_view), view_type, LOOM_LOCATION_UNKNOWN,
+      &select));
+
+  loom_value_fact_table_t facts = {};
+  ComputeFacts(&facts);
+  loom_view_region_table_t table = {};
+  Analyze(&facts, &table);
+  const loom_view_region_t* selected_region = nullptr;
+  IREE_ASSERT_OK(loom_view_region_table_get(
+      &table, loom_scf_select_result(select), &selected_region));
+  const loom_view_region_t* second_region = nullptr;
+  IREE_ASSERT_OK(loom_view_region_table_get(
+      &table, loom_buffer_view_result(second_view), &second_region));
+
+  ASSERT_NE(selected_region, nullptr);
+  EXPECT_EQ(selected_region->root_value_id, buffer);
+  EXPECT_FALSE(
+      loom_symbolic_expr_is_constant(&selected_region->begin_byte_offset));
+  EXPECT_EQ(selected_region->begin_byte_offset.facts.range_lo, 0);
+  EXPECT_EQ(selected_region->begin_byte_offset.facts.range_hi, 128);
+  EXPECT_TRUE(loom_symbolic_expr_is_constant(&selected_region->byte_length));
+  EXPECT_EQ(selected_region->byte_length.constant, 64);
+  bool no_overlap = false;
+  IREE_ASSERT_OK(loom_view_regions_prove_no_overlap(
+      &table, selected_region, second_region, &no_overlap));
+  EXPECT_FALSE(no_overlap);
+}
 
 TEST_F(ViewRegionsTest, ProvesDisjointReadAndWriteViewsInOneSlab) {
   loom_value_id_t buffer = DefineBufferArg();

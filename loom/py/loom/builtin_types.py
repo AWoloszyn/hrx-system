@@ -163,6 +163,7 @@ view_type = TypeDef(
         "optional address layout."
     ),
     ir_kind="view",
+    fact_domain="loom_view_fact_domain",
     params=[
         ShapeParam("dims"),
         ScalarParam("element_type"),

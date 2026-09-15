@@ -6,7 +6,137 @@
 
 #include "loom/ops/view/reference.h"
 
+#include "iree/base/internal/math.h"
 #include "loom/ops/encoding/storage.h"
+
+//===----------------------------------------------------------------------===//
+// Reference joins
+//===----------------------------------------------------------------------===//
+
+static bool loom_view_query_compatible_references(
+    const loom_value_fact_table_t* lhs_table, loom_value_facts_t lhs,
+    const loom_value_fact_table_t* rhs_table, loom_value_facts_t rhs,
+    loom_value_fact_view_reference_t* out_lhs,
+    loom_value_fact_view_reference_t* out_rhs) {
+  return loom_value_facts_query_view_reference(&lhs_table->context, lhs,
+                                               out_lhs) &&
+         loom_value_facts_query_view_reference(&rhs_table->context, rhs,
+                                               out_rhs) &&
+         out_lhs->root_value_id == out_rhs->root_value_id &&
+         out_lhs->memory_space == out_rhs->memory_space;
+}
+
+static loom_value_fact_view_reference_t loom_view_join_reference_fields(
+    loom_value_fact_view_reference_t lhs,
+    loom_value_fact_view_reference_t rhs) {
+  loom_value_fact_view_reference_t reference = {
+      .minimum_alignment =
+          iree_math_gcd_u64(lhs.minimum_alignment, rhs.minimum_alignment),
+      .root_minimum_alignment = iree_math_gcd_u64(lhs.root_minimum_alignment,
+                                                  rhs.root_minimum_alignment),
+      .static_element_byte_count = lhs.static_element_byte_count,
+      .memory_space = lhs.memory_space,
+      .root_value_id = lhs.root_value_id,
+      .alias_scope_id = lhs.alias_scope_id == rhs.alias_scope_id
+                            ? lhs.alias_scope_id
+                            : LOOM_VALUE_FACT_ALIAS_SCOPE_ID_NONE,
+      .nullability = lhs.nullability == rhs.nullability
+                         ? lhs.nullability
+                         : LOOM_VALUE_FACT_REFERENCE_NULLABILITY_UNKNOWN,
+  };
+  lhs.base_byte_offset.extension_id = LOOM_VALUE_FACT_EXTENSION_ID_NONE;
+  rhs.base_byte_offset.extension_id = LOOM_VALUE_FACT_EXTENSION_ID_NONE;
+  lhs.footprint_byte_length.extension_id = LOOM_VALUE_FACT_EXTENSION_ID_NONE;
+  rhs.footprint_byte_length.extension_id = LOOM_VALUE_FACT_EXTENSION_ID_NONE;
+  loom_value_facts_meet(&lhs.base_byte_offset, &rhs.base_byte_offset,
+                        &reference.base_byte_offset);
+  loom_value_facts_meet(&lhs.footprint_byte_length, &rhs.footprint_byte_length,
+                        &reference.footprint_byte_length);
+  return reference;
+}
+
+static iree_status_t loom_view_meet_reference_extension(
+    const loom_value_fact_domain_t* domain, const loom_module_t* module,
+    loom_type_t type, loom_value_fact_table_t* target,
+    const loom_value_fact_table_t* lhs_table, loom_value_facts_t lhs,
+    const loom_value_fact_table_t* rhs_table, loom_value_facts_t rhs,
+    loom_value_facts_t* inout_facts) {
+  (void)domain;
+  (void)module;
+  (void)type;
+  loom_value_fact_view_reference_t lhs_reference = {0};
+  loom_value_fact_view_reference_t rhs_reference = {0};
+  inout_facts->extension_id = LOOM_VALUE_FACT_EXTENSION_ID_NONE;
+  if (!loom_view_query_compatible_references(lhs_table, lhs, rhs_table, rhs,
+                                             &lhs_reference, &rhs_reference)) {
+    return iree_ok_status();
+  }
+  loom_value_facts_t reference_facts = loom_value_facts_unknown();
+  IREE_RETURN_IF_ERROR(loom_value_facts_make_view_reference(
+      &target->context,
+      loom_view_join_reference_fields(lhs_reference, rhs_reference),
+      &reference_facts));
+  inout_facts->extension_id = reference_facts.extension_id;
+  return iree_ok_status();
+}
+
+static loom_value_facts_t loom_view_widen_reference_range(
+    loom_value_facts_t previous, loom_value_facts_t next) {
+  previous.extension_id = LOOM_VALUE_FACT_EXTENSION_ID_NONE;
+  next.extension_id = LOOM_VALUE_FACT_EXTENSION_ID_NONE;
+  return loom_value_facts_equal(previous, next)
+             ? next
+             : loom_value_facts_make(0, INT64_MAX, 1);
+}
+
+static iree_status_t loom_view_widen_reference_extension(
+    const loom_value_fact_domain_t* domain, const loom_module_t* module,
+    loom_type_t type, loom_value_fact_table_t* target,
+    const loom_value_fact_table_t* previous_table, loom_value_facts_t previous,
+    const loom_value_fact_table_t* next_table, loom_value_facts_t next,
+    uint32_t iteration, loom_value_facts_t* inout_facts) {
+  (void)domain;
+  (void)module;
+  (void)type;
+  (void)iteration;
+  loom_value_fact_view_reference_t previous_reference = {0};
+  loom_value_fact_view_reference_t next_reference = {0};
+  inout_facts->extension_id = LOOM_VALUE_FACT_EXTENSION_ID_NONE;
+  if (!loom_view_query_compatible_references(
+          previous_table, previous, next_table, next, &previous_reference,
+          &next_reference)) {
+    return iree_ok_status();
+  }
+  loom_value_fact_view_reference_t reference =
+      loom_view_join_reference_fields(previous_reference, next_reference);
+  if (previous_reference.minimum_alignment !=
+      next_reference.minimum_alignment) {
+    reference.minimum_alignment = 1;
+  }
+  if (previous_reference.root_minimum_alignment !=
+      next_reference.root_minimum_alignment) {
+    reference.root_minimum_alignment = 1;
+  }
+  reference.base_byte_offset = loom_view_widen_reference_range(
+      previous_reference.base_byte_offset, next_reference.base_byte_offset);
+  reference.footprint_byte_length =
+      loom_view_widen_reference_range(previous_reference.footprint_byte_length,
+                                      next_reference.footprint_byte_length);
+  loom_value_facts_t reference_facts = loom_value_facts_unknown();
+  IREE_RETURN_IF_ERROR(loom_value_facts_make_view_reference(
+      &target->context, reference, &reference_facts));
+  inout_facts->extension_id = reference_facts.extension_id;
+  return iree_ok_status();
+}
+
+const loom_value_fact_domain_t loom_view_fact_domain = {
+    .meet_extension = loom_view_meet_reference_extension,
+    .widen_extension = loom_view_widen_reference_extension,
+};
+
+//===----------------------------------------------------------------------===//
+// Address and footprint facts
+//===----------------------------------------------------------------------===//
 
 static loom_value_facts_t loom_view_nonnegative_unknown_facts(void) {
   return loom_value_facts_make(0, INT64_MAX, 1);
