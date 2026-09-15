@@ -7971,9 +7971,7 @@ static hipError_t iree_hip_memcpy3d_internal(
        (is_async && pageable_d2h));
   if (must_quiesce) {
     iree_status_t completion_status =
-        !stream || stream == hipStreamLegacy
-            ? iree_hal_streaming_context_synchronize(resolved_stream.context)
-            : iree_hal_streaming_stream_synchronize(stream_obj);
+        iree_hal_streaming_stream_synchronize(stream_obj);
     if (result == hipSuccess) {
       result = iree_status_to_hip_result(completion_status);
     } else {
