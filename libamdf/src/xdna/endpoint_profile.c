@@ -138,7 +138,8 @@ static const amdf_xdna_endpoint_profile_t amdf_xdna_npu1_profile = {
 static const amdf_xdna_endpoint_profile_t amdf_xdna_npu4_profile = {
     .info = &amdf_xdna_npu4_endpoint_info,
     .execution_capabilities =
-        AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1,
+        AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1 |
+        AMDF_XDNA_EXECUTION_CAPABILITY_ELF_INSTRUCTIONS,
     .bootstrap = &amdf_xdna_npu4_bootstrap,
     .firmware_heap_byte_length = 64u * 1024u * 1024u,
     .dma = {.byte_offset = UINT32_C(0x80000000), .address_bit_count = 48},
