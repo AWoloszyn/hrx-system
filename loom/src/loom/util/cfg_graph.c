@@ -183,27 +183,47 @@ bool loom_cfg_terminator_payload_for_successor(const loom_op_t* terminator,
   return true;
 }
 
-static iree_status_t loom_cfg_graph_mark_reachable(
-    iree_arena_allocator_t* arena, loom_cfg_graph_t* graph) {
+static iree_status_t loom_cfg_graph_build_traversal(
+    iree_arena_allocator_t* arena, loom_cfg_graph_t* graph,
+    iree_host_size_t* stack_blocks,
+    iree_host_size_t* stack_successor_positions) {
   if (graph->block_count == 0) return iree_ok_status();
-  uint16_t* stack = NULL;
+  uint16_t* order = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, graph->block_count, sizeof(*stack), (void**)&stack));
+      arena, graph->block_count, sizeof(*order), (void**)&order));
 
-  iree_host_size_t stack_count = 0;
+  // Edge construction has finished with both block-sized cursor arrays. Reuse
+  // them for traversal frames so only the retained order needs new storage.
+  iree_host_size_t stack_count = 1;
+  iree_host_size_t order_count = 0;
   graph->blocks[0].reachable = true;
-  stack[stack_count++] = 0;
+  stack_blocks[0] = 0;
+  stack_successor_positions[0] = 0;
   while (stack_count > 0) {
-    uint16_t block_index = stack[--stack_count];
+    uint16_t block_index = (uint16_t)stack_blocks[stack_count - 1];
     loom_cfg_block_index_span_t successors =
         loom_cfg_graph_successors(graph, block_index);
-    for (iree_host_size_t i = 0; i < successors.count; ++i) {
-      uint16_t successor_index = successors.values[i];
-      if (graph->blocks[successor_index].reachable) continue;
-      graph->blocks[successor_index].reachable = true;
-      stack[stack_count++] = successor_index;
+    iree_host_size_t* next_position =
+        &stack_successor_positions[stack_count - 1];
+    if (*next_position < successors.count) {
+      uint16_t successor_index = successors.values[(*next_position)++];
+      if (!graph->blocks[successor_index].reachable) {
+        graph->blocks[successor_index].reachable = true;
+        stack_blocks[stack_count] = successor_index;
+        stack_successor_positions[stack_count++] = 0;
+      }
+      continue;
     }
+    order[order_count++] = block_index;
+    --stack_count;
   }
+  for (iree_host_size_t i = 0; i < order_count / 2; ++i) {
+    uint16_t block_index = order[i];
+    order[i] = order[order_count - i - 1];
+    order[order_count - i - 1] = block_index;
+  }
+  graph->reverse_postorder =
+      (loom_cfg_block_index_span_t){.values = order, .count = order_count};
   return iree_ok_status();
 }
 
@@ -249,7 +269,8 @@ iree_status_t loom_cfg_graph_build(const loom_module_t* module,
   loom_cfg_graph_write_edges(module, region, out_graph,
                              successor_write_positions,
                              predecessor_write_positions);
-  return loom_cfg_graph_mark_reachable(arena, out_graph);
+  return loom_cfg_graph_build_traversal(
+      arena, out_graph, successor_write_positions, predecessor_write_positions);
 }
 
 iree_host_size_t loom_cfg_graph_block_index(const loom_cfg_graph_t* graph,

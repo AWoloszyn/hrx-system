@@ -173,6 +173,11 @@ TEST_F(CfgGraphTest, BuildsSuccessorsAndPredecessorsForDiamond) {
   EXPECT_TRUE(loom_cfg_graph_block_is_reachable(&graph, 1));
   EXPECT_TRUE(loom_cfg_graph_block_is_reachable(&graph, 2));
   EXPECT_TRUE(loom_cfg_graph_block_is_reachable(&graph, 3));
+  ASSERT_EQ(graph.reverse_postorder.count, 4u);
+  EXPECT_EQ(graph.reverse_postorder.values[0], 0u);
+  EXPECT_EQ(graph.reverse_postorder.values[1], 2u);
+  EXPECT_EQ(graph.reverse_postorder.values[2], 1u);
+  EXPECT_EQ(graph.reverse_postorder.values[3], 3u);
 }
 
 TEST_F(CfgGraphTest, ReachabilitySkipsUnreachableBlocks) {
@@ -196,6 +201,53 @@ TEST_F(CfgGraphTest, ReachabilitySkipsUnreachableBlocks) {
   EXPECT_TRUE(loom_cfg_graph_block_is_reachable(&graph, 0));
   EXPECT_TRUE(loom_cfg_graph_block_is_reachable(&graph, 1));
   EXPECT_FALSE(loom_cfg_graph_block_is_reachable(&graph, 2));
+  ASSERT_EQ(graph.reverse_postorder.count, 2u);
+  EXPECT_EQ(graph.reverse_postorder.values[0], 0u);
+  EXPECT_EQ(graph.reverse_postorder.values[1], 1u);
+}
+
+TEST_F(CfgGraphTest, TraversalRetainsLoopHeaderBeforeNonlexicalBody) {
+  loom_block_t* entry = loom_region_entry_block(body_);
+  loom_block_t* loop_body = AppendBlock();
+  loom_block_t* exit_block = AppendBlock();
+  loom_block_t* header = AppendBlock();
+  loom_block_t* unreachable = AppendBlock();
+
+  SetBlock(entry);
+  BuildBranch(header);
+  SetBlock(header);
+  BuildConditionalBranch(loop_body, exit_block);
+  SetBlock(loop_body);
+  BuildBranch(header);
+  SetBlock(unreachable);
+  BuildBranch(exit_block);
+
+  loom_cfg_graph_t graph = {0};
+  BuildGraph(&graph);
+
+  EXPECT_FALSE(graph.malformed);
+  EXPECT_EQ(graph.block_count, 5u);
+  EXPECT_EQ(graph.edge_count, 5u);
+  EXPECT_FALSE(loom_cfg_graph_block_is_reachable(&graph, 4));
+  ASSERT_EQ(graph.reverse_postorder.count, 4u);
+  EXPECT_EQ(graph.reverse_postorder.values[0], 0u);
+  EXPECT_EQ(graph.reverse_postorder.values[1], 3u);
+  EXPECT_EQ(graph.reverse_postorder.values[2], 2u);
+  EXPECT_EQ(graph.reverse_postorder.values[3], 1u);
+}
+
+TEST_F(CfgGraphTest, TraversalVisitsSelfLoopOnce) {
+  loom_block_t* entry = loom_region_entry_block(body_);
+  SetBlock(entry);
+  BuildBranch(entry);
+
+  loom_cfg_graph_t graph = {0};
+  BuildGraph(&graph);
+
+  EXPECT_FALSE(graph.malformed);
+  EXPECT_EQ(graph.edge_count, 1u);
+  ASSERT_EQ(graph.reverse_postorder.count, 1u);
+  EXPECT_EQ(graph.reverse_postorder.values[0], 0u);
 }
 
 TEST_F(CfgGraphTest, OutsideSuccessorMarksGraphMalformed) {
