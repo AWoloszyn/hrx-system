@@ -289,6 +289,51 @@ TEST(FatBinaryTest, VisitsDefinedGlobalObjects) {
                                              "ordinary_global"}));
 }
 
+TEST(FatBinaryTest, VisitsGlobalObjectsWithExtendedSectionCount) {
+  std::vector<uint8_t> elf = MakeAmdgpuElfWithGlobalSymbols();
+  Elf64Header header;
+  memcpy(&header, elf.data(), sizeof(header));
+  Elf64SectionHeader section_zero;
+  memcpy(&section_zero, elf.data() + header.shoff, sizeof(section_zero));
+  section_zero.size = header.shnum;
+  memcpy(elf.data() + header.shoff, &section_zero, sizeof(section_zero));
+  header.shnum = 0;
+  memcpy(elf.data(), &header, sizeof(header));
+
+  char target_key[64] = {};
+  size_t measured_size = 0;
+  IREE_EXPECT_OK(iree_hal_streaming_fat_binary_describe_amdgpu_elf(
+      iree_make_const_byte_span(elf.data(), elf.size()), sizeof(target_key),
+      target_key, &measured_size));
+  EXPECT_EQ(elf.size(), measured_size);
+
+  std::vector<std::string> names;
+  IREE_EXPECT_OK(iree_hal_streaming_fat_binary_visit_elf_global_objects(
+      iree_make_const_byte_span(elf.data(), elf.size()), CollectGlobalName,
+      &names));
+  EXPECT_EQ(names, (std::vector<std::string>{"managed_value.managed",
+                                             "ordinary_global"}));
+}
+
+TEST(FatBinaryTest, RejectsExtendedSectionCountPastTable) {
+  std::vector<uint8_t> elf = MakeAmdgpuElfWithGlobalSymbols();
+  Elf64Header header;
+  memcpy(&header, elf.data(), sizeof(header));
+  Elf64SectionHeader section_zero;
+  memcpy(&section_zero, elf.data() + header.shoff, sizeof(section_zero));
+  section_zero.size = header.shnum + 1;
+  memcpy(elf.data() + header.shoff, &section_zero, sizeof(section_zero));
+  header.shnum = 0;
+  memcpy(elf.data(), &header, sizeof(header));
+
+  std::vector<std::string> names;
+  EXPECT_THAT(
+      iree::Status(iree_hal_streaming_fat_binary_visit_elf_global_objects(
+          iree_make_const_byte_span(elf.data(), elf.size()), CollectGlobalName,
+          &names)),
+      StatusIs(iree::StatusCode::kInvalidArgument));
+}
+
 TEST(FatBinaryTest, RejectsTruncatedGlobalSymbolTable) {
   std::vector<uint8_t> elf = MakeAmdgpuElfWithGlobalSymbols();
   Elf64Header header;
