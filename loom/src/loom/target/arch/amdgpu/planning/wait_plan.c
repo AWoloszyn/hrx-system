@@ -2654,28 +2654,6 @@ static iree_status_t loom_amdgpu_wait_plan_handle_storage_release_actions(
   return iree_ok_status();
 }
 
-static bool loom_amdgpu_wait_plan_storage_lease_is_live_at_node(
-    const loom_amdgpu_wait_plan_builder_t* builder,
-    const loom_low_allocation_storage_lease_t* lease,
-    const loom_low_storage_lease_record_t* record, uint32_t node_index) {
-  if (record->node_index == node_index) {
-    return false;
-  }
-  const loom_low_schedule_node_t* node = &builder->schedule->nodes[node_index];
-  IREE_ASSERT_LT(node->block_index, builder->allocation->liveness.block_count);
-  const loom_liveness_block_info_t* block_info =
-      &builder->allocation->liveness.blocks[node->block_index];
-  IREE_ASSERT_LE(node->scheduled_ordinal, UINT32_MAX - block_info->start_point);
-  const uint32_t program_point =
-      block_info->start_point + node->scheduled_ordinal;
-  // A release action executes before the instruction at its end point, so the
-  // lease remains active at that exact point. This distinction matters for
-  // structural packets whose logical definition is coalesced into earlier
-  // physical result writes.
-  return lease->start_point <= program_point &&
-         lease->end_point >= program_point;
-}
-
 static iree_status_t loom_amdgpu_wait_plan_handle_physical_write_range(
     loom_amdgpu_wait_plan_builder_t* builder, uint32_t node_index,
     uint32_t continuation_producer_node,
@@ -2691,11 +2669,26 @@ static iree_status_t loom_amdgpu_wait_plan_handle_physical_write_range(
                  allocation->storage_leases.record_count);
   IREE_ASSERT(loom_low_allocation_storage_lease_unit_index_is_enabled(
       allocation->storage_lease_unit_index));
+  const loom_low_schedule_node_t* write_node =
+      &builder->schedule->nodes[node_index];
+  const uint32_t program_point =
+      allocation->liveness.blocks[write_node->block_index].start_point +
+      write_node->scheduled_ordinal;
+  const loom_low_allocation_storage_lease_selection_t* incoming_selection =
+      builder->frontier.storage_leases.active_words != NULL
+          ? &builder->frontier.storage_leases.active_selection
+          : NULL;
+  // A release executes before the instruction at its end point, so that point
+  // remains included. This matters when a structural definition coalesces into
+  // earlier physical result writes. Incoming dynamic instances are included
+  // independently of their static linear interval.
   loom_low_allocation_storage_lease_unit_query_t query;
   loom_low_allocation_storage_lease_unit_query_initialize(
       allocation->storage_lease_unit_index,
       builder->schedule->target.descriptor_set, descriptor_reg_class_id,
-      location_kind, location_base, location_count, &query);
+      location_kind, location_base, location_count, program_point,
+      (uint64_t)program_point + 1u,
+      /*flags=*/0, incoming_selection, &query);
   uint32_t storage_lease_index = 0;
   while (loom_low_allocation_storage_lease_unit_query_next(
       &query, &storage_lease_index)) {
@@ -2721,10 +2714,10 @@ static iree_status_t loom_amdgpu_wait_plan_handle_physical_write_range(
     const bool incoming_lease_active =
         loom_amdgpu_wait_frontier_storage_lease_is_active(&builder->frontier,
                                                           storage_lease_index);
-    const bool local_lease_active =
-        loom_amdgpu_wait_plan_storage_lease_is_live_at_node(builder, lease,
-                                                            record, node_index);
-    if (!incoming_lease_active && !local_lease_active) {
+    // The query already established temporal or incoming membership. Only a
+    // current instruction's own new instance is excluded; a pending incoming
+    // instance of that same instruction still needs completion on a backedge.
+    if (!incoming_lease_active && record->node_index == node_index) {
       continue;
     }
     if (record->release_scope !=
@@ -2736,12 +2729,10 @@ static iree_status_t loom_amdgpu_wait_plan_handle_physical_write_range(
           "AMDGPU physical result write overlaps a storage lease without a "
           "wait-counter release contract");
     }
-    const loom_low_schedule_node_t* node =
-        &builder->schedule->nodes[node_index];
     const loom_low_storage_release_action_t action = {
         .insertion_node_index = node_index,
-        .block_index = node->block_index,
-        .scheduled_ordinal = node->scheduled_ordinal,
+        .block_index = write_node->block_index,
+        .scheduled_ordinal = write_node->scheduled_ordinal,
         .release_class_id = record->release_class_id,
         .release_class_name = record->release_class_name,
         .release_action_id = record->release_action_id,

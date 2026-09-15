@@ -239,7 +239,8 @@ typedef struct loom_liveness_analysis_t {
   loom_liveness_analysis_flags_t flags;
   // True when the region had CFG successor structure.
   bool is_cfg;
-  // Per-block liveness summaries in region block order.
+  // Per-block liveness summaries in region block order, with increasing
+  // program-point extents. The last block owns the region's final end point.
   const loom_liveness_block_info_t* blocks;
   // Number of records in |blocks|.
   iree_host_size_t block_count;

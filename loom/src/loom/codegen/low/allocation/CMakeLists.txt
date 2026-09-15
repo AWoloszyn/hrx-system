@@ -370,6 +370,21 @@ loom_cc_test(
 
 loom_cc_library(
   NAME
+    storage_lease_index
+  HDRS
+    "storage_lease_index.h"
+  SRCS
+    "storage_lease_index.c"
+  DEPS
+    ::table
+    iree::base
+    iree::base::internal::arena
+    loom::codegen::low::descriptors
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
     storage_lease
   HDRS
     "storage_lease.h"
@@ -378,6 +393,7 @@ loom_cc_library(
   DEPS
     ::assignment
     ::storage
+    ::storage_lease_index
     ::table
     iree::base
     iree::base::internal::arena
@@ -386,6 +402,18 @@ loom_cc_library(
     loom::codegen::low::storage_lease
     loom::ir
   PUBLIC
+)
+
+loom_cc_test(
+  NAME
+    storage_lease_index_test
+  SRCS
+    "storage_lease_index_test.cc"
+  DEPS
+    ::storage_lease_index
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
 )
 
 loom_cc_test(

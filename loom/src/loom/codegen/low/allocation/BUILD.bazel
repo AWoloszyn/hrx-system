@@ -331,12 +331,25 @@ loom_cc_test(
 )
 
 loom_cc_library(
+    name = "storage_lease_index",
+    srcs = ["storage_lease_index.c"],
+    hdrs = ["storage_lease_index.h"],
+    deps = [
+        ":table",
+        "//loom/src/loom/codegen/low:descriptors",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_library(
     name = "storage_lease",
     srcs = ["storage_lease.c"],
     hdrs = ["storage_lease.h"],
     deps = [
         ":assignment",
         ":storage",
+        ":storage_lease_index",
         ":table",
         "//loom/src/loom/analysis:liveness",
         "//loom/src/loom/codegen/low:descriptors",
@@ -344,6 +357,17 @@ loom_cc_library(
         "//loom/src/loom/ir",
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_test(
+    name = "storage_lease_index_test",
+    srcs = ["storage_lease_index_test.cc"],
+    deps = [
+        ":storage_lease_index",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
     ],
 )
 

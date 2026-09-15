@@ -11,6 +11,7 @@
 
 #include "iree/base/api.h"
 #include "iree/base/internal/arena.h"
+#include "loom/codegen/low/allocation/storage_lease_index.h"
 #include "loom/codegen/low/allocation/table.h"
 #include "loom/codegen/low/schedule/types.h"
 #include "loom/target/arch/amdgpu/planning/wait_counters.h"
@@ -128,6 +129,8 @@ typedef struct loom_amdgpu_wait_frontier_t {
     uint64_t* resolved_outgoing_words;
     // Incoming words active while the current block is processed.
     uint64_t* active_words;
+    // Physical/temporal index membership mirroring |active_words| transitions.
+    loom_low_allocation_storage_lease_selection_t active_selection;
   } storage_leases;
   // Gfx125x XCNT translation groups that may be active across block edges.
   struct {
