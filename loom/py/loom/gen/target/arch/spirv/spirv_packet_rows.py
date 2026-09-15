@@ -209,6 +209,7 @@ class _PacketRow:
     immediate_index: int | None = None
     literal_word_count: int = 0
     memory_alignment: int = 0
+    coordinate_byte_shift: int = 0
     builtin: str | None = None
     component_index: int | None = None
     execution_scope: str | None = None
@@ -255,6 +256,8 @@ class _PacketRow:
             lines.append(f"            .payload.scalar_constant.literal_word_count = {self.literal_word_count},")
         if self.memory_alignment:
             lines.append(f"            .memory_alignment = {self.memory_alignment},")
+        if self.coordinate_byte_shift:
+            lines.append(f"            .payload.access_chain.coordinate_byte_shift = {self.coordinate_byte_shift},")
         if self.builtin is not None:
             lines.append(f"            .payload.builtin_load.builtin = {self.builtin},")
         if self.component_index is not None:
@@ -609,6 +612,22 @@ def _raw_storage_buffer_byte_rows() -> tuple[_PacketRow, ...]:
 def _workgroup_rows() -> list[_PacketRow]:
     rows: list[_PacketRow] = []
     for scalar in STORAGE_BUFFER_SCALARS:
+        if scalar.byte_width & (scalar.byte_width - 1):
+            raise ValueError(f"{scalar.suffix}: access-chain byte units must be a power of two")
+        rows.append(
+            _PacketRow(
+                f"spirv.op_access_chain.workgroup.{scalar.suffix}.byte_offset",
+                opcode="LOOM_SPIRV_OP_ACCESS_CHAIN",
+                form="LOOM_SPIRV_PACKET_FORM_ACCESS_CHAIN",
+                result_type=_workgroup_pointer_value(scalar),
+                operand_types=(
+                    _workgroup_array_pointer_value(scalar),
+                    _offset64_value(),
+                ),
+                result_count=1,
+                coordinate_byte_shift=scalar.byte_width.bit_length() - 1,
+            )
+        )
         rows.append(
             _PacketRow(
                 f"spirv.op_access_chain.workgroup.{scalar.suffix}.element_index",

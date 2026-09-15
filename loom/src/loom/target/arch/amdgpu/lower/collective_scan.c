@@ -501,7 +501,7 @@ static iree_status_t loom_amdgpu_emit_subgroup_scan_source(
   loom_value_id_t source_lane = LOOM_VALUE_ID_INVALID;
   switch (plan->direction) {
     case LOOM_KERNEL_SUBGROUP_SCAN_DIRECTION_FORWARD: {
-      IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+      IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
           context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_SUB_U32, lane_id,
           low_offset, lane_type, &source_lane));
       IREE_RETURN_IF_ERROR(loom_amdgpu_emit_subgroup_lane_compare(
@@ -510,7 +510,7 @@ static iree_status_t loom_amdgpu_emit_subgroup_scan_source(
       break;
     }
     case LOOM_KERNEL_SUBGROUP_SCAN_DIRECTION_REVERSE: {
-      IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+      IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
           context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_ADD_U32, lane_id,
           low_offset, lane_type, &source_lane));
       IREE_RETURN_IF_ERROR(loom_amdgpu_emit_subgroup_lane_compare(
@@ -534,7 +534,7 @@ static iree_status_t loom_amdgpu_emit_workgroup_scan_scratch_address(
     uint32_t static_byte_offset, loom_type_t lane_type,
     loom_value_id_t* out_address) {
   *out_address = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_ADD_U32, scratch_base,
       dynamic_byte_offset, lane_type, out_address));
   if (static_byte_offset == 0) {

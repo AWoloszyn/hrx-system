@@ -13,6 +13,8 @@ typedef int iree_status_code_t;
 typedef void (*iree_clang_tidy_status_const_callback_t)(
     void* user_data, const iree_status_t status);
 
+void iree_clang_tidy_status_complete(iree_status_t status);
+
 iree_status_t iree_ok_status(void);
 int iree_status_is_ok(iree_status_t status);
 void iree_status_free(iree_status_t status);
@@ -375,6 +377,22 @@ void iree_clang_tidy_status_borrowed_parameter_const_clone_stored(
     const iree_status_t const_clone_stored_parameter_status,
     iree_status_t* out_status) {
   *out_status = iree_status_clone(const_clone_stored_parameter_status);
+}
+
+void iree_clang_tidy_status_borrowed_parameter_const_conditional_clone(
+    const iree_status_t const_conditional_clone_status) {
+  iree_clang_tidy_status_complete(
+      iree_status_is_ok(const_conditional_clone_status)
+          ? iree_ok_status()
+          : iree_status_clone(const_conditional_clone_status));
+}
+
+void iree_clang_tidy_status_borrowed_parameter_const_conditional_transfer(
+    const iree_status_t const_conditional_transferred_status) {
+  iree_clang_tidy_status_complete(
+      iree_status_is_ok(const_conditional_transferred_status)
+          ? iree_ok_status()
+          : const_conditional_transferred_status);
 }
 
 void iree_clang_tidy_status_borrowed_parameter_const_callback(

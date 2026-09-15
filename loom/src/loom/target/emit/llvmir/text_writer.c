@@ -37,34 +37,9 @@ static loom_llvmir_global_t* loom_llvmir_text_global(
   return global_id < module->global_count ? module->globals[global_id] : NULL;
 }
 
-static iree_status_t loom_llvmir_write_label_ref(
-    const loom_llvmir_function_t* function, loom_llvmir_block_id_t block_id,
-    loom_output_stream_t* stream) {
-  if (block_id >= function->block_count) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "LLVM text writer saw unknown block");
-  }
-  const loom_llvmir_block_t* block = function->blocks[block_id];
-  if (!iree_string_view_is_empty(block->name)) {
-    IREE_RETURN_IF_ERROR(loom_output_stream_write_char(stream, '%'));
-    return loom_output_stream_write(stream, block->name);
-  }
-  return loom_output_stream_write_format(stream, "%%bb%u", block_id);
-}
-
-static iree_status_t loom_llvmir_write_label_def(
-    const loom_llvmir_function_t* function, const loom_llvmir_block_t* block,
-    loom_output_stream_t* stream) {
-  if (!iree_string_view_is_empty(block->name)) {
-    return loom_output_stream_write(stream, block->name);
-  }
-  return loom_output_stream_write_format(stream, "bb%u", block->id);
-}
-
-static iree_status_t loom_llvmir_write_escaped_string(
+static iree_status_t loom_llvmir_write_escaped_string_contents(
     loom_output_stream_t* stream, iree_string_view_t string) {
   static const char hex_digits[] = "0123456789ABCDEF";
-  IREE_RETURN_IF_ERROR(loom_output_stream_write_char(stream, '"'));
   for (iree_host_size_t i = 0; i < string.size; ++i) {
     uint8_t character = (uint8_t)string.data[i];
     if (character == '"' || character == '\\' || character < 0x20 ||
@@ -81,7 +56,69 @@ static iree_status_t loom_llvmir_write_escaped_string(
           stream, iree_make_string_view((const char*)&character, 1)));
     }
   }
+  return iree_ok_status();
+}
+
+static iree_status_t loom_llvmir_write_escaped_string(
+    loom_output_stream_t* stream, iree_string_view_t string) {
+  IREE_RETURN_IF_ERROR(loom_output_stream_write_char(stream, '"'));
+  IREE_RETURN_IF_ERROR(
+      loom_llvmir_write_escaped_string_contents(stream, string));
   return loom_output_stream_write_char(stream, '"');
+}
+
+// LLVM block labels and SSA values share one namespace. Stable identities keep
+// names unique even when source names repeat or resemble generated names.
+static iree_status_t loom_llvmir_write_local_name(loom_output_stream_t* stream,
+                                                  const char* prefix,
+                                                  uint32_t ordinal,
+                                                  iree_string_view_t name) {
+  bool quoted = false;
+  for (iree_host_size_t i = 0; i < name.size; ++i) {
+    const uint8_t character = (uint8_t)name.data[i];
+    if (!((character >= 'a' && character <= 'z') ||
+          (character >= 'A' && character <= 'Z') ||
+          (character >= '0' && character <= '9') || character == '-' ||
+          character == '$' || character == '.' || character == '_')) {
+      quoted = true;
+      break;
+    }
+  }
+  if (quoted) {
+    IREE_RETURN_IF_ERROR(loom_output_stream_write_char(stream, '"'));
+  }
+  IREE_RETURN_IF_ERROR(
+      loom_output_stream_write_format(stream, "%s%u", prefix, ordinal));
+  if (!iree_string_view_is_empty(name)) {
+    IREE_RETURN_IF_ERROR(loom_output_stream_write_char(stream, '.'));
+    if (quoted) {
+      IREE_RETURN_IF_ERROR(
+          loom_llvmir_write_escaped_string_contents(stream, name));
+    } else {
+      IREE_RETURN_IF_ERROR(loom_output_stream_write(stream, name));
+    }
+  }
+  if (quoted) {
+    IREE_RETURN_IF_ERROR(loom_output_stream_write_char(stream, '"'));
+  }
+  return iree_ok_status();
+}
+
+static iree_status_t loom_llvmir_write_label_ref(
+    const loom_llvmir_function_t* function, loom_llvmir_block_id_t block_id,
+    loom_output_stream_t* stream) {
+  if (block_id >= function->block_count) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "LLVM text writer saw unknown block");
+  }
+  IREE_RETURN_IF_ERROR(loom_output_stream_write_char(stream, '%'));
+  return loom_llvmir_write_local_name(stream, "bb", block_id,
+                                      function->blocks[block_id]->name);
+}
+
+static iree_status_t loom_llvmir_write_label_def(
+    const loom_llvmir_block_t* block, loom_output_stream_t* stream) {
+  return loom_llvmir_write_local_name(stream, "bb", block->id, block->name);
 }
 
 static iree_status_t loom_llvmir_write_type(const loom_llvmir_module_t* module,
@@ -141,11 +178,6 @@ static iree_status_t loom_llvmir_write_type(const loom_llvmir_module_t* module,
   }
 }
 
-static iree_status_t loom_llvmir_write_fallback_value_name(
-    loom_llvmir_value_id_t value_id, loom_output_stream_t* stream) {
-  return loom_output_stream_write_format(stream, "%%v%u", value_id);
-}
-
 static iree_status_t loom_llvmir_write_integer_vector_constant(
     const loom_llvmir_module_t* module, const loom_llvmir_value_t* value,
     loom_output_stream_t* stream) {
@@ -203,12 +235,10 @@ static iree_status_t loom_llvmir_write_value_ref(
       return loom_output_stream_write(stream, global->name);
     }
     case LOOM_LLVMIR_VALUE_PARAMETER:
-    case LOOM_LLVMIR_VALUE_INSTRUCTION:
-      if (!iree_string_view_is_empty(value->name)) {
-        IREE_RETURN_IF_ERROR(loom_output_stream_write_char(stream, '%'));
-        return loom_output_stream_write(stream, value->name);
-      }
-      return loom_llvmir_write_fallback_value_name(value_id, stream);
+    case LOOM_LLVMIR_VALUE_INSTRUCTION: {
+      IREE_RETURN_IF_ERROR(loom_output_stream_write_char(stream, '%'));
+      return loom_llvmir_write_local_name(stream, "v", value_id, value->name);
+    }
     default:
       return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                               "unknown LLVM value kind");
@@ -311,6 +341,7 @@ static iree_status_t loom_llvmir_write_metadata_attachments(
 
 static iree_status_t loom_llvmir_write_parameter(
     const loom_llvmir_module_t* module,
+    loom_llvmir_function_kind_t function_kind,
     const loom_llvmir_parameter_t* parameter, loom_output_stream_t* stream) {
   IREE_RETURN_IF_ERROR(
       loom_llvmir_write_type(module, parameter->type_id, stream));
@@ -319,11 +350,12 @@ static iree_status_t loom_llvmir_write_parameter(
     IREE_RETURN_IF_ERROR(
         loom_llvmir_write_attr_list(module, parameter->attrs, stream));
   }
-  if (!iree_string_view_is_empty(parameter->name)) {
-    IREE_RETURN_IF_ERROR(loom_output_stream_write_cstring(stream, " %"));
-    return loom_output_stream_write(stream, parameter->name);
+  if (function_kind == LOOM_LLVMIR_FUNCTION_DECLARATION &&
+      iree_string_view_is_empty(parameter->name)) {
+    return iree_ok_status();
   }
-  return iree_ok_status();
+  IREE_RETURN_IF_ERROR(loom_output_stream_write_char(stream, ' '));
+  return loom_llvmir_write_value_ref(module, parameter->value_id, stream);
 }
 
 static const char* loom_llvmir_linkage_spelling(loom_llvmir_linkage_t linkage) {
@@ -1211,8 +1243,8 @@ static iree_status_t loom_llvmir_write_function_signature(
     if (i > 0) {
       IREE_RETURN_IF_ERROR(loom_output_stream_write_cstring(stream, ", "));
     }
-    IREE_RETURN_IF_ERROR(
-        loom_llvmir_write_parameter(module, &function->parameters[i], stream));
+    IREE_RETURN_IF_ERROR(loom_llvmir_write_parameter(
+        module, function->kind, &function->parameters[i], stream));
   }
   IREE_RETURN_IF_ERROR(loom_output_stream_write_char(stream, ')'));
   if (function->attr_group_id != LOOM_LLVMIR_ATTR_GROUP_ID_INVALID) {
@@ -1261,7 +1293,7 @@ static iree_status_t loom_llvmir_write_function(
   IREE_RETURN_IF_ERROR(loom_output_stream_write_cstring(stream, " {\n"));
   for (iree_host_size_t i = 0; i < function->block_count; ++i) {
     const loom_llvmir_block_t* block = function->blocks[i];
-    IREE_RETURN_IF_ERROR(loom_llvmir_write_label_def(function, block, stream));
+    IREE_RETURN_IF_ERROR(loom_llvmir_write_label_def(block, stream));
     IREE_RETURN_IF_ERROR(loom_output_stream_write_cstring(stream, ":\n"));
     for (iree_host_size_t j = 0; j < block->instruction_count; ++j) {
       IREE_RETURN_IF_ERROR(loom_output_stream_write_cstring(stream, "  "));

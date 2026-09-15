@@ -1,0 +1,227 @@
+// RUN: pass canonicalize
+
+// The selected offset varies while the storage identity, footprint, and
+// common alignment remain available at the join.
+func.def @select_view_components(%condition: i1) -> (i1, i64, i64, i64, i64, i64, i64) {
+  %bytes = index.constant 256 : offset
+  %first = index.constant 64 : offset
+  %second = index.constant 128 : offset
+  %storage = buffer.alloca<workgroup> align(64) %bytes : buffer
+  %left = buffer.view %storage[%first] : buffer -> view<16xf32>
+  %right = buffer.view %storage[%second] : buffer -> view<16xf32>
+  %selected = scf.select %condition, %left, %right : view<16xf32>
+  %root = test.fact_view_root_matches %selected, %storage : view<16xf32>, buffer -> i1
+  %space = test.fact_view_memory_space %selected : view<16xf32> -> i64
+  %low = test.fact_view_byte_offset_lo %selected : view<16xf32> -> i64
+  %high = test.fact_view_byte_offset_hi %selected : view<16xf32> -> i64
+  %length = test.fact_view_byte_length_hi %selected : view<16xf32> -> i64
+  %alignment = test.fact_view_min_alignment %selected : view<16xf32> -> i64
+  %root_alignment = test.fact_view_root_min_alignment %selected : view<16xf32> -> i64
+  func.return %root, %space, %low, %high, %length, %alignment, %root_alignment : i1, i64, i64, i64, i64, i64, i64
+}
+
+// ----
+func.def @select_view_components(%condition: i1) -> (i1, i64, i64, i64, i64, i64, i64) {
+  %root = scalar.constant true : i1
+  %space = scalar.constant 2 : i64
+  %low = scalar.constant 64 : i64
+  %high = scalar.constant 128 : i64
+  %length = scalar.constant 64 : i64
+  %alignment = scalar.constant 64 : i64
+  %root_alignment = scalar.constant 64 : i64
+  func.return %root, %space, %low, %high, %length, %alignment, %root_alignment : i1, i64, i64, i64, i64, i64, i64
+}
+
+// ====
+
+// Two allocations in the same space do not establish one common root.
+func.def @different_view_roots(%condition: i1) -> (i1, i64) {
+  %bytes = index.constant 64 : offset
+  %base = index.constant 0 : offset
+  %first = buffer.alloca<workgroup> align(64) %bytes : buffer
+  %second = buffer.alloca<workgroup> align(64) %bytes : buffer
+  %left = buffer.view %first[%base] : buffer -> view<16xf32>
+  %right = buffer.view %second[%base] : buffer -> view<16xf32>
+  %selected = scf.select %condition, %left, %right : view<16xf32>
+  %reference = test.fact_is_view_reference %selected : view<16xf32> -> i1
+  %space = test.fact_view_memory_space %selected : view<16xf32> -> i64
+  func.return %reference, %space : i1, i64
+}
+
+// ----
+func.def @different_view_roots(%condition: i1) -> (i1, i64) {
+  %reference = scalar.constant false : i1
+  %space = scalar.constant -1 : i64
+  func.return %reference, %space : i1, i64
+}
+
+// ====
+
+// Loop transport preserves matching root placement and footprint. Joining
+// workgroup and global roots cannot retain that reference identity.
+func.def @rotate_views(%count: index) -> (i64, i64, i64, i64) {
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %second = index.constant 128 : offset
+  %bytes = index.constant 256 : offset
+  %scratch = buffer.alloca<workgroup> align(64) %bytes : buffer
+  %slot0 = buffer.view %scratch[%base] : buffer -> view<32xi32>
+  %slot1 = buffer.view %scratch[%second] : buffer -> view<32xi32>
+  %initial_space = test.fact_view_memory_space %slot0 : view<32xi32> -> i64
+  %last_slot, %spare, %observed = scf.for %record = [%c0 to %count step %c1](%current = %slot0 : view<32xi32>, %next = %slot1 : view<32xi32>, %previous = %initial_space : i64) -> (view<32xi32>, view<32xi32>, i64) {
+    %body_space = test.fact_view_memory_space %current : view<32xi32> -> i64
+    scf.yield %next, %current, %body_space : view<32xi32>, view<32xi32>, i64
+  }
+  %final_space = test.fact_view_memory_space %last_slot : view<32xi32> -> i64
+  %final_length = test.fact_view_byte_length_hi %last_slot : view<32xi32> -> i64
+  func.return %initial_space, %observed, %final_space, %final_length : i64, i64, i64, i64
+}
+
+func.def @mixed_view_spaces(%count: index, %input: buffer) -> (i64, i64) {
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %bytes = index.constant 128 : offset
+  %scratch = buffer.alloca<workgroup> align(64) %bytes : buffer
+  %global = buffer.assume.memory_space<global> %input : buffer
+  %local_slot = buffer.view %scratch[%base] : buffer -> view<32xi32>
+  %global_slot = buffer.view %global[%base] : buffer -> view<32xi32>
+  %initial_space = test.fact_view_memory_space %local_slot : view<32xi32> -> i64
+  %last_slot, %spare, %observed = scf.for %record = [%c0 to %count step %c1](%current = %local_slot : view<32xi32>, %next = %global_slot : view<32xi32>, %previous = %initial_space : i64) -> (view<32xi32>, view<32xi32>, i64) {
+    %body_space = test.fact_view_memory_space %current : view<32xi32> -> i64
+    scf.yield %next, %current, %body_space : view<32xi32>, view<32xi32>, i64
+  }
+  %final_space = test.fact_view_memory_space %last_slot : view<32xi32> -> i64
+  func.return %observed, %final_space : i64, i64
+}
+
+// ----
+func.def @rotate_views(%count: index) -> (i64, i64, i64, i64) {
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %second = index.constant 128 : offset
+  %bytes = index.constant 256 : offset
+  %scratch = buffer.alloca<workgroup> align(64) %bytes : buffer
+  %slot0 = buffer.view %scratch[%base] : buffer -> view<32xi32>
+  %slot1 = buffer.view %scratch[%second] : buffer -> view<32xi32>
+  %initial_space = scalar.constant 2 : i64
+  %last_slot, %spare, %observed = scf.for %record = [%c0 to %count step %c1](%current = %slot0 : view<32xi32>, %next = %slot1 : view<32xi32>, %previous = %initial_space : i64) -> (view<32xi32>, view<32xi32>, i64) {
+    %body_space = scalar.constant 2 : i64
+    scf.yield %next, %current, %body_space : view<32xi32>, view<32xi32>, i64
+  }
+  %final_space = scalar.constant 2 : i64
+  %final_length = scalar.constant 128 : i64
+  func.return %initial_space, %observed, %final_space, %final_length : i64, i64, i64, i64
+}
+
+func.def @mixed_view_spaces(%count: index, %input: buffer) -> (i64, i64) {
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %bytes = index.constant 128 : offset
+  %scratch = buffer.alloca<workgroup> align(64) %bytes : buffer
+  %global = buffer.assume.memory_space<global> %input : buffer
+  %local_slot = buffer.view %scratch[%base] : buffer -> view<32xi32>
+  %global_slot = buffer.view %global[%base] : buffer -> view<32xi32>
+  %initial_space = scalar.constant 2 : i64
+  %last_slot, %spare, %observed = scf.for %record = [%c0 to %count step %c1](%current = %local_slot : view<32xi32>, %next = %global_slot : view<32xi32>, %previous = %initial_space : i64) -> (view<32xi32>, view<32xi32>, i64) {
+    %body_space = scalar.constant -1 : i64
+    scf.yield %next, %current, %body_space : view<32xi32>, view<32xi32>, i64
+  }
+  %final_space = scalar.constant -1 : i64
+  func.return %observed, %final_space : i64, i64
+}
+
+// ====
+
+// A longer rotation retains fixed placement and size when offset facts widen.
+func.def @rotate_four_views(%count: index) -> (i64, i64) {
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %offset1 = index.constant 128 : offset
+  %offset2 = index.constant 256 : offset
+  %offset3 = index.constant 384 : offset
+  %bytes = index.constant 512 : offset
+  %storage = buffer.alloca<workgroup> align(64) %bytes : buffer
+  %slot0 = buffer.view %storage[%base] : buffer -> view<32xi32>
+  %slot1 = buffer.view %storage[%offset1] : buffer -> view<32xi32>
+  %slot2 = buffer.view %storage[%offset2] : buffer -> view<32xi32>
+  %slot3 = buffer.view %storage[%offset3] : buffer -> view<32xi32>
+  %last0, %last1, %last2, %last3 = scf.for %record = [%c0 to %count step %c1](%current0 = %slot0 : view<32xi32>, %current1 = %slot1 : view<32xi32>, %current2 = %slot2 : view<32xi32>, %current3 = %slot3 : view<32xi32>) -> (view<32xi32>, view<32xi32>, view<32xi32>, view<32xi32>) {
+    %body_space = test.fact_view_memory_space %current0 : view<32xi32> -> i64
+    %body_length = test.fact_view_byte_length_hi %current0 : view<32xi32> -> i64
+    test.use %body_space, %body_length : i64, i64
+    scf.yield %current1, %current2, %current3, %current0 : view<32xi32>, view<32xi32>, view<32xi32>, view<32xi32>
+  }
+  %final_space = test.fact_view_memory_space %last0 : view<32xi32> -> i64
+  %final_length = test.fact_view_byte_length_hi %last0 : view<32xi32> -> i64
+  func.return %final_space, %final_length : i64, i64
+}
+
+// ----
+func.def @rotate_four_views(%count: index) -> (i64, i64) {
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %offset1 = index.constant 128 : offset
+  %offset2 = index.constant 256 : offset
+  %offset3 = index.constant 384 : offset
+  %bytes = index.constant 512 : offset
+  %storage = buffer.alloca<workgroup> align(64) %bytes : buffer
+  %slot0 = buffer.view %storage[%base] : buffer -> view<32xi32>
+  %slot1 = buffer.view %storage[%offset1] : buffer -> view<32xi32>
+  %slot2 = buffer.view %storage[%offset2] : buffer -> view<32xi32>
+  %slot3 = buffer.view %storage[%offset3] : buffer -> view<32xi32>
+  %last0, %last1, %last2, %last3 = scf.for %record = [%c0 to %count step %c1](%current0 = %slot0 : view<32xi32>, %current1 = %slot1 : view<32xi32>, %current2 = %slot2 : view<32xi32>, %current3 = %slot3 : view<32xi32>) -> (view<32xi32>, view<32xi32>, view<32xi32>, view<32xi32>) {
+    %body_space = scalar.constant 2 : i64
+    %body_length = scalar.constant 128 : i64
+    test.use %body_space, %body_length : i64, i64
+    scf.yield %current1, %current2, %current3, %current0 : view<32xi32>, view<32xi32>, view<32xi32>, view<32xi32>
+  }
+  %final_space = scalar.constant 2 : i64
+  %final_length = scalar.constant 128 : i64
+  func.return %final_space, %final_length : i64, i64
+}
+
+// ====
+
+// CFG arguments consume the same type-owned reference join as SCF.
+func.def @cfg_view_join(%condition: i1) -> (i1, i64) {
+  %bytes = index.constant 256 : offset
+  %c0 = index.constant 0 : offset
+  %second = index.constant 128 : offset
+  %storage = buffer.alloca<workgroup> align(64) %bytes : buffer
+  %left = buffer.view %storage[%c0] : buffer -> view<32xi32>
+  %right = buffer.view %storage[%second] : buffer -> view<32xi32>
+  cfg.cond_br %condition, ^first_edge, ^second_edge
+^first_edge:
+  cfg.br ^join(%left: view<32xi32>)
+^second_edge:
+  cfg.br ^join(%right: view<32xi32>)
+^join(%selected: view<32xi32>):
+  %root = test.fact_view_root_matches %selected, %storage : view<32xi32>, buffer -> i1
+  %high = test.fact_view_byte_offset_hi %selected : view<32xi32> -> i64
+  func.return %root, %high : i1, i64
+}
+
+// ----
+func.def @cfg_view_join(%condition: i1) -> (i1, i64) {
+  %bytes = index.constant 256 : offset
+  %c0 = index.constant 0 : offset
+  %second = index.constant 128 : offset
+  %storage = buffer.alloca<workgroup> align(64) %bytes : buffer
+  %left = buffer.view %storage[%c0] : buffer -> view<32xi32>
+  %right = buffer.view %storage[%second] : buffer -> view<32xi32>
+  cfg.cond_br %condition, ^first_edge, ^second_edge
+^first_edge:
+  cfg.br ^join(%left: view<32xi32>)
+^second_edge:
+  cfg.br ^join(%right: view<32xi32>)
+^join(%selected: view<32xi32>):
+  %root = scalar.constant true : i1
+  %high = scalar.constant 128 : i64
+  func.return %root, %high : i1, i64
+}

@@ -1,0 +1,404 @@
+// The same allocation supplies every slot across loop entry, backedges, and
+// live exit results. Each slot carries a distinct record number.
+
+func.def public @rotate_private_views_for_u1(%count_input: index, %seed: i32) -> (i32, i32, i32, i32) {
+  %count = index.assume %count_input [range(%count_input, 0, 257)] : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %depth = scalar.constant 4 : i32
+  %length = index.constant 16 : offset
+  %storage = buffer.alloca<private> align(4) %length : buffer
+  %offset0 = index.constant 0 : offset
+  %slot0 = buffer.view %storage[%offset0] : buffer -> view<1xi32>
+  %ordinal0 = scalar.constant 0 : i32
+  %initial0 = scalar.addi %seed, %ordinal0 : i32
+  view.store %initial0, %slot0[0] : i32, view<1xi32>
+  %offset1 = index.constant 4 : offset
+  %slot1 = buffer.view %storage[%offset1] : buffer -> view<1xi32>
+  %ordinal1 = scalar.constant 1 : i32
+  %initial1 = scalar.addi %seed, %ordinal1 : i32
+  view.store %initial1, %slot1[0] : i32, view<1xi32>
+  %offset2 = index.constant 8 : offset
+  %slot2 = buffer.view %storage[%offset2] : buffer -> view<1xi32>
+  %ordinal2 = scalar.constant 2 : i32
+  %initial2 = scalar.addi %seed, %ordinal2 : i32
+  view.store %initial2, %slot2[0] : i32, view<1xi32>
+  %offset3 = index.constant 12 : offset
+  %slot3 = buffer.view %storage[%offset3] : buffer -> view<1xi32>
+  %ordinal3 = scalar.constant 3 : i32
+  %initial3 = scalar.addi %seed, %ordinal3 : i32
+  view.store %initial3, %slot3[0] : i32, view<1xi32>
+  %unroll = index.constant 1 : index
+  %last0, %last1, %last2, %last3 = scf.for %record = [%begin to %count step %step](%current0 = %slot0 : view<1xi32>, %current1 = %slot1 : view<1xi32>, %current2 = %slot2 : view<1xi32>, %current3 = %slot3 : view<1xi32>) -> (view<1xi32>, view<1xi32>, view<1xi32>, view<1xi32>) unroll(%unroll) {
+    %number = index.cast %record : index to i32
+    %future = scalar.addi %number, %depth : i32
+    %value = scalar.addi %seed, %future : i32
+    %refined = view.refine %current0 : view<1xi32> -> view<1xi32>
+    view.store %value, %refined[0] : i32, view<1xi32>
+    scf.yield %current1, %current2, %current3, %refined : view<1xi32>, view<1xi32>, view<1xi32>, view<1xi32>
+  }
+  %value0 = view.load %last0[0] : view<1xi32> -> i32
+  %value1 = view.load %last1[0] : view<1xi32> -> i32
+  %value2 = view.load %last2[0] : view<1xi32> -> i32
+  %value3 = view.load %last3[0] : view<1xi32> -> i32
+  func.return %value0, %value1, %value2, %value3 : i32, i32, i32, i32
+}
+
+check.case @rotate_private_views_for_u1_n0 {
+  %count = check.literal value(0) : index
+  %seed = check.literal value(7) : i32
+  %a, %b, %c, %d = func.call @rotate_private_views_for_u1(%count, %seed) : (index, i32) -> (i32, i32, i32, i32)
+  %expected_a = check.literal value(7) : i32
+  check.expect.equal actual(%a) expected(%expected_a) : i32
+  %expected_b = check.literal value(8) : i32
+  check.expect.equal actual(%b) expected(%expected_b) : i32
+  %expected_c = check.literal value(9) : i32
+  check.expect.equal actual(%c) expected(%expected_c) : i32
+  %expected_d = check.literal value(10) : i32
+  check.expect.equal actual(%d) expected(%expected_d) : i32
+  check.return
+}
+
+check.case @rotate_private_views_for_u1_n1 {
+  %count = check.literal value(1) : index
+  %seed = check.literal value(7) : i32
+  %a, %b, %c, %d = func.call @rotate_private_views_for_u1(%count, %seed) : (index, i32) -> (i32, i32, i32, i32)
+  %expected_a = check.literal value(8) : i32
+  check.expect.equal actual(%a) expected(%expected_a) : i32
+  %expected_b = check.literal value(9) : i32
+  check.expect.equal actual(%b) expected(%expected_b) : i32
+  %expected_c = check.literal value(10) : i32
+  check.expect.equal actual(%c) expected(%expected_c) : i32
+  %expected_d = check.literal value(11) : i32
+  check.expect.equal actual(%d) expected(%expected_d) : i32
+  check.return
+}
+
+check.case @rotate_private_views_for_u1_n2 {
+  %count = check.literal value(2) : index
+  %seed = check.literal value(7) : i32
+  %a, %b, %c, %d = func.call @rotate_private_views_for_u1(%count, %seed) : (index, i32) -> (i32, i32, i32, i32)
+  %expected_a = check.literal value(9) : i32
+  check.expect.equal actual(%a) expected(%expected_a) : i32
+  %expected_b = check.literal value(10) : i32
+  check.expect.equal actual(%b) expected(%expected_b) : i32
+  %expected_c = check.literal value(11) : i32
+  check.expect.equal actual(%c) expected(%expected_c) : i32
+  %expected_d = check.literal value(12) : i32
+  check.expect.equal actual(%d) expected(%expected_d) : i32
+  check.return
+}
+
+check.case @rotate_private_views_for_u1_n3 {
+  %count = check.literal value(3) : index
+  %seed = check.literal value(7) : i32
+  %a, %b, %c, %d = func.call @rotate_private_views_for_u1(%count, %seed) : (index, i32) -> (i32, i32, i32, i32)
+  %expected_a = check.literal value(10) : i32
+  check.expect.equal actual(%a) expected(%expected_a) : i32
+  %expected_b = check.literal value(11) : i32
+  check.expect.equal actual(%b) expected(%expected_b) : i32
+  %expected_c = check.literal value(12) : i32
+  check.expect.equal actual(%c) expected(%expected_c) : i32
+  %expected_d = check.literal value(13) : i32
+  check.expect.equal actual(%d) expected(%expected_d) : i32
+  check.return
+}
+
+check.case @rotate_private_views_for_u1_n8 {
+  %count = check.literal value(8) : index
+  %seed = check.literal value(7) : i32
+  %a, %b, %c, %d = func.call @rotate_private_views_for_u1(%count, %seed) : (index, i32) -> (i32, i32, i32, i32)
+  %expected_a = check.literal value(15) : i32
+  check.expect.equal actual(%a) expected(%expected_a) : i32
+  %expected_b = check.literal value(16) : i32
+  check.expect.equal actual(%b) expected(%expected_b) : i32
+  %expected_c = check.literal value(17) : i32
+  check.expect.equal actual(%c) expected(%expected_c) : i32
+  %expected_d = check.literal value(18) : i32
+  check.expect.equal actual(%d) expected(%expected_d) : i32
+  check.return
+}
+
+check.case @rotate_private_views_for_u1_n257 {
+  %count = check.literal value(257) : index
+  %seed = check.literal value(7) : i32
+  %a, %b, %c, %d = func.call @rotate_private_views_for_u1(%count, %seed) : (index, i32) -> (i32, i32, i32, i32)
+  %expected_a = check.literal value(264) : i32
+  check.expect.equal actual(%a) expected(%expected_a) : i32
+  %expected_b = check.literal value(265) : i32
+  check.expect.equal actual(%b) expected(%expected_b) : i32
+  %expected_c = check.literal value(266) : i32
+  check.expect.equal actual(%c) expected(%expected_c) : i32
+  %expected_d = check.literal value(267) : i32
+  check.expect.equal actual(%d) expected(%expected_d) : i32
+  check.return
+}
+
+func.def public @rotate_private_views_for_u2(%count_input: index, %seed: i32) -> (i32, i32, i32, i32) {
+  %count = index.assume %count_input [range(%count_input, 0, 257)] : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %depth = scalar.constant 4 : i32
+  %length = index.constant 16 : offset
+  %storage = buffer.alloca<private> align(4) %length : buffer
+  %offset0 = index.constant 0 : offset
+  %slot0 = buffer.view %storage[%offset0] : buffer -> view<1xi32>
+  %ordinal0 = scalar.constant 0 : i32
+  %initial0 = scalar.addi %seed, %ordinal0 : i32
+  view.store %initial0, %slot0[0] : i32, view<1xi32>
+  %offset1 = index.constant 4 : offset
+  %slot1 = buffer.view %storage[%offset1] : buffer -> view<1xi32>
+  %ordinal1 = scalar.constant 1 : i32
+  %initial1 = scalar.addi %seed, %ordinal1 : i32
+  view.store %initial1, %slot1[0] : i32, view<1xi32>
+  %offset2 = index.constant 8 : offset
+  %slot2 = buffer.view %storage[%offset2] : buffer -> view<1xi32>
+  %ordinal2 = scalar.constant 2 : i32
+  %initial2 = scalar.addi %seed, %ordinal2 : i32
+  view.store %initial2, %slot2[0] : i32, view<1xi32>
+  %offset3 = index.constant 12 : offset
+  %slot3 = buffer.view %storage[%offset3] : buffer -> view<1xi32>
+  %ordinal3 = scalar.constant 3 : i32
+  %initial3 = scalar.addi %seed, %ordinal3 : i32
+  view.store %initial3, %slot3[0] : i32, view<1xi32>
+  %unroll = index.constant 2 : index
+  %last0, %last1, %last2, %last3 = scf.for %record = [%begin to %count step %step](%current0 = %slot0 : view<1xi32>, %current1 = %slot1 : view<1xi32>, %current2 = %slot2 : view<1xi32>, %current3 = %slot3 : view<1xi32>) -> (view<1xi32>, view<1xi32>, view<1xi32>, view<1xi32>) unroll(%unroll) {
+    %number = index.cast %record : index to i32
+    %future = scalar.addi %number, %depth : i32
+    %value = scalar.addi %seed, %future : i32
+    %refined = view.refine %current0 : view<1xi32> -> view<1xi32>
+    view.store %value, %refined[0] : i32, view<1xi32>
+    scf.yield %current1, %current2, %current3, %refined : view<1xi32>, view<1xi32>, view<1xi32>, view<1xi32>
+  }
+  %value0 = view.load %last0[0] : view<1xi32> -> i32
+  %value1 = view.load %last1[0] : view<1xi32> -> i32
+  %value2 = view.load %last2[0] : view<1xi32> -> i32
+  %value3 = view.load %last3[0] : view<1xi32> -> i32
+  func.return %value0, %value1, %value2, %value3 : i32, i32, i32, i32
+}
+
+check.case @rotate_private_views_for_u2_n0 {
+  %count = check.literal value(0) : index
+  %seed = check.literal value(7) : i32
+  %a, %b, %c, %d = func.call @rotate_private_views_for_u2(%count, %seed) : (index, i32) -> (i32, i32, i32, i32)
+  %expected_a = check.literal value(7) : i32
+  check.expect.equal actual(%a) expected(%expected_a) : i32
+  %expected_b = check.literal value(8) : i32
+  check.expect.equal actual(%b) expected(%expected_b) : i32
+  %expected_c = check.literal value(9) : i32
+  check.expect.equal actual(%c) expected(%expected_c) : i32
+  %expected_d = check.literal value(10) : i32
+  check.expect.equal actual(%d) expected(%expected_d) : i32
+  check.return
+}
+
+check.case @rotate_private_views_for_u2_n1 {
+  %count = check.literal value(1) : index
+  %seed = check.literal value(7) : i32
+  %a, %b, %c, %d = func.call @rotate_private_views_for_u2(%count, %seed) : (index, i32) -> (i32, i32, i32, i32)
+  %expected_a = check.literal value(8) : i32
+  check.expect.equal actual(%a) expected(%expected_a) : i32
+  %expected_b = check.literal value(9) : i32
+  check.expect.equal actual(%b) expected(%expected_b) : i32
+  %expected_c = check.literal value(10) : i32
+  check.expect.equal actual(%c) expected(%expected_c) : i32
+  %expected_d = check.literal value(11) : i32
+  check.expect.equal actual(%d) expected(%expected_d) : i32
+  check.return
+}
+
+check.case @rotate_private_views_for_u2_n2 {
+  %count = check.literal value(2) : index
+  %seed = check.literal value(7) : i32
+  %a, %b, %c, %d = func.call @rotate_private_views_for_u2(%count, %seed) : (index, i32) -> (i32, i32, i32, i32)
+  %expected_a = check.literal value(9) : i32
+  check.expect.equal actual(%a) expected(%expected_a) : i32
+  %expected_b = check.literal value(10) : i32
+  check.expect.equal actual(%b) expected(%expected_b) : i32
+  %expected_c = check.literal value(11) : i32
+  check.expect.equal actual(%c) expected(%expected_c) : i32
+  %expected_d = check.literal value(12) : i32
+  check.expect.equal actual(%d) expected(%expected_d) : i32
+  check.return
+}
+
+check.case @rotate_private_views_for_u2_n3 {
+  %count = check.literal value(3) : index
+  %seed = check.literal value(7) : i32
+  %a, %b, %c, %d = func.call @rotate_private_views_for_u2(%count, %seed) : (index, i32) -> (i32, i32, i32, i32)
+  %expected_a = check.literal value(10) : i32
+  check.expect.equal actual(%a) expected(%expected_a) : i32
+  %expected_b = check.literal value(11) : i32
+  check.expect.equal actual(%b) expected(%expected_b) : i32
+  %expected_c = check.literal value(12) : i32
+  check.expect.equal actual(%c) expected(%expected_c) : i32
+  %expected_d = check.literal value(13) : i32
+  check.expect.equal actual(%d) expected(%expected_d) : i32
+  check.return
+}
+
+check.case @rotate_private_views_for_u2_n8 {
+  %count = check.literal value(8) : index
+  %seed = check.literal value(7) : i32
+  %a, %b, %c, %d = func.call @rotate_private_views_for_u2(%count, %seed) : (index, i32) -> (i32, i32, i32, i32)
+  %expected_a = check.literal value(15) : i32
+  check.expect.equal actual(%a) expected(%expected_a) : i32
+  %expected_b = check.literal value(16) : i32
+  check.expect.equal actual(%b) expected(%expected_b) : i32
+  %expected_c = check.literal value(17) : i32
+  check.expect.equal actual(%c) expected(%expected_c) : i32
+  %expected_d = check.literal value(18) : i32
+  check.expect.equal actual(%d) expected(%expected_d) : i32
+  check.return
+}
+
+check.case @rotate_private_views_for_u2_n257 {
+  %count = check.literal value(257) : index
+  %seed = check.literal value(7) : i32
+  %a, %b, %c, %d = func.call @rotate_private_views_for_u2(%count, %seed) : (index, i32) -> (i32, i32, i32, i32)
+  %expected_a = check.literal value(264) : i32
+  check.expect.equal actual(%a) expected(%expected_a) : i32
+  %expected_b = check.literal value(265) : i32
+  check.expect.equal actual(%b) expected(%expected_b) : i32
+  %expected_c = check.literal value(266) : i32
+  check.expect.equal actual(%c) expected(%expected_c) : i32
+  %expected_d = check.literal value(267) : i32
+  check.expect.equal actual(%d) expected(%expected_d) : i32
+  check.return
+}
+
+func.def public @rotate_private_views_while(%count_input: index, %seed: i32) -> (i32, i32, i32, i32) {
+  %count = index.assume %count_input [range(%count_input, 0, 257)] : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %depth = scalar.constant 4 : i32
+  %length = index.constant 16 : offset
+  %storage = buffer.alloca<private> align(4) %length : buffer
+  %offset0 = index.constant 0 : offset
+  %slot0 = buffer.view %storage[%offset0] : buffer -> view<1xi32>
+  %ordinal0 = scalar.constant 0 : i32
+  %initial0 = scalar.addi %seed, %ordinal0 : i32
+  view.store %initial0, %slot0[0] : i32, view<1xi32>
+  %offset1 = index.constant 4 : offset
+  %slot1 = buffer.view %storage[%offset1] : buffer -> view<1xi32>
+  %ordinal1 = scalar.constant 1 : i32
+  %initial1 = scalar.addi %seed, %ordinal1 : i32
+  view.store %initial1, %slot1[0] : i32, view<1xi32>
+  %offset2 = index.constant 8 : offset
+  %slot2 = buffer.view %storage[%offset2] : buffer -> view<1xi32>
+  %ordinal2 = scalar.constant 2 : i32
+  %initial2 = scalar.addi %seed, %ordinal2 : i32
+  view.store %initial2, %slot2[0] : i32, view<1xi32>
+  %offset3 = index.constant 12 : offset
+  %slot3 = buffer.view %storage[%offset3] : buffer -> view<1xi32>
+  %ordinal3 = scalar.constant 3 : i32
+  %initial3 = scalar.addi %seed, %ordinal3 : i32
+  view.store %initial3, %slot3[0] : i32, view<1xi32>
+  %last0, %last1, %last2, %last3, %last_i = scf.while(%current0 = %slot0 : view<1xi32>, %current1 = %slot1 : view<1xi32>, %current2 = %slot2 : view<1xi32>, %current3 = %slot3 : view<1xi32>, %i = %begin : index) -> (view<1xi32>, view<1xi32>, view<1xi32>, view<1xi32>, index) {
+    %more = index.cmp slt, %i, %count : index
+    scf.condition %more, %current0, %current1, %current2, %current3, %i : i1, view<1xi32>, view<1xi32>, view<1xi32>, view<1xi32>, index
+  } do(%active0: view<1xi32>, %active1: view<1xi32>, %active2: view<1xi32>, %active3: view<1xi32>, %record: index) {
+    %number = index.cast %record : index to i32
+    %future = scalar.addi %number, %depth : i32
+    %value = scalar.addi %seed, %future : i32
+    %refined = view.refine %active0 : view<1xi32> -> view<1xi32>
+    view.store %value, %refined[0] : i32, view<1xi32>
+    %next = index.add %record, %step : index
+    scf.yield %active1, %active2, %active3, %active0, %next : view<1xi32>, view<1xi32>, view<1xi32>, view<1xi32>, index
+  }
+  %value0 = view.load %last0[0] : view<1xi32> -> i32
+  %value1 = view.load %last1[0] : view<1xi32> -> i32
+  %value2 = view.load %last2[0] : view<1xi32> -> i32
+  %value3 = view.load %last3[0] : view<1xi32> -> i32
+  func.return %value0, %value1, %value2, %value3 : i32, i32, i32, i32
+}
+
+check.case @rotate_private_views_while_n0 {
+  %count = check.literal value(0) : index
+  %seed = check.literal value(7) : i32
+  %a, %b, %c, %d = func.call @rotate_private_views_while(%count, %seed) : (index, i32) -> (i32, i32, i32, i32)
+  %expected_a = check.literal value(7) : i32
+  check.expect.equal actual(%a) expected(%expected_a) : i32
+  %expected_b = check.literal value(8) : i32
+  check.expect.equal actual(%b) expected(%expected_b) : i32
+  %expected_c = check.literal value(9) : i32
+  check.expect.equal actual(%c) expected(%expected_c) : i32
+  %expected_d = check.literal value(10) : i32
+  check.expect.equal actual(%d) expected(%expected_d) : i32
+  check.return
+}
+
+check.case @rotate_private_views_while_n1 {
+  %count = check.literal value(1) : index
+  %seed = check.literal value(7) : i32
+  %a, %b, %c, %d = func.call @rotate_private_views_while(%count, %seed) : (index, i32) -> (i32, i32, i32, i32)
+  %expected_a = check.literal value(8) : i32
+  check.expect.equal actual(%a) expected(%expected_a) : i32
+  %expected_b = check.literal value(9) : i32
+  check.expect.equal actual(%b) expected(%expected_b) : i32
+  %expected_c = check.literal value(10) : i32
+  check.expect.equal actual(%c) expected(%expected_c) : i32
+  %expected_d = check.literal value(11) : i32
+  check.expect.equal actual(%d) expected(%expected_d) : i32
+  check.return
+}
+
+check.case @rotate_private_views_while_n2 {
+  %count = check.literal value(2) : index
+  %seed = check.literal value(7) : i32
+  %a, %b, %c, %d = func.call @rotate_private_views_while(%count, %seed) : (index, i32) -> (i32, i32, i32, i32)
+  %expected_a = check.literal value(9) : i32
+  check.expect.equal actual(%a) expected(%expected_a) : i32
+  %expected_b = check.literal value(10) : i32
+  check.expect.equal actual(%b) expected(%expected_b) : i32
+  %expected_c = check.literal value(11) : i32
+  check.expect.equal actual(%c) expected(%expected_c) : i32
+  %expected_d = check.literal value(12) : i32
+  check.expect.equal actual(%d) expected(%expected_d) : i32
+  check.return
+}
+
+check.case @rotate_private_views_while_n3 {
+  %count = check.literal value(3) : index
+  %seed = check.literal value(7) : i32
+  %a, %b, %c, %d = func.call @rotate_private_views_while(%count, %seed) : (index, i32) -> (i32, i32, i32, i32)
+  %expected_a = check.literal value(10) : i32
+  check.expect.equal actual(%a) expected(%expected_a) : i32
+  %expected_b = check.literal value(11) : i32
+  check.expect.equal actual(%b) expected(%expected_b) : i32
+  %expected_c = check.literal value(12) : i32
+  check.expect.equal actual(%c) expected(%expected_c) : i32
+  %expected_d = check.literal value(13) : i32
+  check.expect.equal actual(%d) expected(%expected_d) : i32
+  check.return
+}
+
+check.case @rotate_private_views_while_n8 {
+  %count = check.literal value(8) : index
+  %seed = check.literal value(7) : i32
+  %a, %b, %c, %d = func.call @rotate_private_views_while(%count, %seed) : (index, i32) -> (i32, i32, i32, i32)
+  %expected_a = check.literal value(15) : i32
+  check.expect.equal actual(%a) expected(%expected_a) : i32
+  %expected_b = check.literal value(16) : i32
+  check.expect.equal actual(%b) expected(%expected_b) : i32
+  %expected_c = check.literal value(17) : i32
+  check.expect.equal actual(%c) expected(%expected_c) : i32
+  %expected_d = check.literal value(18) : i32
+  check.expect.equal actual(%d) expected(%expected_d) : i32
+  check.return
+}
+
+check.case @rotate_private_views_while_n257 {
+  %count = check.literal value(257) : index
+  %seed = check.literal value(7) : i32
+  %a, %b, %c, %d = func.call @rotate_private_views_while(%count, %seed) : (index, i32) -> (i32, i32, i32, i32)
+  %expected_a = check.literal value(264) : i32
+  check.expect.equal actual(%a) expected(%expected_a) : i32
+  %expected_b = check.literal value(265) : i32
+  check.expect.equal actual(%b) expected(%expected_b) : i32
+  %expected_c = check.literal value(266) : i32
+  check.expect.equal actual(%c) expected(%expected_c) : i32
+  %expected_d = check.literal value(267) : i32
+  check.expect.equal actual(%d) expected(%expected_d) : i32
+  check.return
+}

@@ -104,7 +104,7 @@ inspection.
 
 | Task | Workflow |
 | --- | --- |
-| Compile a loader-ready artifact | [Compile artifacts](compile-artifacts.md#compile-for-a-hal-loader) |
+| Compile a loader-ready artifact | [Compile artifacts](compile-artifacts.md#compile-a-loadable-kernel) |
 | Select roots and configuration | [Compile artifacts](compile-artifacts.md#select-roots-from-a-catalog) |
 | Describe an emitted artifact | [Compile artifacts](compile-artifacts.md#emit-an-artifact-manifest) |
 | Read one bounded report view | [Read compile reports](compile-reports.md#show-one-report) |

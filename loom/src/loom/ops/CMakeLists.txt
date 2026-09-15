@@ -302,6 +302,7 @@ loom_cc_library(
     loom::ir
     loom::ops::buffer
     loom::ops::vector
+    loom::ops::view
     loom::util::fact_table
   PUBLIC
 )

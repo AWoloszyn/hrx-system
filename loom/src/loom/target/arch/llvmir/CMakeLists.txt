@@ -132,6 +132,7 @@ loom_check_test_suite(
     "test/source_low/vector_slice.loom-test"
     "test/source_low/vector_v16.loom-test"
     "test/source_low/vector_v4.loom-test"
+    "test/source_low/view_transport.loom-test"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/async_empty.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/async_gather.loom-test"
@@ -169,6 +170,7 @@ loom_check_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/vector_slice.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/vector_v16.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/vector_v4.loom-test"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/view_transport.loom-test"
   TEST_NAME_PREFIX_TO_STRIP
     "test/source_low/"
 )

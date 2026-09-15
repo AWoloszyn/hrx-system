@@ -166,11 +166,46 @@ def verify_exit_code(temporary_root: Path) -> None:
         )
 
 
+def verify_try_dependency_aliases(temporary_root: Path) -> None:
+    source = temporary_root / "dependency_aliases.c"
+    source.write_text(
+        '#include "iree/base/api.h"\n'
+        "int main(void) {\n"
+        "  return iree_status_is_ok(iree_ok_status()) ? 0 : 1;\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        dev_command(
+            "bazel",
+            "try",
+            "--config=asan",
+            "--dep",
+            "//runtime/src/iree/base",
+            "--dep",
+            "//runtime/src/iree/base:base",
+            "--dep",
+            "//runtime/src/iree/base",
+            str(source),
+        ),
+        cwd=REPO_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            "Bazel try failed with explicit and inferred dependency aliases:\n"
+            + result.stdout
+        )
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="iree-bazel-launch-") as temporary_name:
         temporary_root = Path(temporary_name)
         verify_lock_free_launch(temporary_root)
         verify_exit_code(temporary_root)
+        verify_try_dependency_aliases(temporary_root)
     print("Bazel launcher integration passed")
     return 0
 

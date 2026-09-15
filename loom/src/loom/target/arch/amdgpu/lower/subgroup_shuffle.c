@@ -266,7 +266,7 @@ static iree_status_t loom_amdgpu_emit_subgroup_shuffle_index_source_lane(
     return iree_ok_status();
   }
   if (plan->exact_offset == UINT32_MAX) {
-    return loom_amdgpu_emit_vgpr_binary(
+    return loom_amdgpu_emit_binary(
         context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_OR_B32, cluster_base,
         low_source_offset, lane_type, out_source_lane);
   }
@@ -323,7 +323,7 @@ static iree_status_t loom_amdgpu_emit_subgroup_shuffle_source_byte_offset(
       if (plan->exact_offset == 0) {
         source_lane = lane_id;
       } else if (plan->exact_offset == UINT32_MAX) {
-        IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+        IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
             context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_XOR_B32, lane_id,
             low_source_offset, lane_type, &source_lane));
       } else {
@@ -346,7 +346,7 @@ static iree_status_t loom_amdgpu_emit_subgroup_shuffle_source_byte_offset(
         IREE_RETURN_IF_ERROR(loom_amdgpu_emit_subgroup_lane_relative_to_width(
             context, source_op, plan, lane_id, lane_type, &lane_for_compare));
       }
-      IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+      IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
           context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_SUB_U32, lane_id,
           offset, lane_type, &source_lane));
       IREE_RETURN_IF_ERROR(loom_amdgpu_emit_subgroup_mask_compare(
@@ -361,7 +361,7 @@ static iree_status_t loom_amdgpu_emit_subgroup_shuffle_source_byte_offset(
             context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_MOV_B32,
             plan->exact_offset, lane_type, &offset));
       }
-      IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+      IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
           context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_ADD_U32, lane_id,
           offset, lane_type, &source_lane));
       loom_value_id_t source_lane_for_compare = source_lane;
@@ -369,7 +369,7 @@ static iree_status_t loom_amdgpu_emit_subgroup_shuffle_source_byte_offset(
         loom_value_id_t lane_relative = LOOM_VALUE_ID_INVALID;
         IREE_RETURN_IF_ERROR(loom_amdgpu_emit_subgroup_lane_relative_to_width(
             context, source_op, plan, lane_id, lane_type, &lane_relative));
-        IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+        IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
             context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_ADD_U32,
             lane_relative, offset, lane_type, &source_lane_for_compare));
       }

@@ -49,13 +49,14 @@ iree_runtime_cc_library(
     ],
 )
 
-# Provided for tests and tools that may reach in.
-# These headers are not part of the public API and should not be depended on.
+# Implementation headers shared with driver tests and tools.
+# The public driver API is declared in api.h.
 iree_runtime_cc_library(
     name = "headers",
     hdrs = [
         "api.h",
         "atomic.h",
+        "buffer.h",
         "command_buffer.h",
         "debug_utils.h",
         "device_options.h",
@@ -64,6 +65,7 @@ iree_runtime_cc_library(
         "physical_device.h",
         "physical_device_selection.h",
         "queue_stats.h",
+        "sparse_buffer.h",
         "spirv.h",
     ],
     deps = [
@@ -108,6 +110,7 @@ iree_runtime_cc_test(
     name = "buffer_test",
     srcs = ["buffer_test.cc"],
     deps = [
+        ":headers",
         ":vulkan",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",

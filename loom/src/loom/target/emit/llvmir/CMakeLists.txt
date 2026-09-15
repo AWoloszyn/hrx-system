@@ -141,6 +141,16 @@ loom_cc_library(
   HDRS
     "module_emitter.h"
   SRCS
+    "function_arithmetic.c"
+    "function_arithmetic.h"
+    "function_emitter.c"
+    "function_emitter.h"
+    "function_kernel.c"
+    "function_kernel.h"
+    "function_memory.c"
+    "function_memory.h"
+    "function_vector.c"
+    "function_vector.h"
     "module_emitter.c"
   DEPS
     ::core
@@ -165,6 +175,7 @@ loom_cc_library(
     loom::target::low_descriptor_registry
     loom::target::registers
     loom::target::types
+    loom::util::cfg_graph
   PUBLIC
 )
 endif()
@@ -186,6 +197,21 @@ loom_cc_library(
     iree::io::stream
     loom::target::provider
     loom::util::stream
+  PUBLIC
+)
+endif()
+
+if(LOOM_TARGET_ARCH_LLVMIR AND LOOM_EMIT_LLVMIR)
+loom_cc_library(
+  NAME
+    test_names
+  HDRS
+    "test_names.h"
+  SRCS
+    "test_names.c"
+  DEPS
+    ::core
+  TESTONLY
   PUBLIC
 )
 endif()
@@ -264,6 +290,7 @@ loom_check_test_suite(
   NAME
     file_test
   SRCS
+    "test/control_flow.loom-test"
     "test/diagnostics.loom-test"
     "test/emit.loom-test"
     "test/target_low.loom-test"
@@ -354,6 +381,7 @@ loom_cc_test(
   DEPS
     ::core
     ::test_modules_core
+    ::test_names
     iree::testing::gtest
     iree::testing::gtest_main
   LABELS
@@ -373,6 +401,7 @@ loom_cc_test(
   DEPS
     ::core
     ::test_modules_target_scenarios
+    ::test_names
     iree::testing::gtest
     iree::testing::gtest_main
   LABELS
@@ -397,6 +426,7 @@ loom_cc_test(
     iree::testing::gtest
     iree::testing::gtest_main
     loom::analysis::symbol_facts
+    loom::codegen::low::function
     loom::codegen::low::text_asm
     loom::error::error_defs
     loom::format::text::parser
@@ -446,6 +476,7 @@ loom_cc_test(
   DEPS
     ::core
     ::test_modules_target_scenarios
+    ::test_names
     iree::io::file_handle
     iree::io::stream
     iree::testing::gtest

@@ -156,209 +156,209 @@ low.func.def target<llvmir.generic.core>(@target) abi(object_function) @vector_f
 }
 
 // ----
-define dso_local i32 @first(i32 %lhs, i32 %rhs) {
-entry:
-  %sum = add i32 %lhs, %rhs
-  ret i32 %sum
+define dso_local i32 @first(i32 %v0.lhs, i32 %v1.rhs) {
+bb0.entry:
+  %v2.sum = add i32 %v0.lhs, %v1.rhs
+  ret i32 %v2.sum
 }
 
-define dso_local i32 @second(ptr %input_view, ptr %output_view, i64 %bounded_i) {
-entry:
-  %v7 = mul i64 %bounded_i, 4
+define dso_local i32 @second(ptr %v3.input_view, ptr %v4.output_view, i64 %v5.bounded_i) {
+bb0.entry:
+  %v7 = mul i64 %v5.bounded_i, 4
   %v9 = add i64 %v7, 16
-  %v10 = getelementptr i8, ptr %input_view, i64 %v9
-  %loaded = load i32, ptr %v10
-  %v13 = mul i64 %bounded_i, 4
+  %v10 = getelementptr i8, ptr %v3.input_view, i64 %v9
+  %v11.loaded = load i32, ptr %v10
+  %v13 = mul i64 %v5.bounded_i, 4
   %v15 = add i64 %v13, 32
-  %v16 = getelementptr i8, ptr %output_view, i64 %v15
-  store i32 %loaded, ptr %v16
-  ret i32 %loaded
+  %v16 = getelementptr i8, ptr %v4.output_view, i64 %v15
+  store i32 %v11.loaded, ptr %v16
+  ret i32 %v11.loaded
 }
 
-define dso_local <16 x float> @memory_widths(ptr %input_view, ptr %output_view, i64 %bounded_i) {
-entry:
-  %v21 = getelementptr i8, ptr %input_view, i64 1
-  %byte = load i8, ptr %v21
-  %v24 = getelementptr i8, ptr %input_view, i64 8
-  %halves = load <4 x half>, ptr %v24
-  %v27 = getelementptr i8, ptr %input_view, i64 32
-  %brain = load <2 x bfloat>, ptr %v27
-  %v30 = mul i64 %bounded_i, 64
+define dso_local <16 x float> @memory_widths(ptr %v17.input_view, ptr %v18.output_view, i64 %v19.bounded_i) {
+bb0.entry:
+  %v21 = getelementptr i8, ptr %v17.input_view, i64 1
+  %v22.byte = load i8, ptr %v21
+  %v24 = getelementptr i8, ptr %v17.input_view, i64 8
+  %v25.halves = load <4 x half>, ptr %v24
+  %v27 = getelementptr i8, ptr %v17.input_view, i64 32
+  %v28.brain = load <2 x bfloat>, ptr %v27
+  %v30 = mul i64 %v19.bounded_i, 64
   %v32 = add i64 %v30, 64
-  %v33 = getelementptr i8, ptr %input_view, i64 %v32
-  %wide = load <16 x float>, ptr %v33
-  %v36 = getelementptr i8, ptr %output_view, i64 1
-  store i8 %byte, ptr %v36
-  %v38 = getelementptr i8, ptr %output_view, i64 8
-  store <4 x half> %halves, ptr %v38
-  %v40 = getelementptr i8, ptr %output_view, i64 32
-  store <2 x bfloat> %brain, ptr %v40
-  %v42 = mul i64 %bounded_i, 64
+  %v33 = getelementptr i8, ptr %v17.input_view, i64 %v32
+  %v34.wide = load <16 x float>, ptr %v33
+  %v36 = getelementptr i8, ptr %v18.output_view, i64 1
+  store i8 %v22.byte, ptr %v36
+  %v38 = getelementptr i8, ptr %v18.output_view, i64 8
+  store <4 x half> %v25.halves, ptr %v38
+  %v40 = getelementptr i8, ptr %v18.output_view, i64 32
+  store <2 x bfloat> %v28.brain, ptr %v40
+  %v42 = mul i64 %v19.bounded_i, 64
   %v44 = add i64 %v42, 64
-  %v45 = getelementptr i8, ptr %output_view, i64 %v44
-  store <16 x float> %wide, ptr %v45
-  ret <16 x float> %wide
+  %v45 = getelementptr i8, ptr %v18.output_view, i64 %v44
+  store <16 x float> %v34.wide, ptr %v45
+  ret <16 x float> %v34.wide
 }
 
-define dso_local i8 @i8_identity(i8 %value) {
-entry:
-  ret i8 %value
+define dso_local i8 @i8_identity(i8 %v46.value) {
+bb0.entry:
+  ret i8 %v46.value
 }
 
-define dso_local i16 @i16_identity(i16 %value) {
-entry:
-  ret i16 %value
+define dso_local i16 @i16_identity(i16 %v47.value) {
+bb0.entry:
+  ret i16 %v47.value
 }
 
-define dso_local half @f16_identity(half %value) {
-entry:
-  ret half %value
+define dso_local half @f16_identity(half %v48.value) {
+bb0.entry:
+  ret half %v48.value
 }
 
-define dso_local bfloat @bf16_identity(bfloat %value) {
-entry:
-  ret bfloat %value
+define dso_local bfloat @bf16_identity(bfloat %v49.value) {
+bb0.entry:
+  ret bfloat %v49.value
 }
 
-define dso_local <32 x i8> @v32i8_identity(<32 x i8> %value) {
-entry:
-  ret <32 x i8> %value
+define dso_local <32 x i8> @v32i8_identity(<32 x i8> %v50.value) {
+bb0.entry:
+  ret <32 x i8> %v50.value
 }
 
-define dso_local <8 x half> @v8f16_identity(<8 x half> %value) {
-entry:
-  ret <8 x half> %value
+define dso_local <8 x half> @v8f16_identity(<8 x half> %v51.value) {
+bb0.entry:
+  ret <8 x half> %v51.value
 }
 
-define dso_local <16 x bfloat> @v16bf16_identity(<16 x bfloat> %value) {
-entry:
-  ret <16 x bfloat> %value
+define dso_local <16 x bfloat> @v16bf16_identity(<16 x bfloat> %v52.value) {
+bb0.entry:
+  ret <16 x bfloat> %v52.value
 }
 
-define dso_local double @f64_unordered_select(double %lhs, double %rhs, double %true_value, double %false_value) {
-entry:
-  %mask = fcmp uno double %lhs, %rhs
-  %selected = select i1 %mask, double %true_value, double %false_value
-  ret double %selected
+define dso_local double @f64_unordered_select(double %v53.lhs, double %v54.rhs, double %v55.true_value, double %v56.false_value) {
+bb0.entry:
+  %v57.mask = fcmp uno double %v53.lhs, %v54.rhs
+  %v58.selected = select i1 %v57.mask, double %v55.true_value, double %v56.false_value
+  ret double %v58.selected
 }
 
-define dso_local <16 x i32> @i32x16_vector_ops(<16 x i32> %lhs, <16 x i32> %rhs, <16 x i32> %fallback) {
-entry:
-  %sum = add <16 x i32> %lhs, %rhs
-  %shifted = shl <16 x i32> %sum, %rhs
-  %mask = icmp ugt <16 x i32> %shifted, %lhs
-  %selected = select <16 x i1> %mask, <16 x i32> %shifted, <16 x i32> %fallback
-  ret <16 x i32> %selected
+define dso_local <16 x i32> @i32x16_vector_ops(<16 x i32> %v59.lhs, <16 x i32> %v60.rhs, <16 x i32> %v61.fallback) {
+bb0.entry:
+  %v62.sum = add <16 x i32> %v59.lhs, %v60.rhs
+  %v63.shifted = shl <16 x i32> %v62.sum, %v60.rhs
+  %v64.mask = icmp ugt <16 x i32> %v63.shifted, %v59.lhs
+  %v65.selected = select <16 x i1> %v64.mask, <16 x i32> %v63.shifted, <16 x i32> %v61.fallback
+  ret <16 x i32> %v65.selected
 }
 
-define dso_local <16 x float> @f32x16_unordered_select(<16 x float> %lhs, <16 x float> %rhs, <16 x float> %fallback) {
-entry:
-  %mask = fcmp une <16 x float> %lhs, %rhs
-  %selected = select <16 x i1> %mask, <16 x float> %lhs, <16 x float> %fallback
-  ret <16 x float> %selected
+define dso_local <16 x float> @f32x16_unordered_select(<16 x float> %v66.lhs, <16 x float> %v67.rhs, <16 x float> %v68.fallback) {
+bb0.entry:
+  %v69.mask = fcmp une <16 x float> %v66.lhs, %v67.rhs
+  %v70.selected = select <16 x i1> %v69.mask, <16 x float> %v66.lhs, <16 x float> %v68.fallback
+  ret <16 x float> %v70.selected
 }
 
-define dso_local <4 x i8> @v4i8_select(<4 x i1> %mask, <4 x i8> %true_value, <4 x i8> %false_value) {
-entry:
-  %selected = select <4 x i1> %mask, <4 x i8> %true_value, <4 x i8> %false_value
-  ret <4 x i8> %selected
+define dso_local <4 x i8> @v4i8_select(<4 x i1> %v71.mask, <4 x i8> %v72.true_value, <4 x i8> %v73.false_value) {
+bb0.entry:
+  %v74.selected = select <4 x i1> %v71.mask, <4 x i8> %v72.true_value, <4 x i8> %v73.false_value
+  ret <4 x i8> %v74.selected
 }
 
-define dso_local <2 x i16> @v2i16_select(<2 x i1> %mask, <2 x i16> %true_value, <2 x i16> %false_value) {
-entry:
-  %selected = select <2 x i1> %mask, <2 x i16> %true_value, <2 x i16> %false_value
-  ret <2 x i16> %selected
+define dso_local <2 x i16> @v2i16_select(<2 x i1> %v75.mask, <2 x i16> %v76.true_value, <2 x i16> %v77.false_value) {
+bb0.entry:
+  %v78.selected = select <2 x i1> %v75.mask, <2 x i16> %v76.true_value, <2 x i16> %v77.false_value
+  ret <2 x i16> %v78.selected
 }
 
-define dso_local <16 x bfloat> @v16bf16_select(<16 x i1> %mask, <16 x bfloat> %true_value, <16 x bfloat> %false_value) {
-entry:
-  %selected = select <16 x i1> %mask, <16 x bfloat> %true_value, <16 x bfloat> %false_value
-  ret <16 x bfloat> %selected
+define dso_local <16 x bfloat> @v16bf16_select(<16 x i1> %v79.mask, <16 x bfloat> %v80.true_value, <16 x bfloat> %v81.false_value) {
+bb0.entry:
+  %v82.selected = select <16 x i1> %v79.mask, <16 x bfloat> %v80.true_value, <16 x bfloat> %v81.false_value
+  ret <16 x bfloat> %v82.selected
 }
 
-define dso_local <4 x i32> @structural_i32_vector(i32 %value, <4 x i32> %source) {
-entry:
-  %v87 = insertelement <4 x i32> poison, i32 %value, i64 0
-  %v89 = insertelement <4 x i32> %v87, i32 %value, i64 1
-  %v91 = insertelement <4 x i32> %v89, i32 %value, i64 2
-  %splat = insertelement <4 x i32> %v91, i32 %value, i64 3
-  %lane = extractelement <4 x i32> %source, i64 2
-  %v98 = insertelement <4 x i32> poison, i32 %value, i64 0
-  %v100 = insertelement <4 x i32> %v98, i32 %lane, i64 1
-  %v102 = insertelement <4 x i32> %v100, i32 %value, i64 2
-  %from = insertelement <4 x i32> %v102, i32 %lane, i64 3
-  %updated = insertelement <4 x i32> %splat, i32 %lane, i64 3
-  %shuffled = shufflevector <4 x i32> %from, <4 x i32> poison, <4 x i32> <i32 3, i32 2, i32 1, i32 0>
-  ret <4 x i32> %shuffled
+define dso_local <4 x i32> @structural_i32_vector(i32 %v83.value, <4 x i32> %v84.source) {
+bb0.entry:
+  %v87 = insertelement <4 x i32> poison, i32 %v83.value, i64 0
+  %v89 = insertelement <4 x i32> %v87, i32 %v83.value, i64 1
+  %v91 = insertelement <4 x i32> %v89, i32 %v83.value, i64 2
+  %v93.splat = insertelement <4 x i32> %v91, i32 %v83.value, i64 3
+  %v95.lane = extractelement <4 x i32> %v84.source, i64 2
+  %v98 = insertelement <4 x i32> poison, i32 %v83.value, i64 0
+  %v100 = insertelement <4 x i32> %v98, i32 %v95.lane, i64 1
+  %v102 = insertelement <4 x i32> %v100, i32 %v83.value, i64 2
+  %v104.from = insertelement <4 x i32> %v102, i32 %v95.lane, i64 3
+  %v106.updated = insertelement <4 x i32> %v93.splat, i32 %v95.lane, i64 3
+  %v109.shuffled = shufflevector <4 x i32> %v104.from, <4 x i32> poison, <4 x i32> <i32 3, i32 2, i32 1, i32 0>
+  ret <4 x i32> %v109.shuffled
 }
 
-define dso_local <2 x i32> @structural_slice(<4 x i32> %source) {
-entry:
-  %slice = shufflevector <4 x i32> %source, <4 x i32> poison, <2 x i32> <i32 1, i32 2>
-  ret <2 x i32> %slice
+define dso_local <2 x i32> @structural_slice(<4 x i32> %v110.source) {
+bb0.entry:
+  %v113.slice = shufflevector <4 x i32> %v110.source, <4 x i32> poison, <2 x i32> <i32 1, i32 2>
+  ret <2 x i32> %v113.slice
 }
 
-define dso_local <4 x float> @structural_f32_splat(float %float_value) {
-entry:
-  %v117 = insertelement <4 x float> poison, float %float_value, i64 0
-  %v119 = insertelement <4 x float> %v117, float %float_value, i64 1
-  %v121 = insertelement <4 x float> %v119, float %float_value, i64 2
-  %float_splat = insertelement <4 x float> %v121, float %float_value, i64 3
-  ret <4 x float> %float_splat
+define dso_local <4 x float> @structural_f32_splat(float %v114.float_value) {
+bb0.entry:
+  %v117 = insertelement <4 x float> poison, float %v114.float_value, i64 0
+  %v119 = insertelement <4 x float> %v117, float %v114.float_value, i64 1
+  %v121 = insertelement <4 x float> %v119, float %v114.float_value, i64 2
+  %v123.float_splat = insertelement <4 x float> %v121, float %v114.float_value, i64 3
+  ret <4 x float> %v123.float_splat
 }
 
-define dso_local <4 x half> @structural_f16_insert(<4 x half> %source, half %value) {
-entry:
-  %updated = insertelement <4 x half> %source, half %value, i64 1
-  ret <4 x half> %updated
+define dso_local <4 x half> @structural_f16_insert(<4 x half> %v124.source, half %v125.value) {
+bb0.entry:
+  %v127.updated = insertelement <4 x half> %v124.source, half %v125.value, i64 1
+  ret <4 x half> %v127.updated
 }
 
-define dso_local <2 x bfloat> @structural_bf16_slice(<4 x bfloat> %source) {
-entry:
-  %slice = shufflevector <4 x bfloat> %source, <4 x bfloat> poison, <2 x i32> <i32 2, i32 3>
-  ret <2 x bfloat> %slice
+define dso_local <2 x bfloat> @structural_bf16_slice(<4 x bfloat> %v128.source) {
+bb0.entry:
+  %v131.slice = shufflevector <4 x bfloat> %v128.source, <4 x bfloat> poison, <2 x i32> <i32 2, i32 3>
+  ret <2 x bfloat> %v131.slice
 }
 
 define dso_local <2 x i32> @integer_vector_constant() {
-entry:
+bb0.entry:
   ret <2 x i32> <i32 7, i32 7>
 }
 
 define dso_local <2 x float> @float_vector_constant() {
-entry:
+bb0.entry:
   %v136 = insertelement <2 x float> poison, float 0x0000000040000000, i64 0
-  %float = insertelement <2 x float> %v136, float 0x0000000040000000, i64 1
-  ret <2 x float> %float
+  %v138.float = insertelement <2 x float> %v136, float 0x0000000040000000, i64 1
+  ret <2 x float> %v138.float
 }
 
-define dso_local i32 @scalar_casts(i8 %i8_value, i32 %i32_value, half %f16_value, bfloat %bf16_value, float %f32_value) {
-entry:
-  %truncated = trunc i32 %i32_value to i8
-  %sext = sext i8 %i8_value to i32
-  %zext = zext i8 %i8_value to i32
-  %signed_fp = sitofp i32 %i32_value to float
-  %unsigned_fp = uitofp i32 %i32_value to float
-  %fp_to_signed = fptosi float %f32_value to i32
-  %fp_to_unsigned = fptoui float %f32_value to i32
-  %fp_truncated = fptrunc float %f32_value to half
-  %fp_extended = fpext half %f16_value to float
-  %bf16_extended = fpext bfloat %bf16_value to float
-  %bits = bitcast float %f32_value to i32
-  ret i32 %bits
+define dso_local i32 @scalar_casts(i8 %v139.i8_value, i32 %v140.i32_value, half %v141.f16_value, bfloat %v142.bf16_value, float %v143.f32_value) {
+bb0.entry:
+  %v144.truncated = trunc i32 %v140.i32_value to i8
+  %v145.sext = sext i8 %v139.i8_value to i32
+  %v146.zext = zext i8 %v139.i8_value to i32
+  %v147.signed_fp = sitofp i32 %v140.i32_value to float
+  %v148.unsigned_fp = uitofp i32 %v140.i32_value to float
+  %v149.fp_to_signed = fptosi float %v143.f32_value to i32
+  %v150.fp_to_unsigned = fptoui float %v143.f32_value to i32
+  %v151.fp_truncated = fptrunc float %v143.f32_value to half
+  %v152.fp_extended = fpext half %v141.f16_value to float
+  %v153.bf16_extended = fpext bfloat %v142.bf16_value to float
+  %v154.bits = bitcast float %v143.f32_value to i32
+  ret i32 %v154.bits
 }
 
-define dso_local <2 x float> @vector_casts(<2 x i32> %i32_values, <2 x float> %f32_values) {
-entry:
-  %signed_fp = sitofp <2 x i32> %i32_values to <2 x float>
-  %unsigned_fp = uitofp <2 x i32> %i32_values to <2 x float>
-  %bits = bitcast <2 x i32> %i32_values to <2 x float>
-  ret <2 x float> %signed_fp
+define dso_local <2 x float> @vector_casts(<2 x i32> %v155.i32_values, <2 x float> %v156.f32_values) {
+bb0.entry:
+  %v157.signed_fp = sitofp <2 x i32> %v155.i32_values to <2 x float>
+  %v158.unsigned_fp = uitofp <2 x i32> %v155.i32_values to <2 x float>
+  %v159.bits = bitcast <2 x i32> %v155.i32_values to <2 x float>
+  ret <2 x float> %v157.signed_fp
 }
 
-define dso_local <4 x float> @vector_fast_math(<4 x float> %lhs, <4 x float> %rhs) {
-entry:
-  %quotient = fdiv nnan ninf nsz arcp <4 x float> %lhs, %rhs
-  ret <4 x float> %quotient
+define dso_local <4 x float> @vector_fast_math(<4 x float> %v160.lhs, <4 x float> %v161.rhs) {
+bb0.entry:
+  %v162.quotient = fdiv nnan ninf nsz arcp <4 x float> %v160.lhs, %v161.rhs
+  ret <4 x float> %v162.quotient
 }
 
 // ====
@@ -387,42 +387,42 @@ low.kernel.def target<llvmir.generic.core>(@target) workgroup_size(64, 1, 1) @di
 }
 
 // ----
-define amdgpu_kernel void @dispatch(ptr addrspace(1) inreg noundef %input) #0 !reqd_work_group_size !0 {
-entry:
-  %v5 = getelementptr i8, ptr addrspace(1) %input, i64 4
-  %value = load i32, ptr addrspace(1) %v5
+define amdgpu_kernel void @dispatch(ptr addrspace(1) inreg noundef %v0.input) #0 !reqd_work_group_size !0 {
+bb0.entry:
+  %v5 = getelementptr i8, ptr addrspace(1) %v0.input, i64 4
+  %v6.value = load i32, ptr addrspace(1) %v5
   %v7 = call i32 @llvm.amdgcn.workitem.id.x()
-  %local_x = zext i32 %v7 to i64
+  %v8.local_x = zext i32 %v7 to i64
   %v9 = call i32 @llvm.amdgcn.workitem.id.y()
-  %local_y = zext i32 %v9 to i64
+  %v10.local_y = zext i32 %v9 to i64
   %v11 = call i32 @llvm.amdgcn.workitem.id.z()
-  %local_z = zext i32 %v11 to i64
+  %v12.local_z = zext i32 %v11 to i64
   %v13 = call i32 @llvm.amdgcn.workgroup.id.x()
-  %workgroup_x = zext i32 %v13 to i64
+  %v14.workgroup_x = zext i32 %v13 to i64
   %v15 = call i32 @llvm.amdgcn.workgroup.id.y()
-  %workgroup_y = zext i32 %v15 to i64
+  %v16.workgroup_y = zext i32 %v15 to i64
   %v17 = call i32 @llvm.amdgcn.workgroup.id.z()
-  %workgroup_z = zext i32 %v17 to i64
-  %size_xy = add i64 64, 1
-  %size_xyz = add i64 %size_xy, 1
-  %v25 = getelementptr i8, ptr addrspace(1) %input, i64 8
-  store i64 %size_xyz, ptr addrspace(1) %v25
+  %v18.workgroup_z = zext i32 %v17 to i64
+  %v22.size_xy = add i64 64, 1
+  %v23.size_xyz = add i64 %v22.size_xy, 1
+  %v25 = getelementptr i8, ptr addrspace(1) %v0.input, i64 8
+  store i64 %v23.size_xyz, ptr addrspace(1) %v25
   %v26 = call i32 @llvm.amdgcn.workgroup.id.x()
   %v27 = zext i32 %v26 to i64
   %v28 = call i32 @llvm.amdgcn.workitem.id.x()
   %v29 = zext i32 %v28 to i64
   %v31 = mul i64 %v27, 64
-  %dispatch_x = add i64 %v31, %v29
+  %v32.dispatch_x = add i64 %v31, %v29
   %v33 = call i32 @llvm.amdgcn.workgroup.id.y()
   %v34 = zext i32 %v33 to i64
   %v35 = call i32 @llvm.amdgcn.workitem.id.y()
   %v36 = zext i32 %v35 to i64
-  %dispatch_y = add i64 %v34, %v36
+  %v37.dispatch_y = add i64 %v34, %v36
   %v38 = call i32 @llvm.amdgcn.workgroup.id.z()
   %v39 = zext i32 %v38 to i64
   %v40 = call i32 @llvm.amdgcn.workitem.id.z()
   %v41 = zext i32 %v40 to i64
-  %dispatch_z = add i64 %v39, %v41
+  %v42.dispatch_z = add i64 %v39, %v41
   ret void
 }
 
@@ -456,13 +456,33 @@ low.kernel.def target<llvmir.generic.core>(@target) workgroup_size(8, 4, 1) @sub
 }
 
 // ----
-define amdgpu_kernel void @subgroup_queries(ptr addrspace(1) inreg noundef %output) #0 !reqd_work_group_size !0 {
-entry:
-  %sum = add i64 64, 1
-  store i64 %sum, ptr addrspace(1) %output
+define amdgpu_kernel void @subgroup_queries(ptr addrspace(1) inreg noundef %v0.output) #0 !reqd_work_group_size !0 {
+bb0.entry:
+  %v6.sum = add i64 64, 1
+  store i64 %v6.sum, ptr addrspace(1) %v0.output
   ret void
 }
 
 attributes #0 = { alwaysinline "amdgpu-flat-work-group-size"="1,1024" "uniform-work-group-size" }
 
 !0 = !{i32 8, i32 4, i32 1}
+
+// ====
+
+llvmir.target<object> @target {triple = "x86_64-unknown-linux-gnu"}
+
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @indexed_compare_exchange(%input: reg<llvmir.ptr>, %index: reg<llvmir.i64>, %expected: reg<llvmir.i32>, %replacement: reg<llvmir.i32>) -> (reg<llvmir.i32>) asm {
+  %previous = atomic.cmpxchg.indexed.i32 %expected, %replacement, %input, %index, 16, 0, 0, 3, 8
+  return %previous
+}
+
+// ----
+define dso_local i32 @indexed_compare_exchange(ptr %v0.input, i64 %v1.index, i32 %v2.expected, i32 %v3.replacement) {
+bb0.entry:
+  %v5 = mul i64 %v1.index, 8
+  %v7 = add i64 %v5, 16
+  %v8 = getelementptr i8, ptr %v0.input, i64 %v7
+  %v9 = cmpxchg ptr %v8, i32 %v2.expected, i32 %v3.replacement monotonic monotonic, align 4
+  %v10.previous = extractvalue { i32, i1 } %v9, 0
+  ret i32 %v10.previous
+}

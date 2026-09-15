@@ -178,9 +178,10 @@ TEST(TargetLlvmirTest, EmitsTextAndBitcodeArtifacts) {
   EXPECT_EQ(text_artifact->kind, LOOMC_ARTIFACT_KIND_TEXT);
   EXPECT_EQ(ToString(text_artifact->format), LOOMC_ARTIFACT_FORMAT_LLVMIR_TEXT);
   EXPECT_EQ(ToString(text_artifact->identifier), "low_add.ll");
-  EXPECT_NE(ToString(text_artifact->contents)
-                .find("define dso_local i32 @low_add(i32 %lhs, i32 %rhs)"),
-            std::string::npos);
+  EXPECT_NE(
+      ToString(text_artifact->contents)
+          .find("define dso_local i32 @low_add(i32 %v0.lhs, i32 %v1.rhs)"),
+      std::string::npos);
 
   ResultPtr bitcode_result =
       EmitModule(target_environment.get(), workspace.get(), module.get(),

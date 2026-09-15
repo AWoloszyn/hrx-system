@@ -17,6 +17,14 @@
 extern "C" {
 #endif
 
+// Emits the low 64 bits of a product. Both inputs use the same two-unit SGPR
+// or VGPR carrier, which is also the result carrier.
+iree_status_t loom_amdgpu_emit_i64_mul_lo(loom_low_lower_context_t* context,
+                                          const loom_op_t* source_op,
+                                          loom_value_id_t low_lhs,
+                                          loom_value_id_t low_rhs,
+                                          loom_value_id_t* out_low_product);
+
 // Selects an AMDGPU index.cast plan.
 iree_status_t loom_amdgpu_select_index_cast_plan(
     loom_low_lower_context_t* context, const loom_op_t* source_op,

@@ -32,3 +32,201 @@ func.def target(@target) @object_add(%lhs: i32, %rhs: i32) -> (i32) {
 
 // ----
 object emitted: target
+
+// ====
+
+// RUN: emit llvmir-bitcode
+// REQUIRES: llvm-dis
+
+llvmir.target<object> @target {triple = "x86_64-unknown-linux-gnu"}
+
+// The caller supplies a trip count in [0, 257].
+func.def public target(@target) @rotate_slots(%trip_count: index) -> (i32) {
+  %count = index.assume %trip_count [range(%trip_count, 0, 257)] : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %factor = index.constant 2 : index
+  %bytes = index.constant 8 : offset
+  %first_offset = index.constant 0 : offset
+  %second_offset = index.constant 4 : offset
+  %storage = buffer.alloca<private> align(4) %bytes : buffer
+  %first = buffer.view %storage[%first_offset] : buffer -> view<1xi32>
+  %second = buffer.view %storage[%second_offset] : buffer -> view<1xi32>
+  %initial = scalar.constant 1 : i32
+  %increment = scalar.constant 7 : i32
+  view.store %initial, %first[0] : i32, view<1xi32>
+  %last, %spare = scf.for %iteration = [%begin to %count step %step](%current = %first : view<1xi32>, %next = %second : view<1xi32>) -> (view<1xi32>, view<1xi32>) unroll(%factor) {
+    %value = view.load %current[0] : view<1xi32> -> i32
+    %updated = scalar.addi %value, %increment : i32
+    view.store %updated, %next[0] : i32, view<1xi32>
+    scf.yield %next, %current : view<1xi32>, view<1xi32>
+  }
+  %result = view.load %last[0] : view<1xi32> -> i32
+  func.return %result : i32
+}
+
+// ----
+target triple = "x86_64-unknown-linux-gnu"
+
+define dso_local i32 @rotate_slots(i64 %count) {
+entry:
+  %last = alloca i8, i64 8, align 4
+  store i32 1, ptr %last, align 4
+  br label %0
+
+0:                                                ; preds = %12, %entry
+  %iteration = phi i64 [ 0, %entry ], [ %15, %12 ]
+  %current_offset = phi i64 [ 0, %entry ], [ %13, %12 ]
+  %next_offset = phi i64 [ 4, %entry ], [ %14, %12 ]
+  %1 = icmp slt i64 %iteration, %count
+  br i1 %1, label %4, label %2
+
+2:                                                ; preds = %0
+  %3 = getelementptr i8, ptr %last, i64 %current_offset
+  %result = load i32, ptr %3, align 4
+  ret i32 %result
+
+4:                                                ; preds = %0
+  %5 = getelementptr i8, ptr %last, i64 %current_offset
+  %value = load i32, ptr %5, align 4
+  %updated = add i32 %value, 7
+  %6 = getelementptr i8, ptr %last, i64 %next_offset
+  store i32 %updated, ptr %6, align 4
+  %iteration_1 = add i64 %iteration, 1
+  %7 = icmp slt i64 %iteration_1, %count
+  br i1 %7, label %9, label %8
+
+8:                                                ; preds = %4
+  br label %12
+
+9:                                                ; preds = %4
+  %10 = getelementptr i8, ptr %last, i64 %next_offset
+  %value_1 = load i32, ptr %10, align 4
+  %updated_1 = add i32 %value_1, 7
+  %11 = getelementptr i8, ptr %last, i64 %current_offset
+  store i32 %updated_1, ptr %11, align 4
+  br label %12
+
+12:                                               ; preds = %9, %8
+  %13 = phi i64 [ %current_offset, %9 ], [ %next_offset, %8 ]
+  %14 = phi i64 [ %next_offset, %9 ], [ %current_offset, %8 ]
+  %15 = add i64 %iteration, 2
+  br label %0
+}
+
+// ====
+
+// RUN: emit llvmir-object @target
+// REQUIRES: llc
+
+llvmir.target<object> @target {triple = "x86_64-unknown-linux-gnu"}
+
+// The caller supplies a trip count in [0, 257].
+func.def public target(@target) @rotate_slots(%trip_count: index) -> (i32) {
+  %count = index.assume %trip_count [range(%trip_count, 0, 257)] : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %factor = index.constant 2 : index
+  %bytes = index.constant 8 : offset
+  %first_offset = index.constant 0 : offset
+  %second_offset = index.constant 4 : offset
+  %storage = buffer.alloca<private> align(4) %bytes : buffer
+  %first = buffer.view %storage[%first_offset] : buffer -> view<1xi32>
+  %second = buffer.view %storage[%second_offset] : buffer -> view<1xi32>
+  %initial = scalar.constant 1 : i32
+  %increment = scalar.constant 7 : i32
+  view.store %initial, %first[0] : i32, view<1xi32>
+  %last, %spare = scf.for %iteration = [%begin to %count step %step](%current = %first : view<1xi32>, %next = %second : view<1xi32>) -> (view<1xi32>, view<1xi32>) unroll(%factor) {
+    %value = view.load %current[0] : view<1xi32> -> i32
+    %updated = scalar.addi %value, %increment : i32
+    view.store %updated, %next[0] : i32, view<1xi32>
+    scf.yield %next, %current : view<1xi32>, view<1xi32>
+  }
+  %result = view.load %last[0] : view<1xi32> -> i32
+  func.return %result : i32
+}
+
+// ----
+object emitted: target
+
+// ====
+
+// RUN: emit llvmir-bitcode
+// REQUIRES: llvm-dis
+
+llvmir.target<object> @target {triple = "x86_64-unknown-linux-gnu"}
+
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @entry_cycle(%remaining: reg<llvmir.i32>, %sum: reg<llvmir.i32>) -> (reg<llvmir.i32>) asm {
+^entry:
+  %zero = const.i32 0
+  %one = const.i32 1
+  %continue = cmp.sgt.i32 %remaining, %zero
+  low.cond_br %continue, ^body, ^exit : reg<llvmir.i1>
+^body:
+  %next_remaining = sub.i32 %remaining, %one
+  %next_sum = add.i32 %sum, %remaining
+  low.br ^entry(%next_remaining: reg<llvmir.i32>, %next_sum: reg<llvmir.i32>)
+^exit:
+  return %sum
+}
+
+// ----
+target triple = "x86_64-unknown-linux-gnu"
+
+define dso_local i32 @entry_cycle(i32 %remaining, i32 %sum) {
+abi:
+  br label %entry
+
+entry:                                            ; preds = %body, %abi
+  %remaining1 = phi i32 [ %remaining, %abi ], [ %next_remaining, %body ]
+  %sum2 = phi i32 [ %sum, %abi ], [ %next_sum, %body ]
+  %continue = icmp sgt i32 %remaining1, 0
+  br i1 %continue, label %body, label %exit
+
+exit:                                             ; preds = %entry
+  ret i32 %sum2
+
+body:                                             ; preds = %entry
+  %next_remaining = sub i32 %remaining1, 1
+  %next_sum = add i32 %sum2, %remaining1
+  br label %entry
+}
+
+// ====
+
+// RUN: emit llvmir-object @target
+// REQUIRES: llc
+
+llvmir.target<object> @target {triple = "x86_64-unknown-linux-gnu"}
+
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @entry_cycle(%remaining: reg<llvmir.i32>, %sum: reg<llvmir.i32>) -> (reg<llvmir.i32>) asm {
+^entry:
+  %zero = const.i32 0
+  %one = const.i32 1
+  %continue = cmp.sgt.i32 %remaining, %zero
+  low.cond_br %continue, ^body, ^exit : reg<llvmir.i1>
+^body:
+  %next_remaining = sub.i32 %remaining, %one
+  %next_sum = add.i32 %sum, %remaining
+  low.br ^entry(%next_remaining: reg<llvmir.i32>, %next_sum: reg<llvmir.i32>)
+^exit:
+  return %sum
+}
+
+// ----
+object emitted: target
+
+// ====
+
+// RUN: emit llvmir-object @target
+// REQUIRES: llc
+
+llvmir.target<object> @target {triple = "x86_64-unknown-linux-gnu"}
+
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @entry_self_loop() asm {
+^entry:
+  low.br ^entry
+}
+
+// ----
+object emitted: target

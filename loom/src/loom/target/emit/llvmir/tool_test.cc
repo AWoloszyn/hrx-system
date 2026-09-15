@@ -14,6 +14,7 @@
 #include "iree/testing/temp_file.h"
 #include "loom/target/emit/llvmir/bitcode_writer.h"
 #include "loom/target/emit/llvmir/test_modules.h"
+#include "loom/target/emit/llvmir/test_names.h"
 #include "loom/target/emit/llvmir/text_writer.h"
 #include "loom/target/emit/llvmir/verify.h"
 #include "loom/target/tool/llvm.h"
@@ -78,25 +79,29 @@ iree_status_t BuildBitcodeFixture(loom_llvmir_test_module_scenario_t scenario,
   return iree_ok_status();
 }
 
+iree_status_t WriteTextFixture(const loom_llvmir_module_t* module,
+                               std::string* out_text) {
+  IREE_RETURN_IF_ERROR(loom_llvmir_verify_module(module));
+
+  iree_string_builder_t builder;
+  iree_string_builder_initialize(iree_allocator_system(), &builder);
+  loom_output_stream_t stream;
+  loom_output_stream_for_builder(&builder, &stream);
+  iree_status_t status = loom_llvmir_text_write_module(module, &stream);
+  if (iree_status_is_ok(status)) {
+    *out_text = ToString(iree_string_builder_view(&builder));
+  }
+  iree_string_builder_deinitialize(&builder);
+  return status;
+}
+
 iree_status_t BuildTextFixture(loom_llvmir_test_module_scenario_t scenario,
                                std::string* out_text) {
   loom_llvmir_module_t* module = NULL;
   IREE_RETURN_IF_ERROR(loom_llvmir_test_module_build(
       scenario, iree_allocator_system(), &module));
   ModulePtr module_ptr(module, loom_llvmir_module_free);
-  IREE_RETURN_IF_ERROR(loom_llvmir_verify_module(module_ptr.get()));
-
-  iree_string_builder_t builder;
-  iree_string_builder_initialize(iree_allocator_system(), &builder);
-  loom_output_stream_t stream;
-  loom_output_stream_for_builder(&builder, &stream);
-  iree_status_t status =
-      loom_llvmir_text_write_module(module_ptr.get(), &stream);
-  if (iree_status_is_ok(status)) {
-    *out_text = ToString(iree_string_builder_view(&builder));
-  }
-  iree_string_builder_deinitialize(&builder);
-  return status;
+  return WriteTextFixture(module, out_text);
 }
 
 iree_status_t WriteTempFile(const std::string& path,
@@ -137,9 +142,7 @@ TEST(LlvmIrToolTest, QueriesVersion) {
   loom_tool_output_deinitialize(&version_text, iree_allocator_system());
 }
 
-TEST(LlvmIrToolTest, AssemblesTextAndVerifiesBitcode) {
-  std::string text;
-  IREE_ASSERT_OK(BuildTextFixture(LOOM_LLVMIR_TEST_MODULE_OBJECT_VADD4, &text));
+void VerifyTextWithToolchain(const std::string& text) {
   iree::testing::TempFilePath input_file("loom_llvm_tool_test", ".ll");
   iree::testing::TempFilePath bitcode_file("loom_llvm_tool_test", ".bc");
   IREE_ASSERT_OK(WriteTempFile(input_file.path(), text));
@@ -161,6 +164,22 @@ TEST(LlvmIrToolTest, AssemblesTextAndVerifiesBitcode) {
     GTEST_SKIP() << "opt is unavailable in this test environment";
   }
   IREE_ASSERT_OK(status);
+}
+
+TEST(LlvmIrToolTest, AssemblesTextAndVerifiesBitcode) {
+  std::string text;
+  IREE_ASSERT_OK(BuildTextFixture(LOOM_LLVMIR_TEST_MODULE_OBJECT_VADD4, &text));
+  VerifyTextWithToolchain(text);
+}
+
+TEST(LlvmIrToolTest, AssemblesCollidingAndQuotedLocalNames) {
+  loom_llvmir_module_t* module = nullptr;
+  IREE_ASSERT_OK(loom_llvmir_test_build_local_names_module(
+      iree_allocator_system(), &module));
+  ModulePtr module_ptr(module, loom_llvmir_module_free);
+  std::string text;
+  IREE_ASSERT_OK(WriteTextFixture(module, &text));
+  VerifyTextWithToolchain(text);
 }
 
 TEST(LlvmIrToolTest, DisassemblesBitcode) {

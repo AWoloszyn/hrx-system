@@ -19,10 +19,10 @@ func.def target(@target) @add(%lhs: i32, %rhs: i32) -> (i32) {
 target datalayout = "e-p:64:64-i64:64-n8:16:32:64-S128"
 target triple = "loom-direct64-unknown-none"
 
-define dso_local i32 @add(i32 %lhs, i32 %rhs) {
-entry:
-  %sum = add i32 %lhs, %rhs
-  ret i32 %sum
+define dso_local i32 @add(i32 %v0.lhs, i32 %v1.rhs) {
+bb0.entry:
+  %v2.sum = add i32 %v0.lhs, %v1.rhs
+  ret i32 %v2.sum
 }
 
 // ====
@@ -38,9 +38,57 @@ func.def target(@target) @select_i64(%lhs: i64, %rhs: i64, %true_value: i64, %fa
 }
 
 // ----
-define dso_local i64 @select_i64(i64 %lhs, i64 %rhs, i64 %true_value, i64 %false_value) {
-entry:
-  %predicate = icmp sgt i64 %lhs, %rhs
-  %selected = select i1 %predicate, i64 %true_value, i64 %false_value
-  ret i64 %selected
+define dso_local i64 @select_i64(i64 %v0.lhs, i64 %v1.rhs, i64 %v2.true_value, i64 %v3.false_value) {
+bb0.entry:
+  %v4.predicate = icmp sgt i64 %v0.lhs, %v1.rhs
+  %v5.selected = select i1 %v4.predicate, i64 %v2.true_value, i64 %v3.false_value
+  ret i64 %v5.selected
+}
+
+// ====
+
+// RUN: emit llvmir
+
+llvmir.target<object> @target {triple = "x86_64-unknown-linux-gnu"}
+
+func.def public target(@target) @selected_view_projection(%input_value: index, %condition: i1) -> (i32) {
+  %position = index.assume %input_value [range(%input_value, 0, 3)] : index
+  %length = index.constant 16 : offset
+  %base = index.constant 0 : offset
+  %buffer = buffer.alloca<private> align(4) %length : buffer
+  %root = buffer.view %buffer[%base] : buffer -> view<4xi32>
+  %a = scalar.constant 10 : i32
+  %b = scalar.constant 20 : i32
+  %c = scalar.constant 30 : i32
+  %d = scalar.constant 40 : i32
+  view.store %a, %root[0] : i32, view<4xi32>
+  view.store %b, %root[1] : i32, view<4xi32>
+  view.store %c, %root[2] : i32, view<4xi32>
+  view.store %d, %root[3] : i32, view<4xi32>
+  %first = view.subview %root[%position] : view<4xi32> -> view<1xi32>
+  %second = view.subview %root[0] : view<4xi32> -> view<1xi32>
+  %selected = scf.select %condition, %first, %second : view<1xi32>
+  %value = view.load %selected[0] : view<1xi32> -> i32
+  func.return %value : i32
+}
+
+
+// ----
+target triple = "x86_64-unknown-linux-gnu"
+
+define dso_local i32 @selected_view_projection(i64 %v0.position, i1 %v1.condition) {
+bb0.entry:
+  %v4.selected = alloca i8, i64 16, align 4
+  store i32 10, ptr %v4.selected
+  %v10 = getelementptr i8, ptr %v4.selected, i64 4
+  store i32 20, ptr %v10
+  %v12 = getelementptr i8, ptr %v4.selected, i64 8
+  store i32 30, ptr %v12
+  %v14 = getelementptr i8, ptr %v4.selected, i64 12
+  store i32 40, ptr %v14
+  %v16 = shl i64 %v0.position, 2
+  %v17.selected_offset = select i1 %v1.condition, i64 %v16, i64 0
+  %v18 = getelementptr i8, ptr %v4.selected, i64 %v17.selected_offset
+  %v19.value = load i32, ptr %v18
+  ret i32 %v19.value
 }

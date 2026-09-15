@@ -1129,18 +1129,21 @@ def _raw_storage_buffer_byte_descriptors() -> tuple[Descriptor, ...]:
 
 def _access_chain_workgroup_descriptor(
     scalar: StorageBufferScalar,
+    coordinate: str,
 ) -> Descriptor:
     return Descriptor(
-        key=f"spirv.op_access_chain.workgroup.{scalar.suffix}.element_index",
-        mnemonic=f"OpAccessChain.workgroup.{scalar.suffix}.element_index",
-        semantic_tag=f"spirv.op_access_chain.workgroup.{scalar.suffix}.element_index",
+        key=f"spirv.op_access_chain.workgroup.{scalar.suffix}.{coordinate}",
+        mnemonic=f"OpAccessChain.workgroup.{scalar.suffix}.{coordinate}",
+        semantic_tag=f"spirv.op_access_chain.workgroup.{scalar.suffix}.{coordinate}",
         operands=(
             _ptr_workgroup_scalar_result(scalar),
             _ptr_workgroup_array_operand(scalar, "base"),
-            _id_operand("element_index"),
+            _offset64_operand(coordinate)
+            if coordinate == "byte_offset"
+            else _id_operand(coordinate),
         ),
         feature_mask_words=(scalar.feature_bits,) if scalar.feature_bits else (),
-        asm_forms=_asm(results=("ptr",), operands=("base", "element_index")),
+        asm_forms=_asm(results=("ptr",), operands=("base", coordinate)),
         schedule_class=_SCHEDULE_VARIABLE,
         flags=(DescriptorFlag.DEAD_REMOVABLE,),
         instruction_classes=(InstructionClass.OTHER,),
@@ -1190,7 +1193,10 @@ def _store_workgroup_descriptor(scalar: StorageBufferScalar) -> Descriptor:
 def _workgroup_descriptors() -> tuple[Descriptor, ...]:
     descriptors: list[Descriptor] = []
     for scalar in STORAGE_BUFFER_SCALARS:
-        descriptors.append(_access_chain_workgroup_descriptor(scalar))
+        descriptors.extend(
+            _access_chain_workgroup_descriptor(scalar, coordinate)
+            for coordinate in ("element_index", "byte_offset")
+        )
         descriptors.append(_load_workgroup_descriptor(scalar))
         descriptors.append(_store_workgroup_descriptor(scalar))
     return tuple(descriptors)

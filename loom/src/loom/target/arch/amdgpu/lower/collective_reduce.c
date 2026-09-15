@@ -1601,7 +1601,7 @@ static iree_status_t loom_amdgpu_emit_workgroup_reduce_scratch_address(
     uint32_t static_byte_offset, loom_type_t lane_type,
     loom_value_id_t* out_address) {
   *out_address = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_ADD_U32, scratch_base,
       dynamic_byte_offset, lane_type, out_address));
   if (static_byte_offset == 0) {

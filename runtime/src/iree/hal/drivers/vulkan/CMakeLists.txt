@@ -64,6 +64,7 @@ iree_cc_library(
   HDRS
     "api.h"
     "atomic.h"
+    "buffer.h"
     "command_buffer.h"
     "debug_utils.h"
     "device_options.h"
@@ -72,6 +73,7 @@ iree_cc_library(
     "physical_device.h"
     "physical_device_selection.h"
     "queue_stats.h"
+    "sparse_buffer.h"
     "spirv.h"
   DEPS
     ::api
@@ -129,6 +131,7 @@ iree_cc_test(
   SRCS
     "buffer_test.cc"
   DEPS
+    ::headers
     ::vulkan
     iree::testing::gtest
     iree::testing::gtest_main

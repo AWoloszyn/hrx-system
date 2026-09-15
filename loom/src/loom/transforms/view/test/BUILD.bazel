@@ -17,5 +17,6 @@ loom_check_test_suite(
     srcs = [
         "linearize_view_accesses.loom-test",
         "load_coalescing.loom-test",
+        "transport.loom-test",
     ],
 )

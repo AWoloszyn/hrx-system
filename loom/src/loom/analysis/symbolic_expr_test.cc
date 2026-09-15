@@ -89,6 +89,59 @@ TEST_F(SymbolicExprTest, ExactIntegerFactsFoldToConstant) {
   EXPECT_EQ(expression.term_count, 0);
 }
 
+TEST_F(SymbolicExprTest, IndexCastsExpandOnlyWhenTheyPreserveNumericValue) {
+  struct {
+    // Source representation interpreted by the cast.
+    loom_scalar_type_t input_type;
+    // Destination representation interpreted by the cast.
+    loom_scalar_type_t result_type;
+    // Inclusive lower bound of the proven source range.
+    int64_t lower_bound;
+    // Inclusive upper bound of the proven source range.
+    int64_t upper_bound;
+    // Whether the cast is a numeric identity over that range.
+    bool preserves_value;
+  } cases[] = {
+      {LOOM_SCALAR_TYPE_INDEX, LOOM_SCALAR_TYPE_I8, 4294967297, 4294967299,
+       false},
+      {LOOM_SCALAR_TYPE_INDEX, LOOM_SCALAR_TYPE_I8, -128, 127, true},
+      {LOOM_SCALAR_TYPE_OFFSET, LOOM_SCALAR_TYPE_I32, 2147483648, 4294967295,
+       false},
+      {LOOM_SCALAR_TYPE_OFFSET, LOOM_SCALAR_TYPE_I32, 0, INT32_MAX, true},
+      {LOOM_SCALAR_TYPE_I8, LOOM_SCALAR_TYPE_OFFSET, -128, -1, false},
+      {LOOM_SCALAR_TYPE_I8, LOOM_SCALAR_TYPE_OFFSET, -1, 1, false},
+      {LOOM_SCALAR_TYPE_I8, LOOM_SCALAR_TYPE_OFFSET, 0, 127, true},
+      {LOOM_SCALAR_TYPE_I8, LOOM_SCALAR_TYPE_INDEX, -128, 127, true},
+      {LOOM_SCALAR_TYPE_I64, LOOM_SCALAR_TYPE_INDEX, INT64_MIN, INT64_MAX,
+       true},
+      {LOOM_SCALAR_TYPE_INDEX, LOOM_SCALAR_TYPE_OFFSET, 0, INT64_MAX, true},
+  };
+  for (const auto& test_case : cases) {
+    SCOPED_TRACE(static_cast<int>(test_case.input_type));
+    SCOPED_TRACE(static_cast<int>(test_case.result_type));
+    SCOPED_TRACE(test_case.lower_bound);
+    loom_type_t input_type = loom_type_scalar(test_case.input_type);
+    loom_value_id_t input = LOOM_VALUE_ID_INVALID;
+    IREE_ASSERT_OK(loom_builder_define_value(&builder_, input_type, &input));
+    DefineFacts(input, loom_value_facts_make(test_case.lower_bound,
+                                             test_case.upper_bound, 1));
+    loom_op_t* cast = nullptr;
+    IREE_ASSERT_OK(loom_index_cast_build(
+        &builder_, input, input_type, loom_type_scalar(test_case.result_type),
+        LOOM_LOCATION_UNKNOWN, &cast));
+    loom_value_id_t result = loom_index_cast_result(cast);
+    loom_symbolic_expr_t expression = {};
+    IREE_ASSERT_OK(loom_symbolic_expr_from_value(&expression_context_, result,
+                                                 &expression));
+    ASSERT_TRUE(loom_symbolic_expr_is_linear(&expression));
+    ASSERT_EQ(expression.term_count, 1);
+    EXPECT_EQ(expression.constant, 0);
+    EXPECT_EQ(expression.terms[0].coefficient, 1);
+    EXPECT_EQ(expression.terms[0].value_id,
+              test_case.preserves_value ? input : result);
+  }
+}
+
 TEST_F(SymbolicExprTest, AddAndSubtractNormalizeTerms) {
   loom_value_id_t value_id = DefineIndexValue();
   loom_symbolic_expr_t value = {0};

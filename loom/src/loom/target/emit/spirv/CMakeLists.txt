@@ -306,6 +306,7 @@ loom_check_test_suite(
     "test/source_structured_control.loom-test"
     "test/storage_buffer_abi.loom-test"
     "test/structured_control.loom-test"
+    "test/workgroup_byte_offsets.loom-test"
     "test/workgroup_storage.loom-test"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_scalar_addressing.loom-test"

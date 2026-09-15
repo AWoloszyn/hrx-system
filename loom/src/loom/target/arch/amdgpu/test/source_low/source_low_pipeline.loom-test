@@ -37,6 +37,7 @@ pass.pipeline<module> @__loom_check_source_low pipeline {
   target-legalize(mode = "eager")
   for func {
     where target {
+      decompose-view-transports
       vector-memory-to-scalar
       linearize-view-accesses
       canonicalize
@@ -137,6 +138,7 @@ pass.pipeline<module> @__loom_check_source_low pipeline {
   target-legalize(mode = "eager")
   for func {
     where target {
+      decompose-view-transports
       vector-memory-to-scalar
       linearize-view-accesses
       canonicalize
@@ -286,6 +288,7 @@ pass.pipeline<module> @__loom_check_prepared_low pipeline {
   target-legalize(mode = "eager")
   for func {
     where target {
+      decompose-view-transports
       vector-memory-to-scalar
       linearize-view-accesses
       canonicalize

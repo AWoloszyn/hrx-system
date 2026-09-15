@@ -1,0 +1,157 @@
+// RUN: pass canonicalize
+
+// A closed header rotation retains its complete finite domain.
+func.def @four_offsets(%count: index) -> (i64) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 128 : offset
+  %seed2 = index.constant 256 : offset
+  %seed3 = index.constant 384 : offset
+  cfg.br ^header(%begin: index, %seed0: offset, %seed1: offset, %seed2: offset, %seed3: offset)
+^header(%iv: index, %slot0: offset, %slot1: offset, %slot2: offset, %slot3: offset):
+  %lower = test.fact_range_lo %slot0 : offset -> i64
+  %upper = test.fact_range_hi %slot0 : offset -> i64
+  %alignment = test.fact_divisor %slot0 : offset -> i64
+  test.use %lower, %upper, %alignment : i64, i64, i64
+  %has_next = index.cmp slt, %iv, %count : index
+  cfg.cond_br %has_next, ^body, ^exit
+^body:
+  %next = index.add %iv, %step : index
+  cfg.br ^header(%next: index, %slot1: offset, %slot2: offset, %slot3: offset, %slot0: offset)
+^exit:
+  func.return %upper : i64
+}
+
+// ----
+func.def @four_offsets(%count: index) -> (i64) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 128 : offset
+  %seed2 = index.constant 256 : offset
+  %seed3 = index.constant 384 : offset
+  cfg.br ^header(%begin: index, %seed0: offset, %seed1: offset, %seed2: offset, %seed3: offset)
+^header(%iv: index, %slot0: offset, %slot1: offset, %slot2: offset, %slot3: offset):
+  %lower = scalar.constant 0 : i64
+  %upper = scalar.constant 384 : i64
+  %alignment = scalar.constant 128 : i64
+  test.use %lower, %upper, %alignment : i64, i64, i64
+  %has_next = index.cmp slt, %iv, %count : index
+  cfg.cond_br %has_next, ^body, ^exit
+^body:
+  %next = index.add %iv, %step : index
+  cfg.br ^header(%next: index, %slot1: offset, %slot2: offset, %slot3: offset, %slot0: offset)
+^exit:
+  func.return %upper : i64
+}
+
+// ====
+
+// Forwarding through a separate latch participates in the same component.
+func.def @forwarded_offsets(%count: index) -> (i64) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 128 : offset
+  %seed2 = index.constant 256 : offset
+  %seed3 = index.constant 384 : offset
+  cfg.br ^header(%begin: index, %seed0: offset, %seed1: offset, %seed2: offset, %seed3: offset)
+^header(%iv: index, %slot0: offset, %slot1: offset, %slot2: offset, %slot3: offset):
+  %lower = test.fact_range_lo %slot0 : offset -> i64
+  %upper = test.fact_range_hi %slot0 : offset -> i64
+  %alignment = test.fact_divisor %slot0 : offset -> i64
+  test.use %lower, %upper, %alignment : i64, i64, i64
+  %has_next = index.cmp slt, %iv, %count : index
+  cfg.cond_br %has_next, ^body, ^exit
+^body:
+  %next = index.add %iv, %step : index
+  cfg.br ^latch(%slot1: offset, %slot2: offset, %slot3: offset, %slot0: offset)
+^latch(%carry0: offset, %carry1: offset, %carry2: offset, %carry3: offset):
+  cfg.br ^header(%next: index, %carry0: offset, %carry1: offset, %carry2: offset, %carry3: offset)
+^exit:
+  func.return %upper : i64
+}
+
+// ----
+func.def @forwarded_offsets(%count: index) -> (i64) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 128 : offset
+  %seed2 = index.constant 256 : offset
+  %seed3 = index.constant 384 : offset
+  cfg.br ^header(%begin: index, %seed0: offset, %seed1: offset, %seed2: offset, %seed3: offset)
+^header(%iv: index, %slot0: offset, %slot1: offset, %slot2: offset, %slot3: offset):
+  %lower = scalar.constant 0 : i64
+  %upper = scalar.constant 384 : i64
+  %alignment = scalar.constant 128 : i64
+  test.use %lower, %upper, %alignment : i64, i64, i64
+  %has_next = index.cmp slt, %iv, %count : index
+  cfg.cond_br %has_next, ^body, ^exit
+^body:
+  %next = index.add %iv, %step : index
+  cfg.br ^latch(%slot1: offset, %slot2: offset, %slot3: offset, %slot0: offset)
+^latch(%carry0: offset, %carry1: offset, %carry2: offset, %carry3: offset):
+  cfg.br ^header(%next: index, %carry0: offset, %carry1: offset, %carry2: offset, %carry3: offset)
+^exit:
+  func.return %upper : i64
+}
+
+// ====
+
+// A cyclic component still widens when another edge introduces computed values.
+func.def @injected_offset(%count: index, %inject: i1) -> (i64) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 128 : offset
+  %seed2 = index.constant 256 : offset
+  %seed3 = index.constant 384 : offset
+  cfg.br ^header(%begin: index, %seed0: offset, %seed1: offset, %seed2: offset, %seed3: offset)
+^header(%iv: index, %slot0: offset, %slot1: offset, %slot2: offset, %slot3: offset):
+  %lower = test.fact_range_lo %slot0 : offset -> i64
+  %upper = test.fact_range_hi %slot0 : offset -> i64
+  %alignment = test.fact_divisor %slot0 : offset -> i64
+  test.use %lower, %upper, %alignment : i64, i64, i64
+  %has_next = index.cmp slt, %iv, %count : index
+  cfg.cond_br %has_next, ^body, ^exit
+^body:
+  %next = index.add %iv, %step : index
+  cfg.cond_br %inject, ^change, ^rotate
+^change:
+  %incremented = index.add %slot0, %seed1 : offset
+  cfg.br ^header(%next: index, %slot1: offset, %slot2: offset, %slot3: offset, %incremented: offset)
+^rotate:
+  cfg.br ^header(%next: index, %slot1: offset, %slot2: offset, %slot3: offset, %slot0: offset)
+^exit:
+  func.return %upper : i64
+}
+
+// ----
+func.def @injected_offset(%count: index, %inject: i1) -> (i64) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %seed0 = index.constant 0 : offset
+  %seed1 = index.constant 128 : offset
+  %seed2 = index.constant 256 : offset
+  %seed3 = index.constant 384 : offset
+  cfg.br ^header(%begin: index, %seed0: offset, %seed1: offset, %seed2: offset, %seed3: offset)
+^header(%iv: index, %slot0: offset, %slot1: offset, %slot2: offset, %slot3: offset):
+  %lower = scalar.constant -9223372036854775808 : i64
+  %upper = scalar.constant 9223372036854775807 : i64
+  %alignment = scalar.constant 1 : i64
+  test.use %lower, %upper, %alignment : i64, i64, i64
+  %has_next = index.cmp slt, %iv, %count : index
+  cfg.cond_br %has_next, ^body, ^exit
+^body:
+  %next = index.add %iv, %step : index
+  cfg.cond_br %inject, ^change, ^rotate
+^change:
+  %incremented = index.add %slot0, %seed1 : offset
+  cfg.br ^header(%next: index, %slot1: offset, %slot2: offset, %slot3: offset, %incremented: offset)
+^rotate:
+  cfg.br ^header(%next: index, %slot1: offset, %slot2: offset, %slot3: offset, %slot0: offset)
+^exit:
+  func.return %upper : i64
+}

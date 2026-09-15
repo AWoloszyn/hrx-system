@@ -1019,7 +1019,7 @@ static iree_status_t loom_amdgpu_emit_fp8_encode_round(
   IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary_immediate(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_ADD_U32_LIT,
       rounding_lsb, state->rounding_bias, state->lane_type, &biased_lsb));
-  return loom_amdgpu_emit_vgpr_binary(
+  return loom_amdgpu_emit_binary(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_ADD_U32, magnitude,
       biased_lsb, state->lane_type, out_rounded);
 }
@@ -1041,7 +1041,7 @@ static iree_status_t loom_amdgpu_emit_fp8_encode_sign(
         context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_AND_B32_LIT,
         source_high_byte, UINT32_C(0x80), state->lane_type, &sign));
     loom_value_id_t signed_encoding = LOOM_VALUE_ID_INVALID;
-    IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+    IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
         context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_OR_B32, encoded, sign,
         state->lane_type, &signed_encoding));
     loom_value_id_t is_nonzero = LOOM_VALUE_ID_INVALID;
@@ -1067,7 +1067,7 @@ static iree_status_t loom_amdgpu_emit_fp8_encode_sign(
     IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary_immediate(
         context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_AND_B32_LIT,
         source_high_byte, UINT32_C(0x80), state->lane_type, &sign));
-    IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+    IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
         context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_OR_B32, encoded, sign,
         state->lane_type, &signed_encoding));
   }
@@ -1089,7 +1089,7 @@ static iree_status_t loom_amdgpu_emit_fp8_encode_software_f32_magnitude_lane(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_AND_B32_LIT, source,
       LOOM_AMDGPU_F32_MAGNITUDE_MASK, state->lane_type, &original_magnitude));
   loom_value_id_t magnitude = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_MIN_U32,
       state->maximum_magnitude, original_magnitude, state->lane_type,
       &magnitude));
@@ -1118,7 +1118,7 @@ static iree_status_t loom_amdgpu_emit_fp8_encode_software_f32_magnitude_lane(
       state->subnormal_adjustment, state->lane_type, &subnormal));
 
   loom_value_id_t is_subnormal = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_CMP_ULT_U32, magnitude,
       state->minimum_normal_magnitude, state->mask_type, &is_subnormal));
   loom_value_id_t finite_encoding = LOOM_VALUE_ID_INVALID;
@@ -1127,7 +1127,7 @@ static iree_status_t loom_amdgpu_emit_fp8_encode_software_f32_magnitude_lane(
       &finite_encoding));
 
   loom_value_id_t is_nan = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_CMP_UGT_U32,
       original_magnitude, state->infinity_magnitude, state->mask_type,
       &is_nan));
@@ -1178,7 +1178,7 @@ loom_amdgpu_emit_fp8_encode_software_f16_e5m2_magnitude_lane(
       state->mantissa_shift, rounded, state->lane_type, &finite_encoding));
 
   loom_value_id_t is_nan = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_CMP_UGT_U32, magnitude,
       state->infinity_magnitude, state->mask_type, &is_nan));
   loom_value_id_t magnitude_encoding = LOOM_VALUE_ID_INVALID;
@@ -1402,9 +1402,9 @@ iree_status_t loom_amdgpu_emit_fp8_encode_duplicate_f16_lane(
   IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_shift(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_LSHLREV_B32_LIT, 16,
       low_lane, lane_type, &high_lane));
-  return loom_amdgpu_emit_vgpr_binary(
-      context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_OR_B32, low_lane,
-      high_lane, lane_type, out_packed);
+  return loom_amdgpu_emit_binary(context, source_op,
+                                 LOOM_AMDGPU_DESCRIPTOR_REF_V_OR_B32, low_lane,
+                                 high_lane, lane_type, out_packed);
 }
 
 static iree_status_t loom_amdgpu_emit_fp8_e4m3_saturate(
@@ -1420,7 +1420,7 @@ static iree_status_t loom_amdgpu_emit_fp8_e4m3_saturate(
       state->negative_maximum, state->lane_type, &clamped));
 
   loom_value_id_t is_nan = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_CMP_UNO_F32, source,
       source, state->mask_type, &is_nan));
   return loom_amdgpu_emit_vgpr_select(context, source_op, clamped, source,
@@ -1436,12 +1436,12 @@ static iree_status_t loom_amdgpu_prepare_fp8_encode_fnuz_bridge_lane(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_AND_B32_LIT, source,
       LOOM_AMDGPU_F32_MAGNITUDE_MASK, state->lane_type, &original_magnitude));
   loom_value_id_t finite_magnitude = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_MIN_U32,
       state->maximum_magnitude, original_magnitude, state->lane_type,
       &finite_magnitude));
   loom_value_id_t is_nan = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_CMP_UGT_U32,
       original_magnitude, state->infinity_magnitude, state->mask_type,
       &is_nan));
@@ -1532,9 +1532,9 @@ static iree_status_t loom_amdgpu_emit_fp8_encode_packed_sign_insert(
   IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary_immediate(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_AND_B32_LIT, sign_bytes,
       sign_mask, state->lane_type, &sign_bits));
-  return loom_amdgpu_emit_vgpr_binary(
-      context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_OR_B32, packed,
-      sign_bits, state->lane_type, out_packed);
+  return loom_amdgpu_emit_binary(context, source_op,
+                                 LOOM_AMDGPU_DESCRIPTOR_REF_V_OR_B32, packed,
+                                 sign_bits, state->lane_type, out_packed);
 }
 
 static iree_status_t loom_amdgpu_emit_fp8_encode_packed_sign_repair(
@@ -1796,7 +1796,7 @@ static iree_status_t loom_amdgpu_canonicalize_native_e5m2_nan_payloads(
   IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_shift(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_LSHRREV_B32_LIT, 7,
       nan_high_bits, state->lane_type, &nan_low_bits));
-  return loom_amdgpu_emit_vgpr_binary(
+  return loom_amdgpu_emit_binary(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_OR_B32, magnitudes,
       nan_low_bits, state->lane_type, out_packed);
 }

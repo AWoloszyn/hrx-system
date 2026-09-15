@@ -162,7 +162,19 @@ loom_cc_test(
 
 loom_cc_library(
     name = "module_emitter",
-    srcs = ["module_emitter.c"],
+    srcs = [
+        "function_arithmetic.c",
+        "function_arithmetic.h",
+        "function_emitter.c",
+        "function_emitter.h",
+        "function_kernel.c",
+        "function_kernel.h",
+        "function_memory.c",
+        "function_memory.h",
+        "function_vector.c",
+        "function_vector.h",
+        "module_emitter.c",
+    ],
     hdrs = ["module_emitter.h"],
     deps = [
         ":core",
@@ -185,6 +197,7 @@ loom_cc_library(
         "//loom/src/loom/target:types",
         "//loom/src/loom/target/arch/llvmir:facts",
         "//loom/src/loom/target/arch/llvmir/descriptors:descriptors_ids",
+        "//loom/src/loom/util:cfg_graph",
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/internal:arena",
     ],
@@ -205,6 +218,14 @@ loom_cc_library(
         "//runtime/src/iree/base",
         "//runtime/src/iree/io:stream",
     ],
+)
+
+loom_cc_library(
+    name = "test_names",
+    testonly = True,
+    srcs = ["test_names.c"],
+    hdrs = ["test_names.h"],
+    deps = [":core"],
 )
 
 loom_cc_library(
@@ -265,6 +286,7 @@ loom_cc_library(
 loom_check_test_suite(
     name = "file_test",
     srcs = [
+        "test/control_flow.loom-test",
         "test/diagnostics.loom-test",
         "test/emit.loom-test",
         "test/target_low.loom-test",
@@ -328,6 +350,7 @@ loom_cc_test(
     deps = [
         ":core",
         ":test_modules_core",
+        ":test_names",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
     ],
@@ -341,6 +364,7 @@ loom_cc_test(
     deps = [
         ":core",
         ":test_modules_target_scenarios",
+        ":test_names",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
     ],
@@ -355,6 +379,7 @@ loom_cc_test(
         ":module_emitter",
         ":target_presets",
         "//loom/src/loom/analysis:symbol_facts",
+        "//loom/src/loom/codegen/low:function",
         "//loom/src/loom/codegen/low:text_asm",
         "//loom/src/loom/error:error_defs",
         "//loom/src/loom/format/text:parser",
@@ -399,6 +424,7 @@ loom_cc_test(
     deps = [
         ":core",
         ":test_modules_target_scenarios",
+        ":test_names",
         "//loom/src/loom/target/tool:llvm",
         "//loom/src/loom/util:stream",
         "//runtime/src/iree/io:file_handle",

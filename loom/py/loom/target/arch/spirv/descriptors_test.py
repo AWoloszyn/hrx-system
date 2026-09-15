@@ -304,6 +304,7 @@ def test_result_asm_recipes_cover_every_spirv_descriptor_family() -> None:
         add_carrier_only(
             f"spirv.op_access_chain.workgroup.{scalar.suffix}.element_index"
         )
+        add_carrier_only(f"spirv.op_access_chain.workgroup.{scalar.suffix}.byte_offset")
         for memory_space in ("storage_buffer", "workgroup"):
             load_key = f"spirv.op_load.{memory_space}.{scalar.suffix}"
             if scalar.source_rule_enabled:

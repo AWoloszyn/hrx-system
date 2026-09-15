@@ -15,7 +15,7 @@
       "stdout": {
         "contains": [
           "target triple = \"amdgcn-amd-amdhsa\"",
-          "define amdgpu_kernel void @dispatch(ptr addrspace(1) inreg noundef %input)",
+          "define amdgpu_kernel void @dispatch(ptr addrspace(1) inreg noundef %v0.input)",
           "\"amdgpu-flat-work-group-size\"=\"1,1024\""
         ]
       }

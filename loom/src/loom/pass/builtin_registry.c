@@ -47,6 +47,7 @@
 #include "loom/transforms/vector/sink_single_use_reads.h"
 #include "loom/transforms/vector/to_scalar.h"
 #include "loom/transforms/view/linearize_view_accesses.h"
+#include "loom/transforms/view/transport.h"
 
 static const loom_pass_option_enum_value_t kCanonicalizeViewLoadValues[] = {
     {.value = IREE_SVL("coalesce")},
@@ -383,6 +384,11 @@ static const loom_pass_descriptor_t kBuiltinPassDescriptors[] = {
         .key = IREE_SVL("dce"),
         .info = loom_dce_pass_info,
         .function_run = loom_dce_run,
+    },
+    {
+        .key = IREE_SVL("decompose-view-transports"),
+        .info = loom_decompose_view_transports_pass_info,
+        .function_run = loom_decompose_view_transports_run,
     },
     {
         .key = IREE_SVL("inline-callables"),

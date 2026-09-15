@@ -15,6 +15,7 @@ loom_check_test_suite(
   SRCS
     "linearize_view_accesses.loom-test"
     "load_coalescing.loom-test"
+    "transport.loom-test"
 )
 
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

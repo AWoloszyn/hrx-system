@@ -312,7 +312,7 @@ iree_status_t loom_amdgpu_pack_bits_into_register(
         context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_LSHLREV_B32_LIT,
         bit_offset, low_bits, lane_type, &shifted));
   }
-  return loom_amdgpu_emit_vgpr_binary(
+  return loom_amdgpu_emit_binary(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_OR_B32, *inout_packed,
       shifted, lane_type, inout_packed);
 }

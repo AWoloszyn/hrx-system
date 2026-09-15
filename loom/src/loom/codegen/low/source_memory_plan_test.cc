@@ -699,7 +699,8 @@ TEST_F(SourceMemoryPlanTest,
       &plan, plan.static_byte_offset, 13));
 }
 
-TEST_F(SourceMemoryPlanTest, DynamicDenseLoadTracksMaterializedI32ViewBase) {
+TEST_F(SourceMemoryPlanTest,
+       DynamicDenseLoadRetainsUnsignedCastOfLoadedI32Base) {
   loom_value_id_t buffer = DefineBufferArg();
   loom_value_id_t layout = BuildDenseLayout();
   loom_value_id_t zero = loom_index_constant_result(BuildOffsetConstant(0));
@@ -746,7 +747,9 @@ TEST_F(SourceMemoryPlanTest, DynamicDenseLoadTracksMaterializedI32ViewBase) {
   EXPECT_EQ(plan.dynamic_view_base_value_static_byte_offset, 0);
   ASSERT_EQ(plan.dynamic_term_count, 1u);
   EXPECT_EQ(plan.dynamic_view_base_term_count, 1u);
-  EXPECT_EQ(plan.dynamic_terms[0].index, loom_view_load_result(base_load_op));
+  // The loaded signed word and its unsigned byte offset can differ by 2^32.
+  // Canonical address terms retain the cast that establishes that value.
+  EXPECT_EQ(plan.dynamic_terms[0].index, loom_index_cast_result(base_cast_op));
   EXPECT_EQ(plan.dynamic_terms[0].axis,
             LOOM_LOW_SOURCE_MEMORY_DYNAMIC_TERM_AXIS_NONE);
   EXPECT_EQ(plan.dynamic_terms[0].byte_stride, 1);

@@ -1,0 +1,24 @@
+// The caller supplies a trip count in [0, 257].
+func.def public @rotate_slots(%trip_count: index) -> (i32) {
+  %count = index.assume %trip_count [range(%trip_count, 0, 257)] : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %factor = index.constant 2 : index
+  %bytes = index.constant 8 : offset
+  %first_offset = index.constant 0 : offset
+  %second_offset = index.constant 4 : offset
+  %storage = buffer.alloca<private> align(4) %bytes : buffer
+  %first = buffer.view %storage[%first_offset] : buffer -> view<1xi32>
+  %second = buffer.view %storage[%second_offset] : buffer -> view<1xi32>
+  %initial = scalar.constant 1 : i32
+  %increment = scalar.constant 7 : i32
+  view.store %initial, %first[0] : i32, view<1xi32>
+  %last, %spare = scf.for %iteration = [%begin to %count step %step](%current = %first : view<1xi32>, %next = %second : view<1xi32>) -> (view<1xi32>, view<1xi32>) unroll(%factor) {
+    %value = view.load %current[0] : view<1xi32> -> i32
+    %updated = scalar.addi %value, %increment : i32
+    view.store %updated, %next[0] : i32, view<1xi32>
+    scf.yield %next, %current : view<1xi32>, view<1xi32>
+  }
+  %result = view.load %last[0] : view<1xi32> -> i32
+  func.return %result : i32
+}

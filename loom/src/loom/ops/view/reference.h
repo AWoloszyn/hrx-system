@@ -23,6 +23,12 @@
 extern "C" {
 #endif
 
+// Joins root-relative view facts across value selection and loop transport.
+// A shared root and memory space preserve the reference; byte ranges and
+// alignment retain only common guarantees. Widening drops changing ranges
+// independently so stable storage identity and footprint facts survive.
+extern const loom_value_fact_domain_t loom_view_fact_domain;
+
 // Constructs view-reference facts for `buffer.view`.
 iree_status_t loom_view_reference_make_buffer_view(
     loom_fact_context_t* context, const loom_module_t* module,

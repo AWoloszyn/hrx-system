@@ -102,6 +102,10 @@ typedef struct loom_cfg_graph_t {
   iree_host_size_t block_count;
   // Number of valid in-region successor edges.
   iree_host_size_t edge_count;
+  // Reachable blocks in reverse DFS postorder, starting at the entry block.
+  // Successors are visited in declared order. Every strict dominator precedes
+  // its dominated blocks; unreachable blocks have no entry in this span.
+  loom_cfg_block_index_span_t reverse_postorder;
   // Number of edges whose target does not follow their source in region block
   // order. This is a cheap rejection fact for loop analyses; a backward edge
   // is not necessarily a semantic CFG backedge.

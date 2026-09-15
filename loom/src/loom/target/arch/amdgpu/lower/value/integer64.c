@@ -111,6 +111,30 @@ static const loom_amdgpu_descriptor_requirement_t
 };
 
 static const loom_amdgpu_descriptor_requirement_t
+    kAmdgpuScalarI64MulSgprDescriptorRequirements[] = {
+        {
+            .constraint_key = IREE_SVL("descriptor.s_mul_i32"),
+            .descriptor_ref = LOOM_AMDGPU_DESCRIPTOR_REF_S_MUL_I32,
+        },
+        {
+            .constraint_key = IREE_SVL("descriptor.s_mul_hi_u32"),
+            .descriptor_ref = LOOM_AMDGPU_DESCRIPTOR_REF_S_MUL_HI_U32,
+        },
+        {
+            .constraint_key = IREE_SVL("descriptor.s_add_u32"),
+            .descriptor_ref = LOOM_AMDGPU_DESCRIPTOR_REF_S_ADD_U32,
+        },
+};
+
+static const loom_amdgpu_descriptor_requirement_t
+    kAmdgpuScalarI64ShlSgprDescriptorRequirements[] = {
+        {
+            .constraint_key = IREE_SVL("descriptor.s_lshl_b64"),
+            .descriptor_ref = LOOM_AMDGPU_DESCRIPTOR_REF_S_LSHL_B64,
+        },
+};
+
+static const loom_amdgpu_descriptor_requirement_t
     kAmdgpuScalarI64SubVgprDescriptorRequirements[] = {
         {
             .constraint_key = IREE_SVL("descriptor.v_mov_b32"),
@@ -242,7 +266,22 @@ static const loom_amdgpu_descriptor_requirement_t
 
 static const loom_amdgpu_i64_alu_descriptor_requirement_row_t
     kAmdgpuScalarI64AluDescriptorRequirementRows
-        [LOOM_AMDGPU_SCALAR_I64_ALU_KIND_VGPR_SHL + 1] = {
+        [LOOM_AMDGPU_SCALAR_I64_ALU_KIND_SGPR_SHL + 1] = {
+            [LOOM_AMDGPU_SCALAR_I64_ALU_KIND_SGPR_ADD] =
+                {
+                    .first = LOOM_AMDGPU_DESCRIPTOR_REQUIREMENT_SPAN(
+                        kAmdgpuOffsetAddSgprDescriptorRequirements),
+                },
+            [LOOM_AMDGPU_SCALAR_I64_ALU_KIND_SGPR_MUL_LO] =
+                {
+                    .first = LOOM_AMDGPU_DESCRIPTOR_REQUIREMENT_SPAN(
+                        kAmdgpuScalarI64MulSgprDescriptorRequirements),
+                },
+            [LOOM_AMDGPU_SCALAR_I64_ALU_KIND_SGPR_SHL] =
+                {
+                    .first = LOOM_AMDGPU_DESCRIPTOR_REQUIREMENT_SPAN(
+                        kAmdgpuScalarI64ShlSgprDescriptorRequirements),
+                },
             [LOOM_AMDGPU_SCALAR_I64_ALU_KIND_VGPR_ADD] =
                 {
                     .first = LOOM_AMDGPU_DESCRIPTOR_REQUIREMENT_SPAN(
@@ -1291,9 +1330,29 @@ static bool loom_amdgpu_scalar_i64_alu_op(
   return true;
 }
 
-static iree_status_t loom_amdgpu_scalar_i64_operand_can_materialize_as_vgpr64(
+static loom_amdgpu_scalar_i64_alu_kind_t loom_amdgpu_scalar_i64_alu_sgpr_kind(
+    loom_amdgpu_scalar_i64_alu_kind_t kind) {
+  static const loom_amdgpu_scalar_i64_alu_kind_t kinds[] = {
+      [LOOM_AMDGPU_SCALAR_I64_ALU_KIND_NONE] =
+          LOOM_AMDGPU_SCALAR_I64_ALU_KIND_NONE,
+      [LOOM_AMDGPU_SCALAR_I64_ALU_KIND_VGPR_ADD] =
+          LOOM_AMDGPU_SCALAR_I64_ALU_KIND_SGPR_ADD,
+      [LOOM_AMDGPU_SCALAR_I64_ALU_KIND_VGPR_SUB] =
+          LOOM_AMDGPU_SCALAR_I64_ALU_KIND_NONE,
+      [LOOM_AMDGPU_SCALAR_I64_ALU_KIND_VGPR_MUL_LO] =
+          LOOM_AMDGPU_SCALAR_I64_ALU_KIND_SGPR_MUL_LO,
+      [LOOM_AMDGPU_SCALAR_I64_ALU_KIND_VGPR_SHL] =
+          LOOM_AMDGPU_SCALAR_I64_ALU_KIND_SGPR_SHL,
+      [LOOM_AMDGPU_SCALAR_I64_ALU_KIND_VGPR_LSHR_LITERAL] =
+          LOOM_AMDGPU_SCALAR_I64_ALU_KIND_NONE,
+  };
+  return kinds[kind];
+}
+
+static iree_status_t loom_amdgpu_scalar_i64_operand_can_materialize(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
-    loom_value_id_t source, bool* out_can_lower) {
+    loom_value_id_t source, uint16_t result_register_class,
+    bool* out_can_lower) {
   *out_can_lower = false;
   loom_type_t source_low_type = loom_type_none();
   IREE_RETURN_IF_ERROR(
@@ -1302,14 +1361,11 @@ static iree_status_t loom_amdgpu_scalar_i64_operand_can_materialize_as_vgpr64(
       loom_low_register_type_unit_count(source_low_type) != 2) {
     return iree_ok_status();
   }
-  const bool is_vgpr = loom_amdgpu_low_type_is_register_class(
-      context, source_low_type, LOOM_AMDGPU_REG_CLASS_ID_VGPR);
-  if (is_vgpr) {
-    *out_can_lower = true;
-    return iree_ok_status();
-  }
-  *out_can_lower = loom_amdgpu_low_type_is_register_class(
-      context, source_low_type, LOOM_AMDGPU_REG_CLASS_ID_SGPR);
+  const uint16_t source_register_class =
+      loom_low_register_type_class_id(source_low_type);
+  *out_can_lower = source_register_class == result_register_class ||
+                   (result_register_class == LOOM_AMDGPU_REG_CLASS_ID_VGPR &&
+                    source_register_class == LOOM_AMDGPU_REG_CLASS_ID_SGPR);
   return iree_ok_status();
 }
 
@@ -1351,11 +1407,20 @@ iree_status_t loom_amdgpu_select_scalar_i64_alu_plan(
                                                    &result_low_type));
   const bool result_is_vgpr64 = loom_amdgpu_low_type_is_register_class_count(
       context, result_low_type, LOOM_AMDGPU_REG_CLASS_ID_VGPR, 2);
-  if (!result_is_vgpr64) return iree_ok_status();
+  if (!result_is_vgpr64) {
+    if (!loom_amdgpu_low_type_is_register_class_count(
+            context, result_low_type, LOOM_AMDGPU_REG_CLASS_ID_SGPR, 2)) {
+      return iree_ok_status();
+    }
+    kind = loom_amdgpu_scalar_i64_alu_sgpr_kind(kind);
+    if (kind == LOOM_AMDGPU_SCALAR_I64_ALU_KIND_NONE) return iree_ok_status();
+  }
+  const uint16_t result_register_class =
+      loom_low_register_type_class_id(result_low_type);
 
   bool lhs_can_lower = false;
-  IREE_RETURN_IF_ERROR(loom_amdgpu_scalar_i64_operand_can_materialize_as_vgpr64(
-      context, source_op, lhs, &lhs_can_lower));
+  IREE_RETURN_IF_ERROR(loom_amdgpu_scalar_i64_operand_can_materialize(
+      context, source_op, lhs, result_register_class, &lhs_can_lower));
   if (!lhs_can_lower) return iree_ok_status();
 
   uint8_t shift_amount = 0;
@@ -1366,9 +1431,8 @@ iree_status_t loom_amdgpu_select_scalar_i64_alu_plan(
     }
   } else {
     bool rhs_can_lower = false;
-    IREE_RETURN_IF_ERROR(
-        loom_amdgpu_scalar_i64_operand_can_materialize_as_vgpr64(
-            context, source_op, rhs, &rhs_can_lower));
+    IREE_RETURN_IF_ERROR(loom_amdgpu_scalar_i64_operand_can_materialize(
+        context, source_op, rhs, result_register_class, &rhs_can_lower));
     if (!rhs_can_lower) return iree_ok_status();
   }
 
@@ -1474,8 +1538,11 @@ iree_status_t loom_amdgpu_low_legality_verify_scalar_i64_alu(
   IREE_RETURN_IF_ERROR(loom_amdgpu_target_low_legality_value_prefers_vgpr(
       context, result, &result_prefers_vgpr));
   if (!result_prefers_vgpr) {
-    return loom_amdgpu_low_legality_reject(context, op,
-                                           IREE_SV("result.vgpr64"));
+    kind = loom_amdgpu_scalar_i64_alu_sgpr_kind(kind);
+    if (kind == LOOM_AMDGPU_SCALAR_I64_ALU_KIND_NONE) {
+      return loom_amdgpu_low_legality_reject(context, op,
+                                             IREE_SV("result.vgpr64"));
+    }
   }
 
   uint8_t shift_amount = 0;

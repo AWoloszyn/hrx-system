@@ -18,6 +18,7 @@ loom_check_test_suite(
     "hints_canonicalize.loom-test"
     "hints_dce.loom-test"
     "hints_strip.loom-test"
+    "reference_joins.loom-test"
     "roundtrip.loom-test"
     "verify.loom-test"
 )

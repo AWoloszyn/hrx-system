@@ -14,6 +14,7 @@
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
 #include "loom/analysis/symbol_facts.h"
+#include "loom/codegen/low/function.h"
 #include "loom/codegen/low/text_asm.h"
 #include "loom/error/error_catalog.h"
 #include "loom/format/text/parser.h"
@@ -220,21 +221,21 @@ class LlvmirModuleEmitterTest : public ::testing::Test {
     return status;
   }
 
-  iree_status_t EmitTextArtifact(
+  iree_status_t EmitArtifact(
       loom_module_t* module,
       const loom_function_version_list_t* function_versions,
-      DiagnosticEmissionCapture* capture, std::string* out_text) {
-    const loom_target_emitter_t* text_emitter = nullptr;
+      loom_target_artifact_format_t format, DiagnosticEmissionCapture* capture,
+      std::string* out_contents) {
+    const loom_target_emitter_t* emitter = nullptr;
     const loom_target_emitter_list_t emitters =
         loom_llvmir_artifact_emitter_provider.emitter_list;
     for (iree_host_size_t i = 0; i < emitters.count; ++i) {
-      if (emitters.values[i]->target_artifact_format ==
-          LOOM_TARGET_ARTIFACT_FORMAT_LLVMIR_TEXT) {
-        text_emitter = emitters.values[i];
+      if (emitters.values[i]->target_artifact_format == format) {
+        emitter = emitters.values[i];
         break;
       }
     }
-    IREE_ASSERT(text_emitter != nullptr);
+    IREE_ASSERT(emitter != nullptr);
 
     iree_arena_allocator_t scratch_arena;
     iree_arena_initialize(&block_pool_, &scratch_arena);
@@ -243,19 +244,19 @@ class LlvmirModuleEmitterTest : public ::testing::Test {
     request.low_descriptor_registry = &low_registry_.registry;
     request.module = module;
     request.function_versions = function_versions;
-    request.identifier = IREE_SV("module.ll");
+    request.identifier = IREE_SV("module");
     request.diagnostic_emitter = capture->emitter();
     request.scratch_arena = &scratch_arena;
     request.allocator = iree_allocator_system();
-    iree_status_t status = text_emitter->emit(&request, &artifact);
+    iree_status_t status = emitter->emit(&request, &artifact);
     iree_byte_span_t contents = iree_byte_span_empty();
     if (iree_status_is_ok(status) && artifact.contents != nullptr) {
       status = iree_byte_sequence_clone(artifact.contents,
                                         iree_allocator_system(), &contents);
     }
     if (iree_status_is_ok(status)) {
-      out_text->assign(reinterpret_cast<const char*>(contents.data),
-                       contents.data_length);
+      out_contents->assign(reinterpret_cast<const char*>(contents.data),
+                           contents.data_length);
     }
     iree_allocator_free(iree_allocator_system(), contents.data);
     loom_target_emit_artifact_release(&artifact);
@@ -300,10 +301,84 @@ low.func.def target<llvmir.generic.core>(@target) abi(object_function) @second(%
   ASSERT_NE(first_position, std::string::npos) << text;
   ASSERT_NE(second_position, std::string::npos) << text;
   EXPECT_LT(first_position, second_position) << text;
-  EXPECT_NE(text.find("%sum = add i32 %lhs, %rhs"), std::string::npos) << text;
-  EXPECT_NE(text.find("getelementptr i8, ptr %input_view"), std::string::npos)
+  EXPECT_NE(text.find("%v2.sum = add i32 %v0.lhs, %v1.rhs"), std::string::npos)
       << text;
-  EXPECT_NE(text.find("store i32 %loaded"), std::string::npos) << text;
+  EXPECT_NE(text.find("getelementptr i8, ptr %v3.input_view"),
+            std::string::npos)
+      << text;
+  EXPECT_NE(text.find("store i32 %v11.loaded"), std::string::npos) << text;
+}
+
+TEST_F(LlvmirModuleEmitterTest, EmitsNonlexicalLoopWithUnreachablePredecessor) {
+  ModulePtr module = ParseModule(R"(
+llvmir.target<object> @target {triple = "x86_64-unknown-linux-gnu"}
+
+// The unreachable predecessor contributes neither a block nor a phi incoming
+// edge. Live backedges carry both scalar state and a header-defined expression.
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @scalar_loop(%count: reg<llvmir.i64>, %seed: reg<llvmir.i32>) -> (reg<llvmir.i32>) asm {
+  %zero = const.i64 0
+  %one = const.i64 1
+  %initial = const.i32 0
+  low.br ^header(%zero: reg<llvmir.i64>, %initial: reg<llvmir.i32>)
+^header(%position: reg<llvmir.i64>, %sum: reg<llvmir.i32>):
+  %updated = add.i32 %sum, %seed
+  %more = cmp.ult.i64 %position, %count
+  low.cond_br %more, ^body, ^exit : reg<llvmir.i1>
+^body:
+  %next = add.i64 %one, %position
+  low.br ^header(%next: reg<llvmir.i64>, %updated: reg<llvmir.i32>)
+^dead:
+  %unused = const.i64 99
+  %unused_sum = const.i32 99
+  low.br ^header(%unused: reg<llvmir.i64>, %unused_sum: reg<llvmir.i32>)
+^exit:
+  return %sum
+}
+
+)");
+  const loom_symbol_id_t symbol =
+      FindSymbol(module.get(), IREE_SV("scalar_loop"));
+  loom_op_t* function = module->symbols.entries[symbol].defining_op;
+  loom_region_t* body = loom_low_function_body(function);
+  ASSERT_EQ(body->block_count, 5);
+  // Parsing binds definitions in text order. Region storage order is
+  // independent of dominance; transforms may place a body before its header.
+  loom_block_t* header = body->blocks[1];
+  loom_block_t* loop_body = body->blocks[2];
+  body->blocks[1] = loop_body;
+  loop_body->region_index = 1;
+  body->blocks[2] = header;
+  header->region_index = 2;
+
+  DiagnosticEmissionCapture capture;
+  LlvmirModulePtr llvmir_module(nullptr, loom_llvmir_module_free);
+  IREE_ASSERT_OK(EmitLowModule(module.get(), &capture, &llvmir_module));
+  ASSERT_NE(llvmir_module, nullptr);
+  EXPECT_TRUE(capture.emissions.empty());
+
+  std::string text;
+  IREE_ASSERT_OK(WriteText(llvmir_module.get(), &text));
+  const size_t body_position = text.find("\nbb3.body:\n");
+  const size_t header_position = text.find("\nbb1.header:\n");
+  ASSERT_NE(body_position, std::string::npos) << text;
+  ASSERT_NE(header_position, std::string::npos) << text;
+  EXPECT_LT(header_position, body_position) << text;
+  EXPECT_EQ(text.find(".dead:"), std::string::npos) << text;
+  EXPECT_NE(text.find("%v3.sum = phi i32 [ 0, %bb0.entry ], "
+                      "[ %v7.updated, %bb3.body ]"),
+            std::string::npos)
+      << text;
+  EXPECT_NE(text.find("%v7.updated = add i32 %v3.sum, %v1.seed"),
+            std::string::npos)
+      << text;
+
+  std::string bitcode;
+  IREE_ASSERT_OK(EmitArtifact(module.get(), nullptr,
+                              LOOM_TARGET_ARTIFACT_FORMAT_LLVMIR_BITCODE,
+                              &capture, &bitcode));
+  EXPECT_TRUE(capture.emissions.empty());
+  ASSERT_GE(bitcode.size(), 4u);
+  EXPECT_EQ(bitcode.substr(0, 4), std::string("BC\xc0\xde", 4));
 }
 
 TEST_F(LlvmirModuleEmitterTest,
@@ -369,8 +444,9 @@ low.func.def target<llvmir.generic.core> abi(object_function) @entry() asm {
 
   DiagnosticEmissionCapture exact_capture;
   std::string exact_text;
-  IREE_ASSERT_OK(EmitTextArtifact(module.get(), &function_versions,
-                                  &exact_capture, &exact_text));
+  IREE_ASSERT_OK(EmitArtifact(module.get(), &function_versions,
+                              LOOM_TARGET_ARTIFACT_FORMAT_LLVMIR_TEXT,
+                              &exact_capture, &exact_text));
   EXPECT_TRUE(exact_capture.emissions.empty());
   EXPECT_FALSE(exact_text.empty());
   EXPECT_NE(
@@ -415,12 +491,12 @@ low.func.def target<llvmir.generic.core>(@target) abi(object_function) @fma_vect
 
   std::string text;
   IREE_ASSERT_OK(WriteText(llvmir_module.get(), &text));
-  EXPECT_NE(text.find("%result = call float @llvm.fma.f32(float %a, float %b, "
-                      "float %c)"),
+  EXPECT_NE(text.find("%v6.result = call float @llvm.fma.f32(float %v0.a, "
+                      "float %v1.b, float %v2.c)"),
             std::string::npos)
       << text;
-  EXPECT_NE(text.find("%result = call <4 x float> @llvm.fma.v4f32(<4 x float> "
-                      "%a, <4 x float> %b, <4 x float> %c)"),
+  EXPECT_NE(text.find("%v13.result = call <4 x float> @llvm.fma.v4f32(<4 x "
+                      "float> %v7.a, <4 x float> %v8.b, <4 x float> %v9.c)"),
             std::string::npos)
       << text;
   EXPECT_NE(text.find("declare float @llvm.fma.f32(float, float, float)"),
@@ -460,15 +536,17 @@ low.func.def target<llvmir.generic.core>(@target) abi(object_function) @unary_ve
 
   std::string text;
   IREE_ASSERT_OK(WriteText(llvmir_module.get(), &text));
-  EXPECT_NE(text.find("%negated = fneg float %input"), std::string::npos)
+  EXPECT_NE(text.find("%v1.negated = fneg float %v0.input"), std::string::npos)
       << text;
-  EXPECT_NE(text.find("%result = call float @llvm.fabs.f32(float %negated)"),
+  EXPECT_NE(
+      text.find("%v3.result = call float @llvm.fabs.f32(float %v1.negated)"),
+      std::string::npos)
+      << text;
+  EXPECT_NE(text.find("%v5.negated = fneg <4 x float> %v4.input"),
             std::string::npos)
       << text;
-  EXPECT_NE(text.find("%negated = fneg <4 x float> %input"), std::string::npos)
-      << text;
-  EXPECT_NE(text.find("%result = call <4 x float> @llvm.fabs.v4f32(<4 x float> "
-                      "%negated)"),
+  EXPECT_NE(text.find("%v7.result = call <4 x float> @llvm.fabs.v4f32(<4 x "
+                      "float> %v5.negated)"),
             std::string::npos)
       << text;
   EXPECT_NE(text.find("declare float @llvm.fabs.f32(float)"), std::string::npos)
@@ -506,20 +584,20 @@ low.func.def target<llvmir.generic.core>(@target) abi(object_function) @minmax_v
 
   std::string text;
   IREE_ASSERT_OK(WriteText(llvmir_module.get(), &text));
-  EXPECT_NE(text.find("%min = call float @llvm.minnum.f32(float %lhs, float "
-                      "%rhs)"),
+  EXPECT_NE(text.find("%v4.min = call float @llvm.minnum.f32(float %v0.lhs, "
+                      "float %v1.rhs)"),
             std::string::npos)
       << text;
-  EXPECT_NE(text.find("%result = call float @llvm.maxnum.f32(float %min, float "
-                      "%rhs)"),
+  EXPECT_NE(text.find("%v7.result = call float @llvm.maxnum.f32(float %v4.min, "
+                      "float %v1.rhs)"),
             std::string::npos)
       << text;
-  EXPECT_NE(text.find("%min = call <2 x float> @llvm.minnum.v2f32(<2 x float> "
-                      "%lhs, <2 x float> %rhs)"),
+  EXPECT_NE(text.find("%v12.min = call <2 x float> @llvm.minnum.v2f32(<2 x "
+                      "float> %v8.lhs, <2 x float> %v9.rhs)"),
             std::string::npos)
       << text;
-  EXPECT_NE(text.find("%result = call <2 x float> @llvm.maxnum.v2f32(<2 x "
-                      "float> %min, <2 x float> %rhs)"),
+  EXPECT_NE(text.find("%v15.result = call <2 x float> @llvm.maxnum.v2f32(<2 x "
+                      "float> %v12.min, <2 x float> %v9.rhs)"),
             std::string::npos)
       << text;
   EXPECT_NE(text.find("declare float @llvm.minnum.f32(float, float)"),
@@ -555,11 +633,11 @@ low.kernel.def target<llvmir.generic.core>(@target) workgroup_size(128, 2, 1) @d
   EXPECT_NE(text.find("target triple = \"loom-kernel64-unknown-none\""),
             std::string::npos)
       << text;
-  EXPECT_NE(text.find("define void @dispatch(ptr addrspace(1) noundef %input) "
-                      "#0 !loom_test_workgroup_size !0"),
+  EXPECT_NE(text.find("define void @dispatch(ptr addrspace(1) noundef "
+                      "%v0.input) #0 !loom_test_workgroup_size !0"),
             std::string::npos)
       << text;
-  EXPECT_NE(text.find("getelementptr i8, ptr addrspace(1) %input, i64 4"),
+  EXPECT_NE(text.find("getelementptr i8, ptr addrspace(1) %v0.input, i64 4"),
             std::string::npos)
       << text;
   EXPECT_NE(text.find("load i32, ptr addrspace(1)"), std::string::npos) << text;
@@ -599,11 +677,12 @@ low.kernel.def target<llvmir.generic.core>(@target) workgroup_size(64, 1, 1) @di
 
   std::string text;
   IREE_ASSERT_OK(WriteText(llvmir_module.get(), &text));
-  EXPECT_NE(text.find("%scratch = alloca i8, i64 256, align 16, addrspace(3)"),
-            std::string::npos)
+  EXPECT_NE(
+      text.find("%v6.scratch = alloca i8, i64 256, align 16, addrspace(3)"),
+      std::string::npos)
       << text;
-  EXPECT_NE(text.find("mul i64 %tid, 4"), std::string::npos) << text;
-  EXPECT_NE(text.find("getelementptr i8, ptr addrspace(3) %scratch"),
+  EXPECT_NE(text.find("mul i64 %v4.tid, 4"), std::string::npos) << text;
+  EXPECT_NE(text.find("getelementptr i8, ptr addrspace(3) %v6.scratch"),
             std::string::npos)
       << text;
   EXPECT_NE(text.find("store i32 1, ptr addrspace(3)"), std::string::npos)

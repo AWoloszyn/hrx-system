@@ -112,70 +112,30 @@ typedef struct loom_cfg_dominance_working_set_t {
   loom_cfg_traversal_frame_t* traversal_stack;
 } loom_cfg_dominance_working_set_t;
 
-static iree_status_t loom_cfg_dominance_compute_rpo(
+static iree_status_t loom_cfg_dominance_initialize_working_set(
     const loom_cfg_graph_t* graph, iree_arena_allocator_t* arena,
     loom_cfg_dominance_working_set_t* out_working_set) {
   memset(out_working_set, 0, sizeof(*out_working_set));
   if (graph->block_count == 0) return iree_ok_status();
 
-  bool* visited = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, graph->block_count, sizeof(*visited), (void**)&visited));
-  memset(visited, 0, graph->block_count * sizeof(*visited));
-
-  loom_cfg_traversal_frame_t* traversal_stack = NULL;
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(arena, graph->block_count,
-                                                 sizeof(*traversal_stack),
-                                                 (void**)&traversal_stack));
-
-  uint16_t* rpo_order = NULL;
+      arena, graph->block_count, sizeof(*out_working_set->traversal_stack),
+      (void**)&out_working_set->traversal_stack));
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, graph->block_count, sizeof(*rpo_order), (void**)&rpo_order));
-
-  iree_host_size_t* rpo_numbers = NULL;
+      arena, graph->block_count, sizeof(*out_working_set->rpo_order),
+      (void**)&out_working_set->rpo_order));
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, graph->block_count, sizeof(*rpo_numbers), (void**)&rpo_numbers));
+      arena, graph->block_count, sizeof(*out_working_set->rpo_numbers),
+      (void**)&out_working_set->rpo_numbers));
 
-  iree_host_size_t stack_count = 0;
-  iree_host_size_t rpo_count = 0;
-  visited[0] = true;
-  traversal_stack[stack_count++] = (loom_cfg_traversal_frame_t){
-      .block_index = 0,
-      .next_position = 0,
-  };
-  while (stack_count > 0) {
-    loom_cfg_traversal_frame_t* frame = &traversal_stack[stack_count - 1];
-    loom_cfg_block_index_span_t successors =
-        loom_cfg_graph_successors(graph, frame->block_index);
-    if (frame->next_position < successors.count) {
-      uint16_t successor_index = successors.values[frame->next_position++];
-      if (!visited[successor_index]) {
-        visited[successor_index] = true;
-        traversal_stack[stack_count++] = (loom_cfg_traversal_frame_t){
-            .block_index = successor_index,
-            .next_position = 0,
-        };
-      }
-      continue;
-    }
-    rpo_order[rpo_count++] = frame->block_index;
-    --stack_count;
+  // Interval construction later reuses these mutable arrays. Keep the shared
+  // graph's retained traversal available to its other consumers.
+  out_working_set->rpo_count = graph->reverse_postorder.count;
+  memcpy(out_working_set->rpo_order, graph->reverse_postorder.values,
+         out_working_set->rpo_count * sizeof(*out_working_set->rpo_order));
+  for (iree_host_size_t i = 0; i < out_working_set->rpo_count; ++i) {
+    out_working_set->rpo_numbers[out_working_set->rpo_order[i]] = i;
   }
-
-  // Reverse the completed postorder in place instead of retaining a second
-  // block-index array for the dominance computation.
-  for (iree_host_size_t i = 0; i < rpo_count / 2; ++i) {
-    uint16_t block_index = rpo_order[i];
-    rpo_order[i] = rpo_order[rpo_count - i - 1];
-    rpo_order[rpo_count - i - 1] = block_index;
-  }
-  for (iree_host_size_t i = 0; i < rpo_count; ++i) {
-    rpo_numbers[rpo_order[i]] = i;
-  }
-  out_working_set->rpo_order = rpo_order;
-  out_working_set->rpo_count = rpo_count;
-  out_working_set->rpo_numbers = rpo_numbers;
-  out_working_set->traversal_stack = traversal_stack;
   return iree_ok_status();
 }
 
@@ -284,8 +244,8 @@ static iree_status_t loom_cfg_dominance_compute(
   if (cache->graph.malformed) return iree_ok_status();
 
   loom_cfg_dominance_working_set_t working_set;
-  IREE_RETURN_IF_ERROR(
-      loom_cfg_dominance_compute_rpo(&cache->graph, arena, &working_set));
+  IREE_RETURN_IF_ERROR(loom_cfg_dominance_initialize_working_set(
+      &cache->graph, arena, &working_set));
   if (working_set.rpo_count == 0) return iree_ok_status();
 
   cache->immediate_dominators[0] = 0;

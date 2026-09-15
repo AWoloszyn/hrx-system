@@ -1401,9 +1401,9 @@ class BazelTryStep:
             except (FileNotFoundError, ValueError) as exc:
                 print(f"dev.py: {exc}", file=sys.stderr)
                 return 2
-            deps = list(dict.fromkeys(self.command.explicit_deps))
+            deps = list(self.command.explicit_deps)
             if self.command.infer_deps:
-                deps = list(dict.fromkeys([*deps, *self.infer_deps(source_texts)]))
+                deps.extend(self.infer_deps(source_texts))
             write_try_build_file(
                 scratch_dir / "BUILD.bazel",
                 source_names=source_names,
@@ -1659,19 +1659,32 @@ def write_try_build_file(
 ) -> None:
     lines = [
         'load("//build_tools/bazel:cc.bzl", "iree_cc_binary")',
-        "",
-        "iree_cc_binary(",
-        f'    name = "{DEFAULT_TRY_BINARY_NAME}",',
-        "    srcs = [",
     ]
+    if deps:
+        # Label is available in .bzl files, where Bazel owns repository and
+        # package shorthand resolution. Preserve the first dependency order.
+        path.with_name("dependencies.bzl").write_text(
+            "def unique_labels(deps):\n"
+            "    return {Label(dep): None for dep in deps}.keys()\n",
+            encoding="utf-8",
+        )
+        lines.append('load(":dependencies.bzl", "unique_labels")')
+    lines.extend(
+        [
+            "",
+            "iree_cc_binary(",
+            f'    name = "{DEFAULT_TRY_BINARY_NAME}",',
+            "    srcs = [",
+        ]
+    )
     lines.extend(f'        "{source_name}",' for source_name in source_names)
     lines.append("    ],")
     if testonly:
         lines.append("    testonly = True,")
     if deps:
-        lines.append("    deps = [")
+        lines.append("    deps = unique_labels([")
         lines.extend(f'        "{dep}",' for dep in deps)
-        lines.append("    ],")
+        lines.append("    ]),")
     lines.append(")")
     lines.append("")
     path.write_text("\n".join(lines), encoding="utf-8")

@@ -11,6 +11,13 @@
 // scheduling, allocation, or projection. The output is Loom's structured
 // LLVMIR module model so callers can serialize text or bitcode through the
 // normal LLVMIR writers.
+//
+// Reachable Low blocks, branches, and non-pointer block arguments become LLVM
+// blocks, branches, and phis. Backedges may target the Low entry; a separate
+// LLVM entry then supplies initial ABI arguments. Unreachable blocks contribute
+// no instructions or phi inputs. A transported ptr register lacks address-space
+// identity and is diagnosed; source view transport uses scalar byte offsets
+// over a dominating buffer instead.
 
 #ifndef LOOM_TARGET_EMIT_LLVMIR_MODULE_EMITTER_H_
 #define LOOM_TARGET_EMIT_LLVMIR_MODULE_EMITTER_H_

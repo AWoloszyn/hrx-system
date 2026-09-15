@@ -111,7 +111,7 @@ typedef struct loom_amdgpu_wait_node_state_t {
 } loom_amdgpu_wait_node_state_t;
 
 typedef struct loom_amdgpu_wait_block_arg_source_t {
-  // Source value ordinal passed along the incoming low.br edge.
+  // Source value ordinal forwarded by a coalesced incoming edge segment.
   loom_value_ordinal_t source_ordinal;
   // Next source record for the same destination block argument.
   uint32_t next_source;
@@ -167,7 +167,7 @@ static_assert((uint32_t)LOOM_AMDGPU_WAIT_XCNT_GROUP_SMEM ==
 typedef struct loom_amdgpu_wait_plan_builder_t {
   // Schedule table being analyzed.
   const loom_low_schedule_table_t* schedule;
-  // Optional physical assignment table for post-allocation hazards.
+  // Completed physical assignment table for post-allocation hazards.
   const loom_low_allocation_table_t* allocation;
   // Arena that owns tables retained by the completed plan.
   iree_arena_allocator_t* arena;
@@ -197,9 +197,9 @@ typedef struct loom_amdgpu_wait_plan_builder_t {
   uint32_t* first_dependency_link_by_consumer;
   // Relevant counter dependency links.
   loom_amdgpu_wait_loop_dependency_t* dependency_links;
-  // First incoming low.br source per destination block-argument value ordinal.
+  // First coalesced incoming segment per block-argument value ordinal.
   uint32_t* first_block_arg_source_by_value;
-  // Incoming low.br source records for non-entry block arguments.
+  // Coalesced incoming segment sources retained from allocation.
   loom_amdgpu_wait_block_arg_source_t* block_arg_sources;
   // First SSA dependency indexed by loop-entry block and counter.
   uint32_t* loop_entry_dependency_links;
@@ -754,151 +754,45 @@ loom_amdgpu_wait_plan_edge_copy_group(
       builder->allocation, node->source_ordinal);
 }
 
-static bool loom_amdgpu_wait_plan_edge_copy_materializes(
-    const loom_amdgpu_wait_plan_builder_t* builder,
-    const loom_low_allocation_edge_copy_t* edge_copy) {
-  const loom_low_allocation_table_t* allocation = builder->allocation;
-  const loom_low_allocation_assignment_t* source_assignment =
-      &allocation->assignments[edge_copy->source_assignment_index];
-  const loom_low_allocation_assignment_t* destination_assignment =
-      &allocation->assignments[edge_copy->destination_assignment_index];
-  return !loom_low_allocation_storage_assignment_subranges_equal(
-      builder->schedule->target.descriptor_set, source_assignment,
-      edge_copy->source_unit_offset, destination_assignment,
-      edge_copy->destination_unit_offset, edge_copy->unit_count);
-}
-
-static void loom_amdgpu_wait_plan_count_block_arg_sources(
-    const loom_low_schedule_table_t* schedule,
-    iree_host_size_t* out_block_arg_count, iree_host_size_t* out_source_count) {
-  iree_host_size_t block_arg_count = 0;
-  for (iree_host_size_t i = 0; i < schedule->block_count; ++i) {
-    const loom_block_t* block = schedule->blocks[i].block;
-    if (block == NULL) {
-      continue;
-    }
-    IREE_ASSERT_LE(block->arg_count, IREE_HOST_SIZE_MAX - block_arg_count);
-    block_arg_count += block->arg_count;
-  }
-
-  iree_host_size_t source_count = 0;
-  for (iree_host_size_t i = 0; i < schedule->node_count; ++i) {
-    const loom_low_schedule_node_t* node = &schedule->nodes[i];
-    if (node->op == NULL || !loom_low_br_isa(node->op)) {
-      continue;
-    }
-    const loom_block_t* dest = loom_low_br_dest(node->op);
-    IREE_ASSERT_NE(dest, NULL);
-    IREE_ASSERT_EQ(node->operand_count, dest->arg_count);
-    IREE_ASSERT_LE(node->operand_count, IREE_HOST_SIZE_MAX - source_count);
-    source_count += node->operand_count;
-  }
-
-  *out_block_arg_count = block_arg_count;
-  *out_source_count = source_count;
-}
-
-static void loom_amdgpu_wait_plan_compute_block_arg_offsets(
-    const loom_low_schedule_table_t* schedule, uint32_t* block_arg_offsets) {
-  iree_host_size_t next_offset = 0;
-  for (iree_host_size_t i = 0; i < schedule->block_count; ++i) {
-    IREE_ASSERT_LE(next_offset, UINT32_MAX);
-    block_arg_offsets[i] = (uint32_t)next_offset;
-    const loom_block_t* block = schedule->blocks[i].block;
-    if (block != NULL) {
-      IREE_ASSERT_LE(block->arg_count, IREE_HOST_SIZE_MAX - next_offset);
-      next_offset += block->arg_count;
-    }
-  }
-}
-
-static void loom_amdgpu_wait_plan_initialize_block_arg_ordinals(
-    const loom_low_schedule_table_t* schedule,
-    const uint32_t* block_arg_offsets, iree_host_size_t block_arg_count,
-    loom_value_ordinal_t* block_arg_ordinals) {
-  for (iree_host_size_t i = 0; i < block_arg_count; ++i) {
-    block_arg_ordinals[i] = LOOM_VALUE_ORDINAL_INVALID;
-  }
-  for (loom_value_ordinal_t i = 0; i < schedule->value_count; ++i) {
-    const loom_value_id_t value_id = schedule->value_ids[i];
-    const loom_value_t* value = loom_module_value(schedule->module, value_id);
-    if (!loom_value_is_block_arg(value)) {
-      continue;
-    }
-    const loom_block_t* block = loom_value_def_block(value);
-    IREE_ASSERT_NE(block, NULL);
-    IREE_ASSERT_LT(block->region_index, schedule->block_count);
-    IREE_ASSERT_EQ(schedule->blocks[block->region_index].block, block);
-    const uint16_t arg_index = loom_value_def_index(value);
-    IREE_ASSERT_LT(arg_index, block->arg_count);
-    const uint32_t offset = block_arg_offsets[block->region_index] + arg_index;
-    IREE_ASSERT_LT(offset, block_arg_count);
-    block_arg_ordinals[offset] = i;
-  }
-}
-
+// A materialized edge segment consumes its source before the branch. Only
+// coalesced segments can carry pending producer state into the destination;
+// their exact sources are retained by allocation, including packed payloads.
 static iree_status_t loom_amdgpu_wait_plan_build_block_arg_sources(
     loom_amdgpu_wait_plan_builder_t* builder) {
   const loom_low_schedule_table_t* schedule = builder->schedule;
-  iree_host_size_t block_arg_count = 0;
-  iree_host_size_t source_count = 0;
-  loom_amdgpu_wait_plan_count_block_arg_sources(schedule, &block_arg_count,
-                                                &source_count);
-  if (block_arg_count == 0 || source_count == 0) {
+  const loom_low_allocation_table_t* allocation = builder->allocation;
+  if (allocation->edge_copy_count == 0) {
     return iree_ok_status();
   }
-
-  uint32_t* block_arg_offsets = NULL;
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      builder->transient_arena, schedule->block_count,
-      sizeof(*block_arg_offsets), (void**)&block_arg_offsets));
-  loom_amdgpu_wait_plan_compute_block_arg_offsets(schedule, block_arg_offsets);
-
-  loom_value_ordinal_t* block_arg_ordinals = NULL;
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      builder->transient_arena, block_arg_count, sizeof(*block_arg_ordinals),
-      (void**)&block_arg_ordinals));
-  loom_amdgpu_wait_plan_initialize_block_arg_ordinals(
-      schedule, block_arg_offsets, block_arg_count, block_arg_ordinals);
-
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       builder->transient_arena, schedule->value_count,
       sizeof(*builder->first_block_arg_source_by_value),
       (void**)&builder->first_block_arg_source_by_value));
-  for (iree_host_size_t i = 0; i < schedule->value_count; ++i) {
-    builder->first_block_arg_source_by_value[i] = LOOM_LOW_SCHEDULE_NODE_NONE;
+  memset(builder->first_block_arg_source_by_value, 0xFF,
+         schedule->value_count *
+             sizeof(*builder->first_block_arg_source_by_value));
+  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+      builder->transient_arena, allocation->edge_copy_count,
+      sizeof(*builder->block_arg_sources),
+      (void**)&builder->block_arg_sources));
+  for (iree_host_size_t i = 0; i < allocation->edge_copy_count; ++i) {
+    const loom_low_allocation_edge_copy_t* copy = &allocation->edge_copies[i];
+    if (copy->kind != LOOM_LOW_ALLOCATION_COPY_COALESCED) continue;
+    const loom_value_ordinal_t destination_ordinal =
+        loom_module_value_ordinal_scratch_lookup(schedule->module,
+                                                 copy->destination_value_id);
+    const loom_value_ordinal_t source_ordinal =
+        loom_module_value_ordinal_scratch_lookup(schedule->module,
+                                                 copy->source_value_id);
+    builder->block_arg_sources[builder->block_arg_source_count] =
+        (loom_amdgpu_wait_block_arg_source_t){
+            .source_ordinal = source_ordinal,
+            .next_source =
+                builder->first_block_arg_source_by_value[destination_ordinal],
+        };
+    builder->first_block_arg_source_by_value[destination_ordinal] =
+        (uint32_t)builder->block_arg_source_count++;
   }
-  IREE_RETURN_IF_ERROR(
-      iree_arena_allocate_array(builder->transient_arena, source_count,
-                                sizeof(*builder->block_arg_sources),
-                                (void**)&builder->block_arg_sources));
-
-  for (iree_host_size_t i = 0; i < schedule->node_count; ++i) {
-    const loom_low_schedule_node_t* node = &schedule->nodes[i];
-    if (node->op == NULL || !loom_low_br_isa(node->op)) {
-      continue;
-    }
-    const loom_block_t* dest = loom_low_br_dest(node->op);
-    const uint32_t dest_offset = block_arg_offsets[dest->region_index];
-    const loom_value_ordinal_t* operand_ordinals =
-        loom_low_schedule_node_const_operand_ordinals(node);
-    for (uint16_t arg_index = 0; arg_index < dest->arg_count; ++arg_index) {
-      const loom_value_ordinal_t dest_ordinal =
-          block_arg_ordinals[dest_offset + arg_index];
-      IREE_ASSERT_NE(dest_ordinal, LOOM_VALUE_ORDINAL_INVALID);
-      IREE_ASSERT_LT(dest_ordinal, schedule->value_count);
-      IREE_ASSERT_LT(builder->block_arg_source_count, source_count);
-      builder->block_arg_sources[builder->block_arg_source_count] =
-          (loom_amdgpu_wait_block_arg_source_t){
-              .source_ordinal = operand_ordinals[arg_index],
-              .next_source =
-                  builder->first_block_arg_source_by_value[dest_ordinal],
-          };
-      builder->first_block_arg_source_by_value[dest_ordinal] =
-          (uint32_t)builder->block_arg_source_count++;
-    }
-  }
-  IREE_ASSERT_EQ(builder->block_arg_source_count, source_count);
   return iree_ok_status();
 }
 
@@ -1068,7 +962,7 @@ static iree_status_t loom_amdgpu_wait_plan_build_edge_copy_dependency_links(
   for (iree_host_size_t i = 0; i < group->copy_count; ++i) {
     const loom_low_allocation_edge_copy_t* edge_copy =
         &allocation->edge_copies[group->copy_start + i];
-    if (!loom_amdgpu_wait_plan_edge_copy_materializes(builder, edge_copy)) {
+    if (edge_copy->kind == LOOM_LOW_ALLOCATION_COPY_COALESCED) {
       continue;
     }
     const loom_value_ordinal_t source_ordinal =
@@ -2973,7 +2867,7 @@ static iree_status_t loom_amdgpu_wait_plan_handle_edge_copy_writes(
   for (iree_host_size_t i = 0; i < group->copy_count; ++i) {
     const loom_low_allocation_edge_copy_t* edge_copy =
         &allocation->edge_copies[group->copy_start + i];
-    if (!loom_amdgpu_wait_plan_edge_copy_materializes(builder, edge_copy)) {
+    if (edge_copy->kind == LOOM_LOW_ALLOCATION_COPY_COALESCED) {
       continue;
     }
     const loom_low_allocation_assignment_t* destination =
@@ -3818,9 +3712,7 @@ iree_status_t loom_amdgpu_wait_plan_build(
       &builder.action_stream.segments);
   loom_low_allocation_value_scratch_t scratch = {0};
   iree_status_t status =
-      allocation != NULL
-          ? loom_low_allocation_acquire_value_scratch(allocation, &scratch)
-          : iree_ok_status();
+      loom_low_allocation_acquire_value_scratch(allocation, &scratch);
   if (iree_status_is_ok(status)) {
     status = loom_amdgpu_wait_plan_allocate(&builder);
   }

@@ -1,0 +1,197 @@
+// RUN: emit llvmir-body
+
+llvmir.target<object> @target {triple = "x86_64-unknown-linux-gnu"}
+
+// The unreachable predecessor contributes neither a block nor a phi incoming
+// edge. Live backedges carry both scalar state and a header-defined expression.
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @scalar_loop(%count: reg<llvmir.i64>, %seed: reg<llvmir.i32>) -> (reg<llvmir.i32>) asm {
+  %zero = const.i64 0
+  %one = const.i64 1
+  %initial = const.i32 0
+  low.br ^header(%zero: reg<llvmir.i64>, %initial: reg<llvmir.i32>)
+^header(%position: reg<llvmir.i64>, %sum: reg<llvmir.i32>):
+  %updated = add.i32 %sum, %seed
+  %more = cmp.ult.i64 %position, %count
+  low.cond_br %more, ^body, ^exit : reg<llvmir.i1>
+^body:
+  %next = add.i64 %position, %one
+  low.br ^header(%next: reg<llvmir.i64>, %updated: reg<llvmir.i32>)
+^dead:
+  %unused = const.i64 99
+  %unused_sum = const.i32 99
+  low.br ^header(%unused: reg<llvmir.i64>, %unused_sum: reg<llvmir.i32>)
+^exit:
+  return %sum
+}
+
+// ----
+define dso_local i32 @scalar_loop(i64 %v0.count, i32 %v1.seed) {
+bb0.entry:
+  br label %bb1.header
+bb1.header:
+  %v2.position = phi i64 [ 0, %bb0.entry ], [ %v9.next, %bb3.body ]
+  %v3.sum = phi i32 [ 0, %bb0.entry ], [ %v7.updated, %bb3.body ]
+  %v7.updated = add i32 %v3.sum, %v1.seed
+  %v8.more = icmp ult i64 %v2.position, %v0.count
+  br i1 %v8.more, label %bb3.body, label %bb2.exit
+bb2.exit:
+  ret i32 %v3.sum
+bb3.body:
+  %v9.next = add i64 %v2.position, 1
+  br label %bb1.header
+}
+
+// ====
+
+// RUN: emit llvmir-body
+
+llvmir.target<object> @target {triple = "x86_64-unknown-linux-gnu"}
+
+// The caller supplies a trip count in [0, 257].
+func.def public target(@target) @rotate_slots(%trip_count: index) -> (i32) {
+  %count = index.assume %trip_count [range(%trip_count, 0, 257)] : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %factor = index.constant 2 : index
+  %bytes = index.constant 8 : offset
+  %first_offset = index.constant 0 : offset
+  %second_offset = index.constant 4 : offset
+  %storage = buffer.alloca<private> align(4) %bytes : buffer
+  %first = buffer.view %storage[%first_offset] : buffer -> view<1xi32>
+  %second = buffer.view %storage[%second_offset] : buffer -> view<1xi32>
+  %initial = scalar.constant 1 : i32
+  %increment = scalar.constant 7 : i32
+  view.store %initial, %first[0] : i32, view<1xi32>
+  %last, %spare = scf.for %iteration = [%begin to %count step %step](%current = %first : view<1xi32>, %next = %second : view<1xi32>) -> (view<1xi32>, view<1xi32>) unroll(%factor) {
+    %value = view.load %current[0] : view<1xi32> -> i32
+    %updated = scalar.addi %value, %increment : i32
+    view.store %updated, %next[0] : i32, view<1xi32>
+    scf.yield %next, %current : view<1xi32>, view<1xi32>
+  }
+  %result = view.load %last[0] : view<1xi32> -> i32
+  func.return %result : i32
+}
+
+// ----
+define dso_local i32 @rotate_slots(i64 %v0.count) {
+bb0.entry:
+  %v9.last = alloca i8, i64 8, align 4
+  store i32 1, ptr %v9.last
+  br label %bb1
+bb1:
+  %v1.iteration = phi i64 [ 0, %bb0.entry ], [ %v27, %bb6 ]
+  %v2.current_offset = phi i64 [ 0, %bb0.entry ], [ %v4, %bb6 ]
+  %v3.next_offset = phi i64 [ 4, %bb0.entry ], [ %v5, %bb6 ]
+  %v13 = icmp slt i64 %v1.iteration, %v0.count
+  br i1 %v13, label %bb3, label %bb2
+bb2:
+  %v14 = getelementptr i8, ptr %v9.last, i64 %v2.current_offset
+  %v15.result = load i32, ptr %v14
+  ret i32 %v15.result
+bb3:
+  %v16 = getelementptr i8, ptr %v9.last, i64 %v2.current_offset
+  %v17.value = load i32, ptr %v16
+  %v18.updated = add i32 %v17.value, 7
+  %v19 = getelementptr i8, ptr %v9.last, i64 %v3.next_offset
+  store i32 %v18.updated, ptr %v19
+  %v21.iteration_1 = add i64 %v1.iteration, 1
+  %v22 = icmp slt i64 %v21.iteration_1, %v0.count
+  br i1 %v22, label %bb5, label %bb4
+bb4:
+  br label %bb6
+bb5:
+  %v23 = getelementptr i8, ptr %v9.last, i64 %v3.next_offset
+  %v24.value_1 = load i32, ptr %v23
+  %v25.updated_1 = add i32 %v24.value_1, 7
+  %v26 = getelementptr i8, ptr %v9.last, i64 %v2.current_offset
+  store i32 %v25.updated_1, ptr %v26
+  br label %bb6
+bb6:
+  %v4 = phi i64 [ %v2.current_offset, %bb5 ], [ %v3.next_offset, %bb4 ]
+  %v5 = phi i64 [ %v3.next_offset, %bb5 ], [ %v2.current_offset, %bb4 ]
+  %v27 = add i64 %v1.iteration, 2
+  br label %bb1
+}
+
+// ====
+
+// RUN: emit llvmir-body
+
+llvmir.target<object> @target {triple = "x86_64-unknown-linux-gnu"}
+
+func.def public target(@target) @while_rotation(%input: buffer, %trip_count: index) -> (i32) {
+  %count = index.assume %trip_count [range(%trip_count, 0, 257)] : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base0 = index.constant 0 : offset
+  %base1 = index.constant 4 : offset
+  %storage = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %left = buffer.view %storage[%base0] : buffer -> view<1xi32>
+  %right = buffer.view %storage[%base1] : buffer -> view<1xi32>
+  %last0, %last1, %last_i = scf.while(%a = %left : view<1xi32>, %b = %right : view<1xi32>, %i = %begin : index) -> (view<1xi32>, view<1xi32>, index) {
+    %more = index.cmp slt, %i, %count : index
+    scf.condition %more, %a, %b, %i : i1, view<1xi32>, view<1xi32>, index
+  } do(%current0: view<1xi32>, %current1: view<1xi32>, %current_i: index) {
+    %next = index.add %current_i, %step : index
+    scf.yield %current1, %current0, %next : view<1xi32>, view<1xi32>, index
+  }
+  %result = view.load %last0[0] : view<1xi32> -> i32
+  func.return %result : i32
+}
+
+// ----
+define dso_local i32 @while_rotation(ptr %v0.last0, i64 %v1.count) {
+bb0.entry:
+  br label %bb1
+bb1:
+  %v2.a_offset = phi i64 [ 0, %bb0.entry ], [ %v3.b_offset, %bb3 ]
+  %v3.b_offset = phi i64 [ 4, %bb0.entry ], [ %v2.a_offset, %bb3 ]
+  %v4.i = phi i64 [ 0, %bb0.entry ], [ %v11.next, %bb3 ]
+  %v8.more = icmp slt i64 %v4.i, %v1.count
+  br i1 %v8.more, label %bb3, label %bb2
+bb2:
+  %v9 = getelementptr i8, ptr %v0.last0, i64 %v2.a_offset
+  %v10.result = load i32, ptr %v9
+  ret i32 %v10.result
+bb3:
+  %v11.next = add i64 %v4.i, 1
+  br label %bb1
+}
+
+// ====
+
+// RUN: emit llvmir-body
+
+// Entry backedges carry updated values after the initial ABI invocation.
+llvmir.target<object> @target {triple = "x86_64-unknown-linux-gnu"}
+
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @entry_cycle(%remaining: reg<llvmir.i32>, %sum: reg<llvmir.i32>) -> (reg<llvmir.i32>) asm {
+^entry:
+  %zero = const.i32 0
+  %one = const.i32 1
+  %continue = cmp.sgt.i32 %remaining, %zero
+  low.cond_br %continue, ^body, ^exit : reg<llvmir.i1>
+^body:
+  %next_remaining = sub.i32 %remaining, %one
+  %next_sum = add.i32 %sum, %remaining
+  low.br ^entry(%next_remaining: reg<llvmir.i32>, %next_sum: reg<llvmir.i32>)
+^exit:
+  return %sum
+}
+
+// ----
+define dso_local i32 @entry_cycle(i32 %v0.remaining, i32 %v1.sum) {
+bb0.abi:
+  br label %bb1.entry
+bb1.entry:
+  %v2.remaining = phi i32 [ %v0.remaining, %bb0.abi ], [ %v7.next_remaining, %bb3.body ]
+  %v3.sum = phi i32 [ %v1.sum, %bb0.abi ], [ %v8.next_sum, %bb3.body ]
+  %v6.continue = icmp sgt i32 %v2.remaining, 0
+  br i1 %v6.continue, label %bb3.body, label %bb2.exit
+bb2.exit:
+  ret i32 %v3.sum
+bb3.body:
+  %v7.next_remaining = sub i32 %v2.remaining, 1
+  %v8.next_sum = add i32 %v3.sum, %v2.remaining
+  br label %bb1.entry
+}

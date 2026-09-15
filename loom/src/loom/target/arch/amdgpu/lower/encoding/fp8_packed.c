@@ -180,7 +180,7 @@ static iree_status_t loom_amdgpu_emit_fp8_decode_merge_low_high_bytes(
   IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_shift(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_LSHLREV_B32_LIT, 8,
       high_byte_payload, vgpr_type, &shifted_high_payload));
-  return loom_amdgpu_emit_vgpr_binary(
+  return loom_amdgpu_emit_binary(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_OR_B32, low_byte_payload,
       shifted_high_payload, vgpr_type, out_value);
 }
@@ -484,13 +484,13 @@ static iree_status_t loom_amdgpu_emit_fp8_packed_u16_pair_select(
     return iree_ok_status();
   }
   loom_value_id_t low_delta = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_XOR_B32, low_false_value,
       low_true_value, vgpr_type, &low_delta));
-  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_AND_B32, low_delta,
       low_mask, vgpr_type, &low_delta));
-  return loom_amdgpu_emit_vgpr_binary(
+  return loom_amdgpu_emit_binary(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_XOR_B32, low_false_value,
       low_delta, vgpr_type, out_value);
 }
@@ -511,7 +511,7 @@ static iree_status_t loom_amdgpu_emit_fp8_decode_vgpr_or_reduce(
     iree_host_size_t next_count = 0;
     iree_host_size_t i = 0;
     for (; i + 1 < current_count; i += 2) {
-      IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+      IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
           context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_OR_B32, current[i],
           current[i + 1], vgpr_type, &current[next_count++]));
     }
@@ -865,7 +865,7 @@ static iree_status_t loom_amdgpu_emit_fp8_packed_u16_pair_sign(
         LOOM_AMDGPU_FP8_DECODE_U16_PAIR_SIGN_INSERT_MASK, vgpr_type,
         out_packet));
   } else {
-    IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+    IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
         context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_OR_B32,
         base->sign_bits, low_finite_payload, vgpr_type, out_packet));
   }
@@ -1929,7 +1929,7 @@ static iree_status_t loom_amdgpu_emit_fp8_packed_bf16_combined_repair_condition(
             context, source_op, plan, pair_states, pair_count, vgpr_type,
             sgpr_type, &low_combined_special_condition));
   }
-  return loom_amdgpu_emit_vgpr_binary(
+  return loom_amdgpu_emit_binary(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_OR_B32,
       low_combined_repair_condition, low_combined_special_condition, vgpr_type,
       out_condition);

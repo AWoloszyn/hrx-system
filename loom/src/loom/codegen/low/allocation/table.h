@@ -35,14 +35,15 @@ typedef enum loom_low_allocation_remark_kind_e {
   LOOM_LOW_ALLOCATION_REMARK_SPILL = 1,
 } loom_low_allocation_remark_kind_t;
 
-typedef enum loom_low_allocation_copy_kind_e {
+enum loom_low_allocation_copy_kind_e {
   // Unknown or uninitialized copy decision kind.
   LOOM_LOW_ALLOCATION_COPY_UNKNOWN = 0,
   // The copy source and result share one assigned location.
   LOOM_LOW_ALLOCATION_COPY_COALESCED = 1,
   // The copy must remain a target move/copy after allocation.
   LOOM_LOW_ALLOCATION_COPY_MATERIALIZED = 2,
-} loom_low_allocation_copy_kind_t;
+};
+typedef uint16_t loom_low_allocation_copy_kind_t;
 
 typedef enum loom_low_allocation_failure_blocking_kind_e {
   // No specific blocking constraint was recorded.
@@ -174,6 +175,9 @@ typedef struct loom_low_allocation_copy_decision_t {
 typedef struct loom_low_allocation_edge_copy_t {
   // Operand index in the owning low.br payload.
   uint16_t payload_index;
+  // Coalesced segments forward source storage; materialized segments read
+  // their source before establishing the destination value.
+  loom_low_allocation_copy_kind_t kind;
   // SSA value providing this copied segment.
   loom_value_id_t source_value_id;
   // Destination block argument receiving this copied segment.
@@ -189,6 +193,9 @@ typedef struct loom_low_allocation_edge_copy_t {
   // Number of assignment units copied by this segment.
   uint32_t unit_count;
 } loom_low_allocation_edge_copy_t;
+
+static_assert(sizeof(loom_low_allocation_edge_copy_t) == 32,
+              "edge-copy segments must retain their compact allocation shape");
 
 // Contiguous edge-copy group for one low.br terminator.
 typedef struct loom_low_allocation_edge_copy_group_t {

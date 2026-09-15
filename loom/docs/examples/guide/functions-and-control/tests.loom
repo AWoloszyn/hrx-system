@@ -1,0 +1,33 @@
+func.decl @rotate_slots(%trip_count: index) -> (i32)
+
+check.case @rotate_slots_0 {
+  %count = check.literal value(0) : index
+  %actual = func.call @rotate_slots(%count) : (index) -> (i32)
+  %expected = check.literal value(1) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}
+
+check.case @rotate_slots_1 {
+  %count = check.literal value(1) : index
+  %actual = func.call @rotate_slots(%count) : (index) -> (i32)
+  %expected = check.literal value(8) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}
+
+check.case @rotate_slots_3 {
+  %count = check.literal value(3) : index
+  %actual = func.call @rotate_slots(%count) : (index) -> (i32)
+  %expected = check.literal value(22) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}
+
+check.case @rotate_slots_8 {
+  %count = check.literal value(8) : index
+  %actual = func.call @rotate_slots(%count) : (index) -> (i32)
+  %expected = check.literal value(57) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}

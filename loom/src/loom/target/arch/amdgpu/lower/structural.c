@@ -761,7 +761,7 @@ static iree_status_t loom_amdgpu_emit_packed_16bit_register(
   IREE_RETURN_IF_ERROR(loom_amdgpu_emit_packed_16bit_lane_high_bits(
       context, source_op, low_source, source_register_count, high_lane_index,
       lane_type, &high_lane));
-  return loom_amdgpu_emit_vgpr_binary(
+  return loom_amdgpu_emit_binary(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_OR_B32, *out_register,
       high_lane, lane_type, out_register);
 }
@@ -893,7 +893,7 @@ iree_status_t loom_amdgpu_lower_vector_interleave(
     IREE_RETURN_IF_ERROR(loom_amdgpu_emit_packed_16bit_lane_high_bits(
         context, source_op, low_sources[1], plan->source_register_count,
         register_index, lane_type, &high_bits));
-    IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+    IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
         context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_OR_B32,
         registers[register_index], high_bits, lane_type,
         &registers[register_index]));

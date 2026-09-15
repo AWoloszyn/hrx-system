@@ -202,11 +202,11 @@ static iree_status_t loom_amdgpu_emit_fp8_subnormal_bf16_bits(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_MOV_B32, 7, vgpr_type,
       &low_shift_base));
   loom_value_id_t low_fraction_shift = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_SUB_U32, low_shift_base,
       low_leading_index, vgpr_type, &low_fraction_shift));
   loom_value_id_t low_fraction_bits = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_LSHLREV_B32,
       low_fraction_shift, low_source_no_sign, vgpr_type, &low_fraction_bits));
   IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary_immediate(
@@ -214,7 +214,7 @@ static iree_status_t loom_amdgpu_emit_fp8_subnormal_bf16_bits(
       low_fraction_bits, UINT32_C(0x7F), vgpr_type, &low_fraction_bits));
 
   loom_value_id_t low_nonzero_bits = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_OR_B32,
       low_exponent_bits, low_fraction_bits, vgpr_type, &low_nonzero_bits));
   loom_value_id_t low_zero_bits = LOOM_VALUE_ID_INVALID;
@@ -323,7 +323,7 @@ static iree_status_t loom_amdgpu_emit_fp8_decode_merge_low_high_bytes(
   IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_shift(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_LSHLREV_B32_LIT, 8,
       high_byte_payload, vgpr_type, &shifted_high_payload));
-  return loom_amdgpu_emit_vgpr_binary(
+  return loom_amdgpu_emit_binary(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_OR_B32, low_byte_payload,
       shifted_high_payload, vgpr_type, out_value);
 }
@@ -550,7 +550,7 @@ static iree_status_t loom_amdgpu_emit_fp8_signed_lane_payload(
   }
 
   loom_value_id_t low_finite_bits = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_binary(
+  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_binary(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_OR_B32,
       lane_bits->low_sign_bits, low_finite_payload, vgpr_type,
       &low_finite_bits));

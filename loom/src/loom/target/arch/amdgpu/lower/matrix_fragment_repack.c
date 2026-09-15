@@ -919,7 +919,7 @@ static iree_status_t loom_amdgpu_emit_fragment_repack_lane_group_byte_base(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_LSHLREV_B32_LIT,
       plan->result_lane_div_byte_shift, lane_ids->lane_div, vgpr_type,
       &low_lane_div_byte_base));
-  return loom_amdgpu_emit_vgpr_binary(
+  return loom_amdgpu_emit_binary(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_ADD_U32,
       *out_low_byte_base, low_lane_div_byte_base, vgpr_type, out_low_byte_base);
 }
@@ -1410,7 +1410,7 @@ loom_amdgpu_emit_fragment_repack_transposed_lane_group_byte_base(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_LSHLREV_B32_LIT, 3,
       low_transposed_register_bits, vgpr_type,
       &low_transposed_register_byte_offset));
-  return loom_amdgpu_emit_vgpr_binary(
+  return loom_amdgpu_emit_binary(
       context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_ADD_U32,
       low_lane_group_byte_base, low_transposed_register_byte_offset, vgpr_type,
       out_low_byte_base);
