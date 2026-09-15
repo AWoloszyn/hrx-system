@@ -10,13 +10,13 @@ low.func.def target<vm.core>(@vm) abi(vm_function) @wide_identity(%a0: reg<vm.va
 // The outgoing packet precedes ordinary locals and the saved caller prefix.
 // A local view and a nested call must select disjoint physical byte ranges.
 // The trailing partial local cell must not misalign the saved caller prefix.
-low.func.def public target<vm.core>(@vm) abi(vm_function) @local(%a: reg<vm.value : i64>, %b: reg<vm.value : i64>) -> (reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>) {
-  %storage = low.storage.reserve {byte_alignment = 8, byte_length = 33} : low.storage<stack>
-  %view = low.storage.view %storage {byte_length = 16, offset = 8} : low.storage<stack> -> low.storage<stack>
+low.func.def public target<vm.core>(@vm) abi(vm_function) @local(%a: reg<vm.value : i64>, %b: reg<vm.value : i64>) -> (reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>) asm {
+  %storage = storage {byte_alignment = 8, byte_length = 33} : low.storage<stack>
+  %view = storage_view %storage {offset = 8, byte_length = 16} : low.storage<stack> -> low.storage<stack>
   low.spill %a, %view {offset = 8} : reg<vm.value : i64>, low.storage<stack>
   %first, %last = low.func.call @wide_identity(%a, %a, %a, %a, %a, %a, %a, %a, %a, %a, %a, %a, %a, %a, %a, %a, %b) : (reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>) -> (reg<vm.value : i64>, reg<vm.value : i64>)
   %original = low.reload %view {offset = 8} : low.storage<stack> -> reg<vm.value : i64>
-  low.return %original, %first, %last : reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>
+  return %original, %first, %last
 }
 
 // ----

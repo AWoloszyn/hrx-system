@@ -21,7 +21,9 @@ extern "C" {
 // iree_hal_executable_environment_*_t
 //===----------------------------------------------------------------------===//
 
-// Initializes |out_environment| to the default empty environment.
+// Initializes |out_environment| with host CPU capabilities and zeroed optional
+// fields. Queries CPU data without reading or changing the global CPU cache;
+// independent environments can be initialized concurrently.
 // |temp_allocator| may be used for temporary allocations during initialization.
 void iree_hal_executable_environment_initialize(
     iree_allocator_t temp_allocator,

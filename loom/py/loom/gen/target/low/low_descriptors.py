@@ -44,11 +44,12 @@ def generate_descriptor_set_family(
     """Generates shared C storage and public headers for descriptor-set views.
 
     Each view selects descriptors from |storage_spec| by stable key. Supporting
-    tables are shared as a storage superset, while descriptor, operand-form, and
-    asm-form tables are reused only when the selected view surface matches the
-    storage rows. A view may provide its own asm forms for the same descriptor
-    keys; those forms are compiled and validated against the shared storage
-    vocabulary during generation.
+    tables are shared as a storage superset. Register classes retain storage
+    indices but expose each view's authored capacities and absent slots.
+    Descriptor, operand-form, and asm-form tables are reused only when the
+    selected view surface matches the storage rows. A view may provide its own
+    asm forms for the same descriptor keys; those forms are compiled and
+    validated against the shared storage vocabulary during generation.
     """
 
     required_schedule_class_names = tuple(sorted({descriptor.schedule_class for view_spec in view_specs for descriptor in view_spec.descriptors if descriptor.schedule_class is not None}))

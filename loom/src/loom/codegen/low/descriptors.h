@@ -500,7 +500,9 @@ typedef uint32_t loom_low_instruction_class_flags_t;
 #define LOOM_LOW_INSTRUCTION_CLASS_FLAG_LDSDMA ((uint32_t)1u << 26)
 
 typedef struct loom_low_reg_class_t {
-  // String-table offset for the stable register-class name.
+  // String-table offset for the stable register-class name, or
+  // LOOM_LOW_STRING_OFFSET_NONE for a storage slot absent from this view.
+  // Absent slots have spill_class_id NONE and all other fields zero.
   loom_bstring_table_offset_t name_string_offset;
   // Target bank identifier used by allocators and pressure reporting.
   uint16_t target_bank_id;
@@ -1201,9 +1203,11 @@ typedef struct loom_low_descriptor_set_t {
   const uint16_t* operand_form_operand_indices;
   // Number of operand-form operand-index rows owned by this set.
   uint32_t operand_form_operand_index_count;
-  // Dense register classes accepted by descriptor operands.
+  // Register-class slots at shared storage indices. A view retains absent
+  // slots so shared operand rows keep their indices; active descriptors only
+  // reference classes present in the view.
   const loom_low_reg_class_t* reg_classes;
-  // Number of register classes owned by this set.
+  // Number of register-class slots, including slots absent from this view.
   uint32_t reg_class_count;
   // Dense register parts referenced by descriptor operands.
   const loom_low_register_part_t* register_parts;

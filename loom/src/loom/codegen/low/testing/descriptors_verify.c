@@ -2652,6 +2652,21 @@ static iree_status_t loom_low_verify_reg_class(
     const loom_low_descriptor_set_t* descriptor_set, uint32_t reg_class_index) {
   const loom_low_reg_class_t* reg_class =
       &descriptor_set->reg_classes[reg_class_index];
+  if (reg_class->name_string_offset == LOOM_LOW_STRING_OFFSET_NONE) {
+    if (reg_class->target_bank_id != 0 || reg_class->flags != 0 ||
+        reg_class->alloc_unit_bits != 0 || reg_class->allocatable_count != 0 ||
+        reg_class->fixed_location_base != 0 ||
+        reg_class->fixed_location_count != 0 || reg_class->alias_set_id != 0 ||
+        reg_class->spill_class_id != LOOM_LOW_REG_CLASS_NONE ||
+        reg_class->full_register_part_mask != 0 ||
+        reg_class->spill_slot_space != 0) {
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "absent register class slot %" PRIu32
+                              " has non-empty storage properties",
+                              reg_class_index);
+    }
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(loom_low_verify_known_flags(
       reg_class->flags,
       LOOM_LOW_REG_CLASS_FLAG_VIRTUAL_ONLY | LOOM_LOW_REG_CLASS_FLAG_PHYSICAL |
@@ -2769,6 +2784,10 @@ static iree_status_t loom_low_verify_register_part(
   }
   const loom_low_reg_class_t* reg_class =
       &descriptor_set->reg_classes[register_part->reg_class_id];
+  // Shared part tables retain rows used only by other descriptor views.
+  if (reg_class->name_string_offset == LOOM_LOW_STRING_OFFSET_NONE) {
+    return iree_ok_status();
+  }
   if ((register_part->mask & ~reg_class->full_register_part_mask) != 0) {
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,

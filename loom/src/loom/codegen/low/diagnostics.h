@@ -30,11 +30,13 @@ iree_string_view_t loom_low_diagnostic_symbol_name(
 iree_string_view_t loom_low_diagnostic_target_key(
     const loom_low_resolved_target_t* target);
 
-// Returns the resolved export plan name selected by |target|, or "<empty>".
+// Returns the resolved export plan name, or "<empty>" when |target| has no
+// target-symbol witness and therefore no selected export plan.
 iree_string_view_t loom_low_diagnostic_export_name(
     const loom_low_resolved_target_t* target);
 
-// Returns the resolved target config name selected by |target|, or "<empty>".
+// Returns the resolved config name, or "<empty>" when |target| has no
+// target-symbol witness and therefore no selected config.
 iree_string_view_t loom_low_diagnostic_config_key(
     const loom_low_resolved_target_t* target);
 

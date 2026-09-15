@@ -1,0 +1,342 @@
+// A live comparison set exceeds the hardware SGPR budget. The locked fragment
+// keeps those masks live together so automatic spill repair is exercised.
+// A snapshot in a later block must keep its address as repair extends storage.
+// One active lane makes a true comparison mask equal to one.
+amdgpu.target<gfx11-generic> @spill_target
+
+low.func.def schedule(locked) target<amdgpu.gfx11.generic.core>(@spill_target) @spill_snapshot(%input: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
+  %uniform = v_readfirstlane_b32 %input
+  %bound = s_mov_b32 64
+  %condition = s_cmp_lt_u32 %uniform, %bound
+  low.cond_br %condition, ^body, ^exit : reg<amdgpu.scc>
+^body:
+  %storage = storage {byte_alignment = 16, byte_length = 16} : low.storage<private>
+  %limit0 = v_mov_b32 60
+  %mask0 = v_cmp_lt_u32 %input, %limit0
+  low.spill %mask0, %storage : reg<amdgpu.sgpr x2>, low.storage<private>
+  %limit1 = v_mov_b32 1
+  %mask1 = v_cmp_lt_u32 %input, %limit1
+  %limit2 = v_mov_b32 2
+  %mask2 = v_cmp_lt_u32 %input, %limit2
+  %limit3 = v_mov_b32 3
+  %mask3 = v_cmp_lt_u32 %input, %limit3
+  %limit4 = v_mov_b32 4
+  %mask4 = v_cmp_lt_u32 %input, %limit4
+  %limit5 = v_mov_b32 5
+  %mask5 = v_cmp_lt_u32 %input, %limit5
+  %limit6 = v_mov_b32 6
+  %mask6 = v_cmp_lt_u32 %input, %limit6
+  %limit7 = v_mov_b32 7
+  %mask7 = v_cmp_lt_u32 %input, %limit7
+  %limit8 = v_mov_b32 8
+  %mask8 = v_cmp_lt_u32 %input, %limit8
+  %limit9 = v_mov_b32 9
+  %mask9 = v_cmp_lt_u32 %input, %limit9
+  %limit10 = v_mov_b32 10
+  %mask10 = v_cmp_lt_u32 %input, %limit10
+  %limit11 = v_mov_b32 11
+  %mask11 = v_cmp_lt_u32 %input, %limit11
+  %limit12 = v_mov_b32 12
+  %mask12 = v_cmp_lt_u32 %input, %limit12
+  %limit13 = v_mov_b32 13
+  %mask13 = v_cmp_lt_u32 %input, %limit13
+  %limit14 = v_mov_b32 14
+  %mask14 = v_cmp_lt_u32 %input, %limit14
+  %limit15 = v_mov_b32 15
+  %mask15 = v_cmp_lt_u32 %input, %limit15
+  %limit16 = v_mov_b32 16
+  %mask16 = v_cmp_lt_u32 %input, %limit16
+  %limit17 = v_mov_b32 17
+  %mask17 = v_cmp_lt_u32 %input, %limit17
+  %limit18 = v_mov_b32 18
+  %mask18 = v_cmp_lt_u32 %input, %limit18
+  %limit19 = v_mov_b32 19
+  %mask19 = v_cmp_lt_u32 %input, %limit19
+  %limit20 = v_mov_b32 20
+  %mask20 = v_cmp_lt_u32 %input, %limit20
+  %limit21 = v_mov_b32 21
+  %mask21 = v_cmp_lt_u32 %input, %limit21
+  %limit22 = v_mov_b32 22
+  %mask22 = v_cmp_lt_u32 %input, %limit22
+  %limit23 = v_mov_b32 23
+  %mask23 = v_cmp_lt_u32 %input, %limit23
+  %limit24 = v_mov_b32 24
+  %mask24 = v_cmp_lt_u32 %input, %limit24
+  %limit25 = v_mov_b32 25
+  %mask25 = v_cmp_lt_u32 %input, %limit25
+  %limit26 = v_mov_b32 26
+  %mask26 = v_cmp_lt_u32 %input, %limit26
+  %limit27 = v_mov_b32 27
+  %mask27 = v_cmp_lt_u32 %input, %limit27
+  %limit28 = v_mov_b32 28
+  %mask28 = v_cmp_lt_u32 %input, %limit28
+  %limit29 = v_mov_b32 29
+  %mask29 = v_cmp_lt_u32 %input, %limit29
+  %limit30 = v_mov_b32 30
+  %mask30 = v_cmp_lt_u32 %input, %limit30
+  %limit31 = v_mov_b32 31
+  %mask31 = v_cmp_lt_u32 %input, %limit31
+  %limit32 = v_mov_b32 32
+  %mask32 = v_cmp_lt_u32 %input, %limit32
+  %limit33 = v_mov_b32 33
+  %mask33 = v_cmp_lt_u32 %input, %limit33
+  %limit34 = v_mov_b32 34
+  %mask34 = v_cmp_lt_u32 %input, %limit34
+  %limit35 = v_mov_b32 35
+  %mask35 = v_cmp_lt_u32 %input, %limit35
+  %limit36 = v_mov_b32 36
+  %mask36 = v_cmp_lt_u32 %input, %limit36
+  %limit37 = v_mov_b32 37
+  %mask37 = v_cmp_lt_u32 %input, %limit37
+  %limit38 = v_mov_b32 38
+  %mask38 = v_cmp_lt_u32 %input, %limit38
+  %limit39 = v_mov_b32 39
+  %mask39 = v_cmp_lt_u32 %input, %limit39
+  %limit40 = v_mov_b32 40
+  %mask40 = v_cmp_lt_u32 %input, %limit40
+  %limit41 = v_mov_b32 41
+  %mask41 = v_cmp_lt_u32 %input, %limit41
+  %limit42 = v_mov_b32 42
+  %mask42 = v_cmp_lt_u32 %input, %limit42
+  %limit43 = v_mov_b32 43
+  %mask43 = v_cmp_lt_u32 %input, %limit43
+  %limit44 = v_mov_b32 44
+  %mask44 = v_cmp_lt_u32 %input, %limit44
+  %limit45 = v_mov_b32 45
+  %mask45 = v_cmp_lt_u32 %input, %limit45
+  %limit46 = v_mov_b32 46
+  %mask46 = v_cmp_lt_u32 %input, %limit46
+  %limit47 = v_mov_b32 47
+  %mask47 = v_cmp_lt_u32 %input, %limit47
+  %limit48 = v_mov_b32 48
+  %mask48 = v_cmp_lt_u32 %input, %limit48
+  %limit49 = v_mov_b32 49
+  %mask49 = v_cmp_lt_u32 %input, %limit49
+  %limit50 = v_mov_b32 50
+  %mask50 = v_cmp_lt_u32 %input, %limit50
+  %limit51 = v_mov_b32 51
+  %mask51 = v_cmp_lt_u32 %input, %limit51
+  %limit52 = v_mov_b32 52
+  %mask52 = v_cmp_lt_u32 %input, %limit52
+  %limit53 = v_mov_b32 53
+  %mask53 = v_cmp_lt_u32 %input, %limit53
+  %limit54 = v_mov_b32 54
+  %mask54 = v_cmp_lt_u32 %input, %limit54
+  %limit55 = v_mov_b32 55
+  %mask55 = v_cmp_lt_u32 %input, %limit55
+  %limit56 = v_mov_b32 56
+  %mask56 = v_cmp_lt_u32 %input, %limit56
+  %limit57 = v_mov_b32 57
+  %mask57 = v_cmp_lt_u32 %input, %limit57
+  %limit58 = v_mov_b32 58
+  %mask58 = v_cmp_lt_u32 %input, %limit58
+  %limit59 = v_mov_b32 59
+  %mask59 = v_cmp_lt_u32 %input, %limit59
+  %and1 = s_and_b64 %mask0, %mask1
+  %and2 = s_and_b64 %and1, %mask2
+  %and3 = s_and_b64 %and2, %mask3
+  %and4 = s_and_b64 %and3, %mask4
+  %and5 = s_and_b64 %and4, %mask5
+  %and6 = s_and_b64 %and5, %mask6
+  %and7 = s_and_b64 %and6, %mask7
+  %and8 = s_and_b64 %and7, %mask8
+  %and9 = s_and_b64 %and8, %mask9
+  %and10 = s_and_b64 %and9, %mask10
+  %and11 = s_and_b64 %and10, %mask11
+  %and12 = s_and_b64 %and11, %mask12
+  %and13 = s_and_b64 %and12, %mask13
+  %and14 = s_and_b64 %and13, %mask14
+  %and15 = s_and_b64 %and14, %mask15
+  %and16 = s_and_b64 %and15, %mask16
+  %and17 = s_and_b64 %and16, %mask17
+  %and18 = s_and_b64 %and17, %mask18
+  %and19 = s_and_b64 %and18, %mask19
+  %and20 = s_and_b64 %and19, %mask20
+  %and21 = s_and_b64 %and20, %mask21
+  %and22 = s_and_b64 %and21, %mask22
+  %and23 = s_and_b64 %and22, %mask23
+  %and24 = s_and_b64 %and23, %mask24
+  %and25 = s_and_b64 %and24, %mask25
+  %and26 = s_and_b64 %and25, %mask26
+  %and27 = s_and_b64 %and26, %mask27
+  %and28 = s_and_b64 %and27, %mask28
+  %and29 = s_and_b64 %and28, %mask29
+  %and30 = s_and_b64 %and29, %mask30
+  %and31 = s_and_b64 %and30, %mask31
+  %and32 = s_and_b64 %and31, %mask32
+  %and33 = s_and_b64 %and32, %mask33
+  %and34 = s_and_b64 %and33, %mask34
+  %and35 = s_and_b64 %and34, %mask35
+  %and36 = s_and_b64 %and35, %mask36
+  %and37 = s_and_b64 %and36, %mask37
+  %and38 = s_and_b64 %and37, %mask38
+  %and39 = s_and_b64 %and38, %mask39
+  %and40 = s_and_b64 %and39, %mask40
+  %and41 = s_and_b64 %and40, %mask41
+  %and42 = s_and_b64 %and41, %mask42
+  %and43 = s_and_b64 %and42, %mask43
+  %and44 = s_and_b64 %and43, %mask44
+  %and45 = s_and_b64 %and44, %mask45
+  %and46 = s_and_b64 %and45, %mask46
+  %and47 = s_and_b64 %and46, %mask47
+  %and48 = s_and_b64 %and47, %mask48
+  %and49 = s_and_b64 %and48, %mask49
+  %and50 = s_and_b64 %and49, %mask50
+  %and51 = s_and_b64 %and50, %mask51
+  %and52 = s_and_b64 %and51, %mask52
+  %and53 = s_and_b64 %and52, %mask53
+  %and54 = s_and_b64 %and53, %mask54
+  %and55 = s_and_b64 %and54, %mask55
+  %and56 = s_and_b64 %and55, %mask56
+  %and57 = s_and_b64 %and56, %mask57
+  %and58 = s_and_b64 %and57, %mask58
+  %and59 = s_and_b64 %and58, %mask59
+  %snapshot = low.reload %storage : low.storage<private> -> reg<amdgpu.sgpr x2>
+  %result = s_xor_b64 %and59, %snapshot
+  %word = slice %result[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %value = v_mov_b32_copy %word
+  return %value
+^exit:
+  %zero = v_mov_b32 0
+  return %zero
+}
+
+kernel.def target(@spill_target) @spill_snapshot_kernel() {
+  %c1 = index.constant 1 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%c1, %c1, %c1) : index
+} launch(%input_buffer: buffer, %output_buffer: buffer) {
+  %base = index.constant 0 : offset
+  %index = index.constant 0 : index
+  %input_view = buffer.view %input_buffer[%base] : buffer -> view<1xi32>
+  %output_view = buffer.view %output_buffer[%base] : buffer -> view<1xi32>
+  %input = vector.load %input_view[%index] : view<1xi32> -> vector<1xi32>
+  %output = low.invoke @spill_snapshot(%input) : (vector<1xi32>) -> (vector<1xi32>)
+  vector.store %output, %output_view[%index] : vector<1xi32>, view<1xi32>
+  kernel.return
+}
+
+check.case public @spill_snapshot_0 {
+  %input = check.generate.fill value(0) : tensor<1xi32>
+  %output = check.generate.fill value(123) : tensor<1xi32>
+  %expected = check.generate.fill value(0) : tensor<1xi32>
+  kernel.launch @spill_snapshot_kernel(%input, %output) : (tensor<1xi32>, tensor<1xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<1xi32>
+  check.return
+}
+
+check.case public @spill_snapshot_1 {
+  %input = check.generate.fill value(1) : tensor<1xi32>
+  %output = check.generate.fill value(123) : tensor<1xi32>
+  %expected = check.generate.fill value(1) : tensor<1xi32>
+  kernel.launch @spill_snapshot_kernel(%input, %output) : (tensor<1xi32>, tensor<1xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<1xi32>
+  check.return
+}
+
+check.case public @spill_snapshot_8 {
+  %input = check.generate.fill value(8) : tensor<1xi32>
+  %output = check.generate.fill value(123) : tensor<1xi32>
+  %expected = check.generate.fill value(1) : tensor<1xi32>
+  kernel.launch @spill_snapshot_kernel(%input, %output) : (tensor<1xi32>, tensor<1xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<1xi32>
+  check.return
+}
+
+check.case public @spill_snapshot_16 {
+  %input = check.generate.fill value(16) : tensor<1xi32>
+  %output = check.generate.fill value(123) : tensor<1xi32>
+  %expected = check.generate.fill value(1) : tensor<1xi32>
+  kernel.launch @spill_snapshot_kernel(%input, %output) : (tensor<1xi32>, tensor<1xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<1xi32>
+  check.return
+}
+
+check.case public @spill_snapshot_24 {
+  %input = check.generate.fill value(24) : tensor<1xi32>
+  %output = check.generate.fill value(123) : tensor<1xi32>
+  %expected = check.generate.fill value(1) : tensor<1xi32>
+  kernel.launch @spill_snapshot_kernel(%input, %output) : (tensor<1xi32>, tensor<1xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<1xi32>
+  check.return
+}
+
+check.case public @spill_snapshot_32 {
+  %input = check.generate.fill value(32) : tensor<1xi32>
+  %output = check.generate.fill value(123) : tensor<1xi32>
+  %expected = check.generate.fill value(1) : tensor<1xi32>
+  kernel.launch @spill_snapshot_kernel(%input, %output) : (tensor<1xi32>, tensor<1xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<1xi32>
+  check.return
+}
+
+check.case public @spill_snapshot_40 {
+  %input = check.generate.fill value(40) : tensor<1xi32>
+  %output = check.generate.fill value(123) : tensor<1xi32>
+  %expected = check.generate.fill value(1) : tensor<1xi32>
+  kernel.launch @spill_snapshot_kernel(%input, %output) : (tensor<1xi32>, tensor<1xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<1xi32>
+  check.return
+}
+
+check.case public @spill_snapshot_48 {
+  %input = check.generate.fill value(48) : tensor<1xi32>
+  %output = check.generate.fill value(123) : tensor<1xi32>
+  %expected = check.generate.fill value(1) : tensor<1xi32>
+  kernel.launch @spill_snapshot_kernel(%input, %output) : (tensor<1xi32>, tensor<1xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<1xi32>
+  check.return
+}
+
+check.case public @spill_snapshot_56 {
+  %input = check.generate.fill value(56) : tensor<1xi32>
+  %output = check.generate.fill value(123) : tensor<1xi32>
+  %expected = check.generate.fill value(1) : tensor<1xi32>
+  kernel.launch @spill_snapshot_kernel(%input, %output) : (tensor<1xi32>, tensor<1xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<1xi32>
+  check.return
+}
+
+check.case public @spill_snapshot_59 {
+  %input = check.generate.fill value(59) : tensor<1xi32>
+  %output = check.generate.fill value(123) : tensor<1xi32>
+  %expected = check.generate.fill value(1) : tensor<1xi32>
+  kernel.launch @spill_snapshot_kernel(%input, %output) : (tensor<1xi32>, tensor<1xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<1xi32>
+  check.return
+}
+
+check.case public @spill_snapshot_60 {
+  %input = check.generate.fill value(60) : tensor<1xi32>
+  %output = check.generate.fill value(123) : tensor<1xi32>
+  %expected = check.generate.fill value(0) : tensor<1xi32>
+  kernel.launch @spill_snapshot_kernel(%input, %output) : (tensor<1xi32>, tensor<1xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<1xi32>
+  check.return
+}
+
+check.case public @spill_snapshot_63 {
+  %input = check.generate.fill value(63) : tensor<1xi32>
+  %output = check.generate.fill value(123) : tensor<1xi32>
+  %expected = check.generate.fill value(0) : tensor<1xi32>
+  kernel.launch @spill_snapshot_kernel(%input, %output) : (tensor<1xi32>, tensor<1xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<1xi32>
+  check.return
+}
+
+check.case public @spill_snapshot_64 {
+  %input = check.generate.fill value(64) : tensor<1xi32>
+  %output = check.generate.fill value(123) : tensor<1xi32>
+  %expected = check.generate.fill value(0) : tensor<1xi32>
+  kernel.launch @spill_snapshot_kernel(%input, %output) : (tensor<1xi32>, tensor<1xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<1xi32>
+  check.return
+}
+
+check.case public @spill_snapshot_70 {
+  %input = check.generate.fill value(70) : tensor<1xi32>
+  %output = check.generate.fill value(123) : tensor<1xi32>
+  %expected = check.generate.fill value(0) : tensor<1xi32>
+  kernel.launch @spill_snapshot_kernel(%input, %output) : (tensor<1xi32>, tensor<1xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<1xi32>
+  check.return
+}

@@ -30,6 +30,7 @@ from loom.target.low_descriptors import (
     HazardReferenceKind,
     InstructionClass,
     Operand,
+    RegClass,
     descriptor_stable_id,
     operand_source_binding,
 )
@@ -356,6 +357,34 @@ def _native_asm_value_row_lines(
     ]
 
 
+def _register_class_row_lines(
+    compiled: CompiledDescriptorSet,
+    reg_classes: Sequence[RegClass | None],
+) -> list[list[str]]:
+    pool = compiled.string_pool
+    return [
+        [
+            f".name_string_offset = {pool.ref(f'reg_{reg_class.name}')},",
+            f".target_bank_id = {reg_class.target_bank_id},",
+            f".flags = {c_spelling.flag_expr(reg_class.flags)},",
+            f".alloc_unit_bits = {reg_class.alloc_unit_bits},",
+            f".allocatable_count = {reg_class.allocatable_count},",
+            f".fixed_location_base = {reg_class.fixed_location_base},",
+            f".fixed_location_count = {reg_class.fixed_location_count},",
+            f".alias_set_id = {reg_class.alias_set_id},",
+            ".spill_class_id = " + ("LOOM_LOW_REG_CLASS_NONE" if reg_class.spill_class is None else str(compiled.reg_class_ids[reg_class.spill_class])) + ",",
+            f".full_register_part_mask = {c_spelling.hex_u32_literal(reg_class.full_register_part_mask)},",
+            f".spill_slot_space = {reg_class.spill_slot_space.c_name},",
+        ]
+        if reg_class is not None
+        else [
+            ".name_string_offset = LOOM_LOW_STRING_OFFSET_NONE,",
+            ".spill_class_id = LOOM_LOW_REG_CLASS_NONE,",
+        ]
+        for reg_class in reg_classes
+    ]
+
+
 def emit_source_for_views(
     compiled: CompiledDescriptorSet,
     *,
@@ -388,28 +417,21 @@ def emit_source_for_views(
         lines.append("")
     _emit_string_table(compiled, lines)
 
-    _emit_array(
-        lines,
-        "loom_low_reg_class_t",
-        spec.c_table_prefix,
-        "RegClasses",
-        [
-            [
-                f".name_string_offset = {pool.ref(f'reg_{reg_class.name}')},",
-                f".target_bank_id = {reg_class.target_bank_id},",
-                f".flags = {c_spelling.flag_expr(reg_class.flags)},",
-                f".alloc_unit_bits = {reg_class.alloc_unit_bits},",
-                f".allocatable_count = {reg_class.allocatable_count},",
-                f".fixed_location_base = {reg_class.fixed_location_base},",
-                f".fixed_location_count = {reg_class.fixed_location_count},",
-                f".alias_set_id = {reg_class.alias_set_id},",
-                ".spill_class_id = " + ("LOOM_LOW_REG_CLASS_NONE" if reg_class.spill_class is None else str(compiled.reg_class_ids[reg_class.spill_class])) + ",",
-                f".full_register_part_mask = {c_spelling.hex_u32_literal(reg_class.full_register_part_mask)},",
-                f".spill_slot_space = {reg_class.spill_slot_space.c_name},",
-            ]
-            for reg_class in compiled.reg_classes
-        ],
-    )
+    view_array_emitter = c_arrays.StaticArrayEmitter(lines)
+    if any(view.reg_classes == tuple(compiled.reg_classes) for view in views):
+        view_array_emitter.append_struct_array(
+            "loom_low_reg_class_t",
+            f"k{spec.c_table_prefix}RegClasses",
+            _register_class_row_lines(compiled, compiled.reg_classes),
+        )
+    register_class_table_symbols = {
+        view.spec.key: view_array_emitter.append_struct_array(
+            "loom_low_reg_class_t",
+            f"k{view.spec.c_table_prefix}RegClasses",
+            _register_class_row_lines(compiled, view.reg_classes),
+        )
+        for view in views
+    }
     _emit_array(
         lines,
         "loom_low_register_part_t",
@@ -677,7 +699,6 @@ def emit_source_for_views(
             for field_value in compiled.encoding_field_values
         ],
     )
-    view_array_emitter = c_arrays.StaticArrayEmitter(lines)
     storage_operand_form_table_symbol = view_array_emitter.append_struct_array(
         "loom_low_operand_form_t",
         f"k{spec.c_table_prefix}OperandForms",
@@ -937,7 +958,10 @@ def emit_source_for_views(
         append_optional_table("effects", "Effects", compiled.effects, view_lines)
         append_optional_table("constraints", "Constraints", compiled.constraints, view_lines)
         append_optional_table("storage_leases", "StorageLeases", compiled.storage_leases, view_lines)
-        append_optional_table("reg_classes", "RegClasses", compiled.reg_classes, view_lines)
+        if view.reg_classes:
+            register_class_table_symbol = register_class_table_symbols[view_spec.key]
+            view_lines.append(f"    .reg_classes = {register_class_table_symbol},")
+            view_lines.append(f"    .reg_class_count = IREE_ARRAYSIZE({register_class_table_symbol}),")
         append_optional_table("register_parts", "RegisterParts", compiled.register_parts, view_lines)
         append_optional_table("reg_class_alts", "RegClassAlts", compiled.reg_class_alts, view_lines)
         append_optional_table("schedule_classes", "ScheduleClasses", compiled.schedule_classes, view_lines)
@@ -1018,6 +1042,7 @@ def emit_source(compiled: CompiledDescriptorSet) -> str:
         views=[
             DescriptorSetView(
                 spec=compiled.spec,
+                reg_classes=tuple(compiled.reg_classes),
                 descriptors=tuple(compiled.descriptors),
                 instruction_classes=tuple(compiled.instruction_classes),
                 descriptor_ordinals=tuple(range(len(compiled.descriptors))),

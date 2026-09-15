@@ -10,6 +10,7 @@
 
 #include "loom/codegen/low/packet.h"
 #include "loom/ops/low/ops.h"
+#include "loom/target/arch/x86/descriptors/simd128_descriptors.h"
 #include "loom/target/arch/x86/register_classes.h"
 #include "loom/target/emit/native/assembly.h"
 
@@ -143,13 +144,28 @@ static iree_status_t loom_x86_append_assignment(
 
 static iree_status_t loom_x86_append_copy_mnemonic(
     const loom_native_assembly_packet_context_t* context,
-    const loom_low_allocation_assignment_t* destination_assignment) {
+    const loom_low_allocation_assignment_t* destination_assignment,
+    uint32_t source_register) {
   loom_x86_register_class_t register_class_kind = 0;
   IREE_RETURN_IF_ERROR(loom_x86_register_class_kind(
       context, destination_assignment, &register_class_kind));
   switch (register_class_kind) {
     case LOOM_X86_REGISTER_CLASS_XMM:
     case LOOM_X86_REGISTER_CLASS_YMM:
+      // SIMD128 is the SSE2-only vector contract. Other x86 vector views
+      // require AVX and can avoid a legacy SSE transition with VEX copies.
+      if (context->schedule->target.descriptor_set->descriptor_set_ordinal ==
+          X86_SIMD128_CORE_DESCRIPTOR_SET_ORDINAL) {
+        return iree_string_builder_append_cstring(context->builder, "movdqa ");
+      }
+      // Only EVEX-capable views admit registers 16-31. Either operand can
+      // require EVEX; low registers use the shorter VEX encoding. Vector
+      // classes alias whole allocation units, so zeroing upper lanes cannot
+      // overwrite a separately live value.
+      if (destination_assignment->location_base < 16 && source_register < 16) {
+        return iree_string_builder_append_cstring(context->builder, "vmovdqa ");
+      }
+      return iree_string_builder_append_cstring(context->builder, "vmovdqa32 ");
     case LOOM_X86_REGISTER_CLASS_ZMM:
       return iree_string_builder_append_cstring(context->builder, "vmovdqa32 ");
     case LOOM_X86_REGISTER_CLASS_GPR32:
@@ -1143,8 +1159,8 @@ static iree_status_t loom_x86_append_transfer_packet(
         (int)result_register_class.size, result_register_class.data);
   }
 
-  IREE_RETURN_IF_ERROR(
-      loom_x86_append_copy_mnemonic(context, result_assignment));
+  IREE_RETURN_IF_ERROR(loom_x86_append_copy_mnemonic(
+      context, result_assignment, source_assignment->location_base));
   IREE_RETURN_IF_ERROR(loom_x86_append_assignment(context, result_assignment));
   IREE_RETURN_IF_ERROR(
       iree_string_builder_append_cstring(context->builder, ", "));
@@ -1175,8 +1191,8 @@ static iree_status_t loom_x86_append_move(
       .location_base = destination->location,
       .location_count = 1,
   };
-  IREE_RETURN_IF_ERROR(
-      loom_x86_append_copy_mnemonic(context, &destination_assignment));
+  IREE_RETURN_IF_ERROR(loom_x86_append_copy_mnemonic(
+      context, &destination_assignment, source->location));
   IREE_RETURN_IF_ERROR(loom_x86_append_move_location(context, destination));
   IREE_RETURN_IF_ERROR(
       iree_string_builder_append_cstring(context->builder, ", "));

@@ -2,11 +2,11 @@
 
 amdgpu.target<gfx9-4-generic> @gfx9_4_generic_target
 
-low.func.def target<amdgpu.gfx9_4.generic.core>(@gfx9_4_generic_target) @gfx9_4_generic_sgpr_spill_reload(%value: reg<amdgpu.sgpr x2>) {
-  %storage = low.storage.reserve {byte_alignment = 4, byte_length = 8} : low.storage<private>
+low.func.def target<amdgpu.gfx9_4.generic.core>(@gfx9_4_generic_target) @gfx9_4_generic_sgpr_spill_reload(%value: reg<amdgpu.sgpr x2>) asm {
+  %storage = storage {byte_alignment = 4, byte_length = 8} : low.storage<private>
   low.spill %value, %storage : reg<amdgpu.sgpr x2>, low.storage<private>
   %reload = low.reload %storage : low.storage<private> -> reg<amdgpu.sgpr x2>
-  low.return
+  return
 }
 
 // ----
@@ -62,11 +62,11 @@ low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @spill_repair_values_remai
 
 amdgpu.target<gfx9-4-generic> @gfx9_4_generic_target
 
-low.func.def target<amdgpu.gfx9_4.generic.core>(@gfx9_4_generic_target) @gfx9_4_generic_sgpr_spill_reload_waits(%value: reg<amdgpu.sgpr x2>) {
-  %storage = low.storage.reserve {byte_alignment = 4, byte_length = 8} : low.storage<private>
+low.func.def target<amdgpu.gfx9_4.generic.core>(@gfx9_4_generic_target) @gfx9_4_generic_sgpr_spill_reload_waits(%value: reg<amdgpu.sgpr x2>) asm {
+  %storage = storage {byte_alignment = 4, byte_length = 8} : low.storage<private>
   low.spill %value, %storage : reg<amdgpu.sgpr x2>, low.storage<private>
   %reload = low.reload %storage : low.storage<private> -> reg<amdgpu.sgpr x2>
-  low.return
+  return
 }
 
 // ----
@@ -99,11 +99,11 @@ low.func.def target<amdgpu.gfx9_4.generic.core>(@gfx9_4_generic_target) @gfx9_4_
 
 amdgpu.target<gfx11-generic> @gfx11_generic_target
 
-low.func.def target<amdgpu.gfx11.generic.core>(@gfx11_generic_target) @gfx11_generic_sgpr_spill_reload(%value: reg<amdgpu.sgpr x2>) {
-  %storage = low.storage.reserve {byte_alignment = 4, byte_length = 8} : low.storage<private>
+low.func.def target<amdgpu.gfx11.generic.core>(@gfx11_generic_target) @gfx11_generic_sgpr_spill_reload(%value: reg<amdgpu.sgpr x2>) asm {
+  %storage = storage {byte_alignment = 4, byte_length = 8} : low.storage<private>
   low.spill %value, %storage : reg<amdgpu.sgpr x2>, low.storage<private>
   %reload = low.reload %storage : low.storage<private> -> reg<amdgpu.sgpr x2>
-  low.return
+  return
 }
 
 // ----
@@ -129,11 +129,11 @@ low.func.def target<amdgpu.gfx11.generic.core>(@gfx11_generic_target) @gfx11_gen
 
 amdgpu.target<gfx12-generic> @gfx12_generic_target
 
-low.func.def target<amdgpu.gfx12.generic.core>(@gfx12_generic_target) @gfx12_generic_sgpr_spill_reload(%value: reg<amdgpu.sgpr x2>) {
-  %storage = low.storage.reserve {byte_alignment = 4, byte_length = 8} : low.storage<private>
+low.func.def target<amdgpu.gfx12.generic.core>(@gfx12_generic_target) @gfx12_generic_sgpr_spill_reload(%value: reg<amdgpu.sgpr x2>) asm {
+  %storage = storage {byte_alignment = 4, byte_length = 8} : low.storage<private>
   low.spill %value, %storage : reg<amdgpu.sgpr x2>, low.storage<private>
   %reload = low.reload %storage : low.storage<private> -> reg<amdgpu.sgpr x2>
-  low.return
+  return
 }
 
 // ----
@@ -159,11 +159,11 @@ low.func.def target<amdgpu.gfx12.generic.core>(@gfx12_generic_target) @gfx12_gen
 
 amdgpu.target<gfx12-5-generic> @gfx12_5_generic_target
 
-low.func.def target<amdgpu.gfx12_5.generic.core>(@gfx12_5_generic_target) @gfx12_5_generic_sgpr_spill_reload(%value: reg<amdgpu.sgpr x2>) {
-  %storage = low.storage.reserve {byte_alignment = 4, byte_length = 8} : low.storage<private>
+low.func.def target<amdgpu.gfx12_5.generic.core>(@gfx12_5_generic_target) @gfx12_5_generic_sgpr_spill_reload(%value: reg<amdgpu.sgpr x2>) asm {
+  %storage = storage {byte_alignment = 4, byte_length = 8} : low.storage<private>
   low.spill %value, %storage : reg<amdgpu.sgpr x2>, low.storage<private>
   %reload = low.reload %storage : low.storage<private> -> reg<amdgpu.sgpr x2>
-  low.return
+  return
 }
 
 // ----
@@ -189,13 +189,13 @@ low.func.def target<amdgpu.gfx12_5.generic.core>(@gfx12_5_generic_target) @gfx12
 
 amdgpu.target<gfx11-generic> @gfx11_generic_target
 
-low.func.def target<amdgpu.gfx11.generic.core>(@gfx11_generic_target) @gfx11_spill_packet_widths(%aligned: reg<amdgpu.vgpr x4>, %misaligned: reg<amdgpu.vgpr x4>) {
-  %storage = low.storage.reserve {byte_alignment = 16, byte_length = 64} : low.storage<private>
+low.func.def target<amdgpu.gfx11.generic.core>(@gfx11_generic_target) @gfx11_spill_packet_widths(%aligned: reg<amdgpu.vgpr x4>, %misaligned: reg<amdgpu.vgpr x4>) asm {
+  %storage = storage {byte_alignment = 16, byte_length = 64} : low.storage<private>
   low.spill %aligned, %storage : reg<amdgpu.vgpr x4>, low.storage<private>
   %aligned_reload = low.reload %storage : low.storage<private> -> reg<amdgpu.vgpr x4>
   low.spill %misaligned, %storage {offset = 20} : reg<amdgpu.vgpr x4>, low.storage<private>
   %misaligned_reload = low.reload %storage {offset = 20} : low.storage<private> -> reg<amdgpu.vgpr x4>
-  low.return
+  return
 }
 
 // ----
@@ -229,15 +229,15 @@ low.func.def target<amdgpu.gfx11.generic.core>(@gfx11_generic_target) @gfx11_spi
 
 amdgpu.target<gfx11-generic> @gfx11_generic_target
 
-low.func.def target<amdgpu.gfx11.generic.core>(@gfx11_generic_target) @gfx11_spill_vaddr_packet_widths(%b32: reg<amdgpu.vgpr>, %b64: reg<amdgpu.vgpr x2>, %b128: reg<amdgpu.vgpr x4>) {
-  %storage = low.storage.reserve {byte_alignment = 16, byte_length = 8192} : low.storage<private>
+low.func.def target<amdgpu.gfx11.generic.core>(@gfx11_generic_target) @gfx11_spill_vaddr_packet_widths(%b32: reg<amdgpu.vgpr>, %b64: reg<amdgpu.vgpr x2>, %b128: reg<amdgpu.vgpr x4>) asm {
+  %storage = storage {byte_alignment = 16, byte_length = 8192} : low.storage<private>
   low.spill %b32, %storage {offset = 4104} : reg<amdgpu.vgpr>, low.storage<private>
   %b32_reload = low.reload %storage {offset = 4104} : low.storage<private> -> reg<amdgpu.vgpr>
   low.spill %b64, %storage {offset = 4112} : reg<amdgpu.vgpr x2>, low.storage<private>
   %b64_reload = low.reload %storage {offset = 4112} : low.storage<private> -> reg<amdgpu.vgpr x2>
   low.spill %b128, %storage {offset = 4128} : reg<amdgpu.vgpr x4>, low.storage<private>
   %b128_reload = low.reload %storage {offset = 4128} : low.storage<private> -> reg<amdgpu.vgpr x4>
-  low.return
+  return
 }
 
 // ----
@@ -279,11 +279,11 @@ low.func.def target<amdgpu.gfx11.generic.core>(@gfx11_generic_target) @gfx11_spi
 
 amdgpu.target<gfx11-generic> @gfx11_generic_target
 
-low.func.def target<amdgpu.gfx11.generic.core>(@gfx11_generic_target) @spill_rejects_workgroup_storage(%value: reg<amdgpu.vgpr>) {
-  %storage = low.storage.reserve {byte_alignment = 4, byte_length = 4} : low.storage<workgroup>
+low.func.def target<amdgpu.gfx11.generic.core>(@gfx11_generic_target) @spill_rejects_workgroup_storage(%value: reg<amdgpu.vgpr>) asm {
+  %storage = storage {byte_alignment = 4, byte_length = 4} : low.storage<workgroup>
   // ERROR@+1: AMDGPU/037 {function_name="spill_rejects_workgroup_storage", op_name="low.spill", storage_value_name="storage", storage_space="workgroup", supported_storage_spaces="[scratch, private]"}
   low.spill %value, %storage : reg<amdgpu.vgpr>, low.storage<workgroup>
-  low.return
+  return
 }
 
 // ====
@@ -292,11 +292,11 @@ low.func.def target<amdgpu.gfx11.generic.core>(@gfx11_generic_target) @spill_rej
 
 amdgpu.target<gfx9-4-generic> @gfx9_4_generic_target
 
-low.func.def target<amdgpu.gfx9_4.generic.core>(@gfx9_4_generic_target) @spill_rejects_agpr_registers(%value: reg<amdgpu.agpr>) {
-  %storage = low.storage.reserve {byte_alignment = 4, byte_length = 4} : low.storage<private>
+low.func.def target<amdgpu.gfx9_4.generic.core>(@gfx9_4_generic_target) @spill_rejects_agpr_registers(%value: reg<amdgpu.agpr>) asm {
+  %storage = storage {byte_alignment = 4, byte_length = 4} : low.storage<private>
   // ERROR@+1: AMDGPU/038 {function_name="spill_rejects_agpr_registers", op_name="low.spill", value_name="value", actual_type="reg<amdgpu.agpr>"}
   low.spill %value, %storage : reg<amdgpu.agpr>, low.storage<private>
-  low.return
+  return
 }
 
 // ====
@@ -305,9 +305,315 @@ low.func.def target<amdgpu.gfx9_4.generic.core>(@gfx9_4_generic_target) @spill_r
 
 amdgpu.target<gfx11-generic> @gfx11_generic_target
 
-low.func.def target<amdgpu.gfx11.generic.core>(@gfx11_generic_target) @reload_rejects_access_past_storage_end() {
-  %storage = low.storage.reserve {byte_alignment = 8, byte_length = 8} : low.storage<private>
+low.func.def target<amdgpu.gfx11.generic.core>(@gfx11_generic_target) @reload_rejects_access_past_storage_end() asm {
+  %storage = storage {byte_alignment = 8, byte_length = 8} : low.storage<private>
   // ERROR@+1: AMDGPU/039 {function_name="reload_rejects_access_past_storage_end", op_name="low.reload", storage_value_name="storage", access_byte_offset="4", access_byte_length="8", storage_byte_length="8"}
   %value = low.reload %storage {offset = 4} : low.storage<private> -> reg<amdgpu.vgpr x2>
-  low.return
+  return
 }
+
+// ====
+
+// Numeric accesses to authored storage must survive new automatic spill slots.
+// RUN: emit amdgpu-assembly @later_block_storage_survives_spill_repair strategy=source amdgpu.sgpr=8
+amdgpu.target<gfx1100> @gfx11_target
+
+low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @later_block_storage_survives_spill_repair(%lhs0: reg<amdgpu.vgpr>, %rhs0: reg<amdgpu.vgpr>, %lhs1: reg<amdgpu.vgpr>, %rhs1: reg<amdgpu.vgpr>, %lhs2: reg<amdgpu.vgpr>, %rhs2: reg<amdgpu.vgpr>, %lhs3: reg<amdgpu.vgpr>, %rhs3: reg<amdgpu.vgpr>) -> (reg<amdgpu.sgpr x2>) asm {
+  low.br ^body
+^body:
+  %manual = storage {byte_alignment = 4, byte_length = 8} : low.storage<private>
+  %mask0 = v_cmp_lt_u32 %lhs0, %rhs0
+  low.spill %mask0, %manual : reg<amdgpu.sgpr x2>, low.storage<private>
+  %mask1 = v_cmp_lt_u32 %lhs1, %rhs1
+  %mask2 = v_cmp_lt_u32 %lhs2, %rhs2
+  %mask3 = v_cmp_lt_u32 %lhs3, %rhs3
+  %and01 = s_and_b64 %mask0, %mask1
+  %and23 = s_and_b64 %mask2, %mask3
+  %and0123 = s_and_b64 %and01, %and23
+  %and4 = s_and_b64 %and0123, %mask0
+  %and5 = s_and_b64 %and4, %mask1
+  %result = s_and_b64 %and5, %mask2
+  %manual_reload = low.reload %manual : low.storage<private> -> reg<amdgpu.sgpr x2>
+  %with_manual = s_xor_b64 %result, %manual_reload
+  return %with_manual
+}
+
+// ----
+.Lbb1:
+  v_cmp_lt_u32 s[0:1], v0, v1
+  s_mov_b64_exec_read s[2:3]
+  s_mov_b64 exec, -1
+  s_delay_alu instid0(VALU_DEP_1)
+  v_mov_b32_copy v0, s0
+  scratch_store_b32 off, v0, off offset:0 glc:0 slc:0 dlc:0
+  v_mov_b32_copy v0, s1
+  scratch_store_b32 off, v0, off offset:4 glc:0 slc:0 dlc:0
+  s_mov_b64 exec, s[2:3]
+  v_cmp_lt_u32 s[2:3], v2, v3
+  s_mov_b64_exec_read s[4:5]
+  s_mov_b64 exec, -1
+  s_delay_alu instid0(VALU_DEP_1)
+  v_mov_b32_copy v0, s2
+  scratch_store_b32 off, v0, off offset:32 glc:0 slc:0 dlc:0
+  v_mov_b32_copy v0, s3
+  scratch_store_b32 off, v0, off offset:36 glc:0 slc:0 dlc:0
+  s_mov_b64 exec, s[4:5]
+  v_cmp_lt_u32 s[2:3], v4, v5
+  s_mov_b64_exec_read s[4:5]
+  s_mov_b64 exec, -1
+  s_delay_alu instid0(VALU_DEP_1)
+  v_mov_b32_copy v0, s2
+  scratch_store_b32 off, v0, off offset:8 glc:0 slc:0 dlc:0
+  v_mov_b32_copy v0, s3
+  scratch_store_b32 off, v0, off offset:12 glc:0 slc:0 dlc:0
+  s_mov_b64 exec, s[4:5]
+  v_cmp_lt_u32 s[2:3], v6, v7
+  s_mov_b64_exec_read s[4:5]
+  s_mov_b64 exec, -1
+  s_delay_alu instid0(VALU_DEP_1)
+  v_mov_b32_copy v0, s2
+  scratch_store_b32 off, v0, off offset:24 glc:0 slc:0 dlc:0
+  v_mov_b32_copy v0, s3
+  scratch_store_b32 off, v0, off offset:28 glc:0 slc:0 dlc:0
+  s_mov_b64 exec, s[4:5]
+  s_mov_b64_exec_read s[2:3]
+  s_mov_b64 exec, -1
+  s_waitcnt_vscnt vscnt(0)
+  scratch_load_b32 v0, off, off offset:32 glc:0 slc:0 dlc:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_readfirstlane_b32 s4, v0
+  scratch_load_b32 v0, off, off offset:36 glc:0 slc:0 dlc:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_readfirstlane_b32 s5, v0
+  s_mov_b64 exec, s[2:3]
+  s_delay_alu instid0(VALU_DEP_1)
+  s_and_b64 s[2:3], s[0:1], s[4:5]
+  s_mov_b64_exec_read s[4:5]
+  s_mov_b64 exec, -1
+  v_mov_b32_copy v0, s2
+  scratch_store_b32 off, v0, off offset:16 glc:0 slc:0 dlc:0
+  v_mov_b32_copy v0, s3
+  scratch_store_b32 off, v0, off offset:20 glc:0 slc:0 dlc:0
+  s_mov_b64 exec, s[4:5]
+  s_mov_b64_exec_read s[2:3]
+  s_mov_b64 exec, -1
+  s_waitcnt_vscnt vscnt(0)
+  scratch_load_b32 v0, off, off offset:8 glc:0 slc:0 dlc:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_readfirstlane_b32 s4, v0
+  scratch_load_b32 v0, off, off offset:12 glc:0 slc:0 dlc:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_readfirstlane_b32 s5, v0
+  s_mov_b64 exec, s[2:3]
+  s_mov_b64_exec_read s[2:3]
+  s_mov_b64 exec, -1
+  scratch_load_b32 v0, off, off offset:24 glc:0 slc:0 dlc:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_readfirstlane_b32 s6, v0
+  scratch_load_b32 v0, off, off offset:28 glc:0 slc:0 dlc:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_readfirstlane_b32 s7, v0
+  s_mov_b64 exec, s[2:3]
+  s_delay_alu instid0(VALU_DEP_1)
+  s_and_b64 s[2:3], s[4:5], s[6:7]
+  s_mov_b64_exec_read s[4:5]
+  s_mov_b64 exec, -1
+  scratch_load_b32 v0, off, off offset:16 glc:0 slc:0 dlc:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_readfirstlane_b32 s6, v0
+  scratch_load_b32 v0, off, off offset:20 glc:0 slc:0 dlc:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_readfirstlane_b32 s7, v0
+  s_mov_b64 exec, s[4:5]
+  s_delay_alu instid0(VALU_DEP_1)
+  s_and_b64 s[2:3], s[6:7], s[2:3]
+  s_and_b64 s[0:1], s[2:3], s[0:1]
+  s_mov_b64_exec_read s[2:3]
+  s_mov_b64 exec, -1
+  scratch_load_b32 v0, off, off offset:32 glc:0 slc:0 dlc:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_readfirstlane_b32 s4, v0
+  scratch_load_b32 v0, off, off offset:36 glc:0 slc:0 dlc:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_readfirstlane_b32 s5, v0
+  s_mov_b64 exec, s[2:3]
+  s_delay_alu instid0(VALU_DEP_1)
+  s_and_b64 s[0:1], s[0:1], s[4:5]
+  s_mov_b64_exec_read s[2:3]
+  s_mov_b64 exec, -1
+  scratch_load_b32 v0, off, off offset:8 glc:0 slc:0 dlc:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_readfirstlane_b32 s4, v0
+  scratch_load_b32 v0, off, off offset:12 glc:0 slc:0 dlc:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_readfirstlane_b32 s5, v0
+  s_mov_b64 exec, s[2:3]
+  s_delay_alu instid0(VALU_DEP_1)
+  s_and_b64 s[0:1], s[0:1], s[4:5]
+  s_mov_b64_exec_read s[2:3]
+  s_mov_b64 exec, -1
+  scratch_load_b32 v0, off, off offset:0 glc:0 slc:0 dlc:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_readfirstlane_b32 s4, v0
+  scratch_load_b32 v0, off, off offset:4 glc:0 slc:0 dlc:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_readfirstlane_b32 s5, v0
+  s_mov_b64 exec, s[2:3]
+  s_delay_alu instid0(VALU_DEP_1)
+  s_xor_b64 s[0:1], s[0:1], s[4:5]
+  s_endpgm
+
+// ====
+
+// Private and scratch declarations share a segment; nested views keep their
+// original alignment and byte range when repair extends that segment.
+// RUN: emit amdgpu-assembly @storage_views_survive_spill_repair strategy=source amdgpu.sgpr=8
+amdgpu.target<gfx1100> @gfx11_target
+
+low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @storage_views_survive_spill_repair(%lhs0: reg<amdgpu.vgpr>, %rhs0: reg<amdgpu.vgpr>, %lhs1: reg<amdgpu.vgpr>, %rhs1: reg<amdgpu.vgpr>, %lhs2: reg<amdgpu.vgpr>, %rhs2: reg<amdgpu.vgpr>, %lhs3: reg<amdgpu.vgpr>, %rhs3: reg<amdgpu.vgpr>) -> (reg<amdgpu.sgpr x2>) asm {
+  %padding = storage {byte_alignment = 4, byte_length = 4} : low.storage<private>
+  low.br ^body
+^body:
+  %storage = storage {byte_alignment = 16, byte_length = 32} : low.storage<scratch>
+  %outer = storage_view %storage {offset = 8, byte_length = 16} : low.storage<scratch> -> low.storage<scratch>
+  %manual = storage_view %outer {offset = 4, byte_length = 8} : low.storage<scratch> -> low.storage<scratch>
+  %mask0 = v_cmp_lt_u32 %lhs0, %rhs0
+  low.spill %mask0, %manual : reg<amdgpu.sgpr x2>, low.storage<scratch>
+  %mask1 = v_cmp_lt_u32 %lhs1, %rhs1
+  %mask2 = v_cmp_lt_u32 %lhs2, %rhs2
+  %mask3 = v_cmp_lt_u32 %lhs3, %rhs3
+  %and01 = s_and_b64 %mask0, %mask1
+  %and23 = s_and_b64 %mask2, %mask3
+  %and0123 = s_and_b64 %and01, %and23
+  %and4 = s_and_b64 %and0123, %mask0
+  %and5 = s_and_b64 %and4, %mask1
+  %result = s_and_b64 %and5, %mask2
+  %manual_reload = low.reload %manual : low.storage<scratch> -> reg<amdgpu.sgpr x2>
+  %with_manual = s_xor_b64 %result, %manual_reload
+  return %with_manual
+}
+
+// ----
+.Lbb1:
+  v_cmp_lt_u32 s[0:1], v0, v1
+  s_mov_b64_exec_read s[2:3]
+  s_mov_b64 exec, -1
+  s_delay_alu instid0(VALU_DEP_1)
+  v_mov_b32_copy v0, s0
+  scratch_store_b32 off, v0, off offset:28 glc:0 slc:0 dlc:0
+  v_mov_b32_copy v0, s1
+  scratch_store_b32 off, v0, off offset:32 glc:0 slc:0 dlc:0
+  s_mov_b64 exec, s[2:3]
+  v_cmp_lt_u32 s[2:3], v2, v3
+  s_mov_b64_exec_read s[4:5]
+  s_mov_b64 exec, -1
+  s_delay_alu instid0(VALU_DEP_1)
+  v_mov_b32_copy v0, s2
+  scratch_store_b32 off, v0, off offset:72 glc:0 slc:0 dlc:0
+  v_mov_b32_copy v0, s3
+  scratch_store_b32 off, v0, off offset:76 glc:0 slc:0 dlc:0
+  s_mov_b64 exec, s[4:5]
+  v_cmp_lt_u32 s[2:3], v4, v5
+  s_mov_b64_exec_read s[4:5]
+  s_mov_b64 exec, -1
+  s_delay_alu instid0(VALU_DEP_1)
+  v_mov_b32_copy v0, s2
+  scratch_store_b32 off, v0, off offset:48 glc:0 slc:0 dlc:0
+  v_mov_b32_copy v0, s3
+  scratch_store_b32 off, v0, off offset:52 glc:0 slc:0 dlc:0
+  s_mov_b64 exec, s[4:5]
+  v_cmp_lt_u32 s[2:3], v6, v7
+  s_mov_b64_exec_read s[4:5]
+  s_mov_b64 exec, -1
+  s_delay_alu instid0(VALU_DEP_1)
+  v_mov_b32_copy v0, s2
+  scratch_store_b32 off, v0, off offset:64 glc:0 slc:0 dlc:0
+  v_mov_b32_copy v0, s3
+  scratch_store_b32 off, v0, off offset:68 glc:0 slc:0 dlc:0
+  s_mov_b64 exec, s[4:5]
+  s_mov_b64_exec_read s[2:3]
+  s_mov_b64 exec, -1
+  s_waitcnt_vscnt vscnt(0)
+  scratch_load_b32 v0, off, off offset:72 glc:0 slc:0 dlc:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_readfirstlane_b32 s4, v0
+  scratch_load_b32 v0, off, off offset:76 glc:0 slc:0 dlc:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_readfirstlane_b32 s5, v0
+  s_mov_b64 exec, s[2:3]
+  s_delay_alu instid0(VALU_DEP_1)
+  s_and_b64 s[2:3], s[0:1], s[4:5]
+  s_mov_b64_exec_read s[4:5]
+  s_mov_b64 exec, -1
+  v_mov_b32_copy v0, s2
+  scratch_store_b32 off, v0, off offset:56 glc:0 slc:0 dlc:0
+  v_mov_b32_copy v0, s3
+  scratch_store_b32 off, v0, off offset:60 glc:0 slc:0 dlc:0
+  s_mov_b64 exec, s[4:5]
+  s_mov_b64_exec_read s[2:3]
+  s_mov_b64 exec, -1
+  s_waitcnt_vscnt vscnt(0)
+  scratch_load_b32 v0, off, off offset:48 glc:0 slc:0 dlc:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_readfirstlane_b32 s4, v0
+  scratch_load_b32 v0, off, off offset:52 glc:0 slc:0 dlc:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_readfirstlane_b32 s5, v0
+  s_mov_b64 exec, s[2:3]
+  s_mov_b64_exec_read s[2:3]
+  s_mov_b64 exec, -1
+  scratch_load_b32 v0, off, off offset:64 glc:0 slc:0 dlc:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_readfirstlane_b32 s6, v0
+  scratch_load_b32 v0, off, off offset:68 glc:0 slc:0 dlc:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_readfirstlane_b32 s7, v0
+  s_mov_b64 exec, s[2:3]
+  s_delay_alu instid0(VALU_DEP_1)
+  s_and_b64 s[2:3], s[4:5], s[6:7]
+  s_mov_b64_exec_read s[4:5]
+  s_mov_b64 exec, -1
+  scratch_load_b32 v0, off, off offset:56 glc:0 slc:0 dlc:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_readfirstlane_b32 s6, v0
+  scratch_load_b32 v0, off, off offset:60 glc:0 slc:0 dlc:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_readfirstlane_b32 s7, v0
+  s_mov_b64 exec, s[4:5]
+  s_delay_alu instid0(VALU_DEP_1)
+  s_and_b64 s[2:3], s[6:7], s[2:3]
+  s_and_b64 s[0:1], s[2:3], s[0:1]
+  s_mov_b64_exec_read s[2:3]
+  s_mov_b64 exec, -1
+  scratch_load_b32 v0, off, off offset:72 glc:0 slc:0 dlc:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_readfirstlane_b32 s4, v0
+  scratch_load_b32 v0, off, off offset:76 glc:0 slc:0 dlc:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_readfirstlane_b32 s5, v0
+  s_mov_b64 exec, s[2:3]
+  s_delay_alu instid0(VALU_DEP_1)
+  s_and_b64 s[0:1], s[0:1], s[4:5]
+  s_mov_b64_exec_read s[2:3]
+  s_mov_b64 exec, -1
+  scratch_load_b32 v0, off, off offset:48 glc:0 slc:0 dlc:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_readfirstlane_b32 s4, v0
+  scratch_load_b32 v0, off, off offset:52 glc:0 slc:0 dlc:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_readfirstlane_b32 s5, v0
+  s_mov_b64 exec, s[2:3]
+  s_delay_alu instid0(VALU_DEP_1)
+  s_and_b64 s[0:1], s[0:1], s[4:5]
+  s_mov_b64_exec_read s[2:3]
+  s_mov_b64 exec, -1
+  scratch_load_b32 v0, off, off offset:28 glc:0 slc:0 dlc:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_readfirstlane_b32 s4, v0
+  scratch_load_b32 v0, off, off offset:32 glc:0 slc:0 dlc:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_readfirstlane_b32 s5, v0
+  s_mov_b64 exec, s[2:3]
+  s_delay_alu instid0(VALU_DEP_1)
+  s_xor_b64 s[0:1], s[0:1], s[4:5]
+  s_endpgm

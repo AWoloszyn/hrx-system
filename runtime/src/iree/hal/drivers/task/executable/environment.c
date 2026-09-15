@@ -19,14 +19,11 @@ void iree_hal_executable_environment_initialize(
   IREE_TRACE_ZONE_BEGIN(z0);
   memset(out_environment, 0, sizeof(*out_environment));
 
-  // Force CPU initialization.
-  // TODO(benvanik): move this someplace better? Technically not thread-safe
-  // but should be enough for usage within the HAL.
-  iree_cpu_initialize(temp_allocator);
-
-  // Will fill all of the required fields and zero any extras.
-  iree_cpu_read_data(IREE_HAL_PROCESSOR_DATA_CAPACITY_V0,
-                     &out_environment->processor.data[0]);
+  iree_cpu_data_t cpu_data;
+  iree_cpu_query_data(temp_allocator, &cpu_data);
+  memcpy(out_environment->processor.data, cpu_data.fields,
+         iree_min(sizeof(out_environment->processor.data),
+                  sizeof(cpu_data.fields)));
 
   IREE_TRACE_ZONE_END(z0);
 }

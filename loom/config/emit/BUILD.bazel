@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 load("@bazel_skylib//lib:selects.bzl", "selects")
-load("@bazel_skylib//rules:common_settings.bzl", "string_list_flag")
+load("//build_tools/bazel:settings.bzl", "iree_string_list_flag")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -21,9 +21,10 @@ SUPPORTED_VALUES = [
     "wasm",
 ]
 
-string_list_flag(
+iree_string_list_flag(
     name = "enable",
     build_setting_default = DEFAULT_ENABLED,
+    values = SUPPORTED_VALUES,
 )
 
 [

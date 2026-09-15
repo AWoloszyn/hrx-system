@@ -108,12 +108,14 @@ iree_py_test(
     "low_descriptor_shard_test.py"
     "low_descriptors_test.py"
     "physical_validation_test.py"
+    "views_test.py"
     "../../../tools/pytest_style_runner.py"
   ARGS
     "loom.gen.target.low.compiler_test"
     "loom.gen.target.low.low_descriptor_shard_test"
     "loom.gen.target.low.low_descriptors_test"
     "loom.gen.target.low.physical_validation_test"
+    "loom.gen.target.low.views_test"
   DEPS
     loom::py::loom::gen::target::low::low_descriptor_shard
     loom::py::loom::gen::target::low::low_descriptors

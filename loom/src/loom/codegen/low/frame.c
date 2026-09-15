@@ -17,6 +17,7 @@
 #include "loom/codegen/low/packet.h"
 #include "loom/codegen/low/rematerialization.h"
 #include "loom/codegen/low/schedule/run.h"
+#include "loom/codegen/low/storage_layout.h"
 #include "loom/error/error_catalog.h"
 #include "loom/ops/low/ops.h"
 
@@ -626,6 +627,9 @@ static iree_status_t loom_low_emission_frame_build_spill_free_impl(
   }
   const loom_target_residency_model_t* residency_model =
       frame_options->residency_model;
+
+  IREE_RETURN_IF_ERROR(loom_low_storage_layout_hoist_reservations(
+      module, loom_low_function_body(low_func_op), scratch_arena));
 
   // Target-lowered spill helpers require registers. Rematerialized clones
   // inherit that requirement so rematerialization cannot erase the fact.

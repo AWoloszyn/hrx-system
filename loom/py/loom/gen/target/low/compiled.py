@@ -120,6 +120,8 @@ class CompiledDescriptorSet:
 @dataclass(frozen=True, slots=True)
 class DescriptorSetView:
     spec: DescriptorSet
+    # View-owned classes at shared storage indices; None marks an absent class.
+    reg_classes: tuple[RegClass | None, ...]
     descriptors: tuple[Descriptor, ...]
     instruction_classes: tuple[tuple[InstructionClass, ...], ...]
     descriptor_ordinals: tuple[int, ...]

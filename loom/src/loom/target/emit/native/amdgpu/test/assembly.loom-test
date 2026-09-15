@@ -1951,9 +1951,9 @@ low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @gfx11_s_load_offset_only_
 // RUN: emit amdgpu-assembly @gfx11_s_load_offset_only_tied waits=none
 amdgpu.target<gfx1100> @gfx11_target
 
-low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @gfx11_s_load_offset_only_tied(%kernarg: reg<amdgpu.sgpr x2>) {
-  %loaded = low.op<amdgpu.s_load_dwordx2_offset_only>(%kernarg) {offset = 32} : (reg<amdgpu.sgpr x2>) -> %kernarg as reg<amdgpu.sgpr x2>
-  low.return
+low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @gfx11_s_load_offset_only_tied(%kernarg: reg<amdgpu.sgpr x2>) asm {
+  %loaded = s_load_dwordx2_offset_only %kernarg {offset = 32} : %kernarg as reg<amdgpu.sgpr x2>
+  return
 }
 
 // ----
@@ -1965,20 +1965,20 @@ low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @gfx11_s_load_offset_only_
 // RUN: emit amdgpu-assembly @gfx11_s_load_tied_after_prior_kernarg_read waits=none
 amdgpu.target<gfx1100> @gfx11_target
 
-low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @gfx11_s_load_tied_after_prior_kernarg_read() {
-  %kernarg = low.live_in<amdgpu.kernarg_segment_ptr> : reg<amdgpu.sgpr x2>
-  %loaded = low.op<amdgpu.s_load_dwordx4_offset_only>(%kernarg) {offset = 0} : (reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x4>
-  %view = low.op<amdgpu.s_load_dwordx2_offset_only>(%kernarg) {offset = 16} : (reg<amdgpu.sgpr x2>) -> %kernarg as reg<amdgpu.sgpr x2>
-  %a = low.slice %loaded[0] : reg<amdgpu.sgpr x4> -> reg<amdgpu.sgpr x2>
-  %pointer_low = low.slice %a[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
-  %pointer_high = low.slice %a[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
-  %mask = low.const<amdgpu.s_mov_b32> {imm32 = 65535} : reg<amdgpu.sgpr>
-  %masked_high = low.op<amdgpu.s_and_b32>(%pointer_high, %mask) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr>
-  %pointer = low.concat(%pointer_low, %masked_high) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
-  %range = low.const<amdgpu.s_mov_b32> {imm32 = 16} : reg<amdgpu.sgpr>
-  %control = low.const<amdgpu.s_mov_b32> {imm32 = 822173696} : reg<amdgpu.sgpr>
-  %descriptor = low.concat(%pointer, %range, %control) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x4>
-  low.return
+low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @gfx11_s_load_tied_after_prior_kernarg_read() asm {
+  %kernarg = live_in<amdgpu.kernarg_segment_ptr> : reg<amdgpu.sgpr x2>
+  %loaded = s_load_dwordx4_offset_only %kernarg
+  %view = s_load_dwordx2_offset_only %kernarg {offset = 16} : %kernarg as reg<amdgpu.sgpr x2>
+  %a = slice %loaded[0] : reg<amdgpu.sgpr x4> -> reg<amdgpu.sgpr x2>
+  %pointer_low = slice %a[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %pointer_high = slice %a[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %mask = s_mov_b32 65535
+  %masked_high = s_and_b32 %pointer_high, %mask
+  %pointer = concat(%pointer_low, %masked_high) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  %range = s_mov_b32 16
+  %control = s_mov_b32 822173696
+  %descriptor = concat(%pointer, %range, %control) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x4>
+  return
 }
 
 // ----
@@ -4172,20 +4172,19 @@ low.func.def target<amdgpu.rdna4.core>(@gfx12_target) @gfx12_vopd_commutes_binar
 
 // ====
 
-// RUN: emit amdgpu-assembly @gfx11_wait_before_storage_reserve strategy=source
+// RUN: emit amdgpu-assembly @gfx11_static_storage_precedes_load strategy=source
 amdgpu.target<gfx1100> @gfx11_target
 
-low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @gfx11_wait_before_storage_reserve(%kernarg: reg<amdgpu.sgpr x2>) asm {
+low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @gfx11_static_storage_precedes_load(%kernarg: reg<amdgpu.sgpr x2>) asm {
   %loaded = s_load_dwordx8_offset_only %kernarg
   %storage = storage {byte_alignment = 16, byte_length = 64} : low.storage<workgroup>
   return
 }
 
-// The storage reservation emits no instruction, but wait planning may use it
-// as an ordering anchor. Assembly must visit the anchor just like encoding.
+// Static storage moves to the entry prefix before scheduling. Its declaration
+// has no runtime action requiring the otherwise unused load to complete.
 // ----
   s_load_dwordx8 s[8:15], s[0:1] offset:0
-  s_waitcnt vmcnt(63) lgkmcnt(0)
   s_endpgm
 
 // ====

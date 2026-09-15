@@ -204,10 +204,36 @@ iree_cc_library(
   SRCS
     "cpu.c"
   DEPS
+    ::cpu_x86_64
     iree::base
     iree::base::core_headers
     iree::base::cpu_data
   PUBLIC
+)
+
+iree_cc_library(
+  NAME
+    cpu_x86_64
+  HDRS
+    "cpu_x86_64.h"
+  SRCS
+    "cpu_x86_64.c"
+  DEPS
+    iree::base
+    iree::base::cpu_data
+  PUBLIC
+)
+
+iree_cc_test(
+  NAME
+    cpu_x86_64_test
+  SRCS
+    "cpu_x86_64_test.cc"
+  DEPS
+    ::cpu
+    ::cpu_x86_64
+    iree::testing::gtest
+    iree::testing::gtest_main
 )
 
 iree_cc_library(

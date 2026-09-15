@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "loom/error/error_catalog.h"
+#include "loom/format/text/parser/format_signatures.h"
 #include "loom/ir/context.h"
 
 //===----------------------------------------------------------------------===//
@@ -143,7 +144,10 @@ iree_status_t loom_parser_emit_low_asm_operand_count_mismatch(
 static iree_status_t loom_parse_low_asm_result_types(
     loom_parser_t* parser, const loom_text_low_asm_packet_descriptor_t* packet,
     loom_token_t mnemonic_token, const loom_value_id_t* operands,
-    iree_host_size_t operand_count, loom_type_t* result_types) {
+    iree_host_size_t operand_count, loom_type_t* result_types,
+    loom_parsed_op_t* parsed,
+    loom_text_low_asm_packet_build_flags_t* out_build_flags) {
+  *out_build_flags = 0;
   const uint16_t result_count = packet->result_count;
   if (result_count == 0) {
     if (loom_tokenizer_at(&parser->tokenizer, LOOM_TOKEN_COLON)) {
@@ -155,6 +159,7 @@ static iree_status_t loom_parse_low_asm_result_types(
   }
 
   if (!loom_tokenizer_try_consume(&parser->tokenizer, LOOM_TOKEN_COLON)) {
+    *out_build_flags = LOOM_TEXT_LOW_ASM_PACKET_BUILD_FLAG_INFER_TIES;
     uint32_t errors_before = parser->error_count;
     for (uint16_t i = 0; i < result_count; ++i) {
       iree_string_view_t diagnostic_detail = iree_string_view_empty();
@@ -179,8 +184,8 @@ static iree_status_t loom_parse_low_asm_result_types(
     if (i > 0) {
       LOOM_PARSE_EXPECT(parser, LOOM_TOKEN_COMMA, NULL);
     }
-    IREE_RETURN_IF_ERROR(
-        loom_parse_type(parser, LOOM_TYPE_PARSE_BODY, &result_types[i]));
+    IREE_RETURN_IF_ERROR(loom_parse_body_result_type(
+        parser, operands, operand_count, i, parsed, &result_types[i]));
     if (parser->error_count > errors_before) {
       return iree_ok_status();
     }
@@ -713,7 +718,7 @@ static iree_status_t loom_parse_low_asm_instruction(
     const loom_text_low_asm_descriptor_set_t* descriptor_set,
     const loom_low_asm_result_names_t* result_names, loom_token_t start_token,
     loom_token_t mnemonic_token, const iree_string_view_t* comments,
-    iree_host_size_t comment_count, loom_parsed_op_t* parsed_spans) {
+    iree_host_size_t comment_count, loom_parsed_op_t* parsed) {
   const uint32_t errors_before = parser->error_count;
   loom_text_low_asm_packet_descriptor_t packet = {0};
   IREE_RETURN_IF_ERROR(parser->low_asm_environment.vtable->lookup_packet(
@@ -750,7 +755,7 @@ static iree_status_t loom_parse_low_asm_instruction(
   }
   uint16_t attr_count = 0;
   IREE_RETURN_IF_ERROR(loom_parse_low_asm_immediates(
-      parser, &packet, mnemonic_token, attrs, &attr_count, parsed_spans));
+      parser, &packet, mnemonic_token, attrs, &attr_count, parsed));
   if (parser->error_count > errors_before) {
     return iree_ok_status();
   }
@@ -761,16 +766,17 @@ static iree_status_t loom_parse_low_asm_instruction(
         &parser->parser_arena, packet.result_count, sizeof(*result_types),
         (void**)&result_types));
   }
+  loom_text_low_asm_packet_build_flags_t build_flags = 0;
   IREE_RETURN_IF_ERROR(loom_parse_low_asm_result_types(
       parser, &packet, mnemonic_token, operands.values, operands.count,
-      result_types));
+      result_types, parsed, &build_flags));
   if (parser->error_count > errors_before) {
     return iree_ok_status();
   }
 
   loom_location_id_t location = LOOM_LOCATION_UNKNOWN;
   IREE_RETURN_IF_ERROR(loom_parse_low_asm_packet_location(
-      parser, start_token, mnemonic_token, parsed_spans, &location));
+      parser, start_token, mnemonic_token, parsed, &location));
   if (parser->error_count > errors_before) {
     return iree_ok_status();
   }
@@ -779,9 +785,10 @@ static iree_status_t loom_parse_low_asm_instruction(
   const loom_named_attr_slice_t attr_slice =
       loom_make_named_attr_slice(attrs, attr_count);
   IREE_RETURN_IF_ERROR(parser->low_asm_environment.vtable->build_packet(
-      parser->low_asm_environment.state, &parser->builder, &packet,
+      parser->low_asm_environment.state, &parser->builder, &packet, build_flags,
       operands.values, operands.count, attr_slice, result_types,
-      packet.result_count, location, &op));
+      packet.result_count, parsed->tied_results, parsed->tied_result_count,
+      location, &op));
   if (op == NULL) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "low asm packet builder returned no operation");
@@ -794,7 +801,7 @@ static iree_status_t loom_parse_low_asm_instruction(
       return iree_ok_status();
     }
   }
-  op->flags |= parsed_spans->source_flags;
+  op->flags |= parsed->source_flags;
   return loom_module_attach_op_comments(parser->module, op, comments,
                                         comment_count);
 }
@@ -873,6 +880,8 @@ static bool loom_low_asm_token_is_canonical_op(loom_parser_t* parser,
   if (iree_string_view_equal(token.text, IREE_SV("low.br")) ||
       iree_string_view_equal(token.text, IREE_SV("low.cond_br")) ||
       iree_string_view_equal(token.text, IREE_SV("low.func.call")) ||
+      iree_string_view_equal(token.text, IREE_SV("low.spill")) ||
+      iree_string_view_equal(token.text, IREE_SV("low.reload")) ||
       iree_string_view_equal(token.text, IREE_SV("low.op")) ||
       iree_string_view_equal(token.text, IREE_SV("low.scf.condition")) ||
       iree_string_view_equal(token.text, IREE_SV("low.scf.yield")) ||

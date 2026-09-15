@@ -9,6 +9,7 @@
 #include "loom/ir/module.h"
 #include "loom/ops/low/ops.h"
 #include "loom/ops/type_registry.h"
+#include "loom/rewrite/rewriter.h"
 
 iree_host_size_t loom_low_storage_space_set_names(
     loom_low_storage_space_set_t set, iree_host_size_t capacity,
@@ -31,6 +32,37 @@ iree_host_size_t loom_low_storage_space_set_names(
     ++count;
   }
   return count;
+}
+
+iree_status_t loom_low_storage_layout_hoist_reservations(
+    loom_module_t* module, loom_region_t* body, iree_arena_allocator_t* arena) {
+  loom_op_t* insertion_op = loom_region_entry_block(body)->first_op;
+  loom_rewriter_t rewriter = {0};
+  iree_status_t status = iree_ok_status();
+  for (uint16_t block_index = 0;
+       block_index < body->block_count && iree_status_is_ok(status);
+       ++block_index) {
+    loom_op_t* op = body->blocks[block_index]->first_op;
+    while (op != NULL && iree_status_is_ok(status)) {
+      loom_op_t* next_op = op->next_op;
+      if (loom_low_storage_reserve_isa(op)) {
+        if (op == insertion_op) {
+          insertion_op = next_op;
+        } else {
+          // Functions with an existing storage prefix need no rewrite arena.
+          if (rewriter.module == NULL) {
+            status = loom_rewriter_initialize(&rewriter, module, arena);
+          }
+          if (iree_status_is_ok(status)) {
+            status = loom_rewriter_move_before(&rewriter, op, insertion_op);
+          }
+        }
+      }
+      op = next_op;
+    }
+  }
+  loom_rewriter_deinitialize(&rewriter);
+  return status;
 }
 
 static uint64_t* loom_low_storage_layout_space_size(

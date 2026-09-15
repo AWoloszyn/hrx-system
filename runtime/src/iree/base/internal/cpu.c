@@ -9,6 +9,10 @@
 
 #include "iree/base/internal/cpu.h"
 
+#if defined(IREE_ARCH_X86_64)
+#include "iree/base/internal/cpu_x86_64.h"
+#endif  // IREE_ARCH_X86_64
+
 //===----------------------------------------------------------------------===//
 // Platform-specific processor data queries
 //===----------------------------------------------------------------------===//
@@ -227,147 +231,6 @@ static void iree_cpu_initialize_from_platform_arm_64(uint64_t* out_fields) {
 
 #endif  // IREE_PLATFORM_*
 
-#elif defined(IREE_ARCH_X86_64)
-
-#if defined(__GNUC__)
-#include <cpuid.h>
-#elif defined(_MSC_VER)
-#include <intrin.h>
-#endif
-
-typedef struct iree_cpuid_regs_t {
-  uint32_t eax;
-  uint32_t ebx;
-  uint32_t ecx;
-  uint32_t edx;
-} iree_cpuid_regs_t;
-
-#if defined(__GNUC__)
-static iree_cpuid_regs_t iree_cpuid_raw(uint32_t eax, uint32_t ecx) {
-  iree_cpuid_regs_t regs;
-  __cpuid_count(eax, ecx, regs.eax, regs.ebx, regs.ecx, regs.edx);
-  return regs;
-}
-#elif defined(_MSC_VER)
-// The noinline is a tentative work-around for what might be a MSVC miscompile.
-// The symptom is that MSVC builds incorrectly report some CPU features as
-// supported. This only happens for CPU feature bits in the EDX output register.
-__declspec(noinline) static iree_cpuid_regs_t iree_cpuid_raw(uint32_t eax,
-                                                             uint32_t ecx) {
-  int eax_int;
-  int ecx_int;
-  memcpy(&eax_int, &eax, sizeof eax);
-  memcpy(&ecx_int, &ecx, sizeof ecx);
-  int regs_array[4];
-  __cpuidex(regs_array, eax_int, ecx_int);
-  iree_cpuid_regs_t regs;
-  memcpy(&regs, regs_array, sizeof regs);
-  return regs;
-}
-#else
-#error What is the __cpuidex built-in for this compiler?
-#endif
-
-typedef struct iree_cpuid_bounds_t {
-  uint32_t max_base_eax;
-  uint32_t max_extended_eax;
-} iree_cpuid_bounds_t;
-
-static iree_cpuid_bounds_t iree_cpuid_query_bounds() {
-  iree_cpuid_bounds_t bounds;
-  bounds.max_base_eax = iree_cpuid_raw(0, 0).eax;
-  bounds.max_extended_eax = iree_cpuid_raw(0x80000000u, 0).eax;
-  if (bounds.max_extended_eax < 0x80000000u) bounds.max_extended_eax = 0;
-  return bounds;
-}
-
-static bool iree_cpuid_is_in_range(uint32_t eax, uint32_t ecx,
-                                   iree_cpuid_bounds_t bounds) {
-  if (eax < 0x80000000u) {
-    // EAX is a base function id.
-    if (eax > bounds.max_base_eax) return false;
-  } else {
-    // EAX is an extended function id.
-    if (eax > bounds.max_extended_eax) return false;
-  }
-  if (ecx) {
-    // ECX is a nonzero sub-function id.
-    uint32_t max_ecx = iree_cpuid_raw(eax, 0).eax;
-    if (ecx > max_ecx) return false;
-  }
-  return true;
-}
-
-static iree_cpuid_regs_t iree_cpuid_or_zero(uint32_t eax, uint32_t ecx,
-                                            iree_cpuid_bounds_t bounds) {
-  if (!iree_cpuid_is_in_range(eax, ecx, bounds)) {
-    return (iree_cpuid_regs_t){0, 0, 0, 0};
-  }
-  return iree_cpuid_raw(eax, ecx);
-}
-
-static void iree_cpu_initialize_from_platform_x86_64(uint64_t* out_fields) {
-  iree_cpuid_bounds_t bounds = iree_cpuid_query_bounds();
-  iree_cpuid_regs_t leaf1 = iree_cpuid_or_zero(1, 0, bounds);
-  iree_cpuid_regs_t leaf7_0 = iree_cpuid_or_zero(7, 0, bounds);
-  iree_cpuid_regs_t leaf7_1 = iree_cpuid_or_zero(7, 1, bounds);
-  iree_cpuid_regs_t leafD = iree_cpuid_or_zero(0xD, 0, bounds);
-  iree_cpuid_regs_t leafExt1 = iree_cpuid_or_zero(0x80000001u, 0, bounds);
-
-  // Bits are given by bit position not by hex value because this is how they
-  // are described in the Intel Architectures Software Developer's Manual,
-  // Table 3-8, "Information Returned by CPUID Instruction".
-
-  uint64_t out0 = 0;
-  IREE_COPY_BITS(out0, IREE_CPU_DATA0_X86_64_SSE3, leaf1.ecx, 1 << 0);
-  IREE_COPY_BITS(out0, IREE_CPU_DATA0_X86_64_SSSE3, leaf1.ecx, 1 << 9);
-  IREE_COPY_BITS(out0, IREE_CPU_DATA0_X86_64_SSE41, leaf1.ecx, 1 << 19);
-  IREE_COPY_BITS(out0, IREE_CPU_DATA0_X86_64_SSE42, leaf1.ecx, 1 << 20);
-  IREE_COPY_BITS(out0, IREE_CPU_DATA0_X86_64_SSE4A, leafExt1.ecx, 1 << 6);
-
-  // Features that depend on YMM registers being enabled by the OS.
-  if (iree_all_bits_set(leafD.eax, 0x7)) {
-    IREE_COPY_BITS(out0, IREE_CPU_DATA0_X86_64_AVX, leaf1.ecx, 1 << 28);
-    IREE_COPY_BITS(out0, IREE_CPU_DATA0_X86_64_FMA, leaf1.ecx, 1 << 12);
-    IREE_COPY_BITS(out0, IREE_CPU_DATA0_X86_64_FMA4, leafExt1.ecx, 1 << 16);
-    IREE_COPY_BITS(out0, IREE_CPU_DATA0_X86_64_XOP, leafExt1.ecx, 1 << 11);
-    IREE_COPY_BITS(out0, IREE_CPU_DATA0_X86_64_F16C, leaf1.ecx, 1 << 29);
-    IREE_COPY_BITS(out0, IREE_CPU_DATA0_X86_64_AVX2, leaf7_0.ebx, 1 << 5);
-  }
-
-  // Features that depend on ZMM registers being enabled by the OS.
-  if (iree_all_bits_set(leafD.eax, 0xE7)) {
-    IREE_COPY_BITS(out0, IREE_CPU_DATA0_X86_64_AVX512F, leaf7_0.ebx, 1 << 16);
-    IREE_COPY_BITS(out0, IREE_CPU_DATA0_X86_64_AVX512CD, leaf7_0.ebx, 1 << 28);
-    IREE_COPY_BITS(out0, IREE_CPU_DATA0_X86_64_AVX512VL, leaf7_0.ebx, 1u << 31);
-    IREE_COPY_BITS(out0, IREE_CPU_DATA0_X86_64_AVX512DQ, leaf7_0.ebx, 1 << 17);
-    IREE_COPY_BITS(out0, IREE_CPU_DATA0_X86_64_AVX512BW, leaf7_0.ebx, 1 << 30);
-    IREE_COPY_BITS(out0, IREE_CPU_DATA0_X86_64_AVX512IFMA, leaf7_0.ebx,
-                   1 << 21);
-    IREE_COPY_BITS(out0, IREE_CPU_DATA0_X86_64_AVX512VBMI, leaf7_0.ecx, 1 << 1);
-    IREE_COPY_BITS(out0, IREE_CPU_DATA0_X86_64_AVX512VPOPCNTDQ, leaf7_0.ecx,
-                   1 << 14);
-    IREE_COPY_BITS(out0, IREE_CPU_DATA0_X86_64_AVX512VNNI, leaf7_0.ecx,
-                   1 << 11);
-    IREE_COPY_BITS(out0, IREE_CPU_DATA0_X86_64_AVX512VBMI2, leaf7_0.ecx,
-                   1 << 6);
-    IREE_COPY_BITS(out0, IREE_CPU_DATA0_X86_64_AVX512BITALG, leaf7_0.ecx,
-                   1 << 12);
-    IREE_COPY_BITS(out0, IREE_CPU_DATA0_X86_64_AVX512BF16, leaf7_1.eax, 1 << 5);
-    IREE_COPY_BITS(out0, IREE_CPU_DATA0_X86_64_AVX512FP16, leaf7_0.edx,
-                   1 << 23);
-  }
-
-  // Features that depend on AMX TILE state being enabled by the OS.
-  if (iree_all_bits_set(leafD.eax, 0x60000)) {
-    IREE_COPY_BITS(out0, IREE_CPU_DATA0_X86_64_AMXTILE, leaf7_0.edx, 1 << 24);
-    IREE_COPY_BITS(out0, IREE_CPU_DATA0_X86_64_AMXINT8, leaf7_0.edx, 1 << 25);
-    IREE_COPY_BITS(out0, IREE_CPU_DATA0_X86_64_AMXBF16, leaf7_0.edx, 1 << 22);
-  }
-
-  out_fields[0] = out0;
-}
-
 #elif defined(IREE_ARCH_RISCV_64)
 #if defined(IREE_PLATFORM_ANDROID) || defined(IREE_PLATFORM_LINUX)
 
@@ -443,7 +306,7 @@ static void iree_cpu_initialize_from_platform(iree_allocator_t temp_allocator,
 #if defined(IREE_ARCH_ARM_64)
   iree_cpu_initialize_from_platform_arm_64(out_fields);
 #elif defined(IREE_ARCH_X86_64)
-  iree_cpu_initialize_from_platform_x86_64(out_fields);
+  out_fields[0] = iree_cpu_x86_64_query_features();
 #elif defined(IREE_ARCH_RISCV_64)
   iree_cpu_initialize_from_platform_riscv_64(out_fields);
 #else
