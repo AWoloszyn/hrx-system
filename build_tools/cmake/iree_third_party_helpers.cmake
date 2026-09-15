@@ -144,6 +144,9 @@ function(iree_declare_locked_fetch_content dep_name)
       file(SHA256 "${_patch_file}" _patch_sha256)
       list(APPEND _patch_fingerprints "${_patch}:${_patch_sha256}")
     endforeach()
+    set(_patch_driver "${IREE_ROOT_DIR}/build_tools/cmake/iree_apply_dependency_patches.cmake")
+    file(SHA256 "${_patch_driver}" _patch_driver_sha256)
+    list(APPEND _patch_fingerprints "${_patch_driver}:${_patch_driver_sha256}")
     list(JOIN _patch_fingerprints ";" _patch_fingerprint)
     string(SHA256 _patch_set_sha256 "${_patch_fingerprint}")
     list(APPEND _patch_command
@@ -154,7 +157,7 @@ function(iree_declare_locked_fetch_content dep_name)
       "-DIREE_PATCH_SOURCE_DIR=<SOURCE_DIR>"
       "-DIREE_PATCH_ARGS=${_patch_args}"
       "-DIREE_PATCH_FILES=${_patch_files}"
-      -P "${IREE_ROOT_DIR}/build_tools/cmake/iree_apply_dependency_patches.cmake"
+      -P "${_patch_driver}"
     )
   endif()
   FetchContent_Declare(

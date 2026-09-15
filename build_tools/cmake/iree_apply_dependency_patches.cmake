@@ -12,7 +12,15 @@ if(NOT DEFINED IREE_PATCH_GIT_EXECUTABLE OR
     "and patch files")
 endif()
 
-set(_patch_command "${IREE_PATCH_GIT_EXECUTABLE}" apply)
+# A FetchContent population can live inside the enclosing project's worktree.
+# Stop Git discovery at its parent so paths are relative to the dependency,
+# rather than silently skipped as outside the enclosing repository prefix.
+file(REAL_PATH "${IREE_PATCH_SOURCE_DIR}" _patch_source_dir)
+cmake_path(GET _patch_source_dir PARENT_PATH _patch_parent_dir)
+set(_patch_command
+  "${CMAKE_COMMAND}" -E env
+  "GIT_CEILING_DIRECTORIES=${_patch_parent_dir}"
+  "${IREE_PATCH_GIT_EXECUTABLE}" apply)
 set(_patch_options --whitespace=nowarn ${IREE_PATCH_ARGS})
 
 execute_process(

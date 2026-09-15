@@ -186,6 +186,59 @@ class DepsTest(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("MODULE.cmake.lock is stale", result.stderr)
 
+    def test_module_override_applies_across_include_order(self):
+        override = textwrap.dedent("""\
+            single_version_override(
+                module_name = "demo",
+                version = "2.0",
+                patches = ["//patches:fix.patch"],
+                patch_strip = 2,
+            )
+            """)
+        include = 'include("//build_tools/third_party:deps.MODULE.bazel")\n'
+        for module in (override + include, include + override):
+            with self.subTest(module=module), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                _write_module_files(root, 'bazel_dep(name = "demo", version = "1.0")')
+                (root / "MODULE.bazel").write_text(module, encoding="utf-8")
+                parsed = deps.ModuleParser(root).parse(root / "MODULE.bazel")
+                self.assertEqual(parsed[0].version, "2.0")
+                self.assertEqual(parsed[0].patches, ("//patches:fix.patch",))
+                self.assertEqual(parsed[0].patch_args, ("-p2",))
+
+    def test_patch_only_module_override_preserves_requested_version(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _write_module_files(
+                root,
+                """\
+                bazel_dep(name = "demo", version = "1.0")
+                single_version_override(
+                    module_name = "demo",
+                    patches = ["//patches:fix.patch"],
+                )
+                """,
+            )
+            parsed = deps.ModuleParser(root).parse(root / "MODULE.bazel")
+            self.assertEqual(parsed[0].version, "1.0")
+            self.assertEqual(parsed[0].patch_args, ("-p0",))
+
+    def test_module_override_rejects_unhandled_source_changes(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _write_module_files(
+                root,
+                """\
+                bazel_dep(name = "demo", version = "1.0")
+                single_version_override(
+                    module_name = "demo",
+                    patch_cmds = ["change-the-source"],
+                )
+                """,
+            )
+            with self.assertRaisesRegex(ValueError, "patch_cmds"):
+                deps.ModuleParser(root).parse(root / "MODULE.bazel")
+
     def test_http_archive_preserves_patch_configuration(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

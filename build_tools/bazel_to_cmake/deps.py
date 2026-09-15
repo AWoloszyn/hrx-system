@@ -73,12 +73,14 @@ class ModuleParser:
     def __init__(self, repo_root: Path):
         self.repo_root = repo_root
         self.dependencies: list[Dependency] = []
+        # Root-module overrides apply independently of declaration/include order.
+        self._single_version_overrides: dict[str, dict[str, Any]] = {}
         self._active_files: set[Path] = set()
         self._parsed_files: set[Path] = set()
 
     def parse(self, module_file: Path) -> list[Dependency]:
         self._parse_file(module_file.resolve())
-        return self.dependencies
+        return [self._apply_single_version_override(dep) for dep in self.dependencies]
 
     def _parse_file(self, module_file: Path) -> None:
         if module_file in self._parsed_files:
@@ -112,7 +114,7 @@ class ModuleParser:
             "multiple_version_override": self._ignore,
             "override_repo": self._ignore,
             "register_toolchains": self._ignore,
-            "single_version_override": self._ignore,
+            "single_version_override": self._single_version_override,
             "use_extension": lambda *_args, **_kwargs: DummyModuleExtension(),
             "use_repo": self._ignore,
             "use_repo_rule": lambda repo_rule_label, repo_rule_name: self._repo_rule(
@@ -125,6 +127,37 @@ class ModuleParser:
 
     def _include(self, label: str) -> None:
         self._parse_file(self._resolve_label(label))
+
+    def _single_version_override(self, **kwargs: Any) -> None:
+        name = _required_string(kwargs, "module_name", "single_version_override")
+        if name in self._single_version_overrides:
+            raise ValueError(f"duplicate single_version_override for {name}")
+        self._single_version_overrides[name] = kwargs
+
+    def _apply_single_version_override(self, dependency: Dependency) -> Dependency:
+        if dependency.kind != "bazel_dep":
+            return dependency
+        override = self._single_version_overrides.get(dependency.module_name)
+        if override is None:
+            return dependency
+        context = f"single_version_override({dependency.module_name})"
+        _validate_known_fields(
+            override,
+            context=context,
+            known_fields={"module_name", "version", "patches", "patch_strip"},
+        )
+        patches = _optional_string_list(override, "patches", context)
+        patch_strip = override.get("patch_strip", 0)
+        if type(patch_strip) is not int or patch_strip < 0:
+            raise ValueError(f"{context} requires a nonnegative integer patch_strip")
+        patch_args = [f"-p{patch_strip}"] if patches else []
+        _validate_patch_configuration(patches, patch_args, context)
+        return dataclasses.replace(
+            dependency,
+            version=_optional_string(override, "version", "") or dependency.version,
+            patches=tuple(patches),
+            patch_args=tuple(patch_args),
+        )
 
     def _bazel_dep(
         self,
