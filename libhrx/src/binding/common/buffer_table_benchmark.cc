@@ -769,22 +769,19 @@ IREE_BENCHMARK_FN(BM_FragmentedMemory) {
 }
 IREE_BENCHMARK_REGISTER(BM_FragmentedMemory);
 
-// Worst-case scenario for linear search implementation.
-// Inserts in reverse order, lookups in forward order to maximize search
-// distance.
+// Measures reverse insertion followed by forward lookup. This maximizes search
+// distance for an insertion-ordered linear table while keeping allocation
+// ranges disjoint.
 IREE_BENCHMARK_FN(BM_PathologicalPattern) {
   iree_allocator_t allocator = iree_allocator_system();
   const size_t count = 1000;
 
-  // Create a pathological pattern for linear search:
-  // All addresses hash to similar values or are in worst-case order.
   std::vector<iree_hal_streaming_deviceptr_t> addresses;
   addresses.reserve(count);
 
-  // Pattern 1: All addresses differ only in low bits (worst for some hashes).
   iree_hal_streaming_deviceptr_t base = 0x700000000000ULL;
   for (size_t i = 0; i < count; ++i) {
-    addresses.push_back(base | (i << 4));
+    addresses.push_back(base + i * 0x1000);
   }
 
   auto buffers = CreateDummyBuffers(addresses, allocator);
