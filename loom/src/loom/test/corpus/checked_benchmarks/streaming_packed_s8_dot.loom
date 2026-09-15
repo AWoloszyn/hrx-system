@@ -307,3 +307,22 @@ check.case public @streaming_packed_s8_dot_pipelined_n128 {
 }
 
 check.benchmark<@streaming_packed_s8_dot_pipelined_n128> @streaming_packed_s8_dot_pipelined_n128_time
+
+// Distinct periods keep every carried input changing between records. Packed
+// fields decode to [-3, -1, 2..8, 7], scales cycle through [0.5, 1.0, 1.5], and
+// RHS elements cycle through 1..257. Products and partial sums are multiples of
+// 0.5 with magnitude below 2^20, so every arithmetic step is exact in f32. The
+// serial recurrence is a bitwise oracle for the rotated values. Different
+// output sentinels also detect missing stores.
+check.case public @streaming_packed_s8_dot_varied_inputs {
+  %count = check.param.choice values([0, 1, 2, 3, 8, 63, 128]) : index
+  %fields = check.generate.iota offset(117637117) step(65536) period(7) : tensor<128x2048xi32>
+  %scales = check.generate.iota offset(0.5) step(0.5) period(3) : tensor<128x2048xf16>
+  %rhs = check.generate.iota offset(1.0) step(1.0) period(257) : tensor<128x64x4xf32>
+  %serial = check.generate.fill value(-1.0) : tensor<2048xf32>
+  %pipelined = check.generate.fill value(-2.0) : tensor<2048xf32>
+  kernel.launch @streaming_packed_s8_dot_serial(%count, %fields, %scales, %rhs, %serial) : (index, tensor<128x2048xi32>, tensor<128x2048xf16>, tensor<128x64x4xf32>, tensor<2048xf32>)
+  kernel.launch @streaming_packed_s8_dot_pipelined(%count, %fields, %scales, %rhs, %pipelined) : (index, tensor<128x2048xi32>, tensor<128x2048xf16>, tensor<128x64x4xf32>, tensor<2048xf32>)
+  check.expect.bitwise actual(%pipelined) expected(%serial) : tensor<2048xf32>
+  check.return
+}
