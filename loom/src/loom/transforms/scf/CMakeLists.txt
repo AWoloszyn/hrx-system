@@ -40,8 +40,8 @@ loom_cc_library(
   SRCS
     "scf_unroll.c"
   DEPS
+    ::scf_unroll_tile
     iree::base
-    loom::analysis::movement
     loom::error::emitter
     loom::error::error_defs
     loom::ir
@@ -57,6 +57,29 @@ loom_cc_library(
     loom::rewrite::rewriter
     loom::util::fact_table
     loom::util::walk
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
+    scf_unroll_tile
+  HDRS
+    "scf_unroll_tile.h"
+  SRCS
+    "scf_unroll_tile.c"
+  DEPS
+    iree::base
+    loom::analysis::movement
+    loom::error::emitter
+    loom::error::error_defs
+    loom::ir
+    loom::ops::op_defs
+    loom::ops::scf
+    loom::pass::types
+    loom::rewrite::materialize
+    loom::rewrite::remap
+    loom::rewrite::rewriter
+    loom::util::fact_table
   PUBLIC
 )
 
