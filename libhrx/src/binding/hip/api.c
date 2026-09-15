@@ -13624,22 +13624,6 @@ static hipError_t iree_hip_launch_event_record(
       iree_hal_streaming_event_record(event, stream));
 }
 
-// Records the public function identity on a kernel node created by stream
-// capture. The common streaming layer owns the native argument image; HIP
-// query APIs reconstruct launch-buffer tokens that point into that image.
-static void iree_hip_set_captured_kernel_function(
-    iree_hal_streaming_stream_t* stream, const void* function) {
-  iree_slim_mutex_lock(&stream->mutex);
-  if (stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE &&
-      stream->capture_dependency_count == 1) {
-    iree_hal_streaming_graph_node_t* node = stream->capture_dependencies[0];
-    if (node && node->type == IREE_HAL_STREAMING_GRAPH_NODE_TYPE_KERNEL) {
-      node->attrs.kernel.hip_function = (void*)function;
-    }
-  }
-  iree_slim_mutex_unlock(&stream->mutex);
-}
-
 static hipError_t iree_hip_validate_launch_arguments_before_events(
     const iree_hal_streaming_symbol_t* symbol,
     const iree_hal_streaming_dispatch_params_t* params,
@@ -13713,6 +13697,7 @@ static hipError_t iree_hip_launch_kernel_on_stream(
 
   if (result == hipSuccess) {
     const iree_hal_streaming_dispatch_params_t params = {
+        .binding_function = (void*)function_address,
         .grid_dim = {numBlocks.x, numBlocks.y, numBlocks.z},
         .block_dim = {dimBlocks.x, dimBlocks.y, dimBlocks.z},
         .shared_memory_bytes = (uint32_t)sharedMemBytes,
@@ -13730,9 +13715,6 @@ static hipError_t iree_hip_launch_kernel_on_stream(
     if (result == hipSuccess) {
       result = iree_status_to_hip_result(
           iree_hal_streaming_launch_kernel(symbol, &params, stream_obj));
-      if (result == hipSuccess) {
-        iree_hip_set_captured_kernel_function(stream_obj, function_address);
-      }
     }
     if (result == hipSuccess) {
       result = iree_hip_launch_event_record(events->stop, stream_obj);
@@ -14235,6 +14217,7 @@ static hipError_t iree_hip_module_launch_kernel(
 
   if (result == hipSuccess) {
     const iree_hal_streaming_dispatch_params_t params = {
+        .binding_function = (void*)f,
         .grid_dim = {gridDimX, gridDimY, gridDimZ},
         .block_dim = {blockDimX, blockDimY, blockDimZ},
         .workitem_count =
@@ -14259,9 +14242,6 @@ static hipError_t iree_hip_module_launch_kernel(
     if (result == hipSuccess) {
       result = iree_status_to_hip_result(
           iree_hal_streaming_launch_kernel(symbol, &params, stream_obj));
-      if (result == hipSuccess) {
-        iree_hip_set_captured_kernel_function(stream_obj, f);
-      }
     }
     if (result == hipSuccess) {
       result = iree_hip_launch_event_record(events.stop, stream_obj);
@@ -14419,10 +14399,11 @@ HIPAPI hipError_t hipHccModuleLaunchKernel(
 
 static hipError_t iree_hip_launch_cooperative_symbol(
     iree_hal_streaming_context_t* context, iree_hal_streaming_stream_t* stream,
-    iree_hal_streaming_symbol_t* symbol, unsigned int grid_dim_x,
-    unsigned int grid_dim_y, unsigned int grid_dim_z, unsigned int block_dim_x,
-    unsigned int block_dim_y, unsigned int block_dim_z,
-    unsigned int shared_memory_bytes, void** kernel_params) {
+    iree_hal_streaming_symbol_t* symbol, const void* binding_function,
+    unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,
+    unsigned int block_dim_x, unsigned int block_dim_y,
+    unsigned int block_dim_z, unsigned int shared_memory_bytes,
+    void** kernel_params) {
   iree_hal_streaming_device_t* device = context->device_entry;
   hipError_t result = iree_hip_validate_launch_configuration(
       device, symbol, grid_dim_x, grid_dim_y, grid_dim_z, block_dim_x,
@@ -14467,6 +14448,7 @@ static hipError_t iree_hip_launch_cooperative_symbol(
   if (grid_exceeds_residency) return hipErrorCooperativeLaunchTooLarge;
 
   const iree_hal_streaming_dispatch_params_t params = {
+      .binding_function = (void*)binding_function,
       .grid_dim = {grid_dim_x, grid_dim_y, grid_dim_z},
       .block_dim = {block_dim_x, block_dim_y, block_dim_z},
       .shared_memory_bytes = shared_memory_bytes,
@@ -14503,13 +14485,9 @@ HIPAPI hipError_t hipLaunchCooperativeKernel(const void* function_address,
         resolved_stream.context, function_address, &symbol, &module);
     if (result == hipSuccess) {
       result = iree_hip_launch_cooperative_symbol(
-          resolved_stream.context, resolved_stream.stream, symbol, grid_dim.x,
-          grid_dim.y, grid_dim.z, block_dim.x, block_dim.y, block_dim.z,
-          shared_memory_bytes, kernel_params);
-      if (result == hipSuccess) {
-        iree_hip_set_captured_kernel_function(resolved_stream.stream,
-                                              function_address);
-      }
+          resolved_stream.context, resolved_stream.stream, symbol,
+          function_address, grid_dim.x, grid_dim.y, grid_dim.z, block_dim.x,
+          block_dim.y, block_dim.z, shared_memory_bytes, kernel_params);
     }
   }
   iree_hal_streaming_module_release(module);
@@ -14617,11 +14595,8 @@ HIPAPI hipError_t hipModuleLaunchCooperativeKernel(
   }
 
   result = iree_hip_launch_cooperative_symbol(
-      context, stream_obj, symbol, gridDimX, gridDimY, gridDimZ, blockDimX,
+      context, stream_obj, symbol, f, gridDimX, gridDimY, gridDimZ, blockDimX,
       blockDimY, blockDimZ, sharedMemBytes, kernelParams);
-  if (result == hipSuccess) {
-    iree_hip_set_captured_kernel_function(stream_obj, f);
-  }
   iree_hal_streaming_module_release(module);
   iree_hip_resolved_stream_release(&resolved_stream);
   IREE_TRACE_ZONE_END(z0);
@@ -17414,6 +17389,7 @@ HIPAPI hipError_t hipGraphAddKernelNode(hipGraphNode_t* pGraphNode,
   }
 
   iree_hal_streaming_dispatch_params_t dispatch_params = {
+      .binding_function = params->func,
       .grid_dim = {params->gridDim.x, params->gridDim.y, params->gridDim.z},
       .block_dim = {params->blockDim.x, params->blockDim.y, params->blockDim.z},
       .shared_memory_bytes = params->sharedMemBytes,
@@ -17428,7 +17404,6 @@ HIPAPI hipError_t hipGraphAddKernelNode(hipGraphNode_t* pGraphNode,
       stream_graph, deps, numDependencies, symbol, &dispatch_params, &node);
   iree_hal_streaming_module_release(module);
   HIP_RETURN_STATUS_AND_END_ZONE_IF_ERROR(z0, add_status, hipErrorInvalidValue);
-  node->attrs.kernel.hip_function = params->func;
 
   *pGraphNode = (hipGraphNode_t)node;
   IREE_TRACE_ZONE_END(z0);
@@ -22051,6 +22026,7 @@ HIPAPI hipError_t hipGraphKernelNodeSetParams(hipGraphNode_t node,
   }
 
   iree_hal_streaming_dispatch_params_t dispatch_params = {
+      .binding_function = params->func,
       .grid_dim = {params->gridDim.x, params->gridDim.y, params->gridDim.z},
       .block_dim = {params->blockDim.x, params->blockDim.y, params->blockDim.z},
       .workitem_count =
@@ -22064,11 +22040,20 @@ HIPAPI hipError_t hipGraphKernelNodeSetParams(hipGraphNode_t node,
       .buffer_size = params_size,
       .flags = dispatch_flags,
   };
+  if (stream_node->attrs.kernel.cooperative) {
+    dispatch_params.flags |= IREE_HAL_STREAMING_DISPATCH_FLAG_COOPERATIVE;
+  }
+  if (preserves_exact_extent &&
+      iree_any_bit_set(
+          symbol->function_flags,
+          IREE_HAL_EXECUTABLE_FUNCTION_FLAG_REQUIRES_UNIFORM_WORKGROUPS)) {
+    iree_hal_streaming_module_release(module);
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
+  }
   iree_status_t set_status = iree_hal_streaming_graph_set_kernel_node_params(
       stream_node, symbol, &dispatch_params);
   iree_hal_streaming_module_release(module);
   HIP_RETURN_STATUS(set_status, hipErrorInvalidValue);
-  stream_node->attrs.kernel.hip_function = params->func;
   return hipSuccess;
 }
 

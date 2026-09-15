@@ -509,17 +509,18 @@ iree_status_t iree_hal_streaming_stream_begin(
   return status;
 }
 
-iree_status_t iree_hal_streaming_stream_flush(
+// Flushes pending stream commands while |stream->mutex| is held. Keeping the
+// submission transition lock-held lets callers order a direct operation after
+// recorded commands without reopening capture admission between the flush and
+// the operation.
+static iree_status_t iree_hal_streaming_stream_flush_locked(
     iree_hal_streaming_stream_t* stream) {
-  IREE_ASSERT_ARGUMENT(stream);
-  IREE_TRACE_ZONE_BEGIN(z0);
   const int timing_enabled = hrx_launch_timing_enabled();
   const uint64_t timing_start_ns =
       timing_enabled ? hrx_launch_timing_now_ns() : 0;
   uint64_t timing_end_ns = 0;
   uint64_t timing_execute_ns = 0;
   uint64_t timing_release_ns = 0;
-  iree_slim_mutex_lock(&stream->mutex);
 
   iree_status_t status = iree_ok_status();
   if (stream->command_buffer) {
@@ -530,8 +531,6 @@ iree_status_t iree_hal_streaming_stream_flush(
       timing_end_ns += hrx_launch_timing_now_ns() - timing_step_ns;
     }
     if (!iree_status_is_ok(status)) {
-      iree_slim_mutex_unlock(&stream->mutex);
-      IREE_TRACE_ZONE_END(z0);
       return status;
     }
 
@@ -543,8 +542,6 @@ iree_status_t iree_hal_streaming_stream_flush(
     status = iree_hal_streaming_stream_reserve_next_value_locked(
         stream, &wait_value, &signal_value);
     if (!iree_status_is_ok(status)) {
-      iree_slim_mutex_unlock(&stream->mutex);
-      IREE_TRACE_ZONE_END(z0);
       return status;
     }
 
@@ -588,7 +585,6 @@ iree_status_t iree_hal_streaming_stream_flush(
     }
   }
 
-  iree_slim_mutex_unlock(&stream->mutex);
   if (timing_enabled) {
     ++g_hrx_launch_timing.flush_count;
     g_hrx_launch_timing.flush_total_ns +=
@@ -597,6 +593,16 @@ iree_status_t iree_hal_streaming_stream_flush(
     g_hrx_launch_timing.flush_execute_ns += timing_execute_ns;
     g_hrx_launch_timing.flush_release_ns += timing_release_ns;
   }
+  return status;
+}
+
+iree_status_t iree_hal_streaming_stream_flush(
+    iree_hal_streaming_stream_t* stream) {
+  IREE_ASSERT_ARGUMENT(stream);
+  IREE_TRACE_ZONE_BEGIN(z0);
+  iree_slim_mutex_lock(&stream->mutex);
+  iree_status_t status = iree_hal_streaming_stream_flush_locked(stream);
+  iree_slim_mutex_unlock(&stream->mutex);
   IREE_TRACE_ZONE_END(z0);
   return status;
 }
@@ -1147,6 +1153,14 @@ static iree_status_t iree_hal_streaming_stream_wait_captured_event(
 
     iree_slim_mutex_lock(&stream->mutex);
     if (stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_NONE) {
+      if (stream->capture_dependency_capacity == 0) {
+        iree_status_t status =
+            iree_hal_streaming_capture_reserve_dependencies_locked(stream, 1);
+        if (!iree_status_is_ok(status)) {
+          iree_slim_mutex_unlock(&stream->mutex);
+          return status;
+        }
+      }
       stream->capture_graph = capture_graph;
       stream->capture_graph_owned = true;
       stream->capture_origin = false;
@@ -1551,20 +1565,6 @@ iree_status_t iree_hal_streaming_launch_kernel(
                             "direct kernel launch missing expected parameters");
   }
 
-  // Check if we're capturing to a graph.
-  if (stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE) {
-    // Add kernel node to the graph instead of recording to command buffer.
-    iree_hal_streaming_graph_node_t* node = NULL;
-    IREE_RETURN_AND_END_ZONE_IF_ERROR(
-        z0, iree_hal_streaming_graph_add_kernel_node(
-                stream->capture_graph, stream->capture_dependencies,
-                stream->capture_dependency_count, symbol, params, &node));
-    IREE_RETURN_AND_END_ZONE_IF_ERROR(
-        z0, iree_hal_streaming_capture_set_last_node(stream, node));
-    IREE_TRACE_ZONE_END(z0);
-    return iree_ok_status();
-  }
-
   // Check if this is a "native" kernel without IREE parameter metadata.
   // Native kernels have no bindings and no copy operations.
   const bool is_native_kernel = symbol->parameters.binding_count == 0 &&
@@ -1671,19 +1671,9 @@ iree_status_t iree_hal_streaming_launch_kernel(
       }
     }
   }
-  if (iree_status_is_ok(status) && dispatch_directly &&
-      stream->command_buffer) {
-    uint64_t timing_step_ns = timing_enabled ? hrx_launch_timing_now_ns() : 0;
-    status = iree_hal_streaming_stream_flush(stream);
-    if (timing_enabled) {
-      timing_begin_ns += hrx_launch_timing_now_ns() - timing_step_ns;
-    }
-  }
-
   bool dispatch_attempted = false;
+  bool captured = false;
   if (iree_status_is_ok(status)) {
-    dispatch_attempted = true;
-
     // Create IREE dispatch config.
     const iree_hal_dispatch_config_t config = {
         .workgroup_size =
@@ -1725,9 +1715,30 @@ iree_status_t iree_hal_streaming_launch_kernel(
     uint64_t timing_step_ns = timing_enabled ? hrx_launch_timing_now_ns() : 0;
     bool should_flush = false;
     iree_slim_mutex_lock(&stream->mutex);
-    if (dispatch_directly) {
+    if (stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_ACTIVE) {
+      // Capture admission, graph insertion, and frontier replacement form one
+      // transaction with end-capture. Argument preparation above is private and
+      // may run concurrently; no stream-visible work has been submitted yet.
+      iree_hal_streaming_graph_node_t* node = NULL;
+      status = iree_hal_streaming_graph_add_kernel_node(
+          stream->capture_graph, stream->capture_dependencies,
+          stream->capture_dependency_count, symbol, params, &node);
+      if (iree_status_is_ok(status)) {
+        status = iree_hal_streaming_capture_set_last_node_locked(stream, node);
+      }
+      captured = true;
+    } else if (stream->capture_status ==
+               IREE_HAL_STREAMING_CAPTURE_STATUS_INVALIDATED) {
+      status = iree_make_status(IREE_STATUS_DATA_LOSS,
+                                "stream capture has been invalidated");
+    } else if (dispatch_directly) {
+      uint64_t flush_start_ns = timing_enabled ? hrx_launch_timing_now_ns() : 0;
+      status = iree_hal_streaming_stream_flush_locked(stream);
+      if (timing_enabled) {
+        timing_begin_ns += hrx_launch_timing_now_ns() - flush_start_ns;
+      }
       iree_hal_queue_t* dispatch_queue = stream->queue;
-      if (cooperative_dispatch) {
+      if (iree_status_is_ok(status) && cooperative_dispatch) {
         status = iree_hal_streaming_stream_select_cooperative_queue_locked(
             stream, &dispatch_queue);
       }
@@ -1748,6 +1759,7 @@ iree_status_t iree_hal_streaming_launch_kernel(
           .payload_values = &signal_value,
       };
       if (iree_status_is_ok(status)) {
+        dispatch_attempted = true;
         status = iree_hal_queue_dispatch(
             dispatch_queue, wait_semaphores, signal_semaphores,
             symbol->executable,
@@ -1764,6 +1776,7 @@ iree_status_t iree_hal_streaming_launch_kernel(
         status = iree_hal_queue_flush(dispatch_queue);
       }
     } else {
+      dispatch_attempted = true;
       status = iree_hal_streaming_record_dispatch_locked(
           stream, symbol, config,
           iree_make_const_byte_span(arguments.constants,
@@ -1775,7 +1788,8 @@ iree_status_t iree_hal_streaming_launch_kernel(
     if (timing_enabled) {
       timing_dispatch_ns += hrx_launch_timing_now_ns() - timing_step_ns;
     }
-    if (!dispatch_directly && iree_status_is_ok(status) && should_flush) {
+    if (!captured && !dispatch_directly && iree_status_is_ok(status) &&
+        should_flush) {
       status = iree_hal_streaming_stream_flush(stream);
     }
   }
