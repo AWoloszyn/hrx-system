@@ -95,6 +95,7 @@ function(amdf_library)
   set(_COMPONENT_TARGETS)
   set(_OBJECT_SOURCES)
   set(_LINK_DEPS)
+  set(_LINK_OPTIONS)
   while(_PENDING_COMPONENTS)
     list(POP_FRONT _PENDING_COMPONENTS _COMPONENT)
     if(NOT TARGET "${_COMPONENT}")
@@ -120,6 +121,16 @@ function(amdf_library)
       list(APPEND _OBJECT_SOURCES
         "$<TARGET_OBJECTS:${_COMPONENT_TARGET}.objects>")
     endif()
+
+    # Folding objects removes their component targets from the final link.
+    # Native system libraries and other link options must follow those objects
+    # into the shared artifact and the static artifact's consumer interface.
+    foreach(_PROPERTY LINK_OPTIONS INTERFACE_LINK_OPTIONS)
+      get_target_property(_COMPONENT_OPTIONS "${_COMPONENT_TARGET}" ${_PROPERTY})
+      if(_COMPONENT_OPTIONS)
+        list(APPEND _LINK_OPTIONS ${_COMPONENT_OPTIONS})
+      endif()
+    endforeach()
 
     get_target_property(
       _PRIVATE_DEPS "${_COMPONENT_TARGET}" LINK_LIBRARIES)
@@ -164,6 +175,9 @@ function(amdf_library)
   if(_LINK_DEPS)
     list(REMOVE_DUPLICATES _LINK_DEPS)
   endif()
+  if(_LINK_OPTIONS)
+    list(REMOVE_DUPLICATES _LINK_OPTIONS)
+  endif()
 
   target_sources(${_RULE_NAME} PRIVATE ${_OBJECT_SOURCES})
   target_link_libraries(${_RULE_NAME}
@@ -186,6 +200,7 @@ function(amdf_library)
   target_link_options(${_RULE_NAME}
     PRIVATE
       ${IREE_DEFAULT_LINKOPTS}
+      ${_LINK_OPTIONS}
   )
   if(WIN32)
     if(NOT _RULE_WINDOWS_DEF_FILE)
@@ -207,6 +222,7 @@ function(amdf_library)
     PUBLIC
       ${_LINK_DEPS}
   )
+  target_link_options(${_STATIC_TARGET} INTERFACE ${_LINK_OPTIONS})
   iree_add_data_dependencies(
     NAME ${_STATIC_TARGET}
     DATA ${_RULE_RUNTIME_DATA}
