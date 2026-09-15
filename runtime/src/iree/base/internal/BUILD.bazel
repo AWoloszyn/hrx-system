@@ -196,9 +196,31 @@ iree_runtime_cc_library(
     srcs = ["cpu.c"],
     hdrs = ["cpu.h"],
     deps = [
+        ":cpu_x86_64",
         "//runtime/src/iree/base",
         "//runtime/src/iree/base:core_headers",
         "//runtime/src/iree/base:cpu_data",
+    ],
+)
+
+iree_runtime_cc_library(
+    name = "cpu_x86_64",
+    srcs = ["cpu_x86_64.c"],
+    hdrs = ["cpu_x86_64.h"],
+    deps = [
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base:cpu_data",
+    ],
+)
+
+iree_runtime_cc_test(
+    name = "cpu_x86_64_test",
+    srcs = ["cpu_x86_64_test.cc"],
+    deps = [
+        ":cpu",
+        ":cpu_x86_64",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
     ],
 )
 

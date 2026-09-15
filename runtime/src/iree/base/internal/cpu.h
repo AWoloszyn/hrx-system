@@ -32,6 +32,9 @@ void iree_cpu_initialize_with_data(iree_host_size_t field_count,
 // Queries CPU data from the current platform into |out_cpu_data|.
 //
 // This does not read or mutate the process-global CPU data cache.
+// On x86, features requiring optional OS state are reported only when that
+// state is usable by the process. This query never requests additional
+// permissions; applications establish them before querying or creating devices.
 void iree_cpu_query_data(iree_allocator_t temp_allocator,
                          iree_cpu_data_t* out_cpu_data);
 
@@ -81,4 +84,4 @@ void iree_cpu_requery_processor_id(iree_cpu_processor_tag_t* IREE_RESTRICT tag,
 }  // extern "C"
 #endif  // __cplusplus
 
-#endif  // IREE_BASE_INTERNAL_ARENA_H_
+#endif  // IREE_BASE_INTERNAL_CPU_H_
