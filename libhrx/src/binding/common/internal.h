@@ -216,8 +216,9 @@ typedef struct iree_hal_streaming_timestamp_domain_t {
   uint32_t valid_bits;
 } iree_hal_streaming_timestamp_domain_t;
 
-// Exact queue kept exclusive while an externally controlled atomic wait may
-// block it. Completed lanes are recycled by the next wait submission.
+// Exact queue kept exclusive to one logical stream while any of its externally
+// controlled atomic waits may block. Further waits on that stream append to the
+// same lane; completed lanes are recycled across streams.
 typedef struct iree_hal_streaming_value_wait_lane_t {
   // Next lane in a context-owned idle or pending list.
   struct iree_hal_streaming_value_wait_lane_t* next;
