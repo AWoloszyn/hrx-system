@@ -79,17 +79,22 @@
 // exactly through round-trips. Auto-generated names are digit-only
 // (%0, %1, %2) using the value's ID in the module value table.
 //
-// These occupy separate syntactic namespaces in the grammar:
-//
-//   SSA value: '%' identifier | '%' digit+
-//
-// Identifiers start with [a-zA-Z_$]. Digit-only names start with
-// [0-9]. No collision between user and auto names is possible.
+// Transformations can move named values into the same scope or clone a named
+// value. The printer disambiguates duplicate names with a dollar and the
+// value ID (%result$4). When that spelling is already an explicit name, a
+// counter precedes the value ID (%result$1$4). Keeping the unique ID last
+// prevents generated names from colliding with one another. Explicit numeric
+// names can likewise require an unnamed value to print as %$4 or %$1$4.
+// Dollar markers distinguish compiler-created spellings from authored intent;
+// loom-lint rejects them in maintained source inputs, not generated output.
 //
 // The value ID is the index into the module's value table, assigned
 // in definition order by the builder. The printer emits %N for any
-// value without a user-assigned name. The printer requires zero
-// allocation and zero state for auto-naming — just the value table.
+// value without a user-assigned name when that spelling is available. Modules
+// with no explicit names require no name-plan allocation; named modules use a
+// print-scoped plan to resolve collisions before emitting value references.
+// Standalone type and attribute printing shares a lazily prepared plan across
+// all nested references; atoms with no SSA references require no name planning.
 //
 // ==========================================================================
 // File structure

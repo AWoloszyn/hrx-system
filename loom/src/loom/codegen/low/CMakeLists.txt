@@ -521,6 +521,33 @@ loom_cc_library(
   PUBLIC
 )
 
+loom_cc_benchmark(
+  NAME
+    allocation_benchmark
+  SRCS
+    "allocation_benchmark.cc"
+  DEPS
+    ::allocation
+    ::function_model
+    ::placement
+    ::text_asm
+    ::verify
+    iree::base
+    iree::base::internal::arena
+    iree::testing::benchmark_main
+    loom::analysis::liveness
+    loom::format::text::parser
+    loom::ir
+    loom::ops::func
+    loom::ops::low
+    loom::ops::target
+    loom::ops::test
+    loom::target::test::low_registry
+  ARGS
+    "--benchmark_filter=.*/length:(8|64)/components:(1|16)/width:(1|4)"
+  TESTONLY
+)
+
 loom_cc_library(
   NAME
     allocation_materialization

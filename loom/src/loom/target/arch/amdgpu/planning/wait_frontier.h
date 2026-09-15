@@ -11,6 +11,7 @@
 
 #include "iree/base/api.h"
 #include "iree/base/internal/arena.h"
+#include "loom/codegen/low/allocation/storage_lease_index.h"
 #include "loom/codegen/low/allocation/table.h"
 #include "loom/codegen/low/schedule/types.h"
 #include "loom/target/arch/amdgpu/planning/wait_counters.h"
@@ -128,6 +129,8 @@ typedef struct loom_amdgpu_wait_frontier_t {
     uint64_t* resolved_outgoing_words;
     // Incoming words active while the current block is processed.
     uint64_t* active_words;
+    // Physical/temporal index membership mirroring |active_words| transitions.
+    loom_low_allocation_storage_lease_selection_t active_selection;
   } storage_leases;
   // Gfx125x XCNT translation groups that may be active across block edges.
   struct {
@@ -137,7 +140,12 @@ typedef struct loom_amdgpu_wait_frontier_t {
     loom_amdgpu_wait_xcnt_group_flags_t* resolved_outgoing_flags;
     // Incoming and locally produced groups active in the current block.
     loom_amdgpu_wait_xcnt_group_flags_t active_flags;
+    // Incoming groups whose source leases have been removed in this block.
+    loom_amdgpu_wait_xcnt_group_flags_t drained_group_flags;
   } xcnt;
+  // Counters already removed from incoming state in the active block. Local
+  // producers are published at end_block, never added to the incoming bitmaps.
+  uint32_t incoming_drain_counter_mask;
   // Counter classes fully drained on every path through each block.
   uint32_t* block_drain_counter_masks;
   // Per-block worklist and resolved-state bits.
@@ -179,6 +187,15 @@ uint32_t loom_amdgpu_wait_frontier_memory_query(
 uint32_t loom_amdgpu_wait_frontier_memory_dependency_mask(
     const loom_amdgpu_wait_frontier_t* frontier,
     const loom_amdgpu_wait_frontier_node_t* node);
+
+// Returns true when incoming memory state proves |producer_node|'s work in
+// |counter_mask| complete. The producer must be in a different block from the
+// active consumer. Untracked counters and possibly pending aliasing work are
+// inconclusive. Unresolved predecessors and backedges retain conservative
+// state.
+bool loom_amdgpu_wait_frontier_producer_is_complete(
+    const loom_amdgpu_wait_frontier_t* frontier, uint32_t producer_node,
+    uint32_t counter_mask);
 
 // Returns the single known completion-order class for outstanding VMEM writes
 // overlapping |assignment|. UNKNOWN represents either an unclassified write or

@@ -11,10 +11,10 @@ func.def target(@test_target) @structured_if_without_results(%cond: i1) {
 // ----
 test.target<low_core> @test_target
 
-low.func.def target<test.low.core>(@test_target) abi(object_function) @structured_if_without_results(%cond: reg<test.i32>) {
+low.func.def target<test.low.core>(@test_target) abi(object_function) @structured_if_without_results(%cond: reg<test.i32>) asm {
   low.scf.if %cond {
   }
-  low.return
+  return
 }
 
 // ====
@@ -36,15 +36,15 @@ func.def target(@test_target) @structured_if_with_results(%cond: i1, %lhs: i32, 
 // ----
 test.target<low_core> @test_target
 
-low.func.def target<test.low.core>(@test_target) abi(object_function) @structured_if_with_results(%cond: reg<test.i32>, %lhs: reg<test.i32>, %rhs: reg<test.i32>, %fallback: reg<test.i32>) -> (reg<test.i32>) {
+low.func.def target<test.low.core>(@test_target) abi(object_function) @structured_if_with_results(%cond: reg<test.i32>, %lhs: reg<test.i32>, %rhs: reg<test.i32>, %fallback: reg<test.i32>) -> (reg<test.i32>) asm {
   %result = low.scf.if %cond -> (reg<test.i32>) {
-    %then = low.op<test.add.i32>(%lhs, %rhs) : (reg<test.i32>, reg<test.i32>) -> reg<test.i32>
+    %then = test.add.i32 %lhs, %rhs
     low.scf.yield %then : reg<test.i32>
   } else {
-    %else = low.op<test.add.i32>(%fallback, %rhs) : (reg<test.i32>, reg<test.i32>) -> reg<test.i32>
+    %else = test.add.i32 %fallback, %rhs
     low.scf.yield %else : reg<test.i32>
   }
-  low.return %result : reg<test.i32>
+  return %result
 }
 
 // ====
@@ -63,12 +63,12 @@ func.def target(@test_target) @structured_for_with_iter_arg(%lo: index, %hi: ind
 // ----
 test.target<low_core> @test_target
 
-low.func.def target<test.low.core>(@test_target) abi(object_function) @structured_for_with_iter_arg(%lo: reg<test.i32>, %hi: reg<test.i32>, %step: reg<test.i32>, %factor: reg<test.i32>, %init: reg<test.i32>, %bias: reg<test.i32>) -> (reg<test.i32>) {
+low.func.def target<test.low.core>(@test_target) abi(object_function) @structured_for_with_iter_arg(%lo: reg<test.i32>, %hi: reg<test.i32>, %step: reg<test.i32>, %factor: reg<test.i32>, %init: reg<test.i32>, %bias: reg<test.i32>) -> (reg<test.i32>) asm {
   %result = low.scf.for [%lo to %hi step %step] iter_args(%init: reg<test.i32>) -> (reg<test.i32>) unroll(%factor) do(%iv: reg<test.i32>, %acc: reg<test.i32>) {
-    %next = low.op<test.add.i32>(%acc, %bias) : (reg<test.i32>, reg<test.i32>) -> reg<test.i32>
+    %next = test.add.i32 %acc, %bias
     low.scf.yield %next : reg<test.i32>
   }
-  low.return %result : reg<test.i32>
+  return %result
 }
 
 // ====
@@ -90,15 +90,15 @@ func.def target(@test_target) @structured_while_with_iter_arg(%cond: i1, %init: 
 // ----
 test.target<low_core> @test_target
 
-low.func.def target<test.low.core>(@test_target) abi(object_function) @structured_while_with_iter_arg(%cond: reg<test.i32>, %init: reg<test.i32>, %bias: reg<test.i32>) -> (reg<test.i32>) {
+low.func.def target<test.low.core>(@test_target) abi(object_function) @structured_while_with_iter_arg(%cond: reg<test.i32>, %init: reg<test.i32>, %bias: reg<test.i32>) -> (reg<test.i32>) asm {
   %result = low.scf.while(%before = %init : reg<test.i32>) -> (reg<test.i32>) {
-    %forwarded = low.op<test.add.i32>(%before, %bias) : (reg<test.i32>, reg<test.i32>) -> reg<test.i32>
+    %forwarded = test.add.i32 %before, %bias
     low.scf.condition %cond, %forwarded : reg<test.i32>, reg<test.i32>
   } do(%body: reg<test.i32>) {
-    %next = low.op<test.add.i32>(%body, %bias) : (reg<test.i32>, reg<test.i32>) -> reg<test.i32>
+    %next = test.add.i32 %body, %bias
     low.scf.yield %next : reg<test.i32>
   }
-  low.return %result : reg<test.i32>
+  return %result
 }
 
 // ====
@@ -122,17 +122,17 @@ func.def target(@test_target) @nested_if_inside_for(%cond: i1, %lo: index, %hi: 
 // ----
 test.target<low_core> @test_target
 
-low.func.def target<test.low.core>(@test_target) abi(object_function) @nested_if_inside_for(%cond: reg<test.i32>, %lo: reg<test.i32>, %hi: reg<test.i32>, %step: reg<test.i32>, %init: reg<test.i32>, %bias: reg<test.i32>) -> (reg<test.i32>) {
+low.func.def target<test.low.core>(@test_target) abi(object_function) @nested_if_inside_for(%cond: reg<test.i32>, %lo: reg<test.i32>, %hi: reg<test.i32>, %step: reg<test.i32>, %init: reg<test.i32>, %bias: reg<test.i32>) -> (reg<test.i32>) asm {
   %result = low.scf.for [%lo to %hi step %step] iter_args(%init: reg<test.i32>) -> (reg<test.i32>) do(%iv: reg<test.i32>, %acc: reg<test.i32>) {
     %next = low.scf.if %cond -> (reg<test.i32>) {
-      %then = low.op<test.add.i32>(%acc, %bias) : (reg<test.i32>, reg<test.i32>) -> reg<test.i32>
+      %then = test.add.i32 %acc, %bias
       low.scf.yield %then : reg<test.i32>
     } else {
       low.scf.yield %acc : reg<test.i32>
     }
     low.scf.yield %next : reg<test.i32>
   }
-  low.return %result : reg<test.i32>
+  return %result
 }
 
 // ====

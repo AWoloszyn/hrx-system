@@ -1,0 +1,101 @@
+// RUN: roundtrip
+
+// Generic Low input prints in assembly form even with an explicit expectation.
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @roundtrip_generic(%value: reg<test.i32>) -> (reg<test.i32>) {
+  %copy = low.copy %value : reg<test.i32> -> reg<test.i32>
+  low.return %copy : reg<test.i32>
+}
+
+// ----
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @roundtrip_generic(%value: reg<test.i32>) -> (reg<test.i32>) asm {
+  %copy = copy %value : reg<test.i32> -> reg<test.i32>
+  return %copy
+}
+
+// ====
+
+// RUN: pass dce
+
+// Pass output keeps assembly form with an explicit expectation.
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @pass_explicit(%value: reg<test.i32>) -> (reg<test.i32>) asm {
+  %unused = copy %value : reg<test.i32> -> reg<test.i32>
+  %copy = copy %value : reg<test.i32> -> reg<test.i32>
+  return %copy
+}
+
+// ----
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @pass_explicit(%value: reg<test.i32>) -> (reg<test.i32>) asm {
+  %copy = copy %value : reg<test.i32> -> reg<test.i32>
+  return %copy
+}
+
+// ====
+
+// RUN: roundtrip
+
+// Assembly input is a fixed point without an expected-output section.
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @roundtrip_asm(%value: reg<test.i32>) -> (reg<test.i32>) asm {
+  %copy = copy %value : reg<test.i32> -> reg<test.i32>
+  return %copy
+}
+
+// ====
+
+// RUN: pass dce
+
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @pass_asm(%value: reg<test.i32>) -> (reg<test.i32>) asm {
+  %copy = copy %value : reg<test.i32> -> reg<test.i32>
+  return %copy
+}
+
+// ====
+
+// RUN: with-locations roundtrip
+
+// Location printing composes with the assembly default.
+test.target<low_core> @target loc("source.loom":1:1)
+
+low.func.def target<test.low.core>(@target) @roundtrip_locations(%value: reg<test.i32>) -> (reg<test.i32>) {
+  %copy = low.copy %value : reg<test.i32> -> reg<test.i32> loc("source.loom":2:3)
+  low.return %copy : reg<test.i32> loc("source.loom":3:3)
+} loc("source.loom":2:1)
+
+// ----
+test.target<low_core> @target loc("source.loom":1:1)
+
+low.func.def target<test.low.core>(@target) @roundtrip_locations(%value: reg<test.i32>) -> (reg<test.i32>) asm {
+  %copy = copy %value : reg<test.i32> -> reg<test.i32> loc("source.loom":2:3)
+  return %copy loc("source.loom":3:3)
+} loc("source.loom":2:1)
+
+// ====
+
+// RUN: with-locations pass dce
+
+test.target<low_core> @target loc("source.loom":1:1)
+
+low.func.def target<test.low.core>(@target) @pass_locations(%value: reg<test.i32>) -> (reg<test.i32>) asm {
+  %unused = copy %value : reg<test.i32> -> reg<test.i32> loc("source.loom":2:2)
+  %copy = copy %value : reg<test.i32> -> reg<test.i32> loc("source.loom":2:3)
+  return %copy loc("source.loom":3:3)
+} loc("source.loom":2:1)
+
+// ----
+test.target<low_core> @target loc("source.loom":1:1)
+
+low.func.def target<test.low.core>(@target) @pass_locations(%value: reg<test.i32>) -> (reg<test.i32>) asm {
+  %copy = copy %value : reg<test.i32> -> reg<test.i32> loc("source.loom":2:3)
+  return %copy loc("source.loom":3:3)
+} loc("source.loom":2:1)

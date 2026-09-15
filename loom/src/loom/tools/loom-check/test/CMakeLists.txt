@@ -14,6 +14,7 @@ loom_check_test_suite(
     core_test
   SRCS
     "emit.loom-test"
+    "low_asm.loom-test"
     "pass.loom-test"
     "requires.loom-test"
     "roundtrip.loom-test"

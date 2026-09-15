@@ -834,8 +834,7 @@ static void iree_hal_amdgpu_staging_copy_pre_signal(
   (void)entry;
   iree_hal_amdgpu_staging_chunk_t* chunk =
       (iree_hal_amdgpu_staging_chunk_t*)user_data;
-  chunk->copy_status =
-      iree_status_is_ok(status) ? iree_ok_status() : iree_status_clone(status);
+  chunk->copy_status = iree_status_clone(status);
   iree_hal_resource_retain(&chunk->transfer->resource);
   iree_hal_amdgpu_host_queue_enqueue_post_drain_action(
       chunk->transfer->queue, &chunk->post_drain_action,

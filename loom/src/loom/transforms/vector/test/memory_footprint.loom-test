@@ -18,6 +18,214 @@ func.def @guarded_first_element(%buffer: buffer, %base: offset, %lane0: index, %
 
 // ====
 
+// The final attention tile's end becomes exactly 64 through forward facts.
+// Its origin still needs the retained relation end = origin + 16.
+func.def @exact_end_assumption_retains_origin_relation(%buffer: buffer, %base: offset, %block0: index) {
+  %block = index.assume %block0 [range(%block0, 0, 31)] : index
+  %c16 = index.constant 16 : index
+  %c48 = index.constant 48 : index
+  %c64 = index.constant 64 : index
+  %origin0 = index.madd %block, %c64, %c48 : index
+  %end0 = index.add %origin0, %c16 : index
+  %origin, %end = index.assume %origin0, %end0 [le(%end0, %c64)] : index, index
+  %view = buffer.view %buffer[%base] : buffer -> view<[%end]xf16>
+  %loaded = vector.load %view[%origin] : view<[%end]xf16> -> vector<16xf16>
+  test.use %loaded : vector<16xf16>
+  func.return
+}
+
+// ====
+
+// The same proof must survive type refinement replacing the end with a static
+// extent. Neither the load nor the view directly references the end value.
+func.def @exact_end_assumption_proves_static_extent(%buffer: buffer, %base: offset, %block0: index) {
+  %block = index.assume %block0 [range(%block0, 0, 31)] : index
+  %c16 = index.constant 16 : index
+  %c48 = index.constant 48 : index
+  %c64 = index.constant 64 : index
+  %origin0 = index.madd %block, %c64, %c48 : index
+  %end0 = index.add %origin0, %c16 : index
+  %origin, %end = index.assume %origin0, %end0 [le(%end0, %c64)] : index, index
+  %view = buffer.view %buffer[%base] : buffer -> view<64xf16>
+  %loaded = vector.load %view[%origin] : view<64xf16> -> vector<16xf16>
+  test.use %loaded : vector<16xf16>
+  func.return
+}
+
+// ====
+
+// Earlier tiles retain a nonconstant end, allowing the direct origin/end
+// difference to prove the same access.
+func.def @nonexact_end_retains_origin_relation(%buffer: buffer, %base: offset, %block0: index) {
+  %block = index.assume %block0 [range(%block0, 0, 31)] : index
+  %c16 = index.constant 16 : index
+  %c32 = index.constant 32 : index
+  %c64 = index.constant 64 : index
+  %origin0 = index.madd %block, %c64, %c32 : index
+  %end0 = index.add %origin0, %c16 : index
+  %origin, %end = index.assume %origin0, %end0 [le(%end0, %c64)] : index, index
+  %view = buffer.view %buffer[%base] : buffer -> view<[%end]xf16>
+  %loaded = vector.load %view[%origin] : view<[%end]xf16> -> vector<16xf16>
+  test.use %loaded : vector<16xf16>
+  func.return
+}
+
+// ====
+
+func.def @strict_shifted_end_proves_static_extent(%buffer: buffer, %base: offset, %origin0: index) {
+  %origin_bounded = index.assume %origin0 [range(%origin0, 0, 127)] : index
+  %c16 = index.constant 16 : index
+  %end0 = index.add %origin_bounded, %c16 : index
+  %origin, %end = index.assume %origin_bounded, %end0 [lt(%end0, 65)] : index, index
+  %view = buffer.view %buffer[%base] : buffer -> view<64xf16>
+  %loaded = vector.load %view[%origin] : view<64xf16> -> vector<16xf16>
+  test.use %loaded : vector<16xf16>
+  func.return
+}
+
+// ====
+
+func.def @reversed_shifted_end_proves_static_extent(%buffer: buffer, %base: offset, %origin0: index) {
+  %origin_bounded = index.assume %origin0 [range(%origin0, 0, 127)] : index
+  %c16 = index.constant 16 : index
+  %end0 = index.add %origin_bounded, %c16 : index
+  %origin, %end = index.assume %origin_bounded, %end0 [ge(64, %end0)] : index, index
+  %view = buffer.view %buffer[%base] : buffer -> view<64xf16>
+  %loaded = vector.load %view[%origin] : view<64xf16> -> vector<16xf16>
+  test.use %loaded : vector<16xf16>
+  func.return
+}
+
+// ====
+
+// Subtracting a negative predicate offset increases the origin's upper bound.
+func.def @negative_shift_proves_static_extent(%buffer: buffer, %base: offset, %origin0: index) {
+  %origin_bounded = index.assume %origin0 [range(%origin0, 8, 127)] : index
+  %c8 = index.constant 8 : index
+  %biased0 = index.sub %origin_bounded, %c8 : index
+  %origin, %biased = index.assume %origin_bounded, %biased0 [le(%biased0, 40)] : index, index
+  %view = buffer.view %buffer[%base] : buffer -> view<64xf16>
+  %loaded = vector.load %view[%origin] : view<64xf16> -> vector<16xf16>
+  test.use %loaded : vector<16xf16>
+  func.return
+}
+
+// ====
+
+// Both predicate operands may differ from the queried origin and bound.
+func.def @shifted_origin_and_bound_prove_dynamic_extent(%buffer: buffer, %base: offset, %origin0: index, %bound0: index) {
+  %origin_bounded = index.assume %origin0 [range(%origin0, 0, 1024)] : index
+  %bound = index.assume %bound0 [range(%bound0, 16, 1024)] : index
+  %c16 = index.constant 16 : index
+  %c32 = index.constant 32 : index
+  %end0 = index.add %origin_bounded, %c32 : index
+  %upper = index.add %bound, %c16 : index
+  %origin, %end = index.assume %origin_bounded, %end0 [le(%end0, %upper)] : index, index
+  %view = buffer.view %buffer[%base] : buffer -> view<[%bound]xf16>
+  %loaded = vector.load %view[%origin] : view<[%bound]xf16> -> vector<16xf16>
+  test.use %loaded : vector<16xf16>
+  func.return
+}
+
+// ====
+
+func.def @reversed_strict_shifts_prove_dynamic_extent(%buffer: buffer, %base: offset, %origin0: index, %bound0: index) {
+  %origin_bounded = index.assume %origin0 [range(%origin0, 0, 1024)] : index
+  %bound = index.assume %bound0 [range(%bound0, 16, 1024)] : index
+  %c17 = index.constant 17 : index
+  %c32 = index.constant 32 : index
+  %end0 = index.add %origin_bounded, %c32 : index
+  %upper = index.add %bound, %c17 : index
+  %origin, %end = index.assume %origin_bounded, %end0 [gt(%upper, %end0)] : index, index
+  %view = buffer.view %buffer[%base] : buffer -> view<[%bound]xf16>
+  %loaded = vector.load %view[%origin] : view<[%bound]xf16> -> vector<16xf16>
+  test.use %loaded : vector<16xf16>
+  func.return
+}
+
+// ====
+
+func.def @shifted_end_one_element_short_is_rejected(%buffer: buffer, %base: offset, %origin0: index) {
+  %origin_bounded = index.assume %origin0 [range(%origin0, 0, 127)] : index
+  %c15 = index.constant 15 : index
+  %end0 = index.add %origin_bounded, %c15 : index
+  %origin, %end = index.assume %origin_bounded, %end0 [le(%end0, 64)] : index, index
+  %view = buffer.view %buffer[%base] : buffer -> view<64xf16>
+  // ERROR@+1: SUBRANGE/010 {op_name="vector.load", vector_extent="16", view_bound="64", required_origin_upper_bound="48"}
+  %loaded = vector.load %view[%origin] : view<64xf16> -> vector<16xf16>
+  test.use %loaded : vector<16xf16>
+  func.return
+}
+
+// ====
+
+func.def @shifted_dynamic_bound_one_element_short_is_rejected(%buffer: buffer, %base: offset, %origin0: index, %bound0: index) {
+  %origin_bounded = index.assume %origin0 [range(%origin0, 0, 1024)] : index
+  %bound = index.assume %bound0 [range(%bound0, 16, 1024)] : index
+  %c17 = index.constant 17 : index
+  %c32 = index.constant 32 : index
+  %end0 = index.add %origin_bounded, %c32 : index
+  %upper = index.add %bound, %c17 : index
+  %origin, %end = index.assume %origin_bounded, %end0 [le(%end0, %upper)] : index, index
+  %view = buffer.view %buffer[%base] : buffer -> view<[%bound]xf16>
+  // ERROR@+1: SUBRANGE/010 {op_name="vector.load", vector_extent="16"}
+  %loaded = vector.load %view[%origin] : view<[%bound]xf16> -> vector<16xf16>
+  test.use %loaded : vector<16xf16>
+  func.return
+}
+
+// ====
+
+// A lower bound on the end cannot discharge an upper bound on the access.
+func.def @shifted_lower_bound_does_not_prove_extent(%buffer: buffer, %base: offset, %origin0: index) {
+  %origin_bounded = index.assume %origin0 [range(%origin0, 0, 127)] : index
+  %c16 = index.constant 16 : index
+  %end0 = index.add %origin_bounded, %c16 : index
+  %origin, %end = index.assume %origin_bounded, %end0 [ge(%end0, 64)] : index, index
+  %view = buffer.view %buffer[%base] : buffer -> view<64xf16>
+  // ERROR@+1: SUBRANGE/010 {op_name="vector.load", vector_extent="16", view_bound="64", required_origin_upper_bound="48"}
+  %loaded = vector.load %view[%origin] : view<64xf16> -> vector<16xf16>
+  test.use %loaded : vector<16xf16>
+  func.return
+}
+
+// ====
+
+// The biased addition is representable for every origin in [0, 127], but
+// subtracting its negative offset from 64 overflows the proof's signed range.
+// The predicate permits every origin and cannot make the access safe.
+func.def @shifted_bound_overflow_does_not_prove_extent(%buffer: buffer, %base: offset, %origin0: i64) {
+  %origin_bounded = scalar.assume %origin0 [range(%origin0, 0, 127)] : i64
+  %bias = scalar.constant -9223372036854775807 : i64
+  %biased0 = scalar.addi %origin_bounded, %bias : i64
+  %origin_scalar, %biased = scalar.assume %origin_bounded, %biased0 [le(%biased0, 64)] : i64, i64
+  %origin = index.cast %origin_scalar : i64 to index
+  %view = buffer.view %buffer[%base] : buffer -> view<64xf16>
+  // ERROR@+1: SUBRANGE/010 {op_name="vector.load", vector_extent="16", view_bound="64", required_origin_upper_bound="48"}
+  %loaded = vector.load %view[%origin] : view<64xf16> -> vector<16xf16>
+  test.use %loaded : vector<16xf16>
+  func.return
+}
+
+// ====
+
+// An aligned origin guarded below an aligned extent proves the whole vector,
+// not just its first element. This is the four-row Q6 scan output pattern.
+func.def @aligned_guarded_store(%buffer: buffer, %base: offset, %cohort0: index, %value: vector<4xf32>) {
+  %cohort = index.assume %cohort0 [range(%cohort0, 0, 127)] : index
+  %c4 = index.constant 4 : index
+  %c64 = index.constant 64 : index
+  %row = index.mul %cohort, %c4 : index
+  %valid = index.cmp ult, %row, %c64 : index
+  scf.if %valid {
+    %view = buffer.view %buffer[%base] : buffer -> view<64xf32>
+    vector.store %value, %view[%row] : vector<4xf32>, view<64xf32>
+  }
+  func.return
+}
+
+// ====
+
 // A non-strict comparison allows lane=length=0 and cannot justify a store.
 func.def @weak_guard_does_not_prove_first_element(%buffer: buffer, %base: offset, %lane0: index, %length0: index, %pattern: i8) {
   %lane = index.assume %lane0 [range(%lane0, 0, 255)] : index
@@ -31,6 +239,71 @@ func.def @weak_guard_does_not_prove_first_element(%buffer: buffer, %base: offset
   view.store %pattern, %view[%origin] : i8, view<[%length]xi8>
   cfg.br ^exit
 ^exit:
+  func.return
+}
+
+// ====
+
+// Non-power-of-two divisibility is equally useful, including a reversed guard.
+func.def @aligned_guarded_load_non_power_of_two(%buffer: buffer, %base: offset, %cohort0: index) {
+  %cohort = index.assume %cohort0 [range(%cohort0, 0, 127)] : index
+  %c3 = index.constant 3 : index
+  %c63 = index.constant 63 : index
+  %row = index.mul %cohort, %c3 : index
+  %valid = index.cmp ugt, %c63, %row : index
+  scf.if %valid {
+    %view = buffer.view %buffer[%base] : buffer -> view<63xf32>
+    %loaded = vector.load %view[%row] : view<63xf32> -> vector<3xf32>
+    test.use %loaded : vector<3xf32>
+  }
+  func.return
+}
+
+// ====
+
+func.def @unaligned_guard_does_not_prove_full_store(%buffer: buffer, %base: offset, %row0: index, %value: vector<4xf32>) {
+  %row = index.assume %row0 [range(%row0, 0, 127)] : index
+  %c64 = index.constant 64 : index
+  %valid = index.cmp ult, %row, %c64 : index
+  scf.if %valid {
+    %view = buffer.view %buffer[%base] : buffer -> view<64xf32>
+    // ERROR@+1: SUBRANGE/010 {op_name="vector.store", vector_extent="4", view_bound="64", required_origin_upper_bound="60"}
+    vector.store %value, %view[%row] : vector<4xf32>, view<64xf32>
+  }
+  func.return
+}
+
+// ====
+
+// Aligning the origin cannot make an incomplete last vector safe.
+func.def @aligned_origin_with_partial_tail(%buffer: buffer, %base: offset, %cohort0: index, %value: vector<4xf32>) {
+  %cohort = index.assume %cohort0 [range(%cohort0, 0, 127)] : index
+  %c4 = index.constant 4 : index
+  %c65 = index.constant 65 : index
+  %row = index.mul %cohort, %c4 : index
+  %valid = index.cmp ult, %row, %c65 : index
+  scf.if %valid {
+    %view = buffer.view %buffer[%base] : buffer -> view<65xf32>
+    // ERROR@+1: SUBRANGE/010 {op_name="vector.store", vector_extent="4", view_bound="65", required_origin_upper_bound="61"}
+    vector.store %value, %view[%row] : vector<4xf32>, view<65xf32>
+  }
+  func.return
+}
+
+// ====
+
+// A closed bound admits an origin at the view end even when both are aligned.
+func.def @aligned_closed_guard_rejects_endpoint(%buffer: buffer, %base: offset, %cohort0: index, %value: vector<4xf32>) {
+  %cohort = index.assume %cohort0 [range(%cohort0, 0, 127)] : index
+  %c4 = index.constant 4 : index
+  %c64 = index.constant 64 : index
+  %row = index.mul %cohort, %c4 : index
+  %valid = index.cmp ule, %row, %c64 : index
+  scf.if %valid {
+    %view = buffer.view %buffer[%base] : buffer -> view<64xf32>
+    // ERROR@+1: SUBRANGE/010 {op_name="vector.store", vector_extent="4", view_bound="64", required_origin_upper_bound="60"}
+    vector.store %value, %view[%row] : vector<4xf32>, view<64xf32>
+  }
   func.return
 }
 
@@ -342,13 +615,28 @@ func.def @static_vector_origin_proven_by_shifted_assume_relation(%buffer: buffer
 
 // ====
 
-func.def @static_vector_origin_rejects_insufficient_shifted_assume_relation(%buffer: buffer, %base: offset, %row: index, %column: index) {
+func.def @static_vector_origin_combines_shifted_bound_with_divisor(%buffer: buffer, %base: offset, %row: index, %column: index) {
   %layout = encoding.layout.dense : encoding<layout>
   %stride = index.constant 1024 : index
   %late_limit = index.constant 262138 : index
   %row_offset = index.mul %row, %stride : index
   %origin0 = index.add %row_offset, %column : index
   %origin = index.assume %origin0 [range(%origin0, 0, 262137), lt(%origin0, %late_limit), mul(%origin0, 8)] : index
+  %view = buffer.view %buffer[%base] : buffer -> view<262144xf16, %layout>
+  %loaded = vector.load %view[%origin] : view<262144xf16, %layout> -> vector<8xf16>
+  test.use %loaded : vector<8xf16>
+  func.return
+}
+
+// ====
+
+func.def @static_vector_origin_rejects_aligned_origin_at_view_end(%buffer: buffer, %base: offset, %row: index, %column: index) {
+  %layout = encoding.layout.dense : encoding<layout>
+  %stride = index.constant 1024 : index
+  %late_limit = index.constant 262145 : index
+  %row_offset = index.mul %row, %stride : index
+  %origin0 = index.add %row_offset, %column : index
+  %origin = index.assume %origin0 [range(%origin0, 0, 262144), lt(%origin0, %late_limit), mul(%origin0, 8)] : index
   %view = buffer.view %buffer[%base] : buffer -> view<262144xf16, %layout>
   // ERROR@+1: SUBRANGE/010 {op_name="vector.load", vector_extent="8", view_bound="262144", required_origin_upper_bound="262136", constraint_key="vector_footprint.full_vector_upper_bound"}
   %loaded = vector.load %view[%origin] : view<262144xf16, %layout> -> vector<8xf16>
@@ -1486,4 +1774,118 @@ kernel.def @scalar_store_tail_origin_proven_after_scf_to_cfg() {
   cfg.br ^_bb5
 ^_bb5:
   kernel.return
+}
+
+// ====
+
+// At row=268435455, the i32 end wraps to zero while the index origin is
+// 4294967280. A zero-length view does not permit a sixteen-element load.
+func.def @wrapping_payload_end_is_not_an_address_end(%buffer: buffer, %base: offset, %row0: i32) {
+  %row = scalar.assume %row0 [range(%row0, 0, 268435455)] : i32
+  %c16_i32 = scalar.constant 16 : i32
+  %payload_origin = scalar.muli %row, %c16_i32 : i32
+  %payload_end = scalar.addi %payload_origin, %c16_i32 : i32
+  %end = index.cast %payload_end : i32 to index
+  %row_index = index.cast %row : i32 to index
+  %c16 = index.constant 16 : index
+  %origin = index.mul %row_index, %c16 : index
+  %view = buffer.view %buffer[%base] : buffer -> view<[%end]xf16>
+  // ERROR@+1: SUBRANGE/010 {op_name="vector.load", vector_extent="16"}
+  %loaded = vector.load %view[%origin] : view<[%end]xf16> -> vector<16xf16>
+  test.use %loaded : vector<16xf16>
+  func.return
+}
+
+// ====
+
+// Narrowing through an integer payload preserves low bits, not numeric value.
+// At origin=255 the i8 round trip is -1 and the view extent is only 15.
+func.def @narrowing_payload_is_not_an_address_identity(%buffer: buffer, %base: offset, %origin0: index) {
+  %origin = index.assume %origin0 [range(%origin0, 0, 255)] : index
+  %payload = index.cast %origin : index to i8
+  %round_trip = index.cast %payload : i8 to index
+  %c16 = index.constant 16 : index
+  %end = index.add %round_trip, %c16 : index
+  %view = buffer.view %buffer[%base] : buffer -> view<[%end]xf16>
+  // ERROR@+1: SUBRANGE/010 {op_name="vector.load", vector_extent="16"}
+  %loaded = vector.load %view[%origin] : view<[%end]xf16> -> vector<16xf16>
+  test.use %loaded : vector<16xf16>
+  func.return
+}
+
+// ====
+
+func.def @representable_payload_preserves_address_identity(%buffer: buffer, %base: offset, %origin0: index) {
+  %origin = index.assume %origin0 [range(%origin0, 0, 111)] : index
+  %payload = index.cast %origin : index to i8
+  %round_trip = index.cast %payload : i8 to index
+  %c16 = index.constant 16 : index
+  %end = index.add %round_trip, %c16 : index
+  %view = buffer.view %buffer[%base] : buffer -> view<[%end]xf16>
+  %loaded = vector.load %view[%origin] : view<[%end]xf16> -> vector<16xf16>
+  test.use %loaded : vector<16xf16>
+  func.return
+}
+
+// ====
+
+// Wrapping end=origin+16 admits large origins after signed overflow even when
+// the end itself is constrained below the view extent.
+func.def @wrapping_end_does_not_bound_origin(%buffer: buffer, %base: offset, %origin0: i32) {
+  %origin_bounded = scalar.assume %origin0 [range(%origin0, 0, 2147483647)] : i32
+  %c16 = scalar.constant 16 : i32
+  %end0 = scalar.addi %origin_bounded, %c16 : i32
+  %origin_scalar, %end = scalar.assume %origin_bounded, %end0 [le(%end0, 64)] : i32, i32
+  %origin = index.cast %origin_scalar : i32 to index
+  %view = buffer.view %buffer[%base] : buffer -> view<64xf16>
+  // ERROR@+1: SUBRANGE/010 {op_name="vector.load", vector_extent="16", view_bound="64", required_origin_upper_bound="48"}
+  %loaded = vector.load %view[%origin] : view<64xf16> -> vector<16xf16>
+  test.use %loaded : vector<16xf16>
+  func.return
+}
+
+// ====
+
+// A representable scalar sum has the same endpoint relation as index arithmetic.
+func.def @bounded_scalar_end_proves_origin(%buffer: buffer, %base: offset, %origin0: i32) {
+  %origin_bounded = scalar.assume %origin0 [range(%origin0, 0, 127)] : i32
+  %c16 = scalar.constant 16 : i32
+  %end0 = scalar.addi %origin_bounded, %c16 : i32
+  %origin_scalar, %end = scalar.assume %origin_bounded, %end0 [le(%end0, 64)] : i32, i32
+  %origin = index.cast %origin_scalar : i32 to index
+  %view = buffer.view %buffer[%base] : buffer -> view<64xf16>
+  %loaded = vector.load %view[%origin] : view<64xf16> -> vector<16xf16>
+  test.use %loaded : vector<16xf16>
+  func.return
+}
+
+// ====
+
+// An explicit signed no-wrap contract also permits rebasing the endpoint bound.
+func.def @nsw_scalar_end_proves_origin(%buffer: buffer, %base: offset, %origin0: i32) {
+  %origin_bounded = scalar.assume %origin0 [range(%origin0, 0, 2147483647)] : i32
+  %c16 = scalar.constant 16 : i32
+  %end0 = scalar.addi<nsw> %origin_bounded, %c16 : i32
+  %origin_scalar, %end = scalar.assume %origin_bounded, %end0 [le(%end0, 64)] : i32, i32
+  %origin = index.cast %origin_scalar : i32 to index
+  %view = buffer.view %buffer[%base] : buffer -> view<64xf16>
+  %loaded = vector.load %view[%origin] : view<64xf16> -> vector<16xf16>
+  test.use %loaded : vector<16xf16>
+  func.return
+}
+
+// ====
+
+// Unsigned no-wrap still permits crossing the sign bit and a negative end.
+func.def @nuw_scalar_end_does_not_bound_origin(%buffer: buffer, %base: offset, %origin0: i32) {
+  %origin_bounded = scalar.assume %origin0 [range(%origin0, 0, 2147483647)] : i32
+  %c16 = scalar.constant 16 : i32
+  %end0 = scalar.addi<nuw> %origin_bounded, %c16 : i32
+  %origin_scalar, %end = scalar.assume %origin_bounded, %end0 [le(%end0, 64)] : i32, i32
+  %origin = index.cast %origin_scalar : i32 to index
+  %view = buffer.view %buffer[%base] : buffer -> view<64xf16>
+  // ERROR@+1: SUBRANGE/010 {op_name="vector.load", vector_extent="16", view_bound="64", required_origin_upper_bound="48"}
+  %loaded = vector.load %view[%origin] : view<64xf16> -> vector<16xf16>
+  test.use %loaded : vector<16xf16>
+  func.return
 }

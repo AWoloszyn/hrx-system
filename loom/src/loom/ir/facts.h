@@ -267,12 +267,14 @@ typedef struct loom_value_facts_t {
   // a host double carrying the value rounded to its declared scalar type (via
   // memcpy); range_hi == range_lo. The declared type is stored in the IR.
   int64_t range_lo;
+  // Inclusive upper bound, or the same encoded double as range_lo for an exact
+  // floating-point value. INT64_MAX represents an unbounded upper endpoint.
   int64_t range_hi;
 
-  // Largest known divisor (>= 1). GCD semantics: if the value is
-  // known to be a multiple of both 16 and 24, known_divisor =
-  // gcd(16, 24) = 8. For exact integer values, known_divisor = |value|
-  // (or 1 if value is 0 or INT64_MIN). Default (unknown): 1.
+  // Known divisor (>= 1). Joining alternative values takes the GCD; applying
+  // another multiple predicate takes the LCM when representable. Exact integer
+  // constructors use |value| (or 1 for zero and INT64_MIN); predicate
+  // refinement may retain a weaker divisor. Default (unknown): 1.
   int64_t known_divisor;
 
   // Cached predicate bitflags. Derived from range/divisor but cheaper
@@ -363,20 +365,19 @@ bool loom_value_facts_make_unsigned_raw_bits(uint64_t raw_bits,
 loom_value_facts_t loom_value_facts_make_signed_raw_bits(uint64_t raw_bits,
                                                          int32_t bit_count);
 
-// Wraps an integer transfer result to its verified width in [1, 64]. Exact
-// values retain their low bits in the signed domain (0/1 for i1). Ranges that
-// may wrap expand to the type domain and retain only divisors of 2^bit_count.
-// A full i64 range may represent overflow in the width-independent transfer;
-// its divisibility is weakened too. Execution distribution is preserved.
-loom_value_facts_t loom_value_facts_wrap_integer(loom_value_facts_t facts,
-                                                 int32_t bit_count);
-
 // Returns facts for a signed extension from |source_bit_count|. Fixed-width
 // integer facts already use their signed numeric domain except for logical i1
 // facts, whose 0/1 domain is mapped to 0/-1. The source bit count comes from a
 // verified fixed-width integer type.
 loom_value_facts_t loom_value_facts_sign_extend(loom_value_facts_t source_facts,
                                                 int32_t source_bit_count);
+
+// Interprets a mathematical integer result modulo 2^bit_count, where bit_count
+// is a fixed-width integer width in [1, 64]. One-bit results use [0, 1]; wider
+// results use the signed domain. Retains exact values and non-crossing ranges,
+// and reduces divisibility to the factors preserved by modular arithmetic.
+loom_value_facts_t loom_value_facts_wrap_integer(
+    loom_value_facts_t source_facts, int32_t bit_count);
 
 // Returns conservative unsigned range facts for a value with |bit_count|
 // meaningful bits.
@@ -822,9 +823,10 @@ bool loom_value_facts_predicate_conflict(
     loom_value_facts_t facts, const loom_predicate_t* predicate,
     loom_value_fact_predicate_conflict_t* out_conflict);
 
-// Tightens facts using a single predicate constraint. Modifies the facts in
-// place and recomputes flags afterward. The caller is responsible for enforcing
-// that the predicate is legal for the value type.
+// Tightens facts using a single predicate constraint, combining finite integer
+// bounds with the known divisor. Unbounded endpoints remain unbounded. Modifies
+// the facts in place and recomputes flags afterward. The caller is responsible
+// for enforcing that the predicate is legal for the value type.
 void loom_value_facts_apply_predicate(loom_value_facts_t* facts,
                                       const loom_predicate_t* predicate);
 

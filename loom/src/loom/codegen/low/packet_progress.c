@@ -190,6 +190,8 @@ uint32_t loom_low_packet_progress_class_chain_index_observed_progress(
     if (record->packet_index >= end_packet_index) break;
     if (record->action == LOOM_LOW_PACKET_PROGRESS_ACTION_RESET) {
       return UINT32_MAX;
+    } else if (record->action != LOOM_LOW_PACKET_PROGRESS_ACTION_ADVANCE) {
+      continue;
     } else if (observed_progress <= UINT32_MAX - record->units) {
       observed_progress += record->units;
     } else {
@@ -263,7 +265,8 @@ iree_status_t loom_low_packet_progress_class_range_index_build(
           &progress->records[range_record->progress_record_index];
       if (progress_record->action == LOOM_LOW_PACKET_PROGRESS_ACTION_RESET) {
         ++cumulative_reset_count;
-      } else {
+      } else if (progress_record->action ==
+                 LOOM_LOW_PACKET_PROGRESS_ACTION_ADVANCE) {
         cumulative_advance_units += progress_record->units;
       }
       range_record->cumulative_reset_count = cumulative_reset_count;

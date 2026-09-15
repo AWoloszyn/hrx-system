@@ -400,13 +400,13 @@ low.func.def public target<test.low.core>(@target) @kept_low_caller(%value: reg<
 // ----
 test.target<low_core> @target
 
-low.func.def noinline target<test.low.core>(@target) @kept_low_helper(%value: reg<test.i32>) -> (reg<test.i32>) {
-  low.return %value : reg<test.i32>
+low.func.def noinline target<test.low.core>(@target) @kept_low_helper(%value: reg<test.i32>) -> (reg<test.i32>) asm {
+  return %value
 }
 
-low.func.def public target<test.low.core>(@target) @kept_low_caller(%value: reg<test.i32>) -> (reg<test.i32>) {
+low.func.def public target<test.low.core>(@target) @kept_low_caller(%value: reg<test.i32>) -> (reg<test.i32>) asm {
   %result = low.func.call @kept_low_helper(%value) : (reg<test.i32>) -> (reg<test.i32>)
-  low.return %result : reg<test.i32>
+  return %result
 }
 
 // ====
@@ -482,8 +482,8 @@ low.func.def public target<test.low.core>(@target) @low_cfg_entry(%condition: re
 // ----
 test.target<low_core> @target
 
-low.func.def public target<test.low.core>(@target) @low_cfg_entry(%condition$4: reg<test.i32>, %arg: reg<test.i32>) -> (reg<test.i32>) {
-  %prefix = low.copy %arg : reg<test.i32> -> reg<test.i32>
+low.func.def public target<test.low.core>(@target) @low_cfg_entry(%condition$4: reg<test.i32>, %arg: reg<test.i32>) -> (reg<test.i32>) asm {
+  %prefix = copy %arg : reg<test.i32> -> reg<test.i32>
   low.br ^_bb1(%condition$4: reg<test.i32>, %prefix: reg<test.i32>)
 ^_bb1(%condition$0: reg<test.i32>, %value: reg<test.i32>):
   low.cond_br %condition$0, ^_bb2, ^_bb3 : reg<test.i32>
@@ -494,8 +494,8 @@ low.func.def public target<test.low.core>(@target) @low_cfg_entry(%condition$4: 
 ^_bb4(%forwarded: reg<test.i32>):
   low.br ^_bb5(%forwarded: reg<test.i32>)
 ^_bb5(%selected: reg<test.i32>):
-  %suffix = low.copy %selected : reg<test.i32> -> reg<test.i32>
-  low.return %suffix : reg<test.i32>
+  %suffix = copy %selected : reg<test.i32> -> reg<test.i32>
+  return %suffix
 }
 
 // ====
@@ -548,27 +548,27 @@ low.func.def public target<test.low.core>(@target) @retain_locked(%value: reg<te
 // ----
 test.target<low_core> @target
 
-low.func.def target<test.low.core>(@target) @shared_locked(%value: reg<test.i32>) -> (reg<test.i32>) {
+low.func.def target<test.low.core>(@target) @shared_locked(%value: reg<test.i32>) -> (reg<test.i32>) asm {
   low.schedule.fence
-  %first = low.copy %value : reg<test.i32> -> reg<test.i32>
+  %first = copy %value : reg<test.i32> -> reg<test.i32>
   low.schedule.fence
-  %second = low.copy %first : reg<test.i32> -> reg<test.i32>
+  %second = copy %first : reg<test.i32> -> reg<test.i32>
   low.schedule.fence
-  low.return %second : reg<test.i32>
+  return %second
 }
 
-low.func.def public target<test.low.core>(@target) @inline_locked(%value: reg<test.i32>) -> (reg<test.i32>) {
+low.func.def public target<test.low.core>(@target) @inline_locked(%value: reg<test.i32>) -> (reg<test.i32>) asm {
   low.schedule.fence
-  %first = low.copy %value : reg<test.i32> -> reg<test.i32>
+  %first = copy %value : reg<test.i32> -> reg<test.i32>
   low.schedule.fence
-  %second = low.copy %first : reg<test.i32> -> reg<test.i32>
+  %second = copy %first : reg<test.i32> -> reg<test.i32>
   low.schedule.fence
-  low.return %second : reg<test.i32>
+  return %second
 }
 
-low.func.def public target<test.low.core>(@target) @retain_locked(%value: reg<test.i32>) -> (reg<test.i32>) {
+low.func.def public target<test.low.core>(@target) @retain_locked(%value: reg<test.i32>) -> (reg<test.i32>) asm {
   %result = low.func.call noinline @shared_locked(%value) : (reg<test.i32>) -> (reg<test.i32>)
-  low.return %result : reg<test.i32>
+  return %result
 }
 
 // ====
@@ -671,7 +671,7 @@ low.func.def public target<test.low.core>(@nested_cfg_target) @nested_cfg_entry(
 // ----
 test.target<low_core> @nested_cfg_target
 
-low.func.def public target<test.low.core>(@nested_cfg_target) @nested_cfg_entry(%entry_value: reg<test.i32>) -> (reg<test.i32>) {
+low.func.def public target<test.low.core>(@nested_cfg_target) @nested_cfg_entry(%entry_value: reg<test.i32>) -> (reg<test.i32>) asm {
   low.br ^_bb1(%entry_value: reg<test.i32>)
 ^_bb1(%parent_value: reg<test.i32>):
   low.br ^_bb2(%parent_value: reg<test.i32>)
@@ -684,7 +684,7 @@ low.func.def public target<test.low.core>(@nested_cfg_target) @nested_cfg_entry(
 ^_bb5:
   low.br ^_bb6(%parent_result: reg<test.i32>)
 ^_bb6(%entry_result: reg<test.i32>):
-  low.return %entry_result : reg<test.i32>
+  return %entry_result
 }
 
 // ====

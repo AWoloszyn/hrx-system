@@ -228,6 +228,14 @@ names describe the role an embedding or another module depends on. Target
 mnemonics and one model's branding belong in those names only when they are
 actually part of the contract.
 
+Compiler-generated output uses `$` to distinguish generated names from authored
+intent. When output becomes maintained `.loom` source or a `.loom-test` input,
+names such as `%double$17$0` and `@pipeline$config` need meaningful role names.
+The `loom-lint` authoring checks reject `$` in input names, including regression
+tests. Generated `.loom-test` expectations can retain compiler-selected names;
+string literals and comments are unaffected. Formatting preserves legal names
+and does not invent these semantic replacements.
+
 ## Follow the composition
 
 The [source-to-artifacts walkthrough](../getting-started/source-to-artifacts.md#follow-one-composition-to-low)

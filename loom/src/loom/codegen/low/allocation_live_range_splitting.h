@@ -10,8 +10,10 @@
 // physical slot while live. When such a value stays live long enough to force a
 // spill, this utility can insert one low.copy or ownership-preserving low.move
 // immediately after the fixed source is materialized and rewrite later users
-// to the transfer result. The fixed physical location then dies at the transfer
-// while the ordinary virtual value remains allocatable by normal rules.
+// to the transfer result. The fixed source's live range ends at the transfer;
+// the result has a preference for disjoint storage but no fixed-location
+// requirement. Rebuilding allocation determines whether the split avoids
+// spills.
 
 #ifndef LOOM_CODEGEN_LOW_ALLOCATION_LIVE_RANGE_SPLITTING_H_
 #define LOOM_CODEGEN_LOW_ALLOCATION_LIVE_RANGE_SPLITTING_H_
@@ -29,12 +31,12 @@ extern "C" {
 typedef enum loom_low_allocation_live_range_split_trigger_e {
   // Unknown or uninitialized split trigger.
   LOOM_LOW_ALLOCATION_LIVE_RANGE_SPLIT_TRIGGER_UNKNOWN = 0,
-  // A predicted spill plan was avoided by detaching a fixed value.
+  // A predicted spill plan triggered an attempt to detach a fixed value.
   LOOM_LOW_ALLOCATION_LIVE_RANGE_SPLIT_TRIGGER_SPILL_PLAN = 1,
 } loom_low_allocation_live_range_split_trigger_t;
 
 typedef struct loom_low_allocation_live_range_split_result_t {
-  // Fixed SSA value whose physical live range was detached.
+  // Fixed SSA value whose later users were redirected to the transfer result.
   loom_value_id_t source_value_id;
   // Transfer result carrying the ordinary virtual live range.
   loom_value_id_t split_value_id;
@@ -78,15 +80,15 @@ iree_status_t loom_low_allocation_split_fixed_value_spill_plan(
     iree_arena_allocator_t* arena,
     loom_low_allocation_live_range_split_result_t* out_result);
 
-// Replicates shared operands when concrete placement-pair recipes prove that
+// Replicates shared operands when concrete placement-pair recipes predict that
 // one detached copy can recover more native packets than it costs.
 //
 // Only |pair_uses| and allocation tables are inspected; this does not walk the
-// function IR. All profitable replicas are committed as one transaction so
-// callers can rebuild scheduling and allocation once. A non-empty result must
-// either be retained or passed to
-// loom_low_allocation_rollback_pair_replication before consulting the old
-// schedule or allocation tables again.
+// function IR. Candidate replicas are inserted as one transaction. Callers
+// rebuild scheduling and allocation, evaluate actual packet savings and
+// resource use, and retain or roll back the edits. Inserting replicas
+// invalidates the old schedule and allocation; retaining edits never makes
+// those old tables current.
 iree_status_t loom_low_allocation_replicate_pair_sources(
     loom_module_t* module, const loom_low_allocation_table_t* table,
     loom_low_placement_pair_use_list_t pair_uses, iree_arena_allocator_t* arena,

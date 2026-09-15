@@ -1373,23 +1373,6 @@ static iree_status_t loom_symbolic_expr_relation_predicate_proof(
   return iree_ok_status();
 }
 
-static iree_status_t loom_symbolic_expr_predicate_arg_matches_value(
-    loom_symbolic_expr_context_t* context, loom_predicate_arg_tag_t arg_tag,
-    int64_t arg, loom_value_id_t value_id, bool* out_match) {
-  *out_match = false;
-  switch (arg_tag) {
-    case LOOM_PRED_ARG_VALUE:
-      if (arg < 0) return iree_ok_status();
-      return loom_symbolic_values_match(context, (loom_value_id_t)arg, value_id,
-                                        out_match);
-    case LOOM_PRED_ARG_CONST:
-      return loom_symbolic_expr_value_matches_constant(context, value_id, arg,
-                                                       out_match);
-    default:
-      return iree_ok_status();
-  }
-}
-
 static iree_status_t loom_symbolic_expr_predicate_arg_difference_from_value(
     loom_symbolic_expr_context_t* context, loom_predicate_arg_tag_t arg_tag,
     int64_t arg, loom_value_id_t value_id, int64_t* out_difference,
@@ -1423,6 +1406,45 @@ static iree_status_t loom_symbolic_expr_predicate_arg_difference_from_value(
     default:
       return iree_ok_status();
   }
+}
+
+typedef struct loom_symbolic_expr_upper_predicate_t {
+  // Comparison of the shifted value to the upper argument: LT or LE.
+  loom_symbolic_integer_relation_t relation;
+  // Predicate argument supplying the upper bound.
+  uint8_t argument_index;
+  // Constant difference between the constrained expression and queried value.
+  int64_t value_offset;
+} loom_symbolic_expr_upper_predicate_t;
+
+// Normalize either comparison orientation while retaining a constant shift on
+// the constrained value. Expression differences use the shared memoized forms.
+static iree_status_t loom_symbolic_expr_predicate_upper_bound(
+    loom_symbolic_expr_context_t* context, const loom_predicate_t* predicate,
+    loom_value_id_t value_id, loom_symbolic_expr_upper_predicate_t* out_upper,
+    bool* out_known) {
+  *out_known = false;
+  if (predicate->arg_count != 2) return iree_ok_status();
+  loom_symbolic_integer_relation_t relation = LOOM_SYMBOLIC_INTEGER_RELATION_EQ;
+  if (!loom_symbolic_expr_predicate_relation(predicate, &relation)) {
+    return iree_ok_status();
+  }
+  uint8_t value_argument_index = 0;
+  if (relation == LOOM_SYMBOLIC_INTEGER_RELATION_GT ||
+      relation == LOOM_SYMBOLIC_INTEGER_RELATION_GE) {
+    relation = loom_symbolic_integer_relation_swap(relation);
+    value_argument_index = 1;
+  } else if (relation != LOOM_SYMBOLIC_INTEGER_RELATION_LT &&
+             relation != LOOM_SYMBOLIC_INTEGER_RELATION_LE) {
+    return iree_ok_status();
+  }
+  out_upper->relation = relation;
+  out_upper->argument_index = 1 - value_argument_index;
+  return loom_symbolic_expr_predicate_arg_difference_from_value(
+      context,
+      (loom_predicate_arg_tag_t)predicate->arg_tags[value_argument_index],
+      predicate->args[value_argument_index], value_id, &out_upper->value_offset,
+      out_known);
 }
 
 static bool loom_symbolic_expr_scaled_upper_bound_proves_le(
@@ -1526,44 +1548,28 @@ static iree_status_t loom_symbolic_expr_scaled_le_predicate_proof(
       (const loom_symbolic_expr_scaled_le_proof_t*)user_data;
   *out_matched = false;
   *out_result = LOOM_SYMBOLIC_PROOF_UNKNOWN;
-  if (predicate->arg_count != 2) return iree_ok_status();
-
-  loom_symbolic_integer_relation_t predicate_relation =
-      LOOM_SYMBOLIC_INTEGER_RELATION_EQ;
-  if (!loom_symbolic_expr_predicate_relation(predicate, &predicate_relation)) {
-    return iree_ok_status();
-  }
-
-  bool positive_is_left = false;
-  IREE_RETURN_IF_ERROR(loom_symbolic_expr_predicate_arg_matches_value(
-      context, (loom_predicate_arg_tag_t)predicate->arg_tags[0],
-      predicate->args[0], proof->positive_relation_value, &positive_is_left));
-  bool positive_is_right = false;
-  IREE_RETURN_IF_ERROR(loom_symbolic_expr_predicate_arg_matches_value(
-      context, (loom_predicate_arg_tag_t)predicate->arg_tags[1],
-      predicate->args[1], proof->positive_relation_value, &positive_is_right));
-
-  loom_symbolic_integer_relation_t upper_relation = predicate_relation;
-  uint8_t upper_arg_index = 1;
-  if (positive_is_left) {
-    upper_arg_index = 1;
-  } else if (positive_is_right) {
-    upper_relation = loom_symbolic_integer_relation_swap(predicate_relation);
-    upper_arg_index = 0;
-  } else {
-    return iree_ok_status();
-  }
+  loom_symbolic_expr_upper_predicate_t upper = {0};
+  bool upper_known = false;
+  IREE_RETURN_IF_ERROR(loom_symbolic_expr_predicate_upper_bound(
+      context, predicate, proof->positive_relation_value, &upper,
+      &upper_known));
+  if (!upper_known) return iree_ok_status();
 
   int64_t upper_minus_negative = 0;
   bool upper_difference_known = false;
   IREE_RETURN_IF_ERROR(loom_symbolic_expr_predicate_arg_difference_from_value(
-      context, (loom_predicate_arg_tag_t)predicate->arg_tags[upper_arg_index],
-      predicate->args[upper_arg_index], proof->negative_relation_value,
+      context,
+      (loom_predicate_arg_tag_t)predicate->arg_tags[upper.argument_index],
+      predicate->args[upper.argument_index], proof->negative_relation_value,
       &upper_minus_negative, &upper_difference_known));
   if (!upper_difference_known) return iree_ok_status();
 
+  if (!iree_checked_sub_i64(upper_minus_negative, upper.value_offset,
+                            &upper_minus_negative)) {
+    return iree_ok_status();
+  }
   if (loom_symbolic_expr_scaled_upper_bound_proves_le(
-          proof->scale, proof->constant, upper_relation,
+          proof->scale, proof->constant, upper.relation,
           upper_minus_negative)) {
     *out_result = LOOM_SYMBOLIC_PROOF_TRUE;
     *out_matched = true;
@@ -1579,43 +1585,28 @@ static iree_status_t loom_symbolic_expr_scaled_static_le_predicate_proof(
       (const loom_symbolic_expr_scaled_static_le_proof_t*)user_data;
   *out_matched = false;
   *out_result = LOOM_SYMBOLIC_PROOF_UNKNOWN;
-  if (predicate->arg_count != 2) return iree_ok_status();
-
-  loom_symbolic_integer_relation_t predicate_relation =
-      LOOM_SYMBOLIC_INTEGER_RELATION_EQ;
-  if (!loom_symbolic_expr_predicate_relation(predicate, &predicate_relation)) {
-    return iree_ok_status();
-  }
-
-  bool positive_is_left = false;
-  IREE_RETURN_IF_ERROR(loom_symbolic_expr_predicate_arg_matches_value(
-      context, (loom_predicate_arg_tag_t)predicate->arg_tags[0],
-      predicate->args[0], proof->positive_relation_value, &positive_is_left));
-  bool positive_is_right = false;
-  IREE_RETURN_IF_ERROR(loom_symbolic_expr_predicate_arg_matches_value(
-      context, (loom_predicate_arg_tag_t)predicate->arg_tags[1],
-      predicate->args[1], proof->positive_relation_value, &positive_is_right));
-
-  loom_symbolic_integer_relation_t upper_relation = predicate_relation;
-  uint8_t upper_arg_index = 1;
-  if (positive_is_left) {
-    upper_arg_index = 1;
-  } else if (positive_is_right) {
-    upper_relation = loom_symbolic_integer_relation_swap(predicate_relation);
-    upper_arg_index = 0;
-  } else {
-    return iree_ok_status();
-  }
+  loom_symbolic_expr_upper_predicate_t upper = {0};
+  bool upper_known = false;
+  IREE_RETURN_IF_ERROR(loom_symbolic_expr_predicate_upper_bound(
+      context, predicate, proof->positive_relation_value, &upper,
+      &upper_known));
+  if (!upper_known) return iree_ok_status();
 
   int64_t upper_bound = 0;
   bool upper_bound_known = false;
   IREE_RETURN_IF_ERROR(loom_symbolic_expr_predicate_arg_upper_bound(
-      context, (loom_predicate_arg_tag_t)predicate->arg_tags[upper_arg_index],
-      predicate->args[upper_arg_index], &upper_bound, &upper_bound_known));
+      context,
+      (loom_predicate_arg_tag_t)predicate->arg_tags[upper.argument_index],
+      predicate->args[upper.argument_index], &upper_bound, &upper_bound_known));
   if (!upper_bound_known) return iree_ok_status();
 
+  // A predicate on value + offset bounds value by upper - offset. Retain the
+  // constant difference already computed by symbolic matching.
+  if (!iree_checked_sub_i64(upper_bound, upper.value_offset, &upper_bound)) {
+    return iree_ok_status();
+  }
   if (loom_symbolic_expr_scaled_static_upper_bound_proves_le(
-          proof->scale, proof->constant, upper_relation, upper_bound)) {
+          proof->scale, proof->constant, upper.relation, upper_bound)) {
     *out_result = LOOM_SYMBOLIC_PROOF_TRUE;
     *out_matched = true;
   }

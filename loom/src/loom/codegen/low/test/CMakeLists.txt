@@ -14,7 +14,9 @@ loom_check_test_suite(
     test
   SRCS
     "allocation.loom-test"
+    "allocation_aliases.loom-test"
     "allocation_fragmentation.loom-test"
+    "allocation_preferences.loom-test"
     "hazard_plan.loom-test"
     "packet.loom-test"
 )

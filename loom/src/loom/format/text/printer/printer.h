@@ -11,9 +11,9 @@
 // code. The printer is read-only over the IR (unless location capture
 // is enabled, which updates op locations to point at the output).
 //
-// All output goes through a loom_output_stream_t. Modules whose SSA values use
-// generated names require no printer-owned heap allocations. Explicit names
-// are canonicalized once into a compact value-indexed plan before emission.
+// All output goes through a loom_output_stream_t. Anonymous SSA names require
+// no name-plan allocation. Explicit names are resolved once per invocation in
+// a compact value-indexed plan shared by operation, type and attribute output.
 
 #ifndef LOOM_FORMAT_TEXT_PRINTER_PRINTER_H_
 #define LOOM_FORMAT_TEXT_PRINTER_PRINTER_H_
@@ -89,7 +89,11 @@ iree_status_t loom_text_print_operation_with_options(
     const loom_module_t* module, const loom_op_t* op,
     loom_output_stream_t* stream, const loom_text_print_options_t* options);
 
-// Prints a type in canonical form to the output stream.
+// Prints a type in canonical form to the output stream. Types containing SSA
+// references prepare a module-wide name plan shared by all nested references.
+// Types without SSA references require no name planning or allocation.
+// Register types use numeric identities for diagnostics without target context;
+// the options-aware API below resolves source spellings through descriptors.
 iree_status_t loom_text_print_type(loom_type_t type,
                                    const loom_module_t* module,
                                    loom_output_stream_t* stream);

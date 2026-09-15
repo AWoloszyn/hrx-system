@@ -409,12 +409,8 @@ typedef enum loom_check_pass_output_kind_e {
 
 static loom_text_print_flags_t loom_check_pass_print_flags(
     const loom_test_case_t* test_case) {
-  loom_text_print_flags_t flags = LOOM_TEXT_PRINT_DEFAULT;
-  // An implicit expected section is a canonical fixed-point check. Explicit
-  // input/expected pairs may deliberately assert generic Low output.
-  if (!test_case->has_expected_section) {
-    flags |= LOOM_TEXT_PRINT_PREFER_LOW_ASM;
-  }
+  loom_text_print_flags_t flags =
+      LOOM_TEXT_PRINT_DEFAULT | LOOM_TEXT_PRINT_PREFER_LOW_ASM;
   if (iree_all_bits_set(test_case->output_flags, LOOM_TEST_OUTPUT_LOCATIONS)) {
     flags |= LOOM_TEXT_PRINT_LOCATIONS;
   }

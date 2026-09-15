@@ -655,10 +655,11 @@ IREE_API_EXPORT void iree_async_semaphore_dispatch_timepoints(
     iree_async_semaphore_t* semaphore, uint64_t value);
 
 // Dispatches all timepoints with the given failure status.
-// Takes ownership of |status| (clones for each timepoint, frees original).
+// Borrows |status| and gives each timepoint an owned clone. The caller retains
+// ownership of the original status.
 // Called by fail() implementations.
 IREE_API_EXPORT void iree_async_semaphore_dispatch_timepoints_failed(
-    iree_async_semaphore_t* semaphore, iree_status_t status);
+    iree_async_semaphore_t* semaphore, const iree_status_t status);
 
 //===----------------------------------------------------------------------===//
 // Multi-wait

@@ -37,6 +37,8 @@ typedef struct loom_low_allocation_checker_t {
   loom_low_allocation_check_storage_t* storage;
   // Program point indexed by schedule node index.
   uint32_t* node_program_points;
+  // Independent copy-content equivalence, indexed by assignment unit point.
+  uint32_t* content_roots;
   // Mutable aggregate result.
   loom_low_allocation_check_result_t* result;
 } loom_low_allocation_checker_t;
@@ -581,25 +583,31 @@ static void loom_low_allocation_checker_constraints(
 
 static bool loom_low_allocation_checker_segments_overlap(
     const loom_liveness_analysis_t* liveness,
-    loom_liveness_segment_range_t lhs_range, uint32_t lhs_end,
-    loom_liveness_segment_range_t rhs_range, uint32_t rhs_end) {
-  if (lhs_range.count == 0 || rhs_range.count == 0) {
-    return true;
-  }
+    loom_liveness_segment_range_t lhs_range,
+    loom_liveness_segment_range_t rhs_range, uint32_t overlap_begin,
+    uint32_t overlap_end) {
   if ((uint64_t)lhs_range.start + lhs_range.count > liveness->segment_count ||
       (uint64_t)rhs_range.start + rhs_range.count > liveness->segment_count) {
     return true;
   }
+  // Missing semantic segments make that unit contiguous, not its peer. Both
+  // sparse lists are clipped to the actual overlapping per-unit storage span.
+  const loom_liveness_segment_t contiguous = {overlap_begin, overlap_end};
+  const loom_liveness_segment_t* lhs_segments =
+      lhs_range.count ? &liveness->segments[lhs_range.start] : &contiguous;
+  const loom_liveness_segment_t* rhs_segments =
+      rhs_range.count ? &liveness->segments[rhs_range.start] : &contiguous;
+  const uint32_t lhs_count = iree_max(lhs_range.count, 1u);
+  const uint32_t rhs_count = iree_max(rhs_range.count, 1u);
   uint32_t lhs_index = 0;
   uint32_t rhs_index = 0;
-  while (lhs_index < lhs_range.count && rhs_index < rhs_range.count) {
-    const loom_liveness_segment_t* lhs =
-        &liveness->segments[lhs_range.start + lhs_index];
-    const loom_liveness_segment_t* rhs =
-        &liveness->segments[rhs_range.start + rhs_index];
-    const uint32_t begin = iree_max(lhs->start_point, rhs->start_point);
-    const uint32_t end = iree_min(iree_min(lhs->end_point, rhs->end_point),
-                                  iree_min(lhs_end, rhs_end));
+  while (lhs_index < lhs_count && rhs_index < rhs_count) {
+    const loom_liveness_segment_t* lhs = &lhs_segments[lhs_index];
+    const loom_liveness_segment_t* rhs = &rhs_segments[rhs_index];
+    const uint32_t begin =
+        iree_max(iree_max(lhs->start_point, rhs->start_point), overlap_begin);
+    const uint32_t end =
+        iree_min(iree_min(lhs->end_point, rhs->end_point), overlap_end);
     if (begin < end) {
       return true;
     }
@@ -648,8 +656,85 @@ static bool loom_low_allocation_checker_unit_lifetimes_overlap(
       .end_point = iree_min(lhs_end, rhs_end),
   };
   return loom_low_allocation_checker_segments_overlap(
-      &allocation->liveness, lhs->liveness_segments, lhs_end,
-      rhs->liveness_segments, rhs_end);
+      &allocation->liveness, lhs->liveness_segments, rhs->liveness_segments,
+      iree_max(lhs_start, rhs_start), iree_min(lhs_end, rhs_end));
+}
+
+static uint32_t loom_low_allocation_checker_content_root(uint32_t* parents,
+                                                         uint32_t index) {
+  uint32_t root = index;
+  while (parents[root] != root) root = parents[root];
+  while (parents[index] != index) {
+    const uint32_t next = parents[index];
+    parents[index] = root;
+    index = next;
+  }
+  return root;
+}
+
+// Copy equivalence is independent of the allocator's placement algorithm.
+// Storage ties alone do not prove equal contents: a tied result may overwrite
+// its source. Only explicit content-preserving transports join these sets.
+static iree_status_t loom_low_allocation_checker_contents(
+    loom_low_allocation_checker_t* checker) {
+  const loom_low_allocation_table_t* allocation = checker->allocation;
+  const iree_host_size_t count = allocation->unit_point_count;
+  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+      checker->arena, count, sizeof(*checker->content_roots),
+      (void**)&checker->content_roots));
+  uint8_t* ranks = NULL;
+  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+      checker->arena, count, sizeof(*ranks), (void**)&ranks));
+  memset(ranks, 0, count * sizeof(*ranks));
+  uint32_t* parents = checker->content_roots;
+  for (iree_host_size_t i = 0; i < count; ++i) parents[i] = (uint32_t)i;
+  for (iree_host_size_t i = 0; i < allocation->placement.relation_count; ++i) {
+    const loom_low_placement_relation_t* relation =
+        &allocation->placement.relations[i];
+    switch (relation->cause) {
+      case LOOM_LOW_PLACEMENT_CAUSE_LOW_COPY:
+      case LOOM_LOW_PLACEMENT_CAUSE_LOW_MOVE:
+      case LOOM_LOW_PLACEMENT_CAUSE_LOW_SLICE:
+      case LOOM_LOW_PLACEMENT_CAUSE_LOW_CONCAT:
+        break;
+      default:
+        continue;
+    }
+    uint32_t result_index = UINT32_MAX;
+    uint32_t source_index = UINT32_MAX;
+    const loom_low_allocation_assignment_t* result =
+        loom_low_allocation_checker_assignment_for_ordinal(
+            checker, relation->result_ordinal, &result_index);
+    const loom_low_allocation_assignment_t* source =
+        loom_low_allocation_checker_assignment_for_ordinal(
+            checker, relation->source_ordinal, &source_index);
+    if (result == NULL || source == NULL ||
+        !loom_low_allocation_checker_relation_range_fits(
+            result, relation->result_unit_offset, relation->unit_count) ||
+        !loom_low_allocation_checker_relation_range_fits(
+            source, relation->source_unit_offset, relation->unit_count)) {
+      continue;
+    }
+    for (uint32_t unit = 0; unit < relation->unit_count; ++unit) {
+      uint32_t lhs = loom_low_allocation_checker_content_root(
+          parents,
+          result->unit_point_start + relation->result_unit_offset + unit);
+      uint32_t rhs = loom_low_allocation_checker_content_root(
+          parents,
+          source->unit_point_start + relation->source_unit_offset + unit);
+      if (lhs == rhs) continue;
+      if (ranks[lhs] < ranks[rhs]) {
+        parents[lhs] = rhs;
+      } else {
+        parents[rhs] = lhs;
+        if (ranks[lhs] == ranks[rhs]) ++ranks[lhs];
+      }
+    }
+  }
+  for (iree_host_size_t i = 0; i < count; ++i) {
+    parents[i] = loom_low_allocation_checker_content_root(parents, (uint32_t)i);
+  }
+  return iree_ok_status();
 }
 
 static bool loom_low_allocation_checker_unit_alias_is_authorized(
@@ -663,6 +748,17 @@ static bool loom_low_allocation_checker_unit_alias_is_authorized(
   const iree_host_size_t rhs_root =
       loom_low_allocation_checker_storage_root(checker, rhs, rhs_unit);
   if (lhs_root == rhs_root) return true;
+  const iree_host_size_t lhs_index =
+      (iree_host_size_t)lhs->unit_point_start + lhs_unit;
+  const iree_host_size_t rhs_index =
+      (iree_host_size_t)rhs->unit_point_start + rhs_unit;
+  // Equal SSA contents justify sharing only before either storage reservation
+  // carries a destructive successor's different contents.
+  if (checker->content_roots[lhs_index] == checker->content_roots[rhs_index] &&
+      overlap.end_point <= checker->storage[lhs_index].clobber_point &&
+      overlap.end_point <= checker->storage[rhs_index].clobber_point) {
+    return true;
+  }
   const loom_low_placement_table_t* placement = &checker->allocation->placement;
   for (iree_host_size_t i = 0; i < placement->relation_count; ++i) {
     const loom_low_placement_relation_t* relation = &placement->relations[i];
@@ -992,6 +1088,8 @@ iree_status_t loom_low_allocation_check_frame(
         .root = i, .clobber_point = UINT32_MAX};
   }
   loom_low_allocation_checker_constraints(&checker);
+  if (out_result->violation_count != 0) return iree_ok_status();
+  IREE_RETURN_IF_ERROR(loom_low_allocation_checker_contents(&checker));
   loom_low_allocation_checker_storage_conflicts(&checker);
   loom_low_allocation_checker_early_clobbers(&checker);
   loom_low_allocation_checker_storage_leases(&checker);

@@ -23,7 +23,7 @@ typedef struct loom_print_context_t {
   // Module whose string, type, value, and location tables are printed.
   const loom_module_t* module;
   // Canonical module value-name resolutions.
-  const loom_print_name_plan_t* name_plan;
+  loom_print_name_plan_t* name_plan;
   // Flag bitset controlling layout and optional annotations.
   loom_text_print_flags_t flags;
   // Representation codec and assembly interface for Low functions.
@@ -32,6 +32,9 @@ typedef struct loom_print_context_t {
   loom_text_low_repr_context_t low_repr;
   // Nesting depth of active descriptor-backed low asm region bodies.
   uint16_t low_asm_region_depth;
+  // Standalone diagnostics without printer options spell register identities
+  // numerically. Source and options-aware printing require target descriptors.
+  bool print_raw_register_types;
   // True when the current logical line already contains a printed token.
   bool has_previous_token;
   // True when the next token should be glued to the previous token.

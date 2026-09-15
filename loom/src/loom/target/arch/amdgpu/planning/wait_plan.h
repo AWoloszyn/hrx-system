@@ -8,10 +8,10 @@
 //
 // The shared low scheduler records target-neutral descriptor facts in scheduled
 // order. This layer owns the AMDGPU interpretation of those facts: memory
-// packets create outstanding wait-counter work, explicit wait packets drain
-// counters, and missing waits are reported as planned insertions before the
-// packet that needs the wait. The plan is a table only; IR materialization is
-// a later target-owned pass.
+// packets create outstanding wait-counter work, explicit wait packets bound
+// or drain counters, and missing waits are reported as planned insertions
+// before the packet that needs the wait. The plan is a table only; IR
+// materialization is a later target-owned pass.
 
 #ifndef LOOM_TARGET_ARCH_AMDGPU_PLANNING_WAIT_PLAN_H_
 #define LOOM_TARGET_ARCH_AMDGPU_PLANNING_WAIT_PLAN_H_
@@ -45,7 +45,7 @@ typedef uint8_t loom_amdgpu_wait_plan_action_flags_t;
 typedef enum loom_amdgpu_wait_plan_reason_e {
   // Unknown or uninitialized wait reason.
   LOOM_AMDGPU_WAIT_PLAN_REASON_UNKNOWN = 0,
-  // Explicit wait packet in the low stream drains this counter.
+  // Explicit wait packet in the low stream bounds or drains this counter.
   LOOM_AMDGPU_WAIT_PLAN_REASON_EXPLICIT_PACKET = 1,
   // A consumer uses a value produced by an outstanding memory load.
   LOOM_AMDGPU_WAIT_PLAN_REASON_SSA_USE = 2,
@@ -101,7 +101,8 @@ typedef struct loom_amdgpu_wait_plan_action_t {
   // AMDGPU wait counter affected by the action.
   uint16_t counter_id;
   // Wait target value. Zero drains all outstanding packets for the counter;
-  // nonzero waits only far enough for the required producer.
+  // nonzero bounds the remaining work. Authored bounds need an ordering proof
+  // before they can establish completion of an individual producer.
   uint16_t target_count;
   // Region block containing the insertion point or explicit wait.
   uint32_t block_index;
@@ -114,7 +115,8 @@ typedef struct loom_amdgpu_wait_plan_action_t {
   uint32_t producer_node;
   // Consumer node that needs the wait, or LOOM_LOW_SCHEDULE_NODE_NONE.
   uint32_t consumer_node;
-  // Outstanding packet count for this counter before the wait action.
+  // Locally tracked outstanding packet count before the wait action. An
+  // authored bound may exceed this count without proving a full drain.
   uint32_t outstanding_before;
 } loom_amdgpu_wait_plan_action_t;
 

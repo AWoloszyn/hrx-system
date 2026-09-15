@@ -1,0 +1,44 @@
+// RUN: emit low-allocation-json @copy_input_at_early_tie
+
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @copy_input_at_early_tie(%source: reg<test.i32 x8>) -> (reg<test.i32 x8>) asm {
+  %copy = copy %source : reg<test.i32 x8> -> reg<test.i32 x8>
+  %result = test.accumulate.v8i32 %source, %source, %copy
+  return %result
+}
+
+// ----
+{"format":"loom.low.allocation.v0","function":"copy_input_at_early_tie","target":"target","descriptor_set":"test.low.core","allocation_mode":"virtual","assignment_count":3,"remark_count":0,"copy_decision_count":1,"spill_count":0,"spill_plan_count":0,"coalesced_copy_count":0,"materialized_copy_count":1,"assignments":[{"index":0,"value":{"id":0,"name":"source","type":"reg<test.i32 x8>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":0,"end_point":3,"unit_count":8,"location":{"kind":"target_id","base":0,"count":8}},{"index":1,"value":{"id":2,"name":"copy","type":"reg<test.i32 x8>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":1,"end_point":3,"unit_count":8,"location":{"kind":"target_id","base":8,"count":8}},{"index":2,"value":{"id":3,"name":"result","type":"reg<test.i32 x8>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":2,"end_point":3,"unit_count":8,"location":{"kind":"target_id","base":8,"count":8}}],"spill_plans":[],"copy_decisions":[{"index":0,"kind":"materialized","source_value":{"id":0,"name":"source","type":"reg<test.i32 x8>"},"result_value":{"id":2,"name":"copy","type":"reg<test.i32 x8>"},"source_assignment":0,"result_assignment":1}],"remarks":[]}
+
+// ====
+
+// RUN: emit low-allocation-json @copied_fact_alias_at_early_tie
+
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @copied_fact_alias_at_early_tie(%source: reg<test.i32 x8>) -> (reg<test.i32 x8>) asm {
+  %copy = copy %source : reg<test.i32 x8> -> reg<test.i32 x8>
+  %alias = low.assume %copy [range(%copy, 0, 1024)] : reg<test.i32 x8>
+  %result = test.accumulate.v8i32 %source, %source, %alias
+  return %result
+}
+
+// ----
+{"format":"loom.low.allocation.v0","function":"copied_fact_alias_at_early_tie","target":"target","descriptor_set":"test.low.core","allocation_mode":"virtual","assignment_count":4,"remark_count":0,"copy_decision_count":1,"spill_count":0,"spill_plan_count":0,"coalesced_copy_count":0,"materialized_copy_count":1,"assignments":[{"index":0,"value":{"id":0,"name":"source","type":"reg<test.i32 x8>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":0,"end_point":4,"unit_count":8,"location":{"kind":"target_id","base":0,"count":8}},{"index":1,"value":{"id":2,"name":"copy","type":"reg<test.i32 x8>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":1,"end_point":3,"unit_count":8,"location":{"kind":"target_id","base":8,"count":8}},{"index":2,"value":{"id":3,"name":"alias","type":"reg<test.i32 x8>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":2,"end_point":4,"unit_count":8,"location":{"kind":"target_id","base":8,"count":8}},{"index":3,"value":{"id":4,"name":"result","type":"reg<test.i32 x8>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":3,"end_point":4,"unit_count":8,"location":{"kind":"target_id","base":8,"count":8}}],"spill_plans":[],"copy_decisions":[{"index":0,"kind":"materialized","source_value":{"id":0,"name":"source","type":"reg<test.i32 x8>"},"result_value":{"id":2,"name":"copy","type":"reg<test.i32 x8>"},"source_assignment":0,"result_assignment":1}],"remarks":[]}
+
+// ====
+
+// RUN: emit low-allocation-json @fact_aliased_input_at_early_tie
+
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @fact_aliased_input_at_early_tie(%source: reg<test.i32 x8>) -> (reg<test.i32 x8>) asm {
+  %alias = low.assume %source [range(%source, 0, 1024)] : reg<test.i32 x8>
+  %copy = copy %alias : reg<test.i32 x8> -> reg<test.i32 x8>
+  %result = test.accumulate.v8i32 %source, %alias, %copy
+  return %result
+}
+
+// ----
+{"format":"loom.low.allocation.v0","function":"fact_aliased_input_at_early_tie","target":"target","descriptor_set":"test.low.core","allocation_mode":"virtual","assignment_count":4,"remark_count":0,"copy_decision_count":1,"spill_count":0,"spill_plan_count":0,"coalesced_copy_count":0,"materialized_copy_count":1,"assignments":[{"index":0,"value":{"id":0,"name":"source","type":"reg<test.i32 x8>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":0,"end_point":4,"unit_count":8,"location":{"kind":"target_id","base":0,"count":8}},{"index":1,"value":{"id":2,"name":"alias","type":"reg<test.i32 x8>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":1,"end_point":4,"unit_count":8,"location":{"kind":"target_id","base":0,"count":8}},{"index":2,"value":{"id":3,"name":"copy","type":"reg<test.i32 x8>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":2,"end_point":4,"unit_count":8,"location":{"kind":"target_id","base":8,"count":8}},{"index":3,"value":{"id":4,"name":"result","type":"reg<test.i32 x8>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":3,"end_point":4,"unit_count":8,"location":{"kind":"target_id","base":8,"count":8}}],"spill_plans":[],"copy_decisions":[{"index":0,"kind":"materialized","source_value":{"id":2,"name":"alias","type":"reg<test.i32 x8>"},"result_value":{"id":3,"name":"copy","type":"reg<test.i32 x8>"},"source_assignment":1,"result_assignment":2}],"remarks":[]}

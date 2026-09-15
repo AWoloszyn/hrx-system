@@ -350,31 +350,50 @@ loom_value_facts_t loom_value_facts_sign_extend(loom_value_facts_t source_facts,
   return result_facts;
 }
 
-loom_value_facts_t loom_value_facts_wrap_integer(loom_value_facts_t facts,
-                                                 int32_t bit_count) {
-  const int64_t domain_lo = bit_count == 1 ? 0
-                            : bit_count == 64
-                                ? INT64_MIN
-                                : -(INT64_C(1) << (bit_count - 1));
-  const int64_t domain_hi = bit_count == 1 ? 1 : INT64_MAX >> (64 - bit_count);
-  if (facts.range_lo >= domain_lo && facts.range_hi <= domain_hi &&
-      !(facts.range_lo == INT64_MIN && facts.range_hi == INT64_MAX)) {
-    return facts;
+loom_value_facts_t loom_value_facts_wrap_integer(
+    loom_value_facts_t source_facts, int32_t bit_count) {
+  const int64_t signed_maximum =
+      bit_count == 64 ? INT64_MAX : (INT64_C(1) << (bit_count - 1)) - 1;
+  const int64_t domain_lo = bit_count == 1 ? 0 : -signed_maximum - 1;
+  const int64_t domain_hi = bit_count == 1 ? 1 : signed_maximum;
+  // Unbounded endpoints may have come from overflow in the mathematical
+  // transfer itself. Their odd divisor factors are not preserved by wrapping.
+  if (source_facts.range_lo >= domain_lo &&
+      source_facts.range_hi <= domain_hi &&
+      !(bit_count == 64 && !loom_value_facts_is_exact(source_facts) &&
+        (source_facts.range_lo == INT64_MIN ||
+         source_facts.range_hi == INT64_MAX))) {
+    return source_facts;
   }
-  if (loom_value_facts_is_exact(facts)) {
-    return bit_count == 1
-               ? loom_value_facts_exact_i64((uint64_t)facts.range_lo & 1)
-               : loom_value_facts_make_signed_raw_bits((uint64_t)facts.range_lo,
-                                                       bit_count);
+
+  const int64_t wrapped_lo =
+      bit_count == 1 ? (int64_t)((uint64_t)source_facts.range_lo & 1)
+                     : loom_value_facts_sign_extend_raw_bits(
+                           (uint64_t)source_facts.range_lo, bit_count);
+  const int64_t wrapped_hi =
+      bit_count == 1 ? (int64_t)((uint64_t)source_facts.range_hi & 1)
+                     : loom_value_facts_sign_extend_raw_bits(
+                           (uint64_t)source_facts.range_hi, bit_count);
+  loom_value_facts_t result_facts;
+  if (loom_value_facts_is_exact(source_facts)) {
+    result_facts = loom_value_facts_exact_i64(wrapped_lo);
+  } else {
+    // gcd(divisor, 2^bit_count) is its bounded power-of-two factor.
+    int64_t divisor = source_facts.known_divisor & -source_facts.known_divisor;
+    if (bit_count < 63) {
+      divisor = iree_min(divisor, INT64_C(1) << bit_count);
+    }
+    const uint64_t span =
+        (uint64_t)source_facts.range_hi - (uint64_t)source_facts.range_lo;
+    if (bit_count < 64 && span < (UINT64_C(1) << bit_count) &&
+        wrapped_lo <= wrapped_hi) {
+      result_facts = loom_value_facts_make(wrapped_lo, wrapped_hi, divisor);
+    } else {
+      result_facts = loom_value_facts_make(domain_lo, domain_hi, divisor);
+    }
   }
-  // Subtracting multiples of 2^width preserves only the power-of-two part
-  // of the mathematical divisor, capped at the modulus itself.
-  int64_t divisor = facts.known_divisor & -facts.known_divisor;
-  if (bit_count < 63) divisor = iree_min(divisor, INT64_C(1) << bit_count);
-  loom_value_facts_t result =
-      loom_value_facts_make(domain_lo, domain_hi, divisor);
-  loom_value_facts_propagate_unary_distribution(facts, &result);
-  return result;
+  loom_value_facts_propagate_unary_distribution(source_facts, &result_facts);
+  return result_facts;
 }
 
 loom_value_facts_t loom_value_facts_make_unsigned_bit_count_range(
@@ -678,6 +697,30 @@ bool loom_value_facts_predicate_conflict(
                                                        out_conflict);
 }
 
+// A literal bound and a known divisor describe the same value. Tighten finite
+// endpoints to possible multiples so consumers need not rediscover this fact.
+static void loom_value_facts_refine_divisible_range(loom_value_facts_t* facts) {
+  const int64_t divisor = facts->known_divisor;
+  if (divisor <= 1 || loom_value_facts_is_float(*facts)) return;
+  int64_t lower = facts->range_lo;
+  int64_t upper = facts->range_hi;
+  if (lower != INT64_MIN) {
+    const int64_t remainder = lower % divisor;
+    const int64_t adjustment = remainder > 0 ? divisor - remainder : -remainder;
+    if (!iree_checked_add_i64(lower, adjustment, &lower)) return;
+  }
+  if (upper != INT64_MAX) {
+    const int64_t remainder = upper % divisor;
+    const int64_t adjustment = remainder < 0 ? divisor + remainder : remainder;
+    if (!iree_checked_sub_i64(upper, adjustment, &upper)) return;
+  }
+  // The lattice has no empty set. Contradictory predicates retain their
+  // conservative interval instead of manufacturing an exact value.
+  if (lower > upper) return;
+  facts->range_lo = lower;
+  facts->range_hi = upper;
+}
+
 void loom_value_facts_apply_predicate(loom_value_facts_t* facts,
                                       const loom_predicate_t* predicate) {
   // This scalar fact lattice can consume predicates with literal bounds. Value
@@ -725,11 +768,10 @@ void loom_value_facts_apply_predicate(loom_value_facts_t* facts,
                  facts->range_lo < facts->range_hi && constant > INT64_MIN) {
         facts->range_hi = constant - 1;
       }
-      loom_value_facts_recompute_flags(facts);
       if (constant == 0) {
-        facts->flags |= LOOM_VALUE_FACT_NON_ZERO;
+        preserved_predicate_flags |= LOOM_VALUE_FACT_NON_ZERO;
       }
-      return;
+      break;
 
     case LOOM_PREDICATE_LT:
       // a < N → range_hi = min(range_hi, N - 1).
@@ -809,6 +851,7 @@ void loom_value_facts_apply_predicate(loom_value_facts_t* facts,
       break;
   }
 
+  loom_value_facts_refine_divisible_range(facts);
   loom_value_facts_recompute_flags(facts);
   facts->flags |= preserved_predicate_flags;
 }

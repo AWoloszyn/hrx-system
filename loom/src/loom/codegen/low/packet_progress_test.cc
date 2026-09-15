@@ -383,5 +383,43 @@ TEST_F(LowPacketProgressTest, QueriesObservedProgressForClassRange) {
   EXPECT_EQ(chain_index.next_record_indices[0], 2u);
 }
 
+TEST_F(LowPacketProgressTest, BoundsDoNotAdvanceOrResetElapsedProgress) {
+  const loom_low_packet_progress_record_t records[] = {
+      MakeProgressRecord(0, kSyntheticProgressPipe, IREE_SV("synthetic.pipe"),
+                         LOOM_LOW_PACKET_PROGRESS_ACTION_ADVANCE, 1),
+      MakeProgressRecord(1, kSyntheticProgressPipe, IREE_SV("synthetic.pipe"),
+                         LOOM_LOW_PACKET_PROGRESS_ACTION_BOUND, 2),
+      MakeProgressRecord(2, kSyntheticProgressPipe, IREE_SV("synthetic.pipe"),
+                         LOOM_LOW_PACKET_PROGRESS_ACTION_ADVANCE, 3),
+      MakeProgressRecord(3, kSyntheticProgressPipe, IREE_SV("synthetic.pipe"),
+                         LOOM_LOW_PACKET_PROGRESS_ACTION_BOUND, 1),
+      MakeProgressRecord(4, kSyntheticProgressPipe, IREE_SV("synthetic.pipe"),
+                         LOOM_LOW_PACKET_PROGRESS_ACTION_RESET, 0),
+  };
+  const loom_low_packet_progress_table_t table = {
+      /*.schedule=*/&state_.schedule,
+      /*.allocation=*/&state_.allocation,
+      /*.records=*/records,
+      /*.record_count=*/IREE_ARRAYSIZE(records),
+  };
+  loom_low_packet_progress_class_chain_index_t chain_index = {};
+  IREE_ASSERT_OK(loom_low_packet_progress_class_chain_index_build(
+      &table, &arena_, &chain_index));
+  loom_low_packet_progress_class_range_index_t range_index = {};
+  IREE_ASSERT_OK(loom_low_packet_progress_class_range_index_build(
+      &chain_index, &arena_, &range_index));
+
+  const uint32_t expected_progress[] = {0, 0, 0, 3, 3, UINT32_MAX};
+  for (iree_host_size_t end = 1; end < IREE_ARRAYSIZE(expected_progress);
+       ++end) {
+    EXPECT_EQ(loom_low_packet_progress_class_chain_index_observed_progress(
+                  &chain_index, 0, end, kSyntheticProgressPipe),
+              expected_progress[end]);
+    EXPECT_EQ(loom_low_packet_progress_class_range_index_observed_progress(
+                  &range_index, 0, end, kSyntheticProgressPipe),
+              expected_progress[end]);
+  }
+}
+
 }  // namespace
 }  // namespace loom

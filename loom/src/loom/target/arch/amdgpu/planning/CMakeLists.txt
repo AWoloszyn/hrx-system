@@ -209,6 +209,7 @@ loom_cc_library(
     iree::base
     iree::base::internal
     iree::base::internal::arena
+    loom::codegen::low::allocation::storage_lease_index
     loom::codegen::low::allocation::table
     loom::codegen::low::memory_access
     loom::codegen::low::schedule

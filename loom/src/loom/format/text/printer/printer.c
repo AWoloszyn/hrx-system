@@ -15,7 +15,7 @@
 static loom_print_context_t loom_print_context_make(
     const loom_module_t* module, loom_output_stream_t* stream,
     const loom_text_print_options_t* options,
-    const loom_print_name_plan_t* name_plan) {
+    loom_print_name_plan_t* name_plan) {
   loom_print_context_t context = {0};
   context.stream = stream;
   context.module = module;

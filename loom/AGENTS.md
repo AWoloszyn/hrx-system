@@ -229,6 +229,38 @@ schedule, allocation, or packet-plan fixtures are not useful consumer coverage;
 tests exercise authored input through the real verification and compilation
 boundary and check failures at the stage that owns them.
 
+## Test Ownership
+
+Authored `.loom` and `.loom-test` input names describe program roles and contain
+no `$`. Dollar markers distinguish compiler-generated output, not maintained
+source intent. `loom-lint` enforces this for every input case, including compiler
+regressions; generated expectation sections remain exempt. Copying an IR dump
+into a test requires meaningful names rather than preserving its disambiguators.
+
+C++ tests exercise APIs and functionality through focused calls and small,
+valid data fixtures. Authored IR programs, pass regressions, diagnostics, and
+text round trips belong in `.loom-test` files beside the owning subsystem and
+run through `loom-check`. This keeps IR available to the formatter and migration
+tools, and lets program tests share one runner instead of linking a compiler
+stack into each unit-test executable.
+
+A new `format/text:parser` dependency in a C++ unit-test target is a boundary
+review signal. Parsing is appropriate when the parser API itself is the subject;
+it is not setup for testing an allocator, analysis, or transform. Large IR
+builders and generated source strings have the same ownership problem as
+embedded IR literals. Loading a fixture file from C++ merely moves the text;
+the program test still belongs in `loom-check`.
+
+API tests of trusted analysis data use fixtures satisfying the producer's
+invariants. The corresponding `.loom-test` cases establish those invariants
+through real parsing, verification, and compilation. These are complementary
+layers, not a choice between malformed unit fixtures and a full compiler stack
+inside every unit test. Test-only inspection hooks in shipping compiler code
+are not a substitute for either layer.
+
+The [loom-check guide](src/loom/tools/loom-check/README.md) describes fixture
+ownership, build wiring, and expectation updates.
+
 ## Cleaning Existing Code
 
 Existing generators are in scope for cleanup when they violate these boundaries.

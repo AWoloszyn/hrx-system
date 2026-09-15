@@ -9,6 +9,13 @@
 
 iree_add_all_subdirs()
 
+loom_check_test_suite(
+  NAME
+    test
+  SRCS
+    "ssa_names.loom-test"
+)
+
 loom_cc_test(
   NAME
     golden_corpus_test

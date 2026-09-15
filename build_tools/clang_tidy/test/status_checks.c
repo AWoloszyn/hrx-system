@@ -16,6 +16,7 @@ typedef void (*iree_clang_tidy_status_const_callback_t)(
 void iree_clang_tidy_status_complete(iree_status_t status);
 
 iree_status_t iree_ok_status(void);
+iree_status_t iree_status_from_code(iree_status_code_t code);
 int iree_status_is_ok(iree_status_t status);
 void iree_status_free(iree_status_t status);
 iree_status_t iree_status_ignore(iree_status_t status);
@@ -399,6 +400,92 @@ void iree_clang_tidy_status_borrowed_parameter_const_callback(
     iree_clang_tidy_status_const_callback_t callback, void* user_data,
     const iree_status_t const_callback_parameter_status) {
   callback(user_data, const_callback_parameter_status);
+}
+
+iree_status_t iree_clang_tidy_status_borrowed_conditional_owned(
+    const iree_status_t const_conditional_observed_status) {
+  return iree_clang_tidy_status_transfer_order_sink(
+      iree_status_is_ok(const_conditional_observed_status)
+          ? iree_clang_tidy_status_cleanup_source()
+          : iree_status_clone(const_conditional_observed_status));
+}
+
+iree_status_t iree_clang_tidy_status_borrowed_conditional_callback(
+    iree_status_t (*callback)(iree_status_t status),
+    const iree_status_t const_conditional_callback_status) {
+  return callback(iree_status_is_ok(const_conditional_callback_status)
+                      ? iree_clang_tidy_status_cleanup_source()
+                      : iree_status_clone(const_conditional_callback_status));
+}
+
+iree_status_t iree_clang_tidy_status_borrowed_nested_observer(
+    const iree_status_t const_nested_observer_status) {
+  return iree_clang_tidy_status_transfer_order_sink(
+      iree_status_from_code(iree_status_code(const_nested_observer_status)));
+}
+
+iree_status_t iree_clang_tidy_status_borrowed_cloned_conditional(
+    int select_first, const iree_status_t const_cloned_first_status,
+    const iree_status_t const_cloned_second_status) {
+  return iree_clang_tidy_status_transfer_order_sink(iree_status_clone(
+      select_first ? const_cloned_first_status : const_cloned_second_status));
+}
+
+iree_status_t iree_clang_tidy_status_borrowed_direct_transfer(
+    const iree_status_t const_direct_transfer_status) {
+  return iree_clang_tidy_status_transfer_order_sink(
+      const_direct_transfer_status);
+}
+
+iree_status_t iree_clang_tidy_status_borrowed_binary_conditional_owned(
+    const iree_status_t const_binary_conditional_cloned_status) {
+  return iree_clang_tidy_status_transfer_order_sink(
+      iree_status_clone(const_binary_conditional_cloned_status)
+          ?: iree_clang_tidy_status_cleanup_source());
+}
+
+iree_status_t iree_clang_tidy_status_borrowed_binary_conditional_transfer(
+    const iree_status_t const_binary_conditional_transfer_status) {
+  return iree_clang_tidy_status_transfer_order_sink(
+      const_binary_conditional_transfer_status
+          ?: iree_clang_tidy_status_cleanup_source());
+}
+
+iree_status_t iree_clang_tidy_status_borrowed_conditional_true_transfer(
+    int select_original, const iree_status_t const_true_transfer_status) {
+  return iree_clang_tidy_status_transfer_order_sink(
+      select_original ? const_true_transfer_status
+                      : iree_status_clone(const_true_transfer_status));
+}
+
+iree_status_t iree_clang_tidy_status_borrowed_conditional_false_transfer(
+    int select_clone, const iree_status_t const_false_transfer_status) {
+  return iree_clang_tidy_status_transfer_order_sink(
+      select_clone ? iree_status_clone(const_false_transfer_status)
+                   : (iree_status_t)(uintptr_t)const_false_transfer_status);
+}
+
+iree_status_t iree_clang_tidy_status_borrowed_comma_transfer(
+    const iree_status_t const_comma_transfer_status) {
+  return iree_clang_tidy_status_transfer_order_sink(
+      (iree_status_fprint(0, const_comma_transfer_status),
+       const_comma_transfer_status));
+}
+
+iree_status_t iree_clang_tidy_status_borrowed_condition_consumed(
+    const iree_status_t const_condition_consumed_status) {
+  return iree_clang_tidy_status_transfer_order_sink(
+      iree_status_consume_code(const_condition_consumed_status) ==
+              IREE_STATUS_OK
+          ? iree_clang_tidy_status_assigned_source()
+          : iree_clang_tidy_status_cleanup_source());
+}
+
+iree_status_t iree_clang_tidy_status_borrowed_transfer_before_clone(
+    const iree_status_t const_transfer_before_clone_status) {
+  return iree_clang_tidy_status_transfer_order_sink(
+      iree_status_clone(iree_clang_tidy_status_transfer_order_sink(
+          const_transfer_before_clone_status)));
 }
 
 iree_status_t iree_clang_tidy_status_borrowed_parameter_returned(

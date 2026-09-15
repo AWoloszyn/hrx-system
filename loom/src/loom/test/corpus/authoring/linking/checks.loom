@@ -1,4 +1,4 @@
-kernel.decl @scale_i32_buffer(%element_count$0: index) launch(%element_count$1: index, %input: buffer, %output: buffer)
+kernel.decl @scale_i32_buffer(%specialized_element_count: index) launch(%element_count: index, %input: buffer, %output: buffer)
 
 check.case public @scale_i32_buffer_case {
   %element_count = check.param.choice values([17, 64, 193]) name("element_count") : index

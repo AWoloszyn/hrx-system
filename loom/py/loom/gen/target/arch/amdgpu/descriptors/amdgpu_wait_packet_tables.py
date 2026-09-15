@@ -127,6 +127,7 @@ class _WaitPacketSelectionRow:
     counter_mask: int
     descriptor_index: int
     covered_counter_mask: int
+    full_drain_counter_mask: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -244,6 +245,8 @@ def _descriptor_wait_packet_rows(
         if immediate_counter_mask == 0:
             raise ValueError(f"{immediate_owner} does not map to any descriptor counter effect")
         _validate_uint16(immediate_owner, "no-wait value", immediate.unsigned_max)
+        if immediate.unsigned_max == 0:
+            raise ValueError(f"{immediate_owner} must distinguish full completion from no wait")
         immediate_rows.append(
             _WaitPacketImmediateRow(
                 descriptor_key=descriptor.key,
@@ -360,10 +363,33 @@ def _best_wait_packet_descriptor_selection(
     return best_descriptor_index, best_covered_counter_mask
 
 
+def _full_drain_counter_mask(
+    counter_mask: int,
+    immediate_rows: Sequence[_WaitPacketImmediateRow],
+) -> int:
+    # Planning credits completion before all same-anchor actions are known.
+    # Intersect the guarantees of every encoding so later packet selection
+    # cannot weaken the completion already consumed by the planner.
+    full_drain_mask = 0
+    for counter_id in range(_COUNTER_VMEM_LOAD, _COUNTER_X + 1):
+        counter_bit = _counter_mask(counter_id)
+        if not counter_mask & counter_bit:
+            continue
+        coupled_mask = 0
+        for immediate in immediate_rows:
+            if immediate.counter_mask & counter_bit:
+                coupled_mask = coupled_mask & immediate.counter_mask if coupled_mask else immediate.counter_mask
+        if not coupled_mask:
+            raise ValueError(f"wait counter {counter_id} has no immediate encoding")
+        full_drain_mask |= coupled_mask
+    return full_drain_mask
+
+
 def _descriptor_set_wait_packet_selection_rows(
     descriptor_set_key: str,
     descriptor_set_ordinal: int,
     descriptor_rows: Sequence[_WaitPacketDescriptorRow],
+    immediate_rows: Sequence[_WaitPacketImmediateRow],
 ) -> tuple[_WaitPacketSelectionRow, ...]:
     selection_rows: list[_WaitPacketSelectionRow] = []
     for counter_mask in range(_WAIT_COUNTER_MASK_COUNT):
@@ -378,6 +404,7 @@ def _descriptor_set_wait_packet_selection_rows(
                 counter_mask=counter_mask,
                 descriptor_index=descriptor_index,
                 covered_counter_mask=covered_counter_mask,
+                full_drain_counter_mask=_full_drain_counter_mask(covered_counter_mask, immediate_rows),
             )
         )
     return tuple(selection_rows)
@@ -499,12 +526,21 @@ def _validate_wait_packet_tables(tables: _WaitPacketTables) -> None:
         if range_row is None:
             raise ValueError(f"{owner} references missing descriptor-set range")
         if row.covered_counter_mask == 0:
+            if row.full_drain_counter_mask != 0:
+                raise ValueError(f"{owner} claims completion without a covered counter")
             continue
         if row.descriptor_index >= range_row.descriptor_count:
             raise ValueError(f"{owner} descriptor index is out of bounds")
         descriptor_row = tables.descriptor_rows[range_row.first_descriptor + row.descriptor_index]
         if row.covered_counter_mask != (descriptor_row.counter_mask & row.counter_mask):
             raise ValueError(f"{owner} covered mask does not match descriptor row")
+        set_immediates = tuple(
+            immediate
+            for descriptor in tables.descriptor_rows[range_row.first_descriptor : range_row.first_descriptor + range_row.descriptor_count]
+            for immediate in tables.immediate_rows[descriptor.immediate_start : descriptor.immediate_start + descriptor.immediate_count]
+        )
+        if row.full_drain_counter_mask != _full_drain_counter_mask(row.covered_counter_mask, set_immediates):
+            raise ValueError(f"{owner} full drain mask does not match encoding guarantees")
 
 
 def _materialize_wait_packet_tables(
@@ -546,6 +582,7 @@ def _materialize_wait_packet_tables(
             descriptor_set.key,
             descriptor_set_ordinal,
             set_descriptor_rows,
+            set_immediate_rows,
         )
         _validate_descriptor_set_wait_packet_coverage(descriptor_set, set_descriptor_rows, set_selection_rows)
         selection_rows.extend(set_selection_rows)
@@ -629,6 +666,8 @@ def _selection_row_initializer(row: _WaitPacketSelectionRow) -> str:
             f"        .descriptor_index = {row.descriptor_index},",
             "        .covered_counter_mask =",
             f"            {_counter_mask_expr(row.covered_counter_mask)},",
+            "        .full_drain_counter_mask =",
+            f"            {_counter_mask_expr(row.full_drain_counter_mask)},",
             "    },",
         ]
     )

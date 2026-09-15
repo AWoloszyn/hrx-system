@@ -61,15 +61,19 @@ iree_status_t loom_symbolic_value_prove_relation(
     loom_symbolic_integer_relation_t relation, loom_value_id_t left_value,
     loom_value_id_t right_value, loom_symbolic_proof_result_t* out_result);
 
-// Attempts to discharge a scaled relation from predicates on an identity chain.
+// Attempts to discharge scale * (positive_value - negative_value) + constant
+// <= 0, with positive scale, from upper predicates on an identity chain.
+// Constant shifts on either predicate operand are retained when adjusting the
+// relative upper bound.
 iree_status_t loom_symbolic_value_prove_scaled_assumption(
     loom_symbolic_expr_context_t* context, loom_value_id_t start_value,
     loom_value_id_t positive_value, loom_value_id_t negative_value,
     int64_t scale, int64_t constant, bool* out_matched,
     loom_symbolic_proof_result_t* out_result);
 
-// Attempts to discharge a scaled static upper bound from predicates on an
-// identity chain.
+// Attempts to discharge scale * positive_value + constant <= 0, with positive
+// scale, from upper predicates on an identity chain, including predicates on
+// value + offset.
 iree_status_t loom_symbolic_value_prove_scaled_static_assumption(
     loom_symbolic_expr_context_t* context, loom_value_id_t start_value,
     loom_value_id_t positive_value, int64_t scale, int64_t constant,

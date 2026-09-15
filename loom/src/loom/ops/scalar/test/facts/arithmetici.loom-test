@@ -256,3 +256,154 @@ func.def @fmai_dynamic(%a: i32, %b: i32, %c: i32) -> (i32) {
   %r = scalar.fmai %a, %b, %c : i32
   func.return %r : i32
 }
+
+// ====
+
+// Signed wrap includes negative results; intersecting the mathematical range
+// with the i32 domain would incorrectly discard them.
+func.def @addi_wrapping_range(%value0: i32) -> (i64, i64) {
+  %value = scalar.assume %value0 [range(%value0, 0, 2147483647)] : i32
+  %c16 = scalar.constant 16 : i32
+  %result = scalar.addi %value, %c16 : i32
+  %minimum = test.fact_range_lo %result : i32 -> i64
+  %maximum = test.fact_range_hi %result : i32 -> i64
+  func.return %minimum, %maximum : i64, i64
+}
+
+// ----
+func.def @addi_wrapping_range(%value0: i32) -> (i64, i64) {
+  %minimum = scalar.constant -2147483648 : i64
+  %maximum = scalar.constant 2147483647 : i64
+  func.return %minimum, %maximum : i64, i64
+}
+
+// ====
+
+func.def @subi_wrapping_range(%value0: i8) -> (i64, i64) {
+  %value = scalar.assume %value0 [range(%value0, -128, 0)] : i8
+  %c1 = scalar.constant 1 : i8
+  %result = scalar.subi %value, %c1 : i8
+  %minimum = test.fact_range_lo %result : i8 -> i64
+  %maximum = test.fact_range_hi %result : i8 -> i64
+  func.return %minimum, %maximum : i64, i64
+}
+
+// ----
+func.def @subi_wrapping_range(%value0: i8) -> (i64, i64) {
+  %minimum = scalar.constant -128 : i64
+  %maximum = scalar.constant 127 : i64
+  func.return %minimum, %maximum : i64, i64
+}
+
+// ====
+
+// Reduction modulo 256 does not preserve divisibility by three.
+func.def @muli_wrap_drops_odd_divisor(%value0: i8) -> (i64, i64, i64) {
+  %value = scalar.assume %value0 [range(%value0, 40, 50)] : i8
+  %c3 = scalar.constant 3 : i8
+  %result = scalar.muli %value, %c3 : i8
+  %minimum = test.fact_range_lo %result : i8 -> i64
+  %maximum = test.fact_range_hi %result : i8 -> i64
+  %divisor = test.fact_divisor %result : i8 -> i64
+  func.return %minimum, %maximum, %divisor : i64, i64, i64
+}
+
+// ----
+func.def @muli_wrap_drops_odd_divisor(%value0: i8) -> (i64, i64, i64) {
+  %minimum = scalar.constant -128 : i64
+  %maximum = scalar.constant 127 : i64
+  %divisor = scalar.constant 1 : i64
+  func.return %minimum, %maximum, %divisor : i64, i64, i64
+}
+
+// ====
+
+func.def @fmai_wrap_drops_odd_divisor(%value0: i8) -> (i64, i64, i64) {
+  %value = scalar.assume %value0 [range(%value0, 40, 50)] : i8
+  %c3 = scalar.constant 3 : i8
+  %c6 = scalar.constant 6 : i8
+  %result = scalar.fmai %value, %c3, %c6 : i8
+  %minimum = test.fact_range_lo %result : i8 -> i64
+  %maximum = test.fact_range_hi %result : i8 -> i64
+  %divisor = test.fact_divisor %result : i8 -> i64
+  func.return %minimum, %maximum, %divisor : i64, i64, i64
+}
+
+// ----
+func.def @fmai_wrap_drops_odd_divisor(%value0: i8) -> (i64, i64, i64) {
+  %minimum = scalar.constant -128 : i64
+  %maximum = scalar.constant 127 : i64
+  %divisor = scalar.constant 1 : i64
+  func.return %minimum, %maximum, %divisor : i64, i64, i64
+}
+
+// ====
+
+func.def @negi_wrapping_range(%value0: i8) -> (i64, i64) {
+  %value = scalar.assume %value0 [range(%value0, -128, -120)] : i8
+  %result = scalar.negi %value : i8
+  %minimum = test.fact_range_lo %result : i8 -> i64
+  %maximum = test.fact_range_hi %result : i8 -> i64
+  func.return %minimum, %maximum : i64, i64
+}
+
+// ----
+func.def @negi_wrapping_range(%value0: i8) -> (i64, i64) {
+  %minimum = scalar.constant -128 : i64
+  %maximum = scalar.constant 127 : i64
+  func.return %minimum, %maximum : i64, i64
+}
+
+// ====
+
+// The absolute value of INT64_MIN retains that bit pattern, which is negative.
+func.def @absi_full_width_overflow(%value0: i64) -> (i64, i64) {
+  %value = scalar.assume %value0 [range(%value0, -9223372036854775808, -1)] : i64
+  %result = scalar.absi %value : i64
+  %minimum = test.fact_range_lo %result : i64 -> i64
+  %maximum = test.fact_range_hi %result : i64 -> i64
+  func.return %minimum, %maximum : i64, i64
+}
+
+// ----
+func.def @absi_full_width_overflow(%value0: i64) -> (i64, i64) {
+  %minimum = scalar.constant -9223372036854775808 : i64
+  %maximum = scalar.constant 9223372036854775807 : i64
+  func.return %minimum, %maximum : i64, i64
+}
+
+// ====
+
+func.def @addi_exact_wrap() -> (i64, i64) {
+  %c120 = scalar.constant 120 : i8
+  %c16 = scalar.constant 16 : i8
+  %result = scalar.addi %c120, %c16 : i8
+  %minimum = test.fact_range_lo %result : i8 -> i64
+  %maximum = test.fact_range_hi %result : i8 -> i64
+  func.return %minimum, %maximum : i64, i64
+}
+
+// ----
+func.def @addi_exact_wrap() -> (i64, i64) {
+  %minimum = scalar.constant -120 : i64
+  %maximum = scalar.constant -120 : i64
+  func.return %minimum, %maximum : i64, i64
+}
+
+// ====
+
+func.def @addi_nonwrapping_range(%value0: i32) -> (i64, i64) {
+  %value = scalar.assume %value0 [range(%value0, 0, 1024)] : i32
+  %c16 = scalar.constant 16 : i32
+  %result = scalar.addi %value, %c16 : i32
+  %minimum = test.fact_range_lo %result : i32 -> i64
+  %maximum = test.fact_range_hi %result : i32 -> i64
+  func.return %minimum, %maximum : i64, i64
+}
+
+// ----
+func.def @addi_nonwrapping_range(%value0: i32) -> (i64, i64) {
+  %minimum = scalar.constant 16 : i64
+  %maximum = scalar.constant 1040 : i64
+  func.return %minimum, %maximum : i64, i64
+}

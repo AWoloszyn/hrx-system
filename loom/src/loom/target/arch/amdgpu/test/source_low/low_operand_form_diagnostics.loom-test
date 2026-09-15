@@ -12,9 +12,9 @@ low.func.def target<amdgpu.rdna3.core>(@target) @sopk_immediate_add_selected(%po
 // ----
 amdgpu.target<gfx1100> @target
 
-low.func.def target<amdgpu.rdna3.core>(@target) @sopk_immediate_add_selected(%position: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>) {
-  %result = low.op<amdgpu.s_addk_i32>(%position) {imm16 = 3} : (reg<amdgpu.sgpr>) -> %position as reg<amdgpu.sgpr>
-  low.return %result : reg<amdgpu.sgpr>
+low.func.def target<amdgpu.rdna3.core>(@target) @sopk_immediate_add_selected(%position: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>) asm {
+  %result = s_addk_i32 %position, 3
+  return %result
 }
 
 // ====
@@ -32,9 +32,9 @@ low.func.def target<amdgpu.rdna3.core>(@target) @sopk_immediate_add_rejected_liv
 // ----
 amdgpu.target<gfx1100> @target
 
-low.func.def target<amdgpu.rdna3.core>(@target) @sopk_immediate_add_rejected_live_lhs(%position: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) {
-  %result = low.op<amdgpu.s_add_u32.rhs_inline>(%position) {imm32 = 3} : (reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr>
-  low.return %result, %position : reg<amdgpu.sgpr>, reg<amdgpu.sgpr>
+low.func.def target<amdgpu.rdna3.core>(@target) @sopk_immediate_add_rejected_live_lhs(%position: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) asm {
+  %result = s_add_u32_rhs_inline %position, 3
+  return %result, %position
 }
 
 // ====
@@ -54,11 +54,11 @@ low.func.def target<amdgpu.rdna3.core>(@target) @sopk_immediate_add_rejected_liv
 // ----
 amdgpu.target<gfx1100> @target
 
-low.func.def target<amdgpu.rdna3.core>(@target) @sopk_immediate_add_rejected_live_slice_source(%lo: reg<amdgpu.sgpr>, %hi: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>, reg<amdgpu.sgpr x2>) {
-  %pair = low.concat(%lo, %hi) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
-  %position = low.slice %pair[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
-  %result = low.op<amdgpu.s_add_u32.rhs_inline>(%position) {imm32 = 3} : (reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr>
-  low.return %result, %pair : reg<amdgpu.sgpr>, reg<amdgpu.sgpr x2>
+low.func.def target<amdgpu.rdna3.core>(@target) @sopk_immediate_add_rejected_live_slice_source(%lo: reg<amdgpu.sgpr>, %hi: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>, reg<amdgpu.sgpr x2>) asm {
+  %pair = concat(%lo, %hi) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  %position = slice %pair[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %result = s_add_u32_rhs_inline %position, 3
+  return %result, %pair
 }
 
 // ====
@@ -80,11 +80,11 @@ low.func.def target<amdgpu.rdna3.core>(@target) @sopk_immediate_mul_rejected_loo
 // ----
 amdgpu.target<gfx1100> @target
 
-low.func.def target<amdgpu.rdna3.core>(@target) @sopk_immediate_mul_rejected_loop_reused_lhs(%position: reg<amdgpu.sgpr>, %again: reg<amdgpu.scc>) -> (reg<amdgpu.sgpr>) {
+low.func.def target<amdgpu.rdna3.core>(@target) @sopk_immediate_mul_rejected_loop_reused_lhs(%position: reg<amdgpu.sgpr>, %again: reg<amdgpu.scc>) -> (reg<amdgpu.sgpr>) asm {
   low.br ^loop
 ^loop:
-  %result = low.op<amdgpu.s_mul_i32.rhs_inline>(%position) {imm32 = 12} : (reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr>
+  %result = s_mul_i32_rhs_inline %position, 12
   low.cond_br %again, ^loop, ^exit : reg<amdgpu.scc>
 ^exit:
-  low.return %result : reg<amdgpu.sgpr>
+  return %result
 }

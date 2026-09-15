@@ -1,0 +1,181 @@
+// RUN: emit low-allocation @detached_copy_reuses_only_register test.i32=1
+
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @detached_copy_reuses_only_register(%source: reg<test.i32>) -> (reg<test.i32>) asm {
+  %result = copy %source {detached = true} : reg<test.i32> -> reg<test.i32>
+  return %result
+}
+
+// ----
+low-allocation @detached_copy_reuses_only_register
+target: target
+descriptor_set: test.low.core
+mode: virtual
+assignments: 2
+remarks: 0
+spills: 0
+copies: coalesced=1 materialized=0
+classes:
+  test.i32: assignments=2 units=2 target_ids=1 physical=0 spill_slots=0 unassigned=0
+
+// ====
+
+// RUN: emit low-allocation @detached_move_reuses_only_register test.i32=1
+
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @detached_move_reuses_only_register(%source: reg<test.i32>) -> (reg<test.i32>) asm {
+  %result = move %source {detached = true} : reg<test.i32> -> reg<test.i32>
+  return %result
+}
+
+// ----
+low-allocation @detached_move_reuses_only_register
+target: target
+descriptor_set: test.low.core
+mode: virtual
+assignments: 2
+remarks: 0
+spills: 0
+copies: coalesced=0 materialized=0
+classes:
+  test.i32: assignments=2 units=2 target_ids=1 physical=0 spill_slots=0 unassigned=0
+
+// ====
+
+// RUN: emit low-allocation @detached_copy_uses_spare_register test.i32=2
+
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @detached_copy_uses_spare_register(%source: reg<test.i32>) -> (reg<test.i32>) asm {
+  %result = copy %source {detached = true} : reg<test.i32> -> reg<test.i32>
+  return %result
+}
+
+// ----
+low-allocation @detached_copy_uses_spare_register
+target: target
+descriptor_set: test.low.core
+mode: virtual
+assignments: 2
+remarks: 0
+spills: 0
+copies: coalesced=0 materialized=1
+classes:
+  test.i32: assignments=2 units=2 target_ids=2 physical=0 spill_slots=0 unassigned=0
+
+// ====
+
+// RUN: emit low-allocation @detached_move_uses_spare_register test.i32=2
+
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @detached_move_uses_spare_register(%source: reg<test.i32>) -> (reg<test.i32>) asm {
+  %result = move %source {detached = true} : reg<test.i32> -> reg<test.i32>
+  return %result
+}
+
+// ----
+low-allocation @detached_move_uses_spare_register
+target: target
+descriptor_set: test.low.core
+mode: virtual
+assignments: 2
+remarks: 0
+spills: 0
+copies: coalesced=0 materialized=0
+classes:
+  test.i32: assignments=2 units=2 target_ids=2 physical=0 spill_slots=0 unassigned=0
+
+// ====
+
+// RUN: emit low-allocation @detached_copy_without_budget
+
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @detached_copy_without_budget(%source: reg<test.i32>) -> (reg<test.i32>) asm {
+  %result = copy %source {detached = true} : reg<test.i32> -> reg<test.i32>
+  return %result
+}
+
+// ----
+low-allocation @detached_copy_without_budget
+target: target
+descriptor_set: test.low.core
+mode: virtual
+assignments: 2
+remarks: 0
+spills: 0
+copies: coalesced=0 materialized=1
+classes:
+  test.i32: assignments=2 units=2 target_ids=2 physical=0 spill_slots=0 unassigned=0
+
+// ====
+
+// RUN: emit low-allocation @detached_move_without_budget
+
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @detached_move_without_budget(%source: reg<test.i32>) -> (reg<test.i32>) asm {
+  %result = move %source {detached = true} : reg<test.i32> -> reg<test.i32>
+  return %result
+}
+
+// ----
+low-allocation @detached_move_without_budget
+target: target
+descriptor_set: test.low.core
+mode: virtual
+assignments: 2
+remarks: 0
+spills: 0
+copies: coalesced=0 materialized=0
+classes:
+  test.i32: assignments=2 units=2 target_ids=2 physical=0 spill_slots=0 unassigned=0
+
+// ====
+
+// RUN: emit low-allocation @ordinary_move_reuses_storage
+
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @ordinary_move_reuses_storage(%source: reg<test.i32>) -> (reg<test.i32>) asm {
+  %result = move %source : reg<test.i32> -> reg<test.i32>
+  return %result
+}
+
+// ----
+low-allocation @ordinary_move_reuses_storage
+target: target
+descriptor_set: test.low.core
+mode: virtual
+assignments: 2
+remarks: 0
+spills: 0
+copies: coalesced=0 materialized=0
+classes:
+  test.i32: assignments=2 units=2 target_ids=1 physical=0 spill_slots=0 unassigned=0
+
+// ====
+
+// RUN: emit low-allocation @fixed_move_overrides_preference fixed=%source:target_id:0:1 fixed=%result:target_id:0:1
+
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @fixed_move_overrides_preference(%source: reg<test.i32>) -> (reg<test.i32>) asm {
+  %result = move %source {detached = true} : reg<test.i32> -> reg<test.i32>
+  return %result
+}
+
+// ----
+low-allocation @fixed_move_overrides_preference
+target: target
+descriptor_set: test.low.core
+mode: virtual
+assignments: 2
+remarks: 0
+spills: 0
+copies: coalesced=0 materialized=0
+classes:
+  test.i32: assignments=2 units=2 target_ids=1 physical=0 spill_slots=0 unassigned=0

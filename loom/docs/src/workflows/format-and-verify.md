@@ -13,13 +13,20 @@ Lint one or more explicit source files:
 loom-lint motif.loom kernel.loom model.loom
 ```
 
-The initial rule requires constant SSA names to carry a program role, such as
-`%batch_size`, or use the compact `%c<literal>` form, such as `%c512`. A name
+The `constant-name` rule requires constant SSA names to carry a program role,
+such as `%batch_size`, or use the compact `%c<literal>` form, such as `%c512`. A name
 such as `%fivehundredtwelve` only repeats the literal and fails with its source
 location and the `constant-name` rule identifier.
 
+The `generated-name` rule rejects `$` in authored names, including SSA values,
+symbols, block labels, and aliases. Compiler output uses `$` to distinguish
+generated identities from authored intent. A copied name such as `%double$17$0`
+or `@pipeline$config` needs a name explaining its role before becoming maintained
+source. Strings and comments are data, not names, and remain unchanged.
+
 `loom-lint` also accepts `.loom-test` containers and checks only authored input
-sections. Runner-owned expected output is excluded. Inputs are always explicit;
+sections, including inputs for compiler regression tests. Runner-owned expected
+output is excluded and can contain generated names. Inputs are always explicit;
 the tool does not discover a repository, build graph, or Git change set.
 
 `loom-format` parses, verifies, and prints complete Loom modules. It is the

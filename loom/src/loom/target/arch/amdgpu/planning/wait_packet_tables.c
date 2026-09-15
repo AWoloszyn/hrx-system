@@ -6,6 +6,7 @@
 
 #include "loom/target/arch/amdgpu/planning/wait_packet_tables.h"
 
+#include "iree/base/bitfield.h"
 #include "loom/ir/module.h"
 #include "loom/ops/low/ops.h"
 #include "loom/target/arch/amdgpu/target_info_defs.h"
@@ -102,11 +103,14 @@ static uint16_t loom_amdgpu_wait_packet_immediate_value(
   return (uint16_t)attr->value.i64;
 }
 
-uint32_t loom_amdgpu_wait_packet_explicit_counter_mask(
+uint32_t loom_amdgpu_wait_packet_decode_bounds(
     const loom_low_descriptor_set_t* descriptor_set,
     const loom_low_descriptor_t* descriptor,
     const loom_amdgpu_wait_packet_target_t* target, const loom_module_t* module,
-    const loom_op_t* op) {
+    const loom_op_t* op, loom_amdgpu_wait_packet_bounds_t* out_bounds) {
+  for (uint32_t slot = 0; slot < LOOM_AMDGPU_WAIT_COUNTER_SLOT_COUNT; ++slot) {
+    out_bounds->target_counts[slot] = UINT16_MAX;
+  }
   const loom_amdgpu_wait_packet_descriptor_template_t* packet_descriptor =
       loom_amdgpu_wait_packet_find_descriptor_template(descriptor_set,
                                                        descriptor, target);
@@ -116,7 +120,16 @@ uint32_t loom_amdgpu_wait_packet_explicit_counter_mask(
         loom_amdgpu_wait_packet_descriptor_immediate(packet_descriptor, i);
     const uint16_t value =
         loom_amdgpu_wait_packet_immediate_value(module, op, immediate);
-    if (value < immediate->no_wait_value) {
+    if (value == immediate->no_wait_value) continue;
+    for (uint32_t slot = 0; slot < LOOM_AMDGPU_WAIT_COUNTER_SLOT_COUNT;
+         ++slot) {
+      if (iree_any_bit_set(immediate->counter_mask,
+                           loom_amdgpu_wait_counter_mask_from_slot(slot))) {
+        out_bounds->target_counts[slot] =
+            iree_min(out_bounds->target_counts[slot], value);
+      }
+    }
+    if (value == 0) {
       counter_mask |= immediate->counter_mask;
     }
   }
