@@ -93,24 +93,23 @@ class XdnaPreparedCommandTest : public ::testing::Test {
                   iree_hal_buffer_usage_t allowed_usage) {
     iree_hal_buffer_release(buffers_[ordinal]);
     buffers_[ordinal] = nullptr;
+    iree_hal_buffer_release_callback_t release_callback = {};
+    release_callback.fn = ReleaseBufferStorage;
+    release_callback.user_data = &release_counts_[ordinal];
     IREE_CHECK_OK(iree_hal_heap_buffer_wrap(
         iree_hal_buffer_placement_undefined(), memory_type, allowed_access,
         allowed_usage, kBufferStorageByteLength,
         iree_make_byte_span(buffer_storage_[ordinal].data(),
                             buffer_storage_[ordinal].size()),
-        (iree_hal_buffer_release_callback_t){
-            .fn = ReleaseBufferStorage,
-            .user_data = &release_counts_[ordinal],
-        },
-        iree_allocator_system(), &buffers_[ordinal]));
-    bindings_[ordinal] = (iree_hal_amd_xdna_prepared_command_binding_t){
-        .buffer_ref = iree_hal_make_buffer_ref(buffers_[ordinal], /*offset=*/0,
-                                               kBindingByteLengths[ordinal]),
-        .memory = reinterpret_cast<amdf_memory_t*>(uintptr_t{0x1000} +
-                                                   ordinal * uintptr_t{0x100}),
-        .memory_byte_offset = 64 + ordinal * 512,
-        .device_address = 0x100000 + ordinal * 0x1000,
-    };
+        release_callback, iree_allocator_system(), &buffers_[ordinal]));
+    auto& binding = bindings_[ordinal];
+    binding = {};
+    binding.buffer_ref = iree_hal_make_buffer_ref(
+        buffers_[ordinal], /*offset=*/0, kBindingByteLengths[ordinal]);
+    binding.memory = reinterpret_cast<amdf_memory_t*>(
+        uintptr_t{0x1000} + ordinal * uintptr_t{0x100});
+    binding.memory_byte_offset = 64 + ordinal * 512;
+    binding.device_address = 0x100000 + ordinal * 0x1000;
   }
 
   iree_status_t CreatePrepared(
