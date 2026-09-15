@@ -8332,7 +8332,10 @@ static hipError_t iree_hip_array_row_device_pointer(
           range_start > array_info->allocation_size)) {
     return hipErrorInvalidValue;
   }
-  *out_device_ptr = array_info->device_ptr + range_start;
+  if (IREE_UNLIKELY(!iree_device_size_checked_add(
+          array_info->device_ptr, range_start, out_device_ptr))) {
+    return hipErrorInvalidValue;
+  }
   return hipSuccess;
 }
 
@@ -8366,6 +8369,102 @@ static hipError_t iree_hip_array_enqueue_packed_row_copy(
         context, dst, src, byte_count, stream));
   }
   return hipErrorInvalidMemcpyDirection;
+}
+
+static hipError_t iree_hip_array_enqueue_packed_row_batch(
+    struct hipArray_st* array_info, size_t row_offset, void* external_ptr,
+    size_t external_offset, iree_hal_streaming_context_t* external_context,
+    iree_hal_streaming_buffer_ref_t external_ref, size_t row_count,
+    hipMemcpyKind kind, bool array_is_destination,
+    iree_hal_streaming_stream_t* stream) {
+  iree_hal_streaming_deviceptr_t array_ptr = 0;
+  hipError_t result =
+      iree_hip_array_row_device_pointer(array_info, row_offset, 0, &array_ptr);
+  if (result != hipSuccess) return result;
+
+  iree_host_size_t byte_count = 0;
+  if (IREE_UNLIKELY(!iree_host_size_checked_mul(
+          row_count, array_info->width_bytes, &byte_count))) {
+    return hipErrorInvalidValue;
+  }
+  iree_hal_streaming_deviceptr_t batch_external_address = 0;
+  if (IREE_UNLIKELY(!iree_device_size_checked_add(
+          (iree_hal_streaming_deviceptr_t)external_ptr, external_offset,
+          &batch_external_address))) {
+    return hipErrorInvalidValue;
+  }
+  void* batch_external_ptr = (void*)batch_external_address;
+  if (array_info->pitch == array_info->width_bytes) {
+    return iree_hip_array_enqueue_packed_row_copy(
+        array_info->context, stream, array_is_destination, array_ptr,
+        batch_external_ptr, external_context, byte_count, kind);
+  }
+
+  if (array_is_destination && kind == hipMemcpyHostToDevice && stream) {
+    return iree_status_to_hip_result(
+        iree_hal_streaming_memcpy_host_to_device_2d(
+            array_info->context, array_ptr, array_info->pitch,
+            batch_external_ptr, array_info->width_bytes,
+            array_info->width_bytes, row_count, stream));
+  }
+  if (!array_is_destination && kind == hipMemcpyDeviceToHost && stream) {
+    return iree_status_to_hip_result(
+        iree_hal_streaming_memcpy_device_to_host_2d(
+            array_info->context, batch_external_ptr, array_info->width_bytes,
+            array_ptr, array_info->pitch, array_info->width_bytes, row_count,
+            stream));
+  }
+  if ((kind == hipMemcpyDeviceToDevice ||
+       kind == hipMemcpyDeviceToDeviceNoCU) &&
+      external_context == array_info->context && stream) {
+    const iree_hal_streaming_deviceptr_t external_device_ptr =
+        (iree_hal_streaming_deviceptr_t)batch_external_ptr;
+    return iree_status_to_hip_result(
+        iree_hal_streaming_memcpy_device_to_device_2d(
+            array_info->context,
+            array_is_destination ? array_ptr : external_device_ptr,
+            array_is_destination ? array_info->pitch : array_info->width_bytes,
+            array_is_destination ? external_device_ptr : array_ptr,
+            array_is_destination ? array_info->width_bytes : array_info->pitch,
+            array_info->width_bytes, row_count, stream));
+  }
+
+  iree_device_size_t array_offset = 0;
+  if (IREE_UNLIKELY(!iree_device_size_checked_mul(row_offset, array_info->pitch,
+                                                  &array_offset))) {
+    return hipErrorInvalidValue;
+  }
+  const bool device_to_device =
+      kind == hipMemcpyDeviceToDevice || kind == hipMemcpyDeviceToDeviceNoCU;
+  iree_device_size_t external_device_offset = 0;
+  if (device_to_device &&
+      IREE_UNLIKELY(!iree_device_size_checked_add(
+          external_ref.offset, external_offset, &external_device_offset))) {
+    return hipErrorInvalidValue;
+  }
+  iree_hip_staged_copy_endpoint_t array_endpoint = {
+      .context = array_info->context,
+      .buffer = array_info->buffer->buffer,
+      .offset = array_offset,
+      .host_pointer = NULL,
+      .row_pitch = array_info->pitch,
+      .slice_pitch = array_info->allocation_size,
+  };
+  iree_hip_staged_copy_endpoint_t external_endpoint = {
+      .context = device_to_device ? external_context : NULL,
+      .buffer = device_to_device ? external_ref.buffer->buffer : NULL,
+      .offset = external_device_offset,
+      .host_pointer = device_to_device ? NULL : batch_external_ptr,
+      .row_pitch = array_info->width_bytes,
+      .slice_pitch = byte_count,
+  };
+  const iree_hip_staged_copy_endpoint_t* destination =
+      array_is_destination ? &array_endpoint : &external_endpoint;
+  const iree_hip_staged_copy_endpoint_t* source =
+      array_is_destination ? &external_endpoint : &array_endpoint;
+  return iree_status_to_hip_result(iree_hip_staged_copy_3d(
+      stream, destination, source, array_info->width_bytes, row_count,
+      /*depth=*/1));
 }
 
 // Copies the selected 2D array slice as a packed byte stream. The allocation
@@ -8485,22 +8584,17 @@ static hipError_t iree_hip_array_copy_packed_rows(
 
   const size_t full_row_count = remaining / array_info->width_bytes;
   if (result == hipSuccess && full_row_count != 0) {
-    iree_hal_streaming_deviceptr_t array_ptr = 0;
-    result = iree_hip_array_row_device_pointer(array_info, current_row, 0,
-                                               &array_ptr);
-    if (result == hipSuccess) {
-      for (size_t row = 0; row < full_row_count && result == hipSuccess;
-           ++row) {
-        attempted_work = true;
-        result = iree_hip_array_enqueue_packed_row_copy(
-            array_info->context, recording_stream, array_is_destination,
-            array_ptr + row * array_info->pitch,
-            (uint8_t*)external_ptr + external_offset +
-                row * array_info->width_bytes,
-            external_context, array_info->width_bytes, kind);
-      }
+    iree_host_size_t full_row_byte_count = 0;
+    if (IREE_UNLIKELY(!iree_host_size_checked_mul(
+            full_row_count, array_info->width_bytes, &full_row_byte_count))) {
+      result = hipErrorInvalidValue;
+    } else {
+      attempted_work = true;
+      result = iree_hip_array_enqueue_packed_row_batch(
+          array_info, current_row, external_ptr, external_offset,
+          external_context, external_ref, full_row_count, kind,
+          array_is_destination, recording_stream);
     }
-    const size_t full_row_byte_count = full_row_count * array_info->width_bytes;
     external_offset += full_row_byte_count;
     remaining -= full_row_byte_count;
     current_row += full_row_count;

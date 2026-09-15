@@ -2217,6 +2217,188 @@ static iree_status_t iree_hal_streaming_enqueue_host_update(
   return status;
 }
 
+static iree_status_t iree_hal_streaming_resolve_device_rows(
+    iree_hal_streaming_context_t* context, iree_hal_streaming_deviceptr_t base,
+    iree_device_size_t pitch, iree_device_size_t width, iree_host_size_t height,
+    const char* endpoint_name, iree_hal_streaming_buffer_ref_t* out_refs) {
+  for (iree_host_size_t row = 0; row < height; ++row) {
+    iree_device_size_t row_offset = 0;
+    iree_hal_streaming_deviceptr_t row_ptr = 0;
+    if (IREE_UNLIKELY(
+            !iree_device_size_checked_mul((iree_device_size_t)row, pitch,
+                                          &row_offset) ||
+            !iree_device_size_checked_add(base, row_offset, &row_ptr))) {
+      return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                              "%s row address overflows", endpoint_name);
+    }
+    IREE_RETURN_IF_ERROR(iree_hal_streaming_memory_lookup_range(
+        context, row_ptr, width, &out_refs[row]));
+    if (!out_refs[row].buffer || !out_refs[row].buffer->buffer) {
+      return iree_make_status(IREE_STATUS_UNAVAILABLE,
+                              "%s requires the non-batched transfer path",
+                              endpoint_name);
+    }
+  }
+  return iree_ok_status();
+}
+
+iree_status_t iree_hal_streaming_memcpy_host_to_device_2d(
+    iree_hal_streaming_context_t* context, iree_hal_streaming_deviceptr_t dst,
+    iree_device_size_t dst_pitch, const void* src, iree_device_size_t src_pitch,
+    iree_device_size_t width, iree_host_size_t height,
+    iree_hal_streaming_stream_t* stream) {
+  IREE_ASSERT_ARGUMENT(context);
+  IREE_ASSERT_ARGUMENT(dst);
+  IREE_ASSERT_ARGUMENT(src);
+  IREE_ASSERT_ARGUMENT(stream);
+  IREE_TRACE_ZONE_BEGIN(z0);
+
+  if (width == 0 || height == 0) {
+    IREE_TRACE_ZONE_END(z0);
+    return iree_ok_status();
+  }
+  if (width > dst_pitch || width > src_pitch) {
+    IREE_RETURN_AND_END_ZONE_IF_ERROR(
+        z0, iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                             "copy width exceeds a row pitch"));
+  }
+  if (IREE_UNLIKELY((iree_host_size_t)(iree_device_size_t)height != height)) {
+    IREE_RETURN_AND_END_ZONE_IF_ERROR(
+        z0, iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                             "H2D row count exceeds device address space"));
+  }
+  iree_host_size_t source_span = 0;
+  if (IREE_UNLIKELY(
+          src_pitch > IREE_HOST_SIZE_MAX || width > IREE_HOST_SIZE_MAX ||
+          !iree_host_size_checked_mul(height - 1, src_pitch, &source_span) ||
+          !iree_host_size_checked_add(source_span, width, &source_span) ||
+          !iree_host_size_checked_add((iree_host_size_t)(uintptr_t)src,
+                                      source_span, &source_span))) {
+    IREE_RETURN_AND_END_ZONE_IF_ERROR(
+        z0, iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                             "H2D source row range overflows"));
+  }
+
+  iree_host_size_t refs_size = 0;
+  if (IREE_UNLIKELY(!iree_host_size_checked_mul(
+          height, sizeof(iree_hal_streaming_buffer_ref_t), &refs_size))) {
+    IREE_RETURN_AND_END_ZONE_IF_ERROR(
+        z0, iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                             "H2D row reference array size overflows"));
+  }
+  iree_hal_streaming_buffer_ref_t* destination_refs = NULL;
+  iree_status_t status = iree_allocator_malloc(
+      context->host_allocator, refs_size, (void**)&destination_refs);
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_streaming_resolve_device_rows(
+        context, dst, dst_pitch, width, height, "H2D destination",
+        destination_refs);
+  }
+
+  iree_hal_streaming_buffer_ref_t* source_refs = NULL;
+  bool source_is_registered = false;
+  iree_hal_streaming_buffer_ref_t first_source_ref = {0};
+  if (iree_status_is_ok(status)) {
+    iree_status_t source_status = iree_hal_streaming_memory_lookup_range(
+        context, (iree_hal_streaming_deviceptr_t)src, width, &first_source_ref);
+    source_is_registered = iree_status_is_ok(source_status);
+    if (!source_is_registered) {
+      iree_status_ignore(source_status);
+    } else if (!first_source_ref.buffer || !first_source_ref.buffer->buffer ||
+               !iree_any_bit_set(
+                   (iree_hal_memory_type_t)first_source_ref.buffer->memory_type,
+                   IREE_HAL_MEMORY_TYPE_HOST_LOCAL)) {
+      status =
+          iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                           "H2D source is not queue-compatible host memory");
+    }
+  }
+  if (iree_status_is_ok(status) && source_is_registered) {
+    status = iree_allocator_malloc(context->host_allocator, refs_size,
+                                   (void**)&source_refs);
+    if (iree_status_is_ok(status)) source_refs[0] = first_source_ref;
+    for (iree_host_size_t row = 1; row < height && iree_status_is_ok(status);
+         ++row) {
+      iree_device_size_t source_offset = 0;
+      iree_hal_streaming_deviceptr_t row_source = 0;
+      if (IREE_UNLIKELY(
+              !iree_device_size_checked_mul((iree_device_size_t)row, src_pitch,
+                                            &source_offset) ||
+              !iree_device_size_checked_add((iree_hal_streaming_deviceptr_t)src,
+                                            source_offset, &row_source))) {
+        status = iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                                  "H2D source row address overflows");
+        break;
+      }
+      status = iree_hal_streaming_memory_lookup_range(context, row_source,
+                                                      width, &source_refs[row]);
+      if (iree_status_is_ok(status) &&
+          (!source_refs[row].buffer || !source_refs[row].buffer->buffer ||
+           !iree_any_bit_set(
+               (iree_hal_memory_type_t)source_refs[row].buffer->memory_type,
+               IREE_HAL_MEMORY_TYPE_HOST_LOCAL))) {
+        status = iree_make_status(
+            IREE_STATUS_INVALID_ARGUMENT,
+            "H2D source row is not queue-compatible host memory");
+      }
+    }
+  }
+
+  bool recorded_work = false;
+  if (iree_status_is_ok(status)) {
+    iree_slim_mutex_lock(&stream->mutex);
+    status = iree_hal_streaming_stream_begin_locked(stream);
+    for (iree_host_size_t row = 0; row < height && iree_status_is_ok(status);
+         ++row) {
+      const iree_hal_buffer_ref_t destination_ref =
+          iree_hal_streaming_convert_range_buffer_ref(destination_refs[row],
+                                                      width);
+      if (source_is_registered) {
+        const iree_hal_buffer_ref_t source_ref =
+            iree_hal_streaming_convert_range_buffer_ref(source_refs[row],
+                                                        width);
+        status = iree_hal_command_buffer_copy_buffer(
+            stream->command_buffer, source_ref, destination_ref,
+            IREE_HAL_COPY_FLAG_NONE);
+        recorded_work |= iree_status_is_ok(status);
+      } else {
+        iree_device_size_t remaining = width;
+        iree_device_size_t chunk_offset = 0;
+        while (remaining > 0 && iree_status_is_ok(status)) {
+          const iree_device_size_t chunk_size = iree_min(
+              remaining,
+              (iree_device_size_t)IREE_HAL_COMMAND_BUFFER_MAX_UPDATE_SIZE);
+          const iree_hal_buffer_ref_t chunk_destination =
+              iree_hal_make_buffer_ref(destination_ref.buffer,
+                                       destination_ref.offset + chunk_offset,
+                                       chunk_size);
+          status = iree_hal_command_buffer_update_buffer(
+              stream->command_buffer,
+              (const uint8_t*)src + row * src_pitch + chunk_offset, 0,
+              chunk_destination, IREE_HAL_UPDATE_FLAG_NONE);
+          recorded_work |= iree_status_is_ok(status);
+          chunk_offset += chunk_size;
+          remaining -= chunk_size;
+        }
+      }
+    }
+    if (iree_status_is_ok(status)) {
+      status =
+          iree_hal_streaming_command_buffer_barrier(stream->command_buffer);
+    }
+    iree_slim_mutex_unlock(&stream->mutex);
+  }
+
+  if (!iree_status_is_ok(status) && recorded_work) {
+    status =
+        iree_status_join(status, iree_hal_streaming_stream_synchronize(stream));
+  }
+  iree_allocator_free(context->host_allocator, source_refs);
+  iree_allocator_free(context->host_allocator, destination_refs);
+  IREE_TRACE_ZONE_END(z0);
+  return status;
+}
+
 //===----------------------------------------------------------------------===//
 // Memory copy helper functions
 //===----------------------------------------------------------------------===//
@@ -2671,4 +2853,87 @@ iree_status_t iree_hal_streaming_memcpy_device_to_device(
 
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
+}
+
+iree_status_t iree_hal_streaming_memcpy_device_to_device_2d(
+    iree_hal_streaming_context_t* context, iree_hal_streaming_deviceptr_t dst,
+    iree_device_size_t dst_pitch, iree_hal_streaming_deviceptr_t src,
+    iree_device_size_t src_pitch, iree_device_size_t width,
+    iree_host_size_t height, iree_hal_streaming_stream_t* stream) {
+  IREE_ASSERT_ARGUMENT(context);
+  IREE_ASSERT_ARGUMENT(dst);
+  IREE_ASSERT_ARGUMENT(src);
+  IREE_ASSERT_ARGUMENT(stream);
+  IREE_TRACE_ZONE_BEGIN(z0);
+
+  if (width == 0 || height == 0) {
+    IREE_TRACE_ZONE_END(z0);
+    return iree_ok_status();
+  }
+  if (width > dst_pitch || width > src_pitch) {
+    IREE_RETURN_AND_END_ZONE_IF_ERROR(
+        z0, iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                             "copy width exceeds a row pitch"));
+  }
+  if (IREE_UNLIKELY((iree_host_size_t)(iree_device_size_t)height != height)) {
+    IREE_RETURN_AND_END_ZONE_IF_ERROR(
+        z0, iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                             "D2D row count exceeds device address space"));
+  }
+
+  iree_host_size_t ref_count = 0;
+  iree_host_size_t refs_size = 0;
+  if (IREE_UNLIKELY(!iree_host_size_checked_mul(height, 2, &ref_count) ||
+                    !iree_host_size_checked_mul(
+                        ref_count, sizeof(iree_hal_streaming_buffer_ref_t),
+                        &refs_size))) {
+    IREE_RETURN_AND_END_ZONE_IF_ERROR(
+        z0, iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                             "D2D row reference array size overflows"));
+  }
+  iree_hal_streaming_buffer_ref_t* refs = NULL;
+  iree_status_t status =
+      iree_allocator_malloc(context->host_allocator, refs_size, (void**)&refs);
+  iree_hal_streaming_buffer_ref_t* destination_refs = refs;
+  iree_hal_streaming_buffer_ref_t* source_refs = refs ? refs + height : NULL;
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_streaming_resolve_device_rows(
+        context, dst, dst_pitch, width, height, "D2D destination",
+        destination_refs);
+  }
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_streaming_resolve_device_rows(
+        context, src, src_pitch, width, height, "D2D source", source_refs);
+  }
+
+  bool recorded_work = false;
+  if (iree_status_is_ok(status)) {
+    iree_slim_mutex_lock(&stream->mutex);
+    status = iree_hal_streaming_stream_begin_locked(stream);
+    for (iree_host_size_t row = 0; row < height && iree_status_is_ok(status);
+         ++row) {
+      const iree_hal_buffer_ref_t source_ref =
+          iree_hal_streaming_convert_range_buffer_ref(source_refs[row], width);
+      const iree_hal_buffer_ref_t destination_ref =
+          iree_hal_streaming_convert_range_buffer_ref(destination_refs[row],
+                                                      width);
+      status = iree_hal_command_buffer_copy_buffer(stream->command_buffer,
+                                                   source_ref, destination_ref,
+                                                   IREE_HAL_COPY_FLAG_NONE);
+      recorded_work |= iree_status_is_ok(status);
+    }
+    if (iree_status_is_ok(status)) {
+      status =
+          iree_hal_streaming_command_buffer_barrier(stream->command_buffer);
+    }
+    iree_slim_mutex_unlock(&stream->mutex);
+  }
+
+  if (!iree_status_is_ok(status) && recorded_work) {
+    status =
+        iree_status_join(status, iree_hal_streaming_stream_synchronize(stream));
+  }
+  iree_allocator_free(context->host_allocator, refs);
+  IREE_TRACE_ZONE_END(z0);
+  return status;
 }

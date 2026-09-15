@@ -4,12 +4,14 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <thread>
+#include <vector>
 
 #include "api.h"
 #include "binding/hip/hip_dso_test_util.h"
@@ -56,6 +58,11 @@ using HipMemcpy2DToArraySptFn = hipError_t (*)(
 using HipMemcpyFromArraySptFn = hipError_t (*)(
     void* destination, hipArray_const_t source, size_t source_x_offset,
     size_t source_y_offset, size_t count, hipMemcpyKind kind);
+using HipMemcpyToArrayFn = hipError_t (*)(hipArray_t destination,
+                                          size_t destination_x_offset,
+                                          size_t destination_y_offset,
+                                          const void* source, size_t count,
+                                          hipMemcpyKind kind);
 using HipStreamCreateFn = hipError_t (*)(hipStream_t* stream);
 using HipStreamCreateWithPriorityFn = hipError_t (*)(hipStream_t* stream,
                                                      unsigned int flags,
@@ -108,6 +115,8 @@ struct HipRuntimeApi {
   HipMemcpy2DToArraySptFn memcpy_2d_to_array_spt = nullptr;
   // Copies a packed array range synchronously on PTDS.
   HipMemcpyFromArraySptFn memcpy_from_array_spt = nullptr;
+  // Copies a packed range synchronously into an array.
+  HipMemcpyToArrayFn memcpy_to_array = nullptr;
   // Creates explicit streams used for stale-handle validation.
   HipStreamCreateFn stream_create = nullptr;
   // Creates explicit streams on a selected hardware-priority queue.
@@ -154,6 +163,7 @@ class HipArrayCopySptApiTest : public testing::Test {
                           "hipMemcpy2DToArrayAsync_spt");
     HRX_RESOLVE_HIP_FIELD(memcpy_2d_to_array_spt, "hipMemcpy2DToArray_spt");
     HRX_RESOLVE_HIP_FIELD(memcpy_from_array_spt, "hipMemcpyFromArray_spt");
+    HRX_RESOLVE_HIP_FIELD(memcpy_to_array, "hipMemcpyToArray");
     HRX_RESOLVE_HIP_FIELD(stream_create, "hipStreamCreate");
     HRX_RESOLVE_HIP_FIELD(stream_create_with_priority,
                           "hipStreamCreateWithPriority");
@@ -215,6 +225,7 @@ TEST_F(HipArrayCopySptApiTest, ExportsAllArrayCopyEntryPoints) {
   EXPECT_NE(nullptr, api_.memcpy_2d_to_array_async_spt);
   EXPECT_NE(nullptr, api_.memcpy_2d_to_array_spt);
   EXPECT_NE(nullptr, api_.memcpy_from_array_spt);
+  EXPECT_NE(nullptr, api_.memcpy_to_array);
 }
 
 TEST_F(HipArrayCopySptApiTest, ValidatesBeforeSubmittingOrAcceptingNoOps) {
@@ -841,6 +852,54 @@ TEST_F(HipArrayCopySptApiTest, SynchronousCopyRejectsCaptureBeforeMutation) {
   EXPECT_EQ(hipErrorStreamCaptureInvalidated,
             api_.stream_end_capture(stream_, &graph));
   EXPECT_EQ(nullptr, graph);
+}
+
+TEST_F(HipArrayCopySptApiTest, PackedRowsScaleAsOneCompleteRowBatch) {
+  constexpr size_t kWidth = 31;
+  const std::array<size_t, 3> row_counts = {1, 256, 4096};
+  for (size_t row_count : row_counts) {
+    AllocateArray(kWidth, row_count);
+    std::vector<uint8_t> source(kWidth * row_count);
+    std::vector<uint8_t> destination(source.size(), 0);
+    for (size_t i = 0; i < source.size(); ++i) {
+      source[i] = static_cast<uint8_t>((i * 37 + row_count) & 0xFF);
+    }
+
+    ASSERT_EQ(hipSuccess,
+              api_.memcpy_to_array(array_, 0, 0, source.data(), source.size(),
+                                   hipMemcpyHostToDevice));
+    ASSERT_EQ(hipSuccess, api_.memcpy_from_array_spt(destination.data(), array_,
+                                                     0, 0, destination.size(),
+                                                     hipMemcpyDeviceToHost));
+    EXPECT_EQ(source, destination) << "row count " << row_count;
+
+    ASSERT_EQ(hipSuccess, api_.malloc(&device_pointer_, source.size()));
+    ASSERT_EQ(hipSuccess, api_.memcpy(device_pointer_, source.data(),
+                                      source.size(), hipMemcpyHostToDevice));
+    ASSERT_EQ(hipSuccess,
+              api_.memcpy_to_array(array_, 0, 0, device_pointer_, source.size(),
+                                   hipMemcpyDeviceToDevice));
+    std::fill(destination.begin(), destination.end(), 0);
+    ASSERT_EQ(hipSuccess, api_.memcpy_from_array_spt(destination.data(), array_,
+                                                     0, 0, destination.size(),
+                                                     hipMemcpyDeviceToHost));
+    EXPECT_EQ(source, destination) << "D2D row count " << row_count;
+
+    std::fill(destination.begin(), destination.end(), 0);
+    ASSERT_EQ(hipSuccess, api_.memcpy(device_pointer_, destination.data(),
+                                      source.size(), hipMemcpyHostToDevice));
+    ASSERT_EQ(hipSuccess, api_.memcpy_from_array_spt(device_pointer_, array_, 0,
+                                                     0, source.size(),
+                                                     hipMemcpyDeviceToDevice));
+    ASSERT_EQ(hipSuccess, api_.memcpy(destination.data(), device_pointer_,
+                                      source.size(), hipMemcpyDeviceToHost));
+    EXPECT_EQ(source, destination) << "array-to-D2D row count " << row_count;
+
+    ASSERT_EQ(hipSuccess, api_.free(device_pointer_));
+    device_pointer_ = nullptr;
+    ASSERT_EQ(hipSuccess, api_.free_array(array_));
+    array_ = nullptr;
+  }
 }
 
 TEST_F(HipArrayCopySptApiTest,
