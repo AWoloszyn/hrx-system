@@ -20,7 +20,7 @@
 extern "C" {
 #endif
 
-// Number of compact storage-relation rows stored in each stable segment.
+// Maximum number of compact storage-relation rows in each stable segment.
 #define LOOM_LOW_SCHEDULE_STORAGE_RELATION_SEGMENT_CAPACITY 2048u
 
 // Shift mapping a storage-relation index to its segment index.
@@ -56,14 +56,9 @@ typedef struct loom_low_schedule_storage_relation_t {
   loom_low_storage_relation_cause_t cause;
 } loom_low_schedule_storage_relation_t;
 
-// Stable storage for one segment of compact storage relations.
-typedef iree_alignas(64) struct loom_low_schedule_storage_relation_segment_t {
-  // Relation rows indexed by the low bits of a relation index.
-  loom_low_schedule_storage_relation_t
-      rows[LOOM_LOW_SCHEDULE_STORAGE_RELATION_SEGMENT_CAPACITY];
-} loom_low_schedule_storage_relation_segment_t;
-
-static_assert(sizeof(loom_low_schedule_storage_relation_segment_t) <= 64 * 1024,
+static_assert(LOOM_LOW_SCHEDULE_STORAGE_RELATION_SEGMENT_CAPACITY *
+                      sizeof(loom_low_schedule_storage_relation_t) <=
+                  64 * 1024,
               "storage-relation segment must fit a compiler workspace block");
 
 // Node-contiguous storage relations for one scheduled function.
@@ -111,14 +106,14 @@ loom_low_schedule_storage_relation_index_at(
     const loom_low_schedule_storage_relation_index_t* index,
     uint32_t relation_index) {
   IREE_ASSERT_LT(relation_index, index->relation_count);
-  const loom_low_schedule_storage_relation_segment_t* segment =
-      (const loom_low_schedule_storage_relation_segment_t*)
+  const loom_low_schedule_storage_relation_t* segment =
+      (const loom_low_schedule_storage_relation_t*)
           loom_segmented_storage_const_segment(
               index->relations,
               relation_index >>
                   LOOM_LOW_SCHEDULE_STORAGE_RELATION_SEGMENT_SHIFT);
-  return &segment->rows[relation_index &
-                        LOOM_LOW_SCHEDULE_STORAGE_RELATION_SEGMENT_MASK];
+  return &segment[relation_index &
+                  LOOM_LOW_SCHEDULE_STORAGE_RELATION_SEGMENT_MASK];
 }
 
 #ifdef __cplusplus

@@ -20,7 +20,7 @@ extern "C" {
 
 #define LOOM_LOW_SCHEDULE_DEPENDENCY_GROUP_NONE UINT32_MAX
 
-// Number of grouped dependency rows stored in each stable segment.
+// Maximum number of grouped dependency rows in each stable segment.
 #define LOOM_LOW_SCHEDULE_DEPENDENCY_GROUP_SEGMENT_CAPACITY 8192u
 
 // Shift mapping a group index to its segment index.
@@ -30,7 +30,7 @@ extern "C" {
 #define LOOM_LOW_SCHEDULE_DEPENDENCY_GROUP_SEGMENT_MASK \
   (LOOM_LOW_SCHEDULE_DEPENDENCY_GROUP_SEGMENT_CAPACITY - 1u)
 
-// Number of temporary raw dependency indices stored in each segment.
+// Maximum number of temporary raw dependency indices in each segment.
 #define LOOM_LOW_SCHEDULE_DEPENDENCY_DETAIL_SEGMENT_CAPACITY 16384u
 
 // Shift mapping a raw detail index to its segment index.
@@ -57,23 +57,12 @@ typedef struct loom_low_schedule_dependency_group_t {
   uint32_t dependency_count;
 } loom_low_schedule_dependency_group_t;
 
-// Stable storage for one segment of producer/consumer groups.
-typedef iree_alignas(64) struct loom_low_schedule_dependency_group_segment_t {
-  // Group rows indexed by the low bits of a group index.
-  loom_low_schedule_dependency_group_t
-      rows[LOOM_LOW_SCHEDULE_DEPENDENCY_GROUP_SEGMENT_CAPACITY];
-} loom_low_schedule_dependency_group_segment_t;
-
-static_assert(sizeof(loom_low_schedule_dependency_group_segment_t) == 64 * 1024,
+static_assert(LOOM_LOW_SCHEDULE_DEPENDENCY_GROUP_SEGMENT_CAPACITY *
+                      sizeof(loom_low_schedule_dependency_group_t) <=
+                  64 * 1024,
               "group segment must fit in a compiler workspace block");
-
-// Stable scratch storage for one segment of raw dependency indices.
-typedef iree_alignas(64) struct loom_low_schedule_dependency_detail_segment_t {
-  // Raw dependency indices indexed by the low bits of a detail index.
-  uint32_t rows[LOOM_LOW_SCHEDULE_DEPENDENCY_DETAIL_SEGMENT_CAPACITY];
-} loom_low_schedule_dependency_detail_segment_t;
-
-static_assert(sizeof(loom_low_schedule_dependency_detail_segment_t) ==
+static_assert(LOOM_LOW_SCHEDULE_DEPENDENCY_DETAIL_SEGMENT_CAPACITY *
+                      sizeof(uint32_t) <=
                   64 * 1024,
               "detail segment must fit in a compiler workspace block");
 
@@ -162,13 +151,13 @@ static inline const loom_low_schedule_dependency_group_t*
 loom_low_schedule_dependency_index_group_at(
     const loom_low_schedule_dependency_index_t* index, uint32_t group_index) {
   IREE_ASSERT_LT(group_index, index->group_count);
-  const loom_low_schedule_dependency_group_segment_t* segment =
-      (const loom_low_schedule_dependency_group_segment_t*)
+  const loom_low_schedule_dependency_group_t* segment =
+      (const loom_low_schedule_dependency_group_t*)
           loom_segmented_storage_const_segment(
               &index->groups,
               group_index >> LOOM_LOW_SCHEDULE_DEPENDENCY_GROUP_SEGMENT_SHIFT);
-  return &segment->rows[group_index &
-                        LOOM_LOW_SCHEDULE_DEPENDENCY_GROUP_SEGMENT_MASK];
+  return &segment[group_index &
+                  LOOM_LOW_SCHEDULE_DEPENDENCY_GROUP_SEGMENT_MASK];
 }
 
 // Returns one producer-contiguous raw dependency index from scratch detail.
@@ -176,14 +165,12 @@ static inline uint32_t loom_low_schedule_dependency_detail_index_at(
     const loom_low_schedule_dependency_detail_index_t* detail_index,
     uint32_t detail_ordinal) {
   IREE_ASSERT_LT(detail_ordinal, detail_index->dependency_count);
-  const loom_low_schedule_dependency_detail_segment_t* segment =
-      (const loom_low_schedule_dependency_detail_segment_t*)
-          loom_segmented_storage_const_segment(
-              &detail_index->dependency_indices,
-              detail_ordinal >>
-                  LOOM_LOW_SCHEDULE_DEPENDENCY_DETAIL_SEGMENT_SHIFT);
-  return segment
-      ->rows[detail_ordinal & LOOM_LOW_SCHEDULE_DEPENDENCY_DETAIL_SEGMENT_MASK];
+  const uint32_t* segment =
+      (const uint32_t*)loom_segmented_storage_const_segment(
+          &detail_index->dependency_indices,
+          detail_ordinal >> LOOM_LOW_SCHEDULE_DEPENDENCY_DETAIL_SEGMENT_SHIFT);
+  return segment[detail_ordinal &
+                 LOOM_LOW_SCHEDULE_DEPENDENCY_DETAIL_SEGMENT_MASK];
 }
 
 // Initializes the mutable remaining-producer frontier for |index|.

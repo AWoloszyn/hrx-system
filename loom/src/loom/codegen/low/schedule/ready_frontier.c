@@ -34,58 +34,47 @@ typedef iree_alignas(64) struct loom_low_schedule_ready_node_state_t {
   uint32_t descriptor_next_node;
 } loom_low_schedule_ready_node_state_t;
 
-typedef iree_alignas(64) struct loom_low_schedule_ready_node_segment_t {
-  // Node states indexed by the low bits of a node index.
-  loom_low_schedule_ready_node_state_t
-      values[LOOM_LOW_SCHEDULE_READY_NODE_SEGMENT_CAPACITY];
-} loom_low_schedule_ready_node_segment_t;
-
-typedef iree_alignas(64) struct loom_low_schedule_ready_heap_segment_t {
-  // Heap node indices indexed by the low bits of a heap position.
-  uint32_t values[LOOM_LOW_SCHEDULE_READY_HEAP_SEGMENT_CAPACITY];
-} loom_low_schedule_ready_heap_segment_t;
-
 static_assert(sizeof(loom_low_schedule_ready_node_state_t) == 64,
               "ready node state must remain one cache line");
-static_assert(sizeof(loom_low_schedule_ready_node_segment_t) == 32 * 1024,
+static_assert(LOOM_LOW_SCHEDULE_READY_NODE_SEGMENT_CAPACITY *
+                      sizeof(loom_low_schedule_ready_node_state_t) <=
+                  64 * 1024,
               "ready node segment must fit in a workspace block");
-static_assert(sizeof(loom_low_schedule_ready_heap_segment_t) == 16 * 1024,
+static_assert(LOOM_LOW_SCHEDULE_READY_HEAP_SEGMENT_CAPACITY *
+                      sizeof(uint32_t) <=
+                  64 * 1024,
               "ready heap segment must fit in a workspace block");
 
 static loom_low_schedule_ready_node_state_t*
 loom_low_schedule_ready_frontier_node_state(
     loom_low_schedule_ready_frontier_t* frontier, uint32_t node_index) {
   IREE_ASSERT(node_index < frontier->node_capacity);
-  loom_low_schedule_ready_node_segment_t* segment =
-      (loom_low_schedule_ready_node_segment_t*)loom_segmented_storage_segment(
+  loom_low_schedule_ready_node_state_t* segment =
+      (loom_low_schedule_ready_node_state_t*)loom_segmented_storage_segment(
           &frontier->node_states,
           node_index >> LOOM_LOW_SCHEDULE_READY_NODE_SEGMENT_SHIFT);
-  return &segment
-              ->values[node_index & LOOM_LOW_SCHEDULE_READY_NODE_SEGMENT_MASK];
+  return &segment[node_index & LOOM_LOW_SCHEDULE_READY_NODE_SEGMENT_MASK];
 }
 
 static const loom_low_schedule_ready_node_state_t*
 loom_low_schedule_ready_frontier_const_node_state(
     const loom_low_schedule_ready_frontier_t* frontier, uint32_t node_index) {
   IREE_ASSERT(node_index < frontier->node_capacity);
-  const loom_low_schedule_ready_node_segment_t* segment =
-      (const loom_low_schedule_ready_node_segment_t*)
+  const loom_low_schedule_ready_node_state_t* segment =
+      (const loom_low_schedule_ready_node_state_t*)
           loom_segmented_storage_const_segment(
               &frontier->node_states,
               node_index >> LOOM_LOW_SCHEDULE_READY_NODE_SEGMENT_SHIFT);
-  return &segment
-              ->values[node_index & LOOM_LOW_SCHEDULE_READY_NODE_SEGMENT_MASK];
+  return &segment[node_index & LOOM_LOW_SCHEDULE_READY_NODE_SEGMENT_MASK];
 }
 
 static uint32_t loom_low_schedule_ready_heap_get(
     const loom_low_schedule_ready_heap_t* heap, uint32_t position) {
   IREE_ASSERT(position < heap->count);
-  const loom_low_schedule_ready_heap_segment_t* segment =
-      (const loom_low_schedule_ready_heap_segment_t*)
-          loom_segmented_storage_const_segment(
-              &heap->nodes,
-              position >> LOOM_LOW_SCHEDULE_READY_HEAP_SEGMENT_SHIFT);
-  return segment->values[position & LOOM_LOW_SCHEDULE_READY_HEAP_SEGMENT_MASK];
+  const uint32_t* segment =
+      (const uint32_t*)loom_segmented_storage_const_segment(
+          &heap->nodes, position >> LOOM_LOW_SCHEDULE_READY_HEAP_SEGMENT_SHIFT);
+  return segment[position & LOOM_LOW_SCHEDULE_READY_HEAP_SEGMENT_MASK];
 }
 
 static void loom_low_schedule_ready_heap_set(
@@ -94,11 +83,9 @@ static void loom_low_schedule_ready_heap_set(
     uint32_t node_index) {
   loom_low_schedule_ready_heap_t* heap = &frontier->views[view];
   IREE_ASSERT(position < heap->count);
-  loom_low_schedule_ready_heap_segment_t* segment =
-      (loom_low_schedule_ready_heap_segment_t*)loom_segmented_storage_segment(
-          &heap->nodes, position >> LOOM_LOW_SCHEDULE_READY_HEAP_SEGMENT_SHIFT);
-  segment->values[position & LOOM_LOW_SCHEDULE_READY_HEAP_SEGMENT_MASK] =
-      node_index;
+  uint32_t* segment = (uint32_t*)loom_segmented_storage_segment(
+      &heap->nodes, position >> LOOM_LOW_SCHEDULE_READY_HEAP_SEGMENT_SHIFT);
+  segment[position & LOOM_LOW_SCHEDULE_READY_HEAP_SEGMENT_MASK] = node_index;
   loom_low_schedule_ready_frontier_node_state(frontier, node_index)
       ->heap_positions[view] = position;
 }
@@ -213,9 +200,13 @@ iree_status_t loom_low_schedule_ready_frontier_initialize(
       .descriptor_count = descriptor_count,
       .view_count = view_count,
   };
+  // Capacity is fixed for every view. A domain smaller than one normal
+  // segment needs only its addressable rows, with the same index mapping.
   loom_segmented_storage_initialize(
-      sizeof(loom_low_schedule_ready_node_segment_t),
-      iree_alignof(loom_low_schedule_ready_node_segment_t),
+      iree_min(iree_max(node_capacity, 1u),
+               LOOM_LOW_SCHEDULE_READY_NODE_SEGMENT_CAPACITY) *
+          sizeof(loom_low_schedule_ready_node_state_t),
+      iree_alignof(loom_low_schedule_ready_node_state_t),
       &out_frontier->node_states);
   const uint32_t node_segment_count =
       (node_capacity >> LOOM_LOW_SCHEDULE_READY_NODE_SEGMENT_SHIFT) +
@@ -238,9 +229,10 @@ iree_status_t loom_low_schedule_ready_frontier_initialize(
       ((node_capacity & LOOM_LOW_SCHEDULE_READY_HEAP_SEGMENT_MASK) != 0);
   for (uint8_t view = 0; view < view_count; ++view) {
     loom_segmented_storage_initialize(
-        sizeof(loom_low_schedule_ready_heap_segment_t),
-        iree_alignof(loom_low_schedule_ready_heap_segment_t),
-        &out_frontier->views[view].nodes);
+        iree_min(iree_max(node_capacity, 1u),
+                 LOOM_LOW_SCHEDULE_READY_HEAP_SEGMENT_CAPACITY) *
+            sizeof(uint32_t),
+        64, &out_frontier->views[view].nodes);
     for (uint32_t i = 0; i < heap_segment_count; ++i) {
       void* segment = NULL;
       IREE_RETURN_IF_ERROR(loom_segmented_storage_append(

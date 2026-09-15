@@ -26,14 +26,12 @@ loom_low_schedule_storage_relation_index_mutable_at(
     loom_low_schedule_storage_relation_index_t* index,
     uint32_t relation_index) {
   IREE_ASSERT_LT(relation_index, index->relation_count);
-  loom_low_schedule_storage_relation_segment_t* segment =
-      (loom_low_schedule_storage_relation_segment_t*)
-          loom_segmented_storage_segment(
-              index->relations,
-              relation_index >>
-                  LOOM_LOW_SCHEDULE_STORAGE_RELATION_SEGMENT_SHIFT);
-  return &segment->rows[relation_index &
-                        LOOM_LOW_SCHEDULE_STORAGE_RELATION_SEGMENT_MASK];
+  loom_low_schedule_storage_relation_t* segment =
+      (loom_low_schedule_storage_relation_t*)loom_segmented_storage_segment(
+          index->relations,
+          relation_index >> LOOM_LOW_SCHEDULE_STORAGE_RELATION_SEGMENT_SHIFT);
+  return &segment[relation_index &
+                  LOOM_LOW_SCHEDULE_STORAGE_RELATION_SEGMENT_MASK];
 }
 
 iree_status_t loom_low_schedule_storage_relation_index_initialize(
@@ -59,10 +57,13 @@ iree_status_t loom_low_schedule_storage_relation_index_initialize(
       (void**)&out_index->node_relation_starts));
   IREE_RETURN_IF_ERROR(iree_arena_allocate(arena, sizeof(*out_index->relations),
                                            (void**)&out_index->relations));
+  // The complete domain is known. Small functions need only its populated
+  // prefix; larger functions retain fixed workspace-sized segments.
   loom_segmented_storage_initialize(
-      sizeof(loom_low_schedule_storage_relation_segment_t),
-      iree_alignof(loom_low_schedule_storage_relation_segment_t),
-      out_index->relations);
+      iree_min(relation_count,
+               LOOM_LOW_SCHEDULE_STORAGE_RELATION_SEGMENT_CAPACITY) *
+          sizeof(loom_low_schedule_storage_relation_t),
+      64, out_index->relations);
   IREE_RETURN_IF_ERROR(
       loom_low_schedule_storage_relation_index_allocate_segments(
           out_index, relation_count, arena));

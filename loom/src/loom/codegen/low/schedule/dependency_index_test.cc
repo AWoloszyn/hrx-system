@@ -63,9 +63,14 @@ TEST_F(ScheduleDependencyIndexTest, GroupsDuplicateProducerConsumerEdges) {
   std::array<uint32_t, 5> indegrees;
   loom_low_schedule_dependency_index_t index;
   loom_low_schedule_dependency_detail_index_t detail_index;
+  const auto allocation_before = arena_.used_allocation_size;
+  const auto scratch_before = scratch_arena_.used_allocation_size;
   IREE_ASSERT_OK(loom_low_schedule_dependency_index_initialize(
       &graph, indegrees.size(), &scratch_arena_, &arena_, indegrees.data(),
       &index, &detail_index));
+  // Complete indexing for this small graph fits within 1 KiB in each arena.
+  EXPECT_LE(arena_.used_allocation_size - allocation_before, 1024u);
+  EXPECT_LE(scratch_arena_.used_allocation_size - scratch_before, 1024u);
 
   EXPECT_EQ(index.node_count, static_cast<uint32_t>(indegrees.size()));
   EXPECT_EQ(index.group_count, 4u);
@@ -121,6 +126,8 @@ TEST_F(ScheduleDependencyIndexTest, GroupsDuplicateProducerConsumerEdges) {
 
 TEST_F(ScheduleDependencyIndexTest, FanoutAccountingIsLinear) {
   for (const uint32_t fanout : {
+           0u,
+           1u,
            16u,
            256u,
            4096u,
@@ -144,9 +151,6 @@ TEST_F(ScheduleDependencyIndexTest, FanoutAccountingIsLinear) {
     IREE_ASSERT_OK(loom_low_schedule_dependency_frontier_initialize(
         &index, &arena_, &frontier));
     for (uint32_t consumer_node = 1; consumer_node <= fanout; ++consumer_node) {
-      EXPECT_EQ(loom_low_schedule_dependency_frontier_remaining_producer(
-                    &frontier, consumer_node),
-                0u);
       EXPECT_EQ(loom_low_schedule_dependency_frontier_remaining_producer(
                     &frontier, consumer_node),
                 0u);
