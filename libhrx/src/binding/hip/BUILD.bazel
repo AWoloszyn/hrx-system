@@ -243,6 +243,7 @@ hrx_cc_shared_library(
     hdrs = [
         "api.h",
         "binding_internal.h",
+        "error_state.h",
     ],
     additional_linker_inputs = ["amdhip64.map"],
     copts = [

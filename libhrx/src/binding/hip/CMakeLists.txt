@@ -295,6 +295,7 @@ iree_cc_library(
   HDRS
     "api.h"
     "binding_internal.h"
+    "error_state.h"
   SRCS
     "abi_stubs.c"
     "api.c"

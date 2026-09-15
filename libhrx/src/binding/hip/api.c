@@ -28,6 +28,7 @@
 
 #include "binding/hip/binding_internal.h"
 #include "binding/hip/blocking_printf_provider.h"
+#include "binding/hip/error_state.h"
 #include "binding/hip/execution_context.h"
 #include "binding/hip/execution_resource.h"
 #include "binding/hip/execution_resource_descriptor.h"
@@ -964,6 +965,13 @@ static void iree_hip_thread_error_set(hipError_t error, bool sticky) {
   iree_hip_thread_error.sticky = sticky;
 }
 
+hipError_t iree_hip_error_state_publish(hipError_t result) {
+  if (result != hipSuccess) {
+    iree_hip_thread_error_set(result, false);
+  }
+  return result;
+}
+
 static hipError_t iree_hip_thread_error_get_and_clear(void) {
   hipError_t error = iree_hip_thread_error.last_error;
   if (!iree_hip_thread_error.sticky) {
@@ -975,16 +983,6 @@ static hipError_t iree_hip_thread_error_get_and_clear(void) {
 static hipError_t iree_hip_thread_error_peek(void) {
   return iree_hip_thread_error.last_error;
 }
-
-// Helper macro to set thread-local error and return.
-#define HIP_RETURN_ERROR(error)               \
-  do {                                        \
-    hipError_t _err = (error);                \
-    if (_err != hipSuccess) {                 \
-      iree_hip_thread_error_set(_err, false); \
-    }                                         \
-    return _err;                              \
-  } while (0)
 
 // Helper macro to set sticky thread-local error and return.
 #define HIP_RETURN_STICKY_ERROR(error)       \
@@ -1125,7 +1123,7 @@ static hipError_t iree_module_status_to_hip_result(iree_status_t status) {
   }
 
   const iree_status_code_t code = iree_status_code(status);
-  if (code == IREE_STATUS_INVALID_ARGUMENT) {
+  if (code == IREE_STATUS_INVALID_ARGUMENT || code == IREE_STATUS_DATA_LOSS) {
     iree_status_free(status);
     return hipErrorInvalidImage;
   }
@@ -12605,7 +12603,7 @@ HIPAPI hipError_t hipModuleLoad(hipModule_t* module, const char* fname) {
 
   hipError_t result = iree_module_file_status_to_hip_result(status);
   IREE_TRACE_ZONE_END(z0);
-  return result;
+  HIP_RETURN_ERROR(result);
 }
 
 // Loads a compute module from memory.
@@ -12806,7 +12804,7 @@ HIPAPI hipError_t hipModuleLoadDataEx(hipModule_t* module, const void* image,
   hipError_t result = iree_hip_module_load_data_span(
       iree_make_const_byte_span(image, 0), module);
   IREE_TRACE_ZONE_END(z0);
-  return result;
+  HIP_RETURN_ERROR(result);
 }
 
 // Unloads a compute module.
@@ -12841,7 +12839,7 @@ HIPAPI hipError_t hipModuleUnload(hipModule_t module) {
       iree_hip_module_registry_take(module, &streaming_module);
   if (remove_result != hipSuccess) {
     IREE_TRACE_ZONE_END(z0);
-    return remove_result;
+    HIP_RETURN_ERROR(remove_result);
   }
 
   iree_hip_function_handle_retire_module(streaming_module);
@@ -12851,7 +12849,7 @@ HIPAPI hipError_t hipModuleUnload(hipModule_t module) {
   if (!iree_status_is_ok(status)) {
     hipError_t result = iree_status_to_hip_result(status);
     IREE_TRACE_ZONE_END(z0);
-    return result;
+    HIP_RETURN_ERROR(result);
   }
 
   IREE_TRACE_ZONE_END(z0);
