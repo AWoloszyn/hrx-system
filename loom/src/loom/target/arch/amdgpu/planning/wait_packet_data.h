@@ -46,6 +46,9 @@ typedef struct loom_amdgpu_wait_packet_selection_template_t {
   uint16_t descriptor_index;
   // Logical counters covered by the selected descriptor.
   uint8_t covered_counter_mask;
+  // Counters completed by a zero wait for the covered counters under every
+  // available encoding, including after insertion-point coalescing.
+  uint8_t full_drain_counter_mask;
 } loom_amdgpu_wait_packet_selection_template_t;
 
 typedef struct loom_amdgpu_wait_packet_descriptor_range_t {

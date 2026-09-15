@@ -53,10 +53,11 @@ const loom_low_descriptor_t* loom_amdgpu_wait_packet_resolve_descriptor(
     const loom_low_descriptor_set_t* descriptor_set,
     const loom_amdgpu_wait_packet_descriptor_template_t* packet_descriptor);
 
-// Returns the logical counters actually drained by an explicit wait packet
+// Returns the logical counters fully drained by an explicit wait packet
 // already present in scheduled low IR. Descriptor effects describe the counters
 // the packet can encode; this helper interprets the packet's concrete
-// immediate attributes and omits counters left at their no-wait value.
+// immediate attributes. Only zero thresholds establish full completion;
+// partial thresholds and fields left unconstrained do not reset a counter.
 uint32_t loom_amdgpu_wait_packet_explicit_counter_mask(
     const loom_low_descriptor_set_t* descriptor_set,
     const loom_low_descriptor_t* descriptor,

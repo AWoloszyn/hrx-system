@@ -2167,6 +2167,22 @@ static iree_status_t loom_amdgpu_wait_plan_wait_counter_at(
                }));
   loom_amdgpu_wait_plan_apply_counter_progress(
       builder, insertion_node, producer_node, counter_id, target_count);
+  if (kind == LOOM_AMDGPU_WAIT_PLAN_ACTION_PLANNED && target_count == 0) {
+    const uint32_t counter_mask = loom_amdgpu_wait_counter_mask(counter_id);
+    uint32_t coupled_counter_mask =
+        builder->wait_packet_target.selections[counter_mask]
+            .full_drain_counter_mask &
+        ~counter_mask;
+    while (coupled_counter_mask != 0) {
+      const uint32_t coupled_slot =
+          (uint32_t)iree_math_count_trailing_zeros_u32(coupled_counter_mask);
+      loom_amdgpu_wait_plan_apply_counter_progress(
+          builder, insertion_node, LOOM_LOW_SCHEDULE_NODE_NONE,
+          loom_amdgpu_wait_counter_id_from_slot(coupled_slot),
+          /*target_count=*/0);
+      coupled_counter_mask &= coupled_counter_mask - 1;
+    }
+  }
   return iree_ok_status();
 }
 

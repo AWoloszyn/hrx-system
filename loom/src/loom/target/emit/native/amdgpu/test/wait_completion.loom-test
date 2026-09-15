@@ -158,3 +158,320 @@ low.func.def target<amdgpu.rdna4.core>(@target) @independent_counter_retirement(
   v_add_u32 v1, s0, v1
   ds_write_b32 v0, v1 offset:4
   s_endpgm
+
+// ====
+
+// A nonzero authored threshold leaves the newest LDS result pending.
+// RUN: emit amdgpu-assembly @authored_partial_shared_wait strategy=source
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @authored_partial_shared_wait(%address: reg<amdgpu.vgpr>) asm {
+  %first = ds_read_b32 %address
+  %latest = ds_read_b32 %address {offset = 4}
+  s_waitcnt {lgkmcnt = 1}
+  low.br ^finish
+^finish:
+  %sum = v_add_u32 %first, %latest
+  ds_write_b32 %address, %sum {offset = 8}
+  return
+}
+
+// ----
+  ds_read_b32 v1, v0 offset:0
+  ds_read_b32 v2, v0 offset:4
+  s_waitcnt vmcnt(63) lgkmcnt(1)
+.Lbb1:
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  v_add_u32 v1, v1, v2
+  ds_write_b32 v0, v1 offset:8
+  s_endpgm
+
+// ====
+
+// Separate hardware counters also distinguish a partial wait from a reset.
+// RUN: emit amdgpu-assembly @authored_partial_split_wait strategy=source
+amdgpu.target<gfx1201> @target
+
+low.func.def target<amdgpu.rdna4.core>(@target) @authored_partial_split_wait(%address: reg<amdgpu.vgpr>) asm {
+  %first = ds_read_b32 %address
+  %latest = ds_read_b32 %address {offset = 4}
+  s_wait_dscnt {dscnt = 1}
+  %sum = v_add_u32 %first, %latest
+  ds_write_b32 %address, %sum {offset = 8}
+  return
+}
+
+// ----
+  ds_read_b32 v1, v0 offset:0
+  ds_read_b32 v2, v0 offset:4
+  s_wait_dscnt dscnt(1)
+  s_wait_dscnt dscnt(0)
+  v_add_u32 v1, v1, v2
+  ds_write_b32 v0, v1 offset:8
+  s_endpgm
+
+// ====
+
+// Unconstrained and partial LGKM fields remain pending even when another
+// field in the same instruction fully drains vector memory.
+// RUN: emit amdgpu-assembly @independent_explicit_wait_fields strategy=source
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @independent_explicit_wait_fields(%address: reg<amdgpu.vgpr>) asm {
+  %loaded = ds_read_b32 %address
+  s_waitcnt
+  s_waitcnt {vmcnt = 0, lgkmcnt = 1}
+  ds_write_b32 %address, %loaded {offset = 4}
+  return
+}
+
+// ----
+  ds_read_b32 v1, v0 offset:0
+  s_waitcnt vmcnt(63) lgkmcnt(63)
+  s_waitcnt vmcnt(0) lgkmcnt(1)
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  ds_write_b32 v0, v1 offset:4
+  s_endpgm
+
+// ====
+
+// A scalar-result full wait also completes earlier LDS work sharing LGKM.
+// RUN: emit amdgpu-assembly @scalar_wait_completes_local_result strategy=source
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @scalar_wait_completes_local_result(%base: reg<amdgpu.sgpr x2>, %offset: reg<amdgpu.sgpr>, %address: reg<amdgpu.vgpr>) asm {
+  %scalar = s_load_dword %base, %offset
+  %local = ds_read_b32 %address
+  %scalar_sum = s_add_u32 %scalar, %offset
+  low.br ^finish
+^finish:
+  %sum = v_add_u32 %scalar_sum, %local
+  ds_write_b32 %address, %sum {offset = 4}
+  return
+}
+
+// ----
+  s_load_dword s3, s[0:1], s2 offset:0
+  ds_read_b32 v1, v0 offset:0
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  s_add_u32 s0, s3, s2
+.Lbb1:
+  v_add_u32 v1, s0, v1
+  ds_write_b32 v0, v1 offset:4
+  s_endpgm
+
+// ====
+
+// Coupling works in both directions: an LDS full wait completes scalar work.
+// RUN: emit amdgpu-assembly @local_wait_completes_scalar_result strategy=source
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @local_wait_completes_scalar_result(%base: reg<amdgpu.sgpr x2>, %offset: reg<amdgpu.sgpr>, %address: reg<amdgpu.vgpr>) asm {
+  %scalar = s_load_dword %base, %offset
+  %local = ds_read_b32 %address
+  %local_sum = v_add_u32 %local, %address
+  %scalar_sum = s_add_u32 %scalar, %offset
+  %sum = v_add_u32 %scalar_sum, %local_sum
+  ds_write_b32 %address, %sum {offset = 4}
+  return
+}
+
+// ----
+  s_load_dword s3, s[0:1], s2 offset:0
+  ds_read_b32 v1, v0 offset:0
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  v_add_u32 v1, v1, v0
+  s_add_u32 s0, s3, s2
+  s_delay_alu instid0(VALU_DEP_1)
+  v_add_u32 v1, s0, v1
+  ds_write_b32 v0, v1 offset:4
+  s_endpgm
+
+// ====
+
+// A coupled full wait cannot complete work issued after it, even when the
+// new producer belongs to the counter completed as a side effect.
+// RUN: emit amdgpu-assembly @new_scalar_after_local_drain strategy=source
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @new_scalar_after_local_drain(%base: reg<amdgpu.sgpr x2>, %offset: reg<amdgpu.sgpr>, %address: reg<amdgpu.vgpr>) asm {
+  %scalar = s_load_dword %base, %offset
+  %local = ds_read_b32 %address
+  %local_sum = v_add_u32 %local, %address
+  %later = s_load_dword %base, %offset {offset = 4}
+  %scalar_sum = s_add_u32 %scalar, %later
+  %sum = v_add_u32 %scalar_sum, %local_sum
+  ds_write_b32 %address, %sum {offset = 8}
+  return
+}
+
+// ----
+  s_load_dword s3, s[0:1], s2 offset:0
+  ds_read_b32 v1, v0 offset:0
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  v_add_u32 v1, v1, v0
+  s_load_dword s4, s[0:1], s2 offset:4
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  s_add_u32 s0, s3, s4
+  s_delay_alu instid0(VALU_DEP_1)
+  v_add_u32 v1, s0, v1
+  ds_write_b32 v0, v1 offset:8
+  s_endpgm
+
+// ====
+
+// A planned partial LDS wait does not prove that a scalar-memory result in
+// the same LGKM counter has completed.
+// RUN: emit amdgpu-assembly @partial_local_wait_preserves_scalar_result strategy=source
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @partial_local_wait_preserves_scalar_result(%base: reg<amdgpu.sgpr x2>, %offset: reg<amdgpu.sgpr>, %address: reg<amdgpu.vgpr>) asm {
+  %scalar = s_load_dword %base, %offset
+  %first = ds_read_b32 %address
+  %latest = ds_read_b32 %address {offset = 4}
+  %first_sum = v_add_u32 %first, %address
+  %scalar_sum = s_add_u32 %scalar, %offset
+  %pair = v_add_u32 %first_sum, %latest
+  %sum = v_add_u32 %scalar_sum, %pair
+  ds_write_b32 %address, %sum {offset = 8}
+  return
+}
+
+// ----
+  s_load_dword s3, s[0:1], s2 offset:0
+  ds_read_b32 v1, v0 offset:0
+  ds_read_b32 v2, v0 offset:4
+  s_waitcnt vmcnt(63) lgkmcnt(1)
+  v_add_u32 v1, v1, v0
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  s_add_u32 s0, s3, s2
+  s_delay_alu instid0(VALU_DEP_1)
+  v_add_u32 v1, v1, v2
+  s_delay_alu instid0(VALU_DEP_1)
+  v_add_u32 v1, s0, v1
+  ds_write_b32 v0, v1 offset:8
+  s_endpgm
+
+// ====
+
+// Completion credited on one predecessor cannot cover the pending arm.
+// RUN: emit amdgpu-assembly @coupled_completion_on_one_path strategy=source
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @coupled_completion_on_one_path(%base: reg<amdgpu.sgpr x2>, %offset: reg<amdgpu.sgpr>, %address: reg<amdgpu.vgpr>, %limit: reg<amdgpu.sgpr>) asm {
+  %scalar = s_load_dword %base, %offset
+  %local = ds_read_b32 %address
+  %condition = s_cmp_lt_i32 %offset, %limit
+  low.cond_br %condition, ^drained, ^pending : reg<amdgpu.scc>
+^drained:
+  %scalar_sum = s_add_u32 %scalar, %offset
+  low.br ^join
+^pending:
+  low.br ^join
+^join:
+  %sum = v_add_u32 %scalar, %local
+  ds_write_b32 %address, %sum {offset = 4}
+  return
+}
+
+// ----
+  s_load_dword s4, s[0:1], s3 offset:0
+  ds_read_b32 v1, v0 offset:0
+  s_cmp_lt_i32 s3, s2
+  s_delay_alu instid0(SALU_CYCLE_1)
+  s_cbranch_scc0 .Lbb2
+.Lbb1:
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  s_add_u32 s0, s4, s3
+  s_branch .Lbb3
+.Lbb2:
+.Lbb3:
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  v_add_u32 v1, s4, v1
+  ds_write_b32 v0, v1 offset:4
+  s_endpgm
+
+// ====
+
+// A planned drain of incoming LDS work also releases incoming scalar work
+// before another use in the receiving block.
+// RUN: emit amdgpu-assembly @coupled_incoming_completion strategy=source
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @coupled_incoming_completion(%base: reg<amdgpu.sgpr x2>, %offset: reg<amdgpu.sgpr>, %address: reg<amdgpu.vgpr>) asm {
+  %scalar = s_load_dword %base, %offset
+  %local = ds_read_b32 %address
+  low.br ^consume_local
+^consume_local:
+  %local_sum = v_add_u32 %local, %address
+  %scalar_sum = s_add_u32 %scalar, %offset
+  %sum = v_add_u32 %scalar_sum, %local_sum
+  ds_write_b32 %address, %sum {offset = 4}
+  return
+}
+
+// ----
+  s_load_dword s3, s[0:1], s2 offset:0
+  ds_read_b32 v1, v0 offset:0
+.Lbb1:
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  v_add_u32 v1, v1, v0
+  s_add_u32 s0, s3, s2
+  s_delay_alu instid0(VALU_DEP_1)
+  v_add_u32 v1, s0, v1
+  ds_write_b32 v0, v1 offset:4
+  s_endpgm
+
+// ====
+
+// Loop-carried instances are pending again after the backedge. Coupled
+// completion of one iteration cannot release the next iteration's loads.
+// RUN: emit amdgpu-assembly @coupled_loop_carried_completion strategy=source
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @coupled_loop_carried_completion(%base: reg<amdgpu.sgpr x2>, %offset: reg<amdgpu.sgpr>, %address: reg<amdgpu.vgpr>, %limit: reg<amdgpu.sgpr>) asm {
+  %initial_scalar = s_load_dword %base, %offset
+  %initial_local = ds_read_b32 %address
+  %zero = s_mov_b32 0
+  low.br ^loop(%initial_scalar: reg<amdgpu.sgpr>, %initial_local: reg<amdgpu.vgpr>, %zero: reg<amdgpu.sgpr>)
+^loop(%scalar: reg<amdgpu.sgpr>, %local: reg<amdgpu.vgpr>, %index: reg<amdgpu.sgpr>):
+  %local_sum = v_add_u32 %local, %address
+  %scalar_sum = s_add_u32 %scalar, %offset
+  %sum = v_add_u32 %scalar_sum, %local_sum
+  ds_write_b32 %address, %sum {offset = 4}
+  %next_scalar = s_load_dword %base, %offset
+  %next_local = ds_read_b32 %address
+  %one = s_mov_b32 1
+  %next_index = s_add_u32 %index, %one
+  %again = s_cmp_lt_i32 %next_index, %limit
+  low.cond_br %again, ^backedge, ^exit : reg<amdgpu.scc>
+^backedge:
+  low.br ^loop(%next_scalar: reg<amdgpu.sgpr>, %next_local: reg<amdgpu.vgpr>, %next_index: reg<amdgpu.sgpr>)
+^exit:
+  return
+}
+
+// ----
+  s_load_dword s4, s[0:1], s2 offset:0
+  ds_read_b32 v1, v0 offset:0
+  s_mov_b32 s5, 0
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+.Lbb1:
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  v_add_u32 v1, v1, v0
+  s_add_u32 s4, s4, s2
+  s_delay_alu instid0(VALU_DEP_1)
+  v_add_u32 v1, s4, v1
+  ds_write_b32 v0, v1 offset:4
+  s_load_dword s4, s[0:1], s2 offset:0
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  ds_read_b32 v1, v0 offset:0
+  s_mov_b32 s6, 1
+  s_add_u32 s5, s5, s6
+  s_cmp_lt_i32 s5, s3
+  s_delay_alu instid0(SALU_CYCLE_1)
+  s_cbranch_scc0 .Lbb3
+.Lbb2:
+  s_branch .Lbb1
+.Lbb3:
+  s_endpgm

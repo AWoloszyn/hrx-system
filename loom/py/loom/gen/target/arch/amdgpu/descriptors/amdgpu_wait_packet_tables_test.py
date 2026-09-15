@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
 
 from loom.gen.target.arch.amdgpu.descriptors import amdgpu_wait_packet_tables
@@ -222,17 +223,6 @@ def test_selects_best_wait_packet_descriptor_rows() -> None:
     assert descriptor_index == 1
     assert covered_mask == amdgpu_wait_packet_tables._counter_mask(_COUNTER_VMEM_LOAD)
 
-    selection_rows = amdgpu_wait_packet_tables._descriptor_set_wait_packet_selection_rows(
-        "amdgpu.test.core",
-        7,
-        rows,
-    )
-    assert len(selection_rows) == amdgpu_wait_packet_tables._WAIT_COUNTER_MASK_COUNT
-    assert selection_rows[combined_mask].descriptor_set_ordinal == 7
-    assert selection_rows[combined_mask].counter_mask == combined_mask
-    assert selection_rows[combined_mask].descriptor_index == 0
-    assert selection_rows[combined_mask].covered_counter_mask == combined_mask
-
 
 def test_classifies_split_wait_packet_descriptor_rows() -> None:
     load_descriptor = _descriptor(
@@ -295,6 +285,16 @@ def test_classifies_split_wait_packet_descriptor_rows() -> None:
     assert range_row.descriptor_count == 3
     assert range_row.descriptor_lookup_count == 3
     assert range_row.max_descriptor_immediate_count == 1
+
+    selection_rows = amdgpu_wait_packet_tables._descriptor_set_wait_packet_selection_rows("amdgpu.test.core", 4, descriptor_rows, immediate_rows)
+    assert len(selection_rows) == amdgpu_wait_packet_tables._WAIT_COUNTER_MASK_COUNT
+    for index, counter_id in enumerate((_COUNTER_VMEM_LOAD, _COUNTER_VMEM_STORE, _COUNTER_SMEM)):
+        counter_mask = amdgpu_wait_packet_tables._counter_mask(counter_id)
+        selection = selection_rows[counter_mask]
+        assert selection.descriptor_set_ordinal == 4
+        assert selection.descriptor_index == index
+        assert selection.covered_counter_mask == counter_mask
+        assert selection.full_drain_counter_mask == counter_mask
 
 
 def test_skips_non_counter_descriptors() -> None:
@@ -423,6 +423,22 @@ def test_rejects_no_wait_value_larger_than_uint16() -> None:
         )
 
 
+def test_rejects_no_wait_value_equal_to_full_completion() -> None:
+    descriptor = _descriptor(
+        "amdgpu.s_waitcnt",
+        effects=(_wait_effect(_COUNTER_LDS),),
+        immediates=(_wait_immediate("lgkmcnt", _WAIT_COUNTER_LGKM_ENCODING_ID, unsigned_max=0),),
+    )
+    with _raises_value_error("must distinguish full completion from no wait"):
+        amdgpu_wait_packet_tables._descriptor_set_wait_packet_rows(
+            _descriptor_set(descriptor),
+            descriptor_set_ordinal=0,
+            descriptor_ref_key_set={descriptor.key},
+            first_descriptor=0,
+            first_immediate=0,
+        )
+
+
 def test_rejects_immediate_start_larger_than_uint16() -> None:
     descriptor = _descriptor(
         "amdgpu.s_waitcnt",
@@ -474,6 +490,74 @@ def test_combined_immediate_maps_multiple_counter_effects() -> None:
     assert descriptor_rows[0].counter_count == 2
     assert immediate_rows[0].counter_mask == (amdgpu_wait_packet_tables._counter_mask(_COUNTER_LDS) | amdgpu_wait_packet_tables._counter_mask(_COUNTER_SMEM))
 
+    selection_rows = amdgpu_wait_packet_tables._descriptor_set_wait_packet_selection_rows("amdgpu.test.core", 0, descriptor_rows, immediate_rows)
+    combined_mask = immediate_rows[0].counter_mask
+    for counter_id in (_COUNTER_LDS, _COUNTER_SMEM):
+        counter_mask = amdgpu_wait_packet_tables._counter_mask(counter_id)
+        assert selection_rows[counter_mask].covered_counter_mask == counter_mask
+        assert selection_rows[counter_mask].full_drain_counter_mask == combined_mask
+    assert selection_rows[combined_mask].full_drain_counter_mask == combined_mask
+    assert selection_rows[0].full_drain_counter_mask == 0
+
+
+def test_full_drain_guarantee_survives_alternative_packet_selection() -> None:
+    combined = _descriptor(
+        "amdgpu.s_waitcnt",
+        effects=(_wait_effect(_COUNTER_LDS), _wait_effect(_COUNTER_SMEM)),
+        immediates=(_wait_immediate("lgkmcnt", _WAIT_COUNTER_LGKM_ENCODING_ID),),
+    )
+    scalar = _descriptor(
+        "amdgpu.s_wait_kmcnt",
+        effects=(_wait_effect(_COUNTER_SMEM),),
+        immediates=(_wait_immediate("kmcnt", _WAIT_COUNTER_SMEM_ENCODING_ID),),
+    )
+    descriptor_rows, immediate_rows, _, _ = amdgpu_wait_packet_tables._descriptor_set_wait_packet_rows(
+        _descriptor_set(combined, scalar),
+        descriptor_set_ordinal=0,
+        descriptor_ref_key_set={combined.key, scalar.key},
+        first_descriptor=0,
+        first_immediate=0,
+    )
+    selections = amdgpu_wait_packet_tables._descriptor_set_wait_packet_selection_rows("amdgpu.test.core", 0, descriptor_rows, immediate_rows)
+    lds_mask = amdgpu_wait_packet_tables._counter_mask(_COUNTER_LDS)
+    scalar_mask = amdgpu_wait_packet_tables._counter_mask(_COUNTER_SMEM)
+    # The scalar counter can be drained without touching LDS. The LDS counter
+    # has only the combined encoding, which always drains both.
+    assert selections[scalar_mask].full_drain_counter_mask == scalar_mask
+    assert selections[lds_mask].full_drain_counter_mask == lds_mask | scalar_mask
+
+
+def test_rejects_full_drain_guarantee_not_implied_by_encoding() -> None:
+    descriptor = _descriptor(
+        "amdgpu.s_wait_kmcnt",
+        effects=(_wait_effect(_COUNTER_SMEM),),
+        immediates=(_wait_immediate("kmcnt", _WAIT_COUNTER_SMEM_ENCODING_ID),),
+    )
+    descriptors, immediates, lookups, descriptor_range = amdgpu_wait_packet_tables._descriptor_set_wait_packet_rows(
+        _descriptor_set(descriptor),
+        descriptor_set_ordinal=0,
+        descriptor_ref_key_set={descriptor.key},
+        first_descriptor=0,
+        first_immediate=0,
+    )
+    selections = amdgpu_wait_packet_tables._descriptor_set_wait_packet_selection_rows("amdgpu.test.core", 0, descriptors, immediates)
+    tables = amdgpu_wait_packet_tables._WaitPacketTables(
+        descriptor_rows=descriptors,
+        immediate_rows=immediates,
+        range_rows=(descriptor_range,),
+        descriptor_lookup_rows=lookups,
+        selection_rows=selections,
+    )
+    amdgpu_wait_packet_tables._validate_wait_packet_tables(tables)
+    scalar_mask = amdgpu_wait_packet_tables._counter_mask(_COUNTER_SMEM)
+    lds_mask = amdgpu_wait_packet_tables._counter_mask(_COUNTER_LDS)
+    invalid_selections = tuple(replace(row, full_drain_counter_mask=scalar_mask | lds_mask) if row.counter_mask == scalar_mask else row for row in selections)
+    with _raises_value_error("full drain mask does not match encoding guarantees"):
+        amdgpu_wait_packet_tables._validate_wait_packet_tables(replace(tables, selection_rows=invalid_selections))
+    invalid_selections = (replace(selections[0], full_drain_counter_mask=scalar_mask), *selections[1:])
+    with _raises_value_error("claims completion without a covered counter"):
+        amdgpu_wait_packet_tables._validate_wait_packet_tables(replace(tables, selection_rows=invalid_selections))
+
 
 def test_validates_required_counter_packet_coverage() -> None:
     wait_descriptor = _descriptor(
@@ -491,14 +575,14 @@ def test_validates_required_counter_packet_coverage() -> None:
         producer_descriptor,
         hazards=(Hazard(HazardKind.WAIT_COUNTER, counter_id=_COUNTER_VMEM_LOAD),),
     )
-    descriptor_rows, _, _, _ = amdgpu_wait_packet_tables._descriptor_set_wait_packet_rows(
+    descriptor_rows, immediate_rows, _, _ = amdgpu_wait_packet_tables._descriptor_set_wait_packet_rows(
         descriptor_set,
         descriptor_set_ordinal=0,
         descriptor_ref_key_set={"amdgpu.s_waitcnt"},
         first_descriptor=0,
         first_immediate=0,
     )
-    selection_rows = amdgpu_wait_packet_tables._descriptor_set_wait_packet_selection_rows(descriptor_set.key, 0, descriptor_rows)
+    selection_rows = amdgpu_wait_packet_tables._descriptor_set_wait_packet_selection_rows(descriptor_set.key, 0, descriptor_rows, immediate_rows)
 
     amdgpu_wait_packet_tables._validate_descriptor_set_wait_packet_coverage(descriptor_set, descriptor_rows, selection_rows)
 
@@ -519,14 +603,14 @@ def test_default_write_effect_uses_smem_wait_counter() -> None:
         producer_descriptor,
         hazards=(Hazard(HazardKind.WAIT_COUNTER, counter_id=_COUNTER_SMEM),),
     )
-    descriptor_rows, _, _, _ = amdgpu_wait_packet_tables._descriptor_set_wait_packet_rows(
+    descriptor_rows, immediate_rows, _, _ = amdgpu_wait_packet_tables._descriptor_set_wait_packet_rows(
         descriptor_set,
         descriptor_set_ordinal=0,
         descriptor_ref_key_set={"amdgpu.s_waitcnt"},
         first_descriptor=0,
         first_immediate=0,
     )
-    selection_rows = amdgpu_wait_packet_tables._descriptor_set_wait_packet_selection_rows(descriptor_set.key, 0, descriptor_rows)
+    selection_rows = amdgpu_wait_packet_tables._descriptor_set_wait_packet_selection_rows(descriptor_set.key, 0, descriptor_rows, immediate_rows)
 
     amdgpu_wait_packet_tables._validate_descriptor_set_wait_packet_coverage(descriptor_set, descriptor_rows, selection_rows)
 
@@ -541,7 +625,7 @@ def test_rejects_missing_required_counter_packet_coverage() -> None:
         producer,
         hazards=(Hazard(HazardKind.WAIT_COUNTER, counter_id=_COUNTER_LDS),),
     )
-    selection_rows = amdgpu_wait_packet_tables._descriptor_set_wait_packet_selection_rows(descriptor_set.key, 0, ())
+    selection_rows = amdgpu_wait_packet_tables._descriptor_set_wait_packet_selection_rows(descriptor_set.key, 0, (), ())
 
     with _raises_value_error("packet descriptors only cover"):
         amdgpu_wait_packet_tables._validate_descriptor_set_wait_packet_coverage(descriptor_set, (), selection_rows)
@@ -557,7 +641,7 @@ def test_rejects_dependency_counter_missing_from_schedule_hazards() -> None:
         producer,
         hazards=(Hazard(HazardKind.WAIT_COUNTER, counter_id=_COUNTER_VMEM_LOAD),),
     )
-    selection_rows = amdgpu_wait_packet_tables._descriptor_set_wait_packet_selection_rows(descriptor_set.key, 0, ())
+    selection_rows = amdgpu_wait_packet_tables._descriptor_set_wait_packet_selection_rows(descriptor_set.key, 0, (), ())
 
     with _raises_value_error("is not present in schedule class"):
         amdgpu_wait_packet_tables._validate_descriptor_set_wait_packet_coverage(descriptor_set, (), selection_rows)
@@ -565,7 +649,7 @@ def test_rejects_dependency_counter_missing_from_schedule_hazards() -> None:
 
 def test_requires_alu_wait_packet_for_depctr_processors() -> None:
     descriptor_set = _descriptor_set()
-    selection_rows = amdgpu_wait_packet_tables._descriptor_set_wait_packet_selection_rows(descriptor_set.key, 0, ())
+    selection_rows = amdgpu_wait_packet_tables._descriptor_set_wait_packet_selection_rows(descriptor_set.key, 0, (), ())
 
     with _raises_value_error("packet descriptors only cover"):
         amdgpu_wait_packet_tables._validate_descriptor_set_wait_packet_coverage(
@@ -665,6 +749,7 @@ def test_rejects_selection_row_with_out_of_bounds_descriptor() -> None:
                 counter_mask=counter_mask,
                 descriptor_index=2 if counter_mask == amdgpu_wait_packet_tables._counter_mask(_COUNTER_VMEM_LOAD) else 0,
                 covered_counter_mask=amdgpu_wait_packet_tables._counter_mask(_COUNTER_VMEM_LOAD) if counter_mask == amdgpu_wait_packet_tables._counter_mask(_COUNTER_VMEM_LOAD) else 0,
+                full_drain_counter_mask=0,
             )
             for counter_mask in range(amdgpu_wait_packet_tables._WAIT_COUNTER_MASK_COUNT)
         ),
@@ -716,6 +801,7 @@ def test_rejects_descriptor_lookup_row_with_out_of_bounds_descriptor() -> None:
                 counter_mask=counter_mask,
                 descriptor_index=0,
                 covered_counter_mask=0,
+                full_drain_counter_mask=0,
             )
             for counter_mask in range(amdgpu_wait_packet_tables._WAIT_COUNTER_MASK_COUNT)
         ),

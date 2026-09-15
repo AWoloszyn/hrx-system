@@ -116,7 +116,7 @@ uint32_t loom_amdgpu_wait_packet_explicit_counter_mask(
         loom_amdgpu_wait_packet_descriptor_immediate(packet_descriptor, i);
     const uint16_t value =
         loom_amdgpu_wait_packet_immediate_value(module, op, immediate);
-    if (value < immediate->no_wait_value) {
+    if (value == 0) {
       counter_mask |= immediate->counter_mask;
     }
   }
