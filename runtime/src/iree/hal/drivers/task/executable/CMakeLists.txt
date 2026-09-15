@@ -37,6 +37,18 @@ iree_cc_library(
   PUBLIC
 )
 
+iree_cc_test(
+  NAME
+    environment_test
+  SRCS
+    "environment_test.cc"
+  DEPS
+    ::environment
+    iree::base::internal::cpu
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+
 iree_cc_library(
   NAME
     loader
