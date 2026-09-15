@@ -73,6 +73,7 @@ loom_cc_test(
     srcs = ["register_classes_test.cc"],
     deps = [
         ":register_classes",
+        "//loom/src/loom/codegen/low:builder",
         "//loom/src/loom/codegen/low:descriptors",
         "//loom/src/loom/target/arch/x86/descriptors:shards_for_testing",
         "//runtime/src/iree/testing:gtest",
@@ -111,6 +112,7 @@ loom_cc_library(
 loom_check_test_suite(
     name = "loom_check_file_test",
     srcs = [
+        "test/register_classes.loom-test",
         "test/source_low/allocation.loom-test",
         "test/source_low/buffer_bulk.loom-test",
         "test/source_low/buffer_raw.loom-test",

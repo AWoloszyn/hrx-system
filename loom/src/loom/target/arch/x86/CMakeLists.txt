@@ -61,6 +61,7 @@ loom_cc_test(
     ::register_classes
     iree::testing::gtest
     iree::testing::gtest_main
+    loom::codegen::low::builder
     loom::codegen::low::descriptors
     loom::target::arch::x86::descriptors::shards_for_testing
   LABELS
@@ -110,6 +111,7 @@ loom_check_test_suite(
   NAME
     loom_check_file_test
   SRCS
+    "test/register_classes.loom-test"
     "test/source_low/allocation.loom-test"
     "test/source_low/buffer_bulk.loom-test"
     "test/source_low/buffer_raw.loom-test"

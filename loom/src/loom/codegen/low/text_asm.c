@@ -1458,20 +1458,12 @@ static iree_status_t loom_low_descriptor_text_asm_resolve_register_type(
   *out_found = false;
   const loom_low_descriptor_set_t* descriptor_set =
       loom_low_descriptor_text_asm_descriptor_set(descriptor_set_handle);
-  for (uint32_t i = 0; i < descriptor_set->reg_class_count; ++i) {
-    const loom_low_reg_class_t* register_class =
-        &descriptor_set->reg_classes[i];
-    iree_string_view_t descriptor_register_class_name =
-        loom_low_descriptor_set_string(descriptor_set,
-                                       register_class->name_string_offset);
-    if (!iree_string_view_equal(register_class_name,
-                                descriptor_register_class_name)) {
-      continue;
-    }
-    *out_type = loom_low_register_type(descriptor_set->stable_id, (uint16_t)i,
-                                       unit_count);
+  uint16_t register_class_id = LOOM_LOW_REG_CLASS_NONE;
+  if (loom_low_descriptor_set_lookup_register_class(
+          descriptor_set, register_class_name, &register_class_id, NULL)) {
+    *out_type = loom_low_register_type(descriptor_set->stable_id,
+                                       register_class_id, unit_count);
     *out_found = true;
-    return iree_ok_status();
   }
   return iree_ok_status();
 }

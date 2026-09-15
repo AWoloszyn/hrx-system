@@ -22,6 +22,7 @@ from loom.target.low_descriptors import (
     Descriptor,
     DescriptorSet,
     InstructionClass,
+    RegClass,
     Resource,
     ScheduleClass,
 )
@@ -232,6 +233,51 @@ def _compile_view_asm_forms(
     return asm_forms
 
 
+def _view_register_classes(
+    compiled: CompiledDescriptorSet,
+    view_spec: DescriptorSet,
+) -> tuple[RegClass | None, ...]:
+    classes_by_name = {reg_class.name: reg_class for reg_class in view_spec.reg_classes}
+    if len(classes_by_name) != len(view_spec.reg_classes):
+        raise ValueError(f"descriptor set view '{view_spec.key}' has duplicate register classes")
+    validation.validate_register_classes(
+        view_spec.key,
+        view_spec.reg_classes,
+        alias_set_count=max((reg_class.alias_set_id for reg_class in compiled.reg_classes), default=0),
+    )
+    for reg_class in view_spec.reg_classes:
+        storage_id = compiled.reg_class_ids.get(reg_class.name)
+        if storage_id is None:
+            raise ValueError(f"descriptor set view '{view_spec.key}' register class '{reg_class.name}' is missing from storage")
+        storage_class = compiled.reg_classes[storage_id]
+        if (
+            replace(
+                reg_class,
+                allocatable_count=storage_class.allocatable_count,
+                fixed_location_base=storage_class.fixed_location_base,
+                fixed_location_count=storage_class.fixed_location_count,
+            )
+            != storage_class
+        ):
+            raise ValueError(f"descriptor set view '{view_spec.key}' register class '{reg_class.name}' differs from storage outside allocation capacity or fixed locations")
+        if reg_class.spill_class is not None and reg_class.spill_class not in classes_by_name:
+            raise ValueError(f"descriptor set view '{view_spec.key}' register class '{reg_class.name}' references absent spill class '{reg_class.spill_class}'")
+
+    # Shared operand and schedule tables may contain rows for other views.
+    # Only the selected descriptors can reference the classes exposed here.
+    schedules_by_name = {schedule.name: schedule for schedule in compiled.schedule_classes}
+    parts_by_name = {part.name: part for part in compiled.register_parts}
+    for descriptor in view_spec.descriptors:
+        referenced_classes = {alternative.reg_class for operand in descriptor.operands for alternative in operand.reg_alts if alternative.reg_class is not None}
+        referenced_classes.update(parts_by_name[operand.register_part].reg_class for operand in descriptor.operands if operand.register_part is not None)
+        referenced_classes.update(delta.reg_class for delta in schedules_by_name[descriptor.schedule_class].pressure_deltas)
+        missing_classes = referenced_classes - classes_by_name.keys()
+        if missing_classes:
+            raise ValueError(f"descriptor set view '{view_spec.key}' descriptor '{descriptor.key}' references absent register classes: {', '.join(sorted(missing_classes))}")
+    validation.validate_physical_descriptor_set(view_spec)
+    return tuple(classes_by_name.get(reg_class.name) for reg_class in compiled.reg_classes)
+
+
 def descriptor_set_view_for_spec(
     compiled: CompiledDescriptorSet,
     view_spec: DescriptorSet,
@@ -323,6 +369,7 @@ def descriptor_set_view_for_spec(
 
     return DescriptorSetView(
         spec=view_spec,
+        reg_classes=_view_register_classes(compiled, view_spec),
         descriptors=descriptors,
         instruction_classes=instruction_classes,
         descriptor_ordinals=descriptor_ordinal_tuple,

@@ -475,8 +475,10 @@ def validate_i64(value: int, description: str) -> None:
 def validate_register_classes(
     descriptor_set_key: str,
     register_classes: Sequence[RegClass],
+    *,
+    alias_set_count: int | None = None,
 ) -> None:
-    """Validates register classes and their shared storage namespaces."""
+    """Validates classes in a new or already established alias namespace."""
     alias_sets: dict[int, list[RegClass]] = {}
     for register_class in register_classes:
         description = f"descriptor set '{descriptor_set_key}' register class '{register_class.name}'"
@@ -524,8 +526,10 @@ def validate_register_classes(
 
     alias_set_ids = sorted(alias_sets)
     expected_alias_set_ids = list(range(1, len(alias_set_ids) + 1))
-    if alias_set_ids != expected_alias_set_ids:
+    if alias_set_count is None and alias_set_ids != expected_alias_set_ids:
         raise ValueError(f"descriptor set '{descriptor_set_key}' alias-set IDs must be dense from 1; found {alias_set_ids}")
+    if alias_set_count is not None and any(alias_set_id > alias_set_count for alias_set_id in alias_set_ids):
+        raise ValueError(f"descriptor set '{descriptor_set_key}' alias-set IDs exceed shared storage namespace {alias_set_count}")
 
     for alias_set_id, members in alias_sets.items():
         reference = members[0]

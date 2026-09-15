@@ -226,6 +226,9 @@ bool loom_low_descriptor_set_lookup_register_class(
        ++i) {
     const loom_low_reg_class_t* register_class =
         &descriptor_set->reg_classes[i];
+    if (register_class->name_string_offset == LOOM_LOW_STRING_OFFSET_NONE) {
+      continue;
+    }
     iree_string_view_t descriptor_register_class_name =
         loom_low_descriptor_set_string_view(descriptor_set,
                                             register_class->name_string_offset);

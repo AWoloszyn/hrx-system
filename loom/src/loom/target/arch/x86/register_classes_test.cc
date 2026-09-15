@@ -10,6 +10,7 @@
 
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
+#include "loom/codegen/low/builder.h"
 #include "loom/target/arch/x86/descriptors/avx10_2_descriptors.h"
 #include "loom/target/arch/x86/descriptors/avx2_descriptors.h"
 #include "loom/target/arch/x86/descriptors/avx512_bf16_descriptors.h"
@@ -99,6 +100,68 @@ void ExpectOperandAddressMap(const loom_low_descriptor_set_t* descriptor_set,
   }
   ADD_FAILURE() << "descriptor " << ToString(descriptor_key)
                 << " has no operand field " << ToString(field_name);
+}
+
+TEST(X86RegisterClassesTest, ViewsPreserveRegisterVocabularyAndCapacity) {
+  struct Case {
+    // Actual generated descriptor view consumed by parsing and allocation.
+    const loom_low_descriptor_set_t* descriptor_set;
+    // Counts in logical register-class order; zero denotes an absent class.
+    uint16_t capacities[6];
+  };
+  const Case cases[] = {
+      {loom_x86_scalar_core_descriptor_set(), {16, 16, 0, 0, 0, 0}},
+      {loom_x86_simd128_core_descriptor_set(), {16, 16, 16, 0, 0, 0}},
+      {loom_x86_avx2_core_descriptor_set(), {16, 16, 16, 16, 0, 0}},
+      {loom_x86_avx512_core_descriptor_set(), {16, 16, 32, 32, 32, 8}},
+      {loom_x86_avx512_packed_dot_core_descriptor_set(),
+       {16, 16, 32, 32, 32, 8}},
+      {loom_x86_packed_dot_core_descriptor_set(), {0, 0, 32, 32, 32, 0}},
+      {loom_x86_avx512_vnni_core_descriptor_set(), {0, 0, 32, 32, 32, 0}},
+      {loom_x86_avx512_bf16_core_descriptor_set(), {0, 0, 32, 32, 32, 0}},
+      {loom_x86_avx_vnni_core_descriptor_set(), {0, 0, 16, 16, 0, 0}},
+      {loom_x86_avx_vnni_int8_core_descriptor_set(), {0, 0, 16, 16, 0, 0}},
+      {loom_x86_avx_vnni_int16_core_descriptor_set(), {0, 0, 16, 16, 0, 0}},
+      {loom_x86_avx10_2_core_descriptor_set(), {0, 0, 32, 32, 32, 0}},
+  };
+  for (const Case& test_case : cases) {
+    const auto* descriptor_set = test_case.descriptor_set;
+    SCOPED_TRACE(ToString(loom_low_descriptor_set_string(
+        descriptor_set, descriptor_set->key_string_offset)));
+    for (uint16_t kind = 0; kind < IREE_ARRAYSIZE(test_case.capacities);
+         ++kind) {
+      iree_string_view_t name = iree_string_view_empty();
+      IREE_ASSERT_OK(loom_x86_register_class_name(
+          static_cast<loom_x86_register_class_t>(kind), &name));
+      SCOPED_TRACE(ToString(name));
+      uint16_t storage_id = LOOM_LOW_REG_CLASS_NONE;
+      ASSERT_TRUE(loom_low_descriptor_set_lookup_register_class(
+          loom_x86_avx512_core_descriptor_set(), name, &storage_id, nullptr));
+      uint16_t class_id = LOOM_LOW_REG_CLASS_NONE;
+      const loom_low_reg_class_t* reg_class = nullptr;
+      bool found = loom_low_descriptor_set_lookup_register_class(
+          descriptor_set, name, &class_id, &reg_class);
+      loom_type_t type = loom_type_none();
+      if (test_case.capacities[kind] == 0) {
+        EXPECT_FALSE(found);
+        EXPECT_EQ(class_id, LOOM_LOW_REG_CLASS_NONE);
+        EXPECT_EQ(reg_class, nullptr);
+        IREE_EXPECT_STATUS_IS(
+            IREE_STATUS_NOT_FOUND,
+            loom_low_build_register_type(descriptor_set, storage_id, 1, &type));
+      } else {
+        ASSERT_TRUE(found);
+        EXPECT_EQ(class_id, storage_id);
+        EXPECT_EQ(reg_class->allocatable_count, test_case.capacities[kind]);
+        IREE_ASSERT_OK(
+            loom_low_build_register_type(descriptor_set, storage_id, 1, &type));
+      }
+    }
+  }
+  EXPECT_EQ(loom_x86_avx_vnni_core_descriptor_set()->reg_classes,
+            loom_x86_avx_vnni_int8_core_descriptor_set()->reg_classes);
+  EXPECT_EQ(loom_x86_avx512_core_descriptor_set()->operands,
+            loom_x86_avx2_core_descriptor_set()->operands);
 }
 
 TEST(X86RegisterClassesTest, SharedScalarClassesAcrossViews) {
