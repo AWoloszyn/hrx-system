@@ -25,65 +25,35 @@ iree_cc_library(
 )
 endif()
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
 iree_cc_library(
   NAME
-    linux_tests
+    user_queue_memory
   HDRS
-    "target/gfx1151/user_queue_memory_test.h"
+    "user_queue_memory.h"
   SRCS
-    "memory_linux_test.cc"
-    "target/gfx1151/user_queue_memory_test.cc"
-  DEPS
-    ::gpu_device_fixture
-    amdf::headers
-    iree::third_party::google_test
-    libamdf::cts::util::device_cache
-    libamdf::cts::util::provider_headers
-  TESTONLY
-  ALWAYSLINK
-  PUBLIC
-)
-endif()
-
-if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
-iree_cc_library(
-  NAME
-    windows_tests
-  SRCS
-    "kernel_queue_test.cc"
-    "memory_interop_test.cc"
-    "windows/memory_test.cc"
+    "user_queue_memory.cc"
   DEPS
     ::gpu_device_fixture
     amdf::headers
     iree::third_party::google_test
   TESTONLY
-  ALWAYSLINK
   PUBLIC
 )
 endif()
 
 if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
-set(_gpu_cases_platform_deps "")
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  list(APPEND _gpu_cases_platform_deps ::linux_tests)
-elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-  list(APPEND _gpu_cases_platform_deps ::windows_tests)
-endif()
 iree_cc_library(
   NAME
-    gpu_cases
+    gpu_extension_cases
   SRCS
     "gpu_extension_test.cc"
-    "memory_group_test.cc"
   DEPS
     ::gpu_device_fixture
     amdf::headers
     iree::third_party::google_test
     libamdf::cts::util::device_cache
     libamdf::cts::util::provider_headers
-    ${_gpu_cases_platform_deps}
   TESTONLY
   ALWAYSLINK
   PUBLIC
@@ -93,9 +63,9 @@ endif()
 if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
 amdf_cts_binary(
   NAME
-    gpu_static_bin
+    gpu_extension_static_bin
   DEPS
-    ::gpu_cases
+    ::gpu_extension_cases
     amdf::headers
     libamdf::cts::util::static_provider
     libamdf::cts::util::test_main
@@ -106,11 +76,11 @@ endif()
 if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
 iree_native_test(
   NAME
-    "gpu_static"
+    "gpu_extension_static"
   ARGS
     "--amdf_native_lifetime=process"
   SRC
-    ::gpu_static_bin
+    ::gpu_extension_static_bin
   LABELS
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.gpu"
@@ -124,11 +94,11 @@ endif()
 if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
 iree_native_test(
   NAME
-    "gpu_static_instance"
+    "gpu_extension_static_instance"
   ARGS
     "--amdf_native_lifetime=instance"
   SRC
-    ::gpu_static_bin
+    ::gpu_extension_static_bin
   LABELS
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.gpu"
@@ -142,11 +112,11 @@ endif()
 if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
 amdf_cts_binary(
   NAME
-    gpu_shared_bin
+    gpu_extension_shared_bin
   DATA
     amdf::amdf
   DEPS
-    ::gpu_cases
+    ::gpu_extension_cases
     amdf::headers
     libamdf::cts::util::shared_provider
     libamdf::cts::util::test_main
@@ -157,11 +127,11 @@ endif()
 if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
 iree_native_test(
   NAME
-    "gpu_shared"
+    "gpu_extension_shared"
   ARGS
     "--amdf_native_lifetime=process"
   SRC
-    ::gpu_shared_bin
+    ::gpu_extension_shared_bin
   DATA
     "amdf::amdf"
   LABELS
@@ -177,11 +147,11 @@ endif()
 if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
 iree_native_test(
   NAME
-    "gpu_shared_instance"
+    "gpu_extension_shared_instance"
   ARGS
     "--amdf_native_lifetime=instance"
   SRC
-    ::gpu_shared_bin
+    ::gpu_extension_shared_bin
   DATA
     "amdf::amdf"
   LABELS
@@ -197,11 +167,11 @@ endif()
 if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
 amdf_cts_binary(
   NAME
-    gpu_dynamic_bin
+    gpu_extension_dynamic_bin
   DATA
     amdf::amdf
   DEPS
-    ::gpu_cases
+    ::gpu_extension_cases
     amdf::headers
     libamdf::cts::util::dynamic_provider
     libamdf::cts::util::test_main
@@ -212,12 +182,12 @@ endif()
 if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
 iree_native_test(
   NAME
-    "gpu_dynamic"
+    "gpu_extension_dynamic"
   ARGS
     "--amdf_native_lifetime=process"
     "--amdf_library={{$<TARGET_FILE:amdf::amdf>}}"
   SRC
-    ::gpu_dynamic_bin
+    ::gpu_extension_dynamic_bin
   DATA
     "amdf::amdf"
   LABELS
@@ -233,12 +203,903 @@ endif()
 if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
 iree_native_test(
   NAME
-    "gpu_dynamic_instance"
+    "gpu_extension_dynamic_instance"
   ARGS
     "--amdf_native_lifetime=instance"
     "--amdf_library={{$<TARGET_FILE:amdf::amdf>}}"
   SRC
-    ::gpu_dynamic_bin
+    ::gpu_extension_dynamic_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_cc_library(
+  NAME
+    kernel_queue_cases
+  SRCS
+    "kernel_queue_test.cc"
+  DEPS
+    ::gpu_device_fixture
+    amdf::headers
+    iree::third_party::google_test
+    libamdf::cts::util::device_cache
+    libamdf::cts::util::provider_headers
+  TESTONLY
+  ALWAYSLINK
+  PUBLIC
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+amdf_cts_binary(
+  NAME
+    kernel_queue_static_bin
+  DEPS
+    ::kernel_queue_cases
+    amdf::headers
+    libamdf::cts::util::static_provider
+    libamdf::cts::util::test_main
+  TESTONLY
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "kernel_queue_static"
+  ARGS
+    "--amdf_native_lifetime=process"
+  SRC
+    ::kernel_queue_static_bin
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "kernel_queue_static_instance"
+  ARGS
+    "--amdf_native_lifetime=instance"
+  SRC
+    ::kernel_queue_static_bin
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+amdf_cts_binary(
+  NAME
+    kernel_queue_shared_bin
+  DATA
+    amdf::amdf
+  DEPS
+    ::kernel_queue_cases
+    amdf::headers
+    libamdf::cts::util::shared_provider
+    libamdf::cts::util::test_main
+  TESTONLY
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "kernel_queue_shared"
+  ARGS
+    "--amdf_native_lifetime=process"
+  SRC
+    ::kernel_queue_shared_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "kernel_queue_shared_instance"
+  ARGS
+    "--amdf_native_lifetime=instance"
+  SRC
+    ::kernel_queue_shared_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+amdf_cts_binary(
+  NAME
+    kernel_queue_dynamic_bin
+  DATA
+    amdf::amdf
+  DEPS
+    ::kernel_queue_cases
+    amdf::headers
+    libamdf::cts::util::dynamic_provider
+    libamdf::cts::util::test_main
+  TESTONLY
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "kernel_queue_dynamic"
+  ARGS
+    "--amdf_native_lifetime=process"
+    "--amdf_library={{$<TARGET_FILE:amdf::amdf>}}"
+  SRC
+    ::kernel_queue_dynamic_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "kernel_queue_dynamic_instance"
+  ARGS
+    "--amdf_native_lifetime=instance"
+    "--amdf_library={{$<TARGET_FILE:amdf::amdf>}}"
+  SRC
+    ::kernel_queue_dynamic_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_cc_library(
+  NAME
+    memory_group_cases
+  SRCS
+    "memory_group_test.cc"
+  DEPS
+    ::gpu_device_fixture
+    amdf::headers
+    iree::third_party::google_test
+    libamdf::cts::util::device_cache
+    libamdf::cts::util::provider_headers
+  TESTONLY
+  ALWAYSLINK
+  PUBLIC
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+amdf_cts_binary(
+  NAME
+    memory_group_static_bin
+  DEPS
+    ::memory_group_cases
+    amdf::headers
+    libamdf::cts::util::static_provider
+    libamdf::cts::util::test_main
+  TESTONLY
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "memory_group_static"
+  ARGS
+    "--amdf_native_lifetime=process"
+  SRC
+    ::memory_group_static_bin
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "memory_group_static_instance"
+  ARGS
+    "--amdf_native_lifetime=instance"
+  SRC
+    ::memory_group_static_bin
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+amdf_cts_binary(
+  NAME
+    memory_group_shared_bin
+  DATA
+    amdf::amdf
+  DEPS
+    ::memory_group_cases
+    amdf::headers
+    libamdf::cts::util::shared_provider
+    libamdf::cts::util::test_main
+  TESTONLY
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "memory_group_shared"
+  ARGS
+    "--amdf_native_lifetime=process"
+  SRC
+    ::memory_group_shared_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "memory_group_shared_instance"
+  ARGS
+    "--amdf_native_lifetime=instance"
+  SRC
+    ::memory_group_shared_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+amdf_cts_binary(
+  NAME
+    memory_group_dynamic_bin
+  DATA
+    amdf::amdf
+  DEPS
+    ::memory_group_cases
+    amdf::headers
+    libamdf::cts::util::dynamic_provider
+    libamdf::cts::util::test_main
+  TESTONLY
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "memory_group_dynamic"
+  ARGS
+    "--amdf_native_lifetime=process"
+    "--amdf_library={{$<TARGET_FILE:amdf::amdf>}}"
+  SRC
+    ::memory_group_dynamic_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "memory_group_dynamic_instance"
+  ARGS
+    "--amdf_native_lifetime=instance"
+    "--amdf_library={{$<TARGET_FILE:amdf::amdf>}}"
+  SRC
+    ::memory_group_dynamic_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_cc_library(
+  NAME
+    memory_interop_cases
+  SRCS
+    "memory_interop_test.cc"
+  DEPS
+    ::gpu_device_fixture
+    amdf::headers
+    iree::third_party::google_test
+    libamdf::cts::util::device_cache
+    libamdf::cts::util::provider_headers
+  TESTONLY
+  ALWAYSLINK
+  PUBLIC
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+amdf_cts_binary(
+  NAME
+    memory_interop_static_bin
+  DEPS
+    ::memory_interop_cases
+    amdf::headers
+    libamdf::cts::util::static_provider
+    libamdf::cts::util::test_main
+  TESTONLY
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "memory_interop_static"
+  ARGS
+    "--amdf_native_lifetime=process"
+  SRC
+    ::memory_interop_static_bin
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "memory_interop_static_instance"
+  ARGS
+    "--amdf_native_lifetime=instance"
+  SRC
+    ::memory_interop_static_bin
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+amdf_cts_binary(
+  NAME
+    memory_interop_shared_bin
+  DATA
+    amdf::amdf
+  DEPS
+    ::memory_interop_cases
+    amdf::headers
+    libamdf::cts::util::shared_provider
+    libamdf::cts::util::test_main
+  TESTONLY
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "memory_interop_shared"
+  ARGS
+    "--amdf_native_lifetime=process"
+  SRC
+    ::memory_interop_shared_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "memory_interop_shared_instance"
+  ARGS
+    "--amdf_native_lifetime=instance"
+  SRC
+    ::memory_interop_shared_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+amdf_cts_binary(
+  NAME
+    memory_interop_dynamic_bin
+  DATA
+    amdf::amdf
+  DEPS
+    ::memory_interop_cases
+    amdf::headers
+    libamdf::cts::util::dynamic_provider
+    libamdf::cts::util::test_main
+  TESTONLY
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "memory_interop_dynamic"
+  ARGS
+    "--amdf_native_lifetime=process"
+    "--amdf_library={{$<TARGET_FILE:amdf::amdf>}}"
+  SRC
+    ::memory_interop_dynamic_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "memory_interop_dynamic_instance"
+  ARGS
+    "--amdf_native_lifetime=instance"
+    "--amdf_library={{$<TARGET_FILE:amdf::amdf>}}"
+  SRC
+    ::memory_interop_dynamic_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_cc_library(
+  NAME
+    pm4_queue_cases
+  SRCS
+    "pm4_queue_test.cc"
+  DEPS
+    ::user_queue_memory
+    amdf::headers
+    iree::third_party::google_test
+  TESTONLY
+  ALWAYSLINK
+  PUBLIC
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+amdf_cts_binary(
+  NAME
+    pm4_queue_static_bin
+  DEPS
+    ::pm4_queue_cases
+    amdf::headers
+    libamdf::cts::util::static_provider
+    libamdf::cts::util::test_main
+  TESTONLY
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "pm4_queue_static"
+  ARGS
+    "--amdf_native_lifetime=process"
+  SRC
+    ::pm4_queue_static_bin
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "pm4_queue_static_instance"
+  ARGS
+    "--amdf_native_lifetime=instance"
+  SRC
+    ::pm4_queue_static_bin
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+amdf_cts_binary(
+  NAME
+    pm4_queue_shared_bin
+  DATA
+    amdf::amdf
+  DEPS
+    ::pm4_queue_cases
+    amdf::headers
+    libamdf::cts::util::shared_provider
+    libamdf::cts::util::test_main
+  TESTONLY
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "pm4_queue_shared"
+  ARGS
+    "--amdf_native_lifetime=process"
+  SRC
+    ::pm4_queue_shared_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "pm4_queue_shared_instance"
+  ARGS
+    "--amdf_native_lifetime=instance"
+  SRC
+    ::pm4_queue_shared_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+amdf_cts_binary(
+  NAME
+    pm4_queue_dynamic_bin
+  DATA
+    amdf::amdf
+  DEPS
+    ::pm4_queue_cases
+    amdf::headers
+    libamdf::cts::util::dynamic_provider
+    libamdf::cts::util::test_main
+  TESTONLY
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "pm4_queue_dynamic"
+  ARGS
+    "--amdf_native_lifetime=process"
+    "--amdf_library={{$<TARGET_FILE:amdf::amdf>}}"
+  SRC
+    ::pm4_queue_dynamic_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "pm4_queue_dynamic_instance"
+  ARGS
+    "--amdf_native_lifetime=instance"
+    "--amdf_library={{$<TARGET_FILE:amdf::amdf>}}"
+  SRC
+    ::pm4_queue_dynamic_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_cc_library(
+  NAME
+    sdma_queue_cases
+  SRCS
+    "sdma_queue_test.cc"
+  DEPS
+    ::user_queue_memory
+    amdf::headers
+    iree::third_party::google_test
+  TESTONLY
+  ALWAYSLINK
+  PUBLIC
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+amdf_cts_binary(
+  NAME
+    sdma_queue_static_bin
+  DEPS
+    ::sdma_queue_cases
+    amdf::headers
+    libamdf::cts::util::static_provider
+    libamdf::cts::util::test_main
+  TESTONLY
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "sdma_queue_static"
+  ARGS
+    "--amdf_native_lifetime=process"
+  SRC
+    ::sdma_queue_static_bin
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "sdma_queue_static_instance"
+  ARGS
+    "--amdf_native_lifetime=instance"
+  SRC
+    ::sdma_queue_static_bin
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+amdf_cts_binary(
+  NAME
+    sdma_queue_shared_bin
+  DATA
+    amdf::amdf
+  DEPS
+    ::sdma_queue_cases
+    amdf::headers
+    libamdf::cts::util::shared_provider
+    libamdf::cts::util::test_main
+  TESTONLY
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "sdma_queue_shared"
+  ARGS
+    "--amdf_native_lifetime=process"
+  SRC
+    ::sdma_queue_shared_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "sdma_queue_shared_instance"
+  ARGS
+    "--amdf_native_lifetime=instance"
+  SRC
+    ::sdma_queue_shared_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+amdf_cts_binary(
+  NAME
+    sdma_queue_dynamic_bin
+  DATA
+    amdf::amdf
+  DEPS
+    ::sdma_queue_cases
+    amdf::headers
+    libamdf::cts::util::dynamic_provider
+    libamdf::cts::util::test_main
+  TESTONLY
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "sdma_queue_dynamic"
+  ARGS
+    "--amdf_native_lifetime=process"
+    "--amdf_library={{$<TARGET_FILE:amdf::amdf>}}"
+  SRC
+    ::sdma_queue_dynamic_bin
+  DATA
+    "amdf::amdf"
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+    "iree-run-requirement=libamdf.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    iree-hal-drivers-amdgpu-tests
+)
+endif()
+
+if(IREE_ARCH STREQUAL "x86_64" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_native_test(
+  NAME
+    "sdma_queue_dynamic_instance"
+  ARGS
+    "--amdf_native_lifetime=instance"
+    "--amdf_library={{$<TARGET_FILE:amdf::amdf>}}"
+  SRC
+    ::sdma_queue_dynamic_bin
   DATA
     "amdf::amdf"
   LABELS

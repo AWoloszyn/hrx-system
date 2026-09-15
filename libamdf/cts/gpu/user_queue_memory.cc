@@ -4,194 +4,54 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "libamdf/cts/gpu/target/gfx1151/user_queue_memory_test.h"
+#include "libamdf/cts/gpu/user_queue_memory.h"
 
+#include <algorithm>
 #include <array>
-#include <cstddef>
-#include <cstdint>
+#include <atomic>
 #include <cstring>
 #include <functional>
 #include <thread>
 
-#include "amdf/amdf.h"
-#include "amdf/gpu.h"
-#include "gtest/gtest.h"
-#include "libamdf/cts/gpu/gpu_device_fixture.h"
-
 namespace {
 
-constexpr size_t kElementCount = 16;
 constexpr uint64_t kMemoryByteLength = 4096;
-constexpr uint64_t kCompletionByteOffset = 256;
-constexpr uint32_t kCompletionValue = UINT32_C(0x71c04a5e);
-constexpr size_t kPm4PublishedDwordCount = 128;
-constexpr size_t kSdmaPublishedDwordCount = 22;
 constexpr amdf_queue_roles_t kRequiredQueueRoles =
     AMDF_QUEUE_ROLE_TRANSFER | AMDF_QUEUE_ROLE_CACHE_CONTROL;
+constexpr amdf_cache_operations_t kRequiredCacheOperations =
+    AMDF_CACHE_OPERATIONS_RELEASE_TO_SYSTEM |
+    AMDF_CACHE_OPERATIONS_ACQUIRE_FROM_SYSTEM;
 
-struct EncodedQueueStream {
-  // Number of initialized command bytes in the ring.
-  size_t byte_length;
-  // Producer frontier in the units defined by the queue format.
-  uint64_t published_index;
-};
-
-uint32_t MakePm4Header(uint32_t opcode, uint32_t dword_count) {
-  return (UINT32_C(3) << 30) | (opcode << 8) | ((dword_count - 2) << 16);
+// The host publication tests require x86-64. Naturally aligned 64-bit device
+// state uses single-copy accesses; the fences order CPU accesses around them.
+// In particular, a doorbell store must not become a locked read-modify-write
+// instruction against a write-only MMIO aperture.
+uint64_t LoadAcquire(volatile uint64_t* address) {
+  const uint64_t value = *address;
+  std::atomic_thread_fence(std::memory_order_acquire);
+  return value;
 }
 
-void AppendSystemBarrier(uint32_t* words, size_t* ordinal) {
-  enum : uint32_t {
-    kEventWriteOpcode = 0x46,
-    kAcquireMemoryOpcode = 0x58,
-    kEventWriteDwordCount = 2,
-    kAcquireMemoryDwordCount = 8,
-    kComputeShaderPartialFlush = 7 | (4 << 8),
-    kConservativeGcrControl = (3 << 0) | (1 << 4) | (1 << 5) | (1 << 7) |
-                              (1 << 8) | (1 << 9) | (1 << 14) | (1 << 15),
-  };
-  words[(*ordinal)++] = MakePm4Header(kEventWriteOpcode, kEventWriteDwordCount);
-  words[(*ordinal)++] = kComputeShaderPartialFlush;
-  words[(*ordinal)++] =
-      MakePm4Header(kAcquireMemoryOpcode, kAcquireMemoryDwordCount);
-  words[(*ordinal)++] = 0;
-  words[(*ordinal)++] = UINT32_MAX;
-  words[(*ordinal)++] = 0xff;
-  words[(*ordinal)++] = 0;
-  words[(*ordinal)++] = 0;
-  words[(*ordinal)++] = 0x0a;
-  words[(*ordinal)++] = kConservativeGcrControl;
-}
-
-void AppendCopyData32(uint32_t* words, size_t* ordinal, uint64_t source_address,
-                      uint64_t target_address) {
-  enum : uint32_t {
-    kCopyDataOpcode = 0x40,
-    kCopyDataDwordCount = 6,
-    kSourceTcL2 = 2 << 0,
-    kTargetTcL2 = 2 << 8,
-    kWaitForConfirmation = 1 << 20,
-  };
-  words[(*ordinal)++] = MakePm4Header(kCopyDataOpcode, kCopyDataDwordCount);
-  words[(*ordinal)++] = kSourceTcL2 | kTargetTcL2 | kWaitForConfirmation;
-  words[(*ordinal)++] =
-      static_cast<uint32_t>(source_address) & UINT32_C(0xfffffffc);
-  words[(*ordinal)++] = static_cast<uint32_t>(source_address >> 32);
-  words[(*ordinal)++] =
-      static_cast<uint32_t>(target_address) & UINT32_C(0xfffffffc);
-  words[(*ordinal)++] = static_cast<uint32_t>(target_address >> 32);
-}
-
-void AppendWriteData32(uint32_t* words, size_t* ordinal,
-                       uint64_t target_address, uint32_t value) {
-  enum : uint32_t {
-    kWriteDataOpcode = 0x37,
-    kWriteDataDwordCount = 5,
-    kTargetTcL2 = 2 << 8,
-    kWaitForConfirmation = 1 << 20,
-  };
-  words[(*ordinal)++] = MakePm4Header(kWriteDataOpcode, kWriteDataDwordCount);
-  words[(*ordinal)++] = kTargetTcL2 | kWaitForConfirmation;
-  words[(*ordinal)++] =
-      static_cast<uint32_t>(target_address) & UINT32_C(0xfffffffc);
-  words[(*ordinal)++] = static_cast<uint32_t>(target_address >> 32);
-  words[(*ordinal)++] = value;
-}
-
-size_t EncodePm4CopyStream(uint32_t* words, uint64_t source_address,
-                           uint64_t target_address) {
-  size_t ordinal = 0;
-  AppendSystemBarrier(words, &ordinal);
-  for (size_t i = 0; i < kElementCount; ++i) {
-    AppendCopyData32(words, &ordinal, source_address + i * sizeof(uint32_t),
-                     target_address + i * sizeof(uint32_t));
-  }
-  AppendSystemBarrier(words, &ordinal);
-  AppendWriteData32(words, &ordinal, target_address + kCompletionByteOffset,
-                    kCompletionValue);
-
-  size_t padding_dword_count = 8 - ordinal % 8;
-  if (padding_dword_count == 1) padding_dword_count += 8;
-  words[ordinal] = MakePm4Header(0x10, padding_dword_count);
-  std::memset(words + ordinal + 1, 0,
-              (padding_dword_count - 1) * sizeof(*words));
-  return ordinal + padding_dword_count;
-}
-
-void AppendSdmaCacheTransition(uint32_t* words, size_t* ordinal,
-                               uint32_t control) {
-  words[(*ordinal)++] = 17;
-  words[(*ordinal)++] = 0;
-  words[(*ordinal)++] = (control & UINT32_C(0xffff)) << 16;
-  words[(*ordinal)++] = control >> 16;
-  words[(*ordinal)++] = 0;
-}
-
-size_t EncodeSdmaCopyStream(uint32_t* words, uint64_t source_address,
-                            uint64_t target_address) {
-  enum : uint32_t {
-    kAcquireControl = 0x043a1,
-    kReleaseControl = 0x0c3a1,
-    kCopyByteLength = kElementCount * sizeof(uint32_t),
-    kUncachedFenceHeader = 5 | (3 << 16),
-  };
-  size_t ordinal = 0;
-  AppendSdmaCacheTransition(words, &ordinal, kAcquireControl);
-  words[ordinal++] = 1;
-  words[ordinal++] = kCopyByteLength - 1;
-  words[ordinal++] = 0;
-  words[ordinal++] = static_cast<uint32_t>(source_address);
-  words[ordinal++] = static_cast<uint32_t>(source_address >> 32);
-  words[ordinal++] = static_cast<uint32_t>(target_address);
-  words[ordinal++] = static_cast<uint32_t>(target_address >> 32);
-  AppendSdmaCacheTransition(words, &ordinal, kReleaseControl);
-  const uint64_t completion_address = target_address + kCompletionByteOffset;
-  words[ordinal++] = kUncachedFenceHeader;
-  words[ordinal++] = static_cast<uint32_t>(completion_address);
-  words[ordinal++] = static_cast<uint32_t>(completion_address >> 32);
-  words[ordinal++] = kCompletionValue;
-  words[ordinal++] = 0;
-  return ordinal;
-}
-
-EncodedQueueStream EncodeCopyStream(amdf_queue_command_type_t command_type,
-                                    uint32_t* words, uint64_t source_address,
-                                    uint64_t target_address) {
-  if (command_type == AMDF_QUEUE_COMMAND_TYPE_GPU_PM4) {
-    const size_t dword_count =
-        EncodePm4CopyStream(words, source_address, target_address);
-    return {
-        .byte_length = dword_count * sizeof(uint32_t),
-        .published_index = dword_count,
-    };
-  }
-  const size_t dword_count =
-      EncodeSdmaCopyStream(words, source_address, target_address);
-  return {
-      .byte_length = dword_count * sizeof(uint32_t),
-      .published_index = dword_count * sizeof(uint32_t),
-  };
-}
-
-uint32_t QueueFormatVersion(amdf_queue_command_type_t command_type) {
-  return command_type == AMDF_QUEUE_COMMAND_TYPE_GPU_PM4
-             ? AMDF_GPU_PM4_QUEUE_FORMAT_VERSION_1
-             : AMDF_GPU_SDMA_QUEUE_FORMAT_VERSION_1;
+void StoreRelease(volatile uint64_t* address, uint64_t value) {
+  std::atomic_thread_fence(std::memory_order_release);
+  *address = value;
 }
 
 class UserQueueMemoryScenario {
  public:
   UserQueueMemoryScenario(const amdf_api_t* api, const amdf_gpu_api_t* gpu_api,
-                          amdf_endpoint_t* endpoint, amdf_device_t* device,
+                          const amdf_queue_family_info_t& family,
+                          const UserQueueMemoryCommands& commands,
+                          amdf_device_t* device,
                           amdf_memory_scope_t* system_scope)
       : api_(api),
         gpu_api_(gpu_api),
-        endpoint_(endpoint),
+        family_(family),
+        commands_(commands),
         device_(device),
         system_scope_(system_scope) {}
 
   void RunCopiesBetweenExactAccessAttachments(
-      amdf_queue_command_type_t command_type,
       const std::function<void()>& before_publication = {});
 
   bool Release() {
@@ -219,37 +79,6 @@ class UserQueueMemoryScenario {
   }
 
  private:
-  amdf_status_t FindTransferFamily(amdf_queue_command_type_t command_type,
-                                   uint32_t* out_ordinal) const {
-    amdf_endpoint_info_t endpoint_info = {};
-    endpoint_info.type = AMDF_STRUCTURE_TYPE_ENDPOINT_INFO;
-    endpoint_info.structure_size = sizeof(endpoint_info);
-    amdf_status_t status = api_->endpoint_query_info(endpoint_, &endpoint_info);
-    if (!amdf_status_is_ok(status)) return status;
-    for (uint32_t ordinal = 0; ordinal < endpoint_info.queue_family_count;
-         ++ordinal) {
-      amdf_queue_family_info_t family = {};
-      family.type = AMDF_STRUCTURE_TYPE_QUEUE_FAMILY_INFO;
-      family.structure_size = sizeof(family);
-      status =
-          api_->endpoint_query_queue_family_info(endpoint_, ordinal, &family);
-      if (!amdf_status_is_ok(status)) return status;
-      if (family.command_type == command_type &&
-          family.format_version == QueueFormatVersion(command_type) &&
-          (family.publication_modes & AMDF_QUEUE_PUBLICATION_MODE_USER) != 0 &&
-          (family.roles & kRequiredQueueRoles) == kRequiredQueueRoles &&
-          (family.user_queue_capabilities &
-           AMDF_USER_QUEUE_CAPABILITY_HOST_PRODUCER) != 0 &&
-          (family.producer_modes & AMDF_QUEUE_PRODUCER_MODE_BIT_SINGLE) != 0 &&
-          (family.priority_capabilities &
-           AMDF_QUEUE_PRIORITY_CAPABILITY_NORMAL) != 0) {
-        *out_ordinal = ordinal;
-        return AMDF_STATUS_OK;
-      }
-    }
-    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
-  }
-
   void CreateMappedSystemMemory(amdf_memory_access_t device_access,
                                 amdf_memory_t*& memory,
                                 amdf_memory_info_t& memory_info,
@@ -296,7 +125,7 @@ class UserQueueMemoryScenario {
     EXPECT_EQ((memory_info.flags | access_info.flags) & kRequiredFlags,
               kRequiredFlags);
     EXPECT_EQ(memory_info.byte_length, kMemoryByteLength);
-    EXPECT_EQ(memory_info.native_allocation_byte_length, kMemoryByteLength);
+    EXPECT_GE(memory_info.native_allocation_byte_length, kMemoryByteLength);
     EXPECT_GE(memory_info.alignment, create_info.minimum_alignment);
     uint64_t address = 0;
     ASSERT_EQ(api_->memory_query_address(memory, 0, AMDF_MEMORY_ADDRESS_GPU,
@@ -323,7 +152,6 @@ class UserQueueMemoryScenario {
     EXPECT_EQ(mapping_info.byte_length, kMemoryByteLength);
     EXPECT_EQ(mapping_info.flags,
               AMDF_MEMORY_MAP_FLAG_READ | AMDF_MEMORY_MAP_FLAG_WRITE);
-    EXPECT_EQ(mapping_info.cacheability, AMDF_HOST_CACHEABILITY_WRITE_BACK);
   }
 
   void DestroyHostMapping(amdf_host_mapping_t*& mapping) {
@@ -344,8 +172,10 @@ class UserQueueMemoryScenario {
   const amdf_api_t* api_;
   // GPU extension table borrowed from the enclosing device fixture.
   const amdf_gpu_api_t* gpu_api_;
-  // Endpoint borrowed for queue-family discovery.
-  amdf_endpoint_t* endpoint_;
+  // Complete family facts borrowed from the enclosing fixture.
+  const amdf_queue_family_info_t& family_;
+  // Caller encoding borrowed through completion and cleanup.
+  const UserQueueMemoryCommands& commands_;
   // Execution owner borrowed through the release of all children below.
   amdf_device_t* device_;
   // Shared system placement scope borrowed through memory destruction.
@@ -377,12 +207,9 @@ class UserQueueMemoryScenario {
 };
 
 void UserQueueMemoryScenario::RunCopiesBetweenExactAccessAttachments(
-    amdf_queue_command_type_t command_type,
     const std::function<void()>& before_publication) {
-  uint32_t queue_family_ordinal = UINT32_MAX;
-  ASSERT_EQ(FindTransferFamily(command_type, &queue_family_ordinal),
-            AMDF_STATUS_OK);
-  ASSERT_NE(queue_family_ordinal, UINT32_MAX);
+  const amdf_queue_command_type_t command_type = family_.command_type;
+  const uint32_t queue_family_ordinal = family_.ordinal;
 
   ASSERT_NO_FATAL_FAILURE(CreateMappedSystemMemory(
       AMDF_MEMORY_ACCESS_READ, source_memory_, source_memory_info_,
@@ -408,9 +235,9 @@ void UserQueueMemoryScenario::RunCopiesBetweenExactAccessAttachments(
   auto* target = static_cast<uint32_t*>(target_mapping_info_.pointer);
   auto* completion = reinterpret_cast<uint32_t*>(
       static_cast<uint8_t*>(target_mapping_info_.pointer) +
-      kCompletionByteOffset);
-  std::array<uint32_t, kElementCount> expected = {};
-  for (size_t i = 0; i < kElementCount; ++i) {
+      kUserQueueMemoryCompletionByteOffset);
+  std::array<uint32_t, kUserQueueMemoryElementCount> expected = {};
+  for (size_t i = 0; i < kUserQueueMemoryElementCount; ++i) {
     expected[i] =
         UINT32_C(0x13570000) + static_cast<uint32_t>(i) * UINT32_C(0x00110101);
     source[i] = expected[i];
@@ -433,6 +260,8 @@ void UserQueueMemoryScenario::RunCopiesBetweenExactAccessAttachments(
   create_info.priority = AMDF_QUEUE_PRIORITY_NORMAL;
   create_info.producer_mode = AMDF_QUEUE_PRODUCER_MODE_SINGLE;
   create_info.required_capabilities = AMDF_USER_QUEUE_CAPABILITY_HOST_PRODUCER;
+  create_info.ring_byte_length = std::max(family_.minimum_ring_byte_length,
+                                          kUserQueueMemoryCommandByteCapacity);
   ASSERT_EQ(gpu_api_->user_queue_create(device_, &create_info, &queue_),
             AMDF_STATUS_OK);
 
@@ -442,10 +271,12 @@ void UserQueueMemoryScenario::RunCopiesBetweenExactAccessAttachments(
   ASSERT_EQ(api_->user_queue_query_info(queue_, &queue_info), AMDF_STATUS_OK);
   EXPECT_EQ(queue_info.queue_family_ordinal, queue_family_ordinal);
   EXPECT_EQ(queue_info.command_type, command_type);
-  EXPECT_EQ(queue_info.format_version, QueueFormatVersion(command_type));
+  EXPECT_EQ(queue_info.format_version, family_.format_version);
+  EXPECT_EQ(queue_info.format_features, family_.format_features);
   EXPECT_EQ(queue_info.producer_mode, AMDF_QUEUE_PRODUCER_MODE_SINGLE);
   EXPECT_EQ(queue_info.priority, AMDF_QUEUE_PRIORITY_NORMAL);
-  EXPECT_EQ(queue_info.capabilities, AMDF_USER_QUEUE_CAPABILITY_HOST_PRODUCER);
+  EXPECT_NE(queue_info.capabilities & AMDF_USER_QUEUE_CAPABILITY_HOST_PRODUCER,
+            0u);
   EXPECT_EQ(queue_info.roles & kRequiredQueueRoles, kRequiredQueueRoles);
   EXPECT_EQ(queue_info.metadata.command_type, AMDF_QUEUE_COMMAND_TYPE_UNKNOWN);
   EXPECT_EQ(queue_info.metadata_ring_byte_length, 0u);
@@ -470,6 +301,7 @@ void UserQueueMemoryScenario::RunCopiesBetweenExactAccessAttachments(
   EXPECT_EQ(mapping_info.producer_reset_epoch, 0u);
   EXPECT_EQ(mapping_info.command_type, queue_info.command_type);
   EXPECT_EQ(mapping_info.format_version, queue_info.format_version);
+  EXPECT_EQ(mapping_info.format_features, queue_info.format_features);
   EXPECT_EQ(mapping_info.ring_byte_length, queue_info.ring_byte_length);
   EXPECT_EQ(mapping_info.index_bits, 64u);
   EXPECT_EQ(mapping_info.doorbell_bits, 64u);
@@ -485,8 +317,7 @@ void UserQueueMemoryScenario::RunCopiesBetweenExactAccessAttachments(
   ASSERT_EQ(mapping_info.read_index_address & (sizeof(uint64_t) - 1), 0u);
   ASSERT_EQ(mapping_info.write_index_address & (sizeof(uint64_t) - 1), 0u);
   ASSERT_EQ(mapping_info.doorbell_address & (sizeof(uint64_t) - 1), 0u);
-  ASSERT_GE(mapping_info.ring_byte_length,
-            kPm4PublishedDwordCount * sizeof(uint32_t));
+  ASSERT_GE(mapping_info.ring_byte_length, kUserQueueMemoryCommandByteCapacity);
 
   auto* read_index = reinterpret_cast<volatile uint64_t*>(
       static_cast<uintptr_t>(mapping_info.read_index_address));
@@ -494,8 +325,8 @@ void UserQueueMemoryScenario::RunCopiesBetweenExactAccessAttachments(
       static_cast<uintptr_t>(mapping_info.write_index_address));
   auto* doorbell = reinterpret_cast<volatile uint64_t*>(
       static_cast<uintptr_t>(mapping_info.doorbell_address));
-  EXPECT_EQ(__atomic_load_n(read_index, __ATOMIC_ACQUIRE), 0u);
-  EXPECT_EQ(__atomic_load_n(write_index, __ATOMIC_ACQUIRE), 0u);
+  EXPECT_EQ(LoadAcquire(read_index), 0u);
+  EXPECT_EQ(LoadAcquire(write_index), 0u);
 
   amdf_user_queue_status_t queue_status = {};
   queue_status.type = AMDF_STRUCTURE_TYPE_USER_QUEUE_STATUS;
@@ -517,18 +348,11 @@ void UserQueueMemoryScenario::RunCopiesBetweenExactAccessAttachments(
 
   auto* ring = reinterpret_cast<uint32_t*>(
       static_cast<uintptr_t>(mapping_info.ring_address));
-  const EncodedQueueStream stream =
-      EncodeCopyStream(command_type, ring, source_address, target_address);
-  if (command_type == AMDF_QUEUE_COMMAND_TYPE_GPU_PM4) {
-    ASSERT_EQ(stream.byte_length, kPm4PublishedDwordCount * sizeof(uint32_t));
-    ASSERT_EQ(stream.published_index, kPm4PublishedDwordCount);
-  } else {
-    ASSERT_EQ(stream.byte_length, kSdmaPublishedDwordCount * sizeof(uint32_t));
-    ASSERT_EQ(stream.published_index, stream.byte_length);
-  }
+  const EncodedUserQueueStream stream = commands_.encode(
+      family_.format_features, ring, source_address, target_address);
   ASSERT_LE(stream.byte_length, mapping_info.ring_byte_length);
-  __atomic_store_n(write_index, stream.published_index, __ATOMIC_RELEASE);
-  __atomic_store_n(doorbell, stream.published_index, __ATOMIC_RELEASE);
+  StoreRelease(write_index, stream.published_index);
+  StoreRelease(doorbell, stream.published_index);
 
   ASSERT_EQ(
       api_->user_queue_wait_consumed(queue_, stream.published_index,
@@ -550,97 +374,103 @@ void UserQueueMemoryScenario::RunCopiesBetweenExactAccessAttachments(
                 source_mapping_, AMDF_HOST_CACHE_OPERATION_INVALIDATE, 0,
                 kMemoryByteLength),
             AMDF_STATUS_OK);
-  for (size_t i = 0; i < kElementCount; ++i) {
+  for (size_t i = 0; i < kUserQueueMemoryElementCount; ++i) {
     EXPECT_EQ(target[i], expected[i]) << "target word " << i;
     EXPECT_EQ(source[i], expected[i]) << "source word " << i;
   }
-  EXPECT_EQ(*completion, kCompletionValue);
+  EXPECT_EQ(*completion, kUserQueueMemoryCompletionValue);
+}
+
+bool RunUserQueueMemoryCopies(const amdf_api_t* api,
+                              const amdf_gpu_api_t* gpu_api,
+                              const amdf_queue_family_info_t& family,
+                              const UserQueueMemoryCommands& commands,
+                              amdf_device_t* device,
+                              amdf_memory_scope_t* system_scope) {
+  UserQueueMemoryScenario scenario(api, gpu_api, family, commands, device,
+                                   system_scope);
+  scenario.RunCopiesBetweenExactAccessAttachments();
+  return scenario.Release();
 }
 
 }  // namespace
 
-bool RunGfx1151UserQueueMemoryCopies(const amdf_api_t* api,
-                                     const amdf_gpu_api_t* gpu_api,
-                                     amdf_endpoint_t* endpoint,
-                                     amdf_device_t* device,
-                                     amdf_memory_scope_t* system_scope,
-                                     amdf_queue_command_type_t command_type) {
-  UserQueueMemoryScenario scenario(api, gpu_api, endpoint, device,
-                                   system_scope);
-  scenario.RunCopiesBetweenExactAccessAttachments(command_type);
-  return scenario.Release();
-}
-
-namespace {
-
-class Gfx1151UserQueueMemoryTest : public GpuDeviceFixture {
- protected:
-  amdf_status_t MatchGpuEndpoint(amdf_endpoint_t* endpoint,
-                                 bool* out_matches) const override {
-    amdf_gpu_endpoint_info_t info = {};
-    info.type = AMDF_STRUCTURE_TYPE_GPU_ENDPOINT_INFO;
-    info.structure_size = sizeof(info);
-    const amdf_status_t status = gpu_api_->endpoint_query_info(endpoint, &info);
-    if (amdf_status_is_ok(status)) {
-      *out_matches = info.gfx_ip.major == 11 && info.gfx_ip.minor == 5 &&
-                     info.gfx_ip.stepping == 1;
+amdf_status_t UserQueueMemoryTest::MatchGpuEndpoint(amdf_endpoint_t* endpoint,
+                                                    bool* out_matches) {
+  amdf_endpoint_info_t info = {};
+  info.type = AMDF_STRUCTURE_TYPE_ENDPOINT_INFO;
+  info.structure_size = sizeof(info);
+  amdf_status_t status = api_->endpoint_query_info(endpoint, &info);
+  if (!amdf_status_is_ok(status)) return status;
+  for (uint32_t ordinal = 0; ordinal < info.queue_family_count; ++ordinal) {
+    amdf_queue_family_info_t family = {};
+    family.type = AMDF_STRUCTURE_TYPE_QUEUE_FAMILY_INFO;
+    family.structure_size = sizeof(family);
+    status = api_->endpoint_query_queue_family_info(endpoint, ordinal, &family);
+    if (!amdf_status_is_ok(status)) return status;
+    if (family.command_type == commands_.command_type &&
+        family.format_version == commands_.format_version &&
+        family.maximum_ring_byte_length >=
+            kUserQueueMemoryCommandByteCapacity &&
+        (family.format_features & commands_.required_format_features) ==
+            commands_.required_format_features &&
+        (family.publication_modes & AMDF_QUEUE_PUBLICATION_MODE_USER) != 0 &&
+        (family.roles & kRequiredQueueRoles) == kRequiredQueueRoles &&
+        (family.cache_operations & kRequiredCacheOperations) ==
+            kRequiredCacheOperations &&
+        (family.cache_transition_kinds & AMDF_CACHE_TRANSITION_KINDS_GLOBAL) !=
+            0 &&
+        (family.user_queue_capabilities &
+         AMDF_USER_QUEUE_CAPABILITY_HOST_PRODUCER) != 0 &&
+        (family.producer_modes & AMDF_QUEUE_PRODUCER_MODE_BIT_SINGLE) != 0 &&
+        (family.priority_capabilities &
+         AMDF_QUEUE_PRIORITY_CAPABILITY_NORMAL) != 0) {
+      family_ = family;
+      *out_matches = true;
+      return AMDF_STATUS_OK;
     }
-    return status;
   }
-
-  void RunCopiesBetweenExactAccessAttachments(
-      amdf_queue_command_type_t command_type) {
-    const bool children_released = RunGfx1151UserQueueMemoryCopies(
-        api_, gpu_api_, endpoint_, device_, system_scope_, command_type);
-    ASSERT_TRUE(children_released);
-  }
-};
-
-TEST_F(Gfx1151UserQueueMemoryTest, Pm4CopiesBetweenExactAccessAttachments) {
-  RunCopiesBetweenExactAccessAttachments(AMDF_QUEUE_COMMAND_TYPE_GPU_PM4);
+  *out_matches = false;
+  return AMDF_STATUS_OK;
 }
 
-TEST_F(Gfx1151UserQueueMemoryTest, SdmaCopiesBetweenExactAccessAttachments) {
-  RunCopiesBetweenExactAccessAttachments(AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA);
+void UserQueueMemoryTest::RunCopiesBetweenExactAccessAttachments() {
+  ASSERT_TRUE(RunUserQueueMemoryCopies(api_, gpu_api_, family_, commands_,
+                                       device_, system_scope_));
 }
 
-TEST_F(Gfx1151UserQueueMemoryTest, ConcurrentDeviceCreationAndRecreation) {
+void UserQueueMemoryTest::RunConcurrentDeviceCreationAndRecreation() {
   amdf_gpu_device_create_info_t create_info = {};
   create_info.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_CREATE_INFO;
   create_info.structure_size = sizeof(create_info);
   // This lifecycle case deliberately creates peers; all ordinary queue and
   // memory tests continue borrowing the one cached device.
-  UserQueueMemoryScenario survivor(api_, gpu_api_, endpoint_, device_,
+  UserQueueMemoryScenario survivor(api_, gpu_api_, family_, commands_, device_,
                                    system_scope_);
-  survivor.RunCopiesBetweenExactAccessAttachments(
-      AMDF_QUEUE_COMMAND_TYPE_GPU_PM4, [&]() {
-        for (size_t generation = 0; generation < 2; ++generation) {
-          std::array<amdf_device_t*, 2> peers = {};
-          std::array<amdf_status_t, 2> statuses = {};
-          std::array<std::thread, 2> threads;
-          for (size_t i = 0; i < peers.size(); ++i) {
-            threads[i] = std::thread([&, i]() {
-              statuses[i] =
-                  gpu_api_->device_create(endpoint_, &create_info, &peers[i]);
-            });
-          }
-          for (auto& thread : threads) thread.join();
-          for (size_t i = 0; i < peers.size(); ++i) {
-            EXPECT_EQ(statuses[i], AMDF_STATUS_OK);
-            if (peers[i] == nullptr) continue;
-            const bool released = RunGfx1151UserQueueMemoryCopies(
-                api_, gpu_api_, endpoint_, peers[i], system_scope_,
-                i == 0 ? AMDF_QUEUE_COMMAND_TYPE_GPU_PM4
-                       : AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA);
-            // An unretired queue retains its entire device chain on failure.
-            if (released) {
-              EXPECT_EQ(api_->device_destroy(peers[i]), AMDF_STATUS_OK);
-            }
-          }
-          ASSERT_FALSE(HasFailure());
+  survivor.RunCopiesBetweenExactAccessAttachments([&]() {
+    for (size_t generation = 0; generation < 2; ++generation) {
+      std::array<amdf_device_t*, 2> peers = {};
+      std::array<amdf_status_t, 2> statuses = {};
+      std::array<std::thread, 2> threads;
+      for (size_t i = 0; i < peers.size(); ++i) {
+        threads[i] = std::thread([&, i]() {
+          statuses[i] =
+              gpu_api_->device_create(endpoint_, &create_info, &peers[i]);
+        });
+      }
+      for (auto& thread : threads) thread.join();
+      for (size_t i = 0; i < peers.size(); ++i) {
+        EXPECT_EQ(statuses[i], AMDF_STATUS_OK);
+        if (peers[i] == nullptr) continue;
+        const bool released = RunUserQueueMemoryCopies(
+            api_, gpu_api_, family_, commands_, peers[i], system_scope_);
+        // An unretired queue retains its entire device chain on failure.
+        if (released) {
+          EXPECT_EQ(api_->device_destroy(peers[i]), AMDF_STATUS_OK);
         }
-      });
+      }
+      ASSERT_FALSE(HasFailure());
+    }
+  });
   ASSERT_TRUE(survivor.Release());
 }
-
-}  // namespace

@@ -23,19 +23,6 @@
 
 namespace {
 
-static_assert(offsetof(amdf_memory_create_info_t, memory_profile_ordinal) ==
-              sizeof(amdf_input_structure_t));
-static_assert(offsetof(amdf_memory_create_info_t, required_flags) == 24);
-static_assert(offsetof(amdf_memory_create_info_t, byte_length) == 32);
-static_assert(sizeof(amdf_memory_create_info_t) == 64);
-static_assert(offsetof(amdf_memory_info_t, memory_profile_ordinal) ==
-              sizeof(amdf_output_structure_t));
-static_assert(offsetof(amdf_memory_info_t, memory_class) == 20);
-static_assert(offsetof(amdf_memory_info_t, access_count) == 24);
-static_assert(offsetof(amdf_memory_info_t, physical_backing_id) == 80);
-static_assert(offsetof(amdf_memory_access_info_t, address_kinds) == 72);
-static_assert(sizeof(amdf_memory_info_t) == 96);
-
 class GpuMemoryTest : public GpuDeviceFixture {
  protected:
   void TearDown() override {

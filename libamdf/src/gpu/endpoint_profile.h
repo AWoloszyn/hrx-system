@@ -35,6 +35,8 @@ typedef struct amdf_gpu_queue_family_properties_t {
   amdf_queue_command_type_t command_type;
   // Version defining commands and direct publication when available.
   uint32_t format_version;
+  // Native packet encoding features within the command format.
+  amdf_queue_format_features_t format_features;
   // Implemented publication mechanisms.
   amdf_queue_publication_modes_t publication_modes;
   // Semantic operations accepted by this family.

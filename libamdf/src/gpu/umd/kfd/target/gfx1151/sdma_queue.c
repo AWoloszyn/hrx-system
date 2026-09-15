@@ -40,6 +40,7 @@ bool amdf_gpu_kfd_gfx1151_sdma_queue_plan(
           {
               .command_type = AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA,
               .format_version = AMDF_GPU_SDMA_QUEUE_FORMAT_VERSION_1,
+              .format_features = AMDF_GPU_SDMA_FORMAT_FEATURE_GCR,
               .publication_modes = AMDF_QUEUE_PUBLICATION_MODE_USER,
               .roles = AMDF_QUEUE_ROLE_TRANSFER | AMDF_QUEUE_ROLE_CACHE_CONTROL,
               .cache_operations = AMDF_CACHE_OPERATIONS_RELEASE_TO_SYSTEM |

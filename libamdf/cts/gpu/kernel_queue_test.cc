@@ -46,16 +46,16 @@ std::array<uint32_t, kCopyDataDwordCount> MakeCopyData32(
 }
 
 std::array<uint32_t, kSdmaCopyDwordCount> MakeSdmaCopy32(
-    const amdf_gpu_endpoint_info_t& endpoint_info, uint64_t source_address,
+    amdf_queue_format_features_t features, uint64_t source_address,
     uint64_t target_address) {
   constexpr uint32_t kSdmaCopyLinearOpcode = 1;
   constexpr uint32_t kSystemScope = 3;
   const bool has_scope_fields =
-      endpoint_info.gfx_ip.major == 12 && endpoint_info.gfx_ip.minor >= 5;
+      (features & AMDF_GPU_SDMA_FORMAT_FEATURE_MEMORY_SCOPE) != 0;
   const uint32_t scope_fields =
       has_scope_fields ? (kSystemScope << 18) | (kSystemScope << 26) : 0;
   return {
-      kSdmaCopyLinearOpcode,
+      kSdmaCopyLinearOpcode | (has_scope_fields ? 1u << 28 : 0),
       sizeof(uint32_t) - 1,
       scope_fields,
       static_cast<uint32_t>(source_address),
@@ -67,6 +67,9 @@ std::array<uint32_t, kSdmaCopyDwordCount> MakeSdmaCopy32(
 
 class GpuKernelQueueTest : public GpuDeviceFixture {
  protected:
+  explicit GpuKernelQueueTest(amdf_queue_command_type_t command_type)
+      : command_type_(command_type) {}
+
   void TearDown() override {
     if (mapping_ != nullptr && !indirect_memory_may_be_in_use_) {
       EXPECT_TRUE(amdf_status_is_ok(api_->host_mapping_destroy(mapping_)));
@@ -83,26 +86,36 @@ class GpuKernelQueueTest : public GpuDeviceFixture {
     GpuDeviceFixture::TearDown();
   }
 
-  uint32_t FindKernelQueueFamily(amdf_queue_command_type_t command_type) {
+  amdf_status_t MatchGpuEndpoint(amdf_endpoint_t* endpoint,
+                                 bool* out_matches) override {
     amdf_endpoint_info_t endpoint_info = {};
     endpoint_info.type = AMDF_STRUCTURE_TYPE_ENDPOINT_INFO;
     endpoint_info.structure_size = sizeof(endpoint_info);
-    EXPECT_TRUE(amdf_status_is_ok(
-        api_->endpoint_query_info(endpoint_, &endpoint_info)));
+    amdf_status_t status = api_->endpoint_query_info(endpoint, &endpoint_info);
+    if (!amdf_status_is_ok(status)) return status;
     for (uint32_t ordinal = 0; ordinal < endpoint_info.queue_family_count;
          ++ordinal) {
       amdf_queue_family_info_t family_info = {};
       family_info.type = AMDF_STRUCTURE_TYPE_QUEUE_FAMILY_INFO;
       family_info.structure_size = sizeof(family_info);
-      EXPECT_TRUE(amdf_status_is_ok(api_->endpoint_query_queue_family_info(
-          endpoint_, ordinal, &family_info)));
-      if (family_info.command_type == command_type &&
+      status = api_->endpoint_query_queue_family_info(endpoint, ordinal,
+                                                      &family_info);
+      if (!amdf_status_is_ok(status)) return status;
+      if (family_info.command_type == command_type_ &&
+          family_info.format_version ==
+              (command_type_ == AMDF_QUEUE_COMMAND_TYPE_GPU_PM4
+                   ? AMDF_GPU_PM4_QUEUE_FORMAT_VERSION_1
+                   : AMDF_GPU_SDMA_QUEUE_FORMAT_VERSION_1) &&
+          (family_info.roles & AMDF_QUEUE_ROLE_TRANSFER) != 0 &&
           (family_info.publication_modes &
            AMDF_QUEUE_PUBLICATION_MODE_KERNEL) != 0) {
-        return ordinal;
+        family_ = family_info;
+        *out_matches = true;
+        return AMDF_STATUS_OK;
       }
     }
-    return UINT32_MAX;
+    *out_matches = false;
+    return AMDF_STATUS_OK;
   }
 
   amdf_status_t CreateQueue(uint32_t family_ordinal) {
@@ -111,13 +124,6 @@ class GpuKernelQueueTest : public GpuDeviceFixture {
     create_info.structure_size = sizeof(create_info);
     create_info.queue_family_ordinal = family_ordinal;
     return gpu_api_->kernel_queue_create(device_, &create_info, &queue_);
-  }
-
-  amdf_status_t QueryGpuEndpointInfo(amdf_gpu_endpoint_info_t* out_info) {
-    *out_info = {};
-    out_info->type = AMDF_STRUCTURE_TYPE_GPU_ENDPOINT_INFO;
-    out_info->structure_size = sizeof(*out_info);
-    return gpu_api_->endpoint_query_info(endpoint_, out_info);
   }
 
   uint64_t CreateCommandMemory() {
@@ -207,6 +213,10 @@ class GpuKernelQueueTest : public GpuDeviceFixture {
     return address;
   }
 
+  // Complete encoding facts retained from queue-family selection.
+  amdf_queue_family_info_t family_ = {};
+  // Command representation implemented by this scenario's encoder.
+  amdf_queue_command_type_t command_type_;
   // System backing for commands and host-visible results.
   amdf_memory_t* memory_ = nullptr;
   // Local backing reached indirectly by submitted GPU commands.
@@ -219,12 +229,36 @@ class GpuKernelQueueTest : public GpuDeviceFixture {
   bool indirect_memory_may_be_in_use_ = false;
 };
 
-TEST_F(GpuKernelQueueTest, ExecutesMaterializedCopyData) {
-  const uint32_t family_ordinal =
-      FindKernelQueueFamily(AMDF_QUEUE_COMMAND_TYPE_GPU_PM4);
-  if (family_ordinal == UINT32_MAX) {
-    GTEST_SKIP() << "GPU endpoint exposes no kernel-mediated PM4 queue";
-  }
+class Pm4KernelQueueTest : public GpuKernelQueueTest {
+ protected:
+  Pm4KernelQueueTest() : GpuKernelQueueTest(AMDF_QUEUE_COMMAND_TYPE_GPU_PM4) {}
+};
+
+class SdmaKernelQueueTest : public GpuKernelQueueTest {
+ protected:
+  SdmaKernelQueueTest()
+      : GpuKernelQueueTest(AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA) {}
+};
+
+TEST_F(GpuDeviceFixture, RejectsOutOfRangeFamilyWithoutPublishingQueue) {
+  amdf_endpoint_info_t info = {};
+  info.type = AMDF_STRUCTURE_TYPE_ENDPOINT_INFO;
+  info.structure_size = sizeof(info);
+  ASSERT_EQ(api_->endpoint_query_info(endpoint_, &info), AMDF_STATUS_OK);
+  amdf_gpu_kernel_queue_create_info_t create_info = {};
+  create_info.type = AMDF_STRUCTURE_TYPE_GPU_KERNEL_QUEUE_CREATE_INFO;
+  create_info.structure_size = sizeof(create_info);
+  create_info.queue_family_ordinal = info.queue_family_count;
+  amdf_kernel_queue_t* output =
+      reinterpret_cast<amdf_kernel_queue_t*>(uintptr_t{1});
+  EXPECT_EQ(amdf_status_code(
+                gpu_api_->kernel_queue_create(device_, &create_info, &output)),
+            AMDF_STATUS_CODE_OUT_OF_RANGE);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
+}
+
+TEST_F(Pm4KernelQueueTest, ExecutesMaterializedCopyData) {
+  const uint32_t family_ordinal = family_.ordinal;
   ASSERT_TRUE(amdf_status_is_ok(CreateQueue(family_ordinal)));
   EXPECT_EQ(amdf_status_code(api_->device_destroy(device_)),
             AMDF_STATUS_CODE_BUSY);
@@ -329,12 +363,8 @@ TEST_F(GpuKernelQueueTest, ExecutesMaterializedCopyData) {
   queue_ = nullptr;
 }
 
-TEST_F(GpuKernelQueueTest, ExecutesMaterializedSdmaCopy) {
-  const uint32_t family_ordinal =
-      FindKernelQueueFamily(AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA);
-  if (family_ordinal == UINT32_MAX) {
-    GTEST_SKIP() << "GPU endpoint exposes no kernel-mediated SDMA queue";
-  }
+TEST_F(SdmaKernelQueueTest, ExecutesMaterializedSdmaCopy) {
+  const uint32_t family_ordinal = family_.ordinal;
   const amdf_status_t create_status = CreateQueue(family_ordinal);
   ASSERT_TRUE(amdf_status_is_ok(create_status))
       << "domain=" << amdf_status_domain(create_status)
@@ -360,10 +390,9 @@ TEST_F(GpuKernelQueueTest, ExecutesMaterializedSdmaCopy) {
   std::memcpy(bytes + kSourceByteOffset, &kSourceValue, sizeof(kSourceValue));
   std::memcpy(bytes + kTargetByteOffset, &kTargetSentinel,
               sizeof(kTargetSentinel));
-  amdf_gpu_endpoint_info_t endpoint_info = {};
-  ASSERT_TRUE(amdf_status_is_ok(QueryGpuEndpointInfo(&endpoint_info)));
-  const std::array<uint32_t, kSdmaCopyDwordCount> command = MakeSdmaCopy32(
-      endpoint_info, address + kSourceByteOffset, address + kTargetByteOffset);
+  const std::array<uint32_t, kSdmaCopyDwordCount> command =
+      MakeSdmaCopy32(family_.format_features, address + kSourceByteOffset,
+                     address + kTargetByteOffset);
   std::memcpy(bytes + kCommandByteOffset, command.data(), sizeof(command));
   ASSERT_TRUE(amdf_status_is_ok(api_->host_mapping_cache_control(
       mapping_, AMDF_HOST_CACHE_OPERATION_FLUSH, 0, kMemoryByteLength)));
@@ -402,12 +431,8 @@ TEST_F(GpuKernelQueueTest, ExecutesMaterializedSdmaCopy) {
   memory_ = nullptr;
 }
 
-TEST_F(GpuKernelQueueTest, CopiesThroughDeviceLocalExecutableMemory) {
-  const uint32_t family_ordinal =
-      FindKernelQueueFamily(AMDF_QUEUE_COMMAND_TYPE_GPU_PM4);
-  if (family_ordinal == UINT32_MAX) {
-    GTEST_SKIP() << "GPU endpoint exposes no kernel-mediated PM4 queue";
-  }
+TEST_F(Pm4KernelQueueTest, CopiesThroughDeviceLocalExecutableMemory) {
+  const uint32_t family_ordinal = family_.ordinal;
   ASSERT_TRUE(amdf_status_is_ok(CreateQueue(family_ordinal)));
 
   const uint64_t address = CreateCommandMemory();
@@ -477,12 +502,8 @@ TEST_F(GpuKernelQueueTest, CopiesThroughDeviceLocalExecutableMemory) {
   memory_ = nullptr;
 }
 
-TEST_F(GpuKernelQueueTest, ExecutesDeviceLocalCommandStream) {
-  const uint32_t family_ordinal =
-      FindKernelQueueFamily(AMDF_QUEUE_COMMAND_TYPE_GPU_PM4);
-  if (family_ordinal == UINT32_MAX) {
-    GTEST_SKIP() << "GPU endpoint exposes no kernel-mediated PM4 queue";
-  }
+TEST_F(Pm4KernelQueueTest, ExecutesDeviceLocalCommandStream) {
+  const uint32_t family_ordinal = family_.ordinal;
   ASSERT_TRUE(amdf_status_is_ok(CreateQueue(family_ordinal)));
 
   const uint64_t address = CreateCommandMemory();

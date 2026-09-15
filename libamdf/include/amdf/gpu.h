@@ -165,7 +165,9 @@ typedef struct amdf_gpu_device_info_t {
 
 /// First directly published PM4 queue format.
 ///
-/// The primary ring contains native PM4 dwords for the selected GPU target.
+/// The primary ring contains native type-3 PM4 packets. Transfer commands use
+/// six-dword COPY_DATA and WRITE_DATA with a four-dword prefix and payload.
+/// Cache-control encoding is described by the reported PM4 format features.
 /// Read and write indices are naturally aligned 64-bit monotonic dword counts;
 /// each index selects storage modulo `ring_byte_length / 4`.
 /// A producer never advances more than that capacity beyond the acquired read
@@ -173,23 +175,52 @@ typedef struct amdf_gpu_device_info_t {
 /// a release store of the new write index followed by a release store of the
 /// same value to the 64-bit doorbell. An acquire load of a read index at least
 /// that value proves the corresponding ring dwords are no longer in use by
-/// the queue. Packet encoding and required command-boundary padding remain
-/// target-specific PM4 rules.
+/// the queue. Each user publication ends on an eight-dword boundary, padded
+/// with type-3 NOP packets when necessary; packets never straddle ring wrap.
+/// Kernel publication accepts an immutable dword-aligned command stream.
 #define AMDF_GPU_PM4_QUEUE_FORMAT_VERSION_1 1u
+
+/// Native PM4 encoding features reported in `format_features`.
+enum amdf_gpu_pm4_format_feature_bits_e {
+  /// Eight-dword ACQUIRE_MEM with GCR_CNTL in dword 7. Global cache control
+  /// uses zero bases and maximum sizes; EVENT_WRITE CS_PARTIAL_FLUSH supplies
+  /// preceding compute completion. This does not select a cache policy for
+  /// the caller: cache_operations and cache_transition_kinds remain required.
+  AMDF_GPU_PM4_FORMAT_FEATURE_ACQUIRE_MEM_GCR = UINT64_C(1) << 0,
+};
 
 /// First native SDMA command-stream format.
 ///
-/// The primary ring contains native target-specific SDMA dwords. Read and
+/// The primary ring contains native SDMA dwords. COPY_LINEAR uses seven dwords
+/// with a byte-count-minus-one field and full 64-bit source/destination
+/// addresses. FENCE uses four dwords with a 32-bit value. Read and
 /// write indices are naturally aligned 64-bit monotonic byte counts; each
 /// index selects storage modulo `ring_byte_length`. A producer never advances
 /// more than that capacity beyond the acquired read index. After storing
 /// complete packets into the ring, the producer performs a release store of
 /// the new write index followed by a release store of the same value to the
 /// 64-bit doorbell. An acquire load of a read index at least that value proves
-/// the corresponding ring bytes are no longer in use by the queue. Packet
-/// encoding, alignment, and boundary padding remain target-specific rules.
+/// the corresponding ring bytes are no longer in use by the queue. Packets
+/// are dword-aligned and never straddle ring wrap. NOP dwords have value zero.
+/// Cache-control and memory-scope encodings use the reported format features.
 /// Kernel publication accepts an immutable dword-aligned command stream.
 #define AMDF_GPU_SDMA_QUEUE_FORMAT_VERSION_1 1u
+
+/// Native SDMA encoding features reported in `format_features`.
+enum amdf_gpu_sdma_format_feature_bits_e {
+  /// Five-dword GCR packet with the 19-bit control field beginning at bit 16
+  /// of dword 2. This names that encoding, not other GCR packet layouts.
+  AMDF_GPU_SDMA_FORMAT_FEATURE_GCR = UINT64_C(1) << 0,
+  /// FENCE uses a two-bit memory type at header bit 16 and an explicit system
+  /// bit at bit 20. A fence to system memory sets that bit. Without this
+  /// feature FENCE uses the three-bit memory-type encoding at bit 16.
+  AMDF_GPU_SDMA_FORMAT_FEATURE_FENCE_SYSTEM = UINT64_C(1) << 1,
+  /// COPY_LINEAR source/destination scope fields occupy bits 26/18 of dword 2;
+  /// FENCE scope occupies header bits 25:24. Scope 3 denotes the system.
+  /// COPY_LINEAR's NPD bit at header bit 28 disables prefetch past that copy.
+  /// Without this feature these scope and NPD bits remain zero.
+  AMDF_GPU_SDMA_FORMAT_FEATURE_MEMORY_SCOPE = UINT64_C(1) << 2,
+};
 
 /// Scratch backing borrowed by one directly published compute queue.
 ///

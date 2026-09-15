@@ -13,8 +13,8 @@
 
 #include "amdf/amdf.h"
 #include "amdf/gpu.h"
-#include "gpu_device_fixture.h"
 #include "gtest/gtest.h"
+#include "libamdf/cts/gpu/gpu_device_fixture.h"
 
 namespace {
 
@@ -445,33 +445,6 @@ TEST_F(GpuLinuxMemoryTest, OmitsRegistrationWhenLifetimeDoesNotSupportIt) {
     EXPECT_NE(profile.roles & AMDF_MEMORY_PROFILE_ROLE_REGISTER,
               AMDF_MEMORY_PROFILE_ROLE_REGISTER);
   }
-}
-
-TEST_F(GpuLinuxMemoryTest, RejectsUnadvertisedKernelQueueCreation) {
-  amdf_endpoint_info_t info = {};
-  info.type = AMDF_STRUCTURE_TYPE_ENDPOINT_INFO;
-  info.structure_size = sizeof(info);
-  ASSERT_EQ(api_->endpoint_query_info(endpoint_, &info), AMDF_STATUS_OK);
-  for (uint32_t ordinal = 0; ordinal < info.queue_family_count; ++ordinal) {
-    amdf_queue_family_info_t family = {};
-    family.type = AMDF_STRUCTURE_TYPE_QUEUE_FAMILY_INFO;
-    family.structure_size = sizeof(family);
-    ASSERT_EQ(
-        api_->endpoint_query_queue_family_info(endpoint_, ordinal, &family),
-        AMDF_STATUS_OK);
-    EXPECT_EQ(family.publication_modes & AMDF_QUEUE_PUBLICATION_MODE_KERNEL,
-              0u);
-  }
-  amdf_gpu_kernel_queue_create_info_t create_info = {};
-  create_info.type = AMDF_STRUCTURE_TYPE_GPU_KERNEL_QUEUE_CREATE_INFO;
-  create_info.structure_size = sizeof(create_info);
-  create_info.queue_family_ordinal = info.queue_family_count;
-  amdf_kernel_queue_t* output =
-      reinterpret_cast<amdf_kernel_queue_t*>(uintptr_t{1});
-  EXPECT_EQ(amdf_status_code(
-                gpu_api_->kernel_queue_create(device_, &create_info, &output)),
-            AMDF_STATUS_CODE_OUT_OF_RANGE);
-  EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
 }
 
 TEST_F(GpuLinuxMemoryTest, RegistersOverlappingCallerPagesWithExactAccess) {

@@ -64,6 +64,7 @@ amdf_gpu_kfd_gfx1151_pm4_queue_family_properties(void) {
   return (amdf_gpu_queue_family_properties_t){
       .command_type = AMDF_QUEUE_COMMAND_TYPE_GPU_PM4,
       .format_version = AMDF_GPU_PM4_QUEUE_FORMAT_VERSION_1,
+      .format_features = AMDF_GPU_PM4_FORMAT_FEATURE_ACQUIRE_MEM_GCR,
       .publication_modes = AMDF_QUEUE_PUBLICATION_MODE_USER,
       .roles = AMDF_QUEUE_ROLE_COMPUTE | AMDF_QUEUE_ROLE_TRANSFER |
                AMDF_QUEUE_ROLE_ATOMIC | AMDF_QUEUE_ROLE_CACHE_CONTROL,

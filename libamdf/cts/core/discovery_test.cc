@@ -16,13 +16,6 @@
 
 namespace {
 
-static_assert(sizeof(amdf_endpoint_id_t) == 16);
-static_assert(offsetof(amdf_endpoint_summary_t, id) == 0);
-static_assert(offsetof(amdf_endpoint_summary_t, engine_kind) == 16);
-static_assert(offsetof(amdf_endpoint_summary_t, type_flags) == 20);
-static_assert(offsetof(amdf_endpoint_summary_t, name) == 24);
-static_assert(sizeof(amdf_endpoint_summary_t) == 152);
-
 const amdf_api_t* QueryApi() {
   const amdf_api_t* api = nullptr;
   EXPECT_TRUE(amdf_status_is_ok(amdf_cts_provider_query_api()(

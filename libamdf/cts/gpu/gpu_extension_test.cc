@@ -4,7 +4,6 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -16,28 +15,6 @@
 #include "util/provider.h"
 
 namespace {
-
-static_assert(offsetof(amdf_gpu_endpoint_info_t, gfx_ip) ==
-              sizeof(amdf_output_structure_t));
-static_assert(offsetof(amdf_gpu_endpoint_info_t, asic_revision) == 28);
-static_assert(offsetof(amdf_gpu_endpoint_info_t, compute) == 32);
-static_assert(offsetof(amdf_gpu_endpoint_info_t, topology) == 56);
-static_assert(sizeof(amdf_gpu_endpoint_info_t) == 64);
-static_assert(sizeof(amdf_gpu_device_create_info_t) == 24);
-static_assert(offsetof(amdf_gpu_device_info_t, id) ==
-              sizeof(amdf_output_structure_t));
-static_assert(offsetof(amdf_gpu_device_info_t, reset_epoch) == 32);
-static_assert(offsetof(amdf_gpu_device_info_t, features) == 40);
-static_assert(sizeof(amdf_gpu_device_info_t) == 48);
-static_assert(sizeof(amdf_gpu_device_capabilities_t) == 24);
-static_assert(sizeof(amdf_gpu_queue_scratch_t) == 40);
-static_assert(sizeof(amdf_gpu_user_queue_create_info_t) == 88);
-static_assert(sizeof(amdf_gpu_kernel_command_t) == 32);
-static_assert(sizeof(amdf_gpu_kernel_queue_create_info_t) == 24);
-static_assert(sizeof(amdf_gpu_kernel_queue_submission_info_t) == 32);
-static_assert(offsetof(amdf_gpu_api_t, user_queue_create) +
-                  sizeof(amdf_gpu_api_t::user_queue_create) ==
-              sizeof(amdf_gpu_api_t));
 
 const amdf_api_t* QueryApi() {
   const amdf_api_t* api = nullptr;

@@ -65,7 +65,7 @@ class GpuDeviceFixture : public ::testing::Test {
   // Selects which opened GPU endpoint should back this fixture. A failure
   // leaves `out_matches` unchanged.
   virtual amdf_status_t MatchGpuEndpoint(amdf_endpoint_t* endpoint,
-                                         bool* out_matches) const {
+                                         bool* out_matches) {
     (void)endpoint;
     *out_matches = true;
     return AMDF_STATUS_OK;

@@ -31,6 +31,13 @@ enum amdf_queue_command_type_e {
   AMDF_QUEUE_COMMAND_TYPE_GPU_AQL_METADATA = 5,
 };
 
+/// Encoding features within a command format and version.
+///
+/// Bit meanings belong to the command type and are documented by its extension.
+/// These describe native packet layouts, not additional publication services.
+/// A zero value reports the baseline encoding; it never means unqueried state.
+typedef uint64_t amdf_queue_format_features_t;
+
 /// Queue publication mechanisms implemented by a provider.
 typedef uint32_t amdf_queue_publication_modes_t;
 enum amdf_queue_publication_mode_bits_e {
@@ -129,11 +136,11 @@ typedef struct amdf_queue_metadata_format_t {
 
 /// Immutable properties of one endpoint-local native queue family.
 ///
-/// A family identifies one exact command representation and every mechanism
-/// its later constructors can actually create. Formats and their versions
-/// define command encoding, index units, atomic access, ring wrap, and direct
-/// publication ordering. User- and kernel-specific fields are zero when their
-/// corresponding publication mode is absent.
+/// A family identifies a command representation and every mechanism its later
+/// constructors can actually create. Command types, versions, and encoding
+/// features define command encoding, index units, atomic access, ring wrap,
+/// and direct publication ordering. User- and kernel-specific fields are zero
+/// when their corresponding publication mode is absent.
 typedef struct amdf_queue_family_info_t {
   /// Must be `AMDF_STRUCTURE_TYPE_QUEUE_FAMILY_INFO`.
   amdf_structure_type_t type;
@@ -149,6 +156,8 @@ typedef struct amdf_queue_family_info_t {
   amdf_queue_publication_modes_t publication_modes;
   /// Version defining commands and their queue publication protocol.
   uint32_t format_version;
+  /// Native encoding features defined by the command type and version.
+  amdf_queue_format_features_t format_features;
   /// Semantic operations accepted by queues in this family.
   amdf_queue_roles_t roles;
   /// Semantic cache operations encoded by this command representation.
@@ -211,6 +220,8 @@ typedef struct amdf_user_queue_info_t {
   amdf_queue_command_type_t command_type;
   /// Version defining command, index, and publication semantics.
   uint32_t format_version;
+  /// Encoding features inherited from the selected queue family.
+  amdf_queue_format_features_t format_features;
   /// Reservation protocol selected for this queue.
   amdf_queue_producer_mode_t producer_mode;
   /// Scheduling priority selected for this queue.
@@ -253,6 +264,8 @@ typedef struct amdf_user_queue_mapping_info_t {
   amdf_queue_command_type_t command_type;
   /// Version defining command, index, and publication semantics.
   uint32_t format_version;
+  /// Encoding features inherited from the mapped queue.
+  amdf_queue_format_features_t format_features;
   /// Producer-local base address of the writable primary ring.
   uint64_t ring_address;
   /// Writable primary ring capacity in bytes.

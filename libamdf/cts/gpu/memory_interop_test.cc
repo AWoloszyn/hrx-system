@@ -76,13 +76,14 @@ class GpuMemoryInteropTest : public GpuDeviceFixture {
     GpuDeviceFixture::TearDown();
   }
 
-  amdf_status_t FindPm4Family(uint32_t* out_ordinal) {
+  amdf_status_t MatchGpuEndpoint(amdf_endpoint_t* endpoint,
+                                 bool* out_matches) override {
     amdf_endpoint_info_t endpoint_info = {};
     endpoint_info.type = AMDF_STRUCTURE_TYPE_ENDPOINT_INFO;
     endpoint_info.structure_size = sizeof(endpoint_info);
-    amdf_status_t status = api_->endpoint_query_info(endpoint_, &endpoint_info);
+    amdf_status_t status = api_->endpoint_query_info(endpoint, &endpoint_info);
     if (!amdf_status_is_ok(status)) return status;
-    *out_ordinal = UINT32_MAX;
+    uint32_t family_ordinal = UINT32_MAX;
     for (uint32_t ordinal = 0; amdf_status_is_ok(status) &&
                                ordinal < endpoint_info.queue_family_count;
          ++ordinal) {
@@ -90,14 +91,20 @@ class GpuMemoryInteropTest : public GpuDeviceFixture {
       family.type = AMDF_STRUCTURE_TYPE_QUEUE_FAMILY_INFO;
       family.structure_size = sizeof(family);
       status =
-          api_->endpoint_query_queue_family_info(endpoint_, ordinal, &family);
+          api_->endpoint_query_queue_family_info(endpoint, ordinal, &family);
       if (amdf_status_is_ok(status) &&
           family.command_type == AMDF_QUEUE_COMMAND_TYPE_GPU_PM4 &&
+          family.format_version == AMDF_GPU_PM4_QUEUE_FORMAT_VERSION_1 &&
+          (family.roles & AMDF_QUEUE_ROLE_TRANSFER) != 0 &&
           (family.publication_modes & AMDF_QUEUE_PUBLICATION_MODE_KERNEL) !=
               0) {
-        *out_ordinal = ordinal;
+        family_ordinal = ordinal;
         break;
       }
+    }
+    if (amdf_status_is_ok(status)) {
+      family_ordinal_ = family_ordinal;
+      *out_matches = family_ordinal != UINT32_MAX;
     }
     return status;
   }
@@ -203,6 +210,8 @@ class GpuMemoryInteropTest : public GpuDeviceFixture {
     return status;
   }
 
+  // Matching family selected before borrowing or creating native devices.
+  uint32_t family_ordinal_ = UINT32_MAX;
   // Registration and execution resources, ordered owner before borrower.
   std::array<DeviceAccess, 2> accesses_;
   // Case-owned peer whose destruction must preserve the shared source owner.
@@ -210,11 +219,7 @@ class GpuMemoryInteropTest : public GpuDeviceFixture {
 };
 
 TEST_F(GpuMemoryInteropTest, SharedBackingSurvivesIndependentPeerTeardown) {
-  uint32_t family_ordinal = UINT32_MAX;
-  ASSERT_TRUE(amdf_status_is_ok(FindPm4Family(&family_ordinal)));
-  if (family_ordinal == UINT32_MAX) {
-    GTEST_SKIP() << "GPU endpoint exposes no kernel-mediated PM4 queue";
-  }
+  const uint32_t family_ordinal = family_ordinal_;
   amdf_gpu_device_create_info_t device_info = {};
   device_info.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_CREATE_INFO;
   device_info.structure_size = sizeof(device_info);

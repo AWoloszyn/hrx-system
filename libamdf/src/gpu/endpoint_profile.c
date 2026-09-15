@@ -204,6 +204,7 @@ bool amdf_gpu_endpoint_profile_initialize(
         .command_type = source->command_type,
         .publication_modes = source->publication_modes,
         .format_version = source->format_version,
+        .format_features = source->format_features,
         .roles = source->roles,
         .cache_operations = source->cache_operations,
         .cache_transition_kinds = source->cache_transition_kinds,

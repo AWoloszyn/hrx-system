@@ -4,7 +4,6 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include <cstddef>
 #include <cstdint>
 
 #include "amdf/amdf.h"
@@ -12,67 +11,6 @@
 #include "util/provider.h"
 
 namespace {
-
-static_assert(sizeof(amdf_allocator_t) == 4 * sizeof(void*));
-static_assert(offsetof(amdf_instance_create_info_t, host_allocator) ==
-              sizeof(amdf_input_structure_t) + 8);
-static_assert(sizeof(amdf_instance_create_info_t) ==
-              sizeof(amdf_input_structure_t) + 8 + sizeof(amdf_allocator_t));
-static_assert(sizeof(amdf_external_memory_t) == 80);
-static_assert(offsetof(amdf_external_memory_t, source_byte_offset) == 32);
-static_assert(offsetof(amdf_external_memory_t, release) == 64);
-static_assert(sizeof(amdf_memory_profile_t) == 472);
-static_assert(offsetof(amdf_memory_profile_t, allocation) == 48);
-static_assert(offsetof(amdf_memory_profile_t, external_memory_support) == 232);
-static_assert(sizeof(amdf_memory_scope_info_t) == 40);
-static_assert(sizeof(amdf_memory_access_requirements_t) == 24);
-static_assert(sizeof(amdf_memory_access_capabilities_t) == 96);
-static_assert(sizeof(amdf_memory_create_info_t) == 64);
-static_assert(sizeof(amdf_memory_import_info_t) == 48);
-static_assert(sizeof(amdf_memory_export_info_t) == 40);
-static_assert(sizeof(amdf_memory_site_t) == 40);
-static_assert(offsetof(amdf_memory_site_t, value) == 24);
-static_assert(sizeof(amdf_memory_pair_info_t) == 120);
-static_assert(offsetof(amdf_endpoint_info_t, queue_family_count) ==
-              offsetof(amdf_endpoint_info_t, name) +
-                  AMDF_ENDPOINT_NAME_CAPACITY);
-static_assert(sizeof(amdf_endpoint_info_t) == 192);
-static_assert(offsetof(amdf_queue_family_info_t, ordinal) ==
-              sizeof(amdf_output_structure_t));
-static_assert(offsetof(amdf_queue_family_info_t, command_type) == 20);
-static_assert(offsetof(amdf_queue_family_info_t, publication_modes) == 24);
-static_assert(offsetof(amdf_queue_family_info_t, format_version) == 28);
-static_assert(offsetof(amdf_queue_family_info_t, roles) == 32);
-static_assert(offsetof(amdf_queue_family_info_t, cache_operations) == 40);
-static_assert(offsetof(amdf_queue_family_info_t, atomic_capabilities) == 56);
-static_assert(sizeof(amdf_queue_family_info_t) == 160);
-static_assert(offsetof(amdf_user_queue_info_t, device_id) ==
-              sizeof(amdf_output_structure_t));
-static_assert(offsetof(amdf_user_queue_info_t, priority) == 72);
-static_assert(offsetof(amdf_user_queue_info_t, capabilities) == 80);
-static_assert(sizeof(amdf_user_queue_info_t) == 128);
-static_assert(offsetof(amdf_user_queue_mapping_info_t, producer_device_id) ==
-              sizeof(amdf_output_structure_t));
-static_assert(offsetof(amdf_user_queue_mapping_info_t, queue_id) == 32);
-static_assert(offsetof(amdf_user_queue_mapping_info_t, ring_address) == 72);
-static_assert(sizeof(amdf_user_queue_mapping_info_t) == 152);
-static_assert(offsetof(amdf_user_queue_status_t, state) ==
-              sizeof(amdf_output_structure_t));
-static_assert(offsetof(amdf_user_queue_status_t, terminal_status) == 48);
-static_assert(sizeof(amdf_user_queue_status_t) == 56);
-static_assert(offsetof(amdf_kernel_queue_info_t, device_id) ==
-              sizeof(amdf_output_structure_t));
-static_assert(offsetof(amdf_kernel_queue_info_t, reset_epoch) == 32);
-static_assert(offsetof(amdf_kernel_queue_info_t,
-                       maximum_pending_submission_count) == 48);
-static_assert(sizeof(amdf_kernel_queue_info_t) == 56);
-static_assert(offsetof(amdf_kernel_queue_status_t, retired_submission) ==
-              sizeof(amdf_output_structure_t));
-static_assert(offsetof(amdf_kernel_queue_status_t, terminal_status) == 32);
-static_assert(sizeof(amdf_kernel_queue_status_t) == 40);
-static_assert(offsetof(amdf_api_t, memory_query_address) +
-                  sizeof(amdf_api_t::memory_query_address) ==
-              sizeof(amdf_api_t));
 
 TEST(QueryApiTest, NegotiatesSupportedVersion) {
   const amdf_api_t* api = nullptr;

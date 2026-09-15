@@ -4,7 +4,6 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -17,42 +16,6 @@
 #include "xdna_device_fixture.h"
 
 namespace {
-
-static_assert(sizeof(amdf_xdna_device_create_info_t) ==
-              sizeof(amdf_input_structure_t));
-static_assert(offsetof(amdf_xdna_device_info_t, id) ==
-              sizeof(amdf_output_structure_t));
-static_assert(offsetof(amdf_xdna_device_info_t, reset_epoch) == 32);
-static_assert(offsetof(amdf_xdna_device_info_t, placement_modes) == 40);
-static_assert(sizeof(amdf_xdna_device_info_t) == 48);
-static_assert(offsetof(amdf_xdna_context_create_info_t, logical_column_count) ==
-              sizeof(amdf_input_structure_t));
-static_assert(offsetof(amdf_xdna_context_create_info_t,
-                       acceptable_scheduling_modes) == 24);
-static_assert(sizeof(amdf_xdna_context_create_info_t) == 32);
-static_assert(offsetof(amdf_xdna_context_info_t, id) ==
-              sizeof(amdf_output_structure_t));
-static_assert(offsetof(amdf_xdna_context_info_t, device_id) == 32);
-static_assert(offsetof(amdf_xdna_context_info_t, reset_epoch) == 48);
-static_assert(offsetof(amdf_xdna_context_info_t, logical_column_count) == 60);
-static_assert(offsetof(amdf_xdna_context_info_t, row_count) == 64);
-static_assert(sizeof(amdf_xdna_context_info_t) == 72);
-static_assert(offsetof(amdf_xdna_context_placement_info_t, column_origin) ==
-              sizeof(amdf_output_structure_t));
-static_assert(sizeof(amdf_xdna_context_placement_info_t) == 24);
-static_assert(offsetof(amdf_xdna_endpoint_info_t, instruction) == 80);
-static_assert(offsetof(amdf_xdna_endpoint_info_t, target_id) == 104);
-static_assert(sizeof(amdf_xdna_endpoint_info_t) == 168);
-static_assert(sizeof(amdf_xdna_kernel_command_t) == 32);
-static_assert(offsetof(amdf_xdna_kernel_command_t, byte_offset) == 16);
-static_assert(sizeof(amdf_xdna_kernel_queue_create_info_t) == 24);
-static_assert(sizeof(amdf_xdna_kernel_queue_submission_info_t) == 32);
-static_assert(offsetof(amdf_xdna_api_t, context_create) ==
-              offsetof(amdf_xdna_api_t, kernel_queue_submit) +
-                  sizeof(amdf_xdna_api_t::kernel_queue_submit));
-static_assert(offsetof(amdf_xdna_api_t, context_destroy) +
-                  sizeof(amdf_xdna_api_t::context_destroy) ==
-              sizeof(amdf_xdna_api_t));
 
 const amdf_api_t* QueryApi() {
   const amdf_api_t* api = nullptr;

@@ -56,7 +56,8 @@ TEST(WkmiEndpointPropertiesTest, NormalizesMultiXccTopology) {
   EXPECT_EQ(properties.queue_families[0].publication_modes,
             AMDF_QUEUE_PUBLICATION_MODE_KERNEL);
   EXPECT_EQ(properties.queue_families[0].roles,
-            AMDF_QUEUE_ROLE_COMPUTE | AMDF_QUEUE_ROLE_CACHE_CONTROL);
+            AMDF_QUEUE_ROLE_COMPUTE | AMDF_QUEUE_ROLE_TRANSFER |
+                AMDF_QUEUE_ROLE_CACHE_CONTROL);
   EXPECT_EQ(properties.queue_families[0].cache_operations,
             AMDF_CACHE_OPERATIONS_RELEASE_TO_SYSTEM |
                 AMDF_CACHE_OPERATIONS_ACQUIRE_FROM_SYSTEM);

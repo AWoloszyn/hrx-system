@@ -17,6 +17,7 @@ amdf_cc_library(
     name = "gpu_device_fixture",
     testonly = True,
     hdrs = ["gpu_device_fixture.h"],
+    visibility = ["//libamdf/cts/gpu:__subpackages__"],
     deps = [
         "//libamdf/cts/util:device_cache",
         "//libamdf/cts/util:provider_headers",
@@ -25,48 +26,20 @@ amdf_cc_library(
 )
 
 amdf_cc_library(
-    name = "linux_tests",
+    name = "user_queue_memory",
     testonly = True,
-    srcs = [
-        "memory_linux_test.cc",
-        "target/gfx1151/user_queue_memory_test.cc",
-    ],
-    hdrs = ["target/gfx1151/user_queue_memory_test.h"],
-    target_compatible_with = [
-        "@platforms//os:linux",
-        "@platforms//cpu:x86_64",
-    ],
-    deps = [
-        ":gpu_device_fixture",
-        "//libamdf/cts/util:device_cache",
-        "//libamdf/cts/util:provider_headers",
-        "//third_party:google_test",
-    ],
-    alwayslink = True,
-)
-
-amdf_cc_library(
-    name = "windows_tests",
-    testonly = True,
-    srcs = [
-        "kernel_queue_test.cc",
-        "memory_interop_test.cc",
-        "windows/memory_test.cc",
-    ],
-    target_compatible_with = ["@platforms//os:windows"],
+    srcs = ["user_queue_memory.cc"],
+    hdrs = ["user_queue_memory.h"],
+    target_compatible_with = ["@platforms//cpu:x86_64"],
     deps = [
         ":gpu_device_fixture",
         "//third_party:google_test",
     ],
-    alwayslink = True,
 )
 
-amdf_cts_test_suite(
-    name = "gpu",
-    srcs = [
-        "gpu_extension_test.cc",
-        "memory_group_test.cc",
-    ],
+[amdf_cts_test_suite(
+    name = name,
+    srcs = [name + "_test.cc"],
     target_compatible_with = ["@platforms//cpu:x86_64"] + select({
         "@platforms//os:linux": [],
         "@platforms//os:windows": [],
@@ -78,9 +51,43 @@ amdf_cts_test_suite(
         "//libamdf/cts/util:device_cache",
         "//libamdf/cts/util:provider_headers",
         "//third_party:google_test",
-    ] + select({
-        "@platforms//os:linux": [":linux_tests"],
-        "@platforms//os:windows": [":windows_tests"],
-        "//conditions:default": [],
+    ],
+) for name in [
+    "gpu_extension",
+    "kernel_queue",
+    "memory_group",
+    "memory_interop",
+]]
+
+[amdf_cts_test_suite(
+    name = name,
+    srcs = [name + "_test.cc"],
+    target_compatible_with = ["@platforms//cpu:x86_64"] + select({
+        "@platforms//os:linux": [],
+        "@platforms//os:windows": [],
+        "//conditions:default": ["@platforms//:incompatible"],
     }),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":user_queue_memory",
+        "//third_party:google_test",
+    ],
+) for name in [
+    "pm4_queue",
+    "sdma_queue",
+]]
+
+test_suite(
+    name = "gpu",
+    tests = [
+        ":gpu_extension",
+        ":kernel_queue",
+        ":memory_group",
+        ":memory_interop",
+        ":pm4_queue",
+        ":sdma_queue",
+        "//libamdf/cts/gpu/linux:memory",
+        "//libamdf/cts/gpu/windows:memory",
+    ],
+    visibility = ["//visibility:public"],
 )

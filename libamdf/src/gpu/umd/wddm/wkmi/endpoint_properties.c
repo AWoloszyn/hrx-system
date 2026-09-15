@@ -62,17 +62,29 @@ bool amdf_gpu_wddm_wkmi_endpoint_properties_translate(
             .command_type = AMDF_QUEUE_COMMAND_TYPE_GPU_PM4,
             .format_version = AMDF_GPU_PM4_QUEUE_FORMAT_VERSION_1,
             .publication_modes = AMDF_QUEUE_PUBLICATION_MODE_KERNEL,
-            .roles = AMDF_QUEUE_ROLE_COMPUTE | AMDF_QUEUE_ROLE_CACHE_CONTROL,
+            .roles = AMDF_QUEUE_ROLE_COMPUTE | AMDF_QUEUE_ROLE_TRANSFER |
+                     AMDF_QUEUE_ROLE_CACHE_CONTROL,
             .cache_operations = AMDF_CACHE_OPERATIONS_RELEASE_TO_SYSTEM |
                                 AMDF_CACHE_OPERATIONS_ACQUIRE_FROM_SYSTEM,
             .cache_transition_kinds = AMDF_CACHE_TRANSITION_KINDS_GLOBAL,
         };
   }
   if (provider_properties->supports_sdma_kernel_queue != 0) {
+    // The native adapter record identifies the packet layout. Clients receive
+    // encoding features and never need to reconstruct them from GFX identity.
+    amdf_queue_format_features_t format_features = 0;
+    if (provider_properties->gfx_ip_major >= 12) {
+      format_features |= AMDF_GPU_SDMA_FORMAT_FEATURE_FENCE_SYSTEM;
+    }
+    if (provider_properties->gfx_ip_major == 12 &&
+        provider_properties->gfx_ip_minor >= 5) {
+      format_features |= AMDF_GPU_SDMA_FORMAT_FEATURE_MEMORY_SCOPE;
+    }
     properties.queue_families[properties.queue_family_count++] =
         (amdf_gpu_queue_family_properties_t){
             .command_type = AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA,
             .format_version = AMDF_GPU_SDMA_QUEUE_FORMAT_VERSION_1,
+            .format_features = format_features,
             .publication_modes = AMDF_QUEUE_PUBLICATION_MODE_KERNEL,
             .roles = AMDF_QUEUE_ROLE_TRANSFER,
         };

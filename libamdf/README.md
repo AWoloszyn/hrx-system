@@ -190,6 +190,12 @@ registration is supported, and native-owner recreation scenarios require
 reclaimable VM acquisition. Ordinary memory, queue, and interop
 cases share one device per endpoint for the duration of each test process.
 
+GPU queue corpora are organized by PM4 and SDMA functionality, not ASIC names.
+Clients select a queue family by publication mode, operations, format version,
+and packet-format features before creating the device. Native profiles own
+hardware-specific encoding facts; CTS and HAL clients construct commands from
+those queried contracts without repeating a hardware database.
+
 The XDNA command configures, builds and tests the library and its ELF consumers,
 including the native device lifecycle and every CTS linkage mode:
 
