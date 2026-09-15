@@ -256,6 +256,9 @@ typedef struct loom_amdgpu_wait_plan_builder_t {
   uint32_t counter_epochs[LOOM_AMDGPU_WAIT_COUNTER_SLOT_COUNT];
   // Oldest producer positions already known complete in the current epoch.
   uint32_t completed_position_counts[LOOM_AMDGPU_WAIT_COUNTER_SLOT_COUNT];
+  // First scheduled ordinal not retired for each counter in the current block.
+  // Each cursor advances across epochs and stops at the first pending producer.
+  uint32_t retirement_ordinals[LOOM_AMDGPU_WAIT_COUNTER_SLOT_COUNT];
   // Current block epoch for lazy invalidation of physical-register state.
   uint64_t block_epoch;
   // Counters fully drained earlier in the current straight-line block.
@@ -1990,11 +1993,10 @@ static void loom_amdgpu_wait_plan_mark_drained_producers(
   const uint32_t block_index = node->block_index;
   const loom_low_schedule_block_t* block =
       &builder->schedule->blocks[block_index];
-  for (uint32_t i = 0; i < block->scheduled_node_count; ++i) {
+  uint32_t* retirement_ordinal = &builder->retirement_ordinals[slot];
+  for (; *retirement_ordinal < node->scheduled_ordinal; ++*retirement_ordinal) {
+    const uint32_t i = *retirement_ordinal;
     const uint32_t packet_index = block->scheduled_node_start + i;
-    if (i == node->scheduled_ordinal) {
-      break;
-    }
     const uint32_t prior_node_index =
         builder->schedule->scheduled_node_indices[packet_index];
     loom_amdgpu_wait_node_state_t* prior_state =
@@ -2012,8 +2014,12 @@ static void loom_amdgpu_wait_plan_mark_drained_producers(
     }
     const uint32_t produced_position =
         prior_state->produced_counter_position[slot];
-    if (produced_position != 0 &&
-        produced_position <= completed_position_count) {
+    if (produced_position > completed_position_count) {
+      // Producer positions increase in schedule order within a counter epoch.
+      // A later wait resumes here instead of revisiting the completed prefix.
+      break;
+    }
+    if (produced_position != 0) {
       prior_memory->drained_after_production_counter_mask |= counter_mask;
     }
   }
@@ -3507,6 +3513,8 @@ static iree_status_t loom_amdgpu_wait_plan_build_actions(
     memset(builder->counter_epochs, 0, sizeof(builder->counter_epochs));
     memset(builder->completed_position_counts, 0,
            sizeof(builder->completed_position_counts));
+    memset(builder->retirement_ordinals, 0,
+           sizeof(builder->retirement_ordinals));
     memset(builder->outstanding_counts, 0, sizeof(builder->outstanding_counts));
     memset(builder->outstanding_write_counts, 0,
            sizeof(builder->outstanding_write_counts));

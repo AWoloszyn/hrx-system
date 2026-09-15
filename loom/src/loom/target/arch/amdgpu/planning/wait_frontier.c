@@ -898,6 +898,8 @@ void loom_amdgpu_wait_frontier_begin_block(
   }
   frontier->vmem_results.active_flags = 0;
   frontier->xcnt.active_flags = 0;
+  frontier->xcnt.drained_group_flags = 0;
+  frontier->incoming_drain_counter_mask = 0;
   frontier->active_block_index = block_index;
 
   const loom_cfg_graph_t* graph = &frontier->schedule->cfg_graph;
@@ -1085,11 +1087,13 @@ void loom_amdgpu_wait_frontier_prepare_xcnt_producer(
               group_flags == LOOM_AMDGPU_WAIT_XCNT_GROUP_FLAG_SMEM);
   const loom_amdgpu_wait_xcnt_group_flags_t other_group_flags =
       frontier->xcnt.active_flags &
-      (loom_amdgpu_wait_xcnt_group_flags_t)~group_flags;
+      (loom_amdgpu_wait_xcnt_group_flags_t) ~(
+          group_flags | frontier->xcnt.drained_group_flags);
   if (other_group_flags != 0 && frontier->storage_leases.active_words != NULL) {
     loom_amdgpu_wait_storage_lease_state_drain_xcnt_groups(
         frontier, frontier->storage_leases.active_words, other_group_flags);
   }
+  frontier->xcnt.drained_group_flags |= other_group_flags;
   frontier->xcnt.active_flags &= group_flags;
 }
 
@@ -1109,6 +1113,16 @@ void loom_amdgpu_wait_frontier_drain(loom_amdgpu_wait_frontier_t* frontier,
                                      uint32_t counter_mask) {
   IREE_ASSERT_ARGUMENT(frontier);
   IREE_ASSERT(frontier->active_block_index < frontier->schedule->block_count);
+  if (iree_any_bit_set(counter_mask, LOOM_AMDGPU_WAIT_COUNTER_MASK_X)) {
+    frontier->xcnt.active_flags = 0;
+    frontier->xcnt.drained_group_flags = LOOM_AMDGPU_WAIT_XCNT_GROUP_FLAG_VMEM |
+                                         LOOM_AMDGPU_WAIT_XCNT_GROUP_FLAG_SMEM;
+  }
+  // Incoming state only loses members while processing a block. Each counter
+  // therefore clears its incoming bitmaps at most once, regardless of how many
+  // waits complete subsequently issued local producers.
+  counter_mask &= ~frontier->incoming_drain_counter_mask;
+  frontier->incoming_drain_counter_mask |= counter_mask;
   loom_amdgpu_wait_memory_state_drain(&frontier->memory.active_state,
                                       counter_mask);
   if (frontier->vmem_results.active_words != NULL &&
@@ -1121,9 +1135,6 @@ void loom_amdgpu_wait_frontier_drain(loom_amdgpu_wait_frontier_t* frontier,
   if (frontier->storage_leases.active_words != NULL) {
     loom_amdgpu_wait_storage_lease_state_drain(
         frontier, frontier->storage_leases.active_words, counter_mask);
-  }
-  if (iree_any_bit_set(counter_mask, LOOM_AMDGPU_WAIT_COUNTER_MASK_X)) {
-    frontier->xcnt.active_flags = 0;
   }
 }
 

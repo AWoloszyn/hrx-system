@@ -137,7 +137,12 @@ typedef struct loom_amdgpu_wait_frontier_t {
     loom_amdgpu_wait_xcnt_group_flags_t* resolved_outgoing_flags;
     // Incoming and locally produced groups active in the current block.
     loom_amdgpu_wait_xcnt_group_flags_t active_flags;
+    // Incoming groups whose source leases have been removed in this block.
+    loom_amdgpu_wait_xcnt_group_flags_t drained_group_flags;
   } xcnt;
+  // Counters already removed from incoming state in the active block. Local
+  // producers are published at end_block, never added to the incoming bitmaps.
+  uint32_t incoming_drain_counter_mask;
   // Counter classes fully drained on every path through each block.
   uint32_t* block_drain_counter_masks;
   // Per-block worklist and resolved-state bits.

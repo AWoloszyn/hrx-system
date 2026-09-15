@@ -133,6 +133,7 @@ loom_check_test_suite(
     "test/packet_json.loom-test"
     "test/spill_lowering.loom-test"
     "test/vopd_plan.loom-test"
+    "test/wait_completion.loom-test"
     "test/wait_plan.loom-test"
     "test/wait_states.loom-test"
 )

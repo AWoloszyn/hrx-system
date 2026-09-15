@@ -1,0 +1,160 @@
+// Partial completion retires only the oldest producers. New work remains
+// pending when the block publishes its outgoing completion state.
+// RUN: emit amdgpu-assembly @partial_completion_then_new_producer strategy=source
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @partial_completion_then_new_producer(%address: reg<amdgpu.vgpr>) asm {
+  %first = ds_read_b32 %address
+  %second = ds_read_b32 %address {offset = 4}
+  %third = ds_read_b32 %address {offset = 8}
+  %sum = v_add_u32 %first, %address
+  %later = ds_read_b32 %address {offset = 12}
+  %pair = v_add_u32 %second, %third
+  %subtotal = v_add_u32 %sum, %pair
+  low.br ^finish
+^finish:
+  %total = v_add_u32 %subtotal, %later
+  ds_write_b32 %address, %total {offset = 16}
+  return
+}
+
+// ----
+  ds_read_b32 v1, v0 offset:0
+  ds_read_b32 v2, v0 offset:4
+  ds_read_b32 v3, v0 offset:8
+  s_waitcnt vmcnt(63) lgkmcnt(2)
+  v_add_u32 v1, v1, v0
+  ds_read_b32 v4, v0 offset:12
+  s_waitcnt vmcnt(63) lgkmcnt(1)
+  v_add_u32 v2, v2, v3
+  s_delay_alu instid0(VALU_DEP_1) | instid1(VALU_DEP_2)
+  v_add_u32 v1, v1, v2
+.Lbb1:
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  v_add_u32 v1, v1, v4
+  ds_write_b32 v0, v1 offset:16
+  s_endpgm
+
+// ====
+
+// A full drain starts another producer epoch without restarting retirement at
+// the block's beginning. Its completion cannot cover a later load.
+// RUN: emit amdgpu-assembly @full_completion_then_new_producer strategy=source
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @full_completion_then_new_producer(%address: reg<amdgpu.vgpr>) asm {
+  %first = ds_read_b32 %address
+  s_waitcnt {lgkmcnt = 0}
+  s_waitcnt {lgkmcnt = 0}
+  %second = ds_read_b32 %address {offset = 4}
+  %sum = v_add_u32 %first, %second
+  %later = ds_read_b32 %address {offset = 8}
+  low.br ^finish
+^finish:
+  %total = v_add_u32 %sum, %later
+  ds_write_b32 %address, %total {offset = 12}
+  return
+}
+
+// ----
+  ds_read_b32 v1, v0 offset:0
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  ds_read_b32 v2, v0 offset:4
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  v_add_u32 v1, v1, v2
+  ds_read_b32 v2, v0 offset:8
+.Lbb1:
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  v_add_u32 v1, v1, v2
+  ds_write_b32 v0, v1 offset:12
+  s_endpgm
+
+// ====
+
+// Empty waits may advance past non-producers, but never past a producer that
+// has not yet issued. Zero-instruction identities preserve that ordering.
+// RUN: emit amdgpu-assembly @empty_completion_before_producer strategy=source
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @empty_completion_before_producer(%base: reg<amdgpu.sgpr x2>, %offset: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>) asm {
+  s_waitcnt {lgkmcnt = 0}
+  s_waitcnt {lgkmcnt = 0}
+  %loaded = s_load_dword %base, %offset
+  %bounded = low.assume %loaded [range(%loaded, 1, 2048)] : reg<amdgpu.sgpr>
+  %sum = s_add_u32 %bounded, %offset
+  return %sum
+}
+
+// ----
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  s_load_dword s3, s[0:1], s2 offset:0
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  s_add_u32 s0, s3, s2
+  s_endpgm
+
+// ====
+
+// Each incoming path contributes its own completion state. A wait on one arm
+// leaves the other arm's load pending at the merge.
+// RUN: emit amdgpu-assembly @completion_on_one_incoming_path strategy=source
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @completion_on_one_incoming_path(%address: reg<amdgpu.vgpr>, %lhs: reg<amdgpu.sgpr>, %rhs: reg<amdgpu.sgpr>) asm {
+  %loaded = ds_read_b32 %address
+  %condition = s_cmp_lt_i32 %lhs, %rhs
+  low.cond_br %condition, ^drained, ^pending : reg<amdgpu.scc>
+^drained:
+  s_waitcnt {lgkmcnt = 0}
+  s_waitcnt {lgkmcnt = 0}
+  low.br ^join
+^pending:
+  low.br ^join
+^join:
+  %sum = v_add_u32 %loaded, %address
+  ds_write_b32 %address, %sum {offset = 4}
+  return
+}
+
+// ----
+  ds_read_b32 v1, v0 offset:0
+  s_cmp_lt_i32 s0, s1
+  s_delay_alu instid0(SALU_CYCLE_1)
+  s_cbranch_scc0 .Lbb2
+.Lbb1:
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  s_branch .Lbb3
+.Lbb2:
+.Lbb3:
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  v_add_u32 v1, v1, v0
+  ds_write_b32 v0, v1 offset:4
+  s_endpgm
+
+// ====
+
+// Counter retirement is independent on targets with separate LDS and scalar
+// completion instructions.
+// RUN: emit amdgpu-assembly @independent_counter_retirement strategy=source
+amdgpu.target<gfx1201> @target
+
+low.func.def target<amdgpu.rdna4.core>(@target) @independent_counter_retirement(%base: reg<amdgpu.sgpr x2>, %offset: reg<amdgpu.sgpr>, %address: reg<amdgpu.vgpr>) asm {
+  %scalar = s_load_dword %base, %offset
+  %local = ds_read_b32 %address
+  %scalar_sum = s_add_u32 %scalar, %offset
+  %local_sum = v_add_u32 %scalar_sum, %local
+  ds_write_b32 %address, %local_sum {offset = 4}
+  return
+}
+
+// ----
+  s_load_dword s3, s[0:1], s2 offset:0
+  ds_read_b32 v1, v0 offset:0
+  s_wait_kmcnt kmcnt(0)
+  s_add_u32 s0, s3, s2
+  s_wait_dscnt dscnt(0)
+  v_add_u32 v1, s0, v1
+  ds_write_b32 v0, v1 offset:4
+  s_endpgm
