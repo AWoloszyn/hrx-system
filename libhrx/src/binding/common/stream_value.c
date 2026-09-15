@@ -8,7 +8,100 @@
 
 #include "common/internal.h"
 #include "common/stream.h"
+#include "iree/async/operations/scheduling.h"
 #include "iree/base/internal/math.h"
+
+// Maximum time a write-only batch may remain recorded without another stream
+// operation submitting it. A short delay coalesces adjacent scalar writes while
+// ensuring that the final successful call makes progress on its own.
+enum { IREE_HAL_STREAMING_VALUE_FLUSH_DELAY_MS = 1 };
+
+struct iree_hal_streaming_value_flush_timer_t {
+  // One-shot timer submitted to the process async runtime.
+  iree_async_timer_operation_t operation;
+  // Stream to flush. Retained until the timer callback completes.
+  iree_hal_streaming_stream_t* stream;
+  // Proactor executing |operation|. Retained until callback completion.
+  iree_async_proactor_t* proactor;
+  // Allocator that owns this timer state.
+  iree_allocator_t host_allocator;
+};
+
+static void iree_hal_streaming_value_flush_timer_callback(
+    void* user_data, iree_async_operation_t* operation, iree_status_t status,
+    iree_async_completion_flags_t flags) {
+  (void)operation;
+  (void)flags;
+  iree_hal_streaming_value_flush_timer_t* timer =
+      (iree_hal_streaming_value_flush_timer_t*)user_data;
+  iree_hal_streaming_stream_t* stream = timer->stream;
+
+  iree_slim_mutex_lock(&stream->mutex);
+  IREE_ASSERT(stream->value_flush_timer == timer,
+              "stream must reference its outstanding flush timer");
+  stream->value_flush_timer = NULL;
+  if (stream->context && stream->queue) {
+    status = iree_status_join(status,
+                              iree_hal_streaming_stream_flush_locked(stream));
+  }
+  iree_slim_mutex_unlock(&stream->mutex);
+
+  // There is no initiating host call left to receive an asynchronous submission
+  // failure. Poisoning the stream timeline makes every later query, wait, or
+  // synchronization observe the original status instead of silently losing it.
+  if (!iree_status_is_ok(status)) {
+    iree_hal_semaphore_fail(stream->timeline_semaphore, status);
+  }
+
+  iree_async_proactor_release(timer->proactor);
+  iree_allocator_free(timer->host_allocator, timer);
+  iree_hal_streaming_stream_release(stream);
+}
+
+// Schedules one bounded flush for the current write burst. Called with the
+// stream mutex held after the write batch has been recorded.
+static iree_status_t iree_hal_streaming_schedule_value_flush_locked(
+    iree_hal_streaming_stream_t* stream) {
+  if (stream->value_flush_timer) return iree_ok_status();
+
+  hrx_shared_state_t* shared_state = hrx_get_shared_state();
+  if (IREE_UNLIKELY(!shared_state || !shared_state->proactor_pool)) {
+    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                            "async runtime is unavailable");
+  }
+
+  iree_async_proactor_t* proactor = NULL;
+  IREE_RETURN_IF_ERROR(iree_async_proactor_pool_get(shared_state->proactor_pool,
+                                                    /*index=*/0, &proactor));
+
+  iree_hal_streaming_value_flush_timer_t* timer = NULL;
+  IREE_RETURN_IF_ERROR(iree_allocator_malloc(stream->host_allocator,
+                                             sizeof(*timer), (void**)&timer));
+  memset(timer, 0, sizeof(*timer));
+  timer->stream = stream;
+  timer->proactor = proactor;
+  timer->host_allocator = stream->host_allocator;
+  iree_async_operation_initialize(
+      &timer->operation.base, IREE_ASYNC_OPERATION_TYPE_TIMER,
+      IREE_ASYNC_OPERATION_FLAG_NONE,
+      iree_hal_streaming_value_flush_timer_callback, timer);
+  timer->operation.deadline_ns =
+      iree_time_now() +
+      iree_make_duration_ms(IREE_HAL_STREAMING_VALUE_FLUSH_DELAY_MS);
+
+  iree_hal_streaming_stream_retain(stream);
+  iree_async_proactor_retain(proactor);
+  stream->value_flush_timer = timer;
+  iree_status_t status =
+      iree_async_proactor_submit_one(proactor, &timer->operation.base);
+  if (!iree_status_is_ok(status)) {
+    stream->value_flush_timer = NULL;
+    iree_async_proactor_release(proactor);
+    iree_allocator_free(stream->host_allocator, timer);
+    iree_hal_streaming_stream_release(stream);
+  }
+  return status;
+}
 
 bool iree_hal_streaming_queue_family_supports_value_waits(
     const iree_hal_queue_family_spec_t* family_spec) {
@@ -540,6 +633,17 @@ iree_status_t iree_hal_streaming_queue_value_operations(
     iree_slim_mutex_lock(&stream->mutex);
     status = iree_hal_streaming_record_write_batch_locked(
         stream, operation_count, operations);
+    if (iree_status_is_ok(status)) {
+      iree_status_t schedule_status =
+          iree_hal_streaming_schedule_value_flush_locked(stream);
+      if (!iree_status_is_ok(schedule_status)) {
+        // Scheduling is an optimization over immediate publication, not part of
+        // the API result. If it is unavailable, submit the recorded batch now
+        // so a successful call still guarantees eventual device visibility.
+        iree_status_ignore(schedule_status);
+        status = iree_hal_streaming_stream_flush_locked(stream);
+      }
+    }
     iree_slim_mutex_unlock(&stream->mutex);
   }
 

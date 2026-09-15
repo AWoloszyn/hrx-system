@@ -35,6 +35,8 @@ typedef struct iree_hal_streaming_context_module_entry_t
     iree_hal_streaming_context_module_entry_t;
 typedef struct iree_hal_streaming_context_symbol_map_t
     iree_hal_streaming_context_symbol_map_t;
+typedef struct iree_hal_streaming_value_flush_timer_t
+    iree_hal_streaming_value_flush_timer_t;
 
 // Timeline advanced by accepted operations in one binding scheduling domain.
 // The semaphore is owned by the containing object and |pending_value| is the
@@ -546,6 +548,11 @@ typedef struct iree_hal_streaming_stream_t {
 
   // Command buffer for batching operations.
   iree_hal_command_buffer_t* command_buffer;
+  // Outstanding bounded flush for a write-only value-operation batch, or NULL.
+  // Protected by |mutex|. The timer owns a stream reference until its callback
+  // clears this field, so stream destruction cannot race the callback.
+  iree_hal_streaming_value_flush_timer_t* value_flush_timer;
+  // Number of kernel launches recorded in |command_buffer|.
   uint32_t pending_launch_count;
 
   // Semaphore chain for synchronization.

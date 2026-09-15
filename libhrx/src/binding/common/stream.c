@@ -309,6 +309,7 @@ iree_status_t iree_hal_streaming_stream_create(
   stream->priority = priority;
   stream->stream_id = 0;
   stream->command_buffer = NULL;
+  stream->value_flush_timer = NULL;
   stream->pending_launch_count = 0;
   stream->timeline_semaphore = NULL;
   stream->pending_value = 0;
@@ -420,6 +421,9 @@ static void iree_hal_streaming_stream_destroy(
 
   iree_allocator_free(stream->host_allocator,
                       stream->memory_reuse_dependencies);
+
+  IREE_ASSERT(stream->value_flush_timer == NULL,
+              "a flush timer reference must keep its stream alive");
 
   // Release command buffer.
   iree_hal_command_buffer_release(stream->command_buffer);
