@@ -2811,7 +2811,7 @@ static iree_status_t loom_llvmir_emit_shuffle_like(
 static iree_status_t loom_llvmir_emit_byte_pointer(
     loom_llvmir_emit_function_state_t* state,
     const loom_low_descriptor_packet_t* packet,
-    const loom_llvmir_emit_memory_info_t* info, loom_value_id_t base_value_id,
+    const loom_llvmir_emit_memory_info_t* info, uint32_t pointer_operand_index,
     loom_llvmir_value_id_t base, loom_llvmir_value_id_t* out_pointer) {
   int64_t byte_offset = 0;
   bool has_byte_offset = false;
@@ -2841,9 +2841,9 @@ static iree_status_t loom_llvmir_emit_byte_pointer(
     }
 
     loom_llvmir_value_id_t index = LOOM_LLVMIR_VALUE_ID_INVALID;
-    const uint32_t index_operand_index =
-        iree_any_bit_set(info->flags, LOOM_LLVMIR_EMIT_MEMORY_FLAG_LOAD) ? 1
-                                                                         : 2;
+    // Indexed memory descriptors place the index immediately after the pointer.
+    // Compare-exchange has two value operands before that pointer.
+    const uint32_t index_operand_index = pointer_operand_index + 1;
     IREE_RETURN_IF_ERROR(loom_llvmir_emit_lookup_value(
         state, loom_op_const_operands(packet->op)[index_operand_index],
         &index));
@@ -2897,6 +2897,8 @@ static iree_status_t loom_llvmir_emit_byte_pointer(
       loom_llvmir_module_get_integer_type(state->llvmir_module, 8, &i8_type));
   uint32_t pointer_address_space = 0;
   bool supported = true;
+  const loom_value_id_t base_value_id =
+      loom_op_const_operands(packet->op)[pointer_operand_index];
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_pointer_address_space_for_low_value(
       state, packet->op, base_value_id, IREE_SV("memory_pointer"),
       IREE_SV("reg<llvmir.ptr> memory pointer"), &pointer_address_space,
@@ -3050,7 +3052,7 @@ static iree_status_t loom_llvmir_emit_memory(
       loom_llvmir_emit_lookup_value(state, base_value_id, &base));
   loom_llvmir_value_id_t pointer = LOOM_LLVMIR_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_byte_pointer(
-      state, packet, info, base_value_id, base, &pointer));
+      state, packet, info, pointer_operand_index, base, &pointer));
   if (pointer == LOOM_LLVMIR_VALUE_ID_INVALID) return iree_ok_status();
 
   if (is_load) {
@@ -3177,7 +3179,7 @@ static iree_status_t loom_llvmir_emit_atomic(
   };
   loom_llvmir_value_id_t pointer = LOOM_LLVMIR_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_byte_pointer(
-      state, packet, &memory_info, base_value_id, base, &pointer));
+      state, packet, &memory_info, pointer_operand_index, base, &pointer));
   if (pointer == LOOM_LLVMIR_VALUE_ID_INVALID) return iree_ok_status();
 
   loom_llvmir_type_id_t value_type = LOOM_LLVMIR_TYPE_ID_INVALID;
