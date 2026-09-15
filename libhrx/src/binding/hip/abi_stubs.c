@@ -431,7 +431,7 @@ HIPAPI hipError_t hipBindTexture(size_t* offset, const textureReference* tex,
   (void)devPtr;
   (void)desc;
   (void)size;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipBindTexture2D(size_t* offset, const textureReference* tex,
@@ -445,7 +445,7 @@ HIPAPI hipError_t hipBindTexture2D(size_t* offset, const textureReference* tex,
   (void)width;
   (void)height;
   (void)pitch;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipBindTextureToArray(const textureReference* tex,
@@ -454,7 +454,7 @@ HIPAPI hipError_t hipBindTextureToArray(const textureReference* tex,
   (void)tex;
   (void)array;
   (void)desc;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipBindTextureToMipmappedArray(
@@ -463,7 +463,7 @@ HIPAPI hipError_t hipBindTextureToMipmappedArray(
   (void)tex;
   (void)mipmappedArray;
   (void)desc;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 static void iree_hip_convert_device_properties_r0600_to_r0000(
@@ -587,7 +587,7 @@ static hipError_t iree_hip_choose_device_r0600(
 HIPAPI hipError_t hipChooseDeviceR0000(int* device,
                                        const hipDeviceProp_tR0000* properties) {
   if (!device || !properties) {
-    return iree_hip_error_state_publish(hipErrorInvalidValue);
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
   }
   hipDeviceProp_tR0600 current_properties = {0};
   current_properties.major = properties->major;
@@ -606,19 +606,17 @@ HIPAPI hipError_t hipChooseDeviceR0000(int* device,
   current_properties.maxSharedMemoryPerMultiProcessor =
       properties->maxSharedMemoryPerMultiProcessor;
   current_properties.warpSize = properties->warpSize;
-  return iree_hip_error_state_publish(
-      iree_hip_choose_device_r0600(device, &current_properties));
+  HIP_RETURN_ERROR(iree_hip_choose_device_r0600(device, &current_properties));
 }
 
 HIPAPI hipError_t hipChooseDevice(int* device,
                                   const hipDeviceProp_tR0000* properties) {
-  return iree_hip_error_state_publish(hipChooseDeviceR0000(device, properties));
+  HIP_RETURN_ERROR(hipChooseDeviceR0000(device, properties));
 }
 
 HIPAPI hipError_t hipChooseDeviceR0600(int* device,
                                        const hipDeviceProp_tR0600* properties) {
-  return iree_hip_error_state_publish(
-      iree_hip_choose_device_r0600(device, properties));
+  HIP_RETURN_ERROR(iree_hip_choose_device_r0600(device, properties));
 }
 
 HIPAPI hipError_t hipConfigureCall(dim3 gridDim, dim3 blockDim,
@@ -627,14 +625,14 @@ HIPAPI hipError_t hipConfigureCall(dim3 gridDim, dim3 blockDim,
   (void)blockDim;
   (void)sharedMem;
   (void)stream;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipCreateSurfaceObject(hipSurfaceObject_t* pSurfObject,
                                          const hipResourceDesc* pResDesc) {
   (void)pSurfObject;
   (void)pResDesc;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipCreateTextureObject(
@@ -645,64 +643,64 @@ HIPAPI hipError_t hipCreateTextureObject(
   (void)pResDesc;
   (void)pTexDesc;
   (void)pResViewDesc;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipCtxGetApiVersion(hipCtx_t ctx, unsigned int* apiVersion) {
   (void)ctx;
   (void)apiVersion;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipCtxGetCacheConfig(hipFuncCache_t* cacheConfig) {
   (void)cacheConfig;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipCtxGetFlags(unsigned int* flags) {
   (void)flags;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipCtxGetSharedMemConfig(hipSharedMemConfig* pConfig) {
   (void)pConfig;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipCtxSetCacheConfig(hipFuncCache_t cacheConfig) {
   (void)cacheConfig;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipCtxSetSharedMemConfig(hipSharedMemConfig config) {
   (void)config;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipDestroySurfaceObject(hipSurfaceObject_t surfaceObject) {
   (void)surfaceObject;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipDestroyTextureObject(hipTextureObject_t textureObject) {
   (void)textureObject;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipDestroyExternalMemory(hipExternalMemory_t extMem) {
   (void)extMem;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipDestroyExternalSemaphore(hipExternalSemaphore_t extSem) {
   (void)extSem;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipDeviceComputeCapability(int* major, int* minor,
                                              hipDevice_t device) {
   if (!major || !minor) {
-    return iree_hip_error_state_publish(hipErrorInvalidValue);
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
   }
   hipError_t result = hipDeviceGetAttribute(
       major, hipDeviceAttributeComputeCapabilityMajor, device);
@@ -710,7 +708,7 @@ HIPAPI hipError_t hipDeviceComputeCapability(int* major, int* minor,
     result = hipDeviceGetAttribute(
         minor, hipDeviceAttributeComputeCapabilityMinor, device);
   }
-  return iree_hip_error_state_publish(result);
+  HIP_RETURN_ERROR(result);
 }
 
 HIPAPI hipError_t hipDeviceGetTexture1DLinearMaxWidth(
@@ -719,7 +717,7 @@ HIPAPI hipError_t hipDeviceGetTexture1DLinearMaxWidth(
   (void)maxWidthInElements;
   (void)fmtDesc;
   (void)device;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipDrvLaunchKernelEx(const HIP_LAUNCH_CONFIG* config,
@@ -729,16 +727,18 @@ HIPAPI hipError_t hipDrvLaunchKernelEx(const HIP_LAUNCH_CONFIG* config,
   (void)f;
   (void)params;
   (void)extra;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipDrvMemcpy2DUnaligned(const hip_Memcpy2D* pCopy) {
-  if (!pCopy) return hipErrorInvalidValue;
+  if (!pCopy) HIP_RETURN_ERROR(hipErrorInvalidValue);
   if (pCopy->srcMemoryType == hipMemoryTypeArray) {
-    return pCopy->srcArray ? hipErrorNotSupported : hipErrorInvalidValue;
+    HIP_RETURN_ERROR(pCopy->srcArray ? hipErrorNotSupported
+                                     : hipErrorInvalidValue);
   }
   if (pCopy->dstMemoryType == hipMemoryTypeArray) {
-    return pCopy->dstArray ? hipErrorNotSupported : hipErrorInvalidValue;
+    HIP_RETURN_ERROR(pCopy->dstArray ? hipErrorNotSupported
+                                     : hipErrorInvalidValue);
   }
 
   const void* src = NULL;
@@ -751,7 +751,7 @@ HIPAPI hipError_t hipDrvMemcpy2DUnaligned(const hip_Memcpy2D* pCopy) {
       src = pCopy->srcDevice;
       break;
     default:
-      return hipErrorInvalidValue;
+      HIP_RETURN_ERROR(hipErrorInvalidValue);
   }
   void* dst = NULL;
   switch (pCopy->dstMemoryType) {
@@ -763,22 +763,22 @@ HIPAPI hipError_t hipDrvMemcpy2DUnaligned(const hip_Memcpy2D* pCopy) {
       dst = pCopy->dstDevice;
       break;
     default:
-      return hipErrorInvalidValue;
+      HIP_RETURN_ERROR(hipErrorInvalidValue);
   }
-  if (!src || !dst) return hipErrorInvalidValue;
+  if (!src || !dst) HIP_RETURN_ERROR(hipErrorInvalidValue);
   if ((pCopy->WidthInBytes != 0 &&
        (pCopy->srcXInBytes > pCopy->srcPitch ||
         pCopy->dstXInBytes > pCopy->dstPitch ||
         pCopy->WidthInBytes > pCopy->srcPitch - pCopy->srcXInBytes ||
         pCopy->WidthInBytes > pCopy->dstPitch - pCopy->dstXInBytes))) {
-    return hipErrorInvalidValue;
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
   }
   const size_t max_size = (size_t)-1;
   if ((pCopy->srcY != 0 &&
        pCopy->srcPitch > (max_size - pCopy->srcXInBytes) / pCopy->srcY) ||
       (pCopy->dstY != 0 &&
        pCopy->dstPitch > (max_size - pCopy->dstXInBytes) / pCopy->dstY)) {
-    return hipErrorInvalidValue;
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
   }
 
   hipMemcpyKind kind = hipMemcpyDefault;
@@ -801,7 +801,7 @@ HIPAPI hipError_t hipDrvMemcpy2DUnaligned(const hip_Memcpy2D* pCopy) {
   hipError_t result =
       hipMemcpy2D(dst_base, pCopy->dstPitch, src_base, pCopy->srcPitch,
                   pCopy->WidthInBytes, pCopy->Height, kind);
-  return result == hipErrorNotFound ? hipErrorInvalidValue : result;
+  HIP_RETURN_ERROR(result == hipErrorNotFound ? hipErrorInvalidValue : result);
 }
 
 HIPAPI hipError_t hipEventRecordWithFlags(hipEvent_t event, hipStream_t stream,
@@ -809,7 +809,7 @@ HIPAPI hipError_t hipEventRecordWithFlags(hipEvent_t event, hipStream_t stream,
   (void)event;
   (void)stream;
   (void)flags;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipExternalMemoryGetMappedBuffer(
@@ -818,7 +818,7 @@ HIPAPI hipError_t hipExternalMemoryGetMappedBuffer(
   (void)devPtr;
   (void)extMem;
   (void)bufferDesc;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipExternalMemoryGetMappedMipmappedArray(
@@ -827,27 +827,31 @@ HIPAPI hipError_t hipExternalMemoryGetMappedMipmappedArray(
   (void)mipmap;
   (void)extMem;
   (void)mipmapDesc;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
-HIPAPI hipError_t hipExtDisableLogging(void) { return hipErrorNotSupported; }
+HIPAPI hipError_t hipExtDisableLogging(void) {
+  HIP_RETURN_ERROR(hipErrorNotSupported);
+}
 
-HIPAPI hipError_t hipExtEnableLogging(void) { return hipErrorNotSupported; }
+HIPAPI hipError_t hipExtEnableLogging(void) {
+  HIP_RETURN_ERROR(hipErrorNotSupported);
+}
 
 HIPAPI hipError_t hipExtGetLinkTypeAndHopCount(int device1, int device2,
                                                uint32_t* linktype,
                                                uint32_t* hopcount) {
   if (!linktype || !hopcount || device1 == device2 || device1 < 0 ||
       device2 < 0) {
-    return iree_hip_error_state_publish(hipErrorInvalidValue);
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
   }
   int device_count = 0;
   hipError_t result = hipGetDeviceCount(&device_count);
-  if (result != hipSuccess) return iree_hip_error_state_publish(result);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
   if (device1 >= device_count || device2 >= device_count) {
-    return iree_hip_error_state_publish(hipErrorInvalidDevice);
+    HIP_RETURN_ERROR(hipErrorInvalidDevice);
   }
-  return iree_hip_error_state_publish(hipErrorNotSupported);
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipExtSetLoggingParams(size_t log_level, size_t log_size,
@@ -855,27 +859,26 @@ HIPAPI hipError_t hipExtSetLoggingParams(size_t log_level, size_t log_size,
   (void)log_level;
   (void)log_size;
   (void)log_mask;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipFreeMipmappedArray(hipMipmappedArray_t mipmappedArray) {
-  return hrx_hip_destroy_mipmapped_array(mipmappedArray);
+  HIP_RETURN_ERROR(hrx_hip_destroy_mipmapped_array(mipmappedArray));
 }
 
 HIPAPI hipError_t hipGetDevicePropertiesR0000(hipDeviceProp_tR0000* prop,
                                               int device) {
-  if (!prop) return iree_hip_error_state_publish(hipErrorInvalidValue);
+  if (!prop) HIP_RETURN_ERROR(hipErrorInvalidValue);
   hipDeviceProp_tR0600 current_properties = {0};
   hipError_t result = hipGetDevicePropertiesR0600(&current_properties, device);
-  if (result != hipSuccess) return iree_hip_error_state_publish(result);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
   iree_hip_convert_device_properties_r0600_to_r0000(&current_properties, prop);
-  return iree_hip_error_state_publish(hipSuccess);
+  HIP_RETURN_ERROR(hipSuccess);
 }
 
 HIPAPI hipError_t hipGetDeviceProperties(hipDeviceProp_tR0000* prop,
                                          int device) {
-  return iree_hip_error_state_publish(
-      hipGetDevicePropertiesR0000(prop, device));
+  HIP_RETURN_ERROR(hipGetDevicePropertiesR0000(prop, device));
 }
 
 HIPAPI hipError_t hipGetDriverEntryPoint(
@@ -884,34 +887,35 @@ HIPAPI hipError_t hipGetDriverEntryPoint(
   hipError_t result =
       iree_hip_driver_entry_point_lookup(symbol, funcPtr, flags, status);
   if (result == hipErrorNotFound) result = hipErrorInvalidValue;
-  return iree_hip_error_state_publish(result);
+  HIP_RETURN_ERROR(result);
 }
 
 HIPAPI hipError_t hipGetFuncBySymbol(hipFunction_t* functionPtr,
                                      const void* symbolPtr) {
   (void)functionPtr;
   (void)symbolPtr;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipGetMipmappedArrayLevel(
     hipArray_t* levelArray, hipMipmappedArray_const_t mipmappedArray,
     unsigned int level) {
-  return hrx_hip_mipmapped_array_level(levelArray, mipmappedArray, level);
+  HIP_RETURN_ERROR(
+      hrx_hip_mipmapped_array_level(levelArray, mipmappedArray, level));
 }
 
 HIPAPI hipError_t hipGetTextureAlignmentOffset(size_t* offset,
                                                const textureReference* texref) {
   (void)offset;
   (void)texref;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipGetTextureObjectResourceDesc(
     hipResourceDesc* pResDesc, hipTextureObject_t textureObject) {
   (void)pResDesc;
   (void)textureObject;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t
@@ -919,28 +923,28 @@ hipGetTextureObjectResourceViewDesc(struct hipResourceViewDesc* pResViewDesc,
                                     hipTextureObject_t textureObject) {
   (void)pResViewDesc;
   (void)textureObject;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipGetTextureObjectTextureDesc(
     hipTextureDesc* pTexDesc, hipTextureObject_t textureObject) {
   (void)pTexDesc;
   (void)textureObject;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipGetTextureReference(const textureReference** texref,
                                          const void* symbol) {
   (void)texref;
   (void)symbol;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipGraphExternalSemaphoresSignalNodeGetParams(
     hipGraphNode_t hNode, hipExternalSemaphoreSignalNodeParams* params_out) {
   (void)hNode;
   (void)params_out;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipGraphExternalSemaphoresSignalNodeSetParams(
@@ -948,14 +952,14 @@ HIPAPI hipError_t hipGraphExternalSemaphoresSignalNodeSetParams(
     const hipExternalSemaphoreSignalNodeParams* nodeParams) {
   (void)hNode;
   (void)nodeParams;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipGraphExternalSemaphoresWaitNodeGetParams(
     hipGraphNode_t hNode, hipExternalSemaphoreWaitNodeParams* params_out) {
   (void)hNode;
   (void)params_out;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipGraphExternalSemaphoresWaitNodeSetParams(
@@ -963,7 +967,7 @@ HIPAPI hipError_t hipGraphExternalSemaphoresWaitNodeSetParams(
     const hipExternalSemaphoreWaitNodeParams* nodeParams) {
   (void)hNode;
   (void)nodeParams;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipGraphExecExternalSemaphoresSignalNodeSetParams(
@@ -972,7 +976,7 @@ HIPAPI hipError_t hipGraphExecExternalSemaphoresSignalNodeSetParams(
   (void)hGraphExec;
   (void)hNode;
   (void)nodeParams;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipGraphExecExternalSemaphoresWaitNodeSetParams(
@@ -981,7 +985,7 @@ HIPAPI hipError_t hipGraphExecExternalSemaphoresWaitNodeSetParams(
   (void)hGraphExec;
   (void)hNode;
   (void)nodeParams;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipHccModuleLaunchKernel(
@@ -1003,7 +1007,7 @@ HIPAPI hipError_t hipHccModuleLaunchKernel(
   (void)extra;
   (void)startEvent;
   (void)stopEvent;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipGraphicsMapResources(int count,
@@ -1012,7 +1016,7 @@ HIPAPI hipError_t hipGraphicsMapResources(int count,
   (void)count;
   (void)resources;
   (void)stream;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipGraphicsResourceGetMappedPointer(
@@ -1020,7 +1024,7 @@ HIPAPI hipError_t hipGraphicsResourceGetMappedPointer(
   (void)devPtr;
   (void)size;
   (void)resource;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipGraphicsSubResourceGetMappedArray(
@@ -1030,7 +1034,7 @@ HIPAPI hipError_t hipGraphicsSubResourceGetMappedArray(
   (void)resource;
   (void)arrayIndex;
   (void)mipLevel;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipGraphicsUnmapResources(int count,
@@ -1039,13 +1043,13 @@ HIPAPI hipError_t hipGraphicsUnmapResources(int count,
   (void)count;
   (void)resources;
   (void)stream;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t
 hipGraphicsUnregisterResource(hipGraphicsResource_t resource) {
   (void)resource;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t
@@ -1053,7 +1057,7 @@ hipImportExternalMemory(hipExternalMemory_t* extMem_out,
                         const hipExternalMemoryHandleDesc* memHandleDesc) {
   (void)extMem_out;
   (void)memHandleDesc;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipImportExternalSemaphore(
@@ -1061,7 +1065,7 @@ HIPAPI hipError_t hipImportExternalSemaphore(
     const hipExternalSemaphoreHandleDesc* semHandleDesc) {
   (void)extSem_out;
   (void)semHandleDesc;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipKernelGetAttribute(int* pi, hipFunction_attribute attrib,
@@ -1070,27 +1074,27 @@ HIPAPI hipError_t hipKernelGetAttribute(int* pi, hipFunction_attribute attrib,
   (void)attrib;
   (void)kernel;
   (void)dev;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipKernelGetFunction(hipFunction_t* pFunc,
                                        hipKernel_t kernel) {
   (void)pFunc;
   (void)kernel;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipKernelGetLibrary(hipLibrary_t* library,
                                       hipKernel_t kernel) {
   (void)library;
   (void)kernel;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipKernelGetName(const char** name, hipKernel_t kernel) {
   (void)name;
   (void)kernel;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipKernelGetParamInfo(hipKernel_t kernel, size_t paramIndex,
@@ -1100,7 +1104,7 @@ HIPAPI hipError_t hipKernelGetParamInfo(hipKernel_t kernel, size_t paramIndex,
   (void)paramIndex;
   (void)paramOffset;
   (void)paramSize;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipKernelSetAttribute(hipFunction_attribute attrib, int value,
@@ -1109,12 +1113,12 @@ HIPAPI hipError_t hipKernelSetAttribute(hipFunction_attribute attrib, int value,
   (void)value;
   (void)kernel;
   (void)dev;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipLaunchByPtr(const void* func) {
   (void)func;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipLaunchCooperativeKernelMultiDevice(
@@ -1122,12 +1126,12 @@ HIPAPI hipError_t hipLaunchCooperativeKernelMultiDevice(
   int device_count = 0;
   hipError_t init_result = hipGetDeviceCount(&device_count);
   if (init_result != hipSuccess) {
-    return iree_hip_error_state_publish(init_result);
+    HIP_RETURN_ERROR(init_result);
   }
   (void)launchParamsList;
   (void)numDevices;
   (void)flags;
-  return iree_hip_error_state_publish(hipErrorNotSupported);
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipLaunchKernelExC(const hipLaunchConfig_t* config,
@@ -1135,7 +1139,7 @@ HIPAPI hipError_t hipLaunchKernelExC(const hipLaunchConfig_t* config,
   (void)config;
   (void)fPtr;
   (void)args;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipLibraryEnumerateKernels(hipKernel_t* kernels,
@@ -1144,7 +1148,7 @@ HIPAPI hipError_t hipLibraryEnumerateKernels(hipKernel_t* kernels,
   (void)kernels;
   (void)numKernels;
   (void)library;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipLibraryGetGlobal(void** dptr, size_t* bytes,
@@ -1153,7 +1157,7 @@ HIPAPI hipError_t hipLibraryGetGlobal(void** dptr, size_t* bytes,
   (void)bytes;
   (void)library;
   (void)name;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipLibraryGetKernel(hipKernel_t* pKernel,
@@ -1161,14 +1165,14 @@ HIPAPI hipError_t hipLibraryGetKernel(hipKernel_t* pKernel,
   (void)pKernel;
   (void)library;
   (void)name;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipLibraryGetKernelCount(unsigned int* count,
                                            hipLibrary_t library) {
   (void)count;
   (void)library;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipLibraryGetManaged(void** dptr, size_t* bytes,
@@ -1177,7 +1181,7 @@ HIPAPI hipError_t hipLibraryGetManaged(void** dptr, size_t* bytes,
   (void)bytes;
   (void)library;
   (void)name;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipLibraryLoadData(hipLibrary_t* library, const void* code,
@@ -1195,7 +1199,7 @@ HIPAPI hipError_t hipLibraryLoadData(hipLibrary_t* library, const void* code,
   (void)libraryOptions;
   (void)libraryOptionValues;
   (void)numLibraryOptions;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipLibraryLoadFromFile(
@@ -1211,12 +1215,12 @@ HIPAPI hipError_t hipLibraryLoadFromFile(
   (void)libraryOptions;
   (void)libraryOptionValues;
   (void)numLibraryOptions;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipLibraryUnload(hipLibrary_t library) {
   (void)library;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipLinkAddData(hipLinkState_t state, hipJitInputType type,
@@ -1231,7 +1235,7 @@ HIPAPI hipError_t hipLinkAddData(hipLinkState_t state, hipJitInputType type,
   (void)numOptions;
   (void)options;
   (void)optionValues;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipLinkAddFile(hipLinkState_t state, hipJitInputType type,
@@ -1243,7 +1247,7 @@ HIPAPI hipError_t hipLinkAddFile(hipLinkState_t state, hipJitInputType type,
   (void)numOptions;
   (void)options;
   (void)optionValues;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipLinkComplete(hipLinkState_t state, void** hipBinOut,
@@ -1251,7 +1255,7 @@ HIPAPI hipError_t hipLinkComplete(hipLinkState_t state, void** hipBinOut,
   (void)state;
   (void)hipBinOut;
   (void)sizeOut;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipLinkCreate(unsigned int numOptions, hipJitOption* options,
@@ -1260,12 +1264,12 @@ HIPAPI hipError_t hipLinkCreate(unsigned int numOptions, hipJitOption* options,
   (void)options;
   (void)optionValues;
   (void)stateOut;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipLinkDestroy(hipLinkState_t state) {
   (void)state;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipMallocMipmappedArray(
@@ -1277,18 +1281,18 @@ HIPAPI hipError_t hipMallocMipmappedArray(
   (void)extent;
   (void)numLevels;
   (void)flags;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipMemAllocHost(void** ptr, size_t size) {
-  return hipMallocHost(ptr, size);
+  HIP_RETURN_ERROR(hipMallocHost(ptr, size));
 }
 
 HIPAPI hipError_t hipMemAllocPitch(hipDeviceptr_t* dptr, size_t* pitch,
                                    size_t widthInBytes, size_t height,
                                    unsigned int elementSizeBytes) {
   (void)elementSizeBytes;
-  return hipMallocPitch((void**)dptr, pitch, widthInBytes, height);
+  HIP_RETURN_ERROR(hipMallocPitch((void**)dptr, pitch, widthInBytes, height));
 }
 
 HIPAPI hipError_t hipMemGetHandleForAddressRange(
@@ -1299,7 +1303,7 @@ HIPAPI hipError_t hipMemGetHandleForAddressRange(
   (void)size;
   (void)handleType;
   (void)flags;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 static bool hrx_hip_batch_access_order_valid(hipMemcpySrcAccessOrder order) {
@@ -1438,7 +1442,7 @@ HIPAPI hipError_t hipMemcpy3DBatchAsync(size_t numOps,
                                         unsigned long long flags,
                                         hipStream_t stream) {
   if (numOps == 0 || flags != 0 || !opList) {
-    return hipErrorInvalidValue;
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
   }
   for (size_t i = 0; i < numOps; ++i) {
     hipMemcpy3DParms params;
@@ -1446,22 +1450,22 @@ HIPAPI hipError_t hipMemcpy3DBatchAsync(size_t numOps,
     if (result == hipSuccess) result = hipMemcpy3DAsync(&params, stream);
     if (result != hipSuccess) {
       if (failIdx) *failIdx = i;
-      return result;
+      HIP_RETURN_ERROR(result);
     }
   }
-  return hipSuccess;
+  HIP_RETURN_ERROR(hipSuccess);
 }
 
 HIPAPI hipError_t hipMemcpy3DPeer(hipMemcpy3DPeerParms* p) {
   (void)p;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipMemcpy3DPeerAsync(hipMemcpy3DPeerParms* p,
                                        hipStream_t stream) {
   (void)p;
   (void)stream;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipMemcpyBatchAsync(void** dsts, void** srcs, size_t* sizes,
@@ -1469,26 +1473,27 @@ HIPAPI hipError_t hipMemcpyBatchAsync(void** dsts, void** srcs, size_t* sizes,
                                       size_t* attrsIdxs, size_t numAttrs,
                                       size_t* failIdx, hipStream_t stream) {
   (void)attrsIdxs;
-  if (!dsts || !srcs || !sizes || count == 0) return hipErrorInvalidValue;
+  if (!dsts || !srcs || !sizes || count == 0)
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
   if ((attrs && numAttrs == 0) || (!attrs && numAttrs != 0)) {
-    return hipErrorInvalidValue;
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
   }
-  if (numAttrs != 0) return hipErrorNotSupported;
+  if (numAttrs != 0) HIP_RETURN_ERROR(hipErrorNotSupported);
 
   for (size_t i = 0; i < count; ++i) {
     if (sizes[i] == 0) continue;
     if (!dsts[i] || !srcs[i]) {
       if (failIdx) *failIdx = i;
-      return hipErrorInvalidValue;
+      HIP_RETURN_ERROR(hipErrorInvalidValue);
     }
     hipError_t result =
         hipMemcpyAsync(dsts[i], srcs[i], sizes[i], hipMemcpyDefault, stream);
     if (result != hipSuccess) {
       if (failIdx) *failIdx = i;
-      return result;
+      HIP_RETURN_ERROR(result);
     }
   }
-  return hipSuccess;
+  HIP_RETURN_ERROR(hipSuccess);
 }
 
 static hipError_t iree_hip_memset_d2d_async_rows(
@@ -1542,58 +1547,59 @@ static hipError_t iree_hip_memset_d2d_rows(hipDeviceptr_t dst, size_t dstPitch,
 HIPAPI hipError_t hipMemsetD2D16(hipDeviceptr_t dst, size_t dstPitch,
                                  unsigned short value, size_t width,
                                  size_t height) {
-  return iree_hip_memset_d2d_rows(dst, dstPitch, &value, sizeof(value), width,
-                                  height);
+  HIP_RETURN_ERROR(iree_hip_memset_d2d_rows(dst, dstPitch, &value,
+                                            sizeof(value), width, height));
 }
 
 HIPAPI hipError_t hipMemsetD2D16Async(hipDeviceptr_t dst, size_t dstPitch,
                                       unsigned short value, size_t width,
                                       size_t height, hipStream_t stream) {
-  return iree_hip_memset_d2d_async_rows(dst, dstPitch, &value, sizeof(value),
-                                        width, height, stream);
+  HIP_RETURN_ERROR(iree_hip_memset_d2d_async_rows(
+      dst, dstPitch, &value, sizeof(value), width, height, stream));
 }
 
 HIPAPI hipError_t hipMemsetD2D32(hipDeviceptr_t dst, size_t dstPitch,
                                  unsigned int value, size_t width,
                                  size_t height) {
-  return iree_hip_memset_d2d_rows(dst, dstPitch, &value, sizeof(value), width,
-                                  height);
+  HIP_RETURN_ERROR(iree_hip_memset_d2d_rows(dst, dstPitch, &value,
+                                            sizeof(value), width, height));
 }
 
 HIPAPI hipError_t hipMemsetD2D32Async(hipDeviceptr_t dst, size_t dstPitch,
                                       unsigned int value, size_t width,
                                       size_t height, hipStream_t stream) {
-  return iree_hip_memset_d2d_async_rows(dst, dstPitch, &value, sizeof(value),
-                                        width, height, stream);
+  HIP_RETURN_ERROR(iree_hip_memset_d2d_async_rows(
+      dst, dstPitch, &value, sizeof(value), width, height, stream));
 }
 
 HIPAPI hipError_t hipMemsetD2D8(hipDeviceptr_t dst, size_t dstPitch,
                                 unsigned char value, size_t width,
                                 size_t height) {
-  return iree_hip_memset_d2d_rows(dst, dstPitch, &value, sizeof(value), width,
-                                  height);
+  HIP_RETURN_ERROR(iree_hip_memset_d2d_rows(dst, dstPitch, &value,
+                                            sizeof(value), width, height));
 }
 
 HIPAPI hipError_t hipMemsetD2D8Async(hipDeviceptr_t dst, size_t dstPitch,
                                      unsigned char value, size_t width,
                                      size_t height, hipStream_t stream) {
-  return iree_hip_memset_d2d_async_rows(dst, dstPitch, &value, sizeof(value),
-                                        width, height, stream);
+  HIP_RETURN_ERROR(iree_hip_memset_d2d_async_rows(
+      dst, dstPitch, &value, sizeof(value), width, height, stream));
 }
 
 HIPAPI hipError_t hipMipmappedArrayCreate(
     hipMipmappedArray_t* pHandle, HIP_ARRAY3D_DESCRIPTOR* pMipmappedArrayDesc,
     unsigned int numMipmapLevels) {
-  if (!pHandle || !pMipmappedArrayDesc) return hipErrorInvalidValue;
+  if (!pHandle || !pMipmappedArrayDesc) HIP_RETURN_ERROR(hipErrorInvalidValue);
   *pHandle = NULL;
-  if (hrx_hip_no_visible_devices_requested()) return hipErrorNoDevice;
+  if (hrx_hip_no_visible_devices_requested())
+    HIP_RETURN_ERROR(hipErrorNoDevice);
   hipError_t result = hrx_hip_validate_mipmapped_array_descriptor(
       pMipmappedArrayDesc, numMipmapLevels);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
 
   hipArray_t* level_arrays =
       (hipArray_t*)calloc(numMipmapLevels, sizeof(*level_arrays));
-  if (!level_arrays) return hipErrorOutOfMemory;
+  if (!level_arrays) HIP_RETURN_ERROR(hipErrorOutOfMemory);
 
   size_t memory_size = 0;
   for (unsigned int level = 0; level < numMipmapLevels; ++level) {
@@ -1618,7 +1624,7 @@ HIPAPI hipError_t hipMipmappedArrayCreate(
         }
       }
       free(level_arrays);
-      return result;
+      HIP_RETURN_ERROR(result);
     }
     if (IREE_UNLIKELY(!iree_host_size_checked_add(memory_size, level_size,
                                                   &memory_size))) {
@@ -1628,7 +1634,7 @@ HIPAPI hipError_t hipMipmappedArrayCreate(
         }
       }
       free(level_arrays);
-      return hipErrorInvalidValue;
+      HIP_RETURN_ERROR(hipErrorInvalidValue);
     }
   }
 
@@ -1641,7 +1647,7 @@ HIPAPI hipError_t hipMipmappedArrayCreate(
       }
     }
     free(level_arrays);
-    return hipErrorOutOfMemory;
+    HIP_RETURN_ERROR(hipErrorOutOfMemory);
   }
 
   mipmapped_array->magic = HRX_HIP_MIPMAPPED_ARRAY_MAGIC;
@@ -1651,40 +1657,40 @@ HIPAPI hipError_t hipMipmappedArrayCreate(
   mipmapped_array->memory_size = memory_size;
   hrx_hip_mipmapped_array_registry_insert(mipmapped_array);
   *pHandle = mipmapped_array;
-  return hipSuccess;
+  HIP_RETURN_ERROR(hipSuccess);
 }
 
 HIPAPI hipError_t hipMipmappedArrayGetMemoryRequirements(
     hipArrayMemoryRequirements* memoryRequirements, hipMipmappedArray_t mipmap,
     hipDevice_t device) {
-  if (!memoryRequirements) return hipErrorInvalidValue;
+  if (!memoryRequirements) HIP_RETURN_ERROR(hipErrorInvalidValue);
   hipError_t result = hrx_hip_valid_device(device);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
   size_t memory_size = 0;
   result = hrx_hip_mipmapped_array_memory_size(mipmap, &memory_size);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
   memoryRequirements->alignment = HRX_HIP_MIPMAPPED_ARRAY_ALIGNMENT;
   memoryRequirements->size = memory_size;
-  return hipSuccess;
+  HIP_RETURN_ERROR(hipSuccess);
 }
 
 HIPAPI hipError_t
 hipMipmappedArrayDestroy(hipMipmappedArray_t hMipmappedArray) {
-  return hrx_hip_destroy_mipmapped_array(hMipmappedArray);
+  HIP_RETURN_ERROR(hrx_hip_destroy_mipmapped_array(hMipmappedArray));
 }
 
 HIPAPI hipError_t hipMipmappedArrayGetLevel(hipArray_t* pLevelArray,
                                             hipMipmappedArray_t hMipMappedArray,
                                             unsigned int level) {
-  return hipGetMipmappedArrayLevel(
-      pLevelArray, (hipMipmappedArray_const_t)hMipMappedArray, level);
+  HIP_RETURN_ERROR(hipGetMipmappedArrayLevel(
+      pLevelArray, (hipMipmappedArray_const_t)hMipMappedArray, level));
 }
 
 HIPAPI hipError_t hipModuleGetFunctionCount(unsigned int* count,
                                             hipModule_t module) {
   (void)count;
   (void)module;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipModuleGetTexRef(textureReference** texRef,
@@ -1692,7 +1698,7 @@ HIPAPI hipError_t hipModuleGetTexRef(textureReference** texRef,
   (void)texRef;
   (void)hmod;
   (void)name;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipModuleLaunchCooperativeKernelMultiDevice(
@@ -1701,26 +1707,30 @@ HIPAPI hipError_t hipModuleLaunchCooperativeKernelMultiDevice(
   (void)launchParamsList;
   (void)numDevices;
   (void)flags;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipModuleLoadFatBinary(hipModule_t* module,
                                          const void* fatbin) {
   (void)module;
   (void)fatbin;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
-HIPAPI hipError_t hipProfilerStart(void) { return hipErrorNotSupported; }
+HIPAPI hipError_t hipProfilerStart(void) {
+  HIP_RETURN_ERROR(hipErrorNotSupported);
+}
 
-HIPAPI hipError_t hipProfilerStop(void) { return hipErrorNotSupported; }
+HIPAPI hipError_t hipProfilerStop(void) {
+  HIP_RETURN_ERROR(hipErrorNotSupported);
+}
 
 HIPAPI hipError_t hipSetupArgument(const void* arg, size_t size,
                                    size_t offset) {
   (void)arg;
   (void)size;
   (void)offset;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipSignalExternalSemaphoresAsync(
@@ -1731,17 +1741,17 @@ HIPAPI hipError_t hipSignalExternalSemaphoresAsync(
   (void)paramsArray;
   (void)numExtSems;
   (void)stream;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipStreamAddCallback(hipStream_t stream,
                                        hipStreamCallback_t callback,
                                        void* userData, unsigned int flags) {
-  if (!callback || flags != 0) return hipErrorInvalidValue;
+  if (!callback || flags != 0) HIP_RETURN_ERROR(hipErrorInvalidValue);
 
   hrx_hip_stream_callback_thunk_t* thunk =
       (hrx_hip_stream_callback_thunk_t*)malloc(sizeof(*thunk));
-  if (!thunk) return hipErrorOutOfMemory;
+  if (!thunk) HIP_RETURN_ERROR(hipErrorOutOfMemory);
   thunk->callback = callback;
   thunk->stream = stream;
   thunk->user_data = userData;
@@ -1751,25 +1761,25 @@ HIPAPI hipError_t hipStreamAddCallback(hipStream_t stream,
   if (result != hipSuccess) {
     free(thunk);
   }
-  return result;
+  HIP_RETURN_ERROR(result);
 }
 
 HIPAPI hipError_t hipStreamAttachMemAsync(hipStream_t stream, void* dev_ptr,
                                           size_t length, unsigned int flags) {
-  if (!dev_ptr) return hipErrorInvalidValue;
+  if (!dev_ptr) HIP_RETURN_ERROR(hipErrorInvalidValue);
   if (flags != hipMemAttachGlobal && flags != hipMemAttachHost &&
       flags != hipMemAttachSingle) {
-    return hipErrorInvalidValue;
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
   }
   if (!stream && flags == hipMemAttachSingle) {
-    return hipErrorInvalidValue;
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
   }
 
   hipMemoryType memory_type = hipMemoryTypeUnregistered;
   hipError_t result = hipPointerGetAttribute(
       &memory_type, HIP_POINTER_ATTRIBUTE_MEMORY_TYPE, dev_ptr);
   if (result != hipSuccess || memory_type != hipMemoryTypeManaged) {
-    return hipErrorInvalidValue;
+    HIP_RETURN_ERROR(hipErrorInvalidValue);
   }
 
   if (length != 0) {
@@ -1777,10 +1787,10 @@ HIPAPI hipError_t hipStreamAttachMemAsync(hipStream_t stream, void* dev_ptr,
     result = hipPointerGetAttribute(&allocation_size,
                                     HIP_POINTER_ATTRIBUTE_RANGE_SIZE, dev_ptr);
     if (result != hipSuccess || length != allocation_size) {
-      return hipErrorInvalidValue;
+      HIP_RETURN_ERROR(hipErrorInvalidValue);
     }
   }
-  return hipSuccess;
+  HIP_RETURN_ERROR(hipSuccess);
 }
 
 HIPAPI hipError_t hipTexObjectCreate(
@@ -1791,40 +1801,40 @@ HIPAPI hipError_t hipTexObjectCreate(
   (void)pResDesc;
   (void)pTexDesc;
   (void)pResViewDesc;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipTexObjectDestroy(hipTextureObject_t texObject) {
   (void)texObject;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipTexObjectGetResourceDesc(HIP_RESOURCE_DESC* pResDesc,
                                               hipTextureObject_t texObject) {
   (void)pResDesc;
   (void)texObject;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipTexObjectGetResourceViewDesc(
     HIP_RESOURCE_VIEW_DESC* pResViewDesc, hipTextureObject_t texObject) {
   (void)pResViewDesc;
   (void)texObject;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipTexObjectGetTextureDesc(HIP_TEXTURE_DESC* pTexDesc,
                                              hipTextureObject_t texObject) {
   (void)pTexDesc;
   (void)texObject;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipTexRefGetAddress(hipDeviceptr_t* dev_ptr,
                                       const textureReference* texRef) {
   (void)dev_ptr;
   (void)texRef;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipTexRefGetAddressMode(enum hipTextureAddressMode* pam,
@@ -1833,35 +1843,35 @@ HIPAPI hipError_t hipTexRefGetAddressMode(enum hipTextureAddressMode* pam,
   (void)pam;
   (void)texRef;
   (void)dim;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipTexRefGetArray(hipArray_t* pArray,
                                     const textureReference* texRef) {
   (void)pArray;
   (void)texRef;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipTexRefGetBorderColor(float* pBorderColor,
                                           const textureReference* texRef) {
   (void)pBorderColor;
   (void)texRef;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipTexRefGetFilterMode(enum hipTextureFilterMode* pfm,
                                          const textureReference* texRef) {
   (void)pfm;
   (void)texRef;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipTexRefGetFlags(unsigned int* pFlags,
                                     const textureReference* texRef) {
   (void)pFlags;
   (void)texRef;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipTexRefGetFormat(hipArray_Format* pFormat,
@@ -1870,35 +1880,35 @@ HIPAPI hipError_t hipTexRefGetFormat(hipArray_Format* pFormat,
   (void)pFormat;
   (void)pNumChannels;
   (void)texRef;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipTexRefGetMaxAnisotropy(int* pmaxAnsio,
                                             const textureReference* texRef) {
   (void)pmaxAnsio;
   (void)texRef;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipTexRefGetMipMappedArray(hipMipmappedArray_t* pArray,
                                              const textureReference* texRef) {
   (void)pArray;
   (void)texRef;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipTexRefGetMipmapFilterMode(enum hipTextureFilterMode* pfm,
                                                const textureReference* texRef) {
   (void)pfm;
   (void)texRef;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipTexRefGetMipmapLevelBias(float* pbias,
                                               const textureReference* texRef) {
   (void)pbias;
   (void)texRef;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipTexRefGetMipmapLevelClamp(float* pminMipmapLevelClamp,
@@ -1907,7 +1917,7 @@ HIPAPI hipError_t hipTexRefGetMipmapLevelClamp(float* pminMipmapLevelClamp,
   (void)pminMipmapLevelClamp;
   (void)pmaxMipmapLevelClamp;
   (void)texRef;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipTexRefSetAddress(size_t* ByteOffset,
@@ -1917,7 +1927,7 @@ HIPAPI hipError_t hipTexRefSetAddress(size_t* ByteOffset,
   (void)texRef;
   (void)dptr;
   (void)bytes;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipTexRefSetAddress2D(textureReference* texRef,
@@ -1927,7 +1937,7 @@ HIPAPI hipError_t hipTexRefSetAddress2D(textureReference* texRef,
   (void)desc;
   (void)dptr;
   (void)Pitch;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipTexRefSetAddressMode(textureReference* texRef, int dim,
@@ -1935,7 +1945,7 @@ HIPAPI hipError_t hipTexRefSetAddressMode(textureReference* texRef, int dim,
   (void)texRef;
   (void)dim;
   (void)am;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipTexRefSetArray(textureReference* tex,
@@ -1944,28 +1954,28 @@ HIPAPI hipError_t hipTexRefSetArray(textureReference* tex,
   (void)tex;
   (void)array;
   (void)flags;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipTexRefSetBorderColor(textureReference* texRef,
                                           float* pBorderColor) {
   (void)texRef;
   (void)pBorderColor;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipTexRefSetFilterMode(textureReference* texRef,
                                          enum hipTextureFilterMode fm) {
   (void)texRef;
   (void)fm;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipTexRefSetFlags(textureReference* texRef,
                                     unsigned int Flags) {
   (void)texRef;
   (void)Flags;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipTexRefSetFormat(textureReference* texRef,
@@ -1974,28 +1984,28 @@ HIPAPI hipError_t hipTexRefSetFormat(textureReference* texRef,
   (void)texRef;
   (void)fmt;
   (void)NumPackedComponents;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipTexRefSetMaxAnisotropy(textureReference* texRef,
                                             unsigned int maxAniso) {
   (void)texRef;
   (void)maxAniso;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipTexRefSetMipmapFilterMode(textureReference* texRef,
                                                enum hipTextureFilterMode fm) {
   (void)texRef;
   (void)fm;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipTexRefSetMipmapLevelBias(textureReference* texRef,
                                               float bias) {
   (void)texRef;
   (void)bias;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipTexRefSetMipmapLevelClamp(textureReference* texRef,
@@ -2004,7 +2014,7 @@ HIPAPI hipError_t hipTexRefSetMipmapLevelClamp(textureReference* texRef,
   (void)texRef;
   (void)minMipMapLevelClamp;
   (void)maxMipMapLevelClamp;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipTexRefSetMipmappedArray(
@@ -2013,12 +2023,12 @@ HIPAPI hipError_t hipTexRefSetMipmappedArray(
   (void)texRef;
   (void)mipmappedArray;
   (void)Flags;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipUnbindTexture(const textureReference* tex) {
   (void)tex;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipWaitExternalSemaphoresAsync(
@@ -2029,14 +2039,14 @@ HIPAPI hipError_t hipWaitExternalSemaphoresAsync(
   (void)paramsArray;
   (void)numExtSems;
   (void)stream;
-  return hipErrorNotSupported;
+  HIP_RETURN_ERROR(hipErrorNotSupported);
 }
 
 HIPAPI hipError_t hipEventRecord_spt(hipEvent_t event, hipStream_t stream) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
-  return hipEventRecord(event, resolved_stream);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+  HIP_RETURN_ERROR(hipEventRecord(event, resolved_stream));
 }
 
 HIPAPI hipError_t hipGetDriverEntryPoint_spt(const char* symbol,
@@ -2053,7 +2063,7 @@ HIPAPI hipError_t hipGetDriverEntryPoint_spt(const char* symbol,
                                                 normalized_flags, status);
   }
   if (result == hipErrorNotFound) result = hipErrorInvalidValue;
-  return iree_hip_error_state_publish(result);
+  HIP_RETURN_ERROR(result);
 }
 
 HIPAPI hipError_t hipGetProcAddress_spt(const char* symbol, void** function,
@@ -2068,7 +2078,7 @@ HIPAPI hipError_t hipGetProcAddress_spt(const char* symbol, void** function,
     result = iree_hip_proc_address_lookup(symbol, function, hip_version,
                                           normalized_flags, symbol_status);
   }
-  return iree_hip_error_state_publish(result);
+  HIP_RETURN_ERROR(result);
 }
 
 HIPAPI hipError_t hipLaunchCooperativeKernel_spt(const void* f, dim3 gridDim,
@@ -2078,9 +2088,9 @@ HIPAPI hipError_t hipLaunchCooperativeKernel_spt(const void* f, dim3 gridDim,
                                                  hipStream_t hStream) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(hStream, &resolved_stream);
-  if (result != hipSuccess) return result;
-  return hipLaunchCooperativeKernel(f, gridDim, blockDim, kernelParams,
-                                    sharedMemBytes, resolved_stream);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+  HIP_RETURN_ERROR(hipLaunchCooperativeKernel(
+      f, gridDim, blockDim, kernelParams, sharedMemBytes, resolved_stream));
 }
 
 HIPAPI hipError_t hipLaunchKernel_spt(const void* function_address,
@@ -2089,25 +2099,25 @@ HIPAPI hipError_t hipLaunchKernel_spt(const void* function_address,
                                       hipStream_t stream) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
-  return hipLaunchKernel(function_address, num_blocks, dim_blocks, args,
-                         shared_mem_bytes, resolved_stream);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+  HIP_RETURN_ERROR(hipLaunchKernel(function_address, num_blocks, dim_blocks,
+                                   args, shared_mem_bytes, resolved_stream));
 }
 
 HIPAPI hipError_t hipGraphLaunch_spt(hipGraphExec_t graphExec,
                                      hipStream_t stream) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
-  return hipGraphLaunch(graphExec, resolved_stream);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+  HIP_RETURN_ERROR(hipGraphLaunch(graphExec, resolved_stream));
 }
 
 HIPAPI hipError_t hipLaunchHostFunc_spt(hipStream_t stream, hipHostFn_t fn,
                                         void* userData) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
-  return hipLaunchHostFunc(resolved_stream, fn, userData);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+  HIP_RETURN_ERROR(hipLaunchHostFunc(resolved_stream, fn, userData));
 }
 
 HIPAPI hipError_t hipMemcpy2DAsync_spt(void* dst, size_t dpitch,
@@ -2116,25 +2126,25 @@ HIPAPI hipError_t hipMemcpy2DAsync_spt(void* dst, size_t dpitch,
                                        hipMemcpyKind kind, hipStream_t stream) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
-  return hipMemcpy2DAsync(dst, dpitch, src, spitch, width, height, kind,
-                          resolved_stream);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+  HIP_RETURN_ERROR(hipMemcpy2DAsync(dst, dpitch, src, spitch, width, height,
+                                    kind, resolved_stream));
 }
 
 HIPAPI hipError_t hipMemcpy2DFromArray_spt(void* dst, size_t dpitch,
                                            hipArray_const_t src, size_t wOffset,
                                            size_t hOffset, size_t width,
                                            size_t height, hipMemcpyKind kind) {
-  return hipMemcpy2DFromArray(dst, dpitch, src, wOffset, hOffset, width, height,
-                              kind);
+  HIP_RETURN_ERROR(hipMemcpy2DFromArray(dst, dpitch, src, wOffset, hOffset,
+                                        width, height, kind));
 }
 
 HIPAPI hipError_t hipMemcpy2DToArray_spt(hipArray_t dst, size_t wOffset,
                                          size_t hOffset, const void* src,
                                          size_t spitch, size_t width,
                                          size_t height, hipMemcpyKind kind) {
-  return hipMemcpy2DToArray(dst, wOffset, hOffset, src, spitch, width, height,
-                            kind);
+  HIP_RETURN_ERROR(hipMemcpy2DToArray(dst, wOffset, hOffset, src, spitch, width,
+                                      height, kind));
 }
 
 HIPAPI hipError_t hipMemcpy2D_spt(void* dst, size_t dpitch, const void* src,
@@ -2142,22 +2152,23 @@ HIPAPI hipError_t hipMemcpy2D_spt(void* dst, size_t dpitch, const void* src,
                                   hipMemcpyKind kind) {
   hipStream_t stream = NULL;
   hipError_t result = hrx_hip_spt_default_stream(&stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
   result =
       hipMemcpy2DAsync(dst, dpitch, src, spitch, width, height, kind, stream);
-  return result == hipSuccess ? hipStreamSynchronize(stream) : result;
+  HIP_RETURN_ERROR(result == hipSuccess ? hipStreamSynchronize(stream)
+                                        : result);
 }
 
 HIPAPI hipError_t hipMemcpy3D_spt(const struct hipMemcpy3DParms* p) {
-  return hipMemcpy3D(p);
+  HIP_RETURN_ERROR(hipMemcpy3D(p));
 }
 
 HIPAPI hipError_t hipMemcpy3DAsync_spt(const struct hipMemcpy3DParms* p,
                                        hipStream_t stream) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
-  return hipMemcpy3DAsync(p, resolved_stream);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+  HIP_RETURN_ERROR(hipMemcpy3DAsync(p, resolved_stream));
 }
 
 HIPAPI hipError_t hipMemcpyAsync_spt(void* dst, const void* src,
@@ -2165,8 +2176,8 @@ HIPAPI hipError_t hipMemcpyAsync_spt(void* dst, const void* src,
                                      hipStream_t stream) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
-  return hipMemcpyAsync(dst, src, size_bytes, kind, resolved_stream);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+  HIP_RETURN_ERROR(hipMemcpyAsync(dst, src, size_bytes, kind, resolved_stream));
 }
 
 HIPAPI hipError_t hipMemcpyFromSymbol_spt(void* dst, const void* symbol,
@@ -2174,10 +2185,11 @@ HIPAPI hipError_t hipMemcpyFromSymbol_spt(void* dst, const void* symbol,
                                           hipMemcpyKind kind) {
   hipStream_t stream = NULL;
   hipError_t result = hrx_hip_spt_default_stream(&stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
   result =
       hipMemcpyFromSymbolAsync(dst, symbol, size_bytes, offset, kind, stream);
-  return result == hipSuccess ? hipStreamSynchronize(stream) : result;
+  HIP_RETURN_ERROR(result == hipSuccess ? hipStreamSynchronize(stream)
+                                        : result);
 }
 
 HIPAPI hipError_t hipMemcpyToSymbol_spt(const void* symbol, const void* src,
@@ -2185,10 +2197,11 @@ HIPAPI hipError_t hipMemcpyToSymbol_spt(const void* symbol, const void* src,
                                         hipMemcpyKind kind) {
   hipStream_t stream = NULL;
   hipError_t result = hrx_hip_spt_default_stream(&stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
   result =
       hipMemcpyToSymbolAsync(symbol, src, size_bytes, offset, kind, stream);
-  return result == hipSuccess ? hipStreamSynchronize(stream) : result;
+  HIP_RETURN_ERROR(result == hipSuccess ? hipStreamSynchronize(stream)
+                                        : result);
 }
 
 HIPAPI hipError_t hipMemcpyToSymbolAsync_spt(const void* symbol,
@@ -2197,18 +2210,19 @@ HIPAPI hipError_t hipMemcpyToSymbolAsync_spt(const void* symbol,
                                              hipStream_t stream) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
-  return hipMemcpyToSymbolAsync(symbol, src, size_bytes, offset, kind,
-                                resolved_stream);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+  HIP_RETURN_ERROR(hipMemcpyToSymbolAsync(symbol, src, size_bytes, offset, kind,
+                                          resolved_stream));
 }
 
 HIPAPI hipError_t hipMemcpy_spt(void* dst, const void* src, size_t size_bytes,
                                 hipMemcpyKind kind) {
   hipStream_t stream = NULL;
   hipError_t result = hrx_hip_spt_default_stream(&stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
   result = hipMemcpyAsync(dst, src, size_bytes, kind, stream);
-  return result == hipSuccess ? hipStreamSynchronize(stream) : result;
+  HIP_RETURN_ERROR(result == hipSuccess ? hipStreamSynchronize(stream)
+                                        : result);
 }
 
 HIPAPI hipError_t hipMemset2DAsync_spt(void* dst, size_t pitch, int value,
@@ -2216,46 +2230,50 @@ HIPAPI hipError_t hipMemset2DAsync_spt(void* dst, size_t pitch, int value,
                                        hipStream_t stream) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
-  return hipMemset2DAsync(dst, pitch, value, width, height, resolved_stream);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+  HIP_RETURN_ERROR(
+      hipMemset2DAsync(dst, pitch, value, width, height, resolved_stream));
 }
 
 HIPAPI hipError_t hipMemset2D_spt(void* dst, size_t pitch, int value,
                                   size_t width, size_t height) {
   hipStream_t stream = NULL;
   hipError_t result = hrx_hip_spt_default_stream(&stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
   result = hipMemset2DAsync(dst, pitch, value, width, height, stream);
-  return result == hipSuccess ? hipStreamSynchronize(stream) : result;
+  HIP_RETURN_ERROR(result == hipSuccess ? hipStreamSynchronize(stream)
+                                        : result);
 }
 
 HIPAPI hipError_t hipMemset3DAsync_spt(hipPitchedPtr pitchedDevPtr, int value,
                                        hipExtent extent, hipStream_t stream) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
-  return hipMemset3DAsync(pitchedDevPtr, value, extent, resolved_stream);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+  HIP_RETURN_ERROR(
+      hipMemset3DAsync(pitchedDevPtr, value, extent, resolved_stream));
 }
 
 HIPAPI hipError_t hipMemset3D_spt(hipPitchedPtr pitchedDevPtr, int value,
                                   hipExtent extent) {
-  return hipMemset3D(pitchedDevPtr, value, extent);
+  HIP_RETURN_ERROR(hipMemset3D(pitchedDevPtr, value, extent));
 }
 
 HIPAPI hipError_t hipMemsetAsync_spt(void* dst, int value, size_t size_bytes,
                                      hipStream_t stream) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
-  return hipMemsetAsync(dst, value, size_bytes, resolved_stream);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+  HIP_RETURN_ERROR(hipMemsetAsync(dst, value, size_bytes, resolved_stream));
 }
 
 HIPAPI hipError_t hipMemset_spt(void* dst, int value, size_t size_bytes) {
   hipStream_t stream = NULL;
   hipError_t result = hrx_hip_spt_default_stream(&stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
   result = hipMemsetAsync(dst, value, size_bytes, stream);
-  return result == hipSuccess ? hipStreamSynchronize(stream) : result;
+  HIP_RETURN_ERROR(result == hipSuccess ? hipStreamSynchronize(stream)
+                                        : result);
 }
 
 HIPAPI hipError_t hipStreamAddCallback_spt(hipStream_t stream,
@@ -2263,24 +2281,25 @@ HIPAPI hipError_t hipStreamAddCallback_spt(hipStream_t stream,
                                            void* userData, unsigned int flags) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
-  return hipStreamAddCallback(resolved_stream, callback, userData, flags);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+  HIP_RETURN_ERROR(
+      hipStreamAddCallback(resolved_stream, callback, userData, flags));
 }
 
 HIPAPI hipError_t hipStreamBeginCapture_spt(hipStream_t stream,
                                             hipStreamCaptureMode mode) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
-  return hipStreamBeginCapture(resolved_stream, mode);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+  HIP_RETURN_ERROR(hipStreamBeginCapture(resolved_stream, mode));
 }
 
 HIPAPI hipError_t hipStreamEndCapture_spt(hipStream_t stream,
                                           hipGraph_t* graph) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
-  return hipStreamEndCapture(resolved_stream, graph);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+  HIP_RETURN_ERROR(hipStreamEndCapture(resolved_stream, graph));
 }
 
 HIPAPI hipError_t hipStreamGetCaptureInfo_spt(
@@ -2288,8 +2307,9 @@ HIPAPI hipError_t hipStreamGetCaptureInfo_spt(
     unsigned long long* id) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
-  return hipStreamGetCaptureInfo(resolved_stream, capture_status, id);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+  HIP_RETURN_ERROR(
+      hipStreamGetCaptureInfo(resolved_stream, capture_status, id));
 }
 
 HIPAPI hipError_t hipStreamGetCaptureInfo_v2_spt(
@@ -2298,52 +2318,53 @@ HIPAPI hipError_t hipStreamGetCaptureInfo_v2_spt(
     const hipGraphNode_t** dependencies, size_t* dependency_count) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
-  return hipStreamGetCaptureInfo_v2(resolved_stream, capture_status, id, graph,
-                                    dependencies, dependency_count);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+  HIP_RETURN_ERROR(hipStreamGetCaptureInfo_v2(resolved_stream, capture_status,
+                                              id, graph, dependencies,
+                                              dependency_count));
 }
 
 HIPAPI hipError_t hipStreamGetFlags_spt(hipStream_t stream,
                                         unsigned int* flags) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
-  return hipStreamGetFlags(resolved_stream, flags);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+  HIP_RETURN_ERROR(hipStreamGetFlags(resolved_stream, flags));
 }
 
 HIPAPI hipError_t hipStreamGetPriority_spt(hipStream_t stream, int* priority) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
-  return hipStreamGetPriority(resolved_stream, priority);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+  HIP_RETURN_ERROR(hipStreamGetPriority(resolved_stream, priority));
 }
 
 HIPAPI hipError_t hipStreamIsCapturing_spt(
     hipStream_t stream, hipStreamCaptureStatus* capture_status) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
-  return hipStreamIsCapturing(resolved_stream, capture_status);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+  HIP_RETURN_ERROR(hipStreamIsCapturing(resolved_stream, capture_status));
 }
 
 HIPAPI hipError_t hipStreamQuery_spt(hipStream_t stream) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
-  return hipStreamQuery(resolved_stream);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+  HIP_RETURN_ERROR(hipStreamQuery(resolved_stream));
 }
 
 HIPAPI hipError_t hipStreamSynchronize_spt(hipStream_t stream) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
-  return hipStreamSynchronize(resolved_stream);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+  HIP_RETURN_ERROR(hipStreamSynchronize(resolved_stream));
 }
 
 HIPAPI hipError_t hipStreamWaitEvent_spt(hipStream_t stream, hipEvent_t event,
                                          unsigned int flags) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
-  return hipStreamWaitEvent(resolved_stream, event, flags);
+  if (result != hipSuccess) HIP_RETURN_ERROR(result);
+  HIP_RETURN_ERROR(hipStreamWaitEvent(resolved_stream, event, flags));
 }
