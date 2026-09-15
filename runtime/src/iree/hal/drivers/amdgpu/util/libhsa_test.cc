@@ -14,12 +14,12 @@ namespace iree::hal::amdgpu {
 namespace {
 
 TEST(LibHSATest, DeviceFailureStatusesPreserveCause) {
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_ABORTED,
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_DATA_LOSS,
                         iree_status_from_hsa_status(__FILE__, __LINE__,
                                                     HSA_STATUS_ERROR_EXCEPTION,
                                                     "exception", nullptr));
   IREE_EXPECT_STATUS_IS(
-      IREE_STATUS_ABORTED,
+      IREE_STATUS_DATA_LOSS,
       iree_status_from_hsa_status(__FILE__, __LINE__, HSA_STATUS_ERROR_FATAL,
                                   "fatal", nullptr));
 }
