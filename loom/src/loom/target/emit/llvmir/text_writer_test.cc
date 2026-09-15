@@ -13,6 +13,7 @@
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
 #include "loom/target/emit/llvmir/test_modules.h"
+#include "loom/target/emit/llvmir/test_names.h"
 #include "loom/target/emit/llvmir/verify.h"
 
 #ifndef LOOM_LLVMIR_TEXT_WRITER_TEST_TARGET_SCENARIOS
@@ -69,6 +70,26 @@ TEST_P(LlvmIrTextWriterTest, EmitsExpectedText) {
   iree_status_t status = EmitText(module_ptr.get(), &text);
   IREE_ASSERT_OK(status);
   EXPECT_EQ(text, ToString(loom_llvmir_test_module_expected_text(GetParam())));
+}
+
+TEST(LlvmIrTextWriterNamesTest, PreservesDistinctLocalIdentities) {
+  loom_llvmir_module_t* module = nullptr;
+  IREE_ASSERT_OK(loom_llvmir_test_build_local_names_module(
+      iree_allocator_system(), &module));
+  ModulePtr module_ptr(module, loom_llvmir_module_free);
+  std::string text;
+  IREE_ASSERT_OK(EmitText(module, &text));
+  EXPECT_EQ(
+      text,
+      R"(define i32 @local_names(i32 %v0.entry, i32 %v1.v2, i32 %v2, i32 %v3.same, i32 %v4.same, i32 %"v5.quoted \22name\5C") {
+bb0.entry:
+  %v6.same = add i32 %v0.entry, %v2
+  br label %bb1.entry
+bb1.entry:
+  %v7.entry = phi i32 [ %v6.same, %bb0.entry ]
+  ret i32 %v7.entry
+}
+)");
 }
 
 #if LOOM_LLVMIR_TEXT_WRITER_TEST_TARGET_SCENARIOS

@@ -300,10 +300,12 @@ low.func.def target<llvmir.generic.core>(@target) abi(object_function) @second(%
   ASSERT_NE(first_position, std::string::npos) << text;
   ASSERT_NE(second_position, std::string::npos) << text;
   EXPECT_LT(first_position, second_position) << text;
-  EXPECT_NE(text.find("%sum = add i32 %lhs, %rhs"), std::string::npos) << text;
-  EXPECT_NE(text.find("getelementptr i8, ptr %input_view"), std::string::npos)
+  EXPECT_NE(text.find("%v2.sum = add i32 %v0.lhs, %v1.rhs"), std::string::npos)
       << text;
-  EXPECT_NE(text.find("store i32 %loaded"), std::string::npos) << text;
+  EXPECT_NE(text.find("getelementptr i8, ptr %v3.input_view"),
+            std::string::npos)
+      << text;
+  EXPECT_NE(text.find("store i32 %v11.loaded"), std::string::npos) << text;
 }
 
 TEST_F(LlvmirModuleEmitterTest,
@@ -415,12 +417,12 @@ low.func.def target<llvmir.generic.core>(@target) abi(object_function) @fma_vect
 
   std::string text;
   IREE_ASSERT_OK(WriteText(llvmir_module.get(), &text));
-  EXPECT_NE(text.find("%result = call float @llvm.fma.f32(float %a, float %b, "
-                      "float %c)"),
+  EXPECT_NE(text.find("%v6.result = call float @llvm.fma.f32(float %v0.a, "
+                      "float %v1.b, float %v2.c)"),
             std::string::npos)
       << text;
-  EXPECT_NE(text.find("%result = call <4 x float> @llvm.fma.v4f32(<4 x float> "
-                      "%a, <4 x float> %b, <4 x float> %c)"),
+  EXPECT_NE(text.find("%v13.result = call <4 x float> @llvm.fma.v4f32(<4 x "
+                      "float> %v7.a, <4 x float> %v8.b, <4 x float> %v9.c)"),
             std::string::npos)
       << text;
   EXPECT_NE(text.find("declare float @llvm.fma.f32(float, float, float)"),
@@ -460,15 +462,17 @@ low.func.def target<llvmir.generic.core>(@target) abi(object_function) @unary_ve
 
   std::string text;
   IREE_ASSERT_OK(WriteText(llvmir_module.get(), &text));
-  EXPECT_NE(text.find("%negated = fneg float %input"), std::string::npos)
+  EXPECT_NE(text.find("%v1.negated = fneg float %v0.input"), std::string::npos)
       << text;
-  EXPECT_NE(text.find("%result = call float @llvm.fabs.f32(float %negated)"),
+  EXPECT_NE(
+      text.find("%v3.result = call float @llvm.fabs.f32(float %v1.negated)"),
+      std::string::npos)
+      << text;
+  EXPECT_NE(text.find("%v5.negated = fneg <4 x float> %v4.input"),
             std::string::npos)
       << text;
-  EXPECT_NE(text.find("%negated = fneg <4 x float> %input"), std::string::npos)
-      << text;
-  EXPECT_NE(text.find("%result = call <4 x float> @llvm.fabs.v4f32(<4 x float> "
-                      "%negated)"),
+  EXPECT_NE(text.find("%v7.result = call <4 x float> @llvm.fabs.v4f32(<4 x "
+                      "float> %v5.negated)"),
             std::string::npos)
       << text;
   EXPECT_NE(text.find("declare float @llvm.fabs.f32(float)"), std::string::npos)
@@ -506,20 +510,20 @@ low.func.def target<llvmir.generic.core>(@target) abi(object_function) @minmax_v
 
   std::string text;
   IREE_ASSERT_OK(WriteText(llvmir_module.get(), &text));
-  EXPECT_NE(text.find("%min = call float @llvm.minnum.f32(float %lhs, float "
-                      "%rhs)"),
+  EXPECT_NE(text.find("%v4.min = call float @llvm.minnum.f32(float %v0.lhs, "
+                      "float %v1.rhs)"),
             std::string::npos)
       << text;
-  EXPECT_NE(text.find("%result = call float @llvm.maxnum.f32(float %min, float "
-                      "%rhs)"),
+  EXPECT_NE(text.find("%v7.result = call float @llvm.maxnum.f32(float %v4.min, "
+                      "float %v1.rhs)"),
             std::string::npos)
       << text;
-  EXPECT_NE(text.find("%min = call <2 x float> @llvm.minnum.v2f32(<2 x float> "
-                      "%lhs, <2 x float> %rhs)"),
+  EXPECT_NE(text.find("%v12.min = call <2 x float> @llvm.minnum.v2f32(<2 x "
+                      "float> %v8.lhs, <2 x float> %v9.rhs)"),
             std::string::npos)
       << text;
-  EXPECT_NE(text.find("%result = call <2 x float> @llvm.maxnum.v2f32(<2 x "
-                      "float> %min, <2 x float> %rhs)"),
+  EXPECT_NE(text.find("%v15.result = call <2 x float> @llvm.maxnum.v2f32(<2 x "
+                      "float> %v12.min, <2 x float> %v9.rhs)"),
             std::string::npos)
       << text;
   EXPECT_NE(text.find("declare float @llvm.minnum.f32(float, float)"),
@@ -555,11 +559,11 @@ low.kernel.def target<llvmir.generic.core>(@target) workgroup_size(128, 2, 1) @d
   EXPECT_NE(text.find("target triple = \"loom-kernel64-unknown-none\""),
             std::string::npos)
       << text;
-  EXPECT_NE(text.find("define void @dispatch(ptr addrspace(1) noundef %input) "
-                      "#0 !loom_test_workgroup_size !0"),
+  EXPECT_NE(text.find("define void @dispatch(ptr addrspace(1) noundef "
+                      "%v0.input) #0 !loom_test_workgroup_size !0"),
             std::string::npos)
       << text;
-  EXPECT_NE(text.find("getelementptr i8, ptr addrspace(1) %input, i64 4"),
+  EXPECT_NE(text.find("getelementptr i8, ptr addrspace(1) %v0.input, i64 4"),
             std::string::npos)
       << text;
   EXPECT_NE(text.find("load i32, ptr addrspace(1)"), std::string::npos) << text;
@@ -599,11 +603,12 @@ low.kernel.def target<llvmir.generic.core>(@target) workgroup_size(64, 1, 1) @di
 
   std::string text;
   IREE_ASSERT_OK(WriteText(llvmir_module.get(), &text));
-  EXPECT_NE(text.find("%scratch = alloca i8, i64 256, align 16, addrspace(3)"),
-            std::string::npos)
+  EXPECT_NE(
+      text.find("%v6.scratch = alloca i8, i64 256, align 16, addrspace(3)"),
+      std::string::npos)
       << text;
-  EXPECT_NE(text.find("mul i64 %tid, 4"), std::string::npos) << text;
-  EXPECT_NE(text.find("getelementptr i8, ptr addrspace(3) %scratch"),
+  EXPECT_NE(text.find("mul i64 %v4.tid, 4"), std::string::npos) << text;
+  EXPECT_NE(text.find("getelementptr i8, ptr addrspace(3) %v6.scratch"),
             std::string::npos)
       << text;
   EXPECT_NE(text.find("store i32 1, ptr addrspace(3)"), std::string::npos)

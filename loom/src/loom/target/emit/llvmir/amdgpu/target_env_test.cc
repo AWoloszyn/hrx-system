@@ -354,7 +354,7 @@ TEST(LlvmIrAmdgpuTargetEnvTest, AmdgpuHalProfileCopyControlsKernelDecorations) {
   IREE_ASSERT_OK(loom_llvmir_verify_module(module_ptr.get()));
 
   std::string text = WriteText(module_ptr.get());
-  EXPECT_NE(text.find("ptr addrspace(1) inreg noundef %input"),
+  EXPECT_NE(text.find("ptr addrspace(1) inreg noundef %v0.input"),
             std::string::npos)
       << text;
   EXPECT_NE(text.find("\"amdgpu-flat-work-group-size\"=\"128,256\""),

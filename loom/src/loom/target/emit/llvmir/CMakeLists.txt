@@ -193,6 +193,21 @@ endif()
 if(LOOM_TARGET_ARCH_LLVMIR AND LOOM_EMIT_LLVMIR)
 loom_cc_library(
   NAME
+    test_names
+  HDRS
+    "test_names.h"
+  SRCS
+    "test_names.c"
+  DEPS
+    ::core
+  TESTONLY
+  PUBLIC
+)
+endif()
+
+if(LOOM_TARGET_ARCH_LLVMIR AND LOOM_EMIT_LLVMIR)
+loom_cc_library(
+  NAME
     test_modules_core
   HDRS
     "test_modules.h"
@@ -354,6 +369,7 @@ loom_cc_test(
   DEPS
     ::core
     ::test_modules_core
+    ::test_names
     iree::testing::gtest
     iree::testing::gtest_main
   LABELS
@@ -373,6 +389,7 @@ loom_cc_test(
   DEPS
     ::core
     ::test_modules_target_scenarios
+    ::test_names
     iree::testing::gtest
     iree::testing::gtest_main
   LABELS
@@ -446,6 +463,7 @@ loom_cc_test(
   DEPS
     ::core
     ::test_modules_target_scenarios
+    ::test_names
     iree::io::file_handle
     iree::io::stream
     iree::testing::gtest

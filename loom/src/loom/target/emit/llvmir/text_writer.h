@@ -8,6 +8,9 @@
 //
 // The text writer is a serializer over loom_llvmir_module_t. It must not create
 // declarations, invent attributes, or parse textual instruction fragments.
+// Local names encode stable value/block IDs with disjoint prefixes, retaining
+// optional debug names as suffixes. Quoting preserves arbitrary name bytes;
+// serialization requires neither a name search nor mutation of the model.
 
 #ifndef LOOM_TARGET_LLVMIR_TEXT_WRITER_H_
 #define LOOM_TARGET_LLVMIR_TEXT_WRITER_H_
