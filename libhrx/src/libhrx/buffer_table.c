@@ -325,6 +325,20 @@ static void hrx_buffer_table_fill_result(hrx_buffer_table_entry_t* e,
   if (out_user_data) *out_user_data = e->user_data;
 }
 
+static void hrx_buffer_table_retain_entry(
+    hrx_buffer_table_entry_t* entry, size_t offset,
+    hrx_buffer_table_retained_ref_t* out_ref) {
+  hrx_buffer_retain(entry->buffer);
+  *out_ref = (hrx_buffer_table_retained_ref_t){
+      .buffer = entry->buffer,
+      .device_ptr = entry->device_ptr,
+      .host_ptr = entry->host_ptr,
+      .size = entry->size,
+      .offset = offset,
+      .user_data = entry->user_data,
+  };
+}
+
 hrx_status_t hrx_buffer_table_find(hrx_buffer_table_t* table, uint64_t any_ptr,
                                    hrx_buffer_t* out_buffer, size_t* out_offset,
                                    void** out_user_data) {
@@ -424,13 +438,7 @@ hrx_status_t hrx_buffer_table_find_range_retain_if(
     hrx_status_t status = callback ? callback(entry, offset, callback_user_data)
                                    : hrx_ok_status();
     if (hrx_status_is_ok(status)) {
-      hrx_buffer_retain(entry->buffer);
-      out_ref->buffer = entry->buffer;
-      out_ref->device_ptr = entry->device_ptr;
-      out_ref->host_ptr = entry->host_ptr;
-      out_ref->size = entry->size;
-      out_ref->offset = offset;
-      out_ref->user_data = entry->user_data;
+      hrx_buffer_table_retain_entry(entry, offset, out_ref);
     }
     iree_slim_mutex_unlock(&table->mutex);
     return status;
@@ -439,6 +447,70 @@ hrx_status_t hrx_buffer_table_find_range_retain_if(
   iree_slim_mutex_unlock(&table->mutex);
   return hrx_make_status(HRX_STATUS_NOT_FOUND,
                          "no buffer contains the requested range");
+}
+
+hrx_status_t hrx_buffer_table_find_ranges_retain_if(
+    hrx_buffer_table_t* table, size_t request_count,
+    const hrx_buffer_table_range_request_t* requests,
+    hrx_buffer_table_entry_callback_t callback, void* callback_user_data,
+    size_t ref_capacity, hrx_buffer_table_retained_ref_t* out_refs,
+    size_t* out_ref_count, hrx_buffer_table_range_match_t* out_matches) {
+  IREE_ASSERT_ARGUMENT(table);
+  IREE_ASSERT_ARGUMENT(out_ref_count);
+  *out_ref_count = 0;
+  if (request_count == 0 || !requests || !out_matches || !out_refs) {
+    return hrx_make_status(HRX_STATUS_INVALID_ARGUMENT,
+                           "bulk range lookup requires non-empty storage");
+  }
+  if (ref_capacity < request_count) {
+    return hrx_make_status(HRX_STATUS_OUT_OF_RANGE,
+                           "retained reference storage is too small");
+  }
+  for (size_t i = 0; i < request_count; ++i) {
+    out_matches[i] = (hrx_buffer_table_range_match_t){
+        .ref_index = SIZE_MAX,
+        .offset = 0,
+    };
+    if (requests[i].length == 0 ||
+        (uint64_t)requests[i].length > UINT64_MAX - requests[i].address) {
+      return hrx_make_status(HRX_STATUS_INVALID_ARGUMENT,
+                             "bulk lookup range is invalid");
+    }
+  }
+
+  iree_slim_mutex_lock(&table->mutex);
+  uint64_t generation = ++table->bulk_lookup_generation;
+  if (IREE_UNLIKELY(generation == 0)) {
+    for (size_t i = 0; i < table->count; ++i) {
+      table->entries[i].bulk_lookup_generation = 0;
+    }
+    generation = ++table->bulk_lookup_generation;
+  }
+
+  hrx_status_t status = hrx_ok_status();
+  size_t ref_count = 0;
+  for (size_t i = 0; i < request_count && hrx_status_is_ok(status); ++i) {
+    hrx_buffer_table_entry_t* entry = hrx_buffer_table_find_range_locked(
+        table, requests[i].address, requests[i].length);
+    if (!entry) continue;
+
+    size_t offset = 0;
+    hrx_buffer_table_fill_result(entry, requests[i].address, NULL, &offset,
+                                 NULL);
+    if (entry->bulk_lookup_generation != generation) {
+      status = callback ? callback(entry, offset, callback_user_data)
+                        : hrx_ok_status();
+      if (!hrx_status_is_ok(status)) break;
+      hrx_buffer_table_retain_entry(entry, offset, &out_refs[ref_count]);
+      entry->bulk_lookup_generation = generation;
+      entry->bulk_lookup_ref_index = ref_count++;
+    }
+    out_matches[i].ref_index = entry->bulk_lookup_ref_index;
+    out_matches[i].offset = offset;
+  }
+  *out_ref_count = ref_count;
+  iree_slim_mutex_unlock(&table->mutex);
+  return status;
 }
 
 hrx_status_t hrx_buffer_table_remove_reserved_if(

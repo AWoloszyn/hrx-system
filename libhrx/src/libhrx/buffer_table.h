@@ -28,6 +28,10 @@ typedef struct hrx_buffer_table_entry_t {
   hrx_buffer_t buffer;
   // Opaque payload owned by the inserting caller.
   void* user_data;
+  // Generation of the last bulk lookup that matched this entry.
+  uint64_t bulk_lookup_generation;
+  // Retained-reference index assigned by |bulk_lookup_generation|.
+  size_t bulk_lookup_ref_index;
 } hrx_buffer_table_entry_t;
 
 typedef struct hrx_buffer_table_range_index_t {
@@ -52,6 +56,8 @@ typedef struct hrx_buffer_table_t {
   size_t capacity;
   // Slots promised to callers that require allocation-free rollback.
   size_t reserved_insert_count;
+  // Monotonic generation used to deduplicate bulk lookup results.
+  uint64_t bulk_lookup_generation;
 } hrx_buffer_table_t;
 
 // Stable allocation metadata copied while the table lock protects the entry.
@@ -70,6 +76,20 @@ typedef struct hrx_buffer_table_retained_ref_t {
   // Opaque entry payload captured while the table lock was held.
   void* user_data;
 } hrx_buffer_table_retained_ref_t;
+
+typedef struct hrx_buffer_table_range_request_t {
+  // First address in the requested range.
+  uint64_t address;
+  // Requested range length in bytes.
+  size_t length;
+} hrx_buffer_table_range_request_t;
+
+typedef struct hrx_buffer_table_range_match_t {
+  // Index into the returned retained references, or SIZE_MAX when unmatched.
+  size_t ref_index;
+  // Byte offset of the request from the matching allocation alias.
+  size_t offset;
+} hrx_buffer_table_range_match_t;
 
 // Validates or acquires entry-local state while the table lock is held.
 // Implementations must not wait for work that can require another table
@@ -135,6 +155,17 @@ hrx_status_t hrx_buffer_table_find_range_retain_if(
     hrx_buffer_table_t* table, uint64_t any_ptr, size_t size,
     hrx_buffer_table_entry_callback_t callback, void* callback_user_data,
     hrx_buffer_table_retained_ref_t* out_ref);
+
+// Looks up arbitrary address ranges as one table transaction. Each unique
+// allocation is accepted by |callback| and retained at most once. Every match
+// names its retained reference; unmatched requests use SIZE_MAX. On failure,
+// |out_ref_count| reports the successfully retained prefix for caller cleanup.
+hrx_status_t hrx_buffer_table_find_ranges_retain_if(
+    hrx_buffer_table_t* table, size_t request_count,
+    const hrx_buffer_table_range_request_t* requests,
+    hrx_buffer_table_entry_callback_t callback, void* callback_user_data,
+    size_t ref_capacity, hrx_buffer_table_retained_ref_t* out_refs,
+    size_t* out_ref_count, hrx_buffer_table_range_match_t* out_matches);
 
 // Validates and removes the entry containing |any_ptr| as one table
 // transaction. A successful removal reserves its vacated slot so the caller
