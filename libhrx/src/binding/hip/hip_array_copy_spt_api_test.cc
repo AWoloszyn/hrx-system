@@ -854,7 +854,7 @@ TEST_F(HipArrayCopySptApiTest, SynchronousCopyRejectsCaptureBeforeMutation) {
   EXPECT_EQ(nullptr, graph);
 }
 
-TEST_F(HipArrayCopySptApiTest, PackedRowsScaleAsOneCompleteRowBatch) {
+TEST_F(HipArrayCopySptApiTest, CopiesPackedRowsAtRepresentativeHeights) {
   constexpr size_t kWidth = 31;
   const std::array<size_t, 3> row_counts = {1, 256, 4096};
   for (size_t row_count : row_counts) {
