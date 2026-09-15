@@ -11,7 +11,6 @@
 # bazel-to-cmake: skip
 
 load("@bazel_skylib//lib:selects.bzl", "selects")
-load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 package(default_visibility = ["//visibility:private"])
 
@@ -104,15 +103,10 @@ alias(
     visibility = [":runtime_users"],
 )
 
-cc_library(
+alias(
     name = "zstd",
-    hdrs = [
-        "@zstd//:lib/zstd.h",
-        "@zstd//:lib/zstd_errors.h",
-    ],
-    defines = ["IREE_HAVE_ZSTD=1"],
+    actual = "//build_tools/third_party/zstd",
     visibility = [":libhrx_users"],
-    deps = ["@zstd"],
 )
 
 filegroup(

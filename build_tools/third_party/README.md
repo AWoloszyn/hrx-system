@@ -53,6 +53,14 @@ visible only to `//runtime/...`, `//libhrx/...`, `//loom/...`, or shared testing
 infrastructure. That keeps updates centralized while preventing accidental
 cross-project dependency creep.
 
+`third_party/BUILD.bazel` contains facade policy: public aliases, visibility,
+feature selection, and empty targets for disabled dependencies. File copying,
+archive imports, compilation, and library construction belong in the owning
+`build_tools/third_party/<dependency>/BUILD.bazel` or external repository
+overlay. Repository-local implementation targets are visible to the facade,
+not directly to project consumers. Dependency-specific CMake adapters supply
+the equivalent targets without generating CMake from the facade.
+
 Repo code should not depend on `//build_tools/third_party/...` labels. Those
 packages are implementation details for dependency declarations, external
 repository overlay files, or CMake adapters. Checked-in BUILD files consume
