@@ -47,10 +47,14 @@ iree_status_t iree_task_executor_create(iree_task_executor_options_t options,
                                         iree_allocator_t allocator,
                                         iree_task_executor_t** out_executor) {
   iree_host_size_t worker_count = iree_task_topology_group_count(topology);
+  if (worker_count == 0) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "task executor requires at least one worker");
+  }
   if (worker_count > IREE_TASK_EXECUTOR_MAX_WORKER_COUNT) {
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                             "requested %" PRIhsz
-                            " workers but must be in [1, %d)",
+                            " workers but must be in [1, %d]",
                             worker_count, IREE_TASK_EXECUTOR_MAX_WORKER_COUNT);
   }
 
@@ -233,7 +237,6 @@ iree_host_size_t iree_task_executor_worker_count(
 
 iree_host_size_t iree_task_executor_minimum_worker_local_memory_size(
     iree_task_executor_t* executor) {
-  if (executor->worker_count == 0) return 0;
   iree_host_size_t minimum_size = executor->workers[0].local_memory.data_length;
   for (iree_host_size_t i = 1; i < executor->worker_count; ++i) {
     minimum_size =

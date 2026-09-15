@@ -98,7 +98,8 @@ typedef struct iree_task_executor_t iree_task_executor_t;
 // Creates a task executor using the specified topology.
 // |options| must be initialized with iree_task_executor_options_initialize by
 // callers and then overridden as required.
-// |topology| is only used during creation and need not live beyond this call.
+// |topology| must contain at least one worker group. It is only used during
+// creation and need not live beyond this call.
 // |out_executor| must be released by the caller.
 iree_status_t iree_task_executor_create(iree_task_executor_options_t options,
                                         const iree_task_topology_t* topology,
@@ -126,7 +127,7 @@ iree_host_size_t iree_task_executor_worker_count(
     iree_task_executor_t* executor);
 
 // Returns the minimum local-memory capacity across all executor workers.
-// Returns zero when the executor has no workers.
+// Returns zero when any worker has no local memory.
 iree_host_size_t iree_task_executor_minimum_worker_local_memory_size(
     iree_task_executor_t* executor);
 
