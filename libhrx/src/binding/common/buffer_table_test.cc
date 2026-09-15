@@ -122,6 +122,11 @@ struct EntryCallbackState {
   int call_count;
 };
 
+struct BulkCallbackState {
+  int call_count;
+  int reject_call;
+};
+
 static hrx_status_t AcceptEntryCallback(const hrx_buffer_table_entry_t* entry,
                                         size_t offset, void* user_data) {
   auto* state = static_cast<EntryCallbackState*>(user_data);
@@ -138,6 +143,18 @@ static hrx_status_t RejectEntryCallback(const hrx_buffer_table_entry_t* entry,
   (void)user_data;
   return hrx_make_status(HRX_STATUS_FAILED_PRECONDITION,
                          "entry is unavailable");
+}
+
+static hrx_status_t CountBulkEntryCallback(
+    const hrx_buffer_table_entry_t* entry, size_t offset, void* user_data) {
+  (void)entry;
+  (void)offset;
+  auto* state = static_cast<BulkCallbackState*>(user_data);
+  ++state->call_count;
+  return state->call_count == state->reject_call
+             ? hrx_make_status(HRX_STATUS_FAILED_PRECONDITION,
+                               "entry is unavailable")
+             : hrx_ok_status();
 }
 
 // Helper to create a dummy buffer with the given device pointer.
@@ -564,6 +581,122 @@ TEST(BufferTableTest, RejectedRangeAcquisitionLeavesEntryUnchanged) {
   IREE_ASSERT_OK(
       BufferTableStatus(hrx_buffer_table_remove(table, kDevicePointer)));
   hrx_buffer_release(buffer);
+  iree_hal_streaming_buffer_table_free(table);
+}
+
+TEST(BufferTableTest, BulkLookupRetainsEachAllocationOnce) {
+  iree_allocator_t allocator = iree_allocator_system();
+  iree_hal_streaming_buffer_table_t* table = nullptr;
+  IREE_ASSERT_OK(iree_hal_streaming_buffer_table_allocate(allocator, &table));
+
+  hrx_buffer_t first = nullptr;
+  hrx_buffer_t second = nullptr;
+  IREE_ASSERT_OK(
+      iree_allocator_malloc(allocator, sizeof(*first), (void**)&first));
+  IREE_ASSERT_OK(
+      iree_allocator_malloc(allocator, sizeof(*second), (void**)&second));
+  memset(first, 0, sizeof(*first));
+  memset(second, 0, sizeof(*second));
+  iree_atomic_ref_count_init(&first->ref_count);
+  iree_atomic_ref_count_init(&second->ref_count);
+  first->size = 0x100;
+  second->size = 0x100;
+  IREE_ASSERT_OK(BufferTableStatus(hrx_buffer_table_insert(
+      table, UINT64_C(0x1000), reinterpret_cast<void*>(UINT64_C(0x3000)),
+      first->size, first, reinterpret_cast<void*>(UINT64_C(1)))));
+  IREE_ASSERT_OK(BufferTableStatus(hrx_buffer_table_insert(
+      table, UINT64_C(0x5000), /*host_ptr=*/nullptr, second->size, second,
+      reinterpret_cast<void*>(UINT64_C(2)))));
+
+  const hrx_buffer_table_range_request_t requests[] = {
+      {/*.address=*/UINT64_C(0x1010), /*.length=*/4},
+      {/*.address=*/UINT64_C(0x3020), /*.length=*/8},
+      {/*.address=*/UINT64_C(0x5080), /*.length=*/8},
+      {/*.address=*/UINT64_C(0x9000), /*.length=*/4},
+      {/*.address=*/UINT64_C(0x1030), /*.length=*/4},
+  };
+  hrx_buffer_table_retained_ref_t refs[IREE_ARRAYSIZE(requests)] = {};
+  hrx_buffer_table_range_match_t matches[IREE_ARRAYSIZE(requests)] = {};
+  BulkCallbackState callback_state = {};
+  size_t ref_count = 0;
+  IREE_ASSERT_OK(BufferTableStatus(hrx_buffer_table_find_ranges_retain_if(
+      table, IREE_ARRAYSIZE(requests), requests, CountBulkEntryCallback,
+      &callback_state, IREE_ARRAYSIZE(refs), refs, &ref_count, matches)));
+
+  EXPECT_EQ(2u, ref_count);
+  EXPECT_EQ(2, callback_state.call_count);
+  EXPECT_EQ(first, refs[0].buffer);
+  EXPECT_EQ(second, refs[1].buffer);
+  EXPECT_EQ(matches[0].ref_index, matches[1].ref_index);
+  EXPECT_EQ(matches[0].ref_index, matches[4].ref_index);
+  EXPECT_NE(matches[0].ref_index, matches[2].ref_index);
+  EXPECT_EQ(SIZE_MAX, matches[3].ref_index);
+  EXPECT_EQ(0x10u, matches[0].offset);
+  EXPECT_EQ(0x20u, matches[1].offset);
+  EXPECT_EQ(0x80u, matches[2].offset);
+  EXPECT_EQ(0x30u, matches[4].offset);
+
+  for (size_t i = 0; i < ref_count; ++i) {
+    hrx_buffer_release(refs[i].buffer);
+  }
+  IREE_ASSERT_OK(
+      BufferTableStatus(hrx_buffer_table_remove(table, UINT64_C(0x1000))));
+  IREE_ASSERT_OK(
+      BufferTableStatus(hrx_buffer_table_remove(table, UINT64_C(0x5000))));
+  hrx_buffer_release(first);
+  hrx_buffer_release(second);
+  iree_hal_streaming_buffer_table_free(table);
+}
+
+TEST(BufferTableTest, BulkLookupReportsRetainedPrefixOnCallbackFailure) {
+  iree_allocator_t allocator = iree_allocator_system();
+  iree_hal_streaming_buffer_table_t* table = nullptr;
+  IREE_ASSERT_OK(iree_hal_streaming_buffer_table_allocate(allocator, &table));
+
+  hrx_buffer_t first = nullptr;
+  hrx_buffer_t second = nullptr;
+  IREE_ASSERT_OK(
+      iree_allocator_malloc(allocator, sizeof(*first), (void**)&first));
+  IREE_ASSERT_OK(
+      iree_allocator_malloc(allocator, sizeof(*second), (void**)&second));
+  memset(first, 0, sizeof(*first));
+  memset(second, 0, sizeof(*second));
+  iree_atomic_ref_count_init(&first->ref_count);
+  iree_atomic_ref_count_init(&second->ref_count);
+  first->size = 0x100;
+  second->size = 0x100;
+  IREE_ASSERT_OK(BufferTableStatus(hrx_buffer_table_insert(
+      table, UINT64_C(0x1000), /*host_ptr=*/nullptr, first->size, first,
+      /*user_data=*/nullptr)));
+  IREE_ASSERT_OK(BufferTableStatus(hrx_buffer_table_insert(
+      table, UINT64_C(0x5000), /*host_ptr=*/nullptr, second->size, second,
+      /*user_data=*/nullptr)));
+
+  const hrx_buffer_table_range_request_t requests[] = {
+      {/*.address=*/UINT64_C(0x1010), /*.length=*/4},
+      {/*.address=*/UINT64_C(0x5010), /*.length=*/4},
+  };
+  hrx_buffer_table_retained_ref_t refs[IREE_ARRAYSIZE(requests)] = {};
+  hrx_buffer_table_range_match_t matches[IREE_ARRAYSIZE(requests)] = {};
+  BulkCallbackState callback_state = {/*.call_count=*/0, /*.reject_call=*/2};
+  size_t ref_count = 0;
+  EXPECT_THAT(
+      Status(BufferTableStatus(hrx_buffer_table_find_ranges_retain_if(
+          table, IREE_ARRAYSIZE(requests), requests, CountBulkEntryCallback,
+          &callback_state, IREE_ARRAYSIZE(refs), refs, &ref_count, matches))),
+      StatusIs(StatusCode::kFailedPrecondition));
+  EXPECT_EQ(1u, ref_count);
+  EXPECT_EQ(2, callback_state.call_count);
+  EXPECT_EQ(0u, matches[0].ref_index);
+  EXPECT_EQ(SIZE_MAX, matches[1].ref_index);
+
+  hrx_buffer_release(refs[0].buffer);
+  IREE_ASSERT_OK(
+      BufferTableStatus(hrx_buffer_table_remove(table, UINT64_C(0x1000))));
+  IREE_ASSERT_OK(
+      BufferTableStatus(hrx_buffer_table_remove(table, UINT64_C(0x5000))));
+  hrx_buffer_release(first);
+  hrx_buffer_release(second);
   iree_hal_streaming_buffer_table_free(table);
 }
 
