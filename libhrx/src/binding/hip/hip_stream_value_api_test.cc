@@ -83,7 +83,13 @@ using HipGraphLaunchFn = hipError_t (*)(hipGraphExec_t executable,
                                         hipStream_t stream);
 using HipGraphExecDestroyFn = hipError_t (*)(hipGraphExec_t executable);
 using HipGraphDestroyFn = hipError_t (*)(hipGraph_t graph);
+using HipCtxCreateFn = hipError_t (*)(hipCtx_t* context, unsigned int flags,
+                                      hipDevice_t device);
+using HipCtxDestroyFn = hipError_t (*)(hipCtx_t context);
 using HipCtxGetCurrentFn = hipError_t (*)(hipCtx_t* context);
+using HipCtxSetCurrentFn = hipError_t (*)(hipCtx_t context);
+using HipCtxEnablePeerAccessFn = hipError_t (*)(hipCtx_t peer_context,
+                                                unsigned int flags);
 using HipGraphCreateFn = hipError_t (*)(hipGraph_t* graph, unsigned int flags);
 using HipGraphGetNodesFn = hipError_t (*)(hipGraph_t graph,
                                           hipGraphNode_t* nodes,
@@ -153,8 +159,16 @@ struct HipRuntimeApi {
   HipGraphExecDestroyFn graph_exec_destroy = nullptr;
   // Destroys a graph template.
   HipGraphDestroyFn graph_destroy = nullptr;
+  // Creates a context and makes it current.
+  HipCtxCreateFn ctx_create = nullptr;
+  // Destroys a context.
+  HipCtxDestroyFn ctx_destroy = nullptr;
   // Returns the current context.
   HipCtxGetCurrentFn ctx_get_current = nullptr;
+  // Replaces the current context.
+  HipCtxSetCurrentFn ctx_set_current = nullptr;
+  // Enables access to allocations owned by another context.
+  HipCtxEnablePeerAccessFn ctx_enable_peer_access = nullptr;
   // Creates an empty graph template.
   HipGraphCreateFn graph_create = nullptr;
   // Enumerates public graph nodes.
@@ -265,8 +279,16 @@ class HipStreamValueApiTest : public testing::Test {
           api_.library, "hipGraphExecDestroy");
       api_.graph_destroy =
           ResolveHipSymbol<HipGraphDestroyFn>(api_.library, "hipGraphDestroy");
+      api_.ctx_create =
+          ResolveHipSymbol<HipCtxCreateFn>(api_.library, "hipCtxCreate");
+      api_.ctx_destroy =
+          ResolveHipSymbol<HipCtxDestroyFn>(api_.library, "hipCtxDestroy");
       api_.ctx_get_current = ResolveHipSymbol<HipCtxGetCurrentFn>(
           api_.library, "hipCtxGetCurrent");
+      api_.ctx_set_current = ResolveHipSymbol<HipCtxSetCurrentFn>(
+          api_.library, "hipCtxSetCurrent");
+      api_.ctx_enable_peer_access = ResolveHipSymbol<HipCtxEnablePeerAccessFn>(
+          api_.library, "hipCtxEnablePeerAccess");
       api_.graph_create =
           ResolveHipSymbol<HipGraphCreateFn>(api_.library, "hipGraphCreate");
       api_.graph_get_nodes = ResolveHipSymbol<HipGraphGetNodesFn>(
@@ -312,7 +334,11 @@ class HipStreamValueApiTest : public testing::Test {
     ASSERT_NE(nullptr, api_.graph_launch);
     ASSERT_NE(nullptr, api_.graph_exec_destroy);
     ASSERT_NE(nullptr, api_.graph_destroy);
+    ASSERT_NE(nullptr, api_.ctx_create);
+    ASSERT_NE(nullptr, api_.ctx_destroy);
     ASSERT_NE(nullptr, api_.ctx_get_current);
+    ASSERT_NE(nullptr, api_.ctx_set_current);
+    ASSERT_NE(nullptr, api_.ctx_enable_peer_access);
     ASSERT_NE(nullptr, api_.graph_create);
     ASSERT_NE(nullptr, api_.graph_get_nodes);
     ASSERT_NE(nullptr, api_.graph_node_get_type);
@@ -435,6 +461,74 @@ TEST_F(HipStreamValueApiTest, ExecutesScalarWritesThroughPublicDso) {
                                     hipMemcpyDeviceToHost));
   EXPECT_EQ(10u, observed_32);
   EXPECT_EQ(11u, observed_64);
+}
+
+TEST_F(HipStreamValueApiTest, RejectsIncompatibleImportedBatchTargets) {
+  hipCtx_t original_context = nullptr;
+  ASSERT_EQ(hipSuccess, api_.ctx_get_current(&original_context));
+
+  hipCtx_t owner_context = nullptr;
+  hipCtx_t execution_context = nullptr;
+  void* allocation = nullptr;
+  hipStream_t stream = nullptr;
+  auto cleanup = [&] {
+    if (stream) {
+      EXPECT_EQ(hipSuccess, api_.stream_destroy(stream));
+      stream = nullptr;
+    }
+    if (allocation) {
+      EXPECT_EQ(hipSuccess, api_.ctx_set_current(owner_context));
+      EXPECT_EQ(hipSuccess, api_.free(allocation));
+      allocation = nullptr;
+    }
+    EXPECT_EQ(hipSuccess, api_.ctx_set_current(original_context));
+    if (execution_context) {
+      EXPECT_EQ(hipSuccess, api_.ctx_destroy(execution_context));
+      execution_context = nullptr;
+    }
+    if (owner_context) {
+      EXPECT_EQ(hipSuccess, api_.ctx_destroy(owner_context));
+      owner_context = nullptr;
+    }
+  };
+
+  hipError_t setup_result =
+      api_.ctx_create(&owner_context, /*flags=*/0, /*device=*/0);
+  if (setup_result == hipSuccess) {
+    setup_result = api_.malloc(&allocation, sizeof(uint64_t));
+  }
+  if (setup_result == hipSuccess) {
+    setup_result =
+        api_.ctx_create(&execution_context, /*flags=*/0, /*device=*/0);
+  }
+  if (setup_result == hipSuccess) {
+    setup_result = api_.ctx_enable_peer_access(owner_context, /*flags=*/0);
+  }
+  if (setup_result == hipSuccess) {
+    setup_result = api_.stream_create(&stream);
+  }
+  if (setup_result != hipSuccess) {
+    cleanup();
+    FAIL() << "cross-context target setup failed with " << setup_result;
+  }
+
+  hipStreamBatchMemOpParams parameters[2] = {};
+  parameters[0].writeValue.operation = hipStreamMemOpWriteValue32;
+  parameters[0].writeValue.address = (hipDeviceptr_t)(uintptr_t)allocation;
+  parameters[0].writeValue.value = 1;
+  parameters[0].writeValue.flags = hipStreamWriteValueDefault;
+  parameters[1].writeValue.operation = hipStreamMemOpWriteValue64;
+  parameters[1].writeValue.address = (hipDeviceptr_t)(uintptr_t)allocation;
+  parameters[1].writeValue.value64 = 1;
+  parameters[1].writeValue.flags = hipStreamWriteValueDefault;
+
+  // Submission is deferred until the next stream operation. The second call
+  // flushes the incompatible imported target and must report an invalid target
+  // instead of misclassifying the initialized runtime as uninitialized.
+  ASSERT_EQ(hipSuccess, api_.batch_mem_op(stream, 2, parameters, /*flags=*/0));
+  EXPECT_EQ(hipErrorInvalidValue,
+            api_.batch_mem_op(stream, 2, parameters, /*flags=*/0));
+  cleanup();
 }
 
 TEST_F(HipStreamValueApiTest, PublishesFinalWriteWithoutHostFlush) {
