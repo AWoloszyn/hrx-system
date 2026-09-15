@@ -302,13 +302,6 @@ struct iree_hal_streaming_context_t {
   // Guards both value-wait lane lists and their completion records.
   iree_slim_mutex_t value_wait_lane_mutex;
 
-  // Serializes allocation removal with stream-value target acquisition.
-  iree_slim_mutex_t stream_value_target_mutex;
-  // Number of stream-value targets acquired but not yet recorded or rejected.
-  iree_atomic_int32_t active_stream_value_target_count;
-  // Notifies allocation destruction when the final target preparation ends.
-  iree_notification_t stream_value_target_notification;
-
   // Context resource limits.
   iree_hal_streaming_limits_t limits;
 
@@ -1034,6 +1027,18 @@ typedef struct iree_hal_streaming_buffer_t {
   // True when the allocation was created by hipMallocManaged.
   bool is_managed;
 
+  // Serializes operation preparation admission and allocation closure.
+  iree_slim_mutex_t preparation_mutex;
+
+  // Wakes allocation teardown after the final admitted preparation completes.
+  iree_notification_t preparation_notification;
+
+  // Number of admitted operations not yet recorded or rejected.
+  iree_host_size_t active_preparation_count;
+
+  // True while the allocation is removed from public lookup for teardown.
+  bool is_closing;
+
   // Number of managed-memory metadata pages tracked for this allocation.
   iree_host_size_t managed_page_count;
 
@@ -1090,6 +1095,8 @@ typedef struct iree_hal_streaming_buffer_ref_t {
 // Immutable allocation metadata retained independently of the streaming
 // wrapper and buffer-table entry from which it was resolved.
 typedef struct iree_hal_streaming_retained_buffer_ref_t {
+  // Streaming wrapper whose preparation lease this reference owns.
+  iree_hal_streaming_buffer_t* owner_wrapper;
   // HRX allocation retaining the HAL buffer and its physical backing.
   hrx_buffer_t owner;
   // HAL buffer valid in the operation's context. Retained independently
@@ -1105,9 +1112,11 @@ typedef struct iree_hal_streaming_retained_buffer_ref_t {
   void* host_pointer;
   // Allocation length captured while the buffer-table entry was protected.
   iree_device_size_t allocation_size;
+  // Host registration flags captured while the operation lease is active.
+  iree_hal_streaming_host_register_flags_t host_register_flags;
   // True when the target was resolved from a different execution context.
   bool is_cross_context;
-  // Context whose target-preparation count this reference holds.
+  // Context retained while the allocation preparation lease is active.
   iree_hal_streaming_context_t* owner_context;
 } iree_hal_streaming_retained_buffer_ref_t;
 

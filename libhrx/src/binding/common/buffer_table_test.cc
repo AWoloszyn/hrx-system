@@ -116,6 +116,30 @@ namespace {
 
 using ::iree::testing::status::StatusIs;
 
+struct EntryCallbackState {
+  void* expected_user_data;
+  size_t expected_offset;
+  int call_count;
+};
+
+static hrx_status_t AcceptEntryCallback(const hrx_buffer_table_entry_t* entry,
+                                        size_t offset, void* user_data) {
+  auto* state = static_cast<EntryCallbackState*>(user_data);
+  EXPECT_EQ(state->expected_user_data, entry->user_data);
+  EXPECT_EQ(state->expected_offset, offset);
+  ++state->call_count;
+  return hrx_ok_status();
+}
+
+static hrx_status_t RejectEntryCallback(const hrx_buffer_table_entry_t* entry,
+                                        size_t offset, void* user_data) {
+  (void)entry;
+  (void)offset;
+  (void)user_data;
+  return hrx_make_status(HRX_STATUS_FAILED_PRECONDITION,
+                         "entry is unavailable");
+}
+
 // Helper to create a dummy buffer with the given device pointer.
 static iree_hal_streaming_buffer_t* CreateDummyBuffer(
     iree_hal_streaming_deviceptr_t device_ptr, size_t size,
@@ -343,6 +367,81 @@ TEST(BufferTableTest, RetainedRangeSnapshotsHostAlias) {
   EXPECT_EQ(24u, retained.offset);
 
   hrx_buffer_release(retained.buffer);
+  IREE_ASSERT_OK(
+      BufferTableStatus(hrx_buffer_table_remove(table, kDevicePointer)));
+  hrx_buffer_release(buffer);
+  iree_hal_streaming_buffer_table_free(table);
+}
+
+TEST(BufferTableTest, RetainedRangeAcquiresAndSnapshotsOpaquePayload) {
+  iree_allocator_t allocator = iree_allocator_system();
+  iree_hal_streaming_buffer_table_t* table = nullptr;
+  IREE_ASSERT_OK(iree_hal_streaming_buffer_table_allocate(allocator, &table));
+
+  hrx_buffer_t buffer = nullptr;
+  IREE_ASSERT_OK(
+      iree_allocator_malloc(allocator, sizeof(*buffer), (void**)&buffer));
+  memset(buffer, 0, sizeof(*buffer));
+  iree_atomic_ref_count_init(&buffer->ref_count);
+  buffer->size = 4096;
+
+  constexpr uint64_t kDevicePointer = UINT64_C(0x100000000);
+  uint64_t payload = 0;
+  IREE_ASSERT_OK(BufferTableStatus(
+      hrx_buffer_table_insert(table, kDevicePointer, /*host_ptr=*/nullptr,
+                              buffer->size, buffer, &payload)));
+
+  EntryCallbackState callback_state = {
+      /*.expected_user_data=*/&payload,
+      /*.expected_offset=*/32,
+      /*.call_count=*/0,
+  };
+  hrx_buffer_table_retained_ref_t retained = {};
+  IREE_ASSERT_OK(BufferTableStatus(hrx_buffer_table_find_range_retain_if(
+      table, kDevicePointer + callback_state.expected_offset, /*size=*/8,
+      AcceptEntryCallback, &callback_state, &retained)));
+  EXPECT_EQ(1, callback_state.call_count);
+  EXPECT_EQ(&payload, retained.user_data);
+  EXPECT_EQ(buffer, retained.buffer);
+  EXPECT_EQ(2, iree_atomic_ref_count_load(&buffer->ref_count));
+
+  hrx_buffer_release(retained.buffer);
+  IREE_ASSERT_OK(
+      BufferTableStatus(hrx_buffer_table_remove(table, kDevicePointer)));
+  hrx_buffer_release(buffer);
+  iree_hal_streaming_buffer_table_free(table);
+}
+
+TEST(BufferTableTest, RejectedRangeAcquisitionLeavesEntryUnchanged) {
+  iree_allocator_t allocator = iree_allocator_system();
+  iree_hal_streaming_buffer_table_t* table = nullptr;
+  IREE_ASSERT_OK(iree_hal_streaming_buffer_table_allocate(allocator, &table));
+
+  hrx_buffer_t buffer = nullptr;
+  IREE_ASSERT_OK(
+      iree_allocator_malloc(allocator, sizeof(*buffer), (void**)&buffer));
+  memset(buffer, 0, sizeof(*buffer));
+  iree_atomic_ref_count_init(&buffer->ref_count);
+  buffer->size = 4096;
+  constexpr uint64_t kDevicePointer = UINT64_C(0x100000000);
+  IREE_ASSERT_OK(BufferTableStatus(hrx_buffer_table_insert(
+      table, kDevicePointer, /*host_ptr=*/nullptr, buffer->size, buffer,
+      /*user_data=*/nullptr)));
+
+  hrx_buffer_table_retained_ref_t retained = {};
+  EXPECT_THAT(Status(BufferTableStatus(hrx_buffer_table_find_range_retain_if(
+                  table, kDevicePointer, /*size=*/8, RejectEntryCallback,
+                  /*callback_user_data=*/nullptr, &retained))),
+              StatusIs(StatusCode::kFailedPrecondition));
+  EXPECT_EQ(nullptr, retained.buffer);
+  EXPECT_EQ(1, iree_atomic_ref_count_load(&buffer->ref_count));
+
+  hrx_buffer_t found = nullptr;
+  IREE_ASSERT_OK(BufferTableStatus(hrx_buffer_table_find(
+      table, kDevicePointer, &found, /*out_offset=*/nullptr,
+      /*out_user_data=*/nullptr)));
+  EXPECT_EQ(buffer, found);
+
   IREE_ASSERT_OK(
       BufferTableStatus(hrx_buffer_table_remove(table, kDevicePointer)));
   hrx_buffer_release(buffer);
@@ -737,9 +836,15 @@ TEST(BufferTableTest, ReservedInsertSurvivesCapacityPressure) {
   auto* removed_buffer = CreateDummyBuffer(0x100000000ULL, 4096, allocator);
   IREE_ASSERT_OK(iree_hal_streaming_buffer_table_insert(table, removed_buffer));
   const size_t reserved_capacity = table->capacity;
-  IREE_ASSERT_OK(BufferTableStatus(hrx_buffer_table_reserve_insert(table)));
-  IREE_ASSERT_OK(iree_hal_streaming_buffer_table_remove(
-      table, removed_buffer->device_ptr));
+  hrx_buffer_table_entry_t removed_entry = {};
+  size_t removed_offset = SIZE_MAX;
+  IREE_ASSERT_OK(BufferTableStatus(hrx_buffer_table_remove_reserved_if(
+      table, removed_buffer->device_ptr, /*callback=*/nullptr,
+      /*callback_user_data=*/nullptr, &removed_entry, &removed_offset)));
+  EXPECT_EQ(removed_buffer->device_ptr, removed_entry.device_ptr);
+  EXPECT_EQ((hrx_buffer_t)removed_buffer, removed_entry.buffer);
+  EXPECT_EQ(0u, removed_offset);
+  EXPECT_EQ(1u, table->reserved_insert_count);
 
   std::vector<iree_hal_streaming_buffer_t*> competing_buffers;
   competing_buffers.reserve(reserved_capacity - 1);
@@ -768,6 +873,34 @@ TEST(BufferTableTest, ReservedInsertSurvivesCapacityPressure) {
   for (auto* buffer : competing_buffers) {
     FreeDummyBuffer(buffer, allocator);
   }
+}
+
+TEST(BufferTableTest, RejectedRemovalDoesNotReserveOrRemove) {
+  iree_allocator_t allocator = iree_allocator_system();
+  iree_hal_streaming_buffer_table_t* table = nullptr;
+  IREE_ASSERT_OK(iree_hal_streaming_buffer_table_allocate(allocator, &table));
+
+  auto* buffer = CreateDummyBuffer(0x100000000ULL, 4096, allocator);
+  IREE_ASSERT_OK(iree_hal_streaming_buffer_table_insert(table, buffer));
+
+  hrx_buffer_table_entry_t removed_entry = {};
+  EXPECT_THAT(Status(BufferTableStatus(hrx_buffer_table_remove_reserved_if(
+                  table, buffer->device_ptr, RejectEntryCallback,
+                  /*callback_user_data=*/nullptr, &removed_entry,
+                  /*out_offset=*/nullptr))),
+              StatusIs(StatusCode::kFailedPrecondition));
+  EXPECT_EQ(nullptr, removed_entry.buffer);
+  EXPECT_EQ(0u, table->reserved_insert_count);
+
+  iree_hal_streaming_buffer_t* found = nullptr;
+  IREE_ASSERT_OK(iree_hal_streaming_buffer_table_lookup(
+      table, buffer->device_ptr, &found));
+  EXPECT_EQ(buffer, found);
+
+  IREE_ASSERT_OK(
+      iree_hal_streaming_buffer_table_remove(table, buffer->device_ptr));
+  iree_hal_streaming_buffer_table_free(table);
+  FreeDummyBuffer(buffer, allocator);
 }
 
 TEST(BufferTableTest, MixedOperations) {

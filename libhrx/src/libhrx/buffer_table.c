@@ -325,6 +325,15 @@ hrx_status_t hrx_buffer_table_find_range(hrx_buffer_table_t* table,
 hrx_status_t hrx_buffer_table_find_range_retain(
     hrx_buffer_table_t* table, uint64_t any_ptr, size_t size,
     hrx_buffer_table_retained_ref_t* out_ref) {
+  return hrx_buffer_table_find_range_retain_if(
+      table, any_ptr, size, /*callback=*/NULL, /*callback_user_data=*/NULL,
+      out_ref);
+}
+
+hrx_status_t hrx_buffer_table_find_range_retain_if(
+    hrx_buffer_table_t* table, uint64_t any_ptr, size_t size,
+    hrx_buffer_table_entry_callback_t callback, void* callback_user_data,
+    hrx_buffer_table_retained_ref_t* out_ref) {
   IREE_ASSERT_ARGUMENT(out_ref);
   memset(out_ref, 0, sizeof(*out_ref));
 
@@ -340,17 +349,59 @@ hrx_status_t hrx_buffer_table_find_range_retain(
   hrx_buffer_table_entry_t* entry =
       hrx_buffer_table_find_range_locked(table, any_ptr, size);
   if (entry) {
-    hrx_buffer_retain(entry->buffer);
-    out_ref->buffer = entry->buffer;
-    out_ref->device_ptr = entry->device_ptr;
-    out_ref->host_ptr = entry->host_ptr;
-    out_ref->size = entry->size;
-    hrx_buffer_table_fill_result(entry, any_ptr, NULL, &out_ref->offset, NULL);
+    size_t offset = 0;
+    hrx_buffer_table_fill_result(entry, any_ptr, NULL, &offset, NULL);
+    hrx_status_t status = callback ? callback(entry, offset, callback_user_data)
+                                   : hrx_ok_status();
+    if (hrx_status_is_ok(status)) {
+      hrx_buffer_retain(entry->buffer);
+      out_ref->buffer = entry->buffer;
+      out_ref->device_ptr = entry->device_ptr;
+      out_ref->host_ptr = entry->host_ptr;
+      out_ref->size = entry->size;
+      out_ref->offset = offset;
+      out_ref->user_data = entry->user_data;
+    }
     iree_slim_mutex_unlock(&table->mutex);
-    return hrx_ok_status();
+    return status;
   }
 
   iree_slim_mutex_unlock(&table->mutex);
   return hrx_make_status(HRX_STATUS_NOT_FOUND,
                          "no buffer contains the requested range");
+}
+
+hrx_status_t hrx_buffer_table_remove_reserved_if(
+    hrx_buffer_table_t* table, uint64_t any_ptr,
+    hrx_buffer_table_entry_callback_t callback, void* callback_user_data,
+    hrx_buffer_table_entry_t* out_entry, size_t* out_offset) {
+  IREE_ASSERT_ARGUMENT(out_entry);
+  memset(out_entry, 0, sizeof(*out_entry));
+  if (out_offset) *out_offset = 0;
+
+  iree_slim_mutex_lock(&table->mutex);
+  const size_t index = hrx_buffer_table_find_index(table, any_ptr);
+  if (index >= table->count) {
+    iree_slim_mutex_unlock(&table->mutex);
+    return hrx_make_status(HRX_STATUS_NOT_FOUND,
+                           "pointer not found in buffer table");
+  }
+
+  hrx_buffer_table_entry_t* entry = &table->entries[index];
+  size_t offset = 0;
+  hrx_buffer_table_fill_result(entry, any_ptr, NULL, &offset, NULL);
+  hrx_status_t status =
+      callback ? callback(entry, offset, callback_user_data) : hrx_ok_status();
+  if (hrx_status_is_ok(status)) {
+    *out_entry = *entry;
+    if (out_offset) *out_offset = offset;
+    if (index < table->count - 1) {
+      memmove(&table->entries[index], &table->entries[index + 1],
+              (table->count - index - 1) * sizeof(*table->entries));
+    }
+    --table->count;
+    ++table->reserved_insert_count;
+  }
+  iree_slim_mutex_unlock(&table->mutex);
+  return status;
 }

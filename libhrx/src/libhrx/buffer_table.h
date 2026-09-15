@@ -47,7 +47,15 @@ typedef struct hrx_buffer_table_retained_ref_t {
   size_t size;
   // Byte offset of the requested pointer from its matching device or host base.
   size_t offset;
+  // Opaque entry payload captured while the table lock was held.
+  void* user_data;
 } hrx_buffer_table_retained_ref_t;
+
+// Validates or acquires entry-local state while the table lock is held.
+// Implementations must not wait for work that can require another table
+// operation to complete.
+typedef hrx_status_t (*hrx_buffer_table_entry_callback_t)(
+    const hrx_buffer_table_entry_t* entry, size_t offset, void* user_data);
 
 void hrx_buffer_table_initialize(hrx_buffer_table_t* table);
 void hrx_buffer_table_deinitialize(hrx_buffer_table_t* table);
@@ -105,6 +113,27 @@ hrx_status_t hrx_buffer_table_find_range(hrx_buffer_table_t* table,
 hrx_status_t hrx_buffer_table_find_range_retain(
     hrx_buffer_table_t* table, uint64_t any_ptr, size_t size,
     hrx_buffer_table_retained_ref_t* out_ref);
+
+// Looks up and retains a range after |callback| accepts the matching entry.
+// |callback| runs while the table lock protects both the entry and its opaque
+// payload. On success, |out_ref->buffer| and any ownership acquired by the
+// callback belong to the caller.
+hrx_status_t hrx_buffer_table_find_range_retain_if(
+    hrx_buffer_table_t* table, uint64_t any_ptr, size_t size,
+    hrx_buffer_table_entry_callback_t callback, void* callback_user_data,
+    hrx_buffer_table_retained_ref_t* out_ref);
+
+// Validates and removes the entry containing |any_ptr| as one table
+// transaction. A successful removal reserves its vacated slot so the caller
+// can restore the exact entry without allocation. The caller must pair success
+// with either hrx_buffer_table_insert_reserved or
+// hrx_buffer_table_cancel_reserved_insert. |out_entry| contains borrowed
+// handles whose ownership remains with the caller that originally inserted
+// them.
+hrx_status_t hrx_buffer_table_remove_reserved_if(
+    hrx_buffer_table_t* table, uint64_t any_ptr,
+    hrx_buffer_table_entry_callback_t callback, void* callback_user_data,
+    hrx_buffer_table_entry_t* out_entry, size_t* out_offset);
 
 #ifdef __cplusplus
 }
