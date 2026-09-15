@@ -32,14 +32,16 @@ const loom_pass_info_t* loom_cse_pass_info(void);
 //   - Convergent barriers clear occupied slots, including tombstones. Total
 //     full-table invalidation work is bounded by block insertions, with one
 //     retained slot index per possible insertion.
-//   - Entry block dominance: in multi-block regions, the entry block's
-//     CSE candidates are visible to all successor blocks.
+//   - CFG dominance: each multiblock region's graph is built once. Scope
+//     construction consumes its indexed immediate dominators directly.
+//     Stateful lookup stops at joins and backedges; pure candidates remain
+//     visible in dominated blocks.
 //   - Deep attribute comparison: pointer-valued attribute kinds
 //     (I64_ARRAY, PREDICATE_LIST, DICT) are compared by content via
 //     loom_attribute_equal, not by pointer identity.
 //   - Split arena strategy: scope tables live in a dedicated arena
-//     reset between top-level blocks; the DFS stack lives in the pass
-//     arena. Peak memory is bounded by the largest single subtree.
+//     reset between function-like root regions; the DFS stack lives in the
+//     pass arena. Peak scope memory is bounded by the largest root region.
 iree_status_t loom_cse_run(loom_pass_t* pass, loom_module_t* module,
                            loom_func_like_t function);
 
