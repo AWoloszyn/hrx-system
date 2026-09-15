@@ -47,12 +47,12 @@ Windows standard backing is rounded to 64 KiB, while KMT mappings guarantee
 4 KiB address alignment. Native mapping bounds account for the target's shim-DMA
 translation so the complete range fits every advertised address interpretation.
 
-The Windows metadata ABI qualified for KMD 32.0.203.240 uses a 272-byte context
-record and an 88-byte submission prefix. Context creation needs no application
-xclbin or kernel-description payload. The separately tagged older ABI retains
-its matching compatibility envelope and 104-byte submission prefix. A successful
-private query which writes no response is not an ABI tag; unrecognized schemas
-are rejected before context construction. Native context ID zero is valid.
+Windows context and submission records form a paired native protocol. Hardware
+identity selects device capabilities; it does not identify the installed
+driver's private wire layouts. A private query returning a hardware kind, or
+succeeding without writing a reply, does not establish protocol compatibility.
+The provider must establish the matching context, allocation and submission
+contracts together. Native context ID zero is valid.
 
 Windows initialization loads a target-selected native bootstrap independently
 of application code. The NPU4 bootstrap only asserts four core resets; it does
