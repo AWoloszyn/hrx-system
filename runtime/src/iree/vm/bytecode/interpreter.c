@@ -359,6 +359,11 @@ static iree_status_t iree_vm_bytecode_publish_results(
   return iree_ok_status();
 }
 
+// Relative dispatch offsets require the anchor and all handlers in one section.
+// GCC's hot/cold partitioning can otherwise separate the invalid-opcode anchor.
+#if defined(IREE_COMPILER_GCC) && defined(__ELF__)
+__attribute__((section(".text.iree_vm_bytecode_dispatch")))
+#endif
 static iree_status_t iree_vm_bytecode_dispatch(
     const iree_vm_bytecode_image_t* image,
     const iree_vm_bytecode_v0_function_row_t* function,
