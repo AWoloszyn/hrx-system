@@ -5,17 +5,17 @@ using it. Allocation policy, suballocation, scheduling, executable loading, and
 deciding when storage can be reused belong to the caller, typically a hardware
 abstraction layer (HAL).
 
-This document defines the memory design and its caller scenarios. Capability
-discovery identifies the contracts a particular implementation provides; this
-design is not a blanket claim of backend support. Public headers specify the
-available C ABI.
+This document describes the memory contracts and their caller scenarios.
+[Public headers](../include/amdf/memory.h) specify the C ABI; the
+[implementation overview](../README.md#implementation-and-qualification)
+summarizes the native providers and qualification scope.
 
 ## Fabric discovery
 
 A libamdf instance is the application's explicit lifetime root. Through it, the
-application discovers participating engines and memory resources: CPUs, GPUs,
-NPUs, system-memory locations, GPU-local memory, and their supported access
-relationships.
+application discovers GPU and NPU endpoints, system-memory locations, GPU-local
+memory, and their supported access relationships. The CPU participates through
+host mappings, without a synthetic CPU endpoint or execution device.
 
 The instance selects a native lifetime policy before any devices are initialized.
 `AMDF_NATIVE_LIFETIME_PROCESS` is the default: kernel-owned state may survive
@@ -427,16 +427,10 @@ through registration and every device use. An application importing external
 memory follows the transport's ownership contract. Both then operate with
 handles and ranges through the same scope-based interface.
 
-Virtual-memory operations fit alongside this model. Reserving address space is
-separate from allocating backing. Mapping, aliasing, or remapping names explicit
-resource handles and ranges and has its own ordering, completion, and lifetime
-contract; it is not ordinary submission preparation. Unsupported contracts are
-reported through capability discovery and rejected when requested.
-
-Budget reporting is a separate, explicitly supported query. Logical backing is
-counted once; native mapping overhead and platform budget charges are separate
-facts. Budget queries do not introduce allocation policy or fabricate unavailable
-fields.
+The memory ABI establishes native address mappings as part of construction. It
+does not expose separate virtual-address reservation, alias/remap operations or
+live budget accounting. Those are distinct services, not hidden side effects
+of command submission or additional responsibilities of a memory scope.
 
 Libamdf owns the native machinery that makes memory usable. The caller owns what
 the bytes mean, how work moves through them, and when they can be reused.

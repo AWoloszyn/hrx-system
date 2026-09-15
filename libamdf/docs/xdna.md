@@ -61,6 +61,58 @@ identifies that setup, not the caller's executable. This mandatory provider
 setup is distinct from any application PDI a HAL may construct. No public PDI,
 program, lane, or argument-patching object is required.
 
+## Submitting a prepared range
+
+The queue and instruction memory below come from the same context. The caller
+has already queried alignment and size limits, obtained EXECUTE access, written
+its target-native bytes, and performed the required host publication. The
+descriptor is consumed during the call; accepted instruction bytes remain
+immutable until retirement.
+
+```c
+#include "amdf/xdna.h"
+
+amdf_status_t publish_instructions(
+    const amdf_xdna_api_t* xdna, amdf_kernel_queue_t* queue,
+    amdf_memory_t* instructions, uint32_t access_ordinal,
+    uint64_t byte_offset, uint64_t byte_length, uint64_t* out_submission) {
+  const amdf_xdna_kernel_command_t command = {
+      .memory = instructions,
+      .access_ordinal = access_ordinal,
+      .byte_offset = byte_offset,
+      .byte_length = byte_length,
+  };
+  const amdf_xdna_kernel_queue_submission_info_t submit = {
+      .type = AMDF_STRUCTURE_TYPE_XDNA_KERNEL_QUEUE_SUBMISSION_INFO,
+      .structure_size = sizeof(submit),
+      .command_count = 1,
+      .commands = &command,
+  };
+  return xdna->kernel_queue_submit(queue, &submit, out_submission);
+}
+```
+
+NPU4 and NPU5 queues admit one instruction range per submission and one
+unretired submission per queue. The publication call performs no allocation,
+instruction parsing, relocation, argument resolution, retry, sleep or host wait.
+The queue preallocates its mandatory native packet storage. Multiple contexts
+can independently own backing for different resident programs or queues.
+
+The returned submission number identifies accepted work. A caller can observe
+progress with `kernel_queue_query_status` or wait with
+`kernel_queue_wait(queue, submission, AMDF_TIMEOUT_INFINITE, 0)`. A successful
+wait establishes native retirement, including command-result inspection. A
+timeout or wait error is not cancellation and does not by itself release the
+instruction borrow; the status query reports retirement separately from sticky
+terminal failure.
+
+The [canonical ELF consumer](../../experimental/xdna/cts/execution_test.cc)
+shows the complete flow, including target selection, image loading, relocation,
+cold initialization, reusable execution, numerical checks and teardown. The
+ELF decoder and materializer live in the runtime image layer; libamdf receives
+only the prepared native range. Reusing that range does not repeat image
+loading or require an indirect data-buffer list.
+
 ## Ownership
 
 A queue borrows its context. Private memory also borrows its context; ordinary

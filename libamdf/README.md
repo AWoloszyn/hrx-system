@@ -64,106 +64,67 @@ keeping the compiler, loader, and scheduler with their caller. Family-selective
 builds keep dependencies aligned with the hardware an application uses.
 Static, shared-linked, and runtime-loaded clients share one C ABI.
 
-The [memory design](docs/memory.md) describes storage, access, and ownership.
-The [XDNA execution design](docs/xdna.md) describes instruction storage and the
-native Linux and Windows submission boundaries.
+## Implementation and qualification
 
-## Native platform surface
+The initial landing establishes native XDNA execution and the common memory
+foundation. It includes passive discovery, scope-based allocation, registration
+and external-memory sharing, explicit host visibility, native queues, and the
+same conformance corpus for static, shared-linked, and runtime-loaded clients.
+It does not replace the existing IREE AMDGPU HAL or implement XRT/ROCr API
+compatibility. The runtime can adopt this foundation without adopting either
+runtime's execution model.
 
-libamdf is the portable C boundary for native AMD GPU and XDNA device access.
-It isolates operating-system and driver-private mechanisms behind an
-unloadable library while leaving executable formats, command construction,
-scheduling, and memory policy in the calling runtime.
+| Execution domain | Native provider | Foundation |
+| --- | --- | --- |
+| CPU | Linux and Windows host memory | CPU-only backing and explicit host views into shared memory; no synthetic CPU device. |
+| RDNA / CDNA on Linux | KFD and DRM | System and local memory, caller-page registration, peer topology and shared GPU addresses, native user queues. |
+| RDNA on Windows | WDDM / KMT and the private WKMI bridge | System and local memory, host registration, native kernel-published PM4 and SDMA ranges. |
+| XDNA on Linux | Modern amdxdna DRM | NPU4/NPU5 profiles, resident data, context-private instruction storage and kernel-mediated instruction submission. |
+| XDNA on Windows | MCDM / KMT | NPU4/NPU5 profiles, resident data, context-private instruction storage and native transaction-interpreter submission. |
 
-The base public surface is `include/amdf/amdf.h`. `amdf_query_api` negotiates an
-ABI version and returns an immutable API table. Optional family surfaces in
-`include/amdf/gpu.h` and `include/amdf/xdna.h` are negotiated from that table
-according to what was compiled into the library, independent of the hardware
-currently present. Querying any table performs no allocation, system call,
-device discovery, dependent-library load, or other observable initialization.
+Capability queries describe the implemented platform, target and driver
+combination. Native execution has been exercised on Linux NPU5 and Windows
+NPU4; the client CI jobs qualify Linux NPU4 and Windows NPU5. Those CI execution
+results are still required for the initial qualification matrix. Local hardware
+is not the support boundary. The first client jobs compile RDNA+XDNA while
+running host-only and XDNA hardware tests; broader GPU execution qualification
+and HAL integration build on the same memory foundation. CDNA targets Linux.
 
-An explicit provider instance owns the native platform state retained across
-calls and can enumerate fixed-stride summaries of independently selectable AMD
-execution endpoints. Opening an endpoint caches immutable identity and available
-family-specific qualification without creating a device, address space,
-paging queue, allocation, executable, or hardware queue, and without waking an
-idle device. This permits host metadata storage, OS metadata handles and bounded
-metadata queries; it does not imply zero system calls. If family qualification
-fails, core endpoint identity remains queryable, but the failed family profile
-is not published as a partial record. Builds without a native platform provider
-expose the public headers but do not produce provider artifacts.
+## Working with the API
 
-On Linux, endpoint qualification reads cached sysfs identity, topology and heap
-metadata without opening a render, KFD or accelerator execution file. Expected
-GPU memory limits come from explicit ISA and package descriptions; unknown
-identities fail qualification instead of producing guessed memory capabilities.
-Explicit device creation qualifies the installed native interface and obtains
-the actual memory limits on the retained connection before VM initialization.
-Live scope queries expose those limits without changing the endpoint snapshot.
+The public entry point is [amdf_query_api](include/amdf/api.h), which returns an
+immutable, versioned C table. Optional [GPU](include/amdf/gpu.h) and
+[XDNA](include/amdf/xdna.h) tables expose family-specific services. Loading the
+library and querying its tables do not discover or activate hardware.
 
-On x86-64 Windows, the GPU extension qualifies an already opened KMT adapter
-through adapter metadata queries and a private `amdf_wkmi_bridge.dll` runtime
-companion. KMT adapter handles and the graphics kernel's process bookkeeping
-are distinct from the driver process context and GPU address domain acquired
-by explicit device creation. The bridge contains the pinned binary-only WKMI
-C++ and CRT ABI behind a versioned C table. Successful qualification releases
-the temporary WKMI adapter state and unloads the bridge before endpoint open
-returns. GPU information queries copy the cached exact GFX identity, ASIC
-revision, active compute geometry, LDS limit, and XCC topology without loading
-a library or entering the driver. Expected memory profiles are qualified as a
-complete set at the same boundary. GPU endpoints advertise kernel-published
-PM4 and SDMA families only when the loaded KMT and WKMI surfaces provide
-hardware-scheduled queues for the selected engine.
+A caller follows an explicit resource lifecycle:
 
-Each opened endpoint also reports a dense immutable set of native queue
-families. A family identifies its accepted command representation (PM4, SDMA,
-AQL, or XDNA) independently from how commands are published. User publication
-means the caller directly updates mapped queue state; kernel publication means
-a bounded provider call accepts already prepared top-level commands. CPU
-translation from one representation to another is not a publication mode.
+1. Create an instance, enumerate endpoints, and open metadata snapshots. Inspect
+   topology, memory profiles, instruction limits, and queue families before
+   activating a device.
+2. Create the devices selected for the workload. Query their achieved memory
+   contracts and allocate from a scope with the intended live consumers.
+3. Map host views and obtain device addresses. Create queues and any required
+   XDNA contexts; allocate private instruction backing from its owning context.
+4. Publish data and caller-prepared commands, reuse backing and addresses, and
+   observe explicit completion. The runtime supplies scheduling and last-use
+   tracking.
+5. Release resources in dependency order: mappings and memory before their
+   required devices or contexts, then endpoints and the instance.
 
-A materialized Windows GPU device owns one WDDM address domain and can attach
-system, device-local, and registered-host memory at stable GPU virtual
-addresses. Local allocations may be executable without being host-visible;
-callers stage their contents through prepared GPU commands. The current
-kernel-mediated PM4 and SDMA queues accept one immutable native command range
-without reading or translating its bytes, borrow the command attachment until
-a monitored progress fence retires it, and support bounded polling plus a
-kernel wait.
+The [enumeration example](examples/enumerate.c) shows ABI negotiation and
+passive selection. The [XDNA numerical consumer](../experimental/xdna/cts/execution_test.cc)
+loads canonical images, prepares instruction ranges, executes them against
+allocated, registered and imported data, and checks results and teardown.
 
-Advertising a command/publication pair promises that a matching queue can be
-constructed for that endpoint. Missing families mean the loaded provider has
-no matching implementation, not that the silicon necessarily lacks the
-capability. `endpoint_query_queue_family_info` copies records cached during
-endpoint open and performs no allocation, system call, device initialization,
-queue creation, retry, sleep, or device wait. A Windows endpoint advertises the
-kernel-mediated XDNA family only when the loaded KMT surface contains every
-operation required to construct and publish to that queue.
+Focused design documents describe the contracts:
 
-System memory scopes provide backing with one stable XDNA virtual address for
-each requested live consumer on qualified Windows x86-64 systems. Memory creation
-publishes the address only after mapping and ordinary residency have completed,
-without using the fatal `MustSucceed` residency mode. Explicit host mappings expose
-write-back cached pages and require range-scoped flush or invalidate operations
-when ownership moves between the host and XDNA. Placement classes or properties
-that the provider cannot fully satisfy fail explicitly instead of silently
-degrading.
-
-An XDNA context exposes its private instruction-memory scope through the same
-memory API. The caller allocates executable backing, maps and publishes its own
-bytes, and submits a memory handle, access ordinal, byte offset, and byte length.
-ELF loading, PDI construction, relocation, argument layout and array scheduling
-remain above libamdf. Instruction addresses and lengths satisfy the endpoint's
-cached execution limits; submission does not read or modify instruction bytes.
-
-The NPU4 and NPU5 profiles expose kernel-mediated XDNA queues with one instruction
-range per submission and one unretired submission per queue. Submission is a
-bounded native publication call: it performs no allocation, transaction
-parsing, lowering, binding resolution, command transcription, retry, sleep, or
-host wait. The queue owns mandatory platform packet storage. Status queries and
-waits release the submitted memory borrow only after native fence completion
-and command-result inspection. Indirectly referenced memory is resident for its
-allocation lifetime and is not enumerated on each submission.
+- [Discovery and activation](docs/discovery.md): complete passive information,
+  live refinement, queue families and native driver ownership.
+- [Memory fabric](docs/memory.md): scopes, shared backing, addresses, visibility
+  and caller-owned lifetimes.
+- [XDNA execution](docs/xdna.md): instruction storage, submission and the native
+  Linux and Windows requirements.
 
 ## Building and embedding
 
@@ -185,10 +146,10 @@ with the `AMDF_FAMILY_*` CMake options or the
 select individual members through `//libamdf/config/family:rdna`, `:cdna`, and
 `:xdna` without interpreting the setting themselves.
 
-Configure and test Bazel explicitly without enabling the legacy AMDGPU HAL:
+For a host-only build and test of libamdf without the legacy AMDGPU HAL:
 
 ```bash
-python dev.py bazel configure -DAMDF_BUILD=ON
+iree-bazel-configure -DAMDF_BUILD=ON -DIREE_HAL_DRIVER_AMDGPU=OFF
 iree-bazel-test --config=asan \
   --test_tag_filters=-iree-run-requirement=libamdf.resource.amd_gpu,-iree-run-requirement=libamdf.resource.xdna \
   //libamdf/...
@@ -220,18 +181,39 @@ scenarios run wherever registration is supported, and native-owner recreation
 scenarios require reclaimable VM acquisition. Ordinary memory, queue, and interop
 cases share one device per endpoint for the duration of each test process.
 
-On a qualified XDNA host, select all XDNA hardware tests, including each CTS
-linkage mode and the native DRM device lifecycle:
+The XDNA command configures, builds and tests the library and its ELF consumers,
+including the native device lifecycle and every CTS linkage mode:
 
 ```bash
-iree-bazel-test --config=asan --//libamdf/config:families=xdna \
-  --test_tag_filters=iree-run-requirement=libamdf.resource.xdna //libamdf/...
-iree-cmake-test -L runtime-resource=amd-xdna
+python build_tools/devtools/ci.py iree-bazel-xdna-asan
 ```
+
+The client configuration compiles RDNA and XDNA together, including GPU test
+binaries, while admitting only host and XDNA hardware execution. It covers
+`//libamdf/...` and `//experimental/xdna/...`, not the whole project, and does not
+require the ROCr-backed AMDGPU HAL:
+
+```bash
+# Linux client CI.
+python build_tools/devtools/ci.py iree-bazel-amd-client-asan
+# Windows client CI, in a configured native clang-cl environment.
+python build_tools/devtools/ci.py iree-bazel-amd-client
+```
+
+These commands select the worktree's build configuration. The corresponding
+[Linux](../.github/workflows/ci_iree_bazel_client_linux.yml) and
+[Windows](../.github/workflows/ci_iree_bazel_client_windows.yml) workflows own
+platform setup and hardware assignment. Resource requirements select tests;
+being compiled into the library does not declare a GPU available for testing.
+For the CMake XDNA build and test sequence, use
+`python build_tools/devtools/ci.py iree-cmake-xdna-asan`.
 
 Linux XDNA execution requires the host's `amdxdna` driver and `/dev/accel`
 devices to be accessible inside the test environment. GPU device access through
 `/dev/kfd` and `/dev/dri` does not provide XDNA device access.
+
+The [benchmark guide](benchmarks/README.md) separates memory lifecycle,
+publication-only, warm submission and completed execution measurements.
 
 Installing the repository exports `amdf::amdf` and `amdf::amdf_static` through
 `find_package(amdf CONFIG REQUIRED)` and installs the public headers beneath
