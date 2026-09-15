@@ -14,7 +14,14 @@
 // Maximum time a write-only batch may remain recorded without another stream
 // operation submitting it. A short delay coalesces adjacent scalar writes while
 // ensuring that the final successful call makes progress on its own.
-enum { IREE_HAL_STREAMING_VALUE_FLUSH_DELAY_MS = 1 };
+enum {
+  IREE_HAL_STREAMING_VALUE_FLUSH_DELAY_MS = 1,
+  // Dynamic wait queues are expensive backend objects, but retaining one for
+  // every scheduling configuration ever observed would make context memory
+  // use unbounded. Active waits remain unconstrained; only completed queues
+  // retained for reuse count against this limit.
+  IREE_HAL_STREAMING_VALUE_WAIT_IDLE_LANE_LIMIT = 8,
+};
 
 struct iree_hal_streaming_value_flush_timer_t {
   // One-shot timer submitted to the process async runtime.
@@ -147,8 +154,14 @@ static bool iree_hal_streaming_value_wait_lane_matches(
                      sizeof(*execution_resources.ordinals)) == 0);
 }
 
-static iree_status_t iree_hal_streaming_recycle_value_wait_lanes_locked(
-    iree_hal_streaming_context_t* context) {
+// Removes completed lanes from the pending list. Their semaphore references
+// are released after dropping the lane mutex because the final release may
+// enter backend destruction.
+static iree_status_t
+iree_hal_streaming_detach_completed_value_wait_lanes_locked(
+    iree_hal_streaming_context_t* context,
+    iree_hal_streaming_value_wait_lane_t** out_completed_lanes) {
+  *out_completed_lanes = NULL;
   iree_hal_streaming_value_wait_lane_t** next_lane =
       &context->pending_value_wait_lanes;
   while (*next_lane) {
@@ -163,13 +176,22 @@ static iree_status_t iree_hal_streaming_recycle_value_wait_lanes_locked(
     }
 
     *next_lane = lane->next;
-    iree_hal_semaphore_release(lane->completion_semaphore);
-    lane->completion_semaphore = NULL;
-    lane->completion_value = 0;
-    lane->next = context->idle_value_wait_lanes;
-    context->idle_value_wait_lanes = lane;
+    lane->next = *out_completed_lanes;
+    *out_completed_lanes = lane;
   }
   return iree_ok_status();
+}
+
+static void iree_hal_streaming_destroy_value_wait_lanes(
+    iree_hal_streaming_context_t* context,
+    iree_hal_streaming_value_wait_lane_t* lanes) {
+  while (lanes) {
+    iree_hal_streaming_value_wait_lane_t* next = lanes->next;
+    iree_hal_semaphore_release(lanes->completion_semaphore);
+    iree_hal_queue_release(lanes->queue);
+    iree_allocator_free(context->host_allocator, lanes);
+    lanes = next;
+  }
 }
 
 // Acquires a queue that remains exclusive until the submission using it has
@@ -179,7 +201,7 @@ static iree_status_t iree_hal_streaming_acquire_value_wait_lane(
     iree_hal_streaming_context_t* context,
     const iree_hal_queue_family_t* family, iree_hal_queue_priority_t priority,
     iree_hal_queue_execution_resource_list_t execution_resources,
-    iree_hal_queue_t* excluded_queue,
+    iree_hal_queue_t* excluded_queue, unsigned long long stream_id,
     iree_hal_streaming_value_wait_lane_t** out_lane) {
   IREE_ASSERT_ARGUMENT(out_lane);
   *out_lane = NULL;
@@ -192,13 +214,11 @@ static iree_status_t iree_hal_streaming_acquire_value_wait_lane(
   }
 
   iree_slim_mutex_lock(&context->value_wait_lane_mutex);
-  iree_status_t status =
-      iree_hal_streaming_recycle_value_wait_lanes_locked(context);
   iree_hal_streaming_value_wait_lane_t** next_lane =
-      &context->idle_value_wait_lanes;
-  while (iree_status_is_ok(status) && *next_lane && !*out_lane) {
+      &context->pending_value_wait_lanes;
+  while (*next_lane && !*out_lane) {
     iree_hal_streaming_value_wait_lane_t* lane = *next_lane;
-    if (lane->queue != excluded_queue &&
+    if (lane->owner_stream_id == stream_id && lane->queue != excluded_queue &&
         iree_hal_streaming_value_wait_lane_matches(lane, family, priority,
                                                    execution_resources)) {
       *next_lane = lane->next;
@@ -208,7 +228,57 @@ static iree_status_t iree_hal_streaming_acquire_value_wait_lane(
       next_lane = &lane->next;
     }
   }
+  iree_hal_streaming_value_wait_lane_t* completed_lanes = NULL;
+  iree_status_t status = iree_ok_status();
+  if (!*out_lane) {
+    status = iree_hal_streaming_detach_completed_value_wait_lanes_locked(
+        context, &completed_lanes);
+  }
   iree_slim_mutex_unlock(&context->value_wait_lane_mutex);
+  if (*out_lane) return iree_ok_status();
+
+  // Completion references are no longer reachable from the shared lists and
+  // can be released without holding the context lane mutex.
+  for (iree_hal_streaming_value_wait_lane_t* lane = completed_lanes; lane;
+       lane = lane->next) {
+    iree_hal_semaphore_release(lane->completion_semaphore);
+    lane->completion_semaphore = NULL;
+    lane->completion_value = 0;
+    lane->owner_stream_id = 0;
+  }
+
+  iree_hal_streaming_value_wait_lane_t* discarded_lanes = NULL;
+  iree_slim_mutex_lock(&context->value_wait_lane_mutex);
+  while (completed_lanes) {
+    iree_hal_streaming_value_wait_lane_t* lane = completed_lanes;
+    completed_lanes = lane->next;
+    if (context->idle_value_wait_lane_count <
+        IREE_HAL_STREAMING_VALUE_WAIT_IDLE_LANE_LIMIT) {
+      lane->next = context->idle_value_wait_lanes;
+      context->idle_value_wait_lanes = lane;
+      ++context->idle_value_wait_lane_count;
+    } else {
+      lane->next = discarded_lanes;
+      discarded_lanes = lane;
+    }
+  }
+  next_lane = &context->idle_value_wait_lanes;
+  while (iree_status_is_ok(status) && *next_lane && !*out_lane) {
+    iree_hal_streaming_value_wait_lane_t* lane = *next_lane;
+    if (lane->queue != excluded_queue &&
+        iree_hal_streaming_value_wait_lane_matches(lane, family, priority,
+                                                   execution_resources)) {
+      *next_lane = lane->next;
+      lane->next = NULL;
+      --context->idle_value_wait_lane_count;
+      lane->owner_stream_id = stream_id;
+      *out_lane = lane;
+    } else {
+      next_lane = &lane->next;
+    }
+  }
+  iree_slim_mutex_unlock(&context->value_wait_lane_mutex);
+  iree_hal_streaming_destroy_value_wait_lanes(context, discarded_lanes);
   if (!iree_status_is_ok(status) || *out_lane) return status;
 
   iree_hal_queue_params_t params;
@@ -237,18 +307,37 @@ static iree_status_t iree_hal_streaming_acquire_value_wait_lane(
   lane->family = iree_hal_queue_family(queue);
   lane->priority = iree_hal_queue_priority(queue);
   lane->execution_resources = iree_hal_queue_execution_resources(queue);
+  lane->owner_stream_id = stream_id;
   *out_lane = lane;
   return iree_ok_status();
 }
 
-static void iree_hal_streaming_release_idle_value_wait_lane(
+// Returns an unsubmitted lane to its prior state. A lane taken from the
+// pending list keeps its old completion record so a failed later submission
+// cannot make the still-occupied queue available to another stream.
+static void iree_hal_streaming_release_value_wait_lane(
     iree_hal_streaming_context_t* context,
     iree_hal_streaming_value_wait_lane_t* lane) {
   if (!lane) return;
+  bool destroy_lane = false;
   iree_slim_mutex_lock(&context->value_wait_lane_mutex);
-  lane->next = context->idle_value_wait_lanes;
-  context->idle_value_wait_lanes = lane;
+  if (lane->completion_semaphore) {
+    lane->next = context->pending_value_wait_lanes;
+    context->pending_value_wait_lanes = lane;
+  } else if (context->idle_value_wait_lane_count <
+             IREE_HAL_STREAMING_VALUE_WAIT_IDLE_LANE_LIMIT) {
+    lane->owner_stream_id = 0;
+    lane->next = context->idle_value_wait_lanes;
+    context->idle_value_wait_lanes = lane;
+    ++context->idle_value_wait_lane_count;
+  } else {
+    destroy_lane = true;
+  }
   iree_slim_mutex_unlock(&context->value_wait_lane_mutex);
+  if (destroy_lane) {
+    lane->next = NULL;
+    iree_hal_streaming_destroy_value_wait_lanes(context, lane);
+  }
 }
 
 static void iree_hal_streaming_publish_pending_value_wait_lane(
@@ -256,12 +345,15 @@ static void iree_hal_streaming_publish_pending_value_wait_lane(
     iree_hal_streaming_value_wait_lane_t* lane,
     iree_hal_semaphore_t* completion_semaphore, uint64_t completion_value) {
   iree_hal_semaphore_retain(completion_semaphore);
+  iree_hal_semaphore_t* previous_completion_semaphore =
+      lane->completion_semaphore;
   lane->completion_semaphore = completion_semaphore;
   lane->completion_value = completion_value;
   iree_slim_mutex_lock(&context->value_wait_lane_mutex);
   lane->next = context->pending_value_wait_lanes;
   context->pending_value_wait_lanes = lane;
   iree_slim_mutex_unlock(&context->value_wait_lane_mutex);
+  iree_hal_semaphore_release(previous_completion_semaphore);
 }
 
 void iree_hal_streaming_value_wait_lanes_deinitialize(
@@ -271,6 +363,7 @@ void iree_hal_streaming_value_wait_lanes_deinitialize(
       context->pending_value_wait_lanes,
   };
   context->idle_value_wait_lanes = NULL;
+  context->idle_value_wait_lane_count = 0;
   context->pending_value_wait_lanes = NULL;
   for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(lists); ++i) {
     iree_hal_streaming_value_wait_lane_t* lane = lists[i];
@@ -539,6 +632,7 @@ iree_status_t iree_hal_streaming_queue_value_operations(
 
   const bool contains_wait = iree_hal_streaming_value_operations_contain_wait(
       operation_count, operations);
+  if (contains_wait) iree_slim_mutex_lock(&stream->value_wait_mutex);
   iree_hal_streaming_context_t* context = NULL;
   iree_hal_queue_t* operation_queue = NULL;
   iree_hal_queue_t* excluded_wait_queue = NULL;
@@ -602,7 +696,7 @@ iree_status_t iree_hal_streaming_queue_value_operations(
   if (iree_status_is_ok(status) && contains_wait) {
     status = iree_hal_streaming_acquire_value_wait_lane(
         context, wait_family, wait_priority, wait_execution_resources,
-        excluded_wait_queue, &wait_lane);
+        excluded_wait_queue, stream->stream_id, &wait_lane);
     if (iree_status_is_ok(status)) operation_queue = wait_lane->queue;
   }
 
@@ -648,9 +742,10 @@ iree_status_t iree_hal_streaming_queue_value_operations(
   }
 
   iree_hal_command_buffer_release(command_buffer);
-  iree_hal_streaming_release_idle_value_wait_lane(context, wait_lane);
+  iree_hal_streaming_release_value_wait_lane(context, wait_lane);
   iree_hal_queue_release(excluded_wait_queue);
   iree_hal_streaming_context_release(context);
+  if (contains_wait) iree_slim_mutex_unlock(&stream->value_wait_mutex);
   IREE_TRACE_ZONE_END(z0);
   return status;
 }

@@ -332,6 +332,7 @@ iree_status_t iree_hal_streaming_stream_create(
   stream->capture_dependency_capacity = 0;
 
   stream->host_allocator = host_allocator;
+  iree_slim_mutex_initialize(&stream->value_wait_mutex);
   iree_slim_mutex_initialize(&stream->mutex);
 
   // Create timeline semaphore for synchronization.
@@ -437,6 +438,7 @@ static void iree_hal_streaming_stream_destroy(
 
   // Deinitialize synchronization.
   iree_slim_mutex_deinitialize(&stream->mutex);
+  iree_slim_mutex_deinitialize(&stream->value_wait_mutex);
 
   // Free stream memory.
   const iree_allocator_t host_allocator = stream->host_allocator;

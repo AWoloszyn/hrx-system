@@ -229,6 +229,9 @@ typedef struct iree_hal_streaming_value_wait_lane_t {
   iree_hal_queue_priority_t priority;
   // Immutable execution-resource set the lane realizes.
   iree_hal_queue_execution_resource_list_t execution_resources;
+  // Stable identifier of the stream whose ordered waits occupy this lane.
+  // Zero while the lane is idle.
+  unsigned long long owner_stream_id;
   // Retained stream timeline semaphore proving pending work has completed.
   iree_hal_semaphore_t* completion_semaphore;
   // Value on |completion_semaphore| reached when the lane becomes reusable.
@@ -299,6 +302,8 @@ struct iree_hal_streaming_context_t {
 
   // Idle exact queues available for an atomic wait submission.
   iree_hal_streaming_value_wait_lane_t* idle_value_wait_lanes;
+  // Number of lanes in |idle_value_wait_lanes|.
+  iree_host_size_t idle_value_wait_lane_count;
   // Exact queues still occupied by accepted atomic wait submissions.
   iree_hal_streaming_value_wait_lane_t* pending_value_wait_lanes;
   // Guards both value-wait lane lists and their completion records.
@@ -614,6 +619,9 @@ typedef struct iree_hal_streaming_stream_t {
   iree_host_size_t capture_dependency_capacity;
 
   // Synchronization.
+  // Serializes value-wait lane ownership for this logical stream. Ordinary
+  // stream dispatch and write-only value operations do not take this mutex.
+  iree_slim_mutex_t value_wait_mutex;
   iree_slim_mutex_t mutex;
 
   // Host allocator.
