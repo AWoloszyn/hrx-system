@@ -13,6 +13,6 @@ low.func.def pure target<vm.core>(@vm) abi(vm_function) @remove_dead_arithmetic(
 // ----
 vm.target<core> @vm
 
-low.func.def pure target<vm.core>(@vm) abi(vm_function) @remove_dead_arithmetic(%dividend: reg<vm.value : i32>, %divisor: reg<vm.value : i32>) -> (reg<vm.value : i32>) {
-  low.return %dividend : reg<vm.value : i32>
+low.func.def pure target<vm.core>(@vm) abi(vm_function) @remove_dead_arithmetic(%dividend: reg<vm.value : i32>, %divisor: reg<vm.value : i32>) -> (reg<vm.value : i32>) asm {
+  return %dividend
 }
