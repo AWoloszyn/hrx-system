@@ -642,6 +642,32 @@ TEST_F(HipStreamValueApiTest, IndependentStreamWaitsDoNotShareAQueueLane) {
   EXPECT_EQ(hipSuccess, api_.stream_synchronize(stream_a));
 }
 
+TEST_F(HipStreamValueApiTest, SameStreamPendingWaitsShareAQueueLane) {
+  hipStream_t wait_stream = CreateStream();
+  void* signal = AllocateSignal();
+  ASSERT_NE(nullptr, wait_stream);
+  ASSERT_NE(nullptr, signal);
+  ASSERT_EQ(hipSuccess, api_.memset(signal, 0, sizeof(uint32_t)));
+  if (!CheckWaitSupport(wait_stream, signal)) return;
+
+  // Queue more unresolved waits than the backend's dynamic queue identity
+  // space. Ordered waits on one logical stream must remain on one sticky lane
+  // instead of consuming a hardware queue for every call.
+  constexpr int kWaitCount = 300;
+  hipError_t wait_result = hipSuccess;
+  int accepted_wait_count = 0;
+  for (; accepted_wait_count < kWaitCount; ++accepted_wait_count) {
+    wait_result = api_.wait_value_32(wait_stream, signal, 1,
+                                     hipStreamWaitValueEq, UINT32_MAX);
+    if (wait_result != hipSuccess) break;
+  }
+
+  *static_cast<volatile uint32_t*>(signal) = 1;
+  ASSERT_EQ(hipSuccess, api_.stream_synchronize(wait_stream));
+  EXPECT_EQ(hipSuccess, wait_result)
+      << "accepted " << accepted_wait_count << " of " << kWaitCount << " waits";
+}
+
 TEST_F(HipStreamValueApiTest, CompletedWaitLanesRecycleAcrossLiveStreams) {
   void* signal = AllocateSignal();
   ASSERT_NE(nullptr, signal);

@@ -136,6 +136,7 @@ iree_status_t iree_hal_streaming_context_create(
   iree_atomic_store(&context->capture_stream_count, 0,
                     iree_memory_order_relaxed);
   context->idle_value_wait_lanes = NULL;
+  context->idle_value_wait_lane_count = 0;
   context->pending_value_wait_lanes = NULL;
   context->host_allocator = host_allocator;
   iree_slim_mutex_initialize(&context->mutex);
