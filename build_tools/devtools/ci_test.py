@@ -193,8 +193,7 @@ class CiTest(unittest.TestCase):
         ):
             self.assertIn(f"-D{define}=ON", configure_step.argv)
         self.assertIn(
-            "--//loom/config/target:enable="
-            + ",".join(ci.REPOSITORY_BUILD_LOOM_TARGETS),
+            "--//loom/config/target:enable=amdgpu,llvmir,spirv,vm,wasm,x86",
             configure_step.argv,
         )
         self.assertIn(
@@ -309,6 +308,7 @@ class CiTest(unittest.TestCase):
             self.assertIn(f"-D{define}=ON", configure_step.argv)
         for _target, define in ci.CMAKE_LOOM_TARGET_DEFINES:
             self.assertIn(f"-D{define}=ON", configure_step.argv)
+        self.assertIn("-DLOOM_TARGET_VM=ON", configure_step.argv)
         for _importer, define in ci.CMAKE_LOOM_IMPORTER_DEFINES:
             self.assertIn(f"-D{define}=ON", configure_step.argv)
         for option in ci.AMDGPU_DEVICE_BINARY_PREBUILT_OPTIONS:
