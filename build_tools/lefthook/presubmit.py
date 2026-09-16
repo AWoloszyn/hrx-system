@@ -38,7 +38,6 @@ from urllib.request import url2pathname
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
-from build_tools.devtools import project_presubmit
 from build_tools.devtools.bazel import clang_tidy_configuration_args
 from build_tools.devtools.source_lock import (
     NonEmptyTrackedFileSnapshot,
@@ -1896,6 +1895,42 @@ def cmake_clang_tidy_candidate_files(paths: list[str]) -> list[str]:
     )
 
 
+def cmake_clang_tidy_configured_files(
+    compile_commands: Path, candidate_files: list[str]
+) -> tuple[list[str], list[str]]:
+    """Returns selected database paths and sources excluded by configuration."""
+    database = json.loads(compile_commands.read_text(encoding="utf-8"))
+    if not isinstance(database, list):
+        raise ValueError("expected a compilation database array")
+    compiled_files: dict[str, Path] = {}
+    for index, command in enumerate(database):
+        if not isinstance(command, dict) or not all(
+            isinstance(command.get(field), str) and command[field]
+            for field in ("directory", "file")
+        ):
+            raise ValueError(
+                f"compile command {index} requires nonempty directory and file paths"
+            )
+        # Match run-clang-tidy's path spelling, including relative file entries.
+        filename = os.path.abspath(REPO_ROOT / command["directory"] / command["file"])
+        compiled_files[filename] = Path(filename).resolve()
+    candidates = {path: (REPO_ROOT / path).resolve() for path in candidate_files}
+    selected_paths = set(candidates.values())
+    configured_paths = set(compiled_files.values())
+    return (
+        sorted(
+            path
+            for path, resolved in compiled_files.items()
+            if resolved in selected_paths
+        ),
+        [
+            path
+            for path, resolved in candidates.items()
+            if resolved not in configured_paths
+        ],
+    )
+
+
 def llvm_cmake_dir(llvm_config: str) -> str | None:
     result = subprocess.run(
         [llvm_config, "--cmakedir"],
@@ -1968,7 +2003,7 @@ def cmake_clang_tidy_command(
         "-j",
         str(clang_tidy_jobs()),
         "-warnings-as-errors=*",
-        *files,
+        *[f"^{re.escape(path)}$" for path in files],
     ]
 
 
@@ -2008,7 +2043,7 @@ def cmake_run_clang_tidy_fix_command(
         "-fix",
         "-format",
         "-style=file",
-        *files,
+        *[f"^{re.escape(path)}$" for path in files],
     ]
 
 
@@ -2123,30 +2158,23 @@ def run_clang_tidy_cmake(
             )
             print("hint: run python dev.py cmake configure")
             return False
-        if any(path.startswith("libamdf/") for path in candidate_files):
-            if not (compile_commands_dir / "CMakeCache.txt").is_file() or (
-                project_presubmit.cmake_cache_value(compile_commands_dir, "AMDF_BUILD")
-                != "ON"
-            ):
-                print(
-                    "[fail] clang-tidy: CMake analysis of libamdf requires "
-                    f"AMDF_BUILD=ON in {compile_commands_dir / 'CMakeCache.txt'}."
-                )
-                print(
-                    "hint: run "
-                    + command_text(
-                        [
-                            "python",
-                            "dev.py",
-                            "--cmake-build-dir",
-                            str(compile_commands_dir),
-                            "cmake",
-                            "configure",
-                            "-DAMDF_BUILD=ON",
-                        ]
-                    )
-                )
-                return False
+        try:
+            candidate_files, excluded_files = cmake_clang_tidy_configured_files(
+                compile_commands, candidate_files
+            )
+        except (OSError, ValueError) as error:
+            print(f"[fail] clang-tidy: cannot read {compile_commands}: {error}")
+            return False
+        if excluded_files:
+            skip_step(
+                "clang-tidy sources",
+                f"{len(excluded_files)} selected source(s) are not in {compile_commands}",
+            )
+            if verbose:
+                for path in excluded_files:
+                    print(f"  {path}")
+        if not candidate_files and not infra_files:
+            return True
 
     tools = clang_tidy_llvm_tools()
     if not tools:
@@ -2168,7 +2196,7 @@ def run_clang_tidy_cmake(
                 "clang-tidy", f"{CLANG_TIDY_SETUP_HINT} with run-clang-tidy"
             )
     clang_apply_replacements = None
-    if fix:
+    if fix and candidate_files:
         clang_apply_replacements = clang_tidy_apply_replacements_tool()
         if not clang_apply_replacements:
             print(

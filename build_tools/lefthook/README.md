@@ -346,10 +346,11 @@ python dev.py bazel precommit --profile paranoid runtime/src/iree/base/status.c
 
 Header and shared build-infrastructure changes can expand the analysis to all
 tracked C/C++ files. Changes under `build_tools/clang_tidy/` also run the plugin
-smoke test and action smoke target. The CMake lane uses the configured compilation
-database, which requires `AMDF_BUILD=ON` to include libamdf translation units.
-Selecting libamdf sources with that option disabled fails before plugin setup,
-including direct clang-tidy runs without project tests.
+smoke test and action smoke target. The CMake lane analyzes selected sources
+present in the configured compilation database and reports the rest as skipped.
+For example, `AMDF_BUILD=OFF` skips libamdf while enabled projects still run.
+An entirely excluded source selection succeeds as a skip before plugin setup;
+selected plugin infrastructure checks still run.
 Native Windows hooks currently delegate both providers to Linux presubmit CI.
 See `build_tools/clang_tidy/README.md` for the direct Bazel commands and LLVM
 discovery environment variables.

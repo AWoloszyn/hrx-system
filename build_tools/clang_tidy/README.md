@@ -61,11 +61,13 @@ and runs `run-clang-tidy` against source files using that build tree's
 or `IREE_CMAKE_BUILD_DIR`. The runner defaults to a capped parallel job count
 and can be tuned with `IREE_CLANG_TIDY_JOBS`.
 
-Selecting libamdf sources requires `AMDF_BUILD=ON` in that build tree. The
-command checks this before building the plugin so a disabled project cannot
-produce a successful empty analysis. Enable it with
-`python dev.py cmake configure -DAMDF_BUILD=ON`. Individual platform-excluded
-sources remain outside the host compilation database.
+The configured compilation database determines which selected sources are
+analyzed. Sources excluded by project or platform configuration are reported
+as skipped; the remaining sources still run. For example, `AMDF_BUILD=OFF`
+excludes libamdf without blocking analysis of enabled projects. If the entire
+source selection is excluded, source analysis succeeds as a skip without
+building the plugin. Selected plugin infrastructure changes still run the
+plugin checks. `--verbose` lists the excluded paths.
 
 Plugin-only CMake validation is also available:
 
