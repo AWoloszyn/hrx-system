@@ -107,6 +107,13 @@ tool output are useful.
 bazel-to-cmake, generated AMDGPU target metadata, watchwords, merge-conflict
 markers, and basic text hygiene.
 
+Buildifier checks formatting and all lint categories in the pinned release,
+including unused loads and variables, deprecated Starlark APIs, and declaration
+documentation. The fixer applies available repairs and then runs the same lint
+check; findings without automatic repairs still fail. Unused Starlark loads
+are detectable syntactically, while unused C/C++ `deps` require separate
+compilation and link analysis.
+
 clang-format runs C/C++ files in parallel batches. Set `IREE_CLANG_FORMAT_JOBS`
 to override the default worker cap when diagnosing local machine behavior.
 
@@ -276,6 +283,21 @@ buildozer 'remove deps //example:unused' //example:library
 `0` means a change or a read-only success. A `-stdout` preview also returns `0`
 for a no-op, so its exit status alone does not indicate a proposed change.
 Buildozer is an explicit editing tool and is not run automatically by the hooks.
+
+Buildifier also supports structured lint output for selected BUILD/Starlark files:
+
+```bash
+buildifier -mode=check -lint=warn -warnings=all -format=json \
+  runtime/src/iree/base/BUILD.bazel > /tmp/buildifier.json
+jq -c '.files[] | .filename as $file | .warnings[]? |
+  {file: $file, category, start, message}' /tmp/buildifier.json
+jq -e '.success' /tmp/buildifier.json
+```
+
+JSON mode returns exit status `0` even when `.success` is false. Consumers use
+that field to decide whether lint passed. Hooks use text output and its failure
+exit status. The dispatcher explicitly selects `-warnings=all`; the JSON config
+format's `warningsList` accepts category names, not the CLI shorthand `all`.
 
 ## Static Analysis
 

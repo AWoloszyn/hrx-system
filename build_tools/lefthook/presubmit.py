@@ -1306,14 +1306,19 @@ def run_buildifier(paths: list[str], fix: bool, verbose: bool) -> bool:
         return skip_step("Buildifier", "no Bazel files")
     if not require_tool("buildifier", "Buildifier"):
         return False
-    command_prefix = ["buildifier", "-lint=off"]
-    if not fix:
-        command_prefix.append("-mode=check")
-    commands = command_argument_batches(command_prefix, files)
-    ok = run_parallel_commands(commands, "Buildifier", verbose, jobs=1)
-    if fix and ok:
-        ok = stage_files(files, verbose)
-    return ok
+    command_prefix = ["buildifier", "-warnings=all"]
+    ok = True
+    if fix:
+        commands = command_argument_batches(
+            [*command_prefix, "-mode=fix", "-lint=fix"], files
+        )
+        ok = run_parallel_commands(commands, "Buildifier fixes", verbose, jobs=1)
+        ok = stage_files(files, verbose) and ok
+    # Lint fix mode silently leaves findings that have no automatic repair.
+    commands = command_argument_batches(
+        [*command_prefix, "-mode=check", "-lint=warn"], files
+    )
+    return run_parallel_commands(commands, "Buildifier", verbose, jobs=1) and ok
 
 
 def run_ruff(paths: list[str], fix: bool, verbose: bool) -> bool:

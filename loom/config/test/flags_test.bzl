@@ -11,11 +11,11 @@ load("@rules_testing//lib:analysis_test.bzl", "analysis_test")
 load("@rules_testing//lib:truth.bzl", "matching")
 
 _VALID_VALUES = {
-    "loom/config/target": ["amdgpu", "llvmir", "spirv", "vm", "wasm", "x86"],
-    "loom/config/target/arch": ["amdgpu", "llvmir", "spirv", "vm", "wasm", "x86"],
     "loom/config/emit": ["amdgpu", "llvmir", "spirv", "wasm"],
     "loom/config/execute": ["iree_hal"],
     "loom/config/import": ["mlir", "tilelang"],
+    "loom/config/target": ["amdgpu", "llvmir", "spirv", "vm", "wasm", "x86"],
+    "loom/config/target/arch": ["amdgpu", "llvmir", "spirv", "vm", "wasm", "x86"],
 }
 
 def _expect_values(env, target):
@@ -40,7 +40,11 @@ def _expect_unknown_product_family(env, target):
     )
 
 def loom_config_flag_test_suite(name):
-    """Tests value admission and rejection through real build settings."""
+    """Tests value admission and rejection through real build settings.
+
+    Args:
+      name: Aggregate test-suite name and prefix for the individual tests.
+    """
     tests = []
     for package, values in _VALID_VALUES.items():
         flag = Label("//" + package + ":enable")

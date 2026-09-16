@@ -1,7 +1,4 @@
 {
   "lint": "warn",
-  "type": "auto",
-  "warningsList": [
-    "all"
-  ]
+  "type": "auto"
 }

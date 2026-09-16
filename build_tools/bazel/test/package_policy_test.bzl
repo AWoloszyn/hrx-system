@@ -18,6 +18,7 @@ _HOST_BUILD_REQUIREMENT = struct(id = "synthetic.host")
 _GPU_RUN_REQUIREMENT = struct(id = "synthetic.gpu")
 
 _PackagePolicyInfo = provider(
+    doc = "Collected package policy exposed by analysis-test subjects.",
     fields = {
         "build_requirement_ids": "Collected build requirement identifiers.",
         "forbidden_deps": "Collected forbidden dependency patterns.",
