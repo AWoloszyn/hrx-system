@@ -94,3 +94,28 @@ loom_test(
     execution_profile = AMDGPU_HARDWARE_PROFILE,
     deps = [":vector_read_ahead"],
 )
+
+loom_kernel_library(
+    name = "guarded_read_ahead",
+    srcs = [
+        "guarded-read-ahead.loom",
+        "guarded-read-ahead-tests.loom",
+    ],
+    execution_profiles = [
+        AMDGPU_HARDWARE_PROFILE,
+        SPIRV_VULKAN_HARDWARE_PROFILE,
+    ],
+    targets = [
+        "@hrx//loom/target/amdgpu:gfx11-generic",
+        "@hrx//loom/target/amdgpu:gfx1250-a0",
+        "@hrx//loom/target/spirv:vulkan1.3+bda",
+    ],
+)
+
+loom_test(
+    name = "guarded_read_ahead_access_test",
+    srcs = ["guarded-read-ahead-tests.loom"],
+    args = ["--sanitizer=access"],
+    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    deps = [":guarded_read_ahead"],
+)

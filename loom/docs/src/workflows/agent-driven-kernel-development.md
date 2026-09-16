@@ -269,12 +269,16 @@ handles runtime tails. `pipeline(%depth)` moves ordinary loads and their
 prerequisites ahead of ordered computation. Pipelining runs before unrolling,
 so depth counts original iterations. Each control also works independently.
 
-Streaming reductions and packed dequantization/dot loops are useful candidates
-when read addresses depend on the induction variable and outer values. The
-read-ahead body must be flat and contain ordinary loads and pure operations;
-carried-state-dependent reads, stores, nested regions, and explicit async
-groups have different scheduling requirements. Unannotated loops receive no
-read-ahead transformation.
+Streaming reductions, guarded ragged rows, and packed dequantization/dot loops
+are useful candidates. Ordinary loads and pure operations may contain nested
+`scf.if` and `scf.for`; each structured operation stays intact in its stage.
+Read-containing units require every capture, guard, inner bound, and initial
+value to be independent of the outer carried state. Pure inner loops may stay
+in the consumer and use that state. The
+[checked guarded-row motif](tune-loop-schedules.md#keep-guards-and-inner-loops-in-the-source)
+demonstrates independent inner and outer policies. Stores, ordered effects,
+`scf.while`, and explicit async groups have different scheduling requirements.
+Unannotated loops receive no read-ahead transformation.
 
 An experiment driver may bind these choices with global config keys to make
 benchmark sweeps convenient. A library-wide depth key couples every motif
