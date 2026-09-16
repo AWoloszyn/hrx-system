@@ -647,17 +647,24 @@ def amdgpu_config_steps(
 
 def vulkan_steps(targets: tuple[str, ...]) -> list[CiStep]:
     scoped_targets = targets + ci_config.VULKAN_BAZEL_TARGET_EXCLUDES
+    # A container that cannot create namespaces must fail instead of silently
+    # downgrading to processwrapper-sandbox and hiding source-access problems.
+    bazel_options = (
+        ("--spawn_strategy=linux-sandbox",) if sys.platform == "linux" else ()
+    )
     return [
         bazel_configure_step(enabled_drivers=("vulkan",)),
         bazel_build_step(
             "Build IREE / Vulkan",
             scoped_targets,
+            bazel_options=bazel_options,
         ),
         bazel_test_step(
             "Test IREE / Vulkan",
             scoped_targets + ci_config.VULKAN_XFAIL_TARGETS,
             test_tag_filters=ci_config.VULKAN_BAZEL_TEST_TAG_FILTERS,
             test_env=vulkan_device_test_env(),
+            bazel_options=bazel_options,
         ),
     ]
 

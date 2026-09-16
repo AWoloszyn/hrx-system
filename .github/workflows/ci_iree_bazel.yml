@@ -266,10 +266,12 @@ jobs:
     runs-on: linux-gfx120X-gpu-rocm
     container:
       image: ghcr.io/rocm/no_rocm_image_ubuntu24_04@sha256:4150afe4759d14822f0e3f8930e1124f26e11f68b5c7b91ec9a02b20b1ebbb98
-      # Bazel creates its sandbox namespaces inside the job container.
+      # Bazel needs namespace creation, nested mounts and an unmasked procfs.
       options: >-
         --device /dev/dri
         --security-opt seccomp=unconfined
+        --security-opt apparmor=unconfined
+        --security-opt systempaths=unconfined
         --user 0:0
     timeout-minutes: 45
     env:
