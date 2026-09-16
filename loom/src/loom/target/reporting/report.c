@@ -1237,6 +1237,10 @@ static void loom_target_compile_report_merge_entry_summary(
       report->target_resources = entry_report->target_resources;
     }
   }
+  // Maxima and minimum occupancy across entries do not describe one kernel's
+  // resource vector. Exact transitions remain attached to their entry rows.
+  report->target_resources.residency_summary =
+      (loom_target_residency_summary_t){0};
   loom_target_compile_report_merge_workload(&report->workload,
                                             &entry_report->workload);
   if (report->workload.flags == LOOM_TARGET_COMPILE_REPORT_WORKLOAD_NONE) {

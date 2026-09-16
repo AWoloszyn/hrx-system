@@ -323,6 +323,113 @@ TEST(CompileReportFormatTest, EmitsOnlyValidResidencyEvidence) {
   loom_target_compile_report_deinitialize(&report);
 }
 
+TEST(CompileReportFormatTest, KeepsResidencyTransitionsOnTheirOwnEntries) {
+  struct EntryCase {
+    // Emitted entry identity.
+    const char* function_name;
+    // Final vector-register footprint per subgroup.
+    uint32_t vector_register_count;
+    // Current modeled residency tier.
+    uint32_t tier;
+    // Resource responsible for the current tier.
+    const char* limiting_resource;
+    // Final footprint of the limiting resource.
+    uint64_t units;
+    // Reduction required to reach the next tier.
+    uint64_t reduction_units;
+  };
+  const EntryCase cases[] = {
+      {"register_limited", 88, 8, "amdgpu.vgpr", 88, 4},
+      {"lds_limited", 136, 4, "amdgpu.lds", 14848, 512},
+  };
+  // Exercise complete reports and either ordering of a missing entry result.
+  for (int missing_entry = -1; missing_entry < 2; ++missing_entry) {
+    SCOPED_TRACE(missing_entry);
+    loom_target_compile_report_t report = {};
+    loom_target_compile_report_initialize(&report, iree_allocator_system());
+    for (int entry_index = 0; entry_index < 2; ++entry_index) {
+      const auto& test_case = cases[entry_index];
+      loom_target_compile_report_t entry = {};
+      loom_target_compile_report_initialize(&entry, iree_allocator_system());
+      entry.function_name = iree_make_cstring_view(test_case.function_name);
+      if (entry_index != missing_entry) {
+        loom_target_compile_report_target_resources_t resources = {};
+        resources.scalar_register_class = IREE_SVL("amdgpu.sgpr");
+        resources.scalar_register_count = 36;
+        resources.vector_register_class = IREE_SVL("amdgpu.vgpr");
+        resources.vector_register_count = test_case.vector_register_count;
+        resources.subgroup_size = 64;
+        resources.max_subgroups_per_simd = 16;
+        resources.resident_subgroups_per_simd = test_case.tier;
+        resources.occupancy_percent = test_case.tier * 100 / 16;
+        resources.limiting_resource =
+            iree_make_cstring_view(test_case.limiting_resource);
+        auto& summary = resources.residency_summary;
+        summary.flags =
+            LOOM_TARGET_RESIDENCY_SUMMARY_FLAG_VALID |
+            LOOM_TARGET_RESIDENCY_SUMMARY_FLAG_HAS_NEXT_BETTER_TIER |
+            LOOM_TARGET_RESIDENCY_SUMMARY_FLAG_HAS_UNIQUE_LIMITING_RESOURCE;
+        summary.best_tier = 16;
+        summary.tier = resources.resident_subgroups_per_simd;
+        summary.next_better_tier = summary.tier + 1;
+        summary.limiting_resource_count = 1;
+        summary.limiting_resource = resources.limiting_resource;
+        summary.limiting_resource_units = test_case.units;
+        summary.limiting_resource_reduction_units_to_next_better_tier =
+            test_case.reduction_units;
+        loom_target_compile_report_record_target_resources(&entry, &resources);
+      }
+      IREE_ASSERT_OK(
+          loom_target_compile_report_record_entry_report(&report, &entry));
+      if (entry_index == 0) {
+        EXPECT_EQ(loom_target_residency_summary_is_valid(
+                      &report.target_resources.residency_summary),
+                  missing_entry != 0);
+      }
+      loom_target_compile_report_deinitialize(&entry);
+    }
+    EXPECT_FALSE(loom_target_residency_summary_is_valid(
+        &report.target_resources.residency_summary));
+
+    loom_target_compile_report_t clone = {};
+    IREE_ASSERT_OK(loom_target_compile_report_clone(
+        &report, iree_allocator_system(), &clone));
+    loom_target_compile_report_deinitialize(&report);
+    iree_string_builder_t builder;
+    iree_string_builder_initialize(iree_allocator_system(), &builder);
+    loom_output_stream_t stream;
+    loom_output_stream_for_builder(&builder, &stream);
+    const loom_target_compile_report_format_options_t options = {
+        /*.mode=*/LOOM_TARGET_COMPILE_REPORT_FORMAT_MODE_SUMMARY,
+    };
+    IREE_ASSERT_OK(
+        loom_target_compile_report_format_json(&clone, &options, &stream));
+    const auto root = ParseJsonDocument(iree_string_builder_view(&builder));
+    const auto aggregate_resources =
+        LookupObject(root, IREE_SV("target_resources"));
+    EXPECT_EQ(
+        iree_string_view_find(aggregate_resources, IREE_SV("\"residency\""), 0),
+        IREE_STRING_VIEW_NPOS);
+    const auto rows =
+        LookupObject(LookupObject(root, IREE_SV("entries")), IREE_SV("rows"));
+    for (int entry_index = 0; entry_index < 2; ++entry_index) {
+      if (entry_index == missing_entry) {
+        continue;
+      }
+      const auto entry = LookupArrayElement(rows, entry_index);
+      const auto residency =
+          LookupObject(LookupObject(entry, IREE_SV("target_resources")),
+                       IREE_SV("residency"));
+      ExpectObjectUint64Equals(residency, IREE_SV("current_tier"),
+                               cases[entry_index].tier);
+      ExpectObjectUint64Equals(residency, IREE_SV("next_better_tier"),
+                               cases[entry_index].tier + 1);
+    }
+    iree_string_builder_deinitialize(&builder);
+    loom_target_compile_report_deinitialize(&clone);
+  }
+}
+
 TEST(CompileReportFormatTest, FormatsEntryReportsAndTargetCapabilities) {
   loom_target_compile_report_t report = {};
   loom_target_compile_report_initialize(&report, iree_allocator_system());
