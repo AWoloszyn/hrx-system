@@ -1159,17 +1159,19 @@ func.def @interleaved_carried_loop_preserves_ordered_writes(%pool: pool<16>, %in
 
 // ====
 
-func.def @interleaved_carried_loop_rejects_nested_region(%input: i32) -> (i32) {
+func.def @interleaved_carried_loop_rejects_while(%input: i32) -> (i32) {
   %start = index.constant 0 : index
   %end = index.constant 3 : index
   %step = index.constant 1 : index
-  // ERROR@+1: STRUCTURE/014 {attr_name="schedule", expected_constraint="body operations without nested regions or successors"}
+  // ERROR@+1: STRUCTURE/014 {attr_name="schedule", expected_constraint="body operations with only scf.if/scf.for regions and no successors"}
   %result = scf.for %i = [%start to %end step %step](%acc = %input : i32) -> (i32) unroll schedule(interleaved) {
     %cond = index.cmp eq, %i, %start : index
-    scf.if %cond {
-      test.use %acc : i32
+    %next = scf.while(%before = %acc : i32) -> (i32) {
+      scf.condition %cond, %before : i1, i32
+    } do(%body: i32) {
+      %incremented = test.addi %body, %input : i32
+      scf.yield %incremented : i32
     }
-    %next = test.addi %acc, %input : i32
     scf.yield %next : i32
   }
   func.return %result : i32

@@ -15,6 +15,8 @@ kernel.def @workgroup_rank_sort_f32_i32() {
   %peer_begin = index.constant 0 : index
   %peer_end = index.constant 8 : index
   %peer_step = index.constant 1 : index
+  %pipeline_depth = index.constant 3 : index
+  %unroll_factor = index.constant 2 : index
   %initial_rank = scalar.constant 0 : i32
   %rank_increment = scalar.constant 1 : i32
   %scratch_bytes = index.constant 32 : offset
@@ -34,7 +36,7 @@ kernel.def @workgroup_rank_sort_f32_i32() {
 
   kernel.barrier<workgroup> scope(workgroup) ordering(acq_rel)
 
-  %rank = scf.for %other = [%peer_begin to %peer_end step %peer_step](%acc = %initial_rank : i32) -> (i32) {
+  %rank = scf.for %other = [%peer_begin to %peer_end step %peer_step](%acc = %initial_rank : i32) -> (i32) pipeline(%pipeline_depth) unroll(%unroll_factor) schedule(recurrence) {
     %other_score = view.load %scratch_view[%other] : view<8xf32> -> f32
     %other_i32 = index.cast %other : index to i32
     %greater = scalar.cmpf ogt, %other_score, %score : f32

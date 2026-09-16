@@ -17,11 +17,14 @@ loom_check_test_suite(
     "scf_pipeline.loom-test"
     "scf_pipeline_bounds.loom-test"
     "scf_pipeline_policy.loom-test"
+    "scf_pipeline_regions.loom-test"
+    "scf_pipeline_regions_policy.loom-test"
     "scf_pipeline_report.loom-test"
     "scf_to_cfg.loom-test"
     "scf_unroll.loom-test"
     "scf_unroll_bounds.loom-test"
     "scf_unroll_payload.loom-test"
+    "scf_unroll_regions.loom-test"
     "scf_unroll_report.loom-test"
 )
 

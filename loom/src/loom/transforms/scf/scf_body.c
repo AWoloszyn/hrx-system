@@ -12,6 +12,8 @@
 #include "loom/ir/module.h"
 #include "loom/ir/types.h"
 #include "loom/ops/op_defs.h"
+#include "loom/ops/scf/ops.h"
+#include "loom/util/walk.h"
 
 typedef struct loom_scf_body_builder_t {
   // Module providing maintained type uses and interned attribute payloads.
@@ -26,6 +28,12 @@ typedef struct loom_scf_body_builder_t {
   iree_arena_allocator_t* arena;
   // Allocated reference slots in the packed dependency array.
   iree_host_size_t reference_capacity;
+  // Allocated outer operation slots.
+  iree_host_size_t operation_capacity;
+  // Outer scheduling unit receiving the current operation's captures/effects.
+  loom_scf_body_operation_t* operation;
+  // First control operation outside the supported structured body.
+  const loom_op_t* unstructured_op;
 } loom_scf_body_builder_t;
 
 static iree_status_t loom_scf_body_append_reference(loom_value_id_t value_id,
@@ -112,7 +120,15 @@ static loom_scf_body_effect_flags_t loom_scf_body_operation_effects(
     const loom_module_t* module, const loom_op_t* op) {
   loom_trait_flags_t traits = loom_op_effective_traits(module, op);
   loom_scf_body_effect_flags_t flags = 0;
-  if (loom_traits_may_read(traits)) flags |= LOOM_SCF_BODY_EFFECT_READ;
+  if (loom_traits_may_read(traits)) {
+    flags |= LOOM_SCF_BODY_EFFECT_READ;
+    loom_memory_access_t access = loom_memory_access_cast(module, op);
+    if (!loom_memory_access_isa(access) ||
+        loom_memory_access_operation_kind(access) !=
+            LOOM_MEMORY_ACCESS_OPERATION_LOAD) {
+      flags |= LOOM_SCF_BODY_EFFECT_NON_LOAD_READ;
+    }
+  }
   if (loom_traits_may_write(traits)) flags |= LOOM_SCF_BODY_EFFECT_WRITE;
   if (iree_any_bit_set(
           traits, LOOM_TRAIT_NON_DETERMINISTIC | LOOM_TRAIT_UNKNOWN_EFFECTS |
@@ -126,15 +142,9 @@ static loom_scf_body_effect_flags_t loom_scf_body_operation_effects(
   return flags;
 }
 
-static iree_status_t loom_scf_body_capture_operation(
-    loom_scf_body_builder_t* builder, const loom_op_t* op,
-    loom_scf_body_operation_t* out_operation) {
+static iree_status_t loom_scf_body_capture_payload(
+    loom_scf_body_builder_t* builder, const loom_op_t* op) {
   builder->op = op;
-  *out_operation = (loom_scf_body_operation_t){
-      .op = op,
-      .reference_begin = builder->body->reference_count,
-      .effects = loom_scf_body_operation_effects(builder->module, op),
-  };
   const loom_value_id_t* operands = loom_op_const_operands(op);
   for (uint16_t i = 0; i < op->operand_count; ++i) {
     IREE_RETURN_IF_ERROR(loom_scf_body_append_reference(operands[i], builder));
@@ -155,8 +165,63 @@ static iree_status_t loom_scf_body_capture_operation(
     IREE_RETURN_IF_ERROR(
         loom_scf_body_append_attribute(builder, &attributes[i]));
   }
-  out_operation->reference_count =
-      builder->body->reference_count - out_operation->reference_begin;
+  return iree_ok_status();
+}
+
+static iree_status_t loom_scf_body_capture_operation(
+    void* user_data, loom_op_t* op, const loom_walk_context_t* context,
+    loom_walk_result_t* out_result) {
+  loom_scf_body_builder_t* builder = user_data;
+  *out_result = LOOM_WALK_CONTINUE;
+  if (iree_any_bit_set(op->flags, LOOM_OP_FLAG_DEAD)) {
+    *out_result = LOOM_WALK_SKIP;
+    return iree_ok_status();
+  }
+  const loom_op_vtable_t* vtable = loom_op_vtable(builder->module, op);
+  const bool structured = loom_scf_if_isa(op) || loom_scf_for_isa(op);
+  if (op->successor_count != 0 ||
+      (!structured &&
+       (op->region_count != 0 || (vtable && vtable->region_count != 0)))) {
+    builder->unstructured_op = op;
+    *out_result = LOOM_WALK_ABORT;
+    return iree_ok_status();
+  }
+  loom_scf_body_t* body = builder->body;
+  if (context->depth == 0) {
+    if (op == builder->block->last_op) {
+      builder->operation = &body->terminator;
+    } else {
+      if (body->count == UINT32_MAX) {
+        return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                                "SCF body operation count exceeds uint32");
+      }
+      if (body->count == builder->operation_capacity) {
+        IREE_RETURN_IF_ERROR(iree_arena_grow_array(
+            builder->arena, body->count, (iree_host_size_t)body->count + 1,
+            sizeof(*body->operations), &builder->operation_capacity,
+            (void**)&body->operations));
+      }
+      builder->operation = &body->operations[body->count++];
+    }
+    *builder->operation = (loom_scf_body_operation_t){
+        .op = op,
+        .reference_begin = body->reference_count,
+    };
+  }
+  IREE_RETURN_IF_ERROR(loom_scf_body_capture_payload(builder, op));
+  builder->operation->reference_count =
+      body->reference_count - builder->operation->reference_begin;
+  // Structured control and yields contribute captures, while their nested
+  // operations establish the scheduling unit's complete effects.
+  if (!structured && !loom_scf_yield_isa(op)) {
+    loom_scf_body_effect_flags_t effects =
+        loom_scf_body_operation_effects(builder->module, op);
+    builder->operation->effects |= effects;
+    if (iree_any_bit_set(effects, LOOM_SCF_BODY_EFFECT_READ) &&
+        !iree_any_bit_set(effects, LOOM_SCF_BODY_EFFECT_NON_LOAD_READ)) {
+      ++builder->operation->load_count;
+    }
+  }
   return iree_ok_status();
 }
 
@@ -173,30 +238,12 @@ iree_status_t loom_scf_body_build(const loom_module_t* module,
       .body = out_body,
       .arena = arena,
   };
-  iree_host_size_t operation_capacity = 0;
-  for (const loom_op_t* op = block->first_op; op != block->last_op;
-       op = op->next_op) {
-    if (iree_any_bit_set(op->flags, LOOM_OP_FLAG_DEAD)) continue;
-    const loom_op_vtable_t* vtable = loom_op_vtable(module, op);
-    if (op->region_count != 0 || op->successor_count != 0 ||
-        (vtable && vtable->region_count != 0)) {
-      *out_unstructured_op = op;
-      return iree_ok_status();
-    }
-    if (out_body->count == UINT32_MAX) {
-      return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
-                              "SCF body operation count exceeds uint32");
-    }
-    if (out_body->count == operation_capacity) {
-      IREE_RETURN_IF_ERROR(iree_arena_grow_array(
-          arena, out_body->count, (iree_host_size_t)out_body->count + 1,
-          sizeof(*out_body->operations), &operation_capacity,
-          (void**)&out_body->operations));
-    }
-    IREE_RETURN_IF_ERROR(loom_scf_body_capture_operation(
-        &builder, op, &out_body->operations[out_body->count]));
-    ++out_body->count;
-  }
-  return loom_scf_body_capture_operation(&builder, block->last_op,
-                                         &out_body->terminator);
+  loom_walk_result_t result = LOOM_WALK_CONTINUE;
+  iree_status_t status = loom_walk_region(
+      module, block->parent_region, LOOM_WALK_PRE_ORDER,
+      (loom_walk_callback_t){.fn = loom_scf_body_capture_operation,
+                             .user_data = &builder},
+      arena, &result);
+  *out_unstructured_op = builder.unstructured_op;
+  return status;
 }

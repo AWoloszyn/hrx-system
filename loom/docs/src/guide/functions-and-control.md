@@ -344,13 +344,24 @@ Depth one retains serial iteration and any separate unroll policy, providing a
 useful control. The depth must specialize to a positive exact value; the unroll
 factor must also specialize before its policy runs.
 
-The read-ahead contract supports a flat loop body of ordinary loads and pure
-operations, with a positive exact step. Read prerequisites may depend on the
-induction variable and values outside the loop. A prerequisite that depends on
-loop-carried state cannot run ahead and is diagnosed. Cross-stage value types
-must be invariant across iterations. Writes, ordered or volatile effects,
-explicit asynchronous groups, nested regions, and consuming result-storage
-ties require a different scheduling/ownership contract and are diagnosed when
+Nested `scf.if` and `scf.for` remain intact within their assigned stage.
+A guarded load retains its guard, and a read-only inner reduction can produce
+one queued result for each outer iteration. A pure inner loop can consume
+queued values and the outer accumulator. Inner loops may also carry their own
+explicit pipeline and unroll policies; pipelining processes the inner policy
+before the outer one, then unrolling processes the reconstructed program.
+The [guarded-row example](../workflows/tune-loop-schedules.md#keep-guards-and-inner-loops-in-the-source)
+checks these combinations through native execution.
+
+The read-ahead contract supports ordinary loads and pure operations with a
+positive exact step. Read prerequisites may depend on the induction variable
+and values outside the loop. For a nested unit containing reads, this includes
+all captured values, guards, bounds, and initial inner state: the whole unit
+must be independent of outer loop-carried state. A violation is diagnosed.
+Cross-stage value types must be invariant across iterations. Writes, ordered
+or volatile effects, explicit asynchronous groups, other nested control such
+as `scf.while`, and consuming result-storage ties on the requested loop require
+a different scheduling/ownership contract and are diagnosed when
 requested at depth greater than one. The depth is bounded by 65,535 and by the
 representable carried-state tuple; unsupported requests fail at the source
 policy instead of silently running serially.

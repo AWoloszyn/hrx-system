@@ -31,10 +31,30 @@ cp -- "${script_dir}/read-ahead.loom" "${output_dir}/read-ahead.loom"
 cp -- "${script_dir}/read-ahead-tests.loom" "${output_dir}/read-ahead-tests.loom"
 cp -- "${script_dir}/vector-read-ahead.loom" "${output_dir}/vector-read-ahead.loom"
 cp -- "${script_dir}/vector-read-ahead-tests.loom" "${output_dir}/vector-read-ahead-tests.loom"
+cp -- "${script_dir}/guarded-read-ahead.loom" "${output_dir}/guarded-read-ahead.loom"
+cp -- "${script_dir}/guarded-read-ahead-tests.loom" "${output_dir}/guarded-read-ahead-tests.loom"
 cp -- "${repo_root}/loom/src/loom/test/corpus/checked_benchmarks/streaming_packed_s8_dot.loom" \
   "${output_dir}/streaming-packed-dot.loom"
 
 cd -- "${output_dir}"
+"${loom_format}" --check guarded-read-ahead.loom
+"${loom_format}" --check guarded-read-ahead-tests.loom
+"${loom_link}" guarded-read-ahead.loom guarded-read-ahead-tests.loom \
+  --mode=merge --to=bc --output=guarded-read-ahead.loombc
+"${loom_compile}" guarded-read-ahead.loombc --root=@sum_guarded_rows \
+  --target=amdgpu:gfx11-generic --format=amdgpu-hsaco \
+  --output=guarded-rows.hsaco --compile-report=details \
+  --compile-report-output=guarded-rows.report.json
+"${loom_report}" show guarded-rows.report.json >guarded-rows.show.txt
+"${loom_report}" suggest guarded-rows.report.json >guarded-rows.suggest.txt
+sed -n '/^Source loop pipelines/,$p' guarded-rows.show.txt >guarded-pipeline-schedule.txt
+grep -Fq 'depth=3 queue_records=2' guarded-pipeline-schedule.txt
+grep -Fq 'scf.if producer iteration_lookahead=2' guarded-pipeline-schedule.txt
+"${loom_compile}" guarded-read-ahead.loombc --root=@guarded_rows_composed \
+  --target=spirv:vulkan1.3+bda --format=spirv-binary --output=guarded-rows.spv
+"${loom_benchmark}" guarded-read-ahead.loombc --benchmark=@guarded_rows_time \
+  --dry-run --output=guarded-rows.plan.json
+
 "${loom_format}" --check vector-read-ahead.loom
 "${loom_format}" --check vector-read-ahead-tests.loom
 "${loom_link}" vector-read-ahead.loom vector-read-ahead-tests.loom \

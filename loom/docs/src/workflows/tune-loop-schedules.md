@@ -33,11 +33,12 @@ records in source order. The [control-flow guide](../guide/functions-and-control
 owns the complete policy contract, including full unrolling and scheduling
 choices.
 
-Ordinary read-ahead fits flat bodies with loads and pure computation whose load
-addresses depend on the induction variable and outer values. A load address
-that depends on the previous accumulator cannot be issued ahead. Stores,
-explicit async groups, nested control flow, and ordered effects need a different
-ownership contract and receive diagnostics at depth greater than one. These
+Ordinary read-ahead fits loads and pure computation, including nested `scf.if`
+and `scf.for`. Each nested operation stays intact within its assigned stage.
+Read addresses, guards, inner bounds, and other producer prerequisites may
+depend on the induction variable and outer values, but cannot depend on the
+previous accumulator. Stores, explicit async groups, `scf.while`, and ordered
+effects receive diagnostics at depth greater than one. These
 policies are explicit; an unannotated loop receives no read-ahead transform.
 
 ## Give each motif its own schedule
@@ -84,6 +85,64 @@ This finding is generated from the example during the documentation build:
 ```text
 --8<-- "generated/examples/guide/functions-and-control/vector-pipeline-suggest.txt"
 ```
+
+## Keep guards and inner loops in the source
+
+Ragged rows often need both a bounds guard and an inner reduction. The following
+motif rounds the row range up to groups of four, keeps every read under its
+row and lane guards, and reduces a runtime number of components within each
+row. Its input has 63 rows: the padded final row is outside the allocation and
+must never be read.
+
+Save [`guarded-read-ahead.loom`](../generated/examples/guide/functions-and-control/guarded-read-ahead.loom)
+and [`guarded-read-ahead-tests.loom`](../generated/examples/guide/functions-and-control/guarded-read-ahead-tests.loom):
+
+```loom title="guarded-read-ahead.loom"
+--8<-- "examples/guide/functions-and-control/guarded-read-ahead.loom"
+```
+
+The outer producer is the complete `%partial = scf.if`, including its inner
+loop and lane guard. Its result enters the queue, and the outer sum consumes
+that result in row order. The inner sum starts from its own identity; it does
+not capture the outer `%sum`. Capturing `%sum` anywhere in this read-containing
+unit would make read-ahead impossible and produce a diagnostic. A pure inner
+loop can instead remain in the consumer and use the outer carried state.
+
+Both loop levels may have their own explicit pipeline depth. The checked
+composed caller uses serial, outer-only, and inner-plus-outer pipelining in one
+kernel. Inner policies are transformed before the enclosing pipeline is built;
+unrolling follows pipelining. Each enclosing stage still owns an intact inner
+program, including the inner pipeline's short-loop path.
+
+```shell
+loom-link guarded-read-ahead.loom guarded-read-ahead-tests.loom \
+  --mode=merge --to=bc --output=guarded-read-ahead.loombc
+iree-test-loom guarded-read-ahead.loombc --device=amdgpu \
+  --target=amdgpu:gfx11-generic --sanitizer=access
+loom-compile guarded-read-ahead.loombc --root=@sum_guarded_rows \
+  --target=amdgpu:gfx11-generic --format=amdgpu-hsaco \
+  --output=guarded-rows.hsaco --compile-report=details \
+  --compile-report-output=guarded-rows.report.json
+loom-compile-report show guarded-rows.report.json
+loom-compile-report suggest guarded-rows.report.json
+```
+
+The tests check the exact full-row result and compare mixed-sign inputs bit for
+bit across 360 combinations of row counts, inner extents, active lanes, and
+seeds. Empty inner loops, partial tiles, and inactive lanes keep their original
+behavior. The same source executes through AMDGPU and Vulkan.
+
+The generated schedule names the structured unit that runs ahead:
+
+```text
+--8<-- "generated/examples/guide/functions-and-control/guarded-pipeline-schedule.txt"
+```
+
+Here `reads` counts static load operations in the scheduled stage, including
+nested regions. It does not estimate executed memory transactions or multiply
+by an inner loop's trip count. Guarded stages can introduce control-flow joins
+that affect waits and register lifetimes; inspect native output and compare
+runtime just as for a straight-line producer.
 
 ## Keep one checked source for experiments
 

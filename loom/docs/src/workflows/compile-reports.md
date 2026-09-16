@@ -234,6 +234,13 @@ it is not a physical register count. A single report establishes pipeline use
 and final resource consumption. A matched compilation and runtime comparison
 establishes the change in cost and performance.
 
+Nested `scf.if` and `scf.for` appear as intact operations in the reported
+producer/consumer schedule. The read count includes static load operations
+inside their regions, including alternative branches; it is not a count of
+dynamic memory transactions. Independently pipelined inner loops have their
+own policy rows. Their transformed bodies then participate in the enclosing
+loop's schedule.
+
 This source advice works across target families. When target-specific advice is
 unavailable, the result retains its reason in `target_unavailable_reason` while
 still showing source findings. A source helper's schedule remains inspectable
