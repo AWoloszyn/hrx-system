@@ -20,4 +20,11 @@ void loom_verify_block_arg_type_refs(loom_verify_state_t* state,
                                      const loom_block_t* block,
                                      const loom_op_t* owner);
 
+// Checks retained type and predicate references carried by operation
+// attributes. Symbol definitions may refer to their own declaration-local
+// values.
+void loom_verify_attribute_value_refs(loom_verify_state_t* state,
+                                      const loom_op_t* op,
+                                      const loom_op_vtable_t* vtable);
+
 #endif  // LOOM_VERIFY_VERIFY_VALUE_TYPES_H_

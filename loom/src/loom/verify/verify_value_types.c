@@ -33,7 +33,7 @@ static loom_diagnostic_param_t loom_verify_type_ref_field_param(
       loom_diagnostic_field_ref(kind, field_index));
 }
 
-static bool loom_verify_op_allows_declaration_local_type_refs(
+static bool loom_verify_op_allows_declaration_local_refs(
     const loom_op_vtable_t* vtable) {
   return vtable->symbol_def &&
          loom_symbol_definition_implements(vtable->symbol_def,
@@ -44,15 +44,14 @@ static bool loom_verify_op_allows_declaration_local_type_refs(
 // Definition-site references may name co-results or global declaration-local
 // placeholders. The constructor retains result ownership, so co-reference
 // checks never search the result array for each referenced value.
-static bool loom_verify_type_ref_is_visible(const loom_verify_state_t* state,
-                                            const loom_op_t* op,
-                                            const loom_op_vtable_t* vtable,
-                                            loom_value_id_t value_id,
-                                            bool is_result) {
+static bool loom_verify_definition_ref_is_visible(
+    const loom_verify_state_t* state, const loom_op_t* op,
+    const loom_op_vtable_t* vtable, loom_value_id_t value_id,
+    bool allows_local_definitions) {
   if (loom_verify_value_is_visible(state, value_id)) {
     return true;
   }
-  if (!is_result) {
+  if (!allows_local_definitions) {
     return false;
   }
   const loom_value_t* value = loom_module_value(state->module, value_id);
@@ -62,7 +61,7 @@ static bool loom_verify_type_ref_is_visible(const loom_verify_state_t* state,
   const loom_op_t* defining_op = loom_value_def_op(value);
   return defining_op == op ||
          (!defining_op && value->name_id != LOOM_STRING_ID_INVALID &&
-          loom_verify_op_allows_declaration_local_type_refs(vtable));
+          loom_verify_op_allows_declaration_local_refs(vtable));
 }
 
 // Validates a single SSA encoding reference embedded in a value's type.
@@ -91,8 +90,8 @@ static void loom_verify_encoding_ref(loom_verify_state_t* state,
                                 IREE_ARRAYSIZE(params));
     return;
   }
-  if (!loom_verify_type_ref_is_visible(state, op, vtable, encoding_value_id,
-                                       is_result)) {
+  if (!loom_verify_definition_ref_is_visible(state, op, vtable,
+                                             encoding_value_id, is_result)) {
     iree_string_view_t value_name =
         loom_verify_value_name(state, encoding_value_id);
     char name_buffer[64];
@@ -139,8 +138,8 @@ static void loom_verify_defined_type_refs(
     use_id = use->next_outgoing_use_id;
     const loom_value_id_t referenced_id = use->referenced_value_id;
     if (referenced_id == direct_encoding ||
-        loom_verify_type_ref_is_visible(state, op, vtable, referenced_id,
-                                        is_result)) {
+        loom_verify_definition_ref_is_visible(state, op, vtable, referenced_id,
+                                              is_result)) {
       continue;
     }
     char name_buffer[64];
@@ -215,5 +214,58 @@ void loom_verify_block_arg_type_refs(loom_verify_state_t* state,
     }
     loom_verify_defined_type_refs(state, owner, NULL, arg_id, type, a,
                                   /*is_result=*/false);
+  }
+}
+
+IREE_ATTRIBUTE_NOINLINE IREE_ATTRIBUTE_COLD static void
+loom_verify_emit_attribute_ref_not_visible(loom_verify_state_t* state,
+                                           const loom_op_t* op,
+                                           const loom_op_vtable_t* vtable,
+                                           uint8_t attribute_index,
+                                           loom_value_id_t value_id) {
+  char name_buffer[32];
+  iree_string_view_t field_name;
+  if (vtable->attr_descriptors && attribute_index < vtable->attribute_count) {
+    field_name =
+        loom_bstring_view(vtable->attr_descriptors[attribute_index].name);
+  } else {
+    // Structural verification diagnoses undescribed slots separately.
+    iree_snprintf(name_buffer, sizeof(name_buffer), "attribute %u",
+                  attribute_index);
+    field_name = iree_make_cstring_view(name_buffer);
+  }
+  loom_diagnostic_param_t params[] = {
+      loom_verify_param_string_for_diagnostic_field(
+          field_name, LOOM_DIAGNOSTIC_FIELD_ATTRIBUTE, attribute_index),
+      loom_param_string(loom_verify_value_name(state, value_id)),
+  };
+  loom_verify_emit_structured(state, op, LOOM_ERR_DOMINANCE_017, params,
+                              IREE_ARRAYSIZE(params));
+}
+
+// Attributes retain their nested type and predicate references at construction.
+// Signature predicates may describe the declaration's own results or global
+// shape placeholders; ordinary attributes require a dominating definition.
+void loom_verify_attribute_value_refs(loom_verify_state_t* state,
+                                      const loom_op_t* op,
+                                      const loom_op_vtable_t* vtable) {
+  const bool allows_local_definitions =
+      iree_any_bit_set(vtable->traits, LOOM_TRAIT_SYMBOL_DEFINE);
+  const loom_attribute_use_id_t* heads = loom_op_attribute_use_heads(op);
+  for (uint8_t i = 0; i < op->attribute_count; ++i) {
+    for (loom_attribute_use_id_t use_id = heads[i]; use_id;) {
+      const loom_attribute_use_t* use =
+          &state->module->attribute_uses.records[use_id - 1];
+      use_id = use->next_outgoing;
+      if (loom_verify_definition_ref_is_visible(
+              state, op, vtable, use->value_id, allows_local_definitions)) {
+        continue;
+      }
+      loom_verify_emit_attribute_ref_not_visible(state, op, vtable, i,
+                                                 use->value_id);
+      if (loom_verify_at_error_limit(state)) {
+        return;
+      }
+    }
   }
 }

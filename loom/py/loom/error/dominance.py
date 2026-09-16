@@ -274,6 +274,26 @@ ERR_DOMINANCE_016 = ErrorDef(
     ),
 )
 
+# ERR_DOMINANCE_017: An attribute references an unavailable SSA value.
+ERR_DOMINANCE_017 = ErrorDef(
+    domain=ErrorDomain.DOMINANCE,
+    code=17,
+    severity=Severity.ERROR,
+    summary="Attribute references an unavailable SSA value.",
+    message=(
+        "attribute '{field_name}' references value '%{value_name}' which is not "
+        "visible at this operation"
+    ),
+    params=(
+        ErrorParam("field_name", ParamKind.STRING),
+        ErrorParam("value_name", ParamKind.STRING),
+    ),
+    fix_hint=(
+        "Define the referenced value in a dominating scope or pass it as an "
+        "argument across an isolated boundary."
+    ),
+)
+
 ALL_DOMINANCE_ERRORS: tuple[ErrorDef, ...] = (
     ERR_DOMINANCE_001,
     ERR_DOMINANCE_002,
@@ -291,4 +311,5 @@ ALL_DOMINANCE_ERRORS: tuple[ErrorDef, ...] = (
     ERR_DOMINANCE_014,
     ERR_DOMINANCE_015,
     ERR_DOMINANCE_016,
+    ERR_DOMINANCE_017,
 )

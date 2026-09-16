@@ -514,6 +514,13 @@ IREE_ATTRIBUTE_ALWAYS_INLINE static inline iree_status_t loom_verify_op(
     IREE_RETURN_IF_ERROR(loom_verify_pending_diagnostic_status(state));
   }
 
+  // Attribute payloads carry SSA references independently of value types.
+  // Their retained edges obey the same scope and isolation boundaries.
+  if (op->attribute_count) {
+    loom_verify_attribute_value_refs(state, op, vtable);
+    IREE_RETURN_IF_ERROR(loom_verify_pending_diagnostic_status(state));
+  }
+
   // Poison may flow through pure SSA computation, but it must not be consumed
   // by an operation that observes values outside ordinary use-def propagation.
   loom_verify_poison_boundaries(state, op, vtable);
