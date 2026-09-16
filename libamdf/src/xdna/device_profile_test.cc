@@ -28,11 +28,13 @@ TEST(XdnaDeviceProfileTest, SeparatesIdentityFromNativeGeometry) {
     uint32_t revision;
     // Canonical compiler target identity, independent of live geometry.
     const char* target_id;
+    // Nominal accounting required by this target's native admission protocol.
+    uint32_t operations_per_cycle;
   };
   constexpr TargetCase kCases[] = {
-      {0x10u, "amd.xdna.strix.17f0_10"},
-      {0x11u, "amd.xdna.strix_halo.17f0_11"},
-      {0x20u, "amd.xdna.krackan.17f0_20"},
+      {0x10u, "amd.xdna.strix.17f0_10", 16384},
+      {0x11u, "amd.xdna.strix_halo.17f0_11", 2048},
+      {0x20u, "amd.xdna.krackan.17f0_20", 16384},
   };
   for (const auto& target : kCases) {
     SCOPED_TRACE(target.target_id);
@@ -53,7 +55,8 @@ TEST(XdnaDeviceProfileTest, SeparatesIdentityFromNativeGeometry) {
     EXPECT_EQ(profile.rows.core_count, 0u);
     EXPECT_NE(profile.execution_capabilities, 0u);
     ASSERT_NE(profile.bootstrap, nullptr);
-    EXPECT_GT(profile.bootstrap->pdi_byte_length, 0u);
+    EXPECT_EQ(profile.bootstrap->context.operations_per_cycle,
+              target.operations_per_cycle);
     EXPECT_GT(info.instruction.maximum_byte_length, 0u);
     EXPECT_GT(info.instruction.address_alignment, 0u);
   }

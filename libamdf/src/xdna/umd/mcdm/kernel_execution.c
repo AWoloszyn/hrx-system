@@ -13,6 +13,7 @@
 #include "libamdf/src/atomics.h"
 #include "libamdf/src/platform/wait.h"
 #include "libamdf/src/wait.h"
+#include "libamdf/src/xdna/bootstrap.h"
 #include "libamdf/src/xdna/umd/mcdm/context.h"
 #include "libamdf/src/xdna/umd/mcdm/submission.h"
 
@@ -244,16 +245,13 @@ static amdf_status_t amdf_windows_xdna_kernel_execution_publish_aperture(
 }
 
 static amdf_status_t amdf_windows_xdna_kernel_execution_publish_pdi(
-    amdf_windows_xdna_kernel_execution_t* execution,
     amdf_windows_xdna_private_allocation_t* allocation) {
-  const amdf_xdna_bootstrap_t* bootstrap =
-      execution->device->profile->bootstrap;
-  memset(allocation->host_pointer, 0,
-         (size_t)AMDF_WINDOWS_XDNA_PRIVATE_BOOTSTRAP_SIZE);
-  memcpy(allocation->host_pointer, bootstrap->pdi_bytes,
-         bootstrap->pdi_byte_length);
+  _Static_assert(AMDF_XDNA_BOOTSTRAP_PDI_BYTE_LENGTH <=
+                     AMDF_WINDOWS_XDNA_PRIVATE_BOOTSTRAP_SIZE,
+                 "native admission PDI must fit the reserved prefix");
+  amdf_xdna_bootstrap_write_pdi(allocation->host_pointer);
   return amdf_windows_xdna_private_allocation_publish(
-      allocation, 0, AMDF_WINDOWS_XDNA_PRIVATE_BOOTSTRAP_SIZE);
+      allocation, 0, AMDF_XDNA_BOOTSTRAP_PDI_BYTE_LENGTH);
 }
 
 static amdf_status_t amdf_windows_xdna_kernel_execution_activate_context(
@@ -368,8 +366,7 @@ amdf_status_t amdf_windows_xdna_kernel_execution_prepare_memory(
                                                                  allocation);
   }
   if (amdf_status_is_ok(status)) {
-    status =
-        amdf_windows_xdna_kernel_execution_publish_pdi(execution, allocation);
+    status = amdf_windows_xdna_kernel_execution_publish_pdi(allocation);
   }
   if (amdf_status_is_ok(status)) {
     status = amdf_windows_xdna_kernel_execution_activate_context(

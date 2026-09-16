@@ -370,11 +370,19 @@ supported by the native interface, not an assumed allocator for every tile-local
 resource.
 
 Libamdf supplies storage, addresses, access guarantees, and native resource
-mechanisms. The caller supplies the bytes and understands their meaning. ELF
-loading, relocations, PDI construction, tile-control tables, replacement
-programs, and streaming schedules belong above the library. A native path's
-requirement for setup material is explicit; it does not give libamdf ownership
-of the application's program layout or schedule.
+mechanisms. The caller supplies application bytes and understands their meaning.
+Application ELF loading, relocations, tile-control tables, replacement programs,
+and streaming schedules belong above the library.
+
+Native interpreter admission belongs to libamdf. The Windows XDNA provider
+constructs its minimal PDI/CDO container directly in reserved private storage
+before exposing the usable instruction range. Its single NOP admits the
+interpreter without installing a tile program or assigning application DMA,
+locks, routes, or tile data. Admission runs once for the context's private
+backing, independently of application dispatch or program replacement. The
+provider publishes only the encoded bytes and retains storage until accepted
+native preparation retires, including when an observation fails. Modern Linux
+DRM submits native ELF instruction ranges without this bootstrap container.
 
 ## Lifetime and failure
 

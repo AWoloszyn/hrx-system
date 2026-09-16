@@ -10,23 +10,6 @@
 iree_add_all_subdirs()
 
 if(AMDF_BUILD AND AMDF_FAMILY_XDNA)
-iree_cc_test(
-  NAME
-    bootstrap_test
-  SRCS
-    "bootstrap_test.cc"
-  DEPS
-    ::bootstrap
-    amdf::headers
-    iree::third_party::google_test
-    iree::third_party::google_test_main
-  LABELS
-    "iree-build-requirement=libamdf"
-    "iree-build-requirement=libamdf.xdna"
-)
-endif()
-
-if(AMDF_BUILD AND AMDF_FAMILY_XDNA)
 iree_cc_library(
   NAME
     bootstrap

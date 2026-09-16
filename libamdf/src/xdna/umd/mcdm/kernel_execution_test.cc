@@ -51,6 +51,21 @@ struct NativeState {
   uint64_t instruction_address = 0;
   // Captured instruction length in words from the execution packet.
   uint32_t instruction_word_count = 0;
+  // Native opcode whose acceptance must remain unretired for a lifetime test.
+  uint64_t deferred_opcode = 0;
+  // Accepted progress value not yet exposed through the native fence.
+  uint64_t pending_submission = 0;
+  // Publication of the admission PDI within the private instruction backing.
+  struct {
+    // Number of cache publications requested for this allocation.
+    uint32_t count = 0;
+    // Native publication start within the allocation, in bytes.
+    uint64_t byte_offset = 0;
+    // Native publication extent, in bytes.
+    uint64_t byte_length = 0;
+    // Dependency result returned by the native cache publication operation.
+    NTSTATUS result = 0;
+  } bootstrap_publication;
 };
 
 // One dependency state per test, never shared with production code.
@@ -99,6 +114,9 @@ NTSTATUS APIENTRY CreateAllocation(D3DKMT_CREATEALLOCATION* create) {
     EXPECT_EQ(ReadU32(info->pPrivateDriverData, 0x28), 0x01000001u);
     std::memcpy(static_cast<uint8_t*>(info->pPrivateDriverData) + 0x30,
                 &native_state->firmware_address, sizeof(uint64_t));
+    // Native storage has no zero-fill contract. Poison both the reserved
+    // prefix and the start of the application-visible range.
+    std::memset(allocation.pointer, 0xA5, 32768 + 64);
   }
   info->hAllocation =
       static_cast<D3DKMT_HANDLE>(native_state->allocations.size());
@@ -202,7 +220,11 @@ NTSTATUS APIENTRY Submit(const D3DKMT_SUBMITCOMMANDTOHWQUEUE* submit) {
   } else {
     ADD_FAILURE() << "Unexpected native opcode " << opcode;
   }
-  native_state->progress = submit->HwQueueProgressFenceId;
+  if (opcode == native_state->deferred_opcode) {
+    native_state->pending_submission = submit->HwQueueProgressFenceId;
+  } else {
+    native_state->progress = submit->HwQueueProgressFenceId;
+  }
   return 0;
 }
 
@@ -219,7 +241,15 @@ class WindowsXdnaKernelExecutionTest
     kmt_.make_resident = MakeResident;
     kmt_.lock = Lock;
     kmt_.unlock = [](const D3DKMT_UNLOCK2*) -> NTSTATUS { return 0; };
-    kmt_.invalidate_cache = [](const D3DKMT_INVALIDATECACHE*) -> NTSTATUS {
+    kmt_.invalidate_cache =
+        [](const D3DKMT_INVALIDATECACHE* invalidate) -> NTSTATUS {
+      if (native_state->allocations[invalidate->hAllocation].type == 0x3323) {
+        auto& publication = native_state->bootstrap_publication;
+        ++publication.count;
+        publication.byte_offset = invalidate->Offset;
+        publication.byte_length = invalidate->Length;
+        return publication.result;
+      }
       return 0;
     };
     kmt_.create_hardware_queue = CreateQueue;
@@ -228,8 +258,9 @@ class WindowsXdnaKernelExecutionTest
     };
     kmt_.submit_command_to_hardware_queue = Submit;
     kmt_.wait_from_cpu =
-        [](const D3DKMT_WAITFORSYNCHRONIZATIONOBJECTFROMCPU*) -> NTSTATUS {
-      ADD_FAILURE() << "Dependency completes submissions synchronously";
+        [](const D3DKMT_WAITFORSYNCHRONIZATIONOBJECTFROMCPU* wait) -> NTSTATUS {
+      EXPECT_NE(native_state->pending_submission, 0u);
+      EXPECT_EQ(wait->FenceValueArray[0], native_state->pending_submission);
       return static_cast<NTSTATUS>(0xC0000001u);
     };
     // The native device and context are already live. These entries establish
@@ -242,7 +273,8 @@ class WindowsXdnaKernelExecutionTest
       ADD_FAILURE();
       return -1;
     };
-    kmt_.get_device_state = [](D3DKMT_GETDEVICESTATE*) -> NTSTATUS {
+    kmt_.get_device_state = [](D3DKMT_GETDEVICESTATE* query) -> NTSTATUS {
+      query->ExecutionState = D3DKMT_DEVICEEXECUTION_ACTIVE;
       return 0;
     };
     kmt_.create_paging_queue = [](D3DKMT_CREATEPAGINGQUEUE*) -> NTSTATUS {
@@ -337,6 +369,16 @@ TEST_P(WindowsXdnaKernelExecutionTest,
                                       << AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE);
   EXPECT_EQ(native_.opcodes, (std::vector<uint64_t>{2, 5, 9}));
   ASSERT_EQ(native_.allocations.size(), 4u);
+  EXPECT_EQ(native_.bootstrap_publication.count, 1u);
+  EXPECT_EQ(native_.bootstrap_publication.byte_offset, 0u);
+  EXPECT_EQ(native_.bootstrap_publication.byte_length, 368u);
+  const auto* bootstrap =
+      static_cast<const uint8_t*>(native_.allocations[3].pointer);
+  EXPECT_EQ(ReadU32(bootstrap, 340), 0x004F4443u);
+  EXPECT_EQ(ReadU32(bootstrap, 348), 1u);
+  EXPECT_EQ(ReadU32(bootstrap, 356), 0x111u);
+  for (size_t i = 368; i < 32768 + 64; ++i)
+    ASSERT_EQ(bootstrap[i], 0xA5) << "byte " << i;
   auto* instructions =
       static_cast<uint8_t*>(native_.allocations[3].pointer) + 32768;
   std::memset(instructions, 0xA7, 64);
@@ -437,6 +479,56 @@ TEST_P(WindowsXdnaKernelExecutionTest, FailedBootstrapDoesNotPublishMemory) {
             amdf_make_api_status(AMDF_STATUS_CODE_DEVICE_LOST));
   EXPECT_EQ(result.device_address, UINT64_MAX);
   EXPECT_EQ(native_.opcodes, (std::vector<uint64_t>{2, 5}));
+}
+
+TEST_P(WindowsXdnaKernelExecutionTest, FailedPublicationNeverAdmitsContext) {
+  native_.bootstrap_publication.result = static_cast<NTSTATUS>(0xC0000001u);
+  const auto failure =
+      amdf_kmt_make_status(native_.bootstrap_publication.result);
+  amdf_xdna_umd_memory_result_t result = {};
+  result.device_address = UINT64_MAX;
+  EXPECT_EQ(amdf_xdna_umd_memory_prepare_private(&context_, &profile_, &create_,
+                                                 &memory_, &result),
+            failure);
+  EXPECT_EQ(result.device_address, UINT64_MAX);
+  EXPECT_EQ(native_.opcodes, (std::vector<uint64_t>{2}));
+  EXPECT_EQ(native_.bootstrap_publication.count, 1u);
+  EXPECT_EQ(amdf_windows_xdna_kernel_execution_query_terminal_status(
+                context_.kernel_execution),
+            failure);
+}
+
+TEST_P(WindowsXdnaKernelExecutionTest,
+       FailedWaitRetainsBootstrapBackingUntilNativeRetirement) {
+  native_.deferred_opcode = 5;
+  const auto failure = amdf_kmt_make_status(static_cast<NTSTATUS>(0xC0000001u));
+  amdf_xdna_umd_memory_result_t result = {};
+  result.device_address = UINT64_MAX;
+  ASSERT_EQ(amdf_xdna_umd_memory_prepare_private(&context_, &profile_, &create_,
+                                                 &memory_, &result),
+            failure);
+  EXPECT_EQ(result.device_address, UINT64_MAX);
+  EXPECT_EQ(native_.opcodes, (std::vector<uint64_t>{2, 5}));
+  ASSERT_EQ(native_.allocations.size(), 4u);
+  EXPECT_EQ(native_.pending_submission, 2u);
+  EXPECT_EQ(native_.progress, 1u);
+  auto* execution = context_.kernel_execution;
+  EXPECT_EQ(
+      amdf_windows_xdna_kernel_execution_prepare_context_destroy(execution),
+      amdf_make_api_status(AMDF_STATUS_CODE_BUSY));
+  EXPECT_EQ(amdf_xdna_umd_memory_destroy(memory_), failure);
+  EXPECT_NE(native_.allocations[3].pointer, nullptr);
+  EXPECT_EQ(ReadU32(native_.allocations[3].pointer, 356), 0x111u);
+
+  // The accepted native operation retires independently of the failed wait.
+  // Releasing its backing does not retry admission or clear terminal failure.
+  native_.progress = native_.pending_submission;
+  ASSERT_EQ(amdf_xdna_umd_memory_destroy(memory_), AMDF_STATUS_OK);
+  memory_ = nullptr;
+  EXPECT_EQ(native_.allocations[3].pointer, nullptr);
+  EXPECT_EQ(native_.opcodes, (std::vector<uint64_t>{2, 5}));
+  EXPECT_EQ(amdf_windows_xdna_kernel_execution_query_terminal_status(execution),
+            failure);
 }
 
 INSTANTIATE_TEST_SUITE_P(NativeInterfaces, WindowsXdnaKernelExecutionTest,
