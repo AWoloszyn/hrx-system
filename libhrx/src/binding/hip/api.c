@@ -36,6 +36,7 @@
 #include "binding/hip/handle_registry.h"
 #include "binding/hip/launch_params.h"
 #include "binding/hip/status_conversion.h"
+#include "binding/hip/peer.h"
 #include "binding/hip/stream.h"
 #include "common/direct_transfer.h"
 #include "common/graph.h"
@@ -3074,41 +3075,6 @@ HIPAPI hipError_t hipDeviceCanAccessPeer(int* canAccessPeer, int device,
   HIP_RETURN_ERROR(hipSuccess);
 }
 
-typedef enum iree_hip_peer_link_type_e {
-  IREE_HIP_PEER_LINK_TYPE_HYPERTRANSPORT = 0,
-  IREE_HIP_PEER_LINK_TYPE_QPI = 1,
-  IREE_HIP_PEER_LINK_TYPE_PCIE = 2,
-  IREE_HIP_PEER_LINK_TYPE_INFINIBAND = 3,
-  IREE_HIP_PEER_LINK_TYPE_XGMI = 4,
-} iree_hip_peer_link_type_t;
-
-// HIP exposes the native link ABI values, which intentionally differ from the
-// generic HAL enum because UNKNOWN occupies zero in the HAL representation.
-static bool iree_hip_peer_link_type_from_topology(
-    iree_hal_topology_link_type_t topology_link_type,
-    iree_hip_peer_link_type_t* out_link_type) {
-  IREE_ASSERT_ARGUMENT(out_link_type);
-  switch (topology_link_type) {
-    case IREE_HAL_TOPOLOGY_LINK_TYPE_HYPERTRANSPORT:
-      *out_link_type = IREE_HIP_PEER_LINK_TYPE_HYPERTRANSPORT;
-      return true;
-    case IREE_HAL_TOPOLOGY_LINK_TYPE_QPI:
-      *out_link_type = IREE_HIP_PEER_LINK_TYPE_QPI;
-      return true;
-    case IREE_HAL_TOPOLOGY_LINK_TYPE_PCIE:
-      *out_link_type = IREE_HIP_PEER_LINK_TYPE_PCIE;
-      return true;
-    case IREE_HAL_TOPOLOGY_LINK_TYPE_INFINIBAND:
-      *out_link_type = IREE_HIP_PEER_LINK_TYPE_INFINIBAND;
-      return true;
-    case IREE_HAL_TOPOLOGY_LINK_TYPE_XGMI:
-      *out_link_type = IREE_HIP_PEER_LINK_TYPE_XGMI;
-      return true;
-    default:
-      return false;
-  }
-}
-
 // Gets peer-to-peer attributes between two devices.
 //
 // Parameters:
@@ -3182,16 +3148,13 @@ HIPAPI hipError_t hipDeviceGetP2PAttribute(int* value, hipDeviceP2PAttr attrib,
     case hipDevP2PAttrHipArrayAccessSupported:
       *value = properties.array_access_supported ? 1 : 0;
       break;
-    case hipDevP2PAttrPerformanceRank: {
-      iree_hip_peer_link_type_t link_type;
-      if (!iree_hip_peer_link_type_from_topology(properties.link_type,
-                                                 &link_type)) {
+    case hipDevP2PAttrPerformanceRank:
+      if (!iree_hip_peer_performance_rank_from_topology(properties.link_type,
+                                                        value)) {
         IREE_TRACE_ZONE_END(z0);
         HIP_RETURN_ERROR(hipErrorNotSupported);
       }
-      *value = (int)link_type;
       break;
-    }
     default:
       IREE_TRACE_ZONE_END(z0);
       HIP_RETURN_ERROR(hipErrorInvalidValue);
@@ -3227,14 +3190,10 @@ HIPAPI hipError_t hipExtGetLinkTypeAndHopCount(int device1, int device2,
   if (!iree_status_is_ok(status)) {
     HIP_RETURN_ERROR(iree_status_to_hip_result(status));
   }
-  iree_hip_peer_link_type_t hip_link_type;
-  if (!iree_hip_peer_link_type_from_topology(properties.link_type,
-                                             &hip_link_type)) {
+  if (!iree_hip_peer_link_info_from_topology(
+          properties.link_type, properties.hop_count, linktype, hopcount)) {
     HIP_RETURN_ERROR(hipErrorNotSupported);
   }
-
-  *linktype = (uint32_t)hip_link_type;
-  *hopcount = properties.hop_count;
   HIP_RETURN_ERROR(hipSuccess);
 }
 

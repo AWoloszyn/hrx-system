@@ -260,6 +260,25 @@ iree_cc_library(
   PUBLIC
 )
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+iree_cc_library(
+  NAME
+    peer
+  HDRS
+    "peer.h"
+  SRCS
+    "peer.c"
+  DEPS
+    iree::base
+    iree::hal
+    libhrx_defs
+  INCLUDES
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>"
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/../..>"
+  PUBLIC
+)
+endif()
+
 iree_cc_library(
   NAME
     stream
@@ -387,6 +406,7 @@ iree_cc_library(
     ::launch_params
     ::spirv_linker_compiler
     ::status_conversion
+    ::peer
     ::stream
     iree::base
     iree::base::core_headers
@@ -442,6 +462,20 @@ iree_cc_test(
     libhrx::src::binding::common
     libhrx_defs
 )
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+iree_cc_test(
+  NAME
+    peer_test
+  SRCS
+    "peer_test.cc"
+  DEPS
+    ::peer
+    iree::testing::gtest
+    iree::testing::gtest_main
+    libhrx_defs
+)
+endif()
 
 iree_cc_test(
   NAME
