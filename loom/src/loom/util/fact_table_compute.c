@@ -25,11 +25,8 @@ static int64_t loom_value_fact_static_element_byte_count(loom_type_t type) {
 
 static iree_status_t loom_value_fact_table_seed_buffer_arg(
     loom_value_fact_table_t* table, loom_value_id_t value_id,
-    loom_value_fact_memory_space_t memory_space) {
-  if (!loom_value_facts_is_unknown(
-          loom_value_fact_table_lookup(table, value_id))) {
-    return iree_ok_status();
-  }
+    loom_value_fact_memory_space_t memory_space,
+    loom_value_fact_reference_origin_t origin) {
   loom_value_fact_buffer_reference_t reference = {
       .maximum_byte_extent = loom_value_facts_make(0, INT64_MAX, 1),
       .minimum_alignment = 1,
@@ -37,20 +34,27 @@ static iree_status_t loom_value_fact_table_seed_buffer_arg(
       .root_value_id = value_id,
       .alias_scope_id = LOOM_VALUE_FACT_ALIAS_SCOPE_ID_NONE,
       .nullability = LOOM_VALUE_FACT_REFERENCE_NULLABILITY_UNKNOWN,
+      .origin = origin,
   };
-  loom_value_facts_t facts = loom_value_facts_unknown();
+  loom_value_facts_t facts = loom_value_fact_table_lookup(table, value_id);
+  if (loom_value_facts_query_buffer_reference(&table->context, facts,
+                                              &reference) &&
+      loom_value_fact_reference_origin_equal(reference.origin, origin)) {
+    return iree_ok_status();
+  }
+  if (origin.kind != LOOM_VALUE_FACT_REFERENCE_ORIGIN_UNKNOWN) {
+    reference.origin = origin;
+  }
+  loom_value_facts_t reference_facts = loom_value_facts_unknown();
   IREE_RETURN_IF_ERROR(loom_value_facts_make_buffer_reference(
-      &table->context, reference, &facts));
+      &table->context, reference, &reference_facts));
+  facts.extension_id = reference_facts.extension_id;
   return loom_value_fact_table_define(table, value_id, facts);
 }
 
 static iree_status_t loom_value_fact_table_seed_view_arg(
-    loom_value_fact_table_t* table, loom_value_id_t value_id,
-    loom_type_t type) {
-  if (!loom_value_facts_is_unknown(
-          loom_value_fact_table_lookup(table, value_id))) {
-    return iree_ok_status();
-  }
+    loom_value_fact_table_t* table, loom_value_id_t value_id, loom_type_t type,
+    loom_value_fact_reference_origin_t origin) {
   loom_value_fact_view_reference_t reference = {
       .base_byte_offset = loom_value_facts_exact_i64(0),
       .footprint_byte_length = loom_value_facts_make(0, INT64_MAX, 1),
@@ -63,10 +67,21 @@ static iree_status_t loom_value_fact_table_seed_view_arg(
       .buffer_value_id = LOOM_VALUE_ID_INVALID,
       .alias_scope_id = LOOM_VALUE_FACT_ALIAS_SCOPE_ID_NONE,
       .nullability = LOOM_VALUE_FACT_REFERENCE_NULLABILITY_UNKNOWN,
+      .origin = origin,
   };
-  loom_value_facts_t facts = loom_value_facts_unknown();
-  IREE_RETURN_IF_ERROR(
-      loom_value_facts_make_view_reference(&table->context, reference, &facts));
+  loom_value_facts_t facts = loom_value_fact_table_lookup(table, value_id);
+  if (loom_value_facts_query_view_reference(&table->context, facts,
+                                            &reference) &&
+      loom_value_fact_reference_origin_equal(reference.origin, origin)) {
+    return iree_ok_status();
+  }
+  if (origin.kind != LOOM_VALUE_FACT_REFERENCE_ORIGIN_UNKNOWN) {
+    reference.origin = origin;
+  }
+  loom_value_facts_t reference_facts = loom_value_facts_unknown();
+  IREE_RETURN_IF_ERROR(loom_value_facts_make_view_reference(
+      &table->context, reference, &reference_facts));
+  facts.extension_id = reference_facts.extension_id;
   return loom_value_fact_table_define(table, value_id, facts);
 }
 
@@ -420,6 +435,11 @@ static iree_status_t loom_value_fact_table_apply_func_predicates(
 static iree_status_t loom_value_fact_table_seed_block_args(
     loom_value_fact_table_t* table, const loom_module_t* module,
     const loom_block_t* block, loom_op_t* parent_op) {
+  loom_value_fact_reference_origin_t origin = {0};
+  if (parent_op == table->context.function.op &&
+      block == loom_region_const_entry_block(block->parent_region)) {
+    origin = table->context.reference_origin;
+  }
   const loom_region_descriptor_t* region_descriptor =
       loom_value_fact_table_seeded_region_descriptor(module, block, parent_op);
   const loom_value_fact_memory_space_t buffer_memory_space =
@@ -439,14 +459,18 @@ static iree_status_t loom_value_fact_table_seed_block_args(
       continue;
     }
     loom_type_t type = loom_module_value_type(module, value_id);
-    if (!loom_value_fact_table_has_entry(table, value_id)) {
+    const bool has_entry = loom_value_fact_table_has_entry(table, value_id);
+    if (origin.kind == LOOM_VALUE_FACT_REFERENCE_ORIGIN_ENTRY) {
+      origin.entry_value_id = value_id;
+    }
+    if (!has_entry || origin.kind == LOOM_VALUE_FACT_REFERENCE_ORIGIN_ENTRY) {
       if (loom_type_is_buffer(type)) {
         IREE_RETURN_IF_ERROR(loom_value_fact_table_seed_buffer_arg(
-            table, value_id, buffer_memory_space));
+            table, value_id, buffer_memory_space, origin));
       } else if (loom_type_is_view(type)) {
         IREE_RETURN_IF_ERROR(
-            loom_value_fact_table_seed_view_arg(table, value_id, type));
-      } else {
+            loom_value_fact_table_seed_view_arg(table, value_id, type, origin));
+      } else if (!has_entry) {
         IREE_RETURN_IF_ERROR(
             loom_value_fact_table_seed_scalar_arg(table, module, value_id));
       }
@@ -1548,6 +1572,20 @@ iree_status_t loom_value_fact_table_compute_region(
     loom_value_fact_table_t* table, const loom_module_t* module,
     loom_func_like_t function, loom_region_t* region, loom_op_t* parent_op) {
   table->context.function = function;
+  table->context.reference_origin = (loom_value_fact_reference_origin_t){0};
+  if (loom_func_like_isa(function) && parent_op == function.op) {
+    for (uint8_t i = 0; i < loom_func_like_region_count(function); ++i) {
+      if (loom_func_like_region(function, i) == region) {
+        table->context.reference_origin = (loom_value_fact_reference_origin_t){
+            .function_symbol_id = loom_func_like_callee(function).symbol_id,
+            .entry_value_id = LOOM_VALUE_ID_INVALID,
+            .region_index = i,
+            .kind = LOOM_VALUE_FACT_REFERENCE_ORIGIN_ENTRY,
+        };
+        break;
+      }
+    }
+  }
   IREE_RETURN_IF_ERROR(loom_value_fact_table_seed_projected_func_args(
       table, module, function, region, parent_op));
   return loom_value_fact_table_compute_region_tree(table, module, region,

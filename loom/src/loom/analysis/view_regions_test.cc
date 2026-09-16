@@ -537,6 +537,72 @@ TEST_F(ViewRegionsTest, KeepsOverlappingAndDifferentRootViewsConservative) {
   EXPECT_FALSE(no_overlap);
 }
 
+TEST_F(ViewRegionsTest, AllocationFreshnessRelationships) {
+  loom_value_id_t incoming = DefineBufferArg();
+  loom_value_id_t other_incoming = DefineBufferArg();
+  loom_value_id_t bytes = loom_index_constant_result(BuildOffsetConstant(256));
+  loom_value_id_t zero = loom_index_constant_result(BuildOffsetConstant(0));
+  loom_value_id_t separate_offset =
+      loom_index_constant_result(BuildOffsetConstant(128));
+  loom_value_id_t layout = BuildDenseLayout();
+  loom_op_t* first_allocation = nullptr;
+  loom_op_t* second_allocation = nullptr;
+  IREE_ASSERT_OK(loom_buffer_alloca_build(
+      &builder_, LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP, 64, bytes,
+      loom_type_buffer(), LOOM_LOCATION_UNKNOWN, &first_allocation));
+  IREE_ASSERT_OK(loom_buffer_alloca_build(
+      &builder_, LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP, 64, bytes,
+      loom_type_buffer(), LOOM_LOCATION_UNKNOWN, &second_allocation));
+  const loom_value_id_t roots[] = {
+      loom_buffer_alloca_result(first_allocation),
+      loom_buffer_alloca_result(second_allocation),
+      loom_buffer_alloca_result(first_allocation),
+      incoming,
+      other_incoming,
+      incoming,
+  };
+  loom_op_t* views[IREE_ARRAYSIZE(roots)] = {};
+  for (size_t i = 0; i < IREE_ARRAYSIZE(roots); ++i) {
+    IREE_ASSERT_OK(loom_buffer_view_build(
+        &builder_, roots[i], i == 5 ? separate_offset : zero,
+        ViewType1D(16, layout), LOOM_LOCATION_UNKNOWN, &views[i]));
+  }
+  loom_value_fact_table_t facts = {};
+  ComputeFacts(&facts);
+  loom_view_region_table_t table = {};
+  Analyze(&facts, &table);
+  const loom_view_region_t* regions[IREE_ARRAYSIZE(roots)] = {};
+  for (size_t i = 0; i < IREE_ARRAYSIZE(roots); ++i) {
+    IREE_ASSERT_OK(loom_view_region_table_get(
+        &table, loom_buffer_view_result(views[i]), &regions[i]));
+    ASSERT_NE(regions[i], nullptr);
+  }
+  struct Comparison {
+    // Relationship exercised by this pair.
+    const char* name;
+    // First region index.
+    size_t left;
+    // Second region index.
+    size_t right;
+    // Whether the storage/interval guarantees prove disjointness.
+    bool expected_disjoint;
+  };
+  const Comparison comparisons[] = {
+      {"two_fresh_allocations", 0, 1, true},
+      {"two_overlapping_views_of_one_allocation", 0, 2, false},
+      {"fresh_allocation_and_incoming_buffer", 0, 3, true},
+      {"two_unmarked_incoming_buffers", 3, 4, false},
+      {"disjoint_ranges_of_one_unmarked_buffer", 3, 5, true},
+  };
+  for (const auto& comparison : comparisons) {
+    bool disjoint = false;
+    IREE_ASSERT_OK(loom_view_regions_prove_no_overlap(
+        &table, regions[comparison.left], regions[comparison.right],
+        &disjoint));
+    EXPECT_EQ(disjoint, comparison.expected_disjoint) << comparison.name;
+  }
+}
+
 TEST_F(ViewRegionsTest, ProvesDistinctComparableRootsDisjoint) {
   loom_value_id_t first_buffer = DefineBufferArg();
   loom_value_id_t second_buffer = DefineBufferArg();

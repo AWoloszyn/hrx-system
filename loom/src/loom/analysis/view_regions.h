@@ -82,6 +82,9 @@ typedef struct loom_view_region_t {
   // Known nullability of the underlying storage root.
   loom_value_fact_reference_nullability_t nullability;
 
+  // Intrinsic storage origin retained from the source reference.
+  loom_value_fact_reference_origin_t origin;
+
   // Symbolic byte offset of the view base relative to root_value_id.
   loom_symbolic_expr_t begin_byte_offset;
 

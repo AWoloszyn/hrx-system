@@ -548,6 +548,7 @@ static iree_status_t loom_view_region_build_default(
       .root_value_id = reference.root_value_id,
       .alias_scope_id = reference.alias_scope_id,
       .nullability = reference.nullability,
+      .origin = reference.origin,
       .begin_byte_offset = begin,
       .base_begin_byte_offset = begin,
       .projection_byte_offset = zero,
@@ -638,6 +639,7 @@ static iree_status_t loom_view_region_build_subview(
   out_region->root_value_id = source_region->root_value_id;
   out_region->alias_scope_id = source_region->alias_scope_id;
   out_region->nullability = source_region->nullability;
+  out_region->origin = source_region->origin;
   out_region->base_view_value_id = source_region->base_view_value_id;
   out_region->base_begin_byte_offset = source_region->base_begin_byte_offset;
   IREE_RETURN_IF_ERROR(loom_view_region_expr_add(
@@ -672,6 +674,7 @@ static iree_status_t loom_view_region_build_refine(
   out_region->root_value_id = source_region->root_value_id;
   out_region->alias_scope_id = source_region->alias_scope_id;
   out_region->nullability = source_region->nullability;
+  out_region->origin = source_region->origin;
   out_region->base_view_value_id = source_region->base_view_value_id;
   out_region->base_begin_byte_offset = source_region->base_begin_byte_offset;
   out_region->projection_byte_offset = source_region->projection_byte_offset;
@@ -695,6 +698,8 @@ static iree_status_t loom_view_region_build_for_value(
   loom_value_facts_t facts = loom_view_region_lookup_facts(table, value_id);
   (void)loom_value_facts_query_view_reference(
       &table->expression_context->fact_table->context, facts, &reference);
+  reference.root_value_id =
+      loom_value_fact_view_reference_resolve_root_value(reference, value_id);
 
   const loom_value_t* value = loom_module_value(module, value_id);
   if (loom_value_is_block_arg(value)) {
@@ -994,6 +999,11 @@ iree_status_t loom_view_regions_prove_no_overlap(
     const loom_view_region_t* right_region, bool* out_no_overlap) {
   *out_no_overlap = false;
   if (!left_region || !right_region) return iree_ok_status();
+  if (loom_value_fact_reference_origins_are_disjoint(left_region->origin,
+                                                     right_region->origin)) {
+    *out_no_overlap = true;
+    return iree_ok_status();
+  }
   if (left_region->root_value_id == LOOM_VALUE_ID_INVALID ||
       right_region->root_value_id == LOOM_VALUE_ID_INVALID) {
     return iree_ok_status();

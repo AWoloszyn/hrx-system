@@ -175,17 +175,58 @@ loom_cc_test(
 
 loom_cc_library(
   NAME
+    reference_facts
+  HDRS
+    "reference_facts.h"
+  SRCS
+    "reference_facts.c"
+  DEPS
+    loom::ir::facts
+  PUBLIC
+)
+
+loom_cc_test(
+  NAME
+    reference_facts_test
+  SRCS
+    "reference_facts_test.cc"
+  DEPS
+    ::reference_facts
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+
+loom_cc_test(
+  NAME
+    reference_transfer_test
+  SRCS
+    "reference_transfer_test.cc"
+  DEPS
+    ::fact_table
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::ir
+)
+
+loom_cc_library(
+  NAME
     fact_table
   HDRS
     "fact_cfg.h"
+    "fact_extensions.h"
     "fact_table.h"
+    "reference_transfer.h"
   SRCS
     "fact_cfg.c"
+    "fact_extensions.c"
     "fact_table.c"
     "fact_table_compute.c"
+    "reference_transfer.c"
   DEPS
     ::cfg_graph
     ::numeric_format
+    ::reference_facts
     iree::base
     iree::base::internal
     iree::base::internal::arena

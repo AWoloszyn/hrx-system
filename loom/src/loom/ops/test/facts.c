@@ -460,11 +460,15 @@ iree_status_t loom_test_fact_view_root_matches_facts(
         buffer_reference, root_value_id);
   } else if (loom_value_facts_query_view_reference(context, operand_facts[1],
                                                    &other_view_reference)) {
-    root_value_id = other_view_reference.root_value_id;
+    root_value_id = loom_value_fact_view_reference_resolve_root_value(
+        other_view_reference, root_value_id);
   }
 
   result_facts[0] = loom_value_facts_exact_i64(
-      view_reference.root_value_id == root_value_id ? 1 : 0);
+      loom_value_fact_view_reference_resolve_root_value(
+          view_reference, loom_op_const_operands(op)[0]) == root_value_id
+          ? 1
+          : 0);
   return iree_ok_status();
 }
 

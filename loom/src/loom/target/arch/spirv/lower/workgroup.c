@@ -113,11 +113,15 @@ static bool loom_spirv_workgroup_view_reference(
     const loom_value_fact_table_t* fact_table, loom_value_id_t value_id,
     loom_value_fact_view_reference_t* out_reference) {
   *out_reference = (loom_value_fact_view_reference_t){0};
-  return loom_value_facts_query_view_reference(
-             &fact_table->context,
-             loom_value_fact_table_lookup(fact_table, value_id),
-             out_reference) &&
-         out_reference->memory_space == LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP;
+  if (!loom_value_facts_query_view_reference(
+          &fact_table->context,
+          loom_value_fact_table_lookup(fact_table, value_id), out_reference)) {
+    return false;
+  }
+  out_reference->root_value_id =
+      loom_value_fact_view_reference_resolve_root_value(*out_reference,
+                                                        value_id);
+  return out_reference->memory_space == LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP;
 }
 
 static loom_spirv_scalar_type_t loom_spirv_workgroup_signed_integer_carrier(

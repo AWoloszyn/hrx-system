@@ -246,8 +246,9 @@ static iree_status_t loom_cmd_parameter_append_exact_view_ranges(
       continue;
     }
     const uint16_t source_binding_ordinal =
-        loom_cmd_parameter_find_root_binding(build,
-                                             view_reference.root_value_id);
+        loom_cmd_parameter_find_root_binding(
+            build, loom_value_fact_view_reference_resolve_root_value(
+                       view_reference, result));
     if (source_binding_ordinal == UINT16_MAX) continue;
     IREE_RETURN_IF_ERROR(loom_cmd_parameter_reserve_buffer_range(build));
     build->buffer_ranges[build->buffer_range_count++] =

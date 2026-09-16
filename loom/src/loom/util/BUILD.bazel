@@ -151,19 +151,55 @@ loom_cc_test(
 )
 
 loom_cc_library(
+    name = "reference_facts",
+    srcs = ["reference_facts.c"],
+    hdrs = ["reference_facts.h"],
+    deps = [
+        "//loom/src/loom/ir:facts",
+    ],
+)
+
+loom_cc_test(
+    name = "reference_facts_test",
+    srcs = ["reference_facts_test.cc"],
+    deps = [
+        ":reference_facts",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+loom_cc_test(
+    name = "reference_transfer_test",
+    srcs = ["reference_transfer_test.cc"],
+    deps = [
+        ":fact_table",
+        "//loom/src/loom/ir",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+loom_cc_library(
     name = "fact_table",
     srcs = [
         "fact_cfg.c",
+        "fact_extensions.c",
         "fact_table.c",
         "fact_table_compute.c",
+        "reference_transfer.c",
     ],
     hdrs = [
         "fact_cfg.h",
+        "fact_extensions.h",
         "fact_table.h",
+        "reference_transfer.h",
     ],
     deps = [
         ":cfg_graph",
         ":numeric_format",
+        ":reference_facts",
         "//loom/src/loom/analysis:scc",
         "//loom/src/loom/ir",
         "//loom/src/loom/ir:facts",
