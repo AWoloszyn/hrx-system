@@ -77,6 +77,17 @@ iree_status_t loom_module_set_op_attribute(loom_module_t* module, loom_op_t* op,
                                            uint8_t attribute_index,
                                            loom_attribute_t attribute);
 
+// Replaces all references to |old_id| in one known attribute owner with the
+// distinct, defined |new_id|. The retained index establishes that this slot
+// references |old_id|. Identity substitution preserves reference multiplicity
+// and type/predicate classification, so existing records are retargeted without
+// index allocation. Payload reconstruction may allocate; on failure the old
+// attribute and its records remain intact. The caller maintains semantic traits
+// and summaries after success, as with loom_module_set_op_attribute.
+iree_status_t loom_module_replace_op_attribute_value_references(
+    loom_module_t* module, loom_op_t* op, uint8_t attribute_index,
+    loom_value_id_t old_id, loom_value_id_t new_id);
+
 // Registers attributes at the operation construction boundary. Also refreshes
 // existing records if a bulk construction path populated the attributes
 // directly.

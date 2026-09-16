@@ -112,6 +112,41 @@ static loom_attribute_use_id_t* loom_attribute_use_incoming_head(
   return use->is_predicate ? &heads->predicate : &heads->type;
 }
 
+static void loom_attribute_use_link(loom_module_t* module,
+                                    loom_attribute_use_id_t id) {
+  loom_attribute_use_table_t* table = &module->attribute_uses;
+  loom_attribute_use_t* use = &table->records[id - 1];
+  loom_attribute_use_id_t* head = loom_attribute_use_incoming_head(module, use);
+  use->previous_incoming = 0;
+  use->next_incoming = *head;
+  if (*head) {
+    table->records[*head - 1].previous_incoming = id;
+  }
+  *head = id;
+  loom_module_value(module, use->value_id)->flags |=
+      LOOM_VALUE_FLAG_ATTRIBUTE_USES;
+}
+
+static void loom_attribute_use_unlink(loom_module_t* module,
+                                      loom_attribute_use_id_t id) {
+  loom_attribute_use_table_t* table = &module->attribute_uses;
+  const loom_attribute_use_t* use = &table->records[id - 1];
+  if (use->previous_incoming) {
+    table->records[use->previous_incoming - 1].next_incoming =
+        use->next_incoming;
+  } else {
+    *loom_attribute_use_incoming_head(module, use) = use->next_incoming;
+  }
+  if (use->next_incoming) {
+    table->records[use->next_incoming - 1].previous_incoming =
+        use->previous_incoming;
+  }
+  if (!loom_module_value_first_attribute_use(module, use->value_id)) {
+    loom_module_value(module, use->value_id)->flags &=
+        ~LOOM_VALUE_FLAG_ATTRIBUTE_USES;
+  }
+}
+
 static iree_status_t loom_attribute_use_allocate(
     loom_module_t* module, loom_attribute_use_id_t* out_id) {
   loom_attribute_use_table_t* table = &module->attribute_uses;
@@ -158,22 +193,8 @@ void loom_module_drop_attribute_uses(loom_module_t* module, loom_op_t* op,
   loom_attribute_use_id_t id = loom_op_attribute_use_heads(op)[attribute_index];
   loom_op_attribute_use_heads(op)[attribute_index] = 0;
   while (id) {
-    loom_attribute_use_t* use = &table->records[id - 1];
-    const loom_attribute_use_id_t next = use->next_outgoing;
-    if (use->previous_incoming) {
-      table->records[use->previous_incoming - 1].next_incoming =
-          use->next_incoming;
-    } else {
-      *loom_attribute_use_incoming_head(module, use) = use->next_incoming;
-    }
-    if (use->next_incoming) {
-      table->records[use->next_incoming - 1].previous_incoming =
-          use->previous_incoming;
-    }
-    if (!loom_module_value_first_attribute_use(module, use->value_id)) {
-      loom_module_value(module, use->value_id)->flags &=
-          ~LOOM_VALUE_FLAG_ATTRIBUTE_USES;
-    }
+    const loom_attribute_use_id_t next = table->records[id - 1].next_outgoing;
+    loom_attribute_use_unlink(module, id);
     loom_attribute_use_recycle(table, id);
     id = next;
   }
@@ -260,16 +281,7 @@ iree_status_t loom_module_set_op_attribute(loom_module_t* module, loom_op_t* op,
     loom_op_attribute_use_heads(op)[attribute_index] = build.first;
     for (loom_attribute_use_id_t id = build.first; id;
          id = table->records[id - 1].next_outgoing) {
-      loom_attribute_use_t* use = &table->records[id - 1];
-      loom_attribute_use_id_t* head =
-          loom_attribute_use_incoming_head(module, use);
-      use->next_incoming = *head;
-      if (*head) {
-        table->records[*head - 1].previous_incoming = id;
-      }
-      *head = id;
-      loom_module_value(module, use->value_id)->flags |=
-          LOOM_VALUE_FLAG_ATTRIBUTE_USES;
+      loom_attribute_use_link(module, id);
     }
   } else {
     loom_attribute_use_id_t id = build.first;
@@ -508,6 +520,36 @@ iree_status_t loom_module_replace_attribute_value_references(
   }
   return loom_module_replace_attribute_value_refs_impl(
       module, attr, old_id, new_id, /*depth=*/0, out_attr, out_changed);
+}
+
+iree_status_t loom_module_replace_op_attribute_value_references(
+    loom_module_t* module, loom_op_t* op, uint8_t attribute_index,
+    loom_value_id_t old_id, loom_value_id_t new_id) {
+  loom_attribute_t replacement = {0};
+  bool changed = false;
+  IREE_RETURN_IF_ERROR(loom_module_replace_attribute_value_refs_impl(
+      module, loom_op_attrs(op)[attribute_index], old_id, new_id, /*depth=*/0,
+      &replacement, &changed));
+  IREE_ASSERT(changed, "attribute use owner must contain the referenced value");
+
+  // Identity substitution and structural interning preserve reference
+  // multiplicity and type/predicate classification. Retain the owner's list;
+  // only edges referencing old_id change their incoming list. All fallible
+  // payload construction has completed before either representation changes.
+  loom_attribute_use_table_t* table = &module->attribute_uses;
+  for (loom_attribute_use_id_t id =
+           loom_op_attribute_use_heads(op)[attribute_index];
+       id; id = table->records[id - 1].next_outgoing) {
+    loom_attribute_use_t* use = &table->records[id - 1];
+    if (use->value_id != old_id) {
+      continue;
+    }
+    loom_attribute_use_unlink(module, id);
+    use->value_id = new_id;
+    loom_attribute_use_link(module, id);
+  }
+  loom_op_attrs(op)[attribute_index] = replacement;
+  return iree_ok_status();
 }
 
 //===----------------------------------------------------------------------===//

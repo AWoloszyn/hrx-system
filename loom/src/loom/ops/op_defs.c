@@ -3003,20 +3003,17 @@ iree_status_t loom_value_replace_all_uses_with(loom_module_t* module,
     loom_attribute_use_id_t attribute_use_id =
         loom_module_value_first_attribute_use(module, old_id);
     while (attribute_use_id && iree_status_is_ok(status)) {
-      // Copy the owner before replacement: growing the index invalidates record
-      // pointers, and replacing the slot removes all of its old references.
+      // Replacing this slot retargets every occurrence, including duplicates,
+      // before the next incoming head selects another owner.
       const loom_attribute_use_t use =
           module->attribute_uses.records[attribute_use_id - 1];
-      loom_attribute_t replacement = {0};
-      bool changed = false;
-      status = loom_module_replace_attribute_value_references(
-          module, loom_op_attrs(use.op)[use.attribute_index], old_id, new_id,
-          &replacement, &changed);
+      status = loom_module_replace_op_attribute_value_references(
+          module, use.op, use.attribute_index, old_id, new_id);
       if (iree_status_is_ok(status)) {
-        IREE_ASSERT(changed,
-                    "attribute use owner must contain the referenced value");
-        status =
-            loom_op_set_attr(module, use.op, use.attribute_index, replacement);
+        loom_trait_flags_t old_traits = use.op->traits;
+        loom_op_refresh_effective_traits(module, use.op);
+        loom_module_update_op_direct_summaries(module, use.op, old_traits,
+                                               use.op->traits);
       }
       attribute_use_id = loom_module_value_first_attribute_use(module, old_id);
     }

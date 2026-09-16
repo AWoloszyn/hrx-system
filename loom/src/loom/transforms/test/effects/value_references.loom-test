@@ -21,3 +21,22 @@ func.def @shared_attribute_references(%extent: index, %increment: index, %value:
   %annotated = test.attrs %value {nested = {tile = #test.options<mode = precise, element_type = vector<[%width]xf32>>}, shape = #test.options<mode = fast, element_type = vector<[%width]xf32>>} : f32
   func.return %annotated, %annotated, %even_width, %aligned_width : f32, f32, index, index
 }
+
+// ====
+// RUN: pass cse,cse
+
+// Replacement merges duplicate references with an already-present canonical
+// value while preserving other dimensions inside nested parameterized arrays.
+func.def @mixed_attribute_references(%extent: index, %increment: index, %batch: index, %value: f32) -> (f32) {
+  %width = index.add %extent, %increment : index
+  %duplicate_width = index.add %extent, %increment : index
+  %annotated = test.attrs %value {options = #test.options<mode = fast, element_type = test.variant_set<[#test.options<mode = precise, element_type = vector<[%duplicate_width]x[%width]x[%batch]x[%duplicate_width]xf32>>, #test.options<mode = fast, element_type = vector<[%batch]xf32>>]>>} : f32
+  func.return %annotated : f32
+}
+
+// ----
+func.def @mixed_attribute_references(%extent: index, %increment: index, %batch: index, %value: f32) -> (f32) {
+  %width = index.add %extent, %increment : index
+  %annotated = test.attrs %value {options = #test.options<mode = fast, element_type = test.variant_set<[#test.options<mode = precise, element_type = vector<[%width]x[%width]x[%batch]x[%width]xf32>>, #test.options<mode = fast, element_type = vector<[%batch]xf32>>]>>} : f32
+  func.return %annotated : f32
+}
