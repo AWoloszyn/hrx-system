@@ -491,6 +491,7 @@ static void loom_amdgpu_wait_frontier_apply_static_xcnt_producer(
 
 static void loom_amdgpu_wait_frontier_build_local_states(
     loom_amdgpu_wait_frontier_t* frontier,
+    const loom_amdgpu_wait_completion_node_t* completion_nodes,
     const uint32_t* planned_block_drain_counter_masks) {
   const loom_low_schedule_table_t* schedule = frontier->schedule;
   iree_host_size_t next_storage_lease_index = 0;
@@ -525,7 +526,8 @@ static void loom_amdgpu_wait_frontier_build_local_states(
           schedule->scheduled_node_indices[packet_index];
       const loom_amdgpu_wait_frontier_node_t* node =
           &frontier->nodes[node_index];
-      uint32_t drain_counter_mask = node->drain_counter_mask;
+      uint32_t drain_counter_mask =
+          completion_nodes[node_index].reset_counter_mask;
       if (planned_block_drain_counter_masks != NULL &&
           schedule->nodes[node_index].op == block->block->last_op) {
         drain_counter_mask |= planned_block_drain_counter_masks[block_index];
@@ -704,6 +706,7 @@ iree_status_t loom_amdgpu_wait_frontier_initialize(
     const loom_low_schedule_table_t* schedule,
     const loom_low_allocation_table_t* allocation,
     const loom_amdgpu_wait_frontier_node_t* nodes,
+    const loom_amdgpu_wait_completion_node_t* completion_nodes,
     iree_host_size_t vgpr_unit_count, iree_host_size_t agpr_unit_count,
     const uint32_t* planned_block_drain_counter_masks,
     iree_arena_allocator_t* arena, loom_amdgpu_wait_frontier_t* out_frontier) {
@@ -904,7 +907,7 @@ iree_status_t loom_amdgpu_wait_frontier_initialize(
          schedule->block_count * sizeof(*out_frontier->block_flags));
 
   loom_amdgpu_wait_frontier_build_local_states(
-      out_frontier, planned_block_drain_counter_masks);
+      out_frontier, completion_nodes, planned_block_drain_counter_masks);
   loom_amdgpu_wait_frontier_propagate_static_states(out_frontier, worklist);
   return iree_ok_status();
 }

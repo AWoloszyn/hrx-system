@@ -14,6 +14,7 @@
 #include "loom/codegen/low/allocation/storage_lease_index.h"
 #include "loom/codegen/low/allocation/table.h"
 #include "loom/codegen/low/schedule/types.h"
+#include "loom/target/arch/amdgpu/planning/wait_completion.h"
 #include "loom/target/arch/amdgpu/planning/wait_counters.h"
 #include "loom/target/arch/amdgpu/refs/target_refs.h"
 
@@ -55,8 +56,6 @@ typedef struct loom_amdgpu_wait_frontier_node_t {
   uint32_t write_counter_mask;
   // Counter classes fully drained after this node issued.
   uint32_t drained_after_production_counter_mask;
-  // Counter classes drained when this node executes.
-  uint32_t drain_counter_mask;
   // Gfx125x XCNT translation group produced by this node, or zero.
   loom_amdgpu_wait_xcnt_group_flags_t xcnt_group_flags;
   // Normalized memory spaces read by this node.
@@ -159,12 +158,13 @@ loom_amdgpu_wait_memory_space_flags_t loom_amdgpu_wait_memory_space_flag(
     loom_low_memory_space_t memory_space);
 
 // Initializes bounded cross-block state from the schedule CFG, allocation,
-// and node classifications. Dynamically retained storage is owned by |arena|;
-// inline state lives in |out_frontier|.
+// and retained node classifications/completion facts. Dynamically retained
+// storage is owned by |arena|; inline state lives in |out_frontier|.
 iree_status_t loom_amdgpu_wait_frontier_initialize(
     const loom_low_schedule_table_t* schedule,
     const loom_low_allocation_table_t* allocation,
     const loom_amdgpu_wait_frontier_node_t* nodes,
+    const loom_amdgpu_wait_completion_node_t* completion_nodes,
     iree_host_size_t vgpr_unit_count, iree_host_size_t agpr_unit_count,
     const uint32_t* planned_block_drain_counter_masks,
     iree_arena_allocator_t* arena, loom_amdgpu_wait_frontier_t* out_frontier);

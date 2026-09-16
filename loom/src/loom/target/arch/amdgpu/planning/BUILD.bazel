@@ -179,10 +179,22 @@ loom_cc_library(
 )
 
 loom_cc_library(
+    name = "wait_completion",
+    srcs = ["wait_completion.c"],
+    hdrs = ["wait_completion.h"],
+    deps = [
+        ":wait_counters",
+        "//loom/src/loom/codegen/low/schedule",
+        "//runtime/src/iree/base",
+    ],
+)
+
+loom_cc_library(
     name = "wait_frontier",
     srcs = ["wait_frontier.c"],
     hdrs = ["wait_frontier.h"],
     deps = [
+        ":wait_completion",
         ":wait_counters",
         "//loom/src/loom/codegen/low:memory_access",
         "//loom/src/loom/codegen/low/allocation:storage_lease_index",
@@ -201,6 +213,7 @@ loom_cc_library(
     srcs = ["wait_loop.c"],
     hdrs = ["wait_loop.h"],
     deps = [
+        ":wait_completion",
         ":wait_counters",
         "//loom/src/loom/codegen/low/schedule",
         "//loom/src/loom/ops/low",
@@ -219,6 +232,7 @@ loom_cc_library(
     deps = [
         ":address_state",
         ":structural_packet",
+        ":wait_completion",
         ":wait_counters",
         ":wait_frontier",
         ":wait_loop",

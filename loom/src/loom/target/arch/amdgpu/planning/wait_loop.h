@@ -12,51 +12,13 @@
 #include "iree/base/api.h"
 #include "iree/base/internal/arena.h"
 #include "loom/codegen/low/schedule/types.h"
-#include "loom/target/arch/amdgpu/planning/wait_counters.h"
+#include "loom/target/arch/amdgpu/planning/wait_completion.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 typedef struct loom_amdgpu_wait_loop_t loom_amdgpu_wait_loop_t;
-
-typedef enum loom_amdgpu_wait_loop_dependency_flag_bits_e {
-  // The dependency is an SSA use eligible for canonical-loop relocation.
-  LOOM_AMDGPU_WAIT_LOOP_DEPENDENCY_FLAG_SSA_USE = 1u << 0,
-} loom_amdgpu_wait_loop_dependency_flag_bits_t;
-typedef uint8_t loom_amdgpu_wait_loop_dependency_flags_t;
-
-// One target-counter dependency retained by AMDGPU wait planning.
-typedef struct loom_amdgpu_wait_loop_dependency_t {
-  // Producer node for the dependency.
-  uint32_t producer_node;
-  // Consumer node for the dependency.
-  uint32_t consumer_node;
-  // Next dependency for the same consumer or relocated loop-entry slot.
-  uint32_t next_dependency;
-  // Counters produced by |producer_node| and needed by this use.
-  uint32_t counter_mask;
-  // Target wait-plan reason identifier preserved for action provenance.
-  uint16_t reason_id;
-  // Dependency classification flags.
-  loom_amdgpu_wait_loop_dependency_flags_t flags;
-} loom_amdgpu_wait_loop_dependency_t;
-
-// Immutable per-node facts consumed by loop-counter frontier analysis.
-typedef struct loom_amdgpu_wait_loop_node_t {
-  // Counters advanced when this node executes.
-  uint32_t producer_counter_mask;
-  // Counters advanced by writes when this node executes.
-  uint32_t write_counter_mask;
-  // Counters unconditionally reset when this node executes.
-  uint32_t reset_counter_mask;
-  // Counter domains in which the node can create a target hazard.
-  uint32_t hazard_counter_mask;
-  // Counter classes advanced by workgroup-memory writes.
-  uint32_t workgroup_write_counter_mask;
-  // Workgroup-memory write counters observed by this node's barrier.
-  uint32_t workgroup_barrier_counter_mask;
-} loom_amdgpu_wait_loop_node_t;
 
 typedef enum loom_amdgpu_wait_loop_cyclic_frontier_flag_bits_e {
   // The block has a proven upper bound on its incoming pending suffix.
@@ -125,9 +87,9 @@ const loom_cfg_loop_interval_t* loom_amdgpu_wait_loop_analysis_cyclic_interval(
 // retain conservative full-drain behavior in the caller.
 iree_status_t loom_amdgpu_wait_loop_analysis_build_cyclic_frontiers(
     const loom_amdgpu_wait_loop_analysis_t* analysis,
-    const loom_amdgpu_wait_loop_node_t* nodes,
+    const loom_amdgpu_wait_completion_node_t* nodes,
     const uint32_t* first_dependency_by_consumer,
-    const loom_amdgpu_wait_loop_dependency_t* dependencies,
+    const loom_amdgpu_wait_dependency_t* dependencies,
     iree_host_size_t dependency_count, iree_arena_allocator_t* arena,
     const loom_amdgpu_wait_loop_cyclic_frontier_t** out_frontiers);
 
