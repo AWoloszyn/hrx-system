@@ -263,12 +263,23 @@ TEST_F(XdnaKernelQueueTest, SubmitsImmutableRangesAndReacquiresQueue) {
     ASSERT_EQ(xdna_api_->kernel_queue_submit(queue_, &submit, &submission),
               AMDF_STATUS_OK);
     EXPECT_EQ(submission, i + 1);
-    ASSERT_EQ(
-        api_->kernel_queue_wait(queue_, submission, AMDF_TIMEOUT_INFINITE, 0),
-        AMDF_STATUS_OK);
+    // Observation does not release command ownership, even if the device has
+    // already completed this short transaction. Only explicit synchronization
+    // establishes the next reusable submission slot.
     amdf_kernel_queue_status_t status = {};
     status.type = AMDF_STRUCTURE_TYPE_KERNEL_QUEUE_STATUS;
     status.structure_size = sizeof(status);
+    ASSERT_EQ(api_->kernel_queue_query_status(queue_, &status), AMDF_STATUS_OK);
+    EXPECT_EQ(status.retired_submission, i);
+    EXPECT_EQ(status.terminal_status, AMDF_STATUS_OK);
+    uint64_t rejected_submission = UINT64_MAX;
+    EXPECT_EQ(amdf_status_code(xdna_api_->kernel_queue_submit(
+                  queue_, &submit, &rejected_submission)),
+              AMDF_STATUS_CODE_BUSY);
+    EXPECT_EQ(rejected_submission, UINT64_MAX);
+    ASSERT_EQ(
+        api_->kernel_queue_wait(queue_, submission, AMDF_TIMEOUT_INFINITE, 0),
+        AMDF_STATUS_OK);
     ASSERT_EQ(api_->kernel_queue_query_status(queue_, &status), AMDF_STATUS_OK);
     EXPECT_EQ(status.retired_submission, submission);
     EXPECT_EQ(status.terminal_status, AMDF_STATUS_OK);

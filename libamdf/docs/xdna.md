@@ -123,13 +123,16 @@ sleep or host wait.
 The queue preallocates its mandatory native packet storage. Multiple contexts
 can independently own backing for different resident programs or queues.
 
-The returned submission number identifies accepted work. A caller can observe
-progress with `kernel_queue_query_status` or wait with
-`kernel_queue_wait(queue, submission, AMDF_TIMEOUT_INFINITE, 0)`. A successful
-wait establishes native retirement, including command-result inspection. A
-timeout or wait error is not cancellation and does not by itself permit
-instruction storage reuse; the status query reports retirement separately from
-sticky terminal failure.
+The returned submission number identifies accepted work. The caller performs
+checked retirement with
+`kernel_queue_wait(queue, submission, AMDF_TIMEOUT_INFINITE, 0)`, or uses a
+zero-time wait to refresh without blocking. Retirement includes native
+completion and command-result inspection.
+`kernel_queue_query_status` is a read-only snapshot of retirement already
+established by synchronization; it does not advance retirement, even if the
+hardware has finished. A timeout or wait error is not cancellation and does not
+by itself permit instruction storage reuse. The status query reports established
+retirement separately from sticky terminal failure.
 
 The [canonical ELF consumer](../../experimental/xdna/cts/execution_test.cc)
 shows the complete flow, including target selection, image loading, relocation,

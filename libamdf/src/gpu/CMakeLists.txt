@@ -152,6 +152,31 @@ endif()
 if(AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
 iree_cc_test(
   NAME
+    kernel_queue_test
+  SRCS
+    "kernel_queue_test.cc"
+  DEPS
+    ::device
+    ::kernel_queue
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+    libamdf::src::allocator
+    libamdf::src::child_tracker
+    libamdf::src::device
+    libamdf::src::endpoint
+    libamdf::src::gpu::umd::kernel_queue
+    libamdf::src::kernel_queue
+    libamdf::src::memory_resource
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
+)
+endif()
+
+if(AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_test(
+  NAME
     user_queue_test
   SRCS
     "user_queue_test.cc"

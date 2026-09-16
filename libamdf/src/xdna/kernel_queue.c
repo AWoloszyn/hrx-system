@@ -121,15 +121,12 @@ static bool amdf_xdna_kernel_queue_try_retire(amdf_xdna_kernel_queue_t* queue,
 
 static amdf_status_t amdf_xdna_kernel_queue_query_status(
     amdf_kernel_queue_t* base_queue, amdf_kernel_queue_status_t* out_status) {
-  amdf_xdna_kernel_queue_t* queue = (amdf_xdna_kernel_queue_t*)base_queue;
-  uint64_t slot_state = amdf_atomic_uint64_load_acquire(&queue->slot_state);
-  uint64_t slot_submission = amdf_xdna_kernel_queue_slot_submission(slot_state);
-  if (amdf_xdna_kernel_queue_slot_occupancy(slot_state) ==
-      AMDF_XDNA_KERNEL_QUEUE_OCCUPANCY_PENDING) {
-    amdf_xdna_kernel_queue_try_retire(queue, slot_submission);
-    slot_state = amdf_atomic_uint64_load_acquire(&queue->slot_state);
-    slot_submission = amdf_xdna_kernel_queue_slot_submission(slot_state);
-  }
+  const amdf_xdna_kernel_queue_t* queue =
+      (const amdf_xdna_kernel_queue_t*)base_queue;
+  const uint64_t slot_state =
+      amdf_atomic_uint64_load_acquire(&queue->slot_state);
+  const uint64_t slot_submission =
+      amdf_xdna_kernel_queue_slot_submission(slot_state);
   const amdf_xdna_kernel_queue_occupancy_t occupancy =
       amdf_xdna_kernel_queue_slot_occupancy(slot_state);
   out_status->retired_submission =
@@ -207,7 +204,7 @@ static amdf_status_t amdf_xdna_kernel_queue_wait(
     status = amdf_xdna_umd_kernel_queue_wait(
         queue->umd, pending_native_submission, &deadline);
     // A wait error is observable even if another thread established progress.
-    // Still release the borrow when independently confirmed retirement permits
+    // Still record retirement when independently confirmed completion permits
     // it.
     amdf_xdna_kernel_queue_try_retire(queue, submission);
     if (!amdf_status_is_ok(status)) {

@@ -186,6 +186,35 @@ TEST_F(XdnaKernelQueueTest, ZeroTimeoutRefreshesNativeProgress) {
   EXPECT_EQ(Query().retired_submission, submission);
 }
 
+TEST_F(XdnaKernelQueueTest, QueryDoesNotRetireNativeCompletion) {
+  ASSERT_NO_FATAL_FAILURE(Submit());
+  context.native.queue.progress = context.native.queue.submitted;
+  EXPECT_EQ(Query().retired_submission, 0u);
+  uint64_t rejected = UINT64_MAX;
+  EXPECT_EQ(SubmitCommand(&rejected),
+            amdf_make_api_status(AMDF_STATUS_CODE_BUSY));
+  EXPECT_EQ(rejected, UINT64_MAX);
+  ASSERT_EQ(amdf_kernel_queue_wait(queue, submission, 0, 0), AMDF_STATUS_OK);
+  EXPECT_EQ(Query().retired_submission, submission);
+  ASSERT_NO_FATAL_FAILURE(Submit());
+}
+
+TEST_F(XdnaKernelQueueTest, QueryDoesNotConsumeCompletedCommandFailure) {
+  const auto failure = amdf_make_status(AMDF_STATUS_DOMAIN_FIRMWARE, 5);
+  context.native.queue.completion_status = failure;
+  ASSERT_NO_FATAL_FAILURE(Submit());
+  context.native.queue.progress = context.native.queue.submitted;
+  const auto pending = Query();
+  EXPECT_EQ(pending.retired_submission, 0u);
+  EXPECT_EQ(pending.terminal_status, AMDF_STATUS_OK);
+  EXPECT_EQ(pending.state, AMDF_QUEUE_STATE_ACTIVE);
+  EXPECT_EQ(amdf_kernel_queue_wait(queue, submission, 0, 0), failure);
+  const auto retired = Query();
+  EXPECT_EQ(retired.retired_submission, submission);
+  EXPECT_EQ(retired.terminal_status, failure);
+  EXPECT_EQ(retired.state, AMDF_QUEUE_STATE_DEVICE_LOST);
+}
+
 TEST_F(XdnaKernelQueueTest, TimeoutPreservesAcceptedProgress) {
   context.native.queue.action =
       amdf_xdna_umd_kernel_queue_t::WaitAction::kTimeout;
@@ -197,15 +226,21 @@ TEST_F(XdnaKernelQueueTest, TimeoutPreservesAcceptedProgress) {
   EXPECT_EQ(amdf_kernel_queue_destroy(queue),
             amdf_make_api_status(AMDF_STATUS_CODE_BUSY));
   context.native.queue.progress = 1;
+  EXPECT_EQ(Query().retired_submission, 0u);
+  EXPECT_EQ(amdf_kernel_queue_wait(queue, submission, 0, 0), AMDF_STATUS_OK);
   EXPECT_EQ(Query().retired_submission, submission);
 }
 
-TEST_F(XdnaKernelQueueTest, FiniteWaitDoesNotBlockBehindRetirementObserver) {
+TEST_F(XdnaKernelQueueTest, QueryAndFiniteWaitDoNotBlockBehindRetiringWaiter) {
   ASSERT_NO_FATAL_FAILURE(Submit());
   context.native.queue.phase =
       amdf_xdna_umd_kernel_queue_t::Phase::kPauseRequested;
   context.native.queue.progress = 1;
-  std::thread observer([&] { Query(); });
+  amdf_status_t waiter_status = AMDF_STATUS_OK;
+  std::thread waiter([&] {
+    waiter_status =
+        amdf_kernel_queue_wait(queue, submission, AMDF_TIMEOUT_INFINITE, 0);
+  });
   {
     std::unique_lock<std::mutex> lock(context.native.queue.mutex);
     context.native.queue.condition.wait(lock, [&] {
@@ -213,6 +248,7 @@ TEST_F(XdnaKernelQueueTest, FiniteWaitDoesNotBlockBehindRetirementObserver) {
              amdf_xdna_umd_kernel_queue_t::Phase::kPaused;
     });
   }
+  EXPECT_EQ(Query().retired_submission, 0u);
   EXPECT_EQ(amdf_kernel_queue_wait(queue, submission, 0, 0),
             amdf_make_api_status(AMDF_STATUS_CODE_DEADLINE_EXCEEDED));
   EXPECT_EQ(context.native.queue.wait_count.load(), 0u);
@@ -221,7 +257,8 @@ TEST_F(XdnaKernelQueueTest, FiniteWaitDoesNotBlockBehindRetirementObserver) {
     context.native.queue.phase = amdf_xdna_umd_kernel_queue_t::Phase::kReleased;
     context.native.queue.condition.notify_all();
   }
-  observer.join();
+  waiter.join();
+  EXPECT_EQ(waiter_status, AMDF_STATUS_OK);
   EXPECT_EQ(Query().retired_submission, submission);
 }
 

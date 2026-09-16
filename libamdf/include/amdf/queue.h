@@ -345,7 +345,9 @@ typedef struct amdf_kernel_queue_status_t {
   uint32_t structure_size;
   /// Optional output extension chain. No extensions are currently defined.
   void* next;
-  /// Greatest accepted submission whose native storage is no longer in use.
+  /// Greatest accepted submission whose checked retirement, including
+  /// command-result inspection, is complete.
+  /// Native fence completion alone does not advance this frontier.
   uint64_t retired_submission;
   /// Current queue lifecycle state.
   amdf_queue_state_t state;

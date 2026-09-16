@@ -14,10 +14,12 @@ extern "C" {
 #endif  // __cplusplus
 
 typedef struct amdf_kernel_queue_vtable_t {
-  // Samples native progress and retires completed submissions.
+  // Reads established retirement and cached terminal state without mutation,
+  // native queries, locks, allocation or system calls.
   amdf_status_t (*query_status)(amdf_kernel_queue_t* queue,
                                 amdf_kernel_queue_status_t* out_status);
-  // Waits for one accepted submission without cancelling on timeout.
+  // Refreshes native progress and performs checked retirement for one accepted
+  // submission, without cancelling on timeout.
   amdf_status_t (*wait)(amdf_kernel_queue_t* queue, uint64_t submission,
                         uint64_t timeout_nanoseconds,
                         uint64_t poll_duration_nanoseconds);
@@ -48,7 +50,7 @@ void amdf_kernel_queue_deinitialize(amdf_kernel_queue_t* queue);
 amdf_status_t AMDF_CALL amdf_kernel_queue_query_info(
     amdf_kernel_queue_t* queue, amdf_kernel_queue_info_t* out_info);
 
-// Samples queue retirement and terminal state.
+// Reads established queue retirement and cached terminal state.
 amdf_status_t AMDF_CALL amdf_kernel_queue_query_status(
     amdf_kernel_queue_t* queue, amdf_kernel_queue_status_t* out_status);
 

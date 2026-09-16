@@ -379,6 +379,13 @@ TEST_F(Pm4KernelQueueTest, ExecutesMaterializedCopyData) {
       gpu_api_->kernel_queue_submit(queue_, &submission_info, &submission)));
   EXPECT_EQ(submission, 1u);
 
+  amdf_kernel_queue_status_t queue_status = {};
+  queue_status.type = AMDF_STRUCTURE_TYPE_KERNEL_QUEUE_STATUS;
+  queue_status.structure_size = sizeof(queue_status);
+  ASSERT_EQ(api_->kernel_queue_query_status(queue_, &queue_status),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(queue_status.retired_submission, 0u);
+  EXPECT_EQ(queue_status.terminal_status, AMDF_STATUS_OK);
   uint64_t rejected_submission = 42;
   EXPECT_EQ(amdf_status_code(gpu_api_->kernel_queue_submit(
                 queue_, &submission_info, &rejected_submission)),
@@ -390,9 +397,6 @@ TEST_F(Pm4KernelQueueTest, ExecutesMaterializedCopyData) {
 
   ASSERT_TRUE(amdf_status_is_ok(api_->kernel_queue_wait(
       queue_, submission, AMDF_TIMEOUT_INFINITE, UINT64_C(50000))));
-  amdf_kernel_queue_status_t queue_status = {};
-  queue_status.type = AMDF_STRUCTURE_TYPE_KERNEL_QUEUE_STATUS;
-  queue_status.structure_size = sizeof(queue_status);
   ASSERT_TRUE(amdf_status_is_ok(
       api_->kernel_queue_query_status(queue_, &queue_status)));
   EXPECT_EQ(queue_status.retired_submission, submission);
