@@ -220,8 +220,9 @@ clearly instead of falling back to a source distribution that may produce a
 broken analyzer executable.
 
 Standalone binaries are installed by `build_tools/devtools/install.py` into the
-selected tool environment. The Bazel lane installs Bazelisk and buildifier with
-pinned URLs and SHA-256 hashes:
+selected tool environment. The Bazel lane installs Bazelisk, buildifier, and
+buildozer with pinned URLs and SHA-256 hashes for Linux, macOS, and Windows on
+x86-64 and ARM64. Buildifier and buildozer share a buildtools release pin:
 
 ```bash
 python dev.py bazel setup
@@ -239,6 +240,42 @@ wrong version. Clang-tidy uses the Bazel LLVM repository model under
 not available. The GitHub presubmit workflow fetches the ROCm LLVM toolchain and
 sets `IREE_CLANG_TIDY_REQUIRED=1` so missing LLVM tools fail loudly instead of
 silently skipping.
+
+## Bazel Editing
+
+[Buildozer](https://github.com/bazel-contrib/buildtools/blob/main/buildozer/README.md)
+applies explicit edits to authored BUILD files, including repository macros.
+It can batch dependency changes, move attributes, update loads, and create or
+rename targets. It does not infer C/C++ dependency ownership or evaluate macros
+and configurations. Dependency-removal decisions still require include, compile,
+and link evidence for the supported configurations.
+
+Its JSON print output is useful for inspecting a target before editing:
+
+```bash
+buildozer -output_json 'print name kind deps' \
+  //libamdf/src/platform:native_wait | jq .
+```
+
+The returned `select()` is expression text, not a resolved dependency list.
+Value-based `remove` and `replace` commands affect every matching `select()` arm.
+`set_select` replaces the complete attribute; it does not patch one branch.
+`-edit-variables` can change a shared variable and therefore affect other rules.
+Review the full diff and configuration evidence before applying those edits.
+
+For an established removal from a target such as `//example:library`, preview
+the rewritten file with `-stdout`, then apply the same command without it:
+
+```bash
+buildozer -stdout 'remove deps //example:unused' //example:library
+buildozer 'remove deps //example:unused' //example:library
+```
+
+`buildozer -f <commands-file>` batches newline-separated
+`command|label|label` records. Exit status `3` means a successful in-place no-op;
+`0` means a change or a read-only success. A `-stdout` preview also returns `0`
+for a no-op, so its exit status alone does not indicate a proposed change.
+Buildozer is an explicit editing tool and is not run automatically by the hooks.
 
 ## Static Analysis
 

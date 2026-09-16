@@ -55,6 +55,14 @@ class InstallTest(unittest.TestCase):
             {"bazelisk", "doxygen"},
         )
 
+    def test_bazel_group_selects_build_and_editing_tools(self):
+        args = argparse.Namespace(list=False, group=["bazel"], tools=[])
+
+        self.assertEqual(
+            set(install.selected_tools(args)),
+            {"bazelisk", "buildifier", "buildozer"},
+        )
+
     def test_extracts_zip_archive_files_with_recorded_hashes(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
