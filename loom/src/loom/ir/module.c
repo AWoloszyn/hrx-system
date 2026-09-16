@@ -2295,7 +2295,18 @@ iree_status_t loom_module_refresh_value_type_uses(loom_module_t* module,
   return iree_ok_status();
 }
 
-static bool loom_module_value_tracks_type_uses(const loom_value_t* value);
+static bool loom_module_value_tracks_type_uses(const loom_value_t* value) {
+  if (loom_value_is_block_arg(value)) {
+    return true;
+  }
+  const loom_op_t* defining_op = loom_value_def_op(value);
+  if (defining_op) {
+    return !iree_any_bit_set(defining_op->flags, LOOM_OP_FLAG_DEAD);
+  }
+  // Bodyless signature arguments have no defining op or block. Their owning
+  // declaration retains them as operands, including their dependent types.
+  return value->use_count != 0;
+}
 
 iree_status_t loom_module_recompute_type_uses(loom_module_t* module) {
   iree_host_size_t reference_count = 0;
@@ -2331,12 +2342,6 @@ bool loom_module_value_has_type_uses(const loom_module_t* module,
                                      loom_value_id_t value_id) {
   return loom_module_value_first_incoming_type_use(module, value_id) !=
          LOOM_TYPE_USE_ID_INVALID;
-}
-
-static bool loom_module_value_tracks_type_uses(const loom_value_t* value) {
-  if (loom_value_is_block_arg(value)) return true;
-  loom_op_t* def_op = loom_value_def_op(value);
-  return def_op && !iree_any_bit_set(def_op->flags, LOOM_OP_FLAG_DEAD);
 }
 
 void loom_module_drop_value_type_uses(loom_module_t* module,

@@ -299,10 +299,12 @@ const iree_string_view_t* loom_module_block_comments(
     const loom_module_t* module, const loom_block_t* block,
     iree_host_size_t* out_comment_count);
 
-// Rebuilds the dense type-use side table by walking all value types.
+// Rebuilds the dense type-use side table from live value types, including
+// bodyless signature arguments retained by their declaration's operand uses.
 //
 // Most construction paths maintain the table incrementally, but bulk readers
-// and recovery paths can call this after setting value types directly.
+// and recovery paths can call this after setting value types directly and
+// establishing definition and operand-use bookkeeping.
 iree_status_t loom_module_recompute_type_uses(loom_module_t* module);
 
 // Returns true if |value_id| is referenced by any currently-active value type.

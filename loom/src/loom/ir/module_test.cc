@@ -1344,6 +1344,64 @@ TEST_F(ModuleTest, TypeUseTableCrossesValueSegments) {
   loom_module_free(module);
 }
 
+TEST_F(ModuleTest, TypeUseTableRebuildRetainsDeclarationArguments) {
+  loom_module_t* module = nullptr;
+  IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("test"), &block_pool_,
+                                      nullptr, iree_allocator_system(),
+                                      &module));
+  loom_builder_t builder;
+  loom_builder_initialize(module, &module->arena, loom_module_block(module),
+                          &builder);
+  loom_string_id_t name_id = LOOM_STRING_ID_INVALID;
+  IREE_ASSERT_OK(
+      loom_module_intern_string(module, IREE_SV("declaration"), &name_id));
+  uint16_t symbol_id = LOOM_SYMBOL_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_add_symbol(module, name_id, &symbol_id));
+  const loom_symbol_ref_t callee = {/*.module_id=*/0, /*.symbol_id=*/symbol_id};
+  const loom_type_t argument_types[] = {
+      loom_type_scalar(LOOM_SCALAR_TYPE_INDEX),
+      loom_type_pool(loom_dim_pack_static(4)),
+  };
+  loom_op_t* declaration = nullptr;
+  IREE_ASSERT_OK(loom_test_decl_build(
+      &builder, /*build_flags=*/0, /*visibility=*/0, /*cc=*/0, callee,
+      argument_types, IREE_ARRAYSIZE(argument_types), /*result_types=*/nullptr,
+      /*result_count=*/0, /*tied_results=*/nullptr, /*tied_result_count=*/0,
+      LOOM_LOCATION_UNKNOWN, &declaration));
+  const auto arguments = loom_test_decl_args(declaration);
+  const loom_value_id_t extent = arguments.values[0];
+  const loom_value_id_t storage = arguments.values[1];
+  IREE_ASSERT_OK(loom_module_set_value_type(
+      module, storage, loom_type_pool(loom_dim_pack_dynamic(extent))));
+  EXPECT_EQ(loom_module_value(module, storage)->use_count, 1u);
+  EXPECT_EQ(loom_value_def_op(loom_module_value(module, storage)), nullptr);
+  ASSERT_TRUE(loom_module_value_has_type_uses(module, extent));
+
+  IREE_ASSERT_OK(loom_module_compute_uses(module));
+  loom_type_use_id_t use_id =
+      loom_module_value_first_outgoing_type_use(module, storage);
+  ASSERT_NE(use_id, LOOM_TYPE_USE_ID_INVALID);
+  EXPECT_EQ(module->type_uses.records[use_id].referenced_value_id, extent);
+  EXPECT_EQ(module->type_uses.records[use_id].user_value_id, storage);
+  EXPECT_EQ(module->type_uses.active_count, 1u);
+
+  IREE_ASSERT_OK(
+      loom_module_set_value_type(module, storage, argument_types[1]));
+  IREE_ASSERT_OK(loom_module_recompute_type_uses(module));
+  EXPECT_FALSE(loom_module_has_active_type_uses(module));
+  IREE_ASSERT_OK(loom_module_set_value_type(
+      module, storage, loom_type_pool(loom_dim_pack_dynamic(extent))));
+  IREE_ASSERT_OK(loom_module_recompute_type_uses(module));
+  EXPECT_TRUE(loom_module_value_has_type_uses(module, extent));
+
+  IREE_ASSERT_OK(loom_op_erase(module, declaration));
+  IREE_ASSERT_OK(loom_module_compute_uses(module));
+  EXPECT_FALSE(loom_module_has_active_type_uses(module));
+  EXPECT_EQ(loom_module_value_first_outgoing_type_use(module, storage),
+            LOOM_TYPE_USE_ID_INVALID);
+  loom_module_free(module);
+}
+
 TEST_F(ModuleTest, ReplaceValueTypeUsesUpdatesDynamicDims) {
   loom_module_t* module = NULL;
   IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("test"), &block_pool_,

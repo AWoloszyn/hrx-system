@@ -49,6 +49,38 @@ func.def @outer_declared_layout(%layout: encoding<layout>) {
 
 // ====
 
+// Bulk use reconstruction retains dynamic dimensions in declaration arguments.
+func.def @outer_declared_shape(%count: index) {
+  test.isolated_region {
+    // ERROR@+1: DOMINANCE/016 "args[0] type references value '%count'"
+    func.decl @capturing_shape(%tile: tile<[%count]xf32>)
+    test.yield
+  }
+  func.return
+}
+
+// ====
+
+// Nested types on declaration arguments retain their SSA references too.
+func.def @outer_declared_reference(%layout: encoding<layout>) {
+  test.isolated_region {
+    // ERROR@+1: DOMINANCE/016 "args[0] type references value '%layout'"
+    func.decl @capturing_reference(%reference: test.ref<view<4xf32, %layout>>)
+    test.yield
+  }
+  func.return
+}
+
+// ====
+
+// Declarations have no isolation trait and preserve ordinary enclosing captures.
+func.def @ordinary_declared_shape(%count: index) {
+  func.decl @ordinary_shape(%tile: tile<[%count]xf32>)
+  func.return
+}
+
+// ====
+
 // Variadic result diagnostics identify the dependent value's field ordinal.
 func.def @outer_variadic_shape(%count: index) {
   func.def @capturing_results(%input: tensor<4xf32>) {
