@@ -18,7 +18,7 @@ namespace {
 class HostMemoryTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    ASSERT_EQ(amdf_cts_provider_query_api()(AMDF_ABI_VERSION_1,
+    ASSERT_EQ(amdf_cts_provider_query_api()(AMDF_ABI_VERSION_LATEST,
                                             AMDF_ABI_VERSION_LATEST, &api_),
               AMDF_STATUS_OK);
     ASSERT_EQ(GetCtsDeviceCache().GetInstance(&instance_), AMDF_STATUS_OK);
@@ -211,6 +211,7 @@ TEST_F(HostMemoryTest, BorrowsCallerStorageWithoutTakingOwnership) {
   create_info.memory_profile_ordinal = profile.ordinal;
   create_info.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
   create_info.registered_host_pointer = storage_.data() + 1;
+  create_info.registered_host_cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK;
   create_info.byte_length = storage_.size() - 2;
   amdf_memory_t* memory = nullptr;
   ASSERT_EQ(api_->memory_create(scope_, &create_info, &memory), AMDF_STATUS_OK);
@@ -226,6 +227,66 @@ TEST_F(HostMemoryTest, BorrowsCallerStorageWithoutTakingOwnership) {
   EXPECT_EQ(storage_.front(), 0x42);
   EXPECT_EQ(storage_.back(), 0x42);
   for (size_t i = 1; i + 1 < storage_.size(); ++i) ASSERT_EQ(storage_[i], 0x19);
+}
+
+TEST_F(HostMemoryTest, QualifiesCpuPairsAndRejectsUnestablishedRegistration) {
+  amdf_memory_profile_t profile = {};
+  ASSERT_NO_FATAL_FAILURE(
+      FindProfile(AMDF_MEMORY_PROFILE_ROLE_REGISTER, &profile));
+  EXPECT_EQ(profile.registration.registered_host_cacheability,
+            AMDF_HOST_CACHEABILITY_WRITE_BACK);
+  amdf_memory_profile_pair_query_t query = {};
+  query.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE_PAIR_QUERY;
+  query.structure_size = sizeof(query);
+  query.memory_profile_ordinal = profile.ordinal;
+  query.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
+  query.registered_host_cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK;
+  query.producer.kind = AMDF_MEMORY_SITE_KIND_HOST;
+  query.producer.value.host_access = AMDF_MEMORY_MAP_FLAG_WRITE;
+  query.consumer.kind = AMDF_MEMORY_SITE_KIND_HOST;
+  query.consumer.value.host_access = AMDF_MEMORY_MAP_FLAG_READ;
+  amdf_memory_pair_info_t pair = {};
+  pair.type = AMDF_STRUCTURE_TYPE_MEMORY_PAIR_INFO;
+  pair.structure_size = sizeof(pair);
+  ASSERT_EQ(api_->memory_scope_query_pair_info(scope_, &query, &pair),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(pair.release.kind, AMDF_CACHE_TRANSITION_KIND_NONE);
+  EXPECT_EQ(pair.acquire.kind, AMDF_CACHE_TRANSITION_KIND_NONE);
+  const auto original = pair;
+  const auto expect_rejection = [&](amdf_status_code_t code) {
+    EXPECT_EQ(amdf_status_code(
+                  api_->memory_scope_query_pair_info(scope_, &query, &pair)),
+              code);
+    EXPECT_EQ(std::memcmp(&pair, &original, sizeof(pair)), 0);
+  };
+  for (auto cacheability :
+       {AMDF_HOST_CACHEABILITY_UNKNOWN, AMDF_HOST_CACHEABILITY_WRITE_COMBINED,
+        AMDF_HOST_CACHEABILITY_UNCACHED}) {
+    query.registered_host_cacheability = cacheability;
+    expect_rejection(AMDF_STATUS_CODE_UNSUPPORTED);
+    storage_.resize(4096);
+    amdf_memory_create_info_t create = {};
+    create.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
+    create.structure_size = sizeof(create);
+    create.memory_profile_ordinal = profile.ordinal;
+    create.byte_length = storage_.size();
+    create.registered_host_pointer = storage_.data();
+    create.registered_host_cacheability = cacheability;
+    auto* sentinel = reinterpret_cast<amdf_memory_t*>(uintptr_t{1});
+    auto* memory = sentinel;
+    EXPECT_EQ(amdf_status_code(api_->memory_create(scope_, &create, &memory)),
+              AMDF_STATUS_CODE_UNSUPPORTED);
+    EXPECT_EQ(memory, sentinel);
+  }
+  query.registered_host_cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK;
+  query.producer.reserved = 1;
+  expect_rejection(AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  query.producer.reserved = 0;
+  query.required_flags = 0;
+  expect_rejection(AMDF_STATUS_CODE_UNSUPPORTED);
+  query.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
+  query.consumer.kind = AMDF_MEMORY_SITE_KIND_DEVICE;
+  expect_rejection(AMDF_STATUS_CODE_OUT_OF_RANGE);
 }
 
 TEST_F(HostMemoryTest, RejectsInvalidConstructionWithoutPublishingOutputs) {

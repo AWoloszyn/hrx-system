@@ -153,7 +153,8 @@ static amdf_status_t amdf_memory_validate_create_info(
   if (!amdf_status_is_ok(status)) {
     return status;
   }
-  if ((create_info->required_flags & ~AMDF_MEMORY_BACKING_FLAGS) != 0 ||
+  if (create_info->reserved != 0 ||
+      (create_info->required_flags & ~AMDF_MEMORY_BACKING_FLAGS) != 0 ||
       create_info->byte_length == 0) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
@@ -249,13 +250,6 @@ static amdf_status_t amdf_memory_allocate(
   return AMDF_STATUS_OK;
 }
 
-static amdf_memory_flags_t amdf_memory_required_access_flags(
-    const amdf_memory_access_requirements_t* requirements) {
-  return requirements->flags |
-         (requirements->address_kinds != 0 ? AMDF_MEMORY_FLAG_DEVICE_ADDRESS
-                                           : 0);
-}
-
 static amdf_status_t amdf_memory_prepare_import_access(
     amdf_memory_t* memory, uint32_t ordinal,
     const amdf_memory_scope_plan_t* plan,
@@ -265,8 +259,9 @@ static amdf_status_t amdf_memory_prepare_import_access(
     amdf_memory_info_t* out_info) {
   const amdf_memory_native_import_info_t native_info = {
       .device_access = accesses[ordinal].requirements.access,
-      .required_flags = required_flags | amdf_memory_required_access_flags(
-                                             &accesses[ordinal].requirements),
+      .required_flags =
+          required_flags |
+          amdf_memory_scope_plan_required_access_flags(plan, accesses, ordinal),
       .minimum_alignment = minimum_alignment,
   };
   return accesses[ordinal].device->vtable->memory_prepare_import(
@@ -293,15 +288,12 @@ static amdf_status_t amdf_memory_prepare_access(
   amdf_memory_native_create_info_t native_info = {
       .device_access = requirements->access,
       .required_flags = create_info->required_flags |
-                        amdf_memory_required_access_flags(requirements),
+                        amdf_memory_scope_plan_required_access_flags(
+                            plan, create_info->accesses, ordinal),
       .byte_length = create_info->byte_length,
       .minimum_alignment = create_info->minimum_alignment,
       .registered_host_pointer = create_info->registered_host_pointer,
   };
-  for (uint32_t i = 1; i < group.access_count; ++i) {
-    native_info.required_flags |= amdf_memory_required_access_flags(
-        &create_info->accesses[group.access_ordinals[i]].requirements);
-  }
   if (plan->scope->kind == AMDF_MEMORY_SCOPE_KIND_PRIVATE) {
     return plan->scope->owner.private_storage.vtable->prepare(
         plan->scope, memory, &plan->native_profiles[ordinal], &native_info,
@@ -385,6 +377,10 @@ amdf_status_t AMDF_CALL amdf_memory_create(
   if (amdf_status_is_ok(status) &&
       registration != (create_info->registered_host_pointer != NULL)) {
     status = amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  }
+  if (amdf_status_is_ok(status)) {
+    status = amdf_memory_scope_plan_validate_registration(
+        &plan, create_info->registered_host_cacheability);
   }
   if (amdf_status_is_ok(status) && registration) {
     const uintptr_t pointer = (uintptr_t)create_info->registered_host_pointer;

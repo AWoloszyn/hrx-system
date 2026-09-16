@@ -63,6 +63,8 @@ typedef struct amdf_memory_scope_plan_t {
   amdf_allocator_t host_allocator;
   // Complete backing capabilities of the selected scope contract.
   amdf_memory_profile_t profile;
+  // Exact selected acquisition: CREATE, REGISTER or IMPORT, never a set.
+  amdf_memory_profile_roles_t acquisition_role;
   // Number of requested device accesses; zero selects CPU-only backing.
   uint32_t access_count;
   // Native backing preparer in caller order; zero for CPU-only backing.
@@ -108,6 +110,11 @@ amdf_status_t AMDF_CALL amdf_memory_scope_query_device_profile(
     amdf_memory_profile_t* out_profile,
     amdf_memory_access_capabilities_t* out_access_capabilities);
 
+// Qualifies sufficient pair recipes for a complete construction contract.
+amdf_status_t AMDF_CALL amdf_memory_scope_query_pair_info(
+    amdf_memory_scope_t* scope, const amdf_memory_profile_pair_query_t* query,
+    amdf_memory_pair_info_t* out_info);
+
 // Validates the complete consumer set and selects native contracts before any
 // backing allocation. An optional external value constrains import selection.
 // Success publishes owned temporary metadata; failure leaves output unchanged.
@@ -119,6 +126,17 @@ amdf_status_t amdf_memory_scope_plan_initialize(
 
 // Releases only the temporary selection metadata, never native resources.
 void amdf_memory_scope_plan_deinitialize(amdf_memory_scope_plan_t* plan);
+
+// Computes required access flags for one native owner, including coordinated
+// consumers. Construction and prospective visibility consume this same result.
+amdf_memory_flags_t amdf_memory_scope_plan_required_access_flags(
+    const amdf_memory_scope_plan_t* plan,
+    const amdf_memory_device_access_t* accesses, uint32_t access_ordinal);
+
+// Validates the caller-established cache class before borrowed-page admission.
+amdf_status_t amdf_memory_scope_plan_validate_registration(
+    const amdf_memory_scope_plan_t* plan,
+    amdf_host_cacheability_t registered_host_cacheability);
 
 #ifdef __cplusplus
 }  // extern "C"

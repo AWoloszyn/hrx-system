@@ -246,6 +246,7 @@ amdf_cc_library(
     deps = [
         ":topology",
         "//libamdf/src:memory_profile",
+        "//libamdf/src/platform/linux:dma_buf",
     ],
 )
 

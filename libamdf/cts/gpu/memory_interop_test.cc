@@ -131,6 +131,9 @@ class GpuMemoryInteropTest : public GpuDeviceFixture {
         memory_info.required_flags, device_access.requirements);
     memory_info.byte_length = kMemoryByteLength;
     memory_info.registered_host_pointer = registered_host_pointer;
+    memory_info.registered_host_cacheability =
+        is_registration ? AMDF_HOST_CACHEABILITY_WRITE_BACK
+                        : AMDF_HOST_CACHEABILITY_UNKNOWN;
     amdf_status_t status =
         api_->memory_create(system_scope_, &memory_info, &access.memory);
     if (!amdf_status_is_ok(status)) return status;

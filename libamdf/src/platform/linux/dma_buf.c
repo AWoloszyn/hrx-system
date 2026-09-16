@@ -39,7 +39,8 @@ void AMDF_CALL
 amdf_linux_dma_buf_release(void* user_data, amdf_external_memory_type_t type,
                            amdf_external_memory_payload_t payload) {
   (void)user_data;
-  amdf_assert(type == AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD);
+  amdf_assert(type == AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD ||
+              type == AMDF_EXTERNAL_MEMORY_TYPE_OPAQUE_FD);
   amdf_assert(payload.file_descriptor >= 0 &&
               payload.file_descriptor <= INT_MAX);
   const int result = close((int)payload.file_descriptor);

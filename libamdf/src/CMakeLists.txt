@@ -192,6 +192,7 @@ iree_cc_library(
   HDRS
     "memory_profile.h"
   DEPS
+    ::memory_pair
     amdf::headers
   PUBLIC
 )
@@ -221,6 +222,7 @@ iree_cc_library(
     ::device
     ::endpoint
     ::instance
+    ::memory_pair
     ::memory_profile
     ::memory_scope_state
     ::structure

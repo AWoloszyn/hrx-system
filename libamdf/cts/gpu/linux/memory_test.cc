@@ -491,6 +491,8 @@ TEST_F(GpuLinuxMemoryTest, RegistersOverlappingCallerPagesWithExactAccess) {
     create_info.minimum_alignment = 1;
     create_info.registered_host_pointer =
         caller_pages_ + kCallerOffsets[case_ordinal];
+    create_info.registered_host_cacheability =
+        AMDF_HOST_CACHEABILITY_WRITE_BACK;
     ASSERT_EQ(api_->memory_create(system_scope_, &create_info,
                                   &memories_[case_ordinal]),
               AMDF_STATUS_OK)
@@ -589,6 +591,8 @@ TEST_F(GpuLinuxMemoryTest, RegistersOverlappingCallerPagesWithExactAccess) {
   invalid_access.byte_length = 1;
   invalid_access.minimum_alignment = 1;
   invalid_access.registered_host_pointer = caller_pages_ + 67;
+  invalid_access.registered_host_cacheability =
+      AMDF_HOST_CACHEABILITY_WRITE_BACK;
   amdf_memory_t* invalid_output =
       reinterpret_cast<amdf_memory_t*>(uintptr_t{1});
   EXPECT_EQ(

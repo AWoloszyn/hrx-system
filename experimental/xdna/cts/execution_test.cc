@@ -235,6 +235,8 @@ class XdnaExecutionTest
         if (GetParam() == AMDF_MEMORY_PROFILE_ROLE_REGISTER) {
           create.registered_host_pointer =
               binding.caller_storage.data() + kBindingByteLength;
+          create.registered_host_cacheability =
+              AMDF_HOST_CACHEABILITY_WRITE_BACK;
           create.minimum_alignment = kBindingByteLength;
         }
         ASSERT_EQ(api_->memory_create(system_scope_, &create,
@@ -314,16 +316,17 @@ class XdnaExecutionTest
     binding.host_cache.acquire = pair.acquire.host_operation;
   }
 
-  void RequireDmaBuf(const amdf_memory_profile_t& profile,
-                     amdf_external_memory_support_flags_t required_flags) {
+  void RequireDirectHostTransport(
+      const amdf_memory_profile_t& profile,
+      amdf_external_memory_support_flags_t required_flags) {
     for (uint32_t i = 0; i < profile.external_memory_support_count; ++i) {
       const auto& support = profile.external_memory_support[i];
-      if (support.type == AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD &&
+      if (support.type == AMDF_EXTERNAL_MEMORY_TYPE_OPAQUE_FD &&
           (support.flags & required_flags) == required_flags) {
         return;
       }
     }
-    GTEST_SKIP() << "XDNA DMA-BUF source ranges are not advertised";
+    GTEST_SKIP() << "XDNA direct-host external ranges are not advertised";
   }
 
   void ImportMemory(uint32_t profile_ordinal, MappedMemory* memory) {
@@ -335,8 +338,9 @@ class XdnaExecutionTest
     capabilities.structure_size = sizeof(capabilities);
     ASSERT_EQ(QueryMemoryProfile(profile_ordinal, &profile, &capabilities),
               AMDF_STATUS_OK);
-    RequireDmaBuf(profile, AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_IMPORT |
-                               AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_SOURCE_OFFSET);
+    RequireDirectHostTransport(
+        profile, AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_IMPORT |
+                     AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_SOURCE_OFFSET);
     if (IsSkipped()) return;
     const auto source_flags =
         AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_SHAREABLE;
@@ -347,8 +351,9 @@ class XdnaExecutionTest
     ASSERT_NE(source_ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
     ASSERT_EQ(QueryMemoryProfile(source_ordinal, &profile, &capabilities),
               AMDF_STATUS_OK);
-    RequireDmaBuf(profile, AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_EXPORT |
-                               AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_SOURCE_OFFSET);
+    RequireDirectHostTransport(
+        profile, AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_EXPORT |
+                     AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_SOURCE_OFFSET);
     if (IsSkipped()) return;
     const uint64_t source_offset =
         profile.allocation.native_byte_length_granularity + kBindingByteLength;
@@ -374,7 +379,7 @@ class XdnaExecutionTest
     amdf_memory_export_info_t export_info = {};
     export_info.type = AMDF_STRUCTURE_TYPE_MEMORY_EXPORT_INFO;
     export_info.structure_size = sizeof(export_info);
-    export_info.external_memory_type = AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD;
+    export_info.external_memory_type = AMDF_EXTERNAL_MEMORY_TYPE_OPAQUE_FD;
     export_info.byte_offset = source_offset;
     export_info.byte_length = kBindingStorageByteLength;
     ASSERT_EQ(api_->memory_export(export_source_.memory, &export_info,

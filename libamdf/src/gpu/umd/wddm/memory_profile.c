@@ -153,6 +153,7 @@ amdf_status_t amdf_gpu_wddm_query_memory_profile(
         .maximum_byte_length = maximum_byte_length,
         .byte_length_granularity = AMDF_WINDOWS_GPU_PAGE_SIZE,
         .registered_host_pointer_alignment = AMDF_WINDOWS_GPU_PAGE_SIZE,
+        .registered_host_cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK,
         .minimum_alignment = AMDF_WINDOWS_GPU_PAGE_SIZE,
         .maximum_alignment = maximum_alignment,
         .native_byte_length_granularity = AMDF_WINDOWS_GPU_PAGE_SIZE,

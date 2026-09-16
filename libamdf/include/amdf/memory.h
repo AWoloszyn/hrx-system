@@ -299,6 +299,20 @@ typedef struct amdf_external_memory_support_t {
 /// Indicates that a profile or attachment has no ordinary address domain.
 #define AMDF_ADDRESS_DOMAIN_ORDINAL_NONE UINT32_MAX
 
+/// Host cache behavior of a mapped allocation.
+typedef uint32_t amdf_host_cacheability_t;
+enum amdf_host_cacheability_e {
+  /// The provider cannot describe the mapping's cache behavior.
+  AMDF_HOST_CACHEABILITY_UNKNOWN = 0,
+  /// Ordinary host write-back caching. Device coherence is a separate property
+  /// of the device's access, not of this CPU mapping.
+  AMDF_HOST_CACHEABILITY_WRITE_BACK = 2,
+  /// Host write-combined caching intended for sequential stores.
+  AMDF_HOST_CACHEABILITY_WRITE_COMBINED = 3,
+  /// Uncached host access.
+  AMDF_HOST_CACHEABILITY_UNCACHED = 4,
+};
+
 /// Limits for one way of constructing a memory attachment.
 typedef struct amdf_memory_construction_capabilities_t {
   /// Maximum logical attachment length accepted by this operation.
@@ -308,6 +322,12 @@ typedef struct amdf_memory_construction_capabilities_t {
   /// Required caller-owned host-pointer alignment for registration, or zero
   /// when the operation consumes no host pointer.
   uint64_t registered_host_pointer_alignment;
+  /// Required cache class of caller-owned pages for REGISTER, or UNKNOWN
+  /// when this operation consumes no caller pages. This is a caller-established
+  /// property of the source mapping, not inferred from its pointer value.
+  amdf_host_cacheability_t registered_host_cacheability;
+  /// Reserved for compatible growth and always zero.
+  uint32_t reserved;
   /// Power-of-two base alignment guaranteed when callers request no stronger
   /// alignment.
   uint64_t minimum_alignment;
@@ -495,6 +515,13 @@ typedef struct amdf_memory_create_info_t {
   /// Devices must be unique and belong to the scope's instance. NULL at zero
   /// count. Each device remains a caller-enforced lifetime dependency.
   const amdf_memory_device_access_t* accesses;
+  /// Cache class of registered_host_pointer, or UNKNOWN for CREATE. The caller
+  /// establishes this property from the source allocation/mapping contract and
+  /// keeps it unchanged while registered. A pointer alone does not establish a
+  /// cache class. UNKNOWN and unsupported classes are rejected for REGISTER.
+  amdf_host_cacheability_t registered_host_cacheability;
+  /// Reserved for compatible growth; must be zero.
+  uint32_t reserved;
 } amdf_memory_create_info_t;
 
 /// Immutable backing properties of one live memory resource.
@@ -622,20 +649,6 @@ typedef struct amdf_memory_map_info_t {
   amdf_memory_map_flags_t flags;
 } amdf_memory_map_info_t;
 
-/// Host cache behavior of a mapped allocation.
-typedef uint32_t amdf_host_cacheability_t;
-enum amdf_host_cacheability_e {
-  /// The provider cannot describe the mapping's cache behavior.
-  AMDF_HOST_CACHEABILITY_UNKNOWN = 0,
-  /// Ordinary host write-back caching. Device coherence is a separate property
-  /// of the device's access, not of this CPU mapping.
-  AMDF_HOST_CACHEABILITY_WRITE_BACK = 2,
-  /// Host write-combined caching intended for sequential stores.
-  AMDF_HOST_CACHEABILITY_WRITE_COMBINED = 3,
-  /// Uncached host access.
-  AMDF_HOST_CACHEABILITY_UNCACHED = 4,
-};
-
 /// Direction of one explicit host cache ownership transition.
 typedef uint32_t amdf_host_cache_operation_t;
 enum amdf_host_cache_operation_e {
@@ -747,6 +760,9 @@ typedef struct amdf_cache_transition_t {
   /// Host fence required after the final direct instruction.
   amdf_host_cache_fence_t host_fence_after;
   /// Smallest independently transitionable range, or zero when not ranged.
+  /// Host operations cover absolute cache-line boundaries, not logical buffer
+  /// offsets. Unaligned ranges can affect neighboring bytes; the caller must
+  /// own those boundary lines for the duration of the transition.
   uint64_t range_granularity;
 } amdf_cache_transition_t;
 
@@ -820,6 +836,65 @@ typedef struct amdf_memory_site_t {
     amdf_host_mapping_t* host_mapping;
   } value;
 } amdf_memory_site_t;
+
+/// One prospective access within a scope/profile construction contract.
+/// DEVICE names an exact queue family; it does not qualify shader/program-side
+/// cache operations. HOST names a view created through memory_map on that
+/// backing.
+typedef struct amdf_memory_profile_site_t {
+  /// Selects the active member of value.
+  amdf_memory_site_kind_t kind;
+  /// Reserved for compatible growth; must be zero.
+  uint32_t reserved;
+  /// Local execution site or intended host-view permissions.
+  union {
+    /// Device access in the query's caller-ordered live consumer array.
+    struct {
+      /// Index into the query's accesses array.
+      uint32_t access_ordinal;
+      /// Exact queue family of that device's endpoint.
+      uint32_t queue_family_ordinal;
+    } device;
+    /// Required host read and write permissions.
+    amdf_memory_map_flags_t host_access;
+  } value;
+} amdf_memory_profile_site_t;
+
+/// Construction facts and exact sites for a pre-allocation visibility query.
+/// This borrows its inputs only for the call and creates no retained plan
+/// owner.
+typedef struct amdf_memory_profile_pair_query_t {
+  /// Must be AMDF_STRUCTURE_TYPE_MEMORY_PROFILE_PAIR_QUERY.
+  amdf_structure_type_t type;
+  /// Must be at least sizeof(amdf_memory_profile_pair_query_t).
+  uint32_t structure_size;
+  /// Optional input extension chain. No extensions are currently defined.
+  const void* next;
+  /// Scope-local profile ordinal, as used by memory_create or memory_import.
+  uint32_t memory_profile_ordinal;
+  /// Complete number of live consumers; zero selects CPU-only system memory.
+  uint32_t access_count;
+  /// Required backing properties, identical to the construction request.
+  amdf_memory_flags_t required_flags;
+  /// Caller-ordered live consumers, as used by construction; NULL at zero
+  /// count.
+  const amdf_memory_device_access_t* accesses;
+  /// Source mapping cache class for REGISTER; UNKNOWN for other operations.
+  amdf_host_cacheability_t registered_host_cacheability;
+  /// Reserved for compatible growth; must be zero.
+  uint32_t reserved;
+  /// Exact import transport, or zero for CREATE and REGISTER profiles.
+  amdf_external_memory_type_t external_memory_type;
+  /// Reserved for compatible growth; must be zero.
+  uint32_t external_memory_reserved;
+  /// Import protocol identity; all zero for portable transports and
+  /// non-imports.
+  amdf_external_memory_provenance_t external_memory_provenance;
+  /// Site performing writes before the caller's ordering edge.
+  amdf_memory_profile_site_t producer;
+  /// Site performing reads after the caller's ordering edge.
+  amdf_memory_profile_site_t consumer;
+} amdf_memory_profile_pair_query_t;
 
 /// Directional capabilities of one concrete shared-backing memory pair.
 typedef uint64_t amdf_memory_pair_flags_t;

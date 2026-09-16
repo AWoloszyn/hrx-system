@@ -13,7 +13,7 @@ amdf_status_t CtsDeviceCache::GetInstance(amdf_instance_t** out_instance) {
   if (!initialized_) {
     initialized_ = true;
     initialization_status_ = amdf_cts_provider_query_api()(
-        AMDF_ABI_VERSION_1, AMDF_ABI_VERSION_LATEST, &api_);
+        AMDF_ABI_VERSION_LATEST, AMDF_ABI_VERSION_LATEST, &api_);
     if (amdf_status_is_ok(initialization_status_)) {
       amdf_instance_create_info_t create_info = {};
       create_info.type = AMDF_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;

@@ -310,7 +310,7 @@ TEST(LinuxXdnaMemoryProfileTest,
   EXPECT_EQ(profile.allocation.minimum_alignment, 4096u);
   EXPECT_EQ(profile.allocation.maximum_alignment, 4096u);
   EXPECT_EQ(profile.host_mapping.byte_offset_granularity, 1u);
-  ASSERT_EQ(profile.external_memory_support_count, 1u);
+  ASSERT_EQ(profile.external_memory_support_count, 2u);
   EXPECT_EQ(profile.external_memory_support[0].type,
             AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD);
   EXPECT_EQ(profile.external_memory_support[0].flags,
@@ -332,7 +332,7 @@ TEST(LinuxXdnaMemoryProfileTest,
             AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS);
   EXPECT_EQ(imported_profile.import.minimum_alignment, 1u);
   EXPECT_EQ(imported_profile.import.maximum_alignment, 4096u);
-  ASSERT_EQ(imported_profile.external_memory_support_count, 1u);
+  ASSERT_EQ(imported_profile.external_memory_support_count, 2u);
   EXPECT_EQ(imported_profile.external_memory_support[0].flags,
             AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_IMPORT |
                 AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_SOURCE_OFFSET |

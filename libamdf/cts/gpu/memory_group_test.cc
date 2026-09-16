@@ -163,6 +163,8 @@ TEST_P(GpuMemoryGroupTest, OneBackingForTwoPhysicalConsumers) {
         candidate + (alignment - candidate % alignment) % alignment;
     caller_offset = pointer - reinterpret_cast<uintptr_t>(caller_storage);
     create_info.registered_host_pointer = caller_storage + caller_offset;
+    create_info.registered_host_cacheability =
+        AMDF_HOST_CACHEABILITY_WRITE_BACK;
   }
   // Failed native rollback can retain pins. Only a published registration
   // establishes a teardown path that permits this fixture to free the pages.

@@ -259,6 +259,12 @@ TEST_F(WindowsXdnaMemoryTest, CompletesOnlyAfterMapAndOrdinaryResidency) {
   EXPECT_EQ(map_result.visibility.cacheability,
             AMDF_HOST_CACHEABILITY_WRITE_BACK);
   EXPECT_EQ(map_result.visibility.cache_line_size, 64u);
+  ASSERT_NE(profile_.visibility.describe_host, nullptr);
+  const auto qualified = profile_.visibility.describe_host(
+      profile_.visibility.data, AMDF_EXTERNAL_MEMORY_TYPE_NONE,
+      profile_.guaranteed_flags);
+  EXPECT_EQ(std::memcmp(&qualified, &map_result.visibility, sizeof(qualified)),
+            0);
   EXPECT_TRUE(amdf_status_is_ok(amdf_xdna_umd_host_mapping_cache_control(
       mapping, AMDF_HOST_CACHE_OPERATION_FLUSH, 0, map_result.byte_length)));
   EXPECT_TRUE(amdf_status_is_ok(amdf_xdna_umd_host_mapping_cache_control(

@@ -194,14 +194,48 @@ static amdf_status_t amdf_windows_xdna_memory_make_resident(
   return status;
 }
 
+static amdf_memory_host_description_t amdf_xdna_umd_memory_describe_host(
+    const void* data, amdf_external_memory_type_t external_memory_type,
+    amdf_memory_flags_t flags) {
+  (void)external_memory_type;
+  (void)data;
+  (void)flags;
+  amdf_memory_host_description_t result = {0};
+  result.cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK;
+  result.cache_line_size = amdf_windows_host_cache_line_size();
+  result.flush = (amdf_cache_transition_t){
+      .kind = AMDF_CACHE_TRANSITION_KIND_RANGE,
+      .executor = AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT,
+      .host_operation = AMDF_HOST_CACHE_OPERATION_FLUSH,
+      .host_instruction = AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH,
+      .host_fence_after = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
+      .range_granularity = result.cache_line_size,
+  };
+  result.invalidate = (amdf_cache_transition_t){
+      .kind = AMDF_CACHE_TRANSITION_KIND_RANGE,
+      .executor = AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT,
+      .host_operation = AMDF_HOST_CACHE_OPERATION_INVALIDATE,
+      .host_instruction = AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH,
+      .host_fence_after = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
+      .range_granularity = result.cache_line_size,
+  };
+  return result;
+}
+
 amdf_status_t amdf_xdna_umd_device_query_memory_profile(
     amdf_xdna_umd_device_t* device, uint32_t memory_profile_ordinal,
     amdf_memory_native_profile_t* out_profile) {
   if (!amdf_kmt_api_supports_memory(device->kmt)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
   }
-  return amdf_windows_xdna_query_memory_profile(
+  const amdf_status_t status = amdf_windows_xdna_query_memory_profile(
       device->profile, memory_profile_ordinal, out_profile);
+  if (amdf_status_is_ok(status)) {
+    out_profile->visibility.describe_site = amdf_xdna_umd_memory_describe_site;
+    out_profile->visibility.describe_host = amdf_xdna_umd_memory_describe_host;
+    out_profile->visibility.data = device;
+  }
+  return status;
 }
 
 void amdf_xdna_umd_context_query_memory_profile(
@@ -253,6 +287,9 @@ void amdf_xdna_umd_context_query_memory_profile(
           },
       .address_kinds = UINT64_C(1) << AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE,
   };
+  out_profile->visibility.describe_site = amdf_xdna_umd_memory_describe_site;
+  out_profile->visibility.describe_host = amdf_xdna_umd_memory_describe_host;
+  out_profile->visibility.data = context->device;
 }
 
 amdf_status_t amdf_xdna_umd_memory_prepare_private(
@@ -420,32 +457,6 @@ void amdf_xdna_umd_memory_abandon(amdf_xdna_umd_memory_t* memory) {
   amdf_free(memory->device->host_allocator, memory);
 }
 
-static amdf_memory_host_description_t amdf_xdna_umd_memory_describe_host(
-    const amdf_xdna_umd_device_t* device, amdf_memory_flags_t flags) {
-  (void)device;
-  (void)flags;
-  amdf_memory_host_description_t result = {0};
-  result.cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK;
-  result.cache_line_size = amdf_windows_host_cache_line_size();
-  result.flush = (amdf_cache_transition_t){
-      .kind = AMDF_CACHE_TRANSITION_KIND_RANGE,
-      .executor = AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT,
-      .host_operation = AMDF_HOST_CACHE_OPERATION_FLUSH,
-      .host_instruction = AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH,
-      .host_fence_after = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
-      .range_granularity = result.cache_line_size,
-  };
-  result.invalidate = (amdf_cache_transition_t){
-      .kind = AMDF_CACHE_TRANSITION_KIND_RANGE,
-      .executor = AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT,
-      .host_operation = AMDF_HOST_CACHE_OPERATION_INVALIDATE,
-      .host_instruction = AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH,
-      .host_fence_after = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
-      .range_granularity = result.cache_line_size,
-  };
-  return result;
-}
-
 amdf_status_t amdf_xdna_umd_memory_map(
     amdf_xdna_umd_memory_t* memory,
     const amdf_host_mapping_capabilities_t* capabilities,
@@ -465,7 +476,7 @@ amdf_status_t amdf_xdna_umd_memory_map(
   result.flags = capabilities->supported_access;
   result.pointer = mapping->pointer;
   result.byte_length = mapping->byte_length;
-  result.visibility = amdf_xdna_umd_memory_describe_host(memory->device, 0);
+  result.visibility = amdf_xdna_umd_memory_describe_host(memory->device, 0, 0);
   *out_result = result;
   *out_mapping = mapping;
   return AMDF_STATUS_OK;

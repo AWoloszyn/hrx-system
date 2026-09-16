@@ -70,11 +70,14 @@ extern "C" {
 /// Version number identifying a compatible public API table layout.
 typedef uint32_t amdf_abi_version_t;
 
-/// The first supported libamdf ABI version.
+/// The original libamdf ABI version.
 #define AMDF_ABI_VERSION_1 ((amdf_abi_version_t)1)
 
+/// Memory visibility qualification and explicit registered-page cacheability.
+#define AMDF_ABI_VERSION_2 ((amdf_abi_version_t)2)
+
 /// The most recent ABI version described by this header.
-#define AMDF_ABI_VERSION_LATEST AMDF_ABI_VERSION_1
+#define AMDF_ABI_VERSION_LATEST AMDF_ABI_VERSION_2
 
 /// The unmangled symbol used to acquire the immutable API table.
 #define AMDF_QUERY_API_SYMBOL "amdf_query_api"
@@ -205,6 +208,8 @@ enum amdf_structure_type_e {
   AMDF_STRUCTURE_TYPE_MEMORY_SCOPE_INFO = 19,
   /// An `amdf_memory_access_capabilities_t` output structure.
   AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES = 20,
+  /// An `amdf_memory_profile_pair_query_t` input structure.
+  AMDF_STRUCTURE_TYPE_MEMORY_PROFILE_PAIR_QUERY = 21,
 };
 
 /// Identifier of an optional API table compiled into the providing library.

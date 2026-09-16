@@ -65,7 +65,7 @@ class WindowsXdnaContextSystemTest : public ::testing::Test {
  protected:
   void SetUp() override {
     ASSERT_EQ(
-        amdf_query_api(AMDF_ABI_VERSION_1, AMDF_ABI_VERSION_LATEST, &api_),
+        amdf_query_api(AMDF_ABI_VERSION_LATEST, AMDF_ABI_VERSION_LATEST, &api_),
         AMDF_STATUS_OK);
     const void* extension = nullptr;
     ASSERT_EQ(api_->query_extension(

@@ -108,7 +108,7 @@ TEST(LinuxGpuMemoryProfileTest, InstanceLifetimeExposesOwnedSystemMemory) {
   EXPECT_EQ(profile.host_mapping.byte_length_granularity, 1u);
   EXPECT_EQ(profile.host_mapping.supported_access,
             AMDF_MEMORY_MAP_FLAG_READ | AMDF_MEMORY_MAP_FLAG_WRITE);
-  ASSERT_EQ(profile.external_memory_support_count, 1u);
+  ASSERT_EQ(profile.external_memory_support_count, 2u);
   EXPECT_EQ(profile.external_memory_support[0].type,
             AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD);
   EXPECT_EQ(profile.external_memory_support[0].flags,

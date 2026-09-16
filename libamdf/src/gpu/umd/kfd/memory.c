@@ -147,12 +147,48 @@ static amdf_status_t amdf_gpu_kfd_memory_query_dma_buf(
   return status;
 }
 
+static amdf_memory_host_description_t amdf_gpu_umd_memory_describe_host(
+    const void* data, amdf_external_memory_type_t external_memory_type,
+    amdf_memory_flags_t flags) {
+  (void)external_memory_type;
+  const amdf_gpu_umd_device_t* device = data;
+  const bool write_back = (flags & AMDF_MEMORY_FLAG_HOST_COHERENT) != 0;
+  const uint32_t line_size = write_back ? device->cache_line_size : 0;
+  const amdf_cache_transition_t flush = {
+      .kind = write_back ? AMDF_CACHE_TRANSITION_KIND_RANGE
+                         : AMDF_CACHE_TRANSITION_KIND_GLOBAL,
+      .executor = AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT,
+      .host_operation = AMDF_HOST_CACHE_OPERATION_FLUSH,
+      .host_instruction = write_back ? AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH
+                                     : AMDF_HOST_CACHE_INSTRUCTION_NONE,
+      .host_fence_before = write_back ? AMDF_HOST_CACHE_FENCE_X86_MFENCE
+                                      : AMDF_HOST_CACHE_FENCE_NONE,
+      .host_fence_after = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
+      .range_granularity = line_size,
+  };
+  amdf_cache_transition_t invalidate = flush;
+  invalidate.host_operation = AMDF_HOST_CACHE_OPERATION_INVALIDATE;
+  return (amdf_memory_host_description_t){
+      .cacheability = write_back ? AMDF_HOST_CACHEABILITY_WRITE_BACK
+                                 : AMDF_HOST_CACHEABILITY_WRITE_COMBINED,
+      .cache_line_size = line_size,
+      .flush = flush,
+      .invalidate = invalidate,
+  };
+}
+
 amdf_status_t amdf_gpu_umd_device_query_memory_profile(
     amdf_gpu_umd_device_t* device, uint32_t memory_profile_ordinal,
     amdf_memory_native_profile_t* out_profile) {
-  return amdf_gpu_kfd_query_memory_profile(&device->topology, device->page_size,
-                                           device->native_lifetime,
-                                           memory_profile_ordinal, out_profile);
+  const amdf_status_t status = amdf_gpu_kfd_query_memory_profile(
+      &device->topology, device->page_size, device->native_lifetime,
+      memory_profile_ordinal, out_profile);
+  if (amdf_status_is_ok(status)) {
+    out_profile->visibility.describe_site = amdf_gpu_umd_memory_describe_site;
+    out_profile->visibility.describe_host = amdf_gpu_umd_memory_describe_host;
+    out_profile->visibility.data = device;
+  }
+  return status;
 }
 
 amdf_status_t amdf_gpu_umd_memory_prepare_import(
@@ -317,33 +353,6 @@ amdf_status_t amdf_gpu_umd_memory_prepare(
   return status;
 }
 
-static amdf_memory_host_description_t amdf_gpu_umd_memory_describe_host(
-    const amdf_gpu_umd_device_t* device, amdf_memory_flags_t flags) {
-  const bool write_back = (flags & AMDF_MEMORY_FLAG_HOST_COHERENT) != 0;
-  const uint32_t line_size = write_back ? device->cache_line_size : 0;
-  const amdf_cache_transition_t flush = {
-      .kind = write_back ? AMDF_CACHE_TRANSITION_KIND_RANGE
-                         : AMDF_CACHE_TRANSITION_KIND_GLOBAL,
-      .executor = AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT,
-      .host_operation = AMDF_HOST_CACHE_OPERATION_FLUSH,
-      .host_instruction = write_back ? AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH
-                                     : AMDF_HOST_CACHE_INSTRUCTION_NONE,
-      .host_fence_before = write_back ? AMDF_HOST_CACHE_FENCE_X86_MFENCE
-                                      : AMDF_HOST_CACHE_FENCE_NONE,
-      .host_fence_after = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
-      .range_granularity = line_size,
-  };
-  amdf_cache_transition_t invalidate = flush;
-  invalidate.host_operation = AMDF_HOST_CACHE_OPERATION_INVALIDATE;
-  return (amdf_memory_host_description_t){
-      .cacheability = write_back ? AMDF_HOST_CACHEABILITY_WRITE_BACK
-                                 : AMDF_HOST_CACHEABILITY_WRITE_COMBINED,
-      .cache_line_size = line_size,
-      .flush = flush,
-      .invalidate = invalidate,
-  };
-}
-
 amdf_status_t amdf_gpu_umd_memory_map(
     amdf_gpu_umd_memory_t* memory,
     const amdf_host_mapping_capabilities_t* capabilities,
@@ -355,7 +364,7 @@ amdf_status_t amdf_gpu_umd_memory_map(
       .pointer = (uint8_t*)memory->host_pointer + map_info->byte_offset,
       .byte_length = map_info->byte_length,
       .visibility =
-          amdf_gpu_umd_memory_describe_host(memory->device, memory->flags),
+          amdf_gpu_umd_memory_describe_host(memory->device, 0, memory->flags),
   };
   // The common host-view object owns the borrow; the native mapping persists
   // with memory and needs no separate allocation or per-view native resource.

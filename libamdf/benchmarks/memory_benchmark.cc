@@ -42,7 +42,7 @@ class MemoryBenchmark {
     address_kind_ = engine_kind == AMDF_ENGINE_KIND_GPU
                         ? AMDF_MEMORY_ADDRESS_GPU
                         : AMDF_MEMORY_ADDRESS_XDNA_DMA;
-    CheckStatus(amdf_cts_provider_query_api()(AMDF_ABI_VERSION_1,
+    CheckStatus(amdf_cts_provider_query_api()(AMDF_ABI_VERSION_LATEST,
                                               AMDF_ABI_VERSION_LATEST, &api_),
                 "query_api");
     amdf_instance_t* instance = nullptr;

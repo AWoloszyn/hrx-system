@@ -440,6 +440,17 @@ TEST_F(WindowsGpuMemoryTest, ProfileUsesCapturedGpuMmuCapabilities) {
       AMDF_STATUS_OK);
   EXPECT_NE(system_profile.supported_flags & AMDF_MEMORY_FLAG_HOST_COHERENT,
             0u);
+  ASSERT_NE(system_profile.visibility.describe_host, nullptr);
+  const auto noncoherent = system_profile.visibility.describe_host(
+      system_profile.visibility.data, AMDF_EXTERNAL_MEMORY_TYPE_NONE, 0);
+  EXPECT_EQ(noncoherent.flush.executor,
+            AMDF_CACHE_TRANSITION_EXECUTOR_HOST_API);
+  const auto coherent = system_profile.visibility.describe_host(
+      system_profile.visibility.data, AMDF_EXTERNAL_MEMORY_TYPE_NONE,
+      AMDF_MEMORY_FLAG_HOST_COHERENT);
+  EXPECT_EQ(coherent.flush.executor,
+            AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT);
+  EXPECT_TRUE(state_.operations.empty());
 
   device_.memory_capabilities.read_only_memory_supported = 0;
   device_.memory_capabilities.no_execute_memory_supported = 0;

@@ -9,6 +9,20 @@
 
 #include "amdf/amdf.h"
 
+// OPAQUE_FD interpretation for native-owned, write-back system pages. The
+// payload is a DMA-BUF whose exporter permits direct CPU cache maintenance
+// while the importer retains its static DMA attachment. Producers and consumers
+// explicitly order access; no implicit fence or exporter CPU-access session is
+// required. KFD coherent GTT and XDNA shmem SHARE exports supply this contract.
+// Portable DMA_BUF_FD values do not carry this promise. Copying this identity
+// onto an arbitrary foreign descriptor does not establish the contract.
+#define AMDF_LINUX_DMA_BUF_DIRECT_HOST_PROVENANCE                \
+  {                                                              \
+    {                                                            \
+      UINT64_C(0x66446479784d4441), UINT64_C(0x3157426469726563) \
+    }                                                            \
+  }
+
 // Immutable kernel file facts for one live DMA-BUF.
 typedef struct amdf_linux_dma_buf_info_t {
   // Identity of the DMA-BUF pseudo-file while any reference remains live.
