@@ -84,6 +84,23 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 iree_cc_library(
   NAME
+    uring_registration
+  HDRS
+    "uring_registration.h"
+  SRCS
+    "uring_registration.c"
+  DEPS
+    ::defs
+    iree::base
+    iree::base::internal
+    iree::base::threading
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+iree_cc_library(
+  NAME
     uring
   HDRS
     "uring.h"
@@ -91,6 +108,7 @@ iree_cc_library(
     "uring.c"
   DEPS
     ::defs
+    ::uring_registration
     iree::base
     iree::base::internal
     iree::base::threading
@@ -164,6 +182,20 @@ iree_cc_test(
   DEPS
     ::defs
     ::uring
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+iree_cc_test(
+  NAME
+    uring_registration_test
+  SRCS
+    "uring_registration_test.cc"
+  DEPS
+    ::uring
+    iree::base::threading
     iree::testing::gtest
     iree::testing::gtest_main
 )

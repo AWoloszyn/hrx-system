@@ -79,6 +79,14 @@ static void iree_async_proactor_io_uring_destroy(
 static iree_status_t iree_async_proactor_io_uring_cancel(
     iree_async_proactor_t* base_proactor, iree_async_operation_t* operation);
 
+// Wakes the proactor after another task queues a ring registration request.
+static void iree_async_proactor_io_uring_wake_registration_owner(
+    void* user_data) {
+  iree_async_proactor_io_uring_t* proactor =
+      (iree_async_proactor_io_uring_t*)user_data;
+  iree_async_proactor_wake(&proactor->base);
+}
+
 iree_status_t iree_async_proactor_create_io_uring(
     iree_async_proactor_options_t options, iree_allocator_t allocator,
     iree_async_proactor_t** out_proactor) {
@@ -219,6 +227,13 @@ iree_status_t iree_async_proactor_create_io_uring(
     if (proactor->wake_eventfd < 0) {
       status = iree_make_status(iree_status_code_from_errno(errno),
                                 "eventfd creation failed (%d)", errno);
+    } else {
+      iree_io_uring_registration_wake_callback_t wake_callback = {
+          .fn = iree_async_proactor_io_uring_wake_registration_owner,
+          .user_data = proactor,
+      };
+      iree_io_uring_ring_set_registration_wake_callback(&proactor->ring,
+                                                        wake_callback);
     }
   }
 
@@ -596,6 +611,11 @@ static void iree_async_proactor_io_uring_handle_wake_completion(
   IREE_ASSERT(result == sizeof(value),
               "failed to drain io_uring wake eventfd: %zd (errno=%d)", result,
               errno);
+
+  // Registration is a cold control path. Only wake completions pay this
+  // pending-bit check; ordinary submission and io_uring_enter remain
+  // unchanged.
+  iree_io_uring_ring_drain_registration_requests(&proactor->ring);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1503,6 +1523,17 @@ static iree_status_t iree_async_proactor_io_uring_poll(
 }
 
 //===----------------------------------------------------------------------===//
+// Poll owner lifecycle
+//===----------------------------------------------------------------------===//
+
+static void iree_async_proactor_io_uring_end_polling(
+    iree_async_proactor_t* base_proactor) {
+  iree_async_proactor_io_uring_t* proactor =
+      iree_async_proactor_io_uring_cast(base_proactor);
+  iree_io_uring_ring_end_polling(&proactor->ring);
+}
+
+//===----------------------------------------------------------------------===//
 // Wake
 //===----------------------------------------------------------------------===//
 
@@ -2232,6 +2263,7 @@ const iree_async_proactor_vtable_t iree_async_proactor_io_uring_vtable = {
     .query_capabilities = iree_async_proactor_io_uring_query_capabilities,
     .submit = iree_async_proactor_io_uring_submit,
     .poll = iree_async_proactor_io_uring_poll,
+    .end_polling = iree_async_proactor_io_uring_end_polling,
     .wake = iree_async_proactor_io_uring_wake,
     .cancel = iree_async_proactor_io_uring_cancel,
     .create_socket = iree_async_proactor_io_uring_create_socket,

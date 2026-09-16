@@ -79,11 +79,16 @@ static int iree_async_proactor_thread_main(void* entry_arg) {
     status = iree_async_proactor_poll(thread->proactor, timeout,
                                       /*out_completed_count=*/NULL);
     if (iree_status_is_deadline_exceeded(status)) {
-      iree_status_ignore(status);
+      iree_status_free(status);
       status = iree_ok_status();
       continue;
     }
   }
+
+  // Permanently retire backend state bound to this polling task before the
+  // thread publishes its terminal status. This also releases synchronous
+  // callers whose owner-task requests can no longer be serviced.
+  iree_async_proactor_end_polling(thread->proactor);
 
   // Store fatal status (if any) before signaling exit.
   if (!iree_status_is_ok(status)) {

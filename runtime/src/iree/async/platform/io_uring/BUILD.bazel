@@ -90,12 +90,27 @@ iree_runtime_cc_library(
 )
 
 iree_runtime_cc_library(
+    name = "uring_registration",
+    srcs = ["uring_registration.c"],
+    hdrs = ["uring_registration.h"],
+    target_compatible_with = ["@platforms//os:linux"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":defs",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal",
+        "//runtime/src/iree/base/threading",
+    ],
+)
+
+iree_runtime_cc_library(
     name = "uring",
     srcs = ["uring.c"],
     hdrs = ["uring.h"],
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
         ":defs",
+        ":uring_registration",
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/internal",
         "//runtime/src/iree/base/threading",
@@ -155,6 +170,18 @@ iree_runtime_cc_test(
     deps = [
         ":defs",
         ":uring",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+iree_runtime_cc_test(
+    name = "uring_registration_test",
+    srcs = ["uring_registration_test.cc"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":uring",
+        "//runtime/src/iree/base/threading",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
     ],

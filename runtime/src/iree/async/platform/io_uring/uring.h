@@ -30,6 +30,7 @@
 #define IREE_ASYNC_PLATFORM_IO_URING_URING_H_
 
 #include "iree/async/platform/io_uring/defs.h"
+#include "iree/async/platform/io_uring/uring_registration.h"
 #include "iree/base/api.h"
 #include "iree/base/internal/atomics.h"
 #include "iree/base/threading/processor.h"
@@ -49,6 +50,9 @@ typedef struct iree_io_uring_ring_t {
 
   // Features reported by the kernel during setup.
   uint32_t features;
+
+  // Setup flags accepted by the kernel after compatibility fallbacks.
+  uint32_t setup_flags;
 
   // Submission queue state.
   void* sq_ring_ptr;
@@ -97,6 +101,9 @@ typedef struct iree_io_uring_ring_t {
   // thread as the exclusive submitter. Read by cross-proactor submitters
   // before targeting this ring with MSG_RING.
   iree_atomic_int32_t needs_enable;
+
+  // Cold-path io_uring_register ownership and dispatch state.
+  iree_io_uring_registration_t registration;
 } iree_io_uring_ring_t;
 
 //===----------------------------------------------------------------------===//
@@ -183,6 +190,23 @@ void iree_io_uring_ring_deinitialize(iree_io_uring_ring_t* ring);
 // SINGLE_ISSUER, this binds the calling thread as the ring's exclusive
 // submitter. No-op if the ring was not created with R_DISABLED.
 iree_status_t iree_io_uring_ring_enable(iree_io_uring_ring_t* ring);
+
+// Sets the callback used to wake the registration owner when another task
+// queues an io_uring_register operation.
+void iree_io_uring_ring_set_registration_wake_callback(
+    iree_io_uring_ring_t* ring,
+    iree_io_uring_registration_wake_callback_t callback);
+
+// Executes io_uring_register synchronously on the kernel owner task when the
+// ring uses SINGLE_ISSUER. Returns the raw syscall result or a negated errno.
+int iree_io_uring_ring_register(iree_io_uring_ring_t* ring, uint32_t opcode,
+                                void* arg, uint32_t argument_count);
+
+// Drains queued io_uring_register operations on the poll-owner task.
+void iree_io_uring_ring_drain_registration_requests(iree_io_uring_ring_t* ring);
+
+// Permanently retires the poll owner and rejects subsequent registration.
+void iree_io_uring_ring_end_polling(iree_io_uring_ring_t* ring);
 
 //===----------------------------------------------------------------------===//
 // Submission queue operations

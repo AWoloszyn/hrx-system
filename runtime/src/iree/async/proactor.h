@@ -561,6 +561,7 @@ typedef struct iree_async_proactor_vtable_t {
                           iree_async_operation_list_t operations);
   iree_status_t (*poll)(iree_async_proactor_t* proactor, iree_timeout_t timeout,
                         iree_host_size_t* out_completed_count);
+  void (*end_polling)(iree_async_proactor_t* proactor);
   void (*wake)(iree_async_proactor_t* proactor);
   iree_status_t (*cancel)(iree_async_proactor_t* proactor,
                           iree_async_operation_t* operation);
@@ -842,6 +843,27 @@ static inline iree_status_t iree_async_proactor_poll(
     iree_async_proactor_t* proactor, iree_timeout_t timeout,
     iree_host_size_t* out_completed_count) {
   return proactor->vtable->poll(proactor, timeout, out_completed_count);
+}
+
+// Notifies the proactor that its poll owner will never call poll() again.
+//
+// Some backends bind kernel resources to the first polling task. Ending that
+// task without this notification could strand synchronous callers waiting for
+// owner-task work. Backends use this terminal boundary to reject new requests
+// and complete accepted requests that the owner can no longer service.
+//
+// The poll owner must call this exactly when its polling loop permanently
+// exits. The standard iree_async_proactor_thread_t runner does so
+// automatically. Calling poll() again afterward is invalid. Repeated calls are
+// permitted so owner cleanup and final proactor destruction can share paths.
+//
+// This does not cancel in-flight asynchronous operations or invoke callbacks.
+// Those operations must be drained or cancelled before the polling loop exits.
+static inline void iree_async_proactor_end_polling(
+    iree_async_proactor_t* proactor) {
+  if (proactor->vtable->end_polling) {
+    proactor->vtable->end_polling(proactor);
+  }
 }
 
 // Wakes a blocked poll() from another thread.
