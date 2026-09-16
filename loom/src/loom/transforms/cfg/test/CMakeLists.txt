@@ -13,6 +13,7 @@ loom_check_test_suite(
   NAME
     test
   SRCS
+    "block_fusion.loom-test"
     "branch_fusion.loom-test"
     "branch_sink.loom-test"
     "cfg_compatibility.loom-test"

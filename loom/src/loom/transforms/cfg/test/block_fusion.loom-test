@@ -1,0 +1,167 @@
+// RUN: pass cfg-simplify
+
+// Source order is deliberately opposite to the chain's control-flow order.
+// Dependent types must follow substitutions across every incoming branch.
+func.def @reverse_order_dependent_chain(%layout: encoding<layout>, %view: view<4xf32, %layout>) {
+  cfg.br ^start(%layout: encoding<layout>, %view: view<4xf32, %layout>)
+^tail(%tail_layout: encoding<layout>, %tail_view: view<4xf32, %tail_layout>):
+  test.use %tail_view : view<4xf32, %tail_layout>
+  func.return
+^middle(%middle_layout: encoding<layout>, %middle_view: view<4xf32, %middle_layout>):
+  test.use %middle_view : view<4xf32, %middle_layout>
+  cfg.br ^tail(%middle_layout: encoding<layout>, %middle_view: view<4xf32, %middle_layout>)
+^start(%start_layout: encoding<layout>, %start_view: view<4xf32, %start_layout>):
+  test.use %start_view : view<4xf32, %start_layout>
+  cfg.br ^middle(%start_layout: encoding<layout>, %start_view: view<4xf32, %start_layout>)
+}
+
+// ----
+func.def @reverse_order_dependent_chain(%layout: encoding<layout>, %view: view<4xf32, %layout>) {
+  test.use %view : view<4xf32, %layout>
+  test.use %view : view<4xf32, %layout>
+  test.use %view : view<4xf32, %layout>
+  func.return
+}
+
+// ====
+// RUN: pass cfg-simplify
+
+// Parallel contractions preserve a shared join and rewrite references inside
+// predicates and nested regions before the old block arguments are detached.
+func.def @sibling_chains_with_nested_references(%choose: i1, %pick: i1, %offset: index, %left_limit: index, %right_limit: index) -> (index) {
+  cfg.cond_br %choose, ^left, ^right
+^left:
+  test.use %left_limit : index
+  cfg.br ^left_tail(%left_limit: index)
+^left_tail(%left_width: index):
+  %left_result = scf.if %pick -> (index) {
+    %bounded = index.assume %offset [lt(%offset, %left_width)] : index
+    scf.yield %bounded : index
+  } else {
+    scf.yield %left_width : index
+  }
+  cfg.br ^join(%left_result: index)
+^right:
+  test.use %right_limit : index
+  cfg.br ^right_tail(%right_limit: index)
+^right_tail(%right_width: index):
+  %right_result = index.assume %offset [lt(%offset, %right_width)] : index
+  cfg.br ^join(%right_result: index)
+^join(%result: index):
+  func.return %result : index
+}
+
+// ----
+func.def @sibling_chains_with_nested_references(%choose: i1, %pick: i1, %offset: index, %left_limit: index, %right_limit: index) -> (index) {
+  cfg.cond_br %choose, ^left, ^right
+^left:
+  test.use %left_limit : index
+  %left_result = scf.if %pick -> (index) {
+    %bounded = index.assume %offset [lt(%offset, %left_limit)] : index
+    scf.yield %bounded : index
+  } else {
+    scf.yield %left_limit : index
+  }
+  cfg.br ^join(%left_result: index)
+^right:
+  test.use %right_limit : index
+  %right_result = index.assume %offset [lt(%offset, %right_limit)] : index
+  cfg.br ^join(%right_result: index)
+^join(%result: index):
+  func.return %result : index
+}
+
+// ====
+// RUN: pass cfg-simplify
+
+// The loop header survives while its body chain contracts in dominance order.
+func.def @cyclic_region_body_chain(%again: i1, %seed: index) -> (index) {
+  %c1 = index.constant 1 : index
+  cfg.br ^header(%seed: index)
+^header(%carried: index):
+  cfg.cond_br %again, ^body, ^exit
+^tail(%tail_value: index):
+  %next = index.add %tail_value, %c1 : index
+  cfg.br ^header(%next: index)
+^middle(%middle_value: index):
+  %second = index.add %middle_value, %c1 : index
+  cfg.br ^tail(%second: index)
+^body:
+  %first = index.add %carried, %c1 : index
+  cfg.br ^middle(%first: index)
+^exit:
+  func.return %carried : index
+}
+
+// ----
+func.def @cyclic_region_body_chain(%again: i1, %seed: index) -> (index) {
+  %c1 = index.constant 1 : index
+  cfg.br ^header(%seed: index)
+^header(%carried: index):
+  cfg.cond_br %again, ^body, ^exit
+^body:
+  %first = index.add %carried, %c1 : index
+  %second = index.add %first, %c1 : index
+  %next = index.add %second, %c1 : index
+  cfg.br ^header(%next: index)
+^exit:
+  func.return %carried : index
+}
+
+// ====
+// RUN: pass cfg-simplify
+
+// Moving a region owner preserves references to an ancestor CFG definition
+// in nested declaration types and predicate attributes.
+func.def @ancestor_types_and_attributes(%choose: i1, %element: f32) {
+  %width = index.constant 16 : index
+  cfg.br ^outer
+^outer:
+  test.use %width : index
+  cfg.br ^tail
+^tail:
+  scf.if %choose {
+    test.decl @nested_signature(%storage: pool<[%width]>) -> (i32)
+    %annotated = test.attrs %element {shape = #test.options<mode = fast, element_type = vector<[%width]xf32>>} : f32
+  } else {
+    %c0 = index.constant 0 : index
+    %bounded = index.assume %c0 [lt(%c0, %width)] : index
+    test.use %bounded : index
+  }
+  func.return
+}
+
+// ----
+func.def @ancestor_types_and_attributes(%choose: i1, %element: f32) {
+  %width = index.constant 16 : index
+  test.use %width : index
+  scf.if %choose {
+    test.decl @nested_signature(%storage: pool<[%width]>) -> (i32)
+    %annotated = test.attrs %element {shape = #test.options<mode = fast, element_type = vector<[%width]xf32>>} : f32
+  } else {
+    %c0 = index.constant 0 : index
+    %bounded = index.assume %c0 [lt(%c0, %width)] : index
+    test.use %bounded : index
+  }
+  func.return
+}
+
+// ====
+// RUN: pass-report cfg-simplify
+
+// A whole chain needs one structural edit and one confirming iteration.
+func.def @chain_iteration_count(%input: i32) -> (i32) {
+  cfg.br ^start(%input: i32)
+^tail(%last: i32):
+  test.use %last : i32
+  func.return %last : i32
+^middle(%middle: i32):
+  test.use %middle : i32
+  cfg.br ^tail(%middle: i32)
+^start(%first: i32):
+  test.use %first : i32
+  cfg.br ^middle(%first: i32)
+}
+
+// ----
+{"invocations":[{"pass":"cfg-simplify","kind":"func","anchor":"func","pipeline":"__command_line","symbol":"chain_iteration_count","instruction_index":1,"duration_ns":0,"changed":true,"status":{"code":0,"name":"OK"},"statistics":{"iterations":2,"branches-folded":0,"edges-forwarded":0,"blocks-removed":0,"block-args-removed":0,"blocks-fused":3,"duplicate-blocks-merged":0,"terminal-blocks-duplicated":0},"details":[{"category":"value-facts","acquisition_count":1,"cache_hit_count":0,"recomputation_count":1,"preparation_count":0,"invalidation_count":2,"scope_clear_count":1,"computed_value_count":4,"cleared_value_count":4}]}]}

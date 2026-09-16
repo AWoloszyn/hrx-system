@@ -20,6 +20,8 @@
 #include "loom/pass/value_facts.h"
 #include "loom/rewrite/materialize.h"
 #include "loom/rewrite/rewriter.h"
+#include "loom/transforms/cfg/block_arguments.h"
+#include "loom/transforms/cfg/block_fusion.h"
 #include "loom/util/cfg_graph.h"
 #include "loom/util/dominance.h"
 #include "loom/util/fact_cfg.h"
@@ -29,6 +31,8 @@
 //===----------------------------------------------------------------------===//
 
 #define LOOM_CFG_SIMPLIFY_STATISTICS(V, statistics_type)                       \
+  V(statistics_type, iterations, "iterations",                                 \
+    "Number of fixed-point simplification iterations.")                        \
   V(statistics_type, branches_folded, "branches-folded",                       \
     "Number of conditional branches folded to direct branches.")               \
   V(statistics_type, edges_forwarded, "edges-forwarded",                       \
@@ -868,101 +872,6 @@ static bool loom_cfg_simplify_map_forward_arg(
   return *out_arg != LOOM_VALUE_ID_INVALID;
 }
 
-static bool loom_cfg_simplify_branch_args_available_before(
-    const loom_cfg_simplify_state_t* state, loom_value_slice_t args,
-    const loom_op_t* before_op) {
-  for (uint16_t i = 0; i < args.count; ++i) {
-    loom_value_id_t arg = args.values[i];
-    if (!loom_value_is_available_before_op(state->dominance, arg, before_op) ||
-        !loom_value_type_is_available_before_op(state->dominance, arg,
-                                                before_op)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-static bool loom_cfg_simplify_branch_args_match_dest(
-    const loom_cfg_simplify_state_t* state, const loom_block_t* dest,
-    loom_value_slice_t args) {
-  if (!dest || args.count != dest->arg_count) return false;
-  loom_type_value_remap_t remap = {
-      .source_values = dest->arg_ids,
-      .target_values = args.values,
-      .count = dest->arg_count,
-  };
-  for (uint16_t i = 0; i < dest->arg_count; ++i) {
-    loom_value_id_t actual_id = args.values[i];
-    loom_value_id_t expected_id = loom_block_arg_id(dest, i);
-    if (actual_id == LOOM_VALUE_ID_INVALID ||
-        expected_id == LOOM_VALUE_ID_INVALID ||
-        actual_id >= state->module->values.count ||
-        expected_id >= state->module->values.count) {
-      return false;
-    }
-    loom_type_t actual_type = loom_module_value_type(state->module, actual_id);
-    loom_type_t expected_type =
-        loom_module_value_type(state->module, expected_id);
-    if (!loom_type_equal_after_value_remap(state->module, expected_type,
-                                           actual_type, &remap)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-static iree_status_t loom_cfg_simplify_validate_block_arg_replacements(
-    const loom_cfg_simplify_state_t* state, const loom_block_t* block,
-    loom_op_t* predecessor_br, loom_value_slice_t replacements,
-    bool* out_valid) {
-  *out_valid = false;
-  if (replacements.count != block->arg_count) return iree_ok_status();
-  if (block->arg_count == 0) {
-    *out_valid = true;
-    return iree_ok_status();
-  }
-
-  loom_value_id_t* old_args = NULL;
-  IREE_RETURN_IF_ERROR(
-      iree_arena_allocate_array(state->analysis_arena, block->arg_count,
-                                sizeof(*old_args), (void**)&old_args));
-  for (uint16_t i = 0; i < block->arg_count; ++i) {
-    old_args[i] = loom_block_arg_id(block, i);
-  }
-
-  loom_type_value_remap_t remap = {
-      .source_values = old_args,
-      .target_values = replacements.values,
-      .count = block->arg_count,
-  };
-  for (uint16_t i = 0; i < block->arg_count; ++i) {
-    loom_value_id_t old_arg = old_args[i];
-    loom_value_id_t replacement = replacements.values[i];
-    if (old_arg == LOOM_VALUE_ID_INVALID ||
-        replacement == LOOM_VALUE_ID_INVALID ||
-        old_arg >= state->module->values.count ||
-        replacement >= state->module->values.count) {
-      return iree_ok_status();
-    }
-    if (!loom_value_is_available_before_op(state->dominance, replacement,
-                                           predecessor_br) ||
-        !loom_value_type_is_available_before_op(state->dominance, replacement,
-                                                predecessor_br)) {
-      return iree_ok_status();
-    }
-    loom_type_t old_type = loom_module_value_type(state->module, old_arg);
-    loom_type_t replacement_type =
-        loom_module_value_type(state->module, replacement);
-    if (!loom_type_equal_after_value_remap(state->module, old_type,
-                                           replacement_type, &remap)) {
-      return iree_ok_status();
-    }
-  }
-
-  *out_valid = true;
-  return iree_ok_status();
-}
-
 static iree_status_t loom_cfg_simplify_replace_block_args(
     loom_cfg_simplify_state_t* state, loom_block_t* block,
     loom_value_slice_t replacements) {
@@ -1004,9 +913,9 @@ static iree_status_t loom_cfg_simplify_compose_forward_args(
       .values = composed_args,
       .count = forward_args.count,
   };
-  if (!loom_cfg_simplify_branch_args_available_before(state, composed,
-                                                      predecessor_br) ||
-      !loom_cfg_simplify_branch_args_match_dest(state, new_dest, composed)) {
+  if (!loom_cfg_block_arguments_can_replace(state->module, state->dominance,
+                                            new_dest, composed,
+                                            predecessor_br)) {
     return iree_ok_status();
   }
 
@@ -1034,10 +943,9 @@ static iree_status_t loom_cfg_simplify_forward_branch_edge(
   }
   if (old_dest->arg_count != 0) {
     loom_value_slice_t replacements = loom_cfg_br_args(predecessor_br);
-    bool valid_replacements = false;
-    IREE_RETURN_IF_ERROR(loom_cfg_simplify_validate_block_arg_replacements(
-        state, old_dest, predecessor_br, replacements, &valid_replacements));
-    if (!valid_replacements) {
+    if (!loom_cfg_block_arguments_can_replace(state->module, state->dominance,
+                                              old_dest, replacements,
+                                              predecessor_br)) {
       return iree_ok_status();
     }
     IREE_RETURN_IF_ERROR(
@@ -1110,52 +1018,8 @@ static iree_status_t loom_cfg_simplify_forward_trivial_blocks(
 }
 
 //===----------------------------------------------------------------------===//
-// Block fusion
+// Block removal
 //===----------------------------------------------------------------------===//
-
-static bool loom_cfg_simplify_find_fusable_predecessor(
-    const loom_cfg_graph_t* graph, uint16_t block_index,
-    loom_op_t** out_predecessor_br, loom_value_slice_t* out_args) {
-  *out_predecessor_br = NULL;
-  *out_args = (loom_value_slice_t){0};
-  if (block_index == 0 ||
-      !loom_cfg_graph_block_is_reachable(graph, block_index)) {
-    return false;
-  }
-
-  const loom_block_t* block = graph->blocks[block_index].block;
-  loom_cfg_block_index_span_t predecessors =
-      loom_cfg_graph_predecessors(graph, block_index);
-  if (predecessors.count != 1) return false;
-
-  const loom_block_t* predecessor = graph->blocks[predecessors.values[0]].block;
-  if (!predecessor || predecessor == block) return false;
-
-  loom_op_t* terminator = ((loom_block_t*)predecessor)->last_op;
-  if (!terminator || !loom_cfg_br_isa(terminator) ||
-      loom_cfg_br_dest(terminator) != block) {
-    return false;
-  }
-
-  loom_value_slice_t args = loom_cfg_br_args(terminator);
-  if (args.count != block->arg_count) return false;
-  *out_predecessor_br = terminator;
-  *out_args = args;
-  return true;
-}
-
-static iree_status_t loom_cfg_simplify_move_block_ops_before(
-    loom_cfg_simplify_state_t* state, loom_block_t* block,
-    loom_op_t* before_op) {
-  loom_op_t* op = block->first_op;
-  while (op) {
-    loom_op_t* next_op = op->next_op;
-    IREE_RETURN_IF_ERROR(
-        loom_rewriter_move_before(state->rewriter, op, before_op));
-    op = next_op;
-  }
-  return iree_ok_status();
-}
 
 static iree_status_t loom_cfg_simplify_remove_cfg_block(
     loom_cfg_simplify_state_t* state, const loom_cfg_graph_t* graph,
@@ -1171,42 +1035,6 @@ static iree_status_t loom_cfg_simplify_remove_cfg_block(
   IREE_RETURN_IF_ERROR(loom_region_remove_blocks(
       state->module, (loom_region_t*)graph->region, remove_blocks,
       (uint16_t)graph->block_count, state->analysis_arena, &removed_count));
-  return iree_ok_status();
-}
-
-static iree_status_t loom_cfg_simplify_fuse_single_predecessor_blocks(
-    loom_cfg_simplify_state_t* state, const loom_cfg_graph_t* graph,
-    bool* out_changed) {
-  if (graph->malformed) return iree_ok_status();
-  for (uint16_t block_index = 1; block_index < graph->block_count;
-       ++block_index) {
-    loom_block_t* block = (loom_block_t*)graph->blocks[block_index].block;
-    if (!block || !block->first_op) continue;
-
-    loom_op_t* predecessor_br = NULL;
-    loom_value_slice_t replacements = {0};
-    if (!loom_cfg_simplify_find_fusable_predecessor(
-            graph, block_index, &predecessor_br, &replacements)) {
-      continue;
-    }
-
-    bool valid_replacements = false;
-    IREE_RETURN_IF_ERROR(loom_cfg_simplify_validate_block_arg_replacements(
-        state, block, predecessor_br, replacements, &valid_replacements));
-    if (!valid_replacements) continue;
-
-    IREE_RETURN_IF_ERROR(
-        loom_cfg_simplify_replace_block_args(state, block, replacements));
-    IREE_RETURN_IF_ERROR(
-        loom_cfg_simplify_move_block_ops_before(state, block, predecessor_br));
-    IREE_RETURN_IF_ERROR(loom_rewriter_erase(state->rewriter, predecessor_br));
-    IREE_RETURN_IF_ERROR(
-        loom_cfg_simplify_remove_cfg_block(state, graph, block_index));
-    ++state->statistics->blocks_fused;
-    state->rewriter->flags |= LOOM_REWRITER_FLAG_CHANGED;
-    *out_changed = true;
-    return iree_ok_status();
-  }
   return iree_ok_status();
 }
 
@@ -1737,9 +1565,8 @@ static bool loom_cfg_simplify_can_redirect_successor(
     return loom_cfg_br_dest(terminator) == old_dest &&
            args.count == old_dest->arg_count &&
            args.count == new_dest->arg_count &&
-           loom_cfg_simplify_branch_args_available_before(state, args,
-                                                          terminator) &&
-           loom_cfg_simplify_branch_args_match_dest(state, new_dest, args);
+           loom_cfg_block_arguments_can_replace(state->module, state->dominance,
+                                                new_dest, args, terminator);
   }
   if (loom_cfg_cond_br_isa(terminator)) {
     return old_dest->arg_count == 0 && new_dest->arg_count == 0 &&
@@ -2178,9 +2005,15 @@ static iree_status_t loom_cfg_simplify_process_cfg_region(
   IREE_RETURN_IF_ERROR(
       loom_cfg_simplify_forward_trivial_blocks(state, graph, out_changed));
   if (*out_changed) return iree_ok_status();
-  IREE_RETURN_IF_ERROR(loom_cfg_simplify_fuse_single_predecessor_blocks(
-      state, graph, out_changed));
-  if (*out_changed) return iree_ok_status();
+  uint16_t fused_count = 0;
+  IREE_RETURN_IF_ERROR(loom_cfg_fuse_single_predecessor_blocks(
+      state->rewriter, graph, state->dominance, state->analysis_arena,
+      &fused_count));
+  if (fused_count != 0) {
+    state->statistics->blocks_fused += fused_count;
+    *out_changed = true;
+    return iree_ok_status();
+  }
 
   loom_cfg_simplify_block_hash_table_t block_hash_table = {0};
   IREE_RETURN_IF_ERROR(loom_cfg_simplify_block_hash_table_initialize(
@@ -2267,6 +2100,7 @@ iree_status_t loom_cfg_simplify_run(loom_pass_t* pass, loom_module_t* module,
   bool changed = true;
   bool any_changed = false;
   while (iree_status_is_ok(status) && changed) {
+    ++state.statistics->iterations;
     changed = false;
     iree_arena_reset(&analysis_arena);
     loom_condition_query_initialize(module, /*value_domain=*/NULL,

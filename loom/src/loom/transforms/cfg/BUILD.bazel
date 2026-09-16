@@ -45,10 +45,39 @@ loom_cc_library(
 )
 
 loom_cc_library(
+    name = "block_arguments",
+    srcs = ["block_arguments.c"],
+    hdrs = ["block_arguments.h"],
+    deps = [
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/util:dominance",
+    ],
+)
+
+loom_cc_library(
+    name = "block_fusion",
+    srcs = ["block_fusion.c"],
+    hdrs = ["block_fusion.h"],
+    deps = [
+        ":block_arguments",
+        "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/ops/cfg",
+        "//loom/src/loom/rewrite:rewriter",
+        "//loom/src/loom/util:cfg_graph",
+        "//loom/src/loom/util:dominance",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_library(
     name = "cfg_simplify",
     srcs = ["cfg_simplify.c"],
     hdrs = ["cfg_simplify.h"],
     deps = [
+        ":block_arguments",
+        ":block_fusion",
         "//loom/src/loom/analysis:cfg_condition_facts",
         "//loom/src/loom/analysis:condition_facts",
         "//loom/src/loom/ir",
