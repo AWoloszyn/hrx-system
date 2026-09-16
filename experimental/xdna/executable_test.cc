@@ -6,7 +6,6 @@
 
 #include "experimental/xdna/executable.h"
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -27,12 +26,13 @@ using iree::hal::amd::xdna::testing::ByteSequencePtr;
 using iree::hal::amd::xdna::testing::MakeOwnedByteSequence;
 
 struct ExecutableDeleter {
-  void operator()(iree_hal_executable_t* executable) const {
-    iree_hal_executable_release(executable);
+  void operator()(iree_hal_amd_xdna_executable_t* executable) const {
+    iree_hal_amd_xdna_executable_release(executable);
   }
 };
 
-using ExecutablePtr = std::unique_ptr<iree_hal_executable_t, ExecutableDeleter>;
+using ExecutablePtr =
+    std::unique_ptr<iree_hal_amd_xdna_executable_t, ExecutableDeleter>;
 
 static ByteSequencePtr LoadMulI32Image() {
   EXPECT_EQ(iree_hal_amd_xdna_test_mul_i32_size(), 1u);
@@ -44,49 +44,31 @@ static ByteSequencePtr LoadMulI32Image() {
 
 class XdnaExecutableTest : public ::testing::Test {
  protected:
-  void SetUp() override {
-    queue_family_spec_.name = IREE_SV("test");
-    queue_family_spec_.physical_device_affinity = 1;
-    queue_family_spec_.role_flags = IREE_HAL_QUEUE_FAMILY_ROLE_FLAG_DISPATCH;
-    iree_hal_queue_family_initialize(/*ordinal=*/7, &queue_family_spec_,
-                                     &queue_family_);
-  }
-
   ExecutablePtr LoadCanonical() {
     ByteSequencePtr sequence = LoadMulI32Image();
     iree_hal_amd_xdna_aie2p_target_t target;
     IREE_CHECK_OK(iree_hal_amd_xdna_aie2p_npu2_target_initialize(
         IREE_SV("amd.xdna.strix_halo.17f0_11"),
         /*context_column_count=*/1, &target));
-    iree_hal_executable_t* executable = nullptr;
+    iree_hal_amd_xdna_executable_t* executable = nullptr;
     IREE_CHECK_OK(iree_hal_amd_xdna_executable_create(
-        &queue_family_, sequence.get(), &target, iree_allocator_system(),
-        &executable));
+        sequence.get(), &target, iree_allocator_system(), &executable));
     return ExecutablePtr(executable);
   }
-
-  // Executable-only family metadata; this fixture provisions no HAL queues.
-  iree_hal_queue_family_spec_t queue_family_spec_ = {};
-  // HAL queue family borrowed by every executable created by this fixture.
-  iree_hal_queue_family_t queue_family_ = {};
 };
 
 TEST_F(XdnaExecutableTest, LoadsCanonicalImageAndReflection) {
   ExecutablePtr executable = LoadCanonical();
 
-  EXPECT_EQ(iree_hal_executable_queue_family(executable.get()), &queue_family_);
-  EXPECT_TRUE(iree_hal_amd_xdna_executable_isa(executable.get()));
-  EXPECT_EQ(iree_hal_executable_function_count(executable.get()), 1u);
-
   iree_hal_executable_function_t function =
       iree_hal_executable_function_invalid();
-  IREE_ASSERT_OK(iree_hal_executable_lookup_function_by_name(
+  IREE_ASSERT_OK(iree_hal_amd_xdna_executable_lookup_function_by_name(
       executable.get(), IREE_SV("mul_i32"), &function));
   EXPECT_EQ(function.value, 0u);
 
   iree_hal_executable_function_info_t function_info;
-  IREE_ASSERT_OK(iree_hal_executable_function_info(executable.get(), function,
-                                                   &function_info));
+  IREE_ASSERT_OK(iree_hal_amd_xdna_executable_function_info(
+      executable.get(), function, &function_info));
   EXPECT_TRUE(iree_string_view_equal(function_info.name, IREE_SV("mul_i32")));
   EXPECT_EQ(function_info.binding_count, 3u);
   EXPECT_EQ(function_info.parameter_count, 3u);
@@ -94,15 +76,6 @@ TEST_F(XdnaExecutableTest, LoadsCanonicalImageAndReflection) {
   EXPECT_EQ(function_info.workgroup_size[0], 1u);
   EXPECT_EQ(function_info.workgroup_size[1], 1u);
   EXPECT_EQ(function_info.workgroup_size[2], 1u);
-
-  std::array<iree_hal_executable_function_parameter_t, 3> parameters;
-  IREE_ASSERT_OK(iree_hal_executable_function_parameters(
-      executable.get(), function, parameters.size(), parameters.data()));
-  for (iree_host_size_t i = 0; i < parameters.size(); ++i) {
-    EXPECT_EQ(parameters[i].type,
-              IREE_HAL_EXECUTABLE_FUNCTION_PARAMETER_TYPE_BINDING);
-    EXPECT_EQ(parameters[i].offset, i);
-  }
 
   iree_hal_amd_xdna_executable_entry_t entry;
   IREE_ASSERT_OK(iree_hal_amd_xdna_executable_query_entry(executable.get(),
@@ -156,11 +129,11 @@ TEST_F(XdnaExecutableTest, CanonicalImagesRequireTheirExactDeviceProfile) {
       iree_hal_amd_xdna_aie2p_target_t target;
       IREE_ASSERT_OK(iree_hal_amd_xdna_aie2p_npu2_target_initialize(
           target_ids[target_ordinal], 1, &target));
-      auto* executable = reinterpret_cast<iree_hal_executable_t*>(uintptr_t{1});
+      auto* executable =
+          reinterpret_cast<iree_hal_amd_xdna_executable_t*>(uintptr_t{1});
       auto* sentinel = executable;
       Status status(iree_hal_amd_xdna_executable_create(
-          &queue_family_, sequence.get(), &target, iree_allocator_system(),
-          &executable));
+          sequence.get(), &target, iree_allocator_system(), &executable));
       if (image_ordinal != target_ordinal) {
         EXPECT_EQ(status.code(), StatusCode::kFailedPrecondition);
         EXPECT_EQ(executable, sentinel);
@@ -169,7 +142,7 @@ TEST_F(XdnaExecutableTest, CanonicalImagesRequireTheirExactDeviceProfile) {
       IREE_ASSERT_OK(status);
       ExecutablePtr owned_executable(executable);
       iree_hal_executable_function_t function;
-      IREE_ASSERT_OK(iree_hal_executable_lookup_function_by_name(
+      IREE_ASSERT_OK(iree_hal_amd_xdna_executable_lookup_function_by_name(
           executable, IREE_SV("mul_i32"), &function));
       iree_hal_amd_xdna_executable_entry_t entry;
       IREE_ASSERT_OK(iree_hal_amd_xdna_executable_query_entry(
@@ -182,18 +155,51 @@ TEST_F(XdnaExecutableTest, CanonicalImagesRequireTheirExactDeviceProfile) {
   }
 }
 
+TEST_F(XdnaExecutableTest, InvalidFunctionQueriesPreserveOutputs) {
+  ExecutablePtr executable = LoadCanonical();
+  auto function = iree_hal_executable_function_from_index(0);
+  IREE_EXPECT_STATUS_IS(StatusCode::kNotFound,
+                        iree_hal_amd_xdna_executable_lookup_function_by_name(
+                            executable.get(), IREE_SV("missing"), &function));
+  EXPECT_EQ(function.value, 0u);
+
+  for (auto invalid_function : {iree_hal_executable_function_invalid(),
+                                iree_hal_executable_function_from_index(1)}) {
+    iree_hal_executable_function_info_t info = {};
+    info.name = IREE_SV("unchanged");
+    IREE_EXPECT_STATUS_IS(StatusCode::kOutOfRange,
+                          iree_hal_amd_xdna_executable_function_info(
+                              executable.get(), invalid_function, &info));
+    EXPECT_TRUE(iree_string_view_equal(info.name, IREE_SV("unchanged")));
+    iree_hal_amd_xdna_executable_entry_t entry = {};
+    entry.binding_count = UINT32_MAX;
+    IREE_EXPECT_STATUS_IS(StatusCode::kOutOfRange,
+                          iree_hal_amd_xdna_executable_query_entry(
+                              executable.get(), invalid_function, &entry));
+    EXPECT_EQ(entry.binding_count, UINT32_MAX);
+  }
+
+  iree_hal_amd_xdna_elf_binding_record_t binding = {};
+  binding.binding_ordinal = UINT32_MAX;
+  IREE_EXPECT_STATUS_IS(StatusCode::kOutOfRange,
+                        iree_hal_amd_xdna_executable_query_binding(
+                            executable.get(), function, 3, &binding));
+  EXPECT_EQ(binding.binding_ordinal, UINT32_MAX);
+}
+
 TEST_F(XdnaExecutableTest, RejectsMismatchedTargetWithoutPublishing) {
   ByteSequencePtr sequence = LoadMulI32Image();
   iree_hal_amd_xdna_aie2p_target_t target;
   IREE_ASSERT_OK(iree_hal_amd_xdna_aie2p_npu2_target_initialize(
       IREE_SV("amd.xdna.strix_halo.17f0_11"), 1, &target));
   ++target.identity.policy_id;
-  auto* executable = reinterpret_cast<iree_hal_executable_t*>(uintptr_t{1});
+  auto* executable =
+      reinterpret_cast<iree_hal_amd_xdna_executable_t*>(uintptr_t{1});
   auto* sentinel = executable;
-  IREE_EXPECT_STATUS_IS(StatusCode::kFailedPrecondition,
-                        iree_hal_amd_xdna_executable_create(
-                            &queue_family_, sequence.get(), &target,
-                            iree_allocator_system(), &executable));
+  IREE_EXPECT_STATUS_IS(
+      StatusCode::kFailedPrecondition,
+      iree_hal_amd_xdna_executable_create(
+          sequence.get(), &target, iree_allocator_system(), &executable));
   EXPECT_EQ(executable, sentinel);
 }
 
@@ -202,12 +208,13 @@ TEST_F(XdnaExecutableTest, AllocationFailureDoesNotPublish) {
   iree_hal_amd_xdna_aie2p_target_t target;
   IREE_ASSERT_OK(iree_hal_amd_xdna_aie2p_npu2_target_initialize(
       IREE_SV("amd.xdna.strix_halo.17f0_11"), 1, &target));
-  auto* executable = reinterpret_cast<iree_hal_executable_t*>(uintptr_t{1});
+  auto* executable =
+      reinterpret_cast<iree_hal_amd_xdna_executable_t*>(uintptr_t{1});
   auto* sentinel = executable;
-  IREE_EXPECT_STATUS_IS(StatusCode::kInvalidArgument,
-                        iree_hal_amd_xdna_executable_create(
-                            &queue_family_, sequence.get(), &target,
-                            iree_allocator_null(), &executable));
+  IREE_EXPECT_STATUS_IS(
+      StatusCode::kInvalidArgument,
+      iree_hal_amd_xdna_executable_create(sequence.get(), &target,
+                                          iree_allocator_null(), &executable));
   EXPECT_EQ(executable, sentinel);
 }
 

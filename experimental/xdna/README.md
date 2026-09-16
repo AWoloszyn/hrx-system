@@ -6,6 +6,11 @@ native bring-up. The adapters own ELF interpretation and cold relocation;
 libamdf owns native device admission, scoped memory, and range submission.
 See [XDNA native execution](../../libamdf/docs/xdna.md) for that boundary.
 
+The executable adapter is an opaque reference-counted image owner, independent
+of HAL devices and queue families. It reuses HAL reflection value types and
+buffer wrappers; native queue-family selection comes directly from libamdf.
+Prepared commands retain the executable and logical buffers until destruction.
+
 `iree-xdna-run` executes one entry from an intact Loom `.xdna` file through the
 experimental adapters and libamdf. It selects the image target from the
 enumerated endpoint: Strix NPU4 `17f0:10` or Strix Halo NPU5 `17f0:11`.

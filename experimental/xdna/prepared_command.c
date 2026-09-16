@@ -17,7 +17,7 @@ struct iree_hal_amd_xdna_prepared_command_t {
   // Host allocator owning this prepared command.
   iree_allocator_t host_allocator;
   // Retained executable owning immutable source bytes and metadata.
-  iree_hal_executable_t* executable;
+  iree_hal_amd_xdna_executable_t* executable;
   // Immutable initialization and first execution range.
   amdf_xdna_kernel_command_t initialization;
   // Immutable steady-state execution range.
@@ -174,7 +174,8 @@ static iree_status_t iree_hal_amd_xdna_prepared_command_layout(
 }
 
 iree_status_t iree_hal_amd_xdna_prepared_command_query_storage_size(
-    iree_hal_executable_t* executable, iree_hal_executable_function_t function,
+    const iree_hal_amd_xdna_executable_t* executable,
+    iree_hal_executable_function_t function,
     iree_host_size_t instruction_alignment, iree_host_size_t* out_byte_length) {
   iree_hal_amd_xdna_executable_entry_t entry;
   IREE_RETURN_IF_ERROR(
@@ -220,7 +221,8 @@ static void iree_hal_amd_xdna_prepared_command_write_address(uint8_t* target,
 }
 
 iree_status_t iree_hal_amd_xdna_prepared_command_create(
-    iree_hal_executable_t* executable, iree_hal_executable_function_t function,
+    iree_hal_amd_xdna_executable_t* executable,
+    iree_hal_executable_function_t function,
     iree_host_size_t instruction_alignment,
     const amdf_xdna_kernel_command_t* storage_range, iree_byte_span_t storage,
     iree_host_size_t binding_count,
@@ -280,7 +282,7 @@ iree_status_t iree_hal_amd_xdna_prepared_command_create(
       iree_allocator_malloc(host_allocator, total_size, (void**)&command));
   command->host_allocator = host_allocator;
   command->executable = executable;
-  iree_hal_executable_retain(executable);
+  iree_hal_amd_xdna_executable_retain(executable);
   command->initialization = *storage_range;
   command->initialization.byte_length = initialization_length;
   command->execution = *storage_range;
@@ -330,7 +332,7 @@ void iree_hal_amd_xdna_prepared_command_destroy(
        --i) {
     iree_hal_buffer_release(prepared_command->retained_buffers[i - 1]);
   }
-  iree_hal_executable_release(prepared_command->executable);
+  iree_hal_amd_xdna_executable_release(prepared_command->executable);
   iree_allocator_free(prepared_command->host_allocator, prepared_command);
 }
 

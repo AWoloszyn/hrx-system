@@ -108,11 +108,7 @@ class XdnaExecutionTest
       }
     }
     ASSERT_NE(family_ordinal, UINT32_MAX);
-    queue_family_spec_.name = IREE_SV("xdna");
-    queue_family_spec_.physical_device_affinity = 1;
-    queue_family_spec_.role_flags = IREE_HAL_QUEUE_FAMILY_ROLE_FLAG_DISPATCH;
-    iree_hal_queue_family_initialize(family_ordinal, &queue_family_spec_,
-                                     &queue_family_);
+    queue_family_ordinal_ = family_ordinal;
     iree_hal_amd_xdna_aie2p_target_t target;
     IREE_ASSERT_OK(iree_hal_amd_xdna_aie2p_npu2_target_initialize(
         iree_make_cstring_view(info.target_id), 1, &target));
@@ -120,9 +116,8 @@ class XdnaExecutionTest
     auto sequence = iree::hal::amd::xdna::testing::MakeOwnedByteSequence(
         std::vector<uint8_t>(image_bytes, image_bytes + image->size));
     IREE_ASSERT_OK(iree_hal_amd_xdna_executable_create(
-        &queue_family_, sequence.get(), &target, iree_allocator_system(),
-        &executable_));
-    IREE_ASSERT_OK(iree_hal_executable_lookup_function_by_name(
+        sequence.get(), &target, iree_allocator_system(), &executable_));
+    IREE_ASSERT_OK(iree_hal_amd_xdna_executable_lookup_function_by_name(
         executable_, IREE_SV("mul_i32"), &function_));
   }
 
@@ -164,7 +159,7 @@ class XdnaExecutionTest
       api_->external_memory_release(&external_memory_);
     }
     ASSERT_NO_FATAL_FAILURE(DestroyMemory(&export_source_));
-    iree_hal_executable_release(executable_);
+    iree_hal_amd_xdna_executable_release(executable_);
     executable_ = nullptr;
     XdnaDeviceFixture::TearDown();
   }
@@ -286,7 +281,7 @@ class XdnaExecutionTest
     device.structure_size = sizeof(device);
     device.kind = AMDF_MEMORY_SITE_KIND_DEVICE;
     device.value.device.memory = binding.storage.memory;
-    device.value.device.queue_family_ordinal = queue_family_.ordinal;
+    device.value.device.queue_family_ordinal = queue_family_ordinal_;
     amdf_memory_pair_info_t pair = {};
     pair.type = AMDF_STRUCTURE_TYPE_MEMORY_PAIR_INFO;
     pair.structure_size = sizeof(pair);
@@ -491,7 +486,7 @@ class XdnaExecutionTest
     amdf_xdna_kernel_queue_create_info_t queue_create = {};
     queue_create.type = AMDF_STRUCTURE_TYPE_XDNA_KERNEL_QUEUE_CREATE_INFO;
     queue_create.structure_size = sizeof(queue_create);
-    queue_create.queue_family_ordinal = queue_family_.ordinal;
+    queue_create.queue_family_ordinal = queue_family_ordinal_;
     ASSERT_EQ(xdna_api_->kernel_queue_create(execution->context, &queue_create,
                                              &execution->queue),
               AMDF_STATUS_OK);
@@ -500,7 +495,7 @@ class XdnaExecutionTest
     queue_info.structure_size = sizeof(queue_info);
     ASSERT_EQ(api_->kernel_queue_query_info(execution->queue, &queue_info),
               AMDF_STATUS_OK);
-    ASSERT_EQ(queue_info.queue_family_ordinal, queue_family_.ordinal);
+    ASSERT_EQ(queue_info.queue_family_ordinal, queue_family_ordinal_);
     ASSERT_EQ(queue_info.command_type, AMDF_QUEUE_COMMAND_TYPE_XDNA);
     ASSERT_GE(queue_info.maximum_pending_submission_count, 1u);
     ASSERT_GE(queue_info.maximum_command_count, 1u);
@@ -575,12 +570,10 @@ class XdnaExecutionTest
         0);
   }
 
-  // Executable-only family metadata; native queues are managed through libamdf.
-  iree_hal_queue_family_spec_t queue_family_spec_ = {};
-  // HAL queue-family descriptor borrowed by the executable.
-  iree_hal_queue_family_t queue_family_ = {};
+  // Native kernel queue family selected from the libamdf endpoint.
+  uint32_t queue_family_ordinal_ = UINT32_MAX;
   // Case-owned immutable decoded compiler image.
-  iree_hal_executable_t* executable_ = nullptr;
+  iree_hal_amd_xdna_executable_t* executable_ = nullptr;
   // Reflected multiplication entry in executable_.
   iree_hal_executable_function_t function_ =
       iree_hal_executable_function_invalid();
@@ -623,6 +616,10 @@ TEST_P(XdnaExecutionTest, ReusesImmutableInstructionsWithChangingInputs) {
   ASSERT_NO_FATAL_FAILURE(CreateBindings());
   if (IsSkipped()) return;
   ASSERT_NO_FATAL_FAILURE(PrepareExecution(prepared_bindings_, &first_));
+  // Prepared commands own the executable through native completion and
+  // teardown.
+  iree_hal_amd_xdna_executable_release(executable_);
+  executable_ = nullptr;
   for (uint32_t iteration = 0; iteration < 3; ++iteration) {
     SCOPED_TRACE(iteration);
     std::array<BindingValues, 3> expected;

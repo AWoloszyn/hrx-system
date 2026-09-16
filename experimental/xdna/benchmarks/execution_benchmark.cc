@@ -130,11 +130,7 @@ class ExecutionBenchmark {
       }
     }
     Check(family_ordinal != UINT32_MAX, "no native XDNA queue family");
-    queue_family_spec_.name = IREE_SV("xdna");
-    queue_family_spec_.physical_device_affinity = 1;
-    queue_family_spec_.role_flags = IREE_HAL_QUEUE_FAMILY_ROLE_FLAG_DISPATCH;
-    iree_hal_queue_family_initialize(family_ordinal, &queue_family_spec_,
-                                     &queue_family_);
+    queue_family_ordinal_ = family_ordinal;
     iree_hal_amd_xdna_aie2p_target_t target;
     CheckIreeStatus(iree_hal_amd_xdna_aie2p_npu2_target_initialize(
         iree_make_cstring_view(info.target_id), 1, &target));
@@ -147,11 +143,10 @@ class ExecutionBenchmark {
     CheckIreeStatus(iree_byte_sequence_create_from_span_move(
         &image_bytes, iree_allocator_system(), &sequence));
     CheckIreeStatus(iree_hal_amd_xdna_executable_create(
-        &queue_family_, sequence, &target, iree_allocator_system(),
-        &executable_));
+        sequence, &target, iree_allocator_system(), &executable_));
     iree_byte_sequence_release(sequence);
     iree_hal_executable_function_t function;
-    CheckIreeStatus(iree_hal_executable_lookup_function_by_name(
+    CheckIreeStatus(iree_hal_amd_xdna_executable_lookup_function_by_name(
         executable_, IREE_SV("mul_i32"), &function));
     CreateBindings(instance);
     PrepareExecution(function, info.instruction.address_alignment);
@@ -205,7 +200,7 @@ class ExecutionBenchmark {
       iree_hal_buffer_release(binding.buffer);
       DestroyMemory(binding.storage);
     }
-    iree_hal_executable_release(executable_);
+    iree_hal_amd_xdna_executable_release(executable_);
   }
 
  private:
@@ -408,7 +403,7 @@ class ExecutionBenchmark {
     amdf_xdna_kernel_queue_create_info_t queue_create = {};
     queue_create.type = AMDF_STRUCTURE_TYPE_XDNA_KERNEL_QUEUE_CREATE_INFO;
     queue_create.structure_size = sizeof(queue_create);
-    queue_create.queue_family_ordinal = queue_family_.ordinal;
+    queue_create.queue_family_ordinal = queue_family_ordinal_;
     CheckStatus(
         xdna_api_->kernel_queue_create(context_, &queue_create, &queue_),
         "queue_create");
@@ -505,12 +500,10 @@ class ExecutionBenchmark {
   amdf_device_t* device_ = nullptr;
   // Capability skip reason, null after complete native initialization.
   const char* skip_reason_ = "no XDNA endpoint present";
-  // Executable-only family metadata; native queues are managed through libamdf.
-  iree_hal_queue_family_spec_t queue_family_spec_ = {};
-  // HAL queue-family descriptor borrowed by the executable.
-  iree_hal_queue_family_t queue_family_ = {};
+  // Native kernel queue family selected from the libamdf endpoint.
+  uint32_t queue_family_ordinal_ = UINT32_MAX;
   // Immutable parsed image retaining its owned input bytes.
-  iree_hal_executable_t* executable_ = nullptr;
+  iree_hal_amd_xdna_executable_t* executable_ = nullptr;
   // Native context outliving its private instruction backing and queue.
   amdf_xdna_context_t* context_ = nullptr;
   // One resident instruction allocation and explicit host view.
