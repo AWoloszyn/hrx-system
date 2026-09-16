@@ -83,6 +83,10 @@ struct loom_target_callgraph_context_t {
   // Stable compiler-owned target resolution, or empty for an unbound root.
   loom_resolved_target_t resolved_target;
 
+  // Root fact object before execution choices, used to share root selection.
+  // Derived contexts do not use this key.
+  const loom_target_facts_t* source_facts;
+
   // Compilation-local identity retained by every version in this context.
   loom_target_context_ordinal_t target_context_ordinal;
 
@@ -341,7 +345,7 @@ static loom_target_callgraph_context_t* loom_target_callgraph_find_root_context(
   for (loom_target_callgraph_context_t* context = state->root_contexts;
        context != NULL; context = context->next_root) {
     if (context->resolved_target.provider == resolved_target.provider &&
-        context->resolved_target.facts == resolved_target.facts &&
+        context->source_facts == resolved_target.facts &&
         context->applied_requirement == requirement) {
       return context;
     }
@@ -364,10 +368,14 @@ static iree_status_t loom_target_callgraph_get_root_context(
                                            (void**)&context));
   *context = (loom_target_callgraph_context_t){
       .resolved_target = resolved_target,
+      .source_facts = resolved_target.facts,
       .target_context_ordinal = target_context_ordinal,
       .applied_requirement = requirement,
       .next_root = state->root_contexts,
   };
+  IREE_RETURN_IF_ERROR(loom_target_facts_builder_select_execution(
+      resolved_target.facts, state->version_owner->arena,
+      &context->resolved_target.facts));
   state->root_contexts = context;
   *out_context = context;
   return iree_ok_status();

@@ -11,6 +11,7 @@
 #include "iree/testing/status_matchers.h"
 #include "loom/target/arch/amdgpu/artifact_key.h"
 #include "loom/target/arch/amdgpu/records/target_records.h"
+#include "loom/target/facts_builder.h"
 
 namespace loom {
 namespace {
@@ -77,6 +78,7 @@ TEST(AmdgpuTargetProfileTest, ProjectsCompilerOwnedTypedFacts) {
   EXPECT_EQ(facts->base.storage.snapshot.codegen_format,
             profile.base.target_bundle->snapshot->codegen_format);
   EXPECT_FALSE(facts->subgroup_size_explicit);
+  EXPECT_EQ(facts->base.storage.snapshot.subgroup_size, 0u);
   EXPECT_FALSE(facts->contract_set_key_explicit);
 
   // A structured profile can override the preset without changing processor
@@ -182,6 +184,24 @@ TEST(AmdgpuTargetProfileTest, PreservesExplicitPresetSubgroupSize) {
       explicit_facts, wave64_requirement));
   EXPECT_TRUE(loom_target_facts_satisfy_specialization_requirement(
       explicit_facts, implicit_facts));
+
+  // Selecting a root commits the preference without modifying the reusable
+  // profile. That choice cannot later be replaced by a callee requirement.
+  const loom_target_facts_t* selected_facts = nullptr;
+  IREE_ASSERT_OK(loom_target_facts_builder_select_execution(
+      implicit_facts, &arena, &selected_facts));
+  EXPECT_EQ(selected_facts->storage.snapshot.subgroup_size, 32u);
+  EXPECT_EQ(implicit_facts->storage.snapshot.subgroup_size, 0u);
+  EXPECT_TRUE(loom_target_facts_are_equivalent(selected_facts, explicit_facts));
+  EXPECT_FALSE(loom_target_facts_satisfy_specialization_requirement(
+      selected_facts, wave64_requirement));
+  const loom_target_facts_t* reselected_facts = nullptr;
+  IREE_ASSERT_OK(loom_target_facts_builder_select_execution(
+      selected_facts, &arena, &reselected_facts));
+  EXPECT_EQ(reselected_facts, selected_facts);
+  IREE_ASSERT_OK(loom_target_facts_builder_select_execution(
+      wave64_requirement, &arena, &reselected_facts));
+  EXPECT_EQ(reselected_facts, wave64_requirement);
 
   iree_arena_deinitialize(&arena);
   iree_arena_block_pool_deinitialize(&block_pool);

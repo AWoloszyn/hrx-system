@@ -21,6 +21,7 @@ extern "C" {
 #endif
 
 typedef struct loom_target_facts_t loom_target_facts_t;
+typedef struct iree_arena_allocator_t iree_arena_allocator_t;
 
 // Target-neutral fields whose explicit presence can affect specialization or
 // must survive projection into durable IR.
@@ -91,6 +92,15 @@ typedef bool (*loom_target_fact_satisfies_specialization_requirement_fn_t)(
 // Rebinds family-owned views after the common fact storage changes.
 typedef void (*loom_target_fact_rebind_fn_t)(loom_target_facts_t* facts);
 
+// Commits family execution choices when binding a concrete compilation root.
+// Existing guarantees and explicit constraints are preserved. Returns |facts|
+// when nothing needs selecting, otherwise an immutable clone owned by |arena|.
+// Selected choices become constraints so callees and standalone materialization
+// preserve the root's actual execution mode. Only allocation may fail.
+typedef iree_status_t (*loom_target_fact_select_execution_fn_t)(
+    const loom_target_facts_t* facts, iree_arena_allocator_t* arena,
+    const loom_target_facts_t** out_facts);
+
 // Returns a concise identity name derived from structured target facts.
 //
 // This is presentation-only. Target compatibility, specialization, and
@@ -119,6 +129,10 @@ struct loom_target_fact_type_t {
 
   // Optional presentation projection for diagnostics and reports.
   loom_target_fact_identity_name_fn_t identity_name;
+
+  // Optional root-only execution choice policy. Fact projection and ordinary
+  // cloning never select a mode for reusable source.
+  loom_target_fact_select_execution_fn_t select_execution;
 };
 
 // Typed target-neutral facts projected from available target information.
@@ -133,7 +147,8 @@ struct loom_target_facts_t {
   // Typed selector value that chose the generated base row.
   uint8_t selector;
 
-  // Target-neutral semantic inputs explicitly supplied by IR or a profile.
+  // Target-neutral constraints supplied by IR, a profile, or execution choices
+  // committed when binding a concrete root. Hardware guarantees need no bit.
   loom_target_fact_field_set_t explicit_fields;
 
   // Owned common target projection after explicit inputs are applied.
@@ -160,7 +175,8 @@ static inline iree_string_view_t loom_target_facts_identity_name(
              : facts->storage.bundle.name;
 }
 
-// Returns whether |field| was supplied as an explicit semantic input.
+// Returns whether |field| is constrained by an input or a committed root
+// choice.
 static inline bool loom_target_facts_field_is_explicit(
     const loom_target_facts_t* facts, loom_target_fact_field_t field) {
   return loom_target_fact_field_set_contains(facts->explicit_fields, field);

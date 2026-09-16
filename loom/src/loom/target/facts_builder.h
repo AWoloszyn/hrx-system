@@ -28,6 +28,14 @@ iree_status_t loom_target_facts_builder_clone(const loom_target_facts_t* source,
                                               iree_arena_allocator_t* arena,
                                               loom_target_facts_t** out_facts);
 
+// Selects execution modes for a concrete root after applying its requirements.
+// Returns |source| unless its family needs to commit an unchosen mode. New
+// facts belong to |arena|; |source| remains immutable and independently
+// reusable.
+iree_status_t loom_target_facts_builder_select_execution(
+    const loom_target_facts_t* source, iree_arena_allocator_t* arena,
+    const loom_target_facts_t** out_facts);
+
 // Applies every explicit common field in |requirement| to |effective| and
 // unions the explicit field sets.
 //

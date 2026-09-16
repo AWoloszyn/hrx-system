@@ -14,6 +14,7 @@
 #include "loom/ops/func_symbol_facts.h"
 #include "loom/ops/kernel/ops.h"
 #include "loom/ops/target/facts.h"
+#include "loom/target/facts_builder.h"
 #include "loom/target/function_contract.h"
 
 static iree_status_t loom_low_source_selection_lookup_func_facts(
@@ -126,6 +127,7 @@ typedef uint8_t loom_low_source_selection_filter_t;
 #define LOOM_LOW_SOURCE_SELECTION_FILTER_FUNCTION ((uint8_t)1u << 0)
 #define LOOM_LOW_SOURCE_SELECTION_FILTER_IMPORT_DECL ((uint8_t)1u << 1)
 #define LOOM_LOW_SOURCE_SELECTION_FILTER_SOURCE_OP ((uint8_t)1u << 2)
+#define LOOM_LOW_SOURCE_SELECTION_FILTER_EXECUTION ((uint8_t)1u << 3)
 
 static iree_status_t loom_low_source_selection_try_symbol(
     const loom_module_t* module,
@@ -189,6 +191,10 @@ static iree_status_t loom_low_source_selection_try_symbol(
         &contract_valid, &target_facts));
     if (!contract_valid) {
       return iree_ok_status();
+    }
+    if (iree_any_bit_set(filter, LOOM_LOW_SOURCE_SELECTION_FILTER_EXECUTION)) {
+      IREE_RETURN_IF_ERROR(loom_target_facts_builder_select_execution(
+          target_facts, arena, &target_facts));
     }
   }
   const loom_target_bundle_t* target_bundle =
@@ -272,7 +278,8 @@ iree_status_t loom_low_select_source_symbols(
       module, options,
       LOOM_LOW_SOURCE_SELECTION_FILTER_FUNCTION |
           LOOM_LOW_SOURCE_SELECTION_FILTER_IMPORT_DECL |
-          LOOM_LOW_SOURCE_SELECTION_FILTER_SOURCE_OP,
+          LOOM_LOW_SOURCE_SELECTION_FILTER_SOURCE_OP |
+          LOOM_LOW_SOURCE_SELECTION_FILTER_EXECUTION,
       arena, out_selection_list);
 }
 

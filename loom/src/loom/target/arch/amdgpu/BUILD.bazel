@@ -196,6 +196,7 @@ loom_cc_library(
         ":target_info_defs",
         "//loom/src/loom/codegen/low:target_binding",
         "//loom/src/loom/target:facts",
+        "//loom/src/loom/target:facts_builder",
         "//runtime/src/iree/base",
     ],
 )
@@ -293,6 +294,7 @@ loom_cc_test(
         ":artifact_key",
         ":profile",
         ":target_info",
+        "//loom/src/loom/target:facts_builder",
         "//loom/src/loom/target/arch/amdgpu/records:target_records",
         "//runtime/src/iree/base/internal:arena",
         "//runtime/src/iree/testing:gtest",
@@ -495,6 +497,7 @@ loom_cc_test(
         "//loom/src/loom/pass:registry",
         "//loom/src/loom/pass:tooling",
         "//loom/src/loom/pass/testing:registry_verify",
+        "//loom/src/loom/target:facts_builder",
         "//loom/src/loom/target:provider",
         "//loom/src/loom/target/arch/amdgpu:facts",
         "//loom/src/loom/target/arch/amdgpu:target_info",

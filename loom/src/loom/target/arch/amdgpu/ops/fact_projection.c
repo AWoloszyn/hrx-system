@@ -23,12 +23,7 @@ static void loom_amdgpu_target_facts_project(
           : loom_attr_as_signed_enum_set(features_attr);
   loom_amdgpu_target_identity_initialize_with_features(
       target, features.words, features.word_count, &facts->identity);
-  loom_amdgpu_target_properties_resolve(
-      &facts->identity, &facts->base.storage.bundle, &facts->properties);
-  facts->subgroup_size_explicit = loom_target_facts_field_is_explicit(
-      &facts->base, LOOM_TARGET_FACT_FIELD_SUBGROUP_SIZE);
-  facts->contract_set_key_explicit = loom_target_facts_field_is_explicit(
-      &facts->base, LOOM_TARGET_FACT_FIELD_CONTRACT_SET_KEY);
+  loom_amdgpu_target_facts_initialize(facts);
 }
 
 const loom_target_fact_projector_t loom_amdgpu_target_fact_projector = {

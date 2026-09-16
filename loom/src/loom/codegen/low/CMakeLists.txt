@@ -167,6 +167,7 @@ loom_cc_library(
     loom::ops::low
     loom::ops::target
     loom::target::facts
+    loom::target::facts_builder
     loom::target::function_contract
     loom::target::profile
     loom::target::registers

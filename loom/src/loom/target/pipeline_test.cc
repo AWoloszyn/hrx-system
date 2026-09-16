@@ -248,9 +248,11 @@ TEST_F(TargetPipelineTest, DiagnosticArtifactsPreserveRawSourceBoundary) {
 
   const PipelineRunCounts counts = CountPipelineRuns(module.get(), pipeline_op);
   EXPECT_EQ(counts.final_template_selection, 0);
-  EXPECT_EQ(counts.target_callgraph_specialization, 0);
+  EXPECT_EQ(counts.target_callgraph_specialization, 1);
   EXPECT_EQ(counts.source_to_low, 1);
   EXPECT_EQ(counts.symbol_dce, 0);
+  EXPECT_LT(counts.target_callgraph_specialization_ordinal,
+            counts.source_to_low_ordinal);
 }
 
 TEST_F(TargetPipelineTest, OperandFormDiagnosticsBuildsSourceToLowOption) {

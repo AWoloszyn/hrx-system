@@ -354,6 +354,12 @@ func.def public target(@requirement) @entry() {
 
 TEST_F(TargetSpecializationTest, SharesProfileProjectionAndTargetlessContext) {
   ModulePtr module = Parse(R"(
+test.target<low_core> @requirement {index_bitwidth = 64}
+
+func.def public target(@requirement) @constrained() {
+  func.return
+}
+
 func.def public @left() {
   func.return
 }
@@ -367,6 +373,10 @@ func.def public @right() {
       MakeTestProfile(LOOM_TEST_TARGET_KIND_LOW_CORE);
   exact_profile.projection_count = &projection_count;
   const loom_target_specialization_request_t requests[] = {
+      {
+          /*.function_name=*/IREE_SV("constrained"),
+          /*.target_profile=*/&exact_profile.base,
+      },
       {
           /*.function_name=*/IREE_SV("left"),
           /*.target_profile=*/&exact_profile.base,
@@ -382,8 +392,12 @@ func.def public @right() {
   const loom_target_specialization_result_t result =
       Specialize(module.get(), requests, IREE_ARRAYSIZE(requests));
   ASSERT_EQ(result.error_count, 0u);
-  ASSERT_EQ(result.function_versions.list.count, 2u);
+  ASSERT_EQ(result.function_versions.list.count, 3u);
   EXPECT_EQ(projection_count, 1u);
+  const loom_target_function_version_t* constrained_version =
+      loom_target_function_version_list_find(
+          &result.function_versions.list,
+          Function(module.get(), IREE_SV("constrained")));
   const loom_target_function_version_t* left_version =
       loom_target_function_version_list_find(&result.function_versions.list,
                                              left);
@@ -392,6 +406,15 @@ func.def public @right() {
                                              right);
   ASSERT_NE(left_version, nullptr);
   ASSERT_NE(right_version, nullptr);
+  ASSERT_NE(constrained_version, nullptr);
+  // The first request owns profile projection, not the targetless context.
+  // Its authored requirements cannot leak into later uses of that profile.
+  EXPECT_TRUE(loom_target_facts_field_is_explicit(
+      constrained_version->resolved_target.facts,
+      LOOM_TARGET_FACT_FIELD_INDEX_BITWIDTH));
+  EXPECT_FALSE(loom_target_facts_field_is_explicit(
+      left_version->resolved_target.facts,
+      LOOM_TARGET_FACT_FIELD_INDEX_BITWIDTH));
   EXPECT_EQ(left_version->resolved_target.facts,
             right_version->resolved_target.facts);
   EXPECT_EQ(left_version->target_context_ordinal,

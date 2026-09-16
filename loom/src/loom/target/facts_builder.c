@@ -100,6 +100,15 @@ static void loom_target_facts_builder_apply_field(
   }
 }
 
+iree_status_t loom_target_facts_builder_select_execution(
+    const loom_target_facts_t* source, iree_arena_allocator_t* arena,
+    const loom_target_facts_t** out_facts) {
+  *out_facts = source;
+  return source->fact_type->select_execution != NULL
+             ? source->fact_type->select_execution(source, arena, out_facts)
+             : iree_ok_status();
+}
+
 void loom_target_facts_builder_apply_requirement(
     const loom_target_facts_t* requirement, loom_target_facts_t* effective) {
   IREE_ASSERT_ARGUMENT(requirement);

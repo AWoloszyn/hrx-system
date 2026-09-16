@@ -120,6 +120,9 @@ typedef struct loom_low_source_selection_list_t {
 
 // Selects all source function and kernel definitions plus imported function
 // declarations compatible with the injected target-low registries.
+// Standalone lowering binds authored targets for execution; existing function
+// versions retain their selected modes. The function-only selectors below are
+// also used by legalization and preserve partial facts instead.
 //
 // The returned selection array is allocated from |arena| and remains valid for
 // the arena lifetime. A module with no compatible symbols succeeds with an

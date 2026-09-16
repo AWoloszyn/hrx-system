@@ -1,0 +1,175 @@
+// RUN: pass canonicalize
+
+// Source projection keeps a configurable wave size unknown, even for an exact
+// processor. Hardware with only one legal width supplies a guarantee.
+amdgpu.target<gfx1151> @configurable
+
+amdgpu.target<gfx942> @fixed
+
+func.def public target(@configurable) @unbound() -> (index) {
+  %width = target.subgroup.size : index
+  func.return %width : index
+}
+
+func.def public target(@fixed) @guaranteed() -> (index) {
+  %width = target.subgroup.size : index
+  func.return %width : index
+}
+
+// ----
+amdgpu.target<gfx1151> @configurable
+
+amdgpu.target<gfx942> @fixed
+
+func.def public target(@configurable) @unbound() -> (index) {
+  %width = target.subgroup.size : index
+  func.return %width : index
+}
+
+func.def public target(@fixed) @guaranteed() -> (index) {
+  %width = index.constant 64 : index
+  func.return %width : index
+}
+
+// ====
+// RUN: pass canonicalize,specialize-target-callgraph,canonicalize
+
+// Only the concrete root chooses a preferred mode. Its generic helper uses
+// that same choice after target-independent cleanup has already run.
+amdgpu.target<gfx11-generic> @family
+
+amdgpu.target<gfx1151> @device
+
+func.def noinline target(@family) @width() -> (index) {
+  %width = target.subgroup.size : index
+  func.return %width : index
+}
+
+func.def public target(@device) @root() -> (index) {
+  %width = func.call @width() : () -> (index)
+  func.return %width : index
+}
+
+// ----
+amdgpu.target<gfx11-generic> @family
+
+amdgpu.target<gfx1151> @device
+
+func.def noinline target(@family) @width() -> (index) {
+  %width = index.constant 32 : index
+  func.return %width : index
+}
+
+func.def public target(@device) @root() -> (index) {
+  %width = func.call pure @width() : () -> (index)
+  func.return %width : index
+}
+
+// ====
+// RUN: pass canonicalize,specialize-target-callgraph,inline-callables,canonicalize
+
+// Explicit root choices survive earlier cleanup of the generic helpers.
+// Inline and retained calls use the same execution width.
+amdgpu.target<gfx11-generic> @family
+
+amdgpu.target<gfx1151> @device {subgroup_size = 64}
+
+func.def inline target(@family) @inline_width() -> (index) {
+  %width = target.subgroup.size : index
+  func.return %width : index
+}
+
+func.def noinline target(@family) @retained_width() -> (index) {
+  %width = target.subgroup.size : index
+  func.return %width : index
+}
+
+func.def public target(@device) @root() -> (index, index) {
+  %inlined = func.call @inline_width() : () -> (index)
+  %retained = func.call @retained_width() : () -> (index)
+  func.return %inlined, %retained : index, index
+}
+
+// ----
+amdgpu.target<gfx11-generic> @family
+
+amdgpu.target<gfx1151> @device {subgroup_size = 64}
+
+func.def noinline target(@family) @retained_width() -> (index) {
+  %width = index.constant 64 : index
+  func.return %width : index
+}
+
+func.def public target(@device) @root() -> (index, index) {
+  %width = index.constant 64 : index
+  %retained = func.call pure @retained_width() : () -> (index)
+  func.return %width, %retained : index, index
+}
+
+// ====
+// RUN: pass canonicalize,specialize-target-callgraph,specialize-target-callgraph,canonicalize
+
+// A profile-free public caller preserves the original helper; two bound roots
+// specialize it independently. Repeated binding does not choose again.
+amdgpu.target<gfx11-generic> @family
+
+amdgpu.target<gfx1151> @preferred
+
+amdgpu.target<gfx1151> @wide_device {subgroup_size = 64}
+
+func.def noinline target(@family) @width() -> (index) {
+  %width = target.subgroup.size : index
+  func.return %width : index
+}
+
+func.def public @unbound() -> (index) {
+  %width = func.call @width() : () -> (index)
+  func.return %width : index
+}
+
+func.def public target(@preferred) @narrow() -> (index) {
+  %width = func.call @width() : () -> (index)
+  func.return %width : index
+}
+
+func.def public target(@wide_device) @wide() -> (index) {
+  %width = func.call @width() : () -> (index)
+  func.return %width : index
+}
+
+// ----
+amdgpu.target<gfx11-generic> @family
+
+amdgpu.target<gfx1151> @preferred
+
+amdgpu.target<gfx1151> @wide_device {subgroup_size = 64}
+
+func.def noinline target(@family) @width() -> (index) {
+  %width = target.subgroup.size : index
+  func.return %width : index
+}
+
+func.def noinline target(@family) @width_spec0() -> (index) {
+  %width = index.constant 32 : index
+  func.return %width : index
+}
+
+func.def noinline target(@family) @width_spec1() -> (index) {
+  %width = index.constant 64 : index
+  func.return %width : index
+}
+
+func.def public @unbound() -> (index) {
+  %width = func.call pure @width() : () -> (index)
+  func.return %width : index
+}
+
+func.def public target(@preferred) @narrow() -> (index) {
+  %width = func.call pure @width_spec0() : () -> (index)
+  func.return %width : index
+}
+
+func.def public target(@wide_device) @wide() -> (index) {
+  %width = func.call pure @width_spec1() : () -> (index)
+  func.return %width : index
+}

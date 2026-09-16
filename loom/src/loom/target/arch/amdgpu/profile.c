@@ -30,6 +30,7 @@ static iree_status_t loom_amdgpu_target_profile_project_facts(
   loom_amdgpu_target_facts_t* facts = (loom_amdgpu_target_facts_t*)base_facts;
   facts->base.selector = (uint8_t)profile->identity.target->target_kind;
   facts->identity = profile->identity;
+  loom_amdgpu_target_facts_initialize(facts);
   return iree_ok_status();
 }
 

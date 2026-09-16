@@ -140,6 +140,7 @@ loom_cc_library(
         "//loom/src/loom/ops/func",
         "//loom/src/loom/ops/kernel",
         "//loom/src/loom/ops/target",
+        "//loom/src/loom/target:facts_builder",
         "//loom/src/loom/target:function_contract",
         "//loom/src/loom/target:function_version",
         "//loom/src/loom/target:types",
