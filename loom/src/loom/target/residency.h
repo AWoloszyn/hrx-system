@@ -227,7 +227,8 @@ enum loom_target_residency_summary_flag_bits_e {
   LOOM_TARGET_RESIDENCY_SUMMARY_FLAG_VALID = 1u << 0,
   // Reducing limiting resources can recover |next_better_tier|.
   LOOM_TARGET_RESIDENCY_SUMMARY_FLAG_HAS_NEXT_BETTER_TIER = 1u << 1,
-  // Exactly one resource limits current residency.
+  // Exactly one reducible resource footprint limits current residency. A fixed
+  // launch ceiling can be the sole limiter without providing these fields.
   LOOM_TARGET_RESIDENCY_SUMMARY_FLAG_HAS_UNIQUE_LIMITING_RESOURCE = 1u << 2,
   // The unique limiting resource has a modeled next-worse cliff.
   LOOM_TARGET_RESIDENCY_SUMMARY_FLAG_HAS_LIMITING_RESOURCE_NEXT_WORSE_TIER =
@@ -247,9 +248,11 @@ typedef struct loom_target_residency_summary_t {
   uint32_t best_tier;
   // Current residency tier selected by exact final resources.
   uint32_t tier;
-  // First higher whole-model tier reachable by reducing limiting resources.
+  // First higher whole-model tier reachable by reducing limiting resources
+  // without changing the launch shape, when HAS_NEXT_BETTER_TIER is set.
   uint32_t next_better_tier;
-  // Number of resources jointly attaining |tier|.
+  // Number of resources, including fixed launch ceilings, jointly attaining
+  // |tier| below |best_tier|.
   uint32_t limiting_resource_count;
   // Stable name of the unique limiting resource.
   iree_string_view_t limiting_resource;

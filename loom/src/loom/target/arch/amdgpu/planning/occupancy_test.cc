@@ -119,16 +119,199 @@ TEST_F(AmdgpuOccupancyTargetResourcesTest,
 }
 
 TEST_F(AmdgpuOccupancyTargetResourcesTest,
-       OmitsTransitionBlockedByLaunchResources) {
+       ReportsTransitionLimitedByLocalMemory) {
   const loom_amdgpu_occupancy_target_resources_t resources =
       Build(IREE_SV("gfx11-generic"), /*wave_size=*/64,
-            /*scalar_register_count=*/32, /*vector_register_count=*/160,
-            /*flat_workgroup_size=*/512, /*local_memory_bytes=*/65537);
+            /*scalar_register_count=*/32, /*vector_register_count=*/81,
+            /*flat_workgroup_size=*/512, /*local_memory_bytes=*/65536);
 
-  EXPECT_FALSE(
-      loom_target_residency_summary_is_valid(&resources.residency_summary));
+  const loom_target_residency_summary_t& summary = resources.residency_summary;
+  EXPECT_TRUE(loom_target_residency_summary_is_valid(&summary));
   EXPECT_TRUE(iree_string_view_equal(resources.limiting_resource,
                                      IREE_SV("amdgpu.lds")));
+  EXPECT_EQ(summary.tier, 4u);
+  // LDS permits six waves after the reduction, but registers cap the result
+  // at five. The requirement is still the same first LDS allocation cliff.
+  EXPECT_EQ(summary.next_better_tier, 5u);
+  EXPECT_EQ(summary.limiting_resource_count, 1u);
+  EXPECT_EQ(summary.limiting_resource_reduction_units_to_next_better_tier,
+            22016u);
+}
+
+TEST_F(AmdgpuOccupancyTargetResourcesTest, ReportsCapturedSwiGluLdsTransition) {
+  const auto resources = Build(IREE_SV("gfx1151"), /*wave_size=*/64,
+                               /*scalar_register_count=*/36,
+                               /*vector_register_count=*/136,
+                               /*flat_workgroup_size=*/128,
+                               /*local_memory_bytes=*/14848);
+  const auto& summary = resources.residency_summary;
+  EXPECT_TRUE(loom_target_residency_summary_is_valid(&summary));
+  EXPECT_EQ(summary.tier, 4u);
+  EXPECT_EQ(summary.next_better_tier, 5u);
+  EXPECT_EQ(summary.limiting_resource_count, 1u);
+  EXPECT_TRUE(
+      iree_string_view_equal(summary.limiting_resource, IREE_SV("amdgpu.lds")));
+  EXPECT_EQ(summary.limiting_resource_units, 14848u);
+  EXPECT_EQ(summary.limiting_resource_reduction_units_to_next_better_tier,
+            512u);
+  EXPECT_EQ(summary.limiting_resource_next_worse_cliff_units, 18433u);
+  EXPECT_EQ(summary.limiting_resource_additional_units_to_next_worse_tier,
+            3585u);
+  EXPECT_EQ(summary.limiting_resource_next_worse_tier, 3u);
+
+  EXPECT_EQ(Build(IREE_SV("gfx1151"), 64, 36, 136, 128, 14336)
+                .resident_waves_per_simd,
+            5u);
+  EXPECT_EQ(Build(IREE_SV("gfx1151"), 64, 36, 136, 128, 14337)
+                .resident_waves_per_simd,
+            4u);
+  EXPECT_EQ(Build(IREE_SV("gfx1151"), 64, 36, 136, 128, 18432)
+                .resident_waves_per_simd,
+            4u);
+  EXPECT_EQ(Build(IREE_SV("gfx1151"), 64, 36, 136, 128, 18433)
+                .resident_waves_per_simd,
+            3u);
+}
+
+TEST_F(AmdgpuOccupancyTargetResourcesTest, RequiresBothTiedResourcesToImprove) {
+  const auto resources = Build(IREE_SV("gfx1151"), /*wave_size=*/64,
+                               /*scalar_register_count=*/36,
+                               /*vector_register_count=*/160,
+                               /*flat_workgroup_size=*/128,
+                               /*local_memory_bytes=*/14848);
+  const auto& summary = resources.residency_summary;
+  EXPECT_TRUE(loom_target_residency_summary_is_valid(&summary));
+  EXPECT_EQ(summary.tier, 4u);
+  EXPECT_EQ(summary.next_better_tier, 5u);
+  EXPECT_EQ(summary.limiting_resource_count, 2u);
+  EXPECT_FALSE(iree_any_bit_set(
+      summary.flags,
+      LOOM_TARGET_RESIDENCY_SUMMARY_FLAG_HAS_UNIQUE_LIMITING_RESOURCE));
+  EXPECT_EQ(Build(IREE_SV("gfx1151"), 64, 36, 144, 128, 14848)
+                .resident_waves_per_simd,
+            4u);
+  EXPECT_EQ(Build(IREE_SV("gfx1151"), 64, 36, 160, 128, 14336)
+                .resident_waves_per_simd,
+            4u);
+  EXPECT_EQ(Build(IREE_SV("gfx1151"), 64, 36, 144, 128, 14336)
+                .resident_waves_per_simd,
+            5u);
+}
+
+TEST_F(AmdgpuOccupancyTargetResourcesTest, SkipsUnreachableLdsTiers) {
+  const auto resources = Build(IREE_SV("gfx1100"), /*wave_size=*/32,
+                               /*scalar_register_count=*/4,
+                               /*vector_register_count=*/1,
+                               /*flat_workgroup_size=*/32,
+                               /*local_memory_bytes=*/2049);
+  const auto& summary = resources.residency_summary;
+  EXPECT_TRUE(loom_target_residency_summary_is_valid(&summary));
+  EXPECT_EQ(summary.tier, 13u);
+  EXPECT_EQ(summary.next_better_tier, 16u);
+  EXPECT_EQ(summary.limiting_resource_reduction_units_to_next_better_tier, 1u);
+  EXPECT_EQ(
+      Build(IREE_SV("gfx1100"), 32, 4, 1, 32, 2048).resident_waves_per_simd,
+      16u);
+}
+
+TEST_F(AmdgpuOccupancyTargetResourcesTest,
+       ClipsRegisterTransitionToLdsCeiling) {
+  const auto resources = Build(IREE_SV("gfx1151"), /*wave_size=*/64,
+                               /*scalar_register_count=*/4,
+                               /*vector_register_count=*/49,
+                               /*flat_workgroup_size=*/128,
+                               /*local_memory_bytes=*/5120);
+  const auto& summary = resources.residency_summary;
+  EXPECT_TRUE(loom_target_residency_summary_is_valid(&summary));
+  EXPECT_EQ(summary.tier, 12u);
+  EXPECT_EQ(summary.next_better_tier, 13u);
+  EXPECT_EQ(summary.limiting_resource_count, 1u);
+  EXPECT_TRUE(iree_string_view_equal(summary.limiting_resource,
+                                     IREE_SV("amdgpu.vgpr")));
+  EXPECT_EQ(summary.limiting_resource_reduction_units_to_next_better_tier, 1u);
+  EXPECT_EQ(
+      Build(IREE_SV("gfx1151"), 64, 4, 48, 128, 5120).resident_waves_per_simd,
+      13u);
+}
+
+TEST_F(AmdgpuOccupancyTargetResourcesTest, RetainsFixedWorkgroupCeiling) {
+  const auto resources = Build(IREE_SV("gfx1250"), /*wave_size=*/32,
+                               /*scalar_register_count=*/4,
+                               /*vector_register_count=*/1,
+                               /*flat_workgroup_size=*/64,
+                               /*local_memory_bytes=*/0);
+  const auto& summary = resources.residency_summary;
+  EXPECT_TRUE(loom_target_residency_summary_is_valid(&summary));
+  EXPECT_EQ(summary.tier, 8u);
+  EXPECT_EQ(summary.best_tier, 16u);
+  EXPECT_EQ(summary.limiting_resource_count, 1u);
+  EXPECT_FALSE(iree_any_bit_set(
+      summary.flags, LOOM_TARGET_RESIDENCY_SUMMARY_FLAG_HAS_NEXT_BETTER_TIER));
+  // A fixed ceiling is not a reducible resource footprint.
+  EXPECT_FALSE(iree_any_bit_set(
+      summary.flags,
+      LOOM_TARGET_RESIDENCY_SUMMARY_FLAG_HAS_UNIQUE_LIMITING_RESOURCE));
+  EXPECT_TRUE(iree_string_view_equal(resources.limiting_resource,
+                                     IREE_SV("amdgpu.workgroup_slots")));
+
+  const auto tied = Build(IREE_SV("gfx1250"), 32, 4, 128, 64, 20480);
+  EXPECT_TRUE(loom_target_residency_summary_is_valid(&tied.residency_summary));
+  EXPECT_EQ(tied.residency_summary.tier, 8u);
+  EXPECT_EQ(tied.residency_summary.limiting_resource_count, 3u);
+  EXPECT_FALSE(iree_any_bit_set(
+      tied.residency_summary.flags,
+      LOOM_TARGET_RESIDENCY_SUMMARY_FLAG_HAS_NEXT_BETTER_TIER));
+}
+
+TEST_F(AmdgpuOccupancyTargetResourcesTest, BracketsLocalMemoryTransitions) {
+  struct TargetCase {
+    // Exact processor whose final-metadata API is exercised.
+    const char* processor;
+    // Selected wave width in lanes.
+    uint32_t wave_size;
+  };
+  const TargetCase targets[] = {
+      {"gfx1100", 32}, {"gfx1151", 64}, {"gfx1250", 32}, {"gfx1201", 64}};
+  const uint32_t workgroup_sizes[] = {1, 32, 33, 64, 65, 128, 256, 512, 1024};
+  const uint32_t local_sizes[] = {0,    1,    511,   512,   513,  2048,
+                                  2049, 8704, 14848, 32769, 65536};
+  for (const auto& target : targets) {
+    SCOPED_TRACE(target.processor);
+    SCOPED_TRACE(target.wave_size);
+    for (uint32_t workgroup_size : workgroup_sizes) {
+      SCOPED_TRACE(workgroup_size);
+      for (uint32_t local_size : local_sizes) {
+        SCOPED_TRACE(local_size);
+        const auto resources =
+            Build(iree_make_cstring_view(target.processor), target.wave_size,
+                  /*scalar_register_count=*/4, /*vector_register_count=*/1,
+                  workgroup_size, local_size);
+        const auto& summary = resources.residency_summary;
+        ASSERT_TRUE(loom_target_residency_summary_is_valid(&summary));
+        EXPECT_EQ(summary.tier, resources.resident_waves_per_simd);
+        if (!iree_any_bit_set(
+                summary.flags,
+                LOOM_TARGET_RESIDENCY_SUMMARY_FLAG_HAS_NEXT_BETTER_TIER)) {
+          continue;
+        }
+        ASSERT_TRUE(iree_string_view_equal(summary.limiting_resource,
+                                           IREE_SV("amdgpu.lds")));
+        ASSERT_GT(summary.limiting_resource_reduction_units_to_next_better_tier,
+                  0u);
+        const uint32_t boundary =
+            local_size -
+            summary.limiting_resource_reduction_units_to_next_better_tier;
+        EXPECT_EQ(Build(iree_make_cstring_view(target.processor),
+                        target.wave_size, 4, 1, workgroup_size, boundary)
+                      .resident_waves_per_simd,
+                  summary.next_better_tier);
+        EXPECT_EQ(Build(iree_make_cstring_view(target.processor),
+                        target.wave_size, 4, 1, workgroup_size, boundary + 1)
+                      .resident_waves_per_simd,
+                  summary.tier);
+      }
+    }
+  }
 }
 
 TEST_F(AmdgpuOccupancyTargetResourcesTest,
