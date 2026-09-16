@@ -10,7 +10,10 @@
 #include <memory>
 #include <string>
 
+#include "iree/base/internal/arena.h"
 #include "iree/testing/gtest.h"
+#include "iree/testing/status_matchers.h"
+#include "loom/target/profile.h"
 #include "loomc/result.h"
 #include "loomc/status.h"
 #include "loomc/target.h"
@@ -434,6 +437,31 @@ TEST(TargetSpirvProfileTest, PreservesExplicitNumericLimitFacts) {
   EXPECT_EQ(bundle->snapshot->max_grid_size.y, 2048u);
   EXPECT_EQ(bundle->snapshot->max_grid_size.z, 0u);
   EXPECT_EQ(bundle->snapshot->max_flat_grid_size, UINT64_C(0x100000000));
+
+  // Public input presence survives projection into compiler-owned facts,
+  // including the feature set when it exactly matches the selected preset.
+  iree_arena_block_pool_t block_pool;
+  iree_arena_block_pool_initialize(4096, iree_allocator_system(), &block_pool);
+  iree_arena_allocator_t arena;
+  iree_arena_initialize(&block_pool, &arena);
+  loom_target_facts_t* facts = nullptr;
+  IREE_ASSERT_OK(loom_target_profile_project_facts(
+      loomc_target_profile_loom_target_profile(profile.get()), &arena, &facts));
+  loom_target_fact_field_set_t expected_fields = 0;
+  for (auto field : {LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_SIZE_X,
+                     LOOM_TARGET_FACT_FIELD_MAX_FLAT_WORKGROUP_SIZE,
+                     LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_STORAGE_BYTES,
+                     LOOM_TARGET_FACT_FIELD_SUBGROUP_SIZE,
+                     LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_COUNT_Z,
+                     LOOM_TARGET_FACT_FIELD_MAX_GRID_SIZE_X,
+                     LOOM_TARGET_FACT_FIELD_MAX_GRID_SIZE_Y,
+                     LOOM_TARGET_FACT_FIELD_MAX_FLAT_GRID_SIZE,
+                     LOOM_TARGET_FACT_FIELD_CONTRACT_FEATURE_BITS}) {
+    loom_target_fact_field_set_insert(&expected_fields, field);
+  }
+  EXPECT_EQ(facts->explicit_fields, expected_fields);
+  iree_arena_deinitialize(&arena);
+  iree_arena_block_pool_deinitialize(&block_pool);
 
   ExpectLimitValue(profile.get(), LOOMC_SPIRV_LIMIT_MAX_WORKGROUP_SIZE_X,
                    LOOMC_TARGET_FACT_STATE_TRUE, 1024);

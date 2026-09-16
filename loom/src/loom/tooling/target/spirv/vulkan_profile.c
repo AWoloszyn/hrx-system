@@ -530,8 +530,29 @@ iree_status_t loom_spirv_vulkan_hal_target_profile_storage_initialize(
                                                               allocator);
     return status;
   }
+  // Device-reported limits remain constraints even when equal to the preset.
+  // The device's zero subgroup size denotes an unreported execution width.
+  static const loom_target_fact_field_t kDeviceFields[] = {
+      LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_SIZE_X,
+      LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_SIZE_Y,
+      LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_SIZE_Z,
+      LOOM_TARGET_FACT_FIELD_MAX_FLAT_WORKGROUP_SIZE,
+      LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_COUNT_X,
+      LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_COUNT_Y,
+      LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_COUNT_Z,
+      LOOM_TARGET_FACT_FIELD_ABI,
+      LOOM_TARGET_FACT_FIELD_CONTRACT_FEATURE_BITS,
+  };
+  loom_target_fact_field_set_t explicit_fields = 0;
+  for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(kDeviceFields); ++i) {
+    loom_target_fact_field_set_insert(&explicit_fields, kDeviceFields[i]);
+  }
+  if (facts->subgroup_size != 0) {
+    loom_target_fact_field_set_insert(&explicit_fields,
+                                      LOOM_TARGET_FACT_FIELD_SUBGROUP_SIZE);
+  }
   loom_spirv_target_profile_initialize(
-      &out_storage->target_bundle_storage.bundle,
+      &out_storage->target_bundle_storage.bundle, explicit_fields,
       &out_storage->cooperative_properties.set, &out_storage->profile);
   return iree_ok_status();
 }

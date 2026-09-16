@@ -57,120 +57,44 @@ static void loom_target_facts_builder_apply_field(
     const loom_target_bundle_storage_t* requirement,
     loom_target_bundle_storage_t* effective) {
   switch (field) {
-    case LOOM_TARGET_FACT_FIELD_CODEGEN_FORMAT:
-      effective->snapshot.codegen_format = requirement->snapshot.codegen_format;
-      break;
-    case LOOM_TARGET_FACT_FIELD_ARTIFACT_FORMAT:
-      effective->snapshot.artifact_format =
-          requirement->snapshot.artifact_format;
-      break;
-    case LOOM_TARGET_FACT_FIELD_DEFAULT_POINTER_BITWIDTH:
-      effective->snapshot.default_pointer_bitwidth =
-          requirement->snapshot.default_pointer_bitwidth;
-      break;
-    case LOOM_TARGET_FACT_FIELD_INDEX_BITWIDTH:
-      effective->snapshot.index_bitwidth = requirement->snapshot.index_bitwidth;
-      break;
-    case LOOM_TARGET_FACT_FIELD_OFFSET_BITWIDTH:
-      effective->snapshot.offset_bitwidth =
-          requirement->snapshot.offset_bitwidth;
-      break;
-    case LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_SIZE_X:
-      effective->snapshot.max_workgroup_size.x =
-          requirement->snapshot.max_workgroup_size.x;
-      break;
-    case LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_SIZE_Y:
-      effective->snapshot.max_workgroup_size.y =
-          requirement->snapshot.max_workgroup_size.y;
-      break;
-    case LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_SIZE_Z:
-      effective->snapshot.max_workgroup_size.z =
-          requirement->snapshot.max_workgroup_size.z;
-      break;
-    case LOOM_TARGET_FACT_FIELD_MAX_FLAT_WORKGROUP_SIZE:
-      effective->snapshot.max_flat_workgroup_size =
-          requirement->snapshot.max_flat_workgroup_size;
-      break;
-    case LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_STORAGE_BYTES:
-      effective->snapshot.max_workgroup_storage_bytes =
-          requirement->snapshot.max_workgroup_storage_bytes;
-      break;
-    case LOOM_TARGET_FACT_FIELD_SUBGROUP_SIZE:
-      effective->snapshot.subgroup_size = requirement->snapshot.subgroup_size;
-      break;
-    case LOOM_TARGET_FACT_FIELD_MAX_GRID_SIZE_X:
-      effective->snapshot.max_grid_size.x =
-          requirement->snapshot.max_grid_size.x;
-      break;
-    case LOOM_TARGET_FACT_FIELD_MAX_GRID_SIZE_Y:
-      effective->snapshot.max_grid_size.y =
-          requirement->snapshot.max_grid_size.y;
-      break;
-    case LOOM_TARGET_FACT_FIELD_MAX_GRID_SIZE_Z:
-      effective->snapshot.max_grid_size.z =
-          requirement->snapshot.max_grid_size.z;
-      break;
-    case LOOM_TARGET_FACT_FIELD_MAX_FLAT_GRID_SIZE:
-      effective->snapshot.max_flat_grid_size =
-          requirement->snapshot.max_flat_grid_size;
-      break;
-    case LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_COUNT_X:
-      effective->snapshot.max_workgroup_count.x =
-          requirement->snapshot.max_workgroup_count.x;
-      break;
-    case LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_COUNT_Y:
-      effective->snapshot.max_workgroup_count.y =
-          requirement->snapshot.max_workgroup_count.y;
-      break;
-    case LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_COUNT_Z:
-      effective->snapshot.max_workgroup_count.z =
-          requirement->snapshot.max_workgroup_count.z;
-      break;
-    case LOOM_TARGET_FACT_FIELD_MEMORY_SPACE_GENERIC:
-      effective->snapshot.memory_spaces.generic =
-          requirement->snapshot.memory_spaces.generic;
-      break;
-    case LOOM_TARGET_FACT_FIELD_MEMORY_SPACE_GLOBAL:
-      effective->snapshot.memory_spaces.global =
-          requirement->snapshot.memory_spaces.global;
-      break;
-    case LOOM_TARGET_FACT_FIELD_MEMORY_SPACE_WORKGROUP:
-      effective->snapshot.memory_spaces.workgroup =
-          requirement->snapshot.memory_spaces.workgroup;
-      break;
-    case LOOM_TARGET_FACT_FIELD_MEMORY_SPACE_CONSTANT:
-      effective->snapshot.memory_spaces.constant =
-          requirement->snapshot.memory_spaces.constant;
-      break;
-    case LOOM_TARGET_FACT_FIELD_MEMORY_SPACE_PRIVATE:
-      effective->snapshot.memory_spaces.private_memory =
-          requirement->snapshot.memory_spaces.private_memory;
-      break;
-    case LOOM_TARGET_FACT_FIELD_MEMORY_SPACE_HOST:
-      effective->snapshot.memory_spaces.host =
-          requirement->snapshot.memory_spaces.host;
-      break;
-    case LOOM_TARGET_FACT_FIELD_MEMORY_SPACE_DESCRIPTOR:
-      effective->snapshot.memory_spaces.descriptor =
-          requirement->snapshot.memory_spaces.descriptor;
-      break;
-    case LOOM_TARGET_FACT_FIELD_ABI:
-      effective->export_plan.abi_kind = requirement->export_plan.abi_kind;
-      break;
-    case LOOM_TARGET_FACT_FIELD_EXPORT_SYMBOL:
-      effective->export_plan.export_symbol =
-          requirement->export_plan.export_symbol;
-      break;
-    case LOOM_TARGET_FACT_FIELD_LINKAGE:
-      effective->export_plan.linkage = requirement->export_plan.linkage;
-      break;
-    case LOOM_TARGET_FACT_FIELD_CONTRACT_SET_KEY:
-      effective->config.contract_set_key = requirement->config.contract_set_key;
-      break;
-    case LOOM_TARGET_FACT_FIELD_CONTRACT_FEATURE_BITS:
-      effective->config.contract_feature_bits =
-          requirement->config.contract_feature_bits;
-      break;
+#define LOOM_COPY_FIELD(name, group, member)             \
+  case LOOM_TARGET_FACT_FIELD_##name:                    \
+    effective->group.member = requirement->group.member; \
+    break;
+    LOOM_COPY_FIELD(CODEGEN_FORMAT, snapshot, codegen_format)
+    LOOM_COPY_FIELD(ARTIFACT_FORMAT, snapshot, artifact_format)
+    LOOM_COPY_FIELD(DEFAULT_POINTER_BITWIDTH, snapshot,
+                    default_pointer_bitwidth)
+    LOOM_COPY_FIELD(INDEX_BITWIDTH, snapshot, index_bitwidth)
+    LOOM_COPY_FIELD(OFFSET_BITWIDTH, snapshot, offset_bitwidth)
+    LOOM_COPY_FIELD(MAX_WORKGROUP_SIZE_X, snapshot, max_workgroup_size.x)
+    LOOM_COPY_FIELD(MAX_WORKGROUP_SIZE_Y, snapshot, max_workgroup_size.y)
+    LOOM_COPY_FIELD(MAX_WORKGROUP_SIZE_Z, snapshot, max_workgroup_size.z)
+    LOOM_COPY_FIELD(MAX_FLAT_WORKGROUP_SIZE, snapshot, max_flat_workgroup_size)
+    LOOM_COPY_FIELD(MAX_WORKGROUP_STORAGE_BYTES, snapshot,
+                    max_workgroup_storage_bytes)
+    LOOM_COPY_FIELD(SUBGROUP_SIZE, snapshot, subgroup_size)
+    LOOM_COPY_FIELD(MAX_GRID_SIZE_X, snapshot, max_grid_size.x)
+    LOOM_COPY_FIELD(MAX_GRID_SIZE_Y, snapshot, max_grid_size.y)
+    LOOM_COPY_FIELD(MAX_GRID_SIZE_Z, snapshot, max_grid_size.z)
+    LOOM_COPY_FIELD(MAX_FLAT_GRID_SIZE, snapshot, max_flat_grid_size)
+    LOOM_COPY_FIELD(MAX_WORKGROUP_COUNT_X, snapshot, max_workgroup_count.x)
+    LOOM_COPY_FIELD(MAX_WORKGROUP_COUNT_Y, snapshot, max_workgroup_count.y)
+    LOOM_COPY_FIELD(MAX_WORKGROUP_COUNT_Z, snapshot, max_workgroup_count.z)
+    LOOM_COPY_FIELD(MEMORY_SPACE_GENERIC, snapshot, memory_spaces.generic)
+    LOOM_COPY_FIELD(MEMORY_SPACE_GLOBAL, snapshot, memory_spaces.global)
+    LOOM_COPY_FIELD(MEMORY_SPACE_WORKGROUP, snapshot, memory_spaces.workgroup)
+    LOOM_COPY_FIELD(MEMORY_SPACE_CONSTANT, snapshot, memory_spaces.constant)
+    LOOM_COPY_FIELD(MEMORY_SPACE_PRIVATE, snapshot,
+                    memory_spaces.private_memory)
+    LOOM_COPY_FIELD(MEMORY_SPACE_HOST, snapshot, memory_spaces.host)
+    LOOM_COPY_FIELD(MEMORY_SPACE_DESCRIPTOR, snapshot, memory_spaces.descriptor)
+    LOOM_COPY_FIELD(ABI, export_plan, abi_kind)
+    LOOM_COPY_FIELD(EXPORT_SYMBOL, export_plan, export_symbol)
+    LOOM_COPY_FIELD(LINKAGE, export_plan, linkage)
+    LOOM_COPY_FIELD(CONTRACT_SET_KEY, config, contract_set_key)
+    LOOM_COPY_FIELD(CONTRACT_FEATURE_BITS, config, contract_feature_bits)
+#undef LOOM_COPY_FIELD
     case LOOM_TARGET_FACT_FIELD_COUNT_:
       break;
   }

@@ -26,9 +26,9 @@ extern "C" {
 // Projects one complete family profile into compiler-owned typed facts.
 //
 // |out_facts| has already been zeroed and initialized from the profile's
-// target-neutral bundle. Implementations populate the family selector, mark
-// target-neutral semantic inputs in |out_facts->explicit_fields|, and populate
-// the typed extension, allocating any nested immutable storage from |arena|.
+// target-neutral bundle and explicit field set. Implementations populate the
+// family selector and typed extension, allocating any nested immutable storage
+// from |arena|. Family views are rebound after this callback returns.
 typedef iree_status_t (*loom_target_profile_project_facts_fn_t)(
     const loom_target_profile_t* profile, iree_arena_allocator_t* arena,
     loom_target_facts_t* out_facts);
@@ -56,6 +56,10 @@ struct loom_target_profile_t {
   // Target-neutral bundle projection, or NULL when the structured facts are
   // not concrete enough to select one.
   const loom_target_bundle_t* target_bundle;
+
+  // Common fields explicitly supplied by the profile producer. Presence is
+  // independent of value equality with a preset, including explicit zeroes.
+  loom_target_fact_field_set_t explicit_fields;
 };
 
 // Returns whether |profile| has the expected target-family representation.

@@ -79,6 +79,37 @@ TEST(AmdgpuTargetProfileTest, ProjectsCompilerOwnedTypedFacts) {
   EXPECT_FALSE(facts->subgroup_size_explicit);
   EXPECT_FALSE(facts->contract_set_key_explicit);
 
+  // A structured profile can override the preset without changing processor
+  // identity. Those values must become explicit before standalone IR emission.
+  const auto& preset = *profile.base.target_bundle;
+  loom_target_bundle_storage_t storage = {};
+  storage.snapshot = *preset.snapshot;
+  storage.export_plan = *preset.export_plan;
+  storage.config = *preset.config;
+  storage.bundle = preset;
+  loom_target_bundle_storage_rebind(&storage);
+  storage.snapshot.subgroup_size = 64;
+  storage.config.contract_set_key = IREE_SV("custom_contract");
+  profile.base.target_bundle = &storage.bundle;
+  loom_target_fact_field_set_insert(&profile.base.explicit_fields,
+                                    LOOM_TARGET_FACT_FIELD_SUBGROUP_SIZE);
+  loom_target_fact_field_set_insert(&profile.base.explicit_fields,
+                                    LOOM_TARGET_FACT_FIELD_CONTRACT_SET_KEY);
+  loom_target_facts_t* overridden_facts = nullptr;
+  IREE_ASSERT_OK(loom_target_profile_project_facts(&profile.base, &arena,
+                                                   &overridden_facts));
+  const auto* overridden = loom_amdgpu_target_facts_cast(overridden_facts);
+  ASSERT_NE(overridden, nullptr);
+  EXPECT_TRUE(overridden->subgroup_size_explicit);
+  EXPECT_EQ(overridden->base.storage.snapshot.subgroup_size, 64u);
+  EXPECT_TRUE(overridden->contract_set_key_explicit);
+  EXPECT_TRUE(
+      iree_string_view_equal(overridden->base.storage.config.contract_set_key,
+                             IREE_SV("custom_contract")));
+  EXPECT_FALSE(loom_target_facts_field_is_explicit(
+      overridden_facts, LOOM_TARGET_FACT_FIELD_INDEX_BITWIDTH));
+  EXPECT_FALSE(facts->subgroup_size_explicit);
+
   iree_arena_deinitialize(&arena);
   iree_arena_block_pool_deinitialize(&block_pool);
 }
@@ -107,6 +138,53 @@ TEST(AmdgpuTargetProfileTest, SelectsTargetLocalDescriptorContract) {
             loom_target_profile_bundle(&a0_profile.base));
   EXPECT_EQ(b0_profile.identity.target, gfx1250);
   EXPECT_EQ(a0_profile.identity.target, gfx1250_a0);
+}
+
+TEST(AmdgpuTargetProfileTest, PreservesExplicitPresetSubgroupSize) {
+  const loom_amdgpu_target_info_t* target = nullptr;
+  IREE_ASSERT_OK(
+      loom_amdgpu_target_info_lookup_target(IREE_SV("gfx1151"), &target));
+  loom_amdgpu_target_identity_t identity = {};
+  loom_amdgpu_target_identity_initialize(target, &identity);
+  loom_amdgpu_target_profile_t profile = {};
+  IREE_ASSERT_OK(loom_amdgpu_target_profile_initialize(&identity, &profile));
+  ASSERT_EQ(profile.base.target_bundle->snapshot->subgroup_size, 32u);
+
+  iree_arena_block_pool_t block_pool;
+  iree_arena_block_pool_initialize(4096, iree_allocator_system(), &block_pool);
+  iree_arena_allocator_t arena;
+  iree_arena_initialize(&block_pool, &arena);
+
+  loom_target_facts_t* implicit_facts = nullptr;
+  IREE_ASSERT_OK(loom_target_profile_project_facts(&profile.base, &arena,
+                                                   &implicit_facts));
+  loom_target_fact_field_set_insert(&profile.base.explicit_fields,
+                                    LOOM_TARGET_FACT_FIELD_SUBGROUP_SIZE);
+  loom_target_facts_t* explicit_facts = nullptr;
+  IREE_ASSERT_OK(loom_target_profile_project_facts(&profile.base, &arena,
+                                                   &explicit_facts));
+  EXPECT_EQ(explicit_facts->storage.snapshot.subgroup_size, 32u);
+  EXPECT_TRUE(loom_target_facts_field_is_explicit(
+      explicit_facts, LOOM_TARGET_FACT_FIELD_SUBGROUP_SIZE));
+  EXPECT_FALSE(loom_target_facts_field_is_explicit(
+      implicit_facts, LOOM_TARGET_FACT_FIELD_SUBGROUP_SIZE));
+
+  loom_target_bundle_storage_t storage = explicit_facts->storage;
+  loom_target_bundle_storage_rebind(&storage);
+  storage.snapshot.subgroup_size = 64;
+  profile.base.target_bundle = &storage.bundle;
+  loom_target_facts_t* wave64_requirement = nullptr;
+  IREE_ASSERT_OK(loom_target_profile_project_facts(&profile.base, &arena,
+                                                   &wave64_requirement));
+  EXPECT_TRUE(loom_target_facts_satisfy_specialization_requirement(
+      implicit_facts, wave64_requirement));
+  EXPECT_FALSE(loom_target_facts_satisfy_specialization_requirement(
+      explicit_facts, wave64_requirement));
+  EXPECT_TRUE(loom_target_facts_satisfy_specialization_requirement(
+      explicit_facts, implicit_facts));
+
+  iree_arena_deinitialize(&arena);
+  iree_arena_block_pool_deinitialize(&block_pool);
 }
 
 TEST(AmdgpuTargetProfileTest, RejectsUnsupportedTargetFeatures) {

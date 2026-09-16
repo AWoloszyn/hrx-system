@@ -34,9 +34,6 @@ typedef struct TestTargetProfile {
   // Test target selector projected into facts.
   loom_test_target_kind_t kind;
 
-  // Common target fields supplied explicitly by this profile.
-  loom_target_fact_field_set_t explicit_fields;
-
   // Optional counter incremented by each fact projection.
   uint32_t* projection_count;
 } TestTargetProfile;
@@ -51,7 +48,6 @@ static iree_status_t ProjectTestProfileFacts(
     ++*profile->projection_count;
   }
   out_facts->selector = profile->kind;
-  out_facts->explicit_fields = profile->explicit_fields;
   return iree_ok_status();
 }
 
@@ -70,7 +66,6 @@ static TestTargetProfile MakeTestProfile(loom_test_target_kind_t kind) {
           loom_target_bundle_table_lookup(&loom_test_target_bundles, kind),
       },
       /*.kind=*/kind,
-      /*.explicit_fields=*/0,
       /*.projection_count=*/nullptr,
   };
 }
@@ -323,7 +318,7 @@ func.def public target(@requirement) @entry() {
   TestTargetProfile exact_profile =
       MakeTestProfile(LOOM_TEST_TARGET_KIND_LOW_CORE);
   loom_target_fact_field_set_insert(
-      &exact_profile.explicit_fields,
+      &exact_profile.base.explicit_fields,
       LOOM_TARGET_FACT_FIELD_DEFAULT_POINTER_BITWIDTH);
   const loom_target_specialization_request_t request = {
       /*.function_name=*/IREE_SV("entry"),

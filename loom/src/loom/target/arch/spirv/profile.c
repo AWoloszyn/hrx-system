@@ -148,6 +148,7 @@ static const loom_spirv_target_profile_t kSpirvVulkan13BdaTargetProfile = {
 
 void loom_spirv_target_profile_initialize(
     const loom_target_bundle_t* target_bundle,
+    loom_target_fact_field_set_t explicit_fields,
     const loom_spirv_cooperative_property_set_t* cooperative_properties,
     loom_spirv_target_profile_t* out_profile) {
   IREE_ASSERT_ARGUMENT(out_profile);
@@ -156,6 +157,7 @@ void loom_spirv_target_profile_initialize(
           {
               .type = &loom_spirv_target_profile_type,
               .target_bundle = target_bundle,
+              .explicit_fields = explicit_fields,
           },
       .cooperative_properties = cooperative_properties,
   };

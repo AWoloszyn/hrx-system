@@ -173,6 +173,66 @@ TEST_F(SpirvProviderTest, MaterializesAuthoredRefinements) {
       source_symbol_facts->projection, materialized_symbol_facts->projection));
 }
 
+TEST_F(SpirvProviderTest, MaterializesStructuredProfileOverrides) {
+  const auto& preset = loom_spirv_low_target_bundle_vulkan1_3;
+  loom_target_bundle_storage_t storage = {};
+  storage.snapshot = *preset.snapshot;
+  storage.export_plan = *preset.export_plan;
+  storage.config = *preset.config;
+  storage.bundle = preset;
+  loom_target_bundle_storage_rebind(&storage);
+  storage.snapshot.subgroup_size = 32;
+  storage.snapshot.max_workgroup_size.x = 128;
+  storage.snapshot.max_workgroup_storage_bytes = 32768;
+  storage.export_plan.export_symbol = IREE_SV("profile_export");
+  loom_target_fact_field_set_t explicit_fields = 0;
+  for (auto field : {LOOM_TARGET_FACT_FIELD_SUBGROUP_SIZE,
+                     LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_SIZE_X,
+                     LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_STORAGE_BYTES,
+                     LOOM_TARGET_FACT_FIELD_EXPORT_SYMBOL,
+                     LOOM_TARGET_FACT_FIELD_INDEX_BITWIDTH}) {
+    loom_target_fact_field_set_insert(&explicit_fields, field);
+  }
+  loom_spirv_target_profile_t profile = {};
+  loom_spirv_target_profile_initialize(&storage.bundle, explicit_fields,
+                                       nullptr, &profile);
+  loom_target_facts_t* profile_facts = nullptr;
+  IREE_ASSERT_OK(loom_target_profile_project_facts(
+      &profile.base, &analysis_arena_, &profile_facts));
+
+  loom_module_t* raw_module = nullptr;
+  IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("materialized"),
+                                      &block_pool_, nullptr,
+                                      iree_allocator_system(), &raw_module));
+  ModulePtr module(raw_module);
+  loom_string_id_t name_id = LOOM_STRING_ID_INVALID;
+  IREE_ASSERT_OK(
+      loom_module_intern_string(module.get(), IREE_SV("device"), &name_id));
+  loom_symbol_id_t symbol_id = LOOM_SYMBOL_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_add_symbol(module.get(), name_id, &symbol_id));
+  const loom_symbol_ref_t symbol = {0, symbol_id};
+  loom_builder_t builder;
+  loom_builder_initialize(module.get(), &module->arena,
+                          loom_module_block(module.get()), &builder);
+  const loom_resolved_target_t resolved = {&loom_spirv_target_provider,
+                                           profile_facts};
+  IREE_ASSERT_OK(loom_spirv_target_provider.materialize_definition(
+      &builder, &resolved, symbol, LOOM_LOCATION_UNKNOWN));
+
+  const auto* materialized =
+      Target(&requirement_fact_table_, module.get(), symbol)->projection;
+  EXPECT_EQ(materialized->storage.snapshot.subgroup_size, 32u);
+  EXPECT_EQ(materialized->storage.snapshot.max_workgroup_size.x, 128u);
+  EXPECT_EQ(materialized->storage.snapshot.max_workgroup_storage_bytes, 32768u);
+  EXPECT_TRUE(
+      iree_string_view_equal(materialized->storage.export_plan.export_symbol,
+                             storage.export_plan.export_symbol));
+  // An explicitly supplied preset value must survive as a constraint too.
+  EXPECT_TRUE(loom_target_facts_field_is_explicit(
+      materialized, LOOM_TARGET_FACT_FIELD_INDEX_BITWIDTH));
+  EXPECT_TRUE(loom_target_facts_are_equivalent(profile_facts, materialized));
+}
+
 TEST_F(SpirvProviderTest, ProjectedProfileSatisfiesStructuredRequirements) {
   ModulePtr requirements =
       Parse(IREE_SV("spirv.target<vulkan1_3> @baseline_a\n"
@@ -210,9 +270,23 @@ TEST_F(SpirvProviderTest, ProjectedProfileSatisfiesStructuredRequirements) {
   live_storage.export_plan.abi_kind = LOOM_TARGET_ABI_HAL_KERNEL;
   live_storage.config.contract_feature_bits |= LOOM_SPIRV_FEATURE_FLOAT16;
 
+  loom_target_fact_field_set_t explicit_fields = 0;
+  for (auto field : {LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_SIZE_X,
+                     LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_SIZE_Y,
+                     LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_SIZE_Z,
+                     LOOM_TARGET_FACT_FIELD_MAX_FLAT_WORKGROUP_SIZE,
+                     LOOM_TARGET_FACT_FIELD_SUBGROUP_SIZE,
+                     LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_COUNT_X,
+                     LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_COUNT_Y,
+                     LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_COUNT_Z,
+                     LOOM_TARGET_FACT_FIELD_ABI,
+                     LOOM_TARGET_FACT_FIELD_CONTRACT_FEATURE_BITS}) {
+    loom_target_fact_field_set_insert(&explicit_fields, field);
+  }
   loom_spirv_target_profile_t profile = {};
-  loom_spirv_target_profile_initialize(
-      &live_storage.bundle, /*cooperative_properties=*/nullptr, &profile);
+  loom_spirv_target_profile_initialize(&live_storage.bundle, explicit_fields,
+                                       /*cooperative_properties=*/nullptr,
+                                       &profile);
   loom_target_facts_t* effective = nullptr;
   IREE_ASSERT_OK(loom_target_profile_project_facts(
       &profile.base, &analysis_arena_, &effective));

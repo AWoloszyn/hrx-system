@@ -29,9 +29,11 @@ typedef struct loom_spirv_target_profile_t {
   const loom_spirv_cooperative_property_set_t* cooperative_properties;
 } loom_spirv_target_profile_t;
 
-// Initializes an immutable SPIR-V target profile.
+// Initializes an immutable SPIR-V target profile. |explicit_fields| identifies
+// supplied common inputs in |target_bundle|, even when equal to preset values.
 void loom_spirv_target_profile_initialize(
     const loom_target_bundle_t* target_bundle,
+    loom_target_fact_field_set_t explicit_fields,
     const loom_spirv_cooperative_property_set_t* cooperative_properties,
     loom_spirv_target_profile_t* out_profile);
 

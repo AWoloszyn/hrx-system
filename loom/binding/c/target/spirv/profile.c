@@ -720,66 +720,35 @@ static loomc_status_t loomc_spirv_profile_validate_environment_constraints(
       loomc_status_from_iree(status));
 }
 
-static void loomc_spirv_profile_apply_u32_limit_value(
-    const loomc_spirv_numeric_fact_state_t* limit_states,
-    loomc_spirv_limit_t limit, uint32_t* out_value) {
-  if (limit_states[limit].state != LOOMC_TARGET_FACT_STATE_TRUE) {
-    return;
-  }
-  *out_value = (uint32_t)limit_states[limit].value;
-}
-
-static void loomc_spirv_profile_apply_u64_limit_value(
-    const loomc_spirv_numeric_fact_state_t* limit_states,
-    loomc_spirv_limit_t limit, uint64_t* out_value) {
-  if (limit_states[limit].state != LOOMC_TARGET_FACT_STATE_TRUE) {
-    return;
-  }
-  *out_value = limit_states[limit].value;
-}
-
-static void loomc_spirv_profile_apply_limit_states_to_bundle(
+static loom_target_fact_field_set_t
+loomc_spirv_profile_apply_limit_states_to_bundle(
     const loomc_spirv_numeric_fact_state_t* limit_states,
     loom_target_bundle_storage_t* storage) {
-  loomc_spirv_profile_apply_u32_limit_value(
-      limit_states, LOOMC_SPIRV_LIMIT_MAX_WORKGROUP_SIZE_X,
-      &storage->snapshot.max_workgroup_size.x);
-  loomc_spirv_profile_apply_u32_limit_value(
-      limit_states, LOOMC_SPIRV_LIMIT_MAX_WORKGROUP_SIZE_Y,
-      &storage->snapshot.max_workgroup_size.y);
-  loomc_spirv_profile_apply_u32_limit_value(
-      limit_states, LOOMC_SPIRV_LIMIT_MAX_WORKGROUP_SIZE_Z,
-      &storage->snapshot.max_workgroup_size.z);
-  loomc_spirv_profile_apply_u32_limit_value(
-      limit_states, LOOMC_SPIRV_LIMIT_MAX_FLAT_WORKGROUP_SIZE,
-      &storage->snapshot.max_flat_workgroup_size);
-  loomc_spirv_profile_apply_u64_limit_value(
-      limit_states, LOOMC_SPIRV_LIMIT_MAX_WORKGROUP_STORAGE_BYTES,
-      &storage->snapshot.max_workgroup_storage_bytes);
-  loomc_spirv_profile_apply_u32_limit_value(limit_states,
-                                            LOOMC_SPIRV_LIMIT_SUBGROUP_SIZE,
-                                            &storage->snapshot.subgroup_size);
-  loomc_spirv_profile_apply_u32_limit_value(
-      limit_states, LOOMC_SPIRV_LIMIT_MAX_WORKGROUP_COUNT_X,
-      &storage->snapshot.max_workgroup_count.x);
-  loomc_spirv_profile_apply_u32_limit_value(
-      limit_states, LOOMC_SPIRV_LIMIT_MAX_WORKGROUP_COUNT_Y,
-      &storage->snapshot.max_workgroup_count.y);
-  loomc_spirv_profile_apply_u32_limit_value(
-      limit_states, LOOMC_SPIRV_LIMIT_MAX_WORKGROUP_COUNT_Z,
-      &storage->snapshot.max_workgroup_count.z);
-  loomc_spirv_profile_apply_u32_limit_value(limit_states,
-                                            LOOMC_SPIRV_LIMIT_MAX_GRID_SIZE_X,
-                                            &storage->snapshot.max_grid_size.x);
-  loomc_spirv_profile_apply_u32_limit_value(limit_states,
-                                            LOOMC_SPIRV_LIMIT_MAX_GRID_SIZE_Y,
-                                            &storage->snapshot.max_grid_size.y);
-  loomc_spirv_profile_apply_u32_limit_value(limit_states,
-                                            LOOMC_SPIRV_LIMIT_MAX_GRID_SIZE_Z,
-                                            &storage->snapshot.max_grid_size.z);
-  loomc_spirv_profile_apply_u64_limit_value(
-      limit_states, LOOMC_SPIRV_LIMIT_MAX_FLAT_GRID_SIZE,
-      &storage->snapshot.max_flat_grid_size);
+  loom_target_fact_field_set_t explicit_fields = 0;
+#define LOOMC_APPLY_LIMIT(type, field, member)                         \
+  if (limit_states[LOOMC_SPIRV_LIMIT_##field].state ==                 \
+      LOOMC_TARGET_FACT_STATE_TRUE) {                                  \
+    storage->snapshot.member =                                         \
+        (type)limit_states[LOOMC_SPIRV_LIMIT_##field].value;           \
+    loom_target_fact_field_set_insert(&explicit_fields,                \
+                                      LOOM_TARGET_FACT_FIELD_##field); \
+  }
+  LOOMC_APPLY_LIMIT(uint32_t, MAX_WORKGROUP_SIZE_X, max_workgroup_size.x)
+  LOOMC_APPLY_LIMIT(uint32_t, MAX_WORKGROUP_SIZE_Y, max_workgroup_size.y)
+  LOOMC_APPLY_LIMIT(uint32_t, MAX_WORKGROUP_SIZE_Z, max_workgroup_size.z)
+  LOOMC_APPLY_LIMIT(uint32_t, MAX_FLAT_WORKGROUP_SIZE, max_flat_workgroup_size)
+  LOOMC_APPLY_LIMIT(uint64_t, MAX_WORKGROUP_STORAGE_BYTES,
+                    max_workgroup_storage_bytes)
+  LOOMC_APPLY_LIMIT(uint32_t, SUBGROUP_SIZE, subgroup_size)
+  LOOMC_APPLY_LIMIT(uint32_t, MAX_WORKGROUP_COUNT_X, max_workgroup_count.x)
+  LOOMC_APPLY_LIMIT(uint32_t, MAX_WORKGROUP_COUNT_Y, max_workgroup_count.y)
+  LOOMC_APPLY_LIMIT(uint32_t, MAX_WORKGROUP_COUNT_Z, max_workgroup_count.z)
+  LOOMC_APPLY_LIMIT(uint32_t, MAX_GRID_SIZE_X, max_grid_size.x)
+  LOOMC_APPLY_LIMIT(uint32_t, MAX_GRID_SIZE_Y, max_grid_size.y)
+  LOOMC_APPLY_LIMIT(uint32_t, MAX_GRID_SIZE_Z, max_grid_size.z)
+  LOOMC_APPLY_LIMIT(uint64_t, MAX_FLAT_GRID_SIZE, max_flat_grid_size)
+#undef LOOMC_APPLY_LIMIT
+  return explicit_fields;
 }
 
 static bool loomc_spirv_profile_can_materialize_vulkan_bda_bundle(
@@ -788,7 +757,8 @@ static bool loomc_spirv_profile_can_materialize_vulkan_bda_bundle(
       feature_set, LOOM_SPIRV_FEATURE_ATOM_PHYSICAL_STORAGE_BUFFER);
 }
 
-static void loomc_spirv_profile_initialize_vulkan_bda_bundle(
+static loom_target_fact_field_set_t
+loomc_spirv_profile_initialize_vulkan_bda_bundle(
     const loom_spirv_feature_set_t* feature_set,
     const loomc_spirv_numeric_fact_state_t* limit_states,
     loom_target_bundle_storage_t* out_storage) {
@@ -804,7 +774,12 @@ static void loomc_spirv_profile_initialize_vulkan_bda_bundle(
   out_storage->config.name =
       IREE_SV("spirv.logical.core.vulkan1.3.bda.profile");
   out_storage->config.contract_feature_bits = feature_set->atom_bits;
-  loomc_spirv_profile_apply_limit_states_to_bundle(limit_states, out_storage);
+  loom_target_fact_field_set_t explicit_fields =
+      loomc_spirv_profile_apply_limit_states_to_bundle(limit_states,
+                                                       out_storage);
+  loom_target_fact_field_set_insert(
+      &explicit_fields, LOOM_TARGET_FACT_FIELD_CONTRACT_FEATURE_BITS);
+  return explicit_fields;
 }
 
 static loomc_status_t loomc_spirv_target_profile_create_from_states(
@@ -861,8 +836,9 @@ static loomc_status_t loomc_spirv_target_profile_create_from_states(
     const bool has_target_bundle =
         loomc_spirv_profile_can_materialize_vulkan_bda_bundle(
             &profile_storage->feature_set);
+    loom_target_fact_field_set_t explicit_fields = 0;
     if (has_target_bundle) {
-      loomc_spirv_profile_initialize_vulkan_bda_bundle(
+      explicit_fields = loomc_spirv_profile_initialize_vulkan_bda_bundle(
           &profile_storage->feature_set, profile_storage->limit_states,
           &profile_storage->bundle_storage);
     }
@@ -870,7 +846,7 @@ static loomc_status_t loomc_spirv_target_profile_create_from_states(
         profile_storage->profile.cooperative_properties;
     loom_spirv_target_profile_initialize(
         has_target_bundle ? &profile_storage->bundle_storage.bundle : NULL,
-        cooperative_properties, &profile_storage->profile);
+        explicit_fields, cooperative_properties, &profile_storage->profile);
     status = loomc_target_profile_create(
         target_environment, identifier, &profile_storage->profile.base,
         loomc_spirv_target_profile_destroy, allocator, out_profile);

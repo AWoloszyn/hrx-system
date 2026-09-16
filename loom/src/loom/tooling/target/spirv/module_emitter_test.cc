@@ -155,16 +155,16 @@ low.func.def target<spirv.logical.core>(@generic) abi(shader_entry_point) @kerne
   device_facts.max_compute_workgroup_count.x = 65535;
   device_facts.max_compute_workgroup_count.y = 65535;
   device_facts.max_compute_workgroup_count.z = 65535;
-  loom_target_bundle_storage_t exact_target = {};
-  IREE_ASSERT_OK(loom_spirv_vulkan_hal_profile_initialize_target_bundle(
-      &device_facts, &exact_target));
-  loom_spirv_target_profile_t exact_profile = {};
-  loom_spirv_target_profile_initialize(&exact_target.bundle,
-                                       /*cooperative_properties=*/nullptr,
-                                       &exact_profile);
+  loom_spirv_vulkan_hal_target_profile_storage_t exact_profile = {};
+  IREE_ASSERT_OK(loom_spirv_vulkan_hal_target_profile_storage_initialize(
+      &device_facts, /*cooperative_matrix_properties=*/nullptr,
+      /*cooperative_matrix_property_count=*/0, iree_allocator_system(),
+      &exact_profile));
   loom_target_facts_t* profile_facts = nullptr;
-  IREE_ASSERT_OK(loom_target_profile_project_facts(&exact_profile.base, &arena_,
-                                                   &profile_facts));
+  IREE_ASSERT_OK(loom_target_profile_project_facts(&exact_profile.profile.base,
+                                                   &arena_, &profile_facts));
+  loom_spirv_vulkan_hal_target_profile_storage_deinitialize(
+      &exact_profile, iree_allocator_system());
   ASSERT_TRUE(loom_target_facts_satisfy_specialization_requirement(
       profile_facts, target_facts->projection));
   loom_target_facts_builder_apply_requirement(target_facts->projection,
