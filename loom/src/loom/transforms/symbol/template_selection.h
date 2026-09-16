@@ -34,6 +34,14 @@ typedef struct loom_template_selection_query_options_t {
   const loom_target_function_version_snapshot_t* function_versions;
   // Exclusive upper bound for external provider origin ordinals.
   iree_host_size_t origin_count;
+  // Additional roots owned by the caller's plan. These supplement ordinary
+  // public, retained and target-entry roots without changing symbol visibility.
+  struct {
+    // Borrowed module-local symbol IDs in the queried module snapshot.
+    const loom_symbol_id_t* values;
+    // Number of entries in |values|.
+    iree_host_size_t count;
+  } root_symbol_ids;
 } loom_template_selection_query_options_t;
 
 // Read-only provider selection result borrowing caller-owned arena storage.

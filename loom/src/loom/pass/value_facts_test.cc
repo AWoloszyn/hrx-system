@@ -10,6 +10,7 @@
 
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
+#include "loom/ir/module.h"
 #include "loom/ops/test/ops.h"
 #include "loom/pass/test/harness.h"
 #include "loom/target/facts.h"
@@ -254,6 +255,8 @@ TEST_F(PassValueFactsTest, RegionScopeComputesRequestedProjection) {
 
   loom_pass_value_fact_owner_t owner = {};
   loom_pass_value_fact_owner_initialize(block_pool(), &owner);
+  loom_pass_value_fact_lifecycle_counts_t counts = {};
+  owner.lifecycle_counts = &counts;
 
   loom_value_fact_table_t* facts = nullptr;
   IREE_ASSERT_OK(loom_pass_value_fact_owner_acquire(
@@ -274,6 +277,35 @@ TEST_F(PassValueFactsTest, RegionScopeComputesRequestedProjection) {
   EXPECT_EQ(reused_facts, facts);
   EXPECT_EQ(reused_facts->touched_count, touched_count);
 
+  // Expanding another region can append module values without invalidating
+  // this region's analysis. Its existing fact storage and scope stay reusable.
+  loom_value_facts_t* entries = facts->entries;
+  const iree_host_size_t initial_capacity = facts->capacity;
+  loom_builder_t builder;
+  loom_builder_initialize(module, &module->arena, loom_region_entry_block(body),
+                          &builder);
+  loom_builder_set_before(&builder, loom_region_entry_block(body)->last_op);
+  loom_op_t* appended_constant = nullptr;
+  while (module->values.count <= initial_capacity) {
+    IREE_ASSERT_OK(loom_test_constant_build(
+        &builder, loom_attr_i64(23), loom_type_scalar(LOOM_SCALAR_TYPE_I32),
+        LOOM_LOCATION_UNKNOWN, &appended_constant));
+  }
+  const loom_value_id_t appended_value =
+      loom_test_constant_result(appended_constant);
+  ASSERT_GT(loom_value_table_capacity(&module->values), initial_capacity);
+  IREE_ASSERT_OK(loom_pass_value_fact_owner_acquire(
+      &owner, module,
+      loom_pass_value_fact_scope_region(function, config, function.op),
+      &reused_facts));
+  EXPECT_EQ(reused_facts->entries, entries);
+  EXPECT_EQ(reused_facts->capacity, initial_capacity);
+  EXPECT_EQ(counts.recomputation_count, 1u);
+  EXPECT_EQ(counts.cache_hit_count, 2u);
+  EXPECT_EQ(counts.scope_clear_count, 0u);
+  EXPECT_EQ(counts.computed_value_count, touched_count);
+  EXPECT_FALSE(loom_value_fact_table_has_entry(reused_facts, appended_value));
+
   loom_value_fact_table_t* body_facts = nullptr;
   IREE_ASSERT_OK(loom_pass_value_fact_owner_acquire(
       &owner, module, loom_pass_value_fact_scope_function(function),
@@ -281,6 +313,24 @@ TEST_F(PassValueFactsTest, RegionScopeComputesRequestedProjection) {
   EXPECT_EQ(body_facts, facts);
   EXPECT_EQ(loom_value_fact_table_lookup(body_facts, body_value).range_lo, 42);
   EXPECT_EQ(loom_value_fact_table_lookup(body_facts, config_value).range_lo, 7);
+  EXPECT_EQ(loom_value_fact_table_lookup(body_facts, appended_value).range_lo,
+            23);
+  EXPECT_GT(body_facts->capacity, initial_capacity);
+  const iree_host_size_t body_touched_count = body_facts->touched_count;
+  entries = body_facts->entries;
+
+  // Preparing the small region again clears only populated entries and keeps
+  // the enlarged storage; no facts from the expanded body can leak into it.
+  IREE_ASSERT_OK(loom_pass_value_fact_owner_prepare(
+      &owner, module,
+      loom_pass_value_fact_scope_region(function, config, function.op),
+      &reused_facts));
+  EXPECT_EQ(reused_facts->entries, entries);
+  EXPECT_EQ(reused_facts->touched_count, 0u);
+  EXPECT_EQ(counts.scope_clear_count, 2u);
+  EXPECT_EQ(counts.cleared_value_count, touched_count + body_touched_count);
+  EXPECT_FALSE(loom_value_fact_table_has_entry(reused_facts, appended_value));
+  EXPECT_FALSE(loom_value_fact_table_has_entry(reused_facts, config_value));
 
   loom_pass_value_fact_owner_deinitialize(&owner);
 }

@@ -352,6 +352,7 @@ loom_cc_test(
     srcs = ["value_facts_test.cc"],
     deps = [
         ":value_facts",
+        "//loom/src/loom/ir",
         "//loom/src/loom/ops/test",
         "//loom/src/loom/pass/test:harness",
         "//loom/src/loom/target:facts",

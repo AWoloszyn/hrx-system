@@ -129,10 +129,35 @@ static iree_status_t loom_link_index_query_candidates(
   IREE_RETURN_IF_ERROR(loom_template_provider_catalog_build(
       &catalog, materialization->module, &fact_table,
       external_candidates.providers, external_candidates.count));
+  // Projected configurations are roots of the selected definition facets even
+  // before launch resolution creates ordinary calls to their private helpers.
+  // Their provider dependencies must not depend on having an authored target.
+  const iree_host_size_t configuration_count =
+      materialization->target_kernel_configurations.count;
+  loom_symbol_id_t* configuration_roots = NULL;
+  iree_host_size_t configuration_root_count = 0;
+  if (configuration_count != 0) {
+    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+        arena, configuration_count, sizeof(*configuration_roots),
+        (void**)&configuration_roots));
+    for (iree_host_size_t i = 0; i < configuration_count; ++i) {
+      const loom_symbol_ref_t configuration =
+          materialization->target_kernel_configurations.values[i];
+      if (loom_symbol_ref_is_valid(configuration)) {
+        configuration_roots[configuration_root_count++] =
+            configuration.symbol_id;
+      }
+    }
+  }
   const loom_template_selection_query_options_t query_options = {
       .mode = loom_link_index_selection_mode(options),
       .catalog = &catalog,
       .origin_count = loom_link_module_index_symbol_count(index),
+      .root_symbol_ids =
+          {
+              .values = configuration_roots,
+              .count = configuration_root_count,
+          },
   };
   return loom_template_selection_query(materialization->module, &query_options,
                                        block_pool, arena, out_result);

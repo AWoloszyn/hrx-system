@@ -115,6 +115,67 @@ func.def public @call_exported_abi(%kept: index, %apparently_dead: index) {
 
 // ====
 
+// Template families own their providers' signatures even when every symbol is
+// private. Local simplification still folds the provider body, but neither an
+// unused argument nor a result used through a family application is removable.
+template.decl @extent(%ignored: index) -> (index)
+
+template.def<@extent> @extent_impl(%ignored: index) -> (index) {
+  %lhs = index.constant 16 : index
+  %rhs = index.constant 16 : index
+  %extent = index.add %lhs, %rhs : index
+  template.return %extent : index
+}
+
+func.def public @apply_extent(%n: index) -> (index) {
+  %extent = template.apply<@extent>(%n) pure : (index) -> (index)
+  func.return %extent : index
+}
+
+// ----
+template.decl @extent(%ignored: index) -> (index)
+
+template.def<@extent> @extent_impl(%ignored: index) -> (index) {
+  %extent = index.constant 32 : index
+  template.return %extent : index
+}
+
+func.def public @apply_extent(%n: index) -> (index) {
+  %extent = template.apply<@extent>(%n) pure : (index) -> (index)
+  func.return %extent : index
+}
+
+// ====
+
+// An exact template call still implements its family's signature. Visible
+// exact calls do not authorize pruning unused provider arguments or results.
+template.decl @identity(%value: index, %ignored: index) -> (index)
+
+template.def<@identity> @identity_impl(%value: index, %ignored: index) -> (index) {
+  template.return %value : index
+}
+
+func.def public @call_identity(%n: index) -> (index) {
+  %ignored = index.constant 0 : index
+  %value = template.call pure @identity_impl(%n, %ignored) : (index, index) -> (index)
+  func.return %value : index
+}
+
+// ----
+template.decl @identity(%value: index, %ignored: index) -> (index)
+
+template.def<@identity> @identity_impl(%value: index, %ignored: index) -> (index) {
+  template.return %value : index
+}
+
+func.def public @call_identity(%n: index) -> (index) {
+  %ignored = index.constant 0 : index
+  %value = template.call pure @identity_impl(%n, %ignored) : (index, index) -> (index)
+  func.return %value : index
+}
+
+// ====
+
 // A kernel launch exposes its trailing device ABI operands as a semantic call
 // edge, while the leading workload slice remains separate. Kernel entries are
 // implicit artifact exports, so local launch facts cannot narrow their bodies
