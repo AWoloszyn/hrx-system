@@ -8,7 +8,6 @@
 
 #include <string.h>
 
-#include "loom/analysis/scc.h"
 #include "loom/ops/op_defs.h"
 #include "loom/util/cfg_graph.h"
 
@@ -17,7 +16,6 @@
 
 typedef enum loom_control_uniformity_cfg_node_flag_bits_e {
   LOOM_CONTROL_UNIFORMITY_CFG_NODE_CAN_REACH_EXIT = 1u << 0,
-  LOOM_CONTROL_UNIFORMITY_CFG_NODE_IS_CYCLIC = 1u << 1,
 } loom_control_uniformity_cfg_node_flag_bits_t;
 typedef uint8_t loom_control_uniformity_cfg_node_flags_t;
 
@@ -84,7 +82,7 @@ struct loom_control_uniformity_cfg_region_t {
   loom_cfg_edge_index_t* query_lhs_edges;
   // Collected right-hand control-context edges.
   loom_cfg_edge_index_t* query_rhs_edges;
-  // True after control alternatives and cyclic controllers are retained.
+  // True after control alternatives are retained for exclusivity queries.
   bool exclusivity_initialized;
 };
 
@@ -476,47 +474,6 @@ static void loom_control_uniformity_cfg_assign_control_scope(
   }
 }
 
-static iree_status_t loom_control_uniformity_cfg_visit_scc_successors(
-    void* user_data, iree_host_size_t node,
-    loom_scc_successor_callback_t successor) {
-  const loom_cfg_graph_t* graph = (const loom_cfg_graph_t*)user_data;
-  const loom_cfg_block_index_span_t successors =
-      loom_cfg_graph_successors(graph, (uint16_t)node);
-  for (iree_host_size_t i = 0; i < successors.count; ++i) {
-    IREE_RETURN_IF_ERROR(
-        successor.fn(successor.user_data, successors.values[i]));
-  }
-  return iree_ok_status();
-}
-
-static iree_status_t loom_control_uniformity_cfg_mark_cycles(
-    loom_control_uniformity_info_t* info,
-    loom_control_uniformity_cfg_region_t* summary) {
-  const iree_arena_checkpoint_t checkpoint =
-      iree_arena_checkpoint_save(info->arena);
-  const loom_scc_graph_t scc_graph = {
-      .node_count = summary->graph->block_count,
-      .visit_successors = loom_scc_visit_successors_callback_make(
-          loom_control_uniformity_cfg_visit_scc_successors,
-          (void*)summary->graph),
-  };
-  loom_scc_list_t sccs = {0};
-  iree_status_t status =
-      loom_scc_compute(&scc_graph, /*options=*/NULL, info->arena, &sccs);
-  if (iree_status_is_ok(status)) {
-    for (iree_host_size_t i = 0; i < sccs.count; ++i) {
-      const loom_scc_t* scc = &sccs.values[i];
-      if (!scc->is_cycle) continue;
-      for (iree_host_size_t j = 0; j < scc->node_count; ++j) {
-        summary->nodes[scc->nodes[j]].flags |=
-            LOOM_CONTROL_UNIFORMITY_CFG_NODE_IS_CYCLIC;
-      }
-    }
-  }
-  iree_arena_checkpoint_restore(&checkpoint);
-  return status;
-}
-
 static iree_status_t loom_control_uniformity_cfg_append_control_record(
     loom_control_uniformity_info_t* info,
     loom_control_uniformity_cfg_region_t* summary, uint32_t node_index,
@@ -567,7 +524,6 @@ static iree_status_t loom_control_uniformity_cfg_initialize_exclusivity(
   if (summary->exclusivity_initialized || !summary->nodes) {
     return iree_ok_status();
   }
-  IREE_RETURN_IF_ERROR(loom_control_uniformity_cfg_mark_cycles(info, summary));
   for (uint32_t block_index = 0; block_index < summary->exit_node;
        ++block_index) {
     if (summary->nodes[block_index].dfs_number == 0 ||
@@ -640,10 +596,7 @@ static iree_host_size_t loom_control_uniformity_cfg_collect_control_context(
       const loom_cfg_edge_info_t* edge =
           loom_cfg_graph_edge(summary->graph, record->edge_index);
       const uint32_t controller_index = edge->source_block_index;
-      const loom_control_uniformity_cfg_node_t* controller =
-          &summary->nodes[controller_index];
-      if (!iree_any_bit_set(controller->flags,
-                            LOOM_CONTROL_UNIFORMITY_CFG_NODE_IS_CYCLIC) &&
+      if (!summary->graph->blocks[controller_index].component_is_cyclic &&
           loom_control_uniformity_cfg_selector_scope(info, edge) >=
               required_scope) {
         out_edges[edge_count++] = record->edge_index;

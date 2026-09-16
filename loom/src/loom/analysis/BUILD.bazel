@@ -17,7 +17,6 @@ loom_cc_library(
     srcs = ["control_uniformity.c"],
     hdrs = ["control_uniformity.h"],
     deps = [
-        ":scc",
         "//loom/src/loom/ir",
         "//loom/src/loom/ir:facts",
         "//loom/src/loom/ops:op_defs",

@@ -17,7 +17,6 @@ loom_cc_library(
   SRCS
     "control_uniformity.c"
   DEPS
-    ::scc
     iree::base
     iree::base::internal::arena
     loom::ir
