@@ -10,7 +10,10 @@
 
 #include <atomic>
 #include <cerrno>
+#include <condition_variable>
 #include <cstring>
+#include <mutex>
+#include <thread>
 #include <vector>
 
 #include "iree/async/file.h"
@@ -77,6 +80,9 @@ struct OperationCompletionState {
   // Terminal status code reported by the operation completion.
   iree_status_code_t status_code = IREE_STATUS_OK;
 
+  // Region released by a poll-owner callback, or NULL for ordinary completion.
+  iree_async_region_t* region_to_release = nullptr;
+
   // Set after the poll owner publishes |status_code|.
   std::atomic<bool> completed{false};
 
@@ -98,6 +104,20 @@ static void RecordOperationCompletion(void* user_data,
   (void)flags;
   state->status_code = iree_status_code(status);
   iree_status_free(status);
+  state->completed.store(true, std::memory_order_release);
+  iree_notification_post(&state->notification, IREE_ALL_WAITERS);
+}
+
+static void RecordOperationCompletionAndReleaseRegion(
+    void* user_data, iree_async_operation_t* operation, iree_status_t status,
+    iree_async_completion_flags_t flags) {
+  auto* state = static_cast<OperationCompletionState*>(user_data);
+  (void)operation;
+  (void)flags;
+  state->status_code = iree_status_code(status);
+  iree_status_free(status);
+  iree_async_region_release(state->region_to_release);
+  state->region_to_release = nullptr;
   state->completed.store(true, std::memory_order_release);
   iree_notification_post(&state->notification, IREE_ALL_WAITERS);
 }
@@ -271,6 +291,101 @@ TEST_F(IoUringRegistrationOwnerTest, SlabLifecycleFromCallerTask) {
     }
     iree_async_region_release(region_);
     region_ = nullptr;
+  }
+}
+
+TEST_F(IoUringRegistrationOwnerTest, SlabReleaseFromPollOwnerCallback) {
+  ASSERT_NO_FATAL_FAILURE(WaitForPollOwner());
+
+  iree_async_slab_options_t slab_options = {0};
+  slab_options.buffer_size = 4096;
+  slab_options.buffer_count = 4;
+  IREE_ASSERT_OK(
+      iree_async_slab_create(slab_options, iree_allocator_system(), &slab_));
+
+  iree_async_buffer_access_flags_t access_mode =
+      IREE_ASYNC_BUFFER_ACCESS_FLAG_READ;
+  if (iree_any_bit_set(iree_async_proactor_query_capabilities(proactor_),
+                       IREE_ASYNC_PROACTOR_CAPABILITY_MULTISHOT)) {
+    access_mode |= IREE_ASYNC_BUFFER_ACCESS_FLAG_WRITE;
+  }
+  IREE_ASSERT_OK(iree_async_proactor_register_slab(proactor_, slab_,
+                                                   access_mode, &region_));
+  int32_t fixed_buffer_index = region_->handles.iouring.base_buffer_index;
+
+  ResetCompletion();
+  completion_.region_to_release = region_;
+  region_ = nullptr;
+  memset(&nop_, 0, sizeof(nop_));
+  nop_.base.type = IREE_ASYNC_OPERATION_TYPE_NOP;
+  nop_.base.completion_fn = RecordOperationCompletionAndReleaseRegion;
+  nop_.base.user_data = &completion_;
+  IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &nop_.base));
+  ASSERT_NO_FATAL_FAILURE(WaitForCompletion());
+  EXPECT_EQ(completion_.region_to_release, nullptr);
+
+  IREE_ASSERT_OK(iree_async_proactor_register_slab(proactor_, slab_,
+                                                   access_mode, &region_));
+  if (fixed_buffer_index >= 0) {
+    EXPECT_EQ(region_->handles.iouring.base_buffer_index, fixed_buffer_index);
+  }
+}
+
+TEST_F(IoUringRegistrationOwnerTest, ConcurrentFinalSlabRelease) {
+  ASSERT_NO_FATAL_FAILURE(WaitForPollOwner());
+
+  iree_async_slab_options_t slab_options = {0};
+  slab_options.buffer_size = 4096;
+  slab_options.buffer_count = 4;
+  IREE_ASSERT_OK(
+      iree_async_slab_create(slab_options, iree_allocator_system(), &slab_));
+
+  iree_async_buffer_access_flags_t access_mode =
+      IREE_ASYNC_BUFFER_ACCESS_FLAG_READ;
+  if (iree_any_bit_set(iree_async_proactor_query_capabilities(proactor_),
+                       IREE_ASYNC_PROACTOR_CAPABILITY_MULTISHOT)) {
+    access_mode |= IREE_ASYNC_BUFFER_ACCESS_FLAG_WRITE;
+  }
+  IREE_ASSERT_OK(iree_async_proactor_register_slab(proactor_, slab_,
+                                                   access_mode, &region_));
+  int32_t fixed_buffer_index = region_->handles.iouring.base_buffer_index;
+
+  static constexpr int kReleaseThreadCount = 8;
+  for (int i = 1; i < kReleaseThreadCount; ++i) {
+    iree_async_region_retain(region_);
+  }
+  iree_async_region_t* region = region_;
+  region_ = nullptr;
+
+  std::mutex gate_mutex;
+  std::condition_variable gate_condition;
+  int ready_count = 0;
+  bool release_requested = false;
+  std::vector<std::thread> release_threads;
+  release_threads.reserve(kReleaseThreadCount);
+  for (int i = 0; i < kReleaseThreadCount; ++i) {
+    release_threads.emplace_back([&] {
+      std::unique_lock<std::mutex> lock(gate_mutex);
+      ++ready_count;
+      gate_condition.notify_all();
+      gate_condition.wait(lock, [&] { return release_requested; });
+      lock.unlock();
+      iree_async_region_release(region);
+    });
+  }
+  {
+    std::unique_lock<std::mutex> lock(gate_mutex);
+    gate_condition.wait(lock,
+                        [&] { return ready_count == kReleaseThreadCount; });
+    release_requested = true;
+  }
+  gate_condition.notify_all();
+  for (std::thread& thread : release_threads) thread.join();
+
+  IREE_ASSERT_OK(iree_async_proactor_register_slab(proactor_, slab_,
+                                                   access_mode, &region_));
+  if (fixed_buffer_index >= 0) {
+    EXPECT_EQ(region_->handles.iouring.base_buffer_index, fixed_buffer_index);
   }
 }
 
