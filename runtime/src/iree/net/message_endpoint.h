@@ -261,6 +261,9 @@ iree_net_message_endpoint_query_send_budget(
 //
 // Between begin_send and commit/abort, the caller holds endpoint-specific
 // resources. The caller must call commit_send or abort_send promptly.
+// Deactivation invalidates uncommitted reservations. Callers must externally
+// synchronize writes through reservation pointers and terminal commit/abort
+// operations against endpoint or owning-connection deactivation.
 //
 // |size| must be > 0.
 //

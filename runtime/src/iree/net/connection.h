@@ -147,9 +147,9 @@ static inline void iree_net_connection_release(
 // Begins deactivating all active carriers/endpoints owned by the connection.
 //
 // This must be called before releasing the connection to ensure all in-flight
-// operations (NOP completions, send completions) have drained. Without
-// deactivation, releasing the connection frees carrier memory while operations
-// may still be pending in the proactor's completion queue.
+// endpoint-ready and transport operations have drained. Without deactivation,
+// releasing the connection could free endpoint storage while operations remain
+// pending in the proactor's completion queue.
 //
 // The |callback| fires exactly once when all carriers have transitioned to the
 // DEACTIVATED state. If no carriers are active (e.g., endpoints were never

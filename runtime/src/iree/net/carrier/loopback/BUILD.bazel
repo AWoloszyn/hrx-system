@@ -26,6 +26,37 @@ iree_runtime_cc_library(
     ],
 )
 
+iree_runtime_cc_library(
+    name = "framed_endpoint",
+    srcs = ["framed_endpoint.c"],
+    hdrs = ["framed_endpoint.h"],
+    deps = [
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base:core_headers",
+        "//runtime/src/iree/base/threading",
+        "//runtime/src/iree/net:carrier",
+        "//runtime/src/iree/net:endpoint_lifecycle",
+        "//runtime/src/iree/net:framing_adapter",
+        "//runtime/src/iree/net:message_endpoint",
+    ],
+)
+
+iree_runtime_cc_library(
+    name = "connection",
+    srcs = ["connection.c"],
+    hdrs = ["connection.h"],
+    deps = [
+        ":framed_endpoint",
+        ":loopback",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/threading",
+        "//runtime/src/iree/net:connection",
+        "//runtime/src/iree/net:endpoint_lifecycle",
+    ],
+)
+
 iree_runtime_cc_test(
     name = "carrier_test",
     srcs = ["carrier_test.cc"],
@@ -35,6 +66,21 @@ iree_runtime_cc_test(
         "//runtime/src/iree/async:platform",
         "//runtime/src/iree/base",
         "//runtime/src/iree/net:carrier",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+iree_runtime_cc_test(
+    name = "connection_test",
+    srcs = ["connection_test.cc"],
+    deps = [
+        ":connection",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/async:platform",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/net:connection",
+        "//runtime/src/iree/net:message_endpoint",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
     ],
