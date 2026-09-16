@@ -4,11 +4,15 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <cstring>
+#include <thread>
 #include <vector>
 
+#include "amdf/gpu.h"
 #include "experimental/xdna/executable.h"
 #include "experimental/xdna/prepared_command.h"
 #include "iree/hal/drivers/amd/xdna/image/aie2p/npu2.h"
@@ -250,28 +254,33 @@ class XdnaExecutionTest
       }
       std::memset(binding.storage.pointer, kGuardValue,
                   kBindingStorageByteLength);
-      IREE_ASSERT_OK(iree_hal_heap_buffer_wrap(
-          iree_hal_buffer_placement_undefined(),
-          IREE_HAL_MEMORY_TYPE_HOST_LOCAL | IREE_HAL_MEMORY_TYPE_HOST_VISIBLE |
-              IREE_HAL_MEMORY_TYPE_DEVICE_VISIBLE,
-          IREE_HAL_MEMORY_ACCESS_READ | IREE_HAL_MEMORY_ACCESS_WRITE |
-              IREE_HAL_MEMORY_ACCESS_UNALIGNED,
-          IREE_HAL_BUFFER_USAGE_STORAGE, kBindingByteLength,
-          iree_make_byte_span(binding.storage.pointer + kBindingByteOffset,
-                              kBindingByteLength),
-          iree_hal_buffer_release_callback_null(), iree_allocator_system(),
-          &binding.buffer));
-      prepared_bindings_[i].buffer_ref =
-          iree_hal_make_buffer_ref(binding.buffer, 0, kBindingByteLength);
-      prepared_bindings_[i].memory = binding.storage.memory;
-      prepared_bindings_[i].memory_byte_offset = kBindingByteOffset;
-      ASSERT_EQ(api_->memory_query_address(
-                    binding.storage.memory, 0, AMDF_MEMORY_ADDRESS_XDNA_DMA,
-                    &prepared_bindings_[i].device_address),
-                AMDF_STATUS_OK);
-      prepared_bindings_[i].device_address += kBindingByteOffset;
+      ASSERT_NO_FATAL_FAILURE(WrapBinding(i));
       ASSERT_NO_FATAL_FAILURE(QueryHostCacheOperations(i));
     }
+  }
+
+  void WrapBinding(size_t ordinal) {
+    auto& binding = bindings_[ordinal];
+    IREE_ASSERT_OK(iree_hal_heap_buffer_wrap(
+        iree_hal_buffer_placement_undefined(),
+        IREE_HAL_MEMORY_TYPE_HOST_LOCAL | IREE_HAL_MEMORY_TYPE_HOST_VISIBLE |
+            IREE_HAL_MEMORY_TYPE_DEVICE_VISIBLE,
+        IREE_HAL_MEMORY_ACCESS_READ | IREE_HAL_MEMORY_ACCESS_WRITE |
+            IREE_HAL_MEMORY_ACCESS_UNALIGNED,
+        IREE_HAL_BUFFER_USAGE_STORAGE, kBindingByteLength,
+        iree_make_byte_span(binding.storage.pointer + kBindingByteOffset,
+                            kBindingByteLength),
+        iree_hal_buffer_release_callback_null(), iree_allocator_system(),
+        &binding.buffer));
+    prepared_bindings_[ordinal].buffer_ref =
+        iree_hal_make_buffer_ref(binding.buffer, 0, kBindingByteLength);
+    prepared_bindings_[ordinal].memory = binding.storage.memory;
+    prepared_bindings_[ordinal].memory_byte_offset = kBindingByteOffset;
+    ASSERT_EQ(api_->memory_query_address(
+                  binding.storage.memory, 0, AMDF_MEMORY_ADDRESS_XDNA_DMA,
+                  &prepared_bindings_[ordinal].device_address),
+              AMDF_STATUS_OK);
+    prepared_bindings_[ordinal].device_address += kBindingByteOffset;
   }
 
   void QueryHostCacheOperations(size_t ordinal) {
@@ -737,6 +746,461 @@ TEST_P(XdnaExecutionTest, SharesDataAcrossIndependentContextLifetimes) {
     ASSERT_NO_FATAL_FAILURE(VerifyInstructions(second_));
   }
 }
+
+// Exercises the queue visibility contract with real producers and consumers.
+// COPY_DATA uses TC L2; it does not qualify shader-side PROGRAM transitions.
+class XdnaPoolVisibilityTest : public XdnaExecutionTest {
+ protected:
+  static constexpr uint64_t kStagingByteLength = 4096;
+  static constexpr uint64_t kReadbackByteOffset = 1024;
+  static constexpr uint64_t kCompletionByteOffset = 2048;
+  static constexpr uint64_t kRingByteLength = 4096;
+
+  void SetUp() override {
+    ASSERT_NO_FATAL_FAILURE(XdnaExecutionTest::SetUp());
+    const void* extension = nullptr;
+    const auto extension_status =
+        api_->query_extension(AMDF_EXTENSION_GPU, AMDF_GPU_EXTENSION_VERSION_1,
+                              AMDF_GPU_EXTENSION_VERSION_LATEST, &extension);
+    if (extension_status ==
+        amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
+      GTEST_SKIP() << "the GPU provider is not enabled";
+    }
+    ASSERT_EQ(extension_status, AMDF_STATUS_OK);
+    gpu_api_ = static_cast<const amdf_gpu_api_t*>(extension);
+    uint32_t count = 0;
+    ASSERT_EQ(api_->endpoint_enumerate(instance_, 0, nullptr, &count),
+              AMDF_STATUS_OK);
+    std::vector<amdf_endpoint_summary_t> endpoints(count);
+    ASSERT_EQ(
+        api_->endpoint_enumerate(instance_, count, endpoints.data(), &count),
+        AMDF_STATUS_OK);
+    amdf_endpoint_t* gpu_endpoint = nullptr;
+    for (const auto& summary : endpoints) {
+      if (summary.engine_kind != AMDF_ENGINE_KIND_GPU) continue;
+      amdf_endpoint_t* endpoint = nullptr;
+      ASSERT_EQ(GetCtsDeviceCache().OpenEndpoint(summary.id, &endpoint),
+                AMDF_STATUS_OK);
+      amdf_endpoint_info_t info = {};
+      info.type = AMDF_STRUCTURE_TYPE_ENDPOINT_INFO;
+      info.structure_size = sizeof(info);
+      ASSERT_EQ(api_->endpoint_query_info(endpoint, &info), AMDF_STATUS_OK);
+      for (uint32_t ordinal = 0; ordinal < info.queue_family_count; ++ordinal) {
+        amdf_queue_family_info_t family = {};
+        family.type = AMDF_STRUCTURE_TYPE_QUEUE_FAMILY_INFO;
+        family.structure_size = sizeof(family);
+        ASSERT_EQ(
+            api_->endpoint_query_queue_family_info(endpoint, ordinal, &family),
+            AMDF_STATUS_OK);
+        if (family.command_type == AMDF_QUEUE_COMMAND_TYPE_GPU_PM4 &&
+            family.format_version == AMDF_GPU_PM4_QUEUE_FORMAT_VERSION_1 &&
+            (family.format_features &
+             AMDF_GPU_PM4_FORMAT_FEATURE_ACQUIRE_MEM_GCR) != 0 &&
+            (family.publication_modes & AMDF_QUEUE_PUBLICATION_MODE_USER) !=
+                0 &&
+            (family.user_queue_capabilities &
+             AMDF_USER_QUEUE_CAPABILITY_HOST_PRODUCER) != 0 &&
+            family.maximum_ring_byte_length >= kRingByteLength) {
+          gpu_family_ = family;
+          gpu_endpoint = endpoint;
+          break;
+        }
+      }
+      if (gpu_endpoint) break;
+    }
+    if (!gpu_endpoint) {
+      GTEST_SKIP() << "GPU PM4 user publication with GCR is not advertised";
+    }
+    ASSERT_EQ(GetCtsDeviceCache().GetGpuDevice(gpu_endpoint, &gpu_device_),
+              AMDF_STATUS_OK);
+    pool_accesses_[0] = memory_access_;
+    pool_accesses_[0].requirements.address_kinds =
+        UINT64_C(1) << AMDF_MEMORY_ADDRESS_XDNA_DMA;
+    pool_accesses_[1].device = gpu_device_;
+    pool_accesses_[1].requirements.access =
+        AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
+    pool_accesses_[1].requirements.flags =
+        AMDF_MEMORY_FLAG_HOST_COHERENT | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+    pool_accesses_[1].requirements.address_kinds = UINT64_C(1)
+                                                   << AMDF_MEMORY_ADDRESS_GPU;
+  }
+
+  void TearDown() override {
+    if (gpu_mapping_) {
+      ASSERT_EQ(api_->user_queue_mapping_destroy(gpu_mapping_), AMDF_STATUS_OK);
+      gpu_mapping_ = nullptr;
+    }
+    if (gpu_queue_) {
+      ASSERT_EQ(api_->user_queue_destroy(gpu_queue_), AMDF_STATUS_OK);
+      gpu_queue_ = nullptr;
+    }
+    ASSERT_NO_FATAL_FAILURE(DestroyMemory(&staging_));
+    XdnaExecutionTest::TearDown();
+  }
+
+  void FindProfile(uint32_t access_count,
+                   const amdf_memory_device_access_t* accesses,
+                   amdf_memory_profile_roles_t role,
+                   amdf_memory_profile_t* out_profile) {
+    out_profile->ordinal = AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN;
+    for (uint32_t ordinal = 0;; ++ordinal) {
+      amdf_memory_profile_t profile = {};
+      profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
+      profile.structure_size = sizeof(profile);
+      std::array<amdf_memory_access_capabilities_t, 2> capabilities = {};
+      for (auto& capability : capabilities) {
+        capability.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES;
+        capability.structure_size = sizeof(capability);
+      }
+      const auto status = api_->memory_scope_query_device_profile(
+          system_scope_, ordinal, access_count, accesses, &profile,
+          capabilities.data());
+      if (amdf_status_code(status) == AMDF_STATUS_CODE_OUT_OF_RANGE) break;
+      if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED))
+        continue;
+      ASSERT_EQ(status, AMDF_STATUS_OK);
+      if ((profile.roles & role) != 0 &&
+          (profile.roles & AMDF_MEMORY_PROFILE_ROLE_HOST_MAP) != 0 &&
+          (profile.supported_flags & AMDF_MEMORY_FLAG_HOST_VISIBLE) != 0) {
+        *out_profile = profile;
+        return;
+      }
+    }
+  }
+
+  void CreatePool() {
+    amdf_memory_profile_t profile = {};
+    ASSERT_NO_FATAL_FAILURE(FindProfile(
+        pool_accesses_.size(), pool_accesses_.data(), GetParam(), &profile));
+    if (profile.ordinal == AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN &&
+        GetParam() == AMDF_MEMORY_PROFILE_ROLE_REGISTER) {
+      GTEST_SKIP() << "joint host registration is not advertised";
+    }
+    ASSERT_NE(profile.ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
+    std::array<amdf_memory_profile_site_t, 3> sites = {};
+    sites[0].kind = AMDF_MEMORY_SITE_KIND_DEVICE;
+    sites[0].value.device.queue_family_ordinal = queue_family_ordinal_;
+    sites[1].kind = AMDF_MEMORY_SITE_KIND_DEVICE;
+    sites[1].value.device.access_ordinal = 1;
+    sites[1].value.device.queue_family_ordinal = gpu_family_.ordinal;
+    sites[2].kind = AMDF_MEMORY_SITE_KIND_HOST;
+    sites[2].value.host_access =
+        AMDF_MEMORY_MAP_FLAG_READ | AMDF_MEMORY_MAP_FLAG_WRITE;
+    amdf_memory_profile_pair_query_t query = {};
+    query.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE_PAIR_QUERY;
+    query.structure_size = sizeof(query);
+    query.memory_profile_ordinal = profile.ordinal;
+    query.access_count = pool_accesses_.size();
+    query.accesses = pool_accesses_.data();
+    query.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
+    query.registered_host_cacheability =
+        profile.registration.registered_host_cacheability;
+    // All recipes are obtained before any pool backing exists, and retained
+    // across independent allocations, queue submissions and data generations.
+    std::array<amdf_memory_pair_info_t, 3> pairs = {};
+    const uint32_t edges[][2] = {{2, 0}, {1, 0}, {0, 1}};
+    for (size_t i = 0; i < pairs.size(); ++i) {
+      query.producer = sites[edges[i][0]];
+      query.consumer = sites[edges[i][1]];
+      pairs[i].type = AMDF_STRUCTURE_TYPE_MEMORY_PAIR_INFO;
+      pairs[i].structure_size = sizeof(pairs[i]);
+      ASSERT_EQ(
+          api_->memory_scope_query_pair_info(system_scope_, &query, &pairs[i]),
+          AMDF_STATUS_OK);
+      ASSERT_NE(pairs[i].flags & AMDF_MEMORY_PAIR_FLAG_SHARED_BACKING_REACHABLE,
+                0u);
+    }
+    const auto& publish = pairs[0].release;
+    ASSERT_EQ(publish.kind, AMDF_CACHE_TRANSITION_KIND_RANGE);
+    ASSERT_EQ(publish.executor, AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT);
+    ASSERT_EQ(pairs[0].acquire.kind, AMDF_CACHE_TRANSITION_KIND_NONE);
+    ASSERT_EQ(pairs[1].acquire.kind, AMDF_CACHE_TRANSITION_KIND_NONE);
+    ASSERT_EQ(pairs[2].release.kind, AMDF_CACHE_TRANSITION_KIND_NONE);
+    gpu_release_ = pairs[1].release;
+    gpu_acquire_ = pairs[2].acquire;
+    ASSERT_EQ(gpu_release_.operation, AMDF_CACHE_OPERATION_RELEASE_TO_SYSTEM);
+    ASSERT_EQ(gpu_acquire_.operation, AMDF_CACHE_OPERATION_ACQUIRE_FROM_SYSTEM);
+
+    for (size_t ordinal = 0; ordinal < bindings_.size(); ++ordinal) {
+      auto& storage = bindings_[ordinal].storage;
+      amdf_memory_create_info_t create = {};
+      create.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
+      create.structure_size = sizeof(create);
+      create.memory_profile_ordinal = profile.ordinal;
+      create.access_count = query.access_count;
+      create.accesses = query.accesses;
+      create.required_flags = query.required_flags;
+      create.byte_length = kBindingStorageByteLength;
+      create.minimum_alignment = kBindingByteLength;
+      create.registered_host_cacheability = query.registered_host_cacheability;
+      if (GetParam() == AMDF_MEMORY_PROFILE_ROLE_REGISTER) {
+        create.registered_host_pointer =
+            registered_pages_[ordinal].data() + kBindingByteLength;
+      }
+      ASSERT_EQ(api_->memory_create(system_scope_, &create, &storage.memory),
+                AMDF_STATUS_OK);
+      ASSERT_NO_FATAL_FAILURE(MapMemory(create.byte_length, &storage));
+      std::memset(storage.pointer, kGuardValue, create.byte_length);
+      ASSERT_EQ(
+          api_->host_mapping_cache_control(
+              storage.mapping, publish.host_operation, 0, create.byte_length),
+          AMDF_STATUS_OK);
+      ASSERT_NO_FATAL_FAILURE(WrapBinding(ordinal));
+      ASSERT_EQ(
+          api_->memory_query_address(storage.memory, 1, AMDF_MEMORY_ADDRESS_GPU,
+                                     &gpu_addresses_[ordinal]),
+          AMDF_STATUS_OK);
+    }
+  }
+
+  void CreateGpuQueue() {
+    amdf_memory_profile_t profile = {};
+    ASSERT_NO_FATAL_FAILURE(FindProfile(
+        1, &pool_accesses_[1], AMDF_MEMORY_PROFILE_ROLE_CREATE, &profile));
+    ASSERT_NE(profile.ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
+    amdf_memory_create_info_t create = {};
+    create.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
+    create.structure_size = sizeof(create);
+    create.memory_profile_ordinal = profile.ordinal;
+    create.access_count = 1;
+    create.accesses = &pool_accesses_[1];
+    create.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
+    create.byte_length = kStagingByteLength;
+    ASSERT_EQ(api_->memory_create(system_scope_, &create, &staging_.memory),
+              AMDF_STATUS_OK);
+    ASSERT_NO_FATAL_FAILURE(MapMemory(create.byte_length, &staging_));
+    ASSERT_EQ(
+        api_->memory_query_address(staging_.memory, 0, AMDF_MEMORY_ADDRESS_GPU,
+                                   &staging_address_),
+        AMDF_STATUS_OK);
+    amdf_gpu_user_queue_create_info_t queue = {};
+    queue.type = AMDF_STRUCTURE_TYPE_GPU_USER_QUEUE_CREATE_INFO;
+    queue.structure_size = sizeof(queue);
+    queue.queue_family_ordinal = gpu_family_.ordinal;
+    queue.priority = AMDF_QUEUE_PRIORITY_NORMAL;
+    queue.producer_mode = AMDF_QUEUE_PRODUCER_MODE_SINGLE;
+    queue.required_capabilities = AMDF_USER_QUEUE_CAPABILITY_HOST_PRODUCER;
+    queue.ring_byte_length =
+        std::max(gpu_family_.minimum_ring_byte_length, kRingByteLength);
+    ASSERT_EQ(gpu_api_->user_queue_create(gpu_device_, &queue, &gpu_queue_),
+              AMDF_STATUS_OK);
+    ASSERT_EQ(api_->user_queue_map(gpu_queue_, nullptr, &gpu_mapping_),
+              AMDF_STATUS_OK);
+    gpu_mapping_info_.type = AMDF_STRUCTURE_TYPE_USER_QUEUE_MAPPING_INFO;
+    gpu_mapping_info_.structure_size = sizeof(gpu_mapping_info_);
+    ASSERT_EQ(
+        api_->user_queue_mapping_query_info(gpu_mapping_, &gpu_mapping_info_),
+        AMDF_STATUS_OK);
+    ASSERT_EQ(gpu_mapping_info_.index_bits, 64u);
+    ASSERT_EQ(gpu_mapping_info_.doorbell_bits, 64u);
+  }
+
+  static uint32_t Pm4Header(uint32_t opcode, uint32_t count) {
+    return (3u << 30) | (opcode << 8) | ((count - 2) << 16);
+  }
+
+  static void AppendGpuTransition(const amdf_cache_transition_t& transition,
+                                  std::vector<uint32_t>* words) {
+    ASSERT_EQ(transition.kind, AMDF_CACHE_TRANSITION_KIND_GLOBAL);
+    ASSERT_EQ(transition.executor, AMDF_CACHE_TRANSITION_EXECUTOR_QUEUE);
+    // CS_PARTIAL_FLUSH followed by a conservative full-range ACQUIRE_MEM GCR
+    // implements both system release and system acquire on this format.
+    constexpr uint32_t kGcr = (3 << 0) | (1 << 4) | (1 << 5) | (1 << 7) |
+                              (1 << 8) | (1 << 9) | (1 << 14) | (1 << 15);
+    words->insert(words->end(),
+                  {Pm4Header(0x46, 2), 7 | (4 << 8), Pm4Header(0x58, 8), 0,
+                   UINT32_MAX, 0xff, 0, 0, 0x0a, kGcr});
+  }
+
+  static void AppendGpuCopy(uint64_t source, uint64_t target,
+                            size_t byte_length, std::vector<uint32_t>* words) {
+    for (size_t offset = 0; offset < byte_length; offset += sizeof(uint32_t)) {
+      // COPY_DATA between TC L2 addresses, with write confirmation.
+      words->insert(words->end(),
+                    {Pm4Header(0x40, 6), 2 | (2 << 8) | (1 << 20),
+                     static_cast<uint32_t>(source + offset),
+                     static_cast<uint32_t>((source + offset) >> 32),
+                     static_cast<uint32_t>(target + offset),
+                     static_cast<uint32_t>((target + offset) >> 32)});
+    }
+  }
+
+  void RunGpu(std::vector<uint32_t> words, uint32_t completion_value) {
+    auto* completion = reinterpret_cast<volatile uint32_t*>(
+        staging_.pointer + kCompletionByteOffset);
+    ASSERT_NE(*completion, completion_value);
+    const uint64_t completion_address =
+        staging_address_ + kCompletionByteOffset;
+    // WRITE_DATA confirms a separate coherent completion line after the
+    // ordered copies/barriers. Ring consumption alone is not completion.
+    words.insert(words.end(), {Pm4Header(0x37, 5), (2 << 8) | (1 << 20),
+                               static_cast<uint32_t>(completion_address),
+                               static_cast<uint32_t>(completion_address >> 32),
+                               completion_value});
+    auto* ring = reinterpret_cast<uint32_t*>(
+        static_cast<uintptr_t>(gpu_mapping_info_.ring_address));
+    const uint64_t capacity =
+        gpu_mapping_info_.ring_byte_length / sizeof(*ring);
+    std::vector<uint32_t> publication;
+    auto append_padding = [&](size_t count) {
+      publication.push_back(Pm4Header(0x10, count));
+      publication.resize(publication.size() + count - 1, 0);
+    };
+    // Preserve packet boundaries across ring wrap and leave space for a
+    // complete type-3 NOP instead of stranding one dword at the tail.
+    for (size_t i = 0; i < words.size();) {
+      const size_t count = ((words[i] >> 16) & 0x3fff) + 2;
+      const size_t tail =
+          capacity - (published_index_ + publication.size()) % capacity;
+      if (tail < count || tail == count + 1) append_padding(tail);
+      publication.insert(publication.end(), words.begin() + i,
+                         words.begin() + i + count);
+      i += count;
+    }
+    size_t padding = 8 - publication.size() % 8;
+    if (padding == 1) padding += 8;
+    append_padding(padding);
+    // All prior batches have retired. The publication still reserves the
+    // native PM4 empty/full discriminator by remaining smaller than the ring.
+    ASSERT_LT(publication.size(), capacity);
+    for (size_t i = 0; i < publication.size(); ++i) {
+      ring[(published_index_ + i) % capacity] = publication[i];
+    }
+    published_index_ += publication.size();
+    auto* write_index = reinterpret_cast<volatile uint64_t*>(
+        static_cast<uintptr_t>(gpu_mapping_info_.write_index_address));
+    auto* doorbell = reinterpret_cast<volatile uint64_t*>(
+        static_cast<uintptr_t>(gpu_mapping_info_.doorbell_address));
+    std::atomic_thread_fence(std::memory_order_release);
+    *write_index = published_index_;
+    std::atomic_thread_fence(std::memory_order_release);
+    *doorbell = published_index_;
+    ASSERT_EQ(api_->user_queue_wait_consumed(gpu_queue_, published_index_,
+                                             AMDF_TIMEOUT_INFINITE, 0),
+              AMDF_STATUS_OK);
+    while (*completion != completion_value) {
+      amdf_user_queue_status_t status = {};
+      status.type = AMDF_STRUCTURE_TYPE_USER_QUEUE_STATUS;
+      status.structure_size = sizeof(status);
+      ASSERT_EQ(api_->user_queue_query_status(gpu_queue_, &status),
+                AMDF_STATUS_OK);
+      ASSERT_EQ(status.terminal_status, AMDF_STATUS_OK);
+      std::this_thread::yield();
+    }
+    std::atomic_thread_fence(std::memory_order_acquire);
+  }
+
+  // GPU extension table and device borrowed from the shared CTS provider.
+  const amdf_gpu_api_t* gpu_api_ = nullptr;
+  // Ordinary GPU address domain retained by the CTS cache.
+  amdf_device_t* gpu_device_ = nullptr;
+  // Exact PM4 family used by qualification and publication.
+  amdf_queue_family_info_t gpu_family_ = {};
+  // Complete pool contract, ordered XDNA then GPU.
+  std::array<amdf_memory_device_access_t, 2> pool_accesses_ = {};
+  // GPU release selected before any backing exists.
+  amdf_cache_transition_t gpu_release_ = {};
+  // GPU acquire selected before any backing exists.
+  amdf_cache_transition_t gpu_acquire_ = {};
+  // Independent pages prevent native registration ranges from overlapping.
+  alignas(4096) std::array<std::array<uint8_t, 4096>, 3> registered_pages_ = {};
+  // Cold GPU addresses corresponding to the three XDNA bindings.
+  std::array<uint64_t, 3> gpu_addresses_ = {};
+  // GPU-only host staging, readback and a separate completion cache line.
+  MappedMemory staging_;
+  // GPU address of staging_; never used by XDNA.
+  uint64_t staging_address_ = 0;
+  // Case-owned GPU queue, destroyed before any reachable backing.
+  amdf_user_queue_t* gpu_queue_ = nullptr;
+  // Host producer mapping, destroyed before the queue.
+  amdf_user_queue_mapping_t* gpu_mapping_ = nullptr;
+  // Cold publication operands for the host producer.
+  amdf_user_queue_mapping_info_t gpu_mapping_info_ = {};
+  // Monotonic dword index; each batch completes before the next overwrites it.
+  uint64_t published_index_ = 0;
+};
+
+TEST_P(XdnaPoolVisibilityTest, ReplaysQualifiedGpuXdnaGpuTransitions) {
+  ASSERT_NO_FATAL_FAILURE(CreatePool());
+  if (IsSkipped()) return;
+  ASSERT_NO_FATAL_FAILURE(CreateGpuQueue());
+  ASSERT_NO_FATAL_FAILURE(PrepareExecution(prepared_bindings_, &first_));
+  std::vector<uint32_t> ingress;
+  std::vector<uint32_t> egress;
+  ASSERT_NO_FATAL_FAILURE(AppendGpuTransition(gpu_acquire_, &egress));
+  for (size_t ordinal = 0; ordinal < bindings_.size(); ++ordinal) {
+    AppendGpuCopy(staging_address_ + ordinal * kBindingByteLength,
+                  gpu_addresses_[ordinal] + kBindingByteOffset,
+                  kBindingByteLength, &ingress);
+    AppendGpuCopy(gpu_addresses_[ordinal],
+                  staging_address_ + kReadbackByteOffset +
+                      ordinal * kBindingStorageByteLength,
+                  kBindingStorageByteLength, &egress);
+  }
+  ASSERT_NO_FATAL_FAILURE(AppendGpuTransition(gpu_release_, &ingress));
+  // Retire the GPU readback writes before its host-visible completion marker.
+  ASSERT_NO_FATAL_FAILURE(AppendGpuTransition(gpu_release_, &egress));
+  for (uint32_t iteration = 0; iteration < 8; ++iteration) {
+    SCOPED_TRACE(iteration);
+    std::memset(staging_.pointer, 0, kStagingByteLength);
+    std::array<BindingValues, 3> expected;
+    for (size_t i = 0; i < kElementCount; ++i) {
+      expected[0][i] = kValues[(i + iteration) % kElementCount];
+      expected[1][i] = kValues[(i * 3 + iteration + 5) % kElementCount];
+      expected[2][i] = expected[0][i] * expected[1][i];
+      for (size_t ordinal = 0; ordinal < bindings_.size(); ++ordinal) {
+        iree_unaligned_store_le_u32(
+            staging_.pointer + ordinal * kBindingByteLength + i * 4,
+            ordinal == 2 ? ~expected[2][i] : expected[ordinal][i]);
+      }
+    }
+    ASSERT_EQ(api_->host_mapping_cache_control(staging_.mapping,
+                                               AMDF_HOST_CACHE_OPERATION_FLUSH,
+                                               0, kStagingByteLength),
+              AMDF_STATUS_OK);
+    ASSERT_NO_FATAL_FAILURE(RunGpu(ingress, iteration * 2 + 1));
+    const auto* command =
+        iteration == 0
+            ? iree_hal_amd_xdna_prepared_command_initialization(first_.prepared)
+            : iree_hal_amd_xdna_prepared_command_execution(first_.prepared);
+    ASSERT_NO_FATAL_FAILURE(RunExecution(first_, command));
+    ASSERT_NO_FATAL_FAILURE(RunGpu(egress, iteration * 2 + 2));
+    // The CPU has not touched or maintained the shared payload since setup.
+    // Readback covers guards as well as products; poison prevents stale output
+    // from passing and GPU writes make the consumer's L2 lines nontrivial.
+    ASSERT_EQ(
+        api_->host_mapping_cache_control(
+            staging_.mapping, AMDF_HOST_CACHE_OPERATION_INVALIDATE,
+            kReadbackByteOffset, bindings_.size() * kBindingStorageByteLength),
+        AMDF_STATUS_OK);
+    for (size_t ordinal = 0; ordinal < bindings_.size(); ++ordinal) {
+      SCOPED_TRACE(ordinal);
+      const auto* readback = staging_.pointer + kReadbackByteOffset +
+                             ordinal * kBindingStorageByteLength;
+      for (size_t i = 0; i < kBindingByteLength; ++i) {
+        ASSERT_EQ(readback[i], kGuardValue) << "prefix " << i;
+        ASSERT_EQ(readback[2 * kBindingByteLength + i], kGuardValue)
+            << "suffix " << i;
+      }
+      for (size_t i = 0; i < kElementCount; ++i) {
+        ASSERT_EQ(
+            iree_unaligned_load_le_u32(readback + kBindingByteOffset + i * 4),
+            expected[ordinal][i])
+            << "element " << i;
+      }
+    }
+  }
+  ASSERT_NO_FATAL_FAILURE(VerifyInstructions(first_));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    PoolBacking, XdnaPoolVisibilityTest,
+    ::testing::Values(AMDF_MEMORY_PROFILE_ROLE_CREATE,
+                      AMDF_MEMORY_PROFILE_ROLE_REGISTER),
+    [](const ::testing::TestParamInfo<amdf_memory_profile_roles_t>& info) {
+      return info.param == AMDF_MEMORY_PROFILE_ROLE_CREATE ? "Allocated"
+                                                           : "Registered";
+    });
 
 INSTANTIATE_TEST_SUITE_P(
     MemoryBacking, XdnaExecutionTest,
