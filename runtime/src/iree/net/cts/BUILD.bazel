@@ -1,0 +1,40 @@
+# Copyright 2026 The IREE Authors
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+load("//runtime/build_tools/bazel:cc.bzl", "iree_runtime_cc_library")
+
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["layering_check"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+iree_runtime_cc_library(
+    name = "transport_backend",
+    testonly = True,
+    hdrs = ["transport_backend.h"],
+    deps = [
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/net:transport_factory",
+    ],
+)
+
+iree_runtime_cc_library(
+    name = "transport_tests",
+    testonly = True,
+    srcs = ["transport_test.cc"],
+    deps = [
+        ":transport_backend",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/async:platform",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/net:connection",
+        "//runtime/src/iree/net:message_endpoint",
+        "//runtime/src/iree/net:transport_factory",
+        "//runtime/src/iree/testing:gtest",
+    ],
+    alwayslink = True,
+)
