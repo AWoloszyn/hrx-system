@@ -225,6 +225,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Check Windows host capabilities
+        run: python build_tools/bazel/configure.py --check-windows-host
+
       - name: Fetch ROCm toolchain
         run: |
           python -m pip install --upgrade boto3 zstandard
