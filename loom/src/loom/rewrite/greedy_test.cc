@@ -282,6 +282,77 @@ TEST_F(GreedyRewriteTest, AttributeMutationRefreshesConstantFacts) {
   iree_arena_deinitialize(&arena);
 }
 
+TEST_F(GreedyRewriteTest,
+       AttributeOnlyUsersAreScheduledOnFactChangeAndReplacement) {
+  loom_type_t index_type = loom_type_scalar(LOOM_SCALAR_TYPE_INDEX);
+  loom_op_t* input_op = nullptr;
+  loom_op_t* bound_op = nullptr;
+  IREE_ASSERT_OK(loom_test_constant_build(&builder_, loom_attr_i64(0),
+                                          index_type, LOOM_LOCATION_UNKNOWN,
+                                          &input_op));
+  IREE_ASSERT_OK(loom_test_constant_build(&builder_, loom_attr_i64(8),
+                                          index_type, LOOM_LOCATION_UNKNOWN,
+                                          &bound_op));
+  loom_value_id_t input = loom_test_constant_result(input_op);
+  loom_value_id_t bound = loom_test_constant_result(bound_op);
+  loom_predicate_t predicate = {LOOM_PREDICATE_LT,
+                                2,
+                                {LOOM_PRED_ARG_VALUE, LOOM_PRED_ARG_VALUE},
+                                {},
+                                {input, bound}};
+  loom_op_t* predicate_user = nullptr;
+  IREE_ASSERT_OK(loom_test_assume_build(&builder_, &input, 1, &predicate, 1,
+                                        &index_type, 1, LOOM_LOCATION_UNKNOWN,
+                                        &predicate_user));
+
+  loom_type_t shape =
+      loom_type_shaped_1d(LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_INDEX,
+                          loom_dim_pack_dynamic(bound), 0);
+  loom_type_id_t shape_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_intern_type_id(module_, shape, &shape_id));
+  loom_string_id_t shape_key = LOOM_STRING_ID_INVALID;
+  IREE_ASSERT_OK(
+      loom_module_intern_string(module_, IREE_SV("shape"), &shape_key));
+  const loom_named_attr_t attribute = {shape_key, {}, loom_attr_type(shape_id)};
+  loom_op_t* type_user = nullptr;
+  IREE_ASSERT_OK(
+      loom_test_attrs_build(&builder_, LOOM_TEST_ATTRS_BUILD_FLAG_HAS_DICT,
+                            input, loom_make_named_attr_slice(&attribute, 1),
+                            index_type, LOOM_LOCATION_UNKNOWN, &type_user));
+  ASSERT_EQ(loom_module_value(module_, bound)->use_count, 0u);
+
+  iree_arena_allocator_t arena;
+  iree_arena_initialize(&block_pool_, &arena);
+  loom_pass_value_fact_owner_t owner;
+  loom_pass_value_fact_owner_initialize(&block_pool_, &owner);
+  loom_value_fact_table_t* facts = nullptr;
+  IREE_ASSERT_OK(loom_pass_value_fact_owner_acquire(
+      &owner, module_, loom_pass_value_fact_scope_function(function_), &facts));
+  loom_rewriter_t rewriter;
+  IREE_ASSERT_OK(loom_rewriter_initialize(&rewriter, module_, &arena));
+  loom_rewriter_attach_value_facts(&rewriter, facts);
+  auto expect_users = [&]() {
+    bool saw_predicate = false;
+    bool saw_type = false;
+    while (loom_op_t* op = loom_rewriter_pop(&rewriter)) {
+      saw_predicate |= op == predicate_user;
+      saw_type |= op == type_user;
+    }
+    EXPECT_TRUE(saw_predicate);
+    EXPECT_TRUE(saw_type);
+  };
+  IREE_ASSERT_OK(loom_rewriter_set_attr(&rewriter, bound_op,
+                                        loom_test_constant_value_ATTR_INDEX,
+                                        loom_attr_i64(16)));
+  expect_users();
+  IREE_ASSERT_OK(loom_rewriter_replace_all_uses_with(&rewriter, bound, input));
+  expect_users();
+
+  loom_rewriter_deinitialize(&rewriter);
+  loom_pass_value_fact_owner_deinitialize(&owner);
+  iree_arena_deinitialize(&arena);
+}
+
 TEST_F(GreedyRewriteTest, NamePolicyCanDisableOptionalNames) {
   loom_type_t index_type = loom_type_scalar(LOOM_SCALAR_TYPE_INDEX);
   loom_value_id_t source = LOOM_VALUE_ID_INVALID;

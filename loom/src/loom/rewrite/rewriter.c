@@ -493,7 +493,28 @@ static iree_status_t loom_rewriter_add_subtree_providers_to_worklist(
       rewriter);
 }
 
-// Adds all users of a value to the worklist.
+// Attribute references have separate incoming lists for types and predicates.
+// Both carry dependencies for rewriting and fact inference, even when the
+// referenced value is absent from the owner's ordinary operands.
+static iree_status_t loom_rewriter_add_attribute_users_to_worklist(
+    loom_rewriter_t* rewriter, loom_value_id_t value_id) {
+  const loom_value_attribute_use_heads_t* heads =
+      loom_module_value_attribute_use_heads(rewriter->module, value_id);
+  const loom_attribute_use_id_t first_uses[] = {heads->type, heads->predicate};
+  for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(first_uses); ++i) {
+    for (loom_attribute_use_id_t use_id = first_uses[i]; use_id;) {
+      const loom_attribute_use_t* use =
+          &rewriter->module->attribute_uses.records[use_id - 1];
+      IREE_RETURN_IF_ERROR(loom_rewriter_add_to_worklist(rewriter, use->op));
+      IREE_RETURN_IF_ERROR(
+          loom_rewriter_add_parent_summary_ops_to_worklist(rewriter, use->op));
+      use_id = use->next_incoming;
+    }
+  }
+  return iree_ok_status();
+}
+
+// Adds operand, attribute, and value-type users to the worklist.
 static iree_status_t loom_rewriter_add_users_to_worklist(
     loom_rewriter_t* rewriter, loom_value_id_t value_id) {
   loom_value_t* value = loom_module_value(rewriter->module, value_id);
@@ -504,6 +525,8 @@ static iree_status_t loom_rewriter_add_users_to_worklist(
     IREE_RETURN_IF_ERROR(
         loom_rewriter_add_parent_summary_ops_to_worklist(rewriter, user_op));
   }
+  IREE_RETURN_IF_ERROR(
+      loom_rewriter_add_attribute_users_to_worklist(rewriter, value_id));
   loom_type_use_id_t use_id =
       loom_module_value_first_incoming_type_use(rewriter->module, value_id);
   while (use_id != LOOM_TYPE_USE_ID_INVALID) {
@@ -526,6 +549,8 @@ static iree_status_t loom_rewriter_add_users_to_worklist(
       IREE_RETURN_IF_ERROR(
           loom_rewriter_add_parent_summary_ops_to_worklist(rewriter, user_op));
     }
+    IREE_RETURN_IF_ERROR(loom_rewriter_add_attribute_users_to_worklist(
+        rewriter, type_use->user_value_id));
     use_id = type_use->next_incoming_use_id;
   }
   return iree_ok_status();
