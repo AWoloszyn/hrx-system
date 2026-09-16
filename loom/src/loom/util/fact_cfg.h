@@ -49,10 +49,8 @@ typedef struct loom_value_fact_cfg_region_t {
   // Control-flow components bound the values that must restart together when
   // an edit changes a cyclic dataflow equation.
   struct {
-    // Components of the reachable block graph.
+    // Member spans grouped by graph-owned reachable component ordinal.
     loom_scc_list_t components;
-    // Component index for each block, or IREE_HOST_SIZE_MAX if unreachable.
-    iree_host_size_t* block_components;
     // Existing payload terminator used to schedule each cyclic summary.
     loom_op_t** anchors;
     // True when semantic edits or input changes require a cyclic summary.

@@ -288,7 +288,7 @@ static iree_status_t loom_rewriter_update_cfg_block_facts(
       loom_cfg_graph_block_is_reachable(&structure->graph, block_index)) {
     const loom_scc_t* component =
         &structure->control_flow.components
-             .values[structure->control_flow.block_components[block_index]];
+             .values[structure->graph.blocks[block_index].component];
     if (component->is_cycle) {
       iree_arena_allocator_t scratch_arena;
       iree_arena_initialize(rewriter->arena->block_pool, &scratch_arena);
@@ -297,7 +297,7 @@ static iree_status_t loom_rewriter_update_cfg_block_facts(
           &scratch_arena, loom_rewriter_cfg_argument_changed, rewriter);
       iree_arena_deinitialize(&scratch_arena);
       structure->control_flow
-          .dirty[structure->control_flow.block_components[block_index]] = false;
+          .dirty[structure->graph.blocks[block_index].component] = false;
       return status;
     }
   }
@@ -376,8 +376,7 @@ static iree_status_t loom_rewriter_refresh_cfg_block_facts(
   for (uint16_t i = 1; i < structure->graph.block_count; ++i) {
     if (!structure->graph.blocks[i].reachable) continue;
     if (structure->control_flow.components.count) {
-      iree_host_size_t component_index =
-          structure->control_flow.block_components[i];
+      iree_host_size_t component_index = structure->graph.blocks[i].component;
       const loom_scc_t* component =
           &structure->control_flow.components.values[component_index];
       if (component->is_cycle) {
@@ -386,9 +385,9 @@ static iree_status_t loom_rewriter_refresh_cfg_block_facts(
         if (old_indices[i] != IREE_HOST_SIZE_MAX &&
             old_structure->control_flow.components.count &&
             old_structure->graph.blocks[old_indices[i]].reachable) {
-          was_dirty = old_structure->control_flow
-                          .dirty[old_structure->control_flow
-                                     .block_components[old_indices[i]]];
+          was_dirty =
+              old_structure->control_flow
+                  .dirty[old_structure->graph.blocks[old_indices[i]].component];
         }
         if (!was_dirty && old_indices[i] != IREE_HOST_SIZE_MAX &&
             loom_rewriter_cfg_predecessors_equal(
@@ -451,7 +450,7 @@ static iree_status_t loom_rewriter_update_successor_facts(
   if (structure->control_flow.components.count &&
       structure->graph.blocks[successor->region_index].reachable) {
     iree_host_size_t component_index =
-        structure->control_flow.block_components[successor->region_index];
+        structure->graph.blocks[successor->region_index].component;
     if (structure->control_flow.components.values[component_index].is_cycle &&
         !structure->control_flow.dirty[component_index]) {
       return iree_ok_status();
@@ -730,7 +729,7 @@ static iree_status_t loom_rewriter_add_cfg_summary_to_worklist(
       !structure->graph.blocks[block_index].reachable)
     return iree_ok_status();
   iree_host_size_t component_index =
-      structure->control_flow.block_components[block_index];
+      structure->graph.blocks[block_index].component;
   loom_op_t* anchor = structure->control_flow.anchors[component_index];
   if (anchor) {
     structure->control_flow.dirty[component_index] = true;

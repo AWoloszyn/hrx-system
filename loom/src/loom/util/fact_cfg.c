@@ -52,16 +52,41 @@ static iree_status_t loom_value_fact_cfg_visit_forwarded_arguments(
   return iree_ok_status();
 }
 
-static iree_status_t loom_value_fact_cfg_visit_successors(
-    void* user_data, iree_host_size_t node,
-    loom_scc_successor_callback_t successor) {
-  const loom_cfg_graph_t* graph = user_data;
-  loom_cfg_block_index_span_t successors =
-      loom_cfg_graph_successors(graph, node);
-  for (iree_host_size_t i = 0; i < successors.count; ++i) {
-    IREE_RETURN_IF_ERROR(
-        successor.fn(successor.user_data, successors.values[i]));
+// Group graph-owned component IDs into the member spans used by fact solves.
+// The entry reaches every retained component, so its ordinal is the largest.
+static iree_status_t loom_value_fact_cfg_group_control_flow(
+    const loom_cfg_graph_t* graph, iree_arena_allocator_t* arena,
+    loom_scc_list_t* out_components) {
+  const iree_host_size_t component_count = graph->blocks[0].component + 1;
+  loom_scc_t* components = NULL;
+  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+      arena, component_count, sizeof(*components), (void**)&components));
+  memset(components, 0, component_count * sizeof(*components));
+  iree_host_size_t* nodes = NULL;
+  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+      arena, graph->reverse_postorder.count, sizeof(*nodes), (void**)&nodes));
+  for (uint16_t i = 0; i < graph->block_count; ++i) {
+    const loom_cfg_block_info_t* block = &graph->blocks[i];
+    if (!block->reachable) continue;
+    ++components[block->component].node_count;
+    components[block->component].is_cycle = block->component_is_cyclic;
   }
+  iree_host_size_t offset = 0;
+  for (iree_host_size_t i = 0; i < component_count; ++i) {
+    components[i].nodes = nodes + offset;
+    offset += components[i].node_count;
+    components[i].node_count = 0;
+  }
+  for (uint16_t i = 0; i < graph->block_count; ++i) {
+    const loom_cfg_block_info_t* block = &graph->blocks[i];
+    if (!block->reachable) continue;
+    loom_scc_t* component = &components[block->component];
+    nodes[(component->nodes - nodes) + component->node_count++] = i;
+  }
+  *out_components = (loom_scc_list_t){
+      .values = components,
+      .count = component_count,
+  };
   return iree_ok_status();
 }
 
@@ -72,25 +97,8 @@ iree_status_t loom_value_fact_cfg_region_initialize(
   IREE_RETURN_IF_ERROR(
       loom_cfg_graph_build(module, region, arena, &out_region->graph));
   if (out_region->graph.backward_edge_count == 0) return iree_ok_status();
-  const loom_scc_graph_t block_graph = {
-      .node_count = region->block_count,
-      .visit_successors = loom_scc_visit_successors_callback_make(
-          loom_value_fact_cfg_visit_successors, &out_region->graph),
-  };
-  const iree_host_size_t entry_node = 0;
-  const loom_scc_options_t block_options = {
-      .root_nodes = &entry_node,
-      .root_count = 1,
-  };
-  IREE_RETURN_IF_ERROR(loom_scc_compute(&block_graph, &block_options, arena,
-                                        &out_region->control_flow.components));
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, region->block_count,
-      sizeof(*out_region->control_flow.block_components),
-      (void**)&out_region->control_flow.block_components));
-  memset(
-      out_region->control_flow.block_components, 0xFF,
-      region->block_count * sizeof(*out_region->control_flow.block_components));
+  IREE_RETURN_IF_ERROR(loom_value_fact_cfg_group_control_flow(
+      &out_region->graph, arena, &out_region->control_flow.components));
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       arena, out_region->control_flow.components.count,
       sizeof(*out_region->control_flow.anchors),
@@ -111,7 +119,6 @@ iree_status_t loom_value_fact_cfg_region_initialize(
         &out_region->control_flow.components.values[i];
     for (iree_host_size_t j = 0; j < component->node_count; ++j) {
       iree_host_size_t block_index = component->nodes[j];
-      out_region->control_flow.block_components[block_index] = i;
       const loom_block_t* block = out_region->graph.blocks[block_index].block;
       if (!component->is_cycle || !block->arg_count ||
           out_region->control_flow.anchors[i])
