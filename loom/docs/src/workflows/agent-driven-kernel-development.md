@@ -332,6 +332,12 @@ The report answers whether the candidate changed the intended mechanism:
 - modeled residency thresholds and limiting resources; and
 - code size, request shape, waits, and barriers.
 
+Residency is constrained by all tied resources, not whichever scalar limiter
+appears first. Use the per-resource explanation and joint next-tier requirements
+before prioritizing a VGPR or LDS reduction. Unknown counts or launch geometry
+are missing evidence, not an assurance that a resource is nonlimiting. A higher
+modeled tier earns a benchmark experiment rather than proving a performance win.
+
 An empty suggestion list means only that registered target diagnostics found
 no issue. It does not prove that the schedule matches an external oracle or
 that the hardware will prefer it.

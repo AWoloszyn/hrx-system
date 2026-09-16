@@ -143,6 +143,8 @@ class CompileReportDocument:
     entries: tuple[dict[str, object], ...]
     config_bindings: tuple[tuple[str, str], ...]
     envelope_context: tuple[tuple[str, str | int | bool], ...]
+    # Validated final constraints indexed once at the document input boundary.
+    residency_constraints_by_function: dict[str, tuple[dict[str, object], ...]]
 
     @property
     def mode(self) -> str:
@@ -289,6 +291,7 @@ def parse_compile_report(
                 f"{identity.display_name()!r}"
             )
         entry_identities.add(identity)
+        _validate_residency_summary(entry, f"{source}.entries.rows[{index}]")
 
     config_bindings: tuple[tuple[str, str], ...] = ()
     if "config_bindings" in report:
@@ -320,6 +323,7 @@ def parse_compile_report(
         entries=entries,
         config_bindings=config_bindings,
         envelope_context=envelope_context,
+        residency_constraints_by_function=_index_residency_constraints(report, source),
     )
 
 
@@ -585,6 +589,133 @@ def _validate_indexed_rows(
             )
         rows.append(row)
     return tuple(rows)
+
+
+def _validate_residency_summary(entry: dict[str, object], source: str) -> None:
+    resources = entry.get("target_resources")
+    if resources is None:
+        return
+    resources = _require_object(resources, f"{source}.target_resources")
+    summary = resources.get("residency")
+    if summary is None:
+        return
+    path = f"{source}.target_resources.residency"
+    summary = _require_object(summary, path)
+    for field in (
+        "best_tier",
+        "current_tier",
+        "next_better_tier",
+        "limiting_resource_count",
+    ):
+        if field in summary and _require_integer(summary[field], f"{path}.{field}") < 0:
+            raise CompileReportError(f"{path}.{field}: expected a nonnegative integer")
+    if "unavailable_reasons" in summary:
+        reasons = summary["unavailable_reasons"]
+        if (
+            not isinstance(reasons, list)
+            or not reasons
+            or not all(isinstance(reason, str) and reason for reason in reasons)
+        ):
+            raise CompileReportError(
+                f"{path}.unavailable_reasons: expected nonempty reason strings"
+            )
+        if any(
+            field in summary
+            for field in (
+                "current_tier",
+                "next_better_tier",
+                "unique_limiting_resource",
+            )
+        ):
+            raise CompileReportError(
+                f"{path}: unavailable residency cannot claim exact transitions"
+            )
+
+
+def _index_residency_constraints(
+    report: dict[str, object], source: str
+) -> dict[str, tuple[dict[str, object], ...]]:
+    inventory = report.get("residency_constraints")
+    if inventory is None:
+        return {}
+    path = f"{source}.residency_constraints"
+    rows = _validate_indexed_rows(_require_object(inventory, path), path)
+    by_function: dict[str, list[dict[str, object]]] = {}
+    identities: set[tuple[str, str]] = set()
+    for row in rows:
+        row_path = f"{path}.rows[{row['index']}]"
+        function = _require_string(row.get("function"), f"{row_path}.function")
+        name = _require_string(row.get("name"), f"{row_path}.name")
+        if not function or not name or (function, name) in identities:
+            raise CompileReportError(
+                f"{row_path}: expected a unique nonempty function/resource identity"
+            )
+        identities.add((function, name))
+        kind = row.get("kind")
+        if kind not in ("pooled_resource", "unconstrained_resource", "fixed_limit"):
+            raise CompileReportError(
+                f"{row_path}.kind: invalid residency constraint kind"
+            )
+        if kind != "fixed_limit":
+            for field in ("unit", "allocation_scope", "pool_scope"):
+                if not _require_string(row.get(field), f"{row_path}.{field}"):
+                    raise CompileReportError(
+                        f"{row_path}.{field}: expected a nonempty string"
+                    )
+            if _require_integer(row.get("pool_units"), f"{row_path}.pool_units") < 0:
+                raise CompileReportError(
+                    f"{row_path}.pool_units: expected a nonnegative integer"
+                )
+            if (
+                _require_integer(
+                    row.get("allocation_granularity"),
+                    f"{row_path}.allocation_granularity",
+                )
+                <= 0
+            ):
+                raise CompileReportError(
+                    f"{row_path}.allocation_granularity: expected a positive integer"
+                )
+        elif any(
+            field in row
+            for field in (
+                "units",
+                "rounded_units",
+                "reduction_units_to_next_better_tier",
+            )
+        ):
+            raise CompileReportError(
+                f"{row_path}: a fixed limit has no reducible footprint"
+            )
+        for field in (
+            "units",
+            "rounded_units",
+            "independent_tier",
+            "reduction_units_to_next_better_tier",
+        ):
+            if field in row and _require_integer(row[field], f"{row_path}.{field}") < 0:
+                raise CompileReportError(
+                    f"{row_path}.{field}: expected a nonnegative integer"
+                )
+        if ("units" in row) != ("rounded_units" in row):
+            raise CompileReportError(
+                f"{row_path}: footprint and rounded allocation "
+                "must be available together"
+            )
+        if "limiting" in row and not isinstance(row["limiting"], bool):
+            raise CompileReportError(f"{row_path}.limiting: expected a boolean")
+        if "reduction_units_to_next_better_tier" in row:
+            reduction = cast(int, row["reduction_units_to_next_better_tier"])
+            if (
+                row.get("limiting") is not True
+                or "units" not in row
+                or not 0 < reduction <= cast(int, row["units"])
+            ):
+                raise CompileReportError(
+                    f"{row_path}: reduction requires a known limiting footprint"
+                )
+        by_function.setdefault(function, []).append(row)
+    return {function: tuple(rows) for function, rows in by_function.items()}
 
 
 def _entries_by_identity(

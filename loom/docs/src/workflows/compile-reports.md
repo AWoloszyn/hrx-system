@@ -75,6 +75,23 @@ preserve the aggregate packet and register-unit counts; detailed reports let
 unchanged causes. This separates a source-level repacking change from a
 target-created operand-bank repair instead of treating both as generic moves.
 
+Residency analysis in both summary and detailed reports explains each resource
+constraint, not just the first limiting resource. It shows final usage, rounded
+allocation, allocation granularity, pool scope, and each resource's independent
+wave ceiling. A resource can use many registers without currently constraining
+residency; a fixed workgroup-slot ceiling cannot be removed by reducing register
+or LDS usage at the same launch shape.
+
+When resources tie, the next-tier requirements are joint. For example, on
+gfx1151 a wave64 kernel with 256 workitems per workgroup, 88 VGPRs and 15,616
+LDS bytes requires **both** at most 84 VGPRs and at most 14,336 LDS bytes to
+move from eight to nine modeled waves.
+Reducing only one leaves the other limit in place. Missing final register counts
+or an unknown workgroup size make exact residency unavailable; the report keeps
+the known resource facts without inventing a complete transition. These are
+target-model constraints, not a throughput prediction. Recompilation checks the
+candidate and its new constraints; benchmarking establishes whether it helps.
+
 Detailed reports also retain target-neutral native contraction and fragment-
 transition facts selected for each source-to-Low row. `show` presents the
 native tile and participant count, per-role register and payload placement,
@@ -246,6 +263,12 @@ unavailable, the result retains its reason in `target_unavailable_reason` while
 still showing source findings. A source helper's schedule remains inspectable
 without assigning it an entry's resource costs unless the report supplies the
 matching function identity.
+
+Residency suggestions cite every required resource reduction with its units and
+allocation scope. A joint suggestion appears only when the compiler retained
+all limiting requirements for that next tier. No footprint-reduction suggestion
+is produced at a fixed launch ceiling or when exact transition evidence is
+missing.
 
 The experimental AMDGPU fragment-packet finding requires exact wave geometry
 for every cited scalar packet row. It reports per-lane width together with
