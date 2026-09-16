@@ -18,6 +18,7 @@ loom_check_test_suite(
     "cse_scopes.loom-test"
     "cse_state.loom-test"
     "dce.loom-test"
+    "value_references.loom-test"
     "verify.loom-test"
 )
 

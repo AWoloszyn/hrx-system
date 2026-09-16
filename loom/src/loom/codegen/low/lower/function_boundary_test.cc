@@ -110,10 +110,9 @@ class LowLowerFunctionBoundaryTest : public ::testing::Test {
     predicate->arg_tags[1] = LOOM_PRED_ARG_CONST;
     predicate->args[0] = argument;
     predicate->args[1] = 0;
-    loom_op_attrs(function.op)[function.vtable->predicates_attr_index] =
-        loom_attr_predicate_list(predicate, 1);
-    IREE_ASSERT_OK(
-        loom_module_note_op_attribute_value_refs(module_, function.op));
+    IREE_ASSERT_OK(loom_op_set_attr(module_, function.op,
+                                    function.vtable->predicates_attr_index,
+                                    loom_attr_predicate_list(predicate, 1)));
   }
 
   void ExpectRegister(loom_value_id_t value_id, uint16_t register_class_id) {

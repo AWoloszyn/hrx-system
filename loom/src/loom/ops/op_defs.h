@@ -1155,14 +1155,6 @@ bool loom_op_may_write(const loom_module_t* module, const loom_op_t* op);
 bool loom_op_regions_have_hints(const loom_module_t* module,
                                 const loom_op_t* op);
 
-// Replaces SSA references to |old_id| in attributes on live operations nested
-// under |region| with |new_id|. Operand and type references are unchanged.
-// Rewritten operations have their effective traits and direct effects
-// refreshed.
-iree_status_t loom_region_replace_attribute_value_references(
-    loom_module_t* module, loom_region_t* region, loom_value_id_t old_id,
-    loom_value_id_t new_id);
-
 // Returns true if every result of |op| has zero operand uses, no live
 // predicate-list attribute uses, and no external value type references. Type
 // references carried by another result of |op| do not keep the whole op alive.
@@ -2242,9 +2234,9 @@ iree_status_t loom_value_add_use(loom_module_t* module,
                                  uint16_t operand_index);
 
 // Removes a use record: |user_op| no longer uses |value_id| at
-// |operand_index|. Scans the use list for the matching entry, swaps
-// with last, decrements use_count. Returns IREE_STATUS_NOT_FOUND if
-// no matching entry exists (indicates a use-list bookkeeping bug).
+// |operand_index|. Reads the operand's retained use index, swaps with the last
+// entry, and updates the moved operand's index in O(1). Returns
+// IREE_STATUS_NOT_FOUND if the index does not name the matching entry.
 // No overflow-to-inline transition (arena cannot free the overflow
 // array; loom_module_compute_uses handles repack).
 iree_status_t loom_value_remove_use(loom_module_t* module,
@@ -2256,11 +2248,13 @@ iree_status_t loom_value_remove_use(loom_module_t* module,
 // builder: `return loom_builder_finalize_op(builder, *out_op);`
 iree_status_t loom_builder_finalize_op(loom_builder_t* builder, loom_op_t* op);
 
-// Records SSA value references embedded in |op|'s attributes. Attribute
-// references are tracked as a conservative per-value bit so RAUW can avoid
-// scanning operation attributes when replacing ordinary operand-only values.
-iree_status_t loom_module_note_op_attribute_value_refs(loom_module_t* module,
-                                                       const loom_op_t* op);
+// Replaces an attribute on a constructed operation, maintaining exact SSA
+// attribute-use records, effective traits and direct semantic summaries.
+// Raw attribute writes are only valid before finalization or when preserving
+// the exact SSA reference set (for example remapping symbol IDs).
+iree_status_t loom_op_set_attr(loom_module_t* module, loom_op_t* op,
+                               uint8_t attribute_index,
+                               loom_attribute_t attribute);
 
 // Links a symbol-defining op to its symbol table entry using the op's generated
 // symbol definition descriptor. Sets the symbol's defining op, definition

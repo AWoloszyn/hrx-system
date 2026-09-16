@@ -2089,7 +2089,9 @@ static iree_status_t loom_builder_allocate_op_storage(
   iree_host_size_t attrs_size =
       (iree_host_size_t)attribute_count * sizeof(loom_attribute_t);
   iree_host_size_t total_size =
-      aligned_before_attrs + attrs_size + operand_segment_counts_size;
+      aligned_before_attrs + attrs_size +
+      (iree_host_size_t)attribute_count * sizeof(loom_attribute_use_id_t) +
+      operand_segment_counts_size;
 
   void* allocation = NULL;
   IREE_RETURN_IF_ERROR(
@@ -2252,6 +2254,8 @@ iree_status_t loom_op_remove_results(loom_module_t* module, loom_op_t* op,
       operand_segment_count > 0 ? loom_op_operand_segment_counts(op) : NULL;
   loom_use_index_t* old_operand_use_indices = loom_op_operand_use_indices(op);
   loom_attribute_t* old_attrs = loom_op_attrs(op);
+  loom_attribute_use_id_t* old_attribute_use_heads =
+      loom_op_attribute_use_heads(op);
   for (uint16_t i = 0; i < old_result_count; ++i) {
     loom_value_id_t result = results[i];
     if (remove_results[i]) {
@@ -2280,6 +2284,9 @@ iree_status_t loom_op_remove_results(loom_module_t* module, loom_op_t* op,
   if (op->attribute_count > 0) {
     memmove(loom_op_attrs(op), old_attrs,
             (iree_host_size_t)op->attribute_count * sizeof(*old_attrs));
+    memmove(loom_op_attribute_use_heads(op), old_attribute_use_heads,
+            (iree_host_size_t)op->attribute_count *
+                sizeof(*old_attribute_use_heads));
   }
   if (operand_segment_count > 0) {
     memmove(loom_op_operand_segment_counts(op), old_operand_segment_counts,
@@ -2377,6 +2384,7 @@ static iree_status_t loom_op_erase_subtree(loom_module_t* module, loom_op_t* op,
     }
   }
 
+  loom_module_drop_op_attribute_uses(module, op);
   // Remove all operand uses from the referenced values.
   loom_value_id_t* operands = loom_op_operands(op);
   for (uint16_t i = 0; i < op->operand_count; ++i) {
@@ -2704,32 +2712,6 @@ iree_status_t loom_region_remove_blocks(loom_module_t* module,
 // reallocation. Values used more than 8 times get geometric growth.
 #define LOOM_USE_INITIAL_OVERFLOW_CAPACITY 8
 
-static iree_status_t loom_module_note_attribute_value_ref(
-    loom_value_id_t value_id, void* user_data) {
-  loom_module_t* module = (loom_module_t*)user_data;
-  if (value_id < module->values.count) {
-    loom_module_value(module, value_id)->flags |=
-        LOOM_VALUE_FLAG_ATTRIBUTE_USES;
-  }
-  return iree_ok_status();
-}
-
-static iree_status_t loom_module_note_attribute_value_refs(
-    loom_module_t* module, loom_attribute_t attr) {
-  return loom_module_walk_attribute_value_refs(
-      module, attr, loom_module_note_attribute_value_ref, module);
-}
-
-iree_status_t loom_module_note_op_attribute_value_refs(loom_module_t* module,
-                                                       const loom_op_t* op) {
-  const loom_attribute_t* attrs = loom_op_const_attrs(op);
-  for (uint8_t attr_index = 0; attr_index < op->attribute_count; ++attr_index) {
-    IREE_RETURN_IF_ERROR(
-        loom_module_note_attribute_value_refs(module, attrs[attr_index]));
-  }
-  return iree_ok_status();
-}
-
 iree_status_t loom_value_add_use(loom_module_t* module,
                                  loom_value_id_t value_id, loom_op_t* user_op,
                                  uint16_t operand_index) {
@@ -2913,7 +2895,7 @@ iree_status_t loom_builder_finalize_op(loom_builder_t* builder, loom_op_t* op) {
   // Result type uses are installed when values are defined or their types
   // change. Finalization only assigns the operation definition site.
   IREE_RETURN_IF_ERROR(
-      loom_module_note_op_attribute_value_refs(builder->module, op));
+      loom_module_refresh_op_attribute_uses(builder->module, op));
   // Wire the symbol table entry for symbol-defining ops so that
   // loom_func_like_cast can find the defining op without a scan.
   const loom_op_vtable_t* vtable = loom_op_vtable(builder->module, op);
@@ -2947,6 +2929,17 @@ iree_status_t loom_op_set_operand(loom_module_t* module, loom_op_t* op,
     IREE_RETURN_IF_ERROR(
         loom_value_add_use(module, new_value_id, op, operand_index));
   }
+  return iree_ok_status();
+}
+
+iree_status_t loom_op_set_attr(loom_module_t* module, loom_op_t* op,
+                               uint8_t attribute_index,
+                               loom_attribute_t attribute) {
+  IREE_RETURN_IF_ERROR(
+      loom_module_set_op_attribute(module, op, attribute_index, attribute));
+  loom_trait_flags_t old_traits = op->traits;
+  loom_op_refresh_effective_traits(module, op);
+  loom_module_update_op_direct_summaries(module, op, old_traits, op->traits);
   return iree_ok_status();
 }
 
@@ -2992,61 +2985,12 @@ static iree_status_t loom_value_ensure_use_capacity(loom_module_t* module,
   return iree_ok_status();
 }
 
-static iree_status_t loom_op_replace_attr_value_refs(loom_module_t* module,
-                                                     loom_op_t* op,
-                                                     loom_value_id_t old_id,
-                                                     loom_value_id_t new_id) {
-  loom_attribute_t* attrs = loom_op_attrs(op);
-  for (uint8_t attr_index = 0; attr_index < op->attribute_count; ++attr_index) {
-    loom_attribute_t replacement = attrs[attr_index];
-    bool changed = false;
-    IREE_RETURN_IF_ERROR(loom_module_replace_attribute_value_references(
-        module, attrs[attr_index], old_id, new_id, &replacement, &changed));
-    if (!changed) {
-      continue;
-    }
-    loom_trait_flags_t old_traits = op->traits;
-    attrs[attr_index] = replacement;
-    IREE_RETURN_IF_ERROR(
-        loom_module_note_attribute_value_refs(module, replacement));
-    loom_op_refresh_effective_traits(module, op);
-    loom_module_update_op_direct_summaries(module, op, old_traits, op->traits);
-  }
-  return iree_ok_status();
-}
-
-iree_status_t loom_region_replace_attribute_value_references(
-    loom_module_t* module, loom_region_t* region, loom_value_id_t old_id,
-    loom_value_id_t new_id) {
-  if (!region) {
-    return iree_ok_status();
-  }
-  loom_block_t* block = NULL;
-  loom_region_for_each_block(region, block) {
-    loom_op_t* op = NULL;
-    loom_block_for_each_op(block, op) {
-      if (iree_any_bit_set(op->flags, LOOM_OP_FLAG_DEAD)) {
-        continue;
-      }
-      IREE_RETURN_IF_ERROR(
-          loom_op_replace_attr_value_refs(module, op, old_id, new_id));
-      loom_region_t** regions = loom_op_regions(op);
-      for (uint8_t i = 0; i < op->region_count; ++i) {
-        IREE_RETURN_IF_ERROR(loom_region_replace_attribute_value_references(
-            module, regions[i], old_id, new_id));
-      }
-    }
-  }
-  return iree_ok_status();
-}
-
 iree_status_t loom_value_replace_all_uses_with(loom_module_t* module,
                                                loom_value_id_t old_id,
                                                loom_value_id_t new_id) {
   if (old_id == new_id) return iree_ok_status();
   loom_value_t* old_value = loom_module_value(module, old_id);
   uint32_t old_use_count = old_value->use_count;
-  const bool old_has_attribute_uses = loom_value_has_attribute_uses(old_value);
 
   loom_value_t* new_value = loom_module_value(module, new_id);
   IREE_RETURN_IF_ERROR(
@@ -3054,12 +2998,30 @@ iree_status_t loom_value_replace_all_uses_with(loom_module_t* module,
 
   IREE_RETURN_IF_ERROR(
       loom_module_replace_value_type_uses(module, old_id, new_id));
-  if (old_has_attribute_uses) {
-    IREE_RETURN_IF_ERROR(loom_region_replace_attribute_value_references(
-        module, module->body, old_id, new_id));
-    new_value->flags |= LOOM_VALUE_FLAG_ATTRIBUTE_USES;
-    old_value->flags &= ~LOOM_VALUE_FLAG_ATTRIBUTE_USES;
+  iree_status_t status = iree_ok_status();
+  if (loom_value_has_attribute_uses(old_value)) {
+    loom_attribute_use_id_t attribute_use_id =
+        loom_module_value_first_attribute_use(module, old_id);
+    while (attribute_use_id && iree_status_is_ok(status)) {
+      // Copy the owner before replacement: growing the index invalidates record
+      // pointers, and replacing the slot removes all of its old references.
+      const loom_attribute_use_t use =
+          module->attribute_uses.records[attribute_use_id - 1];
+      loom_attribute_t replacement = {0};
+      bool changed = false;
+      status = loom_module_replace_attribute_value_references(
+          module, loom_op_attrs(use.op)[use.attribute_index], old_id, new_id,
+          &replacement, &changed);
+      if (iree_status_is_ok(status)) {
+        IREE_ASSERT(changed,
+                    "attribute use owner must contain the referenced value");
+        status =
+            loom_op_set_attr(module, use.op, use.attribute_index, replacement);
+      }
+      attribute_use_id = loom_module_value_first_attribute_use(module, old_id);
+    }
   }
+  IREE_RETURN_IF_ERROR(status);
   if (old_use_count == 0) return iree_ok_status();
 
   // Patch every user op's operand slot.
@@ -3244,8 +3206,7 @@ static iree_status_t loom_region_compute_uses(loom_module_t* module,
       op->parent_op = parent_op;
       op->parent_block = block;
       loom_module_record_op_summaries(module, op);
-      IREE_RETURN_IF_ERROR(
-          loom_module_note_op_attribute_value_refs(module, op));
+      IREE_RETURN_IF_ERROR(loom_module_refresh_op_attribute_uses(module, op));
       // Register operand uses.
       loom_value_id_t* operands = loom_op_operands(op);
       for (uint16_t i = 0; i < op->operand_count; ++i) {
@@ -3281,6 +3242,7 @@ static iree_status_t loom_region_compute_uses(loom_module_t* module,
 }
 
 iree_status_t loom_module_compute_uses(loom_module_t* module) {
+  loom_module_reset_attribute_uses(module);
   loom_region_reset_summaries(module->body);
   module->poison_op_count = 0;
   // Clear all use and def data on every value.

@@ -289,10 +289,10 @@ static iree_status_t loom_low_lower_attach_remapped_predicates(
   loom_predicate_t* low_predicates = NULL;
   IREE_RETURN_IF_ERROR(loom_ir_remap_predicate_list(
       remap, source_predicates, predicate_count, &low_predicates));
-  loom_op_attrs(low_function.op)[low_function.vtable->predicates_attr_index] =
-      loom_attr_predicate_list(low_predicates, predicate_count);
-  return loom_module_note_op_attribute_value_refs(context->module,
-                                                  low_function.op);
+  return loom_op_set_attr(
+      context->module, low_function.op,
+      low_function.vtable->predicates_attr_index,
+      loom_attr_predicate_list(low_predicates, predicate_count));
 }
 
 static iree_status_t loom_low_lower_create_func_op(

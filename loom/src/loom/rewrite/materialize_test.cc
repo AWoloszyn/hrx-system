@@ -807,8 +807,66 @@ TEST_F(MaterializeTest, MovesBlockOpsAndRemapsPredicateAttrs) {
   ASSERT_EQ(predicates.kind, LOOM_ATTR_PREDICATE_LIST);
   ASSERT_EQ(predicates.count, 1u);
   EXPECT_EQ(predicates.predicate_list[0].args[0], (int64_t)target_dim);
+  EXPECT_FALSE(
+      loom_module_value_has_predicate_attribute_uses(source_, source_dim));
+  EXPECT_TRUE(
+      loom_module_value_has_predicate_attribute_uses(source_, target_dim));
   EXPECT_EQ(assume_op->next_op, sentinel_op);
   loom_rewriter_deinitialize(&rewriter);
+}
+
+TEST_F(MaterializeTest, ClonedPredicateOwnersRemainModuleLocal) {
+  const loom_type_t index = loom_type_scalar(LOOM_SCALAR_TYPE_INDEX);
+  loom_op_t* source_constant = nullptr;
+  IREE_ASSERT_OK(loom_test_constant_build(&source_builder_, loom_attr_i64(1),
+                                          index, LOOM_LOCATION_UNKNOWN,
+                                          &source_constant));
+  const loom_value_id_t source_value =
+      loom_test_constant_result(source_constant);
+  loom_predicate_t predicate = {
+      LOOM_PREDICATE_EQ, 2, {LOOM_PRED_ARG_VALUE, LOOM_PRED_ARG_CONST}, {},
+      {source_value, 1},
+  };
+  loom_op_t* source_owner = nullptr;
+  IREE_ASSERT_OK(loom_test_assume_build(&source_builder_, &source_value, 1,
+                                        &predicate, 1, &index, 1,
+                                        LOOM_LOCATION_UNKNOWN, &source_owner));
+  loom_op_t* target_constant = nullptr;
+  IREE_ASSERT_OK(loom_test_constant_build(&target_builder_, loom_attr_i64(1),
+                                          index, LOOM_LOCATION_UNKNOWN,
+                                          &target_constant));
+  const loom_value_id_t target_value =
+      loom_test_constant_result(target_constant);
+  loom_ir_remap_t remap = InitializeRemap();
+  IREE_ASSERT_OK(loom_ir_remap_map_value(&remap, source_value, target_value));
+  loom_op_t* target_owner = nullptr;
+  IREE_ASSERT_OK(
+      loom_ir_clone_op(&target_builder_, source_owner, &remap, &target_owner));
+  EXPECT_TRUE(
+      loom_module_value_has_predicate_attribute_uses(source_, source_value));
+  EXPECT_TRUE(
+      loom_module_value_has_predicate_attribute_uses(target_, target_value));
+  loom_op_t* replacement_constant = nullptr;
+  IREE_ASSERT_OK(loom_test_constant_build(&target_builder_, loom_attr_i64(1),
+                                          index, LOOM_LOCATION_UNKNOWN,
+                                          &replacement_constant));
+  const loom_value_id_t replacement =
+      loom_test_constant_result(replacement_constant);
+  IREE_ASSERT_OK(
+      loom_value_replace_all_uses_with(target_, target_value, replacement));
+  EXPECT_EQ(loom_op_const_attrs(source_owner)[0].predicate_list[0].args[0],
+            source_value);
+  EXPECT_EQ(loom_op_const_attrs(target_owner)[0].predicate_list[0].args[0],
+            replacement);
+  EXPECT_FALSE(
+      loom_module_value_has_predicate_attribute_uses(target_, target_value));
+  EXPECT_TRUE(
+      loom_module_value_has_predicate_attribute_uses(target_, replacement));
+  IREE_ASSERT_OK(loom_op_erase(target_, target_owner));
+  EXPECT_FALSE(
+      loom_module_value_has_predicate_attribute_uses(target_, replacement));
+  EXPECT_TRUE(
+      loom_module_value_has_predicate_attribute_uses(source_, source_value));
 }
 
 TEST_F(MaterializeTest, RejectsMoveWithUnavailableRemappedCaptures) {

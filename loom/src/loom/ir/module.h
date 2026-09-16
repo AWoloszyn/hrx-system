@@ -22,6 +22,7 @@
 #include "iree/base/internal/arena.h"
 #include "loom/ir/ir.h"
 #include "loom/ir/parameterized_attr.h"
+#include "loom/ir/value_refs.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -317,11 +318,6 @@ static inline bool loom_module_has_active_type_uses(
   return module->type_uses.active_count > 0;
 }
 
-// Returns true if |value_id| is referenced by a predicate-list attribute on a
-// live operation. Aggregate attributes are inspected recursively.
-bool loom_module_value_has_predicate_attribute_uses(const loom_module_t* module,
-                                                    loom_value_id_t value_id);
-
 // Returns the first type-use record that references |value_id|, or INVALID
 // when the value is out of range or has no incoming type uses.
 static inline loom_type_use_id_t loom_module_value_first_incoming_type_use(
@@ -339,34 +335,6 @@ static inline loom_type_use_id_t loom_module_value_first_outgoing_type_use(
   return loom_value_table_const_type_use_heads(&module->values, value_id)
       ->first_outgoing_use_id;
 }
-
-// Walks SSA value references embedded in |attr|. Type-valued attributes are
-// resolved through |module| and aggregate attributes are visited in structural
-// order. References are not deduplicated.
-iree_status_t loom_module_walk_attribute_value_refs(
-    const loom_module_t* module, loom_attribute_t attr,
-    loom_type_value_ref_callback_t callback, void* user_data);
-
-// Replaces SSA references to |old_id| embedded in |attr| with |new_id|.
-// Aggregate payloads and type-valued attributes are rebuilt in |module| only
-// when a nested reference changes.
-iree_status_t loom_module_replace_attribute_value_references(
-    loom_module_t* module, loom_attribute_t attr, loom_value_id_t old_id,
-    loom_value_id_t new_id, loom_attribute_t* out_attr, bool* out_changed);
-
-// Replaces SSA references to |old_id| embedded in |type| with |new_id| and
-// interns the resulting type in |module|. The module value table and type-use
-// side table are not mutated; callers decide which carrier value, if any, owns
-// the returned type.
-iree_status_t loom_module_replace_type_value_references(
-    loom_module_t* module, loom_type_t type, loom_value_id_t old_id,
-    loom_value_id_t new_id, loom_type_t* out_type, bool* out_changed);
-
-// Replaces all SSA references to |old_id| embedded in value types with
-// |new_id| and updates the module's type-use side table.
-iree_status_t loom_module_replace_value_type_uses(loom_module_t* module,
-                                                  loom_value_id_t old_id,
-                                                  loom_value_id_t new_id);
 
 // Interns a string in the module's string table. If an identical string
 // already exists, returns its ID. Otherwise, arena-allocates a copy of

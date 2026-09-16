@@ -7,6 +7,7 @@
 #include "loom/link/symbol_policy.h"
 
 #include "loom/ir/context.h"
+#include "loom/ir/value_refs.h"
 #include "loom/ops/op_defs.h"
 
 bool loom_link_symbol_is_declaration(const loom_symbol_t* symbol) {
@@ -67,6 +68,7 @@ void loom_link_symbol_internalize(loom_module_t* module, loom_op_t* op) {
     };
     for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(export_attr_indices); ++i) {
       if (export_attr_indices[i] != LOOM_ATTR_INDEX_NONE) {
+        loom_module_drop_attribute_uses(module, op, export_attr_indices[i]);
         loom_op_attrs(op)[export_attr_indices[i]] = loom_attr_absent();
       }
     }

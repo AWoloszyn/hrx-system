@@ -1171,13 +1171,8 @@ iree_status_t loom_rewriter_set_attr(loom_rewriter_t* rewriter, loom_op_t* op,
                                      loom_attribute_t value) {
   IREE_RETURN_IF_ERROR(
       loom_rewriter_validate_attr_write(rewriter, op, attr_index, value));
-  loom_trait_flags_t old_traits = op->traits;
-  loom_op_attrs(op)[attr_index] = value;
   IREE_RETURN_IF_ERROR(
-      loom_module_note_op_attribute_value_refs(rewriter->module, op));
-  loom_op_refresh_effective_traits(rewriter->module, op);
-  loom_module_update_op_direct_summaries(rewriter->module, op, old_traits,
-                                         op->traits);
+      loom_op_set_attr(rewriter->module, op, (uint8_t)attr_index, value));
   IREE_RETURN_IF_ERROR(
       loom_rewriter_recompute_op_facts(rewriter, op, /*flags=*/0));
   IREE_RETURN_IF_ERROR(
