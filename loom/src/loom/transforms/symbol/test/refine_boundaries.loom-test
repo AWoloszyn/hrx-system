@@ -866,3 +866,129 @@ func.def public @caller() -> (index) {
   %result = func.call @identity(%identity_input) : (index) -> (index)
   func.return %result : index
 }
+
+// ====
+
+// RUN: pass refine-boundaries
+
+// A provider's family declaration owns its signature even before a call has
+// selected the implementation. Unused arguments and results remain available
+// to subsequent template selection.
+template.decl @family_signature(%value: index, %unused: index) -> (index)
+
+template.def<@family_signature> @unselected_provider(%value: index, %unused: index) -> (index) {
+  template.return %value : index
+}
+
+// ----
+template.decl @family_signature(%value: index, %unused: index) -> (index)
+
+template.def<@family_signature> @unselected_provider(%value: index, %unused: index) -> (index) {
+  template.return %value : index
+}
+
+// ====
+
+// RUN: pass refine-boundaries
+
+// Exact template calls do not transfer signature ownership away from the
+// family. Ordinary source helpers inside a provider still participate in
+// semantic-call refinement and can lose unused arguments.
+template.decl @provider_family(%value: index, %unused: index) -> (index)
+
+func.def @provider_helper(%value: index, %unused: index) -> (index) {
+  %doubled = index.add %value, %value : index
+  func.return %doubled : index
+}
+
+template.def<@provider_family> @called_provider(%value: index, %unused: index) -> (index) {
+  %result = func.call @provider_helper(%value, %unused) : (index, index) -> (index)
+  template.return %result : index
+}
+
+func.def public @call_provider(%value: index, %unused: index) -> (index) {
+  %result = template.call @called_provider(%value, %unused) : (index, index) -> (index)
+  func.return %result : index
+}
+
+// ----
+template.decl @provider_family(%value: index, %unused: index) -> (index)
+
+func.def @provider_helper(%value: index) -> (index) {
+  %doubled = index.add %value, %value : index
+  func.return %doubled : index
+}
+
+template.def<@provider_family> @called_provider(%value: index, %unused: index) -> (index) {
+  %result = func.call pure @provider_helper(%value) : (index) -> (index)
+  template.return %result : index
+}
+
+func.def public @call_provider(%value: index, %unused: index) -> (index) {
+  %result = template.call pure @called_provider(%value, %unused) : (index, index) -> (index)
+  func.return %result : index
+}
+
+// ====
+
+// RUN: pass refine-boundaries
+
+// Low calls and source-to-Low invocations own register boundaries outside the
+// semantic-call graph. Refinement preserves their arguments and results.
+test.target<low_core> @register_target
+
+low.func.def target<test.low.core>(@register_target) @register_helper(%value: reg<test.i32>, %unused: reg<test.i32>) -> (reg<test.i32>) asm {
+  return %value
+}
+
+low.func.def public target<test.low.core>(@register_target) @register_caller(%value: reg<test.i32>, %unused: reg<test.i32>) -> (reg<test.i32>) asm {
+  %result = low.func.call @register_helper(%value, %unused) : (reg<test.i32>, reg<test.i32>) -> (reg<test.i32>)
+  return %result
+}
+
+func.def public @source_invoker(%value: i32, %unused: i32) -> (i32) {
+  %result = low.invoke @register_helper(%value, %unused) : (i32, i32) -> (i32)
+  func.return %result : i32
+}
+
+// ----
+test.target<low_core> @register_target
+
+low.func.def target<test.low.core>(@register_target) @register_helper(%value: reg<test.i32>, %unused: reg<test.i32>) -> (reg<test.i32>) asm {
+  return %value
+}
+
+low.func.def public target<test.low.core>(@register_target) @register_caller(%value: reg<test.i32>, %unused: reg<test.i32>) -> (reg<test.i32>) asm {
+  %result = low.func.call @register_helper(%value, %unused) : (reg<test.i32>, reg<test.i32>) -> (reg<test.i32>)
+  return %result
+}
+
+func.def public @source_invoker(%value: i32, %unused: i32) -> (i32) {
+  %result = low.invoke @register_helper(%value, %unused) : (i32, i32) -> (i32)
+  func.return %result : i32
+}
+
+// ====
+
+// RUN: pass refine-boundaries
+
+// Command programs retain their specialization/binding partition even when
+// the body does not use those inputs. Their launch edges are not semantic calls.
+command.program.def @unused_program_inputs(%extent: index) launch(%storage: buffer) {
+  command.return
+}
+
+command.program.def public @launch_program(%extent: index) launch(%storage: buffer) {
+  command.program.launch @unused_program_inputs[%extent](%storage) : [index](buffer)
+  command.return
+}
+
+// ----
+command.program.def @unused_program_inputs(%extent: index) launch(%storage: buffer) {
+  command.return
+}
+
+command.program.def public @launch_program(%extent: index) launch(%storage: buffer) {
+  command.program.launch @unused_program_inputs[%extent](%storage) : [index](buffer)
+  command.return
+}

@@ -255,8 +255,9 @@ iree_status_t loom_refine_boundaries_build_graph(
         loom_func_like_arg_ids(function, &info->argument_count);
     info->result_count = function.op->result_count;
     info->can_refine_boundary =
-        loom_func_like_is_module_internal(function) &&
-        !loom_symbol_ref_is_valid(loom_func_like_template_family(function));
+        loom_symbol_implements(symbol, LOOM_SYMBOL_INTERFACE_CALLABLE) &&
+        loom_func_like_repr_contract(function) == LOOM_STRING_ID_INVALID &&
+        loom_func_like_is_module_internal(function);
     IREE_RETURN_IF_ERROR(loom_refine_boundaries_collect_argument_projections(
         module, info, arena));
     if (info->result_count > 0) {
