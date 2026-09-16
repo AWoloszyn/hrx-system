@@ -192,6 +192,11 @@ jobs:
   linux_cmake_vulkan:
     name: ${{ matrix.name }}
     runs-on: linux-gfx120X-gpu-rocm
+    container:
+      image: ghcr.io/rocm/no_rocm_image_ubuntu24_04@sha256:4150afe4759d14822f0e3f8930e1124f26e11f68b5c7b91ec9a02b20b1ebbb98
+      options: >-
+        --device /dev/dri
+        --user 0:0
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -209,7 +214,15 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Adjust git config
-        run: git config --global --add safe.directory "$PWD"
+        run: |
+          mkdir -p "$HOME"
+          git config --global --add safe.directory "$PWD"
+
+      - name: Install Vulkan runtime
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends libvulkan1 mesa-vulkan-drivers vulkan-tools
+          dpkg-query -W libvulkan1 mesa-vulkan-drivers vulkan-tools
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
