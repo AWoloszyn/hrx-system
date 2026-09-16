@@ -1107,6 +1107,15 @@ TEST(ReplayExecuteTest, ReplaysDynamicQueueAcquisition) {
   const iree_hal_queue_family_t* queue_family =
       iree_hal_device_queue_family(wrapped_device, /*family_ordinal=*/0);
   ASSERT_NE(nullptr, queue_family);
+  EXPECT_EQ(wrapped_device, iree_hal_queue_family_device(queue_family));
+  iree_hal_device_t* source_device =
+      iree_hal_device_group_device_at(source_group, 0);
+  const iree_hal_queue_family_t* source_family =
+      iree_hal_device_queue_family(source_device, 0);
+  EXPECT_EQ(source_device, iree_hal_queue_family_device(source_family));
+  EXPECT_NE(source_family, queue_family);
+  EXPECT_EQ(iree_hal_queue_family_spec(source_family),
+            iree_hal_queue_family_spec(queue_family));
 
   iree_hal_queue_params_t queue_params;
   iree_hal_queue_params_initialize(&queue_params);

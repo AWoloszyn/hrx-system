@@ -151,6 +151,7 @@ iree_cc_test(
     ::profile
     iree::hal
     iree::hal::drivers::task::executable
+    iree::hal::testing::mock_device
     iree::testing::gtest
     iree::testing::gtest_main
 )

@@ -1935,6 +1935,7 @@ static iree_status_t iree_hal_amdgpu_logical_device_create_device_spec(
         iree_hal_device_spec_queues(logical_device->device_spec);
     for (iree_host_size_t i = 0; i < physical_device_count; ++i) {
       iree_hal_queue_family_initialize(
+          (iree_hal_device_t*)logical_device,
           (iree_hal_queue_family_ordinal_t)i, &queue_spec->families[i],
           &logical_device->physical_devices[i]->queue_family);
     }

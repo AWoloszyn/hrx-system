@@ -276,7 +276,6 @@ static const loom_device_provider_t kFakeDeviceProvider = {
 
 static iree_status_t InitializeFakeHalContext(
     loom_run_hal_testbench_context_t* context,
-    iree_hal_queue_family_t* out_dispatch_queue_family,
     iree_hal_queue_t* out_dispatch_queue) {
   const iree_hal_executable_target_t executable_target = {
       /*.family=*/IREE_SV("fake"),
@@ -333,11 +332,7 @@ static iree_status_t InitializeFakeHalContext(
     return status;
   }
 
-  const iree_hal_queue_family_spec_t* queue_family_spec =
-      &iree_hal_device_spec_queues(iree_hal_device_spec(device))->families[0];
-  iree_hal_queue_family_initialize(/*ordinal=*/0, queue_family_spec,
-                                   out_dispatch_queue_family);
-  out_dispatch_queue->queue_family = out_dispatch_queue_family;
+  out_dispatch_queue->queue_family = iree_hal_device_queue_family(device, 0);
   context->device_provider = &kFakeDeviceProvider;
   context->runtime = (loom_run_hal_runtime_t){
       /*.device=*/device,
@@ -381,10 +376,8 @@ check.case @entry_case {
   loom_run_hal_testbench_context_t context = {};
   loom_run_hal_testbench_context_initialize(
       /*device_provider_registry=*/nullptr, iree_allocator_system(), &context);
-  iree_hal_queue_family_t dispatch_queue_family = {};
   iree_hal_queue_t dispatch_queue = {};
-  IREE_ASSERT_OK(InitializeFakeHalContext(&context, &dispatch_queue_family,
-                                          &dispatch_queue));
+  IREE_ASSERT_OK(InitializeFakeHalContext(&context, &dispatch_queue));
 
   g_projected_target_profile = nullptr;
   g_compatible_target_selection_count = 0;

@@ -16,6 +16,7 @@
 #include "iree/hal/drivers/amdgpu/device/atomic.h"
 #include "iree/hal/drivers/amdgpu/device/dispatch.h"
 #include "iree/hal/drivers/amdgpu/util/aql_emitter.h"
+#include "iree/hal/testing/mock_device.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
 
@@ -24,12 +25,17 @@ namespace {
 
 static constexpr iree_hal_queue_priority_t kQueuePriority =
     IREE_HAL_QUEUE_PRIORITY_NORMAL;
-static const iree_hal_queue_family_spec_t kQueueFamilySpec = {
-    /*.name=*/IREE_SV("test"),
-    /*.provisioned_queue_count=*/1,
-    /*.priority_count=*/1,
-    /*.priorities=*/&kQueuePriority,
-};
+static const iree_hal_queue_family_spec_t kQueueFamilySpec = [] {
+  iree_hal_queue_family_spec_t spec = {};
+  spec.name = IREE_SV("test");
+  spec.priority_count = 1;
+  spec.priorities = &kQueuePriority;
+  spec.physical_device_affinity = 1;
+  spec.role_flags = IREE_HAL_QUEUE_FAMILY_ROLE_FLAG_DISPATCH |
+                    IREE_HAL_QUEUE_FAMILY_ROLE_FLAG_TRANSFER |
+                    IREE_HAL_QUEUE_FAMILY_ROLE_FLAG_ATOMIC;
+  return spec;
+}();
 
 struct ReturnBlock {
   // Block header at the ABI-defined block base.
@@ -615,22 +621,36 @@ class AqlBlockProcessorRecordedTest : public ::testing::Test {
                                                 &profile_metadata_);
     IREE_ASSERT_OK(iree_hal_amdgpu_aql_program_block_pool_initialize(
         block_size_, iree_allocator_system(), &block_pool_));
-    iree_hal_queue_family_initialize(/*ordinal=*/0, &kQueueFamilySpec,
-                                     &queue_family_);
+    iree_hal_device_queue_spec_t queues = {};
+    queues.family_count = 1;
+    queues.families = &kQueueFamilySpec;
+    iree_hal_device_spec_params_t spec_params = {};
+    spec_params.queues = &queues;
+    iree_hal_device_spec_t* device_spec = nullptr;
+    IREE_ASSERT_OK(iree_hal_device_spec_create(
+        &spec_params, iree_allocator_system(), &device_spec));
+    iree_hal_mock_device_options_t device_options;
+    iree_hal_mock_device_options_initialize(&device_options);
+    device_options.device_spec = device_spec;
+    iree_status_t status = iree_hal_mock_device_create(
+        &device_options, iree_allocator_system(), &device_);
+    iree_hal_device_spec_release(device_spec);
+    IREE_ASSERT_OK(status);
+    queue_family_ = iree_hal_device_queue_family(device_, 0);
   }
 
   void TearDown() override {
     iree_arena_block_pool_deinitialize(&block_pool_);
     iree_hal_amdgpu_profile_metadata_deinitialize(&profile_metadata_);
     iree_hal_allocator_release(device_allocator_);
+    iree_hal_device_release(device_);
   }
 
   CommandBufferPtr CreateCommandBuffer(iree_host_size_t binding_capacity) {
     iree_hal_command_buffer_t* command_buffer = nullptr;
     IREE_EXPECT_OK(iree_hal_amdgpu_aql_command_buffer_create(
-        device_allocator_, &queue_family_,
-        IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT, IREE_HAL_COMMAND_CATEGORY_ANY,
-        binding_capacity, /*device_ordinal=*/0,
+        device_allocator_, queue_family_, IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT,
+        IREE_HAL_COMMAND_CATEGORY_ANY, binding_capacity, /*device_ordinal=*/0,
         /*queue_count_per_physical_device=*/1,
         IREE_HAL_AMDGPU_GRID_SYNC_STRATEGY_MEMORY,
         /*tsan_shadow_slot_count=*/16,
@@ -662,7 +682,9 @@ class AqlBlockProcessorRecordedTest : public ::testing::Test {
   // Test allocator borrowed by command buffers for validation.
   iree_hal_allocator_t* device_allocator_ = nullptr;
   // Family identity borrowed by command buffers under test.
-  iree_hal_queue_family_t queue_family_ = {};
+  const iree_hal_queue_family_t* queue_family_ = nullptr;
+  // Device owning the canonical family used by this fixture.
+  iree_hal_device_t* device_ = nullptr;
   // Fixed block size used by recorded command-buffer tests.
   iree_host_size_t block_size_ = 4096;
   // Program and resource-set block pool borrowed by test command buffers.

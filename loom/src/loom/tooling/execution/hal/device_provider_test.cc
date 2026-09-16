@@ -29,6 +29,9 @@ typedef struct FakeHalDevice {
   iree_hal_resource_t resource;
   // Immutable device facts borrowed from the test fixture.
   const iree_hal_device_spec_t* device_spec;
+
+  // Canonical family cell exposed by this device.
+  iree_hal_queue_family_t queue_family;
 } FakeHalDevice;
 
 static const iree_hal_device_spec_t* FakeHalDeviceSpec(
@@ -36,9 +39,17 @@ static const iree_hal_device_spec_t* FakeHalDeviceSpec(
   return reinterpret_cast<FakeHalDevice*>(base_device)->device_spec;
 }
 
+static const iree_hal_queue_family_t* FakeHalDeviceQueueFamily(
+    iree_hal_device_t* base_device, iree_hal_queue_family_ordinal_t ordinal) {
+  return ordinal == 0
+             ? &reinterpret_cast<FakeHalDevice*>(base_device)->queue_family
+             : nullptr;
+}
+
 static iree_hal_device_vtable_t MakeFakeHalDeviceVtable() {
   iree_hal_device_vtable_t vtable = {};
   vtable.device_spec = FakeHalDeviceSpec;
+  vtable.queue_family = FakeHalDeviceQueueFamily;
   return vtable;
 }
 
@@ -159,9 +170,10 @@ class DeviceProviderTest : public ::testing::Test {
     iree_hal_resource_initialize(&kFakeHalDeviceVtable, &device_.resource);
     const iree_hal_queue_family_spec_t* queue_family_spec =
         &iree_hal_device_spec_queues(device_spec_.get())->families[0];
-    iree_hal_queue_family_initialize(/*ordinal=*/0, queue_family_spec,
-                                     &dispatch_queue_family_);
-    dispatch_queue_.queue_family = &dispatch_queue_family_;
+    iree_hal_queue_family_initialize(
+        reinterpret_cast<iree_hal_device_t*>(&device_), /*ordinal=*/0,
+        queue_family_spec, &device_.queue_family);
+    dispatch_queue_.queue_family = &device_.queue_family;
     runtime_.device = reinterpret_cast<iree_hal_device_t*>(&device_);
     runtime_.dispatch_queue = &dispatch_queue_;
 
@@ -181,7 +193,6 @@ class DeviceProviderTest : public ::testing::Test {
 
   DeviceSpecPtr device_spec_;
   FakeHalDevice device_ = {};
-  iree_hal_queue_family_t dispatch_queue_family_ = {};
   iree_hal_queue_t dispatch_queue_ = {};
   loom_run_hal_runtime_t runtime_ = {};
   FakeDeviceProvider provider_ = {};

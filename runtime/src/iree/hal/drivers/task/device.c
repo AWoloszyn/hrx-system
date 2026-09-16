@@ -430,7 +430,8 @@ iree_status_t iree_hal_task_device_create(
   if (iree_status_is_ok(status)) {
     const iree_hal_device_queue_spec_t* queue_spec =
         iree_hal_device_spec_queues(device->device_spec);
-    iree_hal_queue_family_initialize(/*ordinal=*/0, &queue_spec->families[0],
+    iree_hal_queue_family_initialize((iree_hal_device_t*)device, /*ordinal=*/0,
+                                     &queue_spec->families[0],
                                      &device->queue_family);
 
     iree_arena_block_pool_initialize(4096, host_allocator,

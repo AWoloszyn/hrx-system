@@ -132,6 +132,7 @@ iree_runtime_cc_test(
         ":profile",
         "//runtime/src/iree/hal",
         "//runtime/src/iree/hal/drivers/task/executable",
+        "//runtime/src/iree/hal/testing:mock_device",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
     ],

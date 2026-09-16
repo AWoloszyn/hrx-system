@@ -1358,9 +1358,9 @@ static void iree_hal_vulkan_logical_device_initialize_queue_families(
   const iree_hal_device_queue_spec_t* queue_spec =
       iree_hal_device_spec_queues(device->device_spec);
   for (iree_host_size_t i = 0; i < device->queues.family_count; ++i) {
-    iree_hal_queue_family_initialize((iree_hal_queue_family_ordinal_t)i,
-                                     &queue_spec->families[i],
-                                     &device->queues.families[i].base);
+    iree_hal_queue_family_initialize(
+        (iree_hal_device_t*)device, (iree_hal_queue_family_ordinal_t)i,
+        &queue_spec->families[i], &device->queues.families[i].base);
   }
 }
 

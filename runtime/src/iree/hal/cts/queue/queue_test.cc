@@ -127,6 +127,7 @@ TEST_P(QueueTest, ProvisionedInventoryMatchesDeviceSpec) {
         iree_hal_device_queue_family(device_, family_ordinal);
     ASSERT_NE(nullptr, queue_family)
         << "device did not expose advertised queue family " << i;
+    EXPECT_EQ(device_, iree_hal_queue_family_device(queue_family));
     EXPECT_EQ(family_ordinal, iree_hal_queue_family_ordinal(queue_family));
     const iree_hal_queue_family_spec_t* family_spec = &queue_spec->families[i];
     EXPECT_EQ(family_spec, iree_hal_queue_family_spec(queue_family));
@@ -336,7 +337,7 @@ TEST_P(QueueTest, QueueAcquisitionRejectsInvalidRequests) {
 
   iree_hal_queue_params_initialize(&params);
   iree_hal_queue_family_t foreign_family;
-  iree_hal_queue_family_initialize(family.ordinal, family.spec,
+  iree_hal_queue_family_initialize(device_, family.ordinal, family.spec,
                                    &foreign_family);
   IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
                         iree_hal_device_acquire_queue(device_, &foreign_family,

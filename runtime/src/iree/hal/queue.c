@@ -30,6 +30,12 @@ IREE_API_EXPORT void iree_hal_queue_params_initialize(
   out_params->priority = IREE_HAL_QUEUE_PRIORITY_NORMAL;
 }
 
+IREE_API_EXPORT iree_hal_device_t* iree_hal_queue_family_device(
+    const iree_hal_queue_family_t* queue_family) {
+  IREE_ASSERT_ARGUMENT(queue_family);
+  return queue_family->device;
+}
+
 IREE_API_EXPORT iree_hal_queue_family_ordinal_t
 iree_hal_queue_family_ordinal(const iree_hal_queue_family_t* queue_family) {
   IREE_ASSERT_ARGUMENT(queue_family);
@@ -43,11 +49,12 @@ IREE_API_EXPORT const iree_hal_queue_family_spec_t* iree_hal_queue_family_spec(
 }
 
 IREE_API_EXPORT void iree_hal_queue_family_initialize(
-    iree_hal_queue_family_ordinal_t ordinal,
+    iree_hal_device_t* device, iree_hal_queue_family_ordinal_t ordinal,
     const iree_hal_queue_family_spec_t* spec,
     iree_hal_queue_family_t* out_queue_family) {
   IREE_ASSERT_ARGUMENT(spec);
   IREE_ASSERT_ARGUMENT(out_queue_family);
+  out_queue_family->device = device;
   out_queue_family->ordinal = ordinal;
   out_queue_family->spec = spec;
 }

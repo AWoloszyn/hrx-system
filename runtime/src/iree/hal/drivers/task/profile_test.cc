@@ -13,6 +13,7 @@
 
 #include "iree/hal/api.h"
 #include "iree/hal/drivers/task/executable/executable.h"
+#include "iree/hal/testing/mock_device.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
 
@@ -21,12 +22,15 @@ namespace {
 
 static constexpr iree_hal_queue_priority_t kQueuePriority =
     IREE_HAL_QUEUE_PRIORITY_NORMAL;
-static const iree_hal_queue_family_spec_t kQueueFamilySpec = {
-    /*.name=*/IREE_SV("test"),
-    /*.provisioned_queue_count=*/1,
-    /*.priority_count=*/1,
-    /*.priorities=*/&kQueuePriority,
-};
+static const iree_hal_queue_family_spec_t kQueueFamilySpec = [] {
+  iree_hal_queue_family_spec_t spec = {};
+  spec.name = IREE_SV("test");
+  spec.priority_count = 1;
+  spec.priorities = &kQueuePriority;
+  spec.physical_device_affinity = 1;
+  spec.role_flags = IREE_HAL_QUEUE_FAMILY_ROLE_FLAG_DISPATCH;
+  return spec;
+}();
 
 struct RecordingProfileSink {
   // HAL resource header for the sink.
@@ -409,8 +413,22 @@ static const iree_hal_task_executable_vtable_t kFakeTaskExecutableVTable = {
 class TaskProfileRecorderTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    iree_hal_queue_family_initialize(/*ordinal=*/0, &kQueueFamilySpec,
-                                     &queue_family_);
+    iree_hal_device_queue_spec_t queues = {};
+    queues.family_count = 1;
+    queues.families = &kQueueFamilySpec;
+    iree_hal_device_spec_params_t spec_params = {};
+    spec_params.queues = &queues;
+    iree_hal_device_spec_t* device_spec = nullptr;
+    IREE_ASSERT_OK(iree_hal_device_spec_create(
+        &spec_params, iree_allocator_system(), &device_spec));
+    iree_hal_mock_device_options_t device_options;
+    iree_hal_mock_device_options_initialize(&device_options);
+    device_options.device_spec = device_spec;
+    iree_status_t status = iree_hal_mock_device_create(
+        &device_options, iree_allocator_system(), &device_);
+    iree_hal_device_spec_release(device_spec);
+    IREE_ASSERT_OK(status);
+    queue_family_ = iree_hal_device_queue_family(device_, 0);
     RecordingProfileSinkInitialize(&sink_);
     device_record_ = MakeDeviceRecord(1);
     queue_record_ = MakeQueueRecord(0);
@@ -430,6 +448,7 @@ class TaskProfileRecorderTest : public ::testing::Test {
       IREE_EXPECT_OK(iree_hal_task_profile_recorder_end(recorder_));
       iree_hal_task_profile_recorder_destroy(recorder_);
     }
+    iree_hal_device_release(device_);
   }
 
   iree_hal_device_profiling_options_t MakeProfilingOptions(
@@ -458,7 +477,10 @@ class TaskProfileRecorderTest : public ::testing::Test {
   }
 
   RecordingProfileSink sink_;
-  iree_hal_queue_family_t queue_family_;
+  // Canonical family borrowed from device_.
+  const iree_hal_queue_family_t* queue_family_ = nullptr;
+  // Device owning the canonical family used by this fixture.
+  iree_hal_device_t* device_ = nullptr;
   iree_hal_profile_device_record_t device_record_;
   iree_hal_profile_queue_record_t queue_record_;
   iree_hal_task_profile_recorder_options_t recorder_options_ = {};
@@ -511,9 +533,9 @@ TEST_F(TaskProfileRecorderTest, RecordsExecutableMetadataOnce) {
   IREE_EXPECT_OK(Create(IREE_HAL_DEVICE_PROFILING_DATA_EXECUTABLE_METADATA));
 
   FakeTaskExecutable executable;
-  iree_hal_task_executable_initialize(
-      &queue_family_, &kFakeTaskExecutableVTable, iree_allocator_system(),
-      &executable.base);
+  iree_hal_task_executable_initialize(queue_family_, &kFakeTaskExecutableVTable,
+                                      iree_allocator_system(),
+                                      &executable.base);
   iree_hal_executable_t* base_executable =
       reinterpret_cast<iree_hal_executable_t*>(&executable.base);
 
@@ -539,9 +561,9 @@ TEST_F(TaskProfileRecorderTest, HostExecutionEnablesExecutableMetadata) {
       recorder_, IREE_HAL_DEVICE_PROFILING_DATA_EXECUTABLE_METADATA));
 
   FakeTaskExecutable executable;
-  iree_hal_task_executable_initialize(
-      &queue_family_, &kFakeTaskExecutableVTable, iree_allocator_system(),
-      &executable.base);
+  iree_hal_task_executable_initialize(queue_family_, &kFakeTaskExecutableVTable,
+                                      iree_allocator_system(),
+                                      &executable.base);
   iree_hal_executable_t* base_executable =
       reinterpret_cast<iree_hal_executable_t*>(&executable.base);
 
