@@ -42,6 +42,7 @@ loom_kernel_library(
     execution_profiles = [AMDGPU_HARDWARE_PROFILE],
     targets = [
         "@hrx//loom/target/amdgpu:gfx11-generic",
+        "@hrx//loom/target/amdgpu:gfx1250-a0",
         "@hrx//loom/target/spirv:vulkan1.3+bda",
     ],
 )
