@@ -14,6 +14,25 @@
 // SSA references carried by value types
 //===----------------------------------------------------------------------===//
 
+// Field names are diagnostic-only work. Keep formatting out of the valid path,
+// including variadic results and block arguments whose names need an ordinal.
+static loom_diagnostic_param_t loom_verify_type_ref_field_param(
+    const loom_op_t* op, const loom_op_vtable_t* vtable, uint16_t field_index,
+    bool is_result, char* buffer, iree_host_size_t buffer_size) {
+  if (!vtable) {
+    iree_snprintf(buffer, buffer_size, "block arg %u", field_index);
+    return loom_param_string(iree_make_cstring_view(buffer));
+  }
+  const uint8_t category = is_result ? LOOM_FIELD_RESULT : LOOM_FIELD_OPERAND;
+  const loom_diagnostic_field_kind_t kind =
+      is_result ? LOOM_DIAGNOSTIC_FIELD_RESULT : LOOM_DIAGNOSTIC_FIELD_OPERAND;
+  const iree_string_view_t field_name = loom_verify_value_field_name(
+      vtable, op, category, field_index, buffer, buffer_size);
+  return loom_param_with_field_ref(
+      loom_param_string(field_name),
+      loom_diagnostic_field_ref(kind, field_index));
+}
+
 static bool loom_verify_op_allows_declaration_local_type_refs(
     const loom_op_vtable_t* vtable) {
   return vtable->symbol_def &&
@@ -54,17 +73,17 @@ static bool loom_verify_type_ref_is_visible(const loom_verify_state_t* state,
 static void loom_verify_encoding_ref(loom_verify_state_t* state,
                                      const loom_op_t* op,
                                      const loom_op_vtable_t* vtable,
-                                     loom_type_t type,
-                                     iree_string_view_t field_name,
-                                     loom_diagnostic_field_ref_t field_ref,
+                                     loom_type_t type, uint16_t field_index,
                                      bool is_result) {
   if (!loom_type_has_ssa_encoding(type)) {
     return;
   }
   uint16_t encoding_value_id = loom_type_encoding_value_id(type);
   if (encoding_value_id >= state->module->values.count) {
+    char name_buffer[64];
     loom_diagnostic_param_t params[] = {
-        loom_param_with_field_ref(loom_param_string(field_name), field_ref),
+        loom_verify_type_ref_field_param(op, vtable, field_index, is_result,
+                                         name_buffer, sizeof(name_buffer)),
         loom_param_u32(encoding_value_id),
         loom_param_u32((uint32_t)state->module->values.count),
     };
@@ -76,8 +95,10 @@ static void loom_verify_encoding_ref(loom_verify_state_t* state,
                                        is_result)) {
     iree_string_view_t value_name =
         loom_verify_value_name(state, encoding_value_id);
+    char name_buffer[64];
     loom_diagnostic_param_t params[] = {
-        loom_param_with_field_ref(loom_param_string(field_name), field_ref),
+        loom_verify_type_ref_field_param(op, vtable, field_index, is_result,
+                                         name_buffer, sizeof(name_buffer)),
         loom_param_string(value_name),
     };
     loom_verify_emit_structured(state, op, LOOM_ERR_ENCODING_004, params,
@@ -89,8 +110,10 @@ static void loom_verify_encoding_ref(loom_verify_state_t* state,
   if (!loom_type_is_encoding(encoding_type)) {
     iree_string_view_t value_name =
         loom_verify_value_name(state, encoding_value_id);
+    char name_buffer[64];
     loom_diagnostic_param_t params[] = {
-        loom_param_with_field_ref(loom_param_string(field_name), field_ref),
+        loom_verify_type_ref_field_param(op, vtable, field_index, is_result,
+                                         name_buffer, sizeof(name_buffer)),
         loom_param_string(value_name),
         loom_param_type(encoding_type),
     };
@@ -104,10 +127,8 @@ static void loom_verify_encoding_ref(loom_verify_state_t* state,
 static void loom_verify_defined_type_refs(
     loom_verify_state_t* state, const loom_op_t* op,
     const loom_op_vtable_t* vtable, loom_value_id_t value_id, loom_type_t type,
-    iree_string_view_t field_name, loom_diagnostic_field_ref_t field_ref,
-    bool is_result) {
-  loom_verify_encoding_ref(state, op, vtable, type, field_name, field_ref,
-                           is_result);
+    uint16_t field_index, bool is_result) {
+  loom_verify_encoding_ref(state, op, vtable, type, field_index, is_result);
   const loom_value_id_t direct_encoding =
       loom_type_has_ssa_encoding(type) ? loom_type_encoding_value_id(type)
                                        : LOOM_VALUE_ID_INVALID;
@@ -122,8 +143,10 @@ static void loom_verify_defined_type_refs(
                                         is_result)) {
       continue;
     }
+    char name_buffer[64];
     loom_diagnostic_param_t params[] = {
-        loom_param_with_field_ref(loom_param_string(field_name), field_ref),
+        loom_verify_type_ref_field_param(op, vtable, field_index, is_result,
+                                         name_buffer, sizeof(name_buffer)),
         loom_param_string(loom_verify_value_name(state, referenced_id)),
     };
     loom_verify_emit_structured(state, op, LOOM_ERR_DOMINANCE_016, params,
@@ -151,16 +174,11 @@ void loom_verify_value_type_refs(loom_verify_state_t* state,
         !loom_type_may_reference_values(type)) {
       continue;
     }
-    char name_buffer[64];
-    iree_string_view_t name = loom_verify_value_field_name(
-        vtable, op, LOOM_FIELD_OPERAND, i, name_buffer, sizeof(name_buffer));
-    const loom_diagnostic_field_ref_t field_ref =
-        loom_diagnostic_field_ref(LOOM_DIAGNOSTIC_FIELD_OPERAND, i);
     if (defines_arguments) {
-      loom_verify_defined_type_refs(state, op, vtable, operands[i], type, name,
-                                    field_ref, /*is_result=*/false);
+      loom_verify_defined_type_refs(state, op, vtable, operands[i], type, i,
+                                    /*is_result=*/false);
     } else {
-      loom_verify_encoding_ref(state, op, vtable, type, name, field_ref,
+      loom_verify_encoding_ref(state, op, vtable, type, i,
                                /*is_result=*/false);
     }
   }
@@ -174,13 +192,8 @@ void loom_verify_value_type_refs(loom_verify_state_t* state,
     if (!loom_type_may_reference_values(type)) {
       continue;
     }
-    char name_buffer[64];
-    iree_string_view_t name = loom_verify_value_field_name(
-        vtable, op, LOOM_FIELD_RESULT, i, name_buffer, sizeof(name_buffer));
-    loom_verify_defined_type_refs(
-        state, op, vtable, results[i], type, name,
-        loom_diagnostic_field_ref(LOOM_DIAGNOSTIC_FIELD_RESULT, i),
-        /*is_result=*/true);
+    loom_verify_defined_type_refs(state, op, vtable, results[i], type, i,
+                                  /*is_result=*/true);
   }
 }
 
@@ -191,7 +204,6 @@ void loom_verify_value_type_refs(loom_verify_state_t* state,
 void loom_verify_block_arg_type_refs(loom_verify_state_t* state,
                                      const loom_block_t* block,
                                      const loom_op_t* owner) {
-  char name_buffer[32];
   for (uint16_t a = 0; a < block->arg_count; ++a) {
     loom_value_id_t arg_id = loom_block_arg_id(block, a);
     if (arg_id == LOOM_VALUE_ID_INVALID ||
@@ -202,10 +214,7 @@ void loom_verify_block_arg_type_refs(loom_verify_state_t* state,
     if (!loom_type_may_reference_values(type)) {
       continue;
     }
-    iree_snprintf(name_buffer, sizeof(name_buffer), "block arg %u", a);
-    loom_verify_defined_type_refs(state, owner, NULL, arg_id, type,
-                                  iree_make_cstring_view(name_buffer),
-                                  loom_diagnostic_field_ref_none(),
+    loom_verify_defined_type_refs(state, owner, NULL, arg_id, type, a,
                                   /*is_result=*/false);
   }
 }

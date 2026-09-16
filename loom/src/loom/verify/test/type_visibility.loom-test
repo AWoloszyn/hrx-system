@@ -27,8 +27,33 @@ func.def @outer_pool_size(%byte_count: index) {
 
 // Function argument types cannot implicitly capture an enclosing dimension.
 func.def @outer_argument_shape(%count: index) {
-  // ERROR@+1: DOMINANCE/016 "count"
+  // ERROR@+1: DOMINANCE/016 "block arg 0 type references value '%count'"
   func.def @capturing_argument(%tile: tile<[%count]xf32>) {
+    func.return
+  }
+  func.return
+}
+
+// ====
+
+// Bodyless signatures retain the declared variadic argument field name when
+// a surrounding isolated region hides the referenced encoding.
+func.def @outer_declared_layout(%layout: encoding<layout>) {
+  test.isolated_region {
+    // ERROR@+1: ENCODING/004 "args[0]"
+    func.decl @capturing_declaration(%view: view<4xf32, %layout>)
+    test.yield
+  }
+  func.return
+}
+
+// ====
+
+// Variadic result diagnostics identify the dependent value's field ordinal.
+func.def @outer_variadic_shape(%count: index) {
+  func.def @capturing_results(%input: tensor<4xf32>) {
+    // ERROR@+1: DOMINANCE/016 "results[0] type references value '%count'"
+    %tile, %size = test.deflate %input : tensor<4xf32> -> (tile<[%count]xf32>, index)
     func.return
   }
   func.return
