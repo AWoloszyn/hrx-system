@@ -1426,10 +1426,21 @@ TEST(ReplayExecuteTest, PreservesWideNativeParameterSize) {
   options.executable_substitution_callback.user_data = &substitution_state;
 
   iree_hal_device_group_t* replay_group = CreateMockExecutableDeviceGroup();
-  IREE_EXPECT_OK(iree_hal_replay_execute_file(GetCapturedFileContents(storage),
-                                              replay_group, &options,
-                                              iree_allocator_system()));
-  EXPECT_EQ(substitution_state.invocation_count, 1u);
+  const auto file_contents = GetCapturedFileContents(storage);
+  constexpr size_t kAlignment =
+      alignof(iree_hal_replay_executable_function_metadata_t);
+  std::vector<uint8_t> replay_storage(file_contents.data_length + kAlignment -
+                                      1);
+  for (size_t offset = 0; offset < kAlignment; ++offset) {
+    SCOPED_TRACE(offset);
+    memcpy(replay_storage.data() + offset, file_contents.data,
+           file_contents.data_length);
+    IREE_EXPECT_OK(iree_hal_replay_execute_file(
+        iree_make_const_byte_span(replay_storage.data() + offset,
+                                  file_contents.data_length),
+        replay_group, &options, iree_allocator_system()));
+  }
+  EXPECT_EQ(substitution_state.invocation_count, kAlignment);
   iree_hal_device_group_release(replay_group);
 }
 

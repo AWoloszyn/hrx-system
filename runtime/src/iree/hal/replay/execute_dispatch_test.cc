@@ -278,11 +278,19 @@ TEST_F(ReplayDispatchTest, FamilyConstructorsReplayNativeOutput) {
   ASSERT_LE(header.file_length, storage_.size());
   replay_group_ = CreateTaskDeviceGroup();
   const auto options = iree_hal_replay_execute_options_default();
-  for (int i = 0; i < 2; ++i) {
+  // Replay byte spans and the executable metadata within them can have any
+  // alignment, regardless of the native artifact or target string lengths.
+  constexpr size_t kAlignment =
+      alignof(iree_hal_replay_executable_function_metadata_t);
+  std::vector<uint8_t> replay_storage(header.file_length + kAlignment - 1);
+  for (size_t offset = 0; offset < kAlignment; ++offset) {
+    SCOPED_TRACE(offset);
+    memcpy(replay_storage.data() + offset, storage_.data(), header.file_length);
     IREE_ASSERT_OK(iree_io_file_contents_write(
         output_path.path_view(), initial_output, iree_allocator_system()));
     IREE_ASSERT_OK(iree_hal_replay_execute_file(
-        iree_make_const_byte_span(storage_.data(), header.file_length),
+        iree_make_const_byte_span(replay_storage.data() + offset,
+                                  header.file_length),
         replay_group_, &options, iree_allocator_system()));
     ASSERT_NO_FATAL_FAILURE(ExpectOutput(output_path.path_view()));
   }
