@@ -67,15 +67,17 @@ iree_cc_binary_benchmark(
     "benchmark.c"
   DEPS
     ::abi
+    iree::async::util::proactor_pool
     iree::base
     iree::base::tooling::flags
     iree::hal
-    iree::hal::drivers::task::device_spec_builder
+    iree::hal::drivers::task::device
     iree::hal::drivers::task::executable
     iree::hal::drivers::task::executable::environment
     iree::hal::drivers::task::executable::loader
     iree::hal::drivers::task::executable::loaders::registration
     iree::io::file_handle
+    iree::task
     iree::testing::benchmark
     iree::third_party::google_benchmark
   TESTONLY
