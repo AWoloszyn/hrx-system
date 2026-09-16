@@ -18,11 +18,13 @@
 extern "C" {
 #endif  // __cplusplus
 
-// Initializes the exact device target contract for an NPU2 logical context.
+// Initializes the image execution contract for an NPU2 logical context.
 //
 // |target_id| is the canonical enumerated device key, currently
-// amd.xdna.strix.17f0_10 or amd.xdna.strix_halo.17f0_11. Unknown keys return
-// UNIMPLEMENTED; sharing the array architecture does not imply image identity.
+// amd.xdna.strix.17f0_10, amd.xdna.krackan.17f0_20 or
+// amd.xdna.strix_halo.17f0_11. Strix and Krackan share an execution profile;
+// Halo retains its distinct firmware/bootstrap contract. Unknown keys return
+// UNIMPLEMENTED; array architecture alone does not establish compatibility.
 // |context_column_count| must be in the hardware-supported range [1, 8]. The
 // returned descriptor contains no borrowed state and may be copied or shared
 // between concurrent image construction calls. Failure leaves |out_target|

@@ -462,7 +462,7 @@ static iree_status_t iree_hal_amd_xdna_aie2p_npu2_validate_dma_task_wait(
   return iree_ok_status();
 }
 
-// Canonical compiler deployment identities sharing the NPU2 native contract.
+// Image execution contracts shared by compatible NPU2 devices.
 static const struct {
   // Exact passive endpoint key, independent of native platform transport.
   iree_string_view_t target_id;
@@ -470,6 +470,9 @@ static const struct {
   uint64_t device_profile_id;
 } iree_hal_amd_xdna_aie2p_npu2_profiles[] = {
     {IREE_SVL("amd.xdna.strix.17f0_10"), UINT64_C(0x5354524958000001)},
+    // AMD npu6_regs.c selects NPU4 firmware, hardware operations, feature
+    // contracts and device-memory layout. Krackan uses that same image ABI.
+    {IREE_SVL("amd.xdna.krackan.17f0_20"), UINT64_C(0x5354524958000001)},
     {IREE_SVL("amd.xdna.strix_halo.17f0_11"), UINT64_C(0x535848414C4F0001)},
 };
 

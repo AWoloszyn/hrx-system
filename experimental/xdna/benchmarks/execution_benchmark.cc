@@ -107,11 +107,14 @@ class ExecutionBenchmark {
     if (!(device_info.context.scheduling_modes &
           AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED))
       return;
+    iree_hal_amd_xdna_aie2p_target_t target;
+    CheckIreeStatus(iree_hal_amd_xdna_aie2p_npu2_target_initialize(
+        iree_make_cstring_view(info.target_id), 1, &target));
     const iree_file_toc_t* image = nullptr;
-    if (std::strcmp(info.target_id, "amd.xdna.strix.17f0_10") == 0) {
+    if (target.identity.device_profile_id == UINT64_C(0x5354524958000001)) {
       image = iree_hal_amd_xdna_test_mul_i32_npu4_create();
-    } else if (std::strcmp(info.target_id, "amd.xdna.strix_halo.17f0_11") ==
-               0) {
+    } else if (target.identity.device_profile_id ==
+               UINT64_C(0x535848414C4F0001)) {
       image = iree_hal_amd_xdna_test_mul_i32_create();
     }
     skip_reason_ = "no canonical multiplication fixture for this XDNA target";
@@ -137,9 +140,6 @@ class ExecutionBenchmark {
     }
     Check(family_ordinal != UINT32_MAX, "no native XDNA queue family");
     queue_family_ordinal_ = family_ordinal;
-    iree_hal_amd_xdna_aie2p_target_t target;
-    CheckIreeStatus(iree_hal_amd_xdna_aie2p_npu2_target_initialize(
-        iree_make_cstring_view(info.target_id), 1, &target));
     iree_byte_span_t image_bytes = {nullptr, image->size};
     CheckIreeStatus(iree_allocator_clone(
         iree_allocator_system(),
