@@ -1695,30 +1695,10 @@ static void iree_async_proactor_iocp_complete_accept(
       }
 
       // Create an iree_async_socket_t for the accepted connection.
-      iree_async_socket_t* accepted_socket = NULL;
-      iree_status_t create_status = iree_allocator_malloc(
-          proactor->base.allocator, sizeof(*accepted_socket),
-          (void**)&accepted_socket);
-      if (iree_status_is_ok(create_status)) {
-        memset(accepted_socket, 0, sizeof(*accepted_socket));
-        iree_atomic_ref_count_init(&accepted_socket->ref_count);
-        accepted_socket->proactor = &proactor->base;
-        accepted_socket->primitive =
-            iree_async_primitive_from_win32_handle((uintptr_t)accept_sock);
-        accepted_socket->fixed_file_index = -1;
-        accepted_socket->type = accept_op->listen_socket->type;
-        accepted_socket->state = IREE_ASYNC_SOCKET_STATE_CONNECTED;
-        accepted_socket->flags = accept_op->listen_socket->flags;
-        iree_atomic_store(&accepted_socket->failure_status,
-                          (intptr_t)iree_ok_status(),
-                          iree_memory_order_release);
-        IREE_TRACE({
-          snprintf(accepted_socket->debug_label,
-                   sizeof(accepted_socket->debug_label), "accepted:%llu",
-                   (unsigned long long)accept_sock);
-        });
-        accept_op->accepted_socket = accepted_socket;
-      } else {
+      iree_status_t create_status = iree_async_iocp_socket_create_accepted(
+          proactor, (uintptr_t)accept_sock, accept_op->listen_socket->type,
+          accept_op->listen_socket->flags, &accept_op->accepted_socket);
+      if (!iree_status_is_ok(create_status)) {
         closesocket(accept_sock);
         io_status = create_status;
       }

@@ -370,9 +370,30 @@ TEST_P(SocketTest, BindTwice_Fails) {
   // First bind should succeed.
   IREE_ASSERT_OK(iree_async_socket_bind(socket, &address));
 
-  // Second bind on the same socket should fail (EINVAL on Linux).
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
+  // The API rejects a repeated bind before entering the platform API.
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_FAILED_PRECONDITION,
                         iree_async_socket_bind(socket, &address));
+
+  iree_async_socket_release(socket);
+}
+
+// A platform bind failure leaves the socket available for a corrected retry.
+TEST_P(SocketTest, BindFailureCanRetry) {
+  iree_async_socket_t* socket = nullptr;
+  IREE_ASSERT_OK(iree_async_socket_create(proactor_, IREE_ASYNC_SOCKET_TYPE_TCP,
+                                          IREE_ASYNC_SOCKET_OPTION_NONE,
+                                          &socket));
+
+  // An IPv6 address cannot be bound to an IPv4-only socket.
+  iree_async_address_t incompatible_address;
+  IREE_ASSERT_OK(iree_async_address_from_ipv6(iree_make_cstring_view("::1"), 0,
+                                              &incompatible_address));
+  IREE_EXPECT_NOT_OK(iree_async_socket_bind(socket, &incompatible_address));
+
+  iree_async_address_t compatible_address;
+  IREE_ASSERT_OK(iree_async_address_from_ipv4(
+      iree_make_cstring_view("127.0.0.1"), 0, &compatible_address));
+  IREE_EXPECT_OK(iree_async_socket_bind(socket, &compatible_address));
 
   iree_async_socket_release(socket);
 }
@@ -493,6 +514,14 @@ TEST_P(SocketTest, AcceptSuccess) {
   ASSERT_NE(accept_op.accepted_socket, nullptr);
   EXPECT_EQ(iree_async_socket_query_state(accept_op.accepted_socket),
             IREE_ASYNC_SOCKET_STATE_CONNECTED);
+
+  // Accepted sockets inherit a local binding and cannot be rebound.
+  iree_async_address_t rebind_address;
+  IREE_ASSERT_OK(iree_async_address_from_ipv4(
+      iree_make_cstring_view("127.0.0.1"), 0, &rebind_address));
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_FAILED_PRECONDITION,
+      iree_async_socket_bind(accept_op.accepted_socket, &rebind_address));
 
   EXPECT_EQ(connect_tracker.call_count, 1);
   IREE_EXPECT_OK(connect_tracker.ConsumeStatus());

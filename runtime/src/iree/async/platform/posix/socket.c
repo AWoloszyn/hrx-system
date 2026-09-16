@@ -155,14 +155,16 @@ static iree_status_t iree_async_socket_set_nonblocking(int fd) {
 // Socket struct initialization
 //===----------------------------------------------------------------------===//
 
-static void iree_async_socket_initialize(iree_async_socket_t* socket,
-                                         iree_async_proactor_posix_t* proactor,
-                                         int fd, iree_async_socket_type_t type,
-                                         iree_async_socket_flags_t flags) {
+static void iree_async_socket_initialize(
+    iree_async_socket_t* socket, iree_async_proactor_posix_t* proactor, int fd,
+    iree_async_socket_type_t type, iree_async_socket_flags_t flags,
+    iree_async_socket_bind_state_t initial_bind_state) {
   iree_atomic_ref_count_init(&socket->ref_count);
   socket->proactor = &proactor->base;
   socket->primitive = iree_async_primitive_from_fd(fd);
   socket->fixed_file_index = -1;
+  iree_atomic_store(&socket->bind_state, initial_bind_state,
+                    iree_memory_order_release);
   socket->type = type;
   socket->state = IREE_ASYNC_SOCKET_STATE_CREATED;
   socket->flags = flags;
@@ -222,7 +224,8 @@ iree_status_t iree_async_posix_socket_create(
   if (iree_status_is_ok(status)) {
     iree_async_socket_flags_t flags =
         iree_async_socket_flags_from_options(options);
-    iree_async_socket_initialize(socket, proactor, fd, type, flags);
+    iree_async_socket_initialize(socket, proactor, fd, type, flags,
+                                 IREE_ASYNC_SOCKET_BIND_STATE_UNBOUND);
     *out_socket = socket;
   } else {
     close(fd);
@@ -244,7 +247,8 @@ iree_status_t iree_async_posix_socket_create_accepted(
                                              sizeof(*socket), (void**)&socket));
 
   iree_async_socket_initialize(socket, proactor, accepted_fd, type,
-                               IREE_ASYNC_SOCKET_FLAG_NONE);
+                               IREE_ASYNC_SOCKET_FLAG_NONE,
+                               IREE_ASYNC_SOCKET_BIND_STATE_BOUND);
   socket->state = IREE_ASYNC_SOCKET_STATE_CONNECTED;
   *out_socket = socket;
   return iree_ok_status();
@@ -279,7 +283,8 @@ iree_status_t iree_async_posix_socket_import(
       z0, iree_allocator_malloc(proactor->base.allocator, sizeof(*socket),
                                 (void**)&socket));
 
-  iree_async_socket_initialize(socket, proactor, fd, type, flags);
+  iree_async_socket_initialize(socket, proactor, fd, type, flags,
+                               IREE_ASYNC_SOCKET_BIND_STATE_UNKNOWN);
   *out_socket = socket;
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();

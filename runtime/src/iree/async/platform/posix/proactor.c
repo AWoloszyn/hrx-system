@@ -865,6 +865,9 @@ static iree_status_t iree_async_proactor_posix_submit_socket_connect(
               (socklen_t)connect_op->address.length);
   if (connect_result == 0) {
     // Immediate success (rare, usually local connections).
+    iree_atomic_store(&connect_op->socket->bind_state,
+                      IREE_ASYNC_SOCKET_BIND_STATE_BOUND,
+                      iree_memory_order_release);
     connect_op->socket->state = IREE_ASYNC_SOCKET_STATE_CONNECTED;
     return iree_async_proactor_posix_complete_on_submit(
         proactor, &connect_op->base, iree_ok_status(),
@@ -873,6 +876,9 @@ static iree_status_t iree_async_proactor_posix_submit_socket_connect(
   if (errno == EINPROGRESS) {
     // Connection in progress — poll thread will register for POLLOUT.
     // push_pending retains the socket reference.
+    iree_atomic_store(&connect_op->socket->bind_state,
+                      IREE_ASYNC_SOCKET_BIND_STATE_BOUND,
+                      iree_memory_order_release);
     connect_op->socket->state = IREE_ASYNC_SOCKET_STATE_CONNECTING;
     iree_async_proactor_posix_push_pending(proactor, &connect_op->base);
     return iree_ok_status();

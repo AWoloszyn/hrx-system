@@ -31,6 +31,13 @@ iree_status_t iree_async_iocp_socket_create(
     iree_async_proactor_iocp_t* proactor, iree_async_socket_type_t type,
     iree_async_socket_options_t options, iree_async_socket_t** out_socket);
 
+// Wraps an accepted socket already associated with the proactor's completion
+// port. The platform handle remains caller-owned on failure.
+iree_status_t iree_async_iocp_socket_create_accepted(
+    iree_async_proactor_iocp_t* proactor, uintptr_t accepted_socket,
+    iree_async_socket_type_t type, iree_async_socket_flags_t flags,
+    iree_async_socket_t** out_socket);
+
 // Imports an existing platform socket handle as a proactor-managed socket.
 // The proactor takes ownership of the handle (will close it on destroy).
 // The socket is associated with the IOCP completion port. Socket options are

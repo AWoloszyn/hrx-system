@@ -130,12 +130,12 @@ TEST_P(SocketWin32Test, ImportSocket_ClosedHandle) {
 
 // Helper to get a boolean socket option on Windows.
 static bool GetSocketOptBool(SOCKET sock, int level, int optname) {
-  char value = 0;
+  BOOL value = FALSE;
   int len = sizeof(value);
-  if (getsockopt(sock, level, optname, &value, &len) == SOCKET_ERROR) {
+  if (getsockopt(sock, level, optname, (char*)&value, &len) == SOCKET_ERROR) {
     return false;
   }
-  return value != 0;
+  return value != FALSE;
 }
 
 // Verify SO_REUSEADDR is applied to the underlying socket.
@@ -152,9 +152,30 @@ TEST_P(SocketWin32Test, VerifyOption_ReuseAddr) {
   iree_async_socket_release(socket);
 }
 
-// Note: SO_REUSEPORT is not available on Windows. The closest equivalent is
-// SO_REUSEADDR which has different semantics. We don't test REUSE_PORT on
-// Windows since the option flag may be ignored or mapped differently.
+// Verify unsupported SO_REUSEPORT is rejected instead of silently changing to
+// Windows SO_REUSEADDR semantics.
+TEST_P(SocketWin32Test, VerifyOption_ReusePortRejected) {
+  iree_async_socket_t* socket = nullptr;
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_UNAVAILABLE,
+      iree_async_socket_create(proactor_, IREE_ASYNC_SOCKET_TYPE_TCP,
+                               IREE_ASYNC_SOCKET_OPTION_REUSE_PORT, &socket));
+  EXPECT_EQ(socket, nullptr);
+}
+
+// Verify Internet sockets prevent address takeover unless reuse was explicit.
+TEST_P(SocketWin32Test, VerifyOption_ExclusiveAddrUseByDefault) {
+  iree_async_socket_t* socket = nullptr;
+  IREE_ASSERT_OK(iree_async_socket_create(proactor_, IREE_ASYNC_SOCKET_TYPE_TCP,
+                                          IREE_ASYNC_SOCKET_OPTION_NONE,
+                                          &socket));
+
+  SOCKET sock = (SOCKET)socket->primitive.value.win32_handle;
+  EXPECT_TRUE(GetSocketOptBool(sock, SOL_SOCKET, SO_EXCLUSIVEADDRUSE))
+      << "SO_EXCLUSIVEADDRUSE should be set";
+
+  iree_async_socket_release(socket);
+}
 
 // Verify TCP_NODELAY is applied to the underlying socket.
 TEST_P(SocketWin32Test, VerifyOption_NoDelay) {
