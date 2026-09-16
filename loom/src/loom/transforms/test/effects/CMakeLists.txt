@@ -16,6 +16,7 @@ loom_check_test_suite(
     "canonicalize.loom-test"
     "cse.loom-test"
     "cse_scopes.loom-test"
+    "cse_state.loom-test"
     "dce.loom-test"
     "verify.loom-test"
 )

@@ -144,8 +144,6 @@ static bool loom_cse_ops_equal(const loom_module_t* module, const loom_op_t* a,
 typedef struct loom_cse_low_state_t {
   // Architectural state contributing to expression identity without SSA edges.
   uint64_t dependencies;
-  // Architectural state read by the packet.
-  uint64_t reads;
   // Architectural state written by the packet.
   uint64_t writes;
 } loom_cse_low_state_t;
@@ -192,7 +190,6 @@ static loom_cse_low_state_t loom_cse_low_descriptor_state(
         loom_cse_low_state_bit(loom_cse_low_descriptor_state_register_class_id(
             descriptor_set, operand));
     if (iree_any_bit_set(state_flags, LOOM_LOW_OPERAND_FLAG_STATE_READ)) {
-      state.reads |= state_bit;
       const bool has_explicit_packet_value =
           i >= descriptor->result_count &&
           loom_low_operand_role_is_packet_operand(operand->role);
@@ -249,8 +246,6 @@ typedef struct loom_cse_entry_t {
   uint32_t hash;
   // Trait flags at insert time.
   loom_trait_flags_t traits;
-  // Target state registers this entry depends on.
-  uint64_t state_dependency_bits;
 } loom_cse_entry_t;
 
 typedef struct loom_cse_slot_list_t {
@@ -269,8 +264,6 @@ typedef struct loom_cse_table_t {
   // Non-PURE insertion slots since the last write barrier. Selective state
   // invalidation can leave stale indices, checked against the current entry.
   loom_cse_slot_list_t non_pure;
-  // Target-state-dependent insertion slots, compacted during state writes.
-  loom_cse_slot_list_t state_dependencies;
   // Number of entry slots, always a power of two.
   iree_host_size_t capacity;
   // Maximum block insertions and capacity of each slot list.
@@ -295,9 +288,6 @@ static iree_status_t loom_cse_table_initialize(iree_arena_allocator_t* arena,
     IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
         arena, max_entry_count, sizeof(iree_host_size_t),
         (void**)&table->non_pure.slots));
-    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-        arena, max_entry_count, sizeof(iree_host_size_t),
-        (void**)&table->state_dependencies.slots));
   }
   return iree_ok_status();
 }
@@ -324,8 +314,7 @@ static loom_op_t* loom_cse_table_find(const loom_cse_table_t* table,
 // Reuses tombstone slots when available to reclaim space.
 static loom_cse_entry_t* loom_cse_table_insert(loom_cse_table_t* table,
                                                loom_op_t* op, uint32_t hash,
-                                               loom_trait_flags_t traits,
-                                               uint64_t state_dependency_bits) {
+                                               loom_trait_flags_t traits) {
   iree_host_size_t mask = table->capacity - 1;
   iree_host_size_t slot = hash & mask;
   while (table->entries[slot].op &&
@@ -340,15 +329,10 @@ static loom_cse_entry_t* loom_cse_table_insert(loom_cse_table_t* table,
       .op = op,
       .hash = hash,
       .traits = traits,
-      .state_dependency_bits = state_dependency_bits,
   };
   if (!(traits & LOOM_TRAIT_PURE)) {
     IREE_ASSERT_LT(table->non_pure.count, table->insertion_capacity);
     table->non_pure.slots[table->non_pure.count++] = slot;
-  }
-  if (state_dependency_bits != 0) {
-    IREE_ASSERT_LT(table->state_dependencies.count, table->insertion_capacity);
-    table->state_dependencies.slots[table->state_dependencies.count++] = slot;
   }
   return &table->entries[slot];
 }
@@ -371,28 +355,6 @@ static void loom_cse_table_invalidate_reads(loom_cse_table_t* table) {
   table->non_pure.count = 0;
 }
 
-// Evicts entries whose identity depends on target state written by the current
-// packet. Stale slots from other invalidation paths are compacted while walking
-// the side list.
-static void loom_cse_table_invalidate_state_dependencies(
-    loom_cse_table_t* table, uint64_t state_write_bits) {
-  if (state_write_bits == 0 || table->state_dependencies.count == 0) return;
-  iree_host_size_t live_slot_count = 0;
-  for (iree_host_size_t i = 0; i < table->state_dependencies.count; ++i) {
-    iree_host_size_t slot = table->state_dependencies.slots[i];
-    loom_cse_entry_t* entry = &table->entries[slot];
-    if (!entry->op || entry->op == LOOM_CSE_TOMBSTONE) {
-      continue;
-    }
-    if ((entry->state_dependency_bits & state_write_bits) != 0) {
-      entry->op = LOOM_CSE_TOMBSTONE;
-      continue;
-    }
-    table->state_dependencies.slots[live_slot_count++] = slot;
-  }
-  table->state_dependencies.count = live_slot_count;
-}
-
 // Evicts every entry from the table. This is used for execution-state barriers:
 // a pure value materialized under one dynamic participant set may not be
 // reusable after a later convergent operation changes that set.
@@ -405,57 +367,57 @@ static void loom_cse_table_invalidate_all(loom_cse_table_t* table) {
   }
   table->occupied.count = 0;
   table->non_pure.count = 0;
-  table->state_dependencies.count = 0;
 }
 
 //===----------------------------------------------------------------------===//
-// Visible hash index
+// Visible candidate indexes
 //===----------------------------------------------------------------------===//
 
 typedef struct loom_cse_scope_t loom_cse_scope_t;
 
-// One published insertion. Slot reuse cannot revive this identity: every
-// inserted operation is visited once, and an expired stamp stays expired.
+// One insertion's membership in a hash or state-class index. Slot reuse cannot
+// revive this identity: every inserted operation is visited once, and an
+// expired stamp stays expired.
 typedef struct loom_cse_candidate_t {
   // Scope owning the candidate table.
   loom_cse_scope_t* scope;
   // Stable table slot, which may later be invalidated or reused.
   loom_cse_entry_t* entry;
-  // Operation identity occupying the slot when published.
+  // Operation identity occupying the slot when indexed.
   loom_op_t* op;
-  // Previous insertion with this hash, path-compressed after this stamp
-  // expires.
+  // Previous insertion with this key, path-compressed after this stamp expires.
   struct loom_cse_candidate_t* previous;
 } loom_cse_candidate_t;
 
-// Compressed binary radix map from structural hash to visible insertions.
-// Branch masks strictly decrease, bounding each path by the 32-bit hash width.
+// Compressed binary radix map from a key to visible insertions. Hash indexes
+// use the structural hash; state indexes use a register-class bit number.
+// Branch masks strictly decrease, bounding each path by the 32-bit key width.
 // A scope mutates its own nodes and copies inherited insertion paths only.
 typedef struct loom_cse_index_node_t {
   // Scope that may mutate this node; other scopes copy before writing.
   loom_cse_scope_t* owner;
-  // Structural hash for a leaf; unused for a branch.
-  uint32_t hash;
+  // Indexed key for a leaf; unused for a branch.
+  uint32_t key;
   // Branch discriminator bit, or zero for a leaf.
   uint32_t mask;
   // Payload selected by whether the discriminator mask is zero.
   union {
     // Children selected by the discriminator bit, both non-NULL.
     struct loom_cse_index_node_t* children[2];
-    // Newest insertion for this leaf's hash.
+    // Newest insertion for this leaf's key.
     loom_cse_candidate_t* candidates;
   } value;
 } loom_cse_index_node_t;
 
 static loom_cse_candidate_t* loom_cse_index_find(
-    const loom_cse_index_node_t* node, uint32_t hash) {
+    const loom_cse_index_node_t* node, uint32_t key) {
   if (!node) {
     return NULL;
   }
   while (node->mask != 0) {
-    node = node->value.children[(hash & node->mask) != 0];
+    node = node->value.children[(key & node->mask) != 0];
   }
-  return node->hash == hash ? node->value.candidates : NULL;
+  return node->key == key ? node->value.candidates : NULL;
 }
 
 static iree_status_t loom_cse_index_own_node(loom_cse_scope_t* owner,
@@ -475,24 +437,35 @@ static iree_status_t loom_cse_index_own_node(loom_cse_scope_t* owner,
 
 static iree_status_t loom_cse_index_insert(loom_cse_scope_t* owner,
                                            iree_arena_allocator_t* arena,
-                                           uint32_t hash,
-                                           loom_cse_candidate_t* candidate,
+                                           uint32_t key,
+                                           loom_cse_entry_t* entry,
                                            loom_cse_index_node_t** root) {
   const loom_cse_index_node_t* leaf = *root;
+  if (leaf) {
+    while (leaf->mask != 0) {
+      leaf = leaf->value.children[(key & leaf->mask) != 0];
+    }
+  }
+  loom_cse_candidate_t* candidate = NULL;
+  IREE_RETURN_IF_ERROR(
+      iree_arena_allocate(arena, sizeof(*candidate), (void**)&candidate));
+  *candidate = (loom_cse_candidate_t){
+      .scope = owner,
+      .entry = entry,
+      .op = entry->op,
+      .previous = leaf && leaf->key == key ? leaf->value.candidates : NULL,
+  };
   if (!leaf) {
     IREE_RETURN_IF_ERROR(
         iree_arena_allocate(arena, sizeof(**root), (void**)root));
     **root = (loom_cse_index_node_t){
         .owner = owner,
-        .hash = hash,
+        .key = key,
         .value.candidates = candidate,
     };
     return iree_ok_status();
   }
-  while (leaf->mask != 0) {
-    leaf = leaf->value.children[(hash & leaf->mask) != 0];
-  }
-  uint32_t difference = leaf->hash ^ hash;
+  uint32_t difference = leaf->key ^ key;
   uint32_t mask = difference != 0
                       ? UINT32_C(0x80000000) >>
                             iree_math_count_leading_zeros_u32(difference)
@@ -500,7 +473,7 @@ static iree_status_t loom_cse_index_insert(loom_cse_scope_t* owner,
   loom_cse_index_node_t** link = root;
   while ((*link)->mask > mask) {
     IREE_RETURN_IF_ERROR(loom_cse_index_own_node(owner, arena, link));
-    link = &(*link)->value.children[(hash & (*link)->mask) != 0];
+    link = &(*link)->value.children[(key & (*link)->mask) != 0];
   }
   if (mask == 0) {
     IREE_RETURN_IF_ERROR(loom_cse_index_own_node(owner, arena, link));
@@ -516,10 +489,10 @@ static iree_status_t loom_cse_index_insert(loom_cse_scope_t* owner,
     };
     pair[1] = (loom_cse_index_node_t){
         .owner = owner,
-        .hash = hash,
+        .key = key,
         .value.candidates = candidate,
     };
-    uint32_t side = (hash & mask) != 0;
+    uint32_t side = (key & mask) != 0;
     pair[0].value.children[side] = &pair[1];
     pair[0].value.children[1 - side] = *link;
     *link = &pair[0];
@@ -528,7 +501,7 @@ static iree_status_t loom_cse_index_insert(loom_cse_scope_t* owner,
 }
 
 // Expired records are never revived. Compress their predecessor paths so
-// repeated invalidation epochs cannot turn a hash query into a history scan.
+// repeated invalidation epochs cannot turn a query into a history scan.
 static loom_cse_candidate_t* loom_cse_candidate_find_live(
     loom_cse_candidate_t* candidate) {
   loom_cse_candidate_t* live = candidate;
@@ -549,8 +522,8 @@ static loom_cse_candidate_t* loom_cse_candidate_find_live(
 //
 // CSE operates on a scope chain that mirrors the region nesting tree.
 // Each scope owns a hash table of CSE candidates from its block.
-// Lookup walks up the chain: an inner op can be replaced by an
-// equivalent outer op if the outer scope is reachable (non-isolated).
+// Indexed lookup finds equivalent outer ops visible through non-isolated
+// scopes without probing unrelated ancestor tables.
 // Write barriers propagate upward: a write inside a nested region
 // invalidates read-only entries in all ancestor scopes.
 //
@@ -598,6 +571,10 @@ struct loom_cse_scope_t {
   iree_host_size_t stateful_depth;
   // Published hash snapshot, owned by the scope arena and shared with children.
   loom_cse_index_node_t* index;
+  // State-class snapshot, materialized on first membership insertion or
+  // forwarded from the published parent before any child executes. Expiration
+  // never clears this root; NULL means the parent still owns the visible map.
+  loom_cse_index_node_t* state_index;
 };
 
 // Parent construction retains the lookup boundary and index consumer fact.
@@ -616,38 +593,35 @@ static void loom_cse_scope_set_parent(loom_cse_scope_t* scope,
   }
 }
 
-static iree_status_t loom_cse_scope_publish_entry(
-    loom_cse_scope_t* scope, loom_cse_entry_t* entry,
-    iree_arena_allocator_t* arena) {
-  loom_cse_candidate_t* candidate = NULL;
-  IREE_RETURN_IF_ERROR(
-      iree_arena_allocate(arena, sizeof(*candidate), (void**)&candidate));
-  *candidate = (loom_cse_candidate_t){
-      .scope = scope,
-      .entry = entry,
-      .op = entry->op,
-      .previous = loom_cse_index_find(scope->index, entry->hash),
-  };
-  return loom_cse_index_insert(scope, arena, entry->hash, candidate,
-                               &scope->index);
+// The parent has published before this scope executes, even when CFG scopes
+// were allocated upfront. Its root already includes every visible ancestor.
+static loom_cse_index_node_t* loom_cse_scope_visible_state_index(
+    const loom_cse_scope_t* scope) {
+  if (scope->state_index) {
+    return scope->state_index;
+  }
+  return scope->parent ? scope->parent->state_index : NULL;
 }
 
 // Publish once, before the first child consumes this scope. Subsequent active
-// block insertions update the snapshot incrementally. Blocks without children
-// keep only their local table and allocate no radix nodes or candidate records.
+// block insertions update the hash snapshot incrementally. Blocks without
+// children allocate no hash-index nodes or records. State membership is indexed
+// at insertion because even local packets can selectively invalidate entries.
 static iree_status_t loom_cse_scope_publish(loom_cse_scope_t* scope,
                                             iree_arena_allocator_t* arena) {
   if (iree_any_bit_set(scope->flags, LOOM_CSE_SCOPE_PUBLISHED)) {
     return iree_ok_status();
   }
   scope->index = scope->parent ? scope->parent->index : NULL;
+  scope->state_index = loom_cse_scope_visible_state_index(scope);
   iree_status_t status = iree_ok_status();
   for (iree_host_size_t i = 0;
        i < scope->table.occupied.count && iree_status_is_ok(status); ++i) {
     loom_cse_entry_t* entry =
         &scope->table.entries[scope->table.occupied.slots[i]];
     if (entry->op != LOOM_CSE_TOMBSTONE) {
-      status = loom_cse_scope_publish_entry(scope, entry, arena);
+      status = loom_cse_index_insert(scope, arena, entry->hash, entry,
+                                     &scope->index);
     }
   }
   if (iree_status_is_ok(status)) {
@@ -667,6 +641,7 @@ static iree_status_t loom_cse_scope_allocate(iree_arena_allocator_t* arena,
   (*out_scope)->flags =
       blocks_stateful_parent_lookup ? LOOM_CSE_SCOPE_BLOCKS_STATEFUL_PARENT : 0;
   (*out_scope)->index = NULL;
+  (*out_scope)->state_index = NULL;
   loom_cse_scope_set_parent(*out_scope, parent);
   // CFG scopes are allocated before their dominators run. Resolve empty scopes
   // lazily so a future dominator insertion cannot be hidden by an early skip.
@@ -684,8 +659,8 @@ static iree_status_t loom_cse_scope_insert(loom_cse_scope_t* scope,
                                            loom_trait_flags_t traits,
                                            uint64_t state_dependency_bits,
                                            iree_arena_allocator_t* arena) {
-  loom_cse_entry_t* entry = loom_cse_table_insert(
-      &scope->table, op, hash, traits, state_dependency_bits);
+  loom_cse_entry_t* entry =
+      loom_cse_table_insert(&scope->table, op, hash, traits);
   // Only the active block inserts. Its nested descendants have finished before
   // it resumes, and its CFG descendants have not started, so no later query
   // can reuse a descendant shortcut that skipped this insertion.
@@ -693,10 +668,22 @@ static iree_status_t loom_cse_scope_insert(loom_cse_scope_t* scope,
   if (!iree_any_bit_set(traits, LOOM_TRAIT_PURE)) {
     scope->pending_ancestors[LOOM_CSE_INVALIDATE_READS] = scope;
   }
-  if (iree_any_bit_set(scope->flags, LOOM_CSE_SCOPE_PUBLISHED)) {
-    return loom_cse_scope_publish_entry(scope, entry, arena);
+  iree_status_t status = iree_ok_status();
+  if (state_dependency_bits != 0) {
+    scope->state_index = loom_cse_scope_visible_state_index(scope);
+    for (; state_dependency_bits != 0 && iree_status_is_ok(status);
+         state_dependency_bits &= state_dependency_bits - 1) {
+      uint32_t state_class =
+          iree_math_count_trailing_zeros_u64(state_dependency_bits);
+      status = loom_cse_index_insert(scope, arena, state_class, entry,
+                                     &scope->state_index);
+    }
   }
-  return iree_ok_status();
+  if (iree_status_is_ok(status) &&
+      iree_any_bit_set(scope->flags, LOOM_CSE_SCOPE_PUBLISHED)) {
+    status = loom_cse_index_insert(scope, arena, hash, entry, &scope->index);
+  }
+  return status;
 }
 
 // Queries candidate-bearing ancestor tables for an equivalent op. Stateful
@@ -772,12 +759,23 @@ static void loom_cse_scope_invalidate_reads(loom_cse_scope_t* scope) {
   }
 }
 
-// Propagates target-state write barriers up the entire scope chain.
+// Expires visible candidates only in the written state classes. Unaffected
+// classes and scopes are never scanned. Multiple memberships and other barrier
+// kinds share permanent entry expiration, observed through insertion stamps.
 static void loom_cse_scope_invalidate_state_dependencies(
     loom_cse_scope_t* scope, uint64_t state_write_bits) {
-  if (state_write_bits == 0) return;
-  for (loom_cse_scope_t* s = scope; s; s = s->parent) {
-    loom_cse_table_invalidate_state_dependencies(&s->table, state_write_bits);
+  loom_cse_index_node_t* index = loom_cse_scope_visible_state_index(scope);
+  if (!index) {
+    return;
+  }
+  for (; state_write_bits != 0; state_write_bits &= state_write_bits - 1) {
+    uint32_t state_class = iree_math_count_trailing_zeros_u64(state_write_bits);
+    loom_cse_candidate_t* candidate =
+        loom_cse_candidate_find_live(loom_cse_index_find(index, state_class));
+    while (candidate) {
+      candidate->entry->op = LOOM_CSE_TOMBSTONE;
+      candidate = loom_cse_candidate_find_live(candidate);
+    }
   }
 }
 

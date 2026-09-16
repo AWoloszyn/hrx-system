@@ -20,3 +20,123 @@ low.func.def target<amdgpu.cdna3.core>(@target) @m0_state_writes_do_not_cse(%val
   ds_write_addtid_b32 %value1, %m0b {offset = 4}
   return
 }
+
+// ====
+// RUN: pass cse
+
+amdgpu.target<gfx1100> @target
+
+// SCC writes do not change an EXEC snapshot. The empty bridge block must
+// forward the state index to its descendant without creating local entries.
+low.func.def target<amdgpu.rdna3.core>(@target) @exec_read_survives_disjoint_writes(%ordinal: reg<amdgpu.sgpr>, %limit: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr x2>, reg<amdgpu.scc>) asm {
+  %active = s_mov_b64_exec_read
+  %within_bounds = s_cmp_lt_u32 %ordinal, %limit
+  low.br ^bridge
+^bridge:
+  low.br ^finish
+^finish:
+  %at_limit = s_cmp_eq_i32 %ordinal, %limit
+  %same_active = s_mov_b64_exec_read
+  return %same_active, %at_limit
+}
+
+// ----
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @exec_read_survives_disjoint_writes(%ordinal: reg<amdgpu.sgpr>, %limit: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr x2>, reg<amdgpu.scc>) asm {
+  %active = s_mov_b64_exec_read
+  %within_bounds = s_cmp_lt_u32 %ordinal, %limit
+  low.br ^bridge
+^bridge:
+  low.br ^finish
+^finish:
+  %at_limit = s_cmp_eq_i32 %ordinal, %limit
+  return %active, %at_limit
+}
+
+// ====
+// RUN: pass cse
+
+amdgpu.target<gfx1100> @target
+
+// Restoring EXEC expires the old snapshot. Repeated full barriers and slot
+// reuse cannot make an old state-index membership live again.
+low.func.def target<amdgpu.rdna3.core>(@target) @exec_read_epochs(%mask: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) asm {
+  %before = s_mov_b64_exec_read
+  low.br ^restore
+^restore:
+  s_mov_b64_exec %mask
+  %middle = s_mov_b64_exec_read
+  %middle_copy = s_mov_b64_exec_read
+  s_mov_b64_exec %mask
+  %after = s_mov_b64_exec_read
+  low.br ^finish
+^finish:
+  %after_copy = s_mov_b64_exec_read
+  return %before, %middle_copy, %after_copy
+}
+
+// ----
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @exec_read_epochs(%mask: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) asm {
+  %before = s_mov_b64_exec_read
+  low.br ^restore
+^restore:
+  s_mov_b64_exec %mask
+  %middle = s_mov_b64_exec_read
+  s_mov_b64_exec %mask
+  %after = s_mov_b64_exec_read
+  low.br ^finish
+^finish:
+  return %before, %middle, %after
+}
+
+// ====
+// RUN: pass cse
+
+amdgpu.target<gfx1100> @target
+
+// Each join requires a fresh snapshot, but a straight-line successor can reuse
+// it across SCC writes. Equal hashes at several depths retain distinct scopes.
+low.func.def target<amdgpu.rdna3.core>(@target) @exec_reads_at_joins(%condition: reg<amdgpu.scc>) -> (reg<amdgpu.sgpr x2>) asm {
+  %entry_active = s_mov_b64_exec_read
+  low.cond_br %condition, ^side, ^join : reg<amdgpu.scc>
+^side:
+  low.br ^join
+^join:
+  %joined_active = s_mov_b64_exec_read
+  %nonempty = s_cmp_eq_u64 %joined_active, %joined_active
+  low.cond_br %nonempty, ^next_side, ^next_join : reg<amdgpu.scc>
+^next_side:
+  low.br ^next_join
+^next_join:
+  %next_active = s_mov_b64_exec_read
+  low.br ^finish
+^finish:
+  %unchanged = s_cmp_eq_u64 %next_active, %next_active
+  %active_copy = s_mov_b64_exec_read
+  return %active_copy
+}
+
+// ----
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @exec_reads_at_joins(%condition: reg<amdgpu.scc>) -> (reg<amdgpu.sgpr x2>) asm {
+  %entry_active = s_mov_b64_exec_read
+  low.cond_br %condition, ^side, ^join : reg<amdgpu.scc>
+^side:
+  low.br ^join
+^join:
+  %joined_active = s_mov_b64_exec_read
+  %nonempty = s_cmp_eq_u64 %joined_active, %joined_active
+  low.cond_br %nonempty, ^next_side, ^next_join : reg<amdgpu.scc>
+^next_side:
+  low.br ^next_join
+^next_join:
+  %next_active = s_mov_b64_exec_read
+  low.br ^finish
+^finish:
+  %unchanged = s_cmp_eq_u64 %next_active, %next_active
+  return %next_active
+}

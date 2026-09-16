@@ -45,6 +45,11 @@ const loom_pass_info_t* loom_cse_pass_info(void);
 //     Index publication is lazy, so childless blocks keep the local fast path.
 //     Permanently expired insertion identities use path-compressed links;
 //     slot reuse cannot revive stale candidates in shared scope snapshots.
+//   - Target-state dependencies are indexed at insertion by register class.
+//     State writes query only their classes and expire visible memberships,
+//     without scanning unrelated candidates or ancestor scopes. This shares
+//     the scoped radix and expiration contract with the hash index; state keys
+//     use at most six discriminator bits. Ordinary entries carry no state mask.
 //   - Deep attribute comparison: pointer-valued attribute kinds
 //     (I64_ARRAY, PREDICATE_LIST, DICT) are compared by content via
 //     loom_attribute_equal, not by pointer identity.
