@@ -365,7 +365,7 @@ static iree_status_t loom_scf_unroll_build_effect_dependency_plan(
       .unroll_count = unroll_count,
   };
   if (has_refinable_conflicts) {
-    status = loom_local_value_domain_acquire_for_region(
+    status = loom_local_value_domain_acquire_for_region_tree(
         context->module, body_block->parent_region, scratch_arena,
         &value_domain);
     if (iree_status_is_ok(status)) {
@@ -608,7 +608,8 @@ static iree_status_t loom_scf_unroll_initialize_scheduled_tile(
   if (unstructured_op != NULL) {
     return loom_scf_unroll_emit_policy_error(
         context, op, IREE_SV("schedule"), schedule,
-        IREE_SV("body operations without nested regions or successors"));
+        IREE_SV("body operations with only scf.if/scf.for regions "
+                "and no successors"));
   }
   if (out_tile->unroll_count == 0) return iree_ok_status();
 

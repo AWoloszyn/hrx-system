@@ -30,7 +30,7 @@ typedef struct loom_scf_pipeline_plan_t {
   loom_value_id_t* queue_values;
   // Number of values in each queued iteration record.
   uint32_t queue_value_count;
-  // Number of ordinary loads in the producer stage.
+  // Number of static ordinary load operations, including nested regions.
   uint32_t read_count;
 } loom_scf_pipeline_plan_t;
 
@@ -41,13 +41,14 @@ typedef struct loom_scf_pipeline_rejection_t {
   iree_string_view_t constraint;
 } loom_scf_pipeline_rejection_t;
 
-// Builds the two-stage read-ahead schedule of a verified flat loop body.
+// Builds the two-stage read-ahead schedule of a verified loop body.
 // Ordinary reads and their transitive payload prerequisites form the producer;
 // other operations and the carried recurrence form the ordered consumer.
+// Nested scf.if/scf.for operations remain intact within their assigned stage.
 // The plan owns the complete cut, including values referenced only by types
 // or attributes. Materializers and reports consume this cut directly.
 //
-// The first admission contract excludes nested control, ordered effects,
+// The admission contract excludes other nested control, ordered effects,
 // writes, producers depending on carried state, and cross-stage values whose
 // types vary with the iteration. Rejections identify the source requirement;
 // status failures identify allocation or representation limits. Plan storage

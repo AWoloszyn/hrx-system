@@ -1,0 +1,341 @@
+// RUN: pass pipeline-scf-for,canonicalize,cse,dce
+
+// A carried recurrence captured two regions deep stays in the consumer.
+func.def @nested_conditional_consumer(%input: view<8xf32>, %initial: f32, %enabled: i1) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 4 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 2 : index
+  %identity = scalar.constant 0.0 : f32
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : f32) -> (f32) pipeline(%depth) {
+    %value = view.load %input[%i] : view<8xf32> -> f32
+    %positive = scalar.cmpf ogt, %value, %identity : f32
+    %next = scf.if %enabled -> (f32) {
+      %selected = scf.if %positive -> (f32) {
+        %added = scalar.addf %sum, %value : f32
+        scf.yield %added : f32
+      } else {
+        scf.yield %sum : f32
+      }
+      scf.yield %selected : f32
+    } else {
+      scf.yield %sum : f32
+    }
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ----
+func.def @nested_conditional_consumer(%input: view<8xf32>, %initial: f32, %enabled: i1) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 4 : index
+  %step = index.constant 1 : index
+  %identity = scalar.constant 0.0 : f32
+  %value = view.load %input[%begin] : view<8xf32> -> f32
+  %24, %25 = scf.for %21 = [%step to %end step %step](%22 = %initial : f32, %23 = %value : f32) -> (f32, f32) {
+    %value = view.load %input[%21] : view<8xf32> -> f32
+    %positive = scalar.cmpf ogt, %23, %identity : f32
+    %added = scalar.addf %22, %23 : f32
+    %selected = scf.select %positive, %added, %22 : f32
+    %next = scf.select %enabled, %selected, %22 : f32
+    scf.yield %next, %value : f32, f32
+  }
+  %positive = scalar.cmpf ogt, %25, %identity : f32
+  %added = scalar.addf %24, %25 : f32
+  %selected = scf.select %positive, %added, %24 : f32
+  %next = scf.select %enabled, %selected, %24 : f32
+  func.return %next : f32
+}
+
+// ====
+
+// Both conditional levels remain around the read in startup and steady state.
+func.def @nested_guarded_producer(%input: view<8xf32>, %initial: f32, %valid_count: index, %enabled: i1) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 4 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 2 : index
+  %identity = scalar.constant 0.0 : f32
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : f32) -> (f32) pipeline(%depth) {
+    %valid = index.cmp slt, %i, %valid_count : index
+    %value = scf.if %valid -> (f32) {
+      %selected = scf.if %enabled -> (f32) {
+        %loaded = view.load %input[%i] : view<8xf32> -> f32
+        scf.yield %loaded : f32
+      } else {
+        scf.yield %identity : f32
+      }
+      scf.yield %selected : f32
+    } else {
+      scf.yield %identity : f32
+    }
+    %next = scalar.addf %sum, %value : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ----
+func.def @nested_guarded_producer(%input: view<8xf32>, %initial: f32, %valid_count: index, %enabled: i1) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 4 : index
+  %step = index.constant 1 : index
+  %identity = scalar.constant 0.0 : f32
+  %valid = index.cmp slt, %begin, %valid_count : index
+  %value = scf.if %valid -> (f32) {
+    %selected = scf.if %enabled -> (f32) {
+      %loaded = view.load %input[%begin] : view<8xf32> -> f32
+      scf.yield %loaded : f32
+    } else {
+      scf.yield %identity : f32
+    }
+    scf.yield %selected : f32
+  } else {
+    scf.yield %identity : f32
+  }
+  %28, %29 = scf.for %25 = [%step to %end step %step](%26 = %initial : f32, %27 = %value : f32) -> (f32, f32) {
+    %valid = index.cmp slt, %25, %valid_count : index
+    %value = scf.if %valid -> (f32) {
+      %44 = index.assume %25 [lt(%25, %valid_count)] : index
+      %selected = scf.if %enabled -> (f32) {
+        %loaded = view.load %input[%44] : view<8xf32> -> f32
+        scf.yield %loaded : f32
+      } else {
+        scf.yield %identity : f32
+      }
+      scf.yield %selected : f32
+    } else {
+      scf.yield %identity : f32
+    }
+    %next = scalar.addf %26, %27 : f32
+    scf.yield %next, %value : f32, f32
+  }
+  %next = scalar.addf %28, %29 : f32
+  func.return %next : f32
+}
+
+// ====
+
+// An inner read-only reduction, with an outer-dependent bound, is one producer.
+func.def @nested_loop_producer(%input: view<8xf32>, %initial: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 4 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 2 : index
+  %identity = scalar.constant 0.0 : f32
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : f32) -> (f32) pipeline(%depth) {
+    %limit = index.add %i, %step : index
+    %partial = scf.for %j = [%begin to %limit step %step](%inner_sum = %identity : f32) -> (f32) {
+      %value = view.load %input[%j] : view<8xf32> -> f32
+      %added = scalar.addf %inner_sum, %value : f32
+      scf.yield %added : f32
+    }
+    %next = scalar.addf %sum, %partial : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ----
+func.def @nested_loop_producer(%input: view<8xf32>, %initial: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 4 : index
+  %step = index.constant 1 : index
+  %identity = scalar.constant 0.0 : f32
+  %value = view.load %input[%begin] : view<8xf32> -> f32
+  %added = scalar.addf %identity, %value : f32
+  %30, %31 = scf.for %27 = [%step to %end step %step](%28 = %initial : f32, %29 = %added : f32) -> (f32, f32) {
+    %limit = index.add %27, %step : index
+    %partial = scf.for %j = [%begin to %limit step %step](%inner_sum = %identity : f32) -> (f32) {
+      %value = view.load %input[%j] : view<8xf32> -> f32
+      %added = scalar.addf %inner_sum, %value : f32
+      scf.yield %added : f32
+    }
+    %next = scalar.addf %28, %29 : f32
+    scf.yield %next, %partial : f32, f32
+  }
+  %next = scalar.addf %30, %31 : f32
+  func.return %next : f32
+}
+
+// ====
+
+// An inner loop consumes the queued value through both its bounds and captures.
+func.def @nested_loop_consumer(%input: view<8xi32>, %initial: i32, %enabled: i1) -> (i32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 4 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 2 : index
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : i32) -> (i32) pipeline(%depth) {
+    %value = view.load %input[%i] : view<8xi32> -> i32
+    %limit = index.cast %value : i32 to index
+    %next = scf.for %j = [%begin to %limit step %step](%inner_sum = %sum : i32) -> (i32) {
+      %selected = scf.if %enabled -> (i32) {
+        %added = scalar.addi %inner_sum, %value : i32
+        scf.yield %added : i32
+      } else {
+        scf.yield %inner_sum : i32
+      }
+      scf.yield %selected : i32
+    }
+    scf.yield %next : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+func.def @nested_loop_consumer(%input: view<8xi32>, %initial: i32, %enabled: i1) -> (i32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 4 : index
+  %step = index.constant 1 : index
+  %value = view.load %input[%begin] : view<8xi32> -> i32
+  %25, %26 = scf.for %22 = [%step to %end step %step](%23 = %initial : i32, %24 = %value : i32) -> (i32, i32) {
+    %value = view.load %input[%22] : view<8xi32> -> i32
+    %limit = index.cast %24 : i32 to index
+    %next = scf.for %j = [%begin to %limit step %step](%inner_sum = %23 : i32) -> (i32) {
+      %selected = scf.if %enabled -> (i32) {
+        %added = scalar.addi %inner_sum, %24 : i32
+        scf.yield %added : i32
+      } else {
+        scf.yield %inner_sum : i32
+      }
+      scf.yield %selected : i32
+    }
+    scf.yield %next, %value : i32, i32
+  }
+  %limit = index.cast %26 : i32 to index
+  %next = scf.for %j = [%begin to %limit step %step](%inner_sum = %25 : i32) -> (i32) {
+    %selected = scf.if %enabled -> (i32) {
+      %added = scalar.addi %inner_sum, %26 : i32
+      scf.yield %added : i32
+    } else {
+      scf.yield %inner_sum : i32
+    }
+    scf.yield %selected : i32
+  }
+  func.return %next : i32
+}
+
+// ====
+
+// RUN: pass pipeline-scf-for
+
+// The index is captured only in a nested predicate, result type and attribute.
+func.def @nested_payload_captures(%input: view<8xf32>, %buffer: buffer, %base: offset, %initial: f32, %enabled: i1) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 4 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 2 : index
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : f32) -> (f32) pipeline(%depth) {
+    %value = view.load %input[%i] : view<8xf32> -> f32
+    scf.if %enabled {
+      %bounded = test.assume %end [lt(%i, %end)] : index
+      %view = buffer.view %buffer[%base] : buffer -> view<[%i]xf32>
+      %annotated = test.attrs %end {metadata = {options = #test.options<mode = fast, element_type = view<[%i]xf32>>}} : index
+    }
+    %next = scalar.addf %sum, %value : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ----
+func.def @nested_payload_captures(%input: view<8xf32>, %buffer: buffer, %base: offset, %initial: f32, %enabled: i1) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 4 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 2 : index
+  %18 = index.constant 1 : index
+  %19 = index.cmp slt, %18, %end : index
+  %result = scf.if %19 -> (f32) {
+    %value = view.load %input[%begin] : view<8xf32> -> f32
+    %26, %27, %28 = scf.for %22 = [%18 to %end step %step](%23 = %initial : f32, %24 = %begin : index, %25 = %value : f32) -> (f32, index, f32) {
+      %value = view.load %input[%22] : view<8xf32> -> f32
+      scf.if %enabled {
+        %bounded = test.assume %end [lt(%24, %end)] : index
+        %view = buffer.view %buffer[%base] : buffer -> view<[%24]xf32>
+        %annotated = test.attrs %end {metadata = {options = #test.options<mode = fast, element_type = view<[%24]xf32>>}} : index
+      }
+      %next = scalar.addf %23, %25 : f32
+      scf.yield %next, %22, %value : f32, index, f32
+    }
+    scf.if %enabled {
+      %bounded = test.assume %end [lt(%27, %end)] : index
+      %view = buffer.view %buffer[%base] : buffer -> view<[%27]xf32>
+      %annotated = test.attrs %end {metadata = {options = #test.options<mode = fast, element_type = view<[%27]xf32>>}} : index
+    }
+    %next = scalar.addf %26, %28 : f32
+    scf.yield %next : f32
+  } else {
+    %40 = scf.for %38 = [%begin to %end step %step](%39 = %initial : f32) -> (f32) {
+      %value = view.load %input[%38] : view<8xf32> -> f32
+      scf.if %enabled {
+        %bounded = test.assume %end [lt(%38, %end)] : index
+        %view = buffer.view %buffer[%base] : buffer -> view<[%38]xf32>
+        %annotated = test.attrs %end {metadata = {options = #test.options<mode = fast, element_type = view<[%38]xf32>>}} : index
+      }
+      %next = scalar.addf %39, %value : f32
+      scf.yield %next : f32
+    }
+    scf.yield %40 : f32
+  }
+  func.return %result : f32
+}
+
+// ====
+// RUN: pass pipeline-scf-for,unroll-scf-for,canonicalize,cse,dce
+
+// The outer schedule clones the intact inner policy; the later unroll pass
+// consumes both policies without leaking a source induction variable.
+func.def @nested_unroll_composition(%input: view<8xf32>, %initial: f32, %enabled: i1) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 4 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 2 : index
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : f32) -> (f32) pipeline(%depth) unroll(%depth) schedule(recurrence) {
+    %value = view.load %input[%i] : view<8xf32> -> f32
+    %next = scf.for %j = [%begin to %depth step %step](%inner_sum = %sum : f32) -> (f32) unroll schedule(interleaved) {
+      %selected = scf.if %enabled -> (f32) {
+        %added = scalar.addf %inner_sum, %value : f32
+        scf.yield %added : f32
+      } else {
+        scf.yield %inner_sum : f32
+      }
+      scf.yield %selected : f32
+    }
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ----
+func.def @nested_unroll_composition(%input: view<8xf32>, %initial: f32, %enabled: i1) -> (f32) {
+  %begin = index.constant 0 : index
+  %17 = index.constant 1 : index
+  %value$20 = view.load %input[%begin] : view<8xf32> -> f32
+  %47 = index.constant 3 : index
+  %125 = index.constant 2 : index
+  %value$55 = view.load %input[%17] : view<8xf32> -> f32
+  %value_1 = view.load %input[%125] : view<8xf32> -> f32
+  scf.schedule.fence
+  %added$102 = scalar.addf %initial, %value$20 : f32
+  %selected$124 = scf.select %enabled, %added$102, %initial : f32
+  %added$104 = scalar.addf %selected$124, %value$20 : f32
+  %selected_1$123 = scf.select %enabled, %added$104, %selected$124 : f32
+  scf.schedule.fence
+  %added$106 = scalar.addf %selected_1$123, %value$55 : f32
+  %selected$122 = scf.select %enabled, %added$106, %selected_1$123 : f32
+  %added$108 = scalar.addf %selected$122, %value$55 : f32
+  %selected_1$121 = scf.select %enabled, %added$108, %selected$122 : f32
+  %value$72 = view.load %input[%47] : view<8xf32> -> f32
+  %added$110 = scalar.addf %selected_1$121, %value_1 : f32
+  %selected$127 = scf.select %enabled, %added$110, %selected_1$121 : f32
+  %added$112 = scalar.addf %selected$127, %value_1 : f32
+  %selected_1$126 = scf.select %enabled, %added$112, %selected$127 : f32
+  %added$79 = scalar.addf %selected_1$126, %value$72 : f32
+  %selected$129 = scf.select %enabled, %added$79, %selected_1$126 : f32
+  %added$81 = scalar.addf %selected$129, %value$72 : f32
+  %selected_1$128 = scf.select %enabled, %added$81, %selected$129 : f32
+  func.return %selected_1$128 : f32
+}

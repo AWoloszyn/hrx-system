@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// Retained dependencies of a flat structured loop body.
+// Retained dependencies of structured loop scheduling units.
 
 #ifndef LOOM_TRANSFORMS_SCF_SCF_BODY_H_
 #define LOOM_TRANSFORMS_SCF_SCF_BODY_H_
@@ -22,6 +22,8 @@ enum loom_scf_body_effect_flag_bits_e {
   LOOM_SCF_BODY_EFFECT_READ = 1u << 0,
   LOOM_SCF_BODY_EFFECT_WRITE = 1u << 1,
   LOOM_SCF_BODY_EFFECT_ORDERED = 1u << 2,
+  // A read effect that is not an ordinary memory load.
+  LOOM_SCF_BODY_EFFECT_NON_LOAD_READ = 1u << 3,
 };
 
 typedef struct loom_scf_body_reference_t {
@@ -37,10 +39,12 @@ typedef struct loom_scf_body_operation_t {
   const loom_op_t* op;
   // First dependency in the body's packed reference array.
   iree_host_size_t reference_begin;
-  // Number of dependencies contributed by operands, types and attributes.
+  // Number of outer-body dependencies, including nested region captures.
   iree_host_size_t reference_count;
-  // Source effects governing whether different iterations may commute.
+  // Combined effects governing whether different iterations may commute.
   loom_scf_body_effect_flags_t effects;
+  // Number of ordinary load operations, including loads inside nested regions.
+  uint32_t load_count;
 } loom_scf_body_operation_t;
 
 typedef struct loom_scf_body_t {
@@ -57,16 +61,19 @@ typedef struct loom_scf_body_t {
 } loom_scf_body_t;
 
 // Captures the verified |block|'s live operations, source effects and complete
-// local SSA dependencies once. Result-type dependencies come from the IR's
+// local SSA dependencies in one traversal. A structured if/for and its
+// regions form one scheduling unit; their outer-body captures and effects are
+// retained together. Result-type dependencies come from the IR's
 // maintained type-use table. Attributes, including predicates and encoding
 // parameters, are traversed once during construction. External captures and
 // self references in an operation's result types need no scheduling edge.
 //
-// A body operation with nested regions or successors is returned through
-// |out_unstructured_op| for a source-policy diagnostic. Otherwise the returned
-// body is ready for scheduling. Status failures identify allocation or size
-// limits. All arrays belong to |arena|, borrow the source IR, and remain valid
-// while that IR is unchanged; emitting clones does not invalidate them.
+// Nested control other than scf.if/scf.for, or an operation with successors, is
+// returned through |out_unstructured_op| for a source-policy diagnostic. The
+// body is ready for scheduling when no unsupported operation is returned.
+// Status failures identify allocation or size limits. All arrays belong to
+// |arena|, borrow the source IR, and remain valid while that IR is unchanged;
+// emitting clones does not invalidate them.
 iree_status_t loom_scf_body_build(const loom_module_t* module,
                                   const loom_block_t* block,
                                   iree_arena_allocator_t* arena,

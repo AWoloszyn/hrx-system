@@ -19,12 +19,7 @@ static iree_status_t loom_scf_pipeline_plan_partition(
     const loom_scf_body_operation_t* operation = &plan->body.operations[i];
     plan->stages[i] = LOOM_SCF_PIPELINE_STAGE_CONSUMER;
     if (operation->effects == 0) continue;
-    loom_memory_access_t access =
-        loom_memory_access_cast(module, operation->op);
-    if (operation->effects != LOOM_SCF_BODY_EFFECT_READ ||
-        !loom_memory_access_isa(access) ||
-        loom_memory_access_operation_kind(access) !=
-            LOOM_MEMORY_ACCESS_OPERATION_LOAD) {
+    if (operation->effects != LOOM_SCF_BODY_EFFECT_READ) {
       *rejection = (loom_scf_pipeline_rejection_t){
           .op = operation->op,
           .constraint = IREE_SV("ordinary loads and pure operations without "
@@ -33,7 +28,7 @@ static iree_status_t loom_scf_pipeline_plan_partition(
       return iree_ok_status();
     }
     plan->stages[i] = LOOM_SCF_PIPELINE_STAGE_PRODUCER;
-    ++plan->read_count;
+    plan->read_count += operation->load_count;
   }
   if (plan->read_count == 0) {
     *rejection = (loom_scf_pipeline_rejection_t){
@@ -60,8 +55,8 @@ static iree_status_t loom_scf_pipeline_plan_partition(
     }
   }
 
-  // Verified flat SSA puts every non-self local dependency before its user.
-  // A single reverse traversal therefore computes the complete producer cut.
+  // Verified SSA puts every captured outer dependency before its scheduling
+  // unit. A reverse traversal therefore computes the complete producer cut.
   for (uint32_t reverse = plan->body.count; reverse > 0; --reverse) {
     const uint32_t i = reverse - 1;
     if (plan->stages[i] != LOOM_SCF_PIPELINE_STAGE_PRODUCER) continue;
@@ -166,7 +161,8 @@ iree_status_t loom_scf_pipeline_plan_build(
     *out_rejection = (loom_scf_pipeline_rejection_t){
         .op = unstructured_op,
         .constraint =
-            IREE_SV("a flat body without nested regions or successors"),
+            IREE_SV("body operations with only scf.if/scf.for regions "
+                    "and no successors"),
     };
     return iree_ok_status();
   }

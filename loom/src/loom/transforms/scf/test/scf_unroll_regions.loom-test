@@ -1,0 +1,154 @@
+// RUN: pass unroll-scf-for
+
+// The result of a prior iteration is captured by an inner loop's initial state.
+func.def @recurrence_nested_loops(%input: i32, %limit: index, %enabled: i1) -> (i32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %i = [%begin to %end step %step](%sum = %input : i32) -> (i32) unroll schedule(recurrence) {
+    %independent = scalar.addi %input, %input : i32
+    %next = scf.for %j = [%i to %limit step %step](%inner_sum = %sum : i32) -> (i32) {
+      %selected = scf.if %enabled -> (i32) {
+        %added = scalar.addi %inner_sum, %independent : i32
+        scf.yield %added : i32
+      } else {
+        scf.yield %inner_sum : i32
+      }
+      scf.yield %selected : i32
+    }
+    scf.yield %next : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+func.def @recurrence_nested_loops(%input: i32, %limit: index, %enabled: i1) -> (i32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %i_0 = index.constant 0 : index
+  %i_1 = index.constant 1 : index
+  %independent = scalar.addi %input, %input : i32
+  %independent_1 = scalar.addi %input, %input : i32
+  scf.schedule.fence
+  %next = scf.for %j = [%i_0 to %limit step %step](%inner_sum = %input : i32) -> (i32) {
+    %selected = scf.if %enabled -> (i32) {
+      %added = scalar.addi %inner_sum, %independent : i32
+      scf.yield %added : i32
+    } else {
+      scf.yield %inner_sum : i32
+    }
+    scf.yield %selected : i32
+  }
+  scf.schedule.fence
+  %next_1 = scf.for %j = [%i_1 to %limit step %step](%inner_sum = %next : i32) -> (i32) {
+    %selected = scf.if %enabled -> (i32) {
+      %added = scalar.addi %inner_sum, %independent_1 : i32
+      scf.yield %added : i32
+    } else {
+      scf.yield %inner_sum : i32
+    }
+    scf.yield %selected : i32
+  }
+  func.return %next_1 : i32
+}
+
+// ====
+
+// Writes in nested regions conflict with later iteration reads even when the
+// read and the structured writer cannot share a single movement descriptor.
+func.def @interleaved_nested_writes(%input: view<8xi32>, %enabled: i1, %limit: index) -> (i32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %identity = scalar.constant 0 : i32
+  %result = scf.for %i = [%begin to %end step %step](%sum = %identity : i32) -> (i32) unroll schedule(interleaved) {
+    %loaded = view.load %input[%begin] : view<8xi32> -> i32
+    %next = scalar.addi %sum, %loaded : i32
+    scf.if %enabled {
+      scf.for %j = [%begin to %limit step %step] {
+        view.store %next, %input[%j] : i32, view<8xi32>
+      }
+    }
+    scf.yield %next : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+func.def @interleaved_nested_writes(%input: view<8xi32>, %enabled: i1, %limit: index) -> (i32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %identity = scalar.constant 0 : i32
+  %loaded = view.load %input[%begin] : view<8xi32> -> i32
+  %next = scalar.addi %identity, %loaded : i32
+  scf.if %enabled {
+    scf.for %j = [%begin to %limit step %step] {
+      view.store %next, %input[%j] : i32, view<8xi32>
+    }
+  }
+  %loaded_1 = view.load %input[%begin] : view<8xi32> -> i32
+  %next_1 = scalar.addi %next, %loaded_1 : i32
+  scf.if %enabled {
+    scf.for %j = [%begin to %limit step %step] {
+      view.store %next_1, %input[%j] : i32, view<8xi32>
+    }
+  }
+  func.return %next_1 : i32
+}
+
+// ====
+
+// Nested payloads capture outer definitions without using them as operands.
+func.def @recurrence_nested_payload(%input: index, %buffer: buffer, %base: offset, %enabled: i1) -> (index) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %i = [%begin to %end step %step](%sum = %begin : index) -> (index) unroll schedule(recurrence) {
+    %independent = index.add %i, %step : index
+    %next = index.add %sum, %independent : index
+    scf.if %enabled {
+      scf.if %enabled {
+        %bounded = test.assume %input [lt(%next, %input)] : index
+        %view = buffer.view %buffer[%base] : buffer -> view<[%next]xf32>
+        %annotated = test.attrs %input {metadata = {options = #test.options<mode = fast, element_type = view<[%next]xf32>>}} : index
+        test.parameterized_attr_array [#test.options<mode = fast, element_type = tensor<[%next]xf32>>]
+      }
+    }
+    scf.yield %next : index
+  }
+  func.return %result : index
+}
+
+// ----
+func.def @recurrence_nested_payload(%input: index, %buffer: buffer, %base: offset, %enabled: i1) -> (index) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %i_0 = index.constant 0 : index
+  %i_1 = index.constant 1 : index
+  %independent = index.add %i_0, %step : index
+  %independent_1 = index.add %i_1, %step : index
+  scf.schedule.fence
+  %next = index.add %begin, %independent : index
+  scf.if %enabled {
+    scf.if %enabled {
+      %bounded = test.assume %input [lt(%next, %input)] : index
+      %view = buffer.view %buffer[%base] : buffer -> view<[%next]xf32>
+      %annotated = test.attrs %input {metadata = {options = #test.options<mode = fast, element_type = view<[%next]xf32>>}} : index
+      test.parameterized_attr_array [#test.options<mode = fast, element_type = tensor<[%next]xf32>>]
+    }
+  }
+  scf.schedule.fence
+  %next_1 = index.add %next, %independent_1 : index
+  scf.if %enabled {
+    scf.if %enabled {
+      %bounded = test.assume %input [lt(%next_1, %input)] : index
+      %view = buffer.view %buffer[%base] : buffer -> view<[%next_1]xf32>
+      %annotated = test.attrs %input {metadata = {options = #test.options<mode = fast, element_type = view<[%next_1]xf32>>}} : index
+      test.parameterized_attr_array [#test.options<mode = fast, element_type = tensor<[%next_1]xf32>>]
+    }
+  }
+  func.return %next_1 : index
+}
