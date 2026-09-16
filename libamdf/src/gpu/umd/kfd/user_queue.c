@@ -103,6 +103,27 @@ static amdf_atomic_uint64_t* amdf_gpu_kfd_user_queue_error_payload(
       queue, queue->plan.control.error_payload_byte_offset);
 }
 
+// PM4 writes a ring-relative RPTR even though its WPTR is monotonic. Its
+// publication contract leaves at least one ring slot free, making RPTR's
+// expansion into the producer window unambiguous. Bracket the read with the
+// producer frontier so concurrent publication cannot select the wrong lap.
+static void amdf_gpu_kfd_user_queue_sample_progress(
+    const amdf_gpu_umd_user_queue_t* queue, uint64_t* out_producer_index,
+    uint64_t* out_consumed_index) {
+  uint64_t producer_index;
+  uint64_t native_read_index;
+  do {
+    producer_index = amdf_atomic_uint64_load_acquire(
+        amdf_gpu_kfd_user_queue_write_index(queue));
+    native_read_index = amdf_atomic_uint64_load_acquire(
+        amdf_gpu_kfd_user_queue_read_index(queue));
+  } while (producer_index != amdf_atomic_uint64_load_acquire(
+                                 amdf_gpu_kfd_user_queue_write_index(queue)));
+  *out_producer_index = producer_index;
+  *out_consumed_index = producer_index - ((producer_index - native_read_index) &
+                                          queue->plan.control.read_index_mask);
+}
+
 static amdf_status_t amdf_gpu_kfd_user_queue_buffer_create(
     amdf_gpu_umd_user_queue_t* queue,
     const amdf_gpu_kfd_buffer_create_info_t* create_info,
@@ -204,10 +225,10 @@ amdf_status_t amdf_gpu_umd_user_queue_destroy(
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
   if (queue->retirement_state == AMDF_GPU_KFD_USER_QUEUE_RETIREMENT_ACTIVE) {
-    const uint64_t consumed_index = amdf_atomic_uint64_load_acquire(
-        amdf_gpu_kfd_user_queue_read_index(queue));
-    const uint64_t producer_index = amdf_atomic_uint64_load_acquire(
-        amdf_gpu_kfd_user_queue_write_index(queue));
+    uint64_t producer_index;
+    uint64_t consumed_index;
+    amdf_gpu_kfd_user_queue_sample_progress(queue, &producer_index,
+                                            &consumed_index);
     if (consumed_index < producer_index) {
       return amdf_make_api_status(AMDF_STATUS_CODE_BUSY);
     }
@@ -488,10 +509,10 @@ amdf_status_t amdf_gpu_umd_user_queue_query_status(
         queue->native_api->user_data, queue->device, &fault);
     if (!amdf_status_is_ok(status)) return status;
   }
-  const uint64_t consumed_index = amdf_atomic_uint64_load_acquire(
-      amdf_gpu_kfd_user_queue_read_index(queue));
-  const uint64_t producer_index = amdf_atomic_uint64_load_acquire(
-      amdf_gpu_kfd_user_queue_write_index(queue));
+  uint64_t producer_index;
+  uint64_t consumed_index;
+  amdf_gpu_kfd_user_queue_sample_progress(queue, &producer_index,
+                                          &consumed_index);
   amdf_status_t terminal_status = AMDF_STATUS_OK;
   if (queue->plan.control.error_payload_byte_length != 0) {
     const uint64_t error_payload = amdf_atomic_uint64_load_acquire(

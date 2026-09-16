@@ -132,6 +132,7 @@ bool amdf_gpu_kfd_pm4_queue_plan(const amdf_gpu_kfd_topology_t* topology,
               .error_payload_byte_offset = 2u * cache_line_size,
               .error_payload_byte_length = sizeof(uint64_t),
               .index_bit_count = 64,
+              .read_index_mask = AMDF_GPU_KFD_PM4_RING_BYTE_LENGTH / 4 - 1,
           },
       .compute =
           {
