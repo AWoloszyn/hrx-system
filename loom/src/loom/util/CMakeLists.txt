@@ -214,10 +214,12 @@ loom_cc_library(
     fact_table
   HDRS
     "fact_cfg.h"
+    "fact_extensions.h"
     "fact_table.h"
     "reference_transfer.h"
   SRCS
     "fact_cfg.c"
+    "fact_extensions.c"
     "fact_table.c"
     "fact_table_compute.c"
     "reference_transfer.c"

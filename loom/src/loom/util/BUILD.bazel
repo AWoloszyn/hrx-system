@@ -185,12 +185,14 @@ loom_cc_library(
     name = "fact_table",
     srcs = [
         "fact_cfg.c",
+        "fact_extensions.c",
         "fact_table.c",
         "fact_table_compute.c",
         "reference_transfer.c",
     ],
     hdrs = [
         "fact_cfg.h",
+        "fact_extensions.h",
         "fact_table.h",
         "reference_transfer.h",
     ],
