@@ -62,6 +62,18 @@ static iree_status_t iree_net_framing_adapter_on_frame_complete(
 static iree_status_t iree_net_framing_adapter_on_recv(
     void* user_data, iree_async_span_t data, iree_async_buffer_lease_t* lease) {
   iree_net_framing_adapter_t* adapter = (iree_net_framing_adapter_t*)user_data;
+  if (data.length == 0) {
+    const iree_host_size_t buffered_bytes =
+        iree_net_frame_accumulator_buffered_bytes(&adapter->accumulator);
+    if (buffered_bytes > 0) {
+      return iree_make_status(IREE_STATUS_DATA_LOSS,
+                              "carrier peer closed with %" PRIhsz
+                              " bytes of a partial frame",
+                              buffered_bytes);
+    }
+    return iree_make_status(IREE_STATUS_UNAVAILABLE,
+                            "carrier peer closed the receive stream");
+  }
   if (lease) {
     return iree_net_frame_accumulator_push_lease(&adapter->accumulator, data,
                                                  lease);

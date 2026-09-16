@@ -998,6 +998,30 @@ TEST_F(FramingAdapterTest, MalformedFrameReportsTerminalDataLoss) {
   EXPECT_TRUE(iree_net_carrier_has_terminal_error(&mock_carrier_->base));
 }
 
+TEST_F(FramingAdapterTest, OrderlyCarrierEofReportsTerminalUnavailability) {
+  ActivateWithCallbacks();
+
+  IREE_ASSERT_OK(InjectBorrowed({}));
+
+  EXPECT_TRUE(ctx_.messages.empty());
+  ASSERT_EQ(ctx_.errors.size(), 1u);
+  EXPECT_EQ(ctx_.errors[0], IREE_STATUS_UNAVAILABLE);
+  EXPECT_TRUE(iree_net_carrier_has_terminal_error(&mock_carrier_->base));
+}
+
+TEST_F(FramingAdapterTest, CarrierEofRejectsPartialFrame) {
+  ActivateWithCallbacks();
+
+  std::vector<uint8_t> partial_header = {8, 0};
+  IREE_ASSERT_OK(InjectRecv(partial_header));
+  IREE_ASSERT_OK(InjectBorrowed({}));
+
+  EXPECT_TRUE(ctx_.messages.empty());
+  ASSERT_EQ(ctx_.errors.size(), 1u);
+  EXPECT_EQ(ctx_.errors[0], IREE_STATUS_DATA_LOSS);
+  EXPECT_TRUE(iree_net_carrier_has_terminal_error(&mock_carrier_->base));
+}
+
 TEST_F(FramingAdapterTest, HandlerErrorStopsProcessingMultipleFrames) {
   ActivateWithCallbacks();
 

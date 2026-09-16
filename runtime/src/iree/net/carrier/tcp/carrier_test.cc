@@ -1,0 +1,776 @@
+// Copyright 2026 The IREE Authors
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <cstring>
+#include <vector>
+
+#if defined(_WIN32)
+#include <winsock2.h>
+#else
+#include <sys/socket.h>
+#endif
+
+#include "iree/async/operations/net.h"
+#include "iree/async/proactor_platform.h"
+#include "iree/async/slab.h"
+#include "iree/net/carrier/tcp/carrier.h"
+#include "iree/testing/gtest.h"
+#include "iree/testing/status_matchers.h"
+
+namespace iree {
+namespace {
+
+struct ReceivePool {
+  // Slab providing receive storage.
+  iree_async_slab_t* slab = nullptr;
+
+  // Proactor registration for |slab|.
+  iree_async_region_t* region = nullptr;
+
+  // Pool presented to the carrier.
+  iree_async_buffer_pool_t* pool = nullptr;
+};
+
+struct CarrierContext {
+  // Bytes delivered through receive callbacks.
+  std::vector<uint8_t> received_data;
+
+  // Lease moved out of the next receive callback when requested.
+  iree_async_buffer_lease_t retained_lease = {};
+
+  // Number of receive callbacks delivered.
+  int receive_count = 0;
+
+  // Number of orderly peer send shutdowns delivered.
+  int eof_count = 0;
+
+  // Number of terminal error callbacks delivered.
+  int error_count = 0;
+
+  // Code from the first terminal error callback.
+  iree_status_code_t error_code = IREE_STATUS_OK;
+
+  // Number of upcoming receive callbacks that should move their lease.
+  int retain_lease_count = 0;
+
+  // Error returned from nonempty receive callbacks.
+  iree_status_code_t receive_error = IREE_STATUS_OK;
+};
+
+struct AsyncOperationResult {
+  // Completion status code.
+  iree_status_code_t status_code = IREE_STATUS_UNKNOWN;
+
+  // True after the operation callback fires.
+  bool completed = false;
+};
+
+struct SendResult {
+  // Shared callback-order record.
+  std::vector<int>* completion_order = nullptr;
+
+  // Identifier appended to |completion_order|.
+  int identifier = 0;
+
+  // Completion status code.
+  iree_status_code_t status_code = IREE_STATUS_UNKNOWN;
+
+  // Number of bytes reported by the carrier.
+  iree_host_size_t bytes_transferred = 0;
+
+  // Number of times the send callback fired.
+  int completion_count = 0;
+};
+
+struct CountingAllocator {
+  // Number of allocation requests issued through this allocator.
+  uint32_t allocation_count = 0;
+
+  // Number of free requests issued through this allocator.
+  uint32_t free_count = 0;
+
+  iree_allocator_t allocator() { return {this, Control}; }
+
+  static iree_status_t Control(void* self, iree_allocator_command_t command,
+                               const void* params, void** inout_ptr) {
+    auto* allocator = static_cast<CountingAllocator*>(self);
+    switch (command) {
+      case IREE_ALLOCATOR_COMMAND_MALLOC:
+      case IREE_ALLOCATOR_COMMAND_CALLOC:
+        ++allocator->allocation_count;
+        break;
+      case IREE_ALLOCATOR_COMMAND_FREE:
+        ++allocator->free_count;
+        break;
+      default:
+        break;
+    }
+    iree_allocator_t system_allocator = iree_allocator_system();
+    return system_allocator.ctl(system_allocator.self, command, params,
+                                inout_ptr);
+  }
+};
+
+static void AsyncOperationCompleted(void* user_data,
+                                    iree_async_operation_t* operation,
+                                    iree_status_t status,
+                                    iree_async_completion_flags_t flags) {
+  (void)operation;
+  (void)flags;
+  auto* result = static_cast<AsyncOperationResult*>(user_data);
+  result->status_code = iree_status_code(status);
+  result->completed = true;
+  iree_status_free(status);
+}
+
+static iree_status_t Receive(void* user_data, iree_async_span_t data,
+                             iree_async_buffer_lease_t* lease) {
+  auto* context = static_cast<CarrierContext*>(user_data);
+  if (data.length == 0) {
+    ++context->eof_count;
+    return iree_ok_status();
+  }
+  const uint8_t* data_ptr = iree_async_span_ptr(data);
+  context->received_data.insert(context->received_data.end(), data_ptr,
+                                data_ptr + data.length);
+  ++context->receive_count;
+  if (context->retain_lease_count > 0) {
+    --context->retain_lease_count;
+    context->retained_lease = *lease;
+    *lease = {};
+  }
+  return context->receive_error == IREE_STATUS_OK
+             ? iree_ok_status()
+             : iree_make_status(context->receive_error,
+                                "receive rejected for testing");
+}
+
+static void Error(void* user_data, iree_status_t status) {
+  auto* context = static_cast<CarrierContext*>(user_data);
+  if (context->error_count++ == 0) {
+    context->error_code = iree_status_code(status);
+  }
+  iree_status_free(status);
+}
+
+static void SendCompleted(void* user_data, iree_status_t status,
+                          iree_host_size_t bytes_transferred) {
+  auto* result = static_cast<SendResult*>(user_data);
+  result->status_code = iree_status_code(status);
+  result->bytes_transferred = bytes_transferred;
+  ++result->completion_count;
+  if (result->completion_order) {
+    result->completion_order->push_back(result->identifier);
+  }
+  iree_status_free(status);
+}
+
+static void CarrierDeactivated(void* user_data) {
+  *static_cast<bool*>(user_data) = true;
+}
+
+class TcpCarrierTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    iree_async_proactor_options_t options =
+        iree_async_proactor_options_default();
+    IREE_ASSERT_OK(iree_async_proactor_create_platform(
+        options, iree_allocator_system(), &proactor_));
+  }
+
+  void TearDown() override {
+    DeactivatePair();
+    ReleaseReceivePool(&server_receive_pool_);
+    ReleaseReceivePool(&client_receive_pool_);
+    iree_async_proactor_release(proactor_);
+  }
+
+  void CreateReceivePool(iree_host_size_t buffer_size,
+                         iree_host_size_t buffer_count,
+                         ReceivePool* out_receive_pool) {
+    iree_async_slab_options_t options = {0};
+    options.buffer_size = buffer_size;
+    options.buffer_count = buffer_count;
+    IREE_ASSERT_OK(iree_async_slab_create(options, iree_allocator_system(),
+                                          &out_receive_pool->slab));
+    IREE_ASSERT_OK(iree_async_proactor_register_slab(
+        proactor_, out_receive_pool->slab, IREE_ASYNC_BUFFER_ACCESS_FLAG_WRITE,
+        &out_receive_pool->region));
+    IREE_ASSERT_OK(iree_async_buffer_pool_create(out_receive_pool->region,
+                                                 iree_allocator_system(),
+                                                 &out_receive_pool->pool));
+  }
+
+  static void ReleaseReceivePool(ReceivePool* receive_pool) {
+    iree_async_buffer_pool_release(receive_pool->pool);
+    iree_async_region_release(receive_pool->region);
+    iree_async_slab_release(receive_pool->slab);
+    *receive_pool = {};
+  }
+
+  template <typename Predicate>
+  void PollUntil(Predicate predicate) {
+    while (!predicate()) {
+      iree_host_size_t completion_count = 0;
+      IREE_ASSERT_OK(iree_async_proactor_poll(
+          proactor_, iree_infinite_timeout(), &completion_count));
+    }
+  }
+
+  // Forces large test payloads through short platform send completions.
+  static void ConstrainSendBuffer(iree_async_socket_t* socket) {
+    int send_buffer_size = 1;
+#if defined(IREE_PLATFORM_WINDOWS)
+    ASSERT_EQ(
+        setsockopt(static_cast<SOCKET>(socket->primitive.value.win32_handle),
+                   SOL_SOCKET, SO_SNDBUF,
+                   reinterpret_cast<const char*>(&send_buffer_size),
+                   sizeof(send_buffer_size)),
+        0);
+#else
+    ASSERT_EQ(setsockopt(socket->primitive.value.fd, SOL_SOCKET, SO_SNDBUF,
+                         &send_buffer_size, sizeof(send_buffer_size)),
+              0);
+#endif  // IREE_PLATFORM_WINDOWS
+  }
+
+  void EstablishSockets(iree_async_socket_t** out_client_socket,
+                        iree_async_socket_t** out_server_socket) {
+    *out_client_socket = nullptr;
+    *out_server_socket = nullptr;
+
+    iree_async_socket_t* listener = nullptr;
+    IREE_ASSERT_OK(iree_async_socket_create(
+        proactor_, IREE_ASYNC_SOCKET_TYPE_TCP,
+        IREE_ASYNC_SOCKET_OPTION_REUSE_ADDR, &listener));
+    iree_async_address_t bind_address;
+    IREE_ASSERT_OK(iree_async_address_from_ipv4(
+        iree_make_cstring_view("127.0.0.1"), 0, &bind_address));
+    IREE_ASSERT_OK(iree_async_socket_bind(listener, &bind_address));
+    IREE_ASSERT_OK(iree_async_socket_listen(listener, 1));
+    iree_async_address_t listen_address;
+    IREE_ASSERT_OK(
+        iree_async_socket_query_local_address(listener, &listen_address));
+
+    AsyncOperationResult accept_result;
+    iree_async_socket_accept_operation_t accept_operation;
+    memset(&accept_operation, 0, sizeof(accept_operation));
+    iree_async_operation_initialize(&accept_operation.base,
+                                    IREE_ASYNC_OPERATION_TYPE_SOCKET_ACCEPT,
+                                    IREE_ASYNC_OPERATION_FLAG_NONE,
+                                    AsyncOperationCompleted, &accept_result);
+    accept_operation.listen_socket = listener;
+    IREE_ASSERT_OK(
+        iree_async_proactor_submit_one(proactor_, &accept_operation.base));
+
+    IREE_ASSERT_OK(iree_async_socket_create(
+        proactor_, IREE_ASYNC_SOCKET_TYPE_TCP,
+        IREE_ASYNC_SOCKET_OPTION_NO_DELAY, out_client_socket));
+    AsyncOperationResult connect_result;
+    iree_async_socket_connect_operation_t connect_operation;
+    memset(&connect_operation, 0, sizeof(connect_operation));
+    iree_async_operation_initialize(&connect_operation.base,
+                                    IREE_ASYNC_OPERATION_TYPE_SOCKET_CONNECT,
+                                    IREE_ASYNC_OPERATION_FLAG_NONE,
+                                    AsyncOperationCompleted, &connect_result);
+    connect_operation.socket = *out_client_socket;
+    connect_operation.address = listen_address;
+    IREE_ASSERT_OK(
+        iree_async_proactor_submit_one(proactor_, &connect_operation.base));
+
+    PollUntil(
+        [&] { return accept_result.completed && connect_result.completed; });
+    ASSERT_EQ(accept_result.status_code, IREE_STATUS_OK);
+    ASSERT_EQ(connect_result.status_code, IREE_STATUS_OK);
+    ASSERT_NE(accept_operation.accepted_socket, nullptr);
+    *out_server_socket = accept_operation.accepted_socket;
+    ConstrainSendBuffer(*out_client_socket);
+    ConstrainSendBuffer(*out_server_socket);
+    iree_async_socket_release(listener);
+  }
+
+  void CreateCarrierPair(
+      uint32_t max_send_operations = 8,
+      iree_host_size_t receive_buffer_size = 4096,
+      iree_host_size_t receive_buffer_count = 4,
+      iree_allocator_t server_host_allocator = iree_allocator_system()) {
+    CreateReceivePool(receive_buffer_size, receive_buffer_count,
+                      &client_receive_pool_);
+    CreateReceivePool(receive_buffer_size, receive_buffer_count,
+                      &server_receive_pool_);
+
+    iree_async_socket_t* client_socket = nullptr;
+    iree_async_socket_t* server_socket = nullptr;
+    EstablishSockets(&client_socket, &server_socket);
+    iree_net_tcp_carrier_options_t options =
+        iree_net_tcp_carrier_options_default();
+    options.max_send_operations = max_send_operations;
+    IREE_ASSERT_OK(iree_net_tcp_carrier_create(
+        proactor_, client_socket, client_receive_pool_.pool, &options,
+        iree_allocator_system(), &client_carrier_));
+    IREE_ASSERT_OK(iree_net_tcp_carrier_create(
+        proactor_, server_socket, server_receive_pool_.pool, &options,
+        server_host_allocator, &server_carrier_));
+    iree_async_socket_release(client_socket);
+    iree_async_socket_release(server_socket);
+
+    IREE_ASSERT_OK(iree_net_carrier_set_handlers(
+        client_carrier_, {Receive, Error, &client_context_}));
+    IREE_ASSERT_OK(iree_net_carrier_set_handlers(
+        server_carrier_, {Receive, Error, &server_context_}));
+    IREE_ASSERT_OK(iree_net_carrier_activate(client_carrier_));
+    IREE_ASSERT_OK(iree_net_carrier_activate(server_carrier_));
+  }
+
+  void BeginDeactivation(iree_net_carrier_t* carrier, bool* completed) {
+    if (!carrier || *completed) return;
+    const iree_net_carrier_state_t state = iree_net_carrier_state(carrier);
+    if (state == IREE_NET_CARRIER_STATE_CREATED ||
+        state == IREE_NET_CARRIER_STATE_ACTIVE) {
+      iree_net_carrier_deactivate(carrier, CarrierDeactivated, completed);
+    }
+  }
+
+  void DeactivatePair() {
+    BeginDeactivation(client_carrier_, &client_deactivated_);
+    BeginDeactivation(server_carrier_, &server_deactivated_);
+    if (client_carrier_ || server_carrier_) {
+      PollUntil([&] {
+        return (!client_carrier_ || client_deactivated_) &&
+               (!server_carrier_ || server_deactivated_);
+      });
+    }
+    iree_net_carrier_release(client_carrier_);
+    iree_net_carrier_release(server_carrier_);
+    client_carrier_ = nullptr;
+    server_carrier_ = nullptr;
+  }
+
+  // Platform proactor shared by both test peers.
+  iree_async_proactor_t* proactor_ = nullptr;
+
+  // Client receive storage.
+  ReceivePool client_receive_pool_;
+
+  // Server receive storage.
+  ReceivePool server_receive_pool_;
+
+  // Client carrier under test.
+  iree_net_carrier_t* client_carrier_ = nullptr;
+
+  // Server carrier under test.
+  iree_net_carrier_t* server_carrier_ = nullptr;
+
+  // Client callback state.
+  CarrierContext client_context_;
+
+  // Server callback state.
+  CarrierContext server_context_;
+
+  // Client deactivation completion state.
+  bool client_deactivated_ = false;
+
+  // Server deactivation completion state.
+  bool server_deactivated_ = false;
+};
+
+TEST(TcpCarrierOptionsTest, Defaults) {
+  iree_net_tcp_carrier_options_t options =
+      iree_net_tcp_carrier_options_default();
+  EXPECT_EQ(options.max_send_operations,
+            IREE_NET_TCP_DEFAULT_MAX_SEND_OPERATIONS);
+}
+
+TEST_F(TcpCarrierTest, PreservesOrderedScatterGatherAndDirectSends) {
+  CreateCarrierPair(/*max_send_operations=*/4,
+                    /*receive_buffer_size=*/4096,
+                    /*receive_buffer_count=*/4);
+
+  std::vector<uint8_t> first(256 * 1024, 0x11);
+  std::vector<uint8_t> second(256 * 1024, 0x22);
+  std::array<iree_async_span_t, 2> first_spans = {
+      iree_async_span_from_ptr(first.data(), first.size() / 2),
+      iree_async_span_from_ptr(first.data() + first.size() / 2,
+                               first.size() / 2),
+  };
+  iree_async_span_t second_span =
+      iree_async_span_from_ptr(second.data(), second.size());
+  std::vector<int> completion_order;
+  SendResult first_result = {&completion_order, 0};
+  SendResult second_result = {&completion_order, 1};
+  SendResult direct_result = {&completion_order, 2};
+
+  iree_net_send_params_t first_params = {
+      iree_async_span_list_make(first_spans.data(), first_spans.size()),
+      IREE_NET_SEND_FLAG_NONE,
+      {SendCompleted, &first_result},
+  };
+  IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &first_params));
+  iree_net_send_params_t second_params = {
+      iree_async_span_list_make(&second_span, 1),
+      IREE_NET_SEND_FLAG_NONE,
+      {SendCompleted, &second_result},
+  };
+  IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &second_params));
+
+  constexpr const char kDirectPayload[] = "direct-send";
+  void* direct_ptr = nullptr;
+  iree_net_carrier_send_handle_t direct_handle = 0;
+  IREE_ASSERT_OK(iree_net_carrier_begin_send(
+      client_carrier_, sizeof(kDirectPayload), &direct_ptr, &direct_handle));
+  memcpy(direct_ptr, kDirectPayload, sizeof(kDirectPayload));
+  IREE_ASSERT_OK(iree_net_carrier_commit_send(client_carrier_, direct_handle,
+                                              {SendCompleted, &direct_result}));
+
+  const iree_host_size_t expected_size =
+      first.size() + second.size() + sizeof(kDirectPayload);
+  PollUntil([&] {
+    return first_result.completion_count == 1 &&
+           second_result.completion_count == 1 &&
+           direct_result.completion_count == 1 &&
+           server_context_.received_data.size() == expected_size;
+  });
+
+  EXPECT_EQ(completion_order, (std::vector<int>{0, 1, 2}));
+  EXPECT_EQ(first_result.status_code, IREE_STATUS_OK);
+  EXPECT_EQ(second_result.status_code, IREE_STATUS_OK);
+  EXPECT_EQ(direct_result.status_code, IREE_STATUS_OK);
+  EXPECT_EQ(first_result.bytes_transferred, first.size());
+  EXPECT_EQ(second_result.bytes_transferred, second.size());
+  EXPECT_EQ(direct_result.bytes_transferred, sizeof(kDirectPayload));
+  EXPECT_TRUE(std::equal(first.begin(), first.end(),
+                         server_context_.received_data.begin()));
+  EXPECT_TRUE(std::equal(second.begin(), second.end(),
+                         server_context_.received_data.begin() + first.size()));
+  EXPECT_EQ(memcmp(server_context_.received_data.data() + first.size() +
+                       second.size(),
+                   kDirectPayload, sizeof(kDirectPayload)),
+            0);
+}
+
+TEST_F(TcpCarrierTest, RetainedReceiveLeasePausesAndResumesProgress) {
+  CreateCarrierPair(/*max_send_operations=*/4,
+                    /*receive_buffer_size=*/64,
+                    /*receive_buffer_count=*/1);
+  server_context_.retain_lease_count = 1;
+
+  std::array<uint8_t, 16> first = {};
+  std::array<uint8_t, 16> second = {};
+  first.fill(0x31);
+  second.fill(0x32);
+  iree_async_span_t first_span =
+      iree_async_span_from_ptr(first.data(), first.size());
+  iree_async_span_t second_span =
+      iree_async_span_from_ptr(second.data(), second.size());
+  SendResult first_result;
+  SendResult second_result;
+  iree_net_send_params_t first_params = {
+      iree_async_span_list_make(&first_span, 1),
+      IREE_NET_SEND_FLAG_NONE,
+      {SendCompleted, &first_result},
+  };
+  IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &first_params));
+  PollUntil([&] {
+    return first_result.completion_count == 1 &&
+           server_context_.receive_count == 1;
+  });
+  ASSERT_NE(server_context_.retained_lease.release.fn, nullptr);
+
+  iree_net_send_params_t second_params = {
+      iree_async_span_list_make(&second_span, 1),
+      IREE_NET_SEND_FLAG_NONE,
+      {SendCompleted, &second_result},
+  };
+  IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &second_params));
+  PollUntil([&] { return second_result.completion_count == 1; });
+  EXPECT_EQ(server_context_.receive_count, 1);
+
+  iree_async_buffer_lease_release(&server_context_.retained_lease);
+  PollUntil([&] { return server_context_.receive_count == 2; });
+  EXPECT_EQ(server_context_.received_data.size(), first.size() + second.size());
+}
+
+TEST_F(TcpCarrierTest, RetainedReceiveLeaseExtendsCarrierLifetime) {
+  CountingAllocator server_host_allocator;
+  CreateCarrierPair(/*max_send_operations=*/4,
+                    /*receive_buffer_size=*/64,
+                    /*receive_buffer_count=*/1,
+                    server_host_allocator.allocator());
+  EXPECT_EQ(server_host_allocator.allocation_count, 1u);
+  server_context_.retain_lease_count = 1;
+
+  std::array<uint8_t, 16> payload = {};
+  iree_async_span_t span =
+      iree_async_span_from_ptr(payload.data(), payload.size());
+  SendResult send_result;
+  iree_net_send_params_t params = {
+      iree_async_span_list_make(&span, 1),
+      IREE_NET_SEND_FLAG_NONE,
+      {SendCompleted, &send_result},
+  };
+  IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &params));
+  PollUntil([&] {
+    return send_result.completion_count == 1 &&
+           server_context_.receive_count == 1;
+  });
+  ASSERT_NE(server_context_.retained_lease.release.fn, nullptr);
+
+  BeginDeactivation(server_carrier_, &server_deactivated_);
+  PollUntil([&] { return server_deactivated_; });
+  iree_net_carrier_release(server_carrier_);
+  server_carrier_ = nullptr;
+  EXPECT_EQ(server_host_allocator.free_count, 0u);
+
+  iree_async_buffer_lease_release(&server_context_.retained_lease);
+  EXPECT_EQ(server_host_allocator.free_count, 1u);
+}
+
+TEST_F(TcpCarrierTest, ReservationBackpressureClearsAfterAbort) {
+  CreateCarrierPair(/*max_send_operations=*/1);
+
+  void* reservation_ptr = nullptr;
+  iree_net_carrier_send_handle_t reservation_handle = 0;
+  IREE_ASSERT_OK(iree_net_carrier_begin_send(
+      client_carrier_, 32, &reservation_ptr, &reservation_handle));
+  ASSERT_NE(reservation_ptr, nullptr);
+  iree_net_carrier_send_budget_t budget =
+      iree_net_carrier_query_send_budget(client_carrier_);
+  EXPECT_EQ(budget.bytes, IREE_HOST_SIZE_MAX);
+  EXPECT_EQ(budget.slots, 0u);
+
+  std::array<uint8_t, 8> payload = {};
+  iree_async_span_t span =
+      iree_async_span_from_ptr(payload.data(), payload.size());
+  SendResult result;
+  iree_net_send_params_t params = {
+      iree_async_span_list_make(&span, 1),
+      IREE_NET_SEND_FLAG_NONE,
+      {SendCompleted, &result},
+  };
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_RESOURCE_EXHAUSTED,
+                        iree_net_carrier_send(client_carrier_, &params));
+  EXPECT_EQ(result.completion_count, 0);
+
+  iree_net_carrier_abort_send(client_carrier_, reservation_handle);
+  budget = iree_net_carrier_query_send_budget(client_carrier_);
+  EXPECT_EQ(budget.bytes, IREE_HOST_SIZE_MAX);
+  EXPECT_EQ(budget.slots, 1u);
+
+  IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &params));
+  PollUntil([&] {
+    return result.completion_count == 1 &&
+           server_context_.received_data.size() == payload.size();
+  });
+  EXPECT_EQ(result.status_code, IREE_STATUS_OK);
+}
+
+TEST_F(TcpCarrierTest, GracefulShutdownDrainsReservationBeforeFin) {
+  CreateCarrierPair(/*max_send_operations=*/1);
+
+  constexpr const char kPayload[] = "before-fin";
+  void* reservation_ptr = nullptr;
+  iree_net_carrier_send_handle_t reservation_handle = 0;
+  IREE_ASSERT_OK(iree_net_carrier_begin_send(client_carrier_, sizeof(kPayload),
+                                             &reservation_ptr,
+                                             &reservation_handle));
+  memcpy(reservation_ptr, kPayload, sizeof(kPayload));
+
+  IREE_ASSERT_OK(iree_net_carrier_shutdown(client_carrier_));
+  iree_net_carrier_send_budget_t budget =
+      iree_net_carrier_query_send_budget(client_carrier_);
+  EXPECT_EQ(budget.bytes, 0u);
+  EXPECT_EQ(budget.slots, 0u);
+
+  std::array<uint8_t, 1> rejected_payload = {};
+  iree_async_span_t rejected_span = iree_async_span_from_ptr(
+      rejected_payload.data(), rejected_payload.size());
+  SendResult rejected_result;
+  iree_net_send_params_t rejected_params = {
+      iree_async_span_list_make(&rejected_span, 1),
+      IREE_NET_SEND_FLAG_NONE,
+      {SendCompleted, &rejected_result},
+  };
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_FAILED_PRECONDITION,
+      iree_net_carrier_send(client_carrier_, &rejected_params));
+  EXPECT_EQ(rejected_result.completion_count, 0);
+
+  SendResult reservation_result;
+  IREE_ASSERT_OK(
+      iree_net_carrier_commit_send(client_carrier_, reservation_handle,
+                                   {SendCompleted, &reservation_result}));
+  PollUntil([&] {
+    return reservation_result.completion_count == 1 &&
+           server_context_.received_data.size() == sizeof(kPayload) &&
+           server_context_.eof_count == 1;
+  });
+  EXPECT_EQ(reservation_result.status_code, IREE_STATUS_OK);
+  EXPECT_EQ(server_context_.error_count, 0);
+  EXPECT_EQ(
+      memcmp(server_context_.received_data.data(), kPayload, sizeof(kPayload)),
+      0);
+
+  constexpr const char kResponse[] = "after-fin";
+  iree_async_span_t response_span =
+      iree_async_span_from_ptr(const_cast<char*>(kResponse), sizeof(kResponse));
+  SendResult response_result;
+  iree_net_send_params_t response_params = {
+      iree_async_span_list_make(&response_span, 1),
+      IREE_NET_SEND_FLAG_NONE,
+      {SendCompleted, &response_result},
+  };
+  IREE_ASSERT_OK(iree_net_carrier_send(server_carrier_, &response_params));
+  PollUntil([&] {
+    return response_result.completion_count == 1 &&
+           client_context_.received_data.size() == sizeof(kResponse);
+  });
+  EXPECT_EQ(response_result.status_code, IREE_STATUS_OK);
+  EXPECT_EQ(memcmp(client_context_.received_data.data(), kResponse,
+                   sizeof(kResponse)),
+            0);
+}
+
+TEST_F(TcpCarrierTest, ReceiveFailureBecomesStickyTerminalError) {
+  CreateCarrierPair();
+  server_context_.receive_error = IREE_STATUS_DATA_LOSS;
+
+  std::array<uint8_t, 8> payload = {};
+  iree_async_span_t span =
+      iree_async_span_from_ptr(payload.data(), payload.size());
+  SendResult send_result;
+  iree_net_send_params_t params = {
+      iree_async_span_list_make(&span, 1),
+      IREE_NET_SEND_FLAG_NONE,
+      {SendCompleted, &send_result},
+  };
+  IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &params));
+  PollUntil([&] {
+    return send_result.completion_count == 1 &&
+           server_context_.error_count == 1;
+  });
+  EXPECT_EQ(server_context_.error_code, IREE_STATUS_DATA_LOSS);
+
+  SendResult rejected_result;
+  params.completion_callback = {SendCompleted, &rejected_result};
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_DATA_LOSS,
+                        iree_net_carrier_send(server_carrier_, &params));
+  EXPECT_EQ(rejected_result.completion_count, 0);
+  EXPECT_EQ(server_context_.error_count, 1);
+}
+
+TEST_F(TcpCarrierTest, DeactivationInvalidatesDirectReservation) {
+  CreateCarrierPair();
+
+  void* reservation_ptr = nullptr;
+  iree_net_carrier_send_handle_t reservation_handle = 0;
+  IREE_ASSERT_OK(iree_net_carrier_begin_send(
+      client_carrier_, 128, &reservation_ptr, &reservation_handle));
+  ASSERT_NE(reservation_ptr, nullptr);
+  BeginDeactivation(client_carrier_, &client_deactivated_);
+  PollUntil([&] { return client_deactivated_; });
+
+  SendResult result;
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_FAILED_PRECONDITION,
+      iree_net_carrier_commit_send(client_carrier_, reservation_handle,
+                                   {SendCompleted, &result}));
+  EXPECT_EQ(result.completion_count, 0);
+  iree_net_carrier_send_budget_t budget =
+      iree_net_carrier_query_send_budget(client_carrier_);
+  EXPECT_EQ(budget.bytes, 0u);
+  EXPECT_EQ(budget.slots, 0u);
+}
+
+TEST_F(TcpCarrierTest, DeactivationCompletesEveryAcceptedSendExactlyOnce) {
+  CreateCarrierPair(/*max_send_operations=*/3);
+
+  std::array<std::vector<uint8_t>, 3> payloads = {
+      std::vector<uint8_t>(512 * 1024, 0x41),
+      std::vector<uint8_t>(512 * 1024, 0x42),
+      std::vector<uint8_t>(512 * 1024, 0x43),
+  };
+  std::array<iree_async_span_t, 3> spans;
+  std::array<SendResult, 3> results;
+  for (iree_host_size_t i = 0; i < payloads.size(); ++i) {
+    spans[i] = iree_async_span_from_ptr(payloads[i].data(), payloads[i].size());
+    iree_net_send_params_t params = {
+        iree_async_span_list_make(&spans[i], 1),
+        IREE_NET_SEND_FLAG_NONE,
+        {SendCompleted, &results[i]},
+    };
+    IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &params));
+  }
+
+  BeginDeactivation(client_carrier_, &client_deactivated_);
+  PollUntil([&] { return client_deactivated_; });
+
+  for (const SendResult& result : results) {
+    EXPECT_EQ(result.completion_count, 1);
+  }
+}
+
+TEST_F(TcpCarrierTest, PeerDeactivationDeliversOrderlyEof) {
+  CreateCarrierPair();
+  BeginDeactivation(server_carrier_, &server_deactivated_);
+  PollUntil(
+      [&] { return server_deactivated_ && client_context_.eof_count == 1; });
+
+  EXPECT_EQ(client_context_.error_count, 0);
+}
+
+struct TestRegion {
+  // Region passed through the carrier and proactor.
+  iree_async_region_t base;
+
+  // Final-release counter owned by the test.
+  std::atomic<int>* destroy_count = nullptr;
+};
+
+static void DestroyTestRegion(iree_async_region_t* base_region) {
+  auto* region = reinterpret_cast<TestRegion*>(base_region);
+  ++*region->destroy_count;
+}
+
+TEST_F(TcpCarrierTest, RetainsRegisteredRegionThroughSendCompletion) {
+  CreateCarrierPair();
+
+  std::array<uint8_t, 32> payload = {};
+  std::atomic<int> destroy_count = 0;
+  TestRegion region;
+  memset(&region.base, 0, sizeof(region.base));
+  iree_atomic_ref_count_init(&region.base.ref_count);
+  region.base.proactor = proactor_;
+  region.base.destroy_fn = DestroyTestRegion;
+  region.base.type = IREE_ASYNC_REGION_TYPE_NONE;
+  region.base.access_flags = IREE_ASYNC_BUFFER_ACCESS_FLAG_READ;
+  region.base.base_ptr = payload.data();
+  region.base.length = payload.size();
+  region.destroy_count = &destroy_count;
+
+  iree_async_span_t span =
+      iree_async_span_make(&region.base, 0, payload.size());
+  SendResult result;
+  iree_net_send_params_t params = {
+      iree_async_span_list_make(&span, 1),
+      IREE_NET_SEND_FLAG_ZERO_COPY,
+      {SendCompleted, &result},
+  };
+  IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &params));
+  iree_async_region_release(&region.base);
+  if (result.completion_count == 0) {
+    EXPECT_EQ(destroy_count.load(), 0);
+    PollUntil([&] { return result.completion_count == 1; });
+  }
+  EXPECT_EQ(result.completion_count, 1);
+  EXPECT_EQ(result.status_code, IREE_STATUS_OK);
+  EXPECT_EQ(destroy_count.load(), 1);
+}
+
+}  // namespace
+}  // namespace iree
