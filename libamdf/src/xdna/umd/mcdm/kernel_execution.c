@@ -14,6 +14,7 @@
 #include "libamdf/src/platform/wait.h"
 #include "libamdf/src/wait.h"
 #include "libamdf/src/xdna/umd/mcdm/context.h"
+#include "libamdf/src/xdna/umd/mcdm/submission.h"
 
 enum {
   AMDF_WINDOWS_WAIT_SIGNALED = 0,
@@ -32,8 +33,6 @@ struct amdf_windows_xdna_kernel_execution_t {
   amdf_xdna_umd_device_t* device;
   // KMT context borrowed from the owning public context.
   D3DKMT_HANDLE context;
-  // Native wire layout and buffer policy resolved during context admission.
-  amdf_windows_xdna_native_abi_t native_abi;
   // First observed command or bootstrap failure, scoped to this context.
   amdf_atomic_uint64_t terminal_status;
   // Serializes native preparation, private binding, and queue leasing.
@@ -78,7 +77,7 @@ uint64_t amdf_windows_xdna_kernel_execution_query_progress(
 static amdf_status_t amdf_windows_xdna_kernel_execution_submit_native(
     amdf_windows_xdna_kernel_execution_t* execution, uint64_t command_address,
     uint32_t command_byte_length,
-    const amdf_windows_xdna_legacy_submission_t* submission,
+    const amdf_windows_xdna_submission_t* submission,
     uint64_t* out_native_submission) {
   const amdf_status_t terminal_status =
       amdf_windows_xdna_kernel_execution_query_terminal_status(execution);
@@ -155,7 +154,7 @@ static amdf_status_t amdf_windows_xdna_kernel_execution_wait_synchronous(
 static amdf_status_t amdf_windows_xdna_kernel_execution_submit_preparation(
     amdf_windows_xdna_kernel_execution_t* execution, uint64_t command_address,
     uint32_t command_byte_length,
-    const amdf_windows_xdna_legacy_submission_t* submission) {
+    const amdf_windows_xdna_submission_t* submission) {
   amdf_status_t status = AMDF_STATUS_OK;
   if (execution->preparation_submission == 0) {
     status = amdf_windows_xdna_kernel_execution_submit_native(
@@ -234,10 +233,8 @@ static amdf_status_t amdf_windows_xdna_kernel_execution_realize_command_storage(
 static amdf_status_t amdf_windows_xdna_kernel_execution_publish_aperture(
     amdf_windows_xdna_kernel_execution_t* execution,
     const amdf_windows_xdna_private_allocation_t* allocation) {
-  amdf_windows_xdna_legacy_submission_t submission;
-  amdf_windows_xdna_legacy_submission_build_aperture(
-      execution->native_abi.submission_header_byte_length, allocation,
-      &submission);
+  amdf_windows_xdna_submission_t submission;
+  amdf_windows_xdna_submission_build_aperture(allocation, &submission);
   return amdf_windows_xdna_kernel_execution_submit_preparation(
       execution, allocation->device_address,
       (uint32_t)allocation->descriptor.allocation_byte_length, &submission);
@@ -269,13 +266,13 @@ static amdf_status_t amdf_windows_xdna_kernel_execution_activate_context(
     command_words[0] = 1;
     command_words[1] = firmware_address;
   }
-  amdf_windows_xdna_legacy_submission_t submission;
-  amdf_windows_xdna_legacy_submission_build_context_initialize(
-      &execution->native_abi, &execution->command_allocation, &submission);
+  amdf_windows_xdna_submission_t submission;
+  amdf_windows_xdna_submission_build_context_initialize(
+      &execution->command_allocation, &submission);
   amdf_status_t status = amdf_windows_xdna_kernel_execution_submit_preparation(
       execution, 0, 0, &submission);
   if (amdf_status_is_ok(status)) {
-    status = amdf_windows_xdna_legacy_submission_query_initialize_result(
+    status = amdf_windows_xdna_submission_query_initialize_result(
         &execution->command_allocation);
     if (!amdf_status_is_ok(status)) {
       amdf_windows_xdna_kernel_execution_record_failure(execution, status);
@@ -376,9 +373,8 @@ amdf_status_t amdf_windows_xdna_kernel_execution_prepare_memory(
         execution, allocation->firmware_address);
   }
   if (amdf_status_is_ok(status)) {
-    amdf_windows_xdna_legacy_submission_t submission;
-    amdf_windows_xdna_legacy_submission_build_accounting(
-        &execution->native_abi, allocation,
+    amdf_windows_xdna_submission_t submission;
+    amdf_windows_xdna_submission_build_accounting(
         allocation->descriptor.allocation_byte_length, &submission);
     status = amdf_windows_xdna_kernel_execution_submit_preparation(
         execution, 0, 0, &submission);
@@ -404,28 +400,24 @@ amdf_status_t amdf_windows_xdna_kernel_execution_release_memory(
 }
 
 static void amdf_windows_xdna_kernel_execution_initialize_storage(
-    amdf_windows_xdna_kernel_execution_t* execution) {
-  const bool direct = execution->native_abi.context_encoding ==
-                      AMDF_WINDOWS_XDNA_CONTEXT_ENCODING_DIRECT;
+    amdf_windows_xdna_kernel_execution_t* execution,
+    bool shared_kernel_buffers) {
   const amdf_windows_xdna_private_allocation_descriptor_t command_descriptor = {
       .requested_byte_length = 4096,
       .allocation_byte_length = 4096,
-      .type = direct ? 0x332C : 0x332B,
-      .policy = direct ? 2 : 0,
-      .xcl_flags = direct ? 0x02000000 : 0,
-      .flags =
-          (direct ? AMDF_WINDOWS_XDNA_PRIVATE_ALLOCATION_FLAG_DEVICE_ADDRESS
-                  : 0) |
-          ((!direct || execution->native_abi.shared_kernel_buffers)
-               ? AMDF_WINDOWS_XDNA_PRIVATE_ALLOCATION_FLAG_SHARED_RESOURCE
-               : 0),
+      .type = 0x332C,
+      .policy = 2,
+      .xcl_flags = 0x02000000,
+      .flags = AMDF_WINDOWS_XDNA_PRIVATE_ALLOCATION_FLAG_DEVICE_ADDRESS |
+               (shared_kernel_buffers
+                    ? AMDF_WINDOWS_XDNA_PRIVATE_ALLOCATION_FLAG_SHARED_RESOURCE
+                    : 0),
   };
   amdf_windows_xdna_private_allocation_initialize(
       execution->device, &command_descriptor, &execution->command_allocation);
 
   const amdf_windows_xdna_private_allocation_descriptor_t packet_descriptor = {
-      .requested_byte_length =
-          4096 + execution->native_abi.submission_header_byte_length,
+      .requested_byte_length = 4096 + AMDF_WINDOWS_XDNA_SUBMISSION_HEADER_SIZE,
       .allocation_byte_length =
           AMDF_WINDOWS_XDNA_KERNEL_EXECUTION_ALLOCATION_SIZE,
       .type = 0x3328,
@@ -451,11 +443,11 @@ amdf_status_t amdf_windows_xdna_kernel_execution_create(
   if (!amdf_status_is_ok(status)) return status;
   execution->device = device;
   execution->context = context->handle;
-  execution->native_abi = context->native_abi;
   amdf_atomic_uint64_initialize(&execution->terminal_status, AMDF_STATUS_OK);
   InitializeSRWLock(&execution->state_lock);
   InitializeSRWLock(&execution->wait_lock);
-  amdf_windows_xdna_kernel_execution_initialize_storage(execution);
+  amdf_windows_xdna_kernel_execution_initialize_storage(
+      execution, context->adapter_info.shared_kernel_buffers);
   *out_execution = execution;
   return AMDF_STATUS_OK;
 }
@@ -583,10 +575,10 @@ amdf_status_t amdf_windows_xdna_kernel_execution_submit(
       execution->packet_allocation.host_pointer;
   amdf_xdna_transaction_interpreter_packet_build(
       instruction_address, instruction_byte_length, packet);
-  amdf_windows_xdna_legacy_submission_t submission;
-  amdf_windows_xdna_legacy_submission_build_execute(
-      &execution->native_abi, &execution->packet_allocation,
-      &execution->command_allocation, packet, &submission);
+  amdf_windows_xdna_submission_t submission;
+  amdf_windows_xdna_submission_build_execute(&execution->packet_allocation,
+                                             &execution->command_allocation,
+                                             packet, &submission);
   const amdf_status_t status = amdf_windows_xdna_private_allocation_publish(
       &execution->packet_allocation, 0, sizeof(*packet));
   if (!amdf_status_is_ok(status)) return status;
@@ -602,7 +594,7 @@ amdf_status_t amdf_windows_xdna_kernel_execution_submit(
 void amdf_windows_xdna_kernel_execution_retire_command(
     amdf_windows_xdna_kernel_execution_t* execution) {
   const amdf_status_t status =
-      amdf_windows_xdna_legacy_submission_query_execute_result(
+      amdf_windows_xdna_submission_query_execute_result(
           &execution->command_allocation);
   if (!amdf_status_is_ok(status)) {
     amdf_windows_xdna_kernel_execution_record_failure(execution, status);

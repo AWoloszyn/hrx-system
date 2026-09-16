@@ -12,11 +12,11 @@ iree_add_all_subdirs()
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
 iree_cc_library(
   NAME
-    native_abi
+    adapter_info
   HDRS
-    "native_abi.h"
+    "adapter_info.h"
   SRCS
-    "native_abi.c"
+    "adapter_info.c"
   DEPS
     amdf::headers
     libamdf::src::platform::windows::kmt_api
@@ -25,27 +25,13 @@ iree_cc_library(
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
-iree_cc_library(
-  NAME
-    bootstrap_image
-  HDRS
-    "npu5_legacy_bootstrap_image.h"
-  SRCS
-    "npu5_legacy_bootstrap_image.c"
-  DEPS
-    amdf::headers
-  PUBLIC
-)
-endif()
-
-if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
 iree_cc_test(
   NAME
-    native_abi_test
+    adapter_info_test
   SRCS
-    "native_abi_test.cc"
+    "adapter_info_test.cc"
   DEPS
-    ::native_abi
+    ::adapter_info
     amdf::headers
     iree::third_party::google_test
     iree::third_party::google_test_main
@@ -58,11 +44,11 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
 iree_cc_test(
   NAME
-    native_abi_system_test
+    adapter_info_system_test
   SRCS
-    "native_abi_system_test.cc"
+    "adapter_info_system_test.cc"
   DEPS
-    ::native_abi
+    ::adapter_info
     amdf::headers
     iree::third_party::google_test
     iree::third_party::google_test_main
@@ -77,25 +63,6 @@ iree_cc_test(
     "iree-build-requirement=libamdf.xdna"
   RESOURCE_GROUP
     iree-hal-drivers-amdgpu-tests
-)
-endif()
-
-if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
-iree_cc_library(
-  NAME
-    legacy_context
-  HDRS
-    "legacy_context.h"
-  SRCS
-    "legacy_context.c"
-  DEPS
-    ::bootstrap_image
-    ::native_abi
-    ::private_allocation
-    amdf::headers
-    libamdf::src::allocator
-    libamdf::src::xdna::bootstrap
-  PUBLIC
 )
 endif()
 
@@ -121,8 +88,8 @@ iree_cc_library(
   HDRS
     "context.h"
   DEPS
+    ::adapter_info
     ::device_state
-    ::native_abi
     ::private_allocation
     amdf::headers
     libamdf::src::xdna::umd::context
@@ -187,13 +154,12 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
 iree_cc_library(
   NAME
-    legacy_submission
+    submission
   HDRS
-    "legacy_submission.h"
+    "submission.h"
   SRCS
-    "legacy_submission.c"
+    "submission.c"
   DEPS
-    ::native_abi
     ::private_allocation
     amdf::headers
     libamdf::src::xdna::transaction_interpreter
@@ -212,8 +178,8 @@ iree_cc_library(
   DEPS
     ::context_state
     ::device_state
-    ::legacy_submission
     ::private_allocation
+    ::submission
     amdf::headers
     libamdf::src::allocator
     libamdf::src::atomics
@@ -248,11 +214,10 @@ iree_cc_library(
   SRCS
     "context.c"
   DEPS
+    ::adapter_info
     ::context_state
     ::device_state
     ::kernel_execution
-    ::legacy_context
-    ::native_abi
     amdf::headers
     libamdf::src::allocator
     libamdf::src::xdna::umd::context
@@ -342,31 +307,11 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
 iree_cc_test(
   NAME
-    legacy_context_test
+    submission_test
   SRCS
-    "legacy_context_test.cc"
+    "submission_test.cc"
   DEPS
-    ::legacy_context
-    amdf::headers
-    iree::third_party::google_test
-    iree::third_party::google_test_main
-    libamdf::src::allocator
-    libamdf::src::xdna::target::npu4::bootstrap
-    libamdf::src::xdna::target::npu5::bootstrap
-  LABELS
-    "iree-build-requirement=libamdf"
-    "iree-build-requirement=libamdf.xdna"
-)
-endif()
-
-if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
-iree_cc_test(
-  NAME
-    legacy_submission_test
-  SRCS
-    "legacy_submission_test.cc"
-  DEPS
-    ::legacy_submission
+    ::submission
     amdf::headers
     iree::third_party::google_test
     iree::third_party::google_test_main

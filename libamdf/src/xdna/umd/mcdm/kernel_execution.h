@@ -11,7 +11,7 @@
 
 #include "libamdf/src/wait.h"
 #include "libamdf/src/xdna/umd/context.h"
-#include "libamdf/src/xdna/umd/mcdm/legacy_submission.h"
+#include "libamdf/src/xdna/umd/mcdm/private_allocation.h"
 
 #ifdef __cplusplus
 extern "C" {
