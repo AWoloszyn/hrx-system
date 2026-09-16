@@ -866,6 +866,8 @@ class PresubmitTest(unittest.TestCase):
         self.assertTrue(ok)
         command = run_command.call_args.args[0]
         self.assertNotIn("--keep_going", command)
+        self.assertNotIn("--//libamdf/config:enabled=true", command)
+        self.assertNotIn("--//libamdf/config:enabled=false", command)
         self.assertIn(
             f"--output_groups={presubmit.CLANG_TIDY_LOCAL_OUTPUT_GROUP}", command
         )
@@ -912,6 +914,17 @@ class PresubmitTest(unittest.TestCase):
         command = run_command.call_args.args[0]
         self.assertIn("--//libamdf/config:enabled=true", command)
         self.assertEqual(command[-1], "//libamdf/src:all")
+
+    def test_clang_tidy_runtime_fix_preserves_configured_libamdf_enablement(self):
+        command = presubmit.clang_tidy_bazel_command(
+            ["//runtime/src/iree/base:all"],
+            emit_fixes=True,
+            local_outputs=True,
+        )
+
+        self.assertNotIn("--//libamdf/config:enabled=true", command)
+        self.assertNotIn("--//libamdf/config:enabled=false", command)
+        self.assertIn("--aspects_parameters=emit_fixes=true", command)
 
     def test_clang_tidy_ci_runs_bazel_packages_keep_going(self):
         with (

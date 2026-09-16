@@ -332,9 +332,13 @@ its applicable paths and languages. The no-goto rule covers libamdf C sources;
 IREE status-ownership rules apply to IREE consumers.
 
 In the Bazel lane, clang-tidy maps selected files to their nearest package and
-invokes the checked-in clang-tidy aspect. Both file-based and explicit-target
-analysis enable `//libamdf/config:enabled` so optional libamdf targets are
-analyzed instead of skipped as incompatible:
+invokes the checked-in clang-tidy aspect. File-based and explicit-target analysis
+enable `//libamdf/config:enabled` when the selected scope includes libamdf,
+including repository-wide target patterns. Excluding the complete libamdf tree
+removes that override unless a later pattern selects it again. Other scopes
+preserve the configured value, avoiding analysis-cache invalidation on
+runtime-only checks. Transitive dependencies use the configured project
+enablement:
 
 ```bash
 python dev.py bazel precommit --profile paranoid runtime/src/iree/base/status.c

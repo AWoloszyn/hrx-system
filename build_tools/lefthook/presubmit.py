@@ -38,6 +38,7 @@ from urllib.request import url2pathname
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
+from build_tools.devtools.bazel import clang_tidy_configuration_args
 from build_tools.devtools.source_lock import (
     NonEmptyTrackedFileSnapshot,
     source_mutation_lock,
@@ -1774,8 +1775,7 @@ def clang_tidy_bazel_command(
         )
     command += [
         CLANG_TIDY_REPO_ENV,
-        # Analyze optional libamdf packages instead of skipping them as incompatible.
-        "--//libamdf/config:enabled=true",
+        *clang_tidy_configuration_args(targets),
         f"--aspects={CLANG_TIDY_ASPECT}",
         f"--output_groups={','.join(output_groups)}",
     ]
