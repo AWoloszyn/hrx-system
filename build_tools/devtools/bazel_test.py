@@ -114,7 +114,9 @@ class BazelTest(unittest.TestCase):
         self.assertIn("%IreeRunfilesArgumentsInfo", " ".join(query_argv))
         self.assertIn("%IreeRunfilesEnvironmentInfo", " ".join(query_argv))
         self.assertIn("DefaultInfo", " ".join(query_argv))
-        self.assertEqual(query_argv[-2:], ["--config=asan", "//pkg:tool"])
+        self.assertEqual(
+            query_argv[-2:], ["--config=asan", "config(//pkg:tool, target)"]
+        )
 
     def test_bazel_launch_metadata_batches_configured_targets(self):
         execution_root = bazel_dev.REPO_ROOT / ".tmp/test-execution-root"
@@ -174,7 +176,7 @@ class BazelTest(unittest.TestCase):
         )
         self.assertEqual(
             run_captured.call_args.args[0][-2:],
-            ["--config=fuzzer", "set(//a:a_fuzz //z:z_fuzz)"],
+            ["--config=fuzzer", "config(set(//a:a_fuzz //z:z_fuzz), target)"],
         )
 
     def test_bazel_launch_metadata_rejects_control_environment_collision(self):

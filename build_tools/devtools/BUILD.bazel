@@ -58,9 +58,28 @@ py_binary(
     ],
 )
 
+config_setting(
+    name = "bazel_launcher_debug_configuration",
+    values = {"compilation_mode": "dbg"},
+)
+
 iree_cc_binary(
     name = "bazel_launcher_integration_fixture",
+    testonly = True,
     srcs = ["bazel_launcher_integration_fixture.c"],
+    data = select({
+        ":bazel_launcher_debug_configuration": [":bazel_launcher_tool_configuration"],
+        "//conditions:default": [],
+    }),
+)
+
+genrule(
+    name = "bazel_launcher_tool_configuration",
+    testonly = True,
+    outs = ["bazel_launcher_tool_configuration.txt"],
+    cmd = "$(location :bazel_launcher_integration_fixture) --exit-code 0 > $@",
+    tags = _PRESUBMIT_TEST_TAGS,
+    tools = [":bazel_launcher_integration_fixture"],
 )
 
 py_binary(

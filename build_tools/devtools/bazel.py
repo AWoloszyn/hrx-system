@@ -580,6 +580,9 @@ def resolve_bazel_launch_metadata_for_targets(
     if not targets:
         return 0, {}
     target_expression = targets[0] if len(targets) == 1 else f"set({' '.join(targets)})"
+    # A target's closure can contain its own host-tool configuration. Launch
+    # the configuration requested by this command, independently of tool uses.
+    target_expression = f"config({target_expression}, target)"
     cquery = run_captured(
         [
             bazel,
