@@ -50,6 +50,19 @@ loom_cc_library(
 
 loom_cc_test(
   NAME
+    verify_state_test
+  SRCS
+    "verify_state_test.cc"
+  DEPS
+    ::verify
+    iree::base
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+
+loom_cc_test(
+  NAME
     verify_test
   SRCS
     "verify_test.cc"

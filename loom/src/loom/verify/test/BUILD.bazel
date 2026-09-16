@@ -16,6 +16,7 @@ loom_check_test_suite(
     name = "test",
     srcs = [
         "dominance.loom-test",
+        "isolation.loom-test",
         "unreachable_definitions.loom-test",
     ],
 )

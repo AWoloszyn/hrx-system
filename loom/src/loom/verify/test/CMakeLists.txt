@@ -14,6 +14,7 @@ loom_check_test_suite(
     test
   SRCS
     "dominance.loom-test"
+    "isolation.loom-test"
     "unreachable_definitions.loom-test"
 )
 

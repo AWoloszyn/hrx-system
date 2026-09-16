@@ -2401,9 +2401,9 @@ TEST_F(VerifyTest, SsaEncodingNotDefined) {
       structured, loom_error_def_lookup(LOOM_ERROR_DOMAIN_ENCODING, 4));
   ASSERT_NE(entry, nullptr) << "Expected ENCODING/004 not-defined error";
   EXPECT_EQ(entry->origin.provenance,
-            LOOM_SOURCE_PROVENANCE_UNAVAILABLE_SOURCE);
+            LOOM_SOURCE_PROVENANCE_PRINTED_IR_FALLBACK);
   EXPECT_EQ(entry->source_location.provenance,
-            LOOM_SOURCE_PROVENANCE_UNAVAILABLE_SOURCE);
+            LOOM_SOURCE_PROVENANCE_PRINTED_IR_FALLBACK);
   EXPECT_EQ(GetStringParam(*entry, 0), "block arg 0");
   ExpectNoFieldRefParam(*entry, 0);
 }
@@ -2436,9 +2436,9 @@ TEST_F(VerifyTest, SsaEncodingWrongType) {
       structured, loom_error_def_lookup(LOOM_ERROR_DOMAIN_ENCODING, 5));
   ASSERT_NE(entry, nullptr) << "Expected ENCODING/005 wrong-type error";
   EXPECT_EQ(entry->origin.provenance,
-            LOOM_SOURCE_PROVENANCE_UNAVAILABLE_SOURCE);
+            LOOM_SOURCE_PROVENANCE_PRINTED_IR_FALLBACK);
   EXPECT_EQ(entry->source_location.provenance,
-            LOOM_SOURCE_PROVENANCE_UNAVAILABLE_SOURCE);
+            LOOM_SOURCE_PROVENANCE_PRINTED_IR_FALLBACK);
   EXPECT_EQ(GetStringParam(*entry, 0), "block arg 1");
   ExpectNoFieldRefParam(*entry, 0);
   ExpectTypeParam(*entry, 2, i32_type);

@@ -53,6 +53,18 @@ loom_cc_library(
 )
 
 loom_cc_test(
+    name = "verify_state_test",
+    srcs = ["verify_state_test.cc"],
+    deps = [
+        ":verify",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+loom_cc_test(
     name = "verify_test",
     srcs = ["verify_test.cc"],
     deps = [

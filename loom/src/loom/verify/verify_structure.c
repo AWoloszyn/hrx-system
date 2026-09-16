@@ -1693,8 +1693,7 @@ static void loom_verify_encoding_ref(
                                 IREE_ARRAYSIZE(params));
     return;
   }
-  if (!loom_bitset_test(state->defined_bits, state->defined_bits_length,
-                        encoding_value_id)) {
+  if (!loom_verify_value_is_visible(state, encoding_value_id)) {
     bool allowed_current_result =
         allow_current_op_results &&
         loom_verify_op_result_contains_value(op, encoding_value_id);
@@ -1767,9 +1766,11 @@ void loom_verify_encoding_refs(loom_verify_state_t* state, const loom_op_t* op,
 // Checks SSA encoding references in block argument types. Called when
 // entering a block, after block args are defined but before ops are
 // verified. The encoding value must already be visible (from an
-// enclosing scope or earlier in this scope).
+// enclosing scope or earlier in this scope). Block arguments carry no source
+// location; the owning operation anchors diagnostics at their containing scope.
 void loom_verify_block_arg_encoding_refs(loom_verify_state_t* state,
-                                         const loom_block_t* block) {
+                                         const loom_block_t* block,
+                                         const loom_op_t* owner) {
   char name_buffer[32];
   for (uint16_t a = 0; a < block->arg_count; ++a) {
     loom_value_id_t arg_id = loom_block_arg_id(block, a);
@@ -1778,7 +1779,7 @@ void loom_verify_block_arg_encoding_refs(loom_verify_state_t* state,
     loom_type_t type = loom_module_value_type(state->module, arg_id);
     if (!loom_type_has_ssa_encoding(type)) continue;
     iree_snprintf(name_buffer, sizeof(name_buffer), "block arg %u", a);
-    loom_verify_encoding_ref(state, NULL, NULL, type,
+    loom_verify_encoding_ref(state, owner, NULL, type,
                              iree_make_cstring_view(name_buffer),
                              loom_diagnostic_field_ref_none(),
                              /*allow_current_op_results=*/false,

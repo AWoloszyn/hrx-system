@@ -47,7 +47,8 @@ void loom_verify_block_arg_type_well_formedness(loom_verify_state_t* state,
 void loom_verify_encoding_refs(loom_verify_state_t* state, const loom_op_t* op,
                                const loom_op_vtable_t* vtable);
 void loom_verify_block_arg_encoding_refs(loom_verify_state_t* state,
-                                         const loom_block_t* block);
+                                         const loom_block_t* block,
+                                         const loom_op_t* owner);
 iree_status_t loom_verify_symbol_definition(loom_verify_state_t* state,
                                             const loom_op_t* op,
                                             const loom_op_vtable_t* vtable);

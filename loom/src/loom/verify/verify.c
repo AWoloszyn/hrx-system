@@ -212,22 +212,19 @@ static void loom_verify_set_definition_visibility(
     loom_verify_state_t* state,
     const loom_verify_unreachable_definitions_t* definitions,
     iree_host_size_t begin, iree_host_size_t end, bool visible) {
+  const uint8_t depth = visible ? (uint8_t)(state->scope_depth + 1) : 0;
   for (iree_host_size_t i = begin; i < end; ++i) {
     loom_value_id_t value = definitions->values[i];
     if (value == LOOM_VALUE_ID_INVALID) {
       continue;
     }
-    if (visible) {
-      loom_bitset_set(state->defined_bits, state->defined_bits_length, value);
-    } else {
-      loom_bitset_clear(state->defined_bits, state->defined_bits_length, value);
-    }
+    state->visibility.definition_depths[value] = depth;
   }
 }
 
 static iree_status_t loom_verify_region(
     loom_verify_state_t* state, loom_region_t* region,
-    const loom_verify_region_contract_t* contract) {
+    const loom_verify_region_contract_t* contract, bool isolated) {
   if (!region) {
     if (contract &&
         !iree_any_bit_set(contract->descriptor->flags, LOOM_REGION_OPTIONAL)) {
@@ -243,7 +240,7 @@ static iree_status_t loom_verify_region(
   }
   // Single-block regions need only the ordinary lexical scope. Multi-block
   // regions share one graph between dominance and consumed-value queries.
-  // Keep the indexed tree local: per-use checks remain a definition bit test.
+  // Keep the indexed tree local: per-use checks remain a depth-table lookup.
   loom_cfg_graph_t graph = {0};
   loom_cfg_dominance_t dominance = {0};
   iree_host_size_t* block_scope_ends = NULL;
@@ -280,7 +277,7 @@ static iree_status_t loom_verify_region(
   }
 
   bool scope_pushed = false;
-  iree_status_t status = loom_verify_push_scope(state);
+  iree_status_t status = loom_verify_push_scope(state, isolated);
   if (iree_status_is_ok(status)) {
     scope_pushed = true;
   }
@@ -343,7 +340,8 @@ static iree_status_t loom_verify_region(
       status = loom_verify_pending_diagnostic_status(state);
     }
     if (iree_status_is_ok(status) && state->type_summary.may_reference_values) {
-      loom_verify_block_arg_encoding_refs(state, block);
+      loom_verify_block_arg_encoding_refs(state, block,
+                                          contract ? contract->op : NULL);
       status = loom_verify_pending_diagnostic_status(state);
     }
     const loom_op_t* terminator_op = NULL;
@@ -430,8 +428,9 @@ IREE_ATTRIBUTE_ALWAYS_INLINE static inline iree_status_t loom_verify_op(
   IREE_RETURN_IF_ERROR(loom_verify_pending_diagnostic_status(state));
 
   const bool has_signature_scope = loom_verify_has_func_signature_scope(vtable);
+  const bool isolated = loom_traits_is_isolated(op->traits);
   if (has_signature_scope) {
-    IREE_RETURN_IF_ERROR(loom_verify_push_scope(state));
+    IREE_RETURN_IF_ERROR(loom_verify_push_scope(state, isolated));
     if (loom_verify_func_args_use_operand_field(vtable)) {
       const loom_value_id_t* operands = loom_op_const_operands(op);
       for (uint16_t i = 0; i < op->operand_count; ++i) {
@@ -555,8 +554,8 @@ IREE_ATTRIBUTE_ALWAYS_INLINE static inline iree_status_t loom_verify_op(
     }
   }
 
-  // Recurse into regions. Region contents see this op's results
-  // (defined above) and all enclosing scope values.
+  // Isolated regions start with only their own block arguments. Other regions
+  // inherit enclosing definitions, including this op's results defined above.
   loom_region_t** regions = loom_op_regions(op);
   for (uint8_t i = 0; i < op->region_count; ++i) {
     if (loom_verify_at_error_limit(state)) break;
@@ -568,8 +567,8 @@ IREE_ATTRIBUTE_ALWAYS_INLINE static inline iree_status_t loom_verify_op(
         .descriptor = descriptor,
         .region_index = i,
     };
-    IREE_RETURN_IF_ERROR(
-        loom_verify_region(state, regions[i], descriptor ? &contract : NULL));
+    IREE_RETURN_IF_ERROR(loom_verify_region(
+        state, regions[i], descriptor ? &contract : NULL, isolated));
   }
   loom_verify_func_purity_body_effects(state, op, vtable);
   IREE_RETURN_IF_ERROR(loom_verify_pending_diagnostic_status(state));
@@ -657,22 +656,24 @@ static iree_status_t loom_verify_state_initialize(
   }
 
   iree_host_size_t value_count = module->values.count;
+  iree_host_size_t value_capacity = value_count > 0 ? value_count : 1;
   // Ensure at least 1 word so we always have valid pointers.
-  state->defined_bits_length = value_count > 0 ? (value_count + 63) / 64 : 1;
+  state->consumed_word_count = (value_capacity + 63) / 64;
+  state->visibility.minimum_depth = 1;
 
   // Initialize scratch arena from the module's block pool. All
   // verification-time allocations go here; bulk O(1) free on exit.
   iree_arena_initialize(module->arena.block_pool, &state->arena);
 
-  // Allocate bitsets and defined stack. iree_arena_allocate_array
+  // Allocate visibility, consumption and definition storage. Arena allocation
   // uses checked multiplication (overflow → RESOURCE_EXHAUSTED).
   // On any failure, deinitialize returns all arena blocks to the pool.
   iree_status_t status =
-      iree_arena_allocate_array(&state->arena, state->defined_bits_length,
-                                sizeof(uint64_t), (void**)&state->defined_bits);
+      iree_arena_allocate_array(&state->arena, value_capacity, sizeof(uint8_t),
+                                (void**)&state->visibility.definition_depths);
   if (iree_status_is_ok(status)) {
     status = iree_arena_allocate_array(
-        &state->arena, state->defined_bits_length, sizeof(uint64_t),
+        &state->arena, state->consumed_word_count, sizeof(uint64_t),
         (void**)&state->consumed_bits);
   }
   if (iree_status_is_ok(status)) {
@@ -686,10 +687,9 @@ static iree_status_t loom_verify_state_initialize(
     }
   }
   if (iree_status_is_ok(status)) {
-    memset(state->defined_bits, 0,
-           state->defined_bits_length * sizeof(uint64_t));
+    memset(state->visibility.definition_depths, 0, value_capacity);
     memset(state->consumed_bits, 0,
-           state->defined_bits_length * sizeof(uint64_t));
+           state->consumed_word_count * sizeof(uint64_t));
   }
   if (iree_status_is_ok(status)) {
     // Allocate defined stack. Start with value_count/4 capacity (most
@@ -814,7 +814,8 @@ iree_status_t loom_verify_module(const loom_module_t* module,
     }
 
     iree_status_t walk_status =
-        loom_verify_region(&state, module->body, /*contract=*/NULL);
+        loom_verify_region(&state, module->body, /*contract=*/NULL,
+                           /*isolated=*/false);
     if (!iree_status_is_ok(walk_status)) {
       loom_verify_state_deinitialize(&state);
       return walk_status;

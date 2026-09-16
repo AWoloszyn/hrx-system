@@ -44,7 +44,8 @@ bool loom_verify_has_func_signature_scope(const loom_op_vtable_t* vtable) {
          iree_any_bit_set(vtable->traits, LOOM_TRAIT_SYMBOL_DEFINE);
 }
 
-iree_status_t loom_verify_push_scope(loom_verify_state_t* state) {
+iree_status_t loom_verify_push_scope(loom_verify_state_t* state,
+                                     bool isolated) {
   if (state->scope_depth >= LOOM_VERIFY_MAX_SCOPE_DEPTH) {
     return iree_make_status(
         IREE_STATUS_RESOURCE_EXHAUSTED,
@@ -53,16 +54,20 @@ iree_status_t loom_verify_push_scope(loom_verify_state_t* state) {
         LOOM_VERIFY_MAX_SCOPE_DEPTH);
   }
   state->scope_watermarks[state->scope_depth] = state->defined_stack_count;
+  state->visibility.scope_minimum_depths[state->scope_depth] =
+      state->visibility.minimum_depth;
   ++state->scope_depth;
+  if (isolated) {
+    state->visibility.minimum_depth = (uint8_t)(state->scope_depth + 1);
+  }
   return iree_ok_status();
 }
 
 void loom_verify_restore_definitions(loom_verify_state_t* state,
                                      iree_host_size_t watermark) {
-  // Clear all defined bits for values defined in the scope we're leaving.
+  // Remove only definitions introduced after the retained watermark.
   for (iree_host_size_t i = watermark; i < state->defined_stack_count; ++i) {
-    loom_bitset_clear(state->defined_bits, state->defined_bits_length,
-                      state->defined_stack[i]);
+    state->visibility.definition_depths[state->defined_stack[i]] = 0;
   }
   state->defined_stack_count = watermark;
 }
@@ -74,12 +79,17 @@ void loom_verify_pop_scope(loom_verify_state_t* state) {
   --state->scope_depth;
   loom_verify_restore_definitions(state,
                                   state->scope_watermarks[state->scope_depth]);
+  state->visibility.minimum_depth =
+      state->visibility.scope_minimum_depths[state->scope_depth];
 }
 
 iree_status_t loom_verify_define_value(loom_verify_state_t* state,
                                        loom_value_id_t value_id) {
-  if (value_id == LOOM_VALUE_ID_INVALID) return iree_ok_status();
-  loom_bitset_set(state->defined_bits, state->defined_bits_length, value_id);
+  if (value_id == LOOM_VALUE_ID_INVALID) {
+    return iree_ok_status();
+  }
+  state->visibility.definition_depths[value_id] =
+      (uint8_t)(state->scope_depth + 1);
   // Push onto defined stack for scope cleanup. Grow dynamically if
   // the initial capacity heuristic was too small.
   if (state->defined_stack_count >= state->defined_stack_capacity) {
@@ -95,13 +105,15 @@ iree_status_t loom_verify_define_value(loom_verify_state_t* state,
 void loom_verify_consume_value(loom_verify_state_t* state,
                                loom_value_id_t value_id,
                                const loom_op_t* consuming_op) {
-  if (value_id == LOOM_VALUE_ID_INVALID) return;
-  if (value_id >= state->module->values.count) return;
-  if (!loom_bitset_test(state->consumed_bits, state->defined_bits_length,
+  if (value_id == LOOM_VALUE_ID_INVALID ||
+      value_id >= state->module->values.count) {
+    return;
+  }
+  if (!loom_bitset_test(state->consumed_bits, state->consumed_word_count,
                         value_id)) {
     state->consuming_ops[value_id] = consuming_op;
   }
-  loom_bitset_set(state->consumed_bits, state->defined_bits_length, value_id);
+  loom_bitset_set(state->consumed_bits, state->consumed_word_count, value_id);
 }
 iree_string_view_t loom_verify_value_name(const loom_verify_state_t* state,
                                           loom_value_id_t value_id) {
