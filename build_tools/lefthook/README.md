@@ -348,6 +348,8 @@ Header and shared build-infrastructure changes can expand the analysis to all
 tracked C/C++ files. Changes under `build_tools/clang_tidy/` also run the plugin
 smoke test and action smoke target. The CMake lane uses the configured compilation
 database, which requires `AMDF_BUILD=ON` to include libamdf translation units.
+Selecting libamdf sources with that option disabled fails before plugin setup,
+including direct clang-tidy runs without project tests.
 Native Windows hooks currently delegate both providers to Linux presubmit CI.
 See `build_tools/clang_tidy/README.md` for the direct Bazel commands and LLVM
 discovery environment variables.

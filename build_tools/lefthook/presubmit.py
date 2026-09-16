@@ -38,6 +38,7 @@ from urllib.request import url2pathname
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
+from build_tools.devtools import project_presubmit
 from build_tools.devtools.bazel import clang_tidy_configuration_args
 from build_tools.devtools.source_lock import (
     NonEmptyTrackedFileSnapshot,
@@ -2112,6 +2113,41 @@ def run_clang_tidy_cmake(
     if not candidate_files and not infra_files:
         return skip_step("clang-tidy", "no C/C++ runtime inputs")
 
+    compile_commands_dir = cmake_build_dir_from_env()
+    if candidate_files:
+        compile_commands = compile_commands_dir / "compile_commands.json"
+        if not compile_commands.is_file():
+            print(
+                f"[fail] clang-tidy: CMake compile_commands.json is missing: "
+                f"{compile_commands}"
+            )
+            print("hint: run python dev.py cmake configure")
+            return False
+        if any(path.startswith("libamdf/") for path in candidate_files):
+            if not (compile_commands_dir / "CMakeCache.txt").is_file() or (
+                project_presubmit.cmake_cache_value(compile_commands_dir, "AMDF_BUILD")
+                != "ON"
+            ):
+                print(
+                    "[fail] clang-tidy: CMake analysis of libamdf requires "
+                    f"AMDF_BUILD=ON in {compile_commands_dir / 'CMakeCache.txt'}."
+                )
+                print(
+                    "hint: run "
+                    + command_text(
+                        [
+                            "python",
+                            "dev.py",
+                            "--cmake-build-dir",
+                            str(compile_commands_dir),
+                            "cmake",
+                            "configure",
+                            "-DAMDF_BUILD=ON",
+                        ]
+                    )
+                )
+                return False
+
     tools = clang_tidy_llvm_tools()
     if not tools:
         if clang_tidy_required(profile):
@@ -2198,16 +2234,6 @@ def run_clang_tidy_cmake(
             f"[fail] clang-tidy CMake plugin: built plugin was not found under "
             f"{CLANG_TIDY_CMAKE_BUILD_DIR}"
         )
-        return False
-
-    compile_commands_dir = cmake_build_dir_from_env()
-    compile_commands = compile_commands_dir / "compile_commands.json"
-    if not compile_commands.is_file():
-        print(
-            f"[fail] clang-tidy: CMake compile_commands.json is missing: "
-            f"{compile_commands}"
-        )
-        print("hint: run python dev.py cmake configure")
         return False
 
     ok = (

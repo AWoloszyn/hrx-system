@@ -704,6 +704,68 @@ class PresubmitTest(unittest.TestCase):
         self.assertIn("-warnings-as-errors=*", command)
         self.assertEqual(command[-1], "runtime/src/iree/base/status.c")
 
+    def test_cmake_clang_tidy_validates_project_configuration_before_tool_setup(self):
+        cases = [
+            ("libamdf/src/allocator.c", "AMDF_BUILD:BOOL=OFF\n", True, "AMDF_BUILD=ON"),
+            ("libamdf/src/allocator.c", "", True, "AMDF_BUILD=ON"),
+            ("libamdf/src/allocator.c", None, True, "AMDF_BUILD=ON"),
+            ("libamdf/src/allocator.c", "AMDF_BUILD:BOOL=ON\n", True, None),
+            ("runtime/src/iree/base/status.c", "AMDF_BUILD:BOOL=OFF\n", True, None),
+            (
+                "runtime/src/iree/base/status.c",
+                None,
+                False,
+                "compile_commands.json is missing",
+            ),
+            ("build_tools/clang_tidy/check.cc", None, False, None),
+        ]
+        for path, cache, database_present, failure in cases:
+            for fix in (False, True):
+                with self.subTest(path=path, cache=cache, fix=fix):
+                    with tempfile.TemporaryDirectory() as temporary_dir:
+                        repo_root = Path(temporary_dir)
+                        source = repo_root / path
+                        source.parent.mkdir(parents=True)
+                        source.write_text("", encoding="utf-8")
+                        build_dir = repo_root / "build"
+                        build_dir.mkdir()
+                        if cache is not None:
+                            (build_dir / "CMakeCache.txt").write_text(
+                                cache, encoding="utf-8"
+                            )
+                        if database_present:
+                            (build_dir / "compile_commands.json").write_text(
+                                "[]", encoding="utf-8"
+                            )
+                        output = io.StringIO()
+                        with (
+                            contextlib.redirect_stdout(output),
+                            mock.patch.object(presubmit, "REPO_ROOT", repo_root),
+                            mock.patch.dict(
+                                os.environ,
+                                {presubmit.CMAKE_BUILD_DIR_ENV: str(build_dir)},
+                            ),
+                            mock.patch.object(
+                                presubmit, "clang_tidy_llvm_tools", return_value=None
+                            ) as tools,
+                        ):
+                            ok = presubmit.run_clang_tidy_cmake(
+                                input_scope([path]),
+                                profile="default",
+                                verbose=False,
+                                fix=fix,
+                            )
+                        if failure:
+                            self.assertFalse(ok)
+                            self.assertIn(failure, output.getvalue())
+                            tools.assert_not_called()
+                        else:
+                            self.assertTrue(ok)
+                            tools.assert_called_once_with()
+                            self.assertIn(
+                                presubmit.CLANG_TIDY_SETUP_HINT, output.getvalue()
+                            )
+
     def test_cmake_clang_tidy_plugin_configure_pins_matching_packages(self):
         llvm_package_dir = Path("/opt/llvm/lib/cmake/llvm")
 
