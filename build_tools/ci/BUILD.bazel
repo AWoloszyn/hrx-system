@@ -11,11 +11,14 @@ load("@rules_python//python:defs.bzl", "py_test")
 
 py_test(
     name = "vulkan_environment_test",
+    size = "small",
     srcs = [
         "vulkan_environment.py",
         "vulkan_environment_test.py",
     ],
     main = "vulkan_environment_test.py",
+    # The changed-path-aware Linux presubmit owns these hardware-free checks.
+    tags = ["manual"],
     target_compatible_with = ["@platforms//os:linux"],
 )
 
