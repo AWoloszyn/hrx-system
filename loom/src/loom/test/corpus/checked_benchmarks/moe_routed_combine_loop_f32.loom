@@ -4,7 +4,8 @@
 // Duplicate experts contribute once per route, in route order. The route table
 // contains only -1 or expert IDs in [0, 3]. Buffers are aligned to four bytes;
 // payloads and weights are finite.
-// Dyadic weights and bounded integer payloads make the checked sums exact f32.
+// Dyadic weights and bounded integer payloads make the route-control sums exact
+// f32. A separate cancellation case observes the accumulation order.
 // Keeping the guarded load and carried update together also represents the
 // natural source shape that a pipelined implementation must preserve.
 kernel.def @moe_routed_combine_loop_f32() {
@@ -241,6 +242,21 @@ check.case public @moe_routed_combine_loop_all_masked {
   %payloads = check.generate.iota offset(-8.0) step(1.0) : tensor<4x4xf32>
   %actual = check.generate.fill value(-1000.0) : tensor<4xf32>
   %expected = check.generate.iota offset(0.0) step(0.0) : tensor<4xf32>
+  kernel.launch @moe_routed_combine_loop_f32(%count, %ids, %weights, %payloads, %actual) : (index, tensor<32xi32>, tensor<32xf32>, tensor<4x4xf32>, tensor<4xf32>)
+  check.expect.close actual(%actual) expected(%expected) atol(0.0) rtol(0.0) nan(same) : tensor<4xf32>
+  check.return
+}
+
+// Ordered f32 accumulation of [2^24, 1, -(2^24-2)] returns 2: adding 1 to
+// 2^24 rounds back to 2^24. Reversing the order returns 3. This distinguishes
+// recurrence order from the exactly representable sums in the route controls.
+check.case public @moe_routed_combine_loop_rounding_order {
+  %count = check.literal value(3) : index
+  %ids = check.generate.fill value(0) : tensor<32xi32>
+  %weights = check.generate.iota offset(16777216.0) step(-16777215.0) period(3) : tensor<32xf32>
+  %payloads = check.generate.fill value(1.0) : tensor<4x4xf32>
+  %actual = check.generate.fill value(-1000.0) : tensor<4xf32>
+  %expected = check.generate.fill value(2.0) : tensor<4xf32>
   kernel.launch @moe_routed_combine_loop_f32(%count, %ids, %weights, %payloads, %actual) : (index, tensor<32xi32>, tensor<32xf32>, tensor<4x4xf32>, tensor<4xf32>)
   check.expect.close actual(%actual) expected(%expected) atol(0.0) rtol(0.0) nan(same) : tensor<4xf32>
   check.return
