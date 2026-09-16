@@ -66,8 +66,9 @@ enum iree_async_iocp_operation_internal_flags_e {
 // Identifies the kind of operation a carrier wraps. Determines which member
 // of the data union is active and how the poll thread dispatches completions.
 enum iree_async_iocp_carrier_type_e {
-  // Event wait: RegisterWaitForSingleObject callback posts to IOCP port.
-  // Data: event_wait (wait_handle for UnregisterWaitEx).
+  // Event wait: a wait completion packet posts directly to the IOCP port, or a
+  // RegisterWaitForSingleObject callback posts through the Windows threadpool.
+  // Data: event_wait (wait handle for matching cancellation).
   IREE_ASYNC_IOCP_CARRIER_EVENT_WAIT = 0,
 
   // General socket I/O: WSARecv, WSASend, WSASendTo, WSARecvFrom.
@@ -108,8 +109,8 @@ enum iree_async_iocp_fallback_completion_state_e {
 
 // Carrier wrapping an operation for delivery through the IOCP port.
 //
-// For event waits: the RegisterWaitForSingleObject callback fires on an OS
-// thread pool thread and posts &carrier->overlapped via
+// For event waits: a wait completion packet posts &carrier->overlapped
+// directly, or a RegisterWaitForSingleObject callback posts it through
 // PostQueuedCompletionStatus. The poll thread recovers the carrier via
 // CONTAINING_RECORD and dispatches the operation.
 //
@@ -217,33 +218,6 @@ typedef struct iree_async_iocp_carrier_t {
 } iree_async_iocp_carrier_t;
 
 //===----------------------------------------------------------------------===//
-// Event source tracking
-//===----------------------------------------------------------------------===//
-
-// Tracks a registered event source for persistent monitoring of a HANDLE.
-// On IOCP, event sources use RegisterWaitForSingleObject to receive callbacks
-// when the HANDLE is signaled, then post a tagged completion to the IOCP port.
-// Doubly-linked list node; proactor owns the list.
-struct iree_async_event_source_t {
-  // Intrusive doubly-linked list for efficient removal.
-  struct iree_async_event_source_t* next;
-  struct iree_async_event_source_t* prev;
-
-  // Owning proactor (for vtable access in callbacks).
-  iree_async_proactor_t* proactor;
-
-  // The monitored fd/HANDLE (not owned by the event source).
-  // On Windows this is stored as an iree_async_primitive_t for type safety.
-  int fd;
-
-  // User callback invoked when the handle is signaled.
-  iree_async_event_source_callback_t callback;
-
-  // Allocator used to allocate this struct (for deallocation).
-  iree_allocator_t allocator;
-};
-
-//===----------------------------------------------------------------------===//
 // Proactor implementation struct
 //===----------------------------------------------------------------------===//
 
@@ -292,8 +266,8 @@ struct iree_async_proactor_iocp_t {
   iree_atomic_int32_t pending_event_wait_cancellation_count;
 
   // Active event wait carriers (poll thread only). Doubly-linked list of
-  // carriers with outstanding RegisterWaitForSingleObject registrations.
-  // Walked during proactor destroy to unregister outstanding waits.
+  // carriers with outstanding kernel or threadpool wait registrations. Walked
+  // during proactor destroy to cancel outstanding waits.
   iree_async_iocp_carrier_t* active_carriers;
 
   // Notifications with pending async wait operations (poll thread only).

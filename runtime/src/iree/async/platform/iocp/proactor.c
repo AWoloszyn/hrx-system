@@ -18,6 +18,7 @@
 #include "iree/async/operations/net.h"
 #include "iree/async/operations/scheduling.h"
 #include "iree/async/operations/semaphore.h"
+#include "iree/async/platform/iocp/event_source.h"
 #include "iree/async/platform/iocp/socket.h"
 #include "iree/async/proactor.h"
 #include "iree/async/semaphore.h"
@@ -684,12 +685,7 @@ static void iree_async_proactor_iocp_destroy(
     iree_async_proactor_iocp_signal_deinitialize(proactor);
   }
 
-  // Free all event sources.
-  while (proactor->event_sources) {
-    iree_async_event_source_t* source = proactor->event_sources;
-    proactor->event_sources = source->next;
-    iree_allocator_free(source->allocator, source);
-  }
+  iree_async_iocp_event_source_deinitialize_all(proactor);
 
   // Free all relays, releasing retained notifications.
   while (proactor->relays) {
@@ -2071,6 +2067,13 @@ static iree_status_t iree_async_proactor_iocp_poll(
       continue;
     }
 
+    // Event source wake: dispatch the callback and re-arm the one-shot wait.
+    if (entry->lpCompletionKey == IREE_ASYNC_IOCP_EVENT_SOURCE_COMPLETION_KEY) {
+      iree_async_iocp_event_source_dispatch(
+          proactor, (iree_async_event_source_t*)entry->lpOverlapped);
+      continue;
+    }
+
     // Shared notification wake: WaitCompletionPacket fired for a shared
     // notification's wake event. Re-arm for the next signal and continue.
     // Phase 8 (notification epoch scan) handles the actual wake dispatch.
@@ -2518,25 +2521,6 @@ static void iree_async_proactor_iocp_destroy_event(
 
   iree_allocator_free(proactor->base.allocator, event);
   IREE_TRACE_ZONE_END(z0);
-}
-
-//===----------------------------------------------------------------------===//
-// Event source registration (stubs)
-//===----------------------------------------------------------------------===//
-
-static iree_status_t iree_async_proactor_iocp_register_event_source(
-    iree_async_proactor_t* base_proactor, iree_async_primitive_t handle,
-    iree_async_event_source_callback_t callback,
-    iree_async_event_source_t** out_event_source) {
-  return iree_make_status(
-      IREE_STATUS_UNIMPLEMENTED,
-      "IOCP proactor: register_event_source not yet implemented");
-}
-
-static void iree_async_proactor_iocp_unregister_event_source(
-    iree_async_proactor_t* base_proactor,
-    iree_async_event_source_t* event_source) {
-  // Void return: nothing to do until event sources are implemented.
 }
 
 //===----------------------------------------------------------------------===//
@@ -3333,8 +3317,8 @@ const iree_async_proactor_vtable_t iree_async_proactor_iocp_vtable = {
     .destroy_file = iree_async_proactor_iocp_destroy_file,
     .create_event = iree_async_proactor_iocp_create_event,
     .destroy_event = iree_async_proactor_iocp_destroy_event,
-    .register_event_source = iree_async_proactor_iocp_register_event_source,
-    .unregister_event_source = iree_async_proactor_iocp_unregister_event_source,
+    .register_event_source = iree_async_iocp_event_source_register,
+    .unregister_event_source = iree_async_iocp_event_source_unregister,
     .create_notification = iree_async_proactor_iocp_create_notification,
     .create_notification_shared =
         iree_async_proactor_iocp_create_notification_shared,

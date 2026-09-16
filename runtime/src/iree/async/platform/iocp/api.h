@@ -25,13 +25,19 @@ extern "C" {
 //   - GetQueuedCompletionStatusEx: batch dequeue of completions
 //   - PostQueuedCompletionStatus: cross-thread wakeup and messaging
 //   - AcceptEx/ConnectEx: fully async socket operations
-//   - RegisterWaitForSingleObject: event/handle monitoring
+//   - NT wait completion packets: persistent event source monitoring
+//   - Wait completion packets or RegisterWaitForSingleObject: one-shot event
+//     waits and shared notification wake monitoring
 //
-// No worker threads are needed: IOCP is natively completion-based, so the
-// kernel performs I/O directly and posts results to the completion port.
+// No IREE-managed worker threads are needed: IOCP is natively
+// completion-based, so the kernel performs I/O directly and posts results to
+// the completion port. Windows may use its threadpool for one-shot event waits
+// and shared notification wakes when wait completion packets are unavailable;
+// persistent event source registration instead returns UNAVAILABLE.
 //
-// Requires Windows Vista+ (GetQueuedCompletionStatusEx, CancelIoEx).
-// Sync notification waits use WaitOnAddress (Windows 8+).
+// Requires Windows Vista+ (GetQueuedCompletionStatusEx, CancelIoEx). Sync
+// notification waits use WaitOnAddress (Windows 8+), and persistent event
+// sources require wait completion packets (Windows 8.1+).
 //
 // Returns IREE_STATUS_UNAVAILABLE if IOCP creation fails.
 iree_status_t iree_async_proactor_create_iocp(

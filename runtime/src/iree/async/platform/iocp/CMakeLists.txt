@@ -31,6 +31,8 @@ iree_cc_library(
   HDRS
     "api.h"
   SRCS
+    "event_source.c"
+    "event_source.h"
     "proactor.c"
     "proactor.h"
     "proactor_submit.c"

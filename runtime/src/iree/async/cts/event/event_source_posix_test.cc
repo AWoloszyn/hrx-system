@@ -232,6 +232,16 @@ TEST_P(EventSourceEventfdTest, UnregisterStopsCallbacks) {
   // Signal again after unregister.
   SignalEventFd(fd);
 
+  // Give the backend a chance to drain any readiness or cancellation packet
+  // already queued when unregistration removed the source.
+  iree_host_size_t completed_count = 0;
+  iree_status_t poll_status = iree_async_proactor_poll(
+      proactor_, iree_immediate_timeout(), &completed_count);
+  iree_status_code_t poll_code = iree_status_code(poll_status);
+  EXPECT_TRUE(poll_code == IREE_STATUS_OK ||
+              poll_code == IREE_STATUS_DEADLINE_EXCEEDED);
+  iree_status_free(poll_status);
+
   // Callback count should not have increased.
   EXPECT_EQ(state.call_count.load(), count_before_unregister)
       << "Callback should not fire after unregister";
@@ -247,6 +257,10 @@ TEST_P(EventSourceEventfdTest, MultipleEventSources) {
   int fds[kSourceCount];
   std::atomic<int> callback_counts[kSourceCount];
   iree_async_event_source_t* sources[kSourceCount];
+  struct CallbackData {
+    std::atomic<int>* counter;
+    int fd;
+  } callback_data[kSourceCount];
 
   for (int i = 0; i < kSourceCount; ++i) {
     fds[i] = CreateTestEventFd();
@@ -257,13 +271,6 @@ TEST_P(EventSourceEventfdTest, MultipleEventSources) {
 
   // Register all sources.
   for (int i = 0; i < kSourceCount; ++i) {
-    struct CallbackData {
-      std::atomic<int>* counter;
-      int fd;
-    };
-    // We need stable storage for the callback user_data.
-    // Use a simple static array for this test.
-    static CallbackData callback_data[kSourceCount];
     callback_data[i].counter = &callback_counts[i];
     callback_data[i].fd = fds[i];
 

@@ -14,7 +14,8 @@
 // Backends registered:
 //   - iocp: Full IOCP backend with all available capabilities.
 //   - iocp_legacy_wait: IOCP with NtAssociateWaitCompletionPacket disabled,
-//     forcing the RegisterWaitForSingleObject fallback path.
+//     forcing one-shot waits and shared notification wakes through the
+//     RegisterWaitForSingleObject fallback path.
 
 #include "iree/async/cts/util/registry.h"
 #include "iree/async/platform/iocp/api.h"
@@ -45,14 +46,15 @@ static bool iocp_registered_ =
          "iocp",
          {"iocp", CreateIOCPProactor},
          {"portable", "multishot", "shared_notification",
-          "software_message_pool"},
+          "software_message_pool", "wait_completion_packet"},
      }),
      true);
 
 // Creates an IOCP proactor with NtAssociateWaitCompletionPacket disabled.
-// Forces the RegisterWaitForSingleObject fallback path for Event-to-IOCP
-// bridging, exercising the threadpool-based wait registration code path even
-// on systems where the NT wait completion packet API is available.
+// Forces one-shot waits and shared notification wakes through the
+// RegisterWaitForSingleObject fallback path, exercising the threadpool-based
+// wait registration code even when the NT wait completion packet API is
+// available. Persistent event sources are intentionally unavailable.
 static iree::StatusOr<iree_async_proactor_t*> CreateIOCPLegacyWaitProactor(
     iree_async_proactor_options_t options) {
   options.allowed_capabilities &=

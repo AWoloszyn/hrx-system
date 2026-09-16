@@ -36,6 +36,8 @@ iree_runtime_cc_library(
 iree_runtime_cc_library(
     name = "iocp",
     srcs = [
+        "event_source.c",
+        "event_source.h",
         "proactor.c",
         "proactor.h",
         "proactor_submit.c",

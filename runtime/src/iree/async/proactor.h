@@ -106,8 +106,9 @@ static inline bool iree_async_poll_has_error(iree_async_poll_events_t events) {
 //
 // Parameters:
 //   user_data: Value from the callback struct at registration time.
-//   source: The event source that was signaled. The source remains valid until
-//     unregistered. Do not call unregister from within the callback.
+//   source: The event source that was signaled. The source remains registered
+//     until explicitly unregistered. Do not unregister from within the
+//     callback.
 //   events: Bitmask of poll events that occurred. Check with
 //     iree_async_poll_has_error() to detect error conditions. For RDMA CQ
 //     channels, IREE_ASYNC_POLL_EVENT_IN indicates completions are available.
@@ -315,12 +316,13 @@ enum iree_async_proactor_capability_bits_e {
   //   n/a     | 5.18+    | n/a  | n/a
   IREE_ASYNC_PROACTOR_CAPABILITY_PROACTOR_MESSAGING = 1u << 9,
 
-  // Supports kernel wait completion packets for direct Event-to-IOCP
-  // delivery (NtAssociateWaitCompletionPacket on Windows 8.1+). When set,
+  // Supports kernel wait completion packets for direct Event-to-IOCP delivery
+  // (NtAssociateWaitCompletionPacket on Windows 8.1+). When set, one-shot
   // event waits and shared notification wake monitoring bypass the
-  // RegisterWaitForSingleObject threadpool, eliminating context switches
-  // and reducing the wake path from 3 kernel transitions to 1. When not
-  // set, falls back to RegisterWaitForSingleObject.
+  // RegisterWaitForSingleObject threadpool, and persistent event sources are
+  // available. When not set, one-shot waits and shared notification wakes use
+  // RegisterWaitForSingleObject while event source registration returns
+  // IREE_STATUS_UNAVAILABLE.
   //
   // Availability:
   //   generic | io_uring | IOCP     | kqueue
@@ -1151,14 +1153,15 @@ static inline iree_status_t iree_async_proactor_register_slab(
 // no re-registration is needed for subsequent events.
 //
 // Availability:
-//   generic | io_uring | IOCP | kqueue
-//   poll    | 5.19+    | poll | poll
+//   generic | io_uring | IOCP     | kqueue
+//   poll    | 5.19+    | Win 8.1+ | poll
 //
 // io_uring implementation uses multishot POLL_ADD for efficient persistent
 // monitoring without per-event syscalls.
 //
 // Parameters:
-//   handle: The external handle to monitor (must be a valid fd).
+//   handle: The external handle to monitor. POSIX backends require an fd;
+//     IOCP requires a waitable Win32 HANDLE.
 //   callback: Function to invoke when the handle is signaled. The callback
 //     receives poll events and should drain the handle (e.g., ibv_poll_cq for
 //     RDMA CQ channels) and re-arm if needed (e.g., ibv_req_notify_cq).
@@ -1169,6 +1172,7 @@ static inline iree_status_t iree_async_proactor_register_slab(
 //   IREE_STATUS_OK: Event source registered successfully.
 //   IREE_STATUS_INVALID_ARGUMENT: Invalid handle or NULL callback.
 //   IREE_STATUS_RESOURCE_EXHAUSTED: Too many event sources registered.
+//   IREE_STATUS_UNAVAILABLE: The backend cannot monitor the handle directly.
 static inline iree_status_t iree_async_proactor_register_event_source(
     iree_async_proactor_t* proactor, iree_async_primitive_t handle,
     iree_async_event_source_callback_t callback,
