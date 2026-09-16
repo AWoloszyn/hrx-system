@@ -8,7 +8,7 @@
 """Selects the CI render node and verifies Vulkan device zero uses that hardware.
 
 The runner controller may name its allocation in PARENT_GPU_DEVICES. Without
-an explicit allocation, a single accessible AMD render node is unambiguous.
+an explicit allocation, prefer discrete hardware on hosts with multiple GPUs.
 Mesa selects the physical card by PCI address, independently of its product ID.
 Khronos vulkaninfo supplies native device properties before the CTS runs.
 """
@@ -75,29 +75,24 @@ def discover_render_devices(sysfs_drm_path: Path, dri_path: Path) -> list[Render
     return devices
 
 
-def select_render_device(
+def render_device_candidates(
     devices: list[RenderDevice], allocation: str | None
-) -> RenderDevice:
+) -> list[RenderDevice]:
     if allocation:
         for device in devices:
             if device.path == Path(allocation):
-                return device
+                return [device]
         raise RuntimeError(
             f"PARENT_GPU_DEVICES={allocation!r} does not identify one accessible "
             "AMD render node; refusing to test a different GPU"
         )
     if not devices:
         raise RuntimeError("No accessible AMD DRM render node is exposed to this job")
-    if len(devices) != 1:
-        raise RuntimeError(
-            "Multiple AMD render nodes are accessible without an allocation: "
-            + ", ".join(str(device.path) for device in devices)
-            + "; PARENT_GPU_DEVICES must identify the job's render node"
-        )
-    return devices[0]
+    return devices
 
 
-def validate_vulkan_device(profile: dict, selected: RenderDevice) -> None:
+def validate_vulkan_device(profile: dict, selected: RenderDevice) -> str:
+    """Validates native identity and returns the driver's physical device type."""
     properties = profile["capabilities"]["device"]["properties"]
     device = properties["VkPhysicalDeviceProperties"]
     version = device["apiVersion"]
@@ -125,29 +120,45 @@ def validate_vulkan_device(profile: dict, selected: RenderDevice) -> None:
             f"expected {expected[0]}:{expected[1]} ({selected.path})"
         )
     print(f"Verified hardware render node {selected.path} ({actual[0]}:{actual[1]}).")
+    return device["deviceType"]
 
 
 def check_environment(sysfs_drm_path: Path, dri_path: Path) -> None:
     allocation = os.environ.get("PARENT_GPU_DEVICES")
     print(f"Runner GPU allocation: {allocation or '(not specified)'}", flush=True)
-    selected = select_render_device(
+    candidates = render_device_candidates(
         discover_render_devices(sysfs_drm_path, dri_path), allocation
     )
-    print(f"Checking Vulkan with DRI_PRIME={selected.dri_prime}", flush=True)
     # A private runtime directory keeps this headless probe independent of a
     # desktop session. The process supervisor also bounds native driver calls.
     with tempfile.TemporaryDirectory(prefix="iree-vulkan-") as temporary_dir:
-        profile_path = Path(temporary_dir) / "device.json"
-        subprocess.run(
-            ["vulkaninfo", "--json=0", "--output", str(profile_path)],
-            env={
-                **os.environ,
-                "DRI_PRIME": selected.dri_prime,
-                "XDG_RUNTIME_DIR": temporary_dir,
-            },
-            check=True,
-        )
-        validate_vulkan_device(json.loads(profile_path.read_text()), selected)
+        for candidate in candidates:
+            print(f"Checking Vulkan with DRI_PRIME={candidate.dri_prime}", flush=True)
+            profile_path = Path(temporary_dir) / f"{candidate.path.name}.json"
+            subprocess.run(
+                ["vulkaninfo", "--json=0", "--output", str(profile_path)],
+                env={
+                    **os.environ,
+                    "DRI_PRIME": candidate.dri_prime,
+                    "XDG_RUNTIME_DIR": temporary_dir,
+                },
+                check=True,
+            )
+            device_type = validate_vulkan_device(
+                json.loads(profile_path.read_text()), candidate
+            )
+            if (
+                len(candidates) == 1
+                or device_type == "VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU"
+            ):
+                selected = candidate
+                break
+        else:
+            raise RuntimeError(
+                "Multiple AMD GPUs are exposed without a discrete GPU; "
+                "PARENT_GPU_DEVICES must identify the job's render node"
+            )
+    print(f"Selected {selected.path}: DRI_PRIME={selected.dri_prime}", flush=True)
     # Later workflow steps receive only a selection verified by the native
     # loader. ci.py carries it into both Bazel test actions and CMake tests.
     if github_env := os.environ.get("GITHUB_ENV"):

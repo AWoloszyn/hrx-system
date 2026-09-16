@@ -90,7 +90,7 @@ class VulkanEnvironmentTest(unittest.TestCase):
         devices = vulkan_environment.discover_render_devices(self.sysfs, self.dri)
         self.assertEqual(devices, [expected])
         self.assertEqual(
-            vulkan_environment.select_render_device(devices, None).dri_prime,
+            vulkan_environment.render_device_candidates(devices, None)[0].dri_prime,
             "pci-0000_01_00_0!",
         )
         self.assertIn("1002:748f", self.output.getvalue())
@@ -103,7 +103,7 @@ class VulkanEnvironmentTest(unittest.TestCase):
         self.assertEqual(devices, [])
         self.assertIn("unavailable", self.output.getvalue())
         with self.assertRaisesRegex(RuntimeError, "No accessible AMD"):
-            vulkan_environment.select_render_device(devices, None)
+            vulkan_environment.render_device_candidates(devices, None)
 
     def test_allocated_node_must_be_accessible_without_substitution(self):
         first = self.add_device()
@@ -119,22 +119,66 @@ class VulkanEnvironmentTest(unittest.TestCase):
             devices = vulkan_environment.discover_render_devices(self.sysfs, self.dri)
         self.assertEqual(devices, [first])
         with self.assertRaisesRegex(RuntimeError, "refusing to test a different GPU"):
-            vulkan_environment.select_render_device(devices, str(allocated.path))
+            vulkan_environment.render_device_candidates(devices, str(allocated.path))
         self.assertIn("denied by device cgroup", self.output.getvalue())
 
     def test_allocation_distinguishes_identical_cards(self):
         first = self.add_device()
         second = self.add_device("renderD129", "0000:02:00.0", node_source="/dev/zero")
         devices = vulkan_environment.discover_render_devices(self.sysfs, self.dri)
-        with self.assertRaisesRegex(RuntimeError, "Multiple AMD render nodes"):
-            vulkan_environment.select_render_device(devices, None)
         self.assertEqual(
-            vulkan_environment.select_render_device(devices, str(second.path)), second
+            vulkan_environment.render_device_candidates(devices, None), devices
+        )
+        self.assertEqual(
+            vulkan_environment.render_device_candidates(devices, str(second.path)),
+            [second],
         )
         with self.assertRaisesRegex(RuntimeError, "does not identify one"):
-            vulkan_environment.select_render_device(
+            vulkan_environment.render_device_candidates(
                 devices, f"{first.path},{second.path}"
             )
+
+    def test_discrete_gpu_preferred_unless_integrated_gpu_is_allocated(self):
+        integrated = self.add_device()
+        discrete = self.add_device(
+            "renderD129", "0000:02:00.0", node_source="/dev/zero"
+        )
+        profiles = {
+            device.dri_prime: self.profile(device) for device in [integrated, discrete]
+        }
+        profiles[integrated.dri_prime]["capabilities"]["device"]["properties"][
+            "VkPhysicalDeviceProperties"
+        ]["deviceType"] = "VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU"
+        environment_file = self.root / "github_env"
+        os.environ["GITHUB_ENV"] = str(environment_file)
+
+        def run_vulkaninfo(command, *, env, check):
+            Path(command[3]).write_text(json.dumps(profiles[env["DRI_PRIME"]]))
+
+        with mock.patch.object(subprocess, "run", side_effect=run_vulkaninfo):
+            vulkan_environment.check_environment(self.sysfs, self.dri)
+        self.assertEqual(
+            environment_file.read_text(), f"DRI_PRIME={discrete.dri_prime}\n"
+        )
+
+        environment_file.write_text("")
+        os.environ["PARENT_GPU_DEVICES"] = str(integrated.path)
+        with mock.patch.object(subprocess, "run", side_effect=run_vulkaninfo) as run:
+            vulkan_environment.check_environment(self.sysfs, self.dri)
+        self.assertEqual(
+            environment_file.read_text(), f"DRI_PRIME={integrated.dri_prime}\n"
+        )
+        self.assertEqual(run.call_count, 1)
+
+        environment_file.write_text("")
+        del os.environ["PARENT_GPU_DEVICES"]
+        profiles[discrete.dri_prime]["capabilities"]["device"]["properties"][
+            "VkPhysicalDeviceProperties"
+        ]["deviceType"] = "VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU"
+        with mock.patch.object(subprocess, "run", side_effect=run_vulkaninfo):
+            with self.assertRaisesRegex(RuntimeError, "without a discrete GPU"):
+                vulkan_environment.check_environment(self.sysfs, self.dri)
+        self.assertEqual(environment_file.read_text(), "")
 
     def test_vulkan_must_report_hardware_at_the_exact_render_node(self):
         selected = self.add_device()
