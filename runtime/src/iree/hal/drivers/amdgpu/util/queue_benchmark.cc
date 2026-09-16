@@ -1414,9 +1414,8 @@ class QueueBenchmark : public benchmark::Fixture {
     iree_hal_executable_load_params_t load_params;
     iree_hal_executable_load_params_initialize(&load_params);
     load_params.executable_data = executable_data;
-    return iree_hal_device_load_executable(device_, queue_family,
-                                           target_result.target, &load_params,
-                                           out_executable);
+    return iree_hal_executable_load(queue_family, target_result.target,
+                                    &load_params, out_executable);
   }
 
   iree_status_t LoadExecutableFromRegisteredData(
@@ -1468,9 +1467,8 @@ class QueueBenchmark : public benchmark::Fixture {
       iree_hal_executable_load_params_t load_params;
       iree_hal_executable_load_params_initialize(&load_params);
       load_params.executable_data = executable_data;
-      return iree_hal_device_load_executable(device_, queue_family,
-                                             target_result.target, &load_params,
-                                             out_executable);
+      return iree_hal_executable_load(queue_family, target_result.target,
+                                      &load_params, out_executable);
     }
     if (!found_target) {
       return iree_make_status(IREE_STATUS_NOT_FOUND,
@@ -1857,11 +1855,10 @@ class QueueBenchmark : public benchmark::Fixture {
     IREE_RETURN_IF_ERROR(BindingCountDispatchConfig(&dispatch_config));
 
     iree_hal_command_buffer_t* command_buffer = nullptr;
-    iree_status_t status =
-        iree_hal_command_buffer_create(device_, iree_hal_queue_family(queue0_),
-                                       IREE_HAL_COMMAND_BUFFER_MODE_DEFAULT,
-                                       IREE_HAL_COMMAND_CATEGORY_DISPATCH,
-                                       /*binding_capacity=*/0, &command_buffer);
+    iree_status_t status = iree_hal_command_buffer_create(
+        iree_hal_queue_family(queue0_), IREE_HAL_COMMAND_BUFFER_MODE_DEFAULT,
+        IREE_HAL_COMMAND_CATEGORY_DISPATCH,
+        /*binding_capacity=*/0, &command_buffer);
     if (iree_status_is_ok(status)) {
       status = iree_hal_command_buffer_begin(command_buffer);
     }
@@ -1915,11 +1912,10 @@ class QueueBenchmark : public benchmark::Fixture {
     IREE_RETURN_IF_ERROR(BindingCountDispatchConfig(&dispatch_config));
 
     iree_hal_command_buffer_t* command_buffer = nullptr;
-    iree_status_t status =
-        iree_hal_command_buffer_create(device_, iree_hal_queue_family(queue0_),
-                                       IREE_HAL_COMMAND_BUFFER_MODE_DEFAULT,
-                                       IREE_HAL_COMMAND_CATEGORY_DISPATCH,
-                                       /*binding_capacity=*/0, &command_buffer);
+    iree_status_t status = iree_hal_command_buffer_create(
+        iree_hal_queue_family(queue0_), IREE_HAL_COMMAND_BUFFER_MODE_DEFAULT,
+        IREE_HAL_COMMAND_CATEGORY_DISPATCH,
+        /*binding_capacity=*/0, &command_buffer);
     if (iree_status_is_ok(status)) {
       status = iree_hal_command_buffer_begin(command_buffer);
     }

@@ -234,8 +234,8 @@ iree_status_t loom_run_hal_artifact_prepare(
     iree_hal_executable_load_params_t load_params;
     iree_hal_executable_load_params_initialize(&load_params);
     load_params.executable_data = iree_const_cast_byte_span(executable_data);
-    status = iree_hal_device_load_executable(
-        runtime->device, iree_hal_queue_family(runtime->dispatch_queue),
+    status = iree_hal_executable_load(
+        iree_hal_queue_family(runtime->dispatch_queue),
         artifact->executable_target, &load_params, out_hal_executable);
   }
   iree_allocator_free(host_allocator, executable_data.data);
@@ -371,8 +371,8 @@ static iree_status_t loom_run_hal_record_dispatch_sequence_edge(
 }
 
 static iree_status_t loom_run_hal_record_dispatch_batch(
-    iree_hal_device_t* device, iree_hal_queue_t* queue,
-    iree_hal_executable_t* executable, iree_host_size_t binding_list_count,
+    iree_hal_queue_t* queue, iree_hal_executable_t* executable,
+    iree_host_size_t binding_list_count,
     const loom_run_hal_binding_list_t* binding_lists,
     iree_host_size_t binding_list_offset,
     const loom_run_hal_invocation_options_t* options,
@@ -391,7 +391,7 @@ static iree_status_t loom_run_hal_record_dispatch_batch(
 
   iree_hal_command_buffer_t* command_buffer = NULL;
   iree_status_t status = iree_hal_command_buffer_create(
-      device, iree_hal_queue_family(queue), batch_options->command_buffer_mode,
+      iree_hal_queue_family(queue), batch_options->command_buffer_mode,
       IREE_HAL_COMMAND_CATEGORY_DISPATCH,
       /*binding_capacity=*/0, &command_buffer);
   if (iree_status_is_ok(status)) {
@@ -432,8 +432,7 @@ static iree_status_t loom_run_hal_record_dispatch_batch(
 }
 
 static iree_status_t loom_run_hal_record_dispatch_sequence_batch(
-    iree_hal_device_t* device, iree_hal_queue_t* queue,
-    iree_host_size_t sequence_count,
+    iree_hal_queue_t* queue, iree_host_size_t sequence_count,
     const loom_run_hal_prepared_candidate_t* const* candidates,
     const iree_host_size_t* execution_epochs, iree_host_size_t plan_ring_count,
     const loom_run_hal_invocation_plan_t* const* plans,
@@ -445,7 +444,7 @@ static iree_status_t loom_run_hal_record_dispatch_sequence_batch(
 
   iree_hal_command_buffer_t* command_buffer = NULL;
   iree_status_t status = iree_hal_command_buffer_create(
-      device, iree_hal_queue_family(queue), batch_options->command_buffer_mode,
+      iree_hal_queue_family(queue), batch_options->command_buffer_mode,
       IREE_HAL_COMMAND_CATEGORY_DISPATCH,
       /*binding_capacity=*/0, &command_buffer);
   if (iree_status_is_ok(status)) {
@@ -514,8 +513,7 @@ static iree_status_t loom_run_hal_record_dispatch_sequence_batch(
 }
 
 static iree_status_t loom_run_hal_record_indirect_dispatch_sequence(
-    iree_hal_device_t* device, iree_hal_queue_t* queue,
-    iree_host_size_t step_count,
+    iree_hal_queue_t* queue, iree_host_size_t step_count,
     const loom_run_hal_dispatch_sequence_step_t* steps,
     iree_host_size_t binding_count,
     iree_hal_command_buffer_t** out_command_buffer) {
@@ -523,9 +521,8 @@ static iree_status_t loom_run_hal_record_indirect_dispatch_sequence(
 
   iree_hal_command_buffer_t* command_buffer = NULL;
   iree_status_t status = iree_hal_command_buffer_create(
-      device, iree_hal_queue_family(queue),
-      IREE_HAL_COMMAND_BUFFER_MODE_DEFAULT, IREE_HAL_COMMAND_CATEGORY_DISPATCH,
-      binding_count, &command_buffer);
+      iree_hal_queue_family(queue), IREE_HAL_COMMAND_BUFFER_MODE_DEFAULT,
+      IREE_HAL_COMMAND_CATEGORY_DISPATCH, binding_count, &command_buffer);
   if (iree_status_is_ok(status)) {
     status = iree_hal_command_buffer_begin(command_buffer);
   }
@@ -1218,7 +1215,7 @@ iree_status_t loom_run_hal_dispatch_batch_prepare_from_binding_ring(
   }
   if (iree_status_is_ok(status)) {
     status = loom_run_hal_record_dispatch_batch(
-        runtime->device, runtime->dispatch_queue, candidate->executable,
+        runtime->dispatch_queue, candidate->executable,
         out_batch->binding_list_count, out_batch->binding_lists,
         binding_list_offset, &plan->options, batch_options,
         &out_batch->command_buffer);
@@ -1354,9 +1351,9 @@ iree_status_t loom_run_hal_dispatch_sequence_batch_prepare_from_plan_ring(
   }
   if (iree_status_is_ok(status)) {
     status = loom_run_hal_record_dispatch_sequence_batch(
-        runtime->device, runtime->dispatch_queue, sequence_count, candidates,
-        execution_epochs, plan_ring_count, plans, out_batch->binding_lists,
-        plan_ring_offset, batch_options, &out_batch->command_buffer);
+        runtime->dispatch_queue, sequence_count, candidates, execution_epochs,
+        plan_ring_count, plans, out_batch->binding_lists, plan_ring_offset,
+        batch_options, &out_batch->command_buffer);
   }
   if (iree_status_is_ok(status)) {
     status = iree_hal_semaphore_create(
@@ -1423,8 +1420,8 @@ iree_status_t loom_run_hal_dispatch_sequence_prepare(
   }
 
   iree_status_t status = loom_run_hal_record_indirect_dispatch_sequence(
-      runtime->device, runtime->dispatch_queue, step_count, steps,
-      binding_count, &out_sequence->command_buffer);
+      runtime->dispatch_queue, step_count, steps, binding_count,
+      &out_sequence->command_buffer);
   if (iree_status_is_ok(status)) {
     status = iree_hal_semaphore_create(
         runtime->device, IREE_HAL_QUEUE_FAMILY_AFFINITY_ANY,

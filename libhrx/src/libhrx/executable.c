@@ -153,11 +153,9 @@ hrx_status_t hrx_executable_load_data(hrx_device_t device,
 
   const iree_hal_queue_family_t* dispatch_queue_family =
       iree_hal_queue_family(device->dispatch_queue);
-  const iree_hal_device_queue_spec_t* queue_spec =
-      iree_hal_device_spec_queues(iree_hal_device_spec(device->hal_device));
   const iree_hal_physical_device_affinity_t physical_device_affinity =
-      queue_spec->families[iree_hal_queue_family_ordinal(dispatch_queue_family)]
-          .physical_device_affinity;
+      iree_hal_queue_family_spec(dispatch_queue_family)
+          ->physical_device_affinity;
   iree_hal_executable_target_selection_result_t selection_result;
   HRX_RETURN_IF_IREE_ERROR(hrx_executable_select_target(
       iree_hal_device_spec(device->hal_device),
@@ -179,9 +177,9 @@ hrx_status_t hrx_executable_load_data(hrx_device_t device,
       iree_make_const_byte_span(executable_data, executable_data_size);
 
   iree_hal_executable_t* hal_executable = NULL;
-  iree_status_t status = iree_hal_device_load_executable(
-      device->hal_device, dispatch_queue_family, selection_result.target,
-      &load_params, &hal_executable);
+  iree_status_t status =
+      iree_hal_executable_load(dispatch_queue_family, selection_result.target,
+                               &load_params, &hal_executable);
   if (!iree_status_is_ok(status)) {
     return hrx_status_from_iree(status);
   }

@@ -15,7 +15,7 @@ static hrx_status_t hrx_stream_begin_cb(hrx_stream_t stream) {
 
   iree_hal_command_buffer_t* command_buffer = NULL;
   iree_status_t status = iree_hal_command_buffer_create(
-      stream->device->hal_device, iree_hal_queue_family(stream->hal_queue),
+      iree_hal_queue_family(stream->hal_queue),
       IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT,
       IREE_HAL_COMMAND_CATEGORY_TRANSFER | IREE_HAL_COMMAND_CATEGORY_DISPATCH,
       /*binding_capacity=*/0, &command_buffer);

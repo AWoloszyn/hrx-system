@@ -232,6 +232,29 @@ iree_cc_test(
     iree::testing::gtest_main
 )
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+iree_cc_test(
+  NAME
+    execute_dispatch_test
+  SRCS
+    "execute_dispatch_test.cc"
+  DEPS
+    ::execute
+    ::file_reader
+    ::recorder
+    iree::async
+    iree::async::util::proactor_pool
+    iree::base
+    iree::hal
+    iree::hal::drivers::task::executable::elf::testdata::elementwise_mul_native
+    iree::hal::drivers::task::registration
+    iree::io::file_handle
+    iree::testing::gtest
+    iree::testing::gtest_main
+    iree::testing::temp_file
+)
+endif()
+
 endif()
 
 iree_cc_test(

@@ -620,10 +620,6 @@ static iree_status_t iree_hal_task_device_acquire_queue(
     iree_hal_device_t* base_device, const iree_hal_queue_family_t* queue_family,
     const iree_hal_queue_params_t* params, iree_hal_queue_t** out_queue) {
   iree_hal_task_device_t* device = iree_hal_task_device_cast(base_device);
-  if (IREE_UNLIKELY(queue_family != &device->queue_family)) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "queue family does not belong to this device");
-  }
   if (IREE_UNLIKELY(!device->frontier_tracker)) {
     return iree_make_status(
         IREE_STATUS_FAILED_PRECONDITION,

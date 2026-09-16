@@ -641,6 +641,24 @@ IREE_API_EXPORT const iree_hal_queue_family_spec_t* iree_hal_queue_family_spec(
 // iree_hal_queue_t
 //===----------------------------------------------------------------------===//
 
+// Acquires an exact hardware queue from |queue_family| with immutable
+// |params|.
+//
+// Parameter storage is borrowed only for the duration of the call. An empty
+// execution-resource list requests the complete resource set advertised by the
+// family; a nonempty list must contain sorted unique family-local ordinals. An
+// explicitly enumerated complete set is accepted and canonicalized to the empty
+// form reported by the acquired queue.
+//
+// The returned queue is dynamically acquired and does not have a provisioned
+// queue ordinal. Acquisition performs no generic caching, pooling, or virtual
+// queuing. On success, |out_queue| receives one owning reference and the parent
+// device must remain live until it is released. |out_queue| is unchanged on
+// failure.
+IREE_API_EXPORT iree_status_t iree_hal_queue_acquire(
+    const iree_hal_queue_family_t* queue_family,
+    const iree_hal_queue_params_t* params, iree_hal_queue_t** out_queue);
+
 // Retains |queue| for the caller.
 // The parent device must remain live until the reference is released.
 IREE_API_EXPORT void iree_hal_queue_retain(iree_hal_queue_t* queue);

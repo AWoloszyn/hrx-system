@@ -329,7 +329,7 @@ TEST_F(HostQueueCommandBufferProfilingTest,
   IREE_ASSERT_OK(
       InitializeTwoDispatchCommandBufferResources(&test_device, &fixture));
   IREE_ASSERT_OK(iree_hal_command_buffer_create(
-      test_device.base_device(), iree_hal_queue_family(test_device.queue()),
+      iree_hal_queue_family(test_device.queue()),
       IREE_HAL_COMMAND_BUFFER_MODE_RETAIN_PROFILE_METADATA,
       IREE_HAL_COMMAND_CATEGORY_ATOMIC | IREE_HAL_COMMAND_CATEGORY_DISPATCH |
           IREE_HAL_COMMAND_CATEGORY_TRANSFER,
@@ -573,7 +573,7 @@ TEST_F(HostQueueCommandBufferProfilingTest,
 
   Ref<iree_hal_command_buffer_t> command_buffer;
   IREE_ASSERT_OK(iree_hal_command_buffer_create(
-      test_device.base_device(), iree_hal_queue_family(test_device.queue()),
+      iree_hal_queue_family(test_device.queue()),
       IREE_HAL_COMMAND_BUFFER_MODE_DEFAULT, IREE_HAL_COMMAND_CATEGORY_DISPATCH,
       /*binding_capacity=*/0, command_buffer.out()));
   iree_hal_amdgpu_physical_device_t* physical_device =
@@ -994,7 +994,7 @@ TEST_F(HostQueueCommandBufferProfilingTest,
 
   Ref<iree_hal_command_buffer_t> command_buffer;
   IREE_ASSERT_OK(iree_hal_command_buffer_create(
-      test_device.base_device(), iree_hal_queue_family(test_device.queue()),
+      iree_hal_queue_family(test_device.queue()),
       IREE_HAL_COMMAND_BUFFER_MODE_RETAIN_PROFILE_METADATA,
       IREE_HAL_COMMAND_CATEGORY_TRANSFER,
       /*binding_capacity=*/0, command_buffer.out()));
@@ -1621,7 +1621,7 @@ TEST_F(HostQueueCommandBufferProfilingTest,
 
   iree_hal_executable_t* executable = NULL;
   IREE_ASSERT_OK(LoadCtsExecutable(
-      test_device.base_device(), iree_hal_queue_family(test_device.queue()),
+      iree_hal_queue_family(test_device.queue()),
       iree_make_cstring_view("command_buffer_dispatch_constants_bindings_test."
                              "bin"),
       &executable));
@@ -1749,7 +1749,7 @@ TEST_F(HostQueueCommandBufferProfilingTest,
 
   iree_hal_executable_t* executable = NULL;
   IREE_ASSERT_OK(LoadCtsExecutable(
-      test_device.base_device(), iree_hal_queue_family(test_device.queue()),
+      iree_hal_queue_family(test_device.queue()),
       iree_make_cstring_view("command_buffer_dispatch_constants_bindings_test."
                              "bin"),
       &executable));
@@ -1771,7 +1771,7 @@ TEST_F(HostQueueCommandBufferProfilingTest,
 
   Ref<iree_hal_command_buffer_t> command_buffer;
   IREE_ASSERT_OK(iree_hal_command_buffer_create(
-      test_device.base_device(), iree_hal_queue_family(test_device.queue()),
+      iree_hal_queue_family(test_device.queue()),
       IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT |
           IREE_HAL_COMMAND_BUFFER_MODE_RETAIN_PROFILE_METADATA,
       IREE_HAL_COMMAND_CATEGORY_DISPATCH,
@@ -1868,7 +1868,7 @@ TEST_F(HostQueueCommandBufferProfilingTest,
 
   Ref<iree_hal_command_buffer_t> command_buffer;
   IREE_ASSERT_OK(iree_hal_command_buffer_create(
-      test_device.base_device(), iree_hal_queue_family(&queue->base),
+      iree_hal_queue_family(&queue->base),
       IREE_HAL_COMMAND_BUFFER_MODE_RETAIN_PROFILE_METADATA,
       IREE_HAL_COMMAND_CATEGORY_TRANSFER,
       /*binding_capacity=*/0, command_buffer.out()));
@@ -2000,7 +2000,7 @@ TEST_F(HostQueueCommandBufferProfilingTest,
 
   Ref<iree_hal_command_buffer_t> command_buffer;
   IREE_ASSERT_OK(iree_hal_command_buffer_create(
-      test_device.base_device(), iree_hal_queue_family(&queue->base),
+      iree_hal_queue_family(&queue->base),
       IREE_HAL_COMMAND_BUFFER_MODE_RETAIN_PROFILE_METADATA,
       IREE_HAL_COMMAND_CATEGORY_TRANSFER,
       /*binding_capacity=*/1, command_buffer.out()));

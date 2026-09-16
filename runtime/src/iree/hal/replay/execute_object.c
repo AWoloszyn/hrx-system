@@ -178,8 +178,7 @@ static iree_status_t iree_hal_replay_executor_create_dynamic_queue(
                 .ordinals = execution_resources,
             },
     };
-    status = iree_hal_device_acquire_queue(device_entry->value.device,
-                                           queue_family, &params, &queue);
+    status = iree_hal_queue_acquire(queue_family, &params, &queue);
   }
   iree_allocator_free(executor->host_allocator, execution_resources);
 
@@ -655,8 +654,8 @@ static iree_status_t iree_hal_replay_executor_load_executable(
         device_entry->value.device, &target_selection, required_flags, &target);
   }
   if (iree_status_is_ok(status)) {
-    status = iree_hal_device_load_executable(
-        device_entry->value.device, queue_family, target, &params, &executable);
+    status =
+        iree_hal_executable_load(queue_family, target, &params, &executable);
     if (!iree_status_is_ok(status) && substituted) {
       status = iree_status_annotate_f(
           status,
@@ -722,9 +721,8 @@ static iree_status_t iree_hal_replay_executor_create_command_buffer(
 
   iree_hal_command_buffer_t* command_buffer = NULL;
   IREE_RETURN_IF_ERROR(iree_hal_command_buffer_create(
-      device_entry->value.device, queue_family, payload.mode,
-      payload.command_categories, (iree_host_size_t)payload.binding_capacity,
-      &command_buffer));
+      queue_family, payload.mode, payload.command_categories,
+      (iree_host_size_t)payload.binding_capacity, &command_buffer));
   iree_hal_replay_object_entry_t entry = {.value.command_buffer =
                                               command_buffer};
   return iree_hal_replay_executor_store(

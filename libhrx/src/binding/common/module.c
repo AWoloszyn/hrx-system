@@ -592,9 +592,9 @@ static iree_status_t iree_hal_streaming_module_load_executable(
   iree_hal_executable_load_params_initialize(&load_params);
   load_params.flags = load_flags;
   load_params.executable_data = executable_data;
-  return iree_hal_device_load_executable(
-      context->device, iree_hal_queue_family(context->queue), executable_target,
-      &load_params, out_executable);
+  return iree_hal_executable_load(iree_hal_queue_family(context->queue),
+                                  executable_target, &load_params,
+                                  out_executable);
 }
 
 iree_status_t iree_hal_streaming_module_create_from_memory(

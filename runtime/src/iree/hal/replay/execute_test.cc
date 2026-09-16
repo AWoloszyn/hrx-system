@@ -972,9 +972,9 @@ static void CaptureMockExecutableLoad(iree_const_byte_span_t executable_data,
   load_params.executable_data = executable_data;
 
   iree_hal_executable_t* executable = nullptr;
-  IREE_ASSERT_OK(iree_hal_device_load_executable(
-      wrapped_device, iree_hal_device_queue_family(wrapped_device, 0),
-      target_result.target, &load_params, &executable));
+  IREE_ASSERT_OK(iree_hal_executable_load(
+      iree_hal_device_queue_family(wrapped_device, 0), target_result.target,
+      &load_params, &executable));
 
   iree_hal_executable_release(executable);
 
@@ -1120,8 +1120,7 @@ TEST(ReplayExecuteTest, ReplaysDynamicQueueAcquisition) {
   iree_hal_queue_params_t queue_params;
   iree_hal_queue_params_initialize(&queue_params);
   iree_hal_queue_t* queue = nullptr;
-  IREE_ASSERT_OK(iree_hal_device_acquire_queue(wrapped_device, queue_family,
-                                               &queue_params, &queue));
+  IREE_ASSERT_OK(iree_hal_queue_acquire(queue_family, &queue_params, &queue));
 
   iree_hal_semaphore_t* semaphore = nullptr;
   IREE_ASSERT_OK(iree_hal_semaphore_create(
@@ -2612,7 +2611,7 @@ TEST(ReplayExecuteTest, ExecutesRecordedCommandBufferTransfers) {
 
   iree_hal_command_buffer_t* command_buffer = nullptr;
   IREE_ASSERT_OK(iree_hal_command_buffer_create(
-      wrapped_device, iree_hal_queue_family(wrapped_queue),
+      iree_hal_queue_family(wrapped_queue),
       IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT, IREE_HAL_COMMAND_CATEGORY_TRANSFER,
       /*binding_capacity=*/0, &command_buffer));
   IREE_ASSERT_OK(iree_hal_command_buffer_begin(command_buffer));
@@ -2706,7 +2705,7 @@ TEST(ReplayExecuteTest, ExecutesRecordedIndirectCommandBufferBindings) {
 
   iree_hal_command_buffer_t* command_buffer = nullptr;
   IREE_ASSERT_OK(iree_hal_command_buffer_create(
-      wrapped_device, iree_hal_queue_family(wrapped_queue),
+      iree_hal_queue_family(wrapped_queue),
       IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT, IREE_HAL_COMMAND_CATEGORY_TRANSFER,
       /*binding_capacity=*/1, &command_buffer));
   IREE_ASSERT_OK(iree_hal_command_buffer_begin(command_buffer));

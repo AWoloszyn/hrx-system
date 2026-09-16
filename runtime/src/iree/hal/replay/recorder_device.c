@@ -188,13 +188,6 @@ static iree_status_t iree_hal_replay_device_acquire_queue(
       iree_hal_queue_family_ordinal(queue_family);
   const iree_hal_queue_family_t* base_queue_family =
       iree_hal_device_queue_family(device->base_device, family_ordinal);
-  if (IREE_UNLIKELY(family_ordinal >= device->queue_family_count ||
-                    queue_family !=
-                        &device->queue_families[family_ordinal].base ||
-                    !base_queue_family)) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "queue family does not belong to this device");
-  }
 
   iree_host_size_t execution_resource_data_length = 0;
   if (IREE_UNLIKELY(!iree_host_size_checked_mul(
@@ -230,8 +223,8 @@ static iree_status_t iree_hal_replay_device_acquire_queue(
       IREE_HAL_REPLAY_PAYLOAD_TYPE_DYNAMIC_QUEUE_OBJECT, &pending_record));
 
   iree_hal_queue_t* base_queue = NULL;
-  iree_status_t status = iree_hal_device_acquire_queue(
-      device->base_device, base_queue_family, params, &base_queue);
+  iree_status_t status =
+      iree_hal_queue_acquire(base_queue_family, params, &base_queue);
   iree_hal_replay_recorder_queue_t* queue = NULL;
   if (iree_status_is_ok(status)) {
     status = iree_hal_replay_recorder_queue_create(
@@ -353,7 +346,6 @@ static iree_status_t iree_hal_replay_device_create_command_buffer(
   iree_hal_command_buffer_t* base_command_buffer = NULL;
   iree_hal_command_buffer_t* replay_command_buffer = NULL;
   iree_status_t status = iree_hal_command_buffer_create(
-      device->base_device,
       iree_hal_device_queue_family(device->base_device,
                                    iree_hal_queue_family_ordinal(queue_family)),
       mode, command_categories, binding_capacity, &base_command_buffer);

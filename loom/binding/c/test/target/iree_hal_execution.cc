@@ -397,9 +397,9 @@ iree_status_t PrepareExecutableFromArtifact(
       artifact->contents, loomc_allocator_system(), &executable_data)));
   load_params.executable_data = iree_make_const_byte_span(
       executable_data.data, executable_data.data_length);
-  iree_status_t status = iree_hal_device_load_executable(
-      device, iree_hal_queue_family(dispatch_queue), target_result.target,
-      &load_params, out_executable);
+  iree_status_t status = iree_hal_executable_load(
+      iree_hal_queue_family(dispatch_queue), target_result.target, &load_params,
+      out_executable);
   loomc_allocator_free(loomc_allocator_system(), (void*)executable_data.data);
   return status;
 }
@@ -415,8 +415,8 @@ iree_status_t Dispatch(iree_hal_device_t* device, iree_hal_queue_t* queue,
   const uint64_t constants[] = {4};
 
   iree_status_t status = iree_hal_command_buffer_create(
-      device, iree_hal_queue_family(queue),
-      IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT, IREE_HAL_COMMAND_CATEGORY_DISPATCH,
+      iree_hal_queue_family(queue), IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT,
+      IREE_HAL_COMMAND_CATEGORY_DISPATCH,
       /*binding_capacity=*/0, &command_buffer);
   if (iree_status_is_ok(status)) {
     status = iree_hal_command_buffer_begin(command_buffer);

@@ -23,6 +23,27 @@ TEST_P(CommandBufferBasicTest, Create) {
   iree_hal_command_buffer_release(command_buffer);
 }
 
+TEST_P(CommandBufferBasicTest, CreateFailurePreservesOutput) {
+  iree_hal_queue_t* queue =
+      QueueForCommandCategories(IREE_HAL_COMMAND_CATEGORY_DISPATCH);
+  ASSERT_NE(nullptr, queue);
+  Ref<iree_hal_command_buffer_t> original;
+  IREE_ASSERT_OK(iree_hal_command_buffer_create(
+      iree_hal_queue_family(queue), IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT,
+      IREE_HAL_COMMAND_CATEGORY_DISPATCH, /*binding_capacity=*/0,
+      original.out()));
+  iree_hal_command_buffer_t* output = original.get();
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      iree_hal_command_buffer_create(
+          iree_hal_queue_family(queue), IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT,
+          ~IREE_HAL_COMMAND_CATEGORY_ANY, /*binding_capacity=*/0, &output));
+  EXPECT_EQ(original.get(), output);
+  IREE_ASSERT_OK(iree_hal_command_buffer_begin(original));
+  IREE_ASSERT_OK(iree_hal_command_buffer_end(original));
+  IREE_ASSERT_OK(SubmitCommandBufferAndWait(original));
+}
+
 TEST_P(CommandBufferBasicTest, BeginEnd) {
   iree_hal_command_buffer_t* command_buffer = NULL;
   IREE_ASSERT_OK(CreateCommandBuffer(IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT,

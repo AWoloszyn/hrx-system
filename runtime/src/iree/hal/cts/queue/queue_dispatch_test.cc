@@ -133,8 +133,7 @@ TEST_P(QueueDispatchTest,
     iree_hal_queue_params_initialize(&params);
     params.priority = priority;
     Ref<iree_hal_queue_t> queue;
-    IREE_ASSERT_OK(iree_hal_device_acquire_queue(device_, queue_family, &params,
-                                                 queue.out()));
+    IREE_ASSERT_OK(iree_hal_queue_acquire(queue_family, &params, queue.out()));
 
     SemaphoreList signal(device_, {0}, {1});
     IREE_ASSERT_OK(iree_hal_queue_dispatch(

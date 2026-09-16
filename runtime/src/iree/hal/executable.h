@@ -18,7 +18,7 @@
 extern "C" {
 #endif  // __cplusplus
 
-typedef struct iree_hal_device_t iree_hal_device_t;
+typedef struct iree_hal_executable_target_t iree_hal_executable_target_t;
 typedef struct iree_hal_buffer_t iree_hal_buffer_t;
 
 //===----------------------------------------------------------------------===//
@@ -43,7 +43,7 @@ typedef enum iree_hal_executable_load_flag_bits_e {
 //
 // All referenced storage is borrowed only for the duration of the load call.
 // Executable implementations must finish consuming or copy any retained data
-// before returning from iree_hal_device_load_executable.
+// before returning from iree_hal_executable_load.
 typedef struct iree_hal_executable_load_params_t {
   // Optional executable loading behavior.
   iree_hal_executable_load_flags_t flags;
@@ -291,6 +291,26 @@ typedef struct iree_hal_executable_global_info_t {
 //
 // Maps (roughly) to vkShaderModule + VkPipeline[].
 typedef struct iree_hal_executable_t iree_hal_executable_t;
+
+// Loads a native executable artifact for |target| on |queue_family|.
+//
+// |target| must be an exact borrowed row from the family owner's device spec.
+// |target| must support every physical device serviced by |queue_family|.
+// The returned executable may only be used with command buffers and direct
+// dispatches targeting |queue_family|.
+//
+// The executable data and constants are borrowed only for the duration of the
+// call. Implementations must finish consuming or copy any retained data before
+// returning. Loading is a cold path and implementations may parse, verify,
+// link, or optimize the native artifact before returning.
+//
+// On success, |out_executable| is assigned one owning reference. It is
+// unchanged on failure. The family owner must outlive the executable.
+IREE_API_EXPORT iree_status_t
+iree_hal_executable_load(const iree_hal_queue_family_t* queue_family,
+                         const iree_hal_executable_target_t* target,
+                         const iree_hal_executable_load_params_t* params,
+                         iree_hal_executable_t** out_executable);
 
 // Retains the given |executable| for the caller.
 IREE_API_EXPORT void iree_hal_executable_retain(

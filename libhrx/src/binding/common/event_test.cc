@@ -415,8 +415,8 @@ class CpuStreamingContextTest : public ::testing::Test {
     iree_hal_queue_params_t queue_params;
     iree_hal_queue_params_initialize(&queue_params);
     iree_hal_queue_t* queue = nullptr;
-    iree_status_t status = iree_hal_device_acquire_queue(
-        context->device, queue_family, &queue_params, &queue);
+    iree_status_t status =
+        iree_hal_queue_acquire(queue_family, &queue_params, &queue);
     iree_hal_streaming_stream_t* stream = nullptr;
     if (iree_status_is_ok(status)) {
       status = iree_hal_streaming_stream_create(

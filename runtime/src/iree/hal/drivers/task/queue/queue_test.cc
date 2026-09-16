@@ -97,8 +97,7 @@ TEST_P(TaskQueueShutdownTest, ReleasesDeviceGroupWithAcceptedExecuteInFlight) {
 
     iree_hal_command_buffer_t* command_buffer = nullptr;
     IREE_ASSERT_OK(iree_hal_command_buffer_create(
-        device, iree_hal_queue_family(queue),
-        IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT,
+        iree_hal_queue_family(queue), IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT,
         IREE_HAL_COMMAND_CATEGORY_TRANSFER,
         /*binding_capacity=*/0, &command_buffer));
     IREE_ASSERT_OK(iree_hal_command_buffer_begin(command_buffer));
@@ -138,11 +137,9 @@ TEST_P(TaskQueueShutdownTest, ReusedDynamicQueueSlotAdvancesIncarnation) {
   iree_hal_queue_params_t params;
   iree_hal_queue_params_initialize(&params);
   iree_hal_queue_t* queue_a = nullptr;
-  IREE_ASSERT_OK(
-      iree_hal_device_acquire_queue(device, queue_family, &params, &queue_a));
+  IREE_ASSERT_OK(iree_hal_queue_acquire(queue_family, &params, &queue_a));
   iree_hal_queue_t* queue_b = nullptr;
-  IREE_ASSERT_OK(
-      iree_hal_device_acquire_queue(device, queue_family, &params, &queue_b));
+  IREE_ASSERT_OK(iree_hal_queue_acquire(queue_family, &params, &queue_b));
   const iree_async_axis_t axis_a = ((iree_hal_task_queue_t*)queue_a)->axis;
   const iree_async_axis_t axis_b = ((iree_hal_task_queue_t*)queue_b)->axis;
   EXPECT_NE(iree_async_axis_queue_index(axis_a),
@@ -153,8 +150,7 @@ TEST_P(TaskQueueShutdownTest, ReusedDynamicQueueSlotAdvancesIncarnation) {
   queue_a = nullptr;
 
   iree_hal_queue_t* queue_c = nullptr;
-  IREE_ASSERT_OK(
-      iree_hal_device_acquire_queue(device, queue_family, &params, &queue_c));
+  IREE_ASSERT_OK(iree_hal_queue_acquire(queue_family, &params, &queue_c));
   const iree_async_axis_t axis_c = ((iree_hal_task_queue_t*)queue_c)->axis;
   EXPECT_EQ(iree_async_axis_queue_index(axis_a),
             iree_async_axis_queue_index(axis_c));

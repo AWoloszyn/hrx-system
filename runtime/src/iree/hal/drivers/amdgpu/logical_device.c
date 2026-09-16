@@ -2323,13 +2323,6 @@ static iree_status_t iree_hal_amdgpu_logical_device_acquire_queue(
       iree_hal_amdgpu_logical_device_cast(base_device);
   const iree_hal_queue_family_ordinal_t family_ordinal =
       iree_hal_queue_family_ordinal(queue_family);
-  if (IREE_UNLIKELY(family_ordinal >= logical_device->physical_device_count ||
-                    queue_family !=
-                        &logical_device->physical_devices[family_ordinal]
-                             ->queue_family)) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "queue family does not belong to this device");
-  }
   if (IREE_UNLIKELY(!logical_device->frontier_tracker)) {
     return iree_make_status(
         IREE_STATUS_FAILED_PRECONDITION,

@@ -244,9 +244,8 @@ static iree_status_t iree_hal_executable_library_run(
     executable_params.flags |=
         IREE_HAL_EXECUTABLE_LOAD_FLAG_DISABLE_VERIFICATION;
     executable_params.executable_data = file_contents->const_buffer;
-    status = iree_hal_device_load_executable(
-        device, iree_hal_device_queue_family(device, 0), target,
-        &executable_params, &executable);
+    status = iree_hal_executable_load(iree_hal_device_queue_family(device, 0),
+                                      target, &executable_params, &executable);
   }
   iree_hal_task_executable_t* task_executable = NULL;
   if (iree_status_is_ok(status)) {
