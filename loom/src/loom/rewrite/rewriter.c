@@ -22,6 +22,8 @@ static iree_status_t loom_rewriter_add_users_to_worklist(
     loom_rewriter_t* rewriter, loom_value_id_t value_id);
 static iree_status_t loom_rewriter_add_result_users_to_worklist(
     loom_rewriter_t* rewriter, loom_op_t* op);
+static iree_status_t loom_rewriter_add_summary_ops_to_worklist(
+    loom_rewriter_t* rewriter, loom_op_t* op);
 static iree_status_t loom_rewriter_add_parent_summary_ops_to_worklist(
     loom_rewriter_t* rewriter, loom_op_t* op);
 
@@ -91,8 +93,15 @@ static iree_status_t loom_rewriter_on_op_finalized(void* user_data,
   loom_rewriter_t* rewriter = (loom_rewriter_t*)user_data;
   ++rewriter->created_op_count;
   IREE_RETURN_IF_ERROR(loom_rewriter_add_to_worklist(rewriter, op));
-  IREE_RETURN_IF_ERROR(
-      loom_rewriter_add_parent_summary_ops_to_worklist(rewriter, op));
+  // Newly defined results have no users yet. Only a terminator changes an
+  // existing control or payload equation before its results are connected.
+  if (iree_any_bit_set(op->traits, LOOM_TRAIT_TERMINATOR)) {
+    IREE_RETURN_IF_ERROR(
+        loom_rewriter_add_summary_ops_to_worklist(rewriter, op));
+  } else {
+    IREE_RETURN_IF_ERROR(
+        loom_rewriter_add_parent_summary_ops_to_worklist(rewriter, op));
+  }
   const loom_op_vtable_t* vtable = loom_op_vtable(rewriter->module, op);
   if (!loom_rewriter_region_branch_summary_is_ready(rewriter, op, vtable)) {
     return iree_ok_status();
@@ -540,7 +549,7 @@ iree_status_t loom_rewriter_try_fold(loom_rewriter_t* rewriter, loom_op_t* op,
     IREE_RETURN_IF_ERROR(
         loom_rewriter_add_result_users_to_worklist(rewriter, op));
     IREE_RETURN_IF_ERROR(
-        loom_rewriter_add_parent_summary_ops_to_worklist(rewriter, op));
+        loom_rewriter_add_summary_ops_to_worklist(rewriter, op));
   }
 
   // Cannot materialize without a callback, and don't replace
@@ -738,18 +747,12 @@ static iree_status_t loom_rewriter_add_cfg_summary_to_worklist(
   return iree_ok_status();
 }
 
+// Structured parents own the summaries of their regions. Inserting or erasing
+// an unused definition does not change an equation in its own CFG component.
 static iree_status_t loom_rewriter_add_parent_summary_ops_to_worklist(
     loom_rewriter_t* rewriter, loom_op_t* op) {
   bool has_cfg_facts =
       rewriter->fact_table && rewriter->fact_table->cfg_graphs.count;
-  if (op && has_cfg_facts) {
-    IREE_RETURN_IF_ERROR(
-        loom_rewriter_add_cfg_summary_to_worklist(rewriter, op->parent_block));
-    for (uint8_t i = 0; i < op->successor_count; ++i) {
-      IREE_RETURN_IF_ERROR(loom_rewriter_add_cfg_summary_to_worklist(
-          rewriter, loom_op_successors(op)[i]));
-    }
-  }
   for (loom_op_t* parent = op ? op->parent_op : NULL; parent;
        parent = parent->parent_op) {
     if (has_cfg_facts) {
@@ -762,6 +765,28 @@ static iree_status_t loom_rewriter_add_parent_summary_ops_to_worklist(
     }
   }
   return iree_ok_status();
+}
+
+static iree_status_t loom_rewriter_add_summary_ops_to_worklist(
+    loom_rewriter_t* rewriter, loom_op_t* op) {
+  if (op && rewriter->fact_table && rewriter->fact_table->cfg_graphs.count) {
+    const loom_op_vtable_t* vtable = loom_op_vtable(rewriter->module, op);
+    // Opaque operations define facts from their result types, independently of
+    // their operands. Operand rewrites still revisit the operation, but cannot
+    // change a cyclic fact equation through it. Terminators feed block
+    // arguments or structured summaries even without an inference callback.
+    if ((vtable && vtable->infer_facts) ||
+        loom_rewriter_op_summarizes_nested_regions(vtable) ||
+        iree_any_bit_set(op->traits, LOOM_TRAIT_TERMINATOR)) {
+      IREE_RETURN_IF_ERROR(loom_rewriter_add_cfg_summary_to_worklist(
+          rewriter, op->parent_block));
+    }
+    for (uint8_t i = 0; i < op->successor_count; ++i) {
+      IREE_RETURN_IF_ERROR(loom_rewriter_add_cfg_summary_to_worklist(
+          rewriter, loom_op_successors(op)[i]));
+    }
+  }
+  return loom_rewriter_add_parent_summary_ops_to_worklist(rewriter, op);
 }
 
 loom_op_t* loom_rewriter_pop(loom_rewriter_t* rewriter) {
@@ -818,7 +843,7 @@ static iree_status_t loom_rewriter_add_attribute_users_to_worklist(
           &rewriter->module->attribute_uses.records[use_id - 1];
       IREE_RETURN_IF_ERROR(loom_rewriter_add_to_worklist(rewriter, use->op));
       IREE_RETURN_IF_ERROR(
-          loom_rewriter_add_parent_summary_ops_to_worklist(rewriter, use->op));
+          loom_rewriter_add_summary_ops_to_worklist(rewriter, use->op));
       use_id = use->next_incoming;
     }
   }
@@ -834,7 +859,7 @@ static iree_status_t loom_rewriter_add_users_to_worklist(
     loom_op_t* user_op = loom_use_user_op(uses[i]);
     IREE_RETURN_IF_ERROR(loom_rewriter_add_to_worklist(rewriter, user_op));
     IREE_RETURN_IF_ERROR(
-        loom_rewriter_add_parent_summary_ops_to_worklist(rewriter, user_op));
+        loom_rewriter_add_summary_ops_to_worklist(rewriter, user_op));
   }
   IREE_RETURN_IF_ERROR(
       loom_rewriter_add_attribute_users_to_worklist(rewriter, value_id));
@@ -850,7 +875,7 @@ static iree_status_t loom_rewriter_add_users_to_worklist(
       if (def) {
         IREE_RETURN_IF_ERROR(loom_rewriter_add_to_worklist(rewriter, def));
         IREE_RETURN_IF_ERROR(
-            loom_rewriter_add_parent_summary_ops_to_worklist(rewriter, def));
+            loom_rewriter_add_summary_ops_to_worklist(rewriter, def));
       }
     }
     const loom_use_t* user_value_uses = loom_value_uses(user_value);
@@ -858,7 +883,7 @@ static iree_status_t loom_rewriter_add_users_to_worklist(
       loom_op_t* user_op = loom_use_user_op(user_value_uses[i]);
       IREE_RETURN_IF_ERROR(loom_rewriter_add_to_worklist(rewriter, user_op));
       IREE_RETURN_IF_ERROR(
-          loom_rewriter_add_parent_summary_ops_to_worklist(rewriter, user_op));
+          loom_rewriter_add_summary_ops_to_worklist(rewriter, user_op));
     }
     IREE_RETURN_IF_ERROR(loom_rewriter_add_attribute_users_to_worklist(
         rewriter, type_use->user_value_id));
@@ -877,7 +902,7 @@ static iree_status_t loom_rewriter_add_operand_users_except_to_worklist(
     if (user_op == except_op) continue;
     IREE_RETURN_IF_ERROR(loom_rewriter_add_to_worklist(rewriter, user_op));
     IREE_RETURN_IF_ERROR(
-        loom_rewriter_add_parent_summary_ops_to_worklist(rewriter, user_op));
+        loom_rewriter_add_summary_ops_to_worklist(rewriter, user_op));
   }
   return iree_ok_status();
 }
@@ -1145,10 +1170,10 @@ iree_status_t loom_rewriter_move_region_blocks(
     IREE_RETURN_IF_ERROR(
         loom_rewriter_add_to_worklist(rewriter, target_parent_op));
   }
-  IREE_RETURN_IF_ERROR(loom_rewriter_add_parent_summary_ops_to_worklist(
-      rewriter, source_parent_op));
-  IREE_RETURN_IF_ERROR(loom_rewriter_add_parent_summary_ops_to_worklist(
-      rewriter, target_parent_op));
+  IREE_RETURN_IF_ERROR(
+      loom_rewriter_add_summary_ops_to_worklist(rewriter, source_parent_op));
+  IREE_RETURN_IF_ERROR(
+      loom_rewriter_add_summary_ops_to_worklist(rewriter, target_parent_op));
 
   const uint16_t source_block_count = source_region->block_count;
   const uint16_t target_block_count = target_region->block_count;
@@ -1299,10 +1324,9 @@ iree_status_t loom_rewriter_move_before(loom_rewriter_t* rewriter,
   loom_rewriter_record_subtree_summaries(module, op);
 
   IREE_RETURN_IF_ERROR(loom_rewriter_add_to_worklist(rewriter, op));
+  IREE_RETURN_IF_ERROR(loom_rewriter_add_summary_ops_to_worklist(rewriter, op));
   IREE_RETURN_IF_ERROR(
-      loom_rewriter_add_parent_summary_ops_to_worklist(rewriter, op));
-  IREE_RETURN_IF_ERROR(
-      loom_rewriter_add_parent_summary_ops_to_worklist(rewriter, before_op));
+      loom_rewriter_add_summary_ops_to_worklist(rewriter, before_op));
   rewriter->flags |= LOOM_REWRITER_FLAG_CHANGED;
   return iree_ok_status();
 }
@@ -1360,8 +1384,7 @@ iree_status_t loom_rewriter_move_to_block_end(loom_rewriter_t* rewriter,
   loom_rewriter_record_subtree_summaries(module, op);
 
   IREE_RETURN_IF_ERROR(loom_rewriter_add_to_worklist(rewriter, op));
-  IREE_RETURN_IF_ERROR(
-      loom_rewriter_add_parent_summary_ops_to_worklist(rewriter, op));
+  IREE_RETURN_IF_ERROR(loom_rewriter_add_summary_ops_to_worklist(rewriter, op));
   rewriter->flags |= LOOM_REWRITER_FLAG_CHANGED;
   return iree_ok_status();
 }
@@ -1372,8 +1395,7 @@ iree_status_t loom_rewriter_set_operand(loom_rewriter_t* rewriter,
   IREE_RETURN_IF_ERROR(
       loom_op_set_operand(rewriter->module, op, operand_index, new_value));
   IREE_RETURN_IF_ERROR(loom_rewriter_add_to_worklist(rewriter, op));
-  IREE_RETURN_IF_ERROR(
-      loom_rewriter_add_parent_summary_ops_to_worklist(rewriter, op));
+  IREE_RETURN_IF_ERROR(loom_rewriter_add_summary_ops_to_worklist(rewriter, op));
   IREE_RETURN_IF_ERROR(loom_rewriter_recompute_op_facts(
       rewriter, op, LOOM_REWRITER_FACT_RECOMPUTE_FLAG_ENQUEUE_RESULT_USERS));
   rewriter->flags |= LOOM_REWRITER_FLAG_CHANGED;
@@ -1397,8 +1419,8 @@ iree_status_t loom_rewriter_set_value_type(loom_rewriter_t* rewriter,
         iree_any_bit_set(defining_op->traits, LOOM_TRAIT_CONSTANT_LIKE)) {
       IREE_RETURN_IF_ERROR(
           loom_rewriter_recompute_op_facts(rewriter, defining_op, /*flags=*/0));
-      IREE_RETURN_IF_ERROR(loom_rewriter_add_parent_summary_ops_to_worklist(
-          rewriter, defining_op));
+      IREE_RETURN_IF_ERROR(
+          loom_rewriter_add_summary_ops_to_worklist(rewriter, defining_op));
     }
   }
   IREE_RETURN_IF_ERROR(loom_rewriter_add_users_to_worklist(rewriter, value_id));
@@ -1472,8 +1494,7 @@ iree_status_t loom_rewriter_set_attr(loom_rewriter_t* rewriter, loom_op_t* op,
       loom_rewriter_recompute_op_facts(rewriter, op, /*flags=*/0));
   IREE_RETURN_IF_ERROR(
       loom_rewriter_add_result_users_to_worklist(rewriter, op));
-  IREE_RETURN_IF_ERROR(
-      loom_rewriter_add_parent_summary_ops_to_worklist(rewriter, op));
+  IREE_RETURN_IF_ERROR(loom_rewriter_add_summary_ops_to_worklist(rewriter, op));
   rewriter->flags |= LOOM_REWRITER_FLAG_CHANGED;
   return iree_ok_status();
 }
@@ -1517,8 +1538,7 @@ iree_status_t loom_rewriter_set_instance_flags(loom_rewriter_t* rewriter,
       loom_rewriter_recompute_op_facts(rewriter, op, /*flags=*/0));
   IREE_RETURN_IF_ERROR(
       loom_rewriter_add_result_users_to_worklist(rewriter, op));
-  IREE_RETURN_IF_ERROR(
-      loom_rewriter_add_parent_summary_ops_to_worklist(rewriter, op));
+  IREE_RETURN_IF_ERROR(loom_rewriter_add_summary_ops_to_worklist(rewriter, op));
   rewriter->flags |= LOOM_REWRITER_FLAG_CHANGED;
   return iree_ok_status();
 }
