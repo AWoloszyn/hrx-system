@@ -48,7 +48,11 @@ iree_status_t loom_target_profile_project_facts(
   memset(facts, 0, profile_type->fact_type->storage_size);
   loom_target_facts_builder_initialize(profile_type->fact_type,
                                        profile->target_bundle, facts);
+  facts->explicit_fields = profile->explicit_fields;
   IREE_RETURN_IF_ERROR(profile_type->project_facts(profile, arena, facts));
+  if (facts->fact_type->rebind != NULL) {
+    facts->fact_type->rebind(facts);
+  }
   *out_facts = facts;
   return iree_ok_status();
 }

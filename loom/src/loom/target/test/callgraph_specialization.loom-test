@@ -1,0 +1,335 @@
+// RUN: pass specialize-target-callgraph,canonicalize
+
+// Visible callers cannot supply the target of an open public definition.
+test.target<low_core> @device {subgroup_size = 64}
+
+func.def public noinline @width() -> (index) {
+  %width = target.subgroup.size : index
+  func.return %width : index
+}
+
+func.def public target(@device) @bound() -> (index) {
+  %width = func.call @width() : () -> (index)
+  func.return %width : index
+}
+
+// ----
+test.target<low_core> @device {subgroup_size = 64}
+
+func.def public noinline @width() -> (index) {
+  %width = target.subgroup.size : index
+  func.return %width : index
+}
+
+func.def public target(@device) @bound() -> (index) {
+  %width = func.call pure @width() : () -> (index)
+  func.return %width : index
+}
+
+// ====
+// RUN: pass specialize-target-callgraph,specialize-target-callgraph,canonicalize
+
+// Unknown reachability preserves the entire private call chain, even when a
+// bound entry appears first. A repeated pass reuses the same concrete versions.
+test.target<low_core> @device {subgroup_size = 64}
+
+func.def noinline @width() -> (index) {
+  %width = target.subgroup.size : index
+  func.return %width : index
+}
+
+func.def noinline @forward() -> (index) {
+  %width = func.call @width() : () -> (index)
+  func.return %width : index
+}
+
+func.def public target(@device) @bound() -> (index) {
+  %width = func.call @forward() : () -> (index)
+  func.return %width : index
+}
+
+func.def public noinline @unbound() -> (index) {
+  %width = func.call @forward() : () -> (index)
+  func.return %width : index
+}
+
+// ----
+test.target<low_core> @device {subgroup_size = 64}
+
+func.def noinline @width() -> (index) {
+  %width = target.subgroup.size : index
+  func.return %width : index
+}
+
+func.def noinline @width_spec0() -> (index) {
+  %width = index.constant 64 : index
+  func.return %width : index
+}
+
+func.def noinline @forward() -> (index) {
+  %width = func.call pure @width() : () -> (index)
+  func.return %width : index
+}
+
+func.def noinline @forward_spec0() -> (index) {
+  %width = func.call pure @width_spec0() : () -> (index)
+  func.return %width : index
+}
+
+func.def public target(@device) @bound() -> (index) {
+  %width = func.call @forward_spec0() : () -> (index)
+  func.return %width : index
+}
+
+func.def public noinline @unbound() -> (index) {
+  %width = func.call pure @forward() : () -> (index)
+  func.return %width : index
+}
+
+// ====
+// RUN: pass specialize-target-callgraph,canonicalize
+
+// Each bound context gets its own private version; neither owns the original.
+test.target<low_core> @wave32 {subgroup_size = 32}
+
+test.target<low_core> @wave64 {subgroup_size = 64}
+
+func.def noinline @width() -> (index) {
+  %width = target.subgroup.size : index
+  func.return %width : index
+}
+
+func.def public @unbound() -> (index) {
+  %width = func.call @width() : () -> (index)
+  func.return %width : index
+}
+
+func.def public target(@wave32) @narrow() -> (index) {
+  %width = func.call @width() : () -> (index)
+  func.return %width : index
+}
+
+func.def public target(@wave64) @wide() -> (index) {
+  %width = func.call @width() : () -> (index)
+  func.return %width : index
+}
+
+// ----
+test.target<low_core> @wave32 {subgroup_size = 32}
+
+test.target<low_core> @wave64 {subgroup_size = 64}
+
+func.def noinline @width() -> (index) {
+  %width = target.subgroup.size : index
+  func.return %width : index
+}
+
+func.def noinline @width_spec0() -> (index) {
+  %width = index.constant 32 : index
+  func.return %width : index
+}
+
+func.def noinline @width_spec1() -> (index) {
+  %width = index.constant 64 : index
+  func.return %width : index
+}
+
+func.def public @unbound() -> (index) {
+  %width = func.call pure @width() : () -> (index)
+  func.return %width : index
+}
+
+func.def public target(@wave32) @narrow() -> (index) {
+  %width = func.call pure @width_spec0() : () -> (index)
+  func.return %width : index
+}
+
+func.def public target(@wave64) @wide() -> (index) {
+  %width = func.call pure @width_spec1() : () -> (index)
+  func.return %width : index
+}
+
+// ====
+// RUN: pass specialize-target-callgraph,specialize-target-callgraph
+
+// A wholly unbound module needs neither clones nor concrete target versions.
+func.def noinline @width() -> (index) {
+  %width = target.subgroup.size : index
+  func.return %width : index
+}
+
+func.def public @unbound() -> (index) {
+  %width = func.call @width() : () -> (index)
+  func.return %width : index
+}
+
+// ====
+// RUN: pass specialize-target-callgraph,specialize-target-callgraph
+
+// A recursive private definition stays reusable by the unbound entry. Its
+// bound clone must recurse into itself, not back into the unknown original.
+test.target<low_core> @device {subgroup_size = 64}
+
+func.def noinline @recursive(%again: i1) -> (index) {
+  %width = scf.if %again -> (index) {
+    %stop = scalar.constant false : i1
+    %value = func.call @recursive(%stop) : (i1) -> (index)
+    scf.yield %value : index
+  } else {
+    %value = target.subgroup.size : index
+    scf.yield %value : index
+  }
+  func.return %width : index
+}
+
+func.def public target(@device) @bound(%again: i1) -> (index) {
+  %width = func.call @recursive(%again) : (i1) -> (index)
+  func.return %width : index
+}
+
+func.def public @unbound(%again: i1) -> (index) {
+  %width = func.call @recursive(%again) : (i1) -> (index)
+  func.return %width : index
+}
+
+// ----
+test.target<low_core> @device {subgroup_size = 64}
+
+func.def noinline @recursive(%again: i1) -> (index) {
+  %width = scf.if %again -> (index) {
+    %stop = scalar.constant false : i1
+    %value = func.call @recursive(%stop) : (i1) -> (index)
+    scf.yield %value : index
+  } else {
+    %value = target.subgroup.size : index
+    scf.yield %value : index
+  }
+  func.return %width : index
+}
+
+func.def noinline @recursive_spec0(%again: i1) -> (index) {
+  %width = scf.if %again -> (index) {
+    %stop = scalar.constant false : i1
+    %value = func.call @recursive_spec0(%stop) : (i1) -> (index)
+    scf.yield %value : index
+  } else {
+    %value = target.subgroup.size : index
+    scf.yield %value : index
+  }
+  func.return %width : index
+}
+
+func.def public target(@device) @bound(%again: i1) -> (index) {
+  %width = func.call @recursive_spec0(%again) : (i1) -> (index)
+  func.return %width : index
+}
+
+func.def public @unbound(%again: i1) -> (index) {
+  %width = func.call @recursive(%again) : (i1) -> (index)
+  func.return %width : index
+}
+
+// ====
+// RUN: pass specialize-target-callgraph,specialize-target-callgraph
+
+// An unbound caller supplies no external ABI facts. The bound caller can still
+// use the declaration without trying to version its implementation.
+test.target<low_core> @device {subgroup_size = 64}
+
+func.decl import("external") @read() -> (i32)
+
+func.def public @unbound() -> (i32) {
+  %value = func.call @read() : () -> (i32)
+  func.return %value : i32
+}
+
+func.def public target(@device) @bound() -> (i32) {
+  %value = func.call @read() : () -> (i32)
+  func.return %value : i32
+}
+
+// ====
+// RUN: pass specialize-target-callgraph,canonicalize
+
+// An explicit export also keeps the callable open without a public modifier.
+test.target<low_core> @device {subgroup_size = 64}
+
+func.def noinline export("visible_width") @width() -> (index) {
+  %width = target.subgroup.size : index
+  func.return %width : index
+}
+
+func.def public target(@device) @bound() -> (index) {
+  %width = func.call @width() : () -> (index)
+  func.return %width : index
+}
+
+// ----
+test.target<low_core> @device {subgroup_size = 64}
+
+func.def noinline export("visible_width") @width() -> (index) {
+  %width = target.subgroup.size : index
+  func.return %width : index
+}
+
+func.def public target(@device) @bound() -> (index) {
+  %width = func.call pure @width() : () -> (index)
+  func.return %width : index
+}
+
+// ====
+// RUN: pass specialize-target-callgraph,specialize-target-callgraph,canonicalize
+
+// A kernel's artifact-entry ABI does not make its source symbol public. Bound
+// command programs can specialize a private kernel without binding other users.
+test.target<low_core> @device {subgroup_size = 64}
+
+kernel.def @kernel() {
+  %c1 = index.constant 1 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%c1, %c1, %c1) : index
+} launch() {
+  %width = kernel.subgroup.size : index
+  test.use %width : index
+  kernel.return
+}
+
+command.program.def public target(@device) @bound() launch() {
+  kernel.launch @kernel() : ()
+  command.return
+}
+
+command.program.def public @unbound() launch() {
+  kernel.launch @kernel() : ()
+  command.return
+}
+
+// ----
+test.target<low_core> @device {subgroup_size = 64}
+
+kernel.def @kernel() {
+  %c1 = index.constant 1 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%c1, %c1, %c1) : index
+} launch() {
+  %width = kernel.subgroup.size : index
+  test.use %width : index
+  kernel.return
+}
+
+kernel.def @kernel_spec0() {
+  %c1 = index.constant 1 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%c1, %c1, %c1) : index
+} launch() {
+  %width = index.constant 64 : index
+  test.use %width : index
+  kernel.return
+}
+
+command.program.def public target(@device) @bound() launch() {
+  kernel.launch @kernel_spec0() : ()
+  command.return
+}
+
+command.program.def public @unbound() launch() {
+  kernel.launch @kernel() : ()
+  command.return
+}

@@ -1136,7 +1136,7 @@ iree_status_t loom_amdgpu_low_legality_verify_kernel_workgroup_scan(
                                            IREE_SV("workgroup_scan.direction"));
   }
 
-  const uint32_t wavefront_size = loom_amdgpu_target_wavefront_size(bundle);
+  const uint32_t wavefront_size = bundle->snapshot->subgroup_size;
   if (!loom_amdgpu_wavefront_size_is_valid(wavefront_size)) {
     return loom_amdgpu_low_legality_reject(
         context, op, IREE_SV("workgroup_scan.wavefront_size"));
@@ -1268,7 +1268,7 @@ iree_status_t loom_amdgpu_low_legality_verify_kernel_subgroup_scan(
                                            IREE_SV("subgroup_scan.direction"));
   }
 
-  const uint32_t wavefront_size = loom_amdgpu_target_wavefront_size(bundle);
+  const uint32_t wavefront_size = bundle->snapshot->subgroup_size;
   if (!loom_amdgpu_wavefront_size_is_valid(wavefront_size)) {
     return loom_amdgpu_low_legality_reject(
         context, op, IREE_SV("subgroup_scan.wavefront_size"));

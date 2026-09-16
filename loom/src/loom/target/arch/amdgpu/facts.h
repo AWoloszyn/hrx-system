@@ -68,7 +68,8 @@ typedef struct loom_amdgpu_target_facts_t {
   // Compiler-semantic properties resolved from |identity| and |base|.
   loom_amdgpu_target_properties_t properties;
 
-  // True when subgroup_size was supplied as an explicit semantic input.
+  // True when subgroup_size is constrained by an input or a root's execution
+  // choice; a callee cannot replace it with another supported mode.
   bool subgroup_size_explicit;
 
   // True when contract_set_key was supplied as an explicit semantic input.
@@ -122,6 +123,12 @@ void loom_amdgpu_target_properties_resolve(
     const loom_amdgpu_target_identity_t* identity,
     const loom_target_bundle_t* common,
     loom_amdgpu_target_properties_t* out_properties);
+
+// Finishes projection from an authored target or profile. The common bundle,
+// input-presence set, and identity must already be initialized. Multi-mode
+// hardware leaves an unchosen subgroup size unknown; a single supported mode
+// remains a hardware guarantee. Cloning resolved facts does not call this.
+void loom_amdgpu_target_facts_initialize(loom_amdgpu_target_facts_t* facts);
 
 // Returns true when |properties| support native AMDHSA HSACO emission.
 static inline bool loom_amdgpu_target_properties_support_hsaco(

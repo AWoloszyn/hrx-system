@@ -40,6 +40,10 @@ typedef struct loom_target_resolved_specialization_t {
   // Only the projected-profile owner stores this shared value.
   loom_target_context_ordinal_t targetless_context_ordinal;
 
+  // Selected facts for targetless uses, independent of the owner's own
+  // authored requirements. Only the projected-profile owner stores this value.
+  const loom_target_facts_t* targetless_context_facts;
+
   // Context ordinal retained by the produced function version.
   loom_target_context_ordinal_t target_context_ordinal;
 
@@ -369,9 +373,15 @@ static iree_status_t loom_target_specialization_prepare_versions(
           &specializations[specialization->projected_profile_owner_ordinal];
       specialization->target_context_ordinal =
           profile_owner->targetless_context_ordinal;
+      if (specialization->target_context_ordinal !=
+          LOOM_TARGET_CONTEXT_ORDINAL_INVALID) {
+        resolved_facts = profile_owner->targetless_context_facts;
+      }
     }
     if (specialization->target_context_ordinal ==
         LOOM_TARGET_CONTEXT_ORDINAL_INVALID) {
+      IREE_RETURN_IF_ERROR(loom_target_facts_builder_select_execution(
+          resolved_facts, arena, &resolved_facts));
       if (next_target_context_ordinal >= LOOM_TARGET_CONTEXT_ORDINAL_INVALID) {
         return iree_make_status(
             IREE_STATUS_RESOURCE_EXHAUSTED,
@@ -385,6 +395,7 @@ static iree_status_t loom_target_specialization_prepare_versions(
             &specializations[specialization->projected_profile_owner_ordinal];
         profile_owner->targetless_context_ordinal =
             specialization->target_context_ordinal;
+        profile_owner->targetless_context_facts = resolved_facts;
       }
     }
     specialization->resolved_target = (loom_resolved_target_t){

@@ -19,8 +19,8 @@ TEST(SpirvTargetProfileTest, PreservesStructuredProfileFacts) {
   const loom_spirv_cooperative_property_set_t cooperative_properties = {};
   loom_spirv_target_profile_t profile = {};
 
-  loom_spirv_target_profile_initialize(&target_bundle, &cooperative_properties,
-                                       &profile);
+  loom_spirv_target_profile_initialize(&target_bundle, 0,
+                                       &cooperative_properties, &profile);
 
   EXPECT_EQ(loom_spirv_target_profile_cast(&profile.base), &profile);
   EXPECT_EQ(loom_target_profile_bundle(&profile.base), &target_bundle);
@@ -67,7 +67,7 @@ TEST(SpirvTargetProfileTest, ProjectsOwnedCooperativePropertyFacts) {
   };
   loom_spirv_target_profile_t profile = {};
   loom_spirv_target_profile_initialize(&loom_spirv_low_target_bundle_vulkan1_3,
-                                       &cooperative_properties, &profile);
+                                       0, &cooperative_properties, &profile);
 
   iree_arena_block_pool_t block_pool;
   iree_arena_block_pool_initialize(4096, iree_allocator_system(), &block_pool);
@@ -124,6 +124,39 @@ TEST(SpirvTargetProfileTest, SelectsImmutableVulkanProfile) {
   IREE_ASSERT_OK(loom_spirv_target_profile_select(IREE_SV("vulkan1.3+bda"),
                                                   &repeated_profile));
   EXPECT_EQ(repeated_profile, profile);
+}
+
+TEST(SpirvTargetProfileTest, PreservesExplicitZeroAndPresetValues) {
+  loom_target_fact_field_set_t explicit_fields = 0;
+  loom_target_fact_field_set_insert(&explicit_fields,
+                                    LOOM_TARGET_FACT_FIELD_LINKAGE);
+  loom_target_fact_field_set_insert(&explicit_fields,
+                                    LOOM_TARGET_FACT_FIELD_INDEX_BITWIDTH);
+  const loom_spirv_cooperative_property_set_t no_cooperative_properties = {};
+  loom_spirv_target_profile_t profile = {};
+  loom_spirv_target_profile_initialize(&loom_spirv_low_target_bundle_vulkan1_3,
+                                       explicit_fields,
+                                       &no_cooperative_properties, &profile);
+
+  iree_arena_block_pool_t block_pool;
+  iree_arena_block_pool_initialize(4096, iree_allocator_system(), &block_pool);
+  iree_arena_allocator_t arena;
+  iree_arena_initialize(&block_pool, &arena);
+  loom_target_facts_t* facts = nullptr;
+  IREE_ASSERT_OK(
+      loom_target_profile_project_facts(&profile.base, &arena, &facts));
+  EXPECT_EQ(facts->explicit_fields, explicit_fields);
+  EXPECT_EQ(facts->storage.export_plan.linkage, LOOM_TARGET_LINKAGE_DEFAULT);
+  EXPECT_EQ(facts->storage.snapshot.index_bitwidth, 32u);
+  EXPECT_FALSE(loom_target_facts_field_is_explicit(
+      facts, LOOM_TARGET_FACT_FIELD_DEFAULT_POINTER_BITWIDTH));
+  const auto* spirv_facts = loom_spirv_target_facts_cast(facts);
+  ASSERT_NE(spirv_facts, nullptr);
+  EXPECT_EQ(spirv_facts->cooperative_properties.matrix_property_count, 0u);
+  EXPECT_EQ(spirv_facts->cooperative_properties.vector_property_count, 0u);
+
+  iree_arena_deinitialize(&arena);
+  iree_arena_block_pool_deinitialize(&block_pool);
 }
 
 TEST(SpirvTargetProfileTest, RejectsUnknownNamedProfile) {

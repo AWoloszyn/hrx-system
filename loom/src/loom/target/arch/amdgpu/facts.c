@@ -8,6 +8,7 @@
 
 #include "loom/codegen/low/target_binding.h"
 #include "loom/target/arch/amdgpu/target_info.h"
+#include "loom/target/facts_builder.h"
 
 const loom_amdgpu_processor_info_t*
 loom_amdgpu_target_processor_from_resolved_target(
@@ -181,9 +182,9 @@ static bool loom_amdgpu_target_facts_satisfy_specialization_requirement(
     return false;
   }
 
-  // A processor may support more than one wavefront size. An omitted authored
-  // choice uses the row default without constraining later specialization. An
-  // explicit choice remains a requirement even when it equals that default.
+  // A processor may support more than one wavefront size. An unchosen mode
+  // remains open to specialization; explicit or root-selected modes constrain
+  // later requirements even when they equal the processor preference.
   loom_target_snapshot_t effective_snapshot = effective->base.storage.snapshot;
   loom_target_snapshot_t requirement_snapshot =
       requirement->base.storage.snapshot;
@@ -235,6 +236,37 @@ static void loom_amdgpu_target_facts_rebind(loom_target_facts_t* base_facts) {
       &facts->base, LOOM_TARGET_FACT_FIELD_CONTRACT_SET_KEY);
 }
 
+void loom_amdgpu_target_facts_initialize(loom_amdgpu_target_facts_t* facts) {
+  loom_amdgpu_target_facts_rebind(&facts->base);
+  if (!facts->subgroup_size_explicit) {
+    const loom_amdgpu_processor_wavefront_info_t* wavefront =
+        &facts->properties.processor->wavefront;
+    facts->base.storage.snapshot.subgroup_size =
+        wavefront->supported_sizes ==
+                loom_amdgpu_wavefront_size_flag(wavefront->default_size)
+            ? wavefront->default_size
+            : 0;
+  }
+}
+
+static iree_status_t loom_amdgpu_target_facts_select_execution(
+    const loom_target_facts_t* source, iree_arena_allocator_t* arena,
+    const loom_target_facts_t** out_facts) {
+  *out_facts = source;
+  if (source->storage.snapshot.subgroup_size != 0) return iree_ok_status();
+  loom_target_facts_t* selected = NULL;
+  IREE_RETURN_IF_ERROR(
+      loom_target_facts_builder_clone(source, arena, &selected));
+  loom_amdgpu_target_facts_t* facts = (loom_amdgpu_target_facts_t*)selected;
+  selected->storage.snapshot.subgroup_size =
+      facts->properties.processor->wavefront.default_size;
+  loom_target_fact_field_set_insert(&selected->explicit_fields,
+                                    LOOM_TARGET_FACT_FIELD_SUBGROUP_SIZE);
+  facts->subgroup_size_explicit = true;
+  *out_facts = selected;
+  return iree_ok_status();
+}
+
 static iree_string_view_t loom_amdgpu_target_facts_identity_name(
     const loom_target_facts_t* base_facts) {
   const loom_amdgpu_target_facts_t* facts =
@@ -252,4 +284,5 @@ const loom_target_fact_type_t loom_amdgpu_target_fact_type = {
         loom_amdgpu_target_facts_satisfy_specialization_requirement,
     .rebind = loom_amdgpu_target_facts_rebind,
     .identity_name = loom_amdgpu_target_facts_identity_name,
+    .select_execution = loom_amdgpu_target_facts_select_execution,
 };

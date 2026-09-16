@@ -518,6 +518,10 @@ loom_target_pipeline_build_source_low_diagnostic_artifacts_body(
     loom_builder_t* builder, void* user_data) {
   const loom_target_pipeline_build_context_t* context =
       (const loom_target_pipeline_build_context_t*)user_data;
+  // Diagnostic emission preserves source operations, not unchosen execution
+  // modes. Facts used for footprints and lowering describe the compiled root.
+  IREE_RETURN_IF_ERROR(loom_target_pipeline_build_run(
+      builder, IREE_SV("specialize-target-callgraph")));
   loom_op_t* for_op = NULL;
   if (loom_target_pipeline_source_to_low_has_memory_diagnostics(context)) {
     IREE_RETURN_IF_ERROR(loom_target_pipeline_build_for_target_functions(

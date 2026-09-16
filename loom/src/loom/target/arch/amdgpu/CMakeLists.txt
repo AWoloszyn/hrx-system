@@ -134,6 +134,7 @@ loom_cc_library(
     iree::base
     loom::codegen::low::target_binding
     loom::target::facts
+    loom::target::facts_builder
   PUBLIC
 )
 endif()
@@ -243,6 +244,7 @@ loom_cc_test(
     iree::testing::gtest
     iree::testing::gtest_main
     loom::target::arch::amdgpu::records::target_records
+    loom::target::facts_builder
   LABELS
     "iree-build-requirement=loom.target.arch.amdgpu"
 )
@@ -499,6 +501,7 @@ loom_cc_test(
     loom::target::arch::amdgpu::facts
     loom::target::arch::amdgpu::ops
     loom::target::arch::amdgpu::target_info
+    loom::target::facts_builder
     loom::target::provider
     loom::testing::module_ptr
     loom::transforms::symbol::template_selection

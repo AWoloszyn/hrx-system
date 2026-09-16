@@ -34,6 +34,7 @@
 #include "loom/target/arch/amdgpu/ops/ops.h"
 #include "loom/target/arch/amdgpu/profile.h"
 #include "loom/target/arch/amdgpu/target_info.h"
+#include "loom/target/facts_builder.h"
 #include "loom/testing/module_ptr.h"
 #include "loom/transforms/symbol/template_selection.h"
 #include "loom/verify/verify.h"
@@ -535,22 +536,32 @@ TEST_F(AmdgpuProviderTest, MaterializesEveryStructuredProfile) {
     IREE_ASSERT_OK(loom_target_profile_project_facts(
         &profile.base, &analysis_arena_, &profile_facts));
 
-    loom_op_t* target_op = nullptr;
-    ModulePtr module = MaterializeTargetDefinition(
-        target->name, IREE_SV("target"), profile_facts, &target_op);
-    EXPECT_TRUE(loom_attr_is_absent(
-        loom_op_attrs(target_op)[loom_amdgpu_target_features_ATTR_INDEX]));
+    const loom_target_facts_t* selected_facts = nullptr;
+    IREE_ASSERT_OK(loom_target_facts_builder_select_execution(
+        profile_facts, &analysis_arena_, &selected_facts));
+    const auto* processor = loom_amdgpu_target_info_target_processor(target);
+    EXPECT_EQ(selected_facts->storage.snapshot.subgroup_size,
+              processor->properties.wavefront.default_size);
 
-    loom_symbol_fact_table_reset(&fact_table_);
-    const loom_target_symbol_facts_t* materialized_symbol_facts =
-        Target(module.get(), FindSymbolRef(module.get(), IREE_SV("target")));
-    const loom_amdgpu_target_facts_t* materialized_facts =
-        loom_amdgpu_target_facts_cast(materialized_symbol_facts->projection);
-    ASSERT_NE(materialized_facts, nullptr);
-    const loom_amdgpu_target_facts_t* expected_facts =
-        loom_amdgpu_target_facts_cast(profile_facts);
-    ASSERT_NE(expected_facts, nullptr);
-    ExpectTargetFactsEqual(*expected_facts, *materialized_facts);
+    const loom_target_facts_t* variants[] = {profile_facts, selected_facts};
+    for (const auto* variant : variants) {
+      loom_op_t* target_op = nullptr;
+      ModulePtr module = MaterializeTargetDefinition(
+          target->name, IREE_SV("target"), variant, &target_op);
+      EXPECT_TRUE(loom_attr_is_absent(
+          loom_op_attrs(target_op)[loom_amdgpu_target_features_ATTR_INDEX]));
+
+      loom_symbol_fact_table_reset(&fact_table_);
+      const loom_target_symbol_facts_t* materialized_symbol_facts =
+          Target(module.get(), FindSymbolRef(module.get(), IREE_SV("target")));
+      const loom_amdgpu_target_facts_t* materialized_facts =
+          loom_amdgpu_target_facts_cast(materialized_symbol_facts->projection);
+      ASSERT_NE(materialized_facts, nullptr);
+      const loom_amdgpu_target_facts_t* expected_facts =
+          loom_amdgpu_target_facts_cast(variant);
+      ASSERT_NE(expected_facts, nullptr);
+      ExpectTargetFactsEqual(*expected_facts, *materialized_facts);
+    }
   }
 }
 
@@ -744,8 +755,9 @@ TEST_F(AmdgpuProviderTest, SeparatesIdentityAndSpecializationRequirements) {
   ASSERT_NE(gfx1151_explicit_wave32_facts, nullptr);
   ASSERT_NE(gfx11_generic_facts, nullptr);
   ASSERT_NE(gfx11_explicit_contract_facts, nullptr);
-  EXPECT_EQ(gfx1151_a_facts->base.storage.snapshot.subgroup_size,
-            gfx1151_explicit_wave32_facts->base.storage.snapshot.subgroup_size);
+  EXPECT_EQ(gfx1151_a_facts->base.storage.snapshot.subgroup_size, 0u);
+  EXPECT_EQ(gfx1151_explicit_wave32_facts->base.storage.snapshot.subgroup_size,
+            32u);
   EXPECT_FALSE(gfx1151_a_facts->subgroup_size_explicit);
   EXPECT_TRUE(gfx1151_explicit_wave32_facts->subgroup_size_explicit);
   EXPECT_FALSE(gfx11_generic_facts->contract_set_key_explicit);

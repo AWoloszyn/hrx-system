@@ -620,6 +620,40 @@ TEST(VulkanProfileTest, KeepsFloatingPointAtomicScalarDependenciesClosed) {
                                 float64_atomic_features));
 }
 
+TEST(VulkanProfileTest, PreservesDeviceInputsWithoutChoosingSubgroupWidth) {
+  for (uint32_t subgroup_size : {0u, 32u}) {
+    SCOPED_TRACE(subgroup_size);
+    loom_spirv_vulkan_hal_profile_facts_t facts = BaselineFacts();
+    facts.subgroup_size = subgroup_size;
+    loom_spirv_vulkan_hal_target_profile_storage_t storage = {};
+    IREE_ASSERT_OK(loom_spirv_vulkan_hal_target_profile_storage_initialize(
+        &facts, /*cooperative_matrix_properties=*/nullptr,
+        /*cooperative_matrix_property_count=*/0, iree_allocator_system(),
+        &storage));
+    const auto explicit_fields = storage.profile.base.explicit_fields;
+    for (auto field : {LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_SIZE_X,
+                       LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_SIZE_Y,
+                       LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_SIZE_Z,
+                       LOOM_TARGET_FACT_FIELD_MAX_FLAT_WORKGROUP_SIZE,
+                       LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_COUNT_X,
+                       LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_COUNT_Y,
+                       LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_COUNT_Z,
+                       LOOM_TARGET_FACT_FIELD_ABI,
+                       LOOM_TARGET_FACT_FIELD_CONTRACT_FEATURE_BITS}) {
+      EXPECT_TRUE(loom_target_fact_field_set_contains(explicit_fields, field));
+    }
+    EXPECT_EQ(loom_target_fact_field_set_contains(
+                  explicit_fields, LOOM_TARGET_FACT_FIELD_SUBGROUP_SIZE),
+              subgroup_size != 0);
+    EXPECT_EQ(storage.target_bundle_storage.snapshot.subgroup_size,
+              subgroup_size);
+    EXPECT_FALSE(loom_target_fact_field_set_contains(
+        explicit_fields, LOOM_TARGET_FACT_FIELD_MAX_WORKGROUP_STORAGE_BYTES));
+    loom_spirv_vulkan_hal_target_profile_storage_deinitialize(
+        &storage, iree_allocator_system());
+  }
+}
+
 TEST(VulkanProfileTest, ImportsExactCooperativeMatrixRows) {
   loom_spirv_vulkan_hal_profile_facts_t facts = BaselineFacts();
   facts.flags |= LOOM_SPIRV_VULKAN_HAL_PROFILE_FLAG_COOPERATIVE_MATRIX_KHR;

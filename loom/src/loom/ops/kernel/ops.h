@@ -609,7 +609,7 @@ iree_status_t loom_kernel_subgroup_count_facts(
     const loom_value_facts_t* operand_facts,
     loom_value_facts_t* result_facts);
 
-// LOOM_OP_KERNEL_SUBGROUP_SIZE: Read the invocation count of the current subgroup.
+// LOOM_OP_KERNEL_SUBGROUP_SIZE: Read the execution width of the current subgroup. The width includes inactive lanes and may exceed the workgroup's invocation count.
 // %size = kernel.subgroup.size : index
 LOOM_DEFINE_ISA(loom_kernel_subgroup_size_isa, LOOM_OP_KERNEL_SUBGROUP_SIZE)
 LOOM_DEFINE_RESULT(loom_kernel_subgroup_size_result, 0)

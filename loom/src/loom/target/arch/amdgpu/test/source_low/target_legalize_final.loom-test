@@ -1,5 +1,24 @@
 // RUN: pass target-legalize{mode=final}
 
+// Final legalization requires an execution mode for collective lowering.
+// An unbound target must produce a diagnostic, not choose a mode or assert.
+amdgpu.target<gfx11-generic> @unbound
+
+kernel.def target(@unbound) @unresolved_width() {
+  %unit = index.constant 1 : index
+  %size = index.constant 64 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%size, %unit, %unit) : index
+} launch(%value: f32, %output: buffer) {
+  // ERROR@+1: AMDGPU/023 {constraint_key="workgroup_reduce.wavefront_size"}
+  %sum = kernel.workgroup.reduce<addf> %value : f32
+  %base_offset = index.constant 0 : offset
+  %view = buffer.view %output[%base_offset] : buffer -> view<1xf32>
+  view.store %sum, %view[0] : f32, view<1xf32>
+  kernel.return
+}
+
+// ====
+
 amdgpu.target<gfx11-generic> @target
 
 func.def target(@target) @index_uniform_madd(%row_i32: i32, %column_i32: i32) -> (index) {

@@ -16,6 +16,7 @@
 #include "loom/ops/low/kernel.h"
 #include "loom/ops/low/ops.h"
 #include "loom/ops/target/facts.h"
+#include "loom/target/facts_builder.h"
 #include "loom/target/function_contract.h"
 #include "loom/target/registers.h"
 
@@ -277,6 +278,13 @@ static iree_status_t loom_low_resolve_function_target_facts(
     status = loom_target_function_contract_resolve_facts(
         module, fact_table, func_facts, emitter, fact_table->arena,
         &contract_valid, &out_target->target_facts);
+  }
+  // Standalone Low emission can receive authored requirements or projected
+  // profiles without source specialization. Both bind execution choices here;
+  // facts from an already-bound function version remain unchanged.
+  if (iree_status_is_ok(status) && contract_valid) {
+    status = loom_target_facts_builder_select_execution(
+        out_target->target_facts, fact_table->arena, &out_target->target_facts);
   }
   loom_target_workgroup_size_t workgroup_size = {0};
   if (iree_status_is_ok(status) && contract_valid &&

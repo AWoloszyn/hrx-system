@@ -2172,7 +2172,7 @@ iree_status_t loom_amdgpu_low_legality_verify_kernel_subgroup_reduce(
         context, op, IREE_SV("subgroup_reduce.combining_kind"));
   }
 
-  const uint32_t wavefront_size = loom_amdgpu_target_wavefront_size(bundle);
+  const uint32_t wavefront_size = bundle->snapshot->subgroup_size;
   if (!loom_amdgpu_wavefront_size_is_valid(wavefront_size)) {
     return loom_amdgpu_low_legality_reject(
         context, op, IREE_SV("subgroup_reduce.wavefront_size"));
@@ -2312,7 +2312,7 @@ iree_status_t loom_amdgpu_low_legality_verify_kernel_workgroup_reduce(
         context, op, IREE_SV("workgroup_reduce.combining_kind"));
   }
 
-  const uint32_t wavefront_size = loom_amdgpu_target_wavefront_size(bundle);
+  const uint32_t wavefront_size = bundle->snapshot->subgroup_size;
   if (!loom_amdgpu_wavefront_size_is_valid(wavefront_size)) {
     return loom_amdgpu_low_legality_reject(
         context, op, IREE_SV("workgroup_reduce.wavefront_size"));
