@@ -201,10 +201,9 @@ static void loom_verify_emit_indexed_pairwise_mismatch(
 // To add a new relation:
 //   1. Add the LOOM_RELATION_* enum value in op_defs.h with a doc
 //      comment describing the check.
-//   2. Add the name string in loom_constraint_relation_name (op_defs.c).
-//   3. Add a handler here following the same pattern.
-//   4. Add the handler to kVerifyRelationFns below.
-//   5. Add the corresponding Constraint constructor in dsl.py and the
+//   2. Add a handler here following the same pattern.
+//   3. Add the handler to kVerifyRelationFns below.
+//   4. Add the corresponding Constraint constructor in dsl.py and the
 //      mapping in c_enums.py CONSTRAINT_MAP.
 
 // PAIRWISE_EQ: every element of every listed field has the same

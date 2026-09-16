@@ -74,25 +74,6 @@ static inline loom_value_id_t loom_value_slice_get(loom_value_slice_t slice,
   return slice.values[index];
 }
 
-// Sets the value ID at |index| in the slice. |index| must be less than
-// |slice.count|.
-static inline void loom_value_slice_set(loom_value_slice_t slice,
-                                        uint16_t index, loom_value_id_t value) {
-  IREE_ASSERT(index < slice.count);
-  slice.values[index] = value;
-}
-
-// Replaces all occurrences of |old_value| with |new_value| in the slice.
-static inline void loom_value_slice_replace(loom_value_slice_t slice,
-                                            loom_value_id_t old_value,
-                                            loom_value_id_t new_value) {
-  for (uint16_t i = 0; i < slice.count; ++i) {
-    if (slice.values[i] == old_value) {
-      slice.values[i] = new_value;
-    }
-  }
-}
-
 // A keyed SSA value used by OperandDict builders. The name is static metadata
 // identifying the dictionary entry; the value remains an ordinary operand and
 // participates in the normal use-def lists.
@@ -609,9 +590,6 @@ enum loom_constraint_property_e {
   LOOM_PROPERTY_COUNT_,
 };
 typedef uint8_t loom_constraint_property_t;
-
-const char* loom_constraint_relation_name(loom_constraint_relation_t relation);
-const char* loom_constraint_property_name(loom_constraint_property_t property);
 
 // A table-driven semantic constraint entry. 10 bytes.
 //
