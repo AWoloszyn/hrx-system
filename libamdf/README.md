@@ -128,6 +128,72 @@ Focused design documents describe the contracts:
 - [Performance contracts](docs/performance.md): method-level preparation,
   allocation, locking, native-call and steady-state cost guarantees.
 
+## Native drivers
+
+libamdf requires the native interfaces used by its providers and accepts
+compatible newer drivers without a release allowlist. Hardware capabilities and
+native interface support determine which operations are available; driver
+package versions do not select implementation paths. The
+[XDNA native requirements](docs/xdna.md#native-requirements) describe the NPU
+interface floor, including the Windows allocation-policy query and direct
+context interface. Drivers that lack required interfaces need an update.
+
+Install the complete driver package for the hardware, including its firmware.
+libamdf accesses native drivers directly and does not require the XRT, ROCr, or
+Ryzen AI application runtimes. A vendor's driver package may install XRT tools
+or other dependencies as part of its supported installation procedure.
+
+### Linux
+
+The GPU provider uses `amdgpu`/KFD; the NPU provider uses `amdxdna`. Update the
+distribution's kernel and firmware packages together, then reboot into the new
+kernel. For example, Ubuntu 24.04 provides a rolling hardware-enablement kernel:
+
+```bash
+sudo apt update
+sudo apt install --install-recommends linux-generic-hwe-24.04 linux-firmware
+sudo reboot
+```
+
+When the distribution's `amdxdna` lacks the required interfaces, AMD's
+[Linux NPU installation instructions](https://ryzenai.docs.amd.com/en/latest/linux.html#install-npu-drivers)
+provide the current driver bundle for supported platforms. Follow that bundle's
+package installation instructions, including its dependencies. The
+[amd/xdna-driver project](https://github.com/amd/xdna-driver) also documents
+building and installing its DKMS driver and firmware for supported
+distributions. Use the matching kernel headers and the distribution's module
+signing procedure when Secure Boot is enabled. A loaded `amdxdna` module alone
+does not establish that every required native operation is available.
+
+The NPU must be visible and accessible through `/dev/accel`; GPU access through
+`/dev/kfd` and `/dev/dri` is separate. Containers need the corresponding host
+device nodes and permissions as well as an updated host driver.
+
+### Windows
+
+Obtain the current NPU package for the processor from AMD's
+[NPU driver installation page](https://ryzenai.docs.amd.com/en/latest/inst.html#install-npu-drivers)
+or the computer manufacturer's support page. For AMD's standalone package,
+extract the complete ZIP, open an administrator terminal in the extracted
+directory, and run:
+
+```powershell
+.\npu_sw_installer.exe
+```
+
+Complete the installer and restart Windows if requested. Device Manager lists
+the NPU under **Compute accelerators**; check that it reports a working device
+and the newly installed driver. The NPU package is separate from the Radeon GPU
+driver, which is available through
+[AMD Drivers and Support](https://www.amd.com/en/support/download/drivers.html)
+or the computer manufacturer. Keep each device's complete signed package
+together so its kernel driver, firmware, and companion files agree.
+
+After building libamdf, run the enumeration example and the hardware-backed
+[verification](#verification) suites to check the available capabilities and
+actual execution. Updating a driver does not require adding its release number
+to libamdf.
+
 ## Building and embedding
 
 The build produces two link modes from one implementation:

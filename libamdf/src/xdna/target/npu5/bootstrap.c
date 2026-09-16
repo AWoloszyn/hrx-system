@@ -6,7 +6,7 @@
 
 #include "libamdf/src/xdna/target/npu5/bootstrap.h"
 
-// Exact NPU5 legacy context bootstrap PDI.
+// NPU5 transaction-interpreter bootstrap PDI.
 // SHA-256: e3644f8a0560494454b8efb48cbb620a41c37e0d9037e1f50581c955dc20d6b6.
 static const uint8_t amdf_xdna_npu5_bootstrap_pdi[] = {
     0xDD, 0x00, 0x00, 0x00, 0x44, 0x33, 0x22, 0x11, 0x88, 0x77, 0x66, 0x55,
@@ -179,7 +179,7 @@ static const uint8_t amdf_xdna_npu5_bootstrap_pdi[] = {
 };
 
 _Static_assert(sizeof(amdf_xdna_npu5_bootstrap_pdi) == 2000,
-               "NPU5 legacy bootstrap PDI must match the qualified image");
+               "NPU5 bootstrap PDI must match the qualified image");
 
 // NOOP transaction admitting the interpreter before application work.
 static const uint8_t amdf_xdna_npu5_bootstrap_admission_transaction[] = {
