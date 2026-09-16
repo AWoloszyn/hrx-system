@@ -16,6 +16,7 @@ loom_check_test_suite(
     name = "test",
     srcs = [
         "dce.loom-test",
+        "hint_lifetime.loom-test",
         "value_facts.loom-test",
     ],
 )

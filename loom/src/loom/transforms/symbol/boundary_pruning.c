@@ -39,8 +39,7 @@ static bool loom_refine_boundaries_argument_is_prunable(
     return false;
   }
   const loom_value_t* value = loom_module_value(module, argument);
-  return value->use_count == 0 &&
-         !loom_module_value_has_predicate_attribute_uses(module, argument) &&
+  return value->use_count == 0 && !loom_value_has_attribute_uses(value) &&
          !loom_module_value_has_type_uses(module, argument);
 }
 
@@ -80,8 +79,7 @@ static bool loom_refine_boundaries_result_is_prunable(
     return false;
   }
   const loom_value_t* value = loom_module_value(module, result);
-  return value->use_count == 0 &&
-         !loom_module_value_has_predicate_attribute_uses(module, result) &&
+  return value->use_count == 0 && !loom_value_has_attribute_uses(value) &&
          !loom_module_value_has_type_uses(module, result);
 }
 

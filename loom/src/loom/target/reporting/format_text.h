@@ -24,6 +24,10 @@ iree_status_t loom_target_compile_report_text_append_string_field(
     iree_string_builder_t* builder, iree_string_view_t name,
     iree_string_view_t value);
 
+// Appends bounded final residency constraints with explicit units and scopes.
+iree_status_t loom_target_compile_report_format_residency_constraints_text(
+    const loom_target_compile_report_t* report, iree_string_builder_t* builder);
+
 // Appends one source-low memory summary using its known workload scale.
 iree_status_t loom_target_compile_report_format_text_source_low_memory_summary(
     const loom_target_compile_report_source_low_memory_summary_t* summary,

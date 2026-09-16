@@ -22,6 +22,7 @@
 #include "iree/base/internal/arena.h"
 #include "loom/ir/ir.h"
 #include "loom/ir/parameterized_attr.h"
+#include "loom/ir/value_refs.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -299,10 +300,12 @@ const iree_string_view_t* loom_module_block_comments(
     const loom_module_t* module, const loom_block_t* block,
     iree_host_size_t* out_comment_count);
 
-// Rebuilds the dense type-use side table by walking all value types.
+// Rebuilds the dense type-use side table from live value types, including
+// bodyless signature arguments retained by their declaration's operand uses.
 //
 // Most construction paths maintain the table incrementally, but bulk readers
-// and recovery paths can call this after setting value types directly.
+// and recovery paths can call this after setting value types directly and
+// establishing definition and operand-use bookkeeping.
 iree_status_t loom_module_recompute_type_uses(loom_module_t* module);
 
 // Returns true if |value_id| is referenced by any currently-active value type.
@@ -314,11 +317,6 @@ static inline bool loom_module_has_active_type_uses(
     const loom_module_t* module) {
   return module->type_uses.active_count > 0;
 }
-
-// Returns true if |value_id| is referenced by a predicate-list attribute on a
-// live operation. Aggregate attributes are inspected recursively.
-bool loom_module_value_has_predicate_attribute_uses(const loom_module_t* module,
-                                                    loom_value_id_t value_id);
 
 // Returns the first type-use record that references |value_id|, or INVALID
 // when the value is out of range or has no incoming type uses.
@@ -337,34 +335,6 @@ static inline loom_type_use_id_t loom_module_value_first_outgoing_type_use(
   return loom_value_table_const_type_use_heads(&module->values, value_id)
       ->first_outgoing_use_id;
 }
-
-// Walks SSA value references embedded in |attr|. Type-valued attributes are
-// resolved through |module| and aggregate attributes are visited in structural
-// order. References are not deduplicated.
-iree_status_t loom_module_walk_attribute_value_refs(
-    const loom_module_t* module, loom_attribute_t attr,
-    loom_type_value_ref_callback_t callback, void* user_data);
-
-// Replaces SSA references to |old_id| embedded in |attr| with |new_id|.
-// Aggregate payloads and type-valued attributes are rebuilt in |module| only
-// when a nested reference changes.
-iree_status_t loom_module_replace_attribute_value_references(
-    loom_module_t* module, loom_attribute_t attr, loom_value_id_t old_id,
-    loom_value_id_t new_id, loom_attribute_t* out_attr, bool* out_changed);
-
-// Replaces SSA references to |old_id| embedded in |type| with |new_id| and
-// interns the resulting type in |module|. The module value table and type-use
-// side table are not mutated; callers decide which carrier value, if any, owns
-// the returned type.
-iree_status_t loom_module_replace_type_value_references(
-    loom_module_t* module, loom_type_t type, loom_value_id_t old_id,
-    loom_value_id_t new_id, loom_type_t* out_type, bool* out_changed);
-
-// Replaces all SSA references to |old_id| embedded in value types with
-// |new_id| and updates the module's type-use side table.
-iree_status_t loom_module_replace_value_type_uses(loom_module_t* module,
-                                                  loom_value_id_t old_id,
-                                                  loom_value_id_t new_id);
 
 // Interns a string in the module's string table. If an identical string
 // already exists, returns its ID. Otherwise, arena-allocates a copy of
@@ -688,11 +658,11 @@ iree_status_t loom_block_insert_arg(loom_module_t* module, loom_block_t* block,
 // Removes an unused block argument and compacts following argument slots.
 //
 // |arg_index| must identify a live argument of |block|. The removed value must
-// have no operand uses and no incoming type uses; callers must replace or drop
-// all references before changing the block signature. The removed value remains
-// in the module value table but no longer carries block-argument identity or
-// outgoing type-use records. Following block arguments keep their value IDs and
-// receive updated definition indices.
+// have no operand, attribute, or incoming type uses; callers must replace or
+// drop all references before changing the block signature. The removed value
+// remains in the module value table but no longer carries block-argument
+// identity or outgoing type-use records. Following block arguments keep their
+// value IDs and receive updated definition indices.
 iree_status_t loom_block_remove_arg(loom_module_t* module, loom_block_t* block,
                                     uint16_t arg_index);
 
@@ -716,6 +686,8 @@ iree_status_t loom_block_insert_op(loom_module_t* module, loom_block_t* block,
 // Records |op|'s direct semantic summaries on its containing and ancestor
 // regions. The op must be fully constructed: operands, results, attributes,
 // and instance flags must already carry their final initial values.
+// Effect summaries retain exact transitive counts; hint summaries propagate
+// only region presence transitions. Repeated recording is idempotent.
 void loom_module_record_op_summaries(loom_module_t* module, loom_op_t* op);
 
 // Removes |op|'s previously recorded direct summaries and all nested op

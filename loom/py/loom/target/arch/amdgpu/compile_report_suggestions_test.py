@@ -42,12 +42,34 @@ def _compile_report(
                         "residency": {
                             "current_tier": 5,
                             "next_better_tier": 6,
+                            "limiting_resource_count": 1,
                             "unique_limiting_resource": {
                                 "name": "amdgpu.vgpr",
                                 "reduction_units_to_next_better_tier": 8,
                             },
                         },
                     },
+                }
+            ],
+        },
+        "residency_constraints": {
+            "count": 1,
+            "rows": [
+                {
+                    "index": 0,
+                    "function": "routed_linear",
+                    "name": "amdgpu.vgpr",
+                    "kind": "pooled_resource",
+                    "unit": "registers",
+                    "allocation_scope": "subgroup",
+                    "pool_scope": "SIMD",
+                    "pool_units": 512,
+                    "allocation_granularity": 8,
+                    "units": 88,
+                    "rounded_units": 88,
+                    "independent_tier": 5,
+                    "limiting": True,
+                    "reduction_units_to_next_better_tier": 8,
                 }
             ],
         },
@@ -487,8 +509,110 @@ def test_suggests_ordered_experiments_from_exact_target_evidence() -> None:
     assert wave_evidence[-1].path == "target_info.wavefront.default_size"
     assert wave_evidence[-1].value == 32
     residency = result.suggestions[-2]
-    assert "at least 8 units" in residency.action
+    assert "at least 8 registers/subgroup (to at most 80)" in residency.action
     assert residency.evidence[0].path.endswith("residency.current_tier")
+    assert residency.evidence[-1].path == (
+        "residency_constraints.rows[0].reduction_units_to_next_better_tier"
+    )
+
+
+def test_residency_requires_all_coupled_reductions() -> None:
+    # Final gfx1151 attention evidence: either reduction alone still allows 8.
+    report = _compile_report(target_key="gfx1151")
+    report["entries"]["rows"][0]["target_resources"]["residency"] = {
+        "best_tier": 16,
+        "current_tier": 8,
+        "next_better_tier": 9,
+        "limiting_resource_count": 2,
+    }
+    vector = report["residency_constraints"]["rows"][0]
+    vector.update(
+        {
+            "pool_units": 768,
+            "allocation_granularity": 12,
+            "rounded_units": 96,
+            "independent_tier": 8,
+            "reduction_units_to_next_better_tier": 4,
+        }
+    )
+    local_memory = {
+        "index": 1,
+        "function": "routed_linear",
+        "name": "amdgpu.lds",
+        "kind": "pooled_resource",
+        "unit": "bytes",
+        "allocation_scope": "workgroup",
+        "pool_scope": "occupancy domain",
+        "pool_units": 131072,
+        "allocation_granularity": 512,
+        "units": 15616,
+        "rounded_units": 15872,
+        "independent_tier": 8,
+        "limiting": True,
+        "reduction_units_to_next_better_tier": 1280,
+    }
+    report["residency_constraints"]["rows"].append(local_memory)
+    report["residency_constraints"]["count"] = 2
+
+    result = AMDGPU_COMPILE_REPORT_SUGGESTION_PROVIDER.suggest(
+        parse_compile_report(report)
+    )
+    suggestion = next(
+        row
+        for row in result.suggestions
+        if row.suggestion_id == "amdgpu.residency_cliff"
+    )
+    assert (
+        "amdgpu.vgpr by at least 4 registers/subgroup (to at most 84)"
+        in suggestion.action
+    )
+    assert (
+        "amdgpu.lds by at least 1,280 bytes/workgroup (to at most 14,336)"
+        in suggestion.action
+    )
+    assert "reducing only one leaves another limiter" in suggestion.action
+    assert "8 -> 9 subgroups/SIMD" in suggestion.action
+    assert "not a throughput guarantee" in suggestion.action
+    assert {row.value for row in suggestion.evidence if row.path.endswith(".name")} == {
+        "amdgpu.vgpr",
+        "amdgpu.lds",
+    }
+
+    # Losing either required distance must not turn joint advice into solo advice.
+    del local_memory["reduction_units_to_next_better_tier"]
+    result = AMDGPU_COMPILE_REPORT_SUGGESTION_PROVIDER.suggest(
+        parse_compile_report(report)
+    )
+    assert all(
+        row.suggestion_id != "amdgpu.residency_cliff" for row in result.suggestions
+    )
+
+
+@pytest.mark.parametrize(
+    "missing", ["inventory", "limiter", "distance", "transition", "exact_summary"]
+)
+def test_residency_does_not_invent_missing_transition_evidence(missing: str) -> None:
+    report = _compile_report()
+    summary = report["entries"]["rows"][0]["target_resources"]["residency"]
+    if missing == "inventory":
+        del report["residency_constraints"]
+    elif missing == "limiter":
+        summary["limiting_resource_count"] = 2
+    elif missing == "distance":
+        del report["residency_constraints"]["rows"][0][
+            "reduction_units_to_next_better_tier"
+        ]
+    elif missing == "transition":
+        del summary["next_better_tier"]
+    else:
+        summary.clear()
+        summary["unavailable_reasons"] = ["incomplete_resource_counts"]
+    result = AMDGPU_COMPILE_REPORT_SUGGESTION_PROVIDER.suggest(
+        parse_compile_report(report)
+    )
+    assert all(
+        row.suggestion_id != "amdgpu.residency_cliff" for row in result.suggestions
+    )
 
 
 def test_resolves_overlay_target_to_its_processor_model() -> None:

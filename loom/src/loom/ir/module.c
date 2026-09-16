@@ -435,6 +435,26 @@ static void loom_module_adjust_op_ancestor_summary_counts(
   }
 }
 
+// A nonempty child region contributes one hint source to its containing
+// region. Once a region remains nonempty (or remains empty), no ancestor's
+// presence changes. Monotone subtree construction/removal therefore propagates
+// at most one transition per region, independent of the number of nested hints.
+static void loom_module_adjust_op_hint_sources(loom_op_t* op, int32_t delta) {
+  loom_region_t* region =
+      op->parent_block ? op->parent_block->parent_region : NULL;
+  loom_op_t* parent_op = op->parent_op;
+  while (region) {
+    const bool had_hints = region->hint_source_count != 0;
+    loom_region_adjust_summary_count(&region->hint_source_count, delta);
+    if ((region->hint_source_count != 0) == had_hints || !parent_op) {
+      break;
+    }
+    region =
+        parent_op->parent_block ? parent_op->parent_block->parent_region : NULL;
+    parent_op = parent_op->parent_op;
+  }
+}
+
 static void loom_module_adjust_poison_op_count(loom_module_t* module,
                                                int32_t delta) {
   if (delta < 0) {
@@ -452,8 +472,13 @@ static void loom_module_adjust_op_direct_summaries(loom_module_t* module,
   int32_t read_delta = loom_traits_may_read(traits) ? direction : 0;
   int32_t write_delta = loom_traits_may_write(traits) ? direction : 0;
   int32_t convergent_delta = loom_traits_are_convergent(traits) ? direction : 0;
-  loom_module_adjust_op_ancestor_summary_counts(op, read_delta, write_delta,
-                                                convergent_delta);
+  if (read_delta != 0 || write_delta != 0 || convergent_delta != 0) {
+    loom_module_adjust_op_ancestor_summary_counts(op, read_delta, write_delta,
+                                                  convergent_delta);
+  }
+  if (iree_any_bit_set(traits, LOOM_TRAIT_HINT)) {
+    loom_module_adjust_op_hint_sources(op, direction);
+  }
   if (loom_traits_are_poison(traits)) {
     loom_module_adjust_poison_op_count(module, direction);
   }
@@ -504,6 +529,10 @@ void loom_module_update_op_direct_summaries(loom_module_t* module,
   loom_module_adjust_op_ancestor_summary_counts(
       op, new_read - old_read, new_write - old_write,
       new_convergent - old_convergent);
+  if (iree_any_bit_set(old_traits ^ new_traits, LOOM_TRAIT_HINT)) {
+    loom_module_adjust_op_hint_sources(
+        op, iree_any_bit_set(new_traits, LOOM_TRAIT_HINT) ? 1 : -1);
+  }
   const int32_t poison_delta = (loom_traits_are_poison(new_traits) ? 1 : 0) -
                                (loom_traits_are_poison(old_traits) ? 1 : 0);
   loom_module_adjust_poison_op_count(module, poison_delta);
@@ -2295,7 +2324,18 @@ iree_status_t loom_module_refresh_value_type_uses(loom_module_t* module,
   return iree_ok_status();
 }
 
-static bool loom_module_value_tracks_type_uses(const loom_value_t* value);
+static bool loom_module_value_tracks_type_uses(const loom_value_t* value) {
+  if (loom_value_is_block_arg(value)) {
+    return true;
+  }
+  const loom_op_t* defining_op = loom_value_def_op(value);
+  if (defining_op) {
+    return !iree_any_bit_set(defining_op->flags, LOOM_OP_FLAG_DEAD);
+  }
+  // Bodyless signature arguments have no defining op or block. Their owning
+  // declaration retains them as operands, including their dependent types.
+  return value->use_count != 0;
+}
 
 iree_status_t loom_module_recompute_type_uses(loom_module_t* module) {
   iree_host_size_t reference_count = 0;
@@ -2331,12 +2371,6 @@ bool loom_module_value_has_type_uses(const loom_module_t* module,
                                      loom_value_id_t value_id) {
   return loom_module_value_first_incoming_type_use(module, value_id) !=
          LOOM_TYPE_USE_ID_INVALID;
-}
-
-static bool loom_module_value_tracks_type_uses(const loom_value_t* value) {
-  if (loom_value_is_block_arg(value)) return true;
-  loom_op_t* def_op = loom_value_def_op(value);
-  return def_op && !iree_any_bit_set(def_op->flags, LOOM_OP_FLAG_DEAD);
 }
 
 void loom_module_drop_value_type_uses(loom_module_t* module,
@@ -4568,628 +4602,6 @@ iree_status_t loom_module_intern_register_type(loom_module_t* module,
 }
 
 //===----------------------------------------------------------------------===//
-// Attribute SSA reference walking
-//===----------------------------------------------------------------------===//
-
-static iree_status_t loom_module_walk_attribute_value_refs_impl(
-    const loom_module_t* module, loom_attribute_t attr, uint8_t depth,
-    loom_type_value_ref_callback_t callback, void* user_data) {
-  switch ((loom_attr_kind_t)attr.kind) {
-    case LOOM_ATTR_TYPE:
-      if (attr.type_id == LOOM_TYPE_ID_INVALID ||
-          attr.type_id >= module->types.count) {
-        return iree_make_status(
-            IREE_STATUS_INVALID_ARGUMENT,
-            "type attribute id %u is out of range (module has %" PRIhsz
-            " types)",
-            (unsigned)attr.type_id, module->types.count);
-      }
-      return loom_type_walk_value_refs(
-          module, module->types.entries[attr.type_id], callback, user_data);
-
-    case LOOM_ATTR_PREDICATE_LIST:
-      for (uint16_t i = 0; i < attr.count; ++i) {
-        const loom_predicate_t* predicate = &attr.predicate_list[i];
-        for (uint8_t j = 0; j < predicate->arg_count; ++j) {
-          if (predicate->arg_tags[j] != LOOM_PRED_ARG_VALUE) continue;
-          IREE_RETURN_IF_ERROR(
-              callback((loom_value_id_t)predicate->args[j], user_data));
-        }
-      }
-      return iree_ok_status();
-
-    case LOOM_ATTR_DICT:
-      if (depth >= LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH) {
-        return iree_make_status(
-            IREE_STATUS_INVALID_ARGUMENT,
-            "aggregate attribute nesting exceeds max depth %u",
-            (unsigned)LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH);
-      }
-      for (uint16_t i = 0; i < attr.count; ++i) {
-        IREE_RETURN_IF_ERROR(loom_module_walk_attribute_value_refs_impl(
-            module, attr.dict_entries[i].value, (uint8_t)(depth + 1), callback,
-            user_data));
-      }
-      return iree_ok_status();
-
-    case LOOM_ATTR_PARAMETERIZED:
-      if (depth >= LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH) {
-        return iree_make_status(
-            IREE_STATUS_INVALID_ARGUMENT,
-            "aggregate attribute nesting exceeds max depth %u",
-            (unsigned)LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH);
-      }
-      for (uint16_t i = 0; i < attr.count; ++i) {
-        IREE_RETURN_IF_ERROR(loom_module_walk_attribute_value_refs_impl(
-            module, attr.parameterized_slots[i], (uint8_t)(depth + 1), callback,
-            user_data));
-      }
-      return iree_ok_status();
-
-    case LOOM_ATTR_PARAMETERIZED_ARRAY:
-      if (depth >= LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH) {
-        return iree_make_status(
-            IREE_STATUS_INVALID_ARGUMENT,
-            "aggregate attribute nesting exceeds max depth %u",
-            (unsigned)LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH);
-      }
-      for (uint16_t i = 0; i < attr.count; ++i) {
-        IREE_RETURN_IF_ERROR(loom_module_walk_attribute_value_refs_impl(
-            module, attr.parameterized_array[i], (uint8_t)(depth + 1), callback,
-            user_data));
-      }
-      return iree_ok_status();
-
-    default:
-      return iree_ok_status();
-  }
-}
-
-iree_status_t loom_module_walk_attribute_value_refs(
-    const loom_module_t* module, loom_attribute_t attr,
-    loom_type_value_ref_callback_t callback, void* user_data) {
-  if (!module) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT, "module is NULL");
-  }
-  if (!callback) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "value reference callback is NULL");
-  }
-  return loom_module_walk_attribute_value_refs_impl(module, attr, /*depth=*/0,
-                                                    callback, user_data);
-}
-
-static bool loom_module_predicate_list_attr_refs_value(
-    loom_attribute_t attr, loom_value_id_t value_id) {
-  if (attr.count == 0 || !attr.predicate_list) return false;
-  for (uint16_t predicate_index = 0; predicate_index < attr.count;
-       ++predicate_index) {
-    const loom_predicate_t* predicate = &attr.predicate_list[predicate_index];
-    for (uint8_t argument_index = 0; argument_index < predicate->arg_count;
-         ++argument_index) {
-      if (predicate->arg_tags[argument_index] == LOOM_PRED_ARG_VALUE &&
-          (loom_value_id_t)predicate->args[argument_index] == value_id) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-static bool loom_module_attr_refs_predicate_value(loom_attribute_t attr,
-                                                  loom_value_id_t value_id,
-                                                  uint8_t aggregate_depth) {
-  switch ((loom_attr_kind_t)attr.kind) {
-    case LOOM_ATTR_PREDICATE_LIST:
-      return loom_module_predicate_list_attr_refs_value(attr, value_id);
-    case LOOM_ATTR_DICT:
-      if (aggregate_depth >= LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH ||
-          attr.count == 0 || !attr.dict_entries) {
-        return false;
-      }
-      for (uint16_t i = 0; i < attr.count; ++i) {
-        if (loom_module_attr_refs_predicate_value(
-                attr.dict_entries[i].value, value_id,
-                (uint8_t)(aggregate_depth + 1))) {
-          return true;
-        }
-      }
-      return false;
-    case LOOM_ATTR_PARAMETERIZED:
-      if (aggregate_depth >= LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH ||
-          attr.count == 0 || !attr.parameterized_slots) {
-        return false;
-      }
-      for (uint16_t i = 0; i < attr.count; ++i) {
-        if (loom_module_attr_refs_predicate_value(
-                attr.parameterized_slots[i], value_id,
-                (uint8_t)(aggregate_depth + 1))) {
-          return true;
-        }
-      }
-      return false;
-    case LOOM_ATTR_PARAMETERIZED_ARRAY:
-      if (aggregate_depth >= LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH ||
-          attr.count == 0 || !attr.parameterized_array) {
-        return false;
-      }
-      for (uint16_t i = 0; i < attr.count; ++i) {
-        if (loom_module_attr_refs_predicate_value(
-                attr.parameterized_array[i], value_id,
-                (uint8_t)(aggregate_depth + 1))) {
-          return true;
-        }
-      }
-      return false;
-    default:
-      return false;
-  }
-}
-
-static bool loom_module_op_attrs_ref_predicate_value(const loom_op_t* op,
-                                                     loom_value_id_t value_id) {
-  const loom_attribute_t* attrs = loom_op_const_attrs(op);
-  for (uint8_t attr_index = 0; attr_index < op->attribute_count; ++attr_index) {
-    if (loom_module_attr_refs_predicate_value(attrs[attr_index], value_id,
-                                              /*aggregate_depth=*/0)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-static bool loom_module_region_refs_predicate_value(const loom_region_t* region,
-                                                    loom_value_id_t value_id) {
-  if (!region) return false;
-  const loom_block_t* block = NULL;
-  loom_region_for_each_block(region, block) {
-    const loom_op_t* op = NULL;
-    loom_block_for_each_op(block, op) {
-      if (iree_any_bit_set(op->flags, LOOM_OP_FLAG_DEAD)) continue;
-      if (loom_module_op_attrs_ref_predicate_value(op, value_id)) return true;
-      loom_region_t** regions = loom_op_regions((loom_op_t*)op);
-      for (uint8_t i = 0; i < op->region_count; ++i) {
-        if (loom_module_region_refs_predicate_value(regions[i], value_id)) {
-          return true;
-        }
-      }
-    }
-  }
-  return false;
-}
-
-bool loom_module_value_has_predicate_attribute_uses(const loom_module_t* module,
-                                                    loom_value_id_t value_id) {
-  if (!module || value_id == LOOM_VALUE_ID_INVALID ||
-      value_id >= module->values.count) {
-    return false;
-  }
-  const loom_value_t* value = loom_module_value(module, value_id);
-  return loom_value_has_attribute_uses(value) &&
-         loom_module_region_refs_predicate_value(module->body, value_id);
-}
-
-static iree_status_t loom_module_replace_attribute_value_refs_impl(
-    loom_module_t* module, loom_attribute_t attr, loom_value_id_t old_id,
-    loom_value_id_t new_id, uint8_t depth, loom_attribute_t* out_attr,
-    bool* out_changed) {
-  *out_attr = attr;
-  *out_changed = false;
-
-  switch ((loom_attr_kind_t)attr.kind) {
-    case LOOM_ATTR_ABSENT:
-    case LOOM_ATTR_I64:
-    case LOOM_ATTR_F64:
-    case LOOM_ATTR_STRING:
-    case LOOM_ATTR_BOOL:
-    case LOOM_ATTR_ENUM:
-    case LOOM_ATTR_SCOPED_ENUM:
-    case LOOM_ATTR_SYMBOL:
-    case LOOM_ATTR_SYMBOL_ARRAY:
-    case LOOM_ATTR_SYMBOL_SET:
-    case LOOM_ATTR_I64_ARRAY:
-    case LOOM_ATTR_ENUM_ARRAY:
-    case LOOM_ATTR_SIGNED_ENUM_SET:
-    case LOOM_ATTR_ENCODING:
-    case LOOM_ATTR_BYTES:
-      return iree_ok_status();
-
-    case LOOM_ATTR_TYPE: {
-      if (attr.type_id == LOOM_TYPE_ID_INVALID ||
-          attr.type_id >= module->types.count) {
-        return iree_make_status(
-            IREE_STATUS_INVALID_ARGUMENT,
-            "type attribute id %u is out of range (module has %" PRIhsz
-            " types)",
-            (unsigned)attr.type_id, module->types.count);
-      }
-      loom_type_t replaced_type = module->types.entries[attr.type_id];
-      IREE_RETURN_IF_ERROR(loom_module_replace_type_value_references(
-          module, replaced_type, old_id, new_id, &replaced_type, out_changed));
-      if (!*out_changed) return iree_ok_status();
-      return loom_module_intern_type_id(module, replaced_type,
-                                        &out_attr->type_id);
-    }
-
-    case LOOM_ATTR_PREDICATE_LIST: {
-      bool changed = false;
-      for (uint16_t i = 0; i < attr.count; ++i) {
-        const loom_predicate_t* predicate = &attr.predicate_list[i];
-        for (uint8_t j = 0; j < predicate->arg_count; ++j) {
-          if (predicate->arg_tags[j] == LOOM_PRED_ARG_VALUE &&
-              (loom_value_id_t)predicate->args[j] == old_id) {
-            changed = true;
-          }
-        }
-      }
-      if (!changed) return iree_ok_status();
-
-      loom_predicate_t* predicates = NULL;
-      IREE_RETURN_IF_ERROR(iree_arena_allocate_array(&module->arena, attr.count,
-                                                     sizeof(*predicates),
-                                                     (void**)&predicates));
-      memcpy(predicates, attr.predicate_list,
-             (iree_host_size_t)attr.count * sizeof(*predicates));
-      for (uint16_t i = 0; i < attr.count; ++i) {
-        for (uint8_t j = 0; j < predicates[i].arg_count; ++j) {
-          if (predicates[i].arg_tags[j] == LOOM_PRED_ARG_VALUE &&
-              (loom_value_id_t)predicates[i].args[j] == old_id) {
-            predicates[i].args[j] = (int64_t)new_id;
-          }
-        }
-      }
-      out_attr->predicate_list = predicates;
-      *out_changed = true;
-      return iree_ok_status();
-    }
-
-    case LOOM_ATTR_DICT: {
-      if (depth >= LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH) {
-        return iree_make_status(
-            IREE_STATUS_INVALID_ARGUMENT,
-            "aggregate attribute nesting exceeds max depth %u",
-            (unsigned)LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH);
-      }
-      loom_named_attr_t* replaced_entries = NULL;
-      for (uint16_t i = 0; i < attr.count; ++i) {
-        loom_attribute_t replaced_value = attr.dict_entries[i].value;
-        bool value_changed = false;
-        IREE_RETURN_IF_ERROR(loom_module_replace_attribute_value_refs_impl(
-            module, attr.dict_entries[i].value, old_id, new_id,
-            (uint8_t)(depth + 1), &replaced_value, &value_changed));
-        if (!value_changed) continue;
-        if (!replaced_entries) {
-          IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-              &module->arena, attr.count, sizeof(*replaced_entries),
-              (void**)&replaced_entries));
-          memcpy(replaced_entries, attr.dict_entries,
-                 (iree_host_size_t)attr.count * sizeof(*replaced_entries));
-        }
-        replaced_entries[i].value = replaced_value;
-      }
-      if (!replaced_entries) return iree_ok_status();
-      *out_attr = loom_make_canonical_attr_dict(replaced_entries, attr.count);
-      *out_changed = true;
-      return iree_ok_status();
-    }
-
-    case LOOM_ATTR_PARAMETERIZED: {
-      if (depth >= LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH) {
-        return iree_make_status(
-            IREE_STATUS_INVALID_ARGUMENT,
-            "aggregate attribute nesting exceeds max depth %u",
-            (unsigned)LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH);
-      }
-      loom_attribute_t* replaced_slots = NULL;
-      for (uint16_t i = 0; i < attr.count; ++i) {
-        loom_attribute_t replaced_value = attr.parameterized_slots[i];
-        bool value_changed = false;
-        IREE_RETURN_IF_ERROR(loom_module_replace_attribute_value_refs_impl(
-            module, attr.parameterized_slots[i], old_id, new_id,
-            (uint8_t)(depth + 1), &replaced_value, &value_changed));
-        if (!value_changed) continue;
-        if (!replaced_slots) {
-          IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-              &module->arena, attr.count, sizeof(*replaced_slots),
-              (void**)&replaced_slots));
-          memcpy(replaced_slots, attr.parameterized_slots,
-                 (iree_host_size_t)attr.count * sizeof(*replaced_slots));
-        }
-        replaced_slots[i] = replaced_value;
-      }
-      if (!replaced_slots) return iree_ok_status();
-      *out_attr = loom_make_parameterized_attr(
-          (loom_parameterized_attr_kind_t)attr.reserved_1, replaced_slots,
-          attr.count);
-      *out_changed = true;
-      return iree_ok_status();
-    }
-
-    case LOOM_ATTR_PARAMETERIZED_ARRAY: {
-      if (depth >= LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH) {
-        return iree_make_status(
-            IREE_STATUS_INVALID_ARGUMENT,
-            "aggregate attribute nesting exceeds max depth %u",
-            (unsigned)LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH);
-      }
-      loom_attribute_t* replaced_attributes = NULL;
-      for (uint16_t i = 0; i < attr.count; ++i) {
-        loom_attribute_t replaced_value = attr.parameterized_array[i];
-        bool value_changed = false;
-        IREE_RETURN_IF_ERROR(loom_module_replace_attribute_value_refs_impl(
-            module, attr.parameterized_array[i], old_id, new_id,
-            (uint8_t)(depth + 1), &replaced_value, &value_changed));
-        if (!value_changed) continue;
-        if (!replaced_attributes) {
-          IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-              &module->arena, attr.count, sizeof(*replaced_attributes),
-              (void**)&replaced_attributes));
-          memcpy(replaced_attributes, attr.parameterized_array,
-                 (iree_host_size_t)attr.count * sizeof(*replaced_attributes));
-        }
-        replaced_attributes[i] = replaced_value;
-      }
-      if (!replaced_attributes) return iree_ok_status();
-      *out_attr =
-          loom_attr_parameterized_array(replaced_attributes, attr.count);
-      *out_changed = true;
-      return iree_ok_status();
-    }
-
-    case LOOM_ATTR_ANY:
-    case LOOM_ATTR_COUNT_:
-      break;
-  }
-  return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                          "unknown attribute kind %u", (unsigned)attr.kind);
-}
-
-iree_status_t loom_module_replace_attribute_value_references(
-    loom_module_t* module, loom_attribute_t attr, loom_value_id_t old_id,
-    loom_value_id_t new_id, loom_attribute_t* out_attr, bool* out_changed) {
-  *out_attr = attr;
-  *out_changed = false;
-  if (old_id == new_id) return iree_ok_status();
-  if (old_id >= module->values.count || new_id >= module->values.count) {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "cannot replace attribute references from %%%u to %%%u in a module "
-        "with %" PRIhsz " values",
-        (unsigned)old_id, (unsigned)new_id, module->values.count);
-  }
-  return loom_module_replace_attribute_value_refs_impl(
-      module, attr, old_id, new_id, /*depth=*/0, out_attr, out_changed);
-}
-
-//===----------------------------------------------------------------------===//
-// Type-use replacement
-//===----------------------------------------------------------------------===//
-
-static bool loom_module_type_has_replaceable_dims(loom_type_t type) {
-  return loom_type_is_shaped(type) || loom_type_is_pool(type);
-}
-
-static iree_status_t loom_module_replace_type_value_refs_impl(
-    loom_module_t* module, loom_type_t type, loom_value_id_t old_id,
-    loom_value_id_t new_id, loom_type_t* out_type, bool* out_changed);
-
-static iree_status_t loom_module_replace_type_ref_sequence(
-    loom_module_t* module, const loom_type_t* types, uint16_t type_count,
-    loom_value_id_t old_id, loom_value_id_t new_id, loom_type_t** out_types,
-    bool* out_changed) {
-  *out_types = NULL;
-  *out_changed = false;
-  if (type_count == 0) return iree_ok_status();
-  if (!types) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "type sequence has %u entries but a NULL payload",
-                            (unsigned)type_count);
-  }
-
-  loom_type_t* replaced_types = NULL;
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(&module->arena, type_count,
-                                                 sizeof(loom_type_t),
-                                                 (void**)&replaced_types));
-  for (uint16_t i = 0; i < type_count; ++i) {
-    bool element_changed = false;
-    IREE_RETURN_IF_ERROR(loom_module_replace_type_value_refs_impl(
-        module, types[i], old_id, new_id, &replaced_types[i],
-        &element_changed));
-    *out_changed = *out_changed || element_changed;
-  }
-  *out_types = replaced_types;
-  return iree_ok_status();
-}
-
-static iree_status_t loom_module_replace_type_value_refs_impl(
-    loom_module_t* module, loom_type_t type, loom_value_id_t old_id,
-    loom_value_id_t new_id, loom_type_t* out_type, bool* out_changed) {
-  *out_type = type;
-  *out_changed = false;
-
-  loom_type_kind_t kind = loom_type_kind(type);
-  if (!loom_type_kind_is_valid(kind)) return iree_ok_status();
-
-  switch (kind) {
-    case LOOM_TYPE_FUNCTION: {
-      const loom_func_type_data_t* data = loom_type_func_data(type);
-      if (!data) return iree_ok_status();
-      uint16_t type_count = (uint16_t)(data->arg_count + data->result_count);
-      loom_type_t* replaced_types = NULL;
-      IREE_RETURN_IF_ERROR(loom_module_replace_type_ref_sequence(
-          module, data->types, type_count, old_id, new_id, &replaced_types,
-          out_changed));
-      if (!*out_changed) return iree_ok_status();
-      return loom_module_intern_function_type(
-          module, replaced_types, data->arg_count,
-          replaced_types + data->arg_count, data->result_count, out_type);
-    }
-
-    case LOOM_TYPE_DIALECT: {
-      uint16_t param_count = loom_type_dialect_param_count(type);
-      loom_type_t* replaced_params = NULL;
-      IREE_RETURN_IF_ERROR(loom_module_replace_type_ref_sequence(
-          module, loom_type_dialect_params(type), param_count, old_id, new_id,
-          &replaced_params, out_changed));
-      if (!*out_changed) return iree_ok_status();
-      loom_type_t replaced_type = loom_type_dialect(
-          loom_type_dialect_name_id(type), param_count, replaced_params);
-      return loom_module_intern_type(module, replaced_type, out_type);
-    }
-
-    case LOOM_TYPE_PARAMETERIZED: {
-      const loom_parameterized_type_descriptor_t* descriptor =
-          loom_type_parameterized_descriptor(type);
-      uint8_t parameter_count = loom_type_parameterized_parameter_count(type);
-      const loom_attribute_t* parameters =
-          loom_type_parameterized_parameters(type);
-      loom_attribute_t replaced_parameters[UINT8_MAX];
-      bool changed = false;
-      for (uint8_t i = 0; i < parameter_count; ++i) {
-        bool parameter_changed = false;
-        IREE_RETURN_IF_ERROR(loom_module_replace_attribute_value_refs_impl(
-            module, parameters[i], old_id, new_id, /*depth=*/1,
-            &replaced_parameters[i], &parameter_changed));
-        changed = changed || parameter_changed;
-      }
-      if (!changed) return iree_ok_status();
-      *out_changed = true;
-      return loom_module_make_parameterized_type(
-          module, descriptor, replaced_parameters, parameter_count, out_type);
-    }
-
-    case LOOM_TYPE_REGISTER: {
-      const loom_type_t* value_type = loom_type_register_value_type(type);
-      if (!value_type) return iree_ok_status();
-      loom_type_t replaced_value_type = *value_type;
-      IREE_RETURN_IF_ERROR(loom_module_replace_type_value_refs_impl(
-          module, *value_type, old_id, new_id, &replaced_value_type,
-          out_changed));
-      if (!*out_changed) return iree_ok_status();
-      return loom_module_intern_register_type(
-          module, loom_type_register_payload0(type),
-          loom_type_register_payload1(type), replaced_value_type, out_type);
-    }
-
-    default:
-      break;
-  }
-
-  loom_type_t replaced_type = type;
-  if (loom_module_type_has_replaceable_dims(type)) {
-    uint8_t rank = loom_type_rank(type);
-    if (loom_type_has_inline_dims(type)) {
-      for (uint8_t i = 0; i < rank; ++i) {
-        if (!loom_dim_is_dynamic(replaced_type.dims[i])) continue;
-        if (loom_dim_value_id(replaced_type.dims[i]) != old_id) continue;
-        replaced_type.dims[i] = loom_dim_pack_dynamic(new_id);
-        *out_changed = true;
-      }
-    } else if (rank > 0) {
-      const loom_overflow_dim_t* old_dims =
-          (const loom_overflow_dim_t*)(uintptr_t)type.dims[0];
-      if (!old_dims) {
-        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                                "rank-%u type has a NULL overflow dim payload",
-                                rank);
-      }
-      bool dims_changed = false;
-      for (uint8_t i = 0; i < rank; ++i) {
-        if (!loom_dim_is_dynamic(old_dims[i])) continue;
-        if (loom_dim_value_id(old_dims[i]) == old_id) dims_changed = true;
-      }
-      if (dims_changed) {
-        loom_overflow_dim_t* new_dims = NULL;
-        IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-            &module->arena, rank, sizeof(loom_overflow_dim_t),
-            (void**)&new_dims));
-        for (uint8_t i = 0; i < rank; ++i) {
-          new_dims[i] = old_dims[i];
-          if (!loom_dim_is_dynamic(new_dims[i])) continue;
-          if (loom_dim_value_id(new_dims[i]) == old_id) {
-            new_dims[i] = loom_dim_pack_dynamic(new_id);
-          }
-        }
-        replaced_type.dims[0] = (uint64_t)(uintptr_t)new_dims;
-        replaced_type.dims[1] = 0;
-        *out_changed = true;
-      }
-    }
-  }
-
-  if (old_id <= UINT16_MAX && loom_type_has_ssa_encoding(type) &&
-      loom_type_encoding_value_id(type) == old_id) {
-    if (new_id > UINT16_MAX) {
-      return iree_make_status(
-          IREE_STATUS_OUT_OF_RANGE,
-          "cannot store value %%%u in a 16-bit SSA encoding reference",
-          (unsigned)new_id);
-    }
-    replaced_type.encoding_id = (uint16_t)new_id;
-    *out_changed = true;
-  }
-
-  if (!*out_changed) return iree_ok_status();
-  return loom_module_intern_type(module, replaced_type, out_type);
-}
-
-iree_status_t loom_module_replace_type_value_references(
-    loom_module_t* module, loom_type_t type, loom_value_id_t old_id,
-    loom_value_id_t new_id, loom_type_t* out_type, bool* out_changed) {
-  *out_type = type;
-  *out_changed = false;
-  if (old_id == new_id) return iree_ok_status();
-  if (old_id >= module->values.count || new_id >= module->values.count) {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "cannot replace type references from %%%u to %%%u in a module with "
-        "%" PRIhsz " values",
-        (unsigned)old_id, (unsigned)new_id, module->values.count);
-  }
-  return loom_module_replace_type_value_refs_impl(module, type, old_id, new_id,
-                                                  out_type, out_changed);
-}
-
-iree_status_t loom_module_replace_value_type_uses(loom_module_t* module,
-                                                  loom_value_id_t old_id,
-                                                  loom_value_id_t new_id) {
-  if (old_id == new_id) return iree_ok_status();
-  if (old_id >= module->values.count || new_id >= module->values.count) {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "cannot replace type references from %%%u to %%%u in a module with "
-        "%" PRIhsz " values",
-        (unsigned)old_id, (unsigned)new_id, module->values.count);
-  }
-
-  // Each iteration rewrites one carrier value reached from the incoming-use
-  // head. The helper removes all outgoing type-use records for that carrier
-  // before inserting the replacement records, so the next head is always a
-  // still-unprocessed carrier without rescanning the table.
-  while (loom_module_value_has_type_uses(module, old_id)) {
-    loom_type_use_id_t use_id =
-        loom_module_value_first_incoming_type_use(module, old_id);
-    loom_value_id_t user_value_id =
-        module->type_uses.records[use_id].user_value_id;
-    loom_type_t old_type = loom_module_value_type(module, user_value_id);
-    loom_type_t new_type = old_type;
-    bool changed = false;
-    IREE_RETURN_IF_ERROR(loom_module_replace_type_value_refs_impl(
-        module, old_type, old_id, new_id, &new_type, &changed));
-    if (!changed) {
-      return iree_make_status(
-          IREE_STATUS_INTERNAL,
-          "type-use table says value %%%u references %%%u, but the type does "
-          "not contain that reference",
-          (unsigned)user_value_id, (unsigned)old_id);
-    }
-    IREE_RETURN_IF_ERROR(
-        loom_module_set_value_type(module, user_value_id, new_type));
-  }
-  return iree_ok_status();
-}
-
-//===----------------------------------------------------------------------===//
 // Block and region creation
 //===----------------------------------------------------------------------===//
 
@@ -5421,10 +4833,10 @@ iree_status_t loom_block_remove_arg(loom_module_t* module, loom_block_t* block,
         "cannot remove block argument %%%u with incoming type use(s)",
         (unsigned)value_id);
   }
-  if (loom_module_value_has_predicate_attribute_uses(module, value_id)) {
+  if (loom_value_has_attribute_uses(value)) {
     return iree_make_status(
         IREE_STATUS_FAILED_PRECONDITION,
-        "cannot remove block argument %%%u with predicate attribute use(s)",
+        "cannot remove block argument %%%u with attribute use(s)",
         (unsigned)value_id);
   }
 

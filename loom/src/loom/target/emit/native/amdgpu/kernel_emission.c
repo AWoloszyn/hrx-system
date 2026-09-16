@@ -350,7 +350,9 @@ loom_amdgpu_kernel_emission_target_resources(
 static void loom_amdgpu_kernel_emission_record_summary(
     loom_target_compile_report_t* report,
     const loom_amdgpu_kernel_hsaco_summary_t* summary) {
-  if (report == NULL) return;
+  if (report == NULL) {
+    return;
+  }
 
   loom_target_compile_report_record_emission(report, summary->instruction_count,
                                              summary->text_byte_count,
@@ -385,11 +387,18 @@ iree_status_t loom_amdgpu_kernel_emission_build(
   IREE_RETURN_IF_ERROR(
       loom_amdgpu_kernel_emission_record_wait_plan(report, &packet_plan));
 
+  loom_target_residency_constraint_list_t residency_constraints = {0};
+  const bool capture_residency_constraints =
+      report != NULL &&
+      iree_any_bit_set(report->requested_detail_flags,
+                       LOOM_TARGET_COMPILE_REPORT_DETAIL_RESIDENCY_CONSTRAINTS);
   const loom_amdgpu_kernel_hsaco_options_t hsaco_options = {
       .abi_layout = abi_layout,
       .abi_verify = abi_verify,
       .preflight = preflight,
       .packet_plan = &packet_plan,
+      .residency_constraints =
+          capture_residency_constraints ? &residency_constraints : NULL,
       .encoding_flags =
           report != NULL
               ? LOOM_AMDGPU_ENCODE_INSTRUCTION_STREAM_FLAG_CAPTURE_NATIVE_INSERTIONS
@@ -420,5 +429,10 @@ iree_status_t loom_amdgpu_kernel_emission_build(
       report, frame, out_contribution));
   loom_amdgpu_kernel_emission_record_summary(report,
                                              &out_contribution->summary);
+  if (capture_residency_constraints) {
+    IREE_RETURN_IF_ERROR(
+        loom_target_compile_report_record_residency_constraints(
+            report, &residency_constraints));
+  }
   return iree_ok_status();
 }

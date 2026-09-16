@@ -436,7 +436,7 @@ static iree_status_t loom_cfg_simplify_remove_unreachable_blocks(
   uint16_t removed_count = 0;
   IREE_RETURN_IF_ERROR(loom_region_remove_blocks(
       state->module, (loom_region_t*)graph->region, remove_blocks,
-      graph->block_count, &removed_count));
+      graph->block_count, state->analysis_arena, &removed_count));
   state->statistics->blocks_removed += removed_count;
   state->rewriter->flags |= LOOM_REWRITER_FLAG_CHANGED;
   *out_changed = removed_count != 0;
@@ -622,7 +622,7 @@ static bool loom_cfg_simplify_value_uses_stay_in_block(
     return false;
   }
   const loom_value_t* value = loom_module_value(state->module, value_id);
-  if (loom_module_value_has_predicate_attribute_uses(state->module, value_id)) {
+  if (loom_value_has_attribute_uses(value)) {
     return false;
   }
   const loom_use_t* use = NULL;
@@ -1169,7 +1169,7 @@ static iree_status_t loom_cfg_simplify_remove_cfg_block(
   uint16_t removed_count = 0;
   IREE_RETURN_IF_ERROR(loom_region_remove_blocks(
       state->module, (loom_region_t*)graph->region, remove_blocks,
-      (uint16_t)graph->block_count, &removed_count));
+      (uint16_t)graph->block_count, state->analysis_arena, &removed_count));
   return iree_ok_status();
 }
 
@@ -2023,8 +2023,7 @@ static bool loom_cfg_simplify_block_arg_unused(
     return false;
   }
   const loom_value_t* value = loom_module_value(state->module, arg);
-  return value->use_count == 0 &&
-         !loom_module_value_has_predicate_attribute_uses(state->module, arg) &&
+  return value->use_count == 0 && !loom_value_has_attribute_uses(value) &&
          !loom_module_value_has_type_uses(state->module, arg);
 }
 

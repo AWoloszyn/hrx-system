@@ -237,7 +237,7 @@ static iree_status_t loom_verify_consume_value_after_op(
 void loom_verify_operand_dominance(loom_verify_state_t* state,
                                    const loom_op_t* op,
                                    const loom_op_vtable_t* vtable) {
-  if (loom_verify_func_args_use_operand_field(vtable) &&
+  if (loom_op_vtable_owns_operands(vtable) &&
       iree_any_bit_set(vtable->traits, LOOM_TRAIT_SYMBOL_DEFINE)) {
     return;
   }
@@ -254,8 +254,7 @@ void loom_verify_operand_dominance(loom_verify_state_t* state,
                                   IREE_ARRAYSIZE(params));
       continue;
     }
-    if (!loom_bitset_test(state->defined_bits, state->defined_bits_length,
-                          value_id)) {
+    if (!loom_verify_value_is_visible(state, value_id)) {
       iree_string_view_t value_name = loom_verify_value_name(state, value_id);
       loom_diagnostic_field_ref_t operand_ref =
           loom_diagnostic_field_ref(LOOM_DIAGNOSTIC_FIELD_OPERAND, i);
@@ -265,7 +264,7 @@ void loom_verify_operand_dominance(loom_verify_state_t* state,
       loom_verify_emit_structured(state, op, LOOM_ERR_DOMINANCE_001, params,
                                   IREE_ARRAYSIZE(params));
     }
-    if (loom_bitset_test(state->consumed_bits, state->defined_bits_length,
+    if (loom_bitset_test(state->consumed_bits, state->consumed_word_count,
                          value_id)) {
       loom_verify_emit_consumed_value_use(state, op, i, value_id,
                                           state->consuming_ops[value_id]);
@@ -306,8 +305,7 @@ void loom_verify_poison_boundaries(loom_verify_state_t* state,
     loom_value_id_t value_id = operands[i];
     if (value_id == LOOM_VALUE_ID_INVALID) continue;
     if (value_id >= state->module->values.count) continue;
-    if (!loom_bitset_test(state->defined_bits, state->defined_bits_length,
-                          value_id)) {
+    if (!loom_verify_value_is_visible(state, value_id)) {
       continue;
     }
     if (!loom_value_is_poison(state->module, value_id)) continue;

@@ -23,6 +23,7 @@ from loom.assembly import (
     FuncArgs,
     IndexList,
     Keyword,
+    OperandDict,
     OptionalGroup,
     Param,
     Ref,
@@ -1059,6 +1060,88 @@ class TestInterfaces:
 # ============================================================================
 # Constraints
 # ============================================================================
+
+
+class TestOperandDictionaryDeclaration:
+    def test_semantics_without_assembly(self) -> None:
+        declaration = Op(
+            "test.dictionary",
+            operands=[Operand("params", ANY, variadic=True)],
+            attrs=[AttrDef("names", "dict", optional=True)],
+            constraints=[dsl.OperandDictionary("params", "names")],
+        )
+        assert not declaration.format
+        assert declaration.constraints[0].args == ("params", "names")
+
+    def test_requires_variadic_operand(self) -> None:
+        for operands in ([], [Operand("params", ANY)]):
+            with _raises(ValueError, match="must name a variadic operand"):
+                Op(
+                    "test.dictionary",
+                    operands=operands,
+                    attrs=[AttrDef("names", "dict", optional=True)],
+                    constraints=[dsl.OperandDictionary("params", "names")],
+                )
+
+    def test_requires_optional_dictionary(self) -> None:
+        for attrs in (
+            [],
+            [AttrDef("names", "dict")],
+            [AttrDef("names", "i64", optional=True)],
+        ):
+            with _raises(ValueError, match="must name an optional dict attribute"):
+                Op(
+                    "test.dictionary",
+                    operands=[Operand("params", ANY, variadic=True)],
+                    attrs=attrs,
+                    constraints=[dsl.OperandDictionary("params", "names")],
+                )
+
+    def test_requires_unique_field_ownership(self) -> None:
+        for pair in (
+            ("params", "names"),
+            ("other", "names"),
+            ("params", "other_names"),
+        ):
+            with _raises(ValueError, match="unique ownership"):
+                Op(
+                    "test.dictionary",
+                    operands=[
+                        Operand("params", ANY, variadic=True),
+                        Operand("other", ANY, variadic=True),
+                    ],
+                    attrs=[
+                        AttrDef("names", "dict", optional=True),
+                        AttrDef("other_names", "dict", optional=True),
+                    ],
+                    constraints=[
+                        dsl.OperandDictionary("params", "names"),
+                        dsl.OperandDictionary(*pair),
+                    ],
+                )
+
+    def test_format_requires_matching_semantics(self) -> None:
+        for constraints in ([], [dsl.OperandDictionary("params", "other_names")]):
+            with _raises(ValueError, match="requires a matching OperandDictionary"):
+                Op(
+                    "test.dictionary",
+                    operands=[Operand("params", ANY, variadic=True)],
+                    attrs=[
+                        AttrDef("names", "dict", optional=True),
+                        AttrDef("other_names", "dict", optional=True),
+                    ],
+                    constraints=constraints,
+                    format=[
+                        OptionalGroup([OperandDict("params", "names")], anchor="params")
+                    ],
+                )
+
+    def test_rejects_malformed_constraint(self) -> None:
+        with _raises(ValueError, match="requires two fields"):
+            Op(
+                "test.dictionary",
+                constraints=[dsl.Constraint("OperandDictionary", ("params",))],
+            )
 
 
 class TestConstraints:

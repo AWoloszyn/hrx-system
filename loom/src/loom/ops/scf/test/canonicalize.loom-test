@@ -998,6 +998,23 @@ func.def @if_keeps_result_used_by_type(%buffer: buffer, %offset: offset, %cond: 
 
 // ====
 
+// Result compaction also preserves references nested in attributes. Effects
+// keep the conditional in place so this exercises result pruning, not select
+// formation or whole-operation DCE.
+func.def @if_keeps_result_used_by_type_attribute(%cond: i1, %left_width: index, %right_width: index, %value: f32) -> (f32) {
+  %width = scf.if %cond -> (index) {
+    test.use %left_width : index
+    scf.yield %left_width : index
+  } else {
+    test.use %right_width : index
+    scf.yield %right_width : index
+  }
+  %annotated = test.attrs %value {shape = #test.options<mode = fast, element_type = vector<[%width]xf32>>} : f32
+  func.return %annotated : f32
+}
+
+// ====
+
 // A zero-trip loop returns its iter_args and drops the body, even when the body
 // would have written memory if it executed.
 func.def @for_zero_trip_returns_initial_value(%buffer: buffer, %offset: offset, %init: f32) -> (f32) {

@@ -19,6 +19,7 @@ loom_cc_library(
     "verify_ownership.h"
     "verify_state.h"
     "verify_structure.h"
+    "verify_value_types.h"
   SRCS
     "verify.c"
     "verify_constraints.c"
@@ -26,6 +27,7 @@ loom_cc_library(
     "verify_ownership.c"
     "verify_state.c"
     "verify_structure.c"
+    "verify_value_types.c"
   DEPS
     iree::base
     iree::base::internal::arena
@@ -50,8 +52,22 @@ loom_cc_library(
 
 loom_cc_test(
   NAME
+    verify_state_test
+  SRCS
+    "verify_state_test.cc"
+  DEPS
+    ::verify
+    iree::base
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+
+loom_cc_test(
+  NAME
     verify_test
   SRCS
+    "verify_structure_test.cc"
     "verify_test.cc"
   DEPS
     ::verify

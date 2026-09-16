@@ -942,9 +942,9 @@ static iree_status_t loom_link_append_value_contract_predicates(
   }
   memcpy(merged_predicates + old_predicates.count, predicates.predicate_list,
          (iree_host_size_t)predicates.count * sizeof(*merged_predicates));
-  loom_op_attrs(target_op)[target_predicates_attr_index] =
-      loom_attr_predicate_list(merged_predicates, (uint16_t)total_count);
-  return iree_ok_status();
+  return loom_op_set_attr(
+      linker->target_module, target_op, target_predicates_attr_index,
+      loom_attr_predicate_list(merged_predicates, (uint16_t)total_count));
 }
 
 static iree_status_t loom_link_merge_value_contract(
@@ -1031,7 +1031,9 @@ static iree_status_t loom_link_merge_value_contract(
                                                           IREE_SV("value"));
     }
     if (loom_attr_is_absent(*target_value)) {
-      *target_value = remapped_source_value;
+      IREE_RETURN_IF_ERROR(loom_op_set_attr(linker->target_module, target_op,
+                                            target_value_attr_index,
+                                            remapped_source_value));
     } else if (!loom_attribute_equal(target_value, &remapped_source_value)) {
       return loom_link_incompatible_value_contract_status(linker, target_ref,
                                                           IREE_SV("value"));
@@ -1155,17 +1157,17 @@ static iree_status_t loom_linker_replace_output_attr(
                           : iree_ok_status();
   }
   if (!source_present) {
-    loom_op_attrs(target_op)[target_attr_index] = loom_attr_absent();
-    return iree_ok_status();
+    return loom_op_set_attr(linker->target_module, target_op, target_attr_index,
+                            loom_attr_absent());
   }
   loom_attribute_t source_attr =
       loom_op_const_attrs(source_op)[source_attr_index];
   if (remap) {
-    return loom_ir_remap_attribute(
-        remap, source_attr, &loom_op_attrs(target_op)[target_attr_index]);
+    IREE_RETURN_IF_ERROR(
+        loom_ir_remap_attribute(remap, source_attr, &source_attr));
   }
-  loom_op_attrs(target_op)[target_attr_index] = source_attr;
-  return iree_ok_status();
+  return loom_op_set_attr(linker->target_module, target_op, target_attr_index,
+                          source_attr);
 }
 
 static iree_status_t loom_linker_apply_root_symbol_output(

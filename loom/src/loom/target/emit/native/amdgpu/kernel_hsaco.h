@@ -48,7 +48,7 @@ typedef struct loom_amdgpu_kernel_hsaco_target_resources_t {
   uint32_t occupancy_percent;
   // Stable resource name limiting final occupancy, or "max_waves".
   iree_string_view_t limiting_resource;
-  // Exact target residency transition summary, or zero when unavailable.
+  // Exact residency transitions or flags identifying unavailable final facts.
   loom_target_residency_summary_t residency_summary;
 } loom_amdgpu_kernel_hsaco_target_resources_t;
 
@@ -90,6 +90,9 @@ typedef struct loom_amdgpu_kernel_hsaco_options_t {
   iree_host_size_t data_symbol_count;
   // Optional target-owned emission summary populated after successful emission.
   loom_amdgpu_kernel_hsaco_summary_t* summary;
+  // Optional final residency inventory backed by the contribution's arena.
+  // A capturing report must copy these numeric rows before resetting it.
+  loom_target_residency_constraint_list_t* residency_constraints;
   // Optional encoding products retained in the kernel contribution.
   loom_amdgpu_encode_instruction_stream_flags_t encoding_flags;
 } loom_amdgpu_kernel_hsaco_options_t;

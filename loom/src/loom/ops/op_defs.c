@@ -12,73 +12,7 @@
 #include "iree/base/internal/arena.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
-
-//===----------------------------------------------------------------------===//
-// Constraint relation and property names
-//===----------------------------------------------------------------------===//
-
-const char* loom_constraint_relation_name(loom_constraint_relation_t relation) {
-  static const char* const names[] = {
-      [LOOM_RELATION_PAIRWISE_EQ] = "PairwiseEq",
-      [LOOM_RELATION_ALL_SAME] = "AllSame",
-      [LOOM_RELATION_FIELD_SATISFIES] = "FieldSatisfies",
-      [LOOM_RELATION_REGION_ARGS_SATISFY] = "RegionArgsSatisfy",
-      [LOOM_RELATION_ATTR_I64_PREDICATE] = "AttrI64Predicate",
-      [LOOM_RELATION_ATTR_MATCHES_ELEMENT_TYPE] = "AttrMatchesElementType",
-      [LOOM_RELATION_ELEMENT_WIDTH_ORDER] = "ElementWidthOrder",
-      [LOOM_RELATION_ELEMENT_WIDTH_AT_LEAST_ATTR] = "ElementWidthAtLeastAttr",
-      [LOOM_RELATION_BIT_RANGE_WITHIN_ELEMENT_WIDTH] =
-          "BitRangeWithinElementWidth",
-      [LOOM_RELATION_TOTAL_BIT_COUNT_EQUAL] = "TotalBitCountEqual",
-      [LOOM_RELATION_PAYLOAD_BIT_COUNT_MATCHES_STORAGE] =
-          "PayloadBitCountMatchesStorage",
-      [LOOM_RELATION_COUNT_MATCHES_RANK] = "CountMatchesRank",
-      [LOOM_RELATION_COUNT_MATCHES_STATIC_ELEMENT_COUNT] =
-          "CountMatchesStaticElementCount",
-      [LOOM_RELATION_ATTR_IN_RANGE_RANK] = "AttrInRangeRank",
-      [LOOM_RELATION_REGION_ARG_COUNT] = "RegionArgCount",
-      [LOOM_RELATION_REGION_ARG_MATCH] = "RegionArgMatch",
-      [LOOM_RELATION_CONDITION_FORWARD_COUNT] = "ConditionForwardCount",
-      [LOOM_RELATION_CONDITION_FORWARD_MATCH] = "ConditionForwardMatch",
-      [LOOM_RELATION_YIELD_COUNT] = "YieldCount",
-      [LOOM_RELATION_YIELD_MATCH] = "YieldMatch",
-      [LOOM_RELATION_VARIADIC_MATCH] = "VariadicMatch",
-      [LOOM_RELATION_LAST_AXIS_GROUPED_BY] = "LastAxisGroupedBy",
-      [LOOM_RELATION_REGISTER_UNIT_COUNT_SUM] = "RegisterUnitCountSum",
-  };
-  static_assert(IREE_ARRAYSIZE(names) == LOOM_RELATION_COUNT_,
-                "relation names out of sync with enum");
-  if (relation < LOOM_RELATION_COUNT_) return names[relation];
-  return "unknown";
-}
-
-const char* loom_constraint_property_name(loom_constraint_property_t property) {
-  static const char* const names[] = {
-      [LOOM_PROPERTY_TYPE] = "Type",
-      [LOOM_PROPERTY_KIND] = "Kind",
-      [LOOM_PROPERTY_ELEMENT_TYPE] = "ElementType",
-      [LOOM_PROPERTY_ENCODING] = "Encoding",
-      [LOOM_PROPERTY_SHAPE] = "Shape",
-      [LOOM_PROPERTY_RANK] = "Rank",
-      [LOOM_PROPERTY_ELEMENT_WIDTH_GREATER_THAN] = "ElementWidthGreaterThan",
-      [LOOM_PROPERTY_ELEMENT_WIDTH_LESS_THAN] = "ElementWidthLessThan",
-      [LOOM_PROPERTY_BIT_WIDTH_POSITIVE] = "BitWidthPositive",
-      [LOOM_PROPERTY_ELEMENT_WIDTH_AT_LEAST_ATTR] = "ElementWidthAtLeastAttr",
-      [LOOM_PROPERTY_BIT_RANGE_WITHIN_ELEMENT_WIDTH] =
-          "BitRangeWithinElementWidth",
-      [LOOM_PROPERTY_TOTAL_BIT_COUNT] = "TotalBitCount",
-      [LOOM_PROPERTY_PACKED_PAYLOAD_BIT_COUNT_MATCHES_STORAGE] =
-          "PackedPayloadBitCountMatchesStorage",
-      [LOOM_PROPERTY_UNPACKED_PAYLOAD_BIT_COUNT_MATCHES_STORAGE] =
-          "UnpackedPayloadBitCountMatchesStorage",
-      [LOOM_PROPERTY_REGISTER_CLASS] = "RegisterClass",
-      [LOOM_PROPERTY_REGISTER_UNIT_COUNT] = "RegisterUnitCount",
-  };
-  static_assert(IREE_ARRAYSIZE(names) == LOOM_PROPERTY_COUNT_,
-                "property names out of sync with enum");
-  if (property < LOOM_PROPERTY_COUNT_) return names[property];
-  return "unknown";
-}
+#include "loom/util/adaptive_sort.h"
 
 //===----------------------------------------------------------------------===//
 // Keyword B-string table
@@ -355,43 +289,6 @@ bool loom_op_may_write(const loom_module_t* module, const loom_op_t* op) {
   return loom_traits_may_write(loom_op_effective_traits(module, op));
 }
 
-static bool loom_op_subtree_has_hints(const loom_module_t* module,
-                                      const loom_op_t* op) {
-  if (iree_any_bit_set(loom_op_effective_traits(module, op), LOOM_TRAIT_HINT)) {
-    return true;
-  }
-  loom_region_t** regions = loom_op_regions(op);
-  for (uint8_t i = 0; i < op->region_count; ++i) {
-    loom_region_t* region = regions[i];
-    if (!region) continue;
-    loom_block_t* block = NULL;
-    loom_region_for_each_block(region, block) {
-      loom_op_t* child_op = NULL;
-      loom_block_for_each_op(block, child_op) {
-        if (loom_op_subtree_has_hints(module, child_op)) return true;
-      }
-    }
-  }
-  return false;
-}
-
-bool loom_op_regions_have_hints(const loom_module_t* module,
-                                const loom_op_t* op) {
-  loom_region_t** regions = loom_op_regions(op);
-  for (uint8_t i = 0; i < op->region_count; ++i) {
-    loom_region_t* region = regions[i];
-    if (!region) continue;
-    loom_block_t* block = NULL;
-    loom_region_for_each_block(region, block) {
-      loom_op_t* child_op = NULL;
-      loom_block_for_each_op(block, child_op) {
-        if (loom_op_subtree_has_hints(module, child_op)) return true;
-      }
-    }
-  }
-  return false;
-}
-
 static bool loom_value_has_type_uses_outside_op(const loom_module_t* module,
                                                 loom_value_id_t value_id,
                                                 const loom_op_t* op) {
@@ -410,13 +307,36 @@ static bool loom_value_has_type_uses_outside_op(const loom_module_t* module,
   return false;
 }
 
+static bool loom_value_has_attribute_uses_outside_op(
+    const loom_module_t* module, loom_value_id_t value_id,
+    const loom_op_t* op) {
+  if (!loom_value_has_attribute_uses(loom_module_value(module, value_id))) {
+    return false;
+  }
+  const loom_value_attribute_use_heads_t* heads =
+      loom_module_value_attribute_use_heads(module, value_id);
+  const loom_attribute_use_id_t first_uses[] = {heads->type, heads->predicate};
+  for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(first_uses); ++i) {
+    for (loom_attribute_use_id_t use_id = first_uses[i]; use_id;) {
+      const loom_attribute_use_t* use =
+          &module->attribute_uses.records[use_id - 1];
+      // Self-predicates, such as config.decl constraints, die with the owner.
+      if (use->op != op) {
+        return true;
+      }
+      use_id = use->next_incoming;
+    }
+  }
+  return false;
+}
+
 bool loom_op_results_unused(const loom_module_t* module, const loom_op_t* op) {
   loom_value_id_t* results = loom_op_results((loom_op_t*)op);
   for (uint16_t i = 0; i < op->result_count; ++i) {
     if (results[i] == LOOM_VALUE_ID_INVALID) continue;
     const loom_value_t* value = loom_module_value(module, results[i]);
     if (value->use_count > 0) return false;
-    if (loom_module_value_has_predicate_attribute_uses(module, results[i])) {
+    if (loom_value_has_attribute_uses_outside_op(module, results[i], op)) {
       return false;
     }
     if (loom_value_has_type_uses_outside_op(module, results[i], op)) {
@@ -435,48 +355,8 @@ bool loom_op_is_trivially_dead(const loom_module_t* module,
   if (loom_traits_may_write(traits)) return false;
   if (loom_op_regions_have_write_effects(op)) return false;
   if (loom_op_regions_have_convergent_effects(op)) return false;
-  if (loom_op_regions_have_hints(module, op)) return false;
+  if (loom_op_regions_have_hints(op)) return false;
   return loom_op_results_unused(module, op);
-}
-
-iree_status_t loom_op_walk_subtree_type_refs(
-    const loom_module_t* module, const loom_op_t* op,
-    loom_type_value_ref_callback_t callback, void* user_data) {
-  const loom_value_id_t* results = loom_op_const_results(op);
-  for (uint16_t i = 0; i < op->result_count; ++i) {
-    if (results[i] == LOOM_VALUE_ID_INVALID ||
-        results[i] >= module->values.count) {
-      continue;
-    }
-    IREE_RETURN_IF_ERROR(loom_type_walk_value_refs(
-        module, loom_module_value_type(module, results[i]), callback,
-        user_data));
-  }
-
-  loom_region_t** regions = loom_op_regions(op);
-  for (uint8_t i = 0; i < op->region_count; ++i) {
-    loom_region_t* region = regions[i];
-    if (!region) continue;
-    loom_block_t* block = NULL;
-    loom_region_for_each_block(region, block) {
-      for (uint16_t arg_index = 0; arg_index < block->arg_count; ++arg_index) {
-        loom_value_id_t arg_id = loom_block_arg_id(block, arg_index);
-        if (arg_id == LOOM_VALUE_ID_INVALID || arg_id >= module->values.count) {
-          continue;
-        }
-        IREE_RETURN_IF_ERROR(loom_type_walk_value_refs(
-            module, loom_module_value_type(module, arg_id), callback,
-            user_data));
-      }
-      loom_op_t* child_op = NULL;
-      loom_block_for_each_op(block, child_op) {
-        IREE_RETURN_IF_ERROR(loom_op_walk_subtree_type_refs(
-            module, child_op, callback, user_data));
-      }
-    }
-  }
-
-  return iree_ok_status();
 }
 
 //===----------------------------------------------------------------------===//
@@ -2089,7 +1969,9 @@ static iree_status_t loom_builder_allocate_op_storage(
   iree_host_size_t attrs_size =
       (iree_host_size_t)attribute_count * sizeof(loom_attribute_t);
   iree_host_size_t total_size =
-      aligned_before_attrs + attrs_size + operand_segment_counts_size;
+      aligned_before_attrs + attrs_size +
+      (iree_host_size_t)attribute_count * sizeof(loom_attribute_use_id_t) +
+      operand_segment_counts_size;
 
   void* allocation = NULL;
   IREE_RETURN_IF_ERROR(
@@ -2207,6 +2089,11 @@ iree_status_t loom_op_remove_results(loom_module_t* module, loom_op_t* op,
           "cannot remove result %%%u with %u operand use(s)", (unsigned)result,
           (unsigned)value->use_count);
     }
+    if (loom_value_has_attribute_uses(value)) {
+      return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                              "cannot remove result %%%u with attribute use(s)",
+                              (unsigned)result);
+    }
     if (loom_module_value_has_type_uses(module, result)) {
       return iree_make_status(
           IREE_STATUS_FAILED_PRECONDITION,
@@ -2252,6 +2139,8 @@ iree_status_t loom_op_remove_results(loom_module_t* module, loom_op_t* op,
       operand_segment_count > 0 ? loom_op_operand_segment_counts(op) : NULL;
   loom_use_index_t* old_operand_use_indices = loom_op_operand_use_indices(op);
   loom_attribute_t* old_attrs = loom_op_attrs(op);
+  loom_attribute_use_id_t* old_attribute_use_heads =
+      loom_op_attribute_use_heads(op);
   for (uint16_t i = 0; i < old_result_count; ++i) {
     loom_value_id_t result = results[i];
     if (remove_results[i]) {
@@ -2280,6 +2169,9 @@ iree_status_t loom_op_remove_results(loom_module_t* module, loom_op_t* op,
   if (op->attribute_count > 0) {
     memmove(loom_op_attrs(op), old_attrs,
             (iree_host_size_t)op->attribute_count * sizeof(*old_attrs));
+    memmove(loom_op_attribute_use_heads(op), old_attribute_use_heads,
+            (iree_host_size_t)op->attribute_count *
+                sizeof(*old_attribute_use_heads));
   }
   if (operand_segment_count > 0) {
     memmove(loom_op_operand_segment_counts(op), old_operand_segment_counts,
@@ -2293,17 +2185,26 @@ static iree_status_t loom_op_verify_erase_preconditions(loom_module_t* module,
                                                         loom_op_t* op) {
   loom_value_id_t* results = loom_op_results(op);
   for (uint16_t i = 0; i < op->result_count; ++i) {
-    if (results[i] != LOOM_VALUE_ID_INVALID &&
-        loom_module_value(module, results[i])->use_count > 0) {
+    if (results[i] == LOOM_VALUE_ID_INVALID) {
+      continue;
+    }
+    const loom_value_t* value = loom_module_value(module, results[i]);
+    if (value->use_count > 0) {
       iree_string_view_t op_name = loom_op_name(module, op);
       return iree_make_status(
           IREE_STATUS_FAILED_PRECONDITION,
           "cannot erase %.*s: result %%%u still has %u use(s)",
           (int)op_name.size, op_name.data, (unsigned)results[i],
-          (unsigned)loom_module_value(module, results[i])->use_count);
+          (unsigned)value->use_count);
     }
-    if (results[i] != LOOM_VALUE_ID_INVALID &&
-        loom_value_has_type_uses_outside_op(module, results[i], op)) {
+    if (loom_value_has_attribute_uses_outside_op(module, results[i], op)) {
+      iree_string_view_t op_name = loom_op_name(module, op);
+      return iree_make_status(
+          IREE_STATUS_FAILED_PRECONDITION,
+          "cannot erase %.*s: result %%%u still has attribute use(s)",
+          (int)op_name.size, op_name.data, (unsigned)results[i]);
+    }
+    if (loom_value_has_type_uses_outside_op(module, results[i], op)) {
       iree_string_view_t op_name = loom_op_name(module, op);
       return iree_make_status(
           IREE_STATUS_FAILED_PRECONDITION,
@@ -2354,6 +2255,18 @@ static void loom_module_unlink_symbol_defining_op(
   }
 }
 
+// Signature traversal stays out of the per-operation erasure hot path.
+IREE_ATTRIBUTE_NOINLINE static void loom_op_drop_signature_type_uses(
+    loom_module_t* module, loom_op_t* op) {
+  // Bodyless declarations own the values stored in their signature operand
+  // fields. Retire those carriers at the same boundary as ordinary op results
+  // and region block arguments, not when an operand link happens to disappear.
+  const loom_value_id_t* arguments = loom_op_const_operands(op);
+  for (uint16_t i = 0; i < op->operand_count; ++i) {
+    loom_module_drop_value_type_uses(module, arguments[i]);
+  }
+}
+
 // Erases |op| and every operation nested in its regions. The root op must have
 // unused results; nested ops are removed as part of the dead subtree and may
 // still have uses from sibling ops that will be erased by the same walk.
@@ -2377,6 +2290,7 @@ static iree_status_t loom_op_erase_subtree(loom_module_t* module, loom_op_t* op,
     }
   }
 
+  loom_module_drop_op_attribute_uses(module, op);
   // Remove all operand uses from the referenced values.
   loom_value_id_t* operands = loom_op_operands(op);
   for (uint16_t i = 0; i < op->operand_count; ++i) {
@@ -2393,7 +2307,11 @@ static iree_status_t loom_op_erase_subtree(loom_module_t* module, loom_op_t* op,
       loom_module_value(module, results[i])->def = loom_value_def_make_none();
     }
   }
-  loom_module_unlink_symbol_defining_op(module, op, loom_op_vtable(module, op));
+  const loom_op_vtable_t* vtable = loom_op_vtable(module, op);
+  loom_module_unlink_symbol_defining_op(module, op, vtable);
+  if (loom_op_vtable_owns_operands(vtable)) {
+    loom_op_drop_signature_type_uses(module, op);
+  }
   loom_block_unlink_op(module, op);
   op->flags |= LOOM_OP_FLAG_DEAD;
   return iree_ok_status();
@@ -2407,91 +2325,106 @@ iree_status_t loom_op_erase(loom_module_t* module, loom_op_t* op) {
 // Region block removal
 //===----------------------------------------------------------------------===//
 
-static iree_host_size_t loom_region_find_block_index(
-    const loom_region_t* region, const loom_block_t* block) {
-  uint16_t block_index = 0;
-  if (!loom_region_try_block_index(region, block, &block_index)) {
-    return IREE_HOST_SIZE_MAX;
-  }
-  return block_index;
-}
+// Root blocks already have dense ordinals. Only nested removed blocks need an
+// index, shared by every closure query instead of searching subtrees per edge.
+typedef struct loom_region_removal_scope_t {
+  // Region whose root block table remains unchanged until validation succeeds.
+  const loom_region_t* region;
+  // Borrowed removal mask indexed by root block ordinal.
+  const bool* remove_blocks;
+  // Scratch index of removed nested blocks, sorted before closure validation.
+  struct {
+    // Arena-owned addresses, compared as integers rather than unrelated
+    // pointers.
+    uintptr_t* addresses;
+    // Number of populated block addresses.
+    iree_host_size_t count;
+    // Allocated address capacity, grown geometrically during collection.
+    iree_host_size_t capacity;
+  } nested_blocks;
+} loom_region_removal_scope_t;
 
-static bool loom_region_remove_index_selected(const bool* remove_blocks,
-                                              iree_host_size_t block_index) {
-  return block_index != IREE_HOST_SIZE_MAX && remove_blocks[block_index];
+static bool loom_region_removal_block_less(const uintptr_t* lhs,
+                                           const uintptr_t* rhs) {
+  return *lhs < *rhs;
 }
+LOOM_DEFINE_ADAPTIVE_SORT(loom_region_removal_sort_blocks, uintptr_t,
+                          loom_region_removal_block_less)
 
-static bool loom_region_remove_op_is_removed(const loom_region_t* region,
-                                             const bool* remove_blocks,
-                                             const loom_op_t* op) {
-  for (const loom_op_t* current = op; current; current = current->parent_op) {
-    const loom_block_t* block = current->parent_block;
-    if (!block || block->parent_region != region) continue;
-    return loom_region_remove_index_selected(
-        remove_blocks, loom_region_find_block_index(region, block));
-  }
-  return false;
-}
-
-static bool loom_region_remove_op_subtree_contains_block(
-    const loom_op_t* op, const loom_block_t* target_block) {
+static iree_status_t loom_region_removal_collect_op(
+    const loom_op_t* op, loom_region_removal_scope_t* scope,
+    iree_arena_allocator_t* scratch_arena) {
   loom_region_t** regions = loom_op_regions(op);
   for (uint8_t region_index = 0; region_index < op->region_count;
        ++region_index) {
     loom_region_t* nested_region = regions[region_index];
-    if (!nested_region) continue;
+    if (!nested_region) {
+      continue;
+    }
     loom_block_t* nested_block = NULL;
     loom_region_for_each_block(nested_region, nested_block) {
-      if (nested_block == target_block) return true;
+      if (scope->nested_blocks.count == scope->nested_blocks.capacity) {
+        IREE_RETURN_IF_ERROR(
+            iree_arena_grow_array(scratch_arena, scope->nested_blocks.count,
+                                  iree_max(scope->nested_blocks.count + 1, 8),
+                                  sizeof(*scope->nested_blocks.addresses),
+                                  &scope->nested_blocks.capacity,
+                                  (void**)&scope->nested_blocks.addresses));
+      }
+      scope->nested_blocks.addresses[scope->nested_blocks.count++] =
+          (uintptr_t)nested_block;
       loom_op_t* child_op = NULL;
       loom_block_for_each_op(nested_block, child_op) {
-        if (loom_region_remove_op_subtree_contains_block(child_op,
-                                                         target_block)) {
-          return true;
-        }
+        IREE_RETURN_IF_ERROR(
+            loom_region_removal_collect_op(child_op, scope, scratch_arena));
       }
     }
   }
-  return false;
+  return iree_ok_status();
 }
 
-static bool loom_region_remove_block_is_removed(const loom_region_t* region,
-                                                const bool* remove_blocks,
-                                                const loom_block_t* block) {
-  if (!region || !block) return false;
-  if (block->parent_region == region) {
-    return loom_region_remove_index_selected(
-        remove_blocks, loom_region_find_block_index(region, block));
+static bool loom_region_remove_block_is_removed(
+    const loom_region_removal_scope_t* scope, const loom_block_t* block) {
+  if (!block) {
+    return false;
   }
-  for (uint16_t i = 0; i < region->block_count; ++i) {
-    if (!remove_blocks[i]) continue;
-    loom_block_t* removed_block = region->blocks[i];
-    if (!removed_block) continue;
-    loom_op_t* op = NULL;
-    loom_block_for_each_op(removed_block, op) {
-      if (loom_region_remove_op_subtree_contains_block(op, block)) return true;
+  if (block->parent_region == scope->region) {
+    return scope->remove_blocks[loom_block_region_index(block)];
+  }
+  const uintptr_t address = (uintptr_t)block;
+  iree_host_size_t begin = 0;
+  iree_host_size_t end = scope->nested_blocks.count;
+  while (begin < end) {
+    const iree_host_size_t middle = begin + (end - begin) / 2;
+    if (scope->nested_blocks.addresses[middle] < address) {
+      begin = middle + 1;
+    } else {
+      end = middle;
     }
   }
-  return false;
+  return begin < scope->nested_blocks.count &&
+         scope->nested_blocks.addresses[begin] == address;
 }
 
-static bool loom_region_remove_value_is_removed(const loom_module_t* module,
-                                                const loom_region_t* region,
-                                                const bool* remove_blocks,
-                                                loom_value_id_t value_id) {
-  if (value_id >= module->values.count) return false;
+static bool loom_region_remove_op_is_removed(
+    const loom_region_removal_scope_t* scope, const loom_op_t* op) {
+  return op && loom_region_remove_block_is_removed(scope, op->parent_block);
+}
+
+static bool loom_region_remove_value_is_removed(
+    const loom_module_t* module, const loom_region_removal_scope_t* scope,
+    loom_value_id_t value_id) {
   const loom_value_t* value = loom_module_value(module, value_id);
   if (loom_value_is_block_arg(value)) {
-    return loom_region_remove_block_is_removed(region, remove_blocks,
+    return loom_region_remove_block_is_removed(scope,
                                                loom_value_def_block(value));
   }
-  return loom_region_remove_op_is_removed(region, remove_blocks,
-                                          loom_value_def_op(value));
+  return loom_region_remove_op_is_removed(scope, loom_value_owner_op(value));
 }
 
 static iree_status_t loom_region_remove_verify_value_uses(
-    const loom_module_t* module, const loom_region_t* region,
-    const bool* remove_blocks, loom_value_id_t value_id) {
+    const loom_module_t* module, const loom_region_removal_scope_t* scope,
+    loom_value_id_t value_id) {
   if (value_id == LOOM_VALUE_ID_INVALID || value_id >= module->values.count) {
     return iree_ok_status();
   }
@@ -2500,7 +2433,7 @@ static iree_status_t loom_region_remove_verify_value_uses(
   const loom_use_t* uses = loom_value_uses(value);
   for (uint32_t i = 0; i < value->use_count; ++i) {
     const loom_op_t* user_op = loom_use_user_op(uses[i]);
-    if (!loom_region_remove_op_is_removed(region, remove_blocks, user_op)) {
+    if (!loom_region_remove_op_is_removed(scope, user_op)) {
       return iree_make_status(
           IREE_STATUS_FAILED_PRECONDITION,
           "cannot remove block set: value %%%u has an operand use outside "
@@ -2513,7 +2446,7 @@ static iree_status_t loom_region_remove_verify_value_uses(
       loom_module_value_first_incoming_type_use(module, value_id);
   while (use_id != LOOM_TYPE_USE_ID_INVALID) {
     const loom_type_use_t* type_use = &module->type_uses.records[use_id];
-    if (!loom_region_remove_value_is_removed(module, region, remove_blocks,
+    if (!loom_region_remove_value_is_removed(module, scope,
                                              type_use->user_value_id)) {
       return iree_make_status(
           IREE_STATUS_FAILED_PRECONDITION,
@@ -2523,27 +2456,58 @@ static iree_status_t loom_region_remove_verify_value_uses(
     }
     use_id = type_use->next_incoming_use_id;
   }
+
+  if (loom_value_has_attribute_uses(value)) {
+    const loom_value_attribute_use_heads_t* heads =
+        loom_module_value_attribute_use_heads(module, value_id);
+    const loom_attribute_use_id_t first_uses[] = {heads->type,
+                                                  heads->predicate};
+    for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(first_uses); ++i) {
+      for (loom_attribute_use_id_t attribute_use_id = first_uses[i];
+           attribute_use_id;) {
+        const loom_attribute_use_t* use =
+            &module->attribute_uses.records[attribute_use_id - 1];
+        if (!loom_region_remove_op_is_removed(scope, use->op)) {
+          return iree_make_status(
+              IREE_STATUS_FAILED_PRECONDITION,
+              "cannot remove block set: value %%%u has an attribute use "
+              "outside the removed blocks",
+              (unsigned)value_id);
+        }
+        attribute_use_id = use->next_incoming;
+      }
+    }
+  }
   return iree_ok_status();
 }
 
 static iree_status_t loom_region_remove_verify_block_arg_values(
-    const loom_module_t* module, const loom_region_t* region,
-    const bool* remove_blocks, const loom_block_t* block) {
+    const loom_module_t* module, const loom_region_removal_scope_t* scope,
+    const loom_block_t* block) {
   for (uint16_t arg_index = 0; arg_index < block->arg_count; ++arg_index) {
     IREE_RETURN_IF_ERROR(loom_region_remove_verify_value_uses(
-        module, region, remove_blocks, loom_block_arg_id(block, arg_index)));
+        module, scope, loom_block_arg_id(block, arg_index)));
   }
   return iree_ok_status();
 }
 
 static iree_status_t loom_region_remove_verify_op_values(
-    const loom_module_t* module, const loom_region_t* region,
-    const bool* remove_blocks, const loom_op_t* op) {
+    const loom_module_t* module, const loom_region_removal_scope_t* scope,
+    const loom_op_t* op) {
   const loom_value_id_t* results = loom_op_const_results(op);
   for (uint16_t result_index = 0; result_index < op->result_count;
        ++result_index) {
     IREE_RETURN_IF_ERROR(loom_region_remove_verify_value_uses(
-        module, region, remove_blocks, results[result_index]));
+        module, scope, results[result_index]));
+  }
+  if (op->operand_count > 0 &&
+      iree_any_bit_set(op->traits, LOOM_TRAIT_SYMBOL_DEFINE) &&
+      loom_op_vtable_owns_operands(loom_op_vtable(module, op))) {
+    const loom_value_id_t* arguments = loom_op_const_operands(op);
+    for (uint16_t i = 0; i < op->operand_count; ++i) {
+      IREE_RETURN_IF_ERROR(
+          loom_region_remove_verify_value_uses(module, scope, arguments[i]));
+    }
   }
 
   loom_region_t** nested_regions = loom_op_regions(op);
@@ -2554,11 +2518,11 @@ static iree_status_t loom_region_remove_verify_op_values(
     loom_block_t* nested_block = NULL;
     loom_region_for_each_block(nested_region, nested_block) {
       IREE_RETURN_IF_ERROR(loom_region_remove_verify_block_arg_values(
-          module, region, remove_blocks, nested_block));
+          module, scope, nested_block));
       loom_op_t* child_op = NULL;
       loom_block_for_each_op(nested_block, child_op) {
-        IREE_RETURN_IF_ERROR(loom_region_remove_verify_op_values(
-            module, region, remove_blocks, child_op));
+        IREE_RETURN_IF_ERROR(
+            loom_region_remove_verify_op_values(module, scope, child_op));
       }
     }
   }
@@ -2566,30 +2530,29 @@ static iree_status_t loom_region_remove_verify_op_values(
 }
 
 static iree_status_t loom_region_remove_verify_removed_values(
-    const loom_module_t* module, const loom_region_t* region,
-    const bool* remove_blocks) {
+    const loom_module_t* module, const loom_region_removal_scope_t* scope) {
+  const loom_region_t* region = scope->region;
   for (uint16_t block_index = 0; block_index < region->block_count;
        ++block_index) {
-    if (!remove_blocks[block_index]) continue;
+    if (!scope->remove_blocks[block_index]) continue;
     const loom_block_t* block = region->blocks[block_index];
-    IREE_RETURN_IF_ERROR(loom_region_remove_verify_block_arg_values(
-        module, region, remove_blocks, block));
+    IREE_RETURN_IF_ERROR(
+        loom_region_remove_verify_block_arg_values(module, scope, block));
     const loom_op_t* op = NULL;
     loom_block_for_each_op(block, op) {
-      IREE_RETURN_IF_ERROR(loom_region_remove_verify_op_values(
-          module, region, remove_blocks, op));
+      IREE_RETURN_IF_ERROR(
+          loom_region_remove_verify_op_values(module, scope, op));
     }
   }
   return iree_ok_status();
 }
 
 static iree_status_t loom_region_remove_verify_kept_op_successors(
-    const loom_region_t* region, const bool* remove_blocks,
-    const loom_op_t* op) {
+    const loom_region_removal_scope_t* scope, const loom_op_t* op) {
   loom_block_t* const* successors = loom_op_const_successors(op);
   for (uint8_t successor_index = 0; successor_index < op->successor_count;
        ++successor_index) {
-    if (loom_region_remove_block_is_removed(region, remove_blocks,
+    if (loom_region_remove_block_is_removed(scope,
                                             successors[successor_index])) {
       return iree_make_status(
           IREE_STATUS_FAILED_PRECONDITION,
@@ -2607,8 +2570,8 @@ static iree_status_t loom_region_remove_verify_kept_op_successors(
     loom_region_for_each_block(nested_region, nested_block) {
       loom_op_t* child_op = NULL;
       loom_block_for_each_op(nested_block, child_op) {
-        IREE_RETURN_IF_ERROR(loom_region_remove_verify_kept_op_successors(
-            region, remove_blocks, child_op));
+        IREE_RETURN_IF_ERROR(
+            loom_region_remove_verify_kept_op_successors(scope, child_op));
       }
     }
   }
@@ -2616,15 +2579,16 @@ static iree_status_t loom_region_remove_verify_kept_op_successors(
 }
 
 static iree_status_t loom_region_remove_verify_successor_closure(
-    const loom_region_t* region, const bool* remove_blocks) {
+    const loom_region_removal_scope_t* scope) {
+  const loom_region_t* region = scope->region;
   for (uint16_t block_index = 0; block_index < region->block_count;
        ++block_index) {
-    if (remove_blocks[block_index]) continue;
+    if (scope->remove_blocks[block_index]) continue;
     const loom_block_t* block = region->blocks[block_index];
     const loom_op_t* op = NULL;
     loom_block_for_each_op(block, op) {
-      IREE_RETURN_IF_ERROR(loom_region_remove_verify_kept_op_successors(
-          region, remove_blocks, op));
+      IREE_RETURN_IF_ERROR(
+          loom_region_remove_verify_kept_op_successors(scope, op));
     }
   }
   return iree_ok_status();
@@ -2634,6 +2598,7 @@ iree_status_t loom_region_remove_blocks(loom_module_t* module,
                                         loom_region_t* region,
                                         const bool* remove_blocks,
                                         uint16_t remove_block_count,
+                                        iree_arena_allocator_t* scratch_arena,
                                         uint16_t* out_removed_count) {
   *out_removed_count = 0;
   if (remove_block_count != region->block_count) {
@@ -2660,10 +2625,24 @@ iree_status_t loom_region_remove_blocks(loom_module_t* module,
   }
   if (removed_count == 0) return iree_ok_status();
 
+  loom_region_removal_scope_t scope = {0};
+  scope.region = region;
+  scope.remove_blocks = remove_blocks;
+  for (uint16_t i = 0; i < region->block_count; ++i) {
+    if (!remove_blocks[i]) {
+      continue;
+    }
+    const loom_op_t* op = NULL;
+    loom_block_for_each_op(region->blocks[i], op) {
+      IREE_RETURN_IF_ERROR(
+          loom_region_removal_collect_op(op, &scope, scratch_arena));
+    }
+  }
+  loom_region_removal_sort_blocks(scope.nested_blocks.addresses,
+                                  scope.nested_blocks.count);
+  IREE_RETURN_IF_ERROR(loom_region_remove_verify_successor_closure(&scope));
   IREE_RETURN_IF_ERROR(
-      loom_region_remove_verify_successor_closure(region, remove_blocks));
-  IREE_RETURN_IF_ERROR(
-      loom_region_remove_verify_removed_values(module, region, remove_blocks));
+      loom_region_remove_verify_removed_values(module, &scope));
 
   for (uint16_t block_index = 0; block_index < region->block_count;
        ++block_index) {
@@ -2703,32 +2682,6 @@ iree_status_t loom_region_remove_blocks(loom_module_t* module,
 // 8 covers the common case of values used 4-8 times without further
 // reallocation. Values used more than 8 times get geometric growth.
 #define LOOM_USE_INITIAL_OVERFLOW_CAPACITY 8
-
-static iree_status_t loom_module_note_attribute_value_ref(
-    loom_value_id_t value_id, void* user_data) {
-  loom_module_t* module = (loom_module_t*)user_data;
-  if (value_id < module->values.count) {
-    loom_module_value(module, value_id)->flags |=
-        LOOM_VALUE_FLAG_ATTRIBUTE_USES;
-  }
-  return iree_ok_status();
-}
-
-static iree_status_t loom_module_note_attribute_value_refs(
-    loom_module_t* module, loom_attribute_t attr) {
-  return loom_module_walk_attribute_value_refs(
-      module, attr, loom_module_note_attribute_value_ref, module);
-}
-
-iree_status_t loom_module_note_op_attribute_value_refs(loom_module_t* module,
-                                                       const loom_op_t* op) {
-  const loom_attribute_t* attrs = loom_op_const_attrs(op);
-  for (uint8_t attr_index = 0; attr_index < op->attribute_count; ++attr_index) {
-    IREE_RETURN_IF_ERROR(
-        loom_module_note_attribute_value_refs(module, attrs[attr_index]));
-  }
-  return iree_ok_status();
-}
 
 iree_status_t loom_value_add_use(loom_module_t* module,
                                  loom_value_id_t value_id, loom_op_t* user_op,
@@ -2913,7 +2866,7 @@ iree_status_t loom_builder_finalize_op(loom_builder_t* builder, loom_op_t* op) {
   // Result type uses are installed when values are defined or their types
   // change. Finalization only assigns the operation definition site.
   IREE_RETURN_IF_ERROR(
-      loom_module_note_op_attribute_value_refs(builder->module, op));
+      loom_module_refresh_op_attribute_uses(builder->module, op));
   // Wire the symbol table entry for symbol-defining ops so that
   // loom_func_like_cast can find the defining op without a scan.
   const loom_op_vtable_t* vtable = loom_op_vtable(builder->module, op);
@@ -2947,6 +2900,17 @@ iree_status_t loom_op_set_operand(loom_module_t* module, loom_op_t* op,
     IREE_RETURN_IF_ERROR(
         loom_value_add_use(module, new_value_id, op, operand_index));
   }
+  return iree_ok_status();
+}
+
+iree_status_t loom_op_set_attr(loom_module_t* module, loom_op_t* op,
+                               uint8_t attribute_index,
+                               loom_attribute_t attribute) {
+  IREE_RETURN_IF_ERROR(
+      loom_module_set_op_attribute(module, op, attribute_index, attribute));
+  loom_trait_flags_t old_traits = op->traits;
+  loom_op_refresh_effective_traits(module, op);
+  loom_module_update_op_direct_summaries(module, op, old_traits, op->traits);
   return iree_ok_status();
 }
 
@@ -2992,61 +2956,12 @@ static iree_status_t loom_value_ensure_use_capacity(loom_module_t* module,
   return iree_ok_status();
 }
 
-static iree_status_t loom_op_replace_attr_value_refs(loom_module_t* module,
-                                                     loom_op_t* op,
-                                                     loom_value_id_t old_id,
-                                                     loom_value_id_t new_id) {
-  loom_attribute_t* attrs = loom_op_attrs(op);
-  for (uint8_t attr_index = 0; attr_index < op->attribute_count; ++attr_index) {
-    loom_attribute_t replacement = attrs[attr_index];
-    bool changed = false;
-    IREE_RETURN_IF_ERROR(loom_module_replace_attribute_value_references(
-        module, attrs[attr_index], old_id, new_id, &replacement, &changed));
-    if (!changed) {
-      continue;
-    }
-    loom_trait_flags_t old_traits = op->traits;
-    attrs[attr_index] = replacement;
-    IREE_RETURN_IF_ERROR(
-        loom_module_note_attribute_value_refs(module, replacement));
-    loom_op_refresh_effective_traits(module, op);
-    loom_module_update_op_direct_summaries(module, op, old_traits, op->traits);
-  }
-  return iree_ok_status();
-}
-
-iree_status_t loom_region_replace_attribute_value_references(
-    loom_module_t* module, loom_region_t* region, loom_value_id_t old_id,
-    loom_value_id_t new_id) {
-  if (!region) {
-    return iree_ok_status();
-  }
-  loom_block_t* block = NULL;
-  loom_region_for_each_block(region, block) {
-    loom_op_t* op = NULL;
-    loom_block_for_each_op(block, op) {
-      if (iree_any_bit_set(op->flags, LOOM_OP_FLAG_DEAD)) {
-        continue;
-      }
-      IREE_RETURN_IF_ERROR(
-          loom_op_replace_attr_value_refs(module, op, old_id, new_id));
-      loom_region_t** regions = loom_op_regions(op);
-      for (uint8_t i = 0; i < op->region_count; ++i) {
-        IREE_RETURN_IF_ERROR(loom_region_replace_attribute_value_references(
-            module, regions[i], old_id, new_id));
-      }
-    }
-  }
-  return iree_ok_status();
-}
-
 iree_status_t loom_value_replace_all_uses_with(loom_module_t* module,
                                                loom_value_id_t old_id,
                                                loom_value_id_t new_id) {
   if (old_id == new_id) return iree_ok_status();
   loom_value_t* old_value = loom_module_value(module, old_id);
   uint32_t old_use_count = old_value->use_count;
-  const bool old_has_attribute_uses = loom_value_has_attribute_uses(old_value);
 
   loom_value_t* new_value = loom_module_value(module, new_id);
   IREE_RETURN_IF_ERROR(
@@ -3054,12 +2969,27 @@ iree_status_t loom_value_replace_all_uses_with(loom_module_t* module,
 
   IREE_RETURN_IF_ERROR(
       loom_module_replace_value_type_uses(module, old_id, new_id));
-  if (old_has_attribute_uses) {
-    IREE_RETURN_IF_ERROR(loom_region_replace_attribute_value_references(
-        module, module->body, old_id, new_id));
-    new_value->flags |= LOOM_VALUE_FLAG_ATTRIBUTE_USES;
-    old_value->flags &= ~LOOM_VALUE_FLAG_ATTRIBUTE_USES;
+  iree_status_t status = iree_ok_status();
+  if (loom_value_has_attribute_uses(old_value)) {
+    loom_attribute_use_id_t attribute_use_id =
+        loom_module_value_first_attribute_use(module, old_id);
+    while (attribute_use_id && iree_status_is_ok(status)) {
+      // Replacing this slot retargets every occurrence, including duplicates,
+      // before the next incoming head selects another owner.
+      const loom_attribute_use_t use =
+          module->attribute_uses.records[attribute_use_id - 1];
+      status = loom_module_replace_op_attribute_value_references(
+          module, use.op, use.attribute_index, old_id, new_id);
+      if (iree_status_is_ok(status)) {
+        loom_trait_flags_t old_traits = use.op->traits;
+        loom_op_refresh_effective_traits(module, use.op);
+        loom_module_update_op_direct_summaries(module, use.op, old_traits,
+                                               use.op->traits);
+      }
+      attribute_use_id = loom_module_value_first_attribute_use(module, old_id);
+    }
   }
+  IREE_RETURN_IF_ERROR(status);
   if (old_use_count == 0) return iree_ok_status();
 
   // Patch every user op's operand slot.
@@ -3206,6 +3136,7 @@ static void loom_region_reset_summaries(loom_region_t* region) {
   region->read_effect_count = 0;
   region->write_effect_count = 0;
   region->convergent_effect_count = 0;
+  region->hint_source_count = 0;
   loom_block_t* block = NULL;
   loom_region_for_each_block(region, block) {
     block->parent_region = region;
@@ -3244,8 +3175,7 @@ static iree_status_t loom_region_compute_uses(loom_module_t* module,
       op->parent_op = parent_op;
       op->parent_block = block;
       loom_module_record_op_summaries(module, op);
-      IREE_RETURN_IF_ERROR(
-          loom_module_note_op_attribute_value_refs(module, op));
+      IREE_RETURN_IF_ERROR(loom_module_refresh_op_attribute_uses(module, op));
       // Register operand uses.
       loom_value_id_t* operands = loom_op_operands(op);
       for (uint16_t i = 0; i < op->operand_count; ++i) {
@@ -3261,8 +3191,8 @@ static iree_status_t loom_region_compute_uses(loom_module_t* module,
               loom_value_def_make_op(op, i);
         }
       }
-      // Link symbol-defining ops at module scope. Nested ops cannot
-      // define symbols so the vtable lookup is skipped for inner regions.
+      // Refresh module-scope symbol links. Parsers and builders install
+      // nested symbol links at their construction boundary.
       if (!parent_op) {
         const loom_op_vtable_t* vtable = loom_op_vtable(module, op);
         if (vtable &&
@@ -3281,6 +3211,7 @@ static iree_status_t loom_region_compute_uses(loom_module_t* module,
 }
 
 iree_status_t loom_module_compute_uses(loom_module_t* module) {
+  loom_module_reset_attribute_uses(module);
   loom_region_reset_summaries(module->body);
   module->poison_op_count = 0;
   // Clear all use and def data on every value.

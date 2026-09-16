@@ -13,7 +13,11 @@ loom_check_test_suite(
   NAME
     test
   SRCS
+    "attribute_visibility.loom-test"
     "dominance.loom-test"
+    "isolation.loom-test"
+    "operand_dictionary.loom-test"
+    "type_visibility.loom-test"
     "unreachable_definitions.loom-test"
 )
 

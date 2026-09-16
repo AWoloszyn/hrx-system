@@ -117,6 +117,22 @@ scheduled virtual pressure before final allocation metadata.
 register count used for occupancy. Their difference is evidence about the
 allocation boundary rather than a contradiction.
 
+Both summary and detail modes retain the final resource constraints, including
+LDS and fixed launch limits. This query shows each independent ceiling and the
+producer's reduction required for the jointly selected next residency tier:
+
+```shell
+jq '.residency_constraints.rows[]? |
+    {function, name, kind, unit, allocation_scope, pool_scope,
+     units, rounded_units, allocation_granularity, pool_units,
+     independent_tier, limiting, reduction_units_to_next_better_tier} |
+    with_entries(select(.value != null))' report.json
+```
+
+Missing usage or ceilings are unavailable evidence, not zero. Reductions for
+tied limiting resources must be made together; `loom-compile-report show`
+explains that joint requirement and any fixed ceiling for the chosen launch.
+
 ```shell
 loom-compile kernel.loom \
   --format=amdgpu-hsaco \

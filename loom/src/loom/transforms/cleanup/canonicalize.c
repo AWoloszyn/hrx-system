@@ -873,7 +873,8 @@ static bool loom_canonicalize_op_type_constraints_mention_operand(
     const loom_op_vtable_t* vtable, uint16_t operand_index) {
   if (!vtable) return true;
   if (vtable->constraint_count > 0 && !vtable->constraints) return true;
-  for (uint8_t i = 0; i < vtable->constraint_count; ++i) {
+  for (uint8_t i = vtable->operand_dictionary_count;
+       i < vtable->constraint_count; ++i) {
     if (loom_canonicalize_type_constraint_mentions_operand(
             vtable, &vtable->constraints[i], operand_index)) {
       return true;

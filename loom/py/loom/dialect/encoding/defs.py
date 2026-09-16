@@ -49,6 +49,7 @@ from loom.dsl import (
     EnumDef,
     Op,
     Operand,
+    OperandDictionary,
     OpPhase,
     ParameterizedAttrDef,
     Result,
@@ -647,6 +648,7 @@ encoding_define = Op(
             doc="Sorted dynamic parameter names mapped to operand ordinals.",
         ),
     ],
+    constraints=[OperandDictionary("params", "param_names")],
     traits=[PURE],
     verify="loom_encoding_define_verify",
     facts="loom_encoding_define_facts",
@@ -658,7 +660,7 @@ encoding_define = Op(
     ],
     examples=[
         "%enc = encoding.define #encoding.operand<element_format=i8, payload_elements=32, payload_packing=dense_lanes> : encoding<schema>",
-        "%enc = encoding.define #encoding.operand<element_format=i8, payload_elements=32, payload_packing=dense_lanes> {group_size = %group_size : index} : encoding<schema>",
+        "%storage = encoding.define #encoding.storage {layout = %layout : encoding<layout>, schema = %schema : encoding<schema>} : encoding<storage>",
     ],
 )
 

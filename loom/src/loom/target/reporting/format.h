@@ -26,7 +26,7 @@ extern "C" {
 typedef enum loom_target_compile_report_format_mode_e {
   // Does not format a compile report.
   LOOM_TARGET_COMPILE_REPORT_FORMAT_MODE_NONE = 0,
-  // Formats one bounded summary block without per-row details.
+  // Formats bounded summary facts, including each entry's resource inventory.
   LOOM_TARGET_COMPILE_REPORT_FORMAT_MODE_SUMMARY = 1,
   // Formats the summary block plus copied pressure and spill rows.
   LOOM_TARGET_COMPILE_REPORT_FORMAT_MODE_DETAILS = 2,
@@ -65,7 +65,8 @@ iree_status_t loom_target_compile_report_format_text(
 
 // Formats |report| as one structured JSON object into |stream|.
 //
-// SUMMARY mode emits stable summary fields, row counts, and the entry index.
+// SUMMARY mode emits summary fields, bounded residency constraints, other row
+// counts, and the entry index.
 // DETAILS mode additionally emits copied row arrays such as pressure, spill,
 // wait-plan, source-low, and target-legalization rows. NONE mode writes
 // nothing.

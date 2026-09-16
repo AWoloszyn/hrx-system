@@ -184,7 +184,7 @@ typedef struct loom_amdgpu_occupancy_target_resources_t {
   uint32_t occupancy_percent;
   // Stable resource name limiting final occupancy, or "max_waves".
   iree_string_view_t limiting_resource;
-  // Exact target residency transition summary, or zero when unavailable.
+  // Exact residency transitions or flags identifying unavailable final facts.
   loom_target_residency_summary_t residency_summary;
 } loom_amdgpu_occupancy_target_resources_t;
 
@@ -199,13 +199,15 @@ iree_status_t loom_amdgpu_occupancy_build(
 // Builds an AMDGPU occupancy estimate from final target metadata.
 // |flat_workgroup_size| is the exact fixed size or zero when it is unknown.
 // Local-memory occupancy is only applied when the fixed size is available.
-// |arena| is used only as scratch during construction.
+// |out_resources| is entirely by value. Optional |out_constraints| retains an
+// arena-owned inventory for report capture; NULL avoids allocating that data.
 iree_status_t loom_amdgpu_occupancy_build_target_resources(
     const loom_amdgpu_processor_info_t* processor, uint32_t wave_size,
     uint32_t scalar_register_count, uint32_t vector_register_count,
     uint32_t flat_workgroup_size, uint32_t local_memory_bytes,
     iree_arena_allocator_t* arena,
-    loom_amdgpu_occupancy_target_resources_t* out_resources);
+    loom_amdgpu_occupancy_target_resources_t* out_resources,
+    loom_target_residency_constraint_list_t* out_constraints);
 
 // Returns the generated target residency model for |target|.
 const loom_target_residency_model_t* loom_amdgpu_occupancy_residency_model(

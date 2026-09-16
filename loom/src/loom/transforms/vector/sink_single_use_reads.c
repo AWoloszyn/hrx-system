@@ -180,11 +180,12 @@ static bool loom_sink_single_use_reads_is_read_candidate(
     return false;
   }
   loom_value_id_t result = loom_op_results(op)[0];
-  if (loom_module_value_has_predicate_attribute_uses(context->module, result) ||
+  const loom_value_t* value = loom_module_value(context->module, result);
+  if (loom_value_has_attribute_uses(value) ||
       loom_module_value_has_type_uses(context->module, result)) {
     return false;
   }
-  return loom_value_has_single_use(loom_module_value(context->module, result));
+  return loom_value_has_single_use(value);
 }
 
 static bool loom_sink_single_use_reads_find_same_block_user(

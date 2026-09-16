@@ -39,19 +39,19 @@ func.def @semantic_schema_query(%schema: encoding<schema>) -> (i1) {
 // ====
 
 // Dynamic encoding parameters are named SSA operands on encoding.define.
-func.def @dynamic_encoding_params(%group_size: index, %scale: f32) {
-  %enc = encoding.define #encoding.i8<payload_elements=32> {group_size = %group_size : index, scale = %scale : f32} : encoding<schema>
-  test.use %enc : encoding<schema>
+func.def @dynamic_encoding_params(%layout: encoding<layout>, %schema: encoding<schema>) {
+  %storage = encoding.define #encoding.storage {layout = %layout : encoding<layout>, schema = %schema : encoding<schema>} : encoding<storage>
+  test.use %storage : encoding<storage>
   func.return
 }
 
 // ====
 
 // The resulting encoding value is attached explicitly in shaped types.
-func.def @dynamic_encoding_attachment(%group_size: index) {
-  %enc = encoding.define #encoding.i8<payload_elements=32> {group_size = %group_size : index} : encoding<schema>
-  %tile = test.constant 0 : tile<256xi8, %enc>
-  test.use %tile : tile<256xi8, %enc>
+func.def @dynamic_encoding_attachment(%buffer: buffer, %offset: offset, %layout: encoding<layout>, %schema: encoding<schema>) {
+  %storage = encoding.define #encoding.storage {layout = %layout : encoding<layout>, schema = %schema : encoding<schema>} : encoding<storage>
+  %view = buffer.view %buffer[%offset] : buffer -> view<256xi8, %storage>
+  test.use %view : view<256xi8, %storage>
   func.return
 }
 

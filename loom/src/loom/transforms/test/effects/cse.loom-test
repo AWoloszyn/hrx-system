@@ -726,6 +726,216 @@ low.func.def target<test.low.core>(@test_target) @unreachable_blocks_receive_loc
 
 // ====
 
+// Each nested function owns a separate CFG. Dominance-based reuse works in
+// both source orders without sharing candidates between sibling functions.
+// RUN: pass cse
+func.def @independent_nested_cfgs() {
+  func.def @forward(%row: i32) -> (i32) {
+    %row_bytes = test.addi %row, %row : i32
+    cfg.br ^finish
+  ^finish:
+    %result = test.addi %row, %row : i32
+    func.return %result : i32
+  }
+  func.def @reverse(%column: i32) -> (i32) {
+    cfg.br ^define
+  ^finish:
+    %result = test.addi %column, %column : i32
+    func.return %result : i32
+  ^define:
+    %column_bytes = test.addi %column, %column : i32
+    cfg.br ^finish
+  }
+  func.return
+}
+
+// ----
+func.def @independent_nested_cfgs() {
+  func.def @forward(%row: i32) -> (i32) {
+    %row_bytes = test.addi %row, %row : i32
+    cfg.br ^finish
+  ^finish:
+    func.return %row_bytes : i32
+  }
+  func.def @reverse(%column: i32) -> (i32) {
+    cfg.br ^define
+  ^finish:
+    func.return %column_bytes : i32
+  ^define:
+    %column_bytes = test.addi %column, %column : i32
+    cfg.br ^finish
+  }
+  func.return
+}
+
+// ====
+
+// Entry is the root of the scope tree even when a backedge reaches it. Local
+// and dominated reuse remain valid without making entry its own parent scope.
+// RUN: pass cse
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @entry_backedge_cse(%cond: reg<test.i32>, %row: reg<test.i32>) -> (reg<test.i32>) asm {
+^entry:
+  %row_bytes = test.add.i32 %row, %row
+  low.cond_br %cond, ^repeat, ^finish : reg<test.i32>
+^repeat:
+  low.br ^entry(%cond: reg<test.i32>, %row: reg<test.i32>)
+^finish:
+  %result = test.add.i32 %row, %row
+  return %result
+}
+
+// ----
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @entry_backedge_cse(%cond: reg<test.i32>, %row: reg<test.i32>) -> (reg<test.i32>) asm {
+^entry:
+  %row_bytes = test.add.i32 %row, %row
+  low.cond_br %cond, ^repeat, ^finish : reg<test.i32>
+^repeat:
+  low.br ^entry(%cond: reg<test.i32>, %row: reg<test.i32>)
+^finish:
+  return %row_bytes
+}
+
+// ====
+
+// Empty CFG scopes must still reach candidates inserted by their dominator
+// after the scopes were allocated. A barrier in one subtree invalidates the
+// shared root before a later subtree tries to reuse its expression.
+// RUN: pass cse
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @empty_sibling_paths_reach_pending_ancestor(%cond: reg<test.i32>, %row: reg<test.i32>) -> (reg<test.i32>) asm {
+  %row_bytes = test.add.i32 %row, %row
+  low.cond_br %cond, ^left, ^right : reg<test.i32>
+^left:
+  low.br ^invalidate
+^right:
+  low.br ^reuse
+^invalidate:
+  %participant = test.convergent.i32 %row
+  return %participant
+^reuse:
+  %fresh_bytes = test.add.i32 %row, %row
+  %duplicate = test.add.i32 %row, %row
+  return %duplicate
+}
+
+// ----
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @empty_sibling_paths_reach_pending_ancestor(%cond: reg<test.i32>, %row: reg<test.i32>) -> (reg<test.i32>) asm {
+  %row_bytes = test.add.i32 %row, %row
+  low.cond_br %cond, ^left, ^right : reg<test.i32>
+^left:
+  low.br ^invalidate
+^right:
+  low.br ^reuse
+^invalidate:
+  %participant = test.convergent.i32 %row
+  return %participant
+^reuse:
+  %fresh_bytes = test.add.i32 %row, %row
+  return %fresh_bytes
+}
+
+// ====
+
+// An enclosing block can insert again after a nested barrier clears it. A
+// later nested barrier must find those new candidates through empty scopes.
+// RUN: pass cse
+func.def @rearm_outer_candidates(%condition: i1, %row: i32) -> (i32, i32, i32, i32) {
+  %before = test.addi %row, %row : i32
+  scf.if %condition {
+    %first_barrier = test.convergent %row : i32
+  } else {
+  }
+  %middle = test.addi %row, %row : i32
+  scf.if %condition {
+    scf.if %condition {
+      %second_barrier = test.convergent %row : i32
+    } else {
+    }
+  } else {
+  }
+  %after = test.addi %row, %row : i32
+  %duplicate = test.addi %row, %row : i32
+  func.return %before, %middle, %after, %duplicate : i32, i32, i32, i32
+}
+
+// ----
+func.def @rearm_outer_candidates(%condition: i1, %row: i32) -> (i32, i32, i32, i32) {
+  %before = test.addi %row, %row : i32
+  scf.if %condition {
+    %first_barrier = test.convergent %row : i32
+  } else {
+  }
+  %middle = test.addi %row, %row : i32
+  scf.if %condition {
+    scf.if %condition {
+      %second_barrier = test.convergent %row : i32
+    } else {
+    }
+  } else {
+  }
+  %after = test.addi %row, %row : i32
+  func.return %before, %middle, %after, %after : i32, i32, i32, i32
+}
+
+// ====
+
+// Read-only membership is rearmed independently of full invalidation. Nested
+// stores discard each load epoch while the pure address and value survive.
+// RUN: pass cse
+func.def @rearm_outer_reads(%condition: i1, %buffer: buffer, %offset: offset, %value: i32) -> (i32, i32, i32, i32) {
+  %layout = encoding.layout.dense : encoding<layout>
+  %view = buffer.view %buffer[%offset] : buffer -> view<1xi32, %layout>
+  %value_twice = test.addi %value, %value : i32
+  %before = view.load %view[0] : view<1xi32, %layout> -> i32
+  scf.if %condition {
+    view.store %value_twice, %view[0] : i32, view<1xi32, %layout>
+  } else {
+  }
+  %middle = view.load %view[0] : view<1xi32, %layout> -> i32
+  scf.if %condition {
+    scf.if %condition {
+      view.store %value_twice, %view[0] : i32, view<1xi32, %layout>
+    } else {
+    }
+  } else {
+  }
+  %after = view.load %view[0] : view<1xi32, %layout> -> i32
+  %duplicate = view.load %view[0] : view<1xi32, %layout> -> i32
+  %same_value = test.addi %value, %value : i32
+  func.return %before, %middle, %duplicate, %same_value : i32, i32, i32, i32
+}
+
+// ----
+func.def @rearm_outer_reads(%condition: i1, %buffer: buffer, %offset: offset, %value: i32) -> (i32, i32, i32, i32) {
+  %layout = encoding.layout.dense : encoding<layout>
+  %view = buffer.view %buffer[%offset] : buffer -> view<1xi32, %layout>
+  %value_twice = test.addi %value, %value : i32
+  %before = view.load %view[0] : view<1xi32, %layout> -> i32
+  scf.if %condition {
+    view.store %value_twice, %view[0] : i32, view<1xi32, %layout>
+  } else {
+  }
+  %middle = view.load %view[0] : view<1xi32, %layout> -> i32
+  scf.if %condition {
+    scf.if %condition {
+      view.store %value_twice, %view[0] : i32, view<1xi32, %layout>
+    } else {
+    }
+  } else {
+  }
+  %after = view.load %view[0] : view<1xi32, %layout> -> i32
+  func.return %before, %middle, %after, %value_twice : i32, i32, i32, i32
+}
+
+// ====
+
 // Results consumed by a moved-result operation retain distinct SSA ownership
 // identities. Folding the second borrowed result into the first would make the
 // later borrow of %lhs a use after move.

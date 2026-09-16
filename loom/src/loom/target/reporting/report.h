@@ -14,6 +14,7 @@
 #include "loom/codegen/low/planning_statistics.h"
 #include "loom/ir/scalar_type.h"
 #include "loom/target/reporting/loop_pipeline.h"
+#include "loom/target/reporting/residency.h"
 #include "loom/target/reporting/target_insertion.h"
 #include "loom/target/residency.h"
 #include "loom/target/types.h"
@@ -91,6 +92,8 @@ enum {
   LOOM_TARGET_COMPILE_REPORT_DETAIL_TARGET_INSERTION_ROWS = 1u << 25,
   // Final target body, entry, and coissued instruction counts were recorded.
   LOOM_TARGET_COMPILE_REPORT_DETAIL_EMISSION_BREAKDOWN = 1u << 26,
+  // Final per-entry residency constraints are retained in both report modes.
+  LOOM_TARGET_COMPILE_REPORT_DETAIL_RESIDENCY_CONSTRAINTS = 1u << 27,
 };
 
 typedef enum loom_target_compile_report_move_cause_e {
@@ -465,7 +468,7 @@ typedef struct loom_target_compile_report_target_resources_t {
   uint32_t occupancy_percent;
   // Stable resource name limiting final occupancy, or "max_waves".
   iree_string_view_t limiting_resource;
-  // Exact target residency transition summary, or zero when unavailable.
+  // Exact residency transitions or flags identifying unavailable final facts.
   loom_target_residency_summary_t residency_summary;
 } loom_target_compile_report_target_resources_t;
 
@@ -1999,6 +2002,8 @@ typedef struct loom_target_compile_report_t {
       target_insertion_summary;
   // Owned emitted artifact entry summary rows.
   loom_target_compile_report_row_list_t entry_rows;
+  // Owned final residency constraints, keyed by emitted entry function.
+  loom_target_compile_report_row_list_t residency_constraint_rows;
   // Owned register-class pressure summaries used by target resources.
   loom_target_compile_report_row_list_t pressure_summaries;
   // Owned register-pressure peak rows.

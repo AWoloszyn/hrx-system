@@ -61,6 +61,7 @@ loom_cc_library(
     "type_constraint.h"
     "type_descriptor.h"
     "types.h"
+    "value_refs.h"
   TEXTUAL_HDRS
     "location_tag_table.inc"
     "scalar_type_table.inc"
@@ -76,6 +77,7 @@ loom_cc_library(
     "scalar_type.c"
     "type_constraint.c"
     "types.c"
+    "value_refs.c"
   DEPS
     iree::base
     iree::base::internal::arena
@@ -169,6 +171,19 @@ loom_cc_test(
     iree::testing::gtest_main
     loom::ops::test
     loom::ops::type_registry
+)
+
+loom_cc_test(
+  NAME
+    value_refs_test
+  SRCS
+    "value_refs_test.cc"
+  DEPS
+    ::ir
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::ops::test
 )
 
 loom_cc_test(

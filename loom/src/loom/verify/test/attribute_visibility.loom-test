@@ -1,0 +1,156 @@
+// RUN: verify
+
+// Nested type attributes obey CFG dominance, not textual definition order.
+func.def @join_attribute(%condition: i1, %value: f32) -> (f32) {
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  %width = index.constant 16 : index
+  cfg.br ^join
+^right:
+  cfg.br ^join
+^join:
+  // ERROR@+1: DOMINANCE/017 "attribute 'dict' references value '%width'"
+  %annotated = test.attrs %value {shape = #test.options<mode = fast, element_type = vector<[%width]xf32>>} : f32
+  func.return %annotated : f32
+}
+
+// ====
+
+// Predicate-only references cannot cross from one CFG sibling to another.
+func.def @sibling_predicate(%condition: i1, %value: index) {
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  %bound = index.constant 16 : index
+  func.return
+^right:
+  // ERROR@+1: DOMINANCE/017 "attribute 'predicates' references value '%bound'"
+  %constrained = test.assume %value [lt(%value, %bound)] : index
+  func.return
+}
+
+// ====
+
+// Arbitrary aggregate nesting retains the same enclosing isolation boundary.
+func.def @isolated_nested_attribute(%width: index) {
+  test.isolated_region {
+    %seed = test.constant 0.0 : f32
+    // ERROR@+1: DOMINANCE/017 "width"
+    %annotated = test.attrs %seed {shape = {nested = #test.options<mode = fast, element_type = vector<[%width]xf32>>}} : f32
+    test.yield
+  }
+  func.return
+}
+
+// ====
+
+// SSA encodings nested in attributes are references, not integer metadata.
+func.def @isolated_attribute_encoding(%layout: encoding<layout>) {
+  test.isolated_region {
+    %seed = test.constant 0.0 : f32
+    // ERROR@+1: DOMINANCE/017 "layout"
+    %annotated = test.attrs %seed {shape = #test.options<mode = fast, element_type = test.ref<view<4xf32, %layout>>>} : f32
+    test.yield
+  }
+  func.return
+}
+
+// ====
+
+// Predicate references obey isolation even when all ordinary operands are local.
+func.def @isolated_predicate(%bound: index) {
+  test.isolated_region {
+    %local = index.constant 4 : index
+    // ERROR@+1: DOMINANCE/017 "bound"
+    %constrained = test.assume %local [lt(%local, %bound)] : index
+    test.yield
+  }
+  func.return
+}
+
+// ====
+
+// Function signature isolation applies to predicates as well as argument types.
+func.def @outer_signature_predicate(%bound: index) {
+  // ERROR@+1: DOMINANCE/017 "bound"
+  func.def @capturing_signature(%value: index) where [lt(%value, %bound)] {
+    func.return
+  }
+  func.return
+}
+
+// ====
+
+// A dominating block argument may occur repeatedly within nested metadata.
+func.def @dominating_attribute(%width: index, %value: f32) -> (f32) {
+  cfg.br ^use
+^use:
+  %annotated = test.attrs %value {shape = #test.options<mode = fast, element_type = vector<[%width]x[%width]xf32>>} : f32
+  func.return %annotated : f32
+}
+
+// ====
+
+// Ordinary regions inherit references; leaving isolation restores outer scope.
+func.def @restored_attribute_scope(%width: index, %condition: i1, %value: f32) {
+  test.isolated_region {
+    %local = index.constant 4 : index
+    %constrained = test.assume %local [mul(%local, 2)] : index
+    test.yield
+  }
+  scf.if %condition {
+    %annotated = test.attrs %value {shape = #test.options<mode = fast, element_type = vector<[%width]xf32>>} : f32
+  } else {
+  }
+  %constrained = test.assume %width [mul(%width, 2)] : index
+  func.return
+}
+
+// ====
+
+// A join argument explicitly carries branch-local dimensions into metadata.
+func.def @join_argument_attribute(%condition: i1, %value: f32) -> (f32) {
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  %left_width = index.constant 16 : index
+  cfg.br ^join(%left_width: index)
+^right:
+  %right_width = index.constant 32 : index
+  cfg.br ^join(%right_width: index)
+^join(%width: index):
+  %annotated = test.attrs %value {shape = #test.options<mode = fast, element_type = vector<[%width]xf32>>} : f32
+  func.return %annotated : f32
+}
+
+// ====
+
+// Both body-backed and operand-backed signatures define their local arguments.
+func.def @local_signature(%width: index) where [mul(%width, 16)] {
+  func.return
+}
+
+func.decl @local_declaration(%width: index) where [mul(%width, 16)]
+
+// ====
+
+// Signature predicates can constrain declaration-local result definitions.
+func.decl @result_constraint() -> (%width: index) where [mul(%width, 16)]
+
+// ====
+
+// Configuration predicates constrain the unresolved result of the declaration.
+config.decl @maximum_width : %width: index where [range(%width, 1, 131072)]
+
+// ====
+
+// Global shape placeholders are declaration-local, not undefined body values.
+global.constant @weights : tile<[%rows]x[%columns]xf32> where [mul(%rows, 16), mul(%columns, 8)]
+
+// ====
+
+// Visibility does not relax the function-specific signature-origin contract.
+// Even a visible enclosing value is not a declared signature parameter.
+func.def @outer_declaration_predicate(%bound: index) {
+  // ERROR@+1: STRUCTURE/032 "must reference a function argument or result"
+  func.decl @capturing_declaration(%value: index) where [lt(%value, %bound)]
+  func.return
+}

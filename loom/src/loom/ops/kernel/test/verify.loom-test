@@ -57,6 +57,11 @@ func.def @valid_launch(%count: index, %output: tensor<4xi32>) {
 
 // ====
 
+// Each bodyless signature owns its local dependent types.
+kernel.decl @dependent_signatures(%workload_count: index, %host_storage: pool<[%workload_count]>) launch(%abi_count: index, %device_storage: pool<[%abi_count]>)
+
+// ====
+
 kernel.decl @refined_buffer_argument_contract() launch(%storage: buffer)
 
 func.def @valid_view_launch(%storage: buffer, %offset: offset) {

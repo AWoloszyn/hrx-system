@@ -402,6 +402,61 @@ func.def public @call_effectful_return_buffer(%dead: index, %buffer: buffer) -> 
 
 // ====
 
+// Signature pruning preserves arguments whose only use is a nested type
+// attribute. The caller supplies a dynamic width, so refinement cannot replace
+// it with a constant.
+func.def @annotate_with_width(%width: index, %value: f32) -> (f32) {
+  %annotated = test.attrs %value {shape = #test.options<mode = fast, element_type = vector<[%width]xf32>>} : f32
+  func.return %annotated : f32
+}
+
+func.def public @call_annotate_with_width(%width: index, %value: f32) -> (f32) {
+  %result = func.call @annotate_with_width(%width, %value) : (index, f32) -> (f32)
+  func.return %result : f32
+}
+
+// ----
+func.def @annotate_with_width(%width: index, %value: f32) -> (f32) {
+  %annotated = test.attrs %value {shape = #test.options<mode = fast, element_type = vector<[%width]xf32>>} : f32
+  func.return %annotated : f32
+}
+
+func.def public @call_annotate_with_width(%width: index, %value: f32) -> (f32) {
+  %result = func.call pure @annotate_with_width(%width, %value) : (index, f32) -> (f32)
+  func.return %result : f32
+}
+
+// ====
+
+// Call results referenced only through attributes remain part of the callee
+// signature and each call site. A computed result prevents argument forwarding.
+func.def @compute_width(%input: index) -> (index) {
+  %increment = index.constant 1 : index
+  %width = index.add %input, %increment : index
+  func.return %width : index
+}
+
+func.def public @use_computed_width(%input: index, %value: f32) -> (f32) {
+  %width = func.call @compute_width(%input) : (index) -> (index)
+  %annotated = test.attrs %value {shape = #test.options<mode = fast, element_type = vector<[%width]xf32>>} : f32
+  func.return %annotated : f32
+}
+
+// ----
+func.def @compute_width(%input: index) -> (index) {
+  %increment = index.constant 1 : index
+  %width = index.add %input, %increment : index
+  func.return %width : index
+}
+
+func.def public @use_computed_width(%input: index, %value: f32) -> (f32) {
+  %width = func.call pure @compute_width(%input) : (index) -> (index)
+  %annotated = test.attrs %value {shape = #test.options<mode = fast, element_type = vector<[%width]xf32>>} : f32
+  func.return %annotated : f32
+}
+
+// ====
+
 // Unused private callee results are removed from both the callee signature and
 // every direct call site. This can expose newly-unused arguments for pruning in
 // the same boundary cleanup round.

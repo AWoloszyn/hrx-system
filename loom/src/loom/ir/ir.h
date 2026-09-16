@@ -348,10 +348,8 @@ enum loom_value_flag_bits_e {
   // Check: if use_count > LOOM_VALUE_INLINE_USE_COUNT, this must be set.
   LOOM_VALUE_FLAG_OVERFLOW_USES = 1u << 2,
 
-  // This value may be referenced by operation attributes such as predicate
-  // lists or type attributes. Attribute references are not operand uses and are
-  // therefore tracked separately so common SSA-only replacements can avoid a
-  // full module attribute walk.
+  // This value has incoming operation attribute uses. Exact owners are retained
+  // in the module's attribute-use table, separate from ordinary operand uses.
   LOOM_VALUE_FLAG_ATTRIBUTE_USES = 1u << 3,
 };
 typedef uint16_t loom_value_flags_t;
@@ -366,7 +364,8 @@ typedef uint16_t loom_value_flags_t;
 // Value — 64-byte cache-line-aligned
 //===----------------------------------------------------------------------===//
 
-// An SSA value: either an operation result or a block argument.
+// An SSA value: an operation result, a block argument, or a bodyless
+// declaration's local signature argument.
 //
 // Values live in the module's value table (module->values), accessed
 // by loom_value_id_t. The entire value (name, type, definition site,
@@ -390,9 +389,9 @@ typedef iree_alignas(64) struct loom_value_t {
   // have different names but the same type.
   loom_string_id_t name_id;
 
-  // Number of operand uses of this value. When 0, the value is dead
-  // (candidate for dead code elimination). Stored as a 29-bit bitfield so
-  // high-fanout values scale past 64K uses without growing loom_value_t.
+  // Number of ordinary operand uses, excluding embedded type and attribute
+  // references that may also keep this value live. Stored as a 28-bit bitfield
+  // so high-fanout values scale past 64K uses without growing loom_value_t.
   uint32_t use_count : LOOM_VALUE_USE_COUNT_BITS;
 
   // Bitfield of loom_value_flag_bits_e. Stored in the upper 4 bits of the same
@@ -413,7 +412,9 @@ typedef iree_alignas(64) struct loom_value_t {
   // loom_block_t* and arg index. Use loom_value_def_op/block/index
   // to extract (checking LOOM_VALUE_FLAG_BLOCK_ARG first).
   // Set by loom_builder_finalize_op (op results) or
-  // loom_block_add_arg (block arguments). Zero until set.
+  // loom_block_add_arg (block arguments). Zero until set. A declaration
+  // argument instead retains its owner through its sole operand-use link;
+  // type and attribute references do not participate in that list.
   loom_value_def_t def;
 
   // --- 40 bytes ---
@@ -483,19 +484,31 @@ static inline loom_use_t* loom_value_uses_mutable(loom_value_t* value) {
   return value->inline_uses;
 }
 
-// Returns true if the value has no uses (dead, candidate for DCE).
+// Returns true if the value has no ordinary operand uses. Embedded references
+// in types and attributes are tracked separately and can keep the value live.
 static inline bool loom_value_has_no_uses(const loom_value_t* value) {
   return value->use_count == 0;
 }
 
-// Returns true if the value has exactly one use.
+// Returns true if the value has exactly one ordinary operand use.
 static inline bool loom_value_has_single_use(const loom_value_t* value) {
   return value->use_count == 1;
 }
 
+// Returns the sole ordinary operand use, or NULL when there are zero or
+// multiple operand uses. The pointer is valid until the next use-list mutation
+// on this value. Embedded type and attribute references are not included.
+static inline const loom_use_t* loom_value_single_use(
+    const loom_value_t* value) {
+  if (value->use_count != 1) {
+    return NULL;
+  }
+  return &loom_value_uses(value)[0];
+}
+
 // Returns the operation that defines this value. The value must be an
-// op result (not a block argument). Returns NULL if the def pointer
-// has not been set yet (value was just created, finalize_op not called).
+// op result or declaration argument (not a block argument). Returns NULL for
+// declaration arguments and values whose result definition is not wired yet.
 //
 // Usage (pattern matching — "is this value defined by a constant?"):
 //   loom_op_t* def_op = loom_value_def_op(value);
@@ -503,6 +516,23 @@ static inline bool loom_value_has_single_use(const loom_value_t* value) {
 static inline loom_op_t* loom_value_def_op(const loom_value_t* value) {
   IREE_ASSERT(!loom_value_is_block_arg(value));
   return loom_def_op(value->def);
+}
+
+// Returns the owning operation of a result or declaration argument in stable
+// constructed IR. The value must not be a block argument. Returns NULL for an
+// unowned value before finalization or after erasure. Unlike def_op, this is an
+// ownership query, not a query for the operation computing a result.
+//
+// A declaration argument's sole ordinary operand link is its definition site.
+// Signature-local type and attribute references use separate indices, so this
+// link remains unambiguous regardless of their fanout.
+static inline loom_op_t* loom_value_owner_op(const loom_value_t* value) {
+  loom_op_t* defining_op = loom_value_def_op(value);
+  if (defining_op || value->use_count == 0) {
+    return defining_op;
+  }
+  IREE_ASSERT_EQ(value->use_count, 1);
+  return loom_use_user_op(loom_value_uses(value)[0]);
 }
 
 // Returns the block that owns this block argument. The value must be
@@ -861,8 +891,8 @@ enum loom_op_vtable_flag_bits_e {
   // The op kind has generated constraints or type-transfer hooks that can
   // narrow dynamic type properties during table-driven type propagation.
   LOOM_OP_VTABLE_TYPE_PROPAGATION_CANDIDATE = 1u << 5,
-  // The op kind's assembly format contains an operand dictionary requiring
-  // structural verification against its keyed operand segment.
+  // Semantic constraints begin with an operand dictionary prefix requiring
+  // structural verification against its keyed operand segments.
   LOOM_OP_VTABLE_HAS_OPERAND_DICT = 1u << 6,
   // The attr-only module-scope op is canonically projected by its generated
   // string key instead of physical module-body order.
@@ -1136,8 +1166,10 @@ typedef struct loom_func_like_vtable_t {
   uint8_t priority_attr_index;
 
   // Operand field containing the signature arguments for a bodyless
-  // declaration. LOOM_OPERAND_INDEX_NONE when arguments are entry block
-  // values in |body_region_index|.
+  // declaration. An operand-backed signature owns every op operand, including
+  // a separate kernel workload field; none reference values defined elsewhere.
+  // LOOM_OPERAND_INDEX_NONE when arguments are entry block values in
+  // |body_region_index|.
   uint8_t args_operand_field_index;
 
   // Number of operand segments stored on bodyless declarations using
@@ -1437,6 +1469,7 @@ struct loom_op_vtable_t {
   // Legacy bytecode symbol payload kind for symbol-defining ops. Symbol
   // legality and interfaces come from |symbol_def|, not this wire tag.
   loom_symbol_kind_t symbol_kind;
+  // Total semantic row count, including the structural dictionary prefix.
   uint8_t constraint_count;
   // Number of operand descriptors when it differs from the implied count.
   // Zero uses fixed_operand_count plus the variadic operand flag.
@@ -1460,6 +1493,8 @@ struct loom_op_vtable_t {
 
   const loom_result_descriptor_t* result_descriptors;
   const loom_region_descriptor_t* region_descriptors;
+  // Semantic rows with operand_dictionary_count structural dictionary rows
+  // first. Remaining rows retain their declaration order.
   const loom_constraint_t* constraints;
   loom_op_verify_fn_t verify;
   const uint8_t* name;
@@ -1470,7 +1505,10 @@ struct loom_op_vtable_t {
   // String attribute that identifies a keyed module record. Valid when
   // LOOM_OP_VTABLE_KEYED_MODULE_RECORD is set.
   uint8_t module_record_key_attr_index;
-  // 4 bytes padding to 128.
+  // Number of dictionary rows at the start of constraints. Nonzero exactly
+  // when LOOM_OP_VTABLE_HAS_OPERAND_DICT is set; independent of assembly.
+  uint8_t operand_dictionary_count;
+  // 3 bytes padding to 128.
 
   // --- Cache line 3: interface and placement pointers (128-191) ---
   //
@@ -1495,6 +1533,14 @@ struct loom_op_vtable_t {
 
 static_assert(sizeof(loom_op_vtable_t) == 192,
               "loom_op_vtable_t must be exactly three cache lines");
+
+// Returns true when every operand is a declaration-owned signature definition
+// rather than a reference to a value defined elsewhere.
+static inline bool loom_op_vtable_owns_operands(
+    const loom_op_vtable_t* vtable) {
+  return vtable && vtable->func_like &&
+         vtable->func_like->args_operand_field_index != LOOM_OPERAND_INDEX_NONE;
+}
 
 static inline uint8_t loom_op_vtable_operand_descriptor_count(
     const loom_op_vtable_t* vtable) {
@@ -1605,6 +1651,7 @@ typedef struct loom_op_t {
   //   loom_tied_result_t tied_results[tied_result_count]
   //   <padding to alignof(loom_attribute_t)>
   //   loom_attribute_t   attributes[attribute_count]
+  //   uint32_t           attribute_use_heads[attribute_count]
   //   uint16_t           operand_segment_counts[operand_descriptor_count]
 } loom_op_t;
 
@@ -1626,6 +1673,7 @@ static_assert(sizeof(loom_op_t) == 64, "loom_op_t must be 64 bytes");
 //   loom_tied_result_t tied_results[tied_result_count]
 //   <padding to alignof(loom_attribute_t)>
 //   loom_attribute_t   attributes[attribute_count]  (16 bytes each)
+//   uint32_t           attribute_use_heads[attribute_count] (4 bytes each)
 //   uint16_t           operand_segment_counts[]     (segmented ops only)
 
 // Returns a pointer to the successor block pointer array.
@@ -1691,16 +1739,23 @@ static inline const loom_attribute_t* loom_op_const_attrs(const loom_op_t* op) {
   return (const loom_attribute_t*)loom_op_attrs(op);
 }
 
+// Outgoing attribute-use list heads, indexed by attribute ordinal. Zero means
+// no uses. The heads move with trailing attributes when results are removed.
+static inline uint32_t* loom_op_attribute_use_heads(const loom_op_t* op) {
+  return (uint32_t*)(loom_op_attrs(op) + op->attribute_count);
+}
+
 // Returns a pointer to the operand segment count array for segmented ops. The
 // array is present only when the op vtable has
 // LOOM_OP_VTABLE_SEGMENTED_OPERANDS, with one uint16_t count per operand
 // descriptor. Non-segmented callers must not dereference the returned pointer.
 static inline uint16_t* loom_op_operand_segment_counts(const loom_op_t* op) {
-  return (uint16_t*)(loom_op_attrs(op) + op->attribute_count);
+  return (uint16_t*)(loom_op_attribute_use_heads(op) + op->attribute_count);
 }
 static inline const uint16_t* loom_op_const_operand_segment_counts(
     const loom_op_t* op) {
-  return (const uint16_t*)(loom_op_attrs(op) + op->attribute_count);
+  return (const uint16_t*)(loom_op_attribute_use_heads(op) +
+                           op->attribute_count);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1837,15 +1892,20 @@ typedef struct loom_region_t {
   // Non-semantic source presentation retained across exact round trips.
   loom_region_source_flags_t source_flags;
   // Transitive count of read-like effects in all live ops nested in this
-  // region. READS_MEMORY, NON_DETERMINISTIC, and UNKNOWN_EFFECTS contribute.
+  // region. READS_MEMORY, NON_DETERMINISTIC, MEMORY_FENCE, and UNKNOWN_EFFECTS
+  // contribute.
   uint32_t read_effect_count;
   // Transitive count of write-like effects in all live ops nested in this
-  // region. WRITES_MEMORY and UNKNOWN_EFFECTS contribute.
+  // region. WRITES_MEMORY, MEMORY_FENCE, and UNKNOWN_EFFECTS contribute.
   uint32_t write_effect_count;
   // Transitive count of convergent effects in all live ops nested in this
   // region. Convergent ops cannot be removed or moved across control structure
   // even when they are otherwise memory-pure.
   uint32_t convergent_effect_count;
+  // Direct hint ops plus immediately nested regions with any hints. Only
+  // zero/nonzero transitions propagate to the containing region, so building
+  // or removing a subtree does not update every ancestor for every hint.
+  uint32_t hint_source_count;
   // Inline storage for the entry block.
   loom_block_t entry_block;
   // Ordered block pointer table. Points at inline_blocks for one-block regions.
@@ -1916,6 +1976,11 @@ static inline bool loom_region_has_convergent_effects(
   return region && region->convergent_effect_count != 0;
 }
 
+// Returns true when any live op nested in |region| is a compiler hint.
+static inline bool loom_region_has_hints(const loom_region_t* region) {
+  return region && region->hint_source_count != 0;
+}
+
 // Returns true when any child region of |op| has a read-like effect.
 static inline bool loom_op_regions_have_read_effects(const loom_op_t* op) {
   loom_region_t** regions = loom_op_regions(op);
@@ -1940,6 +2005,19 @@ static inline bool loom_op_regions_have_convergent_effects(
   loom_region_t** regions = loom_op_regions(op);
   for (uint8_t i = 0; i < op->region_count; ++i) {
     if (loom_region_has_convergent_effects(regions[i])) return true;
+  }
+  return false;
+}
+
+// Returns true when any child region of |op| contains a compiler hint. Hints
+// have no semantic memory effects but survive ordinary DCE and canonicalization
+// until explicitly stripped. This query inspects only immediate regions.
+static inline bool loom_op_regions_have_hints(const loom_op_t* op) {
+  loom_region_t** regions = loom_op_regions(op);
+  for (uint8_t i = 0; i < op->region_count; ++i) {
+    if (loom_region_has_hints(regions[i])) {
+      return true;
+    }
   }
   return false;
 }
@@ -2052,6 +2130,19 @@ typedef struct loom_value_type_use_heads_t {
   loom_type_use_id_t first_outgoing_use_id;
 } loom_value_type_use_heads_t;
 
+// One-based index into the module's attribute-use records. Zero is no use.
+typedef uint32_t loom_attribute_use_id_t;
+
+// Incoming references from operation attributes, separated by their semantic
+// role. References inside a type-valued attribute are type references even if
+// that type itself contains predicates.
+typedef struct loom_value_attribute_use_heads_t {
+  // First incoming reference carried by a type-valued attribute.
+  loom_attribute_use_id_t type;
+  // First incoming reference carried by a predicate-list attribute.
+  loom_attribute_use_id_t predicate;
+} loom_value_attribute_use_heads_t;
+
 // Number of module values stored in each stable value segment.
 #define LOOM_VALUE_SEGMENT_CAPACITY 256u
 
@@ -2066,10 +2157,11 @@ static_assert((1u << LOOM_VALUE_SEGMENT_SHIFT) == LOOM_VALUE_SEGMENT_CAPACITY,
 
 // Stable storage for one range of module value IDs.
 //
-// Semantic values, reusable u32 scratch, and type-use adjacency heads share
-// one segment because they have the same value-ID lifetime and cardinality.
-// The structure-of-arrays layout keeps hot value iteration contiguous while
-// fitting the complete segment in a 32 KiB compiler workspace block.
+// Semantic values, reusable u32 scratch, and reference-use adjacency heads
+// share one segment because they have the same value-ID lifetime and
+// cardinality. The structure-of-arrays layout keeps hot value iteration
+// contiguous while fitting the complete segment in a 32 KiB compiler workspace
+// block.
 typedef iree_alignas(64) struct loom_value_segment_t {
   // Cache-line-aligned semantic value rows.
   loom_value_t values[LOOM_VALUE_SEGMENT_CAPACITY];
@@ -2077,9 +2169,12 @@ typedef iree_alignas(64) struct loom_value_segment_t {
   uint32_t u32_scratch[LOOM_VALUE_SEGMENT_CAPACITY];
   // Type-use adjacency heads indexed by the same value rows.
   loom_value_type_use_heads_t type_use_heads[LOOM_VALUE_SEGMENT_CAPACITY];
+  // Attribute-use adjacency heads indexed by the same value rows.
+  loom_value_attribute_use_heads_t
+      attribute_use_heads[LOOM_VALUE_SEGMENT_CAPACITY];
 } loom_value_segment_t;
 
-static_assert(sizeof(loom_value_segment_t) == 19456,
+static_assert(sizeof(loom_value_segment_t) == 21504,
               "value segment must fit in one workspace block");
 
 // Value table. All values live in stable, cache-line-aligned segments and are
@@ -2252,6 +2347,38 @@ typedef struct loom_type_use_table_t {
   loom_type_use_t* records;
 } loom_type_use_table_t;
 
+// One SSA reference carried by an operation attribute. Duplicate references
+// have separate records; replacing one attribute unlinks its entire outgoing
+// list without searching the referenced values' incoming lists.
+typedef struct loom_attribute_use_t {
+  // Stable owning operation; NULL for a recycled record slot.
+  loom_op_t* op;
+  // Referenced module value.
+  loom_value_id_t value_id;
+  // Next incoming reference of the same type/predicate class.
+  loom_attribute_use_id_t next_incoming;
+  // Previous incoming reference, or zero at the value's list head.
+  loom_attribute_use_id_t previous_incoming;
+  // Next reference owned by this attribute, or next free record when recycled.
+  loom_attribute_use_id_t next_outgoing;
+  // Ordinal of the owning attribute, stable across trailing-storage repacking.
+  uint8_t attribute_index;
+  // True for predicate-list references outside type-valued attributes.
+  bool is_predicate;
+} loom_attribute_use_t;
+
+// Arena-owned reusable records for exact operation attribute references.
+typedef struct loom_attribute_use_table_t {
+  // Number of record slots initialized in records, including recycled slots.
+  uint32_t count;
+  // Allocated record slots; geometrically grown in the module arena.
+  uint32_t capacity;
+  // First recycled record, or zero when all initialized slots are occupied.
+  loom_attribute_use_id_t first_free;
+  // Records addressed by one-based IDs. No pointer survives capacity growth.
+  loom_attribute_use_t* records;
+} loom_attribute_use_table_t;
+
 // Kind of IR object that owns source text comments.
 typedef enum loom_comment_owner_kind_e {
   LOOM_COMMENT_OWNER_OP = 0,
@@ -2361,6 +2488,9 @@ typedef struct loom_module_t {
   // SSA references carried by value types.
   loom_type_use_table_t type_uses;
 
+  // SSA references carried by operation attributes.
+  loom_attribute_use_table_t attribute_uses;
+
   // Module-level named symbols (functions, globals, executables).
   loom_symbol_table_t symbols;
 
@@ -2415,6 +2545,26 @@ static inline loom_value_t* loom_module_value(const loom_module_t* module,
 static inline loom_type_t loom_module_value_type(const loom_module_t* module,
                                                  loom_value_id_t value_id) {
   return loom_module_value(module, value_id)->type;
+}
+
+// Resolves the operand at |index| to its value in |module|. The index must be
+// less than the operation's operand count.
+static inline loom_value_t* loom_op_operand_value(const loom_module_t* module,
+                                                  const loom_op_t* op,
+                                                  uint16_t index) {
+  IREE_ASSERT(index < op->operand_count);
+  loom_value_id_t value_id = loom_op_operands(op)[index];
+  return loom_module_value(module, value_id);
+}
+
+// Resolves the result at |index| to its value in |module|. The index must be
+// less than the operation's result count.
+static inline loom_value_t* loom_op_result_value(const loom_module_t* module,
+                                                 const loom_op_t* op,
+                                                 uint16_t index) {
+  IREE_ASSERT(index < op->result_count);
+  loom_value_id_t value_id = loom_op_results(op)[index];
+  return loom_module_value(module, value_id);
 }
 
 // Returns the optional SSA display name for |value_id|, or an empty string view

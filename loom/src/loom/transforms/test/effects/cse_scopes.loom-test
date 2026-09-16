@@ -1,0 +1,339 @@
+// Interleaved sibling subtrees inherit their own dominator's candidates.
+// Publishing the right subtree must not overwrite the left subtree's snapshot.
+// RUN: pass cse
+func.def @interleaved_sibling_snapshots(%condition: i1) -> (i32, i32, i32) {
+  %bias = test.constant 3 : i32
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  %left_stride = test.constant 7 : i32
+  %left_width = test.constant 11 : i32
+  cfg.br ^left_finish
+^right:
+  %right_stride = test.constant 7 : i32
+  %right_width = test.constant 13 : i32
+  cfg.br ^right_finish
+^left_finish:
+  %left_stride_copy = test.constant 7 : i32
+  %left_width_copy = test.constant 11 : i32
+  %left_bias = test.constant 3 : i32
+  func.return %left_stride_copy, %left_width_copy, %left_bias : i32, i32, i32
+^right_finish:
+  %right_stride_copy = test.constant 7 : i32
+  %right_width_copy = test.constant 13 : i32
+  %right_bias = test.constant 3 : i32
+  func.return %right_stride_copy, %right_width_copy, %right_bias : i32, i32, i32
+}
+
+// ----
+func.def @interleaved_sibling_snapshots(%condition: i1) -> (i32, i32, i32) {
+  %bias = test.constant 3 : i32
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  %left_stride = test.constant 7 : i32
+  %left_width = test.constant 11 : i32
+  cfg.br ^left_finish
+^right:
+  %right_stride = test.constant 7 : i32
+  %right_width = test.constant 13 : i32
+  cfg.br ^right_finish
+^left_finish:
+  func.return %left_stride, %left_width, %bias : i32, i32, i32
+^right_finish:
+  func.return %right_stride, %right_width, %bias : i32, i32, i32
+}
+
+// ====
+
+// A parent resumes after its structural children finish. New insertions must
+// join its already-published map before another structural child inherits it.
+// RUN: pass cse
+func.def @published_parent_resumes(%condition: i1) -> (i32, i32) {
+  %row_stride = test.constant 7 : i32
+  %row_result = scf.if %condition -> (i32) {
+    %row_copy = test.constant 7 : i32
+    scf.yield %row_copy : i32
+  } else {
+    scf.yield %row_stride : i32
+  }
+  %column_stride = test.constant 11 : i32
+  %column_result = scf.if %condition -> (i32) {
+    %row_copy = test.constant 7 : i32
+    %column_copy = test.constant 11 : i32
+    %combined = test.addi %row_copy, %column_copy : i32
+    scf.yield %combined : i32
+  } else {
+    %column_copy = test.constant 11 : i32
+    scf.yield %column_copy : i32
+  }
+  func.return %row_result, %column_result : i32, i32
+}
+
+// ----
+func.def @published_parent_resumes(%condition: i1) -> (i32, i32) {
+  %row_stride = test.constant 7 : i32
+  %row_result = scf.if %condition -> (i32) {
+    scf.yield %row_stride : i32
+  } else {
+    scf.yield %row_stride : i32
+  }
+  %column_stride = test.constant 11 : i32
+  %column_result = scf.if %condition -> (i32) {
+    %combined = test.addi %row_stride, %column_stride : i32
+    scf.yield %combined : i32
+  } else {
+    scf.yield %column_stride : i32
+  }
+  func.return %row_result, %column_result : i32, i32
+}
+
+// ====
+
+// The same table slot is reused across published full-invalidation epochs.
+// Later children see the new insertion, then reject all expired identities
+// after the next barrier. Sibling definitions remain separate.
+// RUN: pass cse
+func.def @published_full_invalidation_epochs(%condition: i1, %row: i32) -> (i32, i32, i32) {
+  %before = test.addi %row, %row : i32
+  %first = scf.if %condition -> (i32) {
+    %duplicate = test.addi %row, %row : i32
+    scf.yield %duplicate : i32
+  } else {
+    scf.yield %before : i32
+  }
+  %first_barrier = test.convergent %row : i32
+  %middle = test.addi %row, %row : i32
+  %second = scf.if %condition -> (i32) {
+    %duplicate = test.addi %row, %row : i32
+    scf.yield %duplicate : i32
+  } else {
+    scf.yield %middle : i32
+  }
+  %second_barrier = test.convergent %row : i32
+  %third = scf.if %condition -> (i32) {
+    %left = test.addi %row, %row : i32
+    %duplicate = test.addi %row, %row : i32
+    scf.yield %duplicate : i32
+  } else {
+    %right = test.addi %row, %row : i32
+    %duplicate = test.addi %row, %row : i32
+    scf.yield %duplicate : i32
+  }
+  func.return %first, %second, %third : i32, i32, i32
+}
+
+// ----
+func.def @published_full_invalidation_epochs(%condition: i1, %row: i32) -> (i32, i32, i32) {
+  %before = test.addi %row, %row : i32
+  %first = scf.if %condition -> (i32) {
+    scf.yield %before : i32
+  } else {
+    scf.yield %before : i32
+  }
+  %first_barrier = test.convergent %row : i32
+  %middle = test.addi %row, %row : i32
+  %second = scf.if %condition -> (i32) {
+    scf.yield %middle : i32
+  } else {
+    scf.yield %middle : i32
+  }
+  %second_barrier = test.convergent %row : i32
+  %third = scf.if %condition -> (i32) {
+    %left = test.addi %row, %row : i32
+    scf.yield %left : i32
+  } else {
+    %right = test.addi %row, %row : i32
+    scf.yield %right : i32
+  }
+  func.return %first, %second, %third : i32, i32, i32
+}
+
+// ====
+
+// A published read is replaced in its tombstone slot after a store. Pure
+// candidates survive, and nested consumers must use the new read epoch.
+// RUN: pass cse
+func.def @published_read_invalidation_epochs(%condition: i1, %buffer: buffer, %offset: offset, %value: i32) -> (i32, i32) {
+  %layout = encoding.layout.dense : encoding<layout>
+  %view = buffer.view %buffer[%offset] : buffer -> view<1xi32, %layout>
+  %bias = test.addi %value, %value : i32
+  %before = view.load %view[0] : view<1xi32, %layout> -> i32
+  %first = scf.if %condition -> (i32) {
+    %duplicate = view.load %view[0] : view<1xi32, %layout> -> i32
+    scf.yield %duplicate : i32
+  } else {
+    scf.yield %before : i32
+  }
+  view.store %value, %view[0] : i32, view<1xi32, %layout>
+  %after = view.load %view[0] : view<1xi32, %layout> -> i32
+  %second = scf.if %condition -> (i32) {
+    %duplicate = view.load %view[0] : view<1xi32, %layout> -> i32
+    %same_bias = test.addi %value, %value : i32
+    %combined = test.addi %duplicate, %same_bias : i32
+    scf.yield %combined : i32
+  } else {
+    %duplicate = view.load %view[0] : view<1xi32, %layout> -> i32
+    scf.yield %duplicate : i32
+  }
+  func.return %first, %second : i32, i32
+}
+
+// ----
+func.def @published_read_invalidation_epochs(%condition: i1, %buffer: buffer, %offset: offset, %value: i32) -> (i32, i32) {
+  %layout = encoding.layout.dense : encoding<layout>
+  %view = buffer.view %buffer[%offset] : buffer -> view<1xi32, %layout>
+  %bias = test.addi %value, %value : i32
+  %before = view.load %view[0] : view<1xi32, %layout> -> i32
+  %first = scf.if %condition -> (i32) {
+    scf.yield %before : i32
+  } else {
+    scf.yield %before : i32
+  }
+  view.store %value, %view[0] : i32, view<1xi32, %layout>
+  %after = view.load %view[0] : view<1xi32, %layout> -> i32
+  %second = scf.if %condition -> (i32) {
+    %combined = test.addi %after, %bias : i32
+    scf.yield %combined : i32
+  } else {
+    scf.yield %after : i32
+  }
+  func.return %first, %second : i32, i32
+}
+
+// ====
+
+// These unequal integer attributes have the same current structural hash.
+// A colliding candidate in the nearest ancestor cannot hide the matching one
+// farther above it, and both candidates remain visible to descendants.
+// RUN: pass cse
+func.def @colliding_ancestor_candidates() -> (i64, i64, i64) {
+  %outer_key = test.constant 7720292268596245482 : i64
+  cfg.br ^middle
+^middle:
+  %inner_key = test.constant 6990953982524885400 : i64
+  %bias = test.constant 7 : i64
+  cfg.br ^finish
+^finish:
+  %outer_copy = test.constant 7720292268596245482 : i64
+  %inner_copy = test.constant 6990953982524885400 : i64
+  %bias_copy = test.constant 7 : i64
+  func.return %outer_copy, %inner_copy, %bias_copy : i64, i64, i64
+}
+
+// ----
+func.def @colliding_ancestor_candidates() -> (i64, i64, i64) {
+  %outer_key = test.constant 7720292268596245482 : i64
+  cfg.br ^middle
+^middle:
+  %inner_key = test.constant 6990953982524885400 : i64
+  %bias = test.constant 7 : i64
+  cfg.br ^finish
+^finish:
+  func.return %outer_key, %inner_key, %bias : i64, i64, i64
+}
+
+// ====
+
+// A hash identifies an ancestor table, not a unique operation. Both colliding
+// constants in that table must remain independently reusable.
+// RUN: pass cse
+func.def @colliding_candidates_in_one_ancestor() -> (i64, i64) {
+  %first_key = test.constant 7720292268596245482 : i64
+  %second_key = test.constant 6990953982524885400 : i64
+  cfg.br ^finish
+^finish:
+  %first_copy = test.constant 7720292268596245482 : i64
+  %second_copy = test.constant 6990953982524885400 : i64
+  func.return %first_copy, %second_copy : i64, i64
+}
+
+// ----
+func.def @colliding_candidates_in_one_ancestor() -> (i64, i64) {
+  %first_key = test.constant 7720292268596245482 : i64
+  %second_key = test.constant 6990953982524885400 : i64
+  cfg.br ^finish
+^finish:
+  func.return %first_key, %second_key : i64, i64
+}
+
+// ====
+
+// A join cuts off older mutable-state candidates without hiding pure ones.
+// Its straight-line descendant can reuse the new read below that boundary.
+// RUN: pass cse
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @join_visibility_boundary(%condition: reg<test.i32>, %pointer: reg<test.ptr>) -> (reg<test.i32 x4>, reg<test.i32>) asm {
+  %entry_read = test.load.v4i32 %pointer
+  %bias = test.const.i32 7
+  low.cond_br %condition, ^left, ^right : reg<test.i32>
+^left:
+  low.br ^join
+^right:
+  low.br ^join
+^join:
+  %joined_read = test.load.v4i32 %pointer
+  %joined_bias = test.const.i32 7
+  low.br ^finish
+^finish:
+  %final_read = test.load.v4i32 %pointer
+  %final_bias = test.const.i32 7
+  return %final_read, %final_bias
+}
+
+// ----
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @join_visibility_boundary(%condition: reg<test.i32>, %pointer: reg<test.ptr>) -> (reg<test.i32 x4>, reg<test.i32>) asm {
+  %entry_read = test.load.v4i32 %pointer
+  %bias = test.const.i32 7
+  low.cond_br %condition, ^left, ^right : reg<test.i32>
+^left:
+  low.br ^join
+^right:
+  low.br ^join
+^join:
+  %joined_read = test.load.v4i32 %pointer
+  low.br ^finish
+^finish:
+  return %joined_read, %bias
+}
+
+// ====
+
+// A loop's backedge also cuts off older reads. The loop-local candidate is
+// visible to its body and exit, while pure candidates remain visible above it.
+// RUN: pass cse
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @backedge_visibility_boundary(%condition: reg<test.i32>, %pointer: reg<test.ptr>) -> (reg<test.i32 x4>, reg<test.i32>) asm {
+  %entry_read = test.load.v4i32 %pointer
+  %bias = test.const.i32 7
+  low.br ^header
+^header:
+  %loop_read = test.load.v4i32 %pointer
+  %loop_bias = test.const.i32 7
+  low.cond_br %condition, ^body, ^finish : reg<test.i32>
+^body:
+  %body_read = test.load.v4i32 %pointer
+  low.br ^header
+^finish:
+  %final_read = test.load.v4i32 %pointer
+  %final_bias = test.const.i32 7
+  return %final_read, %final_bias
+}
+
+// ----
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @backedge_visibility_boundary(%condition: reg<test.i32>, %pointer: reg<test.ptr>) -> (reg<test.i32 x4>, reg<test.i32>) asm {
+  %entry_read = test.load.v4i32 %pointer
+  %bias = test.const.i32 7
+  low.br ^header
+^header:
+  %loop_read = test.load.v4i32 %pointer
+  low.cond_br %condition, ^body, ^finish : reg<test.i32>
+^body:
+  low.br ^header
+^finish:
+  return %loop_read, %bias
+}

@@ -67,6 +67,11 @@ provides checked row-sum and packed-dot examples using
 actual schedule/advice output. Depth one is the serial control; pipelining
 precedes unrolling and both policies work independently.
 
+Residency explanations distinguish usage, rounded allocation, independent
+resource ceilings, and fixed launch limits. A tied next-tier transition requires
+all cited reductions together; missing counts or launch shape suppress exact
+gain advice. Higher modeled residency is a benchmark hypothesis, not a speedup.
+
 ### Use the bounded JSON views
 
 ```shell

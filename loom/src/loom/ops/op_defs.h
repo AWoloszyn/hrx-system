@@ -74,25 +74,6 @@ static inline loom_value_id_t loom_value_slice_get(loom_value_slice_t slice,
   return slice.values[index];
 }
 
-// Sets the value ID at |index| in the slice. |index| must be less than
-// |slice.count|.
-static inline void loom_value_slice_set(loom_value_slice_t slice,
-                                        uint16_t index, loom_value_id_t value) {
-  IREE_ASSERT(index < slice.count);
-  slice.values[index] = value;
-}
-
-// Replaces all occurrences of |old_value| with |new_value| in the slice.
-static inline void loom_value_slice_replace(loom_value_slice_t slice,
-                                            loom_value_id_t old_value,
-                                            loom_value_id_t new_value) {
-  for (uint16_t i = 0; i < slice.count; ++i) {
-    if (slice.values[i] == old_value) {
-      slice.values[i] = new_value;
-    }
-  }
-}
-
 // A keyed SSA value used by OperandDict builders. The name is static metadata
 // identifying the dictionary entry; the value remains an ordinary operand and
 // participates in the normal use-def lists.
@@ -556,6 +537,12 @@ enum loom_constraint_relation_e {
   // value field, result register value field). Used by RegisterUnitsSumTo.
   LOOM_RELATION_REGISTER_UNIT_COUNT_SUM,
 
+  // A canonical dictionary maps unique names to a permutation of relative
+  // operand ordinals. Args: (variadic operand field, optional dict attr field).
+  // These rows form the vtable's operand_dictionary_count prefix and run during
+  // structural verification, before the ordinary relation interpreter.
+  LOOM_RELATION_OPERAND_DICTIONARY,
+
   LOOM_RELATION_COUNT_,
 };
 typedef uint8_t loom_constraint_relation_t;
@@ -610,13 +597,11 @@ enum loom_constraint_property_e {
 };
 typedef uint8_t loom_constraint_property_t;
 
-const char* loom_constraint_relation_name(loom_constraint_relation_t relation);
-const char* loom_constraint_property_name(loom_constraint_property_t property);
-
 // A table-driven semantic constraint entry. 10 bytes.
 //
-// Each op's vtable points to an array of these. The verifier walks
-// the array, interpreting each constraint by (relation, property).
+// Each op's vtable points to an array of these. Operand dictionary rows form
+// a prefix checked during structural verification; the remaining rows are
+// interpreted by (relation, property) during semantic verification.
 // Per-op cost: 10 bytes .rodata per constraint, zero .text code.
 typedef struct loom_constraint_t {
   // Relation interpreter opcode.
@@ -1080,53 +1065,6 @@ typedef enum loom_binding_kind_e {
 } loom_binding_kind_t;
 
 //===----------------------------------------------------------------------===//
-// Value dereference helpers
-//===----------------------------------------------------------------------===//
-
-// Resolves an op's operand value ID to the value struct in the module's
-// value table. |index| is the operand position (0-based).
-//
-// Usage:
-//   loom_value_t* lhs = loom_op_operand_value(module, addi_op, 0);
-//   if (loom_type_kind(lhs->type) == LOOM_TYPE_TILE) { ... }
-static inline loom_value_t* loom_op_operand_value(const loom_module_t* module,
-                                                  const loom_op_t* op,
-                                                  uint16_t index) {
-  IREE_ASSERT(index < op->operand_count);
-  loom_value_id_t value_id = loom_op_operands(op)[index];
-  return loom_module_value(module, value_id);
-}
-
-// Resolves an op's result value ID to the value struct in the module's
-// value table. |index| is the result position (0-based).
-//
-// Usage:
-//   loom_value_t* result = loom_op_result_value(module, addi_op, 0);
-//   if (result->use_count == 0) { /* dead result, candidate for DCE */ }
-static inline loom_value_t* loom_op_result_value(const loom_module_t* module,
-                                                 const loom_op_t* op,
-                                                 uint16_t index) {
-  IREE_ASSERT(index < op->result_count);
-  loom_value_id_t value_id = loom_op_results(op)[index];
-  return loom_module_value(module, value_id);
-}
-
-// Returns a pointer to the single use entry if the value has exactly
-// one use, or NULL if it has zero or more than one use. The returned
-// pointer is valid until the next use-list mutation on this value.
-//
-// Usage (fusion pattern — "does this tile feed exactly one consumer?"):
-//   const loom_use_t* use = loom_value_single_use(tile_value);
-//   if (use && loom_test_map_isa(loom_use_user_op(*use))) {
-//     // Fuse into the map.
-//   }
-static inline const loom_use_t* loom_value_single_use(
-    const loom_value_t* value) {
-  if (value->use_count != 1) return NULL;
-  return &loom_value_uses(value)[0];
-}
-
-//===----------------------------------------------------------------------===//
 // Effect query helpers
 //===----------------------------------------------------------------------===//
 
@@ -1149,23 +1087,9 @@ void loom_op_refresh_effective_traits(const loom_module_t* module,
 // Returns true if |op| may write to a resource or has unknown effects.
 bool loom_op_may_write(const loom_module_t* module, const loom_op_t* op);
 
-// Returns true if any live op nested under |op|'s regions is a compiler hint.
-// Hints are not semantic memory effects, but ordinary DCE and canonicalization
-// must preserve them until an explicit hint-stripping pass removes them.
-bool loom_op_regions_have_hints(const loom_module_t* module,
-                                const loom_op_t* op);
-
-// Replaces SSA references to |old_id| in attributes on live operations nested
-// under |region| with |new_id|. Operand and type references are unchanged.
-// Rewritten operations have their effective traits and direct effects
-// refreshed.
-iree_status_t loom_region_replace_attribute_value_references(
-    loom_module_t* module, loom_region_t* region, loom_value_id_t old_id,
-    loom_value_id_t new_id);
-
-// Returns true if every result of |op| has zero operand uses, no live
-// predicate-list attribute uses, and no external value type references. Type
-// references carried by another result of |op| do not keep the whole op alive.
+// Returns true if every result of |op| has zero operand uses and no attribute
+// or value type references from outside |op|. References carried by |op|'s
+// own attributes or result types do not keep the whole op alive.
 bool loom_op_results_unused(const loom_module_t* module, const loom_op_t* op);
 
 // Returns true if |op| is trivially dead: it has results, does not
@@ -1174,17 +1098,6 @@ bool loom_op_results_unused(const loom_module_t* module, const loom_op_t* op);
 // when unused — a read with no observer is a no-op.
 bool loom_op_is_trivially_dead(const loom_module_t* module,
                                const loom_op_t* op);
-
-// Walks SSA value references embedded in all value types owned by |op|'s
-// subtree.
-//
-// This includes result types on |op| and nested ops, plus block argument types
-// in nested regions. Erase and DCE paths use this before unlinking a subtree so
-// providers of dynamic dimensions or SSA encodings get rechecked after the
-// carrier values disappear.
-iree_status_t loom_op_walk_subtree_type_refs(
-    const loom_module_t* module, const loom_op_t* op,
-    loom_type_value_ref_callback_t callback, void* user_data);
 
 //===----------------------------------------------------------------------===//
 // CallLike interface helpers
@@ -2188,8 +2101,8 @@ iree_status_t loom_builder_allocate_segmented_op_with_successors(
 // storage in-place.
 //
 // |remove_results| has one entry per current result. Removed result values must
-// have no operand uses and no incoming type uses. Dropped values remain in the
-// module value table but no longer carry defining-op identity or outgoing
+// have no operand, attribute, or incoming type uses. Dropped values remain in
+// the module value table but no longer carry defining-op identity or outgoing
 // type-use records. Kept result values keep their IDs and receive updated
 // definition indices. Tied results targeting removed result slots are rejected;
 // kept tied result indices are remapped.
@@ -2198,12 +2111,12 @@ iree_status_t loom_op_remove_results(loom_module_t* module, loom_op_t* op,
                                      iree_arena_allocator_t* scratch_arena,
                                      uint16_t* out_removed_count);
 
-// Erases an op: removes all use records for the op's operands, verifies
-// that every result has no operand uses or external type uses (caller must
-// RAUW results first), drops type-use records carried by result and nested
-// block-argument types, then marks the op dead. Dead ops are skipped by
-// enumeration macros and will not be serialized. The memory is not freed
-// (arena-owned). Returns
+// Erases an op after verifying that every result has no operand uses or
+// attribute/type uses from outside the op (caller must RAUW results first).
+// Removes operand and attribute use records, drops type-use records carried by
+// results, owned declaration arguments and nested block arguments, then marks
+// the op dead. Dead ops are skipped by enumeration macros and will not be
+// serialized. The memory is not freed (arena-owned). Returns
 // IREE_STATUS_FAILED_PRECONDITION if any result still has uses.
 iree_status_t loom_op_erase(loom_module_t* module, loom_op_t* op);
 
@@ -2213,9 +2126,14 @@ iree_status_t loom_op_erase(loom_module_t* module, loom_op_t* op);
 // |remove_blocks| must contain exactly |remove_block_count| entries, one per
 // current block index in |region|. Entry block removal is rejected. Any kept op
 // successor targeting a removed block is rejected. Values defined by removed
-// block arguments or removed op subtrees may only have operand and type uses
-// inside the removed set; callers must retarget or replace external uses before
-// removing blocks.
+// block arguments or removed op subtrees may only have operand, type and
+// attribute uses inside the removed set; callers must retarget or replace
+// external uses before removing blocks. Closure and scratch-allocation failures
+// leave IR unchanged and |out_removed_count| zero.
+//
+// Uses O(B) space in |scratch_arena| to index B removed nested blocks; flat
+// block sets allocate no scratch. Validation is O(S + (B + E) log(B + 2)) for
+// S inspected IR nodes/value slots and E incoming references/successors.
 //
 // Removed block/op/value objects remain arena-owned for diagnostics, but the
 // blocks are detached from the region, their operations are marked dead, and
@@ -2224,6 +2142,7 @@ iree_status_t loom_region_remove_blocks(loom_module_t* module,
                                         loom_region_t* region,
                                         const bool* remove_blocks,
                                         uint16_t remove_block_count,
+                                        iree_arena_allocator_t* scratch_arena,
                                         uint16_t* out_removed_count);
 
 //===----------------------------------------------------------------------===//
@@ -2242,9 +2161,9 @@ iree_status_t loom_value_add_use(loom_module_t* module,
                                  uint16_t operand_index);
 
 // Removes a use record: |user_op| no longer uses |value_id| at
-// |operand_index|. Scans the use list for the matching entry, swaps
-// with last, decrements use_count. Returns IREE_STATUS_NOT_FOUND if
-// no matching entry exists (indicates a use-list bookkeeping bug).
+// |operand_index|. Reads the operand's retained use index, swaps with the last
+// entry, and updates the moved operand's index in O(1). Returns
+// IREE_STATUS_NOT_FOUND if the index does not name the matching entry.
 // No overflow-to-inline transition (arena cannot free the overflow
 // array; loom_module_compute_uses handles repack).
 iree_status_t loom_value_remove_use(loom_module_t* module,
@@ -2256,11 +2175,13 @@ iree_status_t loom_value_remove_use(loom_module_t* module,
 // builder: `return loom_builder_finalize_op(builder, *out_op);`
 iree_status_t loom_builder_finalize_op(loom_builder_t* builder, loom_op_t* op);
 
-// Records SSA value references embedded in |op|'s attributes. Attribute
-// references are tracked as a conservative per-value bit so RAUW can avoid
-// scanning operation attributes when replacing ordinary operand-only values.
-iree_status_t loom_module_note_op_attribute_value_refs(loom_module_t* module,
-                                                       const loom_op_t* op);
+// Replaces an attribute on a constructed operation, maintaining exact SSA
+// attribute-use records, effective traits and direct semantic summaries.
+// Raw attribute writes are only valid before finalization or when preserving
+// the exact SSA reference set (for example remapping symbol IDs).
+iree_status_t loom_op_set_attr(loom_module_t* module, loom_op_t* op,
+                               uint8_t attribute_index,
+                               loom_attribute_t attribute);
 
 // Links a symbol-defining op to its symbol table entry using the op's generated
 // symbol definition descriptor. Sets the symbol's defining op, definition

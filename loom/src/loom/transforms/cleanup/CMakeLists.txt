@@ -75,6 +75,7 @@ loom_cc_library(
     "cse.c"
   DEPS
     iree::base
+    iree::base::internal
     loom::analysis::ownership
     loom::codegen::low::function
     loom::codegen::low::pipeline::pass_environment
@@ -84,8 +85,8 @@ loom_cc_library(
     loom::pass::types
     loom::target::function_version
     loom::target::pass_environment
+    loom::util::cfg_dominance
     loom::util::cfg_graph
-    loom::util::dominance
   PUBLIC
 )
 

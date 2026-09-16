@@ -111,12 +111,11 @@ static bool loom_motion_traits_are_speculatable(loom_trait_flags_t traits,
   return !loom_traits_may_read(traits) && !loom_traits_may_write(traits);
 }
 
-static bool loom_motion_op_has_retained_regions(const loom_module_t* module,
-                                                const loom_op_t* op) {
+static bool loom_motion_op_has_retained_regions(const loom_op_t* op) {
   return loom_op_regions_have_read_effects(op) ||
          loom_op_regions_have_write_effects(op) ||
          loom_op_regions_have_convergent_effects(op) ||
-         loom_op_regions_have_hints(module, op);
+         loom_op_regions_have_hints(op);
 }
 
 bool loom_motion_op_can_erase(const loom_module_t* module,
@@ -138,7 +137,7 @@ bool loom_motion_op_can_relocate_effect_free(const loom_module_t* module,
                                                       /*is_root_op=*/true)) {
     return false;
   }
-  return !loom_motion_op_has_retained_regions(module, op);
+  return !loom_motion_op_has_retained_regions(op);
 }
 
 bool loom_motion_op_can_rematerialize_effect_free(const loom_module_t* module,
@@ -169,7 +168,7 @@ bool loom_motion_op_can_speculate(const loom_module_t* module,
   if (!loom_motion_traits_are_speculatable(traits, /*is_root_op=*/true)) {
     return false;
   }
-  return !loom_motion_op_has_retained_regions(module, op);
+  return !loom_motion_op_has_retained_regions(op);
 }
 
 bool loom_motion_read_can_cross_op(const loom_module_t* module,

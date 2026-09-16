@@ -111,9 +111,7 @@ static iree_status_t loom_ir_clone_op_operands(
   const loom_op_vtable_t* source_vtable =
       loom_op_vtable(remap->source_module, source_op);
   const loom_value_id_t* source_operands = loom_op_const_operands(source_op);
-  if (source_vtable && source_vtable->func_like &&
-      source_vtable->func_like->args_operand_field_index !=
-          LOOM_OPERAND_INDEX_NONE) {
+  if (loom_op_vtable_owns_operands(source_vtable)) {
     for (uint16_t i = 0; i < source_op->operand_count; ++i) {
       target_operands[i] = LOOM_VALUE_ID_INVALID;
       if (source_operands[i] == LOOM_VALUE_ID_INVALID) {

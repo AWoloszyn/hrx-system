@@ -1,0 +1,223 @@
+// Isolated bodies cannot capture enclosing arguments.
+// RUN: verify
+func.def @outer_argument(%row: i32) -> (i32) {
+  %result = test.isolated_region -> (i32) {
+    // ERROR@+1: DOMINANCE/001 "row"
+    test.yield %row : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+
+// Authored use of the isolated parent's result is rejected during parsing.
+func.def @parent_result() -> (i32) {
+  %result = test.isolated_region -> (i32) {
+    // ERROR@+1: PARSE/001 "result"
+    test.yield %result : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+
+// Ordinary nesting inside isolation inherits the same visibility floor.
+func.def @nested_capture(%row: i32) {
+  test.isolated_region {
+    %condition = test.constant true : i1
+    scf.if %condition {
+      // ERROR@+1: DOMINANCE/001 "row"
+      test.use %row : i32
+    } else {
+    }
+    test.yield
+  }
+  func.return
+}
+
+// ====
+
+// A second isolated scope hides the first one's values, then restores them.
+func.def @nested_isolation() -> (i32) {
+  %result = test.isolated_region -> (i32) {
+    %local_seed = test.constant 7 : i32
+    test.isolated_region {
+      // ERROR@+1: DOMINANCE/001 "local_seed"
+      test.use %local_seed : i32
+      test.yield
+    }
+    test.yield %local_seed : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+
+// Sibling isolated scopes retain their local values and restore the enclosing
+// ordinary scope without making the first sibling's definitions visible.
+func.def @sibling_restoration(%row: i32, %condition: i1) -> (i32) {
+  %left = test.isolated_region -> (i32) {
+    %left_seed = test.constant 7 : i32
+    test.yield %left_seed : i32
+  }
+  scf.if %condition {
+    test.use %row, %left : i32, i32
+  } else {
+  }
+  %right = test.isolated_region -> (i32) {
+    %right_seed = test.constant 11 : i32
+    test.yield %right_seed : i32
+  }
+  %combined = test.addi %left, %right : i32
+  %result = test.addi %combined, %row : i32
+  func.return %result : i32
+}
+
+// ====
+
+// An isolated child still permits its local values in ordinary descendants.
+func.def @local_structured_capture() -> (i32) {
+  %result = test.isolated_region -> (i32) {
+    %seed = test.constant 7 : i32
+    %condition = test.constant true : i1
+    scf.if %condition {
+      test.use %seed : i32
+    } else {
+      test.use %seed : i32
+    }
+    test.yield %seed : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+
+// Function definitions have the same isolation contract as other isolated ops.
+func.def @enclosing_function(%row: i32) {
+  func.def @capturing_function() -> (i32) {
+    // ERROR@+1: DOMINANCE/001 "row"
+    func.return %row : i32
+  }
+  test.use %row : i32
+  func.return
+}
+
+// ====
+
+// Signature-local arguments are visible both in dependent types and the body.
+// Exiting either scope restores the enclosing function's arguments.
+func.def @enclosing_signature(%row: i32) {
+  func.def @local_signature(%layout: encoding<layout>, %view: view<4xf32, %layout>) -> (view<4xf32, %layout>) {
+    func.return %view : view<4xf32, %layout>
+  }
+  test.use %row : i32
+  func.return
+}
+
+// ====
+
+// A layout mentioned only in a type is still an enclosing SSA capture.
+func.def @outer_layout(%layout: encoding<layout>) {
+  test.isolated_region {
+    %seed = test.constant 7 : i32
+    // ERROR@+1: ENCODING/004 "layout"
+    %view = test.convert %seed : i32 -> view<4xf32, %layout>
+    test.yield
+  }
+  func.return
+}
+
+// ====
+
+// Function argument types cannot import an enclosing layout implicitly.
+func.def @outer_signature_layout(%layout: encoding<layout>) {
+  // ERROR@+1: ENCODING/004 "layout"
+  func.def @capturing_signature(%view: view<4xf32, %layout>) {
+    func.return
+  }
+  func.return
+}
+
+// ====
+
+// Return-type references are checked in the isolated signature scope even when
+// the body never returns a value carrying that type.
+func.def @outer_result_layout(%layout: encoding<layout>) {
+  // ERROR@+1: ENCODING/004 "layout"
+  func.def @capturing_result() -> (view<4xf32, %layout>) {
+    cfg.br ^loop
+  ^loop:
+    cfg.br ^loop
+  }
+  func.return
+}
+
+// ====
+
+// Declarations without the isolation trait preserve their signature policy.
+func.def @ordinary_declaration(%layout: encoding<layout>) {
+  func.decl @declared_view(%view: view<4xf32, %layout>)
+  func.return
+}
+
+// ====
+
+// Dead blocks may use other direct declarations in their region, but nested
+// isolated bodies cannot capture those declarations.
+func.def @dead_region_capture() {
+  func.return
+^dead_definition:
+  %dead_seed = test.constant 7 : i32
+  func.return
+^dead_use:
+  test.isolated_region {
+    // ERROR@+1: DOMINANCE/001 "dead_seed"
+    test.use %dead_seed : i32
+    test.yield
+  }
+  test.use %dead_seed : i32
+  func.return
+}
+
+// ====
+
+// An isolated body in a reverse-layout CFG sees its own arguments; exiting it
+// restores the actual dominator definitions, not source-order siblings.
+// RUN: pass cse
+func.def @cfg_restoration(%row: i32) -> (i32) {
+  cfg.br ^define
+^use:
+  func.def @cfg_nested(%local_row: i32) -> (i32) {
+    func.return %local_row : i32
+  }
+  %local_bytes = test.addi %row, %row : i32
+  func.return %local_bytes : i32
+^define:
+  %row_bytes = test.addi %row, %row : i32
+  cfg.br ^use
+}
+
+// ----
+func.def @cfg_restoration(%row: i32) -> (i32) {
+  cfg.br ^define
+^use:
+  func.def @cfg_nested(%local_row: i32) -> (i32) {
+    func.return %local_row : i32
+  }
+  func.return %row_bytes : i32
+^define:
+  %row_bytes = test.addi %row, %row : i32
+  cfg.br ^use
+}
+
+// ====
+
+// Global declaration placeholders and same-op encoding co-results remain valid
+// inside isolated functions without admitting enclosing SSA values.
+global.constant @encoded_weights : tile<4xf32, %layout>
+
+func.def @local_encoding_results() {
+  %weights, %layout = global.load @encoded_weights : tile<4xf32, %layout>
+  test.use %weights, %layout : tile<4xf32, %layout>, encoding
+  func.return
+}

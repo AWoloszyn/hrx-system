@@ -21,6 +21,10 @@ from loom.reporting.compile_report_move_causes import (
     CompileReportMoveCause,
     parse_compile_report_move_causes,
 )
+from loom.reporting.compile_report_residency import (
+    residency_summary,
+    residency_transition_requirements,
+)
 from loom.reporting.compile_report_subgroup_access import (
     build_subgroup_access_show,
 )
@@ -78,7 +82,8 @@ class AmdgpuCompileReportSuggestionProvider:
         suggestions.extend(_suggest_pipeline_copy_waits(document))
         for entry in document.entries:
             entry_index = entry["index"]
-            entry_name = compile_report_entry_identity(entry).display_name()
+            identity = compile_report_entry_identity(entry)
+            entry_name = identity.display_name()
             path_prefix = f"entries.rows[{entry_index}]"
             spill_suggestion = _suggest_spill_traffic(entry, entry_name, path_prefix)
             if spill_suggestion is not None:
@@ -90,7 +95,12 @@ class AmdgpuCompileReportSuggestionProvider:
                 if private_memory_suggestion is not None:
                     suggestions.append(private_memory_suggestion)
             residency_suggestion = _suggest_residency_cliff(
-                entry, entry_name, path_prefix
+                entry,
+                entry_name,
+                path_prefix,
+                document.residency_constraints_by_function.get(
+                    identity.function or "", ()
+                ),
             )
             if residency_suggestion is not None:
                 suggestions.append(residency_suggestion)
@@ -397,61 +407,57 @@ def _suggest_residency_cliff(
     entry: dict[str, object],
     entry_name: str,
     path_prefix: str,
+    constraints: tuple[dict[str, object], ...],
 ) -> CompileReportSuggestion | None:
-    residency = _object_at(entry, "target_resources", "residency")
-    limiting_resource = _object_at(
-        entry,
-        "target_resources",
-        "residency",
-        "unique_limiting_resource",
+    requirements = residency_transition_requirements(entry, constraints)
+    if not requirements:
+        return None
+    summary = residency_summary(entry)
+    evidence = [
+        CompileReportSuggestionEvidence(
+            path=f"{path_prefix}.target_resources.residency.current_tier",
+            value=summary["current_tier"],
+        ),
+        CompileReportSuggestionEvidence(
+            path=f"{path_prefix}.target_resources.residency.next_better_tier",
+            value=summary["next_better_tier"],
+        ),
+    ]
+    reductions = []
+    for row in requirements:
+        reduction = cast(int, row["reduction_units_to_next_better_tier"])
+        maximum = cast(int, row["units"]) - reduction
+        reductions.append(
+            f"{row['name']} by at least {reduction:,} "
+            f"{row['unit']}/{row['allocation_scope']} "
+            f"(to at most {maximum:,})"
+        )
+        evidence.extend(
+            CompileReportSuggestionEvidence(
+                path=f"residency_constraints.rows[{row['index']}].{field}",
+                value=row[field],
+            )
+            for field in (
+                "name",
+                "unit",
+                "allocation_scope",
+                "units",
+                "reduction_units_to_next_better_tier",
+            )
+        )
+    action = "Reduce " + " and ".join(reductions)
+    if len(requirements) > 1:
+        action += " together; reducing only one leaves another limiter"
+    action += (
+        f". Recompile and benchmark the modeled transition "
+        f"{summary['current_tier']} -> {summary['next_better_tier']} subgroups/SIMD; "
+        "higher modeled residency is not a throughput guarantee."
     )
-    if residency is None or limiting_resource is None:
-        return None
-    current_tier = _integer(residency.get("current_tier"))
-    next_better_tier = _integer(residency.get("next_better_tier"))
-    reduction = _integer(limiting_resource.get("reduction_units_to_next_better_tier"))
-    resource_name = limiting_resource.get("name")
-    if (
-        current_tier is None
-        or next_better_tier is None
-        or next_better_tier <= current_tier
-        or reduction is None
-        or reduction == 0
-        or not isinstance(resource_name, str)
-    ):
-        return None
     return CompileReportSuggestion(
         suggestion_id="amdgpu.residency_cliff",
         entry_name=entry_name,
-        action=(
-            f"Reduce {resource_name} use by at least {reduction} units, then "
-            f"recompile and benchmark the predicted tier {next_better_tier}."
-        ),
-        evidence=(
-            CompileReportSuggestionEvidence(
-                path=f"{path_prefix}.target_resources.residency.current_tier",
-                value=current_tier,
-            ),
-            CompileReportSuggestionEvidence(
-                path=f"{path_prefix}.target_resources.residency.next_better_tier",
-                value=next_better_tier,
-            ),
-            CompileReportSuggestionEvidence(
-                path=(
-                    f"{path_prefix}.target_resources.residency."
-                    "unique_limiting_resource.name"
-                ),
-                value=resource_name,
-            ),
-            CompileReportSuggestionEvidence(
-                path=(
-                    f"{path_prefix}.target_resources.residency."
-                    "unique_limiting_resource."
-                    "reduction_units_to_next_better_tier"
-                ),
-                value=reduction,
-            ),
-        ),
+        action=action,
+        evidence=tuple(evidence),
     )
 
 

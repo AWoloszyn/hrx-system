@@ -58,6 +58,7 @@ loom_cc_library(
         "scalar_type.c",
         "type_constraint.c",
         "types.c",
+        "value_refs.c",
     ],
     hdrs = [
         "attribute.h",
@@ -78,6 +79,7 @@ loom_cc_library(
         "type_constraint.h",
         "type_descriptor.h",
         "types.h",
+        "value_refs.h",
     ],
     textual_hdrs = [
         "location_tag_table.inc",
@@ -162,6 +164,18 @@ loom_cc_test(
     deps = [
         ":ir",
         "//loom/src/loom/ops:type_registry",
+        "//loom/src/loom/ops/test",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+loom_cc_test(
+    name = "value_refs_test",
+    srcs = ["value_refs_test.cc"],
+    deps = [
+        ":ir",
         "//loom/src/loom/ops/test",
         "//runtime/src/iree/base/internal:arena",
         "//runtime/src/iree/testing:gtest",

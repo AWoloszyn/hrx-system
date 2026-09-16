@@ -83,3 +83,107 @@ func.def @all_live(%a: i32, %b: i32) -> (i32) {
   %c = test.addi %a, %b : i32
   func.return %c : i32
 }
+
+// ====
+
+// RUN: verify
+
+// A dimension carried only by a nested type-valued attribute is valid SSA.
+func.def @attribute_dimension(%value: f32) -> (f32) {
+  %width = index.constant 16 : index
+  %annotated = test.attrs %value {shape = #test.options<mode = fast, element_type = vector<[%width]xf32>>} : f32
+  func.return %annotated : f32
+}
+
+// ====
+
+// RUN: pass dce
+
+// A live attribute owner keeps its dimension provider live without operands
+// or value-carried types referencing that provider.
+func.def @live_attribute_dimension(%value: f32) -> (f32) {
+  %width = index.constant 16 : index
+  %annotated = test.attrs %value {shape = #test.options<mode = fast, element_type = vector<[%width]xf32>>} : f32
+  func.return %annotated : f32
+}
+
+// ====
+
+// RUN: pass dce
+
+// Deleting an attribute owner releases its provider in the same DCE run.
+func.def @dead_attribute_dimension(%value: f32) -> (f32) {
+  %width = index.constant 16 : index
+  %annotated = test.attrs %value {shape = #test.options<mode = fast, element_type = vector<[%width]xf32>>} : f32
+  func.return %value : f32
+}
+
+// ----
+func.def @dead_attribute_dimension(%value: f32) -> (f32) {
+  func.return %value : f32
+}
+
+// ====
+
+// RUN: pass dce
+
+// Predicate-only providers also need notification after their owner dies.
+func.def @dead_predicate_bound(%value: index) -> (index) {
+  %upper_bound = index.constant 16 : index
+  %bounded = index.assume %value [lt(%value, %upper_bound)] : index
+  func.return %value : index
+}
+
+// ----
+func.def @dead_predicate_bound(%value: index) -> (index) {
+  func.return %value : index
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// The rewriter uses the same outgoing-reference notification contract.
+func.def @rewrite_dead_attribute_dimension(%extent: index, %stride: index, %value: f32) -> (f32) {
+  %width = index.add %extent, %stride : index
+  %annotated = test.attrs %value {shape = #test.options<mode = fast, element_type = vector<[%width]xf32>>} : f32
+  func.return %value : f32
+}
+
+// ----
+func.def @rewrite_dead_attribute_dimension(%extent: index, %stride: index, %value: f32) -> (f32) {
+  func.return %value : f32
+}
+
+// ====
+
+// RUN: pass dce
+
+// Declaration arguments own their dependent types. Removing the declaration
+// releases those types' providers in the same DCE run.
+func.def @dead_signature_dimension() {
+  %width = index.constant 16 : index
+  test.decl @nested_signature(%storage: pool<[%width]>) -> (i32)
+  func.return
+}
+
+// ----
+func.def @dead_signature_dimension() {
+  func.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Rewriter-driven deletion follows the same signature ownership contract.
+func.def @rewrite_dead_signature_dimension(%extent: index, %stride: index) {
+  %width = index.add %extent, %stride : index
+  test.decl @nested_signature(%storage: pool<[%width]>) -> (i32)
+  func.return
+}
+
+// ----
+func.def @rewrite_dead_signature_dimension(%extent: index, %stride: index) {
+  func.return
+}

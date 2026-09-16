@@ -862,6 +862,21 @@ func.def @preserves_unused_block_arg_with_type_use(%guard: i1, %layout_a: encodi
 
 // ====
 
+// A type attribute is a use even when no operand or value type refers to the
+// block argument. Distinct predecessors keep the argument from forwarding.
+func.def @preserves_block_arg_with_type_attribute_use(%guard: i1, %left_width: index, %right_width: index, %value: f32) -> (f32) {
+  cfg.cond_br %guard, ^left, ^right
+^left:
+  cfg.br ^join(%left_width: index)
+^right:
+  cfg.br ^join(%right_width: index)
+^join(%width: index):
+  %annotated = test.attrs %value {shape = #test.options<mode = fast, element_type = vector<[%width]xf32>>} : f32
+  func.return %annotated : f32
+}
+
+// ====
+
 func.def @fuses_single_predecessor_block_args(%a: i32) -> (i32) {
   cfg.br ^middle(%a: i32)
 ^middle(%x: i32):
@@ -981,5 +996,81 @@ func.def @preserves_effectful_forward_block(%cond: i1, %buffer: buffer, %offset:
   view.store %value, %view[0] : f32, view<1xf32, %layout>
   cfg.br ^exit
 ^exit:
+  func.return
+}
+
+// ====
+
+// A declaration argument's dependent type belongs to its declaration, so it
+// does not prevent removing a closed unreachable block set.
+func.def @closed_signature_carrier() {
+  cfg.br ^exit
+^unused:
+  %width = index.constant 16 : index
+  test.decl @nested_signature(%storage: pool<[%width]>) -> (i32)
+  cfg.br ^exit
+^exit:
+  func.return
+}
+
+// ----
+func.def @closed_signature_carrier() {
+  func.return
+}
+
+// ====
+// RUN: verify
+
+// Incoming attribute edges and nested argument types all belong to the closed
+// unreachable subtree. Nested and sibling regions share the removed width.
+func.def @closed_nested_references(%element: f32) {
+  cfg.br ^exit
+^unused:
+  %width = index.constant 16 : index
+  %input = test.constant 0.0 : vector<[%width]xf32>
+  test.block_args %input : vector<[%width]xf32> do(%outer: vector<[%width]xf32>) {
+    %annotated = test.attrs %element {shape = #test.options<mode = fast, element_type = vector<[%width]xf32>>} : f32
+    test.block_args %outer : vector<[%width]xf32> do(%inner: vector<[%width]xf32>) {
+      %c0 = index.constant 0 : index
+      %bounded = index.assume %c0 [lt(%c0, %width)] : index
+      test.yield
+    }
+    test.yield
+  }
+  test.block_args %input : vector<[%width]xf32> do(%sibling: vector<[%width]xf32>) {
+    test.yield
+  }
+  cfg.br ^exit
+^exit:
+  func.return
+}
+
+// ====
+// RUN: pass cfg-simplify
+
+func.def @closed_nested_references(%element: f32) {
+  cfg.br ^exit
+^unused:
+  %width = index.constant 16 : index
+  %input = test.constant 0.0 : vector<[%width]xf32>
+  test.block_args %input : vector<[%width]xf32> do(%outer: vector<[%width]xf32>) {
+    %annotated = test.attrs %element {shape = #test.options<mode = fast, element_type = vector<[%width]xf32>>} : f32
+    test.block_args %outer : vector<[%width]xf32> do(%inner: vector<[%width]xf32>) {
+      %c0 = index.constant 0 : index
+      %bounded = index.assume %c0 [lt(%c0, %width)] : index
+      test.yield
+    }
+    test.yield
+  }
+  test.block_args %input : vector<[%width]xf32> do(%sibling: vector<[%width]xf32>) {
+    test.yield
+  }
+  cfg.br ^exit
+^exit:
+  func.return
+}
+
+// ----
+func.def @closed_nested_references(%element: f32) {
   func.return
 }

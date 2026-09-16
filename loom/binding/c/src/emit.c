@@ -421,10 +421,14 @@ loomc_emit_target_compile_report_mode(loomc_compile_report_mode_t mode) {
 static loom_target_compile_report_detail_flags_t
 loomc_emit_compile_report_requested_detail_flags(
     loomc_compile_report_mode_t mode) {
-  if (mode != LOOMC_COMPILE_REPORT_MODE_DETAILS) {
+  if (mode == LOOMC_COMPILE_REPORT_MODE_NONE) {
     return LOOM_TARGET_COMPILE_REPORT_DETAIL_NONE;
   }
-  return LOOM_TARGET_COMPILE_REPORT_DETAIL_PRESSURE_ROWS |
+  if (mode == LOOMC_COMPILE_REPORT_MODE_SUMMARY) {
+    return LOOM_TARGET_COMPILE_REPORT_DETAIL_RESIDENCY_CONSTRAINTS;
+  }
+  return LOOM_TARGET_COMPILE_REPORT_DETAIL_RESIDENCY_CONSTRAINTS |
+         LOOM_TARGET_COMPILE_REPORT_DETAIL_PRESSURE_ROWS |
          LOOM_TARGET_COMPILE_REPORT_DETAIL_SPILL_ROWS |
          LOOM_TARGET_COMPILE_REPORT_DETAIL_SOURCE_LOW_ROWS |
          LOOM_TARGET_COMPILE_REPORT_DETAIL_TARGET_LEGALIZATION_ROWS |

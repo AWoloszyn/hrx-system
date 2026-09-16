@@ -14,8 +14,14 @@
 #include "loom/ops/special_values.h"
 #include "loom/verify/verify.h"
 
-// Maximum region nesting depth tracked by the verifier's scope stack.
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// Maximum region/signature nesting depth tracked by the verifier's scope stack.
 #define LOOM_VERIFY_MAX_SCOPE_DEPTH 32
+static_assert(LOOM_VERIFY_MAX_SCOPE_DEPTH < UINT8_MAX,
+              "definition depth plus one must fit in a byte");
 
 // Reusable scratch tables for validating one op's tied-result metadata.
 typedef struct loom_verify_tied_table_t {
@@ -124,20 +130,36 @@ typedef struct loom_verify_state_t {
   // Scratch arena for all verification-time allocations.
   iree_arena_allocator_t arena;
 
-  // Bitset indexed by value_id; a set bit means the value is visible.
-  uint64_t* defined_bits;
-
-  // Number of uint64_t words in defined_bits and consumed_bits.
-  iree_host_size_t defined_bits_length;
+  // Active definitions filtered by the innermost isolation boundary.
+  struct {
+    // Value-ID indexed definition depth plus one; zero means undefined.
+    uint8_t* definition_depths;
+    // Lowest visible definition depth plus one; always positive.
+    uint8_t minimum_depth;
+    // Inherited minimum to restore when each region/signature scope exits.
+    uint8_t scope_minimum_depths[LOOM_VERIFY_MAX_SCOPE_DEPTH];
+  } visibility;
 
   // Bitset indexed by value_id; a set bit means the value was consumed.
   uint64_t* consumed_bits;
+
+  // Number of uint64_t words in consumed_bits.
+  iree_host_size_t consumed_word_count;
 
   // First op that consumed each value_id through an ownership transfer.
   const loom_op_t** consuming_ops;
 
   // Reusable per-op scratch for tied-result uniqueness checks.
   loom_verify_tied_table_t tied_table;
+
+  // Reusable scratch for operand dictionaries exceeding one bitset word.
+  struct {
+    // Claimed operand ordinals, cleared before each dictionary.
+    uint64_t* bits;
+
+    // Number of allocated words in bits.
+    iree_host_size_t word_capacity;
+  } operand_dictionary;
 
   // State inherited through the current nested region traversal.
   loom_verify_region_scope_t region_scope;
@@ -151,10 +173,10 @@ typedef struct loom_verify_state_t {
   // Number of allocated defined_stack entries.
   iree_host_size_t defined_stack_capacity;
 
-  // Defined-stack watermarks at each region scope entry.
+  // Defined-stack watermarks at each region/signature scope entry.
   iree_host_size_t scope_watermarks[LOOM_VERIFY_MAX_SCOPE_DEPTH];
 
-  // Number of active region scopes.
+  // Number of active region/signature scopes.
   uint32_t scope_depth;
 } loom_verify_state_t;
 
@@ -191,8 +213,15 @@ void loom_verify_record_diagnostic_status(loom_verify_state_t* state,
 iree_status_t loom_verify_take_diagnostic_status(loom_verify_state_t* state);
 iree_status_t loom_verify_pending_diagnostic_status(loom_verify_state_t* state);
 
-iree_status_t loom_verify_push_scope(loom_verify_state_t* state);
+// Enters a scope, optionally hiding every enclosing definition in O(1).
+iree_status_t loom_verify_push_scope(loom_verify_state_t* state, bool isolated);
 void loom_verify_pop_scope(loom_verify_state_t* state);
+// Callers validate external value IDs before querying the visibility table.
+static inline bool loom_verify_value_is_visible(
+    const loom_verify_state_t* state, loom_value_id_t value_id) {
+  return state->visibility.definition_depths[value_id] >=
+         state->visibility.minimum_depth;
+}
 // Removes definitions after a retained stack watermark. CFG block scopes use
 // this independently of the fixed nested-region scope stack.
 void loom_verify_restore_definitions(loom_verify_state_t* state,
@@ -216,7 +245,6 @@ iree_string_view_t loom_verify_symbol_name(const loom_verify_state_t* state,
 iree_string_view_t loom_verify_symbol_definition_name(
     const loom_symbol_t* symbol);
 
-bool loom_verify_func_args_use_operand_field(const loom_op_vtable_t* vtable);
 bool loom_verify_has_func_signature_scope(const loom_op_vtable_t* vtable);
 
 loom_type_t loom_verify_value_type(const loom_verify_state_t* state,
@@ -242,5 +270,9 @@ iree_string_view_t loom_verify_indexed_field_name(
 iree_string_view_t loom_verify_value_field_name(
     const loom_op_vtable_t* vtable, const loom_op_t* op, uint8_t category,
     uint16_t value_index, char* buffer, iree_host_size_t buffer_size);
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif
 
 #endif  // LOOM_VERIFY_VERIFY_STATE_H_

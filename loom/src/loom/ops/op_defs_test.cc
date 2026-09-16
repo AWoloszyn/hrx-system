@@ -6,11 +6,265 @@
 
 #include "loom/ops/op_defs.h"
 
+#include <vector>
+
+#include "iree/base/internal/arena.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
+#include "loom/ir/context.h"
+#include "loom/ir/module.h"
+#include "loom/ir/value_refs.h"
+#include "loom/ops/kernel/ops.h"
+#include "loom/ops/test/ops.h"
 
 namespace loom {
 namespace {
+
+class OpEraseTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    iree_arena_block_pool_initialize(4096, iree_allocator_system(),
+                                     &block_pool_);
+    iree_arena_initialize(&block_pool_, &scratch_arena_);
+    loom_context_initialize(iree_allocator_system(), &context_);
+    iree_host_size_t count = 0;
+    const loom_op_vtable_t* const* vtables =
+        loom_kernel_dialect_vtables(&count);
+    IREE_ASSERT_OK(loom_context_register_dialect(&context_, LOOM_DIALECT_KERNEL,
+                                                 vtables, (uint16_t)count));
+    vtables = loom_test_dialect_vtables(&count);
+    IREE_ASSERT_OK(loom_context_register_dialect(&context_, LOOM_DIALECT_TEST,
+                                                 vtables, (uint16_t)count));
+    IREE_ASSERT_OK(loom_context_finalize(&context_));
+    IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("erase"),
+                                        &block_pool_, nullptr,
+                                        iree_allocator_system(), &module_));
+  }
+
+  void TearDown() override {
+    iree_arena_deinitialize(&scratch_arena_);
+    loom_module_free(module_);
+    loom_context_deinitialize(&context_);
+    iree_arena_block_pool_deinitialize(&block_pool_);
+  }
+
+  // Storage backing the module's invocation-lifetime arena.
+  iree_arena_block_pool_t block_pool_ = {};
+  // Invocation scratch kept separate from the module's persistent records.
+  iree_arena_allocator_t scratch_arena_ = {};
+  // Immutable operation metadata shared by the fixture's builders.
+  loom_context_t context_ = {};
+  // Owned module whose retained reference state is under test.
+  loom_module_t* module_ = nullptr;
+};
+
+class RegionRemovalAttributeTest
+    : public OpEraseTest,
+      public ::testing::WithParamInterface<loom_attr_kind_t> {};
+
+TEST_P(RegionRemovalAttributeTest, RejectsExternalReferenceBeforeMutation) {
+  loom_region_t* region = module_->body;
+  loom_block_t* removed = nullptr;
+  IREE_ASSERT_OK(loom_region_append_block(module_, region, &removed));
+  loom_block_t* referenced = nullptr;
+  IREE_ASSERT_OK(loom_region_append_block(module_, region, &referenced));
+  const loom_type_t index_type = loom_type_scalar(LOOM_SCALAR_TYPE_INDEX);
+  loom_value_id_t width = LOOM_VALUE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_define_value(module_, index_type, &width));
+  IREE_ASSERT_OK(loom_block_add_arg(module_, removed, width));
+  loom_type_id_t type = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_intern_type_id(
+      module_, loom_type_pool(loom_dim_pack_dynamic(width)), &type));
+  loom_predicate_t predicate = {LOOM_PREDICATE_EQ,
+                                2,
+                                {LOOM_PRED_ARG_VALUE, LOOM_PRED_ARG_CONST},
+                                {},
+                                {width, 16}};
+  loom_string_id_t key = LOOM_STRING_ID_INVALID;
+  IREE_ASSERT_OK(
+      loom_module_intern_string(module_, IREE_SV("constraint"), &key));
+  const loom_attribute_t attribute =
+      GetParam() == LOOM_ATTR_TYPE ? loom_attr_type(type)
+                                   : loom_attr_predicate_list(&predicate, 1);
+  const loom_named_attr_t attributes[] = {{key, {}, attribute}};
+  loom_builder_t builder = {};
+  loom_builder_initialize(module_, &module_->arena,
+                          loom_region_entry_block(region), &builder);
+  loom_op_t* input = nullptr;
+  IREE_ASSERT_OK(loom_test_constant_build(
+      &builder, loom_attr_i64(1), index_type, LOOM_LOCATION_UNKNOWN, &input));
+  loom_builder_set_block(&builder, referenced);
+  loom_op_t* owner = nullptr;
+  IREE_ASSERT_OK(
+      loom_test_attrs_build(&builder, LOOM_TEST_ATTRS_BUILD_FLAG_HAS_DICT,
+                            loom_test_constant_result(input),
+                            loom_make_named_attr_slice(attributes, 1),
+                            index_type, LOOM_LOCATION_UNKNOWN, &owner));
+  ASSERT_TRUE(loom_value_has_attribute_uses(loom_module_value(module_, width)));
+  ASSERT_EQ(loom_module_value(module_, width)->use_count, 0u);
+  ASSERT_FALSE(loom_module_value_has_type_uses(module_, width));
+
+  // The removal request is not closed: the attribute owner is kept.
+  bool remove_blocks[] = {false, true, false};
+  uint16_t removed_count = UINT16_MAX;
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_FAILED_PRECONDITION,
+      loom_region_remove_blocks(module_, region, remove_blocks,
+                                IREE_ARRAYSIZE(remove_blocks), &scratch_arena_,
+                                &removed_count));
+  EXPECT_EQ(removed_count, 0u);
+  EXPECT_EQ(region->block_count, 3u);
+  EXPECT_EQ(removed->parent_region, region);
+  EXPECT_EQ(removed->arg_count, 1u);
+  ASSERT_TRUE(loom_value_is_block_arg(loom_module_value(module_, width)));
+  EXPECT_EQ(loom_value_def_block(loom_module_value(module_, width)), removed);
+  EXPECT_TRUE(loom_value_has_attribute_uses(loom_module_value(module_, width)));
+  EXPECT_EQ(owner->flags & LOOM_OP_FLAG_DEAD, 0u);
+  EXPECT_EQ(scratch_arena_.used_allocation_size, 0u);
+
+  // Nested kept and removed owners exercise both outcomes of the block index.
+  IREE_ASSERT_OK(loom_op_erase(module_, owner));
+  loom_op_t* kept_scope = nullptr;
+  IREE_ASSERT_OK(loom_test_block_args_build(
+      &builder, nullptr, 0, LOOM_LOCATION_UNKNOWN, &kept_scope));
+  loom_builder_set_block(
+      &builder, loom_region_entry_block(loom_test_block_args_body(kept_scope)));
+  IREE_ASSERT_OK(
+      loom_test_attrs_build(&builder, LOOM_TEST_ATTRS_BUILD_FLAG_HAS_DICT,
+                            loom_test_constant_result(input),
+                            loom_make_named_attr_slice(attributes, 1),
+                            index_type, LOOM_LOCATION_UNKNOWN, &owner));
+  loom_builder_set_block(&builder, removed);
+  loom_op_t* removed_scope = nullptr;
+  IREE_ASSERT_OK(loom_test_block_args_build(
+      &builder, nullptr, 0, LOOM_LOCATION_UNKNOWN, &removed_scope));
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_FAILED_PRECONDITION,
+      loom_region_remove_blocks(module_, region, remove_blocks,
+                                IREE_ARRAYSIZE(remove_blocks), &scratch_arena_,
+                                &removed_count));
+  EXPECT_EQ(removed_count, 0u);
+  EXPECT_EQ(region->block_count, 3u);
+  EXPECT_EQ(removed_scope->flags & LOOM_OP_FLAG_DEAD, 0u);
+  EXPECT_EQ(owner->flags & LOOM_OP_FLAG_DEAD, 0u);
+  EXPECT_TRUE(loom_value_has_attribute_uses(loom_module_value(module_, width)));
+
+  // Including the attribute's entire subtree makes the same request closed.
+  remove_blocks[2] = true;
+  IREE_ASSERT_OK(loom_region_remove_blocks(module_, region, remove_blocks,
+                                           IREE_ARRAYSIZE(remove_blocks),
+                                           &scratch_arena_, &removed_count));
+  EXPECT_EQ(removed_count, 2u);
+  EXPECT_EQ(region->block_count, 1u);
+  EXPECT_NE(removed_scope->flags & LOOM_OP_FLAG_DEAD, 0u);
+  EXPECT_NE(kept_scope->flags & LOOM_OP_FLAG_DEAD, 0u);
+  EXPECT_NE(owner->flags & LOOM_OP_FLAG_DEAD, 0u);
+  EXPECT_FALSE(
+      loom_value_has_attribute_uses(loom_module_value(module_, width)));
+  EXPECT_FALSE(loom_value_is_block_arg(loom_module_value(module_, width)));
+  EXPECT_EQ(
+      loom_module_value(module_, loom_test_constant_result(input))->use_count,
+      0u);
+}
+
+INSTANTIATE_TEST_SUITE_P(EmbeddedReferences, RegionRemovalAttributeTest,
+                         ::testing::Values(LOOM_ATTR_TYPE,
+                                           LOOM_ATTR_PREDICATE_LIST));
+
+TEST_F(OpEraseTest, RegionRemovalAllocationFailureLeavesIRUnchanged) {
+  loom_block_t* removed = nullptr;
+  IREE_ASSERT_OK(loom_region_append_block(module_, module_->body, &removed));
+  loom_builder_t builder = {};
+  loom_builder_initialize(module_, &module_->arena, removed, &builder);
+  loom_op_t* nested = nullptr;
+  IREE_ASSERT_OK(loom_test_block_args_build(&builder, nullptr, 0,
+                                            LOOM_LOCATION_UNKNOWN, &nested));
+  iree_arena_block_pool_t empty_pool = {};
+  iree_arena_block_pool_initialize(4096, iree_allocator_null(), &empty_pool);
+  iree_arena_allocator_t failing_arena = {};
+  iree_arena_initialize(&empty_pool, &failing_arena);
+  const bool remove_blocks[] = {false, true};
+  uint16_t removed_count = UINT16_MAX;
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      loom_region_remove_blocks(module_, module_->body, remove_blocks,
+                                IREE_ARRAYSIZE(remove_blocks), &failing_arena,
+                                &removed_count));
+  EXPECT_EQ(removed_count, 0u);
+  EXPECT_EQ(module_->body->block_count, 2u);
+  EXPECT_EQ(removed->parent_region, module_->body);
+  EXPECT_EQ(removed->first_op, nested);
+  EXPECT_EQ(nested->flags & LOOM_OP_FLAG_DEAD, 0u);
+  EXPECT_EQ(failing_arena.used_allocation_size, 0u);
+  iree_arena_deinitialize(&failing_arena);
+  iree_arena_block_pool_deinitialize(&empty_pool);
+}
+
+TEST_F(OpEraseTest, KernelDeclarationDropsBothOwnedSignatures) {
+  loom_builder_t builder = {};
+  loom_builder_initialize(module_, &module_->arena, loom_module_block(module_),
+                          &builder);
+  loom_string_id_t name = LOOM_STRING_ID_INVALID;
+  IREE_ASSERT_OK(
+      loom_module_intern_string(module_, IREE_SV("dispatch"), &name));
+  uint16_t symbol = LOOM_SYMBOL_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_add_symbol(module_, name, &symbol));
+  const loom_symbol_ref_t callee = {0, symbol};
+  const loom_type_t argument_types[] = {
+      loom_type_scalar(LOOM_SCALAR_TYPE_INDEX),
+      loom_type_pool(loom_dim_pack_static(4)),
+  };
+  loom_op_t* declaration = nullptr;
+  IREE_ASSERT_OK(loom_kernel_decl_build(
+      &builder, /*build_flags=*/0, /*retain=*/0, loom_symbol_ref_null(),
+      LOOM_STRING_ID_INVALID, /*export_linkage=*/0, callee, argument_types,
+      IREE_ARRAYSIZE(argument_types), argument_types,
+      IREE_ARRAYSIZE(argument_types), /*predicates=*/nullptr,
+      /*predicates_count=*/0, LOOM_LOCATION_UNKNOWN, &declaration));
+  const loom_value_slice_t signatures[] = {
+      loom_kernel_decl_workloads(declaration),
+      loom_kernel_decl_args(declaration),
+  };
+  for (const loom_value_slice_t signature : signatures) {
+    for (uint16_t i = 0; i < signature.count; ++i) {
+      EXPECT_EQ(
+          loom_value_owner_op(loom_module_value(module_, signature.values[i])),
+          declaration);
+    }
+    IREE_ASSERT_OK(loom_module_set_value_type(
+        module_, signature.values[1],
+        loom_type_pool(loom_dim_pack_dynamic(signature.values[0]))));
+  }
+  ASSERT_EQ(module_->type_uses.active_count, 2u);
+  const iree_host_size_t arena_bytes = module_->arena.used_allocation_size;
+  std::vector<uint32_t> visits(module_->values.count, 0);
+  IREE_ASSERT_OK(loom_op_walk_subtree_value_refs(
+      module_, declaration,
+      [](loom_value_id_t value, void* user_data) {
+        ++(*static_cast<std::vector<uint32_t>*>(user_data))[value];
+        return iree_ok_status();
+      },
+      &visits));
+  for (const loom_value_slice_t signature : signatures) {
+    EXPECT_EQ(visits[signature.values[0]], 1u);
+    EXPECT_EQ(visits[signature.values[1]], 0u);
+  }
+  IREE_ASSERT_OK(loom_op_erase(module_, declaration));
+  EXPECT_FALSE(loom_module_has_active_type_uses(module_));
+  EXPECT_EQ(module_->arena.used_allocation_size, arena_bytes);
+  for (const loom_value_slice_t signature : signatures) {
+    EXPECT_EQ(
+        loom_value_owner_op(loom_module_value(module_, signature.values[1])),
+        nullptr);
+    EXPECT_EQ(loom_module_value(module_, signature.values[1])->use_count, 0u);
+    EXPECT_EQ(
+        loom_module_value_first_outgoing_type_use(module_, signature.values[1]),
+        LOOM_TYPE_USE_ID_INVALID);
+    EXPECT_FALSE(loom_module_value_has_type_uses(module_, signature.values[0]));
+  }
+  IREE_ASSERT_OK(loom_module_compute_uses(module_));
+  EXPECT_FALSE(loom_module_has_active_type_uses(module_));
+}
 
 TEST(DialectTableHelpers, ReturnVtableArraysAndCounts) {
   const loom_op_vtable_t vtable = {};
@@ -73,87 +327,6 @@ TEST(DialectTableHelpers, LookupSemanticsByDialectAndIndex) {
       IREE_ARRAYSIZE(semantics));
   EXPECT_EQ(out_of_range.phase, LOOM_OP_PHASE_UNSPECIFIED);
   EXPECT_EQ(out_of_range.contract_families, 0u);
-}
-
-TEST(AttributeHelpers, EnumArrayPreservesContentAndPresentEmpty) {
-  const uint8_t values[] = {1, 255, 1};
-  loom_attribute_t attr = loom_attr_enum_array(values, IREE_ARRAYSIZE(values));
-  loom_enum_array_t array = loom_attr_as_enum_array(attr);
-
-  EXPECT_EQ(array.values, values);
-  EXPECT_EQ(array.count, 3u);
-  EXPECT_TRUE(loom_attribute_equal(&attr, &attr));
-
-  loom_attribute_t same = loom_attr_enum_array(values, IREE_ARRAYSIZE(values));
-  EXPECT_TRUE(loom_attribute_equal(&attr, &same));
-  EXPECT_EQ(loom_attribute_hash(&attr), loom_attribute_hash(&same));
-
-  loom_attribute_t empty = loom_attr_enum_array(values, 0);
-  EXPECT_EQ(empty.kind, LOOM_ATTR_ENUM_ARRAY);
-  EXPECT_EQ(empty.enum_array, nullptr);
-  EXPECT_FALSE(loom_attr_is_absent(empty));
-  EXPECT_TRUE(loom_attr_is_absent(loom_attr_absent()));
-}
-
-TEST(AttributeHelpers, SignedEnumSetPreservesCanonicalPolarities) {
-  const uint64_t words[] = {
-      UINT64_C(1) << 1, 0, 0, UINT64_C(1) << 63, UINT64_C(1) << 7, 0, 0, 0,
-  };
-  loom_attribute_t attr =
-      loom_attr_signed_enum_set(words, IREE_ARRAYSIZE(words) / 2);
-  loom_signed_enum_set_t set = loom_attr_as_signed_enum_set(attr);
-
-  EXPECT_EQ(set.words, words);
-  EXPECT_EQ(set.word_count, 4u);
-  EXPECT_TRUE(loom_signed_enum_set_contains_positive(set, 1));
-  EXPECT_TRUE(loom_signed_enum_set_contains_positive(set, 255));
-  EXPECT_FALSE(loom_signed_enum_set_contains_positive(set, 7));
-  EXPECT_TRUE(loom_signed_enum_set_contains_negative(set, 7));
-  EXPECT_FALSE(loom_signed_enum_set_contains_negative(set, 1));
-
-  const uint64_t same_words[] = {
-      UINT64_C(1) << 1, 0, 0, UINT64_C(1) << 63, UINT64_C(1) << 7, 0, 0, 0,
-  };
-  loom_attribute_t same =
-      loom_attr_signed_enum_set(same_words, IREE_ARRAYSIZE(same_words) / 2);
-  EXPECT_TRUE(loom_attribute_equal(&attr, &same));
-  EXPECT_EQ(loom_attribute_hash(&attr), loom_attribute_hash(&same));
-
-  loom_attribute_t empty = loom_attr_signed_enum_set(words, 0);
-  EXPECT_EQ(empty.kind, LOOM_ATTR_SIGNED_ENUM_SET);
-  EXPECT_EQ(empty.signed_enum_set_words, nullptr);
-  EXPECT_FALSE(loom_attr_is_absent(empty));
-}
-
-TEST(AttributeHelpers, SignedEnumSetValidatesAndTrimsRepresentation) {
-  const uint64_t trailing_words[] = {
-      UINT64_C(1) << 1, 0, 0, 0, UINT64_C(1) << 7, 0, 0, 0,
-  };
-  iree_host_size_t canonical_word_count = 0;
-  IREE_ASSERT_OK(loom_signed_enum_set_canonical_word_count(
-      loom_make_signed_enum_set(trailing_words,
-                                IREE_ARRAYSIZE(trailing_words) / 2),
-      &canonical_word_count));
-  EXPECT_EQ(canonical_word_count, 1u);
-
-  const uint64_t contradictory_words[] = {
-      UINT64_C(1) << 1,
-      UINT64_C(1) << 1,
-  };
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
-                        loom_signed_enum_set_canonical_word_count(
-                            loom_make_signed_enum_set(contradictory_words, 1),
-                            &canonical_word_count));
-  IREE_EXPECT_STATUS_IS(
-      IREE_STATUS_INVALID_ARGUMENT,
-      loom_signed_enum_set_canonical_word_count(
-          loom_make_signed_enum_set(nullptr, 1), &canonical_word_count));
-  IREE_EXPECT_STATUS_IS(
-      IREE_STATUS_INVALID_ARGUMENT,
-      loom_signed_enum_set_canonical_word_count(
-          loom_make_signed_enum_set(trailing_words,
-                                    LOOM_SIGNED_ENUM_SET_MAX_WORD_COUNT + 1),
-          &canonical_word_count));
 }
 
 TEST(MemoryAccessHelpers, OperandIndexIsPayload) {

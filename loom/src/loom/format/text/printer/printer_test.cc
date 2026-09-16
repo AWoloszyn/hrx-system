@@ -1961,40 +1961,16 @@ static const loom_attr_descriptor_t kPredTestAttrDesc[] = {
         /*.attr_kind=*/LOOM_ATTR_PREDICATE_LIST,
     },
 };
-static const loom_op_vtable_t kPredTestVtable = {
-    // Cache line 1: hot path.
-    /*.traits=*/LOOM_TRAIT_PURE,
-    /*.fixed_operand_count=*/0,
-    /*.fixed_result_count=*/0,
-    /*.attribute_count=*/1,
-    /*.region_count=*/0,
-    /*.vtable_flags=*/0,
-    /*.symbol_kind=*/LOOM_SYMBOL_NONE,
-    /*.constraint_count=*/0,
-    /*.operand_descriptor_count=*/{},
-    /*.control_flow_flags=*/{},
-    /*.control_flow_reserved=*/{},
-    /*.successor_selector_operand_index=*/{},
-    /*.canonicalize=*/NULL,
-    /*.infer_facts=*/NULL,
-    /*.effective_traits=*/NULL,
-    /*.attr_descriptors=*/kPredTestAttrDesc,
-    /*.operand_descriptors=*/NULL,
-    // Cache line 2: verify + parse/print + diagnostics.
-    /*.type_transfer=*/{},
-    /*.result_descriptors=*/NULL,
-    /*.region_descriptors=*/NULL,
-    /*.constraints=*/NULL,
-    /*.verify=*/NULL,
-    /*.name=*/kPredTestName,
-    /*.format_elements=*/kPredTestFormat,
-    /*.instance_flags_case_names=*/NULL,
-    /*.format_element_count=*/1,
-    /*.instance_flags_case_count=*/0,
-    // Cache line 3: interface pointers.
-    /*.call_like=*/{},
-    /*.func_like=*/NULL,
-};
+static constexpr loom_op_vtable_t kPredTestVtable = [] {
+  loom_op_vtable_t vtable = {};
+  vtable.traits = LOOM_TRAIT_PURE;
+  vtable.attribute_count = 1;
+  vtable.attr_descriptors = kPredTestAttrDesc;
+  vtable.name = kPredTestName;
+  vtable.format_elements = kPredTestFormat;
+  vtable.format_element_count = IREE_ARRAYSIZE(kPredTestFormat);
+  return vtable;
+}();
 
 // Test fixture that registers both the test dialect and the synthetic
 // predicate test vtable.

@@ -56,6 +56,13 @@ from loom.reporting.compile_report_native_layout import (
     build_native_layout_diff,
     build_native_layout_show,
 )
+from loom.reporting.compile_report_residency import (
+    append_residency_diff_text,
+    append_residency_show_text,
+    build_residency_diff,
+    build_residency_show,
+    residency_summary,
+)
 from loom.reporting.compile_report_subgroup_access import (
     append_subgroup_access_diff_text,
     append_subgroup_access_show_text,
@@ -389,6 +396,7 @@ def build_compile_report_show(
                 document.report.get("workload"),
                 document.report.get("target_resources"),
                 f"{document.source}.entries.rows[{entry['index']}]",
+                document.residency_constraints_by_function,
             )
             for entry in document.entries
         ],
@@ -492,12 +500,27 @@ def build_compile_report_diff(
             baseline_entry_source,
             candidate_entry_source,
         )
+        residency = build_residency_diff(
+            build_residency_show(
+                pair.baseline,
+                baseline.residency_constraints_by_function.get(
+                    pair.baseline_identity.function or "", ()
+                ),
+            ),
+            build_residency_show(
+                pair.candidate,
+                candidate.residency_constraints_by_function.get(
+                    pair.candidate_identity.function or "", ()
+                ),
+            ),
+        )
         if (
             not _diff_group_has_changes(artifact_facts)
             and not _diff_group_has_changes(compiler_analysis)
             and not workload_diff_has_changes(entry_workload)
             and not execution_economics_diff_has_changes(execution_economics)
             and not move_cause_diff_has_changes(move_causes)
+            and residency is None
         ):
             unchanged_entry_count += 1
             continue
@@ -510,6 +533,8 @@ def build_compile_report_diff(
             entry_view["workload"] = entry_workload
         if move_causes is not None:
             entry_view["move_causes"] = move_causes
+        if residency is not None:
+            entry_view["residency"] = residency
         if force:
             entry_view["identities"] = {
                 "baseline": pair.baseline_identity.to_json_object(),
@@ -653,6 +678,9 @@ def format_compile_report_show_text(view: dict[str, object]) -> str:
         move_causes = entry.get("move_causes")
         if isinstance(move_causes, dict):
             append_move_cause_show_text(lines, move_causes)
+        residency = entry.get("residency")
+        if isinstance(residency, dict):
+            append_residency_show_text(lines, residency)
     loop_pipelines = view.get("loop_pipelines")
     if isinstance(loop_pipelines, dict):
         append_loop_pipeline_show_text(lines, loop_pipelines)
@@ -791,6 +819,9 @@ def format_compile_report_diff_text(view: dict[str, object]) -> str:
         move_causes = entry.get("move_causes")
         if isinstance(move_causes, dict):
             append_move_cause_diff_text(lines, move_causes)
+        residency = entry.get("residency")
+        if isinstance(residency, dict):
+            append_residency_diff_text(lines, residency)
     native_layout = view.get("native_layout")
     if isinstance(native_layout, dict):
         append_native_layout_diff_text(lines, native_layout)
@@ -813,6 +844,7 @@ def _show_entry_json(
     report_workload_value: object,
     report_target_resources_value: object,
     source: str,
+    residency_constraints_by_function: dict[str, tuple[dict[str, object], ...]],
 ) -> dict[str, object]:
     entry_workload = build_workload_show(
         entry.get("workload", report_workload_value),
@@ -832,7 +864,22 @@ def _show_entry_json(
     move_causes = build_move_cause_show(entry, source)
     if move_causes is not None:
         view["move_causes"] = move_causes
+    residency = build_residency_show(
+        entry, residency_constraints_by_function.get(identity.function or "", ())
+    )
+    if residency is not None:
+        view["residency"] = residency
     return view
+
+
+def _metric_value(entry: dict[str, object], spec: MetricSpec) -> object:
+    if spec.key in (
+        "resident_subgroups_per_simd",
+        "occupancy_percent",
+        "limiting_resource",
+    ) and residency_summary(entry).get("unavailable_reasons"):
+        return _MISSING
+    return _lookup(entry, spec.path)
 
 
 def _show_metrics(
@@ -842,7 +889,7 @@ def _show_metrics(
     for spec in _METRIC_SPECS:
         if spec.evidence is not evidence:
             continue
-        value = _lookup(entry, spec.path)
+        value = _metric_value(entry, spec)
         if value is not _MISSING and value is not None:
             metrics[spec.key] = value
     return metrics
@@ -860,8 +907,8 @@ def _diff_metrics(
     for spec in _METRIC_SPECS:
         if spec.evidence is not evidence:
             continue
-        baseline_value = _lookup(baseline, spec.path)
-        candidate_value = _lookup(candidate, spec.path)
+        baseline_value = _metric_value(baseline, spec)
+        candidate_value = _metric_value(candidate, spec)
         if baseline_value is None:
             baseline_value = _MISSING
         if candidate_value is None:

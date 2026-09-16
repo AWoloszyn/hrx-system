@@ -1,0 +1,215 @@
+// Dynamic dimensions are SSA uses even without a direct encoding attachment.
+// RUN: verify
+func.def @outer_shape(%count: index) {
+  test.isolated_region {
+    %seed = test.constant 7 : i32
+    // ERROR@+1: DOMINANCE/016 "count"
+    %tile = test.convert %seed : i32 -> tile<[%count]xf32>
+    test.yield
+  }
+  func.return
+}
+
+// ====
+
+// Pool extents follow the same visibility rule as shape dimensions.
+func.def @outer_pool_size(%byte_count: index) {
+  test.isolated_region {
+    %seed = test.constant 7 : i32
+    // ERROR@+1: DOMINANCE/016 "byte_count"
+    %storage = test.convert %seed : i32 -> pool<[%byte_count]>
+    test.yield
+  }
+  func.return
+}
+
+// ====
+
+// Function argument types cannot implicitly capture an enclosing dimension.
+func.def @outer_argument_shape(%count: index) {
+  // ERROR@+1: DOMINANCE/016 "block arg 0 type references value '%count'"
+  func.def @capturing_argument(%tile: tile<[%count]xf32>) {
+    func.return
+  }
+  func.return
+}
+
+// ====
+
+// Bodyless signatures retain the declared variadic argument field name when
+// a surrounding isolated region hides the referenced encoding.
+func.def @outer_declared_layout(%layout: encoding<layout>) {
+  test.isolated_region {
+    // ERROR@+1: ENCODING/004 "args[0]"
+    func.decl @capturing_declaration(%view: view<4xf32, %layout>)
+    test.yield
+  }
+  func.return
+}
+
+// ====
+
+// Bulk use reconstruction retains dynamic dimensions in declaration arguments.
+func.def @outer_declared_shape(%count: index) {
+  test.isolated_region {
+    // ERROR@+1: DOMINANCE/016 "args[0] type references value '%count'"
+    func.decl @capturing_shape(%tile: tile<[%count]xf32>)
+    test.yield
+  }
+  func.return
+}
+
+// ====
+
+// Nested types on declaration arguments retain their SSA references too.
+func.def @outer_declared_reference(%layout: encoding<layout>) {
+  test.isolated_region {
+    // ERROR@+1: DOMINANCE/016 "args[0] type references value '%layout'"
+    func.decl @capturing_reference(%reference: test.ref<view<4xf32, %layout>>)
+    test.yield
+  }
+  func.return
+}
+
+// ====
+
+// Declarations have no isolation trait and preserve ordinary enclosing captures.
+func.def @ordinary_declared_shape(%count: index) {
+  func.decl @ordinary_shape(%tile: tile<[%count]xf32>)
+  func.return
+}
+
+// ====
+
+// Variadic result diagnostics identify the dependent value's field ordinal.
+func.def @outer_variadic_shape(%count: index) {
+  func.def @capturing_results(%input: tensor<4xf32>) {
+    // ERROR@+1: DOMINANCE/016 "results[0] type references value '%count'"
+    %tile, %size = test.deflate %input : tensor<4xf32> -> (tile<[%count]xf32>, index)
+    func.return
+  }
+  func.return
+}
+
+// ====
+
+// A non-returning body does not exempt its return type from signature scope.
+func.def @outer_result_shape(%count: index) {
+  // ERROR@+1: DOMINANCE/016 "count"
+  func.def @capturing_return_type() -> (tile<[%count]xf32>) {
+    cfg.br ^loop
+  ^loop:
+    cfg.br ^loop
+  }
+  func.return
+}
+
+// ====
+
+// References inside nested function types remain SSA uses of the definition.
+func.def @outer_function_type(%count: index) {
+  test.isolated_region {
+    %seed = test.constant 7 : i32
+    // ERROR@+1: DOMINANCE/016 "count"
+    %callback = test.convert %seed : i32 -> (tile<[%count]xf32>) -> ()
+    test.yield
+  }
+  func.return
+}
+
+// ====
+
+// Nested dialect parameters carry layout references too.
+func.def @outer_dialect_type(%layout: encoding<layout>) {
+  test.isolated_region {
+    %seed = test.constant 7 : i32
+    // ERROR@+1: DOMINANCE/016 "layout"
+    %reference = test.convert %seed : i32 -> test.ref<view<4xf32, %layout>>
+    test.yield
+  }
+  func.return
+}
+
+// ====
+
+// Every signature argument is defined before dependent types are checked,
+// including references to later arguments in the authored signature.
+func.def @local_shape(%tile: tile<[%count]xf32>, %count: index) -> (tile<[%count]xf32>) {
+  func.return %tile : tile<[%count]xf32>
+}
+
+// ====
+
+// Bodyless declarations define their own argument scope.
+func.decl @declared_shape(%tile: tile<[%count]xf32>, %count: index) -> (tile<[%count]xf32>)
+
+// ====
+
+// The same dimension may occur more than once in a type.
+func.def @local_repeated_shape(%count: index, %tile: tile<[%count]x[%count]xf32>) {
+  test.use %tile : tile<[%count]x[%count]xf32>
+  func.return
+}
+
+// ====
+
+// Declaration-local global placeholders and co-result dimensions are valid.
+global.constant @weights : tile<[%rows]x[%columns]xf32, %layout>
+
+func.def @load_dependent_results() {
+  %tile, %rows, %columns, %layout = global.load @weights : tile<[%rows]x[%columns]xf32, %layout>
+  test.use %tile : tile<[%rows]x[%columns]xf32, %layout>
+  func.return
+}
+
+// ====
+
+// Dependent co-results are recognized independently of their result ordinal.
+func.def @coresult_dimensions(%input: tensor<4xf32>) {
+  %rows, %columns, %count = test.deflate %input : tensor<4xf32> -> (tile<[%count]xf32>, tile<[%count]xf32>, index)
+  test.use %rows : tile<[%count]xf32>
+  test.use %columns : tile<[%count]xf32>
+  func.return
+}
+
+// ====
+
+// Direct and nested encoding references can name the final co-result.
+func.def @coresult_encodings(%input: tensor<4xf32>) {
+  %view, %reference, %layout = test.deflate %input : tensor<4xf32> -> (view<4xf32, %layout>, test.ref<view<4xf32, %layout>>, encoding<layout>)
+  test.use %view : view<4xf32, %layout>
+  test.use %reference : test.ref<view<4xf32, %layout>>
+  func.return
+}
+
+// ====
+
+// Ordinary nested regions retain enclosing type references, and an isolated
+// sibling does not change the enclosing visibility floor after it exits.
+func.def @shape_restoration(%count: index, %condition: i1) {
+  func.def @local_pool(%byte_count: index, %storage: pool<[%byte_count]>) {
+    func.return
+  }
+  %seed = test.constant 7 : i32
+  scf.if %condition {
+    %tile = test.convert %seed : i32 -> tile<[%count]xf32>
+    test.use %tile : tile<[%count]xf32>
+  } else {
+  }
+  func.return
+}
+
+// ====
+
+// Type references obey actual CFG dominance, not declaration order.
+func.def @sibling_shape(%condition: i1) {
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  %count = index.constant 4 : index
+  func.return
+^right:
+  %seed = test.constant 7 : i32
+  // ERROR@+1: DOMINANCE/016 "count"
+  %tile = test.convert %seed : i32 -> tile<[%count]xf32>
+  func.return
+}

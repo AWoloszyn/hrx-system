@@ -120,6 +120,7 @@ from loom.dsl import (
     OffsetCountMatchesRank,
     Op,
     Operand,
+    OperandDictionary,
     OperandRole,
     ParameterizedAttrDef,
     Reads,
@@ -2389,7 +2390,10 @@ test_operand_dict = Op(
             doc="Sorted operand dictionary keys mapped to operand ordinals.",
         ),
     ],
-    constraints=[SameType("input", "result")],
+    constraints=[
+        SameType("input", "result"),
+        OperandDictionary("params", "param_names"),
+    ],
     traits=[PURE],
     format=[
         Ref("input"),

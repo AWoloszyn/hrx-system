@@ -122,6 +122,7 @@ loom_cc_test(
     loom::analysis::availability
     loom::ir
     loom::ops::op_defs
+    loom::ops::scf
     loom::ops::test
 )
 

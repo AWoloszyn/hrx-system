@@ -388,7 +388,7 @@ static iree_status_t loom_parser_try_infer_same_type_result(
     loom_parsed_op_t* parsed, uint16_t result_index) {
   const loom_field_ref_t target_ref =
       LOOM_FIELD_REF(LOOM_FIELD_RESULT, result_index);
-  for (uint16_t constraint_index = 0;
+  for (uint16_t constraint_index = vtable->operand_dictionary_count;
        constraint_index < vtable->constraint_count; ++constraint_index) {
     const loom_constraint_t* constraint =
         &vtable->constraints[constraint_index];

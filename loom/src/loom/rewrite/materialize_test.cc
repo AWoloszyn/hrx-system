@@ -12,6 +12,7 @@
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
 #include "loom/ops/op_defs.h"
+#include "loom/ops/scf/ops.h"
 #include "loom/ops/test/ops.h"
 #include "loom/rewrite/rewriter.h"
 
@@ -29,6 +30,9 @@ class MaterializeTest : public ::testing::Test {
         loom_test_dialect_vtables(&vtable_count);
     IREE_ASSERT_OK(loom_context_register_dialect(
         &context_, LOOM_DIALECT_TEST, vtables, (uint16_t)vtable_count));
+    vtables = loom_scf_dialect_vtables(&vtable_count);
+    IREE_ASSERT_OK(loom_context_register_dialect(
+        &context_, LOOM_DIALECT_SCF, vtables, (uint16_t)vtable_count));
     IREE_ASSERT_OK(loom_context_finalize(&context_));
     IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("source"),
                                         &block_pool_, nullptr,
@@ -80,6 +84,20 @@ class MaterializeTest : public ::testing::Test {
     return availability;
   }
 
+  loom_op_t* BuildRegionOwner(loom_builder_t* builder) {
+    loom_op_t* op = nullptr;
+    IREE_CHECK_OK(loom_test_block_args_build(builder, nullptr, 0,
+                                             LOOM_LOCATION_UNKNOWN, &op));
+    return op;
+  }
+
+  loom_op_t* BuildHint(loom_builder_t* builder) {
+    loom_op_t* op = nullptr;
+    IREE_CHECK_OK(
+        loom_scf_schedule_fence_build(builder, LOOM_LOCATION_UNKNOWN, &op));
+    return op;
+  }
+
   iree_arena_block_pool_t block_pool_;
   loom_context_t context_;
   loom_module_t* source_ = nullptr;
@@ -88,6 +106,70 @@ class MaterializeTest : public ::testing::Test {
   loom_builder_t target_builder_ = {};
   iree_arena_allocator_t remap_arena_;
 };
+
+TEST_F(MaterializeTest, ClonesOwnedDeclarationArguments) {
+  loom_string_id_t source_name = LOOM_STRING_ID_INVALID;
+  loom_string_id_t target_name = LOOM_STRING_ID_INVALID;
+  IREE_ASSERT_OK(
+      loom_module_intern_string(source_, IREE_SV("source"), &source_name));
+  IREE_ASSERT_OK(
+      loom_module_intern_string(target_, IREE_SV("target"), &target_name));
+  uint16_t source_symbol = LOOM_SYMBOL_ID_INVALID;
+  uint16_t target_symbol = LOOM_SYMBOL_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_add_symbol(source_, source_name, &source_symbol));
+  IREE_ASSERT_OK(loom_module_add_symbol(target_, target_name, &target_symbol));
+  const loom_type_t argument_types[] = {
+      loom_type_scalar(LOOM_SCALAR_TYPE_INDEX),
+      loom_type_pool(loom_dim_pack_static(4)),
+  };
+  loom_op_t* source_declaration = nullptr;
+  IREE_ASSERT_OK(loom_test_decl_build(
+      &source_builder_, /*build_flags=*/0, /*visibility=*/0, /*cc=*/0,
+      {0, source_symbol}, argument_types, IREE_ARRAYSIZE(argument_types),
+      /*result_types=*/nullptr, /*result_count=*/0, /*tied_results=*/nullptr,
+      /*tied_result_count=*/0, LOOM_LOCATION_UNKNOWN, &source_declaration));
+  const loom_value_slice_t source_arguments =
+      loom_test_decl_args(source_declaration);
+  IREE_ASSERT_OK(loom_module_set_value_type(
+      source_, source_arguments.values[1],
+      loom_type_pool(loom_dim_pack_dynamic(source_arguments.values[0]))));
+
+  loom_op_t* target_constant = nullptr;
+  IREE_ASSERT_OK(loom_test_constant_build(
+      &target_builder_, loom_attr_i64(4), argument_types[0],
+      LOOM_LOCATION_UNKNOWN, &target_constant));
+  loom_symbol_ref_t target_callee = {0, target_symbol};
+  loom_ir_remap_options_t options = {};
+  options.remap_symbol = loom_ir_remap_symbol_callback_make(
+      [](void* user_data, const loom_module_t*, loom_module_t*,
+         loom_symbol_ref_t, loom_symbol_ref_t* out_ref) {
+        *out_ref = *static_cast<const loom_symbol_ref_t*>(user_data);
+        return iree_ok_status();
+      },
+      &target_callee);
+  loom_ir_remap_t remap =
+      InitializeRemap(/*allow_unmapped_values=*/false, &options);
+  loom_op_t* target_declaration = nullptr;
+  IREE_ASSERT_OK(loom_ir_clone_op(&target_builder_, source_declaration, &remap,
+                                  &target_declaration));
+  const loom_value_slice_t target_arguments =
+      loom_test_decl_args(target_declaration);
+  ASSERT_EQ(target_arguments.count, source_arguments.count);
+  for (uint16_t i = 0; i < target_arguments.count; ++i) {
+    EXPECT_NE(target_arguments.values[i], source_arguments.values[i]);
+    const loom_value_t* argument =
+        loom_module_value(target_, target_arguments.values[i]);
+    EXPECT_EQ(argument->use_count, 1u);
+    EXPECT_EQ(loom_value_def_op(argument), nullptr);
+    EXPECT_EQ(loom_value_owner_op(argument), target_declaration);
+  }
+  EXPECT_TRUE(loom_type_equal(
+      loom_module_value_type(target_, target_arguments.values[1]),
+      loom_type_pool(loom_dim_pack_dynamic(target_arguments.values[0]))));
+  IREE_ASSERT_OK(loom_op_erase(target_, target_declaration));
+  EXPECT_FALSE(loom_module_has_active_type_uses(target_));
+  EXPECT_TRUE(loom_module_has_active_type_uses(source_));
+}
 
 TEST_F(MaterializeTest, ClonesCoResultDynamicTypeReferences) {
   loom_type_t index_type = loom_type_scalar(LOOM_SCALAR_TYPE_INDEX);
@@ -807,8 +889,74 @@ TEST_F(MaterializeTest, MovesBlockOpsAndRemapsPredicateAttrs) {
   ASSERT_EQ(predicates.kind, LOOM_ATTR_PREDICATE_LIST);
   ASSERT_EQ(predicates.count, 1u);
   EXPECT_EQ(predicates.predicate_list[0].args[0], (int64_t)target_dim);
+  EXPECT_EQ(
+      loom_module_value_attribute_use_heads(source_, source_dim)->predicate,
+      0u);
+  EXPECT_NE(
+      loom_module_value_attribute_use_heads(source_, target_dim)->predicate,
+      0u);
   EXPECT_EQ(assume_op->next_op, sentinel_op);
   loom_rewriter_deinitialize(&rewriter);
+}
+
+TEST_F(MaterializeTest, ClonedPredicateOwnersRemainModuleLocal) {
+  const loom_type_t index = loom_type_scalar(LOOM_SCALAR_TYPE_INDEX);
+  loom_op_t* source_constant = nullptr;
+  IREE_ASSERT_OK(loom_test_constant_build(&source_builder_, loom_attr_i64(1),
+                                          index, LOOM_LOCATION_UNKNOWN,
+                                          &source_constant));
+  const loom_value_id_t source_value =
+      loom_test_constant_result(source_constant);
+  loom_predicate_t predicate = {
+      LOOM_PREDICATE_EQ, 2, {LOOM_PRED_ARG_VALUE, LOOM_PRED_ARG_CONST}, {},
+      {source_value, 1},
+  };
+  loom_op_t* source_owner = nullptr;
+  IREE_ASSERT_OK(loom_test_assume_build(&source_builder_, &source_value, 1,
+                                        &predicate, 1, &index, 1,
+                                        LOOM_LOCATION_UNKNOWN, &source_owner));
+  loom_op_t* target_constant = nullptr;
+  IREE_ASSERT_OK(loom_test_constant_build(&target_builder_, loom_attr_i64(1),
+                                          index, LOOM_LOCATION_UNKNOWN,
+                                          &target_constant));
+  const loom_value_id_t target_value =
+      loom_test_constant_result(target_constant);
+  loom_ir_remap_t remap = InitializeRemap();
+  IREE_ASSERT_OK(loom_ir_remap_map_value(&remap, source_value, target_value));
+  loom_op_t* target_owner = nullptr;
+  IREE_ASSERT_OK(
+      loom_ir_clone_op(&target_builder_, source_owner, &remap, &target_owner));
+  EXPECT_NE(
+      loom_module_value_attribute_use_heads(source_, source_value)->predicate,
+      0u);
+  EXPECT_NE(
+      loom_module_value_attribute_use_heads(target_, target_value)->predicate,
+      0u);
+  loom_op_t* replacement_constant = nullptr;
+  IREE_ASSERT_OK(loom_test_constant_build(&target_builder_, loom_attr_i64(1),
+                                          index, LOOM_LOCATION_UNKNOWN,
+                                          &replacement_constant));
+  const loom_value_id_t replacement =
+      loom_test_constant_result(replacement_constant);
+  IREE_ASSERT_OK(
+      loom_value_replace_all_uses_with(target_, target_value, replacement));
+  EXPECT_EQ(loom_op_const_attrs(source_owner)[0].predicate_list[0].args[0],
+            source_value);
+  EXPECT_EQ(loom_op_const_attrs(target_owner)[0].predicate_list[0].args[0],
+            replacement);
+  EXPECT_EQ(
+      loom_module_value_attribute_use_heads(target_, target_value)->predicate,
+      0u);
+  EXPECT_NE(
+      loom_module_value_attribute_use_heads(target_, replacement)->predicate,
+      0u);
+  IREE_ASSERT_OK(loom_op_erase(target_, target_owner));
+  EXPECT_EQ(
+      loom_module_value_attribute_use_heads(target_, replacement)->predicate,
+      0u);
+  EXPECT_NE(
+      loom_module_value_attribute_use_heads(source_, source_value)->predicate,
+      0u);
 }
 
 TEST_F(MaterializeTest, RejectsMoveWithUnavailableRemappedCaptures) {
@@ -857,6 +1005,146 @@ TEST_F(MaterializeTest, RejectsMoveWithUnavailableRemappedCaptures) {
   EXPECT_EQ(source_block->op_count, 2u);
   EXPECT_EQ(input_op->parent_block, source_block);
   EXPECT_EQ(deflate_op->parent_block, source_block);
+  loom_rewriter_deinitialize(&rewriter);
+}
+
+TEST_F(MaterializeTest, HintPresenceTracksLastSourceAcrossRebuildAndErase) {
+  loom_op_t* outer = BuildRegionOwner(&source_builder_);
+  loom_region_t* outer_region = loom_test_block_args_body(outer);
+  loom_builder_enter_region(&source_builder_, outer, outer_region);
+  loom_op_t* inner = BuildRegionOwner(&source_builder_);
+  loom_region_t* inner_region = loom_test_block_args_body(inner);
+  const auto outer_ip =
+      loom_builder_enter_region(&source_builder_, inner, inner_region);
+  EXPECT_FALSE(loom_op_regions_have_hints(outer));
+  loom_op_t* first_hint = BuildHint(&source_builder_);
+  loom_op_t* last_hint = BuildHint(&source_builder_);
+  loom_module_record_op_summaries(source_, first_hint);
+  loom_module_update_op_direct_summaries(
+      source_, first_hint, first_hint->traits, first_hint->traits);
+  EXPECT_EQ(inner_region->hint_source_count, 2u);
+  EXPECT_EQ(outer_region->hint_source_count, 1u);
+  EXPECT_EQ(source_->body->hint_source_count, 1u);
+  EXPECT_TRUE(loom_op_regions_have_hints(outer));
+  EXPECT_FALSE(loom_op_regions_have_hints(first_hint));
+
+  loom_builder_restore(&source_builder_, outer_ip);
+  loom_op_t* outer_hint = BuildHint(&source_builder_);
+  EXPECT_EQ(outer_region->hint_source_count, 2u);
+  EXPECT_EQ(source_->body->hint_source_count, 1u);
+  IREE_ASSERT_OK(loom_op_erase(source_, first_hint));
+  EXPECT_EQ(inner_region->hint_source_count, 1u);
+  EXPECT_EQ(outer_region->hint_source_count, 2u);
+
+  // Rebuilding is idempotent and preserves one contribution per child region,
+  // not one contribution per transitive hint.
+  for (int iteration = 0; iteration < 2; ++iteration) {
+    IREE_ASSERT_OK(loom_module_compute_uses(source_));
+    EXPECT_EQ(inner_region->hint_source_count, 1u);
+    EXPECT_EQ(outer_region->hint_source_count, 2u);
+    EXPECT_EQ(source_->body->hint_source_count, 1u);
+  }
+  IREE_ASSERT_OK(loom_op_erase(source_, last_hint));
+  EXPECT_FALSE(loom_op_regions_have_hints(inner));
+  EXPECT_TRUE(loom_op_regions_have_hints(outer));
+  EXPECT_EQ(outer_region->hint_source_count, 1u);
+  IREE_ASSERT_OK(loom_op_erase(source_, outer_hint));
+  EXPECT_FALSE(loom_op_regions_have_hints(outer));
+  EXPECT_FALSE(loom_region_has_hints(source_->body));
+}
+
+TEST_F(MaterializeTest, ClonesNestedHintPresenceBeforeOwnerFinalization) {
+  loom_op_t* outer = BuildRegionOwner(&source_builder_);
+  loom_builder_enter_region(&source_builder_, outer,
+                            loom_test_block_args_body(outer));
+  loom_op_t* inner = BuildRegionOwner(&source_builder_);
+  loom_builder_enter_region(&source_builder_, inner,
+                            loom_test_block_args_body(inner));
+  BuildHint(&source_builder_);
+  BuildHint(&source_builder_);
+
+  loom_ir_remap_t remap = InitializeRemap();
+  loom_op_t* clone = nullptr;
+  IREE_ASSERT_OK(loom_ir_clone_op(&target_builder_, outer, &remap, &clone));
+  loom_region_t* cloned_region = loom_test_block_args_body(clone);
+  loom_op_t* cloned_inner = loom_region_entry_block(cloned_region)->first_op;
+  EXPECT_EQ(cloned_region->hint_source_count, 1u);
+  EXPECT_EQ(loom_test_block_args_body(cloned_inner)->hint_source_count, 2u);
+  EXPECT_EQ(target_->body->hint_source_count, 1u);
+  IREE_ASSERT_OK(loom_op_erase(source_, outer));
+  EXPECT_FALSE(loom_region_has_hints(source_->body));
+  EXPECT_TRUE(loom_op_regions_have_hints(clone));
+  IREE_ASSERT_OK(loom_module_compute_uses(target_));
+  EXPECT_EQ(cloned_region->hint_source_count, 1u);
+  EXPECT_EQ(loom_test_block_args_body(cloned_inner)->hint_source_count, 2u);
+  IREE_ASSERT_OK(loom_op_erase(target_, clone));
+  EXPECT_FALSE(loom_region_has_hints(target_->body));
+}
+
+TEST_F(MaterializeTest, MovesNestedAndWholeRegionHintSources) {
+  loom_op_t* source_owner = BuildRegionOwner(&source_builder_);
+  loom_op_t* target_owner = BuildRegionOwner(&source_builder_);
+  loom_region_t* source_region = loom_test_block_args_body(source_owner);
+  loom_region_t* target_region = loom_test_block_args_body(target_owner);
+  loom_builder_enter_region(&source_builder_, source_owner, source_region);
+  loom_op_t* direct_hint = BuildHint(&source_builder_);
+  loom_op_t* nested = BuildRegionOwner(&source_builder_);
+  loom_builder_enter_region(&source_builder_, nested,
+                            loom_test_block_args_body(nested));
+  BuildHint(&source_builder_);
+  BuildHint(&source_builder_);
+  EXPECT_EQ(source_region->hint_source_count, 2u);
+  EXPECT_FALSE(loom_region_has_hints(target_region));
+
+  loom_rewriter_t rewriter = {};
+  IREE_ASSERT_OK(loom_rewriter_initialize(&rewriter, source_, &remap_arena_));
+  IREE_ASSERT_OK(loom_rewriter_move_to_block_end(
+      &rewriter, nested, loom_region_entry_block(target_region), target_owner));
+  EXPECT_EQ(source_region->hint_source_count, 1u);
+  EXPECT_EQ(target_region->hint_source_count, 1u);
+  EXPECT_EQ(source_->body->hint_source_count, 2u);
+  EXPECT_EQ(loom_test_block_args_body(nested)->hint_source_count, 2u);
+
+  loom_block_t* moved_entry = nullptr;
+  IREE_ASSERT_OK(loom_rewriter_move_region_blocks(
+      &rewriter, source_region, source_owner, target_region, 1, target_owner,
+      &moved_entry));
+  EXPECT_FALSE(loom_region_has_hints(source_region));
+  EXPECT_EQ(target_region->hint_source_count, 2u);
+  EXPECT_EQ(source_->body->hint_source_count, 1u);
+  EXPECT_EQ(direct_hint->parent_block, moved_entry);
+  IREE_ASSERT_OK(loom_op_erase(source_, nested));
+  EXPECT_EQ(target_region->hint_source_count, 1u);
+  IREE_ASSERT_OK(loom_op_erase(source_, direct_hint));
+  EXPECT_FALSE(loom_region_has_hints(target_region));
+  EXPECT_FALSE(loom_region_has_hints(source_->body));
+  loom_rewriter_deinitialize(&rewriter);
+}
+
+TEST_F(MaterializeTest, MovesHintSubtreeFromParentlessDetachedRegion) {
+  loom_op_t* insertion_target = BuildRegionOwner(&source_builder_);
+  loom_region_t* detached_region = nullptr;
+  IREE_ASSERT_OK(loom_module_allocate_region(source_, 1, &detached_region));
+  loom_builder_t detached_builder = {};
+  loom_builder_initialize(source_, &source_->arena,
+                          loom_region_entry_block(detached_region),
+                          &detached_builder);
+  loom_op_t* nested = BuildRegionOwner(&detached_builder);
+  loom_builder_enter_region(&detached_builder, nested,
+                            loom_test_block_args_body(nested));
+  BuildHint(&detached_builder);
+  EXPECT_TRUE(loom_region_has_hints(detached_region));
+  EXPECT_FALSE(loom_region_has_hints(source_->body));
+
+  loom_rewriter_t rewriter = {};
+  IREE_ASSERT_OK(loom_rewriter_initialize(&rewriter, source_, &remap_arena_));
+  IREE_ASSERT_OK(
+      loom_rewriter_move_before(&rewriter, nested, insertion_target));
+  EXPECT_FALSE(loom_region_has_hints(detached_region));
+  EXPECT_TRUE(loom_region_has_hints(source_->body));
+  EXPECT_EQ(loom_test_block_args_body(nested)->hint_source_count, 1u);
+  IREE_ASSERT_OK(loom_op_erase(source_, nested));
+  EXPECT_FALSE(loom_region_has_hints(source_->body));
   loom_rewriter_deinitialize(&rewriter);
 }
 

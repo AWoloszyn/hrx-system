@@ -178,9 +178,7 @@ static iree_status_t loom_low_decompose_cfg_tuples_collect_slices(
     loom_low_cfg_tuple_candidate_t* candidate, bool* out_eligible) {
   *out_eligible = false;
   loom_value_t* value = loom_module_value(state->module, candidate->arg_id);
-  if (value->use_count == 0 ||
-      loom_module_value_has_predicate_attribute_uses(state->module,
-                                                     candidate->arg_id) ||
+  if (value->use_count == 0 || loom_value_has_attribute_uses(value) ||
       loom_module_value_has_type_uses(state->module, candidate->arg_id)) {
     return iree_ok_status();
   }
