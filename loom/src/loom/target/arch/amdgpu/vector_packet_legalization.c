@@ -1068,7 +1068,8 @@ static iree_status_t loom_amdgpu_vector_packet_staged_store(
       loom_index_constant_result(step_op), /*iter_args=*/NULL,
       /*iter_args_count=*/0, /*tied_results=*/NULL,
       /*tied_result_count=*/0, LOOM_VALUE_ID_INVALID,
-      /*unroll_policy=*/0, /*unroll_schedule=*/0, store_op->location,
+      /*unroll_policy=*/0, /*unroll_schedule=*/0,
+      /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, store_op->location,
       &stage_loop_op));
   loom_builder_ip_t saved_ip = loom_builder_enter_region(
       builder, stage_loop_op, loom_scf_for_body(stage_loop_op));
@@ -1108,7 +1109,8 @@ static iree_status_t loom_amdgpu_vector_packet_staged_store(
       loom_index_constant_result(step_op), /*iter_args=*/NULL,
       /*iter_args_count=*/0, /*tied_results=*/NULL,
       /*tied_result_count=*/0, LOOM_VALUE_ID_INVALID,
-      /*unroll_policy=*/0, /*unroll_schedule=*/0, store_op->location,
+      /*unroll_policy=*/0, /*unroll_schedule=*/0,
+      /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, store_op->location,
       &commit_loop_op));
   saved_ip = loom_builder_enter_region(builder, commit_loop_op,
                                        loom_scf_for_body(commit_loop_op));
@@ -1252,7 +1254,8 @@ iree_status_t loom_amdgpu_legalize_oversized_vector_store(
       loom_index_constant_result(step_op), /*iter_args=*/NULL,
       /*iter_args_count=*/0, /*tied_results=*/NULL,
       /*tied_result_count=*/0, LOOM_VALUE_ID_INVALID,
-      /*unroll_policy=*/0, /*unroll_schedule=*/0, op->location, &loop_op));
+      /*unroll_policy=*/0, /*unroll_schedule=*/0,
+      /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, op->location, &loop_op));
 
   loom_builder_ip_t saved_ip =
       loom_builder_enter_region(builder, loop_op, loom_scf_for_body(loop_op));
@@ -1355,7 +1358,8 @@ iree_status_t loom_amdgpu_legalize_oversized_vector_reduce(
       loom_index_constant_result(upper_bound_op),
       loom_index_constant_result(step_op), &initial_accumulator, 1,
       /*tied_results=*/NULL, /*tied_result_count=*/0, LOOM_VALUE_ID_INVALID,
-      /*unroll_policy=*/0, /*unroll_schedule=*/0, op->location, &loop_op));
+      /*unroll_policy=*/0, /*unroll_schedule=*/0,
+      /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, op->location, &loop_op));
 
   loom_builder_ip_t saved_ip =
       loom_builder_enter_region(builder, loop_op, loom_scf_for_body(loop_op));

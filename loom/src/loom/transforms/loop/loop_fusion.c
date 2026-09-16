@@ -8,6 +8,7 @@
 
 #include "loom/analysis/availability.h"
 #include "loom/analysis/loop_domain.h"
+#include "loom/ir/attribute.h"
 #include "loom/ir/module.h"
 #include "loom/ops/op_defs.h"
 #include "loom/ops/scf/ops.h"
@@ -236,6 +237,16 @@ static bool loom_loop_fusion_read_for_info(loom_op_t* op,
                                            loom_loop_fusion_for_info_t* info) {
   if (!loom_scf_for_isa(op)) return false;
   if (op->tied_result_count != 0) return false;
+  // Authored schedules belong to this iteration domain and body. Their
+  // consumers must materialize them before fusion changes either.
+  if (loom_scf_for_pipeline_depth_is_present(op) ||
+      loom_scf_for_unroll_factor_is_present(op) ||
+      !loom_attr_is_absent(
+          loom_op_const_attrs(op)[loom_scf_for_unroll_policy_ATTR_INDEX]) ||
+      !loom_attr_is_absent(
+          loom_op_const_attrs(op)[loom_scf_for_unroll_schedule_ATTR_INDEX])) {
+    return false;
+  }
 
   loom_region_t* body = loom_scf_for_body(op);
   if (!body || body->block_count != 1) return false;
@@ -676,7 +687,8 @@ static iree_status_t loom_loop_fusion_fuse_pair(
       builder, /*build_flags=*/0, first->domain.lower_bound,
       first->domain.upper_bound, first->domain.step, iter_args, iter_arg_count,
       NULL, 0, LOOM_VALUE_ID_INVALID, /*unroll_policy=*/0,
-      /*unroll_schedule=*/0, first->op->location, &fused_loop);
+      /*unroll_schedule=*/0, /*pipeline_depth=*/LOOM_VALUE_ID_INVALID,
+      first->op->location, &fused_loop);
   if (iree_status_is_ok(status)) {
     status = loom_loop_fusion_copy_result_names(context->module, first, second,
                                                 fused_loop);

@@ -36,6 +36,7 @@
 #include "loom/transforms/loop/loop_fusion.h"
 #include "loom/transforms/math/legalize.h"
 #include "loom/transforms/ownership/ownership_lifetime.h"
+#include "loom/transforms/scf/scf_pipeline.h"
 #include "loom/transforms/scf/scf_to_cfg.h"
 #include "loom/transforms/scf/scf_unroll.h"
 #include "loom/transforms/symbol/inline_callables.h"
@@ -470,6 +471,11 @@ static const loom_pass_descriptor_t kBuiltinPassDescriptors[] = {
         .key = IREE_SVL("ownership-lifetime"),
         .info = loom_ownership_lifetime_pass_info,
         .module_run = loom_ownership_lifetime_run,
+    },
+    {
+        .key = IREE_SVL("pipeline-scf-for"),
+        .info = loom_scf_pipeline_pass_info,
+        .function_run = loom_scf_pipeline_run,
     },
     {
         .key = IREE_SVL("promote-private-fragments"),

@@ -22,6 +22,7 @@ class ScfBuilder(DialectBuilder):
         unroll_factor: ValueRef | None = ...,
         unroll_policy: str | None = ...,
         unroll_schedule: str | None = ...,
+        pipeline_depth: ValueRef | None = ...,
         body: Region | None = ...,
         name: str | None = ...,
         names: Sequence[str] | None = ...,

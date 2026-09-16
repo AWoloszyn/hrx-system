@@ -410,6 +410,17 @@ static bool loom_low_lower_op_attr_present(const loom_op_t* op,
 
 static iree_status_t loom_low_lower_emit_scf_for(
     loom_low_lower_context_t* context, const loom_op_t* source_op) {
+  if (loom_scf_for_pipeline_depth_is_present(source_op)) {
+    const loom_diagnostic_param_t params[] = {
+        loom_param_string(IREE_SV("pipeline")),
+        loom_param_i64(0),
+        loom_param_string(
+            IREE_SV("consumed by pipeline-scf-for before source-to-low")),
+    };
+    return loom_low_lower_emit_target_context_error(
+        context, source_op, LOOM_ERR_STRUCTURE_014, params,
+        IREE_ARRAYSIZE(params));
+  }
   loom_value_id_t low_lower_bound = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_low_lower_lookup_value(
       context, loom_scf_for_lower_bound(source_op), &low_lower_bound));

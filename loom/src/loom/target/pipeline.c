@@ -340,6 +340,14 @@ loom_target_pipeline_build_source_safe_normalization_after_legalize(
       &if_changed_op);
 }
 
+static iree_status_t loom_target_pipeline_build_source_loop_pipelining(
+    loom_builder_t* builder, void* user_data) {
+  (void)user_data;
+  IREE_RETURN_IF_ERROR(
+      loom_target_pipeline_build_run(builder, IREE_SV("pipeline-scf-for")));
+  return loom_target_pipeline_build_cleanup_if_changed(builder);
+}
+
 static iree_status_t
 loom_target_pipeline_build_cfg_source_finalization_after_legalize(
     loom_builder_t* builder, void* user_data) {
@@ -459,6 +467,9 @@ static iree_status_t loom_target_pipeline_build_source_low_body(
   IREE_RETURN_IF_ERROR(loom_pass_ir_build_if_changed(
       builder, loom_target_pipeline_build_cleanup_target_functions, NULL,
       &if_changed_op));
+  IREE_RETURN_IF_ERROR(loom_target_pipeline_build_for_target_functions(
+      builder, loom_target_pipeline_build_source_loop_pipelining, user_data,
+      &for_op));
   if (control_flow_lowering == LOOM_TARGET_CONTROL_FLOW_LOWERING_CFG) {
     IREE_RETURN_IF_ERROR(loom_target_pipeline_build_for_target_functions(
         builder,

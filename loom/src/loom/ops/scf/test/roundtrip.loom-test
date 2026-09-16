@@ -318,3 +318,12 @@ func.def @for_in_if(%cond: i1, %lo: index, %hi: index, %step: index, %init: f32)
   }
   func.return %r : f32
 }
+
+// ====
+
+func.def @independent_ssa_pipeline_and_unroll(%begin: index, %end: index, %step: index, %depth: index, %factor: index, %initial: f32) -> (f32) {
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : f32) -> (f32) unroll(%factor) schedule(recurrence) pipeline(%depth) {
+    scf.yield %sum : f32
+  }
+  func.return %result : f32
+}

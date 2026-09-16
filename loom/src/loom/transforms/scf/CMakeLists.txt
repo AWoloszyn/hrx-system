@@ -26,6 +26,50 @@ loom_cc_library(
 
 loom_cc_library(
   NAME
+    scf_pipeline_plan
+  HDRS
+    "scf_pipeline_plan.h"
+  SRCS
+    "scf_pipeline_plan.c"
+  DEPS
+    ::scf_body
+    iree::base
+    loom::ir
+    loom::ops::op_defs
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
+    scf_pipeline
+  HDRS
+    "scf_pipeline.h"
+  SRCS
+    "scf_pipeline.c"
+  DEPS
+    ::scf_pipeline_plan
+    iree::base
+    loom::error::emitter
+    loom::error::error_defs
+    loom::ir
+    loom::ir::facts
+    loom::ops::index
+    loom::ops::op_defs
+    loom::ops::scalar
+    loom::ops::scf
+    loom::pass::report
+    loom::pass::types
+    loom::pass::value_facts
+    loom::rewrite::materialize
+    loom::rewrite::remap
+    loom::rewrite::rewriter
+    loom::util::fact_table
+    loom::util::walk
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
     scf_to_cfg
   HDRS
     "scf_to_cfg.h"

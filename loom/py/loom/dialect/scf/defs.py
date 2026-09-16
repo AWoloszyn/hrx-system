@@ -329,6 +329,12 @@ scf_for = Op(
             optional=True,
             doc="Optional SSA unroll factor policy consumed by unroll transforms. The factor bounds body cloning and does not require the loop trip count to be static.",
         ),
+        Operand(
+            "pipeline_depth",
+            INDEX,
+            optional=True,
+            doc="Optional SSA read-ahead depth consumed by pipeline-scf-for. A positive exact depth counts original iterations independently of unrolling; depth one leaves the serial loop. Ordinary reads and their prerequisites run ahead of ordered consumers, with guarded startup and drain preserving the finite domain.",
+        ),
     ],
     attrs=[
         AttrDef(
@@ -404,6 +410,10 @@ scf_for = Op(
             [Clause("schedule", Attr("unroll_schedule"))],
             anchor="unroll_schedule",
         ),
+        OptionalGroup(
+            [Clause("pipeline", Ref("pipeline_depth"))],
+            anchor="pipeline_depth",
+        ),
         Region("body"),
     ],
     examples=[
@@ -412,6 +422,7 @@ scf_for = Op(
         "%result = scf.for %iv = [%c0 to %n step %c1](%acc = %init : f32) -> (f32) {\n  %next = scalar.addf %acc, %acc : f32\n  scf.yield %next : f32\n}",
         "scf.for %iv = [%c0 to %n step %c1] unroll(%factor) {\n  scf.yield\n}",
         "scf.for %iv = [%c0 to %n step %c1] unroll(%factor) schedule(interleaved) {\n  scf.yield\n}",
+        "%result = scf.for %iv = [%c0 to %n step %c1](%sum = %initial : f32) -> (f32) pipeline(%depth) {\n  %value = view.load %input[%iv] : view<[%n]xf32> -> f32\n  %next = scalar.addf %sum, %value : f32\n  scf.yield %next : f32\n}",
         "%result = scf.for %iv = [%c0 to %n step %c1](%acc = %init : f32) -> (f32) unroll(%factor) schedule(recurrence) {\n  %next = scalar.addf %acc, %acc : f32\n  scf.yield %next : f32\n}",
     ],
 )

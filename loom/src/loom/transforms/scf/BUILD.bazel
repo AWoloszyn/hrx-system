@@ -25,6 +25,44 @@ loom_cc_library(
 )
 
 loom_cc_library(
+    name = "scf_pipeline_plan",
+    srcs = ["scf_pipeline_plan.c"],
+    hdrs = ["scf_pipeline_plan.h"],
+    deps = [
+        ":scf_body",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops:op_defs",
+        "//runtime/src/iree/base",
+    ],
+)
+
+loom_cc_library(
+    name = "scf_pipeline",
+    srcs = ["scf_pipeline.c"],
+    hdrs = ["scf_pipeline.h"],
+    deps = [
+        ":scf_pipeline_plan",
+        "//loom/src/loom/error:emitter",
+        "//loom/src/loom/error:error_defs",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ir:facts",
+        "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/ops/index",
+        "//loom/src/loom/ops/scalar",
+        "//loom/src/loom/ops/scf",
+        "//loom/src/loom/pass:report",
+        "//loom/src/loom/pass:types",
+        "//loom/src/loom/pass:value_facts",
+        "//loom/src/loom/rewrite:materialize",
+        "//loom/src/loom/rewrite:remap",
+        "//loom/src/loom/rewrite:rewriter",
+        "//loom/src/loom/util:fact_table",
+        "//loom/src/loom/util:walk",
+        "//runtime/src/iree/base",
+    ],
+)
+
+loom_cc_library(
     name = "scf_to_cfg",
     srcs = ["scf_to_cfg.c"],
     hdrs = ["scf_to_cfg.h"],
