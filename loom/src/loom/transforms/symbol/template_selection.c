@@ -310,6 +310,14 @@ typedef struct loom_template_selection_state_t {
   // Symbol-pruning policy shared with the liveness root classifier.
   loom_symbol_pruning_options_t pruning_options;
 
+  // Caller-owned query roots supplementing ordinary symbol roots.
+  struct {
+    // Borrowed module-local symbol IDs in the current snapshot.
+    const loom_symbol_id_t* values;
+    // Number of entries in |values|.
+    iree_host_size_t count;
+  } root_symbol_ids;
+
   // Liveness result after apply-generated provider edges.
   loom_symbol_liveness_t liveness;
 
@@ -1392,6 +1400,11 @@ static iree_status_t loom_template_selection_build_liveness(
       .root_query_user_data = &state->pruning_options,
       .contributors = &contributor,
       .contributor_count = 1,
+      .root_symbol_ids =
+          {
+              .values = state->root_symbol_ids.values,
+              .count = state->root_symbol_ids.count,
+          },
   };
   return loom_symbol_liveness_compute(state->module, &state->references,
                                       &options, state->arena, &state->liveness);
@@ -1523,6 +1536,11 @@ iree_status_t loom_template_selection_query(
       .target_versions = options->function_versions ? options->function_versions
                                                     : &empty_function_versions,
       .catalog = options->catalog,
+      .root_symbol_ids =
+          {
+              .values = options->root_symbol_ids.values,
+              .count = options->root_symbol_ids.count,
+          },
       .pruning_options =
           {
               .flags = LOOM_SYMBOL_PRUNING_RETAIN_TARGET_SOURCE_ENTRIES,

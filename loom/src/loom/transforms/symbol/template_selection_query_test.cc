@@ -4,6 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include <initializer_list>
 #include <string>
 
 #include "iree/base/internal/arena.h"
@@ -118,23 +119,26 @@ class TemplateSelectionQueryTest : public ::testing::Test {
       loom_module_t* module,
       const loom_template_provider_summary_t* external_providers,
       iree_host_size_t external_provider_count, iree_host_size_t origin_count,
-      loom_template_selection_mode_t mode =
-          LOOM_TEMPLATE_SELECTION_MODE_EARLY) {
+      loom_template_selection_mode_t mode = LOOM_TEMPLATE_SELECTION_MODE_EARLY,
+      std::initializer_list<loom_symbol_id_t> roots = {}) {
     loom_symbol_fact_table_t fact_table = {};
     loom_symbol_fact_table_initialize(&fact_table, &arena_);
     loom_template_provider_catalog_t catalog = {};
     loom_template_provider_catalog_initialize(&catalog, &arena_);
-    IREE_CHECK_OK(loom_template_provider_catalog_build(
+    iree::Status status = loom_template_provider_catalog_build(
         &catalog, module, &fact_table, external_providers,
-        external_provider_count));
+        external_provider_count);
+    IREE_EXPECT_OK(status);
+    if (!status.ok()) return {};
     loom_template_selection_query_result_t result = {};
     const loom_template_selection_query_options_t query_options = {
         /*.mode=*/mode,
         /*.catalog=*/&catalog,
         /*.function_versions=*/nullptr,
         /*.origin_count=*/origin_count,
+        /*.root_symbol_ids=*/{roots.begin(), roots.size()},
     };
-    IREE_CHECK_OK(loom_template_selection_query(
+    IREE_EXPECT_OK(loom_template_selection_query(
         module, &query_options, &block_pool_, &arena_, &result));
     return result;
   }
@@ -144,11 +148,11 @@ class TemplateSelectionQueryTest : public ::testing::Test {
   iree_arena_allocator_t arena_;
 };
 
-TEST_F(TemplateSelectionQueryTest, SelectsExternalProviderWithoutMutation) {
+TEST_F(TemplateSelectionQueryTest, SelectsExplicitRootWithoutMutation) {
   ModulePtr module = ParseModule(R"(
 template.decl @demo.family(%x: i32) -> (i32)
 
-func.def public @entry(%x: i32) -> (i32) {
+func.def @entry(%x: i32) -> (i32) {
   %a = template.apply<@demo.family>(%x) : (i32) -> (i32)
   %b = template.apply<@demo.family>(%a) : (i32) -> (i32)
   func.return %b : i32
@@ -162,8 +166,15 @@ template.def<@demo.family> @external(%x: i32) -> (i32) {
       module.get(), IREE_SV("demo.family"), IREE_SV("external"), 7);
   const std::string module_before = PrintModule(module.get());
 
-  const loom_template_selection_query_result_t result =
+  const loom_template_selection_query_result_t unrooted_result =
       Query(module.get(), &external, 1, /*origin_count=*/8);
+  EXPECT_EQ(unrooted_result.required_origins.count, 0u);
+  EXPECT_EQ(unrooted_result.unresolved_site_count, 0u);
+
+  const loom_template_selection_query_result_t result =
+      Query(module.get(), &external, 1, /*origin_count=*/8,
+            LOOM_TEMPLATE_SELECTION_MODE_EARLY,
+            {FindSymbol(module.get(), IREE_SV("entry"))});
 
   ASSERT_EQ(result.required_origins.count, 1u);
   EXPECT_EQ(result.required_origins.values[0], 7u);
