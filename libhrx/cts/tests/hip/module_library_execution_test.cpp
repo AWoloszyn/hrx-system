@@ -49,6 +49,7 @@ using HipGetDevicePropertiesFn = hipError_t (*)(hipDeviceProp_t* properties,
                                                 int device);
 using HipDeviceSynchronizeFn = hipError_t (*)(void);
 using HipGetLastErrorFn = hipError_t (*)(void);
+using HipPeekAtLastErrorFn = hipError_t (*)(void);
 using HipMallocFn = hipError_t (*)(hipDeviceptr_t* pointer, size_t size);
 using HipFreeFn = hipError_t (*)(hipDeviceptr_t pointer);
 using HipMemcpyFn = hipError_t (*)(void* target, const void* source,
@@ -178,9 +179,19 @@ using HipGetSymbolSizeFn = hipError_t (*)(size_t* size, const void* symbol);
 using HipMemcpyToSymbolFn = hipError_t (*)(const void* symbol,
                                            const void* source, size_t size,
                                            size_t offset, hipMemcpyKind kind);
+using HipMemcpyToSymbolAsyncFn = hipError_t (*)(const void* symbol,
+                                                const void* source, size_t size,
+                                                size_t offset,
+                                                hipMemcpyKind kind,
+                                                hipStream_t stream);
 using HipMemcpyFromSymbolFn = hipError_t (*)(void* target, const void* symbol,
                                              size_t size, size_t offset,
                                              hipMemcpyKind kind);
+using HipMemcpyFromSymbolAsyncFn = hipError_t (*)(void* target,
+                                                  const void* symbol,
+                                                  size_t size, size_t offset,
+                                                  hipMemcpyKind kind,
+                                                  hipStream_t stream);
 using HipGetFuncBySymbolFn = hipError_t (*)(hipFunction_t* function,
                                             const void* symbol);
 using HipRegisterFatBinaryFn = void** (*)(const void* image);
@@ -212,6 +223,8 @@ struct HipApi {
     HRX_RESOLVE_HIP_API(device_synchronize, HipDeviceSynchronizeFn,
                         "hipDeviceSynchronize");
     HRX_RESOLVE_HIP_API(get_last_error, HipGetLastErrorFn, "hipGetLastError");
+    HRX_RESOLVE_HIP_API(peek_at_last_error, HipPeekAtLastErrorFn,
+                        "hipPeekAtLastError");
     HRX_RESOLVE_HIP_API(malloc, HipMallocFn, "hipMalloc");
     HRX_RESOLVE_HIP_API(free, HipFreeFn, "hipFree");
     HRX_RESOLVE_HIP_API(memcpy, HipMemcpyFn, "hipMemcpy");
@@ -294,8 +307,12 @@ struct HipApi {
                         "hipGetSymbolSize");
     HRX_RESOLVE_HIP_API(memcpy_to_symbol, HipMemcpyToSymbolFn,
                         "hipMemcpyToSymbol");
+    HRX_RESOLVE_HIP_API(memcpy_to_symbol_async, HipMemcpyToSymbolAsyncFn,
+                        "hipMemcpyToSymbolAsync");
     HRX_RESOLVE_HIP_API(memcpy_from_symbol, HipMemcpyFromSymbolFn,
                         "hipMemcpyFromSymbol");
+    HRX_RESOLVE_HIP_API(memcpy_from_symbol_async, HipMemcpyFromSymbolAsyncFn,
+                        "hipMemcpyFromSymbolAsync");
     HRX_RESOLVE_HIP_API(get_func_by_symbol, HipGetFuncBySymbolFn,
                         "hipGetFuncBySymbol");
     HRX_RESOLVE_HIP_API(register_fat_binary, HipRegisterFatBinaryFn,
@@ -309,11 +326,11 @@ struct HipApi {
 #undef HRX_RESOLVE_HIP_API
     return init && deinit && get_device && set_device && get_device_count &&
            get_device_properties && device_synchronize && get_last_error &&
-           malloc && free && memcpy && stream_create && stream_destroy &&
-           stream_synchronize && event_create && event_destroy &&
-           stream_begin_capture && stream_end_capture && graph_get_nodes &&
-           graph_destroy && graph_instantiate && graph_exec_destroy &&
-           graph_launch && graph_kernel_node_get_params &&
+           peek_at_last_error && malloc && free && memcpy && stream_create &&
+           stream_destroy && stream_synchronize && event_create &&
+           event_destroy && stream_begin_capture && stream_end_capture &&
+           graph_get_nodes && graph_destroy && graph_instantiate &&
+           graph_exec_destroy && graph_launch && graph_kernel_node_get_params &&
            graph_kernel_node_set_params && graph_exec_kernel_node_set_params &&
            module_load && module_load_data_ex && module_load_fat_binary &&
            module_unload && module_get_function && module_get_global &&
@@ -326,8 +343,9 @@ struct HipApi {
            kernel_get_param_info && kernel_get_attribute && link_create &&
            link_add_data && link_add_file && link_complete && link_destroy &&
            get_symbol_address && get_symbol_size && memcpy_to_symbol &&
-           memcpy_from_symbol && get_func_by_symbol && register_fat_binary &&
-           unregister_fat_binary && register_function &&
+           memcpy_to_symbol_async && memcpy_from_symbol &&
+           memcpy_from_symbol_async && get_func_by_symbol &&
+           register_fat_binary && unregister_fat_binary && register_function &&
            register_managed_variable;
   }
 
@@ -339,6 +357,7 @@ struct HipApi {
   HipGetDevicePropertiesFn get_device_properties = nullptr;
   HipDeviceSynchronizeFn device_synchronize = nullptr;
   HipGetLastErrorFn get_last_error = nullptr;
+  HipPeekAtLastErrorFn peek_at_last_error = nullptr;
   HipMallocFn malloc = nullptr;
   HipFreeFn free = nullptr;
   HipMemcpyFn memcpy = nullptr;
@@ -387,13 +406,27 @@ struct HipApi {
   HipGetSymbolAddressFn get_symbol_address = nullptr;
   HipGetSymbolSizeFn get_symbol_size = nullptr;
   HipMemcpyToSymbolFn memcpy_to_symbol = nullptr;
+  HipMemcpyToSymbolAsyncFn memcpy_to_symbol_async = nullptr;
   HipMemcpyFromSymbolFn memcpy_from_symbol = nullptr;
+  HipMemcpyFromSymbolAsyncFn memcpy_from_symbol_async = nullptr;
   HipGetFuncBySymbolFn get_func_by_symbol = nullptr;
   HipRegisterFatBinaryFn register_fat_binary = nullptr;
   HipUnregisterFatBinaryFn unregister_fat_binary = nullptr;
   HipRegisterFunctionFn register_function = nullptr;
   HipRegisterManagedVarFn register_managed_variable = nullptr;
 };
+
+template <typename Operation>
+void ExpectPublishedError(const HipApi& api, const char* operation_name,
+                          hipError_t expected_error, Operation operation) {
+  SCOPED_TRACE(operation_name);
+  EXPECT_EQ(hipSuccess, api.get_last_error());
+  EXPECT_EQ(expected_error, operation());
+  EXPECT_EQ(expected_error, api.peek_at_last_error());
+  EXPECT_EQ(expected_error, api.get_last_error());
+  EXPECT_EQ(hipSuccess, api.peek_at_last_error());
+  EXPECT_EQ(hipSuccess, api.get_last_error());
+}
 
 class HipModuleLibraryExecutionTest : public ::testing::Test {
  protected:
@@ -1076,14 +1109,54 @@ TEST_F(HipModuleLibraryExecutionTest,
     ASSERT_NE(nullptr, symbol_address);
 
     const uint32_t copied_value = 41 + iteration;
+    uint32_t unregistered_symbol = 0;
+    ExpectPublishedError(api_, "hipMemcpyToSymbol unregistered symbol",
+                         hipErrorInvalidSymbol, [&] {
+                           return api_.memcpy_to_symbol(
+                               &unregistered_symbol, &copied_value,
+                               sizeof(copied_value), /*offset=*/0,
+                               hipMemcpyHostToDevice);
+                         });
+    ExpectPublishedError(api_, "hipMemcpyToSymbolAsync unregistered symbol",
+                         hipErrorInvalidSymbol, [&] {
+                           return api_.memcpy_to_symbol_async(
+                               &unregistered_symbol, &copied_value,
+                               sizeof(copied_value), /*offset=*/0,
+                               hipMemcpyHostToDevice, /*stream=*/nullptr);
+                         });
+    uint32_t copied_back_value = 0;
+    ExpectPublishedError(api_, "hipMemcpyFromSymbol unregistered symbol",
+                         hipErrorInvalidSymbol, [&] {
+                           return api_.memcpy_from_symbol(
+                               &copied_back_value, &unregistered_symbol,
+                               sizeof(copied_back_value), /*offset=*/0,
+                               hipMemcpyDeviceToHost);
+                         });
+    ExpectPublishedError(api_, "hipMemcpyFromSymbolAsync unregistered symbol",
+                         hipErrorInvalidSymbol, [&] {
+                           return api_.memcpy_from_symbol_async(
+                               &copied_back_value, &unregistered_symbol,
+                               sizeof(copied_back_value), /*offset=*/0,
+                               hipMemcpyDeviceToHost, /*stream=*/nullptr);
+                         });
+
     ASSERT_EQ(hipSuccess, api_.memcpy_to_symbol(
                               publication, &copied_value, sizeof(copied_value),
                               /*offset=*/0, hipMemcpyHostToDevice));
     EXPECT_EQ(copied_value, *static_cast<uint32_t*>(publication));
-    EXPECT_EQ(
-        hipErrorInvalidValue,
-        api_.memcpy_to_symbol(publication, &copied_value, sizeof(copied_value),
-                              /*offset=*/1, hipMemcpyHostToDevice));
+    ExpectPublishedError(api_, "hipMemcpyToSymbol registered symbol bounds",
+                         hipErrorInvalidValue, [&] {
+                           return api_.memcpy_to_symbol(
+                               publication, &copied_value, sizeof(copied_value),
+                               /*offset=*/1, hipMemcpyHostToDevice);
+                         });
+    ExpectPublishedError(
+        api_, "hipMemcpyToSymbolAsync registered symbol bounds",
+        hipErrorInvalidValue, [&] {
+          return api_.memcpy_to_symbol_async(
+              publication, &copied_value, sizeof(copied_value), /*offset=*/1,
+              hipMemcpyHostToDevice, /*stream=*/nullptr);
+        });
 
     hipFunction_t function = nullptr;
     ASSERT_EQ(hipSuccess, api_.get_func_by_symbol(
@@ -1107,16 +1180,25 @@ TEST_F(HipModuleLibraryExecutionTest,
                           hipMemcpyDeviceToHost));
     EXPECT_EQ(expected_value, observed_value);
     EXPECT_EQ(expected_value, *static_cast<uint32_t*>(publication));
-    uint32_t copied_back_value = 0;
     ASSERT_EQ(hipSuccess,
               api_.memcpy_from_symbol(&copied_back_value, publication,
                                       sizeof(copied_back_value), /*offset=*/0,
                                       hipMemcpyDeviceToHost));
     EXPECT_EQ(expected_value, copied_back_value);
-    EXPECT_EQ(hipErrorInvalidValue,
-              api_.memcpy_from_symbol(&copied_back_value, publication,
-                                      sizeof(copied_back_value), /*offset=*/1,
-                                      hipMemcpyDeviceToHost));
+    ExpectPublishedError(api_, "hipMemcpyFromSymbol registered symbol bounds",
+                         hipErrorInvalidValue, [&] {
+                           return api_.memcpy_from_symbol(
+                               &copied_back_value, publication,
+                               sizeof(copied_back_value),
+                               /*offset=*/1, hipMemcpyDeviceToHost);
+                         });
+    ExpectPublishedError(
+        api_, "hipMemcpyFromSymbolAsync registered symbol bounds",
+        hipErrorInvalidValue, [&] {
+          return api_.memcpy_from_symbol_async(
+              &copied_back_value, publication, sizeof(copied_back_value),
+              /*offset=*/1, hipMemcpyDeviceToHost, /*stream=*/nullptr);
+        });
 
     // Captured nodes retain their module independently of the compiler
     // registration. Keep a captured launch alive while unregistering to verify
