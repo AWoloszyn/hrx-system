@@ -177,16 +177,88 @@ static iree_status_t run_module_test(iree_elf_module_t* module) {
   return iree_ok_status();
 }
 
+static iree_status_t expect_invalid_module(iree_const_byte_span_t file_data) {
+  iree_elf_module_t module;
+  iree_status_t status = iree_elf_module_initialize_from_memory(
+      file_data, iree_allocator_system(), &module);
+  if (iree_status_is_ok(status)) {
+    iree_elf_module_deinitialize(&module);
+    return iree_make_status(IREE_STATUS_INTERNAL,
+                            "malformed ELF headers were accepted");
+  }
+  if (!iree_status_is_failed_precondition(status)) return status;
+  iree_status_free(status);
+  return iree_ok_status();
+}
+
+static iree_status_t run_invalid_header_tests(iree_byte_span_t storage) {
+  iree_elf_ehdr_t original_header;
+  memcpy(&original_header, storage.data, sizeof(original_header));
+  iree_elf_ehdr_t invalid_headers[] = {
+      original_header,
+      original_header,
+      original_header,
+  };
+  invalid_headers[0].e_phoff = (iree_elf_off_t)-1;
+  invalid_headers[1].e_shoff = (iree_elf_off_t)-1;
+  invalid_headers[2].e_version = 2;
+  const iree_const_byte_span_t file_data =
+      iree_make_const_byte_span(storage.data, storage.data_length);
+  iree_status_t status = iree_ok_status();
+  for (iree_host_size_t i = 0;
+       iree_status_is_ok(status) && i < IREE_ARRAYSIZE(invalid_headers); ++i) {
+    memcpy(storage.data, &invalid_headers[i], sizeof(invalid_headers[i]));
+    status = expect_invalid_module(file_data);
+  }
+  memcpy(storage.data, &original_header, sizeof(original_header));
+
+  for (iree_elf_half_t i = 0;
+       iree_status_is_ok(status) && i < original_header.e_phnum; ++i) {
+    uint8_t* header_bytes =
+        storage.data + original_header.e_phoff + i * sizeof(iree_elf_phdr_t);
+    iree_elf_phdr_t header;
+    memcpy(&header, header_bytes, sizeof(header));
+    if (header.p_type != IREE_ELF_PT_LOAD) continue;
+    // The source extent wraps if the loader adds these untrusted fields.
+    header.p_offset = (iree_elf_off_t)-1;
+    header.p_filesz = 1;
+    memcpy(header_bytes, &header, sizeof(header));
+    status = expect_invalid_module(file_data);
+    break;
+  }
+  return status;
+}
+
 static iree_status_t run_test() {
   iree_const_byte_span_t file_data;
   IREE_RETURN_IF_ERROR(query_test_file_data(&file_data));
 
-  iree_elf_module_t module;
-  IREE_RETURN_IF_ERROR(iree_elf_module_initialize_from_memory(
-      file_data, iree_allocator_system(), &module));
+  // Executables embedded in a container may start at any byte alignment.
+  const iree_host_size_t alignment = iree_alignof(iree_elf_ehdr_t);
+  uint8_t* storage = NULL;
+  IREE_RETURN_IF_ERROR(iree_allocator_malloc(
+      iree_allocator_system(), file_data.data_length + alignment - 1,
+      (void**)&storage));
 
-  iree_status_t status = run_module_test(&module);
-  iree_elf_module_deinitialize(&module);
+  iree_status_t status = iree_ok_status();
+  for (iree_host_size_t offset = 0;
+       iree_status_is_ok(status) && offset < alignment; ++offset) {
+    memcpy(storage + offset, file_data.data, file_data.data_length);
+    iree_elf_module_t module;
+    status = iree_elf_module_initialize_from_memory(
+        iree_make_const_byte_span(storage + offset, file_data.data_length),
+        iree_allocator_system(), &module);
+    if (iree_status_is_ok(status)) {
+      status = run_module_test(&module);
+      iree_elf_module_deinitialize(&module);
+    }
+  }
+  if (iree_status_is_ok(status)) {
+    memcpy(storage, file_data.data, file_data.data_length);
+    status = run_invalid_header_tests(
+        iree_make_byte_span(storage, file_data.data_length));
+  }
+  iree_allocator_free(iree_allocator_system(), storage);
   return status;
 }
 

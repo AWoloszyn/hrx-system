@@ -42,8 +42,8 @@ typedef struct iree_elf_module_t {
 } iree_elf_module_t;
 
 // Initializes an ELF module from the ELF |raw_data| in memory.
-// |raw_data| only needs to remain valid for the initialization of the module
-// and may be discarded afterward.
+// |raw_data| may have any byte alignment and only needs to remain valid for
+// initialization of the module. It may be discarded afterward.
 //
 // Dynamic symbol imports are not supported and cause initialization to fail.
 //
