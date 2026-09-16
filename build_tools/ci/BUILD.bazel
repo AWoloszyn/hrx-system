@@ -10,6 +10,16 @@
 load("@rules_python//python:defs.bzl", "py_test")
 
 py_test(
+    name = "vulkan_environment_test",
+    srcs = [
+        "vulkan_environment.py",
+        "vulkan_environment_test.py",
+    ],
+    main = "vulkan_environment_test.py",
+    target_compatible_with = ["@platforms//os:linux"],
+)
+
+py_test(
     name = "ci_core_linux_test",
     srcs = [
         "ci_core_common.py",
