@@ -7,9 +7,12 @@
 #include "libamdf/src/xdna/umd/drm/device.h"
 
 #include <drm/amdxdna_accel.h>
+#include <drm/drm.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
 
+#include <climits>
+#include <cstdarg>
 #include <cstring>
 #include <iostream>
 #include <vector>
@@ -20,6 +23,40 @@
 #include "libamdf/src/xdna/endpoint_profile.h"
 #include "libamdf/src/xdna/umd/context.h"
 #include "libamdf/src/xdna/umd/drm/memory.h"
+
+namespace {
+
+// Only descriptive version fields are changed. Every file, metadata query,
+// allocation, mapping and release still uses the real native driver.
+struct NativeVersionState {
+  // Descriptive version value substituted in all three native version fields.
+  int value = 0;
+  // Number of successful native version queries observed.
+  uint32_t query_count = 0;
+};
+
+thread_local NativeVersionState* native_version = nullptr;
+
+}  // namespace
+
+extern "C" int __real_ioctl(int descriptor, unsigned long request, ...);
+
+extern "C" int __wrap_ioctl(int descriptor, unsigned long request, ...) {
+  va_list arguments;
+  va_start(arguments, request);
+  void* argument = va_arg(arguments, void*);
+  va_end(arguments);
+  const int result = __real_ioctl(descriptor, request, argument);
+  if (result == 0 && request == DRM_IOCTL_VERSION &&
+      native_version != nullptr) {
+    auto* version = static_cast<drm_version*>(argument);
+    version->version_major = native_version->value;
+    version->version_minor = native_version->value;
+    version->version_patchlevel = native_version->value;
+    ++native_version->query_count;
+  }
+  return result;
+}
 
 namespace {
 
@@ -71,6 +108,7 @@ class LinuxXdnaDeviceTest : public ::testing::TestWithParam<ExecutionSupport> {
   }
 
   void TearDown() override {
+    native_version = nullptr;
     std::cout << "Release host views and memory" << std::endl;
     for (auto* value : mappings) {
       if (value) {
@@ -104,6 +142,8 @@ class LinuxXdnaDeviceTest : public ::testing::TestWithParam<ExecutionSupport> {
     }
   }
 
+  // Optional version metadata substitution, retained across assertion exits.
+  NativeVersionState version_state;
   // Native instance retained across early assertion exits.
   amdf_platform_instance_t* instance = nullptr;
   // Query endpoint borrowed during native device construction.
@@ -125,6 +165,25 @@ class LinuxXdnaDeviceTest : public ::testing::TestWithParam<ExecutionSupport> {
   // Independent host views into the same native attachment.
   amdf_xdna_umd_host_mapping_t* mappings[2] = {};
 };
+
+TEST_P(LinuxXdnaDeviceTest,
+       AdmissionUsesNativeFeaturesInsteadOfVersionMetadata) {
+  native_version = &version_state;
+  for (int version : {0, INT_MAX}) {
+    SCOPED_TRACE(version);
+    version_state.value = version;
+    version_state.query_count = 0;
+    amdf_xdna_umd_device_result_t result = {};
+    const amdf_status_t status = amdf_xdna_umd_device_create(
+        endpoint, profile, amdf_allocator_system(), &device, &result);
+    EXPECT_EQ(status, AMDF_STATUS_OK);
+    EXPECT_EQ(version_state.query_count, 1u);
+    if (!amdf_status_is_ok(status)) continue;
+    EXPECT_NE(result.id.words[0] | result.id.words[1], 0u);
+    ASSERT_EQ(amdf_xdna_umd_device_destroy(device), AMDF_STATUS_OK);
+    device = nullptr;
+  }
+}
 
 TEST_P(LinuxXdnaDeviceTest, MemoryDoesNotDependOnSchedulingContexts) {
   const bool supports_execution =

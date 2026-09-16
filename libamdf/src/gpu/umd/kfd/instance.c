@@ -103,8 +103,7 @@ amdf_status_t amdf_gpu_kfd_instance_prepare_vm(
   amdf_status_t status = amdf_gpu_kfd_vm_bootstrap_release(&binding->bootstrap);
   if (!amdf_status_is_ok(status)) return status;
   if (binding->descriptor < 0) {
-    status =
-        amdf_linux_endpoint_open_file(endpoint, &binding->descriptor, NULL);
+    status = amdf_linux_endpoint_open_file(endpoint, &binding->descriptor);
     if (!amdf_status_is_ok(status)) return status;
   }
   // Bootstrap and later memory mappings consume this connection's installed

@@ -95,12 +95,7 @@ amdf_status_t amdf_xdna_umd_device_create(
   device->profile = profile;
   device->page_size = (size_t)page_size;
   device->descriptor = -1;
-  amdf_linux_drm_version_t version;
-  status =
-      amdf_linux_endpoint_open_file(endpoint, &device->descriptor, &version);
-  if (amdf_status_is_ok(status) && (version.major != 0 || version.minor < 8)) {
-    status = amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
-  }
+  status = amdf_linux_endpoint_open_file(endpoint, &device->descriptor);
   if (amdf_status_is_ok(status)) {
     status = amdf_linux_host_cache_query_line_size(&device->cache_line_size);
   }

@@ -47,6 +47,10 @@ Windows standard backing is rounded to 64 KiB, while KMT mappings guarantee
 4 KiB address alignment. Native mapping bounds account for the target's shim-DMA
 translation so the complete range fits every advertised address interpretation.
 
+Linux checks the opened device file and driver identity, then requires the
+native array metadata and allocation/context operations used by the selected
+hardware profile. DRM release metadata does not determine admission.
+
 Windows requires the native interface with a kernel-buffer allocation policy
 in the 12-byte private adapter query, direct partition admission by width, and
 120-byte submission headers. The context retains its native kernel buffer

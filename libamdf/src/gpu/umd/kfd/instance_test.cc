@@ -456,10 +456,8 @@ int __wrap_ioctl(int descriptor, unsigned long request, ...) {
 }
 
 amdf_status_t __wrap_amdf_linux_endpoint_open_file(
-    const amdf_platform_endpoint_t* endpoint, int* out_descriptor,
-    amdf_linux_drm_version_t* out_version) {
+    const amdf_platform_endpoint_t* endpoint, int* out_descriptor) {
   EXPECT_NE(endpoint, nullptr);
-  EXPECT_EQ(out_version, nullptr);
   const int descriptor = native_state->Open(Operation::kOpenRender);
   if (descriptor < 0) return amdf_linux_error(EIO);
   *out_descriptor = descriptor;

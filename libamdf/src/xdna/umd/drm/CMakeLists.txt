@@ -248,7 +248,10 @@ iree_cc_test(
     device_test
   SRCS
     "device_test.cc"
+  LINKOPTS
+    "-Wl,--wrap=ioctl"
   DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_drm_uapi>
     $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_xdna_uapi>
     ::context
     ::context_state
