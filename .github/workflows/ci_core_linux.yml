@@ -103,6 +103,9 @@ jobs:
   # are scarce, so a compile failure should surface on the build pool first.
   gpu_linux_gfx942:
     name: Linux / CMake / GPU gfx942
+    concurrency:
+      group: ${{ github.workflow }}-gfx942-${{ (github.event_name == 'push' && github.ref) || github.run_id }}
+      cancel-in-progress: true
     needs: cmake_linux
     if: ${{ needs.cmake_linux.result == 'success' }}
     uses: ./.github/workflows/test_core_linux_gpu_source.yml
@@ -127,6 +130,9 @@ jobs:
   # machine that did not build them. It is the only job that asks that question.
   gpu_linux_gfx1201:
     name: Linux / CMake / GPU gfx1201
+    concurrency:
+      group: ${{ github.workflow }}-gfx1201-${{ (github.event_name == 'push' && github.ref) || github.run_id }}
+      cancel-in-progress: true
     needs: cmake_linux
     if: ${{ needs.cmake_linux.result == 'success' }}
     uses: ./.github/workflows/test_core_linux_gpu.yml

@@ -54,6 +54,7 @@ on:
       - "third_party/**"
       - "tools/**"
 
+# Main binary-size history completes independently of hardware job coalescing.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
@@ -287,6 +288,9 @@ jobs:
 
   linux_bazel_vulkan:
     name: Linux / Vulkan
+    concurrency:
+      group: ${{ github.workflow }}-vulkan-${{ (github.event_name == 'push' && github.ref) || github.run_id }}
+      cancel-in-progress: true
     runs-on: linux-gfx120X-gpu-rocm
     container:
       image: ghcr.io/rocm/no_rocm_image_ubuntu24_04@sha256:4150afe4759d14822f0e3f8930e1124f26e11f68b5c7b91ec9a02b20b1ebbb98
@@ -379,6 +383,9 @@ jobs:
 
   linux_bazel_amdgpu:
     name: ${{ matrix.name }}
+    concurrency:
+      group: ${{ github.workflow }}-${{ matrix.command }}-${{ matrix.target_selector }}-${{ (github.event_name == 'push' && github.ref) || github.run_id }}
+      cancel-in-progress: true
     runs-on: ${{ matrix.runner_label }}
     continue-on-error: ${{ matrix.optional }}
     container:
