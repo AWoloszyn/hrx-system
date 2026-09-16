@@ -295,6 +295,10 @@ and a remainder executes only the iterations in the original half-open range:
 three iterations still produce `22`, including the final view identity.
 Unrolling preserves the program's data and completion dependencies.
 
+The [loop-tuning walkthrough](../workflows/tune-loop-schedules.md) combines
+these controls in checked row-sum and packed-dot examples, including serial
+controls, configuration sweeps, and compiler evidence.
+
 ## Pipeline reads ahead of ordered computation
 
 `pipeline(%depth)` requests read-ahead on one `scf.for`. The loop still describes

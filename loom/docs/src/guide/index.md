@@ -64,6 +64,7 @@ semantically because it is a guide.
 | --- | --- |
 | Learn by building an operation | The ordered tutorials, where every lesson owns complete checked source, correctness, and a benchmark. |
 | Understand a language decision | This programming guide. |
+| Tune a streaming loop without rewriting its recurrence | [Loop unrolling and pipelining walkthrough](../workflows/tune-loop-schedules.md). |
 | Run a tool or diagnose a failure | A workflow page, with concise public commands before advanced evidence. |
 | Package or embed Loom | Integration guides and the generated [`loomc` C API](../reference/c-api/index.md). |
 | Set up or tune one architecture | Its target guide; reusable language chapters remain target-independent. |

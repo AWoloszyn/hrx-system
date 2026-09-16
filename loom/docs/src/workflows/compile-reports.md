@@ -117,6 +117,10 @@ records the author's serial policy. Unannotated loops produce no pipeline rows.
 Loop ordinals distinguish applied policies within a function; they are not
 source locations or stable identifiers across arbitrary source edits.
 
+The [loop-tuning walkthrough](tune-loop-schedules.md) follows runnable row-sum
+and packed-dot kernels from `pipeline(...) unroll(...)` source through these
+schedule rows, `suggest`, and matched serial controls.
+
 Unavailable fields are omitted instead of rendered as zero. That distinction
 matters: zero instructions is a measurement; no target inspector for that
 metric is an absence of evidence.

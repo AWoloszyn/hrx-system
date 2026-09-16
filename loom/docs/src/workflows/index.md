@@ -47,6 +47,7 @@ at `.loombc`. A JIT embedding can perform the same operations in memory through
 | Task | Workflow |
 | --- | --- |
 | Drive a kernel from production witness through controlled optimization | [Agent-driven kernel development](agent-driven-kernel-development.md) |
+| Describe and compare loop unrolling and read-ahead | [Tune loop unrolling and pipelining](tune-loop-schedules.md) |
 | Turn a score change into a compiler question | [Read compile reports](compile-reports.md#relate-reports-to-benchmark-results) |
 | Preserve a complete result and its compiler evidence | [Benchmark checked work](benchmark.md#preserve-the-experiment) |
 | Query snapshot and JSONL benchmark evidence | [Read benchmark results](benchmark-results.md) |

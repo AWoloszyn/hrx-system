@@ -57,6 +57,12 @@ a single report does not establish that pipelining increased register use.
 Suggestions are hypotheses to recompile, retest, and measure, not performance
 claims.
 
+The [loop-tuning walkthrough](https://rocm.github.io/hrx-system/loom/workflows/tune-loop-schedules/)
+provides checked row-sum and packed-dot examples using
+`scf.for ... pipeline(%depth) unroll(%factor)`, configuration sweeps, and
+actual schedule/advice output. Depth one is the serial control; pipelining
+precedes unrolling and both policies work independently.
+
 ### Use the bounded JSON views
 
 ```shell

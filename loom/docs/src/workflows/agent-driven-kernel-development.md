@@ -248,6 +248,47 @@ Necessary partial variants identify interactions, while a compiler repair and
 the kernel candidate remain separate changes whenever the candidate can consume
 the repaired compiler through its normal source contract.
 
+## Express loop schedules in the source
+
+Loom's `scf.for` already carries author-selected unrolling and ordinary
+read-ahead. A candidate can keep one logical iteration while changing its
+schedule through configuration:
+
+```loom
+%depth = config.get @read_ahead.depth : index
+%factor = config.get @read_ahead.unroll : index
+%result = scf.for %row = [%begin to %count step %step](%sum = %initial : f32) -> (f32) pipeline(%depth) unroll(%factor) {
+  %value = view.load %values[%row, %lane] : view<64x32xf32> -> f32
+  %next = scalar.addf %sum, %value : f32
+  scf.yield %next : f32
+}
+```
+
+`unroll` expands an exact finite loop; `unroll(%factor)` groups iterations and
+handles runtime tails. `pipeline(%depth)` moves ordinary loads and their
+prerequisites ahead of ordered computation. Pipelining runs before unrolling,
+so depth counts original iterations. Each control also works independently.
+
+Streaming reductions and packed dequantization/dot loops are useful candidates
+when read addresses depend on the induction variable and outer values. The
+read-ahead body must be flat and contain ordinary loads and pure operations;
+carried-state-dependent reads, stores, nested regions, and explicit async
+groups have different scheduling requirements. Unannotated loops receive no
+read-ahead transformation.
+
+The first experiment compares depth one with a larger depth while keeping the
+unroll factor and workload fixed. Correctness includes empty and short loops,
+startup boundaries, and partial-unroll remainders. Detailed compile reports
+retain the chosen depth and producer/consumer schedule; `suggest` exposes
+`scf.compare_pipeline_depth` with available final resource costs. Registers,
+spills, occupancy, code size, compile time, and measured runtime decide whether
+the extra live state is useful.
+
+The [loop-tuning walkthrough](tune-loop-schedules.md) supplies complete row-sum
+and packed-dot sources, checked workloads, configuration sweeps, and actual
+`show`/`suggest` output. The [control-flow guide](../guide/functions-and-control.md#unrolling-is-a-loop-policy)
+owns the exact policy and schedule semantics.
+
 ## Ask the compiler before asking the GPU
 
 The baseline and candidate compile under the same root, workload,
