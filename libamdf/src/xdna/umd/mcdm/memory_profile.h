@@ -8,7 +8,7 @@
 #define AMDF_SRC_XDNA_UMD_MCDM_MEMORY_PROFILE_H_
 
 #include "libamdf/src/memory_profile.h"
-#include "libamdf/src/xdna/endpoint_profile.h"
+#include "libamdf/src/xdna/device_profile.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -22,7 +22,7 @@ extern "C" {
 // Derives complete memory capabilities from qualified target facts.
 // This metadata query performs no native operation or device activation.
 amdf_status_t amdf_windows_xdna_query_memory_profile(
-    const amdf_xdna_endpoint_profile_t* target, uint32_t memory_profile_ordinal,
+    const amdf_xdna_device_profile_t* target, uint32_t memory_profile_ordinal,
     amdf_memory_native_profile_t* out_profile);
 
 #ifdef __cplusplus

@@ -66,26 +66,27 @@ class KfdTopologyTest : public ::testing::Test {
     ASSERT_TRUE(stream.good()) << path;
   }
 
-  void WriteProperties(const char* optional_properties,
-                       uint32_t peer_count = 0) {
-    WriteAttribute(directory_ / "class/kfd/kfd/topology/nodes/6/properties",
-                   std::string("drm_render_minor 160\n"
-                               "vendor_id 4098\n"
-                               "device_id 29857\n"
-                               "gfx_target_version 90402\n"
-                               "capability 2893521536\n"
-                               "simd_count 1216\n"
-                               "simd_per_cu 4\n"
-                               "max_waves_per_simd 8\n"
-                               "max_slots_scratch_cu 32\n"
-                               "wave_front_size 64\n"
-                               "lds_size_in_kb 64\n"
-                               "array_count 32\n"
-                               "simd_arrays_per_engine 1\n"
-                               "num_xcc 8\n"
-                               "num_cp_queues 24\n") +
-                       "p2p_links_count " + std::to_string(peer_count) + "\n" +
-                       optional_properties);
+  void WriteProperties(const char* optional_properties, uint32_t peer_count = 0,
+                       uint32_t gfx_target_version = 90402) {
+    WriteAttribute(
+        directory_ / "class/kfd/kfd/topology/nodes/6/properties",
+        std::string("drm_render_minor 160\n"
+                    "vendor_id 4098\n"
+                    "capability 2893521536\n"
+                    "simd_count 1216\n"
+                    "simd_per_cu 4\n"
+                    "max_waves_per_simd 8\n"
+                    "max_slots_scratch_cu 32\n"
+                    "wave_front_size 64\n"
+                    "lds_size_in_kb 64\n"
+                    "array_count 32\n"
+                    "simd_arrays_per_engine 1\n"
+                    "num_xcc 8\n"
+                    "num_cp_queues 24\n") +
+            "device_id " + std::to_string(endpoint_.info.pci.device_id) + "\n" +
+            "gfx_target_version " + std::to_string(gfx_target_version) + "\n" +
+            "p2p_links_count " + std::to_string(peer_count) + "\n" +
+            optional_properties);
   }
 
   void WritePeer(uint32_t ordinal, uint32_t backing_node, uint32_t gpu_id,
@@ -241,23 +242,19 @@ TEST_F(KfdTopologyTest, MalformedPeerRecordsNeverPublishPartialTopology) {
   }
 }
 
-TEST_F(KfdTopologyTest, EndpointOwnsItsCompleteImmutablePeerSnapshot) {
-  WriteProperties("", 1);
-  WritePeer(0, 2, 12345, 1);
-  amdf_gpu_endpoint_profile_t* profile = nullptr;
-  ASSERT_EQ(amdf_gpu_umd_create_endpoint_profile(
-                &endpoint_, AMDF_NATIVE_LIFETIME_PROCESS,
-                amdf_allocator_system(), &profile),
-            AMDF_STATUS_OK);
-  const auto* topology = static_cast<const amdf_gpu_kfd_topology_t*>(
-      profile->memory.values[0].construction.data);
-  WritePeer(0, 2, 23456, 1);
-  ASSERT_EQ(topology->memory_peers.count, 1u);
-  EXPECT_EQ(topology->memory_peers.gpu_ids[0], 12345u);
-  for (uint32_t i = 0; i < profile->memory.count; ++i) {
-    EXPECT_EQ(profile->memory.values[i].construction.data, topology);
+TEST_F(KfdTopologyTest, DiscoversNewPciAndGfxIdentitiesWithoutMemoryTables) {
+  endpoint_.info.pci.device_id = 0xFFFF;
+  for (uint32_t gfx_target_version : {90402u, 130000u}) {
+    SCOPED_TRACE(gfx_target_version);
+    WriteProperties("", 0, gfx_target_version);
+    amdf_gpu_endpoint_profile_t* profile = nullptr;
+    ASSERT_EQ(amdf_gpu_umd_create_endpoint_profile(
+                  &endpoint_, amdf_allocator_system(), &profile),
+              AMDF_STATUS_OK);
+    EXPECT_EQ(profile->info.gfx_ip.major, gfx_target_version / 10000);
+    EXPECT_EQ(profile->info.compute.compute_unit_count, 304u);
+    amdf_free(amdf_allocator_system(), profile);
   }
-  amdf_free(amdf_allocator_system(), profile);
 }
 
 TEST_F(KfdTopologyTest, ChangedGenerationReleasesUnpublishedPeerMetadata) {
@@ -333,8 +330,8 @@ TEST_F(KfdTopologyTest, FailedSnapshotAllocationsLeaveNoMetadataOrOutput) {
     auto* const sentinel =
         reinterpret_cast<amdf_gpu_endpoint_profile_t*>(uintptr_t{1});
     amdf_gpu_endpoint_profile_t* profile = sentinel;
-    const amdf_status_t status = amdf_gpu_umd_create_endpoint_profile(
-        &endpoint_, AMDF_NATIVE_LIFETIME_PROCESS, allocator, &profile);
+    const amdf_status_t status =
+        amdf_gpu_umd_create_endpoint_profile(&endpoint_, allocator, &profile);
     if (failure_ordinal < 2) {
       EXPECT_EQ(amdf_status_code(status), AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
       EXPECT_EQ(profile, sentinel);

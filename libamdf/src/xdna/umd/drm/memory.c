@@ -66,7 +66,7 @@ static amdf_status_t amdf_linux_xdna_memory_query_dma_buf(
 amdf_status_t amdf_linux_xdna_memory_translate_dma_address(
     const amdf_xdna_umd_memory_t* memory, uint64_t byte_offset,
     uint64_t byte_length, uint64_t* out_address) {
-  const amdf_xdna_endpoint_profile_t* profile = memory->device->profile;
+  const amdf_xdna_device_profile_t* profile = memory->device->profile;
   const uint64_t maximum_address =
       ((UINT64_C(1) << profile->dma.address_bit_count) - 1) -
       profile->dma.byte_offset;

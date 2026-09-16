@@ -12,18 +12,18 @@
 #include "libamdf/src/device.h"
 #include "libamdf/src/endpoint.h"
 #include "libamdf/src/structure.h"
-#include "libamdf/src/xdna/endpoint_profile.h"
+#include "libamdf/src/xdna/device_profile.h"
 #include "libamdf/src/xdna/memory.h"
 #include "libamdf/src/xdna/umd/device.h"
 
 typedef struct amdf_xdna_device_t {
   // Generic device state shared by every engine implementation.
   amdf_device_t base;
-  // Immutable endpoint profile selected before native device creation.
-  const amdf_xdna_endpoint_profile_t* profile;
+  // Device-owned execution profile, resolved before publication.
+  amdf_xdna_device_profile_t profile;
   // Exact native ordinary-address-domain state.
   amdf_xdna_umd_device_t* umd;
-  // Immutable identity and reset epoch returned by the provider.
+  // Immutable identity and capabilities resolved by native activation.
   amdf_xdna_device_info_t info;
 } amdf_xdna_device_t;
 
@@ -65,12 +65,6 @@ amdf_xdna_device_create(amdf_endpoint_t* endpoint,
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
 
-  const amdf_xdna_endpoint_profile_t* profile =
-      amdf_xdna_endpoint_profile_select(
-          amdf_endpoint_get_cached_info(endpoint));
-  if (profile == NULL) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
-  }
   amdf_status_t status = amdf_xdna_device_validate_create_info(create_info);
   if (!amdf_status_is_ok(status)) {
     return status;
@@ -84,20 +78,36 @@ amdf_xdna_device_create(amdf_endpoint_t* endpoint,
   if (!amdf_status_is_ok(status)) return status;
   status = amdf_device_initialize(&device->base, &amdf_xdna_device_vtable,
                                   endpoint, AMDF_ENGINE_KIND_XDNA);
-  device->profile = profile;
+  if (amdf_status_is_ok(status) && !amdf_xdna_device_profile_initialize(
+                                       amdf_endpoint_get_cached_info(endpoint),
+                                       &device->info, &device->profile)) {
+    status = amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
 
   amdf_xdna_umd_device_result_t result = {0};
   if (amdf_status_is_ok(status)) {
     status = amdf_xdna_umd_device_create(amdf_endpoint_get_platform(endpoint),
-                                         profile, host_allocator, &device->umd,
-                                         &result);
+                                         &device->profile, host_allocator,
+                                         &device->umd, &result);
   }
   if (amdf_status_is_ok(status)) {
+    device->info.array.column_count = result.tiles.column_count;
+    device->info.array.row_count = result.tiles.row_count;
+    device->info.context.maximum_column_count = result.tiles.column_count;
+    device->profile.rows.core_origin = result.tiles.core_origin;
+    device->profile.rows.core_count = result.tiles.core_count;
+    device->profile.rows.memory_origin = result.tiles.memory_origin;
+    device->profile.rows.memory_count = result.tiles.memory_count;
+    device->profile.rows.shim_origin = result.tiles.shim_origin;
+    device->profile.rows.shim_count = result.tiles.shim_count;
     device->info.type = AMDF_STRUCTURE_TYPE_XDNA_DEVICE_INFO;
     device->info.structure_size = sizeof(device->info);
     device->info.id = result.id;
     device->info.reset_epoch = result.reset_epoch;
     device->info.placement_modes = result.placement_modes;
+    device->info.context.scheduling_modes =
+        amdf_xdna_umd_query_context_capabilities(&device->profile)
+            .scheduling_modes;
     *out_device = &device->base;
   } else {
     if (device->base.endpoint != NULL) {
@@ -140,9 +150,9 @@ const amdf_xdna_device_info_t* amdf_xdna_device_get_info(
   return &((const amdf_xdna_device_t*)device)->info;
 }
 
-const amdf_xdna_endpoint_profile_t* amdf_xdna_device_get_profile(
+const amdf_xdna_device_profile_t* amdf_xdna_device_get_profile(
     const amdf_device_t* device) {
-  return ((const amdf_xdna_device_t*)device)->profile;
+  return &((const amdf_xdna_device_t*)device)->profile;
 }
 
 uint64_t amdf_xdna_device_query_reset_epoch(const amdf_device_t* device) {

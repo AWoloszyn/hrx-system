@@ -15,7 +15,7 @@
 #endif  // AMDF_HAVE_GPU
 
 #if defined(AMDF_HAVE_XDNA)
-#include "libamdf/src/xdna/endpoint_profile.h"
+#include "libamdf/src/xdna/device_profile.h"
 #include "libamdf/src/xdna/extension.h"
 #endif  // AMDF_HAVE_XDNA
 
@@ -75,11 +75,6 @@ void amdf_extension_initialize_endpoint(amdf_endpoint_t* endpoint) {
       amdf_gpu_extension_initialize_endpoint(endpoint);
       break;
 #endif  // AMDF_HAVE_GPU
-#if defined(AMDF_HAVE_XDNA)
-    case AMDF_ENGINE_KIND_XDNA:
-      amdf_xdna_extension_initialize_endpoint(endpoint);
-      break;
-#endif  // AMDF_HAVE_XDNA
     default:
       break;
   }
@@ -104,10 +99,17 @@ uint32_t amdf_extension_query_endpoint_queue_families(
     }
 #endif  // AMDF_HAVE_GPU
 #if defined(AMDF_HAVE_XDNA)
-    case AMDF_ENGINE_KIND_XDNA:
+    case AMDF_ENGINE_KIND_XDNA: {
+      amdf_xdna_device_info_t info;
+      amdf_xdna_device_profile_t profile;
+      if (!amdf_xdna_device_profile_initialize(endpoint_info, &info,
+                                               &profile)) {
+        return 0;
+      }
       return amdf_xdna_extension_query_endpoint_queue_families(
-          amdf_xdna_endpoint_profile_select(endpoint_info),
-          amdf_endpoint_get_platform(endpoint), capacity, out_families);
+          &profile, amdf_endpoint_get_platform(endpoint), capacity,
+          out_families);
+    }
 #endif  // AMDF_HAVE_XDNA
     default:
       return 0;

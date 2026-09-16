@@ -24,7 +24,7 @@ using testing::HasSubstr;
 struct DeviceProfile {
   // Canonical endpoint key under test.
   const char* target_id;
-  // Independent compiler identity expected for that endpoint.
+  // Image execution identity expected for that endpoint.
   uint64_t identity;
 };
 
@@ -42,10 +42,11 @@ class Aie2pNpu2Test : public ::testing::TestWithParam<DeviceProfile> {
 
 INSTANTIATE_TEST_SUITE_P(
     Devices, Aie2pNpu2Test,
-    ::testing::Values(DeviceProfile{"amd.xdna.strix.17f0_10",
-                                    UINT64_C(0x5354524958000001)},
-                      DeviceProfile{"amd.xdna.strix_halo.17f0_11",
-                                    UINT64_C(0x535848414C4F0001)}));
+    ::testing::Values(
+        DeviceProfile{"amd.xdna.strix.17f0_10", UINT64_C(0x5354524958000001)},
+        DeviceProfile{"amd.xdna.krackan.17f0_20", UINT64_C(0x5354524958000001)},
+        DeviceProfile{"amd.xdna.strix_halo.17f0_11",
+                      UINT64_C(0x535848414C4F0001)}));
 
 template <size_t N>
 static Status ValidateRecord(const iree_hal_amd_xdna_aie2p_target_t* target,

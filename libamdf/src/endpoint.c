@@ -28,8 +28,6 @@ struct amdf_endpoint_t {
   amdf_status_t engine_profile_status;
   // Whether an engine extension resolved `engine_profile_status`.
   bool engine_profile_resolved;
-  // Family-qualified query consuming cached memory metadata only.
-  amdf_endpoint_memory_profile_query_fn_t query_memory_profile;
   // Borrowed physical-local descriptor, published only for supported storage.
   amdf_memory_scope_t local_memory_scope;
   // Immutable endpoint-local native queue families.
@@ -99,23 +97,9 @@ const amdf_endpoint_info_t* amdf_endpoint_get_cached_info(
   return &endpoint->info;
 }
 
-void amdf_endpoint_set_memory_profile_query(
-    amdf_endpoint_t* endpoint, amdf_endpoint_memory_profile_query_fn_t query) {
-  endpoint->query_memory_profile = query;
-}
-
 amdf_memory_scope_t* amdf_endpoint_local_memory_scope(
     amdf_endpoint_t* endpoint) {
   return &endpoint->local_memory_scope;
-}
-
-amdf_status_t amdf_endpoint_query_memory_profile(
-    amdf_endpoint_t* endpoint, uint32_t profile_ordinal,
-    amdf_memory_native_profile_t* out_profile) {
-  if (endpoint->query_memory_profile == NULL) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
-  }
-  return endpoint->query_memory_profile(endpoint, profile_ordinal, out_profile);
 }
 
 amdf_platform_endpoint_t* amdf_endpoint_get_platform(

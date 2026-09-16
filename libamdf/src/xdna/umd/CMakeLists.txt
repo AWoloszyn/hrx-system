@@ -18,7 +18,7 @@ iree_cc_library(
   DEPS
     amdf::headers
     libamdf::src::platform
-    libamdf::src::xdna::endpoint_profile
+    libamdf::src::xdna::device_profile
   PUBLIC
 )
 endif()
@@ -32,22 +32,7 @@ iree_cc_library(
   DEPS
     ::device
     amdf::headers
-    libamdf::src::xdna::endpoint_profile
-  PUBLIC
-)
-endif()
-
-if(AMDF_BUILD AND AMDF_FAMILY_XDNA)
-iree_cc_library(
-  NAME
-    memory_profile
-  HDRS
-    "memory_profile.h"
-  DEPS
-    amdf::headers
-    libamdf::src::memory_profile
-    libamdf::src::platform
-    libamdf::src::xdna::endpoint_profile
+    libamdf::src::xdna::device_profile
   PUBLIC
 )
 endif()

@@ -103,12 +103,9 @@ TEST_P(LinuxEndpointMetadataTest, DiscoversWithoutAnExecutionNode) {
             0u);
 
   int descriptor = -1;
-  amdf_linux_drm_version_t version = {UINT32_MAX, UINT32_MAX};
-  EXPECT_EQ(amdf_linux_endpoint_open_file(endpoint_, &descriptor, &version),
+  EXPECT_EQ(amdf_linux_endpoint_open_file(endpoint_, &descriptor),
             amdf_linux_error(ENOENT));
   EXPECT_EQ(descriptor, -1);
-  EXPECT_EQ(version.major, UINT32_MAX);
-  EXPECT_EQ(version.minor, UINT32_MAX);
 }
 
 TEST_P(LinuxEndpointMetadataTest, StaleIdentityDoesNotPublishMetadata) {
@@ -140,12 +137,9 @@ TEST_P(LinuxEndpointMetadataTest, ActivationRevalidatesTheEndpointIdentity) {
       AMDF_STATUS_OK);
   WriteAttribute(directory_ / "devices/0000:00:00.0/revision", "0x02\n");
   int descriptor = -1;
-  amdf_linux_drm_version_t version = {UINT32_MAX, UINT32_MAX};
-  EXPECT_EQ(amdf_linux_endpoint_open_file(endpoint_, &descriptor, &version),
+  EXPECT_EQ(amdf_linux_endpoint_open_file(endpoint_, &descriptor),
             amdf_make_api_status(AMDF_STATUS_CODE_NOT_FOUND));
   EXPECT_EQ(descriptor, -1);
-  EXPECT_EQ(version.major, UINT32_MAX);
-  EXPECT_EQ(version.minor, UINT32_MAX);
 }
 
 INSTANTIATE_TEST_SUITE_P(EngineKinds, LinuxEndpointMetadataTest,

@@ -4,8 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#ifndef AMDF_SRC_XDNA_ENDPOINT_PROFILE_H_
-#define AMDF_SRC_XDNA_ENDPOINT_PROFILE_H_
+#ifndef AMDF_SRC_XDNA_DEVICE_PROFILE_H_
+#define AMDF_SRC_XDNA_DEVICE_PROFILE_H_
 
 #include "amdf/xdna.h"
 #include "libamdf/src/xdna/bootstrap.h"
@@ -14,7 +14,7 @@
 extern "C" {
 #endif  // __cplusplus
 
-// Target-native execution services carried by a resolved endpoint profile.
+// Target-native execution services carried by a resolved device profile.
 typedef uint64_t amdf_xdna_execution_capabilities_t;
 enum amdf_xdna_execution_capability_bits_e {
   // Version 1 transaction interpreter, command packet, and bootstrap contract.
@@ -23,10 +23,10 @@ enum amdf_xdna_execution_capability_bits_e {
   AMDF_XDNA_EXECUTION_CAPABILITY_ELF_INSTRUCTIONS = UINT64_C(1) << 1,
 };
 
-// Exact immutable execution profile selected from one PCI identity.
-typedef struct amdf_xdna_endpoint_profile_t {
-  // Borrowed public compiler target and context-admission properties.
-  const amdf_xdna_endpoint_info_t* info;
+// Execution profile combining target encodings and effective array layout.
+typedef struct amdf_xdna_device_profile_t {
+  // Borrowed live-device properties, finalized before publication.
+  const amdf_xdna_device_info_t* info;
   // Target-native services whose complete contracts are available below.
   amdf_xdna_execution_capabilities_t execution_capabilities;
   // Borrowed process-lifetime interpreter bootstrap, or NULL when unsupported.
@@ -48,30 +48,35 @@ typedef struct amdf_xdna_endpoint_profile_t {
   // Physical row classes reported by the native driver.
   struct {
     // First shim row in physical coordinates.
-    uint8_t shim_origin;
+    uint32_t shim_origin;
     // Number of contiguous shim rows.
-    uint8_t shim_count;
+    uint32_t shim_count;
     // First memory-tile row in physical coordinates.
-    uint8_t memory_origin;
+    uint32_t memory_origin;
     // Number of contiguous memory-tile rows.
-    uint8_t memory_count;
+    uint32_t memory_count;
     // First core-tile row in physical coordinates.
-    uint8_t core_origin;
+    uint32_t core_origin;
     // Number of contiguous core-tile rows.
-    uint8_t core_count;
+    uint32_t core_count;
   } rows;
-} amdf_xdna_endpoint_profile_t;
+} amdf_xdna_device_profile_t;
 
-// Selects the exact immutable XDNA profile matching `endpoint_info`.
-const amdf_xdna_endpoint_profile_t* amdf_xdna_endpoint_profile_select(
-    const amdf_endpoint_info_t* endpoint_info);
+// Copies passive architecture and compiler identity for a recognized endpoint.
+// Returns false without modifying the output for an unrecognized identity.
+bool amdf_xdna_query_endpoint_info(const amdf_endpoint_info_t* endpoint_info,
+                                   amdf_xdna_endpoint_info_t* out_info);
 
-// Returns the borrowed public information stored in `profile`.
-const amdf_xdna_endpoint_info_t* amdf_xdna_endpoint_profile_get_info(
-    const amdf_xdna_endpoint_profile_t* profile);
+// Initializes architecture encodings for native device creation. Geometry and
+// scheduling are resolved by activation before the owner is published. The
+// profile borrows `device_info`, which must outlive every native child.
+bool amdf_xdna_device_profile_initialize(
+    const amdf_endpoint_info_t* endpoint_info,
+    amdf_xdna_device_info_t* device_info,
+    amdf_xdna_device_profile_t* out_profile);
 
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
 
-#endif  // AMDF_SRC_XDNA_ENDPOINT_PROFILE_H_
+#endif  // AMDF_SRC_XDNA_DEVICE_PROFILE_H_

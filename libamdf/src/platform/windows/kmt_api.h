@@ -39,6 +39,8 @@ typedef struct amdf_kmt_api_t {
   PFND3DKMT_OPENADAPTERFROMLUID open_adapter_from_luid;
   // Queries immutable adapter and physical-device properties.
   PFND3DKMT_QUERYADAPTERINFO query_adapter_info;
+  // Issues provider-specific queries on an explicitly created device.
+  PFND3DKMT_ESCAPE escape;
   // Creates one logical KMT device from an opened adapter.
   PFND3DKMT_CREATEDEVICE create_device;
   // Destroys one logical KMT device.

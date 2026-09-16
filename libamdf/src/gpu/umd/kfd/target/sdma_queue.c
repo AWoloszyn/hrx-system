@@ -21,8 +21,7 @@ bool amdf_gpu_kfd_sdma_queue_plan(const amdf_gpu_kfd_topology_t* topology,
       cache_line_size < sizeof(uint64_t) ||
       (cache_line_size & (cache_line_size - 1)) != 0 ||
       cache_line_size > page_size / 2 || topology->sdma.engine_count == 0 ||
-      topology->sdma.queue_count_per_engine == 0 ||
-      topology->virtual_address.alignment != page_size) {
+      topology->sdma.queue_count_per_engine == 0) {
     return false;
   }
   const uint32_t host_storage_flags =

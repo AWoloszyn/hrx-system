@@ -46,24 +46,12 @@ struct amdf_memory_scope_t {
   } owner;
 };
 
-// Information boundary used to qualify one complete requested consumer set.
-typedef enum amdf_memory_access_query_kind_e {
-  AMDF_MEMORY_ACCESS_QUERY_EXPECTED,
-  AMDF_MEMORY_ACCESS_QUERY_LIVE,
-} amdf_memory_access_query_kind_t;
-
+// Complete live consumer set used by cold capability queries and construction.
 typedef struct amdf_memory_access_query_t {
-  // Selects cached passive facts or effective facts on explicitly live devices.
-  amdf_memory_access_query_kind_t kind;
   // Number of caller-ordered consumer requests.
   uint32_t count;
-  // Borrowed requests consumed during the cold profile/construction operation.
-  union {
-    // Intended device consumers before activation.
-    const amdf_memory_endpoint_access_t* endpoints;
-    // Explicitly initialized consumers, kept live by the caller.
-    const amdf_memory_device_access_t* devices;
-  } accesses;
+  // Borrowed live consumers, kept alive by the caller.
+  const amdf_memory_device_access_t* accesses;
 } amdf_memory_access_query_t;
 
 // Cold construction selection. Native profiles are retained through setup so
@@ -104,12 +92,7 @@ amdf_status_t AMDF_CALL amdf_instance_enumerate_memory_scopes(
     amdf_instance_t* instance, uint32_t capacity, amdf_memory_scope_t** scopes,
     uint32_t* out_count);
 
-// Enumerates borrowed endpoint-owned physical storage descriptors.
-amdf_status_t AMDF_CALL amdf_endpoint_enumerate_memory_scopes(
-    amdf_endpoint_t* endpoint, uint32_t capacity, amdf_memory_scope_t** scopes,
-    uint32_t* out_count);
-
-// Enumerates native-private descriptors already owned by a live device.
+// Enumerates endpoint-owned local scopes available through the live device.
 amdf_status_t AMDF_CALL amdf_device_enumerate_memory_scopes(
     amdf_device_t* device, uint32_t capacity, amdf_memory_scope_t** scopes,
     uint32_t* out_count);
@@ -117,13 +100,6 @@ amdf_status_t AMDF_CALL amdf_device_enumerate_memory_scopes(
 // Copies complete immutable storage facts without native operations.
 amdf_status_t AMDF_CALL amdf_memory_scope_query_info(
     amdf_memory_scope_t* scope, amdf_memory_scope_info_t* out_info);
-
-// Queries complete backing and caller-ordered expected access capabilities.
-amdf_status_t AMDF_CALL amdf_memory_scope_query_profile(
-    amdf_memory_scope_t* scope, uint32_t profile_ordinal, uint32_t access_count,
-    const amdf_memory_endpoint_access_t* accesses,
-    amdf_memory_profile_t* out_profile,
-    amdf_memory_access_capabilities_t* out_access_capabilities);
 
 // Queries complete backing and caller-ordered live access capabilities.
 amdf_status_t AMDF_CALL amdf_memory_scope_query_device_profile(

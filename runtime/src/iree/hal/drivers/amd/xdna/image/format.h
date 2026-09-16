@@ -187,7 +187,7 @@ typedef struct iree_hal_amd_xdna_elf_abi_note_t {
   iree_hal_amd_xdna_target_generation_t target_generation;
   // Incompatible revision of the resolved device profile.
   uint32_t device_profile_revision;
-  // Stable complete device-profile identity.
+  // Complete execution-profile identity, shared by compatible devices.
   uint64_t device_profile_id;
   // Stable firmware/configuration ABI identity.
   uint64_t firmware_abi_id;

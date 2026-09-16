@@ -13,29 +13,9 @@
 #include "libamdf/src/structure.h"
 #include "libamdf/src/xdna/context.h"
 #include "libamdf/src/xdna/device.h"
-#include "libamdf/src/xdna/endpoint_profile.h"
+#include "libamdf/src/xdna/device_profile.h"
 #include "libamdf/src/xdna/kernel_queue.h"
 #include "libamdf/src/xdna/umd/device.h"
-#include "libamdf/src/xdna/umd/memory_profile.h"
-
-static amdf_status_t amdf_xdna_endpoint_query_memory_profile(
-    amdf_endpoint_t* endpoint, uint32_t profile_ordinal,
-    amdf_memory_native_profile_t* out_profile) {
-  const amdf_xdna_endpoint_profile_t* target =
-      amdf_xdna_endpoint_profile_select(
-          amdf_endpoint_get_cached_info(endpoint));
-  if (target == NULL) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
-  }
-  return amdf_xdna_umd_query_endpoint_memory_profile(
-      amdf_endpoint_get_platform(endpoint), target, profile_ordinal,
-      out_profile);
-}
-
-void amdf_xdna_extension_initialize_endpoint(amdf_endpoint_t* endpoint) {
-  amdf_endpoint_set_memory_profile_query(
-      endpoint, amdf_xdna_endpoint_query_memory_profile);
-}
 
 static amdf_status_t AMDF_CALL amdf_xdna_endpoint_query_info(
     amdf_endpoint_t* endpoint, amdf_xdna_endpoint_info_t* out_info) {
@@ -49,20 +29,14 @@ static amdf_status_t AMDF_CALL amdf_xdna_endpoint_query_info(
     return status;
   }
 
-  const amdf_xdna_endpoint_profile_t* profile =
-      amdf_xdna_endpoint_profile_select(
-          amdf_endpoint_get_cached_info(endpoint));
-  if (profile == NULL) {
+  amdf_xdna_endpoint_info_t info;
+  if (!amdf_xdna_query_endpoint_info(amdf_endpoint_get_cached_info(endpoint),
+                                     &info)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
-
   const uint32_t structure_size = out_info->structure_size;
   void* const next = out_info->next;
-  *out_info = *amdf_xdna_endpoint_profile_get_info(profile);
-  const amdf_xdna_umd_context_capabilities_t context_capabilities =
-      amdf_xdna_umd_query_context_capabilities(profile);
-  out_info->context.scheduling_modes &= context_capabilities.scheduling_modes;
-  out_info->context.placement_modes = context_capabilities.placement_modes;
+  *out_info = info;
   out_info->structure_size = structure_size;
   out_info->next = next;
   return AMDF_STATUS_OK;
@@ -85,7 +59,7 @@ static const amdf_xdna_api_t amdf_xdna_api_v1 = {
 };
 
 uint32_t amdf_xdna_extension_query_endpoint_queue_families(
-    const amdf_xdna_endpoint_profile_t* profile,
+    const amdf_xdna_device_profile_t* profile,
     const amdf_platform_endpoint_t* platform_endpoint, uint32_t capacity,
     amdf_queue_family_info_t* out_families) {
   if (profile == NULL || profile->info->instruction.maximum_byte_length == 0 ||

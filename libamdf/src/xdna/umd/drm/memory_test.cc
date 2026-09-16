@@ -106,7 +106,7 @@ class LinuxXdnaMemoryRollbackTest : public ::testing::Test {
     native_memory = &native_;
     device_.descriptor = 17;
     device_.page_size = 4096;
-    device_.profile = &endpoint_profile_;
+    device_.profile = &device_profile_;
     device_.host_allocator = amdf_allocator_system();
     device_.host_allocator.user_data = &native_;
     device_.host_allocator.free = [](void* user_data, void* allocation) {
@@ -160,7 +160,7 @@ class LinuxXdnaMemoryRollbackTest : public ::testing::Test {
   // Native failure and resource-consumption state.
   NativeMemoryState native_;
   // Complete address-translation limits for the test device.
-  amdf_xdna_endpoint_profile_t endpoint_profile_ = {
+  amdf_xdna_device_profile_t device_profile_ = {
       .dma = {.address_bit_count = 48},
   };
   // Explicit live native device borrowed by the constructor.
@@ -277,12 +277,12 @@ TEST(LinuxXdnaMemoryPairTest, DescribesOnlyTheExactLocalXdnaSite) {
 
 TEST(LinuxXdnaMemoryProfileTest,
      SeparatesOwnedImportedAndRegisteredHostProfiles) {
-  const amdf_xdna_endpoint_profile_t endpoint_profile = {
+  const amdf_xdna_device_profile_t device_profile = {
       .dma = {.byte_offset = UINT32_C(0x80000000), .address_bit_count = 48},
   };
   amdf_xdna_umd_device_t device = {};
   device.page_size = 4096;
-  device.profile = &endpoint_profile;
+  device.profile = &device_profile;
   amdf_memory_native_profile_t profile = {};
   ASSERT_EQ(amdf_xdna_umd_device_query_memory_profile(&device, 0, &profile),
             AMDF_STATUS_OK);
@@ -371,10 +371,10 @@ TEST(LinuxXdnaMemoryProfileTest,
 }
 
 TEST(LinuxXdnaMemoryProfileTest, RequiresQualifiedDmaAddressFacts) {
-  const amdf_xdna_endpoint_profile_t endpoint_profile = {};
+  const amdf_xdna_device_profile_t device_profile = {};
   amdf_xdna_umd_device_t device = {};
   device.page_size = 4096;
-  device.profile = &endpoint_profile;
+  device.profile = &device_profile;
   amdf_memory_native_profile_t profile;
   std::memset(&profile, 0xA5, sizeof(profile));
   const amdf_memory_native_profile_t original = profile;
@@ -385,7 +385,7 @@ TEST(LinuxXdnaMemoryProfileTest, RequiresQualifiedDmaAddressFacts) {
 }
 
 TEST(LinuxXdnaMemoryAddressTest, TranslatesCompleteLogicalRanges) {
-  const amdf_xdna_endpoint_profile_t profile = {
+  const amdf_xdna_device_profile_t profile = {
       .dma = {.byte_offset = UINT32_C(0x80000000), .address_bit_count = 48},
   };
   amdf_xdna_umd_device_t device = {};
@@ -413,7 +413,7 @@ TEST(LinuxXdnaMemoryAddressTest, TranslatesCompleteLogicalRanges) {
 }
 
 TEST(LinuxXdnaMemoryAddressTest, RejectsOverflowWithoutPublishingAddress) {
-  const amdf_xdna_endpoint_profile_t profile = {
+  const amdf_xdna_device_profile_t profile = {
       .dma = {.byte_offset = UINT32_C(0x80000000), .address_bit_count = 48},
   };
   amdf_xdna_umd_device_t device = {};

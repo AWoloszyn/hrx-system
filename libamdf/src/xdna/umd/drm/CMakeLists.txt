@@ -123,9 +123,7 @@ iree_cc_library(
   DEPS
     amdf::headers
     libamdf::src::memory_profile
-    libamdf::src::platform::linux::endpoint
-    libamdf::src::xdna::endpoint_profile
-    libamdf::src::xdna::umd::memory_profile
+    libamdf::src::xdna::device_profile
   PUBLIC
 )
 endif()
@@ -248,7 +246,10 @@ iree_cc_test(
     device_test
   SRCS
     "device_test.cc"
+  LINKOPTS
+    "-Wl,--wrap=ioctl"
   DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_drm_uapi>
     $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_xdna_uapi>
     ::context
     ::context_state
@@ -261,7 +262,7 @@ iree_cc_test(
     libamdf::src::allocator
     libamdf::src::platform
     libamdf::src::platform::linux::endpoint
-    libamdf::src::xdna::endpoint_profile
+    libamdf::src::xdna::device_profile
     libamdf::src::xdna::umd::context
     libamdf::src::xdna::umd::device
     libamdf::src::xdna::umd::memory

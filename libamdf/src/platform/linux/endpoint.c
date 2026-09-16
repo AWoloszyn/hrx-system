@@ -291,8 +291,7 @@ static amdf_status_t amdf_linux_resolve_endpoint(
 }
 
 static amdf_status_t amdf_linux_qualify_device_file(
-    int descriptor, const amdf_endpoint_info_t* info,
-    amdf_linux_drm_version_t* out_version) {
+    int descriptor, const amdf_endpoint_info_t* info) {
   struct stat native_info;
   if (fstat(descriptor, &native_info) != 0) {
     return amdf_linux_error(errno);
@@ -314,27 +313,16 @@ static amdf_status_t amdf_linux_qualify_device_file(
       memcmp(driver, expected_driver, version.name_len) != 0) {
     return amdf_make_api_status(AMDF_STATUS_CODE_NOT_FOUND);
   }
-  if (version.version_major < 0 || version.version_minor < 0) {
-    return amdf_linux_error(EPROTO);
-  }
-  *out_version = (amdf_linux_drm_version_t){
-      .major = (uint32_t)version.version_major,
-      .minor = (uint32_t)version.version_minor,
-  };
   return AMDF_STATUS_OK;
 }
 
 static amdf_status_t amdf_linux_open_device_file(
-    const amdf_endpoint_info_t* info, const char* path, int* out_descriptor,
-    amdf_linux_drm_version_t* out_version) {
+    const amdf_endpoint_info_t* info, const char* path, int* out_descriptor) {
   int descriptor = open(path, O_RDWR | O_CLOEXEC);
   if (descriptor < 0) return amdf_linux_error(errno);
-  amdf_linux_drm_version_t version;
-  amdf_status_t status =
-      amdf_linux_qualify_device_file(descriptor, info, &version);
+  amdf_status_t status = amdf_linux_qualify_device_file(descriptor, info);
   if (amdf_status_is_ok(status)) {
     *out_descriptor = descriptor;
-    if (out_version != NULL) *out_version = version;
   } else {
     const amdf_status_t close_status = amdf_linux_file_close(&descriptor);
     if (!amdf_status_is_ok(close_status)) status = close_status;
@@ -364,15 +352,13 @@ amdf_status_t amdf_platform_endpoint_open(
 }
 
 amdf_status_t amdf_linux_endpoint_open_file(
-    const amdf_platform_endpoint_t* endpoint, int* out_descriptor,
-    amdf_linux_drm_version_t* out_version) {
+    const amdf_platform_endpoint_t* endpoint, int* out_descriptor) {
   amdf_endpoint_info_t info;
   char device_path[AMDF_LINUX_DEVICE_PATH_CAPACITY];
   const amdf_status_t status = amdf_linux_resolve_endpoint(
       endpoint->instance, &endpoint->info.id, &info, device_path);
   if (!amdf_status_is_ok(status)) return status;
-  return amdf_linux_open_device_file(&info, device_path, out_descriptor,
-                                     out_version);
+  return amdf_linux_open_device_file(&info, device_path, out_descriptor);
 }
 
 amdf_queue_publication_modes_t

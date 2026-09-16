@@ -19,7 +19,7 @@
 #include "libamdf/src/memory_resource.h"
 #include "libamdf/src/memory_scope.h"
 #include "libamdf/src/xdna/device.h"
-#include "libamdf/src/xdna/endpoint_profile.h"
+#include "libamdf/src/xdna/device_profile.h"
 #include "libamdf/src/xdna/umd/kernel_queue.h"
 
 // Native dependencies are controlled here; submission ownership, retirement,
@@ -70,12 +70,10 @@ namespace {
 struct Device {
   // Production generic device base consumed by queue creation.
   amdf_device_t base = {};
-  // Immutable device identity returned by the XDNA device dependency.
+  // Immutable identity and instruction contract returned by the device.
   amdf_xdna_device_info_t info = {};
-  // Immutable native instruction contract.
-  amdf_xdna_endpoint_info_t endpoint_info = {};
   // Cached profile consumed by production input validation.
-  amdf_xdna_endpoint_profile_t profile = {};
+  amdf_xdna_device_profile_t profile = {};
 };
 
 struct Context {
@@ -98,11 +96,10 @@ class XdnaKernelQueueTest : public ::testing::Test {
     device.base.host_allocator = amdf_allocator_system();
     amdf_child_tracker_initialize(&device.base.children);
     device.info.reset_epoch = 1;
-    device.endpoint_info.instruction.maximum_byte_length =
-        UINT32_MAX & ~uint64_t{3};
-    device.endpoint_info.instruction.address_alignment = 4;
-    device.endpoint_info.instruction.byte_length_granularity = 4;
-    device.profile.info = &device.endpoint_info;
+    device.info.instruction.maximum_byte_length = UINT32_MAX & ~uint64_t{3};
+    device.info.instruction.address_alignment = 4;
+    device.info.instruction.byte_length_granularity = 4;
+    device.profile.info = &device.info;
     context.device = &device.base;
     context.info.device_id = device.info.id;
     context.info.reset_epoch = 1;
@@ -315,9 +312,9 @@ TEST_F(XdnaKernelQueueTest, ValidatesInstructionRangeAtPublicBoundary) {
 }
 
 TEST_F(XdnaKernelQueueTest, UsesProfileLimitsAndAbsoluteInstructionAddress) {
-  device.endpoint_info.instruction.address_alignment = 256;
-  device.endpoint_info.instruction.byte_length_granularity = 16;
-  device.endpoint_info.instruction.maximum_byte_length = 80;
+  device.info.instruction.address_alignment = 256;
+  device.info.instruction.byte_length_granularity = 16;
+  device.info.instruction.maximum_byte_length = 80;
   memory->accesses[0].addresses[AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE] += 64;
   command.byte_offset = 0;
   command.byte_length = 64;
@@ -399,7 +396,7 @@ amdf_status_t amdf_xdna_context_register_child(amdf_xdna_context_t* context) {
 void amdf_xdna_context_unregister_child(amdf_xdna_context_t* context) {
   amdf_child_tracker_unregister(&reinterpret_cast<Context*>(context)->children);
 }
-const amdf_xdna_endpoint_profile_t* amdf_xdna_device_get_profile(
+const amdf_xdna_device_profile_t* amdf_xdna_device_get_profile(
     const amdf_device_t* device) {
   return &reinterpret_cast<const Device*>(device)->profile;
 }

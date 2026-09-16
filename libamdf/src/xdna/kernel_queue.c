@@ -349,7 +349,7 @@ amdf_status_t AMDF_CALL amdf_xdna_kernel_queue_submit(
 
   amdf_xdna_kernel_queue_t* queue = (amdf_xdna_kernel_queue_t*)base_queue;
   const amdf_xdna_kernel_command_t* command = &submission_info->commands[0];
-  const amdf_xdna_endpoint_info_t* endpoint_info =
+  const amdf_xdna_device_info_t* device_info =
       amdf_xdna_device_get_profile(base_queue->device)->info;
   amdf_memory_t* memory = command->memory;
   if (command->reserved != 0 ||
@@ -358,9 +358,8 @@ amdf_status_t AMDF_CALL amdf_xdna_kernel_queue_submit(
   }
   if (command->access_ordinal >= memory->info.access_count ||
       command->byte_length == 0 ||
-      command->byte_length > endpoint_info->instruction.maximum_byte_length ||
-      command->byte_length %
-              endpoint_info->instruction.byte_length_granularity !=
+      command->byte_length > device_info->instruction.maximum_byte_length ||
+      command->byte_length % device_info->instruction.byte_length_granularity !=
           0 ||
       command->byte_offset > memory->info.byte_length ||
       command->byte_length > memory->info.byte_length - command->byte_offset) {
@@ -381,7 +380,7 @@ amdf_status_t AMDF_CALL amdf_xdna_kernel_queue_submit(
   const uint64_t instruction_address =
       access->addresses[AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE] +
       command->byte_offset;
-  if (instruction_address % endpoint_info->instruction.address_alignment != 0) {
+  if (instruction_address % device_info->instruction.address_alignment != 0) {
     return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
   }
 

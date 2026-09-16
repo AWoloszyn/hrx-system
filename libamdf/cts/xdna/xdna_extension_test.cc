@@ -163,7 +163,7 @@ class XdnaEndpointTest : public ::testing::Test {
   amdf_xdna_context_t* context_ = nullptr;
 };
 
-TEST_F(XdnaEndpointTest, ReturnsStableCachedProfile) {
+TEST_F(XdnaEndpointTest, ReturnsPassiveTargetIdentity) {
   bool engine_found = false;
   ASSERT_EQ(OpenEngine(AMDF_ENGINE_KIND_XDNA, &engine_found), AMDF_STATUS_OK);
   if (!engine_found) {
@@ -179,27 +179,8 @@ TEST_F(XdnaEndpointTest, ReturnsStableCachedProfile) {
   EXPECT_EQ(info.type, AMDF_STRUCTURE_TYPE_XDNA_ENDPOINT_INFO);
   EXPECT_EQ(info.structure_size, sizeof(info));
   EXPECT_NE(info.architecture, AMDF_XDNA_ARCHITECTURE_UNKNOWN);
-  EXPECT_GT(info.array.column_count, 0u);
-  EXPECT_GT(info.array.row_count, 0u);
-  EXPECT_GT(info.array.column_stride, 0u);
-  EXPECT_GT(info.context.minimum_column_count, 0u);
-  EXPECT_LE(info.context.minimum_column_count,
-            info.context.maximum_column_count);
-  EXPECT_LE(info.context.maximum_column_count, info.array.column_count);
-  EXPECT_GT(info.context.column_count_granularity, 0u);
-  EXPECT_GE(info.context.maximum_live_context_count,
-            info.context.maximum_hardware_context_count);
   EXPECT_NE(info.target_id[0], '\0');
   EXPECT_EQ(info.target_id[AMDF_XDNA_TARGET_ID_CAPACITY - 1], '\0');
-
-  if (info.instruction.format.format == AMDF_XDNA_BINARY_FORMAT_UNKNOWN) {
-    EXPECT_EQ(info.instruction.maximum_byte_length, 0u);
-    EXPECT_EQ(info.instruction.format.version, 0u);
-  } else {
-    EXPECT_GT(info.instruction.maximum_byte_length, 0u);
-    EXPECT_GT(info.instruction.address_alignment, 0u);
-    EXPECT_GT(info.instruction.byte_length_granularity, 0u);
-  }
 }
 
 TEST_F(XdnaEndpointTest, RejectsMalformedOutputWithoutMutation) {
@@ -245,7 +226,7 @@ class XdnaMemoryDiscoveryTest : public XdnaEndpointTest {
   amdf_host_mapping_t* mapping_ = nullptr;
 };
 
-TEST_F(XdnaMemoryDiscoveryTest, SelectsExpectedProfileThenUsesLiveLimits) {
+TEST_F(XdnaMemoryDiscoveryTest, SelectsLiveProfileAndUsesNativeLimits) {
   bool engine_found = false;
   ASSERT_EQ(OpenEngine(AMDF_ENGINE_KIND_XDNA, &engine_found), AMDF_STATUS_OK);
   if (!engine_found) GTEST_SKIP() << "no qualified XDNA endpoint present";
@@ -272,16 +253,23 @@ TEST_F(XdnaMemoryDiscoveryTest, SelectsExpectedProfileThenUsesLiveLimits) {
   }
   ASSERT_NE(system_scope, nullptr);
 
+  // Resource queries consume the explicitly activated device.
+  const auto device_status =
+      GetCtsDeviceCache().GetXdnaDevice(endpoint_, &device_);
+  if (device_status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED))
+    GTEST_SKIP() << "XDNA device materialization is unavailable";
+  ASSERT_EQ(device_status, AMDF_STATUS_OK);
+
   count = 0;
-  const auto endpoint_scope_status =
-      api_->endpoint_enumerate_memory_scopes(endpoint_, 0, nullptr, &count);
-  ASSERT_EQ(endpoint_scope_status,
+  const auto device_scope_status =
+      api_->device_enumerate_memory_scopes(device_, 0, nullptr, &count);
+  ASSERT_EQ(device_scope_status,
             count == 0
                 ? AMDF_STATUS_OK
                 : amdf_make_api_status(AMDF_STATUS_CODE_BUFFER_TOO_SMALL));
   std::vector<amdf_memory_scope_t*> local_scopes(count);
-  ASSERT_EQ(api_->endpoint_enumerate_memory_scopes(endpoint_, count,
-                                                   local_scopes.data(), &count),
+  ASSERT_EQ(api_->device_enumerate_memory_scopes(device_, count,
+                                                 local_scopes.data(), &count),
             AMDF_STATUS_OK);
   for (auto* scope : local_scopes) {
     amdf_memory_scope_info_t info = {};
@@ -292,8 +280,8 @@ TEST_F(XdnaMemoryDiscoveryTest, SelectsExpectedProfileThenUsesLiveLimits) {
     EXPECT_NE(scope, system_scope);
   }
 
-  const amdf_memory_endpoint_access_t endpoint_access = {
-      .endpoint = endpoint_,
+  const amdf_memory_device_access_t device_access = {
+      .device = device_,
       .requirements =
           {
               .access = AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE,
@@ -301,94 +289,34 @@ TEST_F(XdnaMemoryDiscoveryTest, SelectsExpectedProfileThenUsesLiveLimits) {
               .address_kinds = UINT64_C(1) << AMDF_MEMORY_ADDRESS_XDNA_DMA,
           },
   };
-  amdf_memory_profile_t expected = {};
-  expected.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
-  expected.structure_size = sizeof(expected);
-  amdf_memory_access_capabilities_t expected_access = {};
-  expected_access.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES;
-  expected_access.structure_size = sizeof(expected_access);
-  uint32_t selected_ordinal = AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN;
-  constexpr auto required_roles =
-      AMDF_MEMORY_PROFILE_ROLE_CREATE | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP;
-  for (uint32_t ordinal = 0; ordinal < scope_info.memory_profile_count;
-       ++ordinal) {
-    const auto status = api_->memory_scope_query_profile(
-        system_scope, ordinal, 1, &endpoint_access, &expected,
-        &expected_access);
-    if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) continue;
-    ASSERT_EQ(status, AMDF_STATUS_OK);
-    if ((expected.roles & required_roles) == required_roles &&
-        (expected.supported_flags & AMDF_MEMORY_FLAG_HOST_VISIBLE)) {
-      selected_ordinal = ordinal;
-      break;
-    }
-  }
-  ASSERT_NE(selected_ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
-  ASSERT_EQ(expected.ordinal, selected_ordinal);
-  ASSERT_GT(expected_access.device_address.address_bit_count, 0u);
-  ASSERT_LE(expected_access.device_address.address_bit_count, 64u);
-  ASSERT_EQ(expected_access.address_kinds &
-                endpoint_access.requirements.address_kinds,
-            endpoint_access.requirements.address_kinds);
-
-  // Activation is explicit, after passive filtering. The suite still borrows
-  // its one ordinary device when another case requested it first.
-  const auto device_status =
-      GetCtsDeviceCache().GetXdnaDevice(endpoint_, &device_);
-  if (device_status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED))
-    GTEST_SKIP() << "XDNA device materialization is unavailable";
-  ASSERT_EQ(device_status, AMDF_STATUS_OK);
-  const amdf_memory_device_access_t device_access = {
-      .device = device_,
-      .requirements = endpoint_access.requirements,
-  };
   amdf_memory_profile_t live = {};
   live.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
   live.structure_size = sizeof(live);
   amdf_memory_access_capabilities_t live_access = {};
   live_access.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES;
   live_access.structure_size = sizeof(live_access);
-  ASSERT_EQ(api_->memory_scope_query_device_profile(
-                system_scope, selected_ordinal, 1, &device_access, &live,
-                &live_access),
-            AMDF_STATUS_OK);
-  ASSERT_EQ(live.roles & required_roles, required_roles);
-  ASSERT_NE(live.supported_flags & AMDF_MEMORY_FLAG_HOST_VISIBLE, 0u);
+  uint32_t selected_ordinal = AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN;
+  constexpr auto required_roles =
+      AMDF_MEMORY_PROFILE_ROLE_CREATE | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP;
+  for (uint32_t ordinal = 0; ordinal < scope_info.memory_profile_count;
+       ++ordinal) {
+    const auto status = api_->memory_scope_query_device_profile(
+        system_scope, ordinal, 1, &device_access, &live, &live_access);
+    if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) continue;
+    ASSERT_EQ(status, AMDF_STATUS_OK);
+    if ((live.roles & required_roles) == required_roles &&
+        (live.supported_flags & AMDF_MEMORY_FLAG_HOST_VISIBLE)) {
+      selected_ordinal = ordinal;
+      break;
+    }
+  }
+  ASSERT_NE(selected_ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
+  ASSERT_EQ(live.ordinal, selected_ordinal);
+  ASSERT_GT(live_access.device_address.address_bit_count, 0u);
+  ASSERT_LE(live_access.device_address.address_bit_count, 64u);
   ASSERT_EQ(
       live_access.address_kinds & device_access.requirements.address_kinds,
       device_access.requirements.address_kinds);
-
-  amdf_memory_profile_t repeated = expected;
-  amdf_memory_access_capabilities_t repeated_access = expected_access;
-  ASSERT_EQ(api_->memory_scope_query_profile(system_scope, selected_ordinal, 1,
-                                             &endpoint_access, &repeated,
-                                             &repeated_access),
-            AMDF_STATUS_OK);
-  EXPECT_EQ(std::memcmp(&expected, &repeated, sizeof(expected)), 0);
-  EXPECT_EQ(
-      std::memcmp(&expected_access, &repeated_access, sizeof(expected_access)),
-      0);
-
-  count = 0;
-  const auto device_scope_status =
-      api_->device_enumerate_memory_scopes(device_, 0, nullptr, &count);
-  ASSERT_EQ(device_scope_status,
-            count == 0
-                ? AMDF_STATUS_OK
-                : amdf_make_api_status(AMDF_STATUS_CODE_BUFFER_TOO_SMALL));
-  std::vector<amdf_memory_scope_t*> private_scopes(count);
-  ASSERT_EQ(api_->device_enumerate_memory_scopes(device_, count,
-                                                 private_scopes.data(), &count),
-            AMDF_STATUS_OK);
-  for (auto* scope : private_scopes) {
-    amdf_memory_scope_info_t info = {};
-    info.type = AMDF_STRUCTURE_TYPE_MEMORY_SCOPE_INFO;
-    info.structure_size = sizeof(info);
-    ASSERT_EQ(api_->memory_scope_query_info(scope, &info), AMDF_STATUS_OK);
-    EXPECT_EQ(info.kind, AMDF_MEMORY_SCOPE_KIND_PRIVATE);
-    EXPECT_NE(scope, system_scope);
-    for (auto* local_scope : local_scopes) EXPECT_NE(scope, local_scope);
-  }
 
   const uint64_t granularity = live.allocation.byte_length_granularity;
   ASSERT_GT(granularity, 0u);
@@ -562,6 +490,22 @@ TEST_F(XdnaEndpointTest, MaterializesDeviceAndProgramIndependentContext) {
   ASSERT_TRUE(amdf_status_is_ok(xdna_api_->device_query_info(device_, &info)));
   EXPECT_NE(info.id.words[0] | info.id.words[1], 0u);
   EXPECT_EQ(info.reset_epoch, 1u);
+  EXPECT_GT(info.array.column_count, 0u);
+  EXPECT_GT(info.array.row_count, 0u);
+  EXPECT_GT(info.array.column_stride, 0u);
+  EXPECT_GT(info.context.minimum_column_count, 0u);
+  EXPECT_LE(info.context.minimum_column_count,
+            info.context.maximum_column_count);
+  EXPECT_LE(info.context.maximum_column_count, info.array.column_count);
+  EXPECT_GT(info.context.column_count_granularity, 0u);
+  if (info.instruction.format.format == AMDF_XDNA_BINARY_FORMAT_UNKNOWN) {
+    EXPECT_EQ(info.instruction.maximum_byte_length, 0u);
+    EXPECT_EQ(info.instruction.format.version, 0u);
+  } else {
+    EXPECT_GT(info.instruction.maximum_byte_length, 0u);
+    EXPECT_GT(info.instruction.address_alignment, 0u);
+    EXPECT_GT(info.instruction.byte_length_granularity, 0u);
+  }
 
   amdf_xdna_device_info_t second_info = {};
   second_info.type = AMDF_STRUCTURE_TYPE_XDNA_DEVICE_INFO;
@@ -581,7 +525,7 @@ TEST_F(XdnaEndpointTest, MaterializesDeviceAndProgramIndependentContext) {
 
   const amdf_xdna_context_create_info_t context_create_info =
       MakeContextCreateInfo();
-  if ((endpoint_info.context.scheduling_modes &
+  if ((info.context.scheduling_modes &
        context_create_info.acceptable_scheduling_modes) == 0) {
     auto* const sentinel = reinterpret_cast<amdf_xdna_context_t*>(uintptr_t{1});
     amdf_xdna_context_t* output = sentinel;
@@ -613,7 +557,7 @@ TEST_F(XdnaEndpointTest, MaterializesDeviceAndProgramIndependentContext) {
             AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED);
   EXPECT_EQ(context_info.logical_column_count,
             context_create_info.logical_column_count);
-  EXPECT_EQ(context_info.row_count, endpoint_info.array.row_count);
+  EXPECT_EQ(context_info.row_count, info.array.row_count);
 
   amdf_xdna_context_placement_info_t placement = {};
   placement.type = AMDF_STRUCTURE_TYPE_XDNA_CONTEXT_PLACEMENT_INFO;
@@ -625,8 +569,8 @@ TEST_F(XdnaEndpointTest, MaterializesDeviceAndProgramIndependentContext) {
       xdna_api_->context_query_placement_info(context_, &placement);
   if (info.placement_modes & AMDF_XDNA_PLACEMENT_MODE_FIXED_FULL_ARRAY) {
     ASSERT_TRUE(amdf_status_is_ok(placement_status));
-    EXPECT_EQ(placement.column_origin, endpoint_info.array.column_origin);
-    EXPECT_EQ(placement.column_count, endpoint_info.array.column_count);
+    EXPECT_EQ(placement.column_origin, info.array.column_origin);
+    EXPECT_EQ(placement.column_count, info.array.column_count);
     EXPECT_GE(placement.column_count, context_info.logical_column_count);
     amdf_xdna_context_placement_info_t repeated_placement = original_placement;
     ASSERT_TRUE(amdf_status_is_ok(xdna_api_->context_query_placement_info(
@@ -643,7 +587,7 @@ TEST_F(XdnaEndpointTest, MaterializesDeviceAndProgramIndependentContext) {
   // sibling also checks that fixed backing does not promise exclusive
   // ownership.
   amdf_xdna_context_create_info_t fixed_create_info = MakeContextCreateInfo();
-  fixed_create_info.physical_column_origin = endpoint_info.array.column_origin;
+  fixed_create_info.physical_column_origin = info.array.column_origin;
   if (info.placement_modes & AMDF_XDNA_PLACEMENT_MODE_FIXED_FULL_ARRAY) {
     amdf_xdna_context_t* fixed_context = nullptr;
     ASSERT_TRUE(amdf_status_is_ok(xdna_api_->context_create(
@@ -651,8 +595,8 @@ TEST_F(XdnaEndpointTest, MaterializesDeviceAndProgramIndependentContext) {
     amdf_xdna_context_placement_info_t fixed_placement = original_placement;
     EXPECT_TRUE(amdf_status_is_ok(xdna_api_->context_query_placement_info(
         fixed_context, &fixed_placement)));
-    EXPECT_EQ(fixed_placement.column_origin, endpoint_info.array.column_origin);
-    EXPECT_EQ(fixed_placement.column_count, endpoint_info.array.column_count);
+    EXPECT_EQ(fixed_placement.column_origin, info.array.column_origin);
+    EXPECT_EQ(fixed_placement.column_count, info.array.column_count);
     EXPECT_TRUE(amdf_status_is_ok(xdna_api_->context_destroy(fixed_context)));
   } else {
     auto* const sentinel = reinterpret_cast<amdf_xdna_context_t*>(uintptr_t{1});
@@ -662,9 +606,8 @@ TEST_F(XdnaEndpointTest, MaterializesDeviceAndProgramIndependentContext) {
               AMDF_STATUS_CODE_UNSUPPORTED);
     EXPECT_EQ(output, sentinel);
   }
-  if (endpoint_info.array.column_count > 1) {
-    fixed_create_info.physical_column_origin =
-        endpoint_info.array.column_origin + 1;
+  if (info.array.column_count > 1) {
+    fixed_create_info.physical_column_origin = info.array.column_origin + 1;
     auto* const sentinel = reinterpret_cast<amdf_xdna_context_t*>(uintptr_t{1});
     amdf_xdna_context_t* output = sentinel;
     EXPECT_EQ(amdf_status_code(xdna_api_->context_create(

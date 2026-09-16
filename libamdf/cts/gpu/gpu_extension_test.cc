@@ -45,7 +45,6 @@ TEST(GpuExtensionTest, ReportsCompiledAvailabilityBeforeCreatingInstance) {
   EXPECT_NE(gpu_api->device_query_info, nullptr);
   EXPECT_NE(gpu_api->kernel_queue_create, nullptr);
   EXPECT_NE(gpu_api->kernel_queue_submit, nullptr);
-  EXPECT_NE(gpu_api->endpoint_query_device_capabilities, nullptr);
   EXPECT_NE(gpu_api->user_queue_create, nullptr);
 }
 
@@ -122,14 +121,6 @@ class GpuEndpointTest : public ::testing::Test {
       }
     }
     return AMDF_STATUS_OK;
-  }
-
-  amdf_status_t QueryDeviceCapabilities() {
-    amdf_gpu_device_capabilities_t capabilities = {};
-    capabilities.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_CAPABILITIES;
-    capabilities.structure_size = sizeof(capabilities);
-    return gpu_api_->endpoint_query_device_capabilities(endpoint_,
-                                                        &capabilities);
   }
 
   amdf_gpu_device_create_info_t MakeDeviceCreateInfo() {
@@ -326,12 +317,6 @@ TEST_F(GpuEndpointTest, MaterializesProgramIndependentDevice) {
     GTEST_SKIP() << "no GPU endpoint present";
   }
 
-  const amdf_status_t lifetime_status = QueryDeviceCapabilities();
-  if (lifetime_status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
-    GTEST_SKIP() << "requested native lifetime is unavailable";
-  }
-  ASSERT_EQ(lifetime_status, AMDF_STATUS_OK);
-
   ASSERT_NO_FATAL_FAILURE(SetUpDevice());
   if (IsSkipped()) return;
   ASSERT_NE(device_, nullptr);
@@ -361,12 +346,6 @@ TEST_F(GpuEndpointTest, RejectsMalformedDeviceInfoWithoutMutation) {
   if (!engine_found) {
     GTEST_SKIP() << "no GPU endpoint present";
   }
-  const amdf_status_t lifetime_status = QueryDeviceCapabilities();
-  if (lifetime_status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
-    GTEST_SKIP() << "requested native lifetime is unavailable";
-  }
-  ASSERT_EQ(lifetime_status, AMDF_STATUS_OK);
-
   ASSERT_NO_FATAL_FAILURE(SetUpDevice());
   if (IsSkipped()) return;
 
@@ -397,12 +376,6 @@ TEST_F(GpuEndpointTest, CreatesReclaimableDevicesFromOneEndpoint) {
   if (!engine_found) {
     GTEST_SKIP() << "no GPU endpoint present";
   }
-  const amdf_status_t lifetime_status = QueryDeviceCapabilities();
-  if (lifetime_status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
-    GTEST_SKIP() << "requested native lifetime is unavailable";
-  }
-  ASSERT_EQ(lifetime_status, AMDF_STATUS_OK);
-
   ASSERT_NO_FATAL_FAILURE(SetUpDevice());
   if (IsSkipped()) return;
   amdf_gpu_device_info_t first_info = {};
@@ -425,44 +398,6 @@ TEST_F(GpuEndpointTest, CreatesReclaimableDevicesFromOneEndpoint) {
 
   ASSERT_TRUE(amdf_status_is_ok(api_->device_destroy(second_device_)));
   second_device_ = nullptr;
-}
-
-TEST_F(GpuEndpointTest, QueriesInstanceCapabilitiesWithoutCreatingDevice) {
-  bool engine_found = false;
-  ASSERT_EQ(OpenEngine(AMDF_ENGINE_KIND_GPU, &engine_found), AMDF_STATUS_OK);
-  if (!engine_found) GTEST_SKIP() << "No GPU endpoint";
-
-  amdf_gpu_device_capabilities_t capabilities = {};
-  capabilities.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_CAPABILITIES;
-  capabilities.structure_size = sizeof(capabilities);
-  capabilities.features = UINT64_MAX;
-  EXPECT_EQ(amdf_status_code(gpu_api_->endpoint_query_device_capabilities(
-                nullptr, &capabilities)),
-            AMDF_STATUS_CODE_INVALID_ARGUMENT);
-  EXPECT_EQ(capabilities.features, UINT64_MAX);
-  capabilities.next = &capabilities;
-  EXPECT_EQ(amdf_status_code(gpu_api_->endpoint_query_device_capabilities(
-                endpoint_, &capabilities)),
-            AMDF_STATUS_CODE_UNSUPPORTED);
-  EXPECT_EQ(capabilities.features, UINT64_MAX);
-  capabilities.next = nullptr;
-
-  const amdf_status_t status =
-      gpu_api_->endpoint_query_device_capabilities(endpoint_, &capabilities);
-  if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
-    EXPECT_EQ(capabilities.features, UINT64_MAX);
-    amdf_gpu_device_create_info_t create_info = MakeDeviceCreateInfo();
-    amdf_device_t* output = reinterpret_cast<amdf_device_t*>(uintptr_t{1});
-    EXPECT_EQ(gpu_api_->device_create(endpoint_, &create_info, &output),
-              status);
-    EXPECT_EQ(reinterpret_cast<uintptr_t>(output), uintptr_t{1});
-  } else {
-    ASSERT_EQ(status, AMDF_STATUS_OK);
-    amdf_gpu_device_capabilities_t second = capabilities;
-    ASSERT_EQ(gpu_api_->endpoint_query_device_capabilities(endpoint_, &second),
-              AMDF_STATUS_OK);
-    EXPECT_EQ(second.features, capabilities.features);
-  }
 }
 
 }  // namespace

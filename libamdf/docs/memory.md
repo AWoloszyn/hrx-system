@@ -39,14 +39,12 @@ instance or another native client with a different render file can encounter
 reclaimable native objects under either policy; instance lifetime does not create
 a separate process GPU address space.
 
-Discovery is passive. It supplies enough information to select hardware and plan
-memory without creating execution devices, queues, firmware contexts, address
-spaces, or device allocations. Placement, alignment and address-width limits,
-supported access mechanisms, and expected sharing capabilities are complete
-facts for discovery, not partially populated live-device structures. Explicit
-resource creation produces complete information about what was actually
-obtained. Caller policy handles refinements; explicit requirements remain
-binding.
+Discovery supplies identity and native metadata for hardware selection without
+creating execution devices, queues, firmware contexts, address spaces or device
+allocations. Explicit device creation obtains native placement, alignment,
+address limits and sharing capabilities. Queries over the resulting live devices
+return complete contracts before memory construction; explicit requirements
+remain binding.
 
 The fabric does not imply that every engine can access every allocation. It
 presents resources and relationships together so callers can reason about them
@@ -60,7 +58,7 @@ lifetime rules? It is not itself an allocation, pool, device, or address space.
 | Scope | Storage and access | Discovery |
 | --- | --- | --- |
 | Fabric system memory | System backing usable by a supported set of CPU, GPU, and NPU consumers. | Available before device initialization. |
-| Physically local memory | Storage in an identified location, such as one GPU's VRAM or HBM. Peer and host access depend on capabilities. | Available passively where the contract is knowable without activation. |
+| Physically local memory | Storage in an identified location, such as one GPU's VRAM or HBM. Peer and host access depend on capabilities. | Enumerated through the live storage device. |
 | Native-private memory | Storage whose meaning or accessibility depends on a particular device or context. | Retrieved from that live owner. |
 
 Discovering a scope makes its storage contract available for selection. It does
@@ -80,9 +78,10 @@ construction method, access, alignment, host mapping, and sharing. A profile is
 a valid combination, not a collection of independently composable flags that
 can accidentally describe an impossible request.
 
-`instance_enumerate_memory_scopes` returns instance-visible scopes, while
-`endpoint_enumerate_memory_scopes` returns physical-local scopes and
-`device_enumerate_memory_scopes` returns scopes requiring a live device. These
+`instance_enumerate_memory_scopes` returns system scopes, while
+`device_enumerate_memory_scopes` returns physical-local scopes available through
+the live device. Physical scopes retain their endpoint identity, so separate
+devices for the same endpoint refer to the same storage location. These
 are borrowed descriptors, not additional objects to destroy. Enumeration with
 zero capacity and null storage returns the required count with
 `BUFFER_TOO_SMALL` when any scopes exist.
@@ -98,19 +97,17 @@ storage is excluded from the allocation's public address and usable extent.
 The HAL retires work and destroys its mappings and memory before destroying the
 context. No allocation retains that execution owner.
 
-`memory_scope_query_profile` takes the intended endpoints and their access
+`memory_scope_query_device_profile` takes the live consumers and their access
 requirements. Its backing profile and per-consumer capability array describe
-one jointly supported request, in caller order. After explicit device creation,
-`memory_scope_query_device_profile` takes the live devices and returns their
-qualified contract for the same scope ordinal. Both queries return complete
-records; the second can refine the first without changing the endpoint snapshot.
-Neither reserves resources or guarantees that a later allocation cannot fail.
+one jointly supported request, in caller order. The query returns complete
+records without reserving resources or guaranteeing allocation success. An
+empty consumer array describes CPU-only storage and requires no accelerator.
 
-For example, a HAL can filter endpoints using expected registration support,
-create the selected GPU and NPU, then query their joint live profile before
-allocating caller-owned storage. That profile supplies the page-cover granularity
-and supported alignment used for registration. If the live contract cannot meet
-the HAL's requirements, the HAL can reject it before acquiring memory.
+For example, a HAL creates its selected GPU and NPU, then queries their joint
+profile before allocating caller-owned storage. That profile supplies the
+page-cover granularity and supported alignment used for registration. If the
+contract cannot meet the HAL's requirements, it can reject the combination
+before acquiring memory.
 
 `memory_create` and `memory_import` take the same scope and explicitly initialized
 devices in the same order. They qualify the live contract and establish every
@@ -176,9 +173,9 @@ On Linux, KFD admits local peer access within an enabled xGMI hive or through
 its directed PCIe peer links. PCIe admission accounts for the backing GPU's
 visible BAR, consumer DMA addressability, and platform peer-routing support.
 Hive membership does not imply PCIe reachability, and a PCIe edge does not imply
-the reverse edge. Passive profiles carry the driver's cached topology; explicit
-device creation refreshes it for live queries. Unsupported consumer sets are
-rejected before allocating backing. Supported local groups use the same fixed
+the reverse edge. Device creation retains the driver's topology for subsequent
+queries. Unsupported consumer sets are rejected before allocating backing.
+Supported local groups use the same fixed
 mapping owner, common GPU address, exact permissions and ordered release as
 system groups, without host staging or an application export/import chain.
 
@@ -399,12 +396,10 @@ participant's projection was lost.
 
 A CPU/GPU/NPU pipeline follows one resource lifecycle:
 
-1. Create an instance and passively discover endpoints, available scopes,
-   profiles, and access capabilities.
-2. Select a system-memory contract covering the consumers and required address
-   kinds.
-3. Explicitly initialize the GPU and NPU devices. Check their complete achieved
-   capabilities against the selected requirements.
+1. Create an instance and discover endpoint identities and system scopes.
+2. Explicitly initialize the selected GPU and NPU devices.
+3. Query their joint system-memory contract for the required access and address
+   kinds. Check the complete capabilities against the workload requirements.
 4. Allocate backing once from the selected scope, requesting access for those
    live devices. Obtain a CPU mapping and cache the established device addresses.
 5. Create workload queues and any required contexts. Retrieve private scopes from

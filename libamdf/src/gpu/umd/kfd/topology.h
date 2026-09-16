@@ -82,7 +82,7 @@ extern "C" {
 // and owned peer metadata. Success transfers discovery metadata to the caller;
 // failure leaves the output unchanged. No execution resources are acquired.
 // Memory features and the virtual-address interval are supplied separately by
-// target expectations or native refinement on the consuming connection.
+// native device metadata on the consuming connection.
 // A missing KFD node returns UNSUPPORTED; malformed or changing state is an
 // error.
 amdf_status_t amdf_gpu_kfd_topology_initialize(
@@ -93,9 +93,9 @@ amdf_status_t amdf_gpu_kfd_topology_initialize(
 void amdf_gpu_kfd_topology_deinitialize(amdf_gpu_kfd_topology_t* topology,
                                         amdf_allocator_t host_allocator);
 
-// Refines cached topology with the native memory placement and usable address
+// Queries native memory placement and the usable address
 // interval of this exact render connection. Failure leaves topology unchanged.
-amdf_status_t amdf_gpu_kfd_topology_refine_memory(
+amdf_status_t amdf_gpu_kfd_topology_query_memory(
     int render_descriptor, uint32_t pci_device_id,
     amdf_gpu_kfd_topology_t* topology);
 

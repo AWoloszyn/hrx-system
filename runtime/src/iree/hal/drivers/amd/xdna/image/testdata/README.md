@@ -25,8 +25,12 @@ match the contract above. A 270-byte resident worker consumes successive FIFO
 records; ARRAY initializes it once and finite CONTROL invocations complete at
 the output DMA wait. Binding addresses are cold relocations. The intact image
 uses profile ID `0x5354524958000001`, revision 1, rather than Halo's identity.
-Both images exercise exact device admission and native lowering in the consumer
-tests. Host-side fixture coverage alone does not establish native execution.
+Krackan NPU6 preserves its separate discovery identity and shares this execution
+profile: AMD's [NPU6 definition](https://github.com/amd/xdna-driver/blob/8dfda66f67a84aecf26cf68336efc9e4cc1756c3/drivers/accel/amdxdna/npu6_regs.c)
+selects NPU4 firmware, hardware operations and execution features. The consumer
+loads the unchanged Strix image for both devices and rejects the Halo image for
+either. Native context admission supplies the available array extent.
+Host-side fixture coverage alone does not establish native execution.
 
 Producer: Loom commit `4f5d05550c78b94dbd691baaa3a1beafec8c0d5d`.
 SHA-256:

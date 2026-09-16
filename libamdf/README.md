@@ -79,8 +79,8 @@ runtime's execution model.
 | CPU | Linux and Windows host memory | CPU-only backing and explicit host views into shared memory; no synthetic CPU device. |
 | RDNA / CDNA on Linux | KFD and DRM | System and local memory, caller-page registration, peer topology and shared GPU addresses, native user queues. |
 | RDNA on Windows | WDDM / KMT and the private WKMI bridge | System and local memory, host registration, native kernel-published PM4 and SDMA ranges. |
-| XDNA on Linux | Modern amdxdna DRM | NPU4/NPU5 profiles, resident data, context-private instruction storage and kernel-mediated instruction submission. |
-| XDNA on Windows | MCDM / KMT | NPU4/NPU5 profiles, resident data, context-private instruction storage and native transaction-interpreter submission. |
+| XDNA on Linux | Modern amdxdna DRM | NPU4/NPU5/NPU6 support, resident data, context-private instruction storage and kernel-mediated instruction submission. |
+| XDNA on Windows | MCDM / KMT | NPU4/NPU5/NPU6 support, resident data, context-private instruction storage and native transaction-interpreter submission. |
 
 Capability queries describe the implemented platform, target and driver
 combination. Native execution has been exercised on Linux NPU5 and Windows
@@ -100,10 +100,10 @@ library and querying its tables do not discover or activate hardware.
 A caller follows an explicit resource lifecycle:
 
 1. Create an instance, enumerate endpoints, and open metadata snapshots. Inspect
-   topology, memory profiles, instruction limits, and queue families before
-   activating a device.
-2. Create the devices selected for the workload. Query their achieved memory
-   contracts and allocate from a scope with the intended live consumers.
+   PCI identity, hardware family and passive topology before activating a device.
+2. Create the devices selected for the workload. Query native XDNA geometry,
+   instruction/context capabilities and achieved memory contracts. Allocate
+   from a scope with the intended live consumers.
 3. Map host views and obtain device addresses. Create queues and any required
    XDNA contexts; allocate private instruction backing from its owning context.
 4. Publish data and caller-prepared commands, reuse backing and addresses, and
@@ -119,14 +119,80 @@ allocated, registered and imported data, and checks results and teardown.
 
 Focused design documents describe the contracts:
 
-- [Discovery and activation](docs/discovery.md): complete passive information,
-  live refinement, queue families and native driver ownership.
+- [Discovery and activation](docs/discovery.md): passive identity and live capabilities,
+  queue families and native driver ownership.
 - [Memory fabric](docs/memory.md): scopes, shared backing, addresses, visibility
   and caller-owned lifetimes.
 - [XDNA execution](docs/xdna.md): instruction storage, submission and the native
   Linux and Windows requirements.
 - [Performance contracts](docs/performance.md): method-level preparation,
   allocation, locking, native-call and steady-state cost guarantees.
+
+## Native drivers
+
+libamdf requires the native interfaces used by its providers and accepts
+compatible newer drivers without a release allowlist. Hardware capabilities and
+native interface support determine which operations are available; driver
+package versions do not select implementation paths. The
+[XDNA native requirements](docs/xdna.md#native-requirements) describe the NPU
+interface floor, including the Windows allocation-policy query and direct
+context interface. Drivers that lack required interfaces need an update.
+
+Install the complete driver package for the hardware, including its firmware.
+libamdf accesses native drivers directly and does not require the XRT, ROCr, or
+Ryzen AI application runtimes. A vendor's driver package may install XRT tools
+or other dependencies as part of its supported installation procedure.
+
+### Linux
+
+The GPU provider uses `amdgpu`/KFD; the NPU provider uses `amdxdna`. Update the
+distribution's kernel and firmware packages together, then reboot into the new
+kernel. For example, Ubuntu 24.04 provides a rolling hardware-enablement kernel:
+
+```bash
+sudo apt update
+sudo apt install --install-recommends linux-generic-hwe-24.04 linux-firmware
+sudo reboot
+```
+
+When the distribution's `amdxdna` lacks the required interfaces, AMD's
+[Linux NPU installation instructions](https://ryzenai.docs.amd.com/en/latest/linux.html#install-npu-drivers)
+provide the current driver bundle for supported platforms. Follow that bundle's
+package installation instructions, including its dependencies. The
+[amd/xdna-driver project](https://github.com/amd/xdna-driver) also documents
+building and installing its DKMS driver and firmware for supported
+distributions. Use the matching kernel headers and the distribution's module
+signing procedure when Secure Boot is enabled. A loaded `amdxdna` module alone
+does not establish that every required native operation is available.
+
+The NPU must be visible and accessible through `/dev/accel`; GPU access through
+`/dev/kfd` and `/dev/dri` is separate. Containers need the corresponding host
+device nodes and permissions as well as an updated host driver.
+
+### Windows
+
+Obtain the current NPU package for the processor from AMD's
+[NPU driver installation page](https://ryzenai.docs.amd.com/en/latest/inst.html#install-npu-drivers)
+or the computer manufacturer's support page. For AMD's standalone package,
+extract the complete ZIP, open an administrator terminal in the extracted
+directory, and run:
+
+```powershell
+.\npu_sw_installer.exe
+```
+
+Complete the installer and restart Windows if requested. Device Manager lists
+the NPU under **Compute accelerators**; check that it reports a working device
+and the newly installed driver. The NPU package is separate from the Radeon GPU
+driver, which is available through
+[AMD Drivers and Support](https://www.amd.com/en/support/download/drivers.html)
+or the computer manufacturer. Keep each device's complete signed package
+together so its kernel driver, firmware, and companion files agree.
+
+After building libamdf, run the enumeration example and the hardware-backed
+[verification](#verification) suites to check the available capabilities and
+actual execution. Updating a driver does not require adding its release number
+to libamdf.
 
 ## Building and embedding
 
@@ -180,6 +246,13 @@ remain discoverable by wildcard selection; host-only presubmit excludes their
 requirements. GPU/XDNA interoperability has a separate corpus requiring both
 families and both resources. Native suites share the AMD hardware resource group
 with those interop cases.
+
+XDNA device and numerical suites require successful activation and the baseline
+allocated execution path. Missing hardware, failed activation or a missing
+compatible image fixture fails the hardware job. Optional registration, import
+and placement cases use the capabilities of the live device. Strix, Halo and
+Krackan run through the same suites; new driver releases require no test or
+implementation allowlist update.
 
 Each CTS corpus compiles once and links static, shared, and dynamically loaded
 executables. Separate test invocations run each executable with process and

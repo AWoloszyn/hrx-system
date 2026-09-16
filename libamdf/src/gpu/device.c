@@ -11,7 +11,6 @@
 #include "libamdf/src/allocator.h"
 #include "libamdf/src/device.h"
 #include "libamdf/src/endpoint.h"
-#include "libamdf/src/gpu/endpoint_profile.h"
 #include "libamdf/src/gpu/memory.h"
 #include "libamdf/src/gpu/umd/device.h"
 #include "libamdf/src/gpu/umd/instance.h"
@@ -67,19 +66,13 @@ amdf_status_t AMDF_CALL amdf_gpu_device_create(
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
 
-  const void* untyped_profile = NULL;
-  const amdf_status_t profile_status = amdf_endpoint_query_engine_profile(
-      endpoint, AMDF_ENGINE_KIND_GPU, &untyped_profile);
-  if (!amdf_status_is_ok(profile_status)) {
-    return profile_status;
+  if (amdf_endpoint_get_cached_info(endpoint)->engine_kind !=
+      AMDF_ENGINE_KIND_GPU) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
   amdf_instance_t* instance = amdf_endpoint_get_instance(endpoint);
   const amdf_native_lifetime_t native_lifetime =
       amdf_instance_native_lifetime(instance);
-  const amdf_gpu_endpoint_profile_t* profile = untyped_profile;
-  if (!profile->native_lifetimes[native_lifetime].supported) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
-  }
 
   const amdf_allocator_t host_allocator =
       amdf_endpoint_host_allocator(endpoint);

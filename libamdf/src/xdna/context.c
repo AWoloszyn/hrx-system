@@ -13,7 +13,7 @@
 #include "libamdf/src/device.h"
 #include "libamdf/src/structure.h"
 #include "libamdf/src/xdna/device.h"
-#include "libamdf/src/xdna/endpoint_profile.h"
+#include "libamdf/src/xdna/device_profile.h"
 #include "libamdf/src/xdna/memory.h"
 
 struct amdf_xdna_context_t {
@@ -45,10 +45,9 @@ static amdf_status_t amdf_xdna_context_validate_create_info(
     return status;
   }
 
-  const amdf_xdna_endpoint_profile_t* profile =
+  const amdf_xdna_device_profile_t* profile =
       amdf_xdna_device_get_profile(device);
-  const amdf_xdna_endpoint_info_t* endpoint_info =
-      amdf_xdna_endpoint_profile_get_info(profile);
+  const amdf_xdna_device_info_t* device_info = profile->info;
   const amdf_xdna_scheduling_modes_t known_scheduling_modes =
       AMDF_XDNA_SCHEDULING_MODE_EXCLUSIVE | AMDF_XDNA_SCHEDULING_MODE_SPATIAL |
       AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED;
@@ -57,35 +56,32 @@ static amdf_status_t amdf_xdna_context_validate_create_info(
           0) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
-  const amdf_xdna_umd_context_capabilities_t context_capabilities =
-      amdf_xdna_umd_query_context_capabilities(profile);
   if ((create_info->acceptable_scheduling_modes &
-       endpoint_info->context.scheduling_modes &
-       context_capabilities.scheduling_modes) == 0) {
+       device_info->context.scheduling_modes) == 0) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
   if (create_info->logical_column_count <
-          endpoint_info->context.minimum_column_count ||
+          device_info->context.minimum_column_count ||
       create_info->logical_column_count >
-          endpoint_info->context.maximum_column_count) {
+          device_info->context.maximum_column_count) {
     return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
   }
   const uint32_t count_offset = create_info->logical_column_count -
-                                endpoint_info->context.minimum_column_count;
-  if (count_offset % endpoint_info->context.column_count_granularity != 0) {
+                                device_info->context.minimum_column_count;
+  if (count_offset % device_info->context.column_count_granularity != 0) {
     return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
   }
   if (create_info->physical_column_origin !=
       AMDF_XDNA_PHYSICAL_COLUMN_ORIGIN_ANY) {
     if (create_info->physical_column_origin <
-        endpoint_info->array.column_origin) {
+        device_info->array.column_origin) {
       return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
     }
-    const uint32_t physical_offset = create_info->physical_column_origin -
-                                     endpoint_info->array.column_origin;
-    if (physical_offset > endpoint_info->array.column_count ||
+    const uint32_t physical_offset =
+        create_info->physical_column_origin - device_info->array.column_origin;
+    if (physical_offset > device_info->array.column_count ||
         create_info->logical_column_count >
-            endpoint_info->array.column_count - physical_offset) {
+            device_info->array.column_count - physical_offset) {
       return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
     }
   }
@@ -121,9 +117,8 @@ amdf_status_t AMDF_CALL amdf_xdna_context_create(
                                           create_info, &context->umd, &result);
   }
   if (amdf_status_is_ok(status)) {
-    const amdf_xdna_endpoint_info_t* endpoint_info =
-        amdf_xdna_endpoint_profile_get_info(
-            amdf_xdna_device_get_profile(device));
+    const amdf_xdna_device_info_t* device_info =
+        amdf_xdna_device_get_info(device);
     context->info.type = AMDF_STRUCTURE_TYPE_XDNA_CONTEXT_INFO;
     context->info.structure_size = sizeof(context->info);
     context->info.id = result.id;
@@ -131,7 +126,7 @@ amdf_status_t AMDF_CALL amdf_xdna_context_create(
     context->info.reset_epoch = amdf_xdna_device_query_reset_epoch(device);
     context->info.scheduling_mode = result.scheduling_mode;
     context->info.logical_column_count = create_info->logical_column_count;
-    context->info.row_count = endpoint_info->array.row_count;
+    context->info.row_count = device_info->array.row_count;
     context->placement_info.type =
         AMDF_STRUCTURE_TYPE_XDNA_CONTEXT_PLACEMENT_INFO;
     context->placement_info.structure_size = sizeof(context->placement_info);

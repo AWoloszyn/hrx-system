@@ -18,7 +18,7 @@
 #include "libamdf/src/xdna/umd/drm/device.h"
 
 amdf_xdna_umd_context_capabilities_t amdf_xdna_umd_query_context_capabilities(
-    const amdf_xdna_endpoint_profile_t* profile) {
+    const amdf_xdna_device_profile_t* profile) {
   amdf_xdna_umd_context_capabilities_t capabilities = {0};
   if ((profile->execution_capabilities &
        AMDF_XDNA_EXECUTION_CAPABILITY_ELF_INSTRUCTIONS) != 0) {
@@ -41,9 +41,9 @@ amdf_status_t amdf_xdna_umd_device_destroy(amdf_xdna_umd_device_t* device) {
   return status;
 }
 
-static amdf_status_t amdf_linux_xdna_device_prepare_execution(
-    amdf_xdna_umd_device_t* device) {
-  const amdf_xdna_endpoint_profile_t* profile = device->profile;
+static amdf_status_t amdf_linux_xdna_device_query_tiles(
+    amdf_xdna_umd_device_t* device,
+    amdf_xdna_umd_tile_metadata_t* out_metadata) {
   struct amdxdna_drm_query_aie_metadata metadata = {0};
   struct amdxdna_drm_get_info query = {
       .param = DRM_AMDXDNA_QUERY_AIE_METADATA,
@@ -53,16 +53,25 @@ static amdf_status_t amdf_linux_xdna_device_prepare_execution(
   if (ioctl(device->descriptor, DRM_IOCTL_AMDXDNA_GET_INFO, &query) != 0) {
     return amdf_linux_error(errno);
   }
-  if (metadata.cols != profile->info->array.column_count ||
-      metadata.rows != profile->info->array.row_count ||
-      metadata.core.row_count != profile->rows.core_count ||
-      metadata.core.row_start != profile->rows.core_origin ||
-      metadata.mem.row_count != profile->rows.memory_count ||
-      metadata.mem.row_start != profile->rows.memory_origin ||
-      metadata.shim.row_count != profile->rows.shim_count ||
-      metadata.shim.row_start != profile->rows.shim_origin) {
+  if (metadata.cols == 0 || metadata.rows == 0) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
+  *out_metadata = (amdf_xdna_umd_tile_metadata_t){
+      .column_count = metadata.cols,
+      .row_count = metadata.rows,
+      .core_origin = metadata.core.row_start,
+      .core_count = metadata.core.row_count,
+      .memory_origin = metadata.mem.row_start,
+      .memory_count = metadata.mem.row_count,
+      .shim_origin = metadata.shim.row_start,
+      .shim_count = metadata.shim.row_count,
+  };
+  return AMDF_STATUS_OK;
+}
+
+static amdf_status_t amdf_linux_xdna_device_prepare_execution(
+    amdf_xdna_umd_device_t* device) {
+  const amdf_xdna_device_profile_t* profile = device->profile;
   if (device->page_size > profile->firmware_heap_byte_length) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
@@ -79,8 +88,8 @@ static amdf_status_t amdf_linux_xdna_device_prepare_execution(
 
 amdf_status_t amdf_xdna_umd_device_create(
     amdf_platform_endpoint_t* endpoint,
-    const amdf_xdna_endpoint_profile_t* profile,
-    amdf_allocator_t host_allocator, amdf_xdna_umd_device_t** out_device,
+    const amdf_xdna_device_profile_t* profile, amdf_allocator_t host_allocator,
+    amdf_xdna_umd_device_t** out_device,
     amdf_xdna_umd_device_result_t* out_result) {
   const long page_size = sysconf(_SC_PAGESIZE);
   if (page_size <= 0 || (page_size & (page_size - 1)) != 0) {
@@ -95,14 +104,13 @@ amdf_status_t amdf_xdna_umd_device_create(
   device->profile = profile;
   device->page_size = (size_t)page_size;
   device->descriptor = -1;
-  amdf_linux_drm_version_t version;
-  status =
-      amdf_linux_endpoint_open_file(endpoint, &device->descriptor, &version);
-  if (amdf_status_is_ok(status) && (version.major != 0 || version.minor < 8)) {
-    status = amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
-  }
+  status = amdf_linux_endpoint_open_file(endpoint, &device->descriptor);
   if (amdf_status_is_ok(status)) {
     status = amdf_linux_host_cache_query_line_size(&device->cache_line_size);
+  }
+  amdf_xdna_umd_device_result_t result = {0};
+  if (amdf_status_is_ok(status)) {
+    status = amdf_linux_xdna_device_query_tiles(device, &result.tiles);
   }
   if (amdf_status_is_ok(status) &&
       (profile->execution_capabilities &
@@ -110,7 +118,6 @@ amdf_status_t amdf_xdna_umd_device_create(
     status = amdf_linux_xdna_device_prepare_execution(device);
   }
   if (amdf_status_is_ok(status)) {
-    amdf_xdna_umd_device_result_t result = {0};
     result.id.words[0] = (uintptr_t)device;
     result.id.words[1] = endpoint->info.id.words[1];
     result.reset_epoch = 1;

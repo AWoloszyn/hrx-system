@@ -11,23 +11,12 @@
 #include <stdint.h>
 
 #include "amdf/gpu.h"
-#include "libamdf/src/memory_profile.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
 
-// Expected native support and implemented features for one lifetime policy.
-typedef struct amdf_gpu_lifetime_properties_t {
-  // Whether the provider implements this policy; activation qualifies its ABI.
-  bool supported;
-  // Expected features under this lifetime policy.
-  amdf_gpu_device_features_t features;
-} amdf_gpu_lifetime_properties_t;
-
 enum { AMDF_GPU_QUEUE_FAMILY_CAPACITY = 4 };
-
-enum { AMDF_GPU_MEMORY_PROFILE_CAPACITY = 3 };
 
 // Native service properties for one constructible GPU queue family.
 typedef struct amdf_gpu_queue_family_properties_t {
@@ -103,8 +92,6 @@ typedef struct amdf_gpu_endpoint_properties_t {
   // Exact native queue services implemented by the selected UMD.
   amdf_gpu_queue_family_properties_t
       queue_families[AMDF_GPU_QUEUE_FAMILY_CAPACITY];
-  // Capabilities indexed by amdf_native_lifetime_t.
-  amdf_gpu_lifetime_properties_t native_lifetimes[2];
 } amdf_gpu_endpoint_properties_t;
 
 // Immutable qualified GPU profile owned by one core endpoint.
@@ -115,15 +102,6 @@ typedef struct amdf_gpu_endpoint_profile_t {
   uint32_t queue_family_count;
   // Public queue-family records with dense endpoint-local ordinals.
   amdf_queue_family_info_t queue_families[AMDF_GPU_QUEUE_FAMILY_CAPACITY];
-  // Capabilities indexed by amdf_native_lifetime_t.
-  amdf_gpu_lifetime_properties_t native_lifetimes[2];
-  // Expected memory contracts qualified without constructing a native device.
-  struct {
-    // Number of complete profiles; zero when memory operations are unavailable.
-    uint32_t count;
-    // Complete native profiles for this instance's lifetime policy.
-    amdf_memory_native_profile_t values[AMDF_GPU_MEMORY_PROFILE_CAPACITY];
-  } memory;
 } amdf_gpu_endpoint_profile_t;
 
 // Validates and normalizes |properties| into |out_profile|.
@@ -134,12 +112,6 @@ bool amdf_gpu_endpoint_profile_initialize(
 // Returns the borrowed public information stored in |profile|.
 const amdf_gpu_endpoint_info_t* amdf_gpu_endpoint_profile_get_info(
     const amdf_gpu_endpoint_profile_t* profile);
-
-// Copies cached features for the instance's validated lifetime on success.
-amdf_status_t amdf_gpu_endpoint_profile_query_device_features(
-    const amdf_gpu_endpoint_profile_t* profile,
-    amdf_native_lifetime_t native_lifetime,
-    amdf_gpu_device_features_t* out_features);
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -109,7 +109,7 @@ TEST_F(XdnaExecutableTest, LoadsCanonicalImageAndReflection) {
   }
 }
 
-TEST_F(XdnaExecutableTest, CanonicalImagesRequireTheirExactDeviceProfile) {
+TEST_F(XdnaExecutableTest, CanonicalImagesRequireCompatibleExecutionProfiles) {
   const iree_file_toc_t* images[] = {
       iree_hal_amd_xdna_test_mul_i32_npu4_create(),
       iree_hal_amd_xdna_test_mul_i32_create(),
@@ -117,13 +117,16 @@ TEST_F(XdnaExecutableTest, CanonicalImagesRequireTheirExactDeviceProfile) {
   const iree_string_view_t target_ids[] = {
       IREE_SVL("amd.xdna.strix.17f0_10"),
       IREE_SVL("amd.xdna.strix_halo.17f0_11"),
+      IREE_SVL("amd.xdna.krackan.17f0_20"),
   };
+  const size_t compatible_image_ordinals[] = {0, 1, 0};
   for (size_t image_ordinal = 0; image_ordinal < 2; ++image_ordinal) {
     const auto* begin =
         reinterpret_cast<const uint8_t*>(images[image_ordinal]->data);
     ByteSequencePtr sequence = MakeOwnedByteSequence(
         std::vector<uint8_t>(begin, begin + images[image_ordinal]->size));
-    for (size_t target_ordinal = 0; target_ordinal < 2; ++target_ordinal) {
+    for (size_t target_ordinal = 0; target_ordinal < IREE_ARRAYSIZE(target_ids);
+         ++target_ordinal) {
       SCOPED_TRACE(::testing::Message() << "image=" << image_ordinal
                                         << " target=" << target_ordinal);
       iree_hal_amd_xdna_aie2p_target_t target;
@@ -134,7 +137,7 @@ TEST_F(XdnaExecutableTest, CanonicalImagesRequireTheirExactDeviceProfile) {
       auto* sentinel = executable;
       Status status(iree_hal_amd_xdna_executable_create(
           sequence.get(), &target, iree_allocator_system(), &executable));
-      if (image_ordinal != target_ordinal) {
+      if (image_ordinal != compatible_image_ordinals[target_ordinal]) {
         EXPECT_EQ(status.code(), StatusCode::kFailedPrecondition);
         EXPECT_EQ(executable, sentinel);
         continue;

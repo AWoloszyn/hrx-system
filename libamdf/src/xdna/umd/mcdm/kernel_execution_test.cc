@@ -35,8 +35,8 @@ struct NativeState {
   std::vector<Allocation> allocations = {Allocation{}};
   // Independent firmware address returned for the private instruction heap.
   uint64_t firmware_address = UINT64_C(0x8000000);
-  // Native envelope prefix qualified independently of the device profile.
-  uint32_t header_byte_length = 104;
+  // Queried policy controlling native completion-buffer sharing.
+  bool shared_kernel_buffers = false;
   // CPU-visible native progress fence.
   volatile uint64_t progress = 0;
   // Native opcodes observed in publication order.
@@ -78,6 +78,13 @@ NTSTATUS APIENTRY CreateAllocation(D3DKMT_CREATEALLOCATION* create) {
   allocation.pointer = VirtualAlloc(nullptr, allocation.byte_length,
                                     MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
   if (allocation.pointer == nullptr) return static_cast<NTSTATUS>(0xC0000017u);
+  if (allocation.type == 0x332C) {
+    EXPECT_EQ(ReadU32(info->pPrivateDriverData, 0x20), 2u);
+    EXPECT_EQ(ReadU32(info->pPrivateDriverData, 0x28), 0x02000000u);
+    EXPECT_EQ(create->Flags.CreateResource,
+              native_state->shared_kernel_buffers);
+    EXPECT_EQ(create->Flags.CreateShared, native_state->shared_kernel_buffers);
+  }
   if (allocation.type == 0x3323) {
     EXPECT_EQ(allocation.byte_length, AMDF_WINDOWS_XDNA_PRIVATE_APERTURE_SIZE);
     EXPECT_EQ(ReadU32(info->pPrivateDriverData, 0x28), 0x01000001u);
@@ -135,10 +142,9 @@ NTSTATUS APIENTRY CreateQueue(D3DKMT_CREATEHWQUEUE* create) {
 NTSTATUS APIENTRY Submit(const D3DKMT_SUBMITCOMMANDTOHWQUEUE* submit) {
   const void* bytes = submit->pPrivateDriverData;
   const uint64_t opcode = ReadU64(bytes, 0);
-  const bool current_protocol = native_state->header_byte_length == 120;
-  const size_t response_address_offset = current_protocol ? 0x40 : 0x38;
+  const size_t response_address_offset = 0x40;
   native_state->opcodes.push_back(opcode);
-  if (current_protocol && (opcode == 5 || opcode == 3)) {
+  if (opcode == 5 || opcode == 3) {
     const auto& response_allocation =
         native_state->allocations[ReadU64(bytes, 0x28)];
     EXPECT_EQ(response_allocation.type, 0x332Cu);
@@ -151,28 +157,25 @@ NTSTATUS APIENTRY Submit(const D3DKMT_SUBMITCOMMANDTOHWQUEUE* submit) {
   }
   if (opcode == 2 || opcode == 9) {
     EXPECT_EQ(ReadU64(bytes, 0x10), AMDF_WINDOWS_XDNA_PRIVATE_APERTURE_SIZE);
-    if (current_protocol && opcode == 9) {
+    if (opcode == 9) {
       EXPECT_EQ(ReadU64(bytes, 0x08), 0u);
     }
   } else if (opcode == 5) {
-    EXPECT_EQ(submit->PrivateDriverDataSize,
-              native_state->header_byte_length + 520);
+    EXPECT_EQ(submit->PrivateDriverDataSize, 120u + 520);
     auto* response =
         reinterpret_cast<uint64_t*>(ReadU64(bytes, response_address_offset));
     EXPECT_EQ(response[1], native_state->firmware_address);
-    if (current_protocol) {
-      EXPECT_EQ(ReadU64(bytes, 0x80), native_state->firmware_address);
-      EXPECT_GT(ReadU32(bytes, 0x88), 0u);
-    }
+    const auto* configuration = static_cast<const uint8_t*>(bytes) + 120u;
+    EXPECT_EQ(ReadU32(configuration, 0), 1u);
+    EXPECT_EQ(ReadU64(configuration, 8), native_state->firmware_address);
+    // The interpreter's CU function is zero, independent of its PDI size.
+    EXPECT_EQ(ReadU32(configuration, 16), 0u);
     response[0] = native_state->initialize_result;
   } else if (opcode == 3) {
-    EXPECT_EQ(submit->CommandLength, 4096u + native_state->header_byte_length);
-    native_state->instruction_address =
-        ReadU64(bytes, native_state->header_byte_length + 0x10);
-    native_state->instruction_word_count =
-        ReadU32(bytes, native_state->header_byte_length + 0x18);
-    EXPECT_EQ(submit->PrivateDriverDataSize,
-              native_state->header_byte_length + 512);
+    EXPECT_EQ(submit->CommandLength, 4096u + 120u);
+    native_state->instruction_address = ReadU64(bytes, 120u + 0x10);
+    native_state->instruction_word_count = ReadU32(bytes, 120u + 0x18);
+    EXPECT_EQ(submit->PrivateDriverDataSize, 120u + 512);
     auto* response =
         reinterpret_cast<uint64_t*>(ReadU64(bytes, response_address_offset));
     *response = native_state->execution_result;
@@ -183,17 +186,11 @@ NTSTATUS APIENTRY Submit(const D3DKMT_SUBMITCOMMANDTOHWQUEUE* submit) {
   return 0;
 }
 
-class WindowsXdnaKernelExecutionTest
-    : public ::testing::TestWithParam<uint32_t> {
+class WindowsXdnaKernelExecutionTest : public ::testing::TestWithParam<bool> {
  protected:
   void SetUp() override {
     native_state = &native_;
-    native_.header_byte_length = GetParam();
-    abi_.submission_header_byte_length = GetParam();
-    abi_.context_encoding = GetParam() == 120
-                                ? AMDF_WINDOWS_XDNA_CONTEXT_ENCODING_DIRECT
-                                : AMDF_WINDOWS_XDNA_CONTEXT_ENCODING_XCLBIN;
-    abi_.shared_kernel_buffers = true;
+    native_.shared_kernel_buffers = GetParam();
     kmt_.create_allocation = CreateAllocation;
     kmt_.destroy_allocation = DestroyAllocation;
     kmt_.map_gpu_virtual_address = MapAddress;
@@ -247,8 +244,9 @@ class WindowsXdnaKernelExecutionTest
     endpoint.pci.device_id = 0x17F0;
     endpoint.pci.revision_id = 0x11;
     endpoint.engine_kind = AMDF_ENGINE_KIND_XDNA;
-    device_.profile = amdf_xdna_endpoint_profile_select(&endpoint);
-    ASSERT_NE(device_.profile, nullptr);
+    ASSERT_TRUE(amdf_xdna_device_profile_initialize(&endpoint, &device_info_,
+                                                    &device_profile_));
+    device_.profile = &device_profile_;
     device_.kmt = &kmt_;
     device_.host_allocator = amdf_allocator_system();
     device_.device = 10;
@@ -257,7 +255,7 @@ class WindowsXdnaKernelExecutionTest
     context_.device = &device_;
     context_.handle = 13;
     context_.command_aperture_cookie = 0;
-    context_.native_abi = abi_;
+    context_.adapter_info.shared_kernel_buffers = GetParam();
     ASSERT_EQ(amdf_windows_xdna_kernel_execution_create(
                   &context_, &context_.kernel_execution),
               AMDF_STATUS_OK);
@@ -283,12 +281,14 @@ class WindowsXdnaKernelExecutionTest
     native_state = nullptr;
   }
 
-  // Resolved wire facts borrowed by the already admitted native context.
-  amdf_windows_xdna_native_abi_t abi_ = {};
   // Native allocation and submission observations.
   NativeState native_;
   // Procedures supplied at the existing platform dependency boundary.
   amdf_kmt_api_t kmt_ = {};
+  // Architecture encodings borrowed by native execution.
+  amdf_xdna_device_profile_t device_profile_ = {};
+  // Instruction limits retained with the native owner.
+  amdf_xdna_device_info_t device_info_ = {};
   // Explicitly live native device borrowed by memory and execution.
   amdf_xdna_umd_device_t device_ = {};
   // Context retaining native transport state, not private instruction memory.
@@ -417,7 +417,7 @@ TEST_P(WindowsXdnaKernelExecutionTest, FailedBootstrapDoesNotPublishMemory) {
   EXPECT_EQ(native_.opcodes, (std::vector<uint64_t>{2, 5}));
 }
 
-INSTANTIATE_TEST_SUITE_P(NativeLayouts, WindowsXdnaKernelExecutionTest,
-                         ::testing::Values(88u, 104u, 120u));
+INSTANTIATE_TEST_SUITE_P(KernelBufferSharing, WindowsXdnaKernelExecutionTest,
+                         ::testing::Bool());
 
 }  // namespace

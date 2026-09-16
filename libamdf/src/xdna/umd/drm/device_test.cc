@@ -7,9 +7,12 @@
 #include "libamdf/src/xdna/umd/drm/device.h"
 
 #include <drm/amdxdna_accel.h>
+#include <drm/drm.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
 
+#include <climits>
+#include <cstdarg>
 #include <cstring>
 #include <iostream>
 #include <vector>
@@ -17,9 +20,43 @@
 #include "gtest/gtest.h"
 #include "libamdf/src/allocator.h"
 #include "libamdf/src/platform/linux/endpoint.h"
-#include "libamdf/src/xdna/endpoint_profile.h"
+#include "libamdf/src/xdna/device_profile.h"
 #include "libamdf/src/xdna/umd/context.h"
 #include "libamdf/src/xdna/umd/drm/memory.h"
+
+namespace {
+
+// Only descriptive version fields are changed. Every file, metadata query,
+// allocation, mapping and release still uses the real native driver.
+struct NativeVersionState {
+  // Descriptive version value substituted in all three native version fields.
+  int value = 0;
+  // Number of successful native version queries observed.
+  uint32_t query_count = 0;
+};
+
+thread_local NativeVersionState* native_version = nullptr;
+
+}  // namespace
+
+extern "C" int __real_ioctl(int descriptor, unsigned long request, ...);
+
+extern "C" int __wrap_ioctl(int descriptor, unsigned long request, ...) {
+  va_list arguments;
+  va_start(arguments, request);
+  void* argument = va_arg(arguments, void*);
+  va_end(arguments);
+  const int result = __real_ioctl(descriptor, request, argument);
+  if (result == 0 && request == DRM_IOCTL_VERSION &&
+      native_version != nullptr) {
+    auto* version = static_cast<drm_version*>(argument);
+    version->version_major = native_version->value;
+    version->version_minor = native_version->value;
+    version->version_patchlevel = native_version->value;
+    ++native_version->query_count;
+  }
+  return result;
+}
 
 namespace {
 
@@ -43,8 +80,9 @@ class LinuxXdnaDeviceTest : public ::testing::TestWithParam<ExecutionSupport> {
       ASSERT_EQ(
           amdf_platform_endpoint_open(instance, &summary.id, &endpoint, &info),
           AMDF_STATUS_OK);
-      profile = amdf_xdna_endpoint_profile_select(&info);
-      if (profile != nullptr && profile->dma.address_bit_count != 0 &&
+      if (amdf_xdna_device_profile_initialize(&info, &device_info,
+                                              &selected_profile) &&
+          profile->dma.address_bit_count != 0 &&
           (GetParam() == ExecutionSupport::kUnavailable ||
            (profile->execution_capabilities &
             AMDF_XDNA_EXECUTION_CAPABILITY_ELF_INSTRUCTIONS) != 0)) {
@@ -71,6 +109,7 @@ class LinuxXdnaDeviceTest : public ::testing::TestWithParam<ExecutionSupport> {
   }
 
   void TearDown() override {
+    native_version = nullptr;
     std::cout << "Release host views and memory" << std::endl;
     for (auto* value : mappings) {
       if (value) {
@@ -104,14 +143,20 @@ class LinuxXdnaDeviceTest : public ::testing::TestWithParam<ExecutionSupport> {
     }
   }
 
+  // Optional version metadata substitution, retained across assertion exits.
+  NativeVersionState version_state;
   // Native instance retained across early assertion exits.
   amdf_platform_instance_t* instance = nullptr;
   // Query endpoint borrowed during native device construction.
   amdf_platform_endpoint_t* endpoint = nullptr;
   // Selected hardware profile with this test's provider execution support.
-  const amdf_xdna_endpoint_profile_t* profile = nullptr;
+  amdf_xdna_device_profile_t* profile = &selected_profile;
+  // Architecture encodings selected before native activation.
+  amdf_xdna_device_profile_t selected_profile = {};
+  // Live capabilities retained for every native child.
+  amdf_xdna_device_info_t device_info = {};
   // Actual hardware/DMA facts with execution implementation data removed.
-  amdf_xdna_endpoint_profile_t memory_only_profile = {};
+  amdf_xdna_device_profile_t memory_only_profile = {};
   // Native device owning one ordinary address and BO namespace.
   amdf_xdna_umd_device_t* device = nullptr;
   // Independent scheduling contexts borrowing the native device.
@@ -125,6 +170,25 @@ class LinuxXdnaDeviceTest : public ::testing::TestWithParam<ExecutionSupport> {
   // Independent host views into the same native attachment.
   amdf_xdna_umd_host_mapping_t* mappings[2] = {};
 };
+
+TEST_P(LinuxXdnaDeviceTest,
+       AdmissionUsesNativeFeaturesInsteadOfVersionMetadata) {
+  native_version = &version_state;
+  for (int version : {0, INT_MAX}) {
+    SCOPED_TRACE(version);
+    version_state.value = version;
+    version_state.query_count = 0;
+    amdf_xdna_umd_device_result_t result = {};
+    const amdf_status_t status = amdf_xdna_umd_device_create(
+        endpoint, profile, amdf_allocator_system(), &device, &result);
+    EXPECT_EQ(status, AMDF_STATUS_OK);
+    EXPECT_EQ(version_state.query_count, 1u);
+    if (!amdf_status_is_ok(status)) continue;
+    EXPECT_NE(result.id.words[0] | result.id.words[1], 0u);
+    ASSERT_EQ(amdf_xdna_umd_device_destroy(device), AMDF_STATUS_OK);
+    device = nullptr;
+  }
+}
 
 TEST_P(LinuxXdnaDeviceTest, MemoryDoesNotDependOnSchedulingContexts) {
   const bool supports_execution =
@@ -140,6 +204,10 @@ TEST_P(LinuxXdnaDeviceTest, MemoryDoesNotDependOnSchedulingContexts) {
       amdf_xdna_umd_device_create(endpoint, profile, amdf_allocator_system(),
                                   &device, &device_result),
       AMDF_STATUS_OK);
+  device_info.array.column_count = device_result.tiles.column_count;
+  device_info.array.row_count = device_result.tiles.row_count;
+  profile->rows.core_origin = device_result.tiles.core_origin;
+  profile->rows.core_count = device_result.tiles.core_count;
   EXPECT_NE(device_result.id.words[0] | device_result.id.words[1], 0u);
   EXPECT_EQ(device_result.placement_modes, capabilities.placement_modes);
   EXPECT_NE(fcntl(device->descriptor, F_GETFD) & FD_CLOEXEC, 0);
@@ -279,6 +347,37 @@ TEST_P(LinuxXdnaDeviceTest, MemoryDoesNotDependOnSchedulingContexts) {
     EXPECT_NE(contexts[1], nullptr);
   }
   EXPECT_EQ(static_cast<uint8_t*>(views[1].pointer)[4095], 0xA5);
+}
+
+TEST_P(LinuxXdnaDeviceTest, NativeMetadataSuppliesArrayGeometry) {
+  amdf_xdna_device_info_t different_info = *profile->info;
+  different_info.array.column_count = 1;
+  different_info.array.row_count = 1;
+  amdf_xdna_device_profile_t different_profile = *profile;
+  different_profile.info = &different_info;
+  different_profile.rows = {};
+  amdf_xdna_umd_device_result_t result = {};
+  ASSERT_EQ(
+      amdf_xdna_umd_device_create(endpoint, &different_profile,
+                                  amdf_allocator_system(), &device, &result),
+      AMDF_STATUS_OK);
+  struct amdxdna_drm_query_aie_metadata metadata = {};
+  struct amdxdna_drm_get_info query = {};
+  query.param = DRM_AMDXDNA_QUERY_AIE_METADATA;
+  query.buffer_size = sizeof(metadata);
+  query.buffer = reinterpret_cast<uintptr_t>(&metadata);
+  ASSERT_EQ(ioctl(device->descriptor, DRM_IOCTL_AMDXDNA_GET_INFO, &query), 0);
+  EXPECT_EQ(result.tiles.column_count, metadata.cols);
+  EXPECT_EQ(result.tiles.row_count, metadata.rows);
+  EXPECT_EQ(result.tiles.core_origin, metadata.core.row_start);
+  EXPECT_EQ(result.tiles.core_count, metadata.core.row_count);
+  EXPECT_EQ(result.tiles.memory_origin, metadata.mem.row_start);
+  EXPECT_EQ(result.tiles.memory_count, metadata.mem.row_count);
+  EXPECT_EQ(result.tiles.shim_origin, metadata.shim.row_start);
+  EXPECT_EQ(result.tiles.shim_count, metadata.shim.row_count);
+  // The native device borrows the supplied profile through destruction.
+  ASSERT_EQ(amdf_xdna_umd_device_destroy(device), AMDF_STATUS_OK);
+  device = nullptr;
 }
 
 INSTANTIATE_TEST_SUITE_P(

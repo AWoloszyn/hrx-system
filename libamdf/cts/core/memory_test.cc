@@ -61,7 +61,7 @@ class HostMemoryTest : public ::testing::Test {
       amdf_memory_profile_t profile = {};
       profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
       profile.structure_size = sizeof(profile);
-      const amdf_status_t status = api_->memory_scope_query_profile(
+      const amdf_status_t status = api_->memory_scope_query_device_profile(
           scope_, ordinal, 0, nullptr, &profile, nullptr);
       if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED))
         continue;
@@ -106,7 +106,7 @@ class HostMemoryTest : public ::testing::Test {
   std::vector<uint8_t> storage_;
 };
 
-TEST_F(HostMemoryTest, LiveProfileWithoutDevicesDescribesCpuOnlyStorage) {
+TEST_F(HostMemoryTest, ProfileWithoutDevicesDescribesCpuOnlyStorage) {
   amdf_memory_profile_t expected = {};
   ASSERT_NO_FATAL_FAILURE(
       FindProfile(AMDF_MEMORY_PROFILE_ROLE_CREATE, &expected));
@@ -263,7 +263,7 @@ TEST_F(HostMemoryTest, RejectsInvalidConstructionWithoutPublishingOutputs) {
   EXPECT_EQ(memory, sentinel);
 
   amdf_memory_profile_t output = profile;
-  EXPECT_EQ(amdf_status_code(api_->memory_scope_query_profile(
+  EXPECT_EQ(amdf_status_code(api_->memory_scope_query_device_profile(
                 scope_, scope_info_.memory_profile_count, 0, nullptr, &output,
                 nullptr)),
             AMDF_STATUS_CODE_OUT_OF_RANGE);

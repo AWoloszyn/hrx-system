@@ -132,7 +132,6 @@ amdf_cc_test(
         "//libamdf/src/platform",
         "//third_party:google_test",
         "//third_party:google_test_main",
-        "//third_party:linux_drm_uapi",
     ],
 )
 

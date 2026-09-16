@@ -9,9 +9,10 @@
 #include "libamdf/src/allocator.h"
 #include "libamdf/src/platform/windows/endpoint.h"
 #include "libamdf/src/xdna/umd/mcdm/device.h"
+#include "libamdf/src/xdna/umd/mcdm/tile_metadata.h"
 
 amdf_xdna_umd_context_capabilities_t amdf_xdna_umd_query_context_capabilities(
-    const amdf_xdna_endpoint_profile_t* profile) {
+    const amdf_xdna_device_profile_t* profile) {
   amdf_xdna_umd_context_capabilities_t capabilities = {0};
   if ((profile->execution_capabilities &
        AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1) != 0) {
@@ -50,8 +51,8 @@ static amdf_status_t amdf_windows_xdna_device_release_native(
 
 amdf_status_t amdf_xdna_umd_device_create(
     amdf_platform_endpoint_t* endpoint,
-    const amdf_xdna_endpoint_profile_t* profile,
-    amdf_allocator_t host_allocator, amdf_xdna_umd_device_t** out_device,
+    const amdf_xdna_device_profile_t* profile, amdf_allocator_t host_allocator,
+    amdf_xdna_umd_device_t** out_device,
     amdf_xdna_umd_device_result_t* out_result) {
   if (!amdf_kmt_api_supports_paging_devices(&endpoint->instance->kmt)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
@@ -78,6 +79,12 @@ amdf_status_t amdf_xdna_umd_device_create(
     }
   }
 
+  amdf_xdna_umd_device_result_t result = {0};
+  if (amdf_status_is_ok(status)) {
+    status = amdf_windows_xdna_query_tile_metadata(
+        device->kmt, device->adapter, device->device, &result.tiles);
+  }
+
   D3DKMT_CREATEPAGINGQUEUE create_paging_queue = {0};
   if (amdf_status_is_ok(status)) {
     create_paging_queue.hDevice = device->device;
@@ -98,7 +105,6 @@ amdf_status_t amdf_xdna_umd_device_create(
   }
 
   if (amdf_status_is_ok(status)) {
-    amdf_xdna_umd_device_result_t result = {0};
     result.id.words[0] = endpoint->id.words[0];
     result.id.words[1] = device->device;
     result.reset_epoch = 1;

@@ -8,8 +8,8 @@
 #define AMDF_SRC_XDNA_UMD_MCDM_CONTEXT_H_
 
 #include "libamdf/src/xdna/umd/context.h"
+#include "libamdf/src/xdna/umd/mcdm/adapter_info.h"
 #include "libamdf/src/xdna/umd/mcdm/device.h"
-#include "libamdf/src/xdna/umd/mcdm/native_abi.h"
 #include "libamdf/src/xdna/umd/mcdm/private_allocation.h"
 
 typedef struct amdf_windows_xdna_kernel_execution_t
@@ -23,10 +23,10 @@ struct amdf_xdna_umd_context_t {
   D3DKMT_HANDLE handle;
   // Driver-returned command aperture selector; zero is a valid value.
   uint32_t command_aperture_cookie;
-  // Wire facts and buffer policy resolved from the installed driver.
-  amdf_windows_xdna_native_abi_t native_abi;
-  // Current-protocol kernel buffer created before the native context and
-  // retained until that context is destroyed. Inert for older protocols.
+  // Allocation policy queried from the native adapter.
+  amdf_windows_xdna_adapter_info_t adapter_info;
+  // Kernel buffer created before the native context and retained until that
+  // context is destroyed.
   amdf_windows_xdna_private_allocation_t kernel_buffer;
   // Context-local instruction preparation and kernel-queue state.
   amdf_windows_xdna_kernel_execution_t* kernel_execution;

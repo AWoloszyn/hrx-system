@@ -34,8 +34,7 @@ static bool amdf_gpu_kfd_pm4_queue_is_supported(
       topology->control_stack_byte_length == 0 ||
       topology->control_stack_byte_length % page_size != 0 ||
       topology->control_stack_byte_length >
-          topology->context_save_restore_byte_length ||
-      topology->virtual_address.alignment != page_size) {
+          topology->context_save_restore_byte_length) {
     return false;
   }
   const uint64_t wave_count =

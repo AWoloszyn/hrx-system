@@ -156,7 +156,6 @@ iree_cc_library(
     ::allocator
     ::child_tracker
     ::instance
-    ::memory_profile
     ::memory_scope_state
     ::structure
     amdf::headers

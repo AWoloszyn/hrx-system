@@ -26,7 +26,7 @@ typedef struct amdf_xdna_transaction_interpreter_packet_t {
   uint8_t bytes[AMDF_XDNA_TRANSACTION_INTERPRETER_PACKET_SIZE];
 } amdf_xdna_transaction_interpreter_packet_t;
 
-// Frames a validated instruction range using the legacy interpreter envelope.
+// Frames a validated instruction range using the version 1 interpreter packet.
 // Instruction byte length is a nonzero multiple of four. The unused argument
 // area is zero. No allocation, validation, or native operation occurs here.
 void amdf_xdna_transaction_interpreter_packet_build(

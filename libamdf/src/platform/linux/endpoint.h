@@ -17,25 +17,15 @@ struct amdf_platform_endpoint_t {
   amdf_endpoint_info_t info;
 };
 
-// DRM interface version established on an explicitly opened native file.
-typedef struct amdf_linux_drm_version_t {
-  // Major ABI version.
-  uint32_t major;
-  // Minor ABI revision.
-  uint32_t minor;
-} amdf_linux_drm_version_t;
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 // Opens a fresh native file after verifying the endpoint identity. This is
 // deliberately not dup: DRM GEM handle tables and HWCTX ownership are per file.
-// When non-NULL, out_version receives the interface version of that same file.
-// Failure leaves both outputs unchanged.
+// Failure leaves the output unchanged.
 amdf_status_t amdf_linux_endpoint_open_file(
-    const amdf_platform_endpoint_t* endpoint, int* out_descriptor,
-    amdf_linux_drm_version_t* out_version);
+    const amdf_platform_endpoint_t* endpoint, int* out_descriptor);
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -42,7 +42,7 @@ amdf_status_t amdf_xdna_umd_context_create(
     const amdf_xdna_context_create_info_t* create_info,
     amdf_xdna_umd_context_t** out_context,
     amdf_xdna_umd_context_result_t* out_result) {
-  const amdf_xdna_endpoint_profile_t* profile = device->profile;
+  const amdf_xdna_device_profile_t* profile = device->profile;
   if ((create_info->acceptable_scheduling_modes &
        AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED) == 0 ||
       (create_info->physical_column_origin !=
@@ -84,7 +84,7 @@ amdf_status_t amdf_xdna_umd_context_create(
     result.id.words[1] =
         ((uint64_t)context->completion_syncobj << 32) | context->handle;
     result.scheduling_mode = AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED;
-    // Device qualification matched the full array geometry. Successful native
+    // Device activation queried the full array geometry. Successful native
     // admission of every compute tile leaves one candidate partition: the full
     // array at its origin. The kernel retains it across context restarts, but
     // may time-share it with other contexts.
