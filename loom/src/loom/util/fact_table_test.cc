@@ -153,6 +153,34 @@ static const loom_value_fact_domain_t kTestRawFactDomain = {
 // Initialize and lookup
 //===----------------------------------------------------------------------===//
 
+TEST_F(FactTableTest, UndefinedEntriesRetainScopeMembershipAcrossGrowth) {
+  loom_value_fact_table_t table;
+  IREE_ASSERT_OK(loom_value_fact_table_initialize(&table, &arena_, 4));
+  IREE_ASSERT_OK(
+      loom_value_fact_table_define(&table, 2, loom_value_facts_exact_i64(7)));
+  loom_value_fact_table_undefine(&table, 2);
+  EXPECT_FALSE(loom_value_fact_table_has_entry(&table, 2));
+  IREE_ASSERT_OK(
+      loom_value_fact_table_define(&table, 129, loom_value_facts_exact_i64(9)));
+
+  loom_value_fact_table_t clone;
+  IREE_ASSERT_OK(loom_value_fact_table_initialize(&clone, &arena_, 4));
+  IREE_ASSERT_OK(
+      loom_value_fact_table_clone_defined_facts(&clone, &table, nullptr));
+  EXPECT_FALSE(loom_value_fact_table_has_entry(&clone, 2));
+  EXPECT_EQ(loom_value_fact_table_lookup(&clone, 129).range_lo, 9);
+  IREE_ASSERT_OK(
+      loom_value_fact_table_define(&table, 2, loom_value_facts_exact_i64(11)));
+  EXPECT_EQ(table.touched_count, 2u);
+
+  loom_value_fact_table_clear_scope(&table);
+  EXPECT_FALSE(loom_value_fact_table_has_entry(&table, 2));
+  EXPECT_FALSE(loom_value_fact_table_has_entry(&table, 129));
+  IREE_ASSERT_OK(loom_value_fact_table_define(&table, 129,
+                                              loom_value_facts_exact_i64(13)));
+  EXPECT_EQ(table.touched_count, 1u);
+}
+
 TEST_F(FactTableTest, ZeroInitIsValid) {
   loom_value_fact_table_t table = {0};
   // Lookup on empty table returns unknown.

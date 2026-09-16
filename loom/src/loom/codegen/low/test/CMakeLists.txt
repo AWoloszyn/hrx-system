@@ -17,6 +17,7 @@ loom_check_test_suite(
     "allocation_aliases.loom-test"
     "allocation_fragmentation.loom-test"
     "allocation_preferences.loom-test"
+    "allocation_reachability.loom-test"
     "hazard_plan.loom-test"
     "packet.loom-test"
     "register_parts.loom-test"

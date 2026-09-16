@@ -36,6 +36,8 @@ typedef struct loom_low_allocation_loop_edge_relocation_context_t {
   const loom_low_descriptor_set_t* descriptor_set;
   // Liveness facts owning assignment value ordinals and sparse segments.
   const loom_liveness_analysis_t* liveness;
+  // Acquired value domain shared by liveness and consumption queries.
+  const loom_local_value_domain_t* value_domain;
   // Function-local placement relations.
   const loom_low_placement_table_t* placement;
   // Mutable target constraints whose assignment extents are rebuilt.

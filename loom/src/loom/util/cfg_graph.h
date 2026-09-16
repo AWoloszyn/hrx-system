@@ -11,8 +11,8 @@
 // omitted from adjacency. Misplaced successor-bearing ops and invalid selector
 // metadata also mark the graph malformed, retaining their in-region edges.
 // Analyses can answer conservatively while verification owns diagnostics.
-// Entry reachability, DFS parents/preorder and reverse postorder are retained
-// by the same construction walk for downstream analyses.
+// Entry reachability, DFS tree intervals, reverse postorder, component order,
+// and reachable roots are retained by the same walk for downstream analyses.
 
 #ifndef LOOM_UTIL_CFG_GRAPH_H_
 #define LOOM_UTIL_CFG_GRAPH_H_
@@ -84,6 +84,19 @@ typedef struct loom_cfg_block_info_t {
   // Dense DFS-tree parent index, or UINT16_MAX for the entry/unreachable
   // blocks.
   uint16_t parent;
+  // Exclusive preorder end of a reachable block's DFS subtree. Together with
+  // preorder this proves tree-path reachability without walking graph edges.
+  uint16_t preorder_end;
+  // Strongly connected component in successor-before-predecessor order, or
+  // UINT16_MAX when unreachable. Edges between components lead to smaller
+  // ordinals; distinct blocks in one component reach each other.
+  uint16_t component;
+  // True when this block can reach itself through one or more CFG edges.
+  bool component_is_cyclic;
+  // Earliest DFS node reachable from this block, or UINT16_MAX if unreachable.
+  // Every node in that root's DFS subtree is also reachable, including paths
+  // through reconvergence.
+  uint16_t reachability_root;
 } loom_cfg_block_info_t;
 
 // Dense CFG adjacency for one region.

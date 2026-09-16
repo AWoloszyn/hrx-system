@@ -258,6 +258,78 @@ TEST_F(CfgGraphTest, TraversalVisitsSelfLoopOnce) {
   EXPECT_EQ(graph.edge_count, 1u);
   ASSERT_EQ(graph.reverse_postorder.count, 1u);
   EXPECT_EQ(graph.reverse_postorder.values[0], 0u);
+  EXPECT_TRUE(graph.blocks[0].component_is_cyclic);
+  EXPECT_EQ(graph.blocks[0].reachability_root, 0u);
+  EXPECT_EQ(graph.blocks[0].preorder_end, 1u);
+}
+
+TEST_F(CfgGraphTest, ReachabilityProofsForAllThreeBlockBinaryGraphs) {
+  loom_block_t* blocks[] = {loom_region_entry_block(body_), AppendBlock(),
+                            AppendBlock()};
+  loom_op_t* branches[3];
+  for (unsigned i = 0; i < 3; ++i) {
+    SetBlock(blocks[i]);
+    branches[i] = BuildConditionalBranch(blocks[0], blocks[0]);
+  }
+  // All 3^6 successor assignments include irreducible cycles, self-edges,
+  // parallel edges, reconvergence, and entry-unreachable components. Rebuild
+  // the graph after each retargeting, just as an invalidated analysis does.
+  for (unsigned topology = 0; topology < 729; ++topology) {
+    SCOPED_TRACE(topology);
+    bool reaches[3][3] = {};
+    unsigned remaining = topology;
+    for (unsigned source = 0; source < 3; ++source) {
+      for (unsigned edge = 0; edge < 2; ++edge) {
+        const unsigned target = remaining % 3;
+        remaining /= 3;
+        loom_op_successors(branches[source])[edge] = blocks[target];
+        reaches[source][target] = true;
+      }
+    }
+    for (unsigned via = 0; via < 3; ++via) {
+      for (unsigned source = 0; source < 3; ++source) {
+        for (unsigned target = 0; target < 3; ++target) {
+          reaches[source][target] |=
+              reaches[source][via] && reaches[via][target];
+        }
+      }
+    }
+    const iree_arena_checkpoint_t checkpoint =
+        iree_arena_checkpoint_save(&graph_arena_);
+    loom_cfg_graph_t graph = {};
+    BuildGraph(&graph);
+    ASSERT_FALSE(graph.malformed);
+    for (unsigned source = 0; source < 3; ++source) {
+      const auto& info = graph.blocks[source];
+      EXPECT_EQ(info.reachable, source == 0 || reaches[0][source]);
+      if (!info.reachable) {
+        EXPECT_EQ(info.component, UINT16_MAX);
+        continue;
+      }
+      EXPECT_EQ(info.component_is_cyclic, reaches[source][source]);
+      unsigned earliest = source;
+      for (unsigned target = 0; target < 3; ++target) {
+        const auto& target_info = graph.blocks[target];
+        if (reaches[source][target] &&
+            target_info.preorder < graph.blocks[earliest].preorder) {
+          earliest = target;
+        }
+        if (!target_info.reachable) continue;
+        EXPECT_EQ(info.component == target_info.component,
+                  source == target ||
+                      (reaches[source][target] && reaches[target][source]));
+        if (reaches[source][target]) {
+          EXPECT_LE(target_info.component, info.component);
+        }
+        if (info.preorder <= target_info.preorder &&
+            target_info.preorder < info.preorder_end) {
+          EXPECT_TRUE(source == target || reaches[source][target]);
+        }
+      }
+      EXPECT_EQ(info.reachability_root, earliest);
+    }
+    iree_arena_checkpoint_restore(&checkpoint);
+  }
 }
 
 TEST_F(CfgGraphTest, OutsideSuccessorMarksGraphMalformed) {

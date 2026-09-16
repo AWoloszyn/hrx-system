@@ -6,8 +6,8 @@
 // softmax. F16 probabilities then cross workgroup memory for four sequential
 // 64-channel P*V tiles.
 //
-// This benchmark-only source retains the rooted production kernel and omits
-// numerical check declarations so compiler timing covers reachable program IR.
+// Compiler timing covers the rooted production kernel. The AMDGPU execution
+// corpus links this same source with numerical checks in a separate module.
 
 amdgpu.target<gfx11-generic> @attention_prefill_gfx11_wave64 {subgroup_size = 64}
 

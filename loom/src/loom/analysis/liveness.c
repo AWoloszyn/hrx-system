@@ -2048,6 +2048,27 @@ loom_liveness_segment_range_t loom_liveness_segment_range_for_value_ordinal(
   return analysis->value_segment_ranges[value_ordinal];
 }
 
+bool loom_liveness_segment_range_contains(
+    const loom_liveness_analysis_t* analysis,
+    loom_liveness_segment_range_t range, uint32_t point) {
+  uint32_t first = range.start;
+  uint32_t count = range.count;
+  while (count != 0) {
+    const uint32_t half = count / 2;
+    const uint32_t middle = first + half;
+    const loom_liveness_segment_t* segment = &analysis->segments[middle];
+    if (point >= segment->end_point) {
+      first = middle + 1;
+      count -= half + 1;
+    } else if (point < segment->start_point) {
+      count = half;
+    } else {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool loom_liveness_segment_ranges_overlap(
     const loom_liveness_analysis_t* analysis, loom_liveness_segment_range_t lhs,
     loom_liveness_segment_range_t rhs) {

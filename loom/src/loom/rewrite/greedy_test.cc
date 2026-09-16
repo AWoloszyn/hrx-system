@@ -13,6 +13,7 @@
 #include "iree/testing/status_matchers.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
+#include "loom/ops/cfg/ops.h"
 #include "loom/ops/op_defs.h"
 #include "loom/ops/test/ops.h"
 #include "loom/pass/value_facts.h"
@@ -54,6 +55,9 @@ class GreedyRewriteTest : public ::testing::Test {
         loom_test_dialect_vtables(&vtable_count);
     IREE_ASSERT_OK(loom_context_register_dialect(
         &context_, LOOM_DIALECT_TEST, vtables, (uint16_t)vtable_count));
+    vtables = loom_cfg_dialect_vtables(&vtable_count);
+    IREE_ASSERT_OK(loom_context_register_dialect(
+        &context_, LOOM_DIALECT_CFG, vtables, (uint16_t)vtable_count));
     IREE_ASSERT_OK(loom_context_finalize(&context_));
     IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("test"),
                                         &block_pool_, NULL,
@@ -279,6 +283,341 @@ TEST_F(GreedyRewriteTest, AttributeMutationRefreshesConstantFacts) {
 
   loom_rewriter_deinitialize(&rewriter);
   loom_pass_value_fact_owner_deinitialize(&fact_owner);
+  iree_arena_deinitialize(&arena);
+}
+
+TEST_F(GreedyRewriteTest, CyclicFactsNarrowAfterSemanticUpdates) {
+  loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
+  loom_region_t* body = loom_func_like_body(function_);
+  body->flags |= LOOM_REGION_INSTANCE_FLAG_CFG;
+  loom_op_t* seed = nullptr;
+  loom_op_t* increment = nullptr;
+  IREE_ASSERT_OK(loom_test_constant_build(&builder_, loom_attr_i64(2), i32,
+                                          LOOM_LOCATION_UNKNOWN, &seed));
+  IREE_ASSERT_OK(loom_test_constant_build(&builder_, loom_attr_i64(0), i32,
+                                          LOOM_LOCATION_UNKNOWN, &increment));
+  loom_block_t* header = nullptr;
+  IREE_ASSERT_OK(loom_region_append_block(module_, body, &header));
+  loom_value_id_t carried = LOOM_VALUE_ID_INVALID;
+  IREE_ASSERT_OK(
+      loom_builder_define_block_arg(&builder_, header, i32, &carried));
+  loom_value_id_t seed_value = loom_test_constant_result(seed);
+  loom_op_t* entry_branch = nullptr;
+  IREE_ASSERT_OK(loom_cfg_br_build(&builder_, header, &seed_value, 1,
+                                   LOOM_LOCATION_UNKNOWN, &entry_branch));
+  loom_builder_set_block(&builder_, header);
+  loom_op_t* sum = nullptr;
+  IREE_ASSERT_OK(loom_test_addi_build(&builder_, carried,
+                                      loom_test_constant_result(increment), i32,
+                                      LOOM_LOCATION_UNKNOWN, &sum));
+  loom_value_id_t sum_value = loom_test_addi_result(sum);
+  loom_op_t* backedge = nullptr;
+  IREE_ASSERT_OK(loom_cfg_br_build(&builder_, header, &sum_value, 1,
+                                   LOOM_LOCATION_UNKNOWN, &backedge));
+
+  iree_arena_allocator_t arena;
+  iree_arena_initialize(&block_pool_, &arena);
+  loom_pass_value_fact_owner_t owner;
+  loom_pass_value_fact_owner_initialize(&block_pool_, &owner);
+  loom_value_fact_table_t* facts = nullptr;
+  IREE_ASSERT_OK(loom_pass_value_fact_owner_acquire(
+      &owner, module_, loom_pass_value_fact_scope_function(function_), &facts));
+  loom_rewriter_t rewriter;
+  IREE_ASSERT_OK(loom_rewriter_initialize(&rewriter, module_, &arena));
+  loom_rewriter_attach_value_facts(&rewriter, facts);
+  iree_host_size_t touched_count = facts->touched_count;
+  EXPECT_TRUE(
+      loom_value_facts_is_exact(loom_rewriter_value_facts(&rewriter, carried)));
+  EXPECT_EQ(loom_rewriter_value_facts(&rewriter, carried).range_lo, 2);
+
+  // Changing the recurrence first widens the loop, then restores its exact
+  // fixed point. Old arithmetic feedback must not survive the second edit.
+  for (int64_t delta : {1, 0, 1, 0}) {
+    IREE_ASSERT_OK(loom_rewriter_set_attr(&rewriter, increment,
+                                          loom_test_constant_value_ATTR_INDEX,
+                                          loom_attr_i64(delta)));
+    while (loom_op_t* op = loom_rewriter_pop(&rewriter)) {
+      bool folded = false;
+      IREE_ASSERT_OK(loom_rewriter_try_fold(&rewriter, op, &folded));
+      EXPECT_FALSE(folded);
+    }
+    loom_pass_value_fact_owner_t fresh_owner;
+    loom_pass_value_fact_owner_initialize(&block_pool_, &fresh_owner);
+    loom_value_fact_table_t* fresh = nullptr;
+    IREE_ASSERT_OK(loom_pass_value_fact_owner_acquire(
+        &fresh_owner, module_, loom_pass_value_fact_scope_function(function_),
+        &fresh));
+    for (loom_value_id_t value : {carried, sum_value}) {
+      EXPECT_TRUE(loom_value_fact_table_facts_equal_for_type(
+          module_, i32, facts, loom_value_fact_table_lookup(facts, value),
+          fresh, loom_value_fact_table_lookup(fresh, value)));
+    }
+    EXPECT_EQ(loom_value_facts_is_exact(
+                  loom_rewriter_value_facts(&rewriter, carried)),
+              delta == 0);
+    EXPECT_EQ(facts->touched_count, touched_count);
+    loom_pass_value_fact_owner_deinitialize(&fresh_owner);
+  }
+  // Structural snapshots belong to the rewriter and leave the caller-owned
+  // table before their backing arenas are released or the table is reattached.
+  IREE_ASSERT_OK(loom_rewriter_refresh_cfg_facts(&rewriter, body));
+  IREE_ASSERT_OK(loom_rewriter_refresh_cfg_facts(&rewriter, body));
+  EXPECT_NE(loom_value_fact_table_lookup_cfg_graph(facts, body), nullptr);
+  IREE_ASSERT_OK(loom_rewriter_enable_analysis(&rewriter, function_, facts));
+  IREE_ASSERT_OK(loom_rewriter_refresh_cfg_facts(&rewriter, body));
+  loom_rewriter_deinitialize(&rewriter);
+  EXPECT_EQ(loom_value_fact_table_lookup_cfg_graph(facts, body), nullptr);
+  loom_pass_value_fact_owner_deinitialize(&owner);
+  iree_arena_deinitialize(&arena);
+}
+
+TEST_F(GreedyRewriteTest, ForwardingComponentsTrackPayloadReplacements) {
+  loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
+  loom_region_t* body = loom_func_like_body(function_);
+  body->flags |= LOOM_REGION_INSTANCE_FLAG_CFG;
+  loom_value_id_t seeds[2];
+  for (int i = 0; i < 2; ++i) {
+    loom_op_t* constant = nullptr;
+    IREE_ASSERT_OK(loom_test_constant_build(&builder_,
+                                            loom_attr_i64(i == 0 ? 2 : 9), i32,
+                                            LOOM_LOCATION_UNKNOWN, &constant));
+    seeds[i] = loom_test_constant_result(constant);
+  }
+  loom_block_t* header = nullptr;
+  IREE_ASSERT_OK(loom_region_append_block(module_, body, &header));
+  loom_value_id_t carried[2];
+  for (auto& value : carried) {
+    IREE_ASSERT_OK(
+        loom_builder_define_block_arg(&builder_, header, i32, &value));
+  }
+  loom_op_t* entry_branch = nullptr;
+  IREE_ASSERT_OK(loom_cfg_br_build(&builder_, header, seeds, 2,
+                                   LOOM_LOCATION_UNKNOWN, &entry_branch));
+  loom_builder_set_block(&builder_, header);
+  loom_value_id_t swapped[2] = {carried[1], carried[0]};
+  loom_op_t* backedge = nullptr;
+  IREE_ASSERT_OK(loom_cfg_br_build(&builder_, header, swapped, 2,
+                                   LOOM_LOCATION_UNKNOWN, &backedge));
+
+  iree_arena_allocator_t arena;
+  iree_arena_initialize(&block_pool_, &arena);
+  loom_pass_value_fact_owner_t owner;
+  loom_pass_value_fact_owner_initialize(&block_pool_, &owner);
+  loom_value_fact_table_t* facts = nullptr;
+  IREE_ASSERT_OK(loom_pass_value_fact_owner_acquire(
+      &owner, module_, loom_pass_value_fact_scope_function(function_), &facts));
+  loom_rewriter_t rewriter;
+  IREE_ASSERT_OK(loom_rewriter_initialize(&rewriter, module_, &arena));
+  loom_rewriter_attach_value_facts(&rewriter, facts);
+
+  auto check_facts = [&](bool expect_exact) {
+    while (loom_op_t* op = loom_rewriter_pop(&rewriter)) {
+      bool folded = false;
+      IREE_ASSERT_OK(loom_rewriter_try_fold(&rewriter, op, &folded));
+    }
+    loom_pass_value_fact_owner_t fresh_owner;
+    loom_pass_value_fact_owner_initialize(&block_pool_, &fresh_owner);
+    loom_value_fact_table_t* fresh = nullptr;
+    IREE_ASSERT_OK(loom_pass_value_fact_owner_acquire(
+        &fresh_owner, module_, loom_pass_value_fact_scope_function(function_),
+        &fresh));
+    for (loom_value_id_t value : carried) {
+      EXPECT_TRUE(loom_value_fact_table_facts_equal_for_type(
+          module_, i32, facts, loom_value_fact_table_lookup(facts, value),
+          fresh, loom_value_fact_table_lookup(fresh, value)));
+    }
+    EXPECT_EQ(loom_value_facts_is_exact(
+                  loom_rewriter_value_facts(&rewriter, carried[0])),
+              expect_exact);
+    loom_pass_value_fact_owner_deinitialize(&fresh_owner);
+  };
+
+  // Split and rejoin a mutual forwarding cycle without changing CFG edges.
+  // Once the first argument forwards itself, it only receives the seed 2.
+  for (int edit = 0; edit < 3; ++edit) {
+    if (edit == 0) {
+      IREE_ASSERT_OK(
+          loom_rewriter_set_operand(&rewriter, backedge, 0, carried[0]));
+    } else if (edit == 1) {
+      IREE_ASSERT_OK(loom_rewriter_replace_all_uses_with(&rewriter, carried[1],
+                                                         carried[0]));
+    } else {
+      IREE_ASSERT_OK(loom_rewriter_replace_all_uses_except(
+          &rewriter, carried[1], carried[0], entry_branch));
+    }
+    check_facts(true);
+    IREE_ASSERT_OK(
+        loom_rewriter_set_operand(&rewriter, backedge, 0, carried[1]));
+    check_facts(false);
+  }
+  loom_rewriter_deinitialize(&rewriter);
+  loom_pass_value_fact_owner_deinitialize(&owner);
+  iree_arena_deinitialize(&arena);
+}
+
+TEST_F(GreedyRewriteTest, NonEquationEditsPreserveCyclicFacts) {
+  loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
+  loom_region_t* body = loom_func_like_body(function_);
+  body->flags |= LOOM_REGION_INSTANCE_FLAG_CFG;
+  loom_op_t* seed = nullptr;
+  loom_op_t* input = nullptr;
+  IREE_ASSERT_OK(loom_test_constant_build(&builder_, loom_attr_i64(2), i32,
+                                          LOOM_LOCATION_UNKNOWN, &seed));
+  IREE_ASSERT_OK(loom_test_constant_build(&builder_, loom_attr_i64(9), i32,
+                                          LOOM_LOCATION_UNKNOWN, &input));
+  loom_value_id_t seed_value = loom_test_constant_result(seed);
+  loom_block_t* header = nullptr;
+  IREE_ASSERT_OK(loom_region_append_block(module_, body, &header));
+  loom_value_id_t carried = LOOM_VALUE_ID_INVALID;
+  IREE_ASSERT_OK(
+      loom_builder_define_block_arg(&builder_, header, i32, &carried));
+  loom_op_t* entry_branch = nullptr;
+  IREE_ASSERT_OK(loom_cfg_br_build(&builder_, header, &seed_value, 1,
+                                   LOOM_LOCATION_UNKNOWN, &entry_branch));
+  loom_builder_set_block(&builder_, header);
+  loom_op_t* opaque = nullptr;
+  IREE_ASSERT_OK(
+      loom_test_convergent_build(&builder_, loom_test_constant_result(input),
+                                 i32, LOOM_LOCATION_UNKNOWN, &opaque));
+  loom_op_t* backedge = nullptr;
+  IREE_ASSERT_OK(loom_cfg_br_build(&builder_, header, &carried, 1,
+                                   LOOM_LOCATION_UNKNOWN, &backedge));
+
+  iree_arena_allocator_t arena;
+  iree_arena_initialize(&block_pool_, &arena);
+  loom_pass_value_fact_owner_t owner;
+  loom_pass_value_fact_owner_initialize(&block_pool_, &owner);
+  loom_value_fact_table_t* facts = nullptr;
+  IREE_ASSERT_OK(loom_pass_value_fact_owner_acquire(
+      &owner, module_, loom_pass_value_fact_scope_function(function_), &facts));
+  loom_rewriter_t rewriter;
+  IREE_ASSERT_OK(loom_rewriter_initialize(&rewriter, module_, &arena));
+  loom_rewriter_attach_value_facts(&rewriter, facts);
+  auto drain = [&]() {
+    iree_host_size_t count = 0;
+    while (loom_op_t* op = loom_rewriter_pop(&rewriter)) {
+      bool folded = false;
+      IREE_EXPECT_OK(loom_rewriter_try_fold(&rewriter, op, &folded));
+      EXPECT_FALSE(folded);
+      ++count;
+    }
+    return count;
+  };
+
+  // Creating and removing an unused definition only visits the new operation
+  // and its operand providers. The loop's payload equation does not change.
+  loom_builder_set_before(&rewriter.builder, backedge);
+  loom_op_t* unused = nullptr;
+  IREE_ASSERT_OK(loom_test_addi_build(&rewriter.builder, carried, seed_value,
+                                      i32, LOOM_LOCATION_UNKNOWN, &unused));
+  EXPECT_EQ(drain(), 1u);
+  IREE_ASSERT_OK(loom_rewriter_erase(&rewriter, unused));
+  EXPECT_EQ(drain(), 1u);
+
+  // An opaque operation must be revisited after input replacement, while its
+  // unknown result facts do not acquire an input-dependent equation.
+  IREE_ASSERT_OK(loom_rewriter_replace_all_uses_and_erase(&rewriter, input,
+                                                          &seed_value, 1));
+  EXPECT_EQ(drain(), 1u);
+  IREE_ASSERT_OK(loom_rewriter_set_operand(&rewriter, opaque, 0, carried));
+  EXPECT_EQ(drain(), 1u);
+
+  // The branch has no inference callback either, but it feeds the cyclic join.
+  // Replacing its payload must both weaken and recover the loop's facts.
+  loom_value_id_t opaque_value = loom_test_convergent_result(opaque);
+  for (loom_value_id_t payload : {opaque_value, carried}) {
+    IREE_ASSERT_OK(loom_rewriter_set_operand(&rewriter, backedge, 0, payload));
+    drain();
+    loom_pass_value_fact_owner_t fresh_owner;
+    loom_pass_value_fact_owner_initialize(&block_pool_, &fresh_owner);
+    loom_value_fact_table_t* fresh = nullptr;
+    IREE_ASSERT_OK(loom_pass_value_fact_owner_acquire(
+        &fresh_owner, module_, loom_pass_value_fact_scope_function(function_),
+        &fresh));
+    for (loom_value_id_t value : {carried, opaque_value}) {
+      EXPECT_TRUE(loom_value_fact_table_facts_equal_for_type(
+          module_, i32, facts, loom_value_fact_table_lookup(facts, value),
+          fresh, loom_value_fact_table_lookup(fresh, value)));
+    }
+    EXPECT_EQ(loom_value_facts_is_exact(
+                  loom_rewriter_value_facts(&rewriter, carried)),
+              payload == carried);
+    loom_pass_value_fact_owner_deinitialize(&fresh_owner);
+  }
+
+  loom_rewriter_deinitialize(&rewriter);
+  loom_pass_value_fact_owner_deinitialize(&owner);
+  iree_arena_deinitialize(&arena);
+}
+
+TEST_F(GreedyRewriteTest,
+       AttributeOnlyUsersAreScheduledOnFactChangeAndReplacement) {
+  loom_type_t index_type = loom_type_scalar(LOOM_SCALAR_TYPE_INDEX);
+  loom_op_t* input_op = nullptr;
+  loom_op_t* bound_op = nullptr;
+  IREE_ASSERT_OK(loom_test_constant_build(&builder_, loom_attr_i64(0),
+                                          index_type, LOOM_LOCATION_UNKNOWN,
+                                          &input_op));
+  IREE_ASSERT_OK(loom_test_constant_build(&builder_, loom_attr_i64(8),
+                                          index_type, LOOM_LOCATION_UNKNOWN,
+                                          &bound_op));
+  loom_value_id_t input = loom_test_constant_result(input_op);
+  loom_value_id_t bound = loom_test_constant_result(bound_op);
+  loom_predicate_t predicate = {LOOM_PREDICATE_LT,
+                                2,
+                                {LOOM_PRED_ARG_VALUE, LOOM_PRED_ARG_VALUE},
+                                {},
+                                {input, bound}};
+  loom_op_t* predicate_user = nullptr;
+  IREE_ASSERT_OK(loom_test_assume_build(&builder_, &input, 1, &predicate, 1,
+                                        &index_type, 1, LOOM_LOCATION_UNKNOWN,
+                                        &predicate_user));
+
+  loom_type_t shape =
+      loom_type_shaped_1d(LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_INDEX,
+                          loom_dim_pack_dynamic(bound), 0);
+  loom_type_id_t shape_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_intern_type_id(module_, shape, &shape_id));
+  loom_string_id_t shape_key = LOOM_STRING_ID_INVALID;
+  IREE_ASSERT_OK(
+      loom_module_intern_string(module_, IREE_SV("shape"), &shape_key));
+  const loom_named_attr_t attribute = {shape_key, {}, loom_attr_type(shape_id)};
+  loom_op_t* type_user = nullptr;
+  IREE_ASSERT_OK(
+      loom_test_attrs_build(&builder_, LOOM_TEST_ATTRS_BUILD_FLAG_HAS_DICT,
+                            input, loom_make_named_attr_slice(&attribute, 1),
+                            index_type, LOOM_LOCATION_UNKNOWN, &type_user));
+  ASSERT_EQ(loom_module_value(module_, bound)->use_count, 0u);
+
+  iree_arena_allocator_t arena;
+  iree_arena_initialize(&block_pool_, &arena);
+  loom_pass_value_fact_owner_t owner;
+  loom_pass_value_fact_owner_initialize(&block_pool_, &owner);
+  loom_value_fact_table_t* facts = nullptr;
+  IREE_ASSERT_OK(loom_pass_value_fact_owner_acquire(
+      &owner, module_, loom_pass_value_fact_scope_function(function_), &facts));
+  loom_rewriter_t rewriter;
+  IREE_ASSERT_OK(loom_rewriter_initialize(&rewriter, module_, &arena));
+  loom_rewriter_attach_value_facts(&rewriter, facts);
+  auto expect_users = [&]() {
+    bool saw_predicate = false;
+    bool saw_type = false;
+    while (loom_op_t* op = loom_rewriter_pop(&rewriter)) {
+      saw_predicate |= op == predicate_user;
+      saw_type |= op == type_user;
+    }
+    EXPECT_TRUE(saw_predicate);
+    EXPECT_TRUE(saw_type);
+  };
+  IREE_ASSERT_OK(loom_rewriter_set_attr(&rewriter, bound_op,
+                                        loom_test_constant_value_ATTR_INDEX,
+                                        loom_attr_i64(16)));
+  expect_users();
+  IREE_ASSERT_OK(loom_rewriter_replace_all_uses_with(&rewriter, bound, input));
+  expect_users();
+
+  loom_rewriter_deinitialize(&rewriter);
+  loom_pass_value_fact_owner_deinitialize(&owner);
   iree_arena_deinitialize(&arena);
 }
 

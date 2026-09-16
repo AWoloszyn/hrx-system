@@ -13,10 +13,13 @@ loom_check_test_suite(
   NAME
     test
   SRCS
+    "block_forwarding.loom-test"
+    "block_fusion.loom-test"
     "branch_fusion.loom-test"
     "branch_sink.loom-test"
     "cfg_compatibility.loom-test"
     "cfg_simplify.loom-test"
+    "cfg_simplify_facts.loom-test"
     "cfg_simplify_scf_pipeline.loom-test"
 )
 

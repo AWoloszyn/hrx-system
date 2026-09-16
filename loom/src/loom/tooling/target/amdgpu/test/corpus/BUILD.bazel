@@ -65,6 +65,7 @@ iree_executable_test(
 loom_module(
     name = "gfx11_test_module",
     srcs = [
+        "//loom/binding/c/benchmark/kernels:attention/prefill_f16_wmma_amdgpu.loom",
         "//loom/src/loom/test/corpus/authoring/hip:gfx11_cases",
     ] + glob(["gfx11/*.loom"]),
     output_format = "bc",

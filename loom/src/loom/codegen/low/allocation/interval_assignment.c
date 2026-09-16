@@ -346,6 +346,7 @@ static iree_status_t loom_low_allocation_interval_assignment_consumption_query(
     if (query->region != region) {
       loom_consumption_region_query_initialize_with_cfg_graph(
           state->context->module, region, state->context->function_cfg_graph,
+          state->context->liveness, state->context->value_domain,
           state->context->arena, query);
     }
     *out_query = query;

@@ -79,6 +79,8 @@ typedef iree_status_t (*loom_materialize_value_fn_t)(
     loom_builder_t* builder, loom_type_t result_type,
     loom_location_id_t location, loom_value_id_t* out_value_id);
 
+typedef struct loom_rewriter_cfg_region_t loom_rewriter_cfg_region_t;
+
 struct loom_rewriter_t {
   // Builder for creating new ops. The rewriter installs a finalize
   // callback that adds newly created ops to the worklist.
@@ -112,6 +114,18 @@ struct loom_rewriter_t {
   // loom_rewriter_enable_analysis. NULL means analysis is disabled.
   loom_value_fact_table_t* fact_table;
 
+  // Structural snapshots published into the fact table for edited regions.
+  struct {
+    // Region-address hash buckets for O(1) snapshot storage lookup.
+    loom_rewriter_cfg_region_t** buckets;
+    // Power-of-two bucket count.
+    iree_host_size_t bucket_count;
+    // Number of regions with replaceable snapshots.
+    iree_host_size_t count;
+    // All region records for snapshot withdrawal and arena teardown.
+    loom_rewriter_cfg_region_t* entries;
+  } cfg_facts;
+
   // Dialect-provided constant materialization. Set by the pass before
   // enabling analysis. NULL means try_fold cannot materialize
   // constants (facts are still computed and propagated).
@@ -139,6 +153,13 @@ iree_status_t loom_rewriter_seed_function(loom_rewriter_t* rewriter,
 // query and remains owned by the caller. NULL disables value-fact maintenance.
 void loom_rewriter_attach_value_facts(loom_rewriter_t* rewriter,
                                       loom_value_fact_table_t* facts);
+
+// Updates the structural fact snapshot after a completed CFG edit and queues
+// users of changed block-argument joins. Call before querying facts or draining
+// the worklist after changing successors, block membership, or block arguments.
+// Ordinary value changes propagate through branch payloads in try_fold.
+iree_status_t loom_rewriter_refresh_cfg_facts(loom_rewriter_t* rewriter,
+                                              loom_region_t* region);
 
 // Enables value analysis on this rewriter using caller-owned fact storage and
 // runs the initial forward pass over |region| and its nested regions, seeding

@@ -374,3 +374,38 @@ func.def @operation_after_branch(%row: i32) -> (i32) {
 ^exit(%result: i32):
   func.return %result : i32
 }
+
+// ====
+
+// Returning to the producer creates a fresh resource even when the move is in
+// another block. The next trip does not observe the consumed dynamic instance.
+// RUN: verify
+func.def @recreated_result_across_blocks(%size: index, %again: i1) {
+  cfg.br ^produce
+^produce:
+  %fresh = test.resource.alloc %size : index -> pool<16>
+  cfg.br ^consume
+^consume:
+  %moved = test.resource.move %fresh : pool<16> -> pool<16>
+  test.resource.release %moved : pool<16>
+  cfg.cond_br %again, ^produce, ^exit
+^exit:
+  func.return
+}
+
+// ====
+
+// Repeating the consumer without reentering the producer still observes a
+// consumed resource; a cycle alone does not create a new dynamic instance.
+// RUN: verify
+func.def @repeated_consumer_without_recreation(%size: index, %again: i1) {
+  %resource = test.resource.alloc %size : index -> pool<16>
+  cfg.br ^consume
+^consume:
+  // ERROR@+1: DOMINANCE/002
+  %moved = test.resource.move %resource : pool<16> -> pool<16>
+  test.resource.release %moved : pool<16>
+  cfg.cond_br %again, ^consume, ^exit
+^exit:
+  func.return
+}

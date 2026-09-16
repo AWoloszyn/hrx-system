@@ -1,0 +1,53 @@
+// Executes the same tiled attention kernel used by compile-throughput tests.
+// The linked definition keeps numerical checks outside the timed input module.
+kernel.decl @attention_prefill_f16_wmma(%token_count: index) launch(%control: buffer, %query: buffer, %gate: buffer, %key_cache: buffer, %value_cache: buffer, %output: buffer)
+
+// One query row exercises a partial query tile with no complete cache blocks.
+// Values repeat by channel across every cache row, so normalized attention
+// equals that channel's value independently of the score distribution.
+check.case public @attention_prefill_single_row_case {
+  %token_count = check.literal value(1) : index
+  %control = check.generate.iota offset(1) step(-1) : tensor<2xi32>
+  %query = check.generate.fill value(0.125) : tensor<1x6144xf32>
+  %gate = check.generate.fill value(0.5) : tensor<1x6144xf32>
+  %key_cache = check.generate.fill value(1.0) : tensor<512x1024xf16>
+  %value_cache = check.generate.iota offset(-0.25) step(0.001953125) period(256) : tensor<512x1024xf16>
+  %actual = check.generate.fill value(-1.0) : tensor<1x6144xf32>
+  %expected = check.generate.iota offset(-0.125) step(0.0009765625) period(256) : tensor<1x6144xf32>
+  kernel.launch @attention_prefill_f16_wmma[%token_count](%control, %query, %gate, %key_cache, %value_cache, %actual) : [index](tensor<2xi32>, tensor<1x6144xf32>, tensor<1x6144xf32>, tensor<512x1024xf16>, tensor<512x1024xf16>, tensor<1x6144xf32>)
+  check.expect.close actual(%actual) expected(%expected) atol(0.00050000000000000001) rtol(0.001) nan(same) : tensor<1x6144xf32>
+  check.return
+}
+
+// Starting at position 64 exercises a complete cache block and a 17-row tail,
+// including the second query tile. Constant values give normalized output 0.25;
+// a distinct gate at every output position makes row/head addressing observable.
+check.case public @attention_prefill_gated_tail_case {
+  %token_count = check.literal value(17) : index
+  %control = check.generate.iota offset(17) step(47) : tensor<2xi32>
+  %query = check.generate.fill value(0.0) : tensor<17x6144xf32>
+  %gate = check.generate.iota offset(0.5) step(7.62939453125e-06) : tensor<17x6144xf32>
+  %key_cache = check.generate.fill value(1.0) : tensor<512x1024xf16>
+  %value_cache = check.generate.fill value(0.25) : tensor<512x1024xf16>
+  %actual = check.generate.fill value(-1.0) : tensor<17x6144xf32>
+  %expected = check.generate.iota offset(0.125) step(1.9073486328125e-06) : tensor<17x6144xf32>
+  kernel.launch @attention_prefill_f16_wmma[%token_count](%control, %query, %gate, %key_cache, %value_cache, %actual) : [index](tensor<2xi32>, tensor<17x6144xf32>, tensor<17x6144xf32>, tensor<512x1024xf16>, tensor<512x1024xf16>, tensor<17x6144xf32>)
+  check.expect.close actual(%actual) expected(%expected) atol(0.00050000000000000001) rtol(0.001) nan(same) : tensor<17x6144xf32>
+  check.return
+}
+
+// Two complete cache blocks and a partial block carry distinct signed channel
+// values through repeated LDS staging and all four output-channel tiles.
+check.case public @attention_prefill_repeated_blocks_case {
+  %token_count = check.literal value(17) : index
+  %control = check.generate.iota offset(17) step(111) : tensor<2xi32>
+  %query = check.generate.fill value(0.125) : tensor<17x6144xf32>
+  %gate = check.generate.fill value(0.5) : tensor<17x6144xf32>
+  %key_cache = check.generate.iota offset(-0.5) step(0.00390625) period(256) : tensor<512x1024xf16>
+  %value_cache = check.generate.iota offset(-0.25) step(0.001953125) period(256) : tensor<512x1024xf16>
+  %actual = check.generate.fill value(-1.0) : tensor<17x6144xf32>
+  %expected = check.generate.iota offset(-0.125) step(0.0009765625) period(256) : tensor<17x6144xf32>
+  kernel.launch @attention_prefill_f16_wmma[%token_count](%control, %query, %gate, %key_cache, %value_cache, %actual) : [index](tensor<2xi32>, tensor<17x6144xf32>, tensor<17x6144xf32>, tensor<512x1024xf16>, tensor<512x1024xf16>, tensor<17x6144xf32>)
+  check.expect.close actual(%actual) expected(%expected) atol(0.00050000000000000001) rtol(0.001) nan(same) : tensor<17x6144xf32>
+  check.return
+}
