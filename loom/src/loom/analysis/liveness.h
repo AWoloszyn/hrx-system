@@ -346,6 +346,13 @@ loom_liveness_segment_range_t loom_liveness_segment_range_for_value_ordinal(
     const loom_liveness_analysis_t* analysis,
     loom_value_ordinal_t value_ordinal);
 
+// Returns whether |point| belongs to the half-open sparse segment |range|.
+// The range must belong to |analysis|. Lookup is logarithmic in its segment
+// count and does not traverse operations or CFG edges.
+bool loom_liveness_segment_range_contains(
+    const loom_liveness_analysis_t* analysis,
+    loom_liveness_segment_range_t range, uint32_t point);
+
 // Returns true when two non-empty sparse segment ranges overlap at any program
 // point. Both ranges must belong to |analysis|. Empty ranges and segments whose
 // half-open endpoints only touch never overlap.

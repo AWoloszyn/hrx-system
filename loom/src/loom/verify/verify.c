@@ -266,7 +266,8 @@ static iree_status_t loom_verify_region(
   state->region_scope.current = region;
   if (region->block_count > 1) {
     loom_consumption_region_query_initialize_with_cfg_graph(
-        state->module, region, &graph, &state->arena, &consumption_query);
+        state->module, region, &graph, NULL, NULL, &state->arena,
+        &consumption_query);
   } else {
     loom_consumption_region_query_initialize(state->module, region,
                                              &state->arena, &consumption_query);

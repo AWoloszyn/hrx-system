@@ -270,6 +270,7 @@ loom_cc_library(
     srcs = ["consumption.c"],
     hdrs = ["consumption.h"],
     deps = [
+        ":liveness",
         "//loom/src/loom/ir",
         "//loom/src/loom/util:cfg_graph",
         "//runtime/src/iree/base",

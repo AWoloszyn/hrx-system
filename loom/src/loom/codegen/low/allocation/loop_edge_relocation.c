@@ -1058,8 +1058,8 @@ iree_status_t loom_low_allocation_loop_edge_relocate(
           },
   };
   loom_consumption_region_query_initialize_with_cfg_graph(
-      context->module, context->body, context->cfg_graph, context->arena,
-      &state.consumption_query);
+      context->module, context->body, context->cfg_graph, context->liveness,
+      context->value_domain, context->arena, &state.consumption_query);
 
   for (uint16_t header_index = 0;
        header_index < context->cfg_graph->block_count; ++header_index) {

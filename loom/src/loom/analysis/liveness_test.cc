@@ -630,6 +630,14 @@ TEST(LivenessSegmentsTest, ExhaustiveSmallSparseSets) {
       loom_liveness_analysis_t analysis = {};
       analysis.segments = count == 0 ? nullptr : segments;
       analysis.segment_count = count;
+      for (uint32_t point = 0; point <= 6; ++point) {
+        EXPECT_EQ(loom_liveness_segment_range_contains(&analysis, lhs, point),
+                  (lhs_bits & (1u << point)) != 0)
+            << "bits=" << lhs_bits << ", point=" << point;
+        EXPECT_EQ(loom_liveness_segment_range_contains(&analysis, rhs, point),
+                  (rhs_bits & (1u << point)) != 0)
+            << "bits=" << rhs_bits << ", point=" << point;
+      }
       EXPECT_EQ(loom_liveness_segment_ranges_overlap(&analysis, lhs, rhs),
                 (lhs_bits & rhs_bits) != 0)
           << "lhs=" << lhs_bits << ", rhs=" << rhs_bits;

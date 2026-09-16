@@ -306,6 +306,7 @@ loom_cc_library(
   SRCS
     "consumption.c"
   DEPS
+    ::liveness
     iree::base
     iree::base::internal::arena
     loom::ir

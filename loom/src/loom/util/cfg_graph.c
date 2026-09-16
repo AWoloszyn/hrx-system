@@ -191,14 +191,27 @@ static iree_status_t loom_cfg_graph_build_traversal(
   uint16_t* order = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       arena, graph->block_count, sizeof(*order), (void**)&order));
+  uint16_t* lowlinks = NULL;
+  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+      arena, graph->block_count, sizeof(*lowlinks), (void**)&lowlinks));
+  uint16_t* component_stack = NULL;
+  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(arena, graph->block_count,
+                                                 sizeof(*component_stack),
+                                                 (void**)&component_stack));
 
   // Edge construction has finished with both block-sized cursor arrays. Reuse
-  // them for traversal frames so only the retained order needs new storage.
+  // them for traversal frames. Tarjan lowlinks share this DFS so component
+  // order and tree paths remain facts of graph construction.
   iree_host_size_t stack_count = 1;
   iree_host_size_t order_count = 0;
   uint16_t preorder_count = 1;
+  uint16_t component_count = 0;
+  iree_host_size_t component_stack_count = 1;
+  component_stack[0] = 0;
+  lowlinks[0] = 0;
   graph->blocks[0].reachable = true;
   graph->blocks[0].preorder = 0;
+  graph->blocks[0].reachability_root = 0;
   stack_blocks[0] = 0;
   stack_successor_positions[0] = 0;
   while (stack_count > 0) {
@@ -209,17 +222,68 @@ static iree_status_t loom_cfg_graph_build_traversal(
         &stack_successor_positions[stack_count - 1];
     if (*next_position < successors.count) {
       uint16_t successor_index = successors.values[(*next_position)++];
+      if (successor_index == block_index) {
+        graph->blocks[block_index].component_is_cyclic = true;
+      }
       if (!graph->blocks[successor_index].reachable) {
         graph->blocks[successor_index].reachable = true;
         graph->blocks[successor_index].preorder = preorder_count++;
+        graph->blocks[successor_index].reachability_root = successor_index;
+        lowlinks[successor_index] = graph->blocks[successor_index].preorder;
         graph->blocks[successor_index].parent = block_index;
+        component_stack[component_stack_count++] = successor_index;
         stack_blocks[stack_count] = successor_index;
         stack_successor_positions[stack_count++] = 0;
+      } else if (graph->blocks[successor_index].component == UINT16_MAX) {
+        lowlinks[block_index] = iree_min(
+            lowlinks[block_index], graph->blocks[successor_index].preorder);
+      }
+      const uint16_t successor_root =
+          graph->blocks[successor_index].reachability_root;
+      const uint16_t block_root = graph->blocks[block_index].reachability_root;
+      if (graph->blocks[successor_root].preorder <
+          graph->blocks[block_root].preorder) {
+        graph->blocks[block_index].reachability_root = successor_root;
       }
       continue;
     }
+    graph->blocks[block_index].preorder_end = preorder_count;
+    if (lowlinks[block_index] == graph->blocks[block_index].preorder) {
+      const iree_host_size_t component_end = component_stack_count;
+      uint16_t reachability_root = graph->blocks[block_index].reachability_root;
+      uint16_t member_index;
+      do {
+        member_index = component_stack[--component_stack_count];
+        graph->blocks[member_index].component = component_count;
+        const uint16_t member_root =
+            graph->blocks[member_index].reachability_root;
+        if (graph->blocks[member_root].preorder <
+            graph->blocks[reachability_root].preorder) {
+          reachability_root = member_root;
+        }
+      } while (member_index != block_index);
+      const bool cyclic = component_end - component_stack_count > 1 ||
+                          graph->blocks[block_index].component_is_cyclic;
+      for (iree_host_size_t i = component_stack_count; i < component_end; ++i) {
+        graph->blocks[component_stack[i]].component_is_cyclic = cyclic;
+        graph->blocks[component_stack[i]].reachability_root = reachability_root;
+      }
+      ++component_count;
+    }
     order[order_count++] = block_index;
     --stack_count;
+    if (stack_count != 0) {
+      uint16_t parent_index = (uint16_t)stack_blocks[stack_count - 1];
+      lowlinks[parent_index] =
+          iree_min(lowlinks[parent_index], lowlinks[block_index]);
+      const uint16_t child_root = graph->blocks[block_index].reachability_root;
+      const uint16_t parent_root =
+          graph->blocks[parent_index].reachability_root;
+      if (graph->blocks[child_root].preorder <
+          graph->blocks[parent_root].preorder) {
+        graph->blocks[parent_index].reachability_root = child_root;
+      }
+    }
   }
   for (iree_host_size_t i = 0; i < order_count / 2; ++i) {
     uint16_t block_index = order[i];
@@ -254,6 +318,8 @@ iree_status_t loom_cfg_graph_build(const loom_module_t* module,
     for (uint16_t block_index = 0; block_index < region->block_count;
          ++block_index) {
       out_graph->blocks[block_index].preorder = UINT16_MAX;
+      out_graph->blocks[block_index].component = UINT16_MAX;
+      out_graph->blocks[block_index].reachability_root = UINT16_MAX;
       out_graph->blocks[block_index].parent = UINT16_MAX;
       out_graph->blocks[block_index].block =
           loom_region_const_block(region, block_index);

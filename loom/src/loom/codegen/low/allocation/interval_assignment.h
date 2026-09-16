@@ -43,6 +43,8 @@ typedef struct loom_low_allocation_interval_assignment_context_t {
   const loom_low_resolved_target_t* target;
   // Liveness facts for the allocated low function body.
   const loom_liveness_analysis_t* liveness;
+  // Acquired value domain shared by liveness and consumption queries.
+  const loom_local_value_domain_t* value_domain;
   // Optional final schedule defining |liveness|'s top-level operation order.
   const struct loom_low_schedule_table_t* schedule;
   // Function-local placement relations over |liveness|.
