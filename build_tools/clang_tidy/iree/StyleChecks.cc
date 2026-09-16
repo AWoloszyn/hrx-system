@@ -665,6 +665,9 @@ DesignatedInitializerCheck::DesignatedInitializerCheck(
 
 void DesignatedInitializerCheck::registerMatchers(
     ast_matchers::MatchFinder* Finder) {
+  if (!getLangOpts().CPlusPlus || getLangOpts().CPlusPlus20) {
+    return;
+  }
   using namespace ast_matchers;
   Finder->addMatcher(
       initListExpr(
@@ -676,9 +679,6 @@ void DesignatedInitializerCheck::registerMatchers(
 
 void DesignatedInitializerCheck::check(
     const ast_matchers::MatchFinder::MatchResult& Result) {
-  if (!Result.Context->getLangOpts().CPlusPlus) {
-    return;
-  }
   const auto* Init =
       Result.Nodes.getNodeAs<DesignatedInitExpr>("designated_init");
   const auto* ParentInit =
@@ -697,8 +697,8 @@ void DesignatedInitializerCheck::check(
           : SourceManager.getExpansionLoc(DesignatorLocation);
   DiagnosticBuilder Diagnostic =
       diag(Location,
-           "C++ code must use comment field labels instead of designated "
-           "initializers for MSVC portability");
+           "C++ designated initializers require C++20; use comment field "
+           "labels for portability in earlier language modes");
 
   std::optional<CharSourceRange> ReplacementRange =
       DesignatedInitializerFixRange(Init, SourceManager,

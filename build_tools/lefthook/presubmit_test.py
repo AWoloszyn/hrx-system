@@ -259,6 +259,16 @@ class PresubmitTest(unittest.TestCase):
         self.assertIn("7", command)
         self.assertEqual(command[-1], "runtime/src/iree/base/status.c")
 
+    def test_libamdf_static_analysis_scope_includes_sources_and_headers(self):
+        for path in (
+            "libamdf/src/allocator.c",
+            "libamdf/src/allocator_test.cc",
+            "libamdf/include/amdf/base.h",
+        ):
+            with self.subTest(path=path):
+                self.assertTrue(presubmit.is_semgrep_candidate_file(path))
+                self.assertTrue(presubmit.is_clang_tidy_candidate_file(path))
+
     def test_semgrep_default_jobs_are_capped_on_large_machines(self):
         with (
             mock.patch.dict(os.environ, {}, clear=True),
@@ -860,6 +870,48 @@ class PresubmitTest(unittest.TestCase):
             f"--output_groups={presubmit.CLANG_TIDY_LOCAL_OUTPUT_GROUP}", command
         )
         self.assertIn("//build_tools/bazel/test:all", command)
+
+    def test_libamdf_clang_tidy_routes_and_enables_optional_package(self):
+        source_path = "libamdf/src/allocator.c"
+        header_path = "libamdf/src/allocator.h"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "libamdf/src"
+            package.mkdir(parents=True)
+            (package / "BUILD.bazel").write_text(
+                'amdf_cc_library(name = "allocator", srcs = ["allocator.c"])\n',
+                encoding="utf-8",
+            )
+            (root / source_path).write_text("", encoding="utf-8")
+            (root / header_path).write_text("", encoding="utf-8")
+            with (
+                mock.patch.object(presubmit, "REPO_ROOT", root),
+                mock.patch.object(presubmit.sys, "platform", "linux"),
+                mock.patch.object(
+                    presubmit, "clang_tidy_llvm_available", return_value=True
+                ),
+                mock.patch.object(
+                    presubmit, "run_command", return_value=True
+                ) as run_command,
+            ):
+                self.assertTrue(
+                    presubmit.run_clang_tidy(
+                        input_scope([source_path]),
+                        profile="ci",
+                        lane="bazel",
+                        verbose=False,
+                    )
+                )
+                self.assertEqual(
+                    presubmit.cmake_clang_tidy_candidate_files(
+                        [source_path, header_path]
+                    ),
+                    [source_path],
+                )
+
+        command = run_command.call_args.args[0]
+        self.assertIn("--//libamdf/config:enabled=true", command)
+        self.assertEqual(command[-1], "//libamdf/src:all")
 
     def test_clang_tidy_ci_runs_bazel_packages_keep_going(self):
         with (

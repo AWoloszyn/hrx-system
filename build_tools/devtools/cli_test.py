@@ -735,6 +735,14 @@ class CliTest(unittest.TestCase):
         self.assertIn("--keep_going", description)
         self.assertIn("//runtime/src/iree/tokenizer:all", description)
 
+    def test_bazel_clang_tidy_enables_libamdf_targets(self):
+        args = cli.parse_arguments(["bazel", "clang-tidy", "//libamdf/src:allocator"])
+
+        description = normalized_plan_description(args.handler(args))
+
+        self.assertIn("--//libamdf/config:enabled=true", description)
+        self.assertIn("//libamdf/src:allocator", description)
+
     def test_bazel_clang_tidy_git_scope_uses_presubmit_provider(self):
         args = cli.parse_arguments(["bazel", "clang-tidy", "--base", "origin/main"])
 

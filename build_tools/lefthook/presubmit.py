@@ -79,6 +79,7 @@ SEMGREP_EXTENSIONS = C_ANALYSIS_EXTENSIONS
 SEMGREP_PATH_PREFIXES = (
     "runtime/src/iree/",
     "loom/src/loom/",
+    "libamdf/",
     "libhrx/",
 )
 SEMGREP_DEFAULT_MAX_JOBS = 14
@@ -376,7 +377,7 @@ def parse_arguments() -> argparse.Namespace:
         action="store_false",
         default=True,
         help=(
-            "Skip runtime/libhrx/loom product tests while still running "
+            "Skip runtime/libamdf/libhrx/loom product tests while still running "
             "changed repository-tool tests."
         ),
     )
@@ -1768,6 +1769,8 @@ def clang_tidy_bazel_command(
         )
     command += [
         CLANG_TIDY_REPO_ENV,
+        # Analyze optional libamdf packages instead of skipping them as incompatible.
+        "--//libamdf/config:enabled=true",
         f"--aspects={CLANG_TIDY_ASPECT}",
         f"--output_groups={','.join(output_groups)}",
     ]

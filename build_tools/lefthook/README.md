@@ -267,17 +267,27 @@ uses roughly 85% of detected logical CPUs capped at 14 jobs. That cap avoids
 Semgrep's current high-core-count OCaml-domain failure mode while keeping the
 local/CI default comfortably fast for this repository size.
 
-Clang-tidy runs only in the Bazel lane. It maps changed C/C++ files under
-`runtime/src/iree/`, `loom/src/loom/`, and `libhrx/` to their nearest Bazel
-package and invokes the checked-in clang-tidy aspect:
+Semgrep and clang-tidy select C/C++ files under `runtime/src/iree/`,
+`loom/src/loom/`, `libamdf/`, and `libhrx/`. Each Semgrep rule further scopes
+its applicable paths and languages. The no-goto rule covers libamdf C sources;
+IREE status-ownership rules apply to IREE consumers.
+
+In the Bazel lane, clang-tidy maps selected files to their nearest package and
+invokes the checked-in clang-tidy aspect. Both file-based and explicit-target
+analysis enable `//libamdf/config:enabled` so optional libamdf targets are
+analyzed instead of skipped as incompatible:
 
 ```bash
 python dev.py bazel precommit --profile paranoid runtime/src/iree/base/status.c
 ```
 
-Changes under `build_tools/clang_tidy/` run the plugin smoke test and action
-smoke target instead. See `build_tools/clang_tidy/README.md` for the direct
-Bazel commands and LLVM discovery environment variables.
+Header and shared build-infrastructure changes can expand the analysis to all
+tracked C/C++ files. Changes under `build_tools/clang_tidy/` also run the plugin
+smoke test and action smoke target. The CMake lane uses the configured compilation
+database, which requires `AMDF_BUILD=ON` to include libamdf translation units.
+Native Windows hooks currently delegate both providers to Linux presubmit CI.
+See `build_tools/clang_tidy/README.md` for the direct Bazel commands and LLVM
+discovery environment variables.
 
 ## Project Dispatch
 

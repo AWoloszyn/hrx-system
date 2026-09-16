@@ -256,9 +256,9 @@ do not transfer ownership and are accepted.
 
 ### `iree-cpp-designated-initializer`
 
-`iree-cpp-designated-initializer` diagnoses C++ designated initializers. MSVC
-does not support this syntax, so C++ aggregate initializers should use IREE's
-comment field-label convention instead:
+`iree-cpp-designated-initializer` diagnoses designated initializers in C++
+language modes before C++20. Clang accepts them as an extension in those modes,
+but portable aggregate initializers use IREE's comment field-label convention:
 
 ```c++
 iree_hal_buffer_params_t params = {
@@ -268,8 +268,10 @@ iree_hal_buffer_params_t params = {
 };
 ```
 
-The check is C++-only. C designated initializers remain valid and are not
-diagnosed:
+The check uses the translation unit's configured language standard. C++20 and
+later support designated initializers, including in MSVC; libamdf explicitly
+selects C++20 for its private C++ code. C designated initializers also remain
+valid and are not diagnosed:
 
 ```c
 iree_hal_buffer_params_t params = {

@@ -370,6 +370,8 @@ def clang_tidy_build_argv(
         argv.append("--keep_going")
     argv += [
         CLANG_TIDY_REPO_ENV,
+        # Analyze optional libamdf packages instead of skipping them as incompatible.
+        "--//libamdf/config:enabled=true",
         f"--aspects={CLANG_TIDY_ASPECT}",
         f"--output_groups={CLANG_TIDY_OUTPUT_GROUP}",
         "--",

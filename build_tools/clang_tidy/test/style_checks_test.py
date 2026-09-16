@@ -53,13 +53,13 @@ class StyleChecksTest(clang_tidy_test.ClangTidyAssertions):
             plugin=_ARGS.plugin,
             checks="-*,iree-cpp-designated-initializer",
             source=clang_tidy_test.source_path(__file__, "style_checks.cc"),
-            compiler_args=["-std=c++20"],
+            compiler_args=["-std=c++17"],
         )
         self.assertContainsAll(
             output,
             [
-                "C++ code must use comment field labels instead of designated "
-                "initializers for MSVC portability",
+                "C++ designated initializers require C++20; use comment field "
+                "labels for portability in earlier language modes",
                 ".ordinal = 1",
                 '.name = "device"',
                 '.name = "skipped"',
@@ -82,13 +82,13 @@ class StyleChecksTest(clang_tidy_test.ClangTidyAssertions):
             plugin=_ARGS.plugin,
             checks="-*,iree-cpp-designated-initializer",
             source=clang_tidy_test.source_path(__file__, "style_checks.cc"),
-            compiler_args=["-std=c++20"],
+            compiler_args=["-std=c++17"],
         )
         self.assertContainsAll(
             output,
             [
-                "C++ code must use comment field labels instead of designated "
-                "initializers for MSVC portability",
+                "C++ designated initializers require C++20; use comment field "
+                "labels for portability in earlier language modes",
                 "[iree-cpp-designated-initializer]",
             ],
         )
@@ -105,6 +105,19 @@ class StyleChecksTest(clang_tidy_test.ClangTidyAssertions):
         self.assertNotIn(".traits = 1", fixed_source)
         self.assertNotIn('.name = "sparse"', fixed_source)
 
+    def test_cpp20_designated_initializers_are_preserved(self):
+        source = clang_tidy_test.source_path(__file__, "style_checks.cc")
+        output, fixed_source = clang_tidy_test.run_clang_tidy_fix(
+            clang_tidy=_ARGS.clang_tidy,
+            plugin=_ARGS.plugin,
+            checks="-*,iree-cpp-designated-initializer",
+            source=source,
+            compiler_args=["-std=c++20"],
+        )
+
+        self.assertNotIn("[iree-cpp-designated-initializer]", output)
+        self.assertEqual(fixed_source, source.read_text())
+
     def test_c_designated_initializers_are_allowed(self):
         output = clang_tidy_test.run_clang_tidy(
             clang_tidy=_ARGS.clang_tidy,
@@ -116,8 +129,8 @@ class StyleChecksTest(clang_tidy_test.ClangTidyAssertions):
         self.assertContainsNone(
             output,
             [
-                "C++ code must use comment field labels instead of designated "
-                "initializers for MSVC portability",
+                "C++ designated initializers require C++20; use comment field "
+                "labels for portability in earlier language modes",
                 "[iree-cpp-designated-initializer]",
             ],
         )
