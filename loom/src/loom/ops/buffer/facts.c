@@ -83,6 +83,8 @@ static iree_status_t loom_buffer_meet_reference_extension(
                          ? lhs_reference.nullability
                          : LOOM_VALUE_FACT_REFERENCE_NULLABILITY_UNKNOWN,
   };
+  reference.origin = loom_value_fact_reference_origin_meet(
+      lhs_reference.origin, rhs_reference.origin);
   loom_value_facts_meet(&lhs_extent, &rhs_extent,
                         &reference.maximum_byte_extent);
   if (reference.minimum_alignment == 0) reference.minimum_alignment = 1;
@@ -113,6 +115,10 @@ iree_status_t loom_buffer_alloca_facts(loom_fact_context_t* context,
                                        const loom_value_facts_t* operand_facts,
                                        loom_value_facts_t* result_facts) {
   int64_t base_alignment = loom_buffer_alloca_base_alignment(op);
+  loom_value_fact_reference_origin_t origin = context->reference_origin;
+  if (origin.kind != LOOM_VALUE_FACT_REFERENCE_ORIGIN_UNKNOWN) {
+    origin.kind = LOOM_VALUE_FACT_REFERENCE_ORIGIN_ALLOCATION;
+  }
   loom_value_fact_buffer_reference_t reference = {
       .maximum_byte_extent = loom_buffer_clamp_nonnegative(operand_facts[0]),
       .minimum_alignment = base_alignment > 0 ? (uint64_t)base_alignment : 1,
@@ -120,6 +126,7 @@ iree_status_t loom_buffer_alloca_facts(loom_fact_context_t* context,
       .root_value_id = loom_buffer_alloca_result(op),
       .alias_scope_id = loom_buffer_alloca_result(op),
       .nullability = LOOM_VALUE_FACT_REFERENCE_NULLABILITY_NON_NULL,
+      .origin = origin,
   };
   return loom_value_facts_make_buffer_reference(context, reference,
                                                 &result_facts[0]);
@@ -265,6 +272,7 @@ iree_status_t loom_buffer_assume_same_root_facts(
   reference.root_value_id = loom_value_fact_buffer_reference_resolve_root_value(
       root_reference, loom_buffer_assume_same_root_root(op));
   reference.alias_scope_id = root_reference.alias_scope_id;
+  reference.origin = root_reference.origin;
   if (reference.memory_space == LOOM_VALUE_FACT_MEMORY_SPACE_UNKNOWN) {
     reference.memory_space = root_reference.memory_space;
   }

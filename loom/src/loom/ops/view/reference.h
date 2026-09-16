@@ -24,9 +24,9 @@ extern "C" {
 #endif
 
 // Joins root-relative view facts across value selection and loop transport.
-// A shared root and memory space preserve the reference; byte ranges and
-// alignment retain only common guarantees. Widening drops changing ranges
-// independently so stable storage identity and footprint facts survive.
+// Shared roots retain their relative byte coordinates. Distinct roots rebase
+// onto the joined value while preserving common storage properties. Widening
+// drops changing ranges independently of stable origin and footprint facts.
 extern const loom_value_fact_domain_t loom_view_fact_domain;
 
 // Constructs view-reference facts for `buffer.view`.

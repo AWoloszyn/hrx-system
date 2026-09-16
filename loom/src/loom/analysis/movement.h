@@ -166,6 +166,9 @@ typedef struct loom_movement_endpoint_t {
   // Known nullability of the storage root.
   loom_value_fact_reference_nullability_t nullability;
 
+  // Intrinsic storage origin retained from the source reference.
+  loom_value_fact_reference_origin_t origin;
+
   // Symbolic begin byte offset relative to root_value_id.
   loom_symbolic_expr_t begin_byte_offset;
 

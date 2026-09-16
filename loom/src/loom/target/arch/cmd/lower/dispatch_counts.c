@@ -145,6 +145,8 @@ loom_cmd_dispatch_count_classify_indirect_origin(
     return LOOM_CMD_DISPATCH_COUNT_INDIRECT_ORIGIN_UNRESOLVED;
   }
 
+  reference.root_value_id = loom_value_fact_view_reference_resolve_root_value(
+      reference, source_value);
   IREE_ASSERT_LT(reference.root_value_id, build->module->values.count);
   const loom_value_t* root_value =
       loom_module_value(build->module, reference.root_value_id);

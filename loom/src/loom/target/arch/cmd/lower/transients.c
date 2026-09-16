@@ -217,7 +217,8 @@ static loom_value_id_t loom_cmd_transient_resolve_root_value(
   loom_value_fact_view_reference_t view_reference = {0};
   if (loom_value_facts_query_view_reference(&build->fact_table->context, facts,
                                             &view_reference)) {
-    return view_reference.root_value_id;
+    return loom_value_fact_view_reference_resolve_root_value(view_reference,
+                                                             value);
   }
   loom_value_fact_buffer_reference_t buffer_reference = {0};
   if (loom_value_facts_query_buffer_reference(&build->fact_table->context,
@@ -437,7 +438,9 @@ static iree_status_t loom_cmd_transient_append_result_range(
   if (loom_value_facts_query_view_reference(&build->fact_table->context, facts,
                                             &view_reference)) {
     const loom_cmd_transient_allocation_t* allocation =
-        loom_cmd_transient_find_allocation(build, view_reference.root_value_id);
+        loom_cmd_transient_find_allocation(
+            build, loom_value_fact_view_reference_resolve_root_value(
+                       view_reference, result));
     if (!allocation) return iree_ok_status();
     int64_t byte_offset = 0;
     int64_t byte_length = 0;

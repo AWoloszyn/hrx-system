@@ -27,6 +27,7 @@
 #include "loom/rewrite/remap.h"
 #include "loom/transforms/cleanup/canonicalize.h"
 #include "loom/util/fact_table.h"
+#include "loom/util/reference_transfer.h"
 #include "loom/util/walk.h"
 
 //===----------------------------------------------------------------------===//
@@ -1283,6 +1284,9 @@ typedef struct loom_refine_boundaries_collect_t {
 
   // Function whose body is being walked.
   loom_refine_boundaries_function_t* current_function;
+
+  // Projected invocation containing the calls currently being collected.
+  loom_value_fact_reference_origin_t reference_origin;
 } loom_refine_boundaries_collect_t;
 
 static bool loom_refine_boundaries_values_have_equal_types(
@@ -1502,14 +1506,32 @@ static iree_status_t loom_refine_boundaries_collect_call(
   }
 
   if (!callee_info->has_return_facts) return iree_ok_status();
+  loom_reference_call_t reference_call;
+  bool has_reference_call = false;
   iree_host_size_t count = results.count < callee_info->result_count
                                ? results.count
                                : callee_info->result_count;
   for (iree_host_size_t i = 0; i < count; ++i) {
     if (!callee_info->return_fact_defined[i]) continue;
+    loom_value_facts_t facts = callee_info->return_facts[i];
+    const loom_value_fact_reference_origin_t origin =
+        loom_value_facts_reference_origin(
+            &collect->next_boundary_facts->context, facts);
+    if (origin.kind != LOOM_VALUE_FACT_REFERENCE_ORIGIN_UNKNOWN) {
+      if (!has_reference_call) {
+        loom_reference_call_initialize(
+            collect->graph->module, collect->function_facts, operands,
+            collect->reference_origin, &reference_call);
+        has_reference_call = true;
+      }
+      IREE_RETURN_IF_ERROR(loom_value_facts_rebind_reference_origin(
+          &collect->next_boundary_facts->context,
+          &collect->next_boundary_facts->context,
+          loom_reference_call_result_origin(&reference_call, origin), &facts));
+    }
     IREE_RETURN_IF_ERROR(loom_refine_boundaries_merge_fact(
         collect->next_boundary_facts, results.values[i],
-        collect->next_boundary_facts, callee_info->return_facts[i]));
+        collect->next_boundary_facts, facts));
   }
   return iree_ok_status();
 }
@@ -1540,12 +1562,25 @@ static iree_status_t loom_refine_boundaries_collect_function(
       .next_boundary_replacements = next_boundary_replacements,
       .current_function = function_info,
   };
-  loom_walk_result_t walk_result = LOOM_WALK_CONTINUE;
-  iree_arena_reset(graph->walk_arena);
-  return loom_walk_function(
-      graph->module, function_info->function, LOOM_WALK_PRE_ORDER,
-      (loom_walk_callback_t){loom_refine_boundaries_collect_op, &collect},
-      graph->walk_arena, &walk_result);
+  for (uint8_t i = 0; i < loom_func_like_region_count(function_info->function);
+       ++i) {
+    loom_region_t* region = loom_func_like_region(function_info->function, i);
+    if (!region) continue;
+    collect.reference_origin = (loom_value_fact_reference_origin_t){
+        .function_symbol_id =
+            loom_func_like_callee(function_info->function).symbol_id,
+        .entry_value_id = LOOM_VALUE_ID_INVALID,
+        .region_index = i,
+        .kind = LOOM_VALUE_FACT_REFERENCE_ORIGIN_ENTRY,
+    };
+    loom_walk_result_t walk_result = LOOM_WALK_CONTINUE;
+    iree_arena_reset(graph->walk_arena);
+    IREE_RETURN_IF_ERROR(loom_walk_region(
+        graph->module, region, LOOM_WALK_PRE_ORDER,
+        (loom_walk_callback_t){loom_refine_boundaries_collect_op, &collect},
+        graph->walk_arena, &walk_result));
+  }
+  return iree_ok_status();
 }
 
 //===----------------------------------------------------------------------===//

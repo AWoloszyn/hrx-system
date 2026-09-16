@@ -1,0 +1,658 @@
+// RUN: pass licm
+
+func.def @hoists_entry_buffer_across_local_scratch(%input: buffer, %replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  %input_view = buffer.view %input[%base] : buffer -> view<8xi32>
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    %loaded = view.load %input_view[0] : view<8xi32> -> i32
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+func.def @hoists_entry_buffer_across_local_scratch(%input: buffer, %replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  %input_view = buffer.view %input[%base] : buffer -> view<8xi32>
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %loaded = view.load %input_view[0] : view<8xi32> -> i32
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+
+func.def @hoists_entry_view_across_local_scratch(%input_view: view<8xi32>, %replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    %loaded = view.load %input_view[0] : view<8xi32> -> i32
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+func.def @hoists_entry_view_across_local_scratch(%input_view: view<8xi32>, %replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %loaded = view.load %input_view[0] : view<8xi32> -> i32
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+
+func.def @hoists_selected_entry_buffers_across_local_scratch(%condition: i1, %left: buffer, %right: buffer, %replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  %input = scf.select %condition, %left, %right : buffer
+  %input_view = buffer.view %input[%base] : buffer -> view<8xi32>
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    %loaded = view.load %input_view[0] : view<8xi32> -> i32
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+func.def @hoists_selected_entry_buffers_across_local_scratch(%condition: i1, %left: buffer, %right: buffer, %replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  %input = scf.select %condition, %left, %right : buffer
+  %input_view = buffer.view %input[%base] : buffer -> view<8xi32>
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %loaded = view.load %input_view[0] : view<8xi32> -> i32
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+
+func.def @keeps_load_from_possibly_selected_scratch(%condition: i1, %input: buffer, %replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  %selected = scf.select %condition, %input, %scratch : buffer
+  %input_view = buffer.view %selected[%base] : buffer -> view<8xi32>
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    %loaded = view.load %input_view[0] : view<8xi32> -> i32
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+
+func.def @hoists_selected_entry_views_across_local_scratch(%condition: i1, %left: view<8xi32>, %right: view<8xi32>, %replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  %input_view = scf.select %condition, %left, %right : view<8xi32>
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    %loaded = view.load %input_view[0] : view<8xi32> -> i32
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+func.def @hoists_selected_entry_views_across_local_scratch(%condition: i1, %left: view<8xi32>, %right: view<8xi32>, %replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  %input_view = scf.select %condition, %left, %right : view<8xi32>
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %loaded = view.load %input_view[0] : view<8xi32> -> i32
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+
+func.def @keeps_load_from_possibly_selected_scratch_view(%condition: i1, %input: view<8xi32>, %replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  %input_view = scf.select %condition, %input, %scratch_view : view<8xi32>
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    %loaded = view.load %input_view[0] : view<8xi32> -> i32
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+
+func.def @hoists_distinct_allocation(%replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  %other = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %input_view = buffer.view %other[%base] : buffer -> view<8xi32>
+  view.store %initial, %input_view[0] : i32, view<8xi32>
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    %loaded = view.load %input_view[0] : view<8xi32> -> i32
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+func.def @hoists_distinct_allocation(%replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  %other = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %input_view = buffer.view %other[%base] : buffer -> view<8xi32>
+  view.store %initial, %input_view[0] : i32, view<8xi32>
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %loaded = view.load %input_view[0] : view<8xi32> -> i32
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+
+func.def @keeps_own_allocation_alias(%replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  %input_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    %loaded = view.load %input_view[0] : view<8xi32> -> i32
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+
+func.def @hoists_derived_entry_reference(%input: buffer, %replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 16} : buffer
+  %again = buffer.assume.alignment %aligned {minimum_alignment = 32} : buffer
+  %large = buffer.view %again[%base] : buffer -> view<16xi32>
+  %input_view = view.subview %large[4] : view<16xi32> -> view<8xi32>
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    %loaded = view.load %input_view[0] : view<8xi32> -> i32
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+func.def @hoists_derived_entry_reference(%input: buffer, %replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 16} : buffer
+  %again = buffer.assume.alignment %aligned {minimum_alignment = 32} : buffer
+  %large = buffer.view %again[%base] : buffer -> view<16xi32>
+  %input_view = view.subview %large[4] : view<16xi32> -> view<8xi32>
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %loaded = view.load %input_view[0] : view<8xi32> -> i32
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+
+func.def @keeps_repeated_scratch_assumptions(%replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  %aligned = buffer.assume.alignment %scratch {minimum_alignment = 16} : buffer
+  %unique = buffer.assume.noalias %aligned : buffer
+  %again = buffer.assume.noalias %unique : buffer
+  %input_view = buffer.view %again[%base] : buffer -> view<8xi32>
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    %loaded = view.load %input_view[0] : view<8xi32> -> i32
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+
+func.def @hoists_if_entry_views(%condition: i1, %left: view<8xi32>, %right: view<8xi32>, %replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  %input_view = scf.if %condition -> (view<8xi32>) {
+    scf.yield %left : view<8xi32>
+  } else {
+    scf.yield %right : view<8xi32>
+  }
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    %loaded = view.load %input_view[0] : view<8xi32> -> i32
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+func.def @hoists_if_entry_views(%condition: i1, %left: view<8xi32>, %right: view<8xi32>, %replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  %input_view = scf.if %condition -> (view<8xi32>) {
+    scf.yield %left : view<8xi32>
+  } else {
+    scf.yield %right : view<8xi32>
+  }
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %loaded = view.load %input_view[0] : view<8xi32> -> i32
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+
+func.def @keeps_if_scratch_view(%condition: i1, %left: view<8xi32>, %right: view<8xi32>, %replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  %input_view = scf.if %condition -> (view<8xi32>) {
+    scf.yield %left : view<8xi32>
+  } else {
+    scf.yield %scratch_view : view<8xi32>
+  }
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    %loaded = view.load %input_view[0] : view<8xi32> -> i32
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+
+func.def @hoists_cfg_entry_views(%condition: i1, %left: view<8xi32>, %right: view<8xi32>, %replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  cfg.cond_br %condition, ^left_edge, ^right_edge
+^left_edge:
+  cfg.br ^join(%left: view<8xi32>)
+^right_edge:
+  cfg.br ^join(%right: view<8xi32>)
+^join(%input_view: view<8xi32>):
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    %loaded = view.load %input_view[0] : view<8xi32> -> i32
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+func.def @hoists_cfg_entry_views(%condition: i1, %left: view<8xi32>, %right: view<8xi32>, %replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  cfg.cond_br %condition, ^left_edge, ^right_edge
+^left_edge:
+  cfg.br ^join(%left: view<8xi32>)
+^right_edge:
+  cfg.br ^join(%right: view<8xi32>)
+^join(%input_view: view<8xi32>):
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %loaded = view.load %input_view[0] : view<8xi32> -> i32
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+
+func.def @keeps_cfg_scratch_view(%condition: i1, %left: view<8xi32>, %right: view<8xi32>, %replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  cfg.cond_br %condition, ^left_edge, ^right_edge
+^left_edge:
+  cfg.br ^join(%left: view<8xi32>)
+^right_edge:
+  cfg.br ^join(%scratch_view: view<8xi32>)
+^join(%input_view: view<8xi32>):
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    %loaded = view.load %input_view[0] : view<8xi32> -> i32
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+
+func.def @hoists_subview_of_selected_entries(%condition: i1, %left: view<8xi32>, %right: view<8xi32>, %replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  %selected = scf.select %condition, %left, %right : view<8xi32>
+  %subview = view.subview %selected[0] : view<8xi32> -> view<8xi32>
+  %input_view = view.refine %subview : view<8xi32> -> view<8xi32>
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    %loaded = view.load %input_view[0] : view<8xi32> -> i32
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+func.def @hoists_subview_of_selected_entries(%condition: i1, %left: view<8xi32>, %right: view<8xi32>, %replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  %selected = scf.select %condition, %left, %right : view<8xi32>
+  %subview = view.subview %selected[0] : view<8xi32> -> view<8xi32>
+  %input_view = view.refine %subview : view<8xi32> -> view<8xi32>
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %loaded = view.load %input_view[0] : view<8xi32> -> i32
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+
+func.def @keeps_subview_of_selected_scratch(%condition: i1, %left: view<8xi32>, %right: view<8xi32>, %replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  %selected = scf.select %condition, %left, %scratch_view : view<8xi32>
+  %subview = view.subview %selected[0] : view<8xi32> -> view<8xi32>
+  %input_view = view.refine %subview : view<8xi32> -> view<8xi32>
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    %loaded = view.load %input_view[0] : view<8xi32> -> i32
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+
+func.decl @opaque(%input: buffer, %scratch: buffer) -> (buffer)
+
+func.def @keeps_opaque_return_may_alias(%input: buffer, %replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  %returned = func.call @opaque(%input, %scratch) : (buffer, buffer) -> (buffer)
+  %input_view = buffer.view %returned[%base] : buffer -> view<8xi32>
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    %loaded = view.load %input_view[0] : view<8xi32> -> i32
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+
+// RUN: pass refine-boundaries,inline-callables,licm
+
+func.def inline @as_view(%unused: index, %source: buffer) -> (view<8xi32>) {
+  %source_base = index.constant 0 : offset
+  %view = buffer.view %source[%source_base] : buffer -> view<8xi32>
+  func.return %view : view<8xi32>
+}
+
+func.def public @hoists_forwarded_entry_after_pruning(%input: buffer, %replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  %unused = index.constant 9 : index
+  %input_view = func.call @as_view(%unused, %input) : (index, buffer) -> (view<8xi32>)
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    %loaded = view.load %input_view[0] : view<8xi32> -> i32
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+func.def public @hoists_forwarded_entry_after_pruning(%input: buffer, %replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  %source_base = index.constant 0 : offset
+  %view = buffer.view %input[%source_base] : buffer -> view<8xi32>
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %loaded = view.load %view[0] : view<8xi32> -> i32
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+
+// RUN: pass refine-boundaries,inline-callables,licm
+
+func.def inline @as_view(%unused: index, %source: buffer) -> (view<8xi32>) {
+  %source_base = index.constant 0 : offset
+  %view = buffer.view %source[%source_base] : buffer -> view<8xi32>
+  func.return %view : view<8xi32>
+}
+
+func.def public @keeps_forwarded_scratch_after_pruning(%input: buffer, %replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  %unused = index.constant 9 : index
+  %input_view = func.call @as_view(%unused, %scratch) : (index, buffer) -> (view<8xi32>)
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    %loaded = view.load %input_view[0] : view<8xi32> -> i32
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+func.def public @keeps_forwarded_scratch_after_pruning(%input: buffer, %replacement: i32, %initial: i32) -> (i32) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %scratch = buffer.alloca<workgroup> align(16) %bytes : buffer
+  %scratch_view = buffer.view %scratch[%base] : buffer -> view<8xi32>
+  view.store %initial, %scratch_view[0] : i32, view<8xi32>
+  %source_base = index.constant 0 : offset
+  %view = buffer.view %scratch[%source_base] : buffer -> view<8xi32>
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %iteration = [%begin to %end step %step](%carry = %initial : i32) -> (i32) {
+    %loaded = view.load %view[0] : view<8xi32> -> i32
+    view.store %replacement, %scratch_view[0] : i32, view<8xi32>
+    scf.yield %loaded : i32
+  }
+  func.return %result : i32
+}

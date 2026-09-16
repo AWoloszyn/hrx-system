@@ -333,6 +333,15 @@ static uint32_t loom_value_fact_hash_encoding_summary(
   return loom_value_fact_hash_storage_schema(summary.storage_schema, hash);
 }
 
+static uint32_t loom_value_fact_hash_reference_origin(
+    loom_value_fact_reference_origin_t origin, uint32_t hash) {
+  hash = loom_value_fact_hash_u32(origin.entry_value_id, hash);
+  return loom_value_fact_hash_u32(origin.function_symbol_id |
+                                      ((uint32_t)origin.region_index << 16) |
+                                      ((uint32_t)origin.kind << 24),
+                                  hash);
+}
+
 static uint32_t loom_value_fact_hash_buffer_reference(
     loom_value_fact_buffer_reference_t reference, uint32_t hash) {
   hash = loom_value_fact_hash_facts(reference.maximum_byte_extent, hash);
@@ -340,7 +349,8 @@ static uint32_t loom_value_fact_hash_buffer_reference(
   hash = loom_value_fact_hash_u32((uint32_t)reference.memory_space, hash);
   hash = loom_value_fact_hash_u32(reference.root_value_id, hash);
   hash = loom_value_fact_hash_u32(reference.alias_scope_id, hash);
-  return loom_value_fact_hash_u32(reference.nullability, hash);
+  hash = loom_value_fact_hash_u32(reference.nullability, hash);
+  return loom_value_fact_hash_reference_origin(reference.origin, hash);
 }
 
 static uint32_t loom_value_fact_hash_view_reference(
@@ -354,7 +364,8 @@ static uint32_t loom_value_fact_hash_view_reference(
   hash = loom_value_fact_hash_u32(reference.root_value_id, hash);
   hash = loom_value_fact_hash_u32(reference.buffer_value_id, hash);
   hash = loom_value_fact_hash_u32(reference.alias_scope_id, hash);
-  return loom_value_fact_hash_u32(reference.nullability, hash);
+  hash = loom_value_fact_hash_u32(reference.nullability, hash);
+  return loom_value_fact_hash_reference_origin(reference.origin, hash);
 }
 
 static uint32_t loom_value_fact_hash_raw_payload(
@@ -373,7 +384,8 @@ static bool loom_value_fact_buffer_reference_equal(
          lhs.memory_space == rhs.memory_space &&
          lhs.root_value_id == rhs.root_value_id &&
          lhs.alias_scope_id == rhs.alias_scope_id &&
-         lhs.nullability == rhs.nullability;
+         lhs.nullability == rhs.nullability &&
+         loom_value_fact_reference_origin_equal(lhs.origin, rhs.origin);
 }
 
 static bool loom_value_fact_view_reference_equal(
@@ -389,7 +401,8 @@ static bool loom_value_fact_view_reference_equal(
          lhs.root_value_id == rhs.root_value_id &&
          lhs.buffer_value_id == rhs.buffer_value_id &&
          lhs.alias_scope_id == rhs.alias_scope_id &&
-         lhs.nullability == rhs.nullability;
+         lhs.nullability == rhs.nullability &&
+         loom_value_fact_reference_origin_equal(lhs.origin, rhs.origin);
 }
 
 static bool loom_value_fact_address_layout_equal(
@@ -841,7 +854,8 @@ static bool loom_value_fact_table_buffer_reference_equal(
          lhs.memory_space == rhs.memory_space &&
          lhs.root_value_id == rhs.root_value_id &&
          lhs.alias_scope_id == rhs.alias_scope_id &&
-         lhs.nullability == rhs.nullability;
+         lhs.nullability == rhs.nullability &&
+         loom_value_fact_reference_origin_equal(lhs.origin, rhs.origin);
 }
 
 static bool loom_value_fact_table_view_reference_equal(
@@ -861,7 +875,8 @@ static bool loom_value_fact_table_view_reference_equal(
          lhs.root_value_id == rhs.root_value_id &&
          lhs.buffer_value_id == rhs.buffer_value_id &&
          lhs.alias_scope_id == rhs.alias_scope_id &&
-         lhs.nullability == rhs.nullability;
+         lhs.nullability == rhs.nullability &&
+         loom_value_fact_reference_origin_equal(lhs.origin, rhs.origin);
 }
 
 static bool loom_value_fact_table_extension_entries_equal(
@@ -1323,6 +1338,7 @@ void loom_value_fact_table_clear_scope(loom_value_fact_table_t* table) {
   table->scratch.alias_ordinals.capacity = 0;
   table->context.table = table;
   table->context.function = (loom_func_like_t){0};
+  table->context.reference_origin = (loom_value_fact_reference_origin_t){0};
   table->context.target_facts = NULL;
 }
 

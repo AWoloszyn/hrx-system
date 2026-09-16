@@ -34,7 +34,7 @@ func.def @select_view_components(%condition: i1) -> (i1, i64, i64, i64, i64, i64
 
 // ====
 
-// Two allocations in the same space do not establish one common root.
+// Selecting distinct allocations preserves their common memory properties.
 func.def @different_view_roots(%condition: i1) -> (i1, i64) {
   %bytes = index.constant 64 : offset
   %base = index.constant 0 : offset
@@ -50,8 +50,8 @@ func.def @different_view_roots(%condition: i1) -> (i1, i64) {
 
 // ----
 func.def @different_view_roots(%condition: i1) -> (i1, i64) {
-  %reference = scalar.constant false : i1
-  %space = scalar.constant -1 : i64
+  %reference = scalar.constant true : i1
+  %space = scalar.constant 2 : i64
   func.return %reference, %space : i1, i64
 }
 
@@ -224,4 +224,104 @@ func.def @cfg_view_join(%condition: i1) -> (i1, i64) {
   %root = scalar.constant true : i1
   %high = scalar.constant 128 : i64
   func.return %root, %high : i1, i64
+}
+
+// ====
+
+// Distinct bases retain absolute alignment after rebasing. A derived subview
+// remains rooted in the selected value and uses offsets from that base.
+func.def @selected_bases_rebase_alignment(%condition: i1) -> (i1, i1, i64, i64, i64, i64, i64) {
+  %bytes = index.constant 128 : offset
+  %left_base = index.constant 0 : offset
+  %offset = index.constant 16 : offset
+  %first = buffer.alloca<workgroup> align(64) %bytes : buffer
+  %second = buffer.alloca<workgroup> align(128) %bytes : buffer
+  %left = buffer.view %first[%left_base] : buffer -> view<8xi32>
+  %right = buffer.view %second[%offset] : buffer -> view<8xi32>
+  %selected = scf.select %condition, %left, %right : view<8xi32>
+  %part = view.subview %selected[1] : view<8xi32> -> view<4xi32>
+  %self = test.fact_view_root_matches %part, %selected : view<4xi32>, view<8xi32> -> i1
+  %original = test.fact_view_root_matches %selected, %first : view<8xi32>, buffer -> i1
+  %alignment = test.fact_view_root_min_alignment %selected : view<8xi32> -> i64
+  %length = test.fact_view_byte_length_hi %selected : view<8xi32> -> i64
+  %base = test.fact_view_byte_offset_hi %selected : view<8xi32> -> i64
+  %part_base = test.fact_view_byte_offset_hi %part : view<4xi32> -> i64
+  %part_alignment = test.fact_view_min_alignment %part : view<4xi32> -> i64
+  func.return %self, %original, %alignment, %length, %base, %part_base, %part_alignment : i1, i1, i64, i64, i64, i64, i64
+}
+
+// ----
+func.def @selected_bases_rebase_alignment(%condition: i1) -> (i1, i1, i64, i64, i64, i64, i64) {
+  %self = scalar.constant true : i1
+  %original = scalar.constant false : i1
+  %alignment = scalar.constant 16 : i64
+  %length = scalar.constant 32 : i64
+  %base = scalar.constant 0 : i64
+  %part_base = scalar.constant 4 : i64
+  %part_alignment = scalar.constant 4 : i64
+  func.return %self, %original, %alignment, %length, %base, %part_base, %part_alignment : i1, i1, i64, i64, i64, i64, i64
+}
+
+// ====
+
+// Equal reference payloads with dynamic self-roots do not identify two
+// independent selections as the same storage value.
+func.def @independent_selections(%first_condition: i1, %second_condition: i1, %left: view<8xi32>, %right: view<8xi32>) -> (i1, i1) {
+  %first = scf.select %first_condition, %left, %right : view<8xi32>
+  %second = scf.select %second_condition, %left, %right : view<8xi32>
+  %part = view.subview %first[0] : view<8xi32> -> view<4xi32>
+  %different = test.fact_view_root_matches %first, %second : view<8xi32>, view<8xi32> -> i1
+  %derived = test.fact_view_root_matches %part, %first : view<4xi32>, view<8xi32> -> i1
+  func.return %different, %derived : i1, i1
+}
+
+// ----
+func.def @independent_selections(%first_condition: i1, %second_condition: i1, %left: view<8xi32>, %right: view<8xi32>) -> (i1, i1) {
+  %different = scalar.constant false : i1
+  %derived = scalar.constant true : i1
+  func.return %different, %derived : i1, i1
+}
+
+// ====
+
+// Loop widening preserves common space and footprint across distinct roots.
+func.def @rotate_distinct_allocations(%count: index) -> (i64, i64) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %first = buffer.alloca<workgroup> align(64) %bytes : buffer
+  %second = buffer.alloca<workgroup> align(32) %bytes : buffer
+  %left = buffer.view %first[%base] : buffer -> view<8xi32>
+  %right = buffer.view %second[%base] : buffer -> view<8xi32>
+  %result, %spare = scf.for %iteration = [%begin to %count step %step](%current = %left : view<8xi32>, %next = %right : view<8xi32>) -> (view<8xi32>, view<8xi32>) {
+    %space = test.fact_view_memory_space %current : view<8xi32> -> i64
+    %length = test.fact_view_byte_length_hi %current : view<8xi32> -> i64
+    test.use %space, %length : i64, i64
+    scf.yield %next, %current : view<8xi32>, view<8xi32>
+  }
+  %space = test.fact_view_memory_space %result : view<8xi32> -> i64
+  %length = test.fact_view_byte_length_hi %result : view<8xi32> -> i64
+  func.return %space, %length : i64, i64
+}
+
+// ----
+func.def @rotate_distinct_allocations(%count: index) -> (i64, i64) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %bytes = index.constant 32 : offset
+  %first = buffer.alloca<workgroup> align(64) %bytes : buffer
+  %second = buffer.alloca<workgroup> align(32) %bytes : buffer
+  %left = buffer.view %first[%base] : buffer -> view<8xi32>
+  %right = buffer.view %second[%base] : buffer -> view<8xi32>
+  %result, %spare = scf.for %iteration = [%begin to %count step %step](%current = %left : view<8xi32>, %next = %right : view<8xi32>) -> (view<8xi32>, view<8xi32>) {
+    %space = scalar.constant 2 : i64
+    %length = scalar.constant 32 : i64
+    test.use %space, %length : i64, i64
+    scf.yield %next, %current : view<8xi32>, view<8xi32>
+  }
+  %space = scalar.constant 2 : i64
+  %length = scalar.constant 32 : i64
+  func.return %space, %length : i64, i64
 }

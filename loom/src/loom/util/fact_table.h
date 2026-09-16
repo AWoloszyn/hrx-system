@@ -38,6 +38,7 @@
 #include "loom/ir/facts.h"
 #include "loom/ir/ir.h"
 #include "loom/util/numeric_format.h"
+#include "loom/util/reference_facts.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -454,93 +455,6 @@ typedef struct loom_value_fact_encoding_summary_t {
   loom_value_fact_storage_schema_t storage_schema;
 } loom_value_fact_encoding_summary_t;
 
-// Known reference nullability for storage-like values.
-typedef uint32_t loom_value_fact_reference_nullability_t;
-#define LOOM_VALUE_FACT_REFERENCE_NULLABILITY_UNKNOWN \
-  ((loom_value_fact_reference_nullability_t)0)
-#define LOOM_VALUE_FACT_REFERENCE_NULLABILITY_NULL \
-  ((loom_value_fact_reference_nullability_t)1)
-#define LOOM_VALUE_FACT_REFERENCE_NULLABILITY_NON_NULL \
-  ((loom_value_fact_reference_nullability_t)2)
-
-// Comparable alias scope for storage-like values. NONE means root_value_id is
-// only provenance for addressing and same-root propagation; consumers must not
-// use it to prove disjointness against another root.
-typedef loom_value_id_t loom_value_fact_alias_scope_id_t;
-#define LOOM_VALUE_FACT_ALIAS_SCOPE_ID_NONE \
-  ((loom_value_fact_alias_scope_id_t)LOOM_VALUE_ID_INVALID)
-
-// Buffer value is an opaque storage root.
-typedef struct loom_value_fact_buffer_reference_t {
-  // Conservative byte extent facts for the root storage allocation.
-  loom_value_facts_t maximum_byte_extent;
-
-  // Minimum provable byte alignment of the root storage base. One means
-  // unknown beyond byte alignment.
-  uint64_t minimum_alignment;
-
-  // Target-independent memory space for the storage root.
-  loom_value_fact_memory_space_t memory_space;
-
-  // SSA value that represents the root storage identity. INVALID means the
-  // value carrying these facts is itself the dynamic storage root.
-  loom_value_id_t root_value_id;
-
-  // Comparable alias scope for disjointness proofs, or NONE.
-  loom_value_fact_alias_scope_id_t alias_scope_id;
-
-  // Known nullability for the storage root.
-  loom_value_fact_reference_nullability_t nullability;
-} loom_value_fact_buffer_reference_t;
-
-// Resolves the concrete storage root for |reference_value_id|. Buffer fact
-// joins use a self-root when control flow chooses between distinct roots.
-static inline loom_value_id_t
-loom_value_fact_buffer_reference_resolve_root_value(
-    loom_value_fact_buffer_reference_t reference,
-    loom_value_id_t reference_value_id) {
-  return reference.root_value_id == LOOM_VALUE_ID_INVALID
-             ? reference_value_id
-             : reference.root_value_id;
-}
-
-// View value is a typed projection over a storage root.
-typedef struct loom_value_fact_view_reference_t {
-  // Byte offset facts for the view base relative to root_value_id.
-  loom_value_facts_t base_byte_offset;
-
-  // Conservative byte length facts for the whole-view footprint envelope.
-  loom_value_facts_t footprint_byte_length;
-
-  // Minimum provable alignment of base_byte_offset relative to root_value_id.
-  // The root's own absolute pointer alignment is tracked separately.
-  uint64_t minimum_alignment;
-
-  // Minimum provable byte alignment of the root storage base. One means
-  // unknown beyond byte alignment.
-  uint64_t root_minimum_alignment;
-
-  // Static addressed element byte count, or -1 for sub-byte/unknown elements.
-  int64_t static_element_byte_count;
-
-  // Target-independent memory space for the underlying storage root.
-  loom_value_fact_memory_space_t memory_space;
-
-  // SSA value that represents the root storage identity.
-  loom_value_id_t root_value_id;
-
-  // Buffer SSA value that materializes the root, including its authored
-  // alignment and alias assumptions. INVALID when no single buffer is shared
-  // by every incoming view. Availability at a use is a dominance question.
-  loom_value_id_t buffer_value_id;
-
-  // Comparable alias scope for disjointness proofs, or NONE.
-  loom_value_fact_alias_scope_id_t alias_scope_id;
-
-  // Known nullability for the underlying storage root.
-  loom_value_fact_reference_nullability_t nullability;
-} loom_value_fact_view_reference_t;
-
 // Per-analysis context passed to op fact inference callbacks.
 struct loom_fact_context_t {
   // Table that owns the dense facts and any extension payloads allocated by
@@ -551,6 +465,10 @@ struct loom_fact_context_t {
   // when facts are computed for individual detached ops instead of a full
   // function-like projection.
   loom_func_like_t function;
+
+  // Entry origin for the projected region currently being analyzed.
+  // Unknown for detached operations and non-function region analyses.
+  loom_value_fact_reference_origin_t reference_origin;
 
   // Optional immutable target facts for target-sensitive inference. Generic
   // analyses leave this NULL and receive source-level facts. Target-family

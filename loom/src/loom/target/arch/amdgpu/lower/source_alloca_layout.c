@@ -164,7 +164,8 @@ static bool loom_amdgpu_source_alloca_layout_value_root(
   loom_value_fact_view_reference_t view_reference;
   if (loom_value_facts_query_view_reference(&layout->fact_table->context, facts,
                                             &view_reference)) {
-    *out_root_value_id = view_reference.root_value_id;
+    *out_root_value_id = loom_value_fact_view_reference_resolve_root_value(
+        view_reference, value_id);
     return true;
   }
   return false;

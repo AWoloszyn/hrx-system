@@ -31,8 +31,9 @@ iree_status_t loom_memory_root_bounds_verify_exact_root(
   loom_value_fact_buffer_reference_t root_reference = {0};
   if (!loom_value_facts_query_buffer_reference(
           context,
-          loom_value_fact_table_lookup(fact_table,
-                                       view_reference.root_value_id),
+          loom_value_fact_table_lookup(
+              fact_table, loom_value_fact_view_reference_resolve_root_value(
+                              view_reference, view_value_id)),
           &root_reference)) {
     return iree_ok_status();
   }

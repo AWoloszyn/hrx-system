@@ -613,8 +613,14 @@ static bool loom_amdgpu_vector_packet_views_are_disjoint(
       !loom_value_facts_query_view_reference(
           &context->fact_table->context,
           loom_value_fact_table_lookup(context->fact_table, right),
-          &right_reference) ||
-      left_reference.root_value_id == LOOM_VALUE_ID_INVALID ||
+          &right_reference)) {
+    return false;
+  }
+  if (loom_value_fact_reference_origins_are_disjoint(left_reference.origin,
+                                                     right_reference.origin)) {
+    return true;
+  }
+  if (left_reference.root_value_id == LOOM_VALUE_ID_INVALID ||
       right_reference.root_value_id == LOOM_VALUE_ID_INVALID ||
       left_reference.root_value_id == right_reference.root_value_id) {
     return false;
