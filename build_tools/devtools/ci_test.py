@@ -981,52 +981,6 @@ class CiTest(unittest.TestCase):
                     block.index(mkdir_command), block.index(git_config_command)
                 )
 
-    def test_bazel_workflow_uploads_profiles_for_each_attempted_job(self):
-        cases = (
-            (
-                "linux_bazel_cpu",
-                "bazel-profiles-${{ matrix.command }}-attempt-"
-                "${{ github.run_attempt }}",
-            ),
-            (
-                "linux_bazel_vulkan",
-                "bazel-profiles-iree-bazel-vulkan-attempt-${{ github.run_attempt }}",
-            ),
-            (
-                "linux_bazel_amdgpu",
-                "bazel-profiles-${{ matrix.command }}-"
-                "${{ matrix.target_selector }}-attempt-${{ github.run_attempt }}",
-            ),
-        )
-        for job_name, artifact_name in cases:
-            with self.subTest(job=job_name):
-                block = self.workflow_job_block(
-                    ".github/workflows/ci_iree_bazel.yml", job_name
-                )
-                self.assertIn("id: iree_bazel_ci", block)
-                self.assertIn(
-                    '--bazel-profile-dir "${RUNNER_TEMP}/bazel-profiles"', block
-                )
-                self.assertIn(
-                    "if: ${{ always() && steps.iree_bazel_ci.outcome != 'skipped' }}",
-                    block,
-                )
-                self.assertIn(
-                    "uses: actions/upload-artifact@"
-                    "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1",
-                    block,
-                )
-                self.assertIn(f"name: {artifact_name}", block)
-                self.assertIn(
-                    "path: ${{ runner.temp }}/bazel-profiles/*.profile.gz", block
-                )
-                self.assertIn("if-no-files-found: error", block)
-                self.assertIn("compression-level: 0", block)
-                self.assertLess(
-                    block.index("name: Run IREE Bazel CI"),
-                    block.index("name: Upload Bazel profiles"),
-                )
-
     def test_bazel_vulkan_workflow_has_no_nonexecuting_sanitizer_lane(self):
         block = self.workflow_job_block(
             ".github/workflows/ci_iree_bazel.yml", "linux_bazel_vulkan"

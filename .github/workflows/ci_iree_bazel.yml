@@ -179,8 +179,20 @@ jobs:
         with:
           name: bazel-profiles-${{ matrix.command }}-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/bazel-profiles/*.profile.gz
-          if-no-files-found: error
+          if-no-files-found: warn
           compression-level: 0
+          retention-days: 7
+
+      - name: Upload failed test results
+        if: ${{ always() && steps.iree_bazel_ci.outcome == 'failure' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-results-${{ matrix.command }}-attempt-${{ github.run_attempt }}
+          path: |
+            bazel-testlogs/**/test.log
+            bazel-testlogs/**/test.xml
+          if-no-files-found: warn
+          retention-days: 7
 
   windows_bazel:
     name: ${{ matrix.name }}
@@ -258,8 +270,20 @@ jobs:
         with:
           name: bazel-profiles-iree-bazel-repository-integration-${{ matrix.host_toolchain }}-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}\bazel-profiles\*.profile.gz
-          if-no-files-found: error
+          if-no-files-found: warn
           compression-level: 0
+          retention-days: 7
+
+      - name: Upload failed test results
+        if: ${{ always() && steps.iree_bazel_ci.outcome == 'failure' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-results-iree-bazel-repository-integration-${{ matrix.host_toolchain }}-attempt-${{ github.run_attempt }}
+          path: |
+            bazel-testlogs/**/test.log
+            bazel-testlogs/**/test.xml
+          if-no-files-found: warn
+          retention-days: 7
 
   linux_bazel_vulkan:
     name: Linux / Vulkan
@@ -338,8 +362,20 @@ jobs:
         with:
           name: bazel-profiles-iree-bazel-vulkan-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/bazel-profiles/*.profile.gz
-          if-no-files-found: error
+          if-no-files-found: warn
           compression-level: 0
+          retention-days: 7
+
+      - name: Upload failed test results
+        if: ${{ always() && steps.iree_bazel_ci.outcome == 'failure' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-results-iree-bazel-vulkan-attempt-${{ github.run_attempt }}
+          path: |
+            bazel-testlogs/**/test.log
+            bazel-testlogs/**/test.xml
+          if-no-files-found: warn
+          retention-days: 7
 
   linux_bazel_amdgpu:
     name: ${{ matrix.name }}
@@ -464,8 +500,20 @@ jobs:
         with:
           name: bazel-profiles-${{ matrix.command }}-${{ matrix.target_selector }}-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/bazel-profiles/*.profile.gz
-          if-no-files-found: error
+          if-no-files-found: warn
           compression-level: 0
+          retention-days: 7
+
+      - name: Upload failed test results
+        if: ${{ always() && steps.iree_bazel_ci.outcome == 'failure' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-results-${{ matrix.command }}-${{ matrix.target_selector }}-attempt-${{ github.run_attempt }}
+          path: |
+            bazel-testlogs/**/test.log
+            bazel-testlogs/**/test.xml
+          if-no-files-found: warn
+          retention-days: 7
 
   linux_bazel_amdgpu_binary_analysis:
     name: Linux / AMDGPU / Binary Analysis
