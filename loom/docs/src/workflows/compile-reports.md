@@ -9,7 +9,7 @@ and the source-to-Low decisions that produced them.
 
 - `show` presents one report without requiring knowledge of its JSON schema;
 - `diff` compares one controlled change under an explicit identity contract;
-- `suggest` asks the selected target family for evidence-backed experiments.
+- `suggest` uses source policies and target evidence to propose experiments.
 
 Raw JSON remains available after one of those views identifies the exact
 evidence that needs deeper inspection. The scenario-indexed field and `jq`
@@ -109,6 +109,14 @@ predictions. When the compiler cannot prove a complete subgroup, uniform
 dynamic base, uniform control, or packet width, the missing proof and its reason
 remain visible instead of manufacturing geometry.
 
+Explicit loop pipeline policies appear under **Source loop pipelines**. Each
+policy records its compiled function, loop ordinal, applied depth, queue shape,
+and ordinary read count. Detailed reports include each source operation's
+producer or consumer stage and its lookahead in original iterations. Depth one
+records the author's serial policy. Unannotated loops produce no pipeline rows.
+Loop ordinals distinguish applied policies within a function; they are not
+source locations or stable identifiers across arbitrary source edits.
+
 Unavailable fields are omitted instead of rendered as zero. That distinction
 matters: zero instructions is a measurement; no target inspector for that
 metric is an absence of evidence.
@@ -199,9 +207,10 @@ within one target family. It does not make AMDGPU and SPIR-V reports comparable,
 or allow different workloads and configuration bindings to masquerade as a
 target delta.
 
-## Ask the target for experiments
+## Choose an experiment
 
-Suggestions are target-owned interpretations of report evidence:
+Suggestions interpret the applied source policies and the selected target's
+report evidence:
 
 ```shell
 loom-compile-report suggest kernel.report.json
@@ -211,6 +220,21 @@ Each finding names an action and cites the exact evidence paths and values that
 motivated it. The output is a prioritized experiment queue, not an assertion
 that a transformation will improve performance. Recompile, retest, and measure
 each accepted experiment.
+
+For an explicitly pipelined loop, `scf.compare_pipeline_depth` suggests comparing
+a smaller depth while holding the unroll factor and workload fixed. It cites
+the applied policy and available final registers, spill count, occupancy,
+private memory, and code size for the matching compiled entry. The queue size
+counts SSA values, which can occupy several physical registers or share storage;
+it is not a physical register count. A single report establishes pipeline use
+and final resource consumption. A matched compilation and runtime comparison
+establishes the change in cost and performance.
+
+This source advice works across target families. When target-specific advice is
+unavailable, the result retains its reason in `target_unavailable_reason` while
+still showing source findings. A source helper's schedule remains inspectable
+without assigning it an entry's resource costs unless the report supplies the
+matching function identity.
 
 The experimental AMDGPU fragment-packet finding requires exact wave geometry
 for every cited scalar packet row. It reports per-lane width together with
@@ -227,7 +251,7 @@ loom-compile-report suggest kernel.report.json --format=json \
   >kernel.suggestions.json
 ```
 
-Default findings require the target provider's high-confidence evidence tier.
+Default findings require the provider's high-confidence evidence tier.
 Exploratory policies and experiments derived from structurally exact but
 hardware-unvalidated models are opted into explicitly:
 

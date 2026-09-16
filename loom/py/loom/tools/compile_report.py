@@ -49,7 +49,11 @@ producing a false causal comparison. `--comparison=target` admits target
 specialization changes within one target and backend family. `--force` retains
 identity mismatches for historical inspection; its result is observational.
 
-`suggest` asks the selected target provider for evidence-backed experiments.
+`show` also lists explicit source loop pipeline depths and queued SSA values;
+detailed reports include the producer/consumer operation schedule. `suggest`
+combines source policy evidence with the selected target provider's experiments.
+Pipeline depth advice keeps unrolling fixed and cites available final resources;
+a single report does not establish that pipelining increased register use.
 Suggestions are hypotheses to recompile, retest, and measure, not performance
 claims.
 
@@ -185,7 +189,7 @@ def _create_argument_parser() -> argparse.ArgumentParser:
 
     suggest_parser = subparsers.add_parser(
         "suggest",
-        help="Suggests target-owned optimization experiments.",
+        help="Suggests experiments from source policies and target evidence.",
     )
     suggest_parser.add_argument("report", type=Path, help="Compile report JSON path.")
     suggest_parser.add_argument(

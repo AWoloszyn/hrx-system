@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 from loom.reporting.compile_report import CompileReportDocument
+from loom.reporting.compile_report_loop_pipelines import suggest_loop_pipelines
 from loom.reporting.compile_report_suggestions import (
     CompileReportSuggestionOptions,
     CompileReportSuggestionProvider,
@@ -27,7 +28,7 @@ def suggest_compile_report(
     document: CompileReportDocument,
     options: CompileReportSuggestionOptions | None = None,
 ) -> CompileReportSuggestionResult:
-    """Dispatches a validated report to its exact target-family provider."""
+    """Combines shared source evidence with the exact target-family provider."""
     if options is None:
         options = CompileReportSuggestionOptions()
     if document.status_code != 0:
@@ -35,6 +36,26 @@ def suggest_compile_report(
             provider_name=None,
             unavailable_reason="compile_status_not_ok",
         )
+    source_suggestions = suggest_loop_pipelines(document)
+    target_result = _suggest_target(document, options)
+    if not source_suggestions:
+        return target_result
+    return CompileReportSuggestionResult(
+        provider_name=(
+            f"scf+{target_result.provider_name}"
+            if target_result.unavailable_reason is None
+            else "scf"
+        ),
+        unavailable_reason=None,
+        suggestions=source_suggestions + target_result.suggestions,
+        target_unavailable_reason=target_result.unavailable_reason,
+    )
+
+
+def _suggest_target(
+    document: CompileReportDocument,
+    options: CompileReportSuggestionOptions,
+) -> CompileReportSuggestionResult:
     target_family = document.report.get("target_family")
     if target_family is None:
         return CompileReportSuggestionResult(

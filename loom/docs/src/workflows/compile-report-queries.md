@@ -31,6 +31,7 @@ trace:
 | `pressure_rows.rows[]` and `pressure_origin_rows.rows[]` | Which values and source families established a pressure peak? |
 | `allocation_high_water_rows.rows[]` and `spill_rows.rows[]` | Which placements and spill actions followed from that pressure? |
 | `source_low.rows[]`, `source_low.memory_rows[]`, and `source_low.selection_summaries.rows[]` | Which source operations selected each Low representation and memory route? |
+| `source_low.loop_pipelines.rows[]` and `source_low.loop_pipelines.stages[]` | Which loop policies ran, and which operations run ahead of the consumer? |
 | `schedule_band_summary_rows.rows[]` | Which semantic instruction families occupy each schedule band? |
 | `wait_reason_summary_rows.rows[]` and `wait_action_rows.rows[]` | Why was each wait family required, and where was it placed? |
 | `math_legalization.rows[]` and `target_legalization.rows[]` | Which source operations required representation or target repair? |
@@ -244,6 +245,26 @@ jq '.source_low.selection_summaries.rows[]? |
      emitted_low_op_count} |
     with_entries(select(.value != null))' report.json
 ```
+
+## Inspect an applied loop pipeline
+
+The source policy rows retain each explicit depth and queue shape. Detail mode
+adds the operation schedule captured when the pipeline was constructed:
+
+```shell
+jq '.source_low.loop_pipelines | {count, rows, stages}' kernel.details.json
+```
+
+Each operation row identifies its compiled `function`, applied-policy `loop`
+ordinal, source-body `position`, `op`, `stage`, and `iteration_lookahead`.
+For depth four, producer operations run three original iterations ahead of the
+ordered consumer. `queue_records * values_per_record` counts retained SSA
+values. Target representations, allocation, and other live state determine the
+final physical register counts shown in the entry report.
+
+The source schedule survives lowering and separate compile/emit calls. It
+describes the applied source transformation; the target's schedule bands and
+wait rows below show how the resulting operations are emitted.
 
 ## Inspect schedule bands
 

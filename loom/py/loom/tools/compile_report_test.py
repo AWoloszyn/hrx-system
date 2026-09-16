@@ -480,6 +480,57 @@ def test_suggest_json_reports_invalid_target_identity(
     assert view["findings"] == []
 
 
+@pytest.mark.parametrize(
+    ("target_family", "target_key", "provider", "reason"),
+    [
+        ("amdgpu", "gfx1151", "scf+amdgpu", None),
+        ("spirv", "vulkan", "scf", "unsupported_target_family"),
+        ("amdgpu", "gfx9999", "scf", "unknown_target_key"),
+    ],
+)
+def test_pipeline_show_and_suggest_preserve_target_availability(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    target_family: str,
+    target_key: str,
+    provider: str,
+    reason: str | None,
+) -> None:
+    report_path = tmp_path / "pipeline.json"
+    _write_report(report_path, target_family=target_family, target_key=target_key)
+    report = json.loads(report_path.read_text())
+    report["source_low"] = {
+        "loop_pipelines": {
+            "count": 1,
+            "rows": [
+                {
+                    "function": "kernel",
+                    "loop": 0,
+                    "schedule": "read_ahead",
+                    "outcome": "pipelined",
+                    "depth": 4,
+                    "queue_records": 3,
+                    "values_per_record": 3,
+                    "read_count": 3,
+                }
+            ],
+        }
+    }
+    report_path.write_text(json.dumps(report))
+    assert main(["show", str(report_path)]) == 0
+    assert "kernel loop 0: pipelined depth=4" in capsys.readouterr().out
+    assert main(["suggest", str(report_path), "--format=json"]) == 0
+    view = json.loads(capsys.readouterr().out)
+    assert view["status"] == "available"
+    assert view["provider"] == provider
+    assert view.get("target_unavailable_reason") == reason
+    (finding,) = view["findings"]
+    assert finding["id"] == "scf.compare_pipeline_depth"
+    assert finding["evidence"]["source_low.loop_pipelines.rows[0].depth"] == 4
+    assert finding["evidence"]["entries.rows[0].code_byte_count"] == 512
+    assert "9 queued SSA values" in finding["action"]
+
+
 def test_suggest_json_reports_unsupported_family_without_provider(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

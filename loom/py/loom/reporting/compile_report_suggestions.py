@@ -62,6 +62,8 @@ class CompileReportSuggestionResult:
     provider_name: str | None
     unavailable_reason: str | None
     suggestions: tuple[CompileReportSuggestion, ...] = ()
+    # Missing target interpretation when shared source findings remain available.
+    target_unavailable_reason: str | None = None
 
 
 class CompileReportSuggestionProvider(Protocol):
@@ -118,11 +120,13 @@ def build_compile_report_suggestions(
         view["provider"] = result.provider_name
     if result.unavailable_reason is not None:
         view["reason"] = result.unavailable_reason
+    if result.target_unavailable_reason is not None:
+        view["target_unavailable_reason"] = result.target_unavailable_reason
     return view
 
 
 def format_compile_report_suggestions_text(view: dict[str, object]) -> str:
-    """Formats target-owned suggestions for humans and agent prompts."""
+    """Formats evidence-backed suggestions for humans and agent prompts."""
     target = _expect_dict(view["target"])
     target_name = "/".join(
         str(value)
@@ -138,6 +142,8 @@ def format_compile_report_suggestions_text(view: dict[str, object]) -> str:
     ]
     if "reason" in view:
         lines.append(f"  reason: {view['reason']}")
+    if "target_unavailable_reason" in view:
+        lines.append(f"  target interpretation: {view['target_unavailable_reason']}")
     findings = _expect_list(view["findings"])
     if not findings:
         lines.append("  findings: none")
