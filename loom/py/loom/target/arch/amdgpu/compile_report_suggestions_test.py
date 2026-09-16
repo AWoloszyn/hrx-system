@@ -962,3 +962,122 @@ def test_bank_suggestion_rejects_unknown_model_evidence_class() -> None:
 
     with pytest.raises(CompileReportError, match="unsupported evidence class"):
         AMDGPU_COMPILE_REPORT_SUGGESTION_PROVIDER.suggest(document)
+
+
+def _pipeline_copy_report() -> dict:
+    report = _compile_report()
+    report["entries"]["rows"][0]["source_function"] = "stream"
+    report["source_low"] = {
+        "loop_pipelines": {
+            "count": 1,
+            "rows": [
+                {
+                    "function": "stream",
+                    "loop": 0,
+                    "depth": 4,
+                    "schedule": "read_ahead",
+                    "outcome": "pipelined",
+                    "queue_records": 3,
+                    "values_per_record": 3,
+                    "read_count": 3,
+                }
+            ],
+        },
+    }
+    report["wait_action_rows"] = {
+        "count": 1,
+        "rows": [
+            {
+                "index": 0,
+                "function": "routed_linear",
+                "counter": "vmem_load",
+                "action": "planned",
+                "reason": "amdgpu.ssa_use",
+                "block_index": 3,
+                "node_index": 146,
+                "consumer_node": 146,
+                "consumer_operation": "low.br",
+                "target_count": 0,
+                "outstanding_before": 6,
+            }
+        ],
+    }
+    return report
+
+
+def _pipeline_copy_suggestions(report: dict):
+    result = AMDGPU_COMPILE_REPORT_SUGGESTION_PROVIDER.suggest(
+        parse_compile_report(report)
+    )
+    return tuple(
+        row
+        for row in result.suggestions
+        if row.suggestion_id == "amdgpu.pipeline_copy_waits"
+    )
+
+
+def test_pipeline_copy_waits_cite_native_consumers_and_source_policy() -> None:
+    (finding,) = _pipeline_copy_suggestions(_pipeline_copy_report())
+    assert finding.entry_name == "stream"
+    assert "Full global-load waits precede branch-payload copies" in finding.action
+    assert "steady backedges from startup and tail edges" in finding.action
+    assert "explicit unroll factors" in finding.action
+    evidence = {row.path: row.value for row in finding.evidence}
+    assert evidence["source_low.loop_pipelines.rows[0].depth"] == 4
+    assert evidence["wait_action_rows.rows[0].block_index"] == 3
+    assert evidence["wait_action_rows.rows[0].node_index"] == 146
+    assert evidence["wait_action_rows.rows[0].target_count"] == 0
+    assert evidence["wait_action_rows.rows[0].outstanding_before"] == 6
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("consumer_operation", "low.op"),
+        ("node_index", 65),  # Completion was relocated to the preheader.
+        ("target_count", 2),  # Younger loads can still be pending.
+        ("reason", "amdgpu.read_result_reuse"),
+        ("counter", "smem"),
+        ("action", "explicit"),
+        ("function", "another_entry"),
+    ],
+)
+def test_pipeline_copy_waits_require_a_full_wait_at_an_actual_copy(key, value) -> None:
+    report = _pipeline_copy_report()
+    report["wait_action_rows"]["rows"][0][key] = value
+    assert _pipeline_copy_suggestions(report) == ()
+
+
+@pytest.mark.parametrize("section", ["source_low", "wait_action_rows"])
+def test_pipeline_copy_waits_require_both_policy_and_native_evidence(section) -> None:
+    report = _pipeline_copy_report()
+    del report[section]
+    assert _pipeline_copy_suggestions(report) == ()
+
+
+def test_pipeline_copy_waits_do_not_attribute_helper_policies_to_the_entry() -> None:
+    report = _pipeline_copy_report()
+    report["source_low"]["loop_pipelines"]["rows"][0]["function"] = "helper"
+    assert _pipeline_copy_suggestions(report) == ()
+
+
+def test_pipeline_copy_waits_ignore_serial_controls_and_failed_compilations() -> None:
+    report = _pipeline_copy_report()
+    report["status"] = {"code": 9, "name": "FAILED_PRECONDITION"}
+    assert _pipeline_copy_suggestions(report) == ()
+    report["status"] = {"code": 0, "name": "OK"}
+    report["source_low"]["loop_pipelines"]["rows"][0].update(
+        depth=1,
+        outcome="serial",
+        queue_records=0,
+        values_per_record=0,
+        read_count=0,
+    )
+    assert _pipeline_copy_suggestions(report) == ()
+
+
+def test_pipeline_copy_waits_reject_malformed_native_evidence() -> None:
+    report = _pipeline_copy_report()
+    report["wait_action_rows"]["rows"][0]["target_count"] = False
+    with pytest.raises(CompileReportError, match="target_count: expected integer"):
+        _pipeline_copy_suggestions(report)

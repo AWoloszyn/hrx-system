@@ -54,6 +54,10 @@ detailed reports include the producer/consumer operation schedule. `suggest`
 combines source policy evidence with the selected target provider's experiments.
 Pipeline depth advice keeps unrolling fixed and cites available final resources;
 a single report does not establish that pipelining increased register use.
+On AMDGPU, `amdgpu.pipeline_copy_waits` identifies full load waits at actual
+branch-payload copies in an entry with read-ahead. Inspect the cited blocks for
+steady backedges, then compare explicit unroll factors and recurrence schedules
+at fixed depth. Source lookahead alone does not establish native overlap.
 Suggestions are hypotheses to recompile, retest, and measure, not performance
 claims.
 

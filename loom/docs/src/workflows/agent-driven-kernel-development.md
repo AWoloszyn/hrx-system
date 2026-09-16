@@ -284,6 +284,13 @@ retain the chosen depth and producer/consumer schedule; `suggest` exposes
 spills, occupancy, code size, compile time, and measured runtime decide whether
 the extra live state is useful.
 
+On AMDGPU, `amdgpu.pipeline_copy_waits` points to full waits at materialized
+branch-payload copies. Check whether those blocks are steady backedges before
+changing the schedule. An explicit larger unroll factor with
+`schedule(recurrence)` can expose register reuse that carries pending loads
+across the backedge; confirm the native moves and wait counts as well as the
+source schedule.
+
 The [loop-tuning walkthrough](tune-loop-schedules.md) supplies complete row-sum
 and packed-dot sources, checked workloads, configuration sweeps, and actual
 `show`/`suggest` output. The [control-flow guide](../guide/functions-and-control.md#unrolling-is-a-loop-policy)

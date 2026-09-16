@@ -330,6 +330,12 @@ iterations, and each unrolled steady body advances the queue twice. An optional
 The target schedules independent instructions using its normal dependency
 constraints; the carried queue preserves the original iteration relationship.
 
+The example uses factor four with `schedule(recurrence)` so old queue values
+can be consumed before their registers receive new loads. Hardware overlap
+also depends on allocation: a materialized queue copy consumes its source and
+can require an early wait. The [native-overlap walkthrough](../workflows/tune-loop-schedules.md#check-that-read-ahead-survives-native-code-generation)
+shows a steady backedge with pending loads and how to inspect copy waits.
+
 Both controls are independent and explicit: loops without `pipeline(...)`
 receive no read-ahead transformation, and pipelining does not request unrolling.
 Depth one retains serial iteration and any separate unroll policy, providing a
