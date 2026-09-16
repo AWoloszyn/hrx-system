@@ -1056,7 +1056,8 @@ static iree_status_t loom_value_fact_table_clone_fact_array_between_tables(
 iree_status_t loom_value_fact_table_clone_fact(
     loom_value_fact_table_t* target, const loom_value_fact_table_t* source,
     loom_value_facts_t facts, loom_value_facts_t* out_facts) {
-  if (facts.extension_id == LOOM_VALUE_FACT_EXTENSION_ID_NONE) {
+  if (target == source ||
+      facts.extension_id == LOOM_VALUE_FACT_EXTENSION_ID_NONE) {
     *out_facts = facts;
     return iree_ok_status();
   }
@@ -1170,7 +1171,8 @@ iree_status_t loom_value_fact_table_clone_fact_for_type(
     const loom_module_t* module, loom_type_t type, loom_value_facts_t facts,
     loom_value_facts_t* out_facts) {
   *out_facts = facts;
-  if (facts.extension_id == LOOM_VALUE_FACT_EXTENSION_ID_NONE) {
+  if (target == source ||
+      facts.extension_id == LOOM_VALUE_FACT_EXTENSION_ID_NONE) {
     return iree_ok_status();
   }
 

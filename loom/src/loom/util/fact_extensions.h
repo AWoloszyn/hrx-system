@@ -445,12 +445,14 @@ struct loom_value_fact_domain_t {
 // Clones |facts| from |source| into |target|, re-interning any context-local
 // extension payloads in the target table. The returned facts are valid for
 // |target|'s fact context and preserve scalar range/divisibility fields.
+// Cloning within one table retains its immutable payloads without allocation.
 iree_status_t loom_value_fact_table_clone_fact(
     loom_value_fact_table_t* target, const loom_value_fact_table_t* source,
     loom_value_facts_t facts, loom_value_facts_t* out_facts);
 
 // Clones |facts| using the fact domain implied by |type|. Prefer this typed
 // form when the value/type is available; extension payloads are type-owned.
+// Cloning within one table retains its immutable payloads without allocation.
 iree_status_t loom_value_fact_table_clone_fact_for_type(
     loom_value_fact_table_t* target, const loom_value_fact_table_t* source,
     const loom_module_t* module, loom_type_t type, loom_value_facts_t facts,
