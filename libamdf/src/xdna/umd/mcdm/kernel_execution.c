@@ -263,14 +263,11 @@ static amdf_status_t amdf_windows_xdna_kernel_execution_activate_context(
     memset(execution->command_allocation.host_pointer, 0,
            (size_t)
                execution->command_allocation.descriptor.allocation_byte_length);
+    // One interpreter CU uses function zero in the bootstrap PDI.
     uint64_t* command_words =
         (uint64_t*)execution->command_allocation.host_pointer;
     command_words[0] = 1;
     command_words[1] = firmware_address;
-    if (execution->native_abi.context_encoding ==
-        AMDF_WINDOWS_XDNA_CONTEXT_ENCODING_DIRECT) {
-      command_words[2] = execution->device->profile->bootstrap->pdi_byte_length;
-    }
   }
   amdf_windows_xdna_legacy_submission_t submission;
   amdf_windows_xdna_legacy_submission_build_context_initialize(

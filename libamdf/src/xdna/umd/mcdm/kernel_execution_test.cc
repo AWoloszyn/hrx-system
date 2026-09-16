@@ -160,10 +160,12 @@ NTSTATUS APIENTRY Submit(const D3DKMT_SUBMITCOMMANDTOHWQUEUE* submit) {
     auto* response =
         reinterpret_cast<uint64_t*>(ReadU64(bytes, response_address_offset));
     EXPECT_EQ(response[1], native_state->firmware_address);
-    if (current_protocol) {
-      EXPECT_EQ(ReadU64(bytes, 0x80), native_state->firmware_address);
-      EXPECT_GT(ReadU32(bytes, 0x88), 0u);
-    }
+    const auto* configuration =
+        static_cast<const uint8_t*>(bytes) + native_state->header_byte_length;
+    EXPECT_EQ(ReadU32(configuration, 0), 1u);
+    EXPECT_EQ(ReadU64(configuration, 8), native_state->firmware_address);
+    // The interpreter's CU function is zero, independent of its PDI size.
+    EXPECT_EQ(ReadU32(configuration, 16), 0u);
     response[0] = native_state->initialize_result;
   } else if (opcode == 3) {
     EXPECT_EQ(submit->CommandLength, 4096u + native_state->header_byte_length);
