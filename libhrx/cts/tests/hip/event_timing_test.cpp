@@ -4,18 +4,19 @@
 // Acceptance tests for hipEventRecord / hipEventQuery / hipEventElapsedTime
 // against real device work.
 //
-// Every timing assertion is a bound scaled to the host-observed duration of the
-// same work rather than to an assumed clock rate. A device-timed pair
-// bracketing a long kernel reports roughly the kernel duration while a
-// host-timed pair reports the microseconds spent enqueuing it, and only a lower
-// bound derived from the host window separates the two.
+// A kernel publishes entry through coherent host memory and waits for release.
+// Its event interval contains the measured hold and is contained by the full
+// host enqueue/wait window, independent of host scheduling and GPU throughput.
 
 #include <dlfcn.h>
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <new>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "binding/hip/api.h"
@@ -53,9 +54,12 @@ using HipModuleLaunchKernelFn = hipError_t (*)(
     unsigned int block_dim_z, unsigned int shared_memory_bytes,
     hipStream_t stream, void** arguments, void** extra);
 using HipDeviceSynchronizeFn = hipError_t (*)(void);
-using HipMallocFn = hipError_t (*)(hipDeviceptr_t* pointer, size_t size);
-using HipFreeFn = hipError_t (*)(hipDeviceptr_t pointer);
-using HipEventCreateFn = hipError_t (*)(hipEvent_t* event);
+using HipHostMallocFn = hipError_t (*)(void** pointer, size_t size,
+                                       unsigned int flags);
+using HipHostFreeFn = hipError_t (*)(void* pointer);
+using HipHostGetDevicePointerFn = hipError_t (*)(hipDeviceptr_t* device_pointer,
+                                                 void* host_pointer,
+                                                 unsigned int flags);
 using HipEventCreateWithFlagsFn = hipError_t (*)(hipEvent_t* event,
                                                  unsigned flags);
 using HipEventRecordFn = hipError_t (*)(hipEvent_t event, hipStream_t stream);
@@ -81,44 +85,43 @@ using HipGraphLaunchFn = hipError_t (*)(hipGraphExec_t graph_executable,
                                         hipStream_t stream);
 using HipGraphExecDestroyFn = hipError_t (*)(hipGraphExec_t graph_executable);
 
-// Dependent-chain steps the timed kernel runs. Every assertion scales itself to
-// the duration the host observes, so this count sets how long the test takes
-// and not what it accepts; it needs only to be large enough that the long and
-// short kernels below report durations a device clock tells apart.
-constexpr uint64_t kSpinIterations = 4000000ull;
+// Requested hold after kernel entry. Assertions use the measured duration.
+constexpr double kKernelHoldMs = 100.0;
 
-// Ratio between the long and short timed kernels.
-constexpr uint64_t kWorkRatio = 10ull;
-
-// Steps the short kernel runs, for tests that compare two device durations.
-constexpr uint64_t kShortSpinIterations = kSpinIterations / kWorkRatio;
-
-// Smallest factor by which the long kernel's reported duration must exceed the
-// short kernel's. Below kWorkRatio for noise, above 1 to catch stale ticks.
-constexpr float kMinimumMeasuredWorkRatio = 3.0f;
-
-// Fraction of the host-observed duration that device-reported elapsed time must
-// exceed. Loose enough to hold if the advertised tick frequency is off by an
-// order of magnitude, still far above what host-enqueue spacing reports.
-constexpr float kMinimumDeviceFraction = 1.0f / 50.0f;
+// Fraction of the observed hold the device interval must exceed, allowing for
+// differences between the host and device clock rates.
+constexpr double kMinimumHoldFraction = 1.0 / 4.0;
 
 // Ceiling on device-reported elapsed time as a multiple of the host-observed
 // duration; the host window contains the device work.
 constexpr float kMaximumDeviceFactor = 2.0f;
 
-// A graph that records |start|, runs the spin kernel, and records |stop|,
-// together with its instantiated executable.
-struct TimedGraph {
-  // Graph holding the record/kernel/record nodes, owned.
-  hipGraph_t graph = nullptr;
-  // Executable instantiated from |graph|, owned.
-  hipGraphExec_t executable = nullptr;
-  // Kernel output pointer the kernel node's argument list points at, so it has
-  // to outlive every launch of |executable|.
-  uint64_t* output = nullptr;
-  // Trip count the kernel node's argument list points at, same lifetime.
-  uint64_t iterations = 0;
+// Mapped coherent state for hrx_gated_store_output. Its first two words match
+// hrx_launch_gate_t in executable_kernels.c; the third is the kernel's output.
+struct GatedKernelState {
+  void Reset() {
+    __atomic_store_n(&entered, 0, __ATOMIC_RELEASE);
+    __atomic_store_n(&released, 0, __ATOMIC_RELEASE);
+    output = 0;
+  }
+
+  void WaitUntilEntered() const {
+    while (!__atomic_load_n(&entered, __ATOMIC_ACQUIRE)) {
+      std::this_thread::yield();
+    }
+  }
+
+  void Release() { __atomic_store_n(&released, 1, __ATOMIC_RELEASE); }
+
+  // Set by the kernel once it has begun executing.
+  uint32_t entered = 0;
+  // Set by the host to allow the kernel to finish.
+  uint32_t released = 0;
+  // Written by the kernel after release; read by the host after completion.
+  uint32_t output = 0;
 };
+static_assert(offsetof(GatedKernelState, released) == sizeof(uint32_t));
+static_assert(offsetof(GatedKernelState, output) == 2 * sizeof(uint32_t));
 
 // The HIP runtime is a process-global singleton, so the library handle, module,
 // and device allocation are per-suite rather than per-test.
@@ -127,9 +130,10 @@ class HipEventTimingTest : public ::testing::Test {
   static void SetUpTestSuite() { InitializeSuite(); }
 
   static void TearDownTestSuite() {
-    if (spin_output_) {
-      EXPECT_EQ(hipSuccess, hip_free_(spin_output_));
-      spin_output_ = nullptr;
+    if (kernel_state_) {
+      kernel_state_->~GatedKernelState();
+      EXPECT_EQ(hipSuccess, host_free_(kernel_state_));
+      kernel_state_ = nullptr;
     }
     if (module_) {
       EXPECT_EQ(hipSuccess, module_unload_(module_));
@@ -143,11 +147,31 @@ class HipEventTimingTest : public ::testing::Test {
     if (!skip_reason_.empty()) {
       GTEST_SKIP() << skip_reason_;
     }
-    ASSERT_NE(nullptr, spin_function_);
+    ASSERT_NE(nullptr, gated_function_);
+    ASSERT_NE(nullptr, kernel_state_);
+    kernel_state_->Reset();
   }
 
-  // Brings up the HIP runtime, loads the test kernels, and allocates the spin
-  // output. Sets |skip_reason_| only when the machine has no device; every
+  void TearDown() override {
+    // An assertion may have exited while the kernel was still parked. Release
+    // and drain before retiring graph/event handles or reusing mapped state.
+    if (kernel_state_) {
+      kernel_state_->Release();
+      EXPECT_EQ(hipSuccess, device_synchronize_());
+    }
+    for (hipGraphExec_t executable : graph_executables_) {
+      EXPECT_EQ(hipSuccess, graph_exec_destroy_(executable));
+    }
+    for (hipGraph_t graph : graphs_) {
+      EXPECT_EQ(hipSuccess, graph_destroy_(graph));
+    }
+    for (hipEvent_t event : events_) {
+      EXPECT_EQ(hipSuccess, event_destroy_(event));
+    }
+  }
+
+  // Brings up the HIP runtime, loads the test kernel, and allocates its mapped
+  // state. Sets |skip_reason_| only when the machine has no device; every
   // other failure is a defect and fails the suite.
   static void InitializeSuite() {
     library_ = dlopen(CandidateLibPath(), RTLD_NOW | RTLD_LOCAL);
@@ -171,10 +195,10 @@ class HipEventTimingTest : public ::testing::Test {
         library_, "hipModuleLaunchKernel");
     device_synchronize_ = ResolveHipSymbol<HipDeviceSynchronizeFn>(
         library_, "hipDeviceSynchronize");
-    hip_malloc_ = ResolveHipSymbol<HipMallocFn>(library_, "hipMalloc");
-    hip_free_ = ResolveHipSymbol<HipFreeFn>(library_, "hipFree");
-    event_create_ =
-        ResolveHipSymbol<HipEventCreateFn>(library_, "hipEventCreate");
+    host_malloc_ = ResolveHipSymbol<HipHostMallocFn>(library_, "hipHostMalloc");
+    host_free_ = ResolveHipSymbol<HipHostFreeFn>(library_, "hipHostFree");
+    host_get_device_pointer_ = ResolveHipSymbol<HipHostGetDevicePointerFn>(
+        library_, "hipHostGetDevicePointer");
     event_create_with_flags_ = ResolveHipSymbol<HipEventCreateWithFlagsFn>(
         library_, "hipEventCreateWithFlags");
     event_record_ =
@@ -210,9 +234,9 @@ class HipEventTimingTest : public ::testing::Test {
     ASSERT_NE(nullptr, module_get_function_);
     ASSERT_NE(nullptr, module_launch_kernel_);
     ASSERT_NE(nullptr, device_synchronize_);
-    ASSERT_NE(nullptr, hip_malloc_);
-    ASSERT_NE(nullptr, hip_free_);
-    ASSERT_NE(nullptr, event_create_);
+    ASSERT_NE(nullptr, host_malloc_);
+    ASSERT_NE(nullptr, host_free_);
+    ASSERT_NE(nullptr, host_get_device_pointer_);
     ASSERT_NE(nullptr, event_create_with_flags_);
     ASSERT_NE(nullptr, event_record_);
     ASSERT_NE(nullptr, event_query_);
@@ -246,103 +270,116 @@ class HipEventTimingTest : public ::testing::Test {
     ASSERT_NE(nullptr, test_image.file)
         << "no embedded HSACO for " << properties.gcnArchName;
 
-    ASSERT_EQ(hipSuccess, hip_malloc_(&spin_output_, sizeof(uint64_t)));
-
     std::vector<uint8_t> image(test_image.file->data,
                                test_image.file->data + test_image.file->size);
     ASSERT_EQ(hipSuccess, module_load_data_(&module_, image.data()));
-    ASSERT_EQ(hipSuccess, module_get_function_(&spin_function_, module_,
-                                               "hrx_spin_dependent_chain"));
+    ASSERT_EQ(hipSuccess, module_get_function_(&gated_function_, module_,
+                                               "hrx_gated_store_output"));
 
-    // Warm the module and queue so first-launch costs land outside the measured
-    // window.
-    ASSERT_EQ(hipSuccess, LaunchSpin(/*iterations=*/1, /*stream=*/nullptr));
-    ASSERT_EQ(hipSuccess, device_synchronize_());
+    void* host_state = nullptr;
+    ASSERT_EQ(hipSuccess,
+              host_malloc_(&host_state, sizeof(GatedKernelState),
+                           hipHostMallocMapped | hipHostMallocCoherent));
+    kernel_state_ = new (host_state) GatedKernelState{};
+    ASSERT_EQ(hipSuccess,
+              host_get_device_pointer_(&device_state_, kernel_state_,
+                                       /*flags=*/0));
   }
 
-  static hipError_t LaunchSpin(uint64_t iterations, hipStream_t stream) {
-    uint64_t* output = static_cast<uint64_t*>(spin_output_);
-    void* arguments[] = {&output, &iterations};
-    return module_launch_kernel_(spin_function_, 1, 1, 1, 1, 1, 1,
-                                 /*shared_memory_bytes=*/0, stream, arguments,
+  static hipError_t LaunchGatedKernel(uint32_t value) {
+    auto* output = reinterpret_cast<uint8_t*>(device_state_) +
+                   offsetof(GatedKernelState, output);
+    void* arguments[] = {&device_state_, &output, &value};
+    return module_launch_kernel_(gated_function_, 1, 1, 1, 1, 1, 1,
+                                 /*shared_memory_bytes=*/0,
+                                 /*stream=*/nullptr, arguments,
                                  /*extra=*/nullptr);
   }
 
-  // Asserts that |device_ms| is a device-timeline measurement of work that took
-  // |host_ms| as observed from the host, rather than host-enqueue spacing.
-  void ExpectDeviceTimed(float device_ms, double host_ms, const char* what) {
-    // The host window must itself be long enough for the bounds below to
-    // separate device timing from enqueue timing.
-    ASSERT_GT(host_ms, 1.0)
-        << what
-        << ": timed work was too short to distinguish device timing "
-           "from host-enqueue timing";
-    EXPECT_GT(device_ms, host_ms * kMinimumDeviceFraction)
-        << what << ": elapsed time " << device_ms << " ms is far below the "
-        << host_ms
-        << " ms the same work took as observed from the host, which is what "
-           "host-enqueue timing rather than device timing reports";
-    EXPECT_LT(device_ms, host_ms * kMaximumDeviceFactor)
-        << what << ": elapsed time " << device_ms << " ms exceeds the "
-        << host_ms << " ms host window that contains the device work";
+  // Holds a kernel that has reported entry. The device event interval contains
+  // this measured duration even if the host is descheduled before release.
+  double HoldKernelAndRelease() {
+    kernel_state_->WaitUntilEntered();
+    const auto held_from = std::chrono::steady_clock::now();
+    std::this_thread::sleep_for(
+        std::chrono::duration<double, std::milli>(kKernelHoldMs));
+    const double held_ms = MillisecondsSince(held_from);
+    kernel_state_->Release();
+    return held_ms;
   }
 
-  // Builds and instantiates a graph that records |start|, spins for
-  // |iterations|, and records |stop|.
-  void BuildTimedGraph(uint64_t iterations, hipEvent_t start, hipEvent_t stop,
-                       TimedGraph* out_timed) {
-    out_timed->output = static_cast<uint64_t*>(spin_output_);
-    out_timed->iterations = iterations;
-    ASSERT_EQ(hipSuccess, graph_create_(&out_timed->graph, /*flags=*/0));
+  // Checks the nested intervals without assumptions about enqueue speed or
+  // kernel throughput. The host window encloses submission and completion.
+  void ExpectDeviceTimed(float device_ms, double held_ms, double host_ms) {
+    EXPECT_GT(device_ms, held_ms * kMinimumHoldFraction)
+        << "the device interval must contain the " << held_ms
+        << " ms observed while the kernel was held";
+    EXPECT_LT(device_ms, host_ms * kMaximumDeviceFactor)
+        << "the device interval must fit in the " << host_ms
+        << " ms host window that contains the device work";
+  }
+
+  // Creates an event owned by the fixture, including on assertion exits.
+  hipEvent_t CreateEvent(unsigned int flags = 0) {
+    hipEvent_t event = nullptr;
+    EXPECT_EQ(hipSuccess, event_create_with_flags_(&event, flags));
+    if (event) events_.push_back(event);
+    return event;
+  }
+
+  // Builds a record/kernel/record graph. The node captures its argument values;
+  // the fixture owns the graph, executable, and referenced device allocation.
+  void BuildTimedGraph(uint32_t value, hipEvent_t start, hipEvent_t stop,
+                       hipGraphExec_t* out_executable) {
+    hipGraph_t graph = nullptr;
+    ASSERT_EQ(hipSuccess, graph_create_(&graph, /*flags=*/0));
+    graphs_.push_back(graph);
 
     hipGraphNode_t start_node = nullptr;
     ASSERT_EQ(hipSuccess,
-              graph_add_event_record_node_(&start_node, out_timed->graph,
+              graph_add_event_record_node_(&start_node, graph,
                                            /*dependencies=*/nullptr,
                                            /*dependency_count=*/0, start));
 
-    void* arguments[] = {&out_timed->output, &out_timed->iterations};
+    auto* output = reinterpret_cast<uint8_t*>(device_state_) +
+                   offsetof(GatedKernelState, output);
+    void* arguments[] = {&device_state_, &output, &value};
     const hipKernelNodeParams params = {
         /*.blockDim=*/{1, 1, 1},
         /*.extra=*/nullptr,
-        /*.func=*/spin_function_,
+        /*.func=*/gated_function_,
         /*.gridDim=*/{1, 1, 1},
         /*.kernelParams=*/arguments,
         /*.sharedMemBytes=*/0,
     };
     hipGraphNode_t kernel_node = nullptr;
-    ASSERT_EQ(hipSuccess, graph_add_kernel_node_(
-                              &kernel_node, out_timed->graph, &start_node,
-                              /*dependency_count=*/1, &params));
+    ASSERT_EQ(hipSuccess,
+              graph_add_kernel_node_(&kernel_node, graph, &start_node,
+                                     /*dependency_count=*/1, &params));
 
     hipGraphNode_t stop_node = nullptr;
-    ASSERT_EQ(hipSuccess, graph_add_event_record_node_(
-                              &stop_node, out_timed->graph, &kernel_node,
-                              /*dependency_count=*/1, stop));
+    ASSERT_EQ(hipSuccess,
+              graph_add_event_record_node_(&stop_node, graph, &kernel_node,
+                                           /*dependency_count=*/1, stop));
 
     ASSERT_EQ(hipSuccess,
-              graph_instantiate_(&out_timed->executable, out_timed->graph,
-                                 nullptr, nullptr, 0));
+              graph_instantiate_(out_executable, graph, nullptr, nullptr, 0));
+    graph_executables_.push_back(*out_executable);
   }
 
-  void DestroyTimedGraph(TimedGraph* timed) {
-    EXPECT_EQ(hipSuccess, graph_exec_destroy_(timed->executable));
-    EXPECT_EQ(hipSuccess, graph_destroy_(timed->graph));
-    timed->executable = nullptr;
-    timed->graph = nullptr;
-  }
-
-  // Replays |timed| and reports what the event pair measured, checking on the
-  // way that the measurement is of device work rather than of the launch.
-  void ReplayAndMeasure(const TimedGraph& timed, hipEvent_t start,
-                        hipEvent_t stop, const char* what, float* out_ms) {
-    *out_ms = 0.0f;
+  // Reuses the mapped state only after the preceding launch has completed.
+  void ReplayAndMeasure(hipGraphExec_t executable, hipEvent_t start,
+                        hipEvent_t stop, uint32_t expected_value) {
+    kernel_state_->Reset();
     const auto host_start = std::chrono::steady_clock::now();
-    ASSERT_EQ(hipSuccess, graph_launch_(timed.executable, /*stream=*/nullptr));
+    ASSERT_EQ(hipSuccess, graph_launch_(executable, /*stream=*/nullptr));
+    const double held_ms = HoldKernelAndRelease();
     ASSERT_EQ(hipSuccess, event_synchronize_(stop));
     const double host_total_ms = MillisecondsSince(host_start);
-    ASSERT_EQ(hipSuccess, event_elapsed_time_(out_ms, start, stop));
-    ExpectDeviceTimed(*out_ms, host_total_ms, what);
+    EXPECT_EQ(expected_value, kernel_state_->output);
+    float device_ms = -1.0f;
+    ASSERT_EQ(hipSuccess, event_elapsed_time_(&device_ms, start, stop));
+    ExpectDeviceTimed(device_ms, held_ms, host_total_ms);
   }
 
   static double MillisecondsSince(
@@ -358,8 +395,19 @@ class HipEventTimingTest : public ::testing::Test {
 
   inline static void* library_ = nullptr;
   inline static hipModule_t module_ = nullptr;
-  inline static hipFunction_t spin_function_ = nullptr;
-  inline static hipDeviceptr_t spin_output_ = nullptr;
+  // Gated store kernel loaded from the suite-owned module.
+  inline static hipFunction_t gated_function_ = nullptr;
+  // Coherent host allocation retained until every test has drained its work.
+  inline static GatedKernelState* kernel_state_ = nullptr;
+  // Device mapping of kernel_state_, including the output word.
+  inline static hipDeviceptr_t device_state_ = nullptr;
+
+  // Events created by this test, retired after draining accepted kernel work.
+  std::vector<hipEvent_t> events_;
+  // Graphs created by this test, retained until their executables are retired.
+  std::vector<hipGraph_t> graphs_;
+  // Graph executables created by this test, retired after draining launches.
+  std::vector<hipGraphExec_t> graph_executables_;
 
   inline static HipInitFn init_ = nullptr;
   inline static HipGetDeviceFn get_device_ = nullptr;
@@ -369,9 +417,12 @@ class HipEventTimingTest : public ::testing::Test {
   inline static HipModuleGetFunctionFn module_get_function_ = nullptr;
   inline static HipModuleLaunchKernelFn module_launch_kernel_ = nullptr;
   inline static HipDeviceSynchronizeFn device_synchronize_ = nullptr;
-  inline static HipMallocFn hip_malloc_ = nullptr;
-  inline static HipFreeFn hip_free_ = nullptr;
-  inline static HipEventCreateFn event_create_ = nullptr;
+  // Allocates the coherent host state shared with the kernel.
+  inline static HipHostMallocFn host_malloc_ = nullptr;
+  // Frees the suite-owned coherent host state after all tests have drained.
+  inline static HipHostFreeFn host_free_ = nullptr;
+  // Resolves the device mapping of the suite-owned coherent host allocation.
+  inline static HipHostGetDevicePointerFn host_get_device_pointer_ = nullptr;
   inline static HipEventCreateWithFlagsFn event_create_with_flags_ = nullptr;
   inline static HipEventRecordFn event_record_ = nullptr;
   inline static HipEventQueryFn event_query_ = nullptr;
@@ -389,127 +440,102 @@ class HipEventTimingTest : public ::testing::Test {
 };
 
 TEST_F(HipEventTimingTest, DirectRecordMeasuresDeviceWork) {
-  hipEvent_t start = nullptr;
-  hipEvent_t stop = nullptr;
-  ASSERT_EQ(hipSuccess, event_create_(&start));
-  ASSERT_EQ(hipSuccess, event_create_(&stop));
+  hipEvent_t start = CreateEvent();
+  ASSERT_NE(nullptr, start);
+  hipEvent_t stop = CreateEvent();
+  ASSERT_NE(nullptr, stop);
 
   const auto host_start = std::chrono::steady_clock::now();
   ASSERT_EQ(hipSuccess, event_record_(start, /*stream=*/nullptr));
-  ASSERT_EQ(hipSuccess, LaunchSpin(kSpinIterations, /*stream=*/nullptr));
+  ASSERT_EQ(hipSuccess, LaunchGatedKernel(/*value=*/0xC001));
   ASSERT_EQ(hipSuccess, event_record_(stop, /*stream=*/nullptr));
 
-  // Captured before synchronizing so it is the enqueue cost alone.
-  const double host_enqueue_ms = MillisecondsSince(host_start);
-
+  const double held_ms = HoldKernelAndRelease();
   ASSERT_EQ(hipSuccess, event_synchronize_(stop));
   const double host_total_ms = MillisecondsSince(host_start);
+  EXPECT_EQ(0xC001u, kernel_state_->output);
 
   ASSERT_EQ(hipSuccess, event_query_(start));
   ASSERT_EQ(hipSuccess, event_query_(stop));
 
   float elapsed_ms = 0.0f;
   ASSERT_EQ(hipSuccess, event_elapsed_time_(&elapsed_ms, start, stop));
-  ExpectDeviceTimed(elapsed_ms, host_total_ms, "direct record");
-
-  EXPECT_LT(host_enqueue_ms, host_total_ms * kMinimumDeviceFraction)
-      << "enqueue cost " << host_enqueue_ms
-      << " ms is not negligible against the " << host_total_ms
-      << " ms of device work, so this test cannot distinguish device timing "
-         "from host-enqueue timing";
-
-  EXPECT_EQ(hipSuccess, event_destroy_(start));
-  EXPECT_EQ(hipSuccess, event_destroy_(stop));
+  ExpectDeviceTimed(elapsed_ms, held_ms, host_total_ms);
 }
 
 // The same property through graph replay, which reaches the device by a
 // different path than a direct record.
 TEST_F(HipEventTimingTest, GraphReplayedRecordMeasuresDeviceWork) {
-  hipEvent_t start = nullptr;
-  hipEvent_t stop = nullptr;
-  ASSERT_EQ(hipSuccess, event_create_(&start));
-  ASSERT_EQ(hipSuccess, event_create_(&stop));
+  hipEvent_t start = CreateEvent();
+  ASSERT_NE(nullptr, start);
+  hipEvent_t stop = CreateEvent();
+  ASSERT_NE(nullptr, stop);
 
-  TimedGraph timed;
+  hipGraphExec_t executable = nullptr;
   ASSERT_NO_FATAL_FAILURE(
-      BuildTimedGraph(kSpinIterations, start, stop, &timed));
-
-  const auto host_start = std::chrono::steady_clock::now();
-  ASSERT_EQ(hipSuccess, graph_launch_(timed.executable, /*stream=*/nullptr));
-  const double host_enqueue_ms = MillisecondsSince(host_start);
-  ASSERT_EQ(hipSuccess, event_synchronize_(stop));
-  const double host_total_ms = MillisecondsSince(host_start);
-
-  float elapsed_ms = 0.0f;
-  ASSERT_EQ(hipSuccess, event_elapsed_time_(&elapsed_ms, start, stop));
-  ExpectDeviceTimed(elapsed_ms, host_total_ms, "graph-replayed record");
-
-  EXPECT_LT(host_enqueue_ms, host_total_ms * kMinimumDeviceFraction)
-      << "graph launch cost " << host_enqueue_ms
-      << " ms is not negligible against the " << host_total_ms
-      << " ms of device work, so this test cannot distinguish device timing "
-         "from host-enqueue timing";
-
-  DestroyTimedGraph(&timed);
-  EXPECT_EQ(hipSuccess, event_destroy_(start));
-  EXPECT_EQ(hipSuccess, event_destroy_(stop));
+      BuildTimedGraph(/*value=*/0xC001, start, stop, &executable));
+  ASSERT_NO_FATAL_FAILURE(
+      ReplayAndMeasure(executable, start, stop, /*expected_value=*/0xC001));
 }
 
-// Each replay must re-time the events. Alternating a long graph and a short one
-// over one event pair catches an implementation that wrote the ticks once: the
-// two reported durations are on the same clock, so comparing them against each
-// other cancels the advertised frequency.
+// Alternate two executables sharing one event pair. Each replay must capture
+// new ticks, ordered after the previous replay against a retained reference.
+// No duration ratio is implied by the relative work or scheduling of launches.
 TEST_F(HipEventTimingTest, GraphReplayRetimesEachLaunch) {
-  hipEvent_t start = nullptr;
-  hipEvent_t stop = nullptr;
-  ASSERT_EQ(hipSuccess, event_create_(&start));
-  ASSERT_EQ(hipSuccess, event_create_(&stop));
+  hipEvent_t reference = CreateEvent();
+  ASSERT_NE(nullptr, reference);
+  hipEvent_t start = CreateEvent();
+  ASSERT_NE(nullptr, start);
+  hipEvent_t stop = CreateEvent();
+  ASSERT_NE(nullptr, stop);
 
-  TimedGraph long_graph;
-  TimedGraph short_graph;
+  hipGraphExec_t first = nullptr;
+  hipGraphExec_t second = nullptr;
   ASSERT_NO_FATAL_FAILURE(
-      BuildTimedGraph(kSpinIterations, start, stop, &long_graph));
+      BuildTimedGraph(/*value=*/0xC001, start, stop, &first));
   ASSERT_NO_FATAL_FAILURE(
-      BuildTimedGraph(kShortSpinIterations, start, stop, &short_graph));
+      BuildTimedGraph(/*value=*/0xC002, start, stop, &second));
 
-  float first_long_ms = 0.0f;
-  ASSERT_NO_FATAL_FAILURE(ReplayAndMeasure(
-      long_graph, start, stop, "first long replay", &first_long_ms));
-  float short_ms = 0.0f;
-  ASSERT_NO_FATAL_FAILURE(
-      ReplayAndMeasure(short_graph, start, stop, "short replay", &short_ms));
-  float second_long_ms = 0.0f;
-  ASSERT_NO_FATAL_FAILURE(ReplayAndMeasure(
-      long_graph, start, stop, "second long replay", &second_long_ms));
-
-  EXPECT_LT(short_ms * kMinimumMeasuredWorkRatio, first_long_ms)
-      << "the short replay reported " << short_ms
-      << " ms against the long replay's " << first_long_ms
-      << " ms for a tenth of the work, so the replay did not re-time the "
-         "events";
-  EXPECT_LT(short_ms * kMinimumMeasuredWorkRatio, second_long_ms)
-      << "the second long replay reported " << second_long_ms
-      << " ms, close to the preceding short replay's " << short_ms
-      << " ms, so the replay reported stale ticks";
-
-  DestroyTimedGraph(&short_graph);
-  DestroyTimedGraph(&long_graph);
-  EXPECT_EQ(hipSuccess, event_destroy_(start));
-  EXPECT_EQ(hipSuccess, event_destroy_(stop));
+  ASSERT_EQ(hipSuccess, event_record_(reference, /*stream=*/nullptr));
+  ASSERT_EQ(hipSuccess, event_synchronize_(reference));
+  float previous_start_ms = -1.0f;
+  float previous_stop_ms = 0.0f;
+  for (hipGraphExec_t executable : {first, second, first}) {
+    SCOPED_TRACE(executable == first ? "first executable"
+                                     : "second executable");
+    ASSERT_NO_FATAL_FAILURE(ReplayAndMeasure(
+        executable, start, stop, executable == first ? 0xC001 : 0xC002));
+    float start_ms = -1.0f;
+    float stop_ms = -1.0f;
+    ASSERT_EQ(hipSuccess, event_elapsed_time_(&start_ms, reference, start));
+    ASSERT_EQ(hipSuccess, event_elapsed_time_(&stop_ms, reference, stop));
+    EXPECT_GE(start_ms, previous_stop_ms);
+    EXPECT_GT(start_ms, previous_start_ms);
+    EXPECT_GT(stop_ms, previous_stop_ms);
+    previous_start_ms = start_ms;
+    previous_stop_ms = stop_ms;
+  }
 }
 
-// A timing-disabled event still has to order streams; only the timing is gone.
+// A timing-disabled event still has to cover preceding kernel work.
 TEST_F(HipEventTimingTest, DisableTimingEventsSynchronizeButDoNotTime) {
-  hipEvent_t start = nullptr;
-  hipEvent_t stop = nullptr;
-  ASSERT_EQ(hipSuccess,
-            event_create_with_flags_(&start, hipEventDisableTiming));
-  ASSERT_EQ(hipSuccess, event_create_with_flags_(&stop, hipEventDisableTiming));
+  hipEvent_t start = CreateEvent(hipEventDisableTiming);
+  ASSERT_NE(nullptr, start);
+  hipEvent_t stop = CreateEvent(hipEventDisableTiming);
+  ASSERT_NE(nullptr, stop);
 
   ASSERT_EQ(hipSuccess, event_record_(start, /*stream=*/nullptr));
-  ASSERT_EQ(hipSuccess, LaunchSpin(/*iterations=*/1024, /*stream=*/nullptr));
+  ASSERT_EQ(hipSuccess, LaunchGatedKernel(/*value=*/0xC001));
   ASSERT_EQ(hipSuccess, event_record_(stop, /*stream=*/nullptr));
+  kernel_state_->WaitUntilEntered();
+  // Device progress can precede host completion publication. Observe the
+  // preceding event through its wait contract while the kernel remains held.
+  ASSERT_EQ(hipSuccess, event_synchronize_(start));
+  EXPECT_EQ(hipSuccess, event_query_(start));
+  EXPECT_EQ(hipErrorNotReady, event_query_(stop));
+  kernel_state_->Release();
   ASSERT_EQ(hipSuccess, event_synchronize_(stop));
+  EXPECT_EQ(0xC001u, kernel_state_->output);
   EXPECT_EQ(hipSuccess, event_query_(start));
   EXPECT_EQ(hipSuccess, event_query_(stop));
 
@@ -517,9 +543,6 @@ TEST_F(HipEventTimingTest, DisableTimingEventsSynchronizeButDoNotTime) {
   EXPECT_EQ(hipErrorInvalidHandle,
             event_elapsed_time_(&elapsed_ms, start, stop));
   EXPECT_FLOAT_EQ(-1.0f, elapsed_ms) << "a refused call wrote a duration";
-
-  EXPECT_EQ(hipSuccess, event_destroy_(start));
-  EXPECT_EQ(hipSuccess, event_destroy_(stop));
 }
 
 }  // namespace
