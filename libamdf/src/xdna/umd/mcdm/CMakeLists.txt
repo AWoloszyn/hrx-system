@@ -217,6 +217,7 @@ iree_cc_library(
     libamdf::src::atomics
     libamdf::src::platform::wait
     libamdf::src::wait
+    libamdf::src::xdna::bootstrap
     libamdf::src::xdna::transaction_interpreter
     libamdf::src::xdna::umd::context
   PUBLIC

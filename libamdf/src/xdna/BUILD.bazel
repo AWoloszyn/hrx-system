@@ -15,8 +15,19 @@ package(
 
 amdf_cc_library(
     name = "bootstrap",
+    srcs = ["bootstrap.c"],
     hdrs = ["bootstrap.h"],
     visibility = ["//libamdf/src/xdna:__subpackages__"],
+)
+
+amdf_cc_test(
+    name = "bootstrap_test",
+    srcs = ["bootstrap_test.cc"],
+    deps = [
+        ":bootstrap",
+        "//third_party:google_test",
+        "//third_party:google_test_main",
+    ],
 )
 
 amdf_cc_library(

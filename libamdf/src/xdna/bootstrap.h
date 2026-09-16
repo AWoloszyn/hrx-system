@@ -13,7 +13,8 @@
 extern "C" {
 #endif  // __cplusplus
 
-// Immutable target bootstrap consumed by native execution providers.
+// Target admission metadata consumed by native execution providers. Application
+// programs and array configuration are supplied separately after admission.
 typedef struct amdf_xdna_bootstrap_t {
   // Native context-admission identity and accounting for this bootstrap.
   struct {
@@ -23,17 +24,20 @@ typedef struct amdf_xdna_bootstrap_t {
     // count.
     uint32_t operations_per_cycle;
   } context;
-  // Provider-independent PDI bytes copied into native device storage. Fabric
-  // effects belong only to interpreter transport and leave application data
-  // routes unclaimed after admission.
-  const void* pdi_bytes;
-  // Number of bytes in `pdi_bytes`.
-  uint32_t pdi_byte_length;
-  // Transaction bytes used to admit the interpreter before application work.
-  const void* admission_transaction_bytes;
-  // Number of bytes in `admission_transaction_bytes`.
-  uint32_t admission_transaction_byte_length;
 } amdf_xdna_bootstrap_t;
+
+enum {
+  // Complete partial-PDI container, including aligned CDO partition storage.
+  AMDF_XDNA_BOOTSTRAP_PDI_BYTE_LENGTH = 368,
+};
+
+// Writes the native interpreter admission PDI directly into at least
+// AMDF_XDNA_BOOTSTRAP_PDI_BYTE_LENGTH writable bytes. The shared NPU4/NPU5
+// encoding selects function zero and contains one CDO NOP: no program,
+// register, DMA, lock, route, or tile-memory effects. All bytes within the
+// encoded extent are initialized; bytes beyond it are untouched. This cold-path
+// operation is infallible and performs no allocation or publication.
+void amdf_xdna_bootstrap_write_pdi(void* target);
 
 #ifdef __cplusplus
 }  // extern "C"

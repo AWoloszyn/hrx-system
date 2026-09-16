@@ -74,8 +74,8 @@ bool amdf_xdna_device_profile_initialize(
     profile.execution_capabilities =
         AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1 |
         AMDF_XDNA_EXECUTION_CAPABILITY_ELF_INSTRUCTIONS;
-    // Strix Halo uses a distinct interpreter image. Strix and Krackan share
-    // the NPU4 firmware interface and its bootstrap encoding.
+    // Both firmware families admit the generated no-effects PDI. Strix Halo
+    // uses different native context accounting from Strix and Krackan.
     profile.bootstrap = endpoint_info->pci.revision_id == 0x11u
                             ? &amdf_xdna_npu5_bootstrap
                             : &amdf_xdna_npu4_bootstrap;
