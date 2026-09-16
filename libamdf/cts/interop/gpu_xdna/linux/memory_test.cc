@@ -23,6 +23,38 @@
 
 namespace {
 
+void ExpectMemoryPairEqual(const amdf_memory_pair_info_t& actual,
+                           const amdf_memory_pair_info_t& expected) {
+  EXPECT_EQ(actual.type, expected.type);
+  EXPECT_EQ(actual.structure_size, expected.structure_size);
+  EXPECT_EQ(actual.next, expected.next);
+  EXPECT_EQ(actual.flags, expected.flags);
+  EXPECT_EQ(actual.atomic_reach.scope_32, expected.atomic_reach.scope_32);
+  EXPECT_EQ(actual.atomic_reach.scope_64, expected.atomic_reach.scope_64);
+  EXPECT_EQ(actual.estimated_fixed_cost_nanoseconds,
+            expected.estimated_fixed_cost_nanoseconds);
+  for (auto member :
+       {&amdf_memory_pair_info_t::release, &amdf_memory_pair_info_t::acquire}) {
+    const auto& actual_transition = actual.*member;
+    const auto& expected_transition = expected.*member;
+    SCOPED_TRACE(member == &amdf_memory_pair_info_t::release ? "release"
+                                                             : "acquire");
+    EXPECT_EQ(actual_transition.kind, expected_transition.kind);
+    EXPECT_EQ(actual_transition.executor, expected_transition.executor);
+    EXPECT_EQ(actual_transition.operation, expected_transition.operation);
+    EXPECT_EQ(actual_transition.host_operation,
+              expected_transition.host_operation);
+    EXPECT_EQ(actual_transition.host_instruction,
+              expected_transition.host_instruction);
+    EXPECT_EQ(actual_transition.host_fence_before,
+              expected_transition.host_fence_before);
+    EXPECT_EQ(actual_transition.host_fence_after,
+              expected_transition.host_fence_after);
+    EXPECT_EQ(actual_transition.range_granularity,
+              expected_transition.range_granularity);
+  }
+}
+
 const amdf_external_memory_support_t* FindDmaBufSupport(
     const amdf_memory_profile_t& profile,
     amdf_external_memory_support_flags_t required_flags) {
@@ -641,7 +673,7 @@ void GpuXdnaMemoryInteropTest::ImportGpuSubrangeAndReleaseAllocation() {
   amdf_memory_pair_info_t actual = qualified;
   ASSERT_EQ(api_->memory_query_pair_info(&host_site, &xdna_site, &actual),
             AMDF_STATUS_OK);
-  EXPECT_EQ(std::memcmp(&actual, &qualified, sizeof(actual)), 0);
+  ExpectMemoryPairEqual(actual, qualified);
   auto* xdna_bytes = static_cast<uint8_t*>(xdna_mapping_info.pointer);
   ASSERT_NE(xdna_bytes, nullptr);
   ASSERT_EQ(
@@ -943,10 +975,9 @@ TEST_F(GpuXdnaMemoryInteropTest,
               api_->memory_query_pair_info(&actual_sites[producer],
                                            &actual_sites[consumer], &pair),
               AMDF_STATUS_OK);
-          EXPECT_EQ(std::memcmp(&pair, &qualified[producer * 3 + consumer],
-                                sizeof(pair)),
-                    0)
-              << role << ": " << producer << " -> " << consumer;
+          SCOPED_TRACE(::testing::Message()
+                       << role << ": " << producer << " -> " << consumer);
+          ExpectMemoryPairEqual(pair, qualified[producer * 3 + consumer]);
         }
       }
       ASSERT_EQ(api_->host_mapping_destroy(gpu_mapping_), AMDF_STATUS_OK);

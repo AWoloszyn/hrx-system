@@ -22,6 +22,18 @@ namespace {
 using MemoryAddressTest = MemoryTest;
 using MemoryExternalTest = MemoryTest;
 
+void ExpectCacheTransitionEqual(const amdf_cache_transition_t& actual,
+                                const amdf_cache_transition_t& expected) {
+  EXPECT_EQ(actual.kind, expected.kind);
+  EXPECT_EQ(actual.executor, expected.executor);
+  EXPECT_EQ(actual.operation, expected.operation);
+  EXPECT_EQ(actual.host_operation, expected.host_operation);
+  EXPECT_EQ(actual.host_instruction, expected.host_instruction);
+  EXPECT_EQ(actual.host_fence_before, expected.host_fence_before);
+  EXPECT_EQ(actual.host_fence_after, expected.host_fence_after);
+  EXPECT_EQ(actual.range_granularity, expected.range_granularity);
+}
+
 TEST_F(MemoryTest, HostSitesUseTheSelectedPeerAndPreserveNativeApiOperations) {
   FakeDevice devices[2];
   amdf_memory_device_access_t accesses[2];
@@ -80,8 +92,7 @@ TEST_F(MemoryTest, HostSitesUseTheSelectedPeerAndPreserveNativeApiOperations) {
   mapping.info.flush.host_instruction = AMDF_HOST_CACHE_INSTRUCTION_NONE;
   ASSERT_EQ(amdf_memory_query_pair_info(&host, &coherent, &pair),
             AMDF_STATUS_OK);
-  EXPECT_EQ(
-      std::memcmp(&pair.release, &mapping.info.flush, sizeof(pair.release)), 0);
+  ExpectCacheTransitionEqual(pair.release, mapping.info.flush);
 
   // A range-free WC fence remains necessary even with a coherent peer.
   mapping.info.cacheability = AMDF_HOST_CACHEABILITY_WRITE_COMBINED;
@@ -92,8 +103,7 @@ TEST_F(MemoryTest, HostSitesUseTheSelectedPeerAndPreserveNativeApiOperations) {
   mapping.info.flush.host_fence_after = AMDF_HOST_CACHE_FENCE_X86_MFENCE;
   ASSERT_EQ(amdf_memory_query_pair_info(&host, &coherent, &pair),
             AMDF_STATUS_OK);
-  EXPECT_EQ(
-      std::memcmp(&pair.release, &mapping.info.flush, sizeof(pair.release)), 0);
+  ExpectCacheTransitionEqual(pair.release, mapping.info.flush);
 
   const amdf_memory_pair_info_t original = pair;
   mapping.info.flush.kind = AMDF_CACHE_TRANSITION_KIND_UNKNOWN;

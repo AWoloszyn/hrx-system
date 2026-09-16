@@ -263,8 +263,22 @@ TEST_F(WindowsXdnaMemoryTest, CompletesOnlyAfterMapAndOrdinaryResidency) {
   const auto qualified = profile_.visibility.describe_host(
       profile_.visibility.data, AMDF_EXTERNAL_MEMORY_TYPE_NONE,
       profile_.guaranteed_flags);
-  EXPECT_EQ(std::memcmp(&qualified, &map_result.visibility, sizeof(qualified)),
-            0);
+  EXPECT_EQ(map_result.visibility.cacheability, qualified.cacheability);
+  EXPECT_EQ(map_result.visibility.cache_line_size, qualified.cache_line_size);
+  for (auto member : {&amdf_memory_host_description_t::flush,
+                      &amdf_memory_host_description_t::invalidate}) {
+    const auto& actual = map_result.visibility.*member;
+    const auto& expected = qualified.*member;
+    SCOPED_TRACE(expected.host_operation);
+    EXPECT_EQ(actual.kind, expected.kind);
+    EXPECT_EQ(actual.executor, expected.executor);
+    EXPECT_EQ(actual.operation, expected.operation);
+    EXPECT_EQ(actual.host_operation, expected.host_operation);
+    EXPECT_EQ(actual.host_instruction, expected.host_instruction);
+    EXPECT_EQ(actual.host_fence_before, expected.host_fence_before);
+    EXPECT_EQ(actual.host_fence_after, expected.host_fence_after);
+    EXPECT_EQ(actual.range_granularity, expected.range_granularity);
+  }
   EXPECT_TRUE(amdf_status_is_ok(amdf_xdna_umd_host_mapping_cache_control(
       mapping, AMDF_HOST_CACHE_OPERATION_FLUSH, 0, map_result.byte_length)));
   EXPECT_TRUE(amdf_status_is_ok(amdf_xdna_umd_host_mapping_cache_control(
