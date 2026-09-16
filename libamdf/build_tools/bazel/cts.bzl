@@ -33,8 +33,8 @@ def amdf_cts_test_suite(
       visibility: Visibility of the aggregate test suite.
     """
     policy = apply_amdf_test_policy({
-        "tags": tags or [],
         "resource_group": resource_group,
+        "tags": tags or [],
         "target_compatible_with": target_compatible_with,
     })
     test_tags = cc_attrs.with_resource_group_tags(
