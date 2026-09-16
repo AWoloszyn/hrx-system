@@ -98,6 +98,62 @@ class XdnaLinuxMemoryTest : public XdnaDeviceFixture {
   amdf_external_memory_t external_memories_[2] = {};
 };
 
+TEST_F(XdnaLinuxMemoryTest, PortableImportDoesNotInheritNativeHostProtocol) {
+  amdf_memory_create_info_t create = {};
+  create.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
+  create.structure_size = sizeof(create);
+  create.memory_profile_ordinal = FindMemoryProfileOrdinal(
+      AMDF_MEMORY_PROFILE_ROLE_CREATE | AMDF_MEMORY_PROFILE_ROLE_EXPORT,
+      AMDF_MEMORY_FLAG_HOST_VISIBLE);
+  ASSERT_NE(create.memory_profile_ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
+  create.access_count = 1;
+  create.accesses = &memory_access_;
+  create.byte_length = 4096;
+  create.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
+  ASSERT_EQ(api_->memory_create(system_scope_, &create, &memories_[0]),
+            AMDF_STATUS_OK);
+  amdf_memory_export_info_t export_info = {};
+  export_info.type = AMDF_STRUCTURE_TYPE_MEMORY_EXPORT_INFO;
+  export_info.structure_size = sizeof(export_info);
+  export_info.external_memory_type = AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD;
+  export_info.byte_length = create.byte_length;
+  ASSERT_EQ(
+      api_->memory_export(memories_[0], &export_info, &external_memories_[0]),
+      AMDF_STATUS_OK);
+  amdf_memory_import_info_t import = {};
+  import.type = AMDF_STRUCTURE_TYPE_MEMORY_IMPORT_INFO;
+  import.structure_size = sizeof(import);
+  import.memory_profile_ordinal = FindMemoryProfileOrdinal(
+      AMDF_MEMORY_PROFILE_ROLE_IMPORT, AMDF_MEMORY_FLAG_HOST_VISIBLE);
+  ASSERT_NE(import.memory_profile_ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
+  import.access_count = 1;
+  import.accesses = &memory_access_;
+  import.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
+  ASSERT_EQ(api_->memory_import(system_scope_, &import, &external_memories_[0],
+                                &memories_[1]),
+            AMDF_STATUS_OK);
+  ASSERT_EQ(MapMemory(memories_[1], 1, create.byte_length), AMDF_STATUS_OK);
+  EXPECT_EQ(mapping_infos_[1].cacheability, AMDF_HOST_CACHEABILITY_UNKNOWN);
+  for (auto operation : {AMDF_HOST_CACHE_OPERATION_FLUSH,
+                         AMDF_HOST_CACHE_OPERATION_INVALIDATE}) {
+    EXPECT_EQ(amdf_status_code(api_->host_mapping_cache_control(
+                  mappings_[1], operation, 0, create.byte_length)),
+              AMDF_STATUS_CODE_UNSUPPORTED);
+  }
+  amdf_memory_site_t host = {};
+  host.type = AMDF_STRUCTURE_TYPE_MEMORY_SITE;
+  host.structure_size = sizeof(host);
+  host.kind = AMDF_MEMORY_SITE_KIND_HOST;
+  host.value.host_mapping = mappings_[1];
+  amdf_memory_pair_info_t pair = {};
+  pair.type = AMDF_STRUCTURE_TYPE_MEMORY_PAIR_INFO;
+  pair.structure_size = sizeof(pair);
+  const auto original = pair;
+  EXPECT_EQ(amdf_status_code(api_->memory_query_pair_info(&host, &host, &pair)),
+            AMDF_STATUS_CODE_UNSUPPORTED);
+  EXPECT_EQ(std::memcmp(&pair, &original, sizeof(pair)), 0);
+}
+
 TEST_F(XdnaLinuxMemoryTest,
        RegistersArbitraryOverlappingCallerSubrangesWithoutTakingOwnership) {
   ASSERT_NO_FATAL_FAILURE(AllocateCallerPages());
@@ -119,6 +175,7 @@ TEST_F(XdnaLinuxMemoryTest,
       .minimum_alignment = 1,
       .registered_host_pointer = caller_pages_ + 3,
       .accesses = &memory_access_,
+      .registered_host_cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK,
   };
 
   amdf_memory_t* output = reinterpret_cast<amdf_memory_t*>(uintptr_t{1});
@@ -171,6 +228,7 @@ TEST_F(XdnaLinuxMemoryTest,
   EXPECT_EQ(mapping_infos_[0].cacheability, AMDF_HOST_CACHEABILITY_WRITE_BACK);
 
   create_info.registered_host_pointer = caller_pages_ + 19;
+  create_info.registered_host_cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK;
   create_info.byte_length = caller_byte_length_ / 2;
   ASSERT_EQ(api_->memory_create(system_scope_, &create_info, &memories_[1]),
             AMDF_STATUS_OK);
@@ -284,14 +342,14 @@ TEST_F(XdnaLinuxMemoryTest,
   const amdf_memory_export_info_t export_info = {
       .type = AMDF_STRUCTURE_TYPE_MEMORY_EXPORT_INFO,
       .structure_size = sizeof(amdf_memory_export_info_t),
-      .external_memory_type = AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD,
+      .external_memory_type = AMDF_EXTERNAL_MEMORY_TYPE_OPAQUE_FD,
       .byte_offset = source_byte_offset,
       .byte_length = logical_byte_length,
   };
   for (amdf_external_memory_t& external_memory : external_memories_) {
     ASSERT_EQ(api_->memory_export(memories_[0], &export_info, &external_memory),
               AMDF_STATUS_OK);
-    EXPECT_EQ(external_memory.type, AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD);
+    EXPECT_EQ(external_memory.type, AMDF_EXTERNAL_MEMORY_TYPE_OPAQUE_FD);
     EXPECT_EQ(external_memory.source_byte_offset, source_byte_offset);
     EXPECT_EQ(external_memory.byte_length, logical_byte_length);
     EXPECT_TRUE(

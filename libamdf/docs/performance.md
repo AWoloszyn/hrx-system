@@ -19,7 +19,7 @@ not promise a wall-clock deadline for kernel submission.
 | --- | --- | --- |
 | API-table negotiation | Read static version and extension tables. | Allocation, locks, once-initialization guards, dependency loading, discovery and system calls. |
 | Immutable object and address queries | Validate the public request and copy or directly index retained facts. | Locks, allocation, lazy initialization, ownership-counter updates and native queries. |
-| Scope-profile planning | Qualify a proposed consumer set, using temporary host storage. | Device activation, native allocation, mapping and execution. This is not an allocation-free per-dispatch query. |
+| Scope-profile and visibility planning | Qualify a proposed consumer set and exact producer/consumer pair, using temporary host storage. | Device activation, native allocation, mapping and execution. This is not an allocation-free per-dispatch query. |
 | Device, memory, context and queue creation | Acquire the native resources, address mappings, residency, packet storage and completion objects required by the requested resource. | Deferring that resource's preparation to a metadata query or its first publication. |
 | Kernel publication | Claim a queue slot, borrow command memory, fill required transport fields and publish natively. | Library locks, allocation, lazy setup, command parsing/copying, indirect-buffer scans and completion waits. |
 | Kernel progress observation | Read mapped or cached progress and retire completed command borrows. | Library locks, allocation, lazy setup, system calls and active polling. |
@@ -31,6 +31,11 @@ allocations or other consumers. Pair queries compose two concrete sites' retaine
 facts; they do not recover sharing relationships by traversing allocation state.
 Immutable facts need no reader lock or ownership-count increment: the caller
 already holds the owning handle alive through the operation.
+
+`memory_scope_query_pair_info` belongs to pool or graph setup. Its temporary
+planning storage scales with the declared consumer set. The result is sufficient
+for each successfully admitted backing with matching construction inputs, so
+recording and submission can reuse it without querying individual bindings.
 
 ## Synchronization is path-specific
 

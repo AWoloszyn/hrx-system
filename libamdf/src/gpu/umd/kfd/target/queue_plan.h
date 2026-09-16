@@ -46,6 +46,8 @@ typedef struct amdf_gpu_kfd_user_queue_plan_t {
     size_t error_payload_byte_length;
     // Storage width shared by the read and write indices.
     uint32_t index_bit_count;
+    // Mask of the native read counter, UINT64_MAX for a monotonic counter.
+    uint64_t read_index_mask;
   } control;
   // Side storage required only by KFD compute queues.
   struct {

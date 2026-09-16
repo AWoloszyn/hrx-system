@@ -8,6 +8,7 @@
 #define AMDF_SRC_MEMORY_PROFILE_H_
 
 #include "amdf/amdf.h"
+#include "libamdf/src/memory_pair.h"
 
 // Properties of physical backing, independent of a consumer's access.
 #define AMDF_MEMORY_BACKING_FLAGS                                  \
@@ -70,6 +71,23 @@ typedef struct amdf_memory_native_profile_t {
     // Immutable native metadata borrowed from the queried endpoint or device.
     const void* data;
   } construction;
+  // Immutable visibility policy belonging to this native contract.
+  struct {
+    // Describes an exact queue site without requiring allocation state. NULL
+    // means this contract does not qualify prospective device visibility.
+    amdf_status_t (*describe_site)(
+        const amdf_memory_site_query_t* query,
+        amdf_memory_site_description_t* out_description);
+    // Describes host policy for the exact import transport (NONE for owned or
+    // registered pages) and achieved flags.
+    // NULL means prospective host visibility is unavailable. Mapping creation
+    // consumes the same policy after native backing has been established.
+    amdf_memory_host_description_t (*describe_host)(
+        const void* data, amdf_external_memory_type_t external_memory_type,
+        amdf_memory_flags_t flags);
+    // Borrowed immutable native device facts, live for the query's duration.
+    const void* data;
+  } visibility;
 } amdf_memory_native_profile_t;
 
 // Explicit consumer group selected for one native backing preparation.

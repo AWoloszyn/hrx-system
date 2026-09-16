@@ -61,7 +61,7 @@ enum class CompletionTiming { kExcluded, kIncluded };
 class ExecutionBenchmark {
  public:
   void Initialize() {
-    CheckStatus(amdf_cts_provider_query_api()(AMDF_ABI_VERSION_1,
+    CheckStatus(amdf_cts_provider_query_api()(AMDF_ABI_VERSION_LATEST,
                                               AMDF_ABI_VERSION_LATEST, &api_),
                 "query_api");
     const void* extension = nullptr;

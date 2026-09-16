@@ -13,6 +13,8 @@
 struct amdf_xdna_umd_memory_t {
   // Device borrowed while memory metadata is live.
   amdf_xdna_umd_device_t* device;
+  // Immutable host policy established by construction and typed transport.
+  amdf_memory_host_description_t host_visibility;
   // Byte offset of logical byte zero in the complete native backing.
   uint64_t source_byte_offset;
   // Canonical identity of imported memory or provider-local created backing.

@@ -292,6 +292,7 @@ TEST_F(GpuMemoryTest, RegistersCallerOwnedCoherentHostPages) {
   create_info.byte_length = kByteLength;
   create_info.minimum_alignment = kByteLength;
   create_info.registered_host_pointer = registered_host_pointer_;
+  create_info.registered_host_cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK;
   ASSERT_TRUE(amdf_status_is_ok(
       api_->memory_create(system_scope_, &create_info, &memory_)));
 

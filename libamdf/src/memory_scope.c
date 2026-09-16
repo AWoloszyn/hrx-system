@@ -251,6 +251,10 @@ static bool amdf_memory_merge_granularity(uint64_t a, uint64_t b,
 static bool amdf_memory_merge_construction(
     const amdf_memory_construction_capabilities_t* consumer,
     amdf_memory_construction_capabilities_t* backing) {
+  if (backing->registered_host_cacheability !=
+      consumer->registered_host_cacheability) {
+    return false;
+  }
   backing->maximum_byte_length = amdf_memory_minimum(
       backing->maximum_byte_length, consumer->maximum_byte_length);
   backing->registered_host_pointer_alignment =
@@ -303,6 +307,7 @@ static amdf_memory_native_profile_t amdf_memory_host_profile(
         .maximum_byte_length = maximum_byte_length,
         .byte_length_granularity = 1,
         .registered_host_pointer_alignment = 1,
+        .registered_host_cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK,
         .minimum_alignment = 1,
         .maximum_alignment = granularity,
         .native_byte_length_granularity = 1,
@@ -638,6 +643,7 @@ amdf_status_t amdf_memory_scope_plan_initialize(
       profile_ordinal == 0   ? AMDF_MEMORY_PROFILE_ROLE_CREATE
       : profile_ordinal == 1 ? AMDF_MEMORY_PROFILE_ROLE_REGISTER
                              : AMDF_MEMORY_PROFILE_ROLE_IMPORT;
+  plan.acquisition_role = role;
   bool found = true;
   if (scope->kind == AMDF_MEMORY_SCOPE_KIND_PRIVATE) {
     amdf_device_t* owner_device = scope->owner.private_storage.device;
@@ -746,4 +752,218 @@ amdf_status_t AMDF_CALL amdf_memory_scope_query_device_profile(
 
 void amdf_memory_scope_plan_deinitialize(amdf_memory_scope_plan_t* plan) {
   amdf_free(plan->host_allocator, plan->native_profiles);
+}
+
+// Native access flags are derived once per cold owner preparation. Coordinated
+// consumers share the backing owner's cache mode as well as its allocation.
+amdf_memory_flags_t amdf_memory_scope_plan_required_access_flags(
+    const amdf_memory_scope_plan_t* plan,
+    const amdf_memory_device_access_t* accesses, uint32_t access_ordinal) {
+  const uint32_t owner = plan->native_owner_ordinals[access_ordinal];
+  const uint32_t count =
+      owner == plan->backing_access_ordinal ? plan->backing_access_count : 1;
+  amdf_memory_flags_t flags = 0;
+  for (uint32_t i = 0; i < count; ++i) {
+    const uint32_t ordinal = owner == plan->backing_access_ordinal
+                                 ? plan->backing_access_ordinals[i]
+                                 : access_ordinal;
+    const amdf_memory_access_requirements_t* requirements =
+        &accesses[ordinal].requirements;
+    flags |= requirements->flags;
+    if (requirements->address_kinds != 0) {
+      flags |= AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+    }
+  }
+  return flags;
+}
+
+amdf_status_t amdf_memory_scope_plan_validate_registration(
+    const amdf_memory_scope_plan_t* plan,
+    amdf_host_cacheability_t registered_host_cacheability) {
+  if (plan->acquisition_role != AMDF_MEMORY_PROFILE_ROLE_REGISTER) {
+    return registered_host_cacheability == AMDF_HOST_CACHEABILITY_UNKNOWN
+               ? AMDF_STATUS_OK
+               : amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  }
+  switch (registered_host_cacheability) {
+    case AMDF_HOST_CACHEABILITY_UNKNOWN:
+    case AMDF_HOST_CACHEABILITY_WRITE_BACK:
+    case AMDF_HOST_CACHEABILITY_WRITE_COMBINED:
+    case AMDF_HOST_CACHEABILITY_UNCACHED:
+      break;
+    default:
+      return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  }
+  if (registered_host_cacheability == AMDF_HOST_CACHEABILITY_UNKNOWN ||
+      registered_host_cacheability !=
+          plan->profile.registration.registered_host_cacheability) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
+  return AMDF_STATUS_OK;
+}
+
+static amdf_status_t amdf_memory_profile_validate_site(
+    const amdf_memory_scope_plan_t* plan, amdf_memory_flags_t required_flags,
+    const amdf_memory_profile_site_t* site) {
+  if (site->reserved != 0) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  }
+  if (site->kind == AMDF_MEMORY_SITE_KIND_DEVICE) {
+    return site->value.device.access_ordinal < plan->access_count
+               ? AMDF_STATUS_OK
+               : amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
+  }
+  if (site->kind != AMDF_MEMORY_SITE_KIND_HOST ||
+      site->value.host_access == 0 ||
+      (site->value.host_access &
+       ~(AMDF_MEMORY_MAP_FLAG_READ | AMDF_MEMORY_MAP_FLAG_WRITE)) != 0) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  }
+  if ((required_flags & AMDF_MEMORY_FLAG_HOST_VISIBLE) == 0 ||
+      (plan->profile.roles & AMDF_MEMORY_PROFILE_ROLE_HOST_MAP) == 0 ||
+      (site->value.host_access &
+       ~plan->profile.host_mapping.supported_access) != 0) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
+  return AMDF_STATUS_OK;
+}
+
+static amdf_memory_flags_t amdf_memory_profile_access_flags(
+    const amdf_memory_scope_plan_t* plan,
+    const amdf_memory_profile_pair_query_t* query, uint32_t ordinal) {
+  return plan->native_profiles[ordinal].guaranteed_flags |
+         query->required_flags |
+         amdf_memory_scope_plan_required_access_flags(plan, query->accesses,
+                                                      ordinal);
+}
+
+static amdf_status_t amdf_memory_profile_describe_site(
+    const amdf_memory_scope_plan_t* plan,
+    const amdf_memory_profile_pair_query_t* query,
+    const amdf_memory_profile_site_t* site,
+    const amdf_memory_profile_site_t* peer,
+    amdf_memory_site_description_t* out_description) {
+  if (site->kind == AMDF_MEMORY_SITE_KIND_DEVICE) {
+    const uint32_t ordinal = site->value.device.access_ordinal;
+    const amdf_memory_native_profile_t* native =
+        &plan->native_profiles[ordinal];
+    if (native->visibility.describe_site == NULL) {
+      return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+    }
+    amdf_queue_family_info_t family = {
+        .type = AMDF_STRUCTURE_TYPE_QUEUE_FAMILY_INFO,
+        .structure_size = sizeof(family),
+    };
+    const amdf_status_t status = amdf_endpoint_query_queue_family_info(
+        query->accesses[ordinal].device->endpoint,
+        site->value.device.queue_family_ordinal, &family);
+    if (!amdf_status_is_ok(status)) return status;
+    const amdf_memory_site_query_t local_query = {
+        .access = query->accesses[ordinal].requirements.access,
+        .flags = amdf_memory_profile_access_flags(plan, query, ordinal),
+        .queue_family_info = &family,
+    };
+    return native->visibility.describe_site(&local_query, out_description);
+  }
+
+  amdf_memory_host_description_t host;
+  if (plan->access_count == 0) {
+    // CPU-only backing has no device visibility edge and no native exporter.
+    // REGISTER admission has already established ordinary write-back pages.
+    host = (amdf_memory_host_description_t){
+        .cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK,
+        .flush = {.kind = AMDF_CACHE_TRANSITION_KIND_NONE},
+        .invalidate = {.kind = AMDF_CACHE_TRANSITION_KIND_NONE},
+    };
+  } else {
+    const uint32_t ordinal = plan->backing_access_ordinal;
+    const amdf_memory_native_profile_t* native =
+        &plan->native_profiles[ordinal];
+    if (native->visibility.describe_host == NULL) {
+      return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+    }
+    host = native->visibility.describe_host(
+        native->visibility.data, query->external_memory_type,
+        amdf_memory_profile_access_flags(plan, query, ordinal));
+  }
+  const bool coherent = peer->kind == AMDF_MEMORY_SITE_KIND_HOST ||
+                        (amdf_memory_profile_access_flags(
+                             plan, query, peer->value.device.access_ordinal) &
+                         AMDF_MEMORY_FLAG_HOST_COHERENT) != 0;
+  *out_description =
+      amdf_memory_describe_host_site(&host, site->value.host_access, coherent);
+  return AMDF_STATUS_OK;
+}
+
+amdf_status_t AMDF_CALL amdf_memory_scope_query_pair_info(
+    amdf_memory_scope_t* scope, const amdf_memory_profile_pair_query_t* query,
+    amdf_memory_pair_info_t* out_info) {
+  if (scope == NULL) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  }
+  amdf_status_t status = amdf_structure_validate_input(
+      query, AMDF_STRUCTURE_TYPE_MEMORY_PROFILE_PAIR_QUERY, sizeof(*query));
+  if (!amdf_status_is_ok(status)) return status;
+  status = amdf_structure_validate_output(
+      out_info, AMDF_STRUCTURE_TYPE_MEMORY_PAIR_INFO, sizeof(*out_info));
+  if (!amdf_status_is_ok(status)) return status;
+  const bool imported = scope->kind == AMDF_MEMORY_SCOPE_KIND_SYSTEM &&
+                        query->memory_profile_ordinal == 2;
+  const bool opaque =
+      query->external_memory_type == AMDF_EXTERNAL_MEMORY_TYPE_OPAQUE_FD ||
+      query->external_memory_type == AMDF_EXTERNAL_MEMORY_TYPE_DEVICE_ADDRESS;
+  const bool has_provenance = amdf_external_memory_provenance_is_valid(
+      &query->external_memory_provenance);
+  if (query->reserved != 0 || query->external_memory_reserved != 0 ||
+      (query->required_flags & ~AMDF_MEMORY_BACKING_FLAGS) != 0 ||
+      (imported &&
+       (query->external_memory_type == 0 ||
+        query->external_memory_type > AMDF_EXTERNAL_MEMORY_TYPE_COUNT ||
+        opaque != has_provenance)) ||
+      (!imported && (query->external_memory_type != 0 || has_provenance))) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
+  }
+  const amdf_memory_access_query_t accesses = {
+      .count = query->access_count,
+      .accesses = query->accesses,
+  };
+  const amdf_external_memory_t transport = {
+      .type = query->external_memory_type,
+      .provenance = query->external_memory_provenance,
+  };
+  amdf_memory_scope_plan_t plan;
+  status = amdf_memory_scope_plan_initialize(
+      scope, query->memory_profile_ordinal, &accesses,
+      imported ? &transport : NULL, &plan);
+  if (!amdf_status_is_ok(status)) return status;
+  if ((query->required_flags & ~plan.profile.supported_flags) != 0) {
+    status = amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
+  }
+  if (amdf_status_is_ok(status)) {
+    status = amdf_memory_scope_plan_validate_registration(
+        &plan, query->registered_host_cacheability);
+  }
+  if (amdf_status_is_ok(status)) {
+    status = amdf_memory_profile_validate_site(&plan, query->required_flags,
+                                               &query->producer);
+  }
+  if (amdf_status_is_ok(status)) {
+    status = amdf_memory_profile_validate_site(&plan, query->required_flags,
+                                               &query->consumer);
+  }
+  amdf_memory_site_description_t producer;
+  amdf_memory_site_description_t consumer;
+  if (amdf_status_is_ok(status)) {
+    status = amdf_memory_profile_describe_site(&plan, query, &query->producer,
+                                               &query->consumer, &producer);
+  }
+  if (amdf_status_is_ok(status)) {
+    status = amdf_memory_profile_describe_site(&plan, query, &query->consumer,
+                                               &query->producer, &consumer);
+  }
+  if (amdf_status_is_ok(status)) {
+    status = amdf_memory_pair_compose(&producer, &consumer, out_info);
+  }
+  amdf_memory_scope_plan_deinitialize(&plan);
+  return status;
 }

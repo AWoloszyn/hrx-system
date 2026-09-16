@@ -163,6 +163,12 @@ Registration preserves the requested subpage offset in each GPU address and
 exposes only the logical range; the caller retains the original storage until
 all native mappings are released.
 
+Registration also supplies `registered_host_cacheability`, established from the
+caller's allocation or mapping contract and held unchanged for the registration's
+lifetime. The profile reports the accepted class. A raw pointer is insufficient
+to establish cacheability; unknown or incompatible classes fail admission.
+Current registration profiles require ordinary write-back pages.
+
 GPU-local sharing is relative to the chosen placement. Selecting GPU A's local
 scope and naming consumers B and A allocates in A's VRAM or HBM, with access
 records remaining in B,A order. The joint profile qualifies B's ability to reach
@@ -310,6 +316,38 @@ identities. Pair queries only read metadata; they neither perform the reported
 cache operations nor supply ordering. Native host API requirements remain
 native operations, including Windows allocation-cache publication.
 
+`memory_scope_query_pair_info` qualifies those recipes before any backing or
+host view exists. Its `amdf_memory_profile_pair_query_t` fixes the scope-local
+profile, backing requirements, complete caller-ordered device/access set and
+registration cache class. A prospective DEVICE site names an access ordinal and
+exact queue family; a HOST site declares view permissions and requires
+`HOST_VISIBLE`. Successful constructions with those same inputs can reuse the
+answer across sizes and addresses. The query shares native selection and policy
+with construction and actual mapping descriptions, without retaining a plan,
+reserving resources or performing native allocation, mapping or synchronization.
+
+A pool can therefore query its producer/consumer matrix once, record visibility
+operations before individual buffers exist, and replay using each allocation's
+actual operands. `HOST_DIRECT` operates on the actual pointer and covered range;
+`HOST_API` requires the actual host-mapping handle; `QUEUE` belongs to the exact
+queried family. Queue qualification does not qualify shader `PROGRAM` operations
+or cross-device atomics. Unsupported sites return `UNSUPPORTED`, not a no-op.
+Range granularity covers absolute host cache-line boundaries, including any
+neighboring bytes touched by an unaligned subrange. Independent transitions
+require caller ownership of those boundary lines.
+
+Import qualification additionally fixes the external type and provenance.
+Linux native-owned write-back system backing advertises an `OPAQUE_FD` contract
+whose matching provenance qualifies direct host cache maintenance through an
+XDNA import. Its independent native backing reference survives destruction of
+the exporting resource. The caller preserves the exporter-provided typed value;
+relabeling a foreign descriptor does not establish that contract. Portable
+`DMA_BUF_FD` remains available for external device interoperability, but its
+exporter CPU-access protocol is unqualified. Such host mappings report UNKNOWN
+cacheability and operations; their host pair queries and cache-control
+operations return `UNSUPPORTED`. Device-only qualification remains independent
+of host policy.
+
 Ordering establishes when the consumer may act. Cache coherence does not create
 a producer-to-consumer dependency. The HAL or application supplies that
 dependency through its synchronization and scheduling mechanisms. Libamdf
@@ -399,7 +437,8 @@ A CPU/GPU/NPU pipeline follows one resource lifecycle:
 1. Create an instance and discover endpoint identities and system scopes.
 2. Explicitly initialize the selected GPU and NPU devices.
 3. Query their joint system-memory contract for the required access and address
-   kinds. Check the complete capabilities against the workload requirements.
+   kinds, then qualify the needed directional pairs with
+   `memory_scope_query_pair_info`. Retain the answers with that fixed contract.
 4. Allocate backing once from the selected scope, requesting access for those
    live devices. Obtain a CPU mapping and cache the established device addresses.
 5. Create workload queues and any required contexts. Retrieve private scopes from

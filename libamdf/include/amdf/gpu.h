@@ -147,15 +147,19 @@ typedef struct amdf_gpu_device_info_t {
 /// The primary ring contains native type-3 PM4 packets. Transfer commands use
 /// six-dword COPY_DATA and WRITE_DATA with a four-dword prefix and payload.
 /// Cache-control encoding is described by the reported PM4 format features.
-/// Read and write indices are naturally aligned 64-bit monotonic dword counts;
-/// each index selects storage modulo `ring_byte_length / 4`.
-/// A producer never advances more than that capacity beyond the acquired read
-/// index. After storing complete commands into the ring, the producer performs
-/// a release store of the new write index followed by a release store of the
-/// same value to the 64-bit doorbell. An acquire load of a read index at least
-/// that value proves the corresponding ring dwords are no longer in use by
-/// the queue. Each user publication ends on an eight-dword boundary, padded
-/// with type-3 NOP packets when necessary; packets never straddle ring wrap.
+/// Indices occupy naturally aligned 64-bit storage. The write index is a
+/// monotonic dword count; the native read index wraps at the ring capacity
+/// `ring_byte_length / 4`. The producer always leaves at least one dword free:
+/// fewer than that capacity may remain unconsumed, including reserved storage.
+/// Given a stable published write index W and acquired native read index R,
+/// the consumed frontier is W - ((W - R) & (capacity - 1)). Status and wait
+/// operations expand the native counter to this monotonic frontier; the raw
+/// mapping continues to expose the native ring-relative read index.
+/// After storing complete commands, the producer release-stores the new write
+/// index followed by the same value to the 64-bit doorbell. Consumption proves
+/// ring storage can be reused; command completion requires a separate fence.
+/// Each publication ends on an eight-dword boundary, padded with type-3 NOP
+/// packets when necessary; packets never straddle ring wrap.
 /// Kernel publication accepts an immutable dword-aligned command stream.
 #define AMDF_GPU_PM4_QUEUE_FORMAT_VERSION_1 1u
 

@@ -236,7 +236,8 @@ static iree_status_t iree_xdna_run_select_memory_scope(iree_xdna_run_t* run) {
 
 static iree_status_t iree_xdna_run_open_endpoint(iree_xdna_run_t* run) {
   IREE_RETURN_IF_ERROR(IREE_HAL_AMD_STATUS_FROM_AMDF(
-      amdf_query_api(AMDF_ABI_VERSION_1, AMDF_ABI_VERSION_LATEST, &run->api),
+      amdf_query_api(AMDF_ABI_VERSION_LATEST, AMDF_ABI_VERSION_LATEST,
+                     &run->api),
       "query_api"));
   const void* extension = NULL;
   IREE_RETURN_IF_ERROR(IREE_HAL_AMD_STATUS_FROM_AMDF(
@@ -472,6 +473,9 @@ static iree_status_t iree_xdna_run_prepare_binding(
       .minimum_alignment = contract.minimum_alignment,
       .registered_host_pointer = binding->registered_host_pointer,
       .accesses = &run->memory_access,
+      .registered_host_cacheability = binding->registered_host_pointer != NULL
+                                          ? AMDF_HOST_CACHEABILITY_WRITE_BACK
+                                          : AMDF_HOST_CACHEABILITY_UNKNOWN,
   };
   IREE_RETURN_IF_ERROR(IREE_HAL_AMD_STATUS_FROM_AMDF(
       run->api->memory_create(run->memory_scope, &create_info,

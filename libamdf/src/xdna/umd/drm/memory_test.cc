@@ -251,11 +251,11 @@ TEST(LinuxXdnaMemoryPairTest, DescribesOnlyTheExactLocalXdnaSite) {
       .roles = AMDF_QUEUE_ROLE_COMPUTE,
   };
   const amdf_memory_site_query_t query = {
-      .access_info = &access_info,
+      .access = access_info.access,
       .queue_family_info = &family,
   };
   amdf_memory_site_description_t description = {};
-  ASSERT_EQ(amdf_xdna_umd_memory_describe_site(nullptr, &query, &description),
+  ASSERT_EQ(amdf_xdna_umd_memory_describe_site(&query, &description),
             AMDF_STATUS_OK);
   EXPECT_EQ(description.capabilities, AMDF_MEMORY_SITE_CAPABILITY_READ |
                                           AMDF_MEMORY_SITE_CAPABILITY_WRITE);
@@ -269,8 +269,8 @@ TEST(LinuxXdnaMemoryPairTest, DescribesOnlyTheExactLocalXdnaSite) {
   family.command_type = AMDF_QUEUE_COMMAND_TYPE_GPU_PM4;
   std::memset(&description, 0x5A, sizeof(description));
   const amdf_memory_site_description_t original = description;
-  EXPECT_EQ(amdf_status_code(amdf_xdna_umd_memory_describe_site(nullptr, &query,
-                                                                &description)),
+  EXPECT_EQ(amdf_status_code(
+                amdf_xdna_umd_memory_describe_site(&query, &description)),
             AMDF_STATUS_CODE_UNSUPPORTED);
   EXPECT_EQ(std::memcmp(&description, &original, sizeof(description)), 0);
 }
@@ -310,7 +310,7 @@ TEST(LinuxXdnaMemoryProfileTest,
   EXPECT_EQ(profile.allocation.minimum_alignment, 4096u);
   EXPECT_EQ(profile.allocation.maximum_alignment, 4096u);
   EXPECT_EQ(profile.host_mapping.byte_offset_granularity, 1u);
-  ASSERT_EQ(profile.external_memory_support_count, 1u);
+  ASSERT_EQ(profile.external_memory_support_count, 2u);
   EXPECT_EQ(profile.external_memory_support[0].type,
             AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD);
   EXPECT_EQ(profile.external_memory_support[0].flags,
@@ -332,7 +332,7 @@ TEST(LinuxXdnaMemoryProfileTest,
             AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS);
   EXPECT_EQ(imported_profile.import.minimum_alignment, 1u);
   EXPECT_EQ(imported_profile.import.maximum_alignment, 4096u);
-  ASSERT_EQ(imported_profile.external_memory_support_count, 1u);
+  ASSERT_EQ(imported_profile.external_memory_support_count, 2u);
   EXPECT_EQ(imported_profile.external_memory_support[0].flags,
             AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_IMPORT |
                 AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_SOURCE_OFFSET |

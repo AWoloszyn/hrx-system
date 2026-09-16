@@ -194,14 +194,48 @@ static amdf_status_t amdf_windows_xdna_memory_make_resident(
   return status;
 }
 
+static amdf_memory_host_description_t amdf_xdna_umd_memory_describe_host(
+    const void* data, amdf_external_memory_type_t external_memory_type,
+    amdf_memory_flags_t flags) {
+  (void)external_memory_type;
+  (void)data;
+  (void)flags;
+  amdf_memory_host_description_t result = {0};
+  result.cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK;
+  result.cache_line_size = amdf_windows_host_cache_line_size();
+  result.flush = (amdf_cache_transition_t){
+      .kind = AMDF_CACHE_TRANSITION_KIND_RANGE,
+      .executor = AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT,
+      .host_operation = AMDF_HOST_CACHE_OPERATION_FLUSH,
+      .host_instruction = AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH,
+      .host_fence_after = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
+      .range_granularity = result.cache_line_size,
+  };
+  result.invalidate = (amdf_cache_transition_t){
+      .kind = AMDF_CACHE_TRANSITION_KIND_RANGE,
+      .executor = AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT,
+      .host_operation = AMDF_HOST_CACHE_OPERATION_INVALIDATE,
+      .host_instruction = AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH,
+      .host_fence_after = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
+      .range_granularity = result.cache_line_size,
+  };
+  return result;
+}
+
 amdf_status_t amdf_xdna_umd_device_query_memory_profile(
     amdf_xdna_umd_device_t* device, uint32_t memory_profile_ordinal,
     amdf_memory_native_profile_t* out_profile) {
   if (!amdf_kmt_api_supports_memory(device->kmt)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
   }
-  return amdf_windows_xdna_query_memory_profile(
+  const amdf_status_t status = amdf_windows_xdna_query_memory_profile(
       device->profile, memory_profile_ordinal, out_profile);
+  if (amdf_status_is_ok(status)) {
+    out_profile->visibility.describe_site = amdf_xdna_umd_memory_describe_site;
+    out_profile->visibility.describe_host = amdf_xdna_umd_memory_describe_host;
+    out_profile->visibility.data = device;
+  }
+  return status;
 }
 
 void amdf_xdna_umd_context_query_memory_profile(
@@ -253,6 +287,9 @@ void amdf_xdna_umd_context_query_memory_profile(
           },
       .address_kinds = UINT64_C(1) << AMDF_MEMORY_ADDRESS_XDNA_FIRMWARE,
   };
+  out_profile->visibility.describe_site = amdf_xdna_umd_memory_describe_site;
+  out_profile->visibility.describe_host = amdf_xdna_umd_memory_describe_host;
+  out_profile->visibility.data = context->device;
 }
 
 amdf_status_t amdf_xdna_umd_memory_prepare_private(
@@ -330,9 +367,8 @@ amdf_status_t amdf_xdna_umd_memory_export(
 }
 
 amdf_status_t amdf_xdna_umd_memory_describe_site(
-    amdf_xdna_umd_memory_t* memory, const amdf_memory_site_query_t* query,
+    const amdf_memory_site_query_t* query,
     amdf_memory_site_description_t* out_description) {
-  (void)memory;
   const amdf_queue_family_info_t* family = query->queue_family_info;
   if (family->command_type != AMDF_QUEUE_COMMAND_TYPE_XDNA ||
       family->format_version != AMDF_XDNA_QUEUE_FORMAT_VERSION_1 ||
@@ -340,10 +376,10 @@ amdf_status_t amdf_xdna_umd_memory_describe_site(
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
   amdf_memory_site_description_t description = {0};
-  if ((query->access_info->access & AMDF_MEMORY_ACCESS_READ) != 0) {
+  if ((query->access & AMDF_MEMORY_ACCESS_READ) != 0) {
     description.capabilities |= AMDF_MEMORY_SITE_CAPABILITY_READ;
   }
-  if ((query->access_info->access & AMDF_MEMORY_ACCESS_WRITE) != 0) {
+  if ((query->access & AMDF_MEMORY_ACCESS_WRITE) != 0) {
     description.capabilities |= AMDF_MEMORY_SITE_CAPABILITY_WRITE;
   }
   // Shim DMA accesses resident system backing without another device cache
@@ -440,24 +476,7 @@ amdf_status_t amdf_xdna_umd_memory_map(
   result.flags = capabilities->supported_access;
   result.pointer = mapping->pointer;
   result.byte_length = mapping->byte_length;
-  result.cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK;
-  result.cache_line_size = amdf_windows_host_cache_line_size();
-  result.flush = (amdf_cache_transition_t){
-      .kind = AMDF_CACHE_TRANSITION_KIND_RANGE,
-      .executor = AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT,
-      .host_operation = AMDF_HOST_CACHE_OPERATION_FLUSH,
-      .host_instruction = AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH,
-      .host_fence_after = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
-      .range_granularity = result.cache_line_size,
-  };
-  result.invalidate = (amdf_cache_transition_t){
-      .kind = AMDF_CACHE_TRANSITION_KIND_RANGE,
-      .executor = AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT,
-      .host_operation = AMDF_HOST_CACHE_OPERATION_INVALIDATE,
-      .host_instruction = AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH,
-      .host_fence_after = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
-      .range_granularity = result.cache_line_size,
-  };
+  result.visibility = amdf_xdna_umd_memory_describe_host(memory->device, 0, 0);
   *out_result = result;
   *out_mapping = mapping;
   return AMDF_STATUS_OK;

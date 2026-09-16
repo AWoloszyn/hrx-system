@@ -9,7 +9,7 @@
 
 #include "amdf/amdf.h"
 
-// Provider-local capabilities of one concrete attachment access site.
+// Provider-local capabilities of one memory access site.
 typedef uint64_t amdf_memory_site_capabilities_t;
 enum amdf_memory_site_capability_bits_e {
   // The exact queue family can read this attachment.
@@ -47,11 +47,25 @@ static inline bool amdf_memory_compatibility_domain_is_equal(
 
 // Provider-neutral input to one local memory-site description.
 typedef struct amdf_memory_site_query_t {
-  // Borrowed immutable facts of the selected device access.
-  const amdf_memory_access_info_t* access_info;
+  // Exact permissions established for the selected device access.
+  amdf_memory_access_t access;
+  // Access properties established by the native construction contract.
+  amdf_memory_flags_t flags;
   // Borrowed immutable properties of the exact local queue family.
   const amdf_queue_family_info_t* queue_family_info;
 } amdf_memory_site_query_t;
+
+// Host visibility policy independent of mapping addresses and native handles.
+typedef struct amdf_memory_host_description_t {
+  // Host cache behavior established for this view.
+  amdf_host_cacheability_t cacheability;
+  // Host cache-line length in bytes, or zero when not applicable.
+  uint32_t cache_line_size;
+  // Available flush operation before considering the exact peer's coherence.
+  amdf_cache_transition_t flush;
+  // Available invalidate operation before considering peer coherence.
+  amdf_cache_transition_t invalidate;
+} amdf_memory_host_description_t;
 
 // Exact local facts composed by the common pair query.
 typedef struct amdf_memory_site_description_t {
@@ -72,5 +86,28 @@ typedef struct amdf_memory_site_description_t {
   // Fixed local acquire cost in nanoseconds when reported as known.
   uint64_t acquire_fixed_cost_nanoseconds;
 } amdf_memory_site_description_t;
+
+#ifdef __cplusplus
+extern "C" {
+#endif  // __cplusplus
+
+// Describes a host view against one peer's coherence contract. Native API
+// publication and unqualified operations cannot become no-ops through
+// coherence.
+amdf_memory_site_description_t amdf_memory_describe_host_site(
+    const amdf_memory_host_description_t* host, amdf_memory_map_flags_t access,
+    bool coherent);
+
+// Composes two local descriptions of already-established shared backing reach.
+// The caller validates output storage; failure leaves it unchanged. Unsupported
+// permissions or transitions are ordinary capability misses, not no-ops.
+amdf_status_t amdf_memory_pair_compose(
+    const amdf_memory_site_description_t* producer,
+    const amdf_memory_site_description_t* consumer,
+    amdf_memory_pair_info_t* out_info);
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif  // __cplusplus
 
 #endif  // AMDF_SRC_MEMORY_PAIR_H_

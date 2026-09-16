@@ -9,9 +9,9 @@
 int main(void) {
   const amdf_api_t* api = 0;
   const amdf_status_t status =
-      amdf_query_api(AMDF_ABI_VERSION_1, AMDF_ABI_VERSION_LATEST, &api);
+      amdf_query_api(AMDF_ABI_VERSION_LATEST, AMDF_ABI_VERSION_LATEST, &api);
   return amdf_status_is_ok(status) && api != 0 &&
-                 api->abi_version == AMDF_ABI_VERSION_1
+                 api->abi_version == AMDF_ABI_VERSION_LATEST
              ? 0
              : 1;
 }

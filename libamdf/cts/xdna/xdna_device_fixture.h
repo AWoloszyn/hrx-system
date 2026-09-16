@@ -21,7 +21,7 @@ class XdnaDeviceFixture : public ::testing::Test {
  protected:
   void SetUp() override {
     ASSERT_TRUE(amdf_status_is_ok(amdf_cts_provider_query_api()(
-        AMDF_ABI_VERSION_1, AMDF_ABI_VERSION_LATEST, &api_)));
+        AMDF_ABI_VERSION_LATEST, AMDF_ABI_VERSION_LATEST, &api_)));
     ASSERT_NE(api_, nullptr);
 
     const void* extension_api = nullptr;

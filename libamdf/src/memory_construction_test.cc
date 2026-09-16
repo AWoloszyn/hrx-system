@@ -74,6 +74,8 @@ class MemoryGroupTest : public MemoryTest,
         AMDF_MEMORY_PROFILE_ROLE_REGISTER | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP;
     device->profile.registration = device->profile.allocation;
     device->profile.registration.registered_host_pointer_alignment = 1;
+    device->profile.registration.registered_host_cacheability =
+        AMDF_HOST_CACHEABILITY_WRITE_BACK;
     device->profile.external_memory_support_count = 0;
   }
 
@@ -83,6 +85,7 @@ class MemoryGroupTest : public MemoryTest,
     if (GetParam() != 0) {
       info.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
       info.registered_host_pointer = pages_.data();
+      info.registered_host_cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK;
     }
     return info;
   }
@@ -561,6 +564,8 @@ TEST_F(MemoryConstructionTest,
                                AMDF_MEMORY_PROFILE_ROLE_HOST_MAP;
         device.profile.registration = device.profile.allocation;
         device.profile.registration.registered_host_pointer_alignment = 1;
+        device.profile.registration.registered_host_cacheability =
+            AMDF_HOST_CACHEABILITY_WRITE_BACK;
         device.profile.allocation = {};
         device.profile.import = {};
         device.profile.external_memory_support_count = 0;
@@ -584,6 +589,7 @@ TEST_F(MemoryConstructionTest,
       info.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
       info.byte_length = 4099;
       info.registered_host_pointer = pages.data();
+      info.registered_host_cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK;
       info.access_count = accesses.size();
       info.accesses = accesses.data();
       auto* const sentinel = reinterpret_cast<amdf_memory_t*>(uintptr_t{1});

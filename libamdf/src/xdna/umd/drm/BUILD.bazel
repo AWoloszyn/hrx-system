@@ -101,6 +101,7 @@ amdf_cc_library(
     target_compatible_with = DRM_COMPATIBILITY,
     deps = [
         "//libamdf/src:memory_profile",
+        "//libamdf/src/platform/linux:dma_buf",
         "//libamdf/src/xdna:device_profile",
     ],
 )

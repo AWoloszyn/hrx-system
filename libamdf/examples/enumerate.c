@@ -77,7 +77,7 @@ static const char* amdf_example_queue_publication_name(
 int main(void) {
   const amdf_api_t* api = NULL;
   amdf_status_t status =
-      amdf_query_api(AMDF_ABI_VERSION_1, AMDF_ABI_VERSION_LATEST, &api);
+      amdf_query_api(AMDF_ABI_VERSION_LATEST, AMDF_ABI_VERSION_LATEST, &api);
   if (!amdf_status_is_ok(status)) {
     amdf_example_report_status("amdf_query_api", status);
     return 1;

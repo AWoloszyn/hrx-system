@@ -71,6 +71,7 @@ bool amdf_gpu_kfd_sdma_queue_plan(const amdf_gpu_kfd_topology_t* topology,
               .read_index_byte_offset = 0,
               .write_index_byte_offset = cache_line_size,
               .index_bit_count = 64,
+              .read_index_mask = UINT64_MAX,
           },
       .retirement =
           {

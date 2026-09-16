@@ -34,11 +34,11 @@ TEST(LinuxGpuMemoryPairTest, DescribesExactLocalQueueSites) {
       .cache_transition_kinds = AMDF_CACHE_TRANSITION_KINDS_GLOBAL,
   };
   const amdf_memory_site_query_t query = {
-      .access_info = &access_info,
+      .access = access_info.access,
       .queue_family_info = &family,
   };
   amdf_memory_site_description_t description = {};
-  ASSERT_EQ(amdf_gpu_umd_memory_describe_site(nullptr, &query, &description),
+  ASSERT_EQ(amdf_gpu_umd_memory_describe_site(&query, &description),
             AMDF_STATUS_OK);
   EXPECT_EQ(description.capabilities, AMDF_MEMORY_SITE_CAPABILITY_READ |
                                           AMDF_MEMORY_SITE_CAPABILITY_WRITE);
@@ -53,7 +53,7 @@ TEST(LinuxGpuMemoryPairTest, DescribesExactLocalQueueSites) {
   EXPECT_EQ(description.atomic_reach.scope_64, AMDF_ATOMIC_SCOPE_NONE);
 
   family.command_type = AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA;
-  ASSERT_EQ(amdf_gpu_umd_memory_describe_site(nullptr, &query, &description),
+  ASSERT_EQ(amdf_gpu_umd_memory_describe_site(&query, &description),
             AMDF_STATUS_OK);
   EXPECT_EQ(description.capabilities, AMDF_MEMORY_SITE_CAPABILITY_READ |
                                           AMDF_MEMORY_SITE_CAPABILITY_WRITE);
@@ -67,9 +67,9 @@ TEST(LinuxGpuMemoryPairTest, DescribesExactLocalQueueSites) {
   family.command_type = AMDF_QUEUE_COMMAND_TYPE_GPU_AQL;
   std::memset(&description, 0xA5, sizeof(description));
   const amdf_memory_site_description_t original = description;
-  EXPECT_EQ(amdf_status_code(amdf_gpu_umd_memory_describe_site(nullptr, &query,
-                                                               &description)),
-            AMDF_STATUS_CODE_UNSUPPORTED);
+  EXPECT_EQ(
+      amdf_status_code(amdf_gpu_umd_memory_describe_site(&query, &description)),
+      AMDF_STATUS_CODE_UNSUPPORTED);
   EXPECT_EQ(std::memcmp(&description, &original, sizeof(description)), 0);
 }
 
@@ -108,7 +108,7 @@ TEST(LinuxGpuMemoryProfileTest, InstanceLifetimeExposesOwnedSystemMemory) {
   EXPECT_EQ(profile.host_mapping.byte_length_granularity, 1u);
   EXPECT_EQ(profile.host_mapping.supported_access,
             AMDF_MEMORY_MAP_FLAG_READ | AMDF_MEMORY_MAP_FLAG_WRITE);
-  ASSERT_EQ(profile.external_memory_support_count, 1u);
+  ASSERT_EQ(profile.external_memory_support_count, 2u);
   EXPECT_EQ(profile.external_memory_support[0].type,
             AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD);
   EXPECT_EQ(profile.external_memory_support[0].flags,

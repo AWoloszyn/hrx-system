@@ -6,6 +6,8 @@
 
 #include "libamdf/src/xdna/umd/drm/memory_profile.h"
 
+#include "libamdf/src/platform/linux/dma_buf.h"
+
 amdf_status_t amdf_linux_xdna_query_memory_profile(
     const amdf_xdna_device_profile_t* target, size_t page_size,
     uint32_t memory_profile_ordinal,
@@ -61,7 +63,7 @@ amdf_status_t amdf_linux_xdna_query_memory_profile(
         .maximum_alignment = page_size,
         .native_byte_length_granularity = page_size,
     };
-    profile.external_memory_support_count = 1;
+    profile.external_memory_support_count = 2;
     profile.external_memory_support[0] = (amdf_external_memory_support_t){
         .type = AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD,
         .flags = AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_EXPORT |
@@ -70,6 +72,14 @@ amdf_status_t amdf_linux_xdna_query_memory_profile(
         .source_offset_alignment = 1,
         .byte_length_alignment = 1,
     };
+    profile.external_memory_support[1] = profile.external_memory_support[0];
+    profile.external_memory_support[1].type =
+        AMDF_EXTERNAL_MEMORY_TYPE_OPAQUE_FD;
+    profile.external_memory_support[1].provenance =
+        (amdf_external_memory_provenance_t)
+            AMDF_LINUX_DMA_BUF_DIRECT_HOST_PROVENANCE;
+    profile.external_memory_support[1].flags &=
+        ~AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_FOREIGN_API;
   } else if (memory_profile_ordinal == 1) {
     profile.memory_class = AMDF_MEMORY_CLASS_SYSTEM;
     profile.roles =
@@ -81,7 +91,7 @@ amdf_status_t amdf_linux_xdna_query_memory_profile(
         .maximum_alignment = page_size,
         .native_byte_length_granularity = page_size,
     };
-    profile.external_memory_support_count = 1;
+    profile.external_memory_support_count = 2;
     profile.external_memory_support[0] = (amdf_external_memory_support_t){
         .type = AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD,
         .flags = AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_IMPORT |
@@ -91,6 +101,14 @@ amdf_status_t amdf_linux_xdna_query_memory_profile(
         .source_offset_alignment = 1,
         .byte_length_alignment = 1,
     };
+    profile.external_memory_support[1] = profile.external_memory_support[0];
+    profile.external_memory_support[1].type =
+        AMDF_EXTERNAL_MEMORY_TYPE_OPAQUE_FD;
+    profile.external_memory_support[1].provenance =
+        (amdf_external_memory_provenance_t)
+            AMDF_LINUX_DMA_BUF_DIRECT_HOST_PROVENANCE;
+    profile.external_memory_support[1].flags &=
+        ~AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_FOREIGN_API;
   } else {
     profile.memory_class = AMDF_MEMORY_CLASS_SYSTEM;
     profile.roles =
@@ -99,6 +117,7 @@ amdf_status_t amdf_linux_xdna_query_memory_profile(
         .maximum_byte_length = maximum_byte_length,
         .byte_length_granularity = 1,
         .registered_host_pointer_alignment = 1,
+        .registered_host_cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK,
         .minimum_alignment = 1,
         .maximum_alignment = page_size,
         .native_byte_length_granularity = page_size,

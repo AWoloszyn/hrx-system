@@ -277,7 +277,13 @@ class KfdUserQueueTest : public ::testing::Test {
             64);
         const uint64_t published_index =
             amdf_atomic_uint64_load_acquire(write_index);
-        amdf_atomic_uint64_store_release(read_index, published_index);
+        const uint64_t read_index_mask =
+            native_state_.observed_create.queue_type ==
+                    KFD_IOC_QUEUE_TYPE_COMPUTE
+                ? 1023
+                : UINT64_MAX;
+        amdf_atomic_uint64_store_release(read_index,
+                                         published_index & read_index_mask);
       }
       native_state_.queue_destroy_status = AMDF_STATUS_OK;
       native_state_.queue_identifier_consumed = true;
@@ -671,6 +677,59 @@ TEST_F(KfdUserQueueTest, SamplesProgressAndLatchesTerminalFailures) {
   EXPECT_EQ(status.terminal_status,
             amdf_make_status(AMDF_STATUS_DOMAIN_FIRMWARE,
                              static_cast<uint32_t>(queue_error)));
+}
+
+TEST_F(KfdUserQueueTest, ExpandsPm4ProgressAcrossUnobservedRingWraps) {
+  CreateQueue();
+  MapQueue();
+  const amdf_wait_deadline_t deadline = {0, 0};
+  // Native RPTR is ring-relative even if no status query observed earlier
+  // laps. The caller's publication window always leaves at least one slot.
+  for (uint64_t published : {UINT64_C(1208), UINT64_C(1048576) + 1208}) {
+    SCOPED_TRACE(published);
+    amdf_atomic_uint64_store_release(WriteIndex(), published);
+    for (uint64_t pending :
+         {UINT64_C(1023), UINT64_C(184), UINT64_C(8), UINT64_C(0)}) {
+      SCOPED_TRACE(pending);
+      const uint64_t consumed = published - pending;
+      amdf_atomic_uint64_store_release(ReadIndex(), consumed & 1023);
+      amdf_user_queue_status_t status = {};
+      ASSERT_EQ(amdf_gpu_umd_user_queue_query_status(queue_, &status),
+                AMDF_STATUS_OK);
+      EXPECT_EQ(status.producer_index, published);
+      EXPECT_EQ(status.consumed_index, consumed);
+      EXPECT_EQ(status.terminal_status, AMDF_STATUS_OK);
+      EXPECT_EQ(
+          amdf_gpu_umd_user_queue_wait_consumed(queue_, consumed, &deadline),
+          AMDF_STATUS_OK);
+      if (pending != 0) {
+        EXPECT_EQ(amdf_status_code(amdf_gpu_umd_user_queue_wait_consumed(
+                      queue_, published, &deadline)),
+                  AMDF_STATUS_CODE_DEADLINE_EXCEEDED);
+        EXPECT_EQ(amdf_status_code(amdf_gpu_umd_user_queue_destroy(queue_)),
+                  AMDF_STATUS_CODE_BUSY);
+      }
+    }
+  }
+  ASSERT_EQ(amdf_gpu_umd_user_queue_mapping_destroy(mapping_), AMDF_STATUS_OK);
+  mapping_ = nullptr;
+  ASSERT_EQ(amdf_gpu_umd_user_queue_destroy(queue_), AMDF_STATUS_OK);
+  queue_ = nullptr;
+  EXPECT_EQ(native_state_.queue_destroy_count, 1);
+  EXPECT_EQ(native_state_.LiveBufferCount(), 0u);
+}
+
+TEST_F(KfdUserQueueTest, PreservesSdmaMonotonicProgressBeyondRingCapacity) {
+  CreateQueue(AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA);
+  MapQueue();
+  amdf_atomic_uint64_store_release(WriteIndex(), 12328);
+  amdf_atomic_uint64_store_release(ReadIndex(), 8240);
+  amdf_user_queue_status_t status = {};
+  ASSERT_EQ(amdf_gpu_umd_user_queue_query_status(queue_, &status),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(status.producer_index, 12328u);
+  EXPECT_EQ(status.consumed_index, 8240u);
+  EXPECT_EQ(status.terminal_status, AMDF_STATUS_OK);
 }
 
 TEST_F(KfdUserQueueTest, ClassifiesDeviceFailure) {

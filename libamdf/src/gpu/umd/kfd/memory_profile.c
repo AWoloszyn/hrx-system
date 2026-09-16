@@ -6,6 +6,8 @@
 
 #include "libamdf/src/gpu/umd/kfd/memory_profile.h"
 
+#include "libamdf/src/platform/linux/dma_buf.h"
+
 // KFD maps a fixed consumer set into the backing owner's native allocation.
 // Local placement is directional: the consumer must reach the selected source,
 // regardless of whether it offers a local allocation scope of its own.
@@ -42,6 +44,7 @@ static bool amdf_gpu_kfd_query_group_access(
   profile.device_address = candidate->device_address;
   profile.allocation = candidate->allocation;
   profile.construction = candidate->construction;
+  profile.visibility = candidate->visibility;
   // The backing determines VRAM cache semantics. In particular, a consumer's
   // GTT profile must not add HOST_COHERENT to an access of local memory.
   *out_profile = profile;
@@ -104,6 +107,7 @@ amdf_status_t amdf_gpu_kfd_query_memory_profile(
       .maximum_byte_length = maximum_byte_length,
       .byte_length_granularity = 1,
       .registered_host_pointer_alignment = 1,
+      .registered_host_cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK,
       .minimum_alignment = 1,
       .maximum_alignment = maximum_alignment,
       .native_byte_length_granularity = page_size,
@@ -141,7 +145,7 @@ amdf_status_t amdf_gpu_kfd_query_memory_profile(
     profile.device_address = page_address;
     profile.allocation = allocation;
     profile.host_mapping = host_mapping;
-    profile.external_memory_support_count = 1;
+    profile.external_memory_support_count = 2;
     profile.external_memory_support[0] = (amdf_external_memory_support_t){
         .type = AMDF_EXTERNAL_MEMORY_TYPE_DMA_BUF_FD,
         .flags = AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_EXPORT |
@@ -150,6 +154,14 @@ amdf_status_t amdf_gpu_kfd_query_memory_profile(
         .source_offset_alignment = 1,
         .byte_length_alignment = 1,
     };
+    profile.external_memory_support[1] = profile.external_memory_support[0];
+    profile.external_memory_support[1].type =
+        AMDF_EXTERNAL_MEMORY_TYPE_OPAQUE_FD;
+    profile.external_memory_support[1].provenance =
+        (amdf_external_memory_provenance_t)
+            AMDF_LINUX_DMA_BUF_DIRECT_HOST_PROVENANCE;
+    profile.external_memory_support[1].flags &=
+        ~AMDF_EXTERNAL_MEMORY_SUPPORT_FLAG_FOREIGN_API;
   } else if ((topology->memory_features &
               AMDF_GPU_DEVICE_FEATURE_LOCAL_MEMORY) != 0 &&
              memory_profile_ordinal == ordinal++) {

@@ -317,6 +317,7 @@ iree_cc_library(
     ::topology
     amdf::headers
     libamdf::src::memory_profile
+    libamdf::src::platform::linux::dma_buf
   PUBLIC
 )
 endif()

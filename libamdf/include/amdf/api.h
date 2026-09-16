@@ -508,6 +508,42 @@ typedef struct amdf_api_t {
   amdf_status_t(AMDF_CALL* memory_query_address)(
       amdf_memory_t* memory, uint32_t access_ordinal,
       amdf_memory_address_kind_t kind, uint64_t* out_address);
+
+  /// Qualifies visibility before allocating backing or creating host views.
+  ///
+  /// Success supplies sufficient release/acquire recipes for every successful
+  /// construction with the same scope, profile, backing requirements, complete
+  /// live consumer set and registration cache class. Host sites require
+  /// HOST_VISIBLE in required_flags. Views must provide the declared
+  /// permissions. Allocation size, addresses and host-view ranges may vary
+  /// within the profile; callers still satisfy each transition's range and
+  /// execution requirements. This describes access to one shared backing, not
+  /// transfers between distinct allocations. Ordering and completion remain
+  /// separate caller obligations.
+  ///
+  /// Devices and the scope remain live while the result is used. No backing,
+  /// mapping, handle or plan is retained. The exact queue family owns QUEUE
+  /// operations; HOST_DIRECT uses each actual view's pointer and range, and
+  /// HOST_API uses its actual host_mapping handle. A queue answer does not
+  /// qualify PROGRAM execution. Unknown native/exporter protocols, unsupported
+  /// permissions and unqualified sites return UNSUPPORTED, never a no-op.
+  /// Foreign import host visibility may be unqualified even when device access
+  /// and memory_map are available. Imports are not admitted to a host
+  /// visibility contract by borrowing an allocation profile's answer.
+  ///
+  /// Import qualification additionally fixes the exact external transport type
+  /// and provenance supplied at construction. Opaque payloads preserve their
+  /// exporter-provided interpretation; changing the tag does not qualify a
+  /// foreign payload.
+  ///
+  /// This thread-safe cold metadata query uses the same native selection and
+  /// visibility policy as construction and concrete pair queries. It performs
+  /// no native operation, mapping, synchronization or device activation.
+  /// Temporary host storage scales with the live consumer set. Success is not a
+  /// resource reservation. Failure leaves out_info unchanged.
+  amdf_status_t(AMDF_CALL* memory_scope_query_pair_info)(
+      amdf_memory_scope_t* scope, const amdf_memory_profile_pair_query_t* query,
+      amdf_memory_pair_info_t* out_info);
 } amdf_api_t;
 
 /// Function type used to acquire the immutable API table.

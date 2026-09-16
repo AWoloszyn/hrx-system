@@ -19,7 +19,7 @@ namespace {
 const amdf_api_t* QueryApi() {
   const amdf_api_t* api = nullptr;
   EXPECT_TRUE(amdf_status_is_ok(amdf_cts_provider_query_api()(
-      AMDF_ABI_VERSION_1, AMDF_ABI_VERSION_LATEST, &api)));
+      AMDF_ABI_VERSION_LATEST, AMDF_ABI_VERSION_LATEST, &api)));
   return api;
 }
 
