@@ -279,11 +279,6 @@ constexpr double kMinimumHoldFraction = 1.0 / 4.0;
 // is what catches ticks converted on a rate nothing advertised.
 constexpr double kMaximumHoldFactor = 4.0;
 
-// Smallest factor by which a long replay's reported interval must exceed a
-// short replay's. Below the ratio of the holds for noise, well above 1 to catch
-// a replay reporting the ticks of an earlier one.
-constexpr float kMinimumReplayRatio = 3.0f;
-
 class HipEventTest : public ::testing::Test {
  protected:
   void SetUp() override {
@@ -597,28 +592,6 @@ class HipEventTest : public ::testing::Test {
     const double held_ms = MillisecondsSince(held_from);
     callbacks->ReleaseGate();
     return held_ms;
-  }
-
-  // Replays |graph_exec| on |stream|, holds its gate for |hold_ms|, and reports
-  // what the event pair measured across the hold together with how long the
-  // gate was actually held.
-  void ReplayHoldingTheGateAndMeasure(hipGraphExec_t graph_exec,
-                                      hipStream_t stream,
-                                      ScopedReplayGate* gate, double hold_ms,
-                                      hipEvent_t start, hipEvent_t stop,
-                                      float* out_reported_ms,
-                                      double* out_held_ms) {
-    ASSERT_EQ(hipSuccess, hip_.graph_launch(graph_exec, stream));
-    const int generation = gate->AddLaunch();
-    gate->WaitUntilParked(generation);
-    const auto held_from = std::chrono::steady_clock::now();
-    std::this_thread::sleep_for(
-        std::chrono::duration<double, std::milli>(hold_ms));
-    *out_held_ms = MillisecondsSince(held_from);
-    gate->Release(generation);
-    ASSERT_EQ(hipSuccess, hip_.event_synchronize(stop));
-    ASSERT_EQ(hipSuccess,
-              hip_.event_elapsed_time(out_reported_ms, start, stop));
   }
 
   // Asserts |reported_ms| is the device interval a gate held open for
@@ -1511,16 +1484,15 @@ TEST_F(HipEventTest, ElapsedTimeMeasuresTheDeviceIntervalBetweenGraphRecords) {
       << " ms reported, so this test cannot separate the two quantities";
 }
 
-// Every replay of one executable has to capture new ticks. Three replays of one
-// graph over one event pair, holding long, short and long, report three
-// intervals on the same clock, so comparing them to each other cancels the tick
-// rate. A long replay either side of the short one is what separates re-timing
-// from a second replay happening to read something plausible: a tick written
-// once, or a slot recycled between a record and the read of it, collapses the
-// ratio.
+// Every replay of one executable has to capture new ticks. One reference event
+// recorded before the graph makes each replay's start and stop comparable to
+// the previous replay. Stream ordering requires both timestamps to advance,
+// regardless of how host scheduling stretches the requested gate holds.
 TEST_F(HipEventTest, GraphReplayRetimesTheEventsOnEveryLaunch) {
   hipStream_t stream = CreateStream();
   ASSERT_NE(nullptr, stream);
+  hipEvent_t reference = CreateEvent();
+  ASSERT_NE(nullptr, reference);
   hipEvent_t start = CreateEvent();
   ASSERT_NE(nullptr, start);
   hipEvent_t stop = CreateEvent();
@@ -1532,35 +1504,41 @@ TEST_F(HipEventTest, GraphReplayRetimesTheEventsOnEveryLaunch) {
       start, stop, &ReplayGateHostFunction, &gate);
   ASSERT_NE(nullptr, graph_exec);
 
-  float first_long_ms = -1.0f;
-  double first_long_held_ms = 0.0;
-  ASSERT_NO_FATAL_FAILURE(ReplayHoldingTheGateAndMeasure(
-      graph_exec, stream, &replays, kGateHoldMs, start, stop, &first_long_ms,
-      &first_long_held_ms));
-  float short_ms = -1.0f;
-  double short_held_ms = 0.0;
-  ASSERT_NO_FATAL_FAILURE(ReplayHoldingTheGateAndMeasure(
-      graph_exec, stream, &replays, kShortGateHoldMs, start, stop, &short_ms,
-      &short_held_ms));
-  float second_long_ms = -1.0f;
-  double second_long_held_ms = 0.0;
-  ASSERT_NO_FATAL_FAILURE(ReplayHoldingTheGateAndMeasure(
-      graph_exec, stream, &replays, kGateHoldMs, start, stop, &second_long_ms,
-      &second_long_held_ms));
+  ASSERT_EQ(hipSuccess, hip_.event_record(reference, stream));
+  ASSERT_EQ(hipSuccess, hip_.event_synchronize(reference));
+  float previous_start_ms = -1.0f;
+  float previous_stop_ms = 0.0f;
+  for (double hold_ms : {kGateHoldMs, kShortGateHoldMs, kGateHoldMs}) {
+    const auto replay_from = std::chrono::steady_clock::now();
+    ASSERT_EQ(hipSuccess, hip_.graph_launch(graph_exec, stream));
+    const int generation = replays.AddLaunch();
+    SCOPED_TRACE(generation);
+    replays.WaitUntilParked(generation);
+    const auto held_from = std::chrono::steady_clock::now();
+    std::this_thread::sleep_for(
+        std::chrono::duration<double, std::milli>(hold_ms));
+    const double held_ms = MillisecondsSince(held_from);
+    replays.Release(generation);
+    ASSERT_EQ(hipSuccess, hip_.event_synchronize(stop));
+    const double replay_ms = MillisecondsSince(replay_from);
 
-  ASSERT_NO_FATAL_FAILURE(ExpectMeasuredTheHold(
-      first_long_ms, first_long_held_ms, "first long replay"));
-  ASSERT_NO_FATAL_FAILURE(ExpectMeasuredTheHold(
-      second_long_ms, second_long_held_ms, "second long replay"));
-  EXPECT_GT(first_long_ms, short_ms * kMinimumReplayRatio)
-      << "the first long replay reported " << first_long_ms
-      << " ms against the short replay's " << short_ms
-      << " ms for a tenth of the hold, so the replay did not re-time the "
-         "events";
-  EXPECT_GT(second_long_ms, short_ms * kMinimumReplayRatio)
-      << "the second long replay reported " << second_long_ms
-      << " ms, close to the preceding short replay's " << short_ms
-      << " ms, so the replay reported the ticks of an earlier one";
+    // The device interval contains the observed hold and is contained by the
+    // complete host launch/wait window, including any scheduling delays.
+    float reported_ms = -1.0f;
+    ASSERT_EQ(hipSuccess, hip_.event_elapsed_time(&reported_ms, start, stop));
+    EXPECT_GT(reported_ms, held_ms * kMinimumHoldFraction);
+    EXPECT_LT(reported_ms, replay_ms * kMaximumHoldFactor);
+
+    float start_ms = -1.0f;
+    float stop_ms = -1.0f;
+    ASSERT_EQ(hipSuccess, hip_.event_elapsed_time(&start_ms, reference, start));
+    ASSERT_EQ(hipSuccess, hip_.event_elapsed_time(&stop_ms, reference, stop));
+    EXPECT_GE(start_ms, previous_stop_ms);
+    EXPECT_GT(start_ms, previous_start_ms);
+    EXPECT_GT(stop_ms, previous_stop_ms);
+    previous_start_ms = start_ms;
+    previous_stop_ms = stop_ms;
+  }
 }
 
 // A submitted record draws its tick slot from the recording stream's context
