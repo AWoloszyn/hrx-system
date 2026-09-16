@@ -17,6 +17,7 @@ loom_check_test_suite(
     srcs = [
         "dominance.loom-test",
         "isolation.loom-test",
+        "type_visibility.loom-test",
         "unreachable_definitions.loom-test",
     ],
 )

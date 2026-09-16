@@ -15,6 +15,7 @@
 #include "loom/verify/verify_ownership.h"
 #include "loom/verify/verify_state.h"
 #include "loom/verify/verify_structure.h"
+#include "loom/verify/verify_value_types.h"
 
 // Static structural contract for one op-owned region traversal.
 typedef struct loom_verify_region_contract_t {
@@ -324,9 +325,8 @@ static iree_status_t loom_verify_region(
           unreachable_definitions.block_offsets[b + 1], /*visible=*/false);
     }
     loom_block_t* block = loom_region_block(region, b);
-    // Define block arguments, then validate any SSA encoding
-    // references in their types (encoding values must be visible
-    // from the enclosing scope).
+    // Define all block arguments before checking references in their types so
+    // dependent types can name any argument in this block.
     for (uint16_t a = 0; iree_status_is_ok(status) && a < block->arg_count;
          ++a) {
       status = loom_verify_define_value(state, loom_block_arg_id(block, a));
@@ -340,8 +340,8 @@ static iree_status_t loom_verify_region(
       status = loom_verify_pending_diagnostic_status(state);
     }
     if (iree_status_is_ok(status) && state->type_summary.may_reference_values) {
-      loom_verify_block_arg_encoding_refs(state, block,
-                                          contract ? contract->op : NULL);
+      loom_verify_block_arg_type_refs(state, block,
+                                      contract ? contract->op : NULL);
       status = loom_verify_pending_diagnostic_status(state);
     }
     const loom_op_t* terminator_op = NULL;
@@ -506,12 +506,11 @@ IREE_ATTRIBUTE_ALWAYS_INLINE static inline iree_status_t loom_verify_op(
   loom_verify_operand_dicts(state, op, vtable);
   IREE_RETURN_IF_ERROR(loom_verify_pending_diagnostic_status(state));
 
-  // SSA encoding references embedded in operand/result types must point to
-  // valid LOOM_TYPE_ENCODING values. Ordinary references must be in scope;
-  // result co-references and global declaration placeholders have explicit
-  // rules in loom_verify_encoding_ref.
+  // References embedded in defined types must be visible in this scope.
+  // Co-results and global declaration placeholders have explicit exceptions;
+  // direct encoding attachments also retain their range and type checks.
   if (state->type_summary.may_reference_values) {
-    loom_verify_encoding_refs(state, op, vtable);
+    loom_verify_value_type_refs(state, op, vtable);
     IREE_RETURN_IF_ERROR(loom_verify_pending_diagnostic_status(state));
   }
 

@@ -21,6 +21,7 @@ loom_cc_library(
         "verify_ownership.c",
         "verify_state.c",
         "verify_structure.c",
+        "verify_value_types.c",
     ],
     hdrs = [
         "verify.h",
@@ -29,6 +30,7 @@ loom_cc_library(
         "verify_ownership.h",
         "verify_state.h",
         "verify_structure.h",
+        "verify_value_types.h",
     ],
     deps = [
         "//loom/src/loom/analysis:consumption",
