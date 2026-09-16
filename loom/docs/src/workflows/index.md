@@ -109,4 +109,4 @@ inspection.
 | Describe an emitted artifact | [Compile artifacts](compile-artifacts.md#emit-an-artifact-manifest) |
 | Read one bounded report view | [Read compile reports](compile-reports.md#show-one-report) |
 | Compare compiler evidence | [Read compile reports](compile-reports.md#diff-one-controlled-change) |
-| Get target-owned experiments | [Read compile reports](compile-reports.md#ask-the-target-for-experiments) |
+| Choose a source or target experiment | [Read compile reports](compile-reports.md#choose-an-experiment) |
