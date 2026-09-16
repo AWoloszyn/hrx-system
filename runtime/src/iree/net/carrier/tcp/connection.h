@@ -57,6 +57,13 @@ iree_net_tcp_connection_options_default(void) {
   return options;
 }
 
+// Validates TCP connection options without creating a connection.
+//
+// Factories use this to reject invalid persistent configuration before any
+// asynchronous connect or accept operation is submitted.
+IREE_API_EXPORT iree_status_t iree_net_tcp_connection_options_validate(
+    const iree_net_tcp_connection_options_t* options);
+
 // Creates a published connection over a connected TCP socket.
 //
 // |proactor| must own |socket| and the registered region backing

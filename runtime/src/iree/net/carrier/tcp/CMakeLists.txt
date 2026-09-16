@@ -45,6 +45,23 @@ iree_cc_library(
   PUBLIC
 )
 
+iree_cc_library(
+  NAME
+    factory
+  HDRS
+    "factory.h"
+  SRCS
+    "factory.c"
+  DEPS
+    ::connection
+    iree::async
+    iree::base
+    iree::base::core_headers
+    iree::base::threading
+    iree::net::transport_factory
+  PUBLIC
+)
+
 iree_cc_test(
   NAME
     carrier_test
@@ -72,6 +89,22 @@ iree_cc_test(
     iree::base
     iree::net::connection
     iree::net::message_endpoint
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+
+iree_cc_test(
+  NAME
+    factory_test
+  SRCS
+    "factory_test.cc"
+  DEPS
+    ::factory
+    iree::async
+    iree::async::platform
+    iree::base
+    iree::net::connection
+    iree::net::transport_factory
     iree::testing::gtest
     iree::testing::gtest_main
 )

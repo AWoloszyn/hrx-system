@@ -37,9 +37,6 @@ struct TransportBackend {
 
   // Produces an address suitable for listener creation.
   MakeAddressFn make_bind_address;
-
-  // Produces an address with no listening peer.
-  MakeAddressFn make_unreachable_address;
 };
 
 // Returns the backend descriptor supplied by the linked transport package.

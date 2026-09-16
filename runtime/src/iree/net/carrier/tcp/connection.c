@@ -1342,21 +1342,13 @@ static const iree_net_connection_vtable_t iree_net_tcp_connection_vtable = {
 // Public API
 //===----------------------------------------------------------------------===//
 
-iree_status_t iree_net_tcp_connection_create(
-    iree_async_proactor_t* proactor, iree_async_socket_t* socket,
-    iree_async_buffer_pool_t* receive_pool,
+static iree_status_t iree_net_tcp_connection_options_validate_impl(
     const iree_net_tcp_connection_options_t* options,
-    iree_allocator_t host_allocator, iree_net_connection_t** out_connection) {
-  IREE_ASSERT_ARGUMENT(out_connection);
-  *out_connection = NULL;
-  if (!proactor || !socket || !receive_pool) {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "proactor, connected socket, and receive pool are required");
+    iree_host_size_t* out_pending_frame_count) {
+  if (!options) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "TCP connection options are required");
   }
-  iree_net_tcp_connection_options_t default_options =
-      iree_net_tcp_connection_options_default();
-  if (!options) options = &default_options;
   if (options->max_endpoint_count == 0 ||
       options->max_endpoint_count > UINT16_MAX) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
@@ -1390,6 +1382,36 @@ iree_status_t iree_net_tcp_connection_create(
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                             "TCP pending-frame record count exceeds 32 bits");
   }
+  if (out_pending_frame_count) {
+    *out_pending_frame_count = pending_frame_count;
+  }
+  return iree_ok_status();
+}
+
+iree_status_t iree_net_tcp_connection_options_validate(
+    const iree_net_tcp_connection_options_t* options) {
+  return iree_net_tcp_connection_options_validate_impl(
+      options, /*out_pending_frame_count=*/NULL);
+}
+
+iree_status_t iree_net_tcp_connection_create(
+    iree_async_proactor_t* proactor, iree_async_socket_t* socket,
+    iree_async_buffer_pool_t* receive_pool,
+    const iree_net_tcp_connection_options_t* options,
+    iree_allocator_t host_allocator, iree_net_connection_t** out_connection) {
+  IREE_ASSERT_ARGUMENT(out_connection);
+  *out_connection = NULL;
+  if (!proactor || !socket || !receive_pool) {
+    return iree_make_status(
+        IREE_STATUS_INVALID_ARGUMENT,
+        "proactor, connected socket, and receive pool are required");
+  }
+  iree_net_tcp_connection_options_t default_options =
+      iree_net_tcp_connection_options_default();
+  if (!options) options = &default_options;
+  iree_host_size_t pending_frame_count = 0;
+  IREE_RETURN_IF_ERROR(iree_net_tcp_connection_options_validate_impl(
+      options, &pending_frame_count));
 
   iree_host_size_t endpoint_offset = 0;
   iree_host_size_t send_state_offset = 0;

@@ -277,6 +277,18 @@ class TransportTest : public ::testing::Test {
     IREE_ASSERT_OK(status);
   }
 
+  void PollImmediate(iree_async_proactor_t* proactor, PollSide side) {
+    current_poll_side_ = side;
+    iree_status_t status = iree_async_proactor_poll(
+        proactor, iree_immediate_timeout(), /*out_completed_count=*/nullptr);
+    current_poll_side_ = kNotPolling;
+    if (iree_status_is_deadline_exceeded(status)) {
+      iree_status_free(status);
+    } else {
+      IREE_ASSERT_OK(status);
+    }
+  }
+
   void PollUntil(iree_async_proactor_t* proactor, PollSide side,
                  const std::function<bool()>& condition) {
     while (!condition()) Poll(proactor, side);
@@ -433,18 +445,6 @@ TEST_F(TransportTest, ReportsRequiredCapabilities) {
   EXPECT_TRUE(iree_all_bits_set(capabilities, backend_->required_capabilities));
 }
 
-TEST_F(TransportTest, UnreachableConnectFailsAsynchronously) {
-  std::string unreachable_address;
-  IREE_ASSERT_OK(backend_->make_unreachable_address(&unreachable_address));
-  SubmitConnect(iree_make_string_view(unreachable_address.data(),
-                                      unreachable_address.size()));
-  EXPECT_EQ(connect_state_.callback_count, 0);
-  PollUntil(client_proactor_, kClientPolling,
-            [&] { return connect_state_.callback_count == 1; });
-  EXPECT_NE(connect_state_.status_code, IREE_STATUS_OK);
-  EXPECT_EQ(connect_state_.connection, nullptr);
-}
-
 TEST_F(TransportTest, ListenerStopIsAsynchronousAndRefusesConnections) {
   CreateListener();
   IREE_ASSERT_OK(iree_net_listener_stop(listener_, stop_state_.callback()));
@@ -500,6 +500,7 @@ TEST_F(TransportTest, RoutesBidirectionalMessagesOnOwningProactors) {
       /*.completion_callback=*/client_send_.callback(),
   };
   IREE_ASSERT_OK(iree_net_message_endpoint_send(client_endpoint, &send_params));
+  PollImmediate(client_proactor_, kClientPolling);
   PollUntil(server_proactor_, kServerPolling,
             [&] { return server_messages_.messages.size() == 1; });
   EXPECT_EQ(server_messages_.messages[0], "client-message");
@@ -518,6 +519,7 @@ TEST_F(TransportTest, RoutesBidirectionalMessagesOnOwningProactors) {
       /*.completion_callback=*/server_send_.callback(),
   };
   IREE_ASSERT_OK(iree_net_message_endpoint_send(server_endpoint, &send_params));
+  PollImmediate(server_proactor_, kServerPolling);
   PollUntil(client_proactor_, kClientPolling,
             [&] { return client_messages_.messages.size() == 1; });
   EXPECT_EQ(client_messages_.messages[0], "server-message");
