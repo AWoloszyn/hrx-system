@@ -22,24 +22,22 @@ loom_value_fact_reference_origin_t loom_value_facts_reference_origin(
 }
 
 iree_status_t loom_value_facts_rebind_reference_origin(
-    loom_fact_context_t* target, const loom_fact_context_t* source,
-    loom_value_fact_reference_origin_t origin,
+    loom_fact_context_t* context, loom_value_fact_reference_origin_t origin,
     loom_value_facts_t* inout_facts) {
   loom_value_facts_t rebound = loom_value_facts_unknown();
   loom_value_fact_buffer_reference_t buffer;
   loom_value_fact_view_reference_t view;
-  if (loom_value_facts_query_buffer_reference(source, *inout_facts, &buffer)) {
+  if (loom_value_facts_query_buffer_reference(context, *inout_facts, &buffer)) {
     buffer.origin = origin;
     IREE_RETURN_IF_ERROR(
-        loom_value_facts_make_buffer_reference(target, buffer, &rebound));
-  } else if (loom_value_facts_query_view_reference(source, *inout_facts,
+        loom_value_facts_make_buffer_reference(context, buffer, &rebound));
+  } else if (loom_value_facts_query_view_reference(context, *inout_facts,
                                                    &view)) {
     view.origin = origin;
     IREE_RETURN_IF_ERROR(
-        loom_value_facts_make_view_reference(target, view, &rebound));
+        loom_value_facts_make_view_reference(context, view, &rebound));
   } else {
-    return loom_value_fact_table_clone_fact(target->table, source->table,
-                                            *inout_facts, inout_facts);
+    return iree_ok_status();
   }
   inout_facts->extension_id = rebound.extension_id;
   return iree_ok_status();

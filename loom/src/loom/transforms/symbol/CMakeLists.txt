@@ -249,6 +249,12 @@ loom_cc_library(
   HDRS
     "refine_boundaries.h"
   SRCS
+    "boundary_graph.c"
+    "boundary_graph.h"
+    "boundary_pruning.c"
+    "boundary_pruning.h"
+    "boundary_specialization.c"
+    "boundary_specialization.h"
     "refine_boundaries.c"
   DEPS
     iree::base

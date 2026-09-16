@@ -155,8 +155,10 @@ TEST_F(ReferenceTransferTest, RebindingPreservesOtherFactsAndInternsOrigins) {
   allocation.kind = LOOM_VALUE_FACT_REFERENCE_ORIGIN_ALLOCATION;
   allocation.entry_value_id = LOOM_VALUE_ID_INVALID;
   auto rebound = source;
+  IREE_ASSERT_OK(
+      loom_value_fact_table_clone_fact(&target, &facts_, source, &rebound));
   IREE_ASSERT_OK(loom_value_facts_rebind_reference_origin(
-      &target.context, &facts_.context, allocation, &rebound));
+      &target.context, allocation, &rebound));
   loom_value_fact_buffer_reference_t reference;
   ASSERT_TRUE(loom_value_facts_query_buffer_reference(&target.context, rebound,
                                                       &reference));
@@ -177,8 +179,8 @@ TEST_F(ReferenceTransferTest, RebindingPreservesOtherFactsAndInternsOrigins) {
   EXPECT_TRUE(
       loom_value_fact_table_facts_equal(&facts_, source, &target, cloned));
   EXPECT_NE(cloned.extension_id, rebound.extension_id);
-  IREE_ASSERT_OK(loom_value_facts_rebind_reference_origin(
-      &target.context, &target.context, entry, &rebound));
+  IREE_ASSERT_OK(loom_value_facts_rebind_reference_origin(&target.context,
+                                                          entry, &rebound));
   EXPECT_EQ(rebound.extension_id, cloned.extension_id);
 }
 
@@ -204,8 +206,10 @@ TEST_F(ReferenceTransferTest, ViewOriginsPreserveCoordinatesAcrossTables) {
   const loom_value_fact_reference_origin_t allocation = {
       2, 0, LOOM_VALUE_FACT_REFERENCE_ORIGIN_ALLOCATION, LOOM_VALUE_ID_INVALID};
   auto rebound = source;
+  IREE_ASSERT_OK(
+      loom_value_fact_table_clone_fact(&target, &facts_, source, &rebound));
   IREE_ASSERT_OK(loom_value_facts_rebind_reference_origin(
-      &target.context, &facts_.context, allocation, &rebound));
+      &target.context, allocation, &rebound));
   loom_value_fact_view_reference_t reference;
   ASSERT_TRUE(loom_value_facts_query_view_reference(&target.context, rebound,
                                                     &reference));
@@ -228,7 +232,7 @@ TEST_F(ReferenceTransferTest, ViewOriginsPreserveCoordinatesAcrossTables) {
       loom_value_fact_table_facts_equal(&facts_, source, &target, cloned));
   EXPECT_NE(cloned.extension_id, rebound.extension_id);
   IREE_ASSERT_OK(loom_value_facts_rebind_reference_origin(
-      &target.context, &target.context, source_reference.origin, &rebound));
+      &target.context, source_reference.origin, &rebound));
   EXPECT_EQ(rebound.extension_id, cloned.extension_id);
 }
 

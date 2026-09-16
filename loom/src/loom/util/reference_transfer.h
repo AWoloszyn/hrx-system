@@ -18,12 +18,12 @@ extern "C" {
 loom_value_fact_reference_origin_t loom_value_facts_reference_origin(
     const loom_fact_context_t* context, loom_value_facts_t facts);
 
-// Copies facts into |target| while substituting the reference origin. Other
-// reference properties and scalar facts are preserved. Non-reference facts
-// are cloned normally. Source and target may be the same context.
+// Substitutes the reference origin in facts owned by |context|. Other reference
+// properties and scalar facts are preserved. Facts without a reference remain
+// unchanged.
 iree_status_t loom_value_facts_rebind_reference_origin(
-    loom_fact_context_t* target, const loom_fact_context_t* source,
-    loom_value_fact_reference_origin_t origin, loom_value_facts_t* inout_facts);
+    loom_fact_context_t* context, loom_value_fact_reference_origin_t origin,
+    loom_value_facts_t* inout_facts);
 
 // Reference substitution for one direct call. All storage arguments contribute
 // once to |common_origin|; individual returned arguments use indexed lookup.
