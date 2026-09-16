@@ -74,6 +74,7 @@ iree_cc_library(
     "buffer_ring.c"
   DEPS
     ::defs
+    ::uring_registration
     iree::base
     iree::base::internal
     iree::base::internal::memory
@@ -181,6 +182,20 @@ iree_cc_test(
     "uring_test.cc"
   DEPS
     ::defs
+    ::uring
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+iree_cc_test(
+  NAME
+    buffer_ring_test
+  SRCS
+    "buffer_ring_test.cc"
+  DEPS
+    ::buffer_ring
     ::uring
     iree::testing::gtest
     iree::testing::gtest_main

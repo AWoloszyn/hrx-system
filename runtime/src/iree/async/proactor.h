@@ -202,7 +202,7 @@ typedef struct iree_async_progress_entry_t {
 //   REGISTERED_BUFFERS emul    | 5.1+     | reg  | emul
 //   LINKED_OPERATIONS  emul    | 5.3+     | emul | emul
 //   ZERO_COPY_SEND     copy    | 6.0+     | reg  | copy
-//   DMABUF             n/a     | 5.19+    | n/a  | n/a
+//   DMABUF             n/a     | 5.7+     | n/a  | n/a
 //   DEVICE_FENCE       poll    | poll     | yes  | poll
 //   ABSOLUTE_TIMEOUT   emul    | 5.4+     | yes  | emul
 //   FUTEX_OPERATIONS   n/a     | 6.7+     | n/a  | n/a
@@ -266,13 +266,13 @@ enum iree_async_proactor_capability_bits_e {
   //   copy    | 6.0+     | reg  | copy
   IREE_ASYNC_PROACTOR_CAPABILITY_ZERO_COPY_SEND = 1u << 4,
 
-  // Supports dmabuf registration for device memory I/O paths.
-  // Enables GPU↔NIC and GPU↔NVMe zero-copy transfers without staging
-  // through host memory. Requires compatible hardware and drivers.
+  // Supports importing Linux DMA buffers as mapped I/O regions. Backends may
+  // use fixed-buffer or device-direct optimizations when the mapping and
+  // transport support them; callers must not infer zero-copy from this bit.
   //
   // Availability:
   //   generic | io_uring | IOCP | kqueue
-  //   n/a     | 5.19+    | n/a  | n/a
+  //   n/a     | 5.7+     | n/a  | n/a
   IREE_ASYNC_PROACTOR_CAPABILITY_DMABUF = 1u << 5,
 
   // Supports device fence import/export (sync_file ↔ semaphore bridging).
@@ -859,6 +859,8 @@ static inline iree_status_t iree_async_proactor_poll(
 //
 // This does not cancel in-flight asynchronous operations or invoke callbacks.
 // Those operations must be drained or cancelled before the polling loop exits.
+// Registered resources whose teardown may require backend owner-task work must
+// also be released before this call.
 static inline void iree_async_proactor_end_polling(
     iree_async_proactor_t* proactor) {
   if (proactor->vtable->end_polling) {
@@ -1000,20 +1002,17 @@ static inline iree_status_t iree_async_proactor_register_buffer(
                                            access_flags, out_entry);
 }
 
-// Registers device memory exported as a dmabuf for zero-copy I/O.
-//
-// Enables toll-free GPU↔NIC and GPU↔NVMe data paths: the proactor can
-// issue RDMA sends, TCP zero-copy sends (devmem TCP), or file writes
-// directly from device memory without staging through host buffers.
+// Registers memory exported as a Linux DMA buffer for asynchronous I/O.
 //
 // Availability:
 //   generic | io_uring | IOCP | kqueue
-//   n/a     | 5.19+    | n/a  | n/a
+//   n/a     | 5.7+     | n/a  | n/a
 //
-// This is a Linux-specific feature requiring:
-//   - Kernel 5.19+ with IORING_REGISTER_BUFFERS2
-//   - GPU driver that exports dmabuf (AMD, NVIDIA, Intel)
-//   - Compatible NIC for network zero-copy (Mellanox, Intel E810)
+// The io_uring backend maps the DMA buffer for CPU access. Linux 5.19+ may
+// additionally place READ regions in the sparse fixed-buffer table when the
+// mapping supports long-term writable page pins. Fixed registration and
+// SEND_ZC are optimizations: unsupported mappings remain usable through the
+// copy path. Device-direct DMA-buf networking and storage are not implemented.
 //
 // Parameters:
 //   dmabuf_fd: DMA-BUF file descriptor exported by the GPU driver.
@@ -1031,7 +1030,9 @@ static inline iree_status_t iree_async_proactor_register_buffer(
 //   IREE_STATUS_OK: dmabuf registered successfully.
 //   IREE_STATUS_UNAVAILABLE: Backend does not support dmabuf (use
 //     IREE_ASYNC_PROACTOR_CAPABILITY_DMABUF to check beforehand).
-//   IREE_STATUS_INVALID_ARGUMENT: Invalid fd or offset/length out of range.
+//   IREE_STATUS_INVALID_ARGUMENT: Invalid fd, zero length, or no local access.
+//   IREE_STATUS_OUT_OF_RANGE: The offset and length cannot be represented by
+//     the host mapping API.
 static inline iree_status_t iree_async_proactor_register_dmabuf(
     iree_async_proactor_t* proactor,
     iree_async_buffer_registration_state_t* state, int dmabuf_fd,
@@ -1077,16 +1078,6 @@ static inline void iree_async_proactor_unregister_buffer(
 // Slab registration (indexed zero-copy)
 //===----------------------------------------------------------------------===//
 //
-// Singleton constraint for the fixed buffer table:
-//   Only one send-path (READ access) slab registration may be active per
-//   proactor. This is a backend limitation (io_uring supports a single
-//   fixed buffer table per ring) exposed as a public API constraint for
-//   portability. Attempting to register a second READ slab returns
-//   IREE_STATUS_ALREADY_EXISTS.
-//
-//   Multiple recv-path (WRITE access) registrations are allowed (each
-//   gets its own provided buffer ring with a unique group ID).
-//
 // Ownership:
 //   The caller owns the returned region. The region holds a retained
 //   reference to the slab. Deregistration happens automatically when the
@@ -1094,8 +1085,10 @@ static inline void iree_async_proactor_unregister_buffer(
 //   No explicit unregister call is needed.
 //
 // Thread safety:
-//   Slab registration must be serialized with respect to the proactor.
-//   Typically performed during initialization before starting I/O threads.
+//   Registration and region release are thread-safe. Backends that bind
+//   registration to the poll owner synchronously dispatch the kernel operation
+//   to that task. All regions must be released before the poll owner calls
+//   iree_async_proactor_end_polling and before the proactor is released.
 
 // Registers a slab for indexed zero-copy I/O.
 //
@@ -1107,19 +1100,11 @@ static inline void iree_async_proactor_unregister_buffer(
 //   generic | io_uring | IOCP | kqueue
 //   emul    | 5.1+     | emul | emul
 //
-// Singleton constraint (io_uring fixed buffer table):
-//   Only one send-path (READ access) slab registration may be active per
-//   proactor. This is a backend limitation (io_uring supports a single
-//   fixed buffer table per ring) exposed as a public API constraint for
-//   portability. Attempting to register a second READ slab returns
-//   IREE_STATUS_ALREADY_EXISTS.
-//
-//   Multiple recv-path (WRITE access) registrations are allowed (each
-//   gets its own provided buffer ring with a unique group ID).
-//
 // Backend behavior:
-//   io_uring (READ): Uses IORING_REGISTER_BUFFERS. SEND_ZC operations
-//     derive buf_index from span offset at fill time.
+//   io_uring (READ): Uses a sparse fixed-buffer table on Linux 5.19+ and a
+//     singleton table on older supported kernels. SEND_ZC operations derive
+//     buf_index from the span offset at fill time. Multiple READ registrations
+//     may coexist when sparse tables are available.
 //   io_uring (WRITE): Creates a provided buffer ring (PBUF_RING) for
 //     kernel-managed buffer selection in multishot recv.
 //   Others: Emulated; slab structure tracked but no kernel registration.
@@ -1132,8 +1117,9 @@ static inline void iree_async_proactor_unregister_buffer(
 //
 // Returns:
 //   IREE_STATUS_OK: Slab registered successfully.
-//   IREE_STATUS_ALREADY_EXISTS: READ slab already registered (io_uring).
-//   IREE_STATUS_RESOURCE_EXHAUSTED: Too many slabs registered.
+//   IREE_STATUS_ALREADY_EXISTS: A READ slab already owns the singleton fixed
+//     buffer table on an older io_uring kernel.
+//   IREE_STATUS_RESOURCE_EXHAUSTED: The backend registration table is full.
 static inline iree_status_t iree_async_proactor_register_slab(
     iree_async_proactor_t* proactor, iree_async_slab_t* slab,
     iree_async_buffer_access_flags_t access_flags,

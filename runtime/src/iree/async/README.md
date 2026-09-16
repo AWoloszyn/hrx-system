@@ -20,9 +20,10 @@ pipelines all build on these primitives.
   No hidden threads, no surprises about which thread callbacks run on. A utility
   wrapper (`util/proactor_thread.h`) provides optional dedicated-thread
   operation.
-- **Zero-copy capable**: Registered memory regions, scatter-gather I/O, fixed
-  file descriptors, dmabuf registration. The abstraction preserves every
-  optimization the kernel offers.
+- **Zero-copy aware**: Registered memory regions, scatter-gather I/O, fixed
+  file descriptors, and DMA-buffer import preserve the ownership information
+  required to select supported kernel optimizations without making them a
+  functional requirement.
 - **Vtable-dispatched**: Proactors and semaphores are polymorphic. Custom
   implementations for testing, embedding, or bridging other systems.
 - **No silent failures**: Every operation carries status. Errors propagate
@@ -160,9 +161,9 @@ extra on POSIX while enabling zero-round-trip execution on io_uring.
 
 ### Zero-Copy Data Paths
 
-With registered memory (dmabuf, fixed buffers) and kernel-sequenced operations,
-the CPU is not in the data path -- hardware and kernel handle the transfers
-directly when the platform supports it:
+The architecture is designed to represent the following device-direct paths
+without changing operation ownership. This table describes design direction;
+it is not an inventory of implemented backends:
 
 | Path | Mechanism | Data Flow |
 |------|-----------|-----------|
@@ -173,11 +174,12 @@ directly when the platform supports it:
 | GPU -> GPU (same host) | P2P dmabuf export/import | Multi-GPU data sharing across PCIe/NVLink |
 | GPU -> GPU (cross host) | GPUDirect RDMA (send from source VRAM, recv into dest VRAM) | Distributed inference handoff between machines |
 
-Buffer registration (`register_buffer()`, `register_dmabuf()`) pins memory and
-pre-computes backend handles so that I/O operations reference memory by handle
-rather than re-mapping on every operation. Once registered, a GPU buffer can be
-used in I/O operations without per-operation page pinning or address translation
--- the cost is paid once at registration time.
+Today, io_uring fixed host buffers can pair with `SEND_ZC`, while DMA-buffer
+registration maps the exported memory for ordinary I/O and opportunistically
+adds a fixed-buffer registration when Linux can take a long-term writable pin.
+Mappings that cannot be pinned remain functional through the copy path.
+Device-direct DMA-buffer networking and storage require additional backend
+integration and are not implied by the `DMABUF` capability.
 
 ### Device Fence Bridging
 
@@ -241,7 +243,7 @@ the NUMA domain; only control-plane coordination crosses socket boundaries.
 
 ## Platform Backends
 
-### io_uring (Linux 5.1+)
+### io_uring (Linux 5.7+)
 
 The primary production backend. Maps naturally to the proactor model —
 operations become SQEs, completions arrive as CQEs, and linked sequences
@@ -287,7 +289,7 @@ than the polling-based POSIX backend.
 
 `iree_async_proactor_create_platform()` (from `proactor_platform.h`) selects the
 best available backend:
-- **Linux**: io_uring (kernel 5.1+), falls back to POSIX
+- **Linux**: io_uring (kernel 5.7+), falls back to POSIX
 - **macOS/BSD**: POSIX with kqueue
 - **Other POSIX**: POSIX with poll()
 
@@ -305,7 +307,7 @@ Callers use these to select optimal code paths or skip features gracefully.
 | `REGISTERED_BUFFERS` | Emulated | 5.1+ native | Pre-pinned DMA buffers |
 | `LINKED_OPERATIONS` | Emulated (callback chain) | 5.3+ native | Kernel-side sequences |
 | `ZERO_COPY_SEND` | Not supported (copy) | 6.0+ native | MSG_ZEROCOPY / SEND_ZC |
-| `DMABUF` | Not supported | 5.19+ | GPU memory registration |
+| `DMABUF` | Not supported | 5.7+ mapped | Linux DMA-buffer import |
 | `DEVICE_FENCE` | Poll-based (fd import) | Poll-based (fd import) | sync_file bridging |
 | `ABSOLUTE_TIMEOUT` | Emulated (relative) | 5.4+ native | Drift-free timers |
 | `FUTEX_OPERATIONS` | Not supported | 6.7+ | Kernel-side futex in LINK chains |
@@ -460,8 +462,8 @@ Registered memory for zero-copy I/O.
   during in-flight operations.
 - **Slab**: Contiguous memory block divided into fixed-size slots for indexed
   buffer allocation. Register with `register_slab()` for zero-copy I/O.
-  Singleton constraint: only one READ-access slab per proactor (mirrors
-  io_uring's single fixed buffer table).
+  Modern io_uring kernels use sparse fixed-buffer tables for independent READ
+  registrations; older kernels retain their native singleton table limit.
 - **Buffer registration state** (`types.h`): Header-only types embeddable in
   HAL buffers. Tracks which proactors a buffer is registered with. The `:types`
   Bazel target has no link dependency -- suitable for embedding in HAL code

@@ -139,6 +139,11 @@ iree_status_t iree_async_proactor_create_io_uring(
   proactor->wake_eventfd = -1;
   proactor->wake_poll_armed = false;
   iree_atomic_store(&proactor->poll_tid, 0, iree_memory_order_relaxed);
+  iree_atomic_store(&proactor->next_buffer_group_id, 0,
+                    iree_memory_order_relaxed);
+  iree_atomic_store(&proactor->legacy_buffer_table_state,
+                    IREE_ASYNC_IO_URING_LEGACY_BUFFER_TABLE_STATE_FREE,
+                    iree_memory_order_relaxed);
   proactor->capabilities = IREE_ASYNC_PROACTOR_CAPABILITY_NONE;
   iree_atomic_slist_initialize(&proactor->pending_software_completions);
   iree_atomic_slist_initialize(&proactor->pending_semaphore_waits);
@@ -177,9 +182,14 @@ iree_status_t iree_async_proactor_create_io_uring(
   // are available.
   if (iree_status_is_ok(status)) {
     status = iree_async_proactor_io_uring_detect_capabilities(
-        proactor->ring.ring_fd, proactor->ring.features,
-        &proactor->capabilities);
+        &proactor->ring, proactor->ring.features, &proactor->capabilities);
   }
+
+  // Sparse fixed-buffer tables are an internal kernel mechanism, not a public
+  // capability applications can disable. Capture support before applying the
+  // caller's capability mask.
+  bool supports_sparse_buffer_table = iree_any_bit_set(
+      proactor->capabilities, IREE_ASYNC_PROACTOR_CAPABILITY_MULTISHOT);
 
   // Apply the allowed_capabilities mask from options.
   if (iree_status_is_ok(status)) {
@@ -190,9 +200,7 @@ iree_status_t iree_async_proactor_create_io_uring(
   // registration. This pre-allocates an empty table in the kernel so
   // individual slots can be populated later via IORING_REGISTER_BUFFERS_UPDATE.
   // MULTISHOT capability implies 5.19+ (the probe checks SOCKET opcode 45).
-  if (iree_status_is_ok(status) &&
-      iree_any_bit_set(proactor->capabilities,
-                       IREE_ASYNC_PROACTOR_CAPABILITY_MULTISHOT)) {
+  if (iree_status_is_ok(status) && supports_sparse_buffer_table) {
     uint16_t table_capacity = IREE_IO_URING_SPARSE_TABLE_DEFAULT_CAPACITY;
     status = iree_io_uring_sparse_table_allocate(table_capacity, allocator,
                                                  &proactor->buffer_table);
@@ -204,19 +212,16 @@ iree_status_t iree_async_proactor_create_io_uring(
           .data = 0,
           .tags = 0,
       };
-      long ret = 0;
-      do {
-        ret = syscall(IREE_IO_URING_SYSCALL_REGISTER, proactor->ring.ring_fd,
-                      IREE_IORING_REGISTER_BUFFERS2, &reg, sizeof(reg));
-      } while (ret < 0 && errno == EINTR);
-      if (ret < 0) {
-        int saved_errno = errno;
+      int register_result = iree_io_uring_ring_register(
+          &proactor->ring, IREE_IORING_REGISTER_BUFFERS2, &reg, sizeof(reg));
+      if (register_result < 0) {
+        int error_number = -register_result;
         iree_io_uring_sparse_table_free(proactor->buffer_table, allocator);
         proactor->buffer_table = NULL;
         status = iree_make_status(
-            iree_status_code_from_errno(saved_errno),
+            iree_status_code_from_errno(error_number),
             "IORING_REGISTER_BUFFERS2 (sparse, capacity=%u) failed (%d)",
-            (unsigned)table_capacity, saved_errno);
+            (unsigned)table_capacity, error_number);
       }
     }
   }

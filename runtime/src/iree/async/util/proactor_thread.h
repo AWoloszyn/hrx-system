@@ -120,6 +120,7 @@ iree_async_proactor_thread_options_default(void) {
 //
 // The shutdown sequence when the terminal status is required:
 //   - Cancel or drain all pending operations.
+//   - Release registered resources whose teardown may require the poll owner.
 //   - Call request_stop() (sets internal flag, wakes poll loop).
 //   - Call join() (blocks until thread exits).
 //   - Call consume_status() to take any terminal failure.

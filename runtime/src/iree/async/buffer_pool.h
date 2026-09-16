@@ -92,11 +92,12 @@
 // acquire buffers for sending and release them after completions arrive.
 // For shared pools, this extends across process boundaries.
 //
-// ## Singleton constraint
+// ## Backend registration limits
 //
-// For io_uring send operations (READ access), only one region may be registered
-// per proactor (kernel limitation: single fixed buffer table per ring). This
-// constraint is enforced by register_slab, not by the pool.
+// io_uring kernels before 5.19 have one fixed-buffer table per ring and may
+// reject a second READ region while the first remains registered. Modern
+// io_uring and emulated backends support independent concurrent regions. Any
+// backend limit is enforced by register_slab, not by the pool.
 
 #ifndef IREE_ASYNC_BUFFER_POOL_H_
 #define IREE_ASYNC_BUFFER_POOL_H_

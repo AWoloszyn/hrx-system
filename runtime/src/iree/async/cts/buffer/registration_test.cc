@@ -10,6 +10,7 @@
 // operations. These tests verify the buffer registration API works correctly
 // across all proactor backends.
 
+#include <cstdio>
 #include <cstring>
 #include <memory>
 #include <vector>
@@ -25,6 +26,7 @@
 #if defined(IREE_PLATFORM_LINUX) && \
     !(defined(__ANDROID_API__) && __ANDROID_API__ < 30)
 #define IREE_TEST_HAS_MEMFD 1
+#include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
 #endif
@@ -79,7 +81,7 @@ static StatusOr<AsyncRegionPtr> RegisterSlab(
   iree_status_t status =
       iree_async_proactor_register_slab(proactor, slab, access_flags, &region);
   if (iree_status_is_resource_exhausted(status)) {
-    iree_status_ignore(status);
+    iree_status_free(status);
     return iree::Status(iree::StatusCode::kUnavailable,
                         "slab registration hit resource limits "
                         "(RLIMIT_MEMLOCK); skipping test");
@@ -271,6 +273,90 @@ TEST_P(BufferRegistrationTest, RegisterDmabufWithOffset) {
   close(memfd);
 }
 
+// A READ registration remains usable when the fd cannot provide the writable
+// mapping required by io_uring fixed-buffer pinning. The backend must retain
+// its mmap-based copy path instead of making zero-copy an API requirement.
+TEST_P(BufferRegistrationTest, RegisterReadOnlyDmabuf) {
+  iree_async_proactor_capabilities_t caps =
+      iree_async_proactor_query_capabilities(proactor_);
+  if (!(caps & IREE_ASYNC_PROACTOR_CAPABILITY_DMABUF)) {
+    GTEST_SKIP() << "Backend does not support dmabuf registration";
+  }
+
+  int writable_fd = memfd_create("test_read_only_dmabuf", MFD_CLOEXEC);
+  ASSERT_GE(writable_fd, 0);
+  ASSERT_EQ(ftruncate(writable_fd, 4096), 0);
+
+  constexpr uint8_t kExpectedValue = 0x5A;
+  ASSERT_EQ(pwrite(writable_fd, &kExpectedValue, sizeof(kExpectedValue), 0), 1);
+
+  char fd_path[64];
+  int fd_path_length =
+      snprintf(fd_path, sizeof(fd_path), "/proc/self/fd/%d", writable_fd);
+  ASSERT_GT(fd_path_length, 0);
+  ASSERT_LT(fd_path_length, static_cast<int>(sizeof(fd_path)));
+  int read_only_fd = open(fd_path, O_RDONLY | O_CLOEXEC);
+  ASSERT_GE(read_only_fd, 0);
+  close(writable_fd);
+
+  iree_async_buffer_registration_state_t state;
+  iree_async_buffer_registration_state_initialize(&state);
+
+  iree_async_buffer_registration_entry_t* entry = nullptr;
+  IREE_ASSERT_OK(iree_async_proactor_register_dmabuf(
+      proactor_, &state, read_only_fd, /*offset=*/0, /*length=*/4096,
+      IREE_ASYNC_BUFFER_ACCESS_FLAG_READ, &entry));
+
+  ASSERT_NE(entry, nullptr);
+  ASSERT_NE(entry->region, nullptr);
+  EXPECT_EQ(entry->region->type, IREE_ASYNC_REGION_TYPE_DMABUF);
+  EXPECT_EQ(*static_cast<const uint8_t*>(entry->region->base_ptr),
+            kExpectedValue);
+
+  iree_async_buffer_registration_state_deinitialize(&state);
+  close(read_only_fd);
+}
+
+TEST_P(BufferRegistrationTest, RejectInvalidDmabufRanges) {
+  iree_async_proactor_capabilities_t caps =
+      iree_async_proactor_query_capabilities(proactor_);
+  if (!(caps & IREE_ASYNC_PROACTOR_CAPABILITY_DMABUF)) {
+    GTEST_SKIP() << "Backend does not support dmabuf registration";
+  }
+
+  int memfd = memfd_create("test_invalid_dmabuf", MFD_CLOEXEC);
+  ASSERT_GE(memfd, 0);
+  ASSERT_EQ(ftruncate(memfd, 4096), 0);
+
+  iree_async_buffer_registration_state_t state;
+  iree_async_buffer_registration_state_initialize(&state);
+  iree_async_buffer_registration_entry_t* entry = nullptr;
+
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      iree_async_proactor_register_dmabuf(
+          proactor_, &state, memfd, /*offset=*/0, /*length=*/0,
+          IREE_ASYNC_BUFFER_ACCESS_FLAG_READ, &entry));
+  EXPECT_EQ(entry, nullptr);
+
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      iree_async_proactor_register_dmabuf(
+          proactor_, &state, memfd, /*offset=*/0, /*length=*/4096,
+          IREE_ASYNC_BUFFER_ACCESS_FLAG_NONE, &entry));
+  EXPECT_EQ(entry, nullptr);
+
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_OUT_OF_RANGE,
+      iree_async_proactor_register_dmabuf(
+          proactor_, &state, memfd, /*offset=*/UINT64_MAX, /*length=*/4096,
+          IREE_ASYNC_BUFFER_ACCESS_FLAG_READ, &entry));
+  EXPECT_EQ(entry, nullptr);
+
+  iree_async_buffer_registration_state_deinitialize(&state);
+  close(memfd);
+}
+
 #endif  // IREE_TEST_HAS_MEMFD
 
 //===----------------------------------------------------------------------===//
@@ -420,7 +506,8 @@ TEST_P(BufferRegistrationTest, MultipleSendSlabRegistrations) {
   }
   IREE_ASSERT_OK_AND_ASSIGN(AsyncRegionPtr region_a, std::move(region_a_or));
 
-  // Second slab: succeeds on 5.19+ (sparse table), fails on pre-5.19 (legacy).
+  // Second slab succeeds on emulated backends and on io_uring 5.19+ (sparse
+  // table), but fails on pre-5.19 io_uring (legacy singleton table).
   iree_async_region_t* region_b_raw = nullptr;
   iree_status_t status = iree_async_proactor_register_slab(
       proactor_, slab_b.get(), IREE_ASYNC_BUFFER_ACCESS_FLAG_READ,
@@ -429,13 +516,16 @@ TEST_P(BufferRegistrationTest, MultipleSendSlabRegistrations) {
   if (iree_status_is_ok(status)) {
     AsyncRegionPtr region_b(region_b_raw);
     ASSERT_NE(region_b, nullptr);
-    if (region_a->handles.iouring.base_buffer_index == -1 &&
+    if (region_a->type == IREE_ASYNC_REGION_TYPE_IOURING &&
+        region_b->type == IREE_ASYNC_REGION_TYPE_IOURING &&
+        region_a->handles.iouring.base_buffer_index == -1 &&
         region_b->handles.iouring.base_buffer_index == -1) {
       // RLIMIT_MEMLOCK too low to pin pages for fixed buffers. Both
       // registrations succeeded (the proactor gracefully falls back to
       // copy-based I/O) but neither got kernel-registered buffer indices.
       GTEST_SKIP() << "RLIMIT_MEMLOCK too low for fixed buffer registration";
-    } else {
+    } else if (region_a->type == IREE_ASYNC_REGION_TYPE_IOURING ||
+               region_b->type == IREE_ASYNC_REGION_TYPE_IOURING) {
       // 5.19+ path: both registrations succeeded with distinct buffer indices.
       EXPECT_EQ(region_a->type, IREE_ASYNC_REGION_TYPE_IOURING);
       EXPECT_EQ(region_b->type, IREE_ASYNC_REGION_TYPE_IOURING);
@@ -444,10 +534,11 @@ TEST_P(BufferRegistrationTest, MultipleSendSlabRegistrations) {
           << "Distinct slabs must have different buffer table indices";
     }
   } else if (iree_status_is_resource_exhausted(status)) {
-    iree_status_ignore(status);
+    iree_status_free(status);
     GTEST_SKIP() << "slab registration hit resource limits (RLIMIT_MEMLOCK)";
   } else {
     // Pre-5.19 path: second registration rejected (singleton buffer table).
+    EXPECT_EQ(region_a->type, IREE_ASYNC_REGION_TYPE_IOURING);
     IREE_EXPECT_STATUS_IS(IREE_STATUS_ALREADY_EXISTS, status);
     EXPECT_EQ(region_b_raw, nullptr);
   }
@@ -496,11 +587,11 @@ TEST_P(BufferRegistrationTest, SlabAndDmabufCoexist) {
       dmabuf_entry->region->type == IREE_ASYNC_REGION_TYPE_IOURING) {
     // Slab occupies [base, base+count). Dmabuf occupies a single slot.
     // They must not overlap.
-    int16_t slab_base = slab_region->handles.iouring.base_buffer_index;
+    int32_t slab_base = slab_region->handles.iouring.base_buffer_index;
     ASSERT_GE(slab_base, 0) << "slab should have kernel-registered buffers";
-    int16_t slab_end =
-        slab_base + static_cast<int16_t>(slab_region->buffer_count);
-    int16_t dmabuf_slot =
+    int32_t slab_end =
+        slab_base + static_cast<int32_t>(slab_region->buffer_count);
+    int32_t dmabuf_slot =
         dmabuf_entry->region->handles.iouring.base_buffer_index;
     ASSERT_GE(dmabuf_slot, 0) << "dmabuf should have a kernel-registered slot";
     EXPECT_TRUE(dmabuf_slot < slab_base || dmabuf_slot >= slab_end)
@@ -678,14 +769,17 @@ TEST_P(BufferRegistrationTest, LeaseDoubleReleaseIsIdempotent) {
   // duplicate pointers (same buffer handed out twice indicates corruption).
   iree_async_buffer_lease_t leases[4];
   void* pointers[4] = {nullptr};
+  int acquired_count = 0;
   for (int i = 0; i < 4; ++i) {
     iree_status_t status = iree_async_buffer_pool_acquire(pool, &leases[i]);
     if (!iree_status_is_ok(status)) {
-      iree_status_ignore(status);
+      IREE_EXPECT_OK(status);
       break;
     }
     pointers[i] = iree_async_span_ptr(leases[i].span);
+    ++acquired_count;
   }
+  EXPECT_EQ(acquired_count, 4);
 
   // All pointers must be unique.
   for (int i = 0; i < 4 && pointers[i]; ++i) {
@@ -696,10 +790,8 @@ TEST_P(BufferRegistrationTest, LeaseDoubleReleaseIsIdempotent) {
     }
   }
 
-  for (int i = 0; i < 4; ++i) {
-    if (pointers[i]) {
-      iree_async_buffer_lease_release(&leases[i]);
-    }
+  for (int i = 0; i < acquired_count; ++i) {
+    iree_async_buffer_lease_release(&leases[i]);
   }
 
   iree_async_buffer_pool_release(pool);

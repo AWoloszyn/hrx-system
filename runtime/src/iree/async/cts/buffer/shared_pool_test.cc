@@ -125,9 +125,9 @@ class SharedBufferPoolTest : public CtsTestBase<> {
       return status;
     }
 
-    // Try to register a separate slab with the proactor. If the backend
-    // rejects it (e.g., singleton fixed buffer table), share the creator's
-    // region instead.
+    // Try to register a separate slab with the proactor. If legacy io_uring
+    // rejects it because its singleton fixed-buffer table is already active,
+    // share the creator's region instead.
     void* buffer_base = (uint8_t*)out_opener->shm.base + pool_storage;
     status = iree_async_slab_wrap(buffer_base, buffer_size, buffer_count,
                                   iree_allocator_system(), &out_opener->slab);
@@ -140,8 +140,8 @@ class SharedBufferPoolTest : public CtsTestBase<> {
         proactor_, out_opener->slab, IREE_ASYNC_BUFFER_ACCESS_FLAG_READ,
         &out_opener->region);
     if (iree_status_is_already_exists(status)) {
-      // Singleton constraint: share the creator's region.
-      iree_status_ignore(status);
+      // Legacy io_uring table limit: share the creator's region.
+      iree_status_free(status);
       out_opener->region = creator.region;
       iree_async_region_retain(out_opener->region);
     } else if (!iree_status_is_ok(status)) {

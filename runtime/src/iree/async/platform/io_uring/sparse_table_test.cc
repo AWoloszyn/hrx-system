@@ -13,6 +13,12 @@
 
 #include "iree/async/platform/io_uring/sparse_table.h"
 
+#include <algorithm>
+#include <array>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
+
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
 
@@ -38,7 +44,6 @@ class SparseTableTest : public ::testing::Test {
 TEST_F(SparseTableTest, AcquireAndRelease) {
   AllocateTable(64);
 
-  iree_io_uring_sparse_table_lock(table_);
   int32_t slot = iree_io_uring_sparse_table_acquire(table_, 1);
   EXPECT_EQ(slot, 0);
 
@@ -46,13 +51,11 @@ TEST_F(SparseTableTest, AcquireAndRelease) {
   int32_t slot2 = iree_io_uring_sparse_table_acquire(table_, 1);
   EXPECT_EQ(slot2, 0);
   iree_io_uring_sparse_table_release(table_, 0, 1);
-  iree_io_uring_sparse_table_unlock(table_);
 }
 
 TEST_F(SparseTableTest, ContiguousRange) {
   AllocateTable(256);
 
-  iree_io_uring_sparse_table_lock(table_);
   int32_t first = iree_io_uring_sparse_table_acquire(table_, 64);
   EXPECT_EQ(first, 0);
 
@@ -61,13 +64,10 @@ TEST_F(SparseTableTest, ContiguousRange) {
 
   iree_io_uring_sparse_table_release(table_, 0, 64);
   iree_io_uring_sparse_table_release(table_, 64, 64);
-  iree_io_uring_sparse_table_unlock(table_);
 }
 
 TEST_F(SparseTableTest, FragmentationRecovery) {
   AllocateTable(256);
-
-  iree_io_uring_sparse_table_lock(table_);
 
   // Allocate A(64 slots), then B(1 slot).
   int32_t a = iree_io_uring_sparse_table_acquire(table_, 64);
@@ -84,13 +84,10 @@ TEST_F(SparseTableTest, FragmentationRecovery) {
 
   iree_io_uring_sparse_table_release(table_, 0, 64);
   iree_io_uring_sparse_table_release(table_, 64, 1);
-  iree_io_uring_sparse_table_unlock(table_);
 }
 
 TEST_F(SparseTableTest, FullTable) {
   AllocateTable(128);
-
-  iree_io_uring_sparse_table_lock(table_);
 
   // Fill all slots.
   int32_t all = iree_io_uring_sparse_table_acquire(table_, 128);
@@ -101,13 +98,10 @@ TEST_F(SparseTableTest, FullTable) {
   EXPECT_EQ(overflow, -1);
 
   iree_io_uring_sparse_table_release(table_, 0, 128);
-  iree_io_uring_sparse_table_unlock(table_);
 }
 
 TEST_F(SparseTableTest, MixedSizes) {
   AllocateTable(256);
-
-  iree_io_uring_sparse_table_lock(table_);
 
   // Interleave single-slot and multi-slot acquisitions.
   int32_t single1 = iree_io_uring_sparse_table_acquire(table_, 1);
@@ -125,7 +119,6 @@ TEST_F(SparseTableTest, MixedSizes) {
   iree_io_uring_sparse_table_release(table_, 0, 1);
   iree_io_uring_sparse_table_release(table_, 1, 16);
   iree_io_uring_sparse_table_release(table_, 33, 1);
-  iree_io_uring_sparse_table_unlock(table_);
 }
 
 TEST_F(SparseTableTest, Capacity) {
@@ -136,10 +129,57 @@ TEST_F(SparseTableTest, Capacity) {
 TEST_F(SparseTableTest, AcquireZeroReturnsNegative) {
   AllocateTable(64);
 
-  iree_io_uring_sparse_table_lock(table_);
   int32_t slot = iree_io_uring_sparse_table_acquire(table_, 0);
   EXPECT_EQ(slot, -1);
-  iree_io_uring_sparse_table_unlock(table_);
+}
+
+TEST_F(SparseTableTest, ConcurrentReservationsAreDistinct) {
+  constexpr size_t kThreadCount = 16;
+  AllocateTable(kThreadCount);
+
+  std::array<int32_t, kThreadCount> slots;
+  slots.fill(-1);
+  std::mutex gate_mutex;
+  std::condition_variable gate_condition;
+  size_t acquired_count = 0;
+  bool release_requested = false;
+  std::array<std::thread, kThreadCount> threads;
+  for (size_t i = 0; i < kThreadCount; ++i) {
+    threads[i] = std::thread([&, i] {
+      slots[i] = iree_io_uring_sparse_table_acquire(table_, 1);
+      std::unique_lock<std::mutex> lock(gate_mutex);
+      ++acquired_count;
+      gate_condition.notify_all();
+      gate_condition.wait(lock, [&] { return release_requested; });
+      lock.unlock();
+      if (slots[i] >= 0) {
+        iree_io_uring_sparse_table_release(table_,
+                                           static_cast<uint16_t>(slots[i]), 1);
+      }
+    });
+  }
+
+  {
+    std::unique_lock<std::mutex> lock(gate_mutex);
+    gate_condition.wait(lock, [&] { return acquired_count == kThreadCount; });
+  }
+
+  std::array<int32_t, kThreadCount> sorted_slots = slots;
+  std::sort(sorted_slots.begin(), sorted_slots.end());
+  for (size_t i = 0; i < kThreadCount; ++i) {
+    EXPECT_EQ(sorted_slots[i], static_cast<int32_t>(i));
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(gate_mutex);
+    release_requested = true;
+  }
+  gate_condition.notify_all();
+  for (std::thread& thread : threads) thread.join();
+
+  int32_t slot = iree_io_uring_sparse_table_acquire(table_, kThreadCount);
+  EXPECT_EQ(slot, 0);
+  iree_io_uring_sparse_table_release(table_, 0, kThreadCount);
 }
 
 TEST_F(SparseTableTest, FreeNull) {

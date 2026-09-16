@@ -48,26 +48,23 @@ void iree_io_uring_sparse_table_free(iree_io_uring_sparse_table_t* table,
   IREE_TRACE_ZONE_END(z0);
 }
 
-void iree_io_uring_sparse_table_lock(iree_io_uring_sparse_table_t* table) {
-  iree_slim_mutex_lock(&table->mutex);
-}
-
-void iree_io_uring_sparse_table_unlock(iree_io_uring_sparse_table_t* table) {
-  iree_slim_mutex_unlock(&table->mutex);
-}
-
 int32_t iree_io_uring_sparse_table_acquire(iree_io_uring_sparse_table_t* table,
                                            uint16_t count) {
   if (count == 0) return -1;
+  iree_slim_mutex_lock(&table->mutex);
   iree_host_size_t start =
       iree_bitmap_find_first_unset_span(table->bitmap, 0, count);
-  if (start >= table->bitmap.bit_count) return -1;
-  iree_bitmap_set_span(table->bitmap, start, count);
-  return (int32_t)start;
+  if (start < table->bitmap.bit_count) {
+    iree_bitmap_set_span(table->bitmap, start, count);
+  }
+  iree_slim_mutex_unlock(&table->mutex);
+  return start < table->bitmap.bit_count ? (int32_t)start : -1;
 }
 
 void iree_io_uring_sparse_table_release(iree_io_uring_sparse_table_t* table,
                                         uint16_t start, uint16_t count) {
+  iree_slim_mutex_lock(&table->mutex);
   IREE_ASSERT(start + count <= table->bitmap.bit_count);
   iree_bitmap_reset_span(table->bitmap, start, count);
+  iree_slim_mutex_unlock(&table->mutex);
 }

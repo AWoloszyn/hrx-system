@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <sys/eventfd.h>
+#include <sys/mman.h>
 #include <unistd.h>
 
 #include <atomic>
@@ -12,10 +13,13 @@
 #include <cstring>
 #include <vector>
 
+#include "iree/async/file.h"
+#include "iree/async/operations/file.h"
 #include "iree/async/operations/message.h"
 #include "iree/async/operations/scheduling.h"
 #include "iree/async/platform/io_uring/api.h"
 #include "iree/async/relay.h"
+#include "iree/async/slab.h"
 #include "iree/async/util/proactor_thread.h"
 #include "iree/base/threading/notification.h"
 #include "iree/testing/gtest.h"
@@ -67,6 +71,207 @@ struct MessageReceiverState {
 static bool MessageReceived(void* user_data) {
   auto* state = static_cast<MessageReceiverState*>(user_data);
   return state->received.load(std::memory_order_acquire);
+}
+
+struct OperationCompletionState {
+  // Terminal status code reported by the operation completion.
+  iree_status_code_t status_code = IREE_STATUS_OK;
+
+  // Set after the poll owner publishes |status_code|.
+  std::atomic<bool> completed{false};
+
+  // Wakes the test task after completion.
+  iree_notification_t notification;
+};
+
+static bool OperationCompleted(void* user_data) {
+  auto* state = static_cast<OperationCompletionState*>(user_data);
+  return state->completed.load(std::memory_order_acquire);
+}
+
+static void RecordOperationCompletion(void* user_data,
+                                      iree_async_operation_t* operation,
+                                      iree_status_t status,
+                                      iree_async_completion_flags_t flags) {
+  auto* state = static_cast<OperationCompletionState*>(user_data);
+  (void)operation;
+  (void)flags;
+  state->status_code = iree_status_code(status);
+  iree_status_free(status);
+  state->completed.store(true, std::memory_order_release);
+  iree_notification_post(&state->notification, IREE_ALL_WAITERS);
+}
+
+class IoUringRegistrationOwnerTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    iree_notification_initialize(&completion_.notification);
+
+    iree_async_proactor_options_t options =
+        iree_async_proactor_options_default();
+    options.threading_mode = IREE_ASYNC_PROACTOR_THREADING_CROSS_THREAD;
+    iree_status_t status = iree_async_proactor_create_io_uring(
+        options, iree_allocator_system(), &proactor_);
+    if (iree_status_is_unavailable(status)) {
+      iree_status_free(status);
+      GTEST_SKIP() << "cross-thread io_uring is unavailable";
+    }
+    IREE_ASSERT_OK(status);
+
+    IREE_ASSERT_OK(iree_async_proactor_thread_create(
+        proactor_, iree_async_proactor_thread_options_default(),
+        iree_allocator_system(), &proactor_thread_));
+  }
+
+  void TearDown() override {
+    iree_async_region_release(region_);
+    iree_async_slab_release(slab_);
+    iree_async_file_release(file_);
+    if (raw_file_fd_ >= 0) close(raw_file_fd_);
+    if (proactor_thread_) {
+      iree_async_proactor_thread_request_stop(proactor_thread_);
+      IREE_EXPECT_OK(iree_async_proactor_thread_join(proactor_thread_,
+                                                     IREE_DURATION_INFINITE));
+      IREE_EXPECT_OK(
+          iree_async_proactor_thread_consume_status(proactor_thread_));
+      iree_async_proactor_thread_release(proactor_thread_);
+    }
+    iree_async_proactor_release(proactor_);
+    iree_notification_deinitialize(&completion_.notification);
+  }
+
+  void ResetCompletion() {
+    completion_.status_code = IREE_STATUS_OK;
+    completion_.completed.store(false, std::memory_order_relaxed);
+  }
+
+  void WaitForCompletion() {
+    ASSERT_TRUE(iree_notification_await(&completion_.notification,
+                                        OperationCompleted, &completion_,
+                                        iree_infinite_timeout()));
+    ASSERT_EQ(completion_.status_code, IREE_STATUS_OK);
+  }
+
+  void WaitForPollOwner() {
+    ResetCompletion();
+    memset(&nop_, 0, sizeof(nop_));
+    nop_.base.type = IREE_ASYNC_OPERATION_TYPE_NOP;
+    nop_.base.completion_fn = RecordOperationCompletion;
+    nop_.base.user_data = &completion_;
+    IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &nop_.base));
+    ASSERT_NO_FATAL_FAILURE(WaitForCompletion());
+  }
+
+  // Proactor whose registration owner is established by |proactor_thread_|.
+  iree_async_proactor_t* proactor_ = nullptr;
+
+  // Standard runner that owns polling and io_uring registration.
+  iree_async_proactor_thread_t* proactor_thread_ = nullptr;
+
+  // Slab retained across assertions and released during fixture teardown.
+  iree_async_slab_t* slab_ = nullptr;
+
+  // Active slab region, if an assertion interrupts a lifecycle iteration.
+  iree_async_region_t* region_ = nullptr;
+
+  // Raw file descriptor retained until ownership transfers to |file_|.
+  int raw_file_fd_ = -1;
+
+  // Imported in-memory file used for registered-buffer I/O.
+  iree_async_file_t* file_ = nullptr;
+
+  // Shared completion state for sequential runner operations.
+  OperationCompletionState completion_;
+
+  // NOP operation used to establish the poll owner.
+  iree_async_nop_operation_t nop_;
+
+  // File write operation reading from a registered region.
+  iree_async_file_write_operation_t write_operation_;
+
+  // File read operation writing into a registered region.
+  iree_async_file_read_operation_t read_operation_;
+};
+
+TEST_F(IoUringRegistrationOwnerTest, SlabLifecycleFromCallerTask) {
+  ASSERT_NO_FATAL_FAILURE(WaitForPollOwner());
+
+  raw_file_fd_ = memfd_create("iree-async-registration-test", MFD_CLOEXEC);
+  ASSERT_GE(raw_file_fd_, 0) << strerror(errno);
+  ASSERT_EQ(ftruncate(raw_file_fd_, 4096), 0) << strerror(errno);
+  IREE_ASSERT_OK(iree_async_file_import(
+      proactor_, iree_async_primitive_from_fd(raw_file_fd_), &file_));
+  raw_file_fd_ = -1;
+
+  iree_async_slab_options_t slab_options = {0};
+  slab_options.buffer_size = 4096;
+  slab_options.buffer_count = 4;
+  IREE_ASSERT_OK(
+      iree_async_slab_create(slab_options, iree_allocator_system(), &slab_));
+
+  const bool supports_provided_buffers =
+      iree_any_bit_set(iree_async_proactor_query_capabilities(proactor_),
+                       IREE_ASYNC_PROACTOR_CAPABILITY_MULTISHOT);
+  iree_async_buffer_access_flags_t access_modes[] = {
+      IREE_ASYNC_BUFFER_ACCESS_FLAG_READ,
+      IREE_ASYNC_BUFFER_ACCESS_FLAG_WRITE,
+      IREE_ASYNC_BUFFER_ACCESS_FLAG_READ | IREE_ASYNC_BUFFER_ACCESS_FLAG_WRITE,
+  };
+  constexpr iree_host_size_t kTransferLength = 64;
+  uint8_t file_pattern = 0;
+  uint8_t next_pattern = 0x31;
+  for (iree_async_buffer_access_flags_t access_mode : access_modes) {
+    if (!supports_provided_buffers &&
+        iree_any_bit_set(access_mode, IREE_ASYNC_BUFFER_ACCESS_FLAG_WRITE)) {
+      continue;
+    }
+
+    IREE_ASSERT_OK(iree_async_proactor_register_slab(proactor_, slab_,
+                                                     access_mode, &region_));
+    ASSERT_NE(region_, nullptr);
+    if (iree_any_bit_set(access_mode, IREE_ASYNC_BUFFER_ACCESS_FLAG_WRITE)) {
+      EXPECT_GE(region_->handles.iouring.buffer_group_id, 0);
+      EXPECT_LE(region_->handles.iouring.buffer_group_id, UINT16_MAX);
+    }
+
+    iree_async_span_t span =
+        iree_async_span_from_region(region_, kTransferLength);
+    if (iree_any_bit_set(access_mode, IREE_ASYNC_BUFFER_ACCESS_FLAG_READ)) {
+      file_pattern = next_pattern++;
+      memset(iree_async_span_ptr(span), file_pattern, span.length);
+      memset(&write_operation_, 0, sizeof(write_operation_));
+      write_operation_.base.type = IREE_ASYNC_OPERATION_TYPE_FILE_WRITE;
+      write_operation_.base.completion_fn = RecordOperationCompletion;
+      write_operation_.base.user_data = &completion_;
+      write_operation_.file = file_;
+      write_operation_.buffer = span;
+      ResetCompletion();
+      IREE_ASSERT_OK(
+          iree_async_proactor_submit_one(proactor_, &write_operation_.base));
+      ASSERT_NO_FATAL_FAILURE(WaitForCompletion());
+      EXPECT_EQ(write_operation_.bytes_written, span.length);
+    }
+    if (iree_any_bit_set(access_mode, IREE_ASYNC_BUFFER_ACCESS_FLAG_WRITE)) {
+      memset(iree_async_span_ptr(span), 0, span.length);
+      memset(&read_operation_, 0, sizeof(read_operation_));
+      read_operation_.base.type = IREE_ASYNC_OPERATION_TYPE_FILE_READ;
+      read_operation_.base.completion_fn = RecordOperationCompletion;
+      read_operation_.base.user_data = &completion_;
+      read_operation_.file = file_;
+      read_operation_.buffer = span;
+      ResetCompletion();
+      IREE_ASSERT_OK(
+          iree_async_proactor_submit_one(proactor_, &read_operation_.base));
+      ASSERT_NO_FATAL_FAILURE(WaitForCompletion());
+      EXPECT_EQ(read_operation_.bytes_read, span.length);
+      auto* data = static_cast<uint8_t*>(iree_async_span_ptr(span));
+      for (iree_host_size_t i = 0; i < span.length; ++i) {
+        EXPECT_EQ(data[i], file_pattern) << "byte " << i;
+      }
+    }
+    iree_async_region_release(region_);
+    region_ = nullptr;
+  }
 }
 
 TEST(IoUringCrossThreadTest,

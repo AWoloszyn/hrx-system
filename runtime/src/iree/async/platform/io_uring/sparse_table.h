@@ -16,16 +16,14 @@
 // the caller's responsibility, since the register opcode and data format differ
 // between buffers (iovec) and files (int fd). The intended usage pattern is:
 //
-//   iree_io_uring_sparse_table_lock(table);
 //   int32_t slot = iree_io_uring_sparse_table_acquire(table, count);
-//   if (slot < 0) { unlock; return RESOURCE_EXHAUSTED; }
-//   long ret = syscall(IORING_REGISTER_*_UPDATE, ...);
+//   if (slot < 0) return RESOURCE_EXHAUSTED;
+//   int ret = iree_io_uring_ring_register(...);
 //   if (ret < 0) { iree_io_uring_sparse_table_release(table, slot, count); }
-//   iree_io_uring_sparse_table_unlock(table);
 //
-// The lock ensures the acquire-then-syscall sequence is atomic: no other
-// thread can observe or reclaim the same slots between allocation and kernel
-// registration.
+// Reserved slots remain unavailable until explicitly released. Callers must
+// not hold table synchronization while executing a kernel registration: on a
+// SINGLE_ISSUER ring that operation may wait for the poll owner.
 
 #ifndef IREE_ASYNC_PLATFORM_IO_URING_SPARSE_TABLE_H_
 #define IREE_ASYNC_PLATFORM_IO_URING_SPARSE_TABLE_H_
@@ -46,13 +44,14 @@ extern "C" {
 // A sparse slot allocator for io_uring resource tables.
 //
 // Wraps an iree_bitmap_t with mutex protection and first-fit contiguous
-// allocation semantics. Thread-safe: callers acquire the lock, perform
-// allocation + kernel syscall atomically, then release the lock.
+// allocation semantics. Acquire and release are independently thread-safe.
 //
 // Used for both IORING_REGISTER_BUFFERS2 (fixed buffer table) and
 // IORING_REGISTER_FILES2 (fixed file table) sparse registrations.
 typedef struct iree_io_uring_sparse_table_t {
+  // Serializes bitmap reservation and release.
   iree_slim_mutex_t mutex;
+
   // Bitmap of allocated slots. bit_count == table capacity.
   // The words array are allocated as trailing data after this struct.
   iree_bitmap_t bitmap;
@@ -69,21 +68,13 @@ iree_status_t iree_io_uring_sparse_table_allocate(
 void iree_io_uring_sparse_table_free(iree_io_uring_sparse_table_t* table,
                                      iree_allocator_t allocator);
 
-// Acquires the table lock. Callers must hold across acquire + syscall
-// sequences to prevent concurrent slot assignment.
-void iree_io_uring_sparse_table_lock(iree_io_uring_sparse_table_t* table);
-
-// Releases the table lock.
-void iree_io_uring_sparse_table_unlock(iree_io_uring_sparse_table_t* table);
-
 // Acquires a contiguous range of |count| slots using first-fit strategy.
-// Returns the starting index, or -1 if insufficient contiguous space.
-// Caller MUST hold the lock.
+// Returns the starting index, or -1 if insufficient contiguous space. The
+// slots remain reserved until a matching release call.
 int32_t iree_io_uring_sparse_table_acquire(iree_io_uring_sparse_table_t* table,
                                            uint16_t count);
 
 // Releases a contiguous range of |count| slots starting at |start|.
-// Caller MUST hold the lock.
 void iree_io_uring_sparse_table_release(iree_io_uring_sparse_table_t* table,
                                         uint16_t start, uint16_t count);
 

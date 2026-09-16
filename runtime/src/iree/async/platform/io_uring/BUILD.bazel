@@ -6,7 +6,7 @@
 
 # io_uring-based proactor implementation for Linux.
 #
-# Requires kernel 5.1+ with io_uring support. Falls back gracefully on older
+# Requires kernel 5.7+ with io_uring support. Falls back gracefully on older
 # kernels by returning IREE_STATUS_UNAVAILABLE from the create function.
 
 load("//runtime/build_tools/bazel:cc.bzl", "iree_runtime_cc_library")
@@ -81,8 +81,10 @@ iree_runtime_cc_library(
     srcs = ["buffer_ring.c"],
     hdrs = ["buffer_ring.h"],
     target_compatible_with = ["@platforms//os:linux"],
+    visibility = ["//visibility:private"],
     deps = [
         ":defs",
+        ":uring_registration",
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/internal",
         "//runtime/src/iree/base/internal:memory",
@@ -169,6 +171,18 @@ iree_runtime_cc_test(
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
         ":defs",
+        ":uring",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+iree_runtime_cc_test(
+    name = "buffer_ring_test",
+    srcs = ["buffer_ring_test.cc"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":buffer_ring",
         ":uring",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",

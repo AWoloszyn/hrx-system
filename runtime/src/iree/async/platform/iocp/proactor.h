@@ -346,11 +346,6 @@ struct iree_async_proactor_iocp_t {
 #endif  // IREE_PLATFORM_WINDOWS
   } nt_wait_api;
 
-  // Singleton constraint: only one READ-access slab may be registered at a
-  // time. Mirrors io_uring's fixed buffer table limitation, enforced as a
-  // public API contract for portability.
-  bool has_read_slab_registration;
-
   // Detected and allowed capabilities.
   iree_async_proactor_capabilities_t capabilities;
 

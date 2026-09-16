@@ -11,8 +11,8 @@
 // the ring during recv completions; userspace recycles them back after
 // processing.
 //
-// This module is self-contained and only requires the io_uring ring fd. It
-// does not depend on the proactor, enabling independent testing and reuse.
+// This module uses the ring's registration lane for synchronous kernel
+// registration and teardown. It does not depend on the proactor.
 //
 // ## Usage
 //
@@ -22,10 +22,10 @@
 //       .buffer_base = my_slab,
 //       .buffer_size = 4096,
 //       .buffer_count = 64,  // Must be power of 2.
-//       .group_id = 0,
+//       .preferred_group_id = 0,
 //   };
 //   IREE_RETURN_IF_ERROR(iree_io_uring_buffer_ring_allocate(
-//       ring_fd, options, allocator, &ring));
+//       registration, options, allocator, &ring));
 //
 //   // Use group_id in SQE for multishot recv:
 //   //   sqe->flags |= IOSQE_BUFFER_SELECT;
@@ -35,13 +35,13 @@
 //   iree_io_uring_buffer_ring_recycle(ring, buffer_index);
 //
 //   // Cleanup:
-//   iree_io_uring_buffer_ring_free(ring);
+//   IREE_RETURN_IF_ERROR(iree_io_uring_buffer_ring_free(ring));
 //
 // ## Thread Safety
 //
-// Buffer rings are NOT thread-safe. All operations (create, recycle, destroy)
-// must be called from the same thread — typically the proactor thread that
-// processes completions. This matches io_uring's single-issuer model.
+// Lifecycle operations may be called from any task while the registration
+// owner is polling. Buffer recycling has one userspace producer and must be
+// serialized by the caller, typically on the proactor completion task.
 //
 // ## Memory Layout
 //
@@ -57,6 +57,7 @@
 #define IREE_ASYNC_PLATFORM_IO_URING_BUFFER_RING_H_
 
 #include "iree/async/platform/io_uring/defs.h"
+#include "iree/async/platform/io_uring/uring_registration.h"
 #include "iree/base/api.h"
 
 #ifdef __cplusplus
@@ -84,10 +85,9 @@ typedef struct iree_io_uring_buffer_ring_options_t {
   // Maximum is 32768 (IREE_IO_URING_MAX_PBUF_RING_ENTRIES).
   iree_host_size_t buffer_count;
 
-  // Buffer group ID to register with the kernel. This ID is used in SQEs
-  // (sqe->buf_group) to select this ring for buffer selection. Must be unique
-  // per io_uring instance.
-  uint16_t group_id;
+  // First buffer group ID to attempt. Registration scans the 16-bit ID space
+  // on collisions, so callers need not track live group IDs.
+  uint16_t preferred_group_id;
 
   // Page alignment for ring memory. 0 = use system normal page size.
   // For huge pages, set to 2MB (2097152) or 1GB (1073741824).
@@ -101,7 +101,8 @@ typedef struct iree_io_uring_buffer_ring_options_t {
 } iree_io_uring_buffer_ring_options_t;
 
 // Returns default options with zero-initialized fields.
-// Caller must set buffer_base, buffer_size, buffer_count, and group_id.
+// Caller must set buffer_base, buffer_size, and buffer_count. The preferred
+// group ID defaults to zero.
 static inline iree_io_uring_buffer_ring_options_t
 iree_io_uring_buffer_ring_options_default(void) {
   iree_io_uring_buffer_ring_options_t options = {0};
@@ -123,16 +124,18 @@ iree_io_uring_buffer_ring_options_default(void) {
 // Returns IREE_STATUS_UNAVAILABLE if PBUF_RING is not supported (kernel
 // < 5.19).
 iree_status_t iree_io_uring_buffer_ring_allocate(
-    int ring_fd, iree_io_uring_buffer_ring_options_t options,
-    iree_allocator_t allocator, iree_io_uring_buffer_ring_t** out_ring);
+    iree_io_uring_registration_t* registration,
+    iree_io_uring_buffer_ring_options_t options, iree_allocator_t allocator,
+    iree_io_uring_buffer_ring_t** out_ring);
 
 // Unregisters and frees a buffer ring.
 //
 // Unregisters from the kernel (IORING_UNREGISTER_PBUF_RING), frees ring memory,
 // and releases the ring structure. The ring pointer is invalid after this call.
 //
-// Safe to call with NULL (no-op).
-void iree_io_uring_buffer_ring_free(iree_io_uring_buffer_ring_t* ring);
+// On failure the ring and its memory remain valid because the kernel may still
+// reference them. Safe to call with NULL (no-op).
+iree_status_t iree_io_uring_buffer_ring_free(iree_io_uring_buffer_ring_t* ring);
 
 //===----------------------------------------------------------------------===//
 // Buffer ring operations

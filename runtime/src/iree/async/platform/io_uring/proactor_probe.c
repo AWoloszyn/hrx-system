@@ -10,10 +10,7 @@
 // to determine what capabilities are available at runtime. The probing happens
 // once during proactor creation and the results are cached.
 
-#include <errno.h>
 #include <string.h>
-#include <sys/syscall.h>
-#include <unistd.h>
 
 #include "iree/async/platform/io_uring/defs.h"
 #include "iree/async/platform/io_uring/uring.h"
@@ -34,7 +31,7 @@
 // The probe is performed via IORING_REGISTER_PROBE which requires an
 // active ring (so this must be called after io_uring_setup succeeds).
 static iree_status_t iree_async_proactor_io_uring_probe_opcodes(
-    int ring_fd, uint64_t* out_supported_opcodes) {
+    iree_io_uring_ring_t* ring, uint64_t* out_supported_opcodes) {
   *out_supported_opcodes = 0;
 
   // Stack-allocate the probe structure with space for opcodes.
@@ -50,19 +47,14 @@ static iree_status_t iree_async_proactor_io_uring_probe_opcodes(
 
   iree_io_uring_probe_t* probe = &probe_buffer.probe;
 
-  // Perform the probe syscall. Retry on EINTR since io_uring_register can be
-  // interrupted by signals (common when attached to debuggers/profilers).
-  long ret;
-  do {
-    ret = syscall(IREE_IO_URING_SYSCALL_REGISTER, ring_fd,
-                  IREE_IORING_REGISTER_PROBE, probe,
-                  IREE_IO_URING_PROBE_OPCODE_COUNT);
-  } while (ret < 0 && errno == EINTR);
-  if (ret < 0) {
-    // Probe not supported on older kernels (pre-5.6). This is fine - we just
-    // won't enable advanced capabilities.
-    return iree_make_status(iree_status_code_from_errno(errno),
-                            "io_uring_register PROBE failed");
+  int result =
+      iree_io_uring_ring_register(ring, IREE_IORING_REGISTER_PROBE, probe,
+                                  IREE_IO_URING_PROBE_OPCODE_COUNT);
+  if (result < 0) {
+    int error_number = -result;
+    return iree_make_status(iree_status_code_from_errno(error_number),
+                            "io_uring_register PROBE failed (%d)",
+                            error_number);
   }
 
   // Build the bitmask from probe results.
@@ -103,7 +95,7 @@ static iree_status_t iree_async_proactor_io_uring_probe_opcodes(
 //
 // Returns IREE_STATUS_UNAVAILABLE if the kernel is too old.
 iree_status_t iree_async_proactor_io_uring_detect_capabilities(
-    int ring_fd, uint32_t ring_features,
+    iree_io_uring_ring_t* ring, uint32_t ring_features,
     iree_async_proactor_capabilities_t* out_capabilities) {
   *out_capabilities = IREE_ASYNC_PROACTOR_CAPABILITY_NONE;
 
@@ -129,36 +121,31 @@ iree_status_t iree_async_proactor_io_uring_detect_capabilities(
 
   // Probe for newer capabilities that require specific opcodes.
   uint64_t supported_opcodes = 0;
-  iree_status_t probe_status =
-      iree_async_proactor_io_uring_probe_opcodes(ring_fd, &supported_opcodes);
-  if (iree_status_is_ok(probe_status)) {
-    // MULTISHOT: available since 5.19 with ACCEPT.
-    // We detect 5.19+ by checking for SOCKET opcode (45), added in 5.19.
-    if (supported_opcodes & (1ULL << IREE_IORING_OP_SOCKET)) {
-      *out_capabilities |= IREE_ASYNC_PROACTOR_CAPABILITY_MULTISHOT;
-    }
+  IREE_RETURN_IF_ERROR(
+      iree_async_proactor_io_uring_probe_opcodes(ring, &supported_opcodes));
 
-    // ZERO_COPY_SEND: available since 6.0.
-    // Check for SEND_ZC opcode (47) directly.
-    if (supported_opcodes & (1ULL << IREE_IORING_OP_SEND_ZC)) {
-      *out_capabilities |= IREE_ASYNC_PROACTOR_CAPABILITY_ZERO_COPY_SEND;
-    }
+  // MULTISHOT: available since 5.19 with ACCEPT.
+  // We detect 5.19+ by checking for SOCKET opcode (45), added in 5.19.
+  if (supported_opcodes & (1ULL << IREE_IORING_OP_SOCKET)) {
+    *out_capabilities |= IREE_ASYNC_PROACTOR_CAPABILITY_MULTISHOT;
+  }
 
-    // FUTEX_OPERATIONS: available since 6.7.
-    // Check for FUTEX_WAIT opcode (51) directly.
-    if (supported_opcodes & (1ULL << IREE_IORING_OP_FUTEX_WAIT)) {
-      *out_capabilities |= IREE_ASYNC_PROACTOR_CAPABILITY_FUTEX_OPERATIONS;
-    }
+  // ZERO_COPY_SEND: available since 6.0.
+  // Check for SEND_ZC opcode (47) directly.
+  if (supported_opcodes & (1ULL << IREE_IORING_OP_SEND_ZC)) {
+    *out_capabilities |= IREE_ASYNC_PROACTOR_CAPABILITY_ZERO_COPY_SEND;
+  }
 
-    // PROACTOR_MESSAGING: available since 5.18.
-    // Check for MSG_RING opcode (40) directly.
-    if (supported_opcodes & (1ULL << IREE_IORING_OP_MSG_RING)) {
-      *out_capabilities |= IREE_ASYNC_PROACTOR_CAPABILITY_PROACTOR_MESSAGING;
-    }
-  } else {
-    // Probe failed - not fatal, just means we don't enable advanced features.
-    // This can happen on kernels 5.6 and earlier that don't support PROBE.
-    iree_status_ignore(probe_status);
+  // FUTEX_OPERATIONS: available since 6.7.
+  // Check for FUTEX_WAIT opcode (51) directly.
+  if (supported_opcodes & (1ULL << IREE_IORING_OP_FUTEX_WAIT)) {
+    *out_capabilities |= IREE_ASYNC_PROACTOR_CAPABILITY_FUTEX_OPERATIONS;
+  }
+
+  // PROACTOR_MESSAGING: available since 5.18.
+  // Check for MSG_RING opcode (40) directly.
+  if (supported_opcodes & (1ULL << IREE_IORING_OP_MSG_RING)) {
+    *out_capabilities |= IREE_ASYNC_PROACTOR_CAPABILITY_PROACTOR_MESSAGING;
   }
 
   return iree_ok_status();
