@@ -4,11 +4,15 @@ A streaming reduction often loads the next record from memory while it still
 has arithmetic to perform on the current record. Loom lets the author express
 that opportunity on the original `scf.for`: `pipeline(%depth)` requests ordinary
 read-ahead, and `unroll(%factor)` groups iterations. Both values can come from
-configuration, so one checked source supports several schedules.
+the caller of a reusable motif, or from arithmetic on specialized arguments and
+target properties. Each instantiation can choose its own schedule.
 
-This walkthrough starts with a row sum, inspects the compiler's schedule, and
-then applies the same workflow to packed signed-byte dequantization and dot
-accumulation. It assumes [Loom tools on `PATH`](../getting-started/acquiring-loom.md).
+This walkthrough starts with a reusable vector row sum, then uses a config-driven
+experiment harness to compare schedules without editing the source. Global
+schedule configuration is convenient for these sweeps; a production motif
+library takes per-instantiation choices so its callers remain independent.
+The same experiment workflow extends to packed signed-byte dequantization and
+dot accumulation. It assumes [Loom tools on `PATH`](../getting-started/acquiring-loom.md).
 Compilation and report inspection need no GPU. Execution examples use an AMDGPU
 device compatible with `gfx11-generic`; use one compatible target consistently
 when adapting the commands to another device.
@@ -36,7 +40,52 @@ explicit async groups, nested control flow, and ordered effects need a different
 ownership contract and receive diagnostics at depth greater than one. These
 policies are explicit; an unannotated loop receives no read-ahead transform.
 
-## Keep one checked source
+## Give each motif its own schedule
+
+This motif sums four adjacent values per row for each work-item. Its template
+signature takes `%depth` and `%factor` alongside the data. The kernel caller
+chooses depth four and factor six; another application of the same motif can
+pass different values in the same compilation.
+
+Save [`vector-read-ahead.loom`](../generated/examples/guide/functions-and-control/vector-read-ahead.loom)
+and [`vector-read-ahead-tests.loom`](../generated/examples/guide/functions-and-control/vector-read-ahead-tests.loom):
+
+```loom title="vector-read-ahead.loom"
+--8<-- "examples/guide/functions-and-control/vector-read-ahead.loom"
+```
+
+The policies must specialize to positive exact values before transformation.
+A caller can calculate them with `index` arithmetic from compile-time arguments
+or target facts such as `target.subgroup.size`. A configuration value describing
+a universal target property can also feed that calculation. A global
+algorithm-specific depth would force every instance of the motif to share it.
+The constants above are this caller's explicit choice, not a target-wide rule.
+
+The checks exercise empty, short, steady, and remainder paths. A composed
+kernel in the test file applies this motif at depth four/factor six and at depth
+one/factor two in the same entry, verifying that both choices coexist.
+
+```shell
+loom-link vector-read-ahead.loom vector-read-ahead-tests.loom \
+  --mode=merge --to=bc --output=vector-read-ahead.loombc
+iree-test-loom vector-read-ahead.loombc --device=amdgpu \
+  --target=amdgpu:gfx11-generic --sanitizer=access
+loom-compile vector-read-ahead.loombc --root=@sum_vector_rows \
+  --target=amdgpu:gfx11-generic --format=amdgpu-hsaco \
+  --output=vector-rows.hsaco --compile-report=details \
+  --compile-report-output=vector-rows.report.json
+loom-compile-report show vector-rows.report.json
+loom-compile-report suggest vector-rows.report.json
+```
+
+The applied policy is visible even though it came through a template argument.
+This finding is generated from the example during the documentation build:
+
+```text
+--8<-- "generated/examples/guide/functions-and-control/vector-pipeline-suggest.txt"
+```
+
+## Keep one checked source for experiments
 
 Each of 32 work-items sums one column of up to 64 input rows. Save
 [`read-ahead.loom`](../generated/examples/guide/functions-and-control/read-ahead.loom)
@@ -48,10 +97,11 @@ in the same directory:
 --8<-- "examples/guide/functions-and-control/read-ahead.loom"
 ```
 
-The source defaults to depth three and unroll factor four with
+This experiment harness defaults to depth three and unroll factor four with
 `schedule(recurrence)`. `config.def` provides those defaults; `--config` overrides
-them for a particular compilation. The loop body continues to describe one load
-and one addition.
+them for a particular compilation. These global controls make iterative sweeps
+convenient; they are not the recommended interface for a production motif. The
+loop body continues to describe one load and one addition.
 
 The checks use `input[row, lane] = 1 + 32 * row + lane`. For `N` rows the exact
 answer is `N * (lane + 1) + 16 * N * (N - 1)`. Distinct rows expose skipped,
@@ -194,6 +244,14 @@ the same thresholds with `s_wait_loadcnt`. Startup and exit waits still complete
 the work those paths require. This register pattern is a compiled result for
 this example; changing the payload, target, or unroll factor can change it.
 
+The vector motif above exercises the same boundary with four-register payloads.
+At depth four/factor six on gfx1151, its steady backedge carries three vector
+loads without register copies or a wait at the edge. The following iteration
+issues more loads and waits with `vmcnt(4)` before consuming older values.
+Coalesced slices keep their positions within the carried vectors, so extracting
+lanes does not introduce a new copy consumer. Entry and exit transfers still
+have costs; the final report exposes those along with registers and code size.
+
 Detailed AMDGPU reports retain each wait's block, producer, consumer, and
 outstanding counts. `suggest` identifies full load waits whose actual consumers
 are branch-payload copies. For the packed-dot example below it reports:
@@ -252,8 +310,10 @@ loads four packed signed bytes, an `f16` scale, and four `f32` activation values
 The consumer unpacks and scales the weights, then advances an ordered dot
 accumulation. Sixty-four activation streams are shared across the output rows.
 
-Its configurable entry, `@streaming_packed_s8_dot_read_ahead`, defaults to depth
-four and factor two. The relevant body is:
+Its experiment entry, `@streaming_packed_s8_dot_read_ahead`, uses global config
+for schedule sweeps and defaults to depth four and factor two. A reusable
+packed-dot motif would receive those choices from each caller. The relevant
+body is:
 
 ```loom
 --8<-- "generated/examples/guide/functions-and-control/streaming-packed-dot.loom:read-ahead-loop"
@@ -299,8 +359,9 @@ workload, and data-reuse policy.
 
 ## Carry the experiment into a kernel
 
-The reusable pattern is one logical loop, explicit configuration, boundary
-cases, and a named checked workload. Reports confirm the applied schedule and
-expose its resource cost; controlled measurements decide whether that cost is
-useful. The [agent development workflow](agent-driven-kernel-development.md)
+After a sweep, put the selected policy in the caller or its target-derived
+calculation and pass the values into the motif. Keep the logical loop, boundary
+cases, and named checked workload. Reports confirm each instantiation's schedule
+and expose its resource cost; controlled measurements decide whether that cost
+is useful. The [agent development workflow](agent-driven-kernel-development.md)
 places this experiment inside a production kernel search.

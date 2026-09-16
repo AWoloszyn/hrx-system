@@ -251,12 +251,12 @@ the repaired compiler through its normal source contract.
 ## Express loop schedules in the source
 
 Loom's `scf.for` already carries author-selected unrolling and ordinary
-read-ahead. A candidate can keep one logical iteration while changing its
-schedule through configuration:
+read-ahead. Reusable motifs take depth and unroll factor as template arguments,
+so each instantiation can choose its schedule. The values can also be calculated
+from specialized arguments or target properties. Inside such a motif, the
+logical loop uses the supplied `%depth` and `%factor`:
 
 ```loom
-%depth = config.get @read_ahead.depth : index
-%factor = config.get @read_ahead.unroll : index
 %result = scf.for %row = [%begin to %count step %step](%sum = %initial : f32) -> (f32) pipeline(%depth) unroll(%factor) {
   %value = view.load %values[%row, %lane] : view<64x32xf32> -> f32
   %next = scalar.addf %sum, %value : f32
@@ -276,9 +276,12 @@ carried-state-dependent reads, stores, nested regions, and explicit async
 groups have different scheduling requirements. Unannotated loops receive no
 read-ahead transformation.
 
-The first experiment compares depth one with a larger depth while keeping the
-unroll factor and workload fixed. Correctness includes empty and short loops,
-startup boundaries, and partial-unroll remainders. Detailed compile reports
+An experiment driver may bind these choices with global config keys to make
+benchmark sweeps convenient. A library-wide depth key couples every motif
+instance; production callers carry the selected values or target-derived
+calculation instead. The first experiment compares depth one with a larger depth
+while keeping the unroll factor and workload fixed. Correctness includes empty
+and short loops, startup boundaries, and partial-unroll remainders. Detailed compile reports
 retain the chosen depth and producer/consumer schedule; `suggest` exposes
 `scf.compare_pipeline_depth` with available final resource costs. Registers,
 spills, occupancy, code size, compile time, and measured runtime decide whether
@@ -291,9 +294,10 @@ changing the schedule. An explicit larger unroll factor with
 across the backedge; confirm the native moves and wait counts as well as the
 source schedule.
 
-The [loop-tuning walkthrough](tune-loop-schedules.md) supplies complete row-sum
-and packed-dot sources, checked workloads, configuration sweeps, and actual
-`show`/`suggest` output. The [control-flow guide](../guide/functions-and-control.md#unrolling-is-a-loop-policy)
+The [loop-tuning walkthrough](tune-loop-schedules.md) supplies a vector-row motif
+with per-instance policies, checked row-sum and packed-dot experiment harnesses,
+configuration sweeps, and actual `show`/`suggest` output. The
+[control-flow guide](../guide/functions-and-control.md#unrolling-is-a-loop-policy)
 owns the exact policy and schedule semantics.
 
 ## Ask the compiler before asking the GPU

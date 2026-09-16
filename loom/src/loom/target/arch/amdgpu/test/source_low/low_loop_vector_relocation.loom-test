@@ -1,0 +1,240 @@
+// Copyright 2026 The IREE Authors
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// RUN: emit amdgpu-assembly @vector_queue_aliases strategy=source fixed=%address:physical_register:0:1 fixed=%base:physical_register:0:2 fixed=%seed:physical_register:8:4 fixed=%future:physical_register:12:4
+
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @vector_queue_aliases(%address: reg<amdgpu.vgpr>, %base: reg<amdgpu.sgpr x2>, %seed: reg<amdgpu.vgpr x4>, %again: reg<amdgpu.scc>) -> (reg<amdgpu.vgpr x4>) asm {
+  low.br ^loop(%seed: reg<amdgpu.vgpr x4>)
+^loop(%carried: reg<amdgpu.vgpr x4>):
+  low.cond_br %again, ^body, ^exit : reg<amdgpu.scc>
+^body:
+  %pair = slice %carried[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr x2>
+  %lane0 = slice %pair[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %lane1 = slice %pair[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %used = v_add_u32 %lane0, %lane1
+  %future = global_load_b128_saddr %address, %base
+  low.br ^loop(%future: reg<amdgpu.vgpr x4>)
+^exit:
+  return %carried
+}
+
+// The header and transitive slices share the future load registers. Only
+// entry transport copies remain; the backedge leaves the result pending.
+
+// ----
+  v_mov_b32 v12, v8
+  v_mov_b32 v13, v9
+  v_mov_b32 v14, v10
+  v_mov_b32 v15, v11
+.Lbb1:
+  s_cbranch_scc0 .Lbb3
+.Lbb2:
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_add_u32 v1, v12, v13
+  global_load_b128 v[12:15], v0, s[0:1] offset:0
+  s_branch .Lbb1
+.Lbb3:
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  s_endpgm
+
+// ====
+// RUN: emit amdgpu-assembly @vector_queue_aliases_split_counter strategy=source fixed=%address:physical_register:0:1 fixed=%base:physical_register:0:2 fixed=%seed:physical_register:8:4 fixed=%future:physical_register:12:4
+
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @vector_queue_aliases_split_counter(%address: reg<amdgpu.vgpr>, %base: reg<amdgpu.sgpr x2>, %seed: reg<amdgpu.vgpr x4>, %again: reg<amdgpu.scc>) -> (reg<amdgpu.vgpr x4>) asm {
+  low.br ^loop(%seed: reg<amdgpu.vgpr x4>)
+^loop(%carried: reg<amdgpu.vgpr x4>):
+  low.cond_br %again, ^body, ^exit : reg<amdgpu.scc>
+^body:
+  %pair = slice %carried[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr x2>
+  %lane0 = slice %pair[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %lane1 = slice %pair[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %used = v_add_u32 %lane0, %lane1
+  %future = global_load_b128_saddr %address, %base
+  low.br ^loop(%future: reg<amdgpu.vgpr x4>)
+^exit:
+  return %carried
+}
+
+// The same allocation works with the separate load completion counter.
+
+// ----
+  v_mov_b32 v12, v8
+  v_mov_b32 v13, v9
+  v_mov_b32 v14, v10
+  v_mov_b32 v15, v11
+.Lbb1:
+  s_cbranch_scc0 .Lbb3
+.Lbb2:
+  s_wait_loadcnt loadcnt(0)
+  v_add_u32 v1, v12, v13
+  global_load_b128 v[12:15], v0, s[0:1] offset:0
+  s_branch .Lbb1
+.Lbb3:
+  s_wait_loadcnt loadcnt(0)
+  s_endpgm
+
+// ====
+// RUN: emit amdgpu-assembly @fixed_slice_preserves_header_location strategy=source fixed=%address:physical_register:0:1 fixed=%base:physical_register:0:2 fixed=%seed:physical_register:8:4 fixed=%future:physical_register:12:4 fixed=%lane0:physical_register:8:1
+
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @fixed_slice_preserves_header_location(%address: reg<amdgpu.vgpr>, %base: reg<amdgpu.sgpr x2>, %seed: reg<amdgpu.vgpr x4>, %again: reg<amdgpu.scc>) -> (reg<amdgpu.vgpr x4>) asm {
+  low.br ^loop(%seed: reg<amdgpu.vgpr x4>)
+^loop(%carried: reg<amdgpu.vgpr x4>):
+  low.cond_br %again, ^body, ^exit : reg<amdgpu.scc>
+^body:
+  %pair = slice %carried[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr x2>
+  %lane0 = slice %pair[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %lane1 = slice %pair[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %used = v_add_u32 %lane0, %lane1
+  %future = global_load_b128_saddr %address, %base
+  low.br ^loop(%future: reg<amdgpu.vgpr x4>)
+^exit:
+  return %carried
+}
+
+// A fixed slice anchors the component. The real backedge copies still
+// consume the load result and require completion.
+
+// ----
+.Lbb1:
+  s_cbranch_scc0 .Lbb3
+.Lbb2:
+  v_add_u32 v1, v8, v9
+  global_load_b128 v[12:15], v0, s[0:1] offset:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_mov_b32 v8, v12
+  v_mov_b32 v9, v13
+  v_mov_b32 v10, v14
+  v_mov_b32 v11, v15
+  s_branch .Lbb1
+.Lbb3:
+  s_endpgm
+
+// ====
+// RUN: emit amdgpu-assembly @late_slice_preserves_old_payload strategy=source fixed=%address:physical_register:0:1 fixed=%base:physical_register:0:2 fixed=%seed:physical_register:8:4 fixed=%future:physical_register:12:4
+
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @late_slice_preserves_old_payload(%address: reg<amdgpu.vgpr>, %base: reg<amdgpu.sgpr x2>, %seed: reg<amdgpu.vgpr x4>, %again: reg<amdgpu.scc>) -> (reg<amdgpu.vgpr x4>) asm {
+  low.br ^loop(%seed: reg<amdgpu.vgpr x4>)
+^loop(%carried: reg<amdgpu.vgpr x4>):
+  low.cond_br %again, ^body, ^exit : reg<amdgpu.scc>
+^body:
+  %pair = slice %carried[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr x2>
+  %lane0 = slice %pair[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %lane1 = slice %pair[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %future = global_load_b128_saddr %address, %base
+  %used = v_add_u32 %lane0, %lane1
+  low.br ^loop(%future: reg<amdgpu.vgpr x4>)
+^exit:
+  return %carried
+}
+
+// Slicing ends the direct header use, but the old payload is consumed after
+// the future load issues. Moving the aliases would overwrite live storage.
+
+// ----
+.Lbb1:
+  s_cbranch_scc0 .Lbb3
+.Lbb2:
+  global_load_b128 v[12:15], v0, s[0:1] offset:0
+  v_add_u32 v1, v8, v9
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_mov_b32 v8, v12
+  v_mov_b32 v9, v13
+  v_mov_b32 v10, v14
+  v_mov_b32 v11, v15
+  s_branch .Lbb1
+.Lbb3:
+  s_endpgm
+
+// ====
+// RUN: emit amdgpu-assembly @leased_slice_preserves_source_storage strategy=source fixed=%address:physical_register:0:1 fixed=%base:physical_register:0:2 fixed=%seed:physical_register:8:4 fixed=%future:physical_register:12:4
+
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @leased_slice_preserves_source_storage(%address: reg<amdgpu.vgpr>, %base: reg<amdgpu.sgpr x2>, %seed: reg<amdgpu.vgpr x4>, %again: reg<amdgpu.scc>) -> (reg<amdgpu.vgpr x4>) asm {
+  low.br ^loop(%seed: reg<amdgpu.vgpr x4>)
+^loop(%carried: reg<amdgpu.vgpr x4>):
+  low.cond_br %again, ^body, ^exit : reg<amdgpu.scc>
+^body:
+  %pair = slice %carried[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr x2>
+  %lane0 = slice %pair[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %lane1 = slice %pair[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  global_store_b32_saddr %lane0, %lane1, %base
+  %future = global_load_b128_saddr %address, %base
+  low.br ^loop(%future: reg<amdgpu.vgpr x4>)
+^exit:
+  return %carried
+}
+
+// The store leases its address and payload after issue. Their materialized
+// lease records retain the original storage, so this component stays put.
+
+// ----
+.Lbb1:
+  s_cbranch_scc0 .Lbb3
+.Lbb2:
+  global_store_b32 v8, v9, s[0:1] offset:0
+  s_wait_storecnt storecnt(0)
+  global_load_b128 v[12:15], v0, s[0:1] offset:0
+  s_wait_loadcnt loadcnt(0)
+  s_wait_xcnt xcnt(1)
+  v_mov_b32 v8, v12
+  v_mov_b32 v9, v13
+  v_mov_b32 v10, v14
+  v_mov_b32 v11, v15
+  s_branch .Lbb1
+.Lbb3:
+  s_endpgm
+
+// ====
+// RUN: emit amdgpu-assembly @anchored_component_blocks_dependent_relocation strategy=source fixed=%address:physical_register:0:1 fixed=%base:physical_register:0:2 fixed=%seed0:physical_register:8:4 fixed=%seed1:physical_register:12:4 fixed=%future0:physical_register:12:4 fixed=%future1:physical_register:16:4 fixed=%lane1:physical_register:12:1
+
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @anchored_component_blocks_dependent_relocation(%address: reg<amdgpu.vgpr>, %base: reg<amdgpu.sgpr x2>, %seed0: reg<amdgpu.vgpr x4>, %seed1: reg<amdgpu.vgpr x4>, %again: reg<amdgpu.scc>) -> (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) asm {
+  low.br ^loop(%seed0: reg<amdgpu.vgpr x4>, %seed1: reg<amdgpu.vgpr x4>)
+^loop(%carried0: reg<amdgpu.vgpr x4>, %carried1: reg<amdgpu.vgpr x4>):
+  low.cond_br %again, ^body, ^exit : reg<amdgpu.scc>
+^body:
+  %lane0 = slice %carried0[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %lane1 = slice %carried1[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %used = v_add_u32 %lane0, %lane1
+  %future0 = global_load_b128_saddr %address, %base
+  %future1 = global_load_b128_saddr %address, %base {offset = 16}
+  low.br ^loop(%future0: reg<amdgpu.vgpr x4>, %future1: reg<amdgpu.vgpr x4>)
+^exit:
+  return %carried0, %carried1
+}
+
+// The second header cannot move with its fixed slice. The first cannot assume
+// those registers are vacated: both old payloads meet at the add instruction.
+
+// ----
+.Lbb1:
+  s_cbranch_scc0 .Lbb3
+.Lbb2:
+  v_add_u32 v1, v8, v12
+  global_load_b128 v[12:15], v0, s[0:1] offset:0
+  global_load_b128 v[16:19], v0, s[0:1] offset:16
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  v_mov_b32 v8, v12
+  v_mov_b32 v9, v13
+  v_mov_b32 v10, v14
+  v_mov_b32 v11, v15
+  v_mov_b32 v12, v16
+  v_mov_b32 v13, v17
+  v_mov_b32 v14, v18
+  v_mov_b32 v15, v19
+  s_branch .Lbb1
+.Lbb3:
+  s_endpgm

@@ -1,4 +1,5 @@
-// Sum up to 64 rows from four-byte-aligned input and output buffers.
+// Experiment harness: global overrides make schedule sweeps convenient.
+// Reusable motifs take per-instantiation policies; see vector-read-ahead.loom.
 config.def @read_ahead.depth = 3 : index
 
 config.def @read_ahead.unroll = 4 : index

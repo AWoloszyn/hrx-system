@@ -11,7 +11,9 @@
 #include "loom/codegen/low/allocation/assignment_map.h"
 #include "loom/codegen/low/allocation/edge_alias.h"
 #include "loom/codegen/low/allocation/live_range.h"
+#include "loom/codegen/low/allocation/relocation_group.h"
 #include "loom/codegen/low/allocation/storage.h"
+#include "loom/ir/module.h"
 #include "loom/ops/low/ops.h"
 
 typedef struct loom_low_allocation_loop_edge_candidate_t {
@@ -41,6 +43,8 @@ typedef struct loom_low_allocation_loop_edge_relocation_state_t {
   loom_low_allocation_assignment_map_t assignment_map;
   // Reusable path-sensitive consumption query for the function body.
   loom_consumption_region_query_t consumption_query;
+  // Coalesced non-edge components retained before any header relocation.
+  loom_low_allocation_relocation_groups_t groups;
 } loom_low_allocation_loop_edge_relocation_state_t;
 
 static iree_status_t loom_low_allocation_loop_edge_relocation_consumption_query(
@@ -99,7 +103,7 @@ static bool loom_low_allocation_loop_edge_relocation_find_backedge(
 static bool
 loom_low_allocation_loop_edge_relocation_destination_relations_supported(
     const loom_low_placement_table_t* placement,
-    loom_value_ordinal_t destination_ordinal) {
+    loom_value_ordinal_t destination_ordinal, uint32_t unit_count) {
   const loom_low_placement_relation_range_t result_range =
       loom_low_placement_relation_range_for_value_ordinal(placement,
                                                           destination_ordinal);
@@ -112,14 +116,12 @@ loom_low_allocation_loop_edge_relocation_destination_relations_supported(
     if (relation->cause != LOOM_LOW_PLACEMENT_CAUSE_LOW_BRANCH ||
         relation->kind != LOOM_LOW_PLACEMENT_RELATION_SAME_STORAGE ||
         relation->result_unit_offset != 0 ||
-        relation->source_unit_offset != 0 || relation->unit_count != 1) {
+        relation->source_unit_offset != 0 ||
+        relation->unit_count != unit_count) {
       return false;
     }
   }
-  const loom_low_placement_relation_range_t source_range =
-      loom_low_placement_relation_range_for_source_value_ordinal(
-          placement, destination_ordinal);
-  return source_range.count == 0;
+  return true;
 }
 
 static const loom_low_placement_relation_t*
@@ -146,6 +148,126 @@ loom_low_allocation_loop_edge_relocation_find_relation(
   return result;
 }
 
+static loom_low_allocation_assignment_t
+loom_low_allocation_loop_edge_relocation_member_assignment(
+    const loom_low_allocation_loop_edge_relocation_state_t* state,
+    const loom_low_allocation_loop_edge_candidate_t* candidate,
+    uint32_t member_index) {
+  const loom_low_allocation_assignment_t* destination =
+      &state->context->assignments[candidate->destination_assignment_index];
+  loom_low_allocation_assignment_t member =
+      state->context->assignments[member_index];
+  member.location_base = candidate->assignment.location_base +
+                         (member.location_base - destination->location_base);
+  return member;
+}
+
+static bool loom_low_allocation_loop_edge_relocation_hard_relation_supported(
+    const loom_low_allocation_loop_edge_relocation_state_t* state,
+    const loom_low_placement_relation_t* relation) {
+  if (!iree_any_bit_set(relation->flags,
+                        LOOM_LOW_PLACEMENT_RELATION_FLAG_HARD)) {
+    return true;
+  }
+  if (!loom_low_placement_relation_can_alias(relation) ||
+      loom_low_placement_cause_is_edge(relation->cause)) {
+    return false;
+  }
+  const uint32_t result_index =
+      state->context
+          ->assignment_indices_by_value_ordinal[relation->result_ordinal];
+  const uint32_t source_index =
+      state->context
+          ->assignment_indices_by_value_ordinal[relation->source_ordinal];
+  return state->groups.representatives[result_index] ==
+         state->groups.representatives[source_index];
+}
+
+static iree_status_t loom_low_allocation_loop_edge_relocation_group_supported(
+    loom_low_allocation_loop_edge_relocation_state_t* state,
+    const loom_low_allocation_loop_edge_candidate_t* candidate,
+    bool* out_supported) {
+  *out_supported = false;
+  const loom_low_allocation_loop_edge_relocation_context_t* context =
+      state->context;
+  const loom_low_allocation_assignment_t* destination =
+      &context->assignments[candidate->destination_assignment_index];
+  const loom_low_allocation_assignment_t* source =
+      &context->assignments[candidate->source_assignment_index];
+  uint32_t member_index = candidate->destination_assignment_index;
+  do {
+    const loom_low_allocation_assignment_t* member =
+        &context->assignments[member_index];
+    // The backedge supplies storage for the header's window. An alias outside
+    // that window would require additional storage with no handoff proof.
+    if (member->location_base < destination->location_base ||
+        (uint64_t)member->location_base + member->location_count >
+            (uint64_t)destination->location_base +
+                destination->location_count ||
+        loom_low_allocation_target_constraints_fixed_value_for_value(
+            context->target_constraints, member->value_id) != NULL ||
+        loom_low_allocation_storage_lease_state_value_has_records(
+            context->storage_leases, context->liveness, member->value_id)) {
+      return iree_ok_status();
+    }
+    const loom_value_ordinal_t ordinal =
+        loom_module_value_ordinal_scratch_lookup(context->module,
+                                                 member->value_id);
+    const loom_low_placement_relation_range_t result_range =
+        loom_low_placement_relation_range_for_value_ordinal(context->placement,
+                                                            ordinal);
+    const loom_low_placement_relation_range_t source_range =
+        loom_low_placement_relation_range_for_source_value_ordinal(
+            context->placement, ordinal);
+    for (uint32_t i = 0; i < result_range.count; ++i) {
+      if (!loom_low_allocation_loop_edge_relocation_hard_relation_supported(
+              state, &context->placement->relations[result_range.start + i])) {
+        return iree_ok_status();
+      }
+    }
+    for (uint32_t i = 0; i < source_range.count; ++i) {
+      const uint32_t relation_index =
+          context->placement
+              ->relation_indices_by_source_ordinal[source_range.start + i];
+      if (!loom_low_allocation_loop_edge_relocation_hard_relation_supported(
+              state, &context->placement->relations[relation_index])) {
+        return iree_ok_status();
+      }
+    }
+    const loom_low_allocation_assignment_t proposed =
+        loom_low_allocation_loop_edge_relocation_member_assignment(
+            state, candidate, member_index);
+    const loom_liveness_interval_t* interval =
+        loom_liveness_interval_for_value_ordinal(context->liveness, ordinal);
+    loom_low_allocation_class_capacity_t capacity = {0};
+    IREE_RETURN_IF_ERROR(
+        loom_low_allocation_target_constraints_interval_capacity(
+            context->target_constraints, interval, &capacity));
+    if (!loom_low_allocation_target_constraints_location_range_fits_capacity(
+            &capacity, proposed.location_kind, proposed.location_base,
+            proposed.location_count) ||
+        proposed.location_base %
+                loom_low_allocation_live_range_interval_alignment(interval) !=
+            0) {
+      return iree_ok_status();
+    }
+    // The header's edge proof covers its own uses. A coalesced slice can
+    // outlive that header use, so its old payload must independently die
+    // before the backedge source replaces it.
+    if (member_index != candidate->destination_assignment_index &&
+        loom_low_allocation_live_range_assignments_conflict(
+            context->descriptor_set, context->liveness,
+            context->unit_liveness->start_points,
+            context->unit_liveness->end_points,
+            context->unit_liveness->point_count, &proposed, source)) {
+      return iree_ok_status();
+    }
+    member_index = state->groups.next_members[member_index];
+  } while (member_index != candidate->destination_assignment_index);
+  *out_supported = true;
+  return iree_ok_status();
+}
+
 static iree_status_t loom_low_allocation_loop_edge_relocation_collect_candidate(
     loom_low_allocation_loop_edge_relocation_state_t* state,
     loom_value_id_t destination_value_id, const loom_op_t* backedge_terminator,
@@ -160,10 +282,6 @@ static iree_status_t loom_low_allocation_loop_edge_relocation_collect_candidate(
         "loop header value %u is outside the allocation value domain",
         (unsigned)destination_value_id);
   }
-  if (!loom_low_allocation_loop_edge_relocation_destination_relations_supported(
-          state->context->placement, destination_ordinal)) {
-    return iree_ok_status();
-  }
   const loom_low_placement_relation_t* relation =
       loom_low_allocation_loop_edge_relocation_find_relation(
           state->context->placement, destination_ordinal, backedge_terminator);
@@ -177,15 +295,16 @@ static iree_status_t loom_low_allocation_loop_edge_relocation_collect_candidate(
       loom_low_allocation_assignment_map_require_assignment_for_value(
           &state->assignment_map, destination_value_id,
           &destination_assignment_index, &destination_assignment));
+  if (!loom_low_allocation_loop_edge_relocation_destination_relations_supported(
+          state->context->placement, destination_ordinal,
+          destination_assignment->unit_count)) {
+    return iree_ok_status();
+  }
   if (!loom_low_allocation_assignment_is_register_like(
           destination_assignment) ||
-      destination_assignment->unit_count != 1 ||
-      destination_assignment->location_count != 1 ||
-      loom_low_allocation_target_constraints_fixed_value_for_value(
-          state->context->target_constraints, destination_value_id) != NULL ||
-      loom_low_allocation_storage_lease_state_value_has_records(
-          state->context->storage_leases, state->context->liveness,
-          destination_value_id)) {
+      destination_assignment->unit_count == 0 ||
+      destination_assignment->location_count !=
+          destination_assignment->unit_count) {
     return iree_ok_status();
   }
 
@@ -198,8 +317,8 @@ static iree_status_t loom_low_allocation_loop_edge_relocation_collect_candidate(
           &state->assignment_map, source_value_id, &source_assignment_index,
           &source_assignment));
   if (!loom_low_allocation_assignment_is_register_like(source_assignment) ||
-      source_assignment->unit_count != 1 ||
-      source_assignment->location_count != 1 ||
+      source_assignment->unit_count != destination_assignment->unit_count ||
+      source_assignment->location_count != destination_assignment->unit_count ||
       !loom_liveness_value_class_equal(destination_assignment->value_class,
                                        source_assignment->value_class) ||
       !loom_low_allocation_storage_assignment_classes_share(
@@ -220,22 +339,6 @@ static iree_status_t loom_low_allocation_loop_edge_relocation_collect_candidate(
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                             "loop header value has no liveness interval");
   }
-  loom_low_allocation_class_capacity_t destination_capacity = {0};
-  IREE_RETURN_IF_ERROR(loom_low_allocation_target_constraints_interval_capacity(
-      state->context->target_constraints, destination_interval,
-      &destination_capacity));
-  if (!loom_low_allocation_target_constraints_location_range_fits_capacity(
-          &destination_capacity, source_assignment->location_kind,
-          source_assignment->location_base,
-          source_assignment->location_count)) {
-    return iree_ok_status();
-  }
-  const uint32_t required_alignment =
-      loom_low_allocation_live_range_interval_alignment(destination_interval);
-  if (required_alignment == 0 ||
-      source_assignment->location_base % required_alignment != 0) {
-    return iree_ok_status();
-  }
   const loom_low_allocation_edge_alias_context_t edge_alias_context = {
       .placement = state->context->placement,
       .consumption_query =
@@ -247,7 +350,7 @@ static iree_status_t loom_low_allocation_loop_edge_relocation_collect_candidate(
       loom_low_allocation_edge_alias_allows_counterpart_overlap(
           &edge_alias_context, destination_interval, relation,
           source_assignment, /*destination_unit_offset=*/0,
-          /*destination_unit_count=*/1, &allows_overlap));
+          destination_assignment->unit_count, &allows_overlap));
   if (!allows_overlap) {
     return iree_ok_status();
   }
@@ -260,18 +363,23 @@ static iree_status_t loom_low_allocation_loop_edge_relocation_collect_candidate(
   out_candidate->assignment.location_kind = source_assignment->location_kind;
   out_candidate->assignment.location_base = source_assignment->location_base;
   out_candidate->assignment.location_count = source_assignment->location_count;
-  *out_candidate_found = true;
-  return iree_ok_status();
+  return loom_low_allocation_loop_edge_relocation_group_supported(
+      state, out_candidate, out_candidate_found);
 }
 
 static bool loom_low_allocation_loop_edge_relocation_candidates_are_disjoint(
-    const loom_low_descriptor_set_t* descriptor_set,
+    const loom_low_allocation_loop_edge_relocation_state_t* state,
     const loom_low_allocation_loop_edge_candidate_t* candidates,
     iree_host_size_t candidate_count) {
   for (iree_host_size_t i = 0; i < candidate_count; ++i) {
     for (iree_host_size_t j = i + 1; j < candidate_count; ++j) {
-      if (loom_low_allocation_storage_assignment_ranges_overlap(
-              descriptor_set, &candidates[i].assignment,
+      // Each component can receive only one translation in this proposal.
+      if (state->groups.representatives[candidates[i]
+                                            .destination_assignment_index] ==
+              state->groups.representatives
+                  [candidates[j].destination_assignment_index] ||
+          loom_low_allocation_storage_assignment_ranges_overlap(
+              state->context->descriptor_set, &candidates[i].assignment,
               &candidates[j].assignment)) {
         return false;
       }
@@ -287,28 +395,56 @@ static bool loom_low_allocation_loop_edge_relocation_candidate_target_conflicts(
       state->context;
   const loom_value_id_t source_value_id =
       context->assignments[candidate->source_assignment_index].value_id;
-  if (loom_low_allocation_target_constraints_fixed_value_conflicts(
-          context->target_constraints, context->liveness,
-          context->unit_liveness, &candidate->assignment, &source_value_id,
-          /*ignored_value_count=*/1)) {
-    return true;
-  }
-  if (loom_low_allocation_target_constraints_reserved_range_conflicts(
-          context->target_constraints,
-          candidate->assignment.descriptor_reg_class_id,
-          candidate->assignment.location_kind,
-          candidate->assignment.location_base,
-          candidate->assignment.location_count)) {
-    return true;
-  }
-  // Edge aliasing ends ordinary source liveness at the handoff, but a storage
-  // lease may preserve asynchronous ownership beyond that point. The source
-  // lease therefore remains a hard conflict even though the source assignment
-  // and fixed-value records can be ignored as the intentional counterpart.
-  return loom_low_allocation_storage_lease_state_conflicts(
-      context->storage_leases, context->descriptor_set, context->liveness,
-      &candidate->assignment, /*ignored_value_ids=*/NULL,
-      /*ignored_value_count=*/0, LOOM_LOW_ALLOCATION_STORAGE_RELEASE_FORBIDDEN);
+  uint32_t member_index = candidate->destination_assignment_index;
+  do {
+    const loom_low_allocation_assignment_t assignment =
+        loom_low_allocation_loop_edge_relocation_member_assignment(
+            state, candidate, member_index);
+    if (loom_low_allocation_target_constraints_fixed_value_conflicts(
+            context->target_constraints, context->liveness,
+            context->unit_liveness, &assignment, &source_value_id,
+            /*ignored_value_count=*/1) ||
+        loom_low_allocation_target_constraints_reserved_range_conflicts(
+            context->target_constraints, assignment.descriptor_reg_class_id,
+            assignment.location_kind, assignment.location_base,
+            assignment.location_count)) {
+      return true;
+    }
+    // Semantic handoff does not release asynchronous ownership. Keep every
+    // lease, including the counterpart's, and intersect its full lifetime
+    // with each member's retained storage segments.
+    if (loom_low_allocation_storage_lease_state_conflicts(
+            context->storage_leases, context->descriptor_set, context->liveness,
+            &assignment, /*ignored_value_ids=*/NULL, /*ignored_value_count=*/0,
+            LOOM_LOW_ALLOCATION_STORAGE_RELEASE_FORBIDDEN)) {
+      return true;
+    }
+    member_index = state->groups.next_members[member_index];
+  } while (member_index != candidate->destination_assignment_index);
+  return false;
+}
+
+static bool loom_low_allocation_loop_edge_relocation_assignment_conflicts(
+    const loom_low_allocation_loop_edge_relocation_state_t* state,
+    const loom_low_allocation_loop_edge_candidate_t* candidate,
+    const loom_low_allocation_assignment_t* assignment) {
+  const loom_low_allocation_loop_edge_relocation_context_t* context =
+      state->context;
+  uint32_t member_index = candidate->destination_assignment_index;
+  do {
+    const loom_low_allocation_assignment_t member =
+        loom_low_allocation_loop_edge_relocation_member_assignment(
+            state, candidate, member_index);
+    if (loom_low_allocation_live_range_assignments_conflict(
+            context->descriptor_set, context->liveness,
+            context->unit_liveness->start_points,
+            context->unit_liveness->end_points,
+            context->unit_liveness->point_count, &member, assignment)) {
+      return true;
+    }
+    member_index = state->groups.next_members[member_index];
+  } while (member_index != candidate->destination_assignment_index);
+  return false;
 }
 
 static bool loom_low_allocation_loop_edge_relocation_candidate_conflicts(
@@ -321,17 +457,38 @@ static bool loom_low_allocation_loop_edge_relocation_candidate_conflicts(
     if (ignored_assignments[i]) {
       continue;
     }
-    if (loom_low_allocation_live_range_assignments_conflict(
-            context->descriptor_set, context->liveness,
-            context->unit_liveness->start_points,
-            context->unit_liveness->end_points,
-            context->unit_liveness->point_count, &candidate->assignment,
-            &context->assignments[i])) {
+    if (loom_low_allocation_loop_edge_relocation_assignment_conflicts(
+            state, candidate, &context->assignments[i])) {
       return true;
     }
   }
-  return loom_low_allocation_loop_edge_relocation_candidate_target_conflicts(
-      state, candidate);
+  return false;
+}
+
+static void loom_low_allocation_loop_edge_relocation_ignore_group(
+    const loom_low_allocation_loop_edge_relocation_state_t* state,
+    uint32_t assignment_index, uint8_t* ignored_assignments) {
+  uint32_t member_index = assignment_index;
+  do {
+    ignored_assignments[member_index] = 1;
+    member_index = state->groups.next_members[member_index];
+  } while (member_index != assignment_index);
+}
+
+static void loom_low_allocation_loop_edge_relocation_apply_candidate(
+    const loom_low_allocation_loop_edge_relocation_state_t* state,
+    const loom_low_allocation_loop_edge_candidate_t* candidate) {
+  const int64_t offset =
+      (int64_t)candidate->assignment.location_base -
+      state->context->assignments[candidate->destination_assignment_index]
+          .location_base;
+  uint32_t member_index = candidate->destination_assignment_index;
+  do {
+    loom_low_allocation_assignment_t* member =
+        &state->context->assignments[member_index];
+    member->location_base = (uint32_t)((int64_t)member->location_base + offset);
+    member_index = state->groups.next_members[member_index];
+  } while (member_index != candidate->destination_assignment_index);
 }
 
 static bool
@@ -543,13 +700,6 @@ static iree_status_t loom_low_allocation_loop_edge_relocation_try_full_group(
   if (context->assignment_count > UINT32_MAX) {
     return iree_ok_status();
   }
-  for (iree_host_size_t i = 0; i < candidate_count; ++i) {
-    if (loom_low_allocation_loop_edge_relocation_candidate_target_conflicts(
-            state, &candidates[i])) {
-      return iree_ok_status();
-    }
-  }
-
   uint8_t* conflict_assignments = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       context->arena, context->assignment_count, sizeof(*conflict_assignments),
@@ -560,12 +710,8 @@ static iree_status_t loom_low_allocation_loop_edge_relocation_try_full_group(
   for (iree_host_size_t i = 0; i < candidate_count; ++i) {
     for (iree_host_size_t j = 0; j < context->assignment_count; ++j) {
       if (ignored_assignments[j] || conflict_assignments[j] ||
-          !loom_low_allocation_live_range_assignments_conflict(
-              context->descriptor_set, context->liveness,
-              context->unit_liveness->start_points,
-              context->unit_liveness->end_points,
-              context->unit_liveness->point_count, &candidates[i].assignment,
-              &context->assignments[j])) {
+          !loom_low_allocation_loop_edge_relocation_assignment_conflicts(
+              state, &candidates[i], &context->assignments[j])) {
         continue;
       }
       conflict_assignments[j] = 1;
@@ -669,8 +815,9 @@ static iree_status_t loom_low_allocation_loop_edge_relocation_try_full_group(
   memset(eviction_ignored_assignments, 0,
          context->assignment_count * sizeof(*eviction_ignored_assignments));
   for (iree_host_size_t i = 0; i < candidate_count; ++i) {
-    eviction_ignored_assignments[candidates[i].destination_assignment_index] =
-        1;
+    loom_low_allocation_loop_edge_relocation_ignore_group(
+        state, candidates[i].destination_assignment_index,
+        eviction_ignored_assignments);
   }
   for (iree_host_size_t i = 0; i < conflict_count; ++i) {
     eviction_ignored_assignments[evictions[i].assignment_index] = 1;
@@ -739,11 +886,8 @@ static iree_status_t loom_low_allocation_loop_edge_relocation_try_full_group(
   }
 
   for (iree_host_size_t i = 0; i < candidate_count; ++i) {
-    loom_low_allocation_assignment_t* destination =
-        &context->assignments[candidates[i].destination_assignment_index];
-    destination->location_kind = candidates[i].assignment.location_kind;
-    destination->location_base = candidates[i].assignment.location_base;
-    destination->location_count = candidates[i].assignment.location_count;
+    loom_low_allocation_loop_edge_relocation_apply_candidate(state,
+                                                             &candidates[i]);
   }
   for (iree_host_size_t i = 0; i < conflict_count; ++i) {
     loom_low_allocation_assignment_t* assignment =
@@ -762,13 +906,15 @@ loom_low_allocation_loop_edge_relocation_candidate_depends_on_destination(
     const loom_low_allocation_loop_edge_relocation_state_t* state,
     const loom_low_allocation_loop_edge_candidate_t* candidate,
     uint32_t destination_assignment_index) {
-  const loom_low_allocation_loop_edge_relocation_context_t* context =
-      state->context;
-  return loom_low_allocation_live_range_assignments_conflict(
-      context->descriptor_set, context->liveness,
-      context->unit_liveness->start_points, context->unit_liveness->end_points,
-      context->unit_liveness->point_count, &candidate->assignment,
-      &context->assignments[destination_assignment_index]);
+  uint32_t member_index = destination_assignment_index;
+  do {
+    if (loom_low_allocation_loop_edge_relocation_assignment_conflicts(
+            state, candidate, &state->context->assignments[member_index])) {
+      return true;
+    }
+    member_index = state->groups.next_members[member_index];
+  } while (member_index != destination_assignment_index);
+  return false;
 }
 
 static iree_status_t loom_low_allocation_loop_edge_relocation_try_header(
@@ -787,6 +933,11 @@ static iree_status_t loom_low_allocation_loop_edge_relocation_try_header(
   if (header == NULL || header->arg_count == 0) {
     return iree_ok_status();
   }
+  if (state->groups.representatives == NULL) {
+    IREE_RETURN_IF_ERROR(loom_low_allocation_relocation_groups_initialize(
+        state->context->descriptor_set, state->context->placement,
+        &state->assignment_map, state->context->arena, &state->groups));
+  }
 
   loom_low_allocation_loop_edge_candidate_t* candidates = NULL;
   IREE_RETURN_IF_ERROR(
@@ -799,13 +950,17 @@ static iree_status_t loom_low_allocation_loop_edge_relocation_try_header(
         loom_low_allocation_loop_edge_relocation_collect_candidate(
             state, loom_block_arg_id(header, i), backedge->terminator,
             &candidates[candidate_count], &candidate_found));
-    if (candidate_found) {
+    // A hard target or lease conflict cannot be repaired by evicting ordinary
+    // assignments. Remove it before considering the joint relocation.
+    if (candidate_found &&
+        !loom_low_allocation_loop_edge_relocation_candidate_target_conflicts(
+            state, &candidates[candidate_count])) {
       ++candidate_count;
     }
   }
   if (candidate_count == 0 ||
       !loom_low_allocation_loop_edge_relocation_candidates_are_disjoint(
-          state->context->descriptor_set, candidates, candidate_count)) {
+          state, candidates, candidate_count)) {
     return iree_ok_status();
   }
 
@@ -816,7 +971,8 @@ static iree_status_t loom_low_allocation_loop_edge_relocation_try_header(
   memset(ignored_assignments, 0,
          state->context->assignment_count * sizeof(*ignored_assignments));
   for (iree_host_size_t i = 0; i < candidate_count; ++i) {
-    ignored_assignments[candidates[i].destination_assignment_index] = 1;
+    loom_low_allocation_loop_edge_relocation_ignore_group(
+        state, candidates[i].destination_assignment_index, ignored_assignments);
     ignored_assignments[candidates[i].source_assignment_index] = 1;
   }
 
@@ -871,12 +1027,8 @@ static iree_status_t loom_low_allocation_loop_edge_relocation_try_header(
     if (!candidate_enabled[i]) {
       continue;
     }
-    state->context->assignments[candidates[i].destination_assignment_index]
-        .location_kind = candidates[i].assignment.location_kind;
-    state->context->assignments[candidates[i].destination_assignment_index]
-        .location_base = candidates[i].assignment.location_base;
-    state->context->assignments[candidates[i].destination_assignment_index]
-        .location_count = candidates[i].assignment.location_count;
+    loom_low_allocation_loop_edge_relocation_apply_candidate(state,
+                                                             &candidates[i]);
     ++relocated_value_count;
   }
   *out_relocated_value_count = relocated_value_count;

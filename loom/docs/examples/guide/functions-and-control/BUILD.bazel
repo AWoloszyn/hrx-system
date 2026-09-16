@@ -8,6 +8,7 @@
 
 load("@hrx//loom/build_tools/bazel:defs.bzl", "loom_execution_profile", "loom_kernel_library", "loom_library", "loom_test")
 load("@hrx//loom/requirements:defs.bzl", "TARGET_ARCH_VM")
+load("@hrx//loom/src/loom/tooling/target/spirv:execution_profiles.bzl", "SPIRV_VULKAN_HARDWARE_PROFILE")
 load("@hrx//loom/target/amdgpu:execution_profiles.bzl", "AMDGPU_HARDWARE_PROFILE")
 
 package(
@@ -67,4 +68,29 @@ loom_test(
     ],
     execution_profile = AMDGPU_HARDWARE_PROFILE,
     deps = [":read_ahead"],
+)
+
+loom_kernel_library(
+    name = "vector_read_ahead",
+    srcs = [
+        "vector-read-ahead.loom",
+        "vector-read-ahead-tests.loom",
+    ],
+    execution_profiles = [
+        AMDGPU_HARDWARE_PROFILE,
+        SPIRV_VULKAN_HARDWARE_PROFILE,
+    ],
+    targets = [
+        "@hrx//loom/target/amdgpu:gfx11-generic",
+        "@hrx//loom/target/amdgpu:gfx1250-a0",
+        "@hrx//loom/target/spirv:vulkan1.3+bda",
+    ],
+)
+
+loom_test(
+    name = "vector_read_ahead_access_test",
+    srcs = ["vector-read-ahead-tests.loom"],
+    args = ["--sanitizer=access"],
+    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    deps = [":vector_read_ahead"],
 )

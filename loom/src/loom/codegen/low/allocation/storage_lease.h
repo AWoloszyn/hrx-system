@@ -71,7 +71,8 @@ iree_status_t loom_low_allocation_storage_lease_state_initialize(
     loom_low_allocation_storage_lease_state_t* out_state);
 
 // Returns true when |candidate| conflicts with materialized storage leases
-// under |policy|.
+// under |policy|. Complete candidate storage segments exclude lifetime holes;
+// an empty segment range retains the whole-assignment lifetime.
 bool loom_low_allocation_storage_lease_state_conflicts(
     const loom_low_allocation_storage_lease_state_t* state,
     const loom_low_descriptor_set_t* descriptor_set,
