@@ -371,6 +371,90 @@ TEST_F(GreedyRewriteTest, CyclicFactsNarrowAfterSemanticUpdates) {
   iree_arena_deinitialize(&arena);
 }
 
+TEST_F(GreedyRewriteTest, ForwardingComponentsTrackPayloadReplacements) {
+  loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
+  loom_region_t* body = loom_func_like_body(function_);
+  body->flags |= LOOM_REGION_INSTANCE_FLAG_CFG;
+  loom_value_id_t seeds[2];
+  for (int i = 0; i < 2; ++i) {
+    loom_op_t* constant = nullptr;
+    IREE_ASSERT_OK(loom_test_constant_build(&builder_,
+                                            loom_attr_i64(i == 0 ? 2 : 9), i32,
+                                            LOOM_LOCATION_UNKNOWN, &constant));
+    seeds[i] = loom_test_constant_result(constant);
+  }
+  loom_block_t* header = nullptr;
+  IREE_ASSERT_OK(loom_region_append_block(module_, body, &header));
+  loom_value_id_t carried[2];
+  for (auto& value : carried) {
+    IREE_ASSERT_OK(
+        loom_builder_define_block_arg(&builder_, header, i32, &value));
+  }
+  loom_op_t* entry_branch = nullptr;
+  IREE_ASSERT_OK(loom_cfg_br_build(&builder_, header, seeds, 2,
+                                   LOOM_LOCATION_UNKNOWN, &entry_branch));
+  loom_builder_set_block(&builder_, header);
+  loom_value_id_t swapped[2] = {carried[1], carried[0]};
+  loom_op_t* backedge = nullptr;
+  IREE_ASSERT_OK(loom_cfg_br_build(&builder_, header, swapped, 2,
+                                   LOOM_LOCATION_UNKNOWN, &backedge));
+
+  iree_arena_allocator_t arena;
+  iree_arena_initialize(&block_pool_, &arena);
+  loom_pass_value_fact_owner_t owner;
+  loom_pass_value_fact_owner_initialize(&block_pool_, &owner);
+  loom_value_fact_table_t* facts = nullptr;
+  IREE_ASSERT_OK(loom_pass_value_fact_owner_acquire(
+      &owner, module_, loom_pass_value_fact_scope_function(function_), &facts));
+  loom_rewriter_t rewriter;
+  IREE_ASSERT_OK(loom_rewriter_initialize(&rewriter, module_, &arena));
+  loom_rewriter_attach_value_facts(&rewriter, facts);
+
+  auto check_facts = [&](bool expect_exact) {
+    while (loom_op_t* op = loom_rewriter_pop(&rewriter)) {
+      bool folded = false;
+      IREE_ASSERT_OK(loom_rewriter_try_fold(&rewriter, op, &folded));
+    }
+    loom_pass_value_fact_owner_t fresh_owner;
+    loom_pass_value_fact_owner_initialize(&block_pool_, &fresh_owner);
+    loom_value_fact_table_t* fresh = nullptr;
+    IREE_ASSERT_OK(loom_pass_value_fact_owner_acquire(
+        &fresh_owner, module_, loom_pass_value_fact_scope_function(function_),
+        &fresh));
+    for (loom_value_id_t value : carried) {
+      EXPECT_TRUE(loom_value_fact_table_facts_equal_for_type(
+          module_, i32, facts, loom_value_fact_table_lookup(facts, value),
+          fresh, loom_value_fact_table_lookup(fresh, value)));
+    }
+    EXPECT_EQ(loom_value_facts_is_exact(
+                  loom_rewriter_value_facts(&rewriter, carried[0])),
+              expect_exact);
+    loom_pass_value_fact_owner_deinitialize(&fresh_owner);
+  };
+
+  // Split and rejoin a mutual forwarding cycle without changing CFG edges.
+  // Once the first argument forwards itself, it only receives the seed 2.
+  for (int edit = 0; edit < 3; ++edit) {
+    if (edit == 0) {
+      IREE_ASSERT_OK(
+          loom_rewriter_set_operand(&rewriter, backedge, 0, carried[0]));
+    } else if (edit == 1) {
+      IREE_ASSERT_OK(loom_rewriter_replace_all_uses_with(&rewriter, carried[1],
+                                                         carried[0]));
+    } else {
+      IREE_ASSERT_OK(loom_rewriter_replace_all_uses_except(
+          &rewriter, carried[1], carried[0], entry_branch));
+    }
+    check_facts(true);
+    IREE_ASSERT_OK(
+        loom_rewriter_set_operand(&rewriter, backedge, 0, carried[1]));
+    check_facts(false);
+  }
+  loom_rewriter_deinitialize(&rewriter);
+  loom_pass_value_fact_owner_deinitialize(&owner);
+  iree_arena_deinitialize(&arena);
+}
+
 TEST_F(GreedyRewriteTest, NonEquationEditsPreserveCyclicFacts) {
   loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
   loom_region_t* body = loom_func_like_body(function_);

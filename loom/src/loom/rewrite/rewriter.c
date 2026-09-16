@@ -18,8 +18,15 @@
 #define LOOM_REWRITER_INITIAL_WORKLIST_CAPACITY 64
 #define LOOM_REWRITER_INITIAL_REGION_STACK_CAPACITY 8
 
+typedef enum loom_rewriter_user_change_flag_bits_e {
+  // Operand identities are changing, not just the facts of the same value.
+  LOOM_REWRITER_USER_CHANGE_FLAG_REPLACED = 1u << 0,
+} loom_rewriter_user_change_flag_bits_t;
+typedef uint32_t loom_rewriter_user_change_flags_t;
+
 static iree_status_t loom_rewriter_add_users_to_worklist(
-    loom_rewriter_t* rewriter, loom_value_id_t value_id);
+    loom_rewriter_t* rewriter, loom_value_id_t value_id,
+    loom_rewriter_user_change_flags_t flags);
 static iree_status_t loom_rewriter_add_result_users_to_worklist(
     loom_rewriter_t* rewriter, loom_op_t* op);
 static iree_status_t loom_rewriter_add_summary_ops_to_worklist(
@@ -287,7 +294,7 @@ static iree_status_t loom_rewriter_cfg_argument_changed(
     void* user_data, loom_value_id_t value_id) {
   loom_rewriter_t* rewriter = user_data;
   rewriter->flags |= LOOM_REWRITER_FLAG_FACTS_CHANGED;
-  return loom_rewriter_add_users_to_worklist(rewriter, value_id);
+  return loom_rewriter_add_users_to_worklist(rewriter, value_id, /*flags=*/0);
 }
 
 static iree_status_t loom_rewriter_update_cfg_block_facts(
@@ -747,6 +754,28 @@ static iree_status_t loom_rewriter_add_cfg_summary_to_worklist(
   return iree_ok_status();
 }
 
+// Branch operand identities define the forwarding graph independently of the
+// facts carried by those operands. Structural CFG edits publish a new snapshot;
+// payload edits only invalidate this successor's retained partition.
+static void loom_rewriter_invalidate_cfg_forwarding(loom_rewriter_t* rewriter,
+                                                    const loom_op_t* op) {
+  if (!rewriter->fact_table || op->successor_count != 1) return;
+  const loom_block_t* successor = loom_op_successors(op)[0];
+  if (!successor->arg_count) return;
+  const loom_value_fact_cfg_region_t* structure =
+      loom_value_fact_table_lookup_cfg_region(rewriter->fact_table,
+                                              successor->parent_region);
+  if (!structure || !structure->control_flow.components.count) return;
+  iree_host_size_t block_index =
+      loom_cfg_graph_block_index(&structure->graph, successor);
+  if (block_index == IREE_HOST_SIZE_MAX ||
+      !structure->graph.blocks[block_index].component_is_cyclic)
+    return;
+  structure->control_flow
+      .forwarding[structure->graph.blocks[block_index].component]
+      .dirty = true;
+}
+
 // Structured parents own the summaries of their regions. Inserting or erasing
 // an unused definition does not change an equation in its own CFG component.
 static iree_status_t loom_rewriter_add_parent_summary_ops_to_worklist(
@@ -852,11 +881,15 @@ static iree_status_t loom_rewriter_add_attribute_users_to_worklist(
 
 // Adds operand, attribute, and value-type users to the worklist.
 static iree_status_t loom_rewriter_add_users_to_worklist(
-    loom_rewriter_t* rewriter, loom_value_id_t value_id) {
+    loom_rewriter_t* rewriter, loom_value_id_t value_id,
+    loom_rewriter_user_change_flags_t flags) {
   loom_value_t* value = loom_module_value(rewriter->module, value_id);
   const loom_use_t* uses = loom_value_uses(value);
   for (uint32_t i = 0; i < value->use_count; ++i) {
     loom_op_t* user_op = loom_use_user_op(uses[i]);
+    if (iree_any_bit_set(flags, LOOM_REWRITER_USER_CHANGE_FLAG_REPLACED)) {
+      loom_rewriter_invalidate_cfg_forwarding(rewriter, user_op);
+    }
     IREE_RETURN_IF_ERROR(loom_rewriter_add_to_worklist(rewriter, user_op));
     IREE_RETURN_IF_ERROR(
         loom_rewriter_add_summary_ops_to_worklist(rewriter, user_op));
@@ -900,6 +933,7 @@ static iree_status_t loom_rewriter_add_operand_users_except_to_worklist(
   for (uint32_t i = 0; i < value->use_count; ++i) {
     loom_op_t* user_op = loom_use_user_op(uses[i]);
     if (user_op == except_op) continue;
+    loom_rewriter_invalidate_cfg_forwarding(rewriter, user_op);
     IREE_RETURN_IF_ERROR(loom_rewriter_add_to_worklist(rewriter, user_op));
     IREE_RETURN_IF_ERROR(
         loom_rewriter_add_summary_ops_to_worklist(rewriter, user_op));
@@ -935,8 +969,8 @@ iree_status_t loom_rewriter_replace_all_uses_with(loom_rewriter_t* rewriter,
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "replacement values must be valid");
   }
-  IREE_RETURN_IF_ERROR(
-      loom_rewriter_add_users_to_worklist(rewriter, old_value));
+  IREE_RETURN_IF_ERROR(loom_rewriter_add_users_to_worklist(
+      rewriter, old_value, LOOM_REWRITER_USER_CHANGE_FLAG_REPLACED));
   IREE_RETURN_IF_ERROR(
       loom_value_replace_all_uses_with(rewriter->module, old_value, new_value));
   rewriter->flags |= LOOM_REWRITER_FLAG_CHANGED;
@@ -1394,6 +1428,7 @@ iree_status_t loom_rewriter_set_operand(loom_rewriter_t* rewriter,
                                         loom_value_id_t new_value) {
   IREE_RETURN_IF_ERROR(
       loom_op_set_operand(rewriter->module, op, operand_index, new_value));
+  loom_rewriter_invalidate_cfg_forwarding(rewriter, op);
   IREE_RETURN_IF_ERROR(loom_rewriter_add_to_worklist(rewriter, op));
   IREE_RETURN_IF_ERROR(loom_rewriter_add_summary_ops_to_worklist(rewriter, op));
   IREE_RETURN_IF_ERROR(loom_rewriter_recompute_op_facts(
@@ -1423,7 +1458,8 @@ iree_status_t loom_rewriter_set_value_type(loom_rewriter_t* rewriter,
           loom_rewriter_add_summary_ops_to_worklist(rewriter, defining_op));
     }
   }
-  IREE_RETURN_IF_ERROR(loom_rewriter_add_users_to_worklist(rewriter, value_id));
+  IREE_RETURN_IF_ERROR(
+      loom_rewriter_add_users_to_worklist(rewriter, value_id, /*flags=*/0));
   rewriter->flags |=
       LOOM_REWRITER_FLAG_CHANGED | LOOM_REWRITER_FLAG_TYPE_CHANGED;
   return iree_ok_status();
@@ -1435,8 +1471,8 @@ static iree_status_t loom_rewriter_add_result_users_to_worklist(
   loom_value_id_t* results = loom_op_results(op);
   for (uint16_t i = 0; i < op->result_count; ++i) {
     if (results[i] != LOOM_VALUE_ID_INVALID) {
-      IREE_RETURN_IF_ERROR(
-          loom_rewriter_add_users_to_worklist(rewriter, results[i]));
+      IREE_RETURN_IF_ERROR(loom_rewriter_add_users_to_worklist(
+          rewriter, results[i], /*flags=*/0));
     }
   }
   return iree_ok_status();
