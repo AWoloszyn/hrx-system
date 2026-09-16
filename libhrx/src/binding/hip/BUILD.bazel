@@ -185,6 +185,18 @@ hrx_cc_library(
 )
 
 hrx_cc_library(
+    name = "peer",
+    srcs = ["peer.c"],
+    hdrs = ["peer.h"],
+    includes = ["../.."],
+    target_compatible_with = _LINUX_COMPATIBILITY,
+    deps = [
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/hal",
+    ],
+)
+
+hrx_cc_library(
     name = "stream",
     srcs = ["stream.c"],
     hdrs = [
@@ -239,6 +251,7 @@ hrx_cc_shared_library(
         ":execution_resource_descriptor",
         ":handle_registry",
         ":launch_params",
+        ":peer",
         ":stream",
         "//libhrx/src/binding/common",
         "//runtime/src/iree/base",
@@ -271,6 +284,17 @@ hrx_cc_test(
         "//runtime/src/iree/base",
         "//runtime/src/iree/hal",
         "//runtime/src/iree/hal/testing:mock_device",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+hrx_cc_test(
+    name = "peer_test",
+    srcs = ["peer_test.cc"],
+    target_compatible_with = _LINUX_COMPATIBILITY,
+    deps = [
+        ":peer",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
     ],

@@ -649,6 +649,16 @@ hrx_status_t hrx_ensure_shared_state(void);
 hrx_status_t hrx_device_query_total_memory_from_spec(
     hrx_device_t device, bool* out_known, iree_device_size_t* out_total);
 
+// Returns whether a topology edge provides native read/write access to the
+// non-coherent allocation surface used for ordinary device allocations.
+static inline bool hrx_topology_edge_supports_peer_access(
+    iree_hal_topology_edge_t edge) {
+  return iree_hal_topology_edge_buffer_read_mode_noncoherent(edge.lo) ==
+             IREE_HAL_TOPOLOGY_INTEROP_MODE_NATIVE &&
+         iree_hal_topology_edge_buffer_write_mode_noncoherent(edge.lo) ==
+             IREE_HAL_TOPOLOGY_INTEROP_MODE_NATIVE;
+}
+
 // Collapses an HRX flattened queue-affinity mask into the corresponding HAL
 // queue-family affinity for resource placement. Zero selects every family.
 iree_status_t hrx_hal_queue_affinity_to_family_affinity(

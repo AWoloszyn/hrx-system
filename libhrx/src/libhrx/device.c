@@ -187,30 +187,6 @@ hrx_status_t hrx_device_memory_info(hrx_device_t device, size_t* free_bytes,
   return status;
 }
 
-static bool hrx_topology_edge_supports_peer_access(
-    iree_hal_topology_edge_t edge) {
-  const iree_hal_topology_capability_t capabilities =
-      iree_hal_topology_edge_capability_flags(edge.lo);
-  // A grant requirement records addressability that is intentionally absent
-  // from the current buffer modes until access is enabled for an allocation.
-  if (iree_any_bit_set(
-          capabilities,
-          IREE_HAL_TOPOLOGY_CAPABILITY_PEER_ACCESS_REQUIRES_GRANT)) {
-    return true;
-  }
-  const bool noncoherent_native =
-      iree_hal_topology_edge_buffer_read_mode_noncoherent(edge.lo) ==
-          IREE_HAL_TOPOLOGY_INTEROP_MODE_NATIVE &&
-      iree_hal_topology_edge_buffer_write_mode_noncoherent(edge.lo) ==
-          IREE_HAL_TOPOLOGY_INTEROP_MODE_NATIVE;
-  const bool coherent_native =
-      iree_hal_topology_edge_buffer_read_mode_coherent(edge.lo) ==
-          IREE_HAL_TOPOLOGY_INTEROP_MODE_NATIVE &&
-      iree_hal_topology_edge_buffer_write_mode_coherent(edge.lo) ==
-          IREE_HAL_TOPOLOGY_INTEROP_MODE_NATIVE;
-  return noncoherent_native || coherent_native;
-}
-
 hrx_status_t hrx_device_can_access_peer(hrx_device_t device_a,
                                         hrx_device_t device_b,
                                         bool* can_access) {
