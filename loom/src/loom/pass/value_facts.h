@@ -163,7 +163,7 @@ void loom_pass_value_fact_owner_deinitialize(
     loom_pass_value_fact_owner_t* owner);
 
 // Invalidates the active scope and clears populated entries. This keeps
-// reusable direct-address storage when capacity still matches the module.
+// reusable direct-address storage, which grows as new values are analyzed.
 void loom_pass_value_fact_owner_invalidate(loom_pass_value_fact_owner_t* owner);
 
 // Prepares empty fact storage for |scope|. The returned table is borrowed and
@@ -177,7 +177,9 @@ iree_status_t loom_pass_value_fact_owner_prepare(
 
 // Acquires computed facts for |scope|. The returned table is borrowed and
 // remains valid until the owner is invalidated, prepared or acquired for
-// another scope, or deinitialized.
+// another scope, or deinitialized. Appending values outside the active scope
+// does not invalidate its facts. Mutations affecting that scope require an
+// explicit invalidation before reacquiring it.
 iree_status_t loom_pass_value_fact_owner_acquire(
     loom_pass_value_fact_owner_t* owner, const loom_module_t* module,
     loom_pass_value_fact_scope_t scope, loom_value_fact_table_t** out_table);

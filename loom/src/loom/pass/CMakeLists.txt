@@ -391,6 +391,7 @@ loom_cc_test(
     ::value_facts
     iree::testing::gtest
     iree::testing::gtest_main
+    loom::ir
     loom::ops::test
     loom::pass::test::harness
     loom::target::facts

@@ -81,10 +81,11 @@ static void loom_pass_value_fact_owner_clear_scope(
 
 static iree_status_t loom_pass_value_fact_owner_ensure_table(
     loom_pass_value_fact_owner_t* owner, const loom_module_t* module) {
-  iree_host_size_t capacity = loom_value_table_capacity(&module->values);
   if (iree_any_bit_set(owner->flags,
                        LOOM_PASS_VALUE_FACT_OWNER_FLAG_TABLE_INITIALIZED) &&
-      owner->module == module && owner->table.capacity >= capacity) {
+      owner->module == module) {
+    // Defining facts grows storage as needed. Module growth alone does not
+    // invalidate the active scope or require storage for unanalyzed values.
     return iree_ok_status();
   }
 
@@ -95,7 +96,8 @@ static iree_status_t loom_pass_value_fact_owner_ensure_table(
   owner->active_scope = loom_pass_value_fact_scope_none();
   owner->flags &= ~LOOM_PASS_VALUE_FACT_OWNER_FLAG_TABLE_INITIALIZED;
   IREE_RETURN_IF_ERROR(loom_value_fact_table_initialize_with_arenas(
-      &owner->table, &owner->storage_arena, &owner->transient_arena, capacity));
+      &owner->table, &owner->storage_arena, &owner->transient_arena,
+      loom_value_table_capacity(&module->values)));
   loom_type_registry_configure_fact_context(&owner->table.context);
   owner->flags |= LOOM_PASS_VALUE_FACT_OWNER_FLAG_TABLE_INITIALIZED;
   return iree_ok_status();
