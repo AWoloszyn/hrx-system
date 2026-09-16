@@ -68,7 +68,10 @@ loom_cc_test(
 
 loom_cc_test(
     name = "verify_test",
-    srcs = ["verify_test.cc"],
+    srcs = [
+        "verify_structure_test.cc",
+        "verify_test.cc",
+    ],
     deps = [
         ":verify",
         "//loom/src/loom/codegen/low:text_asm",

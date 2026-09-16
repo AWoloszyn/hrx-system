@@ -1,0 +1,28 @@
+// RUN: verify
+
+// Key ordinals belong to each operation, not to its SSA values. Repeated uses
+// of the same input are valid, and an empty dictionary needs no names storage.
+func.def @independent_dictionaries(%source: f32, %offset: i32) -> (f32) {
+  %identity = test.operand_dict %source : f32
+  %adjusted = test.operand_dict %identity {bias = %source : f32, offset = %offset : i32, scale = %source : f32} : f32
+  %result = test.operand_dict %adjusted {scale = %source : f32} : f32
+  func.return %result : f32
+}
+
+// ====
+// RUN: format bytecode
+
+// Bytecode preserves keyed SSA dictionaries on both ordinary operations and
+// production encoding definitions, including differently typed operands.
+func.def @dictionary_bytecode(%source: f32, %scale: f32, %layout: encoding<layout>, %schema: encoding<schema>) -> (f32) {
+  %storage = encoding.define #encoding.storage {schema = %schema : encoding<schema>, layout = %layout : encoding<layout>} : encoding<storage>
+  %result = test.operand_dict %source {storage = %storage : encoding<storage>, scale = %scale : f32} : f32
+  func.return %result : f32
+}
+
+// ----
+func.def @dictionary_bytecode(%source: f32, %scale: f32, %layout: encoding<layout>, %schema: encoding<schema>) -> (f32) {
+  %storage = encoding.define #encoding.storage {layout = %layout : encoding<layout>, schema = %schema : encoding<schema>} : encoding<storage>
+  %result = test.operand_dict %source {scale = %scale : f32, storage = %storage : encoding<storage>} : f32
+  func.return %result : f32
+}

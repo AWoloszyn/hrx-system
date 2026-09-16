@@ -503,8 +503,10 @@ IREE_ATTRIBUTE_ALWAYS_INLINE static inline iree_status_t loom_verify_op(
   // a key -> operand-ordinal DICT attribute. Verify that field metadata is
   // canonical and exactly describes the operand segment before later passes
   // depend on keyed lookup.
-  loom_verify_operand_dicts(state, op, vtable);
-  IREE_RETURN_IF_ERROR(loom_verify_pending_diagnostic_status(state));
+  if (iree_any_bit_set(vtable->vtable_flags, LOOM_OP_VTABLE_HAS_OPERAND_DICT)) {
+    IREE_RETURN_IF_ERROR(loom_verify_operand_dicts(state, op, vtable));
+    IREE_RETURN_IF_ERROR(loom_verify_pending_diagnostic_status(state));
+  }
 
   // References embedded in defined types must be visible in this scope.
   // Co-results and global declaration placeholders have explicit exceptions;

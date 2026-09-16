@@ -152,6 +152,15 @@ typedef struct loom_verify_state_t {
   // Reusable per-op scratch for tied-result uniqueness checks.
   loom_verify_tied_table_t tied_table;
 
+  // Reusable scratch for operand dictionaries exceeding one bitset word.
+  struct {
+    // Claimed operand ordinals, cleared before each dictionary.
+    uint64_t* bits;
+
+    // Number of allocated words in bits.
+    iree_host_size_t word_capacity;
+  } operand_dictionary;
+
   // State inherited through the current nested region traversal.
   loom_verify_region_scope_t region_scope;
 

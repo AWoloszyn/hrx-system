@@ -67,6 +67,7 @@ loom_cc_test(
   NAME
     verify_test
   SRCS
+    "verify_structure_test.cc"
     "verify_test.cc"
   DEPS
     ::verify

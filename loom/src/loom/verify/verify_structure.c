@@ -1173,17 +1173,16 @@ static void loom_verify_emit_operand_dict_attr_violation(
                               IREE_ARRAYSIZE(params));
 }
 
-void loom_verify_operand_dicts(loom_verify_state_t* state, const loom_op_t* op,
-                               const loom_op_vtable_t* vtable) {
-  if (!iree_any_bit_set(vtable->vtable_flags,
-                        LOOM_OP_VTABLE_HAS_OPERAND_DICT)) {
-    return;
-  }
+iree_status_t loom_verify_operand_dicts(loom_verify_state_t* state,
+                                        const loom_op_t* op,
+                                        const loom_op_vtable_t* vtable) {
   for (uint16_t element_index = 0; element_index < vtable->format_element_count;
        ++element_index) {
     const loom_format_element_t* element =
         &vtable->format_elements[element_index];
-    if (element->kind != LOOM_FORMAT_KIND_OPERAND_DICT) continue;
+    if (element->kind != LOOM_FORMAT_KIND_OPERAND_DICT) {
+      continue;
+    }
 
     loom_value_slice_t operand_span =
         loom_op_operand_field_span(vtable, op, element->field_index);
@@ -1200,13 +1199,17 @@ void loom_verify_operand_dicts(loom_verify_state_t* state, const loom_op_t* op,
       }
       continue;
     }
-    if (names_attr.kind != LOOM_ATTR_DICT) continue;
+    if (names_attr.kind != LOOM_ATTR_DICT) {
+      continue;
+    }
     if (names_attr.count != operand_count) {
       loom_verify_emit_operand_dict_count_mismatch(
           state, op, vtable, attr_index, names_attr.count, operand_count);
       continue;
     }
-    if (names_attr.count == 0) continue;
+    if (names_attr.count == 0) {
+      continue;
+    }
 
     iree_string_view_t attr_name =
         loom_verify_attr_descriptor_name(vtable, attr_index);
@@ -1217,8 +1220,40 @@ void loom_verify_operand_dicts(loom_verify_state_t* state, const loom_op_t* op,
       continue;
     }
 
+    // Small dictionaries use one stack word. Larger dictionaries share scratch
+    // across operations; clearing only the active words keeps work linear in
+    // this dictionary even after a much larger one.
+    uint64_t inline_bits = 0;
+    uint64_t* ordinal_bits = &inline_bits;
+    iree_host_size_t word_count = loom_bitset_word_count(operand_count);
+    if (word_count > 1) {
+      if (word_count > state->operand_dictionary.word_capacity) {
+        iree_status_t status = iree_arena_grow_array(
+            &state->arena, 0, word_count, sizeof(uint64_t),
+            &state->operand_dictionary.word_capacity,
+            (void**)&state->operand_dictionary.bits);
+        if (!iree_status_is_ok(status)) {
+          // A previous dictionary may have failed to emit its diagnostic.
+          // Preserve that failure while releasing all verifier-owned statuses.
+          return iree_status_join(loom_verify_take_diagnostic_status(state),
+                                  status);
+        }
+      }
+      ordinal_bits = state->operand_dictionary.bits;
+      memset(ordinal_bits, 0, word_count * sizeof(uint64_t));
+    }
+
     for (uint16_t i = 0; i < names_attr.count; ++i) {
       const loom_named_attr_t* entry = &names_attr.dict_entries[i];
+      // Ordinal uniqueness is independent of key validity. Claim valid
+      // ordinals even when their key will be diagnosed below.
+      bool duplicate_ordinal = false;
+      if (entry->value.kind == LOOM_ATTR_I64 && entry->value.i64 >= 0 &&
+          entry->value.i64 < operand_count) {
+        uint32_t ordinal = (uint32_t)entry->value.i64;
+        duplicate_ordinal = loom_bitset_test(ordinal_bits, word_count, ordinal);
+        loom_bitset_set(ordinal_bits, word_count, ordinal);
+      }
       if (entry->name_id == LOOM_STRING_ID_INVALID ||
           entry->name_id >= state->module->strings.count) {
         loom_verify_emit_operand_dict_attr_violation(
@@ -1259,18 +1294,14 @@ void loom_verify_operand_dicts(loom_verify_state_t* state, const loom_op_t* op,
             IREE_SV("operand ordinal in range"));
         continue;
       }
-      for (uint16_t j = 0; j < i; ++j) {
-        const loom_named_attr_t* previous_entry = &names_attr.dict_entries[j];
-        if (previous_entry->value.kind == LOOM_ATTR_I64 &&
-            previous_entry->value.i64 == ordinal) {
-          loom_verify_emit_operand_dict_attr_violation(
-              state, op, key_name, attr_index, ordinal,
-              IREE_SV("unique operand ordinal"));
-          break;
-        }
+      if (duplicate_ordinal) {
+        loom_verify_emit_operand_dict_attr_violation(
+            state, op, key_name, attr_index, ordinal,
+            IREE_SV("unique operand ordinal"));
       }
     }
   }
+  return iree_ok_status();
 }
 
 typedef enum loom_verify_type_malformation_e {
