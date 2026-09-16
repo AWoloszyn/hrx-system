@@ -146,14 +146,16 @@ static iree_status_t CaptureModuleShape(const loomc_module_t* module,
 
 static iree_status_t PrepareTargetPassProgram(
     loomc_context_t* context, loomc_target_pipeline_kind_t kind,
-    loomc_string_view_t identifier, PassProgramPtr* out_pass_program) {
+    loomc_string_view_t identifier,
+    loomc_target_control_flow_lowering_t control_flow_lowering,
+    PassProgramPtr* out_pass_program) {
   const loomc_target_pipeline_options_t options = {
       /*.type=*/LOOMC_STRUCTURE_TYPE_TARGET_PIPELINE_OPTIONS,
       /*.structure_size=*/sizeof(options),
       /*.next=*/nullptr,
       /*.identifier=*/identifier,
       /*.kind=*/kind,
-      /*.control_flow_lowering=*/LOOMC_TARGET_CONTROL_FLOW_LOWERING_CFG,
+      /*.control_flow_lowering=*/control_flow_lowering,
       /*.source_to_low_max_errors=*/20,
   };
   loomc_pass_program_t* raw_pass_program = nullptr;
@@ -211,7 +213,8 @@ class AttentionCompileScenario final : public TargetCompileScenario {
         target_.CreateTarget(&target_environment, &selected_target_profile));
     IREE_RETURN_IF_ERROR(SetUpTarget(
         worker_count, std::move(target_environment),
-        std::move(selected_target_profile), target_.pipeline_identifier()));
+        std::move(selected_target_profile), target_.pipeline_identifier(),
+        target_.control_flow_lowering()));
 
     SourcePtr fixture_source;
     IREE_RETURN_IF_ERROR(
@@ -295,7 +298,7 @@ class AttentionCompileScenario final : public TargetCompileScenario {
         return PrepareTargetPassProgram(
             context_.get(), LOOMC_TARGET_PIPELINE_KIND_SOURCE_LOW,
             loomc_make_cstring_view("benchmark-attention-source-low"),
-            &pass_program_);
+            target_.control_flow_lowering(), &pass_program_);
       case AttentionCompilePhase::kParse:
       case AttentionCompilePhase::kCloneSource:
       case AttentionCompilePhase::kPreparedLow:
@@ -430,7 +433,7 @@ class AttentionCompileScenario final : public TargetCompileScenario {
         IREE_RETURN_IF_ERROR(target_.EmitArtifact(
             target_environment(), workspace.get(), module.get(),
             loomc_make_cstring_view(workload_.artifact_identifier),
-            &artifact_byte_count));
+            LOOMC_COMPILE_REPORT_MODE_NONE, &artifact_byte_count));
         RecordArtifactBytes(artifact_byte_count);
       }
     }
@@ -524,7 +527,8 @@ class InputScalingCompileScenario final : public TargetCompileScenario {
         target_.CreateTarget(&target_environment, &selected_target_profile));
     IREE_RETURN_IF_ERROR(SetUpTarget(
         worker_count, std::move(target_environment),
-        std::move(selected_target_profile), target_.pipeline_identifier()));
+        std::move(selected_target_profile), target_.pipeline_identifier(),
+        target_.control_flow_lowering()));
     IREE_RETURN_IF_ERROR(CreateBenchmarkSource(workload_.source, &source_));
     const loomc_byte_span_t source_contents =
         loomc_source_contents(source_.get());
@@ -549,7 +553,7 @@ class InputScalingCompileScenario final : public TargetCompileScenario {
       return PrepareTargetPassProgram(
           context_.get(), LOOMC_TARGET_PIPELINE_KIND_SOURCE_LOW,
           loomc_make_cstring_view("benchmark-input-scaling-source-low"),
-          &pass_program_);
+          target_.control_flow_lowering(), &pass_program_);
     }
     return iree_ok_status();
   }
@@ -630,7 +634,7 @@ class InputScalingCompileScenario final : public TargetCompileScenario {
       IREE_RETURN_IF_ERROR(target_.EmitArtifact(
           target_environment(), workspace.get(), module.get(),
           loomc_make_cstring_view(workload_.artifact_identifier),
-          &artifact_byte_count));
+          LOOMC_COMPILE_REPORT_MODE_NONE, &artifact_byte_count));
       RecordArtifactBytes(artifact_byte_count);
     }
     if (capture_shape) {
@@ -670,6 +674,181 @@ class InputScalingCompileScenario final : public TargetCompileScenario {
   // Immutable exact input-size config applied before each pass program.
   ModulePtr config_module_;
 };
+
+enum class PipelineCompilePhase {
+  kClone,
+  kPipeline,
+  kCompileAndEmit,
+};
+
+struct PipelineBenchmarkSpec {
+  // Compiler boundary measured by each job.
+  PipelineCompilePhase phase;
+  // Target profile and emitter shared with the other workload benchmarks.
+  const WorkloadCompileTarget* target;
+  // Authored segmented reduction expanded during setup.
+  CompileWorkload workload;
+  // Native report generation included in compile-and-emit jobs.
+  loomc_compile_report_mode_t report_mode;
+};
+
+class PipelineCompileScenario final : public TargetCompileScenario {
+ public:
+  PipelineCompileScenario(PipelineBenchmarkSpec spec, int64_t loop_count,
+                          int64_t depth)
+      : spec_(spec), loop_count_(loop_count), depth_(depth) {}
+
+  iree_status_t SetUp(iree_host_size_t worker_count) override {
+    TargetEnvironmentPtr environment;
+    TargetProfilePtr profile;
+    IREE_RETURN_IF_ERROR(spec_.target->CreateTarget(&environment, &profile));
+    IREE_RETURN_IF_ERROR(SetUpTarget(worker_count, std::move(environment),
+                                     std::move(profile),
+                                     spec_.target->pipeline_identifier(),
+                                     spec_.target->control_flow_lowering()));
+    IREE_RETURN_IF_ERROR(CreateWorkspace(0, &template_workspace_));
+    SourcePtr source;
+    IREE_RETURN_IF_ERROR(CreateBenchmarkSource(spec_.workload.source, &source));
+    IREE_RETURN_IF_ERROR(DeserializeSource(context_.get(),
+                                           template_workspace_.get(),
+                                           source.get(), &template_module_));
+    std::ostringstream config;
+    config << "config.def @benchmark.loop_count = " << loop_count_
+           << " : index\nconfig.def @benchmark.pipeline_depth = " << depth_
+           << " : index\n";
+    ModulePtr config_module;
+    IREE_RETURN_IF_ERROR(
+        CreateTextModule(context_.get(), template_workspace_.get(),
+                         "pipeline-config.loom", config.str(), &config_module));
+    PassProgramPtr expansion_program;
+    IREE_RETURN_IF_ERROR(PreparePassProgram(
+        context_.get(),
+        loomc_make_cstring_view("unroll-scf-for,canonicalize,cse,dce"),
+        &expansion_program));
+    const loomc_compile_options_t expansion_options = {
+        /*.type=*/LOOMC_STRUCTURE_TYPE_COMPILE_OPTIONS,
+        /*.structure_size=*/sizeof(expansion_options),
+        /*.next=*/nullptr,
+        /*.module_name=*/loomc_make_cstring_view("pipeline-expansion"),
+        /*.artifact_flags=*/0,
+        /*.config_flags=*/LOOMC_CONFIG_POLICY_FLAG_REQUIRE_RESOLVED,
+        /*.config_module=*/config_module.get(),
+    };
+    IREE_RETURN_IF_ERROR(Compile(template_workspace_, template_module_,
+                                 expansion_program, expansion_options));
+    IREE_RETURN_IF_ERROR(
+        CaptureModuleShape(template_module_.get(), &input_shape_));
+    if (spec_.phase == PipelineCompilePhase::kPipeline) {
+      IREE_RETURN_IF_ERROR(PreparePassProgram(
+          context_.get(), loomc_make_cstring_view("pipeline-scf-for"),
+          &pass_program_));
+    }
+    // Capture output shape with a separate setup clone. This also qualifies
+    // cold-workspace cases without allocating in their measured workspace.
+    return RunPhase(template_workspace_, &output_shape_);
+  }
+
+  iree_host_size_t job_count() const override { return 1; }
+
+  iree_status_t RunJob(iree_host_size_t worker_ordinal,
+                       iree_host_size_t job_ordinal) override {
+    (void)job_ordinal;
+    return RunPhase(workspace_at(worker_ordinal), nullptr);
+  }
+
+  void SetExtraCounters(::benchmark::State& state) const override {
+    state.SetLabel(spec_.target->benchmark_name());
+    state.counters["loop_count"] = (double)loop_count_;
+    state.counters["pipeline_depth"] = (double)depth_;
+    state.counters["report_mode"] = (double)spec_.report_mode;
+    state.counters["input_bytes"] = (double)input_shape_.byte_count;
+    state.counters["input_printed_ops"] =
+        (double)input_shape_.printed_operation_count;
+    state.counters["output_bytes"] = (double)output_shape_.byte_count;
+    state.counters["output_printed_ops"] =
+        (double)output_shape_.printed_operation_count;
+    state.counters["ir_amplification"] =
+        (double)output_shape_.printed_operation_count /
+        (double)input_shape_.printed_operation_count;
+  }
+
+ private:
+  iree_status_t Compile(WorkspacePtr& workspace, ModulePtr& module,
+                        const PassProgramPtr& program,
+                        const loomc_compile_options_t& options) {
+    loomc_result_t* raw_result = nullptr;
+    iree_status_t status = to_iree_status(loomc_compile_module(
+        compiler_.get(), workspace.get(), program.get(), module.get(), &options,
+        loom_allocator(), &raw_result));
+    ResultPtr result(raw_result);
+    IREE_RETURN_IF_ERROR(status);
+    return RequireSucceededResult(result.get(), "pipeline compilation");
+  }
+
+  iree_status_t RunPhase(WorkspacePtr& workspace, ModuleShape* out_shape) {
+    ModulePtr module;
+    IREE_RETURN_IF_ERROR(
+        CloneModule(template_module_.get(), workspace.get(), &module));
+    if (spec_.phase != PipelineCompilePhase::kClone) {
+      const loomc_target_specialization_t specialization = {
+          /*.function_symbol=*/
+          loomc_make_cstring_view(spec_.workload.function_symbol),
+          /*.target_profile=*/target_profile(),
+      };
+      const loomc_target_specialization_options_t target_options = {
+          /*.type=*/LOOMC_STRUCTURE_TYPE_TARGET_SPECIALIZATION_OPTIONS,
+          /*.structure_size=*/sizeof(target_options),
+          /*.next=*/nullptr,
+          /*.specializations=*/&specialization,
+          /*.specialization_count=*/1,
+      };
+      const loomc_compile_options_t options = {
+          /*.type=*/LOOMC_STRUCTURE_TYPE_COMPILE_OPTIONS,
+          /*.structure_size=*/sizeof(options),
+          /*.next=*/spec_.phase == PipelineCompilePhase::kCompileAndEmit
+              ? &target_options
+              : nullptr,
+          /*.module_name=*/loomc_make_cstring_view("pipeline-benchmark"),
+      };
+      IREE_RETURN_IF_ERROR(Compile(workspace, module, pass_program_, options));
+      if (spec_.phase == PipelineCompilePhase::kCompileAndEmit) {
+        int64_t artifact_byte_count = 0;
+        IREE_RETURN_IF_ERROR(spec_.target->EmitArtifact(
+            target_environment(), workspace.get(), module.get(),
+            loomc_make_cstring_view(spec_.workload.artifact_identifier),
+            spec_.report_mode, &artifact_byte_count));
+        RecordArtifactBytes(artifact_byte_count);
+      }
+    }
+    if (out_shape) {
+      IREE_RETURN_IF_ERROR(CaptureModuleShape(module.get(), out_shape));
+    }
+    ::benchmark::DoNotOptimize(module.get());
+    return iree_ok_status();
+  }
+
+  // Immutable phase, target, workload and report selection.
+  PipelineBenchmarkSpec spec_;
+  // Number of live sibling loops after setup expansion.
+  int64_t loop_count_;
+  // Author-requested read-ahead depth shared by those loops.
+  int64_t depth_;
+  // Expanded source shape entering the measured phase.
+  ModuleShape input_shape_;
+  // Result shape captured outside timing, including for cold workspaces.
+  ModuleShape output_shape_;
+  // Setup storage separate from every measured worker workspace.
+  WorkspacePtr template_workspace_;
+  // Expanded source cloned by every job.
+  ModulePtr template_module_;
+};
+
+static std::unique_ptr<CompileScenario> CreatePipelineCompileScenario(
+    const ::benchmark::State& state, const void* user_data) {
+  return std::make_unique<PipelineCompileScenario>(
+      *static_cast<const PipelineBenchmarkSpec*>(user_data), state.range(0),
+      state.range(1));
+}
 
 static std::unique_ptr<CompileScenario> CreateAttentionCompileScenario(
     const ::benchmark::State& state, const void* user_data) {
@@ -773,6 +952,53 @@ void RegisterInputScalingCompileBenchmarks(
                  {1024, 2048, 4096, 8192, 16384, 32768});
   register_phase(InputScalingCompilePhase::kCompileAndEmit, "CompileAndEmit",
                  {1024, 4096, 16384});
+}
+
+void RegisterPipelineCompileBenchmarks(const WorkloadCompileTarget& target,
+                                       CompileWorkload workload) {
+  auto register_phase = [&](PipelineCompilePhase phase, const char* phase_name,
+                            loomc_compile_report_mode_t report_mode,
+                            std::initializer_list<int64_t> loop_counts,
+                            bool cold_workspace) {
+    const PipelineBenchmarkSpec spec = {phase, &target, workload, report_mode};
+    const std::string name =
+        BuildBenchmarkName("ScfPipeline", phase_name, target);
+    auto* registration = ::benchmark::RegisterBenchmark(
+        name.c_str(), [spec, cold_workspace](::benchmark::State& state) {
+          if (cold_workspace) {
+            RunCompileBenchmarkDirectCold(state, CreatePipelineCompileScenario,
+                                          &spec);
+          } else {
+            RunCompileBenchmarkDirect(state, CreatePipelineCompileScenario,
+                                      &spec);
+          }
+        });
+    for (int64_t loop_count : loop_counts) {
+      for (int64_t depth : {1, 2, 4}) {
+        registration->Args({loop_count, depth});
+      }
+    }
+    registration->ArgNames({"loops", "depth"})->UseRealTime();
+    if (cold_workspace) registration->Iterations(1);
+  };
+  register_phase(PipelineCompilePhase::kClone, "Clone",
+                 LOOMC_COMPILE_REPORT_MODE_NONE, {8, 16, 32, 64, 128, 256, 512},
+                 false);
+  register_phase(PipelineCompilePhase::kPipeline, "Transform",
+                 LOOMC_COMPILE_REPORT_MODE_NONE, {8, 16, 32, 64, 128, 256, 512},
+                 false);
+  register_phase(PipelineCompilePhase::kPipeline, "TransformSmoke",
+                 LOOMC_COMPILE_REPORT_MODE_NONE, {2}, false);
+  register_phase(PipelineCompilePhase::kCompileAndEmit, "CompileAndEmit",
+                 LOOMC_COMPILE_REPORT_MODE_NONE, {8, 16, 32, 64}, false);
+  register_phase(PipelineCompilePhase::kCompileAndEmit, "CompileAndEmitSummary",
+                 LOOMC_COMPILE_REPORT_MODE_SUMMARY, {8, 16, 32, 64}, false);
+  register_phase(PipelineCompilePhase::kCompileAndEmit, "CompileAndEmitDetails",
+                 LOOMC_COMPILE_REPORT_MODE_DETAILS, {8, 16, 32, 64}, false);
+  register_phase(PipelineCompilePhase::kCompileAndEmit, "CompileAndEmitSmoke",
+                 LOOMC_COMPILE_REPORT_MODE_DETAILS, {2}, false);
+  register_phase(PipelineCompilePhase::kCompileAndEmit, "ColdWorkspace",
+                 LOOMC_COMPILE_REPORT_MODE_NONE, {8, 16, 32, 64}, true);
 }
 
 }  // namespace loomc::bench

@@ -203,6 +203,11 @@ static iree_status_t iree_hal_executable_library_run(
     const iree_benchmark_def_t* benchmark_def,
     iree_benchmark_state_t* benchmark_state) {
   (void)benchmark_def;
+  if (!FLAG_executable_loader[0] || !FLAG_executable_file[0]) {
+    return iree_make_status(
+        IREE_STATUS_INVALID_ARGUMENT,
+        "benchmark requires --executable_loader and --executable_file");
+  }
   iree_allocator_t host_allocator = benchmark_state->host_allocator;
 
   iree_hal_executable_loader_t* executable_loader = NULL;
@@ -385,7 +390,5 @@ int main(int argc, char** argv) {
   };
   iree_benchmark_register(iree_make_cstring_view("dispatch"), &benchmark_def);
 
-  iree_benchmark_run_specified();
-
-  return 0;
+  return iree_benchmark_run_specified() ? 0 : 1;
 }

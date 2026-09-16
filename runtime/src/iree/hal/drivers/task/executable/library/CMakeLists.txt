@@ -59,8 +59,8 @@ iree_cc_test(
     iree::base::internal::cpu
     iree::hal::drivers::task::executable::environment
 )
-
-iree_cc_binary_benchmark(
+if(IREE_TARGET_HAS_THREADS AND IREE_BUILD_BENCHMARKS)
+iree_cc_binary(
   NAME
     library_benchmark
   SRCS
@@ -79,8 +79,17 @@ iree_cc_binary_benchmark(
     iree::io::file_handle
     iree::task
     iree::testing::benchmark
-    iree::third_party::google_benchmark
   TESTONLY
 )
+
+iree_execution_test_suite(
+  NAME
+    library_benchmark_test
+  MANIFESTS
+    "benchmark.test.json"
+  TOOLS
+    "benchmark=::library_benchmark"
+)
+endif()
 
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

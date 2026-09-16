@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "successful benchmark",
+      "run": {
+        "tool": "benchmark",
+        "args": ["--benchmark_filter=BM_Success", "--benchmark_min_time=1x"]
+      },
+      "stdout": {"contains": ["BM_Success"], "not_contains": ["ERROR OCCURRED"]}
+    },
+    {
+      "name": "reported C++ error",
+      "run": {
+        "tool": "benchmark",
+        "args": ["--benchmark_filter=BM_Error", "--benchmark_min_time=1x"]
+      },
+      "exit": 1,
+      "stdout": {"contains": ["C++ benchmark failed"]}
+    },
+    {
+      "name": "reported C callback error",
+      "run": {
+        "tool": "benchmark",
+        "args": ["--benchmark_filter=BM_CError", "--benchmark_min_time=1x"]
+      },
+      "exit": 1,
+      "stdout": {"contains": ["C benchmark failed"]}
+    },
+    {
+      "name": "successful rows cannot mask a failure",
+      "run": {
+        "tool": "benchmark",
+        "args": ["--benchmark_filter=BM_(Success|Error)", "--benchmark_min_time=1x"]
+      },
+      "exit": 1,
+      "stdout": {"contains": ["BM_Success", "C++ benchmark failed"]}
+    },
+    {
+      "name": "ordinary skip is successful",
+      "run": {
+        "tool": "benchmark",
+        "args": ["--benchmark_filter=BM_Skip", "--benchmark_min_time=1x"]
+      },
+      "stdout": {"contains": ["benchmark intentionally skipped"]}
+    },
+    {
+      "name": "empty selection fails",
+      "run": {
+        "tool": "benchmark",
+        "args": ["--benchmark_filter=NoSuchBenchmark"]
+      },
+      "exit": 1,
+      "stderr": {"contains": ["Failed to match any benchmarks"]}
+    },
+    {
+      "name": "listing remains successful",
+      "run": {
+        "tool": "benchmark",
+        "args": ["--benchmark_filter=BM_Error", "--benchmark_list_tests=true"]
+      },
+      "stdout": {"contains": ["BM_Error"], "not_contains": ["C++ benchmark failed"]}
+    },
+    {
+      "name": "JSON and file reports preserve failures",
+      "run": {
+        "tool": "benchmark",
+        "args": ["--benchmark_filter=BM_Error", "--benchmark_min_time=1x", "--benchmark_format=json", "--benchmark_out={tmp}/report.json", "--benchmark_out_format=json"]
+      },
+      "exit": 1,
+      "stdout": {"contains": ["\"error_occurred\": true", "C++ benchmark failed"]},
+      "files": [{"path": "{tmp}/report.json", "contains": ["\"error_occurred\": true", "C++ benchmark failed"]}]
+    }
+  ]
+}

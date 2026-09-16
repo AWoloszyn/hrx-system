@@ -53,3 +53,13 @@ iree_c_embed_data(
     h_file_output = "synthetic_i32_chain_smoke.h",
     identifier = "loomc_benchmark_synthetic_i32_chain_smoke",
 )
+
+iree_c_embed_data(
+    name = "synthetic_pipeline_smoke",
+    testonly = True,
+    srcs = ["synthetic/segmented_read_ahead.loom"],
+    c_file_output = "synthetic_pipeline_smoke.c",
+    flatten = True,
+    h_file_output = "synthetic_pipeline_smoke.h",
+    identifier = "loomc_benchmark_synthetic_pipeline_smoke",
+)

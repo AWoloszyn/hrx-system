@@ -399,7 +399,8 @@ TargetCompileScenario::TargetCompileScenario(
 
 iree_status_t TargetCompileScenario::SetUpTarget(
     iree_host_size_t worker_count, TargetEnvironmentPtr target_environment,
-    TargetProfilePtr target_profile, loomc_string_view_t pipeline_identifier) {
+    TargetProfilePtr target_profile, loomc_string_view_t pipeline_identifier,
+    loomc_target_control_flow_lowering_t control_flow_lowering) {
   target_environment_ = std::move(target_environment);
   target_profile_ = std::move(target_profile);
 
@@ -430,7 +431,7 @@ iree_status_t TargetCompileScenario::SetUpTarget(
       /*.next=*/nullptr,
       /*.identifier=*/pipeline_identifier,
       /*.kind=*/LOOMC_TARGET_PIPELINE_KIND_PREPARED_LOW,
-      /*.control_flow_lowering=*/LOOMC_TARGET_CONTROL_FLOW_LOWERING_CFG,
+      /*.control_flow_lowering=*/control_flow_lowering,
       /*.source_to_low_max_errors=*/20,
   };
   loomc_pass_program_t* raw_pass_program = nullptr;

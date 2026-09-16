@@ -1,0 +1,175 @@
+// RUN: pass pipeline-scf-for,canonicalize,cse,dce
+
+// Rewriting the first loop replaces the second loop's depth, step and lower
+// bound. Their source facts remain exact through that replacement.
+func.def @policies_forwarded_by_sibling(%input: view<16xf32>, %initial: f32, %count: index) -> (f32) {
+  %begin = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %c2 = index.constant 2 : index
+  %c3 = index.constant 3 : index
+  %end = index.constant 13 : index
+  %sum, %depth, %step, %lower = scf.for %i = [%begin to %count step %c1](%accumulator = %initial : f32, %carried_depth = %c2 : index, %carried_step = %c2 : index, %carried_lower = %c3 : index) -> (f32, index, index, index) pipeline(%c2) {
+    %value = view.load %input[%i] : view<16xf32> -> f32
+    %next = scalar.addf %accumulator, %value : f32
+    scf.yield %next, %carried_depth, %carried_step, %carried_lower : f32, index, index, index
+  }
+  %result = scf.for %i = [%lower to %end step %step](%accumulator = %sum : f32) -> (f32) pipeline(%depth) {
+    %value = view.load %input[%i] : view<16xf32> -> f32
+    %next = scalar.addf %accumulator, %value : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ----
+func.def @policies_forwarded_by_sibling(%input: view<16xf32>, %initial: f32, %count: index) -> (f32) {
+  %begin = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %c2 = index.constant 2 : index
+  %c3 = index.constant 3 : index
+  %end = index.constant 13 : index
+  %26 = index.cmp slt, %c1, %count : index
+  %sum = scf.if %26 -> (f32) {
+    %74 = index.assume %count [gt(%count, 1)] : index
+    %value = view.load %input[%begin] : view<16xf32> -> f32
+    %79, %80 = scf.for %76 = [%c1 to %74 step %c1](%77 = %initial : f32, %78 = %value : f32) -> (f32, f32) {
+      %value = view.load %input[%76] : view<16xf32> -> f32
+      %next = scalar.addf %77, %78 : f32
+      scf.yield %next, %value : f32, f32
+    }
+    %next = scalar.addf %79, %80 : f32
+    scf.yield %next : f32
+  } else {
+    %75 = index.assume %count [le(%count, 1)] : index
+    %83 = scf.for %81 = [%begin to %75 step %c1](%82 = %initial : f32) -> (f32) {
+      %value = view.load %input[%81] : view<16xf32> -> f32
+      %next = scalar.addf %82, %value : f32
+      scf.yield %next : f32
+    }
+    scf.yield %83 : f32
+  }
+  %57 = index.constant 5 : index
+  %value = view.load %input[%c3] : view<16xf32> -> f32
+  %64, %65 = scf.for %61 = [%57 to %end step %c2](%62 = %sum : f32, %63 = %value : f32) -> (f32, f32) {
+    %value = view.load %input[%61] : view<16xf32> -> f32
+    %next = scalar.addf %62, %63 : f32
+    scf.yield %next, %value : f32, f32
+  }
+  %next = scalar.addf %64, %65 : f32
+  func.return %next : f32
+}
+
+// ====
+
+// A range forwarded through a reconstructed sibling still proves that adding
+// the read-ahead distance cannot overflow, without requiring an exact bound.
+func.def @range_forwarded_by_sibling(%input: view<16xf32>, %initial: f32, %count: index, %lower: index) -> (f32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 2 : index
+  %end = index.constant 13 : index
+  %bounded = index.assume %lower [range(%lower, 0, 8)] : index
+  %sum, %next_lower = scf.for %i = [%begin to %count step %step](%accumulator = %initial : f32, %carried_lower = %bounded : index) -> (f32, index) pipeline(%depth) {
+    %value = view.load %input[%i] : view<16xf32> -> f32
+    %next = scalar.addf %accumulator, %value : f32
+    scf.yield %next, %carried_lower : f32, index
+  }
+  %result = scf.for %i = [%next_lower to %end step %step](%accumulator = %sum : f32) -> (f32) pipeline(%depth) {
+    %value = view.load %input[%i] : view<16xf32> -> f32
+    %next = scalar.addf %accumulator, %value : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ----
+func.def @range_forwarded_by_sibling(%input: view<16xf32>, %initial: f32, %count: index, %lower: index) -> (f32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %end = index.constant 13 : index
+  %bounded = index.assume %lower [range(%lower, 0, 8)] : index
+  %23 = index.cmp slt, %step, %count : index
+  %sum = scf.if %23 -> (f32) {
+    %62 = index.assume %count [gt(%count, 1)] : index
+    %value = view.load %input[%begin] : view<16xf32> -> f32
+    %68, %69 = scf.for %65 = [%step to %62 step %step](%66 = %initial : f32, %67 = %value : f32) -> (f32, f32) {
+      %value = view.load %input[%65] : view<16xf32> -> f32
+      %next = scalar.addf %66, %67 : f32
+      scf.yield %next, %value : f32, f32
+    }
+    %next = scalar.addf %68, %69 : f32
+    scf.yield %next : f32
+  } else {
+    %63 = index.assume %count [le(%count, 1)] : index
+    %72 = scf.for %70 = [%begin to %63 step %step](%71 = %initial : f32) -> (f32) {
+      %value = view.load %input[%70] : view<16xf32> -> f32
+      %next = scalar.addf %71, %value : f32
+      scf.yield %next : f32
+    }
+    scf.yield %72 : f32
+  }
+  %45 = index.add %bounded, %step : index
+  %64 = index.assume %45 [lt(%45, 13)] : index
+  %value = view.load %input[%bounded] : view<16xf32> -> f32
+  %52, %53 = scf.for %49 = [%64 to %end step %step](%50 = %sum : f32, %51 = %value : f32) -> (f32, f32) {
+    %value = view.load %input[%49] : view<16xf32> -> f32
+    %next = scalar.addf %50, %51 : f32
+    scf.yield %next, %value : f32, f32
+  }
+  %next = scalar.addf %52, %53 : f32
+  func.return %next : f32
+}
+
+// ====
+
+// The inner policy uses a statically invariant outer carried value. Both
+// policies resolve against source facts, then materialize in postorder.
+func.def @nested_carried_policy(%input: view<8xf32>, %initial: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 2 : index
+  %end = index.constant 4 : index
+  %identity = scalar.constant 0.0 : f32
+  %result, %last_depth = scf.for %i = [%begin to %end step %step](%sum = %initial : f32, %inner_depth = %depth : index) -> (f32, index) pipeline(%depth) {
+    %value = view.load %input[%i] : view<8xf32> -> f32
+    %partial = scf.for %j = [%begin to %end step %step](%inner_sum = %identity : f32) -> (f32) pipeline(%inner_depth) {
+      %loaded = view.load %input[%j] : view<8xf32> -> f32
+      %added = scalar.addf %inner_sum, %loaded : f32
+      scf.yield %added : f32
+    }
+    %combined = scalar.addf %sum, %partial : f32
+    %next = scalar.addf %combined, %value : f32
+    scf.yield %next, %inner_depth : f32, index
+  }
+  func.return %result : f32
+}
+
+// ----
+func.def @nested_carried_policy(%input: view<8xf32>, %initial: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %end = index.constant 4 : index
+  %identity = scalar.constant 0.0 : f32
+  %value = view.load %input[%begin] : view<8xf32> -> f32
+  %50, %51 = scf.for %47 = [%step to %end step %step](%48 = %identity : f32, %49 = %value : f32) -> (f32, f32) {
+    %loaded = view.load %input[%47] : view<8xf32> -> f32
+    %added = scalar.addf %48, %49 : f32
+    scf.yield %added, %loaded : f32, f32
+  }
+  %added = scalar.addf %50, %51 : f32
+  %120, %121, %122 = scf.for %116 = [%step to %end step %step](%117 = %initial : f32, %118 = %value : f32, %119 = %added : f32) -> (f32, f32, f32) {
+    %value = view.load %input[%116] : view<8xf32> -> f32
+    %77, %78 = scf.for %74 = [%step to %end step %step](%75 = %identity : f32, %76 = %value : f32) -> (f32, f32) {
+      %loaded = view.load %input[%74] : view<8xf32> -> f32
+      %added = scalar.addf %75, %76 : f32
+      scf.yield %added, %loaded : f32, f32
+    }
+    %added = scalar.addf %77, %78 : f32
+    %combined = scalar.addf %117, %119 : f32
+    %next = scalar.addf %combined, %118 : f32
+    scf.yield %next, %value, %added : f32, f32, f32
+  }
+  %combined = scalar.addf %120, %122 : f32
+  %next = scalar.addf %combined, %121 : f32
+  func.return %next : f32
+}

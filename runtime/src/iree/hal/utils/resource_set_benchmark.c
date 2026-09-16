@@ -282,6 +282,5 @@ int main(int argc, char** argv) {
                             &benchmark_def);
   }
 
-  iree_benchmark_run_specified();
-  return 0;
+  return iree_benchmark_run_specified() ? 0 : 1;
 }

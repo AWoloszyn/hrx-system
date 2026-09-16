@@ -13,6 +13,5 @@ int main(int argc, char** argv) {
                                IREE_FLAGS_PARSE_MODE_CONTINUE_AFTER_HELP,
                            &argc, &argv);
   iree_benchmark_initialize(&argc, argv);
-  iree_benchmark_run_specified();
-  return 0;
+  return iree_benchmark_run_specified() ? 0 : 1;
 }

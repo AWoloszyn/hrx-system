@@ -27,6 +27,10 @@ class WorkloadCompileTarget {
   // Stable identifier assigned to the shared prepared-low pass pipeline.
   virtual loomc_string_view_t pipeline_identifier() const = 0;
 
+  // Control-flow representation consumed by this target's emitter.
+  virtual loomc_target_control_flow_lowering_t control_flow_lowering()
+      const = 0;
+
   // Creates the target environment and optional exact specialization profile.
   // A null profile means that the fixture already names its exact target.
   virtual iree_status_t CreateTarget(
@@ -38,7 +42,7 @@ class WorkloadCompileTarget {
   virtual iree_status_t EmitArtifact(
       loomc_target_environment_t* target_environment,
       loomc_workspace_t* workspace, loomc_module_t* module,
-      loomc_string_view_t identifier,
+      loomc_string_view_t identifier, loomc_compile_report_mode_t report_mode,
       int64_t* out_artifact_byte_count) const = 0;
 };
 
@@ -81,6 +85,13 @@ void RegisterAttentionCompileBenchmarks(const WorkloadCompileTarget& target,
 void RegisterInputScalingCompileBenchmarks(
     const WorkloadCompileTarget& target, const char* workload_name,
     InputScalingCompileWorkload workload);
+
+// Registers clone, pipeline transformation and native compile/emit benchmarks
+// over a shared segmented reduction. Setup expands benchmark.loop_count live
+// loops before timing; benchmark.pipeline_depth independently controls their
+// schedules. Native emission measures report modes and cold workspace growth.
+void RegisterPipelineCompileBenchmarks(const WorkloadCompileTarget& target,
+                                       CompileWorkload workload);
 
 }  // namespace loomc::bench
 

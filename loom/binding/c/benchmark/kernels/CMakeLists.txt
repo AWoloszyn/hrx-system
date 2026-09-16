@@ -74,4 +74,20 @@ iree_c_embed_data(
   PUBLIC
 )
 
+iree_c_embed_data(
+  NAME
+    synthetic_pipeline_smoke
+  SRCS
+    "synthetic/segmented_read_ahead.loom"
+  C_FILE_OUTPUT
+    "synthetic_pipeline_smoke.c"
+  H_FILE_OUTPUT
+    "synthetic_pipeline_smoke.h"
+  IDENTIFIER
+    "loomc_benchmark_synthetic_pipeline_smoke"
+  TESTONLY
+  FLATTEN
+  PUBLIC
+)
+
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

@@ -11,6 +11,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -37,8 +39,9 @@ void BM_CompilePattern(benchmark::State& state, const char* pattern) {
         &dfa_data, &dfa_size, &error);
 
     if (!iree_status_is_ok(status)) {
+      iree_status_fprint(stderr, status);
       state.SkipWithError("Compilation failed");
-      iree_status_ignore(status);
+      iree_status_free(status);
       return;
     }
 
@@ -76,7 +79,8 @@ BENCHMARK(BM_CompileDot);
 //===----------------------------------------------------------------------===//
 
 void BM_CompileQuantifierStar(benchmark::State& state) {
-  BM_CompilePattern(state, "a*b*c*");
+  // Tokenizer patterns must consume input, including after optional prefixes.
+  BM_CompilePattern(state, "a*b*c+");
 }
 BENCHMARK(BM_CompileQuantifierStar);
 
@@ -258,8 +262,9 @@ void BM_CompileAndLoad(benchmark::State& state, const char* pattern) {
         &dfa, &storage, &error);
 
     if (!iree_status_is_ok(status)) {
+      iree_status_fprint(stderr, status);
       state.SkipWithError("Compile and load failed");
-      iree_status_ignore(status);
+      iree_status_free(status);
       return;
     }
 
@@ -319,8 +324,9 @@ BENCHMARK_DEFINE_F(PatternScaling, Alternation)(benchmark::State& state) {
         &dfa_data, &dfa_size, &error);
 
     if (!iree_status_is_ok(status)) {
+      iree_status_fprint(stderr, status);
       state.SkipWithError("Compilation failed");
-      iree_status_ignore(status);
+      iree_status_free(status);
       return;
     }
 
@@ -338,12 +344,12 @@ BENCHMARK_REGISTER_F(PatternScaling, Alternation)
     ->Arg(50);
 
 //===----------------------------------------------------------------------===//
-// Pathological Patterns (should fail fast, not hang)
+// Wildcard Patterns and Nested Quantifier Rejection
 //===----------------------------------------------------------------------===//
 
-// These patterns were discovered by fuzzing and caused multi-second compile
-// times before iteration limits were tightened. They should now fail with
-// RESOURCE_EXHAUSTED within ~100-300ms due to iteration limits.
+// Exercise epsilon closure and dense transition construction with nonempty
+// token patterns, and measure the parser's rejection of direct quantifier
+// nesting.
 
 void BM_PathologicalManyDots(benchmark::State& state) {
   // Pattern with many dots - each dot expands to 256 transitions.
@@ -351,11 +357,27 @@ void BM_PathologicalManyDots(benchmark::State& state) {
 }
 BENCHMARK(BM_PathologicalManyDots);
 
-void BM_PathologicalNestedQuantifiers(benchmark::State& state) {
-  // Nested quantifiers with wildcards.
-  BM_CompilePattern(state, "(.*)+");
+void BM_RejectNestedQuantifiers(benchmark::State& state) {
+  for (auto _ : state) {
+    uint8_t* dfa_data = nullptr;
+    iree_host_size_t dfa_size = 0;
+    iree_tokenizer_regex_compile_error_t error = {0};
+    iree_status_t status = iree_tokenizer_regex_compile(
+        iree_make_cstring_view("(.*)+a"),
+        IREE_TOKENIZER_UTIL_REGEX_COMPILE_FLAG_NONE, iree_allocator_system(),
+        &dfa_data, &dfa_size, &error);
+    bool rejected = iree_status_is_invalid_argument(status) && error.message &&
+                    strstr(error.message, "nested quantifiers");
+    if (!rejected) {
+      iree_status_fprint(stderr, status);
+      state.SkipWithError("Expected nested quantifier rejection");
+    }
+    iree_status_free(status);
+    iree_allocator_free(iree_allocator_system(), dfa_data);
+    if (!rejected) return;
+  }
 }
-BENCHMARK(BM_PathologicalNestedQuantifiers);
+BENCHMARK(BM_RejectNestedQuantifiers);
 
 void BM_PathologicalDotAlternation(benchmark::State& state) {
   // Alternation with wildcards.

@@ -16,6 +16,7 @@ loom_check_test_suite(
     "scf_index.loom-test"
     "scf_pipeline.loom-test"
     "scf_pipeline_bounds.loom-test"
+    "scf_pipeline_facts.loom-test"
     "scf_pipeline_policy.loom-test"
     "scf_pipeline_regions.loom-test"
     "scf_pipeline_regions_policy.loom-test"
