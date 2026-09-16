@@ -15,7 +15,8 @@
 #include "util/device_cache.h"
 #include "util/provider.h"
 
-// Borrows the shared device for the first qualified XDNA endpoint.
+// Requires the XDNA hardware selected by this suite's resource tag and borrows
+// its shared device. Missing hardware or failed activation is a test failure.
 class XdnaDeviceFixture : public ::testing::Test {
  protected:
   void SetUp() override {
@@ -31,10 +32,6 @@ class XdnaDeviceFixture : public ::testing::Test {
     ASSERT_NE(xdna_api_, nullptr);
 
     amdf_status_t status = GetCtsDeviceCache().GetInstance(&instance_);
-    if (amdf_status_domain(status) == AMDF_STATUS_DOMAIN_API &&
-        amdf_status_code(status) == AMDF_STATUS_CODE_UNSUPPORTED) {
-      GTEST_SKIP() << "platform provider is not implemented";
-    }
     ASSERT_TRUE(amdf_status_is_ok(status));
 
     uint32_t scope_count = 0;
@@ -72,15 +69,9 @@ class XdnaDeviceFixture : public ::testing::Test {
         break;
       }
     }
-    if (endpoint_ == nullptr) {
-      GTEST_SKIP() << "no qualified XDNA endpoint present";
-    }
+    ASSERT_NE(endpoint_, nullptr) << "required XDNA endpoint is absent";
 
     status = GetCtsDeviceCache().GetXdnaDevice(endpoint_, &device_);
-    if (amdf_status_domain(status) == AMDF_STATUS_DOMAIN_API &&
-        amdf_status_code(status) == AMDF_STATUS_CODE_UNSUPPORTED) {
-      GTEST_SKIP() << "XDNA device materialization is unavailable";
-    }
     ASSERT_TRUE(amdf_status_is_ok(status))
         << "domain=" << amdf_status_domain(status)
         << " code=" << amdf_status_code(status);
@@ -149,16 +140,15 @@ class XdnaContextFixture : public XdnaDeviceFixture {
  protected:
   void SetUp() override {
     ASSERT_NO_FATAL_FAILURE(XdnaDeviceFixture::SetUp());
-    if (IsSkipped()) return;
     amdf_xdna_device_info_t device_info = {};
     device_info.type = AMDF_STRUCTURE_TYPE_XDNA_DEVICE_INFO;
     device_info.structure_size = sizeof(device_info);
     ASSERT_EQ(xdna_api_->device_query_info(device_, &device_info),
               AMDF_STATUS_OK);
-    if ((device_info.context.scheduling_modes &
-         AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED) == 0) {
-      GTEST_SKIP() << "time-sliced XDNA contexts are unavailable";
-    }
+    ASSERT_NE(device_info.context.scheduling_modes &
+                  AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED,
+              0u)
+        << "required time-sliced XDNA contexts are unavailable";
     amdf_xdna_context_create_info_t create_info = {};
     create_info.type = AMDF_STRUCTURE_TYPE_XDNA_CONTEXT_CREATE_INFO;
     create_info.structure_size = sizeof(create_info);

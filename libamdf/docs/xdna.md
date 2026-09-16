@@ -145,7 +145,10 @@ does not publish guessed limits on simultaneously live contexts.
 NPU6 (Krackan) uses the AIE2P path and NPU4 firmware bootstrap. AMD's
 [driver definition](https://github.com/amd/xdna-driver/blob/8dfda66f67a84aecf26cf68336efc9e4cc1756c3/drivers/accel/amdxdna/npu6_regs.c)
 shares NPU4 firmware, hardware operations and feature contracts. Array geometry
-is queried from the installed driver on both platforms.
+is queried from the installed driver on both platforms. Krackan retains its own
+PCI and target identity while the numerical consumer shares the compatible
+Strix image profile. Image ABI, instruction format, context bounds and required
+capabilities remain checked.
 
 The [memory fabric](memory.md) describes the shared scope, address, visibility,
 and lifetime contracts used by GPU and XDNA callers.

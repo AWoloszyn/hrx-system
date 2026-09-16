@@ -67,7 +67,6 @@ class XdnaExecutionTest
 
   void SetUp() override {
     ASSERT_NO_FATAL_FAILURE(XdnaDeviceFixture::SetUp());
-    if (IsSkipped()) return;
     amdf_xdna_endpoint_info_t info = {};
     info.type = AMDF_STRUCTURE_TYPE_XDNA_ENDPOINT_INFO;
     info.structure_size = sizeof(info);
@@ -77,10 +76,10 @@ class XdnaExecutionTest
     device_info.structure_size = sizeof(device_info);
     ASSERT_EQ(xdna_api_->device_query_info(device_, &device_info),
               AMDF_STATUS_OK);
-    if ((device_info.context.scheduling_modes &
-         AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED) == 0) {
-      GTEST_SKIP() << "time-sliced XDNA contexts are unavailable";
-    }
+    ASSERT_NE(device_info.context.scheduling_modes &
+                  AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED,
+              0u)
+        << "required time-sliced XDNA contexts are unavailable";
     instruction_alignment_ = device_info.instruction.address_alignment;
 
     iree_hal_amd_xdna_aie2p_target_t target;
@@ -93,8 +92,7 @@ class XdnaExecutionTest
                UINT64_C(0x535848414C4F0001)) {
       image = iree_hal_amd_xdna_test_mul_i32_create();
     } else {
-      GTEST_SKIP() << "no canonical multiplication fixture for "
-                   << info.target_id;
+      FAIL() << "no canonical multiplication fixture for " << info.target_id;
     }
     amdf_endpoint_info_t endpoint_info = {};
     endpoint_info.type = AMDF_STRUCTURE_TYPE_ENDPOINT_INFO;

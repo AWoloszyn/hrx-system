@@ -247,6 +247,13 @@ requirements. GPU/XDNA interoperability has a separate corpus requiring both
 families and both resources. Native suites share the AMD hardware resource group
 with those interop cases.
 
+XDNA device and numerical suites require successful activation and the baseline
+allocated execution path. Missing hardware, failed activation or a missing
+compatible image fixture fails the hardware job. Optional registration, import
+and placement cases use the capabilities of the live device. Strix, Halo and
+Krackan run through the same suites; new driver releases require no test or
+implementation allowlist update.
+
 Each CTS corpus compiles once and links static, shared, and dynamically loaded
 executables. Separate test invocations run each executable with process and
 instance native lifetimes. For example, `//libamdf/cts/core:memory_static` and
