@@ -20,6 +20,7 @@
 #include "loom/rewrite/materialize.h"
 #include "loom/rewrite/remap.h"
 #include "loom/rewrite/rewriter.h"
+#include "loom/target/pass_environment.h"
 #include "loom/transforms/scf/scf_pipeline_plan.h"
 #include "loom/util/fact_table.h"
 #include "loom/util/walk.h"
@@ -142,6 +143,48 @@ static iree_status_t loom_scf_pipeline_report(
         context->pass, IREE_SV("scf-pipeline-stage"), stage_fields,
         IREE_ARRAYSIZE(stage_fields)));
   }
+  return iree_ok_status();
+}
+
+static iree_status_t loom_scf_pipeline_retain(
+    loom_scf_pipeline_context_t* context, uint32_t depth,
+    const loom_scf_pipeline_plan_t* plan) {
+  loom_target_function_version_t* version =
+      loom_target_function_version_cast(context->pass->function_version);
+  loom_function_version_owner_t* owner =
+      loom_target_pass_capability_function_version_owner(
+          loom_target_pass_capability_from_pass(context->pass));
+  if (!version || !owner) return iree_ok_status();
+
+  loom_source_loop_pipeline_t* observation = NULL;
+  IREE_RETURN_IF_ERROR(iree_arena_allocate(owner->arena, sizeof(*observation),
+                                           (void**)&observation));
+  loom_source_loop_pipeline_operation_t* operations = NULL;
+  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(owner->arena, plan->body.count,
+                                                 sizeof(*operations),
+                                                 (void**)&operations));
+  for (uint32_t i = 0; i < plan->body.count; ++i) {
+    operations[i] = (loom_source_loop_pipeline_operation_t){
+        .op_name = loom_op_name(context->module, plan->body.operations[i].op),
+        .iteration_lookahead =
+            plan->stages[i] == LOOM_SCF_PIPELINE_STAGE_PRODUCER ? depth - 1 : 0,
+    };
+  }
+  loom_source_loop_pipeline_list_t* list = &version->loop_pipelines;
+  *observation = (loom_source_loop_pipeline_t){
+      .loop_ordinal = list->tail ? list->tail->loop_ordinal + 1 : 0,
+      .depth = depth,
+      .values_per_record = plan->queue_value_count,
+      .read_count = plan->read_count,
+      .operations = operations,
+      .operation_count = plan->body.count,
+  };
+  if (list->tail) {
+    list->tail->next = observation;
+  } else {
+    list->head = observation;
+  }
+  list->tail = observation;
   return iree_ok_status();
 }
 
@@ -462,6 +505,7 @@ static iree_status_t loom_scf_pipeline_reconstruct(
   IREE_RETURN_IF_ERROR(loom_rewriter_preserve_result_names_on_new_values(
       context->rewriter, source, loom_op_const_results(replacement),
       source->result_count, checkpoint));
+  IREE_RETURN_IF_ERROR(loom_scf_pipeline_retain(context, depth, plan));
   return loom_rewriter_replace_all_uses_and_erase(
       context->rewriter, source, loom_op_const_results(replacement),
       source->result_count);

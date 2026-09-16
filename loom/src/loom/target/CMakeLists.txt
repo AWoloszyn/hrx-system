@@ -147,6 +147,7 @@ loom_cc_library(
     function_version
   HDRS
     "function_version.h"
+    "loop_pipeline.h"
   SRCS
     "function_version.c"
   DEPS

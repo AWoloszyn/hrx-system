@@ -13,6 +13,7 @@
 #include "loom/analysis/native_layout.h"
 #include "loom/codegen/low/planning_statistics.h"
 #include "loom/ir/scalar_type.h"
+#include "loom/target/reporting/loop_pipeline.h"
 #include "loom/target/reporting/target_insertion.h"
 #include "loom/target/residency.h"
 #include "loom/target/types.h"
@@ -2030,6 +2031,10 @@ typedef struct loom_target_compile_report_t {
   loom_target_compile_report_row_list_t source_low_target_rows;
   // Owned source transform decision rows.
   loom_target_compile_report_row_list_t source_low_transform_rows;
+  // Owned applied source loop pipeline policies.
+  loom_target_compile_report_row_list_t loop_pipeline_rows;
+  // Owned operation schedules produced by source loop pipelining.
+  loom_target_compile_report_row_list_t loop_pipeline_stage_rows;
   // Owned source-to-low selection summaries.
   loom_target_compile_report_row_list_t source_low_selection_summaries;
   // Owned emitted source-memory packet rows.

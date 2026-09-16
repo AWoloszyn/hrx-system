@@ -791,6 +791,10 @@ loomc_status_t loomc_emit_module(loomc_target_environment_t* target_environment,
         compile_report.requested_detail_flags =
             loomc_emit_compile_report_requested_detail_flags(
                 resolved_options.compile_report_mode);
+        status = loomc_status_from_iree(
+            loom_target_compile_report_record_loop_pipelines(
+                &compile_report, internal_module,
+                loomc_module_function_versions(module)));
       }
       const loom_target_emit_request_t request = {
           .target_environment = internal_target_environment,
