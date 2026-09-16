@@ -64,7 +64,8 @@ typedef struct loom_value_fact_cfg_region_t {
   // Control-flow components bound the values that must restart together when
   // an edit changes a cyclic dataflow equation.
   struct {
-    // Member spans grouped by graph-owned reachable component ordinal.
+    // Member spans grouped by graph-owned reachable component ordinal, with
+    // each span in source block order for deterministic fact propagation.
     loom_scc_list_t components;
     // Retained forwarding structure validity and argument span per component.
     loom_value_fact_cfg_forwarding_t* forwarding;

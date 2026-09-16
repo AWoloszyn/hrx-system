@@ -10,7 +10,6 @@
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
 #include "loom/ops/op_defs.h"
-#include "loom/util/adaptive_sort.h"
 #include "loom/util/fact_cfg.h"
 #include "loom/util/fact_table.h"
 
@@ -904,13 +903,6 @@ static iree_status_t loom_value_fact_table_save_cfg_block(
   return iree_ok_status();
 }
 
-static bool loom_value_fact_cfg_block_less(const iree_host_size_t* lhs,
-                                           const iree_host_size_t* rhs) {
-  return *lhs < *rhs;
-}
-LOOM_DEFINE_ADAPTIVE_SORT(loom_value_fact_cfg_sort_blocks, iree_host_size_t,
-                          loom_value_fact_cfg_block_less)
-
 iree_status_t loom_value_fact_table_recompute_cfg_component(
     loom_value_fact_table_t* table, const loom_module_t* module,
     const loom_value_fact_cfg_region_t* region, const loom_scc_t* component,
@@ -922,11 +914,7 @@ iree_status_t loom_value_fact_table_recompute_cfg_component(
       region, component_index, scratch_arena));
   const loom_value_fact_cfg_forwarding_t* partition =
       &region->control_flow.forwarding[component_index];
-  iree_host_size_t* blocks = NULL;
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      scratch_arena, component->node_count, sizeof(*blocks), (void**)&blocks));
-  memcpy(blocks, component->nodes, component->node_count * sizeof(*blocks));
-  loom_value_fact_cfg_sort_blocks(blocks, component->node_count);
+  const iree_host_size_t* blocks = component->nodes;
   loom_value_fact_cfg_saved_values_t saved = {0};
   for (iree_host_size_t i = 0; i < component->node_count; ++i) {
     IREE_RETURN_IF_ERROR(loom_value_fact_table_save_cfg_block(
