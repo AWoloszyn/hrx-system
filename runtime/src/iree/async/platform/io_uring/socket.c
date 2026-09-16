@@ -305,12 +305,10 @@ void iree_async_io_uring_socket_destroy(
     close(fd);
   }
 
-  // Free any stored failure status.
+  // Release any stored failure status.
   iree_status_t failure = (iree_status_t)iree_atomic_load(
       &socket->failure_status, iree_memory_order_acquire);
-  if (!iree_status_is_ok(failure)) {
-    iree_status_ignore(failure);
-  }
+  iree_status_free(failure);
 
   // Free the socket struct.
   iree_allocator_free(proactor->base.allocator, socket);

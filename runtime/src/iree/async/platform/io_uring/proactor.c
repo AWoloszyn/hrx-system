@@ -36,6 +36,7 @@
 #include "iree/async/platform/io_uring/notification.h"
 #include "iree/async/platform/io_uring/relay.h"
 #include "iree/async/platform/io_uring/socket.h"
+#include "iree/async/platform/io_uring/socket_completion.h"
 #include "iree/async/semaphore.h"
 #include "iree/async/types.h"
 #include "iree/async/util/continuation.h"
@@ -882,8 +883,7 @@ static void iree_async_proactor_io_uring_handle_signal_cqe(
 }
 
 // Converts a CQE result to an iree_status_t.
-// Handles special cases like timer expiration, futex value mismatch, and
-// zero-copy send notification CQEs that are not errors.
+// Handles special cases like timer expiration and futex value mismatch.
 static iree_status_t iree_async_proactor_io_uring_cqe_to_status(
     const iree_io_uring_cqe_t* cqe, iree_async_operation_t* operation) {
   if (cqe->res >= 0) {
@@ -907,15 +907,6 @@ static iree_status_t iree_async_proactor_io_uring_cqe_to_status(
   // mode. Treat as success: the caller will re-check or re-wait as appropriate.
   if (cqe->res == -EAGAIN &&
       operation->type == IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT) {
-    return iree_ok_status();
-  }
-
-  // NOTIF CQE for ZC send: res indicates whether ZC was achieved, not error.
-  // res=0 means true zero-copy; res=IORING_NOTIF_USAGE_ZC_COPIED (0x80000000)
-  // means the kernel fell back to copying. Both are success.
-  if (iree_any_bit_set(cqe->flags, IREE_IORING_CQE_F_NOTIF) &&
-      (operation->type == IREE_ASYNC_OPERATION_TYPE_SOCKET_SEND ||
-       operation->type == IREE_ASYNC_OPERATION_TYPE_SOCKET_SENDTO)) {
     return iree_ok_status();
   }
 
@@ -1051,23 +1042,6 @@ static iree_status_t iree_async_proactor_io_uring_populate_result(
       iree_async_proactor_io_uring_complete_socket_recv_pool(
           cqe, (iree_async_socket_recv_pool_operation_t*)operation);
       break;
-    case IREE_ASYNC_OPERATION_TYPE_SOCKET_SEND: {
-      iree_async_socket_send_operation_t* send =
-          (iree_async_socket_send_operation_t*)operation;
-      // Only update bytes_sent on first CQE (not on NOTIF).
-      if (!(cqe->flags & IREE_IORING_CQE_F_NOTIF)) {
-        send->bytes_sent = (iree_host_size_t)cqe->res;
-      }
-      break;
-    }
-    case IREE_ASYNC_OPERATION_TYPE_SOCKET_SENDTO: {
-      iree_async_socket_sendto_operation_t* sendto =
-          (iree_async_socket_sendto_operation_t*)operation;
-      if (!(cqe->flags & IREE_IORING_CQE_F_NOTIF)) {
-        sendto->bytes_sent = (iree_host_size_t)cqe->res;
-      }
-      break;
-    }
     case IREE_ASYNC_OPERATION_TYPE_SOCKET_RECVFROM:
       iree_async_proactor_io_uring_complete_socket_recvfrom(
           cqe, (iree_async_socket_recvfrom_operation_t*)operation);
@@ -1130,31 +1104,6 @@ static iree_status_t iree_async_proactor_io_uring_populate_result(
   return iree_ok_status();
 }
 
-// Checks if a zero-copy send is waiting for its NOTIF CQE.
-// Returns true if the callback should be deferred until NOTIF arrives.
-static inline bool iree_async_proactor_io_uring_is_zc_send_deferred(
-    const iree_io_uring_cqe_t* cqe, iree_async_operation_t* operation) {
-  if (operation->type != IREE_ASYNC_OPERATION_TYPE_SOCKET_SEND &&
-      operation->type != IREE_ASYNC_OPERATION_TYPE_SOCKET_SENDTO) {
-    return false;
-  }
-
-  iree_async_socket_t* socket = NULL;
-  if (operation->type == IREE_ASYNC_OPERATION_TYPE_SOCKET_SEND) {
-    socket = ((iree_async_socket_send_operation_t*)operation)->socket;
-  } else {
-    socket = ((iree_async_socket_sendto_operation_t*)operation)->socket;
-  }
-
-  bool is_zc =
-      iree_any_bit_set(socket->flags, IREE_ASYNC_SOCKET_FLAG_ZERO_COPY);
-  bool has_more = (cqe->flags & IREE_IORING_CQE_F_MORE) != 0;
-  bool is_notif = (cqe->flags & IREE_IORING_CQE_F_NOTIF) != 0;
-
-  // ZC send with CQE_F_MORE but not yet NOTIF: defer callback.
-  return is_zc && has_more && !is_notif;
-}
-
 // Computes completion flags from CQE and operation type.
 static inline iree_async_completion_flags_t
 iree_async_proactor_io_uring_completion_flags(
@@ -1163,15 +1112,6 @@ iree_async_proactor_io_uring_completion_flags(
 
   if (iree_any_bit_set(cqe->flags, IREE_IORING_CQE_F_MORE)) {
     flags |= IREE_ASYNC_COMPLETION_FLAG_MORE;
-  }
-
-  // For ZC send NOTIF CQEs, check if zero-copy was actually achieved.
-  if (operation->type == IREE_ASYNC_OPERATION_TYPE_SOCKET_SEND ||
-      operation->type == IREE_ASYNC_OPERATION_TYPE_SOCKET_SENDTO) {
-    bool is_notif = iree_any_bit_set(cqe->flags, IREE_IORING_CQE_F_NOTIF);
-    if (is_notif && cqe->res == 0) {
-      flags |= IREE_ASYNC_COMPLETION_FLAG_ZERO_COPY_ACHIEVED;
-    }
   }
 
   return flags;
@@ -1294,14 +1234,29 @@ static iree_host_size_t iree_async_proactor_io_uring_process_cqe(
   // Makes the submitter's writes to operation fields visible to this thread.
   IREE_IO_URING_TSAN_COMPLETE(operation);
 
-  // Convert kernel result to status.
-  iree_status_t status =
-      iree_async_proactor_io_uring_cqe_to_status(cqe, operation);
-
-  // Populate result fields on success.
-  if (iree_status_is_ok(status)) {
-    status =
-        iree_async_proactor_io_uring_populate_result(proactor, cqe, operation);
+  iree_status_t status = iree_ok_status();
+  iree_async_completion_flags_t flags = IREE_ASYNC_COMPLETION_FLAG_NONE;
+  if (operation->type == IREE_ASYNC_OPERATION_TYPE_SOCKET_SEND) {
+    iree_async_io_uring_socket_send_completion_t completion =
+        iree_async_io_uring_socket_process_send_cqe(
+            cqe, (iree_async_socket_send_operation_t*)operation);
+    if (!completion.is_terminal) return 0;
+    status = completion.status;
+    flags = completion.flags;
+  } else if (operation->type == IREE_ASYNC_OPERATION_TYPE_SOCKET_SENDTO) {
+    iree_async_io_uring_socket_send_completion_t completion =
+        iree_async_io_uring_socket_process_sendto_cqe(
+            cqe, (iree_async_socket_sendto_operation_t*)operation);
+    if (!completion.is_terminal) return 0;
+    status = completion.status;
+    flags = completion.flags;
+  } else {
+    status = iree_async_proactor_io_uring_cqe_to_status(cqe, operation);
+    if (iree_status_is_ok(status)) {
+      status = iree_async_proactor_io_uring_populate_result(proactor, cqe,
+                                                            operation);
+    }
+    flags = iree_async_proactor_io_uring_completion_flags(cqe, operation);
   }
 
   // Propagate error to socket's sticky failure status.
@@ -1313,15 +1268,6 @@ static iree_host_size_t iree_async_proactor_io_uring_process_cqe(
     }
   }
 
-  // Zero-copy send handling: first CQE has MORE set, defer until NOTIF.
-  if (iree_async_proactor_io_uring_is_zc_send_deferred(cqe, operation)) {
-    iree_status_ignore(status);
-    return 0;
-  }
-
-  // Compute completion flags.
-  iree_async_completion_flags_t flags =
-      iree_async_proactor_io_uring_completion_flags(cqe, operation);
   const bool is_final =
       !iree_any_bit_set(flags, IREE_ASYNC_COMPLETION_FLAG_MORE);
 

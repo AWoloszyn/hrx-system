@@ -42,6 +42,7 @@ iree_runtime_cc_library(
     deps = [
         ":buffer_ring",
         ":defs",
+        ":socket_completion",
         ":sparse_table",
         ":uring",
         "//runtime/src/iree/async",
@@ -109,6 +110,30 @@ iree_runtime_cc_library(
     deps = [
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/threading",
+    ],
+)
+
+iree_runtime_cc_library(
+    name = "socket_completion",
+    srcs = ["socket_completion.c"],
+    hdrs = ["socket_completion.h"],
+    target_compatible_with = ["@platforms//os:linux"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":defs",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/base",
+    ],
+)
+
+iree_runtime_cc_test(
+    name = "socket_completion_test",
+    srcs = ["socket_completion_test.cc"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":socket_completion",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
     ],
 )
 

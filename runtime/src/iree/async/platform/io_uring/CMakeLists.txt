@@ -30,6 +30,7 @@ iree_cc_library(
   DEPS
     ::buffer_ring
     ::defs
+    ::socket_completion
     ::sparse_table
     ::uring
     iree::async
@@ -109,6 +110,35 @@ iree_cc_library(
     iree::base
     iree::base::threading
   PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+iree_cc_library(
+  NAME
+    socket_completion
+  HDRS
+    "socket_completion.h"
+  SRCS
+    "socket_completion.c"
+  DEPS
+    ::defs
+    iree::async
+    iree::base
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+iree_cc_test(
+  NAME
+    socket_completion_test
+  SRCS
+    "socket_completion_test.cc"
+  DEPS
+    ::socket_completion
+    iree::testing::gtest
+    iree::testing::gtest_main
 )
 endif()
 
