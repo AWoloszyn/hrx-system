@@ -865,6 +865,9 @@ static iree_status_t iree_async_proactor_posix_submit_socket_connect(
               (socklen_t)connect_op->address.length);
   if (connect_result == 0) {
     // Immediate success (rare, usually local connections).
+    iree_atomic_store(&connect_op->socket->bind_state,
+                      IREE_ASYNC_SOCKET_BIND_STATE_BOUND,
+                      iree_memory_order_release);
     connect_op->socket->state = IREE_ASYNC_SOCKET_STATE_CONNECTED;
     return iree_async_proactor_posix_complete_on_submit(
         proactor, &connect_op->base, iree_ok_status(),
@@ -873,6 +876,9 @@ static iree_status_t iree_async_proactor_posix_submit_socket_connect(
   if (errno == EINPROGRESS) {
     // Connection in progress — poll thread will register for POLLOUT.
     // push_pending retains the socket reference.
+    iree_atomic_store(&connect_op->socket->bind_state,
+                      IREE_ASYNC_SOCKET_BIND_STATE_BOUND,
+                      iree_memory_order_release);
     connect_op->socket->state = IREE_ASYNC_SOCKET_STATE_CONNECTING;
     iree_async_proactor_posix_push_pending(proactor, &connect_op->base);
     return iree_ok_status();
@@ -3564,14 +3570,6 @@ static void iree_async_posix_slab_region_destroy(iree_async_region_t* region) {
                                         offsetof(iree_async_posix_slab_region_t,
                                                  region));
 
-  // Clear singleton tracking for READ-access registrations.
-  if (iree_any_bit_set(region->access_flags,
-                       IREE_ASYNC_BUFFER_ACCESS_FLAG_READ)) {
-    iree_async_proactor_posix_t* proactor =
-        iree_async_proactor_posix_cast(region->proactor);
-    proactor->has_read_slab_registration = false;
-  }
-
   // Release the retained slab reference.
   iree_async_slab_release(region->slab);
 
@@ -3583,8 +3581,6 @@ static iree_status_t iree_async_proactor_posix_register_slab(
     iree_async_proactor_t* base_proactor, iree_async_slab_t* slab,
     iree_async_buffer_access_flags_t access_flags,
     iree_async_region_t** out_region) {
-  iree_async_proactor_posix_t* proactor =
-      iree_async_proactor_posix_cast(base_proactor);
   IREE_TRACE_ZONE_BEGIN(z0);
   IREE_ASSERT_ARGUMENT(slab);
   IREE_ASSERT_ARGUMENT(out_region);
@@ -3593,18 +3589,6 @@ static iree_status_t iree_async_proactor_posix_register_slab(
   iree_host_size_t buffer_size = iree_async_slab_buffer_size(slab);
   iree_host_size_t buffer_count = iree_async_slab_buffer_count(slab);
   void* base_ptr = iree_async_slab_base_ptr(slab);
-
-  // Check singleton constraint for READ access (fixed buffer table equivalent).
-  // io_uring allows only one buffer table registration at a time; enforced
-  // identically here for API portability (see proactor.h:930-934).
-  bool needs_read = (access_flags & IREE_ASYNC_BUFFER_ACCESS_FLAG_READ) != 0;
-  if (needs_read && proactor->has_read_slab_registration) {
-    IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(
-        IREE_STATUS_ALREADY_EXISTS,
-        "READ-access slab already registered with this proactor; "
-        "only one READ-access slab registration is allowed at a time");
-  }
 
   // Validate buffer count fits in region handles.
   if (buffer_count > UINT16_MAX) {
@@ -3670,11 +3654,6 @@ static iree_status_t iree_async_proactor_posix_register_slab(
   region->recycle = iree_async_buffer_recycle_callback_null();
   region->buffer_size = buffer_size;
   region->buffer_count = (uint32_t)buffer_count;
-
-  // Update singleton tracking.
-  if (needs_read) {
-    proactor->has_read_slab_registration = true;
-  }
 
   *out_region = region;
   IREE_TRACE_ZONE_END(z0);

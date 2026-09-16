@@ -308,39 +308,47 @@ static iree_status_t iree_async_proactor_iocp_submit_socket_accept(
 // connect also needs a bound socket. This is invisible to the caller.
 //
 // Detection: getsockname() returns WSAEINVAL on an unbound Windows socket.
-// If getsockname() succeeds, the socket is already bound and no action is
-// needed. This is more reliable than checking socket->state because
-// iree_async_socket_bind() does not update the state field.
+// Imported sockets have unknown bind state, so the platform remains the source
+// of truth until this path or an explicit bind resolves it.
 static iree_status_t iree_async_proactor_iocp_auto_bind_if_needed(
     iree_async_socket_t* socket, SOCKET sock) {
   struct sockaddr_storage probe_address;
   int probe_length = sizeof(probe_address);
   if (getsockname(sock, (struct sockaddr*)&probe_address, &probe_length) !=
       SOCKET_ERROR) {
+    iree_atomic_store(&socket->bind_state, IREE_ASYNC_SOCKET_BIND_STATE_BOUND,
+                      iree_memory_order_release);
     return iree_ok_status();  // Already bound.
   }
 
-  struct sockaddr_storage bind_addr;
-  int bind_addr_length = 0;
-  memset(&bind_addr, 0, sizeof(bind_addr));
+  int error = WSAGetLastError();
+  if (error != WSAEINVAL) {
+    return iree_make_status(iree_status_code_from_win32_error(error),
+                            "getsockname before auto-bind failed "
+                            "(WSA error %d)",
+                            error);
+  }
+
+  iree_async_address_t bind_address;
+  memset(&bind_address, 0, sizeof(bind_address));
 
   switch (socket->type) {
     case IREE_ASYNC_SOCKET_TYPE_TCP:
     case IREE_ASYNC_SOCKET_TYPE_UDP: {
-      struct sockaddr_in* addr4 = (struct sockaddr_in*)&bind_addr;
+      struct sockaddr_in* addr4 = (struct sockaddr_in*)bind_address.storage;
       addr4->sin_family = AF_INET;
       addr4->sin_addr.s_addr = INADDR_ANY;
       addr4->sin_port = 0;
-      bind_addr_length = sizeof(struct sockaddr_in);
+      bind_address.length = sizeof(struct sockaddr_in);
       break;
     }
     case IREE_ASYNC_SOCKET_TYPE_TCP6:
     case IREE_ASYNC_SOCKET_TYPE_UDP6: {
-      struct sockaddr_in6* addr6 = (struct sockaddr_in6*)&bind_addr;
+      struct sockaddr_in6* addr6 = (struct sockaddr_in6*)bind_address.storage;
       addr6->sin6_family = AF_INET6;
       addr6->sin6_addr = in6addr_any;
       addr6->sin6_port = 0;
-      bind_addr_length = sizeof(struct sockaddr_in6);
+      bind_address.length = sizeof(struct sockaddr_in6);
       break;
     }
     default:
@@ -349,13 +357,7 @@ static iree_status_t iree_async_proactor_iocp_auto_bind_if_needed(
                               socket->type);
   }
 
-  if (bind(sock, (struct sockaddr*)&bind_addr, bind_addr_length) ==
-      SOCKET_ERROR) {
-    int wsa_error = WSAGetLastError();
-    return iree_make_status(iree_status_code_from_win32_error(wsa_error),
-                            "auto-bind failed (WSA error %d)", wsa_error);
-  }
-  return iree_ok_status();
+  return iree_async_socket_bind(socket, &bind_address);
 }
 
 // Returns true if the socket type is connectionless (UDP/UDP6).

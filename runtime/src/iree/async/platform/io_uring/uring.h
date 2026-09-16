@@ -30,6 +30,7 @@
 #define IREE_ASYNC_PLATFORM_IO_URING_URING_H_
 
 #include "iree/async/platform/io_uring/defs.h"
+#include "iree/async/platform/io_uring/uring_registration.h"
 #include "iree/base/api.h"
 #include "iree/base/internal/atomics.h"
 #include "iree/base/threading/processor.h"
@@ -49,6 +50,9 @@ typedef struct iree_io_uring_ring_t {
 
   // Features reported by the kernel during setup.
   uint32_t features;
+
+  // Setup flags accepted by the kernel after compatibility fallbacks.
+  uint32_t setup_flags;
 
   // Submission queue state.
   void* sq_ring_ptr;
@@ -91,12 +95,15 @@ typedef struct iree_io_uring_ring_t {
   // Zero is unlocked and one is locked; waiters poll without modifying it.
   iree_atomic_int32_t sq_lock;
 
-  // True if the ring was created with R_DISABLED and needs
+  // Non-zero if the ring was created with R_DISABLED and needs
   // REGISTER_ENABLE_RINGS before io_uring_enter can be called. When
   // SINGLE_ISSUER is active, REGISTER_ENABLE_RINGS also binds the calling
-  // thread as the exclusive submitter — deferring this binding from
-  // io_uring_setup to the first poll() call on the proactor thread.
-  bool needs_enable;
+  // thread as the exclusive submitter. Read by cross-proactor submitters
+  // before targeting this ring with MSG_RING.
+  iree_atomic_int32_t needs_enable;
+
+  // Cold-path io_uring_register ownership and dispatch state.
+  iree_io_uring_registration_t registration;
 } iree_io_uring_ring_t;
 
 //===----------------------------------------------------------------------===//
@@ -116,6 +123,11 @@ static inline void iree_io_uring_ring_sq_lock(iree_io_uring_ring_t* ring) {
 // Releases the SQ lock.
 static inline void iree_io_uring_ring_sq_unlock(iree_io_uring_ring_t* ring) {
   iree_atomic_store(&ring->sq_lock, 0, iree_memory_order_release);
+}
+
+// Returns true if the ring needs REGISTER_ENABLE_RINGS before io_uring_enter.
+static inline bool iree_io_uring_ring_needs_enable(iree_io_uring_ring_t* ring) {
+  return iree_atomic_load(&ring->needs_enable, iree_memory_order_acquire) != 0;
 }
 
 //===----------------------------------------------------------------------===//
@@ -178,6 +190,23 @@ void iree_io_uring_ring_deinitialize(iree_io_uring_ring_t* ring);
 // SINGLE_ISSUER, this binds the calling thread as the ring's exclusive
 // submitter. No-op if the ring was not created with R_DISABLED.
 iree_status_t iree_io_uring_ring_enable(iree_io_uring_ring_t* ring);
+
+// Sets the callback used to wake the registration owner when another task
+// queues an io_uring_register operation.
+void iree_io_uring_ring_set_registration_wake_callback(
+    iree_io_uring_ring_t* ring,
+    iree_io_uring_registration_wake_callback_t callback);
+
+// Executes io_uring_register synchronously on the kernel owner task when the
+// ring uses SINGLE_ISSUER. Returns the raw syscall result or a negated errno.
+int iree_io_uring_ring_register(iree_io_uring_ring_t* ring, uint32_t opcode,
+                                void* arg, uint32_t argument_count);
+
+// Drains queued io_uring_register operations on the poll-owner task.
+void iree_io_uring_ring_drain_registration_requests(iree_io_uring_ring_t* ring);
+
+// Permanently retires the poll owner and rejects subsequent registration.
+void iree_io_uring_ring_end_polling(iree_io_uring_ring_t* ring);
 
 //===----------------------------------------------------------------------===//
 // Submission queue operations

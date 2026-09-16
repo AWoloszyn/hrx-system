@@ -210,6 +210,30 @@ TEST_F(IocpProactorTest, FallbackApcInterruptsBlockedPoll) {
             0);
 }
 
+TEST(IocpEventSourceTest, RequiresWaitCompletionPackets) {
+  iree_async_proactor_options_t options = iree_async_proactor_options_default();
+  options.allowed_capabilities &=
+      ~IREE_ASYNC_PROACTOR_CAPABILITY_WAIT_COMPLETION_PACKET;
+  iree_async_proactor_t* proactor = nullptr;
+  IREE_ASSERT_OK(iree_async_proactor_create_iocp(
+      options, iree_allocator_system(), &proactor));
+
+  iree_async_event_t* event = nullptr;
+  IREE_ASSERT_OK(iree_async_event_create(proactor, &event));
+  iree_async_event_source_callback_t callback = {
+      +[](void*, iree_async_event_source_t*, iree_async_poll_events_t) {},
+      nullptr,
+  };
+  iree_async_event_source_t* source = nullptr;
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_UNAVAILABLE,
+                        iree_async_proactor_register_event_source(
+                            proactor, event->primitive, callback, &source));
+  EXPECT_EQ(source, nullptr);
+
+  iree_async_event_release(event);
+  iree_async_proactor_release(proactor);
+}
+
 TEST(IocpLegacyEventWaitTest, FailedCallbackPostDispatchesFromPoll) {
   iree_async_proactor_options_t options = iree_async_proactor_options_default();
   options.allowed_capabilities &=

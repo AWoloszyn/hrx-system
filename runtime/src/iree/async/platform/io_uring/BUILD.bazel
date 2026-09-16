@@ -6,7 +6,7 @@
 
 # io_uring-based proactor implementation for Linux.
 #
-# Requires kernel 5.1+ with io_uring support. Falls back gracefully on older
+# Requires kernel 5.7+ with io_uring support. Falls back gracefully on older
 # kernels by returning IREE_STATUS_UNAVAILABLE from the create function.
 
 load("//runtime/build_tools/bazel:cc.bzl", "iree_runtime_cc_library")
@@ -42,6 +42,7 @@ iree_runtime_cc_library(
     deps = [
         ":buffer_ring",
         ":defs",
+        ":socket_completion",
         ":sparse_table",
         ":uring",
         "//runtime/src/iree/async",
@@ -80,11 +81,27 @@ iree_runtime_cc_library(
     srcs = ["buffer_ring.c"],
     hdrs = ["buffer_ring.h"],
     target_compatible_with = ["@platforms//os:linux"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":defs",
+        ":uring_registration",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal",
+        "//runtime/src/iree/base/internal:memory",
+    ],
+)
+
+iree_runtime_cc_library(
+    name = "uring_registration",
+    srcs = ["uring_registration.c"],
+    hdrs = ["uring_registration.h"],
+    target_compatible_with = ["@platforms//os:linux"],
+    visibility = ["//visibility:private"],
     deps = [
         ":defs",
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/internal",
-        "//runtime/src/iree/base/internal:memory",
+        "//runtime/src/iree/base/threading",
     ],
 )
 
@@ -95,6 +112,7 @@ iree_runtime_cc_library(
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
         ":defs",
+        ":uring_registration",
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/internal",
         "//runtime/src/iree/base/threading",
@@ -109,6 +127,30 @@ iree_runtime_cc_library(
     deps = [
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/threading",
+    ],
+)
+
+iree_runtime_cc_library(
+    name = "socket_completion",
+    srcs = ["socket_completion.c"],
+    hdrs = ["socket_completion.h"],
+    target_compatible_with = ["@platforms//os:linux"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":defs",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/base",
+    ],
+)
+
+iree_runtime_cc_test(
+    name = "socket_completion_test",
+    srcs = ["socket_completion_test.cc"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":socket_completion",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
     ],
 )
 
@@ -136,6 +178,30 @@ iree_runtime_cc_test(
 )
 
 iree_runtime_cc_test(
+    name = "buffer_ring_test",
+    srcs = ["buffer_ring_test.cc"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":buffer_ring",
+        ":uring",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+iree_runtime_cc_test(
+    name = "uring_registration_test",
+    srcs = ["uring_registration_test.cc"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":uring",
+        "//runtime/src/iree/base/threading",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+iree_runtime_cc_test(
     name = "proactor_lifetime_test",
     srcs = ["proactor_lifetime_test.cc"],
     target_compatible_with = ["@platforms//os:linux"],
@@ -143,7 +209,9 @@ iree_runtime_cc_test(
         ":io_uring",
         "//runtime/src/iree/async",
         "//runtime/src/iree/async:types",
+        "//runtime/src/iree/async/util:proactor_thread",
         "//runtime/src/iree/base",
+        "//runtime/src/iree/base/threading",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
     ],

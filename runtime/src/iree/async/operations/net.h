@@ -50,6 +50,27 @@ extern "C" {
   (IREE_ASYNC_SOCKET_SCATTER_GATHER_MAX_BUFFERS * \
    IREE_ASYNC_SOCKET_PLATFORM_IOVEC_SIZE)
 
+// Platform storage shared by connected and unconnected socket sends.
+//
+// The io_uring state aliases the POSIX message descriptors. The primary
+// zero-copy completion ends the descriptor lifetime, allowing its result to be
+// retained in the same storage until the buffer-ownership notification arrives.
+typedef union iree_async_socket_send_platform_t {
+  // POSIX vectored I/O descriptors.
+  struct {
+    // Storage for struct msghdr used by SENDMSG.
+    iree_alignas(iree_max_align_t) uint8_t
+        msg_header[IREE_ASYNC_SOCKET_PLATFORM_MSGHDR_SIZE];
+    // Storage for struct iovec array.
+    uint8_t iovecs[IREE_ASYNC_SOCKET_PLATFORM_IOVEC_STORAGE];
+  } posix;
+  // io_uring zero-copy completion state.
+  struct {
+    // Raw primary CQE result retained until the ownership notification.
+    int32_t primary_result;
+  } io_uring;
+} iree_async_socket_send_platform_t;
+
 //===----------------------------------------------------------------------===//
 // Accept
 //===----------------------------------------------------------------------===//
@@ -248,7 +269,7 @@ static inline void iree_async_socket_recv_operation_initialize(
 // Multishot mode (IREE_ASYNC_OPERATION_FLAG_MULTISHOT):
 //   Delivers repeated completions until cancelled, each completion carrying
 //   a fresh lease. The caller must return each lease (via
-//   iree_async_buffer_pool_release) after processing the data.
+//   iree_async_buffer_lease_release) after processing the data.
 //
 // Pool exhaustion behavior:
 //   If the pool is exhausted (no buffers available), the operation pauses
@@ -274,7 +295,7 @@ typedef struct iree_async_socket_recv_pool_operation_t {
 
   // Result: lease for the buffer that received data.
   // Valid only on successful completion. The caller owns the lease and must
-  // return it via iree_async_buffer_pool_release() after processing.
+  // return it via iree_async_buffer_lease_release() after processing.
   iree_async_buffer_lease_t lease;
 
   // Result: number of bytes received into the leased buffer.
@@ -375,20 +396,8 @@ typedef struct iree_async_socket_send_operation_t {
   // Result: total bytes sent across all buffer entries.
   iree_host_size_t bytes_sent;
 
-  // Platform-specific storage for scatter-gather I/O.
-  // Opaque to callers; initialized by the proactor.
-  // Alignment ensures platform structs (msghdr, iovec) can be safely cast.
-  union {
-    // POSIX vectored I/O (all POSIX-based backends: poll, epoll, kqueue,
-    // io_uring). Contains struct msghdr and struct iovec storage.
-    struct {
-      // Storage for struct msghdr used by SENDMSG.
-      iree_alignas(iree_max_align_t) uint8_t
-          msg_header[IREE_ASYNC_SOCKET_PLATFORM_MSGHDR_SIZE];
-      // Storage for struct iovec array.
-      uint8_t iovecs[IREE_ASYNC_SOCKET_PLATFORM_IOVEC_STORAGE];
-    } posix;
-  } platform;
+  // Proactor-managed platform storage.
+  iree_async_socket_send_platform_t platform;
 } iree_async_socket_send_operation_t;
 
 // Maximum number of scatter-gather buffers supported in a single send.
@@ -473,20 +482,8 @@ typedef struct iree_async_socket_sendto_operation_t {
   // Result: total bytes sent across all buffer entries.
   iree_host_size_t bytes_sent;
 
-  // Platform-specific storage for scatter-gather I/O.
-  // Opaque to callers; initialized by the proactor.
-  // Alignment ensures platform structs (msghdr, iovec) can be safely cast.
-  union {
-    // POSIX vectored I/O (all POSIX-based backends: poll, epoll, kqueue,
-    // io_uring). Contains struct msghdr and struct iovec storage.
-    struct {
-      // Storage for struct msghdr used by SENDMSG.
-      iree_alignas(iree_max_align_t) uint8_t
-          msg_header[IREE_ASYNC_SOCKET_PLATFORM_MSGHDR_SIZE];
-      // Storage for struct iovec array.
-      uint8_t iovecs[IREE_ASYNC_SOCKET_PLATFORM_IOVEC_STORAGE];
-    } posix;
-  } platform;
+  // Proactor-managed platform storage.
+  iree_async_socket_send_platform_t platform;
 } iree_async_socket_sendto_operation_t;
 
 // Maximum number of scatter-gather buffers supported in a single sendto.

@@ -56,21 +56,23 @@ typedef uint8_t iree_async_socket_type_t;
 // create_socket and may use them to select backend-specific optimizations
 // (e.g., enabling kernel zero-copy paths, configuring io_uring features).
 //
-// For imported sockets (import_socket), options are set to NONE — the caller
-// is responsible for pre-configuring the platform handle before import.
-//
-// Queried via iree_async_socket_query_options() after creation.
+// Imported sockets do not receive creation options. The caller configures the
+// platform handle before import and declares the runtime behavior flags that
+// the proactor needs to know about.
 enum iree_async_socket_option_bits_e {
   IREE_ASYNC_SOCKET_OPTION_NONE = 0u,
 
   // SO_REUSEADDR: allows binding to a port that was recently in use.
   // Required for servers that restart without waiting for TIME_WAIT to expire.
+  // On Windows this opts out of exclusive address use and permits another
+  // process to forcibly bind the same address.
   IREE_ASYNC_SOCKET_OPTION_REUSE_ADDR = 1u << 0,
 
   // SO_REUSEPORT: allows multiple sockets to bind to the same port.
   // The kernel load-balances incoming connections across them. Useful for
   // multi-proactor server architectures where each proactor thread has its own
   // listening socket on the same port.
+  // Not available on Windows; requesting it fails socket creation.
   IREE_ASYNC_SOCKET_OPTION_REUSE_PORT = 1u << 1,
 
   // TCP_NODELAY: disables Nagle's algorithm. Sends data immediately without
@@ -139,6 +141,21 @@ enum iree_async_socket_state_e {
 };
 typedef uint8_t iree_async_socket_state_t;
 
+// Local bind knowledge used to enforce the synchronous socket setup contract.
+// This is separate from the diagnostic connection state because binding may be
+// explicit, implicit during listen/connect, or inherited through import.
+enum iree_async_socket_bind_state_e {
+  // The externally imported socket may already have a local binding.
+  IREE_ASYNC_SOCKET_BIND_STATE_UNKNOWN = 0u,
+  // The socket was created by IREE and has not been bound.
+  IREE_ASYNC_SOCKET_BIND_STATE_UNBOUND,
+  // One synchronous bind call currently owns the platform transition.
+  IREE_ASYNC_SOCKET_BIND_STATE_BINDING,
+  // The socket is known to have an explicit or implicit local binding.
+  IREE_ASYNC_SOCKET_BIND_STATE_BOUND,
+};
+typedef uint8_t iree_async_socket_bind_state_t;
+
 // A proactor-managed socket. Created via iree_async_socket_create() or
 // iree_async_socket_import().
 typedef struct iree_async_socket_t {
@@ -154,6 +171,9 @@ typedef struct iree_async_socket_t {
   // io_uring fixed file index for reduced syscall overhead (-1 if not
   // registered). Backend-specific optimization; ignored on other platforms.
   int32_t fixed_file_index;
+
+  // Known local bind state for synchronous setup operations.
+  iree_atomic_int32_t bind_state;
 
   // Socket type (TCP, UDP, Unix stream/dgram).
   iree_async_socket_type_t type;
@@ -187,13 +207,9 @@ typedef struct iree_async_socket_t {
 //   and are not stored—they are consumed and discarded. The socket does not
 //   remember what options were requested.
 //
-// Options are best-effort:
-//   Options that require kernel support (e.g., ZERO_COPY requiring
-//   SO_ZEROCOPY) are applied via setsockopt when available. On platforms
-//   without the underlying support, the option is accepted silently and the
-//   corresponding behavior degrades to the regular path. The ZERO_COPY flag
-//   is still recorded on the socket so the send path can attempt zero-copy
-//   when the proactor has IREE_ASYNC_PROACTOR_CAPABILITY_ZERO_COPY_SEND.
+// Options are requirements unless documented as hints. Unsupported required
+// options fail creation. ZERO_COPY is a hint: platforms without the underlying
+// support accept it and use the regular send path.
 //
 // Returns:
 //   IREE_STATUS_OK: Socket created successfully.
@@ -216,11 +232,12 @@ IREE_API_EXPORT iree_status_t iree_async_socket_create(
 //   the socket is released or a close operation completes. The caller must not
 //   close the handle after a successful import.
 //
-// No mutation:
-//   The proactor does NOT modify the socket (no setsockopt, no fcntl). The
-//   caller is responsible for pre-configuring nonblocking mode, socket options,
-//   etc. before import. This allows importing sockets with non-default
-//   configurations that the proactor doesn't know about.
+// Platform preparation:
+//   Import may mutate platform bookkeeping required for asynchronous I/O.
+//   POSIX backends enable nonblocking mode and IOCP associates the socket with
+//   the proactor's completion port. Import does not apply creation options;
+//   the caller remains responsible for all socket option configuration and,
+//   on Windows, creating the socket for overlapped I/O.
 //
 // Flags parameter:
 //   The |flags| parameter declares runtime behavior for the imported socket.
@@ -298,22 +315,27 @@ static inline void iree_async_socket_set_failure(
 //   iree_async_socket_create(proactor, TCP, options, &socket);
 //   // Submit async connect operation via the proactor.
 
-// Binds the socket to a local address. Must be called before listen.
-// Returns IREE_STATUS_ALREADY_EXISTS if the address is in use (and
-// REUSE_ADDR/REUSE_PORT were not enabled at creation time).
+// Binds the socket to a local address. Must be called before listen or any
+// asynchronous operation is submitted and must not race other setup calls.
+// A failed bind may be retried. Repeated or concurrent binds on a socket that
+// has already begun or completed binding return
+// IREE_STATUS_FAILED_PRECONDITION. Platform address conflicts and invalid
+// addresses return the corresponding platform-derived status.
 IREE_API_EXPORT iree_status_t iree_async_socket_bind(
     iree_async_socket_t* socket, const iree_async_address_t* address);
 
-// Puts the socket into listening state with the given backlog queue depth.
-// Must be called after bind. The socket's diagnostic state transitions to
-// LISTENING. |backlog| is a hint for the kernel's accept queue size; 0 uses
-// the system default (typically 128 on Linux).
+// Puts the socket into listening state with the given backlog queue depth. An
+// unbound Internet socket is implicitly bound to the wildcard address and an
+// ephemeral port. The socket's diagnostic state transitions to LISTENING.
+// |backlog| is a hint for the kernel's accept queue size; 0 uses the system
+// default (typically 128 on Linux).
 IREE_API_EXPORT iree_status_t
 iree_async_socket_listen(iree_async_socket_t* socket, iree_host_size_t backlog);
 
 // Queries the local address the socket is bound to (getsockname).
 // Useful after binding to port 0 (ephemeral) to discover the assigned port.
-// Returns IREE_STATUS_FAILED_PRECONDITION if the socket is not yet bound.
+// Call after bind, listen, or a successful connect. Platform behavior for an
+// unbound or externally imported socket with unknown state is unspecified.
 IREE_API_EXPORT iree_status_t iree_async_socket_query_local_address(
     const iree_async_socket_t* socket, iree_async_address_t* out_address);
 

@@ -37,7 +37,7 @@
 //
 //   // 3. Create pool over region.
 //   iree_async_buffer_pool_t* pool = NULL;
-//   IREE_RETURN_IF_ERROR(iree_async_buffer_pool_allocate(region, allocator,
+//   IREE_RETURN_IF_ERROR(iree_async_buffer_pool_create(region, allocator,
 //                                                        &pool));
 //
 //   // 4. Use pool for send operations.
@@ -47,7 +47,7 @@
 //   iree_async_buffer_lease_release(&lease);
 //
 //   // 5. Cleanup.
-//   iree_async_buffer_pool_free(pool);
+//   iree_async_buffer_pool_release(pool);
 //   iree_async_region_release(region);
 //
 // ## Shared (cross-process) pools
@@ -92,11 +92,12 @@
 // acquire buffers for sending and release them after completions arrive.
 // For shared pools, this extends across process boundaries.
 //
-// ## Singleton constraint
+// ## Backend registration limits
 //
-// For io_uring send operations (READ access), only one region may be registered
-// per proactor (kernel limitation: single fixed buffer table per ring). This
-// constraint is enforced by register_slab, not by the pool.
+// io_uring kernels before 5.19 have one fixed-buffer table per ring and may
+// reject a second READ region while the first remains registered. Modern
+// io_uring and emulated backends support independent concurrent regions. Any
+// backend limit is enforced by register_slab, not by the pool.
 
 #ifndef IREE_ASYNC_BUFFER_POOL_H_
 #define IREE_ASYNC_BUFFER_POOL_H_
@@ -122,8 +123,9 @@ typedef uint32_t iree_async_buffer_index_t;
 
 // A buffer acquired from a pool or received from the kernel.
 //
-// Value type — the pool tracks availability by buffer index in an internal
-// freelist, not by lease pointer. Callers may copy or embed leases freely.
+// Move-only value type. Transfer ownership by copying the value and clearing
+// the source before either value is released. Copying without clearing would
+// duplicate the recycle callback and return the same buffer more than once.
 //
 // Release is polymorphic: call iree_async_buffer_lease_release() to return
 // the buffer to its source (pool freelist or recv ring).
@@ -149,8 +151,9 @@ typedef struct iree_async_buffer_lease_t {
 // For recv leases: recycles the buffer to the provided buffer ring.
 // The caller must not access the lease's span data after this call.
 //
-// This function is idempotent: calling it multiple times on the same lease
-// is safe (subsequent calls are no-ops). This simplifies error handling paths.
+// This function is idempotent for the same lease value: calling it repeatedly
+// is safe because the first call clears the release callback. Independently
+// copied lease values are separate owners and must not both be released.
 static inline void iree_async_buffer_lease_release(
     iree_async_buffer_lease_t* lease) {
   if (!lease) return;
@@ -167,30 +170,36 @@ static inline void iree_async_buffer_lease_release(
 // Pool lifecycle
 //===----------------------------------------------------------------------===//
 
-// Allocates a buffer pool over a registered region.
+// Creates a buffer pool over a registered region.
 //
 // The pool provides lock-free acquire/release over the buffers described by
-// the region. The region must have been created via register_slab and must
-// outlive the pool (the pool retains a reference).
+// the region. The region must have been created via register_slab. The pool
+// retains the region for its entire lifetime.
 //
 // The region's buffer_count and buffer_size are used to configure the pool.
 // All buffers start as available in the freelist.
 //
 // On failure, no resources are leaked and |out_pool| is set to NULL.
-IREE_API_EXPORT iree_status_t iree_async_buffer_pool_allocate(
+IREE_API_EXPORT iree_status_t iree_async_buffer_pool_create(
     iree_async_region_t* region, iree_allocator_t allocator,
     iree_async_buffer_pool_t** out_pool);
 
-// Frees a buffer pool (local or shared). The caller must ensure all I/O
-// operations using buffers from this pool have completed.
+// Retains the given |pool| for the caller.
+IREE_API_EXPORT void iree_async_buffer_pool_retain(
+    iree_async_buffer_pool_t* pool);
+
+// Releases a buffer pool reference (local or shared). The pool is destroyed
+// when the last reference is released. The final releaser must ensure all I/O
+// operations using buffers from the pool have completed.
 //
 // For local pools: all leases must have been returned (asserted in debug).
 // For shared pools: other processes may still hold leases; this only releases
 // the process-local handle and region reference. The shared memory freelist
 // remains valid for other processes until the shared memory is unmapped.
 //
-// Releases the region reference acquired during allocation/create/open.
-IREE_API_EXPORT void iree_async_buffer_pool_free(
+// Releases the region reference acquired during
+// create/create_shared/open_shared.
+IREE_API_EXPORT void iree_async_buffer_pool_release(
     iree_async_buffer_pool_t* pool);
 
 //===----------------------------------------------------------------------===//

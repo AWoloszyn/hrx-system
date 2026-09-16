@@ -14,7 +14,7 @@ extern "C" {
 #endif  // __cplusplus
 
 // Selects the best available backend for the current platform:
-// - Linux: io_uring (kernel 5.1+), falls back to POSIX
+// - Linux: io_uring (kernel 5.7+), falls back to POSIX
 // - macOS/BSD: kqueue via POSIX proactor
 // - Windows: IOCP
 // - Wasm: JS proactor (JS event loop as kernel)

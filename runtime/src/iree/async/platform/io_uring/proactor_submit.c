@@ -412,14 +412,13 @@ static iree_status_t iree_async_span_check_fixed_buffer_send(
   if (offset_in_buffer + span.length > buffer_size) return iree_ok_status();
 
   // Calculate final buffer index with overflow check.
-  int16_t base_buffer_index = region->handles.iouring.base_buffer_index;
+  int32_t base_buffer_index = region->handles.iouring.base_buffer_index;
 
   // -1 = region has indexed buffers for pool management but is not
   // kernel-registered for zero-copy (e.g., RLIMIT_MEMLOCK too low).
   if (base_buffer_index < 0) return iree_ok_status();
 
-  uint64_t final_index =
-      (uint64_t)(uint16_t)base_buffer_index + buffer_index_offset;
+  uint64_t final_index = (uint64_t)base_buffer_index + buffer_index_offset;
 
   // Index overflow: registration allowed too many buffers or base_buffer_index
   // is corrupt.
@@ -427,7 +426,7 @@ static iree_status_t iree_async_span_check_fixed_buffer_send(
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                             "fixed buffer index %" PRIu64
                             " exceeds uint16 maximum; "
-                            "base_buffer_index=%" PRId16 " + offset=%" PRIu64,
+                            "base_buffer_index=%" PRId32 " + offset=%" PRIu64,
                             final_index, base_buffer_index,
                             buffer_index_offset);
   }
@@ -1639,9 +1638,12 @@ iree_status_t iree_async_proactor_io_uring_submit(
                   "backend; cross-backend messaging is not supported");
               break;
             }
+            iree_async_proactor_io_uring_t* target =
+                iree_async_proactor_io_uring_cast(message_op->target);
             if (iree_any_bit_set(
                     proactor->capabilities,
-                    IREE_ASYNC_PROACTOR_CAPABILITY_PROACTOR_MESSAGING)) {
+                    IREE_ASYNC_PROACTOR_CAPABILITY_PROACTOR_MESSAGING) &&
+                !iree_io_uring_ring_needs_enable(&target->ring)) {
               iree_async_proactor_io_uring_fill_message(proactor, sqe,
                                                         operation);
             } else {

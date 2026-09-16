@@ -27,7 +27,7 @@ extern "C" {
 //   - Registered buffers for zero-copy I/O
 //   - Provided buffer rings for multishot receives
 //
-// Requires kernel 5.1+ with io_uring support enabled.
+// Requires kernel 5.7+ with io_uring support enabled.
 //
 // Returns IREE_STATUS_UNAVAILABLE if io_uring is not usable on this system:
 // kernel too old (ENOSYS), blocked by seccomp/sysctl (EPERM), insufficient

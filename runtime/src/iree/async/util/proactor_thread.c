@@ -79,11 +79,16 @@ static int iree_async_proactor_thread_main(void* entry_arg) {
     status = iree_async_proactor_poll(thread->proactor, timeout,
                                       /*out_completed_count=*/NULL);
     if (iree_status_is_deadline_exceeded(status)) {
-      iree_status_ignore(status);
+      iree_status_free(status);
       status = iree_ok_status();
       continue;
     }
   }
+
+  // Permanently retire backend state bound to this polling task before the
+  // thread publishes its terminal status. This also releases synchronous
+  // callers whose owner-task requests can no longer be serviced.
+  iree_async_proactor_end_polling(thread->proactor);
 
   // Store fatal status (if any) before signaling exit.
   if (!iree_status_is_ok(status)) {
@@ -157,11 +162,10 @@ void iree_async_proactor_thread_release(iree_async_proactor_thread_t* thread) {
   if (IREE_LIKELY(thread) &&
       iree_atomic_ref_count_dec(&thread->ref_count) == 1) {
     iree_allocator_t allocator = thread->allocator;
-    // Thread must be stopped before release (contract from header).
-    iree_status_ignore(thread->fatal_status);
-    // Join the OS thread before destroying the notification — the thread may
-    // still be inside iree_notification_post when it signals exit.
+    // Releasing the OS thread joins it before destroying the notification; the
+    // thread may still be inside iree_notification_post when it signals exit.
     iree_thread_release(thread->thread);
+    iree_status_free(thread->fatal_status);
     iree_notification_deinitialize(&thread->exited);
     iree_async_proactor_release(thread->proactor);
     iree_allocator_free(allocator, thread);

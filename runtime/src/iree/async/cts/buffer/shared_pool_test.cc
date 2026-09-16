@@ -125,9 +125,9 @@ class SharedBufferPoolTest : public CtsTestBase<> {
       return status;
     }
 
-    // Try to register a separate slab with the proactor. If the backend
-    // rejects it (e.g., singleton fixed buffer table), share the creator's
-    // region instead.
+    // Try to register a separate slab with the proactor. If legacy io_uring
+    // rejects it because its singleton fixed-buffer table is already active,
+    // share the creator's region instead.
     void* buffer_base = (uint8_t*)out_opener->shm.base + pool_storage;
     status = iree_async_slab_wrap(buffer_base, buffer_size, buffer_count,
                                   iree_allocator_system(), &out_opener->slab);
@@ -140,8 +140,8 @@ class SharedBufferPoolTest : public CtsTestBase<> {
         proactor_, out_opener->slab, IREE_ASYNC_BUFFER_ACCESS_FLAG_READ,
         &out_opener->region);
     if (iree_status_is_already_exists(status)) {
-      // Singleton constraint: share the creator's region.
-      iree_status_ignore(status);
+      // Legacy io_uring table limit: share the creator's region.
+      iree_status_free(status);
       out_opener->region = creator.region;
       iree_async_region_retain(out_opener->region);
     } else if (!iree_status_is_ok(status)) {
@@ -168,10 +168,8 @@ class SharedBufferPoolTest : public CtsTestBase<> {
   }
 
   void TeardownSide(SharedPoolSide* side) {
-    if (side->pool) {
-      iree_async_buffer_pool_free(side->pool);
-      side->pool = nullptr;
-    }
+    iree_async_buffer_pool_release(side->pool);
+    side->pool = nullptr;
     iree_async_region_release(side->region);
     side->region = nullptr;
     iree_async_slab_release(side->slab);
@@ -205,16 +203,31 @@ TEST_P(SharedBufferPoolTest, StorageSizePerSlotCost) {
 }
 
 //===----------------------------------------------------------------------===//
-// Create and free
+// Create and release
 //===----------------------------------------------------------------------===//
 
-TEST_P(SharedBufferPoolTest, CreateAndFree) {
+TEST_P(SharedBufferPoolTest, CreateAndRelease) {
   SharedPoolSide creator;
   IREE_ASSERT_OK(SetupCreator(kBufferSize, kBufferCount, &creator));
 
   EXPECT_EQ(iree_async_buffer_pool_capacity(creator.pool), kBufferCount);
   EXPECT_EQ(iree_async_buffer_pool_available(creator.pool), kBufferCount);
   EXPECT_EQ(iree_async_buffer_pool_buffer_size(creator.pool), kBufferSize);
+
+  TeardownSide(&creator);
+}
+
+TEST_P(SharedBufferPoolTest, RetainReleaseKeepsHandleAlive) {
+  SharedPoolSide creator;
+  IREE_ASSERT_OK(SetupCreator(kBufferSize, kBufferCount, &creator));
+
+  iree_async_buffer_pool_retain(creator.pool);
+  iree_async_buffer_pool_release(creator.pool);
+
+  iree_async_buffer_lease_t lease;
+  IREE_ASSERT_OK(iree_async_buffer_pool_acquire(creator.pool, &lease));
+  EXPECT_EQ(iree_async_buffer_pool_available(creator.pool), kBufferCount - 1);
+  iree_async_buffer_lease_release(&lease);
 
   TeardownSide(&creator);
 }

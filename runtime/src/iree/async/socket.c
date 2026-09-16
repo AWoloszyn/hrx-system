@@ -128,6 +128,39 @@ static inline iree_socket_t iree_socket_from_primitive(
 #endif  // IREE_PLATFORM_WINDOWS
 }
 
+// Claims the socket's local bind transition and returns the state to restore
+// if the platform bind fails. Imported sockets begin UNKNOWN because the
+// external lifecycle is not available at the import boundary.
+static iree_status_t iree_async_socket_begin_bind(
+    iree_async_socket_t* socket, int32_t* out_previous_bind_state) {
+  int32_t expected =
+      iree_atomic_load(&socket->bind_state, iree_memory_order_acquire);
+  if (expected != IREE_ASYNC_SOCKET_BIND_STATE_UNKNOWN &&
+      expected != IREE_ASYNC_SOCKET_BIND_STATE_UNBOUND) {
+    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                            "socket is already binding or bound");
+  }
+  if (!iree_atomic_compare_exchange_strong(
+          &socket->bind_state, &expected, IREE_ASYNC_SOCKET_BIND_STATE_BINDING,
+          iree_memory_order_acq_rel, iree_memory_order_acquire)) {
+    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                            "socket is already binding or bound");
+  }
+  *out_previous_bind_state = expected;
+  return iree_ok_status();
+}
+
+static void iree_async_socket_restore_bind_state(iree_async_socket_t* socket,
+                                                 int32_t previous_bind_state) {
+  iree_atomic_store(&socket->bind_state, previous_bind_state,
+                    iree_memory_order_release);
+}
+
+static void iree_async_socket_mark_bound(iree_async_socket_t* socket) {
+  iree_atomic_store(&socket->bind_state, IREE_ASYNC_SOCKET_BIND_STATE_BOUND,
+                    iree_memory_order_release);
+}
+
 IREE_API_EXPORT iree_status_t iree_async_socket_bind(
     iree_async_socket_t* socket, const iree_async_address_t* address) {
   // Check sticky failure state.
@@ -139,6 +172,10 @@ IREE_API_EXPORT iree_status_t iree_async_socket_bind(
   iree_socket_t sock = iree_socket_from_primitive(socket->primitive);
   const struct sockaddr* sa = (const struct sockaddr*)address->storage;
 
+  int32_t previous_bind_state = IREE_ASYNC_SOCKET_BIND_STATE_UNKNOWN;
+  IREE_RETURN_IF_ERROR(
+      iree_async_socket_begin_bind(socket, &previous_bind_state));
+
 #if defined(IREE_PLATFORM_WINDOWS)
   int result = bind(sock, sa, (int)address->length);
 #else
@@ -146,9 +183,20 @@ IREE_API_EXPORT iree_status_t iree_async_socket_bind(
 #endif  // IREE_PLATFORM_WINDOWS
 
   if (result != 0) {
-    return iree_status_from_socket_error();
+#if defined(IREE_PLATFORM_WINDOWS)
+    int error = WSAGetLastError();
+    iree_async_socket_restore_bind_state(socket, previous_bind_state);
+    return iree_make_status(iree_status_code_from_win32_error(error),
+                            "bind failed (WSA error %d)", error);
+#else
+    int error = errno;
+    iree_async_socket_restore_bind_state(socket, previous_bind_state);
+    return iree_make_status(iree_status_code_from_errno(error),
+                            "bind failed (errno %d)", error);
+#endif  // IREE_PLATFORM_WINDOWS
   }
 
+  iree_async_socket_mark_bound(socket);
   return iree_ok_status();
 }
 
@@ -172,27 +220,36 @@ IREE_API_EXPORT iree_status_t iree_async_socket_listen(
     int probe_length = sizeof(probe_address);
     if (getsockname(sock, (struct sockaddr*)&probe_address, &probe_length) ==
         SOCKET_ERROR) {
-      // getsockname fails with WSAEINVAL on an unbound socket.
-      struct sockaddr_storage bind_addr;
-      int bind_addr_length = 0;
-      memset(&bind_addr, 0, sizeof(bind_addr));
+      int error = WSAGetLastError();
+      if (error != WSAEINVAL) {
+        return iree_make_status(iree_status_code_from_win32_error(error),
+                                "getsockname before listen failed "
+                                "(WSA error %d)",
+                                error);
+      }
+
+      // getsockname fails with WSAEINVAL on an unbound socket. Bind through
+      // the common API so duplicate and failed-bind behavior stays portable.
+      iree_async_address_t bind_address;
+      memset(&bind_address, 0, sizeof(bind_address));
       switch (socket->type) {
         case IREE_ASYNC_SOCKET_TYPE_TCP:
         case IREE_ASYNC_SOCKET_TYPE_UDP: {
-          struct sockaddr_in* addr4 = (struct sockaddr_in*)&bind_addr;
+          struct sockaddr_in* addr4 = (struct sockaddr_in*)bind_address.storage;
           addr4->sin_family = AF_INET;
           addr4->sin_addr.s_addr = INADDR_ANY;
           addr4->sin_port = 0;
-          bind_addr_length = sizeof(struct sockaddr_in);
+          bind_address.length = sizeof(struct sockaddr_in);
           break;
         }
         case IREE_ASYNC_SOCKET_TYPE_TCP6:
         case IREE_ASYNC_SOCKET_TYPE_UDP6: {
-          struct sockaddr_in6* addr6 = (struct sockaddr_in6*)&bind_addr;
+          struct sockaddr_in6* addr6 =
+              (struct sockaddr_in6*)bind_address.storage;
           addr6->sin6_family = AF_INET6;
           addr6->sin6_addr = in6addr_any;
           addr6->sin6_port = 0;
-          bind_addr_length = sizeof(struct sockaddr_in6);
+          bind_address.length = sizeof(struct sockaddr_in6);
           break;
         }
         default:
@@ -200,9 +257,9 @@ IREE_API_EXPORT iree_status_t iree_async_socket_listen(
               IREE_STATUS_INVALID_ARGUMENT,
               "implicit bind not supported for socket type %d", socket->type);
       }
-      if (bind(sock, (struct sockaddr*)&bind_addr, bind_addr_length) != 0) {
-        return iree_status_from_socket_error();
-      }
+      IREE_RETURN_IF_ERROR(iree_async_socket_bind(socket, &bind_address));
+    } else {
+      iree_async_socket_mark_bound(socket);
     }
   }
 #endif  // IREE_PLATFORM_WINDOWS
@@ -220,6 +277,7 @@ IREE_API_EXPORT iree_status_t iree_async_socket_listen(
 
   // Update diagnostic state.
   socket->state = IREE_ASYNC_SOCKET_STATE_LISTENING;
+  iree_async_socket_mark_bound(socket);
 
   return iree_ok_status();
 }

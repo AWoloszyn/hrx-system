@@ -300,6 +300,10 @@ TEST_P(BindListenErrorTest, Listen_ImplicitBind) {
   // The socket should be bound to some port (non-zero length address).
   EXPECT_GT(address.length, 0);
 
+  // The implicit binding participates in the same one-bind contract.
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_FAILED_PRECONDITION,
+                        iree_async_socket_bind(socket, &address));
+
   iree_async_socket_release(socket);
 }
 

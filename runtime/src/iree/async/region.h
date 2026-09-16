@@ -117,7 +117,7 @@ enum iree_async_region_type_e {
   // buffer ring (PBUF_RING) with a buffer_group_id for kernel-managed buffer
   // selection during recv. For READ-access slabs, registers into the kernel's
   // fixed buffer table with a base_buffer_index for zero-copy send via
-  // IORING_OP_SEND_ZC with IOSQE_FIXED_FILE.
+  // IORING_OP_SEND_ZC with IORING_RECVSEND_FIXED_BUF.
   IREE_ASYNC_REGION_TYPE_IOURING,
 
   // DMA buffer backed by a file descriptor. Used for GPU-accessible memory
@@ -179,27 +179,37 @@ typedef struct iree_async_region_t {
   // Backend-specific handles produced by registration.
   union {
     struct {
-      uint32_t lkey;  // Local access key.
-      uint32_t rkey;  // Remote access key.
-      void* mr;       // ibv_mr* or equivalent.
+      // Local access key.
+      uint32_t lkey;
+
+      // Remote access key.
+      uint32_t rkey;
+
+      // ibv_mr* or equivalent backend memory-region handle.
+      void* mr;
     } rdma;
     struct {
       // For provided buffer ring (recv - kernel selects buffer).
       // -1 if not in a provided buffer ring.
-      int16_t buffer_group_id;
+      int32_t buffer_group_id;
 
       // For fixed buffer table (send - application selects buffer).
       // buf_index = span.offset / buffer_size + base_buffer_index
       // Starting index in kernel's fixed buffer table.
       // -1 if not registered in the kernel's fixed buffer table (e.g.,
       // RLIMIT_MEMLOCK too low to pin pages); send falls back to copy I/O.
-      int16_t base_buffer_index;
+      int32_t base_buffer_index;
     } iouring;
     struct {
+      // DMA buffer file descriptor. Not owned.
       int fd;
+
+      // Byte offset of this region in the DMA buffer.
       uint64_t offset;
     } dmabuf;
-    uint64_t opaque[4];  // Catch-all for unknown backends.
+
+    // Catch-all storage for backend handles without a public representation.
+    uint64_t opaque[4];
   } handles;
 } iree_async_region_t;
 

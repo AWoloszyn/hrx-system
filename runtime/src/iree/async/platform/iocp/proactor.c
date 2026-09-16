@@ -18,6 +18,7 @@
 #include "iree/async/operations/net.h"
 #include "iree/async/operations/scheduling.h"
 #include "iree/async/operations/semaphore.h"
+#include "iree/async/platform/iocp/event_source.h"
 #include "iree/async/platform/iocp/socket.h"
 #include "iree/async/proactor.h"
 #include "iree/async/semaphore.h"
@@ -684,12 +685,7 @@ static void iree_async_proactor_iocp_destroy(
     iree_async_proactor_iocp_signal_deinitialize(proactor);
   }
 
-  // Free all event sources.
-  while (proactor->event_sources) {
-    iree_async_event_source_t* source = proactor->event_sources;
-    proactor->event_sources = source->next;
-    iree_allocator_free(source->allocator, source);
-  }
+  iree_async_iocp_event_source_deinitialize_all(proactor);
 
   // Free all relays, releasing retained notifications.
   while (proactor->relays) {
@@ -1695,30 +1691,10 @@ static void iree_async_proactor_iocp_complete_accept(
       }
 
       // Create an iree_async_socket_t for the accepted connection.
-      iree_async_socket_t* accepted_socket = NULL;
-      iree_status_t create_status = iree_allocator_malloc(
-          proactor->base.allocator, sizeof(*accepted_socket),
-          (void**)&accepted_socket);
-      if (iree_status_is_ok(create_status)) {
-        memset(accepted_socket, 0, sizeof(*accepted_socket));
-        iree_atomic_ref_count_init(&accepted_socket->ref_count);
-        accepted_socket->proactor = &proactor->base;
-        accepted_socket->primitive =
-            iree_async_primitive_from_win32_handle((uintptr_t)accept_sock);
-        accepted_socket->fixed_file_index = -1;
-        accepted_socket->type = accept_op->listen_socket->type;
-        accepted_socket->state = IREE_ASYNC_SOCKET_STATE_CONNECTED;
-        accepted_socket->flags = accept_op->listen_socket->flags;
-        iree_atomic_store(&accepted_socket->failure_status,
-                          (intptr_t)iree_ok_status(),
-                          iree_memory_order_release);
-        IREE_TRACE({
-          snprintf(accepted_socket->debug_label,
-                   sizeof(accepted_socket->debug_label), "accepted:%llu",
-                   (unsigned long long)accept_sock);
-        });
-        accept_op->accepted_socket = accepted_socket;
-      } else {
+      iree_status_t create_status = iree_async_iocp_socket_create_accepted(
+          proactor, (uintptr_t)accept_sock, accept_op->listen_socket->type,
+          accept_op->listen_socket->flags, &accept_op->accepted_socket);
+      if (!iree_status_is_ok(create_status)) {
         closesocket(accept_sock);
         io_status = create_status;
       }
@@ -2088,6 +2064,13 @@ static iree_status_t iree_async_proactor_iocp_poll(
     if (entry->lpOverlapped == NULL &&
         entry->lpCompletionKey == IREE_ASYNC_IOCP_SIGNAL_COMPLETION_KEY) {
       iree_async_proactor_iocp_dispatch_pending_signals(proactor);
+      continue;
+    }
+
+    // Event source wake: dispatch the callback and re-arm the one-shot wait.
+    if (entry->lpCompletionKey == IREE_ASYNC_IOCP_EVENT_SOURCE_COMPLETION_KEY) {
+      iree_async_iocp_event_source_dispatch(
+          proactor, (iree_async_event_source_t*)entry->lpOverlapped);
       continue;
     }
 
@@ -2538,25 +2521,6 @@ static void iree_async_proactor_iocp_destroy_event(
 
   iree_allocator_free(proactor->base.allocator, event);
   IREE_TRACE_ZONE_END(z0);
-}
-
-//===----------------------------------------------------------------------===//
-// Event source registration (stubs)
-//===----------------------------------------------------------------------===//
-
-static iree_status_t iree_async_proactor_iocp_register_event_source(
-    iree_async_proactor_t* base_proactor, iree_async_primitive_t handle,
-    iree_async_event_source_callback_t callback,
-    iree_async_event_source_t** out_event_source) {
-  return iree_make_status(
-      IREE_STATUS_UNIMPLEMENTED,
-      "IOCP proactor: register_event_source not yet implemented");
-}
-
-static void iree_async_proactor_iocp_unregister_event_source(
-    iree_async_proactor_t* base_proactor,
-    iree_async_event_source_t* event_source) {
-  // Void return: nothing to do until event sources are implemented.
 }
 
 //===----------------------------------------------------------------------===//
@@ -3177,14 +3141,6 @@ static void iree_async_iocp_slab_region_destroy(iree_async_region_t* region) {
                                        offsetof(iree_async_iocp_slab_region_t,
                                                 region));
 
-  // Clear singleton tracking for READ-access registrations.
-  if (iree_any_bit_set(region->access_flags,
-                       IREE_ASYNC_BUFFER_ACCESS_FLAG_READ)) {
-    iree_async_proactor_iocp_t* proactor =
-        iree_async_proactor_iocp_cast(region->proactor);
-    proactor->has_read_slab_registration = false;
-  }
-
   // Release the retained slab reference.
   iree_async_slab_release(region->slab);
 
@@ -3196,8 +3152,6 @@ static iree_status_t iree_async_proactor_iocp_register_slab(
     iree_async_proactor_t* base_proactor, iree_async_slab_t* slab,
     iree_async_buffer_access_flags_t access_flags,
     iree_async_region_t** out_region) {
-  iree_async_proactor_iocp_t* proactor =
-      iree_async_proactor_iocp_cast(base_proactor);
   IREE_TRACE_ZONE_BEGIN(z0);
   IREE_ASSERT_ARGUMENT(slab);
   IREE_ASSERT_ARGUMENT(out_region);
@@ -3206,18 +3160,6 @@ static iree_status_t iree_async_proactor_iocp_register_slab(
   iree_host_size_t buffer_size = iree_async_slab_buffer_size(slab);
   iree_host_size_t buffer_count = iree_async_slab_buffer_count(slab);
   void* base_ptr = iree_async_slab_base_ptr(slab);
-
-  // Check singleton constraint for READ access (fixed buffer table equivalent).
-  // io_uring allows only one buffer table registration at a time; enforced
-  // identically here for API portability.
-  bool needs_read = (access_flags & IREE_ASYNC_BUFFER_ACCESS_FLAG_READ) != 0;
-  if (needs_read && proactor->has_read_slab_registration) {
-    IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(
-        IREE_STATUS_ALREADY_EXISTS,
-        "READ-access slab already registered with this proactor; "
-        "only one READ-access slab registration is allowed at a time");
-  }
 
   // Validate buffer count fits in region handles.
   if (buffer_count > UINT16_MAX) {
@@ -3282,11 +3224,6 @@ static iree_status_t iree_async_proactor_iocp_register_slab(
   region->recycle = iree_async_buffer_recycle_callback_null();
   region->buffer_size = buffer_size;
   region->buffer_count = (uint32_t)buffer_count;
-
-  // Update singleton tracking.
-  if (needs_read) {
-    proactor->has_read_slab_registration = true;
-  }
 
   *out_region = region;
   IREE_TRACE_ZONE_END(z0);
@@ -3353,8 +3290,8 @@ const iree_async_proactor_vtable_t iree_async_proactor_iocp_vtable = {
     .destroy_file = iree_async_proactor_iocp_destroy_file,
     .create_event = iree_async_proactor_iocp_create_event,
     .destroy_event = iree_async_proactor_iocp_destroy_event,
-    .register_event_source = iree_async_proactor_iocp_register_event_source,
-    .unregister_event_source = iree_async_proactor_iocp_unregister_event_source,
+    .register_event_source = iree_async_iocp_event_source_register,
+    .unregister_event_source = iree_async_iocp_event_source_unregister,
     .create_notification = iree_async_proactor_iocp_create_notification,
     .create_notification_shared =
         iree_async_proactor_iocp_create_notification_shared,

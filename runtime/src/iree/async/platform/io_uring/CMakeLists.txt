@@ -30,6 +30,7 @@ iree_cc_library(
   DEPS
     ::buffer_ring
     ::defs
+    ::socket_completion
     ::sparse_table
     ::uring
     iree::async
@@ -73,9 +74,27 @@ iree_cc_library(
     "buffer_ring.c"
   DEPS
     ::defs
+    ::uring_registration
     iree::base
     iree::base::internal
     iree::base::internal::memory
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+iree_cc_library(
+  NAME
+    uring_registration
+  HDRS
+    "uring_registration.h"
+  SRCS
+    "uring_registration.c"
+  DEPS
+    ::defs
+    iree::base
+    iree::base::internal
+    iree::base::threading
   PUBLIC
 )
 endif()
@@ -90,6 +109,7 @@ iree_cc_library(
     "uring.c"
   DEPS
     ::defs
+    ::uring_registration
     iree::base
     iree::base::internal
     iree::base::threading
@@ -109,6 +129,35 @@ iree_cc_library(
     iree::base
     iree::base::threading
   PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+iree_cc_library(
+  NAME
+    socket_completion
+  HDRS
+    "socket_completion.h"
+  SRCS
+    "socket_completion.c"
+  DEPS
+    ::defs
+    iree::async
+    iree::base
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+iree_cc_test(
+  NAME
+    socket_completion_test
+  SRCS
+    "socket_completion_test.cc"
+  DEPS
+    ::socket_completion
+    iree::testing::gtest
+    iree::testing::gtest_main
 )
 endif()
 
@@ -142,6 +191,34 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 iree_cc_test(
   NAME
+    buffer_ring_test
+  SRCS
+    "buffer_ring_test.cc"
+  DEPS
+    ::buffer_ring
+    ::uring
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+iree_cc_test(
+  NAME
+    uring_registration_test
+  SRCS
+    "uring_registration_test.cc"
+  DEPS
+    ::uring
+    iree::base::threading
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+iree_cc_test(
+  NAME
     proactor_lifetime_test
   SRCS
     "proactor_lifetime_test.cc"
@@ -149,7 +226,9 @@ iree_cc_test(
     ::io_uring
     iree::async
     iree::async::types
+    iree::async::util::proactor_thread
     iree::base
+    iree::base::threading
     iree::testing::gtest
     iree::testing::gtest_main
 )

@@ -83,6 +83,13 @@ static iree_status_t iree_async_iocp_socket_apply_options(
     iree_async_socket_options_t options) {
   int optval = 1;
 
+  if (iree_any_bit_set(options, IREE_ASYNC_SOCKET_OPTION_REUSE_PORT)) {
+    // Windows has no equivalent to SO_REUSEPORT. SO_REUSEADDR on Windows has
+    // different semantics than on POSIX and cannot safely emulate it.
+    return iree_make_status(IREE_STATUS_UNAVAILABLE,
+                            "SO_REUSEPORT is not available on Windows");
+  }
+
   if (iree_any_bit_set(options, IREE_ASYNC_SOCKET_OPTION_REUSE_ADDR)) {
     if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&optval,
                    sizeof(optval)) == SOCKET_ERROR) {
@@ -91,14 +98,19 @@ static iree_status_t iree_async_iocp_socket_apply_options(
                               "setsockopt SO_REUSEADDR failed (WSA error %d)",
                               wsa_error);
     }
-  }
-
-  if (iree_any_bit_set(options, IREE_ASYNC_SOCKET_OPTION_REUSE_PORT)) {
-    // Windows has no equivalent to SO_REUSEPORT. SO_REUSEADDR on Windows has
-    // different semantics than on POSIX (allows hijacking by default), so we
-    // cannot safely emulate this.
-    return iree_make_status(IREE_STATUS_UNAVAILABLE,
-                            "SO_REUSEPORT is not available on Windows");
+  } else if (type == IREE_ASYNC_SOCKET_TYPE_TCP ||
+             type == IREE_ASYNC_SOCKET_TYPE_TCP6 ||
+             type == IREE_ASYNC_SOCKET_TYPE_UDP ||
+             type == IREE_ASYNC_SOCKET_TYPE_UDP6) {
+    // Windows SO_REUSEADDR permits another process to forcibly bind the same
+    // address. Use the stronger server-safe default unless reuse was explicit.
+    if (setsockopt(sock, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, (const char*)&optval,
+                   sizeof(optval)) == SOCKET_ERROR) {
+      int wsa_error = WSAGetLastError();
+      return iree_make_status(
+          iree_status_code_from_win32_error(wsa_error),
+          "setsockopt SO_EXCLUSIVEADDRUSE failed (WSA error %d)", wsa_error);
+    }
   }
 
   if (iree_any_bit_set(options, IREE_ASYNC_SOCKET_OPTION_NO_DELAY) &&
@@ -152,12 +164,14 @@ static iree_status_t iree_async_iocp_socket_apply_options(
 
 static void iree_async_iocp_socket_initialize(
     iree_async_socket_t* socket, iree_async_proactor_iocp_t* proactor,
-    SOCKET sock, iree_async_socket_type_t type,
-    iree_async_socket_flags_t flags) {
+    SOCKET sock, iree_async_socket_type_t type, iree_async_socket_flags_t flags,
+    iree_async_socket_bind_state_t initial_bind_state) {
   iree_atomic_ref_count_init(&socket->ref_count);
   socket->proactor = &proactor->base;
   socket->primitive = iree_async_primitive_from_win32_handle((uintptr_t)sock);
   socket->fixed_file_index = -1;
+  iree_atomic_store(&socket->bind_state, initial_bind_state,
+                    iree_memory_order_release);
   socket->type = type;
   socket->state = IREE_ASYNC_SOCKET_STATE_CREATED;
   socket->flags = flags;
@@ -315,7 +329,8 @@ iree_status_t iree_async_iocp_socket_create(
     memset(socket, 0, sizeof(*socket));
     iree_async_socket_flags_t flags =
         iree_async_iocp_socket_flags_from_options(options);
-    iree_async_iocp_socket_initialize(socket, proactor, sock, type, flags);
+    iree_async_iocp_socket_initialize(socket, proactor, sock, type, flags,
+                                      IREE_ASYNC_SOCKET_BIND_STATE_UNBOUND);
     *out_socket = socket;
   } else {
     closesocket(sock);
@@ -323,6 +338,27 @@ iree_status_t iree_async_iocp_socket_create(
 
   IREE_TRACE_ZONE_END(z0);
   return status;
+}
+
+iree_status_t iree_async_iocp_socket_create_accepted(
+    iree_async_proactor_iocp_t* proactor, uintptr_t accepted_socket,
+    iree_async_socket_type_t type, iree_async_socket_flags_t flags,
+    iree_async_socket_t** out_socket) {
+  IREE_ASSERT_ARGUMENT(proactor);
+  IREE_ASSERT_ARGUMENT(out_socket);
+  *out_socket = NULL;
+
+  iree_async_socket_t* socket = NULL;
+  IREE_RETURN_IF_ERROR(iree_allocator_malloc(proactor->base.allocator,
+                                             sizeof(*socket), (void**)&socket));
+
+  memset(socket, 0, sizeof(*socket));
+  iree_async_iocp_socket_initialize(socket, proactor, (SOCKET)accepted_socket,
+                                    type, flags,
+                                    IREE_ASYNC_SOCKET_BIND_STATE_BOUND);
+  socket->state = IREE_ASYNC_SOCKET_STATE_CONNECTED;
+  *out_socket = socket;
+  return iree_ok_status();
 }
 
 iree_status_t iree_async_iocp_socket_import(
@@ -347,13 +383,9 @@ iree_status_t iree_async_iocp_socket_import(
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT, "invalid socket");
   }
 
-  // Associate with IOCP completion port.
-  iree_status_t status = iree_async_iocp_socket_associate(proactor, sock);
-
-  // Load WSA extension function pointers if not already loaded.
-  if (iree_status_is_ok(status)) {
-    status = iree_async_iocp_load_wsa_extensions(proactor, sock);
-  }
+  // Load WSA extension function pointers before the irreversible completion
+  // port association so a failed import leaves the caller-owned socket usable.
+  iree_status_t status = iree_async_iocp_load_wsa_extensions(proactor, sock);
 
   iree_async_socket_t* socket = NULL;
   if (iree_status_is_ok(status)) {
@@ -361,10 +393,19 @@ iree_status_t iree_async_iocp_socket_import(
                                    (void**)&socket);
   }
 
+  // A socket can only be associated with one completion port. Keep this as the
+  // final fallible step so success transfers ownership immediately afterward.
+  if (iree_status_is_ok(status)) {
+    status = iree_async_iocp_socket_associate(proactor, sock);
+  }
+
   if (iree_status_is_ok(status)) {
     memset(socket, 0, sizeof(*socket));
-    iree_async_iocp_socket_initialize(socket, proactor, sock, type, flags);
+    iree_async_iocp_socket_initialize(socket, proactor, sock, type, flags,
+                                      IREE_ASYNC_SOCKET_BIND_STATE_UNKNOWN);
     *out_socket = socket;
+  } else {
+    iree_allocator_free(proactor->base.allocator, socket);
   }
 
   IREE_TRACE_ZONE_END(z0);

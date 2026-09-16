@@ -172,6 +172,8 @@ iree_cc_test(
     ::proactor_pool
     iree::async
     iree::base
+    iree::base::internal
+    iree::base::threading
     iree::testing::gtest
     iree::testing::gtest_main
 )

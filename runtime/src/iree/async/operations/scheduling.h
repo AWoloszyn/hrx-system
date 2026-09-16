@@ -287,7 +287,8 @@ static inline void iree_async_sequence_operation_initialize(
 // Implementation:
 //   io_uring: IORING_OP_POLL_ADD (single SQE, no linked drain).
 //   POSIX: poll/epoll/kqueue fd registration via fd_map.
-//   IOCP: RegisterWaitForSingleObject on the win32 HANDLE.
+//   IOCP: Wait completion packet when available, otherwise
+//     RegisterWaitForSingleObject on the Win32 HANDLE.
 //
 // Threading model:
 //   Callback fires on the poll thread when the handle becomes ready.

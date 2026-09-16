@@ -179,6 +179,7 @@ static iree_status_t iree_io_uring_ring_map_buffers(
       !iree_io_uring_validate_offset(
           params->sq_off.array, sq_entries * sizeof(uint32_t), sq_ring_size)) {
     munmap(sq_ring_ptr, sq_ring_size);
+    ring->sq_ring_ptr = NULL;
     return iree_make_status(IREE_STATUS_INTERNAL,
                             "SQ ring offset out of bounds");
   }
@@ -245,6 +246,7 @@ static iree_status_t iree_io_uring_ring_map_buffers(
     munmap(cq_ring_ptr, cq_ring_size);
     munmap(sqes_ptr, sqes_size);
     munmap(sq_ring_ptr, sq_ring_size);
+    ring->cq_ring_ptr = NULL;
     ring->sq_ring_ptr = NULL;
     ring->sqes = NULL;
     return iree_make_status(IREE_STATUS_INTERNAL,
@@ -296,10 +298,16 @@ iree_status_t iree_io_uring_ring_initialize(
 
   // Record whether the ring needs enabling before io_uring_enter can be
   // called. The actual flags used may differ from requested (fallback path).
-  out_ring->needs_enable = (params.flags & IREE_IORING_SETUP_R_DISABLED) != 0;
+  out_ring->setup_flags = params.flags;
+  iree_atomic_store(&out_ring->needs_enable,
+                    (params.flags & IREE_IORING_SETUP_R_DISABLED) != 0,
+                    iree_memory_order_relaxed);
+  iree_io_uring_registration_initialize(out_ring->ring_fd, params.flags,
+                                        &out_ring->registration);
 
   iree_status_t status = iree_io_uring_ring_map_buffers(out_ring, &params);
   if (!iree_status_is_ok(status)) {
+    iree_io_uring_registration_deinitialize(&out_ring->registration);
     close(out_ring->ring_fd);
     out_ring->ring_fd = -1;
   }
@@ -308,29 +316,46 @@ iree_status_t iree_io_uring_ring_initialize(
 }
 
 iree_status_t iree_io_uring_ring_enable(iree_io_uring_ring_t* ring) {
-  if (!ring->needs_enable) return iree_ok_status();
+  if (!iree_io_uring_ring_needs_enable(ring)) return iree_ok_status();
 
-  // REGISTER_ENABLE_RINGS transitions the ring from disabled to operational.
-  // When SINGLE_ISSUER is active, this binds the calling thread as the
-  // exclusive submitter — all subsequent io_uring_enter calls must come from
-  // this thread. The kernel defers this binding when R_DISABLED is set during
-  // io_uring_setup, allowing creation on one thread and polling from another.
-  long ret = 0;
-  do {
-    ret = syscall(IREE_IO_URING_SYSCALL_REGISTER, ring->ring_fd,
-                  IREE_IORING_REGISTER_ENABLE_RINGS, NULL, 0);
-  } while (ret < 0 && errno == EINTR);
-  if (ret < 0) {
-    return iree_make_status(iree_status_code_from_errno(errno),
-                            "IORING_REGISTER_ENABLE_RINGS failed (%d)", errno);
+  int result = iree_io_uring_registration_enable(&ring->registration);
+  if (result < 0) {
+    int error_number = -result;
+    return iree_make_status(iree_status_code_from_errno(error_number),
+                            "IORING_REGISTER_ENABLE_RINGS failed (%d)",
+                            error_number);
   }
 
-  ring->needs_enable = false;
+  iree_atomic_store(&ring->needs_enable, 0, iree_memory_order_release);
   return iree_ok_status();
+}
+
+void iree_io_uring_ring_set_registration_wake_callback(
+    iree_io_uring_ring_t* ring,
+    iree_io_uring_registration_wake_callback_t callback) {
+  iree_io_uring_registration_set_wake_callback(&ring->registration, callback);
+}
+
+int iree_io_uring_ring_register(iree_io_uring_ring_t* ring, uint32_t opcode,
+                                void* arg, uint32_t argument_count) {
+  return iree_io_uring_registration_execute(&ring->registration, opcode, arg,
+                                            argument_count);
+}
+
+void iree_io_uring_ring_drain_registration_requests(
+    iree_io_uring_ring_t* ring) {
+  iree_io_uring_registration_drain(&ring->registration);
+}
+
+void iree_io_uring_ring_end_polling(iree_io_uring_ring_t* ring) {
+  iree_io_uring_registration_end_polling(&ring->registration);
 }
 
 void iree_io_uring_ring_deinitialize(iree_io_uring_ring_t* ring) {
   IREE_TRACE_ZONE_BEGIN(z0);
+  if (ring->ring_fd >= 0) {
+    iree_io_uring_registration_deinitialize(&ring->registration);
+  }
   if (ring->cq_ring_ptr) {
     munmap(ring->cq_ring_ptr, ring->cq_ring_size);
     ring->cq_ring_ptr = NULL;

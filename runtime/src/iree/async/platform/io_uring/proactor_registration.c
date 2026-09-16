@@ -16,9 +16,7 @@
 #include <stddef.h>
 #include <string.h>
 #include <sys/mman.h>
-#include <sys/syscall.h>
 #include <sys/uio.h>
-#include <unistd.h>
 
 #include "iree/async/platform/io_uring/buffer_ring.h"
 #include "iree/async/platform/io_uring/defs.h"
@@ -32,22 +30,33 @@
 // Combined allocation for registration entry + region.
 // This keeps them together in memory and simplifies cleanup.
 typedef struct iree_async_io_uring_buffer_registration_t {
+  // Registration-state entry retained until explicit or aggregate cleanup.
   iree_async_buffer_registration_entry_t entry;
+
+  // Region published through |entry| and embedded for one-allocation lifetime.
   iree_async_region_t region;
 } iree_async_io_uring_buffer_registration_t;
 
 // Combined allocation for dmabuf registration entry + region.
 // Tracks the mmap state for cleanup.
 typedef struct iree_async_io_uring_dmabuf_registration_t {
+  // Registration-state entry retained until explicit or aggregate cleanup.
   iree_async_buffer_registration_entry_t entry;
+
+  // Region published through |entry| and embedded for one-allocation lifetime.
   iree_async_region_t region;
-  void* mapped_ptr;  // mmap'd address (for munmap on cleanup)
+
+  // Page-aligned address returned by mmap and passed to munmap.
+  void* mapped_ptr;
+
+  // Page-aligned mapped range length in bytes.
   iree_host_size_t mapped_length;
-  int dmabuf_fd;  // Original fd (not owned, stored for region handles)
+
   // Sparse buffer table slot for kernel-registered zero-copy send.
   // When >= 0, the mmap'd memory is registered in the kernel's fixed buffer
   // table via IORING_REGISTER_BUFFERS_UPDATE. Cleared during destroy.
-  // -1 when not registered (pre-5.19 kernel, table full, or WRITE-only).
+  // -1 when not registered (pre-5.19 kernel, unavailable pinning, or
+  // WRITE-only).
   int32_t buffer_table_slot;
 } iree_async_io_uring_dmabuf_registration_t;
 
@@ -79,11 +88,81 @@ static void iree_async_io_uring_buffer_registration_cleanup(
   iree_async_region_release(&registration->region);
 }
 
-// Forward declaration: shared helper for clearing kernel buffer table slots.
-// Defined in the slab registration section below.
-static iree_status_t iree_async_io_uring_clear_buffer_slots_locked(
+// Clears contiguous slots in the kernel's sparse buffer table and releases the
+// corresponding userspace reservations. Registration executes on the ring's
+// poll owner without carrying the sparse-table mutex across the handoff.
+//
+// On failure only slots the kernel reports as cleared are released. The
+// remaining slots stay reserved because the kernel may still reference their
+// memory.
+static iree_status_t iree_async_io_uring_clear_buffer_slots(
     iree_async_proactor_io_uring_t* proactor, uint16_t base_slot,
-    uint16_t count);
+    uint16_t count) {
+  struct iovec empty_iovecs[64];
+  memset(empty_iovecs, 0, sizeof(empty_iovecs));
+
+  uint16_t cleared = 0;
+  while (cleared < count) {
+    uint16_t batch =
+        (uint16_t)((count - cleared > 64) ? 64 : (count - cleared));
+    uint16_t batch_base = (uint16_t)(base_slot + cleared);
+    iree_io_uring_rsrc_update2_t update = {
+        .offset = batch_base,
+        .resv = 0,
+        .data = (uint64_t)(uintptr_t)empty_iovecs,
+        .tags = 0,
+        .nr = batch,
+        .resv2 = 0,
+    };
+    int register_result = iree_io_uring_ring_register(
+        &proactor->ring, IREE_IORING_REGISTER_BUFFERS_UPDATE, &update,
+        sizeof(update));
+    if (register_result < 0) {
+      int error_number = -register_result;
+      return iree_make_status(
+          iree_status_code_from_errno(error_number),
+          "IORING_REGISTER_BUFFERS_UPDATE (clear slots %u..%u) failed (%d); "
+          "the region was likely released while I/O was in-flight (EBUSY) "
+          "or the buffer table has a tracking bug (EINVAL)",
+          (unsigned)base_slot, (unsigned)(base_slot + count - 1), error_number);
+    }
+    if (register_result != batch) {
+      if (register_result > 0 && register_result < batch) {
+        iree_io_uring_sparse_table_release(proactor->buffer_table, batch_base,
+                                           (uint16_t)register_result);
+      }
+      return iree_make_status(
+          IREE_STATUS_INTERNAL,
+          "IORING_REGISTER_BUFFERS_UPDATE cleared %d of %u requested slots at "
+          "offset %u",
+          register_result, (unsigned)batch, (unsigned)batch_base);
+    }
+    iree_io_uring_sparse_table_release(proactor->buffer_table, batch_base,
+                                       batch);
+    cleared = (uint16_t)(cleared + batch);
+  }
+
+  return iree_ok_status();
+}
+
+// Clears the registered prefix of a failed sparse-table update and releases the
+// untouched suffix. The kernel reports the prefix length when an update stops
+// after making partial progress.
+static iree_status_t iree_async_io_uring_rollback_buffer_slots(
+    iree_async_proactor_io_uring_t* proactor, uint16_t base_slot,
+    uint16_t reserved_count, uint16_t registered_count) {
+  iree_status_t status = iree_ok_status();
+  if (registered_count > 0) {
+    status = iree_async_io_uring_clear_buffer_slots(proactor, base_slot,
+                                                    registered_count);
+  }
+  if (registered_count < reserved_count) {
+    iree_io_uring_sparse_table_release(
+        proactor->buffer_table, (uint16_t)(base_slot + registered_count),
+        (uint16_t)(reserved_count - registered_count));
+  }
+  return status;
+}
 
 // Destroy callback for dmabuf registration regions.
 // Called when the region's ref count reaches zero.
@@ -103,16 +182,12 @@ static void iree_async_io_uring_dmabuf_registration_destroy(
   if (registration->buffer_table_slot >= 0) {
     iree_async_proactor_io_uring_t* proactor =
         iree_async_proactor_io_uring_cast(region->proactor);
-    iree_io_uring_sparse_table_lock(proactor->buffer_table);
-    IREE_CHECK_OK(iree_async_io_uring_clear_buffer_slots_locked(
+    IREE_CHECK_OK(iree_async_io_uring_clear_buffer_slots(
         proactor, (uint16_t)registration->buffer_table_slot, 1));
-    iree_io_uring_sparse_table_unlock(proactor->buffer_table);
   }
 
-  // Unmap the dmabuf memory.
-  if (registration->mapped_ptr) {
-    munmap(registration->mapped_ptr, registration->mapped_length);
-  }
+  // Unmap the dmabuf memory. mmap may legally return address zero.
+  munmap(registration->mapped_ptr, registration->mapped_length);
   iree_allocator_free(region->proactor->allocator, registration);
   IREE_TRACE_ZONE_END(z0);
 }
@@ -190,22 +265,49 @@ iree_status_t iree_async_proactor_io_uring_register_dmabuf(
   IREE_TRACE_ZONE_BEGIN(z0);
   *out_entry = NULL;
 
-  // TODO(benvanik): Implement true devmem TCP zero-copy when available.
-  //
-  // devmem TCP enables GPU→NIC zero-copy without CPU-side mmap:
-  //   - Kernel 6.12+: RX path (SO_DEVMEM_DONTNEED, SCM_DEVMEM_DMABUF cmsg)
-  //   - Kernel 6.13+: TX path
-  //   - Requires NIC with header-split support (mlx5, ice, etc.)
-  //   - Requires hardware flow steering configuration via ethtool
-  //   - Requires netlink binding of dmabuf to specific RX/TX queues
-  //
-  // Current fallback: mmap the dmabuf and use standard I/O paths.
-  // This provides coherent access to GPU memory but involves CPU copies.
+  if (dmabuf_fd < 0) {
+    IREE_TRACE_ZONE_END(z0);
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "dmabuf_fd must be non-negative");
+  }
+  if (length == 0) {
+    IREE_TRACE_ZONE_END(z0);
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "dmabuf length must be greater than zero");
+  }
+  if (!iree_any_bit_set(access_flags,
+                        IREE_ASYNC_BUFFER_ACCESS_FLAG_READ |
+                            IREE_ASYNC_BUFFER_ACCESS_FLAG_WRITE)) {
+    IREE_TRACE_ZONE_END(z0);
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "dmabuf registration requires READ or WRITE "
+                            "access");
+  }
+  if (offset > (uint64_t)INT64_MAX ||
+      (uint64_t)length > (uint64_t)INT64_MAX - offset) {
+    IREE_TRACE_ZONE_END(z0);
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "dmabuf offset and length exceed the host file "
+                            "offset range");
+  }
 
-  // Determine mmap protection flags from access flags.
+  iree_async_proactor_io_uring_t* proactor =
+      iree_async_proactor_io_uring_cast(base_proactor);
+
+  // Map the DMA buffer for standard I/O. Device-direct DMA-buf transport is
+  // not implemented; fixed-buffer and SEND_ZC use this mapping when available.
+  // Determine mmap protection flags from access flags. io_uring fixed-buffer
+  // registration pins pages with FOLL_WRITE regardless of the I/O direction,
+  // so a READ region needs an internally writable mapping to use that
+  // optimization. The published region retains the caller's access flags.
   int prot = 0;
   if (access_flags & IREE_ASYNC_BUFFER_ACCESS_FLAG_READ) prot |= PROT_READ;
   if (access_flags & IREE_ASYNC_BUFFER_ACCESS_FLAG_WRITE) prot |= PROT_WRITE;
+  bool can_register_fixed_buffer =
+      (access_flags & IREE_ASYNC_BUFFER_ACCESS_FLAG_READ) &&
+      proactor->buffer_table != NULL;
+  int mapping_prot = prot;
+  if (can_register_fixed_buffer) mapping_prot |= PROT_WRITE;
 
   // mmap requires page-aligned offset. Align offset down to page boundary and
   // adjust length up to cover the full requested range. We track the delta so
@@ -214,12 +316,28 @@ iree_status_t iree_async_proactor_io_uring_register_dmabuf(
   iree_host_size_t page_size = iree_memory_query_info().normal_page_size;
   uint64_t aligned_offset = offset & ~((uint64_t)page_size - 1);
   iree_host_size_t offset_delta = (iree_host_size_t)(offset - aligned_offset);
-  iree_host_size_t aligned_length =
-      iree_host_align(offset_delta + length, page_size);
+  iree_host_size_t unaligned_length = 0;
+  iree_host_size_t aligned_length = 0;
+  if (!iree_host_size_checked_add(offset_delta, length, &unaligned_length) ||
+      !iree_host_size_checked_align(unaligned_length, page_size,
+                                    &aligned_length)) {
+    IREE_TRACE_ZONE_END(z0);
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "dmabuf range exceeds the host address space");
+  }
 
   // mmap the dmabuf fd to get a CPU-accessible pointer.
-  void* mapped_ptr =
-      mmap(NULL, aligned_length, prot, MAP_SHARED, dmabuf_fd, aligned_offset);
+  void* mapped_ptr = mmap(NULL, aligned_length, mapping_prot, MAP_SHARED,
+                          dmabuf_fd, (off_t)aligned_offset);
+  if (mapped_ptr == MAP_FAILED && can_register_fixed_buffer &&
+      mapping_prot != prot && (errno == EACCES || errno == EPERM)) {
+    // The fd permits reads but not the writable mapping required by
+    // io_uring's fixed-buffer pin. Preserve functional copy I/O with the
+    // caller-requested mapping instead.
+    can_register_fixed_buffer = false;
+    mapped_ptr = mmap(NULL, aligned_length, prot, MAP_SHARED, dmabuf_fd,
+                      (off_t)aligned_offset);
+  }
   if (mapped_ptr == MAP_FAILED) {
     IREE_TRACE_ZONE_END(z0);
     return iree_make_status(iree_status_code_from_errno(errno),
@@ -238,19 +356,19 @@ iree_status_t iree_async_proactor_io_uring_register_dmabuf(
   memset(registration, 0, sizeof(*registration));
   registration->buffer_table_slot = -1;
 
-  // On 5.19+ with a sparse buffer table: register the mmap'd memory as a fixed
-  // buffer so the send path can use zero-copy (SEND_ZC with IOSQE_FIXED_FILE).
-  // If the sparse table is full or the kernel rejects the registration, fall
-  // back to mmap-only access (DMABUF region type) — the mmap still provides
-  // correct CPU access, just without zero-copy send optimization.
-  iree_async_proactor_io_uring_t* proactor =
-      iree_async_proactor_io_uring_cast(base_proactor);
-  if ((access_flags & IREE_ASYNC_BUFFER_ACCESS_FLAG_READ) &&
-      proactor->buffer_table != NULL) {
-    iree_io_uring_sparse_table_lock(proactor->buffer_table);
+  // On 5.19+ with a sparse buffer table, register the mapped memory as a fixed
+  // buffer so the send path can use zero-copy. Resource exhaustion and memory
+  // that cannot take a long-term writable pin fall back to copy I/O; all other
+  // failures indicate a broken registration contract and are returned.
+  if (can_register_fixed_buffer) {
     int32_t slot =
         iree_io_uring_sparse_table_acquire(proactor->buffer_table, 1);
-    if (slot >= 0) {
+    if (slot < 0) {
+      IREE_TRACE_MESSAGE(
+          WARNING,
+          "io_uring: sparse buffer table full; falling back to copy-based "
+          "DMA-buffer I/O");
+    } else {
       struct iovec iov = {
           .iov_base = (uint8_t*)mapped_ptr + offset_delta,
           .iov_len = length,
@@ -263,20 +381,47 @@ iree_status_t iree_async_proactor_io_uring_register_dmabuf(
           .nr = 1,
           .resv2 = 0,
       };
-      long ret = 0;
-      do {
-        ret = syscall(IREE_IO_URING_SYSCALL_REGISTER, proactor->ring.ring_fd,
-                      IREE_IORING_REGISTER_BUFFERS_UPDATE, &update,
-                      sizeof(update));
-      } while (ret < 0 && errno == EINTR);
-      if (ret < 0) {
+      int register_result = iree_io_uring_ring_register(
+          &proactor->ring, IREE_IORING_REGISTER_BUFFERS_UPDATE, &update,
+          sizeof(update));
+      if (register_result < 0) {
+        int error_number = -register_result;
         iree_io_uring_sparse_table_release(proactor->buffer_table,
                                            (uint16_t)slot, 1);
+        if (error_number == ENOMEM || error_number == EFAULT ||
+            error_number == EOPNOTSUPP) {
+          IREE_TRACE_MESSAGE(
+              WARNING,
+              "io_uring: dmabuf pages unavailable for long-term writable "
+              "pinning; falling back to copy-based I/O");
+        } else {
+          status = iree_make_status(
+              iree_status_code_from_errno(error_number),
+              "IORING_REGISTER_BUFFERS_UPDATE for dmabuf failed (%d)",
+              error_number);
+        }
+      } else if (register_result != 1) {
+        status = iree_make_status(
+            IREE_STATUS_INTERNAL,
+            "IORING_REGISTER_BUFFERS_UPDATE registered %d of 1 dmabuf slots",
+            register_result);
+        if (register_result == 0) {
+          iree_io_uring_sparse_table_release(proactor->buffer_table,
+                                             (uint16_t)slot, 1);
+        } else {
+          iree_status_abort(status);
+        }
       } else {
         registration->buffer_table_slot = slot;
       }
     }
-    iree_io_uring_sparse_table_unlock(proactor->buffer_table);
+  }
+
+  if (!iree_status_is_ok(status)) {
+    iree_allocator_free(base_proactor->allocator, registration);
+    munmap(mapped_ptr, aligned_length);
+    IREE_TRACE_ZONE_END(z0);
+    return status;
   }
 
   // Initialize the region. base_ptr points to the user's requested offset
@@ -298,8 +443,7 @@ iree_status_t iree_async_proactor_io_uring_register_dmabuf(
     region->buffer_size = length;
     region->buffer_count = 1;
     region->handles.iouring.buffer_group_id = -1;
-    region->handles.iouring.base_buffer_index =
-        (int16_t)registration->buffer_table_slot;
+    region->handles.iouring.base_buffer_index = registration->buffer_table_slot;
   } else {
     // No kernel registration — mmap-only fallback.
     region->type = IREE_ASYNC_REGION_TYPE_DMABUF;
@@ -312,7 +456,6 @@ iree_status_t iree_async_proactor_io_uring_register_dmabuf(
   // Track aligned mmap parameters for cleanup.
   registration->mapped_ptr = mapped_ptr;
   registration->mapped_length = aligned_length;
-  registration->dmabuf_fd = dmabuf_fd;
 
   // Setup entry and cleanup.
   iree_async_buffer_registration_entry_t* entry = &registration->entry;
@@ -354,79 +497,28 @@ static void iree_async_io_uring_slab_region_recycle(void* context,
 // Region storage for slab registrations. Heap-allocated, returned to caller.
 // Contains the region plus tracking state for cleanup.
 typedef struct iree_async_io_uring_slab_region_t {
+  // Region published to the caller and embedded for one-allocation lifetime.
   iree_async_region_t region;
+
   // Optional: provided buffer ring for recv operations.
   // Created when access_flags includes WRITE. NULL for send-only.
   iree_io_uring_buffer_ring_t* buffer_ring;
+
   // True if this region registered with the kernel's fixed buffer table
   // (either via sparse table or legacy IORING_REGISTER_BUFFERS).
   bool registered_fixed_buffers;
+
   // Starting slot index in the sparse buffer table (for release on cleanup).
   // Only meaningful when registered_fixed_buffers is true and the proactor
   // has a sparse buffer table (5.19+).
   uint16_t fixed_buffer_base;
+
   // Number of contiguous slots allocated in the sparse buffer table.
   uint16_t fixed_buffer_count;
+
   // Allocator used for freeing this struct.
   iree_allocator_t allocator;
 } iree_async_io_uring_slab_region_t;
-
-// Clears contiguous slots in the kernel's sparse buffer table by updating them
-// with empty iovecs, then releases the corresponding bitmap slots. On failure,
-// only the successfully cleared slots have their bitmap bits released —
-// remaining slots are left allocated to keep kernel and bitmap state
-// consistent.
-//
-// Uses a fixed stack array and loops in batches to avoid heap allocation.
-// Caller must hold the sparse table lock.
-static iree_status_t iree_async_io_uring_clear_buffer_slots_locked(
-    iree_async_proactor_io_uring_t* proactor, uint16_t base_slot,
-    uint16_t count) {
-  // All iovecs are empty (NULL base, zero length) for clearing. The stack array
-  // is reused across batches since the contents are identical each iteration.
-  struct iovec empty_iovecs[64];
-  memset(empty_iovecs, 0, sizeof(empty_iovecs));
-
-  uint16_t cleared = 0;
-  while (cleared < count) {
-    uint16_t batch =
-        (uint16_t)((count - cleared > 64) ? 64 : (count - cleared));
-    iree_io_uring_rsrc_update2_t update = {
-        .offset = (uint32_t)(base_slot + cleared),
-        .resv = 0,
-        .data = (uint64_t)(uintptr_t)empty_iovecs,
-        .tags = 0,
-        .nr = batch,
-        .resv2 = 0,
-    };
-    long ret = 0;
-    do {
-      ret =
-          syscall(IREE_IO_URING_SYSCALL_REGISTER, proactor->ring.ring_fd,
-                  IREE_IORING_REGISTER_BUFFERS_UPDATE, &update, sizeof(update));
-    } while (ret < 0 && errno == EINTR);
-    if (ret < 0) {
-      int saved_errno = errno;
-      // Release only the slots we successfully cleared. The remaining slots
-      // are left allocated in both the kernel table and the bitmap so they
-      // stay consistent.
-      if (cleared > 0) {
-        iree_io_uring_sparse_table_release(proactor->buffer_table, base_slot,
-                                           cleared);
-      }
-      return iree_make_status(
-          iree_status_code_from_errno(saved_errno),
-          "IORING_REGISTER_BUFFERS_UPDATE (clear slots %u..%u) failed (%d); "
-          "the region was likely released while I/O was in-flight (EBUSY) "
-          "or the buffer table has a tracking bug (EINVAL)",
-          (unsigned)base_slot, (unsigned)(base_slot + count - 1), saved_errno);
-    }
-    cleared += batch;
-  }
-
-  iree_io_uring_sparse_table_release(proactor->buffer_table, base_slot, count);
-  return iree_ok_status();
-}
 
 // Unregisters a slab region's fixed buffers from the kernel. Handles both the
 // sparse table path (5.19+, IORING_REGISTER_BUFFERS_UPDATE to clear individual
@@ -442,31 +534,39 @@ static iree_status_t iree_async_io_uring_slab_region_unregister_fixed_buffers(
   if (proactor->buffer_table != NULL) {
     // Sparse table path (5.19+): clear individual kernel slots and release
     // the corresponding bitmap entries.
-    iree_io_uring_sparse_table_lock(proactor->buffer_table);
-    iree_status_t status = iree_async_io_uring_clear_buffer_slots_locked(
+    return iree_async_io_uring_clear_buffer_slots(
         proactor, slab_region->fixed_buffer_base,
         slab_region->fixed_buffer_count);
-    iree_io_uring_sparse_table_unlock(proactor->buffer_table);
-    return status;
   }
 
   // Legacy path (pre-5.19): unregister the entire singleton buffer table.
-  long ret = 0;
-  int saved_errno = 0;
-  do {
-    ret = syscall(IREE_IO_URING_SYSCALL_REGISTER, proactor->ring.ring_fd,
-                  IREE_IORING_UNREGISTER_BUFFERS, NULL, 0);
-    saved_errno = errno;
-  } while (ret < 0 && saved_errno == EINTR);
-  if (ret < 0) {
+  int32_t expected_state = IREE_ASYNC_IO_URING_LEGACY_BUFFER_TABLE_STATE_ACTIVE;
+  if (!iree_atomic_compare_exchange_strong(
+          &proactor->legacy_buffer_table_state, &expected_state,
+          IREE_ASYNC_IO_URING_LEGACY_BUFFER_TABLE_STATE_UNREGISTERING,
+          iree_memory_order_acq_rel, iree_memory_order_acquire)) {
     return iree_make_status(
-        iree_status_code_from_errno(saved_errno),
+        IREE_STATUS_FAILED_PRECONDITION,
+        "legacy fixed-buffer table is not active (state=%d)", expected_state);
+  }
+
+  int unregister_result = iree_io_uring_ring_register(
+      &proactor->ring, IREE_IORING_UNREGISTER_BUFFERS, NULL, 0);
+  if (unregister_result < 0) {
+    int error_number = -unregister_result;
+    iree_atomic_store(&proactor->legacy_buffer_table_state,
+                      IREE_ASYNC_IO_URING_LEGACY_BUFFER_TABLE_STATE_ACTIVE,
+                      iree_memory_order_release);
+    return iree_make_status(
+        iree_status_code_from_errno(error_number),
         "IORING_UNREGISTER_BUFFERS failed (%d); the region was released "
         "while I/O was in-flight - the kernel holds DMA references to "
         "buffer memory that is about to be freed",
-        saved_errno);
+        error_number);
   }
-  proactor->legacy_registered_buffer_count = 0;
+  iree_atomic_store(&proactor->legacy_buffer_table_state,
+                    IREE_ASYNC_IO_URING_LEGACY_BUFFER_TABLE_STATE_FREE,
+                    iree_memory_order_release);
   return iree_ok_status();
 }
 
@@ -505,7 +605,6 @@ static iree_status_t iree_async_io_uring_slab_region_register_fixed_buffers(
   // registers the entire iovec array as a singleton buffer table.
   iree_status_t status = iree_ok_status();
   if (proactor->buffer_table != NULL) {
-    iree_io_uring_sparse_table_lock(proactor->buffer_table);
     int32_t base_slot = iree_io_uring_sparse_table_acquire(
         proactor->buffer_table, (uint16_t)buffer_count);
     if (base_slot < 0) {
@@ -524,18 +623,15 @@ static iree_status_t iree_async_io_uring_slab_region_register_fixed_buffers(
           .nr = (uint32_t)buffer_count,
           .resv2 = 0,
       };
-      long ret = 0;
-      do {
-        ret = syscall(IREE_IO_URING_SYSCALL_REGISTER, proactor->ring.ring_fd,
-                      IREE_IORING_REGISTER_BUFFERS_UPDATE, &update,
-                      sizeof(update));
-      } while (ret < 0 && errno == EINTR);
-      if (ret < 0) {
-        int saved_errno = errno;
+      int register_result = iree_io_uring_ring_register(
+          &proactor->ring, IREE_IORING_REGISTER_BUFFERS_UPDATE, &update,
+          sizeof(update));
+      if (register_result < 0) {
+        int error_number = -register_result;
         iree_io_uring_sparse_table_release(proactor->buffer_table,
                                            (uint16_t)base_slot,
                                            (uint16_t)buffer_count);
-        if (saved_errno == ENOMEM) {
+        if (error_number == ENOMEM) {
           // Kernel couldn't pin pages — RLIMIT_MEMLOCK is likely too low.
           // Fall back to copy-based I/O instead of failing hard. The region
           // will have base_buffer_index = -1 so the send path uses regular
@@ -547,8 +643,25 @@ static iree_status_t iree_async_io_uring_slab_region_register_fixed_buffers(
               "'ulimit -l unlimited')");
         } else {
           status = iree_make_status(
-              iree_status_code_from_errno(saved_errno),
-              "IORING_REGISTER_BUFFERS_UPDATE failed (%d)", saved_errno);
+              iree_status_code_from_errno(error_number),
+              "IORING_REGISTER_BUFFERS_UPDATE failed (%d)", error_number);
+        }
+      } else if ((iree_host_size_t)register_result != buffer_count) {
+        status = iree_make_status(
+            IREE_STATUS_INTERNAL,
+            "IORING_REGISTER_BUFFERS_UPDATE registered %d of %" PRIhsz
+            " requested slots",
+            register_result, buffer_count);
+        if ((iree_host_size_t)register_result <= buffer_count) {
+          iree_status_t rollback_status =
+              iree_async_io_uring_rollback_buffer_slots(
+                  proactor, (uint16_t)base_slot, (uint16_t)buffer_count,
+                  (uint16_t)register_result);
+          if (!iree_status_is_ok(rollback_status)) {
+            iree_status_abort(iree_status_join(status, rollback_status));
+          }
+        } else {
+          iree_status_abort(status);
         }
       } else {
         slab_region->fixed_buffer_base = (uint16_t)base_slot;
@@ -556,37 +669,50 @@ static iree_status_t iree_async_io_uring_slab_region_register_fixed_buffers(
         slab_region->registered_fixed_buffers = true;
       }
     }
-    iree_io_uring_sparse_table_unlock(proactor->buffer_table);
   } else {
-    long ret = 0;
-    do {
-      ret = syscall(IREE_IO_URING_SYSCALL_REGISTER, proactor->ring.ring_fd,
-                    IREE_IORING_REGISTER_BUFFERS, iovecs, buffer_count);
-    } while (ret < 0 && errno == EINTR);
-    if (ret < 0) {
-      int saved_errno = errno;
-      if (saved_errno == ENOMEM) {
-        IREE_TRACE_MESSAGE(
-            WARNING,
-            "io_uring: RLIMIT_MEMLOCK too low to pin pages for zero-copy "
-            "send; falling back to copy-based I/O (raise with "
-            "'ulimit -l unlimited')");
-      } else {
-        status = iree_make_status(iree_status_code_from_errno(saved_errno),
-                                  "IORING_REGISTER_BUFFERS failed (%d)",
-                                  saved_errno);
-      }
+    int32_t expected_state = IREE_ASYNC_IO_URING_LEGACY_BUFFER_TABLE_STATE_FREE;
+    if (!iree_atomic_compare_exchange_strong(
+            &proactor->legacy_buffer_table_state, &expected_state,
+            IREE_ASYNC_IO_URING_LEGACY_BUFFER_TABLE_STATE_REGISTERING,
+            iree_memory_order_acq_rel, iree_memory_order_acquire)) {
+      status = iree_make_status(
+          IREE_STATUS_ALREADY_EXISTS,
+          "fixed-buffer table already claimed by another registration; "
+          "pre-5.19 io_uring supports one table per ring (state=%d)",
+          expected_state);
     } else {
-      proactor->legacy_registered_buffer_count = (uint16_t)buffer_count;
-      slab_region->fixed_buffer_base = 0;
-      slab_region->fixed_buffer_count = (uint16_t)buffer_count;
-      slab_region->registered_fixed_buffers = true;
+      int register_result = iree_io_uring_ring_register(
+          &proactor->ring, IREE_IORING_REGISTER_BUFFERS, iovecs,
+          (uint32_t)buffer_count);
+      if (register_result < 0) {
+        int error_number = -register_result;
+        iree_atomic_store(&proactor->legacy_buffer_table_state,
+                          IREE_ASYNC_IO_URING_LEGACY_BUFFER_TABLE_STATE_FREE,
+                          iree_memory_order_release);
+        if (error_number == ENOMEM) {
+          IREE_TRACE_MESSAGE(
+              WARNING,
+              "io_uring: RLIMIT_MEMLOCK too low to pin pages for zero-copy "
+              "send; falling back to copy-based I/O (raise with "
+              "'ulimit -l unlimited')");
+        } else {
+          status = iree_make_status(iree_status_code_from_errno(error_number),
+                                    "IORING_REGISTER_BUFFERS failed (%d)",
+                                    error_number);
+        }
+      } else {
+        iree_atomic_store(&proactor->legacy_buffer_table_state,
+                          IREE_ASYNC_IO_URING_LEGACY_BUFFER_TABLE_STATE_ACTIVE,
+                          iree_memory_order_release);
+        slab_region->fixed_buffer_base = 0;
+        slab_region->fixed_buffer_count = (uint16_t)buffer_count;
+        slab_region->registered_fixed_buffers = true;
+      }
     }
   }
 
-  if (iovecs_heap_allocated) {
+  if (iovecs_heap_allocated)
     iree_allocator_free(slab_region->allocator, iovecs);
-  }
 
   return status;
 }
@@ -602,7 +728,7 @@ static void iree_async_io_uring_slab_region_destroy(
       iree_async_proactor_io_uring_cast(region->proactor);
 
   // Free the provided buffer ring if present (for recv).
-  iree_io_uring_buffer_ring_free(slab_region->buffer_ring);
+  IREE_CHECK_OK(iree_io_uring_buffer_ring_free(slab_region->buffer_ring));
 
   // Unregister fixed buffers from the kernel. Failure aborts — the kernel
   // holds DMA references to the slab memory and continuing would cause
@@ -635,19 +761,8 @@ iree_status_t iree_async_proactor_io_uring_register_slab(
   iree_host_size_t buffer_count = iree_async_slab_buffer_count(slab);
   void* base_ptr = iree_async_slab_base_ptr(slab);
 
-  // On pre-5.19 kernels (no sparse table), io_uring allows only one buffer
-  // table registration at a time. On 5.19+ the sparse table supports multiple
-  // independent registrations.
   bool needs_fixed_buffers =
       (access_flags & IREE_ASYNC_BUFFER_ACCESS_FLAG_READ) != 0;
-  if (needs_fixed_buffers && proactor->buffer_table == NULL &&
-      proactor->legacy_registered_buffer_count > 0) {
-    IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(
-        IREE_STATUS_ALREADY_EXISTS,
-        "fixed buffer table already registered with this proactor; pre-5.19 "
-        "io_uring allows only one buffer table per ring");
-  }
 
   // Validate buffer count fits in the region handles.
   if (buffer_count > UINT16_MAX) {
@@ -712,33 +827,18 @@ iree_status_t iree_async_proactor_io_uring_register_slab(
 
   // Create provided buffer ring for recv path (WRITE access).
   iree_io_uring_buffer_ring_t* buffer_ring = NULL;
-  int16_t buffer_group_id = -1;
+  int32_t buffer_group_id = -1;
   if (create_recv_ring) {
-    // Group IDs are uint16_t and allocated monotonically. Reserve UINT16_MAX
-    // as the overflow sentinel — this still allows 65535 concurrent buffer ring
-    // registrations, which is unreachable in practice (each requires at least
-    // one page of kernel ring metadata plus actual buffer memory).
-    if (proactor->next_group_id >= UINT16_MAX) {
-      if (slab_region->registered_fixed_buffers) {
-        IREE_CHECK_OK(iree_async_io_uring_slab_region_unregister_fixed_buffers(
-            slab_region, proactor));
-      }
-      iree_allocator_free(base_proactor->allocator, slab_region);
-      IREE_TRACE_ZONE_END(z0);
-      return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
-                              "io_uring buffer ring group ID space exhausted "
-                              "(maximum 65535 concurrent registrations)");
-    }
-
     iree_io_uring_buffer_ring_options_t ring_options =
         iree_io_uring_buffer_ring_options_default();
     ring_options.buffer_base = base_ptr;
     ring_options.buffer_size = buffer_size;
     ring_options.buffer_count = buffer_count;
-    ring_options.group_id = proactor->next_group_id++;
+    ring_options.preferred_group_id = (uint16_t)iree_atomic_fetch_add(
+        &proactor->next_buffer_group_id, 1, iree_memory_order_relaxed);
 
     iree_status_t status = iree_io_uring_buffer_ring_allocate(
-        proactor->ring.ring_fd, ring_options, base_proactor->allocator,
+        &proactor->ring.registration, ring_options, base_proactor->allocator,
         &buffer_ring);
     if (!iree_status_is_ok(status)) {
       // Unregister the buffer table on failure if we registered it.
@@ -756,7 +856,7 @@ iree_status_t iree_async_proactor_io_uring_register_slab(
       IREE_TRACE_ZONE_END(z0);
       return status;
     }
-    buffer_group_id = (int16_t)ring_options.group_id;
+    buffer_group_id = (int32_t)iree_io_uring_buffer_ring_group_id(buffer_ring);
   }
   slab_region->buffer_ring = buffer_ring;
 
@@ -788,8 +888,8 @@ iree_status_t iree_async_proactor_io_uring_register_slab(
   // send path sees this and falls back to copy-based I/O.
   region->handles.iouring.base_buffer_index =
       slab_region->registered_fixed_buffers
-          ? (int16_t)slab_region->fixed_buffer_base
-          : (int16_t)-1;
+          ? (int32_t)slab_region->fixed_buffer_base
+          : -1;
 
   *out_region = region;
   IREE_TRACE_ZONE_END(z0);

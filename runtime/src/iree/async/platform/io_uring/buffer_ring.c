@@ -9,8 +9,6 @@
 #include <errno.h>
 #include <string.h>
 #include <sys/mman.h>
-#include <sys/syscall.h>
-#include <unistd.h>
 
 #include "iree/base/internal/memory.h"
 
@@ -22,8 +20,8 @@ struct iree_io_uring_buffer_ring_t {
   // Allocator used for this structure and kernel ring memory.
   iree_allocator_t allocator;
 
-  // io_uring ring fd this buffer ring is registered with.
-  int ring_fd;
+  // Registration lane used for kernel registration and teardown. Not owned.
+  iree_io_uring_registration_t* registration;
 
   // Buffer group ID registered with the kernel.
   uint16_t group_id;
@@ -56,8 +54,10 @@ struct iree_io_uring_buffer_ring_t {
 //===----------------------------------------------------------------------===//
 
 iree_status_t iree_io_uring_buffer_ring_allocate(
-    int ring_fd, iree_io_uring_buffer_ring_options_t options,
-    iree_allocator_t allocator, iree_io_uring_buffer_ring_t** out_ring) {
+    iree_io_uring_registration_t* registration,
+    iree_io_uring_buffer_ring_options_t options, iree_allocator_t allocator,
+    iree_io_uring_buffer_ring_t** out_ring) {
+  IREE_ASSERT_ARGUMENT(registration);
   IREE_ASSERT_ARGUMENT(options.buffer_base);
   IREE_ASSERT_ARGUMENT(out_ring);
   IREE_TRACE_ZONE_BEGIN(z0);
@@ -76,6 +76,13 @@ iree_status_t iree_io_uring_buffer_ring_allocate(
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "buffer_count %" PRIhsz " exceeds maximum %u",
                             buffer_count, IREE_IO_URING_MAX_PBUF_RING_ENTRIES);
+  }
+  if (options.buffer_size == 0 || options.buffer_size > UINT32_MAX) {
+    IREE_TRACE_ZONE_END(z0);
+    return iree_make_status(
+        IREE_STATUS_INVALID_ARGUMENT,
+        "buffer_size must be in the range [1, %u], got %" PRIhsz, UINT32_MAX,
+        options.buffer_size);
   }
 
   // Determine page alignment.
@@ -102,8 +109,7 @@ iree_status_t iree_io_uring_buffer_ring_allocate(
 
   memset(ring, 0, sizeof(*ring));
   ring->allocator = allocator;
-  ring->ring_fd = ring_fd;
-  ring->group_id = options.group_id;
+  ring->registration = registration;
   ring->buffer_count = (uint32_t)buffer_count;
   ring->index_mask = (uint32_t)(buffer_count - 1);
   ring->buffer_size = (uint32_t)options.buffer_size;
@@ -129,19 +135,25 @@ iree_status_t iree_io_uring_buffer_ring_allocate(
     iree_io_uring_buf_reg_t reg = {0};
     reg.ring_addr = (uint64_t)(uintptr_t)ring->kernel_ring;
     reg.ring_entries = (uint32_t)buffer_count;
-    reg.bgid = options.group_id;
+    int register_result = -EEXIST;
+    for (uint32_t i = 0; i <= UINT16_MAX; ++i) {
+      reg.bgid = (uint16_t)(options.preferred_group_id + i);
+      register_result = iree_io_uring_registration_execute(
+          registration, IREE_IORING_REGISTER_PBUF_RING, &reg, 1);
+      if (register_result != -EEXIST) break;
+    }
 
-    long ret;
-    do {
-      ret = syscall(IREE_IO_URING_SYSCALL_REGISTER, ring_fd,
-                    IREE_IORING_REGISTER_PBUF_RING, &reg, 1);
-    } while (ret < 0 && errno == EINTR);
-
-    if (ret < 0) {
-      int err = errno;
-      status = iree_make_status(iree_status_code_from_errno(err),
+    if (register_result == -EEXIST) {
+      status =
+          iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                           "all io_uring provided buffer group IDs are in use");
+    } else if (register_result < 0) {
+      int error_number = -register_result;
+      status = iree_make_status(iree_status_code_from_errno(error_number),
                                 "IORING_REGISTER_PBUF_RING failed: %s",
-                                strerror(err));
+                                strerror(error_number));
+    } else {
+      ring->group_id = reg.bgid;
     }
   }
 
@@ -177,30 +189,33 @@ iree_status_t iree_io_uring_buffer_ring_allocate(
   return status;
 }
 
-void iree_io_uring_buffer_ring_free(iree_io_uring_buffer_ring_t* ring) {
-  if (!ring) return;
+iree_status_t iree_io_uring_buffer_ring_free(
+    iree_io_uring_buffer_ring_t* ring) {
+  if (!ring) return iree_ok_status();
   IREE_TRACE_ZONE_BEGIN(z0);
 
   // Unregister from kernel.
   iree_io_uring_buf_reg_t reg = {0};
   reg.bgid = ring->group_id;
-  long ret;
-  do {
-    ret = syscall(IREE_IO_URING_SYSCALL_REGISTER, ring->ring_fd,
-                  IREE_IORING_UNREGISTER_PBUF_RING, &reg, 1);
-  } while (ret < 0 && errno == EINTR);
-  // PBUF_RING unregister errors are safe to ignore: the ring memory is
-  // application-side metadata (buffer index + length pairs) that the kernel
-  // stops referencing immediately on unregister. Unlike fixed buffer
-  // unregistration, where the kernel holds DMA references to the actual buffer
-  // pages, PBUF_RING teardown has no data integrity risk.
+  int unregister_result = iree_io_uring_registration_execute(
+      ring->registration, IREE_IORING_UNREGISTER_PBUF_RING, &reg, 1);
+  iree_status_t status = iree_ok_status();
+  if (unregister_result < 0) {
+    int error_number = -unregister_result;
+    status =
+        iree_make_status(iree_status_code_from_errno(error_number),
+                         "IORING_UNREGISTER_PBUF_RING failed for group %u: %s",
+                         (unsigned)ring->group_id, strerror(error_number));
+  }
 
-  // Free kernel ring memory and structure.
-  iree_allocator_t allocator = ring->allocator;
-  iree_allocator_free_aligned(allocator, ring->kernel_ring);
-  iree_allocator_free(allocator, ring);
+  if (iree_status_is_ok(status)) {
+    iree_allocator_t allocator = ring->allocator;
+    iree_allocator_free_aligned(allocator, ring->kernel_ring);
+    iree_allocator_free(allocator, ring);
+  }
 
   IREE_TRACE_ZONE_END(z0);
+  return status;
 }
 
 //===----------------------------------------------------------------------===//
@@ -239,7 +254,7 @@ uint16_t iree_io_uring_buffer_ring_group_id(
 }
 
 int iree_io_uring_buffer_ring_fd(const iree_io_uring_buffer_ring_t* ring) {
-  return ring->ring_fd;
+  return ring->registration->ring_fd;
 }
 
 iree_host_size_t iree_io_uring_buffer_ring_page_alignment(

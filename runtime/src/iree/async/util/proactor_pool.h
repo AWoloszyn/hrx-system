@@ -8,21 +8,21 @@
 //
 // Creates proactors on-demand per NUMA node, allowing HAL devices, network
 // sessions, and other subsystems to share I/O infrastructure with proper NUMA
-// locality. The pool is ref-counted — devices retain the pool during creation,
-// ensuring proactors outlive the device. Callers can release their reference
-// immediately after device creation.
+// locality. The aggregate pool and each initialized entry are independently
+// reference counted. Devices that may select proactors throughout their
+// lifetime retain the pool; consumers that need one proactor/runner pair can
+// retain only that entry.
 //
-// Proactors are created lazily: nothing is allocated until pool_get() or
-// pool_get_for_node() is called. This makes pool creation effectively free —
-// create a pool, pass it to device creation, release it. If no driver requests
-// a proactor, no resources are allocated.
+// Entries, proactors, and runners are created lazily when a slot is first
+// accessed. Pool creation performs one allocation for the pool and its
+// lightweight slot table but creates no OS resources or threads.
 //
 // ## Poll runners
 //
 // Proactors are caller-driven: they only make progress when poll() is called.
 // The pool supports an optional runner factory that creates a poll runner for
 // each proactor on-demand. The standard runner creates a dedicated poll thread
-// (see proactor_runner_thread.h). On platforms without C threads (wasm), the
+// (see proactor_thread_runner.h). On platforms without C threads (wasm), the
 // host event loop drives polling and no runner is needed.
 //
 // The default options (iree_async_proactor_pool_options_default) select the
@@ -47,6 +47,18 @@
 //
 //   // At shutdown: releasing the device releases the pool (and runners).
 //   iree_hal_device_release(device);
+//
+// A subsystem that selects one proactor and then releases the aggregate pool
+// must acquire the entry so that automatic progress remains alive:
+//
+//   iree_async_proactor_pool_entry_t* entry = NULL;
+//   IREE_RETURN_IF_ERROR(
+//       iree_async_proactor_pool_acquire(pool, 0, &entry));
+//   iree_async_proactor_t* proactor =
+//       iree_async_proactor_pool_entry_proactor(entry);
+//   iree_async_proactor_pool_release(pool);
+//   // Use proactor while entry remains retained...
+//   iree_async_proactor_pool_entry_release(entry);
 //
 // ## NUMA mapping
 //
@@ -83,8 +95,10 @@ typedef struct iree_async_proactor_pool_options_t {
 
   // Optional runner factory for creating poll runners that drive proactors.
   // When create is non-NULL, the pool calls it for each proactor during
-  // pool_get(). When create is NULL (zero-initialized), proactors are created
-  // without a runner and the caller is responsible for polling.
+  // first access. When create is NULL (zero-initialized), proactors are
+  // created without a runner and the caller is responsible for polling.
+  // The callbacks and user_data are copied into initialized entries and must
+  // remain valid until all entries acquired from the pool are released.
   iree_async_proactor_pool_runner_factory_t runner;
 } iree_async_proactor_pool_options_t;
 
@@ -95,20 +109,22 @@ iree_async_proactor_pool_options_t iree_async_proactor_pool_options_default(
     void);
 
 typedef struct iree_async_proactor_pool_t iree_async_proactor_pool_t;
+typedef struct iree_async_proactor_pool_entry_t
+    iree_async_proactor_pool_entry_t;
 
 // Creates a pool with capacity for |node_count| proactors.
 //
-// No proactors or runners are created during pool creation — they are created
-// on-demand when pool_get() or pool_get_for_node() is first called for each
-// entry. This makes pool creation effectively free. |node_count| must be >= 1.
+// No entries, proactors, or runners are created during pool creation. They are
+// created on-demand when a slot is first accessed. |node_count| must be >= 1.
 //
 // If |node_ids| is non-NULL, it must point to |node_count| NUMA node IDs.
 // When a runner is created on-demand, the node ID is passed to the runner
 // factory for NUMA-aware pinning. If |node_ids| is NULL, runners get no
 // affinity hint (suitable for single-node systems).
 //
-// The pool retains all created proactors and runners. Releasing the pool (when
-// the ref count reaches zero) stops all runners and releases all proactors.
+// The pool owns one reference to every created entry. Releasing the pool drops
+// those references and stops entries with no other owners. Entries retained by
+// consumers continue running until their own final release.
 iree_status_t iree_async_proactor_pool_create(
     iree_host_size_t node_count, const uint32_t* node_ids,
     iree_async_proactor_pool_options_t options, iree_allocator_t allocator,
@@ -117,20 +133,33 @@ iree_status_t iree_async_proactor_pool_create(
 // Retains a reference to the pool.
 void iree_async_proactor_pool_retain(iree_async_proactor_pool_t* pool);
 
-// Releases a reference to the pool. When the count reaches zero, all runners
-// are stopped, all proactors are released, and the pool is freed.
+// Releases a reference to the pool. When the count reaches zero, all
+// pool-owned entry references are released and the pool is freed. Consumer-
+// retained entries remain alive.
 void iree_async_proactor_pool_release(iree_async_proactor_pool_t* pool);
 
-// Returns the number of proactors in the pool.
+// Returns the number of proactor slots in the pool.
 iree_host_size_t iree_async_proactor_pool_count(
     const iree_async_proactor_pool_t* pool);
+
+// Acquires the pool entry at dense |index|, creating its proactor and runner
+// on-demand if this is the first access for that slot.
+//
+// The returned entry is retained and must be released with
+// iree_async_proactor_pool_entry_release(). Retaining the entry keeps both the
+// proactor and its pool-created runner alive after the aggregate pool is
+// released.
+iree_status_t iree_async_proactor_pool_acquire(
+    iree_async_proactor_pool_t* pool, iree_host_size_t index,
+    iree_async_proactor_pool_entry_t** out_entry);
 
 // Returns the proactor at the given dense |index| (0-based), creating it
 // on-demand if this is the first access for that index. The proactor and its
 // runner (if the factory is set) are created lazily.
 //
-// The returned proactor is NOT retained — the caller must retain it if they
-// need it to outlive the pool.
+// The returned proactor is borrowed from its entry. The caller must retain the
+// aggregate pool or acquire the entry for as long as automatic progress is
+// required. Retaining only the proactor does not retain its runner.
 iree_status_t iree_async_proactor_pool_get(
     iree_async_proactor_pool_t* pool, iree_host_size_t index,
     iree_async_proactor_t** out_proactor);
@@ -140,6 +169,16 @@ iree_status_t iree_async_proactor_pool_get(
 uint32_t iree_async_proactor_pool_node_id(
     const iree_async_proactor_pool_t* pool, iree_host_size_t index);
 
+// Acquires the entry associated with |node_id|, creating it on-demand if this
+// is the first access for that node.
+//
+// An exact match returns that entry. If the pool has no exact match, the first
+// entry is returned as a fallback. The returned entry must be released with
+// iree_async_proactor_pool_entry_release().
+iree_status_t iree_async_proactor_pool_acquire_for_node(
+    iree_async_proactor_pool_t* pool, uint32_t node_id,
+    iree_async_proactor_pool_entry_t** out_entry);
+
 // Returns the proactor associated with the given NUMA |node_id|, creating it
 // on-demand if this is the first access for that node.
 //
@@ -147,11 +186,30 @@ uint32_t iree_async_proactor_pool_node_id(
 // (e.g., the pool was created for a subset of nodes), returns the first
 // proactor in the pool as a fallback.
 //
-// The returned proactor is NOT retained — the caller must retain it if they
-// need it to outlive the pool.
+// The returned proactor is borrowed from its entry. The caller must retain the
+// aggregate pool or acquire the entry for as long as automatic progress is
+// required. Retaining only the proactor does not retain its runner.
 iree_status_t iree_async_proactor_pool_get_for_node(
     iree_async_proactor_pool_t* pool, uint32_t node_id,
     iree_async_proactor_t** out_proactor);
+
+// Retains |entry| for the caller.
+void iree_async_proactor_pool_entry_retain(
+    iree_async_proactor_pool_entry_t* entry);
+
+// Releases an entry reference. The final release requests its runner to stop,
+// waits for runner teardown, releases the proactor, and frees the entry.
+void iree_async_proactor_pool_entry_release(
+    iree_async_proactor_pool_entry_t* entry);
+
+// Returns the proactor owned by |entry|, borrowed for the entry lifetime.
+iree_async_proactor_t* iree_async_proactor_pool_entry_proactor(
+    const iree_async_proactor_pool_entry_t* entry);
+
+// Returns the NUMA node ID associated with |entry|, or UINT32_MAX if no node
+// was specified for its slot.
+uint32_t iree_async_proactor_pool_entry_node_id(
+    const iree_async_proactor_pool_entry_t* entry);
 
 #ifdef __cplusplus
 }  // extern "C"

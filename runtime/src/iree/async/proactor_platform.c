@@ -37,7 +37,7 @@ iree_status_t iree_async_proactor_create_platform(
 
 #elif defined(IREE_PLATFORM_LINUX) && !defined(IREE_PLATFORM_ANDROID)
 
-  // Try io_uring first (kernel 5.1+, enabled). Falls back to POSIX proactor
+  // Try io_uring first (kernel 5.7+, enabled). Falls back to POSIX proactor
   // if io_uring is not usable (kernel too old, blocked by seccomp/sysctl,
   // insufficient locked memory, etc.).
   status =

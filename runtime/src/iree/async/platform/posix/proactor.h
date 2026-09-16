@@ -164,11 +164,6 @@ typedef struct iree_async_proactor_posix_t {
   // linger in the timer_list until their original deadline expires.
   iree_atomic_int32_t pending_timer_cancellation_count;
 
-  // Singleton constraint: only one READ-access slab may be registered at a
-  // time. Mirrors io_uring's fixed buffer table limitation, enforced as a
-  // public API contract for portability (see proactor.h:930-934).
-  bool has_read_slab_registration;
-
   // Sequence emulator for IREE_ASYNC_OPERATION_TYPE_SEQUENCE operations.
   // Drives step-by-step execution when step_fn is set. When step_fn is NULL,
   // the LINK path is used instead (no emulator involvement).

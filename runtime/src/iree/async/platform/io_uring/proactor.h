@@ -37,18 +37,22 @@ typedef struct iree_async_semaphore_wait_operation_t
 
 // Internal state for event source lifecycle management.
 typedef enum iree_async_io_uring_event_source_state_e {
+  // Registration is complete but the poll owner has not submitted the
+  // multishot poll yet.
+  IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_ARM_PENDING = 0,
+
   // The multishot poll is active and callbacks may be dispatched.
-  IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_ACTIVE = 0,
+  IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_ACTIVE = 1,
 
   // Unregistration was requested but SQ pressure prevented cancellation from
   // being queued. Callbacks are suppressed while the proactor retries.
-  IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_UNREGISTRATION_PENDING = 1,
+  IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_UNREGISTRATION_PENDING = 2,
 
   // Cancellation was queued and the final multishot poll CQE is pending.
-  IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_UNREGISTRATION_SUBMITTED = 2,
+  IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_UNREGISTRATION_SUBMITTED = 3,
 
   // The multishot poll ended without an explicit unregistration request.
-  IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_TERMINAL = 3,
+  IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_TERMINAL = 4,
 } iree_async_io_uring_event_source_state_t;
 
 // Tracks a registered event source for persistent monitoring of an external fd.
@@ -78,35 +82,23 @@ struct iree_async_event_source_t {
 };
 
 //===----------------------------------------------------------------------===//
-// Buffer pool tracking
-//===----------------------------------------------------------------------===//
-
-// Tracks a registered provided buffer ring (PBUF_RING) for multishot receives.
-// Linked list node; proactor owns the list.
-typedef struct iree_async_io_uring_buffer_pool_t {
-  struct iree_async_io_uring_buffer_pool_t* next;
-
-  // Buffer group ID assigned during registration.
-  uint16_t group_id;
-
-  // Number of buffer slots in the ring (power of 2).
-  uint32_t ring_entries;
-
-  // Size of each buffer in the pool.
-  uint32_t buffer_size;
-
-  // User-allocated ring memory. Layout:
-  //   [0]: iree_io_uring_buf_ring_t header (with tail)
-  //   [1..ring_entries]: iree_io_uring_buf_t entries
-  void* ring_memory;
-
-  // Size of ring_memory in bytes.
-  size_t ring_memory_size;
-} iree_async_io_uring_buffer_pool_t;
-
-//===----------------------------------------------------------------------===//
 // Proactor implementation struct
 //===----------------------------------------------------------------------===//
+
+// Lifecycle states for the singleton fixed-buffer table on pre-5.19 kernels.
+typedef enum iree_async_io_uring_legacy_buffer_table_state_e {
+  // No fixed-buffer table is registered or being changed.
+  IREE_ASYNC_IO_URING_LEGACY_BUFFER_TABLE_STATE_FREE = 0,
+
+  // A task has claimed the table and is registering fixed buffers.
+  IREE_ASYNC_IO_URING_LEGACY_BUFFER_TABLE_STATE_REGISTERING = 1,
+
+  // A fixed-buffer table is registered with the kernel.
+  IREE_ASYNC_IO_URING_LEGACY_BUFFER_TABLE_STATE_ACTIVE = 2,
+
+  // The active fixed-buffer table is being unregistered.
+  IREE_ASYNC_IO_URING_LEGACY_BUFFER_TABLE_STATE_UNREGISTERING = 3,
+} iree_async_io_uring_legacy_buffer_table_state_t;
 
 // io_uring-specific proactor state.
 typedef struct iree_async_proactor_io_uring_t {
@@ -146,21 +138,17 @@ typedef struct iree_async_proactor_io_uring_t {
   // Cached capabilities from ring probing.
   iree_async_proactor_capabilities_t capabilities;
 
-  // Registered buffer pools (PBUF_RING). Linked list, proactor-owned.
-  iree_async_io_uring_buffer_pool_t* buffer_pools;
-
-  // Next group ID to assign (monotonically increasing).
-  uint16_t next_group_id;
+  // Preferred PBUF group ID for the next slab registration. The kernel is the
+  // source of truth for live IDs; collisions scan for the next free ID.
+  iree_atomic_int32_t next_buffer_group_id;
 
   // Sparse buffer table for dynamic buffer registration (kernel 5.19+).
   // NULL on pre-5.19 kernels where the legacy singleton
   // IORING_REGISTER_BUFFERS path is used instead.
   iree_io_uring_sparse_table_t* buffer_table;
 
-  // Legacy: number of buffers registered via IORING_REGISTER_BUFFERS on
-  // pre-5.19 kernels (where buffer_table is NULL). Zero when buffer_table is
-  // non-NULL (the sparse table tracks slot allocation instead).
-  uint16_t legacy_registered_buffer_count;
+  // One iree_async_io_uring_legacy_buffer_table_state_t value.
+  iree_atomic_int32_t legacy_buffer_table_state;
 
   // Cross-proactor messaging state.
   // The pool is used by the fallback path (pre-5.18 kernels without MSG_RING).
@@ -322,7 +310,7 @@ extern const iree_async_proactor_vtable_t iree_async_proactor_io_uring_vtable;
 // |out_capabilities| with the detected capabilities.
 // Returns IREE_STATUS_UNAVAILABLE if the kernel is too old.
 iree_status_t iree_async_proactor_io_uring_detect_capabilities(
-    int ring_fd, uint32_t ring_features,
+    iree_io_uring_ring_t* ring, uint32_t ring_features,
     iree_async_proactor_capabilities_t* out_capabilities);
 
 // Buffer registration vtable implementations (in proactor_registration.c).
