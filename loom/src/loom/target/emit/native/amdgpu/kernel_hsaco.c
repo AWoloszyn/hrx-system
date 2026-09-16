@@ -85,7 +85,7 @@ iree_status_t loom_amdgpu_build_kernel_hsaco_contribution(
       record.processor, record.metadata.wavefront_size,
       record.metadata.sgpr_count, record.metadata.vgpr_count,
       flat_workgroup_size, record.metadata.group_segment_fixed_size,
-      scratch_arena, &target_resources));
+      scratch_arena, &target_resources, options->residency_constraints));
   const loom_amdgpu_kernel_hsaco_target_resources_t hsaco_target_resources = {
       .scalar_register_class = target_resources.scalar_register_class,
       .scalar_register_count = target_resources.scalar_register_count,

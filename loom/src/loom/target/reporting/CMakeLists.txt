@@ -50,12 +50,14 @@ loom_cc_library(
   HDRS
     "loop_pipeline.h"
     "report.h"
+    "residency.h"
     "target_insertion.h"
   SRCS
     "loop_pipeline.c"
     "memory_summary.c"
     "memory_summary.h"
     "report.c"
+    "residency.c"
     "row_list.c"
     "row_list.h"
     "target_insertion.c"
@@ -85,6 +87,7 @@ loom_cc_library(
     "format_json_planning.c"
     "format_loop_pipeline.c"
     "format_loop_pipeline.h"
+    "format_residency.c"
     "format_text.c"
     "format_text.h"
     "format_text_lowering.c"
@@ -217,6 +220,7 @@ loom_cc_test(
     "memory_summary_test.cc"
   DEPS
     ::format
+    iree::base::internal::arena
     iree::base::internal::json
     iree::testing::gtest
     iree::testing::gtest_main

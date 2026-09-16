@@ -297,6 +297,18 @@ static iree_status_t loom_target_compile_report_append_target_resources_fields(
   const loom_target_residency_summary_t* summary =
       &resources->residency_summary;
   if (!loom_target_residency_summary_is_valid(summary)) {
+    if (iree_any_bit_set(
+            summary->flags,
+            LOOM_TARGET_RESIDENCY_SUMMARY_FLAG_INCOMPLETE_RESOURCE_COUNTS)) {
+      IREE_RETURN_IF_ERROR(iree_string_builder_append_cstring(
+          builder, " residency_incomplete_resource_counts=true"));
+    }
+    if (iree_any_bit_set(
+            summary->flags,
+            LOOM_TARGET_RESIDENCY_SUMMARY_FLAG_UNKNOWN_WORKGROUP_SIZE)) {
+      IREE_RETURN_IF_ERROR(iree_string_builder_append_cstring(
+          builder, " residency_unknown_workgroup_size=true"));
+    }
     return iree_ok_status();
   }
   IREE_RETURN_IF_ERROR(iree_string_builder_append_format(
@@ -482,6 +494,10 @@ static iree_status_t loom_target_compile_report_format_summary(
     IREE_RETURN_IF_ERROR(
         iree_string_builder_append_string(builder, IREE_SV("\n")));
   }
+
+  IREE_RETURN_IF_ERROR(
+      loom_target_compile_report_format_residency_constraints_text(report,
+                                                                   builder));
 
   if (iree_any_bit_set(report->detail_flags,
                        LOOM_TARGET_COMPILE_REPORT_DETAIL_MOVE_CAUSES)) {

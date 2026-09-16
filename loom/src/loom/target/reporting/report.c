@@ -27,6 +27,8 @@ void loom_target_compile_report_deinitialize(
   const iree_allocator_t allocator = report->allocator;
   loom_target_compile_report_row_list_deinitialize(allocator,
                                                    &report->entry_rows);
+  loom_target_compile_report_row_list_deinitialize(
+      allocator, &report->residency_constraint_rows);
   loom_target_compile_report_row_list_deinitialize(allocator,
                                                    &report->pressure_summaries);
   loom_target_compile_report_row_list_deinitialize(allocator,
@@ -91,6 +93,7 @@ void loom_target_compile_report_deinitialize(
 static bool loom_target_compile_report_has_rows(
     const loom_target_compile_report_t* report) {
   return report->pressure_rows.count != 0 || report->spill_rows.count != 0 ||
+         report->residency_constraint_rows.count != 0 ||
          report->pressure_summaries.count != 0 ||
          report->pressure_origin_rows.count != 0 ||
          report->schedule_band_rows.count != 0 ||
@@ -140,6 +143,7 @@ iree_status_t loom_target_compile_report_clone(
   loom_target_compile_report_t target = *source;
   target.allocator = allocator;
   target.entry_rows = (loom_target_compile_report_row_list_t){0};
+  target.residency_constraint_rows = (loom_target_compile_report_row_list_t){0};
   target.pressure_summaries = (loom_target_compile_report_row_list_t){0};
   target.pressure_rows = (loom_target_compile_report_row_list_t){0};
   target.pressure_origin_rows = (loom_target_compile_report_row_list_t){0};
@@ -189,6 +193,12 @@ iree_status_t loom_target_compile_report_clone(
   iree_status_t status = loom_target_compile_report_row_list_clone(
       &source->entry_rows, sizeof(loom_target_compile_report_entry_t),
       allocator, &target.entry_rows);
+  if (iree_status_is_ok(status)) {
+    status = loom_target_compile_report_row_list_clone(
+        &source->residency_constraint_rows,
+        sizeof(loom_target_compile_report_residency_constraint_row_t),
+        allocator, &target.residency_constraint_rows);
+  }
   if (iree_status_is_ok(status)) {
     status = loom_target_compile_report_row_list_clone(
         &source->pressure_summaries,
@@ -1436,6 +1446,11 @@ iree_status_t loom_target_compile_report_record_entry_report(
   loom_target_compile_report_merge_entry_summary(report, entry_report);
   IREE_RETURN_IF_ERROR(loom_target_compile_report_row_list_append(
       &report->entry_rows, sizeof(entry), report->allocator, &entry));
+  IREE_RETURN_IF_ERROR(loom_target_compile_report_row_list_append_all(
+      &report->residency_constraint_rows,
+      &entry_report->residency_constraint_rows,
+      sizeof(loom_target_compile_report_residency_constraint_row_t),
+      report->allocator));
   if (iree_any_bit_set(entry_report->detail_flags,
                        LOOM_TARGET_COMPILE_REPORT_DETAIL_PRESSURE_ROWS)) {
     IREE_RETURN_IF_ERROR(loom_target_compile_report_row_list_append_all(

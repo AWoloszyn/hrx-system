@@ -696,6 +696,26 @@ static iree_status_t loom_target_compile_report_format_residency_summary_json(
     loom_output_stream_t* stream) {
   loom_json_object_writer_t object;
   IREE_RETURN_IF_ERROR(loom_json_object_begin(stream, &object));
+  if (!loom_target_residency_summary_is_valid(summary)) {
+    IREE_RETURN_IF_ERROR(
+        loom_json_object_begin_field(&object, IREE_SV("unavailable_reasons")));
+    loom_json_array_writer_t reasons;
+    IREE_RETURN_IF_ERROR(loom_json_array_begin(stream, &reasons));
+    if (iree_any_bit_set(
+            summary->flags,
+            LOOM_TARGET_RESIDENCY_SUMMARY_FLAG_INCOMPLETE_RESOURCE_COUNTS)) {
+      IREE_RETURN_IF_ERROR(loom_json_array_write_string_element(
+          &reasons, IREE_SV("incomplete_resource_counts")));
+    }
+    if (iree_any_bit_set(
+            summary->flags,
+            LOOM_TARGET_RESIDENCY_SUMMARY_FLAG_UNKNOWN_WORKGROUP_SIZE)) {
+      IREE_RETURN_IF_ERROR(loom_json_array_write_string_element(
+          &reasons, IREE_SV("unknown_workgroup_size")));
+    }
+    IREE_RETURN_IF_ERROR(loom_json_array_end(&reasons));
+    return loom_json_object_end(&object);
+  }
   IREE_RETURN_IF_ERROR(loom_json_object_write_uint32_field(
       &object, IREE_SV("best_tier"), summary->best_tier));
   IREE_RETURN_IF_ERROR(loom_json_object_write_uint32_field(
@@ -782,7 +802,7 @@ static iree_status_t loom_target_compile_report_format_target_resources_json(
   IREE_RETURN_IF_ERROR(
       loom_target_compile_report_json_write_optional_string_field(
           &object, IREE_SV("limiting_resource"), resources->limiting_resource));
-  if (loom_target_residency_summary_is_valid(&resources->residency_summary)) {
+  if (resources->residency_summary.flags != 0) {
     IREE_RETURN_IF_ERROR(
         loom_json_object_begin_field(&object, IREE_SV("residency")));
     IREE_RETURN_IF_ERROR(
@@ -1519,6 +1539,15 @@ iree_status_t loom_target_compile_report_format_json(
       stream, report->status_code, iree_string_view_empty()));
   IREE_RETURN_IF_ERROR(loom_json_object_write_uint32_field(
       &object, IREE_SV("detail_flags"), report->detail_flags));
+  if (iree_any_bit_set(
+          report->detail_flags,
+          LOOM_TARGET_COMPILE_REPORT_DETAIL_RESIDENCY_CONSTRAINTS)) {
+    IREE_RETURN_IF_ERROR(loom_json_object_begin_field(
+        &object, IREE_SV("residency_constraints")));
+    IREE_RETURN_IF_ERROR(
+        loom_target_compile_report_format_residency_constraints_json(report,
+                                                                     stream));
+  }
   if (report->config_binding_rows.count != 0) {
     IREE_RETURN_IF_ERROR(
         loom_json_object_begin_field(&object, IREE_SV("config_bindings")));

@@ -606,6 +606,10 @@ void ExpectReplayEmission(const loomc_result_t* result, const char* selector,
                    LOOMC_ARTIFACT_FORMAT_COMPILE_REPORT_JSON);
   ASSERT_NE(report, nullptr);
   const std::string report_text = ToString(report->contents);
+  EXPECT_NE(report_text.find("\"residency_constraints\":{"), std::string::npos);
+  EXPECT_NE(
+      report_text.find("\"name\":\"amdgpu.lds\",\"kind\":\"pooled_resource\""),
+      std::string::npos);
   EXPECT_NE(
       report_text.find(std::string("\"namespace\":\"amdgpu\",\"key\":"
                                    "\"processor\",\"value_kind\":\"string\","
@@ -1600,6 +1604,21 @@ kernel.def @wave64_root() {
   ExpectReplayEmission(wave64_emit.get(), "gfx942",
                        "amdgcn-amd-amdhsa--gfx942:sramecc+:xnack-",
                        "[\"sramecc+\",\"xnack-\"]");
+
+  ResultPtr summary_emit = EmitModule(
+      replay_target_environment.get(), text_wave32_workspace.get(),
+      text_wave32.get(), LOOMC_AMDGPU_RUNTIME_GLOBAL_NONE,
+      LOOMC_ARTIFACT_MANIFEST_MODE_NONE, LOOMC_COMPILE_REPORT_MODE_SUMMARY);
+  ExpectSucceededResult(summary_emit.get());
+  const auto* summary_report =
+      FindArtifact(summary_emit.get(), LOOMC_ARTIFACT_KIND_REPORT,
+                   LOOMC_ARTIFACT_FORMAT_COMPILE_REPORT_JSON);
+  ASSERT_NE(summary_report, nullptr);
+  const std::string summary_text = ToString(summary_report->contents);
+  EXPECT_NE(summary_text.find("\"mode\":\"summary\""), std::string::npos);
+  EXPECT_NE(
+      summary_text.find("\"residency_constraints\":{\"count\":4,\"rows\":["),
+      std::string::npos);
 }
 
 TEST(AmdgpuTargetTest,

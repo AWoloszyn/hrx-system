@@ -33,6 +33,10 @@ iree_status_t loom_target_compile_report_json_write_optional_u64_field(
 iree_status_t loom_target_compile_report_json_write_optional_u32_field(
     loom_json_object_writer_t* object, iree_string_view_t name, uint32_t value);
 
+// Writes bounded final residency constraints, including unavailable facts.
+iree_status_t loom_target_compile_report_format_residency_constraints_json(
+    const loom_target_compile_report_t* report, loom_output_stream_t* stream);
+
 // Writes the canonical static instruction-mix object.
 iree_status_t loom_target_compile_report_format_instruction_mix_json(
     const loom_target_compile_report_static_instruction_mix_t* mix,

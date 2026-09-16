@@ -52,6 +52,7 @@ loom_cc_library(
         "memory_summary.c",
         "memory_summary.h",
         "report.c",
+        "residency.c",
         "row_list.c",
         "row_list.h",
         "target_insertion.c",
@@ -59,6 +60,7 @@ loom_cc_library(
     hdrs = [
         "loop_pipeline.h",
         "report.h",
+        "residency.h",
         "target_insertion.h",
     ],
     deps = [
@@ -84,6 +86,7 @@ loom_cc_library(
         "format_json_planning.c",
         "format_loop_pipeline.c",
         "format_loop_pipeline.h",
+        "format_residency.c",
         "format_text.c",
         "format_text.h",
         "format_text_lowering.c",
@@ -215,6 +218,7 @@ loom_cc_test(
         ":format",
         "//loom/src/loom/ir",
         "//loom/src/loom/target:math_policy",
+        "//runtime/src/iree/base/internal:arena",
         "//runtime/src/iree/base/internal:json",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",

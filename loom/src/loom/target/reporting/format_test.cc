@@ -8,6 +8,7 @@
 
 #include <stdint.h>
 
+#include "iree/base/internal/arena.h"
 #include "iree/base/internal/json.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
@@ -319,6 +320,174 @@ TEST(CompileReportFormatTest, EmitsOnlyValidResidencyEvidence) {
   output = iree_string_builder_view(&builder);
   EXPECT_EQ(iree_string_view_find(output, IREE_SV("\"residency\""), 0),
             IREE_STRING_VIEW_NPOS);
+  iree_string_builder_deinitialize(&builder);
+  loom_target_compile_report_deinitialize(&report);
+}
+
+TEST(CompileReportFormatTest, OwnsResidencyConstraintsAcrossMergeAndClone) {
+  loom_target_compile_report_t report = {};
+  loom_target_compile_report_initialize(&report, iree_allocator_system());
+  for (const auto* function_name : {"attention", "projection"}) {
+    iree_arena_block_pool_t pool;
+    iree_arena_block_pool_initialize(4096, iree_allocator_system(), &pool);
+    iree_arena_allocator_t arena;
+    iree_arena_initialize(&pool, &arena);
+    loom_target_residency_constraint_t* rows = nullptr;
+    IREE_ASSERT_OK(iree_arena_allocate_array(&arena, 2, sizeof(*rows),
+                                             reinterpret_cast<void**>(&rows)));
+    rows[0] = {};
+    rows[0].name = IREE_SVL("amdgpu.lds");
+    rows[0].kind = LOOM_TARGET_RESIDENCY_CONSTRAINT_POOLED_RESOURCE;
+    rows[0].flags =
+        LOOM_TARGET_RESIDENCY_CONSTRAINT_FLAG_HAS_USAGE |
+        LOOM_TARGET_RESIDENCY_CONSTRAINT_FLAG_HAS_TIER |
+        LOOM_TARGET_RESIDENCY_CONSTRAINT_FLAG_HAS_LIMITING_RELATION |
+        LOOM_TARGET_RESIDENCY_CONSTRAINT_FLAG_LIMITING |
+        LOOM_TARGET_RESIDENCY_CONSTRAINT_FLAG_HAS_REDUCTION;
+    rows[0].unit = IREE_SVL("bytes");
+    rows[0].allocation_scope = IREE_SVL("workgroup");
+    rows[0].pool_scope = IREE_SVL("occupancy domain");
+    rows[0].units = 15616;
+    rows[0].rounded_units = 15872;
+    rows[0].pool_units = 131072;
+    rows[0].allocation_granularity = 512;
+    rows[0].tier = 8;
+    rows[0].reduction_units_to_next_better_tier = 1280;
+    rows[1] = {};
+    rows[1].name = IREE_SVL("amdgpu.workgroup_slots");
+    rows[1].kind = LOOM_TARGET_RESIDENCY_CONSTRAINT_FIXED_LIMIT;
+    rows[1].flags = LOOM_TARGET_RESIDENCY_CONSTRAINT_FLAG_HAS_TIER |
+                    LOOM_TARGET_RESIDENCY_CONSTRAINT_FLAG_HAS_LIMITING_RELATION;
+    rows[1].tier = 16;
+    const loom_target_residency_constraint_list_t constraints = {rows, 2};
+    loom_target_compile_report_t entry = {};
+    loom_target_compile_report_initialize(&entry, iree_allocator_system());
+    entry.function_name = iree_make_cstring_view(function_name);
+    IREE_ASSERT_OK(loom_target_compile_report_record_residency_constraints(
+        &entry, &constraints));
+    iree_arena_deinitialize(&arena);
+    iree_arena_block_pool_deinitialize(&pool);
+    IREE_ASSERT_OK(
+        loom_target_compile_report_record_entry_report(&report, &entry));
+    loom_target_compile_report_deinitialize(&entry);
+  }
+  loom_target_compile_report_t clone = {};
+  IREE_ASSERT_OK(loom_target_compile_report_clone(
+      &report, iree_allocator_system(), &clone));
+  loom_target_compile_report_deinitialize(&report);
+  EXPECT_EQ(clone.residency_constraint_rows.count, 4u);
+  for (auto mode : {LOOM_TARGET_COMPILE_REPORT_FORMAT_MODE_SUMMARY,
+                    LOOM_TARGET_COMPILE_REPORT_FORMAT_MODE_DETAILS}) {
+    const loom_target_compile_report_format_options_t options = {mode};
+    iree_string_builder_t builder;
+    iree_string_builder_initialize(iree_allocator_system(), &builder);
+    loom_output_stream_t stream;
+    loom_output_stream_for_builder(&builder, &stream);
+    IREE_ASSERT_OK(
+        loom_target_compile_report_format_json(&clone, &options, &stream));
+    const auto root = ParseJsonDocument(iree_string_builder_view(&builder));
+    const auto inventory = LookupObject(root, IREE_SV("residency_constraints"));
+    ExpectObjectUint64Equals(inventory, IREE_SV("count"), 4);
+    const auto json_rows = LookupObject(inventory, IREE_SV("rows"));
+    for (iree_host_size_t i = 0; i < 4; ++i) {
+      const auto row = LookupArrayElement(json_rows, i);
+      ExpectObjectUint64Equals(row, IREE_SV("index"), i);
+      ExpectObjectValueEquals(
+          row, IREE_SV("function"),
+          i < 2 ? IREE_SV("attention") : IREE_SV("projection"));
+      if (i % 2 == 0) {
+        ExpectObjectValueEquals(row, IREE_SV("name"), IREE_SV("amdgpu.lds"));
+        ExpectObjectValueEquals(row, IREE_SV("unit"), IREE_SV("bytes"));
+        ExpectObjectValueEquals(row, IREE_SV("allocation_scope"),
+                                IREE_SV("workgroup"));
+        ExpectObjectValueEquals(row, IREE_SV("limiting"), IREE_SV("true"));
+        ExpectObjectUint64Equals(row, IREE_SV("units"), 15616);
+        ExpectObjectUint64Equals(row, IREE_SV("rounded_units"), 15872);
+        ExpectObjectUint64Equals(row, IREE_SV("pool_units"), 131072);
+        ExpectObjectUint64Equals(row, IREE_SV("allocation_granularity"), 512);
+        ExpectObjectUint64Equals(row, IREE_SV("independent_tier"), 8);
+        ExpectObjectUint64Equals(
+            row, IREE_SV("reduction_units_to_next_better_tier"), 1280);
+      } else {
+        ExpectObjectValueEquals(row, IREE_SV("kind"), IREE_SV("fixed_limit"));
+        ExpectObjectValueEquals(row, IREE_SV("limiting"), IREE_SV("false"));
+        ExpectObjectUint64Equals(row, IREE_SV("independent_tier"), 16);
+        EXPECT_EQ(iree_string_view_find(row, IREE_SV("\"units\""), 0),
+                  IREE_STRING_VIEW_NPOS);
+        EXPECT_EQ(
+            iree_string_view_find(
+                row, IREE_SV("\"reduction_units_to_next_better_tier\""), 0),
+            IREE_STRING_VIEW_NPOS);
+      }
+    }
+    iree_string_builder_deinitialize(&builder);
+    iree_string_builder_initialize(iree_allocator_system(), &builder);
+    IREE_ASSERT_OK(
+        loom_target_compile_report_format_text(&clone, &options, &builder));
+    EXPECT_NE(
+        iree_string_view_find(
+            iree_string_builder_view(&builder),
+            IREE_SV("units=15616 rounded_units=15872 independent_tier=8 "
+                    "limiting=true reduction_units_to_next_better_tier=1280"),
+            0),
+        IREE_STRING_VIEW_NPOS);
+    iree_string_builder_deinitialize(&builder);
+  }
+  loom_target_compile_report_deinitialize(&clone);
+}
+
+TEST(CompileReportFormatTest,
+     ExplainsUnavailableResidencyWithoutInventingFacts) {
+  loom_target_compile_report_t report = {};
+  loom_target_compile_report_initialize(&report, iree_allocator_system());
+  report.function_name = IREE_SVL("attention");
+  loom_target_compile_report_target_resources_t resources = {};
+  resources.residency_summary.flags =
+      LOOM_TARGET_RESIDENCY_SUMMARY_FLAG_INCOMPLETE_RESOURCE_COUNTS |
+      LOOM_TARGET_RESIDENCY_SUMMARY_FLAG_UNKNOWN_WORKGROUP_SIZE;
+  loom_target_compile_report_record_target_resources(&report, &resources);
+  loom_target_residency_constraint_t resource = {};
+  resource.name = IREE_SVL("amdgpu.vgpr_agpr");
+  resource.kind = LOOM_TARGET_RESIDENCY_CONSTRAINT_POOLED_RESOURCE;
+  resource.unit = IREE_SVL("registers");
+  resource.allocation_scope = IREE_SVL("subgroup");
+  resource.pool_scope = IREE_SVL("SIMD");
+  resource.pool_units = 512;
+  resource.allocation_granularity = 8;
+  const loom_target_residency_constraint_list_t constraints = {&resource, 1};
+  IREE_ASSERT_OK(loom_target_compile_report_record_residency_constraints(
+      &report, &constraints));
+  const loom_target_compile_report_format_options_t options = {
+      LOOM_TARGET_COMPILE_REPORT_FORMAT_MODE_SUMMARY};
+  iree_string_builder_t builder;
+  iree_string_builder_initialize(iree_allocator_system(), &builder);
+  loom_output_stream_t stream;
+  loom_output_stream_for_builder(&builder, &stream);
+  IREE_ASSERT_OK(
+      loom_target_compile_report_format_json(&report, &options, &stream));
+  const auto root = ParseJsonDocument(iree_string_builder_view(&builder));
+  const auto residency = LookupObject(
+      LookupObject(root, IREE_SV("target_resources")), IREE_SV("residency"));
+  const auto reasons = LookupObject(residency, IREE_SV("unavailable_reasons"));
+  EXPECT_NE(
+      iree_string_view_find(reasons, IREE_SV("incomplete_resource_counts"), 0),
+      IREE_STRING_VIEW_NPOS);
+  EXPECT_NE(
+      iree_string_view_find(reasons, IREE_SV("unknown_workgroup_size"), 0),
+      IREE_STRING_VIEW_NPOS);
+  EXPECT_EQ(iree_string_view_find(residency, IREE_SV("\"current_tier\""), 0),
+            IREE_STRING_VIEW_NPOS);
+  const auto row = LookupArrayElement(
+      LookupObject(LookupObject(root, IREE_SV("residency_constraints")),
+                   IREE_SV("rows")),
+      0);
+  ExpectObjectUint64Equals(row, IREE_SV("pool_units"), 512);
+  for (const char* field :
+       {"\"units\"", "\"rounded_units\"", "\"independent_tier\"",
+        "\"limiting\"", "\"reduction_units_to_next_better_tier\""}) {
+    EXPECT_EQ(iree_string_view_find(row, iree_make_cstring_view(field), 0),
+              IREE_STRING_VIEW_NPOS);
+  }
   iree_string_builder_deinitialize(&builder);
   loom_target_compile_report_deinitialize(&report);
 }

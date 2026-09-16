@@ -233,12 +233,17 @@ enum loom_target_residency_summary_flag_bits_e {
   // The unique limiting resource has a modeled next-worse cliff.
   LOOM_TARGET_RESIDENCY_SUMMARY_FLAG_HAS_LIMITING_RESOURCE_NEXT_WORSE_TIER =
       1u << 3,
+  // Final metadata does not supply every resource count required by the model.
+  LOOM_TARGET_RESIDENCY_SUMMARY_FLAG_INCOMPLETE_RESOURCE_COUNTS = 1u << 4,
+  // The fixed workgroup size required for launch accounting is unavailable.
+  LOOM_TARGET_RESIDENCY_SUMMARY_FLAG_UNKNOWN_WORKGROUP_SIZE = 1u << 5,
 };
 
 // Compact target-owned summary retained after a full residency query expires.
 //
-// Targets populate this only from exact final resource and launch facts. A
-// zeroed summary is unavailable and must not be presented as target guidance.
+// Valid summaries require exact final resource and launch facts. Invalid
+// summaries can retain reasons for unavailable guidance, but their
+// numeric transition fields must not be presented as exact target facts.
 // Per-resource distances are retained only for a unique limiting resource;
 // reductions across multiple resources may use incomparable units.
 typedef struct loom_target_residency_summary_t {
@@ -267,6 +272,72 @@ typedef struct loom_target_residency_summary_t {
   // Additional limiting-resource units available before the next-worse cliff.
   uint64_t limiting_resource_additional_units_to_next_worse_tier;
 } loom_target_residency_summary_t;
+
+// How an individual constraint participates in the target residency model.
+typedef enum loom_target_residency_constraint_kind_e {
+  // A rounded footprint consumes a pool shared by resident execution units.
+  LOOM_TARGET_RESIDENCY_CONSTRAINT_POOLED_RESOURCE = 0,
+  // The footprint is recorded but imposes no independent residency limit.
+  LOOM_TARGET_RESIDENCY_CONSTRAINT_UNCONSTRAINED_RESOURCE = 1,
+  // A fixed execution shape imposes a ceiling, not a reducible footprint.
+  LOOM_TARGET_RESIDENCY_CONSTRAINT_FIXED_LIMIT = 2,
+} loom_target_residency_constraint_kind_t;
+
+// Availability and transition facts for one retained residency constraint.
+typedef uint32_t loom_target_residency_constraint_flags_t;
+enum loom_target_residency_constraint_flag_bits_e {
+  // The final resource footprint and its rounded allocation are known.
+  LOOM_TARGET_RESIDENCY_CONSTRAINT_FLAG_HAS_USAGE = 1u << 0,
+  // The independent ceiling from this constraint is known.
+  LOOM_TARGET_RESIDENCY_CONSTRAINT_FLAG_HAS_TIER = 1u << 1,
+  // Complete final facts establish whether this constraint is limiting.
+  LOOM_TARGET_RESIDENCY_CONSTRAINT_FLAG_HAS_LIMITING_RELATION = 1u << 2,
+  // This constraint attains the current tier below the hardware ceiling.
+  LOOM_TARGET_RESIDENCY_CONSTRAINT_FLAG_LIMITING = 1u << 3,
+  // The footprint reduction is required for the summary's next better tier.
+  LOOM_TARGET_RESIDENCY_CONSTRAINT_FLAG_HAS_REDUCTION = 1u << 4,
+};
+
+// Target-owned final resource facts retained for reporting. Units, scopes and
+// names borrow stable target strings; numeric facts are copied by value.
+// Independent ceilings and joint transitions are different: a nonlimiting
+// resource can cap the next tier without requiring a footprint reduction.
+typedef struct loom_target_residency_constraint_t {
+  // Stable resource or fixed-ceiling name.
+  iree_string_view_t name;
+  // Contribution of this constraint to the target model.
+  loom_target_residency_constraint_kind_t kind;
+  // Availability and limiting-relation bits.
+  loom_target_residency_constraint_flags_t flags;
+  // Footprint unit, such as "registers" or "bytes"; empty for fixed limits.
+  iree_string_view_t unit;
+  // Execution scope owning one footprint, such as "subgroup" or "workgroup".
+  iree_string_view_t allocation_scope;
+  // Execution scope sharing the pool, such as "SIMD" or "occupancy domain".
+  iree_string_view_t pool_scope;
+  // Final unrounded footprint, when HAS_USAGE is set.
+  uint64_t units;
+  // Footprint after target allocation rounding, when HAS_USAGE is set.
+  uint64_t rounded_units;
+  // Pool capacity in |unit| shared within |pool_scope|.
+  uint64_t pool_units;
+  // Allocation rounding granularity in |unit|.
+  uint32_t allocation_granularity;
+  // Independent modeled ceiling, when HAS_TIER is set.
+  uint32_t tier;
+  // Reduction required alongside all other limiting resources' reductions,
+  // when HAS_REDUCTION is set. Fixed limits never provide this field.
+  uint64_t reduction_units_to_next_better_tier;
+} loom_target_residency_constraint_t;
+
+// Optional inventory produced with final resource accounting. The caller owns
+// the backing arena and must copy rows before releasing that arena.
+typedef struct loom_target_residency_constraint_list_t {
+  // Contiguous constraint rows in target-defined order.
+  const loom_target_residency_constraint_t* rows;
+  // Number of entries in |rows|.
+  iree_host_size_t count;
+} loom_target_residency_constraint_list_t;
 
 // Returns true when |summary| was derived from complete target-owned facts.
 static inline bool loom_target_residency_summary_is_valid(
