@@ -1017,3 +1017,60 @@ func.def @closed_signature_carrier() {
 func.def @closed_signature_carrier() {
   func.return
 }
+
+// ====
+// RUN: verify
+
+// Incoming attribute edges and nested argument types all belong to the closed
+// unreachable subtree. Nested and sibling regions share the removed width.
+func.def @closed_nested_references(%element: f32) {
+  cfg.br ^exit
+^unused:
+  %width = index.constant 16 : index
+  %input = test.constant 0.0 : vector<[%width]xf32>
+  test.block_args %input : vector<[%width]xf32> do(%outer: vector<[%width]xf32>) {
+    %annotated = test.attrs %element {shape = #test.options<mode = fast, element_type = vector<[%width]xf32>>} : f32
+    test.block_args %outer : vector<[%width]xf32> do(%inner: vector<[%width]xf32>) {
+      %c0 = index.constant 0 : index
+      %bounded = index.assume %c0 [lt(%c0, %width)] : index
+      test.yield
+    }
+    test.yield
+  }
+  test.block_args %input : vector<[%width]xf32> do(%sibling: vector<[%width]xf32>) {
+    test.yield
+  }
+  cfg.br ^exit
+^exit:
+  func.return
+}
+
+// ====
+// RUN: pass cfg-simplify
+
+func.def @closed_nested_references(%element: f32) {
+  cfg.br ^exit
+^unused:
+  %width = index.constant 16 : index
+  %input = test.constant 0.0 : vector<[%width]xf32>
+  test.block_args %input : vector<[%width]xf32> do(%outer: vector<[%width]xf32>) {
+    %annotated = test.attrs %element {shape = #test.options<mode = fast, element_type = vector<[%width]xf32>>} : f32
+    test.block_args %outer : vector<[%width]xf32> do(%inner: vector<[%width]xf32>) {
+      %c0 = index.constant 0 : index
+      %bounded = index.assume %c0 [lt(%c0, %width)] : index
+      test.yield
+    }
+    test.yield
+  }
+  test.block_args %input : vector<[%width]xf32> do(%sibling: vector<[%width]xf32>) {
+    test.yield
+  }
+  cfg.br ^exit
+^exit:
+  func.return
+}
+
+// ----
+func.def @closed_nested_references(%element: f32) {
+  func.return
+}

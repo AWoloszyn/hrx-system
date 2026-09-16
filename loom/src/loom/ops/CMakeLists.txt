@@ -24,6 +24,7 @@ loom_cc_library(
     iree::base
     iree::base::internal::arena
     loom::ir
+    loom::util::adaptive_sort
     loom::util::bstring
   PUBLIC
 )
@@ -40,6 +41,7 @@ loom_cc_test(
     iree::testing::gtest_main
     loom::ir
     loom::ops::kernel
+    loom::ops::test
 )
 
 loom_cc_library(

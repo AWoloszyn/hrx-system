@@ -709,7 +709,7 @@ TEST_F(ModuleTest, RegionRemoveBlocksCompactsAndDropsClosedUses) {
   uint16_t removed_count = 0;
   IREE_ASSERT_OK(loom_region_remove_blocks(module, body, remove_blocks,
                                            IREE_ARRAYSIZE(remove_blocks),
-                                           &removed_count));
+                                           &module->arena, &removed_count));
 
   EXPECT_EQ(removed_count, 1u);
   EXPECT_EQ(body->block_count, 2u);
@@ -745,18 +745,16 @@ TEST_F(ModuleTest, RegionRemoveBlocksRejectsKeptSuccessor) {
   loom_builder_initialize(module, &module->arena, loom_region_entry_block(body),
                           &builder);
   loom_op_t* branch = NULL;
-  IREE_ASSERT_OK(loom_builder_allocate_op_with_successors(
-      &builder, LOOM_OP_TEST_YIELD, 0, 0, 1, 0, 0, 0, LOOM_LOCATION_UNKNOWN,
-      &branch));
-  loom_op_successors(branch)[0] = dead_block;
-  IREE_ASSERT_OK(loom_builder_finalize_op(&builder, branch));
+  IREE_ASSERT_OK(
+      loom_test_br_build(&builder, dead_block, LOOM_LOCATION_UNKNOWN, &branch));
 
   bool remove_blocks[] = {false, true};
   uint16_t removed_count = 0;
   IREE_EXPECT_STATUS_IS(
       IREE_STATUS_FAILED_PRECONDITION,
       loom_region_remove_blocks(module, body, remove_blocks,
-                                IREE_ARRAYSIZE(remove_blocks), &removed_count));
+                                IREE_ARRAYSIZE(remove_blocks), &module->arena,
+                                &removed_count));
   EXPECT_EQ(removed_count, 0u);
   EXPECT_EQ(body->block_count, 2u);
   EXPECT_EQ(dead_block->parent_region, body);
@@ -790,7 +788,8 @@ TEST_F(ModuleTest, RegionRemoveBlocksRejectsExternalUse) {
   IREE_EXPECT_STATUS_IS(
       IREE_STATUS_FAILED_PRECONDITION,
       loom_region_remove_blocks(module, body, remove_blocks,
-                                IREE_ARRAYSIZE(remove_blocks), &removed_count));
+                                IREE_ARRAYSIZE(remove_blocks), &module->arena,
+                                &removed_count));
   EXPECT_EQ(removed_count, 0u);
   EXPECT_EQ(body->block_count, 2u);
   EXPECT_EQ(constant->flags & LOOM_OP_FLAG_DEAD, 0u);

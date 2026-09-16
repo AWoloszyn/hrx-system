@@ -12,6 +12,7 @@
 #include "iree/base/internal/arena.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
+#include "loom/util/adaptive_sort.h"
 
 //===----------------------------------------------------------------------===//
 // Keyword B-string table
@@ -2361,91 +2362,106 @@ iree_status_t loom_op_erase(loom_module_t* module, loom_op_t* op) {
 // Region block removal
 //===----------------------------------------------------------------------===//
 
-static iree_host_size_t loom_region_find_block_index(
-    const loom_region_t* region, const loom_block_t* block) {
-  uint16_t block_index = 0;
-  if (!loom_region_try_block_index(region, block, &block_index)) {
-    return IREE_HOST_SIZE_MAX;
-  }
-  return block_index;
-}
+// Root blocks already have dense ordinals. Only nested removed blocks need an
+// index, shared by every closure query instead of searching subtrees per edge.
+typedef struct loom_region_removal_scope_t {
+  // Region whose root block table remains unchanged until validation succeeds.
+  const loom_region_t* region;
+  // Borrowed removal mask indexed by root block ordinal.
+  const bool* remove_blocks;
+  // Scratch index of removed nested blocks, sorted before closure validation.
+  struct {
+    // Arena-owned addresses, compared as integers rather than unrelated
+    // pointers.
+    uintptr_t* addresses;
+    // Number of populated block addresses.
+    iree_host_size_t count;
+    // Allocated address capacity, grown geometrically during collection.
+    iree_host_size_t capacity;
+  } nested_blocks;
+} loom_region_removal_scope_t;
 
-static bool loom_region_remove_index_selected(const bool* remove_blocks,
-                                              iree_host_size_t block_index) {
-  return block_index != IREE_HOST_SIZE_MAX && remove_blocks[block_index];
+static bool loom_region_removal_block_less(const uintptr_t* lhs,
+                                           const uintptr_t* rhs) {
+  return *lhs < *rhs;
 }
+LOOM_DEFINE_ADAPTIVE_SORT(loom_region_removal_sort_blocks, uintptr_t,
+                          loom_region_removal_block_less)
 
-static bool loom_region_remove_op_is_removed(const loom_region_t* region,
-                                             const bool* remove_blocks,
-                                             const loom_op_t* op) {
-  for (const loom_op_t* current = op; current; current = current->parent_op) {
-    const loom_block_t* block = current->parent_block;
-    if (!block || block->parent_region != region) continue;
-    return loom_region_remove_index_selected(
-        remove_blocks, loom_region_find_block_index(region, block));
-  }
-  return false;
-}
-
-static bool loom_region_remove_op_subtree_contains_block(
-    const loom_op_t* op, const loom_block_t* target_block) {
+static iree_status_t loom_region_removal_collect_op(
+    const loom_op_t* op, loom_region_removal_scope_t* scope,
+    iree_arena_allocator_t* scratch_arena) {
   loom_region_t** regions = loom_op_regions(op);
   for (uint8_t region_index = 0; region_index < op->region_count;
        ++region_index) {
     loom_region_t* nested_region = regions[region_index];
-    if (!nested_region) continue;
+    if (!nested_region) {
+      continue;
+    }
     loom_block_t* nested_block = NULL;
     loom_region_for_each_block(nested_region, nested_block) {
-      if (nested_block == target_block) return true;
+      if (scope->nested_blocks.count == scope->nested_blocks.capacity) {
+        IREE_RETURN_IF_ERROR(
+            iree_arena_grow_array(scratch_arena, scope->nested_blocks.count,
+                                  iree_max(scope->nested_blocks.count + 1, 8),
+                                  sizeof(*scope->nested_blocks.addresses),
+                                  &scope->nested_blocks.capacity,
+                                  (void**)&scope->nested_blocks.addresses));
+      }
+      scope->nested_blocks.addresses[scope->nested_blocks.count++] =
+          (uintptr_t)nested_block;
       loom_op_t* child_op = NULL;
       loom_block_for_each_op(nested_block, child_op) {
-        if (loom_region_remove_op_subtree_contains_block(child_op,
-                                                         target_block)) {
-          return true;
-        }
+        IREE_RETURN_IF_ERROR(
+            loom_region_removal_collect_op(child_op, scope, scratch_arena));
       }
     }
   }
-  return false;
+  return iree_ok_status();
 }
 
-static bool loom_region_remove_block_is_removed(const loom_region_t* region,
-                                                const bool* remove_blocks,
-                                                const loom_block_t* block) {
-  if (!region || !block) return false;
-  if (block->parent_region == region) {
-    return loom_region_remove_index_selected(
-        remove_blocks, loom_region_find_block_index(region, block));
+static bool loom_region_remove_block_is_removed(
+    const loom_region_removal_scope_t* scope, const loom_block_t* block) {
+  if (!block) {
+    return false;
   }
-  for (uint16_t i = 0; i < region->block_count; ++i) {
-    if (!remove_blocks[i]) continue;
-    loom_block_t* removed_block = region->blocks[i];
-    if (!removed_block) continue;
-    loom_op_t* op = NULL;
-    loom_block_for_each_op(removed_block, op) {
-      if (loom_region_remove_op_subtree_contains_block(op, block)) return true;
+  if (block->parent_region == scope->region) {
+    return scope->remove_blocks[loom_block_region_index(block)];
+  }
+  const uintptr_t address = (uintptr_t)block;
+  iree_host_size_t begin = 0;
+  iree_host_size_t end = scope->nested_blocks.count;
+  while (begin < end) {
+    const iree_host_size_t middle = begin + (end - begin) / 2;
+    if (scope->nested_blocks.addresses[middle] < address) {
+      begin = middle + 1;
+    } else {
+      end = middle;
     }
   }
-  return false;
+  return begin < scope->nested_blocks.count &&
+         scope->nested_blocks.addresses[begin] == address;
 }
 
-static bool loom_region_remove_value_is_removed(const loom_module_t* module,
-                                                const loom_region_t* region,
-                                                const bool* remove_blocks,
-                                                loom_value_id_t value_id) {
-  if (value_id >= module->values.count) return false;
+static bool loom_region_remove_op_is_removed(
+    const loom_region_removal_scope_t* scope, const loom_op_t* op) {
+  return op && loom_region_remove_block_is_removed(scope, op->parent_block);
+}
+
+static bool loom_region_remove_value_is_removed(
+    const loom_module_t* module, const loom_region_removal_scope_t* scope,
+    loom_value_id_t value_id) {
   const loom_value_t* value = loom_module_value(module, value_id);
   if (loom_value_is_block_arg(value)) {
-    return loom_region_remove_block_is_removed(region, remove_blocks,
+    return loom_region_remove_block_is_removed(scope,
                                                loom_value_def_block(value));
   }
-  return loom_region_remove_op_is_removed(region, remove_blocks,
-                                          loom_value_owner_op(value));
+  return loom_region_remove_op_is_removed(scope, loom_value_owner_op(value));
 }
 
 static iree_status_t loom_region_remove_verify_value_uses(
-    const loom_module_t* module, const loom_region_t* region,
-    const bool* remove_blocks, loom_value_id_t value_id) {
+    const loom_module_t* module, const loom_region_removal_scope_t* scope,
+    loom_value_id_t value_id) {
   if (value_id == LOOM_VALUE_ID_INVALID || value_id >= module->values.count) {
     return iree_ok_status();
   }
@@ -2454,7 +2470,7 @@ static iree_status_t loom_region_remove_verify_value_uses(
   const loom_use_t* uses = loom_value_uses(value);
   for (uint32_t i = 0; i < value->use_count; ++i) {
     const loom_op_t* user_op = loom_use_user_op(uses[i]);
-    if (!loom_region_remove_op_is_removed(region, remove_blocks, user_op)) {
+    if (!loom_region_remove_op_is_removed(scope, user_op)) {
       return iree_make_status(
           IREE_STATUS_FAILED_PRECONDITION,
           "cannot remove block set: value %%%u has an operand use outside "
@@ -2467,7 +2483,7 @@ static iree_status_t loom_region_remove_verify_value_uses(
       loom_module_value_first_incoming_type_use(module, value_id);
   while (use_id != LOOM_TYPE_USE_ID_INVALID) {
     const loom_type_use_t* type_use = &module->type_uses.records[use_id];
-    if (!loom_region_remove_value_is_removed(module, region, remove_blocks,
+    if (!loom_region_remove_value_is_removed(module, scope,
                                              type_use->user_value_id)) {
       return iree_make_status(
           IREE_STATUS_FAILED_PRECONDITION,
@@ -2477,27 +2493,58 @@ static iree_status_t loom_region_remove_verify_value_uses(
     }
     use_id = type_use->next_incoming_use_id;
   }
+
+  if (loom_value_has_attribute_uses(value)) {
+    const loom_value_attribute_use_heads_t* heads =
+        loom_module_value_attribute_use_heads(module, value_id);
+    const loom_attribute_use_id_t first_uses[] = {heads->type,
+                                                  heads->predicate};
+    for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(first_uses); ++i) {
+      for (loom_attribute_use_id_t attribute_use_id = first_uses[i];
+           attribute_use_id;) {
+        const loom_attribute_use_t* use =
+            &module->attribute_uses.records[attribute_use_id - 1];
+        if (!loom_region_remove_op_is_removed(scope, use->op)) {
+          return iree_make_status(
+              IREE_STATUS_FAILED_PRECONDITION,
+              "cannot remove block set: value %%%u has an attribute use "
+              "outside the removed blocks",
+              (unsigned)value_id);
+        }
+        attribute_use_id = use->next_incoming;
+      }
+    }
+  }
   return iree_ok_status();
 }
 
 static iree_status_t loom_region_remove_verify_block_arg_values(
-    const loom_module_t* module, const loom_region_t* region,
-    const bool* remove_blocks, const loom_block_t* block) {
+    const loom_module_t* module, const loom_region_removal_scope_t* scope,
+    const loom_block_t* block) {
   for (uint16_t arg_index = 0; arg_index < block->arg_count; ++arg_index) {
     IREE_RETURN_IF_ERROR(loom_region_remove_verify_value_uses(
-        module, region, remove_blocks, loom_block_arg_id(block, arg_index)));
+        module, scope, loom_block_arg_id(block, arg_index)));
   }
   return iree_ok_status();
 }
 
 static iree_status_t loom_region_remove_verify_op_values(
-    const loom_module_t* module, const loom_region_t* region,
-    const bool* remove_blocks, const loom_op_t* op) {
+    const loom_module_t* module, const loom_region_removal_scope_t* scope,
+    const loom_op_t* op) {
   const loom_value_id_t* results = loom_op_const_results(op);
   for (uint16_t result_index = 0; result_index < op->result_count;
        ++result_index) {
     IREE_RETURN_IF_ERROR(loom_region_remove_verify_value_uses(
-        module, region, remove_blocks, results[result_index]));
+        module, scope, results[result_index]));
+  }
+  if (op->operand_count > 0 &&
+      iree_any_bit_set(op->traits, LOOM_TRAIT_SYMBOL_DEFINE) &&
+      loom_op_vtable_owns_operands(loom_op_vtable(module, op))) {
+    const loom_value_id_t* arguments = loom_op_const_operands(op);
+    for (uint16_t i = 0; i < op->operand_count; ++i) {
+      IREE_RETURN_IF_ERROR(
+          loom_region_remove_verify_value_uses(module, scope, arguments[i]));
+    }
   }
 
   loom_region_t** nested_regions = loom_op_regions(op);
@@ -2508,11 +2555,11 @@ static iree_status_t loom_region_remove_verify_op_values(
     loom_block_t* nested_block = NULL;
     loom_region_for_each_block(nested_region, nested_block) {
       IREE_RETURN_IF_ERROR(loom_region_remove_verify_block_arg_values(
-          module, region, remove_blocks, nested_block));
+          module, scope, nested_block));
       loom_op_t* child_op = NULL;
       loom_block_for_each_op(nested_block, child_op) {
-        IREE_RETURN_IF_ERROR(loom_region_remove_verify_op_values(
-            module, region, remove_blocks, child_op));
+        IREE_RETURN_IF_ERROR(
+            loom_region_remove_verify_op_values(module, scope, child_op));
       }
     }
   }
@@ -2520,30 +2567,29 @@ static iree_status_t loom_region_remove_verify_op_values(
 }
 
 static iree_status_t loom_region_remove_verify_removed_values(
-    const loom_module_t* module, const loom_region_t* region,
-    const bool* remove_blocks) {
+    const loom_module_t* module, const loom_region_removal_scope_t* scope) {
+  const loom_region_t* region = scope->region;
   for (uint16_t block_index = 0; block_index < region->block_count;
        ++block_index) {
-    if (!remove_blocks[block_index]) continue;
+    if (!scope->remove_blocks[block_index]) continue;
     const loom_block_t* block = region->blocks[block_index];
-    IREE_RETURN_IF_ERROR(loom_region_remove_verify_block_arg_values(
-        module, region, remove_blocks, block));
+    IREE_RETURN_IF_ERROR(
+        loom_region_remove_verify_block_arg_values(module, scope, block));
     const loom_op_t* op = NULL;
     loom_block_for_each_op(block, op) {
-      IREE_RETURN_IF_ERROR(loom_region_remove_verify_op_values(
-          module, region, remove_blocks, op));
+      IREE_RETURN_IF_ERROR(
+          loom_region_remove_verify_op_values(module, scope, op));
     }
   }
   return iree_ok_status();
 }
 
 static iree_status_t loom_region_remove_verify_kept_op_successors(
-    const loom_region_t* region, const bool* remove_blocks,
-    const loom_op_t* op) {
+    const loom_region_removal_scope_t* scope, const loom_op_t* op) {
   loom_block_t* const* successors = loom_op_const_successors(op);
   for (uint8_t successor_index = 0; successor_index < op->successor_count;
        ++successor_index) {
-    if (loom_region_remove_block_is_removed(region, remove_blocks,
+    if (loom_region_remove_block_is_removed(scope,
                                             successors[successor_index])) {
       return iree_make_status(
           IREE_STATUS_FAILED_PRECONDITION,
@@ -2561,8 +2607,8 @@ static iree_status_t loom_region_remove_verify_kept_op_successors(
     loom_region_for_each_block(nested_region, nested_block) {
       loom_op_t* child_op = NULL;
       loom_block_for_each_op(nested_block, child_op) {
-        IREE_RETURN_IF_ERROR(loom_region_remove_verify_kept_op_successors(
-            region, remove_blocks, child_op));
+        IREE_RETURN_IF_ERROR(
+            loom_region_remove_verify_kept_op_successors(scope, child_op));
       }
     }
   }
@@ -2570,15 +2616,16 @@ static iree_status_t loom_region_remove_verify_kept_op_successors(
 }
 
 static iree_status_t loom_region_remove_verify_successor_closure(
-    const loom_region_t* region, const bool* remove_blocks) {
+    const loom_region_removal_scope_t* scope) {
+  const loom_region_t* region = scope->region;
   for (uint16_t block_index = 0; block_index < region->block_count;
        ++block_index) {
-    if (remove_blocks[block_index]) continue;
+    if (scope->remove_blocks[block_index]) continue;
     const loom_block_t* block = region->blocks[block_index];
     const loom_op_t* op = NULL;
     loom_block_for_each_op(block, op) {
-      IREE_RETURN_IF_ERROR(loom_region_remove_verify_kept_op_successors(
-          region, remove_blocks, op));
+      IREE_RETURN_IF_ERROR(
+          loom_region_remove_verify_kept_op_successors(scope, op));
     }
   }
   return iree_ok_status();
@@ -2588,6 +2635,7 @@ iree_status_t loom_region_remove_blocks(loom_module_t* module,
                                         loom_region_t* region,
                                         const bool* remove_blocks,
                                         uint16_t remove_block_count,
+                                        iree_arena_allocator_t* scratch_arena,
                                         uint16_t* out_removed_count) {
   *out_removed_count = 0;
   if (remove_block_count != region->block_count) {
@@ -2614,10 +2662,24 @@ iree_status_t loom_region_remove_blocks(loom_module_t* module,
   }
   if (removed_count == 0) return iree_ok_status();
 
+  loom_region_removal_scope_t scope = {0};
+  scope.region = region;
+  scope.remove_blocks = remove_blocks;
+  for (uint16_t i = 0; i < region->block_count; ++i) {
+    if (!remove_blocks[i]) {
+      continue;
+    }
+    const loom_op_t* op = NULL;
+    loom_block_for_each_op(region->blocks[i], op) {
+      IREE_RETURN_IF_ERROR(
+          loom_region_removal_collect_op(op, &scope, scratch_arena));
+    }
+  }
+  loom_region_removal_sort_blocks(scope.nested_blocks.addresses,
+                                  scope.nested_blocks.count);
+  IREE_RETURN_IF_ERROR(loom_region_remove_verify_successor_closure(&scope));
   IREE_RETURN_IF_ERROR(
-      loom_region_remove_verify_successor_closure(region, remove_blocks));
-  IREE_RETURN_IF_ERROR(
-      loom_region_remove_verify_removed_values(module, region, remove_blocks));
+      loom_region_remove_verify_removed_values(module, &scope));
 
   for (uint16_t block_index = 0; block_index < region->block_count;
        ++block_index) {

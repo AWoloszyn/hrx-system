@@ -2125,9 +2125,14 @@ iree_status_t loom_op_erase(loom_module_t* module, loom_op_t* op);
 // |remove_blocks| must contain exactly |remove_block_count| entries, one per
 // current block index in |region|. Entry block removal is rejected. Any kept op
 // successor targeting a removed block is rejected. Values defined by removed
-// block arguments or removed op subtrees may only have operand and type uses
-// inside the removed set; callers must retarget or replace external uses before
-// removing blocks.
+// block arguments or removed op subtrees may only have operand, type and
+// attribute uses inside the removed set; callers must retarget or replace
+// external uses before removing blocks. Closure and scratch-allocation failures
+// leave IR unchanged and |out_removed_count| zero.
+//
+// Uses O(B) space in |scratch_arena| to index B removed nested blocks; flat
+// block sets allocate no scratch. Validation is O(S + (B + E) log(B + 2)) for
+// S inspected IR nodes/value slots and E incoming references/successors.
 //
 // Removed block/op/value objects remain arena-owned for diagnostics, but the
 // blocks are detached from the region, their operations are marked dead, and
@@ -2136,6 +2141,7 @@ iree_status_t loom_region_remove_blocks(loom_module_t* module,
                                         loom_region_t* region,
                                         const bool* remove_blocks,
                                         uint16_t remove_block_count,
+                                        iree_arena_allocator_t* scratch_arena,
                                         uint16_t* out_removed_count);
 
 //===----------------------------------------------------------------------===//
