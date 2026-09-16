@@ -43,13 +43,6 @@ iree_status_t loom_module_replace_value_type_uses(loom_module_t* module,
                                                   loom_value_id_t old_id,
                                                   loom_value_id_t new_id);
 
-// Returns true if |value_id| is referenced by a predicate-list attribute on a
-// live operation, including predicates nested in aggregate attributes. Uses
-// inside type-valued attributes are excluded. This query reads the retained
-// incoming head.
-bool loom_module_value_has_predicate_attribute_uses(const loom_module_t* module,
-                                                    loom_value_id_t value_id);
-
 // Walks SSA value references embedded in |attr|. Type-valued attributes are
 // resolved through |module| and aggregate attributes are visited in structural
 // order. References are not deduplicated.

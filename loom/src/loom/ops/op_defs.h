@@ -1086,9 +1086,9 @@ bool loom_op_may_write(const loom_module_t* module, const loom_op_t* op);
 bool loom_op_regions_have_hints(const loom_module_t* module,
                                 const loom_op_t* op);
 
-// Returns true if every result of |op| has zero operand uses, no live
-// attribute uses, and no external value type references. Type references
-// carried by another result of |op| do not keep the whole op alive.
+// Returns true if every result of |op| has zero operand uses and no attribute
+// or value type references from outside |op|. References carried by |op|'s
+// own attributes or result types do not keep the whole op alive.
 bool loom_op_results_unused(const loom_module_t* module, const loom_op_t* op);
 
 // Returns true if |op| is trivially dead: it has results, does not
@@ -2100,8 +2100,8 @@ iree_status_t loom_builder_allocate_segmented_op_with_successors(
 // storage in-place.
 //
 // |remove_results| has one entry per current result. Removed result values must
-// have no operand uses and no incoming type uses. Dropped values remain in the
-// module value table but no longer carry defining-op identity or outgoing
+// have no operand, attribute, or incoming type uses. Dropped values remain in
+// the module value table but no longer carry defining-op identity or outgoing
 // type-use records. Kept result values keep their IDs and receive updated
 // definition indices. Tied results targeting removed result slots are rejected;
 // kept tied result indices are remapped.
@@ -2111,12 +2111,12 @@ iree_status_t loom_op_remove_results(loom_module_t* module, loom_op_t* op,
                                      uint16_t* out_removed_count);
 
 // Erases an op: removes all use records for the op's operands, verifies
-// that every result has no operand uses or external type uses (caller must
-// RAUW results first), drops type-use records carried by result and nested
-// block-argument types, then marks the op dead. Dead ops are skipped by
-// enumeration macros and will not be serialized. The memory is not freed
-// (arena-owned). Returns
-// IREE_STATUS_FAILED_PRECONDITION if any result still has uses.
+// that every result has no operand uses or attribute/type uses from outside
+// the op (caller must RAUW results first), drops type-use records carried by
+// result and nested block-argument types, then marks the op dead. Dead ops are
+// skipped by enumeration macros and will not be serialized. The memory is not
+// freed (arena-owned). Returns IREE_STATUS_FAILED_PRECONDITION if any result
+// still has uses.
 iree_status_t loom_op_erase(loom_module_t* module, loom_op_t* op);
 
 // Removes a closed set of non-entry blocks from |region| and compacts the

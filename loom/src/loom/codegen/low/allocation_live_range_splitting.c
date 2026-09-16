@@ -566,8 +566,7 @@ static iree_status_t loom_low_allocation_try_split_fixed_value(
   }
 
   const loom_value_t* value = loom_module_value(module, value_id);
-  if (loom_value_is_consumed(value) ||
-      loom_module_value_has_predicate_attribute_uses(module, value_id) ||
+  if (loom_value_is_consumed(value) || loom_value_has_attribute_uses(value) ||
       loom_module_value_has_type_uses(module, value_id) ||
       value->use_count == 0 ||
       loom_low_allocation_fixed_value_has_only_split_transfer_use(value)) {

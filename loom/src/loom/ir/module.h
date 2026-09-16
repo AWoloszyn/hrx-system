@@ -658,11 +658,11 @@ iree_status_t loom_block_insert_arg(loom_module_t* module, loom_block_t* block,
 // Removes an unused block argument and compacts following argument slots.
 //
 // |arg_index| must identify a live argument of |block|. The removed value must
-// have no operand uses and no incoming type uses; callers must replace or drop
-// all references before changing the block signature. The removed value remains
-// in the module value table but no longer carries block-argument identity or
-// outgoing type-use records. Following block arguments keep their value IDs and
-// receive updated definition indices.
+// have no operand, attribute, or incoming type uses; callers must replace or
+// drop all references before changing the block signature. The removed value
+// remains in the module value table but no longer carries block-argument
+// identity or outgoing type-use records. Following block arguments keep their
+// value IDs and receive updated definition indices.
 iree_status_t loom_block_remove_arg(loom_module_t* module, loom_block_t* block,
                                     uint16_t arg_index);
 

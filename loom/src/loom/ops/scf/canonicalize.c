@@ -1018,7 +1018,7 @@ static bool loom_scf_value_has_no_uses(const loom_module_t* module,
   }
   const loom_value_t* value = loom_module_value(module, value_id);
   return loom_value_has_no_uses(value) &&
-         !loom_module_value_has_predicate_attribute_uses(module, value_id) &&
+         !loom_value_has_attribute_uses(value) &&
          !loom_module_value_has_type_uses(module, value_id);
 }
 

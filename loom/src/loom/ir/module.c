@@ -4804,10 +4804,10 @@ iree_status_t loom_block_remove_arg(loom_module_t* module, loom_block_t* block,
         "cannot remove block argument %%%u with incoming type use(s)",
         (unsigned)value_id);
   }
-  if (loom_module_value_has_predicate_attribute_uses(module, value_id)) {
+  if (loom_value_has_attribute_uses(value)) {
     return iree_make_status(
         IREE_STATUS_FAILED_PRECONDITION,
-        "cannot remove block argument %%%u with predicate attribute use(s)",
+        "cannot remove block argument %%%u with attribute use(s)",
         (unsigned)value_id);
   }
 

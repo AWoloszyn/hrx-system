@@ -865,6 +865,51 @@ TEST_F(ModuleTest, BlockRemoveArgRejectsLiveUses) {
   loom_module_free(module);
 }
 
+TEST_F(ModuleTest, BlockRemoveArgRejectsTypeAttributeUses) {
+  loom_module_t* module = nullptr;
+  IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("test"), &block_pool_,
+                                      nullptr, iree_allocator_system(),
+                                      &module));
+  loom_block_t* block = loom_module_block(module);
+  const loom_type_t index_type = loom_type_scalar(LOOM_SCALAR_TYPE_INDEX);
+  loom_value_id_t width = LOOM_VALUE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_define_value(module, index_type, &width));
+  IREE_ASSERT_OK(loom_block_add_arg(module, block, width));
+  loom_type_id_t type_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_intern_type_id(
+      module,
+      loom_type_shaped_1d(LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_F32,
+                          loom_dim_pack_dynamic(width), 0),
+      &type_id));
+  loom_string_id_t key = LOOM_STRING_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_intern_string(module, IREE_SV("shape"), &key));
+  const loom_named_attr_t attributes[] = {{key, {}, loom_attr_type(type_id)}};
+  loom_builder_t builder = {};
+  loom_builder_initialize(module, &module->arena, block, &builder);
+  loom_op_t* input = nullptr;
+  IREE_ASSERT_OK(loom_test_constant_build(
+      &builder, loom_attr_i64(1), index_type, LOOM_LOCATION_UNKNOWN, &input));
+  loom_op_t* owner = nullptr;
+  IREE_ASSERT_OK(
+      loom_test_attrs_build(&builder, LOOM_TEST_ATTRS_BUILD_FLAG_HAS_DICT,
+                            loom_test_constant_result(input),
+                            loom_make_named_attr_slice(attributes, 1),
+                            index_type, LOOM_LOCATION_UNKNOWN, &owner));
+
+  EXPECT_EQ(loom_module_value(module, width)->use_count, 0u);
+  EXPECT_FALSE(loom_module_value_has_type_uses(module, width));
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_FAILED_PRECONDITION,
+                        loom_block_remove_arg(module, block, 0));
+  EXPECT_EQ(block->arg_count, 1u);
+  EXPECT_EQ(loom_value_def_block(loom_module_value(module, width)), block);
+
+  IREE_ASSERT_OK(loom_op_erase(module, owner));
+  IREE_ASSERT_OK(loom_block_remove_arg(module, block, 0));
+  EXPECT_EQ(block->arg_count, 0u);
+  EXPECT_FALSE(loom_value_is_block_arg(loom_module_value(module, width)));
+  loom_module_free(module);
+}
+
 TEST_F(ModuleTest, BlockRemoveArgRejectsPredicateAttributeUses) {
   loom_module_t* module = NULL;
   IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("test"), &block_pool_,
@@ -904,7 +949,8 @@ TEST_F(ModuleTest, BlockRemoveArgRejectsPredicateAttributeUses) {
   loom_op_attrs(function_op)[3] = loom_attr_predicate_list(&predicate, 1);
   IREE_ASSERT_OK(loom_module_compute_uses(module));
 
-  EXPECT_TRUE(loom_module_value_has_predicate_attribute_uses(module, argument));
+  EXPECT_NE(loom_module_value_attribute_use_heads(module, argument)->predicate,
+            0u);
   IREE_EXPECT_STATUS_IS(IREE_STATUS_FAILED_PRECONDITION,
                         loom_block_remove_arg(module, entry_block, 0));
   EXPECT_EQ(entry_block->arg_count, 1u);

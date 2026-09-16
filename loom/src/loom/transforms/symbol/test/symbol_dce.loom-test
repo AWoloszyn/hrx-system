@@ -159,3 +159,19 @@ test.target<low_core> @test_target
 low.kernel.def target<test.low.core>(@test_target) @implicit_export() asm {
   return
 }
+
+// ====
+
+// RUN: pass symbol-dce
+
+// A declaration's own predicates disappear when its unreachable symbol dies.
+config.decl @unused_width : %width: index where [range(%width, 1, 1024), mul(%width, 16)]
+
+func.def public @entry() {
+  func.return
+}
+
+// ----
+func.def public @entry() {
+  func.return
+}

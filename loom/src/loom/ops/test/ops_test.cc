@@ -1631,6 +1631,67 @@ TEST_F(BuilderTest, EraseWithTypeUsedResultFails) {
       module_, loom_module_value_type(module_, vector), dim));
 }
 
+TEST_F(BuilderTest, ResultRemovalRejectsAttributeUsesWithoutMutatingOwners) {
+  const loom_type_t index_type = loom_type_scalar(LOOM_SCALAR_TYPE_INDEX);
+  const loom_value_id_t input = build_constant(&builder_, module_, index_type);
+  loom_string_id_t key = LOOM_STRING_ID_INVALID;
+  IREE_ASSERT_OK(
+      loom_module_intern_string(module_, IREE_SV("reference"), &key));
+  for (loom_attr_kind_t kind : {LOOM_ATTR_TYPE, LOOM_ATTR_PREDICATE_LIST}) {
+    SCOPED_TRACE(kind);
+    loom_op_t* provider = nullptr;
+    const loom_value_id_t width =
+        build_constant(&builder_, module_, index_type, &provider);
+    loom_type_id_t type_id = LOOM_TYPE_ID_INVALID;
+    IREE_ASSERT_OK(loom_module_intern_type_id(
+        module_,
+        loom_type_shaped_1d(LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_F32,
+                            loom_dim_pack_dynamic(width), 0),
+        &type_id));
+    loom_predicate_t predicate = {LOOM_PREDICATE_EQ,
+                                  2,
+                                  {LOOM_PRED_ARG_VALUE, LOOM_PRED_ARG_CONST},
+                                  {},
+                                  {width, 0}};
+    loom_attribute_t reference = loom_attr_type(type_id);
+    if (kind == LOOM_ATTR_PREDICATE_LIST) {
+      reference = loom_attr_predicate_list(&predicate, 1);
+    }
+    const loom_named_attr_t attributes[] = {{key, {}, reference}};
+    loom_op_t* owner = nullptr;
+    IREE_ASSERT_OK(
+        loom_test_attrs_build(&builder_, LOOM_TEST_ATTRS_BUILD_FLAG_HAS_DICT,
+                              input, loom_make_named_attr_slice(attributes, 1),
+                              index_type, LOOM_LOCATION_UNKNOWN, &owner));
+    EXPECT_EQ(loom_module_value(module_, width)->use_count, 0u);
+    EXPECT_FALSE(loom_module_value_has_type_uses(module_, width));
+    EXPECT_TRUE(
+        loom_value_has_attribute_uses(loom_module_value(module_, width)));
+
+    const bool remove[] = {true};
+    uint16_t removed_count = 0;
+    iree_arena_allocator_t scratch = {};
+    iree_arena_initialize(&block_pool_, &scratch);
+    iree_status_t status = loom_op_remove_results(module_, provider, remove,
+                                                  &scratch, &removed_count);
+    iree_arena_deinitialize(&scratch);
+    IREE_ASSERT_STATUS_IS(IREE_STATUS_FAILED_PRECONDITION, status);
+    EXPECT_EQ(removed_count, 0u);
+    EXPECT_EQ(provider->result_count, 1u);
+    EXPECT_EQ(loom_value_def_op(loom_module_value(module_, width)), provider);
+    IREE_ASSERT_STATUS_IS(IREE_STATUS_FAILED_PRECONDITION,
+                          loom_op_erase(module_, provider));
+    EXPECT_EQ(provider->flags & LOOM_OP_FLAG_DEAD, 0u);
+    EXPECT_TRUE(
+        loom_value_has_attribute_uses(loom_module_value(module_, width)));
+
+    IREE_ASSERT_OK(loom_op_erase(module_, owner));
+    EXPECT_FALSE(
+        loom_value_has_attribute_uses(loom_module_value(module_, width)));
+    IREE_ASSERT_OK(loom_op_erase(module_, provider));
+  }
+}
+
 TEST_F(BuilderTest, ComputeUses) {
   loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
   loom_value_id_t a = build_constant(&builder_, module_, i32);

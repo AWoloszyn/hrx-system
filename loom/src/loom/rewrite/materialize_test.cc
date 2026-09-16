@@ -807,10 +807,12 @@ TEST_F(MaterializeTest, MovesBlockOpsAndRemapsPredicateAttrs) {
   ASSERT_EQ(predicates.kind, LOOM_ATTR_PREDICATE_LIST);
   ASSERT_EQ(predicates.count, 1u);
   EXPECT_EQ(predicates.predicate_list[0].args[0], (int64_t)target_dim);
-  EXPECT_FALSE(
-      loom_module_value_has_predicate_attribute_uses(source_, source_dim));
-  EXPECT_TRUE(
-      loom_module_value_has_predicate_attribute_uses(source_, target_dim));
+  EXPECT_EQ(
+      loom_module_value_attribute_use_heads(source_, source_dim)->predicate,
+      0u);
+  EXPECT_NE(
+      loom_module_value_attribute_use_heads(source_, target_dim)->predicate,
+      0u);
   EXPECT_EQ(assume_op->next_op, sentinel_op);
   loom_rewriter_deinitialize(&rewriter);
 }
@@ -842,10 +844,12 @@ TEST_F(MaterializeTest, ClonedPredicateOwnersRemainModuleLocal) {
   loom_op_t* target_owner = nullptr;
   IREE_ASSERT_OK(
       loom_ir_clone_op(&target_builder_, source_owner, &remap, &target_owner));
-  EXPECT_TRUE(
-      loom_module_value_has_predicate_attribute_uses(source_, source_value));
-  EXPECT_TRUE(
-      loom_module_value_has_predicate_attribute_uses(target_, target_value));
+  EXPECT_NE(
+      loom_module_value_attribute_use_heads(source_, source_value)->predicate,
+      0u);
+  EXPECT_NE(
+      loom_module_value_attribute_use_heads(target_, target_value)->predicate,
+      0u);
   loom_op_t* replacement_constant = nullptr;
   IREE_ASSERT_OK(loom_test_constant_build(&target_builder_, loom_attr_i64(1),
                                           index, LOOM_LOCATION_UNKNOWN,
@@ -858,15 +862,19 @@ TEST_F(MaterializeTest, ClonedPredicateOwnersRemainModuleLocal) {
             source_value);
   EXPECT_EQ(loom_op_const_attrs(target_owner)[0].predicate_list[0].args[0],
             replacement);
-  EXPECT_FALSE(
-      loom_module_value_has_predicate_attribute_uses(target_, target_value));
-  EXPECT_TRUE(
-      loom_module_value_has_predicate_attribute_uses(target_, replacement));
+  EXPECT_EQ(
+      loom_module_value_attribute_use_heads(target_, target_value)->predicate,
+      0u);
+  EXPECT_NE(
+      loom_module_value_attribute_use_heads(target_, replacement)->predicate,
+      0u);
   IREE_ASSERT_OK(loom_op_erase(target_, target_owner));
-  EXPECT_FALSE(
-      loom_module_value_has_predicate_attribute_uses(target_, replacement));
-  EXPECT_TRUE(
-      loom_module_value_has_predicate_attribute_uses(source_, source_value));
+  EXPECT_EQ(
+      loom_module_value_attribute_use_heads(target_, replacement)->predicate,
+      0u);
+  EXPECT_NE(
+      loom_module_value_attribute_use_heads(source_, source_value)->predicate,
+      0u);
 }
 
 TEST_F(MaterializeTest, RejectsMoveWithUnavailableRemappedCaptures) {

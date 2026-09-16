@@ -622,7 +622,7 @@ static bool loom_cfg_simplify_value_uses_stay_in_block(
     return false;
   }
   const loom_value_t* value = loom_module_value(state->module, value_id);
-  if (loom_module_value_has_predicate_attribute_uses(state->module, value_id)) {
+  if (loom_value_has_attribute_uses(value)) {
     return false;
   }
   const loom_use_t* use = NULL;
@@ -2023,8 +2023,7 @@ static bool loom_cfg_simplify_block_arg_unused(
     return false;
   }
   const loom_value_t* value = loom_module_value(state->module, arg);
-  return value->use_count == 0 &&
-         !loom_module_value_has_predicate_attribute_uses(state->module, arg) &&
+  return value->use_count == 0 && !loom_value_has_attribute_uses(value) &&
          !loom_module_value_has_type_uses(state->module, arg);
 }
 

@@ -381,16 +381,6 @@ iree_status_t loom_module_refresh_op_attribute_uses(loom_module_t* module,
   return status;
 }
 
-bool loom_module_value_has_predicate_attribute_uses(const loom_module_t* module,
-                                                    loom_value_id_t value_id) {
-  if (!module || value_id == LOOM_VALUE_ID_INVALID ||
-      value_id >= module->values.count) {
-    return false;
-  }
-  return loom_module_value_attribute_use_heads(module, value_id)->predicate !=
-         0;
-}
-
 static iree_status_t loom_module_replace_attribute_value_refs_impl(
     loom_module_t* module, loom_attribute_t attr, loom_value_id_t old_id,
     loom_value_id_t new_id, uint8_t depth, loom_attribute_t* out_attr,

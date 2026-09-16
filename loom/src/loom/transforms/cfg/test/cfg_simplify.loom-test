@@ -862,6 +862,21 @@ func.def @preserves_unused_block_arg_with_type_use(%guard: i1, %layout_a: encodi
 
 // ====
 
+// A type attribute is a use even when no operand or value type refers to the
+// block argument. Distinct predecessors keep the argument from forwarding.
+func.def @preserves_block_arg_with_type_attribute_use(%guard: i1, %left_width: index, %right_width: index, %value: f32) -> (f32) {
+  cfg.cond_br %guard, ^left, ^right
+^left:
+  cfg.br ^join(%left_width: index)
+^right:
+  cfg.br ^join(%right_width: index)
+^join(%width: index):
+  %annotated = test.attrs %value {shape = #test.options<mode = fast, element_type = vector<[%width]xf32>>} : f32
+  func.return %annotated : f32
+}
+
+// ====
+
 func.def @fuses_single_predecessor_block_args(%a: i32) -> (i32) {
   cfg.br ^middle(%a: i32)
 ^middle(%x: i32):

@@ -343,13 +343,36 @@ static bool loom_value_has_type_uses_outside_op(const loom_module_t* module,
   return false;
 }
 
+static bool loom_value_has_attribute_uses_outside_op(
+    const loom_module_t* module, loom_value_id_t value_id,
+    const loom_op_t* op) {
+  if (!loom_value_has_attribute_uses(loom_module_value(module, value_id))) {
+    return false;
+  }
+  const loom_value_attribute_use_heads_t* heads =
+      loom_module_value_attribute_use_heads(module, value_id);
+  const loom_attribute_use_id_t first_uses[] = {heads->type, heads->predicate};
+  for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(first_uses); ++i) {
+    for (loom_attribute_use_id_t use_id = first_uses[i]; use_id;) {
+      const loom_attribute_use_t* use =
+          &module->attribute_uses.records[use_id - 1];
+      // Self-predicates, such as config.decl constraints, die with the owner.
+      if (use->op != op) {
+        return true;
+      }
+      use_id = use->next_incoming;
+    }
+  }
+  return false;
+}
+
 bool loom_op_results_unused(const loom_module_t* module, const loom_op_t* op) {
   loom_value_id_t* results = loom_op_results((loom_op_t*)op);
   for (uint16_t i = 0; i < op->result_count; ++i) {
     if (results[i] == LOOM_VALUE_ID_INVALID) continue;
     const loom_value_t* value = loom_module_value(module, results[i]);
     if (value->use_count > 0) return false;
-    if (loom_value_has_attribute_uses(value)) {
+    if (loom_value_has_attribute_uses_outside_op(module, results[i], op)) {
       return false;
     }
     if (loom_value_has_type_uses_outside_op(module, results[i], op)) {
@@ -2102,6 +2125,11 @@ iree_status_t loom_op_remove_results(loom_module_t* module, loom_op_t* op,
           "cannot remove result %%%u with %u operand use(s)", (unsigned)result,
           (unsigned)value->use_count);
     }
+    if (loom_value_has_attribute_uses(value)) {
+      return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                              "cannot remove result %%%u with attribute use(s)",
+                              (unsigned)result);
+    }
     if (loom_module_value_has_type_uses(module, result)) {
       return iree_make_status(
           IREE_STATUS_FAILED_PRECONDITION,
@@ -2193,17 +2221,26 @@ static iree_status_t loom_op_verify_erase_preconditions(loom_module_t* module,
                                                         loom_op_t* op) {
   loom_value_id_t* results = loom_op_results(op);
   for (uint16_t i = 0; i < op->result_count; ++i) {
-    if (results[i] != LOOM_VALUE_ID_INVALID &&
-        loom_module_value(module, results[i])->use_count > 0) {
+    if (results[i] == LOOM_VALUE_ID_INVALID) {
+      continue;
+    }
+    const loom_value_t* value = loom_module_value(module, results[i]);
+    if (value->use_count > 0) {
       iree_string_view_t op_name = loom_op_name(module, op);
       return iree_make_status(
           IREE_STATUS_FAILED_PRECONDITION,
           "cannot erase %.*s: result %%%u still has %u use(s)",
           (int)op_name.size, op_name.data, (unsigned)results[i],
-          (unsigned)loom_module_value(module, results[i])->use_count);
+          (unsigned)value->use_count);
     }
-    if (results[i] != LOOM_VALUE_ID_INVALID &&
-        loom_value_has_type_uses_outside_op(module, results[i], op)) {
+    if (loom_value_has_attribute_uses_outside_op(module, results[i], op)) {
+      iree_string_view_t op_name = loom_op_name(module, op);
+      return iree_make_status(
+          IREE_STATUS_FAILED_PRECONDITION,
+          "cannot erase %.*s: result %%%u still has attribute use(s)",
+          (int)op_name.size, op_name.data, (unsigned)results[i]);
+    }
+    if (loom_value_has_type_uses_outside_op(module, results[i], op)) {
       iree_string_view_t op_name = loom_op_name(module, op);
       return iree_make_status(
           IREE_STATUS_FAILED_PRECONDITION,

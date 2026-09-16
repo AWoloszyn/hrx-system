@@ -537,8 +537,8 @@ TEST_F(ValueRefsTest,
       loom_make_named_attr_slice(attributes, 1),
       loom_type_scalar(LOOM_SCALAR_TYPE_INDEX), LOOM_LOCATION_UNKNOWN, &owner));
   EXPECT_TRUE(HasUses(original));
-  EXPECT_FALSE(
-      loom_module_value_has_predicate_attribute_uses(module_, original));
+  EXPECT_EQ(loom_module_value_attribute_use_heads(module_, original)->predicate,
+            0u);
   const auto edges = Outgoing(owner, loom_test_attrs_dict_ATTR_INDEX);
   const auto table = module_->attribute_uses;
   IREE_ASSERT_OK(
@@ -548,8 +548,9 @@ TEST_F(ValueRefsTest,
   EXPECT_EQ(module_->attribute_uses.records, table.records);
   EXPECT_FALSE(HasUses(original));
   EXPECT_EQ(IncomingCount(replacement), 2u);
-  EXPECT_FALSE(
-      loom_module_value_has_predicate_attribute_uses(module_, replacement));
+  EXPECT_EQ(
+      loom_module_value_attribute_use_heads(module_, replacement)->predicate,
+      0u);
   const auto dictionary = loom_test_attrs_dict(owner);
   EXPECT_EQ(dictionary.entries[0].value.type_id, expected_type_id);
   const auto updated_type =
