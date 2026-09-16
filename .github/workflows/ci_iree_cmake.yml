@@ -217,11 +217,11 @@ jobs:
           mkdir -p "$HOME"
           git config --global --add safe.directory "$PWD"
 
-      - name: Install Vulkan runtime
+      - name: Install Vulkan build environment
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends libvulkan1 mesa-vulkan-drivers vulkan-tools
-          dpkg-query -W libvulkan1 mesa-vulkan-drivers vulkan-tools
+          apt-get install -y --no-install-recommends gcc g++ libvulkan1 mesa-vulkan-drivers vulkan-tools
+          dpkg-query -W gcc g++ libvulkan1 mesa-vulkan-drivers vulkan-tools
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
