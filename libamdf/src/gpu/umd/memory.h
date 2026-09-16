@@ -95,6 +95,9 @@ amdf_status_t amdf_gpu_umd_memory_export(
     amdf_external_memory_t* out_value);
 
 // Describes immutable access facts against an exact local queue family.
+// This shared query touches no native state and performs no allocation, lock,
+// system call or lazy initialization. Unqualified cache semantics return
+// UNSUPPORTED without publishing a partial description.
 amdf_status_t amdf_gpu_umd_memory_describe_site(
     const amdf_memory_site_query_t* query,
     amdf_memory_site_description_t* out_description);

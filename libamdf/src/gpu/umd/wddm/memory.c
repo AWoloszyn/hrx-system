@@ -529,14 +529,6 @@ amdf_status_t amdf_gpu_umd_memory_export(
   return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
 }
 
-amdf_status_t amdf_gpu_umd_memory_describe_site(
-    const amdf_memory_site_query_t* query,
-    amdf_memory_site_description_t* out_description) {
-  (void)query;
-  (void)out_description;
-  return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
-}
-
 amdf_status_t amdf_gpu_umd_memory_prepare(
     amdf_gpu_umd_device_t* device, uint32_t peer_count,
     amdf_gpu_umd_device_t* const* peer_devices,

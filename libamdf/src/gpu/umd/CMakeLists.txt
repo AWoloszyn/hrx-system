@@ -55,11 +55,30 @@ iree_cc_library(
     memory
   HDRS
     "memory.h"
+  SRCS
+    "memory.c"
   DEPS
     amdf::headers
     libamdf::src::memory_pair
     libamdf::src::memory_profile
   PUBLIC
+)
+endif()
+
+if(AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
+iree_cc_test(
+  NAME
+    memory_test
+  SRCS
+    "memory_test.cc"
+  DEPS
+    ::memory
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.gpu"
 )
 endif()
 
