@@ -407,6 +407,7 @@ def test_core(args: argparse.Namespace) -> None:
         "--test-dir",
         installed_tests_dir,
         "--output-on-failure",
+        "--no-tests=error",
         *ctest_arguments(args),
     ]
     run(ctest_cmd, cwd=REPO_ROOT, env=env, stderr_to_stdout=True)

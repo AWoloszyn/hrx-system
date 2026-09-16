@@ -241,6 +241,15 @@ VULKAN_ENVIRONMENT_TEST_PATHS = frozenset(
 DEVTOOLS_PRESUBMIT_TEST_TARGET = "//build_tools/devtools:presubmit_tests"
 LEFTHOOK_PRESUBMIT_TEST_TARGET = "//build_tools/lefthook:presubmit_tests"
 VULKAN_ENVIRONMENT_TEST_TARGET = "//build_tools/ci:vulkan_environment_test"
+ROCM_ENVIRONMENT_TEST_PATHS = frozenset(
+    {
+        ".github/scripts/check_rocm_environment.sh",
+        "build_tools/ci/BUILD.bazel",
+        "build_tools/ci/rocm_environment.py",
+        "build_tools/ci/rocm_environment_test.py",
+    }
+)
+ROCM_ENVIRONMENT_TEST_TARGET = "//build_tools/ci:rocm_environment_test"
 CLANG_TIDY_FULL_SCOPE_EXACT_PATHS = {
     ".bazelrc",
     ".bazelversion",
@@ -1620,6 +1629,8 @@ def repository_tool_test_targets(paths: list[str]) -> list[str]:
         targets.append(LEFTHOOK_PRESUBMIT_TEST_TARGET)
     if sys.platform == "linux" and VULKAN_ENVIRONMENT_TEST_PATHS.intersection(paths):
         targets.append(VULKAN_ENVIRONMENT_TEST_TARGET)
+    if sys.platform == "linux" and ROCM_ENVIRONMENT_TEST_PATHS.intersection(paths):
+        targets.append(ROCM_ENVIRONMENT_TEST_TARGET)
     for project in existing_project_scripts():
         if project.presubmit_test_target and any(
             is_project_presubmit_test_trigger(project, path) for path in paths

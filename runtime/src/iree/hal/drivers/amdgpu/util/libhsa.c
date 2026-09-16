@@ -397,7 +397,7 @@ static iree_status_t iree_hal_amdgpu_libhsa_load_library(
   // If no library was found emit the full failure status.
   if (iree_status_is_ok(status) && !library) {
     status =
-        iree_make_status(IREE_STATUS_NOT_FOUND,
+        iree_make_status(IREE_STATUS_UNAVAILABLE,
                          "HSA/ROCR-Runtime library not found; ensure it is "
                          "installed and on a valid search path (or specified "
                          "with IREE_HAL_AMDGPU_LIBHSA_PATH): %.*s",

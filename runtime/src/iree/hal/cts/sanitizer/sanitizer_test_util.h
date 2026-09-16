@@ -232,7 +232,7 @@ struct SanitizerCachedBackendResources {
     iree_hal_driver_release(driver);
     driver = nullptr;
     create_context.Deinitialize();
-    unavailable = false;
+    unavailable_reason.clear();
   }
 
   // Event recorder bound as the device creation sink.
@@ -247,8 +247,8 @@ struct SanitizerCachedBackendResources {
   iree_hal_device_t* device = nullptr;
   // Retained allocator from the cached HAL device.
   iree_hal_allocator_t* allocator = nullptr;
-  // True when the backend factory reported unavailability.
-  bool unavailable = false;
+  // Diagnostic when the factory returned UNAVAILABLE; empty otherwise.
+  std::string unavailable_reason;
 };
 
 inline std::map<std::string, SanitizerCachedBackendResources>&
@@ -270,13 +270,6 @@ inline void RegisterSanitizerBackendCacheCleanup() {
     return true;
   }();
   (void)registered;
-}
-
-// Returns true if |status_code| means the CTS backend cannot run on this host.
-inline bool SanitizerStatusCodeIsBackendUnavailable(
-    iree_status_code_t status_code) {
-  return status_code == IREE_STATUS_UNAVAILABLE ||
-         status_code == IREE_STATUS_NOT_FOUND;
 }
 
 // Borrows the cached sanitizer CTS backend device for one test.
@@ -304,7 +297,7 @@ class SanitizerCachedBackendDevice {
         GetSanitizerBackendCache().try_emplace(std::move(cache_key));
     (void)inserted;
     SanitizerCachedBackendResources& cached = cached_it->second;
-    if (!cached.device && !cached.unavailable) {
+    if (!cached.device && cached.unavailable_reason.empty()) {
       iree_hal_driver_t* driver = nullptr;
       iree_hal_device_t* device = nullptr;
       iree_status_t status = cached.create_context.Initialize(
@@ -313,9 +306,8 @@ class SanitizerCachedBackendDevice {
         status =
             backend.factory(cached.create_context.params(), &driver, &device);
       }
-      if (SanitizerStatusCodeIsBackendUnavailable(iree_status_code(status))) {
-        iree_status_free(status);
-        cached.unavailable = true;
+      if (iree_status_is_unavailable(status)) {
+        cached.unavailable_reason = iree::Status(std::move(status)).ToString();
         cached.create_context.Deinitialize();
       } else if (!iree_status_is_ok(status)) {
         cached.create_context.Deinitialize();
@@ -335,10 +327,11 @@ class SanitizerCachedBackendDevice {
         }
       }
     }
-    if (cached.unavailable) {
+    if (!cached.unavailable_reason.empty()) {
       return iree_make_status(IREE_STATUS_UNAVAILABLE,
-                              "sanitizer CTS backend '%s' is unavailable",
-                              backend.name.c_str());
+                              "sanitizer CTS backend '%s' is unavailable: %s",
+                              backend.name.c_str(),
+                              cached.unavailable_reason.c_str());
     }
 
     cached_ = &cached;

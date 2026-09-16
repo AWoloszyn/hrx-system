@@ -49,7 +49,7 @@ on:
       - "tools/**"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || (github.event_name == 'push' && github.ref) || github.run_id }}
   cancel-in-progress: true
 
 permissions:
@@ -120,9 +120,19 @@ jobs:
           test -d "${HRX_ROCM_ROOT}/include"
 
       - name: Run IREE CMake CI
+        id: iree_cmake_ci
         run: |
           echo "python3 build_tools/devtools/ci.py ${{ matrix.command }} --keep-going"
           python3 build_tools/devtools/ci.py ${{ matrix.command }} --keep-going
+
+      - name: Upload failed test results
+        if: ${{ always() && steps.iree_cmake_ci.outcome == 'failure' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ctest-results-${{ matrix.command }}-attempt-${{ github.run_attempt }}
+          path: build/ci/**/Testing/Temporary/
+          if-no-files-found: warn
+          retention-days: 7
 
   windows_cmake:
     name: ${{ matrix.name }}
@@ -171,6 +181,7 @@ jobs:
           "$PWD\.venv\Scripts" | Out-File -FilePath $env:GITHUB_PATH -Append
 
       - name: Run IREE CMake CI
+        id: iree_cmake_ci
         shell: cmd
         run: |
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VS_INSTALL=%%i"
@@ -188,6 +199,15 @@ jobs:
             set "AR=%HRX_ROCM_ROOT%\lib\llvm\bin\llvm-lib.exe"
           )
           python build_tools/devtools/ci.py ${{ matrix.command }} --keep-going
+
+      - name: Upload failed test results
+        if: ${{ always() && steps.iree_cmake_ci.outcome == 'failure' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ctest-results-${{ matrix.command }}-attempt-${{ github.run_attempt }}
+          path: build/ci/**/Testing/Temporary/
+          if-no-files-found: warn
+          retention-days: 7
 
   linux_cmake_vulkan:
     name: ${{ matrix.name }}
@@ -248,9 +268,19 @@ jobs:
           "${AR}" --version
 
       - name: Run IREE CMake CI
+        id: iree_cmake_ci
         run: |
           echo "python3 build_tools/devtools/ci.py ${{ matrix.command }} --keep-going"
           python3 build_tools/devtools/ci.py ${{ matrix.command }} --keep-going
+
+      - name: Upload failed test results
+        if: ${{ always() && steps.iree_cmake_ci.outcome == 'failure' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ctest-results-${{ matrix.command }}-attempt-${{ github.run_attempt }}
+          path: build/ci/**/Testing/Temporary/
+          if-no-files-found: warn
+          retention-days: 7
 
   linux_cmake_amdgpu:
     name: ${{ matrix.name }}
@@ -327,7 +357,17 @@ jobs:
         run: bash .github/scripts/check_rocm_environment.sh
 
       - name: Run IREE CMake CI
+        id: iree_cmake_ci
         run: |
           echo "python3 build_tools/devtools/ci.py ${{ matrix.command }} --amdgpu-target ${{ matrix.target_selector }} --keep-going"
           python3 build_tools/devtools/ci.py ${{ matrix.command }} \
             --amdgpu-target "${{ matrix.target_selector }}" --keep-going
+
+      - name: Upload failed test results
+        if: ${{ always() && steps.iree_cmake_ci.outcome == 'failure' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ctest-results-${{ matrix.command }}-attempt-${{ github.run_attempt }}
+          path: build/ci/**/Testing/Temporary/
+          if-no-files-found: warn
+          retention-days: 7

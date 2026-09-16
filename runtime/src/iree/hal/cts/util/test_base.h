@@ -223,19 +223,25 @@ class DeviceCreateContext {
 };
 
 // Cached backend resources shared across all tests for a given backend.
-// GPU backends cannot create/destroy devices per test — cloud GPU runners
-// have reliability issues when devices are churned. CPU backends also benefit
-// from avoiding redundant device creation overhead.
+// Sharing the driver and device keeps native runtime initialization and
+// shutdown outside individual cases and avoids redundant device creation
+// overhead.
 //
 // Resources are created on first access and held until program exit, when
 // the CtsBackendCacheEnvironment releases them in the correct order.
 struct CachedBackendResources {
+  // Device creation storage borrowed by the backend factory.
   DeviceCreateContext create_context;
+  // Owned HAL driver for the cached device.
   iree_hal_driver_t* driver = nullptr;
+  // Owned group keeping the cached device topology alive.
   iree_hal_device_group_t* device_group = nullptr;
+  // Owned cached HAL device.
   iree_hal_device_t* device = nullptr;
+  // Retained allocator from the cached HAL device.
   iree_hal_allocator_t* allocator = nullptr;
-  bool unavailable = false;  // Factory returned UNAVAILABLE.
+  // Diagnostic when the factory returned UNAVAILABLE; empty otherwise.
+  std::string unavailable_reason;
 };
 
 inline std::map<std::string, CachedBackendResources>& GetBackendCache() {
@@ -370,7 +376,7 @@ class CtsTestBase : public BaseType {
     // keeps backend runtime initialization and shutdown outside individual
     // cases and avoids redundant creation overhead.
     auto& cached = GetBackendCache()[GetBackendDeviceCacheKey(backend)];
-    if (!cached.device && !cached.unavailable) {
+    if (!cached.device && cached.unavailable_reason.empty()) {
       iree_hal_driver_t* driver = nullptr;
       iree_hal_device_t* device = nullptr;
       iree_status_t status =
@@ -380,8 +386,7 @@ class CtsTestBase : public BaseType {
             backend.factory(cached.create_context.params(), &driver, &device);
       }
       if (iree_status_is_unavailable(status)) {
-        iree_status_ignore(status);
-        cached.unavailable = true;
+        cached.unavailable_reason = iree::Status(std::move(status)).ToString();
         cached.create_context.Deinitialize();
       } else if (!iree_status_is_ok(status)) {
         cached.create_context.Deinitialize();
@@ -396,9 +401,9 @@ class CtsTestBase : public BaseType {
         iree_hal_allocator_retain(cached.allocator);
       }
     }
-    if (cached.unavailable) {
+    if (!cached.unavailable_reason.empty()) {
       GTEST_SKIP() << "Backend '" << backend.name
-                   << "' unavailable on this system";
+                   << "' unavailable: " << cached.unavailable_reason;
       return;
     }
 

@@ -21,11 +21,12 @@ TEST(LibAqlprofileTest, Load) {
   iree_status_t status = iree_hal_amdgpu_libhsa_initialize(
       IREE_HAL_AMDGPU_LIBHSA_FLAG_NONE, iree_string_view_list_empty(),
       iree_allocator_system(), &libhsa);
-  if (!iree_status_is_ok(status)) {
+  if (iree_status_is_unavailable(status)) {
     iree_status_fprint(stderr, status);
     iree_status_free(status);
     GTEST_SKIP() << "HSA not available, skipping test";
   }
+  IREE_ASSERT_OK(status);
 
   iree_hal_amdgpu_libaqlprofile_t libaqlprofile;
   status = iree_hal_amdgpu_libaqlprofile_initialize(
