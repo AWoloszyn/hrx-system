@@ -11,6 +11,9 @@
 // reusable canonicalizer until those boundary summaries stop changing. It is
 // intentionally a boundary driver, not a local pattern collection: local
 // simplification still happens through canonicalize.
+// Externally reachable definitions and template providers keep their declared
+// signatures; private visibility does not transfer ownership of a template
+// family's contract to an individual provider.
 
 #ifndef LOOM_TRANSFORMS_REFINE_BOUNDARIES_H_
 #define LOOM_TRANSFORMS_REFINE_BOUNDARIES_H_

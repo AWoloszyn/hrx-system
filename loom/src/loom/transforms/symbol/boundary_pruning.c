@@ -98,7 +98,7 @@ static iree_status_t loom_refine_boundaries_build_prune_plans(
   for (iree_host_size_t node = 0; node < graph->function_count; ++node) {
     const loom_refine_boundaries_function_t* function_info =
         &graph->functions[node];
-    if (!function_info->is_internal) continue;
+    if (!function_info->can_refine_boundary) continue;
 
     if (function_info->argument_projection_count == 0) {
       continue;

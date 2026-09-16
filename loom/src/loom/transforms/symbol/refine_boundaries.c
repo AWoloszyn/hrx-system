@@ -559,7 +559,7 @@ static iree_status_t loom_refine_boundaries_refine_function_signature(
     const loom_value_fact_table_t* facts,
     const loom_refine_boundaries_function_t* function_info,
     int64_t* changed_count) {
-  if (!function_info->is_internal) return iree_ok_status();
+  if (!function_info->can_refine_boundary) return iree_ok_status();
   for (uint8_t projection_index = 0;
        !loom_pass_has_error_diagnostics(pass) &&
        projection_index < function_info->argument_projection_count;
@@ -1024,7 +1024,7 @@ static iree_status_t loom_refine_boundaries_collect_argument_equality(
     loom_refine_boundaries_collect_t* collect,
     const loom_refine_boundaries_function_t* callee_info,
     loom_value_slice_t operands) {
-  if (!callee_info->is_internal) return iree_ok_status();
+  if (!callee_info->can_refine_boundary) return iree_ok_status();
   for (uint16_t i = 1; i < callee_info->argument_count; ++i) {
     loom_value_id_t old_argument = callee_info->argument_ids[i];
     if (i >= operands.count) {
@@ -1135,7 +1135,7 @@ static iree_status_t loom_refine_boundaries_collect_call(
   IREE_RETURN_IF_ERROR(loom_refine_boundaries_collect_return_forwarding(
       collect, op, callee_info, operands, results));
 
-  if (callee_info->is_internal) {
+  if (callee_info->can_refine_boundary) {
     iree_host_size_t count = operands.count < callee_info->argument_count
                                  ? operands.count
                                  : callee_info->argument_count;
@@ -1394,7 +1394,7 @@ static iree_status_t loom_refine_boundaries_refine_call_result_types(
   }
   const loom_refine_boundaries_function_t* callee_info =
       &walk->graph->functions[callee_node];
-  if (!callee_info->is_internal) return iree_ok_status();
+  if (!callee_info->can_refine_boundary) return iree_ok_status();
 
   for (iree_host_size_t i = 0;
        !loom_pass_has_error_diagnostics(walk->pass) && i < results.count; ++i) {

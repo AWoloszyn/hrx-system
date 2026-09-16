@@ -59,7 +59,7 @@ typedef struct loom_refine_boundaries_specialization_call_walk_t {
 
 static bool loom_refine_boundaries_can_specialize_function(
     const loom_refine_boundaries_function_t* function_info) {
-  return function_info->is_internal &&
+  return function_info->can_refine_boundary &&
          loom_func_def_isa(function_info->function.op) &&
          function_info->result_count > 0;
 }

@@ -50,8 +50,9 @@ typedef struct loom_refine_boundaries_function_t {
   // Number of function result slots.
   uint16_t result_count;
 
-  // True when all possible callers are in this module.
-  bool is_internal;
+  // True when all callers are module-owned and the definition owns its
+  // signature. Template providers implement a fixed family-owned signature.
+  bool can_refine_boundary;
 
   // True after return facts have been computed in the current round.
   bool has_return_facts;
