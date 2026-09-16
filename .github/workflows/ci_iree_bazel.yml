@@ -264,18 +264,36 @@ jobs:
   linux_bazel_vulkan:
     name: Linux / Vulkan
     runs-on: linux-gfx120X-gpu-rocm
+    container:
+      image: ghcr.io/rocm/no_rocm_image_ubuntu24_04@sha256:4150afe4759d14822f0e3f8930e1124f26e11f68b5c7b91ec9a02b20b1ebbb98
+      # Bazel needs namespace creation, nested mounts and an unmasked procfs.
+      # SYS_ADMIN permits nested user namespaces on AppArmor-restricted hosts.
+      options: >-
+        --device /dev/dri
+        --cap-add SYS_ADMIN
+        --security-opt seccomp=unconfined
+        --security-opt apparmor=unconfined
+        --security-opt systempaths=unconfined
+        --user 0:0
     timeout-minutes: 45
     env:
       AR: ar
       CC: gcc
       CXX: g++
-      IREE_VULKAN_ALLOWED_DEVICE_IDS: "1002:7550 1002:7551"
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Adjust git config
-        run: git config --global --add safe.directory "$PWD"
+        run: |
+          mkdir -p "$HOME"
+          git config --global --add safe.directory "$PWD"
+
+      - name: Install Vulkan build environment
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends gcc g++ libvulkan1 mesa-vulkan-drivers vulkan-tools
+          dpkg-query -W gcc g++ libvulkan1 mesa-vulkan-drivers vulkan-tools
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
@@ -291,6 +309,14 @@ jobs:
           python3 --version
           python3 dev.py bazel setup --venv
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Check Bazel sandbox environment
+        run: |
+          sandbox="$(bazel info install_base)/linux-sandbox"
+          execution_root="$(bazel info execution_root)"
+          mkdir -p "$execution_root"
+          namei -l "$execution_root"
+          "$sandbox" -W "$execution_root" -- /bin/true
 
       - name: Check tool versions
         run: |

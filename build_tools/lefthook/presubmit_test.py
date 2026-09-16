@@ -1143,6 +1143,24 @@ class PresubmitTest(unittest.TestCase):
                     expected_targets,
                 )
 
+    def test_vulkan_environment_tests_follow_changed_inputs_on_linux(self):
+        for path in (
+            ".github/scripts/check_vulkan_hardware_environment.sh",
+            ".github/workflows/ci_iree_bazel.yml",
+            ".github/workflows/ci_iree_cmake.yml",
+            "build_tools/ci/vulkan_environment.py",
+            "build_tools/ci/vulkan_environment_test.py",
+            "build_tools/ci/BUILD.bazel",
+        ):
+            for host_platform in ("linux", "win32", "darwin"):
+                with self.subTest(path=path, platform=host_platform):
+                    with mock.patch.object(presubmit.sys, "platform", host_platform):
+                        targets = presubmit.repository_tool_test_targets([path])
+                    self.assertEqual(
+                        presubmit.VULKAN_ENVIRONMENT_TEST_TARGET in targets,
+                        host_platform == "linux",
+                    )
+
     def test_existing_project_scripts_include_all_projects(self):
         self.assertEqual(
             {"libamdf", "libhrx", "loom", "runtime"},

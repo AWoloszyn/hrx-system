@@ -870,6 +870,19 @@ class CiTest(unittest.TestCase):
             test_step.argv,
         )
 
+    def test_vulkan_linux_commands_require_namespace_sandboxing(self):
+        for host_platform in ("linux", "win32", "darwin"):
+            with self.subTest(platform=host_platform):
+                with mock.patch.object(ci.sys, "platform", host_platform):
+                    steps = ci.steps_from_args(
+                        ci.parse_arguments(["iree-bazel-vulkan"])
+                    )
+                for step in steps[1:]:
+                    self.assertEqual(
+                        "--spawn_strategy=linux-sandbox" in step.argv,
+                        host_platform == "linux",
+                    )
+
     def test_vulkan_commands_preserve_explicit_mesa_device_selection(self):
         with mock.patch.dict(os.environ, {"DRI_PRIME": "1!"}):
             bazel_steps = ci.steps_from_args(ci.parse_arguments(["iree-bazel-vulkan"]))
