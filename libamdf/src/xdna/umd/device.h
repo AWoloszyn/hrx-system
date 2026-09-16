@@ -17,6 +17,26 @@ extern "C" {
 
 typedef struct amdf_xdna_umd_device_t amdf_xdna_umd_device_t;
 
+// Array layout reported by the driver after device activation.
+typedef struct amdf_xdna_umd_tile_metadata_t {
+  // Number of addressable array columns.
+  uint32_t column_count;
+  // Total rows, including shim, memory and core tiles.
+  uint32_t row_count;
+  // First physical core row.
+  uint32_t core_origin;
+  // Number of contiguous core rows.
+  uint32_t core_count;
+  // First physical memory row.
+  uint32_t memory_origin;
+  // Number of contiguous memory rows.
+  uint32_t memory_count;
+  // First physical shim row.
+  uint32_t shim_origin;
+  // Number of contiguous shim rows.
+  uint32_t shim_count;
+} amdf_xdna_umd_tile_metadata_t;
+
 // Native result used to publish one successfully materialized XDNA device.
 typedef struct amdf_xdna_umd_device_result_t {
   // Opaque identity of the live native address-domain device.
@@ -25,6 +45,8 @@ typedef struct amdf_xdna_umd_device_result_t {
   uint64_t reset_epoch;
   // Effective binding context placement contracts after native qualification.
   amdf_xdna_placement_modes_t placement_modes;
+  // Native layout used by all contexts created on this device.
+  amdf_xdna_umd_tile_metadata_t tiles;
 } amdf_xdna_umd_device_result_t;
 
 // Expected context admission through the implemented native provider.

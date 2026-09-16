@@ -23,7 +23,7 @@ enum amdf_xdna_execution_capability_bits_e {
   AMDF_XDNA_EXECUTION_CAPABILITY_ELF_INSTRUCTIONS = UINT64_C(1) << 1,
 };
 
-// Exact immutable execution profile selected from one PCI identity.
+// Execution profile combining target encodings and effective array layout.
 typedef struct amdf_xdna_endpoint_profile_t {
   // Borrowed public compiler target and context-admission properties.
   const amdf_xdna_endpoint_info_t* info;
@@ -48,17 +48,17 @@ typedef struct amdf_xdna_endpoint_profile_t {
   // Physical row classes reported by the native driver.
   struct {
     // First shim row in physical coordinates.
-    uint8_t shim_origin;
+    uint32_t shim_origin;
     // Number of contiguous shim rows.
-    uint8_t shim_count;
+    uint32_t shim_count;
     // First memory-tile row in physical coordinates.
-    uint8_t memory_origin;
+    uint32_t memory_origin;
     // Number of contiguous memory-tile rows.
-    uint8_t memory_count;
+    uint32_t memory_count;
     // First core-tile row in physical coordinates.
-    uint8_t core_origin;
+    uint32_t core_origin;
     // Number of contiguous core-tile rows.
-    uint8_t core_count;
+    uint32_t core_count;
   } rows;
 } amdf_xdna_endpoint_profile_t;
 

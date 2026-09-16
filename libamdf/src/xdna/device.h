@@ -31,7 +31,7 @@ amdf_xdna_umd_device_t* amdf_xdna_device_get_umd(amdf_device_t* device);
 const amdf_xdna_device_info_t* amdf_xdna_device_get_info(
     const amdf_device_t* device);
 
-// Returns the immutable endpoint profile borrowed by one XDNA device.
+// Returns the resolved profile owned by one live XDNA device.
 const amdf_xdna_endpoint_profile_t* amdf_xdna_device_get_profile(
     const amdf_device_t* device);
 

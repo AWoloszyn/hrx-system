@@ -11,9 +11,6 @@
 #include "libamdf/src/xdna/target/npu4/bootstrap.h"
 #include "libamdf/src/xdna/target/npu5/bootstrap.h"
 
-_Static_assert(sizeof(amdf_xdna_endpoint_profile_t) <= 64,
-               "resolved XDNA execution profile must remain cache compact");
-
 // Static profiles contain only properties that are invariant for an exact PCI
 // identity. AIE4 geometry is firmware-reported and is intentionally absent.
 static const amdf_xdna_endpoint_info_t amdf_xdna_npu1_endpoint_info = {

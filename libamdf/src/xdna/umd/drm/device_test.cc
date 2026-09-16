@@ -340,6 +340,37 @@ TEST_P(LinuxXdnaDeviceTest, MemoryDoesNotDependOnSchedulingContexts) {
   EXPECT_EQ(static_cast<uint8_t*>(views[1].pointer)[4095], 0xA5);
 }
 
+TEST_P(LinuxXdnaDeviceTest, NativeMetadataReplacesStaticGeometry) {
+  amdf_xdna_endpoint_info_t different_info = *profile->info;
+  different_info.array.column_count = 1;
+  different_info.array.row_count = 1;
+  amdf_xdna_endpoint_profile_t different_profile = *profile;
+  different_profile.info = &different_info;
+  different_profile.rows = {};
+  amdf_xdna_umd_device_result_t result = {};
+  ASSERT_EQ(
+      amdf_xdna_umd_device_create(endpoint, &different_profile,
+                                  amdf_allocator_system(), &device, &result),
+      AMDF_STATUS_OK);
+  struct amdxdna_drm_query_aie_metadata metadata = {};
+  struct amdxdna_drm_get_info query = {};
+  query.param = DRM_AMDXDNA_QUERY_AIE_METADATA;
+  query.buffer_size = sizeof(metadata);
+  query.buffer = reinterpret_cast<uintptr_t>(&metadata);
+  ASSERT_EQ(ioctl(device->descriptor, DRM_IOCTL_AMDXDNA_GET_INFO, &query), 0);
+  EXPECT_EQ(result.tiles.column_count, metadata.cols);
+  EXPECT_EQ(result.tiles.row_count, metadata.rows);
+  EXPECT_EQ(result.tiles.core_origin, metadata.core.row_start);
+  EXPECT_EQ(result.tiles.core_count, metadata.core.row_count);
+  EXPECT_EQ(result.tiles.memory_origin, metadata.mem.row_start);
+  EXPECT_EQ(result.tiles.memory_count, metadata.mem.row_count);
+  EXPECT_EQ(result.tiles.shim_origin, metadata.shim.row_start);
+  EXPECT_EQ(result.tiles.shim_count, metadata.shim.row_count);
+  // The native device borrows the supplied profile through destruction.
+  ASSERT_EQ(amdf_xdna_umd_device_destroy(device), AMDF_STATUS_OK);
+  device = nullptr;
+}
+
 INSTANTIATE_TEST_SUITE_P(
     NativeSupport, LinuxXdnaDeviceTest,
     ::testing::Values(ExecutionSupport::kUnavailable,

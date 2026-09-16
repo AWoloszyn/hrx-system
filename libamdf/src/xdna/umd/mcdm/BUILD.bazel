@@ -16,6 +16,28 @@ package(
 MCDM_COMPATIBILITY = ["@platforms//os:windows"]
 
 amdf_cc_library(
+    name = "tile_metadata",
+    srcs = ["tile_metadata.c"],
+    hdrs = ["tile_metadata.h"],
+    target_compatible_with = MCDM_COMPATIBILITY,
+    deps = [
+        "//libamdf/src/platform/windows:kmt_api",
+        "//libamdf/src/xdna/umd:device",
+    ],
+)
+
+amdf_cc_test(
+    name = "tile_metadata_test",
+    srcs = ["tile_metadata_test.cc"],
+    target_compatible_with = MCDM_COMPATIBILITY,
+    deps = [
+        ":tile_metadata",
+        "//third_party:google_test",
+        "//third_party:google_test_main",
+    ],
+)
+
+amdf_cc_library(
     name = "adapter_info",
     srcs = ["adapter_info.c"],
     hdrs = ["adapter_info.h"],
@@ -153,6 +175,7 @@ amdf_cc_library(
     target_compatible_with = MCDM_COMPATIBILITY,
     deps = [
         ":device_state",
+        ":tile_metadata",
         "//libamdf/src:allocator",
         "//libamdf/src/platform/windows:endpoint",
         "//libamdf/src/xdna/umd:device",

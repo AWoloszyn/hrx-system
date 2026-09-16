@@ -12,6 +12,39 @@ iree_add_all_subdirs()
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
 iree_cc_library(
   NAME
+    tile_metadata
+  HDRS
+    "tile_metadata.h"
+  SRCS
+    "tile_metadata.c"
+  DEPS
+    amdf::headers
+    libamdf::src::platform::windows::kmt_api
+    libamdf::src::xdna::umd::device
+  PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_test(
+  NAME
+    tile_metadata_test
+  SRCS
+    "tile_metadata_test.cc"
+  DEPS
+    ::tile_metadata
+    amdf::headers
+    iree::third_party::google_test
+    iree::third_party::google_test_main
+  LABELS
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.xdna"
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND AMDF_FAMILY_XDNA)
+iree_cc_library(
+  NAME
     adapter_info
   HDRS
     "adapter_info.h"
@@ -199,6 +232,7 @@ iree_cc_library(
     "device.c"
   DEPS
     ::device_state
+    ::tile_metadata
     amdf::headers
     libamdf::src::allocator
     libamdf::src::platform::windows::endpoint

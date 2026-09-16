@@ -19,8 +19,10 @@
 typedef struct amdf_xdna_device_t {
   // Generic device state shared by every engine implementation.
   amdf_device_t base;
-  // Immutable endpoint profile selected before native device creation.
-  const amdf_xdna_endpoint_profile_t* profile;
+  // Device-owned execution profile, resolved before publication.
+  amdf_xdna_endpoint_profile_t profile;
+  // Effective properties, with geometry supplied by the native device.
+  amdf_xdna_endpoint_info_t target_info;
   // Exact native ordinary-address-domain state.
   amdf_xdna_umd_device_t* umd;
   // Immutable identity and reset epoch returned by the provider.
@@ -84,15 +86,27 @@ amdf_xdna_device_create(amdf_endpoint_t* endpoint,
   if (!amdf_status_is_ok(status)) return status;
   status = amdf_device_initialize(&device->base, &amdf_xdna_device_vtable,
                                   endpoint, AMDF_ENGINE_KIND_XDNA);
-  device->profile = profile;
+  device->profile = *profile;
+  device->target_info = *profile->info;
+  device->profile.info = &device->target_info;
 
   amdf_xdna_umd_device_result_t result = {0};
   if (amdf_status_is_ok(status)) {
     status = amdf_xdna_umd_device_create(amdf_endpoint_get_platform(endpoint),
-                                         profile, host_allocator, &device->umd,
-                                         &result);
+                                         &device->profile, host_allocator,
+                                         &device->umd, &result);
   }
   if (amdf_status_is_ok(status)) {
+    device->target_info.array.column_count = result.tiles.column_count;
+    device->target_info.array.row_count = result.tiles.row_count;
+    device->target_info.context.maximum_column_count =
+        result.tiles.column_count;
+    device->profile.rows.core_origin = result.tiles.core_origin;
+    device->profile.rows.core_count = result.tiles.core_count;
+    device->profile.rows.memory_origin = result.tiles.memory_origin;
+    device->profile.rows.memory_count = result.tiles.memory_count;
+    device->profile.rows.shim_origin = result.tiles.shim_origin;
+    device->profile.rows.shim_count = result.tiles.shim_count;
     device->info.type = AMDF_STRUCTURE_TYPE_XDNA_DEVICE_INFO;
     device->info.structure_size = sizeof(device->info);
     device->info.id = result.id;
@@ -142,7 +156,7 @@ const amdf_xdna_device_info_t* amdf_xdna_device_get_info(
 
 const amdf_xdna_endpoint_profile_t* amdf_xdna_device_get_profile(
     const amdf_device_t* device) {
-  return ((const amdf_xdna_device_t*)device)->profile;
+  return &((const amdf_xdna_device_t*)device)->profile;
 }
 
 uint64_t amdf_xdna_device_query_reset_epoch(const amdf_device_t* device) {
