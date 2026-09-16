@@ -248,7 +248,7 @@ static inline void iree_async_socket_recv_operation_initialize(
 // Multishot mode (IREE_ASYNC_OPERATION_FLAG_MULTISHOT):
 //   Delivers repeated completions until cancelled, each completion carrying
 //   a fresh lease. The caller must return each lease (via
-//   iree_async_buffer_pool_release) after processing the data.
+//   iree_async_buffer_lease_release) after processing the data.
 //
 // Pool exhaustion behavior:
 //   If the pool is exhausted (no buffers available), the operation pauses
@@ -274,7 +274,7 @@ typedef struct iree_async_socket_recv_pool_operation_t {
 
   // Result: lease for the buffer that received data.
   // Valid only on successful completion. The caller owns the lease and must
-  // return it via iree_async_buffer_pool_release() after processing.
+  // return it via iree_async_buffer_lease_release() after processing.
   iree_async_buffer_lease_t lease;
 
   // Result: number of bytes received into the leased buffer.

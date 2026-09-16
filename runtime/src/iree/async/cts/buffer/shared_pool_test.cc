@@ -168,10 +168,8 @@ class SharedBufferPoolTest : public CtsTestBase<> {
   }
 
   void TeardownSide(SharedPoolSide* side) {
-    if (side->pool) {
-      iree_async_buffer_pool_free(side->pool);
-      side->pool = nullptr;
-    }
+    iree_async_buffer_pool_release(side->pool);
+    side->pool = nullptr;
     iree_async_region_release(side->region);
     side->region = nullptr;
     iree_async_slab_release(side->slab);
@@ -205,16 +203,31 @@ TEST_P(SharedBufferPoolTest, StorageSizePerSlotCost) {
 }
 
 //===----------------------------------------------------------------------===//
-// Create and free
+// Create and release
 //===----------------------------------------------------------------------===//
 
-TEST_P(SharedBufferPoolTest, CreateAndFree) {
+TEST_P(SharedBufferPoolTest, CreateAndRelease) {
   SharedPoolSide creator;
   IREE_ASSERT_OK(SetupCreator(kBufferSize, kBufferCount, &creator));
 
   EXPECT_EQ(iree_async_buffer_pool_capacity(creator.pool), kBufferCount);
   EXPECT_EQ(iree_async_buffer_pool_available(creator.pool), kBufferCount);
   EXPECT_EQ(iree_async_buffer_pool_buffer_size(creator.pool), kBufferSize);
+
+  TeardownSide(&creator);
+}
+
+TEST_P(SharedBufferPoolTest, RetainReleaseKeepsHandleAlive) {
+  SharedPoolSide creator;
+  IREE_ASSERT_OK(SetupCreator(kBufferSize, kBufferCount, &creator));
+
+  iree_async_buffer_pool_retain(creator.pool);
+  iree_async_buffer_pool_release(creator.pool);
+
+  iree_async_buffer_lease_t lease;
+  IREE_ASSERT_OK(iree_async_buffer_pool_acquire(creator.pool, &lease));
+  EXPECT_EQ(iree_async_buffer_pool_available(creator.pool), kBufferCount - 1);
+  iree_async_buffer_lease_release(&lease);
 
   TeardownSide(&creator);
 }

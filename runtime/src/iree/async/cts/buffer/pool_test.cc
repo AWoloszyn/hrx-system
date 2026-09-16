@@ -22,7 +22,7 @@ namespace iree::async::cts {
 class BufferPoolTest : public CtsTestBase<> {
  protected:
   // Helper to create slab + register + pool in one step.
-  // On success, caller must free pool, release region, and release slab.
+  // On success, the caller must release the pool, region, and slab.
   struct PoolSetup {
     iree_async_slab_t* slab = nullptr;
     iree_async_region_t* region = nullptr;
@@ -54,7 +54,7 @@ class BufferPoolTest : public CtsTestBase<> {
     }
 
     // Create pool over region.
-    status = iree_async_buffer_pool_allocate(
+    status = iree_async_buffer_pool_create(
         out_setup->region, iree_allocator_system(), &out_setup->pool);
     if (!iree_status_is_ok(status)) {
       iree_async_region_release(out_setup->region);
@@ -68,7 +68,7 @@ class BufferPoolTest : public CtsTestBase<> {
   }
 
   void TeardownPool(PoolSetup* setup) {
-    iree_async_buffer_pool_free(setup->pool);
+    iree_async_buffer_pool_release(setup->pool);
     setup->pool = nullptr;
     iree_async_region_release(setup->region);
     setup->region = nullptr;
@@ -81,8 +81,8 @@ class BufferPoolTest : public CtsTestBase<> {
 // Lifecycle tests
 //===----------------------------------------------------------------------===//
 
-// Basic create/free cycle.
-TEST_P(BufferPoolTest, CreateAndFree) {
+// Basic create/release cycle.
+TEST_P(BufferPoolTest, CreateAndRelease) {
   PoolSetup setup;
   IREE_ASSERT_OK(SetupPool(/*buffer_size=*/4096, /*buffer_count=*/16,
                            IREE_ASYNC_BUFFER_ACCESS_FLAG_READ, &setup));
@@ -95,9 +95,26 @@ TEST_P(BufferPoolTest, CreateAndFree) {
   TeardownPool(&setup);
 }
 
-// Free with NULL is a no-op.
-TEST_P(BufferPoolTest, FreeNullIsNoOp) {
-  iree_async_buffer_pool_free(nullptr);  // Should not crash.
+TEST_P(BufferPoolTest, RetainReleaseKeepsPoolAlive) {
+  PoolSetup setup;
+  IREE_ASSERT_OK(SetupPool(/*buffer_size=*/4096, /*buffer_count=*/16,
+                           IREE_ASYNC_BUFFER_ACCESS_FLAG_READ, &setup));
+
+  iree_async_buffer_pool_retain(setup.pool);
+  iree_async_buffer_pool_release(setup.pool);
+
+  iree_async_buffer_lease_t lease;
+  IREE_ASSERT_OK(iree_async_buffer_pool_acquire(setup.pool, &lease));
+  EXPECT_EQ(iree_async_buffer_pool_available(setup.pool), 15u);
+  iree_async_buffer_lease_release(&lease);
+
+  TeardownPool(&setup);
+}
+
+// Retaining or releasing NULL is a no-op.
+TEST_P(BufferPoolTest, RetainReleaseNullIsNoOp) {
+  iree_async_buffer_pool_retain(nullptr);   // Should not crash.
+  iree_async_buffer_pool_release(nullptr);  // Should not crash.
 }
 
 // Zero buffer_size slab is rejected.
@@ -336,10 +353,10 @@ TEST_P(BufferPoolTest, NonPowerOfTwoCount) {
   if (iree_status_is_ok(status)) {
     // Backend accepted it. Create pool and verify it works.
     iree_async_buffer_pool_t* pool = nullptr;
-    IREE_ASSERT_OK(iree_async_buffer_pool_allocate(
-        region, iree_allocator_system(), &pool));
+    IREE_ASSERT_OK(
+        iree_async_buffer_pool_create(region, iree_allocator_system(), &pool));
     EXPECT_EQ(iree_async_buffer_pool_capacity(pool), 7u);
-    iree_async_buffer_pool_free(pool);
+    iree_async_buffer_pool_release(pool);
     iree_async_region_release(region);
   } else {
     // Backend rejected non-power-of-2 (io_uring behavior).
@@ -398,7 +415,7 @@ TEST_P(BufferPoolTest, SlabWrapExternalMemory) {
 
   iree_async_buffer_pool_t* pool = nullptr;
   IREE_ASSERT_OK(
-      iree_async_buffer_pool_allocate(region, iree_allocator_system(), &pool));
+      iree_async_buffer_pool_create(region, iree_allocator_system(), &pool));
 
   iree_async_buffer_lease_t lease;
   IREE_ASSERT_OK(iree_async_buffer_pool_acquire(pool, &lease));
@@ -409,7 +426,7 @@ TEST_P(BufferPoolTest, SlabWrapExternalMemory) {
   EXPECT_LT(ptr, (uint8_t*)external_memory + buffer_size * buffer_count);
 
   iree_async_buffer_lease_release(&lease);
-  iree_async_buffer_pool_free(pool);
+  iree_async_buffer_pool_release(pool);
   iree_async_region_release(region);
   iree_async_slab_release(slab);
 
