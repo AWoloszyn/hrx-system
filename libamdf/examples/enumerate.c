@@ -225,12 +225,8 @@ int main(void) {
         };
         status = xdna_api->endpoint_query_info(endpoint, &xdna_info);
         if (amdf_status_is_ok(status)) {
-          printf("    target=%s architecture=%s column-origin=%" PRIu32
-                 " array=%" PRIu32 "x%" PRIu32 " column-stride=%" PRIu64 "\n",
-                 xdna_info.target_id,
-                 amdf_example_xdna_architecture_name(xdna_info.architecture),
-                 xdna_info.array.column_origin, xdna_info.array.column_count,
-                 xdna_info.array.row_count, xdna_info.array.column_stride);
+          printf("    target=%s architecture=%s\n", xdna_info.target_id,
+                 amdf_example_xdna_architecture_name(xdna_info.architecture));
         } else {
           amdf_example_report_status("XDNA endpoint_query_info", status);
         }

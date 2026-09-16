@@ -172,9 +172,9 @@ class WindowsXdnaMemoryTest : public ::testing::Test {
       amdf_free(amdf_allocator_system(), allocation);
     };
     device_.kmt = &kmt_;
-    endpoint_profile_.dma.address_bit_count = 48;
-    endpoint_profile_.dma.byte_offset = UINT32_C(0x80000000);
-    device_.profile = &endpoint_profile_;
+    device_profile_.dma.address_bit_count = 48;
+    device_profile_.dma.byte_offset = UINT32_C(0x80000000);
+    device_.profile = &device_profile_;
     device_.device = 0x10;
     device_.paging_queue = 0x30;
     device_.paging_sync_object = 0x40;
@@ -210,7 +210,7 @@ class WindowsXdnaMemoryTest : public ::testing::Test {
   // Explicitly live device borrowed by the memory constructor.
   amdf_xdna_umd_device_t device_ = {};
   // Immutable hardware address geometry consumed by native qualification.
-  amdf_xdna_endpoint_profile_t endpoint_profile_ = {};
+  amdf_xdna_device_profile_t device_profile_ = {};
   // Monitored fence exposed to the production paging wait.
   volatile uint64_t paging_fence_ = 0;
   // System-memory request for an unaligned logical byte length.
@@ -321,10 +321,10 @@ TEST_F(WindowsXdnaMemoryTest, ConstrainsAndChecksCompleteNativeAddressRanges) {
     SCOPED_TRACE(test.address);
     state_ = {};
     state_.address_limit = (UINT64_MAX >> (64 - test.address_bit_count)) -
-                           endpoint_profile_.dma.byte_offset + 1;
+                           device_profile_.dma.byte_offset + 1;
     state_.mapped_address = test.address;
     state_.byte_length = test.native_byte_length;
-    endpoint_profile_.dma.address_bit_count = test.address_bit_count;
+    device_profile_.dma.address_bit_count = test.address_bit_count;
     ASSERT_EQ(amdf_xdna_umd_device_query_memory_profile(&device_, 0, &profile_),
               AMDF_STATUS_OK);
     EXPECT_EQ(profile_.device_address.address_bit_count,
@@ -343,7 +343,7 @@ TEST_F(WindowsXdnaMemoryTest, ConstrainsAndChecksCompleteNativeAddressRanges) {
     if (amdf_status_is_ok(status)) {
       EXPECT_EQ(result.device_address, test.address);
       EXPECT_EQ(result.dma_address,
-                test.address + endpoint_profile_.dma.byte_offset);
+                test.address + device_profile_.dma.byte_offset);
       EXPECT_EQ(result.byte_length, test.native_byte_length);
     } else {
       EXPECT_EQ(std::memcmp(&result, &original, sizeof(result)), 0);
@@ -355,7 +355,7 @@ TEST_F(WindowsXdnaMemoryTest, ConstrainsAndChecksCompleteNativeAddressRanges) {
 }
 
 TEST_F(WindowsXdnaMemoryTest, RequiresAddressGeometryBeforeAdvertisingMemory) {
-  endpoint_profile_.dma.address_bit_count = 0;
+  device_profile_.dma.address_bit_count = 0;
   const amdf_memory_native_profile_t original = profile_;
   EXPECT_EQ(amdf_status_code(amdf_xdna_umd_device_query_memory_profile(
                 &device_, 0, &profile_)),

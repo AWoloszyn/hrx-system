@@ -8,7 +8,7 @@
 #define AMDF_SRC_XDNA_UMD_CONTEXT_H_
 
 #include "amdf/xdna.h"
-#include "libamdf/src/xdna/endpoint_profile.h"
+#include "libamdf/src/xdna/device_profile.h"
 #include "libamdf/src/xdna/umd/device.h"
 
 #ifdef __cplusplus

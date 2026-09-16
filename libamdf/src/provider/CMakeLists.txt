@@ -25,7 +25,7 @@ if((AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA) AND (CMAKE_SYSTEM_NAME STREQUAL "Windo
 endif()
 if(AMDF_FAMILY_XDNA)
   list(APPEND _provider_platform_deps libamdf::src::xdna)
-  list(APPEND _provider_platform_deps libamdf::src::xdna::endpoint_profile)
+  list(APPEND _provider_platform_deps libamdf::src::xdna::device_profile)
   list(APPEND _provider_platform_deps libamdf::src::xdna::extension)
 endif()
 iree_cc_library(

@@ -38,11 +38,11 @@ endif()
 if(AMDF_BUILD AND AMDF_FAMILY_XDNA)
 iree_cc_library(
   NAME
-    endpoint_profile
+    device_profile
   HDRS
-    "endpoint_profile.h"
+    "device_profile.h"
   SRCS
-    "endpoint_profile.c"
+    "device_profile.c"
   DEPS
     ::bootstrap
     amdf::headers
@@ -63,7 +63,7 @@ iree_cc_library(
     "device.c"
     "memory.c"
   DEPS
-    ::endpoint_profile
+    ::device_profile
     amdf::headers
     libamdf::src::allocator
     libamdf::src::device
@@ -90,7 +90,7 @@ iree_cc_library(
     "context.c"
   DEPS
     ::device
-    ::endpoint_profile
+    ::device_profile
     amdf::headers
     libamdf::src::allocator
     libamdf::src::child_tracker
@@ -140,7 +140,7 @@ iree_cc_library(
   DEPS
     ::context
     ::device
-    ::endpoint_profile
+    ::device_profile
     ::kernel_queue
     amdf::headers
     libamdf::src::endpoint
@@ -173,11 +173,11 @@ endif()
 if(AMDF_BUILD AND AMDF_FAMILY_XDNA)
 iree_cc_test(
   NAME
-    endpoint_profile_test
+    device_profile_test
   SRCS
-    "endpoint_profile_test.cc"
+    "device_profile_test.cc"
   DEPS
-    ::endpoint_profile
+    ::device_profile
     amdf::headers
     iree::third_party::google_test
     iree::third_party::google_test_main
@@ -213,7 +213,7 @@ iree_cc_test(
   DEPS
     ::context
     ::device
-    ::endpoint_profile
+    ::device_profile
     ::kernel_queue
     amdf::headers
     iree::third_party::google_test

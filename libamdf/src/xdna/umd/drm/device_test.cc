@@ -20,7 +20,7 @@
 #include "gtest/gtest.h"
 #include "libamdf/src/allocator.h"
 #include "libamdf/src/platform/linux/endpoint.h"
-#include "libamdf/src/xdna/endpoint_profile.h"
+#include "libamdf/src/xdna/device_profile.h"
 #include "libamdf/src/xdna/umd/context.h"
 #include "libamdf/src/xdna/umd/drm/memory.h"
 
@@ -80,8 +80,9 @@ class LinuxXdnaDeviceTest : public ::testing::TestWithParam<ExecutionSupport> {
       ASSERT_EQ(
           amdf_platform_endpoint_open(instance, &summary.id, &endpoint, &info),
           AMDF_STATUS_OK);
-      profile = amdf_xdna_endpoint_profile_select(&info);
-      if (profile != nullptr && profile->dma.address_bit_count != 0 &&
+      if (amdf_xdna_device_profile_initialize(&info, &device_info,
+                                              &selected_profile) &&
+          profile->dma.address_bit_count != 0 &&
           (GetParam() == ExecutionSupport::kUnavailable ||
            (profile->execution_capabilities &
             AMDF_XDNA_EXECUTION_CAPABILITY_ELF_INSTRUCTIONS) != 0)) {
@@ -149,9 +150,13 @@ class LinuxXdnaDeviceTest : public ::testing::TestWithParam<ExecutionSupport> {
   // Query endpoint borrowed during native device construction.
   amdf_platform_endpoint_t* endpoint = nullptr;
   // Selected hardware profile with this test's provider execution support.
-  const amdf_xdna_endpoint_profile_t* profile = nullptr;
+  amdf_xdna_device_profile_t* profile = &selected_profile;
+  // Architecture encodings selected before native activation.
+  amdf_xdna_device_profile_t selected_profile = {};
+  // Live capabilities retained for every native child.
+  amdf_xdna_device_info_t device_info = {};
   // Actual hardware/DMA facts with execution implementation data removed.
-  amdf_xdna_endpoint_profile_t memory_only_profile = {};
+  amdf_xdna_device_profile_t memory_only_profile = {};
   // Native device owning one ordinary address and BO namespace.
   amdf_xdna_umd_device_t* device = nullptr;
   // Independent scheduling contexts borrowing the native device.
@@ -199,6 +204,10 @@ TEST_P(LinuxXdnaDeviceTest, MemoryDoesNotDependOnSchedulingContexts) {
       amdf_xdna_umd_device_create(endpoint, profile, amdf_allocator_system(),
                                   &device, &device_result),
       AMDF_STATUS_OK);
+  device_info.array.column_count = device_result.tiles.column_count;
+  device_info.array.row_count = device_result.tiles.row_count;
+  profile->rows.core_origin = device_result.tiles.core_origin;
+  profile->rows.core_count = device_result.tiles.core_count;
   EXPECT_NE(device_result.id.words[0] | device_result.id.words[1], 0u);
   EXPECT_EQ(device_result.placement_modes, capabilities.placement_modes);
   EXPECT_NE(fcntl(device->descriptor, F_GETFD) & FD_CLOEXEC, 0);
@@ -340,11 +349,11 @@ TEST_P(LinuxXdnaDeviceTest, MemoryDoesNotDependOnSchedulingContexts) {
   EXPECT_EQ(static_cast<uint8_t*>(views[1].pointer)[4095], 0xA5);
 }
 
-TEST_P(LinuxXdnaDeviceTest, NativeMetadataReplacesStaticGeometry) {
-  amdf_xdna_endpoint_info_t different_info = *profile->info;
+TEST_P(LinuxXdnaDeviceTest, NativeMetadataSuppliesArrayGeometry) {
+  amdf_xdna_device_info_t different_info = *profile->info;
   different_info.array.column_count = 1;
   different_info.array.row_count = 1;
-  amdf_xdna_endpoint_profile_t different_profile = *profile;
+  amdf_xdna_device_profile_t different_profile = *profile;
   different_profile.info = &different_info;
   different_profile.rows = {};
   amdf_xdna_umd_device_result_t result = {};

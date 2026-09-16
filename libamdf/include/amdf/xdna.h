@@ -122,13 +122,10 @@ typedef struct amdf_xdna_binary_format_info_t {
   uint32_t version;
 } amdf_xdna_binary_format_info_t;
 
-/// Immutable compiler target and expected native admission of one endpoint.
+/// Passive target identity available without activating the device.
 ///
-/// This record combines hardware/compiler facts with the native provider's
-/// expected services, not reservations or live resource allocation. Nonzero
-/// instruction limits describe native range submission. Memory placement and
-/// residency are separate scope contracts. Queue publication remains a
-/// separate queue-family capability.
+/// Geometry and execution capabilities belong to `amdf_xdna_device_info_t` and
+/// are obtained during explicit device creation.
 typedef struct amdf_xdna_endpoint_info_t {
   /// Must be `AMDF_STRUCTURE_TYPE_XDNA_ENDPOINT_INFO`.
   amdf_structure_type_t type;
@@ -138,50 +135,7 @@ typedef struct amdf_xdna_endpoint_info_t {
   void* next;
   /// Compiler-visible AIE instruction and array architecture.
   amdf_xdna_architecture_t architecture;
-  /// Physical array geometry and addressing.
-  struct {
-    /// Physical index of the first addressable array column.
-    uint32_t column_origin;
-    /// Number of contiguous addressable physical array columns.
-    uint32_t column_count;
-    /// Total physical rows, including shim, memory, and compute rows.
-    uint32_t row_count;
-    /// Device-address distance in bytes between adjacent columns.
-    uint64_t column_stride;
-  } array;
-  /// Context resource and scheduling limits independent of current occupancy.
-  struct {
-    /// Exclusive, spatial, and time-sliced modes accepted by the endpoint.
-    /// Zero means context creation is unsupported, independently of ordinary
-    /// device memory services. The remaining limits describe target capacity,
-    /// not availability of an execution path through the native provider.
-    amdf_xdna_scheduling_modes_t scheduling_modes;
-    /// Expected binding placement contracts, independent of occupancy.
-    /// Device creation reports effective support; this snapshot is immutable.
-    amdf_xdna_placement_modes_t placement_modes;
-    /// Minimum logical column count requestable by one context.
-    uint32_t minimum_column_count;
-    /// Maximum logical column count requestable by one context.
-    uint32_t maximum_column_count;
-    /// Granularity of requestable logical column counts.
-    uint32_t column_count_granularity;
-    /// Maximum simultaneously live public context objects.
-    uint32_t maximum_live_context_count;
-    /// Maximum contexts simultaneously carrying hardware or firmware state.
-    uint32_t maximum_hardware_context_count;
-  } context;
-  /// Opaque target-native instruction submission contract.
-  struct {
-    /// Maximum bytes in one instruction range; zero without execution.
-    uint64_t maximum_byte_length;
-    /// Required power-of-two instruction address alignment in bytes.
-    uint32_t address_alignment;
-    /// Required multiple of the instruction byte length.
-    uint32_t byte_length_granularity;
-    /// Native encoding supplied by the caller, never parsed by libamdf.
-    amdf_xdna_binary_format_info_t format;
-  } instruction;
-  /// Exact NUL-terminated compiler target and device-profile identifier.
+  /// Exact NUL-terminated compiler target identifier.
   char target_id[AMDF_XDNA_TARGET_ID_CAPACITY];
 } amdf_xdna_endpoint_info_t;
 
@@ -216,7 +170,10 @@ typedef struct amdf_xdna_device_create_info_t {
   const void* next;
 } amdf_xdna_device_create_info_t;
 
-/// Identity of one live XDNA ordinary-address-domain device.
+/// Immutable identity and effective capabilities of one live XDNA device.
+/// Native array geometry is captured during activation; queries do no work in
+/// the driver. Capacity limits do not reserve resources or promise
+/// availability.
 typedef struct amdf_xdna_device_info_t {
   /// Must be `AMDF_STRUCTURE_TYPE_XDNA_DEVICE_INFO`.
   amdf_structure_type_t type;
@@ -232,6 +189,40 @@ typedef struct amdf_xdna_device_info_t {
   /// Zero means explicit origins and placement queries are unsupported.
   /// ANY-origin execution does not require fixed placement support.
   amdf_xdna_placement_modes_t placement_modes;
+  /// Physical array geometry and addressing.
+  struct {
+    /// Physical index of the first addressable array column.
+    uint32_t column_origin;
+    /// Number of contiguous addressable physical array columns.
+    uint32_t column_count;
+    /// Total physical rows, including shim, memory, and compute rows.
+    uint32_t row_count;
+    /// Device-address distance in bytes between adjacent columns.
+    uint64_t column_stride;
+  } array;
+  /// Context admission through the activated native interface.
+  struct {
+    /// Exclusive, spatial, and time-sliced modes accepted by the device.
+    /// Zero means context creation is unsupported.
+    amdf_xdna_scheduling_modes_t scheduling_modes;
+    /// Minimum logical column count requestable by one context.
+    uint32_t minimum_column_count;
+    /// Maximum logical column count requestable by one context.
+    uint32_t maximum_column_count;
+    /// Granularity of requestable logical column counts.
+    uint32_t column_count_granularity;
+  } context;
+  /// Opaque target-native instruction submission contract.
+  struct {
+    /// Maximum bytes in one instruction range; zero without execution.
+    uint64_t maximum_byte_length;
+    /// Required power-of-two instruction address alignment in bytes.
+    uint32_t address_alignment;
+    /// Required multiple of the instruction byte length.
+    uint32_t byte_length_granularity;
+    /// Native encoding supplied by the caller, never parsed by libamdf.
+    amdf_xdna_binary_format_info_t format;
+  } instruction;
 } amdf_xdna_device_info_t;
 
 /// Parameters used to admit one program-independent XDNA context.
@@ -353,15 +344,15 @@ typedef struct amdf_xdna_api_t {
   /// XDNA extension version implemented by this table.
   uint32_t extension_version;
 
-  /// Copies immutable XDNA properties cached while opening `endpoint`.
+  /// Copies passive XDNA target identity for `endpoint`.
   ///
-  /// The endpoint must have an exactly qualified XDNA profile. Passing another
-  /// engine or an unqualified XDNA candidate returns
+  /// The endpoint must have a recognized XDNA architecture. Passing another
+  /// engine or an unrecognized XDNA candidate returns
   /// `AMDF_STATUS_CODE_UNSUPPORTED`. The operation is thread-safe and performs
   /// no system call, firmware transaction, allocation, retry, sleep, or device
   /// wait. The caller initializes `out_info` and its complete extension chain;
   /// no output is modified when validation or qualification fails.
-  /// The cached profile is read without locking, lazy initialization or
+  /// Identity is read without locking, lazy initialization or
   /// ownership-counter updates.
   amdf_status_t(AMDF_CALL* endpoint_query_info)(
       amdf_endpoint_t* endpoint, amdf_xdna_endpoint_info_t* out_info);
@@ -380,7 +371,7 @@ typedef struct amdf_xdna_api_t {
       const amdf_xdna_device_create_info_t* create_info,
       amdf_device_t** out_device);
 
-  /// Copies the identity and reset epoch of `device`.
+  /// Copies the identity, reset epoch and effective capabilities of `device`.
   ///
   /// The operation is thread-safe and performs no system call, allocation,
   /// device initialization, retry, sleep, or device wait. The caller

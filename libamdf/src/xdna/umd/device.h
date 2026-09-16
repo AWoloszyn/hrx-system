@@ -9,7 +9,7 @@
 
 #include "amdf/xdna.h"
 #include "libamdf/src/platform/endpoint.h"
-#include "libamdf/src/xdna/endpoint_profile.h"
+#include "libamdf/src/xdna/device_profile.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -60,13 +60,13 @@ typedef struct amdf_xdna_umd_context_capabilities_t {
 // Returns expected context admission contracts from the profile and implemented
 // native provider. Performs no allocation, native query or device activation.
 amdf_xdna_umd_context_capabilities_t amdf_xdna_umd_query_context_capabilities(
-    const amdf_xdna_endpoint_profile_t* profile);
+    const amdf_xdna_device_profile_t* profile);
 
 // Creates one native XDNA ordinary-address domain and allocation namespace.
 amdf_status_t amdf_xdna_umd_device_create(
     amdf_platform_endpoint_t* endpoint,
-    const amdf_xdna_endpoint_profile_t* profile,
-    amdf_allocator_t host_allocator, amdf_xdna_umd_device_t** out_device,
+    const amdf_xdna_device_profile_t* profile, amdf_allocator_t host_allocator,
+    amdf_xdna_umd_device_t** out_device,
     amdf_xdna_umd_device_result_t* out_result);
 
 // Releases native XDNA device state in reverse ownership order.

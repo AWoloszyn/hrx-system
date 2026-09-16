@@ -10,7 +10,7 @@
 #include "libamdf/src/xdna/umd/memory_profile.h"
 
 amdf_status_t amdf_linux_xdna_query_memory_profile(
-    const amdf_xdna_endpoint_profile_t* target, size_t page_size,
+    const amdf_xdna_device_profile_t* target, size_t page_size,
     uint32_t memory_profile_ordinal,
     amdf_memory_native_profile_t* out_profile) {
   if (memory_profile_ordinal > 2 || target->dma.address_bit_count == 0) {
@@ -115,7 +115,7 @@ amdf_status_t amdf_linux_xdna_query_memory_profile(
 
 amdf_status_t amdf_xdna_umd_query_endpoint_memory_profile(
     const amdf_platform_endpoint_t* endpoint,
-    const amdf_xdna_endpoint_profile_t* target, uint32_t profile_ordinal,
+    const amdf_xdna_device_profile_t* target, uint32_t profile_ordinal,
     amdf_memory_native_profile_t* out_profile) {
   return amdf_linux_xdna_query_memory_profile(
       target, endpoint->instance->page_size, profile_ordinal, out_profile);

@@ -70,12 +70,12 @@ class XdnaKernelQueueTest : public XdnaContextFixture {
     EXPECT_EQ(scope_info.kind, AMDF_MEMORY_SCOPE_KIND_PRIVATE);
     EXPECT_EQ(scope_info.memory_profile_count, 1u);
 
-    amdf_xdna_endpoint_info_t endpoint_info = {};
-    endpoint_info.type = AMDF_STRUCTURE_TYPE_XDNA_ENDPOINT_INFO;
-    endpoint_info.structure_size = sizeof(endpoint_info);
-    ASSERT_EQ(xdna_api_->endpoint_query_info(endpoint_, &endpoint_info),
+    amdf_xdna_device_info_t device_info = {};
+    device_info.type = AMDF_STRUCTURE_TYPE_XDNA_DEVICE_INFO;
+    device_info.structure_size = sizeof(device_info);
+    ASSERT_EQ(xdna_api_->device_query_info(device_, &device_info),
               AMDF_STATUS_OK);
-    instruction_stride_ = endpoint_info.instruction.address_alignment;
+    instruction_stride_ = device_info.instruction.address_alignment;
     memory_access_.requirements.access |= AMDF_MEMORY_ACCESS_EXECUTE;
     amdf_memory_profile_t profile = {};
     profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;

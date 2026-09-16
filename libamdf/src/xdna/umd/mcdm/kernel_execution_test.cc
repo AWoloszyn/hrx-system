@@ -244,8 +244,9 @@ class WindowsXdnaKernelExecutionTest : public ::testing::TestWithParam<bool> {
     endpoint.pci.device_id = 0x17F0;
     endpoint.pci.revision_id = 0x11;
     endpoint.engine_kind = AMDF_ENGINE_KIND_XDNA;
-    device_.profile = amdf_xdna_endpoint_profile_select(&endpoint);
-    ASSERT_NE(device_.profile, nullptr);
+    ASSERT_TRUE(amdf_xdna_device_profile_initialize(&endpoint, &device_info_,
+                                                    &device_profile_));
+    device_.profile = &device_profile_;
     device_.kmt = &kmt_;
     device_.host_allocator = amdf_allocator_system();
     device_.device = 10;
@@ -284,6 +285,10 @@ class WindowsXdnaKernelExecutionTest : public ::testing::TestWithParam<bool> {
   NativeState native_;
   // Procedures supplied at the existing platform dependency boundary.
   amdf_kmt_api_t kmt_ = {};
+  // Architecture encodings borrowed by native execution.
+  amdf_xdna_device_profile_t device_profile_ = {};
+  // Instruction limits retained with the native owner.
+  amdf_xdna_device_info_t device_info_ = {};
   // Explicitly live native device borrowed by memory and execution.
   amdf_xdna_umd_device_t device_ = {};
   // Context retaining native transport state, not private instruction memory.

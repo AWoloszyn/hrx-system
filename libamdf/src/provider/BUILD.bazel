@@ -58,7 +58,7 @@ amdf_cc_library(
     }) + select({
         "//libamdf/config/family:xdna": [
             "//libamdf/src/xdna",
-            "//libamdf/src/xdna:endpoint_profile",
+            "//libamdf/src/xdna:device_profile",
             "//libamdf/src/xdna:extension",
         ],
         "//conditions:default": [],

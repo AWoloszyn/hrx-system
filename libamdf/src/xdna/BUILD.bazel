@@ -27,9 +27,9 @@ amdf_cc_library(
 )
 
 amdf_cc_library(
-    name = "endpoint_profile",
-    srcs = ["endpoint_profile.c"],
-    hdrs = ["endpoint_profile.h"],
+    name = "device_profile",
+    srcs = ["device_profile.c"],
+    hdrs = ["device_profile.h"],
     visibility = [
         "//libamdf/src/provider:__pkg__",
         "//libamdf/src/xdna:__subpackages__",
@@ -52,7 +52,7 @@ amdf_cc_library(
         "memory.h",
     ],
     deps = [
-        ":endpoint_profile",
+        ":device_profile",
         "//libamdf/src:allocator",
         "//libamdf/src:device",
         "//libamdf/src:endpoint",
@@ -73,7 +73,7 @@ amdf_cc_library(
     hdrs = ["context.h"],
     deps = [
         ":device",
-        ":endpoint_profile",
+        ":device_profile",
         "//libamdf/src:allocator",
         "//libamdf/src:child_tracker",
         "//libamdf/src:device",
@@ -112,7 +112,7 @@ amdf_cc_library(
     deps = [
         ":context",
         ":device",
-        ":endpoint_profile",
+        ":device_profile",
         ":kernel_queue",
         "//libamdf/src:endpoint",
         "//libamdf/src:structure",
@@ -138,10 +138,10 @@ amdf_cc_library(
 )
 
 amdf_cc_test(
-    name = "endpoint_profile_test",
-    srcs = ["endpoint_profile_test.cc"],
+    name = "device_profile_test",
+    srcs = ["device_profile_test.cc"],
     deps = [
-        ":endpoint_profile",
+        ":device_profile",
         "//third_party:google_test",
         "//third_party:google_test_main",
     ],
@@ -163,7 +163,7 @@ amdf_cc_test(
     deps = [
         ":context",
         ":device",
-        ":endpoint_profile",
+        ":device_profile",
         ":kernel_queue",
         "//libamdf/src:allocator",
         "//libamdf/src:child_tracker",

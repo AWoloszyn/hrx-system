@@ -79,8 +79,8 @@ runtime's execution model.
 | CPU | Linux and Windows host memory | CPU-only backing and explicit host views into shared memory; no synthetic CPU device. |
 | RDNA / CDNA on Linux | KFD and DRM | System and local memory, caller-page registration, peer topology and shared GPU addresses, native user queues. |
 | RDNA on Windows | WDDM / KMT and the private WKMI bridge | System and local memory, host registration, native kernel-published PM4 and SDMA ranges. |
-| XDNA on Linux | Modern amdxdna DRM | NPU4/NPU5 profiles, resident data, context-private instruction storage and kernel-mediated instruction submission. |
-| XDNA on Windows | MCDM / KMT | NPU4/NPU5 profiles, resident data, context-private instruction storage and native transaction-interpreter submission. |
+| XDNA on Linux | Modern amdxdna DRM | NPU4/NPU5/NPU6 support, resident data, context-private instruction storage and kernel-mediated instruction submission. |
+| XDNA on Windows | MCDM / KMT | NPU4/NPU5/NPU6 support, resident data, context-private instruction storage and native transaction-interpreter submission. |
 
 Capability queries describe the implemented platform, target and driver
 combination. Native execution has been exercised on Linux NPU5 and Windows
@@ -100,10 +100,10 @@ library and querying its tables do not discover or activate hardware.
 A caller follows an explicit resource lifecycle:
 
 1. Create an instance, enumerate endpoints, and open metadata snapshots. Inspect
-   topology, memory profiles, instruction limits, and queue families before
-   activating a device.
-2. Create the devices selected for the workload. Query their achieved memory
-   contracts and allocate from a scope with the intended live consumers.
+   PCI identity, hardware family and passive topology before activating a device.
+2. Create the devices selected for the workload. Query native XDNA geometry,
+   instruction/context capabilities and achieved memory contracts. Allocate
+   from a scope with the intended live consumers.
 3. Map host views and obtain device addresses. Create queues and any required
    XDNA contexts; allocate private instruction backing from its owning context.
 4. Publish data and caller-prepared commands, reuse backing and addresses, and
@@ -119,7 +119,7 @@ allocated, registered and imported data, and checks results and teardown.
 
 Focused design documents describe the contracts:
 
-- [Discovery and activation](docs/discovery.md): complete passive information,
+- [Discovery and activation](docs/discovery.md): passive identity and live capabilities,
   live refinement, queue families and native driver ownership.
 - [Memory fabric](docs/memory.md): scopes, shared backing, addresses, visibility
   and caller-owned lifetimes.

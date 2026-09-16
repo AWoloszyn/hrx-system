@@ -88,7 +88,7 @@ iree_cc_test(
     libamdf::src::allocator
     libamdf::src::platform
     libamdf::src::platform::windows::endpoint
-    libamdf::src::xdna::endpoint_profile
+    libamdf::src::xdna::device_profile
   LABELS
     "iree-run-requirement=libamdf.resource.xdna"
     "runtime-resource=amd-xdna"
@@ -158,7 +158,7 @@ iree_cc_library(
     amdf::headers
     libamdf::src::memory_profile
     libamdf::src::platform::windows::endpoint
-    libamdf::src::xdna::endpoint_profile
+    libamdf::src::xdna::device_profile
     libamdf::src::xdna::umd::memory_profile
   PUBLIC
 )
@@ -305,7 +305,7 @@ iree_cc_test(
     iree::third_party::google_test_main
     libamdf::src::allocator
     libamdf::src::platform::windows::endpoint
-    libamdf::src::xdna::endpoint_profile
+    libamdf::src::xdna::device_profile
     libamdf::src::xdna::umd::context
     libamdf::src::xdna::umd::device
   LABELS
@@ -328,7 +328,7 @@ iree_cc_test(
     iree::third_party::google_test
     iree::third_party::google_test_main
     libamdf::src::allocator
-    libamdf::src::xdna::endpoint_profile
+    libamdf::src::xdna::device_profile
     libamdf::src::xdna::target::npu4::bootstrap
     libamdf::src::xdna::target::npu5::bootstrap
     libamdf::src::xdna::umd::context
@@ -408,7 +408,7 @@ iree_cc_test(
     iree::third_party::google_test
     iree::third_party::google_test_main
     libamdf::src::allocator
-    libamdf::src::xdna::endpoint_profile
+    libamdf::src::xdna::device_profile
     libamdf::src::xdna::umd::memory
   LABELS
     "iree-build-requirement=libamdf"

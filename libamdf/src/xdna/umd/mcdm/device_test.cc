@@ -15,7 +15,7 @@
 #include "gtest/gtest.h"
 #include "libamdf/src/allocator.h"
 #include "libamdf/src/platform/windows/endpoint.h"
-#include "libamdf/src/xdna/endpoint_profile.h"
+#include "libamdf/src/xdna/device_profile.h"
 
 namespace {
 
@@ -176,11 +176,11 @@ class WindowsXdnaDeviceRollbackTest : public ::testing::Test {
     endpoint_->adapter = 0x08;
     endpoint_->physical_adapter_index = 0;
 
-    endpoint_info_.array.column_origin = 0;
-    endpoint_info_.array.column_count = 8;
+    device_info_.array.column_origin = 0;
+    device_info_.array.column_count = 8;
     profile_.execution_capabilities =
         AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1;
-    profile_.info = &endpoint_info_;
+    profile_.info = &device_info_;
   }
 
   void TearDown() override {
@@ -193,11 +193,16 @@ class WindowsXdnaDeviceRollbackTest : public ::testing::Test {
     current_state = nullptr;
   }
 
+  // Native dependency observations retained through rollback.
   FakeKmtState state_;
+  // Shared procedure table borrowed by the endpoint.
   amdf_platform_instance_t instance_ = {};
+  // Query adapter used for native activation.
   amdf_platform_endpoint_t* endpoint_ = nullptr;
-  amdf_xdna_endpoint_info_t endpoint_info_ = {};
-  amdf_xdna_endpoint_profile_t profile_ = {};
+  // Instruction and layout properties borrowed by the profile.
+  amdf_xdna_device_info_t device_info_ = {};
+  // Architecture encodings used by the native constructor.
+  amdf_xdna_device_profile_t profile_ = {};
 };
 
 TEST_F(WindowsXdnaDeviceRollbackTest,

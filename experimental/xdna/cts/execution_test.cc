@@ -72,11 +72,16 @@ class XdnaExecutionTest
     info.type = AMDF_STRUCTURE_TYPE_XDNA_ENDPOINT_INFO;
     info.structure_size = sizeof(info);
     ASSERT_EQ(xdna_api_->endpoint_query_info(endpoint_, &info), AMDF_STATUS_OK);
-    if ((info.context.scheduling_modes &
+    amdf_xdna_device_info_t device_info = {};
+    device_info.type = AMDF_STRUCTURE_TYPE_XDNA_DEVICE_INFO;
+    device_info.structure_size = sizeof(device_info);
+    ASSERT_EQ(xdna_api_->device_query_info(device_, &device_info),
+              AMDF_STATUS_OK);
+    if ((device_info.context.scheduling_modes &
          AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED) == 0) {
       GTEST_SKIP() << "time-sliced XDNA contexts are unavailable";
     }
-    instruction_alignment_ = info.instruction.address_alignment;
+    instruction_alignment_ = device_info.instruction.address_alignment;
 
     const iree_file_toc_t* image = nullptr;
     if (std::strcmp(info.target_id, "amd.xdna.strix.17f0_10") == 0) {

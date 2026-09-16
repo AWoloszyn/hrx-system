@@ -7,8 +7,9 @@ appears in the driver API.
 
 ## One caller flow
 
-The caller passively discovers an endpoint, checks its instruction and context
-capabilities, then explicitly creates a device and context. Ordinary data comes
+The caller passively discovers an endpoint and its target identity, then
+explicitly creates a device. `device_query_info` supplies native array geometry,
+instruction limits and context admission before the caller creates a context. Ordinary data comes
 from the instance's system-memory scope with that live device in its access set.
 Instruction storage comes from the context's private scope with EXECUTE access.
 Both use `memory_create`, explicit host mappings, and cached address queries.
@@ -48,15 +49,15 @@ Windows standard backing is rounded to 64 KiB, while KMT mappings guarantee
 translation so the complete range fits every advertised address interpretation.
 
 Linux checks the opened device file and driver identity, then requires the
-native array metadata and allocation/context operations used by the selected
-hardware profile. DRM release metadata does not determine admission.
+native array metadata and allocation/context operations used by its hardware
+architecture. DRM release metadata does not determine admission.
 
 Windows requires the native interface with a kernel-buffer allocation policy
 in the 12-byte private adapter query, direct partition admission by width, and
 120-byte submission headers. The context retains its native kernel buffer
 until destruction. The queried policy selects shared or unshared kernel-buffer
-allocation; hardware identity selects device capabilities. Native context ID
-zero is valid.
+allocation. An escape query on the created device supplies native tile layout.
+Native context ID zero is valid.
 
 This interface is a minimum requirement, not a driver release allowlist.
 Compatible newer drivers are accepted without code changes. Driver build
@@ -103,7 +104,7 @@ amdf_status_t publish_instructions(
 }
 ```
 
-NPU4 and NPU5 queues admit one instruction range per submission and one
+NPU4, NPU5 and NPU6 queues admit one instruction range per submission and one
 unretired submission per queue. The publication call performs no allocation,
 instruction parsing, relocation, argument resolution, native submission retry,
 sleep or host wait.
@@ -134,11 +135,17 @@ allocation registry, or library suballocator. Several live contexts can own
 independent private backing even when their firmware addresses are numerically
 equal.
 
-Hardware facts and native ABI facts have separate owners. Endpoint profiles hold
-topology, limits, instruction format, and address translations. The platform
-provider qualifies its native services. A known hardware identity does not make
-an unknown driver schema compatible, nor does one native firmware command imply
-support for another. Capability checks describe the implemented combination.
+Passive endpoint information contains architecture and compiler target identity.
+The activated device owns immutable native row/column metadata and effective
+context and instruction capabilities. Instruction encodings, alignment and DMA
+address translation are AIE architecture contracts, independent of array size.
+Native allocation and admission still enforce resource availability; libamdf
+does not publish guessed limits on simultaneously live contexts.
+
+NPU6 (Krackan) uses the AIE2P path and NPU4 firmware bootstrap. AMD's
+[driver definition](https://github.com/amd/xdna-driver/blob/8dfda66f67a84aecf26cf68336efc9e4cc1756c3/drivers/accel/amdxdna/npu6_regs.c)
+shares NPU4 firmware, hardware operations and feature contracts. Array geometry
+is queried from the installed driver on both platforms.
 
 The [memory fabric](memory.md) describes the shared scope, address, visibility,
 and lifetime contracts used by GPU and XDNA callers.

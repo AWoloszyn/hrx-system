@@ -87,7 +87,7 @@ amdf_status_t amdf_xdna_umd_context_create(
     const amdf_xdna_context_create_info_t* create_info,
     amdf_xdna_umd_context_t** out_context,
     amdf_xdna_umd_context_result_t* out_result) {
-  const amdf_xdna_endpoint_profile_t* profile = device->profile;
+  const amdf_xdna_device_profile_t* profile = device->profile;
   // Device/paging resources also serve ordinary memory and do not establish
   // support for this context's interpreter bootstrap or private wire ABI.
   if ((profile->execution_capabilities &

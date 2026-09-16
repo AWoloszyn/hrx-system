@@ -9,7 +9,7 @@
 #include "gtest/gtest.h"
 #include "libamdf/src/allocator.h"
 #include "libamdf/src/platform/windows/endpoint.h"
-#include "libamdf/src/xdna/endpoint_profile.h"
+#include "libamdf/src/xdna/device_profile.h"
 #include "libamdf/src/xdna/umd/mcdm/adapter_info.h"
 
 namespace {
@@ -54,9 +54,10 @@ TEST_F(WindowsXdnaAdapterInfoSystemTest,
     ASSERT_EQ(
         amdf_platform_endpoint_open(instance_, &summary.id, &endpoint_, &info),
         AMDF_STATUS_OK);
-    const auto* profile = amdf_xdna_endpoint_profile_select(&info);
-    if (profile &&
-        (profile->execution_capabilities &
+    amdf_xdna_device_info_t device_info = {};
+    amdf_xdna_device_profile_t profile = {};
+    if (amdf_xdna_device_profile_initialize(&info, &device_info, &profile) &&
+        (profile.execution_capabilities &
          AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1) != 0) {
       found = true;
       // Policy discovery receives only a query procedure; it cannot depend on

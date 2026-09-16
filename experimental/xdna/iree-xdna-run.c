@@ -86,7 +86,7 @@ typedef struct iree_xdna_run_t {
   amdf_xdna_context_t* context;
   // Caller-owned cold instruction storage, released before its context.
   struct {
-    // Endpoint-required alignment of submitted instruction addresses.
+    // Device-required alignment of submitted instruction addresses.
     uint32_t alignment;
     // One private allocation backing this executable instance.
     amdf_memory_t* memory;
@@ -301,12 +301,26 @@ static iree_status_t iree_xdna_run_create_device(
   IREE_RETURN_IF_ERROR(iree_hal_amd_xdna_aie2p_npu2_target_initialize(
       iree_make_cstring_view(xdna_info.target_id), (uint16_t)FLAG_columns,
       out_target));
-  if (xdna_info.instruction.maximum_byte_length == 0) {
+  const amdf_xdna_device_create_info_t create_info = {
+      .type = AMDF_STRUCTURE_TYPE_XDNA_DEVICE_CREATE_INFO,
+      .structure_size = sizeof(create_info),
+  };
+  IREE_RETURN_IF_ERROR(IREE_HAL_AMD_STATUS_FROM_AMDF(
+      run->xdna_api->device_create(run->endpoint, &create_info, &run->device),
+      "xdna.device_create"));
+  amdf_xdna_device_info_t device_info = {
+      .type = AMDF_STRUCTURE_TYPE_XDNA_DEVICE_INFO,
+      .structure_size = sizeof(device_info),
+  };
+  IREE_RETURN_IF_ERROR(IREE_HAL_AMD_STATUS_FROM_AMDF(
+      run->xdna_api->device_query_info(run->device, &device_info),
+      "xdna.device_query_info"));
+  if (device_info.instruction.maximum_byte_length == 0) {
     return iree_make_status(
         IREE_STATUS_UNAVAILABLE,
         "endpoint does not support native instruction submission");
   }
-  run->instructions.alignment = xdna_info.instruction.address_alignment;
+  run->instructions.alignment = device_info.instruction.address_alignment;
   amdf_endpoint_info_t endpoint_info = {
       .type = AMDF_STRUCTURE_TYPE_ENDPOINT_INFO,
       .structure_size = sizeof(endpoint_info),
@@ -338,10 +352,6 @@ static iree_status_t iree_xdna_run_create_device(
                             "endpoint has no XDNA kernel queue family");
   }
   run->queue_family_ordinal = family_ordinal;
-  const amdf_xdna_device_create_info_t create_info = {
-      .type = AMDF_STRUCTURE_TYPE_XDNA_DEVICE_CREATE_INFO,
-      .structure_size = sizeof(create_info),
-  };
   fprintf(stderr, "Creating %s device and %d-column context\n",
           xdna_info.target_id, FLAG_columns);
   fflush(stderr);
@@ -389,9 +399,6 @@ static iree_status_t iree_xdna_run_create_device(
         "device has no host-visible %s profile with read/write device access",
         FLAG_binding_memory);
   }
-  IREE_RETURN_IF_ERROR(IREE_HAL_AMD_STATUS_FROM_AMDF(
-      run->xdna_api->device_create(run->endpoint, &create_info, &run->device),
-      "xdna.device_create"));
   run->memory_access.device = run->device;
   amdf_memory_access_capabilities_t memory_capabilities = {
       .type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES,

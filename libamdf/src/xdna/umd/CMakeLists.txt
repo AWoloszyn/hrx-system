@@ -18,7 +18,7 @@ iree_cc_library(
   DEPS
     amdf::headers
     libamdf::src::platform
-    libamdf::src::xdna::endpoint_profile
+    libamdf::src::xdna::device_profile
   PUBLIC
 )
 endif()
@@ -32,7 +32,7 @@ iree_cc_library(
   DEPS
     ::device
     amdf::headers
-    libamdf::src::xdna::endpoint_profile
+    libamdf::src::xdna::device_profile
   PUBLIC
 )
 endif()
@@ -47,7 +47,7 @@ iree_cc_library(
     amdf::headers
     libamdf::src::memory_profile
     libamdf::src::platform
-    libamdf::src::xdna::endpoint_profile
+    libamdf::src::xdna::device_profile
   PUBLIC
 )
 endif()

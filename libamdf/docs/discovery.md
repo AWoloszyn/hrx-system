@@ -11,7 +11,7 @@ resources actually obtained. Linux and Windows use the same public contracts.
 | --- | --- | --- |
 | `amdf_query_api`, `query_extension` | Immutable versioned tables for the services compiled into the library. | No allocation, system call, discovery, dependent-library loading or device activation. Tables remain valid for the library lifetime. |
 | `instance_create` | Explicit lifetime root and native lifetime policy. | Host bookkeeping; shared driver connections are acquired when their devices are explicitly created. |
-| `endpoint_enumerate`, `endpoint_open` | Selectable AMD endpoints and complete cached metadata. | Bounded discovery and metadata queries, including OS metadata handles where needed. No execution device, VM, workload context, paging queue or device allocation. |
+| `endpoint_enumerate`, `endpoint_open` | Selectable AMD endpoints and cached passive metadata. | Bounded discovery and metadata queries, including OS metadata handles where needed. No execution device, VM, workload context, paging queue or device allocation. |
 | Family `device_create` | The selected live device and its achieved capabilities. | Native interface qualification and device-specific execution or memory state. Shared driver connections belong to the instance. |
 | Memory, context and queue creation | Resources requested by the workload. | Explicit native allocation, mapping, residency and scheduling-context setup at their owning boundaries. |
 
@@ -21,11 +21,13 @@ enumerates summaries, opens endpoints and prints their capabilities without
 creating execution resources. A missing extension means the family was not
 compiled into that library; it does not mean no such hardware is installed.
 
-## Complete information before activation
+## Identity before activation, resources after activation
 
-Endpoint information supplies identity and topology. Family information adds
-hardware facts such as GPU compute geometry or XDNA array geometry, instruction
-format and limits. Queue-family and scope-profile queries describe the native
+Endpoint information supplies identity and passive topology. XDNA family
+information identifies its architecture and compiler target; its native array
+geometry, context admission and instruction limits come from the live device
+query after explicit activation. GPU family information includes the hardware
+facts available through passive native metadata. Queue-family and scope-profile queries describe the native
 services that can be requested. Returned records are complete: zero describes
 an absent capability, not a field waiting for an expensive query.
 
@@ -62,8 +64,9 @@ Subsequent GPU information queries copy cached identity, ASIC revision, compute
 geometry, LDS limits, XCC topology and complete memory profiles.
 
 Hardware profiles and installed native interfaces answer different questions.
-An XDNA profile describes the target's array and address interpretations; it
-does not identify a Windows driver-private wire ABI. Device creation qualifies
+XDNA target identity selects architecture encodings and firmware bootstrap,
+while native activation supplies actual array geometry. Neither selects a
+driver interface by its package release number. Device creation qualifies
 that ABI before constructing native contexts. Failed family qualification does
 not publish a partial family record; core endpoint identity remains queryable.
 

@@ -32,7 +32,7 @@ const amdf_xdna_device_info_t* amdf_xdna_device_get_info(
     const amdf_device_t* device);
 
 // Returns the resolved profile owned by one live XDNA device.
-const amdf_xdna_endpoint_profile_t* amdf_xdna_device_get_profile(
+const amdf_xdna_device_profile_t* amdf_xdna_device_get_profile(
     const amdf_device_t* device);
 
 // Queries the reset epoch cached by one XDNA device.

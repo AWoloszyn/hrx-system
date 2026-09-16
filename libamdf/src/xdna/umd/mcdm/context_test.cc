@@ -16,7 +16,7 @@
 
 #include "gtest/gtest.h"
 #include "libamdf/src/allocator.h"
-#include "libamdf/src/xdna/endpoint_profile.h"
+#include "libamdf/src/xdna/device_profile.h"
 #include "libamdf/src/xdna/target/npu4/bootstrap.h"
 #include "libamdf/src/xdna/target/npu5/bootstrap.h"
 #include "libamdf/src/xdna/umd/mcdm/context.h"
@@ -240,10 +240,10 @@ class WindowsXdnaContextTest : public ::testing::Test {
     device_.kmt = &kmt_;
     device_.adapter = 0x08;
     device_.device = 0x10;
-    endpoint_info_.array.column_count = 8;
+    device_info_.array.column_count = 8;
     profile_.execution_capabilities =
         AMDF_XDNA_EXECUTION_CAPABILITY_TRANSACTION_INTERPRETER_V1;
-    profile_.info = &endpoint_info_;
+    profile_.info = &device_info_;
     profile_.bootstrap = &amdf_xdna_npu5_bootstrap;
     device_.profile = &profile_;
     create_info_.logical_column_count = 1;
@@ -261,9 +261,9 @@ class WindowsXdnaContextTest : public ::testing::Test {
   // Live device borrowed by each context.
   amdf_xdna_umd_device_t device_ = {};
   // Hardware geometry used by the selected profile.
-  amdf_xdna_endpoint_info_t endpoint_info_ = {};
+  amdf_xdna_device_info_t device_info_ = {};
   // Target capabilities and bootstrap image.
-  amdf_xdna_endpoint_profile_t profile_ = {};
+  amdf_xdna_device_profile_t profile_ = {};
   // Public partition and scheduling request.
   amdf_xdna_context_create_info_t create_info_ = {};
 };

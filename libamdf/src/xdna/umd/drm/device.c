@@ -18,7 +18,7 @@
 #include "libamdf/src/xdna/umd/drm/device.h"
 
 amdf_xdna_umd_context_capabilities_t amdf_xdna_umd_query_context_capabilities(
-    const amdf_xdna_endpoint_profile_t* profile) {
+    const amdf_xdna_device_profile_t* profile) {
   amdf_xdna_umd_context_capabilities_t capabilities = {0};
   if ((profile->execution_capabilities &
        AMDF_XDNA_EXECUTION_CAPABILITY_ELF_INSTRUCTIONS) != 0) {
@@ -71,7 +71,7 @@ static amdf_status_t amdf_linux_xdna_device_query_tiles(
 
 static amdf_status_t amdf_linux_xdna_device_prepare_execution(
     amdf_xdna_umd_device_t* device) {
-  const amdf_xdna_endpoint_profile_t* profile = device->profile;
+  const amdf_xdna_device_profile_t* profile = device->profile;
   if (device->page_size > profile->firmware_heap_byte_length) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
@@ -88,8 +88,8 @@ static amdf_status_t amdf_linux_xdna_device_prepare_execution(
 
 amdf_status_t amdf_xdna_umd_device_create(
     amdf_platform_endpoint_t* endpoint,
-    const amdf_xdna_endpoint_profile_t* profile,
-    amdf_allocator_t host_allocator, amdf_xdna_umd_device_t** out_device,
+    const amdf_xdna_device_profile_t* profile, amdf_allocator_t host_allocator,
+    amdf_xdna_umd_device_t** out_device,
     amdf_xdna_umd_device_result_t* out_result) {
   const long page_size = sysconf(_SC_PAGESIZE);
   if (page_size <= 0 || (page_size & (page_size - 1)) != 0) {

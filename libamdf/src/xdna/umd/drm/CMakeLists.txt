@@ -124,7 +124,7 @@ iree_cc_library(
     amdf::headers
     libamdf::src::memory_profile
     libamdf::src::platform::linux::endpoint
-    libamdf::src::xdna::endpoint_profile
+    libamdf::src::xdna::device_profile
     libamdf::src::xdna::umd::memory_profile
   PUBLIC
 )
@@ -264,7 +264,7 @@ iree_cc_test(
     libamdf::src::allocator
     libamdf::src::platform
     libamdf::src::platform::linux::endpoint
-    libamdf::src::xdna::endpoint_profile
+    libamdf::src::xdna::device_profile
     libamdf::src::xdna::umd::context
     libamdf::src::xdna::umd::device
     libamdf::src::xdna::umd::memory
