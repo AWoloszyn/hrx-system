@@ -1146,8 +1146,9 @@ typedef struct loom_func_like_vtable_t {
   uint8_t priority_attr_index;
 
   // Operand field containing the signature arguments for a bodyless
-  // declaration. LOOM_OPERAND_INDEX_NONE when arguments are entry block
-  // values in |body_region_index|.
+  // declaration. These values are owned by the declaration, not references to
+  // values defined elsewhere. LOOM_OPERAND_INDEX_NONE when arguments are entry
+  // block values in |body_region_index|.
   uint8_t args_operand_field_index;
 
   // Number of operand segments stored on bodyless declarations using

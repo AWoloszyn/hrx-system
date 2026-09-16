@@ -2110,13 +2110,13 @@ iree_status_t loom_op_remove_results(loom_module_t* module, loom_op_t* op,
                                      iree_arena_allocator_t* scratch_arena,
                                      uint16_t* out_removed_count);
 
-// Erases an op: removes all use records for the op's operands, verifies
-// that every result has no operand uses or attribute/type uses from outside
-// the op (caller must RAUW results first), drops type-use records carried by
-// result and nested block-argument types, then marks the op dead. Dead ops are
-// skipped by enumeration macros and will not be serialized. The memory is not
-// freed (arena-owned). Returns IREE_STATUS_FAILED_PRECONDITION if any result
-// still has uses.
+// Erases an op after verifying that every result has no operand uses or
+// attribute/type uses from outside the op (caller must RAUW results first).
+// Removes operand and attribute use records, drops type-use records carried by
+// results, owned declaration arguments and nested block arguments, then marks
+// the op dead. Dead ops are skipped by enumeration macros and will not be
+// serialized. The memory is not freed (arena-owned). Returns
+// IREE_STATUS_FAILED_PRECONDITION if any result still has uses.
 iree_status_t loom_op_erase(loom_module_t* module, loom_op_t* op);
 
 // Removes a closed set of non-entry blocks from |region| and compacts the

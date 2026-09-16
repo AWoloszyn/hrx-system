@@ -41,6 +41,9 @@ loom_cc_test(
     srcs = ["op_defs_test.cc"],
     deps = [
         ":op_defs",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops/kernel",
+        "//runtime/src/iree/base/internal:arena",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
     ],

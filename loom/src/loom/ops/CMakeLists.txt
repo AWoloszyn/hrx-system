@@ -35,8 +35,11 @@ loom_cc_test(
     "op_defs_test.cc"
   DEPS
     ::op_defs
+    iree::base::internal::arena
     iree::testing::gtest
     iree::testing::gtest_main
+    loom::ir
+    loom::ops::kernel
 )
 
 loom_cc_library(

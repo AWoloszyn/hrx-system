@@ -1227,6 +1227,58 @@ TEST_F(BuilderTest, OpErase) {
   EXPECT_EQ(op->parent_block, block);
 }
 
+TEST_F(BuilderTest, EraseDeclarationDropsOwnedArgumentTypeUses) {
+  const loom_type_t argument_types[] = {
+      loom_type_scalar(LOOM_SCALAR_TYPE_INDEX),
+      loom_type_pool(loom_dim_pack_static(4)),
+  };
+  loom_op_t* declarations[2] = {};
+  const iree_string_view_t names[] = {IREE_SV("erased"), IREE_SV("retained")};
+  for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(declarations); ++i) {
+    loom_string_id_t name = LOOM_STRING_ID_INVALID;
+    IREE_ASSERT_OK(loom_module_intern_string(module_, names[i], &name));
+    uint16_t symbol = LOOM_SYMBOL_ID_INVALID;
+    IREE_ASSERT_OK(loom_module_add_symbol(module_, name, &symbol));
+    const loom_symbol_ref_t callee = {0, symbol};
+    IREE_ASSERT_OK(loom_test_decl_build(
+        &builder_, /*build_flags=*/0, /*visibility=*/0, /*cc=*/0, callee,
+        argument_types, IREE_ARRAYSIZE(argument_types),
+        /*result_types=*/&argument_types[1], /*result_count=*/1,
+        /*tied_results=*/nullptr, /*tied_result_count=*/0,
+        LOOM_LOCATION_UNKNOWN, &declarations[i]));
+    const loom_value_slice_t arguments = loom_test_decl_args(declarations[i]);
+    const loom_type_t storage_type =
+        loom_type_pool(loom_dim_pack_dynamic(arguments.values[0]));
+    IREE_ASSERT_OK(
+        loom_module_set_value_type(module_, arguments.values[1], storage_type));
+    IREE_ASSERT_OK(loom_module_set_value_type(
+        module_, loom_op_results(declarations[i])[0], storage_type));
+  }
+  ASSERT_EQ(module_->type_uses.active_count, 4u);
+  const loom_value_slice_t erased_arguments =
+      loom_test_decl_args(declarations[0]);
+  const loom_value_slice_t retained_arguments =
+      loom_test_decl_args(declarations[1]);
+
+  IREE_ASSERT_OK(loom_op_erase(module_, declarations[0]));
+  EXPECT_EQ(module_->type_uses.active_count, 2u);
+  EXPECT_EQ(loom_module_value(module_, erased_arguments.values[1])->use_count,
+            0u);
+  EXPECT_EQ(loom_module_value_first_outgoing_type_use(
+                module_, erased_arguments.values[1]),
+            LOOM_TYPE_USE_ID_INVALID);
+  EXPECT_FALSE(
+      loom_module_value_has_type_uses(module_, erased_arguments.values[0]));
+  EXPECT_TRUE(
+      loom_module_value_has_type_uses(module_, retained_arguments.values[0]));
+
+  // Incremental erasure and reconstruction agree without a recovery rebuild.
+  IREE_ASSERT_OK(loom_module_compute_uses(module_));
+  EXPECT_EQ(module_->type_uses.active_count, 2u);
+  IREE_ASSERT_OK(loom_op_erase(module_, declarations[1]));
+  EXPECT_FALSE(loom_module_has_active_type_uses(module_));
+}
+
 TEST_F(BuilderTest, SetBeforePreservesConsecutiveInsertionOrder) {
   loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
   loom_op_t* first = NULL;

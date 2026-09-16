@@ -6,10 +6,92 @@
 
 #include "loom/ops/op_defs.h"
 
+#include "iree/base/internal/arena.h"
 #include "iree/testing/gtest.h"
+#include "iree/testing/status_matchers.h"
+#include "loom/ir/context.h"
+#include "loom/ir/module.h"
+#include "loom/ops/kernel/ops.h"
 
 namespace loom {
 namespace {
+
+class OpEraseTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    iree_arena_block_pool_initialize(4096, iree_allocator_system(),
+                                     &block_pool_);
+    loom_context_initialize(iree_allocator_system(), &context_);
+    iree_host_size_t count = 0;
+    const loom_op_vtable_t* const* vtables =
+        loom_kernel_dialect_vtables(&count);
+    IREE_ASSERT_OK(loom_context_register_dialect(&context_, LOOM_DIALECT_KERNEL,
+                                                 vtables, (uint16_t)count));
+    IREE_ASSERT_OK(loom_context_finalize(&context_));
+    IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("erase"),
+                                        &block_pool_, nullptr,
+                                        iree_allocator_system(), &module_));
+  }
+
+  void TearDown() override {
+    loom_module_free(module_);
+    loom_context_deinitialize(&context_);
+    iree_arena_block_pool_deinitialize(&block_pool_);
+  }
+
+  // Storage backing the module's invocation-lifetime arena.
+  iree_arena_block_pool_t block_pool_ = {};
+  // Immutable operation metadata shared by the fixture's builders.
+  loom_context_t context_ = {};
+  // Owned module whose retained reference state is under test.
+  loom_module_t* module_ = nullptr;
+};
+
+TEST_F(OpEraseTest, KernelDeclarationDropsBothOwnedSignatures) {
+  loom_builder_t builder = {};
+  loom_builder_initialize(module_, &module_->arena, loom_module_block(module_),
+                          &builder);
+  loom_string_id_t name = LOOM_STRING_ID_INVALID;
+  IREE_ASSERT_OK(
+      loom_module_intern_string(module_, IREE_SV("dispatch"), &name));
+  uint16_t symbol = LOOM_SYMBOL_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_add_symbol(module_, name, &symbol));
+  const loom_symbol_ref_t callee = {0, symbol};
+  const loom_type_t argument_types[] = {
+      loom_type_scalar(LOOM_SCALAR_TYPE_INDEX),
+      loom_type_pool(loom_dim_pack_static(4)),
+  };
+  loom_op_t* declaration = nullptr;
+  IREE_ASSERT_OK(loom_kernel_decl_build(
+      &builder, /*build_flags=*/0, /*retain=*/0, loom_symbol_ref_null(),
+      LOOM_STRING_ID_INVALID, /*export_linkage=*/0, callee, argument_types,
+      IREE_ARRAYSIZE(argument_types), argument_types,
+      IREE_ARRAYSIZE(argument_types), /*predicates=*/nullptr,
+      /*predicates_count=*/0, LOOM_LOCATION_UNKNOWN, &declaration));
+  const loom_value_slice_t signatures[] = {
+      loom_kernel_decl_workloads(declaration),
+      loom_kernel_decl_args(declaration),
+  };
+  for (const loom_value_slice_t signature : signatures) {
+    IREE_ASSERT_OK(loom_module_set_value_type(
+        module_, signature.values[1],
+        loom_type_pool(loom_dim_pack_dynamic(signature.values[0]))));
+  }
+  ASSERT_EQ(module_->type_uses.active_count, 2u);
+  const iree_host_size_t arena_bytes = module_->arena.used_allocation_size;
+  IREE_ASSERT_OK(loom_op_erase(module_, declaration));
+  EXPECT_FALSE(loom_module_has_active_type_uses(module_));
+  EXPECT_EQ(module_->arena.used_allocation_size, arena_bytes);
+  for (const loom_value_slice_t signature : signatures) {
+    EXPECT_EQ(loom_module_value(module_, signature.values[1])->use_count, 0u);
+    EXPECT_EQ(
+        loom_module_value_first_outgoing_type_use(module_, signature.values[1]),
+        LOOM_TYPE_USE_ID_INVALID);
+    EXPECT_FALSE(loom_module_value_has_type_uses(module_, signature.values[0]));
+  }
+  IREE_ASSERT_OK(loom_module_compute_uses(module_));
+  EXPECT_FALSE(loom_module_has_active_type_uses(module_));
+}
 
 TEST(DialectTableHelpers, ReturnVtableArraysAndCounts) {
   const loom_op_vtable_t vtable = {};
