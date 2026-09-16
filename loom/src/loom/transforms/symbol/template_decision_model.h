@@ -129,7 +129,7 @@ typedef struct loom_template_decision_model_catalog_t {
 
 // Application context bound to one model evaluation.
 typedef struct loom_template_decision_site_t {
-  // template.apply operation being classified.
+  // template.apply or authored template.call operation being classified.
   const loom_op_t* application_op;
 
   // Target facts established for the containing function.

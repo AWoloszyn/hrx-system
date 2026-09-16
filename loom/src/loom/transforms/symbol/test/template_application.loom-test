@@ -1,0 +1,106 @@
+// Exact calls bypass provider ranking, but still check the provider's operand
+// contract after the family contract succeeds.
+// RUN: pass select-templates{mode=final}
+
+template.decl @aligned(%value: index) -> (index)
+
+template.def<@aligned> @implementation(%value: index) -> (index) where [mul(%value, 16)] {
+  template.return %value : index
+}
+
+func.def public @entry(%value: index) -> (index) where [eq(%value, 15)] {
+  // ERROR@+1: LOWERING/045 {op_name="template.call", phase_name="select-templates", contract_key="aligned", failure_code="exact_call_rejected"}
+  %result = template.call @implementation(%value) : (index) -> (index)
+  func.return %result : index
+}
+
+// ====
+
+// An exact call reports the family requirement when that is the unresolved
+// contract. The absence of target facts does not reject or satisfy it.
+// RUN: pass select-templates{mode=final}
+
+template.decl requires [#target.subgroup.size<32>] @wave(%value: i32) -> (i32)
+
+template.def<@wave> @implementation(%value: i32) -> (i32) {
+  template.return %value : i32
+}
+
+func.def public @entry(%value: i32) -> (i32) {
+  // ERROR@+1: LOWERING/048 {op_name="template.call", phase_name="select-templates", contract_key="wave", constraint_owner_name="wave", condition_name="target.subgroup.size"}
+  %result = template.call @implementation(%value) : (i32) -> (i32)
+  func.return %result : i32
+}
+
+// ====
+
+// Reusing the same exact-call contract in another function must not reuse the
+// first caller's target or workload facts.
+// RUN: pass select-templates{mode=final}
+
+test.target<low_core> @wave32 {subgroup_size = 32}
+
+template.decl @wave(%value: index) -> (index)
+
+template.def<@wave> requires [#target.subgroup.size<32>] @implementation(%value: index) -> (index) where [mul(%value, 16)] {
+  template.return %value : index
+}
+
+func.def public target(@wave32) @known(%value: index) -> (index) where [eq(%value, 16)] {
+  %result = template.call @implementation(%value) : (index) -> (index)
+  func.return %result : index
+}
+
+func.def public @unbound(%value: index) -> (index) where [eq(%value, 16)] {
+  // ERROR@+1: LOWERING/048 {op_name="template.call", phase_name="select-templates", contract_key="wave", constraint_owner_name="implementation", condition_name="target.subgroup.size"}
+  %result = template.call @implementation(%value) : (index) -> (index)
+  func.return %result : index
+}
+
+func.def public target(@wave32) @rejected(%value: index) -> (index) where [eq(%value, 15)] {
+  // ERROR@+1: LOWERING/045 {op_name="template.call", phase_name="select-templates", contract_key="wave", failure_code="exact_call_rejected"}
+  %result = template.call @implementation(%value) : (index) -> (index)
+  func.return %result : index
+}
+
+// ====
+
+// Exact calls can prove a provider condition on a lexical branch even when the
+// public caller has no bound target.
+// RUN: pass select-templates{mode=final},inline-callables
+
+template.decl @wave(%value: i32) -> (i32)
+
+template.def<@wave> requires [#target.subgroup.size<32>] @implementation(%value: i32) -> (i32) {
+  %doubled = test.addi %value, %value : i32
+  template.return %doubled : i32
+}
+
+func.def public @entry(%value: i32) -> (i32) {
+  %size = target.subgroup.size : index
+  %required_size = index.constant 32 : index
+  %is_wave32 = index.cmp eq, %size, %required_size : index
+  %result = scf.if %is_wave32 -> (i32) {
+    %doubled = template.call @implementation(%value) : (i32) -> (i32)
+    scf.yield %doubled : i32
+  } else {
+    scf.yield %value : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+template.decl @wave(%value: i32) -> (i32)
+
+func.def public @entry(%value: i32) -> (i32) {
+  %size = target.subgroup.size : index
+  %required_size = index.constant 32 : index
+  %is_wave32 = index.cmp eq, %size, %required_size : index
+  %result = scf.if %is_wave32 -> (i32) {
+    %doubled = test.addi %value, %value : i32
+    scf.yield %doubled : i32
+  } else {
+    scf.yield %value : i32
+  }
+  func.return %result : i32
+}

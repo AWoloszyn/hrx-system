@@ -96,6 +96,29 @@ loom_cc_library(
 
 loom_cc_library(
   NAME
+    template_application
+  HDRS
+    "template_application.h"
+  SRCS
+    "template_application.c"
+  DEPS
+    ::template_applicability
+    ::template_decision_model
+    iree::base
+    loom::analysis::symbol_facts
+    loom::error::emitter
+    loom::error::error_defs
+    loom::ir
+    loom::ops::func
+    loom::ops::op_defs
+    loom::ops::target
+    loom::ops::template
+    loom::util::bstring
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
     template_selection
   HDRS
     "template_selection.h"
@@ -104,6 +127,7 @@ loom_cc_library(
   DEPS
     ::symbol_pruning
     ::template_applicability
+    ::template_application
     ::template_decision_model
     ::template_rewrite
     iree::base
@@ -113,7 +137,6 @@ loom_cc_library(
     loom::analysis::symbol_liveness
     loom::analysis::symbol_references
     loom::analysis::template_provider_catalog
-    loom::error::error_defs
     loom::ir
     loom::ir::facts
     loom::ops::func
@@ -131,7 +154,6 @@ loom_cc_library(
     loom::target::facts
     loom::target::function_version
     loom::target::pass_environment
-    loom::util::bstring
   PUBLIC
 )
 

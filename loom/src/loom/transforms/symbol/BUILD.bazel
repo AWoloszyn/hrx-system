@@ -88,12 +88,33 @@ loom_cc_library(
 )
 
 loom_cc_library(
+    name = "template_application",
+    srcs = ["template_application.c"],
+    hdrs = ["template_application.h"],
+    deps = [
+        ":template_applicability",
+        ":template_decision_model",
+        "//loom/src/loom/analysis:symbol_facts",
+        "//loom/src/loom/error:emitter",
+        "//loom/src/loom/error:error_defs",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/ops/func",
+        "//loom/src/loom/ops/target",
+        "//loom/src/loom/ops/template",
+        "//loom/src/loom/util:bstring",
+        "//runtime/src/iree/base",
+    ],
+)
+
+loom_cc_library(
     name = "template_selection",
     srcs = ["template_selection.c"],
     hdrs = ["template_selection.h"],
     deps = [
         ":symbol_pruning",
         ":template_applicability",
+        ":template_application",
         ":template_decision_model",
         ":template_rewrite",
         "//loom/src/loom/analysis:condition_facts",
@@ -101,7 +122,6 @@ loom_cc_library(
         "//loom/src/loom/analysis:symbol_liveness",
         "//loom/src/loom/analysis:symbol_references",
         "//loom/src/loom/analysis:template_provider_catalog",
-        "//loom/src/loom/error:error_defs",
         "//loom/src/loom/ir",
         "//loom/src/loom/ir:facts",
         "//loom/src/loom/ops:op_defs",
@@ -119,7 +139,6 @@ loom_cc_library(
         "//loom/src/loom/target:facts",
         "//loom/src/loom/target:function_version",
         "//loom/src/loom/target:pass_environment",
-        "//loom/src/loom/util:bstring",
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/internal:arena",
     ],

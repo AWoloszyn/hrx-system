@@ -15,7 +15,6 @@
 #include "loom/analysis/symbol_liveness.h"
 #include "loom/analysis/symbol_references.h"
 #include "loom/analysis/template_provider_catalog.h"
-#include "loom/error/error_catalog.h"
 #include "loom/ir/context.h"
 #include "loom/ir/facts.h"
 #include "loom/ir/module.h"
@@ -33,9 +32,9 @@
 #include "loom/target/pass_environment.h"
 #include "loom/transforms/symbol/symbol_pruning.h"
 #include "loom/transforms/symbol/template_applicability.h"
+#include "loom/transforms/symbol/template_application.h"
 #include "loom/transforms/symbol/template_decision_model.h"
 #include "loom/transforms/symbol/template_rewrite.h"
-#include "loom/util/bstring.h"
 
 //===----------------------------------------------------------------------===//
 // Options and statistics
@@ -212,65 +211,6 @@ static loom_template_selection_mode_t loom_template_selection_mode(
 // Plan model
 //===----------------------------------------------------------------------===//
 
-typedef enum loom_template_selection_action_e {
-  LOOM_TEMPLATE_SELECTION_ACTION_UNRESOLVED = 0,
-  LOOM_TEMPLATE_SELECTION_ACTION_SELECT = 1,
-} loom_template_selection_action_t;
-
-typedef enum loom_template_selection_blocker_e {
-  LOOM_TEMPLATE_SELECTION_BLOCKER_NONE = 0,
-  LOOM_TEMPLATE_SELECTION_BLOCKER_NO_PROVIDER = 1,
-  LOOM_TEMPLATE_SELECTION_BLOCKER_TARGET_MISMATCH = 2,
-  LOOM_TEMPLATE_SELECTION_BLOCKER_ALL_REJECTED = 3,
-  LOOM_TEMPLATE_SELECTION_BLOCKER_MISSING_FACTS = 4,
-  LOOM_TEMPLATE_SELECTION_BLOCKER_AMBIGUOUS = 5,
-  LOOM_TEMPLATE_SELECTION_BLOCKER_MATERIALIZATION = 6,
-  LOOM_TEMPLATE_SELECTION_BLOCKER_FAMILY_REJECTED = 7,
-  LOOM_TEMPLATE_SELECTION_BLOCKER_EXACT_CALL_REJECTED = 8,
-} loom_template_selection_blocker_t;
-
-typedef enum loom_template_contract_role_e {
-  LOOM_TEMPLATE_CONTRACT_NONE = 0,
-  LOOM_TEMPLATE_CONTRACT_FAMILY = 1,
-  LOOM_TEMPLATE_CONTRACT_PROVIDER = 2,
-} loom_template_contract_role_t;
-
-typedef struct loom_template_selection_entry_t {
-  // Live template.apply or authored template.call operation.
-  loom_op_t* application_op;
-
-  // Template family demanded by apply_op.
-  loom_symbol_ref_t family;
-
-  // Borrowed template family symbol name.
-  iree_string_view_t family_name;
-
-  // Selected provider when action is SELECT or materialization is blocked.
-  const loom_template_provider_summary_t* selected_provider;
-
-  // Direct provider referenced by an authored template.call, or null.
-  loom_symbol_ref_t exact_provider;
-
-  // Highest-priority provider whose applicability remains unproven, or NULL
-  // when the family declaration contract itself remains unproven.
-  const loom_template_provider_summary_t* unresolved_provider;
-
-  // First unresolved target condition on the family or provider contract.
-  const loom_target_condition_t* unresolved_target_condition;
-
-  // Selection action for this apply.
-  loom_template_selection_action_t action;
-
-  // Reason an unresolved apply could not be selected.
-  loom_template_selection_blocker_t blocker;
-
-  // First unresolved family or provider requirement category.
-  loom_template_provider_unresolved_reason_t unresolved_reason;
-
-  // Family or provider contract responsible for the blocker.
-  loom_template_contract_role_t blocker_contract;
-} loom_template_selection_entry_t;
-
 typedef struct loom_template_selection_state_t {
   // Active pass invocation, or NULL for a read-only query.
   loom_pass_t* pass;
@@ -326,7 +266,7 @@ typedef struct loom_template_selection_state_t {
   bool reports_enabled;
 
   // Reachable apply-site selection entries.
-  loom_template_selection_entry_t* entries;
+  loom_template_application_result_t* entries;
 
   // Number of valid selection entries.
   iree_host_size_t entry_count;
@@ -361,14 +301,8 @@ typedef struct loom_template_selection_state_t {
     iree_host_size_t capacity;
   } application_path_scratch;
 
-  // Reusable ranked-selection output storage sized to the largest family.
-  struct {
-    // Exact provider ordinals that must remain live for the active site.
-    uint32_t* live_provider_ordinals;
-
-    // Full provider evidence, allocated only when reports are enabled.
-    loom_decision_program_choice_evidence_t* provider_evidence;
-  } decision_scratch;
+  // Reusable ranked-selection storage sized to the largest family.
+  loom_template_application_scratch_t decision_scratch;
 } loom_template_selection_state_t;
 
 static iree_string_view_t loom_template_selection_symbol_name(
@@ -425,51 +359,10 @@ static iree_string_view_t loom_template_selection_contract_role_code(
   }
 }
 
-static iree_string_view_t loom_template_selection_target_condition_name(
-    const loom_template_selection_state_t* state,
-    const loom_target_condition_t* condition) {
-  const loom_parameterized_attr_kind_t family_kind =
-      loom_attr_as_parameterized_kind(condition->value);
-  const loom_parameterized_attr_descriptor_t* family =
-      loom_context_resolve_parameterized_attr(state->module->context,
-                                              family_kind);
-  if (family == NULL) {
-    IREE_ASSERT_UNREACHABLE(
-        "resolved target condition family disappeared from its context");
-    IREE_BUILTIN_UNREACHABLE();
-  }
-  return loom_bstring_view(family->name);
-}
-
-static iree_string_view_t loom_template_selection_blocker_code(
-    loom_template_selection_blocker_t blocker) {
-  switch (blocker) {
-    case LOOM_TEMPLATE_SELECTION_BLOCKER_NO_PROVIDER:
-      return IREE_SV("no_provider");
-    case LOOM_TEMPLATE_SELECTION_BLOCKER_TARGET_MISMATCH:
-      return IREE_SV("target_mismatch");
-    case LOOM_TEMPLATE_SELECTION_BLOCKER_ALL_REJECTED:
-      return IREE_SV("all_rejected");
-    case LOOM_TEMPLATE_SELECTION_BLOCKER_FAMILY_REJECTED:
-      return IREE_SV("family_rejected");
-    case LOOM_TEMPLATE_SELECTION_BLOCKER_EXACT_CALL_REJECTED:
-      return IREE_SV("exact_call_rejected");
-    case LOOM_TEMPLATE_SELECTION_BLOCKER_MISSING_FACTS:
-      return IREE_SV("missing_facts");
-    case LOOM_TEMPLATE_SELECTION_BLOCKER_AMBIGUOUS:
-      return IREE_SV("ambiguous");
-    case LOOM_TEMPLATE_SELECTION_BLOCKER_MATERIALIZATION:
-      return IREE_SV("materialization_blocked");
-    case LOOM_TEMPLATE_SELECTION_BLOCKER_NONE:
-    default:
-      return IREE_SV("unresolved");
-  }
-}
-
 static iree_string_view_t loom_template_selection_outcome(
-    const loom_template_selection_entry_t* entry,
+    const loom_template_application_result_t* entry,
     int64_t highest_provider_priority) {
-  if (entry->action == LOOM_TEMPLATE_SELECTION_ACTION_SELECT) {
+  if (entry->blocker == LOOM_TEMPLATE_APPLICATION_BLOCKER_NONE) {
     if (entry->selected_provider &&
         entry->selected_provider->priority < highest_provider_priority) {
       return IREE_SV("fallback_selected");
@@ -477,38 +370,26 @@ static iree_string_view_t loom_template_selection_outcome(
     return IREE_SV("selected");
   }
   switch (entry->blocker) {
-    case LOOM_TEMPLATE_SELECTION_BLOCKER_NO_PROVIDER:
+    case LOOM_TEMPLATE_APPLICATION_BLOCKER_NO_PROVIDER:
       return IREE_SV("no_provider");
-    case LOOM_TEMPLATE_SELECTION_BLOCKER_TARGET_MISMATCH:
+    case LOOM_TEMPLATE_APPLICATION_BLOCKER_TARGET_MISMATCH:
       return IREE_SV("target_mismatch");
-    case LOOM_TEMPLATE_SELECTION_BLOCKER_ALL_REJECTED:
+    case LOOM_TEMPLATE_APPLICATION_BLOCKER_ALL_REJECTED:
       return IREE_SV("rejected");
-    case LOOM_TEMPLATE_SELECTION_BLOCKER_FAMILY_REJECTED:
+    case LOOM_TEMPLATE_APPLICATION_BLOCKER_FAMILY_REJECTED:
       return IREE_SV("family_rejected");
-    case LOOM_TEMPLATE_SELECTION_BLOCKER_EXACT_CALL_REJECTED:
+    case LOOM_TEMPLATE_APPLICATION_BLOCKER_EXACT_CALL_REJECTED:
       return IREE_SV("exact_call_rejected");
-    case LOOM_TEMPLATE_SELECTION_BLOCKER_MISSING_FACTS:
+    case LOOM_TEMPLATE_APPLICATION_BLOCKER_MISSING_FACTS:
       return IREE_SV("missing_facts");
-    case LOOM_TEMPLATE_SELECTION_BLOCKER_AMBIGUOUS:
+    case LOOM_TEMPLATE_APPLICATION_BLOCKER_AMBIGUOUS:
       return IREE_SV("ambiguous");
-    case LOOM_TEMPLATE_SELECTION_BLOCKER_MATERIALIZATION:
+    case LOOM_TEMPLATE_APPLICATION_BLOCKER_MATERIALIZATION:
       return IREE_SV("materialization_blocked");
-    case LOOM_TEMPLATE_SELECTION_BLOCKER_NONE:
+    case LOOM_TEMPLATE_APPLICATION_BLOCKER_NONE:
     default:
       return IREE_SV("unresolved");
   }
-}
-
-static bool loom_template_provider_is_materializable(
-    const loom_template_provider_summary_t* provider) {
-  return provider->kind == LOOM_TEMPLATE_PROVIDER_KIND_DEF &&
-         provider->has_body && loom_symbol_ref_is_valid(provider->symbol);
-}
-
-static bool loom_template_provider_is_external_materialization(
-    const loom_template_provider_summary_t* provider) {
-  return provider->kind == LOOM_TEMPLATE_PROVIDER_KIND_DEF &&
-         provider->has_body && provider->origin_ordinal != IREE_HOST_SIZE_MAX;
 }
 
 static iree_status_t loom_template_selection_lookup_target_facts(
@@ -528,74 +409,6 @@ static iree_status_t loom_template_selection_lookup_target_facts(
   }
   *out_target = target_facts->projection;
   return iree_ok_status();
-}
-
-static iree_status_t loom_template_selection_load_contract_from_facts(
-    loom_template_selection_state_t* state,
-    const loom_func_symbol_facts_t* facts,
-    loom_template_applicability_contract_t* out_contract) {
-  *out_contract = (loom_template_applicability_contract_t){
-      .module = state->module,
-      .target_symbol = facts->target_symbol,
-      .argument_ids = facts->argument_ids,
-      .result_ids = facts->result_ids,
-      .predicates = facts->predicates,
-      .target_conditions = facts->target_conditions,
-      .argument_count = facts->argument_count,
-      .result_count = facts->result_count,
-      .predicate_count = facts->predicate_count,
-      .target_condition_count = facts->target_condition_count,
-  };
-  return loom_template_selection_lookup_target_facts(
-      state, facts->target_symbol, &out_contract->target_facts);
-}
-
-static iree_status_t loom_template_selection_lookup_function_facts(
-    loom_template_selection_state_t* state, loom_symbol_ref_t symbol_ref,
-    const loom_func_symbol_facts_t** out_facts) {
-  *out_facts = NULL;
-  const loom_symbol_facts_base_t* base_facts = NULL;
-  IREE_RETURN_IF_ERROR(loom_symbol_fact_table_lookup_ref(
-      &state->fact_table, state->module, symbol_ref, &base_facts));
-  const loom_func_symbol_facts_t* facts =
-      loom_func_symbol_facts_cast(base_facts);
-  *out_facts = facts;
-  return iree_ok_status();
-}
-
-static iree_status_t loom_template_selection_load_family_contract(
-    loom_template_selection_state_t* state, loom_symbol_ref_t family_ref,
-    loom_template_applicability_contract_t* out_contract) {
-  const loom_func_symbol_facts_t* facts = NULL;
-  IREE_RETURN_IF_ERROR(
-      loom_template_selection_lookup_function_facts(state, family_ref, &facts));
-  if (facts == NULL || facts->base.symbol_kind != LOOM_SYMBOL_TEMPLATE_DECL) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "template family has no declaration contract");
-  }
-  return loom_template_selection_load_contract_from_facts(state, facts,
-                                                          out_contract);
-}
-
-static iree_status_t loom_template_selection_load_exact_provider_contract(
-    loom_template_selection_state_t* state, loom_symbol_ref_t provider_ref,
-    const loom_func_symbol_facts_t** out_facts,
-    loom_template_applicability_contract_t* out_contract) {
-  *out_facts = NULL;
-  *out_contract = (loom_template_applicability_contract_t){0};
-  const loom_func_symbol_facts_t* facts = NULL;
-  IREE_RETURN_IF_ERROR(loom_template_selection_lookup_function_facts(
-      state, provider_ref, &facts));
-  if (facts == NULL ||
-      (facts->base.symbol_kind != LOOM_SYMBOL_TEMPLATE_DEF &&
-       facts->base.symbol_kind != LOOM_SYMBOL_TEMPLATE_UKERNEL)) {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "template.call callee has no template provider contract");
-  }
-  *out_facts = facts;
-  return loom_template_selection_load_contract_from_facts(state, facts,
-                                                          out_contract);
 }
 
 static iree_status_t loom_template_selection_resolve_application_target(
@@ -633,7 +446,7 @@ static iree_status_t loom_template_selection_resolve_application_target(
 static iree_status_t loom_template_selection_append_report_detail(
     loom_template_selection_state_t* state,
     const loom_symbol_liveness_contributor_context_t* context,
-    const loom_template_selection_entry_t* entry,
+    const loom_template_application_result_t* entry,
     const loom_template_applicability_target_t* apply_target,
     iree_host_size_t provider_count, uint32_t target_identity_match_count,
     uint32_t target_identity_unresolved_count, uint32_t possible_count,
@@ -695,8 +508,8 @@ static iree_status_t loom_template_selection_append_report_detail(
   if (entry->unresolved_target_condition) {
     fields[field_count++] = loom_pass_report_detail_string_field(
         IREE_SV("unresolved_condition"),
-        loom_template_selection_target_condition_name(
-            state, entry->unresolved_target_condition));
+        loom_template_application_condition_name(
+            state->module, entry->unresolved_target_condition));
   }
   if (provider_count > 0) {
     fields[field_count++] = loom_pass_report_detail_int64_field(
@@ -854,48 +667,45 @@ static iree_status_t loom_template_selection_mark_provider_live(
   return loom_symbol_liveness_mark_symbol_ref(context, provider->symbol);
 }
 
-static loom_template_selection_entry_t* loom_template_selection_append_entry(
+static loom_template_application_result_t* loom_template_selection_append_entry(
     loom_template_selection_state_t* state) {
   IREE_ASSERT_LT(state->entry_count, state->entry_capacity);
-  loom_template_selection_entry_t* entry = &state->entries[state->entry_count];
-  memset(entry, 0, sizeof(*entry));
-  entry->exact_provider = loom_symbol_ref_null();
+  loom_template_application_result_t* entry =
+      &state->entries[state->entry_count];
   ++state->entry_count;
   return entry;
 }
 
 static void loom_template_selection_record_blocker(
     loom_template_selection_state_t* state,
-    loom_template_selection_entry_t* entry,
-    loom_template_selection_blocker_t blocker) {
-  entry->blocker = blocker;
+    loom_template_application_blocker_t blocker) {
   ++state->statistics->unresolved_sites;
   switch (blocker) {
-    case LOOM_TEMPLATE_SELECTION_BLOCKER_NO_PROVIDER:
+    case LOOM_TEMPLATE_APPLICATION_BLOCKER_NO_PROVIDER:
       ++state->statistics->no_provider_sites;
       break;
-    case LOOM_TEMPLATE_SELECTION_BLOCKER_TARGET_MISMATCH:
+    case LOOM_TEMPLATE_APPLICATION_BLOCKER_TARGET_MISMATCH:
       ++state->statistics->target_mismatch_sites;
       break;
-    case LOOM_TEMPLATE_SELECTION_BLOCKER_ALL_REJECTED:
+    case LOOM_TEMPLATE_APPLICATION_BLOCKER_ALL_REJECTED:
       ++state->statistics->rejected_sites;
       break;
-    case LOOM_TEMPLATE_SELECTION_BLOCKER_FAMILY_REJECTED:
+    case LOOM_TEMPLATE_APPLICATION_BLOCKER_FAMILY_REJECTED:
       ++state->statistics->family_rejected_sites;
       break;
-    case LOOM_TEMPLATE_SELECTION_BLOCKER_EXACT_CALL_REJECTED:
+    case LOOM_TEMPLATE_APPLICATION_BLOCKER_EXACT_CALL_REJECTED:
       ++state->statistics->rejected_sites;
       break;
-    case LOOM_TEMPLATE_SELECTION_BLOCKER_MISSING_FACTS:
+    case LOOM_TEMPLATE_APPLICATION_BLOCKER_MISSING_FACTS:
       ++state->statistics->missing_fact_sites;
       break;
-    case LOOM_TEMPLATE_SELECTION_BLOCKER_AMBIGUOUS:
+    case LOOM_TEMPLATE_APPLICATION_BLOCKER_AMBIGUOUS:
       ++state->statistics->ambiguous_sites;
       break;
-    case LOOM_TEMPLATE_SELECTION_BLOCKER_MATERIALIZATION:
+    case LOOM_TEMPLATE_APPLICATION_BLOCKER_MATERIALIZATION:
       ++state->statistics->materialization_blocked_sites;
       break;
-    case LOOM_TEMPLATE_SELECTION_BLOCKER_NONE:
+    case LOOM_TEMPLATE_APPLICATION_BLOCKER_NONE:
     default:
       break;
   }
@@ -907,47 +717,22 @@ static iree_status_t loom_template_selection_analyze_apply(
     const loom_template_demand_t* demand) {
   const loom_op_t* apply_op = demand->apply_op;
   const loom_symbol_ref_t family = loom_template_apply_family(apply_op);
-  if (!loom_symbol_ref_is_valid(family) || family.module_id != 0 ||
-      family.symbol_id >= state->module->symbols.count) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "template.apply has an invalid family symbol");
-  }
-
-  loom_template_selection_entry_t* entry =
+  loom_template_application_result_t* entry =
       loom_template_selection_append_entry(state);
-  entry->application_op = (loom_op_t*)apply_op;
-  entry->family = family;
-  entry->family_name = loom_template_selection_symbol_name(
-      state->module, family, IREE_SV("<invalid>"));
-  entry->action = LOOM_TEMPLATE_SELECTION_ACTION_UNRESOLVED;
   ++state->statistics->apply_sites;
 
   loom_template_applicability_target_t apply_target = {0};
   IREE_RETURN_IF_ERROR(loom_template_selection_resolve_application_target(
       state, context, &apply_target));
-  const loom_template_provider_slice_t providers =
-      loom_template_provider_catalog_lookup(state->catalog, family);
-  if (providers.count == 0) {
-    loom_template_selection_record_blocker(
-        state, entry, LOOM_TEMPLATE_SELECTION_BLOCKER_NO_PROVIDER);
-    return loom_template_selection_append_report_detail(
-        state, context, entry, &apply_target, /*provider_count=*/0,
-        /*target_identity_match_count=*/0,
-        /*target_identity_unresolved_count=*/0,
-        /*possible_count=*/0, /*best_match_count=*/0,
-        /*highest_provider_priority=*/INT64_MIN);
-  }
-
   const loom_template_decision_model_t* model =
       loom_template_decision_model_lookup(&state->decision_models, family);
-  IREE_ASSERT(model != NULL);
-  IREE_ASSERT(model->providers.providers == providers.providers);
-  IREE_ASSERT(model->providers.count == providers.count);
 
   loom_template_applicability_facts_t application_facts = {0};
   loom_condition_fact_set_initialize(NULL, 0, &application_facts.path);
   const loom_template_decision_fact_requirements_t fact_requirements =
-      loom_template_decision_model_application_fact_requirements(model, demand);
+      model ? loom_template_decision_model_application_fact_requirements(model,
+                                                                         demand)
+            : 0;
   if (fact_requirements != 0) {
     IREE_RETURN_IF_ERROR(loom_template_selection_prepare_application_facts(
         state, context, apply_op, &apply_target, fact_requirements,
@@ -962,129 +747,34 @@ static iree_status_t loom_template_selection_analyze_apply(
       state->mode == LOOM_TEMPLATE_SELECTION_MODE_EARLY
           ? LOOM_DECISION_PROGRAM_DEFER_UNRESOLVED
           : LOOM_DECISION_PROGRAM_SELECT_PROVEN;
-  uint32_t live_provider_count = 0;
-  loom_decision_program_result_t result = {0};
-  loom_template_decision_evidence_summary_t evidence_summary = {0};
-  if (state->reports_enabled) {
-    loom_template_decision_model_evaluate_all(
-        model, &site, resolution_policy,
-        state->decision_scratch.provider_evidence, &evidence_summary,
-        state->decision_scratch.live_provider_ordinals, &live_provider_count,
-        &result);
-  } else {
-    loom_template_decision_model_evaluate(
-        model, &site, resolution_policy, &evidence_summary,
-        state->decision_scratch.live_provider_ordinals, &live_provider_count,
-        &result);
-  }
-  for (uint32_t i = 0; i < live_provider_count; ++i) {
-    const uint32_t provider_ordinal =
-        state->decision_scratch.live_provider_ordinals[i];
+  loom_template_application_select(state->module, model, &site,
+                                   resolution_policy, &state->decision_scratch,
+                                   entry);
+  for (uint32_t i = 0; i < state->decision_scratch.live_provider_count; ++i) {
     IREE_RETURN_IF_ERROR(loom_template_selection_mark_provider_live(
         state, context,
-        loom_template_decision_model_provider(model, provider_ordinal)));
+        loom_template_decision_model_provider(
+            model, state->decision_scratch.live_provider_ordinals[i])));
   }
-
-  const bool family_unresolved =
-      result.kind == LOOM_DECISION_PROGRAM_RESULT_UNRESOLVED &&
-      result.unresolved_action_ordinal == LOOM_DECISION_PROGRAM_ACTION_INVALID;
-  if (state->reports_enabled &&
-      result.kind != LOOM_DECISION_PROGRAM_RESULT_HARD_REJECT &&
-      !family_unresolved) {
-    loom_template_decision_model_summarize_choice_evidence(
-        model, state->decision_scratch.provider_evidence, &evidence_summary);
-  }
-
-  uint32_t unresolved_provider_ordinal = result.unresolved_action_ordinal;
-  loom_decision_program_constraint_ref_t unresolved_constraint =
-      result.unresolved_constraint;
-  if (state->reports_enabled &&
-      evidence_summary.highest_unresolved_provider_ordinal !=
-          LOOM_DECISION_PROGRAM_ACTION_INVALID) {
-    unresolved_provider_ordinal =
-        evidence_summary.highest_unresolved_provider_ordinal;
-    unresolved_constraint = evidence_summary.highest_unresolved_constraint;
-  }
-  if (unresolved_provider_ordinal != LOOM_DECISION_PROGRAM_ACTION_INVALID) {
-    const loom_template_decision_constraint_info_t constraint_info =
-        loom_template_decision_model_constraint_info(model,
-                                                     unresolved_constraint);
-    entry->unresolved_provider = loom_template_decision_model_provider(
-        model, unresolved_provider_ordinal);
-    entry->unresolved_reason = constraint_info.reason;
-    entry->unresolved_target_condition = constraint_info.target_condition;
-    entry->blocker_contract = LOOM_TEMPLATE_CONTRACT_PROVIDER;
-  }
-
-  switch ((loom_decision_program_result_kind_t)result.kind) {
-    case LOOM_DECISION_PROGRAM_RESULT_HARD_REJECT: {
-      entry->blocker_contract = LOOM_TEMPLATE_CONTRACT_FAMILY;
-      loom_template_selection_record_blocker(
-          state, entry,
-          evidence_summary.family_target_identity ==
-                  LOOM_TEMPLATE_PROVIDER_REJECT
-              ? LOOM_TEMPLATE_SELECTION_BLOCKER_TARGET_MISMATCH
-              : LOOM_TEMPLATE_SELECTION_BLOCKER_FAMILY_REJECTED);
-      break;
+  if (entry->blocker == LOOM_TEMPLATE_APPLICATION_BLOCKER_NONE) {
+    loom_template_selection_record_required_origin(state,
+                                                   entry->selected_provider);
+    if (entry->selected_provider->priority < model->highest_provider_priority) {
+      ++state->statistics->fallback_selected_sites;
     }
-    case LOOM_DECISION_PROGRAM_RESULT_NO_MATCH:
-      loom_template_selection_record_blocker(
-          state, entry,
-          evidence_summary.target_identity_match_count == 0 &&
-                  evidence_summary.target_identity_unresolved_count == 0
-              ? LOOM_TEMPLATE_SELECTION_BLOCKER_TARGET_MISMATCH
-              : LOOM_TEMPLATE_SELECTION_BLOCKER_ALL_REJECTED);
-      break;
-    case LOOM_DECISION_PROGRAM_RESULT_UNRESOLVED: {
-      if (family_unresolved) {
-        const loom_template_decision_constraint_info_t constraint_info =
-            loom_template_decision_model_constraint_info(
-                model, result.unresolved_constraint);
-        entry->unresolved_reason = constraint_info.reason;
-        entry->unresolved_target_condition = constraint_info.target_condition;
-        entry->blocker_contract = LOOM_TEMPLATE_CONTRACT_FAMILY;
-      }
-      loom_template_selection_record_blocker(
-          state, entry, LOOM_TEMPLATE_SELECTION_BLOCKER_MISSING_FACTS);
-      break;
-    }
-    case LOOM_DECISION_PROGRAM_RESULT_AMBIGUOUS:
-      loom_template_selection_record_blocker(
-          state, entry, LOOM_TEMPLATE_SELECTION_BLOCKER_AMBIGUOUS);
-      break;
-    case LOOM_DECISION_PROGRAM_RESULT_SELECTED: {
-      const loom_template_provider_summary_t* selected_provider =
-          loom_template_decision_model_provider(model, result.action_ordinal);
-      entry->selected_provider = selected_provider;
-      if (!loom_template_provider_is_materializable(selected_provider) &&
-          !loom_template_provider_is_external_materialization(
-              selected_provider)) {
-        entry->blocker_contract = LOOM_TEMPLATE_CONTRACT_PROVIDER;
-        loom_template_selection_record_blocker(
-            state, entry, LOOM_TEMPLATE_SELECTION_BLOCKER_MATERIALIZATION);
-        break;
-      }
-
-      entry->action = LOOM_TEMPLATE_SELECTION_ACTION_SELECT;
-      entry->blocker = LOOM_TEMPLATE_SELECTION_BLOCKER_NONE;
-      loom_template_selection_record_required_origin(state, selected_provider);
-      if (selected_provider->priority < model->highest_provider_priority) {
-        ++state->statistics->fallback_selected_sites;
-      }
-      ++state->statistics->selected_sites;
-      break;
-    }
-    default:
-      IREE_ASSERT_UNREACHABLE("invalid template decision result kind");
-      IREE_BUILTIN_UNREACHABLE();
+    ++state->statistics->selected_sites;
+  } else {
+    loom_template_selection_record_blocker(state, entry->blocker);
   }
 
+  const loom_template_decision_evidence_summary_t* summary =
+      &state->decision_scratch.summary;
   return loom_template_selection_append_report_detail(
-      state, context, entry, &apply_target, providers.count,
-      evidence_summary.target_identity_match_count,
-      evidence_summary.target_identity_unresolved_count,
-      evidence_summary.possible_count, evidence_summary.best_match_count,
-      model->highest_provider_priority);
+      state, context, entry, &apply_target, model ? model->providers.count : 0,
+      summary->target_identity_match_count,
+      summary->target_identity_unresolved_count, summary->possible_count,
+      summary->best_match_count,
+      model ? model->highest_provider_priority : INT64_MIN);
 }
 
 static iree_status_t loom_template_selection_analyze_exact_call(
@@ -1093,28 +783,9 @@ static iree_status_t loom_template_selection_analyze_exact_call(
     const loom_op_t* call_op) {
   ++state->statistics->exact_call_sites;
 
-  const loom_symbol_ref_t provider_ref = loom_template_call_callee(call_op);
-  if (!loom_symbol_ref_is_valid(provider_ref) || provider_ref.module_id != 0 ||
-      provider_ref.symbol_id >= state->module->symbols.count) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "template.call has an invalid provider symbol");
-  }
-
-  const loom_func_symbol_facts_t* provider_facts = NULL;
-  loom_template_applicability_contract_t provider_contract = {0};
-  IREE_RETURN_IF_ERROR(loom_template_selection_load_exact_provider_contract(
-      state, provider_ref, &provider_facts, &provider_contract));
-  const loom_symbol_ref_t family = provider_facts->template_family;
-  if (!loom_symbol_ref_is_valid(family) || family.module_id != 0 ||
-      family.symbol_id >= state->module->symbols.count) {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "template.call provider has an invalid template family");
-  }
-
-  loom_template_applicability_contract_t family_contract = {0};
-  IREE_RETURN_IF_ERROR(loom_template_selection_load_family_contract(
-      state, family, &family_contract));
+  loom_template_application_call_t call = {0};
+  IREE_RETURN_IF_ERROR(loom_template_application_load_call(
+      state->module, call_op, &state->fact_table, &call));
   loom_template_applicability_target_t apply_target = {0};
   IREE_RETURN_IF_ERROR(loom_template_selection_resolve_application_target(
       state, context, &apply_target));
@@ -1122,9 +793,9 @@ static iree_status_t loom_template_selection_analyze_exact_call(
   loom_template_applicability_facts_t application_facts = {0};
   loom_condition_fact_set_initialize(NULL, 0, &application_facts.path);
   if (loom_template_applicability_requires_application_facts(
-          call_op, &family_contract, apply_target.facts) ||
+          call_op, &call.family_contract, apply_target.facts) ||
       loom_template_applicability_requires_application_facts(
-          call_op, &provider_contract, apply_target.facts)) {
+          call_op, &call.provider_contract, apply_target.facts)) {
     IREE_RETURN_IF_ERROR(loom_template_selection_prepare_application_facts(
         state, context, call_op, &apply_target,
         LOOM_TEMPLATE_DECISION_FACT_REQUIREMENT_VALUES |
@@ -1132,48 +803,22 @@ static iree_status_t loom_template_selection_analyze_exact_call(
         &application_facts));
   }
 
-  loom_template_provider_classification_t family_classification = {0};
-  loom_template_applicability_classify_contract(
-      state->module, call_op, &family_contract, &apply_target,
-      &application_facts, &family_classification);
+  const loom_template_decision_site_t site = {
+      .application_op = call_op,
+      .application_target = &apply_target,
+      .application_facts = &application_facts,
+  };
+  loom_template_application_result_t result = {0};
   loom_template_provider_classification_t provider_classification = {0};
-  if (family_classification.feasibility == LOOM_TEMPLATE_PROVIDER_MATCH) {
-    loom_template_applicability_classify_contract(
-        state->module, call_op, &provider_contract, &apply_target,
-        &application_facts, &provider_classification);
-  }
-
-  const loom_template_contract_role_t blocker_contract =
-      family_classification.feasibility != LOOM_TEMPLATE_PROVIDER_MATCH
-          ? LOOM_TEMPLATE_CONTRACT_FAMILY
-      : provider_classification.feasibility != LOOM_TEMPLATE_PROVIDER_MATCH
-          ? LOOM_TEMPLATE_CONTRACT_PROVIDER
-          : LOOM_TEMPLATE_CONTRACT_NONE;
-  if (blocker_contract == LOOM_TEMPLATE_CONTRACT_NONE) {
+  loom_template_application_check_call(state->module, &call, &site,
+                                       &provider_classification, &result);
+  if (result.blocker == LOOM_TEMPLATE_APPLICATION_BLOCKER_NONE) {
     return iree_ok_status();
   }
-
-  const loom_template_provider_classification_t* blocker_classification =
-      blocker_contract == LOOM_TEMPLATE_CONTRACT_FAMILY
-          ? &family_classification
-          : &provider_classification;
-  loom_template_selection_entry_t* entry =
+  loom_template_application_result_t* entry =
       loom_template_selection_append_entry(state);
-  entry->application_op = (loom_op_t*)call_op;
-  entry->family = family;
-  entry->family_name = loom_template_selection_symbol_name(
-      state->module, family, IREE_SV("<invalid>"));
-  entry->exact_provider = provider_ref;
-  entry->action = LOOM_TEMPLATE_SELECTION_ACTION_UNRESOLVED;
-  entry->blocker_contract = blocker_contract;
-  entry->unresolved_reason = blocker_classification->unresolved_reason;
-  entry->unresolved_target_condition =
-      blocker_classification->unresolved_target_condition;
-  const loom_template_selection_blocker_t blocker =
-      blocker_classification->feasibility == LOOM_TEMPLATE_PROVIDER_REJECT
-          ? LOOM_TEMPLATE_SELECTION_BLOCKER_EXACT_CALL_REJECTED
-          : LOOM_TEMPLATE_SELECTION_BLOCKER_MISSING_FACTS;
-  loom_template_selection_record_blocker(state, entry, blocker);
+  *entry = result;
+  loom_template_selection_record_blocker(state, entry->blocker);
   return loom_template_selection_append_report_detail(
       state, context, entry, &apply_target, /*provider_count=*/1,
       provider_classification.target_feasibility == LOOM_TEMPLATE_PROVIDER_MATCH
@@ -1184,7 +829,7 @@ static iree_status_t loom_template_selection_analyze_exact_call(
           : 0,
       provider_classification.feasibility == LOOM_TEMPLATE_PROVIDER_REJECT ? 0
                                                                            : 1,
-      /*best_match_count=*/0, provider_facts->priority);
+      /*best_match_count=*/0, call.provider_facts->priority);
 }
 
 static iree_status_t loom_template_selection_analyze_exact_calls(
@@ -1225,117 +870,20 @@ static iree_status_t loom_template_selection_visit_reachable_demand(
 // Diagnostics
 //===----------------------------------------------------------------------===//
 
-static loom_func_like_t loom_template_selection_blocker_contract_function(
-    const loom_template_selection_state_t* state,
-    const loom_template_selection_entry_t* entry) {
-  if (entry->blocker_contract == LOOM_TEMPLATE_CONTRACT_FAMILY) {
-    const loom_symbol_t* family_symbol =
-        &state->module->symbols.entries[entry->family.symbol_id];
-    return loom_func_like_cast(state->module, family_symbol->defining_op);
-  }
-  if (entry->blocker_contract != LOOM_TEMPLATE_CONTRACT_PROVIDER) {
-    return (loom_func_like_t){0};
-  }
-  if (loom_symbol_ref_is_valid(entry->exact_provider)) {
-    const loom_symbol_t* provider_symbol =
-        &state->module->symbols.entries[entry->exact_provider.symbol_id];
-    return loom_func_like_cast(state->module, provider_symbol->defining_op);
-  }
-  const loom_template_provider_summary_t* provider =
-      entry->unresolved_provider ? entry->unresolved_provider
-                                 : entry->selected_provider;
-  return provider ? provider->function : (loom_func_like_t){0};
-}
-
-static iree_string_view_t loom_template_selection_blocker_contract_name(
-    const loom_template_selection_state_t* state,
-    const loom_template_selection_entry_t* entry) {
-  if (entry->blocker_contract == LOOM_TEMPLATE_CONTRACT_FAMILY) {
-    return entry->family_name;
-  }
-  if (loom_symbol_ref_is_valid(entry->exact_provider)) {
-    return loom_template_selection_symbol_name(
-        state->module, entry->exact_provider, IREE_SV("<invalid>"));
-  }
-  const loom_template_provider_summary_t* provider =
-      entry->unresolved_provider ? entry->unresolved_provider
-                                 : entry->selected_provider;
-  return provider ? provider->name : IREE_SV("<unknown>");
-}
-
 static iree_status_t loom_template_selection_emit_blockers(
     loom_template_selection_state_t* state) {
-  for (iree_host_size_t i = 0; i < state->entry_count; ++i) {
-    const loom_template_selection_entry_t* entry = &state->entries[i];
-    if (entry->action == LOOM_TEMPLATE_SELECTION_ACTION_SELECT) {
+  iree_status_t status = iree_ok_status();
+  for (iree_host_size_t i = 0;
+       i < state->entry_count && iree_status_is_ok(status); ++i) {
+    const loom_template_application_result_t* entry = &state->entries[i];
+    if (entry->blocker == LOOM_TEMPLATE_APPLICATION_BLOCKER_NONE) {
       continue;
     }
-    if (entry->blocker == LOOM_TEMPLATE_SELECTION_BLOCKER_MISSING_FACTS &&
-        entry->unresolved_target_condition != NULL) {
-      const loom_func_like_t unresolved_contract =
-          loom_template_selection_blocker_contract_function(state, entry);
-      const iree_string_view_t unresolved_contract_name =
-          loom_template_selection_blocker_contract_name(state, entry);
-      loom_diagnostic_param_t params[] = {
-          loom_param_string(loom_op_name(state->module, entry->application_op)),
-          loom_param_string(state->pass->info->name),
-          loom_param_string(entry->family_name),
-          loom_param_string(unresolved_contract_name),
-          loom_param_string(loom_template_selection_target_condition_name(
-              state, entry->unresolved_target_condition)),
-      };
-      loom_diagnostic_related_op_t related_op = {
-          .label = entry->blocker_contract == LOOM_TEMPLATE_CONTRACT_FAMILY
-                       ? IREE_SV("unresolved family condition")
-                       : IREE_SV("unresolved provider condition"),
-          .op = loom_func_like_isa(unresolved_contract) ? unresolved_contract.op
-                                                        : NULL,
-          .field_ref =
-              loom_func_like_isa(unresolved_contract)
-                  ? loom_diagnostic_field_ref(
-                        LOOM_DIAGNOSTIC_FIELD_ATTRIBUTE,
-                        unresolved_contract.vtable->requires_attr_index)
-                  : loom_diagnostic_field_ref_none(),
-      };
-      loom_diagnostic_emission_t emission = {
-          .op = entry->application_op,
-          .error = LOOM_ERR_LOWERING_048,
-          .params = params,
-          .param_count = IREE_ARRAYSIZE(params),
-          .related_ops = related_op.op ? &related_op : NULL,
-          .related_op_count = related_op.op ? 1 : 0,
-      };
-      IREE_RETURN_IF_ERROR(
-          iree_diagnostic_emit(state->pass->diagnostic_emitter, &emission));
-      continue;
-    }
-    loom_diagnostic_param_t params[] = {
-        loom_param_string(loom_op_name(state->module, entry->application_op)),
-        loom_param_string(state->pass->info->name),
-        loom_param_string(entry->family_name),
-        loom_param_string(loom_template_selection_blocker_code(entry->blocker)),
-    };
-    const loom_func_like_t blocker_contract =
-        loom_template_selection_blocker_contract_function(state, entry);
-    loom_diagnostic_related_op_t related_op = {
-        .label = entry->blocker_contract == LOOM_TEMPLATE_CONTRACT_FAMILY
-                     ? IREE_SV("family contract")
-                     : IREE_SV("provider contract"),
-        .op = loom_func_like_isa(blocker_contract) ? blocker_contract.op : NULL,
-        .field_ref = loom_diagnostic_field_ref_none(),
-    };
-    loom_diagnostic_emission_t emission = {
-        .op = entry->application_op,
-        .error = LOOM_ERR_LOWERING_045,
-        .params = params,
-        .param_count = IREE_ARRAYSIZE(params),
-        .related_ops = related_op.op ? &related_op : NULL,
-        .related_op_count = related_op.op ? 1 : 0,
-    };
-    IREE_RETURN_IF_ERROR(
-        iree_diagnostic_emit(state->pass->diagnostic_emitter, &emission));
+    status = loom_template_application_emit_blocker(
+        state->module, entry, state->pass->info->name,
+        state->pass->diagnostic_emitter);
   }
-  return iree_ok_status();
+  return status;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1344,7 +892,7 @@ static iree_status_t loom_template_selection_emit_blockers(
 
 static iree_status_t loom_template_selection_rewrite_entry(
     loom_template_selection_state_t* state, loom_rewriter_t* rewriter,
-    const loom_template_selection_entry_t* entry) {
+    const loom_template_application_result_t* entry) {
   const loom_value_slice_t operands =
       loom_template_apply_operands(entry->application_op);
   IREE_RETURN_IF_ERROR(loom_template_rewrite_apply_as_exact_call(
@@ -1358,7 +906,7 @@ static iree_status_t loom_template_selection_execute_rewrites(
     loom_template_selection_state_t* state) {
   bool has_selected_entry = false;
   for (iree_host_size_t i = 0; i < state->entry_count; ++i) {
-    if (state->entries[i].action == LOOM_TEMPLATE_SELECTION_ACTION_SELECT) {
+    if (state->entries[i].blocker == LOOM_TEMPLATE_APPLICATION_BLOCKER_NONE) {
       has_selected_entry = true;
       break;
     }
@@ -1374,8 +922,8 @@ static iree_status_t loom_template_selection_execute_rewrites(
   iree_status_t status = iree_ok_status();
   for (iree_host_size_t i = 0;
        i < state->entry_count && iree_status_is_ok(status); ++i) {
-    const loom_template_selection_entry_t* entry = &state->entries[i];
-    if (entry->action != LOOM_TEMPLATE_SELECTION_ACTION_SELECT) {
+    const loom_template_application_result_t* entry = &state->entries[i];
+    if (entry->blocker != LOOM_TEMPLATE_APPLICATION_BLOCKER_NONE) {
       continue;
     }
     status = loom_template_selection_rewrite_entry(state, &rewriter, entry);
