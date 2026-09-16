@@ -172,9 +172,9 @@ class AsanAllocationTest : public ::testing::TestWithParam<BackendInfo> {
     iree_hal_executable_load_params_t load_params;
     iree_hal_executable_load_params_initialize(&load_params);
     load_params.executable_data = executable_data;
-    IREE_ASSERT_OK(iree_hal_device_load_executable(
-        device(), iree_hal_queue_family(queue()), result.target, &load_params,
-        executable_.out()));
+    IREE_ASSERT_OK(iree_hal_executable_load(iree_hal_queue_family(queue()),
+                                            result.target, &load_params,
+                                            executable_.out()));
   }
 
   void TearDown() override {

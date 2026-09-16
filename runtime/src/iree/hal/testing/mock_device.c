@@ -454,9 +454,9 @@ iree_status_t iree_hal_mock_device_create(
       if (iree_status_is_ok(status)) {
         device->queue_family_count = queues->family_count;
         for (iree_host_size_t i = 0; i < queues->family_count; ++i) {
-          iree_hal_queue_family_initialize((iree_hal_queue_family_ordinal_t)i,
-                                           &queues->families[i],
-                                           &device->queue_families[i]);
+          iree_hal_queue_family_initialize(
+              (iree_hal_device_t*)device, (iree_hal_queue_family_ordinal_t)i,
+              &queues->families[i], &device->queue_families[i]);
         }
       }
     }

@@ -152,6 +152,7 @@ iree_cc_test(
     iree::base
     iree::base::internal::arena
     iree::hal
+    iree::hal::testing::mock_device
     iree::testing::gtest
     iree::testing::gtest_main
   LABELS

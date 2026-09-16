@@ -9,6 +9,7 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "iree/base/internal/atomics.h"
 #include "iree/hal/drivers/amd/xdna/image/aie2p/native_image.h"
 
 // Immutable metadata and native streams selected by one exported function.
@@ -21,9 +22,9 @@ typedef struct iree_hal_amd_xdna_executable_function_t {
   uint32_t first_binding_ordinal;
 } iree_hal_amd_xdna_executable_function_t;
 
-typedef struct iree_hal_amd_xdna_executable_t {
-  // Common HAL executable state.
-  iree_hal_executable_t base;
+struct iree_hal_amd_xdna_executable_t {
+  // References held by callers and prepared commands.
+  iree_atomic_ref_count_t ref_count;
   // Host allocator owning this executable.
   iree_allocator_t host_allocator;
   // Qualified image retaining source and reflected metadata storage.
@@ -34,15 +35,7 @@ typedef struct iree_hal_amd_xdna_executable_t {
   iree_host_size_t function_count;
   // Immutable function metadata in export ordinal order.
   iree_hal_amd_xdna_executable_function_t* functions;
-} iree_hal_amd_xdna_executable_t;
-
-static const iree_hal_executable_vtable_t iree_hal_amd_xdna_executable_vtable;
-
-static iree_hal_amd_xdna_executable_t* iree_hal_amd_xdna_executable_cast(
-    iree_hal_executable_t* base_value) {
-  IREE_HAL_ASSERT_TYPE(base_value, &iree_hal_amd_xdna_executable_vtable);
-  return (iree_hal_amd_xdna_executable_t*)base_value;
-}
+};
 
 static iree_status_t iree_hal_amd_xdna_executable_validate_bindings(
     const iree_hal_amd_xdna_image_t* image) {
@@ -63,8 +56,7 @@ static iree_status_t iree_hal_amd_xdna_executable_validate_bindings(
     for (uint64_t j = entry->first_binding_ordinal; j < binding_end; ++j) {
       const iree_hal_amd_xdna_elf_binding_record_t* binding =
           iree_hal_amd_xdna_image_binding(image, (iree_host_size_t)j);
-      if (binding == NULL ||
-          binding->kind != IREE_HAL_AMD_XDNA_ELF_BINDING_KIND_BUFFER) {
+      if (binding->kind != IREE_HAL_AMD_XDNA_ELF_BINDING_KIND_BUFFER) {
         return iree_make_status(
             IREE_STATUS_UNIMPLEMENTED,
             "XDNA entry[%" PRIhsz "] requires scalar binding support", i);
@@ -109,11 +101,10 @@ static iree_status_t iree_hal_amd_xdna_executable_initialize_functions(
 }
 
 iree_status_t iree_hal_amd_xdna_executable_create(
-    const iree_hal_queue_family_t* queue_family,
     iree_byte_sequence_t* source_sequence,
     const iree_hal_amd_xdna_aie2p_target_t* target,
-    iree_allocator_t host_allocator, iree_hal_executable_t** out_executable) {
-  IREE_ASSERT_ARGUMENT(queue_family);
+    iree_allocator_t host_allocator,
+    iree_hal_amd_xdna_executable_t** out_executable) {
   IREE_ASSERT_ARGUMENT(out_executable);
   if (source_sequence == NULL) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
@@ -156,8 +147,7 @@ iree_status_t iree_hal_amd_xdna_executable_create(
   }
   if (iree_status_is_ok(status)) {
     memset(executable, 0, total_size);
-    iree_hal_executable_initialize(
-        queue_family, &iree_hal_amd_xdna_executable_vtable, &executable->base);
+    iree_atomic_ref_count_init(&executable->ref_count);
     executable->host_allocator = host_allocator;
     executable->image = image;
     executable->native_image = native_image;
@@ -175,25 +165,18 @@ iree_status_t iree_hal_amd_xdna_executable_create(
   iree_hal_amd_xdna_aie2p_native_image_destroy(native_image);
   iree_hal_amd_xdna_image_destroy(image);
   if (iree_status_is_ok(status)) {
-    *out_executable = (iree_hal_executable_t*)executable;
-  } else if (executable != NULL) {
-    iree_hal_executable_destroy((iree_hal_executable_t*)executable);
+    *out_executable = executable;
+  } else {
+    iree_hal_amd_xdna_executable_release(executable);
   }
   return status;
 }
 
-bool iree_hal_amd_xdna_executable_isa(iree_hal_executable_t* executable) {
-  return iree_hal_resource_is((const iree_hal_resource_t*)executable,
-                              &iree_hal_amd_xdna_executable_vtable);
-}
-
 iree_status_t iree_hal_amd_xdna_executable_query_entry(
-    iree_hal_executable_t* base_executable,
+    const iree_hal_amd_xdna_executable_t* executable,
     iree_hal_executable_function_t function,
     iree_hal_amd_xdna_executable_entry_t* out_entry) {
   IREE_ASSERT_ARGUMENT(out_entry);
-  iree_hal_amd_xdna_executable_t* executable =
-      iree_hal_amd_xdna_executable_cast(base_executable);
   if (!iree_hal_executable_function_is_index_in_range(
           function, executable->function_count)) {
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
@@ -208,12 +191,10 @@ iree_status_t iree_hal_amd_xdna_executable_query_entry(
 }
 
 iree_status_t iree_hal_amd_xdna_executable_query_binding(
-    iree_hal_executable_t* base_executable,
+    const iree_hal_amd_xdna_executable_t* executable,
     iree_hal_executable_function_t function, iree_host_size_t binding_ordinal,
     iree_hal_amd_xdna_elf_binding_record_t* out_binding) {
   IREE_ASSERT_ARGUMENT(out_binding);
-  iree_hal_amd_xdna_executable_t* executable =
-      iree_hal_amd_xdna_executable_cast(base_executable);
   if (!iree_hal_executable_function_is_index_in_range(
           function, executable->function_count)) {
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
@@ -229,36 +210,32 @@ iree_status_t iree_hal_amd_xdna_executable_query_binding(
       executable_function->first_binding_ordinal + binding_ordinal;
   const iree_hal_amd_xdna_elf_binding_record_t* binding =
       iree_hal_amd_xdna_image_binding(executable->image, image_binding_ordinal);
-  if (binding == NULL) {
-    return iree_make_status(
-        IREE_STATUS_FAILED_PRECONDITION,
-        "qualified XDNA executable binding metadata is inconsistent");
-  }
   *out_binding = *binding;
   return iree_ok_status();
 }
 
-static void iree_hal_amd_xdna_executable_destroy(
-    iree_hal_executable_t* base_executable) {
-  iree_hal_amd_xdna_executable_t* executable =
-      iree_hal_amd_xdna_executable_cast(base_executable);
-  const iree_allocator_t host_allocator = executable->host_allocator;
-  iree_hal_amd_xdna_aie2p_native_image_destroy(executable->native_image);
-  iree_hal_amd_xdna_image_destroy(executable->image);
-  iree_allocator_free(host_allocator, executable);
+void iree_hal_amd_xdna_executable_retain(
+    iree_hal_amd_xdna_executable_t* executable) {
+  if (IREE_LIKELY(executable)) {
+    iree_atomic_ref_count_inc(&executable->ref_count);
+  }
 }
 
-static iree_host_size_t iree_hal_amd_xdna_executable_function_count(
-    iree_hal_executable_t* base_executable) {
-  return iree_hal_amd_xdna_executable_cast(base_executable)->function_count;
+void iree_hal_amd_xdna_executable_release(
+    iree_hal_amd_xdna_executable_t* executable) {
+  if (IREE_LIKELY(executable) &&
+      iree_atomic_ref_count_dec(&executable->ref_count) == 1) {
+    const iree_allocator_t host_allocator = executable->host_allocator;
+    iree_hal_amd_xdna_aie2p_native_image_destroy(executable->native_image);
+    iree_hal_amd_xdna_image_destroy(executable->image);
+    iree_allocator_free(host_allocator, executable);
+  }
 }
 
-static iree_status_t iree_hal_amd_xdna_executable_function_info(
-    iree_hal_executable_t* base_executable,
+iree_status_t iree_hal_amd_xdna_executable_function_info(
+    const iree_hal_amd_xdna_executable_t* executable,
     iree_hal_executable_function_t function,
     iree_hal_executable_function_info_t* out_info) {
-  iree_hal_amd_xdna_executable_t* executable =
-      iree_hal_amd_xdna_executable_cast(base_executable);
   if (!iree_hal_executable_function_is_index_in_range(
           function, executable->function_count)) {
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
@@ -269,35 +246,9 @@ static iree_status_t iree_hal_amd_xdna_executable_function_info(
   return iree_ok_status();
 }
 
-static iree_status_t iree_hal_amd_xdna_executable_function_parameters(
-    iree_hal_executable_t* base_executable,
-    iree_hal_executable_function_t function, iree_host_size_t capacity,
-    iree_hal_executable_function_parameter_t* out_parameters) {
-  iree_hal_amd_xdna_executable_t* executable =
-      iree_hal_amd_xdna_executable_cast(base_executable);
-  if (!iree_hal_executable_function_is_index_in_range(
-          function, executable->function_count)) {
-    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
-                            "XDNA executable function is out of range");
-  }
-  const iree_hal_amd_xdna_executable_function_t* executable_function =
-      &executable->functions[iree_hal_executable_function_index(function)];
-  const iree_host_size_t copy_count =
-      iree_min(capacity, executable_function->info.parameter_count);
-  for (iree_host_size_t i = 0; i < copy_count; ++i) {
-    out_parameters[i] = (iree_hal_executable_function_parameter_t){
-        .type = IREE_HAL_EXECUTABLE_FUNCTION_PARAMETER_TYPE_BINDING,
-        .offset = (uint16_t)i,
-    };
-  }
-  return iree_ok_status();
-}
-
-static iree_status_t iree_hal_amd_xdna_executable_lookup_function_by_name(
-    iree_hal_executable_t* base_executable, iree_string_view_t name,
+iree_status_t iree_hal_amd_xdna_executable_lookup_function_by_name(
+    const iree_hal_amd_xdna_executable_t* executable, iree_string_view_t name,
     iree_hal_executable_function_t* out_function) {
-  iree_hal_amd_xdna_executable_t* executable =
-      iree_hal_amd_xdna_executable_cast(base_executable);
   for (iree_host_size_t i = 0; i < executable->function_count; ++i) {
     if (iree_string_view_equal(executable->functions[i].info.name, name)) {
       *out_function = iree_hal_executable_function_from_index((uint32_t)i);
@@ -308,47 +259,3 @@ static iree_status_t iree_hal_amd_xdna_executable_lookup_function_by_name(
                           "XDNA executable function '%.*s' was not found",
                           (int)name.size, name.data);
 }
-
-static iree_status_t iree_hal_amd_xdna_executable_try_lookup_global_by_name(
-    iree_hal_executable_t* base_executable, iree_string_view_t name,
-    bool* out_found, iree_hal_executable_global_t* out_global) {
-  (void)base_executable;
-  (void)name;
-  *out_found = false;
-  *out_global = iree_hal_executable_global_invalid();
-  return iree_ok_status();
-}
-
-static iree_status_t iree_hal_amd_xdna_executable_global_info(
-    iree_hal_executable_t* base_executable, iree_hal_executable_global_t global,
-    iree_hal_executable_global_info_t* out_info) {
-  (void)base_executable;
-  (void)global;
-  (void)out_info;
-  return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                          "invalid XDNA executable global");
-}
-
-static iree_status_t iree_hal_amd_xdna_executable_global_buffer(
-    iree_hal_executable_t* base_executable, iree_hal_executable_global_t global,
-    iree_hal_buffer_t** out_buffer) {
-  (void)base_executable;
-  (void)global;
-  (void)out_buffer;
-  return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                          "invalid XDNA executable global");
-}
-
-static const iree_hal_executable_vtable_t iree_hal_amd_xdna_executable_vtable =
-    {
-        .destroy = iree_hal_amd_xdna_executable_destroy,
-        .function_count = iree_hal_amd_xdna_executable_function_count,
-        .function_info = iree_hal_amd_xdna_executable_function_info,
-        .function_parameters = iree_hal_amd_xdna_executable_function_parameters,
-        .lookup_function_by_name =
-            iree_hal_amd_xdna_executable_lookup_function_by_name,
-        .try_lookup_global_by_name =
-            iree_hal_amd_xdna_executable_try_lookup_global_by_name,
-        .global_info = iree_hal_amd_xdna_executable_global_info,
-        .global_buffer = iree_hal_amd_xdna_executable_global_buffer,
-};

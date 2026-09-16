@@ -576,8 +576,8 @@ hipError_t iree_hip_execution_context_stream_create(
     iree_hal_queue_params_initialize(&queue_params);
     queue_params.priority = queue_priority;
     queue_params.execution_resources = resource_set->resources;
-    iree_status_t status = iree_hal_device_acquire_queue(
-        device->hal_device, queue_family, &queue_params, &queue);
+    iree_status_t status =
+        iree_hal_queue_acquire(queue_family, &queue_params, &queue);
     if (!iree_status_is_ok(status)) {
       result = iree_hip_execution_context_consume_status(status);
     }

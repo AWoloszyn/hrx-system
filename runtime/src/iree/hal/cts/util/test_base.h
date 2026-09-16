@@ -506,8 +506,8 @@ class CtsTestBase : public BaseType {
     iree_hal_executable_load_params_initialize(&load_params);
     load_params.flags = flags;
     load_params.executable_data = executable_data;
-    return iree_hal_device_load_executable(device_, queue_family, target,
-                                           &load_params, out_executable);
+    return iree_hal_executable_load(queue_family, target, &load_params,
+                                    out_executable);
   }
 
   // Loads |file_name| for the current test executable target.
@@ -781,9 +781,9 @@ class CtsTestBase : public BaseType {
           "device has no provisioned queue for command categories 0x%08x",
           command_categories);
     }
-    return iree_hal_command_buffer_create(device_, iree_hal_queue_family(queue),
-                                          mode, command_categories,
-                                          binding_capacity, out_command_buffer);
+    return iree_hal_command_buffer_create(iree_hal_queue_family(queue), mode,
+                                          command_categories, binding_capacity,
+                                          out_command_buffer);
   }
 
   // Returns the first provisioned queue in the command buffer's family.

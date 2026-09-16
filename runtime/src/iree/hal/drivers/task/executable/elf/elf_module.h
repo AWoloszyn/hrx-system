@@ -42,16 +42,15 @@ typedef struct iree_elf_module_t {
 } iree_elf_module_t;
 
 // Initializes an ELF module from the ELF |raw_data| in memory.
-// |raw_data| only needs to remain valid for the initialization of the module
-// and may be discarded afterward.
+// |raw_data| may have any byte alignment and only needs to remain valid for
+// initialization of the module. It may be discarded afterward.
 //
 // Dynamic symbol imports are not supported and cause initialization to fail.
 //
 // Upon return |out_module| is initialized and ready for use with any present
-// .init initialization functions having been executed. To release memory
-// allocated by the module during loading iree_elf_module_deinitialize must be
-// called to unload when it is safe (no more outstanding pointers into the
-// loaded module, etc).
+// .init and .init_array initialization functions having been executed in that
+// order. Call iree_elf_module_deinitialize to release the module's memory when
+// no pointers into the loaded module remain in use.
 iree_status_t iree_elf_module_initialize_from_memory(
     iree_const_byte_span_t raw_data, iree_allocator_t host_allocator,
     iree_elf_module_t* out_module);

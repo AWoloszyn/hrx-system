@@ -423,7 +423,6 @@ iree_status_t hrx_graph_exec_instantiate_locked(
         IREE_RETURN_AND_END_ZONE_IF_ERROR(
             z0,
             iree_hal_command_buffer_create(
-                exec->device->hal_device,
                 iree_hal_queue_family(exec->device->dispatch_queue),
                 IREE_HAL_COMMAND_BUFFER_MODE_UNRETAINED,
                 IREE_HAL_COMMAND_CATEGORY_TRANSFER |

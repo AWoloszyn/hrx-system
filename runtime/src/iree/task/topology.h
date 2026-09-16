@@ -160,8 +160,8 @@ iree_status_t iree_task_topology_push_group(
 //===----------------------------------------------------------------------===//
 
 // Initializes a topology with the specified number of groups.
-// 0 is a valid value, indicating that only donated threads will be used to
-// perform work. Groups will have no specific affinity and rely on the OS
+// Zero produces an empty topology; executor creation requires at least one
+// group. Groups will have no specific affinity and rely on the OS
 // scheduler to ensure they are distributed in a meaningful way; this generally
 // works out as threads created within a process are usually rotated across
 // preferred processors by default.

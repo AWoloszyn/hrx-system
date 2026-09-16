@@ -167,6 +167,7 @@ iree_cc_test(
     ::hrx_static
     iree::base
     iree::hal
+    iree::hal::testing::mock_device
     iree::testing::gtest
     iree::testing::gtest_main
     libhrx_defs

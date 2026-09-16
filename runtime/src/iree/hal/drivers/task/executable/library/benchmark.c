@@ -11,15 +11,17 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "iree/async/util/proactor_pool.h"
 #include "iree/base/api.h"
 #include "iree/base/tooling/flags.h"
 #include "iree/hal/api.h"
-#include "iree/hal/drivers/task/device_spec_builder.h"
+#include "iree/hal/drivers/task/device.h"
 #include "iree/hal/drivers/task/executable/executable.h"
 #include "iree/hal/drivers/task/executable/library/abi.h"
 #include "iree/hal/drivers/task/executable/loader.h"
 #include "iree/hal/drivers/task/executable/loaders/registration/init.h"
 #include "iree/io/file_contents.h"
+#include "iree/task/topology.h"
 
 IREE_FLAG(string, executable_loader, "",
           "Name of the executable loader to use.");
@@ -124,93 +126,156 @@ IREE_FLAG_CALLBACK(
     "  # 2 4-byte floating-point values with contents [[1.4], [2.1]]:\n"
     "  --binding=2x1xf32=1.4,2.1");
 
-// NOTE: error handling is here just for better diagnostics: it is not tracking
-// allocations correctly and will leak. Don't use this as an example for how to
-// write robust code.
+// Creates the owner of the executable's canonical family. Dispatches execute
+// inline; the executor stays idle and the proactor needs no polling runner.
+// Keep the topology setup stack frame out of the timed dispatch function.
+static IREE_ATTRIBUTE_NOINLINE iree_status_t
+iree_hal_executable_library_create_device(
+    iree_hal_executable_loader_t* executable_loader,
+    iree_allocator_t host_allocator, iree_hal_device_t** out_device) {
+  iree_task_topology_t topology;
+  iree_task_topology_initialize_from_group_count(1, &topology);
+  iree_task_executor_options_t executor_options;
+  iree_task_executor_options_initialize(&executor_options);
+  iree_task_executor_t* executor = NULL;
+  iree_status_t status = iree_task_executor_create(executor_options, &topology,
+                                                   host_allocator, &executor);
+  iree_task_topology_deinitialize(&topology);
+  iree_async_proactor_pool_t* proactor_pool = NULL;
+  if (iree_status_is_ok(status)) {
+    const iree_async_proactor_pool_options_t proactor_options = {0};
+    status = iree_async_proactor_pool_create(1, NULL, proactor_options,
+                                             host_allocator, &proactor_pool);
+  }
+  iree_hal_allocator_t* device_allocator = NULL;
+  if (iree_status_is_ok(status)) {
+    status =
+        iree_hal_allocator_create_heap(IREE_SV("benchmark"), host_allocator,
+                                       host_allocator, &device_allocator);
+  }
+  if (iree_status_is_ok(status)) {
+    iree_hal_task_device_params_t device_params;
+    iree_hal_task_device_params_initialize(&device_params);
+    iree_hal_device_create_params_t create_params =
+        iree_hal_device_create_params_default();
+    create_params.proactor_pool = proactor_pool;
+    status = iree_hal_task_device_create(
+        IREE_SV("executable-library-benchmark"), &device_params, 1, &executor,
+        1, &executable_loader, device_allocator, &create_params, host_allocator,
+        out_device);
+  }
+  iree_hal_allocator_release(device_allocator);
+  iree_async_proactor_pool_release(proactor_pool);
+  iree_task_executor_release(executor);
+  return status;
+}
+
+// Measures only inline dispatch. Setup and teardown stay outside the timer.
+static iree_status_t iree_hal_executable_library_dispatch(
+    iree_benchmark_state_t* benchmark_state,
+    iree_hal_task_executable_t* task_executable,
+    const iree_hal_executable_dispatch_state_v0_t* dispatch_state,
+    iree_byte_span_t local_memory) {
+  // Execute benchmark the workgroup invocation.
+  // Note that each iteration runs through the whole grid as it's important that
+  // we are testing the memory access patterns: if we just ran the same single
+  // tile processing the same exact region of memory over and over we are not
+  // testing cache effects.
+  int64_t dispatch_count = 0;
+  while (iree_benchmark_keep_running(benchmark_state, /*batch_count=*/1)) {
+    IREE_RETURN_IF_ERROR(iree_hal_task_executable_issue_dispatch_inline(
+        task_executable, FLAG_export_ordinal, dispatch_state, 0, local_memory));
+    ++dispatch_count;
+  }
+
+  // To get a total time per invocation we set the item count to the total
+  // invocations dispatched. That gives us both total dispatch and single
+  // invocation times in the reporter output.
+  int64_t total_invocations =
+      dispatch_count * dispatch_state->workgroup_count_x *
+      dispatch_state->workgroup_count_y * dispatch_state->workgroup_count_z;
+  iree_benchmark_set_items_processed(benchmark_state, total_invocations);
+
+  return iree_ok_status();
+}
+
 static iree_status_t iree_hal_executable_library_run(
     const iree_benchmark_def_t* benchmark_def,
     iree_benchmark_state_t* benchmark_state) {
   (void)benchmark_def;
   iree_allocator_t host_allocator = benchmark_state->host_allocator;
 
-  // Register the loader used to load (or find) the executable.
   iree_hal_executable_loader_t* executable_loader = NULL;
   IREE_RETURN_IF_ERROR(iree_hal_create_executable_loader_by_name(
       iree_make_cstring_view(FLAG_executable_loader), host_allocator,
       &executable_loader));
+  iree_hal_device_t* device = NULL;
+  iree_status_t status = iree_hal_executable_library_create_device(
+      executable_loader, host_allocator, &device);
+  iree_hal_executable_loader_release(executable_loader);
 
-  // Build the same target set the task driver would advertise for the
-  // selected loader and choose its highest-priority target.
-  iree_hal_task_device_spec_params_t device_spec_params = {
-      .logical_device_id = IREE_SV("executable-library-benchmark"),
-      .display_name = IREE_SV("Executable Library Benchmark"),
-      .driver_id = IREE_SV("task-benchmark"),
-      .backend_id = IREE_SV("task"),
-      .queue_count = 1,
-      .default_queue_worker_count = 1,
-      .loader_count = 1,
-      .loaders = &executable_loader,
-  };
-  iree_hal_device_spec_t* device_spec = NULL;
-  IREE_RETURN_IF_ERROR(iree_hal_task_device_spec_create(
-      &device_spec_params, host_allocator, &device_spec));
-  const iree_hal_executable_target_selection_t target_selection = {0};
-  const iree_hal_executable_target_selection_result_t target_result =
-      iree_hal_device_spec_select_executable_target(device_spec,
-                                                    &target_selection);
-  if (target_result.outcome !=
-      IREE_HAL_EXECUTABLE_TARGET_SELECTION_OUTCOME_SELECTED) {
-    return iree_make_status(
-        IREE_STATUS_FAILED_PRECONDITION,
-        "selected executable loader did not advertise a unique target");
+  // Select the highest-priority target advertised by the chosen loader.
+  const iree_hal_executable_target_t* target = NULL;
+  if (iree_status_is_ok(status)) {
+    const iree_hal_executable_target_selection_t selection = {0};
+    const iree_hal_executable_target_selection_result_t result =
+        iree_hal_device_spec_select_executable_target(
+            iree_hal_device_spec(device), &selection);
+    if (result.outcome !=
+        IREE_HAL_EXECUTABLE_TARGET_SELECTION_OUTCOME_SELECTED) {
+      status = iree_make_status(
+          IREE_STATUS_FAILED_PRECONDITION,
+          "selected executable loader did not advertise a unique target");
+    } else {
+      target = result.target;
+    }
   }
 
-  iree_hal_executable_load_params_t executable_params;
-  iree_hal_executable_load_params_initialize(&executable_params);
-  executable_params.flags |= IREE_HAL_EXECUTABLE_LOAD_FLAG_DISABLE_VERIFICATION;
-
-  // Load the executable data.
   iree_io_file_contents_t* file_contents = NULL;
-  IREE_RETURN_IF_ERROR(
-      iree_io_file_contents_read(iree_make_cstring_view(FLAG_executable_file),
-                                 host_allocator, &file_contents));
-  executable_params.executable_data = file_contents->const_buffer;
-
-  // Perform the load, which will fail if the executable cannot be loaded or
-  // there was an issue with the layouts.
-  iree_hal_queue_family_t queue_family;
-  iree_hal_queue_family_initialize(
-      /*ordinal=*/0, &iree_hal_device_spec_queues(device_spec)->families[0],
-      &queue_family);
+  if (iree_status_is_ok(status)) {
+    status =
+        iree_io_file_contents_read(iree_make_cstring_view(FLAG_executable_file),
+                                   host_allocator, &file_contents);
+  }
   iree_hal_executable_t* executable = NULL;
-  IREE_RETURN_IF_ERROR(iree_hal_executable_loader_select_and_load(
-      /*loader_count=*/1, &executable_loader, &queue_family,
-      target_result.target, &executable_params, /*worker_capacity=*/1,
-      &executable));
-  iree_hal_task_executable_t* task_executable =
-      iree_hal_task_executable_cast(executable);
+  if (iree_status_is_ok(status)) {
+    iree_hal_executable_load_params_t executable_params;
+    iree_hal_executable_load_params_initialize(&executable_params);
+    executable_params.flags |=
+        IREE_HAL_EXECUTABLE_LOAD_FLAG_DISABLE_VERIFICATION;
+    executable_params.executable_data = file_contents->const_buffer;
+    status = iree_hal_executable_load(iree_hal_device_queue_family(device, 0),
+                                      target, &executable_params, &executable);
+  }
+  iree_hal_task_executable_t* task_executable = NULL;
+  if (iree_status_is_ok(status)) {
+    task_executable = iree_hal_task_executable_cast(executable);
+    if (FLAG_export_ordinal < 0 ||
+        FLAG_export_ordinal >= task_executable->export_count) {
+      status = iree_make_status(
+          IREE_STATUS_OUT_OF_RANGE, "export ordinal %d out of range [0, %zu)",
+          FLAG_export_ordinal, task_executable->export_count);
+    }
+  }
 
   // Allocate workgroup-local memory that each invocation can use.
   iree_byte_span_t local_memory = iree_byte_span_empty();
-  iree_host_size_t local_memory_size =
-      task_executable->dispatch_attrs
-          ? task_executable->dispatch_attrs[FLAG_export_ordinal]
-                    .local_memory_pages *
-                IREE_HAL_EXECUTABLE_WORKGROUP_LOCAL_MEMORY_PAGE_SIZE
-          : 0;
-  if (local_memory_size > 0) {
-    IREE_RETURN_IF_ERROR(iree_allocator_malloc(
-        host_allocator, local_memory_size, (void**)&local_memory.data));
-    local_memory.data_length = local_memory_size;
+  if (iree_status_is_ok(status) && task_executable->dispatch_attrs) {
+    iree_host_size_t local_memory_size =
+        task_executable->dispatch_attrs[FLAG_export_ordinal]
+            .local_memory_pages *
+        IREE_HAL_EXECUTABLE_WORKGROUP_LOCAL_MEMORY_PAGE_SIZE;
+    if (local_memory_size > 0) {
+      status = iree_allocator_malloc(host_allocator, local_memory_size,
+                                     (void**)&local_memory.data);
+      local_memory.data_length = local_memory_size;
+    }
   }
 
   // Allocate storage for buffers and populate them.
   // They only need to remain valid for the duration of the invocation and all
   // memory accessed by the invocation will come from here.
-  iree_hal_allocator_t* heap_allocator = NULL;
-  IREE_RETURN_IF_ERROR(iree_hal_allocator_create_heap(
-      iree_make_cstring_view("benchmark"), host_allocator, host_allocator,
-      &heap_allocator));
+  iree_host_size_t buffer_view_count = 0;
   iree_hal_buffer_view_t* buffer_views[IREE_HAL_EXECUTABLE_MAX_BINDING_COUNT];
   void* binding_ptrs[IREE_HAL_EXECUTABLE_MAX_BINDING_COUNT];
   size_t binding_lengths[IREE_HAL_EXECUTABLE_MAX_BINDING_COUNT];
@@ -220,20 +285,24 @@ static iree_status_t iree_hal_executable_library_run(
       .access = IREE_HAL_MEMORY_ACCESS_READ | IREE_HAL_MEMORY_ACCESS_WRITE,
       .type = IREE_HAL_MEMORY_TYPE_HOST_LOCAL,
   };
-  for (iree_host_size_t i = 0; i < dispatch_params.binding_count; ++i) {
-    IREE_RETURN_IF_ERROR(
-        iree_hal_buffer_view_parse(dispatch_params.bindings[i], heap_allocator,
-                                   buffer_params, &buffer_views[i]));
-    iree_hal_buffer_t* buffer = iree_hal_buffer_view_buffer(buffer_views[i]);
-    iree_device_size_t buffer_length =
-        iree_hal_buffer_view_byte_length(buffer_views[i]);
-    iree_hal_buffer_mapping_t buffer_mapping = {{0}};
-    IREE_RETURN_IF_ERROR(iree_hal_buffer_map_range(
-        buffer, IREE_HAL_MAPPING_MODE_PERSISTENT,
-        IREE_HAL_MEMORY_ACCESS_READ | IREE_HAL_MEMORY_ACCESS_WRITE, 0,
-        buffer_length, &buffer_mapping));
-    binding_ptrs[i] = buffer_mapping.contents.data;
-    binding_lengths[i] = (size_t)buffer_mapping.contents.data_length;
+  for (iree_host_size_t i = 0;
+       iree_status_is_ok(status) && i < dispatch_params.binding_count; ++i) {
+    status = iree_hal_buffer_view_parse(dispatch_params.bindings[i],
+                                        iree_hal_device_allocator(device),
+                                        buffer_params, &buffer_views[i]);
+    if (iree_status_is_ok(status)) {
+      ++buffer_view_count;
+      iree_hal_buffer_t* buffer = iree_hal_buffer_view_buffer(buffer_views[i]);
+      iree_device_size_t buffer_length =
+          iree_hal_buffer_view_byte_length(buffer_views[i]);
+      iree_hal_buffer_mapping_t buffer_mapping = {{0}};
+      status = iree_hal_buffer_map_range(
+          buffer, IREE_HAL_MAPPING_MODE_PERSISTENT,
+          IREE_HAL_MEMORY_ACCESS_READ | IREE_HAL_MEMORY_ACCESS_WRITE, 0,
+          buffer_length, &buffer_mapping);
+      binding_ptrs[i] = buffer_mapping.contents.data;
+      binding_lengths[i] = (size_t)buffer_mapping.contents.data_length;
+    }
   }
 
   // Setup dispatch state.
@@ -252,40 +321,23 @@ static iree_status_t iree_hal_executable_library_run(
       .binding_lengths = binding_lengths,
   };
 
-  // Execute benchmark the workgroup invocation.
-  // Note that each iteration runs through the whole grid as it's important that
-  // we are testing the memory access patterns: if we just ran the same single
-  // tile processing the same exact region of memory over and over we are not
-  // testing cache effects.
-  int64_t dispatch_count = 0;
-  while (iree_benchmark_keep_running(benchmark_state, /*batch_count=*/1)) {
-    IREE_RETURN_IF_ERROR(iree_hal_task_executable_issue_dispatch_inline(
-        task_executable, FLAG_export_ordinal, &dispatch_state, 0,
-        local_memory));
-    ++dispatch_count;
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_executable_library_dispatch(
+        benchmark_state, task_executable, &dispatch_state, local_memory);
   }
-
-  // To get a total time per invocation we set the item count to the total
-  // invocations dispatched. That gives us both total dispatch and single
-  // invocation times in the reporter output.
-  int64_t total_invocations =
-      dispatch_count * dispatch_state.workgroup_count_x *
-      dispatch_state.workgroup_count_y * dispatch_state.workgroup_count_z;
-  iree_benchmark_set_items_processed(benchmark_state, total_invocations);
 
   // Deallocate buffers.
-  for (iree_host_size_t i = 0; i < dispatch_params.binding_count; ++i) {
+  for (iree_host_size_t i = 0; i < buffer_view_count; ++i) {
     iree_hal_buffer_view_release(buffer_views[i]);
   }
-  iree_hal_allocator_release(heap_allocator);
+  iree_allocator_free(host_allocator, local_memory.data);
 
   // Unload.
   iree_hal_executable_release(executable);
-  iree_hal_device_spec_release(device_spec);
-  iree_hal_executable_loader_release(executable_loader);
+  iree_hal_device_release(device);
   iree_io_file_contents_free(file_contents);
 
-  return iree_ok_status();
+  return status;
 }
 
 int main(int argc, char** argv) {

@@ -283,9 +283,9 @@ TEST_P(ManualAsanExecutableTest, ReportsCompatibleHooksThroughFeedback) {
   iree_hal_executable_load_params_t load_params;
   iree_hal_executable_load_params_initialize(&load_params);
   load_params.executable_data = executable_data;
-  IREE_ASSERT_OK(iree_hal_device_load_executable(
-      asan_device.device(), iree_hal_queue_family(asan_device.queue()),
-      target_result.target, &load_params, executable.out()));
+  IREE_ASSERT_OK(iree_hal_executable_load(
+      iree_hal_queue_family(asan_device.queue()), target_result.target,
+      &load_params, executable.out()));
 
   Ref<iree_hal_buffer_t> output_buffer;
   IREE_ASSERT_OK(SanitizerCreateDeviceBuffer(

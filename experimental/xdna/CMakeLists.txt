@@ -52,6 +52,7 @@ iree_cc_library(
     "executable.c"
   DEPS
     iree::base
+    iree::base::internal
     iree::hal
     iree::hal::drivers::amd::xdna::image
     iree::hal::drivers::amd::xdna::image::aie2p::native_image

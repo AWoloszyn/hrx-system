@@ -44,6 +44,7 @@ xdna_cc_library(
     ],
     deps = [
         "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal",
         "//runtime/src/iree/hal",
         "//runtime/src/iree/hal/drivers/amd/xdna/image",
         "//runtime/src/iree/hal/drivers/amd/xdna/image/aie2p:native_image",

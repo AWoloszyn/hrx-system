@@ -146,7 +146,7 @@ TEST_P(SemaphoreSubmissionTest,
 
     Ref<iree_hal_command_buffer_t> command_buffer;
     IREE_ASSERT_OK(iree_hal_command_buffer_create(
-        device_, queue_family, IREE_HAL_COMMAND_BUFFER_MODE_DEFAULT,
+        queue_family, IREE_HAL_COMMAND_BUFFER_MODE_DEFAULT,
         IREE_HAL_COMMAND_CATEGORY_TRANSFER, /*binding_capacity=*/0,
         command_buffer.out()));
     IREE_ASSERT_OK(iree_hal_command_buffer_begin(command_buffer));

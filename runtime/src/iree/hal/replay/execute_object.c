@@ -178,8 +178,7 @@ static iree_status_t iree_hal_replay_executor_create_dynamic_queue(
                 .ordinals = execution_resources,
             },
     };
-    status = iree_hal_device_acquire_queue(device_entry->value.device,
-                                           queue_family, &params, &queue);
+    status = iree_hal_queue_acquire(queue_family, &params, &queue);
   }
   iree_allocator_free(executor->host_allocator, execution_resources);
 
@@ -286,12 +285,6 @@ static iree_status_t iree_hal_replay_executor_make_function_map_from_metadata(
       sizeof(iree_hal_replay_executable_metadata_header_t);
   const uint8_t* parameter_metadata_data =
       function_metadata_data + function_metadata_size;
-  const iree_hal_replay_executable_function_metadata_t* function_metadata =
-      (const iree_hal_replay_executable_function_metadata_t*)
-          function_metadata_data;
-  const iree_hal_replay_executable_parameter_metadata_t* parameter_metadata =
-      (const iree_hal_replay_executable_parameter_metadata_t*)
-          parameter_metadata_data;
   const char* name_storage =
       (const char*)(parameter_metadata_data + parameter_metadata_size);
 
@@ -304,11 +297,13 @@ static iree_status_t iree_hal_replay_executor_make_function_map_from_metadata(
   iree_status_t status = iree_ok_status();
   for (iree_host_size_t i = 0;
        i < captured_function_count && iree_status_is_ok(status); ++i) {
-    const iree_hal_replay_executable_function_metadata_t* captured =
-        &function_metadata[i];
-    if (IREE_UNLIKELY(captured->parameter_count >
+    // Metadata follows variable-length target strings and executable bytes.
+    iree_hal_replay_executable_function_metadata_t captured;
+    memcpy(&captured, function_metadata_data + i * sizeof(captured),
+           sizeof(captured));
+    if (IREE_UNLIKELY(captured.parameter_count >
                           captured_parameter_count - parameter_index ||
-                      captured->name_length >
+                      captured.name_length >
                           captured_name_storage_length - name_offset)) {
       status = iree_make_status(IREE_STATUS_DATA_LOSS,
                                 "replay executable metadata count mismatch");
@@ -317,8 +312,8 @@ static iree_status_t iree_hal_replay_executor_make_function_map_from_metadata(
     iree_string_view_t captured_name = iree_string_view_empty();
     if (iree_status_is_ok(status)) {
       captured_name = iree_make_string_view(
-          name_storage + name_offset, (iree_host_size_t)captured->name_length);
-      name_offset += captured->name_length;
+          name_storage + name_offset, (iree_host_size_t)captured.name_length);
+      name_offset += captured.name_length;
     }
 
     iree_hal_executable_function_t function =
@@ -360,13 +355,13 @@ static iree_status_t iree_hal_replay_executor_make_function_map_from_metadata(
           iree_hal_executable_function_info(executable, function, &loaded_info);
     }
     if (iree_status_is_ok(status) &&
-        (captured->flags != loaded_info.flags ||
-         captured->constant_byte_length != loaded_info.constant_byte_length ||
-         captured->binding_count != loaded_info.binding_count ||
-         captured->parameter_count != loaded_info.parameter_count ||
-         captured->workgroup_size[0] != loaded_info.workgroup_size[0] ||
-         captured->workgroup_size[1] != loaded_info.workgroup_size[1] ||
-         captured->workgroup_size[2] != loaded_info.workgroup_size[2])) {
+        (captured.flags != loaded_info.flags ||
+         captured.constant_byte_length != loaded_info.constant_byte_length ||
+         captured.binding_count != loaded_info.binding_count ||
+         captured.parameter_count != loaded_info.parameter_count ||
+         captured.workgroup_size[0] != loaded_info.workgroup_size[0] ||
+         captured.workgroup_size[1] != loaded_info.workgroup_size[1] ||
+         captured.workgroup_size[2] != loaded_info.workgroup_size[2])) {
       status = iree_make_status(
           IREE_STATUS_FAILED_PRECONDITION,
           "replay executable %" PRIu64 " function %" PRIhsz
@@ -376,22 +371,22 @@ static iree_status_t iree_hal_replay_executor_make_function_map_from_metadata(
           "loaded=(flags=0x%016" PRIx64
           " constant_bytes=%u bindings=%u parameters=%u "
           "workgroup_size=[%u,%u,%u])",
-          executable_id, i, captured->flags,
-          (uint32_t)captured->constant_byte_length,
-          (uint32_t)captured->binding_count,
-          (uint32_t)captured->parameter_count, captured->workgroup_size[0],
-          captured->workgroup_size[1], captured->workgroup_size[2],
-          loaded_info.flags, (uint32_t)loaded_info.constant_byte_length,
+          executable_id, i, captured.flags,
+          (uint32_t)captured.constant_byte_length,
+          (uint32_t)captured.binding_count, (uint32_t)captured.parameter_count,
+          captured.workgroup_size[0], captured.workgroup_size[1],
+          captured.workgroup_size[2], loaded_info.flags,
+          (uint32_t)loaded_info.constant_byte_length,
           (uint32_t)loaded_info.binding_count,
           (uint32_t)loaded_info.parameter_count, loaded_info.workgroup_size[0],
           loaded_info.workgroup_size[1], loaded_info.workgroup_size[2]);
     }
 
     iree_hal_executable_function_parameter_t* loaded_parameters = NULL;
-    if (iree_status_is_ok(status) && captured->parameter_count != 0) {
+    if (iree_status_is_ok(status) && captured.parameter_count != 0) {
       iree_host_size_t parameter_size = 0;
       if (IREE_UNLIKELY(!iree_host_size_checked_mul(
-              captured->parameter_count,
+              captured.parameter_count,
               sizeof(iree_hal_executable_function_parameter_t),
               &parameter_size))) {
         status = iree_make_status(IREE_STATUS_OUT_OF_RANGE,
@@ -403,14 +398,17 @@ static iree_status_t iree_hal_replay_executor_make_function_map_from_metadata(
       }
       if (iree_status_is_ok(status)) {
         status = iree_hal_executable_function_parameters(
-            executable, function, captured->parameter_count, loaded_parameters);
+            executable, function, captured.parameter_count, loaded_parameters);
       }
     }
     for (iree_host_size_t j = 0;
-         j < captured->parameter_count && iree_status_is_ok(status); ++j) {
-      const iree_hal_replay_executable_parameter_metadata_t*
-          captured_parameter = &parameter_metadata[parameter_index + j];
-      if (IREE_UNLIKELY(captured_parameter->reserved0 != 0)) {
+         j < captured.parameter_count && iree_status_is_ok(status); ++j) {
+      iree_hal_replay_executable_parameter_metadata_t captured_parameter;
+      memcpy(&captured_parameter,
+             parameter_metadata_data +
+                 (parameter_index + j) * sizeof(captured_parameter),
+             sizeof(captured_parameter));
+      if (IREE_UNLIKELY(captured_parameter.reserved0 != 0)) {
         status = iree_make_status(IREE_STATUS_DATA_LOSS,
                                   "replay executable parameter metadata "
                                   "reserved fields must be zero");
@@ -418,14 +416,14 @@ static iree_status_t iree_hal_replay_executor_make_function_map_from_metadata(
       }
       const iree_hal_executable_function_parameter_t* loaded_parameter =
           &loaded_parameters[j];
-      if (captured_parameter->type != loaded_parameter->type ||
-          captured_parameter->size != loaded_parameter->size ||
-          captured_parameter->flags != loaded_parameter->flags ||
-          captured_parameter->offset != loaded_parameter->offset ||
+      if (captured_parameter.type != loaded_parameter->type ||
+          captured_parameter.size != loaded_parameter->size ||
+          captured_parameter.flags != loaded_parameter->flags ||
+          captured_parameter.offset != loaded_parameter->offset ||
           (iree_any_bit_set(
-               captured_parameter->flags,
+               captured_parameter.flags,
                IREE_HAL_EXECUTABLE_FUNCTION_PARAMETER_FLAG_NATIVE_ABI_OFFSET) &&
-           captured_parameter->native_abi_offset !=
+           captured_parameter.native_abi_offset !=
                loaded_parameter->native_abi_offset)) {
         status = iree_make_status(
             IREE_STATUS_FAILED_PRECONDITION,
@@ -434,18 +432,18 @@ static iree_status_t iree_hal_replay_executor_make_function_map_from_metadata(
             " ABI mismatch: captured=(type=%u size=%u flags=0x%04x "
             "offset=%u native_offset=%u) loaded=(type=%u size=%u flags=0x%04x "
             "offset=%u native_offset=%u)",
-            executable_id, i, j, (uint32_t)captured_parameter->type,
-            (uint32_t)captured_parameter->size,
-            (uint32_t)captured_parameter->flags,
-            (uint32_t)captured_parameter->offset,
-            (uint32_t)captured_parameter->native_abi_offset,
+            executable_id, i, j, (uint32_t)captured_parameter.type,
+            (uint32_t)captured_parameter.size,
+            (uint32_t)captured_parameter.flags,
+            (uint32_t)captured_parameter.offset,
+            (uint32_t)captured_parameter.native_abi_offset,
             (uint32_t)loaded_parameter->type, (uint32_t)loaded_parameter->size,
             (uint32_t)loaded_parameter->flags,
             (uint32_t)loaded_parameter->offset,
             (uint32_t)loaded_parameter->native_abi_offset);
       }
     }
-    parameter_index += captured->parameter_count;
+    parameter_index += captured.parameter_count;
     iree_allocator_free(executor->host_allocator, loaded_parameters);
     if (iree_status_is_ok(status)) {
       function_map[i] = function;
@@ -655,8 +653,8 @@ static iree_status_t iree_hal_replay_executor_load_executable(
         device_entry->value.device, &target_selection, required_flags, &target);
   }
   if (iree_status_is_ok(status)) {
-    status = iree_hal_device_load_executable(
-        device_entry->value.device, queue_family, target, &params, &executable);
+    status =
+        iree_hal_executable_load(queue_family, target, &params, &executable);
     if (!iree_status_is_ok(status) && substituted) {
       status = iree_status_annotate_f(
           status,
@@ -722,9 +720,8 @@ static iree_status_t iree_hal_replay_executor_create_command_buffer(
 
   iree_hal_command_buffer_t* command_buffer = NULL;
   IREE_RETURN_IF_ERROR(iree_hal_command_buffer_create(
-      device_entry->value.device, queue_family, payload.mode,
-      payload.command_categories, (iree_host_size_t)payload.binding_capacity,
-      &command_buffer));
+      queue_family, payload.mode, payload.command_categories,
+      (iree_host_size_t)payload.binding_capacity, &command_buffer));
   iree_hal_replay_object_entry_t entry = {.value.command_buffer =
                                               command_buffer};
   return iree_hal_replay_executor_store(
@@ -921,10 +918,14 @@ static iree_status_t iree_hal_replay_executor_resolve_file_path(
   IREE_RETURN_IF_ERROR(iree_allocator_malloc(executor->host_allocator,
                                              resolved_length + 1,
                                              (void**)&resolved_path_storage));
-  memcpy(resolved_path_storage, selected_remap->replay_prefix.data,
-         selected_remap->replay_prefix.size);
-  memcpy(resolved_path_storage + selected_remap->replay_prefix.size,
-         captured_suffix.data, captured_suffix.size);
+  if (!iree_string_view_is_empty(selected_remap->replay_prefix)) {
+    memcpy(resolved_path_storage, selected_remap->replay_prefix.data,
+           selected_remap->replay_prefix.size);
+  }
+  if (!iree_string_view_is_empty(captured_suffix)) {
+    memcpy(resolved_path_storage + selected_remap->replay_prefix.size,
+           captured_suffix.data, captured_suffix.size);
+  }
   resolved_path_storage[resolved_length] = 0;
   *out_resolved_path =
       iree_make_string_view(resolved_path_storage, resolved_length);

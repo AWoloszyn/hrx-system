@@ -50,11 +50,6 @@ class XdnaPreparedCommandTest : public ::testing::Test {
   void SetUp() override {
     static_assert(kBufferStorageByteLength % IREE_HAL_HEAP_BUFFER_ALIGNMENT ==
                   0);
-    queue_family_spec_.name = IREE_SV("test");
-    queue_family_spec_.physical_device_affinity = 1;
-    queue_family_spec_.role_flags = IREE_HAL_QUEUE_FAMILY_ROLE_FLAG_DISPATCH;
-    iree_hal_queue_family_initialize(/*ordinal=*/7, &queue_family_spec_,
-                                     &queue_family_);
 
     ByteSequencePtr sequence = LoadMulI32Image();
     iree_hal_amd_xdna_aie2p_target_t target;
@@ -62,8 +57,7 @@ class XdnaPreparedCommandTest : public ::testing::Test {
         IREE_SV("amd.xdna.strix_halo.17f0_11"),
         /*context_column_count=*/1, &target));
     IREE_CHECK_OK(iree_hal_amd_xdna_executable_create(
-        &queue_family_, sequence.get(), &target, iree_allocator_system(),
-        &executable_));
+        sequence.get(), &target, iree_allocator_system(), &executable_));
 
     for (iree_host_size_t i = 0; i < kBindingCount; ++i) {
       WrapBuffer(i,
@@ -84,7 +78,7 @@ class XdnaPreparedCommandTest : public ::testing::Test {
       iree_hal_buffer_release(buffer);
       buffer = nullptr;
     }
-    iree_hal_executable_release(executable_);
+    iree_hal_amd_xdna_executable_release(executable_);
     executable_ = nullptr;
   }
 
@@ -145,12 +139,8 @@ class XdnaPreparedCommandTest : public ::testing::Test {
   std::vector<uint8_t> instructions_;
   // Native range identifying the mapped instruction bytes.
   amdf_xdna_kernel_command_t storage_range_ = {};
-  // Executable-only family metadata; this fixture provisions no HAL queues.
-  iree_hal_queue_family_spec_t queue_family_spec_ = {};
-  // HAL queue family borrowed by the executable.
-  iree_hal_queue_family_t queue_family_ = {};
   // Qualified executable retained by this fixture.
-  iree_hal_executable_t* executable_ = nullptr;
+  iree_hal_amd_xdna_executable_t* executable_ = nullptr;
   // Host backing wrapped by the real HAL buffers.
   alignas(IREE_HAL_HEAP_BUFFER_ALIGNMENT)
       std::array<std::array<uint8_t, kBufferStorageByteLength>,
@@ -215,8 +205,14 @@ TEST_F(XdnaPreparedCommandTest,
 
 TEST_F(XdnaPreparedCommandTest, RetainsEveryBorrowedResource) {
   IREE_ASSERT_OK(CreatePrepared());
+  iree_hal_amd_xdna_executable_entry_t entry;
+  IREE_ASSERT_OK(iree_hal_amd_xdna_executable_query_entry(
+      executable_, iree_hal_executable_function_from_index(0), &entry));
+  const std::vector<uint8_t> control_bytes(
+      entry.native.control.data,
+      entry.native.control.data + entry.native.control.data_length);
 
-  iree_hal_executable_release(executable_);
+  iree_hal_amd_xdna_executable_release(executable_);
   executable_ = nullptr;
   for (iree_host_size_t i = 0; i < buffers_.size(); ++i) {
     iree_hal_buffer_release(buffers_[i]);
@@ -224,6 +220,11 @@ TEST_F(XdnaPreparedCommandTest, RetainsEveryBorrowedResource) {
     EXPECT_EQ(release_counts_[i], 0u);
   }
 
+  // The command keeps borrowed executable metadata live after caller release.
+  EXPECT_EQ(std::vector<uint8_t>(
+                entry.native.control.data,
+                entry.native.control.data + entry.native.control.data_length),
+            control_bytes);
   DestroyPrepared();
   for (uint32_t release_count : release_counts_) {
     EXPECT_EQ(release_count, 1u);
@@ -301,11 +302,10 @@ TEST_F(XdnaPreparedCommandTest, BoundsUnrestrictedOffsetsByTheActualBuffer) {
   iree_hal_amd_xdna_aie2p_target_t target;
   IREE_ASSERT_OK(iree_hal_amd_xdna_aie2p_npu2_target_initialize(
       IREE_SV("amd.xdna.strix_halo.17f0_11"), 1, &target));
-  iree_hal_executable_t* executable = nullptr;
+  iree_hal_amd_xdna_executable_t* executable = nullptr;
   IREE_ASSERT_OK(iree_hal_amd_xdna_executable_create(
-      &queue_family_, sequence.get(), &target, iree_allocator_system(),
-      &executable));
-  iree_hal_executable_release(executable_);
+      sequence.get(), &target, iree_allocator_system(), &executable));
+  iree_hal_amd_xdna_executable_release(executable_);
   executable_ = executable;
 
   const iree_device_size_t offset =

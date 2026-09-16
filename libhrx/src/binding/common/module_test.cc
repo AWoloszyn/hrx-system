@@ -19,15 +19,6 @@
 
 namespace {
 
-static constexpr iree_hal_queue_priority_t kQueuePriority =
-    IREE_HAL_QUEUE_PRIORITY_NORMAL;
-static const iree_hal_queue_family_spec_t kQueueFamilySpec = {
-    /*.name=*/IREE_SV("test"),
-    /*.provisioned_queue_count=*/1,
-    /*.priority_count=*/1,
-    /*.priorities=*/&kQueuePriority,
-};
-
 struct FakeFunction {
   std::string name;
   iree_hal_executable_function_info_t info = {};
@@ -39,10 +30,10 @@ struct FakeFunction {
 // extractor owns all parsing, validation, and allocation behavior.
 class FakeExecutable {
  public:
-  FakeExecutable() {
-    iree_hal_queue_family_initialize(/*ordinal=*/0, &kQueueFamilySpec,
-                                     &queue_family_);
-    iree_hal_executable_initialize(&queue_family_, &kVtable, &base_);
+  FakeExecutable() = default;
+
+  void Initialize(const iree_hal_queue_family_t* queue_family) {
+    iree_hal_executable_initialize(queue_family, &kVtable, &base_);
   }
 
   FakeExecutable(const FakeExecutable&) = delete;
@@ -175,8 +166,6 @@ class FakeExecutable {
 
   // Must be first so the HAL may cast between the base and fake executable.
   iree_hal_executable_t base_;
-  // Stable family identity borrowed by |base_|.
-  iree_hal_queue_family_t queue_family_;
   std::vector<FakeFunction> functions_;
   bool has_function_count_override_ = false;
   iree_host_size_t function_count_override_ = 0;
@@ -213,8 +202,11 @@ class ModuleMetadataTest : public ::testing::Test {
     iree_hal_mock_device_options_t options;
     iree_hal_mock_device_options_initialize(&options);
     options.identifier = IREE_SV("module-metadata-test");
+    options.executable_loading_enabled = true;
     IREE_ASSERT_OK(iree_hal_mock_device_create(
         &options, iree_allocator_system(), &device_));
+    executable_.Initialize(iree_hal_device_queue_family(device_, 0));
+    second_executable_.Initialize(iree_hal_device_queue_family(device_, 0));
     context_.device = device_;
     module_.context = &context_;
     module_.executable = executable_.base();

@@ -641,12 +641,6 @@ iree_status_t iree_hal_replay_recorder_device_load_executable(
       iree_hal_queue_family_ordinal(queue_family);
   const iree_hal_queue_family_t* base_queue_family =
       iree_hal_device_queue_family(base_device, queue_family_ordinal);
-  if (IREE_UNLIKELY(!base_queue_family)) {
-    return iree_make_status(
-        IREE_STATUS_INTERNAL,
-        "recording device queue family %u is absent from the base device",
-        queue_family_ordinal);
-  }
 
   iree_hal_replay_object_id_t executable_id = IREE_HAL_REPLAY_OBJECT_ID_NONE;
   IREE_RETURN_IF_ERROR(
@@ -667,8 +661,8 @@ iree_status_t iree_hal_replay_recorder_device_load_executable(
 
   iree_hal_executable_t* base_executable = NULL;
   iree_hal_executable_t* replay_executable = NULL;
-  iree_status_t status = iree_hal_device_load_executable(
-      base_device, base_queue_family, target, params, &base_executable);
+  iree_status_t status = iree_hal_executable_load(base_queue_family, target,
+                                                  params, &base_executable);
   iree_byte_span_t executable_metadata_storage = iree_byte_span_empty();
   iree_const_byte_span_t executable_metadata = iree_const_byte_span_empty();
   if (iree_status_is_ok(status)) {

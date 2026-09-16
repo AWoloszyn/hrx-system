@@ -1063,7 +1063,7 @@ TEST(ReplayRecorderTest, WrappedDeviceRecordsQueueExecuteWithSparseBindings) {
 
   iree_hal_command_buffer_t* command_buffer = nullptr;
   IREE_ASSERT_OK(iree_hal_command_buffer_create(
-      wrapped_device, iree_hal_queue_family(wrapped_queue),
+      iree_hal_queue_family(wrapped_queue),
       IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT, IREE_HAL_COMMAND_CATEGORY_TRANSFER,
       /*binding_capacity=*/2, &command_buffer));
   const uint32_t fill_pattern = 0xA5A5A5A5u;
@@ -1156,7 +1156,7 @@ TEST(ReplayRecorderTest, RecordsAndReplaysCommandBufferAtomicOperations) {
 
   iree_hal_command_buffer_t* command_buffer = nullptr;
   IREE_ASSERT_OK(iree_hal_command_buffer_create(
-      wrapped_device, iree_hal_queue_family(wrapped_queue),
+      iree_hal_queue_family(wrapped_queue),
       IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT, IREE_HAL_COMMAND_CATEGORY_ATOMIC,
       /*binding_capacity=*/1, &command_buffer));
   const iree_hal_atomic_wait_params_t wait_params = {

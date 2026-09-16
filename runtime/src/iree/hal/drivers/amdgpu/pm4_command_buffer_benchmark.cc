@@ -389,9 +389,9 @@ class Pm4CommandBufferBenchmark : public benchmark::Fixture {
       iree_hal_executable_load_params_t load_params;
       iree_hal_executable_load_params_initialize(&load_params);
       load_params.executable_data = executable_data;
-      IREE_RETURN_IF_ERROR(iree_hal_device_load_executable(
-          bundle->device, queue_family, target_result.target, &load_params,
-          &bundle->executable));
+      IREE_RETURN_IF_ERROR(
+          iree_hal_executable_load(queue_family, target_result.target,
+                                   &load_params, &bundle->executable));
       IREE_RETURN_IF_ERROR(iree_hal_executable_lookup_function_by_name(
           bundle->executable, IREE_SV("model_a"), &bundle->model_a));
       return iree_hal_executable_lookup_function_by_name(
@@ -461,7 +461,7 @@ class Pm4CommandBufferBenchmark : public benchmark::Fixture {
     }
     iree_hal_command_buffer_t* command_buffer = nullptr;
     iree_status_t status = iree_hal_command_buffer_create(
-        bundle.device, iree_hal_queue_family(bundle.queue), command_buffer_mode,
+        iree_hal_queue_family(bundle.queue), command_buffer_mode,
         IREE_HAL_COMMAND_CATEGORY_DISPATCH, binding_capacity, &command_buffer);
     if (iree_status_is_ok(status)) {
       status = iree_hal_command_buffer_begin(command_buffer);

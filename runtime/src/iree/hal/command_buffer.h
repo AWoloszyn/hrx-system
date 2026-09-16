@@ -438,23 +438,22 @@ static inline iree_status_t iree_hal_buffer_binding_table_resolve_ref(
 // semaphore fires indicating the completion of their execution.
 typedef struct iree_hal_command_buffer_t iree_hal_command_buffer_t;
 
-// Creates a command buffer ready to begin recording, possibly reusing an
-// existing one from the |device| pool.
+// Creates a command buffer ready to begin recording for |queue_family|.
 //
 // |binding_capacity| specifies the maximum number of indirect binding slots
-// available for use by iree_hal_command_buffer_push_descriptor_set commands
-// referencing the binding table. Must only be non-zero for command buffer modes
-// supporting indirect bindings.
+// available for commands referencing the binding table. Must only be non-zero
+// for command buffer modes supporting indirect bindings.
 //
 // |queue_family| identifies the one queue family the command buffer may be
-// submitted to. The pointer is borrowed from |device| and remains valid because
-// the device must outlive every command buffer created from it.
-IREE_API_EXPORT iree_status_t iree_hal_command_buffer_create(
-    iree_hal_device_t* device, const iree_hal_queue_family_t* queue_family,
-    iree_hal_command_buffer_mode_t mode,
-    iree_hal_command_category_t command_categories,
-    iree_host_size_t binding_capacity,
-    iree_hal_command_buffer_t** out_command_buffer);
+// submitted to. The family owner must outlive the command buffer.
+// On success, |out_command_buffer| receives one owning reference. It is
+// unchanged on failure.
+IREE_API_EXPORT iree_status_t
+iree_hal_command_buffer_create(const iree_hal_queue_family_t* queue_family,
+                               iree_hal_command_buffer_mode_t mode,
+                               iree_hal_command_category_t command_categories,
+                               iree_host_size_t binding_capacity,
+                               iree_hal_command_buffer_t** out_command_buffer);
 
 // Retains the given |command_buffer| for the caller.
 IREE_API_EXPORT void iree_hal_command_buffer_retain(

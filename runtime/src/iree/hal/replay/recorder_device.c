@@ -188,13 +188,6 @@ static iree_status_t iree_hal_replay_device_acquire_queue(
       iree_hal_queue_family_ordinal(queue_family);
   const iree_hal_queue_family_t* base_queue_family =
       iree_hal_device_queue_family(device->base_device, family_ordinal);
-  if (IREE_UNLIKELY(family_ordinal >= device->queue_family_count ||
-                    queue_family !=
-                        &device->queue_families[family_ordinal].base ||
-                    !base_queue_family)) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "queue family does not belong to this device");
-  }
 
   iree_host_size_t execution_resource_data_length = 0;
   if (IREE_UNLIKELY(!iree_host_size_checked_mul(
@@ -230,8 +223,8 @@ static iree_status_t iree_hal_replay_device_acquire_queue(
       IREE_HAL_REPLAY_PAYLOAD_TYPE_DYNAMIC_QUEUE_OBJECT, &pending_record));
 
   iree_hal_queue_t* base_queue = NULL;
-  iree_status_t status = iree_hal_device_acquire_queue(
-      device->base_device, base_queue_family, params, &base_queue);
+  iree_status_t status =
+      iree_hal_queue_acquire(base_queue_family, params, &base_queue);
   iree_hal_replay_recorder_queue_t* queue = NULL;
   if (iree_status_is_ok(status)) {
     status = iree_hal_replay_recorder_queue_create(
@@ -353,7 +346,6 @@ static iree_status_t iree_hal_replay_device_create_command_buffer(
   iree_hal_command_buffer_t* base_command_buffer = NULL;
   iree_hal_command_buffer_t* replay_command_buffer = NULL;
   iree_status_t status = iree_hal_command_buffer_create(
-      device->base_device,
       iree_hal_device_queue_family(device->base_device,
                                    iree_hal_queue_family_ordinal(queue_family)),
       mode, command_categories, binding_capacity, &base_command_buffer);
@@ -653,8 +645,9 @@ static iree_status_t iree_hal_replay_wrap_device(
     const uint32_t family_queue_count =
         base_queue_spec->families[i].provisioned_queue_count;
     iree_hal_replay_queue_family_t* queue_family = &device->queue_families[i];
-    iree_hal_queue_family_initialize(
-        family_ordinal, &base_queue_spec->families[i], &queue_family->base);
+    iree_hal_queue_family_initialize((iree_hal_device_t*)device, family_ordinal,
+                                     &base_queue_spec->families[i],
+                                     &queue_family->base);
     queue_family->queue_offset = flat_queue_ordinal;
     queue_family->queue_count = family_queue_count;
     for (uint32_t j = 0; j < family_queue_count && iree_status_is_ok(status);

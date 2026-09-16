@@ -379,9 +379,8 @@ iree_status_t iree_hal_streaming_stream_select_cooperative_queue_locked(
   params.execution_resources =
       iree_hal_queue_execution_resources(stream->queue);
   iree_hal_queue_t* cooperative_queue = NULL;
-  IREE_RETURN_IF_ERROR(iree_hal_device_acquire_queue(
-      stream->context->device, iree_hal_queue_family(stream->queue), &params,
-      &cooperative_queue));
+  IREE_RETURN_IF_ERROR(iree_hal_queue_acquire(
+      iree_hal_queue_family(stream->queue), &params, &cooperative_queue));
 
   stream->cooperative_queue = cooperative_queue;
   *out_queue = cooperative_queue;
@@ -480,7 +479,7 @@ iree_status_t iree_hal_streaming_stream_begin_locked(
   if (!stream->command_buffer) {
     iree_hal_command_buffer_t* command_buffer = NULL;
     status = iree_hal_command_buffer_create(
-        stream->context->device, iree_hal_queue_family(stream->queue),
+        iree_hal_queue_family(stream->queue),
         IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT |
             IREE_HAL_COMMAND_BUFFER_MODE_UNRETAINED,
         IREE_HAL_COMMAND_CATEGORY_TRANSFER | IREE_HAL_COMMAND_CATEGORY_DISPATCH,

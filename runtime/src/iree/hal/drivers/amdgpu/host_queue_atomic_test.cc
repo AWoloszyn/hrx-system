@@ -105,12 +105,11 @@ class HostQueueAtomicTest
   }
 
   static iree_status_t CreateReusableAtomicProgram(
-      iree_hal_device_t* device, iree_hal_queue_t* queue,
-      iree_hal_buffer_t* static_buffer,
+      iree_hal_queue_t* queue, iree_hal_buffer_t* static_buffer,
       iree_hal_command_buffer_t** out_command_buffer) {
     Ref<iree_hal_command_buffer_t> command_buffer;
     IREE_RETURN_IF_ERROR(iree_hal_command_buffer_create(
-        device, iree_hal_queue_family(queue),
+        iree_hal_queue_family(queue),
         IREE_HAL_COMMAND_BUFFER_MODE_DEFAULT |
             IREE_HAL_COMMAND_BUFFER_MODE_RETAIN_PROFILE_METADATA,
         IREE_HAL_COMMAND_CATEGORY_ATOMIC,
@@ -181,12 +180,11 @@ class HostQueueAtomicTest
   }
 
   static iree_status_t CreateReusableDynamicStoreProgram(
-      iree_hal_device_t* device, iree_hal_queue_t* queue,
-      iree_hal_command_buffer_t** out_command_buffer) {
+      iree_hal_queue_t* queue, iree_hal_command_buffer_t** out_command_buffer) {
     Ref<iree_hal_command_buffer_t> command_buffer;
     IREE_RETURN_IF_ERROR(iree_hal_command_buffer_create(
-        device, iree_hal_queue_family(queue),
-        IREE_HAL_COMMAND_BUFFER_MODE_DEFAULT, IREE_HAL_COMMAND_CATEGORY_ATOMIC,
+        iree_hal_queue_family(queue), IREE_HAL_COMMAND_BUFFER_MODE_DEFAULT,
+        IREE_HAL_COMMAND_CATEGORY_ATOMIC,
         /*binding_capacity=*/1, command_buffer.out()));
     IREE_RETURN_IF_ERROR(iree_hal_command_buffer_begin(command_buffer));
     IREE_RETURN_IF_ERROR(iree_hal_command_buffer_atomic_store(
@@ -232,8 +230,8 @@ TEST_F(HostQueueAtomicTest, AutoCommandBufferModeSelectsPm4) {
   ASSERT_NE(queue, nullptr);
   Ref<iree_hal_command_buffer_t> command_buffer;
   IREE_ASSERT_OK(iree_hal_command_buffer_create(
-      test_device.base_device(), iree_hal_queue_family(queue),
-      IREE_HAL_COMMAND_BUFFER_MODE_DEFAULT, IREE_HAL_COMMAND_CATEGORY_ATOMIC,
+      iree_hal_queue_family(queue), IREE_HAL_COMMAND_BUFFER_MODE_DEFAULT,
+      IREE_HAL_COMMAND_CATEGORY_ATOMIC,
       /*binding_capacity=*/0, command_buffer.out()));
   EXPECT_TRUE(iree_hal_amdgpu_pm4_command_buffer_isa(command_buffer));
 }
@@ -756,8 +754,8 @@ TEST_P(HostQueueAtomicTest, ReusableProgramRetainsAndRebindsResources) {
             IREE_HAL_AMDGPU_ATOMIC_MEMORY_CELL_FLAGS_ALL);
 
   Ref<iree_hal_command_buffer_t> command_buffer;
-  IREE_ASSERT_OK(CreateReusableAtomicProgram(
-      test_device.base_device(), queue, static_buffer, command_buffer.out()));
+  IREE_ASSERT_OK(
+      CreateReusableAtomicProgram(queue, static_buffer, command_buffer.out()));
   if (GetParam() == IREE_HAL_AMDGPU_COMMAND_BUFFER_MODE_PM4) {
     uint32_t operation_count = 0;
     const iree_hal_profile_command_operation_record_t* operations =
@@ -886,8 +884,8 @@ TEST_P(HostQueueAtomicTest, DeferredResolvedMisalignmentFailsAndQueueRecovers) {
   iree_hal_queue_t* queue = test_device.queue(/*family_ordinal=*/0);
   ASSERT_NE(queue, nullptr);
   Ref<iree_hal_command_buffer_t> command_buffer;
-  IREE_ASSERT_OK(CreateReusableDynamicStoreProgram(
-      test_device.base_device(), queue, command_buffer.out()));
+  IREE_ASSERT_OK(
+      CreateReusableDynamicStoreProgram(queue, command_buffer.out()));
   if (GetParam() == IREE_HAL_AMDGPU_COMMAND_BUFFER_MODE_PM4) {
     const iree_hal_amdgpu_pm4_command_buffer_fixup_plan_t* fixup_plan =
         iree_hal_amdgpu_pm4_command_buffer_fixup_plan(command_buffer);
@@ -1025,8 +1023,8 @@ TEST_P(HostQueueAtomicTest, SupportsWidthsConditionsAndRmwOperations) {
 
   Ref<iree_hal_command_buffer_t> command_buffer;
   IREE_ASSERT_OK(iree_hal_command_buffer_create(
-      test_device.base_device(), iree_hal_queue_family(queue),
-      IREE_HAL_COMMAND_BUFFER_MODE_DEFAULT, IREE_HAL_COMMAND_CATEGORY_ATOMIC,
+      iree_hal_queue_family(queue), IREE_HAL_COMMAND_BUFFER_MODE_DEFAULT,
+      IREE_HAL_COMMAND_CATEGORY_ATOMIC,
       /*binding_capacity=*/1, command_buffer.out()));
   IREE_ASSERT_OK(iree_hal_command_buffer_begin(command_buffer));
   const iree_hal_atomic_flags_t atomic_flags =

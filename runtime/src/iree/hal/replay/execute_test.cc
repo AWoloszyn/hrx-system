@@ -972,9 +972,9 @@ static void CaptureMockExecutableLoad(iree_const_byte_span_t executable_data,
   load_params.executable_data = executable_data;
 
   iree_hal_executable_t* executable = nullptr;
-  IREE_ASSERT_OK(iree_hal_device_load_executable(
-      wrapped_device, iree_hal_device_queue_family(wrapped_device, 0),
-      target_result.target, &load_params, &executable));
+  IREE_ASSERT_OK(iree_hal_executable_load(
+      iree_hal_device_queue_family(wrapped_device, 0), target_result.target,
+      &load_params, &executable));
 
   iree_hal_executable_release(executable);
 
@@ -1107,12 +1107,20 @@ TEST(ReplayExecuteTest, ReplaysDynamicQueueAcquisition) {
   const iree_hal_queue_family_t* queue_family =
       iree_hal_device_queue_family(wrapped_device, /*family_ordinal=*/0);
   ASSERT_NE(nullptr, queue_family);
+  EXPECT_EQ(wrapped_device, iree_hal_queue_family_device(queue_family));
+  iree_hal_device_t* source_device =
+      iree_hal_device_group_device_at(source_group, 0);
+  const iree_hal_queue_family_t* source_family =
+      iree_hal_device_queue_family(source_device, 0);
+  EXPECT_EQ(source_device, iree_hal_queue_family_device(source_family));
+  EXPECT_NE(source_family, queue_family);
+  EXPECT_EQ(iree_hal_queue_family_spec(source_family),
+            iree_hal_queue_family_spec(queue_family));
 
   iree_hal_queue_params_t queue_params;
   iree_hal_queue_params_initialize(&queue_params);
   iree_hal_queue_t* queue = nullptr;
-  IREE_ASSERT_OK(iree_hal_device_acquire_queue(wrapped_device, queue_family,
-                                               &queue_params, &queue));
+  IREE_ASSERT_OK(iree_hal_queue_acquire(queue_family, &queue_params, &queue));
 
   iree_hal_semaphore_t* semaphore = nullptr;
   IREE_ASSERT_OK(iree_hal_semaphore_create(
@@ -1418,10 +1426,21 @@ TEST(ReplayExecuteTest, PreservesWideNativeParameterSize) {
   options.executable_substitution_callback.user_data = &substitution_state;
 
   iree_hal_device_group_t* replay_group = CreateMockExecutableDeviceGroup();
-  IREE_EXPECT_OK(iree_hal_replay_execute_file(GetCapturedFileContents(storage),
-                                              replay_group, &options,
-                                              iree_allocator_system()));
-  EXPECT_EQ(substitution_state.invocation_count, 1u);
+  const auto file_contents = GetCapturedFileContents(storage);
+  constexpr size_t kAlignment =
+      alignof(iree_hal_replay_executable_function_metadata_t);
+  std::vector<uint8_t> replay_storage(file_contents.data_length + kAlignment -
+                                      1);
+  for (size_t offset = 0; offset < kAlignment; ++offset) {
+    SCOPED_TRACE(offset);
+    memcpy(replay_storage.data() + offset, file_contents.data,
+           file_contents.data_length);
+    IREE_EXPECT_OK(iree_hal_replay_execute_file(
+        iree_make_const_byte_span(replay_storage.data() + offset,
+                                  file_contents.data_length),
+        replay_group, &options, iree_allocator_system()));
+  }
+  EXPECT_EQ(substitution_state.invocation_count, kAlignment);
   iree_hal_device_group_release(replay_group);
 }
 
@@ -2603,7 +2622,7 @@ TEST(ReplayExecuteTest, ExecutesRecordedCommandBufferTransfers) {
 
   iree_hal_command_buffer_t* command_buffer = nullptr;
   IREE_ASSERT_OK(iree_hal_command_buffer_create(
-      wrapped_device, iree_hal_queue_family(wrapped_queue),
+      iree_hal_queue_family(wrapped_queue),
       IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT, IREE_HAL_COMMAND_CATEGORY_TRANSFER,
       /*binding_capacity=*/0, &command_buffer));
   IREE_ASSERT_OK(iree_hal_command_buffer_begin(command_buffer));
@@ -2697,7 +2716,7 @@ TEST(ReplayExecuteTest, ExecutesRecordedIndirectCommandBufferBindings) {
 
   iree_hal_command_buffer_t* command_buffer = nullptr;
   IREE_ASSERT_OK(iree_hal_command_buffer_create(
-      wrapped_device, iree_hal_queue_family(wrapped_queue),
+      iree_hal_queue_family(wrapped_queue),
       IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT, IREE_HAL_COMMAND_CATEGORY_TRANSFER,
       /*binding_capacity=*/1, &command_buffer));
   IREE_ASSERT_OK(iree_hal_command_buffer_begin(command_buffer));

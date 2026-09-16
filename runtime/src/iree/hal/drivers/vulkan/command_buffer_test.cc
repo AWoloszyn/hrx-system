@@ -13,6 +13,7 @@
 #include <string>
 
 #include "iree/base/internal/arena.h"
+#include "iree/hal/testing/mock_device.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
 
@@ -21,12 +22,17 @@ namespace {
 
 static constexpr iree_hal_queue_priority_t kQueuePriority =
     IREE_HAL_QUEUE_PRIORITY_NORMAL;
-static const iree_hal_queue_family_spec_t kQueueFamilySpec = {
-    /*.name=*/IREE_SV("test"),
-    /*.provisioned_queue_count=*/1,
-    /*.priority_count=*/1,
-    /*.priorities=*/&kQueuePriority,
-};
+static const iree_hal_queue_family_spec_t kQueueFamilySpec = [] {
+  iree_hal_queue_family_spec_t spec = {};
+  spec.name = IREE_SV("test");
+  spec.priority_count = 1;
+  spec.priorities = &kQueuePriority;
+  spec.physical_device_affinity = 1;
+  spec.role_flags = IREE_HAL_QUEUE_FAMILY_ROLE_FLAG_DISPATCH |
+                    IREE_HAL_QUEUE_FAMILY_ROLE_FLAG_TRANSFER |
+                    IREE_HAL_QUEUE_FAMILY_ROLE_FLAG_ATOMIC;
+  return spec;
+}();
 
 #if !IREE_HAL_VULKAN_LIBVULKAN_STATIC
 
@@ -198,13 +204,27 @@ using CommandBufferPtr =
 class VulkanCommandBufferTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    iree_hal_queue_family_initialize(/*ordinal=*/0, &kQueueFamilySpec,
-                                     &queue_family_);
+    iree_arena_block_pool_initialize(block_size_, iree_allocator_system(),
+                                     &block_pool_);
+    iree_hal_device_queue_spec_t queues = {};
+    queues.family_count = 1;
+    queues.families = &kQueueFamilySpec;
+    iree_hal_device_spec_params_t spec_params = {};
+    spec_params.queues = &queues;
+    iree_hal_device_spec_t* device_spec = nullptr;
+    IREE_ASSERT_OK(iree_hal_device_spec_create(
+        &spec_params, iree_allocator_system(), &device_spec));
+    iree_hal_mock_device_options_t device_options;
+    iree_hal_mock_device_options_initialize(&device_options);
+    device_options.device_spec = device_spec;
+    iree_status_t status = iree_hal_mock_device_create(
+        &device_options, iree_allocator_system(), &device_);
+    iree_hal_device_spec_release(device_spec);
+    IREE_ASSERT_OK(status);
+    queue_family_ = iree_hal_device_queue_family(device_, 0);
     IREE_ASSERT_OK(iree_hal_allocator_create_heap(
         iree_make_cstring_view("vulkan_command_buffer_test"),
         iree_allocator_system(), iree_allocator_system(), &device_allocator_));
-    iree_arena_block_pool_initialize(block_size_, iree_allocator_system(),
-                                     &block_pool_);
     atomic_pipelines_.pipeline_layout =
         reinterpret_cast<VkPipelineLayout>(static_cast<uintptr_t>(0x1111));
     atomic_pipelines_.pipeline_32 =
@@ -214,6 +234,7 @@ class VulkanCommandBufferTest : public ::testing::Test {
   void TearDown() override {
     iree_arena_block_pool_deinitialize(&block_pool_);
     iree_hal_allocator_release(device_allocator_);
+    iree_hal_device_release(device_);
   }
 
   CommandBufferPtr CreateCommandBuffer(
@@ -222,7 +243,7 @@ class VulkanCommandBufferTest : public ::testing::Test {
           IREE_HAL_COMMAND_BUFFER_MODE_ONE_SHOT) {
     iree_hal_command_buffer_t* command_buffer = nullptr;
     IREE_EXPECT_OK(iree_hal_vulkan_command_buffer_create(
-        device_allocator_, &queue_family_,
+        device_allocator_, queue_family_,
         VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT, mode,
         IREE_HAL_COMMAND_CATEGORY_ANY, binding_capacity, &atomic_pipelines_,
         &block_pool_, iree_allocator_system(), &command_buffer));
@@ -231,7 +252,9 @@ class VulkanCommandBufferTest : public ::testing::Test {
 
  private:
   // Canonical family identity borrowed by command buffers in this fixture.
-  iree_hal_queue_family_t queue_family_;
+  const iree_hal_queue_family_t* queue_family_ = nullptr;
+  // Device owning the canonical family used by this fixture.
+  iree_hal_device_t* device_ = nullptr;
 
   // Test allocator borrowed by command buffers for validation.
   iree_hal_allocator_t* device_allocator_ = nullptr;

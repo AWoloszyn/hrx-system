@@ -93,12 +93,10 @@ typedef struct iree_xdna_run_t {
     // Explicit writable view used only during cold instantiation.
     amdf_host_mapping_t* mapping;
   } instructions;
-  // Executable-only family metadata; native queues are managed through libamdf.
-  iree_hal_queue_family_spec_t queue_family_spec;
-  // HAL family identity borrowed by the executable.
-  iree_hal_queue_family_t queue_family;
+  // Native kernel queue family selected from the libamdf endpoint.
+  uint32_t queue_family_ordinal;
   // Parsed and lowered executable retaining the immutable image bytes.
-  iree_hal_executable_t* executable;
+  iree_hal_amd_xdna_executable_t* executable;
   // Number of dense input bindings and resolved command bindings.
   iree_host_size_t binding_count;
   // Allocation owning binding state and the trailing resolved-binding array.
@@ -339,13 +337,7 @@ static iree_status_t iree_xdna_run_create_device(
     return iree_make_status(IREE_STATUS_UNAVAILABLE,
                             "endpoint has no XDNA kernel queue family");
   }
-  run->queue_family_spec = (iree_hal_queue_family_spec_t){
-      .name = IREE_SV("xdna"),
-      .physical_device_affinity = 1,
-      .role_flags = IREE_HAL_QUEUE_FAMILY_ROLE_FLAG_DISPATCH,
-  };
-  iree_hal_queue_family_initialize(family_ordinal, &run->queue_family_spec,
-                                   &run->queue_family);
+  run->queue_family_ordinal = family_ordinal;
   const amdf_xdna_device_create_info_t create_info = {
       .type = AMDF_STRUCTURE_TYPE_XDNA_DEVICE_CREATE_INFO,
       .structure_size = sizeof(create_info),
@@ -699,16 +691,15 @@ static iree_status_t iree_xdna_run_execute(iree_xdna_run_t* run,
   iree_hal_amd_xdna_aie2p_target_t target;
   IREE_RETURN_IF_ERROR(iree_xdna_run_create_device(run, &target));
   IREE_RETURN_IF_ERROR(iree_hal_amd_xdna_executable_create(
-      &run->queue_family, image, &target, run->host_allocator,
-      &run->executable));
+      image, &target, run->host_allocator, &run->executable));
   iree_hal_executable_function_t function =
       iree_hal_executable_function_from_index(0);
   if (FLAG_entry[0] != 0) {
-    IREE_RETURN_IF_ERROR(iree_hal_executable_lookup_function_by_name(
+    IREE_RETURN_IF_ERROR(iree_hal_amd_xdna_executable_lookup_function_by_name(
         run->executable, iree_make_cstring_view(FLAG_entry), &function));
   }
   iree_hal_executable_function_info_t function_info;
-  IREE_RETURN_IF_ERROR(iree_hal_executable_function_info(
+  IREE_RETURN_IF_ERROR(iree_hal_amd_xdna_executable_function_info(
       run->executable, function, &function_info));
   if (function_info.binding_count != run->binding_count) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
@@ -726,7 +717,7 @@ static iree_status_t iree_xdna_run_execute(iree_xdna_run_t* run,
   const amdf_xdna_kernel_queue_create_info_t queue_info = {
       .type = AMDF_STRUCTURE_TYPE_XDNA_KERNEL_QUEUE_CREATE_INFO,
       .structure_size = sizeof(queue_info),
-      .queue_family_ordinal = run->queue_family.ordinal,
+      .queue_family_ordinal = run->queue_family_ordinal,
   };
   fprintf(stderr, "Prepared %.*s; acquiring queue and admitting firmware\n",
           (int)function_info.name.size, function_info.name.data);
@@ -812,7 +803,7 @@ static iree_status_t iree_xdna_run_deinitialize(iree_xdna_run_t* run) {
         "memory_destroy(instructions)"));
     run->instructions.memory = NULL;
   }
-  iree_hal_executable_release(run->executable);
+  iree_hal_amd_xdna_executable_release(run->executable);
   run->executable = NULL;
   iree_status_t status = iree_ok_status();
   for (iree_host_size_t i = 0;

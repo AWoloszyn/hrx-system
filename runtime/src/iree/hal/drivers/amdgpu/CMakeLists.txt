@@ -685,6 +685,7 @@ iree_cc_test(
     iree::hal::drivers::amdgpu::abi
     iree::hal::drivers::amdgpu::device::headers
     iree::hal::drivers::amdgpu::util::packet
+    iree::hal::testing::mock_device
     iree::testing::gtest
     iree::testing::gtest_main
   LABELS
@@ -733,6 +734,7 @@ iree_cc_test(
     iree::base::internal::arena
     iree::hal
     iree::hal::drivers::amdgpu::abi
+    iree::hal::testing::mock_device
     iree::testing::gtest
     iree::testing::gtest_main
   LABELS

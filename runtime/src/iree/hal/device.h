@@ -556,25 +556,6 @@ IREE_API_EXPORT iree_hal_queue_t* iree_hal_device_queue(
     iree_hal_device_t* device, iree_hal_queue_family_ordinal_t family_ordinal,
     iree_hal_queue_ordinal_t queue_ordinal);
 
-// Acquires an exact hardware queue from |queue_family| with immutable
-// |params|.
-//
-// |queue_family| must be the exact borrowed identity exposed by |device|.
-// Parameter storage is borrowed only for the duration of the call. An empty
-// execution-resource list requests the complete resource set advertised by the
-// family; a nonempty list must contain sorted unique family-local ordinals. An
-// explicitly enumerated complete set is accepted and canonicalized to the empty
-// form reported by the acquired queue.
-//
-// The returned queue is dynamically acquired and does not have a provisioned
-// queue ordinal. Acquisition performs no generic caching, pooling, or virtual
-// queuing. On success, |out_queue| receives one owning reference and the parent
-// device must remain live until it is released. |out_queue| is unchanged on
-// failure.
-IREE_API_EXPORT iree_status_t iree_hal_device_acquire_queue(
-    iree_hal_device_t* device, const iree_hal_queue_family_t* queue_family,
-    const iree_hal_queue_params_t* params, iree_hal_queue_t** out_queue);
-
 // Initializes |out_observation| for a device state sample.
 IREE_API_EXPORT void iree_hal_device_observation_initialize(
     iree_hal_device_observation_flags_t requested_flags,
@@ -660,27 +641,6 @@ iree_hal_device_query_semaphore_compatibility(iree_hal_device_t* device,
 IREE_API_EXPORT iree_status_t iree_hal_device_query_queue_pool_backend(
     iree_hal_device_t* device, const iree_hal_queue_family_t* queue_family,
     iree_hal_queue_pool_backend_t* out_backend);
-
-// Loads a native executable artifact for |target| on |queue_family|.
-//
-// |queue_family| must be the exact family identity borrowed from |device| and
-// |target| must be an exact borrowed row from iree_hal_device_spec(device).
-// |target| must support every physical device serviced by |queue_family|.
-// The returned executable may only be used with command buffers and direct
-// dispatches targeting |queue_family|.
-//
-// The executable data and constants are borrowed only for the duration of the
-// call. Implementations must finish consuming or copy any retained data before
-// returning. Loading is a cold path and implementations may parse, verify,
-// link, or optimize the native artifact before returning.
-//
-// On success, |out_executable| is assigned one owning reference. It is
-// unchanged on failure.
-IREE_API_EXPORT iree_status_t iree_hal_device_load_executable(
-    iree_hal_device_t* device, const iree_hal_queue_family_t* queue_family,
-    const iree_hal_executable_target_t* target,
-    const iree_hal_executable_load_params_t* params,
-    iree_hal_executable_t** out_executable);
 
 // Blocks the caller until the semaphores reach or exceed the specified payload
 // values or the |timeout| elapses. All semaphores in |semaphore_list| must be
@@ -809,6 +769,8 @@ typedef struct iree_hal_device_vtable_t {
       iree_hal_device_t* device, iree_hal_queue_family_ordinal_t family_ordinal,
       iree_hal_queue_ordinal_t queue_ordinal);
 
+  // Acquires a queue from a canonical family owned by |device|. The generic
+  // entry point validates and canonicalizes |params| against the family spec.
   iree_status_t(IREE_API_PTR* acquire_queue)(
       iree_hal_device_t* device, const iree_hal_queue_family_t* queue_family,
       const iree_hal_queue_params_t* params, iree_hal_queue_t** out_queue);
@@ -834,6 +796,8 @@ typedef struct iree_hal_device_vtable_t {
       iree_hal_queue_family_affinity_t queue_family_affinity,
       iree_hal_channel_params_t params, iree_hal_channel_t** out_channel);
 
+  // Creates a command buffer for a canonical family owned by |device|. The
+  // generic entry point validates the requested categories against its roles.
   iree_status_t(IREE_API_PTR* create_command_buffer)(
       iree_hal_device_t* device, const iree_hal_queue_family_t* queue_family,
       iree_hal_command_buffer_mode_t mode,
@@ -841,6 +805,8 @@ typedef struct iree_hal_device_vtable_t {
       iree_host_size_t binding_capacity,
       iree_hal_command_buffer_t** out_command_buffer);
 
+  // Loads for a canonical family owned by |device|. The generic entry point
+  // validates target membership, physical coverage, and parameter storage.
   iree_status_t(IREE_API_PTR* load_executable)(
       iree_hal_device_t* device, const iree_hal_queue_family_t* queue_family,
       const iree_hal_executable_target_t* target,

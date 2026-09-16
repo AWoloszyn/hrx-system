@@ -62,15 +62,17 @@ iree_runtime_cc_benchmark(
     srcs = ["benchmark.c"],
     deps = [
         ":abi",
+        "//runtime/src/iree/async/util:proactor_pool",
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/tooling:flags",
         "//runtime/src/iree/hal",
-        "//runtime/src/iree/hal/drivers/task:device_spec_builder",
+        "//runtime/src/iree/hal/drivers/task:device",
         "//runtime/src/iree/hal/drivers/task/executable",
         "//runtime/src/iree/hal/drivers/task/executable:environment",
         "//runtime/src/iree/hal/drivers/task/executable:loader",
         "//runtime/src/iree/hal/drivers/task/executable/loaders/registration",
         "//runtime/src/iree/io:file_handle",
+        "//runtime/src/iree/task",
         "//runtime/src/iree/testing:benchmark",
     ],
 )

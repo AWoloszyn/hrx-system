@@ -430,7 +430,8 @@ iree_status_t iree_hal_task_device_create(
   if (iree_status_is_ok(status)) {
     const iree_hal_device_queue_spec_t* queue_spec =
         iree_hal_device_spec_queues(device->device_spec);
-    iree_hal_queue_family_initialize(/*ordinal=*/0, &queue_spec->families[0],
+    iree_hal_queue_family_initialize((iree_hal_device_t*)device, /*ordinal=*/0,
+                                     &queue_spec->families[0],
                                      &device->queue_family);
 
     iree_arena_block_pool_initialize(4096, host_allocator,
@@ -619,10 +620,6 @@ static iree_status_t iree_hal_task_device_acquire_queue(
     iree_hal_device_t* base_device, const iree_hal_queue_family_t* queue_family,
     const iree_hal_queue_params_t* params, iree_hal_queue_t** out_queue) {
   iree_hal_task_device_t* device = iree_hal_task_device_cast(base_device);
-  if (IREE_UNLIKELY(queue_family != &device->queue_family)) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "queue family does not belong to this device");
-  }
   if (IREE_UNLIKELY(!device->frontier_tracker)) {
     return iree_make_status(
         IREE_STATUS_FAILED_PRECONDITION,

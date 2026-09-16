@@ -164,6 +164,27 @@ static void SpinUntilInternalState(Fn&& condition) {
 }
 
 //===----------------------------------------------------------------------===//
+// Construction tests
+//===----------------------------------------------------------------------===//
+
+TEST(ExecutorTest, RejectsEmptyTopology) {
+  iree_task_topology_t topology;
+  iree_task_topology_initialize(&topology);
+  iree_task_executor_options_t options;
+  iree_task_executor_options_initialize(&options);
+
+  iree_task_executor_t* executor = nullptr;
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      iree_task_executor_create(options, &topology, iree_allocator_system(),
+                                &executor));
+  EXPECT_EQ(nullptr, executor);
+
+  iree_task_executor_release(executor);
+  iree_task_topology_deinitialize(&topology);
+}
+
+//===----------------------------------------------------------------------===//
 // Basic scheduling tests
 //===----------------------------------------------------------------------===//
 

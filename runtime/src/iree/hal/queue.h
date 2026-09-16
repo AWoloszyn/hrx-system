@@ -20,6 +20,7 @@ extern "C" {
 typedef struct iree_hal_buffer_t iree_hal_buffer_t;
 typedef struct iree_hal_buffer_ref_list_t iree_hal_buffer_ref_list_t;
 typedef struct iree_hal_command_buffer_t iree_hal_command_buffer_t;
+typedef struct iree_hal_device_t iree_hal_device_t;
 typedef struct iree_hal_dispatch_config_t iree_hal_dispatch_config_t;
 typedef struct iree_hal_executable_function_t iree_hal_executable_function_t;
 typedef struct iree_hal_executable_t iree_hal_executable_t;
@@ -134,7 +135,8 @@ iree_hal_make_queue_family_affinity(
 // Queue family pointers are immutable, pointer-unique identities within a
 // device. Objects compatible with the same family store this borrowed pointer
 // and can compare it in constant time. The containing device must outlive all
-// objects referring to its queue families.
+// objects referring to its queue families. Families are borrowed from their
+// owner and must not be copied or constructed by callers.
 typedef struct iree_hal_queue_family_t iree_hal_queue_family_t;
 
 // An exact hardware queue exposed by a HAL device.
@@ -621,6 +623,11 @@ typedef struct iree_hal_transfer_operation_t {
 // iree_hal_queue_family_t
 //===----------------------------------------------------------------------===//
 
+// Returns the device owning |queue_family|. The non-NULL pointer is borrowed;
+// callers must keep the device alive while using the family or its objects.
+IREE_API_EXPORT iree_hal_device_t* iree_hal_queue_family_device(
+    const iree_hal_queue_family_t* queue_family);
+
 // Returns the canonical ordinal of |queue_family| within its device.
 IREE_API_EXPORT iree_hal_queue_family_ordinal_t
 iree_hal_queue_family_ordinal(const iree_hal_queue_family_t* queue_family);
@@ -633,6 +640,24 @@ IREE_API_EXPORT const iree_hal_queue_family_spec_t* iree_hal_queue_family_spec(
 //===----------------------------------------------------------------------===//
 // iree_hal_queue_t
 //===----------------------------------------------------------------------===//
+
+// Acquires an exact hardware queue from |queue_family| with immutable
+// |params|.
+//
+// Parameter storage is borrowed only for the duration of the call. An empty
+// execution-resource list requests the complete resource set advertised by the
+// family; a nonempty list must contain sorted unique family-local ordinals. An
+// explicitly enumerated complete set is accepted and canonicalized to the empty
+// form reported by the acquired queue.
+//
+// The returned queue is dynamically acquired and does not have a provisioned
+// queue ordinal. Acquisition performs no generic caching, pooling, or virtual
+// queuing. On success, |out_queue| receives one owning reference and the parent
+// device must remain live until it is released. |out_queue| is unchanged on
+// failure.
+IREE_API_EXPORT iree_status_t iree_hal_queue_acquire(
+    const iree_hal_queue_family_t* queue_family,
+    const iree_hal_queue_params_t* params, iree_hal_queue_t** out_queue);
 
 // Retains |queue| for the caller.
 // The parent device must remain live until the reference is released.
@@ -1006,6 +1031,10 @@ IREE_API_EXPORT iree_status_t iree_hal_queue_write(
 
 // Immutable identity state embedded in each device queue family.
 struct iree_hal_queue_family_t {
+  // Non-NULL borrowed owner whose lifetime dominates the family and its
+  // objects.
+  iree_hal_device_t* device;
+
   // Canonical ordinal of the queue family within its device.
   iree_hal_queue_family_ordinal_t ordinal;
 
@@ -1013,10 +1042,11 @@ struct iree_hal_queue_family_t {
   const iree_hal_queue_family_spec_t* spec;
 };
 
-// Initializes |out_queue_family| with its canonical |ordinal| and exact
-// immutable device-specification row.
+// Initializes the canonical family cell owned by |device| with its |ordinal|
+// and exact immutable device-specification row. Called only by the owning
+// device implementation; |device| is non-NULL and is not retained.
 IREE_API_EXPORT void iree_hal_queue_family_initialize(
-    iree_hal_queue_family_ordinal_t ordinal,
+    iree_hal_device_t* device, iree_hal_queue_family_ordinal_t ordinal,
     const iree_hal_queue_family_spec_t* spec,
     iree_hal_queue_family_t* out_queue_family);
 

@@ -1386,13 +1386,12 @@ static iree_status_t iree_hal_streaming_graph_create_execute_block(
   // the release after prior work.
   //
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
-      z0,
-      iree_hal_command_buffer_create(
-          exec->context->device, iree_hal_queue_family(exec->context->queue),
-          IREE_HAL_COMMAND_BUFFER_MODE_UNRETAINED,
-          IREE_HAL_COMMAND_CATEGORY_TRANSFER |
-              IREE_HAL_COMMAND_CATEGORY_DISPATCH,
-          /*binding_capacity=*/0, &attrs->command_buffer));
+      z0, iree_hal_command_buffer_create(
+              iree_hal_queue_family(exec->context->queue),
+              IREE_HAL_COMMAND_BUFFER_MODE_UNRETAINED,
+              IREE_HAL_COMMAND_CATEGORY_TRANSFER |
+                  IREE_HAL_COMMAND_CATEGORY_DISPATCH,
+              /*binding_capacity=*/0, &attrs->command_buffer));
 
   // Add to resource set for cleanup.
   iree_status_t status = iree_hal_resource_set_insert(exec->resource_set, 1,

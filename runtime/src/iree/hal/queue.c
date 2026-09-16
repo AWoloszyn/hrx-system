@@ -6,11 +6,13 @@
 
 #include "iree/hal/queue.h"
 
+#include <inttypes.h>
 #include <string.h>
 
 #include "iree/hal/buffer.h"
 #include "iree/hal/command_buffer.h"
 #include "iree/hal/detail.h"
+#include "iree/hal/device.h"
 #include "iree/hal/executable.h"
 #include "iree/hal/file.h"
 #include "iree/hal/pool.h"
@@ -30,6 +32,12 @@ IREE_API_EXPORT void iree_hal_queue_params_initialize(
   out_params->priority = IREE_HAL_QUEUE_PRIORITY_NORMAL;
 }
 
+IREE_API_EXPORT iree_hal_device_t* iree_hal_queue_family_device(
+    const iree_hal_queue_family_t* queue_family) {
+  IREE_ASSERT_ARGUMENT(queue_family);
+  return queue_family->device;
+}
+
 IREE_API_EXPORT iree_hal_queue_family_ordinal_t
 iree_hal_queue_family_ordinal(const iree_hal_queue_family_t* queue_family) {
   IREE_ASSERT_ARGUMENT(queue_family);
@@ -43,11 +51,12 @@ IREE_API_EXPORT const iree_hal_queue_family_spec_t* iree_hal_queue_family_spec(
 }
 
 IREE_API_EXPORT void iree_hal_queue_family_initialize(
-    iree_hal_queue_family_ordinal_t ordinal,
+    iree_hal_device_t* device, iree_hal_queue_family_ordinal_t ordinal,
     const iree_hal_queue_family_spec_t* spec,
     iree_hal_queue_family_t* out_queue_family) {
   IREE_ASSERT_ARGUMENT(spec);
   IREE_ASSERT_ARGUMENT(out_queue_family);
+  out_queue_family->device = device;
   out_queue_family->ordinal = ordinal;
   out_queue_family->spec = spec;
 }
@@ -57,6 +66,162 @@ IREE_API_EXPORT void iree_hal_queue_family_initialize(
 //===----------------------------------------------------------------------===//
 
 IREE_HAL_API_RETAIN_RELEASE(queue);
+
+static iree_status_t iree_hal_queue_validate_params(
+    const iree_hal_queue_family_spec_t* family_spec,
+    const iree_hal_queue_params_t* params) {
+  bool priority_supported = false;
+  for (iree_host_size_t i = 0; i < family_spec->priority_count; ++i) {
+    priority_supported |= family_spec->priorities[i] == params->priority;
+  }
+  if (IREE_UNLIKELY(!priority_supported)) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "queue priority %" PRId32
+                            " is not supported by the queue family",
+                            params->priority);
+  }
+  if (IREE_UNLIKELY(params->features &
+                    ~family_spec->supported_queue_features)) {
+    return iree_make_status(
+        IREE_STATUS_INVALID_ARGUMENT,
+        "queue feature bits 0x%016" PRIx64
+        " are not supported by the queue family",
+        params->features & ~family_spec->supported_queue_features);
+  }
+
+  const iree_hal_queue_execution_resource_list_t resources =
+      params->execution_resources;
+  if (IREE_UNLIKELY(resources.count && !resources.ordinals)) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "queue execution-resource list has count %" PRIhsz
+                            " but NULL storage",
+                            resources.count);
+  }
+  for (iree_host_size_t i = 0; i < resources.count; ++i) {
+    const iree_hal_queue_execution_resource_ordinal_t resource_ordinal =
+        resources.ordinals[i];
+    if (IREE_UNLIKELY(i > 0 && resource_ordinal <= resources.ordinals[i - 1])) {
+      return iree_make_status(
+          IREE_STATUS_INVALID_ARGUMENT,
+          "queue execution-resource ordinals must be sorted and unique");
+    }
+    if (IREE_UNLIKELY(resource_ordinal >=
+                      family_spec->execution_resource_count)) {
+      return iree_make_status(
+          IREE_STATUS_INVALID_ARGUMENT,
+          "queue execution-resource ordinal %u is outside family resource "
+          "count %" PRIhsz,
+          resource_ordinal, family_spec->execution_resource_count);
+    }
+  }
+  if (resources.count) {
+    for (iree_host_size_t group_ordinal = 0;
+         group_ordinal < family_spec->execution_resource_group_count;
+         ++group_ordinal) {
+      iree_host_size_t selected_resource_count = 0;
+      for (iree_host_size_t i = 0; i < resources.count; ++i) {
+        selected_resource_count +=
+            family_spec->execution_resources[resources.ordinals[i]]
+                .group_ordinal == group_ordinal;
+      }
+      const uint32_t minimum_selected_resource_count =
+          family_spec->execution_resource_groups[group_ordinal]
+              .minimum_selected_resource_count;
+      if (IREE_UNLIKELY(selected_resource_count <
+                        minimum_selected_resource_count)) {
+        return iree_make_status(
+            IREE_STATUS_INVALID_ARGUMENT,
+            "queue execution-resource group %" PRIhsz
+            " requires at least %u selections but the request has %" PRIhsz,
+            group_ordinal, minimum_selected_resource_count,
+            selected_resource_count);
+      }
+    }
+  }
+  return iree_ok_status();
+}
+
+// Canonicalizes semantically equivalent queue parameter representations.
+// |params| must have already been validated against |family_spec|.
+static iree_hal_queue_params_t iree_hal_queue_canonicalize_params(
+    const iree_hal_queue_family_spec_t* family_spec,
+    const iree_hal_queue_params_t* params) {
+  iree_hal_queue_params_t canonical_params = *params;
+  if (params->execution_resources.count !=
+      family_spec->execution_resource_count) {
+    return canonical_params;
+  }
+  for (iree_host_size_t i = 0; i < params->execution_resources.count; ++i) {
+    if (params->execution_resources.ordinals[i] !=
+        (iree_hal_queue_execution_resource_ordinal_t)i) {
+      return canonical_params;
+    }
+  }
+  canonical_params.execution_resources =
+      (iree_hal_queue_execution_resource_list_t){0};
+  return canonical_params;
+}
+
+static bool iree_hal_queue_params_equal(const iree_hal_queue_params_t* expected,
+                                        const iree_hal_queue_t* actual) {
+  if (expected->priority != iree_hal_queue_priority(actual) ||
+      expected->features != iree_hal_queue_features(actual)) {
+    return false;
+  }
+  const iree_hal_queue_execution_resource_list_t actual_resources =
+      iree_hal_queue_execution_resources(actual);
+  if (IREE_UNLIKELY(actual_resources.count && !actual_resources.ordinals)) {
+    return false;
+  }
+  return expected->execution_resources.count == actual_resources.count &&
+         (actual_resources.count == 0 ||
+          memcmp(expected->execution_resources.ordinals,
+                 actual_resources.ordinals,
+                 actual_resources.count * sizeof(*actual_resources.ordinals)) ==
+              0);
+}
+
+IREE_API_EXPORT iree_status_t iree_hal_queue_acquire(
+    const iree_hal_queue_family_t* queue_family,
+    const iree_hal_queue_params_t* params, iree_hal_queue_t** out_queue) {
+  IREE_ASSERT_ARGUMENT(queue_family);
+  IREE_ASSERT_ARGUMENT(params);
+  IREE_ASSERT_ARGUMENT(out_queue);
+
+  const iree_hal_queue_family_spec_t* family_spec =
+      iree_hal_queue_family_spec(queue_family);
+  IREE_RETURN_IF_ERROR(iree_hal_queue_validate_params(family_spec, params));
+  const iree_hal_queue_params_t canonical_params =
+      iree_hal_queue_canonicalize_params(family_spec, params);
+  if (IREE_UNLIKELY(!iree_any_bit_set(
+          family_spec->flags,
+          IREE_HAL_QUEUE_FAMILY_SPEC_FLAG_DYNAMIC_ACQUISITION))) {
+    return iree_make_status(
+        IREE_STATUS_UNIMPLEMENTED,
+        "queue family does not support dynamic acquisition");
+  }
+
+  iree_hal_device_t* device = iree_hal_queue_family_device(queue_family);
+  IREE_TRACE_ZONE_BEGIN(z0);
+  iree_hal_queue_t* queue = NULL;
+  iree_status_t status =
+      IREE_HAL_VTABLE_DISPATCH(device, iree_hal_device, acquire_queue)(
+          device, queue_family, &canonical_params, &queue);
+  if (iree_status_is_ok(status) &&
+      IREE_UNLIKELY(!queue || iree_hal_queue_family(queue) != queue_family ||
+                    !iree_hal_queue_params_equal(&canonical_params, queue))) {
+    status = iree_make_status(
+        IREE_STATUS_INTERNAL,
+        "device did not acquire a queue with the exact requested properties");
+  }
+  if (iree_status_is_ok(status)) {
+    *out_queue = queue;
+  } else {
+    iree_hal_queue_release(queue);
+  }
+  IREE_TRACE_ZONE_END(z0);
+  return status;
+}
 
 IREE_API_EXPORT const iree_hal_queue_family_t* iree_hal_queue_family(
     const iree_hal_queue_t* queue) {

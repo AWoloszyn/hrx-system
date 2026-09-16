@@ -65,7 +65,7 @@ class CommandBufferAtomicTest : public CtsTestBase<> {
       iree_hal_command_buffer_mode_t mode, iree_host_size_t binding_capacity,
       iree_hal_command_buffer_t** out_command_buffer) {
     return iree_hal_command_buffer_create(
-        device_, iree_hal_queue_family(atomic_queue_), mode,
+        iree_hal_queue_family(atomic_queue_), mode,
         IREE_HAL_COMMAND_CATEGORY_ATOMIC, binding_capacity, out_command_buffer);
   }
 

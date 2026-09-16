@@ -127,6 +127,7 @@ TEST_P(QueueTest, ProvisionedInventoryMatchesDeviceSpec) {
         iree_hal_device_queue_family(device_, family_ordinal);
     ASSERT_NE(nullptr, queue_family)
         << "device did not expose advertised queue family " << i;
+    EXPECT_EQ(device_, iree_hal_queue_family_device(queue_family));
     EXPECT_EQ(family_ordinal, iree_hal_queue_family_ordinal(queue_family));
     const iree_hal_queue_family_spec_t* family_spec = &queue_spec->families[i];
     EXPECT_EQ(family_spec, iree_hal_queue_family_spec(queue_family));
@@ -177,8 +178,7 @@ TEST_P(QueueTest, DynamicallyAcquiredQueueExecutesBarrier) {
   iree_hal_queue_params_t params;
   iree_hal_queue_params_initialize(&params);
   Ref<iree_hal_queue_t> queue;
-  IREE_ASSERT_OK(iree_hal_device_acquire_queue(device_, family.identity,
-                                               &params, queue.out()));
+  IREE_ASSERT_OK(iree_hal_queue_acquire(family.identity, &params, queue.out()));
   ASSERT_NE(nullptr, queue.get());
   EXPECT_EQ(family.identity, iree_hal_queue_family(queue));
   EXPECT_EQ(params.priority, iree_hal_queue_priority(queue));
@@ -219,13 +219,70 @@ TEST_P(QueueTest, QueueAcquisitionCanonicalizesCompleteResourceSet) {
   params.execution_resources.ordinals = resource_ordinals.data();
 
   Ref<iree_hal_queue_t> queue;
-  IREE_ASSERT_OK(iree_hal_device_acquire_queue(device_, family.identity,
-                                               &params, queue.out()));
+  IREE_ASSERT_OK(iree_hal_queue_acquire(family.identity, &params, queue.out()));
   EXPECT_EQ(family.identity, iree_hal_queue_family(queue));
   const iree_hal_queue_execution_resource_list_t achieved_resources =
       iree_hal_queue_execution_resources(queue);
   EXPECT_EQ(0u, achieved_resources.count);
   EXPECT_EQ(nullptr, achieved_resources.ordinals);
+}
+
+TEST_P(QueueTest, QueueAcquisitionPreservesResourceSubset) {
+  DynamicQueueFamily family;
+  if (!FindDynamicQueueFamily(device_, /*required_roles=*/0, &family) ||
+      family.spec->execution_resource_count < 2) {
+    GTEST_SKIP() << "device has no dynamically acquirable resource subset";
+  }
+
+  std::vector<iree_host_size_t> group_counts(
+      family.spec->execution_resource_group_count, 0);
+  for (iree_host_size_t i = 0; i < family.spec->execution_resource_count; ++i) {
+    ++group_counts[family.spec->execution_resources[i].group_ordinal];
+  }
+  iree_host_size_t omitted_ordinal = family.spec->execution_resource_count;
+  for (iree_host_size_t i = 0; i < family.spec->execution_resource_count; ++i) {
+    const auto group = family.spec->execution_resources[i].group_ordinal;
+    if (group_counts[group] > family.spec->execution_resource_groups[group]
+                                  .minimum_selected_resource_count) {
+      omitted_ordinal = i;
+      break;
+    }
+  }
+  if (omitted_ordinal == family.spec->execution_resource_count) {
+    GTEST_SKIP() << "family requires every advertised execution resource";
+  }
+
+  std::vector<iree_hal_queue_execution_resource_ordinal_t> expected_ordinals;
+  for (iree_host_size_t i = 0; i < family.spec->execution_resource_count; ++i) {
+    if (i != omitted_ordinal) {
+      expected_ordinals.push_back(
+          (iree_hal_queue_execution_resource_ordinal_t)i);
+    }
+  }
+  Ref<iree_hal_queue_t> queue;
+  {
+    // Acquisition must copy the parameter storage before returning.
+    auto requested_ordinals = expected_ordinals;
+    iree_hal_queue_params_t params;
+    iree_hal_queue_params_initialize(&params);
+    params.execution_resources = {requested_ordinals.size(),
+                                  requested_ordinals.data()};
+    IREE_ASSERT_OK(
+        iree_hal_queue_acquire(family.identity, &params, queue.out()));
+  }
+  EXPECT_EQ(family.identity, iree_hal_queue_family(queue));
+  const auto achieved_resources = iree_hal_queue_execution_resources(queue);
+  ASSERT_EQ(expected_ordinals.size(), achieved_resources.count);
+  ASSERT_NE(nullptr, achieved_resources.ordinals);
+  EXPECT_TRUE(std::equal(expected_ordinals.begin(), expected_ordinals.end(),
+                         achieved_resources.ordinals));
+
+  SemaphoreList signal(device_, {0}, {1});
+  IREE_ASSERT_OK(iree_hal_queue_barrier(queue, iree_hal_semaphore_list_empty(),
+                                        signal,
+                                        IREE_HAL_QUEUE_BARRIER_FLAG_NONE));
+  IREE_ASSERT_OK(iree_hal_semaphore_list_wait(signal, iree_infinite_timeout(),
+                                              IREE_ASYNC_WAIT_FLAG_NONE));
 }
 
 TEST_P(QueueTest, DynamicallyAcquiredQueueOrdersProvisionedQueue) {
@@ -240,8 +297,8 @@ TEST_P(QueueTest, DynamicallyAcquiredQueueOrdersProvisionedQueue) {
   iree_hal_queue_params_t params;
   iree_hal_queue_params_initialize(&params);
   Ref<iree_hal_queue_t> dynamic_queue;
-  IREE_ASSERT_OK(iree_hal_device_acquire_queue(device_, family.identity,
-                                               &params, dynamic_queue.out()));
+  IREE_ASSERT_OK(
+      iree_hal_queue_acquire(family.identity, &params, dynamic_queue.out()));
 
   SemaphoreList producer_signal(device_, {0}, {1});
   SemaphoreList completion_signal(device_, {0}, {1});
@@ -277,9 +334,9 @@ TEST_P(QueueTest, QueueAcquisitionRejectsInvalidRequests) {
   if (FindUnsupportedPriority(family.spec, &unsupported_priority)) {
     iree_hal_queue_params_initialize(&params);
     params.priority = unsupported_priority;
-    IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
-                          iree_hal_device_acquire_queue(
-                              device_, family.identity, &params, &output));
+    IREE_EXPECT_STATUS_IS(
+        IREE_STATUS_INVALID_ARGUMENT,
+        iree_hal_queue_acquire(family.identity, &params, &output));
     EXPECT_EQ(sentinel, output);
   }
 
@@ -288,9 +345,9 @@ TEST_P(QueueTest, QueueAcquisitionRejectsInvalidRequests) {
       ~family.spec->supported_queue_features;
   if (unsupported_features) {
     params.features = unsupported_features;
-    IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
-                          iree_hal_device_acquire_queue(
-                              device_, family.identity, &params, &output));
+    IREE_EXPECT_STATUS_IS(
+        IREE_STATUS_INVALID_ARGUMENT,
+        iree_hal_queue_acquire(family.identity, &params, &output));
     EXPECT_EQ(sentinel, output);
   }
 
@@ -300,16 +357,16 @@ TEST_P(QueueTest, QueueAcquisitionRejectsInvalidRequests) {
           family.spec->execution_resource_count;
   params.execution_resources.count = 1;
   params.execution_resources.ordinals = &out_of_range_resource;
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
-                        iree_hal_device_acquire_queue(device_, family.identity,
-                                                      &params, &output));
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      iree_hal_queue_acquire(family.identity, &params, &output));
   EXPECT_EQ(sentinel, output);
 
   params.execution_resources.count = 1;
   params.execution_resources.ordinals = nullptr;
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
-                        iree_hal_device_acquire_queue(device_, family.identity,
-                                                      &params, &output));
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      iree_hal_queue_acquire(family.identity, &params, &output));
   EXPECT_EQ(sentinel, output);
 
   if (family.spec->execution_resource_count >= 1) {
@@ -317,9 +374,9 @@ TEST_P(QueueTest, QueueAcquisitionRejectsInvalidRequests) {
         0, 0};
     params.execution_resources.count = IREE_ARRAYSIZE(duplicate_resources);
     params.execution_resources.ordinals = duplicate_resources;
-    IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
-                          iree_hal_device_acquire_queue(
-                              device_, family.identity, &params, &output));
+    IREE_EXPECT_STATUS_IS(
+        IREE_STATUS_INVALID_ARGUMENT,
+        iree_hal_queue_acquire(family.identity, &params, &output));
     EXPECT_EQ(sentinel, output);
   }
 
@@ -328,20 +385,11 @@ TEST_P(QueueTest, QueueAcquisitionRejectsInvalidRequests) {
         1, 0};
     params.execution_resources.count = IREE_ARRAYSIZE(unordered_resources);
     params.execution_resources.ordinals = unordered_resources;
-    IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
-                          iree_hal_device_acquire_queue(
-                              device_, family.identity, &params, &output));
+    IREE_EXPECT_STATUS_IS(
+        IREE_STATUS_INVALID_ARGUMENT,
+        iree_hal_queue_acquire(family.identity, &params, &output));
     EXPECT_EQ(sentinel, output);
   }
-
-  iree_hal_queue_params_initialize(&params);
-  iree_hal_queue_family_t foreign_family;
-  iree_hal_queue_family_initialize(family.ordinal, family.spec,
-                                   &foreign_family);
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
-                        iree_hal_device_acquire_queue(device_, &foreign_family,
-                                                      &params, &output));
-  EXPECT_EQ(sentinel, output);
 }
 
 TEST_P(QueueTest, QueueAcquisitionRequiresDynamicFamily) {
@@ -361,9 +409,8 @@ TEST_P(QueueTest, QueueAcquisitionRequiresDynamicFamily) {
     iree_hal_queue_t* const sentinel =
         reinterpret_cast<iree_hal_queue_t*>(uintptr_t{1});
     iree_hal_queue_t* output = sentinel;
-    IREE_EXPECT_STATUS_IS(
-        IREE_STATUS_UNIMPLEMENTED,
-        iree_hal_device_acquire_queue(device_, family, &params, &output));
+    IREE_EXPECT_STATUS_IS(IREE_STATUS_UNIMPLEMENTED,
+                          iree_hal_queue_acquire(family, &params, &output));
     EXPECT_EQ(sentinel, output);
     return;
   }

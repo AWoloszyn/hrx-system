@@ -51,8 +51,8 @@ class QueueCooperativeDispatchTest : public CtsTestBase<> {
     iree_hal_queue_params_t queue_params;
     iree_hal_queue_params_initialize(&queue_params);
     queue_params.features = IREE_HAL_QUEUE_FEATURE_FLAG_COOPERATIVE_DISPATCH;
-    IREE_ASSERT_OK(iree_hal_device_acquire_queue(
-        device_, queue_family_, &queue_params, cooperative_queue_.out()));
+    IREE_ASSERT_OK(iree_hal_queue_acquire(queue_family_, &queue_params,
+                                          cooperative_queue_.out()));
 
     iree_hal_executable_target_selection_result_t target_result;
     IREE_ASSERT_OK(SelectExecutableTarget(queue_family_, &target_result));
@@ -166,8 +166,7 @@ TEST_P(QueueCooperativeDispatchTest, ExplicitCompleteResourceSetDispatches) {
   params.execution_resources.ordinals = resource_ordinals.data();
 
   Ref<iree_hal_queue_t> queue;
-  IREE_ASSERT_OK(iree_hal_device_acquire_queue(device_, queue_family_, &params,
-                                               queue.out()));
+  IREE_ASSERT_OK(iree_hal_queue_acquire(queue_family_, &params, queue.out()));
   const iree_hal_queue_execution_resource_list_t achieved_resources =
       iree_hal_queue_execution_resources(queue);
   EXPECT_EQ(0u, achieved_resources.count);
@@ -239,7 +238,7 @@ TEST_P(QueueCooperativeDispatchTest,
 
   Ref<iree_hal_command_buffer_t> command_buffer;
   IREE_ASSERT_OK(iree_hal_command_buffer_create(
-      device_, queue_family_, IREE_HAL_COMMAND_BUFFER_MODE_DEFAULT,
+      queue_family_, IREE_HAL_COMMAND_BUFFER_MODE_DEFAULT,
       IREE_HAL_COMMAND_CATEGORY_DISPATCH,
       /*binding_capacity=*/IREE_ARRAYSIZE(binding_refs), command_buffer.out()));
   IREE_ASSERT_OK(iree_hal_command_buffer_begin(command_buffer));

@@ -54,9 +54,9 @@ class AsanExecutableTest : public ::testing::TestWithParam<BackendInfo> {
     iree_hal_executable_load_params_initialize(&load_params);
     load_params.executable_data = GetParam().executable_data(
         iree_make_cstring_view("asan_executable_test.bin"));
-    IREE_ASSERT_OK(iree_hal_device_load_executable(
-        device(), iree_hal_queue_family(queue()), target_result.target,
-        &load_params, executable_.out()));
+    IREE_ASSERT_OK(iree_hal_executable_load(iree_hal_queue_family(queue()),
+                                            target_result.target, &load_params,
+                                            executable_.out()));
   }
 
   void TearDown() override {

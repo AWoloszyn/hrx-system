@@ -131,38 +131,22 @@ IREE_API_EXPORT void iree_hal_command_buffer_initialize(
   });
 }
 
-IREE_API_EXPORT iree_status_t iree_hal_command_buffer_create(
-    iree_hal_device_t* device, const iree_hal_queue_family_t* queue_family,
-    iree_hal_command_buffer_mode_t mode,
-    iree_hal_command_category_t command_categories,
-    iree_host_size_t binding_capacity,
-    iree_hal_command_buffer_t** out_command_buffer) {
-  IREE_ASSERT_ARGUMENT(device);
+IREE_API_EXPORT iree_status_t
+iree_hal_command_buffer_create(const iree_hal_queue_family_t* queue_family,
+                               iree_hal_command_buffer_mode_t mode,
+                               iree_hal_command_category_t command_categories,
+                               iree_host_size_t binding_capacity,
+                               iree_hal_command_buffer_t** out_command_buffer) {
   IREE_ASSERT_ARGUMENT(queue_family);
   IREE_ASSERT_ARGUMENT(out_command_buffer);
-  *out_command_buffer = NULL;
-
-  IREE_TRACE_ZONE_BEGIN(z0);
-  iree_status_t status = iree_ok_status();
-  const iree_hal_queue_family_ordinal_t family_ordinal =
-      iree_hal_queue_family_ordinal(queue_family);
-  const iree_hal_queue_family_t* canonical_family =
-      iree_hal_device_queue_family(device, family_ordinal);
-  if (IREE_UNLIKELY(canonical_family != queue_family)) {
-    status = iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "queue family %u is not a canonical family of the device",
-        family_ordinal);
-  }
-  if (iree_status_is_ok(status) &&
-      IREE_UNLIKELY(command_categories & ~IREE_HAL_COMMAND_CATEGORY_ANY)) {
-    status = iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                              "unknown command categories: 0x%08" PRIx32,
-                              command_categories);
+  if (IREE_UNLIKELY(command_categories & ~IREE_HAL_COMMAND_CATEGORY_ANY)) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "unknown command categories: 0x%08" PRIx32,
+                            command_categories);
   }
 
-  const iree_hal_device_queue_spec_t* queue_spec =
-      iree_hal_device_spec_queues(iree_hal_device_spec(device));
+  const iree_hal_queue_family_spec_t* family_spec =
+      iree_hal_queue_family_spec(queue_family);
   iree_hal_queue_family_role_flags_t required_roles =
       IREE_HAL_QUEUE_FAMILY_ROLE_FLAG_NONE;
   if (iree_any_bit_set(command_categories,
@@ -176,39 +160,31 @@ IREE_API_EXPORT iree_status_t iree_hal_command_buffer_create(
   if (iree_any_bit_set(command_categories, IREE_HAL_COMMAND_CATEGORY_ATOMIC)) {
     required_roles |= IREE_HAL_QUEUE_FAMILY_ROLE_FLAG_ATOMIC;
   }
-  if (iree_status_is_ok(status) &&
-      IREE_UNLIKELY(
-          family_ordinal >= queue_spec->family_count ||
-          !iree_all_bits_set(queue_spec->families[family_ordinal].role_flags,
-                             required_roles))) {
-    status =
-        iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                         "queue family %u roles 0x%08" PRIx32
-                         " do not cover command categories 0x%08" PRIx32,
-                         family_ordinal,
-                         family_ordinal < queue_spec->family_count
-                             ? queue_spec->families[family_ordinal].role_flags
-                             : 0,
-                         command_categories);
+  if (IREE_UNLIKELY(
+          !iree_all_bits_set(family_spec->role_flags, required_roles))) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "queue family %u roles 0x%08" PRIx32
+                            " do not cover command categories 0x%08" PRIx32,
+                            iree_hal_queue_family_ordinal(queue_family),
+                            family_spec->role_flags, command_categories);
   }
 
+  iree_hal_device_t* device = iree_hal_queue_family_device(queue_family);
+  IREE_TRACE_ZONE_BEGIN(z0);
   iree_hal_command_buffer_t* command_buffer = NULL;
-  if (iree_status_is_ok(status)) {
-    status = IREE_HAL_VTABLE_DISPATCH(device, iree_hal_device,
-                                      create_command_buffer)(
-        device, queue_family, mode, command_categories, binding_capacity,
-        &command_buffer);
+  iree_status_t status =
+      IREE_HAL_VTABLE_DISPATCH(device, iree_hal_device, create_command_buffer)(
+          device, queue_family, mode, command_categories, binding_capacity,
+          &command_buffer);
+  if (iree_status_is_ok(status) && IREE_UNLIKELY(!command_buffer)) {
+    status = iree_make_status(
+        IREE_STATUS_INTERNAL,
+        "device returned success without creating a command buffer");
   }
   if (iree_status_is_ok(status)) {
-    if (IREE_UNLIKELY(!command_buffer)) {
-      status = iree_make_status(
-          IREE_STATUS_INTERNAL,
-          "device returned success without creating a command buffer");
-    } else {
-      *out_command_buffer = command_buffer;
-    }
+    *out_command_buffer = command_buffer;
   } else {
-    IREE_ASSERT(!command_buffer);
+    iree_hal_command_buffer_release(command_buffer);
   }
   IREE_TRACE_ZONE_END(z0);
   return status;

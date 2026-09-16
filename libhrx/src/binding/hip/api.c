@@ -10903,9 +10903,8 @@ HIPAPI hipError_t hipStreamCreateWithPriority(hipStream_t* stream,
     queue_params.priority = queue_priority;
     queue_params.execution_resources =
         iree_hal_queue_execution_resources(context->queue);
-    status = iree_hal_device_acquire_queue(
-        context->device, iree_hal_queue_family(context->queue), &queue_params,
-        &acquired_queue);
+    status = iree_hal_queue_acquire(iree_hal_queue_family(context->queue),
+                                    &queue_params, &acquired_queue);
     queue = acquired_queue;
   }
   if (iree_status_is_ok(status)) {
@@ -11748,8 +11747,8 @@ HIPAPI hipError_t hipExtStreamCreateWithCUMask(hipStream_t* stream,
     iree_hal_queue_params_t queue_params;
     iree_hal_queue_params_initialize(&queue_params);
     queue_params.execution_resources = resource_set->resources;
-    status = iree_hal_device_acquire_queue(context->device, queue_family,
-                                           &queue_params, &acquired_queue);
+    status =
+        iree_hal_queue_acquire(queue_family, &queue_params, &acquired_queue);
     queue = acquired_queue;
   }
   if (iree_status_is_ok(status)) {

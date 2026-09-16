@@ -94,9 +94,9 @@ TEST_P(SanitizerExecutableLoadTest, RejectsDisabledRuntimeFeatureGlobal) {
                             expectation.executable_file.size()));
 
   Ref<iree_hal_executable_t> executable;
-  iree::Status status(iree_hal_device_load_executable(
-      device(), iree_hal_queue_family(queue()), target_result.target,
-      &load_params, executable.out()));
+  iree::Status status(iree_hal_executable_load(iree_hal_queue_family(queue()),
+                                               target_result.target,
+                                               &load_params, executable.out()));
 
   EXPECT_THAT(status, StatusIs(StatusCode::kFailedPrecondition));
   const std::string status_text = status.ToString();

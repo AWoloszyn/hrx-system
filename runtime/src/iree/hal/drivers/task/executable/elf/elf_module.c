@@ -18,22 +18,27 @@
 
 // Fields taken from the ELF headers used only during verification and loading.
 typedef struct iree_elf_module_load_state_t {
+  // Host page sizes and protection capabilities used while mapping segments.
   iree_memory_info_t memory_info;
-  const iree_elf_ehdr_t* ehdr;
-  const iree_elf_phdr_t* phdr_table;  // ehdr.e_phnum has count
-  const iree_elf_shdr_t* shdr_table;  // ehdr.e_shnum has count
-
-  const iree_elf_dyn_t* dyn_table;  // PT_DYNAMIC
+  // Validated file header copied from potentially unaligned source bytes.
+  iree_elf_ehdr_t ehdr;
+  // Borrowed source bytes containing ehdr.e_phnum program headers.
+  const uint8_t* phdr_table;
+  // PT_DYNAMIC entries in the mapped module address space.
+  const iree_elf_dyn_t* dyn_table;
+  // Number of entries in dyn_table.
   iree_host_size_t dyn_table_count;
-
-  iree_elf_addr_t init;               // DT_INIT
-  const iree_elf_addr_t* init_array;  // DT_INIT_ARRAY
-  iree_host_size_t init_array_count;  // DT_INIT_ARRAYSZ
+  // DT_INIT function virtual address, or zero when absent.
+  iree_elf_addr_t init;
+  // DT_INIT_ARRAY function pointers in the mapped module address space.
+  const iree_elf_addr_t* init_array;
+  // Number of function pointers described by DT_INIT_ARRAYSZ.
+  iree_host_size_t init_array_count;
 } iree_elf_module_load_state_t;
 
 // Verifies the ELF file header and machine class.
 static iree_status_t iree_elf_module_verify_ehdr(
-    iree_const_byte_span_t raw_data) {
+    iree_const_byte_span_t raw_data, iree_elf_ehdr_t* out_ehdr) {
   // Size must be larger than the header we are trying to load.
   if (raw_data.data_length < sizeof(iree_elf_ehdr_t)) {
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
@@ -42,8 +47,12 @@ static iree_status_t iree_elf_module_verify_ehdr(
                             raw_data.data_length, sizeof(iree_elf_ehdr_t));
   }
 
+  // Source bytes may be packed within another container at any byte alignment.
+  iree_elf_ehdr_t header;
+  memcpy(&header, raw_data.data, sizeof(header));
+  const iree_elf_ehdr_t* ehdr = &header;
+
   // Check for ELF identifier.
-  const iree_elf_ehdr_t* ehdr = (const iree_elf_ehdr_t*)raw_data.data;
   static const iree_elf_byte_t elf_magic[4] = {0x7F, 'E', 'L', 'F'};
   if (memcmp(ehdr->e_ident, elf_magic, sizeof(elf_magic)) != 0) {
     return iree_make_status(
@@ -86,7 +95,8 @@ static iree_status_t iree_elf_module_verify_ehdr(
   // versions.
   if (ehdr->e_version != 1) {
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                            "ELF version %u unsupported; expected 1");
+                            "ELF version %u unsupported; expected 1",
+                            ehdr->e_version);
   }
 
   // Ensure we have the right architecture compiled in.
@@ -106,11 +116,7 @@ static iree_status_t iree_elf_module_verify_ehdr(
                             "only shared object ELFs are supported");
   }
 
-  // Sanity checks on entity sizes - they can be larger than what we expect,
-  // but overlaying our structs onto them is not going to work if they are
-  // smaller. For now we aren't doing pointer walks based on dynamic sizes so
-  // we need equality, but if we ever have a reason to do so we could change all
-  // array-style accesses to scale out based on the ehdr values
+  // Header decoding and program table indexing use the native ELF entity sizes.
   if (ehdr->e_ehsize != sizeof(iree_elf_ehdr_t) ||
       ehdr->e_phentsize != sizeof(iree_elf_phdr_t) ||
       ehdr->e_shentsize != sizeof(iree_elf_shdr_t)) {
@@ -121,35 +127,47 @@ static iree_status_t iree_elf_module_verify_ehdr(
   // Verify the phdr table properties. This doesn't validate each phdr but just
   // ensures that the table is constructed correctly and within bounds.
   if (ehdr->e_phoff == 0 || ehdr->e_phnum == 0 ||
-      (ehdr->e_phoff + ehdr->e_phnum * ehdr->e_phentsize) >
-          raw_data.data_length) {
+      ehdr->e_phoff > raw_data.data_length ||
+      (iree_host_size_t)ehdr->e_phnum * sizeof(iree_elf_phdr_t) >
+          raw_data.data_length - ehdr->e_phoff) {
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                             "invalid mandatory phdr table");
   }
 
   // Verify the shdr table properties.
   if (ehdr->e_shoff == 0 || ehdr->e_shnum == 0 ||
-      (ehdr->e_shoff + ehdr->e_shnum * ehdr->e_shentsize) >
-          raw_data.data_length) {
+      ehdr->e_shoff > raw_data.data_length ||
+      (iree_host_size_t)ehdr->e_shnum * sizeof(iree_elf_shdr_t) >
+          raw_data.data_length - ehdr->e_shoff) {
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                             "invalid mandatory shdr table");
   }
 
+  *out_ehdr = header;
   return iree_ok_status();
+}
+
+// Reads one header from the byte table whose bounds were validated above.
+static iree_elf_phdr_t iree_elf_module_read_phdr(
+    const iree_elf_module_load_state_t* load_state, iree_elf_half_t ordinal) {
+  iree_elf_phdr_t header;
+  memcpy(&header, load_state->phdr_table + ordinal * sizeof(header),
+         sizeof(header));
+  return header;
 }
 
 // Verifies the phdr table for supported types and in-bounds file references.
 static iree_status_t iree_elf_module_verify_phdr_table(
     iree_const_byte_span_t raw_data, iree_elf_module_load_state_t* load_state) {
-  for (iree_elf_half_t i = 0; i < load_state->ehdr->e_phnum; ++i) {
-    const iree_elf_phdr_t* phdr = &load_state->phdr_table[i];
-    if (phdr->p_type != IREE_ELF_PT_LOAD) continue;
-    if (phdr->p_offset + phdr->p_filesz > raw_data.data_length) {
+  for (iree_elf_half_t i = 0; i < load_state->ehdr.e_phnum; ++i) {
+    const iree_elf_phdr_t phdr = iree_elf_module_read_phdr(load_state, i);
+    if (phdr.p_type != IREE_ELF_PT_LOAD) continue;
+    if (phdr.p_offset > raw_data.data_length ||
+        phdr.p_filesz > raw_data.data_length - phdr.p_offset) {
       return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                               "phdr reference outside of file extents: %" PRIu64
-                              "-%" PRIu64 "of max %" PRIu64,
-                              (uint64_t)phdr->p_offset,
-                              (uint64_t)(phdr->p_offset + phdr->p_filesz),
+                              " + %" PRIu64 " bytes with file size %" PRIu64,
+                              (uint64_t)phdr.p_offset, (uint64_t)phdr.p_filesz,
                               (uint64_t)raw_data.data_length);
     }
   }
@@ -172,17 +190,11 @@ static iree_status_t iree_elf_module_parse_headers(
   // Verify the ELF is an ELF and that it's for the current machine.
   // NOTE: this only verifies the ehdr is as expected and nothing else: the ELF
   // is still untrusted and may be missing mandatory sections.
-  IREE_RETURN_IF_ERROR(iree_elf_module_verify_ehdr(raw_data));
+  IREE_RETURN_IF_ERROR(
+      iree_elf_module_verify_ehdr(raw_data, &out_load_state->ehdr));
 
-  // Get the primary tables (locations verified above).
-  const iree_elf_ehdr_t* ehdr = (const iree_elf_ehdr_t*)raw_data.data;
-  const iree_elf_phdr_t* phdr_table =
-      (const iree_elf_phdr_t*)(raw_data.data + ehdr->e_phoff);
-  const iree_elf_shdr_t* shdr_table =
-      (const iree_elf_shdr_t*)(raw_data.data + ehdr->e_shoff);
-  out_load_state->ehdr = ehdr;
-  out_load_state->phdr_table = phdr_table;
-  out_load_state->shdr_table = shdr_table;
+  // Borrow the program table bytes after validating their extent.
+  out_load_state->phdr_table = raw_data.data + out_load_state->ehdr.e_phoff;
 
   // Verify the phdr table to ensure all bounds are in range of the file.
   IREE_RETURN_IF_ERROR(
@@ -206,13 +218,13 @@ static iree_byte_range_t iree_elf_module_calculate_vaddr_range(
   // Min/max virtual addresses of any allocated segment.
   iree_elf_addr_t vaddr_min = IREE_ELF_ADDR_MAX;
   iree_elf_addr_t vaddr_max = IREE_ELF_ADDR_MIN;
-  for (iree_elf_half_t i = 0; i < load_state->ehdr->e_phnum; ++i) {
-    const iree_elf_phdr_t* phdr = &load_state->phdr_table[i];
-    if (phdr->p_type != IREE_ELF_PT_LOAD) continue;
+  for (iree_elf_half_t i = 0; i < load_state->ehdr.e_phnum; ++i) {
+    const iree_elf_phdr_t phdr = iree_elf_module_read_phdr(load_state, i);
+    if (phdr.p_type != IREE_ELF_PT_LOAD) continue;
     iree_elf_addr_t p_vaddr_min =
-        iree_page_align_start(phdr->p_vaddr, phdr->p_align);
+        iree_page_align_start(phdr.p_vaddr, phdr.p_align);
     iree_elf_addr_t p_vaddr_max =
-        iree_page_align_end(phdr->p_vaddr + phdr->p_memsz, phdr->p_align);
+        iree_page_align_end(phdr.p_vaddr + phdr.p_memsz, phdr.p_align);
     vaddr_min = iree_min(vaddr_min, p_vaddr_min);
     vaddr_max = iree_max(vaddr_max, p_vaddr_max);
   }
@@ -247,15 +259,15 @@ static iree_status_t iree_elf_module_load_segments(
   module->vaddr_bias = module->vaddr_base - vaddr_range.offset;
 
   // Commit and load all of the segments.
-  for (iree_elf_half_t i = 0; i < load_state->ehdr->e_phnum; ++i) {
-    const iree_elf_phdr_t* phdr = &load_state->phdr_table[i];
-    if (phdr->p_type != IREE_ELF_PT_LOAD) continue;
+  for (iree_elf_half_t i = 0; i < load_state->ehdr.e_phnum; ++i) {
+    const iree_elf_phdr_t phdr = iree_elf_module_read_phdr(load_state, i);
+    if (phdr.p_type != IREE_ELF_PT_LOAD) continue;
 
     // Commit the range of pages used by this segment, initially with write
     // access so that we can modify the pages.
     iree_byte_range_t byte_range = {
-        .offset = phdr->p_vaddr,
-        .length = phdr->p_memsz,
+        .offset = phdr.p_vaddr,
+        .length = phdr.p_memsz,
     };
     IREE_RETURN_IF_ERROR(iree_memory_view_commit_ranges(
         module->vaddr_bias, 1, &byte_range,
@@ -269,9 +281,9 @@ static iree_status_t iree_elf_module_load_segments(
     // the lifetime of it. Today we are just always committing above and copying
     // here because it keeps this all super simple (you know, as simple as an
     // entire custom ELF loader can be :).
-    if (phdr->p_filesz > 0) {
-      memcpy(module->vaddr_bias + phdr->p_vaddr, raw_data.data + phdr->p_offset,
-             phdr->p_filesz);
+    if (phdr.p_filesz > 0) {
+      memcpy(module->vaddr_bias + phdr.p_vaddr, raw_data.data + phdr.p_offset,
+             phdr.p_filesz);
     }
 
     // NOTE: p_memsz may be larger than p_filesz - if so, the extra memory bytes
@@ -293,49 +305,48 @@ static iree_status_t iree_elf_module_load_segments(
 static iree_status_t iree_elf_module_protect_segments(
     iree_elf_module_load_state_t* load_state, iree_elf_module_t* module) {
   // PT_LOAD segments (the bulk of progbits):
-  for (iree_elf_half_t i = 0; i < load_state->ehdr->e_phnum; ++i) {
-    const iree_elf_phdr_t* phdr = &load_state->phdr_table[i];
-    if (phdr->p_type != IREE_ELF_PT_LOAD) continue;
+  for (iree_elf_half_t i = 0; i < load_state->ehdr.e_phnum; ++i) {
+    const iree_elf_phdr_t phdr = iree_elf_module_read_phdr(load_state, i);
+    if (phdr.p_type != IREE_ELF_PT_LOAD) continue;
 
     // Interpret the access bits and widen to the implicit allowable
     // permissions. See Table 7-37:
     // https://docs.oracle.com/cd/E19683-01/816-1386/6m7qcoblk/index.html#chapter6-34713
     iree_memory_access_t access = 0;
-    if (phdr->p_flags & IREE_ELF_PF_R) access |= IREE_MEMORY_ACCESS_READ;
-    if (phdr->p_flags & IREE_ELF_PF_W) access |= IREE_MEMORY_ACCESS_WRITE;
-    if (phdr->p_flags & IREE_ELF_PF_X) access |= IREE_MEMORY_ACCESS_EXECUTE;
+    if (phdr.p_flags & IREE_ELF_PF_R) access |= IREE_MEMORY_ACCESS_READ;
+    if (phdr.p_flags & IREE_ELF_PF_W) access |= IREE_MEMORY_ACCESS_WRITE;
+    if (phdr.p_flags & IREE_ELF_PF_X) access |= IREE_MEMORY_ACCESS_EXECUTE;
     if (access & IREE_MEMORY_ACCESS_WRITE) access |= IREE_MEMORY_ACCESS_READ;
     if (access & IREE_MEMORY_ACCESS_EXECUTE) access |= IREE_MEMORY_ACCESS_READ;
 
     // We only support R+X (no W).
-    if ((phdr->p_flags & IREE_ELF_PF_X) && (phdr->p_flags & IREE_ELF_PF_W)) {
+    if ((phdr.p_flags & IREE_ELF_PF_X) && (phdr.p_flags & IREE_ELF_PF_W)) {
       return iree_make_status(IREE_STATUS_PERMISSION_DENIED,
                               "unable to create a writable executable segment");
     }
 
     // Apply new access protection.
     iree_byte_range_t byte_range = {
-        .offset = phdr->p_vaddr,
-        .length = phdr->p_memsz,
+        .offset = phdr.p_vaddr,
+        .length = phdr.p_memsz,
     };
     IREE_RETURN_IF_ERROR(iree_memory_view_protect_ranges(module->vaddr_bias, 1,
                                                          &byte_range, access));
 
     // Flush the instruction cache if we are going to execute these pages.
     if (access & IREE_MEMORY_ACCESS_EXECUTE) {
-      iree_memory_flush_icache(module->vaddr_bias + phdr->p_vaddr,
-                               phdr->p_memsz);
+      iree_memory_flush_icache(module->vaddr_bias + phdr.p_vaddr, phdr.p_memsz);
     }
   }
 
   // PT_GNU_RELRO: hardening of post-relocation segments.
   // These may alias with segments above and must be processed afterward.
-  for (iree_elf_half_t i = 0; i < load_state->ehdr->e_phnum; ++i) {
-    const iree_elf_phdr_t* phdr = &load_state->phdr_table[i];
-    if (phdr->p_type != IREE_ELF_PT_GNU_RELRO) continue;
+  for (iree_elf_half_t i = 0; i < load_state->ehdr.e_phnum; ++i) {
+    const iree_elf_phdr_t phdr = iree_elf_module_read_phdr(load_state, i);
+    if (phdr.p_type != IREE_ELF_PT_GNU_RELRO) continue;
     iree_byte_range_t byte_range = {
-        .offset = phdr->p_vaddr,
-        .length = phdr->p_memsz,
+        .offset = phdr.p_vaddr,
+        .length = phdr.p_memsz,
     };
     IREE_RETURN_IF_ERROR(iree_memory_view_protect_ranges(
         module->vaddr_bias, 1, &byte_range, IREE_MEMORY_ACCESS_READ));
@@ -372,11 +383,11 @@ static iree_status_t iree_elf_module_parse_dynamic_tables(
   // Note that we are getting the one in the loaded virtual address space.
   const iree_elf_dyn_t* dyn_table = NULL;
   iree_host_size_t dyn_table_count = 0;
-  for (iree_elf_half_t i = 0; i < load_state->ehdr->e_phnum; ++i) {
-    const iree_elf_phdr_t* phdr = &load_state->phdr_table[i];
-    if (phdr->p_type == IREE_ELF_PT_DYNAMIC) {
-      dyn_table = (const iree_elf_dyn_t*)(module->vaddr_bias + phdr->p_vaddr);
-      dyn_table_count = phdr->p_filesz / sizeof(iree_elf_dyn_t);
+  for (iree_elf_half_t i = 0; i < load_state->ehdr.e_phnum; ++i) {
+    const iree_elf_phdr_t phdr = iree_elf_module_read_phdr(load_state, i);
+    if (phdr.p_type == IREE_ELF_PT_DYNAMIC) {
+      dyn_table = (const iree_elf_dyn_t*)(module->vaddr_bias + phdr.p_vaddr);
+      dyn_table_count = phdr.p_filesz / sizeof(iree_elf_dyn_t);
       break;
     }
   }
@@ -428,7 +439,13 @@ static iree_status_t iree_elf_module_parse_dynamic_tables(
             (const iree_elf_addr_t*)(module->vaddr_bias + dyn->d_un.d_ptr);
         break;
       case IREE_ELF_DT_INIT_ARRAYSZ:
-        load_state->init_array_count = dyn->d_un.d_val;
+        if (dyn->d_un.d_val % sizeof(iree_elf_addr_t) != 0) {
+          return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                                  "DT_INIT_ARRAYSZ is not a whole number of "
+                                  "function pointers");
+        }
+        load_state->init_array_count =
+            dyn->d_un.d_val / sizeof(iree_elf_addr_t);
         break;
 
       case IREE_ELF_DT_RELENT:
@@ -507,7 +524,7 @@ static iree_status_t iree_elf_module_apply_relocations(
 
 // Runs initializers defined within the module, if any.
 // .init is run first and then .init_array is run in array order.
-static iree_status_t iree_elf_module_run_initializers(
+static void iree_elf_module_run_initializers(
     iree_elf_module_load_state_t* load_state, iree_elf_module_t* module) {
   if (load_state->init != IREE_ELF_ADDR_MIN) {
     iree_elf_call_v_v((void*)(module->vaddr_bias + load_state->init));
@@ -517,10 +534,9 @@ static iree_status_t iree_elf_module_run_initializers(
   for (iree_host_size_t i = 0; i < load_state->init_array_count; ++i) {
     iree_elf_addr_t symbol_ptr = load_state->init_array[i];
     if (symbol_ptr == 0 || symbol_ptr == IREE_ELF_ADDR_MAX) continue;
-    iree_elf_call_v_v((void*)(module->vaddr_bias + symbol_ptr));
+    // Relocation has already converted each array entry to a host address.
+    iree_elf_call_v_v((const void*)(uintptr_t)symbol_ptr);
   }
-
-  return iree_ok_status();
 }
 
 static void iree_elf_module_run_finalizers(iree_elf_module_t* module) {
@@ -616,7 +632,7 @@ iree_status_t iree_elf_module_initialize_from_memory(
 
   // Run initializers prior to returning to the caller.
   if (iree_status_is_ok(status)) {
-    status = iree_elf_module_run_initializers(&load_state, out_module);
+    iree_elf_module_run_initializers(&load_state, out_module);
   }
 
   if (!iree_status_is_ok(status)) {
