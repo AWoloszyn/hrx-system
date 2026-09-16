@@ -17,6 +17,7 @@
 #include "benchmark/benchmark.h"
 #include "loom/binding/c/benchmark/kernels/ffn_gate_up_smoke.h"
 #include "loom/binding/c/benchmark/kernels/synthetic_i32_chain_smoke.h"
+#include "loom/binding/c/benchmark/kernels/synthetic_pipeline_smoke.h"
 #include "loom/binding/c/benchmark/workload_compile_benchmark.h"
 #include "loomc/target/spirv.h"
 
@@ -34,6 +35,7 @@ using loomc::bench::loom_allocator;
 using loomc::bench::ModulePtr;
 using loomc::bench::ReadArtifactPrefix;
 using loomc::bench::RegisterInputScalingCompileBenchmarks;
+using loomc::bench::RegisterPipelineCompileBenchmarks;
 using loomc::bench::RequireSucceededResult;
 using loomc::bench::ResultPtr;
 using loomc::bench::RunCompileBenchmark;
@@ -125,11 +127,19 @@ static iree_status_t CreateSpirvBenchmarkTarget(
 static iree_status_t EmitSpirvBenchmarkArtifact(
     loomc_target_environment_t* target_environment,
     loomc_workspace_t* workspace, loomc_module_t* module,
-    loomc_string_view_t identifier, int64_t* out_artifact_byte_count) {
+    loomc_string_view_t identifier, loomc_compile_report_mode_t report_mode,
+    int64_t* out_artifact_byte_count) {
+  const loomc_compile_report_options_t report_options = {
+      /*.type=*/LOOMC_STRUCTURE_TYPE_COMPILE_REPORT_OPTIONS,
+      /*.structure_size=*/sizeof(report_options),
+      /*.next=*/nullptr,
+      /*.mode=*/report_mode,
+  };
   const loomc_spirv_emit_options_t spirv_options = {
       /*.type=*/LOOMC_STRUCTURE_TYPE_SPIRV_EMIT_OPTIONS,
       /*.structure_size=*/sizeof(spirv_options),
-      /*.next=*/nullptr,
+      /*.next=*/report_mode != LOOMC_COMPILE_REPORT_MODE_NONE ? &report_options
+                                                              : nullptr,
   };
   const loomc_emit_options_t emit_options = {
       /*.type=*/LOOMC_STRUCTURE_TYPE_EMIT_OPTIONS,
@@ -148,6 +158,13 @@ static iree_status_t EmitSpirvBenchmarkArtifact(
   ResultPtr result(raw_result);
   IREE_RETURN_IF_ERROR(status);
   IREE_RETURN_IF_ERROR(RequireSucceededResult(result.get(), "SPIR-V emission"));
+  if (report_mode != LOOMC_COMPILE_REPORT_MODE_NONE) {
+    int64_t report_byte_count = 0;
+    IREE_RETURN_IF_ERROR(ValidateArtifact(
+        result.get(), LOOMC_ARTIFACT_KIND_REPORT,
+        loomc_make_cstring_view(LOOMC_ARTIFACT_FORMAT_COMPILE_REPORT_JSON), 2,
+        "SPIR-V compile report", &report_byte_count));
+  }
 
   IREE_RETURN_IF_ERROR(ValidateArtifact(
       result.get(), LOOMC_ARTIFACT_KIND_EXECUTABLE,
@@ -180,15 +197,16 @@ class SpirvScenarioBase : public TargetCompileScenario {
 
     return SetUpTarget(worker_count, std::move(target_environment),
                        std::move(target_profile),
-                       loomc_make_cstring_view("benchmark-spirv-prepared-low"));
+                       loomc_make_cstring_view("benchmark-spirv-prepared-low"),
+                       LOOMC_TARGET_CONTROL_FLOW_LOWERING_STRUCTURED_LOW);
   }
 
   iree_status_t EmitSpirvArtifact(WorkspacePtr& workspace, ModulePtr& module,
                                   loomc_string_view_t identifier) {
     int64_t artifact_bytes = 0;
-    IREE_RETURN_IF_ERROR(
-        EmitSpirvBenchmarkArtifact(target_environment(), workspace.get(),
-                                   module.get(), identifier, &artifact_bytes));
+    IREE_RETURN_IF_ERROR(EmitSpirvBenchmarkArtifact(
+        target_environment(), workspace.get(), module.get(), identifier,
+        LOOMC_COMPILE_REPORT_MODE_NONE, &artifact_bytes));
     RecordArtifactBytes(artifact_bytes);
     return iree_ok_status();
   }
@@ -202,6 +220,10 @@ class SpirvWorkloadCompileTarget final : public WorkloadCompileTarget {
     return loomc_make_cstring_view("benchmark-spirv-prepared-low");
   }
 
+  loomc_target_control_flow_lowering_t control_flow_lowering() const override {
+    return LOOMC_TARGET_CONTROL_FLOW_LOWERING_STRUCTURED_LOW;
+  }
+
   iree_status_t CreateTarget(
       TargetEnvironmentPtr* out_target_environment,
       TargetProfilePtr* out_target_profile) const override {
@@ -213,9 +235,11 @@ class SpirvWorkloadCompileTarget final : public WorkloadCompileTarget {
                              loomc_workspace_t* workspace,
                              loomc_module_t* module,
                              loomc_string_view_t identifier,
+                             loomc_compile_report_mode_t report_mode,
                              int64_t* out_artifact_byte_count) const override {
     return EmitSpirvBenchmarkArtifact(target_environment, workspace, module,
-                                      identifier, out_artifact_byte_count);
+                                      identifier, report_mode,
+                                      out_artifact_byte_count);
   }
 };
 
@@ -230,6 +254,16 @@ const EmbeddedSource kI32MemoryChainSource = FindEmbeddedSource(
     loomc_benchmark_synthetic_i32_chain_smoke_size(), "i32_memory_chain.loom");
 
 [[maybe_unused]] const bool kSpirvWorkloadBenchmarksRegistered = [] {
+  RegisterPipelineCompileBenchmarks(
+      kSpirvWorkloadTarget,
+      {
+          /*.source=*/FindEmbeddedSource(
+              loomc_benchmark_synthetic_pipeline_smoke_create(),
+              loomc_benchmark_synthetic_pipeline_smoke_size(),
+              "segmented_read_ahead.loom"),
+          /*.function_symbol=*/"segmented_read_ahead",
+          /*.artifact_identifier=*/"pipeline_benchmark.spv",
+      });
   RegisterInputScalingCompileBenchmarks(
       kSpirvWorkloadTarget, "FfnGateUpQuadraticF32",
       {

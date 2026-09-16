@@ -121,10 +121,10 @@ class TargetCompileScenario : public CompileScenario {
   explicit TargetCompileScenario(iree_host_size_t workspace_block_size = 0);
 
  protected:
-  iree_status_t SetUpTarget(iree_host_size_t worker_count,
-                            TargetEnvironmentPtr target_environment,
-                            TargetProfilePtr target_profile,
-                            loomc_string_view_t pipeline_identifier);
+  iree_status_t SetUpTarget(
+      iree_host_size_t worker_count, TargetEnvironmentPtr target_environment,
+      TargetProfilePtr target_profile, loomc_string_view_t pipeline_identifier,
+      loomc_target_control_flow_lowering_t control_flow_lowering);
 
   iree_status_t CompileModuleToPreparedLow(
       WorkspacePtr& workspace, ModulePtr& module,
