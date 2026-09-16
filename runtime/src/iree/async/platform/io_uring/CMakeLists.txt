@@ -149,7 +149,9 @@ iree_cc_test(
     ::io_uring
     iree::async
     iree::async::types
+    iree::async::util::proactor_thread
     iree::base
+    iree::base::threading
     iree::testing::gtest
     iree::testing::gtest_main
 )

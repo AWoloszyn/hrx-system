@@ -296,7 +296,9 @@ iree_status_t iree_io_uring_ring_initialize(
 
   // Record whether the ring needs enabling before io_uring_enter can be
   // called. The actual flags used may differ from requested (fallback path).
-  out_ring->needs_enable = (params.flags & IREE_IORING_SETUP_R_DISABLED) != 0;
+  iree_atomic_store(&out_ring->needs_enable,
+                    (params.flags & IREE_IORING_SETUP_R_DISABLED) != 0,
+                    iree_memory_order_relaxed);
 
   iree_status_t status = iree_io_uring_ring_map_buffers(out_ring, &params);
   if (!iree_status_is_ok(status)) {
@@ -308,7 +310,7 @@ iree_status_t iree_io_uring_ring_initialize(
 }
 
 iree_status_t iree_io_uring_ring_enable(iree_io_uring_ring_t* ring) {
-  if (!ring->needs_enable) return iree_ok_status();
+  if (!iree_io_uring_ring_needs_enable(ring)) return iree_ok_status();
 
   // REGISTER_ENABLE_RINGS transitions the ring from disabled to operational.
   // When SINGLE_ISSUER is active, this binds the calling thread as the
@@ -325,7 +327,7 @@ iree_status_t iree_io_uring_ring_enable(iree_io_uring_ring_t* ring) {
                             "IORING_REGISTER_ENABLE_RINGS failed (%d)", errno);
   }
 
-  ring->needs_enable = false;
+  iree_atomic_store(&ring->needs_enable, 0, iree_memory_order_release);
   return iree_ok_status();
 }
 
