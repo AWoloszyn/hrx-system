@@ -22,7 +22,7 @@ struct loom_value_fact_cfg_graph_entry_t {
   // Region whose successor structure is represented by graph.
   const loom_region_t* region;
   // CFG and forwarding components retained for the populated fact scope.
-  loom_value_fact_cfg_region_t structure;
+  const loom_value_fact_cfg_region_t* structure;
   // Next entry in the region-address hash collision chain.
   loom_value_fact_cfg_graph_entry_t* next_bucket;
   // Next entry in the complete cache entry list.
@@ -33,11 +33,27 @@ static iree_status_t loom_value_fact_table_ensure_capacity(
     loom_value_fact_table_t* table, iree_host_size_t capacity) {
   if (capacity <= table->capacity) return iree_ok_status();
   const iree_host_size_t old_capacity = table->capacity;
+  iree_host_size_t new_capacity = old_capacity;
+  loom_value_facts_t* entries = table->entries;
   IREE_RETURN_IF_ERROR(iree_arena_grow_array(
-      table->arena, table->capacity, capacity, sizeof(loom_value_facts_t),
-      &table->capacity, (void**)&table->entries));
-  memset(table->entries + old_capacity, 0,
-         (table->capacity - old_capacity) * sizeof(loom_value_facts_t));
+      table->arena, old_capacity, capacity, sizeof(loom_value_facts_t),
+      &new_capacity, (void**)&entries));
+  memset(entries + old_capacity, 0,
+         (new_capacity - old_capacity) * sizeof(loom_value_facts_t));
+  iree_host_size_t old_word_count = (old_capacity + 63) / 64;
+  iree_host_size_t word_count = (new_capacity + 63) / 64;
+  uint64_t* touched_bits = NULL;
+  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+      table->arena, word_count, sizeof(*touched_bits), (void**)&touched_bits));
+  if (old_word_count) {
+    memcpy(touched_bits, table->touched_bits,
+           old_word_count * sizeof(*touched_bits));
+  }
+  memset(touched_bits + old_word_count, 0,
+         (word_count - old_word_count) * sizeof(*touched_bits));
+  table->entries = entries;
+  table->capacity = new_capacity;
+  table->touched_bits = touched_bits;
   return iree_ok_status();
 }
 
@@ -276,7 +292,9 @@ iree_status_t loom_value_fact_table_initialize_with_arenas(
 
 void loom_value_fact_table_clear_scope(loom_value_fact_table_t* table) {
   for (iree_host_size_t i = 0; i < table->touched_count; ++i) {
-    table->entries[table->touched_values[i]] = (loom_value_facts_t){0};
+    loom_value_id_t value_id = table->touched_values[i];
+    table->entries[value_id] = (loom_value_facts_t){0};
+    table->touched_bits[value_id / 64] &= ~(UINT64_C(1) << (value_id % 64));
   }
   for (iree_host_size_t i = 0; i < table->uniform_element_origins.touched_count;
        ++i) {
@@ -375,57 +393,87 @@ static iree_status_t loom_value_fact_table_ensure_cfg_graph_buckets(
   return loom_value_fact_table_rehash_cfg_graphs(table, bucket_count);
 }
 
-static const loom_value_fact_cfg_region_t*
-loom_value_fact_table_lookup_cfg_region(const loom_value_fact_table_t* table,
-                                        const loom_region_t* region) {
+static loom_value_fact_cfg_graph_entry_t*
+loom_value_fact_table_lookup_cfg_entry(const loom_value_fact_table_t* table,
+                                       const loom_region_t* region) {
   IREE_ASSERT_ARGUMENT(table);
   IREE_ASSERT_ARGUMENT(region);
   if (table->cfg_graphs.bucket_count == 0) return NULL;
   const iree_host_size_t bucket_index =
       loom_value_fact_table_cfg_region_hash(region) &
       (table->cfg_graphs.bucket_count - 1);
-  for (const loom_value_fact_cfg_graph_entry_t* entry =
+  for (loom_value_fact_cfg_graph_entry_t* entry =
            table->cfg_graphs.buckets[bucket_index];
        entry; entry = entry->next_bucket) {
-    if (entry->region == region) return &entry->structure;
+    if (entry->region == region) return entry;
   }
   return NULL;
 }
 
+const loom_value_fact_cfg_region_t* loom_value_fact_table_lookup_cfg_region(
+    const loom_value_fact_table_t* table, const loom_region_t* region) {
+  const loom_value_fact_cfg_graph_entry_t* entry =
+      loom_value_fact_table_lookup_cfg_entry(table, region);
+  return entry ? entry->structure : NULL;
+}
+
 const loom_cfg_graph_t* loom_value_fact_table_lookup_cfg_graph(
     const loom_value_fact_table_t* table, const loom_region_t* region) {
-  const loom_value_fact_cfg_region_t* structure =
-      loom_value_fact_table_lookup_cfg_region(table, region);
-  return structure ? &structure->graph : NULL;
+  const loom_value_fact_cfg_graph_entry_t* entry =
+      loom_value_fact_table_lookup_cfg_entry(table, region);
+  return entry && entry->structure ? &entry->structure->graph : NULL;
+}
+
+iree_status_t loom_value_fact_table_set_cfg_region(
+    loom_value_fact_table_t* table, const loom_region_t* region,
+    const loom_value_fact_cfg_region_t* structure) {
+  loom_value_fact_cfg_graph_entry_t* entry =
+      loom_value_fact_table_lookup_cfg_entry(table, region);
+  if (!entry) {
+    const iree_host_size_t new_count = table->cfg_graphs.count + 1;
+    IREE_RETURN_IF_ERROR(
+        loom_value_fact_table_ensure_cfg_graph_buckets(table, new_count));
+    IREE_RETURN_IF_ERROR(iree_arena_allocate(table->transient_arena,
+                                             sizeof(*entry), (void**)&entry));
+    memset(entry, 0, sizeof(*entry));
+    entry->region = region;
+    const iree_host_size_t bucket_index =
+        loom_value_fact_table_cfg_region_hash(region) &
+        (table->cfg_graphs.bucket_count - 1);
+    entry->next_bucket = table->cfg_graphs.buckets[bucket_index];
+    table->cfg_graphs.buckets[bucket_index] = entry;
+    entry->next_entry = table->cfg_graphs.entries;
+    table->cfg_graphs.entries = entry;
+    table->cfg_graphs.count = new_count;
+  }
+  entry->structure = structure;
+  return iree_ok_status();
+}
+
+void loom_value_fact_table_forget_cfg_region(loom_value_fact_table_t* table,
+                                             const loom_region_t* region) {
+  loom_value_fact_cfg_graph_entry_t* entry =
+      loom_value_fact_table_lookup_cfg_entry(table, region);
+  if (entry) entry->structure = NULL;
 }
 
 iree_status_t loom_value_fact_table_get_or_build_cfg_region(
     loom_value_fact_table_t* table, const loom_module_t* module,
     const loom_region_t* region,
     const loom_value_fact_cfg_region_t** out_region) {
-  *out_region = loom_value_fact_table_lookup_cfg_region(table, region);
+  loom_value_fact_cfg_graph_entry_t* entry =
+      loom_value_fact_table_lookup_cfg_entry(table, region);
+  *out_region = entry ? entry->structure : NULL;
   if (*out_region) return iree_ok_status();
 
-  const iree_host_size_t new_count = table->cfg_graphs.count + 1;
-  IREE_RETURN_IF_ERROR(
-      loom_value_fact_table_ensure_cfg_graph_buckets(table, new_count));
-  loom_value_fact_cfg_graph_entry_t* entry = NULL;
-  IREE_RETURN_IF_ERROR(iree_arena_allocate(table->transient_arena,
-                                           sizeof(*entry), (void**)&entry));
-  memset(entry, 0, sizeof(*entry));
-  entry->region = region;
+  loom_value_fact_cfg_region_t* structure = NULL;
+  IREE_RETURN_IF_ERROR(iree_arena_allocate(
+      table->transient_arena, sizeof(*structure), (void**)&structure));
   IREE_RETURN_IF_ERROR(loom_value_fact_cfg_region_initialize(
-      module, region, table->transient_arena, &entry->structure));
-
-  const iree_host_size_t bucket_index =
-      loom_value_fact_table_cfg_region_hash(region) &
-      (table->cfg_graphs.bucket_count - 1);
-  entry->next_bucket = table->cfg_graphs.buckets[bucket_index];
-  table->cfg_graphs.buckets[bucket_index] = entry;
-  entry->next_entry = table->cfg_graphs.entries;
-  table->cfg_graphs.entries = entry;
-  table->cfg_graphs.count = new_count;
-  *out_region = &entry->structure;
+      module, region, table->transient_arena, structure));
+  IREE_RETURN_IF_ERROR(
+      loom_value_fact_table_set_cfg_region(table, region, structure));
+  *out_region = structure;
   return iree_ok_status();
 }
 
@@ -435,15 +483,25 @@ iree_status_t loom_value_fact_table_define(loom_value_fact_table_t* table,
   IREE_ASSERT_NE(facts.known_divisor, 0);
   IREE_RETURN_IF_ERROR(loom_value_fact_table_ensure_capacity(
       table, (iree_host_size_t)value_id + 1));
-  if (table->entries[value_id].known_divisor == 0) {
+  uint64_t touched_bit = UINT64_C(1) << (value_id % 64);
+  if (table->entries[value_id].known_divisor == 0 &&
+      !(table->touched_bits[value_id / 64] & touched_bit)) {
     IREE_RETURN_IF_ERROR(
         loom_value_fact_table_append_touched_value(table, value_id));
+    table->touched_bits[value_id / 64] |= touched_bit;
   }
   table->entries[value_id] = facts;
   if ((iree_host_size_t)value_id + 1 > table->count) {
     table->count = (iree_host_size_t)value_id + 1;
   }
   return iree_ok_status();
+}
+
+void loom_value_fact_table_undefine(loom_value_fact_table_t* table,
+                                    loom_value_id_t value_id) {
+  if (value_id < table->capacity) {
+    table->entries[value_id] = (loom_value_facts_t){0};
+  }
 }
 
 static bool loom_value_fact_table_lookup_uniform_element_origin(
@@ -788,6 +846,7 @@ iree_status_t loom_value_fact_table_clone_defined_facts(
     const loom_module_t* module) {
   for (iree_host_size_t i = 0; i < source->touched_count; ++i) {
     const loom_value_id_t value_id = source->touched_values[i];
+    if (!loom_value_fact_table_has_entry(source, value_id)) continue;
     loom_value_facts_t cloned_facts = loom_value_facts_unknown();
     if (module && value_id < module->values.count) {
       IREE_RETURN_IF_ERROR(loom_value_fact_table_clone_fact_for_type(

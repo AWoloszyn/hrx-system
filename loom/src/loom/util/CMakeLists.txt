@@ -224,6 +224,7 @@ loom_cc_library(
     "fact_table_compute.c"
     "reference_transfer.c"
   DEPS
+    ::adaptive_sort
     ::cfg_graph
     ::numeric_format
     ::reference_facts

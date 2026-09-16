@@ -17,6 +17,7 @@ loom_check_test_suite(
     "branch_sink.loom-test"
     "cfg_compatibility.loom-test"
     "cfg_simplify.loom-test"
+    "cfg_simplify_facts.loom-test"
     "cfg_simplify_scf_pipeline.loom-test"
 )
 

@@ -53,6 +53,7 @@ loom_cc_test(
     iree::testing::gtest
     iree::testing::gtest_main
     loom::ir
+    loom::ops::cfg
     loom::ops::op_defs
     loom::ops::test
     loom::pass::value_facts

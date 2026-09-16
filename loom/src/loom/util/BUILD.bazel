@@ -197,6 +197,7 @@ loom_cc_library(
         "reference_transfer.h",
     ],
     deps = [
+        ":adaptive_sort",
         ":cfg_graph",
         ":numeric_format",
         ":reference_facts",

@@ -131,7 +131,9 @@ struct loom_value_fact_table_t {
   iree_host_size_t count;
   // Allocated entry count.
   iree_host_size_t capacity;
-  // Value IDs defined in the current populated scope.
+  // Scope membership bits, retained while a cyclic solve undefines entries.
+  uint64_t* touched_bits;
+  // Value IDs touched in the scope, including temporarily undefined entries.
   loom_value_id_t* touched_values;
   // Number of populated entries in touched_values.
   iree_host_size_t touched_count;
@@ -316,7 +318,8 @@ static inline loom_value_facts_t loom_value_fact_table_lookup(
 
 // Returns the CFG graph built while computing facts for |region|, or NULL when
 // the region was not part of the populated fact scope. The returned graph is
-// borrowed from |table| and remains valid until the table scope is cleared.
+// borrowed from |table| and remains valid until the scope is cleared or the
+// owning rewriter replaces or withdraws the region's structural snapshot.
 const loom_cfg_graph_t* loom_value_fact_table_lookup_cfg_graph(
     const loom_value_fact_table_t* table, const loom_region_t* region);
 
@@ -324,6 +327,11 @@ const loom_cfg_graph_t* loom_value_fact_table_lookup_cfg_graph(
 iree_status_t loom_value_fact_table_define(loom_value_fact_table_t* table,
                                            loom_value_id_t value_id,
                                            loom_value_facts_t facts);
+
+// Returns a populated value to the not-yet-computed state during a cyclic
+// update without removing its scope membership or allocating another record.
+void loom_value_fact_table_undefine(loom_value_fact_table_t* table,
+                                    loom_value_id_t value_id);
 
 // Defines |scalar_value_id| as the SSA value that can materialize every element
 // of aggregate |value_id|. The relation itself is the materialization proof:

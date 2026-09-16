@@ -46,6 +46,7 @@ loom_cc_test(
         ":greedy",
         "//loom/src/loom/ir",
         "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/ops/cfg",
         "//loom/src/loom/ops/test",
         "//loom/src/loom/pass:value_facts",
         "//loom/src/loom/target:facts",

@@ -86,7 +86,7 @@ typedef struct loom_cfg_simplify_state_t {
   loom_rewriter_t* rewriter;
   // Per-iteration analysis and temporary allocation arena.
   iree_arena_allocator_t* analysis_arena;
-  // Facts computed for the current fixed-point iteration.
+  // Value facts maintained across rewrites by the shared rewriter.
   const loom_value_fact_table_t* fact_table;
   // Dominance computed for the current fixed-point iteration.
   const loom_dominance_info_t* dominance;
@@ -2210,13 +2210,17 @@ static iree_status_t loom_cfg_simplify_process_function_once(
     loom_region_for_each_block(region, block) {
       IREE_RETURN_IF_ERROR(
           loom_cfg_simplify_fold_block_branches(state, block, out_changed));
-      if (*out_changed) return iree_ok_status();
+      if (*out_changed) {
+        return loom_rewriter_refresh_cfg_facts(state->rewriter, region);
+      }
     }
 
     if (iree_any_bit_set(region->flags, LOOM_REGION_INSTANCE_FLAG_CFG)) {
       IREE_RETURN_IF_ERROR(
           loom_cfg_simplify_process_cfg_region(state, region, out_changed));
-      if (*out_changed) return iree_ok_status();
+      if (*out_changed) {
+        return loom_rewriter_refresh_cfg_facts(state->rewriter, region);
+      }
     }
   }
   return iree_ok_status();
@@ -2246,6 +2250,16 @@ iree_status_t loom_cfg_simplify_run(loom_pass_t* pass, loom_module_t* module,
 
   iree_status_t status = loom_cfg_simplify_region_stack_initialize(
       pass->arena, &state.region_stack);
+  if (iree_status_is_ok(status)) {
+    status = loom_cfg_simplify_mark_cfg_regions(body, &analysis_arena);
+  }
+  loom_value_fact_table_t* fact_table = NULL;
+  if (iree_status_is_ok(status)) {
+    status = loom_pass_value_facts_acquire(
+        pass, module, loom_pass_value_fact_scope_function(function),
+        &fact_table);
+  }
+  loom_rewriter_attach_value_facts(&rewriter, fact_table);
   bool changed = true;
   bool any_changed = false;
   while (iree_status_is_ok(status) && changed) {
@@ -2254,10 +2268,12 @@ iree_status_t loom_cfg_simplify_run(loom_pass_t* pass, loom_module_t* module,
     loom_condition_query_initialize(module, /*value_domain=*/NULL,
                                     &analysis_arena, &state.condition_query);
 
-    loom_value_fact_table_t* fact_table = NULL;
-    status = loom_pass_value_facts_acquire(
-        pass, module, loom_pass_value_fact_scope_function(function),
-        &fact_table);
+    loom_op_t* pending_op = NULL;
+    while (iree_status_is_ok(status) &&
+           (pending_op = loom_rewriter_pop(&rewriter)) != NULL) {
+      bool folded = false;
+      status = loom_rewriter_try_fold(&rewriter, pending_op, &folded);
+    }
     if (!iree_status_is_ok(status)) break;
 
     status = loom_cfg_simplify_mark_cfg_regions(body, &analysis_arena);
@@ -2274,7 +2290,6 @@ iree_status_t loom_cfg_simplify_run(loom_pass_t* pass, loom_module_t* module,
         loom_cfg_simplify_process_function_once(&state, function, &changed);
     if (changed) {
       any_changed = true;
-      loom_pass_value_fact_owner_invalidate(pass->value_facts);
     }
   }
 
@@ -2282,6 +2297,7 @@ iree_status_t loom_cfg_simplify_run(loom_pass_t* pass, loom_module_t* module,
     loom_pass_mark_changed(pass);
   }
   loom_rewriter_deinitialize(&rewriter);
+  loom_pass_value_fact_owner_invalidate(pass->value_facts);
   iree_arena_deinitialize(&analysis_arena);
   return status;
 }

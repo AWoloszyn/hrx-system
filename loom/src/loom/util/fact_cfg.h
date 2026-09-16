@@ -31,7 +31,8 @@ typedef struct loom_value_fact_cfg_argument_t {
   uint16_t argument_index;
 } loom_value_fact_cfg_argument_t;
 
-// Immutable control-flow structure for one populated fact scope.
+// Retained control-flow structure and cyclic-summary state for one region.
+// Structural edits replace the snapshot; semantic edits mark summaries dirty.
 typedef struct loom_value_fact_cfg_region_t {
   // CFG edges and reachability owned by this analysis.
   loom_cfg_graph_t graph;
@@ -45,6 +46,18 @@ typedef struct loom_value_fact_cfg_region_t {
   loom_scc_list_t components;
   // Component index for each forwarding node.
   iree_host_size_t* argument_components;
+  // Control-flow components bound the values that must restart together when
+  // an edit changes a cyclic dataflow equation.
+  struct {
+    // Components of the reachable block graph.
+    loom_scc_list_t components;
+    // Component index for each block, or IREE_HOST_SIZE_MAX if unreachable.
+    iree_host_size_t* block_components;
+    // Existing payload terminator used to schedule each cyclic summary.
+    loom_op_t** anchors;
+    // True when semantic edits or input changes require a cyclic summary.
+    bool* dirty;
+  } control_flow;
 } loom_value_fact_cfg_region_t;
 
 // Constructs CFG and forwarding structure once. Acyclic regions need no
@@ -59,12 +72,53 @@ iree_status_t loom_value_fact_cfg_region_initialize(
 iree_host_size_t loom_value_fact_cfg_region_argument_index(
     const loom_value_fact_cfg_region_t* region, loom_value_id_t value_id);
 
-// Returns the immutable region structure cached in the fact scope, constructing
-// it on first use. It remains valid until the table scope is cleared.
+// Returns the retained structural snapshot without constructing one. A caller
+// comparing snapshots across an edit uses this before publishing new structure.
+const loom_value_fact_cfg_region_t* loom_value_fact_table_lookup_cfg_region(
+    const loom_value_fact_table_t* table, const loom_region_t* region);
+
+// Returns the region structure cached in the fact scope, constructing it on
+// first use. It remains valid until the scope is cleared or the region's
+// structure is replaced.
 iree_status_t loom_value_fact_table_get_or_build_cfg_region(
     loom_value_fact_table_t* table, const loom_module_t* module,
     const loom_region_t* region,
     const loom_value_fact_cfg_region_t** out_region);
+
+// Publishes caller-owned structure for a region after a completed CFG edit.
+// The caller keeps the structure alive until replacing it again or forgetting
+// it. This changes only structural analysis; existing value facts are retained.
+iree_status_t loom_value_fact_table_set_cfg_region(
+    loom_value_fact_table_t* table, const loom_region_t* region,
+    const loom_value_fact_cfg_region_t* structure);
+
+// Withdraws a region's structure before its storage or CFG becomes invalid.
+// A subsequent structural query rebuilds it from the current IR.
+void loom_value_fact_table_forget_cfg_region(loom_value_fact_table_t* table,
+                                             const loom_region_t* region);
+
+// Receives each value whose facts changed, including block arguments and
+// results recomputed in a cyclic component. The callback schedules dependents.
+typedef iree_status_t (*loom_value_fact_cfg_changed_fn_t)(
+    void* user_data, loom_value_id_t value_id);
+
+// Recomputes the joins defined by an acyclic block using current incoming
+// value facts. Cyclic blocks use recompute_cfg_component so obsolete feedback
+// cannot prevent narrowing after an edit. The caller propagates changed facts
+// through users before querying the updated fixed point.
+iree_status_t loom_value_fact_table_update_cfg_block_args(
+    loom_value_fact_table_t* table, const loom_module_t* module,
+    const loom_value_fact_cfg_region_t* region, uint16_t block_index,
+    loom_value_fact_cfg_changed_fn_t on_changed, void* user_data);
+
+// Restarts one cyclic control-flow component from its unchanged external
+// inputs, then reports values whose converged facts differ from the old facts.
+// Storage for the solve is temporary; extension payloads stay in the table.
+iree_status_t loom_value_fact_table_recompute_cfg_component(
+    loom_value_fact_table_t* table, const loom_module_t* module,
+    const loom_value_fact_cfg_region_t* region, const loom_scc_t* component,
+    iree_arena_allocator_t* scratch_arena,
+    loom_value_fact_cfg_changed_fn_t on_changed, void* user_data);
 
 #ifdef __cplusplus
 }
