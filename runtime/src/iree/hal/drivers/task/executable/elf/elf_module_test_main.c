@@ -285,10 +285,11 @@ static iree_status_t run_initializers_test(void) {
   void* initialization_order = NULL;
   iree_status_t status = iree_elf_module_lookup_export(
       &module, "initialization_order", &initialization_order);
-  if (iree_status_is_ok(status) && *(const int*)initialization_order != 123) {
+  if (iree_status_is_ok(status) &&
+      *(const volatile int*)initialization_order != 123) {
     status = iree_make_status(IREE_STATUS_INTERNAL,
                               "initializers ran in order %d; expected 123",
-                              *(const int*)initialization_order);
+                              *(const volatile int*)initialization_order);
   }
   iree_elf_module_deinitialize(&module);
   if (iree_status_is_ok(status)) {
