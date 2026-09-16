@@ -397,7 +397,7 @@ amdf_gpu_device_features_t amdf_gpu_kfd_topology_memory_features(
   return features;
 }
 
-amdf_status_t amdf_gpu_kfd_topology_refine_memory(
+amdf_status_t amdf_gpu_kfd_topology_query_memory(
     int render_descriptor, uint32_t pci_device_id,
     amdf_gpu_kfd_topology_t* topology) {
   struct drm_amdgpu_info_device device = {0};

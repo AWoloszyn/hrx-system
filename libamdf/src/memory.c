@@ -365,9 +365,8 @@ amdf_status_t AMDF_CALL amdf_memory_create(
   amdf_status_t status = amdf_memory_validate_create_info(create_info);
   if (!amdf_status_is_ok(status)) return status;
   const amdf_memory_access_query_t query = {
-      .kind = AMDF_MEMORY_ACCESS_QUERY_LIVE,
       .count = create_info->access_count,
-      .accesses.devices = create_info->accesses,
+      .accesses = create_info->accesses,
   };
   amdf_memory_scope_plan_t plan;
   status = amdf_memory_scope_plan_initialize(
@@ -426,9 +425,8 @@ amdf_status_t AMDF_CALL amdf_memory_import(
   status = amdf_external_memory_validate(inout_external_memory);
   if (!amdf_status_is_ok(status)) return status;
   const amdf_memory_access_query_t query = {
-      .kind = AMDF_MEMORY_ACCESS_QUERY_LIVE,
       .count = import_info->access_count,
-      .accesses.devices = import_info->accesses,
+      .accesses = import_info->accesses,
   };
   amdf_memory_scope_plan_t plan;
   status = amdf_memory_scope_plan_initialize(

@@ -75,11 +75,6 @@ void amdf_extension_initialize_endpoint(amdf_endpoint_t* endpoint) {
       amdf_gpu_extension_initialize_endpoint(endpoint);
       break;
 #endif  // AMDF_HAVE_GPU
-#if defined(AMDF_HAVE_XDNA)
-    case AMDF_ENGINE_KIND_XDNA:
-      amdf_xdna_extension_initialize_endpoint(endpoint);
-      break;
-#endif  // AMDF_HAVE_XDNA
     default:
       break;
   }

@@ -109,7 +109,7 @@ amdf_status_t amdf_gpu_kfd_instance_prepare_vm(
   // Bootstrap and later memory mappings consume this connection's installed
   // aperture, including native reservations and administrator-selected limits.
   amdf_gpu_kfd_topology_t native_topology = *topology;
-  status = amdf_gpu_kfd_topology_refine_memory(
+  status = amdf_gpu_kfd_topology_query_memory(
       binding->descriptor, endpoint->info.pci.device_id, &native_topology);
   if (!amdf_status_is_ok(status)) return status;
   if (page_size != native_topology.virtual_address.alignment) {

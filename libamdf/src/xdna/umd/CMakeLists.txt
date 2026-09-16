@@ -40,21 +40,6 @@ endif()
 if(AMDF_BUILD AND AMDF_FAMILY_XDNA)
 iree_cc_library(
   NAME
-    memory_profile
-  HDRS
-    "memory_profile.h"
-  DEPS
-    amdf::headers
-    libamdf::src::memory_profile
-    libamdf::src::platform
-    libamdf::src::xdna::device_profile
-  PUBLIC
-)
-endif()
-
-if(AMDF_BUILD AND AMDF_FAMILY_XDNA)
-iree_cc_library(
-  NAME
     memory
   HDRS
     "memory.h"

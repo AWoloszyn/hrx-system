@@ -157,9 +157,7 @@ iree_cc_library(
   DEPS
     amdf::headers
     libamdf::src::memory_profile
-    libamdf::src::platform::windows::endpoint
     libamdf::src::xdna::device_profile
-    libamdf::src::xdna::umd::memory_profile
   PUBLIC
 )
 endif()

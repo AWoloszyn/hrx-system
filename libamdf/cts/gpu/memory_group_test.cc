@@ -85,8 +85,15 @@ TEST_P(GpuMemoryGroupTest, OneBackingForTwoPhysicalConsumers) {
       .flags = AMDF_MEMORY_FLAG_DEVICE_ADDRESS,
       .address_kinds = UINT64_C(1) << AMDF_MEMORY_ADDRESS_GPU,
   };
-  const std::array<amdf_memory_endpoint_access_t, 2> expected_accesses = {
-      {{peer_endpoint, requirements}, {endpoint_, requirements}}};
+  amdf_device_t* peer_device = nullptr;
+  const amdf_status_t activation =
+      GetCtsDeviceCache().GetGpuDevice(peer_endpoint, &peer_device);
+  if (activation == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
+    GTEST_SKIP() << "peer activation is unavailable for this native lifetime";
+  }
+  ASSERT_EQ(activation, AMDF_STATUS_OK);
+  const std::array<amdf_memory_device_access_t, 2> accesses = {
+      {{peer_device, requirements}, {device_, requirements}}};
   amdf_memory_scope_info_t scope_info = {};
   scope_info.type = AMDF_STRUCTURE_TYPE_MEMORY_SCOPE_INFO;
   scope_info.structure_size = sizeof(scope_info);
@@ -101,8 +108,8 @@ TEST_P(GpuMemoryGroupTest, OneBackingForTwoPhysicalConsumers) {
   }
   uint32_t selected = AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN;
   for (uint32_t i = 0; i < scope_info.memory_profile_count; ++i) {
-    const amdf_status_t status = api_->memory_scope_query_profile(
-        scope, i, expected_accesses.size(), expected_accesses.data(), &profile,
+    const amdf_status_t status = api_->memory_scope_query_device_profile(
+        scope, i, accesses.size(), accesses.data(), &profile,
         capabilities.data());
     if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) continue;
     ASSERT_EQ(status, AMDF_STATUS_OK);
@@ -120,19 +127,6 @@ TEST_P(GpuMemoryGroupTest, OneBackingForTwoPhysicalConsumers) {
   if (selected == AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN) {
     GTEST_SKIP() << "no joint construction profile for this physical pair";
   }
-  amdf_device_t* peer_device = nullptr;
-  const amdf_status_t activation =
-      GetCtsDeviceCache().GetGpuDevice(peer_endpoint, &peer_device);
-  if (activation == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
-    GTEST_SKIP() << "peer activation is unavailable for this native lifetime";
-  }
-  ASSERT_EQ(activation, AMDF_STATUS_OK);
-  const std::array<amdf_memory_device_access_t, 2> accesses = {
-      {{peer_device, requirements}, {device_, requirements}}};
-  ASSERT_EQ(api_->memory_scope_query_device_profile(
-                scope, selected, accesses.size(), accesses.data(), &profile,
-                capabilities.data()),
-            AMDF_STATUS_OK);
   amdf_memory_create_info_t create_info = {};
   create_info.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
   create_info.structure_size = sizeof(create_info);

@@ -10,6 +10,7 @@
 
 namespace {
 
+// Passive queue discovery has native topology but no activated address domain.
 static amdf_gpu_kfd_topology_t MakeTopology() {
   amdf_gpu_kfd_topology_t topology = {};
   topology.properties.gfx_ip = {11, 5, 1};
@@ -23,7 +24,6 @@ static amdf_gpu_kfd_topology_t MakeTopology() {
   topology.sdma.ip = {6, 1, 1, true};
   topology.context_save_restore_byte_length = 4096;
   topology.control_stack_byte_length = 4096;
-  topology.virtual_address.alignment = 4096;
   return topology;
 }
 

@@ -120,7 +120,7 @@ allocated, registered and imported data, and checks results and teardown.
 Focused design documents describe the contracts:
 
 - [Discovery and activation](docs/discovery.md): passive identity and live capabilities,
-  live refinement, queue families and native driver ownership.
+  queue families and native driver ownership.
 - [Memory fabric](docs/memory.md): scopes, shared backing, addresses, visibility
   and caller-owned lifetimes.
 - [XDNA execution](docs/xdna.md): instruction storage, submission and the native

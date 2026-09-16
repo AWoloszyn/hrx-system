@@ -117,9 +117,7 @@ amdf_cc_library(
     target_compatible_with = MCDM_COMPATIBILITY,
     deps = [
         "//libamdf/src:memory_profile",
-        "//libamdf/src/platform/windows:endpoint",
         "//libamdf/src/xdna:device_profile",
-        "//libamdf/src/xdna/umd:memory_profile",
     ],
 )
 

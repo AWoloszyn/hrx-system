@@ -157,7 +157,7 @@ TEST_F(KfdInstanceTest, SharesOneContextAndExactPerGpuRenderBindings) {
   EXPECT_EQ(native_.closed, (std::vector<int>{kfd_descriptor, second, first}));
 }
 
-TEST_F(KfdInstanceTest, NativeMemoryRefinementPrecedesBootstrapAndPublication) {
+TEST_F(KfdInstanceTest, NativeMemoryQueryPrecedesBootstrapAndPublication) {
   ASSERT_EQ(Prepare(), AMDF_STATUS_OK);
   amdf_gpu_kfd_topology_t topology = {};
   topology.virtual_address.begin = UINT64_C(0x20000);
@@ -177,7 +177,8 @@ TEST_F(KfdInstanceTest, NativeMemoryRefinementPrecedesBootstrapAndPublication) {
   EXPECT_EQ(topology.vram.total_byte_length, UINT64_C(8) << 30);
 
   // Device recreation refreshes actual facts but never bootstraps an acquired
-  // VM again. Neither an older interval nor placement bits survive refinement.
+  // VM again. Neither an older interval nor placement bits survive a new native
+  // query.
   native_.device_info.virtual_address_max = UINT64_C(1) << 45;
   topology.vram.visible_byte_length = topology.vram.total_byte_length;
   ASSERT_EQ(PrepareVm(11, &descriptor, &topology), AMDF_STATUS_OK);

@@ -366,10 +366,7 @@ static iree_status_t iree_xdna_run_create_device(
       .flags = AMDF_MEMORY_FLAG_DEVICE_ADDRESS,
       .address_kinds = UINT64_C(1) << AMDF_MEMORY_ADDRESS_XDNA_DMA,
   };
-  const amdf_memory_endpoint_access_t endpoint_access = {
-      .endpoint = run->endpoint,
-      .requirements = run->memory_access.requirements,
-  };
+  run->memory_access.device = run->device;
   for (uint32_t ordinal = 0;; ++ordinal) {
     amdf_memory_profile_t profile = {
         .type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE,
@@ -379,14 +376,15 @@ static iree_status_t iree_xdna_run_create_device(
         .type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES,
         .structure_size = sizeof(capabilities),
     };
-    const amdf_status_t query_status = run->api->memory_scope_query_profile(
-        run->memory_scope, ordinal, 1, &endpoint_access, &profile,
-        &capabilities);
+    const amdf_status_t query_status =
+        run->api->memory_scope_query_device_profile(run->memory_scope, ordinal,
+                                                    1, &run->memory_access,
+                                                    &profile, &capabilities);
     if (amdf_status_code(query_status) == AMDF_STATUS_CODE_OUT_OF_RANGE) break;
     if (query_status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED))
       continue;
     IREE_RETURN_IF_ERROR(IREE_HAL_AMD_STATUS_FROM_AMDF(
-        query_status, "memory_scope_query_profile"));
+        query_status, "memory_scope_query_device_profile"));
     if ((profile.roles & required_roles) == required_roles &&
         (required_flags & ~profile.supported_flags) == 0) {
       run->memory_profile = profile;
@@ -397,23 +395,6 @@ static iree_status_t iree_xdna_run_create_device(
     return iree_make_status(
         IREE_STATUS_UNAVAILABLE,
         "device has no host-visible %s profile with read/write device access",
-        FLAG_binding_memory);
-  }
-  run->memory_access.device = run->device;
-  amdf_memory_access_capabilities_t memory_capabilities = {
-      .type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES,
-      .structure_size = sizeof(memory_capabilities),
-  };
-  IREE_RETURN_IF_ERROR(IREE_HAL_AMD_STATUS_FROM_AMDF(
-      run->api->memory_scope_query_device_profile(
-          run->memory_scope, run->memory_profile.ordinal, 1,
-          &run->memory_access, &run->memory_profile, &memory_capabilities),
-      "memory_scope_query_device_profile"));
-  if ((run->memory_profile.roles & required_roles) != required_roles ||
-      (required_flags & ~run->memory_profile.supported_flags) != 0) {
-    return iree_make_status(
-        IREE_STATUS_UNAVAILABLE,
-        "live device cannot provide the selected host-visible %s profile",
         FLAG_binding_memory);
   }
   const amdf_xdna_context_create_info_t context_create_info = {

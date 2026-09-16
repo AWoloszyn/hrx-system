@@ -169,26 +169,21 @@ class GpuXdnaMemoryInteropTest : public ::testing::Test {
       GTEST_SKIP() << "a qualified GPU and XDNA endpoint pair is required";
     }
 
-    amdf_gpu_device_capabilities_t capabilities = {};
-    capabilities.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_CAPABILITIES;
-    capabilities.structure_size = sizeof(capabilities);
-    status = gpu_api_->endpoint_query_device_capabilities(gpu_endpoint_,
-                                                          &capabilities);
-    if (amdf_status_code(status) == AMDF_STATUS_CODE_UNSUPPORTED) {
-      GTEST_SKIP() << "requested native lifetime is unavailable";
-    }
-    ASSERT_EQ(status, AMDF_STATUS_OK);
-
-    if ((capabilities.features & RequiredGpuFeatures()) !=
-        RequiredGpuFeatures()) {
-      GTEST_SKIP()
-          << "source teardown requires reclaimable native VM acquisition";
-    }
     status = AcquireGpuDevice();
     if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
       GTEST_SKIP() << "native GPU activation is unavailable for this lifetime";
     }
     ASSERT_EQ(status, AMDF_STATUS_OK);
+    amdf_gpu_device_info_t capabilities = {};
+    capabilities.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_INFO;
+    capabilities.structure_size = sizeof(capabilities);
+    ASSERT_EQ(gpu_api_->device_query_info(gpu_device_, &capabilities),
+              AMDF_STATUS_OK);
+    if ((capabilities.features & RequiredGpuFeatures()) !=
+        RequiredGpuFeatures()) {
+      GTEST_SKIP()
+          << "source teardown requires reclaimable native VM acquisition";
+    }
 
     status = GetCtsDeviceCache().GetXdnaDevice(xdna_endpoint_, &xdna_device_);
     if (amdf_status_code(status) == AMDF_STATUS_CODE_UNSUPPORTED) {
@@ -267,6 +262,9 @@ class GpuXdnaMemoryInteropTest : public ::testing::Test {
       EXPECT_EQ(status, AMDF_STATUS_OK);
       if (amdf_status_is_ok(status)) gpu_memory_ = nullptr;
     }
+    if (additional_gpu_device_ != nullptr) {
+      EXPECT_EQ(api_->device_destroy(additional_gpu_device_), AMDF_STATUS_OK);
+    }
     if (gpu_memory_ == nullptr && caller_pages_.pointer != nullptr) {
       EXPECT_EQ(munmap(caller_pages_.pointer, caller_pages_.byte_length), 0);
     }
@@ -301,6 +299,8 @@ class GpuXdnaMemoryInteropTest : public ::testing::Test {
   amdf_memory_device_access_t gpu_access_ = {};
   // Importing XDNA requirements and its explicit live owner.
   amdf_memory_device_access_t xdna_access_ = {};
+  // Case-owned second GPU owner used to query a complete access set.
+  amdf_device_t* additional_gpu_device_ = nullptr;
   // Shared GPU endpoint.
   amdf_endpoint_t* gpu_endpoint_ = nullptr;
   // Shared XDNA endpoint.
@@ -632,10 +632,7 @@ TEST_F(GpuXdnaMemoryInteropTest,
        ConstructsOneBackingWithCallerOrderedGpuAndXdnaAccess) {
   // XDNA cannot export an ordinary allocation to KFD. Its first-place ordinal
   // therefore checks that backing selection does not reorder public accesses.
-  const amdf_memory_endpoint_access_t endpoints[] = {
-      {xdna_endpoint_, xdna_access_.requirements},
-      {gpu_endpoint_, gpu_access_.requirements},
-  };
+  amdf_endpoint_t* endpoints[] = {xdna_endpoint_, gpu_endpoint_};
   const amdf_memory_device_access_t devices[] = {xdna_access_, gpu_access_};
   amdf_memory_profile_t profile = {};
   amdf_memory_access_capabilities_t capabilities[2] = {};
@@ -713,7 +710,7 @@ TEST_F(GpuXdnaMemoryInteropTest,
   for (uint32_t ordinal = 0; ordinal < 2; ++ordinal) {
     device_site.value.device.access_ordinal = ordinal;
     ASSERT_EQ(
-        FindQueueFamilyOrdinal(api_, endpoints[ordinal].endpoint,
+        FindQueueFamilyOrdinal(api_, endpoints[ordinal],
                                ordinal == 0 ? AMDF_QUEUE_COMMAND_TYPE_XDNA
                                             : AMDF_QUEUE_COMMAND_TYPE_GPU_PM4,
                                &device_site.value.device.queue_family_ordinal),
@@ -765,21 +762,28 @@ TEST_F(GpuXdnaMemoryInteropTest,
   }
   ASSERT_NE(profile.ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
 
-  // Prospective devices may share one native VM. The complete registration
-  // contract still requires equal exact permissions for its shared backing.
-  amdf_memory_endpoint_access_t gpu_endpoints[] = {
-      {gpu_endpoint_, gpu_access_.requirements},
-      {gpu_endpoint_, gpu_access_.requirements},
+  // Separate device owners may share one native VM. Registration still
+  // requires equal exact permissions for the shared backing.
+  const amdf_gpu_device_create_info_t create_device = {
+      .type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_CREATE_INFO,
+      .structure_size = sizeof(create_device),
+  };
+  ASSERT_EQ(gpu_api_->device_create(gpu_endpoint_, &create_device,
+                                    &additional_gpu_device_),
+            AMDF_STATUS_OK);
+  amdf_memory_device_access_t gpu_devices[] = {
+      {gpu_device_, gpu_access_.requirements},
+      {additional_gpu_device_, gpu_access_.requirements},
   };
   amdf_memory_profile_t shared = profile;
-  ASSERT_EQ(
-      api_->memory_scope_query_profile(system_scope_, profile.ordinal, 2,
-                                       gpu_endpoints, &shared, capabilities),
-      AMDF_STATUS_OK);
-  gpu_endpoints[1].requirements.access = AMDF_MEMORY_ACCESS_READ;
+  ASSERT_EQ(api_->memory_scope_query_device_profile(
+                system_scope_, profile.ordinal, 2, gpu_devices, &shared,
+                capabilities),
+            AMDF_STATUS_OK);
+  gpu_devices[1].requirements.access = AMDF_MEMORY_ACCESS_READ;
   amdf_memory_profile_t rejected = profile;
-  EXPECT_EQ(amdf_status_code(api_->memory_scope_query_profile(
-                system_scope_, profile.ordinal, 2, gpu_endpoints, &rejected,
+  EXPECT_EQ(amdf_status_code(api_->memory_scope_query_device_profile(
+                system_scope_, profile.ordinal, 2, gpu_devices, &rejected,
                 capabilities)),
             AMDF_STATUS_CODE_UNSUPPORTED);
   EXPECT_EQ(std::memcmp(&rejected, &profile, sizeof(profile)), 0);

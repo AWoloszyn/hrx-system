@@ -147,7 +147,6 @@ iree_cc_library(
     libamdf::src::platform
     libamdf::src::structure
     libamdf::src::xdna::umd::device
-    libamdf::src::xdna::umd::memory_profile
   PUBLIC
 )
 endif()

@@ -2,8 +2,8 @@
 
 A runtime should be able to reject an unsuitable accelerator without powering
 it up or allocating its execution resources. libamdf separates selecting an
-endpoint from creating a device, and separates expected capabilities from the
-resources actually obtained. Linux and Windows use the same public contracts.
+endpoint from creating a device and querying its native resource capabilities.
+Linux and Windows use the same public contracts.
 
 ## From library to workload
 
@@ -27,18 +27,17 @@ Endpoint information supplies identity and passive topology. XDNA family
 information identifies its architecture and compiler target; its native array
 geometry, context admission and instruction limits come from the live device
 query after explicit activation. GPU family information includes the hardware
-facts available through passive native metadata. Queue-family and scope-profile queries describe the native
-services that can be requested. Returned records are complete: zero describes
+facts available through passive native metadata. Queue families describe native
+submission mechanisms; memory profiles require the live devices that will
+consume the storage. Returned records are complete: zero describes
 an absent capability, not a field waiting for an expensive query.
 
-For example, a HAL selecting shared CPU/GPU/NPU storage can enumerate scopes and
-call `memory_scope_query_profile` with the proposed endpoints. It can reject an
-unsupported registration or consumer combination before initializing any
-accelerator. After creating the selected devices, it calls
-`memory_scope_query_device_profile` to obtain the achieved contract on the live
-connections. Those results can refine expected limits without rewriting the
-endpoint snapshot. The caller decides whether the achieved contract meets its
-requirements; neither query reserves memory or guarantees allocation success.
+For example, a HAL selecting shared CPU/GPU/NPU storage first filters hardware
+by identity and architecture, then explicitly creates the selected devices.
+It calls `memory_scope_query_device_profile` with their complete access set to
+obtain native allocation, registration and sharing capabilities. The caller
+can reject an unsuitable contract before acquiring memory. The query reserves
+no memory and does not guarantee allocation success.
 
 CPU participation uses system-memory scopes and host mappings. There is no
 synthetic CPU endpoint or device to activate. Native-private scopes, such as an
@@ -49,10 +48,10 @@ device required to allocate there.
 ## Native metadata boundaries
 
 Linux discovery reads cached sysfs identity, topology and heap metadata without
-opening a render, KFD or accelerator execution file. Expected GPU memory limits
-come from explicit ISA and package descriptions; unknown identities do not
-produce guessed capabilities. Explicit device creation qualifies the native
-interface and obtains actual memory limits before VM initialization.
+opening a render, KFD or accelerator execution file. Explicit device creation
+qualifies the native interface and obtains actual memory limits before VM
+initialization. GPU address ranges and integrated-versus-discrete placement come
+from the native device query, without PCI or GFX memory tables.
 
 Windows opens KMT adapters for metadata queries. Those handles and the graphics
 kernel's process bookkeeping are distinct from the driver process context and
@@ -61,7 +60,8 @@ GPU address domain acquired by device creation. GPU qualification uses a private
 and CRT ABI behind a versioned C table. Successful qualification releases the
 temporary WKMI adapter state and unloads the bridge before endpoint open returns.
 Subsequent GPU information queries copy cached identity, ASIC revision, compute
-geometry, LDS limits, XCC topology and complete memory profiles.
+geometry, LDS limits and XCC topology. Memory limits are queried during explicit
+device creation and retained by the live device.
 
 Hardware profiles and installed native interfaces answer different questions.
 XDNA target identity selects architecture encodings and firmware bootstrap,

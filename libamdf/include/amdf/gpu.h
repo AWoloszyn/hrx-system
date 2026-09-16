@@ -40,15 +40,11 @@ extern "C" {
 #define AMDF_STRUCTURE_TYPE_GPU_KERNEL_QUEUE_SUBMISSION_INFO \
   ((amdf_structure_type_t)0x00020005u)
 
-/// An `amdf_gpu_device_capabilities_t` output structure.
-#define AMDF_STRUCTURE_TYPE_GPU_DEVICE_CAPABILITIES \
-  ((amdf_structure_type_t)0x00020006u)
-
 /// An `amdf_gpu_user_queue_create_info_t` input structure.
 #define AMDF_STRUCTURE_TYPE_GPU_USER_QUEUE_CREATE_INFO \
   ((amdf_structure_type_t)0x00020007u)
 
-/// Features implemented for an endpoint under its instance's lifetime policy.
+/// Features available on a live device under its instance's lifetime policy.
 typedef uint64_t amdf_gpu_device_features_t;
 enum amdf_gpu_device_feature_bits_e {
   /// REGISTERED_HOST borrows caller pages without copying their contents.
@@ -62,23 +58,6 @@ enum amdf_gpu_device_feature_bits_e {
   /// LOCAL allocations support HOST_VISIBLE together with DEVICE_LOCAL.
   AMDF_GPU_DEVICE_FEATURE_HOST_VISIBLE_LOCAL_MEMORY = UINT64_C(1) << 3,
 };
-
-/// Expected capabilities of one endpoint under its instance's lifetime policy.
-///
-/// The immutable snapshot describes hardware and implemented provider support;
-/// it does not qualify the installed native ABI or reserve resources. Explicit
-/// device creation qualifies the native connection and rejects an unsupported
-/// requested lifetime instead of substituting another policy.
-typedef struct amdf_gpu_device_capabilities_t {
-  /// Must be `AMDF_STRUCTURE_TYPE_GPU_DEVICE_CAPABILITIES`.
-  amdf_structure_type_t type;
-  /// Must be at least `sizeof(amdf_gpu_device_capabilities_t)`.
-  uint32_t structure_size;
-  /// Optional output extension chain. No extensions are currently defined.
-  void* next;
-  /// Expected features under the instance's lifetime policy.
-  amdf_gpu_device_features_t features;
-} amdf_gpu_device_capabilities_t;
 
 /// Immutable target identity and compute topology of one GPU endpoint.
 ///
@@ -407,20 +386,6 @@ typedef struct amdf_gpu_api_t {
       amdf_kernel_queue_t* queue,
       const amdf_gpu_kernel_queue_submission_info_t* submission_info,
       uint64_t* out_submission);
-
-  /// Copies expected capabilities under the instance's native lifetime policy.
-  ///
-  /// A lifetime not implemented by the provider returns UNSUPPORTED without
-  /// modifying the output. A supported lifetime may omit features available
-  /// under another lifetime on the same endpoint. Native ABI admission occurs
-  /// at device creation, not here. The operation is thread-safe and performs no
-  /// system call, allocation, device initialization, retry, sleep, or device
-  /// wait.
-  /// It reads retained profile facts without locking, lazy initialization or
-  /// ownership-counter updates.
-  amdf_status_t(AMDF_CALL* endpoint_query_device_capabilities)(
-      amdf_endpoint_t* endpoint,
-      amdf_gpu_device_capabilities_t* out_capabilities);
 
   /// Acquires one directly published native command queue from a GPU device.
   ///

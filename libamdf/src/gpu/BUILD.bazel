@@ -18,7 +18,6 @@ amdf_cc_library(
     srcs = ["endpoint_profile.c"],
     hdrs = ["endpoint_profile.h"],
     visibility = ["//libamdf/src/gpu:__subpackages__"],
-    deps = ["//libamdf/src:memory_profile"],
 )
 
 amdf_cc_library(
@@ -32,7 +31,6 @@ amdf_cc_library(
         "memory.h",
     ],
     deps = [
-        ":endpoint_profile",
         "//libamdf/src:allocator",
         "//libamdf/src:device",
         "//libamdf/src:endpoint",
@@ -95,7 +93,6 @@ amdf_cc_library(
         ":kernel_queue",
         ":user_queue",
         "//libamdf/src:endpoint",
-        "//libamdf/src:instance",
         "//libamdf/src:structure",
         "//libamdf/src/gpu/umd:endpoint_profile",
     ],

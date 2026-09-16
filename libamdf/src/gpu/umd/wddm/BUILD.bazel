@@ -98,7 +98,6 @@ amdf_cc_library(
     target_compatible_with = ["@platforms//os:windows"],
     visibility = ["//libamdf/src/gpu/umd:__pkg__"],
     deps = [
-        ":memory_profile",
         "//libamdf/src:allocator",
         "//libamdf/src/gpu:endpoint_profile",
         "//libamdf/src/gpu/umd:endpoint_profile",

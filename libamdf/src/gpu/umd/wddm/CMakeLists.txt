@@ -128,7 +128,6 @@ iree_cc_library(
   SRCS
     "endpoint_profile.c"
   DEPS
-    ::memory_profile
     amdf::headers
     libamdf::src::allocator
     libamdf::src::gpu::endpoint_profile

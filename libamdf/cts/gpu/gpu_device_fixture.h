@@ -131,27 +131,24 @@ class GpuDeviceFixture : public ::testing::Test {
       GTEST_SKIP() << "no qualified GPU endpoint present";
     }
 
-    amdf_gpu_device_capabilities_t capabilities = {};
-    capabilities.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_CAPABILITIES;
-    capabilities.structure_size = sizeof(capabilities);
-    status =
-        gpu_api_->endpoint_query_device_capabilities(endpoint_, &capabilities);
-    if (amdf_status_domain(status) == AMDF_STATUS_DOMAIN_API &&
-        amdf_status_code(status) == AMDF_STATUS_CODE_UNSUPPORTED) {
-      GTEST_SKIP() << "requested native lifetime is unavailable";
+    status = GetCtsDeviceCache().GetGpuDevice(endpoint_, &device_);
+    if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
+      GTEST_SKIP() << "native GPU activation is unavailable for this lifetime";
     }
-    ASSERT_EQ(status, AMDF_STATUS_OK);
+    ASSERT_TRUE(amdf_status_is_ok(status))
+        << "domain=" << amdf_status_domain(status)
+        << " code=" << amdf_status_code(status);
 
     scope_count = 0;
-    status = api_->endpoint_enumerate_memory_scopes(endpoint_, 0, nullptr,
-                                                    &scope_count);
+    status =
+        api_->device_enumerate_memory_scopes(device_, 0, nullptr, &scope_count);
     ASSERT_EQ(status,
               scope_count == 0
                   ? AMDF_STATUS_OK
                   : amdf_make_api_status(AMDF_STATUS_CODE_BUFFER_TOO_SMALL));
     scopes.resize(scope_count);
-    ASSERT_EQ(api_->endpoint_enumerate_memory_scopes(
-                  endpoint_, scope_count, scopes.data(), &scope_count),
+    ASSERT_EQ(api_->device_enumerate_memory_scopes(device_, scope_count,
+                                                   scopes.data(), &scope_count),
               AMDF_STATUS_OK);
     for (amdf_memory_scope_t* scope : scopes) {
       amdf_memory_scope_info_t info = {};
@@ -161,15 +158,6 @@ class GpuDeviceFixture : public ::testing::Test {
       if (info.kind == AMDF_MEMORY_SCOPE_KIND_LOCAL) local_scope_ = scope;
     }
 
-    status = GetCtsDeviceCache().GetGpuDevice(endpoint_, &device_);
-    // Passive capabilities describe the provider; activation admits the
-    // installed native ABI under the requested lifetime policy.
-    if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
-      GTEST_SKIP() << "native GPU activation is unavailable for this lifetime";
-    }
-    ASSERT_TRUE(amdf_status_is_ok(status))
-        << "domain=" << amdf_status_domain(status)
-        << " code=" << amdf_status_code(status);
     amdf_gpu_device_info_t device_info = {};
     device_info.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_INFO;
     device_info.structure_size = sizeof(device_info);

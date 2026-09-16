@@ -20,9 +20,6 @@ amdf_status_t amdf_xdna_extension_query(uint32_t minimum_version,
                                         uint32_t maximum_version,
                                         const void** out_extension_api);
 
-// Installs metadata queries that consume the endpoint's selected target facts.
-void amdf_xdna_extension_initialize_endpoint(amdf_endpoint_t* endpoint);
-
 // Writes the XDNA queue families fully constructible for an opened endpoint.
 uint32_t amdf_xdna_extension_query_endpoint_queue_families(
     const amdf_xdna_device_profile_t* profile,

@@ -334,7 +334,7 @@ typedef struct amdf_memory_address_capabilities_t {
   uint64_t minimum_alignment;
 } amdf_memory_address_capabilities_t;
 
-/// Exact access requirements, shared by passive discovery and construction.
+/// Exact access requirements shared by live-device queries and construction.
 typedef struct amdf_memory_access_requirements_t {
   /// Exact device permissions; construction never silently widens them.
   amdf_memory_access_t access;
@@ -346,14 +346,6 @@ typedef struct amdf_memory_access_requirements_t {
   amdf_memory_address_kinds_t address_kinds;
 } amdf_memory_access_requirements_t;
 
-/// One intended consumer without any activation or lifetime extension.
-typedef struct amdf_memory_endpoint_access_t {
-  /// Borrowed passive endpoint identifying the intended consumer.
-  amdf_endpoint_t* endpoint;
-  /// Required access contract, with no activation implied.
-  amdf_memory_access_requirements_t requirements;
-} amdf_memory_endpoint_access_t;
-
 /// One explicitly initialized consumer of a memory resource.
 typedef struct amdf_memory_device_access_t {
   /// Borrowed live device. The caller keeps it live through memory release.
@@ -362,7 +354,8 @@ typedef struct amdf_memory_device_access_t {
   amdf_memory_access_requirements_t requirements;
 } amdf_memory_device_access_t;
 
-/// Complete expected access for one endpoint in a selected scope contract.
+/// Complete access capabilities for one live device in a selected scope
+/// contract.
 typedef struct amdf_memory_access_capabilities_t {
   /// Must be `AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES`.
   amdf_structure_type_t type;

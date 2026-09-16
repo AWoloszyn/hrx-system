@@ -155,24 +155,14 @@ typedef struct amdf_api_t {
       amdf_instance_t* instance, uint32_t capacity,
       amdf_memory_scope_t** scopes, uint32_t* out_count);
 
-  /// Enumerates borrowed physical-local scopes owned by a passive endpoint.
+  /// Enumerates physical-local storage available through a live device.
   ///
   /// The count/prefix protocol matches instance_enumerate_memory_scopes.
-  /// No device is activated. A local allocation requires its storage device
-  /// to be explicitly initialized and included in the requested access set.
-  /// Returned scopes remain valid while the endpoint lives. This reads cached
-  /// profiles without allocation, locking, native queries or lazy setup.
-  amdf_status_t(AMDF_CALL* endpoint_enumerate_memory_scopes)(
-      amdf_endpoint_t* endpoint, uint32_t capacity,
-      amdf_memory_scope_t** scopes, uint32_t* out_count);
-
-  /// Enumerates borrowed native-private scopes owned by a live device.
-  ///
-  /// The count/prefix protocol matches instance_enumerate_memory_scopes.
-  /// This operation creates no resources. A device without private scopes
-  /// returns an empty set; it does not repeat instance or endpoint scopes.
-  /// Context-private scopes are retrieved through their owning extension.
-  /// Enumeration performs no allocation, locking, native query or lazy setup.
+  /// Returned physical scopes are owned by the device's endpoint and remain
+  /// valid while that endpoint lives. Allocations require their storage device
+  /// in the live access set. Context-private scopes come from their extension.
+  /// This reads achieved profiles without allocation, native queries, locking
+  /// or lazy setup; it creates no resources.
   amdf_status_t(AMDF_CALL* device_enumerate_memory_scopes)(
       amdf_device_t* device, uint32_t capacity, amdf_memory_scope_t** scopes,
       uint32_t* out_count);
@@ -186,46 +176,22 @@ typedef struct amdf_api_t {
   amdf_status_t(AMDF_CALL* memory_scope_query_info)(
       amdf_memory_scope_t* scope, amdf_memory_scope_info_t* out_info);
 
-  /// Queries a scope contract for the complete intended endpoint access set.
-  ///
-  /// Endpoints belong to the scope's instance and need not have live devices.
-  /// Repeated endpoints describe distinct intended device consumers.
-  /// Zero count permits NULL arrays and requests CPU-only
-  /// storage. The caller initializes the profile and exactly access_count
-  /// output capability records. Success publishes complete backing facts and
-  /// one capability record per input, preserving caller order. No output is
-  /// modified on failure. An ordinal outside the scope's profile count returns
-  /// OUT_OF_RANGE; a valid profile unable to satisfy the set returns
-  /// UNSUPPORTED. Metadata work scales with the access set; no native
-  /// allocation, mapping, device activation or execution occurs.
-  /// This is a cold planning query: temporary host allocation is permitted,
-  /// unlike the allocation-free queries on an established memory handle.
-  ///
-  /// These are complete expected capabilities, not a reservation against
-  /// exhaustion or a guarantee against installed-driver incompatibility.
-  /// Construction qualifies the explicitly live devices and establishes every
-  /// requested property before publishing memory.
-  amdf_status_t(AMDF_CALL* memory_scope_query_profile)(
-      amdf_memory_scope_t* scope, uint32_t profile_ordinal,
-      uint32_t access_count, const amdf_memory_endpoint_access_t* accesses,
-      amdf_memory_profile_t* out_profile,
-      amdf_memory_access_capabilities_t* out_access_capabilities);
-
   /// Queries a scope contract for explicitly initialized device consumers.
   ///
   /// Devices are unique and belong to the scope's instance. The caller keeps
-  /// them live during this call. Scope ordinals, CPU-only zero-count behavior,
-  /// output initialization, caller order and failure publication follow
-  /// memory_scope_query_profile. These complete capabilities use the live
-  /// devices' qualified state and may refine the expected endpoint contract
-  /// without changing it. The caller may adapt its request or reject the
-  /// devices before acquiring memory.
+  /// them live during this call. Zero count permits NULL arrays and requests
+  /// CPU-only storage without activating any accelerator. The caller
+  /// initializes the profile and exactly access_count capability records.
+  /// Success publishes complete backing facts and one capability record per
+  /// input in caller order. Failure leaves all outputs unchanged. An ordinal
+  /// outside the scope's profile count returns OUT_OF_RANGE; a valid profile
+  /// unable to satisfy the complete access set returns UNSUPPORTED.
   ///
-  /// This thread-safe metadata query performs no native operation, activation,
-  /// mapping or synchronization. Temporary host storage scales with the access
-  /// set. The result is not a resource reservation; construction can still
-  /// fail from exhaustion or native errors, and never weakens explicit
-  /// requirements to match a capability refinement.
+  /// This thread-safe cold planning query consumes native facts retained at
+  /// activation. It performs no native operation, mapping or synchronization.
+  /// Temporary host storage scales with the access set. The result is not a
+  /// reservation: construction can fail from exhaustion or native errors and
+  /// never weakens explicit requirements.
   amdf_status_t(AMDF_CALL* memory_scope_query_device_profile)(
       amdf_memory_scope_t* scope, uint32_t profile_ordinal,
       uint32_t access_count, const amdf_memory_device_access_t* accesses,

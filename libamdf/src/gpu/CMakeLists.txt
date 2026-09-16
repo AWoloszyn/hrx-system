@@ -19,7 +19,6 @@ iree_cc_library(
     "endpoint_profile.c"
   DEPS
     amdf::headers
-    libamdf::src::memory_profile
   PUBLIC
 )
 endif()
@@ -35,7 +34,6 @@ iree_cc_library(
     "device.c"
     "memory.c"
   DEPS
-    ::endpoint_profile
     amdf::headers
     libamdf::src::allocator
     libamdf::src::device
@@ -117,7 +115,6 @@ iree_cc_library(
     amdf::headers
     libamdf::src::endpoint
     libamdf::src::gpu::umd::endpoint_profile
-    libamdf::src::instance
     libamdf::src::structure
   PUBLIC
 )

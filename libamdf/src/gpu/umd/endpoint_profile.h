@@ -23,8 +23,7 @@ extern "C" {
 // output unchanged and creates no cleanup obligation.
 amdf_status_t amdf_gpu_umd_create_endpoint_profile(
     amdf_platform_endpoint_t* platform_endpoint,
-    amdf_native_lifetime_t native_lifetime, amdf_allocator_t host_allocator,
-    amdf_gpu_endpoint_profile_t** out_profile);
+    amdf_allocator_t host_allocator, amdf_gpu_endpoint_profile_t** out_profile);
 
 #ifdef __cplusplus
 }  // extern "C"
