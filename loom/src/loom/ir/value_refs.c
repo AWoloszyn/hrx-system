@@ -10,18 +10,43 @@
 
 #include "loom/ir/module.h"
 
-iree_status_t loom_op_walk_subtree_type_refs(
+static iree_status_t loom_value_walk_outgoing_type_refs(
+    const loom_module_t* module, loom_value_id_t value_id,
+    loom_type_value_ref_callback_t callback, void* user_data) {
+  for (loom_type_use_id_t use_id =
+           loom_module_value_first_outgoing_type_use(module, value_id);
+       use_id != LOOM_TYPE_USE_ID_INVALID;) {
+    const loom_type_use_t* use = &module->type_uses.records[use_id];
+    IREE_RETURN_IF_ERROR(callback(use->referenced_value_id, user_data));
+    use_id = use->next_outgoing_use_id;
+  }
+  return iree_ok_status();
+}
+
+iree_status_t loom_op_walk_subtree_value_refs(
     const loom_module_t* module, const loom_op_t* op,
     loom_type_value_ref_callback_t callback, void* user_data) {
+  const loom_value_id_t* operands = loom_op_const_operands(op);
+  for (uint16_t i = 0; i < op->operand_count; ++i) {
+    if (operands[i] != LOOM_VALUE_ID_INVALID) {
+      IREE_RETURN_IF_ERROR(callback(operands[i], user_data));
+    }
+  }
+
   const loom_value_id_t* results = loom_op_const_results(op);
   for (uint16_t i = 0; i < op->result_count; ++i) {
-    if (results[i] == LOOM_VALUE_ID_INVALID ||
-        results[i] >= module->values.count) {
-      continue;
+    IREE_RETURN_IF_ERROR(loom_value_walk_outgoing_type_refs(
+        module, results[i], callback, user_data));
+  }
+
+  const loom_attribute_use_id_t* heads = loom_op_attribute_use_heads(op);
+  for (uint8_t i = 0; i < op->attribute_count; ++i) {
+    for (loom_attribute_use_id_t use_id = heads[i]; use_id;) {
+      const loom_attribute_use_t* use =
+          &module->attribute_uses.records[use_id - 1];
+      IREE_RETURN_IF_ERROR(callback(use->value_id, user_data));
+      use_id = use->next_outgoing;
     }
-    IREE_RETURN_IF_ERROR(loom_type_walk_value_refs(
-        module, loom_module_value_type(module, results[i]), callback,
-        user_data));
   }
 
   loom_region_t** regions = loom_op_regions(op);
@@ -32,16 +57,12 @@ iree_status_t loom_op_walk_subtree_type_refs(
     loom_region_for_each_block(region, block) {
       for (uint16_t arg_index = 0; arg_index < block->arg_count; ++arg_index) {
         loom_value_id_t arg_id = loom_block_arg_id(block, arg_index);
-        if (arg_id == LOOM_VALUE_ID_INVALID || arg_id >= module->values.count) {
-          continue;
-        }
-        IREE_RETURN_IF_ERROR(loom_type_walk_value_refs(
-            module, loom_module_value_type(module, arg_id), callback,
-            user_data));
+        IREE_RETURN_IF_ERROR(loom_value_walk_outgoing_type_refs(
+            module, arg_id, callback, user_data));
       }
       loom_op_t* child_op = NULL;
       loom_block_for_each_op(block, child_op) {
-        IREE_RETURN_IF_ERROR(loom_op_walk_subtree_type_refs(
+        IREE_RETURN_IF_ERROR(loom_op_walk_subtree_value_refs(
             module, child_op, callback, user_data));
       }
     }

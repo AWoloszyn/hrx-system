@@ -349,7 +349,7 @@ bool loom_op_results_unused(const loom_module_t* module, const loom_op_t* op) {
     if (results[i] == LOOM_VALUE_ID_INVALID) continue;
     const loom_value_t* value = loom_module_value(module, results[i]);
     if (value->use_count > 0) return false;
-    if (loom_module_value_has_predicate_attribute_uses(module, results[i])) {
+    if (loom_value_has_attribute_uses(value)) {
       return false;
     }
     if (loom_value_has_type_uses_outside_op(module, results[i], op)) {

@@ -147,37 +147,19 @@ static iree_status_t loom_dce_seed_worklist(
 // Cascading enqueue helpers
 //===----------------------------------------------------------------------===//
 
-static iree_status_t loom_dce_add_operand_providers_to_worklist(
-    iree_arena_allocator_t* arena, loom_module_t* module,
-    loom_dce_worklist_t* worklist, loom_op_t* op) {
-  const loom_value_id_t* operands = loom_op_const_operands(op);
-  for (uint16_t i = 0; i < op->operand_count; ++i) {
-    if (operands[i] == LOOM_VALUE_ID_INVALID) {
-      continue;
-    }
-    loom_value_t* value = loom_module_value(module, operands[i]);
-    if (loom_value_is_block_arg(value)) {
-      continue;
-    }
-    loom_op_t* def = loom_value_def_op(value);
-    IREE_RETURN_IF_ERROR(loom_dce_worklist_push(arena, worklist, def));
-  }
-  return iree_ok_status();
-}
-
-typedef struct loom_dce_type_ref_provider_context_t {
+typedef struct loom_dce_value_ref_provider_context_t {
   // Module containing the value table and use-def links.
   loom_module_t* module;
   // Pass arena used for worklist growth.
   iree_arena_allocator_t* arena;
   // Candidate worklist to receive defining ops.
   loom_dce_worklist_t* worklist;
-} loom_dce_type_ref_provider_context_t;
+} loom_dce_value_ref_provider_context_t;
 
-static iree_status_t loom_dce_add_type_ref_provider_to_worklist(
+static iree_status_t loom_dce_add_value_ref_provider_to_worklist(
     loom_value_id_t value_id, void* user_data) {
-  loom_dce_type_ref_provider_context_t* context =
-      (loom_dce_type_ref_provider_context_t*)user_data;
+  loom_dce_value_ref_provider_context_t* context =
+      (loom_dce_value_ref_provider_context_t*)user_data;
   if (value_id >= context->module->values.count) {
     return iree_ok_status();
   }
@@ -189,47 +171,16 @@ static iree_status_t loom_dce_add_type_ref_provider_to_worklist(
                                 loom_value_def_op(value));
 }
 
-// Queues providers that may become dead after erasing |op| and its nested
-// regions. Region operands are ordinary uses, so erasing only the parent op's
-// operands would leave captured values live through unreachable child ops.
-// Type references on result types and block arguments are also liveness edges,
-// so their providers must be rechecked when the carrier subtree disappears.
-static iree_status_t loom_dce_add_subtree_operand_providers_to_worklist(
-    iree_arena_allocator_t* arena, loom_module_t* module,
-    loom_dce_worklist_t* worklist, loom_op_t* op) {
-  IREE_RETURN_IF_ERROR(
-      loom_dce_add_operand_providers_to_worklist(arena, module, worklist, op));
-
-  loom_region_t** regions = loom_op_regions(op);
-  for (uint8_t i = 0; i < op->region_count; ++i) {
-    loom_region_t* region = regions[i];
-    if (!region) {
-      continue;
-    }
-    loom_block_t* block = NULL;
-    loom_region_for_each_block(region, block) {
-      loom_op_t* child_op = NULL;
-      loom_block_for_each_op(block, child_op) {
-        IREE_RETURN_IF_ERROR(loom_dce_add_subtree_operand_providers_to_worklist(
-            arena, module, worklist, child_op));
-      }
-    }
-  }
-  return iree_ok_status();
-}
-
 static iree_status_t loom_dce_add_subtree_providers_to_worklist(
     iree_arena_allocator_t* arena, loom_module_t* module,
     loom_dce_worklist_t* worklist, loom_op_t* op) {
-  IREE_RETURN_IF_ERROR(loom_dce_add_subtree_operand_providers_to_worklist(
-      arena, module, worklist, op));
-  loom_dce_type_ref_provider_context_t context = {
+  loom_dce_value_ref_provider_context_t context = {
       .module = module,
       .arena = arena,
       .worklist = worklist,
   };
-  return loom_op_walk_subtree_type_refs(
-      module, op, loom_dce_add_type_ref_provider_to_worklist, &context);
+  return loom_op_walk_subtree_value_refs(
+      module, op, loom_dce_add_value_ref_provider_to_worklist, &context);
 }
 
 //===----------------------------------------------------------------------===//

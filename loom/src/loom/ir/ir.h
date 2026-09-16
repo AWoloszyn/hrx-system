@@ -388,9 +388,9 @@ typedef iree_alignas(64) struct loom_value_t {
   // have different names but the same type.
   loom_string_id_t name_id;
 
-  // Number of operand uses of this value. When 0, the value is dead
-  // (candidate for dead code elimination). Stored as a 28-bit bitfield so
-  // high-fanout values scale past 64K uses without growing loom_value_t.
+  // Number of ordinary operand uses, excluding embedded type and attribute
+  // references that may also keep this value live. Stored as a 28-bit bitfield
+  // so high-fanout values scale past 64K uses without growing loom_value_t.
   uint32_t use_count : LOOM_VALUE_USE_COUNT_BITS;
 
   // Bitfield of loom_value_flag_bits_e. Stored in the upper 4 bits of the same

@@ -1087,8 +1087,8 @@ bool loom_op_regions_have_hints(const loom_module_t* module,
                                 const loom_op_t* op);
 
 // Returns true if every result of |op| has zero operand uses, no live
-// predicate-list attribute uses, and no external value type references. Type
-// references carried by another result of |op| do not keep the whole op alive.
+// attribute uses, and no external value type references. Type references
+// carried by another result of |op| do not keep the whole op alive.
 bool loom_op_results_unused(const loom_module_t* module, const loom_op_t* op);
 
 // Returns true if |op| is trivially dead: it has results, does not

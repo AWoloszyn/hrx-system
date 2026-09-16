@@ -128,6 +128,68 @@ class ValueRefsTest : public ::testing::Test {
   loom_builder_t builder_ = {};
 };
 
+TEST_F(ValueRefsTest, SubtreeWalkIncludesOperandTypeAndPredicateAttributes) {
+  const loom_value_id_t input = Constant(1);
+  const loom_value_id_t width = Constant(16);
+  const loom_value_id_t bound = Constant(64);
+  const loom_type_t type =
+      loom_type_shaped_1d(LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_INDEX,
+                          loom_dim_pack_dynamic(width), 0);
+  loom_type_id_t type_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_intern_type_id(module_, type, &type_id));
+  loom_string_id_t constraint_key = LOOM_STRING_ID_INVALID;
+  loom_string_id_t shape_key = LOOM_STRING_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_intern_string(module_, IREE_SV("constraint"),
+                                           &constraint_key));
+  IREE_ASSERT_OK(
+      loom_module_intern_string(module_, IREE_SV("shape"), &shape_key));
+  loom_predicate_t predicate = Predicate(bound);
+  const loom_named_attr_t attributes[] = {
+      {constraint_key, {}, loom_attr_predicate_list(&predicate, 1)},
+      {shape_key, {}, loom_attr_type(type_id)},
+  };
+  loom_op_t* owner = nullptr;
+  IREE_ASSERT_OK(loom_test_attrs_build(
+      &builder_, LOOM_TEST_ATTRS_BUILD_FLAG_HAS_DICT, input,
+      loom_make_named_attr_slice(attributes, 2),
+      loom_type_scalar(LOOM_SCALAR_TYPE_INDEX), LOOM_LOCATION_UNKNOWN, &owner));
+
+  std::vector<uint32_t> visits(module_->values.count, 0);
+  const iree_host_size_t allocation_size = module_->arena.used_allocation_size;
+  fail_allocations_ = true;
+  iree_status_t status = loom_op_walk_subtree_value_refs(
+      module_, owner,
+      [](loom_value_id_t value, void* user_data) {
+        ++(*static_cast<std::vector<uint32_t>*>(user_data))[value];
+        return iree_ok_status();
+      },
+      &visits);
+  fail_allocations_ = false;
+  IREE_ASSERT_OK(status);
+  EXPECT_EQ(visits[input], 1u);
+  EXPECT_EQ(visits[width], 1u);
+  EXPECT_EQ(visits[bound], 2u);
+  EXPECT_EQ(visits[loom_test_attrs_result(owner)], 0u);
+  EXPECT_EQ(module_->arena.used_allocation_size, allocation_size);
+  EXPECT_EQ(failed_allocations_, 0u);
+}
+
+TEST_F(ValueRefsTest, SubtreeWalkStopsAtCallbackFailure) {
+  loom_op_t* owner = Assume(Constant(1));
+  uint32_t visit_count = 0;
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_ABORTED,
+                        loom_op_walk_subtree_value_refs(
+                            module_, owner,
+                            [](loom_value_id_t value, void* user_data) {
+                              ++*static_cast<uint32_t*>(user_data);
+                              return iree_make_status(
+                                  IREE_STATUS_ABORTED,
+                                  "callback failed at value %u", value);
+                            },
+                            &visit_count));
+  EXPECT_EQ(visit_count, 1u);
+}
+
 TEST_F(ValueRefsTest, DuplicateAndSharedOwnersUnlinkExactly) {
   const loom_value_id_t original = Constant(1);
   const loom_value_id_t replacement = Constant(2);

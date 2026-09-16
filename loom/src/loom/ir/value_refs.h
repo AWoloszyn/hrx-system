@@ -16,14 +16,16 @@
 extern "C" {
 #endif
 
-// Walks SSA value references embedded in all value types owned by |op|'s
-// subtree.
+// Walks outgoing SSA references owned by |op| and its nested regions: ordinary
+// operands, result/block-argument type references, and attribute references.
+// Uses retained reference records without reconstructing type or attribute
+// payloads. Values may be visited more than once; ordering is unspecified.
 //
-// This includes result types on |op| and nested ops, plus block argument types
-// in nested regions. Erase and DCE paths use this before unlinking a subtree so
-// providers of dynamic dimensions or SSA encodings get rechecked after the
-// carrier values disappear.
-iree_status_t loom_op_walk_subtree_type_refs(
+// Erase and DCE paths use this before unlinking a subtree to notify providers
+// whose users will disappear. The callback must not mutate IR structure or
+// reference lists. The walk allocates no storage and propagates callback
+// errors.
+iree_status_t loom_op_walk_subtree_value_refs(
     const loom_module_t* module, const loom_op_t* op,
     loom_type_value_ref_callback_t callback, void* user_data);
 
