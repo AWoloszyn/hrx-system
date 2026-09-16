@@ -227,9 +227,9 @@ typedef uint8_t loom_amdgpu_wait_loop_transparency_flags_t;
 
 static bool loom_amdgpu_wait_loop_blocks_are_counter_transparent(
     const loom_amdgpu_wait_loop_analysis_t* analysis,
-    const loom_amdgpu_wait_loop_node_t* nodes,
+    const loom_amdgpu_wait_completion_node_t* nodes,
     const uint32_t* first_dependency_by_consumer,
-    const loom_amdgpu_wait_loop_dependency_t* dependencies,
+    const loom_amdgpu_wait_dependency_t* dependencies,
     iree_host_size_t dependency_count, const loom_cfg_loop_interval_t* interval,
     uint16_t frontier_block_index, uint32_t counter_mask,
     loom_amdgpu_wait_loop_transparency_flags_t flags) {
@@ -242,7 +242,7 @@ static bool loom_amdgpu_wait_loop_blocks_are_counter_transparent(
       const uint32_t packet_index = block->scheduled_node_start + i;
       const uint32_t node_index =
           schedule->scheduled_node_indices[packet_index];
-      const loom_amdgpu_wait_loop_node_t* node = &nodes[node_index];
+      const loom_amdgpu_wait_completion_node_t* node = &nodes[node_index];
       if (((node->producer_counter_mask | node->reset_counter_mask |
             node->hazard_counter_mask) &
            counter_mask) != 0) {
@@ -268,61 +268,11 @@ static bool loom_amdgpu_wait_loop_blocks_are_counter_transparent(
   return true;
 }
 
-static uint32_t loom_amdgpu_wait_loop_last_guaranteed_reset_ordinal(
-    const loom_amdgpu_wait_loop_analysis_t* analysis,
-    const loom_amdgpu_wait_loop_node_t* nodes,
-    const uint32_t* first_dependency_by_consumer,
-    const loom_amdgpu_wait_loop_dependency_t* dependencies,
-    iree_host_size_t dependency_count, const loom_low_schedule_block_t* block,
-    uint32_t counter_mask) {
-  const loom_low_schedule_table_t* schedule = analysis->schedule;
-  uint32_t last_reset_ordinal = UINT32_MAX;
-  uint32_t last_producer_node = LOOM_LOW_SCHEDULE_NODE_NONE;
-  bool has_outstanding_workgroup_write = false;
-  for (uint32_t i = 0; i < block->scheduled_node_count; ++i) {
-    const uint32_t packet_index = block->scheduled_node_start + i;
-    const uint32_t node_index = schedule->scheduled_node_indices[packet_index];
-    const loom_amdgpu_wait_loop_node_t* node = &nodes[node_index];
-    bool guarantees_reset = (node->reset_counter_mask & counter_mask) != 0;
-    if (!guarantees_reset && has_outstanding_workgroup_write &&
-        (node->workgroup_barrier_counter_mask & counter_mask) != 0) {
-      guarantees_reset = true;
-    }
-    if (!guarantees_reset &&
-        last_producer_node != LOOM_LOW_SCHEDULE_NODE_NONE) {
-      for (uint32_t dependency_index = first_dependency_by_consumer[node_index];
-           dependency_index != LOOM_LOW_SCHEDULE_NODE_NONE;
-           dependency_index = dependencies[dependency_index].next_dependency) {
-        IREE_ASSERT_LT(dependency_index, dependency_count);
-        const loom_amdgpu_wait_loop_dependency_t* dependency =
-            &dependencies[dependency_index];
-        if ((dependency->counter_mask & counter_mask) != 0 &&
-            dependency->producer_node == last_producer_node) {
-          guarantees_reset = true;
-          break;
-        }
-      }
-    }
-    if (guarantees_reset) {
-      last_reset_ordinal = i;
-      last_producer_node = LOOM_LOW_SCHEDULE_NODE_NONE;
-      has_outstanding_workgroup_write = false;
-    }
-    if ((node->producer_counter_mask & counter_mask) != 0) {
-      last_producer_node = node_index;
-      if ((node->workgroup_write_counter_mask & counter_mask) != 0) {
-        has_outstanding_workgroup_write = true;
-      }
-    }
-  }
-  return last_reset_ordinal;
-}
-
 static bool loom_amdgpu_wait_loop_analyze_cyclic_frontier(
     const loom_amdgpu_wait_loop_analysis_t* analysis,
-    const loom_amdgpu_wait_loop_node_t* nodes,
+    const loom_amdgpu_wait_completion_node_t* nodes,
     const uint32_t* first_dependency_by_consumer,
-    const loom_amdgpu_wait_loop_dependency_t* dependencies,
+    const loom_amdgpu_wait_dependency_t* dependencies,
     iree_host_size_t dependency_count, uint16_t block_index,
     uint32_t counter_slot,
     loom_amdgpu_wait_loop_cyclic_frontier_t* out_frontier) {
@@ -342,17 +292,29 @@ static bool loom_amdgpu_wait_loop_analyze_cyclic_frontier(
   uint32_t last_required_producer_ordinal = 0;
   uint32_t last_consumer_ordinal = 0;
   bool has_cyclic_dependency = false;
+  uint32_t last_reset_ordinal = UINT32_MAX;
+  uint32_t pending_start_ordinal = 0;
+  bool has_local_completion = false;
   for (uint32_t i = 0; i < block->scheduled_node_count; ++i) {
     const uint32_t packet_index = block->scheduled_node_start + i;
     const uint32_t consumer_node =
         schedule->scheduled_node_indices[packet_index];
     const loom_low_schedule_node_t* consumer = &schedule->nodes[consumer_node];
+    if ((nodes[consumer_node].reset_counter_mask & counter_mask) != 0) {
+      last_reset_ordinal = i;
+      pending_start_ordinal = i;
+    }
+    if ((nodes[consumer_node].completed_before_block_exit_counter_mask &
+         counter_mask) != 0) {
+      pending_start_ordinal = i + 1;
+      has_local_completion = true;
+    }
     for (uint32_t dependency_index =
              first_dependency_by_consumer[consumer_node];
          dependency_index != LOOM_LOW_SCHEDULE_NODE_NONE;
          dependency_index = dependencies[dependency_index].next_dependency) {
       IREE_ASSERT_LT(dependency_index, dependency_count);
-      const loom_amdgpu_wait_loop_dependency_t* dependency =
+      const loom_amdgpu_wait_dependency_t* dependency =
           &dependencies[dependency_index];
       if ((dependency->counter_mask & counter_mask) == 0) continue;
       const loom_low_schedule_node_t* producer =
@@ -365,7 +327,7 @@ static bool loom_amdgpu_wait_loop_analyze_cyclic_frontier(
           loom_amdgpu_wait_loop_analysis_cyclic_interval(
               analysis, dependency->producer_node, consumer_node);
       if (!iree_any_bit_set(dependency->flags,
-                            LOOM_AMDGPU_WAIT_LOOP_DEPENDENCY_FLAG_SSA_USE) ||
+                            LOOM_AMDGPU_WAIT_DEPENDENCY_FLAG_SSA_USE) ||
           dependency_interval == NULL ||
           (cyclic_interval != NULL && dependency_interval != cyclic_interval)) {
         return false;
@@ -382,20 +344,16 @@ static bool loom_amdgpu_wait_loop_analyze_cyclic_frontier(
   }
   if (!has_cyclic_dependency) return false;
 
-  const uint32_t last_reset_ordinal =
-      loom_amdgpu_wait_loop_last_guaranteed_reset_ordinal(
-          analysis, nodes, first_dependency_by_consumer, dependencies,
-          dependency_count, block, counter_mask);
   uint32_t first_producer_ordinal = UINT32_MAX;
   uint32_t last_producer_ordinal = 0;
   uint32_t outstanding_count = 0;
   uint32_t outstanding_write_count = 0;
   uint32_t outstanding_workgroup_write_count = 0;
   for (uint32_t i = 0; i < block->scheduled_node_count; ++i) {
-    if (last_reset_ordinal != UINT32_MAX && i < last_reset_ordinal) continue;
+    if (i < pending_start_ordinal) continue;
     const uint32_t packet_index = block->scheduled_node_start + i;
     const uint32_t node_index = schedule->scheduled_node_indices[packet_index];
-    const loom_amdgpu_wait_loop_node_t* node = &nodes[node_index];
+    const loom_amdgpu_wait_completion_node_t* node = &nodes[node_index];
     if ((node->producer_counter_mask & counter_mask) == 0) continue;
     first_producer_ordinal = iree_min(first_producer_ordinal, i);
     last_producer_ordinal = i;
@@ -426,7 +384,6 @@ static bool loom_amdgpu_wait_loop_analyze_cyclic_frontier(
   }
   if (first_required_producer_ordinal < first_producer_ordinal ||
       last_required_producer_ordinal > last_producer_ordinal ||
-      last_consumer_ordinal >= first_required_producer_ordinal ||
       !loom_amdgpu_wait_loop_blocks_are_counter_transparent(
           analysis, nodes, first_dependency_by_consumer, dependencies,
           dependency_count, cyclic_interval, block_index, counter_mask,
@@ -436,29 +393,14 @@ static bool loom_amdgpu_wait_loop_analyze_cyclic_frontier(
 
   const bool consumers_cover_epoch =
       last_required_producer_ordinal == last_producer_ordinal;
-  if (!reset_establishes_epoch && !consumers_cover_epoch) return false;
-
-  // Once the trailing epoch begins, every progress operation must be part of
-  // that stable epoch. Nonzero bounds can retire an ordered prefix without
-  // changing the producer identities or their upper bound. A later reset or
-  // dependency needs a more general counter dataflow model and therefore keeps
-  // conservative wait placement.
-  for (uint32_t i = first_producer_ordinal; i < block->scheduled_node_count;
-       ++i) {
-    const uint32_t packet_index = block->scheduled_node_start + i;
-    const uint32_t node_index = schedule->scheduled_node_indices[packet_index];
-    const loom_amdgpu_wait_loop_node_t* node = &nodes[node_index];
-    if ((node->reset_counter_mask & counter_mask) != 0) return false;
-    for (uint32_t dependency_index = first_dependency_by_consumer[node_index];
-         dependency_index != LOOM_LOW_SCHEDULE_NODE_NONE;
-         dependency_index = dependencies[dependency_index].next_dependency) {
-      IREE_ASSERT_LT(dependency_index, dependency_count);
-      if ((dependencies[dependency_index].counter_mask & counter_mask) != 0) {
-        return false;
-      }
-    }
+  if (!reset_establishes_epoch && !has_local_completion &&
+      !consumers_cover_epoch) {
+    return false;
   }
 
+  // Each cyclic dependency uses the old producer before its reissue replaces
+  // the retained position. Local completion or consumption of the previous
+  // suffix bounds the next trip without requiring a full counter drain.
   *out_frontier = (loom_amdgpu_wait_loop_cyclic_frontier_t){
       .flags = LOOM_AMDGPU_WAIT_LOOP_CYCLIC_FRONTIER_FLAG_VALID,
       .producer_start_ordinal = first_producer_ordinal,
@@ -471,9 +413,9 @@ static bool loom_amdgpu_wait_loop_analyze_cyclic_frontier(
 
 iree_status_t loom_amdgpu_wait_loop_analysis_build_cyclic_frontiers(
     const loom_amdgpu_wait_loop_analysis_t* analysis,
-    const loom_amdgpu_wait_loop_node_t* nodes,
+    const loom_amdgpu_wait_completion_node_t* nodes,
     const uint32_t* first_dependency_by_consumer,
-    const loom_amdgpu_wait_loop_dependency_t* dependencies,
+    const loom_amdgpu_wait_dependency_t* dependencies,
     iree_host_size_t dependency_count, iree_arena_allocator_t* arena,
     const loom_amdgpu_wait_loop_cyclic_frontier_t** out_frontiers) {
   IREE_ASSERT_ARGUMENT(analysis);
@@ -506,9 +448,9 @@ iree_status_t loom_amdgpu_wait_loop_analysis_build_cyclic_frontiers(
          schedule->block_count * sizeof(*candidate_counter_masks));
   bool has_candidate = false;
   for (iree_host_size_t i = 0; i < dependency_count; ++i) {
-    const loom_amdgpu_wait_loop_dependency_t* dependency = &dependencies[i];
+    const loom_amdgpu_wait_dependency_t* dependency = &dependencies[i];
     if (!iree_any_bit_set(dependency->flags,
-                          LOOM_AMDGPU_WAIT_LOOP_DEPENDENCY_FLAG_SSA_USE)) {
+                          LOOM_AMDGPU_WAIT_DEPENDENCY_FLAG_SSA_USE)) {
       continue;
     }
     IREE_ASSERT_LT(dependency->producer_node, schedule->node_count);

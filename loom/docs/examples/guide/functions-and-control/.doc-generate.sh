@@ -41,13 +41,13 @@ cd -- "${output_dir}"
 for depth in 1 3; do
   "${loom_compile}" read-ahead.loombc --root=@sum_rows \
     --target=amdgpu:gfx11-generic --format=amdgpu-hsaco \
-    --config="read_ahead.depth=${depth}" --config=read_ahead.unroll=2 \
+    --config="read_ahead.depth=${depth}" --config=read_ahead.unroll=4 \
     --output="sum-rows-d${depth}.hsaco" --compile-report=details \
     --compile-report-output="sum-rows-d${depth}.report.json"
   "${loom_report}" show "sum-rows-d${depth}.report.json" \
     >"sum-rows-d${depth}.show.txt"
   "${loom_benchmark}" read-ahead.loombc --benchmark=@sum_rows_64 \
-    --config="read_ahead.depth=${depth}" --config=read_ahead.unroll=2 \
+    --config="read_ahead.depth=${depth}" --config=read_ahead.unroll=4 \
     --dry-run --output="sum-rows-d${depth}.plan.json"
 done
 
@@ -55,7 +55,7 @@ done
 "${loom_report}" diff sum-rows-d1.report.json sum-rows-d3.report.json \
   --force >sum-rows.diff.txt
 sed -n '/^Source loop pipelines/,$p' sum-rows-d3.show.txt >pipeline-schedule.txt
-sed -n '/^\[scf.compare_pipeline_depth\]/,$p' sum-rows-d3.suggest.txt >pipeline-suggest.txt
+sed -n '/^\[scf.compare_pipeline_depth\]/,/^$/p' sum-rows-d3.suggest.txt >pipeline-suggest.txt
 grep -Fq 'depth=1 queue_records=0' sum-rows-d1.show.txt
 grep -Fq 'depth=3 queue_records=2' pipeline-schedule.txt
 grep -Fq 'read_ahead.depth' sum-rows.diff.txt
@@ -69,6 +69,8 @@ test -s pipeline-suggest.txt
   --compile-report-output=packed-dot.report.json
 "${loom_report}" show packed-dot.report.json >packed-dot.show.txt
 "${loom_report}" suggest packed-dot.report.json >packed-dot.suggest.txt
+sed -n '/^\[amdgpu.pipeline_copy_waits\]/,/^$/p' packed-dot.suggest.txt >pipeline-copy-waits.txt
+test -s pipeline-copy-waits.txt
 "${loom_benchmark}" streaming-packed-dot.loom \
   --benchmark=@streaming_packed_s8_dot_read_ahead_n128_time \
   --config=packed_stream.depth=4 --config=packed_stream.unroll=2 \

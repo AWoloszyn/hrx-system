@@ -20,6 +20,7 @@
 #include "loom/ops/low/ops.h"
 #include "loom/target/arch/amdgpu/facts.h"
 #include "loom/target/arch/amdgpu/planning/structural_packet.h"
+#include "loom/target/arch/amdgpu/planning/wait_completion.h"
 #include "loom/target/arch/amdgpu/planning/wait_frontier.h"
 #include "loom/target/arch/amdgpu/planning/wait_loop.h"
 #include "loom/target/arch/amdgpu/planning/wait_packet_tables.h"
@@ -199,8 +200,8 @@ typedef struct loom_amdgpu_wait_plan_builder_t {
   uint32_t* producer_nodes;
   // Per-node memory counter and address-space classification.
   loom_amdgpu_wait_frontier_node_t* frontier_nodes;
-  // Per-node immutable counter facts consumed by canonical-loop analysis.
-  loom_amdgpu_wait_loop_node_t* loop_nodes;
+  // Retained counter progress and completion facts for both wait frontiers.
+  loom_amdgpu_wait_completion_node_t* completion_nodes;
   // Bounded cross-block wait state.
   loom_amdgpu_wait_frontier_t frontier;
   // Target eligibility and ancestor index over canonical schedule loops.
@@ -212,7 +213,7 @@ typedef struct loom_amdgpu_wait_plan_builder_t {
   // First relevant counter dependency link per consumer node.
   uint32_t* first_dependency_link_by_consumer;
   // Relevant counter dependency links.
-  loom_amdgpu_wait_loop_dependency_t* dependency_links;
+  loom_amdgpu_wait_dependency_t* dependency_links;
   // First coalesced incoming segment per block-argument value ordinal.
   uint32_t* first_block_arg_source_by_value;
   // Coalesced incoming segment sources retained from allocation.
@@ -504,9 +505,10 @@ static iree_status_t loom_amdgpu_wait_plan_allocate(
 
     IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
         builder->transient_arena, schedule->node_count,
-        sizeof(*builder->loop_nodes), (void**)&builder->loop_nodes));
-    memset(builder->loop_nodes, 0,
-           schedule->node_count * sizeof(*builder->loop_nodes));
+        sizeof(*builder->completion_nodes),
+        (void**)&builder->completion_nodes));
+    memset(builder->completion_nodes, 0,
+           schedule->node_count * sizeof(*builder->completion_nodes));
 
     IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
         builder->transient_arena, schedule->node_count,
@@ -752,9 +754,9 @@ static iree_status_t loom_amdgpu_wait_plan_append_dependency_link(
       builder, /*additional_count=*/1));
   IREE_ASSERT_LT(builder->dependency_link_count,
                  builder->dependency_link_capacity);
-  loom_amdgpu_wait_loop_dependency_t* link =
+  loom_amdgpu_wait_dependency_t* link =
       &builder->dependency_links[builder->dependency_link_count];
-  *link = (loom_amdgpu_wait_loop_dependency_t){
+  *link = (loom_amdgpu_wait_dependency_t){
       .producer_node = producer_node,
       .consumer_node = consumer_node,
       .next_dependency =
@@ -762,7 +764,7 @@ static iree_status_t loom_amdgpu_wait_plan_append_dependency_link(
       .counter_mask = counter_mask,
       .reason_id = (uint16_t)reason,
       .flags = reason == LOOM_AMDGPU_WAIT_PLAN_REASON_SSA_USE
-                   ? LOOM_AMDGPU_WAIT_LOOP_DEPENDENCY_FLAG_SSA_USE
+                   ? LOOM_AMDGPU_WAIT_DEPENDENCY_FLAG_SSA_USE
                    : 0,
   };
   IREE_ASSERT_LT(builder->dependency_link_count, UINT32_MAX);
@@ -1713,8 +1715,6 @@ static iree_status_t loom_amdgpu_wait_plan_finish_node_classification(
     }
     IREE_ASSERT(node_state->explicit_wait_counter_mask == 0 ||
                 node_state->hazard_counter_mask != 0);
-    frontier_node->drain_counter_mask = node_state->explicit_wait_counter_mask |
-                                        node_state->implicit_wait_counter_mask;
     if (iree_any_bit_set(flags,
                          LOOM_AMDGPU_WAIT_NODE_STATE_DEFAULT_DEPENDENCY_READ)) {
       const uint32_t default_read_counter_mask =
@@ -1763,7 +1763,7 @@ static iree_status_t loom_amdgpu_wait_plan_finish_node_classification(
           LOOM_AMDGPU_WAIT_COUNTER_MASK_ALU;
       ++builder->trans_result_node_count;
     }
-    builder->loop_nodes[i] = (loom_amdgpu_wait_loop_node_t){
+    builder->completion_nodes[i] = (loom_amdgpu_wait_completion_node_t){
         .producer_counter_mask = frontier_node->read_counter_mask |
                                  frontier_node->write_counter_mask |
                                  node_state->trans_result_counter_mask |
@@ -1781,7 +1781,7 @@ static iree_status_t loom_amdgpu_wait_plan_finish_node_classification(
     // Writing issue positions would overwrite the retained wait bounds.
     IREE_ASSERT(!iree_any_bit_set(node_state->flags,
                                   LOOM_AMDGPU_WAIT_NODE_STATE_EXPLICIT_WAIT) ||
-                builder->loop_nodes[i].producer_counter_mask == 0);
+                builder->completion_nodes[i].producer_counter_mask == 0);
   }
   return iree_ok_status();
 }
@@ -1993,11 +1993,11 @@ static iree_status_t loom_amdgpu_wait_plan_relocate_loop_entry_dependencies(
         &builder->first_dependency_link_by_consumer[consumer_node];
     while (*link_index_ptr != LOOM_LOW_SCHEDULE_NODE_NONE) {
       const uint32_t link_index = *link_index_ptr;
-      loom_amdgpu_wait_loop_dependency_t* link =
+      loom_amdgpu_wait_dependency_t* link =
           &builder->dependency_links[link_index];
       const uint32_t next_dependency = link->next_dependency;
       if (!iree_any_bit_set(link->flags,
-                            LOOM_AMDGPU_WAIT_LOOP_DEPENDENCY_FLAG_SSA_USE) ||
+                            LOOM_AMDGPU_WAIT_DEPENDENCY_FLAG_SSA_USE) ||
           iree_math_count_ones_u32(link->counter_mask) != 1) {
         link_index_ptr = &link->next_dependency;
         continue;
@@ -2046,7 +2046,7 @@ static iree_status_t loom_amdgpu_wait_plan_relocate_loop_entry_dependencies(
       bool is_full_drain = counter_id == LOOM_AMDGPU_WAIT_COUNTER_SMEM;
       uint32_t strictest_producer_ordinal = 0;
       while (link_index != LOOM_LOW_SCHEDULE_NODE_NONE) {
-        const loom_amdgpu_wait_loop_dependency_t* link =
+        const loom_amdgpu_wait_dependency_t* link =
             &builder->dependency_links[link_index];
         const loom_low_schedule_node_t* producer =
             &schedule->nodes[link->producer_node];
@@ -2417,7 +2417,7 @@ static iree_status_t loom_amdgpu_wait_plan_handle_loop_entry_dependencies(
     bool has_active_dependency = false;
     bool is_derived = true;
     while (link_index != LOOM_LOW_SCHEDULE_NODE_NONE) {
-      const loom_amdgpu_wait_loop_dependency_t* link =
+      const loom_amdgpu_wait_dependency_t* link =
           &builder->dependency_links[link_index];
       uint16_t target_count = 0;
       const loom_low_schedule_node_t* producer =
@@ -2565,12 +2565,16 @@ static bool loom_amdgpu_wait_plan_storage_release_is_satisfied(
   }
   if (producer_block == insertion_block) {
     return producer_state->counters.producer.epochs[slot] !=
-           builder->counter_epochs[slot];
+               builder->counter_epochs[slot] ||
+           loom_amdgpu_wait_plan_producer_is_complete_in_current_epoch(
+               builder, lease_record->node_index, slot);
   }
-  return loom_amdgpu_wait_plan_producer_is_drained(
+  // Incoming lease membership already joins all predecessor paths and retains
+  // implicit source release, including XCNT group and branch transitions.
+  return loom_amdgpu_wait_plan_current_block_satisfies_producer(
              builder, lease_record->node_index, counter_mask) ||
-         loom_amdgpu_wait_plan_current_block_satisfies_producer(
-             builder, lease_record->node_index, counter_mask);
+         !loom_amdgpu_wait_frontier_storage_lease_is_active(
+             &builder->frontier, action->lease_record_index);
 }
 
 static loom_amdgpu_wait_plan_action_flags_t
@@ -2847,9 +2851,33 @@ static iree_status_t loom_amdgpu_wait_plan_handle_physical_write_range(
       continue;
     }
     if (incoming_lease_active) {
-      // Incoming counts are path-dependent and intentionally absent from the
-      // block-local counter positions. A full wait is the only threshold that
-      // proves this concrete lease released on every predecessor path.
+      const uint32_t slot =
+          loom_amdgpu_wait_counter_slot_from_id(record->release_class_id);
+      const loom_low_schedule_node_t* producer =
+          &builder->schedule->nodes[record->node_index];
+      const iree_host_size_t frontier_index =
+          loom_amdgpu_wait_plan_loop_entry_slot_index(
+              (uint16_t)write_node->block_index, slot);
+      const bool has_cyclic_position =
+          producer->block_index == write_node->block_index &&
+          producer->scheduled_ordinal >= write_node->scheduled_ordinal &&
+          builder->cyclic_frontiers != NULL &&
+          iree_any_bit_set(builder->cyclic_frontiers[frontier_index].flags,
+                           LOOM_AMDGPU_WAIT_LOOP_CYCLIC_FRONTIER_FLAG_VALID);
+      if (has_cyclic_position) {
+        // The canonical loop frontier gives this incoming instance an exact
+        // issue position until its producer reissues. Use the same completion
+        // and partial-count facts as payload consumers, then retire the old
+        // storage instance before publishing the new one at block exit.
+        IREE_RETURN_IF_ERROR(
+            loom_amdgpu_wait_plan_handle_storage_release_action(builder,
+                                                                &action));
+        loom_amdgpu_wait_frontier_retire_storage_lease(&builder->frontier,
+                                                       storage_lease_index);
+        continue;
+      }
+      // Other incoming counts remain path-dependent. Full completion protects
+      // the concrete lease on every predecessor path.
       IREE_RETURN_IF_ERROR(loom_amdgpu_wait_plan_wait_counter(
           builder, LOOM_AMDGPU_WAIT_PLAN_ACTION_PLANNED,
           loom_amdgpu_wait_plan_storage_release_action_flags(builder, &action),
@@ -3038,7 +3066,7 @@ static iree_status_t loom_amdgpu_wait_plan_handle_consumer(
   for (uint32_t link_index =
            builder->first_dependency_link_by_consumer[node_index];
        link_index != LOOM_LOW_SCHEDULE_NODE_NONE;) {
-    const loom_amdgpu_wait_loop_dependency_t* link =
+    const loom_amdgpu_wait_dependency_t* link =
         &builder->dependency_links[link_index];
     for (uint32_t slot = 0; slot < LOOM_AMDGPU_WAIT_COUNTER_SLOT_COUNT;
          ++slot) {
@@ -3444,50 +3472,6 @@ static bool loom_amdgpu_wait_plan_node_expires_trans_results(
       expiring_counter_mask);
 }
 
-static bool loom_amdgpu_wait_plan_node_materializes_results(
-    const loom_amdgpu_wait_plan_builder_t* builder, uint32_t node_index) {
-  return iree_any_bit_set(builder->node_states[node_index].flags,
-                          LOOM_AMDGPU_WAIT_NODE_STATE_MATERIALIZES_RESULTS);
-}
-
-static iree_status_t loom_amdgpu_wait_plan_handle_vmem_result_reuse(
-    loom_amdgpu_wait_plan_builder_t* builder, uint32_t node_index) {
-  if (builder->allocation == NULL ||
-      builder->frontier.vmem_results.active_words == NULL ||
-      !loom_amdgpu_wait_plan_node_materializes_results(builder, node_index)) {
-    return iree_ok_status();
-  }
-  const loom_low_schedule_node_t* node = &builder->schedule->nodes[node_index];
-  const loom_amdgpu_vmem_result_order_class_t current_order_class =
-      builder->frontier_nodes[node_index].vmem_result_order_class;
-  const bool same_class_writes_are_ordered =
-      current_order_class != LOOM_AMDGPU_VMEM_RESULT_ORDER_NONE &&
-      current_order_class != LOOM_AMDGPU_VMEM_RESULT_ORDER_UNKNOWN &&
-      loom_amdgpu_processor_properties_have_scheduling(
-          builder->processor_properties,
-          LOOM_AMDGPU_PROCESSOR_SCHEDULING_VMEM_RESULT_WRITES_IN_ORDER);
-  const loom_value_ordinal_t* result_ordinals =
-      loom_low_schedule_node_const_result_ordinals(node);
-  for (uint16_t i = 0; i < node->result_count; ++i) {
-    const loom_low_allocation_assignment_t* assignment =
-        loom_low_allocation_assignment_for_value_ordinal(
-            builder->allocation, result_ordinals[i], NULL);
-    const loom_amdgpu_vmem_result_order_class_t pending_order_class =
-        loom_amdgpu_wait_frontier_query_vmem_result(&builder->frontier,
-                                                    assignment);
-    if (pending_order_class == LOOM_AMDGPU_VMEM_RESULT_ORDER_NONE ||
-        (same_class_writes_are_ordered &&
-         pending_order_class == current_order_class)) {
-      continue;
-    }
-    return loom_amdgpu_wait_plan_drain_counter(
-        builder, LOOM_AMDGPU_WAIT_PLAN_ACTION_PLANNED,
-        LOOM_AMDGPU_WAIT_PLAN_REASON_READ_RESULT_REUSE, node_index,
-        LOOM_LOW_SCHEDULE_NODE_NONE, LOOM_AMDGPU_WAIT_COUNTER_VMEM_LOAD);
-  }
-  return iree_ok_status();
-}
-
 static iree_status_t loom_amdgpu_wait_plan_note_producer(
     loom_amdgpu_wait_plan_builder_t* builder, uint32_t node_index) {
   loom_amdgpu_wait_node_state_t* node_state = &builder->node_states[node_index];
@@ -3632,8 +3616,6 @@ static iree_status_t loom_amdgpu_wait_plan_process_node(
   }
   IREE_RETURN_IF_ERROR(
       loom_amdgpu_wait_plan_handle_partial_wait(builder, node_index));
-  IREE_RETURN_IF_ERROR(
-      loom_amdgpu_wait_plan_handle_vmem_result_reuse(builder, node_index));
   if (loom_amdgpu_wait_plan_node_expires_trans_results(builder, node_index)) {
     loom_amdgpu_wait_plan_expire_trans_results(builder);
   }
@@ -3925,16 +3907,17 @@ iree_status_t loom_amdgpu_wait_plan_build(
     status = loom_amdgpu_wait_plan_allocate_physical_state(&builder);
   }
   if (iree_status_is_ok(status)) {
+    loom_amdgpu_wait_completion_analyze(
+        schedule, builder.first_dependency_link_by_consumer,
+        builder.dependency_links, builder.completion_nodes);
     status = loom_amdgpu_wait_frontier_initialize(
-        schedule, allocation, builder.frontier_nodes,
-        builder.physical_registers.vgpr_count,
-        builder.physical_registers.agpr_count,
+        schedule, allocation, builder.frontier_nodes, builder.completion_nodes,
         builder.loop_entry_drain_counter_masks, transient_arena,
         &builder.frontier);
   }
   if (iree_status_is_ok(status)) {
     status = loom_amdgpu_wait_loop_analysis_build_cyclic_frontiers(
-        &builder.loop_analysis, builder.loop_nodes,
+        &builder.loop_analysis, builder.completion_nodes,
         builder.first_dependency_link_by_consumer, builder.dependency_links,
         builder.dependency_link_count, transient_arena,
         &builder.cyclic_frontiers);

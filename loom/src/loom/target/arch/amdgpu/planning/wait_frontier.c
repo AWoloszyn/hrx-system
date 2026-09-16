@@ -15,14 +15,10 @@
 enum {
   LOOM_AMDGPU_WAIT_FRONTIER_BLOCK_FLAG_QUEUED = 1u << 0,
   LOOM_AMDGPU_WAIT_FRONTIER_BLOCK_FLAG_RESOLVED = 1u << 1,
-  LOOM_AMDGPU_WAIT_VMEM_RESULT_STATE_FLAG_PENDING = 1u << 0,
   LOOM_AMDGPU_WAIT_MEMORY_SPACE_FLAG_MASK =
       ((1u << LOOM_AMDGPU_WAIT_MEMORY_SPACE_COUNT) - 1u)
       << LOOM_LOW_MEMORY_SPACE_GENERIC,
   LOOM_AMDGPU_WAIT_MEMORY_WRITE_COUNTER_SHIFT = 8,
-  LOOM_AMDGPU_WAIT_VMEM_RESULT_BITS_PER_UNIT = 4,
-  LOOM_AMDGPU_WAIT_VMEM_RESULT_UNITS_PER_WORD =
-      64 / LOOM_AMDGPU_WAIT_VMEM_RESULT_BITS_PER_UNIT,
   LOOM_AMDGPU_WAIT_STORAGE_LEASES_PER_WORD = 64,
 };
 
@@ -36,10 +32,6 @@ static_assert(LOOM_AMDGPU_WAIT_COUNTER_MASK_ALL ==
 static_assert(sizeof(loom_amdgpu_wait_memory_state_t) ==
                   LOOM_AMDGPU_WAIT_MEMORY_SPACE_COUNT * sizeof(uint16_t),
               "memory frontier state must not acquire padding");
-static_assert(LOOM_AMDGPU_VMEM_RESULT_ORDER_CLASS_COUNT - 1 ==
-                  LOOM_AMDGPU_WAIT_VMEM_RESULT_BITS_PER_UNIT,
-              "VMEM result classes must fit the packed frontier state");
-
 loom_amdgpu_wait_memory_space_flags_t loom_amdgpu_wait_memory_space_flag(
     loom_low_memory_space_t memory_space) {
   const loom_low_memory_space_t normalized_space =
@@ -304,134 +296,6 @@ static void loom_amdgpu_wait_memory_state_add_node(
           << LOOM_AMDGPU_WAIT_MEMORY_WRITE_COUNTER_SHIFT);
 }
 
-static uint8_t loom_amdgpu_wait_vmem_result_order_class_flag(
-    loom_amdgpu_vmem_result_order_class_t order_class) {
-  IREE_ASSERT_GT(order_class, LOOM_AMDGPU_VMEM_RESULT_ORDER_NONE);
-  IREE_ASSERT_LT(order_class, LOOM_AMDGPU_VMEM_RESULT_ORDER_CLASS_COUNT);
-  return (uint8_t)(1u << (order_class - 1u));
-}
-
-static bool loom_amdgpu_wait_frontier_map_vector_assignment(
-    const loom_amdgpu_wait_frontier_t* frontier,
-    const loom_low_allocation_assignment_t* assignment,
-    iree_host_size_t* out_unit_base, iree_host_size_t* out_unit_count) {
-  *out_unit_base = 0;
-  *out_unit_count = 0;
-  if (assignment == NULL ||
-      assignment->location_kind !=
-          LOOM_LOW_ALLOCATION_LOCATION_PHYSICAL_REGISTER ||
-      assignment->location_count == 0) {
-    return false;
-  }
-  iree_host_size_t unit_base = assignment->location_base;
-  iree_host_size_t unit_limit = frontier->vmem_results.vgpr_unit_count;
-  const loom_amdgpu_reg_class_traits_t reg_class_traits =
-      loom_amdgpu_reg_class_traits(frontier->schedule->target.descriptor_set,
-                                   assignment->descriptor_reg_class_id);
-  if (iree_any_bit_set(reg_class_traits, LOOM_AMDGPU_REG_CLASS_TRAIT_AGPR)) {
-    unit_base += frontier->vmem_results.vgpr_unit_count;
-    unit_limit += frontier->vmem_results.agpr_unit_count;
-  } else if (assignment->descriptor_reg_class_id !=
-             LOOM_AMDGPU_REG_CLASS_ID_VGPR) {
-    return false;
-  }
-  IREE_ASSERT_LE(unit_base + assignment->location_count, unit_limit);
-  *out_unit_base = unit_base;
-  *out_unit_count = assignment->location_count;
-  return true;
-}
-
-static uint64_t* loom_amdgpu_wait_frontier_vmem_result_block_words(
-    const loom_amdgpu_wait_frontier_t* frontier, uint64_t* states,
-    iree_host_size_t block_index) {
-  return states + block_index * frontier->vmem_results.word_count;
-}
-
-static const uint64_t* loom_amdgpu_wait_frontier_const_vmem_result_block_words(
-    const loom_amdgpu_wait_frontier_t* frontier, const uint64_t* states,
-    iree_host_size_t block_index) {
-  return states + block_index * frontier->vmem_results.word_count;
-}
-
-static bool loom_amdgpu_wait_vmem_result_state_union_changed(
-    uint64_t* target, const uint64_t* source, iree_host_size_t word_count) {
-  bool changed = false;
-  for (iree_host_size_t i = 0; i < word_count; ++i) {
-    const uint64_t result = target[i] | source[i];
-    changed |= result != target[i];
-    target[i] = result;
-  }
-  return changed;
-}
-
-static bool loom_amdgpu_wait_vmem_result_state_is_empty(
-    const uint64_t* words, iree_host_size_t word_count) {
-  for (iree_host_size_t i = 0; i < word_count; ++i) {
-    if (words[i] != 0) return false;
-  }
-  return true;
-}
-
-static uint8_t loom_amdgpu_wait_vmem_result_state_query(
-    const uint64_t* words, iree_host_size_t unit_base,
-    iree_host_size_t unit_count) {
-  uint8_t order_class_flags = 0;
-  for (iree_host_size_t i = 0; i < unit_count; ++i) {
-    const iree_host_size_t unit = unit_base + i;
-    const iree_host_size_t word_index =
-        unit / LOOM_AMDGPU_WAIT_VMEM_RESULT_UNITS_PER_WORD;
-    const uint32_t bit_offset =
-        (uint32_t)(unit % LOOM_AMDGPU_WAIT_VMEM_RESULT_UNITS_PER_WORD) *
-        LOOM_AMDGPU_WAIT_VMEM_RESULT_BITS_PER_UNIT;
-    order_class_flags |= (uint8_t)(words[word_index] >> bit_offset) & 0xFu;
-  }
-  return order_class_flags;
-}
-
-static void loom_amdgpu_wait_vmem_result_state_publish(
-    uint64_t* words, iree_host_size_t unit_base, iree_host_size_t unit_count,
-    loom_amdgpu_vmem_result_order_class_t order_class) {
-  const uint64_t order_class_flag =
-      loom_amdgpu_wait_vmem_result_order_class_flag(order_class);
-  for (iree_host_size_t i = 0; i < unit_count; ++i) {
-    const iree_host_size_t unit = unit_base + i;
-    const iree_host_size_t word_index =
-        unit / LOOM_AMDGPU_WAIT_VMEM_RESULT_UNITS_PER_WORD;
-    const uint32_t bit_offset =
-        (uint32_t)(unit % LOOM_AMDGPU_WAIT_VMEM_RESULT_UNITS_PER_WORD) *
-        LOOM_AMDGPU_WAIT_VMEM_RESULT_BITS_PER_UNIT;
-    words[word_index] |= order_class_flag << bit_offset;
-  }
-}
-
-static void loom_amdgpu_wait_frontier_publish_node_vmem_results(
-    loom_amdgpu_wait_frontier_t* frontier, uint64_t* words,
-    uint32_t node_index) {
-  const loom_amdgpu_wait_frontier_node_t* frontier_node =
-      &frontier->nodes[node_index];
-  if (frontier_node->vmem_result_order_class ==
-      LOOM_AMDGPU_VMEM_RESULT_ORDER_NONE) {
-    return;
-  }
-  const loom_low_schedule_node_t* schedule_node =
-      &frontier->schedule->nodes[node_index];
-  const loom_value_ordinal_t* result_ordinals =
-      loom_low_schedule_node_const_result_ordinals(schedule_node);
-  for (uint16_t i = 0; i < schedule_node->result_count; ++i) {
-    const loom_low_allocation_assignment_t* assignment =
-        loom_low_allocation_assignment_for_value_ordinal(
-            frontier->allocation, result_ordinals[i], NULL);
-    iree_host_size_t unit_base = 0;
-    iree_host_size_t unit_count = 0;
-    if (!loom_amdgpu_wait_frontier_map_vector_assignment(
-            frontier, assignment, &unit_base, &unit_count)) {
-      continue;
-    }
-    loom_amdgpu_wait_vmem_result_state_publish(
-        words, unit_base, unit_count, frontier_node->vmem_result_order_class);
-  }
-}
-
 static void loom_amdgpu_wait_frontier_publish_packet_storage_leases(
     const loom_amdgpu_wait_frontier_t* frontier, uint64_t* words,
     iree_host_size_t packet_index, uint32_t excluded_counter_mask,
@@ -491,6 +355,7 @@ static void loom_amdgpu_wait_frontier_apply_static_xcnt_producer(
 
 static void loom_amdgpu_wait_frontier_build_local_states(
     loom_amdgpu_wait_frontier_t* frontier,
+    const loom_amdgpu_wait_completion_node_t* completion_nodes,
     const uint32_t* planned_block_drain_counter_masks) {
   const loom_low_schedule_table_t* schedule = frontier->schedule;
   iree_host_size_t next_storage_lease_index = 0;
@@ -501,12 +366,6 @@ static void loom_amdgpu_wait_frontier_build_local_states(
         frontier->memory.static_outgoing_states == NULL
             ? NULL
             : &frontier->memory.static_outgoing_states[block_index];
-    uint64_t* vmem_result_words =
-        frontier->vmem_results.static_outgoing_words == NULL
-            ? NULL
-            : loom_amdgpu_wait_frontier_vmem_result_block_words(
-                  frontier, frontier->vmem_results.static_outgoing_words,
-                  block_index);
     uint64_t* storage_lease_words =
         frontier->storage_leases.static_outgoing_words == NULL
             ? NULL
@@ -517,7 +376,7 @@ static void loom_amdgpu_wait_frontier_build_local_states(
         frontier->xcnt.static_outgoing_flags == NULL
             ? NULL
             : &frontier->xcnt.static_outgoing_flags[block_index];
-    uint32_t block_drain_counter_mask = 0;
+    uint32_t incoming_completion_counter_mask = 0;
     for (uint32_t i = 0; i < block->scheduled_node_count; ++i) {
       const iree_host_size_t packet_index =
           (iree_host_size_t)block->scheduled_node_start + i;
@@ -525,27 +384,24 @@ static void loom_amdgpu_wait_frontier_build_local_states(
           schedule->scheduled_node_indices[packet_index];
       const loom_amdgpu_wait_frontier_node_t* node =
           &frontier->nodes[node_index];
-      uint32_t drain_counter_mask = node->drain_counter_mask;
+      const uint32_t completed_counter_mask =
+          completion_nodes[node_index].completed_before_block_exit_counter_mask;
+      uint32_t drain_counter_mask =
+          completion_nodes[node_index].reset_counter_mask;
       if (planned_block_drain_counter_masks != NULL &&
           schedule->nodes[node_index].op == block->block->last_op) {
         drain_counter_mask |= planned_block_drain_counter_masks[block_index];
       }
-      block_drain_counter_mask |= drain_counter_mask;
+      // Completing any local producer also completes incoming work in its
+      // counter class, while later local producers may remain pending.
+      incoming_completion_counter_mask |=
+          drain_counter_mask | completed_counter_mask;
       if (memory_state != NULL) {
         loom_amdgpu_wait_memory_state_drain(memory_state, drain_counter_mask);
-        loom_amdgpu_wait_memory_state_add_node(memory_state, node,
-                                               node->read_counter_mask,
-                                               node->write_counter_mask);
-      }
-      if (vmem_result_words != NULL) {
-        if (iree_any_bit_set(drain_counter_mask,
-                             LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_LOAD)) {
-          memset(
-              vmem_result_words, 0,
-              frontier->vmem_results.word_count * sizeof(*vmem_result_words));
-        }
-        loom_amdgpu_wait_frontier_publish_node_vmem_results(
-            frontier, vmem_result_words, node_index);
+        loom_amdgpu_wait_memory_state_add_node(
+            memory_state, node,
+            node->read_counter_mask & ~completed_counter_mask,
+            node->write_counter_mask & ~completed_counter_mask);
       }
       if (storage_lease_words != NULL) {
         loom_amdgpu_wait_storage_lease_state_drain(
@@ -563,11 +419,12 @@ static void loom_amdgpu_wait_frontier_build_local_states(
       }
       if (storage_lease_words != NULL) {
         loom_amdgpu_wait_frontier_publish_packet_storage_leases(
-            frontier, storage_lease_words, packet_index,
-            /*excluded_counter_mask=*/0, &next_storage_lease_index);
+            frontier, storage_lease_words, packet_index, completed_counter_mask,
+            &next_storage_lease_index);
       }
     }
-    frontier->block_drain_counter_masks[block_index] = block_drain_counter_mask;
+    frontier->incoming_completion_counter_masks[block_index] =
+        incoming_completion_counter_mask;
   }
 }
 
@@ -576,7 +433,7 @@ static bool loom_amdgpu_wait_frontier_block_state_union_changed(
     uint16_t source_block) {
   bool changed = false;
   const uint32_t drain_counter_mask =
-      frontier->block_drain_counter_masks[target_block];
+      frontier->incoming_completion_counter_masks[target_block];
   if (frontier->memory.static_outgoing_states != NULL) {
     loom_amdgpu_wait_memory_state_t incoming_state =
         frontier->memory.static_outgoing_states[source_block];
@@ -584,18 +441,6 @@ static bool loom_amdgpu_wait_frontier_block_state_union_changed(
     changed |= loom_amdgpu_wait_memory_state_union_changed(
         &frontier->memory.static_outgoing_states[target_block],
         &incoming_state);
-  }
-  if (frontier->vmem_results.static_outgoing_words != NULL &&
-      !iree_any_bit_set(drain_counter_mask,
-                        LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_LOAD)) {
-    changed |= loom_amdgpu_wait_vmem_result_state_union_changed(
-        loom_amdgpu_wait_frontier_vmem_result_block_words(
-            frontier, frontier->vmem_results.static_outgoing_words,
-            target_block),
-        loom_amdgpu_wait_frontier_const_vmem_result_block_words(
-            frontier, frontier->vmem_results.static_outgoing_words,
-            source_block),
-        frontier->vmem_results.word_count);
   }
   if (frontier->storage_leases.static_outgoing_words != NULL) {
     changed |= loom_amdgpu_wait_storage_lease_state_union_after_drain_changed(
@@ -624,14 +469,6 @@ static bool loom_amdgpu_wait_frontier_block_state_is_empty(
   if (frontier->memory.static_outgoing_states != NULL &&
       !loom_amdgpu_wait_memory_state_is_empty(
           &frontier->memory.static_outgoing_states[block_index])) {
-    return false;
-  }
-  if (frontier->vmem_results.static_outgoing_words != NULL &&
-      !loom_amdgpu_wait_vmem_result_state_is_empty(
-          loom_amdgpu_wait_frontier_const_vmem_result_block_words(
-              frontier, frontier->vmem_results.static_outgoing_words,
-              block_index),
-          frontier->vmem_results.word_count)) {
     return false;
   }
   if (frontier->storage_leases.static_outgoing_words != NULL &&
@@ -704,7 +541,7 @@ iree_status_t loom_amdgpu_wait_frontier_initialize(
     const loom_low_schedule_table_t* schedule,
     const loom_low_allocation_table_t* allocation,
     const loom_amdgpu_wait_frontier_node_t* nodes,
-    iree_host_size_t vgpr_unit_count, iree_host_size_t agpr_unit_count,
+    const loom_amdgpu_wait_completion_node_t* completion_nodes,
     const uint32_t* planned_block_drain_counter_masks,
     iree_arena_allocator_t* arena, loom_amdgpu_wait_frontier_t* out_frontier) {
   IREE_ASSERT_ARGUMENT(schedule);
@@ -715,11 +552,6 @@ iree_status_t loom_amdgpu_wait_frontier_initialize(
       .schedule = schedule,
       .allocation = allocation,
       .nodes = nodes,
-      .vmem_results =
-          {
-              .vgpr_unit_count = vgpr_unit_count,
-              .agpr_unit_count = agpr_unit_count,
-          },
       .storage_leases =
           {
               .lease_count = allocation == NULL
@@ -730,32 +562,15 @@ iree_status_t loom_amdgpu_wait_frontier_initialize(
   };
 
   bool has_memory_producer = false;
-  bool has_vmem_result_producer = false;
   bool has_xcnt_producer = false;
   for (iree_host_size_t i = 0; i < schedule->node_count; ++i) {
     has_memory_producer |=
         nodes[i].read_counter_mask != 0 || nodes[i].write_counter_mask != 0;
-    has_vmem_result_producer |=
-        nodes[i].vmem_result_order_class != LOOM_AMDGPU_VMEM_RESULT_ORDER_NONE;
     has_xcnt_producer |= nodes[i].xcnt_group_flags != 0;
   }
 
   const bool has_cross_block_state =
       schedule->block_count > 1 && schedule->cfg_graph.blocks != NULL;
-  const iree_host_size_t vector_unit_count = vgpr_unit_count + agpr_unit_count;
-  if (has_cross_block_state && has_vmem_result_producer && allocation != NULL &&
-      vector_unit_count != 0) {
-    out_frontier->vmem_results.word_count =
-        (vector_unit_count + LOOM_AMDGPU_WAIT_VMEM_RESULT_UNITS_PER_WORD - 1) /
-        LOOM_AMDGPU_WAIT_VMEM_RESULT_UNITS_PER_WORD;
-    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-        arena, out_frontier->vmem_results.word_count,
-        sizeof(*out_frontier->vmem_results.active_words),
-        (void**)&out_frontier->vmem_results.active_words));
-    memset(out_frontier->vmem_results.active_words, 0,
-           out_frontier->vmem_results.word_count *
-               sizeof(*out_frontier->vmem_results.active_words));
-  }
   if (has_cross_block_state && out_frontier->storage_leases.lease_count != 0) {
     IREE_RETURN_IF_ERROR(loom_low_allocation_storage_lease_selection_initialize(
         allocation->storage_lease_unit_index, arena,
@@ -813,7 +628,6 @@ iree_status_t loom_amdgpu_wait_frontier_initialize(
 
   if (!has_cross_block_state ||
       (!has_memory_producer &&
-       out_frontier->vmem_results.active_words == NULL &&
        out_frontier->storage_leases.active_words == NULL &&
        !has_xcnt_producer)) {
     return iree_ok_status();
@@ -834,24 +648,6 @@ iree_status_t loom_amdgpu_wait_frontier_initialize(
     memset(out_frontier->memory.resolved_outgoing_states, 0,
            schedule->block_count *
                sizeof(*out_frontier->memory.resolved_outgoing_states));
-  }
-  if (out_frontier->vmem_results.active_words != NULL) {
-    const iree_host_size_t state_word_count =
-        schedule->block_count * out_frontier->vmem_results.word_count;
-    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-        arena, state_word_count,
-        sizeof(*out_frontier->vmem_results.static_outgoing_words),
-        (void**)&out_frontier->vmem_results.static_outgoing_words));
-    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-        arena, state_word_count,
-        sizeof(*out_frontier->vmem_results.resolved_outgoing_words),
-        (void**)&out_frontier->vmem_results.resolved_outgoing_words));
-    memset(out_frontier->vmem_results.static_outgoing_words, 0,
-           state_word_count *
-               sizeof(*out_frontier->vmem_results.static_outgoing_words));
-    memset(out_frontier->vmem_results.resolved_outgoing_words, 0,
-           state_word_count *
-               sizeof(*out_frontier->vmem_results.resolved_outgoing_words));
   }
   if (out_frontier->storage_leases.active_words != NULL) {
     const iree_host_size_t state_word_count =
@@ -889,11 +685,11 @@ iree_status_t loom_amdgpu_wait_frontier_initialize(
   }
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       arena, schedule->block_count,
-      sizeof(*out_frontier->block_drain_counter_masks),
-      (void**)&out_frontier->block_drain_counter_masks));
-  memset(
-      out_frontier->block_drain_counter_masks, 0,
-      schedule->block_count * sizeof(*out_frontier->block_drain_counter_masks));
+      sizeof(*out_frontier->incoming_completion_counter_masks),
+      (void**)&out_frontier->incoming_completion_counter_masks));
+  memset(out_frontier->incoming_completion_counter_masks, 0,
+         schedule->block_count *
+             sizeof(*out_frontier->incoming_completion_counter_masks));
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       arena, schedule->block_count, sizeof(*out_frontier->block_flags),
       (void**)&out_frontier->block_flags));
@@ -904,7 +700,7 @@ iree_status_t loom_amdgpu_wait_frontier_initialize(
          schedule->block_count * sizeof(*out_frontier->block_flags));
 
   loom_amdgpu_wait_frontier_build_local_states(
-      out_frontier, planned_block_drain_counter_masks);
+      out_frontier, completion_nodes, planned_block_drain_counter_masks);
   loom_amdgpu_wait_frontier_propagate_static_states(out_frontier, worklist);
   return iree_ok_status();
 }
@@ -915,17 +711,11 @@ void loom_amdgpu_wait_frontier_begin_block(
   IREE_ASSERT(block_index < frontier->schedule->block_count);
   IREE_ASSERT(frontier->active_block_index == UINT16_MAX);
   frontier->memory.active_state = (loom_amdgpu_wait_memory_state_t){0};
-  if (frontier->vmem_results.active_words != NULL) {
-    memset(frontier->vmem_results.active_words, 0,
-           frontier->vmem_results.word_count *
-               sizeof(*frontier->vmem_results.active_words));
-  }
   if (frontier->storage_leases.active_words != NULL) {
     memset(frontier->storage_leases.active_words, 0,
            frontier->storage_leases.word_count *
                sizeof(*frontier->storage_leases.active_words));
   }
-  frontier->vmem_results.active_flags = 0;
   frontier->xcnt.active_flags = 0;
   frontier->xcnt.drained_group_flags = 0;
   frontier->incoming_drain_counter_mask = 0;
@@ -949,19 +739,6 @@ void loom_amdgpu_wait_frontier_begin_block(
       loom_amdgpu_wait_memory_state_union_changed(
           &frontier->memory.active_state, predecessor_state);
     }
-    if (frontier->vmem_results.static_outgoing_words != NULL) {
-      const uint64_t* predecessor_words =
-          predecessor_resolved
-              ? loom_amdgpu_wait_frontier_const_vmem_result_block_words(
-                    frontier, frontier->vmem_results.resolved_outgoing_words,
-                    predecessor_index)
-              : loom_amdgpu_wait_frontier_const_vmem_result_block_words(
-                    frontier, frontier->vmem_results.static_outgoing_words,
-                    predecessor_index);
-      loom_amdgpu_wait_vmem_result_state_union_changed(
-          frontier->vmem_results.active_words, predecessor_words,
-          frontier->vmem_results.word_count);
-    }
     if (frontier->storage_leases.static_outgoing_words != NULL) {
       const uint64_t* predecessor_words =
           predecessor_resolved
@@ -982,13 +759,6 @@ void loom_amdgpu_wait_frontier_begin_block(
               ? frontier->xcnt.resolved_outgoing_flags[predecessor_index]
               : frontier->xcnt.static_outgoing_flags[predecessor_index];
     }
-  }
-  if (frontier->vmem_results.active_words != NULL &&
-      !loom_amdgpu_wait_vmem_result_state_is_empty(
-          frontier->vmem_results.active_words,
-          frontier->vmem_results.word_count)) {
-    frontier->vmem_results.active_flags |=
-        LOOM_AMDGPU_WAIT_VMEM_RESULT_STATE_FLAG_PENDING;
   }
 }
 
@@ -1062,39 +832,6 @@ bool loom_amdgpu_wait_frontier_producer_is_complete(
       frontier, node->write_space_flags,
       LOOM_AMDGPU_WAIT_MEMORY_ACCESS_FLAG_WRITE);
   return !iree_any_bit_set(pending_reads | pending_writes, counter_mask);
-}
-
-loom_amdgpu_vmem_result_order_class_t
-loom_amdgpu_wait_frontier_query_vmem_result(
-    const loom_amdgpu_wait_frontier_t* frontier,
-    const loom_low_allocation_assignment_t* assignment) {
-  IREE_ASSERT_ARGUMENT(frontier);
-  IREE_ASSERT(frontier->active_block_index < frontier->schedule->block_count);
-  if (frontier->vmem_results.active_words == NULL ||
-      !iree_any_bit_set(frontier->vmem_results.active_flags,
-                        LOOM_AMDGPU_WAIT_VMEM_RESULT_STATE_FLAG_PENDING)) {
-    return LOOM_AMDGPU_VMEM_RESULT_ORDER_NONE;
-  }
-  iree_host_size_t unit_base = 0;
-  iree_host_size_t unit_count = 0;
-  if (!loom_amdgpu_wait_frontier_map_vector_assignment(
-          frontier, assignment, &unit_base, &unit_count)) {
-    return LOOM_AMDGPU_VMEM_RESULT_ORDER_NONE;
-  }
-  const uint8_t order_class_flags = loom_amdgpu_wait_vmem_result_state_query(
-      frontier->vmem_results.active_words, unit_base, unit_count);
-  if (order_class_flags == 0) {
-    return LOOM_AMDGPU_VMEM_RESULT_ORDER_NONE;
-  }
-  for (loom_amdgpu_vmem_result_order_class_t order_class =
-           LOOM_AMDGPU_VMEM_RESULT_ORDER_NOSAMPLER;
-       order_class < LOOM_AMDGPU_VMEM_RESULT_ORDER_CLASS_COUNT; ++order_class) {
-    if (order_class_flags ==
-        loom_amdgpu_wait_vmem_result_order_class_flag(order_class)) {
-      return order_class;
-    }
-  }
-  return LOOM_AMDGPU_VMEM_RESULT_ORDER_UNKNOWN;
 }
 
 bool loom_amdgpu_wait_frontier_storage_lease_is_active(
@@ -1174,13 +911,6 @@ void loom_amdgpu_wait_frontier_drain(loom_amdgpu_wait_frontier_t* frontier,
   frontier->incoming_drain_counter_mask |= counter_mask;
   loom_amdgpu_wait_memory_state_drain(&frontier->memory.active_state,
                                       counter_mask);
-  if (frontier->vmem_results.active_words != NULL &&
-      iree_any_bit_set(counter_mask, LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_LOAD)) {
-    memset(frontier->vmem_results.active_words, 0,
-           frontier->vmem_results.word_count *
-               sizeof(*frontier->vmem_results.active_words));
-    frontier->vmem_results.active_flags = 0;
-  }
   if (frontier->storage_leases.active_words != NULL) {
     loom_amdgpu_wait_storage_lease_state_drain(
         frontier, frontier->storage_leases.active_words, counter_mask,
@@ -1200,17 +930,6 @@ void loom_amdgpu_wait_frontier_end_block(
   if (outgoing_memory_state != NULL) {
     *outgoing_memory_state = frontier->memory.active_state;
   }
-  uint64_t* outgoing_vmem_result_words =
-      frontier->vmem_results.resolved_outgoing_words == NULL
-          ? NULL
-          : loom_amdgpu_wait_frontier_vmem_result_block_words(
-                frontier, frontier->vmem_results.resolved_outgoing_words,
-                block_index);
-  if (outgoing_vmem_result_words != NULL) {
-    memcpy(outgoing_vmem_result_words, frontier->vmem_results.active_words,
-           frontier->vmem_results.word_count *
-               sizeof(*outgoing_vmem_result_words));
-  }
   uint64_t* outgoing_storage_lease_words =
       frontier->storage_leases.resolved_outgoing_words == NULL
           ? NULL
@@ -1229,8 +948,7 @@ void loom_amdgpu_wait_frontier_end_block(
   if (outgoing_xcnt_group_flags != NULL) {
     *outgoing_xcnt_group_flags = frontier->xcnt.active_flags;
   }
-  if (outgoing_memory_state != NULL || outgoing_vmem_result_words != NULL ||
-      outgoing_storage_lease_words != NULL) {
+  if (outgoing_memory_state != NULL || outgoing_storage_lease_words != NULL) {
     const loom_low_schedule_block_t* block =
         &frontier->schedule->blocks[block_index];
     iree_host_size_t next_storage_lease_index =
@@ -1255,12 +973,6 @@ void loom_amdgpu_wait_frontier_end_block(
         loom_amdgpu_wait_memory_state_add_node(
             outgoing_memory_state, node, read_counter_mask, write_counter_mask);
       }
-      if (outgoing_vmem_result_words != NULL &&
-          !iree_any_bit_set(node->drained_after_production_counter_mask,
-                            LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_LOAD)) {
-        loom_amdgpu_wait_frontier_publish_node_vmem_results(
-            frontier, outgoing_vmem_result_words, node_index);
-      }
       if (outgoing_storage_lease_words != NULL) {
         loom_amdgpu_wait_frontier_publish_packet_storage_leases(
             frontier, outgoing_storage_lease_words, packet_index,
@@ -1274,11 +986,6 @@ void loom_amdgpu_wait_frontier_end_block(
         LOOM_AMDGPU_WAIT_FRONTIER_BLOCK_FLAG_RESOLVED;
   }
   frontier->memory.active_state = (loom_amdgpu_wait_memory_state_t){0};
-  if (frontier->vmem_results.active_words != NULL) {
-    memset(frontier->vmem_results.active_words, 0,
-           frontier->vmem_results.word_count *
-               sizeof(*frontier->vmem_results.active_words));
-  }
   if (frontier->storage_leases.active_words != NULL) {
     for (iree_host_size_t word_index = 0;
          word_index < frontier->storage_leases.word_count; ++word_index) {
@@ -1287,7 +994,6 @@ void loom_amdgpu_wait_frontier_end_block(
           &frontier->storage_leases.active_selection);
     }
   }
-  frontier->vmem_results.active_flags = 0;
   frontier->xcnt.active_flags = 0;
   frontier->active_block_index = UINT16_MAX;
 }

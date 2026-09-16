@@ -16,6 +16,7 @@ from loom.reporting.compile_report import (
     CompileReportError,
     compile_report_entry_identity,
 )
+from loom.reporting.compile_report_loop_pipelines import build_loop_pipeline_show
 from loom.reporting.compile_report_move_causes import (
     CompileReportMoveCause,
     parse_compile_report_move_causes,
@@ -74,6 +75,7 @@ class AmdgpuCompileReportSuggestionProvider:
             )
 
         suggestions = list(_suggest_wait_serialization(document))
+        suggestions.extend(_suggest_pipeline_copy_waits(document))
         for entry in document.entries:
             entry_index = entry["index"]
             entry_name = compile_report_entry_identity(entry).display_name()
@@ -115,6 +117,96 @@ class AmdgpuCompileReportSuggestionProvider:
 
 
 AMDGPU_COMPILE_REPORT_SUGGESTION_PROVIDER = AmdgpuCompileReportSuggestionProvider()
+
+
+def _suggest_pipeline_copy_waits(
+    document: CompileReportDocument,
+) -> tuple[CompileReportSuggestion, ...]:
+    policies = build_loop_pipeline_show(document)
+    actions = document.report.get("wait_action_rows")
+    if document.status_code != 0 or policies is None or actions is None:
+        return ()
+    policy_evidence: dict[int, list[CompileReportSuggestionEvidence]] = {}
+    for position, policy in enumerate(cast(list[dict[str, object]], policies["rows"])):
+        if policy["outcome"] != "pipelined":
+            continue
+        entry = _entry_for_function(document, cast(str, policy["function"]))
+        if entry is None:
+            continue
+        evidence = policy_evidence.setdefault(cast(int, entry["index"]), [])
+        evidence.extend(
+            CompileReportSuggestionEvidence(
+                f"source_low.loop_pipelines.rows[{position}].{key}", policy[key]
+            )
+            for key in ("function", "loop", "depth")
+        )
+
+    # A low.br payload is a wait consumer only when allocation materializes a
+    # copy. Relocated preheader waits name a different insertion node and do
+    # not establish a wait at the branch itself. The report identifies the
+    # entry and block, but does not attribute that branch to a source loop.
+    waits_by_entry: dict[int, list[tuple[str, dict[str, object]]]] = {}
+    for position, row in enumerate(
+        _report_indexed_rows(
+            _report_object(actions, "wait_action_rows"), "wait_action_rows"
+        )
+    ):
+        if (
+            row.get("counter") != "vmem_load"
+            or row.get("action") != "planned"
+            or row.get("reason") != "amdgpu.ssa_use"
+            or row.get("consumer_operation") != "low.br"
+        ):
+            continue
+        path = f"wait_action_rows.rows[{position}]"
+        entry = _entry_for_function(
+            document, _report_string(row.get("function"), f"{path}.function")
+        )
+        if entry is None or entry["index"] not in policy_evidence:
+            continue
+        target_count = _report_integer(row.get("target_count"), f"{path}.target_count")
+        node = _report_integer(row.get("node_index"), f"{path}.node_index")
+        consumer = _report_integer(row.get("consumer_node"), f"{path}.consumer_node")
+        if target_count != 0 or node != consumer:
+            continue
+        waits_by_entry.setdefault(cast(int, entry["index"]), []).append((path, row))
+
+    suggestions = []
+    for entry in document.entries:
+        index = cast(int, entry["index"])
+        waits = waits_by_entry.get(index)
+        if not waits:
+            continue
+        evidence = list(policy_evidence[index])
+        for path, row in waits:
+            for key in (
+                "block_index",
+                "node_index",
+                "target_count",
+                "outstanding_before",
+            ):
+                evidence.append(
+                    CompileReportSuggestionEvidence(
+                        f"{path}.{key}", _report_integer(row.get(key), f"{path}.{key}")
+                    )
+                )
+        suggestions.append(
+            CompileReportSuggestion(
+                suggestion_id="amdgpu.pipeline_copy_waits",
+                entry_name=compile_report_entry_identity(entry).display_name(),
+                action=(
+                    "Full global-load waits precede branch-payload copies in this "
+                    "read-ahead entry. Inspect the cited blocks "
+                    "to distinguish steady backedges from startup and tail edges. "
+                    "For steady backedges, compare explicit unroll factors with "
+                    "schedule(recurrence) at fixed pipeline depth. Check for fewer "
+                    "queue moves and loads still pending at the backedge, then "
+                    "compare registers, occupancy, code size, and measured runtime."
+                ),
+                evidence=tuple(evidence),
+            )
+        )
+    return tuple(suggestions)
 
 
 def _suggest_wait_serialization(

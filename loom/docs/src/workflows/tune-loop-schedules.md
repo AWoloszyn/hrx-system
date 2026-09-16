@@ -48,9 +48,10 @@ in the same directory:
 --8<-- "examples/guide/functions-and-control/read-ahead.loom"
 ```
 
-The source defaults to depth three and unroll factor two. `config.def` provides
-those defaults; `--config` overrides them for a particular compilation. The
-loop body continues to describe one load and one addition.
+The source defaults to depth three and unroll factor four with
+`schedule(recurrence)`. `config.def` provides those defaults; `--config` overrides
+them for a particular compilation. The loop body continues to describe one load
+and one addition.
 
 The checks use `input[row, lane] = 1 + 32 * row + lane`. For `N` rows the exact
 answer is `N * (lane + 1) + 16 * N * (N - 1)`. Distinct rows expose skipped,
@@ -86,6 +87,7 @@ These configurations answer different questions:
 | 1 | 2 | Unrolling alone. |
 | 3 | 1 | Read-ahead without body expansion. |
 | 3 | 2 | Read-ahead and unrolling together. |
+| 3 | 4 | A larger recurrence tile that can preserve pending loads across its backedge. |
 
 Depth one consumes the read-ahead policy with serial iteration. Factor one
 keeps one copy of the body. To compare depths, hold the unroll factor fixed;
@@ -94,7 +96,7 @@ candidate before accepting a timing result:
 
 ```shell
 for depth in 1 3; do
-  for factor in 1 2; do
+  for factor in 1 2 4; do
     iree-test-loom read-ahead.loombc \
       --device=amdgpu --target=amdgpu:gfx11-generic --sanitizer=access \
       --config=read_ahead.depth="$depth" --config=read_ahead.unroll="$factor" \
@@ -110,13 +112,13 @@ whole unrolled body.
 
 ## Inspect the schedule and its cost
 
-Compile depth one and depth three with factor two and the same target:
+Compile depth one and depth three with factor four and the same target:
 
 ```shell
 for depth in 1 3; do
   loom-compile read-ahead.loombc --root=@sum_rows \
     --target=amdgpu:gfx11-generic --format=amdgpu-hsaco \
-    --config=read_ahead.depth="$depth" --config=read_ahead.unroll=2 \
+    --config=read_ahead.depth="$depth" --config=read_ahead.unroll=4 \
     --output="sum-rows-d${depth}.hsaco" --compile-report=details \
     --compile-report-output="sum-rows-d${depth}.report.json"
 done
@@ -161,6 +163,54 @@ changed; the tool does not infer that from two arbitrary reports. The
 [report comparison contract](compile-reports.md#diff-one-controlled-change)
 explains the identity checks.
 
+## Check that read-ahead survives native code generation
+
+The source schedule records how far values travel between iterations. Hardware
+overlap also depends on their final register assignments. A load can remain
+pending until its value is read, but a register-to-register queue copy reads
+that value too. A full wait before such a copy can finish future loads earlier
+than the arithmetic needs them. Increasing depth alone may then leave the
+steady loop with the same amount of useful overlap.
+
+`unroll(%factor) schedule(recurrence)` gives allocation a larger repeating body
+in which old values can be consumed before their registers receive future
+loads. In the checked row sum, depth three with factor four produces a
+copy-free steady backedge on gfx1151 and gfx1250. Its waits allow two loads to
+remain pending across it. On gfx1151 the repeating body has this shape:
+
+```text
+issue two future loads
+wait vmcnt(3); consume first carried value
+issue another future load into the released register
+wait vmcnt(3); consume second carried value
+issue another future load into the released register
+wait vmcnt(3); consume first load issued in this body
+wait vmcnt(2); consume second load issued in this body
+branch allowing two loads to remain pending
+```
+
+A partial wait allows younger requests to remain outstanding. Gfx1250 expresses
+the same thresholds with `s_wait_loadcnt`. Startup and exit waits still complete
+the work those paths require. This register pattern is a compiled result for
+this example; changing the payload, target, or unroll factor can change it.
+
+Detailed AMDGPU reports retain each wait's block, producer, consumer, and
+outstanding counts. `suggest` identifies full load waits whose actual consumers
+are branch-payload copies. For the packed-dot example below it reports:
+
+```text
+--8<-- "generated/examples/guide/functions-and-control/pipeline-copy-waits.txt"
+```
+
+The finding associates native evidence with the compiled entry. It does not
+assign every branch to a particular source loop: startup, steady-state, and
+tail paths all have edges. Inspect the cited blocks in the native artifact and
+compare queue moves, full and partial waits, registers, and code size while
+varying explicit unrolling at a fixed depth. The
+[wait-report queries](compile-report-queries.md) expose the individual rows.
+A deeper source queue or fewer wait instructions alone does not establish a
+runtime improvement.
+
 ## Measure the checked workload
 
 The example's `@sum_rows_64` benchmark selects the 64-row correctness case.
@@ -168,7 +218,7 @@ First inspect its plan without executing a device:
 
 ```shell
 iree-benchmark-loom read-ahead.loombc --benchmark=@sum_rows_64 \
-  --config=read_ahead.depth=3 --config=read_ahead.unroll=2 \
+  --config=read_ahead.depth=3 --config=read_ahead.unroll=4 \
   --dry-run --output=sum-rows.plan.json
 ```
 
@@ -179,7 +229,7 @@ each configuration under the same policy:
 for depth in 1 3; do
   iree-benchmark-loom read-ahead.loombc --benchmark=@sum_rows_64 \
     --device=amdgpu --target=amdgpu:gfx11-generic \
-    --config=read_ahead.depth="$depth" --config=read_ahead.unroll=2 \
+    --config=read_ahead.depth="$depth" --config=read_ahead.unroll=4 \
     --measure=dispatch_complete --batch-size=64 \
     --output="sum-rows-d${depth}.benchmark.json"
 done

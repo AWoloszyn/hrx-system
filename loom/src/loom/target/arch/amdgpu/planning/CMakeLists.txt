@@ -199,12 +199,29 @@ endif()
 if(LOOM_TARGET_ARCH_AMDGPU)
 loom_cc_library(
   NAME
+    wait_completion
+  HDRS
+    "wait_completion.h"
+  SRCS
+    "wait_completion.c"
+  DEPS
+    ::wait_counters
+    iree::base
+    loom::codegen::low::schedule
+  PUBLIC
+)
+endif()
+
+if(LOOM_TARGET_ARCH_AMDGPU)
+loom_cc_library(
+  NAME
     wait_frontier
   HDRS
     "wait_frontier.h"
   SRCS
     "wait_frontier.c"
   DEPS
+    ::wait_completion
     ::wait_counters
     iree::base
     iree::base::internal
@@ -228,6 +245,7 @@ loom_cc_library(
   SRCS
     "wait_loop.c"
   DEPS
+    ::wait_completion
     ::wait_counters
     iree::base
     iree::base::internal::arena
@@ -250,6 +268,7 @@ loom_cc_library(
   DEPS
     ::address_state
     ::structural_packet
+    ::wait_completion
     ::wait_counters
     ::wait_frontier
     ::wait_loop

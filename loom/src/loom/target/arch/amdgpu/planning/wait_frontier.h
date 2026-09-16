@@ -14,6 +14,7 @@
 #include "loom/codegen/low/allocation/storage_lease_index.h"
 #include "loom/codegen/low/allocation/table.h"
 #include "loom/codegen/low/schedule/types.h"
+#include "loom/target/arch/amdgpu/planning/wait_completion.h"
 #include "loom/target/arch/amdgpu/planning/wait_counters.h"
 #include "loom/target/arch/amdgpu/refs/target_refs.h"
 
@@ -55,8 +56,6 @@ typedef struct loom_amdgpu_wait_frontier_node_t {
   uint32_t write_counter_mask;
   // Counter classes fully drained after this node issued.
   uint32_t drained_after_production_counter_mask;
-  // Counter classes drained when this node executes.
-  uint32_t drain_counter_mask;
   // Gfx125x XCNT translation group produced by this node, or zero.
   loom_amdgpu_wait_xcnt_group_flags_t xcnt_group_flags;
   // Normalized memory spaces read by this node.
@@ -91,23 +90,6 @@ typedef struct loom_amdgpu_wait_frontier_t {
     // Incoming state active while the current block is processed.
     loom_amdgpu_wait_memory_state_t active_state;
   } memory;
-  // Outstanding VMEM result writes by physical vector-register unit.
-  struct {
-    // Number of physical VGPR units in the packed state domain.
-    iree_host_size_t vgpr_unit_count;
-    // Number of physical AGPR units after the VGPR state domain.
-    iree_host_size_t agpr_unit_count;
-    // Number of packed state words per block.
-    iree_host_size_t word_count;
-    // Conservative transitive outgoing words for every block.
-    uint64_t* static_outgoing_words;
-    // Refined outgoing words recorded after each processed block.
-    uint64_t* resolved_outgoing_words;
-    // Incoming words active while the current block is processed.
-    uint64_t* active_words;
-    // Flags summarizing active VMEM result state.
-    uint8_t active_flags;
-  } vmem_results;
   // Assignment-backed storage leases that remain active across block edges.
   struct {
     // Number of allocation storage-lease instances in the packed domain.
@@ -146,8 +128,9 @@ typedef struct loom_amdgpu_wait_frontier_t {
   // Counters already removed from incoming state in the active block. Local
   // producers are published at end_block, never added to the incoming bitmaps.
   uint32_t incoming_drain_counter_mask;
-  // Counter classes fully drained on every path through each block.
-  uint32_t* block_drain_counter_masks;
+  // Incoming counter classes completed on every path through each block.
+  // Younger local producers can remain pending when only a prefix retires.
+  uint32_t* incoming_completion_counter_masks;
   // Per-block worklist and resolved-state bits.
   uint8_t* block_flags;
   // Current block index, or UINT16_MAX outside block processing.
@@ -159,13 +142,13 @@ loom_amdgpu_wait_memory_space_flags_t loom_amdgpu_wait_memory_space_flag(
     loom_low_memory_space_t memory_space);
 
 // Initializes bounded cross-block state from the schedule CFG, allocation,
-// and node classifications. Dynamically retained storage is owned by |arena|;
-// inline state lives in |out_frontier|.
+// and retained node classifications/completion facts. Dynamically retained
+// storage is owned by |arena|; inline state lives in |out_frontier|.
 iree_status_t loom_amdgpu_wait_frontier_initialize(
     const loom_low_schedule_table_t* schedule,
     const loom_low_allocation_table_t* allocation,
     const loom_amdgpu_wait_frontier_node_t* nodes,
-    iree_host_size_t vgpr_unit_count, iree_host_size_t agpr_unit_count,
+    const loom_amdgpu_wait_completion_node_t* completion_nodes,
     const uint32_t* planned_block_drain_counter_masks,
     iree_arena_allocator_t* arena, loom_amdgpu_wait_frontier_t* out_frontier);
 
@@ -196,14 +179,6 @@ uint32_t loom_amdgpu_wait_frontier_memory_dependency_mask(
 bool loom_amdgpu_wait_frontier_producer_is_complete(
     const loom_amdgpu_wait_frontier_t* frontier, uint32_t producer_node,
     uint32_t counter_mask);
-
-// Returns the single known completion-order class for outstanding VMEM writes
-// overlapping |assignment|. UNKNOWN represents either an unclassified write or
-// writes from multiple classes; NONE means no outstanding write overlaps.
-loom_amdgpu_vmem_result_order_class_t
-loom_amdgpu_wait_frontier_query_vmem_result(
-    const loom_amdgpu_wait_frontier_t* frontier,
-    const loom_low_allocation_assignment_t* assignment);
 
 // Returns true when assignment-backed storage lease |lease_index| may still be
 // active on entry to the current program point.
