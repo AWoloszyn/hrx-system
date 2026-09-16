@@ -63,6 +63,7 @@ def verify_lock_free_launch(temporary_root: Path) -> None:
             dev_command(
                 "bazel",
                 "run",
+                "--compilation_mode=dbg",
                 FIXTURE_TARGET,
                 "--",
                 "--ready-file",
@@ -150,6 +151,7 @@ def verify_exit_code(temporary_root: Path) -> None:
         dev_command(
             "bazel",
             "run",
+            "--compilation_mode=dbg",
             FIXTURE_TARGET,
             "--",
             "--exit-code",
@@ -201,6 +203,22 @@ def verify_try_dependency_aliases(temporary_root: Path) -> None:
 
 
 def main() -> int:
+    # The debug fixture consumes an artifact made by its own host-tool version.
+    # Both versions are in its dependency closure when launch metadata is read.
+    result = subprocess.run(
+        dev_command(
+            "bazel",
+            "build",
+            "--compilation_mode=dbg",
+            FIXTURE_TARGET,
+        ),
+        cwd=REPO_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"dual-configuration fixture build failed:\n{result.stdout}")
     with tempfile.TemporaryDirectory(prefix="iree-bazel-launch-") as temporary_name:
         temporary_root = Path(temporary_name)
         verify_lock_free_launch(temporary_root)

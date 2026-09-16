@@ -6,8 +6,9 @@
 #
 # bazel-to-cmake: skip
 
-load("@hrx//loom/build_tools/bazel:defs.bzl", "loom_execution_profile", "loom_library", "loom_test")
+load("@hrx//loom/build_tools/bazel:defs.bzl", "loom_execution_profile", "loom_kernel_library", "loom_library", "loom_test")
 load("@hrx//loom/requirements:defs.bzl", "TARGET_ARCH_VM")
+load("@hrx//loom/target/amdgpu:execution_profiles.bzl", "AMDGPU_HARDWARE_PROFILE")
 
 package(
     default_visibility = ["//visibility:private"],
@@ -30,4 +31,40 @@ loom_test(
         target_family = "vm",
     ),
     deps = [":rotation"],
+)
+
+loom_kernel_library(
+    name = "read_ahead",
+    srcs = [
+        "read-ahead.loom",
+        "read-ahead-tests.loom",
+    ],
+    execution_profiles = [AMDGPU_HARDWARE_PROFILE],
+    targets = [
+        "@hrx//loom/target/amdgpu:gfx11-generic",
+        "@hrx//loom/target/amdgpu:gfx1250-a0",
+        "@hrx//loom/target/spirv:vulkan1.3+bda",
+    ],
+)
+
+loom_test(
+    name = "read_ahead_serial_test",
+    srcs = ["read-ahead-tests.loom"],
+    args = [
+        "--config=read_ahead.depth=1",
+        "--config=read_ahead.unroll=2",
+    ],
+    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    deps = [":read_ahead"],
+)
+
+loom_test(
+    name = "read_ahead_unroll1_test",
+    srcs = ["read-ahead-tests.loom"],
+    args = [
+        "--config=read_ahead.depth=3",
+        "--config=read_ahead.unroll=1",
+    ],
+    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    deps = [":read_ahead"],
 )

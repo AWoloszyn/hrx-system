@@ -317,6 +317,10 @@ iree_status_t loom_compile_run_pipeline(
     status = loom_pass_tool_run_flat_pipeline(module, pipeline, &run_options,
                                               &out_result->pass);
   }
+  if (iree_status_is_ok(status)) {
+    status = loom_target_compile_report_record_loop_pipelines(
+        options->report, module, &out_result->function_versions.list);
+  }
   loom_target_legalizer_registry_storage_deinitialize(
       &legalizer_registry_storage);
   return status;

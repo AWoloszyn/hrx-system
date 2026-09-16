@@ -8,6 +8,7 @@
 
 #include "loom/target/math_policy.h"
 #include "loom/target/reporting/format_json.h"
+#include "loom/target/reporting/format_loop_pipeline.h"
 #include "loom/target/reporting/schema.h"
 
 static iree_status_t
@@ -1764,6 +1765,12 @@ static iree_status_t loom_target_compile_report_format_source_low_json(
     IREE_RETURN_IF_ERROR(
         loom_target_compile_report_format_source_low_transforms_json(
             report, mode, stream));
+  }
+  if (report->loop_pipeline_rows.count != 0) {
+    IREE_RETURN_IF_ERROR(
+        loom_json_object_begin_field(&object, IREE_SV("loop_pipelines")));
+    IREE_RETURN_IF_ERROR(loom_target_compile_report_format_loop_pipelines_json(
+        report, mode, stream));
   }
   IREE_RETURN_IF_ERROR(
       loom_json_object_begin_field(&object, IREE_SV("memory")));

@@ -295,6 +295,76 @@ and a remainder executes only the iterations in the original half-open range:
 three iterations still produce `22`, including the final view identity.
 Unrolling preserves the program's data and completion dependencies.
 
+The [loop-tuning walkthrough](../workflows/tune-loop-schedules.md) combines
+these controls in checked row-sum and packed-dot examples, including serial
+controls, configuration sweeps, and compiler evidence.
+
+## Pipeline reads ahead of ordered computation
+
+`pipeline(%depth)` requests read-ahead on one `scf.for`. The loop still describes
+one logical iteration. Ordinary loads and their address prerequisites run ahead
+of the ordered consumer; the compiler constructs startup, steady-state, and
+drain code and carries the values between them.
+
+This kernel sums up to 64 rows from four-byte-aligned buffers. Its depth and
+unroll factor come from independent configuration values:
+
+**Source:** [`read-ahead.loom`](https://github.com/ROCm/hrx-system/blob/main/loom/docs/examples/guide/functions-and-control/read-ahead.loom)
+
+```loom title="read-ahead.loom"
+--8<-- "examples/guide/functions-and-control/read-ahead.loom"
+```
+
+Depth three keeps two iterations of loaded values queued. Each steady iteration
+fetches the next input and consumes the oldest queued value. The drain
+consumes the final two values in their original order. Empty loops perform no
+loads; loops shorter than the depth take the serial path. A partial unroll
+remainder also stays within the original half-open range. The accumulation order
+is preserved, including for floating-point recurrences.
+
+The clauses follow transformation order: `pipeline(%depth) unroll(%factor)`.
+Pipelining constructs the queue first; unrolling then groups iterations of the
+reconstructed loops. Depth three with unroll factor two still queues two original
+iterations, and each unrolled steady body advances the queue twice. An optional
+`schedule(...)` follows `unroll(...)` and controls how those copies are ordered.
+The target schedules independent instructions using its normal dependency
+constraints; the carried queue preserves the original iteration relationship.
+
+Both controls are independent and explicit: loops without `pipeline(...)`
+receive no read-ahead transformation, and pipelining does not request unrolling.
+Depth one retains serial iteration and any separate unroll policy, providing a
+useful control. The depth must specialize to a positive exact value; the unroll
+factor must also specialize before its policy runs.
+
+The read-ahead contract supports a flat loop body of ordinary loads and pure
+operations, with a positive exact step. Read prerequisites may depend on the
+induction variable and values outside the loop. A prerequisite that depends on
+loop-carried state cannot run ahead and is diagnosed. Cross-stage value types
+must be invariant across iterations. Writes, ordered or volatile effects,
+explicit asynchronous groups, nested regions, and consuming result-storage
+ties require a different scheduling/ownership contract and are diagnosed when
+requested at depth greater than one. The depth is bounded by 65,535 and by the
+representable carried-state tuple; unsupported requests fail at the source
+policy instead of silently running serially.
+
+Compile with the default depth or override it without editing the loop:
+
+```shell
+loom-compile read-ahead.loom --target=amdgpu:gfx1151 \
+  --format=amdgpu-hsaco --output=sum_rows.hsaco \
+  --config=read_ahead.depth=4 --config=read_ahead.unroll=2 \
+  --compile-report=details --compile-report-output=sum_rows.report.json
+loom-compile-report show sum_rows.report.json
+loom-compile-report suggest sum_rows.report.json
+```
+
+The report retains the applied policy and operation schedule alongside final
+registers, spills, occupancy, and code size. A larger queue trades additional
+live state and generated code for read overlap; the useful depth depends on the
+kernel and target. [Compile reports](../workflows/compile-reports.md) explain
+how to compare those costs with runtime measurements while holding unrolling
+and workload fixed.
+
 ## Select among whole values
 
 Not every choice needs a region. [`scf.select`](../reference/dialects/scf/ops/select.md)

@@ -324,6 +324,12 @@ scf_for = Op(
         ),
         Operand("iter_args", ANY, variadic=True),
         Operand(
+            "pipeline_depth",
+            INDEX,
+            optional=True,
+            doc="Optional SSA read-ahead depth consumed by pipeline-scf-for before unrolling. A positive exact depth counts original iterations independently of the unroll factor; depth one leaves the serial loop. Ordinary reads and their prerequisites run ahead of ordered consumers, with guarded startup and drain preserving the finite domain. The reconstructed loops retain their unroll policy.",
+        ),
+        Operand(
             "unroll_factor",
             INDEX,
             optional=True,
@@ -393,6 +399,10 @@ scf_for = Op(
             anchor="results",
         ),
         OptionalGroup(
+            [Clause("pipeline", Ref("pipeline_depth"))],
+            anchor="pipeline_depth",
+        ),
+        OptionalGroup(
             [Clause("unroll", Ref("unroll_factor"))],
             anchor="unroll_factor",
         ),
@@ -412,6 +422,8 @@ scf_for = Op(
         "%result = scf.for %iv = [%c0 to %n step %c1](%acc = %init : f32) -> (f32) {\n  %next = scalar.addf %acc, %acc : f32\n  scf.yield %next : f32\n}",
         "scf.for %iv = [%c0 to %n step %c1] unroll(%factor) {\n  scf.yield\n}",
         "scf.for %iv = [%c0 to %n step %c1] unroll(%factor) schedule(interleaved) {\n  scf.yield\n}",
+        "%result = scf.for %iv = [%c0 to %n step %c1](%sum = %initial : f32) -> (f32) pipeline(%depth) {\n  %value = view.load %input[%iv] : view<[%n]xf32> -> f32\n  %next = scalar.addf %sum, %value : f32\n  scf.yield %next : f32\n}",
+        "%result = scf.for %iv = [%c0 to %n step %c1](%sum = %initial : f32) -> (f32) pipeline(%depth) unroll(%factor) schedule(recurrence) {\n  %value = view.load %input[%iv] : view<[%n]xf32> -> f32\n  %next = scalar.addf %sum, %value : f32\n  scf.yield %next : f32\n}",
         "%result = scf.for %iv = [%c0 to %n step %c1](%acc = %init : f32) -> (f32) unroll(%factor) schedule(recurrence) {\n  %next = scalar.addf %acc, %acc : f32\n  scf.yield %next : f32\n}",
     ],
 )

@@ -47,6 +47,7 @@ at `.loombc`. A JIT embedding can perform the same operations in memory through
 | Task | Workflow |
 | --- | --- |
 | Drive a kernel from production witness through controlled optimization | [Agent-driven kernel development](agent-driven-kernel-development.md) |
+| Describe and compare loop unrolling and read-ahead | [Tune loop unrolling and pipelining](tune-loop-schedules.md) |
 | Turn a score change into a compiler question | [Read compile reports](compile-reports.md#relate-reports-to-benchmark-results) |
 | Preserve a complete result and its compiler evidence | [Benchmark checked work](benchmark.md#preserve-the-experiment) |
 | Query snapshot and JSONL benchmark evidence | [Read benchmark results](benchmark-results.md) |
@@ -109,4 +110,4 @@ inspection.
 | Describe an emitted artifact | [Compile artifacts](compile-artifacts.md#emit-an-artifact-manifest) |
 | Read one bounded report view | [Read compile reports](compile-reports.md#show-one-report) |
 | Compare compiler evidence | [Read compile reports](compile-reports.md#diff-one-controlled-change) |
-| Get target-owned experiments | [Read compile reports](compile-reports.md#ask-the-target-for-experiments) |
+| Choose a source or target experiment | [Read compile reports](compile-reports.md#choose-an-experiment) |

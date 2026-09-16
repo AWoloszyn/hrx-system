@@ -1,0 +1,307 @@
+// RUN: pass pipeline-scf-for
+
+func.def @tied_carried_storage(%input: view<64xf32>, %initial: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 8 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 3 : index
+  // ERROR@+1: STRUCTURE/014 {attr_name="pipeline", expected_constraint="loop results without consuming operand storage ties"}
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : f32) -> (%initial as f32) pipeline(%depth) {
+    %value = view.load %input[%i] : view<64xf32> -> f32
+    %next = scalar.addf %sum, %value : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ====
+// RUN: pass pipeline-scf-for
+
+func.def @invalid_depth_negative_1(%input: view<64xf32>, %initial: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 8 : index
+  %step = index.constant 1 : index
+  %depth = index.constant -1 : index
+  // ERROR@+1: STRUCTURE/014 {attr_name="pipeline", actual_value="-1", expected_constraint="a depth in [1, 65535]"}
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : f32) -> (f32) pipeline(%depth) {
+    %value = view.load %input[%i] : view<64xf32> -> f32
+    %next = scalar.addf %sum, %value : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ====
+// RUN: pass pipeline-scf-for
+
+func.def @invalid_depth_0(%input: view<64xf32>, %initial: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 8 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 0 : index
+  // ERROR@+1: STRUCTURE/014 {attr_name="pipeline", actual_value="0", expected_constraint="a depth in [1, 65535]"}
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : f32) -> (f32) pipeline(%depth) {
+    %value = view.load %input[%i] : view<64xf32> -> f32
+    %next = scalar.addf %sum, %value : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ====
+// RUN: pass pipeline-scf-for
+
+func.def @invalid_depth_65536(%input: view<64xf32>, %initial: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 8 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 65536 : index
+  // ERROR@+1: STRUCTURE/014 {attr_name="pipeline", actual_value="65536", expected_constraint="a depth in [1, 65535]"}
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : f32) -> (f32) pipeline(%depth) {
+    %value = view.load %input[%i] : view<64xf32> -> f32
+    %next = scalar.addf %sum, %value : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ====
+// RUN: pass pipeline-scf-for
+
+func.def @unresolved_depth(%input: view<64xf32>, %initial: f32, %depth: index) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 8 : index
+  %step = index.constant 1 : index
+  // ERROR@+1: STRUCTURE/014 {attr_name="pipeline", expected_constraint="a compile-time exact depth"}
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : f32) -> (f32) pipeline(%depth) {
+    %value = view.load %input[%i] : view<64xf32> -> f32
+    %next = scalar.addf %sum, %value : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ====
+// RUN: pass pipeline-scf-for
+
+func.def @invalid_step_negative_1(%input: view<64xf32>, %initial: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 8 : index
+  %step = index.constant -1 : index
+  %depth = index.constant 2 : index
+  // ERROR@+1: STRUCTURE/014 {attr_name="pipeline", expected_constraint="a positive exact static step"}
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : f32) -> (f32) pipeline(%depth) {
+    %value = view.load %input[%i] : view<64xf32> -> f32
+    %next = scalar.addf %sum, %value : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ====
+// RUN: pass pipeline-scf-for
+
+func.def @invalid_step_0(%input: view<64xf32>, %initial: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 8 : index
+  %step = index.constant 0 : index
+  %depth = index.constant 2 : index
+  // ERROR@+1: STRUCTURE/014 {attr_name="pipeline", expected_constraint="a positive exact static step"}
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : f32) -> (f32) pipeline(%depth) {
+    %value = view.load %input[%i] : view<64xf32> -> f32
+    %next = scalar.addf %sum, %value : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ====
+// RUN: pass pipeline-scf-for
+
+func.def @unresolved_step(%input: view<64xf32>, %initial: f32, %step: index) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 8 : index
+  %depth = index.constant 2 : index
+  // ERROR@+1: STRUCTURE/014 {attr_name="pipeline", expected_constraint="a positive exact static step"}
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : f32) -> (f32) pipeline(%depth) {
+    %value = view.load %input[%i] : view<64xf32> -> f32
+    %next = scalar.addf %sum, %value : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ====
+// RUN: pass pipeline-scf-for
+
+func.def @advance_overflow(%input: view<64xf32>, %initial: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 8 : index
+  %step = index.constant 9223372036854775807 : index
+  %depth = index.constant 3 : index
+  // ERROR@+1: STRUCTURE/014 {attr_name="pipeline", expected_constraint="(depth - 1) * step representable as a signed address"}
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : f32) -> (f32) pipeline(%depth) {
+    %value = view.load %input[%i] : view<64xf32> -> f32
+    %next = scalar.addf %sum, %value : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ====
+// RUN: pass pipeline-scf-for
+
+func.def @writes_are_not_moved(%input: view<64xf32>, %initial: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 8 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 2 : index
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : f32) -> (f32) pipeline(%depth) {
+    %value = view.load %input[%i] : view<64xf32> -> f32
+    // ERROR@+1: STRUCTURE/014 {attr_name="pipeline", expected_constraint="ordinary loads and pure operations without writes, ordered effects or async groups"}
+    view.store %sum, %input[%i] : f32, view<64xf32>
+    scf.yield %value : f32
+  }
+  func.return %result : f32
+}
+
+// ====
+// RUN: pass pipeline-scf-for
+
+func.def @nested_control_is_not_moved(%input: view<64xf32>, %initial: f32, %condition: i1) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 8 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 2 : index
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : f32) -> (f32) pipeline(%depth) {
+    %value = view.load %input[%i] : view<64xf32> -> f32
+    // ERROR@+1: STRUCTURE/014 {attr_name="pipeline", expected_constraint="a flat body without nested regions or successors"}
+    scf.if %condition {
+    }
+    scf.yield %value : f32
+  }
+  func.return %result : f32
+}
+
+// ====
+// RUN: pass pipeline-scf-for
+
+func.def @carried_address_dependency(%input: view<64xf32>, %initial: index) -> (index) {
+  %seed = scalar.constant 0.0 : f32
+  %begin = index.constant 0 : index
+  %end = index.constant 8 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 2 : index
+  %result, %last_value = scf.for %i = [%begin to %end step %step](%sum = %initial : index, %last = %seed : f32) -> (index, f32) pipeline(%depth) {
+    // ERROR@+1: STRUCTURE/014 {attr_name="pipeline", expected_constraint="read-ahead prerequisites independent of loop-carried state"}
+    %position = index.add %sum, %i : index
+    %value = view.load %input[%position] : view<64xf32> -> f32
+    %next = index.add %sum, %step : index
+    scf.yield %next, %value : index, f32
+  }
+  func.return %result : index
+}
+
+// ====
+// RUN: pass pipeline-scf-for
+
+func.def @no_read_producer(%input: view<64xf32>, %initial: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 8 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 2 : index
+  // ERROR@+1: STRUCTURE/014 {attr_name="pipeline", expected_constraint="at least one ordinary load to pipeline"}
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : f32) -> (f32) pipeline(%depth) {
+    %next = scalar.addf %sum, %initial : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ====
+// RUN: pass pipeline-scf-for
+
+func.def @unconsumed_read_producer(%input: view<64xf32>, %initial: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 8 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 2 : index
+  // ERROR@+1: STRUCTURE/014 {attr_name="pipeline", expected_constraint="a producer value used by the ordered consumer"}
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : f32) -> (f32) pipeline(%depth) {
+    %value = view.load %input[%i] : view<64xf32> -> f32
+    scf.yield %sum : f32
+  }
+  func.return %result : f32
+}
+
+// ====
+// RUN: pass pipeline-scf-for
+
+func.def @queue_operand_limit(%input: view<64xf32>, %initial: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 8 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 65535 : index
+  // ERROR@+1: STRUCTURE/014 {attr_name="pipeline", expected_constraint="pipeline state and bounds fitting the SCF operand limit"}
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : f32) -> (f32) pipeline(%depth) {
+    %first = view.load %input[%i] : view<64xf32> -> f32
+    %second = view.load %input[%i] : view<64xf32> -> f32
+    %both = scalar.addf %first, %second : f32
+    %next = scalar.addf %sum, %both : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ====
+// RUN: pass pipeline-scf-for
+
+func.def @varying_queue_type(%input: view<64xf32>, %initial: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 8 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 2 : index
+  // ERROR@+1: STRUCTURE/014 {attr_name="pipeline", expected_constraint="iteration-invariant types for values carried between pipeline stages"}
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : f32) -> (f32) pipeline(%depth) {
+    %extent = index.add %i, %step : index
+    %values = vector.load %input[%i] : view<64xf32> -> vector<[%extent]xf32>
+    %value = vector.extract %values[0] : vector<[%extent]xf32> -> f32
+    %next = scalar.addf %sum, %value : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ====
+// RUN: pass scf-to-cfg
+
+func.def @cfg_cannot_discard_request(%input: view<64xf32>, %initial: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 8 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 2 : index
+  // ERROR@+1: STRUCTURE/014 {attr_name="pipeline", expected_constraint="consumed by pipeline-scf-for before scf-to-cfg"}
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : f32) -> (f32) pipeline(%depth) {
+    %value = view.load %input[%i] : view<64xf32> -> f32
+    %next = scalar.addf %sum, %value : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ====
+// RUN: pass unroll-scf-for
+
+func.def @unroll_cannot_discard_request(%input: view<64xf32>, %initial: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 8 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 2 : index
+  // ERROR@+1: STRUCTURE/014 {attr_name="pipeline", expected_constraint="consumed by pipeline-scf-for before unroll-scf-for"}
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : f32) -> (f32) pipeline(%depth) unroll(%depth) {
+    %value = view.load %input[%i] : view<64xf32> -> f32
+    %next = scalar.addf %sum, %value : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}

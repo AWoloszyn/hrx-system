@@ -48,9 +48,11 @@ loom_cc_library(
   NAME
     report
   HDRS
+    "loop_pipeline.h"
     "report.h"
     "target_insertion.h"
   SRCS
+    "loop_pipeline.c"
     "memory_summary.c"
     "memory_summary.h"
     "report.c"
@@ -63,6 +65,8 @@ loom_cc_library(
     loom::analysis::native_layout
     loom::codegen::low::planning_statistics
     loom::ir
+    loom::ops::op_defs
+    loom::target::function_version
     loom::target::residency
     loom::target::types
   PUBLIC
@@ -79,6 +83,8 @@ loom_cc_library(
     "format_json.h"
     "format_json_lowering.c"
     "format_json_planning.c"
+    "format_loop_pipeline.c"
+    "format_loop_pipeline.h"
     "format_text.c"
     "format_text.h"
     "format_text_lowering.c"
@@ -216,6 +222,21 @@ loom_cc_test(
     iree::testing::gtest_main
     loom::ir
     loom::target::math_policy
+)
+
+loom_cc_test(
+  NAME
+    loop_pipeline_test
+  SRCS
+    "loop_pipeline_test.cc"
+  DEPS
+    ::format
+    ::report
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::ir
+    loom::ops::test
+    loom::target::function_version
 )
 
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

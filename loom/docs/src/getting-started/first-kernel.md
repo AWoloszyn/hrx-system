@@ -178,6 +178,9 @@ testing, and remains linkable as a library.
   the workload, launch, and device-argument split.
 - [Checks and benchmarks](../guide/checks-and-benchmarks.md) develops richer
   generators, oracles, comparisons, and sample plans.
+- [Tune loop unrolling and pipelining](../workflows/tune-loop-schedules.md)
+  takes a streaming reduction through configurable schedules, correctness,
+  compile reports, and matched benchmarks.
 - [Benchmark checked work](../workflows/benchmark.md) covers timing modes, data
   reuse, profiling, and interleaved comparisons.
 - [Build libraries and binaries with Bazel](../workflows/build-with-bazel.md)

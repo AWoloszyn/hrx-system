@@ -1,0 +1,233 @@
+# Copyright 2026 The IREE Authors
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+from __future__ import annotations
+
+import pytest
+
+from loom.reporting.compile_report import CompileReportError, parse_compile_report
+from loom.reporting.compile_report_loop_pipelines import suggest_loop_pipelines
+from loom.reporting.compile_report_view import (
+    build_compile_report_show,
+    format_compile_report_show_text,
+)
+
+
+def _report(*, details: bool = True) -> dict:
+    policies = {
+        "count": 2,
+        "rows": [
+            {
+                "function": "stream",
+                "loop": 0,
+                "schedule": "read_ahead",
+                "outcome": "pipelined",
+                "depth": 3,
+                "queue_records": 2,
+                "values_per_record": 2,
+                "read_count": 2,
+            },
+            {
+                "function": "stream",
+                "loop": 1,
+                "schedule": "read_ahead",
+                "outcome": "serial",
+                "depth": 1,
+                "queue_records": 0,
+                "values_per_record": 0,
+                "read_count": 0,
+            },
+        ],
+    }
+    if details:
+        policies["stages"] = [
+            {
+                "function": "stream",
+                "loop": 0,
+                "position": i,
+                "op": op,
+                "stage": "producer" if i < 2 else "consumer",
+                "iteration_lookahead": 2 if i < 2 else 0,
+            }
+            for i, op in enumerate(
+                ("view.load", "view.load", "scalar.mulf", "scalar.addf")
+            )
+        ]
+    return {
+        "kind": "loom.compile_report",
+        "schema_version": 0,
+        "mode": "details" if details else "summary",
+        "status": {"code": 0, "name": "OK"},
+        "entries": {
+            "count": 1,
+            "rows": [
+                {
+                    "index": 0,
+                    "function": "stream_lowered",
+                    "source_function": "stream",
+                    "code_byte_count": 720,
+                    "private_memory_bytes": 0,
+                    "allocation_spill_count": 0,
+                    "target_resources": {
+                        "scalar": {"final": {"register_count": 10}},
+                        "vector": {"final": {"register_count": 16}},
+                        "occupancy_percent": 100,
+                    },
+                }
+            ],
+        },
+        "source_low": {
+            "count": 0,
+            **({"rows": []} if details else {}),
+            "loop_pipelines": policies,
+        },
+    }
+
+
+@pytest.mark.parametrize("details", [False, True])
+def test_show_groups_actual_schedules_and_keeps_serial_policies(details: bool) -> None:
+    view = build_compile_report_show(parse_compile_report(_report(details=details)))
+    policies = view["loop_pipelines"]
+    assert policies["count"] == 2
+    pipeline, serial = policies["rows"]
+    assert pipeline["depth"] == 3
+    assert serial["outcome"] == "serial"
+    if details:
+        assert pipeline["stages"] == [
+            {
+                "position": i,
+                "op": op,
+                "stage": "producer" if i < 2 else "consumer",
+                "iteration_lookahead": 2 if i < 2 else 0,
+            }
+            for i, op in enumerate(
+                ("view.load", "view.load", "scalar.mulf", "scalar.addf")
+            )
+        ]
+        assert serial["stages"] == []
+    else:
+        assert "stages" not in pipeline
+    text = format_compile_report_show_text(view)
+    assert (
+        "stream loop 0: pipelined depth=3 queue_records=2 values_per_record=2 reads=2"
+        in text
+    )
+    assert "stream loop 1: serial depth=1" in text
+    assert ("3: scalar.addf consumer iteration_lookahead=0" in text) == details
+
+
+def test_suggestions_cite_applied_policy_and_exact_entry_resources() -> None:
+    suggestions = suggest_loop_pipelines(parse_compile_report(_report()))
+    assert len(suggestions) == 1
+    suggestion = suggestions[0]
+    assert suggestion.entry_name == "stream"
+    assert suggestion.suggestion_id == "scf.compare_pipeline_depth"
+    assert "4 queued SSA values" in suggestion.action
+    assert "unroll factor and workload held fixed" in suggestion.action
+    assert (
+        "matched comparison establishes resource and performance deltas"
+        in suggestion.action
+    )
+    evidence = {fact.path: fact.value for fact in suggestion.evidence}
+    assert evidence["source_low.loop_pipelines.rows[0].depth"] == 3
+    assert (
+        evidence["entries.rows[0].target_resources.vector.final.register_count"] == 16
+    )
+    assert evidence["entries.rows[0].private_memory_bytes"] == 0
+
+
+def test_source_helpers_are_visible_without_assigning_an_entrys_costs() -> None:
+    report = _report()
+    report["entries"]["rows"][0]["source_function"] = "caller"
+    document = parse_compile_report(report)
+    assert build_compile_report_show(document)["loop_pipelines"]["count"] == 2
+    assert suggest_loop_pipelines(document) == ()
+
+
+def test_missing_resources_are_not_reported_as_zero() -> None:
+    report = _report()
+    entry = report["entries"]["rows"][0]
+    for field in (
+        "target_resources",
+        "code_byte_count",
+        "private_memory_bytes",
+        "allocation_spill_count",
+    ):
+        del entry[field]
+    (suggestion,) = suggest_loop_pipelines(parse_compile_report(report))
+    assert all(fact.path.startswith("source_low.") for fact in suggestion.evidence)
+
+
+def test_unannotated_and_failed_compilations_have_no_depth_advice() -> None:
+    report = _report()
+    report["status"] = {"code": 9, "name": "FAILED_PRECONDITION"}
+    assert suggest_loop_pipelines(parse_compile_report(report)) == ()
+    del report["source_low"]
+    report["status"] = {"code": 0, "name": "OK"}
+    document = parse_compile_report(report)
+    assert "loop_pipelines" not in build_compile_report_show(document)
+    assert suggest_loop_pipelines(document) == ()
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("function", ""),
+        ("loop", True),
+        ("depth", 0),
+        ("depth", -1),
+        ("depth", 2.5),
+        ("queue_records", 1),
+        ("values_per_record", 0),
+        ("read_count", 0),
+        ("outcome", "serial"),
+        ("schedule", "automatic"),
+    ],
+)
+def test_rejects_malformed_policy_fields(field: str, value: object) -> None:
+    report = _report()
+    report["source_low"]["loop_pipelines"]["rows"][0][field] = value
+    with pytest.raises(CompileReportError, match=r"loop_pipelines.rows\[0\]"):
+        build_compile_report_show(parse_compile_report(report))
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("function", "other"),
+        ("loop", 1),
+        ("position", 1),
+        ("op", ""),
+        ("stage", "unknown"),
+        ("stage", "consumer"),
+        ("iteration_lookahead", 1),
+    ],
+)
+def test_rejects_schedules_that_contradict_the_policy(
+    field: str, value: object
+) -> None:
+    report = _report()
+    report["source_low"]["loop_pipelines"]["stages"][0][field] = value
+    with pytest.raises(CompileReportError, match=r"loop_pipelines.stages\[0\]"):
+        build_compile_report_show(parse_compile_report(report))
+
+
+@pytest.mark.parametrize(
+    "corruption", ["count", "duplicate", "missing_stages", "serial_queue"]
+)
+def test_rejects_inconsistent_schedule_records(corruption: str) -> None:
+    report = _report()
+    policies = report["source_low"]["loop_pipelines"]
+    if corruption == "count":
+        policies["count"] = 3
+    elif corruption == "duplicate":
+        policies["rows"][1] = policies["rows"][0].copy()
+    elif corruption == "missing_stages":
+        policies["stages"] = []
+    else:
+        policies["rows"][1]["values_per_record"] = 1
+    with pytest.raises(CompileReportError, match="loop_pipelines"):
+        build_compile_report_show(parse_compile_report(report))

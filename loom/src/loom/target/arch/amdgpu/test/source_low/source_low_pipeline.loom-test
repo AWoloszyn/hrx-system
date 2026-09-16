@@ -58,6 +58,15 @@ pass.pipeline<module> @__loom_check_source_low pipeline {
   }
   for func {
     where target {
+      pipeline-scf-for
+      if changed {
+        canonicalize
+        cse
+      }
+    }
+  }
+  for func {
+    where target {
       unroll-scf-for
       if changed {
         canonicalize
@@ -152,6 +161,15 @@ pass.pipeline<module> @__loom_check_source_low pipeline {
   if changed {
     for func {
       where target {
+        canonicalize
+        cse
+      }
+    }
+  }
+  for func {
+    where target {
+      pipeline-scf-for
+      if changed {
         canonicalize
         cse
       }
@@ -302,6 +320,15 @@ pass.pipeline<module> @__loom_check_prepared_low pipeline {
   if changed {
     for func {
       where target {
+        canonicalize
+        cse
+      }
+    }
+  }
+  for func {
+    where target {
+      pipeline-scf-for
+      if changed {
         canonicalize
         cse
       }

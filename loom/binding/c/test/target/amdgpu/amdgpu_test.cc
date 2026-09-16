@@ -1677,6 +1677,105 @@ func.def public @otherwise_compatible() {
       << module_text;
 }
 
+TEST(AmdgpuTargetTest, PipelineSchedulesSurviveSeparateCompileAndRepeatedEmit) {
+  TargetEnvironmentPtr target_environment = CreateAmdgpuTargetEnvironment();
+  ContextPtr context = CreateAmdgpuContext(target_environment.get());
+  WorkspacePtr workspace = CreateWorkspace();
+  CompilerPtr compiler = CreateCompiler(context.get());
+  PassProgramPtr pass_program = CreatePreparedLowPassProgram(context.get());
+  SourcePtr source = CreateTextSource("loop_pipeline.loom", R"(
+amdgpu.target<gfx1151> @gpu
+
+kernel.def target(@gpu) @loop_pipeline() {
+  %c1 = index.constant 1 : index
+  %c32 = index.constant 32 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%c32, %c1, %c1) : index
+} launch(%count: index, %input: buffer, %output: buffer) {
+  %end = index.assume %count [range(%count, 0, 64)] : index
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %c3 = index.constant 3 : index
+  %base = index.constant 0 : offset
+  %initial = scalar.constant 0.0 : f32
+  %data = buffer.view %input[%base] : buffer -> view<64xf32>
+  %destination = buffer.view %output[%base] : buffer -> view<1xf32>
+  %first = scf.for %i = [%c0 to %end step %c1](%sum = %initial : f32) -> (f32) pipeline(%c3) {
+    %value = view.load %data[%i] : view<64xf32> -> f32
+    %next = scalar.addf %sum, %value : f32
+    scf.yield %next : f32
+  }
+  %second = scf.for %j = [%c0 to %end step %c1](%sum = %first : f32) -> (f32) pipeline(%c1) {
+    %value = view.load %data[%j] : view<64xf32> -> f32
+    %next = scalar.addf %sum, %value : f32
+    scf.yield %next : f32
+  }
+  %third = scf.for %k = [%c0 to %end step %c1](%sum = %second : f32) -> (f32) {
+    %value = view.load %data[%k] : view<64xf32> -> f32
+    %next = scalar.addf %sum, %value : f32
+    scf.yield %next : f32
+  }
+  view.store %third, %destination[0] : f32, view<1xf32>
+  kernel.return
+}
+)");
+  ModulePtr module =
+      DeserializeModule(context.get(), workspace.get(), source.get());
+  loomc_result_t* raw_compile_result = nullptr;
+  LOOMC_ASSERT_OK(loomc_compile_module(
+      compiler.get(), workspace.get(), pass_program.get(), module.get(),
+      nullptr, loomc_allocator_system(), &raw_compile_result));
+  ResultPtr compile_result(raw_compile_result);
+  ExpectSucceededResult(compile_result.get());
+  ASSERT_TRUE(loomc_result_succeeded(compile_result.get()));
+  compile_result.reset();
+  pass_program.reset();
+  compiler.reset();
+  source.reset();
+  loomc_workspace_trim(workspace.get());
+
+  std::string first_details;
+  for (loomc_compile_report_mode_t mode :
+       {LOOMC_COMPILE_REPORT_MODE_SUMMARY, LOOMC_COMPILE_REPORT_MODE_DETAILS,
+        LOOMC_COMPILE_REPORT_MODE_DETAILS}) {
+    ResultPtr emitted =
+        EmitModule(target_environment.get(), workspace.get(), module.get(),
+                   LOOMC_AMDGPU_RUNTIME_GLOBAL_NONE,
+                   LOOMC_ARTIFACT_MANIFEST_MODE_NONE, mode);
+    ExpectSucceededResult(emitted.get());
+    ASSERT_NE(FindArtifact(emitted.get(), LOOMC_ARTIFACT_KIND_EXECUTABLE,
+                           LOOMC_ARTIFACT_FORMAT_AMDGPU_HSACO),
+              nullptr);
+    const loomc_artifact_t* artifact =
+        FindArtifact(emitted.get(), LOOMC_ARTIFACT_KIND_REPORT,
+                     LOOMC_ARTIFACT_FORMAT_COMPILE_REPORT_JSON);
+    ASSERT_NE(artifact, nullptr);
+    const std::string report = ToString(artifact->contents);
+    const size_t begin = report.find("\"loop_pipelines\":");
+    ASSERT_NE(begin, std::string::npos) << report;
+    const size_t end = report.find("\"memory\":", begin);
+    ASSERT_NE(end, std::string::npos);
+    const std::string schedules = report.substr(begin, end - begin);
+    EXPECT_NE(schedules.find("\"count\":2"), std::string::npos);
+    EXPECT_NE(schedules.find("\"depth\":3"), std::string::npos);
+    EXPECT_NE(schedules.find("\"depth\":1"), std::string::npos);
+    EXPECT_NE(schedules.find("\"outcome\":\"serial\""), std::string::npos);
+    if (mode == LOOMC_COMPILE_REPORT_MODE_SUMMARY) {
+      EXPECT_EQ(schedules.find("\"stages\":"), std::string::npos);
+    } else {
+      EXPECT_NE(schedules.find("\"stage\":\"producer\""), std::string::npos);
+      EXPECT_NE(schedules.find("\"stage\":\"consumer\""), std::string::npos);
+      EXPECT_NE(schedules.find("\"iteration_lookahead\":2"), std::string::npos);
+      if (first_details.empty()) {
+        first_details = schedules;
+      } else {
+        EXPECT_EQ(schedules, first_details);
+      }
+    }
+    emitted.reset();
+    loomc_workspace_trim(workspace.get());
+  }
+}
+
 TEST(AmdgpuTargetTest, EmitRuntimeGlobalsFromAmdgpuOptions) {
   TargetEnvironmentPtr target_environment = CreateAmdgpuTargetEnvironment();
   ContextPtr context = CreateAmdgpuContext(target_environment.get());

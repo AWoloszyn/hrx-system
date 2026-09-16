@@ -39,6 +39,10 @@ from loom.reporting.compile_report_execution_economics import (
     build_execution_economics_show,
     execution_economics_diff_has_changes,
 )
+from loom.reporting.compile_report_loop_pipelines import (
+    append_loop_pipeline_show_text,
+    build_loop_pipeline_show,
+)
 from loom.reporting.compile_report_move_causes import (
     append_move_cause_diff_text,
     append_move_cause_show_text,
@@ -389,6 +393,9 @@ def build_compile_report_show(
             for entry in document.entries
         ],
     }
+    loop_pipelines = build_loop_pipeline_show(document)
+    if loop_pipelines is not None:
+        view["loop_pipelines"] = loop_pipelines
     bank_service = build_bank_service_show(document)
     if bank_service is not None:
         view["bank_service"] = bank_service
@@ -646,6 +653,9 @@ def format_compile_report_show_text(view: dict[str, object]) -> str:
         move_causes = entry.get("move_causes")
         if isinstance(move_causes, dict):
             append_move_cause_show_text(lines, move_causes)
+    loop_pipelines = view.get("loop_pipelines")
+    if isinstance(loop_pipelines, dict):
+        append_loop_pipeline_show_text(lines, loop_pipelines)
     native_layout = view.get("native_layout")
     if isinstance(native_layout, dict):
         append_native_layout_show_text(lines, native_layout)

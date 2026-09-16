@@ -9,6 +9,21 @@
 
 iree_add_all_subdirs()
 
+loom_cc_test(
+  NAME
+    verify_test
+  SRCS
+    "verify_test.cc"
+  DEPS
+    ::scf
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::error::error_defs
+    loom::ir
+    loom::ops::index
+    loom::testing::diagnostic_matchers
+)
+
 loom_generated_cc_library(
   NAME
     scf

@@ -56,6 +56,15 @@ pass.pipeline<module> @__loom_check_source_low pipeline {
       }
     }
   }
+  for func {
+    where target {
+      pipeline-scf-for
+      if changed {
+        canonicalize
+        cse
+      }
+    }
+  }
   source-to-low(control-flow = "structured-low")
   inline-callables(policy = "target")
   for func {

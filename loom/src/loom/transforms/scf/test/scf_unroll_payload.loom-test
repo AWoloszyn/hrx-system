@@ -1,0 +1,214 @@
+// RUN: pass unroll-scf-for
+
+func.def @recurrence_predicate_dependency(%limit: index) -> (index) {
+  %c0 = index.constant 0 : index
+  %c3 = index.constant 3 : index
+  %c1 = index.constant 1 : index
+  %result = scf.for %i = [%c0 to %c3 step %c1](%acc = %c0 : index) -> (index) unroll schedule(recurrence) {
+    %independent = index.add %i, %c1 : index
+    %next = index.add %acc, %independent : index
+    %bounded = test.assume %limit [lt(%next, %limit)] : index
+    scf.yield %next : index
+  }
+  func.return %result : index
+}
+
+// ----
+func.def @recurrence_predicate_dependency(%limit: index) -> (index) {
+  %c0 = index.constant 0 : index
+  %c3 = index.constant 3 : index
+  %c1 = index.constant 1 : index
+  %i_0 = index.constant 0 : index
+  %i_1 = index.constant 1 : index
+  %i_2 = index.constant 2 : index
+  %independent = index.add %i_0, %c1 : index
+  %independent_1 = index.add %i_1, %c1 : index
+  scf.schedule.fence
+  %next = index.add %c0, %independent : index
+  %bounded = test.assume %limit [lt(%next, %limit)] : index
+  %independent_2 = index.add %i_2, %c1 : index
+  scf.schedule.fence
+  %next_1 = index.add %next, %independent_1 : index
+  %bounded_1 = test.assume %limit [lt(%next_1, %limit)] : index
+  scf.schedule.fence
+  %next_2 = index.add %next_1, %independent_2 : index
+  %bounded_2 = test.assume %limit [lt(%next_2, %limit)] : index
+  func.return %next_2 : index
+}
+
+// ====
+
+func.def @interleaved_dynamic_result_type(%buffer: buffer, %offset: offset) {
+  %c0 = index.constant 0 : index
+  %c3 = index.constant 3 : index
+  %c1 = index.constant 1 : index
+  scf.for %i = [%c0 to %c3 step %c1] unroll schedule(interleaved) {
+    %extent = index.add %i, %c1 : index
+    %view = buffer.view %buffer[%offset] : buffer -> view<[%extent]xf32>
+    test.use %view : view<[%extent]xf32>
+  }
+  func.return
+}
+
+// ----
+func.def @interleaved_dynamic_result_type(%buffer: buffer, %offset: offset) {
+  %c0 = index.constant 0 : index
+  %c3 = index.constant 3 : index
+  %c1 = index.constant 1 : index
+  %i_0 = index.constant 0 : index
+  %i_1 = index.constant 1 : index
+  %i_2 = index.constant 2 : index
+  %extent = index.add %i_0, %c1 : index
+  %extent_1 = index.add %i_1, %c1 : index
+  %extent_2 = index.add %i_2, %c1 : index
+  %view = buffer.view %buffer[%offset] : buffer -> view<[%extent]xf32>
+  %view_1 = buffer.view %buffer[%offset] : buffer -> view<[%extent_1]xf32>
+  %view_2 = buffer.view %buffer[%offset] : buffer -> view<[%extent_2]xf32>
+  test.use %view : view<[%extent]xf32>
+  test.use %view_1 : view<[%extent_1]xf32>
+  test.use %view_2 : view<[%extent_2]xf32>
+  func.return
+}
+
+// ====
+
+func.def @recurrence_nested_type_attribute(%input: index) -> (index) {
+  %c0 = index.constant 0 : index
+  %c3 = index.constant 3 : index
+  %c1 = index.constant 1 : index
+  %result = scf.for %i = [%c0 to %c3 step %c1](%acc = %c0 : index) -> (index) unroll schedule(recurrence) {
+    %independent = index.add %i, %c1 : index
+    %next = index.add %acc, %independent : index
+    %annotated = test.attrs %input {metadata = {options = #test.options<mode = fast, element_type = view<[%next]xf32>>}} : index
+    scf.yield %next : index
+  }
+  func.return %result : index
+}
+
+// ----
+func.def @recurrence_nested_type_attribute(%input: index) -> (index) {
+  %c0 = index.constant 0 : index
+  %c3 = index.constant 3 : index
+  %c1 = index.constant 1 : index
+  %i_0 = index.constant 0 : index
+  %i_1 = index.constant 1 : index
+  %i_2 = index.constant 2 : index
+  %independent = index.add %i_0, %c1 : index
+  %independent_1 = index.add %i_1, %c1 : index
+  scf.schedule.fence
+  %next = index.add %c0, %independent : index
+  %annotated = test.attrs %input {metadata = {options = #test.options<mode = fast, element_type = view<[%next]xf32>>}} : index
+  %independent_2 = index.add %i_2, %c1 : index
+  scf.schedule.fence
+  %next_1 = index.add %next, %independent_1 : index
+  %annotated_1 = test.attrs %input {metadata = {options = #test.options<mode = fast, element_type = view<[%next_1]xf32>>}} : index
+  scf.schedule.fence
+  %next_2 = index.add %next_1, %independent_2 : index
+  %annotated_2 = test.attrs %input {metadata = {options = #test.options<mode = fast, element_type = view<[%next_2]xf32>>}} : index
+  func.return %next_2 : index
+}
+
+// ====
+
+func.def @recurrence_parameterized_array_capture(%input: index) -> (index) {
+  %c0 = index.constant 0 : index
+  %c3 = index.constant 3 : index
+  %c1 = index.constant 1 : index
+  %result = scf.for %i = [%c0 to %c3 step %c1](%acc = %c0 : index) -> (index) unroll schedule(recurrence) {
+    %independent = index.add %i, %c1 : index
+    %next = index.add %acc, %independent : index
+    test.parameterized_attr_array [#test.options<mode = fast, element_type = tensor<[%next]xf32>>]
+    scf.yield %next : index
+  }
+  func.return %result : index
+}
+
+// ----
+func.def @recurrence_parameterized_array_capture(%input: index) -> (index) {
+  %c0 = index.constant 0 : index
+  %c3 = index.constant 3 : index
+  %c1 = index.constant 1 : index
+  %i_0 = index.constant 0 : index
+  %i_1 = index.constant 1 : index
+  %i_2 = index.constant 2 : index
+  %independent = index.add %i_0, %c1 : index
+  %independent_1 = index.add %i_1, %c1 : index
+  scf.schedule.fence
+  %next = index.add %c0, %independent : index
+  test.parameterized_attr_array [#test.options<mode = fast, element_type = tensor<[%next]xf32>>]
+  %independent_2 = index.add %i_2, %c1 : index
+  scf.schedule.fence
+  %next_1 = index.add %next, %independent_1 : index
+  test.parameterized_attr_array [#test.options<mode = fast, element_type = tensor<[%next_1]xf32>>]
+  scf.schedule.fence
+  %next_2 = index.add %next_1, %independent_2 : index
+  test.parameterized_attr_array [#test.options<mode = fast, element_type = tensor<[%next_2]xf32>>]
+  func.return %next_2 : index
+}
+
+// ====
+
+func.def @interleaved_result_type_self_reference(%input: tensor<8xf32>) {
+  %c0 = index.constant 0 : index
+  %c3 = index.constant 3 : index
+  %c1 = index.constant 1 : index
+  scf.for %i = [%c0 to %c3 step %c1] unroll schedule(interleaved) {
+    %output, %length = test.deflate %input : tensor<8xf32> -> (tensor<[%length]xf32>, index)
+    test.use %output : tensor<[%length]xf32>
+  }
+  func.return
+}
+
+// ----
+func.def @interleaved_result_type_self_reference(%input: tensor<8xf32>) {
+  %c0 = index.constant 0 : index
+  %c3 = index.constant 3 : index
+  %c1 = index.constant 1 : index
+  %output, %length = test.deflate %input : tensor<8xf32> -> (tensor<[%length]xf32>, index)
+  %output_1, %length_1 = test.deflate %input : tensor<8xf32> -> (tensor<[%length_1]xf32>, index)
+  %output_2, %length_2 = test.deflate %input : tensor<8xf32> -> (tensor<[%length_2]xf32>, index)
+  test.use %output : tensor<[%length]xf32>
+  test.use %output_1 : tensor<[%length_1]xf32>
+  test.use %output_2 : tensor<[%length_2]xf32>
+  func.return
+}
+
+// ====
+
+func.def @interleaved_argument_rotation(%left: i32, %right: i32) -> (i32, i32) {
+  %c0 = index.constant 0 : index
+  %c3 = index.constant 3 : index
+  %c1 = index.constant 1 : index
+  %first, %second = scf.for %i = [%c0 to %c3 step %c1](%a = %left : i32, %b = %right : i32) -> (i32, i32) unroll schedule(interleaved) {
+    scf.yield %b, %a : i32, i32
+  }
+  func.return %first, %second : i32, i32
+}
+
+// ----
+func.def @interleaved_argument_rotation(%left: i32, %right: i32) -> (i32, i32) {
+  %c0 = index.constant 0 : index
+  %c3 = index.constant 3 : index
+  %c1 = index.constant 1 : index
+  func.return %right, %left : i32, i32
+}
+
+// ====
+
+func.def @interleaved_external_yield(%initial: i32, %replacement: i32) -> (i32) {
+  %c0 = index.constant 0 : index
+  %c3 = index.constant 3 : index
+  %c1 = index.constant 1 : index
+  %result = scf.for %i = [%c0 to %c3 step %c1](%acc = %initial : i32) -> (i32) unroll schedule(interleaved) {
+    scf.yield %replacement : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+func.def @interleaved_external_yield(%initial: i32, %replacement: i32) -> (i32) {
+  %c0 = index.constant 0 : index
+  %c3 = index.constant 3 : index
+  %c1 = index.constant 1 : index
+  func.return %replacement : i32
+}

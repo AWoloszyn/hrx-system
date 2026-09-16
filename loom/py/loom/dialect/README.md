@@ -53,6 +53,12 @@ The `format` order is part of the API exposed to generated Python and C builder
 surfaces. Reordering format fields changes the way generated builders ask for
 arguments even when the underlying IR fields are unchanged.
 
+For segmented operands (multiple variable-length or optional groups), operand
+declarations and their appearance in the format have the same relative order.
+The C parser appends each segment directly to the flat operand array; generation
+rejects formats that would append a later segment before an earlier one.
+Reordering such clauses includes reordering their operand declarations.
+
 ### Public Field Semantics
 
 Every declared operation field is public Loom IR, including optional,

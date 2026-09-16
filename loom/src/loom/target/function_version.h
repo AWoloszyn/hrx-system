@@ -13,6 +13,7 @@
 #include "iree/base/internal/arena.h"
 #include "loom/ir/function_version.h"
 #include "loom/target/facts.h"
+#include "loom/target/loop_pipeline.h"
 #include "loom/target/resolved_target.h"
 
 #ifdef __cplusplus
@@ -57,6 +58,9 @@ typedef struct loom_target_function_version_t {
   // Non-NULL function target facts used to compile this version, including
   // its function-local ABI and export contract.
   const loom_target_facts_t* function_target_facts;
+
+  // Applied source schedules retained across lowering and separate emit calls.
+  loom_source_loop_pipeline_list_t loop_pipelines;
 } loom_target_function_version_t;
 
 // Static identity for target-refined function versions.

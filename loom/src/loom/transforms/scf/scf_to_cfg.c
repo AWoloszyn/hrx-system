@@ -699,6 +699,22 @@ static iree_status_t loom_scf_to_cfg_lower_for(
     loom_scf_to_cfg_block_insertion_t* out_block_insertion) {
   iree_arena_reset(state->lowering_arena);
 
+  if (loom_scf_for_pipeline_depth_is_present(op)) {
+    const loom_diagnostic_param_t params[] = {
+        loom_param_string(IREE_SV("pipeline")),
+        loom_param_i64(0),
+        loom_param_string(
+            IREE_SV("consumed by pipeline-scf-for before scf-to-cfg")),
+    };
+    const loom_diagnostic_emission_t emission = {
+        .op = op,
+        .error = LOOM_ERR_STRUCTURE_014,
+        .params = params,
+        .param_count = IREE_ARRAYSIZE(params),
+    };
+    return iree_diagnostic_emit(state->pass->diagnostic_emitter, &emission);
+  }
+
   loom_value_facts_t step_facts =
       loom_value_fact_table_lookup(state->fact_table, loom_scf_for_step(op));
   if (loom_value_facts_is_float(step_facts) ||

@@ -290,6 +290,7 @@ loom_cc_library(
         "//loom/src/loom/transforms/loop:loop_fusion",
         "//loom/src/loom/transforms/math:legalize",
         "//loom/src/loom/transforms/ownership:ownership_lifetime",
+        "//loom/src/loom/transforms/scf:scf_pipeline",
         "//loom/src/loom/transforms/scf:scf_to_cfg",
         "//loom/src/loom/transforms/scf:scf_unroll",
         "//loom/src/loom/transforms/symbol:inline_callables",

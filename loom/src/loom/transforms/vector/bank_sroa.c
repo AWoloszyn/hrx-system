@@ -800,13 +800,18 @@ static iree_status_t loom_vector_bank_sroa_rewrite_loop(
   loom_scf_for_unroll_schedule_t unroll_schedule = 0;
   loom_scf_for_build_flags_t build_flags = loom_vector_bank_sroa_build_flags(
       loop, &unroll_factor, &unroll_policy, &unroll_schedule);
+  loom_value_id_t pipeline_depth = LOOM_VALUE_ID_INVALID;
+  if (loom_scf_for_pipeline_depth_is_present(loop)) {
+    build_flags |= LOOM_SCF_FOR_BUILD_FLAG_HAS_PIPELINE_DEPTH;
+    pipeline_depth = loom_scf_for_pipeline_depth(loop);
+  }
   loom_op_t* new_loop = NULL;
   IREE_RETURN_IF_ERROR(loom_scf_for_build(
       &context->rewriter->builder, build_flags, loom_scf_for_lower_bound(loop),
       loom_scf_for_upper_bound(loop), loom_scf_for_step(loop), new_iter_args,
       plan->expanded_count, /*tied_results=*/NULL, /*tied_result_count=*/0,
-      unroll_factor, unroll_policy, unroll_schedule, loop->location,
-      &new_loop));
+      pipeline_depth, unroll_factor, unroll_policy, unroll_schedule,
+      loop->location, &new_loop));
 
   loom_builder_ip_t saved_ip = loom_builder_enter_region(
       &context->rewriter->builder, new_loop, loom_scf_for_body(new_loop));

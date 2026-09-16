@@ -382,8 +382,9 @@ TEST_F(LowLowerRepresentationObserverTest,
   loom_op_t* loop = nullptr;
   IREE_ASSERT_OK(loom_scf_for_build(
       &builder, /*build_flags=*/0, lower_bound, upper_bound, step, &seed, 1,
-      &tied_result, 1, LOOM_VALUE_ID_INVALID, /*unroll_policy=*/0,
-      /*unroll_schedule=*/0, LOOM_LOCATION_UNKNOWN, &loop));
+      &tied_result, 1, /*pipeline_depth=*/LOOM_VALUE_ID_INVALID,
+      LOOM_VALUE_ID_INVALID, /*unroll_policy=*/0, /*unroll_schedule=*/0,
+      LOOM_LOCATION_UNKNOWN, &loop));
 
   const loom_builder_ip_t saved =
       loom_builder_enter_region(&builder, loop, loom_scf_for_body(loop));

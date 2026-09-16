@@ -1,0 +1,30 @@
+// Sum up to 64 rows from four-byte-aligned input and output buffers.
+config.def @read_ahead.depth = 3 : index
+
+config.def @read_ahead.unroll = 2 : index
+
+kernel.def export("sum_rows") @sum_rows() {
+  %unit = index.constant 1 : index
+  %width = index.constant 32 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%row_count: index, %input: buffer, %output: buffer) {
+  %count = index.assume %row_count [range(%row_count, 0, 64)] : index
+  %lane = kernel.workitem.id<x> : index
+  %base = index.constant 0 : offset
+  %aligned_input = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %aligned_output = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %values = buffer.view %aligned_input[%base] : buffer -> view<64x32xf32>
+  %sums = buffer.view %aligned_output[%base] : buffer -> view<32xf32>
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %initial = scalar.constant 0.0 : f32
+  %depth = config.get @read_ahead.depth : index
+  %factor = config.get @read_ahead.unroll : index
+  %result = scf.for %row = [%begin to %count step %step](%sum = %initial : f32) -> (f32) pipeline(%depth) unroll(%factor) {
+    %value = view.load %values[%row, %lane] : view<64x32xf32> -> f32
+    %next = scalar.addf %sum, %value : f32
+    scf.yield %next : f32
+  }
+  view.store %result, %sums[%lane] : f32, view<32xf32>
+  kernel.return
+}

@@ -417,4 +417,25 @@ def translate_format_elements(op: Op) -> list[tuple[str, int, str]]:
                     elements.append(("LOOM_FORMAT_KIND_GLUE", 0, "0"))
 
     walk(op.format)
+    if layout.segmented_operands:
+        # The C parser appends segments directly into declaration-order storage.
+        # Establish that order here so parsing needs no reordering or fixups.
+        operand_kinds = {
+            "LOOM_FORMAT_KIND_OPERAND_REF",
+            "LOOM_FORMAT_KIND_OPERAND_REFS",
+            "LOOM_FORMAT_KIND_OPERAND_TYPED_REFS",
+            "LOOM_FORMAT_KIND_ALIGNED_REFS",
+            "LOOM_FORMAT_KIND_OPERAND_DICT",
+            "LOOM_FORMAT_KIND_ATTR_TABLE",
+            "LOOM_FORMAT_KIND_INDEX_LIST",
+            "LOOM_FORMAT_KIND_BINDING_LIST",
+            "LOOM_FORMAT_KIND_FUNC_ARGS",
+        }
+        previous_index = -1
+        for kind, index, _ in elements:
+            if kind not in operand_kinds or index == 0xFF:
+                continue
+            if index < previous_index:
+                raise ValueError(f"Op '{op.name}': segmented operands must appear in declaration order; '{op.operands[index].name}' follows '{op.operands[previous_index].name}' in the format")
+            previous_index = index
     return elements

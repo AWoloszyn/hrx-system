@@ -362,6 +362,24 @@ iree_py_library(
 
 iree_py_test(
   NAME
+    c_format_test
+  MAIN
+    "../../tools/pytest_style_runner.py"
+  SRCS
+    "c_format_test.py"
+    "../../tools/pytest_style_runner.py"
+  ARGS
+    "loom.gen.ops.c_format_test"
+  DEPS
+    loom::py::loom::gen::ops::c_tables
+  PACKAGE_DIRS
+    "${PROJECT_SOURCE_DIR}/loom/py"
+    "${PROJECT_BINARY_DIR}/loom/py"
+    "${PROJECT_SOURCE_DIR}"
+)
+
+iree_py_test(
+  NAME
     c_tables_test
   MAIN
     "../../tools/pytest_style_runner.py"

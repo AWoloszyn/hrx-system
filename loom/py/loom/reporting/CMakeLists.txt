@@ -18,6 +18,7 @@ iree_py_library(
     "compile_report_bank_service.py"
     "compile_report_capabilities.py"
     "compile_report_execution_economics.py"
+    "compile_report_loop_pipelines.py"
     "compile_report_move_causes.py"
     "compile_report_native_layout.py"
     "compile_report_subgroup_access.py"
@@ -35,6 +36,7 @@ iree_py_test(
     "../tools/pytest_style_runner.py"
   SRCS
     "compile_report_bank_service_test.py"
+    "compile_report_loop_pipelines_test.py"
     "compile_report_native_layout_test.py"
     "compile_report_subgroup_access_test.py"
     "compile_report_suggestions_test.py"
@@ -42,6 +44,7 @@ iree_py_test(
     "../tools/pytest_style_runner.py"
   ARGS
     "loom.reporting.compile_report_bank_service_test"
+    "loom.reporting.compile_report_loop_pipelines_test"
     "loom.reporting.compile_report_native_layout_test"
     "loom.reporting.compile_report_suggestions_test"
     "loom.reporting.compile_report_subgroup_access_test"
