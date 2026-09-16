@@ -78,6 +78,113 @@ TEST(EndpointLifecycleTest, ConnectionJoinsEndpointDeactivation) {
   iree_net_endpoint_lifecycle_deinitialize(&lifecycle);
 }
 
+TEST(EndpointLifecycleTest, OwnerDrainWaitsForAcceptedOperation) {
+  iree_net_endpoint_lifecycle_t lifecycle;
+  iree_net_endpoint_lifecycle_initialize(&lifecycle);
+  IREE_ASSERT_OK(iree_net_endpoint_lifecycle_activate(&lifecycle));
+  EXPECT_TRUE(iree_net_endpoint_lifecycle_try_begin_operation(&lifecycle));
+
+  CallbackOrder order;
+  iree_net_endpoint_lifecycle_actions_t actions =
+      IREE_NET_ENDPOINT_LIFECYCLE_ACTION_NONE;
+  IREE_ASSERT_OK(iree_net_endpoint_lifecycle_request_deactivation(
+      &lifecycle,
+      [](void* user_data) {
+        auto* order = static_cast<CallbackOrder*>(user_data);
+        order->endpoint = order->next++;
+      },
+      &order, &actions));
+  EXPECT_TRUE(iree_all_bits_set(
+      actions, IREE_NET_ENDPOINT_LIFECYCLE_ACTION_BEGIN_DEACTIVATION));
+  EXPECT_FALSE(iree_net_endpoint_lifecycle_try_begin_operation(&lifecycle));
+
+  iree_net_endpoint_deactivation_barrier_t barrier;
+  iree_net_endpoint_deactivation_barrier_initialize(
+      {[](void* user_data) {
+         auto* order = static_cast<CallbackOrder*>(user_data);
+         order->connection = order->next++;
+       },
+       &order},
+      &barrier);
+  actions = iree_net_endpoint_lifecycle_join_deactivation(&lifecycle, &barrier);
+  EXPECT_EQ(actions, IREE_NET_ENDPOINT_LIFECYCLE_ACTION_NONE);
+  iree_net_endpoint_deactivation_barrier_commit(&barrier);
+
+  iree_net_endpoint_lifecycle_complete_deactivation(&lifecycle);
+  EXPECT_EQ(order.endpoint, -1);
+  EXPECT_EQ(order.connection, -1);
+
+  iree_net_endpoint_lifecycle_end_operation(&lifecycle);
+  EXPECT_EQ(order.endpoint, 0);
+  EXPECT_EQ(order.connection, 1);
+  iree_net_endpoint_lifecycle_deinitialize(&lifecycle);
+}
+
+TEST(EndpointLifecycleTest, AcceptedOperationWaitsForOwnerDrain) {
+  iree_net_endpoint_lifecycle_t lifecycle;
+  iree_net_endpoint_lifecycle_initialize(&lifecycle);
+  IREE_ASSERT_OK(iree_net_endpoint_lifecycle_activate(&lifecycle));
+  EXPECT_TRUE(iree_net_endpoint_lifecycle_try_begin_operation(&lifecycle));
+
+  int callback_count = 0;
+  iree_net_endpoint_deactivation_barrier_t barrier;
+  iree_net_endpoint_deactivation_barrier_initialize(
+      {[](void* user_data) { ++*static_cast<int*>(user_data); },
+       &callback_count},
+      &barrier);
+  iree_net_endpoint_lifecycle_actions_t actions =
+      iree_net_endpoint_lifecycle_join_deactivation(&lifecycle, &barrier);
+  EXPECT_TRUE(iree_all_bits_set(
+      actions, IREE_NET_ENDPOINT_LIFECYCLE_ACTION_BEGIN_DEACTIVATION));
+  iree_net_endpoint_deactivation_barrier_commit(&barrier);
+
+  iree_net_endpoint_lifecycle_end_operation(&lifecycle);
+  EXPECT_EQ(callback_count, 0);
+  iree_net_endpoint_lifecycle_complete_deactivation(&lifecycle);
+  EXPECT_EQ(callback_count, 1);
+  iree_net_endpoint_lifecycle_deinitialize(&lifecycle);
+}
+
+TEST(EndpointLifecycleTest, ConnectionJoinsAfterOwnerDrainCompletes) {
+  iree_net_endpoint_lifecycle_t lifecycle;
+  iree_net_endpoint_lifecycle_initialize(&lifecycle);
+  IREE_ASSERT_OK(iree_net_endpoint_lifecycle_activate(&lifecycle));
+  EXPECT_TRUE(iree_net_endpoint_lifecycle_try_begin_operation(&lifecycle));
+
+  CallbackOrder order;
+  iree_net_endpoint_lifecycle_actions_t actions =
+      IREE_NET_ENDPOINT_LIFECYCLE_ACTION_NONE;
+  IREE_ASSERT_OK(iree_net_endpoint_lifecycle_request_deactivation(
+      &lifecycle,
+      [](void* user_data) {
+        auto* order = static_cast<CallbackOrder*>(user_data);
+        order->endpoint = order->next++;
+      },
+      &order, &actions));
+  EXPECT_TRUE(iree_all_bits_set(
+      actions, IREE_NET_ENDPOINT_LIFECYCLE_ACTION_BEGIN_DEACTIVATION));
+  iree_net_endpoint_lifecycle_complete_deactivation(&lifecycle);
+  EXPECT_EQ(order.endpoint, -1);
+
+  iree_net_endpoint_deactivation_barrier_t barrier;
+  iree_net_endpoint_deactivation_barrier_initialize(
+      {[](void* user_data) {
+         auto* order = static_cast<CallbackOrder*>(user_data);
+         order->connection = order->next++;
+       },
+       &order},
+      &barrier);
+  actions = iree_net_endpoint_lifecycle_join_deactivation(&lifecycle, &barrier);
+  EXPECT_EQ(actions, IREE_NET_ENDPOINT_LIFECYCLE_ACTION_NONE);
+  iree_net_endpoint_deactivation_barrier_commit(&barrier);
+  EXPECT_EQ(order.connection, -1);
+
+  iree_net_endpoint_lifecycle_end_operation(&lifecycle);
+  EXPECT_EQ(order.endpoint, 0);
+  EXPECT_EQ(order.connection, 1);
+  iree_net_endpoint_lifecycle_deinitialize(&lifecycle);
+}
+
 TEST(EndpointLifecycleTest, ConnectionStartsEndpointDeactivation) {
   iree_net_endpoint_lifecycle_t lifecycle;
   iree_net_endpoint_lifecycle_initialize(&lifecycle);

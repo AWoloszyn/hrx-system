@@ -64,8 +64,16 @@ typedef struct iree_net_endpoint_deactivation_barrier_t {
 typedef struct iree_net_endpoint_lifecycle_t {
   // Serializes deactivation requests against carrier completion.
   iree_slim_mutex_t mutex;
+
   // Current endpoint lifecycle state.
   iree_net_endpoint_lifecycle_state_t state;
+
+  // Number of endpoint operations accepted before deactivation began.
+  iree_host_size_t pending_operation_count;
+
+  // True after the endpoint owner has completed its transport drain.
+  bool owner_drain_complete;
+
   // Endpoint-consumer callback registered by endpoint deactivation.
   struct {
     // Function invoked when the endpoint carrier has drained.
@@ -102,6 +110,23 @@ iree_net_endpoint_lifecycle_activate(iree_net_endpoint_lifecycle_t* lifecycle);
 IREE_API_EXPORT void iree_net_endpoint_lifecycle_rollback_activation(
     iree_net_endpoint_lifecycle_t* lifecycle);
 
+// Attempts to retain one endpoint operation against deactivation.
+//
+// Returns true and acquires a hold only while the endpoint is ACTIVE. Returns
+// false after deactivation has begun. Every successful begin must be paired
+// with exactly one iree_net_endpoint_lifecycle_end_operation() after the
+// operation's terminal callback and final endpoint access.
+IREE_API_EXPORT bool iree_net_endpoint_lifecycle_try_begin_operation(
+    iree_net_endpoint_lifecycle_t* lifecycle);
+
+// Releases one endpoint operation hold.
+//
+// This may deliver the endpoint deactivation callback and then release a
+// connection barrier. The caller must not access |lifecycle| or its owner
+// afterward unless it holds a separate lifetime reference.
+IREE_API_EXPORT void iree_net_endpoint_lifecycle_end_operation(
+    iree_net_endpoint_lifecycle_t* lifecycle);
+
 // Begins endpoint-consumer deactivation.
 //
 // Returns BEGIN_DEACTIVATION when the caller must start the carrier drain.
@@ -132,10 +157,13 @@ iree_net_endpoint_lifecycle_join_deactivation(
 IREE_API_EXPORT void iree_net_endpoint_deactivation_barrier_commit(
     iree_net_endpoint_deactivation_barrier_t* barrier);
 
-// Completes the single carrier drain associated with an endpoint.
+// Marks the owner-controlled transport drain complete.
 //
-// The endpoint callback runs first. The connection barrier is released last
-// because its callback may destroy the endpoint lifecycle and its owner.
+// Accepted endpoint operations may still be pending when this is called. The
+// lifecycle reaches DEACTIVATED only after this owner drain and the final
+// operation hold both complete. The endpoint callback runs first. The
+// connection barrier is released last because its callback may destroy the
+// endpoint lifecycle and its owner.
 IREE_API_EXPORT void iree_net_endpoint_lifecycle_complete_deactivation(
     iree_net_endpoint_lifecycle_t* lifecycle);
 
