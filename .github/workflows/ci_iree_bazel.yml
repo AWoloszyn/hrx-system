@@ -308,6 +308,14 @@ jobs:
           python3 dev.py bazel setup --venv
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
+      - name: Check Bazel sandbox environment
+        run: |
+          sandbox="$(bazel info install_base)/linux-sandbox"
+          execution_root="$(bazel info execution_root)"
+          mkdir -p "$execution_root"
+          namei -l "$execution_root"
+          "$sandbox" -W "$execution_root" -- /bin/true
+
       - name: Check tool versions
         run: |
           bazel --version
