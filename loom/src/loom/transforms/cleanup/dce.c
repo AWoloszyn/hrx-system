@@ -8,6 +8,7 @@
 
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
+#include "loom/ir/value_refs.h"
 #include "loom/ops/op_defs.h"
 
 static const loom_pass_statistic_field_t kDCEStatisticFields[] = {

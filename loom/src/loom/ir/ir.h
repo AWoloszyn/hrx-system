@@ -481,14 +481,26 @@ static inline loom_use_t* loom_value_uses_mutable(loom_value_t* value) {
   return value->inline_uses;
 }
 
-// Returns true if the value has no uses (dead, candidate for DCE).
+// Returns true if the value has no ordinary operand uses. Embedded references
+// in types and attributes are tracked separately and can keep the value live.
 static inline bool loom_value_has_no_uses(const loom_value_t* value) {
   return value->use_count == 0;
 }
 
-// Returns true if the value has exactly one use.
+// Returns true if the value has exactly one ordinary operand use.
 static inline bool loom_value_has_single_use(const loom_value_t* value) {
   return value->use_count == 1;
+}
+
+// Returns the sole ordinary operand use, or NULL when there are zero or
+// multiple operand uses. The pointer is valid until the next use-list mutation
+// on this value. Embedded type and attribute references are not included.
+static inline const loom_use_t* loom_value_single_use(
+    const loom_value_t* value) {
+  if (value->use_count != 1) {
+    return NULL;
+  }
+  return &loom_value_uses(value)[0];
 }
 
 // Returns the operation that defines this value. The value must be an
@@ -2474,6 +2486,26 @@ static inline loom_value_t* loom_module_value(const loom_module_t* module,
 static inline loom_type_t loom_module_value_type(const loom_module_t* module,
                                                  loom_value_id_t value_id) {
   return loom_module_value(module, value_id)->type;
+}
+
+// Resolves the operand at |index| to its value in |module|. The index must be
+// less than the operation's operand count.
+static inline loom_value_t* loom_op_operand_value(const loom_module_t* module,
+                                                  const loom_op_t* op,
+                                                  uint16_t index) {
+  IREE_ASSERT(index < op->operand_count);
+  loom_value_id_t value_id = loom_op_operands(op)[index];
+  return loom_module_value(module, value_id);
+}
+
+// Resolves the result at |index| to its value in |module|. The index must be
+// less than the operation's result count.
+static inline loom_value_t* loom_op_result_value(const loom_module_t* module,
+                                                 const loom_op_t* op,
+                                                 uint16_t index) {
+  IREE_ASSERT(index < op->result_count);
+  loom_value_id_t value_id = loom_op_results(op)[index];
+  return loom_module_value(module, value_id);
 }
 
 // Returns the optional SSA display name for |value_id|, or an empty string view

@@ -1058,53 +1058,6 @@ typedef enum loom_binding_kind_e {
 } loom_binding_kind_t;
 
 //===----------------------------------------------------------------------===//
-// Value dereference helpers
-//===----------------------------------------------------------------------===//
-
-// Resolves an op's operand value ID to the value struct in the module's
-// value table. |index| is the operand position (0-based).
-//
-// Usage:
-//   loom_value_t* lhs = loom_op_operand_value(module, addi_op, 0);
-//   if (loom_type_kind(lhs->type) == LOOM_TYPE_TILE) { ... }
-static inline loom_value_t* loom_op_operand_value(const loom_module_t* module,
-                                                  const loom_op_t* op,
-                                                  uint16_t index) {
-  IREE_ASSERT(index < op->operand_count);
-  loom_value_id_t value_id = loom_op_operands(op)[index];
-  return loom_module_value(module, value_id);
-}
-
-// Resolves an op's result value ID to the value struct in the module's
-// value table. |index| is the result position (0-based).
-//
-// Usage:
-//   loom_value_t* result = loom_op_result_value(module, addi_op, 0);
-//   if (result->use_count == 0) { /* dead result, candidate for DCE */ }
-static inline loom_value_t* loom_op_result_value(const loom_module_t* module,
-                                                 const loom_op_t* op,
-                                                 uint16_t index) {
-  IREE_ASSERT(index < op->result_count);
-  loom_value_id_t value_id = loom_op_results(op)[index];
-  return loom_module_value(module, value_id);
-}
-
-// Returns a pointer to the single use entry if the value has exactly
-// one use, or NULL if it has zero or more than one use. The returned
-// pointer is valid until the next use-list mutation on this value.
-//
-// Usage (fusion pattern — "does this tile feed exactly one consumer?"):
-//   const loom_use_t* use = loom_value_single_use(tile_value);
-//   if (use && loom_test_map_isa(loom_use_user_op(*use))) {
-//     // Fuse into the map.
-//   }
-static inline const loom_use_t* loom_value_single_use(
-    const loom_value_t* value) {
-  if (value->use_count != 1) return NULL;
-  return &loom_value_uses(value)[0];
-}
-
-//===----------------------------------------------------------------------===//
 // Effect query helpers
 //===----------------------------------------------------------------------===//
 
@@ -1144,17 +1097,6 @@ bool loom_op_results_unused(const loom_module_t* module, const loom_op_t* op);
 // when unused — a read with no observer is a no-op.
 bool loom_op_is_trivially_dead(const loom_module_t* module,
                                const loom_op_t* op);
-
-// Walks SSA value references embedded in all value types owned by |op|'s
-// subtree.
-//
-// This includes result types on |op| and nested ops, plus block argument types
-// in nested regions. Erase and DCE paths use this before unlinking a subtree so
-// providers of dynamic dimensions or SSA encodings get rechecked after the
-// carrier values disappear.
-iree_status_t loom_op_walk_subtree_type_refs(
-    const loom_module_t* module, const loom_op_t* op,
-    loom_type_value_ref_callback_t callback, void* user_data);
 
 //===----------------------------------------------------------------------===//
 // CallLike interface helpers

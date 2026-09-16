@@ -16,6 +16,17 @@
 extern "C" {
 #endif
 
+// Walks SSA value references embedded in all value types owned by |op|'s
+// subtree.
+//
+// This includes result types on |op| and nested ops, plus block argument types
+// in nested regions. Erase and DCE paths use this before unlinking a subtree so
+// providers of dynamic dimensions or SSA encodings get rechecked after the
+// carrier values disappear.
+iree_status_t loom_op_walk_subtree_type_refs(
+    const loom_module_t* module, const loom_op_t* op,
+    loom_type_value_ref_callback_t callback, void* user_data);
+
 // Replaces SSA references to |old_id| embedded in |type| with |new_id| and
 // interns the resulting type in |module|. The module value table and type-use
 // side table are not mutated; callers decide which carrier value, if any, owns

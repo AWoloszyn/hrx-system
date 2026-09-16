@@ -11,6 +11,7 @@
 #include "loom/ir/context.h"
 #include "loom/ir/facts.h"
 #include "loom/ir/module.h"
+#include "loom/ir/value_refs.h"
 #include "loom/ops/op_defs.h"
 
 #define LOOM_REWRITER_INITIAL_WORKLIST_CAPACITY 64
