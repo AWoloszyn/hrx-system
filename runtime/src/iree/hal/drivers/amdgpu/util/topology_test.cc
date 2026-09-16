@@ -129,11 +129,12 @@ struct TopologyTest : public ::testing::Test {
     iree_status_t status = iree_hal_amdgpu_libhsa_initialize(
         IREE_HAL_AMDGPU_LIBHSA_FLAG_NONE, iree_string_view_list_empty(),
         host_allocator, &libhsa);
-    if (!iree_status_is_ok(status)) {
+    if (iree_status_is_unavailable(status)) {
       iree_status_fprint(stderr, status);
       iree_status_free(status);
       GTEST_SKIP() << "HSA not available, skipping tests";
     }
+    IREE_ASSERT_OK(status);
   }
 
   static void TearDownTestSuite() {

@@ -59,8 +59,11 @@ iree_cc_test(
   DEPS
     ::libhsa
     iree::base
+    iree::base::testing::dynamic_library_test_library
+    iree::io::file_handle
     iree::testing::gtest
     iree::testing::gtest_main
+    iree::testing::temp_file
   LABELS
     "iree-build-requirement=runtime.hal.amdgpu"
     "iree-run-requirement=runtime.resource.amd_gpu"

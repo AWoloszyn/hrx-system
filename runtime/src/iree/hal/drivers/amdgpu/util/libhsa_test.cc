@@ -7,11 +7,35 @@
 #include "iree/hal/drivers/amdgpu/util/libhsa.h"
 
 #include "iree/base/api.h"
+#include "iree/base/testing/dynamic_library_test_library_embed.h"
+#include "iree/io/file_contents.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
+#include "iree/testing/temp_file.h"
 
 namespace iree::hal::amdgpu {
 namespace {
+
+TEST(LibHSATest, MissingRequiredSymbolsAreNotUnavailable) {
+  iree::testing::TempFilePath library_path("iree_libhsa_missing_symbols",
+                                           ".so");
+  const iree_file_toc_t* file_toc = dynamic_library_test_library_create();
+  IREE_ASSERT_OK(iree_io_file_contents_write(
+      library_path.path_view(),
+      iree_make_const_byte_span(file_toc->data, file_toc->size),
+      iree_allocator_system()));
+
+  iree_string_view_t search_path = library_path.path_view();
+  iree_hal_amdgpu_libhsa_t libhsa = {};
+  // The library exists and loads, but it is not an HSA implementation.
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_NOT_FOUND,
+                        iree_hal_amdgpu_libhsa_initialize(
+                            IREE_HAL_AMDGPU_LIBHSA_FLAG_NONE,
+                            iree_string_view_list_t{1, &search_path},
+                            iree_allocator_system(), &libhsa));
+  EXPECT_FALSE(libhsa.initialized);
+  iree_hal_amdgpu_libhsa_deinitialize(&libhsa);
+}
 
 // Tests that we can find, load, and unload HSA.
 // In ASAN builds it tests that we don't leak the library (though ROCR itself
@@ -22,11 +46,12 @@ TEST(LibHSATest, Load) {
   iree_status_t status = iree_hal_amdgpu_libhsa_initialize(
       IREE_HAL_AMDGPU_LIBHSA_FLAG_NONE, iree_string_view_list_empty(),
       iree_allocator_system(), &libhsa);
-  if (!iree_status_is_ok(status)) {
+  if (iree_status_is_unavailable(status)) {
     iree_status_fprint(stderr, status);
     iree_status_free(status);
     GTEST_SKIP() << "HSA not available, skipping tests";
   }
+  IREE_ASSERT_OK(status);
 
   // Ensure resolved symbols are callable without perturbing the HSA runtime
   // lifetime beyond the one owned by libhsa.

@@ -140,6 +140,9 @@ typedef struct iree_hal_amdgpu_libhsa_t {
 // be directories containing the canonical library file or exact dynamic library
 // paths. The `IREE_HAL_AMDGPU_LIBHSA_PATH` environment variable accepts the
 // same forms and will be checked after the explicitly provided search paths.
+// Returns UNAVAILABLE if no runtime library can be loaded. Once a library is
+// loaded, missing required symbols and native initialization failures retain
+// their error status and must not be treated as absent runtime support.
 IREE_API_EXPORT iree_status_t iree_hal_amdgpu_libhsa_initialize(
     iree_hal_amdgpu_libhsa_flags_t flags, iree_string_view_list_t search_paths,
     iree_allocator_t host_allocator, iree_hal_amdgpu_libhsa_t* out_libhsa);

@@ -56,9 +56,8 @@ class SanitizerExecutableLoadTest
   void SetUp() override {
     iree_status_t status = device_.Initialize(GetParam(), "none");
     if (iree_status_is_unavailable(status)) {
-      iree_status_free(status);
-      GTEST_SKIP() << "Backend '" << GetParam().name
-                   << "' unavailable on this system";
+      iree::Status unavailable_status(std::move(status));
+      GTEST_SKIP() << unavailable_status.ToString();
     }
     IREE_ASSERT_OK(status);
   }

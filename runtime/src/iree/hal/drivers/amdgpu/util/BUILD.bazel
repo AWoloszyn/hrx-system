@@ -70,8 +70,11 @@ iree_runtime_cc_test(
     deps = [
         ":libhsa",
         "//runtime/src/iree/base",
+        "//runtime/src/iree/base/testing:dynamic_library_test_library",
+        "//runtime/src/iree/io:file_handle",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
+        "//runtime/src/iree/testing:temp_file",
     ],
 )
 

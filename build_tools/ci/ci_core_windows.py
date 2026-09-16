@@ -695,6 +695,7 @@ def test_core(args: argparse.Namespace) -> None:
         "--test-dir",
         installed_tests_dir,
         "--output-on-failure",
+        "--no-tests=error",
         "--parallel",
         str(ctest_parallelism),
     ]
