@@ -289,43 +289,6 @@ bool loom_op_may_write(const loom_module_t* module, const loom_op_t* op) {
   return loom_traits_may_write(loom_op_effective_traits(module, op));
 }
 
-static bool loom_op_subtree_has_hints(const loom_module_t* module,
-                                      const loom_op_t* op) {
-  if (iree_any_bit_set(loom_op_effective_traits(module, op), LOOM_TRAIT_HINT)) {
-    return true;
-  }
-  loom_region_t** regions = loom_op_regions(op);
-  for (uint8_t i = 0; i < op->region_count; ++i) {
-    loom_region_t* region = regions[i];
-    if (!region) continue;
-    loom_block_t* block = NULL;
-    loom_region_for_each_block(region, block) {
-      loom_op_t* child_op = NULL;
-      loom_block_for_each_op(block, child_op) {
-        if (loom_op_subtree_has_hints(module, child_op)) return true;
-      }
-    }
-  }
-  return false;
-}
-
-bool loom_op_regions_have_hints(const loom_module_t* module,
-                                const loom_op_t* op) {
-  loom_region_t** regions = loom_op_regions(op);
-  for (uint8_t i = 0; i < op->region_count; ++i) {
-    loom_region_t* region = regions[i];
-    if (!region) continue;
-    loom_block_t* block = NULL;
-    loom_region_for_each_block(region, block) {
-      loom_op_t* child_op = NULL;
-      loom_block_for_each_op(block, child_op) {
-        if (loom_op_subtree_has_hints(module, child_op)) return true;
-      }
-    }
-  }
-  return false;
-}
-
 static bool loom_value_has_type_uses_outside_op(const loom_module_t* module,
                                                 loom_value_id_t value_id,
                                                 const loom_op_t* op) {
@@ -392,7 +355,7 @@ bool loom_op_is_trivially_dead(const loom_module_t* module,
   if (loom_traits_may_write(traits)) return false;
   if (loom_op_regions_have_write_effects(op)) return false;
   if (loom_op_regions_have_convergent_effects(op)) return false;
-  if (loom_op_regions_have_hints(module, op)) return false;
+  if (loom_op_regions_have_hints(op)) return false;
   return loom_op_results_unused(module, op);
 }
 
@@ -3173,6 +3136,7 @@ static void loom_region_reset_summaries(loom_region_t* region) {
   region->read_effect_count = 0;
   region->write_effect_count = 0;
   region->convergent_effect_count = 0;
+  region->hint_source_count = 0;
   loom_block_t* block = NULL;
   loom_region_for_each_block(region, block) {
     block->parent_region = region;

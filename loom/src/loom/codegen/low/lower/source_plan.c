@@ -469,13 +469,7 @@ static bool loom_low_lower_source_op_requires_emission(
                                    LOOM_TRAIT_CONVERGENT)) {
     return true;
   }
-  if (loom_traits_may_read(traits) || loom_traits_may_write(traits) ||
-      loom_op_regions_have_write_effects(source_op) ||
-      loom_op_regions_have_convergent_effects(source_op) ||
-      loom_op_regions_have_hints(context->module, source_op)) {
-    return true;
-  }
-  return false;
+  return loom_traits_may_read(traits) || loom_traits_may_write(traits);
 }
 
 static bool loom_low_lower_source_op_result_storage_required(

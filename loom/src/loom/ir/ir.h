@@ -1892,15 +1892,20 @@ typedef struct loom_region_t {
   // Non-semantic source presentation retained across exact round trips.
   loom_region_source_flags_t source_flags;
   // Transitive count of read-like effects in all live ops nested in this
-  // region. READS_MEMORY, NON_DETERMINISTIC, and UNKNOWN_EFFECTS contribute.
+  // region. READS_MEMORY, NON_DETERMINISTIC, MEMORY_FENCE, and UNKNOWN_EFFECTS
+  // contribute.
   uint32_t read_effect_count;
   // Transitive count of write-like effects in all live ops nested in this
-  // region. WRITES_MEMORY and UNKNOWN_EFFECTS contribute.
+  // region. WRITES_MEMORY, MEMORY_FENCE, and UNKNOWN_EFFECTS contribute.
   uint32_t write_effect_count;
   // Transitive count of convergent effects in all live ops nested in this
   // region. Convergent ops cannot be removed or moved across control structure
   // even when they are otherwise memory-pure.
   uint32_t convergent_effect_count;
+  // Direct hint ops plus immediately nested regions with any hints. Only
+  // zero/nonzero transitions propagate to the containing region, so building
+  // or removing a subtree does not update every ancestor for every hint.
+  uint32_t hint_source_count;
   // Inline storage for the entry block.
   loom_block_t entry_block;
   // Ordered block pointer table. Points at inline_blocks for one-block regions.
@@ -1971,6 +1976,11 @@ static inline bool loom_region_has_convergent_effects(
   return region && region->convergent_effect_count != 0;
 }
 
+// Returns true when any live op nested in |region| is a compiler hint.
+static inline bool loom_region_has_hints(const loom_region_t* region) {
+  return region && region->hint_source_count != 0;
+}
+
 // Returns true when any child region of |op| has a read-like effect.
 static inline bool loom_op_regions_have_read_effects(const loom_op_t* op) {
   loom_region_t** regions = loom_op_regions(op);
@@ -1995,6 +2005,19 @@ static inline bool loom_op_regions_have_convergent_effects(
   loom_region_t** regions = loom_op_regions(op);
   for (uint8_t i = 0; i < op->region_count; ++i) {
     if (loom_region_has_convergent_effects(regions[i])) return true;
+  }
+  return false;
+}
+
+// Returns true when any child region of |op| contains a compiler hint. Hints
+// have no semantic memory effects but survive ordinary DCE and canonicalization
+// until explicitly stripped. This query inspects only immediate regions.
+static inline bool loom_op_regions_have_hints(const loom_op_t* op) {
+  loom_region_t** regions = loom_op_regions(op);
+  for (uint8_t i = 0; i < op->region_count; ++i) {
+    if (loom_region_has_hints(regions[i])) {
+      return true;
+    }
   }
   return false;
 }

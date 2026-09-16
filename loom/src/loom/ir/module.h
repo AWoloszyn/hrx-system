@@ -686,6 +686,8 @@ iree_status_t loom_block_insert_op(loom_module_t* module, loom_block_t* block,
 // Records |op|'s direct semantic summaries on its containing and ancestor
 // regions. The op must be fully constructed: operands, results, attributes,
 // and instance flags must already carry their final initial values.
+// Effect summaries retain exact transitive counts; hint summaries propagate
+// only region presence transitions. Repeated recording is idempotent.
 void loom_module_record_op_summaries(loom_module_t* module, loom_op_t* op);
 
 // Removes |op|'s previously recorded direct summaries and all nested op

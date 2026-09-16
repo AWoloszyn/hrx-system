@@ -106,6 +106,7 @@ loom_cc_test(
         "//loom/src/loom/analysis:availability",
         "//loom/src/loom/ir",
         "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/ops/scf",
         "//loom/src/loom/ops/test",
         "//runtime/src/iree/base/internal:arena",
         "//runtime/src/iree/testing:gtest",

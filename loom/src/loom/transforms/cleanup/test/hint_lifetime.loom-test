@@ -1,0 +1,98 @@
+// RUN: pass dce
+
+// An unused enclosing result does not make a nested hint discardable. A
+// hint-free sibling and dead arithmetic inside the retained region still die.
+func.def @dce_preserves_nested_hint(%condition: i1, %value: i32) {
+  %retained = scf.if %condition -> (i32) {
+    %nested = scf.if %condition -> (i32) {
+      %dead = scalar.addi %value, %value : i32
+      scf.schedule.fence
+      scf.yield %value : i32
+    } else {
+      scf.yield %value : i32
+    }
+    scf.yield %nested : i32
+  } else {
+    scf.yield %value : i32
+  }
+  %discarded = scf.if %condition -> (i32) {
+    scf.yield %value : i32
+  } else {
+    scf.yield %value : i32
+  }
+  func.return
+}
+
+// ----
+func.def @dce_preserves_nested_hint(%condition: i1, %value: i32) {
+  %retained = scf.if %condition -> (i32) {
+    %nested = scf.if %condition -> (i32) {
+      scf.schedule.fence
+      scf.yield %value : i32
+    } else {
+      scf.yield %value : i32
+    }
+    scf.yield %nested : i32
+  } else {
+    scf.yield %value : i32
+  }
+  func.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Inlining a selected branch moves the hint into its enclosing region. The
+// enclosing conditional must survive even after its result becomes unused.
+func.def @canonicalize_preserves_moved_hint(%condition: i1, %value: i32) {
+  %take_selected_branch = scalar.constant true : i1
+  %retained = scf.if %condition -> (i32) {
+    %selected = scf.if %take_selected_branch -> (i32) {
+      scf.schedule.fence
+      scf.yield %value : i32
+    } else {
+      scf.yield %value : i32
+    }
+    scf.yield %selected : i32
+  } else {
+    scf.yield %value : i32
+  }
+  func.return
+}
+
+// ----
+func.def @canonicalize_preserves_moved_hint(%condition: i1, %value: i32) {
+  scf.if %condition {
+    scf.schedule.fence
+  } else {
+  }
+  func.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Erasing an unreachable branch removes the only nested hint contribution,
+// allowing the otherwise redundant outer conditional to disappear.
+func.def @canonicalize_removes_last_unreachable_hint(%condition: i1, %value: i32) -> (i32) {
+  %take_hint_branch = scalar.constant false : i1
+  %result = scf.if %condition -> (i32) {
+    %selected = scf.if %take_hint_branch -> (i32) {
+      scf.schedule.fence
+      scf.yield %value : i32
+    } else {
+      scf.yield %value : i32
+    }
+    scf.yield %selected : i32
+  } else {
+    scf.yield %value : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+func.def @canonicalize_removes_last_unreachable_hint(%condition: i1, %value: i32) -> (i32) {
+  func.return %value : i32
+}

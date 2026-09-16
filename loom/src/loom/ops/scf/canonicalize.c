@@ -939,14 +939,13 @@ enum {
   LOOM_SCF_IF_SELECTIFY_MAX_SPECULATED_OPS = 4,
 };
 
-static bool loom_scf_if_regions_are_discardable(const loom_module_t* module,
-                                                loom_op_t* op) {
+static bool loom_scf_if_regions_are_discardable(const loom_op_t* op) {
   // Read-only branch work with no yielded observer is dead. Writes,
   // convergence, and hints are retained because they affect memory,
   // participant-set semantics, or requested code-generation shape.
   if (loom_op_regions_have_write_effects(op)) return false;
   if (loom_op_regions_have_convergent_effects(op)) return false;
-  return !loom_op_regions_have_hints(module, op);
+  return !loom_op_regions_have_hints(op);
 }
 
 static iree_status_t loom_scf_if_fold_exact_boolean_yields(
@@ -955,7 +954,7 @@ static iree_status_t loom_scf_if_fold_exact_boolean_yields(
   if (op->result_count != 1 || op->tied_result_count != 0) {
     return iree_ok_status();
   }
-  if (!loom_scf_if_regions_are_discardable(rewriter->module, op)) {
+  if (!loom_scf_if_regions_are_discardable(op)) {
     return iree_ok_status();
   }
 
@@ -1026,7 +1025,7 @@ static iree_status_t loom_scf_if_erase_if_effect_free_resultless(
     loom_op_t* op, loom_rewriter_t* rewriter, bool* out_erased) {
   *out_erased = false;
   if (op->result_count != 0) return iree_ok_status();
-  if (!loom_scf_if_regions_are_discardable(rewriter->module, op)) {
+  if (!loom_scf_if_regions_are_discardable(op)) {
     return iree_ok_status();
   }
 
@@ -1080,7 +1079,7 @@ static iree_status_t loom_scf_if_compact_results(loom_op_t* op,
                                 sizeof(*replacements), (void**)&replacements));
 
   if (dropped_count == op->result_count &&
-      loom_scf_if_regions_are_discardable(rewriter->module, op)) {
+      loom_scf_if_regions_are_discardable(op)) {
     for (uint16_t i = 0; i < op->result_count; ++i) {
       replacements[i] =
           forwarded_results[i] ? then_values.values[i] : old_results[i];

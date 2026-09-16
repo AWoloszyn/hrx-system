@@ -435,6 +435,26 @@ static void loom_module_adjust_op_ancestor_summary_counts(
   }
 }
 
+// A nonempty child region contributes one hint source to its containing
+// region. Once a region remains nonempty (or remains empty), no ancestor's
+// presence changes. Monotone subtree construction/removal therefore propagates
+// at most one transition per region, independent of the number of nested hints.
+static void loom_module_adjust_op_hint_sources(loom_op_t* op, int32_t delta) {
+  loom_region_t* region =
+      op->parent_block ? op->parent_block->parent_region : NULL;
+  loom_op_t* parent_op = op->parent_op;
+  while (region) {
+    const bool had_hints = region->hint_source_count != 0;
+    loom_region_adjust_summary_count(&region->hint_source_count, delta);
+    if ((region->hint_source_count != 0) == had_hints || !parent_op) {
+      break;
+    }
+    region =
+        parent_op->parent_block ? parent_op->parent_block->parent_region : NULL;
+    parent_op = parent_op->parent_op;
+  }
+}
+
 static void loom_module_adjust_poison_op_count(loom_module_t* module,
                                                int32_t delta) {
   if (delta < 0) {
@@ -452,8 +472,13 @@ static void loom_module_adjust_op_direct_summaries(loom_module_t* module,
   int32_t read_delta = loom_traits_may_read(traits) ? direction : 0;
   int32_t write_delta = loom_traits_may_write(traits) ? direction : 0;
   int32_t convergent_delta = loom_traits_are_convergent(traits) ? direction : 0;
-  loom_module_adjust_op_ancestor_summary_counts(op, read_delta, write_delta,
-                                                convergent_delta);
+  if (read_delta != 0 || write_delta != 0 || convergent_delta != 0) {
+    loom_module_adjust_op_ancestor_summary_counts(op, read_delta, write_delta,
+                                                  convergent_delta);
+  }
+  if (iree_any_bit_set(traits, LOOM_TRAIT_HINT)) {
+    loom_module_adjust_op_hint_sources(op, direction);
+  }
   if (loom_traits_are_poison(traits)) {
     loom_module_adjust_poison_op_count(module, direction);
   }
@@ -504,6 +529,10 @@ void loom_module_update_op_direct_summaries(loom_module_t* module,
   loom_module_adjust_op_ancestor_summary_counts(
       op, new_read - old_read, new_write - old_write,
       new_convergent - old_convergent);
+  if (iree_any_bit_set(old_traits ^ new_traits, LOOM_TRAIT_HINT)) {
+    loom_module_adjust_op_hint_sources(
+        op, iree_any_bit_set(new_traits, LOOM_TRAIT_HINT) ? 1 : -1);
+  }
   const int32_t poison_delta = (loom_traits_are_poison(new_traits) ? 1 : 0) -
                                (loom_traits_are_poison(old_traits) ? 1 : 0);
   loom_module_adjust_poison_op_count(module, poison_delta);
