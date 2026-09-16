@@ -70,6 +70,7 @@ loom_cc_library(
     loom::rewrite::rewriter
     loom::util::cfg_graph
     loom::util::dominance
+    loom::util::fact_table
   PUBLIC
 )
 

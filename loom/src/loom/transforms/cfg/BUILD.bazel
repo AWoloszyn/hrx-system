@@ -63,6 +63,7 @@ loom_cc_library(
         "//loom/src/loom/rewrite:rewriter",
         "//loom/src/loom/util:cfg_graph",
         "//loom/src/loom/util:dominance",
+        "//loom/src/loom/util:fact_table",
         "//runtime/src/iree/base",
     ],
 )

@@ -22,6 +22,7 @@
 #include "loom/rewrite/rewriter.h"
 #include "loom/util/cfg_graph.h"
 #include "loom/util/dominance.h"
+#include "loom/util/fact_cfg.h"
 
 //===----------------------------------------------------------------------===//
 // Statistics
@@ -2147,48 +2148,51 @@ static iree_status_t loom_cfg_simplify_remove_redundant_block_args(
 static iree_status_t loom_cfg_simplify_process_cfg_region(
     loom_cfg_simplify_state_t* state, loom_region_t* region,
     bool* out_changed) {
-  loom_cfg_graph_t graph = {0};
-  IREE_RETURN_IF_ERROR(loom_cfg_graph_build(state->module, region,
-                                            state->analysis_arena, &graph));
+  // The fact owner publishes current structure after each completed edit.
+  // This borrow ends before the driver refreshes that structural snapshot.
+  const loom_value_fact_cfg_region_t* structure = NULL;
+  IREE_RETURN_IF_ERROR(loom_value_fact_table_get_or_build_cfg_region(
+      state->rewriter->fact_table, state->module, region, &structure));
+  const loom_cfg_graph_t* graph = &structure->graph;
   IREE_RETURN_IF_ERROR(
-      loom_cfg_simplify_remove_unreachable_blocks(state, &graph, out_changed));
+      loom_cfg_simplify_remove_unreachable_blocks(state, graph, out_changed));
   if (*out_changed) return iree_ok_status();
   loom_cfg_condition_fact_table_t path_fact_table = {0};
   IREE_RETURN_IF_ERROR(loom_cfg_condition_fact_table_compute(
-      state->module, &graph, state->fact_table, state->dominance,
+      state->module, graph, state->fact_table, state->dominance,
       state->analysis_arena, &path_fact_table));
   const loom_cfg_block_entry_condition_facts_t* path_facts =
       path_fact_table.block_facts;
   IREE_RETURN_IF_ERROR(loom_cfg_simplify_thread_fact_known_branches(
-      state, &graph, path_facts, out_changed));
+      state, graph, path_facts, out_changed));
   if (*out_changed) return iree_ok_status();
   IREE_RETURN_IF_ERROR(loom_cfg_simplify_fold_path_sensitive_branches(
-      state, &graph, path_facts, out_changed));
+      state, graph, path_facts, out_changed));
   if (*out_changed) return iree_ok_status();
   IREE_RETURN_IF_ERROR(loom_cfg_simplify_fold_path_sensitive_i1_ops(
-      state, &graph, path_facts, out_changed));
+      state, graph, path_facts, out_changed));
   if (*out_changed) return iree_ok_status();
   IREE_RETURN_IF_ERROR(loom_cfg_simplify_duplicate_terminal_successors(
-      state, &graph, out_changed));
+      state, graph, out_changed));
   if (*out_changed) return iree_ok_status();
   IREE_RETURN_IF_ERROR(
-      loom_cfg_simplify_forward_trivial_blocks(state, &graph, out_changed));
+      loom_cfg_simplify_forward_trivial_blocks(state, graph, out_changed));
   if (*out_changed) return iree_ok_status();
   IREE_RETURN_IF_ERROR(loom_cfg_simplify_fuse_single_predecessor_blocks(
-      state, &graph, out_changed));
+      state, graph, out_changed));
   if (*out_changed) return iree_ok_status();
 
   loom_cfg_simplify_block_hash_table_t block_hash_table = {0};
   IREE_RETURN_IF_ERROR(loom_cfg_simplify_block_hash_table_initialize(
-      state->analysis_arena, graph.block_count, &block_hash_table));
+      state->analysis_arena, graph->block_count, &block_hash_table));
   IREE_RETURN_IF_ERROR(loom_cfg_simplify_merge_duplicate_terminal_blocks(
-      state, &graph, &block_hash_table, out_changed));
+      state, graph, &block_hash_table, out_changed));
   if (*out_changed) return iree_ok_status();
   loom_cfg_simplify_block_hash_table_reset(&block_hash_table);
   IREE_RETURN_IF_ERROR(loom_cfg_simplify_merge_alpha_equivalent_blocks(
-      state, &graph, &block_hash_table, out_changed));
+      state, graph, &block_hash_table, out_changed));
   if (*out_changed) return iree_ok_status();
-  return loom_cfg_simplify_remove_redundant_block_args(state, &graph,
+  return loom_cfg_simplify_remove_redundant_block_args(state, graph,
                                                        out_changed);
 }
 
