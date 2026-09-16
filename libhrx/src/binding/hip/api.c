@@ -10410,7 +10410,7 @@ HIPAPI hipError_t hipMemcpyToSymbolAsync(const void* symbol, const void* src,
   iree_hal_streaming_module_release(module);
 
   IREE_TRACE_ZONE_END(z0);
-  return result;
+  HIP_RETURN_ERROR(result);
 }
 
 // Copies data to a symbol (device variable) synchronously.
@@ -10500,7 +10500,7 @@ HIPAPI hipError_t hipMemcpyFromSymbolAsync(void* dst, const void* symbol,
   iree_hal_streaming_module_release(module);
 
   IREE_TRACE_ZONE_END(z0);
-  return result;
+  HIP_RETURN_ERROR(result);
 }
 
 // Copies data from a symbol (device variable) synchronously.
