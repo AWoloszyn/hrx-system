@@ -424,9 +424,8 @@ static iree_status_t loom_scf_pipeline_emit_long_path(
   IREE_RETURN_IF_ERROR(loom_scf_pipeline_emit_producer(
       context, plan, source_block, main_block->arg_ids[0], &producer_remap,
       next_state + carried_count + (record_count - 1) * record_width));
-  loom_op_t* fence = NULL;
-  IREE_RETURN_IF_ERROR(
-      loom_scf_schedule_fence_build(builder, source->location, &fence));
+  // The SSA queue preserves the stage relationship while independent producer
+  // copies share a target scheduling region after unrolling.
   IREE_RETURN_IF_ERROR(loom_scf_pipeline_emit_consumer(
       context, plan, source_block, main_block->arg_ids + 1 + carried_count,
       main_block->arg_ids + 1, &consumer_remap, next_state));
