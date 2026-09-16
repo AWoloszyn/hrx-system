@@ -58,11 +58,22 @@ typedef struct loom_scf_pipeline_context_t {
   iree_arena_allocator_t* arena;
 } loom_scf_pipeline_context_t;
 
+typedef struct loom_scf_pipeline_loop_t {
+  // Annotated source loop, processed after its annotated children.
+  loom_op_t* source;
+  // Source policy facts retained independently of rewritten value IDs.
+  loom_value_facts_t depth;
+  // Source induction step facts.
+  loom_value_facts_t step;
+  // Source lower-bound facts used to construct the overflow-safe guard.
+  loom_value_facts_t lower_bound;
+} loom_scf_pipeline_loop_t;
+
 typedef struct loom_scf_pipeline_loop_list_t {
   // Invocation arena owning the collected source handles.
   iree_arena_allocator_t* arena;
   // Annotated source loops, with children before parents.
-  loom_op_t** values;
+  loom_scf_pipeline_loop_t* values;
   // Number of annotated loops.
   iree_host_size_t count;
   // Allocated source handle slots.
@@ -83,7 +94,36 @@ static iree_status_t loom_scf_pipeline_collect_loop(
         list->arena, list->count, list->count + 1, sizeof(*list->values),
         &list->capacity, (void**)&list->values));
   }
-  list->values[list->count++] = op;
+  list->values[list->count++] = (loom_scf_pipeline_loop_t){.source = op};
+  return iree_ok_status();
+}
+
+// Loop reconstruction preserves source value semantics but replaces SSA IDs.
+// Retain the scalar facts needed by every policy before the first rewrite;
+// recomputing the entire function for each loop would make this pass quadratic
+// even when clearing depth-one policies. Body plans still follow postorder so
+// parents see their children's reconstructed bodies.
+static iree_status_t loom_scf_pipeline_resolve_facts(
+    loom_pass_t* pass, loom_module_t* module, loom_func_like_t function,
+    loom_scf_pipeline_loop_list_t* loops) {
+  loom_value_fact_table_t* facts = NULL;
+  IREE_RETURN_IF_ERROR(loom_pass_value_facts_acquire(
+      pass, module, loom_pass_value_fact_scope_function(function), &facts));
+  for (iree_host_size_t i = 0; i < loops->count; ++i) {
+    loom_scf_pipeline_loop_t* loop = &loops->values[i];
+    loop->depth = loom_value_fact_table_lookup(
+        facts, loom_scf_for_pipeline_depth(loop->source));
+    loop->step =
+        loom_value_fact_table_lookup(facts, loom_scf_for_step(loop->source));
+    loop->lower_bound = loom_value_fact_table_lookup(
+        facts, loom_scf_for_lower_bound(loop->source));
+    // Only scalar ranges and exactness are consumed. Table-local extension
+    // identities do not cross the invalidation boundary.
+    loop->depth.extension_id = 0;
+    loop->step.extension_id = 0;
+    loop->lower_bound.extension_id = 0;
+  }
+  loom_pass_value_fact_owner_invalidate(pass->value_facts);
   return iree_ok_status();
 }
 
@@ -511,17 +551,11 @@ static iree_status_t loom_scf_pipeline_reconstruct(
 }
 
 static iree_status_t loom_scf_pipeline_process_loop(
-    loom_scf_pipeline_context_t* context, loom_func_like_t function,
-    loom_op_t* source, iree_host_size_t loop_ordinal) {
-  loom_value_fact_table_t* facts = NULL;
-  IREE_RETURN_IF_ERROR(loom_pass_value_facts_acquire(
-      context->pass, context->module,
-      loom_pass_value_fact_scope_function(function), &facts));
+    loom_scf_pipeline_context_t* context, const loom_scf_pipeline_loop_t* loop,
+    iree_host_size_t loop_ordinal) {
+  loom_op_t* source = loop->source;
   int64_t depth = 0;
-  if (!loom_value_facts_as_exact_i64(
-          loom_value_fact_table_lookup(facts,
-                                       loom_scf_for_pipeline_depth(source)),
-          &depth)) {
+  if (!loom_value_facts_as_exact_i64(loop->depth, &depth)) {
     return loom_scf_pipeline_reject(context->pass, source, 0,
                                     IREE_SV("a compile-time exact depth"));
   }
@@ -541,10 +575,7 @@ static iree_status_t loom_scf_pipeline_process_loop(
           context->pass, source, depth,
           IREE_SV("loop results without consuming operand storage ties"));
     }
-    if (!loom_value_facts_as_exact_i64(
-            loom_value_fact_table_lookup(facts, loom_scf_for_step(source)),
-            &step) ||
-        step <= 0) {
+    if (!loom_value_facts_as_exact_i64(loop->step, &step) || step <= 0) {
       return loom_scf_pipeline_reject(context->pass, source, depth,
                                       IREE_SV("a positive exact static step"));
     }
@@ -574,7 +605,7 @@ static iree_status_t loom_scf_pipeline_process_loop(
       loom_scf_pipeline_report(context, loop_ordinal, (uint32_t)depth, &plan));
   IREE_RETURN_IF_ERROR(loom_scf_pipeline_reconstruct(
       context, source, &plan, (uint32_t)depth, step, (uint16_t)state_count,
-      loom_value_fact_table_lookup(facts, loom_scf_for_lower_bound(source))));
+      loop->lower_bound));
   loom_scf_pipeline_statistics_t* statistics =
       loom_scf_pipeline_statistics(context->pass);
   if (depth == 1) {
@@ -582,7 +613,6 @@ static iree_status_t loom_scf_pipeline_process_loop(
   } else {
     ++statistics->loops_pipelined;
   }
-  loom_pass_value_fact_owner_invalidate(context->pass->value_facts);
   loom_pass_mark_changed(context->pass);
   return iree_ok_status();
 }
@@ -598,6 +628,8 @@ iree_status_t loom_scf_pipeline_run(loom_pass_t* pass, loom_module_t* module,
                              .user_data = &loops},
       pass->arena, &result));
   if (loops.count == 0) return iree_ok_status();
+  IREE_RETURN_IF_ERROR(
+      loom_scf_pipeline_resolve_facts(pass, module, function, &loops));
   loom_rewriter_t rewriter;
   IREE_RETURN_IF_ERROR(
       loom_rewriter_initialize(&rewriter, module, pass->arena));
@@ -614,8 +646,7 @@ iree_status_t loom_scf_pipeline_run(loom_pass_t* pass, loom_module_t* module,
                                !loom_pass_has_error_diagnostics(pass);
        ++i) {
     iree_arena_reset(&scratch_arena);
-    status =
-        loom_scf_pipeline_process_loop(&context, function, loops.values[i], i);
+    status = loom_scf_pipeline_process_loop(&context, &loops.values[i], i);
   }
   iree_arena_deinitialize(&scratch_arena);
   loom_rewriter_deinitialize(&rewriter);
