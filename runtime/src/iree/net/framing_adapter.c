@@ -62,8 +62,11 @@ static iree_status_t iree_net_framing_adapter_on_frame_complete(
 static iree_status_t iree_net_framing_adapter_on_recv(
     void* user_data, iree_async_span_t data, iree_async_buffer_lease_t* lease) {
   iree_net_framing_adapter_t* adapter = (iree_net_framing_adapter_t*)user_data;
-  return iree_net_frame_accumulator_push_lease(&adapter->accumulator, lease,
-                                               data.length);
+  if (lease) {
+    return iree_net_frame_accumulator_push_lease(&adapter->accumulator, data,
+                                                 lease);
+  }
+  return iree_net_frame_accumulator_push_span(&adapter->accumulator, data);
 }
 
 static void iree_net_framing_adapter_on_carrier_error(void* user_data,
@@ -175,13 +178,18 @@ iree_status_t iree_net_framing_adapter_allocate(
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "carrier is required");
   }
-  if (!frame_length.fn) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "frame_length.fn is required");
+  if (!frame_length.fn || frame_length.max_header_size == 0) {
+    return iree_make_status(
+        IREE_STATUS_INVALID_ARGUMENT,
+        "frame length callback and header size are required");
   }
   if (max_frame_size == 0) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "max_frame_size must be > 0");
+  }
+  if (frame_length.max_header_size > max_frame_size) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "maximum header size exceeds maximum frame size");
   }
   if (iree_net_carrier_state(carrier) != IREE_NET_CARRIER_STATE_CREATED) {
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
@@ -191,7 +199,7 @@ iree_status_t iree_net_framing_adapter_allocate(
 
   iree_host_size_t accumulator_storage_size = 0;
   iree_status_t status = iree_net_frame_accumulator_calculate_storage_size(
-      max_frame_size, &accumulator_storage_size);
+      frame_length.max_header_size, &accumulator_storage_size);
   iree_host_size_t total_size = 0;
   if (iree_status_is_ok(status) &&
       !iree_host_size_checked_add(
@@ -218,7 +226,8 @@ iree_status_t iree_net_framing_adapter_allocate(
   };
   if (iree_status_is_ok(status)) {
     status = iree_net_frame_accumulator_initialize(
-        &adapter->accumulator, max_frame_size, frame_length, on_frame_complete);
+        &adapter->accumulator, max_frame_size, frame_length, on_frame_complete,
+        host_allocator);
   }
 
   if (iree_status_is_ok(status)) {

@@ -17,12 +17,11 @@
 // frame is delivered directly with the buffer lease. The handler can move the
 // lease to defer processing without copying.
 //
-// Fragmented frames are reassembled in the embedded frame_accumulator. Frames
-// preceding other data in one receive buffer are also borrowed because moving
-// their shared lease would invalidate later bytes. The adapter copies either
-// kind of borrowed frame into host-backed lease storage. This keeps registered
-// receive buffers available for preposted transport I/O while maintaining the
-// message_endpoint contract that the lease is always non-NULL.
+// Fragmented frames are reassembled into exact-size host-backed leases. Frames
+// preceding other data in one receive buffer and frames delivered through a
+// borrowed carrier span are copied into host-backed leases. This keeps
+// registered receive buffers available for preposted transport I/O while
+// maintaining the message_endpoint contract that the lease is always non-NULL.
 //
 // ## Ownership model
 //
@@ -72,14 +71,14 @@ typedef struct iree_net_framing_adapter_t iree_net_framing_adapter_t;
 // freed. On failure the caller retains ownership. The carrier must not be
 // activated before passing to this function.
 //
-// The |frame_length| callback determines frame boundaries by examining partial
-// data. It reports the total frame size when determinable, leaves the size 0
-// when more bytes are needed, and rejects malformed headers. See
-// iree_net_frame_length_fn_t documentation for protocol requirements.
+// The |frame_length| callback determines frame boundaries by examining at most
+// |frame_length.max_header_size| bytes. It reports the total frame size when
+// determinable, leaves the size 0 when more bytes are needed, and rejects
+// malformed headers.
 //
-// The |max_frame_size| limits the largest incoming frame the adapter can
-// reassemble. Larger frames report IREE_STATUS_RESOURCE_EXHAUSTED through the
-// endpoint error handler.
+// The |max_frame_size| is an admission bound rather than a resident allocation.
+// Larger frames report IREE_STATUS_RESOURCE_EXHAUSTED through the endpoint
+// error handler.
 IREE_API_EXPORT iree_status_t iree_net_framing_adapter_allocate(
     iree_net_carrier_t* carrier, iree_net_frame_length_callback_t frame_length,
     iree_host_size_t max_frame_size, iree_allocator_t host_allocator,

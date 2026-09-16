@@ -31,8 +31,9 @@ static iree_status_t fuzz_frame_length(void* user_data,
   if (available.data_length < 4) {
     return iree_ok_status();
   }
-  uint32_t frame_size = available.data[0] | (available.data[1] << 8) |
-                        (available.data[2] << 16) | (available.data[3] << 24);
+  uint32_t frame_size =
+      (uint32_t)available.data[0] | ((uint32_t)available.data[1] << 8) |
+      ((uint32_t)available.data[2] << 16) | ((uint32_t)available.data[3] << 24);
   if (frame_size < 4) {
     return iree_make_status(IREE_STATUS_DATA_LOSS,
                             "frame is smaller than its header");
@@ -45,6 +46,8 @@ static iree_status_t fuzz_frame_length(void* user_data,
 static iree_status_t fuzz_on_frame_complete(void* user_data,
                                             iree_const_byte_span_t frame,
                                             iree_async_buffer_lease_t* lease) {
+  (void)frame;
+  (void)lease;
   uint32_t* frame_count = (uint32_t*)user_data;
   ++(*frame_count);
   return iree_ok_status();
@@ -60,6 +63,7 @@ typedef struct fuzz_mock_lease_t {
 
 static void fuzz_mock_release(void* user_data,
                               iree_async_buffer_index_t buffer_index) {
+  (void)buffer_index;
   fuzz_mock_lease_t* mock = (fuzz_mock_lease_t*)user_data;
   ++mock->release_count;
 }
@@ -114,7 +118,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   // Allocate accumulator storage.
   iree_host_size_t storage_size = 0;
   iree_status_t status = iree_net_frame_accumulator_calculate_storage_size(
-      max_frame_size, &storage_size);
+      /*max_header_size=*/4, &storage_size);
   if (!iree_status_is_ok(status)) {
     iree_status_free(status);
     return 0;
@@ -127,12 +131,16 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   uint32_t frame_count = 0;
   iree_net_frame_accumulator_t* accumulator =
       (iree_net_frame_accumulator_t*)storage;
-  iree_net_frame_length_callback_t frame_length_callback = {fuzz_frame_length,
-                                                            NULL};
+  iree_net_frame_length_callback_t frame_length_callback = {
+      /*.fn=*/fuzz_frame_length,
+      /*.user_data=*/NULL,
+      /*.max_header_size=*/4,
+  };
   iree_net_frame_complete_callback_t on_frame_complete = {
       fuzz_on_frame_complete, &frame_count};
   status = iree_net_frame_accumulator_initialize(
-      accumulator, max_frame_size, frame_length_callback, on_frame_complete);
+      accumulator, max_frame_size, frame_length_callback, on_frame_complete,
+      iree_allocator_system());
   if (!iree_status_is_ok(status)) {
     iree_status_free(status);
     free(storage);
@@ -152,8 +160,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
       fuzz_mock_lease_t mock;
       fuzz_mock_lease_init(&mock, stream_copy, stream_size);
 
-      status = iree_net_frame_accumulator_push_lease(accumulator, &mock.lease,
-                                                     stream_size);
+      status = iree_net_frame_accumulator_push_lease(
+          accumulator, mock.lease.span, &mock.lease);
       iree_status_free(status);
       fuzz_verify_release(&mock);
 
@@ -190,8 +198,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         fuzz_mock_lease_t mock;
         fuzz_mock_lease_init(&mock, stream_copy + offset, chunk_size);
 
-        status = iree_net_frame_accumulator_push_lease(accumulator, &mock.lease,
-                                                       chunk_size);
+        status = iree_net_frame_accumulator_push_lease(
+            accumulator, mock.lease.span, &mock.lease);
         fuzz_verify_release(&mock);
         if (!iree_status_is_ok(status)) {
           iree_status_free(status);
@@ -224,8 +232,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         fuzz_mock_lease_t mock;
         fuzz_mock_lease_init(&mock, stream_copy + i, 1);
 
-        status =
-            iree_net_frame_accumulator_push_lease(accumulator, &mock.lease, 1);
+        status = iree_net_frame_accumulator_push_lease(
+            accumulator, mock.lease.span, &mock.lease);
         fuzz_verify_release(&mock);
         if (!iree_status_is_ok(status)) {
           iree_status_free(status);
@@ -245,7 +253,10 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     fuzz_mock_lease_t mock;
     uint8_t dummy = 0;
     fuzz_mock_lease_init(&mock, &dummy, 1);
-    status = iree_net_frame_accumulator_push_lease(accumulator, &mock.lease, 0);
+    iree_async_span_t empty_span = mock.lease.span;
+    empty_span.length = 0;
+    status = iree_net_frame_accumulator_push_lease(accumulator, empty_span,
+                                                   &mock.lease);
     iree_status_free(status);
     fuzz_verify_release(&mock);
   }
@@ -265,8 +276,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
       fuzz_mock_lease_t mock;
       fuzz_mock_lease_init(&mock, partial, 4);
 
-      status =
-          iree_net_frame_accumulator_push_lease(accumulator, &mock.lease, 4);
+      status = iree_net_frame_accumulator_push_lease(
+          accumulator, mock.lease.span, &mock.lease);
       iree_status_free(status);
       fuzz_verify_release(&mock);
 

@@ -32,14 +32,23 @@ static iree_status_t TestFrameLength(void* user_data,
                                      iree_host_size_t* out_frame_size) {
   *out_frame_size = 0;
   if (available.data_length < kHeaderSize) return iree_ok_status();
-  uint32_t frame_size = available.data[0] | (available.data[1] << 8) |
-                        (available.data[2] << 16) | (available.data[3] << 24);
+  uint32_t frame_size =
+      (uint32_t)available.data[0] | ((uint32_t)available.data[1] << 8) |
+      ((uint32_t)available.data[2] << 16) | ((uint32_t)available.data[3] << 24);
   if (frame_size < kHeaderSize) {
     return iree_make_status(IREE_STATUS_DATA_LOSS,
                             "frame is smaller than its header");
   }
   *out_frame_size = static_cast<iree_host_size_t>(frame_size);
   return iree_ok_status();
+}
+
+static iree_net_frame_length_callback_t TestFrameLengthCallback() {
+  return {
+      /*.fn=*/TestFrameLength,
+      /*.user_data=*/nullptr,
+      /*.max_header_size=*/kHeaderSize,
+  };
 }
 
 static std::vector<uint8_t> MakeFrame(const std::string& payload) {
@@ -187,16 +196,18 @@ struct MockCarrier {
     return mock;
   }
 
-  // Injects recv data into the adapter's recv handler (simulates carrier recv).
-  // The lease's span data is used by the accumulator; |data| provides length.
+  // Injects recv data into the adapter's receive handler.
   iree_status_t InjectRecv(const std::vector<uint8_t>& data,
                            iree_async_buffer_lease_t* lease) {
     if (iree_net_carrier_has_terminal_error(&base)) {
       return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                               "carrier receive path is terminal");
     }
-    iree_async_span_t span = iree_async_span_from_ptr(
-        const_cast<uint8_t*>(data.data()), data.size());
+    iree_async_span_t span =
+        lease ? lease->span
+              : iree_async_span_from_ptr(const_cast<uint8_t*>(data.data()),
+                                         data.size());
+    span.length = data.size();
     iree_status_t status =
         base.handlers.on_receive(base.handlers.user_data, span, lease);
     if (!iree_status_is_ok(status)) {
@@ -363,7 +374,7 @@ class FramingAdapterTest : public ::testing::Test {
  protected:
   void SetUp() override {
     mock_carrier_ = MockCarrier::Create();
-    iree_net_frame_length_callback_t frame_length = {TestFrameLength, nullptr};
+    iree_net_frame_length_callback_t frame_length = TestFrameLengthCallback();
     IREE_ASSERT_OK(iree_net_framing_adapter_allocate(
         &mock_carrier_->base, frame_length, kMaxFrameSize,
         iree_allocator_system(), &adapter_));
@@ -393,6 +404,11 @@ class FramingAdapterTest : public ::testing::Test {
     return mock_carrier_->InjectRecv(data, &lease.lease);
   }
 
+  // Injects receive data without a transferable backing lease.
+  iree_status_t InjectBorrowed(const std::vector<uint8_t>& data) {
+    return mock_carrier_->InjectRecv(data, nullptr);
+  }
+
   iree_net_framing_adapter_t* adapter_ = nullptr;
   iree_net_message_endpoint_t endpoint_;
   std::unique_ptr<MockCarrier> mock_carrier_;
@@ -407,7 +423,7 @@ TEST_F(FramingAdapterTest, AllocateAndFree) { EXPECT_NE(adapter_, nullptr); }
 
 TEST_F(FramingAdapterTest, AllocateRequiresCarrier) {
   iree_net_framing_adapter_t* adapter = nullptr;
-  iree_net_frame_length_callback_t frame_length = {TestFrameLength, nullptr};
+  iree_net_frame_length_callback_t frame_length = TestFrameLengthCallback();
   IREE_EXPECT_STATUS_IS(
       IREE_STATUS_INVALID_ARGUMENT,
       iree_net_framing_adapter_allocate(nullptr, frame_length, kMaxFrameSize,
@@ -417,7 +433,11 @@ TEST_F(FramingAdapterTest, AllocateRequiresCarrier) {
 TEST_F(FramingAdapterTest, AllocateRequiresFrameLengthFn) {
   auto carrier = MockCarrier::Create();
   iree_net_framing_adapter_t* adapter = nullptr;
-  iree_net_frame_length_callback_t frame_length = {nullptr, nullptr};
+  iree_net_frame_length_callback_t frame_length = {
+      /*.fn=*/nullptr,
+      /*.user_data=*/nullptr,
+      /*.max_header_size=*/kHeaderSize,
+  };
   IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
                         iree_net_framing_adapter_allocate(
                             &carrier->base, frame_length, kMaxFrameSize,
@@ -427,7 +447,7 @@ TEST_F(FramingAdapterTest, AllocateRequiresFrameLengthFn) {
 TEST_F(FramingAdapterTest, AllocateRequiresNonZeroMaxFrameSize) {
   auto carrier = MockCarrier::Create();
   iree_net_framing_adapter_t* adapter = nullptr;
-  iree_net_frame_length_callback_t frame_length = {TestFrameLength, nullptr};
+  iree_net_frame_length_callback_t frame_length = TestFrameLengthCallback();
   IREE_EXPECT_STATUS_IS(
       IREE_STATUS_INVALID_ARGUMENT,
       iree_net_framing_adapter_allocate(&carrier->base, frame_length, 0,
@@ -438,7 +458,7 @@ TEST_F(FramingAdapterTest, AllocateRejectsActivatedCarrier) {
   auto carrier = MockCarrier::Create();
   iree_net_carrier_set_state(&carrier->base, IREE_NET_CARRIER_STATE_ACTIVE);
   iree_net_framing_adapter_t* adapter = nullptr;
-  iree_net_frame_length_callback_t frame_length = {TestFrameLength, nullptr};
+  iree_net_frame_length_callback_t frame_length = TestFrameLengthCallback();
   IREE_EXPECT_STATUS_IS(IREE_STATUS_FAILED_PRECONDITION,
                         iree_net_framing_adapter_allocate(
                             &carrier->base, frame_length, kMaxFrameSize,
@@ -448,7 +468,7 @@ TEST_F(FramingAdapterTest, AllocateRejectsActivatedCarrier) {
 TEST_F(FramingAdapterTest, FailedAllocationRetainsCarrierOwnership) {
   auto carrier = MockCarrier::Create();
   iree_net_framing_adapter_t* adapter = nullptr;
-  iree_net_frame_length_callback_t frame_length = {TestFrameLength, nullptr};
+  iree_net_frame_length_callback_t frame_length = TestFrameLengthCallback();
   IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
                         iree_net_framing_adapter_allocate(
                             &carrier->base, frame_length, kMaxFrameSize,
@@ -505,6 +525,17 @@ TEST_F(FramingAdapterTest, SingleCompleteFrame) {
 
   auto frame = MakeFrame("Hello");
   IREE_ASSERT_OK(InjectRecv(frame));
+
+  ASSERT_EQ(ctx_.messages.size(), 1u);
+  EXPECT_EQ(ctx_.messages[0].data, frame);
+  EXPECT_TRUE(ctx_.messages[0].had_lease);
+}
+
+TEST_F(FramingAdapterTest, BorrowedCompleteFrameGetsOwnedLease) {
+  ActivateWithCallbacks();
+
+  auto frame = MakeFrame("Borrowed frame");
+  IREE_ASSERT_OK(InjectBorrowed(frame));
 
   ASSERT_EQ(ctx_.messages.size(), 1u);
   EXPECT_EQ(ctx_.messages[0].data, frame);
@@ -574,6 +605,22 @@ TEST_F(FramingAdapterTest, FrameSpansTwoBuffers) {
 
   std::vector<uint8_t> second_half(frame.begin() + split_point, frame.end());
   IREE_ASSERT_OK(InjectRecv(second_half));
+
+  ASSERT_EQ(ctx_.messages.size(), 1u);
+  EXPECT_EQ(ctx_.messages[0].data, frame);
+  EXPECT_TRUE(ctx_.messages[0].had_lease);
+}
+
+TEST_F(FramingAdapterTest, BorrowedFragmentsGetOwnedLease) {
+  ActivateWithCallbacks();
+
+  auto frame = MakeFrame("Borrowed fragments");
+  iree_host_size_t split_point = frame.size() / 2;
+  std::vector<uint8_t> first_half(frame.begin(), frame.begin() + split_point);
+  std::vector<uint8_t> second_half(frame.begin() + split_point, frame.end());
+
+  IREE_ASSERT_OK(InjectBorrowed(first_half));
+  IREE_ASSERT_OK(InjectBorrowed(second_half));
 
   ASSERT_EQ(ctx_.messages.size(), 1u);
   EXPECT_EQ(ctx_.messages[0].data, frame);

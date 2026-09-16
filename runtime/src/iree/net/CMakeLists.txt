@@ -106,6 +106,7 @@ iree_cc_library(
   SRCS
     "frame_accumulator.c"
   DEPS
+    ::buffer_lease
     iree::async
     iree::base
   PUBLIC
