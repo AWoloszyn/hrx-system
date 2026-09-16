@@ -11,6 +11,8 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+exports_files(["attention/prefill_f16_wmma_amdgpu.loom"])
+
 iree_c_embed_data(
     name = "attention_prefill_smoke",
     testonly = True,
