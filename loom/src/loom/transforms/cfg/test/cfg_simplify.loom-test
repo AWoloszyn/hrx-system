@@ -760,8 +760,8 @@ func.def @threads_direct_branch_through_known_block_arg(%cond: i1, %a: i32, %b: 
 
 // ----
 func.def @threads_direct_branch_through_known_block_arg(%cond: i1, %a: i32, %b: i32) -> (i32) {
-  cfg.cond_br %cond, ^taken, ^exit
-^taken:
+  cfg.cond_br %cond, ^left, ^exit
+^left:
   cfg.br ^ret(%a: i32)
 ^exit:
   cfg.br ^ret(%b: i32)

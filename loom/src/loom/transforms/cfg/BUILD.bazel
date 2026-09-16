@@ -56,6 +56,22 @@ loom_cc_library(
 )
 
 loom_cc_library(
+    name = "block_forwarding",
+    srcs = ["block_forwarding.c"],
+    hdrs = ["block_forwarding.h"],
+    deps = [
+        ":block_arguments",
+        "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/ops/cfg",
+        "//loom/src/loom/rewrite:rewriter",
+        "//loom/src/loom/util:cfg_graph",
+        "//loom/src/loom/util:dominance",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_library(
     name = "block_fusion",
     srcs = ["block_fusion.c"],
     hdrs = ["block_fusion.h"],
@@ -77,6 +93,7 @@ loom_cc_library(
     hdrs = ["cfg_simplify.h"],
     deps = [
         ":block_arguments",
+        ":block_forwarding",
         ":block_fusion",
         "//loom/src/loom/analysis:cfg_condition_facts",
         "//loom/src/loom/analysis:condition_facts",

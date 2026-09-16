@@ -63,6 +63,25 @@ loom_cc_library(
 
 loom_cc_library(
   NAME
+    block_forwarding
+  HDRS
+    "block_forwarding.h"
+  SRCS
+    "block_forwarding.c"
+  DEPS
+    ::block_arguments
+    iree::base
+    iree::base::internal::arena
+    loom::ops::cfg
+    loom::ops::op_defs
+    loom::rewrite::rewriter
+    loom::util::cfg_graph
+    loom::util::dominance
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
     block_fusion
   HDRS
     "block_fusion.h"
@@ -89,6 +108,7 @@ loom_cc_library(
     "cfg_simplify.c"
   DEPS
     ::block_arguments
+    ::block_forwarding
     ::block_fusion
     iree::base
     loom::analysis::cfg_condition_facts

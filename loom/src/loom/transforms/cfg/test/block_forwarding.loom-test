@@ -1,0 +1,184 @@
+// RUN: pass cfg-simplify
+
+// All three forwarding blocks have conditional or shared incoming edges.
+// Resolving their common tail preserves the observable branch prefixes.
+func.def @shared_forwarding_tail(%first: i1, %second: i1, %third: i1, %value: i32) -> (i32) {
+  cfg.cond_br %first, ^shortcut_first, ^dispatch_second
+^dispatch_second:
+  test.use %value : i32
+  cfg.cond_br %second, ^shortcut_second, ^dispatch_third
+^dispatch_third:
+  test.use %value : i32
+  cfg.cond_br %third, ^shortcut_third, ^other
+^shortcut_first:
+  cfg.br ^shortcut_second
+^shortcut_second:
+  cfg.br ^shortcut_third
+^shortcut_third:
+  cfg.br ^join
+^other:
+  test.use %value : i32
+  cfg.br ^join
+^join:
+  test.use %value : i32
+  func.return %value : i32
+}
+
+// ----
+func.def @shared_forwarding_tail(%first: i1, %second: i1, %third: i1, %value: i32) -> (i32) {
+  cfg.cond_br %first, ^join, ^dispatch_second
+^dispatch_second:
+  test.use %value : i32
+  cfg.cond_br %second, ^join, ^dispatch_third
+^dispatch_third:
+  test.use %value : i32
+  cfg.cond_br %third, ^join, ^other
+^other:
+  test.use %value : i32
+  cfg.br ^join
+^join:
+  test.use %value : i32
+  func.return %value : i32
+}
+
+// ====
+// RUN: pass cfg-simplify
+
+// A direct predecessor takes the payload; a conditional predecessor must keep
+// the block that supplies it. The payload retains a dependent layout type.
+func.def @conditional_payload_boundary(%choose: i1, %pick: i1, %layout: encoding<layout>, %view: view<4xf32, %layout>, %other_view: view<4xf32, %layout>) {
+  cfg.cond_br %choose, ^direct, ^dispatch
+^direct:
+  test.use %view : view<4xf32, %layout>
+  cfg.br ^forward
+^dispatch:
+  cfg.cond_br %pick, ^forward, ^other
+^forward:
+  cfg.br ^join(%layout: encoding<layout>, %view: view<4xf32, %layout>)
+^other:
+  test.use %other_view : view<4xf32, %layout>
+  cfg.br ^join(%layout: encoding<layout>, %other_view: view<4xf32, %layout>)
+^join(%joined_layout: encoding<layout>, %joined_view: view<4xf32, %joined_layout>):
+  test.use %joined_view : view<4xf32, %joined_layout>
+  func.return
+}
+
+// ----
+func.def @conditional_payload_boundary(%choose: i1, %pick: i1, %layout: encoding<layout>, %view: view<4xf32, %layout>, %other_view: view<4xf32, %layout>) {
+  cfg.cond_br %choose, ^direct, ^dispatch
+^direct:
+  test.use %view : view<4xf32, %layout>
+  cfg.br ^join(%view: view<4xf32, %layout>)
+^dispatch:
+  cfg.cond_br %pick, ^forward, ^other
+^forward:
+  cfg.br ^join(%view: view<4xf32, %layout>)
+^other:
+  test.use %other_view : view<4xf32, %layout>
+  cfg.br ^join(%other_view: view<4xf32, %layout>)
+^join(%joined_view: view<4xf32, %layout>):
+  test.use %joined_view : view<4xf32, %layout>
+  func.return
+}
+
+// ====
+// RUN: pass cfg-simplify
+
+// Odd cycles must terminate simplification with one self-loop, rather than
+// repeatedly rotating the forwarding edges around the cycle.
+func.def @odd_forwarding_cycle(%enter: i1, %value: i32) -> (i32) {
+  cfg.cond_br %enter, ^first, ^exit
+^first:
+  cfg.br ^second
+^second:
+  cfg.br ^third
+^third:
+  cfg.br ^first
+^exit:
+  test.use %value : i32
+  func.return %value : i32
+}
+
+// ----
+func.def @odd_forwarding_cycle(%enter: i1, %value: i32) -> (i32) {
+  cfg.cond_br %enter, ^first, ^exit
+^first:
+  cfg.br ^first
+^exit:
+  test.use %value : i32
+  func.return %value : i32
+}
+
+// ====
+// RUN: pass cfg-simplify
+
+// A forwarding cycle may lead back to the function entry. Its effects remain
+// inside the loop; the entry block cannot be selected for removal.
+func.def @entry_cycle() {
+^entry:
+  %value = index.constant 1 : index
+  test.use %value : index
+  cfg.br ^forward
+^forward:
+  cfg.br ^entry
+}
+
+// ----
+func.def @entry_cycle() {
+^entry:
+  %value = index.constant 1 : index
+  test.use %value : index
+  cfg.br ^entry
+}
+
+// ====
+// RUN: pass cfg-simplify
+
+// Every cycle member has an external incoming edge, so chain fusion cannot
+// remove a member before the forwarding resolver sees the whole odd cycle.
+func.def @multiple_entry_odd_cycle(%first_entry: i1, %second_entry: i1) {
+  cfg.cond_br %first_entry, ^first, ^dispatch
+^dispatch:
+  cfg.cond_br %second_entry, ^second, ^third
+^first:
+  cfg.br ^second
+^second:
+  cfg.br ^third
+^third:
+  cfg.br ^first
+}
+
+// ----
+func.def @multiple_entry_odd_cycle(%first_entry: i1, %second_entry: i1) {
+  cfg.br ^third
+^third:
+  cfg.br ^third
+}
+
+// ====
+// RUN: pass-report cfg-simplify
+
+func.def @shared_tail_iteration_count(%first: i1, %second: i1, %third: i1, %value: i32) -> (i32) {
+  cfg.cond_br %first, ^shortcut_first, ^dispatch_second
+^dispatch_second:
+  test.use %value : i32
+  cfg.cond_br %second, ^shortcut_second, ^dispatch_third
+^dispatch_third:
+  test.use %value : i32
+  cfg.cond_br %third, ^shortcut_third, ^other
+^shortcut_first:
+  cfg.br ^shortcut_second
+^shortcut_second:
+  cfg.br ^shortcut_third
+^shortcut_third:
+  cfg.br ^join
+^other:
+  test.use %value : i32
+  cfg.br ^join
+^join:
+  test.use %value : i32
+  func.return %value : i32
+}
+
+// ----
+{"invocations":[{"pass":"cfg-simplify","kind":"func","anchor":"func","pipeline":"__command_line","symbol":"shared_tail_iteration_count","instruction_index":1,"duration_ns":0,"changed":true,"status":{"code":0,"name":"OK"},"statistics":{"iterations":3,"branches-folded":0,"edges-forwarded":5,"blocks-removed":3,"block-args-removed":0,"blocks-fused":0,"duplicate-blocks-merged":0,"terminal-blocks-duplicated":0},"details":[{"category":"value-facts","acquisition_count":1,"cache_hit_count":0,"recomputation_count":1,"preparation_count":0,"invalidation_count":2,"scope_clear_count":1,"computed_value_count":4,"cleared_value_count":4}]}]}
