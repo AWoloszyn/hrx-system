@@ -174,7 +174,7 @@ func.def @late_depth_with_independent_unroll(%input: view<9xf32>, %initial: f32)
   %step = index.constant 1 : index
   %depth = config.get @schedule.depth : index
   %factor = index.constant 2 : index
-  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : f32) -> (f32) unroll(%factor) schedule(recurrence) pipeline(%depth) {
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : f32) -> (f32) pipeline(%depth) unroll(%factor) schedule(recurrence) {
     %value = view.load %input[%i] : view<9xf32> -> f32
     %next = scalar.addf %sum, %value : f32
     scf.yield %next : f32
@@ -207,4 +207,43 @@ func.def @late_depth_with_independent_unroll(%input: view<9xf32>, %initial: f32)
   %next$30 = scalar.addf %next$60, %45 : f32
   %next$31 = scalar.addf %next$30, %value$59 : f32
   func.return %next$31 : f32
+}
+
+// ====
+// RUN: pass pipeline-scf-for,unroll-scf-for,canonicalize,cse,dce
+
+func.def @pipeline_then_full_unroll(%input: view<5xf32>, %initial: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 5 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 3 : index
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : f32) -> (f32) pipeline(%depth) unroll schedule(recurrence) {
+    %value = view.load %input[%i] : view<5xf32> -> f32
+    %next = scalar.addf %sum, %value : f32
+    scf.yield %next : f32
+  }
+  func.return %result : f32
+}
+
+// ----
+func.def @pipeline_then_full_unroll(%input: view<5xf32>, %initial: f32) -> (f32) {
+  %begin = index.constant 0 : index
+  %value$15 = view.load %input[%begin] : view<5xf32> -> f32
+  %59 = index.constant 1 : index
+  %value$18 = view.load %input[%59] : view<5xf32> -> f32
+  %35 = index.constant 2 : index
+  %36 = index.constant 3 : index
+  %37 = index.constant 4 : index
+  %value$38 = view.load %input[%35] : view<5xf32> -> f32
+  %value_1 = view.load %input[%36] : view<5xf32> -> f32
+  scf.schedule.fence
+  %next$40 = scalar.addf %initial, %value$15 : f32
+  %value_2 = view.load %input[%37] : view<5xf32> -> f32
+  scf.schedule.fence
+  %next_1 = scalar.addf %next$40, %value$18 : f32
+  scf.schedule.fence
+  %next_2 = scalar.addf %next_1, %value$38 : f32
+  %next$28 = scalar.addf %next_2, %value_1 : f32
+  %next$29 = scalar.addf %next$28, %value_2 : f32
+  func.return %next$29 : f32
 }

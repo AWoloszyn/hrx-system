@@ -810,7 +810,7 @@ static iree_status_t loom_vector_bank_sroa_rewrite_loop(
       &context->rewriter->builder, build_flags, loom_scf_for_lower_bound(loop),
       loom_scf_for_upper_bound(loop), loom_scf_for_step(loop), new_iter_args,
       plan->expanded_count, /*tied_results=*/NULL, /*tied_result_count=*/0,
-      unroll_factor, unroll_policy, unroll_schedule, pipeline_depth,
+      pipeline_depth, unroll_factor, unroll_policy, unroll_schedule,
       loop->location, &new_loop));
 
   loom_builder_ip_t saved_ip = loom_builder_enter_region(

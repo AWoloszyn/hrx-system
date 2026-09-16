@@ -1732,8 +1732,8 @@ static iree_status_t loom_scf_for_forward_loop_carried_results(
   IREE_RETURN_IF_ERROR(loom_scf_for_build(
       &rewriter->builder, build_flags, loom_scf_for_lower_bound(op),
       loom_scf_for_upper_bound(op), loom_scf_for_step(op), kept_iter_args,
-      kept_count, tied_results, tied_result_count, unroll_factor, unroll_policy,
-      unroll_schedule, pipeline_depth, op->location, &new_loop));
+      kept_count, tied_results, tied_result_count, pipeline_depth,
+      unroll_factor, unroll_policy, unroll_schedule, op->location, &new_loop));
 
   loom_region_t* new_body = loom_scf_for_body(new_loop);
   loom_builder_ip_t saved_ip =

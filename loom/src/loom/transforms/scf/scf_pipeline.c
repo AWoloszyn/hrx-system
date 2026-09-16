@@ -219,12 +219,12 @@ static iree_status_t loom_scf_pipeline_build_loop(
     flags |= LOOM_SCF_FOR_BUILD_FLAG_HAS_UNROLL_SCHEDULE;
     schedule = loom_scf_for_unroll_schedule(source);
   }
-  return loom_scf_for_build(&context->rewriter->builder, flags, lower,
-                            loom_scf_for_upper_bound(source),
-                            loom_scf_for_step(source), iter_args,
-                            iter_arg_count, loom_op_tied_results(source),
-                            source->tied_result_count, factor, policy, schedule,
-                            LOOM_VALUE_ID_INVALID, source->location, out_loop);
+  return loom_scf_for_build(
+      &context->rewriter->builder, flags, lower,
+      loom_scf_for_upper_bound(source), loom_scf_for_step(source), iter_args,
+      iter_arg_count, loom_op_tied_results(source), source->tied_result_count,
+      LOOM_VALUE_ID_INVALID, factor, policy, schedule, source->location,
+      out_loop);
 }
 
 static iree_status_t loom_scf_pipeline_emit_serial(

@@ -312,8 +312,8 @@ static iree_status_t loom_vector_to_scalar_accumulator_loop_axis(
   IREE_RETURN_IF_ERROR(loom_scf_for_build(
       &state->lane_state.rewriter->builder, /*build_flags=*/0, lower_bound,
       upper_bound, step, &current_accumulator, 1, NULL, 0,
-      LOOM_VALUE_ID_INVALID, /*unroll_policy=*/0, /*unroll_schedule=*/0,
-      /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, state->lane_state.location,
+      /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, LOOM_VALUE_ID_INVALID,
+      /*unroll_policy=*/0, /*unroll_schedule=*/0, state->lane_state.location,
       &loop));
   loom_vector_to_scalar_record_loop_created(&state->lane_state);
 
@@ -546,8 +546,8 @@ static iree_status_t loom_vector_to_scalar_reduce_axes_axis(
   IREE_RETURN_IF_ERROR(loom_scf_for_build(
       &state->lane_state.rewriter->builder, /*build_flags=*/0, lower_bound,
       upper_bound, step, &current_accumulator, 1, NULL, 0,
-      LOOM_VALUE_ID_INVALID, /*unroll_policy=*/0, /*unroll_schedule=*/0,
-      /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, state->lane_state.location,
+      /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, LOOM_VALUE_ID_INVALID,
+      /*unroll_policy=*/0, /*unroll_schedule=*/0, state->lane_state.location,
       &loop));
   loom_vector_to_scalar_record_loop_created(&state->lane_state);
 
@@ -758,9 +758,9 @@ static iree_status_t loom_vector_to_scalar_reduce_axes_result_loop_axis(
   loom_op_t* loop = NULL;
   IREE_RETURN_IF_ERROR(loom_scf_for_build(
       &state->lane_state.rewriter->builder, /*build_flags=*/0, lower_bound,
-      upper_bound, step, &current_aggregate, 1, NULL, 0, LOOM_VALUE_ID_INVALID,
-      /*unroll_policy=*/0, /*unroll_schedule=*/0,
-      /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, state->lane_state.location,
+      upper_bound, step, &current_aggregate, 1, NULL, 0,
+      /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, LOOM_VALUE_ID_INVALID,
+      /*unroll_policy=*/0, /*unroll_schedule=*/0, state->lane_state.location,
       &loop));
   loom_vector_to_scalar_record_loop_created(&state->lane_state);
 

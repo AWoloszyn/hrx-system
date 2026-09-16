@@ -54,17 +54,17 @@ LOOM_DEFINE_SEGMENTED_OPERAND(loom_scf_for_lower_bound, 0)
 LOOM_DEFINE_SEGMENTED_OPERAND(loom_scf_for_upper_bound, 1)
 LOOM_DEFINE_SEGMENTED_OPERAND(loom_scf_for_step, 2)
 LOOM_DEFINE_SEGMENTED_OPERANDS(loom_scf_for_iter_args, 3)
-LOOM_DEFINE_SEGMENTED_OPTIONAL_OPERAND(loom_scf_for_unroll_factor, 4)
-LOOM_DEFINE_SEGMENTED_OPTIONAL_OPERAND(loom_scf_for_pipeline_depth, 5)
+LOOM_DEFINE_SEGMENTED_OPTIONAL_OPERAND(loom_scf_for_pipeline_depth, 4)
+LOOM_DEFINE_SEGMENTED_OPTIONAL_OPERAND(loom_scf_for_unroll_factor, 5)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_scf_for_results, 0)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_scf_for_unroll_policy, 0, loom_scf_for_unroll_policy_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_scf_for_unroll_schedule, 1, loom_scf_for_unroll_schedule_t)
 LOOM_DEFINE_REGION(loom_scf_for_body, 0)
 enum loom_scf_for_build_flag_bits_e {
-  LOOM_SCF_FOR_BUILD_FLAG_HAS_UNROLL_FACTOR = 1u << 0,
-  LOOM_SCF_FOR_BUILD_FLAG_HAS_UNROLL_POLICY = 1u << 1,
-  LOOM_SCF_FOR_BUILD_FLAG_HAS_UNROLL_SCHEDULE = 1u << 2,
-  LOOM_SCF_FOR_BUILD_FLAG_HAS_PIPELINE_DEPTH = 1u << 3,
+  LOOM_SCF_FOR_BUILD_FLAG_HAS_PIPELINE_DEPTH = 1u << 0,
+  LOOM_SCF_FOR_BUILD_FLAG_HAS_UNROLL_FACTOR = 1u << 1,
+  LOOM_SCF_FOR_BUILD_FLAG_HAS_UNROLL_POLICY = 1u << 2,
+  LOOM_SCF_FOR_BUILD_FLAG_HAS_UNROLL_SCHEDULE = 1u << 3,
 };
 typedef uint32_t loom_scf_for_build_flags_t;
 iree_status_t loom_scf_for_build(
@@ -77,10 +77,10 @@ iree_status_t loom_scf_for_build(
     iree_host_size_t iter_args_count,
     const loom_tied_result_t* tied_results,
     iree_host_size_t tied_result_count,
+    loom_optional loom_may_consume loom_value_id_t pipeline_depth,
     loom_optional loom_may_consume loom_value_id_t unroll_factor,
     loom_optional uint8_t unroll_policy,
     loom_optional uint8_t unroll_schedule,
-    loom_optional loom_may_consume loom_value_id_t pipeline_depth,
     loom_location_id_t location,
     loom_op_t** out_op);
 iree_status_t loom_scf_for_canonicalize(loom_op_t* op, loom_rewriter_t* rewriter);

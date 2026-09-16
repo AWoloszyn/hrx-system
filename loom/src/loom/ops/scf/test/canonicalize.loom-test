@@ -1712,7 +1712,7 @@ func.def @lookup_compacts_reachable_uniform_column(%variant: index, %common: ind
 func.def @forwarded_carried_value_preserves_pipeline_policy(%input: view<64xf32>, %end: index, %depth: index, %factor: index, %initial: f32) -> (f32, f32) {
   %begin = index.constant 0 : index
   %step = index.constant 1 : index
-  %result, %same = scf.for %i = [%begin to %end step %step](%sum = %initial : f32, %unchanged = %initial : f32) -> (f32, f32) unroll(%factor) schedule(recurrence) pipeline(%depth) {
+  %result, %same = scf.for %i = [%begin to %end step %step](%sum = %initial : f32, %unchanged = %initial : f32) -> (f32, f32) pipeline(%depth) unroll(%factor) schedule(recurrence) {
     %value = view.load %input[%i] : view<64xf32> -> f32
     %next = scalar.addf %sum, %value : f32
     scf.yield %next, %unchanged : f32, f32
@@ -1724,7 +1724,7 @@ func.def @forwarded_carried_value_preserves_pipeline_policy(%input: view<64xf32>
 func.def @forwarded_carried_value_preserves_pipeline_policy(%input: view<64xf32>, %end: index, %depth: index, %factor: index, %initial: f32) -> (f32, f32) {
   %begin = index.constant 0 : index
   %step = index.constant 1 : index
-  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : f32) -> (f32) unroll(%factor) schedule(recurrence) pipeline(%depth) {
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : f32) -> (f32) pipeline(%depth) unroll(%factor) schedule(recurrence) {
     %value = view.load %input[%i] : view<64xf32> -> f32
     %next = scalar.addf %sum, %value : f32
     scf.yield %next : f32

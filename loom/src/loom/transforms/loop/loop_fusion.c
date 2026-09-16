@@ -686,9 +686,9 @@ static iree_status_t loom_loop_fusion_fuse_pair(
   iree_status_t status = loom_scf_for_build(
       builder, /*build_flags=*/0, first->domain.lower_bound,
       first->domain.upper_bound, first->domain.step, iter_args, iter_arg_count,
-      NULL, 0, LOOM_VALUE_ID_INVALID, /*unroll_policy=*/0,
-      /*unroll_schedule=*/0, /*pipeline_depth=*/LOOM_VALUE_ID_INVALID,
-      first->op->location, &fused_loop);
+      NULL, 0, /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, LOOM_VALUE_ID_INVALID,
+      /*unroll_policy=*/0, /*unroll_schedule=*/0, first->op->location,
+      &fused_loop);
   if (iree_status_is_ok(status)) {
     status = loom_loop_fusion_copy_result_names(context->module, first, second,
                                                 fused_loop);

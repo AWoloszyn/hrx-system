@@ -318,12 +318,19 @@ loads; loops shorter than the depth take the serial path. A partial unroll
 remainder also stays within the original half-open range. The accumulation order
 is preserved, including for floating-point recurrences.
 
-The policy is explicit: loops without `pipeline(...)` receive no read-ahead
-transformation. Depth one retains serial iteration and provides a useful
-control. Depth counts original iterations independently of `unroll(%factor)`;
-both operands must become exact positive values before their policies run.
+The clauses follow transformation order: `pipeline(%depth) unroll(%factor)`.
+Pipelining constructs the queue first; unrolling then groups iterations of the
+reconstructed loops. Depth three with unroll factor two still queues two original
+iterations, and each unrolled steady body advances the queue twice. An optional
+`schedule(...)` follows `unroll(...)` and controls how those copies are ordered.
 The target schedules independent instructions using its normal dependency
 constraints; the carried queue preserves the original iteration relationship.
+
+Both controls are independent and explicit: loops without `pipeline(...)`
+receive no read-ahead transformation, and pipelining does not request unrolling.
+Depth one retains serial iteration and any separate unroll policy, providing a
+useful control. The depth must specialize to a positive exact value; the unroll
+factor must also specialize before its policy runs.
 
 The read-ahead contract supports a flat loop body of ordinary loads and pure
 operations, with a positive exact step. Read prerequisites may depend on the

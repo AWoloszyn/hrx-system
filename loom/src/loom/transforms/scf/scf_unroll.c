@@ -857,8 +857,6 @@ static iree_status_t loom_scf_unroll_adjust_tied_results_for_policy_clear(
         (uint16_t)(iter_args.values - loom_op_const_operands(op));
   }
   const uint16_t new_iter_arg_offset = 3;
-  const uint16_t old_unroll_factor_offset =
-      (uint16_t)(old_iter_arg_offset + iter_args.count);
   const loom_tied_result_t* old_tied_results = loom_op_tied_results(op);
   for (uint16_t i = 0; i < op->tied_result_count; ++i) {
     loom_tied_result_t tied_result = old_tied_results[i];
@@ -867,11 +865,6 @@ static iree_status_t loom_scf_unroll_adjust_tied_results_for_policy_clear(
       tied_result.operand_index =
           (uint16_t)(new_iter_arg_offset +
                      (tied_result.operand_index - old_iter_arg_offset));
-    } else if (loom_scf_for_unroll_factor_is_present(op) &&
-               tied_result.operand_index == old_unroll_factor_offset) {
-      return loom_scf_unroll_emit_policy_error(
-          context, op, IREE_SV("unroll_factor"), tied_result.operand_index,
-          IREE_SV("not tied to a result"));
     }
     tied_results[i] = tied_result;
   }
@@ -905,8 +898,8 @@ static iree_status_t loom_scf_unroll_clear_policy(
       &context->rewriter->builder, /*build_flags=*/0,
       loom_scf_for_lower_bound(op), loom_scf_for_upper_bound(op),
       loom_scf_for_step(op), iter_args.values, iter_args.count, tied_results,
-      tied_result_count, LOOM_VALUE_ID_INVALID, /*unroll_policy=*/0,
-      /*unroll_schedule=*/0, /*pipeline_depth=*/LOOM_VALUE_ID_INVALID,
+      tied_result_count, /*pipeline_depth=*/LOOM_VALUE_ID_INVALID,
+      LOOM_VALUE_ID_INVALID, /*unroll_policy=*/0, /*unroll_schedule=*/0,
       op->location, &new_loop));
 
   loom_region_t* old_body = loom_scf_for_body(op);
@@ -1011,8 +1004,8 @@ static iree_status_t loom_scf_unroll_partial_unroll(
       &context->rewriter->builder, /*build_flags=*/0,
       loom_scf_for_lower_bound(op), loom_scf_for_upper_bound(op), scaled_step,
       iter_args.values, iter_args.count, tied_results, tied_result_count,
-      LOOM_VALUE_ID_INVALID, /*unroll_policy=*/0, /*unroll_schedule=*/0,
-      /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, op->location, &new_loop));
+      /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, LOOM_VALUE_ID_INVALID,
+      /*unroll_policy=*/0, /*unroll_schedule=*/0, op->location, &new_loop));
 
   loom_region_t* old_body = loom_scf_for_body(op);
   loom_block_t* old_block = loom_region_entry_block(old_body);
@@ -1430,9 +1423,9 @@ static iree_status_t loom_scf_unroll_partial_unroll_scheduled_with_arena(
   IREE_RETURN_IF_ERROR(loom_scf_for_build(
       &context->rewriter->builder, /*build_flags=*/0,
       loom_scf_for_lower_bound(op), main_upper, scaled_step, iter_args.values,
-      iter_args.count, tied_results, tied_result_count, LOOM_VALUE_ID_INVALID,
-      /*unroll_policy=*/0, /*unroll_schedule=*/0,
-      /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, op->location, &main_loop));
+      iter_args.count, tied_results, tied_result_count,
+      /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, LOOM_VALUE_ID_INVALID,
+      /*unroll_policy=*/0, /*unroll_schedule=*/0, op->location, &main_loop));
 
   loom_region_t* old_body = loom_scf_for_body(op);
   loom_block_t* old_block = loom_region_entry_block(old_body);
@@ -1501,8 +1494,8 @@ static iree_status_t loom_scf_unroll_partial_unroll_scheduled_with_arena(
         &context->rewriter->builder, /*build_flags=*/0, main_upper,
         loom_scf_for_upper_bound(op), tail_step, tail_iter_args.values,
         tail_iter_args.count, tied_results, tied_result_count,
-        LOOM_VALUE_ID_INVALID, /*unroll_policy=*/0, /*unroll_schedule=*/0,
-        /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, op->location, &tail_loop));
+        /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, LOOM_VALUE_ID_INVALID,
+        /*unroll_policy=*/0, /*unroll_schedule=*/0, op->location, &tail_loop));
     loom_region_t* tail_body = loom_scf_for_body(tail_loop);
     saved_ip = loom_builder_enter_region(&context->rewriter->builder, tail_loop,
                                          tail_body);

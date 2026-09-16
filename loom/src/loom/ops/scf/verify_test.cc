@@ -61,31 +61,52 @@ class ScfVerifyTest : public ::testing::Test {
   loom_builder_t builder_ = {};
 };
 
-TEST_F(ScfVerifyTest, PipelineOperandCannotOwnResultStorage) {
+TEST_F(ScfVerifyTest, PolicyOperandsCannotOwnResultStorage) {
   const auto lower = Constant(0);
   const auto upper = Constant(8);
   const auto step = Constant(1);
   const auto initial = Constant(9);
   const auto depth = Constant(3);
-  // The text format parses result ties before the pipeline clause. The
-  // builder API can express a tie to that policy operand and must diagnose it.
-  for (uint16_t operand_index : {uint16_t{3}, uint16_t{4}}) {
-    loom_tied_result_t tie = {0, operand_index, false};
-    loom_op_t* loop = nullptr;
-    IREE_ASSERT_OK(loom_scf_for_build(
-        &builder_, LOOM_SCF_FOR_BUILD_FLAG_HAS_PIPELINE_DEPTH, lower, upper,
-        step, &initial, 1, &tie, 1, LOOM_VALUE_ID_INVALID, 0, 0, depth,
-        LOOM_LOCATION_UNKNOWN, &loop));
-    testing::DiagnosticEmissionCapture capture;
-    IREE_ASSERT_OK(loom_scf_for_verify(module_, loop, capture.emitter()));
-    if (operand_index == 3) {
-      EXPECT_TRUE(capture.emissions.empty());
-    } else {
-      ASSERT_EQ(capture.emissions.size(), 1u);
-      const auto& diagnostic = capture.emissions.front();
-      EXPECT_EQ(diagnostic.error, LOOM_ERR_STRUCTURE_014);
-      EXPECT_EQ(diagnostic.string_params[0], "pipeline_depth");
-      EXPECT_EQ(diagnostic.string_params[1], "not tied to a result");
+  const auto factor = Constant(2);
+  const loom_scf_for_build_flags_t policies[] = {
+      LOOM_SCF_FOR_BUILD_FLAG_HAS_PIPELINE_DEPTH,
+      LOOM_SCF_FOR_BUILD_FLAG_HAS_UNROLL_FACTOR,
+      LOOM_SCF_FOR_BUILD_FLAG_HAS_PIPELINE_DEPTH |
+          LOOM_SCF_FOR_BUILD_FLAG_HAS_UNROLL_FACTOR,
+  };
+  // The text format parses result ties before policy clauses. The builder API
+  // can express those ties and must reject them independently of policy order.
+  for (auto flags : policies) {
+    const bool has_depth =
+        iree_any_bit_set(flags, LOOM_SCF_FOR_BUILD_FLAG_HAS_PIPELINE_DEPTH);
+    const bool has_factor =
+        iree_any_bit_set(flags, LOOM_SCF_FOR_BUILD_FLAG_HAS_UNROLL_FACTOR);
+    for (uint16_t operand_index = 3; operand_index < 4 + has_depth + has_factor;
+         ++operand_index) {
+      loom_tied_result_t tie = {0, operand_index, false};
+      loom_op_t* loop = nullptr;
+      IREE_ASSERT_OK(
+          loom_scf_for_build(&builder_, flags, lower, upper, step, &initial, 1,
+                             &tie, 1, has_depth ? depth : LOOM_VALUE_ID_INVALID,
+                             has_factor ? factor : LOOM_VALUE_ID_INVALID, 0, 0,
+                             LOOM_LOCATION_UNKNOWN, &loop));
+      EXPECT_EQ(loom_scf_for_pipeline_depth(loop),
+                has_depth ? depth : LOOM_VALUE_ID_INVALID);
+      EXPECT_EQ(loom_scf_for_unroll_factor(loop),
+                has_factor ? factor : LOOM_VALUE_ID_INVALID);
+      testing::DiagnosticEmissionCapture capture;
+      IREE_ASSERT_OK(loom_scf_for_verify(module_, loop, capture.emitter()));
+      if (operand_index == 3) {
+        EXPECT_TRUE(capture.emissions.empty());
+      } else {
+        ASSERT_EQ(capture.emissions.size(), 1u);
+        const auto& diagnostic = capture.emissions.front();
+        EXPECT_EQ(diagnostic.error, LOOM_ERR_STRUCTURE_014);
+        EXPECT_EQ(diagnostic.string_params[0], has_depth && operand_index == 4
+                                                   ? "pipeline_depth"
+                                                   : "unroll_factor");
+        EXPECT_EQ(diagnostic.string_params[1], "not tied to a result");
+      }
     }
   }
 }

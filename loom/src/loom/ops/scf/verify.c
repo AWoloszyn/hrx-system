@@ -181,15 +181,21 @@ iree_status_t loom_scf_for_verify(const loom_module_t* module,
         emitter, op, IREE_SV("schedule"), 0,
         IREE_SV("paired with bare unroll or unroll factor"));
   }
-  if (loom_scf_for_pipeline_depth_is_present(op)) {
-    const uint16_t depth_operand = op->operand_count - 1;
-    const loom_tied_result_t* ties = loom_op_tied_results(op);
-    for (uint16_t i = 0; i < op->tied_result_count; ++i) {
-      if (ties[i].operand_index == depth_operand) {
-        return loom_scf_emit_attribute_value_constraint(
-            emitter, op, IREE_SV("pipeline_depth"), depth_operand,
-            IREE_SV("not tied to a result"));
-      }
+  // Policy operands disappear when their transforms run and cannot supply
+  // result storage. Bounds and carried values precede both policy operands.
+  const uint16_t depth_operand = 3 + loom_scf_for_iter_args(op).count;
+  const loom_tied_result_t* ties = loom_op_tied_results(op);
+  for (uint16_t i = 0; i < op->tied_result_count; ++i) {
+    if (loom_scf_for_pipeline_depth_is_present(op) &&
+        ties[i].operand_index == depth_operand) {
+      return loom_scf_emit_attribute_value_constraint(
+          emitter, op, IREE_SV("pipeline_depth"), depth_operand,
+          IREE_SV("not tied to a result"));
+    }
+    if (has_unroll_factor && ties[i].operand_index == op->operand_count - 1) {
+      return loom_scf_emit_attribute_value_constraint(
+          emitter, op, IREE_SV("unroll_factor"), ties[i].operand_index,
+          IREE_SV("not tied to a result"));
     }
   }
   return iree_ok_status();

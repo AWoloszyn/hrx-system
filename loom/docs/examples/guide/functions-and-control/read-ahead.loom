@@ -20,7 +20,7 @@ kernel.def export("sum_rows") @sum_rows() {
   %initial = scalar.constant 0.0 : f32
   %depth = config.get @read_ahead.depth : index
   %factor = config.get @read_ahead.unroll : index
-  %result = scf.for %row = [%begin to %count step %step](%sum = %initial : f32) -> (f32) unroll(%factor) pipeline(%depth) {
+  %result = scf.for %row = [%begin to %count step %step](%sum = %initial : f32) -> (f32) pipeline(%depth) unroll(%factor) {
     %value = view.load %values[%row, %lane] : view<64x32xf32> -> f32
     %next = scalar.addf %sum, %value : f32
     scf.yield %next : f32
