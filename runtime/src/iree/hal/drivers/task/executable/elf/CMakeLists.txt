@@ -64,6 +64,7 @@ iree_cc_binary(
     iree::base
     iree::base::internal::cpu
     iree::hal::drivers::task::executable::elf::testdata::elementwise_mul_native
+    iree::hal::drivers::task::executable::elf::testdata::initializers_native
     iree::hal::drivers::task::executable::environment
     iree::hal::drivers::task::executable::library::abi
   TESTONLY

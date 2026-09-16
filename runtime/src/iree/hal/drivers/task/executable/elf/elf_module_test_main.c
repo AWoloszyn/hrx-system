@@ -16,6 +16,7 @@
 // toolchain.
 #if defined(IREE_HAL_TASK_ELF_TEST_NATIVE_FIXTURE)
 #include "iree/hal/drivers/task/executable/elf/testdata/elementwise_mul_native.h"
+#include "iree/hal/drivers/task/executable/elf/testdata/initializers_native.h"
 #else
 #include "iree/hal/drivers/task/executable/elf/testdata/compat_data.h"
 #endif  // IREE_HAL_TASK_ELF_TEST_NATIVE_FIXTURE
@@ -229,6 +230,74 @@ static iree_status_t run_invalid_header_tests(iree_byte_span_t storage) {
   return status;
 }
 
+#if defined(IREE_HAL_TASK_ELF_TEST_NATIVE_FIXTURE)
+// Locates an entry in a trusted source-built fixture for corruption tests.
+static uint8_t* find_dynamic_entry(uint8_t* file_data, int64_t tag) {
+  iree_elf_ehdr_t header;
+  memcpy(&header, file_data, sizeof(header));
+  for (iree_elf_half_t i = 0; i < header.e_phnum; ++i) {
+    iree_elf_phdr_t program_header;
+    memcpy(&program_header,
+           file_data + header.e_phoff + i * sizeof(program_header),
+           sizeof(program_header));
+    if (program_header.p_type != IREE_ELF_PT_DYNAMIC) continue;
+    for (iree_host_size_t offset = 0; offset < program_header.p_filesz;
+         offset += sizeof(iree_elf_dyn_t)) {
+      uint8_t* entry_data = file_data + program_header.p_offset + offset;
+      iree_elf_dyn_t entry;
+      memcpy(&entry, entry_data, sizeof(entry));
+      if (entry.d_tag == tag) return entry_data;
+    }
+  }
+  return NULL;
+}
+
+static iree_status_t run_invalid_initializer_size_test(
+    iree_const_byte_span_t file_data) {
+  uint8_t* storage = NULL;
+  IREE_RETURN_IF_ERROR(iree_allocator_clone(iree_allocator_system(), file_data,
+                                            (void**)&storage));
+  uint8_t* entry_data = find_dynamic_entry(storage, IREE_ELF_DT_INIT_ARRAYSZ);
+  iree_status_t status = iree_ok_status();
+  if (entry_data) {
+    iree_elf_dyn_t entry;
+    memcpy(&entry, entry_data, sizeof(entry));
+    ++entry.d_un.d_val;
+    memcpy(entry_data, &entry, sizeof(entry));
+    status = expect_invalid_module(
+        iree_make_const_byte_span(storage, file_data.data_length));
+  } else {
+    status = iree_make_status(IREE_STATUS_INTERNAL,
+                              "initializer fixture is missing DT_INIT_ARRAYSZ");
+  }
+  iree_allocator_free(iree_allocator_system(), storage);
+  return status;
+}
+
+static iree_status_t run_initializers_test(void) {
+  const struct iree_file_toc_t* file_toc = initializers_native_create();
+  const iree_const_byte_span_t file_data =
+      iree_make_const_byte_span(file_toc->data, file_toc->size);
+  iree_elf_module_t module;
+  IREE_RETURN_IF_ERROR(iree_elf_module_initialize_from_memory(
+      file_data, iree_allocator_system(), &module));
+
+  void* initialization_order = NULL;
+  iree_status_t status = iree_elf_module_lookup_export(
+      &module, "initialization_order", &initialization_order);
+  if (iree_status_is_ok(status) && *(const int*)initialization_order != 123) {
+    status = iree_make_status(IREE_STATUS_INTERNAL,
+                              "initializers ran in order %d; expected 123",
+                              *(const int*)initialization_order);
+  }
+  iree_elf_module_deinitialize(&module);
+  if (iree_status_is_ok(status)) {
+    status = run_invalid_initializer_size_test(file_data);
+  }
+  return status;
+}
+#endif  // IREE_HAL_TASK_ELF_TEST_NATIVE_FIXTURE
+
 static iree_status_t run_test() {
   iree_const_byte_span_t file_data;
   IREE_RETURN_IF_ERROR(query_test_file_data(&file_data));
@@ -259,6 +328,11 @@ static iree_status_t run_test() {
         iree_make_byte_span(storage, file_data.data_length));
   }
   iree_allocator_free(iree_allocator_system(), storage);
+#if defined(IREE_HAL_TASK_ELF_TEST_NATIVE_FIXTURE)
+  if (iree_status_is_ok(status)) {
+    status = run_initializers_test();
+  }
+#endif  // IREE_HAL_TASK_ELF_TEST_NATIVE_FIXTURE
   return status;
 }
 

@@ -62,3 +62,30 @@ iree_c_embed_data(
     h_file_output = "elementwise_mul_native.h",
     target_compatible_with = ["@platforms//os:linux"],
 )
+
+iree_runtime_cc_binary(
+    name = "initializers_library.so",
+    testonly = True,
+    srcs = ["initializers_library.c"],
+    copts = ["-fno-sanitize=all"],
+    linkopts = [
+        "-nostdlib",
+        "-Wl,--hash-style=sysv",
+        "-Wl,-init,module_initialize",
+    ] + select({
+        "//build_tools/bazel:cc_compiler_clang": ["-fno-sanitize-link-runtime"],
+        "//conditions:default": [],
+    }),
+    linkshared = True,
+    target_compatible_with = ["@platforms//os:linux"],
+)
+
+iree_c_embed_data(
+    name = "initializers_native",
+    testonly = True,
+    srcs = [":initializers_library.so"],
+    c_file_output = "initializers_native.c",
+    flatten = True,
+    h_file_output = "initializers_native.h",
+    target_compatible_with = ["@platforms//os:linux"],
+)

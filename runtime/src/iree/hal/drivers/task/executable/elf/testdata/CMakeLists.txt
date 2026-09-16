@@ -69,4 +69,44 @@ iree_c_embed_data(
 )
 endif()
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+set(_initializers_library_so_platform_linkopts "")
+if(CMAKE_C_COMPILER_ID MATCHES "Clang" AND NOT MSVC)
+  list(APPEND _initializers_library_so_platform_linkopts "-fno-sanitize-link-runtime")
+endif()
+iree_cc_library(
+  NAME
+    initializers_library.so
+  COPTS
+    "-fno-sanitize=all"
+  SRCS
+    "initializers_library.c"
+  DEPS
+
+  LINKOPTS
+    "-nostdlib"
+    "-Wl,--hash-style=sysv"
+    "-Wl,-init,module_initialize"
+    ${_initializers_library_so_platform_linkopts}
+  TESTONLY
+  SHARED
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+iree_c_embed_data(
+  NAME
+    initializers_native
+  SRCS
+    "$<TARGET_FILE:iree::hal::drivers::task::executable::elf::testdata::initializers_library.so>"
+  C_FILE_OUTPUT
+    "initializers_native.c"
+  H_FILE_OUTPUT
+    "initializers_native.h"
+  TESTONLY
+  FLATTEN
+  PUBLIC
+)
+endif()
+
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

@@ -32,7 +32,7 @@ typedef struct iree_elf_module_load_state_t {
   iree_elf_addr_t init;
   // DT_INIT_ARRAY function pointers in the mapped module address space.
   const iree_elf_addr_t* init_array;
-  // DT_INIT_ARRAYSZ extent used when running initialization functions.
+  // Number of function pointers described by DT_INIT_ARRAYSZ.
   iree_host_size_t init_array_count;
 } iree_elf_module_load_state_t;
 
@@ -439,7 +439,13 @@ static iree_status_t iree_elf_module_parse_dynamic_tables(
             (const iree_elf_addr_t*)(module->vaddr_bias + dyn->d_un.d_ptr);
         break;
       case IREE_ELF_DT_INIT_ARRAYSZ:
-        load_state->init_array_count = dyn->d_un.d_val;
+        if (dyn->d_un.d_val % sizeof(iree_elf_addr_t) != 0) {
+          return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                                  "DT_INIT_ARRAYSZ is not a whole number of "
+                                  "function pointers");
+        }
+        load_state->init_array_count =
+            dyn->d_un.d_val / sizeof(iree_elf_addr_t);
         break;
 
       case IREE_ELF_DT_RELENT:
@@ -518,7 +524,7 @@ static iree_status_t iree_elf_module_apply_relocations(
 
 // Runs initializers defined within the module, if any.
 // .init is run first and then .init_array is run in array order.
-static iree_status_t iree_elf_module_run_initializers(
+static void iree_elf_module_run_initializers(
     iree_elf_module_load_state_t* load_state, iree_elf_module_t* module) {
   if (load_state->init != IREE_ELF_ADDR_MIN) {
     iree_elf_call_v_v((void*)(module->vaddr_bias + load_state->init));
@@ -528,10 +534,9 @@ static iree_status_t iree_elf_module_run_initializers(
   for (iree_host_size_t i = 0; i < load_state->init_array_count; ++i) {
     iree_elf_addr_t symbol_ptr = load_state->init_array[i];
     if (symbol_ptr == 0 || symbol_ptr == IREE_ELF_ADDR_MAX) continue;
-    iree_elf_call_v_v((void*)(module->vaddr_bias + symbol_ptr));
+    // Relocation has already converted each array entry to a host address.
+    iree_elf_call_v_v((const void*)(uintptr_t)symbol_ptr);
   }
-
-  return iree_ok_status();
 }
 
 static void iree_elf_module_run_finalizers(iree_elf_module_t* module) {
@@ -627,7 +632,7 @@ iree_status_t iree_elf_module_initialize_from_memory(
 
   // Run initializers prior to returning to the caller.
   if (iree_status_is_ok(status)) {
-    status = iree_elf_module_run_initializers(&load_state, out_module);
+    iree_elf_module_run_initializers(&load_state, out_module);
   }
 
   if (!iree_status_is_ok(status)) {
