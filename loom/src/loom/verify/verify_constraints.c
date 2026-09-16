@@ -1817,23 +1817,24 @@ static const loom_verify_relation_fn_t kVerifyRelationFns[] = {
         loom_verify_relation_last_axis_grouped_by,
     [LOOM_RELATION_REGISTER_UNIT_COUNT_SUM] =
         loom_verify_relation_register_unit_count_sum,
+    // Generated dictionary prefixes are consumed by structural verification.
+    [LOOM_RELATION_OPERAND_DICTIONARY] = NULL,
 };
 static_assert(IREE_ARRAYSIZE(kVerifyRelationFns) == LOOM_RELATION_COUNT_,
               "verify relation dispatch table out of sync with enum");
 
-static void loom_verify_semantic_constraint(
-    loom_verify_state_t* state, const loom_op_t* op,
-    const loom_op_vtable_t* vtable, const loom_constraint_t* constraint) {
-  if (constraint->relation >= LOOM_RELATION_COUNT_) return;
-  kVerifyRelationFns[constraint->relation](state, op, vtable, constraint);
-}
-
 void loom_verify_semantic_constraints(loom_verify_state_t* state,
                                       const loom_op_t* op,
                                       const loom_op_vtable_t* vtable) {
-  if (!vtable->constraints || vtable->constraint_count == 0) return;
-  for (uint8_t i = 0; i < vtable->constraint_count; ++i) {
-    if (loom_verify_at_error_limit(state)) return;
-    loom_verify_semantic_constraint(state, op, vtable, &vtable->constraints[i]);
+  if (vtable->constraint_count == 0) {
+    return;
+  }
+  for (uint8_t i = vtable->operand_dictionary_count;
+       i < vtable->constraint_count; ++i) {
+    if (loom_verify_at_error_limit(state)) {
+      return;
+    }
+    const loom_constraint_t* constraint = &vtable->constraints[i];
+    kVerifyRelationFns[constraint->relation](state, op, vtable, constraint);
   }
 }

@@ -732,6 +732,12 @@ def generate_tables_c(
         elements = c_format.translate_format_elements(op)
         non_flags = c_queries.non_flags_attrs(op)
         has_flags = c_queries.has_flags_attr(op)
+        # Structural dictionary constraints form a directly indexed prefix;
+        # other constraints retain their declared order after that prefix.
+        dictionary_constraints = [constraint for constraint in op.constraints if constraint.name == "OperandDictionary"]
+        constraints = dictionary_constraints + [constraint for constraint in op.constraints if constraint.name != "OperandDictionary"]
+        if len(constraints) > 255:
+            raise ValueError(f"Op '{op.name}': constraint count exceeds uint8_t capacity")
 
         # Format element array.
         if elements:
@@ -909,7 +915,7 @@ def generate_tables_c(
         # Constraint table.
         if op.constraints:
             lines.append(f"static const loom_constraint_t {prefix}_constraints[] = {{")
-            for constraint in op.constraints:
+            for constraint in constraints:
                 constraint_entry = CONSTRAINT_MAP.get(constraint.name)
                 if constraint_entry is None:
                     raise ValueError(f"Op '{op.name}': unknown constraint '{constraint.name}'")
@@ -1044,7 +1050,7 @@ def generate_tables_c(
             vtable_flag_bits.append("LOOM_OP_VTABLE_HAS_INSTANCE_FLAGS")
         if c_queries.op_has_type_propagation_candidate(op, layout):
             vtable_flag_bits.append("LOOM_OP_VTABLE_TYPE_PROPAGATION_CANDIDATE")
-        if any(kind == "LOOM_FORMAT_KIND_OPERAND_DICT" for kind, _, _ in elements):
+        if dictionary_constraints:
             vtable_flag_bits.append("LOOM_OP_VTABLE_HAS_OPERAND_DICT")
         if op.keyed_module_record_attr is not None:
             vtable_flag_bits.append("LOOM_OP_VTABLE_KEYED_MODULE_RECORD")
@@ -1116,6 +1122,7 @@ def generate_tables_c(
         if constraint_ptr != "NULL":
             lines.append(f"    .constraints = {constraint_ptr},")
             lines.append(f"    .constraint_count = IREE_ARRAYSIZE({constraint_ptr}),")
+        append_nonzero("operand_dictionary_count", len(dictionary_constraints))
         append_nonnull("format_elements", fmt_ptr)
         if elements:
             lines.append(f"    .format_element_count = IREE_ARRAYSIZE({fmt_ptr}),")

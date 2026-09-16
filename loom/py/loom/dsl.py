@@ -198,6 +198,7 @@ __all__ = [
     "MovedResult",
     # Constraints.
     "Constraint",
+    "OperandDictionary",
     "SameType",
     "SameKind",
     "SameRegisterClass",
@@ -1682,6 +1683,24 @@ class Constraint:
 
     def __repr__(self) -> str:
         return f"{self.name}({', '.join(self.args)})"
+
+
+def OperandDictionary(operands: str, names: str) -> Constraint:
+    """Names bijectively identify the entries of a variadic operand field.
+
+    The optional dictionary attribute maps canonical sorted names to relative
+    operand ordinals. Any permutation is valid; ordinals are not SSA value IDs.
+    An absent dictionary describes an empty operand field. This relationship
+    holds independently of the operation's assembly format.
+    """
+    from loom.error.structure import ERR_STRUCTURE_014
+
+    return Constraint(
+        "OperandDictionary",
+        (operands, names),
+        error=ERR_STRUCTURE_014,
+        validate=constraint_validation.operand_dictionary(operands, names),
+    )
 
 
 # --- Type and shape constraints ---
@@ -4404,6 +4423,67 @@ def _validate_func_args_partitions(
             )
 
 
+def _validate_operand_dictionaries(
+    op_name: str,
+    operands: tuple[Operand, ...],
+    attrs: tuple[AttrDef, ...],
+    constraints: tuple[Constraint, ...],
+    format_elements: tuple[FormatElement, ...],
+) -> None:
+    """Establishes dictionary field ownership and agreement with assembly."""
+    from loom.assembly import Clause, OperandDict, OptionalGroup, Scope
+
+    operands_by_name = {operand.name: operand for operand in operands}
+    attrs_by_name = {attr.name: attr for attr in attrs}
+    pairs: set[tuple[str, str]] = set()
+    operand_fields: set[str] = set()
+    name_fields: set[str] = set()
+    for constraint in constraints:
+        if constraint.name != "OperandDictionary":
+            continue
+        if len(constraint.args) != 2:
+            raise ValueError(f"Op '{op_name}': OperandDictionary requires two fields")
+        operand_field, names_field = constraint.args
+        operand = operands_by_name.get(operand_field)
+        if operand is None or not operand.variadic:
+            raise ValueError(
+                f"Op '{op_name}': OperandDictionary field '{operand_field}' "
+                "must name a variadic operand"
+            )
+        attr = attrs_by_name.get(names_field)
+        if attr is None or attr.attr_type != ATTR_TYPE_DICT or not attr.optional:
+            raise ValueError(
+                f"Op '{op_name}': OperandDictionary field '{names_field}' "
+                "must name an optional dict attribute"
+            )
+        if operand_field in operand_fields or names_field in name_fields:
+            raise ValueError(
+                f"Op '{op_name}': OperandDictionary fields must have unique ownership"
+            )
+        pairs.add((operand_field, names_field))
+        operand_fields.add(operand_field)
+        name_fields.add(names_field)
+
+    def check_format(elements: tuple[FormatElement, ...]) -> None:
+        for element in elements:
+            match element:
+                case OperandDict(operands=operand_field, names=names_field):
+                    if (operand_field, names_field) not in pairs:
+                        raise ValueError(
+                            f"Op '{op_name}': OperandDict('{operand_field}', "
+                            f"'{names_field}') requires a matching "
+                            "OperandDictionary constraint"
+                        )
+                case (
+                    Clause(elements=nested)
+                    | OptionalGroup(elements=nested)
+                    | Scope(elements=nested)
+                ):
+                    check_format(nested)
+
+    check_format(format_elements)
+
+
 def _validate_no_nested_scope(
     op_name: str,
     elements: tuple[FormatElement, ...],
@@ -5875,6 +5955,9 @@ class Op:
         _validate_scoped_enum_fields(name, frozen_format, frozen_attrs)
         _validate_attr_params_fields(name, frozen_format, frozen_attrs)
         _validate_func_args_partitions(name, frozen_format, frozen_attrs)
+        _validate_operand_dictionaries(
+            name, frozen_operands, frozen_attrs, self.constraints, frozen_format
+        )
         # Validate that format elements reference declared fields.
         if frozen_format:
             _validate_format_fields(

@@ -891,8 +891,8 @@ enum loom_op_vtable_flag_bits_e {
   // The op kind has generated constraints or type-transfer hooks that can
   // narrow dynamic type properties during table-driven type propagation.
   LOOM_OP_VTABLE_TYPE_PROPAGATION_CANDIDATE = 1u << 5,
-  // The op kind's assembly format contains an operand dictionary requiring
-  // structural verification against its keyed operand segment.
+  // Semantic constraints begin with an operand dictionary prefix requiring
+  // structural verification against its keyed operand segments.
   LOOM_OP_VTABLE_HAS_OPERAND_DICT = 1u << 6,
   // The attr-only module-scope op is canonically projected by its generated
   // string key instead of physical module-body order.
@@ -1469,6 +1469,7 @@ struct loom_op_vtable_t {
   // Legacy bytecode symbol payload kind for symbol-defining ops. Symbol
   // legality and interfaces come from |symbol_def|, not this wire tag.
   loom_symbol_kind_t symbol_kind;
+  // Total semantic row count, including the structural dictionary prefix.
   uint8_t constraint_count;
   // Number of operand descriptors when it differs from the implied count.
   // Zero uses fixed_operand_count plus the variadic operand flag.
@@ -1492,6 +1493,8 @@ struct loom_op_vtable_t {
 
   const loom_result_descriptor_t* result_descriptors;
   const loom_region_descriptor_t* region_descriptors;
+  // Semantic rows with operand_dictionary_count structural dictionary rows
+  // first. Remaining rows retain their declaration order.
   const loom_constraint_t* constraints;
   loom_op_verify_fn_t verify;
   const uint8_t* name;
@@ -1502,7 +1505,10 @@ struct loom_op_vtable_t {
   // String attribute that identifies a keyed module record. Valid when
   // LOOM_OP_VTABLE_KEYED_MODULE_RECORD is set.
   uint8_t module_record_key_attr_index;
-  // 4 bytes padding to 128.
+  // Number of dictionary rows at the start of constraints. Nonzero exactly
+  // when LOOM_OP_VTABLE_HAS_OPERAND_DICT is set; independent of assembly.
+  uint8_t operand_dictionary_count;
+  // 3 bytes padding to 128.
 
   // --- Cache line 3: interface and placement pointers (128-191) ---
   //

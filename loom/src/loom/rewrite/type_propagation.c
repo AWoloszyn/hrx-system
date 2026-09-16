@@ -1049,7 +1049,8 @@ static iree_status_t loom_type_propagator_process_op_constraints(
   }
 
   if (vtable->constraint_count > 0 && vtable->constraints) {
-    for (uint8_t i = 0; i < vtable->constraint_count; ++i) {
+    for (uint8_t i = vtable->operand_dictionary_count;
+         i < vtable->constraint_count; ++i) {
       const loom_constraint_t* constraint = &vtable->constraints[i];
       switch ((enum loom_constraint_relation_e)constraint->relation) {
         case LOOM_RELATION_PAIRWISE_EQ: {

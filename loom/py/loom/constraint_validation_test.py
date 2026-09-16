@@ -20,6 +20,7 @@ from loom.dsl import (
     ConditionForwardedCountMatchesBlockArgs,
     ConditionForwardedTypesMatchBlockArgs,
     IterArgsMatchResults,
+    OperandDictionary,
     SameEncoding,
     VariadicValuesMatch,
     YieldCountMatchesResults,
@@ -61,6 +62,32 @@ def test_same_encoding() -> None:
 
     assert constraint.check({"a": lhs, "b": same})[0]
     assert not constraint.check({"a": lhs, "b": other})[0]
+
+
+def test_operand_dictionary_permutations() -> None:
+    constraint = OperandDictionary("params", "names")
+    for count in (0, 1, 63, 64, 65, 129):
+        names = ir.CanonicalAttrDict(
+            (f"parameter_{index:03}", count - index - 1) for index in range(count)
+        )
+        assert constraint.check(
+            {"params": [ir.Value("input", I32)] * count, "names": names}
+        ) == (True, "")
+    assert constraint.check({"params": [], "names": None}) == (True, "")
+
+
+def test_operand_dictionary_rejects_invalid_ordinals() -> None:
+    constraint = OperandDictionary("params", "names")
+    value = ir.Value("input", I32)
+    for ordinal in (-1, 2, 2**63, True, 0.0, "0", None):
+        names = ir.CanonicalAttrDict((("alpha", ordinal), ("beta", 1)))
+        assert not constraint.check({"params": [value, value], "names": names})[0], (
+            ordinal
+        )
+    duplicate = ir.CanonicalAttrDict((("alpha", 1), ("beta", 1)))
+    assert not constraint.check({"params": [value, value], "names": duplicate})[0]
+    for names in (None, 0, [], ir.CanonicalAttrDict()):
+        assert not constraint.check({"params": [value], "names": names})[0]
 
 
 def test_region_entry_args() -> None:

@@ -14,11 +14,44 @@ use them without a dependency cycle.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 type ValidateFn = Callable[[dict[str, Any]], tuple[bool, str]]
 type TypeSatisfiesFn = Callable[[Any, Any], bool]
+
+
+def operand_dictionary(operands: str, names: str) -> ValidateFn:
+    """Checks a canonical name dictionary's relative operand permutation."""
+
+    def validate(values: dict[str, Any]) -> tuple[bool, str]:
+        operand_count = len(values[operands])
+        dictionary = values.get(names)
+        if dictionary is None and operand_count == 0:
+            return True, ""
+        if not isinstance(dictionary, Mapping):
+            return False, f"'{names}' must be an operand ordinal dictionary"
+        if len(dictionary) != operand_count:
+            return (
+                False,
+                f"'{names}' count {len(dictionary)} != "
+                f"'{operands}' count {operand_count}",
+            )
+        seen = bytearray(operand_count)
+        for key, ordinal in dictionary.items():
+            if not isinstance(ordinal, int) or isinstance(ordinal, bool):
+                return False, f"'{names}.{key}' must be an integer operand ordinal"
+            if ordinal < 0 or ordinal >= operand_count:
+                return (
+                    False,
+                    f"'{names}.{key}' ordinal {ordinal} outside [0, {operand_count})",
+                )
+            if seen[ordinal]:
+                return False, f"'{names}.{key}' repeats operand ordinal {ordinal}"
+            seen[ordinal] = 1
+        return True, ""
+
+    return validate
 
 
 def _flatten_field(name: str, value: Any) -> list[tuple[str, Any]]:

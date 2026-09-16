@@ -102,6 +102,7 @@ from loom.dsl import (
     Op,
     OpCategory,
     Operand,
+    OperandDictionary,
     OperandRole,
     OpPhase,
     PackedPayloadBitCountMatchesStorage,
@@ -1168,6 +1169,7 @@ vector_decode = Op(
             doc="Sorted auxiliary operand keys mapped to auxiliary operand ordinals.",
         ),
     ],
+    constraints=[OperandDictionary("auxiliary", "auxiliary_names")],
     verify="loom_vector_decode_verify",
     facts="loom_vector_decode_facts",
     canonicalize="loom_vector_decode_canonicalize",
@@ -1218,6 +1220,7 @@ vector_encode = Op(
             doc="Sorted auxiliary operand keys mapped to auxiliary operand ordinals.",
         ),
     ],
+    constraints=[OperandDictionary("auxiliary", "auxiliary_names")],
     verify="loom_vector_encode_verify",
     traits=[PURE, REFINABLE_RESULT_TYPE_REFS],
     format=[
@@ -1287,7 +1290,10 @@ vector_fragment = Op(
             doc="Optional local facts constraining fragment shape or parameter values.",
         ),
     ],
-    constraints=[SameType("data", "result")],
+    constraints=[
+        SameType("data", "result"),
+        OperandDictionary("params", "param_names"),
+    ],
     verify="loom_vector_fragment_verify",
     facts="loom_vector_fragment_facts",
     traits=[PURE, REFINABLE_RESULT_TYPE_REFS, VALUE_ALIAS],
@@ -1517,6 +1523,7 @@ vector_fragment_load = Op(
     traits=[REFINABLE_RESULT_TYPE_REFS],
     effects=[Reads("view")],
     interfaces=[_memory_access_interface()],
+    constraints=[OperandDictionary("auxiliary", "auxiliary_names")],
     verify="loom_vector_fragment_load_verify",
     facts="loom_vector_fragment_load_facts",
     format=[

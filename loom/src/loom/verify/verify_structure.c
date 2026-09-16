@@ -1176,17 +1176,14 @@ static void loom_verify_emit_operand_dict_attr_violation(
 iree_status_t loom_verify_operand_dicts(loom_verify_state_t* state,
                                         const loom_op_t* op,
                                         const loom_op_vtable_t* vtable) {
-  for (uint16_t element_index = 0; element_index < vtable->format_element_count;
-       ++element_index) {
-    const loom_format_element_t* element =
-        &vtable->format_elements[element_index];
-    if (element->kind != LOOM_FORMAT_KIND_OPERAND_DICT) {
-      continue;
-    }
-
-    loom_value_slice_t operand_span =
-        loom_op_operand_field_span(vtable, op, element->field_index);
-    uint16_t attr_index = element->data;
+  for (uint8_t dictionary_index = 0;
+       dictionary_index < vtable->operand_dictionary_count;
+       ++dictionary_index) {
+    const loom_constraint_t* constraint =
+        &vtable->constraints[dictionary_index];
+    loom_value_slice_t operand_span = loom_op_operand_field_span(
+        vtable, op, LOOM_FIELD_REF_INDEX(constraint->args[0]));
+    uint16_t attr_index = LOOM_FIELD_REF_INDEX(constraint->args[1]);
     if (attr_index >= op->attribute_count) {
       continue;
     }

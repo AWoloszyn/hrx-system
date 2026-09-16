@@ -213,18 +213,10 @@ def translate_format_elements(op: Op) -> list[tuple[str, int, str]]:
                     elements.append(("LOOM_FORMAT_KIND_ATTR_DICT", attr_index, attr_dict_flags))
 
                 case OperandDict(operands=operand_field, names=names_field):
-                    operand_kind, operand_index = resolve_field(operand_field)
-                    names_kind, names_index = resolve_field(names_field)
-                    if operand_kind != FieldKind.OPERAND:
-                        raise ValueError(f"Op '{op.name}': OperandDict operands field '{operand_field}' is not an operand field")
-                    if names_kind != FieldKind.ATTR:
-                        raise ValueError(f"Op '{op.name}': OperandDict names field '{names_field}' is not an attr field")
-                    operand_desc = layout.fields[operand_field]
-                    if not operand_desc.variadic:
-                        raise ValueError(f"Op '{op.name}': OperandDict operands field '{operand_field}' must be variadic")
-                    names_attr = op.attr(names_field)
-                    if names_attr is None or names_attr.attr_type != "dict":
-                        raise ValueError(f"Op '{op.name}': OperandDict names field '{names_field}' must be a dict attr")
+                    # The declaration validates the semantic pair before any
+                    # format projection consumes it.
+                    _, operand_index = resolve_field(operand_field)
+                    _, names_index = resolve_field(names_field)
                     elements.append(("LOOM_FORMAT_KIND_OPERAND_DICT", operand_index, str(names_index)))
 
                 case AttrTable(keys=keys_field, values=values_field):

@@ -26,3 +26,24 @@ func.def @dictionary_bytecode(%source: f32, %scale: f32, %layout: encoding<layou
   %result = test.operand_dict %source {scale = %scale : f32, storage = %storage : encoding<storage>} : f32
   func.return %result : f32
 }
+
+// ====
+// RUN: verify
+
+// Structural dictionary checks do not replace the other semantic constraints.
+func.def @dictionary_result_type(%source: f32) {
+  // ERROR@+1: TYPE/001 "input" "f32" "result" "i32"
+  %result = test.operand_dict %source {scale = %source : f32} : i32
+  func.return
+}
+
+// ====
+// RUN: verify
+
+// A dynamic dictionary can construct an encoding attached to a shaped value.
+func.def @dictionary_encoding_attachment(%buffer: buffer, %offset: offset, %layout: encoding<layout>, %schema: encoding<schema>) {
+  %storage = encoding.define #encoding.storage {layout = %layout : encoding<layout>, schema = %schema : encoding<schema>} : encoding<storage>
+  %view = buffer.view %buffer[%offset] : buffer -> view<256xi8, %storage>
+  test.use %view : view<256xi8, %storage>
+  func.return
+}

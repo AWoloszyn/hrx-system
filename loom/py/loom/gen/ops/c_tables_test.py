@@ -101,6 +101,7 @@ from loom.dsl import (
     Op,
     OpCategory,
     Operand,
+    OperandDictionary,
     OperandRole,
     OpPhase,
     PackedPayloadBitCountMatchesStorage,
@@ -3475,7 +3476,10 @@ def test_operand_dict_generates_format_and_builder_support() -> None:
         ],
         results=[Result("result", INTEGER)],
         attrs=[AttrDef("param_names", "dict", optional=True)],
-        constraints=[SameType("input", "result")],
+        constraints=[
+            SameType("input", "result"),
+            OperandDictionary("params", "param_names"),
+        ],
         format=[
             Ref("input"),
             OperandDict("params", "param_names"),
@@ -3489,10 +3493,68 @@ def test_operand_dict_generates_format_and_builder_support() -> None:
 
     assert "LOOM_FORMAT_KIND_OPERAND_DICT" in tables_c
     assert "LOOM_OP_VTABLE_HAS_OPERAND_DICT" in tables_c
+    assert ".operand_dictionary_count = 1," in tables_c
+    assert tables_c.index("{LOOM_RELATION_OPERAND_DICTIONARY,") < tables_c.index("{LOOM_RELATION_PAIRWISE_EQ,")
+    assert "{LOOM_FIELD_REF(0, 1), LOOM_FIELD_REF(2, 0), 0, 0}" in tables_c
     assert "const loom_named_value_t* params" in ops_h
     assert "iree_host_size_t params_count" in ops_h
     assert "loom_make_named_value_slice(params, params_count)" in builders_c
     assert "&loom_op_attrs(*out_op)[0]" in builders_c
+
+
+def test_operand_dictionary_semantics_without_assembly() -> None:
+    op = Op(
+        "test.named_operands",
+        group=Dialect("test"),
+        operands=[Operand("params", ANY, variadic=True)],
+        attrs=[AttrDef("names", "dict", optional=True)],
+        constraints=[OperandDictionary("params", "names")],
+    )
+    tables_c = generate_tables_c("test", 0, [op])
+    assert "LOOM_OP_VTABLE_HAS_OPERAND_DICT" in tables_c
+    assert "LOOM_RELATION_OPERAND_DICTIONARY" in tables_c
+    assert ".operand_dictionary_count = 1," in tables_c
+    assert ".format_elements" not in tables_c
+
+
+def test_operand_dictionaries_form_a_stable_constraint_prefix() -> None:
+    op = Op(
+        "test.named_groups",
+        group=Dialect("test"),
+        operands=[Operand("lhs", ANY, variadic=True), Operand("rhs", ANY, variadic=True)],
+        attrs=[AttrDef("lhs_names", "dict", optional=True), AttrDef("rhs_names", "dict", optional=True)],
+        constraints=[
+            SameType("lhs", "rhs"),
+            OperandDictionary("rhs", "rhs_names"),
+            SameShape("lhs", "rhs"),
+            OperandDictionary("lhs", "lhs_names"),
+        ],
+    )
+    tables_c = generate_tables_c("test", 0, [op])
+    rows = re.findall(r"^    \{(LOOM_RELATION_.*),$", tables_c, re.MULTILINE)
+    assert len(rows) == 4
+    assert rows[0].startswith("LOOM_RELATION_OPERAND_DICTIONARY,")
+    assert "{LOOM_FIELD_REF(0, 1), LOOM_FIELD_REF(2, 1), 0, 0}" in rows[0]
+    assert rows[1].startswith("LOOM_RELATION_OPERAND_DICTIONARY,")
+    assert "{LOOM_FIELD_REF(0, 0), LOOM_FIELD_REF(2, 0), 0, 0}" in rows[1]
+    assert rows[2].startswith("LOOM_RELATION_PAIRWISE_EQ, LOOM_PROPERTY_TYPE,")
+    assert rows[3].startswith("LOOM_RELATION_PAIRWISE_EQ, LOOM_PROPERTY_SHAPE,")
+    assert ".operand_dictionary_count = 2," in tables_c
+
+
+def test_constraint_count_fits_vtable_storage() -> None:
+    for count in (255, 256):
+        op = Op(
+            "test.constraints",
+            group=Dialect("test"),
+            operands=[Operand("input", ANY)],
+            constraints=[SameType("input")] * count,
+        )
+        if count == 255:
+            generate_tables_c("test", 0, [op])
+        else:
+            with _raises_value_error("constraint count exceeds uint8_t capacity"):
+                generate_tables_c("test", 0, [op])
 
 
 def test_attr_table_generates_format_and_builder_support() -> None:

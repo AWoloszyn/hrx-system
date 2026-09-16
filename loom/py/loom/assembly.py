@@ -437,6 +437,8 @@ class OperandDict:
     attribute whose keys are the operand dictionary keys and whose values are
     operand ordinals relative to the variadic field start. The dictionary never
     stores SSA value IDs; the SSA values are ordinary op operands.
+    The operation declares the matching OperandDictionary semantic constraint;
+    this element only selects its textual spelling.
     """
 
     operands: str

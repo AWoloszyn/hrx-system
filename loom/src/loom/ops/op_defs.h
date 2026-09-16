@@ -537,6 +537,12 @@ enum loom_constraint_relation_e {
   // value field, result register value field). Used by RegisterUnitsSumTo.
   LOOM_RELATION_REGISTER_UNIT_COUNT_SUM,
 
+  // A canonical dictionary maps unique names to a permutation of relative
+  // operand ordinals. Args: (variadic operand field, optional dict attr field).
+  // These rows form the vtable's operand_dictionary_count prefix and run during
+  // structural verification, before the ordinary relation interpreter.
+  LOOM_RELATION_OPERAND_DICTIONARY,
+
   LOOM_RELATION_COUNT_,
 };
 typedef uint8_t loom_constraint_relation_t;
@@ -593,8 +599,9 @@ typedef uint8_t loom_constraint_property_t;
 
 // A table-driven semantic constraint entry. 10 bytes.
 //
-// Each op's vtable points to an array of these. The verifier walks
-// the array, interpreting each constraint by (relation, property).
+// Each op's vtable points to an array of these. Operand dictionary rows form
+// a prefix checked during structural verification; the remaining rows are
+// interpreted by (relation, property) during semantic verification.
 // Per-op cost: 10 bytes .rodata per constraint, zero .text code.
 typedef struct loom_constraint_t {
   // Relation interpreter opcode.

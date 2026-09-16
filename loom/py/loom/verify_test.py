@@ -362,6 +362,40 @@ def test_verifier_runs_declarative_constraints() -> None:
     assert _diagnostic_text_contains(diagnostics, "SameType constraint violated")
 
 
+def test_verifier_runs_operand_dictionary_constraints() -> None:
+    for ordinals, valid in (
+        ((1, 0), True),
+        ((0, 0), False),
+        ((0, 2), False),
+        ((0, True), False),
+    ):
+        module = Module()
+        input_value = module.add_value(Value("input", I32))
+        result = module.add_value(Value("result", I32))
+        module = _module_with_body_ops(
+            Operation(
+                name="test.constant", results=[input_value], attributes={"value": 0}
+            ),
+            Operation(
+                name="test.operand_dict",
+                operands=[input_value, input_value, input_value],
+                results=[result],
+                attributes={
+                    "param_names": ir.CanonicalAttrDict(
+                        zip(("alpha", "beta"), ordinals, strict=True)
+                    )
+                },
+            ),
+            module=module,
+        )
+        diagnostics = verify_module(module, ops=ALL_TEST_OPS)
+        assert diagnostics.has_errors != valid, str(diagnostics.diagnostics)
+        if not valid:
+            assert _diagnostic_text_contains(
+                diagnostics, "OperandDictionary constraint violated"
+            )
+
+
 def test_python_verifier_checks_condition_forwarding() -> None:
     from loom.builders import default_ops
 

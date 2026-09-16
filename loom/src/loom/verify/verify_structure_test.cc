@@ -86,8 +86,11 @@ class OperandDictionaryTest : public ::testing::Test {
 
   void Check(loom_op_t* op, uint32_t expected_errors) {
     result_ = {};
-    IREE_ASSERT_OK(
-        loom_verify_operand_dicts(&state_, op, loom_op_vtable(module_, op)));
+    // Dictionary validity is a semantic contract even without a text frontend.
+    loom_op_vtable_t vtable = *loom_op_vtable(module_, op);
+    vtable.format_elements = nullptr;
+    vtable.format_element_count = 0;
+    IREE_ASSERT_OK(loom_verify_operand_dicts(&state_, op, &vtable));
     EXPECT_EQ(result_.error_count, expected_errors);
   }
 
