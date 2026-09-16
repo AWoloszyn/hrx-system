@@ -598,19 +598,6 @@ void AMDF_CALL amdf_external_memory_release(amdf_external_memory_t* value) {
   memset(value, 0, sizeof(*value));
 }
 
-// Host visibility depends on the exact peer, not the resource's other accesses.
-// Native API operations remain required even when CPU lines are coherent: they
-// can also publish an allocation to the native device driver.
-static amdf_cache_transition_t amdf_memory_host_transition(
-    const amdf_cache_transition_t* available,
-    amdf_host_cacheability_t cacheability, bool coherent) {
-  if (coherent && cacheability == AMDF_HOST_CACHEABILITY_WRITE_BACK &&
-      available->executor != AMDF_CACHE_TRANSITION_EXECUTOR_HOST_API) {
-    return (amdf_cache_transition_t){.kind = AMDF_CACHE_TRANSITION_KIND_NONE};
-  }
-  return *available;
-}
-
 static amdf_status_t amdf_memory_describe_site(
     const amdf_memory_site_t* site, const amdf_memory_site_t* peer,
     amdf_memory_site_description_t* out_description) {
@@ -628,24 +615,14 @@ static amdf_status_t amdf_memory_describe_site(
       (peer->value.device.memory->accesses[peer->value.device.access_ordinal]
            .info.flags &
        AMDF_MEMORY_FLAG_HOST_COHERENT) != 0;
-  amdf_memory_site_description_t description = {0};
-  if ((mapping->flags & AMDF_MEMORY_MAP_FLAG_READ) != 0) {
-    description.capabilities |= AMDF_MEMORY_SITE_CAPABILITY_READ;
-  }
-  if ((mapping->flags & AMDF_MEMORY_MAP_FLAG_WRITE) != 0) {
-    description.capabilities |= AMDF_MEMORY_SITE_CAPABILITY_WRITE;
-  }
-  description.release = amdf_memory_host_transition(
-      &mapping->flush, mapping->cacheability, coherent);
-  description.acquire = amdf_memory_host_transition(
-      &mapping->invalidate, mapping->cacheability, coherent);
-  if (description.release.kind == AMDF_CACHE_TRANSITION_KIND_NONE) {
-    description.capabilities |= AMDF_MEMORY_SITE_CAPABILITY_RELEASE_COST_KNOWN;
-  }
-  if (description.acquire.kind == AMDF_CACHE_TRANSITION_KIND_NONE) {
-    description.capabilities |= AMDF_MEMORY_SITE_CAPABILITY_ACQUIRE_COST_KNOWN;
-  }
-  *out_description = description;
+  const amdf_memory_host_description_t host = {
+      .cacheability = mapping->cacheability,
+      .cache_line_size = mapping->cache_line_size,
+      .flush = mapping->flush,
+      .invalidate = mapping->invalidate,
+  };
+  *out_description =
+      amdf_memory_describe_host_site(&host, mapping->flags, coherent);
   return AMDF_STATUS_OK;
 }
 
@@ -693,57 +670,7 @@ amdf_memory_query_pair_info(const amdf_memory_site_t* producer_site,
   status = amdf_memory_describe_site(consumer_site, producer_site, &consumer);
   if (!amdf_status_is_ok(status)) return status;
 
-  if ((producer.capabilities & AMDF_MEMORY_SITE_CAPABILITY_WRITE) == 0 ||
-      (consumer.capabilities & AMDF_MEMORY_SITE_CAPABILITY_READ) == 0 ||
-      producer.release.kind == AMDF_CACHE_TRANSITION_KIND_UNKNOWN ||
-      consumer.acquire.kind == AMDF_CACHE_TRANSITION_KIND_UNKNOWN) {
-    return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
-  }
-
-  amdf_memory_pair_info_t info = {
-      .type = AMDF_STRUCTURE_TYPE_MEMORY_PAIR_INFO,
-      .structure_size = out_info->structure_size,
-      .next = out_info->next,
-      .flags = AMDF_MEMORY_PAIR_FLAG_SHARED_BACKING_REACHABLE,
-      .release = producer.release,
-      .acquire = consumer.acquire,
-  };
-  if ((producer.capabilities & AMDF_MEMORY_SITE_CAPABILITY_MAPPING_SOURCE) !=
-          0 &&
-      (consumer.capabilities & AMDF_MEMORY_SITE_CAPABILITY_MAPPING_TARGET) !=
-          0 &&
-      amdf_memory_compatibility_domain_is_valid(&producer.mapping_domain) &&
-      amdf_memory_compatibility_domain_is_equal(&producer.mapping_domain,
-                                                &consumer.mapping_domain)) {
-    info.flags |= AMDF_MEMORY_PAIR_FLAG_MAPPING_SOURCE;
-  }
-  if (amdf_memory_compatibility_domain_is_valid(&producer.atomic_domain) &&
-      amdf_memory_compatibility_domain_is_equal(&producer.atomic_domain,
-                                                &consumer.atomic_domain)) {
-    info.atomic_reach.scope_32 =
-        producer.atomic_reach.scope_32 < consumer.atomic_reach.scope_32
-            ? producer.atomic_reach.scope_32
-            : consumer.atomic_reach.scope_32;
-    info.atomic_reach.scope_64 =
-        producer.atomic_reach.scope_64 < consumer.atomic_reach.scope_64
-            ? producer.atomic_reach.scope_64
-            : consumer.atomic_reach.scope_64;
-  }
-  if ((producer.capabilities &
-       AMDF_MEMORY_SITE_CAPABILITY_RELEASE_COST_KNOWN) != 0 &&
-      (consumer.capabilities &
-       AMDF_MEMORY_SITE_CAPABILITY_ACQUIRE_COST_KNOWN) != 0) {
-    if (producer.release_fixed_cost_nanoseconds >
-        UINT64_MAX - consumer.acquire_fixed_cost_nanoseconds) {
-      return amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
-    }
-    info.flags |= AMDF_MEMORY_PAIR_FLAG_FIXED_COST_KNOWN;
-    info.estimated_fixed_cost_nanoseconds =
-        producer.release_fixed_cost_nanoseconds +
-        consumer.acquire_fixed_cost_nanoseconds;
-  }
-  *out_info = info;
-  return status;
+  return amdf_memory_pair_compose(&producer, &consumer, out_info);
 }
 
 amdf_status_t AMDF_CALL amdf_memory_map(amdf_memory_t* memory,

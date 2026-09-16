@@ -208,6 +208,7 @@ amdf_cc_library(
 
 amdf_cc_library(
     name = "memory_pair",
+    srcs = ["memory_pair.c"],
     hdrs = ["memory_pair.h"],
     visibility = ["//libamdf/src:__subpackages__"],
 )

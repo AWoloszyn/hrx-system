@@ -47,11 +47,11 @@ static amdf_status_t amdf_xdna_memory_describe_site(
       &queue_family_info);
   if (!amdf_status_is_ok(status)) return status;
   const amdf_memory_site_query_t query = {
-      .access_info = &memory->accesses[access_ordinal].info,
+      .access = memory->accesses[access_ordinal].info.access,
+      .flags = memory->accesses[access_ordinal].info.flags,
       .queue_family_info = &queue_family_info,
   };
-  return amdf_xdna_umd_memory_describe_site(
-      memory->accesses[access_ordinal].native, &query, out_description);
+  return amdf_xdna_umd_memory_describe_site(&query, out_description);
 }
 
 static amdf_status_t amdf_xdna_host_mapping_cache_control(
@@ -105,7 +105,7 @@ static amdf_status_t amdf_xdna_memory_map(
     mapping->base.info.type = AMDF_STRUCTURE_TYPE_HOST_MAPPING_INFO;
     mapping->base.info.structure_size = sizeof(mapping->base.info);
     mapping->base.info.flags = result.flags;
-    mapping->base.info.cacheability = result.cacheability;
+    mapping->base.info.cacheability = result.visibility.cacheability;
     mapping->base.info.pointer = result.pointer;
     mapping->base.info.memory_byte_offset = map_info->byte_offset;
     mapping->base.info.byte_length = result.byte_length;
@@ -113,9 +113,9 @@ static amdf_status_t amdf_xdna_memory_map(
         capabilities->byte_offset_granularity;
     mapping->base.info.byte_length_granularity =
         capabilities->byte_length_granularity;
-    mapping->base.info.cache_line_size = result.cache_line_size;
-    mapping->base.info.flush = result.flush;
-    mapping->base.info.invalidate = result.invalidate;
+    mapping->base.info.cache_line_size = result.visibility.cache_line_size;
+    mapping->base.info.flush = result.visibility.flush;
+    mapping->base.info.invalidate = result.visibility.invalidate;
     *out_mapping = &mapping->base;
   } else {
     if (mapping->base.memory != NULL) {

@@ -493,9 +493,8 @@ amdf_status_t amdf_gpu_umd_memory_export(
 }
 
 amdf_status_t amdf_gpu_umd_memory_describe_site(
-    amdf_gpu_umd_memory_t* memory, const amdf_memory_site_query_t* query,
+    const amdf_memory_site_query_t* query,
     amdf_memory_site_description_t* out_description) {
-  (void)memory;
   (void)query;
   (void)out_description;
   return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
@@ -600,28 +599,13 @@ void amdf_gpu_umd_memory_abandon(amdf_gpu_umd_memory_t* memory) {
   amdf_free(memory->device->host_allocator, memory);
 }
 
-amdf_status_t amdf_gpu_umd_memory_map(
-    amdf_gpu_umd_memory_t* memory,
-    const amdf_host_mapping_capabilities_t* capabilities,
-    const amdf_memory_map_info_t* map_info,
-    amdf_gpu_umd_host_mapping_t** out_mapping,
-    amdf_gpu_umd_host_mapping_result_t* out_result) {
-  amdf_gpu_umd_host_mapping_t* mapping = NULL;
-  amdf_status_t status =
-      amdf_calloc(memory->device->host_allocator, sizeof(*mapping),
-                  amdf_alignof(amdf_gpu_umd_host_mapping_t), (void**)&mapping);
-  if (!amdf_status_is_ok(status)) return status;
-  mapping->memory = memory;
-  mapping->pointer = (uint8_t*)memory->host_pointer + map_info->byte_offset;
-  mapping->byte_length = map_info->byte_length;
-
-  amdf_gpu_umd_host_mapping_result_t result = {0};
-  result.flags = capabilities->supported_access;
-  result.pointer = mapping->pointer;
-  result.byte_length = mapping->byte_length;
+static amdf_memory_host_description_t amdf_gpu_umd_memory_describe_host(
+    const amdf_gpu_umd_device_t* device, amdf_memory_flags_t flags) {
+  (void)device;
+  amdf_memory_host_description_t result = {0};
   result.cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK;
   result.cache_line_size = amdf_windows_host_cache_line_size();
-  const bool coherent = (memory->flags & AMDF_MEMORY_FLAG_HOST_COHERENT) != 0;
+  const bool coherent = (flags & AMDF_MEMORY_FLAG_HOST_COHERENT) != 0;
   result.flush = (amdf_cache_transition_t){
       .kind = AMDF_CACHE_TRANSITION_KIND_RANGE,
       .executor = coherent ? AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT
@@ -641,6 +625,30 @@ amdf_status_t amdf_gpu_umd_memory_map(
       .host_fence_after = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
       .range_granularity = result.cache_line_size,
   };
+  return result;
+}
+
+amdf_status_t amdf_gpu_umd_memory_map(
+    amdf_gpu_umd_memory_t* memory,
+    const amdf_host_mapping_capabilities_t* capabilities,
+    const amdf_memory_map_info_t* map_info,
+    amdf_gpu_umd_host_mapping_t** out_mapping,
+    amdf_gpu_umd_host_mapping_result_t* out_result) {
+  amdf_gpu_umd_host_mapping_t* mapping = NULL;
+  amdf_status_t status =
+      amdf_calloc(memory->device->host_allocator, sizeof(*mapping),
+                  amdf_alignof(amdf_gpu_umd_host_mapping_t), (void**)&mapping);
+  if (!amdf_status_is_ok(status)) return status;
+  mapping->memory = memory;
+  mapping->pointer = (uint8_t*)memory->host_pointer + map_info->byte_offset;
+  mapping->byte_length = map_info->byte_length;
+
+  amdf_gpu_umd_host_mapping_result_t result = {0};
+  result.flags = capabilities->supported_access;
+  result.pointer = mapping->pointer;
+  result.byte_length = mapping->byte_length;
+  result.visibility =
+      amdf_gpu_umd_memory_describe_host(memory->device, memory->flags);
   *out_result = result;
   *out_mapping = mapping;
   return AMDF_STATUS_OK;

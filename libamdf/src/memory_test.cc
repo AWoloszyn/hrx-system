@@ -101,6 +101,18 @@ TEST_F(MemoryTest, HostSitesUseTheSelectedPeerAndPreserveNativeApiOperations) {
       amdf_status_code(amdf_memory_query_pair_info(&host, &coherent, &pair)),
       AMDF_STATUS_CODE_UNSUPPORTED);
   EXPECT_EQ(std::memcmp(&pair, &original, sizeof(pair)), 0);
+  // Coherence cannot qualify an otherwise unknown host protocol. In
+  // particular, an imported mapping may require exporter participation.
+  mapping.info.cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK;
+  EXPECT_EQ(
+      amdf_status_code(amdf_memory_query_pair_info(&host, &coherent, &pair)),
+      AMDF_STATUS_CODE_UNSUPPORTED);
+  EXPECT_EQ(std::memcmp(&pair, &original, sizeof(pair)), 0);
+  mapping.info.invalidate.kind = AMDF_CACHE_TRANSITION_KIND_UNKNOWN;
+  EXPECT_EQ(
+      amdf_status_code(amdf_memory_query_pair_info(&coherent, &host, &pair)),
+      AMDF_STATUS_CODE_UNSUPPORTED);
+  EXPECT_EQ(std::memcmp(&pair, &original, sizeof(pair)), 0);
   mapping.info.flags = AMDF_MEMORY_MAP_FLAG_READ;
   EXPECT_EQ(
       amdf_status_code(amdf_memory_query_pair_info(&host, &coherent, &pair)),

@@ -296,9 +296,8 @@ amdf_status_t amdf_xdna_umd_memory_export(
 }
 
 amdf_status_t amdf_xdna_umd_memory_describe_site(
-    amdf_xdna_umd_memory_t* memory, const amdf_memory_site_query_t* query,
+    const amdf_memory_site_query_t* query,
     amdf_memory_site_description_t* out_description) {
-  (void)memory;
   const amdf_queue_family_info_t* family = query->queue_family_info;
   if (family->command_type != AMDF_QUEUE_COMMAND_TYPE_XDNA ||
       family->format_version != AMDF_XDNA_QUEUE_FORMAT_VERSION_1 ||
@@ -306,10 +305,10 @@ amdf_status_t amdf_xdna_umd_memory_describe_site(
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
   amdf_memory_site_description_t description = {0};
-  if ((query->access_info->access & AMDF_MEMORY_ACCESS_READ) != 0) {
+  if ((query->access & AMDF_MEMORY_ACCESS_READ) != 0) {
     description.capabilities |= AMDF_MEMORY_SITE_CAPABILITY_READ;
   }
-  if ((query->access_info->access & AMDF_MEMORY_ACCESS_WRITE) != 0) {
+  if ((query->access & AMDF_MEMORY_ACCESS_WRITE) != 0) {
     description.capabilities |= AMDF_MEMORY_SITE_CAPABILITY_WRITE;
   }
   description.release.kind = AMDF_CACHE_TRANSITION_KIND_NONE;
@@ -417,6 +416,33 @@ amdf_status_t amdf_xdna_umd_memory_prepare(
   return status;
 }
 
+static amdf_memory_host_description_t amdf_xdna_umd_memory_describe_host(
+    const amdf_xdna_umd_device_t* device, amdf_memory_flags_t flags) {
+  (void)flags;
+  amdf_memory_host_description_t result = {0};
+  result.cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK;
+  result.cache_line_size = device->cache_line_size;
+  result.flush = (amdf_cache_transition_t){
+      .kind = AMDF_CACHE_TRANSITION_KIND_RANGE,
+      .executor = AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT,
+      .host_operation = AMDF_HOST_CACHE_OPERATION_FLUSH,
+      .host_instruction = AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH,
+      .host_fence_before = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
+      .host_fence_after = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
+      .range_granularity = device->cache_line_size,
+  };
+  result.invalidate = (amdf_cache_transition_t){
+      .kind = AMDF_CACHE_TRANSITION_KIND_RANGE,
+      .executor = AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT,
+      .host_operation = AMDF_HOST_CACHE_OPERATION_INVALIDATE,
+      .host_instruction = AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH,
+      .host_fence_before = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
+      .host_fence_after = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
+      .range_granularity = device->cache_line_size,
+  };
+  return result;
+}
+
 amdf_status_t amdf_xdna_umd_memory_map(
     amdf_xdna_umd_memory_t* memory,
     const amdf_host_mapping_capabilities_t* capabilities,
@@ -436,26 +462,7 @@ amdf_status_t amdf_xdna_umd_memory_map(
   result.flags = capabilities->supported_access;
   result.pointer = mapping->pointer;
   result.byte_length = map_info->byte_length;
-  result.cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK;
-  result.cache_line_size = mapping->cache_line_size;
-  result.flush = (amdf_cache_transition_t){
-      .kind = AMDF_CACHE_TRANSITION_KIND_RANGE,
-      .executor = AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT,
-      .host_operation = AMDF_HOST_CACHE_OPERATION_FLUSH,
-      .host_instruction = AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH,
-      .host_fence_before = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
-      .host_fence_after = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
-      .range_granularity = mapping->cache_line_size,
-  };
-  result.invalidate = (amdf_cache_transition_t){
-      .kind = AMDF_CACHE_TRANSITION_KIND_RANGE,
-      .executor = AMDF_CACHE_TRANSITION_EXECUTOR_HOST_DIRECT,
-      .host_operation = AMDF_HOST_CACHE_OPERATION_INVALIDATE,
-      .host_instruction = AMDF_HOST_CACHE_INSTRUCTION_X86_CLFLUSH,
-      .host_fence_before = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
-      .host_fence_after = AMDF_HOST_CACHE_FENCE_X86_MFENCE,
-      .range_granularity = mapping->cache_line_size,
-  };
+  result.visibility = amdf_xdna_umd_memory_describe_host(memory->device, 0);
   *out_result = result;
   *out_mapping = mapping;
   return AMDF_STATUS_OK;

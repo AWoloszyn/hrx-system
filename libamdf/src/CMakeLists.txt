@@ -300,6 +300,8 @@ iree_cc_library(
     memory_pair
   HDRS
     "memory_pair.h"
+  SRCS
+    "memory_pair.c"
   DEPS
     amdf::headers
   PUBLIC

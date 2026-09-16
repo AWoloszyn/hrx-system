@@ -251,11 +251,11 @@ TEST(LinuxXdnaMemoryPairTest, DescribesOnlyTheExactLocalXdnaSite) {
       .roles = AMDF_QUEUE_ROLE_COMPUTE,
   };
   const amdf_memory_site_query_t query = {
-      .access_info = &access_info,
+      .access = access_info.access,
       .queue_family_info = &family,
   };
   amdf_memory_site_description_t description = {};
-  ASSERT_EQ(amdf_xdna_umd_memory_describe_site(nullptr, &query, &description),
+  ASSERT_EQ(amdf_xdna_umd_memory_describe_site(&query, &description),
             AMDF_STATUS_OK);
   EXPECT_EQ(description.capabilities, AMDF_MEMORY_SITE_CAPABILITY_READ |
                                           AMDF_MEMORY_SITE_CAPABILITY_WRITE);
@@ -269,8 +269,8 @@ TEST(LinuxXdnaMemoryPairTest, DescribesOnlyTheExactLocalXdnaSite) {
   family.command_type = AMDF_QUEUE_COMMAND_TYPE_GPU_PM4;
   std::memset(&description, 0x5A, sizeof(description));
   const amdf_memory_site_description_t original = description;
-  EXPECT_EQ(amdf_status_code(amdf_xdna_umd_memory_describe_site(nullptr, &query,
-                                                                &description)),
+  EXPECT_EQ(amdf_status_code(
+                amdf_xdna_umd_memory_describe_site(&query, &description)),
             AMDF_STATUS_CODE_UNSUPPORTED);
   EXPECT_EQ(std::memcmp(&description, &original, sizeof(description)), 0);
 }

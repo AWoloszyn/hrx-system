@@ -256,8 +256,9 @@ TEST_F(WindowsXdnaMemoryTest, CompletesOnlyAfterMapAndOrdinaryResidency) {
   ASSERT_NE(mapping, nullptr);
   EXPECT_NE(map_result.pointer, nullptr);
   EXPECT_EQ(map_result.byte_length, map_info.byte_length);
-  EXPECT_EQ(map_result.cacheability, AMDF_HOST_CACHEABILITY_WRITE_BACK);
-  EXPECT_EQ(map_result.cache_line_size, 64u);
+  EXPECT_EQ(map_result.visibility.cacheability,
+            AMDF_HOST_CACHEABILITY_WRITE_BACK);
+  EXPECT_EQ(map_result.visibility.cache_line_size, 64u);
   EXPECT_TRUE(amdf_status_is_ok(amdf_xdna_umd_host_mapping_cache_control(
       mapping, AMDF_HOST_CACHE_OPERATION_FLUSH, 0, map_result.byte_length)));
   EXPECT_TRUE(amdf_status_is_ok(amdf_xdna_umd_host_mapping_cache_control(
@@ -519,17 +520,17 @@ TEST(WindowsXdnaMemoryPairTest, DescribesAchievedPermissionsWithoutAtomics) {
       .format_version = AMDF_XDNA_QUEUE_FORMAT_VERSION_1,
       .roles = AMDF_QUEUE_ROLE_COMPUTE,
   };
-  const amdf_memory_site_query_t query = {
-      .access_info = &access,
+  amdf_memory_site_query_t query = {
+      .access = access.access,
       .queue_family_info = &family,
   };
   const amdf_memory_access_t permission_sets[] = {
       AMDF_MEMORY_ACCESS_READ, AMDF_MEMORY_ACCESS_WRITE,
       AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE};
   for (amdf_memory_access_t permissions : permission_sets) {
-    access.access = permissions;
+    query.access = permissions;
     amdf_memory_site_description_t description = {};
-    ASSERT_EQ(amdf_xdna_umd_memory_describe_site(nullptr, &query, &description),
+    ASSERT_EQ(amdf_xdna_umd_memory_describe_site(&query, &description),
               AMDF_STATUS_OK);
     amdf_memory_site_capabilities_t expected = 0;
     if (permissions & AMDF_MEMORY_ACCESS_READ)
@@ -562,14 +563,14 @@ TEST(WindowsXdnaMemoryPairTest, RejectsUnqualifiedFamiliesWithoutOutput) {
        .roles = AMDF_QUEUE_ROLE_TRANSFER},
   };
   for (const auto& family : families) {
-    const amdf_memory_site_query_t query = {
-        .access_info = &access,
+    amdf_memory_site_query_t query = {
+        .access = access.access,
         .queue_family_info = &family,
     };
     amdf_memory_site_description_t description;
     std::memset(&description, 0xA5, sizeof(description));
     const auto original = description;
-    EXPECT_EQ(amdf_xdna_umd_memory_describe_site(nullptr, &query, &description),
+    EXPECT_EQ(amdf_xdna_umd_memory_describe_site(&query, &description),
               amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED));
     EXPECT_EQ(std::memcmp(&description, &original, sizeof(description)), 0);
   }

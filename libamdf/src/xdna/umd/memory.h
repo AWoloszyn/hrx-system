@@ -56,14 +56,8 @@ typedef struct amdf_xdna_umd_host_mapping_result_t {
   void* pointer;
   // Mapped byte length.
   uint64_t byte_length;
-  // Host cache behavior of the mapped pages.
-  amdf_host_cacheability_t cacheability;
-  // Host cache-line length in bytes.
-  uint32_t cache_line_size;
-  // Available CPU flush operation, independent of device coherence.
-  amdf_cache_transition_t flush;
-  // Available CPU invalidate operation, independent of device coherence.
-  amdf_cache_transition_t invalidate;
+  // Immutable host visibility policy shared with pre-allocation queries.
+  amdf_memory_host_description_t visibility;
 } amdf_xdna_umd_host_mapping_result_t;
 
 // Copies one immutable memory profile supported by `device`.
@@ -118,9 +112,9 @@ amdf_status_t amdf_xdna_umd_memory_export(
     const amdf_memory_export_info_t* export_info,
     amdf_external_memory_t* out_value);
 
-// Describes one concrete attachment and exact local queue family.
+// Describes immutable access facts against an exact local queue family.
 amdf_status_t amdf_xdna_umd_memory_describe_site(
-    amdf_xdna_umd_memory_t* memory, const amdf_memory_site_query_t* query,
+    const amdf_memory_site_query_t* query,
     amdf_memory_site_description_t* out_description);
 
 // Releases partial or complete native state and its metadata. Failure retains
