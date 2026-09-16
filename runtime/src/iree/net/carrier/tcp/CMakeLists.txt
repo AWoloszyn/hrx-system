@@ -25,6 +25,26 @@ iree_cc_library(
   PUBLIC
 )
 
+iree_cc_library(
+  NAME
+    connection
+  HDRS
+    "connection.h"
+  SRCS
+    "connection.c"
+  DEPS
+    ::tcp
+    iree::async
+    iree::base
+    iree::base::core_headers
+    iree::base::threading
+    iree::net::connection
+    iree::net::endpoint_lifecycle
+    iree::net::framing_adapter
+    iree::net::message_endpoint
+  PUBLIC
+)
+
 iree_cc_test(
   NAME
     carrier_test
@@ -36,6 +56,22 @@ iree_cc_test(
     iree::async::platform
     iree::base
     iree::net::carrier
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+
+iree_cc_test(
+  NAME
+    connection_test
+  SRCS
+    "connection_test.cc"
+  DEPS
+    ::connection
+    iree::async
+    iree::async::platform
+    iree::base
+    iree::net::connection
+    iree::net::message_endpoint
     iree::testing::gtest
     iree::testing::gtest_main
 )
