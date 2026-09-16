@@ -6,7 +6,7 @@
 
 #include "loom/target/arch/amdgpu/planning/wait_completion.h"
 
-void loom_amdgpu_wait_completion_record_resets(
+void loom_amdgpu_wait_completion_analyze(
     const loom_low_schedule_table_t* schedule,
     const uint32_t* first_dependency_by_consumer,
     const loom_amdgpu_wait_dependency_t* dependencies,
@@ -32,6 +32,14 @@ void loom_amdgpu_wait_completion_record_resets(
            dependency_index = dependencies[dependency_index].next_dependency) {
         const loom_amdgpu_wait_dependency_t* dependency =
             &dependencies[dependency_index];
+        const loom_low_schedule_node_t* producer =
+            &schedule->nodes[dependency->producer_node];
+        if (producer->block_index == block_index &&
+            producer->scheduled_ordinal < i) {
+          nodes[dependency->producer_node]
+              .completed_before_block_exit_counter_mask |=
+              dependency->counter_mask;
+        }
         uint32_t counter_mask = dependency->counter_mask;
         while (counter_mask != 0) {
           const uint32_t slot =
@@ -56,6 +64,18 @@ void loom_amdgpu_wait_completion_record_resets(
       }
       workgroup_write_counter_mask &= ~reset_counter_mask;
       workgroup_write_counter_mask |= node->workgroup_write_counter_mask;
+    }
+    uint32_t completed_counter_mask = 0;
+    for (uint32_t i = block->scheduled_node_count; i > 0; --i) {
+      const uint32_t node_index =
+          schedule->scheduled_node_indices[block->scheduled_node_start + i - 1];
+      loom_amdgpu_wait_completion_node_t* node = &nodes[node_index];
+      completed_counter_mask |= node->completed_before_block_exit_counter_mask;
+      node->completed_before_block_exit_counter_mask =
+          completed_counter_mask & node->producer_counter_mask;
+      // A reset precedes the current node's production. It completes earlier
+      // producers without completing work newly issued by this node.
+      completed_counter_mask |= node->reset_counter_mask;
     }
   }
 }

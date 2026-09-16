@@ -47,6 +47,8 @@ typedef struct loom_amdgpu_wait_completion_node_t {
   // Counters guaranteed complete before this node produces new work. Includes
   // explicit/implicit resets and locally proven completion requirements.
   uint32_t reset_counter_mask;
+  // This node's producer counters guaranteed complete before block exit.
+  uint32_t completed_before_block_exit_counter_mask;
   // Counter domains in which the node can create a target hazard.
   uint32_t hazard_counter_mask;
   // Counter classes advanced by workgroup-memory writes.
@@ -56,11 +58,11 @@ typedef struct loom_amdgpu_wait_completion_node_t {
 } loom_amdgpu_wait_completion_node_t;
 
 // Records guaranteed local completion in |nodes| from the schedule's retained
-// counter dependencies. Requiring the latest local producer completes its
-// counter epoch; later producers begin a new one. The construction visits each
-// scheduled node and dependency once with fixed counter-sized scratch and no
-// allocation. Consumers retain these facts instead of deriving resets again.
-void loom_amdgpu_wait_completion_record_resets(
+// counter dependencies. Requiring a local producer retires its ordered prefix;
+// requiring the latest producer also resets the counter epoch. Construction
+// takes linear work with fixed counter-sized scratch and no allocation.
+// Consumers retain these facts instead of deriving completion again.
+void loom_amdgpu_wait_completion_analyze(
     const loom_low_schedule_table_t* schedule,
     const uint32_t* first_dependency_by_consumer,
     const loom_amdgpu_wait_dependency_t* dependencies,

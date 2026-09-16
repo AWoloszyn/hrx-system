@@ -293,6 +293,8 @@ static bool loom_amdgpu_wait_loop_analyze_cyclic_frontier(
   uint32_t last_consumer_ordinal = 0;
   bool has_cyclic_dependency = false;
   uint32_t last_reset_ordinal = UINT32_MAX;
+  uint32_t pending_start_ordinal = 0;
+  bool has_local_completion = false;
   for (uint32_t i = 0; i < block->scheduled_node_count; ++i) {
     const uint32_t packet_index = block->scheduled_node_start + i;
     const uint32_t consumer_node =
@@ -300,6 +302,12 @@ static bool loom_amdgpu_wait_loop_analyze_cyclic_frontier(
     const loom_low_schedule_node_t* consumer = &schedule->nodes[consumer_node];
     if ((nodes[consumer_node].reset_counter_mask & counter_mask) != 0) {
       last_reset_ordinal = i;
+      pending_start_ordinal = i;
+    }
+    if ((nodes[consumer_node].completed_before_block_exit_counter_mask &
+         counter_mask) != 0) {
+      pending_start_ordinal = i + 1;
+      has_local_completion = true;
     }
     for (uint32_t dependency_index =
              first_dependency_by_consumer[consumer_node];
@@ -342,7 +350,7 @@ static bool loom_amdgpu_wait_loop_analyze_cyclic_frontier(
   uint32_t outstanding_write_count = 0;
   uint32_t outstanding_workgroup_write_count = 0;
   for (uint32_t i = 0; i < block->scheduled_node_count; ++i) {
-    if (last_reset_ordinal != UINT32_MAX && i < last_reset_ordinal) continue;
+    if (i < pending_start_ordinal) continue;
     const uint32_t packet_index = block->scheduled_node_start + i;
     const uint32_t node_index = schedule->scheduled_node_indices[packet_index];
     const loom_amdgpu_wait_completion_node_t* node = &nodes[node_index];
@@ -376,7 +384,6 @@ static bool loom_amdgpu_wait_loop_analyze_cyclic_frontier(
   }
   if (first_required_producer_ordinal < first_producer_ordinal ||
       last_required_producer_ordinal > last_producer_ordinal ||
-      last_consumer_ordinal >= first_required_producer_ordinal ||
       !loom_amdgpu_wait_loop_blocks_are_counter_transparent(
           analysis, nodes, first_dependency_by_consumer, dependencies,
           dependency_count, cyclic_interval, block_index, counter_mask,
@@ -386,29 +393,14 @@ static bool loom_amdgpu_wait_loop_analyze_cyclic_frontier(
 
   const bool consumers_cover_epoch =
       last_required_producer_ordinal == last_producer_ordinal;
-  if (!reset_establishes_epoch && !consumers_cover_epoch) return false;
-
-  // Once the trailing epoch begins, every progress operation must be part of
-  // that stable epoch. Nonzero bounds can retire an ordered prefix without
-  // changing the producer identities or their upper bound. A later reset or
-  // dependency needs a more general counter dataflow model and therefore keeps
-  // conservative wait placement.
-  for (uint32_t i = first_producer_ordinal; i < block->scheduled_node_count;
-       ++i) {
-    const uint32_t packet_index = block->scheduled_node_start + i;
-    const uint32_t node_index = schedule->scheduled_node_indices[packet_index];
-    const loom_amdgpu_wait_completion_node_t* node = &nodes[node_index];
-    if ((node->reset_counter_mask & counter_mask) != 0) return false;
-    for (uint32_t dependency_index = first_dependency_by_consumer[node_index];
-         dependency_index != LOOM_LOW_SCHEDULE_NODE_NONE;
-         dependency_index = dependencies[dependency_index].next_dependency) {
-      IREE_ASSERT_LT(dependency_index, dependency_count);
-      if ((dependencies[dependency_index].counter_mask & counter_mask) != 0) {
-        return false;
-      }
-    }
+  if (!reset_establishes_epoch && !has_local_completion &&
+      !consumers_cover_epoch) {
+    return false;
   }
 
+  // Each cyclic dependency uses the old producer before its reissue replaces
+  // the retained position. Local completion or consumption of the previous
+  // suffix bounds the next trip without requiring a full counter drain.
   *out_frontier = (loom_amdgpu_wait_loop_cyclic_frontier_t){
       .flags = LOOM_AMDGPU_WAIT_LOOP_CYCLIC_FRONTIER_FLAG_VALID,
       .producer_start_ordinal = first_producer_ordinal,
