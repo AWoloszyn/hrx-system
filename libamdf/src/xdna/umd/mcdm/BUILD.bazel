@@ -256,6 +256,24 @@ amdf_cc_test(
 )
 
 amdf_cc_test(
+    name = "context_system_test",
+    srcs = ["context_system_test.cc"],
+    resource_group = "iree-hal-drivers-amdgpu-tests",
+    tags = [
+        "iree-run-requirement=libamdf.resource.xdna",
+        "runtime-resource=amd-xdna",
+    ],
+    target_compatible_with = MCDM_COMPATIBILITY,
+    deps = [
+        "//libamdf:amdf_static",
+        "//libamdf/src:instance",
+        "//libamdf/src/platform/windows:endpoint",
+        "//third_party:google_test",
+        "//third_party:google_test_main",
+    ],
+)
+
+amdf_cc_test(
     name = "submission_test",
     srcs = ["submission_test.cc"],
     target_compatible_with = MCDM_COMPATIBILITY,

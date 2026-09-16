@@ -92,8 +92,16 @@ jobs:
       - name: Check native accelerator access
         shell: powershell
         run: |
+          Get-CimInstance Win32_OperatingSystem -ErrorAction Stop |
+            Format-List Caption, Version, BuildNumber
           $accelerators = @(Get-PnpDevice -Class ComputeAccelerator -PresentOnly -ErrorAction Stop)
           $accelerators | Format-Table Status, Class, FriendlyName, InstanceId -AutoSize
+          foreach ($accelerator in $accelerators) {
+            Write-Output $accelerator.InstanceId
+            Get-PnpDeviceProperty -InstanceId $accelerator.InstanceId -ErrorAction Stop -KeyName `
+              DEVPKEY_Device_DriverVersion, DEVPKEY_Device_DriverDate, DEVPKEY_Device_DriverInfPath |
+              Format-Table KeyName, Data -AutoSize
+          }
           if (-not ($accelerators | Where-Object Status -eq 'OK')) {
             throw 'The AMD client runner requires a healthy native compute accelerator.'
           }
