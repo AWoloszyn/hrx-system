@@ -4550,6 +4550,44 @@ TEST_F(ReaderTest, ReadsStructuralRegisterValueType) {
   loom_module_free(source_module);
 }
 
+TEST_F(ReaderTest, SelectedDeclarationRetainsArgumentOwnership) {
+  loom_module_t* source_module = CreateRegisterDeclModule();
+  auto bytes = WriteModule(source_module);
+  iree_arena_allocator_t metadata_arena;
+  iree_arena_initialize(&block_pool_, &metadata_arena);
+  loom_bytecode_file_metadata_t metadata = {};
+  std::vector<std::string> error_ids;
+  const loom_bytecode_read_result_t index_result =
+      ReadIndex(bytes, &metadata_arena, &metadata, &error_ids);
+  ASSERT_EQ(index_result.error_count, 0u);
+  ASSERT_TRUE(error_ids.empty());
+
+  loom_module_t* selected_module = nullptr;
+  const loom_bytecode_read_result_t selected_result = MaterializeModuleSymbols(
+      bytes, &metadata, {0}, &selected_module, &error_ids,
+      /*verify_module=*/true);
+  EXPECT_EQ(selected_result.error_count, 0u)
+      << ::testing::PrintToString(error_ids);
+  ASSERT_NE(selected_module, nullptr);
+  ASSERT_EQ(selected_module->symbols.count, 1u);
+  const loom_op_t* declaration =
+      selected_module->symbols.entries[0].defining_op;
+  ASSERT_NE(declaration, nullptr);
+  const loom_value_slice_t arguments = loom_test_decl_args(declaration);
+  ASSERT_EQ(arguments.count, 1u);
+  const loom_value_t* argument =
+      loom_module_value(selected_module, arguments.values[0]);
+  EXPECT_EQ(argument->use_count, 1u);
+  EXPECT_EQ(loom_value_def_op(argument), nullptr);
+  EXPECT_EQ(loom_value_owner_op(argument), declaration);
+  IREE_ASSERT_OK(loom_module_compute_uses(selected_module));
+  EXPECT_EQ(loom_value_owner_op(argument), declaration);
+
+  loom_module_free(selected_module);
+  iree_arena_deinitialize(&metadata_arena);
+  loom_module_free(source_module);
+}
+
 TEST_F(ReaderTest, ReadsDescriptorBackedParameterizedTypes) {
   loom_module_t* source_module = CreateParameterizedTypeDeclModule();
   auto bytes = WriteModule(source_module);
@@ -4566,6 +4604,13 @@ TEST_F(ReaderTest, ReadsDescriptorBackedParameterizedTypes) {
   ASSERT_NE(decl_op, nullptr);
   loom_value_slice_t arguments = loom_test_decl_args(decl_op);
   ASSERT_EQ(arguments.count, 8u);
+  for (uint16_t i = 0; i < arguments.count; ++i) {
+    const loom_value_t* argument =
+        loom_module_value(read_module, arguments.values[i]);
+    EXPECT_EQ(argument->use_count, 1u);
+    EXPECT_EQ(loom_value_def_op(argument), nullptr);
+    EXPECT_EQ(loom_value_owner_op(argument), decl_op);
+  }
 
   loom_type_t scope_type =
       loom_module_value_type(read_module, arguments.values[0]);

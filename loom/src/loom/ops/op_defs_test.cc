@@ -6,11 +6,14 @@
 
 #include "loom/ops/op_defs.h"
 
+#include <vector>
+
 #include "iree/base/internal/arena.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
+#include "loom/ir/value_refs.h"
 #include "loom/ops/kernel/ops.h"
 
 namespace loom {
@@ -73,16 +76,36 @@ TEST_F(OpEraseTest, KernelDeclarationDropsBothOwnedSignatures) {
       loom_kernel_decl_args(declaration),
   };
   for (const loom_value_slice_t signature : signatures) {
+    for (uint16_t i = 0; i < signature.count; ++i) {
+      EXPECT_EQ(
+          loom_value_owner_op(loom_module_value(module_, signature.values[i])),
+          declaration);
+    }
     IREE_ASSERT_OK(loom_module_set_value_type(
         module_, signature.values[1],
         loom_type_pool(loom_dim_pack_dynamic(signature.values[0]))));
   }
   ASSERT_EQ(module_->type_uses.active_count, 2u);
   const iree_host_size_t arena_bytes = module_->arena.used_allocation_size;
+  std::vector<uint32_t> visits(module_->values.count, 0);
+  IREE_ASSERT_OK(loom_op_walk_subtree_value_refs(
+      module_, declaration,
+      [](loom_value_id_t value, void* user_data) {
+        ++(*static_cast<std::vector<uint32_t>*>(user_data))[value];
+        return iree_ok_status();
+      },
+      &visits));
+  for (const loom_value_slice_t signature : signatures) {
+    EXPECT_EQ(visits[signature.values[0]], 1u);
+    EXPECT_EQ(visits[signature.values[1]], 0u);
+  }
   IREE_ASSERT_OK(loom_op_erase(module_, declaration));
   EXPECT_FALSE(loom_module_has_active_type_uses(module_));
   EXPECT_EQ(module_->arena.used_allocation_size, arena_bytes);
   for (const loom_value_slice_t signature : signatures) {
+    EXPECT_EQ(
+        loom_value_owner_op(loom_module_value(module_, signature.values[1])),
+        nullptr);
     EXPECT_EQ(loom_module_value(module_, signature.values[1])->use_count, 0u);
     EXPECT_EQ(
         loom_module_value_first_outgoing_type_use(module_, signature.values[1]),

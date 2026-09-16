@@ -174,6 +174,39 @@ TEST_F(ValueRefsTest, SubtreeWalkIncludesOperandTypeAndPredicateAttributes) {
   EXPECT_EQ(failed_allocations_, 0u);
 }
 
+TEST_F(ValueRefsTest, SubtreeWalkIncludesDeclarationArgumentTypes) {
+  const loom_value_id_t width = Constant(16);
+  const loom_type_t storage_type = loom_type_pool(loom_dim_pack_dynamic(width));
+  loom_string_id_t name = LOOM_STRING_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_intern_string(module_, IREE_SV("storage"), &name));
+  uint16_t symbol = LOOM_SYMBOL_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_add_symbol(module_, name, &symbol));
+  loom_op_t* declaration = nullptr;
+  IREE_ASSERT_OK(loom_test_decl_build(
+      &builder_, /*build_flags=*/0, /*visibility=*/0, /*cc=*/0, {0, symbol},
+      &storage_type, 1, /*result_types=*/nullptr, /*result_count=*/0,
+      /*tied_results=*/nullptr, /*tied_result_count=*/0, LOOM_LOCATION_UNKNOWN,
+      &declaration));
+  const loom_value_id_t argument = loom_test_decl_args(declaration).values[0];
+
+  std::vector<uint32_t> visits(module_->values.count, 0);
+  const iree_host_size_t arena_bytes = module_->arena.used_allocation_size;
+  fail_allocations_ = true;
+  iree_status_t status = loom_op_walk_subtree_value_refs(
+      module_, declaration,
+      [](loom_value_id_t value, void* user_data) {
+        ++(*static_cast<std::vector<uint32_t>*>(user_data))[value];
+        return iree_ok_status();
+      },
+      &visits);
+  fail_allocations_ = false;
+  IREE_ASSERT_OK(status);
+  EXPECT_EQ(visits[width], 1u);
+  EXPECT_EQ(visits[argument], 0u);
+  EXPECT_EQ(module_->arena.used_allocation_size, arena_bytes);
+  EXPECT_EQ(failed_allocations_, 0u);
+}
+
 TEST_F(ValueRefsTest, SubtreeWalkStopsAtCallbackFailure) {
   loom_op_t* owner = Assume(Constant(1));
   uint32_t visit_count = 0;

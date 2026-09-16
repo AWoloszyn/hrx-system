@@ -2293,25 +2293,13 @@ static void loom_module_unlink_symbol_defining_op(
 
 // Signature traversal stays out of the per-operation erasure hot path.
 IREE_ATTRIBUTE_NOINLINE static void loom_op_drop_signature_type_uses(
-    loom_module_t* module, loom_op_t* op, const loom_op_vtable_t* vtable) {
+    loom_module_t* module, loom_op_t* op) {
   // Bodyless declarations own the values stored in their signature operand
   // fields. Retire those carriers at the same boundary as ordinary op results
   // and region block arguments, not when an operand link happens to disappear.
-  uint16_t argument_count = 0;
-  const loom_value_id_t* arguments = loom_func_like_arg_ids(
-      (loom_func_like_t){op, vtable->func_like}, &argument_count);
-  for (uint16_t i = 0; i < argument_count; ++i) {
+  const loom_value_id_t* arguments = loom_op_const_operands(op);
+  for (uint16_t i = 0; i < op->operand_count; ++i) {
     loom_module_drop_value_type_uses(module, arguments[i]);
-  }
-  const loom_symbol_definition_descriptor_t* definition = vtable->symbol_def;
-  if (definition &&
-      definition->kernel_workload_operand_field_index_plus_one != 0) {
-    loom_value_slice_t workloads = loom_op_operand_field_span(
-        vtable, op,
-        definition->kernel_workload_operand_field_index_plus_one - 1);
-    for (uint16_t i = 0; i < workloads.count; ++i) {
-      loom_module_drop_value_type_uses(module, workloads.values[i]);
-    }
   }
 }
 
@@ -2357,9 +2345,8 @@ static iree_status_t loom_op_erase_subtree(loom_module_t* module, loom_op_t* op,
   }
   const loom_op_vtable_t* vtable = loom_op_vtable(module, op);
   loom_module_unlink_symbol_defining_op(module, op, vtable);
-  if (vtable && vtable->func_like &&
-      vtable->func_like->args_operand_field_index != LOOM_OPERAND_INDEX_NONE) {
-    loom_op_drop_signature_type_uses(module, op, vtable);
+  if (loom_op_vtable_owns_operands(vtable)) {
+    loom_op_drop_signature_type_uses(module, op);
   }
   loom_block_unlink_op(module, op);
   op->flags |= LOOM_OP_FLAG_DEAD;
@@ -2453,7 +2440,7 @@ static bool loom_region_remove_value_is_removed(const loom_module_t* module,
                                                loom_value_def_block(value));
   }
   return loom_region_remove_op_is_removed(region, remove_blocks,
-                                          loom_value_def_op(value));
+                                          loom_value_owner_op(value));
 }
 
 static iree_status_t loom_region_remove_verify_value_uses(
@@ -3178,8 +3165,8 @@ static iree_status_t loom_region_compute_uses(loom_module_t* module,
               loom_value_def_make_op(op, i);
         }
       }
-      // Link symbol-defining ops at module scope. Nested ops cannot
-      // define symbols so the vtable lookup is skipped for inner regions.
+      // Refresh module-scope symbol links. Parsers and builders install
+      // nested symbol links at their construction boundary.
       if (!parent_op) {
         const loom_op_vtable_t* vtable = loom_op_vtable(module, op);
         if (vtable &&

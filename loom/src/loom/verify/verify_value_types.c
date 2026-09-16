@@ -160,9 +160,8 @@ static void loom_verify_defined_type_refs(
 void loom_verify_value_type_refs(loom_verify_state_t* state,
                                  const loom_op_t* op,
                                  const loom_op_vtable_t* vtable) {
-  const bool defines_arguments =
-      loom_verify_has_func_signature_scope(vtable) &&
-      loom_verify_func_args_use_operand_field(vtable);
+  const bool defines_arguments = loom_verify_has_func_signature_scope(vtable) &&
+                                 loom_op_vtable_owns_operands(vtable);
   const loom_value_id_t* operands = loom_op_const_operands(op);
   for (uint16_t i = 0; i < op->operand_count; ++i) {
     if (operands[i] == LOOM_VALUE_ID_INVALID ||

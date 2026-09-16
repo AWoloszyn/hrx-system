@@ -32,10 +32,6 @@ iree_status_t loom_verify_pending_diagnostic_status(
   }
   return loom_verify_take_diagnostic_status(state);
 }
-bool loom_verify_func_args_use_operand_field(const loom_op_vtable_t* vtable) {
-  return vtable->func_like != NULL &&
-         vtable->func_like->args_operand_field_index != LOOM_OPERAND_INDEX_NONE;
-}
 
 // Returns true if this op has a function signature scope whose arguments are
 // defined by FuncArgs and may be referenced by result types/predicates/ties.

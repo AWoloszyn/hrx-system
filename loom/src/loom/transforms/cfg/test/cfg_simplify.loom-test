@@ -998,3 +998,22 @@ func.def @preserves_effectful_forward_block(%cond: i1, %buffer: buffer, %offset:
 ^exit:
   func.return
 }
+
+// ====
+
+// A declaration argument's dependent type belongs to its declaration, so it
+// does not prevent removing a closed unreachable block set.
+func.def @closed_signature_carrier() {
+  cfg.br ^exit
+^unused:
+  %width = index.constant 16 : index
+  test.decl @nested_signature(%storage: pool<[%width]>) -> (i32)
+  cfg.br ^exit
+^exit:
+  func.return
+}
+
+// ----
+func.def @closed_signature_carrier() {
+  func.return
+}

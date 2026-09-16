@@ -236,7 +236,6 @@ iree_string_view_t loom_verify_symbol_name(const loom_verify_state_t* state,
 iree_string_view_t loom_verify_symbol_definition_name(
     const loom_symbol_t* symbol);
 
-bool loom_verify_func_args_use_operand_field(const loom_op_vtable_t* vtable);
 bool loom_verify_has_func_signature_scope(const loom_op_vtable_t* vtable);
 
 loom_type_t loom_verify_value_type(const loom_verify_state_t* state,

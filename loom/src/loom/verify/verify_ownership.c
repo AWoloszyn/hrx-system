@@ -237,7 +237,7 @@ static iree_status_t loom_verify_consume_value_after_op(
 void loom_verify_operand_dominance(loom_verify_state_t* state,
                                    const loom_op_t* op,
                                    const loom_op_vtable_t* vtable) {
-  if (loom_verify_func_args_use_operand_field(vtable) &&
+  if (loom_op_vtable_owns_operands(vtable) &&
       iree_any_bit_set(vtable->traits, LOOM_TRAIT_SYMBOL_DEFINE)) {
     return;
   }

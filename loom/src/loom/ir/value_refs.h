@@ -17,7 +17,8 @@ extern "C" {
 #endif
 
 // Walks outgoing SSA references owned by |op| and its nested regions: ordinary
-// operands, result/block-argument type references, and attribute references.
+// operands, result/block/signature-argument type references, and attribute
+// references. Declaration-owned operands are definitions, not references.
 // Uses retained reference records without reconstructing type or attribute
 // payloads. Values may be visited more than once; ordering is unspecified.
 //

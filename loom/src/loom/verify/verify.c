@@ -431,7 +431,7 @@ IREE_ATTRIBUTE_ALWAYS_INLINE static inline iree_status_t loom_verify_op(
   const bool isolated = loom_traits_is_isolated(op->traits);
   if (has_signature_scope) {
     IREE_RETURN_IF_ERROR(loom_verify_push_scope(state, isolated));
-    if (loom_verify_func_args_use_operand_field(vtable)) {
+    if (loom_op_vtable_owns_operands(vtable)) {
       const loom_value_id_t* operands = loom_op_const_operands(op);
       for (uint16_t i = 0; i < op->operand_count; ++i) {
         IREE_RETURN_IF_ERROR(loom_verify_define_value(state, operands[i]));

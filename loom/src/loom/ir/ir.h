@@ -364,7 +364,8 @@ typedef uint16_t loom_value_flags_t;
 // Value — 64-byte cache-line-aligned
 //===----------------------------------------------------------------------===//
 
-// An SSA value: either an operation result or a block argument.
+// An SSA value: an operation result, a block argument, or a bodyless
+// declaration's local signature argument.
 //
 // Values live in the module's value table (module->values), accessed
 // by loom_value_id_t. The entire value (name, type, definition site,
@@ -411,7 +412,9 @@ typedef iree_alignas(64) struct loom_value_t {
   // loom_block_t* and arg index. Use loom_value_def_op/block/index
   // to extract (checking LOOM_VALUE_FLAG_BLOCK_ARG first).
   // Set by loom_builder_finalize_op (op results) or
-  // loom_block_add_arg (block arguments). Zero until set.
+  // loom_block_add_arg (block arguments). Zero until set. A declaration
+  // argument instead retains its owner through its sole operand-use link;
+  // type and attribute references do not participate in that list.
   loom_value_def_t def;
 
   // --- 40 bytes ---
@@ -504,8 +507,8 @@ static inline const loom_use_t* loom_value_single_use(
 }
 
 // Returns the operation that defines this value. The value must be an
-// op result (not a block argument). Returns NULL if the def pointer
-// has not been set yet (value was just created, finalize_op not called).
+// op result or declaration argument (not a block argument). Returns NULL for
+// declaration arguments and values whose result definition is not wired yet.
 //
 // Usage (pattern matching — "is this value defined by a constant?"):
 //   loom_op_t* def_op = loom_value_def_op(value);
@@ -513,6 +516,23 @@ static inline const loom_use_t* loom_value_single_use(
 static inline loom_op_t* loom_value_def_op(const loom_value_t* value) {
   IREE_ASSERT(!loom_value_is_block_arg(value));
   return loom_def_op(value->def);
+}
+
+// Returns the owning operation of a result or declaration argument in stable
+// constructed IR. The value must not be a block argument. Returns NULL for an
+// unowned value before finalization or after erasure. Unlike def_op, this is an
+// ownership query, not a query for the operation computing a result.
+//
+// A declaration argument's sole ordinary operand link is its definition site.
+// Signature-local type and attribute references use separate indices, so this
+// link remains unambiguous regardless of their fanout.
+static inline loom_op_t* loom_value_owner_op(const loom_value_t* value) {
+  loom_op_t* defining_op = loom_value_def_op(value);
+  if (defining_op || value->use_count == 0) {
+    return defining_op;
+  }
+  IREE_ASSERT_EQ(value->use_count, 1);
+  return loom_use_user_op(loom_value_uses(value)[0]);
 }
 
 // Returns the block that owns this block argument. The value must be
@@ -1146,9 +1166,10 @@ typedef struct loom_func_like_vtable_t {
   uint8_t priority_attr_index;
 
   // Operand field containing the signature arguments for a bodyless
-  // declaration. These values are owned by the declaration, not references to
-  // values defined elsewhere. LOOM_OPERAND_INDEX_NONE when arguments are entry
-  // block values in |body_region_index|.
+  // declaration. An operand-backed signature owns every op operand, including
+  // a separate kernel workload field; none reference values defined elsewhere.
+  // LOOM_OPERAND_INDEX_NONE when arguments are entry block values in
+  // |body_region_index|.
   uint8_t args_operand_field_index;
 
   // Number of operand segments stored on bodyless declarations using
@@ -1506,6 +1527,14 @@ struct loom_op_vtable_t {
 
 static_assert(sizeof(loom_op_vtable_t) == 192,
               "loom_op_vtable_t must be exactly three cache lines");
+
+// Returns true when every operand is a declaration-owned signature definition
+// rather than a reference to a value defined elsewhere.
+static inline bool loom_op_vtable_owns_operands(
+    const loom_op_vtable_t* vtable) {
+  return vtable && vtable->func_like &&
+         vtable->func_like->args_operand_field_index != LOOM_OPERAND_INDEX_NONE;
+}
 
 static inline uint8_t loom_op_vtable_operand_descriptor_count(
     const loom_op_vtable_t* vtable) {

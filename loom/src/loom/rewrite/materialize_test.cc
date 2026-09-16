@@ -89,6 +89,70 @@ class MaterializeTest : public ::testing::Test {
   iree_arena_allocator_t remap_arena_;
 };
 
+TEST_F(MaterializeTest, ClonesOwnedDeclarationArguments) {
+  loom_string_id_t source_name = LOOM_STRING_ID_INVALID;
+  loom_string_id_t target_name = LOOM_STRING_ID_INVALID;
+  IREE_ASSERT_OK(
+      loom_module_intern_string(source_, IREE_SV("source"), &source_name));
+  IREE_ASSERT_OK(
+      loom_module_intern_string(target_, IREE_SV("target"), &target_name));
+  uint16_t source_symbol = LOOM_SYMBOL_ID_INVALID;
+  uint16_t target_symbol = LOOM_SYMBOL_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_add_symbol(source_, source_name, &source_symbol));
+  IREE_ASSERT_OK(loom_module_add_symbol(target_, target_name, &target_symbol));
+  const loom_type_t argument_types[] = {
+      loom_type_scalar(LOOM_SCALAR_TYPE_INDEX),
+      loom_type_pool(loom_dim_pack_static(4)),
+  };
+  loom_op_t* source_declaration = nullptr;
+  IREE_ASSERT_OK(loom_test_decl_build(
+      &source_builder_, /*build_flags=*/0, /*visibility=*/0, /*cc=*/0,
+      {0, source_symbol}, argument_types, IREE_ARRAYSIZE(argument_types),
+      /*result_types=*/nullptr, /*result_count=*/0, /*tied_results=*/nullptr,
+      /*tied_result_count=*/0, LOOM_LOCATION_UNKNOWN, &source_declaration));
+  const loom_value_slice_t source_arguments =
+      loom_test_decl_args(source_declaration);
+  IREE_ASSERT_OK(loom_module_set_value_type(
+      source_, source_arguments.values[1],
+      loom_type_pool(loom_dim_pack_dynamic(source_arguments.values[0]))));
+
+  loom_op_t* target_constant = nullptr;
+  IREE_ASSERT_OK(loom_test_constant_build(
+      &target_builder_, loom_attr_i64(4), argument_types[0],
+      LOOM_LOCATION_UNKNOWN, &target_constant));
+  loom_symbol_ref_t target_callee = {0, target_symbol};
+  loom_ir_remap_options_t options = {};
+  options.remap_symbol = loom_ir_remap_symbol_callback_make(
+      [](void* user_data, const loom_module_t*, loom_module_t*,
+         loom_symbol_ref_t, loom_symbol_ref_t* out_ref) {
+        *out_ref = *static_cast<const loom_symbol_ref_t*>(user_data);
+        return iree_ok_status();
+      },
+      &target_callee);
+  loom_ir_remap_t remap =
+      InitializeRemap(/*allow_unmapped_values=*/false, &options);
+  loom_op_t* target_declaration = nullptr;
+  IREE_ASSERT_OK(loom_ir_clone_op(&target_builder_, source_declaration, &remap,
+                                  &target_declaration));
+  const loom_value_slice_t target_arguments =
+      loom_test_decl_args(target_declaration);
+  ASSERT_EQ(target_arguments.count, source_arguments.count);
+  for (uint16_t i = 0; i < target_arguments.count; ++i) {
+    EXPECT_NE(target_arguments.values[i], source_arguments.values[i]);
+    const loom_value_t* argument =
+        loom_module_value(target_, target_arguments.values[i]);
+    EXPECT_EQ(argument->use_count, 1u);
+    EXPECT_EQ(loom_value_def_op(argument), nullptr);
+    EXPECT_EQ(loom_value_owner_op(argument), target_declaration);
+  }
+  EXPECT_TRUE(loom_type_equal(
+      loom_module_value_type(target_, target_arguments.values[1]),
+      loom_type_pool(loom_dim_pack_dynamic(target_arguments.values[0]))));
+  IREE_ASSERT_OK(loom_op_erase(target_, target_declaration));
+  EXPECT_FALSE(loom_module_has_active_type_uses(target_));
+  EXPECT_TRUE(loom_module_has_active_type_uses(source_));
+}
+
 TEST_F(MaterializeTest, ClonesCoResultDynamicTypeReferences) {
   loom_type_t index_type = loom_type_scalar(LOOM_SCALAR_TYPE_INDEX);
   loom_type_t input_type = loom_type_shaped_1d(

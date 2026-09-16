@@ -8,6 +8,7 @@
 
 #include <string.h>
 
+#include "loom/ir/context.h"
 #include "loom/ir/module.h"
 
 static iree_status_t loom_value_walk_outgoing_type_refs(
@@ -27,9 +28,20 @@ iree_status_t loom_op_walk_subtree_value_refs(
     const loom_module_t* module, const loom_op_t* op,
     loom_type_value_ref_callback_t callback, void* user_data) {
   const loom_value_id_t* operands = loom_op_const_operands(op);
-  for (uint16_t i = 0; i < op->operand_count; ++i) {
-    if (operands[i] != LOOM_VALUE_ID_INVALID) {
-      IREE_RETURN_IF_ERROR(callback(operands[i], user_data));
+  // Only symbol signatures define operand values. Ordinary users need no
+  // interface metadata lookup on this per-operation path.
+  if (op->operand_count > 0 &&
+      iree_any_bit_set(op->traits, LOOM_TRAIT_SYMBOL_DEFINE) &&
+      loom_op_vtable_owns_operands(loom_op_vtable(module, op))) {
+    for (uint16_t i = 0; i < op->operand_count; ++i) {
+      IREE_RETURN_IF_ERROR(loom_value_walk_outgoing_type_refs(
+          module, operands[i], callback, user_data));
+    }
+  } else {
+    for (uint16_t i = 0; i < op->operand_count; ++i) {
+      if (operands[i] != LOOM_VALUE_ID_INVALID) {
+        IREE_RETURN_IF_ERROR(callback(operands[i], user_data));
+      }
     }
   }
 

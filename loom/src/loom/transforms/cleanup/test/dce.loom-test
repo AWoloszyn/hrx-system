@@ -154,3 +154,36 @@ func.def @rewrite_dead_attribute_dimension(%extent: index, %stride: index, %valu
 func.def @rewrite_dead_attribute_dimension(%extent: index, %stride: index, %value: f32) -> (f32) {
   func.return %value : f32
 }
+
+// ====
+
+// RUN: pass dce
+
+// Declaration arguments own their dependent types. Removing the declaration
+// releases those types' providers in the same DCE run.
+func.def @dead_signature_dimension() {
+  %width = index.constant 16 : index
+  test.decl @nested_signature(%storage: pool<[%width]>) -> (i32)
+  func.return
+}
+
+// ----
+func.def @dead_signature_dimension() {
+  func.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Rewriter-driven deletion follows the same signature ownership contract.
+func.def @rewrite_dead_signature_dimension(%extent: index, %stride: index) {
+  %width = index.add %extent, %stride : index
+  test.decl @nested_signature(%storage: pool<[%width]>) -> (i32)
+  func.return
+}
+
+// ----
+func.def @rewrite_dead_signature_dimension(%extent: index, %stride: index) {
+  func.return
+}

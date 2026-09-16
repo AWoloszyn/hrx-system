@@ -1253,6 +1253,16 @@ TEST_F(BuilderTest, EraseDeclarationDropsOwnedArgumentTypeUses) {
         loom_module_set_value_type(module_, arguments.values[1], storage_type));
     IREE_ASSERT_OK(loom_module_set_value_type(
         module_, loom_op_results(declarations[i])[0], storage_type));
+    for (uint16_t j = 0; j < arguments.count; ++j) {
+      const loom_value_t* argument =
+          loom_module_value(module_, arguments.values[j]);
+      EXPECT_EQ(argument->use_count, 1u);
+      EXPECT_EQ(loom_value_def_op(argument), nullptr);
+      EXPECT_EQ(loom_value_owner_op(argument), declarations[i]);
+    }
+    EXPECT_EQ(loom_value_owner_op(loom_module_value(
+                  module_, loom_op_results(declarations[i])[0])),
+              declarations[i]);
   }
   ASSERT_EQ(module_->type_uses.active_count, 4u);
   const loom_value_slice_t erased_arguments =
@@ -1264,6 +1274,9 @@ TEST_F(BuilderTest, EraseDeclarationDropsOwnedArgumentTypeUses) {
   EXPECT_EQ(module_->type_uses.active_count, 2u);
   EXPECT_EQ(loom_module_value(module_, erased_arguments.values[1])->use_count,
             0u);
+  EXPECT_EQ(loom_value_owner_op(
+                loom_module_value(module_, erased_arguments.values[1])),
+            nullptr);
   EXPECT_EQ(loom_module_value_first_outgoing_type_use(
                 module_, erased_arguments.values[1]),
             LOOM_TYPE_USE_ID_INVALID);
@@ -1275,6 +1288,9 @@ TEST_F(BuilderTest, EraseDeclarationDropsOwnedArgumentTypeUses) {
   // Incremental erasure and reconstruction agree without a recovery rebuild.
   IREE_ASSERT_OK(loom_module_compute_uses(module_));
   EXPECT_EQ(module_->type_uses.active_count, 2u);
+  EXPECT_EQ(loom_value_owner_op(
+                loom_module_value(module_, retained_arguments.values[1])),
+            declarations[1]);
   IREE_ASSERT_OK(loom_op_erase(module_, declarations[1]));
   EXPECT_FALSE(loom_module_has_active_type_uses(module_));
 }
