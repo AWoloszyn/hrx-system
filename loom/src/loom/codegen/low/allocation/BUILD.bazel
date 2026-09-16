@@ -376,6 +376,7 @@ loom_cc_test(
     srcs = ["storage_lease_test.cc"],
     deps = [
         ":storage_lease",
+        ":storage_lease_index",
         "//loom/src/loom/ir",
         "//runtime/src/iree/base/internal:arena",
         "//runtime/src/iree/testing:gtest",
@@ -424,6 +425,21 @@ loom_cc_test(
 )
 
 loom_cc_library(
+    name = "relocation_group",
+    srcs = ["relocation_group.c"],
+    hdrs = ["relocation_group.h"],
+    deps = [
+        ":assignment",
+        ":assignment_map",
+        ":storage",
+        "//loom/src/loom/codegen/low:descriptors",
+        "//loom/src/loom/codegen/low:placement",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_library(
     name = "loop_edge_relocation",
     srcs = ["loop_edge_relocation.c"],
     hdrs = ["loop_edge_relocation.h"],
@@ -432,6 +448,7 @@ loom_cc_library(
         ":assignment_map",
         ":edge_alias",
         ":live_range",
+        ":relocation_group",
         ":storage",
         ":storage_lease",
         ":target_constraints",
@@ -445,6 +462,17 @@ loom_cc_library(
         "//loom/src/loom/util:cfg_graph",
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_test(
+    name = "relocation_group_test",
+    srcs = ["relocation_group_test.cc"],
+    deps = [
+        ":relocation_group",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
     ],
 )
 

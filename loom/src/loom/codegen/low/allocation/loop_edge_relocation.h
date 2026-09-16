@@ -63,11 +63,13 @@ typedef struct loom_low_allocation_loop_edge_relocation_result_t {
   iree_host_size_t relocated_header_count;
 } loom_low_allocation_loop_edge_relocation_result_t;
 
-// Relocates safe scalar loop-header assignments to recurrent low.br backedge
-// source locations. Relocations form a dependency-closed subset: a destination
-// remains unchanged when moving another value depends on it vacating storage
-// but its own relocation cannot preserve allocation, alias, or lease
-// invariants.
+// Relocates loop-header assignments and their coalesced non-edge aliases to
+// recurrent low.br backedge source locations. Every member retains its relative
+// storage offset and must independently satisfy lifetime and target
+// constraints. Groups owning fixed storage or asynchronous leases remain in
+// place. Relocations form a dependency-closed subset: a destination remains
+// unchanged when its relocation depends on another group vacating storage but
+// that group cannot preserve allocation, alias, or lease invariants.
 iree_status_t loom_low_allocation_loop_edge_relocate(
     const loom_low_allocation_loop_edge_relocation_context_t* context,
     loom_low_allocation_loop_edge_relocation_result_t* out_result);

@@ -11,6 +11,7 @@
 #include "iree/base/internal/arena.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
+#include "loom/codegen/low/allocation/storage_lease_index.h"
 #include "loom/ir/context.h"
 #include "loom/ir/local_value_domain.h"
 #include "loom/ir/module.h"
@@ -418,6 +419,88 @@ TEST_F(LowAllocationStorageLeaseTest, RejectsLeaseOutsideAllocationLiveness) {
 
   loom_local_value_domain_release(&allocation_value_domain);
   loom_module_free(module);
+}
+
+TEST_F(LowAllocationStorageLeaseTest,
+       PreservesLeasesAcrossStorageLifetimeHoles) {
+  const loom_low_reg_class_t reg_classes[] = {RegClass(1), RegClass(1)};
+  const loom_low_descriptor_set_t descriptor_set =
+      DescriptorSet(reg_classes, IREE_ARRAYSIZE(reg_classes));
+  const loom_liveness_segment_t segments[] = {{0, 2}, {6, 10}, {1, 7}};
+  loom_liveness_analysis_t liveness = {};
+  liveness.segments = segments;
+  liveness.segment_count = IREE_ARRAYSIZE(segments);
+
+  for (const auto kind : {LOOM_LOW_STORAGE_LEASE_SOURCE_READ,
+                          LOOM_LOW_STORAGE_LEASE_RESULT_WRITE}) {
+    for (const bool indexed : {false, true}) {
+      SCOPED_TRACE(static_cast<int>(kind));
+      SCOPED_TRACE(indexed);
+      loom_low_storage_lease_record_t record = StorageLeaseRecord();
+      record.kind = kind;
+      record.attachment = kind == LOOM_LOW_STORAGE_LEASE_SOURCE_READ
+                              ? LOOM_LOW_STORAGE_LEASE_ATTACHMENT_OPERAND
+                              : LOOM_LOW_STORAGE_LEASE_ATTACHMENT_RESULT;
+      record.unit_offset = 0;
+      const loom_low_storage_lease_table_t table =
+          StorageLeaseTable(nullptr, &record, 1);
+      loom_low_allocation_storage_lease_t lease = {};
+      lease.value_id = 0;
+      lease.start_point = 2;
+      lease.end_point = 6;
+      lease.descriptor_reg_class_id = 0;
+      lease.location_kind = LOOM_LOW_ALLOCATION_LOCATION_PHYSICAL_REGISTER;
+      lease.location_base = 10;
+      lease.location_count = 2;
+      uint8_t instance_written = 1;
+      loom_low_allocation_storage_lease_state_t state = {};
+      state.lease_table = &table;
+      state.instances = &lease;
+      state.instance_written = &instance_written;
+      state.instance_count = 1;
+      loom_low_allocation_storage_lease_unit_index_t index = {};
+      if (indexed) {
+        IREE_ASSERT_OK(loom_low_allocation_storage_lease_unit_index_initialize(
+            &index, &lease, /*lease_count=*/1, /*lease_unit_capacity=*/2,
+            /*distinct_unit_capacity=*/2, &arena_));
+        loom_low_allocation_storage_lease_unit_index_insert(&index,
+                                                            &descriptor_set, 0);
+        state.unit_index = &index;
+      }
+
+      // The aliasing register class overlaps the lease's second unit. Only
+      // the candidate has a hole: the lease keeps its complete [2, 6) range.
+      auto candidate = Assignment(/*value_id=*/1, /*descriptor_reg_class_id=*/1,
+                                  /*start_point=*/0, /*end_point=*/10,
+                                  /*location_base=*/11, /*location_count=*/1);
+      candidate.liveness_segments = {0, 2};
+      candidate.unit_count = 1;
+      EXPECT_FALSE(loom_low_allocation_storage_lease_state_conflicts(
+          &state, &descriptor_set, &liveness, &candidate, nullptr, 0,
+          LOOM_LOW_ALLOCATION_STORAGE_RELEASE_FORBIDDEN));
+      IREE_ASSERT_OK(
+          loom_low_allocation_storage_lease_state_record_release_actions(
+              &state, &descriptor_set, &liveness, &candidate, nullptr, 0));
+      EXPECT_EQ(state.release_action_count, 0u);
+      EXPECT_EQ(lease.start_point, 2u);
+      EXPECT_EQ(lease.end_point, 6u);
+
+      // Incomplete storage segments retain the conservative interval. A real
+      // overlapping segment also remains a conflict for either lease kind.
+      candidate.liveness_segments = {};
+      EXPECT_TRUE(loom_low_allocation_storage_lease_state_conflicts(
+          &state, &descriptor_set, &liveness, &candidate, nullptr, 0,
+          LOOM_LOW_ALLOCATION_STORAGE_RELEASE_FORBIDDEN));
+      candidate.liveness_segments = {2, 1};
+      EXPECT_TRUE(loom_low_allocation_storage_lease_state_conflicts(
+          &state, &descriptor_set, &liveness, &candidate, nullptr, 0,
+          LOOM_LOW_ALLOCATION_STORAGE_RELEASE_FORBIDDEN));
+      candidate.location_base = 12;
+      EXPECT_FALSE(loom_low_allocation_storage_lease_state_conflicts(
+          &state, &descriptor_set, &liveness, &candidate, nullptr, 0,
+          LOOM_LOW_ALLOCATION_STORAGE_RELEASE_FORBIDDEN));
+    }
+  }
 }
 
 }  // namespace

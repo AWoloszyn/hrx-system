@@ -423,6 +423,7 @@ loom_cc_test(
     "storage_lease_test.cc"
   DEPS
     ::storage_lease
+    ::storage_lease_index
     iree::base::internal::arena
     iree::testing::gtest
     iree::testing::gtest_main
@@ -478,6 +479,24 @@ loom_cc_test(
 
 loom_cc_library(
   NAME
+    relocation_group
+  HDRS
+    "relocation_group.h"
+  SRCS
+    "relocation_group.c"
+  DEPS
+    ::assignment
+    ::assignment_map
+    ::storage
+    iree::base
+    iree::base::internal::arena
+    loom::codegen::low::descriptors
+    loom::codegen::low::placement
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
     loop_edge_relocation
   HDRS
     "loop_edge_relocation.h"
@@ -488,6 +507,7 @@ loom_cc_library(
     ::assignment_map
     ::edge_alias
     ::live_range
+    ::relocation_group
     ::storage
     ::storage_lease
     ::target_constraints
@@ -502,6 +522,18 @@ loom_cc_library(
     loom::ops::low
     loom::util::cfg_graph
   PUBLIC
+)
+
+loom_cc_test(
+  NAME
+    relocation_group_test
+  SRCS
+    "relocation_group_test.cc"
+  DEPS
+    ::relocation_group
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
 )
 
 loom_cc_library(
