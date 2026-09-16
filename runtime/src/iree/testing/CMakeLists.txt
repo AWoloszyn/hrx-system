@@ -47,6 +47,29 @@ iree_cc_library(
   PUBLIC
 )
 
+if(IREE_TARGET_HAS_THREADS AND IREE_BUILD_BENCHMARKS)
+  iree_cc_binary(
+    NAME
+      benchmark_result_fixture
+    SRCS
+      "benchmark_result_fixture.cc"
+    DEPS
+      ::benchmark
+      ::benchmark_main
+      iree::base
+      iree::third_party::google_benchmark
+    TESTONLY
+  )
+  iree_execution_test_suite(
+    NAME
+      benchmark_result_test
+    MANIFESTS
+      "benchmark_result.test.json"
+    TOOLS
+      "benchmark=::benchmark_result_fixture"
+  )
+endif()
+
 iree_cc_library(
   NAME
     gtest

@@ -8,8 +8,10 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "benchmark/benchmark.h"
 #include "iree/base/api.h"
@@ -114,7 +116,7 @@ static void iree_benchmark_run(const char* benchmark_name,
   iree_status_t status = benchmark_def->run(benchmark_def, &state);
   if (!iree_status_is_ok(status)) {
     auto status_str = StatusToString(status);
-    iree_status_ignore(status);
+    iree_status_free(status);
     benchmark_state.SkipWithError(status_str.c_str());
   }
 
@@ -220,4 +222,50 @@ void iree_benchmark_initialize(int* argc, char** argv) {
 #endif  // IREE_TRACING_FEATURES & IREE_TRACING_FEATURE_INSTRUMENTATION
 }
 
-void iree_benchmark_run_specified(void) { benchmark::RunSpecifiedBenchmarks(); }
+namespace {
+
+// Google Benchmark reports errors through its reporter, while its run result
+// counts matched benchmarks. Retain reported failures alongside the selected
+// display format so executable smoke tests can propagate them to their caller.
+class BenchmarkResultReporter final : public benchmark::BenchmarkReporter {
+ public:
+  BenchmarkResultReporter()
+      : display_(benchmark::CreateDefaultDisplayReporter()) {}
+
+  bool ReportContext(const Context& context) override {
+    succeeded_ = display_->ReportContext(context);
+    return succeeded_;
+  }
+
+  void ReportRunsConfig(double minimum_time, bool explicit_iterations,
+                        benchmark::IterationCount iterations) override {
+    display_->ReportRunsConfig(minimum_time, explicit_iterations, iterations);
+  }
+
+  void ReportRuns(const std::vector<Run>& runs) override {
+    for (const Run& run : runs) {
+      if (run.skipped == benchmark::internal::SkippedWithError) {
+        succeeded_ = false;
+      }
+    }
+    display_->ReportRuns(runs);
+  }
+
+  void Finalize() override { display_->Finalize(); }
+
+  bool succeeded() const { return succeeded_; }
+
+ private:
+  // Owns the display reporter selected by the benchmark format flags.
+  std::unique_ptr<benchmark::BenchmarkReporter> display_;
+  // False once a reported run fails or the display rejects the run context.
+  bool succeeded_ = true;
+};
+
+}  // namespace
+
+bool iree_benchmark_run_specified(void) {
+  BenchmarkResultReporter reporter;
+  const size_t matched_count = benchmark::RunSpecifiedBenchmarks(&reporter);
+  return matched_count != 0 && reporter.succeeded();
+}

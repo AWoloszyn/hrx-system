@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "artifact benchmark usage",
+      "run": {"tool": "benchmark", "args": ["--help"]},
+      "stdout": {"contains": ["executable_loader", "executable_file"]}
+    },
+    {
+      "name": "unconfigured artifact benchmark fails",
+      "run": {"tool": "benchmark", "args": ["--benchmark_min_time=1x"]},
+      "exit": 1,
+      "stdout": {"contains": ["requires --executable_loader and --executable_file"]}
+    }
+  ]
+}

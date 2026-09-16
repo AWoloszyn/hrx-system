@@ -45,4 +45,4 @@ iree_benchmark_def_t* iree_make_function_benchmark(iree_benchmark_fn_t fn) {
 
 void iree_benchmark_initialize(int* argc, char** argv) {}
 
-void iree_benchmark_run_specified(void) {}
+bool iree_benchmark_run_specified(void) { return true; }
