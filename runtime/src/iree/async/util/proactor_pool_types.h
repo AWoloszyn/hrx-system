@@ -28,12 +28,12 @@ typedef iree_status_t(
 
 // Factory callbacks for creating poll runners that drive proactors.
 //
-// When a proactor is first accessed via pool_get(), the pool calls |create| to
-// optionally create a runner that drives the proactor's poll loop. If the
-// factory's |create| is NULL, no runner is created and the caller (or host
-// event loop) is responsible for polling.
+// When a proactor is first accessed, the pool calls |create| to optionally
+// create a runner that drives the proactor's poll loop. If the factory's
+// |create| is NULL, no runner is created and the caller (or host event loop) is
+// responsible for polling.
 //
-// The standard implementation (proactor_runner_thread.h) creates a dedicated
+// The standard implementation (proactor_thread_runner.h) creates a dedicated
 // poll thread for each proactor.
 typedef struct iree_async_proactor_pool_runner_factory_t {
   void* user_data;
@@ -47,14 +47,13 @@ typedef struct iree_async_proactor_pool_runner_factory_t {
                           uint32_t node_id, iree_allocator_t allocator,
                           void** out_runner);
 
-  // Requests all runners to stop. Called once before any destroy calls.
-  // Non-blocking: signals each runner to stop but does not wait.
-  // |runners| and |count| are the opaque handles returned by create.
-  // NULL entries are skipped.
-  void (*request_stop)(void* user_data, void** runners, iree_host_size_t count);
+  // Requests |runner| to stop without waiting for it to exit. Aggregate pool
+  // teardown requests all runners it owns to stop before destroying any of
+  // them.
+  void (*request_stop)(void* user_data, void* runner);
 
-  // Destroys a single runner, blocking until it has fully stopped.
-  // Called after request_stop has been called for all runners.
+  // Destroys |runner|, blocking until it has fully stopped. Called after
+  // request_stop has been called for the runner.
   void (*destroy)(void* user_data, void* runner);
 } iree_async_proactor_pool_runner_factory_t;
 

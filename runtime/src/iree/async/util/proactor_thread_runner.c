@@ -43,21 +43,15 @@ static iree_status_t iree_async_proactor_pool_thread_runner_create(
   return iree_ok_status();
 }
 
-static void iree_async_proactor_pool_thread_runner_request_stop(
-    void* user_data, void** runners, iree_host_size_t count) {
-  for (iree_host_size_t i = 0; i < count; ++i) {
-    if (runners[i]) {
-      iree_async_proactor_thread_request_stop(
-          (iree_async_proactor_thread_t*)runners[i]);
-    }
-  }
+static void iree_async_proactor_pool_thread_runner_request_stop(void* user_data,
+                                                                void* runner) {
+  iree_async_proactor_thread_request_stop(
+      (iree_async_proactor_thread_t*)runner);
 }
 
 static void iree_async_proactor_pool_thread_runner_destroy(void* user_data,
                                                            void* runner) {
   iree_async_proactor_thread_t* thread = (iree_async_proactor_thread_t*)runner;
-  iree_status_ignore(
-      iree_async_proactor_thread_join(thread, IREE_DURATION_INFINITE));
   iree_async_proactor_thread_release(thread);
 }
 
