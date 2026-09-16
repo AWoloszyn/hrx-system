@@ -306,18 +306,20 @@ one logical iteration. Ordinary loads and their address prerequisites run ahead
 of the ordered consumer; the compiler constructs startup, steady-state, and
 drain code and carries the values between them.
 
-This kernel sums up to 64 rows from four-byte-aligned buffers. Its depth and
-unroll factor come from independent configuration values:
+This motif sums up to 64 rows of four-element vectors from four-byte-aligned
+buffers. Its depth and unroll factor are template arguments: each caller owns
+its schedule, and multiple instantiations can use different policies in one
+kernel. The caller here chooses depth four and factor six.
 
-**Source:** [`read-ahead.loom`](https://github.com/ROCm/hrx-system/blob/main/loom/docs/examples/guide/functions-and-control/read-ahead.loom)
+**Source:** [`vector-read-ahead.loom`](https://github.com/ROCm/hrx-system/blob/main/loom/docs/examples/guide/functions-and-control/vector-read-ahead.loom)
 
-```loom title="read-ahead.loom"
---8<-- "examples/guide/functions-and-control/read-ahead.loom"
+```loom title="vector-read-ahead.loom"
+--8<-- "examples/guide/functions-and-control/vector-read-ahead.loom"
 ```
 
-Depth three keeps two iterations of loaded values queued. Each steady iteration
+Depth four keeps three iterations of loaded values queued. Each steady iteration
 fetches the next input and consumes the oldest queued value. The drain
-consumes the final two values in their original order. Empty loops perform no
+consumes the final three values in their original order. Empty loops perform no
 loads; loops shorter than the depth take the serial path. A partial unroll
 remainder also stays within the original half-open range. The accumulation order
 is preserved, including for floating-point recurrences.
@@ -330,7 +332,7 @@ iterations, and each unrolled steady body advances the queue twice. An optional
 The target schedules independent instructions using its normal dependency
 constraints; the carried queue preserves the original iteration relationship.
 
-The example uses factor four with `schedule(recurrence)` so old queue values
+The example uses factor six with `schedule(recurrence)` so old queue values
 can be consumed before their registers receive new loads. Hardware overlap
 also depends on allocation: a materialized queue copy consumes its source and
 can require an early wait. The [native-overlap walkthrough](../workflows/tune-loop-schedules.md#check-that-read-ahead-survives-native-code-generation)
@@ -353,15 +355,21 @@ requested at depth greater than one. The depth is bounded by 65,535 and by the
 representable carried-state tuple; unsupported requests fail at the source
 policy instead of silently running serially.
 
-Compile with the default depth or override it without editing the loop:
+The caller can also calculate these values with `index` arithmetic from
+specialized template arguments or target properties. A global configuration
+key for a motif's depth would couple all its instantiations. Config overrides
+are useful in an experiment harness for sweeping schedules; the
+[loop-tuning walkthrough](../workflows/tune-loop-schedules.md#keep-one-checked-source-for-experiments)
+shows that separate workflow.
+
+Compile this instantiation and inspect its schedule:
 
 ```shell
-loom-compile read-ahead.loom --target=amdgpu:gfx1151 \
-  --format=amdgpu-hsaco --output=sum_rows.hsaco \
-  --config=read_ahead.depth=4 --config=read_ahead.unroll=2 \
-  --compile-report=details --compile-report-output=sum_rows.report.json
-loom-compile-report show sum_rows.report.json
-loom-compile-report suggest sum_rows.report.json
+loom-compile vector-read-ahead.loom --root=@sum_vector_rows \
+  --target=amdgpu:gfx1151 --format=amdgpu-hsaco --output=vector-rows.hsaco \
+  --compile-report=details --compile-report-output=vector-rows.report.json
+loom-compile-report show vector-rows.report.json
+loom-compile-report suggest vector-rows.report.json
 ```
 
 The report retains the applied policy and operation schedule alongside final

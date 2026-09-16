@@ -29,10 +29,36 @@ loom_benchmark="${repo_root}/bazel-bin/loom/src/loom/tools/iree-benchmark-loom/i
 
 cp -- "${script_dir}/read-ahead.loom" "${output_dir}/read-ahead.loom"
 cp -- "${script_dir}/read-ahead-tests.loom" "${output_dir}/read-ahead-tests.loom"
+cp -- "${script_dir}/vector-read-ahead.loom" "${output_dir}/vector-read-ahead.loom"
+cp -- "${script_dir}/vector-read-ahead-tests.loom" "${output_dir}/vector-read-ahead-tests.loom"
 cp -- "${repo_root}/loom/src/loom/test/corpus/checked_benchmarks/streaming_packed_s8_dot.loom" \
   "${output_dir}/streaming-packed-dot.loom"
 
 cd -- "${output_dir}"
+"${loom_format}" --check vector-read-ahead.loom
+"${loom_format}" --check vector-read-ahead-tests.loom
+"${loom_link}" vector-read-ahead.loom vector-read-ahead-tests.loom \
+  --mode=merge --to=bc --output=vector-read-ahead.loombc
+"${loom_compile}" vector-read-ahead.loombc --root=@sum_vector_rows \
+  --target=amdgpu:gfx11-generic --format=amdgpu-hsaco \
+  --output=vector-rows.hsaco --compile-report=details \
+  --compile-report-output=vector-rows.report.json
+"${loom_report}" show vector-rows.report.json >vector-rows.show.txt
+"${loom_report}" suggest vector-rows.report.json >vector-rows.suggest.txt
+sed -n '/^\[scf.compare_pipeline_depth\]/,/^$/p' vector-rows.suggest.txt >vector-pipeline-suggest.txt
+test -s vector-pipeline-suggest.txt
+"${loom_compile}" vector-read-ahead.loombc --root=@sum_vector_rows_composed \
+  --target=amdgpu:gfx11-generic --format=amdgpu-hsaco \
+  --output=composed-rows.hsaco --compile-report=details \
+  --compile-report-output=composed-rows.report.json
+"${loom_report}" show composed-rows.report.json >composed-rows.show.txt
+grep -Fq 'depth=4 queue_records=3' composed-rows.show.txt
+grep -Fq 'depth=1 queue_records=0' composed-rows.show.txt
+"${loom_compile}" vector-read-ahead.loombc --root=@sum_vector_rows_composed \
+  --target=spirv:vulkan1.3+bda --format=spirv-binary --output=composed-rows.spv
+"${loom_benchmark}" vector-read-ahead.loombc --benchmark=@sum_vector_rows_time \
+  --dry-run --output=vector-rows.plan.json
+
 "${loom_format}" --check read-ahead.loom
 "${loom_format}" --check read-ahead-tests.loom
 "${loom_link}" read-ahead.loom read-ahead-tests.loom \
