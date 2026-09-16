@@ -483,6 +483,12 @@ static inline iree_status_t iree_net_carrier_activate(
 // both directions and guarantees all pending operations have completed before
 // the callback fires.
 //
+// Deactivation invalidates all uncommitted begin_send reservations. Callers
+// must externally synchronize writes through reservation pointers against
+// deactivation and must not commit or abort a handle after deactivation begins.
+// A reservation committed before deactivation remains an accepted send and
+// receives its terminal completion callback.
+//
 // Once accepted by the caller's lifecycle state machine, deactivation is
 // infallible: transport cleanup failures are reported through the terminal
 // error handler and the completion callback still fires after all accepted
