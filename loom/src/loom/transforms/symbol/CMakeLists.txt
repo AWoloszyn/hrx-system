@@ -125,6 +125,7 @@ loom_cc_library(
   SRCS
     "template_selection.c"
   DEPS
+    ::inline_callables
     ::symbol_pruning
     ::template_applicability
     ::template_application

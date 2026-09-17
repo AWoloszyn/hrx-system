@@ -309,12 +309,23 @@ static const loom_pass_option_enum_value_t kTemplateSelectionModeValues[] = {
     {.value = IREE_SVL("final")},
 };
 
+static const loom_pass_option_enum_value_t kTemplateSelectionRewriteValues[] = {
+    {.value = IREE_SVL("call")},
+    {.value = IREE_SVL("inline")},
+};
+
 static const loom_pass_option_schema_t kTemplateSelectionOptionSchema[] = {
     {
         .name = IREE_SVL("mode"),
         .kind = LOOM_PASS_OPTION_SCHEMA_ENUM,
         .enum_values = kTemplateSelectionModeValues,
         .enum_value_count = IREE_ARRAYSIZE(kTemplateSelectionModeValues),
+    },
+    {
+        .name = IREE_SVL("rewrite"),
+        .kind = LOOM_PASS_OPTION_SCHEMA_ENUM,
+        .enum_values = kTemplateSelectionRewriteValues,
+        .enum_value_count = IREE_ARRAYSIZE(kTemplateSelectionRewriteValues),
     },
 };
 

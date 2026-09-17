@@ -6,7 +6,7 @@
 
 // Canonicalization refines both inputs with identity operations. Applicability
 // still sees the equality established by the surrounding branch.
-// RUN: pass canonicalize,select-templates{mode=final},inline-callables,canonicalize,symbol-dce
+// RUN: pass canonicalize,select-templates{mode=final,rewrite=inline},canonicalize,symbol-dce
 
 template.decl @equal(%left: index, %right: index) -> (index)
 
@@ -39,7 +39,7 @@ func.def public @entry(%left: index, %right: index) -> (index) {
 // ====
 
 // Declared aliases have the same value even without a controlling branch.
-// RUN: pass select-templates{mode=final},inline-callables,canonicalize,symbol-dce
+// RUN: pass select-templates{mode=final,rewrite=inline},canonicalize,symbol-dce
 
 template.decl @same(%left: index, %right: index) -> (index)
 
@@ -64,7 +64,7 @@ func.def public @alias_pair(%input: index) -> (index) {
 // ====
 
 // Fixed-width scalar aliases preserve a strict relation through normalization.
-// RUN: pass canonicalize,select-templates{mode=final},inline-callables,canonicalize,symbol-dce
+// RUN: pass canonicalize,select-templates{mode=final,rewrite=inline},canonicalize,symbol-dce
 
 template.decl @less(%left: i32, %right: i32) -> (i32)
 

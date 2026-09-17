@@ -30,6 +30,7 @@
 #include "loom/rewrite/rewriter.h"
 #include "loom/target/condition.h"
 #include "loom/target/pass_environment.h"
+#include "loom/transforms/symbol/inline_callables.h"
 #include "loom/transforms/symbol/symbol_pruning.h"
 #include "loom/transforms/symbol/template_applicability.h"
 #include "loom/transforms/symbol/template_application.h"
@@ -46,12 +47,21 @@ typedef struct loom_template_selection_pass_state_t {
 
   // True when mode was explicitly provided.
   bool has_mode_option;
+
+  // Expands applicable calls with the common inliner in this transaction.
+  bool inline_calls;
+
+  // True when rewrite was explicitly provided.
+  bool has_rewrite_option;
 } loom_template_selection_pass_state_t;
 
 static const loom_pass_option_def_t kTemplateSelectionOptions[] = {
     {IREE_SVL("mode"),
      IREE_SVL("Selection mode: early preserves unresolved applies, final "
               "emits diagnostics for every unresolved live apply.")},
+    {IREE_SVL("rewrite"),
+     IREE_SVL("Rewrite form: call preserves selected source calls; inline "
+              "expands applicable calls before discarding decisions.")},
 };
 
 #define LOOM_TEMPLATE_SELECTION_STATISTICS(V, statistics_type)            \
@@ -139,6 +149,23 @@ static iree_status_t loom_template_selection_parse_option(
   if (iree_string_view_equal(name, IREE_SV("mode"))) {
     return loom_template_selection_parse_mode(value, state);
   }
+  if (iree_string_view_equal(name, IREE_SV("rewrite"))) {
+    if (state->has_rewrite_option) {
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "duplicate option 'rewrite' for pass "
+                              "'select-templates'");
+    }
+    if (!iree_string_view_equal(value, IREE_SV("call")) &&
+        !iree_string_view_equal(value, IREE_SV("inline"))) {
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "select-templates option 'rewrite' expected "
+                              "'call' or 'inline', got '%.*s'",
+                              (int)value.size, value.data);
+    }
+    state->inline_calls = iree_string_view_equal(value, IREE_SV("inline"));
+    state->has_rewrite_option = true;
+    return iree_ok_status();
+  }
   return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                           "unknown option '%.*s' for pass 'select-templates'",
                           (int)name.size, name.data);
@@ -158,17 +185,9 @@ iree_status_t loom_template_selection_create(loom_pass_t* pass,
       if (!option->present) {
         continue;
       }
-      if (iree_string_view_equal(option->schema->name, IREE_SV("mode"))) {
-        IREE_RETURN_IF_ERROR(loom_template_selection_parse_mode(
-            option->schema->enum_values[option->enum_value_index].value,
-            state));
-        continue;
-      }
-      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                              "unknown decoded option '%.*s' for pass "
-                              "'select-templates'",
-                              (int)option->schema->name.size,
-                              option->schema->name.data);
+      IREE_RETURN_IF_ERROR(loom_template_selection_parse_option(
+          state, option->schema->name,
+          option->schema->enum_values[option->enum_value_index].value));
     }
   } else {
     IREE_RETURN_IF_ERROR(
@@ -210,6 +229,13 @@ static loom_template_selection_mode_t loom_template_selection_mode(
 //===----------------------------------------------------------------------===//
 // Plan model
 //===----------------------------------------------------------------------===//
+
+typedef struct loom_template_selection_entry_t {
+  // Applicability result owned by this selection transaction.
+  loom_template_application_result_t application;
+  // Original containing symbol, retained across application-to-call rewriting.
+  loom_symbol_id_t source_symbol_id;
+} loom_template_selection_entry_t;
 
 typedef struct loom_template_selection_state_t {
   // Active pass invocation, or NULL for a read-only query.
@@ -266,13 +292,23 @@ typedef struct loom_template_selection_state_t {
   bool reports_enabled;
 
   // Reachable apply-site selection entries.
-  loom_template_application_result_t* entries;
+  loom_template_selection_entry_t* entries;
 
   // Number of valid selection entries.
   iree_host_size_t entry_count;
 
   // Capacity of entries.
   iree_host_size_t entry_capacity;
+
+  // True when this transaction also owns call expansion.
+  bool inline_calls;
+
+  // Arena-owned plan borrowing the selection snapshot until rewriting ends.
+  loom_inline_callables_plan_t* inline_plan;
+
+  // Bit per family still demanded by an unresolved live application. Allocated
+  // only when inline rewriting encounters a blocked application.
+  uint64_t* demanded_families;
 
   // External provider origins required by reachable applications.
   struct {
@@ -668,12 +704,12 @@ static iree_status_t loom_template_selection_mark_provider_live(
 }
 
 static loom_template_application_result_t* loom_template_selection_append_entry(
-    loom_template_selection_state_t* state) {
+    loom_template_selection_state_t* state, loom_symbol_id_t source_symbol_id) {
   IREE_ASSERT_LT(state->entry_count, state->entry_capacity);
-  loom_template_application_result_t* entry =
-      &state->entries[state->entry_count];
+  loom_template_selection_entry_t* entry = &state->entries[state->entry_count];
+  entry->source_symbol_id = source_symbol_id;
   ++state->entry_count;
-  return entry;
+  return &entry->application;
 }
 
 static void loom_template_selection_record_blocker(
@@ -718,7 +754,7 @@ static iree_status_t loom_template_selection_analyze_apply(
   const loom_op_t* apply_op = demand->apply_op;
   const loom_symbol_ref_t family = loom_template_apply_family(apply_op);
   loom_template_application_result_t* entry =
-      loom_template_selection_append_entry(state);
+      loom_template_selection_append_entry(state, context->source_symbol_id);
   ++state->statistics->apply_sites;
 
   loom_template_applicability_target_t apply_target = {0};
@@ -765,6 +801,17 @@ static iree_status_t loom_template_selection_analyze_apply(
     ++state->statistics->selected_sites;
   } else {
     loom_template_selection_record_blocker(state, entry->blocker);
+    if (state->inline_calls) {
+      if (!state->demanded_families) {
+        IREE_RETURN_IF_ERROR(iree_allocator_malloc_array(
+            iree_arena_allocator(state->arena),
+            (state->module->symbols.count + 63) / 64,
+            sizeof(*state->demanded_families),
+            (void**)&state->demanded_families));
+      }
+      state->demanded_families[family.symbol_id >> 6] |=
+          UINT64_C(1) << (family.symbol_id & 63);
+    }
   }
 
   const loom_template_decision_evidence_summary_t* summary =
@@ -780,7 +827,8 @@ static iree_status_t loom_template_selection_analyze_apply(
 static iree_status_t loom_template_selection_analyze_exact_call(
     loom_template_selection_state_t* state,
     loom_symbol_liveness_contributor_context_t* context,
-    const loom_op_t* call_op) {
+    const loom_op_t* call_op, bool* out_eligible) {
+  *out_eligible = false;
   ++state->statistics->exact_call_sites;
 
   loom_template_application_call_t call = {0};
@@ -813,10 +861,11 @@ static iree_status_t loom_template_selection_analyze_exact_call(
   loom_template_application_check_call(state->module, &call, &site,
                                        &provider_classification, &result);
   if (result.blocker == LOOM_TEMPLATE_APPLICATION_BLOCKER_NONE) {
+    *out_eligible = true;
     return iree_ok_status();
   }
   loom_template_application_result_t* entry =
-      loom_template_selection_append_entry(state);
+      loom_template_selection_append_entry(state, context->source_symbol_id);
   *entry = result;
   loom_template_selection_record_blocker(state, entry->blocker);
   return loom_template_selection_append_report_detail(
@@ -832,6 +881,21 @@ static iree_status_t loom_template_selection_analyze_exact_call(
       /*best_match_count=*/0, call.provider_facts->priority);
 }
 
+static iree_status_t loom_template_selection_check_inline_eligibility(
+    void* user_data, loom_symbol_id_t source_symbol_id, loom_op_t* call_op,
+    bool* out_eligible) {
+  loom_template_selection_state_t* state = user_data;
+  loom_symbol_liveness_contributor_context_t context = {
+      .module = state->module,
+      .references = &state->references,
+      .arena = state->arena,
+      .source_symbol_id = source_symbol_id,
+      .source_symbol = &state->module->symbols.entries[source_symbol_id],
+  };
+  return loom_template_selection_analyze_exact_call(state, &context, call_op,
+                                                    out_eligible);
+}
+
 static iree_status_t loom_template_selection_analyze_exact_calls(
     loom_template_selection_state_t* state) {
   for (iree_host_size_t i = 0; i < state->references.occurrence_count; ++i) {
@@ -845,16 +909,10 @@ static iree_status_t loom_template_selection_analyze_exact_calls(
                                       occurrence->source_symbol_id)) {
       continue;
     }
-    loom_symbol_liveness_contributor_context_t context = {
-        .module = state->module,
-        .references = &state->references,
-        .arena = state->arena,
-        .source_symbol_id = occurrence->source_symbol_id,
-        .source_symbol =
-            &state->module->symbols.entries[occurrence->source_symbol_id],
-    };
-    IREE_RETURN_IF_ERROR(loom_template_selection_analyze_exact_call(
-        state, &context, occurrence->user_op));
+    bool eligible = false;
+    IREE_RETURN_IF_ERROR(loom_template_selection_check_inline_eligibility(
+        state, occurrence->source_symbol_id, (loom_op_t*)occurrence->user_op,
+        &eligible));
   }
   return iree_ok_status();
 }
@@ -875,7 +933,8 @@ static iree_status_t loom_template_selection_emit_blockers(
   iree_status_t status = iree_ok_status();
   for (iree_host_size_t i = 0;
        i < state->entry_count && iree_status_is_ok(status); ++i) {
-    const loom_template_application_result_t* entry = &state->entries[i];
+    const loom_template_application_result_t* entry =
+        &state->entries[i].application;
     if (entry->blocker == LOOM_TEMPLATE_APPLICATION_BLOCKER_NONE) {
       continue;
     }
@@ -892,12 +951,19 @@ static iree_status_t loom_template_selection_emit_blockers(
 
 static iree_status_t loom_template_selection_rewrite_entry(
     loom_template_selection_state_t* state, loom_rewriter_t* rewriter,
-    const loom_template_application_result_t* entry) {
+    const loom_template_selection_entry_t* selection) {
+  const loom_template_application_result_t* entry = &selection->application;
   const loom_value_slice_t operands =
       loom_template_apply_operands(entry->application_op);
+  loom_op_t* call_op = NULL;
   IREE_RETURN_IF_ERROR(loom_template_rewrite_apply_as_exact_call(
       rewriter, entry->application_op, entry->selected_provider->symbol,
-      operands.values));
+      operands.values, &call_op));
+  if (state->inline_plan) {
+    loom_inline_callables_plan_append(
+        state->inline_plan, selection->source_symbol_id,
+        entry->selected_provider->symbol.symbol_id, call_op);
+  }
   loom_pass_mark_changed(state->pass);
   return iree_ok_status();
 }
@@ -906,7 +972,8 @@ static iree_status_t loom_template_selection_execute_rewrites(
     loom_template_selection_state_t* state) {
   bool has_selected_entry = false;
   for (iree_host_size_t i = 0; i < state->entry_count; ++i) {
-    if (state->entries[i].blocker == LOOM_TEMPLATE_APPLICATION_BLOCKER_NONE) {
+    if (state->entries[i].application.blocker ==
+        LOOM_TEMPLATE_APPLICATION_BLOCKER_NONE) {
       has_selected_entry = true;
       break;
     }
@@ -922,8 +989,8 @@ static iree_status_t loom_template_selection_execute_rewrites(
   iree_status_t status = iree_ok_status();
   for (iree_host_size_t i = 0;
        i < state->entry_count && iree_status_is_ok(status); ++i) {
-    const loom_template_application_result_t* entry = &state->entries[i];
-    if (entry->blocker != LOOM_TEMPLATE_APPLICATION_BLOCKER_NONE) {
+    const loom_template_selection_entry_t* entry = &state->entries[i];
+    if (entry->application.blocker != LOOM_TEMPLATE_APPLICATION_BLOCKER_NONE) {
       continue;
     }
     status = loom_template_selection_rewrite_entry(state, &rewriter, entry);
@@ -1060,7 +1127,7 @@ static iree_status_t loom_template_selection_compute(
   IREE_RETURN_IF_ERROR(
       loom_template_selection_allocate_required_origins(state, origin_count));
   IREE_RETURN_IF_ERROR(loom_template_selection_build_liveness(state));
-  return loom_template_selection_analyze_exact_calls(state);
+  return iree_ok_status();
 }
 
 iree_status_t loom_template_selection_query(
@@ -1105,6 +1172,9 @@ iree_status_t loom_template_selection_query(
 
   iree_status_t status =
       loom_template_selection_compute(&state, options->origin_count);
+  if (iree_status_is_ok(status)) {
+    status = loom_template_selection_analyze_exact_calls(&state);
+  }
   loom_pass_value_fact_owner_deinitialize(&value_fact_owner);
   if (!iree_status_is_ok(status)) {
     return status;
@@ -1139,6 +1209,9 @@ iree_status_t loom_template_selection_run(loom_pass_t* pass,
       .target_versions = &target_versions,
       .catalog = &catalog,
       .reports_enabled = loom_pass_report_is_enabled(pass),
+      .inline_calls = pass->state &&
+                      ((const loom_template_selection_pass_state_t*)pass->state)
+                          ->inline_calls,
       .pruning_options =
           {
               .flags = LOOM_SYMBOL_PRUNING_RETAIN_TARGET_SOURCE_ENTRIES,
@@ -1157,6 +1230,25 @@ iree_status_t loom_template_selection_run(loom_pass_t* pass,
   IREE_RETURN_IF_ERROR(
       loom_template_selection_compute(&state, /*origin_count=*/0));
 
+  if (state.inline_calls) {
+    const loom_inline_callables_plan_options_t options = {
+        .references = &state.references,
+        .target_versions = &target_versions,
+        .live_symbols = state.liveness.live_symbols,
+        .demanded_families = state.demanded_families,
+        .template_eligibility =
+            {
+                .fn = loom_template_selection_check_inline_eligibility,
+                .user_data = &state,
+            },
+        .additional_call_capacity = state.statistics->selected_sites,
+    };
+    IREE_RETURN_IF_ERROR(loom_inline_callables_plan_create(
+        pass, module, &options, &state.inline_plan));
+  } else {
+    IREE_RETURN_IF_ERROR(loom_template_selection_analyze_exact_calls(&state));
+  }
+
   if (state.mode == LOOM_TEMPLATE_SELECTION_MODE_FINAL) {
     IREE_RETURN_IF_ERROR(loom_template_selection_emit_blockers(&state));
     if (loom_pass_has_error_diagnostics(pass)) {
@@ -1165,6 +1257,12 @@ iree_status_t loom_template_selection_run(loom_pass_t* pass,
   }
 
   IREE_RETURN_IF_ERROR(loom_template_selection_execute_rewrites(&state));
+  if (state.inline_plan) {
+    IREE_RETURN_IF_ERROR(loom_inline_callables_plan_execute(state.inline_plan));
+    if (loom_pass_has_error_diagnostics(pass)) {
+      return iree_ok_status();
+    }
+  }
 
   loom_symbol_pruning_result_t pruning_result = {0};
   IREE_RETURN_IF_ERROR(loom_symbol_pruning_erase_unreachable(

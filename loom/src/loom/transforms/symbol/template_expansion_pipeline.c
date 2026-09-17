@@ -14,20 +14,25 @@ typedef struct loom_template_expansion_pipeline_context_t {
 } loom_template_expansion_pipeline_context_t;
 
 static iree_status_t loom_template_expansion_pipeline_build_selection(
-    loom_builder_t* builder, iree_string_view_t mode) {
+    loom_builder_t* builder, iree_string_view_t mode,
+    iree_string_view_t rewrite) {
   loom_string_id_t name_id = LOOM_STRING_ID_INVALID;
   IREE_RETURN_IF_ERROR(
       loom_builder_intern_string(builder, IREE_SV("mode"), &name_id));
   loom_string_id_t value_id = LOOM_STRING_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_builder_intern_string(builder, mode, &value_id));
-  const loom_named_attr_t option = {
-      .name_id = name_id,
-      .value = loom_attr_string(value_id),
+  loom_named_attr_t options[2] = {
+      {.name_id = name_id, .value = loom_attr_string(value_id)},
   };
+  IREE_RETURN_IF_ERROR(
+      loom_builder_intern_string(builder, IREE_SV("rewrite"), &name_id));
+  IREE_RETURN_IF_ERROR(loom_builder_intern_string(builder, rewrite, &value_id));
+  options[1] = (loom_named_attr_t){.name_id = name_id,
+                                   .value = loom_attr_string(value_id)};
   loom_op_t* run_op = NULL;
   return loom_pass_ir_build_run(builder, LOOM_PASS_RUN_BUILD_FLAG_HAS_OPTIONS,
                                 IREE_SV("select-templates"),
-                                loom_make_named_attr_slice(&option, 1),
+                                loom_make_named_attr_slice(options, 2),
                                 &run_op);
 }
 
@@ -36,11 +41,7 @@ static iree_status_t loom_template_expansion_pipeline_build_iteration(
   const loom_template_expansion_pipeline_context_t* context =
       (const loom_template_expansion_pipeline_context_t*)user_data;
   IREE_RETURN_IF_ERROR(loom_template_expansion_pipeline_build_selection(
-      builder, IREE_SV("early")));
-  loom_op_t* run_op = NULL;
-  IREE_RETURN_IF_ERROR(
-      loom_pass_ir_build_run(builder, 0, IREE_SV("inline-callables"),
-                             loom_named_attr_slice_empty(), &run_op));
+      builder, IREE_SV("early"), IREE_SV("inline")));
   loom_op_t* if_changed_op = NULL;
   return loom_pass_ir_build_if_changed(builder, context->cleanup_body,
                                        context->cleanup_user_data,
@@ -62,6 +63,6 @@ iree_status_t loom_template_expansion_pipeline_build(
       LOOM_PASS_REPEAT_MODE_UNTIL_CONVERGED, 0, 64,
       loom_template_expansion_pipeline_build_iteration, (void*)&context,
       &repeat_op));
-  return loom_template_expansion_pipeline_build_selection(builder,
-                                                          IREE_SV("final"));
+  return loom_template_expansion_pipeline_build_selection(
+      builder, IREE_SV("final"), IREE_SV("call"));
 }

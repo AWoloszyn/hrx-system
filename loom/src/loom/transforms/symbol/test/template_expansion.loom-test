@@ -1,0 +1,245 @@
+// Early selection and inlining preserve an exact call's obligation until the
+// closed specialization boundary can diagnose it.
+// RUN: pass select-templates,inline-callables,select-templates{mode=final}
+
+template.decl @exact(%value: i32) -> (i32)
+
+template.def<@exact> @only_seven(%value: i32) -> (i32) where [eq(%value, 7)] {
+  template.return %value : i32
+}
+
+func.def public @entry() -> (i32) {
+  %out_of_contract = scalar.constant 8 : i32
+  // ERROR@+1: LOWERING/045 {op_name="template.call", phase_name="select-templates", contract_key="exact", failure_code="exact_call_rejected"}
+  %result = template.call @only_seven(%out_of_contract) : (i32) -> (i32)
+  func.return %result : i32
+}
+
+// ====
+
+// An unconstrained external argument cannot establish an exact requirement.
+// RUN: pass select-templates{rewrite=inline},select-templates{mode=final}
+
+template.decl @exact(%value: i32) -> (i32)
+
+template.def<@exact> @only_seven(%value: i32) -> (i32) where [eq(%value, 7)] {
+  template.return %value : i32
+}
+
+func.def public @entry(%value: i32) -> (i32) {
+  // ERROR@+1: LOWERING/045 {op_name="template.call", phase_name="select-templates", contract_key="exact", failure_code="missing_facts"}
+  %result = template.call @only_seven(%value) : (i32) -> (i32)
+  func.return %result : i32
+}
+
+// ====
+
+// The family contract applies even when the exact provider has no additional
+// requirements and no ranked selection is involved.
+// RUN: pass select-templates{rewrite=inline},select-templates{mode=final}
+
+template.decl @exact(%value: i32) -> (i32) where [eq(%value, 7)]
+
+template.def<@exact> @implementation(%value: i32) -> (i32) {
+  template.return %value : i32
+}
+
+func.def public @entry() -> (i32) {
+  %out_of_contract = scalar.constant 8 : i32
+  // ERROR@+1: LOWERING/045 {op_name="template.call", phase_name="select-templates", contract_key="exact", failure_code="exact_call_rejected"}
+  %result = template.call @implementation(%out_of_contract) : (i32) -> (i32)
+  func.return %result : i32
+}
+
+// ====
+
+// An outer selected application exposes the constant needed by a nested exact
+// call. The first iteration must carry the call, not reject or erase it.
+// RUN: pass select-templates{rewrite=inline},canonicalize,select-templates{mode=final,rewrite=inline},canonicalize,symbol-dce
+
+template.decl @leaf(%value: i32) -> (i32)
+
+template.decl @wrapper(%value: i32) -> (i32)
+
+template.def<@leaf> @seven(%value: i32) -> (i32) where [eq(%value, 7)] {
+  template.return %value : i32
+}
+
+template.def<@wrapper> @forward(%value: i32) -> (i32) {
+  %result = template.call @seven(%value) : (i32) -> (i32)
+  template.return %result : i32
+}
+
+func.def public @entry() -> (i32) {
+  %value = scalar.constant 7 : i32
+  %result = template.apply<@wrapper>(%value) : (i32) -> (i32)
+  func.return %result : i32
+}
+
+// ----
+func.def public @entry() -> (i32) {
+  %value = scalar.constant 7 : i32
+  func.return %value : i32
+}
+
+// ====
+
+// Cloning a shared ordinary wrapper preserves each instance's obligation.
+// One valid instance cannot discharge the other instance's invalid call.
+// RUN: pass select-templates{rewrite=inline},canonicalize,select-templates{mode=final,rewrite=inline}
+
+template.decl @leaf(%value: i32) -> (i32)
+
+template.def<@leaf> @seven(%value: i32) -> (i32) where [eq(%value, 7)] {
+  template.return %value : i32
+}
+
+func.def inline @forward(%value: i32) -> (i32) {
+  // ERROR@+1: LOWERING/045 {op_name="template.call", phase_name="select-templates", contract_key="leaf", failure_code="exact_call_rejected"}
+  %result = template.call @seven(%value) : (i32) -> (i32)
+  func.return %result : i32
+}
+
+func.def public @entry() -> (i32) {
+  %valid = scalar.constant 7 : i32
+  %invalid = scalar.constant 8 : i32
+  %first = func.call @forward(%valid) : (i32) -> (i32)
+  %second = func.call @forward(%invalid) : (i32) -> (i32)
+  %sum = scalar.addi %first, %second : i32
+  func.return %sum : i32
+}
+
+// ====
+
+// An unresolved family demand keeps the provider definition available even
+// after a proved exact call has expanded. It must not be consumed by that call.
+// RUN: pass select-templates{rewrite=inline}
+
+template.decl @leaf(%value: i32) -> (i32)
+
+template.def<@leaf> @seven(%value: i32) -> (i32) where [eq(%value, 7)] {
+  template.return %value : i32
+}
+
+func.def public @entry(%unknown: i32) -> (i32, i32) {
+  %valid = scalar.constant 7 : i32
+  %first = template.call @seven(%valid) : (i32) -> (i32)
+  %second = template.apply<@leaf>(%unknown) : (i32) -> (i32)
+  func.return %first, %second : i32, i32
+}
+
+// ----
+template.decl @leaf(%value: i32) -> (i32)
+
+template.def<@leaf> @seven(%value: i32) -> (i32) where [eq(%value, 7)] {
+  template.return %value : i32
+}
+
+func.def public @entry(%unknown: i32) -> (i32, i32) {
+  %valid = scalar.constant 7 : i32
+  %second = template.apply<@leaf>(%unknown) : (i32) -> (i32)
+  func.return %valid, %second : i32, i32
+}
+
+// ====
+
+// Applicability approval does not bypass the generic required-cycle check.
+// RUN: pass select-templates{rewrite=inline}
+
+template.decl @recursive(%value: i32) -> (i32)
+
+template.def<@recursive> @recurse(%value: i32) -> (i32) {
+  // ERROR@+1: LOWERING/044 {op_name="template.call", phase_name="select-templates", callee_name="recurse", failure_code="required_cycle"}
+  %result = template.call @recurse(%value) : (i32) -> (i32)
+  template.return %result : i32
+}
+
+func.def public @entry(%value: i32) -> (i32) {
+  %result = template.apply<@recursive>(%value) : (i32) -> (i32)
+  func.return %result : i32
+}
+
+// ====
+
+// Cleanup may erase an invalid call after an early expansion iteration. The
+// final boundary diagnoses surviving obligations, not dead branches.
+// RUN: pass select-templates{rewrite=inline},canonicalize,select-templates{mode=final,rewrite=inline},symbol-dce
+
+template.decl @leaf(%value: i32) -> (i32)
+
+template.def<@leaf> @seven(%value: i32) -> (i32) where [eq(%value, 7)] {
+  template.return %value : i32
+}
+
+func.def public @entry(%value: i32) -> (i32) {
+  %never = scalar.constant false : i1
+  %result = scf.if %never -> (i32) {
+    %out_of_contract = scalar.constant 8 : i32
+    %invalid = template.call @seven(%out_of_contract) : (i32) -> (i32)
+    scf.yield %invalid : i32
+  } else {
+    scf.yield %value : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+func.def public @entry(%value: i32) -> (i32) {
+  func.return %value : i32
+}
+
+// ====
+
+// Bodies are not provider-selection criteria. The invalid call in an unused
+// provider is not an edge in the live expansion plan.
+// RUN: pass select-templates{mode=final,rewrite=inline},symbol-dce
+
+template.decl @leaf(%value: i32) -> (i32)
+
+template.decl @choice(%value: i32) -> (i32)
+
+template.def<@leaf> @seven(%value: i32) -> (i32) where [eq(%value, 7)] {
+  template.return %value : i32
+}
+
+template.def<@choice> priority(1) @unused(%value: i32) -> (i32) {
+  %out_of_contract = scalar.constant 8 : i32
+  %invalid = template.call @seven(%out_of_contract) : (i32) -> (i32)
+  template.return %invalid : i32
+}
+
+template.def<@choice> priority(2) @selected(%value: i32) -> (i32) {
+  template.return %value : i32
+}
+
+func.def public @entry(%value: i32) -> (i32) {
+  %result = template.apply<@choice>(%value) : (i32) -> (i32)
+  func.return %result : i32
+}
+
+// ----
+func.def public @entry(%value: i32) -> (i32) {
+  func.return %value : i32
+}
+
+// ====
+
+// An unresolved applicability requirement does not make a pure call observable.
+// Ordinary dead-code elimination can remove it before final specialization.
+// RUN: pass select-templates{rewrite=inline},canonicalize,select-templates{mode=final,rewrite=inline},symbol-dce
+
+template.decl @leaf(%value: i32) -> (i32)
+
+template.def<@leaf> @seven(%value: i32) -> (i32) where [eq(%value, 7)] {
+  template.return %value : i32
+}
+
+func.def public @entry(%value: i32) -> (i32) {
+  %unused = template.call pure @seven(%value) : (i32) -> (i32)
+  func.return %value : i32
+}
+
+// ----
+func.def public @entry(%value: i32) -> (i32) {
+  func.return %value : i32
+}

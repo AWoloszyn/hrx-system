@@ -67,7 +67,7 @@ func.def public target(@wave32) @rejected(%value: index) -> (index) where [eq(%v
 
 // Exact calls can prove a provider condition on a lexical branch even when the
 // public caller has no bound target.
-// RUN: pass select-templates{mode=final},inline-callables
+// RUN: pass select-templates{mode=final,rewrite=inline}
 
 template.decl @wave(%value: i32) -> (i32)
 

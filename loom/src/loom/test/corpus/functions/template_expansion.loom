@@ -1,0 +1,32 @@
+// Exact calls prove both the family and provider contracts. A runtime branch
+// supplies the provider relation while the public signature supplies the range.
+template.decl @bounded(%width: i32, %value: i32) -> (i32) where [range(%width, 0, 8)]
+
+template.def<@bounded> @seven_times(%width: i32, %value: i32) -> (i32) where [eq(%width, 7)] {
+  %result = scalar.muli %width, %value : i32
+  template.return %result : i32
+}
+
+func.def public @conditional_exact(%width: i32, %value: i32) -> (i32) where [range(%width, 0, 8)] {
+  %specialized_width = scalar.constant 7 : i32
+  %condition = scalar.cmpi eq, %width, %specialized_width : i32
+  %result = scf.if %condition -> (i32) {
+    %scaled = template.call @seven_times(%width, %value) : (i32, i32) -> (i32)
+    scf.yield %scaled : i32
+  } else {
+    scf.yield %value : i32
+  }
+  func.return %result : i32
+}
+
+check.case @exact_call_uses_lexical_proof {
+  %specialized_width = check.literal value(7) : i32
+  %ordinary_width = check.literal value(8) : i32
+  %value = check.literal value(-3) : i32
+  %scaled = func.call @conditional_exact(%specialized_width, %value) : (i32, i32) -> (i32)
+  %unchanged = func.call @conditional_exact(%ordinary_width, %value) : (i32, i32) -> (i32)
+  %expected = check.literal value(-21) : i32
+  check.expect.equal actual(%scaled) expected(%expected) : i32
+  check.expect.equal actual(%unchanged) expected(%value) : i32
+  check.return
+}

@@ -82,6 +82,10 @@ iree_status_t loom_template_selection_create(loom_pass_t* pass,
                                              iree_string_view_t options);
 
 // Runs module-level template provider selection.
+// With rewrite=call, selected applications become exact source calls. With
+// rewrite=inline, selection hands approved edges to the common callable plan
+// and expands them before discarding its decisions. Unproved exact calls stay
+// intact in early mode and diagnose alongside unresolved applies in final mode.
 iree_status_t loom_template_selection_run(loom_pass_t* pass,
                                           loom_module_t* module);
 

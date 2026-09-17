@@ -100,3 +100,22 @@ command.program.def public @unresolved_schedule() launch(%storage: buffer) {
   template.apply<@test.missing_schedule>(%storage) : (buffer)
   command.return
 }
+
+// ====
+
+// Exact-only command source still establishes provider applicability before
+// the provider's commands can replace its call.
+// RUN: emit command-program @invalid_schedule
+
+template.decl @test.schedule(%count: index)
+
+template.def<@test.schedule> @several(%count: index) where [range(%count, 2, 8)] {
+  template.return
+}
+
+command.program.def public @invalid_schedule() launch() {
+  %out_of_range = index.constant 1 : index
+  // ERROR@+1: LOWERING/045 {op_name="template.call", phase_name="select-templates", contract_key="test.schedule", failure_code="exact_call_rejected"}
+  template.call @several(%out_of_range) : (index)
+  command.return
+}

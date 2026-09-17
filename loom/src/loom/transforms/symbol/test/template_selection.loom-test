@@ -45,7 +45,7 @@ func.def public @entry(%m: index) -> (index) where [range(%m, 15, 15)] {
 
 // ====
 
-// RUN: pass select-templates,inline-callables
+// RUN: pass select-templates{rewrite=inline}
 
 template.decl @demo.double(%value: i32) -> (i32)
 
@@ -387,7 +387,7 @@ func.def public @entry(%n: index) -> (index) {
 // Provider predicates consume facts at each application point. The true edge
 // proves the higher-priority equality while the false edge disproves it and
 // selects the fallback.
-// RUN: pass select-templates,inline-callables
+// RUN: pass select-templates{rewrite=inline}
 
 template.decl @demo.application_path(%m: index) -> (index)
 
@@ -434,7 +434,7 @@ func.def public @entry(%n: index) -> (index) {
 
 // Final selection excludes an unproven higher-priority provider and selects a
 // lower-priority provider whose applicability is proven.
-// RUN: pass select-templates{mode=final},inline-callables
+// RUN: pass select-templates{mode=final,rewrite=inline}
 
 template.decl @demo.final_maybe(%m: index) -> (index)
 
@@ -478,7 +478,7 @@ func.def public @entry(%arg: i32) -> (i32) {
 
 // ====
 
-// RUN: pass select-templates,inline-callables
+// RUN: pass select-templates{rewrite=inline}
 
 test.target<low_core> @low_core
 
@@ -518,7 +518,7 @@ func.def public target(@low_core) @entry(%arg: i32) -> (i32) {
 
 // ====
 
-// RUN: pass select-templates,inline-callables
+// RUN: pass select-templates{rewrite=inline}
 
 test.target<low_core> @low_core
 
@@ -553,7 +553,7 @@ func.def public target(@low_core) @entry(%arg: i32) -> (i32) {
 
 // ====
 
-// RUN: pass select-templates,inline-callables
+// RUN: pass select-templates{rewrite=inline}
 
 test.target<low_core> @low_core
 
@@ -624,7 +624,7 @@ func.def target(@test_target) @target_entry(%value: i32) -> (i32) {
 
 // ====
 
-// RUN: pass select-templates,inline-callables
+// RUN: pass select-templates{rewrite=inline}
 
 template.decl @demo.workgroup_reduce(%value: f32) -> (f32)
 
@@ -676,7 +676,7 @@ kernel.def @implicit_export() {
 
 // ====
 
-// RUN: pass select-templates{mode=final},inline-callables
+// RUN: pass select-templates{mode=final,rewrite=inline}
 
 template.decl @demo.workgroup_reduce(%value: f32) -> (f32)
 
@@ -695,7 +695,7 @@ func.def public @entry(%value: f32) -> (f32) {
 
 // A target declaration preserves the target witness while target-neutral
 // specialization proceeds without inventing target facts.
-// RUN: pass select-templates,inline-callables
+// RUN: pass select-templates{rewrite=inline}
 
 target.decl @external
 
@@ -800,7 +800,7 @@ func.def public @entry(%arg: i32) -> (i32) {
 
 // At the final boundary, the same unproven target identity is excluded and a
 // target-independent provider remains a valid concrete fallback.
-// RUN: pass select-templates{mode=final},inline-callables
+// RUN: pass select-templates{mode=final,rewrite=inline}
 
 test.target<low_core> @low_core
 
@@ -833,7 +833,7 @@ func.def public @entry(%arg: i32) -> (i32) {
 
 // A normalized requirement reads the containing function's target facts and
 // selects the matching higher-priority provider.
-// RUN: pass select-templates,inline-callables
+// RUN: pass select-templates{rewrite=inline}
 
 test.target<quirky> @wave7
 
@@ -866,7 +866,7 @@ func.def public target(@wave7) @entry(%arg: i32) -> (i32) {
 // ====
 
 // A family requirement is a coarse gate evaluated once before any provider.
-// RUN: pass select-templates,inline-callables
+// RUN: pass select-templates{rewrite=inline}
 
 test.target<quirky> @wave7
 
@@ -915,7 +915,7 @@ func.def public target(@wave7) @entry(%arg: i32) -> (i32) {
 // The same normalized requirement can be proven locally in targetless IR. The
 // dynamic query and static requirement share one fact family: the true edge
 // selects the specialized provider and the false edge disproves it.
-// RUN: pass select-templates,inline-callables
+// RUN: pass select-templates{rewrite=inline}
 
 template.decl @demo.condition_path(%value: i32) -> (i32)
 
@@ -963,7 +963,7 @@ func.def public @entry(%arg: i32) -> (i32) {
 // Target-fact requirements and argument predicates consume the same composed
 // path facts. Neither the query value nor either boolean guard is threaded
 // through template.apply solely to make provider selection work.
-// RUN: pass select-templates,inline-callables
+// RUN: pass select-templates{rewrite=inline}
 
 template.decl @demo.condition_and_value(%tile_size: index, %value: i32) -> (i32)
 
@@ -1023,7 +1023,7 @@ func.def public @entry(%tile_size: index, %arg: i32) -> (i32) {
 
 // A disproven requirement excludes the specialized provider and admits the
 // proven fallback without changing the caller's target facts.
-// RUN: pass select-templates,inline-callables
+// RUN: pass select-templates{rewrite=inline}
 
 test.target<low_core> @wave32 {subgroup_size = 32}
 
@@ -1093,7 +1093,7 @@ func.def public @entry(%arg: i32) -> (i32) {
 
 // Final selection excludes a higher-priority requirement that concrete target
 // facts cannot yet prove and selects the proven fallback.
-// RUN: pass select-templates{mode=final},inline-callables
+// RUN: pass select-templates{mode=final,rewrite=inline}
 
 test.target<low_core> @unknown_wave
 
@@ -1146,7 +1146,7 @@ func.def public target(@unknown_wave) @entry(%arg: i32) -> (i32) {
 
 // An unresolved lower-priority requirement cannot delay a higher-priority
 // provider whose applicability is already proven.
-// RUN: pass select-templates,inline-callables
+// RUN: pass select-templates{rewrite=inline}
 
 test.target<low_core> @unknown_wave
 
@@ -1180,7 +1180,7 @@ func.def public target(@unknown_wave) @entry(%arg: i32) -> (i32) {
 
 // Requirements gate opaque providers before materialization. A rejected ukernel
 // cannot block a proven template fallback.
-// RUN: pass select-templates,inline-callables
+// RUN: pass select-templates{rewrite=inline}
 
 test.target<quirky> @wave7
 
@@ -1210,7 +1210,7 @@ func.def public target(@wave7) @entry(%arg: i32) -> (i32) {
 
 // An opaque provider cannot block materialization until its target requirement
 // is proven. Final selection therefore admits the concrete template fallback.
-// RUN: pass select-templates{mode=final},inline-callables
+// RUN: pass select-templates{mode=final,rewrite=inline}
 
 test.target<low_core> @unknown_wave
 
@@ -1240,7 +1240,7 @@ func.def public target(@unknown_wave) @entry(%arg: i32) -> (i32) {
 
 // The shared declaration identity is sufficient to specialize a provider that
 // names the same still-partial target contract.
-// RUN: pass select-templates,inline-callables
+// RUN: pass select-templates{rewrite=inline}
 
 target.decl @external
 

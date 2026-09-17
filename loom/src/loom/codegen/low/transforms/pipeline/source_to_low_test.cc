@@ -201,6 +201,19 @@ class LowLowerPassTest : public ::testing::Test {
       loom_module_t* module, iree_string_view_t pipeline,
       const loom_function_version_list_t* function_versions = nullptr,
       DiagnosticEmissionCollector* collector = nullptr) {
+    static const loom_pass_option_enum_value_t kRewriteValues[] = {
+        {/*.value=*/IREE_SVL("call")},
+        {/*.value=*/IREE_SVL("inline")},
+    };
+    static const loom_pass_option_schema_t kSelectionOptions[] = {
+        {/*.name=*/IREE_SVL("rewrite"),
+         /*.kind=*/LOOM_PASS_OPTION_SCHEMA_ENUM,
+         /*.flags=*/0,
+         /*.minimum_uint32=*/0,
+         /*.maximum_uint32=*/0,
+         /*.enum_values=*/kRewriteValues,
+         /*.enum_value_count=*/IREE_ARRAYSIZE(kRewriteValues)},
+    };
     static const loom_pass_descriptor_t kPassDescriptors[] = {
         {
             /*.key=*/IREE_SVL("inline-callables"),
@@ -229,8 +242,8 @@ class LowLowerPassTest : public ::testing::Test {
             /*.destroy=*/nullptr,
             /*.flags=*/0,
             /*.unavailable_reason=*/{},
-            /*.option_schema=*/nullptr,
-            /*.option_schema_count=*/0,
+            /*.option_schema=*/kSelectionOptions,
+            /*.option_schema_count=*/IREE_ARRAYSIZE(kSelectionOptions),
             /*.requirement_defs=*/nullptr,
             /*.requirement_count=*/0,
         },
@@ -541,7 +554,7 @@ TEST_F(LowLowerPassTest,
   };
 
   IREE_ASSERT_OK(RunFlatPipeline(
-      module.get(), IREE_SV("select-templates,inline-callables,symbol-dce"),
+      module.get(), IREE_SV("select-templates{rewrite=inline},symbol-dce"),
       &function_versions));
   bool selected_provider_inlined = false;
   loom_block_t* source_entry = loom_region_entry_block(
@@ -616,7 +629,7 @@ TEST_F(LowLowerPassTest,
       "  func.return %result : i32\n"
       "}\n"));
   IREE_ASSERT_OK(RunFlatPipeline(
-      module.get(), IREE_SV("select-templates,inline-callables,symbol-dce")));
+      module.get(), IREE_SV("select-templates{rewrite=inline},symbol-dce")));
   EXPECT_FALSE(HasSymbol(module.get(), IREE_SV("quirky_bad")));
   EXPECT_FALSE(HasSymbol(module.get(), IREE_SV("fallback")));
 
