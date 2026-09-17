@@ -1,0 +1,734 @@
+// RUN: pass canonicalize
+
+// Selection preserves only the scope established by both input and selector.
+func.def @unknown_distinct_inputs(%selector: index, %condition: i1) {
+  %lhs = scalar.constant 10 : i32
+  %rhs = scalar.constant 20 : i32
+  %branch = scf.if %condition -> (i32) {
+    test.use %lhs : i32
+    scf.yield %lhs : i32
+  } else {
+    test.use %rhs : i32
+    scf.yield %rhs : i32
+  }
+  %selected = scf.select %condition, %lhs, %rhs : i32
+  %lookup = scf.lookup %selector {
+    0 = (%lhs),
+    1 = (%rhs)
+  } default(%lhs) : i32
+  %branch_subgroup_uniform = test.fact_subgroup_uniform %branch : i32 -> i1
+  %branch_workgroup_uniform = test.fact_workgroup_uniform %branch : i32 -> i1
+  %branch_cluster_uniform = test.fact_cluster_uniform %branch : i32 -> i1
+  %branch_lane_varying = test.fact_lane_varying %branch : i32 -> i1
+  %selected_subgroup_uniform = test.fact_subgroup_uniform %selected : i32 -> i1
+  %selected_workgroup_uniform = test.fact_workgroup_uniform %selected : i32 -> i1
+  %selected_cluster_uniform = test.fact_cluster_uniform %selected : i32 -> i1
+  %selected_lane_varying = test.fact_lane_varying %selected : i32 -> i1
+  %lookup_subgroup_uniform = test.fact_subgroup_uniform %lookup : i32 -> i1
+  %lookup_workgroup_uniform = test.fact_workgroup_uniform %lookup : i32 -> i1
+  %lookup_cluster_uniform = test.fact_cluster_uniform %lookup : i32 -> i1
+  %lookup_lane_varying = test.fact_lane_varying %lookup : i32 -> i1
+  test.use %branch_subgroup_uniform, %branch_workgroup_uniform, %branch_cluster_uniform, %branch_lane_varying, %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %lookup_subgroup_uniform, %lookup_workgroup_uniform, %lookup_cluster_uniform, %lookup_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  func.return
+}
+
+// ----
+func.def @unknown_distinct_inputs(%selector: index, %condition: i1) {
+  %lhs = scalar.constant 10 : i32
+  %rhs = scalar.constant 20 : i32
+  scf.if %condition {
+    test.use %lhs : i32
+  } else {
+    test.use %rhs : i32
+  }
+  %branch_subgroup_uniform = scalar.constant false : i1
+  %branch_workgroup_uniform = scalar.constant false : i1
+  %branch_cluster_uniform = scalar.constant false : i1
+  %branch_lane_varying = scalar.constant false : i1
+  %selected_subgroup_uniform = scalar.constant false : i1
+  %selected_workgroup_uniform = scalar.constant false : i1
+  %selected_cluster_uniform = scalar.constant false : i1
+  %selected_lane_varying = scalar.constant false : i1
+  %lookup_subgroup_uniform = scalar.constant false : i1
+  %lookup_workgroup_uniform = scalar.constant false : i1
+  %lookup_cluster_uniform = scalar.constant false : i1
+  %lookup_lane_varying = scalar.constant false : i1
+  test.use %branch_subgroup_uniform, %branch_workgroup_uniform, %branch_cluster_uniform, %branch_lane_varying, %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %lookup_subgroup_uniform, %lookup_workgroup_uniform, %lookup_cluster_uniform, %lookup_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  func.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Selection preserves only the scope established by both input and selector.
+func.def @unknown_same_inputs(%selector: index, %condition: i1) {
+  %lhs = scalar.constant 10 : i32
+  %rhs = scalar.constant 20 : i32
+  %branch = scf.if %condition -> (i32) {
+    test.use %lhs : i32
+    scf.yield %lhs : i32
+  } else {
+    test.use %lhs : i32
+    scf.yield %lhs : i32
+  }
+  %selected = scf.select %condition, %lhs, %lhs : i32
+  %lookup = scf.lookup %selector {
+    0 = (%lhs),
+    1 = (%lhs)
+  } default(%lhs) : i32
+  %branch_subgroup_uniform = test.fact_subgroup_uniform %branch : i32 -> i1
+  %branch_workgroup_uniform = test.fact_workgroup_uniform %branch : i32 -> i1
+  %branch_cluster_uniform = test.fact_cluster_uniform %branch : i32 -> i1
+  %branch_lane_varying = test.fact_lane_varying %branch : i32 -> i1
+  %selected_subgroup_uniform = test.fact_subgroup_uniform %selected : i32 -> i1
+  %selected_workgroup_uniform = test.fact_workgroup_uniform %selected : i32 -> i1
+  %selected_cluster_uniform = test.fact_cluster_uniform %selected : i32 -> i1
+  %selected_lane_varying = test.fact_lane_varying %selected : i32 -> i1
+  %lookup_subgroup_uniform = test.fact_subgroup_uniform %lookup : i32 -> i1
+  %lookup_workgroup_uniform = test.fact_workgroup_uniform %lookup : i32 -> i1
+  %lookup_cluster_uniform = test.fact_cluster_uniform %lookup : i32 -> i1
+  %lookup_lane_varying = test.fact_lane_varying %lookup : i32 -> i1
+  test.use %branch_subgroup_uniform, %branch_workgroup_uniform, %branch_cluster_uniform, %branch_lane_varying, %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %lookup_subgroup_uniform, %lookup_workgroup_uniform, %lookup_cluster_uniform, %lookup_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  func.return
+}
+
+// ----
+func.def @unknown_same_inputs(%selector: index, %condition: i1) {
+  %lhs = scalar.constant 10 : i32
+  scf.if %condition {
+    test.use %lhs : i32
+  } else {
+    test.use %lhs : i32
+  }
+  %branch_subgroup_uniform = scalar.constant true : i1
+  %branch_workgroup_uniform = scalar.constant true : i1
+  %branch_cluster_uniform = scalar.constant true : i1
+  %branch_lane_varying = scalar.constant false : i1
+  %selected_subgroup_uniform = scalar.constant true : i1
+  %selected_workgroup_uniform = scalar.constant true : i1
+  %selected_cluster_uniform = scalar.constant true : i1
+  %selected_lane_varying = scalar.constant false : i1
+  %lookup_subgroup_uniform = scalar.constant true : i1
+  %lookup_workgroup_uniform = scalar.constant true : i1
+  %lookup_cluster_uniform = scalar.constant true : i1
+  %lookup_lane_varying = scalar.constant false : i1
+  test.use %branch_subgroup_uniform, %branch_workgroup_uniform, %branch_cluster_uniform, %branch_lane_varying, %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %lookup_subgroup_uniform, %lookup_workgroup_uniform, %lookup_cluster_uniform, %lookup_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  func.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Selection preserves only the scope established by both input and selector.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @lane_distinct_inputs() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%lhs: i32, %rhs: i32, %variant: index) {
+  %selector = kernel.subgroup.lane.id : index
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %selector, %c0 : index
+  %branch = scf.if %condition -> (i32) {
+    test.use %lhs : i32
+    scf.yield %lhs : i32
+  } else {
+    test.use %rhs : i32
+    scf.yield %rhs : i32
+  }
+  %selected = scf.select %condition, %lhs, %rhs : i32
+  %lookup = scf.lookup %selector {
+    0 = (%lhs),
+    1 = (%rhs)
+  } default(%lhs) : i32
+  %branch_subgroup_uniform = test.fact_subgroup_uniform %branch : i32 -> i1
+  %branch_workgroup_uniform = test.fact_workgroup_uniform %branch : i32 -> i1
+  %branch_cluster_uniform = test.fact_cluster_uniform %branch : i32 -> i1
+  %branch_lane_varying = test.fact_lane_varying %branch : i32 -> i1
+  %selected_subgroup_uniform = test.fact_subgroup_uniform %selected : i32 -> i1
+  %selected_workgroup_uniform = test.fact_workgroup_uniform %selected : i32 -> i1
+  %selected_cluster_uniform = test.fact_cluster_uniform %selected : i32 -> i1
+  %selected_lane_varying = test.fact_lane_varying %selected : i32 -> i1
+  %lookup_subgroup_uniform = test.fact_subgroup_uniform %lookup : i32 -> i1
+  %lookup_workgroup_uniform = test.fact_workgroup_uniform %lookup : i32 -> i1
+  %lookup_cluster_uniform = test.fact_cluster_uniform %lookup : i32 -> i1
+  %lookup_lane_varying = test.fact_lane_varying %lookup : i32 -> i1
+  test.use %branch_subgroup_uniform, %branch_workgroup_uniform, %branch_cluster_uniform, %branch_lane_varying, %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %lookup_subgroup_uniform, %lookup_workgroup_uniform, %lookup_cluster_uniform, %lookup_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @lane_distinct_inputs() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%lhs: i32, %rhs: i32, %variant: index) {
+  %selector = kernel.subgroup.lane.id : index
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %selector, %c0 : index
+  scf.if %condition {
+    test.use %lhs : i32
+  } else {
+    test.use %rhs : i32
+  }
+  %branch_subgroup_uniform = scalar.constant false : i1
+  %branch_workgroup_uniform = scalar.constant false : i1
+  %branch_cluster_uniform = scalar.constant false : i1
+  %branch_lane_varying = scalar.constant true : i1
+  %selected_subgroup_uniform = scalar.constant false : i1
+  %selected_workgroup_uniform = scalar.constant false : i1
+  %selected_cluster_uniform = scalar.constant false : i1
+  %selected_lane_varying = scalar.constant true : i1
+  %lookup_subgroup_uniform = scalar.constant false : i1
+  %lookup_workgroup_uniform = scalar.constant false : i1
+  %lookup_cluster_uniform = scalar.constant false : i1
+  %lookup_lane_varying = scalar.constant true : i1
+  test.use %branch_subgroup_uniform, %branch_workgroup_uniform, %branch_cluster_uniform, %branch_lane_varying, %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %lookup_subgroup_uniform, %lookup_workgroup_uniform, %lookup_cluster_uniform, %lookup_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Selection preserves only the scope established by both input and selector.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @lane_same_inputs() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%lhs: i32, %rhs: i32, %variant: index) {
+  %selector = kernel.subgroup.lane.id : index
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %selector, %c0 : index
+  %branch = scf.if %condition -> (i32) {
+    test.use %lhs : i32
+    scf.yield %lhs : i32
+  } else {
+    test.use %lhs : i32
+    scf.yield %lhs : i32
+  }
+  %selected = scf.select %condition, %lhs, %lhs : i32
+  %lookup = scf.lookup %selector {
+    0 = (%lhs),
+    1 = (%lhs)
+  } default(%lhs) : i32
+  %branch_subgroup_uniform = test.fact_subgroup_uniform %branch : i32 -> i1
+  %branch_workgroup_uniform = test.fact_workgroup_uniform %branch : i32 -> i1
+  %branch_cluster_uniform = test.fact_cluster_uniform %branch : i32 -> i1
+  %branch_lane_varying = test.fact_lane_varying %branch : i32 -> i1
+  %selected_subgroup_uniform = test.fact_subgroup_uniform %selected : i32 -> i1
+  %selected_workgroup_uniform = test.fact_workgroup_uniform %selected : i32 -> i1
+  %selected_cluster_uniform = test.fact_cluster_uniform %selected : i32 -> i1
+  %selected_lane_varying = test.fact_lane_varying %selected : i32 -> i1
+  %lookup_subgroup_uniform = test.fact_subgroup_uniform %lookup : i32 -> i1
+  %lookup_workgroup_uniform = test.fact_workgroup_uniform %lookup : i32 -> i1
+  %lookup_cluster_uniform = test.fact_cluster_uniform %lookup : i32 -> i1
+  %lookup_lane_varying = test.fact_lane_varying %lookup : i32 -> i1
+  test.use %branch_subgroup_uniform, %branch_workgroup_uniform, %branch_cluster_uniform, %branch_lane_varying, %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %lookup_subgroup_uniform, %lookup_workgroup_uniform, %lookup_cluster_uniform, %lookup_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @lane_same_inputs() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%lhs: i32, %rhs: i32, %variant: index) {
+  %selector = kernel.subgroup.lane.id : index
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %selector, %c0 : index
+  scf.if %condition {
+    test.use %lhs : i32
+  } else {
+    test.use %lhs : i32
+  }
+  %branch_subgroup_uniform = scalar.constant true : i1
+  %branch_workgroup_uniform = scalar.constant true : i1
+  %branch_cluster_uniform = scalar.constant true : i1
+  %branch_lane_varying = scalar.constant false : i1
+  %selected_subgroup_uniform = scalar.constant true : i1
+  %selected_workgroup_uniform = scalar.constant true : i1
+  %selected_cluster_uniform = scalar.constant true : i1
+  %selected_lane_varying = scalar.constant false : i1
+  %lookup_subgroup_uniform = scalar.constant true : i1
+  %lookup_workgroup_uniform = scalar.constant true : i1
+  %lookup_cluster_uniform = scalar.constant true : i1
+  %lookup_lane_varying = scalar.constant false : i1
+  test.use %branch_subgroup_uniform, %branch_workgroup_uniform, %branch_cluster_uniform, %branch_lane_varying, %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %lookup_subgroup_uniform, %lookup_workgroup_uniform, %lookup_cluster_uniform, %lookup_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Selection preserves only the scope established by both input and selector.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @subgroup_distinct_inputs() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%lhs: i32, %rhs: i32, %variant: index) {
+  %selector = kernel.subgroup.id : index
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %selector, %c0 : index
+  %branch = scf.if %condition -> (i32) {
+    test.use %lhs : i32
+    scf.yield %lhs : i32
+  } else {
+    test.use %rhs : i32
+    scf.yield %rhs : i32
+  }
+  %selected = scf.select %condition, %lhs, %rhs : i32
+  %lookup = scf.lookup %selector {
+    0 = (%lhs),
+    1 = (%rhs)
+  } default(%lhs) : i32
+  %branch_subgroup_uniform = test.fact_subgroup_uniform %branch : i32 -> i1
+  %branch_workgroup_uniform = test.fact_workgroup_uniform %branch : i32 -> i1
+  %branch_cluster_uniform = test.fact_cluster_uniform %branch : i32 -> i1
+  %branch_lane_varying = test.fact_lane_varying %branch : i32 -> i1
+  %selected_subgroup_uniform = test.fact_subgroup_uniform %selected : i32 -> i1
+  %selected_workgroup_uniform = test.fact_workgroup_uniform %selected : i32 -> i1
+  %selected_cluster_uniform = test.fact_cluster_uniform %selected : i32 -> i1
+  %selected_lane_varying = test.fact_lane_varying %selected : i32 -> i1
+  %lookup_subgroup_uniform = test.fact_subgroup_uniform %lookup : i32 -> i1
+  %lookup_workgroup_uniform = test.fact_workgroup_uniform %lookup : i32 -> i1
+  %lookup_cluster_uniform = test.fact_cluster_uniform %lookup : i32 -> i1
+  %lookup_lane_varying = test.fact_lane_varying %lookup : i32 -> i1
+  test.use %branch_subgroup_uniform, %branch_workgroup_uniform, %branch_cluster_uniform, %branch_lane_varying, %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %lookup_subgroup_uniform, %lookup_workgroup_uniform, %lookup_cluster_uniform, %lookup_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @subgroup_distinct_inputs() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%lhs: i32, %rhs: i32, %variant: index) {
+  %selector = kernel.subgroup.id : index
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %selector, %c0 : index
+  scf.if %condition {
+    test.use %lhs : i32
+  } else {
+    test.use %rhs : i32
+  }
+  %branch_subgroup_uniform = scalar.constant true : i1
+  %branch_workgroup_uniform = scalar.constant false : i1
+  %branch_cluster_uniform = scalar.constant false : i1
+  %branch_lane_varying = scalar.constant false : i1
+  %selected_subgroup_uniform = scalar.constant true : i1
+  %selected_workgroup_uniform = scalar.constant false : i1
+  %selected_cluster_uniform = scalar.constant false : i1
+  %selected_lane_varying = scalar.constant false : i1
+  %lookup_subgroup_uniform = scalar.constant true : i1
+  %lookup_workgroup_uniform = scalar.constant false : i1
+  %lookup_cluster_uniform = scalar.constant false : i1
+  %lookup_lane_varying = scalar.constant false : i1
+  test.use %branch_subgroup_uniform, %branch_workgroup_uniform, %branch_cluster_uniform, %branch_lane_varying, %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %lookup_subgroup_uniform, %lookup_workgroup_uniform, %lookup_cluster_uniform, %lookup_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Selection preserves only the scope established by both input and selector.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @subgroup_same_inputs() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%lhs: i32, %rhs: i32, %variant: index) {
+  %selector = kernel.subgroup.id : index
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %selector, %c0 : index
+  %branch = scf.if %condition -> (i32) {
+    test.use %lhs : i32
+    scf.yield %lhs : i32
+  } else {
+    test.use %lhs : i32
+    scf.yield %lhs : i32
+  }
+  %selected = scf.select %condition, %lhs, %lhs : i32
+  %lookup = scf.lookup %selector {
+    0 = (%lhs),
+    1 = (%lhs)
+  } default(%lhs) : i32
+  %branch_subgroup_uniform = test.fact_subgroup_uniform %branch : i32 -> i1
+  %branch_workgroup_uniform = test.fact_workgroup_uniform %branch : i32 -> i1
+  %branch_cluster_uniform = test.fact_cluster_uniform %branch : i32 -> i1
+  %branch_lane_varying = test.fact_lane_varying %branch : i32 -> i1
+  %selected_subgroup_uniform = test.fact_subgroup_uniform %selected : i32 -> i1
+  %selected_workgroup_uniform = test.fact_workgroup_uniform %selected : i32 -> i1
+  %selected_cluster_uniform = test.fact_cluster_uniform %selected : i32 -> i1
+  %selected_lane_varying = test.fact_lane_varying %selected : i32 -> i1
+  %lookup_subgroup_uniform = test.fact_subgroup_uniform %lookup : i32 -> i1
+  %lookup_workgroup_uniform = test.fact_workgroup_uniform %lookup : i32 -> i1
+  %lookup_cluster_uniform = test.fact_cluster_uniform %lookup : i32 -> i1
+  %lookup_lane_varying = test.fact_lane_varying %lookup : i32 -> i1
+  test.use %branch_subgroup_uniform, %branch_workgroup_uniform, %branch_cluster_uniform, %branch_lane_varying, %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %lookup_subgroup_uniform, %lookup_workgroup_uniform, %lookup_cluster_uniform, %lookup_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @subgroup_same_inputs() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%lhs: i32, %rhs: i32, %variant: index) {
+  %selector = kernel.subgroup.id : index
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %selector, %c0 : index
+  scf.if %condition {
+    test.use %lhs : i32
+  } else {
+    test.use %lhs : i32
+  }
+  %branch_subgroup_uniform = scalar.constant true : i1
+  %branch_workgroup_uniform = scalar.constant true : i1
+  %branch_cluster_uniform = scalar.constant true : i1
+  %branch_lane_varying = scalar.constant false : i1
+  %selected_subgroup_uniform = scalar.constant true : i1
+  %selected_workgroup_uniform = scalar.constant true : i1
+  %selected_cluster_uniform = scalar.constant true : i1
+  %selected_lane_varying = scalar.constant false : i1
+  %lookup_subgroup_uniform = scalar.constant true : i1
+  %lookup_workgroup_uniform = scalar.constant true : i1
+  %lookup_cluster_uniform = scalar.constant true : i1
+  %lookup_lane_varying = scalar.constant false : i1
+  test.use %branch_subgroup_uniform, %branch_workgroup_uniform, %branch_cluster_uniform, %branch_lane_varying, %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %lookup_subgroup_uniform, %lookup_workgroup_uniform, %lookup_cluster_uniform, %lookup_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Selection preserves only the scope established by both input and selector.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @workgroup_distinct_inputs() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%lhs: i32, %rhs: i32, %variant: index) {
+  %selector = kernel.workgroup.id<x> : index
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %selector, %c0 : index
+  %branch = scf.if %condition -> (i32) {
+    test.use %lhs : i32
+    scf.yield %lhs : i32
+  } else {
+    test.use %rhs : i32
+    scf.yield %rhs : i32
+  }
+  %selected = scf.select %condition, %lhs, %rhs : i32
+  %lookup = scf.lookup %selector {
+    0 = (%lhs),
+    1 = (%rhs)
+  } default(%lhs) : i32
+  %branch_subgroup_uniform = test.fact_subgroup_uniform %branch : i32 -> i1
+  %branch_workgroup_uniform = test.fact_workgroup_uniform %branch : i32 -> i1
+  %branch_cluster_uniform = test.fact_cluster_uniform %branch : i32 -> i1
+  %branch_lane_varying = test.fact_lane_varying %branch : i32 -> i1
+  %selected_subgroup_uniform = test.fact_subgroup_uniform %selected : i32 -> i1
+  %selected_workgroup_uniform = test.fact_workgroup_uniform %selected : i32 -> i1
+  %selected_cluster_uniform = test.fact_cluster_uniform %selected : i32 -> i1
+  %selected_lane_varying = test.fact_lane_varying %selected : i32 -> i1
+  %lookup_subgroup_uniform = test.fact_subgroup_uniform %lookup : i32 -> i1
+  %lookup_workgroup_uniform = test.fact_workgroup_uniform %lookup : i32 -> i1
+  %lookup_cluster_uniform = test.fact_cluster_uniform %lookup : i32 -> i1
+  %lookup_lane_varying = test.fact_lane_varying %lookup : i32 -> i1
+  test.use %branch_subgroup_uniform, %branch_workgroup_uniform, %branch_cluster_uniform, %branch_lane_varying, %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %lookup_subgroup_uniform, %lookup_workgroup_uniform, %lookup_cluster_uniform, %lookup_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @workgroup_distinct_inputs() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%lhs: i32, %rhs: i32, %variant: index) {
+  %selector = kernel.workgroup.id<x> : index
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %selector, %c0 : index
+  scf.if %condition {
+    test.use %lhs : i32
+  } else {
+    test.use %rhs : i32
+  }
+  %branch_subgroup_uniform = scalar.constant true : i1
+  %branch_workgroup_uniform = scalar.constant true : i1
+  %branch_cluster_uniform = scalar.constant false : i1
+  %branch_lane_varying = scalar.constant false : i1
+  %selected_subgroup_uniform = scalar.constant true : i1
+  %selected_workgroup_uniform = scalar.constant true : i1
+  %selected_cluster_uniform = scalar.constant false : i1
+  %selected_lane_varying = scalar.constant false : i1
+  %lookup_subgroup_uniform = scalar.constant true : i1
+  %lookup_workgroup_uniform = scalar.constant true : i1
+  %lookup_cluster_uniform = scalar.constant false : i1
+  %lookup_lane_varying = scalar.constant false : i1
+  test.use %branch_subgroup_uniform, %branch_workgroup_uniform, %branch_cluster_uniform, %branch_lane_varying, %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %lookup_subgroup_uniform, %lookup_workgroup_uniform, %lookup_cluster_uniform, %lookup_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Selection preserves only the scope established by both input and selector.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @workgroup_same_inputs() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%lhs: i32, %rhs: i32, %variant: index) {
+  %selector = kernel.workgroup.id<x> : index
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %selector, %c0 : index
+  %branch = scf.if %condition -> (i32) {
+    test.use %lhs : i32
+    scf.yield %lhs : i32
+  } else {
+    test.use %lhs : i32
+    scf.yield %lhs : i32
+  }
+  %selected = scf.select %condition, %lhs, %lhs : i32
+  %lookup = scf.lookup %selector {
+    0 = (%lhs),
+    1 = (%lhs)
+  } default(%lhs) : i32
+  %branch_subgroup_uniform = test.fact_subgroup_uniform %branch : i32 -> i1
+  %branch_workgroup_uniform = test.fact_workgroup_uniform %branch : i32 -> i1
+  %branch_cluster_uniform = test.fact_cluster_uniform %branch : i32 -> i1
+  %branch_lane_varying = test.fact_lane_varying %branch : i32 -> i1
+  %selected_subgroup_uniform = test.fact_subgroup_uniform %selected : i32 -> i1
+  %selected_workgroup_uniform = test.fact_workgroup_uniform %selected : i32 -> i1
+  %selected_cluster_uniform = test.fact_cluster_uniform %selected : i32 -> i1
+  %selected_lane_varying = test.fact_lane_varying %selected : i32 -> i1
+  %lookup_subgroup_uniform = test.fact_subgroup_uniform %lookup : i32 -> i1
+  %lookup_workgroup_uniform = test.fact_workgroup_uniform %lookup : i32 -> i1
+  %lookup_cluster_uniform = test.fact_cluster_uniform %lookup : i32 -> i1
+  %lookup_lane_varying = test.fact_lane_varying %lookup : i32 -> i1
+  test.use %branch_subgroup_uniform, %branch_workgroup_uniform, %branch_cluster_uniform, %branch_lane_varying, %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %lookup_subgroup_uniform, %lookup_workgroup_uniform, %lookup_cluster_uniform, %lookup_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @workgroup_same_inputs() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%lhs: i32, %rhs: i32, %variant: index) {
+  %selector = kernel.workgroup.id<x> : index
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %selector, %c0 : index
+  scf.if %condition {
+    test.use %lhs : i32
+  } else {
+    test.use %lhs : i32
+  }
+  %branch_subgroup_uniform = scalar.constant true : i1
+  %branch_workgroup_uniform = scalar.constant true : i1
+  %branch_cluster_uniform = scalar.constant true : i1
+  %branch_lane_varying = scalar.constant false : i1
+  %selected_subgroup_uniform = scalar.constant true : i1
+  %selected_workgroup_uniform = scalar.constant true : i1
+  %selected_cluster_uniform = scalar.constant true : i1
+  %selected_lane_varying = scalar.constant false : i1
+  %lookup_subgroup_uniform = scalar.constant true : i1
+  %lookup_workgroup_uniform = scalar.constant true : i1
+  %lookup_cluster_uniform = scalar.constant true : i1
+  %lookup_lane_varying = scalar.constant false : i1
+  test.use %branch_subgroup_uniform, %branch_workgroup_uniform, %branch_cluster_uniform, %branch_lane_varying, %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %lookup_subgroup_uniform, %lookup_workgroup_uniform, %lookup_cluster_uniform, %lookup_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Selection preserves only the scope established by both input and selector.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @cluster_distinct_inputs() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%lhs: i32, %rhs: i32, %variant: index) {
+  %selector = index.add %variant, %variant : index
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %selector, %c0 : index
+  %branch = scf.if %condition -> (i32) {
+    test.use %lhs : i32
+    scf.yield %lhs : i32
+  } else {
+    test.use %rhs : i32
+    scf.yield %rhs : i32
+  }
+  %selected = scf.select %condition, %lhs, %rhs : i32
+  %lookup = scf.lookup %selector {
+    0 = (%lhs),
+    1 = (%rhs)
+  } default(%lhs) : i32
+  %branch_subgroup_uniform = test.fact_subgroup_uniform %branch : i32 -> i1
+  %branch_workgroup_uniform = test.fact_workgroup_uniform %branch : i32 -> i1
+  %branch_cluster_uniform = test.fact_cluster_uniform %branch : i32 -> i1
+  %branch_lane_varying = test.fact_lane_varying %branch : i32 -> i1
+  %selected_subgroup_uniform = test.fact_subgroup_uniform %selected : i32 -> i1
+  %selected_workgroup_uniform = test.fact_workgroup_uniform %selected : i32 -> i1
+  %selected_cluster_uniform = test.fact_cluster_uniform %selected : i32 -> i1
+  %selected_lane_varying = test.fact_lane_varying %selected : i32 -> i1
+  %lookup_subgroup_uniform = test.fact_subgroup_uniform %lookup : i32 -> i1
+  %lookup_workgroup_uniform = test.fact_workgroup_uniform %lookup : i32 -> i1
+  %lookup_cluster_uniform = test.fact_cluster_uniform %lookup : i32 -> i1
+  %lookup_lane_varying = test.fact_lane_varying %lookup : i32 -> i1
+  test.use %branch_subgroup_uniform, %branch_workgroup_uniform, %branch_cluster_uniform, %branch_lane_varying, %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %lookup_subgroup_uniform, %lookup_workgroup_uniform, %lookup_cluster_uniform, %lookup_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @cluster_distinct_inputs() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%lhs: i32, %rhs: i32, %variant: index) {
+  %selector = index.add %variant, %variant : index
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %selector, %c0 : index
+  scf.if %condition {
+    test.use %lhs : i32
+  } else {
+    test.use %rhs : i32
+  }
+  %branch_subgroup_uniform = scalar.constant true : i1
+  %branch_workgroup_uniform = scalar.constant true : i1
+  %branch_cluster_uniform = scalar.constant true : i1
+  %branch_lane_varying = scalar.constant false : i1
+  %selected_subgroup_uniform = scalar.constant true : i1
+  %selected_workgroup_uniform = scalar.constant true : i1
+  %selected_cluster_uniform = scalar.constant true : i1
+  %selected_lane_varying = scalar.constant false : i1
+  %lookup_subgroup_uniform = scalar.constant true : i1
+  %lookup_workgroup_uniform = scalar.constant true : i1
+  %lookup_cluster_uniform = scalar.constant true : i1
+  %lookup_lane_varying = scalar.constant false : i1
+  test.use %branch_subgroup_uniform, %branch_workgroup_uniform, %branch_cluster_uniform, %branch_lane_varying, %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %lookup_subgroup_uniform, %lookup_workgroup_uniform, %lookup_cluster_uniform, %lookup_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Selection preserves only the scope established by both input and selector.
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @cluster_same_inputs() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%lhs: i32, %rhs: i32, %variant: index) {
+  %selector = index.add %variant, %variant : index
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %selector, %c0 : index
+  %branch = scf.if %condition -> (i32) {
+    test.use %lhs : i32
+    scf.yield %lhs : i32
+  } else {
+    test.use %lhs : i32
+    scf.yield %lhs : i32
+  }
+  %selected = scf.select %condition, %lhs, %lhs : i32
+  %lookup = scf.lookup %selector {
+    0 = (%lhs),
+    1 = (%lhs)
+  } default(%lhs) : i32
+  %branch_subgroup_uniform = test.fact_subgroup_uniform %branch : i32 -> i1
+  %branch_workgroup_uniform = test.fact_workgroup_uniform %branch : i32 -> i1
+  %branch_cluster_uniform = test.fact_cluster_uniform %branch : i32 -> i1
+  %branch_lane_varying = test.fact_lane_varying %branch : i32 -> i1
+  %selected_subgroup_uniform = test.fact_subgroup_uniform %selected : i32 -> i1
+  %selected_workgroup_uniform = test.fact_workgroup_uniform %selected : i32 -> i1
+  %selected_cluster_uniform = test.fact_cluster_uniform %selected : i32 -> i1
+  %selected_lane_varying = test.fact_lane_varying %selected : i32 -> i1
+  %lookup_subgroup_uniform = test.fact_subgroup_uniform %lookup : i32 -> i1
+  %lookup_workgroup_uniform = test.fact_workgroup_uniform %lookup : i32 -> i1
+  %lookup_cluster_uniform = test.fact_cluster_uniform %lookup : i32 -> i1
+  %lookup_lane_varying = test.fact_lane_varying %lookup : i32 -> i1
+  test.use %branch_subgroup_uniform, %branch_workgroup_uniform, %branch_cluster_uniform, %branch_lane_varying, %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %lookup_subgroup_uniform, %lookup_workgroup_uniform, %lookup_cluster_uniform, %lookup_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}
+
+// ----
+target.generic<reference> @device {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@device) @cluster_same_inputs() {
+  %c1 = index.constant 1 : index
+  %c4 = index.constant 4 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%c4, %c1, %c1) workgroup_size(%size, %c1, %c1) : index
+} launch(%lhs: i32, %rhs: i32, %variant: index) {
+  %selector = index.add %variant, %variant : index
+  %c0 = index.constant 0 : index
+  %condition = index.cmp eq, %selector, %c0 : index
+  scf.if %condition {
+    test.use %lhs : i32
+  } else {
+    test.use %lhs : i32
+  }
+  %branch_subgroup_uniform = scalar.constant true : i1
+  %branch_workgroup_uniform = scalar.constant true : i1
+  %branch_cluster_uniform = scalar.constant true : i1
+  %branch_lane_varying = scalar.constant false : i1
+  %selected_subgroup_uniform = scalar.constant true : i1
+  %selected_workgroup_uniform = scalar.constant true : i1
+  %selected_cluster_uniform = scalar.constant true : i1
+  %selected_lane_varying = scalar.constant false : i1
+  %lookup_subgroup_uniform = scalar.constant true : i1
+  %lookup_workgroup_uniform = scalar.constant true : i1
+  %lookup_cluster_uniform = scalar.constant true : i1
+  %lookup_lane_varying = scalar.constant false : i1
+  test.use %branch_subgroup_uniform, %branch_workgroup_uniform, %branch_cluster_uniform, %branch_lane_varying, %selected_subgroup_uniform, %selected_workgroup_uniform, %selected_cluster_uniform, %selected_lane_varying, %lookup_subgroup_uniform, %lookup_workgroup_uniform, %lookup_cluster_uniform, %lookup_lane_varying : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+  kernel.return
+}

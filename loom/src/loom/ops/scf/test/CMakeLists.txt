@@ -18,6 +18,7 @@ loom_check_test_suite(
     "facts.loom-test"
     "rotation_facts.loom-test"
     "roundtrip.loom-test"
+    "selection_facts.loom-test"
     "verify.loom-test"
 )
 

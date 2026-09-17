@@ -1507,17 +1507,18 @@ static iree_status_t loom_value_fact_table_compute_region_branch_summary(
   loom_value_facts_t* result_facts = NULL;
   IREE_RETURN_IF_ERROR(loom_value_fact_table_facts_scratch(
       table, op->result_count, &result_facts));
-  const bool selector_is_lane_varying =
-      loom_value_fact_table_selector_is_lane_varying(
-          table, loom_region_branch_selector(branch));
+  const loom_value_facts_t selector_facts =
+      loom_value_fact_table_lookup(table, loom_region_branch_selector(branch));
   for (uint16_t result_index = 0; result_index < op->result_count;
        ++result_index) {
     loom_value_facts_t facts = result_states[result_index].facts;
-    if (selector_is_lane_varying &&
-        !result_states[result_index].all_source_values_match &&
-        !loom_value_facts_is_exact(facts)) {
-      loom_value_facts_mark_lane_distribution_for_type(
-          loom_module_value_type(module, results[result_index]), &facts);
+    if (!result_states[result_index].all_source_values_match) {
+      loom_value_facts_propagate_binary_distribution(facts, selector_facts,
+                                                     &facts);
+      if (loom_value_facts_is_lane_varying(facts)) {
+        loom_value_facts_mark_lane_distribution_for_type(
+            loom_module_value_type(module, results[result_index]), &facts);
+      }
     }
     result_facts[result_index] = facts;
   }
