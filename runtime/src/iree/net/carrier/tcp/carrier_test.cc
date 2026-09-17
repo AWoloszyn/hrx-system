@@ -88,6 +88,41 @@ struct SendResult {
   int completion_count = 0;
 };
 
+struct ReentrantFailureContext {
+  // Carrier used to create all three send ownership phases.
+  iree_net_carrier_t* carrier = nullptr;
+
+  // Completion state for the send submitted to the proactor.
+  SendResult submitted_send;
+
+  // Completion state for the send left in the carrier queue.
+  SendResult queued_send;
+
+  // Stable storage referenced by |submitted_send|.
+  std::array<uint8_t, 8> submitted_payload = {};
+
+  // Stable storage referenced by |queued_send|.
+  std::array<uint8_t, 8> queued_payload = {};
+
+  // Writable storage owned by the direct-send reservation.
+  void* reservation_ptr = nullptr;
+
+  // Handle invalidated by reentrant explicit deactivation.
+  iree_net_carrier_send_handle_t reservation_handle = 0;
+
+  // Fixture state marked by the deactivation callback.
+  bool* deactivated = nullptr;
+
+  // Number of nonempty receive callbacks delivered.
+  int receive_count = 0;
+
+  // Number of terminal error callbacks delivered.
+  int error_count = 0;
+
+  // Code from the first terminal error callback.
+  iree_status_code_t error_code = IREE_STATUS_OK;
+};
+
 struct CountingAllocator {
   // Number of allocation requests issued through this allocator.
   uint32_t allocation_count = 0;
@@ -173,6 +208,50 @@ static void SendCompleted(void* user_data, iree_status_t status,
 
 static void CarrierDeactivated(void* user_data) {
   *static_cast<bool*>(user_data) = true;
+}
+
+static iree_status_t QueueSendsAndFail(void* user_data, iree_async_span_t data,
+                                       iree_async_buffer_lease_t* lease) {
+  (void)lease;
+  auto* context = static_cast<ReentrantFailureContext*>(user_data);
+  if (data.length == 0) return iree_ok_status();
+  ++context->receive_count;
+
+  iree_async_span_t submitted_span = iree_async_span_from_ptr(
+      context->submitted_payload.data(), context->submitted_payload.size());
+  iree_net_send_params_t submitted_params = {
+      iree_async_span_list_make(&submitted_span, 1),
+      IREE_NET_SEND_FLAG_NONE,
+      {SendCompleted, &context->submitted_send},
+  };
+  IREE_RETURN_IF_ERROR(
+      iree_net_carrier_send(context->carrier, &submitted_params));
+
+  iree_async_span_t queued_span = iree_async_span_from_ptr(
+      context->queued_payload.data(), context->queued_payload.size());
+  iree_net_send_params_t queued_params = {
+      iree_async_span_list_make(&queued_span, 1),
+      IREE_NET_SEND_FLAG_NONE,
+      {SendCompleted, &context->queued_send},
+  };
+  IREE_RETURN_IF_ERROR(iree_net_carrier_send(context->carrier, &queued_params));
+
+  IREE_RETURN_IF_ERROR(iree_net_carrier_begin_send(
+      context->carrier, 32, &context->reservation_ptr,
+      &context->reservation_handle));
+  memset(context->reservation_ptr, 0xA5, 32);
+  return iree_make_status(IREE_STATUS_DATA_LOSS,
+                          "receive rejected after queuing sends");
+}
+
+static void DeactivateOnError(void* user_data, iree_status_t status) {
+  auto* context = static_cast<ReentrantFailureContext*>(user_data);
+  if (context->error_count++ == 0) {
+    context->error_code = iree_status_code(status);
+  }
+  iree_status_free(status);
+  iree_net_carrier_deactivate(context->carrier, CarrierDeactivated,
+                              context->deactivated);
 }
 
 class TcpCarrierTest : public ::testing::Test {
@@ -300,6 +379,18 @@ class TcpCarrierTest : public ::testing::Test {
       iree_host_size_t receive_buffer_size = 4096,
       iree_host_size_t receive_buffer_count = 4,
       iree_allocator_t server_host_allocator = iree_allocator_system()) {
+    CreateCarrierPairWithHandlers({Receive, Error, &client_context_},
+                                  {Receive, Error, &server_context_},
+                                  max_send_operations, receive_buffer_size,
+                                  receive_buffer_count, server_host_allocator);
+  }
+
+  void CreateCarrierPairWithHandlers(
+      iree_net_carrier_handlers_t client_handlers,
+      iree_net_carrier_handlers_t server_handlers, uint32_t max_send_operations,
+      iree_host_size_t receive_buffer_size,
+      iree_host_size_t receive_buffer_count,
+      iree_allocator_t server_host_allocator) {
     CreateReceivePool(receive_buffer_size, receive_buffer_count,
                       &client_receive_pool_);
     CreateReceivePool(receive_buffer_size, receive_buffer_count,
@@ -320,10 +411,10 @@ class TcpCarrierTest : public ::testing::Test {
     iree_async_socket_release(client_socket);
     iree_async_socket_release(server_socket);
 
-    IREE_ASSERT_OK(iree_net_carrier_set_handlers(
-        client_carrier_, {Receive, Error, &client_context_}));
-    IREE_ASSERT_OK(iree_net_carrier_set_handlers(
-        server_carrier_, {Receive, Error, &server_context_}));
+    IREE_ASSERT_OK(
+        iree_net_carrier_set_handlers(client_carrier_, client_handlers));
+    IREE_ASSERT_OK(
+        iree_net_carrier_set_handlers(server_carrier_, server_handlers));
     IREE_ASSERT_OK(iree_net_carrier_activate(client_carrier_));
     IREE_ASSERT_OK(iree_net_carrier_activate(server_carrier_));
   }
@@ -662,6 +753,73 @@ TEST_F(TcpCarrierTest, ReceiveFailureBecomesStickyTerminalError) {
                         iree_net_carrier_send(server_carrier_, &params));
   EXPECT_EQ(rejected_result.completion_count, 0);
   EXPECT_EQ(server_context_.error_count, 1);
+}
+
+TEST_F(TcpCarrierTest, TerminalFailurePreservesDirectReservationUntilAbort) {
+  CreateCarrierPair();
+  server_context_.receive_error = IREE_STATUS_DATA_LOSS;
+
+  void* reservation_ptr = nullptr;
+  iree_net_carrier_send_handle_t reservation_handle = 0;
+  IREE_ASSERT_OK(iree_net_carrier_begin_send(
+      server_carrier_, 32, &reservation_ptr, &reservation_handle));
+  ASSERT_NE(reservation_ptr, nullptr);
+
+  uint8_t payload = 0x5A;
+  iree_async_span_t span = iree_async_span_from_ptr(&payload, 1);
+  SendResult send_result;
+  iree_net_send_params_t params = {
+      iree_async_span_list_make(&span, 1),
+      IREE_NET_SEND_FLAG_NONE,
+      {SendCompleted, &send_result},
+  };
+  IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &params));
+  PollUntil([&] {
+    return send_result.completion_count == 1 &&
+           server_context_.error_count == 1;
+  });
+
+  EXPECT_EQ(server_context_.error_code, IREE_STATUS_DATA_LOSS);
+  EXPECT_EQ(iree_net_carrier_pending_operation_count(server_carrier_), 1);
+  memset(reservation_ptr, 0xA5, 32);
+  iree_net_carrier_abort_send(server_carrier_, reservation_handle);
+  EXPECT_EQ(iree_net_carrier_pending_operation_count(server_carrier_), 0);
+}
+
+TEST_F(TcpCarrierTest, ReentrantFailureDeactivationDetachesEachSendSlotOnce) {
+  ReentrantFailureContext failure_context;
+  failure_context.deactivated = &server_deactivated_;
+  CreateCarrierPairWithHandlers(
+      {Receive, Error, &client_context_},
+      {QueueSendsAndFail, DeactivateOnError, &failure_context},
+      /*max_send_operations=*/3,
+      /*receive_buffer_size=*/4096,
+      /*receive_buffer_count=*/4, iree_allocator_system());
+  failure_context.carrier = server_carrier_;
+
+  uint8_t payload = 0x5A;
+  iree_async_span_t span = iree_async_span_from_ptr(&payload, 1);
+  SendResult trigger_result;
+  iree_net_send_params_t params = {
+      iree_async_span_list_make(&span, 1),
+      IREE_NET_SEND_FLAG_NONE,
+      {SendCompleted, &trigger_result},
+  };
+  IREE_ASSERT_OK(iree_net_carrier_send(client_carrier_, &params));
+  PollUntil([&] {
+    return server_deactivated_ && trigger_result.completion_count == 1 &&
+           failure_context.submitted_send.completion_count == 1 &&
+           failure_context.queued_send.completion_count == 1;
+  });
+
+  EXPECT_EQ(failure_context.receive_count, 1);
+  EXPECT_EQ(failure_context.error_count, 1);
+  EXPECT_EQ(failure_context.error_code, IREE_STATUS_DATA_LOSS);
+  EXPECT_EQ(failure_context.submitted_send.completion_count, 1);
+  EXPECT_EQ(failure_context.queued_send.completion_count, 1);
+  EXPECT_EQ(failure_context.queued_send.status_code, IREE_STATUS_DATA_LOSS);
+  EXPECT_EQ(failure_context.queued_send.bytes_transferred, 0u);
+  EXPECT_EQ(iree_net_carrier_pending_operation_count(server_carrier_), 0);
 }
 
 TEST_F(TcpCarrierTest, DeactivationInvalidatesDirectReservation) {

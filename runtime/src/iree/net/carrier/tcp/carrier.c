@@ -19,6 +19,7 @@ typedef enum iree_net_tcp_send_slot_state_e {
   IREE_NET_TCP_SEND_SLOT_STATE_RESERVED = 1,
   IREE_NET_TCP_SEND_SLOT_STATE_QUEUED = 2,
   IREE_NET_TCP_SEND_SLOT_STATE_SUBMITTED = 3,
+  IREE_NET_TCP_SEND_SLOT_STATE_DETACHED = 4,
 } iree_net_tcp_send_slot_state_t;
 
 // One bounded logical send or direct-write reservation.
@@ -97,7 +98,7 @@ typedef struct iree_net_tcp_receive_lease_context_t {
 
 // Work detached while publishing a terminal transport failure.
 typedef struct iree_net_tcp_failure_work_t {
-  // Queued sends and uncommitted reservations to retire.
+  // Queued committed sends to retire.
   iree_net_tcp_send_slot_t* detached_sends;
 
   // Status code reported to detached committed sends.
@@ -301,16 +302,32 @@ static void iree_net_tcp_recycle_send_slot_locked(
   --carrier->send_slots_in_use;
 }
 
-static iree_net_tcp_send_slot_t* iree_net_tcp_detach_pending_sends_locked(
-    iree_net_tcp_carrier_t* carrier) {
+static iree_net_tcp_send_slot_t* iree_net_tcp_detach_send_queue_locked(
+    iree_net_tcp_carrier_t* carrier, iree_net_tcp_send_slot_t** out_tail) {
   iree_net_tcp_send_slot_t* head = carrier->send_queue_head;
   iree_net_tcp_send_slot_t* tail = carrier->send_queue_tail;
   carrier->send_queue_head = NULL;
   carrier->send_queue_tail = NULL;
 
+  for (iree_net_tcp_send_slot_t* slot = head; slot; slot = slot->next) {
+    IREE_ASSERT(slot->state == IREE_NET_TCP_SEND_SLOT_STATE_QUEUED);
+    slot->state = IREE_NET_TCP_SEND_SLOT_STATE_DETACHED;
+  }
+  if (out_tail) *out_tail = tail;
+  return head;
+}
+
+static iree_net_tcp_send_slot_t* iree_net_tcp_detach_pending_sends_locked(
+    iree_net_tcp_carrier_t* carrier) {
+  iree_net_tcp_send_slot_t* tail = NULL;
+  iree_net_tcp_send_slot_t* head =
+      iree_net_tcp_detach_send_queue_locked(carrier, &tail);
+
   for (uint32_t i = 0; i < carrier->send_slot_count; ++i) {
     iree_net_tcp_send_slot_t* slot = &carrier->send_slots[i];
     if (slot->state != IREE_NET_TCP_SEND_SLOT_STATE_RESERVED) continue;
+    slot->reservation_handle = 0;
+    slot->state = IREE_NET_TCP_SEND_SLOT_STATE_DETACHED;
     slot->next = NULL;
     if (tail) {
       tail->next = slot;
@@ -341,6 +358,7 @@ static void iree_net_tcp_complete_detached_sends(
     iree_net_tcp_carrier_t* carrier, iree_net_tcp_send_slot_t* slot,
     iree_status_code_t status_code) {
   while (slot) {
+    IREE_ASSERT(slot->state == IREE_NET_TCP_SEND_SLOT_STATE_DETACHED);
     iree_net_tcp_send_slot_t* next = slot->next;
     const iree_net_send_completion_callback_t completion_callback =
         slot->completion_callback;
@@ -371,7 +389,10 @@ static iree_net_tcp_failure_work_t iree_net_tcp_begin_failure(
   iree_slim_mutex_lock(&carrier->mutex);
   carrier->flags |= IREE_NET_TCP_CARRIER_FLAG_SEND_SHUTDOWN_INITIATED |
                     IREE_NET_TCP_CARRIER_FLAG_SOCKET_WRITE_SHUTDOWN_ISSUED;
-  work.detached_sends = iree_net_tcp_detach_pending_sends_locked(carrier);
+  // A transport failure is not synchronized with callers writing reserved
+  // storage. Only committed sends can transfer to terminal completion here.
+  work.detached_sends =
+      iree_net_tcp_detach_send_queue_locked(carrier, /*out_tail=*/NULL);
   iree_slim_mutex_unlock(&carrier->mutex);
 
   int32_t expected_receive_state = IREE_NET_TCP_RECEIVE_STATE_PAUSED;
