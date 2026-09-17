@@ -24,6 +24,8 @@ enum loom_scf_body_effect_flag_bits_e {
   LOOM_SCF_BODY_EFFECT_ORDERED = 1u << 2,
   // A read effect that is not an ordinary memory load.
   LOOM_SCF_BODY_EFFECT_NON_LOAD_READ = 1u << 3,
+  // A compiler source-order constraint, independent of runtime effects.
+  LOOM_SCF_BODY_EFFECT_SOURCE_ORDER = 1u << 4,
 };
 
 typedef struct loom_scf_body_reference_t {
@@ -52,6 +54,11 @@ typedef struct loom_scf_body_t {
   loom_scf_body_operation_t* operations;
   // Number of source operations.
   uint32_t count;
+  // Indices of source-order boundaries in this block, in authored order.
+  // Fences inside nested regions retain their scope within the cloned unit.
+  uint32_t* source_order_boundaries;
+  // Number of top-level source-order boundaries.
+  uint32_t source_order_boundary_count;
   // Complete local payload dependencies, grouped by operation.
   loom_scf_body_reference_t* references;
   // Number of entries in references.

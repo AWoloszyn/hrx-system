@@ -273,7 +273,9 @@ static iree_status_t loom_scf_unroll_build_effect_dependency_plan(
 
   uint32_t effect_count = 0;
   for (uint32_t i = 0; i < body_ops->count; ++i) {
-    if (body_ops->operations[i].effects != 0) ++effect_count;
+    if (body_ops->operations[i].effects & ~LOOM_SCF_BODY_EFFECT_SOURCE_ORDER) {
+      ++effect_count;
+    }
   }
   if (effect_count == 0) return iree_ok_status();
 
@@ -291,7 +293,10 @@ static iree_status_t loom_scf_unroll_build_effect_dependency_plan(
                                                  (void**)&body_op_indices));
   uint32_t effect_index = 0;
   for (uint32_t i = 0; i < body_ops->count; ++i) {
-    if (body_ops->operations[i].effects == 0) continue;
+    if (!(body_ops->operations[i].effects &
+          ~LOOM_SCF_BODY_EFFECT_SOURCE_ORDER)) {
+      continue;
+    }
     body_to_effect_indices[i] = effect_index;
     body_op_indices[effect_index++] = i;
   }
@@ -585,6 +590,15 @@ typedef struct loom_scf_unroll_scheduled_tile_t {
   uint32_t* cloned_counts;
   // Flattened per-iteration body operation clone flags.
   bool* cloned;
+  // Position within the lexically expanded body's source-order ranges.
+  struct {
+    // First source slot whose clone has not been emitted.
+    iree_host_size_t frontier;
+    // Next boundary's source slot, or the total slot count after the last one.
+    iree_host_size_t boundary_slot;
+    // Index of the next boundary within one source iteration.
+    uint32_t boundary_index;
+  } source_order;
   // Number of iterations materialized in the tile.
   uint32_t unroll_count;
   // Number of body operation clone slots not yet materialized.
@@ -644,6 +658,10 @@ static iree_status_t loom_scf_unroll_initialize_scheduled_tile(
     memset(out_tile->cloned, 0,
            out_tile->remaining_clone_count * sizeof(*out_tile->cloned));
   }
+  if (out_tile->body_ops.source_order_boundary_count != 0) {
+    out_tile->source_order.boundary_slot =
+        out_tile->body_ops.source_order_boundaries[0];
+  }
   IREE_RETURN_IF_ERROR(loom_scf_unroll_build_effect_dependency_plan(
       context, op, body_block, &out_tile->body_ops, out_tile->unroll_count,
       schedule, scratch_arena, &out_tile->effect_dependency_plan));
@@ -670,6 +688,33 @@ static iree_status_t loom_scf_unroll_initialize_scheduled_tile(
   return iree_ok_status();
 }
 
+// Advances over each source slot once. Boundaries partition the lexically
+// expanded body, so a range may contain the end of one iteration and the
+// beginning of the next without imposing an extra iteration boundary.
+static void loom_scf_unroll_release_source_order(
+    loom_scf_unroll_scheduled_tile_t* tile, iree_host_size_t slot,
+    uint32_t ordinal) {
+  if (tile->body_ops.source_order_boundary_count == 0) return;
+  const iree_host_size_t slot_count =
+      (iree_host_size_t)tile->unroll_count * tile->body_ops.count;
+  while (tile->source_order.frontier < slot_count &&
+         tile->cloned[tile->source_order.frontier]) {
+    ++tile->source_order.frontier;
+  }
+  if (slot != tile->source_order.boundary_slot) return;
+  if (++tile->source_order.boundary_index ==
+      tile->body_ops.source_order_boundary_count) {
+    tile->source_order.boundary_index = 0;
+    ++ordinal;
+  }
+  tile->source_order.boundary_slot =
+      ordinal < tile->unroll_count
+          ? (iree_host_size_t)ordinal * tile->body_ops.count +
+                tile->body_ops
+                    .source_order_boundaries[tile->source_order.boundary_index]
+          : slot_count;
+}
+
 static iree_status_t loom_scf_unroll_try_clone_scheduled_body_op(
     loom_scf_unroll_tile_context_t* context, uint32_t op_index,
     uint32_t ordinal, loom_scf_unroll_scheduled_tile_t* tile,
@@ -678,6 +723,12 @@ static iree_status_t loom_scf_unroll_try_clone_scheduled_body_op(
   const iree_host_size_t slot =
       (iree_host_size_t)ordinal * tile->body_ops.count + op_index;
   if (tile->cloned[slot]) return iree_ok_status();
+  if (tile->body_ops.source_order_boundary_count != 0 &&
+      (slot > tile->source_order.boundary_slot ||
+       (slot == tile->source_order.boundary_slot &&
+        slot != tile->source_order.frontier))) {
+    return iree_ok_status();
+  }
   if (!loom_scf_unroll_effect_dependencies_are_ready(
           &tile->effect_dependency_plan, op_index, ordinal)) {
     return iree_ok_status();
@@ -695,6 +746,7 @@ static iree_status_t loom_scf_unroll_try_clone_scheduled_body_op(
   IREE_RETURN_IF_ERROR(loom_scf_unroll_rename_cloned_op_results(
       context, source_op, cloned_op, ordinal));
   tile->cloned[slot] = true;
+  loom_scf_unroll_release_source_order(tile, slot, ordinal);
   loom_scf_unroll_release_effect_dependencies(&tile->effect_dependency_plan,
                                               op_index, ordinal);
   ++tile->cloned_counts[ordinal];

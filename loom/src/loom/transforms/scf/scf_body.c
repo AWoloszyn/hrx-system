@@ -30,6 +30,8 @@ typedef struct loom_scf_body_builder_t {
   iree_host_size_t reference_capacity;
   // Allocated outer operation slots.
   iree_host_size_t operation_capacity;
+  // Allocated top-level source-order boundary slots.
+  iree_host_size_t source_order_boundary_capacity;
   // Outer scheduling unit receiving the current operation's captures/effects.
   loom_scf_body_operation_t* operation;
   // First control operation outside the supported structured body.
@@ -130,10 +132,12 @@ static loom_scf_body_effect_flags_t loom_scf_body_operation_effects(
     }
   }
   if (loom_traits_may_write(traits)) flags |= LOOM_SCF_BODY_EFFECT_WRITE;
+  if (iree_any_bit_set(traits, LOOM_TRAIT_HINT)) {
+    flags |= LOOM_SCF_BODY_EFFECT_SOURCE_ORDER;
+  }
   if (iree_any_bit_set(
           traits, LOOM_TRAIT_NON_DETERMINISTIC | LOOM_TRAIT_UNKNOWN_EFFECTS |
-                      LOOM_TRAIT_HINT | LOOM_TRAIT_POISON_BOUNDARY |
-                      LOOM_TRAIT_CONVERGENT)) {
+                      LOOM_TRAIT_POISON_BOUNDARY | LOOM_TRAIT_CONVERGENT)) {
     flags |= LOOM_SCF_BODY_EFFECT_ORDERED;
   }
   if (flags == 0 && !iree_any_bit_set(traits, LOOM_TRAIT_PURE)) {
@@ -217,6 +221,20 @@ static iree_status_t loom_scf_body_capture_operation(
     loom_scf_body_effect_flags_t effects =
         loom_scf_body_operation_effects(builder->module, op);
     builder->operation->effects |= effects;
+    if (context->depth == 0 &&
+        iree_any_bit_set(effects, LOOM_SCF_BODY_EFFECT_SOURCE_ORDER)) {
+      if (body->source_order_boundary_count ==
+          builder->source_order_boundary_capacity) {
+        IREE_RETURN_IF_ERROR(iree_arena_grow_array(
+            builder->arena, body->source_order_boundary_count,
+            (iree_host_size_t)body->source_order_boundary_count + 1,
+            sizeof(*body->source_order_boundaries),
+            &builder->source_order_boundary_capacity,
+            (void**)&body->source_order_boundaries));
+      }
+      body->source_order_boundaries[body->source_order_boundary_count++] =
+          body->count - 1;
+    }
     if (iree_any_bit_set(effects, LOOM_SCF_BODY_EFFECT_READ) &&
         !iree_any_bit_set(effects, LOOM_SCF_BODY_EFFECT_NON_LOAD_READ)) {
       ++builder->operation->load_count;
