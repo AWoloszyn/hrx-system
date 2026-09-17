@@ -664,6 +664,11 @@ static iree_status_t iree_async_proactor_posix_register_notification_wait(
 static iree_host_size_t iree_async_proactor_posix_drain_pending_queue(
     iree_async_proactor_posix_t* proactor) {
   iree_host_size_t completed_count = 0;
+  // The pending queue is intentionally popped in LIFO order: fd_map chain
+  // insertion reverses it again to preserve FIFO execution per descriptor.
+  // Collect NOPs separately and re-reverse them for callback delivery in
+  // submission order without perturbing fd registration.
+  iree_async_operation_t* pending_nops = NULL;
   iree_atomic_slist_entry_t* entry = NULL;
   while ((entry = iree_atomic_slist_pop(&proactor->pending_queue)) != NULL) {
     iree_async_operation_t* operation = (iree_async_operation_t*)entry;
@@ -700,6 +705,11 @@ static iree_host_size_t iree_async_proactor_posix_drain_pending_queue(
     iree_status_t status = iree_ok_status();
 
     switch (operation->type) {
+      case IREE_ASYNC_OPERATION_TYPE_NOP:
+        operation->next = pending_nops;
+        pending_nops = operation;
+        continue;
+
       case IREE_ASYNC_OPERATION_TYPE_TIMER: {
         iree_async_posix_timer_list_insert(
             &proactor->timers, (iree_async_timer_operation_t*)operation);
@@ -777,6 +787,14 @@ static iree_host_size_t iree_async_proactor_posix_drain_pending_queue(
         iree_status_free(status);
       }
     }
+  }
+
+  while (pending_nops != NULL) {
+    iree_async_operation_t* operation = pending_nops;
+    pending_nops = operation->next;
+    operation->next = NULL;
+    completed_count += iree_async_proactor_posix_complete_direct(
+        proactor, operation, iree_ok_status(), IREE_ASYNC_COMPLETION_FLAG_NONE);
   }
   return completed_count;
 }
@@ -1163,9 +1181,8 @@ static iree_status_t iree_async_proactor_posix_submit_operation(
   iree_async_operation_clear_internal_flags(operation);
   switch (operation->type) {
     case IREE_ASYNC_OPERATION_TYPE_NOP:
-      return iree_async_proactor_posix_complete_on_submit(
-          proactor, operation, iree_ok_status(),
-          IREE_ASYNC_COMPLETION_FLAG_NONE);
+      iree_async_proactor_posix_push_pending(proactor, operation);
+      return iree_ok_status();
 
     case IREE_ASYNC_OPERATION_TYPE_SOCKET_ACCEPT:
       return iree_async_proactor_posix_submit_socket_accept(

@@ -338,6 +338,45 @@ TEST_P(SequenceTest, MixedLinkedUnlinked) {
   // No ordering constraint between the two chains.
 }
 
+// An independent kernel operation after a software chain must be submitted
+// with the chain head instead of being mistaken for a deferred continuation.
+TEST_P(SequenceTest, IndependentKernelOperationAfterSoftwareChain) {
+  iree_async_nop_operation_t nop_a;
+  iree_async_nop_operation_t nop_b;
+  iree_async_timer_operation_t timer;
+  memset(&nop_a, 0, sizeof(nop_a));
+  memset(&nop_b, 0, sizeof(nop_b));
+  memset(&timer, 0, sizeof(timer));
+
+  nop_a.base.type = IREE_ASYNC_OPERATION_TYPE_NOP;
+  nop_a.base.flags = IREE_ASYNC_OPERATION_FLAG_LINKED;
+  nop_b.base.type = IREE_ASYNC_OPERATION_TYPE_NOP;
+  timer.base.type = IREE_ASYNC_OPERATION_TYPE_TIMER;
+  timer.deadline_ns = iree_time_now();
+
+  CompletionTracker nop_a_tracker;
+  CompletionTracker nop_b_tracker;
+  CompletionTracker timer_tracker;
+  nop_a.base.completion_fn = CompletionTracker::Callback;
+  nop_a.base.user_data = &nop_a_tracker;
+  nop_b.base.completion_fn = CompletionTracker::Callback;
+  nop_b.base.user_data = &nop_b_tracker;
+  timer.base.completion_fn = CompletionTracker::Callback;
+  timer.base.user_data = &timer_tracker;
+
+  iree_async_operation_t* ops[] = {&nop_a.base, &nop_b.base, &timer.base};
+  IREE_ASSERT_OK(iree_async_proactor_submit(
+      proactor_, iree_async_operation_list_make(ops, IREE_ARRAYSIZE(ops))));
+  PollUntil(/*min_completions=*/IREE_ARRAYSIZE(ops));
+
+  EXPECT_EQ(nop_a_tracker.call_count, 1);
+  EXPECT_EQ(nop_b_tracker.call_count, 1);
+  EXPECT_EQ(timer_tracker.call_count, 1);
+  IREE_EXPECT_OK(nop_a_tracker.ConsumeStatus());
+  IREE_EXPECT_OK(nop_b_tracker.ConsumeStatus());
+  IREE_EXPECT_OK(timer_tracker.ConsumeStatus());
+}
+
 //===----------------------------------------------------------------------===//
 // EVENT_WAIT linked to NOP
 //===----------------------------------------------------------------------===//

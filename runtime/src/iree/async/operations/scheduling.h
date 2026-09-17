@@ -33,8 +33,8 @@ extern "C" {
 //   yes     | yes      | yes  | yes
 //
 // Performance:
-//   Minimal overhead—no syscall, just queue manipulation. On io_uring,
-//   translates to IORING_OP_NOP which completes without kernel work.
+//   Minimal overhead: no syscall or backend completion allocation, only
+//   intrusive queue manipulation.
 typedef struct iree_async_nop_operation_t {
   iree_async_operation_t base;
 } iree_async_nop_operation_t;

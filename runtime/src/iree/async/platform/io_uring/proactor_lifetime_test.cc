@@ -634,8 +634,8 @@ class ProactorLifetimeTest : public ::testing::Test {
     bool watched_allocation_freed = false;
   };
 
-  struct NopCompletionState {
-    // Number of NOP callbacks dispatched by the poll loop.
+  struct TimerCompletionState {
+    // Number of timer callbacks dispatched by the poll loop.
     iree_host_size_t count = 0;
   };
 
@@ -692,22 +692,23 @@ class ProactorLifetimeTest : public ::testing::Test {
     // Submit without polling until get_sqe() reports the queue full. These
     // SQEs remain unpublished, guaranteeing cancellation cannot allocate an
     // SQE on its first attempt.
-    nop_operations_.resize(1024);
-    for (auto& nop : nop_operations_) {
-      memset(&nop, 0, sizeof(nop));
-      nop.base.type = IREE_ASYNC_OPERATION_TYPE_NOP;
-      nop.base.completion_fn =
+    timer_operations_.resize(1024);
+    for (auto& timer : timer_operations_) {
+      memset(&timer, 0, sizeof(timer));
+      timer.base.type = IREE_ASYNC_OPERATION_TYPE_TIMER;
+      timer.deadline_ns = iree_time_now();
+      timer.base.completion_fn =
           +[](void* user_data, iree_async_operation_t* operation,
               iree_status_t status, iree_async_completion_flags_t flags) {
-            auto* state = static_cast<NopCompletionState*>(user_data);
+            auto* state = static_cast<TimerCompletionState*>(user_data);
             (void)operation;
             (void)flags;
             IREE_EXPECT_OK(status);
             ++state->count;
           };
-      nop.base.user_data = &nop_state_;
+      timer.base.user_data = &timer_state_;
       iree_status_t submit_status =
-          iree_async_proactor_submit_one(proactor_, &nop.base);
+          iree_async_proactor_submit_one(proactor_, &timer.base);
       if (iree_status_is_resource_exhausted(submit_status)) {
         IREE_EXPECT_STATUS_IS(IREE_STATUS_RESOURCE_EXHAUSTED, submit_status);
         break;
@@ -716,7 +717,7 @@ class ProactorLifetimeTest : public ::testing::Test {
       ++submitted_count_;
     }
     ASSERT_GT(submitted_count_, 0u);
-    ASSERT_LT(submitted_count_, nop_operations_.size());
+    ASSERT_LT(submitted_count_, timer_operations_.size());
   }
 
   void PollOnce() {
@@ -726,8 +727,8 @@ class ProactorLifetimeTest : public ::testing::Test {
 
   iree_async_proactor_t* proactor_ = nullptr;
   CountingAllocatorState allocator_state_;
-  std::vector<iree_async_nop_operation_t> nop_operations_;
-  NopCompletionState nop_state_;
+  std::vector<iree_async_timer_operation_t> timer_operations_;
+  TimerCompletionState timer_state_;
   iree_host_size_t submitted_count_ = 0;
 };
 
@@ -764,12 +765,12 @@ TEST_F(ProactorLifetimeTest,
   iree_async_proactor_unregister_event_source(proactor_, event_source);
 
   while (!allocator_state_.watched_allocation_freed ||
-         nop_state_.count < submitted_count_) {
+         timer_state_.count < submitted_count_) {
     PollOnce();
   }
 
   EXPECT_EQ(event_state.count, 0u);
-  EXPECT_EQ(nop_state_.count, submitted_count_);
+  EXPECT_EQ(timer_state_.count, submitted_count_);
   close(event_fd);
 }
 
@@ -808,11 +809,11 @@ TEST_F(ProactorLifetimeTest,
   EXPECT_FALSE(unregistration_state.completed);
 
   while (!unregistration_state.completed ||
-         nop_state_.count < submitted_count_) {
+         timer_state_.count < submitted_count_) {
     PollOnce();
   }
 
-  EXPECT_EQ(nop_state_.count, submitted_count_);
+  EXPECT_EQ(timer_state_.count, submitted_count_);
   iree_async_notification_release(source_notification);
   iree_async_notification_release(sink_notification);
 }
