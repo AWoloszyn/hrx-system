@@ -44,11 +44,13 @@ typedef struct iree_xdna_run_binding_t {
   iree_io_file_contents_t* initial_contents;
   // Optional output path borrowed from the parsed command line.
   iree_string_view_t output_path;
-  // Aligned caller allocation retained while registered with the provider.
-  void* registered_allocation;
-  // Logical caller range within `registered_allocation`, or NULL for system
-  // memory.
-  void* registered_host_pointer;
+  // Independent CPU backing retained until the device registration is released.
+  struct {
+    // Owner of the registered pages, or NULL for device-created storage.
+    amdf_memory_t* memory;
+    // Host view keeping the registered virtual range alive.
+    amdf_host_mapping_t* mapping;
+  } source;
   // Stable XDNA attachment to provider-owned or registered physical backing.
   amdf_memory_t* memory;
   // Explicit host view retained through terminal completion.
@@ -421,39 +423,61 @@ static iree_status_t iree_xdna_run_create_device(
 }
 
 static iree_status_t iree_xdna_run_prepare_registered_binding(
-    iree_xdna_run_t* run, const iree_xdna_elf_binding_record_t* contract,
-    iree_const_byte_span_t initial, iree_xdna_run_binding_t* binding) {
-  const uint64_t cover_granularity =
-      run->memory_profile.registration.native_byte_length_granularity;
-  const uint64_t maximum_alignment =
-      run->memory_profile.registration.maximum_alignment;
-  if (cover_granularity > IREE_HOST_SIZE_MAX ||
-      maximum_alignment > IREE_HOST_SIZE_MAX ||
-      initial.data_length > IREE_HOST_SIZE_MAX - cover_granularity) {
+    iree_xdna_run_t* run, iree_xdna_run_binding_t* binding,
+    amdf_memory_create_info_t* create_info) {
+  const amdf_memory_construction_capabilities_t* registration =
+      &run->memory_profile.registration;
+  const uint64_t granularity = registration->byte_length_granularity;
+  if (create_info->byte_length > UINT64_MAX - (granularity - 1)) {
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
-                            "registered binding storage exceeds host limits");
+                            "registered binding length rounding overflows");
   }
-  if (contract->minimum_alignment > maximum_alignment) {
+  create_info->byte_length =
+      ((create_info->byte_length + granularity - 1) / granularity) *
+      granularity;
+  if (create_info->byte_length > registration->maximum_byte_length) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "registered binding exceeds the profile limit");
+  }
+  if (create_info->minimum_alignment > registration->maximum_alignment) {
     return iree_make_status(
         IREE_STATUS_UNAVAILABLE,
         "binding requires alignment %" PRIu64
         " beyond the registered-host profile limit %" PRIu64,
-        contract->minimum_alignment, maximum_alignment);
+        create_info->minimum_alignment, registration->maximum_alignment);
   }
-
-  const iree_host_size_t pointer_offset =
-      contract->minimum_alignment < cover_granularity
-          ? (iree_host_size_t)contract->minimum_alignment
-          : 0;
-  const iree_host_size_t allocation_length =
-      (iree_host_size_t)cover_granularity + initial.data_length;
-  void* allocation = NULL;
-  IREE_RETURN_IF_ERROR(iree_allocator_malloc_aligned(
-      run->host_allocator, allocation_length,
-      (iree_host_size_t)maximum_alignment, 0, &allocation));
-  binding->registered_allocation = allocation;
-  binding->registered_host_pointer = (uint8_t*)allocation + pointer_offset;
-  memcpy(binding->registered_host_pointer, initial.data, initial.data_length);
+  const amdf_memory_create_info_t source_info = {
+      .type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO,
+      .structure_size = sizeof(source_info),
+      .required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE,
+      .byte_length = create_info->byte_length,
+      .minimum_alignment =
+          iree_max(create_info->minimum_alignment,
+                   registration->registered_host_pointer_alignment),
+  };
+  IREE_RETURN_IF_ERROR(IREE_HAL_AMD_STATUS_FROM_AMDF(
+      run->api->memory_create(run->memory_scope, &source_info,
+                              &binding->source.memory),
+      "memory_create(registration source)"));
+  const amdf_memory_map_info_t map_info = {
+      .type = AMDF_STRUCTURE_TYPE_MEMORY_MAP_INFO,
+      .structure_size = sizeof(map_info),
+      .byte_length = source_info.byte_length,
+      .flags = AMDF_MEMORY_MAP_FLAG_READ | AMDF_MEMORY_MAP_FLAG_WRITE,
+  };
+  IREE_RETURN_IF_ERROR(IREE_HAL_AMD_STATUS_FROM_AMDF(
+      run->api->memory_map(binding->source.memory, &map_info,
+                           &binding->source.mapping),
+      "memory_map(registration source)"));
+  amdf_host_mapping_info_t mapping_info = {
+      .type = AMDF_STRUCTURE_TYPE_HOST_MAPPING_INFO,
+      .structure_size = sizeof(mapping_info),
+  };
+  IREE_RETURN_IF_ERROR(IREE_HAL_AMD_STATUS_FROM_AMDF(
+      run->api->host_mapping_query_info(binding->source.mapping, &mapping_info),
+      "host_mapping_query_info(registration source)"));
+  create_info->registered_host_pointer = mapping_info.pointer;
+  create_info->registered_host_cacheability = mapping_info.cacheability;
   return iree_ok_status();
 }
 
@@ -467,11 +491,7 @@ static iree_status_t iree_xdna_run_prepare_binding(
       iree_hal_amd_xdna_image_tables_binding(
           iree_hal_amd_xdna_image_tables(run->image),
           entry->first_binding + ordinal);
-  if (run->binding_memory_role == AMDF_MEMORY_PROFILE_ROLE_REGISTER) {
-    IREE_RETURN_IF_ERROR(iree_xdna_run_prepare_registered_binding(
-        run, &contract, initial, binding));
-  }
-  const amdf_memory_create_info_t create_info = {
+  amdf_memory_create_info_t create_info = {
       .type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO,
       .structure_size = sizeof(create_info),
       .memory_profile_ordinal = run->memory_profile.ordinal,
@@ -479,23 +499,16 @@ static iree_status_t iree_xdna_run_prepare_binding(
       .required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE,
       .byte_length = initial.data_length,
       .minimum_alignment = contract.minimum_alignment,
-      .registered_host_pointer = binding->registered_host_pointer,
       .accesses = &run->memory_access,
-      .registered_host_cacheability = binding->registered_host_pointer != NULL
-                                          ? AMDF_HOST_CACHEABILITY_WRITE_BACK
-                                          : AMDF_HOST_CACHEABILITY_UNKNOWN,
   };
+  if (run->binding_memory_role == AMDF_MEMORY_PROFILE_ROLE_REGISTER) {
+    IREE_RETURN_IF_ERROR(
+        iree_xdna_run_prepare_registered_binding(run, binding, &create_info));
+  }
   IREE_RETURN_IF_ERROR(IREE_HAL_AMD_STATUS_FROM_AMDF(
       run->api->memory_create(run->memory_scope, &create_info,
                               &binding->memory),
       "memory_create"));
-  amdf_memory_info_t memory_info = {
-      .type = AMDF_STRUCTURE_TYPE_MEMORY_INFO,
-      .structure_size = sizeof(memory_info),
-  };
-  IREE_RETURN_IF_ERROR(IREE_HAL_AMD_STATUS_FROM_AMDF(
-      run->api->memory_query_info(binding->memory, &memory_info),
-      "memory_query_info"));
   amdf_memory_access_info_t access_info = {
       .type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_INFO,
       .structure_size = sizeof(access_info),
@@ -508,19 +521,6 @@ static iree_status_t iree_xdna_run_prepare_binding(
       run->api->memory_query_address(
           binding->memory, 0, AMDF_MEMORY_ADDRESS_XDNA_DMA, &dma_address),
       "memory_query_address(XDNA_DMA)"));
-  if (binding->registered_host_pointer != NULL) {
-    const uint64_t expected_source_byte_offset =
-        (uintptr_t)binding->registered_host_pointer %
-        run->memory_profile.registration.native_byte_length_granularity;
-    if (memory_info.memory_class != AMDF_MEMORY_CLASS_SYSTEM ||
-        memory_info.byte_length != initial.data_length ||
-        memory_info.source_byte_offset != expected_source_byte_offset) {
-      return iree_make_status(
-          IREE_STATUS_FAILED_PRECONDITION,
-          "registered binding %u returned inconsistent logical geometry",
-          ordinal);
-    }
-  }
   const amdf_memory_map_info_t map_info = {
       .type = AMDF_STRUCTURE_TYPE_MEMORY_MAP_INFO,
       .structure_size = sizeof(map_info),
@@ -538,13 +538,6 @@ static iree_status_t iree_xdna_run_prepare_binding(
       run->api->host_mapping_query_info(binding->mapping,
                                         &binding->mapping_info),
       "host_mapping_query_info"));
-  if (binding->registered_host_pointer != NULL &&
-      binding->mapping_info.pointer != binding->registered_host_pointer) {
-    return iree_make_status(
-        IREE_STATUS_FAILED_PRECONDITION,
-        "registered binding %u did not preserve its logical host address",
-        ordinal);
-  }
   iree_hal_memory_type_t memory_type = IREE_HAL_MEMORY_TYPE_HOST_LOCAL |
                                        IREE_HAL_MEMORY_TYPE_HOST_VISIBLE |
                                        IREE_HAL_MEMORY_TYPE_DEVICE_VISIBLE;
@@ -566,13 +559,7 @@ static iree_status_t iree_xdna_run_prepare_binding(
       iree_make_byte_span(binding->mapping_info.pointer, initial.data_length),
       iree_hal_buffer_release_callback_null(), run->host_allocator,
       &binding->buffer));
-  if (binding->registered_host_pointer == NULL) {
-    memcpy(binding->mapping_info.pointer, initial.data, initial.data_length);
-  } else {
-    fprintf(stderr, "Registered binding %u at native page offset %" PRIu64 "\n",
-            ordinal, memory_info.source_byte_offset);
-    fflush(stderr);
-  }
+  memcpy(binding->mapping_info.pointer, initial.data, initial.data_length);
   IREE_RETURN_IF_ERROR(IREE_HAL_AMD_STATUS_FROM_AMDF(
       run->api->host_mapping_cache_control(binding->mapping,
                                            AMDF_HOST_CACHE_OPERATION_FLUSH, 0,
@@ -894,31 +881,26 @@ static iree_status_t iree_xdna_run_deinitialize(iree_xdna_run_t* run) {
       status = IREE_HAL_AMD_STATUS_FROM_AMDF(
           run->api->memory_destroy(binding->memory), "memory_destroy");
       binding->memory = NULL;
+    }
+    if (iree_status_is_ok(status) && binding->source.mapping != NULL) {
+      status = IREE_HAL_AMD_STATUS_FROM_AMDF(
+          run->api->host_mapping_destroy(binding->source.mapping),
+          "host_mapping_destroy(registration source)");
       if (iree_status_is_ok(status)) {
-        if (binding->registered_host_pointer != NULL) {
-          volatile uint8_t* caller_bytes =
-              (volatile uint8_t*)binding->registered_host_pointer;
-          const iree_host_size_t byte_length =
-              binding->initial_contents->buffer.data_length;
-          for (iree_host_size_t j = 0; j < byte_length; ++j) {
-            const uint8_t value = caller_bytes[j];
-            caller_bytes[j] = value;
-          }
-          fprintf(stderr,
-                  "Released binding %" PRIhsz
-                  "; all caller bytes remain accessible\n",
-                  i);
-          fflush(stderr);
-        }
+        binding->source.mapping = NULL;
       }
+    }
+    if (iree_status_is_ok(status) && binding->source.memory != NULL) {
+      status = IREE_HAL_AMD_STATUS_FROM_AMDF(
+          run->api->memory_destroy(binding->source.memory),
+          "memory_destroy(registration source)");
+      binding->source.memory = NULL;
     }
   }
   if (!iree_status_is_ok(status)) {
     return status;
   }
   for (iree_host_size_t i = 0; i < run->binding_count; ++i) {
-    iree_allocator_free_aligned(run->host_allocator,
-                                run->bindings[i].registered_allocation);
     iree_io_file_contents_free(run->bindings[i].initial_contents);
   }
   iree_allocator_free(run->host_allocator, run->bindings);
