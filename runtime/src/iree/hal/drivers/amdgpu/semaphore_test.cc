@@ -15,6 +15,7 @@
 #include "iree/async/frontier.h"
 #include "iree/async/proactor_platform.h"
 #include "iree/hal/drivers/amdgpu/host_queue_policy.h"
+#include "iree/hal/drivers/amdgpu/host_queue_waits.h"
 #include "iree/hal/drivers/amdgpu/logical_device.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
@@ -129,6 +130,43 @@ class SemaphoreTest : public ::testing::Test {
     return iree_hal_amdgpu_semaphore_create(
         fake_device_, test_proactor(), IREE_HAL_QUEUE_FAMILY_AFFINITY_ANY,
         /*initial_value=*/0, flags, iree_allocator_system(), out_semaphore);
+  }
+
+  iree_hal_amdgpu_wait_resolution_t ResolveWait(
+      uint8_t queue_index, uint64_t value,
+      const iree_async_frontier_t* frontier = nullptr) {
+    alignas(iree_hal_amdgpu_epoch_signal_table_t)
+        uint8_t table_storage[sizeof(iree_hal_amdgpu_epoch_signal_table_t) +
+                              3 * sizeof(hsa_signal_t)];
+    auto* table =
+        reinterpret_cast<iree_hal_amdgpu_epoch_signal_table_t*>(table_storage);
+    iree_hal_amdgpu_epoch_signal_table_initialize(table, 1, 0, 0, 3);
+    // Only wait resolution runs: these handles identify native operands but
+    // are never passed to ROCr or submitted to hardware.
+    for (uint8_t i = 0; i < 3; ++i) {
+      iree_hal_amdgpu_epoch_signal_table_register(
+          table, i, hsa_signal_t{uint64_t(i + 1)});
+    }
+    iree_hal_amdgpu_host_queue_t queue = {};
+    queue.logical_device = reinterpret_cast<iree_hal_device_t*>(fake_device_);
+    queue.axis = test_queue_axis(queue_index);
+    queue.epoch_table = table;
+    queue.wait_barrier_strategy =
+        IREE_HAL_AMDGPU_WAIT_BARRIER_STRATEGY_AQL_BARRIER_VALUE;
+    iree_slim_mutex_initialize(&queue.locks.submission_mutex);
+    auto* queue_frontier = iree_hal_amdgpu_host_queue_frontier(&queue);
+    iree_async_frontier_initialize(queue_frontier, 0);
+    if (frontier) {
+      EXPECT_TRUE(iree_async_frontier_merge(
+          queue_frontier, IREE_HAL_AMDGPU_QUEUE_FRONTIER_CAPACITY, frontier));
+    }
+    iree_hal_amdgpu_wait_resolution_t resolution = {};
+    iree_slim_mutex_lock(&queue.locks.submission_mutex);
+    iree_hal_amdgpu_host_queue_resolve_waits(
+        &queue, iree_hal_semaphore_list_t{1, &semaphore_, &value}, &resolution);
+    iree_slim_mutex_unlock(&queue.locks.submission_mutex);
+    iree_slim_mutex_deinitialize(&queue.locks.submission_mutex);
+    return resolution;
   }
 
   iree_hal_amdgpu_logical_device_t* fake_device_ = nullptr;
@@ -309,6 +347,124 @@ TEST_F(SemaphoreTest, PublishSignalClearsExactForIndependentFanIn) {
   EXPECT_EQ(cached_epoch, 9u);
   EXPECT_EQ(cached_value, 2u);
   EXPECT_EQ(flags, IREE_HAL_AMDGPU_LAST_SIGNAL_FLAG_VALID);
+}
+
+TEST_F(SemaphoreTest, OlderWaitDoesNotUseLaterProducerEpoch) {
+  FrontierBuilder builder;
+  const auto producer_axis = test_queue_axis(1);
+  ASSERT_TRUE(iree_hal_amdgpu_semaphore_publish_signal(
+      semaphore_, producer_axis, builder.Build({{producer_axis, 5}}), 5, 1));
+  ASSERT_TRUE(iree_hal_amdgpu_semaphore_publish_signal(
+      semaphore_, producer_axis, builder.Build({{producer_axis, 9}}), 9, 2));
+
+  // A consumer of S=1 can itself be a prerequisite of S=2. Waiting on the
+  // latter's epoch invents a cycle, both within and across native queues.
+  for (uint8_t queue_index = 0; queue_index < 2; ++queue_index) {
+    auto resolution = ResolveWait(queue_index, 1);
+    EXPECT_TRUE(resolution.needs_deferral);
+    EXPECT_EQ(resolution.barrier_count, 0);
+  }
+
+  // Completion of the actual requested value releases the software path even
+  // while the cached later producer has not completed.
+  IREE_ASSERT_OK(iree_hal_semaphore_signal(semaphore_, 1, nullptr));
+  auto resolution = ResolveWait(0, 1);
+  EXPECT_FALSE(resolution.needs_deferral);
+  EXPECT_EQ(resolution.barrier_count, 0);
+}
+
+TEST_F(SemaphoreTest, ExactWaitAndCoveredLaterProofRemainNative) {
+  FrontierBuilder builder;
+  const auto producer_axis = test_queue_axis(1);
+  const auto* frontier = builder.Build({{producer_axis, 9}});
+  ASSERT_TRUE(iree_hal_amdgpu_semaphore_publish_signal(
+      semaphore_, producer_axis, frontier, 9, 2));
+
+  auto exact = ResolveWait(0, 2);
+  ASSERT_FALSE(exact.needs_deferral);
+  ASSERT_EQ(exact.barrier_count, 1);
+  EXPECT_EQ(exact.barriers[0].axis, producer_axis);
+  EXPECT_EQ(exact.barriers[0].target_epoch, 9u);
+
+  // A later proof already covered by the consumer is sufficient for elision.
+  // It is never substituted as a new blocking dependency for the older wait.
+  auto covered = ResolveWait(0, 1, frontier);
+  EXPECT_FALSE(covered.needs_deferral);
+  EXPECT_EQ(covered.barrier_count, 0);
+  auto future = ResolveWait(0, 3, frontier);
+  EXPECT_TRUE(future.needs_deferral);
+  EXPECT_EQ(future.barrier_count, 0);
+}
+
+TEST_F(SemaphoreTest, FanInWaitUsesOnlyItsExactSignalFrontier) {
+  FrontierBuilder builder;
+  const auto first_axis = test_queue_axis(1);
+  const auto second_axis = test_queue_axis(2);
+  ASSERT_TRUE(iree_hal_amdgpu_semaphore_publish_signal(
+      semaphore_, first_axis, builder.Build({{first_axis, 4}}), 4, 1));
+  ASSERT_TRUE(iree_hal_amdgpu_semaphore_publish_signal(
+      semaphore_, second_axis, builder.Build({{second_axis, 9}}), 9, 2));
+
+  auto exact = ResolveWait(0, 2);
+  ASSERT_FALSE(exact.needs_deferral);
+  ASSERT_EQ(exact.barrier_count, 2);
+  EXPECT_EQ(exact.barriers[0].axis, first_axis);
+  EXPECT_EQ(exact.barriers[0].target_epoch, 4u);
+  EXPECT_EQ(exact.barriers[1].axis, second_axis);
+  EXPECT_EQ(exact.barriers[1].target_epoch, 9u);
+
+  auto older = ResolveWait(0, 1);
+  EXPECT_TRUE(older.needs_deferral);
+  EXPECT_EQ(older.barrier_count, 0);
+}
+
+TEST_F(SemaphoreTest, ConcurrentPublicationDoesNotUpgradeWaitFrontier) {
+  constexpr uint64_t kPublicationCount = 8192;
+  FrontierBuilder builder;
+  const auto first_axis = test_queue_axis(1);
+  const auto second_axis = test_queue_axis(2);
+  ASSERT_TRUE(iree_hal_amdgpu_semaphore_publish_signal(
+      semaphore_, first_axis, builder.Build({{first_axis, 4}}), 4, 1));
+  ASSERT_TRUE(iree_hal_amdgpu_semaphore_publish_signal(
+      semaphore_, second_axis, builder.Build({{second_axis, 9}}), 9, 2));
+
+  std::atomic<bool> reader_ready{false};
+  std::thread writer([&] {
+    FrontierBuilder producer;
+    while (!reader_ready.load(std::memory_order_acquire)) {
+      std::this_thread::yield();
+    }
+    for (uint64_t value = 3; value <= kPublicationCount; ++value) {
+      EXPECT_TRUE(iree_hal_amdgpu_semaphore_publish_signal(
+          semaphore_, second_axis, producer.Build({{second_axis, value + 7}}),
+          value + 7, value));
+    }
+  });
+  reader_ready.store(true, std::memory_order_release);
+
+  uint64_t upgraded_waits = 0;
+  for (uint64_t i = 0; i < kPublicationCount; ++i) {
+    iree_hal_amdgpu_last_signal_flags_t flags = 0;
+    iree_async_axis_t axis = 0;
+    uint64_t epoch = 0;
+    uint64_t value = 0;
+    EXPECT_TRUE(iree_hal_amdgpu_last_signal_load(
+        iree_hal_amdgpu_semaphore_last_signal(semaphore_), &flags, &axis,
+        &epoch, &value));
+    auto resolution = ResolveWait(0, value);
+    // A racing publication can make the exact metadata unavailable. It cannot
+    // turn the requested wait into a barrier on that publication's epoch.
+    if (!resolution.needs_deferral &&
+        (resolution.barrier_count != 2 ||
+         resolution.barriers[0].axis != first_axis ||
+         resolution.barriers[0].target_epoch != 4 ||
+         resolution.barriers[1].axis != second_axis ||
+         resolution.barriers[1].target_epoch != value + 7)) {
+      ++upgraded_waits;
+    }
+  }
+  writer.join();
+  EXPECT_EQ(upgraded_waits, 0u);
 }
 
 }  // namespace
