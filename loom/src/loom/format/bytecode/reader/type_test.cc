@@ -6,6 +6,9 @@
 
 #include "loom/format/bytecode/reader/type.h"
 
+#include <cstring>
+#include <vector>
+
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
 #include "loom/format/bytecode/format.h"
@@ -130,6 +133,72 @@ TEST_F(BytecodeTypeTest, RejectsNonTopologicalTypeReference) {
   EXPECT_EQ(error_count_, 1u);
 }
 
+TEST_F(BytecodeTypeTest, MaterializesEmptyFunctionPayload) {
+  const uint8_t data[] = {0x01, LOOM_BYTECODE_TYPE_FUNCTION, 0x00, 0x00};
+  IREE_ASSERT_OK(BuildPlan(data, sizeof(data)));
+  loom_bytecode_type_materializer_t materializer =
+      MakeMaterializer(data, sizeof(data));
+  IREE_ASSERT_OK(loom_bytecode_type_materialize(&materializer));
+  ASSERT_EQ(module_->types.count, 1u);
+  const loom_func_type_data_t* payload =
+      loom_type_func_data(module_->types.entries[0]);
+  ASSERT_NE(payload, nullptr);
+  EXPECT_EQ(payload->arg_count, 0u);
+  EXPECT_EQ(payload->result_count, 0u);
+  EXPECT_EQ(payload->reserved, 0u);
+}
+
+TEST_F(BytecodeTypeTest, MaterializesFullWidthFunctionSignature) {
+  std::vector<uint8_t> data = {
+      0x03,
+      LOOM_BYTECODE_TYPE_SCALAR,
+      LOOM_SCALAR_TYPE_I32,
+      LOOM_BYTECODE_TYPE_SCALAR,
+      LOOM_SCALAR_TYPE_F32,
+      LOOM_BYTECODE_TYPE_FUNCTION,
+      0xFF,
+      0xFF,
+      0x03,  // UINT16_MAX arguments.
+      0xFF,
+      0xFF,
+      0x03,  // UINT16_MAX results.
+  };
+  data.insert(data.end(), UINT16_MAX, /*argument_type_id=*/0);
+  data.insert(data.end(), UINT16_MAX, /*result_type_id=*/1);
+  IREE_ASSERT_OK(BuildPlan(data.data(), data.size()));
+  EXPECT_EQ(module_view_.types.entries[2].structural.dependency_count,
+            2u * UINT16_MAX);
+  loom_bytecode_type_materializer_t materializer =
+      MakeMaterializer(data.data(), data.size());
+  IREE_ASSERT_OK(loom_bytecode_type_materialize(&materializer));
+  ASSERT_EQ(module_->types.count, 3u);
+  const loom_func_type_data_t* payload =
+      loom_type_func_data(module_->types.entries[2]);
+  ASSERT_NE(payload, nullptr);
+  EXPECT_EQ(payload->arg_count, UINT16_MAX);
+  EXPECT_EQ(payload->result_count, UINT16_MAX);
+  EXPECT_EQ(payload->reserved, 0u);
+  for (iree_host_size_t i = 0; i < 2u * UINT16_MAX; ++i) {
+    EXPECT_TRUE(loom_type_equal(
+        payload->types[i], module_->types.entries[i < UINT16_MAX ? 0 : 1]));
+  }
+}
+
+TEST_F(BytecodeTypeTest, RejectsOversizedFunctionCountsBeforeAllocation) {
+  const uint8_t oversized_arguments[] = {
+      0x01, LOOM_BYTECODE_TYPE_FUNCTION, 0x80, 0x80, 0x04, 0x00};
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_DEFERRED,
+      BuildPlan(oversized_arguments, sizeof(oversized_arguments)));
+  const uint8_t oversized_results[] = {
+      0x01, LOOM_BYTECODE_TYPE_FUNCTION, 0x00, 0x80, 0x80, 0x04};
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_DEFERRED,
+      BuildPlan(oversized_results, sizeof(oversized_results)));
+  EXPECT_EQ(error_count_, 2u);
+  EXPECT_EQ(module_->types.count, 0u);
+}
+
 TEST_F(BytecodeTypeTest, RejectsNoneScalarType) {
   const uint8_t data[] = {
       LOOM_BYTECODE_TYPE_SCALAR,
@@ -172,12 +241,17 @@ TEST_F(BytecodeTypeTest, DecodesOneIndexedEntry) {
   ASSERT_NE(fact, nullptr);
   EXPECT_EQ(fact->type_id, 2u);
   EXPECT_EQ(fact->kind, LOOM_TYPE_FUNCTION);
-  const auto* function_fact =
-      reinterpret_cast<const loom_bytecode_function_type_fact_t*>(fact);
-  EXPECT_EQ(function_fact->argument_count, 1u);
-  EXPECT_EQ(function_fact->result_count, 1u);
-  EXPECT_EQ(function_fact->type_ids[0], 1u);
-  EXPECT_EQ(function_fact->type_ids[1], 0u);
+  const auto* structural_fact =
+      reinterpret_cast<const loom_bytecode_structural_type_fact_t*>(fact);
+  loom_func_type_data_t payload_header;
+  memcpy(&payload_header, structural_fact->payload_prefix,
+         sizeof(payload_header));
+  EXPECT_EQ(payload_header.arg_count, 1u);
+  EXPECT_EQ(payload_header.result_count, 1u);
+  EXPECT_EQ(payload_header.reserved, 0u);
+  EXPECT_EQ(entry.structural.dependency_count, 2u);
+  EXPECT_EQ(structural_fact->type_ids[0], 1u);
+  EXPECT_EQ(structural_fact->type_ids[1], 0u);
   EXPECT_EQ(error_count_, 0u);
 }
 

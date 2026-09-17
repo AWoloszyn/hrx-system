@@ -400,6 +400,7 @@ loom_cc_library(
     ::decoder
     ::module_view
     ::selected_projection
+    ::type
     ::type_plan
     ::type_validator
     iree::base

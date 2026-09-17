@@ -344,6 +344,104 @@ TEST_F(BytecodeSelectedTablesTest, ResolvesExternalSymbolsByDenseSourceIndex) {
   loom_bytecode_selected_table_materializer_deinitialize(&materializer);
 }
 
+TEST_F(BytecodeSelectedTablesTest, ProjectsMixedStructuralPayloads) {
+  loom_type_id_t unused_type_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_intern_type_id(
+      module_, loom_type_scalar(LOOM_SCALAR_TYPE_F64), &unused_type_id));
+  loom_type_id_t element_type_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_intern_type_id(
+      module_, loom_type_scalar(LOOM_SCALAR_TYPE_F32), &element_type_id));
+  ASSERT_NE(element_type_id, 0u);
+  loom_string_id_t unused_name_id = LOOM_STRING_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_intern_string(module_, IREE_SV("target_only"),
+                                           &unused_name_id));
+  loom_string_id_t name_id = LOOM_STRING_ID_INVALID;
+  IREE_ASSERT_OK(
+      loom_module_intern_string(module_, IREE_SV("test.box"), &name_id));
+  ASSERT_NE(name_id, 1u);
+
+  const uint64_t carrier_payload0 = UINT64_C(0x123456789ABCDEF0);
+  const uint64_t carrier_payload1 = (UINT64_C(9) << 16) | UINT64_C(0x1234);
+  // Generic construction copies nested payloads independently of their
+  // canonical table entries. Projected candidates must remain complete so the
+  // interner can compare equal children whose storage pointers differ.
+  const loom_register_type_data_t register_data = {
+      carrier_payload0, carrier_payload1,
+      loom_type_scalar(LOOM_SCALAR_TYPE_F32)};
+  const loom_type_t register_type =
+      loom_type_register_payload_with_value_type(&register_data);
+  const loom_type_t parameters[] = {register_type, register_data.value_type};
+  const loom_type_t argument_type =
+      loom_type_dialect(name_id, IREE_ARRAYSIZE(parameters), parameters);
+  loom_type_t expected_type = {};
+  IREE_ASSERT_OK(loom_module_intern_function_type(
+      module_, &argument_type, 1, &register_type, 1, &expected_type));
+  loom_type_id_t expected_type_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(
+      loom_module_intern_type_id(module_, expected_type, &expected_type_id));
+  ASSERT_EQ(module_->types.count, 5u);
+  iree_string_view_t strings[] = {iree_string_view_empty(),
+                                  IREE_SV("test.box")};
+  loom_bytecode_table_entry_metadata_t entries[4] = {};
+  std::vector<uint8_t> bytecode = {LOOM_BYTECODE_TYPE_SCALAR,
+                                   LOOM_SCALAR_TYPE_F32};
+  entries[0].entry_length = bytecode.size();
+  entries[1].entry_offset = bytecode.size();
+  bytecode.push_back(LOOM_BYTECODE_TYPE_REGISTER);
+  AppendUVarint(carrier_payload0, &bytecode);
+  AppendUVarint(carrier_payload1, &bytecode);
+  bytecode.insert(bytecode.end(), {/*has_value_type=*/1, /*value_type_id=*/0});
+  entries[1].entry_length = bytecode.size() - entries[1].entry_offset;
+  entries[2].entry_offset = bytecode.size();
+  bytecode.insert(bytecode.end(),
+                  {LOOM_BYTECODE_TYPE_DIALECT,
+                   /*name_id=*/1, /*parameter_count=*/2,
+                   /*register_type_id=*/1, /*element_type_id=*/0});
+  entries[2].entry_length = bytecode.size() - entries[2].entry_offset;
+  entries[3].entry_offset = bytecode.size();
+  bytecode.insert(bytecode.end(),
+                  {LOOM_BYTECODE_TYPE_FUNCTION,
+                   /*argument_count=*/1, /*result_count=*/1,
+                   /*dialect_type_id=*/2, /*register_type_id=*/1});
+  entries[3].entry_length = bytecode.size() - entries[3].entry_offset;
+  loom_bytecode_module_metadata_t metadata = {};
+  metadata.strings = {IREE_ARRAYSIZE(strings), strings};
+  metadata.types = {IREE_ARRAYSIZE(entries), entries};
+  loom_bytecode_selected_table_materializer_t materializer;
+  InitializeMaterializer(bytecode, &metadata, &materializer);
+  loom_type_id_t target_type_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_bytecode_selected_table_materialize_type(
+      &materializer, /*source_type_id=*/3, &target_type_id));
+  EXPECT_EQ(target_type_id, expected_type_id);
+  loom_type_id_t repeated_type_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_bytecode_selected_table_materialize_type(
+      &materializer, /*source_type_id=*/3, &repeated_type_id));
+  EXPECT_EQ(repeated_type_id, target_type_id);
+  loom_bytecode_selected_table_materializer_deinitialize(&materializer);
+  iree_arena_reset(&scratch_arena_);
+
+  ASSERT_EQ(module_->types.count, 5u);
+  const loom_func_type_data_t* function =
+      loom_type_func_data(module_->types.entries[target_type_id]);
+  ASSERT_NE(function, nullptr);
+  ASSERT_EQ(function->arg_count, 1u);
+  ASSERT_EQ(function->result_count, 1u);
+  const loom_type_t dialect_type = function->types[0];
+  ASSERT_EQ(loom_type_kind(dialect_type), LOOM_TYPE_DIALECT);
+  EXPECT_EQ(loom_type_dialect_name_id(dialect_type), name_id);
+  ASSERT_EQ(loom_type_dialect_param_count(dialect_type), 2u);
+  const loom_type_t* children = loom_type_dialect_params(dialect_type);
+  EXPECT_TRUE(
+      loom_type_equal(children[1], module_->types.entries[element_type_id]));
+  EXPECT_TRUE(loom_type_equal(children[0], function->types[1]));
+  const loom_register_type_data_t* data = loom_type_register_data(children[0]);
+  ASSERT_NE(data, nullptr);
+  EXPECT_EQ(data->carrier_payload0, carrier_payload0);
+  EXPECT_EQ(data->carrier_payload1, carrier_payload1);
+  EXPECT_TRUE(loom_type_equal(data->value_type, children[1]));
+  EXPECT_EQ(error_count_, 0u);
+}
+
 TEST_F(BytecodeSelectedTablesTest, MaterializesDeepTypeChainIteratively) {
   constexpr uint32_t kTypeCount = 4096;
   std::vector<uint8_t> bytecode;

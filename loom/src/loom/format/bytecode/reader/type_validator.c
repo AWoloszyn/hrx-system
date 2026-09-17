@@ -6,6 +6,8 @@
 
 #include "loom/format/bytecode/reader/type_validator.h"
 
+#include <string.h>
+
 #include "loom/error/error_catalog.h"
 #include "loom/format/bytecode/reader/attribute.h"
 #include "loom/format/bytecode/reader/module_view.h"
@@ -462,19 +464,30 @@ static iree_status_t loom_bytecode_type_plan_decode_entry(
           (iree_host_size_t)(arg_count + result_count);
       iree_host_size_t allocation_size = 0;
       IREE_RETURN_IF_ERROR(IREE_STRUCT_LAYOUT(
-          sizeof(loom_bytecode_function_type_fact_t), &allocation_size,
+          sizeof(loom_bytecode_structural_type_fact_t), &allocation_size,
           IREE_STRUCT_FIELD_FAM(total_count, loom_type_id_t)));
-      loom_bytecode_function_type_fact_t* fact = NULL;
+      loom_bytecode_structural_type_fact_t* fact = NULL;
       IREE_RETURN_IF_ERROR(
           iree_arena_allocate(scratch_arena, allocation_size, (void**)&fact));
-      *fact = (loom_bytecode_function_type_fact_t){
+      *fact = (loom_bytecode_structural_type_fact_t){
           .base =
               {
                   .type_id = (loom_type_id_t)type_index,
                   .kind = LOOM_TYPE_FUNCTION,
               },
-          .argument_count = (uint16_t)arg_count,
+      };
+      const loom_func_type_data_t payload_header = {
+          .arg_count = (uint16_t)arg_count,
           .result_count = (uint16_t)result_count,
+      };
+      memcpy(fact->payload_prefix, &payload_header, sizeof(payload_header));
+      out_plan_entry->structural = (loom_bytecode_structural_type_plan_t){
+          .type_header = loom_type_function(NULL).header,
+          .children_offset = offsetof(loom_func_type_data_t, types),
+          .dependency_count = (uint32_t)total_count,
+          .payload_size = iree_max(
+              sizeof(fact->payload_prefix),
+              sizeof(payload_header) + total_count * sizeof(loom_type_t)),
       };
       for (iree_host_size_t i = 0; i < total_count; ++i) {
         uint64_t ref_offset =
@@ -513,20 +526,25 @@ static iree_status_t loom_bytecode_type_plan_decode_entry(
       }
       iree_host_size_t allocation_size = 0;
       IREE_RETURN_IF_ERROR(IREE_STRUCT_LAYOUT(
-          sizeof(loom_bytecode_dialect_type_fact_t), &allocation_size,
+          sizeof(loom_bytecode_structural_type_fact_t), &allocation_size,
           IREE_STRUCT_FIELD_FAM((iree_host_size_t)param_count,
                                 loom_type_id_t)));
-      loom_bytecode_dialect_type_fact_t* fact = NULL;
+      loom_bytecode_structural_type_fact_t* fact = NULL;
       IREE_RETURN_IF_ERROR(
           iree_arena_allocate(scratch_arena, allocation_size, (void**)&fact));
-      *fact = (loom_bytecode_dialect_type_fact_t){
+      *fact = (loom_bytecode_structural_type_fact_t){
           .base =
               {
                   .type_id = (loom_type_id_t)type_index,
                   .kind = LOOM_TYPE_DIALECT,
               },
-          .name_id = (loom_string_id_t)name_id,
+      };
+      out_plan_entry->structural = (loom_bytecode_structural_type_plan_t){
+          .type_header = loom_type_dialect_opaque(0).header,
           .parameter_count = (uint16_t)param_count,
+          .name_id = (loom_string_id_t)name_id,
+          .dependency_count = (uint32_t)param_count,
+          .payload_size = (iree_host_size_t)param_count * sizeof(loom_type_t),
       };
       for (uint64_t i = 0; i < param_count; ++i) {
         uint64_t ref_offset =
@@ -596,18 +614,25 @@ static iree_status_t loom_bytecode_type_plan_decode_entry(
             loom_bytecode_reader_read_uvarint(decoder, cursor, &value_type_id));
         IREE_RETURN_IF_ERROR(loom_bytecode_type_plan_validate_type_ref(
             decoder, value_type_id, type_index, value_type_offset));
-        loom_bytecode_typed_register_fact_t* fact = NULL;
-        IREE_RETURN_IF_ERROR(
-            iree_arena_allocate(scratch_arena, sizeof(*fact), (void**)&fact));
-        *fact = (loom_bytecode_typed_register_fact_t){
+        loom_bytecode_structural_type_fact_t* fact = NULL;
+        IREE_RETURN_IF_ERROR(iree_arena_allocate(
+            scratch_arena, sizeof(*fact) + sizeof(loom_type_id_t),
+            (void**)&fact));
+        *fact = (loom_bytecode_structural_type_fact_t){
             .base =
                 {
                     .type_id = (loom_type_id_t)type_index,
                     .kind = LOOM_TYPE_REGISTER,
                 },
-            .carrier_payload0 = payload0,
-            .carrier_payload1 = payload1,
-            .value_type_id = (loom_type_id_t)value_type_id,
+            .payload_prefix = {payload0, payload1},
+        };
+        fact->type_ids[0] = (loom_type_id_t)value_type_id;
+        out_plan_entry->structural = (loom_bytecode_structural_type_plan_t){
+            .type_header =
+                loom_type_register_payload_with_value_type(NULL).header,
+            .children_offset = offsetof(loom_register_type_data_t, value_type),
+            .dependency_count = 1,
+            .payload_size = sizeof(loom_register_type_data_t),
         };
         type_fact = &fact->base;
       } else {
