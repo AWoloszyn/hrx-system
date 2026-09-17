@@ -1,4 +1,4 @@
-// Copyright 2026 The IREE Authors
+// Copyright 2026 The HRX Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -31,7 +31,7 @@ iree_hal_topology_edge_t MakePeerEdge(
   return edge;
 }
 
-TEST(DevicePeerAccessTest, RequiresNativeNoncoherentReadAndWrite) {
+TEST(DevicePeerAccessTest, RequiresUsableNoncoherentReadAndWrite) {
   struct TestCase {
     const char* name;
     iree_hal_topology_interop_mode_t noncoherent_read;
@@ -67,7 +67,7 @@ TEST(DevicePeerAccessTest, RequiresNativeNoncoherentReadAndWrite) {
           IREE_HAL_TOPOLOGY_INTEROP_MODE_NONE,
           IREE_HAL_TOPOLOGY_INTEROP_MODE_NONE,
           IREE_HAL_TOPOLOGY_CAPABILITY_PEER_ACCESS_REQUIRES_GRANT,
-          false,
+          true,
       },
       {
           "fine native with coarse unavailable",
@@ -88,9 +88,18 @@ TEST(DevicePeerAccessTest, RequiresNativeNoncoherentReadAndWrite) {
           false,
       },
       {
-          "fine native grant does not upgrade coarse copy",
+          "grant-required coarse copy with fine native access",
           IREE_HAL_TOPOLOGY_INTEROP_MODE_COPY,
           IREE_HAL_TOPOLOGY_INTEROP_MODE_COPY,
+          IREE_HAL_TOPOLOGY_INTEROP_MODE_NATIVE,
+          IREE_HAL_TOPOLOGY_INTEROP_MODE_NATIVE,
+          IREE_HAL_TOPOLOGY_CAPABILITY_PEER_ACCESS_REQUIRES_GRANT,
+          true,
+      },
+      {
+          "grant does not create unavailable coarse access",
+          IREE_HAL_TOPOLOGY_INTEROP_MODE_NONE,
+          IREE_HAL_TOPOLOGY_INTEROP_MODE_NONE,
           IREE_HAL_TOPOLOGY_INTEROP_MODE_NATIVE,
           IREE_HAL_TOPOLOGY_INTEROP_MODE_NATIVE,
           IREE_HAL_TOPOLOGY_CAPABILITY_PEER_ACCESS_REQUIRES_GRANT,

@@ -1,4 +1,4 @@
-// Copyright 2026 The IREE Authors
+// Copyright 2026 The HRX Authors
 //
 // Licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
