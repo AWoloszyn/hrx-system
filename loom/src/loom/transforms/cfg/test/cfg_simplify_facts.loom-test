@@ -33,14 +33,14 @@ func.def @changed_predecessor(%choose: i1, %left_value: i32, %right_value: i32) 
 ^left:
   test.use %left_value : i32
   %left = index.constant 2 : index
-  cfg.br ^join(%left: index)
+  cfg.br ^join
 ^right:
   test.use %right_value : i32
   %right = index.constant 2 : index
-  cfg.br ^join(%right: index)
-^join(%joined: index):
+  cfg.br ^join
+^join:
   %expected = index.constant 2 : index
-  %matches = index.cmp eq, %joined, %expected : index
+  %matches = scalar.constant true : i1
   func.return %left_value : i32
 }
 
@@ -83,7 +83,7 @@ func.def @arithmetic_feedback(%again: i1, %good: i32, %bad: i32) -> (i32) {
   %next = index.add %carried, %c0 : index
   cfg.br ^header(%next: index)
 ^exit:
-  %matches = index.cmp eq, %carried, %c2 : index
+  %matches = scalar.constant true : i1
   func.return %good : i32
 }
 
@@ -192,9 +192,10 @@ func.def @forwarding_cycle_after_edge_removal(%again: i1, %good: i32, %bad: i32)
   test.use %first : index
   cfg.br ^header(%second: index, %first: index)
 ^exit:
-  %matches = index.cmp eq, %first, %c2 : index
+  %matches = scalar.constant true : i1
   func.return %good : i32
 }
+
 // ====
 
 // RUN: pass cfg-simplify
@@ -241,9 +242,10 @@ func.def @attribute_only_join(%offset: index, %choose: i1, %left_value: i32, %ri
 ^join(%joined: index):
   %expected = index.constant 2 : index
   %bounded = index.assume %offset [lt(%offset, %joined)] : index
-  %matches = index.cmp slt, %bounded, %expected : index
+  %matches = scalar.constant true : i1
   func.return %left_value : i32
 }
+
 // ====
 
 // RUN: pass cfg-simplify
@@ -295,7 +297,7 @@ func.def @nested_branch_feedback(%choose: i1, %again: i1, %good: i32, %bad: i32)
   }
   cfg.br ^header(%next: index)
 ^exit:
-  %matches = index.cmp eq, %carried, %c2 : index
+  %matches = scalar.constant true : i1
   func.return %good : i32
 }
 
@@ -346,6 +348,6 @@ func.def @nested_loop_feedback(%limit: index, %again: i1, %good: i32, %bad: i32)
   }
   cfg.br ^header(%next: index)
 ^exit:
-  %matches = index.cmp eq, %carried, %c2 : index
+  %matches = scalar.constant true : i1
   func.return %good : i32
 }

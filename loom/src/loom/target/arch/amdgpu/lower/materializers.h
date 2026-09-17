@@ -86,6 +86,8 @@ iree_status_t loom_amdgpu_lookup_or_materialize_sgpr_address(
 
 // Looks up a lowered i1 value and materializes subgroup-uniform SCC predicates
 // as EXEC-width SGPR masks for divergent predicate arithmetic.
+// Exact source truth materializes the active EXEC mask at the use; exact false
+// materializes zero without capturing or testing the canonical predicate.
 iree_status_t loom_amdgpu_lookup_or_materialize_native_i1_mask(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
     loom_value_id_t source_value, loom_value_id_t* out_low_value);

@@ -25,7 +25,7 @@ func.def @folds_lowered_switch_constant_case(%a: i32, %b: i32) -> (i32) {
   %9 = index.constant 0 : index
   %10 = index.cmp eq, %selector, %9 : index
   %11 = index.constant 2 : index
-  %12 = index.cmp eq, %selector, %11 : index
+  %13 = scalar.constant true : i1
   %case2 = test.addi %a, %b : i32
   func.return %case2 : i32
 }
