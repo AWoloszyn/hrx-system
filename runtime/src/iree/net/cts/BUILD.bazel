@@ -39,6 +39,7 @@ iree_runtime_cc_library(
         "//runtime/src/iree/net:session",
         "//runtime/src/iree/net:transport_factory",
         "//runtime/src/iree/net/channel/control:control_channel",
+        "//runtime/src/iree/net/channel/queue:queue_channel",
         "//runtime/src/iree/testing:gtest",
     ],
     alwayslink = True,

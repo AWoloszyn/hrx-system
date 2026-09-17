@@ -15,6 +15,7 @@
 #include "iree/async/proactor_platform.h"
 #include "iree/async/slab.h"
 #include "iree/net/channel/control/control_channel.h"
+#include "iree/net/channel/queue/queue_channel.h"
 #include "iree/net/connection.h"
 #include "iree/net/cts/transport_backend.h"
 #include "iree/net/message_endpoint.h"
@@ -260,6 +261,124 @@ struct ControlMessageState {
   }
 };
 
+struct QueueMessageState {
+  int* current_poll_side = nullptr;
+  PollSide expected_poll_side = kNotPolling;
+  int command_count = 0;
+  uint32_t command_queue_id = IREE_NET_QUEUE_ID_NONE;
+  std::vector<iree_async_frontier_entry_t> command_wait_frontier;
+  std::vector<iree_async_frontier_entry_t> command_signal_frontier;
+  std::string command_payload;
+  int advance_count = 0;
+  std::vector<iree_async_frontier_entry_t> advance_signal_frontier;
+  std::string advance_payload;
+  int error_count = 0;
+  iree_status_code_t error_code = IREE_STATUS_OK;
+
+  static std::vector<iree_async_frontier_entry_t> CaptureFrontier(
+      const iree_net_queue_frontier_view_t* frontier) {
+    std::vector<iree_async_frontier_entry_t> entries;
+    entries.reserve(frontier->count);
+    for (iree_host_size_t i = 0; i < frontier->count; ++i) {
+      entries.push_back(iree_net_queue_frontier_view_get(frontier, i));
+    }
+    return entries;
+  }
+
+  static iree_status_t OnCommand(
+      void* user_data, uint32_t queue_id,
+      const iree_net_queue_frontier_view_t* wait_frontier,
+      const iree_net_queue_frontier_view_t* signal_frontier,
+      iree_const_byte_span_t payload, iree_async_buffer_lease_t* lease) {
+    auto* self = static_cast<QueueMessageState*>(user_data);
+    EXPECT_EQ(*self->current_poll_side, self->expected_poll_side);
+    EXPECT_NE(lease, nullptr);
+    ++self->command_count;
+    self->command_queue_id = queue_id;
+    self->command_wait_frontier = CaptureFrontier(wait_frontier);
+    self->command_signal_frontier = CaptureFrontier(signal_frontier);
+    self->command_payload.assign(reinterpret_cast<const char*>(payload.data),
+                                 payload.data_length);
+    return iree_ok_status();
+  }
+
+  static iree_status_t OnAdvance(
+      void* user_data, const iree_net_queue_frontier_view_t* signal_frontier,
+      iree_const_byte_span_t payload, iree_async_buffer_lease_t* lease) {
+    auto* self = static_cast<QueueMessageState*>(user_data);
+    EXPECT_EQ(*self->current_poll_side, self->expected_poll_side);
+    EXPECT_NE(lease, nullptr);
+    ++self->advance_count;
+    self->advance_signal_frontier = CaptureFrontier(signal_frontier);
+    self->advance_payload.assign(reinterpret_cast<const char*>(payload.data),
+                                 payload.data_length);
+    return iree_ok_status();
+  }
+
+  static void OnError(void* user_data, iree_status_t status) {
+    auto* self = static_cast<QueueMessageState*>(user_data);
+    EXPECT_EQ(*self->current_poll_side, self->expected_poll_side);
+    ++self->error_count;
+    self->error_code = iree_status_code(status);
+    iree_status_free(status);
+  }
+
+  iree_net_queue_channel_callbacks_t callbacks() {
+    return {
+        /*.on_command=*/OnCommand,
+        /*.on_advance=*/OnAdvance,
+        /*.on_error=*/OnError,
+        /*.user_data=*/this,
+    };
+  }
+};
+
+struct QueueBuildState {
+  std::vector<iree_async_frontier_entry_t> wait_frontier;
+  std::vector<iree_async_frontier_entry_t> signal_frontier;
+  std::string generated_payload;
+
+  static iree_status_t Build(void* user_data,
+                             const iree_net_queue_message_builder_t* builder) {
+    auto* self = static_cast<QueueBuildState*>(user_data);
+    if (builder->wait_frontier.count != self->wait_frontier.size() ||
+        builder->signal_frontier.count != self->signal_frontier.size() ||
+        builder->generated_payload.data_length !=
+            self->generated_payload.size()) {
+      return iree_make_status(IREE_STATUS_INTERNAL,
+                              "queue builder target layout mismatch");
+    }
+    for (iree_host_size_t i = 0; i < self->wait_frontier.size(); ++i) {
+      iree_net_queue_frontier_builder_set(&builder->wait_frontier, i,
+                                          self->wait_frontier[i]);
+    }
+    for (iree_host_size_t i = 0; i < self->signal_frontier.size(); ++i) {
+      iree_net_queue_frontier_builder_set(&builder->signal_frontier, i,
+                                          self->signal_frontier[i]);
+    }
+    if (!self->generated_payload.empty()) {
+      memcpy(builder->generated_payload.data, self->generated_payload.data(),
+             self->generated_payload.size());
+    }
+    return iree_ok_status();
+  }
+
+  iree_net_queue_channel_send_params_t params(
+      iree_async_span_list_t payload,
+      iree_net_send_completion_callback_t completion_callback) {
+    return {
+        /*.wait_frontier_count=*/static_cast<uint8_t>(wait_frontier.size()),
+        /*.signal_frontier_count=*/
+        static_cast<uint8_t>(signal_frontier.size()),
+        /*.generated_payload_length=*/generated_payload.size(),
+        /*.build=*/Build,
+        /*.build_user_data=*/this,
+        /*.payload=*/payload,
+        /*.completion_callback=*/completion_callback,
+    };
+  }
+};
+
 struct SendState {
   int* current_poll_side = nullptr;
   PollSide expected_poll_side = kNotPolling;
@@ -377,6 +496,8 @@ class TransportTest : public ::testing::Test {
     DeactivateAndRelease(server_connection_, server_proactor_, kServerPolling);
     iree_net_control_channel_free(client_control_channel_);
     iree_net_control_channel_free(server_control_channel_);
+    iree_net_queue_channel_free(client_queue_channel_);
+    iree_net_queue_channel_free(server_queue_channel_);
     iree_net_transport_factory_release(factory_);
     ReleaseReceivePool(&client_receive_pool_);
     ReleaseReceivePool(&server_receive_pool_);
@@ -570,6 +691,10 @@ class TransportTest : public ::testing::Test {
   ControlMessageState server_control_messages_;
   iree_net_control_channel_t* client_control_channel_ = nullptr;
   iree_net_control_channel_t* server_control_channel_ = nullptr;
+  QueueMessageState client_queue_messages_;
+  QueueMessageState server_queue_messages_;
+  iree_net_queue_channel_t* client_queue_channel_ = nullptr;
+  iree_net_queue_channel_t* server_queue_channel_ = nullptr;
 };
 
 TEST_F(TransportTest, ReportsRequiredCapabilities) {
@@ -812,6 +937,110 @@ TEST_F(TransportTest, CarriesControlDataAndGoaway) {
   EXPECT_EQ(borrowed_send.status_code, IREE_STATUS_OK);
   EXPECT_EQ(copied_send.status_code, IREE_STATUS_OK);
   EXPECT_EQ(goaway_send.status_code, IREE_STATUS_OK);
+}
+
+TEST_F(TransportTest, CarriesQueueCommandsAndAdvances) {
+  EstablishConnection();
+  iree_net_message_endpoint_t client_endpoint =
+      OpenEndpoint(client_connection_, client_proactor_, kClientPolling);
+  iree_net_message_endpoint_t server_endpoint =
+      OpenEndpoint(server_connection_, server_proactor_, kServerPolling);
+  ASSERT_NE(client_endpoint.self, nullptr);
+  ASSERT_NE(server_endpoint.self, nullptr);
+
+  client_queue_messages_.current_poll_side = &current_poll_side_;
+  client_queue_messages_.expected_poll_side = kClientPolling;
+  server_queue_messages_.current_poll_side = &current_poll_side_;
+  server_queue_messages_.expected_poll_side = kServerPolling;
+  IREE_ASSERT_OK(iree_net_queue_channel_allocate(
+      client_endpoint, client_queue_messages_.callbacks(),
+      iree_allocator_system(), &client_queue_channel_));
+  IREE_ASSERT_OK(iree_net_queue_channel_allocate(
+      server_endpoint, server_queue_messages_.callbacks(),
+      iree_allocator_system(), &server_queue_channel_));
+  iree_net_queue_channel_attach(client_queue_channel_);
+  iree_net_queue_channel_attach(server_queue_channel_);
+  IREE_ASSERT_OK(iree_net_message_endpoint_activate(client_endpoint));
+  IREE_ASSERT_OK(iree_net_message_endpoint_activate(server_endpoint));
+
+  QueueBuildState command_builder = {
+      /*.wait_frontier=*/{{3, 5}, {7, 11}},
+      /*.signal_frontier=*/{{9, 13}},
+      /*.generated_payload=*/"generated:",
+  };
+  std::string command_suffix = "borrowed-command";
+  iree_async_span_t command_span =
+      iree_async_span_from_ptr(command_suffix.data(), command_suffix.size());
+  SendState command_send;
+  command_send.current_poll_side = &current_poll_side_;
+  command_send.expected_poll_side = kClientPolling;
+  command_send.expected_bytes = IREE_NET_QUEUE_MESSAGE_HEADER_SIZE +
+                                (command_builder.wait_frontier.size() +
+                                 command_builder.signal_frontier.size()) *
+                                    IREE_NET_QUEUE_FRONTIER_ENTRY_SIZE +
+                                command_builder.generated_payload.size() +
+                                command_suffix.size();
+  const iree_net_queue_channel_send_params_t command_params =
+      command_builder.params(iree_async_span_list_make(&command_span, 1),
+                             command_send.callback());
+  IREE_ASSERT_OK(iree_net_queue_channel_send_command(client_queue_channel_, 7,
+                                                     &command_params));
+
+  QueueBuildState advance_builder = {
+      /*.wait_frontier=*/{},
+      /*.signal_frontier=*/{{9, 13}, {17, 19}},
+      /*.generated_payload=*/"advance:",
+  };
+  std::string advance_suffix = "complete";
+  iree_async_span_t advance_span =
+      iree_async_span_from_ptr(advance_suffix.data(), advance_suffix.size());
+  SendState advance_send;
+  advance_send.current_poll_side = &current_poll_side_;
+  advance_send.expected_poll_side = kServerPolling;
+  advance_send.expected_bytes = IREE_NET_QUEUE_MESSAGE_HEADER_SIZE +
+                                advance_builder.signal_frontier.size() *
+                                    IREE_NET_QUEUE_FRONTIER_ENTRY_SIZE +
+                                advance_builder.generated_payload.size() +
+                                advance_suffix.size();
+  const iree_net_queue_channel_send_params_t advance_params =
+      advance_builder.params(iree_async_span_list_make(&advance_span, 1),
+                             advance_send.callback());
+  IREE_ASSERT_OK(iree_net_queue_channel_send_advance(server_queue_channel_,
+                                                     &advance_params));
+
+  PollImmediate(client_proactor_, kClientPolling);
+  PollImmediate(server_proactor_, kServerPolling);
+  PollUntil(server_proactor_, kServerPolling,
+            [&] { return server_queue_messages_.command_count == 1; });
+  PollUntil(client_proactor_, kClientPolling,
+            [&] { return client_queue_messages_.advance_count == 1; });
+  PollUntil(client_proactor_, kClientPolling,
+            [&] { return command_send.callback_count == 1; });
+  PollUntil(server_proactor_, kServerPolling,
+            [&] { return advance_send.callback_count == 1; });
+
+  EXPECT_EQ(server_queue_messages_.command_queue_id, 7u);
+  ASSERT_EQ(server_queue_messages_.command_wait_frontier.size(), 2u);
+  EXPECT_EQ(server_queue_messages_.command_wait_frontier[0].axis, 3u);
+  EXPECT_EQ(server_queue_messages_.command_wait_frontier[0].epoch, 5u);
+  EXPECT_EQ(server_queue_messages_.command_wait_frontier[1].axis, 7u);
+  EXPECT_EQ(server_queue_messages_.command_wait_frontier[1].epoch, 11u);
+  ASSERT_EQ(server_queue_messages_.command_signal_frontier.size(), 1u);
+  EXPECT_EQ(server_queue_messages_.command_signal_frontier[0].axis, 9u);
+  EXPECT_EQ(server_queue_messages_.command_signal_frontier[0].epoch, 13u);
+  EXPECT_EQ(server_queue_messages_.command_payload,
+            "generated:borrowed-command");
+
+  ASSERT_EQ(client_queue_messages_.advance_signal_frontier.size(), 2u);
+  EXPECT_EQ(client_queue_messages_.advance_signal_frontier[0].axis, 9u);
+  EXPECT_EQ(client_queue_messages_.advance_signal_frontier[0].epoch, 13u);
+  EXPECT_EQ(client_queue_messages_.advance_signal_frontier[1].axis, 17u);
+  EXPECT_EQ(client_queue_messages_.advance_signal_frontier[1].epoch, 19u);
+  EXPECT_EQ(client_queue_messages_.advance_payload, "advance:complete");
+  EXPECT_EQ(client_queue_messages_.error_count, 0);
+  EXPECT_EQ(server_queue_messages_.error_count, 0);
+  EXPECT_EQ(command_send.status_code, IREE_STATUS_OK);
+  EXPECT_EQ(advance_send.status_code, IREE_STATUS_OK);
 }
 
 TEST_F(TransportTest, GeneratesLargeTransientPrefixWithoutSizeCliff) {
