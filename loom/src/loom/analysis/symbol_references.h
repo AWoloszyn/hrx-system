@@ -114,8 +114,9 @@ typedef struct loom_template_demand_t {
   // Root region slot on source_symbol_id plus one, or zero for its contract.
   uint8_t source_root_region_index_plus_one;
 
-  // True when the application is nested under structured conditional control.
-  bool has_lexical_condition;
+  // True under structured conditions or in a non-entry CFG block. Applicability
+  // may depend on path facts that are not available at the function boundary.
+  bool has_path_condition;
 } loom_template_demand_t;
 
 static_assert(sizeof(loom_template_demand_t) == 24,

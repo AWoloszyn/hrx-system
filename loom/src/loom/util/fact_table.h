@@ -348,6 +348,22 @@ iree_status_t loom_value_fact_table_set_region_temporal_scope(
 loom_value_facts_t loom_value_fact_table_block_temporal_scope(
     const loom_value_fact_table_t* table, const loom_block_t* block);
 
+// Receives a borrowed graph from a populated fact scope. The callback must not
+// mutate that scope or its graphs; any retained pointer has the same lifetime
+// as lookup_cfg_graph. A failing callback terminates enumeration.
+typedef struct loom_value_fact_cfg_graph_callback_t {
+  // Callback state borrowed for the duration of enumeration.
+  void* user_data;
+  // Invoked once for each currently published graph, in unspecified order.
+  iree_status_t (*fn)(void* user_data, const loom_cfg_graph_t* graph);
+} loom_value_fact_cfg_graph_callback_t;
+
+// Enumerates existing graph snapshots without walking IR or constructing
+// graphs. Withdrawn snapshots are omitted. An empty scope invokes no callbacks.
+iree_status_t loom_value_fact_table_enumerate_cfg_graphs(
+    const loom_value_fact_table_t* table,
+    loom_value_fact_cfg_graph_callback_t callback);
+
 // Defines (or updates) facts for a value, growing the table if needed.
 iree_status_t loom_value_fact_table_define(loom_value_fact_table_t* table,
                                            loom_value_id_t value_id,

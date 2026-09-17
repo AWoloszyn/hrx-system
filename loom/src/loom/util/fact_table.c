@@ -443,6 +443,19 @@ const loom_cfg_graph_t* loom_value_fact_table_lookup_cfg_graph(
   return entry && entry->structure ? &entry->structure->graph : NULL;
 }
 
+iree_status_t loom_value_fact_table_enumerate_cfg_graphs(
+    const loom_value_fact_table_t* table,
+    loom_value_fact_cfg_graph_callback_t callback) {
+  iree_status_t status = iree_ok_status();
+  for (const loom_value_fact_region_entry_t* entry = table->regions.entries;
+       entry && iree_status_is_ok(status); entry = entry->next_entry) {
+    if (entry->structure) {
+      status = callback.fn(callback.user_data, &entry->structure->graph);
+    }
+  }
+  return status;
+}
+
 static iree_status_t loom_value_fact_table_ensure_region_entry(
     loom_value_fact_table_t* table, const loom_region_t* region,
     loom_value_fact_region_entry_t** out_entry) {

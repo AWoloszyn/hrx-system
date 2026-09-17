@@ -88,18 +88,18 @@ const loom_op_t* loom_op_ancestor_at_depth(const loom_op_t* op,
 // CFG dominance construction
 //===----------------------------------------------------------------------===//
 
-static iree_status_t loom_dominance_info_add_cfg_region(
-    loom_dominance_info_t* info, const loom_region_t* region) {
+iree_status_t loom_dominance_info_add_cfg_graph(loom_dominance_info_t* info,
+                                                const loom_cfg_graph_t* graph) {
   loom_cfg_dominance_region_t* cache = NULL;
   IREE_RETURN_IF_ERROR(
       iree_arena_allocate(info->arena, sizeof(*cache), (void**)&cache));
-  memset(cache, 0, sizeof(*cache));
-  cache->region = region;
-  IREE_RETURN_IF_ERROR(
-      loom_cfg_graph_build(info->module, region, info->arena, &cache->graph));
+  *cache = (loom_cfg_dominance_region_t){
+      .region = graph->region,
+      .graph = *graph,
+      .next = info->cfg_regions,
+  };
   IREE_RETURN_IF_ERROR(
       loom_cfg_dominance_build(&cache->graph, info->arena, &cache->dominance));
-  cache->next = info->cfg_regions;
   info->cfg_regions = cache;
   return iree_ok_status();
 }
@@ -111,7 +111,10 @@ static iree_status_t loom_dominance_info_build_region(
   }
   if (iree_any_bit_set(region->flags, LOOM_REGION_INSTANCE_FLAG_CFG) ||
       region->block_count > 1) {
-    IREE_RETURN_IF_ERROR(loom_dominance_info_add_cfg_region(info, region));
+    loom_cfg_graph_t graph;
+    IREE_RETURN_IF_ERROR(
+        loom_cfg_graph_build(info->module, region, info->arena, &graph));
+    IREE_RETURN_IF_ERROR(loom_dominance_info_add_cfg_graph(info, &graph));
   }
   loom_block_t* block = NULL;
   loom_region_for_each_block(region, block) {

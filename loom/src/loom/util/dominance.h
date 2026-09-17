@@ -52,6 +52,7 @@ extern "C" {
 //===----------------------------------------------------------------------===//
 
 typedef struct loom_cfg_dominance_region_t loom_cfg_dominance_region_t;
+typedef struct loom_cfg_graph_t loom_cfg_graph_t;
 
 // Dominance analysis state. For structured IR this is lightweight: queries walk
 // parent_op chains and block order directly. For CFG regions, initialization
@@ -83,6 +84,15 @@ iree_status_t loom_dominance_info_initialize(const loom_module_t* module,
 iree_status_t loom_dominance_info_initialize_region(
     const loom_module_t* module, const loom_region_t* region,
     iree_arena_allocator_t* arena, loom_dominance_info_t* out_info);
+
+// Adds dominators for an existing graph without extracting its structure again.
+// A caller with precomputed graphs starts with {.module = module, .arena =
+// arena} and adds each relevant region once before querying dominance. Graph
+// payloads are borrowed and must outlive all queries; dominator arrays belong
+// to arena. Region structure and successor edges must remain unchanged for that
+// lifetime.
+iree_status_t loom_dominance_info_add_cfg_graph(loom_dominance_info_t* info,
+                                                const loom_cfg_graph_t* graph);
 
 //===----------------------------------------------------------------------===//
 // Dominance queries

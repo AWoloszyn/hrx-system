@@ -476,7 +476,7 @@ func.def public @entry(%condition: i1, %arg: i32) -> (i32) {
   uint32_t flat_count = 0;
   uint32_t nested_count = 0;
   for (iree_host_size_t i = 0; i < table.template_demands.count; ++i) {
-    if (table.template_demands.values[i].has_lexical_condition) {
+    if (table.template_demands.values[i].has_path_condition) {
       ++nested_count;
     } else {
       ++flat_count;

@@ -133,6 +133,7 @@ loom_cc_library(
     ::template_rewrite
     iree::base
     iree::base::internal::arena
+    loom::analysis::cfg_condition_facts
     loom::analysis::condition_facts
     loom::analysis::symbol_facts
     loom::analysis::symbol_liveness
@@ -155,6 +156,8 @@ loom_cc_library(
     loom::target::facts
     loom::target::function_version
     loom::target::pass_environment
+    loom::util::dominance
+    loom::util::fact_table
   PUBLIC
 )
 

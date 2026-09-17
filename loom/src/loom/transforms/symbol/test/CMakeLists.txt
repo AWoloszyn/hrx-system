@@ -17,6 +17,7 @@ loom_check_test_suite(
     "refine_boundaries.loom-test"
     "symbol_dce.loom-test"
     "template_application.loom-test"
+    "template_cfg_relations.loom-test"
     "template_expansion.loom-test"
     "template_relations.loom-test"
     "template_selection.loom-test"

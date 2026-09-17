@@ -637,6 +637,7 @@ loom_cc_test(
   SRCS
     "dominance_test.cc"
   DEPS
+    ::cfg_graph
     ::dominance
     iree::base::internal::arena
     iree::testing::gtest

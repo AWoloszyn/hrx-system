@@ -37,6 +37,12 @@ namespace {
 
 using ModulePtr = ::loom::testing::ModulePtr;
 
+enum class TemplateSelectionControlFlow {
+  kFlat,
+  kStructured,
+  kCfg,
+};
+
 struct TemplateSelectionSourceOptions {
   // Number of providers implementing the demanded family.
   uint32_t provider_count = 1;
@@ -50,8 +56,9 @@ struct TemplateSelectionSourceOptions {
   // True to add scalar constraints to the family and providers.
   bool constrained = false;
 
-  // True to nest application sites under scf.if.
-  bool nested = false;
+  // Control-flow shape containing the application sites.
+  TemplateSelectionControlFlow control_flow =
+      TemplateSelectionControlFlow::kFlat;
 
   // True to present providers in ascending rather than descending priority.
   bool reverse_priorities = false;
@@ -66,6 +73,9 @@ struct TemplateSelectionSourceOptions {
 
 std::string BuildSource(const TemplateSelectionSourceOptions& options) {
   std::string source;
+  const bool structured =
+      options.control_flow == TemplateSelectionControlFlow::kStructured;
+  const bool cfg = options.control_flow == TemplateSelectionControlFlow::kCfg;
   if (options.target_condition) {
     source.append(
         "test.target<low_core> @benchmark_target {subgroup_size = 32}\n\n");
@@ -129,25 +139,30 @@ std::string BuildSource(const TemplateSelectionSourceOptions& options) {
     source.append("target(@benchmark_target) ");
   }
   source.append("@entry(");
-  if (options.nested) {
+  if (structured) {
     source.append("%condition: i1, ");
   }
   source.append("%value: index) -> (index)");
-  if (options.constrained) {
+  if (options.constrained && !cfg) {
     source.append(" where [eq(%value, 128)]");
   }
   source.append(" {\n");
-  if (options.nested) {
+  if (structured) {
     source.append("  %nested_result = scf.if %condition -> (index) {\n");
+  } else if (cfg) {
+    source.append(
+        "  %expected = index.constant 128 : index\n"
+        "  %matches = index.cmp eq, %value, %expected : index\n"
+        "  cfg.cond_br %matches, ^selected, ^other\n^selected:\n");
   }
   for (uint32_t i = 0; i < options.site_count; ++i) {
-    source.append(options.nested ? "    %result_" : "  %result_");
+    source.append(structured ? "    %result_" : "  %result_");
     source.append(std::to_string(i));
     source.append(
         " = template.apply<@benchmark.choose>(%value) : (index) -> "
         "(index)\n");
   }
-  if (options.nested) {
+  if (structured) {
     source.append("    scf.yield %result_");
     source.append(std::to_string(options.site_count - 1));
     source.append(" : index\n  } else {\n    scf.yield %value : index\n  }\n");
@@ -156,12 +171,16 @@ std::string BuildSource(const TemplateSelectionSourceOptions& options) {
   if (options.site_count == 0) {
     source.append("value");
   } else {
-    source.append(options.nested ? "nested_result" : "result_");
-    if (!options.nested) {
+    source.append(structured ? "nested_result" : "result_");
+    if (!structured) {
       source.append(std::to_string(options.site_count - 1));
     }
   }
-  source.append(" : index\n}\n");
+  source.append(" : index\n");
+  if (cfg) {
+    source.append("^other:\n  func.return %value : index\n");
+  }
+  source.append("}\n");
   return source;
 }
 
@@ -374,12 +393,12 @@ void BM_TemplateSelection(benchmark::State& state) {
   const uint32_t provider_count = static_cast<uint32_t>(state.range(0));
   const uint32_t site_count = static_cast<uint32_t>(state.range(1));
   const bool constrained = state.range(2) != 0;
-  const bool nested = state.range(3) != 0;
   TemplateSelectionSourceOptions options;
   options.provider_count = provider_count;
   options.site_count = site_count;
   options.constrained = constrained;
-  options.nested = nested;
+  options.control_flow =
+      static_cast<TemplateSelectionControlFlow>(state.range(3));
   TemplateSelectionFixture fixture(options);
   for (auto _ : state) {
     benchmark::DoNotOptimize(fixture.Query());
@@ -393,7 +412,10 @@ BENCHMARK(BM_TemplateSelection)
     ->Args({8, 1024, 1, 0})
     ->Args({128, 1024, 0, 0})
     ->Args({128, 1024, 1, 0})
-    ->Args({128, 1024, 1, 1});
+    ->Args({128, 1024, 1, 1})
+    ->Args({1, 1, 1, 2})
+    ->Args({8, 64, 1, 2})
+    ->Args({8, 1024, 1, 2});
 
 void BM_TemplateDecisionModelBuild(benchmark::State& state) {
   const uint32_t provider_count = static_cast<uint32_t>(state.range(0));
@@ -423,7 +445,7 @@ void BM_TemplateDecisionFactRequirements(benchmark::State& state) {
   constexpr uint32_t kProviderCount = 4096;
   TemplateSelectionSourceOptions options;
   options.provider_count = kProviderCount;
-  options.nested = true;
+  options.control_flow = TemplateSelectionControlFlow::kStructured;
   options.target_condition = true;
   TemplateSelectionFixture fixture(options);
   fixture.PrepareModels();
