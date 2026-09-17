@@ -272,9 +272,18 @@ vm.target<core> @vm
 low.func.def public target<vm.core>(@vm) abi(vm_function) @required_order() asm {
   // ERROR@+1: BACKEND/047 {op_name="low.schedule.begin", representation="vm.core"}
   low.schedule.begin
-  // ERROR@+1: BACKEND/047 {op_name="low.schedule.step", representation="vm.core"}
-  low.schedule.step
+  // ERROR@+1: BACKEND/047 {op_name="low.schedule.phase", representation="vm.core"}
+  low.schedule.phase
   // ERROR@+1: BACKEND/047 {op_name="low.schedule.end", representation="vm.core"}
   low.schedule.end
+  return
+}
+
+// ====
+vm.target<core> @target
+
+// A required function contract diagnoses even without phase separators.
+// ERROR@+1: BACKEND/047 {op_name="low.func.def", representation="vm.core"}
+low.func.def public schedule(phased) target<vm.core>(@target) abi(vm_function) @required_function_order() asm {
   return
 }

@@ -458,9 +458,13 @@ iree_status_t loom_low_schedule_format_json(
   }
   IREE_RETURN_IF_ERROR(loom_json_array_end(&scheduled_node_indices));
 
-  if (table->scopes.control_count != 0) {
+  if (table->scopes.control_count != 0 || table->scopes.function_scope != 0) {
     IREE_RETURN_IF_ERROR(loom_json_object_write_uint32_field(
         &object, IREE_SV("scope_count"), table->scopes.scope_count));
+    if (table->scopes.function_scope != 0) {
+      IREE_RETURN_IF_ERROR(loom_json_object_write_uint32_field(
+          &object, IREE_SV("function_scope"), table->scopes.function_scope));
+    }
     IREE_RETURN_IF_ERROR(
         loom_json_object_begin_field(&object, IREE_SV("scope_controls")));
     loom_json_array_writer_t controls;

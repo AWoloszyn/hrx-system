@@ -1039,7 +1039,7 @@ static void loom_compile_print_agents_markdown(FILE* stream) {
       "\n"
       "### Compose native instruction phases\n"
       "\n"
-      "Low helpers can use `low.schedule.begin`, `low.schedule.step`, and\n"
+      "Low helpers can use `low.schedule.begin`, `low.schedule.phase`, and\n"
       "`low.schedule.end` to order their own phases while independent calls\n"
       "interleave. Inlining and unrolling create distinct scope instances.\n"
       "Scopes impose instruction order without memory completion; native\n"

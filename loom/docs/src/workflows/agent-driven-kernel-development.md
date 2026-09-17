@@ -306,7 +306,7 @@ owns the exact policy and schedule semantics.
 
 For authored native motifs, [Low scheduling scopes](../guide/functions-and-control.md#compose-independently-scheduled-helpers)
 keep a helper's phases ordered while independent invocations interleave.
-`low.schedule.begin`, `low.schedule.step`, and `low.schedule.end` survive helper
+`low.schedule.begin`, `low.schedule.phase`, and `low.schedule.end` survive helper
 inlining and loop cloning without shared group IDs. They impose instruction
 order without memory waits. Compare native waits and register use along with
 `scope_count`; a larger overlap window may cost more live registers. Native

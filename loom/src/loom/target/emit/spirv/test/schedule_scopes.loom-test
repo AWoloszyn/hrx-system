@@ -6,9 +6,18 @@ spirv.target<vulkan1_3> @target
 low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @required_order() asm {
   // ERROR@+1: BACKEND/047 {op_name="low.schedule.begin", representation="spirv.logical.core"}
   low.schedule.begin
-  // ERROR@+1: BACKEND/047 {op_name="low.schedule.step", representation="spirv.logical.core"}
-  low.schedule.step
+  // ERROR@+1: BACKEND/047 {op_name="low.schedule.phase", representation="spirv.logical.core"}
+  low.schedule.phase
   // ERROR@+1: BACKEND/047 {op_name="low.schedule.end", representation="spirv.logical.core"}
   low.schedule.end
+  return
+}
+
+// ====
+spirv.target<vulkan1_3> @target
+
+// A required function contract diagnoses even without phase separators.
+// ERROR@+1: BACKEND/047 {op_name="low.func.def", representation="spirv.logical.core"}
+low.func.def schedule(phased) target<spirv.logical.core>(@target) abi(shader_entry_point) @required_function_order() asm {
   return
 }

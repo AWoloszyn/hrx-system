@@ -13,7 +13,7 @@ iree_status_t loom_low_schedule_scope_builder_append(
     loom_low_schedule_scope_builder_t* builder, const loom_op_t* op,
     loom_low_schedule_control_kind_t kind, uint16_t block_index,
     uint32_t node_index, iree_arena_allocator_t* arena) {
-  if (builder->control_count >= UINT32_MAX - 1u) {
+  if (builder->control_count >= UINT32_MAX - 2u) {
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                             "native scheduling scope index capacity exceeded");
   }
@@ -61,11 +61,15 @@ static iree_status_t loom_low_schedule_scope_emit_error(
 
 iree_status_t loom_low_schedule_scope_builder_finish(
     loom_low_schedule_scope_builder_t* builder, const loom_cfg_graph_t* graph,
-    iree_diagnostic_emitter_t emitter, iree_arena_allocator_t* arena,
-    loom_low_schedule_scopes_t* out_scopes) {
+    loom_low_schedule_t schedule, iree_diagnostic_emitter_t emitter,
+    iree_arena_allocator_t* arena, loom_low_schedule_scopes_t* out_scopes) {
   *out_scopes = (loom_low_schedule_scopes_t){
       .controls = builder->controls,
       .control_count = builder->control_count,
+      .function_scope = schedule == LOOM_LOW_SCHEDULE_PHASED
+                            ? (uint32_t)builder->control_count + 1
+                            : 0,
+      .scope_count = schedule == LOOM_LOW_SCHEDULE_PHASED ? 1 : 0,
   };
   if (builder->control_count == 0) return iree_ok_status();
 
@@ -87,7 +91,7 @@ iree_status_t loom_low_schedule_scope_builder_finish(
     }
   }
   block_control_starts[graph->block_count] = control_index;
-  block_entry_scopes[0] = 0;
+  block_entry_scopes[0] = out_scopes->function_scope;
   out_scopes->block_entry_scopes = block_entry_scopes;
 
   const iree_host_size_t reachable_count =
@@ -116,7 +120,13 @@ iree_status_t loom_low_schedule_scope_builder_finish(
                                                     IREE_SV("outside-scope"),
                                                     NULL, emitter, out_scopes);
       } else if (control->kind == LOOM_LOW_SCHEDULE_CONTROL_END) {
-        active_scope = builder->controls[active_scope - 1].scope_before;
+        if (active_scope == out_scopes->function_scope) {
+          status = loom_low_schedule_scope_emit_error(
+              graph, control->op, IREE_SV("function-scope-end"), NULL, emitter,
+              out_scopes);
+        } else {
+          active_scope = builder->controls[active_scope - 1].scope_before;
+        }
       }
       control->scope_after = active_scope;
     }
@@ -125,7 +135,7 @@ iree_status_t loom_low_schedule_scope_builder_finish(
     const loom_cfg_block_index_span_t successors =
         graph->blocks ? loom_cfg_graph_successors(graph, block_index)
                       : (loom_cfg_block_index_span_t){0};
-    if (successors.count == 0 && active_scope != 0) {
+    if (successors.count == 0 && active_scope != out_scopes->function_scope) {
       status = loom_low_schedule_scope_emit_error(
           graph, block->last_op, IREE_SV("unclosed-scope"),
           builder->controls[active_scope - 1].op, emitter, out_scopes);
@@ -139,7 +149,9 @@ iree_status_t loom_low_schedule_scope_builder_finish(
         *successor_scope = active_scope;
       } else if (*successor_scope != active_scope) {
         const loom_op_t* begin_op =
-            active_scope != 0 ? builder->controls[active_scope - 1].op : NULL;
+            active_scope != 0 && active_scope != out_scopes->function_scope
+                ? builder->controls[active_scope - 1].op
+                : NULL;
         status = loom_low_schedule_scope_emit_error(
             graph, block->last_op, IREE_SV("inconsistent-join"), begin_op,
             emitter, out_scopes);

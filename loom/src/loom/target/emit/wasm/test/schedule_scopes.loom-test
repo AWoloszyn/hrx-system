@@ -6,9 +6,18 @@ wasm.target<simd128> @target
 low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @required_order() asm {
   // ERROR@+1: BACKEND/047 {op_name="low.schedule.begin", representation="wasm.core.simd128"}
   low.schedule.begin
-  // ERROR@+1: BACKEND/047 {op_name="low.schedule.step", representation="wasm.core.simd128"}
-  low.schedule.step
+  // ERROR@+1: BACKEND/047 {op_name="low.schedule.phase", representation="wasm.core.simd128"}
+  low.schedule.phase
   // ERROR@+1: BACKEND/047 {op_name="low.schedule.end", representation="wasm.core.simd128"}
   low.schedule.end
+  return
+}
+
+// ====
+wasm.target<simd128> @target
+
+// A required function contract diagnoses even without phase separators.
+// ERROR@+1: BACKEND/047 {op_name="low.func.def", representation="wasm.core.simd128"}
+low.func.def public schedule(phased) target<wasm.core.simd128>(@target) abi(wasm_function) @required_function_order() asm {
   return
 }

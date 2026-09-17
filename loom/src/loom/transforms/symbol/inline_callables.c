@@ -1180,28 +1180,61 @@ static iree_host_size_t loom_inline_prune_erased_function_versions(
   return removed_count;
 }
 
-// Makes a locked Low function's per-block source order explicit before its
-// body crosses a callable boundary. Each nonempty block receives a leading
-// fence and a fence after every non-terminator operation. The now-redundant
-// function-level lock is cleared, making this normalization idempotent when a
-// retained helper participates in a later inline pass. The generic CFG splice
-// treats the fences as ordinary cloned IR and remains unaware of Low scheduling
-// semantics.
-static iree_status_t loom_inline_materialize_locked_low_schedules(
+// Expands a phased helper's implicit scope before its function boundary is
+// removed. Explicit controls retain each cloned invocation's identity and
+// close every returning path, including nested CFG splices. Entry resources
+// remain before ordinary body operations as required by the Low preamble.
+static iree_status_t loom_inline_materialize_phased_low_schedule(
+    loom_func_like_t function, loom_rewriter_t* rewriter) {
+  loom_region_t* body = loom_func_like_body(function);
+  loom_op_t* first_op = loom_region_entry_block(body)->first_op;
+  while (loom_low_live_in_isa(first_op) || loom_low_resource_isa(first_op)) {
+    first_op = first_op->next_op;
+  }
+  loom_builder_set_before(&rewriter->builder, first_op);
+  loom_op_t* control_op = NULL;
+  IREE_RETURN_IF_ERROR(loom_low_schedule_begin_build(
+      &rewriter->builder, first_op->location, &control_op));
+  for (uint16_t block_index = 0; block_index < body->block_count;
+       ++block_index) {
+    loom_op_t* terminator = body->blocks[block_index]->last_op;
+    if (!loom_low_return_isa(terminator)) {
+      continue;
+    }
+    loom_builder_set_before(&rewriter->builder, terminator);
+    IREE_RETURN_IF_ERROR(loom_low_schedule_end_build(
+        &rewriter->builder, terminator->location, &control_op));
+  }
+  return iree_ok_status();
+}
+
+// Makes Low scheduling contracts explicit before a body crosses a callable
+// boundary. Locked blocks receive a fence before and after each instruction;
+// phased functions receive one scope closed at every return. Clearing the
+// materialized mode makes normalization idempotent for retained helpers and
+// lets generic cloning and CFG splicing preserve the explicit contracts.
+static iree_status_t loom_inline_materialize_low_schedules(
     loom_inline_state_t* state, loom_rewriter_t* rewriter) {
   for (uint32_t entry_index = 0; entry_index < state->entry_count;
        ++entry_index) {
     const loom_inline_plan_entry_t* entry = &state->entries[entry_index];
     if ((entry->action != LOOM_INLINE_PLAN_ACTION_CLONE &&
          entry->action != LOOM_INLINE_PLAN_ACTION_TRANSFER) ||
-        loom_call_like_kind(entry->call) != LOOM_CALL_LIKE_KIND_LOW_INTERNAL ||
-        loom_low_func_def_schedule(entry->callee.op) !=
-            LOOM_LOW_SCHEDULE_LOCKED) {
+        loom_call_like_kind(entry->call) != LOOM_CALL_LIKE_KIND_LOW_INTERNAL) {
+      continue;
+    }
+    const loom_low_schedule_t schedule =
+        loom_low_func_def_schedule(entry->callee.op);
+    if (schedule == LOOM_LOW_SCHEDULE_PHASED) {
+      IREE_RETURN_IF_ERROR(
+          loom_inline_materialize_phased_low_schedule(entry->callee, rewriter));
+    } else if (schedule != LOOM_LOW_SCHEDULE_LOCKED) {
       continue;
     }
 
     loom_region_t* body = loom_func_like_body(entry->callee);
-    for (uint16_t block_index = 0; block_index < body->block_count;
+    for (uint16_t block_index = 0; schedule == LOOM_LOW_SCHEDULE_LOCKED &&
+                                   block_index < body->block_count;
          ++block_index) {
       loom_block_t* block = loom_region_block(body, block_index);
       loom_op_t* terminator = block->last_op;
@@ -1332,7 +1365,7 @@ static iree_status_t loom_inline_execute_plan(loom_inline_state_t* state) {
       loom_rewriter_initialize(&rewriter, state->module, state->pass->arena));
 
   iree_status_t status =
-      loom_inline_materialize_locked_low_schedules(state, &rewriter);
+      loom_inline_materialize_low_schedules(state, &rewriter);
   const iree_host_size_t symbol_count = state->module->symbols.count;
   loom_inline_execution_symbol_t* execution_symbols = NULL;
   loom_inline_execution_entry_t* execution_entries = NULL;

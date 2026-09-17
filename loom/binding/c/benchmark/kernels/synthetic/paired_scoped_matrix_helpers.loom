@@ -19,9 +19,9 @@ low.func.def target<amdgpu.gfx11.generic.core>(@paired_scoped_matrix_target) @pa
   %zero = v_mov_b32 0
   %zero_acc = concat(%zero, %zero, %zero, %zero, %zero, %zero, %zero, %zero) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x8>
   %zero_acc_copy = copy %zero_acc : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
-  low.schedule.step
+  low.schedule.phase
   %partial = v_wmma_f32_16x16x16_bf16 %lhs0, %rhs0, %zero_acc_copy
-  low.schedule.step
+  low.schedule.phase
   %lhs1_low = global_load_b128_saddr %byte_offset, %lhs_view {offset = 32}
   %lhs1_high = global_load_b128_saddr %byte_offset, %lhs_view {offset = 48}
   %lhs1 = concat(%lhs1_low, %lhs1_high) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x8>

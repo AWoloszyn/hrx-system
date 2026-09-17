@@ -50,7 +50,7 @@ enum {
   LOOM_OP_LOW_SCHEDULE_FENCE = LOOM_OP_KIND(LOOM_DIALECT_LOW, 26),
   LOOM_OP_LOW_ASSUME = LOOM_OP_KIND(LOOM_DIALECT_LOW, 27),
   LOOM_OP_LOW_SCHEDULE_BEGIN = LOOM_OP_KIND(LOOM_DIALECT_LOW, 28),
-  LOOM_OP_LOW_SCHEDULE_STEP = LOOM_OP_KIND(LOOM_DIALECT_LOW, 29),
+  LOOM_OP_LOW_SCHEDULE_PHASE = LOOM_OP_KIND(LOOM_DIALECT_LOW, 29),
   LOOM_OP_LOW_SCHEDULE_END = LOOM_OP_KIND(LOOM_DIALECT_LOW, 30),
   LOOM_OP_LOW_COUNT_ = 31,
 };
@@ -89,7 +89,8 @@ typedef enum loom_low_schedule_e {
   LOOM_LOW_SCHEDULE_FREE = 1,
   LOOM_LOW_SCHEDULE_CONSTRAINED = 2,
   LOOM_LOW_SCHEDULE_LOCKED = 3,
-  LOOM_LOW_SCHEDULE_COUNT_ = 4,
+  LOOM_LOW_SCHEDULE_PHASED = 4,
+  LOOM_LOW_SCHEDULE_COUNT_ = 5,
 } loom_low_schedule_t;
 
 // Private symbol retention policy. Absent (0) permits ordinary DCE.
@@ -120,7 +121,7 @@ typedef enum loom_low_scf_for_unroll_policy_e {
   LOOM_LOW_SCF_FOR_UNROLL_POLICY_COUNT_ = 2,
 } loom_low_scf_for_unroll_policy_t;
 
-// LOOM_OP_LOW_FUNC_DEF: Target-bound low function definition with register-typed signature values. Without exactness modifiers, registers are virtual and the instruction schedule is free. allocation(...) and schedule(...) are independent contracts: fixed preserves physical register assignment, while locked preserves authored instruction order.
+// LOOM_OP_LOW_FUNC_DEF: Target-bound low function definition with register-typed signature values. Without exactness modifiers, registers are virtual and the instruction schedule is free. allocation(...) and schedule(...) are independent contracts: fixed preserves physical register assignment, while locked preserves authored instruction order. schedule(phased) gives each invocation an independent scope whose first phase starts at entry. low.schedule.phase orders successive phases without introducing a new SSA scope or runtime synchronization.
 // low.func.def target<amdgpu.gfx11.generic.core>(@gfx11_generic) @add(%lhs: reg<amdgpu.vgpr x1>, %rhs: reg<amdgpu.vgpr x1>) -> (reg<amdgpu.vgpr x1>) {
 //   %sum = low.op<amdgpu.v_add_u32>(%lhs, %rhs) : (reg<amdgpu.vgpr x1>, reg<amdgpu.vgpr x1>) -> reg<amdgpu.vgpr x1>
 //   low.return %sum : reg<amdgpu.vgpr x1>
@@ -854,7 +855,7 @@ iree_status_t loom_low_assume_facts(
     const loom_value_facts_t* operand_facts,
     loom_value_facts_t* result_facts);
 
-// LOOM_OP_LOW_SCHEDULE_BEGIN: Begins an independently interleavable native scheduling scope. low.schedule.step orders all surviving instructions in the current phase before the next phase of this scope, without waiting for their completion. Nested scopes belong to their parent's current phase. Each cloned begin creates a distinct scope. Scope nesting must agree at control-flow joins and balance at function exits. Controls appear directly in Low executable body blocks; scopes may span CFG edges.
+// LOOM_OP_LOW_SCHEDULE_BEGIN: Begins an independently interleavable native scheduling scope. low.schedule.phase orders all surviving instructions in the current phase before the next phase of this scope, without waiting for their completion. Nested scopes belong to their parent's current phase. Each cloned begin creates a distinct scope. Scope nesting must agree at control-flow joins and balance at function exits. Controls appear directly in Low executable body blocks; scopes may span CFG edges. Inlining expands schedule(phased) helpers into explicit begin/end controls so each invocation retains its own phases.
 // low.schedule.begin
 LOOM_DEFINE_ISA(loom_low_schedule_begin_isa, LOOM_OP_LOW_SCHEDULE_BEGIN)
 iree_status_t loom_low_schedule_begin_build(
@@ -865,10 +866,10 @@ iree_status_t loom_low_schedule_control_verify(
     const loom_module_t* module, const loom_op_t* op,
     iree_diagnostic_emitter_t emitter);
 
-// LOOM_OP_LOW_SCHEDULE_STEP: Ends the current phase and begins the next phase of the innermost native scheduling scope. Independent scopes may interleave. Empty phases are valid. This orders emitted instructions and has no runtime completion, memory visibility, or synchronization effect.
-// low.schedule.step
-LOOM_DEFINE_ISA(loom_low_schedule_step_isa, LOOM_OP_LOW_SCHEDULE_STEP)
-iree_status_t loom_low_schedule_step_build(
+// LOOM_OP_LOW_SCHEDULE_PHASE: Begins the next phase of the innermost native scheduling scope. schedule(phased) functions and kernels provide an implicit scope whose first phase starts at entry. Independent scopes may interleave. Empty phases are valid. Values retain their ordinary SSA scope. This orders emitted instructions and has no runtime completion, memory visibility, or synchronization effect.
+// low.schedule.phase
+LOOM_DEFINE_ISA(loom_low_schedule_phase_isa, LOOM_OP_LOW_SCHEDULE_PHASE)
+iree_status_t loom_low_schedule_phase_build(
     loom_builder_t* builder,
     loom_location_id_t location,
     loom_op_t** out_op);

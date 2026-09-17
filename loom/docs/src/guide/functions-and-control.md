@@ -228,7 +228,7 @@ chosen order changes register pressure.
 
 A motif can keep its own load/compute phases while other instances interleave.
 [`low.schedule.begin`](../reference/dialects/low/ops/schedule-begin.md) opens a
-scope, [`low.schedule.step`](../reference/dialects/low/ops/schedule-step.md)
+scope, [`low.schedule.phase`](../reference/dialects/low/ops/schedule-phase.md)
 orders its current phase before its next phase, and
 [`low.schedule.end`](../reference/dialects/low/ops/schedule-end.md) closes it.
 This helper keeps its multiply ahead of its second load:
@@ -239,9 +239,9 @@ amdgpu.target<gfx11-generic> @schedule_target
 low.func.def target<amdgpu.gfx11.generic.core>(@schedule_target) @scale_pair(%byte_offset: reg<amdgpu.vgpr>, %base: reg<amdgpu.sgpr x2>, %weight: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
   low.schedule.begin
   %first = global_load_b32_saddr %byte_offset, %base
-  low.schedule.step
+  low.schedule.phase
   %scaled = v_mul_f32 %first, %weight
-  low.schedule.step
+  low.schedule.phase
   %second = global_load_b32_saddr %byte_offset, %base {offset = 4}
   %result = v_add_f32 %scaled, %second
   low.schedule.end

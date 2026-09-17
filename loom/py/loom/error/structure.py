@@ -898,9 +898,10 @@ ERR_STRUCTURE_054 = ErrorDef(
         ErrorParam("reason_key", ParamKind.STRING),
     ),
     fix_hint=(
-        "Pair low.schedule.begin/end within each function and keep the active "
-        "scope identical on every incoming control-flow edge; low.schedule.step "
-        "requires an active scope"
+        "Use schedule(phased) for a function-owned scope, or pair explicit "
+        "low.schedule.begin/end controls. Keep explicit nesting identical on "
+        "incoming control-flow edges. low.schedule.phase requires an active "
+        "scope; low.schedule.end cannot close the implicit function scope"
     ),
 )
 

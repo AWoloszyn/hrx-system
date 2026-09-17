@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "iree/base/internal/arena.h"
+#include "loom/codegen/low/function.h"
 #include "loom/codegen/low/packet.h"
 #include "loom/codegen/low/register_parts.h"
 #include "loom/codegen/low/storage_layout.h"
@@ -1935,6 +1936,19 @@ static iree_status_t loom_low_verify_end_function_providers(
   return iree_ok_status();
 }
 
+static iree_status_t loom_low_verify_emit_native_schedule_error(
+    loom_low_function_verify_state_t* function_state, const loom_op_t* op) {
+  const loom_low_descriptor_set_t* descriptor_set =
+      function_state->target->descriptor_set;
+  const loom_diagnostic_param_t params[] = {
+      loom_param_string(loom_op_name(function_state->state->module, op)),
+      loom_param_string(loom_low_descriptor_set_string(
+          descriptor_set, descriptor_set->key_string_offset)),
+  };
+  return loom_low_verify_emit(function_state->state, op, LOOM_ERR_BACKEND_047,
+                              params, IREE_ARRAYSIZE(params), NULL, 0);
+}
+
 static iree_status_t loom_low_verify_walk_op(void* user_data, loom_op_t* op,
                                              const loom_walk_context_t* context,
                                              loom_walk_result_t* out_result) {
@@ -1988,15 +2002,7 @@ static iree_status_t loom_low_verify_walk_op(void* user_data, loom_op_t* op,
       if (loom_low_schedule_control_kind(op) !=
               LOOM_LOW_SCHEDULE_CONTROL_NONE &&
           !function_state->target->descriptor_set->supports_native_scheduling) {
-        const loom_diagnostic_param_t params[] = {
-            loom_param_string(loom_op_name(module, op)),
-            loom_param_string(loom_low_descriptor_set_string(
-                function_state->target->descriptor_set,
-                function_state->target->descriptor_set->key_string_offset)),
-        };
-        return loom_low_verify_emit(function_state->state, op,
-                                    LOOM_ERR_BACKEND_047, params,
-                                    IREE_ARRAYSIZE(params), NULL, 0);
+        return loom_low_verify_emit_native_schedule_error(function_state, op);
       }
       return iree_ok_status();
     }
@@ -2085,6 +2091,11 @@ static iree_status_t loom_low_verify_function(loom_low_verify_state_t* state,
   };
   function_state.register_type_resolver =
       loom_low_register_type_resolver_for_descriptor_set(target.descriptor_set);
+  if (loom_low_function_schedule(low_func_op) == LOOM_LOW_SCHEDULE_PHASED &&
+      !target.descriptor_set->supports_native_scheduling) {
+    return loom_low_verify_emit_native_schedule_error(&function_state,
+                                                      low_func_op);
+  }
   IREE_RETURN_IF_ERROR(loom_low_verify_function_register_values(
       &function_state, low_func_op, body));
   if (loom_low_verify_should_stop(state)) {
