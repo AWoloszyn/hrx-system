@@ -153,6 +153,7 @@ loom_check_test_suite(
     loom_check_file_test
   SRCS
     "test/assembly.loom-test"
+    "test/schedule_scopes.loom-test"
   TEST_NAME_PREFIX_TO_STRIP
     "test/"
 )

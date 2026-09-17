@@ -239,7 +239,7 @@ TEST(BenchmarkReportTest, WritesCanonicalCompileReportTree) {
   loom_target_compile_report_record_status(report, IREE_STATUS_OK);
   loom_target_compile_report_record_schedule(
       report, /*node_count=*/31, /*scheduled_node_count=*/29,
-      /*dependency_count=*/17, /*resource_use_count=*/13,
+      /*dependency_count=*/17, /*scope_count=*/0, /*resource_use_count=*/13,
       /*hazard_gap_count=*/7, /*model_summary_count=*/5,
       /*pressure_summary_count=*/3, /*peak_live_units=*/128);
   loom_target_compile_report_static_instruction_mix_t mix = {};

@@ -103,6 +103,38 @@
           }
         }
       ]
+    },
+    {
+      "name": "preserves independent motif scopes and partial waits in native compilation",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/corpus/gfx11/schedule_scopes.loom",
+          "--root=@paired_scope",
+          "--target=amdgpu:gfx1151",
+          "--format=amdgpu-hsaco",
+          "--output={tmp}/scoped.hal",
+          "--emit-target-artifact={tmp}/scoped.hsaco",
+          "--compile-report=details",
+          "--compile-report-output={tmp}/scoped.json"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/scoped.json",
+          "contains": [
+            "\"scope_count\":2",
+            "\"schedule_scope_count\":2",
+            "\"action_count\":4,\"explicit_action_count\":0,\"planned_action_count\":4,\"full_drain_count\":1,\"partial_wait_count\":3",
+            "\"register_class\":\"amdgpu.vgpr\",\"final\":{\"register_count\":56",
+            "\"code_byte_count\":252"
+          ]
+        },
+        {
+          "path": "{tmp}/scoped.hsaco",
+          "non_empty": true
+        }
+      ]
     }
   ]
 }

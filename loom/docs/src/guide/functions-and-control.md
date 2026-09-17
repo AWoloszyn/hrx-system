@@ -224,6 +224,58 @@ Numerical checks establish that every schedule consumes the intended tiles.
 then establishes which loads remain pending, where waits occur, and how the
 chosen order changes register pressure.
 
+### Compose independently scheduled helpers
+
+A motif can keep its own load/compute phases while other instances interleave.
+[`low.schedule.begin`](../reference/dialects/low/ops/schedule-begin.md) opens a
+scope, [`low.schedule.step`](../reference/dialects/low/ops/schedule-step.md)
+orders its current phase before its next phase, and
+[`low.schedule.end`](../reference/dialects/low/ops/schedule-end.md) closes it.
+This helper keeps its multiply ahead of its second load:
+
+```loom
+amdgpu.target<gfx11-generic> @schedule_target
+
+low.func.def target<amdgpu.gfx11.generic.core>(@schedule_target) @scale_pair(%byte_offset: reg<amdgpu.vgpr>, %base: reg<amdgpu.sgpr x2>, %weight: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
+  low.schedule.begin
+  %first = global_load_b32_saddr %byte_offset, %base
+  low.schedule.step
+  %scaled = v_mul_f32 %first, %weight
+  low.schedule.step
+  %second = global_load_b32_saddr %byte_offset, %base {offset = 4}
+  %result = v_add_f32 %scaled, %second
+  low.schedule.end
+  return %result
+}
+```
+
+Two `low.invoke @scale_pair(...)` calls create two independent scopes. Each
+instance preserves `first load → multiply → second load`, while the compiler
+can issue another instance's load during the first instance's computation.
+Inlining and full or partial unrolling preserve distinct scope identities;
+no global group number or shared schedule configuration is needed.
+
+A nested scope belongs to its parent's current phase. Empty phases are valid.
+Controls appear directly in Low function or kernel body blocks and may span
+CFG edges introduced by inlining. Every reachable join and loop backedge must
+agree on the active nesting; function exits close all scopes. Source loops and
+conditionals can invoke scoped Low helpers. Controls written directly inside
+nested Low structured regions are rejected.
+
+Scopes order surviving emitted instructions and emit no runtime instruction.
+They do not wait for loads, synchronize lanes, or publish memory. Full fences
+still order the whole instruction stream, and `schedule(locked)` still fixes
+block order. Native AMDGPU and x86 support scopes; LLVM IR, SPIR-V, Wasm, and VM
+representations reject the native-order contract explicitly.
+
+The [checked paired-matrix example](https://github.com/ROCm/hrx-system/blob/main/loom/src/loom/tooling/target/amdgpu/test/corpus/gfx11/schedule_scopes.loom)
+invokes a two-tile WMMA helper twice with distinct inputs and expected results.
+Its compile report exposes the materialized scope count alongside register use
+and partial waits. [Scope report queries](../workflows/compile-report-queries.md#inspect-authored-scheduling-scopes)
+help compare this composition with a fully fenced or manually interleaved
+schedule. More overlap can keep more registers live; native evidence and
+workload measurements determine whether that trade is useful.
+
 ## Conditionals can return values
 
 [`scf.if`](../reference/dialects/scf/ops/if.md) consumes an `i1` condition. A

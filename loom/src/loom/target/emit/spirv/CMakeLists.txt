@@ -300,6 +300,7 @@ loom_check_test_suite(
     "test/ordinary_vector_structure.loom-test"
     "test/scalar_abi.loom-test"
     "test/scalar_operations.loom-test"
+    "test/schedule_scopes.loom-test"
     "test/source_low/index_numeric.loom-test"
     "test/source_low/memory_scalar_addressing.loom-test"
     "test/source_low/memory_workgroup_scalar_addressing.loom-test"

@@ -57,6 +57,10 @@ static iree_status_t loom_target_compile_report_format_schedule_json(
       &object, IREE_SV("scheduled_node_count"), report->scheduled_node_count));
   IREE_RETURN_IF_ERROR(loom_json_object_write_uint64_field(
       &object, IREE_SV("dependency_count"), report->schedule_dependency_count));
+  if (report->schedule_scope_count != 0) {
+    IREE_RETURN_IF_ERROR(loom_json_object_write_uint64_field(
+        &object, IREE_SV("scope_count"), report->schedule_scope_count));
+  }
   IREE_RETURN_IF_ERROR(loom_json_object_write_uint64_field(
       &object, IREE_SV("resource_use_count"),
       report->schedule_resource_use_count));
@@ -1238,6 +1242,10 @@ static iree_status_t loom_target_compile_report_format_entry_json(
   IREE_RETURN_IF_ERROR(loom_json_object_write_uint64_field(
       &object, IREE_SV("schedule_dependency_count"),
       row->schedule_dependency_count));
+  if (row->schedule_scope_count != 0) {
+    IREE_RETURN_IF_ERROR(loom_json_object_write_uint64_field(
+        &object, IREE_SV("schedule_scope_count"), row->schedule_scope_count));
+  }
   IREE_RETURN_IF_ERROR(loom_json_object_write_uint64_field(
       &object, IREE_SV("schedule_resource_use_count"),
       row->schedule_resource_use_count));

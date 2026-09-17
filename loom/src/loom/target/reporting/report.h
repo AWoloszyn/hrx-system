@@ -651,6 +651,8 @@ typedef struct loom_target_compile_report_entry_t {
   uint64_t scheduled_node_count;
   // Number of low schedule dependency edges.
   uint64_t schedule_dependency_count;
+  // Number of reachable authored native scheduling scope instances.
+  uint64_t schedule_scope_count;
   // Number of descriptor resource-use records.
   uint64_t schedule_resource_use_count;
   // Number of required schedule hazard gaps.
@@ -1906,6 +1908,8 @@ typedef struct loom_target_compile_report_t {
   uint64_t scheduled_node_count;
   // Number of low schedule dependency edges.
   uint64_t schedule_dependency_count;
+  // Number of reachable authored native scheduling scope instances.
+  uint64_t schedule_scope_count;
   // Number of descriptor resource-use records.
   uint64_t schedule_resource_use_count;
   // Number of required schedule hazard gaps.
@@ -2122,9 +2126,9 @@ void loom_target_compile_report_record_artifact_size(
 void loom_target_compile_report_record_schedule(
     loom_target_compile_report_t* report, uint64_t node_count,
     uint64_t scheduled_node_count, uint64_t dependency_count,
-    uint64_t resource_use_count, uint64_t hazard_gap_count,
-    uint64_t model_summary_count, uint64_t pressure_summary_count,
-    uint64_t peak_live_units);
+    uint64_t scope_count, uint64_t resource_use_count,
+    uint64_t hazard_gap_count, uint64_t model_summary_count,
+    uint64_t pressure_summary_count, uint64_t peak_live_units);
 
 // Records target-low allocation summary counts in |report|.
 void loom_target_compile_report_record_allocation(

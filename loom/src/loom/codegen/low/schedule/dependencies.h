@@ -42,6 +42,8 @@ typedef enum loom_low_schedule_dependency_kind_e {
   LOOM_LOW_SCHEDULE_DEPENDENCY_STATE = 3,
   // Tied-result storage dependency keeping older readers before an overwrite.
   LOOM_LOW_SCHEDULE_DEPENDENCY_STORAGE = 4,
+  // Authored phase ordering; carries no result or memory-completion demand.
+  LOOM_LOW_SCHEDULE_DEPENDENCY_ORDER = 5,
 } loom_low_schedule_dependency_kind_t;
 
 // One dependency edge between two schedule nodes.

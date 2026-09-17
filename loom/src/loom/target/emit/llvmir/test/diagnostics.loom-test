@@ -41,3 +41,17 @@ low.func.def target<llvmir.generic.core>(@target) abi(object_function) @entry_po
   // ERROR@+1: TARGET/056 {function_name="entry_pointer_phi", value_kind="block_argument", expected_constraint="non-pointer block argument"}
   low.br ^entry(%input: reg<llvmir.ptr>)
 }
+
+// ====
+
+llvmir.target<object> @target {triple = "x86_64-unknown-linux-gnu"}
+
+low.func.def target<llvmir.generic.core>(@target) abi(object_function) @required_order(%value: reg<llvmir.i32>) -> (reg<llvmir.i32>) asm {
+  // ERROR@+1: BACKEND/047 {op_name="low.schedule.begin", representation="llvmir.generic.core"}
+  low.schedule.begin
+  // ERROR@+1: BACKEND/047 {op_name="low.schedule.step", representation="llvmir.generic.core"}
+  low.schedule.step
+  // ERROR@+1: BACKEND/047 {op_name="low.schedule.end", representation="llvmir.generic.core"}
+  low.schedule.end
+  return %value
+}

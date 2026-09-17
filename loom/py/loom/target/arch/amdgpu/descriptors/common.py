@@ -470,6 +470,7 @@ def _amdgpu_core_descriptor_set(
         c_table_prefix=f"Amdgpu{c_suffix}Core",
         c_enum_prefix=f"AMDGPU_{c_enum_stem}_CORE",
         generator_version=1,
+        supports_native_scheduling=True,
         reg_classes=reg_classes,
         register_parts=register_parts,
         enum_domains=enum_domains,

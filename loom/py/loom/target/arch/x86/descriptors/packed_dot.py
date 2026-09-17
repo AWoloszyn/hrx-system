@@ -193,6 +193,7 @@ def _descriptor_set(
         c_table_prefix=c_table_prefix,
         c_enum_prefix=c_enum_prefix,
         generator_version=1,
+        supports_native_scheduling=True,
         reg_classes=_packed_dot_reg_classes(
             vector_bit_widths, allocatable_count=allocatable_count
         ),

@@ -1,0 +1,157 @@
+// RUN: roundtrip
+
+test.target<low_core> @target
+
+// Canonical assembly preserves every control, including empty nested phases.
+low.func.def target<test.low.core>(@target) @roundtrip_scopes(%value: reg<test.i32>) -> (reg<test.i32>) asm {
+  low.schedule.begin
+  low.schedule.step
+  low.schedule.begin
+  low.schedule.step
+  low.schedule.end
+  low.schedule.fence
+  low.schedule.step
+  low.schedule.end
+  return %value
+}
+
+// ----
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @roundtrip_scopes(%value: reg<test.i32>) -> (reg<test.i32>) asm {
+  low.schedule.begin
+  low.schedule.step
+  low.schedule.begin
+  low.schedule.step
+  low.schedule.end
+  low.schedule.fence
+  low.schedule.step
+  low.schedule.end
+  return %value
+}
+
+// ====
+// RUN: format bytecode
+
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @bytecode_scopes() asm {
+  low.schedule.begin
+  low.schedule.step
+  low.schedule.end
+  return
+}
+
+// ====
+// RUN: verify
+
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @balanced_loop(%condition: reg<test.i32>) asm {
+  low.schedule.begin
+  low.br ^header
+^header:
+  low.cond_br %condition, ^body, ^exit : reg<test.i32>
+^body:
+  low.schedule.begin
+  low.schedule.step
+  low.schedule.end
+  low.schedule.step
+  low.br ^header
+^exit:
+  low.schedule.end
+  return
+}
+
+// ====
+// RUN: verify
+
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @unbalanced_backedge(%condition: reg<test.i32>) asm {
+  low.br ^header
+^header:
+  low.cond_br %condition, ^body, ^exit : reg<test.i32>
+^body:
+  low.schedule.begin
+  // ERROR@+1: STRUCTURE/054 {reason_key="inconsistent-join"}
+  low.br ^header
+^exit:
+  return
+}
+
+// ====
+// RUN: verify
+
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @mismatched_join(%condition: reg<test.i32>) asm {
+  low.cond_br %condition, ^left, ^right : reg<test.i32>
+^left:
+  low.schedule.begin
+  // ERROR@+1: STRUCTURE/054 {reason_key="inconsistent-join"}
+  low.br ^join
+^right:
+  low.br ^join
+^join:
+  return
+}
+
+// ====
+// RUN: verify
+
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @end_without_scope() asm {
+  // ERROR@+1: STRUCTURE/054 {reason_key="outside-scope"}
+  low.schedule.end
+  return
+}
+
+// ====
+// RUN: verify
+
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @branch_exit(%condition: reg<test.i32>) asm {
+  low.schedule.begin
+  low.cond_br %condition, ^left, ^right : reg<test.i32>
+^left:
+  low.schedule.end
+  return
+^right:
+  // ERROR@+1: STRUCTURE/054 {reason_key="unclosed-scope"}
+  return
+}
+
+// ====
+// RUN: verify
+
+test.target<low_core> @target
+
+// The unreachable block has no dynamic scope stack to constrain.
+low.func.def target<test.low.core>(@target) @unreachable_controls() asm {
+  return
+^dead:
+  low.schedule.step
+  low.schedule.end
+  return
+}
+
+// ====
+// RUN: verify
+
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @nested_region_controls(%condition: reg<test.i32>) {
+  low.scf.if %condition {
+    // ERROR@+1: STRUCTURE/031 {op_name="low.schedule.begin"}
+    low.schedule.begin
+    // ERROR@+1: STRUCTURE/031 {op_name="low.schedule.step"}
+    low.schedule.step
+    // ERROR@+1: STRUCTURE/031 {op_name="low.schedule.end"}
+    low.schedule.end
+    low.scf.yield
+  }
+  low.return
+}

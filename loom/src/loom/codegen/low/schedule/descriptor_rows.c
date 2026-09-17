@@ -155,13 +155,8 @@ static iree_status_t loom_low_schedule_note_min_distance_hazard(
                                                 hazard_use->consumer_stage)) {
       continue;
     }
-    if (hazard_use->scheduled_ordinal < hazard_state->scheduled_ordinal) {
-      return iree_make_status(
-          IREE_STATUS_FAILED_PRECONDITION,
-          "low schedule hazard producer appears after consumer");
-    }
     const uint32_t actual_distance =
-        hazard_use->scheduled_ordinal - hazard_state->scheduled_ordinal;
+        state->current_issue_cycle - hazard_state->issue_cycle;
     const uint16_t required_distance =
         hazard_state->distance > hazard_use->distance ? hazard_state->distance
                                                       : hazard_use->distance;

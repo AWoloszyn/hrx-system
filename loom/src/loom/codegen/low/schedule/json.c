@@ -62,6 +62,8 @@ static const char* loom_low_schedule_json_dependency_kind(
       return "effect";
     case LOOM_LOW_SCHEDULE_DEPENDENCY_STATE:
       return "state";
+    case LOOM_LOW_SCHEDULE_DEPENDENCY_ORDER:
+      return "order";
     case LOOM_LOW_SCHEDULE_DEPENDENCY_STORAGE:
       return "storage";
     default:
@@ -455,6 +457,31 @@ iree_status_t loom_low_schedule_format_json(
         &scheduled_node_indices, table->scheduled_node_indices[i]));
   }
   IREE_RETURN_IF_ERROR(loom_json_array_end(&scheduled_node_indices));
+
+  if (table->scopes.control_count != 0) {
+    IREE_RETURN_IF_ERROR(loom_json_object_write_uint32_field(
+        &object, IREE_SV("scope_count"), table->scopes.scope_count));
+    IREE_RETURN_IF_ERROR(
+        loom_json_object_begin_field(&object, IREE_SV("scope_controls")));
+    loom_json_array_writer_t controls;
+    IREE_RETURN_IF_ERROR(loom_json_array_begin(&stream, &controls));
+    for (iree_host_size_t i = 0; i < table->scopes.control_count; ++i) {
+      const loom_low_schedule_control_t* control = &table->scopes.controls[i];
+      if (control->scope_before == LOOM_LOW_SCHEDULE_SCOPE_UNREACHABLE)
+        continue;
+      IREE_RETURN_IF_ERROR(loom_json_array_begin_element(&controls));
+      loom_json_object_writer_t control_object;
+      IREE_RETURN_IF_ERROR(loom_json_object_begin(&stream, &control_object));
+      IREE_RETURN_IF_ERROR(loom_json_object_write_uint32_field(
+          &control_object, IREE_SV("node"), control->node_index));
+      IREE_RETURN_IF_ERROR(loom_json_object_write_uint32_field(
+          &control_object, IREE_SV("scope_before"), control->scope_before));
+      IREE_RETURN_IF_ERROR(loom_json_object_write_uint32_field(
+          &control_object, IREE_SV("scope_after"), control->scope_after));
+      IREE_RETURN_IF_ERROR(loom_json_object_end(&control_object));
+    }
+    IREE_RETURN_IF_ERROR(loom_json_array_end(&controls));
+  }
 
   IREE_RETURN_IF_ERROR(
       loom_json_object_begin_field(&object, IREE_SV("dependencies")));

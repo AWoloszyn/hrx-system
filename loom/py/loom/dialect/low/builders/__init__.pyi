@@ -355,3 +355,18 @@ class LowBuilder(DialectBuilder):
         result_names: Sequence[str] | None = ...,
         location_id: int | None = ...,
     ) -> list[ValueRef]: ...
+    def begin(
+        self,
+        *,
+        location_id: int | None = ...,
+    ) -> None: ...
+    def step(
+        self,
+        *,
+        location_id: int | None = ...,
+    ) -> None: ...
+    def end(
+        self,
+        *,
+        location_id: int | None = ...,
+    ) -> None: ...

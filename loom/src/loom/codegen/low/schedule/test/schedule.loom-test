@@ -172,6 +172,41 @@ low.func.def target<test.low.core>(@test_target) @resource_stall_hides_load_late
 }
 
 // ====
+// RUN: emit low-schedule-json @fences_do_not_hide_load_latency strategy=resource-stall diagnostics=candidates output=none
+
+test.target<low_core> @test_target
+
+// Fences preserve source order but emit no instructions. Even several fences
+// leave the same three-cycle load window available for independent work.
+low.func.def target<test.low.core>(@test_target) @fences_do_not_hide_load_latency(%pointer: reg<test.ptr>, %lhs: reg<test.i32>, %rhs: reg<test.i32>) -> (reg<test.i32>, reg<test.i32 x4>) asm {
+  %loaded = test.load.v4i32 %pointer
+  low.schedule.fence
+  low.schedule.fence
+  low.schedule.fence
+  low.schedule.fence
+  %used = test.add.v4i32 %loaded, %loaded
+  // REMARK@+1: BACKEND/015 {scheduled_ordinal="5", chosen_packet="test.add.i32", rejected_packet="test.add.v4i32", chosen_data_ready_stall_cycles="0", rejected_data_ready_stall_cycles="3", rejected_effective_stall_cycles="3"}
+  %independent = test.add.i32 %lhs, %rhs
+  return %independent, %used
+}
+
+// ====
+// RUN: emit low-schedule-json @fences_do_not_satisfy_hazard_distance strategy=source diagnostics=hazards output=none
+
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @fences_do_not_satisfy_hazard_distance(%pointer: reg<test.ptr>) -> (reg<test.i32 x4>, reg<test.i32 x4>) asm {
+  %first = test.load.v4i32 %pointer
+  low.schedule.fence
+  low.schedule.fence
+  low.schedule.fence
+  low.schedule.fence
+  // REMARK@+1: BACKEND/014 {actual_distance="1", required_distance="2", required_delay="1"}
+  %second = test.load.v4i32 %pointer
+  return %first, %second
+}
+
+// ====
 // RUN: emit low-schedule-json @resource_stall_prefers_live_value_compaction_over_storage_progress strategy=resource-stall diagnostics=candidates output=none
 
 test.target<low_core> @test_target
@@ -256,9 +291,9 @@ test.target<low_core> @test_target
 low.func.def target<test.low.core>(@test_target) @resource_stall_extends_ready_latency_window(%ptr0: reg<test.ptr>, %ptr1: reg<test.ptr>, %index: reg<test.i32>, %lhs: reg<test.i32>, %rhs: reg<test.i32>) -> (reg<test.i32>, reg<test.i32 x4>, reg<test.i32>) asm {
   %load0 = test.load.v4i32 %ptr0
   low.schedule.fence
-  // REMARK@+1: BACKEND/015 {scheduled_ordinal="2", ready_candidate_count="18", scored_candidate_count="16", chosen_packet="test.add.i32", rejected_packet="test.extract_lane.i32", rejected_effective_stall_cycles="2"}
+  // REMARK@+1: BACKEND/015 {scheduled_ordinal="2", ready_candidate_count="18", scored_candidate_count="16", chosen_packet="test.add.i32", rejected_packet="test.extract_lane.i32", rejected_effective_stall_cycles="3"}
   %gap0 = test.add.i32 %index, %index
-  // REMARK@+1: BACKEND/015 {scheduled_ordinal="3", ready_candidate_count="18", scored_candidate_count="16", chosen_packet="test.add.i32", rejected_packet="test.extract_lane.i32", rejected_effective_stall_cycles="1"}
+  // REMARK@+1: BACKEND/015 {scheduled_ordinal="3", ready_candidate_count="18", scored_candidate_count="16", chosen_packet="test.add.i32", rejected_packet="test.extract_lane.i32", rejected_effective_stall_cycles="2"}
   %gap1 = test.add.i32 %gap0, %index
   // REMARK@+1: BACKEND/015
   %lane0 = test.extract_lane.i32 %load0, 0
@@ -291,7 +326,7 @@ low.func.def target<test.low.core>(@test_target) @resource_stall_extends_ready_l
   // REMARK@+1: BACKEND/015
   %lane14 = test.extract_lane.i32 %load0, 2
   %lane15 = test.extract_lane.i32 %load0, 3
-  // REMARK@+1: BACKEND/015 {scheduled_ordinal="4", ready_candidate_count="18", scored_candidate_count="18", chosen_packet="test.load.index.v4i32", rejected_packet="test.extract_lane.i32", rejected_dependency_latency_cycles="4", rejected_effective_stall_cycles="0"}
+  // REMARK@+1: BACKEND/015 {scheduled_ordinal="5", ready_candidate_count="18", scored_candidate_count="18", chosen_packet="test.load.index.v4i32", rejected_packet="test.extract_lane.i32", rejected_dependency_latency_cycles="4", rejected_effective_stall_cycles="0"}
   %load1 = test.load.index.v4i32 %ptr1, %gap1
   // This longer critical path is visible through the schedule view, but its
   // one-cycle head cannot replenish the four-cycle window consumed by a lane.

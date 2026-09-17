@@ -192,6 +192,10 @@ typedef struct loom_low_schedule_build_state_t {
   const loom_op_t** scheduled_ops;
   // Function-local storage layout accumulated while populating schedule nodes.
   loom_low_storage_layout_builder_t storage_layout_builder;
+  // Authored scope controls collected during the node walk.
+  loom_low_schedule_scope_builder_t scope_builder;
+  // Scope identities and CFG entry states retained for graph consumers.
+  loom_low_schedule_scopes_t scopes;
   // Stable dependency graph accumulated while building the schedule DAG.
   loom_low_schedule_dependency_graph_t dependencies;
   // Compact verified storage relations grouped by owning schedule node.
@@ -378,7 +382,7 @@ typedef struct loom_low_schedule_build_state_t {
   iree_host_size_t hazard_state_capacity;
   // Current block being scheduled.
   uint32_t current_block_index;
-  // Current issue cycle within the block being scheduled.
+  // Current estimated issue cycle in the block, excluding compile-time ops.
   uint32_t current_issue_cycle;
   // Pending visible descriptor node that can start a target pair.
   uint32_t pending_pair_affinity_node;

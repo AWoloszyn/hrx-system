@@ -886,6 +886,24 @@ ERR_STRUCTURE_053 = ErrorDef(
     ),
 )
 
+# ERR_STRUCTURE_054: Inconsistent native scheduling scope nesting.
+ERR_STRUCTURE_054 = ErrorDef(
+    domain=ErrorDomain.STRUCTURE,
+    code=54,
+    severity=Severity.ERROR,
+    summary="Inconsistent native scheduling scope nesting.",
+    message="'{op_name}' has invalid scheduling scope nesting: {reason_key}",
+    params=(
+        ErrorParam("op_name", ParamKind.STRING),
+        ErrorParam("reason_key", ParamKind.STRING),
+    ),
+    fix_hint=(
+        "Pair low.schedule.begin/end within each function and keep the active "
+        "scope identical on every incoming control-flow edge; low.schedule.step "
+        "requires an active scope"
+    ),
+)
+
 ALL_STRUCTURE_ERRORS: tuple[ErrorDef, ...] = (
     ERR_STRUCTURE_001,
     ERR_STRUCTURE_002,
@@ -939,4 +957,5 @@ ALL_STRUCTURE_ERRORS: tuple[ErrorDef, ...] = (
     ERR_STRUCTURE_051,
     ERR_STRUCTURE_052,
     ERR_STRUCTURE_053,
+    ERR_STRUCTURE_054,
 )

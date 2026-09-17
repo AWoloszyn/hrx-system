@@ -81,6 +81,7 @@ X86_AVX512_PACKED_DOT_DESCRIPTOR_SET = DescriptorSet(
     c_table_prefix="X86Avx512PackedDotCore",
     c_enum_prefix="X86_AVX512_PACKED_DOT_CORE",
     generator_version=1,
+    supports_native_scheduling=True,
     reg_classes=_merge_named_items(
         tuple(
             descriptor_set.reg_classes

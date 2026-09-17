@@ -19,6 +19,7 @@
 #include "loom/codegen/low/schedule/pressure.h"
 #include "loom/codegen/low/schedule/ready_frontier.h"
 #include "loom/codegen/low/schedule/ready_policy.h"
+#include "loom/codegen/low/schedule/scopes.h"
 #include "loom/codegen/low/storage_relation.h"
 #include "loom/ops/low/ops.h"
 #include "loom/ops/op_defs.h"
@@ -1208,7 +1209,6 @@ static iree_status_t loom_low_schedule_run_list_scheduler(
         range_end);
     uint32_t scheduled_in_range = 0;
     while (scheduled_in_block < block_record->node_count) {
-      state->current_issue_cycle = scheduled_in_block;
       const uint32_t ready_candidate_count =
           loom_low_schedule_ready_frontier_count(&ready_policy.frontier);
       if (ready_candidate_count == 0) {
@@ -1225,7 +1225,6 @@ static iree_status_t loom_low_schedule_run_list_scheduler(
 
       state->nodes[chosen_node].scheduled_ordinal = scheduled_in_block++;
       ++scheduled_in_range;
-      state->current_issue_cycle = state->nodes[chosen_node].scheduled_ordinal;
       state->scheduled_node_indices[state->scheduled_node_count] = chosen_node;
       state->scheduled_ops[state->scheduled_node_count] =
           state->nodes[chosen_node].op;
@@ -1316,6 +1315,12 @@ static iree_status_t loom_low_schedule_run_list_scheduler(
           loom_low_schedule_insert_ready_node(state, &pressure_state,
                                               &ready_policy, consumer_node);
         }
+      }
+      // Compile-time controls remain visible in the schedule, but cannot hide
+      // latency or satisfy an instruction-distance hazard by occupying a slot.
+      if (!loom_traits_are_compile_time_only(
+              state->nodes[chosen_node].traits)) {
+        ++state->current_issue_cycle;
       }
       if (scheduled_in_range == range_end - range_start) {
         range_start = range_end;
@@ -1472,12 +1477,15 @@ iree_status_t loom_low_schedule_function(
   if (iree_status_is_ok(status)) {
     status = loom_low_schedule_build_dependencies(&state);
   }
-  if (iree_status_is_ok(status) && needs_liveness) {
+  if (iree_status_is_ok(status)) {
+    status = loom_low_schedule_build_scope_dependencies(&state);
+  }
+  if (iree_status_is_ok(status) && state.error_count == 0 && needs_liveness) {
     status = loom_liveness_analyze_local_value_domain_with_cfg_graph(
         &model->value_domain, &model->cfg_graph, loom_liveness_order_empty(),
         arena, &liveness);
   }
-  if (iree_status_is_ok(status)) {
+  if (iree_status_is_ok(status) && state.error_count == 0) {
     status = loom_low_schedule_run_list_scheduler(&state, node_count);
   }
   if (iree_status_is_ok(status) && state.error_count == 0) {
@@ -1534,6 +1542,7 @@ iree_status_t loom_low_schedule_function(
         .loop_forest = model->loop_forest,
         .nodes = state.nodes,
         .node_count = node_count,
+        .scopes = state.scopes,
         .call_node_indices = state.call_node_indices,
         .call_node_count = state.call_node_count,
         .dependency_group_count = state.dependency_index.group_count,

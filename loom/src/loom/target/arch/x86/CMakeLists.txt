@@ -131,6 +131,7 @@ loom_check_test_suite(
     "test/source_low/source_low_scalar_f32.loom-test"
     "test/source_low/source_low_scalar_i64.loom-test"
     "test/source_low/source_low_scalar_memory.loom-test"
+    "test/source_low/source_low_schedule_scopes.loom-test"
     "test/source_low/source_low_v4.loom-test"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_scalar_f32.loom-test"
