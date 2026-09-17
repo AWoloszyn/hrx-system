@@ -60,9 +60,9 @@ extern "C" {
 
 // Identifies a session bootstrap message.
 typedef enum iree_net_bootstrap_type_e {
-  // Client request containing offered capabilities and local peer information.
+  // Client request containing advertised capabilities and peer information.
   IREE_NET_BOOTSTRAP_TYPE_HELLO = 1,
-  // Server acceptance containing negotiated capabilities and peer information.
+  // Server acceptance containing advertised capabilities and peer information.
   IREE_NET_BOOTSTRAP_TYPE_HELLO_ACK = 2,
   // Server rejection containing a stable status code and optional diagnostic.
   IREE_NET_BOOTSTRAP_TYPE_REJECT = 3,
@@ -88,7 +88,7 @@ typedef uint32_t iree_net_bootstrap_capabilities_t;
 // axes and application data need only remain valid for the sizing and
 // serialization calls that consume them.
 typedef struct iree_net_bootstrap_peer_info_t {
-  // Offered capabilities in HELLO or negotiated capabilities in HELLO_ACK.
+  // Capabilities advertised by the message sender.
   iree_net_bootstrap_capabilities_t capabilities;
   // Number of application endpoints, excluding the bootstrap/control endpoint.
   uint32_t application_endpoint_count;
@@ -144,7 +144,7 @@ IREE_API_EXPORT iree_async_frontier_entry_t iree_net_bootstrap_axis_list_get(
 
 // Structurally validated borrowed peer information.
 typedef struct iree_net_bootstrap_peer_info_view_t {
-  // Offered capabilities in HELLO or negotiated capabilities in HELLO_ACK.
+  // Capabilities advertised by the message sender.
   iree_net_bootstrap_capabilities_t capabilities;
   // Number of application endpoints, excluding the bootstrap/control endpoint.
   uint32_t application_endpoint_count;

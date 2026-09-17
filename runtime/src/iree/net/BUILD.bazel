@@ -82,6 +82,16 @@ iree_runtime_cc_library(
 )
 
 iree_runtime_cc_library(
+    name = "session_bootstrap",
+    srcs = ["session_bootstrap.c"],
+    hdrs = ["session_bootstrap.h"],
+    deps = [
+        ":bootstrap",
+        "//runtime/src/iree/base",
+    ],
+)
+
+iree_runtime_cc_library(
     name = "endpoint_lifecycle",
     srcs = ["endpoint_lifecycle.c"],
     hdrs = ["endpoint_lifecycle.h"],
@@ -270,6 +280,19 @@ iree_runtime_cc_test(
         ":status_wire",
         "//runtime/src/iree/base",
         "//runtime/src/iree/base:core_headers",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+iree_runtime_cc_test(
+    name = "session_bootstrap_test",
+    srcs = ["session_bootstrap_test.cc"],
+    deps = [
+        ":bootstrap",
+        ":session_bootstrap",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/base",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
     ],

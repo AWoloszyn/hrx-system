@@ -75,6 +75,19 @@ iree_cc_library(
 
 iree_cc_library(
   NAME
+    session_bootstrap
+  HDRS
+    "session_bootstrap.h"
+  SRCS
+    "session_bootstrap.c"
+  DEPS
+    ::bootstrap
+    iree::base
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
     endpoint_lifecycle
   HDRS
     "endpoint_lifecycle.h"
@@ -284,6 +297,20 @@ iree_cc_test(
     ::status_wire
     iree::base
     iree::base::core_headers
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+
+iree_cc_test(
+  NAME
+    session_bootstrap_test
+  SRCS
+    "session_bootstrap_test.cc"
+  DEPS
+    ::bootstrap
+    ::session_bootstrap
+    iree::async
+    iree::base
     iree::testing::gtest
     iree::testing::gtest_main
 )
