@@ -73,3 +73,38 @@ low.func.def target<amd.xdna.aie2p.core>(@target) @advance_selector(%position: r
   vmov.mcd.acc %high
   return %next_position
 }
+
+// ====
+
+// Fused arithmetic consumes the selected stream item even when its result is
+// unused. Accumulator inputs remain live independently of the new result.
+// RUN: with-low-asm pass low-cse,low-dce
+
+low.func.def target<amd.xdna.aie2p.core> @integer_partial_sums(%resident: reg<aie2p.mbms x4>, %position: reg<aie2p.mr31_scd>, %configuration: reg<aie2p.er>, %output: reg<aie2p.ep>) -> (reg<aie2p.mbms x4>, reg<aie2p.mr31_scd>) asm {
+  set.scd-enable 1
+  %discarded = vadd.acc.integer.scd %resident, %position, %configuration
+  %first = vadd.acc.integer.scd %resident, %position, %configuration
+  %second = vsub.acc.integer.scd %first, %position, %configuration
+  %third, %next_position = vadd.acc.integer.scd.increment %second, %position, %configuration
+  %fourth, %final_position = vsub.acc.integer.scd.increment %third, %next_position, %configuration
+  %old_quarter = slice %resident[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
+  vst.acc %old_quarter, %output, 0
+  return %fourth, %final_position
+}
+
+// ====
+
+// Floating forms preserve the same protocol and explicit selector recurrence.
+// A following ordinary read observes the position left by both fused updates.
+// RUN: with-low-asm pass low-cse,low-dce
+
+low.func.def target<amd.xdna.aie2p.core> @floating_partial_sums(%resident: reg<aie2p.mbms x4>, %position: reg<aie2p.mr31_scd>, %configuration: reg<aie2p.er>) -> (reg<aie2p.mbms x4>, reg<aie2p.mr31_scd>, reg<aie2p.vec256 x2>) asm {
+  set.scd-enable 1
+  %discarded = vadd.acc.floating.scd %resident, %position, %configuration
+  %first = vadd.acc.floating.scd %resident, %position, %configuration
+  %second = vsub.acc.floating.scd %first, %position, %configuration
+  %third, %next_position = vadd.acc.floating.scd.increment %second, %position, %configuration
+  %fourth, %final_position = vsub.acc.floating.scd.increment %third, %next_position, %configuration
+  %following = vmov.scd
+  return %fourth, %final_position, %following
+}

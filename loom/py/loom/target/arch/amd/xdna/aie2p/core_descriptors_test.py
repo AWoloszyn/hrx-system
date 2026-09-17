@@ -645,6 +645,55 @@ def test_cascade_expansion_retains_complete_results_and_selector_updates() -> No
         assert classes[source.reg_alts[0].reg_class].physical_registers == ("r31",)
 
 
+def test_fused_cascade_arithmetic_preserves_accumulator_and_selector_state() -> None:
+    descriptors = {row.key: row for row in AIE2P_CORE_DESCRIPTOR_SET.descriptors}
+    classes = {row.name: row for row in AIE2P_CORE_DESCRIPTOR_SET.reg_classes}
+    for operation in ("add", "sub"):
+        for payload in ("integer", "floating"):
+            for increment in (False, True):
+                suffix = ".increment" if increment else ""
+                descriptor = descriptors[
+                    f"amd.xdna.aie2p.cascade.{operation}.{payload}.configured{suffix}"
+                ]
+                assert DescriptorFlag.SIDE_EFFECTING in descriptor.flags
+                assert DescriptorFlag.DEAD_REMOVABLE not in descriptor.flags
+                assert [effect.kind for effect in descriptor.effects] == [
+                    EffectKind.BARRIER
+                ]
+                source_index = 2 if increment else 1
+                for index in (0, source_index):
+                    operand = descriptor.operands[index]
+                    assert operand.reg_alts[0].reg_class == "aie2p.mbms"
+                    assert operand.unit_count == 4
+                # The input remains available after producing a fresh result.
+                assert all(tie.lhs_operand_index != 0 for tie in descriptor.constraints)
+                selector_index = source_index + 1
+                selector = descriptor.operands[selector_index]
+                assert selector.role is OperandRole.OPERAND
+                assert classes[selector.reg_alts[0].reg_class].physical_registers == (
+                    "r31",
+                )
+                if increment:
+                    assert descriptor.operands[1].role is OperandRole.RESULT
+                    assert Constraint(ConstraintKind.TIED, 1, selector_index) in (
+                        descriptor.constraints
+                    )
+                states = {
+                    classes[operand.reg_alts[0].reg_class].physical_registers[0]: (
+                        operand.flags
+                    )
+                    for operand in descriptor.operands
+                    if OperandFlag.IMPLICIT in operand.flags
+                }
+                expected = {"crSCDEn": (OperandFlag.IMPLICIT, OperandFlag.STATE_READ)}
+                if payload == "floating":
+                    expected.update(
+                        crFPMask=(OperandFlag.IMPLICIT, OperandFlag.STATE_READ),
+                        srFPFlags=(OperandFlag.IMPLICIT, OperandFlag.STATE_WRITE),
+                    )
+                assert states == expected
+
+
 def test_bundle_resources_exactly_model_every_extendable_physical_slot_set() -> None:
     descriptor_set = AIE2P_CORE_DESCRIPTOR_SET
     resources = {resource.name: resource for resource in descriptor_set.resources}

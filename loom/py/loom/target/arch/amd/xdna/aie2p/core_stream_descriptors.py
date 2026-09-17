@@ -92,7 +92,7 @@ def _scalar_stream_descriptor_specs() -> tuple[_DescriptorSpec, ...]:
 
 
 def _cascade_descriptor_specs() -> tuple[_DescriptorSpec, ...]:
-    """Exposes native transfers, accumulator expansion, and enable state."""
+    """Exposes native transfers, accumulator arithmetic, and enable state."""
 
     result = []
     for direction, port, native_stem, register_class in (
@@ -159,4 +159,23 @@ def _cascade_descriptor_specs() -> tuple[_DescriptorSpec, ...]:
                 effects=(Effect(EffectKind.BARRIER),),
             )
         )
+    for operation in ("add", "sub"):
+        for payload, form_infix in (("integer", ""), ("floating", "_f")):
+            for increment in (False, True):
+                suffix = ".increment" if increment else ""
+                form = f"V{operation.upper()}{form_infix}_vmac_cm2_add_scd"
+                if increment:
+                    form += "_incr"
+                key = f"cascade.{operation}.{payload}.configured{suffix}"
+                result.append(
+                    _DescriptorSpec(
+                        form,
+                        f"{_TARGET_KEY}.{key}",
+                        key,
+                        f"II_{form}",
+                        storage_overrides=(("dst", "mBMs"), ("acc1", "mBMs")),
+                        asm_mnemonic=f"v{operation}.acc.{payload}.scd{suffix}",
+                        effects=(Effect(EffectKind.BARRIER),),
+                    )
+                )
     return tuple(result)
