@@ -169,6 +169,16 @@ lifetime. The profile reports the accepted class. A raw pointer is insufficient
 to establish cacheability; unknown or incompatible classes fail admission.
 Current registration profiles require ordinary write-back pages.
 
+Windows GPU/XDNA sharing uses the same REGISTER request with both devices in
+the consumer list. Each native adapter attaches the original caller pages;
+there is no payload copy or exported-handle chain. The joint profile requires
+a 64 KiB aligned host pointer and a length that is a multiple of 64 KiB.
+Device addresses are resolved independently and guarantee 4 KiB alignment;
+host allocation alignment does not imply the same device-address alignment.
+Normal release destroys the native attachments without freeing caller storage.
+This registration capability does not imply joint CREATE or XDNA import/export
+support. Queue visibility recipes and completion edges remain explicit.
+
 GPU-local sharing is relative to the chosen placement. Selecting GPU A's local
 scope and naming consumers B and A allocates in A's VRAM or HBM, with access
 records remaining in B,A order. The joint profile qualifies B's ability to reach

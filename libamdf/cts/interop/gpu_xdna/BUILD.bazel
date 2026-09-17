@@ -8,3 +8,12 @@ package(
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],  # Apache 2.0
 )
+
+test_suite(
+    name = "gpu_xdna",
+    tests = [
+        "//libamdf/cts/interop/gpu_xdna/linux:memory",
+        "//libamdf/cts/interop/gpu_xdna/windows:memory",
+    ],
+    visibility = ["//visibility:public"],
+)

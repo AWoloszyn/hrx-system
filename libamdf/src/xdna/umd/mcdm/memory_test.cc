@@ -90,6 +90,7 @@ FakeDestroyAllocation(const D3DKMT_DESTROYALLOCATION2* destroy) {
   EXPECT_EQ(destroy->AllocationCount, 1u);
   EXPECT_EQ(destroy->phAllocationList[0], 0x20u);
   EXPECT_EQ(destroy->Flags.AssumeNotInUse, 1u);
+  EXPECT_EQ(destroy->Flags.SynchronousDestroy, 1u);
   if (g_fake_state->destroy_failures_remaining != 0) {
     --g_fake_state->destroy_failures_remaining;
     return kStatusNoMemory;
@@ -309,6 +310,92 @@ TEST_F(WindowsXdnaMemoryTest, ExposesExactSystemMemoryProfile) {
   EXPECT_EQ(profile_.allocation.native_byte_length_granularity,
             UINT64_C(65536));
   EXPECT_TRUE(state_.operations.empty());
+}
+
+TEST_F(WindowsXdnaMemoryTest, RegistersExactCallerPagesWithoutTakingOwnership) {
+  ASSERT_EQ(amdf_xdna_umd_device_query_memory_profile(&device_, 1, &profile_),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(profile_.ordinal, 1u);
+  EXPECT_EQ(profile_.roles, AMDF_MEMORY_PROFILE_ROLE_REGISTER |
+                                AMDF_MEMORY_PROFILE_ROLE_HOST_MAP);
+  EXPECT_EQ(profile_.allocation.maximum_byte_length, 0u);
+  EXPECT_EQ(profile_.registration.byte_length_granularity, 65536u);
+  EXPECT_EQ(profile_.registration.registered_host_pointer_alignment, 65536u);
+  EXPECT_EQ(profile_.registration.registered_host_cacheability,
+            AMDF_HOST_CACHEABILITY_WRITE_BACK);
+  EXPECT_EQ(profile_.registration.minimum_alignment, 4096u);
+  EXPECT_EQ(profile_.registration.maximum_alignment, 4096u);
+  EXPECT_TRUE(state_.operations.empty());
+
+  auto* pages = static_cast<uint8_t*>(
+      VirtualAlloc(nullptr, 65536, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
+  ASSERT_NE(pages, nullptr);
+  std::memset(pages, 0xA5, 65536);
+  create_info_.registered_host_pointer = pages;
+  create_info_.byte_length = 65536;
+  amdf_xdna_umd_memory_t* memory = nullptr;
+  amdf_xdna_umd_memory_result_t result = {};
+  ASSERT_EQ(amdf_xdna_umd_memory_prepare(&device_, &profile_, &create_info_,
+                                         &memory, &result),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(state_.host_pointer, pages);
+  EXPECT_EQ(result.physical_backing_id.words[0],
+            reinterpret_cast<uintptr_t>(pages));
+  EXPECT_EQ(result.physical_backing_id.words[1], 65536u);
+  EXPECT_EQ(result.device_address, state_.mapped_address);
+  ASSERT_EQ(amdf_xdna_umd_memory_destroy(memory), AMDF_STATUS_OK);
+  EXPECT_EQ(state_.metadata_free_count, 1u);
+
+  MEMORY_BASIC_INFORMATION information = {};
+  ASSERT_NE(VirtualQuery(pages, &information, sizeof(information)), 0u);
+  ASSERT_EQ(information.State, MEM_COMMIT);
+  EXPECT_EQ(pages[0], 0xA5);
+  EXPECT_EQ(pages[65535], 0xA5);
+  pages[65535] = 0x5A;
+  EXPECT_TRUE(VirtualFree(pages, 0, MEM_RELEASE));
+}
+
+TEST_F(WindowsXdnaMemoryTest, RegistrationFailuresNeverReleaseCallerPages) {
+  ASSERT_EQ(amdf_xdna_umd_device_query_memory_profile(&device_, 1, &profile_),
+            AMDF_STATUS_OK);
+  auto* pages = static_cast<uint8_t*>(
+      VirtualAlloc(nullptr, 65536, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
+  ASSERT_NE(pages, nullptr);
+  create_info_.registered_host_pointer = pages;
+  create_info_.byte_length = 65536;
+  for (FailurePoint failure_point :
+       {FailurePoint::kCreate, FailurePoint::kMap,
+        FailurePoint::kInvalidMapAddress, FailurePoint::kFirstWait,
+        FailurePoint::kResident, FailurePoint::kPartialResident,
+        FailurePoint::kSecondWait, FailurePoint::kDestroy}) {
+    SCOPED_TRACE(static_cast<int>(failure_point));
+    state_ = {};
+    state_.failure_point = failure_point;
+    amdf_xdna_umd_memory_t* memory = nullptr;
+    amdf_xdna_umd_memory_result_t result;
+    std::memset(&result, 0xA5, sizeof(result));
+    const auto original = result;
+    const auto status = amdf_xdna_umd_memory_prepare(
+        &device_, &profile_, &create_info_, &memory, &result);
+    ASSERT_NE(memory, nullptr);
+    if (failure_point == FailurePoint::kDestroy) {
+      EXPECT_EQ(status, AMDF_STATUS_OK);
+      EXPECT_FALSE(amdf_status_is_ok(amdf_xdna_umd_memory_destroy(memory)));
+      amdf_xdna_umd_memory_abandon(memory);
+    } else {
+      EXPECT_FALSE(amdf_status_is_ok(status));
+      EXPECT_EQ(std::memcmp(&result, &original, sizeof(result)), 0);
+      EXPECT_EQ(amdf_xdna_umd_memory_destroy(memory), AMDF_STATUS_OK);
+    }
+    EXPECT_EQ(state_.metadata_free_count, 1u);
+    MEMORY_BASIC_INFORMATION information = {};
+    ASSERT_NE(VirtualQuery(pages, &information, sizeof(information)), 0u);
+    ASSERT_EQ(information.State, MEM_COMMIT);
+    // Only native dependencies are modeled; there is no remaining real DMA
+    // registration after the injected final-release failure.
+    std::memset(pages, 0xA5, 65536);
+  }
+  EXPECT_TRUE(VirtualFree(pages, 0, MEM_RELEASE));
 }
 
 TEST_F(WindowsXdnaMemoryTest, ConstrainsAndChecksCompleteNativeAddressRanges) {
