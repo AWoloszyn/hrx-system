@@ -68,6 +68,11 @@ IREE_MUST_USE_RESULT iree_status_t
 iree_hal_streaming_stream_select_cooperative_queue_locked(
     iree_hal_streaming_stream_t* stream, iree_hal_queue_t** out_queue);
 
+// Submits the stream's pending command buffer, if any.
+// Synchronization: caller must hold |stream->mutex|.
+IREE_MUST_USE_RESULT iree_status_t
+iree_hal_streaming_stream_flush_locked(iree_hal_streaming_stream_t* stream);
+
 // Retains the stream's context for one operation. Returns false after context
 // teardown has detached the stream. The caller releases |*out_context|.
 bool iree_hal_streaming_stream_retain_context(

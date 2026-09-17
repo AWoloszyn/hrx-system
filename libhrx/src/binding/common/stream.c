@@ -508,7 +508,7 @@ iree_status_t iree_hal_streaming_stream_begin(
   return status;
 }
 
-iree_status_t iree_hal_streaming_stream_flush(
+iree_status_t iree_hal_streaming_stream_flush_locked(
     iree_hal_streaming_stream_t* stream) {
   IREE_ASSERT_ARGUMENT(stream);
   IREE_TRACE_ZONE_BEGIN(z0);
@@ -518,8 +518,6 @@ iree_status_t iree_hal_streaming_stream_flush(
   uint64_t timing_end_ns = 0;
   uint64_t timing_execute_ns = 0;
   uint64_t timing_release_ns = 0;
-  iree_slim_mutex_lock(&stream->mutex);
-
   iree_status_t status = iree_ok_status();
   if (stream->command_buffer) {
     // End recording and submit command buffer.
@@ -529,7 +527,6 @@ iree_status_t iree_hal_streaming_stream_flush(
       timing_end_ns += hrx_launch_timing_now_ns() - timing_step_ns;
     }
     if (!iree_status_is_ok(status)) {
-      iree_slim_mutex_unlock(&stream->mutex);
       IREE_TRACE_ZONE_END(z0);
       return status;
     }
@@ -542,7 +539,6 @@ iree_status_t iree_hal_streaming_stream_flush(
     status = iree_hal_streaming_stream_reserve_next_value_locked(
         stream, &wait_value, &signal_value);
     if (!iree_status_is_ok(status)) {
-      iree_slim_mutex_unlock(&stream->mutex);
       IREE_TRACE_ZONE_END(z0);
       return status;
     }
@@ -587,7 +583,6 @@ iree_status_t iree_hal_streaming_stream_flush(
     }
   }
 
-  iree_slim_mutex_unlock(&stream->mutex);
   if (timing_enabled) {
     ++g_hrx_launch_timing.flush_count;
     g_hrx_launch_timing.flush_total_ns +=
@@ -597,6 +592,15 @@ iree_status_t iree_hal_streaming_stream_flush(
     g_hrx_launch_timing.flush_release_ns += timing_release_ns;
   }
   IREE_TRACE_ZONE_END(z0);
+  return status;
+}
+
+iree_status_t iree_hal_streaming_stream_flush(
+    iree_hal_streaming_stream_t* stream) {
+  IREE_ASSERT_ARGUMENT(stream);
+  iree_slim_mutex_lock(&stream->mutex);
+  iree_status_t status = iree_hal_streaming_stream_flush_locked(stream);
+  iree_slim_mutex_unlock(&stream->mutex);
   return status;
 }
 
@@ -732,8 +736,16 @@ iree_status_t iree_hal_streaming_stream_wait_streams(
       break;
     }
     iree_slim_mutex_lock(&source_stream->mutex);
-    const uint64_t source_timeline_value = source_stream->pending_value;
+    uint64_t source_timeline_value = 0;
+    if (IREE_UNLIKELY(source_stream->capture_status !=
+                      IREE_HAL_STREAMING_CAPTURE_STATUS_NONE)) {
+      status = iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                                "source stream is capturing");
+    } else {
+      source_timeline_value = source_stream->pending_value;
+    }
     iree_slim_mutex_unlock(&source_stream->mutex);
+    if (!iree_status_is_ok(status)) break;
 
     status = iree_status_join(
         status,
@@ -765,8 +777,17 @@ iree_status_t iree_hal_streaming_stream_wait_streams(
     iree_slim_mutex_lock(&stream->mutex);
     uint64_t destination_timeline_value = 0;
     uint64_t signal_value = 0;
-    status = iree_hal_streaming_stream_reserve_next_value_locked(
-        stream, &destination_timeline_value, &signal_value);
+    if (IREE_UNLIKELY(!stream->context || !stream->queue)) {
+      status = iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                                "stream execution context has been destroyed");
+    } else if (IREE_UNLIKELY(stream->capture_status !=
+                             IREE_HAL_STREAMING_CAPTURE_STATUS_NONE)) {
+      status = iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                                "destination stream is capturing");
+    } else {
+      status = iree_hal_streaming_stream_reserve_next_value_locked(
+          stream, &destination_timeline_value, &signal_value);
+    }
     if (iree_status_is_ok(status)) {
       iree_host_size_t wait_count = 0;
       if (destination_timeline_value > 0) {
@@ -1648,17 +1669,22 @@ iree_status_t iree_hal_streaming_launch_kernel(
                             "direct kernel launch missing expected parameters");
   }
 
-  // Check if we are capturing to a graph. The capture transaction serializes
-  // this mutation and frontier publication with origin end-capture.
+  // Avoid entering the capture transaction on the ordinary launch path. The
+  // submission lock below revalidates the stream in case capture begins after
+  // this context-wide snapshot.
   iree_hal_streaming_capture_kernel_t capture = {
       .symbol = symbol,
       .params = params,
   };
   bool was_captured = false;
-  IREE_RETURN_AND_END_ZONE_IF_ERROR(
-      z0, iree_hal_streaming_capture_try_record_node(
-              stream, iree_hal_streaming_capture_record_kernel, &capture,
-              &was_captured));
+  if (IREE_UNLIKELY(
+          stream->context &&
+          iree_hal_streaming_context_has_capture_streams(stream->context))) {
+    IREE_RETURN_AND_END_ZONE_IF_ERROR(
+        z0, iree_hal_streaming_capture_try_record_node(
+                stream, iree_hal_streaming_capture_record_kernel, &capture,
+                &was_captured));
+  }
   if (was_captured) {
     IREE_TRACE_ZONE_END(z0);
     return iree_ok_status();
@@ -1770,19 +1796,8 @@ iree_status_t iree_hal_streaming_launch_kernel(
       }
     }
   }
-  if (iree_status_is_ok(status) && dispatch_directly &&
-      stream->command_buffer) {
-    uint64_t timing_step_ns = timing_enabled ? hrx_launch_timing_now_ns() : 0;
-    status = iree_hal_streaming_stream_flush(stream);
-    if (timing_enabled) {
-      timing_begin_ns += hrx_launch_timing_now_ns() - timing_step_ns;
-    }
-  }
-
   bool dispatch_attempted = false;
   if (iree_status_is_ok(status)) {
-    dispatch_attempted = true;
-
     // Create IREE dispatch config.
     const iree_hal_dispatch_config_t config = {
         .workgroup_size =
@@ -1813,54 +1828,77 @@ iree_status_t iree_hal_streaming_launch_kernel(
 
     uint64_t timing_step_ns = timing_enabled ? hrx_launch_timing_now_ns() : 0;
     bool should_flush = false;
-    iree_slim_mutex_lock(&stream->mutex);
-    if (dispatch_directly) {
-      iree_hal_queue_t* dispatch_queue = stream->queue;
-      if (cooperative_dispatch) {
-        status = iree_hal_streaming_stream_select_cooperative_queue_locked(
-            stream, &dispatch_queue);
+    for (;;) {
+      iree_slim_mutex_lock(&stream->mutex);
+      if (IREE_UNLIKELY(stream->capture_status !=
+                        IREE_HAL_STREAMING_CAPTURE_STATUS_NONE)) {
+        iree_slim_mutex_unlock(&stream->mutex);
+        was_captured = false;
+        status = iree_hal_streaming_capture_try_record_node(
+            stream, iree_hal_streaming_capture_record_kernel, &capture,
+            &was_captured);
+        if (!iree_status_is_ok(status) || was_captured) break;
+        continue;
       }
-      uint64_t wait_value = 0;
-      uint64_t signal_value = 0;
-      if (iree_status_is_ok(status)) {
-        status = iree_hal_streaming_stream_reserve_next_value_locked(
-            stream, &wait_value, &signal_value);
+
+      if (dispatch_directly && stream->command_buffer) {
+        const uint64_t flush_start_ns =
+            timing_enabled ? hrx_launch_timing_now_ns() : 0;
+        status = iree_hal_streaming_stream_flush_locked(stream);
+        if (timing_enabled) {
+          timing_begin_ns += hrx_launch_timing_now_ns() - flush_start_ns;
+        }
       }
-      const iree_hal_semaphore_list_t wait_semaphores = {
-          .count = wait_value > 0 ? 1 : 0,
-          .semaphores = &stream->timeline_semaphore,
-          .payload_values = &wait_value,
-      };
-      const iree_hal_semaphore_list_t signal_semaphores = {
-          .count = 1,
-          .semaphores = &stream->timeline_semaphore,
-          .payload_values = &signal_value,
-      };
-      if (iree_status_is_ok(status)) {
-        status = iree_hal_queue_dispatch(
-            dispatch_queue, wait_semaphores, signal_semaphores,
-            symbol->executable,
-            iree_hal_executable_function_from_index(symbol->export_ordinal),
-            config,
+      dispatch_attempted = iree_status_is_ok(status);
+      if (dispatch_attempted && dispatch_directly) {
+        iree_hal_queue_t* dispatch_queue = stream->queue;
+        if (cooperative_dispatch) {
+          status = iree_hal_streaming_stream_select_cooperative_queue_locked(
+              stream, &dispatch_queue);
+        }
+        uint64_t wait_value = 0;
+        uint64_t signal_value = 0;
+        if (iree_status_is_ok(status)) {
+          status = iree_hal_streaming_stream_reserve_next_value_locked(
+              stream, &wait_value, &signal_value);
+        }
+        const iree_hal_semaphore_list_t wait_semaphores = {
+            .count = wait_value > 0 ? 1 : 0,
+            .semaphores = &stream->timeline_semaphore,
+            .payload_values = &wait_value,
+        };
+        const iree_hal_semaphore_list_t signal_semaphores = {
+            .count = 1,
+            .semaphores = &stream->timeline_semaphore,
+            .payload_values = &signal_value,
+        };
+        if (iree_status_is_ok(status)) {
+          status = iree_hal_queue_dispatch(
+              dispatch_queue, wait_semaphores, signal_semaphores,
+              symbol->executable,
+              iree_hal_executable_function_from_index(symbol->export_ordinal),
+              config,
+              iree_make_const_byte_span(arguments.constants,
+                                        arguments.constants_size),
+              arguments.bindings, flags);
+        }
+        if (iree_status_is_ok(status)) {
+          // The accepted dispatch owns the value it signals, so the timeline
+          // advances here and stays advanced even when the flush below fails.
+          stream->pending_value = signal_value;
+          status = iree_hal_queue_flush(dispatch_queue);
+        }
+      } else if (dispatch_attempted) {
+        status = iree_hal_streaming_record_dispatch_locked(
+            stream, symbol, config,
             iree_make_const_byte_span(arguments.constants,
                                       arguments.constants_size),
-            arguments.bindings, flags);
+            arguments.bindings, flags, timing_enabled ? &timing_begin_ns : NULL,
+            timing_enabled ? &timing_barrier_ns : NULL, &should_flush);
       }
-      if (iree_status_is_ok(status)) {
-        // The accepted dispatch owns the value it signals, so the timeline
-        // advances here and stays advanced even when the flush below fails.
-        stream->pending_value = signal_value;
-        status = iree_hal_queue_flush(dispatch_queue);
-      }
-    } else {
-      status = iree_hal_streaming_record_dispatch_locked(
-          stream, symbol, config,
-          iree_make_const_byte_span(arguments.constants,
-                                    arguments.constants_size),
-          arguments.bindings, flags, timing_enabled ? &timing_begin_ns : NULL,
-          timing_enabled ? &timing_barrier_ns : NULL, &should_flush);
+      iree_slim_mutex_unlock(&stream->mutex);
+      break;
     }
-    iree_slim_mutex_unlock(&stream->mutex);
     if (timing_enabled) {
       timing_dispatch_ns += hrx_launch_timing_now_ns() - timing_step_ns;
     }

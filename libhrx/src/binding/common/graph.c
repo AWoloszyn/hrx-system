@@ -2376,14 +2376,6 @@ iree_status_t iree_hal_streaming_capture_join_graph(
                             "dependency array must be provided");
   }
 
-  iree_slim_mutex_lock(&stream->mutex);
-  const bool needs_flush =
-      stream->capture_status == IREE_HAL_STREAMING_CAPTURE_STATUS_NONE;
-  iree_slim_mutex_unlock(&stream->mutex);
-  if (needs_flush) {
-    IREE_RETURN_IF_ERROR(iree_hal_streaming_stream_flush(stream));
-  }
-
   iree_slim_mutex_lock(&graph->capture_mutex);
   if (graph->capture_id != capture_id ||
       iree_atomic_load(&graph->capture_state, iree_memory_order_acquire) !=
@@ -2432,6 +2424,9 @@ iree_status_t iree_hal_streaming_capture_join_graph(
   if (iree_status_is_ok(status) &&
       total_count > stream->capture_dependency_capacity) {
     status = iree_hal_streaming_grow_capture_dependencies(stream, total_count);
+  }
+  if (iree_status_is_ok(status) && adopt_graph) {
+    status = iree_hal_streaming_stream_flush_locked(stream);
   }
 
   if (iree_status_is_ok(status)) {
@@ -2508,6 +2503,13 @@ static iree_status_t iree_hal_streaming_capture_publish_begin(
            dependency_count * sizeof(*dependencies));
   }
 
+  // Flushing while the stream lock is held makes prior submission and capture
+  // publication one transition. No operation can be accepted between them and
+  // escape both the pre-capture stream and the capture graph.
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_streaming_stream_flush_locked(stream);
+  }
+
   if (iree_status_is_ok(status)) {
     const uintptr_t owner_thread_id = iree_hal_streaming_current_thread_token();
     graph->capture_id = capture_id;
@@ -2546,12 +2548,9 @@ iree_status_t iree_hal_streaming_begin_capture(
                             "stream execution context has been destroyed");
   }
 
-  iree_status_t status = iree_hal_streaming_stream_flush(stream);
   iree_hal_streaming_graph_t* graph = NULL;
-  if (iree_status_is_ok(status)) {
-    status = iree_hal_streaming_graph_create(context, /*flags=*/0,
-                                             context->host_allocator, &graph);
-  }
+  iree_status_t status = iree_hal_streaming_graph_create(
+      context, /*flags=*/0, context->host_allocator, &graph);
   if (iree_status_is_ok(status)) {
     status = iree_hal_streaming_capture_publish_begin(
         stream, graph, /*dependencies=*/NULL, /*dependency_count=*/0, mode,
@@ -2577,8 +2576,6 @@ iree_status_t iree_hal_streaming_begin_capture_to_graph(
                             "dependency array must be provided");
   }
 
-  IREE_RETURN_AND_END_ZONE_IF_ERROR(z0,
-                                    iree_hal_streaming_stream_flush(stream));
   iree_status_t status = iree_hal_streaming_capture_publish_begin(
       stream, graph, dependencies, dependency_count, mode,
       /*graph_owned=*/false);

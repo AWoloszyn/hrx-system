@@ -7,9 +7,11 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -650,11 +652,43 @@ TEST_F(HipArrayCopySptApiTest, RelaxedCaptureEndSerializesWithAsyncCopies) {
   }
 }
 
-struct FillGate {
-  // Set after the callback begins executing.
-  std::atomic<bool> entered = false;
-  // Set by the test to let the callback produce its data.
-  std::atomic<bool> release = false;
+class TestNotification {
+ public:
+  void Post() {
+    posted_.store(true, std::memory_order_release);
+    condition_.notify_all();
+  }
+
+  void Wait() {
+    std::unique_lock<std::mutex> lock(mutex_);
+    condition_.wait(lock,
+                    [&] { return posted_.load(std::memory_order_acquire); });
+  }
+
+  bool IsPosted() const { return posted_.load(std::memory_order_acquire); }
+
+ private:
+  // True after the notification has been posted.
+  std::atomic<bool> posted_ = false;
+  // Serializes condition-variable waits.
+  std::mutex mutex_;
+  // Wakes threads waiting for the notification.
+  std::condition_variable condition_;
+};
+
+struct WaitGate {
+  void EnterAndWait() {
+    entered.Post();
+    release.Wait();
+  }
+
+  // Posted after the callback begins executing.
+  TestNotification entered;
+  // Posted by the test to let the callback return.
+  TestNotification release;
+};
+
+struct FillGate : public WaitGate {
   // Pitched host destination populated by the callback.
   uint8_t* destination = nullptr;
   // Destination row pitch in bytes.
@@ -667,10 +701,7 @@ struct FillGate {
 
 void FillAfterRelease(void* user_data) {
   auto* gate = static_cast<FillGate*>(user_data);
-  gate->entered.store(true, std::memory_order_release);
-  while (!gate->release.load(std::memory_order_acquire)) {
-    std::this_thread::yield();
-  }
+  gate->EnterAndWait();
   for (size_t row = 0; row < gate->height; ++row) {
     for (size_t column = 0; column < gate->width; ++column) {
       gate->destination[row * gate->pitch + column] =
@@ -679,19 +710,9 @@ void FillAfterRelease(void* user_data) {
   }
 }
 
-struct WaitGate {
-  // Set after the callback begins executing.
-  std::atomic<bool> entered = false;
-  // Set by the test to let the callback return.
-  std::atomic<bool> release = false;
-};
-
 void WaitForRelease(void* user_data) {
   auto* gate = static_cast<WaitGate*>(user_data);
-  gate->entered.store(true, std::memory_order_release);
-  while (!gate->release.load(std::memory_order_acquire)) {
-    std::this_thread::yield();
-  }
+  gate->EnterAndWait();
 }
 
 struct CountedWaitGate {
@@ -699,20 +720,18 @@ struct CountedWaitGate {
   int target_count = 0;
   // Total observer invocations reached.
   std::atomic<int> count = 0;
-  // Set when |target_count| is reached.
-  std::atomic<bool> entered = false;
-  // Set by the test to let the target invocation return.
-  std::atomic<bool> release = false;
+  // Posted when |target_count| is reached.
+  TestNotification entered;
+  // Posted by the test to let the target invocation return.
+  TestNotification release;
 };
 
 void WaitForTargetCount(void* user_data) {
   auto* gate = static_cast<CountedWaitGate*>(user_data);
   const int count = gate->count.fetch_add(1, std::memory_order_acq_rel) + 1;
   if (count != gate->target_count) return;
-  gate->entered.store(true, std::memory_order_release);
-  while (!gate->release.load(std::memory_order_acquire)) {
-    std::this_thread::yield();
-  }
+  gate->entered.Post();
+  gate->release.Wait();
 }
 
 TEST_F(HipArrayCopySptApiTest, StridedCopyWaitsForLegacyProducer) {
@@ -724,22 +743,19 @@ TEST_F(HipArrayCopySptApiTest, StridedCopyWaitsForLegacyProducer) {
   auto* host = static_cast<uint8_t*>(host_pointer_);
   uint8_t* source = host;
   uint8_t* destination = host + kPitch * kHeight;
-  FillGate gate = {/*.entered=*/false,
-                   /*.release=*/false,
-                   /*.destination=*/source,
-                   /*.pitch=*/kPitch,
-                   /*.width=*/kWidth,
-                   /*.height=*/kHeight};
+  FillGate gate;
+  gate.destination = source;
+  gate.pitch = kPitch;
+  gate.width = kWidth;
+  gate.height = kHeight;
   ASSERT_EQ(hipSuccess, api_.launch_host_function(hipStreamLegacy,
                                                   FillAfterRelease, &gate));
-  while (!gate.entered.load(std::memory_order_acquire)) {
-    std::this_thread::yield();
-  }
+  gate.entered.Wait();
 
   const hipError_t copy_result = api_.memcpy_2d_to_array_async_spt(
       array_, /*destination_x_offset=*/1, /*destination_y_offset=*/1, source,
       kPitch, kWidth, kHeight, hipMemcpyHostToDevice, hipStreamLegacy);
-  gate.release.store(true, std::memory_order_release);
+  gate.release.Post();
   ASSERT_EQ(hipSuccess, copy_result);
   ASSERT_EQ(hipSuccess, api_.stream_synchronize(hipStreamPerThread));
   ASSERT_EQ(hipSuccess,
@@ -823,7 +839,7 @@ TEST_F(HipArrayCopySptApiTest, CrossDeviceCopiesUseTheSelectedStream) {
       thread_finished.store(true, std::memory_order_release);
     });
 
-    while (!gate.entered.load(std::memory_order_acquire) &&
+    while (!gate.entered.IsPosted() &&
            !thread_finished.load(std::memory_order_acquire)) {
       std::this_thread::yield();
     }
@@ -831,9 +847,9 @@ TEST_F(HipArrayCopySptApiTest, CrossDeviceCopiesUseTheSelectedStream) {
            !thread_finished.load(std::memory_order_acquire)) {
       std::this_thread::yield();
     }
-    EXPECT_TRUE(gate.entered.load(std::memory_order_acquire));
+    EXPECT_TRUE(gate.entered.IsPosted());
     EXPECT_TRUE(copy_invoked.load(std::memory_order_acquire));
-    gate.release.store(true, std::memory_order_release);
+    gate.release.Post();
     copy_thread.join();
 
     ASSERT_EQ(hipSuccess, set_device_result);
@@ -865,22 +881,19 @@ TEST_F(HipArrayCopySptApiTest, ContiguousCopyWaitsForLegacyProducer) {
   auto* host = static_cast<uint8_t*>(host_pointer_);
   uint8_t* source = host;
   uint8_t* destination = host + kWidth * kHeight;
-  FillGate gate = {/*.entered=*/false,
-                   /*.release=*/false,
-                   /*.destination=*/source,
-                   /*.pitch=*/kWidth,
-                   /*.width=*/kWidth,
-                   /*.height=*/kHeight};
+  FillGate gate;
+  gate.destination = source;
+  gate.pitch = kWidth;
+  gate.width = kWidth;
+  gate.height = kHeight;
   ASSERT_EQ(hipSuccess, api_.launch_host_function(hipStreamLegacy,
                                                   FillAfterRelease, &gate));
-  while (!gate.entered.load(std::memory_order_acquire)) {
-    std::this_thread::yield();
-  }
+  gate.entered.Wait();
 
   const hipError_t copy_result = api_.memcpy_2d_to_array_async_spt(
       array_, 0, 0, source, kWidth, kWidth, kHeight, hipMemcpyHostToDevice,
       hipStreamLegacy);
-  gate.release.store(true, std::memory_order_release);
+  gate.release.Post();
   ASSERT_EQ(hipSuccess, copy_result);
   ASSERT_EQ(hipSuccess, api_.stream_synchronize(hipStreamPerThread));
   ASSERT_EQ(hipSuccess, api_.memcpy_2d_from_array_spt(
@@ -913,9 +926,7 @@ TEST_F(HipArrayCopySptApiTest, PageableCopiesWaitOnlyForTheirSelectedStream) {
   WaitGate gate;
   ASSERT_EQ(hipSuccess,
             api_.launch_host_function(stream_, WaitForRelease, &gate));
-  while (!gate.entered.load(std::memory_order_acquire)) {
-    std::this_thread::yield();
-  }
+  gate.entered.Wait();
 
   std::array<uint8_t, kWidth> generic_destination = {};
   hipMemcpy3DParms parameters = {};
@@ -936,7 +947,7 @@ TEST_F(HipArrayCopySptApiTest, PageableCopiesWaitOnlyForTheirSelectedStream) {
                             array_destination.data(), kWidth, array_, 0, 0,
                             kWidth, 1, hipMemcpyDeviceToHost, hipStreamLegacy));
 
-  gate.release.store(true, std::memory_order_release);
+  gate.release.Post();
   ASSERT_EQ(hipSuccess, api_.stream_synchronize(stream_));
   EXPECT_EQ(0, std::memcmp(source, generic_destination.data(), kWidth));
   EXPECT_EQ(0, std::memcmp(source, array_destination.data(), kWidth));
@@ -957,26 +968,22 @@ TEST_F(HipArrayCopySptApiTest, NoOpAndDeviceCopyDoNotDrainPerThreadStream) {
   WaitGate no_op_gate;
   ASSERT_EQ(hipSuccess, api_.launch_host_function(hipStreamPerThread,
                                                   WaitForRelease, &no_op_gate));
-  while (!no_op_gate.entered.load(std::memory_order_acquire)) {
-    std::this_thread::yield();
-  }
+  no_op_gate.entered.Wait();
   EXPECT_EQ(hipSuccess, api_.memcpy_2d_from_array_spt(
                             host, /*destination_pitch=*/1, array_, 0, 0,
                             /*width=*/0, /*height=*/1, hipMemcpyDeviceToHost));
-  no_op_gate.release.store(true, std::memory_order_release);
+  no_op_gate.release.Post();
   ASSERT_EQ(hipSuccess, api_.stream_synchronize(hipStreamPerThread));
 
   ASSERT_EQ(hipSuccess, api_.malloc(&device_pointer_, kWidth));
   WaitGate device_gate;
   ASSERT_EQ(hipSuccess, api_.launch_host_function(
                             hipStreamPerThread, WaitForRelease, &device_gate));
-  while (!device_gate.entered.load(std::memory_order_acquire)) {
-    std::this_thread::yield();
-  }
+  device_gate.entered.Wait();
   EXPECT_EQ(hipSuccess,
             api_.memcpy_2d_from_array_spt(device_pointer_, kWidth, array_, 0, 0,
                                           kWidth, 1, hipMemcpyDeviceToDevice));
-  device_gate.release.store(true, std::memory_order_release);
+  device_gate.release.Post();
   EXPECT_EQ(hipSuccess, api_.stream_synchronize(hipStreamPerThread));
   std::memset(host, 0, kWidth);
   ASSERT_EQ(hipSuccess,
@@ -1179,16 +1186,14 @@ TEST_F(HipArrayCopySptApiTest,
   WaitGate callback_gate;
   ASSERT_EQ(hipSuccess,
             api_.launch_host_function(stream_, WaitForRelease, &callback_gate));
-  while (!callback_gate.entered.load(std::memory_order_acquire)) {
-    std::this_thread::yield();
-  }
+  callback_gate.entered.Wait();
 
   WaitGate lease_gate;
   ASSERT_EQ(hipSuccess,
             api_.set_array_lease_observer(WaitForRelease, &lease_gate));
-  std::atomic<bool> copy_returned = false;
-  std::atomic<bool> free_started = false;
-  std::atomic<bool> free_returned = false;
+  TestNotification copy_returned;
+  TestNotification free_started;
+  TestNotification free_returned;
   hipError_t copy_result = hipErrorUnknown;
   hipError_t free_result = hipErrorUnknown;
   hipArray_t array = array_;
@@ -1196,53 +1201,24 @@ TEST_F(HipArrayCopySptApiTest,
     copy_result = api_.memcpy_2d_from_array_async_spt(
         destination, kWidth, array, 0, 0, kWidth, 1, hipMemcpyDeviceToHost,
         stream_);
-    copy_returned.store(true, std::memory_order_release);
+    copy_returned.Post();
   });
 
-  bool observed_lease = false;
-  for (int i = 0; i < 1000000; ++i) {
-    if (lease_gate.entered.load(std::memory_order_acquire)) {
-      observed_lease = true;
-      break;
-    }
-    std::this_thread::yield();
-  }
-  if (!observed_lease) {
-    lease_gate.release.store(true, std::memory_order_release);
-    callback_gate.release.store(true, std::memory_order_release);
-    copy_thread.join();
-    EXPECT_EQ(hipSuccess, api_.set_array_lease_observer(nullptr, nullptr));
-    FAIL() << "production copy did not reach the post-retain observer";
-    return;
-  }
+  lease_gate.entered.Wait();
 
   std::thread free_thread([&] {
-    free_started.store(true, std::memory_order_release);
+    free_started.Post();
     free_result = api_.free_array(array);
-    free_returned.store(true, std::memory_order_release);
+    free_returned.Post();
   });
-  while (!free_started.load(std::memory_order_acquire)) {
-    std::this_thread::yield();
-  }
-  for (int i = 0; i < 100000 && !free_returned.load(std::memory_order_acquire);
-       ++i) {
-    std::this_thread::yield();
-  }
-  EXPECT_FALSE(free_returned.load(std::memory_order_acquire));
+  free_started.Wait();
+  EXPECT_FALSE(free_returned.IsPosted());
 
-  lease_gate.release.store(true, std::memory_order_release);
-  bool copy_returned_before_callback = false;
-  for (int i = 0; i < 1000000; ++i) {
-    if (copy_returned.load(std::memory_order_acquire)) {
-      copy_returned_before_callback = true;
-      break;
-    }
-    std::this_thread::yield();
-  }
-  EXPECT_TRUE(copy_returned_before_callback);
-  EXPECT_FALSE(free_returned.load(std::memory_order_acquire));
+  lease_gate.release.Post();
+  copy_returned.Wait();
+  EXPECT_FALSE(free_returned.IsPosted());
 
-  callback_gate.release.store(true, std::memory_order_release);
+  callback_gate.release.Post();
   copy_thread.join();
   free_thread.join();
   EXPECT_EQ(hipSuccess, api_.set_array_lease_observer(nullptr, nullptr));
@@ -1305,41 +1281,20 @@ TEST_F(HipArrayCopySptApiTest,
       }
     });
 
-    bool observed_boundary = false;
-    for (int i = 0; i < 1000000; ++i) {
-      if (lease_gate.entered.load(std::memory_order_acquire)) {
-        observed_boundary = true;
-        break;
-      }
-      std::this_thread::yield();
-    }
-    if (!observed_boundary) {
-      lease_gate.release.store(true, std::memory_order_release);
-      copy_thread.join();
-      EXPECT_EQ(hipSuccess, api_.set_array_lease_observer(nullptr, nullptr));
-      EXPECT_EQ(hipSuccess, api_.free_array(array));
-      FAIL() << "legacy synchronous copy missed the post-lookup boundary";
-      return;
-    }
+    lease_gate.entered.Wait();
 
-    std::atomic<bool> free_started = false;
-    std::atomic<bool> free_returned = false;
+    TestNotification free_started;
+    TestNotification free_returned;
     hipError_t free_result = hipErrorUnknown;
     std::thread free_thread([&] {
-      free_started.store(true, std::memory_order_release);
+      free_started.Post();
       free_result = api_.free_array(array);
-      free_returned.store(true, std::memory_order_release);
+      free_returned.Post();
     });
-    while (!free_started.load(std::memory_order_acquire)) {
-      std::this_thread::yield();
-    }
-    for (int i = 0;
-         i < 100000 && !free_returned.load(std::memory_order_acquire); ++i) {
-      std::this_thread::yield();
-    }
-    EXPECT_FALSE(free_returned.load(std::memory_order_acquire));
+    free_started.Wait();
+    EXPECT_FALSE(free_returned.IsPosted());
 
-    lease_gate.release.store(true, std::memory_order_release);
+    lease_gate.release.Post();
     copy_thread.join();
     free_thread.join();
     EXPECT_EQ(hipSuccess, api_.set_array_lease_observer(nullptr, nullptr));
@@ -1389,71 +1344,38 @@ TEST_F(HipArrayCopySptApiTest,
     lease_gate.target_count = 2;
     ASSERT_EQ(hipSuccess,
               api_.set_array_lease_observer(WaitForTargetCount, &lease_gate));
-    std::atomic<bool> copy_returned = false;
+    TestNotification copy_returned;
     hipError_t copy_result = hipErrorUnknown;
     std::thread copy_thread([&] {
       copy_result =
           array_is_source
               ? api_.memcpy_atoh_async(destination, array, 0, kWidth, stream)
               : api_.memcpy_htoa_async(array, 0, source, kWidth, stream);
-      copy_returned.store(true, std::memory_order_release);
+      copy_returned.Post();
     });
 
-    bool observed_boundary = false;
-    for (int i = 0; i < 1000000; ++i) {
-      if (lease_gate.entered.load(std::memory_order_acquire)) {
-        observed_boundary = true;
-        break;
-      }
-      std::this_thread::yield();
-    }
-    if (!observed_boundary) {
-      lease_gate.release.store(true, std::memory_order_release);
-      callback_gate.release.store(true, std::memory_order_release);
-      copy_thread.join();
-      EXPECT_EQ(hipSuccess, api_.set_array_lease_observer(nullptr, nullptr));
-      EXPECT_EQ(hipSuccess, api_.stream_destroy(stream));
-      EXPECT_EQ(hipSuccess, api_.free_array(array));
-      FAIL() << "legacy asynchronous copy missed the post-lookup boundary";
-      return;
-    }
+    lease_gate.entered.Wait();
 
-    std::atomic<bool> free_started = false;
-    std::atomic<bool> free_returned = false;
+    TestNotification free_started;
+    TestNotification free_returned;
     hipError_t free_result = hipErrorUnknown;
     std::thread free_thread([&] {
-      free_started.store(true, std::memory_order_release);
+      free_started.Post();
       free_result = api_.free_array(array);
-      free_returned.store(true, std::memory_order_release);
+      free_returned.Post();
     });
-    while (!free_started.load(std::memory_order_acquire)) {
-      std::this_thread::yield();
-    }
-    for (int i = 0;
-         i < 100000 && !free_returned.load(std::memory_order_acquire); ++i) {
-      std::this_thread::yield();
-    }
-    EXPECT_FALSE(free_returned.load(std::memory_order_acquire));
+    free_started.Wait();
+    EXPECT_FALSE(free_returned.IsPosted());
 
     ASSERT_EQ(hipSuccess, api_.launch_host_function(stream, WaitForRelease,
                                                     &callback_gate));
-    while (!callback_gate.entered.load(std::memory_order_acquire)) {
-      std::this_thread::yield();
-    }
+    callback_gate.entered.Wait();
 
-    lease_gate.release.store(true, std::memory_order_release);
-    bool returned_after_dispatch = false;
-    for (int i = 0; i < 1000000; ++i) {
-      if (copy_returned.load(std::memory_order_acquire)) {
-        returned_after_dispatch = true;
-        break;
-      }
-      std::this_thread::yield();
-    }
-    EXPECT_TRUE(returned_after_dispatch);
-    EXPECT_FALSE(free_returned.load(std::memory_order_acquire));
+    lease_gate.release.Post();
+    copy_returned.Wait();
+    EXPECT_FALSE(free_returned.IsPosted());
 
-    callback_gate.release.store(true, std::memory_order_release);
+    callback_gate.release.Post();
     copy_thread.join();
     free_thread.join();
     EXPECT_EQ(hipSuccess, api_.set_array_lease_observer(nullptr, nullptr));
@@ -1492,47 +1414,30 @@ TEST_F(HipArrayCopySptApiTest, LegacyAtoAHoldsBothArrayLeasesThroughDispatch) {
         api_.memcpy_atoa(destination_array, 0, source_array, 0, kWidth);
   });
 
-  bool observed_boundary = false;
-  for (int i = 0; i < 1000000; ++i) {
-    if (lease_gate.entered.load(std::memory_order_acquire)) {
-      observed_boundary = true;
-      break;
-    }
-    std::this_thread::yield();
-  }
-  if (!observed_boundary) {
-    lease_gate.release.store(true, std::memory_order_release);
-    copy_thread.join();
-    EXPECT_EQ(hipSuccess, api_.set_array_lease_observer(nullptr, nullptr));
-    EXPECT_EQ(hipSuccess, api_.free_array(source_array));
-    EXPECT_EQ(hipSuccess, api_.free_array(destination_array));
-    FAIL() << "legacy AtoA copy missed the post-lookup boundary";
-    return;
-  }
+  lease_gate.entered.Wait();
 
-  std::atomic<int> free_started = 0;
-  std::atomic<bool> source_free_returned = false;
-  std::atomic<bool> destination_free_returned = false;
+  TestNotification source_free_started;
+  TestNotification destination_free_started;
+  TestNotification source_free_returned;
+  TestNotification destination_free_returned;
   hipError_t source_free_result = hipErrorUnknown;
   hipError_t destination_free_result = hipErrorUnknown;
   std::thread source_free_thread([&] {
-    free_started.fetch_add(1, std::memory_order_release);
+    source_free_started.Post();
     source_free_result = api_.free_array(source_array);
-    source_free_returned.store(true, std::memory_order_release);
+    source_free_returned.Post();
   });
   std::thread destination_free_thread([&] {
-    free_started.fetch_add(1, std::memory_order_release);
+    destination_free_started.Post();
     destination_free_result = api_.free_array(destination_array);
-    destination_free_returned.store(true, std::memory_order_release);
+    destination_free_returned.Post();
   });
-  while (free_started.load(std::memory_order_acquire) != 2) {
-    std::this_thread::yield();
-  }
-  for (int i = 0; i < 100000; ++i) std::this_thread::yield();
-  EXPECT_FALSE(source_free_returned.load(std::memory_order_acquire));
-  EXPECT_FALSE(destination_free_returned.load(std::memory_order_acquire));
+  source_free_started.Wait();
+  destination_free_started.Wait();
+  EXPECT_FALSE(source_free_returned.IsPosted());
+  EXPECT_FALSE(destination_free_returned.IsPosted());
 
-  lease_gate.release.store(true, std::memory_order_release);
+  lease_gate.release.Post();
   copy_thread.join();
   source_free_thread.join();
   destination_free_thread.join();
