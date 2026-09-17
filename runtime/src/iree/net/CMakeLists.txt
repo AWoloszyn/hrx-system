@@ -100,6 +100,19 @@ iree_cc_library(
 
 iree_cc_library(
   NAME
+    status_wire
+  HDRS
+    "status_wire.h"
+  SRCS
+    "status_wire.c"
+  DEPS
+    iree::base
+    iree::base::core_headers
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
     frame_accumulator
   HDRS
     "frame_accumulator.h"
@@ -151,6 +164,16 @@ iree_cc_fuzz(
     "frame_accumulator_fuzz.cc"
   DEPS
     ::frame_accumulator
+    iree::base
+)
+
+iree_cc_fuzz(
+  NAME
+    status_wire_fuzz
+  SRCS
+    "status_wire_fuzz.cc"
+  DEPS
+    ::status_wire
     iree::base
 )
 
@@ -210,6 +233,19 @@ iree_cc_test(
     ::message_endpoint
     iree::async
     iree::base
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+
+iree_cc_test(
+  NAME
+    status_wire_test
+  SRCS
+    "status_wire_test.cc"
+  DEPS
+    ::status_wire
+    iree::base
+    iree::base::core_headers
     iree::testing::gtest
     iree::testing::gtest_main
 )

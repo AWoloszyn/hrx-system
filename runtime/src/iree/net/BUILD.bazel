@@ -102,6 +102,16 @@ iree_runtime_cc_library(
     ],
 )
 
+iree_runtime_cc_library(
+    name = "status_wire",
+    srcs = ["status_wire.c"],
+    hdrs = ["status_wire.h"],
+    deps = [
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base:core_headers",
+    ],
+)
+
 #===------------------------------------------------------------------------===#
 # Message framing
 #===------------------------------------------------------------------------===#
@@ -156,6 +166,15 @@ iree_runtime_cc_fuzz(
     ],
 )
 
+iree_runtime_cc_fuzz(
+    name = "status_wire_fuzz",
+    srcs = ["status_wire_fuzz.cc"],
+    deps = [
+        ":status_wire",
+        "//runtime/src/iree/base",
+    ],
+)
+
 iree_runtime_cc_test(
     name = "buffer_lease_test",
     srcs = ["buffer_lease_test.cc"],
@@ -206,6 +225,18 @@ iree_runtime_cc_test(
         ":message_endpoint",
         "//runtime/src/iree/async",
         "//runtime/src/iree/base",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+iree_runtime_cc_test(
+    name = "status_wire_test",
+    srcs = ["status_wire_test.cc"],
+    deps = [
+        ":status_wire",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base:core_headers",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
     ],
