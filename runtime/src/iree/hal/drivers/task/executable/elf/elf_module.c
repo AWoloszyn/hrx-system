@@ -161,7 +161,9 @@ static iree_status_t iree_elf_module_verify_phdr_table(
     iree_const_byte_span_t raw_data, iree_elf_module_load_state_t* load_state) {
   for (iree_elf_half_t i = 0; i < load_state->ehdr.e_phnum; ++i) {
     const iree_elf_phdr_t phdr = iree_elf_module_read_phdr(load_state, i);
-    if (phdr.p_type != IREE_ELF_PT_LOAD) continue;
+    if (phdr.p_type != IREE_ELF_PT_LOAD) {
+      continue;
+    }
     if (phdr.p_offset > raw_data.data_length ||
         phdr.p_filesz > raw_data.data_length - phdr.p_offset) {
       return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
@@ -220,7 +222,9 @@ static iree_byte_range_t iree_elf_module_calculate_vaddr_range(
   iree_elf_addr_t vaddr_max = IREE_ELF_ADDR_MIN;
   for (iree_elf_half_t i = 0; i < load_state->ehdr.e_phnum; ++i) {
     const iree_elf_phdr_t phdr = iree_elf_module_read_phdr(load_state, i);
-    if (phdr.p_type != IREE_ELF_PT_LOAD) continue;
+    if (phdr.p_type != IREE_ELF_PT_LOAD) {
+      continue;
+    }
     iree_elf_addr_t p_vaddr_min =
         iree_page_align_start(phdr.p_vaddr, phdr.p_align);
     iree_elf_addr_t p_vaddr_max =
@@ -261,7 +265,9 @@ static iree_status_t iree_elf_module_load_segments(
   // Commit and load all of the segments.
   for (iree_elf_half_t i = 0; i < load_state->ehdr.e_phnum; ++i) {
     const iree_elf_phdr_t phdr = iree_elf_module_read_phdr(load_state, i);
-    if (phdr.p_type != IREE_ELF_PT_LOAD) continue;
+    if (phdr.p_type != IREE_ELF_PT_LOAD) {
+      continue;
+    }
 
     // Commit the range of pages used by this segment, initially with write
     // access so that we can modify the pages.
@@ -307,17 +313,29 @@ static iree_status_t iree_elf_module_protect_segments(
   // PT_LOAD segments (the bulk of progbits):
   for (iree_elf_half_t i = 0; i < load_state->ehdr.e_phnum; ++i) {
     const iree_elf_phdr_t phdr = iree_elf_module_read_phdr(load_state, i);
-    if (phdr.p_type != IREE_ELF_PT_LOAD) continue;
+    if (phdr.p_type != IREE_ELF_PT_LOAD) {
+      continue;
+    }
 
     // Interpret the access bits and widen to the implicit allowable
     // permissions. See Table 7-37:
     // https://docs.oracle.com/cd/E19683-01/816-1386/6m7qcoblk/index.html#chapter6-34713
     iree_memory_access_t access = 0;
-    if (phdr.p_flags & IREE_ELF_PF_R) access |= IREE_MEMORY_ACCESS_READ;
-    if (phdr.p_flags & IREE_ELF_PF_W) access |= IREE_MEMORY_ACCESS_WRITE;
-    if (phdr.p_flags & IREE_ELF_PF_X) access |= IREE_MEMORY_ACCESS_EXECUTE;
-    if (access & IREE_MEMORY_ACCESS_WRITE) access |= IREE_MEMORY_ACCESS_READ;
-    if (access & IREE_MEMORY_ACCESS_EXECUTE) access |= IREE_MEMORY_ACCESS_READ;
+    if (phdr.p_flags & IREE_ELF_PF_R) {
+      access |= IREE_MEMORY_ACCESS_READ;
+    }
+    if (phdr.p_flags & IREE_ELF_PF_W) {
+      access |= IREE_MEMORY_ACCESS_WRITE;
+    }
+    if (phdr.p_flags & IREE_ELF_PF_X) {
+      access |= IREE_MEMORY_ACCESS_EXECUTE;
+    }
+    if (access & IREE_MEMORY_ACCESS_WRITE) {
+      access |= IREE_MEMORY_ACCESS_READ;
+    }
+    if (access & IREE_MEMORY_ACCESS_EXECUTE) {
+      access |= IREE_MEMORY_ACCESS_READ;
+    }
 
     // We only support R+X (no W).
     if ((phdr.p_flags & IREE_ELF_PF_X) && (phdr.p_flags & IREE_ELF_PF_W)) {
@@ -343,7 +361,9 @@ static iree_status_t iree_elf_module_protect_segments(
   // These may alias with segments above and must be processed afterward.
   for (iree_elf_half_t i = 0; i < load_state->ehdr.e_phnum; ++i) {
     const iree_elf_phdr_t phdr = iree_elf_module_read_phdr(load_state, i);
-    if (phdr.p_type != IREE_ELF_PT_GNU_RELRO) continue;
+    if (phdr.p_type != IREE_ELF_PT_GNU_RELRO) {
+      continue;
+    }
     iree_byte_range_t byte_range = {
         .offset = phdr.p_vaddr,
         .length = phdr.p_memsz,
@@ -533,7 +553,9 @@ static void iree_elf_module_run_initializers(
   // NOTE: entries with values of 0 or -1 must be ignored.
   for (iree_host_size_t i = 0; i < load_state->init_array_count; ++i) {
     iree_elf_addr_t symbol_ptr = load_state->init_array[i];
-    if (symbol_ptr == 0 || symbol_ptr == IREE_ELF_ADDR_MAX) continue;
+    if (symbol_ptr == 0 || symbol_ptr == IREE_ELF_ADDR_MAX) {
+      continue;
+    }
     // Relocation has already converted each array entry to a host address.
     iree_elf_call_v_v((const void*)(uintptr_t)symbol_ptr);
   }
@@ -571,8 +593,12 @@ static const iree_elf_sym_t* iree_elf_module_lookup_global_symbol(
   for (int i = (int)module->dynsym_count - 1; i > 0; i--) {
     const iree_elf_sym_t* sym = &module->dynsym[i];
     iree_elf_byte_t bind = IREE_ELF_ST_BIND(sym->st_info);
-    if (bind != IREE_ELF_STB_GLOBAL && bind != IREE_ELF_STB_WEAK) continue;
-    if (sym->st_name == 0) continue;
+    if (bind != IREE_ELF_STB_GLOBAL && bind != IREE_ELF_STB_WEAK) {
+      continue;
+    }
+    if (sym->st_name == 0) {
+      continue;
+    }
     if (strcmp(module->dynstr + sym->st_name, symbol_name) == 0) {
       return sym;
     }

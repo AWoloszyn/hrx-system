@@ -22,14 +22,18 @@ namespace {
 // A native failure terminates the experiment without retries or later samples.
 // No execution is submitted: process exit reclaims remaining native memory.
 void CheckStatus(amdf_status_t status, const char* operation) {
-  if (amdf_status_is_ok(status)) return;
+  if (amdf_status_is_ok(status)) {
+    return;
+  }
   std::fprintf(stderr, "%s failed: domain=%u code=%u\n", operation,
                amdf_status_domain(status), amdf_status_code(status));
   std::exit(EXIT_FAILURE);
 }
 
 void Check(bool condition, const char* message) {
-  if (condition) return;
+  if (condition) {
+    return;
+  }
   std::fprintf(stderr, "%s\n", message);
   std::exit(EXIT_FAILURE);
 }
@@ -56,17 +60,23 @@ class MemoryBenchmark {
         "endpoint_enumerate");
     amdf_endpoint_t* endpoint = nullptr;
     for (const auto& summary : summaries) {
-      if (summary.engine_kind != engine_kind) continue;
+      if (summary.engine_kind != engine_kind) {
+        continue;
+      }
       CheckStatus(GetCtsDeviceCache().OpenEndpoint(summary.id, &endpoint),
                   "endpoint_open");
       break;
     }
-    if (!endpoint) return;
+    if (!endpoint) {
+      return;
+    }
     const amdf_status_t status =
         engine_kind == AMDF_ENGINE_KIND_GPU
             ? GetCtsDeviceCache().GetGpuDevice(endpoint, &access_.device)
             : GetCtsDeviceCache().GetXdnaDevice(endpoint, &access_.device);
-    if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) return;
+    if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
+      return;
+    }
     CheckStatus(status, "device_create");
     access_.requirements.access =
         AMDF_MEMORY_ACCESS_READ | AMDF_MEMORY_ACCESS_WRITE;
@@ -87,7 +97,9 @@ class MemoryBenchmark {
       info.type = AMDF_STRUCTURE_TYPE_MEMORY_SCOPE_INFO;
       info.structure_size = sizeof(info);
       CheckStatus(api_->memory_scope_query_info(scope, &info), "scope_info");
-      if (info.kind != AMDF_MEMORY_SCOPE_KIND_SYSTEM) continue;
+      if (info.kind != AMDF_MEMORY_SCOPE_KIND_SYSTEM) {
+        continue;
+      }
       for (uint32_t ordinal = 0; ordinal < info.memory_profile_count;
            ++ordinal) {
         amdf_memory_profile_t profile = {};
@@ -114,9 +126,13 @@ class MemoryBenchmark {
         create_info_.memory_profile_ordinal = ordinal;
         break;
       }
-      if (scope_) break;
+      if (scope_) {
+        break;
+      }
     }
-    if (!scope_) return;
+    if (!scope_) {
+      return;
+    }
     create_info_.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
     create_info_.structure_size = sizeof(create_info_);
     create_info_.access_count = 1;
@@ -127,7 +143,9 @@ class MemoryBenchmark {
   // Measures acquisition, mapping/address lookup, and complete release without
   // touching the mapping. Native allocation may itself initialize the backing.
   void Allocation(benchmark::State& state) {
-    if (!CheckAvailable(state)) return;
+    if (!CheckAvailable(state)) {
+      return;
+    }
     const size_t byte_length = static_cast<size_t>(state.range(0));
     CheckMemory(byte_length);
     for (auto iteration : state) {
@@ -141,7 +159,9 @@ class MemoryBenchmark {
   // Measures the allocation lifecycle including the first full host write,
   // without an explicit publication operation.
   void Initialization(benchmark::State& state) {
-    if (!CheckAvailable(state)) return;
+    if (!CheckAvailable(state)) {
+      return;
+    }
     const size_t byte_length = static_cast<size_t>(state.range(0));
     CheckMemory(byte_length);
     uint8_t value = 0;
@@ -158,7 +178,9 @@ class MemoryBenchmark {
   // and complete release, with no hidden device creation or live allocation
   // pool.
   void Lifecycle(benchmark::State& state) {
-    if (!CheckAvailable(state)) return;
+    if (!CheckAvailable(state)) {
+      return;
+    }
     const size_t byte_length = static_cast<size_t>(state.range(0));
     CheckMemory(byte_length);
     uint8_t value = 0;
@@ -174,7 +196,9 @@ class MemoryBenchmark {
   // Measures only CPU initialization and explicit publication of retained
   // resident backing. No command submission or device completion is implied.
   void Publication(benchmark::State& state) {
-    if (!CheckAvailable(state)) return;
+    if (!CheckAvailable(state)) {
+      return;
+    }
     const size_t byte_length = static_cast<size_t>(state.range(0));
     Acquire(byte_length);
     Publish(byte_length, 0xA5);
@@ -184,15 +208,18 @@ class MemoryBenchmark {
       (void)iteration;
       Publish(byte_length, value++);
     }
-    if (state.iterations())
+    if (state.iterations()) {
       Verify(byte_length, static_cast<uint8_t>(value - 1));
+    }
     Release();
     state.SetBytesProcessed(state.iterations() * byte_length);
   }
 
  private:
   bool CheckAvailable(benchmark::State& state) const {
-    if (scope_) return true;
+    if (scope_) {
+      return true;
+    }
     state.SkipWithMessage("native host-visible allocation unavailable");
     return false;
   }

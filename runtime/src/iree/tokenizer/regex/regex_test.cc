@@ -60,7 +60,9 @@ class CompiledPattern {
   // Match collection for easy testing.
   std::vector<std::pair<size_t, size_t>> FindMatches(const char* text) {
     matches_.clear();
-    if (!ok()) return {};
+    if (!ok()) {
+      return {};
+    }
     IREE_EXPECT_OK(
         iree_tokenizer_regex_exec(&dfa_, IREE_SV(text), MatchCallback, this));
     return matches_;

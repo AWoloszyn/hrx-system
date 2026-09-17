@@ -643,7 +643,9 @@ static bool loom_amdgpu_vector_packet_store_can_interleave(
     const loom_value_t* source_value =
         loom_module_value(packetization->context->module, value->source);
     const loom_op_t* op = loom_value_def_op(source_value);
-    if (!loom_vector_load_isa(op)) continue;
+    if (!loom_vector_load_isa(op)) {
+      continue;
+    }
 
     loom_vector_memory_footprint_t load_footprint = {0};
     const bool footprint_described = loom_vector_memory_footprint_describe(
@@ -914,7 +916,9 @@ static iree_status_t loom_amdgpu_vector_packet_static_store(
         loom_amdgpu_vector_packetized_value_t* operand =
             loom_amdgpu_vector_packet_find(packetization,
                                            source_operands[operand_index]);
-        if (operand == NULL) continue;
+        if (operand == NULL) {
+          continue;
+        }
         const uint32_t operand_value_index =
             (uint32_t)(operand - packetization->values);
         operand->packet =
@@ -1159,9 +1163,13 @@ static iree_status_t loom_amdgpu_vector_packet_erase_dead_sources(
         &packetization->values[i - 1];
     const loom_value_t* value = loom_module_value(
         packetization->context->module, packetized_value->source);
-    if (value == NULL || loom_value_is_block_arg(value)) continue;
+    if (value == NULL || loom_value_is_block_arg(value)) {
+      continue;
+    }
     loom_op_t* op = loom_value_def_op(value);
-    if (op == NULL) continue;
+    if (op == NULL) {
+      continue;
+    }
     bool erased = false;
     IREE_RETURN_IF_ERROR(loom_rewriter_erase_if_dead(rewriter, op, &erased));
   }

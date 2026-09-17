@@ -77,7 +77,9 @@ class EventSourceEventfdTest : public CtsTestBase<> {
 // Basic lifecycle: register, unregister, no crash.
 TEST_P(EventSourceEventfdTest, RegisterUnregister) {
   int fd = CreateTestEventFd();
-  if (fd < 0) return;
+  if (fd < 0) {
+    return;
+  }
 
   // Track callback invocations.
   std::atomic<int> callback_count{0};
@@ -106,7 +108,9 @@ TEST_P(EventSourceEventfdTest, RegisterUnregister) {
 // Signal fd after registration, verify callback fires.
 TEST_P(EventSourceEventfdTest, CallbackFires) {
   int fd = CreateTestEventFd();
-  if (fd < 0) return;
+  if (fd < 0) {
+    return;
+  }
 
   struct CallbackState {
     std::atomic<int> call_count{0};
@@ -148,7 +152,9 @@ TEST_P(EventSourceEventfdTest, CallbackFires) {
 // Multiple signals should fire multiple callbacks (multishot behavior).
 TEST_P(EventSourceEventfdTest, MultipleSignals) {
   int fd = CreateTestEventFd();
-  if (fd < 0) return;
+  if (fd < 0) {
+    return;
+  }
 
   struct CallbackState {
     std::atomic<int> call_count{0};
@@ -194,7 +200,9 @@ TEST_P(EventSourceEventfdTest, MultipleSignals) {
 // After unregister, signals should not fire callbacks.
 TEST_P(EventSourceEventfdTest, UnregisterStopsCallbacks) {
   int fd = CreateTestEventFd();
-  if (fd < 0) return;
+  if (fd < 0) {
+    return;
+  }
 
   struct CallbackState {
     std::atomic<int> call_count{0};
@@ -264,7 +272,9 @@ TEST_P(EventSourceEventfdTest, MultipleEventSources) {
 
   for (int i = 0; i < kSourceCount; ++i) {
     fds[i] = CreateTestEventFd();
-    if (fds[i] < 0) return;
+    if (fds[i] < 0) {
+      return;
+    }
     callback_counts[i].store(0);
     sources[i] = nullptr;
   }
@@ -307,7 +317,9 @@ TEST_P(EventSourceEventfdTest, MultipleEventSources) {
   PollUntilCondition(
       [&] {
         for (int i = 0; i < kSourceCount; ++i) {
-          if (callback_counts[i].load() < 1) return false;
+          if (callback_counts[i].load() < 1) {
+            return false;
+          }
         }
         return true;
       },

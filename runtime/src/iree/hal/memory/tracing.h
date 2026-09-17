@@ -70,7 +70,9 @@ static inline void iree_hal_memory_trace_alloc(
 static inline void iree_hal_memory_trace_free(
     const iree_hal_memory_trace_t* trace, void* ptr) {
 #if IREE_TRACING_FEATURES & IREE_TRACING_FEATURE_ALLOCATION_TRACKING
-  if (ptr && trace->memory_id) IREE_TRACE_FREE_NAMED(trace->memory_id, ptr);
+  if (ptr && trace->memory_id) {
+    IREE_TRACE_FREE_NAMED(trace->memory_id, ptr);
+  }
 #else
   (void)trace;
   (void)ptr;

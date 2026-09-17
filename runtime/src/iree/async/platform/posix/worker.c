@@ -364,7 +364,9 @@ iree_status_t iree_async_posix_worker_initialize(
 }
 
 void iree_async_posix_worker_request_exit(iree_async_posix_worker_t* worker) {
-  if (!worker->thread) return;
+  if (!worker->thread) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   // Set state to EXITING. If already ZOMBIE, restore ZOMBIE state.
@@ -388,7 +390,9 @@ void iree_async_posix_worker_request_exit(iree_async_posix_worker_t* worker) {
 }
 
 void iree_async_posix_worker_await_exit(iree_async_posix_worker_t* worker) {
-  if (!worker->thread) return;
+  if (!worker->thread) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   // Ensure exit was requested.

@@ -99,7 +99,9 @@ static inline bool loom_llvmir_emit_descriptor_ref_in(
     uint32_t descriptor_ref, const uint32_t* descriptor_refs,
     iree_host_size_t descriptor_ref_count) {
   for (iree_host_size_t i = 0; i < descriptor_ref_count; ++i) {
-    if (descriptor_refs[i] == descriptor_ref) return true;
+    if (descriptor_refs[i] == descriptor_ref) {
+      return true;
+    }
   }
   return false;
 }

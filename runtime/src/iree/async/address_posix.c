@@ -198,7 +198,9 @@ IREE_API_EXPORT iree_status_t iree_async_address_format(
       if (address->length > path_offset && addr->sun_path[0] == '\0') {
         // Abstract namespace.
         iree_host_size_t name_length = address->length - path_offset - 1;
-        if (name_length > max_path - 1) name_length = max_path - 1;
+        if (name_length > max_path - 1) {
+          name_length = max_path - 1;
+        }
         iree_string_view_t name = {addr->sun_path + 1, name_length};
         length =
             iree_async_address_format_unix(name, /*is_abstract=*/true, temp);
@@ -208,7 +210,9 @@ IREE_API_EXPORT iree_status_t iree_async_address_format(
         // kernel-sourced addresses from getsockname/accept may not.
         iree_host_size_t stored =
             address->length > path_offset ? address->length - path_offset : 0;
-        if (stored > max_path) stored = max_path;
+        if (stored > max_path) {
+          stored = max_path;
+        }
         if (stored > 0 && addr->sun_path[stored - 1] == '\0') {
           stored -= 1;
         }

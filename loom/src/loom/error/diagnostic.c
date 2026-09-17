@@ -17,7 +17,9 @@
 // Finds the start of the line containing byte offset |position|.
 static iree_host_size_t loom_find_line_start(iree_string_view_t source,
                                              iree_host_size_t position) {
-  if (position == 0) return 0;
+  if (position == 0) {
+    return 0;
+  }
   iree_host_size_t i = position;
   while (i > 0 && source.data[i - 1] != '\n') {
     --i;
@@ -47,7 +49,9 @@ static bool loom_source_range_has_text(const loom_source_range_t* range) {
 static iree_status_t loom_diagnostic_format_source_block(
     const loom_source_range_t* range, const loom_highlight_range_t* highlights,
     iree_host_size_t highlight_count, loom_output_stream_t* stream) {
-  if (!loom_source_range_has_text(range)) return iree_ok_status();
+  if (!loom_source_range_has_text(range)) {
+    return iree_ok_status();
+  }
 
   // Extract the source line containing the diagnostic start.
   iree_host_size_t line_start =
@@ -110,7 +114,9 @@ static iree_status_t loom_diagnostic_format_source_block(
         underline_length = line_end - range->start;
       }
     }
-    if (underline_length == 0) underline_length = 1;
+    if (underline_length == 0) {
+      underline_length = 1;
+    }
     for (iree_host_size_t i = 0; i < underline_length; ++i) {
       IREE_RETURN_IF_ERROR(loom_output_stream_write_char(stream, '^'));
     }

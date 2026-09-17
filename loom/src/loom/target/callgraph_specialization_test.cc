@@ -102,7 +102,9 @@ static iree_status_t CollectDiagnostic(
   auto* collector = static_cast<DiagnosticCollector*>(user_data);
   collector->errors.push_back(emission->error);
   for (iree_host_size_t i = 0; i < emission->param_count; ++i) {
-    if (emission->params[i].kind != LOOM_PARAM_STRING) continue;
+    if (emission->params[i].kind != LOOM_PARAM_STRING) {
+      continue;
+    }
     const iree_string_view_t value = emission->params[i].string;
     collector->strings.emplace_back(value.data, value.size);
   }
@@ -202,7 +204,9 @@ class TargetCallgraphSpecializationTest : public ::testing::Test {
     loom_block_t* block =
         loom_region_entry_block(loom_func_like_body(function));
     for (iree_host_size_t i = 0; i < block->op_count; ++i) {
-      if (loom_target_subgroup_size_isa(loom_block_op(block, i))) return true;
+      if (loom_target_subgroup_size_isa(loom_block_op(block, i))) {
+        return true;
+      }
     }
     return false;
   }

@@ -33,7 +33,9 @@ static iree_status_t iree_io_stream_validate_fixed_range(
     iree_io_stream_pos_t stream_offset, iree_io_stream_pos_t stream_length,
     iree_io_stream_pos_t access_length,
     iree_io_stream_pos_t* out_available_length) {
-  if (out_available_length) *out_available_length = 0;
+  if (out_available_length) {
+    *out_available_length = 0;
+  }
 
   iree_io_stream_pos_t remaining_length = stream_length - stream_offset;
   if (access_length > remaining_length) {
@@ -52,7 +54,9 @@ static iree_status_t iree_io_stream_validate_fixed_range(
                             access_length, stream_offset, stream_length);
   }
 
-  if (out_available_length) *out_available_length = access_length;
+  if (out_available_length) {
+    *out_available_length = access_length;
+  }
   return iree_ok_status();
 }
 
@@ -190,7 +194,9 @@ static iree_status_t iree_io_memory_stream_read(
     void* buffer, iree_host_size_t* out_buffer_length) {
   IREE_ASSERT_ARGUMENT(base_stream);
   IREE_ASSERT_ARGUMENT(buffer);
-  if (out_buffer_length) *out_buffer_length = 0;
+  if (out_buffer_length) {
+    *out_buffer_length = 0;
+  }
   iree_io_memory_stream_t* stream = iree_io_memory_stream_cast(base_stream);
   IREE_TRACE_ZONE_BEGIN(z0);
 
@@ -213,7 +219,9 @@ static iree_status_t iree_io_memory_stream_read(
          (iree_host_size_t)read_length);
   stream->offset += read_length;
 
-  if (out_buffer_length) *out_buffer_length = (iree_host_size_t)read_length;
+  if (out_buffer_length) {
+    *out_buffer_length = (iree_host_size_t)read_length;
+  }
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
 }

@@ -15,13 +15,17 @@ int32_t loom_index_target_carrier_bitwidth(const loom_fact_context_t* context,
       scalar_type != LOOM_SCALAR_TYPE_OFFSET) {
     return -1;
   }
-  if (!context || !context->target_facts) return 0;
+  if (!context || !context->target_facts) {
+    return 0;
+  }
   const loom_target_snapshot_t* snapshot =
       &context->target_facts->storage.snapshot;
   const uint32_t target_bitwidth = scalar_type == LOOM_SCALAR_TYPE_INDEX
                                        ? snapshot->index_bitwidth
                                        : snapshot->offset_bitwidth;
-  if (target_bitwidth == 0 || target_bitwidth > 64) return -1;
+  if (target_bitwidth == 0 || target_bitwidth > 64) {
+    return -1;
+  }
   return (int32_t)target_bitwidth;
 }
 

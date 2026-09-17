@@ -470,8 +470,12 @@ IREE_API_EXPORT iree_status_t iree_hal_buffer_view_format_contents(
     iree_host_size_t max_element_count, iree_host_size_t buffer_capacity,
     char* buffer, iree_host_size_t* out_buffer_length) {
   IREE_ASSERT_ARGUMENT(buffer_view);
-  if (out_buffer_length) *out_buffer_length = 0;
-  if (buffer && buffer_capacity) buffer[0] = 0;
+  if (out_buffer_length) {
+    *out_buffer_length = 0;
+  }
+  if (buffer && buffer_capacity) {
+    buffer[0] = 0;
+  }
   if (IREE_UNLIKELY(contents.data_length !=
                     iree_hal_buffer_view_byte_length(buffer_view))) {
     return iree_make_status(
@@ -499,8 +503,12 @@ IREE_API_EXPORT iree_status_t iree_hal_buffer_view_format(
     iree_host_size_t max_element_count, iree_host_size_t buffer_capacity,
     char* buffer, iree_host_size_t* out_buffer_length) {
   IREE_ASSERT_ARGUMENT(buffer_view);
-  if (out_buffer_length) *out_buffer_length = 0;
-  if (buffer && buffer_capacity) buffer[0] = 0;
+  if (out_buffer_length) {
+    *out_buffer_length = 0;
+  }
+  if (buffer && buffer_capacity) {
+    buffer[0] = 0;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_hal_buffer_t* hal_buffer = iree_hal_buffer_view_buffer(buffer_view);
@@ -579,12 +587,16 @@ IREE_API_EXPORT iree_status_t iree_hal_buffer_view_append_to_builder(
   iree_status_t status = iree_hal_buffer_view_format(
       buffer_view, max_element_count, /*buffer_capacity=*/0, /*buffer=*/NULL,
       &required_length);
-  if (!iree_status_is_out_of_range(status)) return status;
+  if (!iree_status_is_out_of_range(status)) {
+    return status;
+  }
   iree_status_free(status);
   char* buffer = NULL;
   IREE_RETURN_IF_ERROR(
       iree_string_builder_append_inline(builder, required_length, &buffer));
-  if (!buffer) return iree_ok_status();
+  if (!buffer) {
+    return iree_ok_status();
+  }
   return iree_hal_buffer_view_format(buffer_view, max_element_count,
                                      required_length + /*NUL=*/1, buffer,
                                      &required_length);

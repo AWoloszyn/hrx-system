@@ -831,7 +831,9 @@ static inline const loom_register_type_data_t* loom_type_register_data(
 
 // Returns the first target-owned register carrier payload field.
 static inline uint64_t loom_type_register_payload0(loom_type_t type) {
-  if (IREE_LIKELY(loom_type_has_inline_dims(type))) return type.dims[0];
+  if (IREE_LIKELY(loom_type_has_inline_dims(type))) {
+    return type.dims[0];
+  }
   const loom_register_type_data_t* data =
       (const loom_register_type_data_t*)(uintptr_t)type.dims[0];
   return data->carrier_payload0;
@@ -839,7 +841,9 @@ static inline uint64_t loom_type_register_payload0(loom_type_t type) {
 
 // Returns the second target-owned register carrier payload field.
 static inline uint64_t loom_type_register_payload1(loom_type_t type) {
-  if (IREE_LIKELY(loom_type_has_inline_dims(type))) return type.dims[1];
+  if (IREE_LIKELY(loom_type_has_inline_dims(type))) {
+    return type.dims[1];
+  }
   const loom_register_type_data_t* data =
       (const loom_register_type_data_t*)(uintptr_t)type.dims[0];
   return data->carrier_payload1;
@@ -875,7 +879,9 @@ static inline bool loom_type_may_reference_values(loom_type_t type) {
 // packing as shaped types (loom_dim_pack_static / loom_dim_pack_dynamic).
 static inline loom_type_t loom_type_pool(uint64_t block_size_dim) {
   uint8_t flags = LOOM_TYPE_FLAG_INLINE_DIMS;
-  if (!loom_dim_is_dynamic(block_size_dim)) flags |= LOOM_TYPE_FLAG_ALL_STATIC;
+  if (!loom_dim_is_dynamic(block_size_dim)) {
+    flags |= LOOM_TYPE_FLAG_ALL_STATIC;
+  }
   loom_type_t type = {0};
   type.header = loom_type_make_raw_header(LOOM_TYPE_POOL, 0, 1, flags);
   type.dims[0] = block_size_dim;
@@ -915,7 +921,9 @@ static inline loom_type_t loom_type_shaped_1d(loom_type_kind_t kind,
                                               uint64_t dim0,
                                               uint16_t encoding_id) {
   uint8_t flags = LOOM_TYPE_FLAG_INLINE_DIMS;
-  if (!loom_dim_is_dynamic(dim0)) flags |= LOOM_TYPE_FLAG_ALL_STATIC;
+  if (!loom_dim_is_dynamic(dim0)) {
+    flags |= LOOM_TYPE_FLAG_ALL_STATIC;
+  }
   loom_type_t type = {0};
   type.header = loom_type_make_header(kind, element_type, 1, flags);
   type.encoding_id = encoding_id;
@@ -929,8 +937,9 @@ static inline loom_type_t loom_type_shaped_2d(loom_type_kind_t kind,
                                               uint64_t dim0, uint64_t dim1,
                                               uint16_t encoding_id) {
   uint8_t flags = LOOM_TYPE_FLAG_INLINE_DIMS;
-  if (!loom_dim_is_dynamic(dim0) && !loom_dim_is_dynamic(dim1))
+  if (!loom_dim_is_dynamic(dim0) && !loom_dim_is_dynamic(dim1)) {
     flags |= LOOM_TYPE_FLAG_ALL_STATIC;
+  }
   loom_type_t type = {0};
   type.header = loom_type_make_header(kind, element_type, 2, flags);
   type.encoding_id = encoding_id;

@@ -154,7 +154,9 @@ struct iree_net_listener_vtable_t {
 // The listener must be stopped (stopped callback must have fired) before
 // freeing. Freeing before the stopped callback fires is a programming error.
 static inline void iree_net_listener_free(iree_net_listener_t* listener) {
-  if (listener) listener->vtable->free(listener);
+  if (listener) {
+    listener->vtable->free(listener);
+  }
 }
 
 // Initiates graceful shutdown of the listener.
@@ -254,7 +256,9 @@ static inline void iree_net_transport_factory_initialize(
 // Retains a reference to the factory.
 static inline void iree_net_transport_factory_retain(
     iree_net_transport_factory_t* factory) {
-  if (!factory) return;
+  if (!factory) {
+    return;
+  }
   iree_atomic_ref_count_inc(&factory->ref_count);
 }
 
@@ -263,7 +267,9 @@ static inline void iree_net_transport_factory_retain(
 // associated resources are freed.
 static inline void iree_net_transport_factory_release(
     iree_net_transport_factory_t* factory) {
-  if (!factory) return;
+  if (!factory) {
+    return;
+  }
   if (iree_atomic_ref_count_dec(&factory->ref_count) == 1) {
     factory->vtable->destroy(factory);
   }

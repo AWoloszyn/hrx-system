@@ -1943,7 +1943,9 @@ class ReaderTest : public ::testing::Test {
       for (uint64_t result = 0; result < result_count; ++result) {
         uint8_t is_tied = bytes[offset++];
         ReadValueDefOffsets(bytes, &offset);
-        if (is_tied) ReadUVarint(bytes, &offset);
+        if (is_tied) {
+          ReadUVarint(bytes, &offset);
+        }
       }
       ReadUVarint(bytes, &offset);  // tied_result_count
       SkipPredicateList(bytes, &offset);
@@ -1958,7 +1960,9 @@ class ReaderTest : public ::testing::Test {
            ++payload_index) {
         offset += sizeof(uint8_t);   // region_index
         offset += sizeof(uint64_t);  // ir_offset
-        if (i == symbol_index && payload_index == 0) return offset;
+        if (i == symbol_index && payload_index == 0) {
+          return offset;
+        }
         offset += sizeof(uint32_t);  // ir_length
       }
     }
@@ -2069,7 +2073,9 @@ class ReaderTest : public ::testing::Test {
 
   SectionEntry FindSection(const std::vector<uint8_t>& bytes, uint16_t kind) {
     for (SectionEntry entry : ReadSectionDirectory(bytes)) {
-      if (entry.kind == kind) return entry;
+      if (entry.kind == kind) {
+        return entry;
+      }
     }
     return SectionEntry{};
   }

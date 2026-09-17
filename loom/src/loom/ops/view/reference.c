@@ -178,7 +178,9 @@ static loom_value_facts_t loom_view_clamp_nonnegative(
   if (!loom_view_facts_are_integer(facts)) {
     return loom_view_nonnegative_unknown_facts();
   }
-  if (facts.range_hi < 0) return loom_view_nonnegative_unknown_facts();
+  if (facts.range_hi < 0) {
+    return loom_view_nonnegative_unknown_facts();
+  }
   int64_t lower_bound = facts.range_lo < 0 ? 0 : facts.range_lo;
   int64_t upper_bound = facts.range_hi < 0 ? 0 : facts.range_hi;
   int64_t divisor = facts.known_divisor > 0 ? facts.known_divisor : 1;
@@ -205,14 +207,17 @@ static loom_value_facts_t loom_view_addi_nonnegative(loom_value_facts_t lhs,
 
 static loom_value_facts_t loom_view_scale_by_element_bytes(
     loom_value_facts_t element_facts, int64_t static_element_byte_count) {
-  if (static_element_byte_count < 0)
+  if (static_element_byte_count < 0) {
     return loom_view_nonnegative_unknown_facts();
+  }
   return loom_view_muli_nonnegative(
       element_facts, loom_value_facts_exact_i64(static_element_byte_count));
 }
 
 static uint64_t loom_view_power_of_two_factor(int64_t value) {
-  if (value <= 1) return 1;
+  if (value <= 1) {
+    return 1;
+  }
   uint64_t unsigned_value = (uint64_t)value;
   return unsigned_value & (~unsigned_value + 1);
 }
@@ -228,7 +233,9 @@ static uint64_t loom_view_alignment_from_offset_facts(
 
 static int64_t loom_view_static_element_byte_count(loom_type_t type) {
   int32_t bit_count = loom_scalar_type_bitwidth(loom_type_element_type(type));
-  if (bit_count <= 0 || (bit_count % 8) != 0) return -1;
+  if (bit_count <= 0 || (bit_count % 8) != 0) {
+    return -1;
+  }
   return bit_count / 8;
 }
 
@@ -238,7 +245,9 @@ static loom_value_facts_t loom_view_dim_facts(
     return loom_value_facts_exact_i64(loom_type_dim_static_size_at(type, axis));
   }
   loom_value_id_t dim_value_id = loom_type_dim_value_id_at(type, axis);
-  if (!context || !context->table) return loom_view_nonnegative_unknown_facts();
+  if (!context || !context->table) {
+    return loom_view_nonnegative_unknown_facts();
+  }
   return loom_view_clamp_nonnegative(
       loom_value_fact_table_lookup(context->table, dim_value_id));
 }
@@ -278,7 +287,9 @@ static bool loom_view_address_layout(const loom_fact_context_t* context,
 static bool loom_view_dense_axis_stride_facts(
     const loom_fact_context_t* context, loom_type_t view_type, uint8_t axis,
     loom_value_facts_t* out_stride) {
-  if (axis >= loom_type_rank(view_type)) return false;
+  if (axis >= loom_type_rank(view_type)) {
+    return false;
+  }
   loom_value_facts_t stride = loom_value_facts_exact_i64(1);
   uint8_t rank = loom_type_rank(view_type);
   for (uint8_t suffix_axis = (uint8_t)(axis + 1); suffix_axis < rank;
@@ -341,8 +352,9 @@ static loom_value_facts_t loom_view_extent_max_index_facts(
 static loom_value_facts_t loom_view_strided_footprint_facts(
     const loom_fact_context_t* context, const loom_module_t* module,
     loom_type_t view_type, int64_t static_element_byte_count) {
-  if (static_element_byte_count < 0)
+  if (static_element_byte_count < 0) {
     return loom_view_nonnegative_unknown_facts();
+  }
 
   uint8_t rank = loom_type_rank(view_type);
   loom_value_facts_t max_element_offset = loom_value_facts_exact_i64(0);
@@ -352,7 +364,9 @@ static loom_value_facts_t loom_view_strided_footprint_facts(
     if (loom_value_facts_is_exact(extent) && extent.range_lo == 0) {
       return loom_value_facts_exact_i64(0);
     }
-    if (extent.range_lo == 0) may_be_empty = true;
+    if (extent.range_lo == 0) {
+      may_be_empty = true;
+    }
 
     loom_value_facts_t stride = loom_value_facts_unknown();
     if (!loom_view_axis_stride_facts(context, module, view_type, axis,
@@ -407,7 +421,9 @@ static bool loom_view_static_or_dynamic_index_facts(
     int64_t static_index = static_indices.i64_array[i];
     if (static_index != INT64_MIN) {
       if (i == axis) {
-        if (static_index < 0) return false;
+        if (static_index < 0) {
+          return false;
+        }
         *out_index = loom_value_facts_exact_i64(static_index);
         return true;
       }
@@ -431,7 +447,9 @@ static bool loom_view_static_or_dynamic_index_facts(
 static bool loom_view_offsets_are_exact_zero(
     const loom_fact_context_t* context, loom_attribute_t static_offsets,
     loom_value_slice_t dynamic_offsets) {
-  if (static_offsets.kind != LOOM_ATTR_I64_ARRAY) return false;
+  if (static_offsets.kind != LOOM_ATTR_I64_ARRAY) {
+    return false;
+  }
   for (uint16_t axis = 0; axis < static_offsets.count; ++axis) {
     loom_value_facts_t offset = loom_value_facts_unknown();
     if (!loom_view_static_or_dynamic_index_facts(
@@ -459,7 +477,9 @@ static bool loom_view_subview_additional_byte_offset_facts(
     *out_offset = loom_value_facts_exact_i64(0);
     return true;
   }
-  if (static_element_byte_count < 0) return false;
+  if (static_element_byte_count < 0) {
+    return false;
+  }
 
   loom_value_facts_t element_offset = loom_value_facts_exact_i64(0);
   uint8_t rank = loom_type_rank(source_type);
@@ -469,7 +489,9 @@ static bool loom_view_subview_additional_byte_offset_facts(
             context, static_offsets, dynamic_offsets, axis, &index)) {
       return false;
     }
-    if (loom_value_facts_is_exact(index) && index.range_lo == 0) continue;
+    if (loom_value_facts_is_exact(index) && index.range_lo == 0) {
+      continue;
+    }
 
     loom_value_facts_t stride = loom_value_facts_unknown();
     if (!loom_view_axis_stride_facts(context, module, source_type, axis,

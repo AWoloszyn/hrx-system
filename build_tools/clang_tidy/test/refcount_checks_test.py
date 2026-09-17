@@ -84,6 +84,10 @@ class RefCountChecksTest(clang_tidy_test.ClangTidyAssertions):
                 "merged_released_resource is released by "
                 "iree_clang_tidy_refcount_void_release after "
                 "iree_clang_tidy_refcount_void_release already released it",
+                "released_before_await is used after "
+                "iree_clang_tidy_refcount_void_release releases it",
+                "released_before_wait is used after "
+                "iree_clang_tidy_refcount_void_release releases it",
                 "[iree-refcount-lifecycle]",
             ],
         )
@@ -114,6 +118,8 @@ class RefCountChecksTest(clang_tidy_test.ClangTidyAssertions):
                 "iree_clang_tidy_virtual_memory_release",
                 "status_released_resource",
                 "guarded_status_released_resource",
+                "awaited_resource",
+                "waited_resource",
                 "side_counter",
             ],
         )

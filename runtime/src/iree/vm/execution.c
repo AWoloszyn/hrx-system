@@ -98,7 +98,9 @@ static bool iree_vm_execution_align_address(uintptr_t address,
 
 static void iree_vm_invocation_pop_top_frame(iree_vm_invocation_t* invocation) {
   iree_vm_frame_t* frame = invocation->top_frame;
-  if (frame->cleanup) frame->cleanup(frame);
+  if (frame->cleanup) {
+    frame->cleanup(frame);
+  }
   invocation->top_frame = frame->parent;
   invocation->stack_cursor = frame->allocation_begin;
 }
@@ -327,7 +329,9 @@ IREE_API_EXPORT iree_status_t iree_vm_function_ref_from_local_function(
         "local function behavior exceeds its callable contract");
   }
   callable_mapping &= ~IREE_VM_PROGRAM_CALLABLE_MAY_YIELD;
-  if (may_yield) callable_mapping |= IREE_VM_PROGRAM_CALLABLE_MAY_YIELD;
+  if (may_yield) {
+    callable_mapping |= IREE_VM_PROGRAM_CALLABLE_MAY_YIELD;
+  }
   const uint16_t module_ordinal =
       (uint16_t)(execution->linked_module - program->linked_modules);
   const iree_vm_function_ref_t function_ref = {

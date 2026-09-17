@@ -11,7 +11,9 @@
 namespace hrx::runtime {
 
 inline std::string format_status(hrx_status_t status) {
-  if (hrx_status_is_ok(status)) return "OK";
+  if (hrx_status_is_ok(status)) {
+    return "OK";
+  }
 
   char* message = nullptr;
   size_t length = 0;

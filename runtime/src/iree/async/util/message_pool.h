@@ -89,7 +89,9 @@ iree_async_message_pool_entry_t* iree_async_message_pool_flush(
 static inline iree_async_message_pool_entry_t*
 iree_async_message_pool_entry_next(iree_async_message_pool_entry_t* entry) {
   iree_atomic_slist_entry_t* next = entry->slist_entry.next;
-  if (!next) return NULL;
+  if (!next) {
+    return NULL;
+  }
   return (iree_async_message_pool_entry_t*)next;
 }
 

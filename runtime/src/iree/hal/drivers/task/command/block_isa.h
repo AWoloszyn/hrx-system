@@ -72,7 +72,9 @@ enum iree_hal_cmd_flag_bits_e {
 // Returns the number of transfer tiles required to cover |length| bytes.
 static inline uint64_t iree_hal_cmd_transfer_tile_count_u64(
     iree_device_size_t length) {
-  if (length == 0) return 0;
+  if (length == 0) {
+    return 0;
+  }
   return 1 + (uint64_t)((length - 1) / IREE_HAL_CMD_TRANSFER_TILE_LENGTH_BYTES);
 }
 
@@ -338,9 +340,13 @@ static_assert(sizeof(iree_hal_cmd_region_summary_t) == 16,
 // construction-time scheduling hint, not a hard execution limit.
 static inline uint8_t iree_hal_cmd_region_width_bucket_from_tile_count(
     uint32_t tile_count) {
-  if (tile_count == 0) return 0;
+  if (tile_count == 0) {
+    return 0;
+  }
   uint8_t bucket = 1;
-  while (bucket < 64 && bucket < tile_count) bucket <<= 1;
+  while (bucket < 64 && bucket < tile_count) {
+    bucket <<= 1;
+  }
   return bucket;
 }
 

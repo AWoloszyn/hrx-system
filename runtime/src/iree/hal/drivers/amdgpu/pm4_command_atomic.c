@@ -449,7 +449,9 @@ iree_status_t iree_hal_amdgpu_pm4_atomic_record_materialize(
   if (record->lowering == IREE_HAL_AMDGPU_PM4_ATOMIC_LOWERING_NATIVE) {
     IREE_RETURN_IF_ERROR(iree_hal_amdgpu_pm4_atomic_record_materialize_native(
         record, state, &stats));
-    if (out_stats) *out_stats = stats;
+    if (out_stats) {
+      *out_stats = stats;
+    }
     return iree_ok_status();
   }
 
@@ -571,7 +573,9 @@ iree_status_t iree_hal_amdgpu_pm4_atomic_record_materialize(
       launch_state->dispatch_initiator));
   stats.dispatch_dwords =
       state->dword_builder->dword_count - dword_count_before;
-  if (out_stats) *out_stats = stats;
+  if (out_stats) {
+    *out_stats = stats;
+  }
   return iree_ok_status();
 }
 

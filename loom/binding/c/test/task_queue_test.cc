@@ -436,7 +436,9 @@ TEST(TaskQueueTest, ConcurrentSubmittersShareOneQueue) {
       }
     });
   }
-  for (std::thread& submitter : submitters) submitter.join();
+  for (std::thread& submitter : submitters) {
+    submitter.join();
+  }
 
   LOOMC_ASSERT_OK(loomc_task_queue_shutdown(queue.get()));
   LOOMC_ASSERT_OK(loomc_task_queue_await_shutdown(queue.get()));
@@ -480,7 +482,9 @@ TEST(TaskQueueTest, RecursiveSubmissionUsesMultipleWorkers) {
   TaskQueuePtr queue = AllocateTaskQueue(pool.get());
   const int worker_count =
       static_cast<int>(loomc_task_pool_worker_count(pool.get()));
-  if (worker_count < 2) GTEST_SKIP() << "host exposes only one worker";
+  if (worker_count < 2) {
+    GTEST_SKIP() << "host exposes only one worker";
+  }
 
   ExecutionGate child_gate(/*expected_count=*/2);
   TaskTracker tracker(worker_count);

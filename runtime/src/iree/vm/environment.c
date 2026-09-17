@@ -130,7 +130,9 @@ IREE_API_EXPORT iree_status_t iree_vm_environment_allocate(
 
 IREE_API_EXPORT void iree_vm_environment_free(
     iree_vm_environment_t* environment) {
-  if (!environment) return;
+  if (!environment) {
+    return;
+  }
   iree_allocator_t host_allocator = environment->host_allocator;
   iree_slim_mutex_deinitialize(&environment->mutex);
   iree_allocator_free(host_allocator, environment);

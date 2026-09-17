@@ -94,10 +94,14 @@ class ModuleVerificationTest : public ::testing::Test {
         iree_vm_bytecode_function_data(&plan_.layout.functions, function);
     for (iree_host_size_t offset = 0; offset < bytecode.data_length;) {
       const uint8_t* record = bytecode.data + offset;
-      if (record[0] == opcode) return record;
+      if (record[0] == opcode) {
+        return record;
+      }
       const uint16_t descriptor =
           iree_vm_bytecode_instruction_verification[record[0]];
-      if (descriptor == 0) return nullptr;
+      if (descriptor == 0) {
+        return nullptr;
+      }
       offset += iree_vm_bytecode_verification_byte_length(descriptor);
     }
     return nullptr;

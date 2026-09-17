@@ -105,9 +105,15 @@ static iree_status_t loom_parse_location_tag(loom_parser_t* parser,
 }
 
 static int loom_parse_location_hex_digit(char value) {
-  if (value >= '0' && value <= '9') return value - '0';
-  if (value >= 'a' && value <= 'f') return 10 + value - 'a';
-  if (value >= 'A' && value <= 'F') return 10 + value - 'A';
+  if (value >= '0' && value <= '9') {
+    return value - '0';
+  }
+  if (value >= 'a' && value <= 'f') {
+    return 10 + value - 'a';
+  }
+  if (value >= 'A' && value <= 'F') {
+    return 10 + value - 'A';
+  }
   return -1;
 }
 

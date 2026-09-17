@@ -152,16 +152,16 @@ class ExtentChecksTest(clang_tidy_test.ClangTidyAssertions):
         )
         self.assertContainsAll(output, ["[iree-extent-empty-predicate]"])
         self.assertIn(
-            "if (iree_string_view_is_empty(view)) return 1;",
+            "if (iree_string_view_is_empty(view)) {",
             fixed_source,
         )
-        self.assertIn("if (!view.data || !view.size) return;", fixed_source)
+        self.assertIn("if (!view.data || !view.size) {", fixed_source)
         self.assertIn(
-            "if (iree_const_byte_span_is_empty(span)) return;",
+            "if (iree_const_byte_span_is_empty(span)) {",
             fixed_source,
         )
         self.assertIn(
-            "if (span.data == NULL || span.data_length == 0) return;",
+            "if (span.data == NULL || span.data_length == 0) {",
             fixed_source,
         )
         self.assertNotIn("view.data == NULL || view.size == 0", fixed_source)

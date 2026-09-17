@@ -300,7 +300,9 @@ class PatternScaling : public benchmark::Fixture {
     // Build a pattern with N alternation branches.
     pattern_.clear();
     for (int64_t i = 0; i < complexity; ++i) {
-      if (i > 0) pattern_ += "|";
+      if (i > 0) {
+        pattern_ += "|";
+      }
       // Each branch is "aaa..." with i+1 'a' characters.
       for (int64_t j = 0; j <= i; ++j) {
         pattern_ += 'a' + (j % 26);
@@ -374,7 +376,9 @@ void BM_RejectNestedQuantifiers(benchmark::State& state) {
     }
     iree_status_free(status);
     iree_allocator_free(iree_allocator_system(), dfa_data);
-    if (!rejected) return;
+    if (!rejected) {
+      return;
+    }
   }
 }
 BENCHMARK(BM_RejectNestedQuantifiers);

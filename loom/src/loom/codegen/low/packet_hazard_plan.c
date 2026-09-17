@@ -145,13 +145,17 @@ static bool loom_low_packet_hazard_plan_should_build_progress_class_range_index(
         loom_low_packet_progress_class_chain_index_lookup(
             chain_index,
             allocation->storage_release_actions[i].release_class_id);
-    if (class_entry == NULL) continue;
+    if (class_entry == NULL) {
+      continue;
+    }
     if (reachable_record_count >
         UINT64_MAX - (uint64_t)class_entry->record_count) {
       return true;
     }
     reachable_record_count += class_entry->record_count;
-    if (reachable_record_count > reachable_record_threshold) return true;
+    if (reachable_record_count > reachable_record_threshold) {
+      return true;
+    }
   }
   return false;
 }

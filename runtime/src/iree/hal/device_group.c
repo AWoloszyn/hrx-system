@@ -95,7 +95,9 @@ iree_hal_device_group_device_count(const iree_hal_device_group_t* group) {
 IREE_API_EXPORT iree_hal_device_t* iree_hal_device_group_device_at(
     const iree_hal_device_group_t* group, iree_host_size_t index) {
   IREE_ASSERT_ARGUMENT(group);
-  if (index >= group->device_count) return NULL;
+  if (index >= group->device_count) {
+    return NULL;
+  }
   return group->devices[index];
 }
 
@@ -151,7 +153,9 @@ static void iree_hal_device_group_compute_bitmaps(
   out_info->can_p2p_with = 0;
 
   for (uint32_t j = 0; j < device_count; ++j) {
-    if (j == device_index) continue;
+    if (j == device_index) {
+      continue;
+    }
 
     // can_wait_from: can device_index wait on device j's semaphores?
     // Edge[j][device_index] describes how device_index interacts with j's
@@ -363,7 +367,9 @@ IREE_API_EXPORT iree_status_t iree_hal_device_group_builder_finalize(
        ++i) {
     for (uint32_t j = 0;
          j < (uint32_t)device_count && iree_status_is_ok(status); ++j) {
-      if (i == j) continue;  // Self-edges are pre-initialized.
+      if (i == j) {
+        continue;  // Self-edges are pre-initialized.
+      }
 
       iree_hal_topology_edge_t edge = iree_hal_topology_edge_from_device_specs(
           device_specs[i], device_specs[j]);
@@ -375,7 +381,9 @@ IREE_API_EXPORT iree_status_t iree_hal_device_group_builder_finalize(
               device_specs[i], device_specs[j])) {
         status = iree_hal_device_refine_topology_edge(group->devices[i],
                                                       group->devices[j], &edge);
-        if (!iree_status_is_ok(status)) break;
+        if (!iree_status_is_ok(status)) {
+          break;
+        }
       }
 
       status =

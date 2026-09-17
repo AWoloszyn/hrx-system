@@ -115,14 +115,18 @@ static iree_hal_amdgpu_shadow_map_slab_t*
 iree_hal_amdgpu_shadow_map_find_slab_locked(iree_hal_amdgpu_shadow_map_t* map,
                                             uint64_t slab_index) {
   for (iree_host_size_t i = 0; i < map->slab_count; ++i) {
-    if (map->slabs[i].index == slab_index) return &map->slabs[i];
+    if (map->slabs[i].index == slab_index) {
+      return &map->slabs[i];
+    }
   }
   return NULL;
 }
 
 static iree_status_t iree_hal_amdgpu_shadow_map_grow_slabs_locked(
     iree_hal_amdgpu_shadow_map_t* map, iree_host_size_t minimum_capacity) {
-  if (minimum_capacity <= map->slab_capacity) return iree_ok_status();
+  if (minimum_capacity <= map->slab_capacity) {
+    return iree_ok_status();
+  }
   return iree_allocator_grow_array(map->host_allocator, minimum_capacity,
                                    sizeof(map->slabs[0]), &map->slab_capacity,
                                    (void**)&map->slabs);
@@ -178,7 +182,9 @@ static iree_status_t iree_hal_amdgpu_shadow_map_hsa_premap_alias_slabs(
   iree_status_t status = iree_hsa_amd_vmem_handle_create(
       IREE_LIBHSA(map->hsa.libhsa), map->hsa.memory_pool, map->slab_size,
       map->hsa.hsa_memory_type, /*flags=*/0, &allocation_handle);
-  if (!iree_status_is_ok(status)) return status;
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
 
   map->hsa.alias_allocation_handle = allocation_handle;
   const uint64_t slab_count = map->reservation_size / map->slab_size;
@@ -298,7 +304,9 @@ static void iree_hal_amdgpu_shadow_map_hsa_unmap_slab(
 static void iree_hal_amdgpu_shadow_map_unmap_slab(
     iree_hal_amdgpu_shadow_map_t* map,
     iree_hal_amdgpu_shadow_map_slab_t* slab) {
-  if (!slab->base_ptr) return;
+  if (!slab->base_ptr) {
+    return;
+  }
   map->mapper.unmap_slab(map, slab->base_ptr, map->slab_size,
                          slab->allocation_handle);
   memset(slab, 0, sizeof(*slab));
@@ -307,17 +315,23 @@ static void iree_hal_amdgpu_shadow_map_unmap_slab(
 static bool iree_hal_amdgpu_shadow_map_has_precise_slab(
     const iree_hal_amdgpu_shadow_map_t* map, uint64_t slab_index) {
   for (iree_host_size_t i = 0; i < map->slab_count; ++i) {
-    if (map->slabs[i].index == slab_index) return true;
+    if (map->slabs[i].index == slab_index) {
+      return true;
+    }
   }
   return false;
 }
 
 static void iree_hal_amdgpu_shadow_map_hsa_unmap_alias_slabs(
     iree_hal_amdgpu_shadow_map_t* map) {
-  if (!iree_hal_amdgpu_shadow_map_hsa_has_alias_slabs(map)) return;
+  if (!iree_hal_amdgpu_shadow_map_hsa_has_alias_slabs(map)) {
+    return;
+  }
   const uint64_t slab_count = map->reservation_size / map->slab_size;
   for (uint64_t i = 0; i < slab_count; ++i) {
-    if (iree_hal_amdgpu_shadow_map_has_precise_slab(map, i)) continue;
+    if (iree_hal_amdgpu_shadow_map_has_precise_slab(map, i)) {
+      continue;
+    }
     IREE_AMDGPU_DEVICE_PTR void* target_ptr =
         (uint8_t*)map->reservation_base_ptr + i * map->slab_size;
     iree_hal_amdgpu_shadow_map_hsa_unmap_alias_slab(map, target_ptr,
@@ -333,11 +347,15 @@ static void iree_hal_amdgpu_shadow_map_hsa_unmap_alias_slabs(
 static iree_status_t iree_hal_amdgpu_shadow_map_map_slab_locked(
     iree_hal_amdgpu_shadow_map_t* map, uint64_t slab_index,
     iree_hal_amdgpu_shadow_map_slab_t** out_slab) {
-  if (out_slab) *out_slab = NULL;
+  if (out_slab) {
+    *out_slab = NULL;
+  }
   iree_hal_amdgpu_shadow_map_slab_t* existing_slab =
       iree_hal_amdgpu_shadow_map_find_slab_locked(map, slab_index);
   if (existing_slab) {
-    if (out_slab) *out_slab = existing_slab;
+    if (out_slab) {
+      *out_slab = existing_slab;
+    }
     return iree_ok_status();
   }
 
@@ -355,7 +373,9 @@ static iree_status_t iree_hal_amdgpu_shadow_map_map_slab_locked(
       map->access_descs, &slab.allocation_handle));
 
   map->slabs[map->slab_count] = slab;
-  if (out_slab) *out_slab = &map->slabs[map->slab_count];
+  if (out_slab) {
+    *out_slab = &map->slabs[map->slab_count];
+  }
   ++map->slab_count;
   return iree_ok_status();
 }
@@ -454,7 +474,9 @@ iree_status_t iree_hal_amdgpu_shadow_map_initialize_hsa(
   const iree_device_size_t allocation_granule = granularity.recommended;
 
   iree_device_size_t slab_size = params->requested_slab_size;
-  if (slab_size < allocation_granule) slab_size = allocation_granule;
+  if (slab_size < allocation_granule) {
+    slab_size = allocation_granule;
+  }
   iree_device_size_t aligned_slab_size = 0;
   if (!iree_device_size_checked_align(slab_size, allocation_granule,
                                       &aligned_slab_size)) {
@@ -498,7 +520,9 @@ iree_status_t iree_hal_amdgpu_shadow_map_initialize_hsa(
 
 void iree_hal_amdgpu_shadow_map_deinitialize(
     iree_hal_amdgpu_shadow_map_t* map) {
-  if (!map || !map->initialized) return;
+  if (!map || !map->initialized) {
+    return;
+  }
 
   iree_slim_mutex_lock(&map->mutex);
   iree_hal_amdgpu_shadow_map_hsa_unmap_alias_slabs(map);
@@ -520,7 +544,9 @@ void iree_hal_amdgpu_shadow_map_query_statistics(
     iree_hal_amdgpu_shadow_map_statistics_t* out_statistics) {
   IREE_ASSERT_ARGUMENT(out_statistics);
   memset(out_statistics, 0, sizeof(*out_statistics));
-  if (!map || !map->initialized) return;
+  if (!map || !map->initialized) {
+    return;
+  }
 
   iree_slim_mutex_lock(&map->mutex);
   out_statistics->mapped_slab_count = map->slab_count;
@@ -552,7 +578,9 @@ iree_status_t iree_hal_amdgpu_shadow_map_calculate_range(
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                             "AMDGPU shadow map is not initialized");
   }
-  if (application_length == 0) return iree_ok_status();
+  if (application_length == 0) {
+    return iree_ok_status();
+  }
 
   if (IREE_UNLIKELY(application_length > UINT64_MAX - application_address)) {
     return iree_make_status(
@@ -625,7 +653,9 @@ iree_status_t iree_hal_amdgpu_shadow_map_map_range(
   IREE_RETURN_IF_ERROR(iree_hal_amdgpu_shadow_map_calculate_range(
       map, application_address, application_length, &range));
   if (range.slab_count == 0) {
-    if (out_range) *out_range = range;
+    if (out_range) {
+      *out_range = range;
+    }
     return iree_ok_status();
   }
 
@@ -635,7 +665,9 @@ iree_status_t iree_hal_amdgpu_shadow_map_map_range(
   for (iree_host_size_t i = 0; i < range.slab_count; ++i) {
     status = iree_hal_amdgpu_shadow_map_map_slab_locked(
         map, range.first_slab_index + i, NULL);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
   }
   if (!iree_status_is_ok(status)) {
     while (map->slab_count > initial_slab_count) {
@@ -644,6 +676,8 @@ iree_status_t iree_hal_amdgpu_shadow_map_map_range(
     }
   }
   iree_slim_mutex_unlock(&map->mutex);
-  if (iree_status_is_ok(status) && out_range) *out_range = range;
+  if (iree_status_is_ok(status) && out_range) {
+    *out_range = range;
+  }
   return status;
 }

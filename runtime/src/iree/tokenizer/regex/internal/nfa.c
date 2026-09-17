@@ -172,23 +172,39 @@ static void iree_tokenizer_regex_nfa_shorthand_to_bitmap(
 
   switch (shorthand) {
     case IREE_TOKENIZER_UTIL_REGEX_SHORTHAND_d:
-      for (int c = '0'; c <= '9'; ++c) bitmap[c >> 3] |= (1u << (c & 7));
+      for (int c = '0'; c <= '9'; ++c) {
+        bitmap[c >> 3] |= (1u << (c & 7));
+      }
       break;
     case IREE_TOKENIZER_UTIL_REGEX_SHORTHAND_D:
       memset(bitmap, 0xFF, 32);
-      for (int c = '0'; c <= '9'; ++c) bitmap[c >> 3] &= ~(1u << (c & 7));
+      for (int c = '0'; c <= '9'; ++c) {
+        bitmap[c >> 3] &= ~(1u << (c & 7));
+      }
       break;
     case IREE_TOKENIZER_UTIL_REGEX_SHORTHAND_w:
-      for (int c = 'a'; c <= 'z'; ++c) bitmap[c >> 3] |= (1u << (c & 7));
-      for (int c = 'A'; c <= 'Z'; ++c) bitmap[c >> 3] |= (1u << (c & 7));
-      for (int c = '0'; c <= '9'; ++c) bitmap[c >> 3] |= (1u << (c & 7));
+      for (int c = 'a'; c <= 'z'; ++c) {
+        bitmap[c >> 3] |= (1u << (c & 7));
+      }
+      for (int c = 'A'; c <= 'Z'; ++c) {
+        bitmap[c >> 3] |= (1u << (c & 7));
+      }
+      for (int c = '0'; c <= '9'; ++c) {
+        bitmap[c >> 3] |= (1u << (c & 7));
+      }
       bitmap['_' >> 3] |= (1u << ('_' & 7));
       break;
     case IREE_TOKENIZER_UTIL_REGEX_SHORTHAND_W:
       memset(bitmap, 0xFF, 32);
-      for (int c = 'a'; c <= 'z'; ++c) bitmap[c >> 3] &= ~(1u << (c & 7));
-      for (int c = 'A'; c <= 'Z'; ++c) bitmap[c >> 3] &= ~(1u << (c & 7));
-      for (int c = '0'; c <= '9'; ++c) bitmap[c >> 3] &= ~(1u << (c & 7));
+      for (int c = 'a'; c <= 'z'; ++c) {
+        bitmap[c >> 3] &= ~(1u << (c & 7));
+      }
+      for (int c = 'A'; c <= 'Z'; ++c) {
+        bitmap[c >> 3] &= ~(1u << (c & 7));
+      }
+      for (int c = '0'; c <= '9'; ++c) {
+        bitmap[c >> 3] &= ~(1u << (c & 7));
+      }
       bitmap['_' >> 3] &= ~(1u << ('_' & 7));
       break;
     case IREE_TOKENIZER_UTIL_REGEX_SHORTHAND_s:

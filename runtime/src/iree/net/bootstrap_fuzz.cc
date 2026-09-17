@@ -14,7 +14,9 @@
 #include "iree/net/bootstrap.h"
 
 static void CheckStatus(iree_status_t status) {
-  if (!iree_status_is_ok(status)) iree_status_abort(status);
+  if (!iree_status_is_ok(status)) {
+    iree_status_abort(status);
+  }
   iree_status_free(status);
 }
 
@@ -67,16 +69,22 @@ static void CheckCanonicalWire(const uint8_t* data, size_t size) {
 
   iree_host_size_t wire_size = 0;
   CheckStatus(iree_net_bootstrap_message_calculate_size(&message, &wire_size));
-  if (wire_size != size) std::abort();
+  if (wire_size != size) {
+    std::abort();
+  }
   std::vector<uint8_t> wire(wire_size);
   CheckStatus(iree_net_bootstrap_message_serialize(
       &message, iree_make_byte_span(wire.data(), wire.size())));
-  if (std::memcmp(wire.data(), data, size) != 0) std::abort();
+  if (std::memcmp(wire.data(), data, size) != 0) {
+    std::abort();
+  }
 
   iree_net_bootstrap_message_view_t reparsed;
   CheckStatus(iree_net_bootstrap_message_parse(
       iree_make_const_byte_span(wire.data(), wire.size()), &reparsed));
-  if (reparsed.type != parsed.type) std::abort();
+  if (reparsed.type != parsed.type) {
+    std::abort();
+  }
 }
 
 static uint8_t ReadByte(const uint8_t* data, size_t size, size_t index) {

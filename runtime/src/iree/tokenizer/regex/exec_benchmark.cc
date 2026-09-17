@@ -141,12 +141,16 @@ static std::string GenerateWords(size_t total_bytes, size_t avg_word_len) {
   while (result.size() < total_bytes) {
     seed = seed * 1103515245 + 12345;
     size_t word_len = avg_word_len / 2 + (seed >> 16) % (avg_word_len + 1);
-    if (word_len == 0) word_len = 1;
+    if (word_len == 0) {
+      word_len = 1;
+    }
     for (size_t i = 0; i < word_len && result.size() < total_bytes; ++i) {
       seed = seed * 1103515245 + 12345;
       result.push_back('a' + (seed >> 16) % 26);
     }
-    if (result.size() < total_bytes) result.push_back(' ');
+    if (result.size() < total_bytes) {
+      result.push_back(' ');
+    }
   }
   return result;
 }
@@ -485,7 +489,9 @@ class CompiledPattern {
   }
   CompiledPattern& operator=(CompiledPattern&& other) noexcept {
     if (this != &other) {
-      if (data_) iree_allocator_free(iree_allocator_system(), data_);
+      if (data_) {
+        iree_allocator_free(iree_allocator_system(), data_);
+      }
       data_ = other.data_;
       size_ = other.size_;
       dfa_ = other.dfa_;

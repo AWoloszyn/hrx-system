@@ -26,7 +26,9 @@ static iree_status_t loom_ops_successor_verify_emit(
 }
 
 static uint32_t loom_ops_successor_saturating_u32(iree_host_size_t value) {
-  if (value > UINT32_MAX) return UINT32_MAX;
+  if (value > UINT32_MAX) {
+    return UINT32_MAX;
+  }
   return (uint32_t)value;
 }
 
@@ -74,7 +76,9 @@ iree_status_t loom_ops_verify_successor_args(
     const loom_op_t* op, iree_string_view_t op_name, uint8_t successor_index,
     const loom_block_t* target, const loom_value_id_t* args,
     iree_host_size_t arg_count) {
-  if (!target) return iree_ok_status();
+  if (!target) {
+    return iree_ok_status();
+  }
   if (arg_count != target->arg_count) {
     return loom_ops_successor_emit_arg_count_mismatch(
         emitter, op, op_name, successor_index, arg_count, target->arg_count);

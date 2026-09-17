@@ -287,7 +287,9 @@ bool iree_hal_vulkan_buffer_isa(iree_hal_buffer_t* buffer) {
 
 iree_hal_vulkan_buffer_mapping_state_t* iree_hal_vulkan_buffer_mapping_state(
     iree_hal_buffer_t* buffer) {
-  if (!iree_hal_vulkan_buffer_isa(buffer)) return NULL;
+  if (!iree_hal_vulkan_buffer_isa(buffer)) {
+    return NULL;
+  }
   iree_hal_vulkan_buffer_t* vulkan_buffer = iree_hal_vulkan_buffer_cast(buffer);
   return vulkan_buffer->mapping_state;
 }
@@ -528,7 +530,9 @@ static iree_status_t iree_hal_vulkan_buffer_make_mapped_memory_range(
                     ? device_memory_size
                     : (range_end + atom_mask) & ~atom_mask;
   }
-  if (range_end > device_memory_size) range_end = device_memory_size;
+  if (range_end > device_memory_size) {
+    range_end = device_memory_size;
+  }
   *out_range = (VkMappedMemoryRange){
       .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
       .memory = buffer->device_memory,

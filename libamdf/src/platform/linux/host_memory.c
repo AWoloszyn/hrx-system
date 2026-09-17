@@ -16,7 +16,9 @@ amdf_status_t amdf_platform_host_memory_allocate(uint64_t byte_length,
                                                  void** out_pointer) {
   void* pointer = mmap(NULL, (size_t)byte_length, PROT_READ | PROT_WRITE,
                        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-  if (pointer == MAP_FAILED) return amdf_linux_error(errno);
+  if (pointer == MAP_FAILED) {
+    return amdf_linux_error(errno);
+  }
   *out_pointer = pointer;
   return AMDF_STATUS_OK;
 }

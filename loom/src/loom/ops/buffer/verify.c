@@ -42,7 +42,9 @@ static iree_status_t loom_buffer_verify_strided_layout_rank(
   }
 
   uint8_t result_rank = loom_type_rank(result_type);
-  if (layout.rank == result_rank) return iree_ok_status();
+  if (layout.rank == result_rank) {
+    return iree_ok_status();
+  }
 
   loom_diagnostic_param_t params[] = {
       loom_param_string(IREE_SV("result type")),
@@ -70,7 +72,9 @@ static iree_status_t loom_buffer_emit_attribute_value_constraint(
 static iree_status_t loom_buffer_verify_concrete_memory_space(
     iree_diagnostic_emitter_t emitter, const loom_op_t* op,
     iree_string_view_t attr_name, loom_value_fact_memory_space_t value) {
-  if (value != LOOM_VALUE_FACT_MEMORY_SPACE_UNKNOWN) return iree_ok_status();
+  if (value != LOOM_VALUE_FACT_MEMORY_SPACE_UNKNOWN) {
+    return iree_ok_status();
+  }
   return loom_buffer_emit_attribute_value_constraint(
       emitter, op, attr_name, value, IREE_SV("concrete memory space"));
 }
@@ -96,10 +100,14 @@ static bool loom_buffer_try_get_local_memory_space_fact(
     const loom_module_t* module, loom_value_id_t value_id,
     loom_value_fact_memory_space_t* out_memory_space) {
   const loom_value_t* value = loom_module_value(module, value_id);
-  if (loom_value_is_block_arg(value)) return false;
+  if (loom_value_is_block_arg(value)) {
+    return false;
+  }
 
   const loom_op_t* defining_op = loom_value_def_op(value);
-  if (!defining_op) return false;
+  if (!defining_op) {
+    return false;
+  }
 
   if (loom_buffer_alloca_isa(defining_op)) {
     *out_memory_space = loom_buffer_alloca_memory_space(defining_op);
@@ -126,7 +134,9 @@ static iree_status_t loom_buffer_verify_memory_space_refinement(
   if (existing_memory_space == LOOM_VALUE_FACT_MEMORY_SPACE_UNKNOWN) {
     return iree_ok_status();
   }
-  if (existing_memory_space == value) return iree_ok_status();
+  if (existing_memory_space == value) {
+    return iree_ok_status();
+  }
 
   char expected[64] = {0};
   iree_snprintf(expected, sizeof(expected), "existing memory-space fact %u",
@@ -167,7 +177,9 @@ iree_status_t loom_buffer_pack_verify(const loom_module_t* module,
   }
   for (uint16_t i = 0; i < minimum_alignments.count; ++i) {
     const int64_t minimum_alignment = minimum_alignments.i64_array[i];
-    if (iree_math_is_power_of_two_i64(minimum_alignment)) continue;
+    if (iree_math_is_power_of_two_i64(minimum_alignment)) {
+      continue;
+    }
     char attribute_name[64] = {0};
     iree_snprintf(attribute_name, sizeof(attribute_name),
                   "minimum_alignments[%u]", (unsigned)i);

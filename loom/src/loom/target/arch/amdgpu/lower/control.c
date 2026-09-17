@@ -220,7 +220,9 @@ static iree_status_t loom_amdgpu_cfg_cond_br_edge_implied_bool(
   IREE_RETURN_IF_ERROR(loom_condition_facts_query(
       loom_low_lower_context_condition_query(context), fact_table,
       edge_condition, edge_assumed_truth, &edge_facts, &complete));
-  if (!complete) return iree_ok_status();
+  if (!complete) {
+    return iree_ok_status();
+  }
   if (edge_facts.integer_relation_count == 0) {
     return iree_ok_status();
   }

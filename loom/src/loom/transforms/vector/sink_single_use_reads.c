@@ -88,7 +88,9 @@ static iree_status_t loom_sink_single_use_reads_region_stack_initialize(
 static iree_status_t loom_sink_single_use_reads_region_stack_push(
     iree_arena_allocator_t* arena,
     loom_sink_single_use_reads_region_stack_t* stack, loom_region_t* region) {
-  if (!region || region->block_count == 0) return iree_ok_status();
+  if (!region || region->block_count == 0) {
+    return iree_ok_status();
+  }
   if (stack->count >= stack->capacity) {
     IREE_RETURN_IF_ERROR(iree_arena_grow_array(
         arena, stack->count, stack->count + 1, sizeof(loom_region_t*),
@@ -105,7 +107,9 @@ static loom_region_t* loom_sink_single_use_reads_region_stack_pop(
 
 static iree_status_t loom_sink_single_use_reads_reserve_ops(
     loom_sink_single_use_reads_context_t* context, iree_host_size_t count) {
-  if (count <= context->op_capacity) return iree_ok_status();
+  if (count <= context->op_capacity) {
+    return iree_ok_status();
+  }
   if (context->op_capacity == 0) {
     context->op_capacity = count < 16 ? 16 : count;
     IREE_RETURN_IF_ERROR(
@@ -133,17 +137,23 @@ static iree_status_t loom_sink_single_use_reads_reserve_ops(
   IREE_RETURN_IF_ERROR(iree_arena_grow_array(
       context->pass->arena, old_capacity, count, sizeof(uint32_t),
       &array_capacity, (void**)&context->segments));
-  if (array_capacity < grown_capacity) grown_capacity = array_capacity;
+  if (array_capacity < grown_capacity) {
+    grown_capacity = array_capacity;
+  }
   array_capacity = old_capacity;
   IREE_RETURN_IF_ERROR(iree_arena_grow_array(
       context->pass->arena, old_capacity, count, sizeof(loom_op_t*),
       &array_capacity, (void**)&context->move_ops));
-  if (array_capacity < grown_capacity) grown_capacity = array_capacity;
+  if (array_capacity < grown_capacity) {
+    grown_capacity = array_capacity;
+  }
   array_capacity = old_capacity;
   IREE_RETURN_IF_ERROR(iree_arena_grow_array(
       context->pass->arena, old_capacity, count, sizeof(loom_op_t*),
       &array_capacity, (void**)&context->move_before_ops));
-  if (array_capacity < grown_capacity) grown_capacity = array_capacity;
+  if (array_capacity < grown_capacity) {
+    grown_capacity = array_capacity;
+  }
   context->op_capacity = grown_capacity;
   return iree_ok_status();
 }
@@ -168,7 +178,9 @@ static bool loom_sink_single_use_reads_is_read_candidate(
     return false;
   }
   loom_memory_access_t access = loom_memory_access_cast(context->module, op);
-  if (!loom_memory_access_isa(access)) return false;
+  if (!loom_memory_access_isa(access)) {
+    return false;
+  }
   const loom_trait_flags_t traits =
       loom_op_effective_traits(context->module, op);
   if (!loom_traits_may_read(traits) || loom_traits_may_write(traits)) {
@@ -195,9 +207,13 @@ static bool loom_sink_single_use_reads_find_same_block_user(
   loom_value_id_t result = loom_op_results(op)[0];
   const loom_use_t* use =
       loom_value_single_use(loom_module_value(context->module, result));
-  if (!use) return false;
+  if (!use) {
+    return false;
+  }
   loom_op_t* user_op = loom_use_user_op(*use);
-  if (!user_op || (user_op->flags & LOOM_OP_FLAG_DEAD)) return false;
+  if (!user_op || (user_op->flags & LOOM_OP_FLAG_DEAD)) {
+    return false;
+  }
   if (user_op->parent_block != op->parent_block || user_op == op ||
       user_op->block_ordinal <= op->block_ordinal) {
     return false;
@@ -244,7 +260,9 @@ static bool loom_sink_single_use_reads_user_has_unique_read_producer(
   bool candidate_found = false;
   for (uint16_t i = 0; i < user_op->operand_count; ++i) {
     loom_value_t* operand = loom_module_value(context->module, operands[i]);
-    if (loom_value_is_block_arg(operand)) continue;
+    if (loom_value_is_block_arg(operand)) {
+      continue;
+    }
     loom_op_t* def_op = loom_value_def_op(operand);
     if (!def_op || def_op->parent_block != user_op->parent_block ||
         def_op->block_ordinal >= user_op->block_ordinal) {
@@ -261,7 +279,9 @@ static bool loom_sink_single_use_reads_user_has_unique_read_producer(
     }
     ++read_producer_count;
     candidate_found |= def_op == candidate_op;
-    if (read_producer_count > 1) return false;
+    if (read_producer_count > 1) {
+      return false;
+    }
   }
   return candidate_found && read_producer_count == 1;
 }
@@ -273,16 +293,22 @@ static iree_status_t loom_sink_single_use_reads_collect_block(
   iree_host_size_t count = 0;
   loom_op_t* op = NULL;
   loom_block_for_each_op(block, op) {
-    if (op->flags & LOOM_OP_FLAG_DEAD) continue;
+    if (op->flags & LOOM_OP_FLAG_DEAD) {
+      continue;
+    }
     ++count;
   }
-  if (count == 0) return iree_ok_status();
+  if (count == 0) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(loom_sink_single_use_reads_reserve_ops(context, count));
 
   uint32_t segment = 0;
   iree_host_size_t index = 0;
   loom_block_for_each_op(block, op) {
-    if (op->flags & LOOM_OP_FLAG_DEAD) continue;
+    if (op->flags & LOOM_OP_FLAG_DEAD) {
+      continue;
+    }
     context->ops[index] = op;
     context->segments[index] = segment;
     ++index;
@@ -300,7 +326,9 @@ static iree_status_t loom_sink_single_use_reads_process_block(
   iree_host_size_t count = 0;
   IREE_RETURN_IF_ERROR(
       loom_sink_single_use_reads_collect_block(context, block, &count));
-  if (count == 0) return iree_ok_status();
+  if (count == 0) {
+    return iree_ok_status();
+  }
 
   iree_host_size_t move_count = 0;
   for (iree_host_size_t i = 0; i < count; ++i) {
@@ -338,7 +366,9 @@ static iree_status_t loom_sink_single_use_reads_process_block(
         context->rewriter, context->move_ops[i], context->move_before_ops[i]));
     ++context->statistics->read_ops_sunk;
   }
-  if (move_count != 0) loom_pass_mark_changed(context->pass);
+  if (move_count != 0) {
+    loom_pass_mark_changed(context->pass);
+  }
   return iree_ok_status();
 }
 
@@ -356,7 +386,9 @@ static iree_status_t loom_sink_single_use_reads_push_child_regions(
 iree_status_t loom_sink_single_use_reads_run(loom_pass_t* pass,
                                              loom_module_t* module,
                                              loom_func_like_t function) {
-  if (!loom_func_like_body(function)) return iree_ok_status();
+  if (!loom_func_like_body(function)) {
+    return iree_ok_status();
+  }
 
   loom_rewriter_t rewriter;
   IREE_RETURN_IF_ERROR(
@@ -379,20 +411,30 @@ iree_status_t loom_sink_single_use_reads_run(loom_pass_t* pass,
 
   while (iree_status_is_ok(status)) {
     loom_region_t* region = loom_sink_single_use_reads_region_stack_pop(&stack);
-    if (!region) break;
+    if (!region) {
+      break;
+    }
 
     loom_block_t* block = NULL;
     loom_region_for_each_block(region, block) {
       status = loom_sink_single_use_reads_process_block(&context, block);
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
       loom_op_t* op = NULL;
       loom_block_for_each_op(block, op) {
-        if (op->flags & LOOM_OP_FLAG_DEAD) continue;
+        if (op->flags & LOOM_OP_FLAG_DEAD) {
+          continue;
+        }
         status =
             loom_sink_single_use_reads_push_child_regions(&context, &stack, op);
-        if (!iree_status_is_ok(status)) break;
+        if (!iree_status_is_ok(status)) {
+          break;
+        }
       }
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
     }
   }
   loom_rewriter_deinitialize(&rewriter);

@@ -55,7 +55,9 @@ void iree_profile_att_comgr_deinitialize(
 iree_status_t iree_profile_att_make_comgr_status(
     const iree_profile_att_comgr_library_t* comgr,
     iree_profile_att_comgr_status_t status, const char* operation) {
-  if (status == IREE_PROFILE_ATT_COMGR_STATUS_SUCCESS) return iree_ok_status();
+  if (status == IREE_PROFILE_ATT_COMGR_STATUS_SUCCESS) {
+    return iree_ok_status();
+  }
   const char* status_string = NULL;
   if (comgr->status_string) {
     comgr->status_string(status, &status_string);

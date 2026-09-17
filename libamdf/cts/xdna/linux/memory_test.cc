@@ -65,7 +65,9 @@ class XdnaLinuxMemoryTest : public XdnaDeviceFixture {
     };
     amdf_status_t status =
         api_->memory_map(memory, &map_info, &mappings_[ordinal]);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
     mapping_infos_[ordinal] = {};
     mapping_infos_[ordinal].type = AMDF_STRUCTURE_TYPE_HOST_MAPPING_INFO;
     mapping_infos_[ordinal].structure_size = sizeof(mapping_infos_[ordinal]);

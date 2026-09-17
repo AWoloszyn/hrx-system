@@ -143,7 +143,9 @@ static iree_status_t hrx_graph_topological_sort(
     nodes[current].max_dependency_index = max_dep;
 
     for (uint32_t i = 0; i < node_count; ++i) {
-      if (i == current) continue;
+      if (i == current) {
+        continue;
+      }
       hrx_graph_node_s* node = nodes[i].node;
       for (uint32_t j = 0; j < node->dependency_count; ++j) {
         if (node->dependencies[j] == nodes[current].node) {
@@ -263,11 +265,17 @@ static hrx_uint32x2_t hrx_graph_partition_with_streams(
         }
         for (const hrx_graph_edge_t* edge = additional_edges;
              deps_satisfied && edge != NULL; edge = edge->next) {
-          if (edge->to != nodes[i].node) continue;
+          if (edge->to != nodes[i].node) {
+            continue;
+          }
           const uint32_t dep_index = node_index_map[edge->from->node_index];
-          if (dep_index >= i) deps_satisfied = false;
+          if (dep_index >= i) {
+            deps_satisfied = false;
+          }
         }
-        if (!deps_satisfied) break;
+        if (!deps_satisfied) {
+          break;
+        }
 
         const bool use_workstreams =
             (i - recordable_start) >= HRX_GRAPH_MIN_PARTITION_SIZE_FOR_STREAMS;
@@ -286,7 +294,9 @@ static hrx_uint32x2_t hrx_graph_partition_with_streams(
         uint32_t additional_dependency_count = 0;
         for (const hrx_graph_edge_t* edge = additional_edges; edge != NULL;
              edge = edge->next) {
-          if (edge->to != nodes[i].node) continue;
+          if (edge->to != nodes[i].node) {
+            continue;
+          }
           ++additional_dependency_count;
           const uint32_t dep_index = node_index_map[edge->from->node_index];
           if (dep_index >= recordable_start && dep_index < i) {
@@ -308,7 +318,9 @@ static hrx_uint32x2_t hrx_graph_partition_with_streams(
             }
           } else {
             assigned_stream = 0;
-            if (active_streams == 0) active_streams = 1;
+            if (active_streams == 0) {
+              active_streams = 1;
+            }
           }
         } else if (use_workstreams &&
                    iree_math_count_ones_u32(connected_streams) == 1) {
@@ -333,7 +345,9 @@ static hrx_uint32x2_t hrx_graph_partition_with_streams(
             active_streams = 1;
           } else {
             assigned_stream = 0;
-            if (active_streams == 0) active_streams = 1;
+            if (active_streams == 0) {
+              active_streams = 1;
+            }
           }
         }
 

@@ -790,7 +790,9 @@ TEST_P(SequenceOperationTest, TwoStepNop) {
 // Three NOP steps all complete. Tests the LINK path with longer chains.
 TEST_P(SequenceOperationTest, ThreeStepNop) {
   iree_async_nop_operation_t nops[3];
-  for (auto& nop : nops) InitStepNop(&nop);
+  for (auto& nop : nops) {
+    InitStepNop(&nop);
+  }
 
   CompletionTracker tracker;
   iree_async_operation_t* steps[] = {&nops[0].base, &nops[1].base,
@@ -863,7 +865,9 @@ TEST_P(SequenceOperationTest, SequenceCancellation) {
 // step_fn receives (completed_step, next_step) with next_step == NULL on last.
 TEST_P(SequenceOperationTest, StepFnCalled) {
   iree_async_nop_operation_t nops[3];
-  for (auto& nop : nops) InitStepNop(&nop);
+  for (auto& nop : nops) {
+    InitStepNop(&nop);
+  }
 
   struct StepFnTracker {
     std::vector<std::pair<iree_async_operation_t*, iree_async_operation_t*>>

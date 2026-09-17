@@ -28,7 +28,9 @@ _Static_assert(AMDF_XDNA_PDI_CDO_OFFSET + AMDF_XDNA_PDI_CDO_STORAGE_LENGTH ==
                "bootstrap output must cover the complete aligned partition");
 
 static void amdf_xdna_bootstrap_write_u32(uint8_t* bytes, uint32_t value) {
-  for (uint32_t i = 0; i < 4; ++i) bytes[i] = (uint8_t)(value >> (i * 8));
+  for (uint32_t i = 0; i < 4; ++i) {
+    bytes[i] = (uint8_t)(value >> (i * 8));
+  }
 }
 
 // Each header ends with the complement of the sum of its preceding LE words.

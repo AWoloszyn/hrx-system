@@ -209,7 +209,9 @@ static std::string FormatStatusTo(const iree_status_t& status) {
 // Helper: collects iree_status_format output into a std::string.
 static std::string FormatStatusBuffer(const iree_status_t& status) {
   iree_host_size_t buffer_length = 0;
-  if (!iree_status_format(status, 0, NULL, &buffer_length)) return "<!>";
+  if (!iree_status_format(status, 0, NULL, &buffer_length)) {
+    return "<!>";
+  }
   std::vector<char> buffer(buffer_length + 1, '\0');
   iree_host_size_t actual_length = 0;
   if (!iree_status_format(status, buffer.size(), buffer.data(),

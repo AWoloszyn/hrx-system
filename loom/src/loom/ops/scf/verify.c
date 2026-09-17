@@ -26,7 +26,9 @@ static iree_status_t loom_scf_emit(iree_diagnostic_emitter_t emitter,
 }
 
 static uint32_t loom_scf_saturating_u32(iree_host_size_t value) {
-  if (value > UINT32_MAX) return UINT32_MAX;
+  if (value > UINT32_MAX) {
+    return UINT32_MAX;
+  }
   return (uint32_t)value;
 }
 
@@ -235,7 +237,9 @@ static iree_status_t loom_scf_switch_verify_region_yield(
     const loom_module_t* module, const loom_op_t* op,
     iree_diagnostic_emitter_t emitter, loom_region_t* region,
     iree_string_view_t field_name, iree_host_size_t region_ordinal) {
-  if (!region || region->block_count == 0) return iree_ok_status();
+  if (!region || region->block_count == 0) {
+    return iree_ok_status();
+  }
   const loom_block_t* entry = loom_region_const_entry_block(region);
   const loom_op_t* terminator = entry->last_op;
   if (!terminator || !loom_scf_yield_isa(terminator)) {

@@ -977,7 +977,9 @@ static bool loom_amdgpu_scalar_i64_alu_descriptors_supported(
     loom_amdgpu_scalar_i64_alu_kind_t kind, uint8_t shift_amount,
     iree_string_view_t* out_constraint_key) {
   if (kind == LOOM_AMDGPU_SCALAR_I64_ALU_KIND_VGPR_LSHR_LITERAL) {
-    if (shift_amount == 0) return true;
+    if (shift_amount == 0) {
+      return true;
+    }
     if (shift_amount < 32 &&
         !loom_amdgpu_descriptor_set_can_emit_vgpr_binary_immediate(
             descriptor_set, LOOM_AMDGPU_DESCRIPTOR_REF_V_LSHRREV_B32_LIT,
@@ -1111,14 +1113,18 @@ static bool loom_amdgpu_address_i64_alu_op(
   *out_rhs = LOOM_VALUE_ID_INVALID;
   *out_addend = LOOM_VALUE_ID_INVALID;
   *out_result = LOOM_VALUE_ID_INVALID;
-  if (loom_op_dialect_id(source_op->kind) != LOOM_DIALECT_INDEX) return false;
+  if (loom_op_dialect_id(source_op->kind) != LOOM_DIALECT_INDEX) {
+    return false;
+  }
   const uint8_t op_index = loom_op_dialect_index(source_op->kind);
   if (op_index >= IREE_ARRAYSIZE(kAmdgpuAddressI64AluSourceLayoutByIndexOp)) {
     return false;
   }
   const loom_amdgpu_address_i64_alu_source_layout_t* layout =
       &kAmdgpuAddressI64AluSourceLayoutByIndexOp[op_index];
-  if (layout->kind == LOOM_AMDGPU_ADDRESS_I64_ALU_KIND_NONE) return false;
+  if (layout->kind == LOOM_AMDGPU_ADDRESS_I64_ALU_KIND_NONE) {
+    return false;
+  }
   const loom_value_id_t* operands = loom_op_const_operands(source_op);
   *out_kind = layout->kind;
   *out_lhs = operands[0];
@@ -1314,14 +1320,18 @@ static bool loom_amdgpu_scalar_i64_alu_op(
   *out_lhs = LOOM_VALUE_ID_INVALID;
   *out_rhs = LOOM_VALUE_ID_INVALID;
   *out_result = LOOM_VALUE_ID_INVALID;
-  if (loom_op_dialect_id(source_op->kind) != LOOM_DIALECT_SCALAR) return false;
+  if (loom_op_dialect_id(source_op->kind) != LOOM_DIALECT_SCALAR) {
+    return false;
+  }
   const uint8_t op_index = loom_op_dialect_index(source_op->kind);
   if (op_index >= IREE_ARRAYSIZE(kAmdgpuScalarI64AluKindByScalarOp)) {
     return false;
   }
   const loom_amdgpu_scalar_i64_alu_kind_t kind =
       kAmdgpuScalarI64AluKindByScalarOp[op_index];
-  if (kind == LOOM_AMDGPU_SCALAR_I64_ALU_KIND_NONE) return false;
+  if (kind == LOOM_AMDGPU_SCALAR_I64_ALU_KIND_NONE) {
+    return false;
+  }
   const loom_value_id_t* operands = loom_op_const_operands(source_op);
   *out_kind = kind;
   *out_lhs = operands[0];
@@ -1373,7 +1383,9 @@ static bool loom_amdgpu_scalar_i64_exact_shift_amount(
     const loom_value_fact_table_t* fact_table, loom_value_id_t value,
     uint8_t* out_shift_amount) {
   *out_shift_amount = 0;
-  if (fact_table == NULL) return false;
+  if (fact_table == NULL) {
+    return false;
+  }
   int64_t shift_amount = 0;
   if (!loom_value_facts_as_exact_i64(
           loom_value_fact_table_lookup(fact_table, value), &shift_amount) ||
@@ -1413,7 +1425,9 @@ iree_status_t loom_amdgpu_select_scalar_i64_alu_plan(
       return iree_ok_status();
     }
     kind = loom_amdgpu_scalar_i64_alu_sgpr_kind(kind);
-    if (kind == LOOM_AMDGPU_SCALAR_I64_ALU_KIND_NONE) return iree_ok_status();
+    if (kind == LOOM_AMDGPU_SCALAR_I64_ALU_KIND_NONE) {
+      return iree_ok_status();
+    }
   }
   const uint16_t result_register_class =
       loom_low_register_type_class_id(result_low_type);
@@ -1421,7 +1435,9 @@ iree_status_t loom_amdgpu_select_scalar_i64_alu_plan(
   bool lhs_can_lower = false;
   IREE_RETURN_IF_ERROR(loom_amdgpu_scalar_i64_operand_can_materialize(
       context, source_op, lhs, result_register_class, &lhs_can_lower));
-  if (!lhs_can_lower) return iree_ok_status();
+  if (!lhs_can_lower) {
+    return iree_ok_status();
+  }
 
   uint8_t shift_amount = 0;
   if (kind == LOOM_AMDGPU_SCALAR_I64_ALU_KIND_VGPR_LSHR_LITERAL) {
@@ -1433,7 +1449,9 @@ iree_status_t loom_amdgpu_select_scalar_i64_alu_plan(
     bool rhs_can_lower = false;
     IREE_RETURN_IF_ERROR(loom_amdgpu_scalar_i64_operand_can_materialize(
         context, source_op, rhs, result_register_class, &rhs_can_lower));
-    if (!rhs_can_lower) return iree_ok_status();
+    if (!rhs_can_lower) {
+      return iree_ok_status();
+    }
   }
 
   iree_string_view_t constraint_key = iree_string_view_empty();

@@ -159,7 +159,9 @@ static iree_status_t iree_fuzz_build_dummy_tokenizer(
   iree_tokenizer_vocab_t* vocab = NULL;
   iree_status_t status =
       iree_tokenizer_vocab_builder_build(vocab_builder, &vocab);
-  if (!iree_status_is_ok(status)) return status;
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
 
   // Build the tokenizer.
   iree_tokenizer_builder_t builder;

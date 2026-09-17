@@ -191,7 +191,9 @@ iree_status_t loom_low_rematerialize_value_uses(
       .value_id = value_id,
   };
   iree_status_t status = loom_rewriter_initialize(&rewriter, module, arena);
-  if (!iree_status_is_ok(status)) return status;
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
   for (uint32_t i = 0; i < use_count && iree_status_is_ok(status); ++i) {
     loom_value_id_t cloned_value_id = LOOM_VALUE_ID_INVALID;
     status = loom_low_rematerialization_clone_for_use(
@@ -211,7 +213,9 @@ iree_status_t loom_low_rematerialize_value_uses(
     IREE_ASSERT(loom_op_results_unused(module, defining_op));
     status = loom_rewriter_erase(&rewriter, defining_op);
   }
-  if (iree_status_is_ok(status)) *out_result = result;
+  if (iree_status_is_ok(status)) {
+    *out_result = result;
+  }
   loom_rewriter_deinitialize(&rewriter);
   return status;
 }

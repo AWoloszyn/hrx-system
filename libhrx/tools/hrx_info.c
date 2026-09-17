@@ -26,7 +26,9 @@ static void print_status_message(FILE* stream, const char* prefix,
 }
 
 static int report_status_error(hrx_status_t status) {
-  if (hrx_status_is_ok(status)) return 0;
+  if (hrx_status_is_ok(status)) {
+    return 0;
+  }
   print_status_message(stderr, "ERROR: ", status);
   fprintf(stderr, "\n");
   hrx_status_ignore(status);
@@ -40,7 +42,9 @@ static void consume_status(hrx_status_t* status) {
 
 static int report_shutdown_error(const char* accelerator_name,
                                  hrx_status_t status) {
-  if (hrx_status_is_ok(status)) return 0;
+  if (hrx_status_is_ok(status)) {
+    return 0;
+  }
   fprintf(stderr, "%s accelerator shutdown failed: ", accelerator_name);
   print_status_message(stderr, "", status);
   fprintf(stderr, "\n");
@@ -138,7 +142,9 @@ static int print_devices(void) {
   printf("HRX (HIP Runtime Extended) v%d.%d.%d\n", major, minor, patch);
 
   int result = print_gpu_devices();
-  if (print_cpu_devices() != 0) result = 1;
+  if (print_cpu_devices() != 0) {
+    result = 1;
+  }
   return result;
 }
 
@@ -152,7 +158,9 @@ static int run_device_smoke_test(hrx_device_t device, const char* label) {
   bool buffer_mapped = false;
   int result = 0;
 
-  if (report_status_error(hrx_stream_create(device, 0, &stream))) result = 1;
+  if (report_status_error(hrx_stream_create(device, 0, &stream))) {
+    result = 1;
+  }
 
   const size_t size = 1024 * 1024;
   if (result == 0 &&
@@ -163,7 +171,9 @@ static int run_device_smoke_test(hrx_device_t device, const char* label) {
           &buffer))) {
     result = 1;
   }
-  if (result == 0) printf("  Allocate 1 MiB buffer: OK\n");
+  if (result == 0) {
+    printf("  Allocate 1 MiB buffer: OK\n");
+  }
 
   uint32_t pattern = 0xDEADBEEF;
   if (result == 0 && report_status_error(hrx_stream_fill_buffer(
@@ -172,11 +182,15 @@ static int run_device_smoke_test(hrx_device_t device, const char* label) {
   }
   // Flush fill before copy — the heap allocator's task CB doesn't guarantee
   // intra-CB ordering for transfer ops on the same buffer.
-  if (result == 0 && report_status_error(hrx_stream_flush(stream))) result = 1;
+  if (result == 0 && report_status_error(hrx_stream_flush(stream))) {
+    result = 1;
+  }
   if (result == 0 && report_status_error(hrx_stream_synchronize(stream))) {
     result = 1;
   }
-  if (result == 0) printf("  Fill buffer: OK\n");
+  if (result == 0) {
+    printf("  Fill buffer: OK\n");
+  }
 
   if (result == 0 &&
       report_status_error(hrx_buffer_allocate(
@@ -190,17 +204,23 @@ static int run_device_smoke_test(hrx_device_t device, const char* label) {
                          stream, buffer, 0, buffer2, 0, size))) {
     result = 1;
   }
-  if (result == 0 && report_status_error(hrx_stream_flush(stream))) result = 1;
+  if (result == 0 && report_status_error(hrx_stream_flush(stream))) {
+    result = 1;
+  }
   if (result == 0 && report_status_error(hrx_stream_synchronize(stream))) {
     result = 1;
   }
-  if (result == 0) printf("  Copy buffer: OK\n");
+  if (result == 0) {
+    printf("  Copy buffer: OK\n");
+  }
 
   if (result == 0 && report_status_error(hrx_buffer_map(buffer2, HRX_MAP_READ,
                                                         0, size, &mapped))) {
     result = 1;
   }
-  if (result == 0) buffer_mapped = true;
+  if (result == 0) {
+    buffer_mapped = true;
+  }
   if (result == 0) {
     uint32_t* data = (uint32_t*)mapped;
     for (size_t i = 0; i < size / sizeof(uint32_t); i++) {
@@ -215,12 +235,16 @@ static int run_device_smoke_test(hrx_device_t device, const char* label) {
   if (buffer_mapped && report_status_error(hrx_buffer_unmap(buffer2))) {
     result = 1;
   }
-  if (result == 0) printf("  Verify data: OK\n");
+  if (result == 0) {
+    printf("  Verify data: OK\n");
+  }
 
   hrx_buffer_release(buffer2);
   hrx_buffer_release(buffer);
   hrx_stream_release(stream);
-  if (result == 0) printf("  Release: OK\n");
+  if (result == 0) {
+    printf("  Release: OK\n");
+  }
 
   return result;
 }
@@ -318,7 +342,9 @@ int main(int argc, char** argv) {
       int count = 0;
       bool enumerate_gpu =
           report_status_error(hrx_gpu_device_count(&count)) == 0;
-      if (!enumerate_gpu) result = 1;
+      if (!enumerate_gpu) {
+        result = 1;
+      }
       for (int i = 0; i < count && enumerate_gpu; i++) {
         hrx_device_t dev = NULL;
         if (report_status_error(hrx_gpu_device_get(i, &dev))) {
@@ -328,7 +354,9 @@ int main(int argc, char** argv) {
           char label[32];
           snprintf(label, sizeof(label), "gpu:%d", i);
           int r = run_device_smoke_test(dev, label);
-          if (r != 0) result = r;
+          if (r != 0) {
+            result = r;
+          }
         }
       }
     } else {
@@ -339,7 +367,9 @@ int main(int argc, char** argv) {
       int count = 0;
       bool enumerate_cpu =
           report_status_error(hrx_cpu_device_count(&count)) == 0;
-      if (!enumerate_cpu) result = 1;
+      if (!enumerate_cpu) {
+        result = 1;
+      }
       for (int i = 0; i < count && enumerate_cpu; i++) {
         hrx_device_t dev = NULL;
         if (report_status_error(hrx_cpu_device_get(i, &dev))) {
@@ -349,7 +379,9 @@ int main(int argc, char** argv) {
           char label[32];
           snprintf(label, sizeof(label), "cpu:%d", i);
           int r = run_device_smoke_test(dev, label);
-          if (r != 0) result = r;
+          if (r != 0) {
+            result = r;
+          }
         }
       }
     } else {

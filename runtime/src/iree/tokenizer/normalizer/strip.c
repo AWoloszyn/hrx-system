@@ -154,9 +154,13 @@ static void iree_tokenizer_normalizer_strip_clear_pending(
 static bool iree_tokenizer_normalizer_strip_buffer_is_homogeneous(
     const iree_tokenizer_normalizer_strip_state_t* state, const uint8_t* bytes,
     iree_host_size_t length) {
-  if (state->pending.length % length != 0) return false;
+  if (state->pending.length % length != 0) {
+    return false;
+  }
   for (uint32_t i = 0; i < state->pending.length; i += (uint32_t)length) {
-    if (memcmp(state->pending.buffer + i, bytes, length) != 0) return false;
+    if (memcmp(state->pending.buffer + i, bytes, length) != 0) {
+      return false;
+    }
   }
   return true;
 }
@@ -214,14 +218,18 @@ static iree_host_size_t iree_tokenizer_normalizer_strip_emit_pending(
 
   // First, emit from literal buffer.
   while (state->pending.emitted < state->pending.length) {
-    if (out_ptr >= out_end) break;  // Output full.
+    if (out_ptr >= out_end) {
+      break;  // Output full.
+    }
     *out_ptr++ = state->pending.buffer[state->pending.emitted++];
   }
 
   // Then, emit RLE overflow (if any).
   while (state->pending.rle_emitted < state->pending.rle_count) {
     iree_host_size_t output_available = (iree_host_size_t)(out_end - out_ptr);
-    if (output_available < state->pending.rle_length) break;  // Output full.
+    if (output_available < state->pending.rle_length) {
+      break;  // Output full.
+    }
     memcpy(out_ptr, state->pending.rle_bytes, state->pending.rle_length);
     out_ptr += state->pending.rle_length;
     state->pending.rle_emitted++;
@@ -323,7 +331,9 @@ static iree_status_t iree_tokenizer_normalizer_strip_state_process(
 
       // strip_right=false: emit whitespace directly.
       iree_host_size_t output_available = (iree_host_size_t)(out_end - out_ptr);
-      if (output_available < seq_length) break;  // Output full.
+      if (output_available < seq_length) {
+        break;  // Output full.
+      }
       memcpy(out_ptr, in_ptr, seq_length);
       out_ptr += seq_length;
       in_ptr += seq_length;
@@ -346,7 +356,9 @@ static iree_status_t iree_tokenizer_normalizer_strip_state_process(
     // Now emit the non-whitespace.
     state->at_start = false;
     iree_host_size_t output_available = (iree_host_size_t)(out_end - out_ptr);
-    if (output_available < seq_length) break;  // Output full.
+    if (output_available < seq_length) {
+      break;  // Output full.
+    }
     memcpy(out_ptr, in_ptr, seq_length);
     out_ptr += seq_length;
     in_ptr += seq_length;

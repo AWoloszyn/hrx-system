@@ -238,7 +238,9 @@ static iree_status_t iree_profile_dispatch_validate_host_event_metadata(
 static bool iree_profile_dispatch_event_matches_id(
     const iree_hal_profile_dispatch_event_t* event,
     iree_profile_projection_mode_t mode, int64_t id_filter) {
-  if (id_filter < 0) return true;
+  if (id_filter < 0) {
+    return true;
+  }
   const uint64_t id = (uint64_t)id_filter;
   switch (mode) {
     case IREE_PROFILE_PROJECTION_MODE_DISPATCH:
@@ -257,7 +259,9 @@ static bool iree_profile_dispatch_event_matches_id(
 static bool iree_profile_dispatch_host_event_matches_id(
     const iree_hal_profile_host_execution_event_t* event,
     iree_profile_projection_mode_t mode, int64_t id_filter) {
-  if (id_filter < 0) return true;
+  if (id_filter < 0) {
+    return true;
+  }
   const uint64_t id = (uint64_t)id_filter;
   switch (mode) {
     case IREE_PROFILE_PROJECTION_MODE_DISPATCH:
@@ -533,14 +537,18 @@ static iree_status_t iree_profile_dispatch_get_host_command_aggregate(
 
 static bool iree_profile_dispatch_accumulate_ticks(uint64_t* total_ticks,
                                                    uint64_t duration_ticks) {
-  if (duration_ticks > UINT64_MAX - *total_ticks) return false;
+  if (duration_ticks > UINT64_MAX - *total_ticks) {
+    return false;
+  }
   *total_ticks += duration_ticks;
   return true;
 }
 
 static bool iree_profile_dispatch_accumulate_ns(int64_t* total_ns,
                                                 int64_t duration_ns) {
-  if (duration_ns < 0 || duration_ns > INT64_MAX - *total_ns) return false;
+  if (duration_ns < 0 || duration_ns > INT64_MAX - *total_ns) {
+    return false;
+  }
   *total_ns += duration_ns;
   return true;
 }
@@ -790,7 +798,9 @@ static iree_status_t iree_profile_dispatch_process_event_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_dispatch_event_t event;
     memcpy(&event, typed_record.contents.data, sizeof(event));
@@ -902,7 +912,9 @@ static iree_status_t iree_profile_dispatch_process_host_execution_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_host_execution_event_t event;
     memcpy(&event, typed_record.contents.data, sizeof(event));

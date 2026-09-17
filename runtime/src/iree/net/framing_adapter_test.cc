@@ -31,7 +31,9 @@ static iree_status_t TestFrameLength(void* user_data,
                                      iree_const_byte_span_t available,
                                      iree_host_size_t* out_frame_size) {
   *out_frame_size = 0;
-  if (available.data_length < kHeaderSize) return iree_ok_status();
+  if (available.data_length < kHeaderSize) {
+    return iree_ok_status();
+  }
   uint32_t frame_size =
       (uint32_t)available.data[0] | ((uint32_t)available.data[1] << 8) |
       ((uint32_t)available.data[2] << 16) | ((uint32_t)available.data[3] << 24);
@@ -109,7 +111,9 @@ struct MockCarrier {
                          iree_net_carrier_deactivate_callback_fn_t callback,
                          void* user_data) {
     iree_net_carrier_set_state(carrier, IREE_NET_CARRIER_STATE_DEACTIVATED);
-    if (callback) callback(user_data);
+    if (callback) {
+      callback(user_data);
+    }
   }
 
   static iree_net_carrier_send_budget_t QuerySendBudget(

@@ -1252,7 +1252,9 @@ static iree_status_t loom_low_verify_workgroup_storage_limit(
     loom_low_function_verify_state_t* function_state) {
   const loom_target_bundle_t* bundle =
       loom_low_resolved_target_bundle(function_state->target);
-  if (bundle == NULL) return iree_ok_status();
+  if (bundle == NULL) {
+    return iree_ok_status();
+  }
   const uint64_t limit = bundle->snapshot->max_workgroup_storage_bytes;
   if (limit == 0 || function_state->body == NULL ||
       loom_low_verify_should_stop(function_state->state)) {
@@ -1644,7 +1646,9 @@ static iree_status_t loom_low_verify_reference_source_preserving_ops(
 static iree_status_t loom_low_verify_type_changing_tied_results(
     loom_low_function_verify_state_t* function_state, const loom_op_t* op,
     iree_string_view_t op_name, const loom_low_descriptor_packet_t* packet) {
-  if (op->tied_result_count == 0) return iree_ok_status();
+  if (op->tied_result_count == 0) {
+    return iree_ok_status();
+  }
 
   const loom_module_t* module = function_state->state->module;
   const loom_low_descriptor_set_t* descriptor_set =

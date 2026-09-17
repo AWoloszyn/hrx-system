@@ -76,11 +76,15 @@ iree_status_t loom_normalize_kernel_resources_run(loom_pass_t* pass,
     return iree_ok_status();
   }
   loom_region_t* body = loom_func_like_body(function);
-  if (!body) return iree_ok_status();
+  if (!body) {
+    return iree_ok_status();
+  }
 
   uint16_t arg_count = 0;
   const loom_value_id_t* arg_ids = loom_func_like_arg_ids(function, &arg_count);
-  if (arg_count == 0 || !arg_ids) return iree_ok_status();
+  if (arg_count == 0 || !arg_ids) {
+    return iree_ok_status();
+  }
 
   loom_block_t* entry_block = loom_region_entry_block(body);
   loom_builder_t builder;
@@ -96,7 +100,9 @@ iree_status_t loom_normalize_kernel_resources_run(loom_pass_t* pass,
   for (uint16_t i = 0; i < arg_count; ++i) {
     loom_value_id_t arg_id = arg_ids[i];
     loom_type_t arg_type = loom_module_value_type(module, arg_id);
-    if (!loom_type_is_view(arg_type)) continue;
+    if (!loom_type_is_view(arg_type)) {
+      continue;
+    }
     if (zero_offset == LOOM_VALUE_ID_INVALID) {
       IREE_RETURN_IF_ERROR(loom_kernel_resources_build_zero_offset(
           &builder, function.op->location, &zero_offset));

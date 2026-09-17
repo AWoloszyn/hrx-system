@@ -36,9 +36,13 @@ extern const loom_vector_scalarization_t
 // is recorded for the vector operation.
 static inline const loom_vector_scalarization_t*
 loom_vector_scalarization_lookup(loom_op_kind_t kind) {
-  if (loom_op_dialect_id(kind) != LOOM_DIALECT_VECTOR) return NULL;
+  if (loom_op_dialect_id(kind) != LOOM_DIALECT_VECTOR) {
+    return NULL;
+  }
   const uint8_t op_index = loom_op_dialect_index(kind);
-  if (op_index >= LOOM_OP_VECTOR_COUNT_) return NULL;
+  if (op_index >= LOOM_OP_VECTOR_COUNT_) {
+    return NULL;
+  }
   const loom_vector_scalarization_t* scalarization =
       &loom_vector_scalarization_rows[op_index];
   return scalarization->lane_op_kind != LOOM_OP_KIND_UNKNOWN ? scalarization

@@ -32,7 +32,9 @@ typedef struct {
 static inline bool iree_tokenizer_digits_emit(
     iree_tokenizer_digits_emitter_t* emitter, iree_host_size_t start,
     iree_host_size_t end) {
-  if (start >= end || emitter->full) return false;
+  if (start >= end || emitter->full) {
+    return false;
+  }
   if (emitter->count >= emitter->output.capacity) {
     emitter->full = true;
     return false;

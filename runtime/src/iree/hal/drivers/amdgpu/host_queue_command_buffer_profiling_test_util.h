@@ -75,7 +75,9 @@ class DeviceProfilingScope {
   }
 
   iree_status_t End() {
-    if (!is_active_) return iree_ok_status();
+    if (!is_active_) {
+      return iree_ok_status();
+    }
     is_active_ = false;
     return iree_hal_device_profiling_end(device_);
   }
@@ -264,7 +266,9 @@ static iree_status_t CommandBufferProfileSinkWrite(
   CommandBufferProfileSink* test_sink = CommandBufferProfileSinkCast(sink);
   EXPECT_EQ(1, test_sink->begin_count);
   EXPECT_EQ(0, test_sink->end_count);
-  if (test_sink->end_count != 0) test_sink->write_after_end = true;
+  if (test_sink->end_count != 0) {
+    test_sink->write_after_end = true;
+  }
   EXPECT_EQ(test_sink->session_id, metadata->session_id);
   if (test_sink->fail_write_remaining != 0 &&
       iree_string_view_equal(metadata->content_type,
@@ -823,7 +827,9 @@ static const iree_hal_profile_queue_event_t* FindUniqueQueueEvent(
     iree_hal_profile_queue_event_type_t type) {
   const iree_hal_profile_queue_event_t* result = nullptr;
   for (const auto& event : sink.queue_events) {
-    if (event.type != type) continue;
+    if (event.type != type) {
+      continue;
+    }
     EXPECT_EQ(nullptr, result);
     result = &event;
   }
@@ -835,7 +841,9 @@ static iree_host_size_t CountQueueEvents(
     iree_hal_profile_queue_event_type_t type) {
   iree_host_size_t count = 0;
   for (const auto& event : sink.queue_events) {
-    if (event.type == type) ++count;
+    if (event.type == type) {
+      ++count;
+    }
   }
   return count;
 }

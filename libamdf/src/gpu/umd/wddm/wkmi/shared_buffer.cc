@@ -39,24 +39,34 @@ amdf_status_t QueryBufferWithModules(HMODULE dxgi_module, HMODULE d3d12_module,
   }
   Microsoft::WRL::ComPtr<IDXGIFactory4> factory;
   HRESULT result = create_factory(IID_PPV_ARGS(&factory));
-  if (FAILED(result)) return HresultStatus(result);
+  if (FAILED(result)) {
+    return HresultStatus(result);
+  }
   const LUID luid = {static_cast<DWORD>(adapter_luid),
                      static_cast<LONG>(adapter_luid >> 32)};
   Microsoft::WRL::ComPtr<IDXGIAdapter> adapter;
   result = factory->EnumAdapterByLuid(luid, IID_PPV_ARGS(&adapter));
-  if (FAILED(result)) return HresultStatus(result);
+  if (FAILED(result)) {
+    return HresultStatus(result);
+  }
   Microsoft::WRL::ComPtr<ID3D12Device> device;
   result = create_device(adapter.Get(), D3D_FEATURE_LEVEL_11_0,
                          IID_PPV_ARGS(&device));
-  if (FAILED(result)) return HresultStatus(result);
+  if (FAILED(result)) {
+    return HresultStatus(result);
+  }
   Microsoft::WRL::ComPtr<ID3D12Resource> resource;
   result = device->OpenSharedHandle(shared_handle, IID_PPV_ARGS(&resource));
-  if (FAILED(result)) return HresultStatus(result);
+  if (FAILED(result)) {
+    return HresultStatus(result);
+  }
   const D3D12_RESOURCE_DESC description = resource->GetDesc();
   D3D12_HEAP_PROPERTIES heap = {};
   D3D12_HEAP_FLAGS flags = D3D12_HEAP_FLAG_NONE;
   result = resource->GetHeapProperties(&heap, &flags);
-  if (FAILED(result)) return HresultStatus(result);
+  if (FAILED(result)) {
+    return HresultStatus(result);
+  }
   if (description.Dimension != D3D12_RESOURCE_DIMENSION_BUFFER ||
       description.Layout != D3D12_TEXTURE_LAYOUT_ROW_MAJOR ||
       description.Width == 0 || heap.Type != D3D12_HEAP_TYPE_DEFAULT ||
@@ -92,7 +102,9 @@ amdf_status_t QueryBuffer(uint64_t adapter_luid, HANDLE shared_handle,
   if (!FreeLibrary(dxgi_module)) {
     status = amdf_make_status(AMDF_STATUS_DOMAIN_WIN32, GetLastError());
   }
-  if (amdf_status_is_ok(status)) *out_byte_length = byte_length;
+  if (amdf_status_is_ok(status)) {
+    *out_byte_length = byte_length;
+  }
   return status;
 }
 
@@ -104,7 +116,9 @@ amdf_status_t PrepareBuffer(
   uint64_t buffer_byte_length = 0;
   amdf_status_t status = QueryBuffer(
       import_info.adapter_luid, import_info.shared_handle, &buffer_byte_length);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   D3DKMT_QUERYRESOURCEINFOFROMNTHANDLE query = {};
   query.hDevice = import_info.device_handle;
   query.hNtHandle = import_info.shared_handle;

@@ -1412,7 +1412,9 @@ iree_status_t loom_low_schedule_function(
       .target = model->target,
       .error_count = model->error_count,
   };
-  if (model->error_count != 0) return iree_ok_status();
+  if (model->error_count != 0) {
+    return iree_ok_status();
+  }
   IREE_ASSERT(loom_local_value_domain_is_acquired(&model->value_domain));
 
   loom_low_schedule_build_state_t state = {

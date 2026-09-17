@@ -230,7 +230,9 @@ void CtsRegistry::RunCleanups() {
   {
     auto& data = GetRegistryData();
     std::lock_guard<std::mutex> lock(data.mutex);
-    if (data.cleanups_run) return;
+    if (data.cleanups_run) {
+      return;
+    }
     data.cleanups_run = true;
     cleanups = std::move(data.cleanups);
     data.cleanups.clear();

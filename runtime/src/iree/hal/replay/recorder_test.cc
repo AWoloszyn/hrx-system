@@ -429,7 +429,9 @@ static const iree_hal_replay_file_record_t* FindOperationRecord(
     const std::vector<iree_hal_replay_file_record_t>& records,
     iree_hal_replay_operation_code_t operation_code) {
   for (const auto& record : records) {
-    if (record.header.operation_code == operation_code) return &record;
+    if (record.header.operation_code == operation_code) {
+      return &record;
+    }
   }
   return nullptr;
 }

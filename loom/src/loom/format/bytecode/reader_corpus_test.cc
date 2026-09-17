@@ -59,7 +59,9 @@ static constexpr uint32_t kReorderedAddI32Ordinal = 73;
 static const loom_low_repr_descriptor_set_t* ReorderedLookupDescriptorSet(
     const loom_low_repr_environment_state_t* state, iree_string_view_t key) {
   (void)state;
-  if (!iree_string_view_equal(key, IREE_SV("test.low.core"))) return nullptr;
+  if (!iree_string_view_equal(key, IREE_SV("test.low.core"))) {
+    return nullptr;
+  }
   return reinterpret_cast<const loom_low_repr_descriptor_set_t*>(
       &kReorderedDescriptorSetToken);
 }
@@ -162,9 +164,13 @@ class ReaderCorpusTest : public ::testing::Test {
     loom_op_t* module_op = nullptr;
     loom_block_for_each_op(loom_module_block(module), module_op) {
       loom_func_like_t function = loom_func_like_cast(module, module_op);
-      if (!loom_func_like_isa(function)) continue;
+      if (!loom_func_like_isa(function)) {
+        continue;
+      }
       loom_region_t* body = loom_func_like_body(function);
-      if (!body || body->block_count == 0) continue;
+      if (!body || body->block_count == 0) {
+        continue;
+      }
       loom_op_t* body_op = nullptr;
       loom_block_for_each_op(loom_region_entry_block(body), body_op) {
         loom_attribute_t* attrs = loom_op_attrs(body_op);
@@ -249,7 +255,9 @@ TEST_F(ReaderCorpusTest, TextCorpusBytecodeRoundTripsCanonically) {
         iree_make_string_view(file.data, (iree_host_size_t)file.size);
 
     loom_module_t* module = Parse(source, filename);
-    if (!module) continue;
+    if (!module) {
+      continue;
+    }
     std::vector<uint8_t> first;
     iree_status_t write_status =
         WriteModule(module, low_repr_environment_, &first);

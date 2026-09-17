@@ -16,7 +16,9 @@ iree_status_t iree_hal_webgpu_handle_table_initialize(
   memset(out_table, 0, sizeof(*out_table));
 
   // Need at least 2 slots: index 0 (reserved null) + one usable slot.
-  if (initial_capacity < 2) initial_capacity = 2;
+  if (initial_capacity < 2) {
+    initial_capacity = 2;
+  }
 
   out_table->allocator = allocator;
 

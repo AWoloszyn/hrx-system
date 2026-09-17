@@ -14,7 +14,9 @@ static iree_status_t iree_hal_amdgpu_pm4_command_program_layout_append_region(
     iree_host_size_t* out_offset, iree_host_size_t* out_stride) {
   *out_offset = 0;
   *out_stride = 0;
-  if (element_count == 0 || element_byte_length == 0) return iree_ok_status();
+  if (element_count == 0 || element_byte_length == 0) {
+    return iree_ok_status();
+  }
   if (IREE_UNLIKELY(!iree_host_size_is_power_of_two(alignment) ||
                     *inout_cursor > UINTPTR_MAX - (alignment - 1) ||
                     element_byte_length > UINTPTR_MAX - (alignment - 1))) {
@@ -184,7 +186,9 @@ iree_hal_amdgpu_pm4_command_program_set_select_profile(
   const bool has_serial_profile = iree_any_bit_set(
       program_set->flags,
       IREE_HAL_AMDGPU_PM4_COMMAND_PROGRAM_SET_FLAG_SERIAL_PROFILE);
-  if (has_serial_profile) return &program_set->profile_plans[0];
+  if (has_serial_profile) {
+    return &program_set->profile_plans[0];
+  }
   const uint64_t preceding_queue_mask =
       physical_queue_ordinal == 0
           ? 0

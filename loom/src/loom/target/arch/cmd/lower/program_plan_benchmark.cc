@@ -27,7 +27,9 @@
 namespace {
 
 static void CheckStatus(iree_status_t status) {
-  if (!iree_status_is_ok(status)) iree_status_abort(status);
+  if (!iree_status_is_ok(status)) {
+    iree_status_abort(status);
+  }
 }
 
 enum class LaunchShape {
@@ -72,7 +74,9 @@ class ProgramPlanFixture {
         /*out_provider_ordinal=*/nullptr));
 
     root_symbol_ = loom_link_module_index_lookup_name(index_, IREE_SV("root"));
-    if (root_symbol_ == nullptr) std::abort();
+    if (root_symbol_ == nullptr) {
+      std::abort();
+    }
     const loom_link_plan_root_facet_t root_facet = {
         /*.symbol_ordinal=*/root_symbol_->ordinal,
         /*.kind=*/LOOM_LINK_SYMBOL_FACET_COMMAND_IMPLEMENTATION,
@@ -111,7 +115,9 @@ class ProgramPlanFixture {
     }
     *out_root_ref =
         materialization.target_symbols.values[root_symbol_->ordinal];
-    if (!loom_symbol_ref_is_valid(*out_root_ref)) std::abort();
+    if (!loom_symbol_ref_is_valid(*out_root_ref)) {
+      std::abort();
+    }
     return materialization;
   }
 
@@ -244,14 +250,18 @@ kernel.def @tiles(%extent: index) {
         loom_text_parse(iree_make_string_view(source.data(), source.size()),
                         IREE_SV("command_plan_benchmark.loom"), &context_,
                         &block_pool_, &parse_options, &module));
-    if (module == nullptr) std::abort();
+    if (module == nullptr) {
+      std::abort();
+    }
 
     loom_verify_options_t verify_options = {};
     verify_options.sink.fn = loom_diagnostic_stderr_sink;
     verify_options.max_errors = 20;
     loom_verify_result_t verify_result = {};
     CheckStatus(loom_verify_module(module, &verify_options, &verify_result));
-    if (verify_result.error_count != 0) std::abort();
+    if (verify_result.error_count != 0) {
+      std::abort();
+    }
     return module;
   }
 
@@ -293,7 +303,9 @@ static void RunProgramPlanBenchmark(benchmark::State& state,
         /*kernel_source=*/nullptr, loom_pass_builtin_registry(),
         /*diagnostic_emitter=*/{}, fixture.block_pool(), &valid, &program_plan,
         iree_allocator_system()));
-    if (!valid) std::abort();
+    if (!valid) {
+      std::abort();
+    }
     benchmark::DoNotOptimize(program_plan.root_count);
 
     state.PauseTiming();
@@ -402,7 +414,9 @@ static void RunIndexedProgramPlanBenchmark(benchmark::State& state,
         request_mode == KernelRequestMode::kPublish ? &options : nullptr,
         loom_pass_builtin_registry(), /*diagnostic_emitter=*/{}, &environment,
         &scratch_arena, &valid, &program_plan));
-    if (!valid) std::abort();
+    if (!valid) {
+      std::abort();
+    }
     benchmark::DoNotOptimize(program_plan.root_count);
 
     request_count = capture.request_count;

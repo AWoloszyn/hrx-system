@@ -53,7 +53,9 @@ class KernelClassClassifierTest : public ::testing::Test {
         source, IREE_SV("kernel_class_classifier_test.loom"), &context_,
         &block_pool_, &parse_options, &analysis_arena_, out_references,
         &module));
-    if (module == nullptr) return ModulePtr();
+    if (module == nullptr) {
+      return ModulePtr();
+    }
     ModulePtr module_ptr(module);
     loom_verify_options_t verify_options = {};
     verify_options.sink.fn = loom_diagnostic_stderr_sink;
@@ -67,7 +69,9 @@ class KernelClassClassifierTest : public ::testing::Test {
                               iree_string_view_t name) {
     const loom_string_id_t name_id = loom_module_lookup_string(module, name);
     EXPECT_NE(name_id, LOOM_STRING_ID_INVALID);
-    if (name_id == LOOM_STRING_ID_INVALID) return LOOM_SYMBOL_ID_INVALID;
+    if (name_id == LOOM_STRING_ID_INVALID) {
+      return LOOM_SYMBOL_ID_INVALID;
+    }
     const loom_symbol_id_t symbol_id = loom_module_find_symbol(module, name_id);
     EXPECT_NE(symbol_id, LOOM_SYMBOL_ID_INVALID);
     return symbol_id;
@@ -78,7 +82,9 @@ class KernelClassClassifierTest : public ::testing::Test {
                             loom_kernel_class_classifier_t* out_classifier) {
     loom_symbol_reference_table_t references = {};
     ModulePtr module = ParseAndVerify(source, &references);
-    if (module == nullptr) return ModulePtr();
+    if (module == nullptr) {
+      return ModulePtr();
+    }
 
     loom_symbol_fact_table_t symbol_facts = {};
     loom_symbol_fact_table_initialize(&symbol_facts, &analysis_arena_);
@@ -93,7 +99,9 @@ class KernelClassClassifierTest : public ::testing::Test {
 
     const loom_symbol_id_t kernel_symbol_id =
         FindSymbol(module.get(), kernel_name);
-    if (kernel_symbol_id == LOOM_SYMBOL_ID_INVALID) return ModulePtr();
+    if (kernel_symbol_id == LOOM_SYMBOL_ID_INVALID) {
+      return ModulePtr();
+    }
     const loom_func_like_t kernel = loom_func_like_cast(
         module.get(), module->symbols.entries[kernel_symbol_id].defining_op);
     loom_value_fact_table_t kernel_facts = {};
@@ -419,7 +427,9 @@ TEST_F(KernelClassClassifierTest,
   ASSERT_EQ(program_body->block_count, 1u);
   loom_op_t* op = nullptr;
   loom_block_for_each_op(loom_region_entry_block(program_body), op) {
-    if (!loom_kernel_launch_isa(op)) continue;
+    if (!loom_kernel_launch_isa(op)) {
+      continue;
+    }
     const loom_value_slice_t arguments = loom_kernel_launch_arguments(op);
     ASSERT_EQ(arguments.count, 3u);
     sites.push_back({

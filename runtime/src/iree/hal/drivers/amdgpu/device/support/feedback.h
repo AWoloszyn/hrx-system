@@ -39,7 +39,9 @@ iree_hal_amdgpu_feedback_try_reserve(
     iree_hal_amdgpu_feedback_packet_kind_t kind,
     iree_hal_amdgpu_feedback_packet_flags_t flags, size_t payload_length,
     iree_hal_amdgpu_feedback_packet_t** out_packet) {
-  if (!out_packet) return false;
+  if (!out_packet) {
+    return false;
+  }
   *out_packet = NULL;
   if (!config ||
       !IREE_AMDGPU_ANY_BIT_SET(config->flags,

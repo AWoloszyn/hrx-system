@@ -180,7 +180,9 @@ void iree_async_signal_subscription_link(
 bool iree_async_signal_subscription_unlink(
     iree_async_signal_subscription_t** head_ptr,
     iree_async_signal_subscription_t* subscription) {
-  if (!subscription) return false;
+  if (!subscription) {
+    return false;
+  }
 
   // Check if already unlinked (both pointers NULL and not the head).
   if (!subscription->prev && !subscription->next && *head_ptr != subscription) {

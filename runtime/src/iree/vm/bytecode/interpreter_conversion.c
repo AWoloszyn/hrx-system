@@ -152,8 +152,12 @@ static_assert(IREE_ARRAYSIZE(iree_vm_bytecode_float_to_integer_conversions) ==
 
 static uint64_t iree_vm_bytecode_round_shift_right_even(uint64_t value,
                                                         int shift) {
-  if (shift <= 0) return value << -shift;
-  if (shift > 64) return 0;
+  if (shift <= 0) {
+    return value << -shift;
+  }
+  if (shift > 64) {
+    return 0;
+  }
   if (shift == 64) {
     return value > UINT64_C(0x8000000000000000) ? 1 : 0;
   }
@@ -222,7 +226,9 @@ static uint64_t iree_vm_bytecode_float_encode(
     }
     return sign | (exponent_mask << format.mantissa_bit_count);
   }
-  if (value.significand == 0) return sign;
+  if (value.significand == 0) {
+    return sign;
+  }
 
   int exponent =
       63 - iree_math_count_leading_zeros_u64(value.significand) + value.scale;
@@ -304,7 +310,9 @@ void iree_vm_bytecode_execute_conversion_integer(
 
 static iree_vm_bytecode_float_value_t iree_vm_bytecode_integer_decode(
     uint64_t bits, bool is_signed, uint8_t bit_count) {
-  if (bit_count == 32) bits = (uint32_t)bits;
+  if (bit_count == 32) {
+    bits = (uint32_t)bits;
+  }
   const uint64_t sign_mask = UINT64_C(1) << (bit_count - 1);
   const bool is_negative = is_signed && (bits & sign_mask) != 0;
   return (iree_vm_bytecode_float_value_t){
@@ -318,7 +326,9 @@ static iree_vm_bytecode_float_value_t iree_vm_bytecode_integer_decode(
 
 static uint64_t iree_vm_bytecode_float_truncate_magnitude(
     iree_vm_bytecode_float_value_t value) {
-  if (value.scale >= 0) return value.significand << value.scale;
+  if (value.scale >= 0) {
+    return value.significand << value.scale;
+  }
   const int shift = -value.scale;
   return shift >= 64 ? 0 : value.significand >> shift;
 }

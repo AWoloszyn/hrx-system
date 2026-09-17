@@ -167,7 +167,9 @@ iree_status_t iree_hip_handle_registry_insert(
         found_tombstone = true;
       }
       slot = (slot + 1) & mask;
-      if (!found_tombstone) insertion_slot = slot;
+      if (!found_tombstone) {
+        insertion_slot = slot;
+      }
     }
   }
   if (iree_status_is_ok(status)) {
@@ -188,7 +190,9 @@ bool iree_hip_handle_registry_lookup_retain(
     iree_hip_handle_registry_retain_fn_t retain_fn) {
   IREE_ASSERT_ARGUMENT(registry);
   IREE_ASSERT_ARGUMENT(retain_fn);
-  if (!handle) return false;
+  if (!handle) {
+    return false;
+  }
 
   bool found = false;
   const iree_host_size_t hash = iree_hip_handle_registry_hash(handle);
@@ -215,7 +219,9 @@ bool iree_hip_handle_registry_lookup_retain(
 bool iree_hip_handle_registry_remove(iree_hip_handle_registry_t* registry,
                                      uintptr_t handle) {
   IREE_ASSERT_ARGUMENT(registry);
-  if (!handle) return false;
+  if (!handle) {
+    return false;
+  }
 
   bool found = false;
   const iree_host_size_t hash = iree_hip_handle_registry_hash(handle);

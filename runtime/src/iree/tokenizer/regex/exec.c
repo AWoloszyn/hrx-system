@@ -35,7 +35,9 @@
 static IREE_ATTRIBUTE_ALWAYS_INLINE inline uint8_t
 iree_tokenizer_regex_codepoint_to_byte(uint32_t codepoint) {
   // ASCII bytes pass through directly.
-  if (codepoint < 0x80) return (uint8_t)codepoint;
+  if (codepoint < 0x80) {
+    return (uint8_t)codepoint;
+  }
 
   // Handle Unicode replacement character (invalid UTF-8) consistently.
   // Map to OTHER to avoid false matches on category patterns.
@@ -112,7 +114,9 @@ IREE_ATTRIBUTE_ALWAYS_INLINE static inline bool
 iree_tokenizer_regex_lookahead_rejects(const iree_tokenizer_regex_dfa_t* dfa,
                                        uint16_t state,
                                        uint32_t next_codepoint) {
-  if (!dfa->lookahead) return false;
+  if (!dfa->lookahead) {
+    return false;
+  }
 
   const iree_tokenizer_regex_lookahead_t* la = &dfa->lookahead[state];
   switch (la->type) {
@@ -147,7 +151,9 @@ iree_tokenizer_regex_lookahead_rejects(const iree_tokenizer_regex_dfa_t* dfa,
 // lookahead/non-lookahead alternation like \s+(?!\S)|\s+).
 static inline bool iree_tokenizer_regex_lookahead_has_fallback(
     const iree_tokenizer_regex_dfa_t* dfa, uint16_t state) {
-  if (!dfa->lookahead) return false;
+  if (!dfa->lookahead) {
+    return false;
+  }
   uint8_t type = dfa->lookahead[state].type;
   return type == IREE_TOKENIZER_UTIL_REGEX_LOOKAHEAD_NEG_CHAR_WITH_FALLBACK ||
          type ==
@@ -520,12 +526,16 @@ iree_status_t iree_tokenizer_regex_stride_allocate(
   uint8_t next_category = 0;
 
   for (uint8_t byte_a = 0; byte_a < 128; ++byte_a) {
-    if (category_assignment[byte_a] != 0xFF) continue;  // Already assigned.
+    if (category_assignment[byte_a] != 0xFF) {
+      continue;  // Already assigned.
+    }
     category_assignment[byte_a] = next_category;
 
     // Compare byte_a's column against all unassigned bytes.
     for (uint8_t byte_b = byte_a + 1; byte_b < 128; ++byte_b) {
-      if (category_assignment[byte_b] != 0xFF) continue;
+      if (category_assignment[byte_b] != 0xFF) {
+        continue;
+      }
 
       // Check if byte_a and byte_b have identical transitions in all states.
       bool equivalent = true;
@@ -672,7 +682,9 @@ void iree_tokenizer_regex_exec_initialize(
 // prefer longer. When false, prefer lookahead-passed position.
 static inline bool iree_tokenizer_regex_has_early_no_lookahead(
     const iree_tokenizer_regex_dfa_t* dfa, uint16_t state) {
-  if (!dfa->lookahead) return false;
+  if (!dfa->lookahead) {
+    return false;
+  }
   return iree_any_bit_set(
       dfa->lookahead[state].flags,
       IREE_TOKENIZER_UTIL_REGEX_LOOKAHEAD_FLAG_HAS_EARLY_NO_LOOKAHEAD);
@@ -700,7 +712,9 @@ static inline iree_status_t iree_tokenizer_regex_emit_match(
     const iree_tokenizer_regex_dfa_t* dfa,
     iree_tokenizer_regex_match_callback_fn_t callback, void* user_data,
     iree_host_size_t* out_match_end) {
-  if (!callback) return iree_ok_status();
+  if (!callback) {
+    return iree_ok_status();
+  }
 
   iree_host_size_t match_end = 0;
   bool has_match = false;
@@ -738,7 +752,9 @@ static inline iree_status_t iree_tokenizer_regex_emit_match(
         .start = state->match_start,
         .end = match_end,
     };
-    if (out_match_end) *out_match_end = match_end;
+    if (out_match_end) {
+      *out_match_end = match_end;
+    }
     IREE_RETURN_IF_ERROR(callback(user_data, match));
   }
   return iree_ok_status();
@@ -751,7 +767,9 @@ static inline iree_status_t iree_tokenizer_regex_emit_match(
 // Helper to check if state has lookahead that needs next character.
 static inline bool iree_tokenizer_regex_has_lookahead(
     const iree_tokenizer_regex_dfa_t* dfa, uint16_t state) {
-  if (!dfa->lookahead) return false;
+  if (!dfa->lookahead) {
+    return false;
+  }
   return dfa->lookahead[state].type != IREE_TOKENIZER_UTIL_REGEX_LOOKAHEAD_NONE;
 }
 
@@ -764,7 +782,9 @@ static inline bool iree_tokenizer_regex_has_lookahead(
 // 0.
 static inline bool iree_tokenizer_regex_requires_start_anchor(
     const iree_tokenizer_regex_dfa_t* dfa, uint16_t state) {
-  if (!dfa->start_anchor_bitmap) return false;
+  if (!dfa->start_anchor_bitmap) {
+    return false;
+  }
   return (dfa->start_anchor_bitmap[state / 64] & (1ULL << (state % 64))) != 0;
 }
 
@@ -772,7 +792,9 @@ static inline bool iree_tokenizer_regex_requires_start_anchor(
 // A state with end anchor only produces a valid match at end of input.
 static inline bool iree_tokenizer_regex_requires_end_anchor(
     const iree_tokenizer_regex_dfa_t* dfa, uint16_t state) {
-  if (!dfa->end_anchor_bitmap) return false;
+  if (!dfa->end_anchor_bitmap) {
+    return false;
+  }
   return (dfa->end_anchor_bitmap[state / 64] & (1ULL << (state % 64))) != 0;
 }
 
@@ -797,10 +819,14 @@ static inline bool iree_tokenizer_regex_update_best_candidate(
     const iree_tokenizer_regex_dfa_t* dfa,
     iree_tokenizer_regex_exec_state_t* state, uint16_t dfa_state,
     iree_host_size_t match_end, bool lookahead_confirmed) {
-  if (!iree_tokenizer_regex_has_branches(dfa)) return false;
+  if (!iree_tokenizer_regex_has_branches(dfa)) {
+    return false;
+  }
 
   uint64_t accepting = dfa->accepting_branches[dfa_state];
-  if (!accepting) return false;
+  if (!accepting) {
+    return false;
+  }
 
   // Find highest-priority accepting branch (lowest bit set).
   int highest_accepting = iree_math_count_trailing_zeros_u64(accepting);
@@ -1372,7 +1398,9 @@ iree_status_t iree_tokenizer_regex_exec_feed(
                   stride, stride_next) == category) {
             while (position < chunk.size) {
               uint8_t b = (uint8_t)chunk.data[position];
-              if (b >= 0x80 || stride->category_table[b] != category) break;
+              if (b >= 0x80 || stride->category_table[b] != category) {
+                break;
+              }
               ++position;
             }
           }
@@ -1380,14 +1408,19 @@ iree_status_t iree_tokenizer_regex_exec_feed(
           // Level 1: tight loop for subsequent ASCII boring transitions.
           while (position < chunk.size) {
             uint8_t b = (uint8_t)chunk.data[position];
-            if (IREE_UNLIKELY(b >= 0x80)) break;
+            if (IREE_UNLIKELY(b >= 0x80)) {
+              break;
+            }
             uint16_t next =
                 dfa->transitions[(iree_host_size_t)state->dfa_state * 256 + b];
-            if (IREE_UNLIKELY(next == IREE_TOKENIZER_UTIL_REGEX_NO_TRANSITION))
+            if (IREE_UNLIKELY(next ==
+                              IREE_TOKENIZER_UTIL_REGEX_NO_TRANSITION)) {
               break;
+            }
             if (IREE_UNLIKELY(
-                    !iree_tokenizer_regex_stride_is_boring(stride, next)))
+                    !iree_tokenizer_regex_stride_is_boring(stride, next))) {
               break;
+            }
             state->dfa_state = next;
             ++position;
 
@@ -1397,8 +1430,10 @@ iree_status_t iree_tokenizer_regex_exec_feed(
                 category_inner) {
               while (position < chunk.size) {
                 uint8_t b2 = (uint8_t)chunk.data[position];
-                if (b2 >= 0x80 || stride->category_table[b2] != category_inner)
+                if (b2 >= 0x80 ||
+                    stride->category_table[b2] != category_inner) {
                   break;
+                }
                 ++position;
               }
             }

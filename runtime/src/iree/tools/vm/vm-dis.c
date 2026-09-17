@@ -75,7 +75,9 @@ static iree_status_t vm_dis_output_open(iree_string_view_t path,
 }
 
 static iree_status_t vm_dis_output_close(vm_dis_output_t* output) {
-  if (!output->file) return iree_ok_status();
+  if (!output->file) {
+    return iree_ok_status();
+  }
   const int result =
       output->owns_file ? fclose(output->file) : fflush(output->file);
   output->file = NULL;

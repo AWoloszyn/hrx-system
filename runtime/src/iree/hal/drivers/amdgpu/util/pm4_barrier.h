@@ -69,7 +69,9 @@ static inline uint32_t iree_hal_amdgpu_pm4_barrier_gcr_cntl_for_scopes_gfx10(
     iree_hsa_fence_scope_t release_scope) {
   const iree_hsa_fence_scope_t scope =
       iree_hal_amdgpu_pm4_max_fence_scope(acquire_scope, release_scope);
-  if (scope == IREE_HSA_FENCE_SCOPE_NONE) return 0;
+  if (scope == IREE_HSA_FENCE_SCOPE_NONE) {
+    return 0;
+  }
   uint32_t gcr_cntl = IREE_HAL_AMDGPU_PM4_ACQUIRE_MEM_GCR_GLI_INV_ALL |
                       IREE_HAL_AMDGPU_PM4_ACQUIRE_MEM_GCR_GLK_INV |
                       IREE_HAL_AMDGPU_PM4_ACQUIRE_MEM_GCR_GLV_INV |
@@ -119,7 +121,9 @@ iree_hal_amdgpu_pm4_barrier_cp_coher_cntl_for_scopes_gfx9(
     iree_hsa_fence_scope_t release_scope) {
   const iree_hsa_fence_scope_t scope =
       iree_hal_amdgpu_pm4_max_fence_scope(acquire_scope, release_scope);
-  if (scope == IREE_HSA_FENCE_SCOPE_NONE) return 0;
+  if (scope == IREE_HSA_FENCE_SCOPE_NONE) {
+    return 0;
+  }
   return IREE_HAL_AMDGPU_PM4_ACQUIRE_MEM_GFX9_CP_COHER_CNTL_CONSERVATIVE;
 }
 
@@ -173,7 +177,9 @@ static inline uint32_t iree_hal_amdgpu_pm4_barrier_dword_count_gfx10(
                          IREE_HAL_AMDGPU_PM4_BARRIER_FLAG_FIXUP_TO_IB);
   const uint32_t gcr_cntl = iree_hal_amdgpu_pm4_barrier_gcr_cntl_gfx10(
       capabilities, barrier_flags, acquire_scope, release_scope);
-  if (!has_execution_barrier) return 0;
+  if (!has_execution_barrier) {
+    return 0;
+  }
   if (!iree_any_bit_set(
           capabilities,
           IREE_HAL_AMDGPU_VENDOR_PACKET_CAPABILITY_PM4_EVENT_WRITE)) {
@@ -221,7 +227,9 @@ static inline uint32_t iree_hal_amdgpu_pm4_barrier_dword_count_gfx9(
     cp_coher_cntl =
         IREE_HAL_AMDGPU_PM4_ACQUIRE_MEM_GFX9_CP_COHER_CNTL_CONSERVATIVE;
   }
-  if (!has_execution_barrier) return 0;
+  if (!has_execution_barrier) {
+    return 0;
+  }
   if (!iree_any_bit_set(
           capabilities,
           IREE_HAL_AMDGPU_VENDOR_PACKET_CAPABILITY_PM4_EVENT_WRITE)) {
@@ -269,7 +277,9 @@ static inline bool iree_hal_amdgpu_pm4_barrier_emit_gfx10(
   *out_dword_count = 0;
   const uint32_t dword_count = iree_hal_amdgpu_pm4_barrier_dword_count_gfx10(
       capabilities, barrier_flags, acquire_scope, release_scope);
-  if (dword_count == 0 || capacity < dword_count) return false;
+  if (dword_count == 0 || capacity < dword_count) {
+    return false;
+  }
 
   const uint32_t gcr_cntl = iree_hal_amdgpu_pm4_barrier_gcr_cntl_gfx10(
       capabilities, barrier_flags, acquire_scope, release_scope);
@@ -315,7 +325,9 @@ static inline bool iree_hal_amdgpu_pm4_barrier_emit_gfx9(
   *out_dword_count = 0;
   const uint32_t dword_count = iree_hal_amdgpu_pm4_barrier_dword_count_gfx9(
       capabilities, barrier_flags, acquire_scope, release_scope);
-  if (dword_count == 0 || capacity < dword_count) return false;
+  if (dword_count == 0 || capacity < dword_count) {
+    return false;
+  }
 
   uint32_t cp_coher_cntl =
       iree_hal_amdgpu_pm4_barrier_cp_coher_cntl_for_scopes_gfx9(acquire_scope,

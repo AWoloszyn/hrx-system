@@ -205,7 +205,9 @@ static bool loom_linearize_view_accesses_static_dense_view_type(
           IREE_ARRAYSIZE(stride_storage), &layout)) {
     return false;
   }
-  if (layout.kind != LOOM_VALUE_FACT_ADDRESS_LAYOUT_DENSE) return false;
+  if (layout.kind != LOOM_VALUE_FACT_ADDRESS_LAYOUT_DENSE) {
+    return false;
+  }
 
   int64_t length = 1;
   uint8_t rank = loom_type_rank(view_type);
@@ -236,7 +238,9 @@ static bool loom_linearize_view_accesses_axis_index(
     *out_static_index = static_index;
     return true;
   }
-  if (*dynamic_index_position >= dynamic_indices.count) return false;
+  if (*dynamic_index_position >= dynamic_indices.count) {
+    return false;
+  }
   *out_static_index = INT64_MIN;
   *out_dynamic_index = dynamic_indices.values[(*dynamic_index_position)++];
   return true;
@@ -424,7 +428,9 @@ static iree_status_t loom_linearize_view_accesses_build_linear_index(
     int64_t dynamic_exact = 0;
     if (loom_value_facts_as_exact_i64(dynamic_facts, &dynamic_exact) &&
         dynamic_exact >= 0 && dynamic_exact < axis_origin_count) {
-      if (dynamic_exact == 0) continue;
+      if (dynamic_exact == 0) {
+        continue;
+      }
       int64_t contribution = 0;
       if (!iree_checked_mul_i64(dynamic_exact, stride, &contribution) ||
           !iree_checked_add_i64(static_offset, contribution, &static_offset)) {
@@ -586,9 +592,13 @@ static bool loom_linearize_view_accesses_get_source_view(
   }
 
   const loom_value_t* view_value = loom_module_value(module, view);
-  if (loom_value_is_block_arg(view_value)) return false;
+  if (loom_value_is_block_arg(view_value)) {
+    return false;
+  }
   loom_op_t* view_op = loom_value_def_op(view_value);
-  if (!loom_buffer_view_isa(view_op)) return false;
+  if (!loom_buffer_view_isa(view_op)) {
+    return false;
+  }
 
   *out_view_op = view_op;
   *out_view_type = view_type;
@@ -607,16 +617,28 @@ static bool loom_linearize_view_accesses_static_contiguous_vector_access(
                                           vector_type, &access)) {
     return false;
   }
-  if (access.layout_kind != LOOM_VECTOR_MEMORY_LAYOUT_DENSE) return false;
-  if (access.vector_rank != 1) return false;
-  if (access.first_vector_axis + 1 != access.view_rank) return false;
-  if (loom_type_dim_is_dynamic_at(vector_type, 0)) return false;
+  if (access.layout_kind != LOOM_VECTOR_MEMORY_LAYOUT_DENSE) {
+    return false;
+  }
+  if (access.vector_rank != 1) {
+    return false;
+  }
+  if (access.first_vector_axis + 1 != access.view_rank) {
+    return false;
+  }
+  if (loom_type_dim_is_dynamic_at(vector_type, 0)) {
+    return false;
+  }
 
   int64_t lane_count = loom_type_dim_static_size_at(vector_type, 0);
-  if (lane_count <= 0 || lane_count > linear_length) return false;
+  if (lane_count <= 0 || lane_count > linear_length) {
+    return false;
+  }
   const int64_t trailing_axis_dim =
       loom_type_dim_static_size_at(view_type, access.view_rank - 1);
-  if (lane_count > trailing_axis_dim) return false;
+  if (lane_count > trailing_axis_dim) {
+    return false;
+  }
   *out_lane_count = lane_count;
   *out_origin_count = linear_length - lane_count + 1;
   return true;
@@ -1303,7 +1325,9 @@ static iree_status_t loom_linearize_view_accesses_rewrite_access(
 iree_status_t loom_linearize_view_accesses_run(loom_pass_t* pass,
                                                loom_module_t* module,
                                                loom_func_like_t function) {
-  if (!loom_func_like_body(function)) return iree_ok_status();
+  if (!loom_func_like_body(function)) {
+    return iree_ok_status();
+  }
 
   loom_linearize_view_accesses_op_list_t accesses = {0};
   loom_walk_result_t walk_result = LOOM_WALK_CONTINUE;
@@ -1318,7 +1342,9 @@ iree_status_t loom_linearize_view_accesses_run(loom_pass_t* pass,
                              .user_data = &collect_context,
                          },
                          pass->arena, &walk_result));
-  if (accesses.count == 0) return iree_ok_status();
+  if (accesses.count == 0) {
+    return iree_ok_status();
+  }
 
   loom_value_fact_table_t* fact_table = NULL;
   IREE_RETURN_IF_ERROR(loom_pass_value_facts_acquire(
@@ -1351,7 +1377,9 @@ iree_status_t loom_linearize_view_accesses_run(loom_pass_t* pass,
   }
   if (changed) {
     loom_pass_value_fact_owner_invalidate(pass->value_facts);
-    if (iree_status_is_ok(status)) loom_pass_mark_changed(pass);
+    if (iree_status_is_ok(status)) {
+      loom_pass_mark_changed(pass);
+    }
   }
 
   loom_rewriter_deinitialize(&rewriter);

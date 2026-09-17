@@ -55,13 +55,17 @@ struct HostAllocationState {
     auto* state = static_cast<HostAllocationState*>(user_data);
     void* pointer = state->system.allocate(state->system.user_data, byte_length,
                                            minimum_alignment);
-    if (pointer != nullptr) ++state->live_count;
+    if (pointer != nullptr) {
+      ++state->live_count;
+    }
     return pointer;
   }
 
   static void AMDF_CALL Free(void* user_data, void* pointer) {
     auto* state = static_cast<HostAllocationState*>(user_data);
-    if (pointer == nullptr) return;
+    if (pointer == nullptr) {
+      return;
+    }
     --state->live_count;
     state->system.free(state->system.user_data, pointer);
   }
@@ -244,7 +248,9 @@ class EndpointSnapshotTest : public ::testing::Test {
   amdf_status_t DestroyInstance() {
     const amdf_status_t status =
         amdf_platform_instance_destroy(platform_instance_);
-    if (amdf_status_is_ok(status)) platform_instance_ = nullptr;
+    if (amdf_status_is_ok(status)) {
+      platform_instance_ = nullptr;
+    }
     return status;
   }
 

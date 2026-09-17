@@ -1208,7 +1208,9 @@ static iree_status_t loom_check_emit_build_low_allocation_table(
     status =
         loom_low_allocate_function(&model, &options, analysis_arena, out_table);
   }
-  if (iree_status_is_ok(status)) *out_built = true;
+  if (iree_status_is_ok(status)) {
+    *out_built = true;
+  }
   loom_low_function_model_deinitialize(&model);
   return status;
 }
@@ -1437,7 +1439,9 @@ static bool loom_check_emit_has_low_function(const loom_module_t* module) {
   const loom_block_t* block = loom_region_const_entry_block(module->body);
   const loom_op_t* op = NULL;
   loom_block_for_each_op(block, op) {
-    if (loom_check_emit_is_low_function_op(op)) return true;
+    if (loom_check_emit_is_low_function_op(op)) {
+      return true;
+    }
   }
   return false;
 }
@@ -1693,7 +1697,9 @@ static iree_status_t loom_check_emit_write_source_low_text(
   if (request->source_low_output == LOOM_CHECK_EMIT_SOURCE_LOW_OUTPUT_LOW) {
     iree_status_t status = loom_check_emit_write_source_low_artifacts(
         module, &low_registry->registry, &result->actual_output);
-    if (iree_status_is_ok(status)) result->has_actual_output = true;
+    if (iree_status_is_ok(status)) {
+      result->has_actual_output = true;
+    }
     return status;
   }
   loom_text_low_asm_environment_t low_asm_environment = {0};
@@ -1702,7 +1708,9 @@ static iree_status_t loom_check_emit_write_source_low_text(
       &low_registry->registry, &low_asm_environment, &print_options);
   iree_status_t status = loom_text_print_module_to_builder_with_options(
       module, &result->actual_output, &print_options);
-  if (iree_status_is_ok(status)) result->has_actual_output = true;
+  if (iree_status_is_ok(status)) {
+    result->has_actual_output = true;
+  }
   return status;
 }
 

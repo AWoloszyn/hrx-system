@@ -40,7 +40,9 @@ bool amdf_xdna_query_endpoint_info(const amdf_endpoint_info_t* endpoint_info,
         break;
     }
   }
-  if (target_id == NULL) return false;
+  if (target_id == NULL) {
+    return false;
+  }
   memcpy(info.target_id, target_id, strlen(target_id) + 1);
   *out_info = info;
   return true;
@@ -51,7 +53,9 @@ bool amdf_xdna_device_profile_initialize(
     amdf_xdna_device_info_t* device_info,
     amdf_xdna_device_profile_t* out_profile) {
   amdf_xdna_endpoint_info_t identity;
-  if (!amdf_xdna_query_endpoint_info(endpoint_info, &identity)) return false;
+  if (!amdf_xdna_query_endpoint_info(endpoint_info, &identity)) {
+    return false;
+  }
 
   amdf_xdna_device_info_t info = {
       .type = AMDF_STRUCTURE_TYPE_XDNA_DEVICE_INFO,

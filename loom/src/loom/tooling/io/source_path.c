@@ -52,8 +52,12 @@ static bool loom_tooling_source_path_char_equal(char lhs, char rhs) {
       loom_tooling_source_path_is_separator(rhs)) {
     return true;
   }
-  if (lhs >= 'A' && lhs <= 'Z') lhs = (char)(lhs - 'A' + 'a');
-  if (rhs >= 'A' && rhs <= 'Z') rhs = (char)(rhs - 'A' + 'a');
+  if (lhs >= 'A' && lhs <= 'Z') {
+    lhs = (char)(lhs - 'A' + 'a');
+  }
+  if (rhs >= 'A' && rhs <= 'Z') {
+    rhs = (char)(rhs - 'A' + 'a');
+  }
 #endif  // defined(IREE_PLATFORM_WINDOWS)
   return lhs == rhs;
 }

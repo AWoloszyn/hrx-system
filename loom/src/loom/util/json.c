@@ -176,7 +176,9 @@ iree_status_t loom_json_object_write_string_field(
 iree_status_t loom_json_object_write_string_field_if_nonempty(
     loom_json_object_writer_t* writer, iree_string_view_t name,
     iree_string_view_t value) {
-  if (iree_string_view_is_empty(value)) return iree_ok_status();
+  if (iree_string_view_is_empty(value)) {
+    return iree_ok_status();
+  }
   return loom_json_object_write_string_field(writer, name, value);
 }
 

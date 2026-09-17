@@ -243,7 +243,9 @@ void iree_tokenizer_postprocessor_assign_type_ids(
 // No-op if phase is not SEQUENCE_A.
 static inline void iree_tokenizer_postprocessor_begin_infix(
     iree_tokenizer_postprocessor_encode_state_t* state) {
-  if (state->phase != IREE_TOKENIZER_POSTPROCESSOR_PHASE_SEQUENCE_A) return;
+  if (state->phase != IREE_TOKENIZER_POSTPROCESSOR_PHASE_SEQUENCE_A) {
+    return;
+  }
   state->position = 0;
   state->phase = state->active_template->infix_count > 0
                      ? IREE_TOKENIZER_POSTPROCESSOR_PHASE_INFIX

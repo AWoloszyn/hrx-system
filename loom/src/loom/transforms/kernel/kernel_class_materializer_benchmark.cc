@@ -196,7 +196,9 @@ class KernelClassMaterializerBenchmarkFixture {
 
  private:
   loom_decision_class_ordinal_t FindSpecializedClass() const {
-    if (decision_count_ == 0) return 0;
+    if (decision_count_ == 0) {
+      return 0;
+    }
     for (loom_decision_class_ordinal_t class_ordinal = 0;
          class_ordinal < collection_.class_count; ++class_ordinal) {
       const loom_kernel_class_trace_t* trace =

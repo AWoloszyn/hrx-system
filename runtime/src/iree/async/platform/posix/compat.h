@@ -60,7 +60,9 @@ static inline int iree_posix_socket(int domain, int type, int protocol) {
   return socket(domain, type | SOCK_NONBLOCK | SOCK_CLOEXEC, protocol);
 #else
   int fd = socket(domain, type, protocol);
-  if (fd < 0) return fd;
+  if (fd < 0) {
+    return fd;
+  }
 
   // Set nonblocking. Failure would cause the poll thread to block on I/O.
   int flags = fcntl(fd, F_GETFL, 0);
@@ -96,7 +98,9 @@ static inline int iree_posix_accept(int sockfd, struct sockaddr* addr,
   return accept4(sockfd, addr, addrlen, SOCK_NONBLOCK | SOCK_CLOEXEC);
 #else
   int fd = accept(sockfd, addr, addrlen);
-  if (fd < 0) return fd;
+  if (fd < 0) {
+    return fd;
+  }
 
   // Set nonblocking. Failure would cause the poll thread to block on I/O.
   int flags = fcntl(fd, F_GETFL, 0);

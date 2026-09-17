@@ -26,7 +26,9 @@
 static amdf_status_t amdf_linux_read_attribute(int directory, const char* name,
                                                char* value, size_t capacity) {
   int descriptor = openat(directory, name, O_RDONLY | O_CLOEXEC);
-  if (descriptor < 0) return amdf_linux_error(errno);
+  if (descriptor < 0) {
+    return amdf_linux_error(errno);
+  }
   ssize_t length;
   do {
     length = read(descriptor, value, capacity - 1);
@@ -34,7 +36,9 @@ static amdf_status_t amdf_linux_read_attribute(int directory, const char* name,
   amdf_status_t status = length < 0 ? amdf_linux_error(errno) : AMDF_STATUS_OK;
   if (length >= 0) {
     value[length] = 0;
-    if ((size_t)length == capacity - 1) status = amdf_linux_error(EOVERFLOW);
+    if ((size_t)length == capacity - 1) {
+      status = amdf_linux_error(EOVERFLOW);
+    }
   }
   const amdf_status_t close_status = amdf_linux_file_close(&descriptor);
   return amdf_status_is_ok(close_status) ? status : close_status;
@@ -46,7 +50,9 @@ static amdf_status_t amdf_linux_read_pci_attribute(int directory,
   char text[32];
   amdf_status_t status =
       amdf_linux_read_attribute(directory, name, text, sizeof(text));
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   char* end = NULL;
   errno = 0;
   const unsigned long value = strtoul(text, &end, 0);
@@ -81,7 +87,9 @@ static amdf_status_t amdf_linux_query_endpoint(int directory,
       (amdf_status_is_ok(status) && !amdf_pci_is_amd(&info->pci))) {
     return amdf_make_api_status(AMDF_STATUS_CODE_NOT_FOUND);
   }
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   const char* attributes[] = {"device/device", "device/subsystem_vendor",
                               "device/subsystem_device", "device/revision"};
   uint32_t* fields[] = {&info->pci.device_id, &info->pci.subsystem_vendor_id,
@@ -89,11 +97,15 @@ static amdf_status_t amdf_linux_query_endpoint(int directory,
   for (size_t i = 0; amdf_status_is_ok(status) && i < 4; ++i) {
     status = amdf_linux_read_pci_attribute(directory, attributes[i], fields[i]);
   }
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   char driver[256];
   const ssize_t driver_length =
       readlinkat(directory, "device/driver", driver, sizeof(driver) - 1);
-  if (driver_length < 0) return amdf_linux_error(errno);
+  if (driver_length < 0) {
+    return amdf_linux_error(errno);
+  }
   if ((size_t)driver_length == sizeof(driver) - 1) {
     return amdf_linux_error(EOVERFLOW);
   }
@@ -111,7 +123,9 @@ static amdf_status_t amdf_linux_query_endpoint(int directory,
   char device_number[32];
   status = amdf_linux_read_attribute(directory, "dev", device_number,
                                      sizeof(device_number));
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   unsigned int device_major, device_minor;
   char trailing;
   if (sscanf(device_number, "%u:%u%c", &device_major, &device_minor,
@@ -123,7 +137,9 @@ static amdf_status_t amdf_linux_query_endpoint(int directory,
   char device_path[512];
   const ssize_t path_length =
       readlinkat(directory, "device", device_path, sizeof(device_path) - 1);
-  if (path_length < 0) return amdf_linux_error(errno);
+  if (path_length < 0) {
+    return amdf_linux_error(errno);
+  }
   if ((size_t)path_length == sizeof(device_path) - 1) {
     return amdf_linux_error(EOVERFLOW);
   }
@@ -159,7 +175,9 @@ amdf_status_t amdf_platform_endpoint_enumerate(
     const amdf_status_t allocation_status = amdf_calloc_array(
         instance->host_allocator, (size_t)capacity, sizeof(*staged_summaries),
         amdf_alignof(amdf_endpoint_summary_t), (void**)&staged_summaries);
-    if (!amdf_status_is_ok(allocation_status)) return allocation_status;
+    if (!amdf_status_is_ok(allocation_status)) {
+      return allocation_status;
+    }
   }
 
   const char* classes[] = {"class/drm", "class/accel"};
@@ -172,21 +190,27 @@ amdf_status_t amdf_platform_endpoint_enumerate(
                             O_RDONLY | O_DIRECTORY | O_CLOEXEC);
     if (descriptor < 0) {
       // An absent class means the kernel has no devices in this class.
-      if (errno != ENOENT) status = amdf_linux_error(errno);
+      if (errno != ENOENT) {
+        status = amdf_linux_error(errno);
+      }
       continue;
     }
     DIR* directory = fdopendir(descriptor);
     if (directory == NULL) {
       status = amdf_linux_error(errno);
       const amdf_status_t close_status = amdf_linux_file_close(&descriptor);
-      if (!amdf_status_is_ok(close_status)) status = close_status;
+      if (!amdf_status_is_ok(close_status)) {
+        status = close_status;
+      }
       continue;
     }
     while (amdf_status_is_ok(status)) {
       errno = 0;
       const struct dirent* entry = readdir(directory);
       if (entry == NULL) {
-        if (errno) status = amdf_linux_error(errno);
+        if (errno) {
+          status = amdf_linux_error(errno);
+        }
         break;
       }
       const size_t prefix_length = strlen(prefixes[class_index]);
@@ -205,7 +229,9 @@ amdf_status_t amdf_platform_endpoint_enumerate(
       amdf_endpoint_info_t info;
       status = amdf_linux_query_endpoint(node, &info);
       const amdf_status_t close_status = amdf_linux_file_close(&node);
-      if (!amdf_status_is_ok(close_status)) status = close_status;
+      if (!amdf_status_is_ok(close_status)) {
+        status = close_status;
+      }
       if (status == amdf_make_api_status(AMDF_STATUS_CODE_NOT_FOUND)) {
         status = AMDF_STATUS_OK;
         continue;
@@ -226,7 +252,9 @@ amdf_status_t amdf_platform_endpoint_enumerate(
         ++count;
       }
     }
-    if (closedir(directory) != 0) status = amdf_linux_error(errno);
+    if (closedir(directory) != 0) {
+      status = amdf_linux_error(errno);
+    }
   }
   if (amdf_status_is_ok(status)) {
     if (capacity != 0) {
@@ -260,19 +288,29 @@ static amdf_status_t amdf_linux_resolve_endpoint(
   }
   amdf_status_t status = amdf_linux_query_endpoint(node, info);
   const amdf_status_t close_status = amdf_linux_file_close(&node);
-  if (!amdf_status_is_ok(close_status)) status = close_status;
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(close_status)) {
+    status = close_status;
+  }
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   if (!amdf_endpoint_id_is_equal(id, &info->id)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_NOT_FOUND);
   }
   char link[512];
   ssize_t length =
       readlinkat(instance->sysfs_descriptor, path, link, sizeof(link) - 1);
-  if (length < 0) return amdf_linux_error(errno);
-  if ((size_t)length == sizeof(link) - 1) return amdf_linux_error(EOVERFLOW);
+  if (length < 0) {
+    return amdf_linux_error(errno);
+  }
+  if ((size_t)length == sizeof(link) - 1) {
+    return amdf_linux_error(EOVERFLOW);
+  }
   link[length] = 0;
   const char* name = strrchr(link, '/');
-  if (name == NULL) return amdf_linux_error(EPROTO);
+  if (name == NULL) {
+    return amdf_linux_error(EPROTO);
+  }
   const char* prefix =
       info->engine_kind == AMDF_ENGINE_KIND_XDNA ? "accel" : "renderD";
   ++name;
@@ -319,13 +357,17 @@ static amdf_status_t amdf_linux_qualify_device_file(
 static amdf_status_t amdf_linux_open_device_file(
     const amdf_endpoint_info_t* info, const char* path, int* out_descriptor) {
   int descriptor = open(path, O_RDWR | O_CLOEXEC);
-  if (descriptor < 0) return amdf_linux_error(errno);
+  if (descriptor < 0) {
+    return amdf_linux_error(errno);
+  }
   amdf_status_t status = amdf_linux_qualify_device_file(descriptor, info);
   if (amdf_status_is_ok(status)) {
     *out_descriptor = descriptor;
   } else {
     const amdf_status_t close_status = amdf_linux_file_close(&descriptor);
-    if (!amdf_status_is_ok(close_status)) status = close_status;
+    if (!amdf_status_is_ok(close_status)) {
+      status = close_status;
+    }
   }
   return status;
 }
@@ -337,7 +379,9 @@ amdf_status_t amdf_platform_endpoint_open(
   amdf_status_t status =
       amdf_calloc(instance->host_allocator, sizeof(*endpoint),
                   amdf_alignof(amdf_platform_endpoint_t), (void**)&endpoint);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   endpoint->instance = instance;
   char device_path[AMDF_LINUX_DEVICE_PATH_CAPACITY];
   status =
@@ -357,7 +401,9 @@ amdf_status_t amdf_linux_endpoint_open_file(
   char device_path[AMDF_LINUX_DEVICE_PATH_CAPACITY];
   const amdf_status_t status = amdf_linux_resolve_endpoint(
       endpoint->instance, &endpoint->info.id, &info, device_path);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   return amdf_linux_open_device_file(&info, device_path, out_descriptor);
 }
 

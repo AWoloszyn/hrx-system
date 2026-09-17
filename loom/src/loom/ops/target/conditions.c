@@ -46,7 +46,9 @@ static loom_target_condition_outcome_t
 loom_target_subgroup_size_condition_evaluate(const loom_target_facts_t* facts,
                                              loom_attribute_t condition) {
   const uint32_t actual_size = facts->storage.bundle.snapshot->subgroup_size;
-  if (actual_size == 0) return LOOM_TARGET_CONDITION_UNKNOWN;
+  if (actual_size == 0) {
+    return LOOM_TARGET_CONDITION_UNKNOWN;
+  }
   const uint32_t required_size =
       (uint32_t)loom_target_subgroup_size_attr_size(condition);
   return actual_size == required_size ? LOOM_TARGET_CONDITION_MATCH
@@ -56,7 +58,9 @@ loom_target_subgroup_size_condition_evaluate(const loom_target_facts_t* facts,
 static bool loom_target_subgroup_size_condition_project_query_predicate(
     loom_attribute_t condition, loom_attribute_t query_key,
     loom_value_id_t query_value_id, loom_predicate_t* out_predicate) {
-  if (!loom_attr_is_absent(query_key)) return false;
+  if (!loom_attr_is_absent(query_key)) {
+    return false;
+  }
   *out_predicate = (loom_predicate_t){
       .kind = LOOM_PREDICATE_EQ,
       .arg_count = 2,

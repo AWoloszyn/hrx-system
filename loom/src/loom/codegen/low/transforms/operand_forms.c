@@ -773,11 +773,15 @@ static bool loom_low_packet_kind_may_rematerialize(
 // whose original producer must remain live for a later or cross-block use.
 static bool loom_low_select_operand_form_rematerialization_shortens_live_range(
     const loom_value_t* value, const loom_op_t* before_op) {
-  if (before_op->parent_block == NULL) return false;
+  if (before_op->parent_block == NULL) {
+    return false;
+  }
   const loom_use_t* uses = loom_value_uses(value);
   for (uint32_t i = 0; i < value->use_count; ++i) {
     const loom_op_t* user_op = loom_use_user_op(uses[i]);
-    if (user_op == before_op) continue;
+    if (user_op == before_op) {
+      continue;
+    }
     if (user_op == NULL || user_op->parent_block != before_op->parent_block ||
         user_op->block_ordinal >= before_op->block_ordinal) {
       return false;
@@ -879,7 +883,9 @@ static iree_status_t loom_low_select_operand_form_rematerialize_operands(
         break;
       }
     }
-    if (reused_operand) continue;
+    if (reused_operand) {
+      continue;
+    }
     IREE_RETURN_IF_ERROR(loom_low_select_operand_form_rematerialize_operand(
         state, rewriter, before_op, &operands[i]));
   }

@@ -40,7 +40,9 @@ static bool loom_symbol_pruning_symbol_is_erasable_with_options(
     if (!loom_func_like_isa(function)) {
       return true;
     }
-    if (!loom_func_like_is_module_internal(function)) return false;
+    if (!loom_func_like_is_module_internal(function)) {
+      return false;
+    }
     if (loom_symbol_pruning_retain_target_source_entries(options) &&
         loom_symbol_pruning_function_is_target_source_entry(function)) {
       return false;
@@ -68,7 +70,9 @@ bool loom_symbol_pruning_symbol_is_root(void* user_data,
   (void)symbol_id;
   // Unlinked placeholders become live only through a reachable dependency.
   // Availability metadata may name them but must never root them indirectly.
-  if (!symbol->defining_op) return false;
+  if (!symbol->defining_op) {
+    return false;
+  }
   const loom_symbol_pruning_options_t* options =
       (const loom_symbol_pruning_options_t*)user_data;
   return !loom_symbol_pruning_symbol_is_erasable_with_options(module, symbol,
@@ -98,7 +102,9 @@ iree_status_t loom_symbol_pruning_erase_unreachable(
                             "symbol pruning liveness result does not match "
                             "the module symbol table");
   }
-  if (module->symbols.count == 0) return iree_ok_status();
+  if (module->symbols.count == 0) {
+    return iree_ok_status();
+  }
 
   loom_symbol_pruning_erasure_t* erasures = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -109,7 +115,9 @@ iree_status_t loom_symbol_pruning_erase_unreachable(
   loom_module_for_each_symbol(module, symbol) {
     loom_symbol_id_t symbol_id =
         (loom_symbol_id_t)(symbol - module->symbols.entries);
-    if (loom_symbol_liveness_is_live(liveness, symbol_id)) continue;
+    if (loom_symbol_liveness_is_live(liveness, symbol_id)) {
+      continue;
+    }
     if (!loom_symbol_pruning_symbol_is_erasable_with_options(module, symbol,
                                                              options)) {
       continue;

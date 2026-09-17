@@ -6,6 +6,7 @@
 
 #include "loom/transforms/symbol/template_selection.h"
 
+#include <inttypes.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -1439,12 +1440,16 @@ static iree_status_t loom_template_selection_allocate_decision_scratch(
     loom_template_selection_state_t* state) {
   const uint32_t maximum_choice_count =
       state->decision_models.maximum_choice_count;
-  if (maximum_choice_count == 0) return iree_ok_status();
+  if (maximum_choice_count == 0) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       state->arena, maximum_choice_count,
       sizeof(*state->decision_scratch.live_provider_ordinals),
       (void**)&state->decision_scratch.live_provider_ordinals));
-  if (!state->reports_enabled) return iree_ok_status();
+  if (!state->reports_enabled) {
+    return iree_ok_status();
+  }
   return iree_arena_allocate_array(
       state->arena, maximum_choice_count,
       sizeof(*state->decision_scratch.provider_evidence),
@@ -1563,7 +1568,8 @@ iree_status_t loom_template_selection_query(
   if (options->mode == LOOM_TEMPLATE_SELECTION_MODE_FINAL &&
       statistics.unresolved_sites > 0) {
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                            "%zu reachable template applications remain "
+                            "%" PRId64
+                            " reachable template applications remain "
                             "unresolved",
                             statistics.unresolved_sites);
   }

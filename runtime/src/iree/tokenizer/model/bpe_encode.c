@@ -430,7 +430,9 @@ iree_status_t iree_tokenizer_bpe_state_encode(
   for (iree_host_size_t i = 0; i < segments.count; ++i) {
     // Early exit when output buffer is full - no point processing more
     // segments.
-    if (remaining_capacity == 0) break;
+    if (remaining_capacity == 0) {
+      break;
+    }
 
     const iree_tokenizer_segment_t* segment = &segments.values[i];
 

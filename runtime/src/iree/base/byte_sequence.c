@@ -83,7 +83,9 @@ static iree_status_t iree_owned_span_byte_sequence_enumerate(
     iree_byte_sequence_segment_callback_t callback) {
   const iree_owned_span_byte_sequence_t* sequence =
       iree_owned_span_byte_sequence_const_cast(base_sequence);
-  if (sequence->span.data_length == 0) return iree_ok_status();
+  if (sequence->span.data_length == 0) {
+    return iree_ok_status();
+  }
   return callback.fn(callback.user_data,
                      iree_const_cast_byte_span(sequence->span));
 }
@@ -167,7 +169,9 @@ IREE_API_EXPORT iree_status_t iree_byte_sequence_clone(
         IREE_STATUS_OUT_OF_RANGE,
         "byte sequence length exceeds the host addressable range");
   }
-  if (sequence_length == 0) return iree_ok_status();
+  if (sequence_length == 0) {
+    return iree_ok_status();
+  }
 
   iree_byte_sequence_clone_state_t state = {
       .target_span = iree_byte_span_empty(),

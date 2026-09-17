@@ -16,12 +16,16 @@
 
 static amdf_status_t amdf_windows_close_endpoint_adapter(
     amdf_platform_endpoint_t* endpoint) {
-  if (endpoint->adapter == 0) return AMDF_STATUS_OK;
+  if (endpoint->adapter == 0) {
+    return AMDF_STATUS_OK;
+  }
   D3DKMT_CLOSEADAPTER close_adapter = {0};
   close_adapter.hAdapter = endpoint->adapter;
   const amdf_status_t status = amdf_kmt_make_status(
       endpoint->instance->kmt.close_adapter(&close_adapter));
-  if (amdf_status_is_ok(status)) endpoint->adapter = 0;
+  if (amdf_status_is_ok(status)) {
+    endpoint->adapter = 0;
+  }
   return status;
 }
 
@@ -35,7 +39,9 @@ amdf_status_t amdf_platform_endpoint_open(
   amdf_status_t status =
       amdf_calloc(instance->host_allocator, sizeof(*endpoint),
                   amdf_alignof(amdf_platform_endpoint_t), (void**)&endpoint);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   endpoint->instance = instance;
 
   LUID adapter_luid;

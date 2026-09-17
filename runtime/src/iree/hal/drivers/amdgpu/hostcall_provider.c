@@ -146,7 +146,9 @@ iree_status_t iree_hal_amdgpu_hostcall_provider_state_create(
 
 void iree_hal_amdgpu_hostcall_provider_state_destroy(
     iree_hal_amdgpu_hostcall_provider_state_t* state) {
-  if (!state) return;
+  if (!state) {
+    return;
+  }
 
   if (state->service_thread) {
     iree_atomic_store(&state->stop_requested, 1, iree_memory_order_release);

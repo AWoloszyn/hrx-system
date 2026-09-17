@@ -253,7 +253,9 @@ static iree_status_t loom_llvmir_emit_const(
   loom_value_id_t result_value = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_prepare_packet_result(
       state, packet, &result_type, &result_value));
-  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) return iree_ok_status();
+  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) {
+    return iree_ok_status();
+  }
 
   const uint32_t result_unit_count =
       loom_llvmir_emit_low_value_unit_count(state, result_value);
@@ -282,7 +284,9 @@ static iree_status_t loom_llvmir_emit_const(
       break;
     }
   }
-  if (!has_immediate) return iree_ok_status();
+  if (!has_immediate) {
+    return iree_ok_status();
+  }
 
   loom_llvmir_value_id_t constant = LOOM_LLVMIR_VALUE_ID_INVALID;
   switch (info->kind) {
@@ -347,7 +351,9 @@ static iree_status_t loom_llvmir_emit_splat(
   loom_value_id_t result_value = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_prepare_packet_result(
       state, packet, &result_type, &result_value));
-  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) return iree_ok_status();
+  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) {
+    return iree_ok_status();
+  }
 
   const uint32_t lane_count =
       loom_llvmir_emit_low_value_unit_count(state, result_value);
@@ -383,7 +389,9 @@ static iree_status_t loom_llvmir_emit_from_elements(
   loom_value_id_t result_value = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_prepare_packet_result(
       state, packet, &result_type, &result_value));
-  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) return iree_ok_status();
+  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) {
+    return iree_ok_status();
+  }
 
   const uint32_t lane_count =
       loom_llvmir_emit_low_value_unit_count(state, result_value);
@@ -431,7 +439,9 @@ static iree_status_t loom_llvmir_emit_concat(
   loom_value_id_t result_value = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_prepare_packet_result(
       state, packet, &result_type_id, &result_value));
-  if (result_type_id == LOOM_LLVMIR_TYPE_ID_INVALID) return iree_ok_status();
+  if (result_type_id == LOOM_LLVMIR_TYPE_ID_INVALID) {
+    return iree_ok_status();
+  }
 
   uint32_t result_lane_count = 0;
   loom_llvmir_type_id_t result_element_type_id = LOOM_LLVMIR_TYPE_ID_INVALID;
@@ -453,7 +463,9 @@ static iree_status_t loom_llvmir_emit_concat(
         state, packet->op, input_value, IREE_SV("input"),
         loom_diagnostic_field_ref(LOOM_DIAGNOSTIC_FIELD_OPERAND, input_ordinal),
         &input_type_id));
-    if (input_type_id == LOOM_LLVMIR_TYPE_ID_INVALID) return iree_ok_status();
+    if (input_type_id == LOOM_LLVMIR_TYPE_ID_INVALID) {
+      return iree_ok_status();
+    }
     uint32_t input_lane_count = 0;
     loom_llvmir_type_id_t input_element_type_id = LOOM_LLVMIR_TYPE_ID_INVALID;
     IREE_RETURN_IF_ERROR(loom_llvmir_module_get_vector_type_info(
@@ -509,13 +521,17 @@ static iree_status_t loom_llvmir_emit_extract(
   loom_value_id_t result_value = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_prepare_packet_result(
       state, packet, &result_type, &result_value));
-  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) return iree_ok_status();
+  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) {
+    return iree_ok_status();
+  }
 
   int64_t lane = 0;
   bool has_lane = false;
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_read_i64_immediate(
       state, packet, IREE_SV("lane"), &has_lane, &lane));
-  if (!has_lane) return iree_ok_status();
+  if (!has_lane) {
+    return iree_ok_status();
+  }
 
   const loom_value_id_t* operands = loom_op_const_operands(packet->op);
   const loom_llvmir_value_id_t source =
@@ -541,13 +557,17 @@ static iree_status_t loom_llvmir_emit_insert(
   loom_value_id_t result_value = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_prepare_packet_result(
       state, packet, &result_type, &result_value));
-  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) return iree_ok_status();
+  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) {
+    return iree_ok_status();
+  }
 
   int64_t lane = 0;
   bool has_lane = false;
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_read_i64_immediate(
       state, packet, IREE_SV("lane"), &has_lane, &lane));
-  if (!has_lane) return iree_ok_status();
+  if (!has_lane) {
+    return iree_ok_status();
+  }
 
   const loom_value_id_t* operands = loom_op_const_operands(packet->op);
   const loom_llvmir_value_id_t dest =
@@ -575,7 +595,9 @@ static iree_status_t loom_llvmir_emit_dynamic_insert(
   loom_value_id_t result_value = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_prepare_packet_result(
       state, packet, &result_type, &result_value));
-  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) return iree_ok_status();
+  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) {
+    return iree_ok_status();
+  }
 
   const loom_value_id_t* operands = loom_op_const_operands(packet->op);
   const loom_llvmir_value_id_t dest =
@@ -621,7 +643,9 @@ static iree_status_t loom_llvmir_emit_read_shuffle_mask(
         iree_make_string_view(lane_name_buffer,
                               (iree_host_size_t)lane_name_length),
         &has_lane, &lane));
-    if (!has_lane) return iree_ok_status();
+    if (!has_lane) {
+      return iree_ok_status();
+    }
     out_lanes[i] = (uint64_t)lane;
   }
   *out_present = true;
@@ -641,7 +665,9 @@ static iree_status_t loom_llvmir_emit_shuffle_like(
   loom_value_id_t result_value = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_llvmir_emit_prepare_packet_result(
       state, packet, &result_type, &result_value));
-  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) return iree_ok_status();
+  if (result_type == LOOM_LLVMIR_TYPE_ID_INVALID) {
+    return iree_ok_status();
+  }
 
   const uint32_t lane_count =
       loom_llvmir_emit_low_value_unit_count(state, result_value);
@@ -657,7 +683,9 @@ static iree_status_t loom_llvmir_emit_shuffle_like(
       bool has_lanes = false;
       IREE_RETURN_IF_ERROR(loom_llvmir_emit_read_shuffle_mask(
           state, packet, lane_count, lanes, &has_lanes));
-      if (!has_lanes) return iree_ok_status();
+      if (!has_lanes) {
+        return iree_ok_status();
+      }
       break;
     }
     case LOOM_LLVMIR_EMIT_SHUFFLE_KIND_SLICE: {
@@ -665,7 +693,9 @@ static iree_status_t loom_llvmir_emit_shuffle_like(
       bool has_offset = false;
       IREE_RETURN_IF_ERROR(loom_llvmir_emit_read_i64_immediate(
           state, packet, IREE_SV("offset"), &has_offset, &offset));
-      if (!has_offset) return iree_ok_status();
+      if (!has_offset) {
+        return iree_ok_status();
+      }
       for (uint32_t i = 0; i < lane_count; ++i) {
         lanes[i] = (uint64_t)(offset + i);
       }
@@ -679,7 +709,9 @@ static iree_status_t loom_llvmir_emit_shuffle_like(
       state, packet->op, source_value, IREE_SV("source"),
       loom_diagnostic_field_ref(LOOM_DIAGNOSTIC_FIELD_OPERAND, 0),
       &source_type));
-  if (source_type == LOOM_LLVMIR_TYPE_ID_INVALID) return iree_ok_status();
+  if (source_type == LOOM_LLVMIR_TYPE_ID_INVALID) {
+    return iree_ok_status();
+  }
 
   const loom_llvmir_value_id_t source =
       loom_llvmir_emit_lookup_value(state, source_value);

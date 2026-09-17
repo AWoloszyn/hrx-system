@@ -36,12 +36,18 @@ iree_status_t loom_global_load_canonicalize(loom_op_t* op,
   }
 
   loom_value_slice_t results = loom_global_load_result(op);
-  if (results.count == 0) return iree_ok_status();
+  if (results.count == 0) {
+    return iree_ok_status();
+  }
   for (uint16_t i = 0; i < results.count; ++i) {
-    if (results.values[i] == LOOM_VALUE_ID_INVALID) return iree_ok_status();
+    if (results.values[i] == LOOM_VALUE_ID_INVALID) {
+      return iree_ok_status();
+    }
     loom_value_facts_t facts =
         loom_rewriter_value_facts(rewriter, results.values[i]);
-    if (!loom_value_facts_is_exact(facts)) return iree_ok_status();
+    if (!loom_value_facts_is_exact(facts)) {
+      return iree_ok_status();
+    }
   }
 
   loom_builder_set_before(&rewriter->builder, op);

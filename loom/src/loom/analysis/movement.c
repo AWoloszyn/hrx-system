@@ -199,14 +199,18 @@ static iree_status_t loom_movement_vector_origin_byte_offset_expr(
                                                       &stride)) {
       return iree_ok_status();
     }
-    if (stride == 0) continue;
+    if (stride == 0) {
+      continue;
+    }
 
     loom_symbolic_expr_t origin = {0};
     bool origin_known = false;
     IREE_RETURN_IF_ERROR(loom_movement_origin_index_expr(
         analysis, static_indices, dynamic_indices, view_axis, &origin,
         &origin_known));
-    if (!origin_known) return iree_ok_status();
+    if (!origin_known) {
+      return iree_ok_status();
+    }
 
     loom_symbolic_expr_t contribution = {0};
     IREE_RETURN_IF_ERROR(loom_symbolic_expr_mul_i64(
@@ -333,7 +337,9 @@ static iree_status_t loom_movement_endpoint_for_element_view(
   IREE_RETURN_IF_ERROR(loom_view_region_table_derive_element_region(
       &analysis->view_regions, view_value_id, static_indices, dynamic_indices,
       &element_region, &derived));
-  if (!derived) return iree_ok_status();
+  if (!derived) {
+    return iree_ok_status();
+  }
   loom_movement_endpoint_from_view_region(analysis->expression_context.module,
                                           view_value_id, access_flags,
                                           &element_region, out_endpoint);

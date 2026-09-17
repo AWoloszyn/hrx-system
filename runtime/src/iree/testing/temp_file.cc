@@ -37,9 +37,13 @@ static bool IsDirectory(const std::string& path) {
 }
 
 static iree_status_t CreateSingleDirectory(const std::string& path) {
-  if (path.empty() || IsDirectory(path)) return iree_ok_status();
+  if (path.empty() || IsDirectory(path)) {
+    return iree_ok_status();
+  }
 #if defined(IREE_PLATFORM_WINDOWS)
-  if (CreateDirectoryA(path.c_str(), NULL)) return iree_ok_status();
+  if (CreateDirectoryA(path.c_str(), NULL)) {
+    return iree_ok_status();
+  }
   const DWORD error = GetLastError();
   if (error == ERROR_ALREADY_EXISTS && IsDirectory(path)) {
     return iree_ok_status();
@@ -48,9 +52,13 @@ static iree_status_t CreateSingleDirectory(const std::string& path) {
                           "failed to create test temp directory '%s'",
                           path.c_str());
 #else
-  if (mkdir(path.c_str(), 0777) == 0) return iree_ok_status();
+  if (mkdir(path.c_str(), 0777) == 0) {
+    return iree_ok_status();
+  }
   const int saved_errno = errno;
-  if (saved_errno == EEXIST && IsDirectory(path)) return iree_ok_status();
+  if (saved_errno == EEXIST && IsDirectory(path)) {
+    return iree_ok_status();
+  }
   return iree_make_status(iree_status_code_from_errno(saved_errno),
                           "failed to create test temp directory '%s'",
                           path.c_str());
@@ -58,7 +66,9 @@ static iree_status_t CreateSingleDirectory(const std::string& path) {
 }
 
 static iree_status_t EnsureDirectoryExists(std::string path) {
-  if (path.empty()) return iree_ok_status();
+  if (path.empty()) {
+    return iree_ok_status();
+  }
   while (path.size() > 1 && IsPathSeparator(path.back())) {
     path.pop_back();
   }
@@ -71,7 +81,9 @@ static iree_status_t EnsureDirectoryExists(std::string path) {
   } else if (path.size() >= 2 && IsPathSeparator(path[0]) &&
              IsPathSeparator(path[1])) {
     const size_t server_end = path.find_first_of("/\\", 2);
-    if (server_end == std::string::npos) return iree_ok_status();
+    if (server_end == std::string::npos) {
+      return iree_ok_status();
+    }
     const size_t share_end = path.find_first_of("/\\", server_end + 1);
     first_component_position =
         share_end == std::string::npos ? path.size() : share_end + 1;
@@ -79,10 +91,16 @@ static iree_status_t EnsureDirectoryExists(std::string path) {
 #endif  // IREE_PLATFORM_WINDOWS
 
   for (size_t i = first_component_position; i <= path.size(); ++i) {
-    if (i != path.size() && !IsPathSeparator(path[i])) continue;
-    if (i == 0) continue;
+    if (i != path.size() && !IsPathSeparator(path[i])) {
+      continue;
+    }
+    if (i == 0) {
+      continue;
+    }
     std::string prefix = path.substr(0, i);
-    if (prefix.empty() || prefix.back() == ':') continue;
+    if (prefix.empty() || prefix.back() == ':') {
+      continue;
+    }
     IREE_RETURN_IF_ERROR(CreateSingleDirectory(prefix));
   }
   return iree_ok_status();
@@ -100,7 +118,9 @@ std::string MakeTempFilePath(const char* stem, const char* suffix) {
 }
 
 bool TempFilePath::Exists() const {
-  if (path_.empty()) return false;
+  if (path_.empty()) {
+    return false;
+  }
 #if defined(IREE_PLATFORM_WINDOWS)
   return GetFileAttributesA(path_.c_str()) != INVALID_FILE_ATTRIBUTES;
 #else
@@ -110,7 +130,9 @@ bool TempFilePath::Exists() const {
 }
 
 bool TempFilePath::Remove() const {
-  if (path_.empty()) return false;
+  if (path_.empty()) {
+    return false;
+  }
 #if defined(IREE_PLATFORM_WINDOWS)
   return DeleteFileA(path_.c_str()) != 0;
 #else

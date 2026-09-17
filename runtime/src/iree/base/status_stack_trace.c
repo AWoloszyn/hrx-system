@@ -130,7 +130,9 @@ typedef struct {
 static int iree_libbacktrace_capture_callback(void* data, uintptr_t pc) {
   iree_libbacktrace_capture_state_t* state =
       (iree_libbacktrace_capture_state_t*)data;
-  if (state->frame_count >= state->max_frames) return 1;  // Stop.
+  if (state->frame_count >= state->max_frames) {
+    return 1;  // Stop.
+  }
   state->addresses[state->frame_count++] = pc;
   return 0;  // Continue.
 }
@@ -241,7 +243,9 @@ static void iree_symbol_resolver_initialize(
   memset(out_resolver, 0, sizeof(*out_resolver));
   iree_symbol_resolver_initialize_mutex(out_resolver);
   out_resolver->library = LoadLibraryA("dbghelp.dll");
-  if (!out_resolver->library) return;
+  if (!out_resolver->library) {
+    return;
+  }
   out_resolver->SymInitialize =
       (PFN_SymInitialize)GetProcAddress(out_resolver->library, "SymInitialize");
   out_resolver->SymCleanup =
@@ -297,7 +301,9 @@ static bool iree_symbol_resolver_format_frame(iree_symbol_resolver_t* resolver,
                                               iree_host_size_t buffer_capacity,
                                               char* buffer,
                                               iree_host_size_t* buffer_length) {
-  if (IREE_UNLIKELY(!resolver->library)) return false;
+  if (IREE_UNLIKELY(!resolver->library)) {
+    return false;
+  }
 
   HANDLE process = GetCurrentProcess();
 
@@ -467,7 +473,9 @@ static void iree_status_payload_stack_trace_formatter(
   iree_status_payload_stack_trace_t* payload =
       (iree_status_payload_stack_trace_t*)base_payload;
   iree_host_size_t first_frame = (iree_host_size_t)payload->skip_frames + 1;
-  if (first_frame >= payload->frame_count) return;
+  if (first_frame >= payload->frame_count) {
+    return;
+  }
   iree_host_size_t buffer_length =
       iree_string_buffer_append_cstr(buffer_capacity, buffer, 0, "stack:\n");
   for (iree_host_size_t i = first_frame; i < payload->frame_count; ++i) {
@@ -479,7 +487,9 @@ static void iree_status_payload_stack_trace_formatter(
         remaining_capacity > 0 ? buffer + buffer_length : NULL;
     buffer_length += iree_status_payload_stack_trace_format_frame(
         (void*)payload->addresses[i], remaining_capacity, output_buffer);
-    if (buffer_length >= buffer_capacity) buffer = NULL;
+    if (buffer_length >= buffer_capacity) {
+      buffer = NULL;
+    }
   }
   *out_buffer_length = buffer_length;
 }
@@ -502,7 +512,9 @@ iree_status_t iree_status_attach_stack_trace(iree_status_t status,
   iree_allocator_t allocator = iree_allocator_system();
   iree_status_ignore(
       iree_allocator_malloc(allocator, total_size, (void**)&payload));
-  if (IREE_UNLIKELY(!payload)) return status;
+  if (IREE_UNLIKELY(!payload)) {
+    return status;
+  }
   memset(payload, 0, sizeof(*payload));
   payload->header.type = IREE_STATUS_PAYLOAD_TYPE_STACK_TRACE;
   payload->header.allocator = allocator;

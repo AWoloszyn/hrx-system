@@ -25,9 +25,13 @@
 static wchar_t* iree_bazel_read_environment(const wchar_t* name) {
   SetLastError(ERROR_SUCCESS);
   DWORD capacity = GetEnvironmentVariableW(name, NULL, 0);
-  if (capacity == 0) return NULL;
+  if (capacity == 0) {
+    return NULL;
+  }
   wchar_t* value = (wchar_t*)malloc((size_t)capacity * sizeof(wchar_t));
-  if (!value) return NULL;
+  if (!value) {
+    return NULL;
+  }
   DWORD length = GetEnvironmentVariableW(name, value, capacity);
   if (length == 0 || length >= capacity) {
     free(value);
@@ -40,9 +44,13 @@ static wchar_t* iree_bazel_query_module_path(void) {
   DWORD capacity = 256;
   while (capacity <= 32768) {
     wchar_t* path = (wchar_t*)malloc((size_t)capacity * sizeof(wchar_t));
-    if (!path) return NULL;
+    if (!path) {
+      return NULL;
+    }
     DWORD length = GetModuleFileNameW(NULL, path, capacity);
-    if (length > 0 && length < capacity) return path;
+    if (length > 0 && length < capacity) {
+      return path;
+    }
     free(path);
     capacity *= 2;
   }
@@ -57,11 +65,15 @@ static wchar_t* iree_bazel_find_runfiles_root(void) {
   for (size_t i = 0;
        i < sizeof(environment_names) / sizeof(environment_names[0]); ++i) {
     wchar_t* value = iree_bazel_read_environment(environment_names[i]);
-    if (value) return value;
+    if (value) {
+      return value;
+    }
   }
 
   wchar_t* module_path = iree_bazel_query_module_path();
-  if (!module_path) return NULL;
+  if (!module_path) {
+    return NULL;
+  }
   const wchar_t suffix[] = L".runfiles";
   size_t module_length = wcslen(module_path);
   size_t suffix_length = wcslen(suffix);
@@ -84,10 +96,14 @@ static wchar_t* iree_bazel_join_path(const wchar_t* root,
                                      const wchar_t* relative_path) {
   size_t root_length = wcslen(root);
   size_t relative_length = wcslen(relative_path);
-  if (root_length > SIZE_MAX - relative_length - 2) return NULL;
+  if (root_length > SIZE_MAX - relative_length - 2) {
+    return NULL;
+  }
   wchar_t* path =
       (wchar_t*)malloc((root_length + relative_length + 2) * sizeof(wchar_t));
-  if (!path) return NULL;
+  if (!path) {
+    return NULL;
+  }
   memcpy(path, root, root_length * sizeof(wchar_t));
   size_t position = root_length;
   if (position > 0 && path[position - 1] != L'\\' &&
@@ -149,7 +165,9 @@ int wmain(int argc, wchar_t** argv) {
     return 127;
   }
   target_argv[0] = target_path;
-  for (int i = 1; i < argc; ++i) target_argv[i] = argv[i];
+  for (int i = 1; i < argc; ++i) {
+    target_argv[i] = argv[i];
+  }
   target_argv[argc] = NULL;
 
   intptr_t result = _wspawnv(_P_WAIT, target_path, target_argv);

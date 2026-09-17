@@ -110,7 +110,9 @@ static iree_status_t iree_hal_device_spec_accumulate_bytes(
 static iree_string_view_t iree_hal_device_spec_copy_string(
     iree_string_view_t value, char* storage,
     iree_host_size_t* inout_storage_offset) {
-  if (iree_string_view_is_empty(value)) return iree_string_view_empty();
+  if (iree_string_view_is_empty(value)) {
+    return iree_string_view_empty();
+  }
   iree_string_view_t result =
       iree_make_string_view(storage + *inout_storage_offset, value.size);
   memcpy((void*)result.data, value.data, value.size);
@@ -312,7 +314,9 @@ static iree_status_t iree_hal_device_spec_validate_queue_family(
 
 static iree_status_t iree_hal_device_spec_validate_params(
     const iree_hal_device_spec_params_t* params) {
-  if (!params) return iree_ok_status();
+  if (!params) {
+    return iree_ok_status();
+  }
   iree_hal_physical_device_affinity_t available_affinity = 0;
   const iree_hal_device_identity_spec_t* identity = params->identity;
   if (identity) {
@@ -591,7 +595,9 @@ static iree_status_t iree_hal_device_spec_clone_array(
     iree_host_size_t element_size, const void* source, void** out_target) {
   IREE_ASSERT_ARGUMENT(out_target);
   *out_target = NULL;
-  if (!count) return iree_ok_status();
+  if (!count) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(iree_allocator_malloc_array(host_allocator, count,
                                                    element_size, out_target));
   memcpy(*out_target, source, count * element_size);
@@ -1097,7 +1103,9 @@ IREE_API_EXPORT iree_host_size_t iree_hal_device_spec_executable_target_ordinal(
   IREE_ASSERT_ARGUMENT(spec);
   for (iree_host_size_t i = 0; target && i < spec->executables.target_count;
        ++i) {
-    if (target == &spec->executables.targets[i]) return i;
+    if (target == &spec->executables.targets[i]) {
+      return i;
+    }
   }
   return IREE_HOST_SIZE_MAX;
 }

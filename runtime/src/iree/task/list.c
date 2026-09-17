@@ -73,7 +73,9 @@ void iree_task_list_push_front(iree_task_list_t* list, iree_task_t* task) {
 }
 
 iree_task_t* iree_task_list_pop_front(iree_task_list_t* list) {
-  if (!list->head) return NULL;
+  if (!list->head) {
+    return NULL;
+  }
   iree_task_t* task = list->head;
   list->head = task->next_task;
   if (list->tail == task) {
@@ -88,7 +90,9 @@ void iree_task_list_erase(iree_task_list_t* list, iree_task_t* prev_task,
   if (task == list->head) {
     // Removing head (which may _also_ be the tail).
     list->head = task->next_task;
-    if (list->tail == task) list->tail = task->next_task;
+    if (list->tail == task) {
+      list->tail = task->next_task;
+    }
   } else if (task == list->tail) {
     // Removing tail.
     list->tail = prev_task;
@@ -101,7 +105,9 @@ void iree_task_list_erase(iree_task_list_t* list, iree_task_t* prev_task,
 }
 
 void iree_task_list_prepend(iree_task_list_t* list, iree_task_list_t* prefix) {
-  if (iree_task_list_is_empty(prefix)) return;
+  if (iree_task_list_is_empty(prefix)) {
+    return;
+  }
   if (iree_task_list_is_empty(list)) {
     list->head = prefix->head;
     list->tail = prefix->tail;
@@ -113,7 +119,9 @@ void iree_task_list_prepend(iree_task_list_t* list, iree_task_list_t* prefix) {
 }
 
 void iree_task_list_append(iree_task_list_t* list, iree_task_list_t* suffix) {
-  if (iree_task_list_is_empty(suffix)) return;
+  if (iree_task_list_is_empty(suffix)) {
+    return;
+  }
   if (iree_task_list_is_empty(list)) {
     list->head = suffix->head;
     list->tail = suffix->tail;
@@ -137,7 +145,9 @@ void iree_task_list_append_from_fifo_slist(iree_task_list_t* list,
 }
 
 void iree_task_list_reverse(iree_task_list_t* list) {
-  if (iree_task_list_is_empty(list)) return;
+  if (iree_task_list_is_empty(list)) {
+    return;
+  }
   iree_task_t* tail = list->head;
   iree_task_t* head = list->tail;
   iree_task_t* p = list->head;
@@ -156,7 +166,9 @@ void iree_task_list_split(iree_task_list_t* head_list,
                           iree_host_size_t max_tasks,
                           iree_task_list_t* out_tail_list) {
   iree_task_list_initialize(out_tail_list);
-  if (head_list->head == NULL) return;
+  if (head_list->head == NULL) {
+    return;
+  }
   if (head_list->head == head_list->tail) {
     // 1 task in the source list; always prefer to steal it.
     // This is because the victim is likely working on their last item and we
@@ -178,7 +190,9 @@ void iree_task_list_split(iree_task_list_t* head_list,
     p_x1_m1 = p_x1;
     p_x1 = p_x1->next_task;
     p_x2 = p_x2->next_task;
-    if (p_x2->next_task) p_x2 = p_x2->next_task;
+    if (p_x2->next_task) {
+      p_x2 = p_x2->next_task;
+    }
   }
 
   // p_x1 now points at the half way point in the head_list. This is where we

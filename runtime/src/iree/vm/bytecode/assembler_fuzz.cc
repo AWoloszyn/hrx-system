@@ -41,7 +41,9 @@ iree_byte_span_t CloneSequence(iree_byte_sequence_t* sequence) {
   iree_byte_span_t contents = iree_byte_span_empty();
   iree_status_t status =
       iree_byte_sequence_clone(sequence, iree_allocator_system(), &contents);
-  if (!iree_status_is_ok(status)) Fail(status);
+  if (!iree_status_is_ok(status)) {
+    Fail(status);
+  }
   return contents;
 }
 
@@ -62,20 +64,26 @@ void AssembleAndVerify(iree_string_view_t source) {
   iree_vm_bytecode_module_plan_t plan = {};
   status = iree_vm_bytecode_verify_module(iree_const_cast_byte_span(contents),
                                           iree_allocator_system(), &plan);
-  if (!iree_status_is_ok(status)) Fail(status);
+  if (!iree_status_is_ok(status)) {
+    Fail(status);
+  }
 
   std::string canonical_source;
   const iree_vm_bytecode_disassembler_write_callback_t callback = {
       AppendText, &canonical_source};
   status = iree_vm_bytecode_disassemble_module(
       iree_const_cast_byte_span(contents), callback, iree_allocator_system());
-  if (!iree_status_is_ok(status)) Fail(status);
+  if (!iree_status_is_ok(status)) {
+    Fail(status);
+  }
 
   iree_byte_sequence_t* roundtrip_sequence = nullptr;
   status = iree_vm_bytecode_assemble_module(
       iree_make_string_view(canonical_source.data(), canonical_source.size()),
       iree_allocator_system(), &roundtrip_sequence);
-  if (!iree_status_is_ok(status)) Fail(status);
+  if (!iree_status_is_ok(status)) {
+    Fail(status);
+  }
   iree_byte_span_t roundtrip_contents = CloneSequence(roundtrip_sequence);
   iree_byte_sequence_release(roundtrip_sequence);
   if (contents.data_length != roundtrip_contents.data_length ||
@@ -91,7 +99,9 @@ void AssembleAndVerify(iree_string_view_t source) {
 void MutateCanonicalSource(const uint8_t* data, size_t size) {
   const size_t source_ordinal = size == 0 ? 0 : data[0] & 1;
   std::string source = g_canonical_sources[source_ordinal];
-  if (source.empty()) return;
+  if (source.empty()) {
+    return;
+  }
 
   const size_t program_size =
       iree_min(size, static_cast<size_t>(source.size() * 3));
@@ -121,7 +131,9 @@ extern "C" int LLVMFuzzerInitialize(int* argc, char*** argv) {
 }
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  if (size > kMaximumInputSize) return 0;
+  if (size > kMaximumInputSize) {
+    return 0;
+  }
   AssembleAndVerify(
       iree_make_string_view(reinterpret_cast<const char*>(data), size));
   MutateCanonicalSource(data, size);

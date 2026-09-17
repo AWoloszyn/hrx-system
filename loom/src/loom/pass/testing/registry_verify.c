@@ -21,7 +21,9 @@ typedef struct loom_pass_statistic_int64_alignment_t {
 
 static bool loom_pass_descriptor_key_matches_info(
     const loom_pass_descriptor_t* descriptor) {
-  if (!descriptor->info) return false;
+  if (!descriptor->info) {
+    return false;
+  }
   const loom_pass_info_t* info = descriptor->info();
   return info && iree_string_view_equal(descriptor->key, info->name);
 }

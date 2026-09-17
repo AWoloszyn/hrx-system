@@ -138,7 +138,9 @@ iree_async_buffer_registration_state_find(
     const iree_async_proactor_t* proactor) {
   iree_async_buffer_registration_entry_t* entry = state->head;
   while (entry) {
-    if (entry->proactor == proactor) return entry;
+    if (entry->proactor == proactor) {
+      return entry;
+    }
     entry = entry->next;
   }
   return NULL;

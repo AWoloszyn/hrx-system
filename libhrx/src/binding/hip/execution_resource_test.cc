@@ -188,7 +188,9 @@ class ExecutionResourceTest : public ::testing::Test {
     const iree_hal_streaming_execution_resource_set_t* input_set = nullptr;
     hipError_t result = iree_hip_execution_resource_resolve_sm_for_device(
         input, &device_, &input_set);
-    if (result != hipSuccess) return result;
+    if (result != hipSuccess) {
+      return result;
+    }
     return iree_hip_execution_resource_split_sm_by_count(
         &device_, input_set, input, flags, minimum_count, out_resources,
         inout_group_count, out_remainder);
@@ -201,7 +203,9 @@ class ExecutionResourceTest : public ::testing::Test {
     const iree_hal_streaming_execution_resource_set_t* input_set = nullptr;
     hipError_t result = iree_hip_execution_resource_resolve_sm_for_device(
         input, &device_, &input_set);
-    if (result != hipSuccess) return result;
+    if (result != hipSuccess) {
+      return result;
+    }
     return iree_hip_execution_resource_split_sm(
         &device_, input_set, input, group_count, flags, group_parameters,
         out_resources, out_remainder);
@@ -449,7 +453,9 @@ TEST_F(ExecutionResourceTest, SplitsUniformResourcesIntoExactDisjointSets) {
     record_exact_set(&partitions[i]);
   }
   record_exact_set(&remainder);
-  for (bool seen_ordinal : seen_ordinals) EXPECT_TRUE(seen_ordinal);
+  for (bool seen_ordinal : seen_ordinals) {
+    EXPECT_TRUE(seen_ordinal);
+  }
 }
 
 TEST_F(ExecutionResourceTest, SplitsStructuredUnevenExactSets) {
@@ -501,7 +507,9 @@ TEST_F(ExecutionResourceTest, SplitsStructuredUnevenExactSets) {
                 kExecutionResourceGroups[i].minimum_selected_resource_count);
     }
   }
-  for (bool seen_ordinal : seen_ordinals) EXPECT_TRUE(seen_ordinal);
+  for (bool seen_ordinal : seen_ordinals) {
+    EXPECT_TRUE(seen_ordinal);
+  }
 }
 
 TEST_F(ExecutionResourceTest, BackfillsAutomaticallySizedStructuredGroup) {

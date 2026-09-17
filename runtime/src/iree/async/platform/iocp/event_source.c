@@ -168,7 +168,9 @@ iree_status_t iree_async_iocp_event_source_register(
 void iree_async_iocp_event_source_unregister(
     iree_async_proactor_t* base_proactor,
     iree_async_event_source_t* event_source) {
-  if (!event_source) return;
+  if (!event_source) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_async_iocp_event_source_destroy(
       iree_async_proactor_iocp_cast(base_proactor), event_source);
@@ -182,7 +184,9 @@ void iree_async_iocp_event_source_dispatch(
                             IREE_ASYNC_POLL_EVENT_IN);
   iree_status_t status =
       iree_async_iocp_event_source_arm(proactor, event_source);
-  if (!iree_status_is_ok(status)) iree_status_abort(status);
+  if (!iree_status_is_ok(status)) {
+    iree_status_abort(status);
+  }
 }
 
 void iree_async_iocp_event_source_deinitialize_all(

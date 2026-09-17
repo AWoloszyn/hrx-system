@@ -627,7 +627,9 @@ static bool iree_hal_replay_plan_queue_dependency_can_complete(
     const iree_hal_replay_plan_queue_dependency_t* dependency,
     const iree_hal_replay_plan_semaphore_state_t* semaphore_states,
     const bool* command_buffer_may_wait_on_device_memory) {
-  if (dependency->may_wait_on_device_memory) return false;
+  if (dependency->may_wait_on_device_memory) {
+    return false;
+  }
   if (dependency->command_buffer_id != IREE_HAL_REPLAY_OBJECT_ID_NONE &&
       command_buffer_may_wait_on_device_memory[dependency->command_buffer_id]) {
     return false;
@@ -753,11 +755,15 @@ static iree_status_t iree_hal_replay_plan_verify_completion_dependencies(
             true;
       }
     }
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
 
     iree_hal_replay_plan_queue_dependency_t dependency;
     status = iree_hal_replay_plan_prepare_queue_dependency(record, &dependency);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     if (dependency.is_submission) {
       if (dependency.queue_id == IREE_HAL_REPLAY_OBJECT_ID_NONE ||
           dependency.queue_id >= plan->object_capacity) {
@@ -766,7 +772,9 @@ static iree_status_t iree_hal_replay_plan_verify_completion_dependencies(
             "replay queue id %" PRIu64 " is invalid at sequence %" PRIu64,
             dependency.queue_id, dependency.sequence_ordinal);
       }
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
       if (dependency.command_buffer_id != IREE_HAL_REPLAY_OBJECT_ID_NONE &&
           dependency.command_buffer_id >= plan->object_capacity) {
         status = iree_make_status(
@@ -803,7 +811,9 @@ static iree_status_t iree_hal_replay_plan_verify_completion_dependencies(
                                     dependency.sequence_ordinal);
         }
       }
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
 
       const bool can_complete =
           !queue_has_pending_dependency[dependency.queue_id] &&
@@ -920,7 +930,9 @@ static iree_status_t iree_hal_replay_plan_prepare_record(
 
 IREE_API_EXPORT void iree_hal_replay_plan_destroy(
     iree_hal_replay_plan_t* plan) {
-  if (!plan) return;
+  if (!plan) {
+    return;
+  }
   iree_allocator_t host_allocator = plan->host_allocator;
   iree_allocator_free(host_allocator, plan->records);
   iree_allocator_free(host_allocator, plan);
@@ -1019,7 +1031,9 @@ static iree_status_t iree_hal_replay_plan_execute_scope(
     const iree_hal_replay_plan_record_t* record) {
   iree_hal_replay_scope_event_callback_t callback =
       executor->options->scope_event_callback;
-  if (!callback.fn) return iree_ok_status();
+  if (!callback.fn) {
+    return iree_ok_status();
+  }
   const iree_hal_replay_plan_scope_t* scope = &record->payload.scope;
   iree_hal_replay_scope_event_t event = {
       .sequence_ordinal = record->file_record.header.sequence_ordinal,
@@ -1309,7 +1323,9 @@ IREE_API_EXPORT iree_status_t iree_hal_replay_plan_execute(
   IREE_ASSERT_ARGUMENT(device_group);
   iree_hal_replay_execute_options_t default_options =
       iree_hal_replay_execute_options_default();
-  if (!options) options = &default_options;
+  if (!options) {
+    options = &default_options;
+  }
   if (IREE_UNLIKELY(options->flags != IREE_HAL_REPLAY_EXECUTE_FLAG_NONE)) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "replay execute flags are unsupported");

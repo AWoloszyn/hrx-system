@@ -15,8 +15,12 @@ enum {
 
 uint32_t amdf_windows_xdna_submission_header_size(
     amdf_windows_xdna_protocol_t protocol) {
-  if (protocol == AMDF_WINDOWS_XDNA_PROTOCOL_DIRECT) return 120;
-  if (protocol == AMDF_WINDOWS_XDNA_PROTOCOL_METADATA) return 104;
+  if (protocol == AMDF_WINDOWS_XDNA_PROTOCOL_DIRECT) {
+    return 120;
+  }
+  if (protocol == AMDF_WINDOWS_XDNA_PROTOCOL_METADATA) {
+    return 104;
+  }
   return 88;
 }
 
@@ -133,7 +137,9 @@ amdf_status_t amdf_windows_xdna_submission_query_initialize_result(
     const amdf_windows_xdna_private_allocation_t* command_allocation) {
   const uint32_t result =
       *(const volatile uint32_t*)command_allocation->host_pointer;
-  if (result == 1) return AMDF_STATUS_OK;
+  if (result == 1) {
+    return AMDF_STATUS_OK;
+  }
   // Native initialization reports only a Boolean, not a firmware error code.
   return amdf_make_api_status(result == 0 ? AMDF_STATUS_CODE_DEVICE_LOST
                                           : AMDF_STATUS_CODE_INTERNAL);
@@ -146,7 +152,9 @@ amdf_status_t amdf_windows_xdna_submission_query_execute_result(
                                      command_allocation->host_pointer +
                                  8);
   const uint32_t state = *response & 0xf;
-  if (state == 0) return amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
+  if (state == 0) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
+  }
   return state == AMDF_XDNA_TRANSACTION_INTERPRETER_STATE_COMPLETED
              ? AMDF_STATUS_OK
              : amdf_make_status(AMDF_STATUS_DOMAIN_FIRMWARE, state);

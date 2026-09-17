@@ -195,7 +195,9 @@ iree_status_t loom_rewriter_enable_analysis_with_seed_facts(
 // facts if analysis is not enabled or the value is not defined.
 static inline loom_value_facts_t loom_rewriter_value_facts(
     const loom_rewriter_t* rewriter, loom_value_id_t value_id) {
-  if (!rewriter->fact_table) return loom_value_facts_unknown();
+  if (!rewriter->fact_table) {
+    return loom_value_facts_unknown();
+  }
   return loom_value_fact_table_lookup(rewriter->fact_table, value_id);
 }
 

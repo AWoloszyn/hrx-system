@@ -518,11 +518,15 @@ static inline int32_t iree_task_process_warm_retainer_count(
 // and park.
 static inline bool iree_task_process_try_retain_warm(
     iree_task_process_t* process, int32_t retainer_limit) {
-  if (retainer_limit <= 0) return false;
+  if (retainer_limit <= 0) {
+    return false;
+  }
   int32_t current_count =
       iree_atomic_load(&process->warm_retainers, iree_memory_order_acquire);
   while (true) {
-    if (current_count >= retainer_limit) return false;
+    if (current_count >= retainer_limit) {
+      return false;
+    }
     if (iree_atomic_compare_exchange_weak(
             &process->warm_retainers, &current_count, current_count + 1,
             iree_memory_order_acq_rel, iree_memory_order_acquire)) {

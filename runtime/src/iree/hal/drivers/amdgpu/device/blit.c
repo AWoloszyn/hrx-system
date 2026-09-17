@@ -197,7 +197,9 @@ IREE_AMDGPU_ATTRIBUTE_KERNEL void iree_hal_amdgpu_device_buffer_fill_x1(
            iree_hal_amdgpu_blit_linear_id(grid_size_x, workgroup_size_x);
        element_offset < element_length;) {
     target_ptr[element_offset] = pattern_x1;
-    if (!iree_hal_amdgpu_blit_advance(&element_offset, element_stride)) break;
+    if (!iree_hal_amdgpu_blit_advance(&element_offset, element_stride)) {
+      break;
+    }
   }
 }
 
@@ -212,7 +214,9 @@ IREE_AMDGPU_ATTRIBUTE_KERNEL void iree_hal_amdgpu_device_buffer_fill_x2(
            iree_hal_amdgpu_blit_linear_id(grid_size_x, workgroup_size_x);
        element_offset < element_length;) {
     target_ptr[element_offset] = pattern_x2;
-    if (!iree_hal_amdgpu_blit_advance(&element_offset, element_stride)) break;
+    if (!iree_hal_amdgpu_blit_advance(&element_offset, element_stride)) {
+      break;
+    }
   }
 }
 
@@ -228,7 +232,9 @@ IREE_AMDGPU_ATTRIBUTE_KERNEL void iree_hal_amdgpu_device_buffer_fill_x4(
        ;) {
     const uint64_t element_offset =
         block_id * IREE_HAL_AMDGPU_FILL_BLOCK_X4_COUNT;
-    if (IREE_AMDGPU_UNLIKELY(element_offset >= element_length)) return;
+    if (IREE_AMDGPU_UNLIKELY(element_offset >= element_length)) {
+      return;
+    }
     const uint64_t element_count = IREE_AMDGPU_MIN(
         IREE_HAL_AMDGPU_FILL_BLOCK_X4_COUNT, element_length - element_offset);
     if (IREE_AMDGPU_LIKELY(element_count ==
@@ -242,7 +248,9 @@ IREE_AMDGPU_ATTRIBUTE_KERNEL void iree_hal_amdgpu_device_buffer_fill_x4(
         target_ptr[element_offset + i] = pattern_x4;
       }
     }
-    if (!iree_hal_amdgpu_blit_advance(&block_id, block_stride)) return;
+    if (!iree_hal_amdgpu_blit_advance(&block_id, block_stride)) {
+      return;
+    }
   }
 }
 
@@ -256,7 +264,9 @@ IREE_AMDGPU_ATTRIBUTE_KERNEL void iree_hal_amdgpu_device_buffer_fill_x8(
            iree_hal_amdgpu_blit_linear_id(grid_size_x, workgroup_size_x);
        element_offset < element_length;) {
     target_ptr[element_offset] = pattern;
-    if (!iree_hal_amdgpu_blit_advance(&element_offset, element_stride)) break;
+    if (!iree_hal_amdgpu_blit_advance(&element_offset, element_stride)) {
+      break;
+    }
   }
 }
 
@@ -275,7 +285,9 @@ IREE_AMDGPU_ATTRIBUTE_KERNEL void iree_hal_amdgpu_device_buffer_fill_block_x16(
            iree_hal_amdgpu_blit_linear_id(grid_size_x, workgroup_size_x);
        ;) {
     const uint64_t element_offset = block_id * IREE_HAL_AMDGPU_FILL_BLOCK_COUNT;
-    if (IREE_AMDGPU_UNLIKELY(element_offset >= element_length)) return;
+    if (IREE_AMDGPU_UNLIKELY(element_offset >= element_length)) {
+      return;
+    }
     const uint64_t element_count = IREE_AMDGPU_MIN(
         IREE_HAL_AMDGPU_FILL_BLOCK_COUNT, element_length - element_offset);
     if (IREE_AMDGPU_LIKELY(element_count == IREE_HAL_AMDGPU_FILL_BLOCK_COUNT)) {
@@ -288,7 +300,9 @@ IREE_AMDGPU_ATTRIBUTE_KERNEL void iree_hal_amdgpu_device_buffer_fill_block_x16(
         target_ptr[element_offset + i] = pattern_x16;
       }
     }
-    if (!iree_hal_amdgpu_blit_advance(&block_id, block_stride)) return;
+    if (!iree_hal_amdgpu_blit_advance(&block_id, block_stride)) {
+      return;
+    }
   }
 }
 
@@ -326,7 +340,9 @@ iree_hal_amdgpu_device_buffer_fill_block_unaligned_x16(
       }
       return;
     }
-    if (IREE_AMDGPU_UNLIKELY(block_id >= vector_block_count)) return;
+    if (IREE_AMDGPU_UNLIKELY(block_id >= vector_block_count)) {
+      return;
+    }
     const uint64_t element_offset = block_id * IREE_HAL_AMDGPU_FILL_BLOCK_COUNT;
     const uint64_t element_count = IREE_AMDGPU_MIN(
         IREE_HAL_AMDGPU_FILL_BLOCK_COUNT, full_element_count - element_offset);
@@ -347,7 +363,9 @@ iree_hal_amdgpu_device_buffer_fill_block_unaligned_x16(
         tail_ptr[i] = iree_hal_amdgpu_blit_pattern_byte(pattern, i);
       }
     }
-    if (!iree_hal_amdgpu_blit_advance(&block_id, block_stride)) return;
+    if (!iree_hal_amdgpu_blit_advance(&block_id, block_stride)) {
+      return;
+    }
   }
 }
 
@@ -454,7 +472,9 @@ uint64_t iree_hal_amdgpu_device_buffer_transfer_pointer_alignment(
   const uintptr_t address = (uintptr_t)pointer;
   for (uint64_t alignment = IREE_HAL_AMDGPU_BLIT_MAX_ALIGNMENT; alignment > 1;
        alignment >>= 1) {
-    if (iree_amdgpu_has_alignment(address, alignment)) return alignment;
+    if (iree_amdgpu_has_alignment(address, alignment)) {
+      return alignment;
+    }
   }
   return 1;
 }
@@ -693,7 +713,9 @@ IREE_AMDGPU_ATTRIBUTE_KERNEL void iree_hal_amdgpu_device_buffer_copy_x1(
            iree_hal_amdgpu_blit_linear_id(grid_size_x, workgroup_size_x);
        element_offset < element_length;) {
     target_ptr[element_offset] = source_ptr[element_offset];
-    if (!iree_hal_amdgpu_blit_advance(&element_offset, element_stride)) break;
+    if (!iree_hal_amdgpu_blit_advance(&element_offset, element_stride)) {
+      break;
+    }
   }
 }
 
@@ -712,7 +734,9 @@ IREE_AMDGPU_ATTRIBUTE_KERNEL void iree_hal_amdgpu_device_buffer_copy_block_x4(
        ;) {
     const uint64_t element_offset =
         block_id * IREE_HAL_AMDGPU_COPY_BLOCK_X4_COUNT;
-    if (IREE_AMDGPU_UNLIKELY(element_offset >= element_length)) return;
+    if (IREE_AMDGPU_UNLIKELY(element_offset >= element_length)) {
+      return;
+    }
     const uint64_t element_count = IREE_AMDGPU_MIN(
         IREE_HAL_AMDGPU_COPY_BLOCK_X4_COUNT, element_length - element_offset);
     if (IREE_AMDGPU_LIKELY(element_count ==
@@ -726,7 +750,9 @@ IREE_AMDGPU_ATTRIBUTE_KERNEL void iree_hal_amdgpu_device_buffer_copy_block_x4(
         target_ptr[element_offset + i] = source_ptr[element_offset + i];
       }
     }
-    if (!iree_hal_amdgpu_blit_advance(&block_id, block_stride)) return;
+    if (!iree_hal_amdgpu_blit_advance(&block_id, block_stride)) {
+      return;
+    }
   }
 }
 
@@ -745,7 +771,9 @@ IREE_AMDGPU_ATTRIBUTE_KERNEL void iree_hal_amdgpu_device_buffer_copy_block_x8(
        ;) {
     const uint64_t element_offset =
         block_id * IREE_HAL_AMDGPU_COPY_BLOCK_X8_COUNT;
-    if (IREE_AMDGPU_UNLIKELY(element_offset >= element_length)) return;
+    if (IREE_AMDGPU_UNLIKELY(element_offset >= element_length)) {
+      return;
+    }
     const uint64_t element_count = IREE_AMDGPU_MIN(
         IREE_HAL_AMDGPU_COPY_BLOCK_X8_COUNT, element_length - element_offset);
     if (IREE_AMDGPU_LIKELY(element_count ==
@@ -759,7 +787,9 @@ IREE_AMDGPU_ATTRIBUTE_KERNEL void iree_hal_amdgpu_device_buffer_copy_block_x8(
         target_ptr[element_offset + i] = source_ptr[element_offset + i];
       }
     }
-    if (!iree_hal_amdgpu_blit_advance(&block_id, block_stride)) return;
+    if (!iree_hal_amdgpu_blit_advance(&block_id, block_stride)) {
+      return;
+    }
   }
 }
 
@@ -777,7 +807,9 @@ IREE_AMDGPU_ATTRIBUTE_KERNEL void iree_hal_amdgpu_device_buffer_copy_block_x16(
            iree_hal_amdgpu_blit_linear_id(grid_size_x, workgroup_size_x);
        ;) {
     const uint64_t element_offset = block_id * IREE_HAL_AMDGPU_COPY_BLOCK_COUNT;
-    if (IREE_AMDGPU_UNLIKELY(element_offset >= element_length)) return;
+    if (IREE_AMDGPU_UNLIKELY(element_offset >= element_length)) {
+      return;
+    }
     const uint64_t element_count = IREE_AMDGPU_MIN(
         IREE_HAL_AMDGPU_COPY_BLOCK_COUNT, element_length - element_offset);
     if (IREE_AMDGPU_LIKELY(element_count == IREE_HAL_AMDGPU_COPY_BLOCK_COUNT)) {
@@ -790,7 +822,9 @@ IREE_AMDGPU_ATTRIBUTE_KERNEL void iree_hal_amdgpu_device_buffer_copy_block_x16(
         target_ptr[element_offset + i] = source_ptr[element_offset + i];
       }
     }
-    if (!iree_hal_amdgpu_blit_advance(&block_id, block_stride)) return;
+    if (!iree_hal_amdgpu_blit_advance(&block_id, block_stride)) {
+      return;
+    }
   }
 }
 
@@ -826,7 +860,9 @@ iree_hal_amdgpu_device_buffer_copy_block_unaligned_x16(
       }
       return;
     }
-    if (IREE_AMDGPU_UNLIKELY(block_id >= vector_block_count)) return;
+    if (IREE_AMDGPU_UNLIKELY(block_id >= vector_block_count)) {
+      return;
+    }
     const uint64_t element_offset = block_id * IREE_HAL_AMDGPU_COPY_BLOCK_COUNT;
     const uint64_t element_count = IREE_AMDGPU_MIN(
         IREE_HAL_AMDGPU_COPY_BLOCK_COUNT, full_element_count - element_offset);
@@ -850,7 +886,9 @@ iree_hal_amdgpu_device_buffer_copy_block_unaligned_x16(
         target_tail_ptr[i] = source_tail_ptr[i];
       }
     }
-    if (!iree_hal_amdgpu_blit_advance(&block_id, block_stride)) return;
+    if (!iree_hal_amdgpu_blit_advance(&block_id, block_stride)) {
+      return;
+    }
   }
 }
 

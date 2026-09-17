@@ -39,9 +39,15 @@
 
 static int iree_memory_access_to_prot(iree_memory_access_t access) {
   int prot = 0;
-  if (access & IREE_MEMORY_ACCESS_READ) prot |= PROT_READ;
-  if (access & IREE_MEMORY_ACCESS_WRITE) prot |= PROT_WRITE;
-  if (access & IREE_MEMORY_ACCESS_EXECUTE) prot |= PROT_EXEC;
+  if (access & IREE_MEMORY_ACCESS_READ) {
+    prot |= PROT_READ;
+  }
+  if (access & IREE_MEMORY_ACCESS_WRITE) {
+    prot |= PROT_WRITE;
+  }
+  if (access & IREE_MEMORY_ACCESS_EXECUTE) {
+    prot |= PROT_EXEC;
+  }
   return prot;
 }
 

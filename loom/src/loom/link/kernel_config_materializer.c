@@ -199,7 +199,9 @@ static iree_status_t loom_link_kernel_config_build_declaration(
 static bool loom_link_kernel_config_predicate_uses_mapped_values(
     const loom_ir_remap_t* remap, const loom_predicate_t* predicate) {
   for (uint8_t i = 0; i < predicate->arg_count; ++i) {
-    if (predicate->arg_tags[i] != LOOM_PRED_ARG_VALUE) continue;
+    if (predicate->arg_tags[i] != LOOM_PRED_ARG_VALUE) {
+      continue;
+    }
     loom_value_id_t ignored = LOOM_VALUE_ID_INVALID;
     if (!loom_ir_remap_try_lookup_value(
             remap, (loom_value_id_t)predicate->args[i], &ignored)) {
@@ -215,7 +217,9 @@ static iree_status_t loom_link_kernel_config_copy_workload_predicates(
     loom_op_t* helper_op) {
   const loom_attribute_t source_predicates =
       header->attributes[loom_kernel_def_predicates_ATTR_INDEX];
-  if (loom_attr_is_absent(source_predicates)) return iree_ok_status();
+  if (loom_attr_is_absent(source_predicates)) {
+    return iree_ok_status();
+  }
 
   loom_predicate_t* workload_predicates = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -229,7 +233,9 @@ static iree_status_t loom_link_kernel_config_copy_workload_predicates(
           source_predicates.predicate_list[i];
     }
   }
-  if (workload_predicate_count == 0) return iree_ok_status();
+  if (workload_predicate_count == 0) {
+    return iree_ok_status();
+  }
 
   loom_predicate_t* target_predicates = NULL;
   IREE_RETURN_IF_ERROR(loom_ir_remap_predicate_list(remap, workload_predicates,
@@ -494,7 +500,9 @@ static iree_status_t loom_link_kernel_config_copy_ir_value_name(
     loom_value_id_t source_value, loom_value_id_t target_value) {
   const loom_string_id_t source_name =
       loom_module_value(projection->source_module, source_value)->name_id;
-  if (source_name == LOOM_STRING_ID_INVALID) return iree_ok_status();
+  if (source_name == LOOM_STRING_ID_INVALID) {
+    return iree_ok_status();
+  }
   loom_string_id_t target_name = LOOM_STRING_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_ir_remap_string_id(
       remap, source_name, /*allow_invalid=*/false, &target_name));
@@ -533,7 +541,9 @@ static iree_status_t loom_link_kernel_config_copy_ir_predicates(
   uint16_t source_predicate_count = 0;
   const loom_predicate_t* source_predicates =
       loom_func_like_predicates(source_function, &source_predicate_count);
-  if (source_predicate_count == 0) return iree_ok_status();
+  if (source_predicate_count == 0) {
+    return iree_ok_status();
+  }
 
   loom_predicate_t* selected_predicates = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -549,7 +559,9 @@ static iree_status_t loom_link_kernel_config_copy_ir_predicates(
     }
     selected_predicates[selected_predicate_count++] = source_predicates[i];
   }
-  if (selected_predicate_count == 0) return iree_ok_status();
+  if (selected_predicate_count == 0) {
+    return iree_ok_status();
+  }
 
   loom_predicate_t* target_predicates = NULL;
   IREE_RETURN_IF_ERROR(loom_ir_remap_predicate_list(remap, selected_predicates,
@@ -569,7 +581,9 @@ static iree_status_t loom_link_kernel_config_allocate_none_types(
     iree_host_size_t count, iree_arena_allocator_t* arena,
     loom_type_t** out_types) {
   *out_types = NULL;
-  if (count == 0) return iree_ok_status();
+  if (count == 0) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       arena, count, sizeof(**out_types), (void**)out_types));
   for (iree_host_size_t i = 0; i < count; ++i) {
@@ -747,7 +761,9 @@ static iree_status_t loom_link_kernel_config_build_ir_helper(
       loom_region_entry_block(loom_func_like_body(helper)), &body_builder);
   const loom_op_t* source_config_op = NULL;
   loom_block_for_each_op(source_block, source_config_op) {
-    if (source_config_op == launch_config) continue;
+    if (source_config_op == launch_config) {
+      continue;
+    }
     loom_op_t* cloned_op = NULL;
     IREE_RETURN_IF_ERROR(
         loom_ir_clone_op(&body_builder, source_config_op, &remap, &cloned_op));
@@ -802,7 +818,9 @@ static iree_status_t loom_link_kernel_config_initialize_output_symbols(
   for (iree_host_size_t i = 0; i < selection->symbols.count; ++i) {
     const loom_link_plan_module_symbol_t* selected =
         &selection->symbols.values[i];
-    if (!loom_link_kernel_config_selection_is_partial(selected)) continue;
+    if (!loom_link_kernel_config_selection_is_partial(selected)) {
+      continue;
+    }
     IREE_RETURN_IF_ERROR(loom_link_kernel_config_add_helper_symbol(
         target_module, selected->source_symbol->name, scratch_arena,
         &symbol_map, &next_conflict_ordinal, &configuration_functions[i]));
@@ -853,7 +871,9 @@ static iree_status_t loom_link_kernel_config_project_ir_module(
     IREE_ASSERT_LT(source_ordinal, source_module->symbols.count);
     const loom_op_t* source_op =
         source_module->symbols.entries[source_ordinal].defining_op;
-    if (!source_op) continue;
+    if (!source_op) {
+      continue;
+    }
     ordered_symbols[ordered_symbol_count++] =
         (loom_link_kernel_config_ir_symbol_t){
             .source_op = source_op,
@@ -927,7 +947,9 @@ static iree_status_t loom_link_kernel_config_select_complete_symbols(
   for (iree_host_size_t i = 0; i < selection->symbols.count; ++i) {
     const loom_link_plan_module_symbol_t* symbol =
         &selection->symbols.values[i];
-    if (loom_link_kernel_config_selection_is_partial(symbol)) continue;
+    if (loom_link_kernel_config_selection_is_partial(symbol)) {
+      continue;
+    }
     IREE_ASSERT_EQ(symbol->materialized_symbol_ordinal, complete_ordinal);
     source_ordinals[complete_ordinal++] =
         symbol->source_symbol->module_symbol_ordinal;
@@ -1066,7 +1088,9 @@ iree_status_t loom_link_plan_project_kernel_config_module(
        i < selection->symbols.count && iree_status_is_ok(status); ++i) {
     const loom_link_plan_module_symbol_t* symbol =
         &selection->symbols.values[i];
-    if (!loom_link_kernel_config_selection_is_partial(symbol)) continue;
+    if (!loom_link_kernel_config_selection_is_partial(symbol)) {
+      continue;
+    }
     const loom_bytecode_symbol_metadata_t* source_symbol =
         &source_module->symbols[symbol->source_symbol->module_symbol_ordinal];
     if (source_symbol->kernel_workload_region_payload_ordinal_plus_one == 0) {

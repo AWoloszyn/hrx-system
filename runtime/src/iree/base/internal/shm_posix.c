@@ -188,7 +188,9 @@ static bool iree_shm_try_create_hugetlb_memfd(
     iree_host_size_t size, iree_host_size_t huge_page_size, int* out_fd,
     iree_host_size_t* out_aligned_size) {
   unsigned int huge_flag = iree_shm_mfd_huge_flag(huge_page_size);
-  if (huge_flag == 0) return false;
+  if (huge_flag == 0) {
+    return false;
+  }
 
   iree_host_size_t resolved =
       (huge_page_size == 0) ? (2 * 1024 * 1024) : huge_page_size;
@@ -210,7 +212,9 @@ static bool iree_shm_try_create_hugetlb_memfd(
     // Retry without MFD_ALLOW_SEALING for kernels 4.14–4.15.
     fd = (int)syscall(SYS_memfd_create, "iree_shm",
                       /*MFD_CLOEXEC=*/0x0001U | IREE_MFD_HUGETLB | huge_flag);
-    if (fd == -1) return false;
+    if (fd == -1) {
+      return false;
+    }
   }
 
   // hugetlbfs files are sized in whole huge pages. ftruncate sets the size;
@@ -299,7 +303,9 @@ static iree_status_t iree_shm_create_anonymous_fd(
     iree_snprintf(name, sizeof(name), "/iree_shm_%d_%d", (int)getpid(),
                   sequence);
     fd = shm_open(name, O_CREAT | O_RDWR | O_EXCL | O_CLOEXEC, 0600);
-    if (fd != -1) break;
+    if (fd != -1) {
+      break;
+    }
     if (errno != EEXIST) {
       return iree_make_status(iree_status_code_from_errno(errno),
                               "shm_open(%s) failed (%d)", name, errno);
@@ -331,7 +337,9 @@ static iree_status_t iree_shm_create_anonymous_fd(
 
 iree_host_size_t iree_shm_required_size(iree_host_size_t requested_size) {
   iree_host_size_t page_size = iree_memory_query_info().normal_page_size;
-  if (requested_size == 0) return page_size;
+  if (requested_size == 0) {
+    return page_size;
+  }
   return (requested_size + page_size - 1) & ~(page_size - 1);
 }
 
@@ -564,7 +572,9 @@ iree_status_t iree_shm_open_named(iree_string_view_t name,
 }
 
 void iree_shm_close(iree_shm_mapping_t* mapping) {
-  if (!mapping || !mapping->base) return;
+  if (!mapping || !mapping->base) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   munmap(mapping->base, mapping->size);
   if (iree_shm_handle_is_valid(mapping->handle)) {
@@ -594,7 +604,9 @@ iree_status_t iree_shm_handle_dup(iree_shm_handle_t source,
 }
 
 void iree_shm_handle_close(iree_shm_handle_t* handle) {
-  if (!handle || !iree_shm_handle_is_valid(*handle)) return;
+  if (!handle || !iree_shm_handle_is_valid(*handle)) {
+    return;
+  }
   close(iree_shm_handle_to_fd(*handle));
   *handle = IREE_SHM_HANDLE_INVALID;
 }
@@ -712,10 +724,14 @@ iree_status_t iree_shm_seal(iree_shm_mapping_t* mapping,
 }
 
 iree_shm_seal_flags_t iree_shm_query_seals(const iree_shm_mapping_t* mapping) {
-  if (!mapping || !mapping->base) return IREE_SHM_SEAL_NONE;
+  if (!mapping || !mapping->base) {
+    return IREE_SHM_SEAL_NONE;
+  }
   int fd = iree_shm_handle_to_fd(mapping->handle);
   int kernel_seals = fcntl(fd, IREE_F_GET_SEALS);
-  if (kernel_seals == -1) return IREE_SHM_SEAL_NONE;
+  if (kernel_seals == -1) {
+    return IREE_SHM_SEAL_NONE;
+  }
   iree_shm_seal_flags_t flags = IREE_SHM_SEAL_NONE;
   if (iree_any_bit_set(kernel_seals, IREE_F_SEAL_WRITE)) {
     flags |= IREE_SHM_SEAL_WRITE;
@@ -740,7 +756,9 @@ iree_status_t iree_shm_seal(iree_shm_mapping_t* mapping,
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "cannot seal a NULL or unmapped region");
   }
-  if (flags == IREE_SHM_SEAL_NONE) return iree_ok_status();
+  if (flags == IREE_SHM_SEAL_NONE) {
+    return iree_ok_status();
+  }
   return iree_make_status(IREE_STATUS_UNAVAILABLE,
                           "memory sealing is not supported on macOS");
 }

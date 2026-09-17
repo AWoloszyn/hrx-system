@@ -57,7 +57,9 @@ iree_status_t InitializeBenchmarkContext(BenchmarkContext* context) {
         context->process, IREE_SV("invocation.test"), IREE_SV("launch_config"),
         &context->function);
   }
-  if (!iree_status_is_ok(status)) DeinitializeBenchmarkContext(context);
+  if (!iree_status_is_ok(status)) {
+    DeinitializeBenchmarkContext(context);
+  }
   return status;
 }
 

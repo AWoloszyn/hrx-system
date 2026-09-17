@@ -336,7 +336,9 @@ static void iree_task_topology_print(iree_host_size_t topology_id,
         iree_task_affinity_bit_t bit = iree_task_affinity_bit_for_worker(ic);
         if (iree_task_affinity_set_test(group->constructive_sharing_mask,
                                         bit)) {
-          if (jc > 0) fprintf(stdout, ", ");
+          if (jc > 0) {
+            fprintf(stdout, ", ");
+          }
           fprintf(stdout, "%" PRIhsz, ic);
           ++jc;
         }
@@ -472,7 +474,9 @@ iree_status_t iree_task_executors_create_from_flags(
       // Query topology for the node this executor is pinned to.
       iree_task_topology_t topology;
       status = iree_task_topology_initialize_from_flags(node_id, &topology);
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
 
       // Skip topologies with no worker groups.
       if (topology.group_count > 0) {
@@ -483,7 +487,9 @@ iree_status_t iree_task_executors_create_from_flags(
 
       // Executor has consumed the topology and it can be dropped now.
       iree_task_topology_deinitialize(&topology);
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
     }
   } else {
     for (iree_host_size_t i = 0; i < topology_count; ++i) {
@@ -491,7 +497,9 @@ iree_status_t iree_task_executors_create_from_flags(
       iree_task_topology_t topology;
       status = iree_task_topology_initialize_from_logical_cpu_set_string(
           cpu_ids_list.values[i], &topology);
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
 
       // Skip topologies with no worker groups.
       if (topology.group_count > 0) {
@@ -502,7 +510,9 @@ iree_status_t iree_task_executors_create_from_flags(
 
       // Executor has consumed the topology and it can be dropped now.
       iree_task_topology_deinitialize(&topology);
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
     }
   }
 

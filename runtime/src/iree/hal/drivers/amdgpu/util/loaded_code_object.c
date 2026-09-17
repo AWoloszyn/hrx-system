@@ -56,7 +56,9 @@ static hsa_status_t iree_hal_amdgpu_loaded_code_object_iterate(
           .hsa_ven_amd_loader_loaded_code_object_get_info(
               loaded_code_object,
               HSA_VEN_AMD_LOADER_LOADED_CODE_OBJECT_INFO_AGENT, &device_agent);
-  if (hsa_status != HSA_STATUS_SUCCESS) return hsa_status;
+  if (hsa_status != HSA_STATUS_SUCCESS) {
+    return hsa_status;
+  }
   if (device_agent.handle == find_state->device_agent.handle) {
     find_state->loaded_code_object = loaded_code_object;
     return HSA_STATUS_INFO_BREAK;

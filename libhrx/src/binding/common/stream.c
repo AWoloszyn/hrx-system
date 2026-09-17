@@ -162,7 +162,9 @@ static int hrx_flush_interval(void) {
     g_hrx_flush_interval_initialized = 1;
     const char* value = getenv("HRX_FLUSH_INTERVAL");
     g_hrx_flush_interval = value ? atoi(value) : 0;
-    if (g_hrx_flush_interval < 0) g_hrx_flush_interval = 0;
+    if (g_hrx_flush_interval < 0) {
+      g_hrx_flush_interval = 0;
+    }
   }
   return g_hrx_flush_interval;
 }
@@ -637,7 +639,9 @@ iree_status_t iree_hal_streaming_stream_wait_streams(
     iree_hal_streaming_stream_t* const* source_streams,
     iree_host_size_t source_stream_count) {
   IREE_ASSERT_ARGUMENT(stream);
-  if (source_stream_count == 0) return iree_ok_status();
+  if (source_stream_count == 0) {
+    return iree_ok_status();
+  }
   IREE_ASSERT_ARGUMENT(source_streams);
 
   IREE_TRACE_ZONE_BEGIN(z0);
@@ -705,7 +709,9 @@ iree_status_t iree_hal_streaming_stream_wait_streams(
   for (iree_host_size_t i = 0;
        i < source_stream_count && iree_status_is_ok(status); ++i) {
     iree_hal_streaming_stream_t* source_stream = source_streams[i];
-    if (!source_stream || source_stream == stream) continue;
+    if (!source_stream || source_stream == stream) {
+      continue;
+    }
     if (source_stream->context != stream->context) {
       status = iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                                 "stream dependency crosses contexts");
@@ -724,7 +730,9 @@ iree_status_t iree_hal_streaming_stream_wait_streams(
     // Flush first so the captured value names all source work preceding this
     // operation. A source that has never submitted contributes no wait.
     status = iree_hal_streaming_stream_flush(source_stream);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     iree_slim_mutex_lock(&source_stream->mutex);
     const uint64_t source_timeline_value = source_stream->pending_value;
     iree_slim_mutex_unlock(&source_stream->mutex);
@@ -732,7 +740,9 @@ iree_status_t iree_hal_streaming_stream_wait_streams(
     status = iree_status_join(
         status,
         iree_hal_streaming_memory_release_completed_async_frees(source_stream));
-    if (!iree_status_is_ok(status) || source_timeline_value == 0) continue;
+    if (!iree_status_is_ok(status) || source_timeline_value == 0) {
+      continue;
+    }
 
     iree_hal_streaming_wait_dependency_t* dependency =
         &dependencies[dependency_count];
@@ -829,7 +839,9 @@ iree_status_t iree_hal_streaming_stream_wait_semaphores(
     iree_hal_streaming_stream_t* stream,
     iree_hal_semaphore_list_t wait_semaphores) {
   IREE_ASSERT_ARGUMENT(stream);
-  if (wait_semaphores.count == 0) return iree_ok_status();
+  if (wait_semaphores.count == 0) {
+    return iree_ok_status();
+  }
   if (IREE_UNLIKELY(!wait_semaphores.semaphores ||
                     !wait_semaphores.payload_values)) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
@@ -844,7 +856,9 @@ iree_status_t iree_hal_streaming_stream_wait_semaphores(
     }
     has_wait |= wait_semaphores.payload_values[i] != 0;
   }
-  if (!has_wait) return iree_ok_status();
+  if (!has_wait) {
+    return iree_ok_status();
+  }
 
   // Reject known-invalid states before flushing any pending stream work. The
   // checks repeat under the submission lock below because either state may
@@ -1420,8 +1434,12 @@ static iree_status_t iree_hal_streaming_prepare_launch_arguments(
     iree_status_t status = iree_hal_streaming_unpack_parameters(
         context, &symbol->parameters, params->buffer, out_arguments->constants,
         &out_arguments->bindings);
-    if (iree_status_is_ok(status)) return status;
-    if (iree_status_code(status) != IREE_STATUS_NOT_FOUND) return status;
+    if (iree_status_is_ok(status)) {
+      return status;
+    }
+    if (iree_status_code(status) != IREE_STATUS_NOT_FOUND) {
+      return status;
+    }
 
     // External device pointers cannot be expressed as HAL bindings. Preserve
     // the caller's raw argument image instead of partially translating it.
@@ -1454,7 +1472,9 @@ static iree_status_t iree_hal_streaming_record_dispatch_locked(
     iree_hal_buffer_ref_list_t bindings, iree_hal_dispatch_flags_t flags,
     uint64_t* timing_begin_ns, uint64_t* timing_barrier_ns,
     bool* out_should_flush) {
-  if (out_should_flush) *out_should_flush = false;
+  if (out_should_flush) {
+    *out_should_flush = false;
+  }
   uint64_t timing_step_ns = timing_begin_ns ? hrx_launch_timing_now_ns() : 0;
   iree_status_t status = iree_hal_streaming_stream_begin_locked(stream);
   if (timing_begin_ns) {
@@ -1795,8 +1815,12 @@ static int iree_hal_streaming_compare_stream_ids(const void* lhs,
       *(iree_hal_streaming_stream_t* const*)lhs;
   const iree_hal_streaming_stream_t* rhs_stream =
       *(iree_hal_streaming_stream_t* const*)rhs;
-  if (lhs_stream->stream_id < rhs_stream->stream_id) return -1;
-  if (lhs_stream->stream_id > rhs_stream->stream_id) return 1;
+  if (lhs_stream->stream_id < rhs_stream->stream_id) {
+    return -1;
+  }
+  if (lhs_stream->stream_id > rhs_stream->stream_id) {
+    return 1;
+  }
   const uintptr_t lhs_address = (uintptr_t)lhs_stream;
   const uintptr_t rhs_address = (uintptr_t)rhs_stream;
   return lhs_address < rhs_address ? -1 : lhs_address > rhs_address ? 1 : 0;
@@ -1961,7 +1985,9 @@ iree_status_t iree_hal_streaming_launch_kernel_batch(
         IREE_HAL_DISPATCH_FLAG_CUSTOM_DIRECT_ARGUMENTS,
         /*timing_begin_ns=*/NULL, /*timing_barrier_ns=*/NULL,
         /*out_should_flush=*/NULL);
-    if (iree_status_is_ok(status)) ++recorded_count;
+    if (iree_status_is_ok(status)) {
+      ++recorded_count;
+    }
   }
 
   while (locked_count > 0) {

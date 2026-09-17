@@ -12,7 +12,9 @@ static bool loom_type_refinement_type_has_dimensions(loom_type_t type) {
 
 static void loom_type_refinement_merge_analysis_result(
     loom_type_refinement_result_t next, loom_type_refinement_result_t* result) {
-  if (*result == LOOM_TYPE_REFINEMENT_CONFLICT) return;
+  if (*result == LOOM_TYPE_REFINEMENT_CONFLICT) {
+    return;
+  }
   if (next == LOOM_TYPE_REFINEMENT_CONFLICT ||
       next == LOOM_TYPE_REFINEMENT_NARROWED) {
     *result = next;
@@ -22,7 +24,9 @@ static void loom_type_refinement_merge_analysis_result(
 static bool loom_type_refinement_exact_dimension_fact(
     loom_value_facts_t facts, uint64_t* out_dimension,
     loom_type_refinement_result_t* out_result) {
-  if (!loom_value_facts_is_exact(facts)) return false;
+  if (!loom_value_facts_is_exact(facts)) {
+    return false;
+  }
   if (loom_value_facts_is_float(facts) || facts.range_lo < 0 ||
       facts.range_lo > LOOM_DIM_MAX_STATIC_SIZE) {
     *out_result = LOOM_TYPE_REFINEMENT_CONFLICT;
@@ -36,7 +40,9 @@ static bool loom_type_refinement_exact_dimension_fact(
 static bool loom_type_refinement_dimension_value_id(
     uint64_t dimension, loom_value_id_t* out_value_id) {
   uint64_t payload = dimension & LOOM_DIM_PAYLOAD_MASK;
-  if (payload > UINT32_MAX) return false;
+  if (payload > UINT32_MAX) {
+    return false;
+  }
   *out_value_id = (loom_value_id_t)payload;
   return true;
 }
@@ -57,7 +63,9 @@ static iree_status_t loom_type_refine_dimensions_with_value_facts(
   for (uint8_t i = 0; i < rank; ++i) {
     uint64_t current_dimension = loom_type_dim(current_type, i);
     candidate_dimensions[i] = current_dimension;
-    if (!loom_dim_is_dynamic(current_dimension)) continue;
+    if (!loom_dim_is_dynamic(current_dimension)) {
+      continue;
+    }
 
     loom_value_id_t dimension_value = LOOM_VALUE_ID_INVALID;
     if (!loom_type_refinement_dimension_value_id(current_dimension,
@@ -81,7 +89,9 @@ static iree_status_t loom_type_refine_dimensions_with_value_facts(
     has_candidate_dimension = true;
   }
 
-  if (!has_candidate_dimension) return iree_ok_status();
+  if (!has_candidate_dimension) {
+    return iree_ok_status();
+  }
   return loom_type_refine_shape_with_dims(current_type, candidate_dimensions,
                                           rank, arena, out_type, out_result);
 }
@@ -92,7 +102,9 @@ static iree_status_t loom_type_refine_encoding_with_value_facts(
     loom_type_refinement_result_t* out_result) {
   *out_type = current_type;
   *out_result = LOOM_TYPE_REFINEMENT_UNCHANGED;
-  if (!loom_type_has_ssa_encoding(current_type)) return iree_ok_status();
+  if (!loom_type_has_ssa_encoding(current_type)) {
+    return iree_ok_status();
+  }
 
   loom_value_id_t encoding_value =
       (loom_value_id_t)loom_type_encoding_value_id(current_type);
@@ -103,7 +115,9 @@ static iree_status_t loom_type_refine_encoding_with_value_facts(
                                                &summary)) {
     return iree_ok_status();
   }
-  if (summary.static_spec_encoding_id == 0) return iree_ok_status();
+  if (summary.static_spec_encoding_id == 0) {
+    return iree_ok_status();
+  }
 
   return loom_type_refine_encoding_with_attachment(
       current_type, summary.static_spec_encoding_id, 0, arena, out_type,

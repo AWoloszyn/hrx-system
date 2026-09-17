@@ -152,14 +152,18 @@ static amdf_status_t amdf_gpu_kernel_queue_wait(
   amdf_wait_deadline_t deadline;
   amdf_status_t status = amdf_wait_deadline_initialize(
       timeout_nanoseconds, poll_duration_nanoseconds, &deadline);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   // Even an expired deadline permits the first nonblocking native refresh.
   bool native_polled = false;
   for (;;) {
     const bool retired = amdf_gpu_kernel_queue_try_retire(queue, submission);
     const amdf_status_t terminal_status =
         amdf_gpu_umd_kernel_queue_query_terminal_status(queue->umd);
-    if (!amdf_status_is_ok(terminal_status) || retired) return terminal_status;
+    if (!amdf_status_is_ok(terminal_status) || retired) {
+      return terminal_status;
+    }
 
     slot_state = amdf_atomic_uint64_load_acquire(&queue->slot_state);
     const uint64_t slot_submission =
@@ -174,7 +178,9 @@ static amdf_status_t amdf_gpu_kernel_queue_wait(
     }
     amdf_wait_budget_t remaining;
     status = amdf_wait_deadline_query_remaining(&deadline, &remaining);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
     if (remaining.timeout == 0 &&
         (native_polled ||
          occupancy == AMDF_GPU_KERNEL_QUEUE_OCCUPANCY_RETIRING)) {
@@ -200,7 +206,9 @@ static amdf_status_t amdf_gpu_kernel_queue_wait(
     // Still release the borrow when independently confirmed retirement permits
     // it.
     amdf_gpu_kernel_queue_try_retire(queue, submission);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
   }
 }
 
@@ -274,7 +282,9 @@ amdf_status_t AMDF_CALL amdf_gpu_kernel_queue_create(
   amdf_gpu_kernel_queue_t* queue = NULL;
   status = amdf_calloc(host_allocator, sizeof(*queue),
                        amdf_alignof(amdf_gpu_kernel_queue_t), (void**)&queue);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   const amdf_gpu_device_info_t* device_info = amdf_gpu_device_get_info(device);
   amdf_kernel_queue_info_t info = {
       .type = AMDF_STRUCTURE_TYPE_KERNEL_QUEUE_INFO,

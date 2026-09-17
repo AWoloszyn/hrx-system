@@ -70,7 +70,9 @@ static iree_status_t loom_vm_testbench_compile(loom_vm_testbench_t* testbench,
       for (iree_host_size_t j = 0; j < case_plan->invocation_count; ++j) {
         const loom_testbench_invocation_plan_t* call =
             &case_plan->invocations[j];
-        if (call->kind != LOOM_TESTBENCH_INVOCATION_FUNCTION_CALL) continue;
+        if (call->kind != LOOM_TESTBENCH_INVOCATION_FUNCTION_CALL) {
+          continue;
+        }
         max_arguments = iree_max(max_arguments, call->input_count);
         max_results = iree_max(max_results, call->result_count);
         const loom_func_like_t function = loom_func_like_cast(
@@ -182,7 +184,9 @@ static iree_status_t loom_vm_testbench_prepare(loom_vm_testbench_t* testbench,
                 iree_make_const_byte_span(contents.data, contents.data_length),
             .deallocator = testbench->host_allocator},
         testbench->host_allocator, &module);
-    if (iree_status_is_ok(status)) contents = iree_byte_span_empty();
+    if (iree_status_is_ok(status)) {
+      contents = iree_byte_span_empty();
+    }
   }
   iree_allocator_free(testbench->host_allocator, contents.data);
   iree_vm_environment_free(environment);

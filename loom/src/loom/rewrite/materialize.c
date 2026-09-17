@@ -57,7 +57,9 @@ static iree_status_t loom_ir_clone_op_comments(loom_ir_remap_t* remap,
 static iree_status_t loom_ir_clone_block_args(loom_ir_remap_t* remap,
                                               const loom_block_t* source_block,
                                               loom_block_t* target_block) {
-  if (source_block->arg_count == 0) return iree_ok_status();
+  if (source_block->arg_count == 0) {
+    return iree_ok_status();
+  }
 
   loom_value_id_t* target_args = NULL;
   IREE_RETURN_IF_ERROR(
@@ -94,7 +96,9 @@ static iree_status_t loom_ir_clone_op_results(loom_ir_remap_t* remap,
   const loom_value_id_t* source_results = loom_op_const_results(source_op);
   for (uint16_t i = 0; i < source_op->result_count; ++i) {
     target_results[i] = LOOM_VALUE_ID_INVALID;
-    if (source_results[i] == LOOM_VALUE_ID_INVALID) continue;
+    if (source_results[i] == LOOM_VALUE_ID_INVALID) {
+      continue;
+    }
     IREE_RETURN_IF_ERROR(loom_module_define_value(
         remap->target_module, loom_type_none(), &target_results[i]));
     IREE_RETURN_IF_ERROR(
@@ -347,7 +351,9 @@ static iree_status_t loom_ir_clone_op_impl(
         (void**)&target_regions));
     for (uint8_t i = 0; i < source_op->region_count; ++i) {
       target_regions[i] = NULL;
-      if (!source_regions[i]) continue;
+      if (!source_regions[i]) {
+        continue;
+      }
       IREE_RETURN_IF_ERROR(loom_ir_clone_region_skeleton(
           remap, source_regions[i], &target_regions[i]));
     }
@@ -432,7 +438,9 @@ static iree_status_t loom_ir_clone_op_impl(
     memcpy(loom_op_regions(target_op), target_regions,
            (iree_host_size_t)source_op->region_count * sizeof(loom_region_t*));
     for (uint8_t i = 0; i < source_op->region_count; ++i) {
-      if (!target_regions[i]) continue;
+      if (!target_regions[i]) {
+        continue;
+      }
       for (uint16_t block_index = 0;
            block_index < target_regions[i]->block_count; ++block_index) {
         target_regions[i]->blocks[block_index]->parent_region =
@@ -461,7 +469,9 @@ static iree_status_t loom_ir_clone_op_impl(
     iree_status_t status = iree_ok_status();
     for (uint8_t i = 0;
          i < source_op->region_count && iree_status_is_ok(status); ++i) {
-      if (!source_regions[i]) continue;
+      if (!source_regions[i]) {
+        continue;
+      }
       status = loom_ir_clone_region_ops(builder, source_regions[i], remap,
                                         target_regions[i]);
     }
@@ -518,7 +528,9 @@ static iree_status_t loom_ir_insert_region_blocks(loom_module_t* module,
                                                   loom_region_t* region,
                                                   uint16_t block_index,
                                                   uint16_t block_count) {
-  if (block_count == 0) return iree_ok_status();
+  if (block_count == 0) {
+    return iree_ok_status();
+  }
   const uint16_t old_block_count = region->block_count;
   for (uint16_t i = 0; i < block_count; ++i) {
     loom_block_t* block = NULL;
@@ -621,10 +633,14 @@ iree_status_t loom_ir_clone_region_blocks(loom_builder_t* builder,
 
 static iree_status_t loom_ir_remap_map_value_to_self(loom_ir_remap_t* remap,
                                                      loom_value_id_t value_id) {
-  if (value_id == LOOM_VALUE_ID_INVALID) return iree_ok_status();
+  if (value_id == LOOM_VALUE_ID_INVALID) {
+    return iree_ok_status();
+  }
   loom_value_id_t mapped_value = LOOM_VALUE_ID_INVALID;
   if (loom_ir_remap_try_lookup_value(remap, value_id, &mapped_value)) {
-    if (mapped_value == value_id) return iree_ok_status();
+    if (mapped_value == value_id) {
+      return iree_ok_status();
+    }
     return iree_make_status(
         IREE_STATUS_FAILED_PRECONDITION,
         "cannot move value %%%u through remap to distinct value %%%u",
@@ -653,7 +669,9 @@ static iree_status_t loom_ir_remap_op_subtree_values_to_self(
   for (uint8_t region_index = 0; region_index < op->region_count;
        ++region_index) {
     loom_region_t* region = regions[region_index];
-    if (!region) continue;
+    if (!region) {
+      continue;
+    }
     loom_block_t* block = NULL;
     loom_region_for_each_block(region, block) {
       IREE_RETURN_IF_ERROR(
@@ -672,7 +690,9 @@ static iree_status_t loom_ir_remap_op_operands_in_place(
     loom_rewriter_t* rewriter, loom_op_t* op, loom_ir_remap_t* remap) {
   const loom_value_id_t* operands = loom_op_const_operands(op);
   for (uint16_t i = 0; i < op->operand_count; ++i) {
-    if (operands[i] == LOOM_VALUE_ID_INVALID) continue;
+    if (operands[i] == LOOM_VALUE_ID_INVALID) {
+      continue;
+    }
     loom_value_id_t target_value = LOOM_VALUE_ID_INVALID;
     IREE_RETURN_IF_ERROR(
         loom_ir_remap_resolve_value(remap, operands[i], &target_value));
@@ -702,7 +722,9 @@ static iree_status_t loom_ir_remap_result_types_in_place(
   const loom_value_id_t* results = loom_op_const_results(op);
   for (uint16_t i = 0; i < op->result_count; ++i) {
     loom_value_id_t result = results[i];
-    if (result == LOOM_VALUE_ID_INVALID) continue;
+    if (result == LOOM_VALUE_ID_INVALID) {
+      continue;
+    }
     loom_type_t source_type =
         loom_module_value_type(remap->source_module, result);
     loom_type_t target_type = {0};
@@ -768,7 +790,9 @@ iree_status_t loom_ir_remap_op_references(loom_rewriter_t* rewriter,
   for (uint8_t region_index = 0; region_index < op->region_count;
        ++region_index) {
     loom_region_t* region = regions[region_index];
-    if (!region) continue;
+    if (!region) {
+      continue;
+    }
     loom_block_t* block = NULL;
     loom_region_for_each_block(region, block) {
       IREE_RETURN_IF_ERROR(
@@ -790,7 +814,9 @@ iree_status_t loom_ir_remap_op_references(loom_rewriter_t* rewriter,
 static bool loom_ir_move_should_omit_op(const loom_module_t* module,
                                         const loom_op_t* op,
                                         bool omit_terminators) {
-  if (!omit_terminators) return false;
+  if (!omit_terminators) {
+    return false;
+  }
   const loom_op_vtable_t* vtable = loom_op_vtable(module, op);
   return vtable && iree_any_bit_set(vtable->traits, LOOM_TRAIT_TERMINATOR);
 }
@@ -876,7 +902,9 @@ static bool loom_ir_move_op_is_inside_moved_block(
     const loom_module_t* module, const loom_block_t* source_block,
     bool omit_terminators, const loom_op_t* op) {
   for (const loom_op_t* current = op; current; current = current->parent_op) {
-    if (current->parent_block != source_block) continue;
+    if (current->parent_block != source_block) {
+      continue;
+    }
     return !loom_ir_move_should_omit_op(module, current, omit_terminators);
   }
   return false;
@@ -949,7 +977,9 @@ static iree_status_t loom_ir_move_remapped_value_is_available(
     const loom_ir_move_availability_t* query, loom_value_id_t source_value,
     bool* out_available) {
   *out_available = false;
-  if (source_value == LOOM_VALUE_ID_INVALID) return iree_ok_status();
+  if (source_value == LOOM_VALUE_ID_INVALID) {
+    return iree_ok_status();
+  }
   loom_value_id_t target_value = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(
       loom_ir_remap_resolve_value(query->remap, source_value, &target_value));
@@ -963,7 +993,9 @@ static iree_status_t loom_ir_move_check_type_ref(loom_value_id_t source_value,
   bool available = false;
   IREE_RETURN_IF_ERROR(loom_ir_move_remapped_value_is_available(
       query->availability, source_value, &available));
-  if (!available) query->available = false;
+  if (!available) {
+    query->available = false;
+  }
   return iree_ok_status();
 }
 
@@ -986,12 +1018,18 @@ static iree_status_t loom_ir_move_predicate_list_is_available(
     const loom_ir_move_availability_t* query, loom_attribute_t attr,
     bool* out_available) {
   *out_available = false;
-  if (attr.count > 0 && !attr.predicate_list) return iree_ok_status();
+  if (attr.count > 0 && !attr.predicate_list) {
+    return iree_ok_status();
+  }
   for (uint16_t i = 0; i < attr.count; ++i) {
     const loom_predicate_t* predicate = &attr.predicate_list[i];
     for (uint8_t j = 0; j < IREE_ARRAYSIZE(predicate->arg_tags); ++j) {
-      if (predicate->arg_tags[j] != LOOM_PRED_ARG_VALUE) continue;
-      if (predicate->args[j] < 0) return iree_ok_status();
+      if (predicate->arg_tags[j] != LOOM_PRED_ARG_VALUE) {
+        continue;
+      }
+      if (predicate->args[j] < 0) {
+        return iree_ok_status();
+      }
       loom_value_id_t value_id = (loom_value_id_t)predicate->args[j];
       if (!loom_ir_move_source_value_id_is_valid(query->remap, value_id)) {
         return iree_ok_status();
@@ -999,7 +1037,9 @@ static iree_status_t loom_ir_move_predicate_list_is_available(
       bool available = false;
       IREE_RETURN_IF_ERROR(loom_ir_move_remapped_value_is_available(
           query, value_id, &available));
-      if (!available) return iree_ok_status();
+      if (!available) {
+        return iree_ok_status();
+      }
     }
   }
   *out_available = true;
@@ -1042,12 +1082,16 @@ static iree_status_t loom_ir_move_attr_is_available(
       return loom_ir_move_predicate_list_is_available(query, *attr,
                                                       out_available);
     case LOOM_ATTR_DICT:
-      if (attr->count > 0 && !attr->dict_entries) return iree_ok_status();
+      if (attr->count > 0 && !attr->dict_entries) {
+        return iree_ok_status();
+      }
       for (uint16_t i = 0; i < attr->count; ++i) {
         IREE_RETURN_IF_ERROR(loom_ir_move_attr_is_available(
             query, &attr->dict_entries[i].value, (uint8_t)(depth + 1),
             out_available));
-        if (!*out_available) return iree_ok_status();
+        if (!*out_available) {
+          return iree_ok_status();
+        }
       }
       *out_available = true;
       return iree_ok_status();
@@ -1059,7 +1103,9 @@ static iree_status_t loom_ir_move_attr_is_available(
         IREE_RETURN_IF_ERROR(loom_ir_move_attr_is_available(
             query, &attr->parameterized_slots[i], (uint8_t)(depth + 1),
             out_available));
-        if (!*out_available) return iree_ok_status();
+        if (!*out_available) {
+          return iree_ok_status();
+        }
       }
       *out_available = true;
       return iree_ok_status();
@@ -1071,14 +1117,18 @@ static iree_status_t loom_ir_move_attr_is_available(
         IREE_RETURN_IF_ERROR(loom_ir_move_attr_is_available(
             query, &attr->parameterized_array[i], (uint8_t)(depth + 1),
             out_available));
-        if (!*out_available) return iree_ok_status();
+        if (!*out_available) {
+          return iree_ok_status();
+        }
       }
       *out_available = true;
       return iree_ok_status();
     case LOOM_ATTR_ENCODING: {
       const loom_encoding_t* encoding =
           loom_module_encoding(query->remap->source_module, attr->encoding_id);
-      if (!encoding) return iree_ok_status();
+      if (!encoding) {
+        return iree_ok_status();
+      }
       if (encoding->attribute_count > 0 && !encoding->attributes) {
         return iree_ok_status();
       }
@@ -1086,7 +1136,9 @@ static iree_status_t loom_ir_move_attr_is_available(
         IREE_RETURN_IF_ERROR(loom_ir_move_attr_is_available(
             query, &encoding->attributes[i].value, (uint8_t)(depth + 1),
             out_available));
-        if (!*out_available) return iree_ok_status();
+        if (!*out_available) {
+          return iree_ok_status();
+        }
       }
       *out_available = true;
       return iree_ok_status();
@@ -1108,7 +1160,9 @@ static iree_status_t loom_ir_move_block_arg_types_are_available(
     IREE_RETURN_IF_ERROR(loom_ir_move_remapped_type_is_available(
         query, loom_module_value_type(query->remap->source_module, arg_id),
         out_available));
-    if (!*out_available) return iree_ok_status();
+    if (!*out_available) {
+      return iree_ok_status();
+    }
   }
   *out_available = true;
   return iree_ok_status();
@@ -1123,7 +1177,9 @@ static iree_status_t loom_ir_move_op_captures_are_available(
   for (uint16_t i = 0; i < op->operand_count; ++i) {
     IREE_RETURN_IF_ERROR(loom_ir_move_remapped_value_is_available(
         query, operands[i], out_available));
-    if (!*out_available) return iree_ok_status();
+    if (!*out_available) {
+      return iree_ok_status();
+    }
   }
 
   const loom_value_id_t* results = loom_op_const_results(op);
@@ -1135,31 +1191,41 @@ static iree_status_t loom_ir_move_op_captures_are_available(
     IREE_RETURN_IF_ERROR(loom_ir_move_remapped_type_is_available(
         query, loom_module_value_type(query->remap->source_module, result),
         out_available));
-    if (!*out_available) return iree_ok_status();
+    if (!*out_available) {
+      return iree_ok_status();
+    }
   }
 
   const loom_attribute_t* attrs = loom_op_const_attrs(op);
   for (uint8_t i = 0; i < op->attribute_count; ++i) {
     IREE_RETURN_IF_ERROR(
         loom_ir_move_attr_is_available(query, &attrs[i], 0, out_available));
-    if (!*out_available) return iree_ok_status();
+    if (!*out_available) {
+      return iree_ok_status();
+    }
   }
 
   loom_region_t** regions = loom_op_regions(op);
   for (uint8_t region_index = 0; region_index < op->region_count;
        ++region_index) {
     loom_region_t* region = regions[region_index];
-    if (!region) continue;
+    if (!region) {
+      continue;
+    }
     loom_block_t* block = NULL;
     loom_region_for_each_block(region, block) {
       IREE_RETURN_IF_ERROR(loom_ir_move_block_arg_types_are_available(
           query, block, out_available));
-      if (!*out_available) return iree_ok_status();
+      if (!*out_available) {
+        return iree_ok_status();
+      }
       loom_op_t* child_op = NULL;
       loom_block_for_each_op(block, child_op) {
         IREE_RETURN_IF_ERROR(loom_ir_move_op_captures_are_available(
             query, child_op, out_available));
-        if (!*out_available) return iree_ok_status();
+        if (!*out_available) {
+          return iree_ok_status();
+        }
       }
     }
   }
@@ -1181,7 +1247,9 @@ static iree_status_t loom_ir_move_block_captures_are_available(
         loom_ir_remap_op_subtree_values_to_self(query->remap, op));
     IREE_RETURN_IF_ERROR(
         loom_ir_move_op_captures_are_available(query, op, out_available));
-    if (!*out_available) return iree_ok_status();
+    if (!*out_available) {
+      return iree_ok_status();
+    }
   }
   *out_available = true;
   return iree_ok_status();

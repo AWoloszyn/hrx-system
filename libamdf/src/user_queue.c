@@ -15,7 +15,9 @@ amdf_status_t amdf_user_queue_initialize(amdf_user_queue_t* queue,
                                          amdf_device_t* device,
                                          const amdf_user_queue_info_t* info) {
   const amdf_status_t status = amdf_device_register_child(device);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   queue->host_allocator = amdf_device_host_allocator(device);
   queue->vtable = vtable;
   queue->device = device;
@@ -35,7 +37,9 @@ amdf_status_t amdf_user_queue_mapping_initialize(
     amdf_device_t* producer_device,
     const amdf_user_queue_mapping_info_t* info) {
   amdf_status_t status = amdf_child_tracker_register(&queue->mappings);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   if (producer_device != NULL) {
     status = amdf_device_register_child(producer_device);
     if (!amdf_status_is_ok(status)) {
@@ -68,7 +72,9 @@ amdf_status_t AMDF_CALL amdf_user_queue_query_info(
   const amdf_status_t status = amdf_structure_validate_output(
       out_info, AMDF_STRUCTURE_TYPE_USER_QUEUE_INFO,
       (uint32_t)sizeof(amdf_user_queue_info_t));
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
 
   const uint32_t structure_size = out_info->structure_size;
   void* const next = out_info->next;
@@ -87,7 +93,9 @@ amdf_user_queue_map(amdf_user_queue_t* queue, amdf_device_t* producer_device,
   amdf_user_queue_mapping_t* mapping = NULL;
   const amdf_status_t status =
       queue->vtable->map(queue, producer_device, &mapping);
-  if (amdf_status_is_ok(status)) *out_mapping = mapping;
+  if (amdf_status_is_ok(status)) {
+    *out_mapping = mapping;
+  }
   return status;
 }
 
@@ -100,7 +108,9 @@ amdf_user_queue_mapping_query_info(amdf_user_queue_mapping_t* mapping,
   const amdf_status_t status = amdf_structure_validate_output(
       out_info, AMDF_STRUCTURE_TYPE_USER_QUEUE_MAPPING_INFO,
       (uint32_t)sizeof(amdf_user_queue_mapping_info_t));
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
 
   const uint32_t structure_size = out_info->structure_size;
   void* const next = out_info->next;
@@ -132,14 +142,18 @@ amdf_status_t AMDF_CALL amdf_user_queue_query_status(
   const amdf_status_t status = amdf_structure_validate_output(
       out_status, AMDF_STRUCTURE_TYPE_USER_QUEUE_STATUS,
       (uint32_t)sizeof(amdf_user_queue_status_t));
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
 
   amdf_user_queue_status_t value = {
       .type = AMDF_STRUCTURE_TYPE_USER_QUEUE_STATUS,
       .structure_size = sizeof(value),
   };
   const amdf_status_t query_status = queue->vtable->query_status(queue, &value);
-  if (!amdf_status_is_ok(query_status)) return query_status;
+  if (!amdf_status_is_ok(query_status)) {
+    return query_status;
+  }
   const uint32_t structure_size = out_status->structure_size;
   void* const next = out_status->next;
   *out_status = value;

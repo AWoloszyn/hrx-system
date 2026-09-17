@@ -417,7 +417,7 @@ static loomc_status_t loomc_cmd_program_product_translate_plan_status(
   return loomc_status_from_iree(plan_status);
 }
 
-static loomc_status_t loomc_cmd_program_product_allocate(
+static loomc_status_t loomc_cmd_program_product_create(
     loom_cmd_program_artifact_set_t* artifact_set, loomc_allocator_t allocator,
     loomc_product_t** out_product) {
   *out_product = NULL;
@@ -529,7 +529,7 @@ static loomc_status_t loomc_cmd_program_product_build_indexed(
   }
   if (loomc_status_is_ok(status) && loomc_result_succeeded(result)) {
     status =
-        loomc_cmd_program_product_allocate(&artifact_set, allocator, &product);
+        loomc_cmd_program_product_create(&artifact_set, allocator, &product);
   }
   if (loomc_status_is_ok(status) && loomc_result_succeeded(result)) {
     *out_product = product;
@@ -617,7 +617,9 @@ loomc_status_t loomc_cmd_program_product_build_request(
       context, workspace, request, options, allocator, &target_specialization));
 
   const loomc_cmd_program_request_options_t default_options = {0};
-  if (options == NULL) options = &default_options;
+  if (options == NULL) {
+    options = &default_options;
+  }
 
   loomc_result_t* result = NULL;
   LOOMC_RETURN_IF_ERROR(

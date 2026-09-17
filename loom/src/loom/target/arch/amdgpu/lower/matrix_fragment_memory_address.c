@@ -191,7 +191,9 @@ uint64_t loom_amdgpu_fragment_memory_relative_lane_byte_offset(
     const loom_amdgpu_fragment_memory_lane_term_t* term =
         &address_layout->lane_terms[i];
     uint64_t digit = lane / term->divisor;
-    if (term->modulus > 1) digit %= term->modulus;
+    if (term->modulus > 1) {
+      digit %= term->modulus;
+    }
     byte_offset += digit * term->byte_stride;
   }
   return byte_offset;

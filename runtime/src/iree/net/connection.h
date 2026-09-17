@@ -130,7 +130,9 @@ static inline void iree_net_connection_initialize(
 // Retains a reference to the connection (thread-safe).
 static inline void iree_net_connection_retain(
     iree_net_connection_t* connection) {
-  if (!connection) return;
+  if (!connection) {
+    return;
+  }
   iree_atomic_ref_count_inc(&connection->ref_count);
 }
 
@@ -138,7 +140,9 @@ static inline void iree_net_connection_retain(
 // When the last reference is released, the connection is destroyed.
 static inline void iree_net_connection_release(
     iree_net_connection_t* connection) {
-  if (!connection) return;
+  if (!connection) {
+    return;
+  }
   if (iree_atomic_ref_count_dec(&connection->ref_count) == 1) {
     connection->vtable->destroy(connection);
   }

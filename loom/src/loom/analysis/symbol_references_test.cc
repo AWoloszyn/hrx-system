@@ -562,7 +562,9 @@ test.record @b {depends = @a}
   bool found_cycle = false;
   for (iree_host_size_t i = 0; i < sccs.count; ++i) {
     const loom_scc_t& component = sccs.values[i];
-    if (!component.is_cycle) continue;
+    if (!component.is_cycle) {
+      continue;
+    }
     EXPECT_EQ(ComponentNodes(component), (std::vector<iree_host_size_t>{a, b}));
     found_cycle = true;
   }

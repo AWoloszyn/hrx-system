@@ -58,7 +58,9 @@ const char* loom_type_constraint_name(loom_type_constraint_t constraint) {
   };
   static_assert(IREE_ARRAYSIZE(names) == LOOM_TYPE_CONSTRAINT_COUNT_,
                 "constraint names out of sync with enum");
-  if (constraint < LOOM_TYPE_CONSTRAINT_COUNT_) return names[constraint];
+  if (constraint < LOOM_TYPE_CONSTRAINT_COUNT_) {
+    return names[constraint];
+  }
   return "unknown";
 }
 
@@ -76,13 +78,19 @@ bool loom_type_satisfies_constraint(loom_type_t type,
     case LOOM_TYPE_CONSTRAINT_RANK_ONE_VECTOR:
       return loom_type_is_vector(type) && loom_type_rank(type) == 1;
     case LOOM_TYPE_CONSTRAINT_ALL_STATIC_VECTOR:
-      if (!loom_type_is_vector(type)) return false;
+      if (!loom_type_is_vector(type)) {
+        return false;
+      }
       for (uint8_t i = 0; i < loom_type_rank(type); ++i) {
-        if (loom_type_dim_is_dynamic_at(type, i)) return false;
+        if (loom_type_dim_is_dynamic_at(type, i)) {
+          return false;
+        }
       }
       return true;
     case LOOM_TYPE_CONSTRAINT_ALL_STATIC_RANK_ONE_VECTOR:
-      if (!loom_type_is_vector(type) || loom_type_rank(type) != 1) return false;
+      if (!loom_type_is_vector(type) || loom_type_rank(type) != 1) {
+        return false;
+      }
       return !loom_type_dim_is_dynamic_at(type, 0);
     case LOOM_TYPE_CONSTRAINT_VIEW:
       return loom_type_is_view(type);
@@ -112,7 +120,9 @@ bool loom_type_satisfies_constraint(loom_type_t type,
                  LOOM_SCALAR_TYPE_SET_INTEGER | LOOM_SCALAR_TYPE_SET_FLOAT,
                  loom_type_element_type(type));
     case LOOM_TYPE_CONSTRAINT_BITWISE_SCALAR: {
-      if (!loom_type_is_scalar(type)) return false;
+      if (!loom_type_is_scalar(type)) {
+        return false;
+      }
       const loom_scalar_type_t scalar_type = loom_type_element_type(type);
       return scalar_type == LOOM_SCALAR_TYPE_INDEX ||
              (scalar_type != LOOM_SCALAR_TYPE_I1 &&
@@ -120,16 +130,22 @@ bool loom_type_satisfies_constraint(loom_type_t type,
                loom_scalar_type_is_float(scalar_type)));
     }
     case LOOM_TYPE_CONSTRAINT_BYTE_PATTERN_SCALAR: {
-      if (!loom_type_is_scalar(type)) return false;
+      if (!loom_type_is_scalar(type)) {
+        return false;
+      }
       const loom_scalar_type_t scalar_type = loom_type_element_type(type);
       return loom_scalar_type_set_contains(
           LOOM_SCALAR_TYPE_SET_INTEGER_PAYLOAD | LOOM_SCALAR_TYPE_SET_FLOAT,
           scalar_type);
     }
     case LOOM_TYPE_CONSTRAINT_INDEX_OR_NON_I1_INTEGER_SCALAR: {
-      if (!loom_type_is_scalar(type)) return false;
+      if (!loom_type_is_scalar(type)) {
+        return false;
+      }
       const loom_scalar_type_t scalar_type = loom_type_element_type(type);
-      if (scalar_type == LOOM_SCALAR_TYPE_INDEX) return true;
+      if (scalar_type == LOOM_SCALAR_TYPE_INDEX) {
+        return true;
+      }
       return scalar_type != LOOM_SCALAR_TYPE_I1 &&
              loom_scalar_type_is_integer(scalar_type);
     }
@@ -168,7 +184,9 @@ bool loom_type_satisfies_constraint(loom_type_t type,
       return loom_type_is_shaped(type) &&
              loom_scalar_type_is_float(loom_type_element_type(type));
     case LOOM_TYPE_CONSTRAINT_BITWISE_ELEMENT: {
-      if (!loom_type_is_shaped(type)) return false;
+      if (!loom_type_is_shaped(type)) {
+        return false;
+      }
       const loom_scalar_type_t element_type = loom_type_element_type(type);
       return element_type == LOOM_SCALAR_TYPE_INDEX ||
              (element_type != LOOM_SCALAR_TYPE_I1 &&
@@ -176,9 +194,13 @@ bool loom_type_satisfies_constraint(loom_type_t type,
                loom_scalar_type_is_float(element_type)));
     }
     case LOOM_TYPE_CONSTRAINT_INDEX_OR_NON_I1_INTEGER_ELEMENT: {
-      if (!loom_type_is_shaped(type)) return false;
+      if (!loom_type_is_shaped(type)) {
+        return false;
+      }
       const loom_scalar_type_t element_type = loom_type_element_type(type);
-      if (element_type == LOOM_SCALAR_TYPE_INDEX) return true;
+      if (element_type == LOOM_SCALAR_TYPE_INDEX) {
+        return true;
+      }
       return element_type != LOOM_SCALAR_TYPE_I1 &&
              loom_scalar_type_is_integer(element_type);
     }

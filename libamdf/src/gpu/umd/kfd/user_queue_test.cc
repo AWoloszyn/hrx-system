@@ -46,7 +46,9 @@ struct FakeNativeState {
       amdf_gpu_kfd_buffer_result_t* out_result) {
     auto* self = static_cast<FakeNativeState*>(user_data);
     ++self->buffer_create_count;
-    if (self->FailCreationOperation()) return self->creation_failure;
+    if (self->FailCreationOperation()) {
+      return self->creation_failure;
+    }
     FakeBuffer& buffer = self->buffers[self->buffer_create_count - 1];
     buffer.storage.resize((create_info->byte_length + sizeof(uint64_t) - 1) /
                           sizeof(uint64_t));
@@ -97,7 +99,9 @@ struct FakeNativeState {
     auto* self = static_cast<FakeNativeState*>(user_data);
     ++self->queue_create_count;
     self->observed_create = *inout_arguments;
-    if (self->FailCreationOperation()) return self->creation_failure;
+    if (self->FailCreationOperation()) {
+      return self->creation_failure;
+    }
     inout_arguments->queue_id = self->created_queue_identifier;
     inout_arguments->doorbell_offset = self->doorbell_offset;
     return AMDF_STATUS_OK;
@@ -121,7 +125,9 @@ struct FakeNativeState {
     ++self->doorbell_map_count;
     self->observed_doorbell_mapping_offset = native_byte_offset;
     self->observed_doorbell_mapping_length = byte_length;
-    if (self->FailCreationOperation()) return self->creation_failure;
+    if (self->FailCreationOperation()) {
+      return self->creation_failure;
+    }
     *out_mapping = self->doorbell_mapping.data();
     return AMDF_STATUS_OK;
   }
@@ -159,7 +165,9 @@ struct FakeNativeState {
   }
 
   void Reset() {
-    for (FakeBuffer& buffer : buffers) buffer = {};
+    for (FakeBuffer& buffer : buffers) {
+      buffer = {};
+    }
     std::memset(doorbell_mapping.data(), 0, doorbell_mapping.size());
     creation_operation_count = 0;
     failed_creation_operation = 0;
@@ -191,7 +199,9 @@ struct FakeNativeState {
 
   size_t LiveBufferCount() const {
     size_t count = 0;
-    for (const FakeBuffer& buffer : buffers) count += buffer.live ? 1 : 0;
+    for (const FakeBuffer& buffer : buffers) {
+      count += buffer.live ? 1 : 0;
+    }
     return count;
   }
 
@@ -304,7 +314,9 @@ class KfdUserQueueTest : public ::testing::Test {
         &device_.topology, device_.page_size, device_.cache_line_size, &plans);
     for (uint32_t i = 0; i < plans.count; ++i) {
       const amdf_gpu_queue_family_properties_t& family = plans.values[i].family;
-      if (family.command_type != command_type) continue;
+      if (family.command_type != command_type) {
+        continue;
+      }
       return {
           .command_type = family.command_type,
           .format_version = family.format_version,

@@ -45,7 +45,9 @@ class QueueAllocaTest : public CtsTestBase<> {
  protected:
   void SetUp() override {
     CtsTestBase<>::SetUp();
-    if (this->IsSkipped()) return;
+    if (this->IsSkipped()) {
+      return;
+    }
     if (!transfer_queue_) {
       GTEST_SKIP() << "device has no provisioned transfer-capable queue";
     }
@@ -116,14 +118,18 @@ class QueueAllocaTest : public CtsTestBase<> {
         iree_hal_queue_family_ordinal(iree_hal_queue_family(queue));
     const iree_hal_device_queue_spec_t* queue_spec =
         iree_hal_device_spec_queues(iree_hal_device_spec(device_));
-    if (!queue_spec || family_ordinal >= queue_spec->family_count) return NULL;
+    if (!queue_spec || family_ordinal >= queue_spec->family_count) {
+      return NULL;
+    }
     const uint32_t queue_count =
         queue_spec->families[family_ordinal].provisioned_queue_count;
     for (iree_hal_queue_ordinal_t queue_ordinal = 0;
          queue_ordinal < queue_count; ++queue_ordinal) {
       iree_hal_queue_t* candidate =
           iree_hal_device_queue(device_, family_ordinal, queue_ordinal);
-      if (candidate != queue) return candidate;
+      if (candidate != queue) {
+        return candidate;
+      }
     }
     return NULL;
   }
@@ -205,7 +211,9 @@ TEST_P(QueueAllocaTest, PluralTransaction) {
   IREE_ASSERT_OK(iree_hal_queue_alloca(transfer_queue_, empty_wait,
                                        alloca_signal, pool, requests.size(),
                                        requests.data(), raw_buffers.data()));
-  for (iree_hal_buffer_t* buffer : raw_buffers) ASSERT_NE(nullptr, buffer);
+  for (iree_hal_buffer_t* buffer : raw_buffers) {
+    ASSERT_NE(nullptr, buffer);
+  }
 
   std::array<Ref<iree_hal_buffer_t>, kAllocationSizes.size()> buffers = {
       Ref<iree_hal_buffer_t>(raw_buffers[0]),
@@ -317,7 +325,9 @@ TEST_P(QueueAllocaTest, PoolValidationIsAllOrNothing) {
       valid_requests.data(), outputs.data()));
   Wait(valid_signal);
   DeallocaAndWait(transfer_queue_, outputs.size(), outputs.data());
-  for (iree_hal_buffer_t* buffer : outputs) iree_hal_buffer_release(buffer);
+  for (iree_hal_buffer_t* buffer : outputs) {
+    iree_hal_buffer_release(buffer);
+  }
 }
 
 TEST_P(QueueAllocaTest, DuplicateDeallocaLeavesEpochLive) {

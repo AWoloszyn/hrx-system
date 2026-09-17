@@ -318,7 +318,9 @@ TEST_F(GpuEndpointTest, MaterializesProgramIndependentDevice) {
   }
 
   ASSERT_NO_FATAL_FAILURE(SetUpDevice());
-  if (IsSkipped()) return;
+  if (IsSkipped()) {
+    return;
+  }
   ASSERT_NE(device_, nullptr);
 
   amdf_gpu_device_info_t info = {};
@@ -347,7 +349,9 @@ TEST_F(GpuEndpointTest, RejectsMalformedDeviceInfoWithoutMutation) {
     GTEST_SKIP() << "no GPU endpoint present";
   }
   ASSERT_NO_FATAL_FAILURE(SetUpDevice());
-  if (IsSkipped()) return;
+  if (IsSkipped()) {
+    return;
+  }
 
   EXPECT_EQ(amdf_status_code(gpu_api_->device_query_info(device_, nullptr)),
             AMDF_STATUS_CODE_INVALID_ARGUMENT);
@@ -377,7 +381,9 @@ TEST_F(GpuEndpointTest, CreatesReclaimableDevicesFromOneEndpoint) {
     GTEST_SKIP() << "no GPU endpoint present";
   }
   ASSERT_NO_FATAL_FAILURE(SetUpDevice());
-  if (IsSkipped()) return;
+  if (IsSkipped()) {
+    return;
+  }
   amdf_gpu_device_info_t first_info = {};
   first_info.type = AMDF_STRUCTURE_TYPE_GPU_DEVICE_INFO;
   first_info.structure_size = sizeof(first_info);

@@ -74,7 +74,9 @@ class LowAllocationMaterializationTest : public ::testing::Test {
                              iree_string_view_t function_name) {
     loom_op_t* op = nullptr;
     loom_block_for_each_op(loom_region_entry_block(module->body), op) {
-      if (!loom_low_func_def_isa(op)) continue;
+      if (!loom_low_func_def_isa(op)) {
+        continue;
+      }
       if (iree_string_view_equal(loom_low_diagnostic_function_name(module, op),
                                  function_name)) {
         return op;
@@ -116,7 +118,9 @@ class LowAllocationMaterializationTest : public ::testing::Test {
     ASSERT_NE(after_op, nullptr);
     ASSERT_EQ(before_op->parent_block, after_op->parent_block);
     for (const loom_op_t* op = before_op; op != nullptr; op = op->next_op) {
-      if (op == after_op) return;
+      if (op == after_op) {
+        return;
+      }
     }
     ADD_FAILURE() << "expected op order was not preserved";
   }

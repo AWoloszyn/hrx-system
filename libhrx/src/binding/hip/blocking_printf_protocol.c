@@ -36,7 +36,9 @@ iree_status_t iree_hip_blocking_printf_protocol_calculate_layout(
   const uint32_t packet_count =
       (uint32_t)iree_max(UINT64_C(2), minimum_packet_count);
   uint64_t index_capacity = 2;
-  while (index_capacity < packet_count) index_capacity *= 2;
+  while (index_capacity < packet_count) {
+    index_capacity *= 2;
+  }
   const uint64_t index_mask = index_capacity - 1;
 
   iree_host_size_t packet_headers_offset = 0;
@@ -116,7 +118,9 @@ void iree_hip_blocking_printf_protocol_initialize(
   uint64_t next = layout->index_mask + 1;
   for (uint32_t i = 0; i < layout->packet_count; ++i) {
     packet_headers[i].next = i == 0 ? 0 : next;
-    if (i > 0) next = i;
+    if (i > 0) {
+      next = i;
+    }
   }
   buffer_header->free_stack = next;
 

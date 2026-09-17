@@ -270,12 +270,16 @@ TEST_P(NotificationTest, SingleWakeMakesProgressWithMultipleWaiters) {
       iree_async_notification_end_observe(notification);
       if (result) {
         int old_count = waiters_woken.fetch_add(1, std::memory_order_acq_rel);
-        if (old_count == 0) first_waiter_woken_promise.set_value();
+        if (old_count == 0) {
+          first_waiter_woken_promise.set_value();
+        }
       }
     });
   }
 
-  for (auto& waiter_ready : waiter_ready_futures) waiter_ready.wait();
+  for (auto& waiter_ready : waiter_ready_futures) {
+    waiter_ready.wait();
+  }
 
   // A single platform wake guarantees progress. More than one observer may
   // complete if it captured the old epoch but had not entered its kernel wait
@@ -322,7 +326,9 @@ TEST_P(NotificationTest, BroadcastWake) {
     });
   }
 
-  for (auto& waiter_ready : waiter_ready_futures) waiter_ready.wait();
+  for (auto& waiter_ready : waiter_ready_futures) {
+    waiter_ready.wait();
+  }
   iree_async_notification_signal(notification, INT32_MAX);
 
   for (auto& t : waiters) {

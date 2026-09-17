@@ -23,8 +23,9 @@ loom_value_fact_reference_origin_t loom_value_fact_reference_origin_meet(
       lhs.region_index != rhs.region_index) {
     return (loom_value_fact_reference_origin_t){0};
   }
-  if (lhs.entry_value_id != rhs.entry_value_id)
+  if (lhs.entry_value_id != rhs.entry_value_id) {
     lhs.entry_value_id = LOOM_VALUE_ID_INVALID;
+  }
   return lhs;
 }
 

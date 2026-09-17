@@ -196,7 +196,9 @@ static loom_symbol_ref_t loom_link_template_candidate_lookup_linked_symbol(
     const loom_link_plan_materialization_t* materialization,
     uint32_t source_symbol_ordinal) {
   loom_symbol_ref_t target_ref = loom_symbol_ref_null();
-  if (source_symbol_ordinal == UINT32_MAX) return target_ref;
+  if (source_symbol_ordinal == UINT32_MAX) {
+    return target_ref;
+  }
   IREE_ASSERT(source_symbol_ordinal < source_module->symbol_count);
   const iree_host_size_t source_ordinal =
       source_module->symbol_start_ordinal + source_symbol_ordinal;

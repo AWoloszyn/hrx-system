@@ -142,7 +142,9 @@ bool loom_low_lower_source_plan_result_storage_required(
 bool loom_low_lower_source_plan_cfg_cond_br_exact_bool(
     const loom_low_lower_context_t* context, const loom_op_t* source_op,
     bool* out_condition) {
-  if (out_condition != NULL) *out_condition = false;
+  if (out_condition != NULL) {
+    *out_condition = false;
+  }
   if (!loom_cfg_cond_br_isa(source_op) ||
       context->lowering.fact_table == NULL) {
     return false;
@@ -153,7 +155,9 @@ bool loom_low_lower_source_plan_cfg_cond_br_exact_bool(
   if (!loom_value_facts_as_exact_bool(facts, &condition)) {
     return false;
   }
-  if (out_condition != NULL) *out_condition = condition;
+  if (out_condition != NULL) {
+    *out_condition = condition;
+  }
   return true;
 }
 
@@ -357,7 +361,9 @@ static void loom_low_lower_mark_rule_storage_demands(
       }
     }
   }
-  if (rule->alias_ref_count == 0) return;
+  if (rule->alias_ref_count == 0) {
+    return;
+  }
 
   // Canonical source-memory plans own the storage demands for addresses through
   // buffer.view aliases. Requiring the original byte-offset expression here

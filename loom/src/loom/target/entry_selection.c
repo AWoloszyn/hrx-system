@@ -531,7 +531,9 @@ iree_status_t loom_target_entry_select_all_entries(
   loom_block_for_each_op(module_block, op) {
     const loom_symbol_id_t symbol_id =
         loom_op_defining_symbol_id(module, op, loom_op_vtable(module, op));
-    if (symbol_id == LOOM_SYMBOL_ID_INVALID) continue;
+    if (symbol_id == LOOM_SYMBOL_ID_INVALID) {
+      continue;
+    }
     bool compatible = false;
     loom_target_entry_t candidate = {0};
     IREE_RETURN_IF_ERROR(loom_target_entry_try_entry(

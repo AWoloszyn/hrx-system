@@ -145,10 +145,14 @@ static bool iree_profile_att_elf_virtual_address_to_file_offset(
     if (program_header.type != IREE_PROFILE_ATT_ELF_PROGRAM_HEADER_LOAD) {
       continue;
     }
-    if (virtual_address < program_header.virtual_address) continue;
+    if (virtual_address < program_header.virtual_address) {
+      continue;
+    }
     const uint64_t segment_offset =
         virtual_address - program_header.virtual_address;
-    if (segment_offset >= program_header.file_size) continue;
+    if (segment_offset >= program_header.file_size) {
+      continue;
+    }
     if (program_header.offset > image.data_length ||
         segment_offset > image.data_length - program_header.offset) {
       return false;
@@ -166,7 +170,9 @@ static uint64_t iree_profile_att_comgr_read_memory(uint64_t from, char* to,
       (iree_profile_att_comgr_disassemble_context_t*)user_data;
   const uintptr_t begin = (uintptr_t)context->image.data;
   const uintptr_t end = begin + context->image.data_length;
-  if (from < begin || from >= end) return 0;
+  if (from < begin || from >= end) {
+    return 0;
+  }
   const uint64_t available = end - from;
   const uint64_t read_length = iree_min(size, available);
   memcpy(to, (const void*)(uintptr_t)from, (size_t)read_length);
@@ -261,7 +267,9 @@ iree_profile_att_disassembly_context_find_code_object(
   for (iree_host_size_t i = 0; i < context->code_object_decoder_count; ++i) {
     iree_profile_att_code_object_decoder_t* decoder =
         &context->code_object_decoders[i];
-    if (decoder->code_object_id == code_object_id) return decoder;
+    if (decoder->code_object_id == code_object_id) {
+      return decoder;
+    }
   }
   return NULL;
 }
@@ -283,7 +291,9 @@ iree_status_t iree_profile_att_disassembly_context_allocate(
 
 void iree_profile_att_disassembly_context_free(
     iree_profile_att_disassembly_context_t* context) {
-  if (!context) return;
+  if (!context) {
+    return;
+  }
   for (iree_host_size_t i = 0; i < context->code_object_decoder_count; ++i) {
     iree_profile_att_code_object_decoder_deinitialize(
         context->comgr, &context->code_object_decoders[i]);
@@ -324,14 +334,18 @@ iree_status_t iree_profile_att_disassembly_context_disassemble_instruction(
   iree_profile_att_code_object_decoder_t* decoder =
       iree_profile_att_disassembly_context_find_code_object(context,
                                                             pc->code_object_id);
-  if (!decoder) return iree_ok_status();
+  if (!decoder) {
+    return iree_ok_status();
+  }
 
   uint64_t file_offset = 0;
   if (!iree_profile_att_elf_virtual_address_to_file_offset(
           decoder->data, pc->address, &file_offset)) {
     return iree_ok_status();
   }
-  if (file_offset >= decoder->data.data_length) return iree_ok_status();
+  if (file_offset >= decoder->data.data_length) {
+    return iree_ok_status();
+  }
 
   iree_profile_att_comgr_disassemble_context_t callback_context = {
       .image = decoder->data,

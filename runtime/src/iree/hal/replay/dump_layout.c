@@ -204,7 +204,9 @@ iree_status_t iree_hal_replay_dump_read_executable_metadata_header(
   *out_has_metadata = false;
   if (payload->executable_metadata_length <
       sizeof(iree_hal_replay_executable_metadata_header_t)) {
-    if (payload->executable_metadata_length == 0) return iree_ok_status();
+    if (payload->executable_metadata_length == 0) {
+      return iree_ok_status();
+    }
     return iree_make_status(IREE_STATUS_DATA_LOSS,
                             "replay executable metadata is too short");
   }

@@ -151,7 +151,9 @@ static inline IREE_ATTRIBUTE_ALWAYS_INLINE bool
 iree_tokenizer_trie_cursor_advance(iree_tokenizer_trie_cursor_t* cursor,
                                    uint8_t byte) {
   const iree_tokenizer_vocab_trie_t* trie = cursor->trie;
-  if (IREE_UNLIKELY(!trie)) return false;
+  if (IREE_UNLIKELY(!trie)) {
+    return false;
+  }
 
   int32_t current = (int32_t)cursor->node_index;
   int32_t base = trie->base[current];
@@ -182,7 +184,9 @@ static inline IREE_ATTRIBUTE_ALWAYS_INLINE int32_t
 iree_tokenizer_trie_cursor_token_id(
     const iree_tokenizer_trie_cursor_t* cursor) {
   const iree_tokenizer_vocab_trie_t* trie = cursor->trie;
-  if (IREE_UNLIKELY(!trie)) return -1;
+  if (IREE_UNLIKELY(!trie)) {
+    return -1;
+  }
   return trie->output[cursor->node_index];
 }
 

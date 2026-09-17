@@ -9,7 +9,9 @@
 static bool iree_hal_amdgpu_access_agent_list_contains(
     const iree_hal_amdgpu_access_agent_list_t* agent_list, hsa_agent_t agent) {
   for (uint32_t i = 0; i < agent_list->count; ++i) {
-    if (agent_list->values[i].handle == agent.handle) return true;
+    if (agent_list->values[i].handle == agent.handle) {
+      return true;
+    }
   }
   return false;
 }

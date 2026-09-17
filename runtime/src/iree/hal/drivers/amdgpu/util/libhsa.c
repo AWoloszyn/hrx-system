@@ -564,7 +564,9 @@ iree_hal_amdgpu_libhsa_copy(const iree_hal_amdgpu_libhsa_t* libhsa,
 IREE_API_EXPORT iree_status_t iree_status_from_hsa_status(
     const char* file, const uint32_t line, hsa_status_t hsa_status,
     const char* symbol, const char* message) {
-  if (hsa_status == HSA_STATUS_SUCCESS) return iree_ok_status();
+  if (hsa_status == HSA_STATUS_SUCCESS) {
+    return iree_ok_status();
+  }
   return iree_make_status_with_location(
       file, line, iree_hsa_status_code(hsa_status),
       message ? "[%s] %s: %s; %s" : "[%s] %s: %s", symbol,

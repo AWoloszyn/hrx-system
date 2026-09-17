@@ -256,7 +256,9 @@ iree_vm_bytecode_make_program_status(iree_status_code_t code,
 // Returns whether |ref| is one canonical null or a valid exact typed state.
 static inline bool iree_vm_bytecode_ref_matches_type(
     iree_vm_ref_t ref, iree_vm_ref_type_t expected_type) {
-  if (!ref.object) return ref.type_and_state == 0;
+  if (!ref.object) {
+    return ref.type_and_state == 0;
+  }
   return (ref.type_and_state & IREE_VM_REF_STATE_MASK) <=
              IREE_VM_REF_STATE_BORROWED &&
          iree_vm_ref_type(ref) == expected_type;
@@ -409,7 +411,9 @@ iree_vm_bytecode_dispatch_control_yield_s32: {
   *out_outcome = IREE_VM_EXECUTION_OUTCOME_SUSPENDED;
   const iree_vm_invocation_wake_callback_t wake_callback =
       iree_vm_invocation_wake_callback(invocation);
-  if (wake_callback.fn) wake_callback.fn(wake_callback.user_data);
+  if (wake_callback.fn) {
+    wake_callback.fn(wake_callback.user_data);
+  }
   return iree_ok_status();
 }
 iree_vm_bytecode_dispatch_control_branch_s16: {
@@ -1426,7 +1430,9 @@ iree_vm_bytecode_dispatch_buffer_copy: {
   IREE_RETURN_IF_ERROR(iree_vm_bytecode_buffer_map_range(
       source_buffer, IREE_VM_BUFFER_ACCESS_FLAG_READ, source_offset, length,
       &source));
-  if (length != 0) memmove(target.data, source.data, target.data_length);
+  if (length != 0) {
+    memmove(target.data, source.data, target.data_length);
+  }
   IREE_VM_BYTECODE_DISPATCH_NEXT(iree_vm_bytecode_buffer_copy_t);
 }
 iree_vm_bytecode_dispatch_buffer_compare: {
@@ -1472,7 +1478,9 @@ iree_vm_bytecode_dispatch_buffer_copy_rodata: {
   IREE_RETURN_IF_ERROR(iree_vm_bytecode_buffer_map_range(
       &image->rodata_roots[record->rodata_u16], IREE_VM_BUFFER_ACCESS_FLAG_READ,
       record->source_offset_u32, length, &source));
-  if (length != 0) memcpy(target.data, source.data, target.data_length);
+  if (length != 0) {
+    memcpy(target.data, source.data, target.data_length);
+  }
   IREE_VM_BYTECODE_DISPATCH_NEXT(iree_vm_bytecode_buffer_copy_rodata_t);
 }
 iree_vm_bytecode_dispatch_buffer_rodata_load: {

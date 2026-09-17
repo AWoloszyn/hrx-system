@@ -18,9 +18,13 @@ bool loom_op_is_poison(const loom_op_t* op) {
 
 bool loom_value_is_poison(const loom_module_t* module,
                           loom_value_id_t value_id) {
-  if (!module || value_id >= module->values.count) return false;
+  if (!module || value_id >= module->values.count) {
+    return false;
+  }
   const loom_value_t* value = loom_module_value(module, value_id);
-  if (loom_value_is_block_arg(value)) return false;
+  if (loom_value_is_block_arg(value)) {
+    return false;
+  }
   return loom_op_is_poison(loom_value_def_op(value));
 }
 
@@ -59,9 +63,15 @@ bool loom_type_has_constant_materializer(loom_type_t type) {
 
 static bool loom_constant_facts_match_scalar_type(loom_value_facts_t facts,
                                                   loom_scalar_type_t type) {
-  if (!loom_value_facts_is_exact(facts)) return false;
-  if (loom_scalar_type_is_float(type)) return loom_value_facts_is_float(facts);
-  if (loom_value_facts_is_float(facts)) return false;
+  if (!loom_value_facts_is_exact(facts)) {
+    return false;
+  }
+  if (loom_scalar_type_is_float(type)) {
+    return loom_value_facts_is_float(facts);
+  }
+  if (loom_value_facts_is_float(facts)) {
+    return false;
+  }
   if (type == LOOM_SCALAR_TYPE_I1) {
     return facts.range_lo == 0 || facts.range_lo == 1;
   }
@@ -83,7 +93,9 @@ static loom_attribute_t loom_constant_attr_from_facts(loom_value_facts_t facts,
     IREE_ASSERT(has_value);
     return loom_attr_f64(value);
   }
-  if (type == LOOM_SCALAR_TYPE_I1) return loom_attr_bool(facts.range_lo != 0);
+  if (type == LOOM_SCALAR_TYPE_I1) {
+    return loom_attr_bool(facts.range_lo != 0);
+  }
   return loom_attr_i64(facts.range_lo);
 }
 
@@ -129,7 +141,9 @@ iree_status_t loom_constant_build(loom_builder_t* builder,
 }
 
 bool loom_op_is_empty(const loom_op_t* op) {
-  if (!op) return false;
+  if (!op) {
+    return false;
+  }
   switch (op->kind) {
     case LOOM_OP_VECTOR_EMPTY:
       return true;

@@ -87,10 +87,14 @@ class TestLogicalDevice {
   iree_hal_amdgpu_host_queue_t* first_host_queue() const {
     iree_hal_amdgpu_logical_device_t* logical_device =
         (iree_hal_amdgpu_logical_device_t*)base_device_;
-    if (logical_device->physical_device_count == 0) return NULL;
+    if (logical_device->physical_device_count == 0) {
+      return NULL;
+    }
     iree_hal_amdgpu_physical_device_t* physical_device =
         logical_device->physical_devices[0];
-    if (physical_device->host_queue_count == 0) return NULL;
+    if (physical_device->host_queue_count == 0) {
+      return NULL;
+    }
     return &physical_device->host_queues[0];
   }
 
@@ -132,13 +136,17 @@ class TestLogicalDeviceGroup {
           IREE_SV("amdgpu"), options, libhsa, topology,
           create_context_.params(), host_allocator, &devices_[i]);
     }
-    if (!iree_status_is_ok(status)) return status;
+    if (!iree_status_is_ok(status)) {
+      return status;
+    }
 
     iree_hal_device_group_builder_t builder;
     iree_hal_device_group_builder_initialize(
         &builder, create_context_.frontier_tracker());
     for (iree_hal_device_t* device : devices_) {
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
       status = iree_hal_device_group_builder_add_device(&builder, device);
     }
     if (iree_status_is_ok(status)) {
@@ -160,10 +168,14 @@ class TestLogicalDeviceGroup {
   iree_hal_amdgpu_host_queue_t* first_host_queue(iree_host_size_t index) const {
     iree_hal_amdgpu_logical_device_t* logical_device =
         this->logical_device(index);
-    if (logical_device->physical_device_count == 0) return NULL;
+    if (logical_device->physical_device_count == 0) {
+      return NULL;
+    }
     iree_hal_amdgpu_physical_device_t* physical_device =
         logical_device->physical_devices[0];
-    if (physical_device->host_queue_count == 0) return NULL;
+    if (physical_device->host_queue_count == 0) {
+      return NULL;
+    }
     return &physical_device->host_queues[0];
   }
 

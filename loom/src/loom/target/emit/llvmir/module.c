@@ -71,7 +71,9 @@ static iree_status_t loom_llvmir_module_copy_attrs(
     iree_host_size_t attr_count, loom_llvmir_attr_list_t* out_list) {
   out_list->attrs = NULL;
   out_list->attr_count = 0;
-  if (attr_count == 0) return iree_ok_status();
+  if (attr_count == 0) {
+    return iree_ok_status();
+  }
   if (attrs == NULL) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "non-empty LLVM attribute list has null storage");
@@ -108,7 +110,9 @@ static iree_status_t loom_llvmir_module_define_value(
   if (out_value_id) {
     *out_value_id = (loom_llvmir_value_id_t)(module->value_count - 1);
   }
-  if (out_value) *out_value = value;
+  if (out_value) {
+    *out_value = value;
+  }
   return iree_ok_status();
 }
 
@@ -121,9 +125,13 @@ static bool loom_llvmir_type_equal(const loom_llvmir_type_t* lhs,
       lhs->float_kind != rhs->float_kind) {
     return false;
   }
-  if (lhs->kind != LOOM_LLVMIR_TYPE_STRUCT) return true;
+  if (lhs->kind != LOOM_LLVMIR_TYPE_STRUCT) {
+    return true;
+  }
   for (uint32_t i = 0; i < lhs->element_count; ++i) {
-    if (lhs->element_types[i] != rhs->element_types[i]) return false;
+    if (lhs->element_types[i] != rhs->element_types[i]) {
+      return false;
+    }
   }
   return true;
 }
@@ -228,7 +236,9 @@ iree_status_t loom_llvmir_module_allocate(
 }
 
 void loom_llvmir_module_free(loom_llvmir_module_t* module) {
-  if (module == NULL) return;
+  if (module == NULL) {
+    return;
+  }
   iree_arena_deinitialize(&module->arena);
   iree_arena_block_pool_deinitialize(&module->block_pool);
   iree_allocator_free(module->allocator, module);
@@ -619,7 +629,9 @@ loom_llvmir_function_t* loom_llvmir_module_find_function(
     loom_llvmir_module_t* module, iree_string_view_t name) {
   for (iree_host_size_t i = 0; i < module->function_count; ++i) {
     loom_llvmir_function_t* function = module->functions[i];
-    if (iree_string_view_equal(function->name, name)) return function;
+    if (iree_string_view_equal(function->name, name)) {
+      return function;
+    }
   }
   return NULL;
 }

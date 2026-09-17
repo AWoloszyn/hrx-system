@@ -60,7 +60,9 @@ class KernelClassMaterializerTest : public ::testing::Test {
     IREE_EXPECT_OK(loom_text_parse_with_symbol_references(
         source, IREE_SV("kernel_class_materializer_test.loom"), &context_,
         &block_pool_, &parse_options, analysis_arena, out_references, &module));
-    if (module == nullptr) return ModulePtr();
+    if (module == nullptr) {
+      return ModulePtr();
+    }
     ModulePtr module_ptr(module);
     Verify(module);
     return module_ptr;
@@ -78,7 +80,9 @@ class KernelClassMaterializerTest : public ::testing::Test {
                               iree_string_view_t name) {
     const loom_string_id_t name_id = loom_module_lookup_string(module, name);
     EXPECT_NE(name_id, LOOM_STRING_ID_INVALID);
-    if (name_id == LOOM_STRING_ID_INVALID) return LOOM_SYMBOL_ID_INVALID;
+    if (name_id == LOOM_STRING_ID_INVALID) {
+      return LOOM_SYMBOL_ID_INVALID;
+    }
     const loom_symbol_id_t symbol_id = loom_module_find_symbol(module, name_id);
     EXPECT_NE(symbol_id, LOOM_SYMBOL_ID_INVALID);
     return symbol_id;
@@ -108,7 +112,9 @@ class KernelClassMaterializerTest : public ::testing::Test {
         IREE_IO_STREAM_MODE_WRITABLE | IREE_IO_STREAM_MODE_SEEKABLE |
             IREE_IO_STREAM_MODE_READABLE | IREE_IO_STREAM_MODE_RESIZABLE,
         4096, iree_allocator_system(), &stream));
-    if (stream == nullptr) return ModulePtr();
+    if (stream == nullptr) {
+      return ModulePtr();
+    }
     IREE_EXPECT_OK(loom_bytecode_write_module(
         module, stream, /*options=*/nullptr, &block_pool_));
     const iree_io_stream_pos_t bytecode_length = iree_io_stream_length(stream);
@@ -532,8 +538,12 @@ kernel.def @classified() {
   loom_op_t* apply_op = nullptr;
   loom_op_t* op = nullptr;
   loom_block_for_each_op(body, op) {
-    if (loom_index_assume_isa(op)) assume_op = op;
-    if (loom_template_apply_isa(op)) apply_op = op;
+    if (loom_index_assume_isa(op)) {
+      assume_op = op;
+    }
+    if (loom_template_apply_isa(op)) {
+      apply_op = op;
+    }
     EXPECT_FALSE(loom_template_call_isa(op));
   }
   ASSERT_NE(assume_op, nullptr);

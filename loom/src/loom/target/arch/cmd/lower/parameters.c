@@ -184,7 +184,9 @@ static iree_status_t loom_cmd_parameter_format_key(
 static uint16_t loom_cmd_parameter_find_root_binding(
     const loom_cmd_parameter_build_t* build, loom_value_id_t root_value) {
   for (uint16_t i = 0; i < build->binding_count; ++i) {
-    if (build->binding_values[i] == root_value) return i;
+    if (build->binding_values[i] == root_value) {
+      return i;
+    }
   }
   return UINT16_MAX;
 }
@@ -205,7 +207,9 @@ static uint16_t loom_cmd_parameter_find_source_binding(
 
 static iree_status_t loom_cmd_parameter_reserve_row(
     loom_cmd_parameter_build_t* build) {
-  if (build->row_count < build->row_capacity) return iree_ok_status();
+  if (build->row_count < build->row_capacity) {
+    return iree_ok_status();
+  }
   return iree_arena_grow_array(build->scratch_arena, build->row_count,
                                iree_max(build->row_count + 1, 16u),
                                sizeof(*build->rows), &build->row_capacity,
@@ -249,7 +253,9 @@ static iree_status_t loom_cmd_parameter_append_exact_view_ranges(
         loom_cmd_parameter_find_root_binding(
             build, loom_value_fact_view_reference_resolve_root_value(
                        view_reference, result));
-    if (source_binding_ordinal == UINT16_MAX) continue;
+    if (source_binding_ordinal == UINT16_MAX) {
+      continue;
+    }
     IREE_RETURN_IF_ERROR(loom_cmd_parameter_reserve_buffer_range(build));
     build->buffer_ranges[build->buffer_range_count++] =
         (loom_cmd_parameter_source_range_t){
@@ -324,7 +330,9 @@ static bool loom_cmd_parameter_align_offset(uint64_t value, uint64_t alignment,
                                             uint64_t* out_value) {
   IREE_ASSERT(iree_is_power_of_two_uint64(alignment));
   const uint64_t mask = alignment - 1;
-  if (value > UINT64_MAX - mask) return false;
+  if (value > UINT64_MAX - mask) {
+    return false;
+  }
   *out_value = (value + mask) & ~mask;
   return true;
 }
@@ -460,7 +468,9 @@ iree_status_t loom_cmd_parameter_layout_build(
       &build, fixed_buffer_count, host_allocator, out_requirements));
 
   for (uint16_t i = 0; i < binding_count; ++i) {
-    if (!fixed_bindings[i]) continue;
+    if (!fixed_bindings[i]) {
+      continue;
+    }
     const uint32_t fixed_buffer_index = bindings[i].resource_index;
     out_requirements->roots[fixed_buffer_index] =
         (loom_cmd_parameter_root_requirement_t){
@@ -566,7 +576,9 @@ iree_status_t loom_cmd_parameter_layout_build(
 void loom_cmd_parameter_requirement_table_deinitialize(
     loom_cmd_parameter_requirement_table_t* table,
     iree_allocator_t host_allocator) {
-  if (!table) return;
+  if (!table) {
+    return;
+  }
   iree_allocator_free(host_allocator, table->key_storage);
   iree_allocator_free(host_allocator, table->entries);
   iree_allocator_free(host_allocator, table->roots);

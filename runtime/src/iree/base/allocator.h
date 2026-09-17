@@ -130,7 +130,9 @@ static inline bool iree_checked_add_u64(uint64_t a, uint64_t b,
 #if IREE_HAVE_BUILTIN(__builtin_add_overflow)
   return !__builtin_add_overflow(a, b, out_result);
 #else
-  if (a > UINT64_MAX - b) return false;
+  if (a > UINT64_MAX - b) {
+    return false;
+  }
   *out_result = a + b;
   return true;
 #endif
@@ -145,7 +147,9 @@ static inline bool iree_checked_mul_u64(uint64_t a, uint64_t b,
 #if IREE_HAVE_BUILTIN(__builtin_mul_overflow)
   return !__builtin_mul_overflow(a, b, out_result);
 #else
-  if (b != 0 && a > UINT64_MAX / b) return false;
+  if (b != 0 && a > UINT64_MAX / b) {
+    return false;
+  }
   *out_result = a * b;
   return true;
 #endif
@@ -158,7 +162,9 @@ static inline bool iree_checked_mul_u64(uint64_t a, uint64_t b,
 static inline bool iree_checked_align_u64(uint64_t value, uint64_t alignment,
                                           uint64_t* out_aligned) {
   uint64_t padded = 0;
-  if (!iree_checked_add_u64(value, alignment - 1, &padded)) return false;
+  if (!iree_checked_add_u64(value, alignment - 1, &padded)) {
+    return false;
+  }
   *out_aligned = padded & ~(alignment - 1);
   return true;
 }
@@ -188,7 +194,9 @@ static inline bool iree_checked_mul_i32(int32_t a, int32_t b,
   return !__builtin_mul_overflow(a, b, out_result);
 #else
   int64_t result = (int64_t)a * (int64_t)b;
-  if (result < INT32_MIN || result > INT32_MAX) return false;
+  if (result < INT32_MIN || result > INT32_MAX) {
+    return false;
+  }
   *out_result = (int32_t)result;
   return true;
 #endif
@@ -200,7 +208,9 @@ static inline bool iree_checked_mul_i32(int32_t a, int32_t b,
 static inline bool iree_checked_mul_add_i32(int32_t base, int32_t lhs,
                                             int32_t rhs, int32_t* out_result) {
   int32_t product = 0;
-  if (!iree_checked_mul_i32(lhs, rhs, &product)) return false;
+  if (!iree_checked_mul_i32(lhs, rhs, &product)) {
+    return false;
+  }
   return iree_checked_add_i32(base, product, out_result);
 }
 
@@ -249,16 +259,24 @@ static inline bool iree_checked_mul_i64(int64_t a, int64_t b,
     *out_result = 0;
     return true;
   }
-  if (a == -1 && b == INT64_MIN) return false;
-  if (b == -1 && a == INT64_MIN) return false;
+  if (a == -1 && b == INT64_MIN) {
+    return false;
+  }
+  if (b == -1 && a == INT64_MIN) {
+    return false;
+  }
   if (a > 0) {
     if (b > 0) {
-      if (a > INT64_MAX / b) return false;
+      if (a > INT64_MAX / b) {
+        return false;
+      }
     } else if (b < INT64_MIN / a) {
       return false;
     }
   } else if (b > 0) {
-    if (a < INT64_MIN / b) return false;
+    if (a < INT64_MIN / b) {
+      return false;
+    }
   } else if (a < INT64_MAX / b) {
     return false;
   }
@@ -273,7 +291,9 @@ static inline bool iree_checked_mul_i64(int64_t a, int64_t b,
 static inline bool iree_checked_mul_add_i64(int64_t base, int64_t lhs,
                                             int64_t rhs, int64_t* out_result) {
   int64_t product = 0;
-  if (!iree_checked_mul_i64(lhs, rhs, &product)) return false;
+  if (!iree_checked_mul_i64(lhs, rhs, &product)) {
+    return false;
+  }
   return iree_checked_add_i64(base, product, out_result);
 }
 
@@ -286,7 +306,9 @@ static inline bool iree_host_size_checked_add(iree_host_size_t a,
 #if IREE_HAVE_BUILTIN(__builtin_add_overflow)
   return !__builtin_add_overflow(a, b, out_result);
 #else
-  if (a > IREE_HOST_SIZE_MAX - b) return false;
+  if (a > IREE_HOST_SIZE_MAX - b) {
+    return false;
+  }
   *out_result = a + b;
   return true;
 #endif
@@ -301,7 +323,9 @@ static inline bool iree_host_size_checked_mul(iree_host_size_t a,
 #if IREE_HAVE_BUILTIN(__builtin_mul_overflow)
   return !__builtin_mul_overflow(a, b, out_result);
 #else
-  if (b != 0 && a > IREE_HOST_SIZE_MAX / b) return false;
+  if (b != 0 && a > IREE_HOST_SIZE_MAX / b) {
+    return false;
+  }
   *out_result = a * b;
   return true;
 #endif
@@ -315,7 +339,9 @@ static inline bool iree_host_size_checked_mul_add(
     iree_host_size_t base, iree_host_size_t count,
     iree_host_size_t element_size, iree_host_size_t* out_result) {
   iree_host_size_t product = 0;
-  if (!iree_host_size_checked_mul(count, element_size, &product)) return false;
+  if (!iree_host_size_checked_mul(count, element_size, &product)) {
+    return false;
+  }
   return iree_host_size_checked_add(base, product, out_result);
 }
 
@@ -327,7 +353,9 @@ static inline bool iree_device_size_checked_add(
 #if IREE_HAVE_BUILTIN(__builtin_add_overflow)
   return !__builtin_add_overflow(a, b, out_result);
 #else
-  if (a > IREE_DEVICE_SIZE_MAX - b) return false;
+  if (a > IREE_DEVICE_SIZE_MAX - b) {
+    return false;
+  }
   *out_result = a + b;
   return true;
 #endif
@@ -339,7 +367,9 @@ static inline bool iree_device_size_checked_mul(
 #if IREE_HAVE_BUILTIN(__builtin_mul_overflow)
   return !__builtin_mul_overflow(a, b, out_result);
 #else
-  if (b != 0 && a > IREE_DEVICE_SIZE_MAX / b) return false;
+  if (b != 0 && a > IREE_DEVICE_SIZE_MAX / b) {
+    return false;
+  }
   *out_result = a * b;
   return true;
 #endif

@@ -85,7 +85,9 @@ class ControlUniformityTest : public ::testing::Test {
     loom_region_for_each_block(body, block) {
       loom_op_t* op = nullptr;
       loom_block_for_each_op(block, op) {
-        if (loom_test_use_isa(op)) uses.push_back(op);
+        if (loom_test_use_isa(op)) {
+          uses.push_back(op);
+        }
       }
     }
     return uses;

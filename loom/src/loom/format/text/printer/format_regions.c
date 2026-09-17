@@ -45,7 +45,9 @@ static char loom_print_region_syntax_first_char(loom_print_context_t* ctx,
     case LOOM_REGION_SYNTAX_TEST_DO:
       return 'd';
     case LOOM_REGION_SYNTAX_LOW_ASM_OPTIONAL:
-      if (!loom_print_low_asm_is_requested(ctx, region)) return '{';
+      if (!loom_print_low_asm_is_requested(ctx, region)) {
+        return '{';
+      }
       return loom_print_low_asm_uses_marker(ctx, region) ? 'a' : '{';
     case LOOM_REGION_SYNTAX_PIPELINE:
       return 'p';

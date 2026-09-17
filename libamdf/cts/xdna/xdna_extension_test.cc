@@ -112,12 +112,16 @@ class XdnaEndpointTest : public ::testing::Test {
     uint32_t endpoint_count = 0;
     amdf_status_t status =
         api_->endpoint_enumerate(instance_, 0, nullptr, &endpoint_count);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
     std::vector<amdf_endpoint_summary_t> summaries(endpoint_count);
     if (endpoint_count != 0) {
       status = api_->endpoint_enumerate(instance_, endpoint_count,
                                         summaries.data(), &endpoint_count);
-      if (!amdf_status_is_ok(status)) return status;
+      if (!amdf_status_is_ok(status)) {
+        return status;
+      }
     }
     for (uint32_t ordinal = 0; ordinal < endpoint_count; ++ordinal) {
       const amdf_endpoint_summary_t& summary = summaries[ordinal];
@@ -229,7 +233,9 @@ class XdnaMemoryDiscoveryTest : public XdnaEndpointTest {
 TEST_F(XdnaMemoryDiscoveryTest, SelectsLiveProfileAndUsesNativeLimits) {
   bool engine_found = false;
   ASSERT_EQ(OpenEngine(AMDF_ENGINE_KIND_XDNA, &engine_found), AMDF_STATUS_OK);
-  if (!engine_found) GTEST_SKIP() << "no qualified XDNA endpoint present";
+  if (!engine_found) {
+    GTEST_SKIP() << "no qualified XDNA endpoint present";
+  }
 
   uint32_t count = 0;
   ASSERT_EQ(
@@ -256,8 +262,9 @@ TEST_F(XdnaMemoryDiscoveryTest, SelectsLiveProfileAndUsesNativeLimits) {
   // Resource queries consume the explicitly activated device.
   const auto device_status =
       GetCtsDeviceCache().GetXdnaDevice(endpoint_, &device_);
-  if (device_status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED))
+  if (device_status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
     GTEST_SKIP() << "XDNA device materialization is unavailable";
+  }
   ASSERT_EQ(device_status, AMDF_STATUS_OK);
 
   count = 0;
@@ -302,7 +309,9 @@ TEST_F(XdnaMemoryDiscoveryTest, SelectsLiveProfileAndUsesNativeLimits) {
        ++ordinal) {
     const auto status = api_->memory_scope_query_device_profile(
         system_scope, ordinal, 1, &device_access, &live, &live_access);
-    if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) continue;
+    if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
+      continue;
+    }
     ASSERT_EQ(status, AMDF_STATUS_OK);
     if ((live.roles & required_roles) == required_roles &&
         (live.supported_flags & AMDF_MEMORY_FLAG_HOST_VISIBLE)) {
@@ -363,7 +372,9 @@ TEST_F(XdnaMemoryDiscoveryTest, SelectsLiveProfileAndUsesNativeLimits) {
   auto* bytes = static_cast<uint8_t*>(mapping.pointer);
   ASSERT_NE(bytes, nullptr);
   std::memset(bytes, 0xA5, mapping.byte_length);
-  for (uint64_t i = 0; i < mapping.byte_length; ++i) ASSERT_EQ(bytes[i], 0xA5);
+  for (uint64_t i = 0; i < mapping.byte_length; ++i) {
+    ASSERT_EQ(bytes[i], 0xA5);
+  }
 }
 
 TEST_F(XdnaEndpointTest, RejectsGpuEndpointWithoutMutation) {

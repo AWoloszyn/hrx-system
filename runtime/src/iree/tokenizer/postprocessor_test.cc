@@ -31,23 +31,35 @@ iree_tokenizer_postprocessor_template_t MakeTemplate(
   t.sequence_b_type_id = sequence_b_type_id;
 
   size_t i = 0;
-  for (int32_t id : prefix_ids) t.token_ids[i++] = id;
-  for (int32_t id : infix_ids) t.token_ids[i++] = id;
-  for (int32_t id : suffix_ids) t.token_ids[i++] = id;
+  for (int32_t id : prefix_ids) {
+    t.token_ids[i++] = id;
+  }
+  for (int32_t id : infix_ids) {
+    t.token_ids[i++] = id;
+  }
+  for (int32_t id : suffix_ids) {
+    t.token_ids[i++] = id;
+  }
 
   i = 0;
   if (prefix_type_ids.size() > 0) {
-    for (uint8_t tid : prefix_type_ids) t.type_ids[i++] = tid;
+    for (uint8_t tid : prefix_type_ids) {
+      t.type_ids[i++] = tid;
+    }
   } else {
     i += t.prefix_count;
   }
   if (infix_type_ids.size() > 0) {
-    for (uint8_t tid : infix_type_ids) t.type_ids[i++] = tid;
+    for (uint8_t tid : infix_type_ids) {
+      t.type_ids[i++] = tid;
+    }
   } else {
     i += t.infix_count;
   }
   if (suffix_type_ids.size() > 0) {
-    for (uint8_t tid : suffix_type_ids) t.type_ids[i++] = tid;
+    for (uint8_t tid : suffix_type_ids) {
+      t.type_ids[i++] = tid;
+    }
   }
 
   return t;

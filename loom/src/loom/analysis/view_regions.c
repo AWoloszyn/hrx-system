@@ -95,14 +95,20 @@ static bool loom_view_region_facts_exact_i64(loom_value_facts_t facts,
 
 static void loom_view_region_expression_refine_facts(
     loom_symbolic_expr_t* expression, loom_value_facts_t facts) {
-  if (loom_value_facts_is_unknown(facts)) return;
+  if (loom_value_facts_is_unknown(facts)) {
+    return;
+  }
   int64_t exact_value = 0;
   if (loom_symbolic_expr_is_constant(expression) &&
       loom_view_region_facts_exact_i64(facts, &exact_value)) {
-    if (expression->constant == exact_value) expression->facts = facts;
+    if (expression->constant == exact_value) {
+      expression->facts = facts;
+    }
     return;
   }
-  if (loom_symbolic_expr_is_constant(expression)) return;
+  if (loom_symbolic_expr_is_constant(expression)) {
+    return;
+  }
   if (loom_value_facts_is_unknown(expression->facts) ||
       loom_value_facts_is_exact(facts)) {
     expression->facts = facts;
@@ -122,7 +128,9 @@ static void loom_view_region_expression_from_facts(
 
 static bool loom_view_region_expr_is_constant(
     const loom_symbolic_expr_t* expression, int64_t* out_value) {
-  if (!loom_symbolic_expr_is_constant(expression)) return false;
+  if (!loom_symbolic_expr_is_constant(expression)) {
+    return false;
+  }
   *out_value = expression->constant;
   return true;
 }
@@ -175,7 +183,9 @@ static iree_status_t loom_view_region_dim_expr(
 
 static int64_t loom_view_region_static_element_byte_count(loom_type_t type) {
   int32_t bit_count = loom_scalar_type_bitwidth(loom_type_element_type(type));
-  if (bit_count <= 0 || (bit_count % 8) != 0) return -1;
+  if (bit_count <= 0 || (bit_count % 8) != 0) {
+    return -1;
+  }
   return bit_count / 8;
 }
 
@@ -222,7 +232,9 @@ static iree_status_t loom_view_region_static_or_dynamic_expr(
       continue;
     }
     if (i == axis) {
-      if (dynamic_ordinal >= dynamic_values.count) return iree_ok_status();
+      if (dynamic_ordinal >= dynamic_values.count) {
+        return iree_ok_status();
+      }
       IREE_RETURN_IF_ERROR(loom_symbolic_expr_from_value(
           table->expression_context, dynamic_values.values[dynamic_ordinal],
           out_expression));
@@ -238,15 +250,23 @@ static iree_status_t loom_view_region_direct_strided_stride_expr(
     loom_view_region_table_t* table, loom_type_t view_type, uint8_t axis,
     loom_symbolic_expr_t* out_expression, bool* out_known) {
   *out_known = false;
-  if (!loom_type_has_ssa_encoding(view_type)) return iree_ok_status();
+  if (!loom_type_has_ssa_encoding(view_type)) {
+    return iree_ok_status();
+  }
   loom_value_id_t layout_value_id =
       (loom_value_id_t)loom_type_encoding_value_id(view_type);
   const loom_module_t* module = table->expression_context->module;
-  if (layout_value_id >= module->values.count) return iree_ok_status();
+  if (layout_value_id >= module->values.count) {
+    return iree_ok_status();
+  }
   const loom_value_t* layout_value = loom_module_value(module, layout_value_id);
-  if (loom_value_is_block_arg(layout_value)) return iree_ok_status();
+  if (loom_value_is_block_arg(layout_value)) {
+    return iree_ok_status();
+  }
   const loom_op_t* op = loom_value_def_op(layout_value);
-  if (!op || !loom_encoding_layout_strided_isa(op)) return iree_ok_status();
+  if (!op || !loom_encoding_layout_strided_isa(op)) {
+    return iree_ok_status();
+  }
   return loom_view_region_static_or_dynamic_expr(
       table, loom_encoding_layout_strided_static_strides(op),
       loom_encoding_layout_strided_strides(op), axis, out_expression,
@@ -257,7 +277,9 @@ static iree_status_t loom_view_region_dense_axis_stride_expr(
     loom_view_region_table_t* table, loom_type_t view_type, uint8_t axis,
     loom_symbolic_expr_t* out_expression, bool* out_known) {
   *out_known = false;
-  if (axis >= loom_type_rank(view_type)) return iree_ok_status();
+  if (axis >= loom_type_rank(view_type)) {
+    return iree_ok_status();
+  }
   loom_symbolic_expr_constant(1, out_expression);
   uint8_t rank = loom_type_rank(view_type);
   for (uint8_t suffix_axis = (uint8_t)(axis + 1); suffix_axis < rank;
@@ -353,7 +375,9 @@ static iree_status_t loom_view_region_dense_footprint_expr(
     IREE_RETURN_IF_ERROR(
         loom_view_region_expr_mul(table, out_expression, &dim, &product));
     *out_expression = product;
-    if (!loom_symbolic_expr_is_linear(out_expression)) return iree_ok_status();
+    if (!loom_symbolic_expr_is_linear(out_expression)) {
+      return iree_ok_status();
+    }
   }
   return iree_ok_status();
 }
@@ -624,7 +648,9 @@ static iree_status_t loom_view_region_build_subview(
       table, loom_view_subview_source(op), &source_region));
   IREE_RETURN_IF_ERROR(loom_view_region_build_default(
       table, value_id, view_type, reference, out_region));
-  if (!source_region) return iree_ok_status();
+  if (!source_region) {
+    return iree_ok_status();
+  }
 
   loom_type_t source_type = loom_module_value_type(
       table->expression_context->module, loom_view_subview_source(op));
@@ -670,7 +696,9 @@ static iree_status_t loom_view_region_build_refine(
       table, loom_view_refine_source(op), &source_region));
   IREE_RETURN_IF_ERROR(loom_view_region_build_default(
       table, value_id, view_type, reference, out_region));
-  if (!source_region) return iree_ok_status();
+  if (!source_region) {
+    return iree_ok_status();
+  }
   out_region->root_value_id = source_region->root_value_id;
   out_region->alias_scope_id = source_region->alias_scope_id;
   out_region->nullability = source_region->nullability;
@@ -736,7 +764,9 @@ iree_status_t loom_view_region_table_get(
   const loom_value_ordinal_t value_ordinal =
       loom_local_value_domain_ordinal(table->value_domain, value_id);
   loom_type_t type = loom_module_value_type(module, value_id);
-  if (!loom_type_is_view(type)) return iree_ok_status();
+  if (!loom_type_is_view(type)) {
+    return iree_ok_status();
+  }
 
   uint8_t state = table->states_by_value_ordinal[value_ordinal];
   if (state == LOOM_VIEW_REGION_VALUE_READY) {
@@ -748,7 +778,9 @@ iree_status_t loom_view_region_table_get(
     }
     return iree_ok_status();
   }
-  if (state == LOOM_VIEW_REGION_VALUE_VISITING) return iree_ok_status();
+  if (state == LOOM_VIEW_REGION_VALUE_VISITING) {
+    return iree_ok_status();
+  }
 
   table->states_by_value_ordinal[value_ordinal] =
       LOOM_VIEW_REGION_VALUE_VISITING;
@@ -784,7 +816,9 @@ bool loom_view_region_table_try_lookup(const loom_view_region_table_t* table,
   }
   const loom_value_ordinal_t value_ordinal =
       loom_local_value_domain_try_ordinal(table->value_domain, value_id);
-  if (value_ordinal == LOOM_VALUE_ORDINAL_INVALID) return false;
+  if (value_ordinal == LOOM_VALUE_ORDINAL_INVALID) {
+    return false;
+  }
   if (table->states_by_value_ordinal[value_ordinal] !=
       LOOM_VIEW_REGION_VALUE_READY) {
     return false;
@@ -881,7 +915,9 @@ static iree_status_t loom_view_region_table_analyze_op_memory(
     loom_view_region_table_t* table, const loom_op_t* op) {
   const loom_op_vtable_t* vtable =
       loom_op_vtable(table->expression_context->module, op);
-  if (!vtable) return iree_ok_status();
+  if (!vtable) {
+    return iree_ok_status();
+  }
 
   if (vtable->memory_access) {
     const loom_memory_access_t access = {
@@ -903,7 +939,9 @@ static iree_status_t loom_view_region_table_analyze_op_memory(
     }
   }
 
-  if (!vtable->operand_descriptors) return iree_ok_status();
+  if (!vtable->operand_descriptors) {
+    return iree_ok_status();
+  }
   uint16_t descriptor_count = op->operand_count < vtable->fixed_operand_count
                                   ? op->operand_count
                                   : vtable->fixed_operand_count;
@@ -916,7 +954,9 @@ static iree_status_t loom_view_region_table_analyze_op_memory(
     const loom_view_region_t* const_region = NULL;
     IREE_RETURN_IF_ERROR(
         loom_view_region_table_get(table, operands[i], &const_region));
-    if (!const_region) continue;
+    if (!const_region) {
+      continue;
+    }
     loom_view_region_t* region = &table->regions[const_region->region_id];
     loom_view_region_add_access(region, flags);
   }
@@ -947,7 +987,9 @@ static iree_status_t loom_view_region_table_analyze_op_tree(
 
 static iree_status_t loom_view_region_table_analyze_region(
     loom_view_region_table_t* table, const loom_region_t* region) {
-  if (!region) return iree_ok_status();
+  if (!region) {
+    return iree_ok_status();
+  }
   const loom_block_t* block = NULL;
   loom_region_for_each_block(region, block) {
     for (uint16_t i = 0; i < block->arg_count; ++i) {
@@ -998,7 +1040,9 @@ iree_status_t loom_view_regions_prove_no_overlap(
     loom_view_region_table_t* table, const loom_view_region_t* left_region,
     const loom_view_region_t* right_region, bool* out_no_overlap) {
   *out_no_overlap = false;
-  if (!left_region || !right_region) return iree_ok_status();
+  if (!left_region || !right_region) {
+    return iree_ok_status();
+  }
   if (loom_value_fact_reference_origins_are_disjoint(left_region->origin,
                                                      right_region->origin)) {
     *out_no_overlap = true;

@@ -145,7 +145,9 @@ iree_profile_export_calculate_device_time(const iree_profile_model_t* model,
   memset(&device_time, 0, sizeof(device_time));
   device_time.is_valid =
       start_tick != 0 && end_tick != 0 && end_tick >= start_tick;
-  if (!device_time.is_valid) return device_time;
+  if (!device_time.is_valid) {
+    return device_time;
+  }
 
   device_time.duration_ticks = end_tick - start_tick;
   const iree_profile_model_device_t* device =
@@ -246,7 +248,9 @@ static iree_status_t iree_profile_export_process_device_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_device_record_t device_record =
         iree_hal_profile_device_record_default();
@@ -296,7 +300,9 @@ static iree_status_t iree_profile_export_process_queue_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_queue_record_t queue_record;
     memcpy(&queue_record, typed_record.contents.data, sizeof(queue_record));
@@ -324,7 +330,9 @@ static iree_status_t iree_profile_export_process_executable_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_executable_record_t executable_record;
     memcpy(&executable_record, typed_record.contents.data,
@@ -362,7 +370,9 @@ static iree_status_t iree_profile_export_process_executable_function_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_executable_function_record_t function_record;
     memcpy(&function_record, typed_record.contents.data,
@@ -420,7 +430,9 @@ static iree_status_t iree_profile_export_process_command_buffer_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_command_buffer_record_t command_buffer_record;
     memcpy(&command_buffer_record, typed_record.contents.data,
@@ -453,7 +465,9 @@ static iree_status_t iree_profile_export_process_command_operation_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_command_operation_record_t operation_record;
     memcpy(&operation_record, typed_record.contents.data,
@@ -526,7 +540,9 @@ static iree_status_t iree_profile_export_process_clock_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_clock_correlation_record_t clock_record;
     memcpy(&clock_record, typed_record.contents.data, sizeof(clock_record));
@@ -571,7 +587,9 @@ static iree_status_t iree_profile_export_process_dispatch_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_dispatch_event_t dispatch_record;
     memcpy(&dispatch_record, typed_record.contents.data,
@@ -652,7 +670,9 @@ static iree_status_t iree_profile_export_process_queue_device_event_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_queue_device_event_t queue_device_event;
     memcpy(&queue_device_event, typed_record.contents.data,
@@ -725,7 +745,9 @@ static iree_status_t iree_profile_export_process_host_execution_event_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_host_execution_event_t host_event;
     memcpy(&host_event, typed_record.contents.data, sizeof(host_event));
@@ -805,7 +827,9 @@ static iree_status_t iree_profile_export_process_command_region_event_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_command_region_event_t region_event;
     memcpy(&region_event, typed_record.contents.data, sizeof(region_event));
@@ -921,7 +945,9 @@ static iree_status_t iree_profile_export_process_queue_event_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_queue_event_t queue_event;
     memcpy(&queue_event, typed_record.contents.data, sizeof(queue_event));
@@ -971,7 +997,9 @@ static iree_status_t iree_profile_export_process_memory_event_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_memory_event_t memory_event;
     memcpy(&memory_event, typed_record.contents.data, sizeof(memory_event));
@@ -1033,7 +1061,9 @@ static iree_status_t iree_profile_export_process_event_relationship_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_event_relationship_record_t relationship_record;
     memcpy(&relationship_record, typed_record.contents.data,
@@ -1084,7 +1114,9 @@ static iree_status_t iree_profile_export_process_counter_set_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_counter_set_record_t counter_set_record;
     memcpy(&counter_set_record, typed_record.contents.data,
@@ -1130,7 +1162,9 @@ static iree_status_t iree_profile_export_process_counter_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_counter_record_t counter_record;
     memcpy(&counter_record, typed_record.contents.data, sizeof(counter_record));
@@ -1192,7 +1226,9 @@ static iree_status_t iree_profile_export_process_counter_sample_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_counter_sample_record_t sample_record;
     memcpy(&sample_record, typed_record.contents.data, sizeof(sample_record));
@@ -1269,7 +1305,9 @@ static iree_status_t iree_profile_export_process_counter_sample_records(
               device_time.duration_scale_source),
           device_time.has_duration_ns ? device_time.duration_ns : 0);
       for (uint32_t i = 0; i < sample_record.sample_value_count; ++i) {
-        if (i != 0) fputc(',', file);
+        if (i != 0) {
+          fputc(',', file);
+        }
         fprintf(file, "%" PRIu64, values[i]);
       }
       fputs("]}\n", file);
@@ -1293,7 +1331,9 @@ static iree_status_t iree_profile_export_process_device_metric_source_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_device_metric_source_record_t source_record;
     memcpy(&source_record, typed_record.contents.data, sizeof(source_record));
@@ -1347,7 +1387,9 @@ iree_profile_export_process_device_metric_descriptor_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_device_metric_descriptor_record_t descriptor_record;
     memcpy(&descriptor_record, typed_record.contents.data,
@@ -1426,7 +1468,9 @@ static iree_status_t iree_profile_export_process_device_metric_sample_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_device_metric_sample_record_t sample_record;
     memcpy(&sample_record, typed_record.contents.data, sizeof(sample_record));
@@ -1482,7 +1526,9 @@ static iree_status_t iree_profile_export_process_device_metric_sample_records(
               sample_record.source_timestamp,
               sample_record.source_timestamp_frequency_hz);
       for (uint32_t i = 0; i < sample_record.value_count; ++i) {
-        if (i != 0) fputc(',', file);
+        if (i != 0) {
+          fputc(',', file);
+        }
         const iree_profile_model_metric_descriptor_t* descriptor =
             iree_profile_model_find_metric_descriptor(
                 model, sample_record.source_id, values[i].metric_id);

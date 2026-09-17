@@ -47,7 +47,9 @@ static bool loom_cmd_dispatch_count_exact_u32(
     return true;
   }
   *out_is_exact = true;
-  if (value < 0 || value > UINT32_MAX) return false;
+  if (value < 0 || value > UINT32_MAX) {
+    return false;
+  }
   *out_value = (uint32_t)value;
   return true;
 }

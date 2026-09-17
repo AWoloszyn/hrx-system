@@ -191,7 +191,9 @@ bool loom_bytecode_attr_is_symbol_identity(const loom_op_vtable_t* vtable,
 
 static uint8_t loom_bytecode_find_symbol_attr_index(
     const loom_op_vtable_t* vtable) {
-  if (!vtable || !vtable->attr_descriptors) return LOOM_ATTR_INDEX_NONE;
+  if (!vtable || !vtable->attr_descriptors) {
+    return LOOM_ATTR_INDEX_NONE;
+  }
   if (vtable->symbol_def) {
     uint8_t attr_index = vtable->symbol_def->name_attr_index;
     if (attr_index < vtable->attribute_count &&
@@ -212,7 +214,9 @@ static uint8_t loom_bytecode_find_symbol_attr_index(
 static iree_status_t loom_bytecode_global_value_list_reserve(
     loom_bytecode_global_value_list_t* list,
     iree_host_size_t minimum_capacity) {
-  if (minimum_capacity <= list->capacity) return iree_ok_status();
+  if (minimum_capacity <= list->capacity) {
+    return iree_ok_status();
+  }
   iree_host_size_t new_capacity = list->capacity ? list->capacity : 4;
   while (new_capacity < minimum_capacity) {
     if (new_capacity > IREE_HOST_SIZE_MAX / 2) {
@@ -242,7 +246,9 @@ static iree_status_t loom_bytecode_global_value_list_push_unique(
         value_id, list->module->values.count);
   }
   for (iree_host_size_t i = 0; i < list->count; ++i) {
-    if (list->values[i] == value_id) return iree_ok_status();
+    if (list->values[i] == value_id) {
+      return iree_ok_status();
+    }
   }
   IREE_RETURN_IF_ERROR(
       loom_bytecode_global_value_list_reserve(list, list->count + 1));
@@ -310,7 +316,9 @@ static iree_status_t loom_bytecode_collect_global_attr_value_refs_at_depth(
             (unsigned)LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH);
       }
       for (uint16_t i = 0; i < attr.count; ++i) {
-        if (loom_attr_is_absent(attr.parameterized_slots[i])) continue;
+        if (loom_attr_is_absent(attr.parameterized_slots[i])) {
+          continue;
+        }
         IREE_RETURN_IF_ERROR(
             loom_bytecode_collect_global_attr_value_refs_at_depth(
                 list, attr.parameterized_slots[i], aggregate_depth + 1));
@@ -567,7 +575,9 @@ iree_status_t loom_bytecode_number_function(
   // independent value namespace.
   loom_region_t** regions = loom_op_regions(func_like.op);
   for (uint8_t i = 0; i < func_like.op->region_count; ++i) {
-    if (!regions[i]) continue;
+    if (!regions[i]) {
+      continue;
+    }
     IREE_RETURN_IF_ERROR(loom_bytecode_number_region(numbering, regions[i], 0));
   }
 
@@ -648,7 +658,9 @@ static iree_status_t loom_bytecode_number_operation(
     bool present = false;
     IREE_RETURN_IF_ERROR(
         loom_bytecode_op_attr_is_present(op, descriptor, attrs[i], &present));
-    if (!present) continue;
+    if (!present) {
+      continue;
+    }
 
     // Attribute key name (from vtable descriptor).
     if (descriptor) {

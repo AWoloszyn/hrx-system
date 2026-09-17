@@ -187,7 +187,9 @@ static iree_status_t loom_cfg_graph_build_traversal(
     iree_arena_allocator_t* arena, loom_cfg_graph_t* graph,
     iree_host_size_t* stack_blocks,
     iree_host_size_t* stack_successor_positions) {
-  if (graph->block_count == 0) return iree_ok_status();
+  if (graph->block_count == 0) {
+    return iree_ok_status();
+  }
   uint16_t* order = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       arena, graph->block_count, sizeof(*order), (void**)&order));

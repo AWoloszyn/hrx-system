@@ -365,7 +365,9 @@ TEST_F(JsProactorTest, LinkedNopChain) {
   nops[2].base.flags |= IREE_ASYNC_OPERATION_FLAG_LINKED;
 
   iree_async_operation_t* ops[4];
-  for (int i = 0; i < 4; ++i) ops[i] = &nops[i].base;
+  for (int i = 0; i < 4; ++i) {
+    ops[i] = &nops[i].base;
+  }
   iree_async_operation_list_t list = {ops, 4};
   IREE_ASSERT_OK(proactor_->vtable->submit(proactor_, list));
 
@@ -493,7 +495,9 @@ TEST_F(JsProactorTest, FourStepNopSequenceLinkPath) {
   }
 
   iree_async_operation_t* steps[4];
-  for (int i = 0; i < 4; ++i) steps[i] = &nops[i].base;
+  for (int i = 0; i < 4; ++i) {
+    steps[i] = &nops[i].base;
+  }
   iree_async_sequence_operation_t sequence = {};
   sequence.base.type = IREE_ASYNC_OPERATION_TYPE_SEQUENCE;
   sequence.base.completion_fn = StatusRecordingCallback;

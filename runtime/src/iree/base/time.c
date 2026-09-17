@@ -127,7 +127,9 @@ static bool iree_wait_until_impl(iree_time_t deadline_ns) {
         .tv_nsec = (long)(delta_ns % 1000000000ull),
     };
     int ret = nanosleep(&abs_ts, NULL);
-    if (ret != 0) return false;
+    if (ret != 0) {
+      return false;
+    }
     now_ns = iree_time_now();
   }
   return true;
@@ -144,8 +146,12 @@ static bool iree_wait_until_impl(iree_time_t deadline_ns) { return true; }
 
 bool iree_wait_until(iree_time_t deadline_ns) {
   // Can't wait forever - or for the past.
-  if (deadline_ns == IREE_TIME_INFINITE_FUTURE) return false;
-  if (deadline_ns == IREE_TIME_INFINITE_PAST) return true;
+  if (deadline_ns == IREE_TIME_INFINITE_FUTURE) {
+    return false;
+  }
+  if (deadline_ns == IREE_TIME_INFINITE_PAST) {
+    return true;
+  }
 
   IREE_TRACE_ZONE_BEGIN(z0);
   IREE_TRACE_ZONE_APPEND_VALUE_I64(

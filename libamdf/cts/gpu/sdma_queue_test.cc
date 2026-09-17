@@ -34,7 +34,9 @@ EncodedUserQueueStream EncodeCopyStream(amdf_queue_format_features_t features,
   if ((features & AMDF_GPU_SDMA_FORMAT_FEATURE_FENCE_SYSTEM) != 0) {
     fence_header |= 1u << 20;
   }
-  if (has_scope) fence_header |= 3u << 24;
+  if (has_scope) {
+    fence_header |= 3u << 24;
+  }
   size_t ordinal = 0;
   AppendSdmaCacheTransition(words, &ordinal, kAcquireControl);
   words[ordinal++] = 1 | (has_scope ? 1u << 28 : 0);

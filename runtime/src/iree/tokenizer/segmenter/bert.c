@@ -79,7 +79,9 @@ iree_tokenizer_bert_classify_next(const char* data, iree_host_size_t position,
 static inline bool iree_tokenizer_bert_emit_segment(
     iree_tokenizer_segment_output_t output, iree_host_size_t* segment_count,
     iree_host_size_t start, iree_host_size_t end) {
-  if (*segment_count >= output.capacity) return false;
+  if (*segment_count >= output.capacity) {
+    return false;
+  }
   output.values[*segment_count].start = start;
   output.values[*segment_count].end = end;
   ++(*segment_count);

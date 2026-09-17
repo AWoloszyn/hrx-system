@@ -40,7 +40,9 @@ class Ref {
   }
 
   void reset(T* value = nullptr) {
-    if (value_) Release(value_);
+    if (value_) {
+      Release(value_);
+    }
     value_ = value;
   }
 

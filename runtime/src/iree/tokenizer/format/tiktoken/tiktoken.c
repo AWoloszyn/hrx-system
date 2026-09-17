@@ -228,7 +228,9 @@ typedef struct iree_tokenizer_tiktoken_parsed_t {
 
 static void iree_tokenizer_tiktoken_parsed_free(
     iree_tokenizer_tiktoken_parsed_t* parsed) {
-  if (!parsed) return;
+  if (!parsed) {
+    return;
+  }
   iree_allocator_free(parsed->allocator, parsed->entries);
   iree_allocator_free(parsed->allocator, parsed->bytes);
   parsed->entries = NULL;
@@ -255,7 +257,9 @@ static iree_status_t iree_tokenizer_tiktoken_parsed_ensure_capacity(
   if (needed > parsed->bytes_capacity) {
     iree_host_size_t new_capacity =
         parsed->bytes_capacity == 0 ? 4096 : parsed->bytes_capacity;
-    while (new_capacity < needed) new_capacity *= 2;
+    while (new_capacity < needed) {
+      new_capacity *= 2;
+    }
     IREE_RETURN_IF_ERROR(iree_allocator_realloc(parsed->allocator, new_capacity,
                                                 (void**)&parsed->bytes));
     parsed->bytes_capacity = new_capacity;
@@ -267,13 +271,19 @@ static iree_status_t iree_tokenizer_tiktoken_parsed_ensure_capacity(
 // Parses a uint32 from a decimal string view.
 static bool iree_tokenizer_tiktoken_parse_uint32(iree_string_view_t string,
                                                  uint32_t* out_value) {
-  if (string.size == 0) return false;
+  if (string.size == 0) {
+    return false;
+  }
   uint64_t value = 0;
   for (iree_host_size_t i = 0; i < string.size; ++i) {
     char ch = string.data[i];
-    if (ch < '0' || ch > '9') return false;
+    if (ch < '0' || ch > '9') {
+      return false;
+    }
     value = value * 10 + (uint64_t)(ch - '0');
-    if (value > UINT32_MAX) return false;
+    if (value > UINT32_MAX) {
+      return false;
+    }
   }
   *out_value = (uint32_t)value;
   return true;
@@ -319,7 +329,9 @@ static iree_status_t iree_tokenizer_tiktoken_parse_file(
     iree_string_view_consume_suffix(&line, iree_make_string_view("\r", 1));
 
     // Skip empty lines.
-    if (iree_string_view_is_empty(line)) continue;
+    if (iree_string_view_is_empty(line)) {
+      continue;
+    }
 
     // Split on space: "<base64> <rank>".
     iree_string_view_t base64_part, rank_part;
@@ -367,14 +379,18 @@ static iree_status_t iree_tokenizer_tiktoken_parse_file(
       for (uint32_t gap_rank = (uint32_t)out_parsed->entry_count;
            gap_rank < rank && iree_status_is_ok(status); ++gap_rank) {
         status = iree_tokenizer_tiktoken_parsed_ensure_capacity(out_parsed, 0);
-        if (!iree_status_is_ok(status)) break;
+        if (!iree_status_is_ok(status)) {
+          break;
+        }
         iree_tokenizer_tiktoken_entry_t* gap_entry =
             &out_parsed->entries[out_parsed->entry_count];
         gap_entry->byte_offset = 0;
         gap_entry->byte_length = 0;
         ++out_parsed->entry_count;
       }
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
     }
 
     // Validate rank fits in int32_t (token IDs are int32_t).
@@ -408,7 +424,9 @@ static iree_status_t iree_tokenizer_tiktoken_parse_file(
     // Store entry.
     status = iree_tokenizer_tiktoken_parsed_ensure_capacity(out_parsed,
                                                             decoded_length);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
 
     iree_tokenizer_tiktoken_entry_t* entry =
         &out_parsed->entries[out_parsed->entry_count];
@@ -541,7 +559,9 @@ static iree_status_t iree_tokenizer_tiktoken_reconstruct_merges(
        rank < parsed->entry_count && iree_status_is_ok(status); ++rank) {
     const iree_tokenizer_tiktoken_entry_t* entry = &parsed->entries[rank];
     // Skip placeholder entries at gap positions (reserved for special tokens).
-    if (entry->byte_length == 0) continue;
+    if (entry->byte_length == 0) {
+      continue;
+    }
     const uint8_t* raw_bytes = parsed->bytes + entry->byte_offset;
     iree_host_size_t raw_length = entry->byte_length;
 
@@ -626,7 +646,9 @@ static iree_status_t iree_tokenizer_tiktoken_reconstruct_merges(
       --part_count;
     }
 
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
 
     if (part_count != 2) {
       status = iree_make_status(IREE_STATUS_INTERNAL,
@@ -666,7 +688,9 @@ static iree_status_t iree_tokenizer_tiktoken_add_tokens(
        i < parsed->entry_count && iree_status_is_ok(status); ++i) {
     const iree_tokenizer_tiktoken_entry_t* entry = &parsed->entries[i];
     // Skip placeholder entries at gap positions (reserved for special tokens).
-    if (entry->byte_length == 0) continue;
+    if (entry->byte_length == 0) {
+      continue;
+    }
     if (entry->byte_length > IREE_TOKENIZER_TIKTOKEN_MAX_PARTS) {
       status = iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                                 "token at rank %" PRIhsz " has %" PRIu16

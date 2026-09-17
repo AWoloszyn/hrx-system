@@ -105,7 +105,9 @@ static void iree_tokenizer_decoder_byte_level_state_deinitialize(
 static iree_host_size_t iree_tokenizer_byte_level_try_emit_pending(
     iree_tokenizer_decoder_byte_level_state_t* state,
     iree_mutable_string_view_t output, iree_host_size_t write_position) {
-  if (state->pending_count == 0) return 0;
+  if (state->pending_count == 0) {
+    return 0;
+  }
 
   // Get expected sequence length from lead byte.
   iree_host_size_t expected =
@@ -158,11 +160,15 @@ static iree_host_size_t iree_tokenizer_byte_level_try_emit_pending(
 static bool iree_tokenizer_byte_level_flush_pending(
     iree_tokenizer_decoder_byte_level_state_t* state,
     iree_mutable_string_view_t output, iree_host_size_t* write_position) {
-  if (state->pending_count == 0) return true;
+  if (state->pending_count == 0) {
+    return true;
+  }
 
   // Any pending bytes at flush time are incomplete -> U+FFFD.
   static const uint8_t kUtf8ReplacementChar[3] = {0xEF, 0xBF, 0xBD};
-  if (*write_position + 3 > output.size) return false;
+  if (*write_position + 3 > output.size) {
+    return false;
+  }
 
   memcpy(output.data + *write_position, kUtf8ReplacementChar, 3);
   *write_position += 3;
@@ -219,7 +225,9 @@ static bool iree_tokenizer_byte_level_process_ascii_run(
   iree_host_size_t run_length = 1;
   while (*read_position + run_length < token.size && run_length < available) {
     uint8_t byte = (uint8_t)token.data[*read_position + run_length];
-    if (byte < 0x21 || byte > 0x7E) break;
+    if (byte < 0x21 || byte > 0x7E) {
+      break;
+    }
     ++run_length;
   }
 

@@ -1093,7 +1093,9 @@ static iree_status_t loom_amdgpu_emit_fragment_repack_transpose_lane_bits(
         plan->strategy_payload.transpose_stages[bit_index].lane_bit_set_mask ==
         0;
   }
-  if (!has_dynamic_predicate) return iree_ok_status();
+  if (!has_dynamic_predicate) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(loom_amdgpu_ensure_matrix_fragment_lane_mod(
       context, source_op, plan->lane_divisor, vgpr_type, lane_ids));

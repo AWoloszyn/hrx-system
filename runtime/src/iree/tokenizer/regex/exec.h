@@ -701,8 +701,12 @@ static inline uint16_t iree_tokenizer_regex_dfa_step(
     for (uint16_t i = 0; i < dfa->num_ranges; ++i) {
       const iree_tokenizer_regex_dfa_range_transition_t* range =
           &dfa->ranges[i];
-      if (range->from_state != current_state) continue;
-      if (codepoint < range->start) continue;  // Before this range.
+      if (range->from_state != current_state) {
+        continue;
+      }
+      if (codepoint < range->start) {
+        continue;  // Before this range.
+      }
       if (codepoint <= range->end) {
         return range->target_state;  // Exact match!
       }

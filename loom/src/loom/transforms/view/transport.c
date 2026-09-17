@@ -133,7 +133,9 @@ static iree_status_t loom_view_transport_add_value(
     loom_view_transport_plan_t* plan, loom_value_id_t value_id,
     loom_op_t* anchor, loom_view_transport_placement_t placement) {
   const loom_type_t type = loom_module_value_type(plan->module, value_id);
-  if (!loom_type_is_view(type)) return iree_ok_status();
+  if (!loom_type_is_view(type)) {
+    return iree_ok_status();
+  }
   if (plan->value_count == plan->value_capacity) {
     IREE_RETURN_IF_ERROR(iree_arena_grow_array(
         plan->arena, plan->value_count, plan->value_count + 1,
@@ -245,7 +247,9 @@ static void loom_view_transport_plan_offset(
       .base_value_id = LOOM_VALUE_ID_INVALID,
       .dependency = IREE_HOST_SIZE_MAX,
   };
-  if (offset->value_id != LOOM_VALUE_ID_INVALID) return;
+  if (offset->value_id != LOOM_VALUE_ID_INVALID) {
+    return;
+  }
   // An authored base retains its address-domain conversions and assumptions.
   // Expanding it into canonical terms could discard those producer facts.
   if (loom_symbolic_expr_is_linear(&region->projection_byte_offset)) {
@@ -275,7 +279,9 @@ static iree_status_t loom_view_transport_add_operand(
     loom_view_transport_plan_t* plan, loom_op_t* op, uint16_t operand_index,
     loom_value_id_t target_value) {
   const iree_host_size_t target = loom_view_transport_index(plan, target_value);
-  if (target == IREE_HOST_SIZE_MAX) return iree_ok_status();
+  if (target == IREE_HOST_SIZE_MAX) {
+    return iree_ok_status();
+  }
   const loom_view_region_t* source_region = NULL;
   const loom_value_id_t source = loom_op_operands(op)[operand_index];
   (void)loom_view_region_table_try_lookup(plan->regions, source,
@@ -305,7 +311,9 @@ static iree_status_t loom_view_transport_add_operand(
 static iree_status_t loom_view_transport_plan_loop(
     loom_view_transport_plan_t* plan, loom_loop_like_t loop) {
   const loom_value_slice_t initial = loom_loop_like_iter_args(loop);
-  if (initial.count == 0) return iree_ok_status();
+  if (initial.count == 0) {
+    return iree_ok_status();
+  }
   loom_block_t* body = loom_region_entry_block(loom_loop_like_body(loop));
   loom_region_t* condition = loom_loop_like_condition_region(loop);
   loom_block_t* entry = condition ? loom_region_entry_block(condition) : body;
@@ -379,7 +387,9 @@ static iree_status_t loom_view_transport_plan_operands(
       for (uint16_t i = 0; i < successor->arg_count; ++i) {
         const iree_host_size_t target =
             loom_view_transport_index(plan, loom_block_arg_id(successor, i));
-        if (target != IREE_HOST_SIZE_MAX) plan->values[target].selected = false;
+        if (target != IREE_HOST_SIZE_MAX) {
+          plan->values[target].selected = false;
+        }
       }
     }
   }
@@ -394,13 +404,17 @@ static iree_status_t loom_view_transport_select(
                                                  (void**)&unavailable));
   iree_host_size_t count = 0;
   for (iree_host_size_t i = 0; i < plan->value_count; ++i) {
-    if (!plan->values[i].selected) unavailable[count++] = i;
+    if (!plan->values[i].selected) {
+      unavailable[count++] = i;
+    }
   }
   for (iree_host_size_t i = 0; i < count; ++i) {
     for (iree_host_size_t edge = plan->values[unavailable[i]].first_dependent;
          edge != IREE_HOST_SIZE_MAX; edge = plan->dependencies[edge].next) {
       const iree_host_size_t target = plan->dependencies[edge].target;
-      if (!plan->values[target].selected) continue;
+      if (!plan->values[target].selected) {
+        continue;
+      }
       plan->values[target].selected = false;
       unavailable[count++] = target;
     }
@@ -558,14 +572,18 @@ static iree_status_t loom_view_transport_rewrite(
     loom_view_transport_plan_t* plan, loom_rewriter_t* rewriter,
     loom_view_transport_statistics_t* statistics) {
   for (iree_host_size_t i = 0; i < plan->value_count; ++i) {
-    if (!plan->values[i].selected) continue;
+    if (!plan->values[i].selected) {
+      continue;
+    }
     IREE_RETURN_IF_ERROR(
         loom_view_transport_reconstruct(rewriter, &plan->values[i]));
     ++statistics->values_decomposed;
   }
   for (iree_host_size_t i = 0; i < plan->operand_count; ++i) {
     const loom_view_transport_operand_t* operand = &plan->operands[i];
-    if (!plan->values[operand->target].selected) continue;
+    if (!plan->values[operand->target].selected) {
+      continue;
+    }
     loom_value_id_t offset;
     IREE_RETURN_IF_ERROR(loom_view_transport_materialize_offset(
         plan, rewriter, operand->source_region, &offset));
@@ -645,7 +663,9 @@ iree_status_t loom_decompose_view_transports_run(loom_pass_t* pass,
                                                  loom_module_t* module,
                                                  loom_func_like_t function) {
   loom_region_t* body = loom_func_like_body(function);
-  if (!body) return iree_ok_status();
+  if (!body) {
+    return iree_ok_status();
+  }
   loom_view_transport_plan_t plan = {.module = module, .arena = pass->arena};
   loom_walk_result_t result;
   IREE_RETURN_IF_ERROR(loom_walk_function(
@@ -653,7 +673,9 @@ iree_status_t loom_decompose_view_transports_run(loom_pass_t* pass,
       (loom_walk_callback_t){.fn = loom_view_transport_collect,
                              .user_data = &plan},
       pass->arena, &result));
-  if (plan.value_count == 0) return iree_ok_status();
+  if (plan.value_count == 0) {
+    return iree_ok_status();
+  }
   loom_rewriter_t rewriter;
   IREE_RETURN_IF_ERROR(
       loom_rewriter_initialize(&rewriter, module, pass->arena));
@@ -664,7 +686,9 @@ iree_status_t loom_decompose_view_transports_run(loom_pass_t* pass,
   }
   if (iree_any_bit_set(rewriter.flags, LOOM_REWRITER_FLAG_CHANGED)) {
     loom_pass_value_fact_owner_invalidate(pass->value_facts);
-    if (iree_status_is_ok(status)) loom_pass_mark_changed(pass);
+    if (iree_status_is_ok(status)) {
+      loom_pass_mark_changed(pass);
+    }
   }
   loom_local_value_domain_release(&plan.domain);
   loom_rewriter_deinitialize(&rewriter);

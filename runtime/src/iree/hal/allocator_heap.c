@@ -109,7 +109,9 @@ static iree_status_t iree_hal_heap_allocator_query_memory_heaps(
     iree_hal_allocator_memory_heap_t* IREE_RESTRICT heaps,
     iree_host_size_t* IREE_RESTRICT out_count) {
   const iree_host_size_t count = 1;
-  if (out_count) *out_count = count;
+  if (out_count) {
+    *out_count = count;
+  }
   if (capacity < count) {
     // NOTE: lightweight as this is hit in normal pre-sizing usage.
     return iree_status_from_code(IREE_STATUS_OUT_OF_RANGE);

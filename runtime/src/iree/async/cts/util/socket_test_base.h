@@ -225,7 +225,9 @@ class SocketTestBase : public CtsTestBase<BaseType> {
       }
       IREE_CHECK_OK(recv_tracker.ConsumeStatus());
 
-      if (recv_op.bytes_received == 0) break;  // EOF.
+      if (recv_op.bytes_received == 0) {
+        break;  // EOF.
+      }
       total_received += recv_op.bytes_received;
     }
     return total_received;

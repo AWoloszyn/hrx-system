@@ -297,7 +297,9 @@ iree_hal_webgpu_allocator_query_buffer_compatibility(
 
   // WebGPU buffer sizes must be multiples of 4 bytes.
   *allocation_size = iree_host_align(*allocation_size, 4);
-  if (*allocation_size == 0) *allocation_size = 4;
+  if (*allocation_size == 0) {
+    *allocation_size = 4;
+  }
 
   return compatibility;
 }

@@ -35,7 +35,9 @@ class DispatchPipelineTest : public CtsTestBase<> {
 
   void SetUp() override {
     CtsTestBase::SetUp();
-    if (HasFatalFailure() || IsSkipped()) return;
+    if (HasFatalFailure() || IsSkipped()) {
+      return;
+    }
     if (!transfer_queue_) {
       GTEST_SKIP() << "device has no provisioned transfer-capable queue";
     }

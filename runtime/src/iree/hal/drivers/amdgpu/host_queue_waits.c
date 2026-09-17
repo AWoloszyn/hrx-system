@@ -21,7 +21,9 @@ static bool iree_hal_amdgpu_frontier_dominates_axis(
     uint64_t target_epoch) {
   for (uint8_t i = 0; i < frontier->entry_count; ++i) {
     const iree_async_frontier_entry_t* entry = &frontier->entries[i];
-    if (entry->axis < axis) continue;
+    if (entry->axis < axis) {
+      continue;
+    }
     return entry->axis == axis && entry->epoch >= target_epoch;
   }
   return false;
@@ -122,7 +124,9 @@ static bool iree_hal_amdgpu_host_queue_resolve_wait(
   }
 
   // Not completed. Must be an AMDGPU semaphore for device-side resolution.
-  if (!iree_hal_amdgpu_semaphore_isa(semaphore)) return false;
+  if (!iree_hal_amdgpu_semaphore_isa(semaphore)) {
+    return false;
+  }
 
   // Has the signal for |value| been submitted? The last_signal cache records
   // the most recent signal's value. If it hasn't reached |value|, the signal
@@ -319,7 +323,9 @@ void iree_hal_amdgpu_host_queue_emit_barriers(
 void iree_hal_amdgpu_host_queue_merge_barrier_axes(
     iree_hal_amdgpu_host_queue_t* queue,
     const iree_hal_amdgpu_wait_resolution_t* resolution) {
-  if (resolution->barrier_count == 0 || !queue->can_publish_frontier) return;
+  if (resolution->barrier_count == 0 || !queue->can_publish_frontier) {
+    return;
+  }
   iree_hal_amdgpu_fixed_frontier_t barrier_frontier;
   iree_async_frontier_initialize(
       iree_hal_amdgpu_fixed_frontier_as_frontier(&barrier_frontier),
@@ -342,7 +348,9 @@ const iree_async_frontier_t* iree_hal_amdgpu_host_queue_pool_requester_frontier(
     iree_hal_amdgpu_fixed_frontier_t* storage) {
   const iree_async_frontier_t* queue_frontier =
       iree_hal_amdgpu_host_queue_const_frontier(queue);
-  if (resolution->barrier_count == 0) return queue_frontier;
+  if (resolution->barrier_count == 0) {
+    return queue_frontier;
+  }
 
   memcpy(storage, &queue->frontier, sizeof(*storage));
   iree_hal_amdgpu_fixed_frontier_t barrier_frontier;
@@ -367,7 +375,9 @@ bool iree_hal_amdgpu_host_queue_append_pool_wait_frontier_barriers(
     const iree_async_frontier_t* requester_frontier,
     const iree_async_frontier_t* wait_frontier,
     iree_hal_amdgpu_wait_resolution_t* resolution) {
-  if (!wait_frontier) return false;
+  if (!wait_frontier) {
+    return false;
+  }
   for (uint8_t i = 0; i < wait_frontier->entry_count; ++i) {
     const iree_async_frontier_entry_t* entry = &wait_frontier->entries[i];
     if (iree_hal_amdgpu_frontier_dominates_axis(requester_frontier, entry->axis,

@@ -38,7 +38,9 @@ iree_hal_amdgpu_global_table_find_entry_locked(
     iree_hal_amdgpu_global_table_t* table, iree_string_view_t name) {
   for (iree_host_size_t i = 0; i < table->entry_count; ++i) {
     iree_hal_amdgpu_global_table_entry_t* entry = table->entries[i];
-    if (iree_string_view_equal(entry->name, name)) return entry;
+    if (iree_string_view_equal(entry->name, name)) {
+      return entry;
+    }
   }
   return NULL;
 }
@@ -47,14 +49,20 @@ static iree_hal_amdgpu_global_table_entry_t*
 iree_hal_amdgpu_global_table_entry_from_handle_locked(
     iree_hal_amdgpu_global_table_t* table,
     iree_hal_executable_global_t global) {
-  if (!iree_hal_executable_global_is_valid(global)) return NULL;
-  if (global.value >= table->entry_count) return NULL;
+  if (!iree_hal_executable_global_is_valid(global)) {
+    return NULL;
+  }
+  if (global.value >= table->entry_count) {
+    return NULL;
+  }
   return table->entries[global.value];
 }
 
 static iree_status_t iree_hal_amdgpu_global_table_grow_entries_locked(
     iree_hal_amdgpu_global_table_t* table, iree_host_size_t minimum_capacity) {
-  if (minimum_capacity <= table->entry_capacity) return iree_ok_status();
+  if (minimum_capacity <= table->entry_capacity) {
+    return iree_ok_status();
+  }
 
   iree_host_size_t new_capacity =
       table->entry_capacity ? table->entry_capacity : 4;
@@ -116,7 +124,9 @@ static iree_status_t iree_hal_amdgpu_global_table_entry_allocate(
 static void iree_hal_amdgpu_global_table_entry_free(
     iree_hal_amdgpu_global_table_t* table,
     iree_hal_amdgpu_global_table_entry_t* entry) {
-  if (!entry) return;
+  if (!entry) {
+    return;
+  }
   iree_hal_buffer_release(entry->buffer);
   iree_allocator_free(table->host_allocator, entry);
 }
@@ -137,7 +147,9 @@ iree_status_t iree_hal_amdgpu_global_table_initialize(
 
 void iree_hal_amdgpu_global_table_deinitialize(
     iree_hal_amdgpu_global_table_t* table) {
-  if (!table || !table->initialized) return;
+  if (!table || !table->initialized) {
+    return;
+  }
   for (iree_host_size_t i = 0; i < table->entry_count; ++i) {
     iree_hal_amdgpu_global_table_entry_free(table, table->entries[i]);
   }
@@ -175,7 +187,9 @@ iree_status_t iree_hal_amdgpu_global_table_try_lookup(
   bool resolved = false;
   IREE_RETURN_IF_ERROR(table->resolver.try_verify(
       table->resolver.user_data, name, &resolved, &byte_length));
-  if (!resolved) return iree_ok_status();
+  if (!resolved) {
+    return iree_ok_status();
+  }
 
   iree_hal_amdgpu_global_table_entry_t* new_entry = NULL;
   IREE_RETURN_IF_ERROR(iree_hal_amdgpu_global_table_entry_allocate(

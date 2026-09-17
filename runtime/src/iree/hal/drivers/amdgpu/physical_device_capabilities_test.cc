@@ -95,7 +95,9 @@ static hsa_status_t HSA_API FakeClusterAgentGetInfo(hsa_agent_t agent,
                                                     void* value) {
   auto* agent_info = reinterpret_cast<ClusterQueryAgentInfo*>(
       static_cast<uintptr_t>(agent.handle));
-  if (!agent_info || !value) return HSA_STATUS_ERROR_INVALID_ARGUMENT;
+  if (!agent_info || !value) {
+    return HSA_STATUS_ERROR_INVALID_ARGUMENT;
+  }
 
   iree_host_size_t query_index = 0;
   const void* source = nullptr;
@@ -126,7 +128,9 @@ static hsa_status_t HSA_API FakeClusterAgentGetInfo(hsa_agent_t agent,
   }
   ++agent_info->query_counts[query_index];
   const hsa_status_t status = agent_info->statuses[query_index];
-  if (status == HSA_STATUS_SUCCESS) std::memcpy(value, source, source_size);
+  if (status == HSA_STATUS_SUCCESS) {
+    std::memcpy(value, source, source_size);
+  }
   return status;
 }
 

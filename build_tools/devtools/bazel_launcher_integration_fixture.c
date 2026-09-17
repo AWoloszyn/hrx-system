@@ -36,7 +36,9 @@ static unsigned long parent_process_id(void) {
   DWORD current_process_id = GetCurrentProcessId();
   DWORD parent_process_id = 0;
   HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-  if (snapshot == INVALID_HANDLE_VALUE) return 0;
+  if (snapshot == INVALID_HANDLE_VALUE) {
+    return 0;
+  }
   PROCESSENTRY32 entry;
   memset(&entry, 0, sizeof(entry));
   entry.dwSize = sizeof(entry);

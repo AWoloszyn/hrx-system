@@ -60,7 +60,9 @@ static iree_status_t loom_liveness_json_write_string_or_null(
 static iree_status_t loom_liveness_json_write_scalar_name_or_null(
     loom_scalar_type_t scalar_type, loom_output_stream_t* stream) {
   const char* name = loom_scalar_type_name(scalar_type);
-  if (!name) return loom_output_stream_write_cstring(stream, "null");
+  if (!name) {
+    return loom_output_stream_write_cstring(stream, "null");
+  }
   return loom_json_write_escaped_cstring(stream, name);
 }
 
@@ -156,20 +158,28 @@ static iree_status_t loom_liveness_json_write_value_class(
 
 static int32_t loom_liveness_json_block_index(
     const loom_liveness_analysis_t* analysis, const loom_block_t* block) {
-  if (!block) return -1;
+  if (!block) {
+    return -1;
+  }
   for (iree_host_size_t i = 0; i < analysis->block_count; ++i) {
-    if (analysis->blocks[i].block == block) return (int32_t)i;
+    if (analysis->blocks[i].block == block) {
+      return (int32_t)i;
+    }
   }
   return -1;
 }
 
 static int32_t loom_liveness_json_op_index(const loom_block_t* block,
                                            const loom_op_t* op) {
-  if (!block || !op) return -1;
+  if (!block || !op) {
+    return -1;
+  }
   int32_t op_index = 0;
   const loom_op_t* candidate = NULL;
   loom_block_for_each_op(block, candidate) {
-    if (candidate == op) return op_index;
+    if (candidate == op) {
+      return op_index;
+    }
     ++op_index;
   }
   return -1;
@@ -224,7 +234,9 @@ static iree_status_t loom_liveness_json_write_interval(
 
 static iree_status_t loom_liveness_json_write_nullable_i32(
     loom_output_stream_t* stream, int32_t value) {
-  if (value < 0) return loom_output_stream_write_cstring(stream, "null");
+  if (value < 0) {
+    return loom_output_stream_write_cstring(stream, "null");
+  }
   return loom_output_stream_write_format(stream, "%d", value);
 }
 

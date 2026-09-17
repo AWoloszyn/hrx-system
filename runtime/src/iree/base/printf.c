@@ -214,7 +214,9 @@ static const char* iree_printf_parse_flags(const char* format,
 // preventing UB from malicious or malformed format strings.
 #define IREE_PRINTF_MAX_WIDTH_PRECISION 10000
 static const char* iree_printf_parse_uint(const char* format, int* out_value) {
-  if (*format < '0' || *format > '9') return format;
+  if (*format < '0' || *format > '9') {
+    return format;
+  }
   int value = 0;
   while (*format >= '0' && *format <= '9') {
     if (value <= IREE_PRINTF_MAX_WIDTH_PRECISION) {
@@ -247,7 +249,9 @@ static const char* iree_printf_parse_spec(const char* format, va_list* args,
       // Cast to unsigned before negation to handle INT_MIN without UB.
       out_spec->flags |= IREE_PRINTF_FLAG_LEFT;
       out_spec->width = (int)(-(unsigned int)out_spec->width);
-      if (out_spec->width < 0) out_spec->width = 0;  // INT_MIN edge case.
+      if (out_spec->width < 0) {
+        out_spec->width = 0;  // INT_MIN edge case.
+      }
     }
     if (out_spec->width > IREE_PRINTF_MAX_WIDTH_PRECISION) {
       out_spec->width = IREE_PRINTF_MAX_WIDTH_PRECISION;
@@ -315,7 +319,9 @@ static const char* iree_printf_parse_spec(const char* format, va_list* args,
 
   // Specifier character.
   out_spec->specifier = *format;
-  if (*format == '\0') return NULL;  // Truncated format string.
+  if (*format == '\0') {
+    return NULL;  // Truncated format string.
+  }
   return format + 1;
 }
 
@@ -552,7 +558,9 @@ static void iree_printf_format_string(iree_printf_output_t* out,
                                       const iree_printf_spec_t* spec,
                                       va_list* args) {
   const char* str = va_arg(*args, const char*);
-  if (!str) str = "(null)";
+  if (!str) {
+    str = "(null)";
+  }
 
   // Determine the output length. Precision limits the number of bytes read
   // from the string — the bounds check MUST precede the dereference.
@@ -870,7 +878,9 @@ static int iree_printf_log10_approx(double value) {
     // Subnormal: value = 2^(-1022) * (mantissa / 2^52).
     // Effective binary exponent = -1074 + position_of_highest_set_bit.
     uint64_t mantissa = u.bits & 0x000FFFFFFFFFFFFFull;
-    if (mantissa == 0) return 0;  // ±0, shouldn't reach here.
+    if (mantissa == 0) {
+      return 0;  // ±0, shouldn't reach here.
+    }
     // Count leading zeros in the 52-bit mantissa field.
     // Start from bit 51 (MSB of mantissa) and count down.
     int highest_bit = 0;
@@ -922,7 +932,9 @@ static double iree_printf_pow10(int n) {
     double base = 10.0;
     int exp = n;
     while (exp > 0) {
-      if (exp & 1) result *= base;
+      if (exp & 1) {
+        result *= base;
+      }
       base *= base;
       exp >>= 1;
     }
@@ -930,7 +942,9 @@ static double iree_printf_pow10(int n) {
     double base = 10.0;
     int exp = -n;
     while (exp > 0) {
-      if (exp & 1) result /= base;
+      if (exp & 1) {
+        result /= base;
+      }
       base *= base;
       exp >>= 1;
     }
@@ -974,7 +988,9 @@ static int iree_printf_format_fixed(char* buffer, double value, int precision,
       while (effective_precision < precision &&
              effective_precision < IREE_PRINTF_MAX_FIXED_FRACTION_DIGITS) {
         double next_scale = iree_printf_pow10(effective_precision + 1);
-        if (fractional_part * next_scale >= 9.0e15) break;
+        if (fractional_part * next_scale >= 9.0e15) {
+          break;
+        }
         effective_precision++;
       }
     }
@@ -1001,7 +1017,9 @@ static int iree_printf_format_fixed(char* buffer, double value, int precision,
   // Above 2^53 the scaled product can lose whole integer units. Apply those
   // first so the remaining fraction is in [0, 1) for nearest-even rounding.
   int64_t correction = (int64_t)remainder;
-  if ((double)correction > remainder) --correction;
+  if ((double)correction > remainder) {
+    --correction;
+  }
   if (correction < 0) {
     frac_digits -= (uint64_t)-correction;
   } else {
@@ -1014,12 +1032,16 @@ static int iree_printf_format_fixed(char* buffer, double value, int precision,
     // Exactly half: determine which digit to check for evenness.
     if (effective_precision > 0) {
       // The last fractional digit determines rounding.
-      if (frac_digits & 1) frac_digits++;
+      if (frac_digits & 1) {
+        frac_digits++;
+      }
     } else {
       // Precision is 0: the ones digit of the integral part determines
       // rounding. frac_digits is 0 here (precision 0 means no frac digits).
       uint64_t int_ones = (uint64_t)integral_part % 10;
-      if (int_ones & 1) frac_digits++;  // Will carry into integral_part.
+      if (int_ones & 1) {
+        frac_digits++;  // Will carry into integral_part.
+      }
     }
   }
 
@@ -1064,7 +1086,9 @@ static int iree_printf_format_fixed(char* buffer, double value, int precision,
 
     // Extract up to 17 significant digits from the normalized value.
     int sig_digits = IREE_PRINTF_MAX_FLOAT_PRECISION;
-    if (sig_digits > exponent + 1) sig_digits = exponent + 1;
+    if (sig_digits > exponent + 1) {
+      sig_digits = exponent + 1;
+    }
     // Scale to get all significant digits as an integer.
     double scaled = normalized * iree_printf_pow10(sig_digits - 1);
     uint64_t sig_value = (uint64_t)(scaled + 0.5);
@@ -1238,17 +1262,23 @@ static int iree_printf_format_significant_fixed(
     digits.significand /= 10;
   }
   int final_power = digits.exponent - digit_count + 1;
-  if (final_power > 0) final_power = 0;
+  if (final_power > 0) {
+    final_power = 0;
+  }
   int position = 0;
   for (int power = digits.exponent > 0 ? digits.exponent : 0;
        power >= final_power; --power) {
-    if (power == -1) buffer[position++] = '.';
+    if (power == -1) {
+      buffer[position++] = '.';
+    }
     int index = digits.exponent - power;
     buffer[position++] =
         index >= 0 && index < digit_count ? significant_digits[index] : '0';
   }
   *out_trailing_zeros = precision - digits.exponent - 1 + final_power;
-  if (*out_trailing_zeros < 0) *out_trailing_zeros = 0;
+  if (*out_trailing_zeros < 0) {
+    *out_trailing_zeros = 0;
+  }
   if (final_power == 0 && (*out_trailing_zeros > 0 || force_decimal_point)) {
     buffer[position++] = '.';
   }
@@ -1286,7 +1316,9 @@ static void iree_printf_format_float(iree_printf_output_t* out,
     const char* text = uppercase ? "NAN" : "nan";
     int content_width = sign_length + 3;
     int padding = 0;
-    if (spec->width > content_width) padding = spec->width - content_width;
+    if (spec->width > content_width) {
+      padding = spec->width - content_width;
+    }
 
     if (!(spec->flags & IREE_PRINTF_FLAG_LEFT)) {
       iree_printf_output_fill(out, ' ', padding);
@@ -1303,7 +1335,9 @@ static void iree_printf_format_float(iree_printf_output_t* out,
     const char* text = uppercase ? "INF" : "inf";
     int content_width = sign_length + 3;
     int padding = 0;
-    if (spec->width > content_width) padding = spec->width - content_width;
+    if (spec->width > content_width) {
+      padding = spec->width - content_width;
+    }
 
     if (!(spec->flags & IREE_PRINTF_FLAG_LEFT)) {
       iree_printf_output_fill(out, ' ', padding);
@@ -1332,9 +1366,15 @@ static void iree_printf_format_float(iree_printf_output_t* out,
   bool has_exponent_suffix = false;
   char specifier = spec->specifier;
   // Normalize case for dispatch.
-  if (specifier == 'F') specifier = 'f';
-  if (specifier == 'E') specifier = 'e';
-  if (specifier == 'G') specifier = 'g';
+  if (specifier == 'F') {
+    specifier = 'f';
+  }
+  if (specifier == 'E') {
+    specifier = 'e';
+  }
+  if (specifier == 'G') {
+    specifier = 'g';
+  }
 
   if (specifier == 'f') {
     length = iree_printf_format_fixed(buffer, value, precision,
@@ -1349,7 +1389,9 @@ static void iree_printf_format_float(iree_printf_output_t* out,
     // Use %e if exponent < -4 or exponent >= precision.
     // For %g, precision means "significant digits", not "digits after decimal".
     int sig_precision = precision;
-    if (sig_precision == 0) sig_precision = 1;  // %g with precision 0 is 1.
+    if (sig_precision == 0) {
+      sig_precision = 1;  // %g with precision 0 is 1.
+    }
 
     int effective_sig_precision = sig_precision;
     if (effective_sig_precision > IREE_PRINTF_MAX_FLOAT_PRECISION) {
@@ -1382,7 +1424,9 @@ static void iree_printf_format_float(iree_printf_output_t* out,
       int decimal_position = -1;
       int exponent_position = -1;
       for (int i = 0; i < length; i++) {
-        if (buffer[i] == '.') decimal_position = i;
+        if (buffer[i] == '.') {
+          decimal_position = i;
+        }
         if (buffer[i] == 'e' || buffer[i] == 'E') {
           exponent_position = i;
           break;
@@ -1533,7 +1577,9 @@ static int iree_printf_format(iree_printf_output_t* out, const char* format,
   // is not representable as a return value; return -1 to signal the error
   // rather than wrapping to a bogus (possibly negative) count that callers
   // might use to size subsequent allocations.
-  if (out->position > (size_t)INT_MAX) return -1;
+  if (out->position > (size_t)INT_MAX) {
+    return -1;
+  }
   return (int)out->position;
 }
 

@@ -62,7 +62,9 @@ std::string BuildSource(const TemplateSelectionSourceOptions& options) {
         "test.target<low_core> @benchmark_target {subgroup_size = 32}\n\n");
   }
   source.append("template.decl @benchmark.choose(%value: index) -> (index)");
-  if (options.constrained) source.append(" where [ge(%value, -1)]");
+  if (options.constrained) {
+    source.append(" where [ge(%value, -1)]");
+  }
   source.append("\n\n");
   for (uint32_t i = 0; i < options.provider_count; ++i) {
     source.append("template.def<@benchmark.choose> ");
@@ -100,11 +102,17 @@ std::string BuildSource(const TemplateSelectionSourceOptions& options) {
   }
 
   source.append("func.def public ");
-  if (options.target_condition) source.append("target(@benchmark_target) ");
+  if (options.target_condition) {
+    source.append("target(@benchmark_target) ");
+  }
   source.append("@entry(");
-  if (options.nested) source.append("%condition: i1, ");
+  if (options.nested) {
+    source.append("%condition: i1, ");
+  }
   source.append("%value: index) -> (index)");
-  if (options.constrained) source.append(" where [eq(%value, 128)]");
+  if (options.constrained) {
+    source.append(" where [eq(%value, 128)]");
+  }
   source.append(" {\n");
   if (options.nested) {
     source.append("  %nested_result = scf.if %condition -> (index) {\n");

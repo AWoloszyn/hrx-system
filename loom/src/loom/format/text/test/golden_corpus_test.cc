@@ -98,7 +98,9 @@ TEST_F(GoldenCorpusTest, TextRoundTripsIdentically) {
         iree_make_string_view(file.data, (iree_host_size_t)file.size);
 
     loom_module_t* module = Parse(source, filename);
-    if (!module) continue;
+    if (!module) {
+      continue;
+    }
     std::string printed = Print(module);
     loom_module_free(module);
 
@@ -106,7 +108,9 @@ TEST_F(GoldenCorpusTest, TextRoundTripsIdentically) {
 
     loom_module_t* reparsed =
         Parse(iree_make_string_view(printed.data(), printed.size()), filename);
-    if (!reparsed) continue;
+    if (!reparsed) {
+      continue;
+    }
     std::string reprinted = Print(reparsed);
     loom_module_free(reparsed);
 

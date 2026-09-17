@@ -71,13 +71,17 @@ amdf_status_t amdf_gpu_umd_device_create(
   const amdf_status_t capabilities_status =
       amdf_windows_gpu_query_memory_capabilities(endpoint,
                                                  &memory_capabilities);
-  if (!amdf_status_is_ok(capabilities_status)) return capabilities_status;
+  if (!amdf_status_is_ok(capabilities_status)) {
+    return capabilities_status;
+  }
 
   amdf_gpu_umd_device_t* device = NULL;
   amdf_status_t status =
       amdf_calloc(host_allocator, sizeof(*device),
                   amdf_alignof(amdf_gpu_umd_device_t), (void**)&device);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   device->host_allocator = host_allocator;
   amdf_kmt_device_status_initialize(&device->status);
   device->kmt = &endpoint->instance->kmt;

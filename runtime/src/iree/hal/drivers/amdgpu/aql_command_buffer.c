@@ -363,7 +363,9 @@ iree_hal_amdgpu_aql_command_buffer_static_buffer_for_ordinal(
     page = page->next;
     --page_ordinal;
   }
-  if (IREE_UNLIKELY(!page || buffer_ordinal >= page->count)) return NULL;
+  if (IREE_UNLIKELY(!page || buffer_ordinal >= page->count)) {
+    return NULL;
+  }
   return page->buffers[buffer_ordinal];
 }
 
@@ -448,7 +450,9 @@ iree_hal_amdgpu_aql_command_buffer_rodata_segment_for_ordinal(
     page = page->next;
     --page_ordinal;
   }
-  if (IREE_UNLIKELY(!page || segment_ordinal >= page->count)) return NULL;
+  if (IREE_UNLIKELY(!page || segment_ordinal >= page->count)) {
+    return NULL;
+  }
   return &page->segments[segment_ordinal];
 }
 
@@ -459,7 +463,9 @@ static iree_status_t iree_hal_amdgpu_aql_command_buffer_append_rodata_segment(
     uint64_t* out_rodata_ordinal,
     iree_hal_amdgpu_aql_command_buffer_rodata_segment_t** out_segment) {
   *out_rodata_ordinal = 0;
-  if (out_segment) *out_segment = NULL;
+  if (out_segment) {
+    *out_segment = NULL;
+  }
   if (IREE_UNLIKELY(byte_length > UINT32_MAX)) {
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                             "command-buffer rodata segment too large");
@@ -504,7 +510,9 @@ static iree_status_t iree_hal_amdgpu_aql_command_buffer_append_rodata_segment(
       .flags = flags,
   };
   *out_rodata_ordinal = ordinal;
-  if (out_segment) *out_segment = segment;
+  if (out_segment) {
+    *out_segment = segment;
+  }
   return iree_ok_status();
 }
 
@@ -516,7 +524,9 @@ static iree_status_t iree_hal_amdgpu_aql_command_buffer_allocate_rodata_segment(
     iree_hal_amdgpu_aql_command_buffer_rodata_segment_t** out_segment) {
   *out_data = NULL;
   *out_rodata_ordinal = 0;
-  if (out_segment) *out_segment = NULL;
+  if (out_segment) {
+    *out_segment = NULL;
+  }
   uint8_t* rodata = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_aligned(
       &command_buffer->recording_arena,
@@ -1261,7 +1271,9 @@ static iree_status_t iree_hal_amdgpu_aql_command_buffer_record_buffer_ref(
   *out_kind = IREE_HAL_AMDGPU_COMMAND_BUFFER_BINDING_KIND_INVALID;
   *out_ordinal = 0;
   *out_offset = 0;
-  if (out_length) *out_length = 0;
+  if (out_length) {
+    *out_length = 0;
+  }
 
   if (!buffer_ref.buffer) {
     if (IREE_UNLIKELY(buffer_ref.buffer_slot == UINT32_MAX)) {
@@ -1276,7 +1288,9 @@ static iree_status_t iree_hal_amdgpu_aql_command_buffer_record_buffer_ref(
     *out_kind = IREE_HAL_AMDGPU_COMMAND_BUFFER_BINDING_KIND_DYNAMIC;
     *out_ordinal = buffer_ref.buffer_slot;
     *out_offset = buffer_ref.offset;
-    if (out_length) *out_length = buffer_ref.length;
+    if (out_length) {
+      *out_length = buffer_ref.length;
+    }
     return iree_ok_status();
   }
 
@@ -1294,7 +1308,9 @@ static iree_status_t iree_hal_amdgpu_aql_command_buffer_record_buffer_ref(
   *out_kind = IREE_HAL_AMDGPU_COMMAND_BUFFER_BINDING_KIND_STATIC;
   *out_ordinal = ordinal;
   *out_offset = resolved_offset;
-  if (out_length) *out_length = resolved_length;
+  if (out_length) {
+    *out_length = resolved_length;
+  }
   return iree_ok_status();
 }
 
@@ -1472,7 +1488,9 @@ iree_hal_amdgpu_aql_command_buffer_validate_clustered_dispatch(
   const uint8_t* cluster_size = descriptor->kernel_args.workgroup_cluster_size;
   const bool uses_workgroup_clusters =
       cluster_size[0] != 0 || cluster_size[1] != 0 || cluster_size[2] != 0;
-  if (!uses_workgroup_clusters) return iree_ok_status();
+  if (!uses_workgroup_clusters) {
+    return iree_ok_status();
+  }
   if (iree_hal_dispatch_uses_indirect_parameters(flags)) {
     return iree_make_status(
         IREE_STATUS_UNIMPLEMENTED,
@@ -1749,7 +1767,9 @@ static iree_status_t iree_hal_amdgpu_aql_command_buffer_qword_length(
                             label, byte_length);
   }
   *out_qwords = (uint16_t)qword_length;
-  if (out_padded_length) *out_padded_length = padded_length;
+  if (out_padded_length) {
+    *out_padded_length = padded_length;
+  }
   return iree_ok_status();
 }
 
@@ -2315,7 +2335,9 @@ static iree_status_t iree_hal_amdgpu_aql_command_buffer_retain_dispatch_inputs(
     const iree_hal_amdgpu_aql_dispatch_inputs_t* inputs) {
   IREE_RETURN_IF_ERROR(
       iree_hal_amdgpu_aql_command_buffer_ensure_resource_set(command_buffer));
-  if (!command_buffer->resource_set) return iree_ok_status();
+  if (!command_buffer->resource_set) {
+    return iree_ok_status();
+  }
   return iree_hal_resource_set_insert(command_buffer->resource_set,
                                       /*count=*/1, &inputs->executable);
 }

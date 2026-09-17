@@ -59,7 +59,9 @@ static EventPoolContext* CreateEventPoolContext(
 }
 
 static void DestroyEventPoolContext(EventPoolContext* ctx) {
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
   if (ctx->pool_initialized) {
     iree_async_event_pool_deinitialize(&ctx->pool);
   }
@@ -77,7 +79,9 @@ static void DestroyEventPoolContext(EventPoolContext* ctx) {
 static void BM_AcquireRelease(::benchmark::State& state,
                               const ProactorFactory& factory) {
   auto* ctx = CreateEventPoolContext(factory, /*initial_capacity=*/1, state);
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
 
   // Pre-acquire one event to ensure the pool has it.
   iree_async_event_t* event = nullptr;
@@ -150,7 +154,9 @@ static void BM_AcquireGrow(::benchmark::State& state,
 static void BM_BatchAcquire(::benchmark::State& state,
                             const ProactorFactory& factory, size_t batch_size) {
   auto* ctx = CreateEventPoolContext(factory, batch_size, state);
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
 
   std::vector<iree_async_event_t*> events(batch_size, nullptr);
 

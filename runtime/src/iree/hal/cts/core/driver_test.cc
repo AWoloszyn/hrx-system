@@ -129,7 +129,9 @@ TEST_P(DriverTest, QueryAndCreateAvailableDevicesByPath) {
       driver_, iree_allocator_system(), &device_info_count, &device_infos));
 
   std::cout << "Driver has " << device_info_count << " device(s)\n";
-  if (device_info_count == 0) GTEST_SKIP() << "No available devices";
+  if (device_info_count == 0) {
+    GTEST_SKIP() << "No available devices";
+  }
 
   // Check creation via explicit path.
   bool tested_empty_path = false;

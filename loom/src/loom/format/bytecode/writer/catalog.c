@@ -116,7 +116,9 @@ static bool loom_bytecode_attr_wire_equal(const loom_module_t* module,
                                           const loom_attribute_t* a,
                                           const loom_attribute_t* b,
                                           uint8_t aggregate_depth) {
-  if (a->kind != b->kind) return false;
+  if (a->kind != b->kind) {
+    return false;
+  }
   switch ((loom_attr_kind_t)a->kind) {
     case LOOM_ATTR_TYPE:
       if (a->type_id >= module->types.count ||
@@ -127,7 +129,9 @@ static bool loom_bytecode_attr_wire_equal(const loom_module_t* module,
                                            module->types.entries[a->type_id],
                                            module->types.entries[b->type_id]);
     case LOOM_ATTR_DICT:
-      if (a->count != b->count) return false;
+      if (a->count != b->count) {
+        return false;
+      }
       if (aggregate_depth >= LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH) {
         return loom_attribute_equal(a, b);
       }
@@ -141,7 +145,9 @@ static bool loom_bytecode_attr_wire_equal(const loom_module_t* module,
       }
       return true;
     case LOOM_ATTR_PARAMETERIZED:
-      if (a->reserved_1 != b->reserved_1 || a->count != b->count) return false;
+      if (a->reserved_1 != b->reserved_1 || a->count != b->count) {
+        return false;
+      }
       if (aggregate_depth >= LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH) {
         return loom_attribute_equal(a, b);
       }
@@ -154,7 +160,9 @@ static bool loom_bytecode_attr_wire_equal(const loom_module_t* module,
       }
       return true;
     case LOOM_ATTR_PARAMETERIZED_ARRAY:
-      if (a->count != b->count) return false;
+      if (a->count != b->count) {
+        return false;
+      }
       if (aggregate_depth >= LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH) {
         return loom_attribute_equal(a, b);
       }
@@ -219,7 +227,9 @@ static uint32_t loom_bytecode_type_wire_hash(const loom_module_t* module,
     }
     case LOOM_TYPE_FUNCTION: {
       const loom_func_type_data_t* data = loom_type_func_data(type);
-      if (!data) return hash;
+      if (!data) {
+        return hash;
+      }
       hash = loom_bytecode_type_hash_mix_u16(hash, data->arg_count);
       hash = loom_bytecode_type_hash_mix_u16(hash, data->result_count);
       uint16_t type_count = (uint16_t)(data->arg_count + data->result_count);
@@ -244,7 +254,9 @@ static uint32_t loom_bytecode_type_wire_hash(const loom_module_t* module,
     case LOOM_TYPE_PARAMETERIZED: {
       const loom_parameterized_type_descriptor_t* descriptor =
           loom_type_parameterized_descriptor(type);
-      if (!descriptor) return hash;
+      if (!descriptor) {
+        return hash;
+      }
       const iree_string_view_t family_name =
           loom_bstring_view(descriptor->name);
       hash = loom_bytecode_type_hash_mix_bytes(hash, family_name.data,
@@ -286,7 +298,9 @@ static uint32_t loom_bytecode_type_wire_hash(const loom_module_t* module,
 static bool loom_bytecode_type_dim_wire_equal(uint64_t a, uint64_t b) {
   bool a_dynamic = loom_dim_is_dynamic(a);
   bool b_dynamic = loom_dim_is_dynamic(b);
-  if (a_dynamic || b_dynamic) return a_dynamic == b_dynamic;
+  if (a_dynamic || b_dynamic) {
+    return a_dynamic == b_dynamic;
+  }
   return a == b;
 }
 
@@ -306,16 +320,24 @@ static bool loom_bytecode_type_encoding_wire_equal(loom_type_t a,
 static bool loom_bytecode_type_wire_equal(const loom_module_t* module,
                                           loom_type_t a, loom_type_t b) {
   loom_type_kind_t kind = loom_type_kind(a);
-  if (kind != loom_type_kind(b)) return false;
-  if (loom_type_element_type(a) != loom_type_element_type(b)) return false;
-  if (loom_type_rank(a) != loom_type_rank(b)) return false;
+  if (kind != loom_type_kind(b)) {
+    return false;
+  }
+  if (loom_type_element_type(a) != loom_type_element_type(b)) {
+    return false;
+  }
+  if (loom_type_rank(a) != loom_type_rank(b)) {
+    return false;
+  }
 
   switch (kind) {
     case LOOM_TYPE_TILE:
     case LOOM_TYPE_TENSOR:
     case LOOM_TYPE_VECTOR:
     case LOOM_TYPE_VIEW:
-      if (!loom_bytecode_type_encoding_wire_equal(a, b)) return false;
+      if (!loom_bytecode_type_encoding_wire_equal(a, b)) {
+        return false;
+      }
       for (uint8_t i = 0; i < loom_type_rank(a); ++i) {
         if (!loom_bytecode_type_dim_wire_equal(loom_type_dim(a, i),
                                                loom_type_dim(b, i))) {
@@ -329,7 +351,9 @@ static bool loom_bytecode_type_wire_equal(const loom_module_t* module,
     case LOOM_TYPE_FUNCTION: {
       const loom_func_type_data_t* a_data = loom_type_func_data(a);
       const loom_func_type_data_t* b_data = loom_type_func_data(b);
-      if (!a_data || !b_data) return a_data == b_data;
+      if (!a_data || !b_data) {
+        return a_data == b_data;
+      }
       if (a_data->arg_count != b_data->arg_count ||
           a_data->result_count != b_data->result_count) {
         return false;
@@ -349,10 +373,14 @@ static bool loom_bytecode_type_wire_equal(const loom_module_t* module,
         return false;
       }
       uint16_t param_count = loom_type_dialect_param_count(a);
-      if (param_count != loom_type_dialect_param_count(b)) return false;
+      if (param_count != loom_type_dialect_param_count(b)) {
+        return false;
+      }
       const loom_type_t* a_params = loom_type_dialect_params(a);
       const loom_type_t* b_params = loom_type_dialect_params(b);
-      if (!a_params || !b_params) return a_params == b_params;
+      if (!a_params || !b_params) {
+        return a_params == b_params;
+      }
       for (uint16_t i = 0; i < param_count; ++i) {
         if (!loom_bytecode_type_wire_equal(module, a_params[i], b_params[i])) {
           return false;
@@ -381,7 +409,9 @@ static bool loom_bytecode_type_wire_equal(const loom_module_t* module,
           loom_type_parameterized_parameters(a);
       const loom_attribute_t* b_parameters =
           loom_type_parameterized_parameters(b);
-      if (!a_parameters || !b_parameters) return a_parameters == b_parameters;
+      if (!a_parameters || !b_parameters) {
+        return a_parameters == b_parameters;
+      }
       for (uint8_t i = 0; i < parameter_count; ++i) {
         if (!loom_bytecode_attr_wire_equal(module, &a_parameters[i],
                                            &b_parameters[i], 0)) {
@@ -459,7 +489,9 @@ static iree_status_t loom_bytecode_numbering_initialize_symbol_order(
   loom_block_for_each_op(module_block, op) {
     const loom_symbol_id_t symbol_id =
         loom_op_defining_symbol_id(module, op, loom_op_vtable(module, op));
-    if (symbol_id == LOOM_SYMBOL_ID_INVALID) continue;
+    if (symbol_id == LOOM_SYMBOL_ID_INVALID) {
+      continue;
+    }
     if (module->symbols.entries[symbol_id].defining_op != op) {
       continue;
     }
@@ -531,7 +563,9 @@ iree_status_t loom_bytecode_numbering_initialize(
 
     iree_host_size_t type_index_capacity =
         iree_host_size_next_power_of_two((module->types.count * 4 + 2) / 3);
-    if (type_index_capacity < 16) type_index_capacity = 16;
+    if (type_index_capacity < 16) {
+      type_index_capacity = 16;
+    }
     IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
         arena, type_index_capacity, sizeof(loom_bytecode_type_index_entry_t),
         (void**)&numbering->types.index_entries));
@@ -631,7 +665,9 @@ iree_status_t loom_bytecode_numbering_intern_string_view(
 // Finds the representative module type table index for a given wire type.
 static uint32_t loom_bytecode_find_type_index(
     const loom_bytecode_numbering_t* numbering, loom_type_t type) {
-  if (numbering->types.index_capacity == 0) return LOOM_WRITER_ID_NONE;
+  if (numbering->types.index_capacity == 0) {
+    return LOOM_WRITER_ID_NONE;
+  }
   uint32_t hash = loom_bytecode_type_wire_hash(numbering->module, type);
   iree_host_size_t mask = numbering->types.index_capacity - 1;
   iree_host_size_t slot = hash & mask;
@@ -1082,7 +1118,9 @@ static iree_status_t loom_bytecode_number_parameterized_attr_payload(
     bool present = false;
     IREE_RETURN_IF_ERROR(loom_bytecode_parameter_is_present(
         family_descriptor, attr.parameterized_slots[i], i, &present));
-    if (!present) continue;
+    if (!present) {
+      continue;
+    }
     const loom_attr_descriptor_t* parameter_descriptor =
         &family_descriptor->parameter_descriptors[i];
     IREE_RETURN_IF_ERROR(loom_bytecode_numbering_intern_string_view(

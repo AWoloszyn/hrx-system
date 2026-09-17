@@ -593,7 +593,9 @@ TEST_F(TokenizerUTF8Test, MultiCallFinalizeWithSmallCapacity) {
         &bytes_consumed, &token_count));
     chunk.data += bytes_consumed;
     chunk.size -= bytes_consumed;
-    if (bytes_consumed == 0) break;
+    if (bytes_consumed == 0) {
+      break;
+    }
   }
 
   // Finalize with capacity=1, collecting tokens one at a time.
@@ -617,7 +619,9 @@ TEST_F(TokenizerUTF8Test, MultiCallFinalizeWithSmallCapacity) {
       continue;  // More pending — keep draining.
     }
     IREE_ASSERT_OK(status);
-    if (!has_pending && token_count == 0) break;
+    if (!has_pending && token_count == 0) {
+      break;
+    }
   }
 
   EXPECT_LT(iterations, max_iterations) << "Finalize loop did not terminate";
@@ -1767,7 +1771,9 @@ iree_tokenizer_t* CreateByteLevelGPT2Tokenizer() {
       "?[^\\s\\p{L}\\p{N}]+|\\s+(?!\\S)|\\s+";
 
   iree_tokenizer_segmenter_t* segmenter = CreateSplitSegmenter(gpt2_pattern);
-  if (!segmenter) return nullptr;
+  if (!segmenter) {
+    return nullptr;
+  }
 
   ScopedBuilder builder;
   iree_tokenizer_builder_set_segmenter(builder.get(), segmenter);
@@ -1903,7 +1909,9 @@ TEST_F(TokenizerPartialSegmentTest, WithBPEMerges) {
 
   // "ababab..." repeated 100 times = 200 bytes, one GPT2 segment.
   std::string input;
-  for (int i = 0; i < 100; ++i) input += "ab";
+  for (int i = 0; i < 100; ++i) {
+    input += "ab";
+  }
   ASSERT_EQ(input.size(), 200u);
 
   // Large buffer: reference result.
@@ -1960,7 +1968,9 @@ TEST_F(TokenizerPartialSegmentTest, WithChainedMerges) {
 
   // "abcabcabc..." repeated 80 times = 240 bytes, one segment.
   std::string input;
-  for (int i = 0; i < 80; ++i) input += "abc";
+  for (int i = 0; i < 80; ++i) {
+    input += "abc";
+  }
   ASSERT_EQ(input.size(), 240u);
 
   // Reference: large buffer.
@@ -2161,10 +2171,14 @@ TEST_F(TokenizerPartialSegmentTest, SingleByteChunkedFeed) {
                                            NULL, tokens.size() - total_tokens),
           &bytes_consumed, &token_count));
       total_tokens += token_count;
-      if (bytes_consumed > 0) break;
+      if (bytes_consumed > 0) {
+        break;
+      }
       // If bytes_consumed == 0, output buffer was needed for reclaim.
       // Retry until the byte is consumed.
-      if (token_count == 0) break;
+      if (token_count == 0) {
+        break;
+      }
     }
     ASSERT_GT(bytes_consumed, 0u)
         << "Failed to consume byte " << byte_index << " after retries";
@@ -2219,7 +2233,9 @@ TEST_F(TokenizerPartialSegmentTest, LargeInputWithMergesMatchesOneShot) {
 
   // "abcdabcd..." repeated 2500 times = 10KB, all one segment.
   std::string input;
-  for (int i = 0; i < 2500; ++i) input += "abcd";
+  for (int i = 0; i < 2500; ++i) {
+    input += "abcd";
+  }
   ASSERT_EQ(input.size(), 10000u);
 
   // One-shot with large buffer.
@@ -3972,7 +3988,9 @@ TEST_F(TokenizerSequenceStripSpecialTokenTest,
   // Verify the special token is in the output.
   bool found_mask = false;
   for (auto t : result) {
-    if (t == 50256) found_mask = true;
+    if (t == 50256) {
+      found_mask = true;
+    }
   }
   EXPECT_TRUE(found_mask) << "Pre-norm [MASK] should be found in output";
 
@@ -4867,7 +4885,9 @@ TEST_F(PostNormSpecialTokenTest, MatchAfterLowercase) {
   EXPECT_FALSE(tokens.empty());
   bool found_mask = false;
   for (auto t : tokens) {
-    if (t == 50256) found_mask = true;
+    if (t == 50256) {
+      found_mask = true;
+    }
   }
   EXPECT_TRUE(found_mask) << "Post-norm special token [mask] should match "
                              "after lowercase normalization of [MASK]";
@@ -4922,7 +4942,9 @@ TEST_F(PostNormSpecialTokenTest, RawCaseDoesNotMatch) {
   auto tokens = Encode(tokenizer, "[MASK]");
   bool found_special = false;
   for (auto t : tokens) {
-    if (t == 50256) found_special = true;
+    if (t == 50256) {
+      found_special = true;
+    }
   }
   EXPECT_FALSE(found_special) << "Uppercase post-norm pattern should NOT match "
                                  "after lowercase normalization";
@@ -4993,8 +5015,12 @@ TEST_F(PostNormSpecialTokenTest, MixedPreAndPostNorm) {
   auto tokens = Encode(tokenizer, "<bos> hello [MASK]");
   bool found_bos = false, found_mask = false;
   for (auto t : tokens) {
-    if (t == 50256) found_bos = true;
-    if (t == 50257) found_mask = true;
+    if (t == 50256) {
+      found_bos = true;
+    }
+    if (t == 50257) {
+      found_mask = true;
+    }
   }
   EXPECT_TRUE(found_bos) << "Pre-norm <bos> should match raw text";
   EXPECT_TRUE(found_mask)
@@ -5084,7 +5110,9 @@ TEST_F(PostNormSpecialTokenTest, StreamingPostNorm) {
         &bytes_consumed, &token_count));
     offset += bytes_consumed;
     total_tokens += token_count;
-    if (bytes_consumed == 0) break;
+    if (bytes_consumed == 0) {
+      break;
+    }
   }
 
   iree_host_size_t finalize_count = 0;
@@ -6003,7 +6031,9 @@ class TokenizerOffsetTest : public ::testing::Test {
       if (i > 0 && offsets[i].start < max_end) {
         return static_cast<int>(i);
       }
-      if (offsets[i].end > max_end) max_end = offsets[i].end;
+      if (offsets[i].end > max_end) {
+        max_end = offsets[i].end;
+      }
     }
     return -1;
   }
@@ -6080,7 +6110,9 @@ TEST_F(TokenizerOffsetTest, SequenceExpansionAcrossBatchBoundary) {
   if (backwards_at >= 0) {
     iree_host_size_t max_end = 0;
     for (int i = 0; i < backwards_at; ++i) {
-      if (result.offsets[i].end > max_end) max_end = result.offsets[i].end;
+      if (result.offsets[i].end > max_end) {
+        max_end = result.offsets[i].end;
+      }
     }
     FAIL() << "Backwards jump at token " << backwards_at << ": offset=["
            << result.offsets[backwards_at].start << ","
@@ -6146,7 +6178,9 @@ TEST_F(TokenizerOffsetTest, SequenceExpansionMultipleBatches) {
   // Expansion: 40*5 + 39 = 239 sub-segments, crossing ~4 batch boundaries.
   std::string text;
   for (int i = 0; i < 40; ++i) {
-    if (i > 0) text += ' ';
+    if (i > 0) {
+      text += ' ';
+    }
     text += std::string(5, 'a' + (i % 26));
   }
 
@@ -6338,7 +6372,9 @@ TEST_F(TokenizerPartialSegmentTest, UnigramMultipleSpecialTokensSmallBuffer) {
   // Count special tokens in output.
   iree_host_size_t special_count = 0;
   for (auto token_id : result.value()) {
-    if (token_id == 131) ++special_count;
+    if (token_id == 131) {
+      ++special_count;
+    }
   }
   EXPECT_EQ(special_count, 20u)
       << "expected 20 </s> special tokens in output, got " << special_count;

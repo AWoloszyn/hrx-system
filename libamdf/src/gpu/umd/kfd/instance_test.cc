@@ -67,14 +67,18 @@ struct NativeState {
 
   bool Record(Operation operation) {
     operations.push_back(operation);
-    if (failure != operation) return true;
+    if (failure != operation) {
+      return true;
+    }
     failure = Operation::kNone;
     errno = EIO;
     return false;
   }
 
   int Open(Operation operation) {
-    if (!Record(operation)) return -1;
+    if (!Record(operation)) {
+      return -1;
+    }
     descriptors.insert(next_descriptor);
     return next_descriptor++;
   }
@@ -106,7 +110,9 @@ class KfdInstanceTest : public ::testing::Test {
     allocator.user_data = &native_;
     allocator.allocate = [](void* user_data, uint64_t byte_length,
                             uint64_t minimum_alignment) -> void* {
-      if (static_cast<NativeState*>(user_data)->fail_allocation) return nullptr;
+      if (static_cast<NativeState*>(user_data)->fail_allocation) {
+        return nullptr;
+      }
       const amdf_allocator_t system = amdf_allocator_system();
       return system.allocate(system.user_data, byte_length, minimum_alignment);
     };
@@ -122,7 +128,9 @@ class KfdInstanceTest : public ::testing::Test {
     amdf_platform_endpoint_t endpoint = {};
     endpoint.info.pci.device_id = 0x150e;
     amdf_gpu_kfd_topology_t local_topology = {};
-    if (topology == nullptr) topology = &local_topology;
+    if (topology == nullptr) {
+      topology = &local_topology;
+    }
     topology->gpu_id = gpu_id;
     return amdf_gpu_kfd_instance_prepare_vm(instance_, &endpoint, topology,
                                             4096, out_descriptor);
@@ -437,7 +445,9 @@ int __wrap_ioctl(int descriptor, unsigned long request, ...) {
   }
   EXPECT_EQ(native_state->descriptors.count(descriptor), 1u);
   if (request == AMDKFD_IOC_GET_VERSION) {
-    if (!native_state->Record(Operation::kVersion)) return -1;
+    if (!native_state->Record(Operation::kVersion)) {
+      return -1;
+    }
     *static_cast<kfd_ioctl_get_version_args*>(argument) = native_state->version;
     return 0;
   }
@@ -445,7 +455,9 @@ int __wrap_ioctl(int descriptor, unsigned long request, ...) {
     auto* query = static_cast<drm_amdgpu_info*>(argument);
     EXPECT_EQ(query->query, AMDGPU_INFO_DEV_INFO);
     EXPECT_EQ(query->return_size, sizeof(drm_amdgpu_info_device));
-    if (!native_state->Record(Operation::kDeviceInfo)) return -1;
+    if (!native_state->Record(Operation::kDeviceInfo)) {
+      return -1;
+    }
     *reinterpret_cast<drm_amdgpu_info_device*>(query->return_pointer) =
         native_state->device_info;
     native_state->queried_descriptor = descriptor;
@@ -460,7 +472,9 @@ amdf_status_t __wrap_amdf_linux_endpoint_open_file(
     const amdf_platform_endpoint_t* endpoint, int* out_descriptor) {
   EXPECT_NE(endpoint, nullptr);
   const int descriptor = native_state->Open(Operation::kOpenRender);
-  if (descriptor < 0) return amdf_linux_error(EIO);
+  if (descriptor < 0) {
+    return amdf_linux_error(EIO);
+  }
   *out_descriptor = descriptor;
   return AMDF_STATUS_OK;
 }
@@ -486,14 +500,18 @@ amdf_status_t __wrap_amdf_gpu_kfd_vm_acquire(
   EXPECT_EQ(native_api, amdf_gpu_kfd_vm_default_native_api());
   bootstrap->render_descriptor = render_descriptor;
   bootstrap->buffer_handle = 9;
-  if (!native_state->Record(Operation::kAcquire)) return amdf_linux_error(EIO);
+  if (!native_state->Record(Operation::kAcquire)) {
+    return amdf_linux_error(EIO);
+  }
   native_state->acquired.insert(render_descriptor);
   return AMDF_STATUS_OK;
 }
 
 amdf_status_t __wrap_amdf_gpu_kfd_vm_bootstrap_release(
     amdf_gpu_kfd_vm_bootstrap_t* bootstrap) {
-  if (bootstrap->buffer_handle == 0) return AMDF_STATUS_OK;
+  if (bootstrap->buffer_handle == 0) {
+    return AMDF_STATUS_OK;
+  }
   EXPECT_EQ(native_state->descriptors.count(bootstrap->render_descriptor), 1u);
   if (!native_state->Record(Operation::kReleaseBootstrap)) {
     return amdf_linux_error(EIO);

@@ -406,7 +406,9 @@ iree_status_t loom_test_fact_is_view_reference_facts(
 
 static int64_t loom_test_memory_space_or_unknown(
     loom_value_fact_memory_space_t memory_space) {
-  if (memory_space == LOOM_VALUE_FACT_MEMORY_SPACE_UNKNOWN) return -1;
+  if (memory_space == LOOM_VALUE_FACT_MEMORY_SPACE_UNKNOWN) {
+    return -1;
+  }
   return (int64_t)memory_space;
 }
 

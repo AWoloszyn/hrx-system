@@ -63,7 +63,9 @@ static iree_status_t iree_hal_amdgpu_agent_isa_target_initialize(
 
 void iree_hal_amdgpu_agent_target_deinitialize(
     iree_hal_amdgpu_agent_target_t* target) {
-  if (!target) return;
+  if (!target) {
+    return;
+  }
   iree_allocator_free(target->host_allocator, target->additional_isas);
   memset(target, 0, sizeof(*target));
 }

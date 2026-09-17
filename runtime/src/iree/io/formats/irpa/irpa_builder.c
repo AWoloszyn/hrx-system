@@ -499,7 +499,9 @@ IREE_API_EXPORT iree_status_t iree_io_build_parameter_archive(
        ++i) {
     const iree_io_parameter_index_entry_t* source_entry = NULL;
     status = iree_io_parameter_index_get(source_index, i, &source_entry);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     switch (source_entry->type) {
       case IREE_IO_PARAMETER_INDEX_ENTRY_STORAGE_TYPE_SPLAT:
         status = iree_io_parameter_archive_builder_add_splat_entry(
@@ -520,7 +522,9 @@ IREE_API_EXPORT iree_status_t iree_io_build_parameter_archive(
                                   (int)source_entry->type);
         break;
     }
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
   }
 
   // Resolve the complete archive range before opening or mutating the target.
@@ -580,10 +584,14 @@ IREE_API_EXPORT iree_status_t iree_io_build_parameter_archive(
          i < iree_io_parameter_index_count(source_index); ++i) {
       const iree_io_parameter_index_entry_t* source_entry = NULL;
       status = iree_io_parameter_index_get(source_index, i, &source_entry);
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
       const iree_io_parameter_index_entry_t* builder_entry = NULL;
       status = iree_io_parameter_index_get(builder.index, i, &builder_entry);
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
       switch (source_entry->type) {
         case IREE_IO_PARAMETER_INDEX_ENTRY_STORAGE_TYPE_SPLAT:
           // No work to do.
@@ -597,7 +605,9 @@ IREE_API_EXPORT iree_status_t iree_io_build_parameter_archive(
           status = iree_io_stream_seek(
               target_stream, IREE_IO_STREAM_SEEK_FROM_CURRENT,
               (iree_io_stream_pos_t)(target_offset - archive_stream_offset));
-          if (!iree_status_is_ok(status)) break;
+          if (!iree_status_is_ok(status)) {
+            break;
+          }
           status = iree_io_stream_write_file(
               target_stream, source_entry->storage.file.handle,
               source_entry->storage.file.offset,
@@ -611,7 +621,9 @@ IREE_API_EXPORT iree_status_t iree_io_build_parameter_archive(
                                     (int)source_entry->type);
           break;
       }
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
     }
   }
 

@@ -88,7 +88,9 @@ class SourceMemoryPlanBenchmark {
       loom_low_source_memory_access_diagnostic_t diagnostic = {};
       const bool planned = loom_low_source_memory_access_plan_build(
           &view_regions, memory_op, &last_plan_, &diagnostic);
-      if (!planned) std::abort();
+      if (!planned) {
+        std::abort();
+      }
     }
     benchmark::DoNotOptimize(last_plan_);
     analysis_arena_used_bytes_ = analysis_arena.used_allocation_size;

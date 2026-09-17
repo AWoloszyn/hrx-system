@@ -169,7 +169,9 @@ amdf_status_t amdf_xdna_umd_context_destroy(amdf_xdna_umd_context_t* context) {
   }
   const amdf_status_t buffer_status =
       amdf_windows_xdna_private_allocation_destroy(&context->kernel_buffer);
-  if (!amdf_status_is_ok(buffer_status)) return buffer_status;
+  if (!amdf_status_is_ok(buffer_status)) {
+    return buffer_status;
+  }
   const amdf_allocator_t host_allocator = context->device->host_allocator;
   amdf_free(host_allocator, context);
   return AMDF_STATUS_OK;
@@ -199,7 +201,9 @@ amdf_status_t amdf_xdna_umd_context_create(
   amdf_windows_xdna_adapter_info_t adapter_info = {0};
   amdf_status_t status = amdf_windows_xdna_adapter_info_query(
       device->kmt, device->adapter, &adapter_info);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   if (!amdf_kmt_api_supports_memory(device->kmt) || device->kmt->lock == NULL ||
       device->kmt->unlock == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
@@ -207,7 +211,9 @@ amdf_status_t amdf_xdna_umd_context_create(
   amdf_xdna_umd_context_t* context = NULL;
   status = amdf_calloc(device->host_allocator, sizeof(*context),
                        amdf_alignof(amdf_xdna_umd_context_t), (void**)&context);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   context->device = device;
   context->adapter_info = adapter_info;
 

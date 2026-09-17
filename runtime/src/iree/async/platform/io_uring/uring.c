@@ -282,11 +282,17 @@ iree_status_t iree_io_uring_ring_initialize(
   out_ring->ring_fd = -1;
 
   uint32_t entries = options.sq_entries;
-  if (entries == 0) entries = 256;
+  if (entries == 0) {
+    entries = 256;
+  }
   // Round up to power of 2 (kernel requirement).
   entries = iree_math_round_up_to_pow2_u32(entries);
-  if (entries < 1) entries = 1;
-  if (entries > IREE_IORING_MAX_ENTRIES) entries = IREE_IORING_MAX_ENTRIES;
+  if (entries < 1) {
+    entries = 1;
+  }
+  if (entries > IREE_IORING_MAX_ENTRIES) {
+    entries = IREE_IORING_MAX_ENTRIES;
+  }
 
   // Translate threading mode to kernel flags and try setup with fallbacks.
   uint32_t setup_flags =
@@ -316,7 +322,9 @@ iree_status_t iree_io_uring_ring_initialize(
 }
 
 iree_status_t iree_io_uring_ring_enable(iree_io_uring_ring_t* ring) {
-  if (!iree_io_uring_ring_needs_enable(ring)) return iree_ok_status();
+  if (!iree_io_uring_ring_needs_enable(ring)) {
+    return iree_ok_status();
+  }
 
   int result = iree_io_uring_registration_enable(&ring->registration);
   if (result < 0) {

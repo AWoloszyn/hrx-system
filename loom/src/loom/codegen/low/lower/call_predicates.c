@@ -49,10 +49,16 @@ static bool loom_low_call_find_argument(const loom_value_id_t* callee_arguments,
                                         uint16_t callee_argument_count,
                                         loom_value_id_t value_id,
                                         uint16_t* out_argument_index) {
-  if (out_argument_index) *out_argument_index = 0;
+  if (out_argument_index) {
+    *out_argument_index = 0;
+  }
   for (uint16_t i = 0; i < callee_argument_count; ++i) {
-    if (callee_arguments[i] != value_id) continue;
-    if (out_argument_index) *out_argument_index = i;
+    if (callee_arguments[i] != value_id) {
+      continue;
+    }
+    if (out_argument_index) {
+      *out_argument_index = i;
+    }
     return true;
   }
   return false;
@@ -106,7 +112,9 @@ static bool loom_low_call_decision_operand_as_integer(
     return true;
   }
   int64_t constant = 0;
-  if (!loom_value_facts_as_exact_i64(operand->facts, &constant)) return false;
+  if (!loom_value_facts_as_exact_i64(operand->facts, &constant)) {
+    return false;
+  }
   out_integer_operand->kind = LOOM_CONDITION_INTEGER_OPERAND_CONSTANT;
   out_integer_operand->constant = constant;
   return true;
@@ -124,7 +132,9 @@ static bool loom_low_call_caller_predicate_operand_as_integer(
       return true;
     case LOOM_PRED_ARG_VALUE: {
       const int64_t raw_value_id = predicate->args[argument_index];
-      if (raw_value_id < 0 || raw_value_id > UINT32_MAX) return false;
+      if (raw_value_id < 0 || raw_value_id > UINT32_MAX) {
+        return false;
+      }
       if (!loom_low_call_find_argument(caller_arguments, caller_argument_count,
                                        (loom_value_id_t)raw_value_id,
                                        /*out_argument_index=*/NULL)) {
@@ -397,7 +407,9 @@ iree_status_t loom_low_materialize_call_argument_contract(
   uint16_t predicate_count = 0;
   const loom_predicate_t* predicates =
       loom_func_like_predicates(callee, &predicate_count);
-  if (predicate_count == 0) return iree_ok_status();
+  if (predicate_count == 0) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(loom_low_call_prove_argument_contract(
       context, source_op, callee_name, predicates, predicate_count,

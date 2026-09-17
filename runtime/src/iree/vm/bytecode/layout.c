@@ -36,7 +36,9 @@ static uint16_t iree_vm_bytecode_section_since_minor(uint32_t descriptor) {
 static bool iree_vm_bytecode_bytes_are_zero(const uint8_t* data,
                                             iree_host_size_t length) {
   for (iree_host_size_t i = 0; i < length; ++i) {
-    if (data[i] != 0) return false;
+    if (data[i] != 0) {
+      return false;
+    }
   }
   return true;
 }

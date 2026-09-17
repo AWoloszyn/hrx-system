@@ -46,7 +46,9 @@ iree_status_t loom_target_function_version_snapshot_build(
     loom_function_version_t* version_handle = function_versions->values[i];
     const loom_target_function_version_t* function_version =
         loom_target_function_version_const_cast(version_handle);
-    if (function_version == NULL) continue;
+    if (function_version == NULL) {
+      continue;
+    }
 
     const loom_func_like_t function = function_version->base.function;
     const loom_symbol_ref_t function_ref = loom_func_like_callee(function);

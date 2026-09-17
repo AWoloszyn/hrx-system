@@ -144,7 +144,9 @@ static iree_status_t iree_hal_vulkan_device_spec_query_memory_heaps(
     iree_status_free(status);
     status = iree_ok_status();
   }
-  if (!iree_status_is_ok(status) || heap_count == 0) return status;
+  if (!iree_status_is_ok(status) || heap_count == 0) {
+    return status;
+  }
 
   iree_hal_allocator_memory_heap_t* allocator_heaps = NULL;
   status = iree_allocator_malloc_array(host_allocator, heap_count,
@@ -172,7 +174,9 @@ static uint32_t iree_hal_vulkan_device_spec_memory_type_mask(
     if (!iree_all_bits_set(memory_types[i].memory_type, required_type)) {
       continue;
     }
-    if (i >= 32) return UINT32_MAX;
+    if (i >= 32) {
+      return UINT32_MAX;
+    }
     memory_type_mask |= 1u << i;
   }
   return memory_type_mask;
@@ -185,7 +189,9 @@ static iree_status_t iree_hal_vulkan_device_spec_populate_memory(
   iree_host_size_t heap_count = 0;
   IREE_RETURN_IF_ERROR(iree_hal_vulkan_device_spec_query_memory_heaps(
       params, builder->host_allocator, &allocator_heaps, &heap_count));
-  if (heap_count == 0) return iree_ok_status();
+  if (heap_count == 0) {
+    return iree_ok_status();
+  }
 
   iree_hal_memory_heap_spec_t* heaps = NULL;
   iree_status_t status = iree_allocator_malloc_array(
@@ -327,9 +333,13 @@ static iree_status_t iree_hal_vulkan_device_spec_populate_virtual_memory(
 
 static uint64_t iree_hal_vulkan_device_spec_timestamp_frequency_hz(
     float timestamp_period_ns) {
-  if (timestamp_period_ns <= 0.0f) return 0;
+  if (timestamp_period_ns <= 0.0f) {
+    return 0;
+  }
   const double frequency_hz = 1000000000.0 / (double)timestamp_period_ns;
-  if (frequency_hz >= (double)UINT64_MAX) return UINT64_MAX;
+  if (frequency_hz >= (double)UINT64_MAX) {
+    return UINT64_MAX;
+  }
   return (uint64_t)(frequency_hz + 0.5);
 }
 
@@ -339,7 +349,9 @@ static uint32_t iree_hal_vulkan_device_spec_queue_timestamp_valid_bits(
   for (iree_host_size_t i = 0; i < queue_inventory->family_count; ++i) {
     const uint32_t family_timestamp_valid_bits =
         queue_inventory->families[i].timestamp_valid_bits;
-    if (family_timestamp_valid_bits == 0) continue;
+    if (family_timestamp_valid_bits == 0) {
+      continue;
+    }
     timestamp_valid_bits =
         timestamp_valid_bits == 0
             ? family_timestamp_valid_bits
@@ -425,7 +437,9 @@ static uint64_t iree_hal_vulkan_device_spec_subgroup_size_mask(
   uint32_t subgroup_size = minimum_subgroup_size;
   while (subgroup_size < 64 && subgroup_size <= maximum_subgroup_size) {
     subgroup_size_mask |= 1ull << subgroup_size;
-    if (subgroup_size > UINT32_MAX / 2) break;
+    if (subgroup_size > UINT32_MAX / 2) {
+      break;
+    }
     subgroup_size *= 2;
   }
   return subgroup_size_mask;

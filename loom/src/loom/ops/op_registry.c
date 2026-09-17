@@ -47,7 +47,9 @@ static iree_status_t loom_op_registry_register_dialect(
   }
 
   iree_host_size_t parameterized_attr_count = 0;
-  if (registration->parameterized_attrs_fn == NULL) return iree_ok_status();
+  if (registration->parameterized_attrs_fn == NULL) {
+    return iree_ok_status();
+  }
   const loom_parameterized_attr_descriptor_t* parameterized_attrs =
       registration->parameterized_attrs_fn(&parameterized_attr_count);
   return loom_context_register_parameterized_attrs(

@@ -2458,7 +2458,9 @@ static loom_type_t loom_amdgpu_memory_access_value_vector_type(
     return loom_type_none();
   }
   const loom_type_t value_type = loom_module_value_type(module, value_id);
-  if (loom_type_is_vector(value_type)) return value_type;
+  if (loom_type_is_vector(value_type)) {
+    return value_type;
+  }
   return loom_type_shaped_1d(LOOM_TYPE_VECTOR,
                              loom_type_element_type(value_type),
                              loom_dim_pack_static(1), /*encoding_id=*/0);

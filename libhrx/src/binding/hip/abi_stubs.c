@@ -182,8 +182,12 @@ static void hrx_hip_mipmapped_array_registry_insert(
 static bool hrx_hip_mipmapped_array_registry_lookup(
     hipMipmappedArray_const_t mipmapped_array,
     hipMipmappedArray_t* out_mipmapped_array) {
-  if (out_mipmapped_array) *out_mipmapped_array = NULL;
-  if (!mipmapped_array) return false;
+  if (out_mipmapped_array) {
+    *out_mipmapped_array = NULL;
+  }
+  if (!mipmapped_array) {
+    return false;
+  }
   bool found = false;
   hrx_hip_mipmapped_array_registry_lock();
   for (hipMipmappedArray_t current = hrx_hip_mipmapped_array_registry_head;
@@ -191,7 +195,9 @@ static bool hrx_hip_mipmapped_array_registry_lookup(
     if ((hipMipmappedArray_const_t)current == mipmapped_array &&
         current->magic == HRX_HIP_MIPMAPPED_ARRAY_MAGIC) {
       iree_atomic_ref_count_inc(&current->ref_count);
-      if (out_mipmapped_array) *out_mipmapped_array = current;
+      if (out_mipmapped_array) {
+        *out_mipmapped_array = current;
+      }
       found = true;
       break;
     }
@@ -206,8 +212,12 @@ static void hrx_hip_mipmapped_array_release(
 static hipError_t hrx_hip_mipmapped_array_level(
     hipArray_t* out_level_array, hipMipmappedArray_const_t mipmapped_array,
     unsigned int level) {
-  if (out_level_array) *out_level_array = NULL;
-  if (!out_level_array || !mipmapped_array) return hipErrorInvalidValue;
+  if (out_level_array) {
+    *out_level_array = NULL;
+  }
+  if (!out_level_array || !mipmapped_array) {
+    return hipErrorInvalidValue;
+  }
   hipMipmappedArray_t current = NULL;
   if (!hrx_hip_mipmapped_array_registry_lookup(mipmapped_array, &current)) {
     return hipErrorInvalidHandle;
@@ -224,8 +234,12 @@ static hipError_t hrx_hip_mipmapped_array_level(
 
 static hipError_t hrx_hip_mipmapped_array_memory_size(
     hipMipmappedArray_const_t mipmapped_array, size_t* out_memory_size) {
-  if (out_memory_size) *out_memory_size = 0;
-  if (!mipmapped_array || !out_memory_size) return hipErrorInvalidValue;
+  if (out_memory_size) {
+    *out_memory_size = 0;
+  }
+  if (!mipmapped_array || !out_memory_size) {
+    return hipErrorInvalidValue;
+  }
   hipMipmappedArray_t current = NULL;
   if (!hrx_hip_mipmapped_array_registry_lookup(mipmapped_array, &current)) {
     return hipErrorInvalidHandle;
@@ -238,15 +252,21 @@ static hipError_t hrx_hip_mipmapped_array_memory_size(
 static bool hrx_hip_mipmapped_array_registry_remove(
     hipMipmappedArray_t mipmapped_array,
     hipMipmappedArray_t* out_mipmapped_array) {
-  if (out_mipmapped_array) *out_mipmapped_array = NULL;
-  if (!mipmapped_array) return false;
+  if (out_mipmapped_array) {
+    *out_mipmapped_array = NULL;
+  }
+  if (!mipmapped_array) {
+    return false;
+  }
   bool removed = false;
   hrx_hip_mipmapped_array_registry_lock();
   hipMipmappedArray_t* current = &hrx_hip_mipmapped_array_registry_head;
   while (*current) {
     if (*current == mipmapped_array &&
         (*current)->magic == HRX_HIP_MIPMAPPED_ARRAY_MAGIC) {
-      if (out_mipmapped_array) *out_mipmapped_array = *current;
+      if (out_mipmapped_array) {
+        *out_mipmapped_array = *current;
+      }
       *current = mipmapped_array->next_live_mipmapped_array;
       mipmapped_array->next_live_mipmapped_array = NULL;
       removed = true;
@@ -280,7 +300,9 @@ static void hrx_hip_mipmapped_array_release(
 
 static hipError_t hrx_hip_destroy_mipmapped_array(
     hipMipmappedArray_t mipmapped_array) {
-  if (!mipmapped_array) return hipErrorInvalidValue;
+  if (!mipmapped_array) {
+    return hipErrorInvalidValue;
+  }
   hipMipmappedArray_t removed_array = NULL;
   if (!hrx_hip_mipmapped_array_registry_remove(mipmapped_array,
                                                &removed_array)) {
@@ -293,7 +315,9 @@ static hipError_t hrx_hip_destroy_mipmapped_array(
 static hipError_t hrx_hip_valid_device(hipDevice_t device) {
   int count = 0;
   hipError_t result = hipGetDeviceCount(&count);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   return device >= 0 && device < count ? hipSuccess : hipErrorInvalidDevice;
 }
 
@@ -305,14 +329,18 @@ static bool hrx_hip_no_visible_devices_requested(void) {
 
 static size_t hrx_hip_mipmapped_level_dimension(size_t dimension,
                                                 unsigned int level) {
-  if (dimension <= 1 || level >= sizeof(size_t) * CHAR_BIT) return 1;
+  if (dimension <= 1 || level >= sizeof(size_t) * CHAR_BIT) {
+    return 1;
+  }
   const size_t shifted_dimension = dimension >> level;
   return shifted_dimension ? shifted_dimension : 1;
 }
 
 static hipError_t hrx_hip_array3d_descriptor_element_size(
     const HIP_ARRAY3D_DESCRIPTOR* descriptor, size_t* out_element_size) {
-  if (!descriptor || !out_element_size) return hipErrorInvalidValue;
+  if (!descriptor || !out_element_size) {
+    return hipErrorInvalidValue;
+  }
   *out_element_size = 0;
   if (descriptor->NumChannels != 1 && descriptor->NumChannels != 2 &&
       descriptor->NumChannels != 4) {
@@ -341,7 +369,9 @@ static hipError_t hrx_hip_array3d_descriptor_element_size(
     return hipErrorInvalidValue;
   }
   const size_t total_bits = channel_bits * descriptor->NumChannels;
-  if (total_bits == 0 || total_bits % 8 != 0) return hipErrorInvalidValue;
+  if (total_bits == 0 || total_bits % 8 != 0) {
+    return hipErrorInvalidValue;
+  }
   *out_element_size = total_bits / 8;
   return hipSuccess;
 }
@@ -349,12 +379,16 @@ static hipError_t hrx_hip_array3d_descriptor_element_size(
 static hipError_t hrx_hip_mipmapped_array_level_size(
     const HIP_ARRAY3D_DESCRIPTOR* descriptor, unsigned int level,
     size_t* out_size) {
-  if (!descriptor || !out_size) return hipErrorInvalidValue;
+  if (!descriptor || !out_size) {
+    return hipErrorInvalidValue;
+  }
   *out_size = 0;
   size_t element_size = 0;
   hipError_t result =
       hrx_hip_array3d_descriptor_element_size(descriptor, &element_size);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   const size_t width =
       hrx_hip_mipmapped_level_dimension(descriptor->Width, level);
   const size_t height = hrx_hip_mipmapped_level_dimension(
@@ -385,7 +419,9 @@ static hipError_t hrx_hip_validate_mipmapped_array_descriptor(
 }
 
 static hipError_t hrx_hip_spt_default_stream(hipStream_t* stream) {
-  if (!stream) return hipErrorInvalidValue;
+  if (!stream) {
+    return hipErrorInvalidValue;
+  }
   // The public sentinel is resolved by the regular entry points through the
   // shared per-thread stream state. Keeping that state in one place gives
   // reset and context changes the same lifetime behavior for every API form.
@@ -395,7 +431,9 @@ static hipError_t hrx_hip_spt_default_stream(hipStream_t* stream) {
 
 static hipError_t hrx_hip_spt_stream_or_explicit(hipStream_t stream,
                                                  hipStream_t* resolved_stream) {
-  if (!resolved_stream) return hipErrorInvalidValue;
+  if (!resolved_stream) {
+    return hipErrorInvalidValue;
+  }
   if (stream && stream != hipStreamPerThread) {
     *resolved_stream = stream;
     return hipSuccess;
@@ -405,7 +443,9 @@ static hipError_t hrx_hip_spt_stream_or_explicit(hipStream_t stream,
 
 static hipError_t hrx_hip_spt_lookup(const char* symbol, void** function,
                                      void* symbol_status) {
-  if (!symbol || !function) return hipErrorInvalidValue;
+  if (!symbol || !function) {
+    return hipErrorInvalidValue;
+  }
 
   // Resolve against this library, not the process-global scope; see
   // iree_hip_self_dl_handle(). Like hipGetProcAddress(), a consumer may dlopen
@@ -419,7 +459,9 @@ static hipError_t hrx_hip_spt_lookup(const char* symbol, void** function,
   }
   if (!handle) {
     *function = NULL;
-    if (symbol_status) *(int*)symbol_status = 1;
+    if (symbol_status) {
+      *(int*)symbol_status = 1;
+    }
     return hipErrorSharedObjectInitFailed;
   }
 
@@ -432,11 +474,17 @@ static hipError_t hrx_hip_spt_lookup(const char* symbol, void** function,
              "%s_spt", symbol);
     found = dlsym(handle, stream_per_thread_symbol);
   }
-  if (!found) found = dlsym(handle, symbol);
-  if (close_handle) dlclose(handle);
+  if (!found) {
+    found = dlsym(handle, symbol);
+  }
+  if (close_handle) {
+    dlclose(handle);
+  }
 
   *function = found;
-  if (symbol_status) *(int*)symbol_status = found ? 0 : 1;
+  if (symbol_status) {
+    *(int*)symbol_status = found ? 0 : 1;
+  }
   return found ? hipSuccess : hipErrorNotFound;
 }
 
@@ -620,7 +668,9 @@ HIPAPI hipError_t hipDrvLaunchKernelEx(const HIP_LAUNCH_CONFIG* config,
 }
 
 HIPAPI hipError_t hipDrvMemcpy2DUnaligned(const hip_Memcpy2D* pCopy) {
-  if (!pCopy) return hipErrorInvalidValue;
+  if (!pCopy) {
+    return hipErrorInvalidValue;
+  }
   if (pCopy->srcMemoryType == hipMemoryTypeArray) {
     return pCopy->srcArray ? hipErrorNotSupported : hipErrorInvalidValue;
   }
@@ -652,7 +702,9 @@ HIPAPI hipError_t hipDrvMemcpy2DUnaligned(const hip_Memcpy2D* pCopy) {
     default:
       return hipErrorInvalidValue;
   }
-  if (!src || !dst) return hipErrorInvalidValue;
+  if (!src || !dst) {
+    return hipErrorInvalidValue;
+  }
   if ((pCopy->WidthInBytes != 0 &&
        (pCopy->srcXInBytes > pCopy->srcPitch ||
         pCopy->dstXInBytes > pCopy->dstPitch ||
@@ -1179,14 +1231,20 @@ static bool hrx_hip_batch_access_order_valid(hipMemcpySrcAccessOrder order) {
 
 static hipError_t hrx_hip_channel_desc_element_size(
     const hipChannelFormatDesc* desc, size_t* out_element_size) {
-  if (!desc || !out_element_size) return hipErrorInvalidValue;
+  if (!desc || !out_element_size) {
+    return hipErrorInvalidValue;
+  }
   *out_element_size = 0;
   const int components[4] = {desc->x, desc->y, desc->z, desc->w};
   size_t channel_count = 0;
   size_t channel_bits = 0;
   for (size_t i = 0; i < 4; ++i) {
-    if (components[i] == 0) continue;
-    if (components[i] < 0) return hipErrorInvalidValue;
+    if (components[i] == 0) {
+      continue;
+    }
+    if (components[i] < 0) {
+      return hipErrorInvalidValue;
+    }
     const size_t component_bits = (size_t)components[i];
     if (channel_bits == 0) {
       channel_bits = component_bits;
@@ -1206,7 +1264,9 @@ static hipError_t hrx_hip_channel_desc_element_size(
 
 static hipError_t hrx_hip_batch_array_element_size(const hipMemcpy3DBatchOp* op,
                                                    size_t* out_element_size) {
-  if (!op || !out_element_size) return hipErrorInvalidValue;
+  if (!op || !out_element_size) {
+    return hipErrorInvalidValue;
+  }
   *out_element_size = 1;
   hipArray_const_t array = NULL;
   if (op->src.type == hipMemcpyOperandTypeArray) {
@@ -1214,10 +1274,14 @@ static hipError_t hrx_hip_batch_array_element_size(const hipMemcpy3DBatchOp* op,
   } else if (op->dst.type == hipMemcpyOperandTypeArray) {
     array = (hipArray_const_t)op->dst.op.array.array;
   }
-  if (!array) return hipSuccess;
+  if (!array) {
+    return hipSuccess;
+  }
   hipChannelFormatDesc desc = {0};
   hipError_t result = hipGetChannelDesc(&desc, array);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   return hrx_hip_channel_desc_element_size(&desc, out_element_size);
 }
 
@@ -1226,7 +1290,9 @@ static hipError_t hrx_hip_batch_set_operand(const hipMemcpy3DOperand* operand,
                                             const hipExtent* extent,
                                             size_t element_size,
                                             hipMemcpy3DParms* params) {
-  if (!operand || !extent || !params) return hipErrorInvalidValue;
+  if (!operand || !extent || !params) {
+    return hipErrorInvalidValue;
+  }
   switch (operand->type) {
     case hipMemcpyOperandTypePointer: {
       if (!operand->op.ptr.ptr && extent->width != 0 && extent->height != 0 &&
@@ -1292,10 +1358,14 @@ static hipError_t hrx_hip_batch_make_3d_params(const hipMemcpy3DBatchOp* op,
 
   size_t element_size = 1;
   hipError_t result = hrx_hip_batch_array_element_size(op, &element_size);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   result = hrx_hip_batch_set_operand(&op->src, true, &op->extent, element_size,
                                      params);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   return hrx_hip_batch_set_operand(&op->dst, false, &op->extent, element_size,
                                    params);
 }
@@ -1311,9 +1381,13 @@ HIPAPI hipError_t hipMemcpy3DBatchAsync(size_t numOps,
   for (size_t i = 0; i < numOps; ++i) {
     hipMemcpy3DParms params;
     hipError_t result = hrx_hip_batch_make_3d_params(&opList[i], &params);
-    if (result == hipSuccess) result = hipMemcpy3DAsync(&params, stream);
+    if (result == hipSuccess) {
+      result = hipMemcpy3DAsync(&params, stream);
+    }
     if (result != hipSuccess) {
-      if (failIdx) *failIdx = i;
+      if (failIdx) {
+        *failIdx = i;
+      }
       return result;
     }
   }
@@ -1337,22 +1411,32 @@ HIPAPI hipError_t hipMemcpyBatchAsync(void** dsts, void** srcs, size_t* sizes,
                                       size_t* attrsIdxs, size_t numAttrs,
                                       size_t* failIdx, hipStream_t stream) {
   (void)attrsIdxs;
-  if (!dsts || !srcs || !sizes || count == 0) return hipErrorInvalidValue;
+  if (!dsts || !srcs || !sizes || count == 0) {
+    return hipErrorInvalidValue;
+  }
   if ((attrs && numAttrs == 0) || (!attrs && numAttrs != 0)) {
     return hipErrorInvalidValue;
   }
-  if (numAttrs != 0) return hipErrorNotSupported;
+  if (numAttrs != 0) {
+    return hipErrorNotSupported;
+  }
 
   for (size_t i = 0; i < count; ++i) {
-    if (sizes[i] == 0) continue;
+    if (sizes[i] == 0) {
+      continue;
+    }
     if (!dsts[i] || !srcs[i]) {
-      if (failIdx) *failIdx = i;
+      if (failIdx) {
+        *failIdx = i;
+      }
       return hipErrorInvalidValue;
     }
     hipError_t result =
         hipMemcpyAsync(dsts[i], srcs[i], sizes[i], hipMemcpyDefault, stream);
     if (result != hipSuccess) {
-      if (failIdx) *failIdx = i;
+      if (failIdx) {
+        *failIdx = i;
+      }
       return result;
     }
   }
@@ -1362,7 +1446,9 @@ HIPAPI hipError_t hipMemcpyBatchAsync(void** dsts, void** srcs, size_t* sizes,
 static hipError_t iree_hip_memset_d2d_async_rows(
     hipDeviceptr_t dst, size_t dstPitch, const void* value, size_t element_size,
     size_t width, size_t height, hipStream_t stream) {
-  if (width == 0 || height == 0) return hipSuccess;
+  if (width == 0 || height == 0) {
+    return hipSuccess;
+  }
   if (!dst || !value || element_size == 0 || width > dstPitch ||
       width % element_size != 0) {
     return hipErrorInvalidValue;
@@ -1391,8 +1477,12 @@ static hipError_t iree_hip_memset_d2d_async_rows(
       default:
         return hipErrorInvalidValue;
     }
-    if (result == hipErrorNotFound) return hipErrorInvalidValue;
-    if (result != hipSuccess) return result;
+    if (result == hipErrorNotFound) {
+      return hipErrorInvalidValue;
+    }
+    if (result != hipSuccess) {
+      return result;
+    }
   }
   return hipSuccess;
 }
@@ -1403,7 +1493,9 @@ static hipError_t iree_hip_memset_d2d_rows(hipDeviceptr_t dst, size_t dstPitch,
                                            size_t height) {
   hipError_t result = iree_hip_memset_d2d_async_rows(
       dst, dstPitch, value, element_size, width, height, NULL);
-  if (result == hipSuccess) result = hipDeviceSynchronize();
+  if (result == hipSuccess) {
+    result = hipDeviceSynchronize();
+  }
   return result;
 }
 
@@ -1452,16 +1544,24 @@ HIPAPI hipError_t hipMemsetD2D8Async(hipDeviceptr_t dst, size_t dstPitch,
 HIPAPI hipError_t hipMipmappedArrayCreate(
     hipMipmappedArray_t* pHandle, HIP_ARRAY3D_DESCRIPTOR* pMipmappedArrayDesc,
     unsigned int numMipmapLevels) {
-  if (!pHandle || !pMipmappedArrayDesc) return hipErrorInvalidValue;
+  if (!pHandle || !pMipmappedArrayDesc) {
+    return hipErrorInvalidValue;
+  }
   *pHandle = NULL;
-  if (hrx_hip_no_visible_devices_requested()) return hipErrorNoDevice;
+  if (hrx_hip_no_visible_devices_requested()) {
+    return hipErrorNoDevice;
+  }
   hipError_t result = hrx_hip_validate_mipmapped_array_descriptor(
       pMipmappedArrayDesc, numMipmapLevels);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
 
   hipArray_t* level_arrays =
       (hipArray_t*)calloc(numMipmapLevels, sizeof(*level_arrays));
-  if (!level_arrays) return hipErrorOutOfMemory;
+  if (!level_arrays) {
+    return hipErrorOutOfMemory;
+  }
 
   size_t memory_size = 0;
   for (unsigned int level = 0; level < numMipmapLevels; ++level) {
@@ -1525,12 +1625,18 @@ HIPAPI hipError_t hipMipmappedArrayCreate(
 HIPAPI hipError_t hipMipmappedArrayGetMemoryRequirements(
     hipArrayMemoryRequirements* memoryRequirements, hipMipmappedArray_t mipmap,
     hipDevice_t device) {
-  if (!memoryRequirements) return hipErrorInvalidValue;
+  if (!memoryRequirements) {
+    return hipErrorInvalidValue;
+  }
   hipError_t result = hrx_hip_valid_device(device);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   size_t memory_size = 0;
   result = hrx_hip_mipmapped_array_memory_size(mipmap, &memory_size);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   memoryRequirements->alignment = HRX_HIP_MIPMAPPED_ARRAY_ALIGNMENT;
   memoryRequirements->size = memory_size;
   return hipSuccess;
@@ -1611,11 +1717,15 @@ HIPAPI hipError_t hipSignalExternalSemaphoresAsync(
 HIPAPI hipError_t hipStreamAddCallback(hipStream_t stream,
                                        hipStreamCallback_t callback,
                                        void* userData, unsigned int flags) {
-  if (!callback || flags != 0) return hipErrorInvalidValue;
+  if (!callback || flags != 0) {
+    return hipErrorInvalidValue;
+  }
 
   hrx_hip_stream_callback_thunk_t* thunk =
       (hrx_hip_stream_callback_thunk_t*)malloc(sizeof(*thunk));
-  if (!thunk) return hipErrorOutOfMemory;
+  if (!thunk) {
+    return hipErrorOutOfMemory;
+  }
   thunk->callback = callback;
   thunk->stream = stream;
   thunk->user_data = userData;
@@ -1630,7 +1740,9 @@ HIPAPI hipError_t hipStreamAddCallback(hipStream_t stream,
 
 HIPAPI hipError_t hipStreamAttachMemAsync(hipStream_t stream, void* dev_ptr,
                                           size_t length, unsigned int flags) {
-  if (!dev_ptr) return hipErrorInvalidValue;
+  if (!dev_ptr) {
+    return hipErrorInvalidValue;
+  }
   if (flags != hipMemAttachGlobal && flags != hipMemAttachHost &&
       flags != hipMemAttachSingle) {
     return hipErrorInvalidValue;
@@ -1909,7 +2021,9 @@ HIPAPI hipError_t hipWaitExternalSemaphoresAsync(
 HIPAPI hipError_t hipEventRecord_spt(hipEvent_t event, hipStream_t stream) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   return hipEventRecord(event, resolved_stream);
 }
 
@@ -1936,7 +2050,9 @@ HIPAPI hipError_t hipLaunchCooperativeKernel_spt(const void* f, dim3 gridDim,
                                                  hipStream_t hStream) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(hStream, &resolved_stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   return hipLaunchCooperativeKernel(f, gridDim, blockDim, kernelParams,
                                     sharedMemBytes, resolved_stream);
 }
@@ -1947,7 +2063,9 @@ HIPAPI hipError_t hipLaunchKernel_spt(const void* function_address,
                                       hipStream_t stream) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   return hipLaunchKernel(function_address, num_blocks, dim_blocks, args,
                          shared_mem_bytes, resolved_stream);
 }
@@ -1956,7 +2074,9 @@ HIPAPI hipError_t hipGraphLaunch_spt(hipGraphExec_t graphExec,
                                      hipStream_t stream) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   return hipGraphLaunch(graphExec, resolved_stream);
 }
 
@@ -1964,7 +2084,9 @@ HIPAPI hipError_t hipLaunchHostFunc_spt(hipStream_t stream, hipHostFn_t fn,
                                         void* userData) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   return hipLaunchHostFunc(resolved_stream, fn, userData);
 }
 
@@ -1974,7 +2096,9 @@ HIPAPI hipError_t hipMemcpy2DAsync_spt(void* dst, size_t dpitch,
                                        hipMemcpyKind kind, hipStream_t stream) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   return hipMemcpy2DAsync(dst, dpitch, src, spitch, width, height, kind,
                           resolved_stream);
 }
@@ -2000,7 +2124,9 @@ HIPAPI hipError_t hipMemcpy2D_spt(void* dst, size_t dpitch, const void* src,
                                   hipMemcpyKind kind) {
   hipStream_t stream = NULL;
   hipError_t result = hrx_hip_spt_default_stream(&stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   result =
       hipMemcpy2DAsync(dst, dpitch, src, spitch, width, height, kind, stream);
   return result == hipSuccess ? hipStreamSynchronize(stream) : result;
@@ -2014,7 +2140,9 @@ HIPAPI hipError_t hipMemcpy3DAsync_spt(const struct hipMemcpy3DParms* p,
                                        hipStream_t stream) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   return hipMemcpy3DAsync(p, resolved_stream);
 }
 
@@ -2023,7 +2151,9 @@ HIPAPI hipError_t hipMemcpyAsync_spt(void* dst, const void* src,
                                      hipStream_t stream) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   return hipMemcpyAsync(dst, src, size_bytes, kind, resolved_stream);
 }
 
@@ -2032,7 +2162,9 @@ HIPAPI hipError_t hipMemcpyFromSymbol_spt(void* dst, const void* symbol,
                                           hipMemcpyKind kind) {
   hipStream_t stream = NULL;
   hipError_t result = hrx_hip_spt_default_stream(&stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   result =
       hipMemcpyFromSymbolAsync(dst, symbol, size_bytes, offset, kind, stream);
   return result == hipSuccess ? hipStreamSynchronize(stream) : result;
@@ -2043,7 +2175,9 @@ HIPAPI hipError_t hipMemcpyToSymbol_spt(const void* symbol, const void* src,
                                         hipMemcpyKind kind) {
   hipStream_t stream = NULL;
   hipError_t result = hrx_hip_spt_default_stream(&stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   result =
       hipMemcpyToSymbolAsync(symbol, src, size_bytes, offset, kind, stream);
   return result == hipSuccess ? hipStreamSynchronize(stream) : result;
@@ -2055,7 +2189,9 @@ HIPAPI hipError_t hipMemcpyToSymbolAsync_spt(const void* symbol,
                                              hipStream_t stream) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   return hipMemcpyToSymbolAsync(symbol, src, size_bytes, offset, kind,
                                 resolved_stream);
 }
@@ -2064,7 +2200,9 @@ HIPAPI hipError_t hipMemcpy_spt(void* dst, const void* src, size_t size_bytes,
                                 hipMemcpyKind kind) {
   hipStream_t stream = NULL;
   hipError_t result = hrx_hip_spt_default_stream(&stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   result = hipMemcpyAsync(dst, src, size_bytes, kind, stream);
   return result == hipSuccess ? hipStreamSynchronize(stream) : result;
 }
@@ -2074,7 +2212,9 @@ HIPAPI hipError_t hipMemset2DAsync_spt(void* dst, size_t pitch, int value,
                                        hipStream_t stream) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   return hipMemset2DAsync(dst, pitch, value, width, height, resolved_stream);
 }
 
@@ -2082,7 +2222,9 @@ HIPAPI hipError_t hipMemset2D_spt(void* dst, size_t pitch, int value,
                                   size_t width, size_t height) {
   hipStream_t stream = NULL;
   hipError_t result = hrx_hip_spt_default_stream(&stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   result = hipMemset2DAsync(dst, pitch, value, width, height, stream);
   return result == hipSuccess ? hipStreamSynchronize(stream) : result;
 }
@@ -2091,7 +2233,9 @@ HIPAPI hipError_t hipMemset3DAsync_spt(hipPitchedPtr pitchedDevPtr, int value,
                                        hipExtent extent, hipStream_t stream) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   return hipMemset3DAsync(pitchedDevPtr, value, extent, resolved_stream);
 }
 
@@ -2104,14 +2248,18 @@ HIPAPI hipError_t hipMemsetAsync_spt(void* dst, int value, size_t size_bytes,
                                      hipStream_t stream) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   return hipMemsetAsync(dst, value, size_bytes, resolved_stream);
 }
 
 HIPAPI hipError_t hipMemset_spt(void* dst, int value, size_t size_bytes) {
   hipStream_t stream = NULL;
   hipError_t result = hrx_hip_spt_default_stream(&stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   result = hipMemsetAsync(dst, value, size_bytes, stream);
   return result == hipSuccess ? hipStreamSynchronize(stream) : result;
 }
@@ -2121,7 +2269,9 @@ HIPAPI hipError_t hipStreamAddCallback_spt(hipStream_t stream,
                                            void* userData, unsigned int flags) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   return hipStreamAddCallback(resolved_stream, callback, userData, flags);
 }
 
@@ -2129,7 +2279,9 @@ HIPAPI hipError_t hipStreamBeginCapture_spt(hipStream_t stream,
                                             hipStreamCaptureMode mode) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   return hipStreamBeginCapture(resolved_stream, mode);
 }
 
@@ -2137,7 +2289,9 @@ HIPAPI hipError_t hipStreamEndCapture_spt(hipStream_t stream,
                                           hipGraph_t* graph) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   return hipStreamEndCapture(resolved_stream, graph);
 }
 
@@ -2146,7 +2300,9 @@ HIPAPI hipError_t hipStreamGetCaptureInfo_spt(
     unsigned long long* id) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   return hipStreamGetCaptureInfo(resolved_stream, capture_status, id);
 }
 
@@ -2156,7 +2312,9 @@ HIPAPI hipError_t hipStreamGetCaptureInfo_v2_spt(
     const hipGraphNode_t** dependencies, size_t* dependency_count) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   return hipStreamGetCaptureInfo_v2(resolved_stream, capture_status, id, graph,
                                     dependencies, dependency_count);
 }
@@ -2165,14 +2323,18 @@ HIPAPI hipError_t hipStreamGetFlags_spt(hipStream_t stream,
                                         unsigned int* flags) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   return hipStreamGetFlags(resolved_stream, flags);
 }
 
 HIPAPI hipError_t hipStreamGetPriority_spt(hipStream_t stream, int* priority) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   return hipStreamGetPriority(resolved_stream, priority);
 }
 
@@ -2180,21 +2342,27 @@ HIPAPI hipError_t hipStreamIsCapturing_spt(
     hipStream_t stream, hipStreamCaptureStatus* capture_status) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   return hipStreamIsCapturing(resolved_stream, capture_status);
 }
 
 HIPAPI hipError_t hipStreamQuery_spt(hipStream_t stream) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   return hipStreamQuery(resolved_stream);
 }
 
 HIPAPI hipError_t hipStreamSynchronize_spt(hipStream_t stream) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   return hipStreamSynchronize(resolved_stream);
 }
 
@@ -2202,6 +2370,8 @@ HIPAPI hipError_t hipStreamWaitEvent_spt(hipStream_t stream, hipEvent_t event,
                                          unsigned int flags) {
   hipStream_t resolved_stream = NULL;
   hipError_t result = hrx_hip_spt_stream_or_explicit(stream, &resolved_stream);
-  if (result != hipSuccess) return result;
+  if (result != hipSuccess) {
+    return result;
+  }
   return hipStreamWaitEvent(resolved_stream, event, flags);
 }

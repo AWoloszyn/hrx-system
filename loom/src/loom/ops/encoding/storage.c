@@ -249,7 +249,9 @@ bool loom_encoding_query_static_address_layout(
     const loom_module_t* module, uint16_t encoding_id,
     loom_value_facts_t* stride_storage, iree_host_size_t stride_capacity,
     loom_value_fact_address_layout_t* out_layout) {
-  if (!module || !out_layout) return false;
+  if (!module || !out_layout) {
+    return false;
+  }
   *out_layout = (loom_value_fact_address_layout_t){0};
   const loom_encoding_t* encoding = loom_module_encoding(module, encoding_id);
   if (!encoding || !loom_encoding_static_is_valid(encoding)) {
@@ -265,7 +267,9 @@ bool loom_encoding_query_static_address_layout(
 bool loom_encoding_query_static_storage_schema(
     const loom_module_t* module, uint16_t encoding_id,
     loom_value_fact_storage_schema_t* out_schema) {
-  if (!module || !out_schema) return false;
+  if (!module || !out_schema) {
+    return false;
+  }
   *out_schema = (loom_value_fact_storage_schema_t){0};
   const loom_encoding_t* encoding = loom_module_encoding(module, encoding_id);
   if (!encoding || !loom_encoding_static_is_valid(encoding)) {
@@ -292,10 +296,14 @@ bool loom_encoding_query_static_storage_schema(
 bool loom_encoding_query_static_record_geometry(
     const loom_module_t* module, uint16_t encoding_id,
     loom_encoding_record_geometry_t* out_geometry) {
-  if (!module || !out_geometry) return false;
+  if (!module || !out_geometry) {
+    return false;
+  }
   *out_geometry = (loom_encoding_record_geometry_t){0};
   const loom_encoding_t* encoding = loom_module_encoding(module, encoding_id);
-  if (!encoding || !loom_encoding_static_is_valid(encoding)) return false;
+  if (!encoding || !loom_encoding_static_is_valid(encoding)) {
+    return false;
+  }
   const loom_encoding_family_descriptor_t* descriptor =
       loom_module_encoding_family_descriptor(module, encoding);
   if (!descriptor || !descriptor->fixed_metadata ||
@@ -343,14 +351,20 @@ bool loom_encoding_query_type_address_layout(
     loom_type_t type, loom_value_facts_t* stride_storage,
     iree_host_size_t stride_capacity,
     loom_value_fact_address_layout_t* out_layout) {
-  if (!out_layout) return false;
+  if (!out_layout) {
+    return false;
+  }
   *out_layout = (loom_value_fact_address_layout_t){0};
   if (!loom_type_has_encoding(type)) {
-    if (!loom_type_can_have_encoding(type)) return false;
+    if (!loom_type_can_have_encoding(type)) {
+      return false;
+    }
     out_layout->kind = LOOM_VALUE_FACT_ADDRESS_LAYOUT_DENSE;
     return true;
   }
-  if (!module) return false;
+  if (!module) {
+    return false;
+  }
 
   if (loom_type_has_static_encoding(type)) {
     return loom_encoding_query_static_address_layout(
@@ -371,7 +385,9 @@ static bool loom_encoding_query_address_layout_operands_from_value(
     loom_encoding_address_layout_operands_t* out_operands) {
   while (true) {
     const loom_value_t* value = loom_module_value(module, value_id);
-    if (loom_value_is_block_arg(value)) return false;
+    if (loom_value_is_block_arg(value)) {
+      return false;
+    }
     const loom_op_t* op = loom_value_def_op(value);
 
     if (loom_encoding_layout_strided_isa(op)) {
@@ -396,7 +412,9 @@ static bool loom_encoding_query_address_layout_operands_from_value(
       value_id = loom_encoding_assume_match_enc(op);
       continue;
     }
-    if (!loom_encoding_define_isa(op)) return false;
+    if (!loom_encoding_define_isa(op)) {
+      return false;
+    }
 
     const loom_encoding_t* spec =
         loom_module_encoding(module, loom_encoding_define_spec(op));
@@ -414,16 +432,22 @@ static bool loom_encoding_query_address_layout_operands_from_value(
         dynamic_bindings, &params);
     value_id = loom_encoding_define_dynamic_parameter(
         &params, LOOM_ENCODING_STORAGE_DYNAMIC_PARAMETER_LAYOUT);
-    if (value_id == LOOM_VALUE_ID_INVALID) return false;
+    if (value_id == LOOM_VALUE_ID_INVALID) {
+      return false;
+    }
   }
 }
 
 bool loom_encoding_query_type_address_layout_operands(
     const loom_module_t* module, loom_type_t type,
     loom_encoding_address_layout_operands_t* out_operands) {
-  if (!out_operands) return false;
+  if (!out_operands) {
+    return false;
+  }
   *out_operands = (loom_encoding_address_layout_operands_t){0};
-  if (!module || !loom_type_has_ssa_encoding(type)) return false;
+  if (!module || !loom_type_has_ssa_encoding(type)) {
+    return false;
+  }
   return loom_encoding_query_address_layout_operands_from_value(
       module, loom_type_encoding_value_id(type), out_operands);
 }
@@ -431,9 +455,13 @@ bool loom_encoding_query_type_address_layout_operands(
 bool loom_encoding_query_type_storage_schema(
     const loom_fact_context_t* context, const loom_module_t* module,
     loom_type_t type, loom_value_fact_storage_schema_t* out_schema) {
-  if (!out_schema) return false;
+  if (!out_schema) {
+    return false;
+  }
   *out_schema = (loom_value_fact_storage_schema_t){0};
-  if (!module || !loom_type_has_encoding(type)) return false;
+  if (!module || !loom_type_has_encoding(type)) {
+    return false;
+  }
 
   if (loom_type_has_static_encoding(type)) {
     return loom_encoding_query_static_storage_schema(module, type.encoding_id,
@@ -452,7 +480,9 @@ bool loom_encoding_query_type_storage_schema(
 bool loom_encoding_query_storage_schema_content_facts(
     const loom_value_fact_storage_schema_t* storage_schema,
     loom_scalar_type_t element_type, loom_value_facts_t* out_facts) {
-  if (!out_facts) return false;
+  if (!out_facts) {
+    return false;
+  }
   *out_facts = loom_value_facts_unknown();
   if (!loom_scalar_type_is_float(element_type)) {
     return false;
@@ -496,7 +526,9 @@ bool loom_encoding_query_storage_schema_content_facts(
 bool loom_encoding_query_type_storage_content_facts(
     const loom_fact_context_t* context, const loom_module_t* module,
     loom_type_t type, loom_value_facts_t* out_facts) {
-  if (!out_facts) return false;
+  if (!out_facts) {
+    return false;
+  }
   *out_facts = loom_value_facts_unknown();
   const loom_scalar_type_t element_type = loom_type_element_type(type);
   loom_value_fact_storage_schema_t storage_schema = {0};

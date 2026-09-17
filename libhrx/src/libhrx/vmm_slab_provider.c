@@ -99,7 +99,9 @@ static void hrx_vmm_slab_provider_destroy(
 
 static iree_status_t hrx_vmm_slab_provider_release_slab_state(
     hrx_vmm_slab_provider_t* provider, hrx_vmm_slab_t* slab) {
-  if (!slab) return iree_ok_status();
+  if (!slab) {
+    return iree_ok_status();
+  }
 
   iree_status_t status = iree_ok_status();
   if (slab->is_mapped) {
@@ -259,7 +261,9 @@ static iree_status_t hrx_vmm_slab_provider_acquire_slab(
 
 static void hrx_vmm_slab_provider_release_slab(
     iree_hal_slab_provider_t* base_provider, const iree_hal_slab_t* slab) {
-  if (!slab || !slab->provider_handle) return;
+  if (!slab || !slab->provider_handle) {
+    return;
+  }
   hrx_vmm_slab_provider_t* provider = hrx_vmm_slab_provider_cast(base_provider);
   hrx_vmm_slab_t* virtual_slab =
       (hrx_vmm_slab_t*)(uintptr_t)slab->provider_handle;
@@ -358,7 +362,9 @@ static void hrx_vmm_slab_provider_query_stats(
     iree_hal_slab_provider_stats_t* out_stats) {
   const hrx_vmm_slab_provider_t* provider =
       hrx_vmm_slab_provider_const_cast(base_provider);
-  if (iree_hal_slab_provider_visited(visited, base_provider)) return;
+  if (iree_hal_slab_provider_visited(visited, base_provider)) {
+    return;
+  }
   out_stats->total_acquired += (uint64_t)iree_atomic_load(
       (iree_atomic_int64_t*)&provider->total_acquired,
       iree_memory_order_relaxed);

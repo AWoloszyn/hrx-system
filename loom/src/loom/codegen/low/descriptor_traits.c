@@ -95,7 +95,9 @@ bool loom_low_descriptor_result_can_rematerialize(
     const loom_low_descriptor_t* descriptor, uint16_t result_index) {
   IREE_ASSERT_ARGUMENT(descriptor_set);
   IREE_ASSERT_ARGUMENT(descriptor);
-  if (result_index >= descriptor->result_count) return false;
+  if (result_index >= descriptor->result_count) {
+    return false;
+  }
   const uint32_t operand_index = descriptor->operand_start + result_index;
   IREE_ASSERT(operand_index < descriptor_set->operand_count);
   return iree_any_bit_set(descriptor_set->operands[operand_index].flags,

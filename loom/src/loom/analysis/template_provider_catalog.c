@@ -397,7 +397,9 @@ static iree_status_t loom_template_provider_summary_bind_predicates(
     const loom_value_id_t* target_result_ids, iree_arena_allocator_t* arena,
     const loom_predicate_t** out_predicates) {
   *out_predicates = NULL;
-  if (source->predicate_count == 0) return iree_ok_status();
+  if (source->predicate_count == 0) {
+    return iree_ok_status();
+  }
 
   loom_predicate_t* predicates = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(arena, source->predicate_count,
@@ -408,7 +410,9 @@ static iree_status_t loom_template_provider_summary_bind_predicates(
   for (uint16_t i = 0; i < source->predicate_count; ++i) {
     loom_predicate_t* predicate = &predicates[i];
     for (uint8_t j = 0; j < predicate->arg_count; ++j) {
-      if (predicate->arg_tags[j] != LOOM_PRED_ARG_VALUE) continue;
+      if (predicate->arg_tags[j] != LOOM_PRED_ARG_VALUE) {
+        continue;
+      }
       const int64_t raw_source_value_id = predicate->args[j];
       if (raw_source_value_id < 0 || raw_source_value_id > UINT32_MAX) {
         return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
@@ -470,7 +474,9 @@ static iree_status_t loom_template_provider_contract_bind_predicates(
     const loom_template_provider_family_binding_t* binding,
     iree_arena_allocator_t* arena, const loom_predicate_t** out_predicates) {
   *out_predicates = NULL;
-  if (contract->predicate_count == 0) return iree_ok_status();
+  if (contract->predicate_count == 0) {
+    return iree_ok_status();
+  }
 
   loom_predicate_t* predicates = NULL;
   IREE_RETURN_IF_ERROR(
@@ -483,7 +489,9 @@ static iree_status_t loom_template_provider_contract_bind_predicates(
   for (uint16_t i = 0; i < contract->predicate_count; ++i) {
     loom_predicate_t* predicate = &predicates[i];
     for (uint8_t j = 0; j < predicate->arg_count; ++j) {
-      if (predicate->arg_tags[j] != LOOM_PRED_ARG_VALUE) continue;
+      if (predicate->arg_tags[j] != LOOM_PRED_ARG_VALUE) {
+        continue;
+      }
       const int64_t signature_ordinal = predicate->args[j];
       IREE_ASSERT(signature_ordinal >= 0);
       IREE_ASSERT((uint64_t)signature_ordinal < signature_count);

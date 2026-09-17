@@ -101,7 +101,9 @@ static iree_status_t loom_promote_private_fragments_collect_view(
   loom_promote_private_fragments_collect_context_t* collect_context =
       (loom_promote_private_fragments_collect_context_t*)user_data;
   *out_result = LOOM_WALK_CONTINUE;
-  if (!loom_buffer_view_isa(op)) return iree_ok_status();
+  if (!loom_buffer_view_isa(op)) {
+    return iree_ok_status();
+  }
   return loom_promote_private_fragments_view_list_push(
       collect_context->arena, collect_context->views, op);
 }
@@ -166,13 +168,21 @@ static iree_status_t loom_promote_private_fragments_op_list_push(
 
 static bool loom_promote_private_fragments_exact_index_constant(
     const loom_module_t* module, loom_value_id_t value_id, int64_t* out_value) {
-  if (value_id == LOOM_VALUE_ID_INVALID) return false;
+  if (value_id == LOOM_VALUE_ID_INVALID) {
+    return false;
+  }
   const loom_value_t* value = loom_module_value(module, value_id);
-  if (loom_value_is_block_arg(value)) return false;
+  if (loom_value_is_block_arg(value)) {
+    return false;
+  }
   const loom_op_t* op = loom_value_def_op(value);
-  if (!loom_index_constant_isa(op)) return false;
+  if (!loom_index_constant_isa(op)) {
+    return false;
+  }
   loom_attribute_t attr = loom_index_constant_value(op);
-  if (attr.kind != LOOM_ATTR_I64) return false;
+  if (attr.kind != LOOM_ATTR_I64) {
+    return false;
+  }
   *out_value = attr.i64;
   return true;
 }
@@ -180,7 +190,9 @@ static bool loom_promote_private_fragments_exact_index_constant(
 static bool loom_promote_private_fragments_is_private_rank1_view(
     const loom_module_t* module, const loom_op_t* view_op, int64_t* out_length,
     loom_op_t** out_alloca_op) {
-  if (!loom_buffer_view_isa(view_op)) return false;
+  if (!loom_buffer_view_isa(view_op)) {
+    return false;
+  }
   loom_value_id_t view = loom_buffer_view_result(view_op);
   loom_type_t view_type = loom_module_value_type(module, view);
   if (!loom_type_is_view(view_type) || loom_type_rank(view_type) != 1 ||
@@ -188,16 +200,24 @@ static bool loom_promote_private_fragments_is_private_rank1_view(
     return false;
   }
   int64_t length = loom_type_dim_static_size_at(view_type, 0);
-  if (length <= 0) return false;
+  if (length <= 0) {
+    return false;
+  }
 
   const loom_value_t* buffer_value =
       loom_module_value(module, loom_buffer_view_buffer(view_op));
-  if (loom_value_is_block_arg(buffer_value)) return false;
+  if (loom_value_is_block_arg(buffer_value)) {
+    return false;
+  }
   // Promotion reasons about this view's users only. Another storage user can
   // observe erased writes or clobber values forwarded through the view.
-  if (!loom_value_has_single_use(buffer_value)) return false;
+  if (!loom_value_has_single_use(buffer_value)) {
+    return false;
+  }
   loom_op_t* alloca_op = loom_value_def_op(buffer_value);
-  if (!loom_buffer_alloca_isa(alloca_op)) return false;
+  if (!loom_buffer_alloca_isa(alloca_op)) {
+    return false;
+  }
   if (loom_buffer_alloca_memory_space(alloca_op) !=
       LOOM_VALUE_FACT_MEMORY_SPACE_PRIVATE) {
     return false;
@@ -223,9 +243,13 @@ static bool loom_promote_private_fragments_source_origin_from_copy_load(
     loom_promote_private_fragments_copy_loop_t* out_copy_loop) {
   loom_value_id_t source_view = loom_view_load_view(source_load_op);
   loom_type_t source_view_type = loom_module_value_type(module, source_view);
-  if (!loom_type_is_view(source_view_type)) return false;
+  if (!loom_type_is_view(source_view_type)) {
+    return false;
+  }
   uint8_t source_rank = loom_type_rank(source_view_type);
-  if (source_rank == 0 || source_rank > LOOM_TYPE_MAX_RANK) return false;
+  if (source_rank == 0 || source_rank > LOOM_TYPE_MAX_RANK) {
+    return false;
+  }
   uint8_t vector_axis = (uint8_t)(source_rank - 1);
   if (loom_type_dim_is_dynamic_at(source_view_type, vector_axis) ||
       loom_type_dim_static_size_at(source_view_type, vector_axis) !=
@@ -249,11 +273,15 @@ static bool loom_promote_private_fragments_source_origin_from_copy_load(
       out_copy_loop->static_indices[axis] = static_index;
       continue;
     }
-    if (dynamic_index_ordinal >= source_indices.count) return false;
+    if (dynamic_index_ordinal >= source_indices.count) {
+      return false;
+    }
     loom_value_id_t dynamic_index =
         source_indices.values[dynamic_index_ordinal];
     if (dynamic_index == induction_variable) {
-      if (axis != vector_axis || found_induction_variable) return false;
+      if (axis != vector_axis || found_induction_variable) {
+        return false;
+      }
       out_copy_loop->static_indices[axis] = 0;
       found_induction_variable = true;
     } else {
@@ -269,7 +297,9 @@ static bool loom_promote_private_fragments_source_origin_from_copy_load(
 
   loom_type_t source_result_type =
       loom_module_value_type(module, loom_view_load_result(source_load_op));
-  if (!loom_type_is_scalar(source_result_type)) return false;
+  if (!loom_type_is_scalar(source_result_type)) {
+    return false;
+  }
   out_copy_loop->source_view = source_view;
   out_copy_loop->static_index_count = source_rank;
   out_copy_loop->vector_type = loom_type_shaped_1d(
@@ -282,14 +312,18 @@ static bool loom_promote_private_fragments_loop_body_matches(
     const loom_op_t* loop_op, const loom_op_t* source_load_op,
     const loom_op_t* private_store_op) {
   loom_region_t* body = loom_scf_for_body(loop_op);
-  if (!body || body->block_count != 1) return false;
+  if (!body || body->block_count != 1) {
+    return false;
+  }
   loom_block_t* block = loom_region_entry_block(body);
   iree_host_size_t non_terminator_count = 0;
   bool saw_source_load = false;
   bool saw_private_store = false;
   loom_op_t* op = NULL;
   loom_block_for_each_op(block, op) {
-    if (loom_scf_yield_isa(op)) continue;
+    if (loom_scf_yield_isa(op)) {
+      continue;
+    }
     ++non_terminator_count;
     if (op == source_load_op) {
       saw_source_load = true;
@@ -310,7 +344,9 @@ static bool loom_promote_private_fragments_read_copy_loop(
   memset(out_copy_loop, 0, sizeof(*out_copy_loop));
 
   loom_op_t* loop_op = private_store_op->parent_op;
-  if (!loom_scf_for_isa(loop_op)) return false;
+  if (!loom_scf_for_isa(loop_op)) {
+    return false;
+  }
   loom_region_t* body = loom_scf_for_body(loop_op);
   if (!body || body->block_count != 1 ||
       loom_region_entry_arg_count(body) == 0) {
@@ -345,14 +381,20 @@ static bool loom_promote_private_fragments_read_copy_loop(
 
   loom_value_id_t stored_value = loom_view_store_value(private_store_op);
   const loom_value_t* stored = loom_module_value(module, stored_value);
-  if (loom_value_is_block_arg(stored)) return false;
+  if (loom_value_is_block_arg(stored)) {
+    return false;
+  }
   loom_op_t* source_load_op = loom_value_def_op(stored);
-  if (!loom_view_load_isa(source_load_op)) return false;
+  if (!loom_view_load_isa(source_load_op)) {
+    return false;
+  }
   if (source_load_op->parent_op != loop_op ||
       source_load_op->parent_block != private_store_op->parent_block) {
     return false;
   }
-  if (!loom_value_has_single_use(stored)) return false;
+  if (!loom_value_has_single_use(stored)) {
+    return false;
+  }
   if (!loom_promote_private_fragments_loop_body_matches(loop_op, source_load_op,
                                                         private_store_op)) {
     return false;
@@ -390,7 +432,9 @@ static iree_status_t loom_promote_private_fragments_collect_uses(
       continue;
     }
     if (loom_view_store_isa(user_op) && loom_use_operand_index(*use) == 1) {
-      if (found_copy_loop) return iree_ok_status();
+      if (found_copy_loop) {
+        return iree_ok_status();
+      }
       if (!loom_promote_private_fragments_read_copy_loop(
               module, private_view, user_op, fragment_length, out_copy_loop)) {
         return iree_ok_status();
@@ -463,16 +507,22 @@ static bool loom_promote_private_fragments_i64_array_equal(
     return false;
   }
   for (uint16_t i = 0; i < lhs.count; ++i) {
-    if (lhs.i64_array[i] != rhs.i64_array[i]) return false;
+    if (lhs.i64_array[i] != rhs.i64_array[i]) {
+      return false;
+    }
   }
   return true;
 }
 
 static bool loom_promote_private_fragments_value_slice_equal(
     loom_value_slice_t lhs, loom_value_slice_t rhs) {
-  if (lhs.count != rhs.count) return false;
+  if (lhs.count != rhs.count) {
+    return false;
+  }
   for (uint16_t i = 0; i < lhs.count; ++i) {
-    if (lhs.values[i] != rhs.values[i]) return false;
+    if (lhs.values[i] != rhs.values[i]) {
+      return false;
+    }
   }
   return true;
 }
@@ -506,7 +556,9 @@ static iree_status_t loom_promote_private_fragments_collect_single_store_uses(
       continue;
     }
     if (loom_view_store_isa(user_op) && loom_use_operand_index(*use) == 1) {
-      if (*out_store_op) return iree_ok_status();
+      if (*out_store_op) {
+        return iree_ok_status();
+      }
       *out_store_op = user_op;
       continue;
     }
@@ -633,7 +685,9 @@ static bool loom_promote_private_fragments_rank1_static_slot_index(
   }
   int64_t slot_index = static_indices.i64_array[0];
   if (slot_index == INT64_MIN) {
-    if (indices.count != 1) return false;
+    if (indices.count != 1) {
+      return false;
+    }
     if (!loom_promote_private_fragments_exact_index_constant(
             module, indices.values[0], &slot_index)) {
       return false;
@@ -641,7 +695,9 @@ static bool loom_promote_private_fragments_rank1_static_slot_index(
   } else if (indices.count != 0) {
     return false;
   }
-  if (slot_index < 0 || slot_index >= fragment_length) return false;
+  if (slot_index < 0 || slot_index >= fragment_length) {
+    return false;
+  }
   *out_slot_index = slot_index;
   return true;
 }
@@ -769,7 +825,9 @@ static bool loom_promote_private_fragments_can_forward_static_slots(
     loom_op_t* store_op =
         loom_promote_private_fragments_latest_static_slot_store(
             context, load_op, fragment_length, stores);
-    if (store_op == NULL) return false;
+    if (store_op == NULL) {
+      return false;
+    }
     loom_value_id_t stored_value = loom_view_store_value(store_op);
     if (!loom_dominates_value(context->dominance, stored_value, load_op)) {
       return false;
@@ -915,7 +973,9 @@ static iree_status_t loom_promote_private_fragments_process_view(
   IREE_RETURN_IF_ERROR(
       loom_promote_private_fragments_try_erase_static_slot_noop_stores(
           context, private_view, fragment_length, out_changed));
-  if (*out_changed) return iree_ok_status();
+  if (*out_changed) {
+    return iree_ok_status();
+  }
 
   loom_promote_private_fragments_copy_loop_t copy_loop = {0};
   loom_promote_private_fragments_op_list_t loads = {0};
@@ -927,7 +987,9 @@ static iree_status_t loom_promote_private_fragments_process_view(
     IREE_RETURN_IF_ERROR(
         loom_promote_private_fragments_try_single_store_forward(
             context, view_op, alloca_op, private_view, out_changed));
-    if (*out_changed) return iree_ok_status();
+    if (*out_changed) {
+      return iree_ok_status();
+    }
     return loom_promote_private_fragments_try_static_slot_forward(
         context, view_op, alloca_op, private_view, fragment_length,
         out_changed);
@@ -947,7 +1009,9 @@ iree_status_t loom_promote_private_fragments_run(loom_pass_t* pass,
                                                  loom_module_t* module,
                                                  loom_func_like_t function) {
   loom_region_t* body = loom_func_like_body(function);
-  if (!body) return iree_ok_status();
+  if (!body) {
+    return iree_ok_status();
+  }
 
   loom_rewriter_t rewriter;
   IREE_RETURN_IF_ERROR(
@@ -999,7 +1063,9 @@ iree_status_t loom_promote_private_fragments_run(loom_pass_t* pass,
       }
     }
   }
-  if (iree_status_is_ok(status) && changed) loom_pass_mark_changed(pass);
+  if (iree_status_is_ok(status) && changed) {
+    loom_pass_mark_changed(pass);
+  }
 
   loom_rewriter_deinitialize(&rewriter);
   return status;

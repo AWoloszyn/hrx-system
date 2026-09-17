@@ -91,7 +91,9 @@ class RelayPosixTest : public CtsTestBase<> {
     uint64_t value = 0;
     ssize_t bytes_read = read(primitive.source_fd, &value, sizeof(value));
     if (bytes_read > 0) {
-      if (out_value) *out_value = value;
+      if (out_value) {
+        *out_value = value;
+      }
       return true;
     }
     return false;
@@ -324,7 +326,9 @@ TEST_P(RelayPosixTest, OwnSourcePrimitive) {
 
   // Mark as closed so ClosePrimitive doesn't double-close.
   source.source_fd = -1;
-  if (!source.owns_pair) source.signal_fd = -1;
+  if (!source.owns_pair) {
+    source.signal_fd = -1;
+  }
 
   ClosePrimitive(source);
   ClosePrimitive(sink);
@@ -462,7 +466,9 @@ TEST_P(RelayPosixTest, OwnSourcePrimitiveOnUnregister) {
   EXPECT_EQ(errno, EBADF);
 
   source.source_fd = -1;
-  if (!source.owns_pair) source.signal_fd = -1;
+  if (!source.owns_pair) {
+    source.signal_fd = -1;
+  }
 
   ClosePrimitive(source);
   ClosePrimitive(sink);

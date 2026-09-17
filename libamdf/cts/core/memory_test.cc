@@ -63,8 +63,9 @@ class HostMemoryTest : public ::testing::Test {
       profile.structure_size = sizeof(profile);
       const amdf_status_t status = api_->memory_scope_query_device_profile(
           scope_, ordinal, 0, nullptr, &profile, nullptr);
-      if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED))
+      if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
         continue;
+      }
       ASSERT_EQ(status, AMDF_STATUS_OK);
       if ((profile.roles & role) != 0) {
         *out_profile = profile;
@@ -224,7 +225,9 @@ TEST_F(HostMemoryTest, BorrowsCallerStorageWithoutTakingOwnership) {
   memories_.pop_back();
   EXPECT_EQ(storage_.front(), 0x42);
   EXPECT_EQ(storage_.back(), 0x42);
-  for (size_t i = 1; i + 1 < storage_.size(); ++i) ASSERT_EQ(storage_[i], 0x19);
+  for (size_t i = 1; i + 1 < storage_.size(); ++i) {
+    ASSERT_EQ(storage_[i], 0x19);
+  }
 }
 
 TEST_F(HostMemoryTest, QualifiesCpuPairsAndRejectsUnestablishedRegistration) {

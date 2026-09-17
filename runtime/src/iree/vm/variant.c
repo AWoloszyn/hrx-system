@@ -18,7 +18,9 @@ static inline bool iree_vm_variant_ref_is_borrowed(iree_vm_variant_t variant) {
 
 static inline iree_vm_variant_t iree_vm_variant_make_ref(
     void* object, iree_vm_ref_type_t type, uint64_t tag) {
-  if (!object) return iree_vm_variant_null();
+  if (!object) {
+    return iree_vm_variant_null();
+  }
   iree_vm_variant_t variant = {
       (uint64_t)(uintptr_t)object,
       (uint64_t)(uintptr_t)type | tag,
@@ -148,7 +150,9 @@ iree_vm_variant_from_ptr_borrowed(void* ptr, iree_vm_ref_type_t type) {
 
 IREE_API_EXPORT iree_vm_variant_t
 iree_vm_variant_from_ptr_retained(void* ptr, iree_vm_ref_type_t type) {
-  if (ptr) iree_vm_ref_object_retain(ptr);
+  if (ptr) {
+    iree_vm_ref_object_retain(ptr);
+  }
   return iree_vm_variant_make_ref(ptr, type, IREE_VM_VARIANT_TAG_OWNED_REF);
 }
 
@@ -167,7 +171,9 @@ iree_vm_variant_from_ref_borrowed(iree_vm_ref_t ref) {
 
 IREE_API_EXPORT iree_vm_variant_t
 iree_vm_variant_from_ref_retained(iree_vm_ref_t ref) {
-  if (ref.object) iree_vm_ref_object_retain(ref.object);
+  if (ref.object) {
+    iree_vm_ref_object_retain(ref.object);
+  }
   return iree_vm_variant_make_ref(ref.object, iree_vm_ref_type(ref),
                                   IREE_VM_VARIANT_TAG_OWNED_REF);
 }
@@ -254,7 +260,9 @@ IREE_API_EXPORT iree_status_t iree_vm_ptr_from_variant_retained(
   }
   IREE_RETURN_IF_ERROR(iree_vm_variant_check_ref_type(variant, expected_type));
   void* object = (void*)(uintptr_t)variant.payload;
-  if (object) iree_vm_ref_object_retain(object);
+  if (object) {
+    iree_vm_ref_object_retain(object);
+  }
   *out_ptr = object;
   return iree_ok_status();
 }

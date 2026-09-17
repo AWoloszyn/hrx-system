@@ -835,7 +835,9 @@ static_assert(sizeof(loom_low_schedule_class_t) == 32,
 // A zero override preserves the historical latency_cycles behavior.
 static inline uint16_t loom_low_schedule_class_schedule_distance_cycles(
     const loom_low_schedule_class_t* schedule_class) {
-  if (schedule_class == NULL) return 0;
+  if (schedule_class == NULL) {
+    return 0;
+  }
   return schedule_class->schedule_distance_cycles != 0
              ? schedule_class->schedule_distance_cycles
              : schedule_class->latency_cycles;

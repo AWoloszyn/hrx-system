@@ -550,7 +550,9 @@ static iree_status_t loom_low_descriptor_text_asm_format_expected_result_types(
     }
     if (appended_count > 0) {
       status = iree_string_builder_append_cstring(&builder, " | ");
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
     }
     status = loom_low_descriptor_text_asm_append_reg_type(
         &builder, descriptor_set, operand, alternative->reg_class_id);
@@ -912,7 +914,9 @@ static iree_status_t loom_low_descriptor_text_asm_immediate_descriptor(
     IREE_RETURN_IF_ERROR(loom_low_descriptor_text_asm_form_references_immediate(
         descriptor_set, asm_form, descriptor_immediate_index,
         &referenced_by_form));
-    if (referenced_by_form) continue;
+    if (referenced_by_form) {
+      continue;
+    }
     if (extra_immediate_index == 0) {
       return loom_low_descriptor_text_asm_descriptor_immediate_info(
           descriptor_set, descriptor, descriptor_immediate_index,
@@ -964,8 +968,12 @@ static iree_status_t loom_low_descriptor_text_asm_tied_result_at(
     }
     const loom_low_constraint_t* constraint =
         &descriptor_set->constraints[constraint_index];
-    if (constraint->kind != LOOM_LOW_CONSTRAINT_KIND_TIED) continue;
-    if (current_ordinal++ != tied_result_ordinal) continue;
+    if (constraint->kind != LOOM_LOW_CONSTRAINT_KIND_TIED) {
+      continue;
+    }
+    if (current_ordinal++ != tied_result_ordinal) {
+      continue;
+    }
 
     if (constraint->rhs_operand_index == LOOM_LOW_ID_NONE) {
       return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,

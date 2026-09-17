@@ -567,7 +567,9 @@ iree_hal_amdgpu_profile_counter_find_descriptor(iree_string_view_t name) {
        i < IREE_ARRAYSIZE(iree_hal_amdgpu_profile_counter_descriptors); ++i) {
     const iree_hal_amdgpu_profile_counter_descriptor_t* descriptor =
         &iree_hal_amdgpu_profile_counter_descriptors[i];
-    if (iree_string_view_equal(name, descriptor->name)) return descriptor;
+    if (iree_string_view_equal(name, descriptor->name)) {
+      return descriptor;
+    }
   }
   return NULL;
 }
@@ -583,9 +585,13 @@ static bool iree_hal_amdgpu_profile_counter_selection_is_default(
 
 static bool iree_hal_amdgpu_profile_counter_options_request_explicit_names(
     const iree_hal_device_profiling_options_t* options) {
-  if (!options->counter_sets) return false;
+  if (!options->counter_sets) {
+    return false;
+  }
   for (iree_host_size_t i = 0; i < options->counter_set_count; ++i) {
-    if (options->counter_sets[i].counter_name_count != 0) return true;
+    if (options->counter_sets[i].counter_name_count != 0) {
+      return true;
+    }
   }
   return false;
 }
@@ -956,7 +962,9 @@ static iree_status_t iree_hal_amdgpu_profile_counter_create_packets(
 static void iree_hal_amdgpu_profile_counter_destroy_packets(
     const iree_hal_amdgpu_libaqlprofile_t* libaqlprofile,
     iree_hal_amdgpu_aqlprofile_handle_t* handle) {
-  if (!handle->handle) return;
+  if (!handle->handle) {
+    return;
+  }
   libaqlprofile->aqlprofile_pmc_delete_packets(*handle);
   handle->handle = 0;
 }
@@ -1382,7 +1390,9 @@ iree_status_t iree_hal_amdgpu_profile_counter_session_allocate(
 
 void iree_hal_amdgpu_profile_counter_session_free(
     iree_hal_amdgpu_profile_counter_session_t* session) {
-  if (!session) return;
+  if (!session) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_allocator_t host_allocator = session->host_allocator;
   iree_hal_amdgpu_libaqlprofile_deinitialize(&session->libaqlprofile);
@@ -1667,7 +1677,9 @@ static iree_status_t iree_hal_amdgpu_host_queue_ensure_counter_packet_set(
     iree_hal_amdgpu_profile_counter_session_t* session,
     const iree_hal_amdgpu_profile_counter_set_t* counter_set,
     iree_hal_amdgpu_profile_counter_packet_set_t* packet_set) {
-  if (packet_set->handle.handle) return iree_ok_status();
+  if (packet_set->handle.handle) {
+    return iree_ok_status();
+  }
   iree_hal_amdgpu_host_queue_initialize_counter_packet_set(queue, session,
                                                            packet_set);
   return iree_hal_amdgpu_profile_counter_create_packets(
@@ -1879,7 +1891,9 @@ iree_status_t iree_hal_amdgpu_host_queue_enable_profile_counters(
 
 void iree_hal_amdgpu_host_queue_disable_profile_counters(
     iree_hal_amdgpu_host_queue_t* queue) {
-  if (!queue->profiling.counters.session) return;
+  if (!queue->profiling.counters.session) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_hal_amdgpu_profile_counter_session_t* session =
@@ -2206,13 +2220,17 @@ static iree_status_t iree_hal_amdgpu_host_queue_wait_profile_counter_range(
       (iree_hal_amdgpu_logical_device_t*)queue->logical_device;
   uint64_t wait_timeout_hint =
       logical_device->system->info.timestamp_frequency / 1000;
-  if (wait_timeout_hint == 0) wait_timeout_hint = 1;
+  if (wait_timeout_hint == 0) {
+    wait_timeout_hint = 1;
+  }
 
   for (;;) {
     const hsa_signal_value_t signal_value = iree_hsa_signal_wait_scacquire(
         IREE_LIBHSA(queue->libhsa), signal, HSA_SIGNAL_CONDITION_EQ, 0,
         wait_timeout_hint, HSA_WAIT_STATE_BLOCKED);
-    if (signal_value == 0) return iree_ok_status();
+    if (signal_value == 0) {
+      return iree_ok_status();
+    }
 
     IREE_RETURN_IF_ERROR(iree_hal_amdgpu_host_queue_clone_error_status(queue));
   }

@@ -87,7 +87,9 @@ EncodedUserQueueStream EncodeCopyStream(
                     kUserQueueMemoryCompletionValue);
 
   size_t padding_dword_count = 8 - ordinal % 8;
-  if (padding_dword_count == 1) padding_dword_count += 8;
+  if (padding_dword_count == 1) {
+    padding_dword_count += 8;
+  }
   words[ordinal] = MakePm4Header(0x10, padding_dword_count);
   std::memset(words + ordinal + 1, 0,
               (padding_dword_count - 1) * sizeof(*words));

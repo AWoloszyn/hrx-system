@@ -83,7 +83,9 @@ void iree_hal_replay_recorder_buffer_make_object_payload(
 
 iree_hal_replay_object_id_t iree_hal_replay_recorder_buffer_id_or_none(
     iree_hal_buffer_t* buffer) {
-  if (!buffer) return IREE_HAL_REPLAY_OBJECT_ID_NONE;
+  if (!buffer) {
+    return IREE_HAL_REPLAY_OBJECT_ID_NONE;
+  }
   if (iree_hal_replay_recorder_buffer_isa(buffer)) {
     return iree_hal_replay_recorder_buffer_cast(buffer)->buffer_id;
   }
@@ -97,7 +99,9 @@ iree_hal_replay_object_id_t iree_hal_replay_recorder_buffer_id_or_none(
 
 iree_hal_replay_object_id_t iree_hal_replay_recorder_find_buffer_id(
     iree_hal_replay_recorder_t* recorder, iree_hal_buffer_t* buffer) {
-  if (!buffer) return IREE_HAL_REPLAY_OBJECT_ID_NONE;
+  if (!buffer) {
+    return IREE_HAL_REPLAY_OBJECT_ID_NONE;
+  }
   iree_hal_buffer_t* allocated_buffer =
       iree_hal_buffer_allocated_buffer(buffer);
   if (!iree_hal_replay_recorder_buffer_isa(allocated_buffer)) {
@@ -181,7 +185,9 @@ iree_hal_buffer_t* iree_hal_replay_recorder_buffer_initialize_proxy(
 
   iree_hal_buffer_placement_t placement =
       iree_hal_buffer_allocation_placement(base_buffer);
-  if (placement.device) placement.device = placement_device;
+  if (placement.device) {
+    placement.device = placement_device;
+  }
   iree_hal_buffer_initialize(
       placement, &buffer->base, iree_hal_buffer_allocation_size(base_buffer),
       iree_hal_buffer_byte_offset(base_buffer),
@@ -290,7 +296,9 @@ iree_status_t iree_hal_replay_recorder_buffer_ref_unwrap_for_call(
 
   // Binding tables may contain unused slots. Preserve them while unwrapping
   // the populated slots for the underlying device call.
-  if (!inout_ref->buffer) return iree_ok_status();
+  if (!inout_ref->buffer) {
+    return iree_ok_status();
+  }
 
   if (iree_hal_replay_recorder_buffer_isa(inout_ref->buffer)) {
     inout_ref->buffer =
@@ -353,7 +361,9 @@ static iree_status_t iree_hal_replay_recorder_buffer_make_range_data_payload(
   *out_data = iree_make_const_byte_span(NULL, 0);
 
   if (IREE_UNLIKELY(!mapping->contents.data)) {
-    if (local_byte_length == 0) return iree_ok_status();
+    if (local_byte_length == 0) {
+      return iree_ok_status();
+    }
     return iree_make_status(
         IREE_STATUS_FAILED_PRECONDITION,
         "cannot capture replay mapped buffer data without mapped contents");
@@ -427,7 +437,9 @@ static iree_status_t iree_hal_replay_recorder_buffer_capture_mapping_range(
   IREE_ASSERT_ARGUMENT(out_data);
   memset(out_payload, 0, sizeof(*out_payload));
   *out_data = iree_make_const_byte_span(NULL, 0);
-  if (local_byte_length == 0) return iree_ok_status();
+  if (local_byte_length == 0) {
+    return iree_ok_status();
+  }
 
   iree_slim_mutex_lock(&buffer->mutex);
   bool found_mapping = false;

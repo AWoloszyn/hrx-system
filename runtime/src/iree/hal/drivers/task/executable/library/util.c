@@ -37,7 +37,9 @@ iree_status_t iree_hal_executable_library_verify(
   // verification, though, and should always have it enabled.
   const bool disable_verification = iree_all_bits_set(
       load_params->flags, IREE_HAL_EXECUTABLE_LOAD_FLAG_DISABLE_VERIFICATION);
-  if (disable_verification) return iree_ok_status();
+  if (disable_verification) {
+    return iree_ok_status();
+  }
 
   // Check to make sure that the constant table has values for all constants.
   if (library->constants.count != load_params->constant_count) {

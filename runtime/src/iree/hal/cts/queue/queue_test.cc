@@ -46,7 +46,9 @@ static bool FindDynamicQueueFamily(
     family.ordinal = family_ordinal;
     family.identity = iree_hal_device_queue_family(device, family_ordinal);
     family.spec = family_spec;
-    if (!family.identity) return false;
+    if (!family.identity) {
+      return false;
+    }
     *out_family = family;
     return true;
   }
@@ -91,7 +93,9 @@ static void ExpectQueuePropertiesSupportedByFamily(
 
   const iree_hal_queue_execution_resource_list_t resources =
       iree_hal_queue_execution_resources(queue);
-  if (!resources.count) return;
+  if (!resources.count) {
+    return;
+  }
   ASSERT_NE(nullptr, resources.ordinals);
   std::vector<iree_host_size_t> group_resource_counts(
       family_spec->execution_resource_group_count, 0);

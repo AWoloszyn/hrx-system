@@ -379,7 +379,9 @@ static iree_status_t iree_hal_amdgpu_host_queue_validate_dispatch_kernargs(
 
 static bool iree_hal_amdgpu_host_queue_dispatch_has_implicit_args(
     const iree_hal_amdgpu_host_queue_dispatch_plan_t* plan) {
-  if (plan->custom_layout) return plan->custom_layout->has_implicit_args;
+  if (plan->custom_layout) {
+    return plan->custom_layout->has_implicit_args;
+  }
   return iree_any_bit_set(plan->kernarg_layout->flags,
                           IREE_HAL_AMDGPU_KERNARG_LAYOUT_FLAG_IMPLICIT_ARGS);
 }
@@ -560,7 +562,9 @@ static void iree_hal_amdgpu_host_queue_emplace_native_implicit_args(
     void* kernarg_data) {
   iree_amdgpu_kernel_implicit_args_t* implicit_args =
       iree_hal_amdgpu_host_queue_native_implicit_args(layout, kernarg_data);
-  if (!implicit_args) return;
+  if (!implicit_args) {
+    return;
+  }
 
   iree_hal_amdgpu_device_dispatch_initialize_implicit_args(
       kernel_args, workgroup_count, dynamic_workgroup_local_memory,
@@ -593,8 +597,12 @@ static void iree_hal_amdgpu_host_queue_emplace_dispatch_kernargs(
 static bool iree_hal_amdgpu_host_queue_should_profile_dispatch(
     iree_hal_amdgpu_host_queue_t* queue, uint64_t executable_id,
     iree_hal_executable_function_t function) {
-  if (!queue->profiling.dispatch_profiling_enabled) return false;
-  if (!queue->profiling.hsa_queue_timestamps_enabled) return false;
+  if (!queue->profiling.dispatch_profiling_enabled) {
+    return false;
+  }
+  if (!queue->profiling.hsa_queue_timestamps_enabled) {
+    return false;
+  }
   iree_hal_amdgpu_logical_device_t* logical_device =
       (iree_hal_amdgpu_logical_device_t*)queue->logical_device;
   const uint32_t physical_device_ordinal = queue->device_ordinal <= UINT32_MAX

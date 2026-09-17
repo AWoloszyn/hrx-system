@@ -80,17 +80,23 @@ static int64_t CountPrintedOperations(const std::string& text) {
           first != ',' && first != '{') {
         if (first == '%') {
           const size_t assignment = text.find(" = ", content_start);
-          if (assignment < line_start + line_length) ++operation_count;
+          if (assignment < line_start + line_length) {
+            ++operation_count;
+          }
         } else {
           const size_t token_end = text.find_first_of(" \t<({", content_start);
           const size_t bounded_token_end =
               std::min(token_end, line_start + line_length);
           const size_t period = text.find('.', content_start);
-          if (period < bounded_token_end) ++operation_count;
+          if (period < bounded_token_end) {
+            ++operation_count;
+          }
         }
       }
     }
-    if (line_end == std::string::npos) break;
+    if (line_end == std::string::npos) {
+      break;
+    }
     line_start = line_end + 1;
   }
   return operation_count;
@@ -982,7 +988,9 @@ void RegisterPipelineCompileBenchmarks(const WorkloadCompileTarget& target,
       }
     }
     registration->ArgNames({"loops", "depth"})->UseRealTime();
-    if (cold_workspace) registration->Iterations(1);
+    if (cold_workspace) {
+      registration->Iterations(1);
+    }
   };
   register_phase(PipelineCompilePhase::kClone, "Clone",
                  LOOMC_COMPILE_REPORT_MODE_NONE, {8, 16, 32, 64, 128, 256, 512},

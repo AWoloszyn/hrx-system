@@ -29,10 +29,14 @@ static void process_with_chunk_size(iree_tokenizer_segmenter_t* segmenter,
                                     const uint8_t* data, size_t size,
                                     size_t chunk_size) {
   iree_host_size_t state_size = iree_tokenizer_segmenter_state_size(segmenter);
-  if (state_size == 0 || state_size > 64 * 1024) return;
+  if (state_size == 0 || state_size > 64 * 1024) {
+    return;
+  }
 
   void* state_buffer = malloc(state_size);
-  if (!state_buffer) return;
+  if (!state_buffer) {
+    return;
+  }
 
   iree_tokenizer_segmenter_state_t* state = NULL;
   iree_status_t status = iree_tokenizer_segmenter_state_initialize(
@@ -71,7 +75,9 @@ static void process_with_chunk_size(iree_tokenizer_segmenter_t* segmenter,
     }
 
     if (consumed == 0 && segment_count == 0) {
-      if (current_chunk_size >= remaining) break;
+      if (current_chunk_size >= remaining) {
+        break;
+      }
       current_chunk_size = current_chunk_size * 2 < remaining
                                ? current_chunk_size * 2
                                : remaining;
@@ -110,7 +116,9 @@ static void test_with_behavior(const uint8_t* data, size_t size,
 }
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  if (size > 16 * 1024) size = 16 * 1024;
+  if (size > 16 * 1024) {
+    size = 16 * 1024;
+  }
 
   // Test all split behaviors.
   test_with_behavior(data, size, IREE_TOKENIZER_UTIL_REGEX_SPLIT_ISOLATED);

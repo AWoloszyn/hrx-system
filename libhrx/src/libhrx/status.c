@@ -20,17 +20,25 @@ static hrx_status_t hrx_status_out_of_memory(void) {
 
 static char* hrx_status_clone_message(const char* message) {
   const size_t message_length = strlen(message);
-  if (message_length == SIZE_MAX) return NULL;
+  if (message_length == SIZE_MAX) {
+    return NULL;
+  }
   char* clone = (char*)malloc(message_length + 1);
-  if (!clone) return NULL;
+  if (!clone) {
+    return NULL;
+  }
   memcpy(clone, message, message_length + 1);
   return clone;
 }
 
 hrx_status_t hrx_make_status(hrx_status_code_t code, const char* message) {
-  if (code == HRX_STATUS_OK) return hrx_ok_status();
+  if (code == HRX_STATUS_OK) {
+    return hrx_ok_status();
+  }
   hrx_status_s* status = (hrx_status_s*)malloc(sizeof(*status));
-  if (!status) return hrx_status_out_of_memory();
+  if (!status) {
+    return hrx_status_out_of_memory();
+  }
   status->code = code;
   status->message = message ? hrx_status_clone_message(message) : NULL;
   if (message && !status->message) {
@@ -41,7 +49,9 @@ hrx_status_t hrx_make_status(hrx_status_code_t code, const char* message) {
 }
 
 hrx_status_code_t hrx_status_code(hrx_status_t status) {
-  if (hrx_status_is_ok(status)) return HRX_STATUS_OK;
+  if (hrx_status_is_ok(status)) {
+    return HRX_STATUS_OK;
+  }
   return status->code;
 }
 
@@ -51,29 +61,39 @@ hrx_status_t hrx_status_to_string(hrx_status_t status, char** out_message,
     return hrx_make_status(HRX_STATUS_INVALID_ARGUMENT, "out_message is NULL");
   }
   *out_message = NULL;
-  if (out_length) *out_length = 0;
+  if (out_length) {
+    *out_length = 0;
+  }
   const char* message = "OK";
   if (!hrx_status_is_ok(status)) {
     message = status->message ? status->message : "(no message)";
   }
   char* message_clone = hrx_status_clone_message(message);
-  if (!message_clone) return hrx_status_out_of_memory();
+  if (!message_clone) {
+    return hrx_status_out_of_memory();
+  }
   *out_message = message_clone;
-  if (out_length) *out_length = strlen(message);
+  if (out_length) {
+    *out_length = strlen(message);
+  }
   return hrx_ok_status();
 }
 
 void hrx_status_free_message(char* message) { free(message); }
 
 void hrx_status_ignore(hrx_status_t status) {
-  if (hrx_status_is_ok(status) || status == hrx_status_out_of_memory()) return;
+  if (hrx_status_is_ok(status) || status == hrx_status_out_of_memory()) {
+    return;
+  }
   free(status->message);
   free(status);
 }
 
 // Convert IREE status to hrx status.
 hrx_status_t hrx_status_from_iree(iree_status_t iree_status) {
-  if (iree_status_is_ok(iree_status)) return hrx_ok_status();
+  if (iree_status_is_ok(iree_status)) {
+    return hrx_ok_status();
+  }
 
   // Map IREE status code to hrx code.
   iree_status_code_t iree_code = iree_status_code(iree_status);
@@ -125,7 +145,9 @@ hrx_status_t hrx_status_from_iree(iree_status_t iree_status) {
 }
 
 iree_status_t hrx_status_to_iree(hrx_status_t status) {
-  if (hrx_status_is_ok(status)) return iree_ok_status();
+  if (hrx_status_is_ok(status)) {
+    return iree_ok_status();
+  }
   iree_status_code_t code = (iree_status_code_t)status->code;
   if (status->code == HRX_STATUS_OUT_OF_MEMORY) {
     code = IREE_STATUS_RESOURCE_EXHAUSTED;

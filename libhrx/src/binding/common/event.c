@@ -366,7 +366,9 @@ iree_status_t iree_hal_streaming_event_record_after_streams(
 static iree_status_t iree_hal_streaming_recorded_point_query(
     const iree_hal_streaming_recorded_point_t* point, bool* out_reached) {
   *out_reached = true;
-  if (!point->semaphore) return iree_ok_status();
+  if (!point->semaphore) {
+    return iree_ok_status();
+  }
   uint64_t current_value = 0;
   IREE_RETURN_IF_ERROR(
       iree_hal_semaphore_query(point->semaphore, &current_value));

@@ -130,7 +130,9 @@ static bool loom_vector_bank_sroa_state_bank(
     return false;
   }
   uint16_t bank_ordinal = plan->state_bank_by_value[value];
-  if (bank_ordinal == UINT16_MAX) return false;
+  if (bank_ordinal == UINT16_MAX) {
+    return false;
+  }
   *out_bank_ordinal = bank_ordinal;
   return true;
 }
@@ -152,7 +154,9 @@ static iree_status_t loom_vector_bank_sroa_payload_type(
 
   loom_type_t payload_type = {0};
   uint8_t flags = LOOM_TYPE_FLAG_ALL_STATIC;
-  if (payload_rank <= 2) flags |= LOOM_TYPE_FLAG_INLINE_DIMS;
+  if (payload_rank <= 2) {
+    flags |= LOOM_TYPE_FLAG_INLINE_DIMS;
+  }
   payload_type.header = loom_type_make_header(
       LOOM_TYPE_VECTOR, loom_type_element_type(bank_type), payload_rank, flags);
   if (payload_rank <= 2) {
@@ -182,10 +186,14 @@ static bool loom_vector_bank_sroa_static_access_ordinal(
   for (uint8_t axis = 0; axis < bank->prefix_rank; ++axis) {
     int64_t index = static_indices.i64_array[axis];
     int64_t extent = loom_type_dim_static_size_at(bank->bank_type, axis);
-    if (index < 0 || index == INT64_MIN || index >= extent) return false;
+    if (index < 0 || index == INT64_MIN || index >= extent) {
+      return false;
+    }
     slot = slot * (uint32_t)extent + (uint32_t)index;
   }
-  if (slot >= bank->slot_count) return false;
+  if (slot >= bank->slot_count) {
+    return false;
+  }
   *out_slot = (uint16_t)slot;
   return true;
 }
@@ -241,7 +249,9 @@ static bool loom_vector_bank_sroa_loop_shape(loom_op_t* op,
   *out_body_block = NULL;
   *out_yield = NULL;
   loom_region_t* body = loom_scf_for_body(op);
-  if (!body || body->block_count != 1) return false;
+  if (!body || body->block_count != 1) {
+    return false;
+  }
   loom_block_t* block = loom_region_entry_block(body);
   loom_value_slice_t iter_args = loom_scf_for_iter_args(op);
   if (iter_args.count != op->result_count ||
@@ -286,7 +296,9 @@ static iree_status_t loom_vector_bank_sroa_scan_states(
 
   loom_op_t* child_op = NULL;
   loom_block_for_each_op(plan->body_block, child_op) {
-    if (child_op == plan->yield) break;
+    if (child_op == plan->yield) {
+      break;
+    }
     uint16_t bank_ordinal = UINT16_MAX;
     if (loom_vector_extract_isa(child_op) &&
         loom_vector_bank_sroa_state_bank(
@@ -299,7 +311,9 @@ static iree_status_t loom_vector_bank_sroa_scan_states(
           loom_module_value_type(context->module,
                                  loom_vector_extract_result(child_op)),
           &supported));
-      if (!supported) return iree_ok_status();
+      if (!supported) {
+        return iree_ok_status();
+      }
       continue;
     }
     if (loom_vector_insert_isa(child_op) &&
@@ -313,7 +327,9 @@ static iree_status_t loom_vector_bank_sroa_scan_states(
           loom_module_value_type(context->module,
                                  loom_vector_insert_value(child_op)),
           &supported));
-      if (!supported) return iree_ok_status();
+      if (!supported) {
+        return iree_ok_status();
+      }
       loom_value_id_t result = loom_vector_insert_result(child_op);
       plan->state_bank_by_value[result] = bank_ordinal;
     }
@@ -337,7 +353,9 @@ static bool loom_vector_bank_sroa_state_uses_are_supported(
   loom_value_for_each_use(value, use) {
     loom_op_t* user = loom_use_user_op(*use);
     uint16_t operand_index = loom_use_operand_index(*use);
-    if (user == plan->yield && operand_index == bank_ordinal) continue;
+    if (user == plan->yield && operand_index == bank_ordinal) {
+      continue;
+    }
 
     loom_attribute_t static_indices = {0};
     loom_value_slice_t dynamic_indices = {0};
@@ -431,7 +449,9 @@ static iree_status_t loom_vector_bank_sroa_plan_loop(
   bool supported = false;
   IREE_RETURN_IF_ERROR(
       loom_vector_bank_sroa_scan_states(context, loop, out_plan, &supported));
-  if (!supported) return iree_ok_status();
+  if (!supported) {
+    return iree_ok_status();
+  }
 
   uint32_t expanded_count = 0;
   uint16_t active_bank_count = 0;
@@ -454,7 +474,9 @@ static iree_status_t loom_vector_bank_sroa_plan_loop(
     }
     expanded_count += bank->slot_count;
   }
-  if (active_bank_count == 0) return iree_ok_status();
+  if (active_bank_count == 0) {
+    return iree_ok_status();
+  }
 
   for (loom_value_id_t state = 0; state < out_plan->value_snapshot_count;
        ++state) {
@@ -468,7 +490,9 @@ static iree_status_t loom_vector_bank_sroa_plan_loop(
     }
   }
   for (uint16_t i = 0; i < out_plan->carried_count; ++i) {
-    if (!out_plan->banks[i].active) continue;
+    if (!out_plan->banks[i].active) {
+      continue;
+    }
     if (!loom_vector_bank_sroa_result_uses_are_supported(context, loop,
                                                          out_plan, i)) {
       return iree_ok_status();
@@ -621,7 +645,9 @@ static iree_status_t loom_vector_bank_sroa_clone_body(
 
   loom_op_t* child_op = NULL;
   loom_block_for_each_op(plan->body_block, child_op) {
-    if (child_op == plan->yield) break;
+    if (child_op == plan->yield) {
+      break;
+    }
     uint16_t bank_ordinal = UINT16_MAX;
     if (loom_vector_extract_isa(child_op) &&
         loom_vector_bank_sroa_state_bank(
@@ -785,7 +811,9 @@ static iree_status_t loom_vector_bank_sroa_replace_results(
 static iree_status_t loom_vector_bank_sroa_rewrite_loop(
     loom_vector_bank_sroa_context_t* context, loom_op_t* loop,
     loom_vector_bank_sroa_plan_t* plan) {
-  if (plan->active_bank_count == 0) return iree_ok_status();
+  if (plan->active_bank_count == 0) {
+    return iree_ok_status();
+  }
 
   loom_builder_set_before(&context->rewriter->builder, loop);
   loom_value_id_t* new_iter_args = NULL;
@@ -818,7 +846,9 @@ static iree_status_t loom_vector_bank_sroa_rewrite_loop(
   iree_status_t status =
       loom_vector_bank_sroa_clone_body(context, new_loop, plan);
   loom_builder_restore(&context->rewriter->builder, saved_ip);
-  if (!iree_status_is_ok(status)) return status;
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
 
   IREE_RETURN_IF_ERROR(
       loom_vector_bank_sroa_replace_results(context, loop, new_loop, plan));
@@ -862,7 +892,9 @@ static iree_status_t loom_vector_bank_sroa_collect_loop(
     loom_walk_result_t* out_result) {
   (void)walk_context;
   *out_result = LOOM_WALK_CONTINUE;
-  if (!loom_scf_for_isa(op)) return iree_ok_status();
+  if (!loom_scf_for_isa(op)) {
+    return iree_ok_status();
+  }
   loom_vector_bank_sroa_collect_context_t* collect_context =
       (loom_vector_bank_sroa_collect_context_t*)user_data;
   return loom_vector_bank_sroa_loop_list_push(collect_context->arena,
@@ -890,12 +922,16 @@ static iree_status_t loom_vector_bank_sroa_collect_loops(
 iree_status_t loom_vector_bank_sroa_run(loom_pass_t* pass,
                                         loom_module_t* module,
                                         loom_func_like_t function) {
-  if (!loom_func_like_body(function)) return iree_ok_status();
+  if (!loom_func_like_body(function)) {
+    return iree_ok_status();
+  }
 
   loom_vector_bank_sroa_loop_list_t loops = {0};
   IREE_RETURN_IF_ERROR(
       loom_vector_bank_sroa_collect_loops(pass, module, function, &loops));
-  if (loops.count == 0) return iree_ok_status();
+  if (loops.count == 0) {
+    return iree_ok_status();
+  }
 
   loom_rewriter_t rewriter = {0};
   IREE_RETURN_IF_ERROR(
@@ -915,7 +951,9 @@ iree_status_t loom_vector_bank_sroa_run(loom_pass_t* pass,
                                !loom_pass_has_error_diagnostics(pass);
        ++i) {
     loom_op_t* loop = loops.ops[i];
-    if (loop->flags & LOOM_OP_FLAG_DEAD) continue;
+    if (loop->flags & LOOM_OP_FLAG_DEAD) {
+      continue;
+    }
     const iree_arena_checkpoint_t checkpoint =
         iree_arena_checkpoint_save(&scratch_arena);
     loom_vector_bank_sroa_plan_t plan = {0};

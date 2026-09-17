@@ -75,7 +75,9 @@ typedef struct loom_scf_unroll_effect_dependency_plan_t {
 static bool loom_scf_unroll_effects_conflict(
     loom_scf_body_effect_flags_t prior_flags,
     loom_scf_body_effect_flags_t candidate_flags) {
-  if ((prior_flags | candidate_flags) == 0) return false;
+  if ((prior_flags | candidate_flags) == 0) {
+    return false;
+  }
   if (iree_any_bit_set(prior_flags | candidate_flags,
                        LOOM_SCF_BODY_EFFECT_ORDERED)) {
     return true;
@@ -92,7 +94,9 @@ static bool loom_scf_unroll_effects_conflict(
 
 static bool loom_scf_unroll_symbolic_expr_contains_value(
     const loom_symbolic_expr_t* expression, loom_value_id_t value_id) {
-  if (!loom_symbolic_expr_is_linear(expression)) return false;
+  if (!loom_symbolic_expr_is_linear(expression)) {
+    return false;
+  }
   for (iree_host_size_t i = 0; i < expression->term_count; ++i) {
     const loom_symbolic_term_t term = expression->terms[i];
     if (term.value_id == value_id || term.relation_value_id == value_id) {
@@ -147,7 +151,9 @@ static bool loom_scf_unroll_request_access_endpoint(
     loom_scf_body_effect_flags_t access_kind,
     const loom_movement_endpoint_t** out_endpoint) {
   *out_endpoint = NULL;
-  if (!iree_any_bit_set(flags, access_kind)) return false;
+  if (!iree_any_bit_set(flags, access_kind)) {
+    return false;
+  }
   if (access_kind == LOOM_SCF_BODY_EFFECT_WRITE &&
       request->dest.kind == LOOM_MOVEMENT_ENDPOINT_VIEW) {
     *out_endpoint = &request->dest;
@@ -239,7 +245,9 @@ static iree_status_t loom_scf_unroll_effects_conflict_with_movement(
       body_ops->operations[candidate_op_index].effects;
   *out_conflict =
       loom_scf_unroll_effects_conflict(prior_flags, candidate_flags);
-  if (!*out_conflict) return iree_ok_status();
+  if (!*out_conflict) {
+    return iree_ok_status();
+  }
   if (iree_any_bit_set(prior_flags | candidate_flags,
                        LOOM_SCF_BODY_EFFECT_ORDERED)) {
     return iree_ok_status();
@@ -269,7 +277,9 @@ static iree_status_t loom_scf_unroll_build_effect_dependency_plan(
     iree_arena_allocator_t* scratch_arena,
     loom_scf_unroll_effect_dependency_plan_t* out_plan) {
   *out_plan = (loom_scf_unroll_effect_dependency_plan_t){0};
-  if (body_ops->count == 0) return iree_ok_status();
+  if (body_ops->count == 0) {
+    return iree_ok_status();
+  }
 
   // Every conflicting pair contains an ordered effect or a write, which also
   // conflicts with itself. The same holds for refinable writes. Summarize those
@@ -279,7 +289,9 @@ static iree_status_t loom_scf_unroll_build_effect_dependency_plan(
   bool has_refinable_conflicts = false;
   for (uint32_t i = 0; i < body_ops->count; ++i) {
     const loom_scf_body_effect_flags_t flags = body_ops->operations[i].effects;
-    if (!(flags & ~LOOM_SCF_BODY_EFFECT_SOURCE_ORDER)) continue;
+    if (!(flags & ~LOOM_SCF_BODY_EFFECT_SOURCE_ORDER)) {
+      continue;
+    }
     ++effect_count;
     has_conflicts =
         has_conflicts || loom_scf_unroll_effects_conflict(flags, flags);
@@ -287,7 +299,9 @@ static iree_status_t loom_scf_unroll_build_effect_dependency_plan(
         has_refinable_conflicts ||
         loom_scf_unroll_effects_conflict_is_refinable(flags, flags);
   }
-  if (!has_conflicts) return iree_ok_status();
+  if (!has_conflicts) {
+    return iree_ok_status();
+  }
   if (effect_count > LOOM_SCF_UNROLL_SCHEDULED_EFFECT_OP_LIMIT) {
     return loom_scf_unroll_emit_policy_error(
         context, op, IREE_SV("schedule"), effect_count,
@@ -400,7 +414,9 @@ static iree_status_t loom_scf_unroll_build_effect_dependency_plan(
             &movement_analysis, movement_requests, described_movements, &plan,
             body_ops, prior_effect_index, candidate_effect_index,
             body_block->arg_ids[0], &conflicts[matrix_index]);
-        if (!iree_status_is_ok(status)) break;
+        if (!iree_status_is_ok(status)) {
+          break;
+        }
       }
     }
   }
@@ -412,7 +428,9 @@ static iree_status_t loom_scf_unroll_build_effect_dependency_plan(
   for (iree_host_size_t i = 0; i < matrix_count; ++i) {
     has_remaining_conflicts = has_remaining_conflicts || conflicts[i];
   }
-  if (!has_remaining_conflicts) return iree_ok_status();
+  if (!has_remaining_conflicts) {
+    return iree_ok_status();
+  }
 
   iree_host_size_t cloned_ordinal_count = 0;
   if (!iree_host_size_checked_mul((iree_host_size_t)effect_count, unroll_count,
@@ -442,15 +460,21 @@ static iree_status_t loom_scf_unroll_build_effect_dependency_plan(
 static bool loom_scf_unroll_effect_dependencies_are_ready(
     const loom_scf_unroll_effect_dependency_plan_t* plan, uint32_t op_index,
     uint32_t ordinal) {
-  if (!plan->conflicts) return true;
+  if (!plan->conflicts) {
+    return true;
+  }
   const uint32_t effect_index = plan->body_to_effect_indices[op_index];
-  if (effect_index == LOOM_SCF_UNROLL_EFFECT_INDEX_INVALID) return true;
+  if (effect_index == LOOM_SCF_UNROLL_EFFECT_INDEX_INVALID) {
+    return true;
+  }
   for (uint32_t prior_effect_index = 0; prior_effect_index < plan->effect_count;
        ++prior_effect_index) {
     const iree_host_size_t matrix_index =
         (iree_host_size_t)prior_effect_index * plan->effect_count +
         effect_index;
-    if (!plan->conflicts[matrix_index]) continue;
+    if (!plan->conflicts[matrix_index]) {
+      continue;
+    }
     const uint32_t prior_op_index = plan->body_op_indices[prior_effect_index];
     const uint32_t required_completed_ordinal =
         ordinal + (prior_op_index < op_index ? 1u : 0u);
@@ -465,9 +489,13 @@ static bool loom_scf_unroll_effect_dependencies_are_ready(
 static void loom_scf_unroll_release_effect_dependencies(
     loom_scf_unroll_effect_dependency_plan_t* plan, uint32_t op_index,
     uint32_t ordinal) {
-  if (!plan->conflicts) return;
+  if (!plan->conflicts) {
+    return;
+  }
   const uint32_t effect_index = plan->body_to_effect_indices[op_index];
-  if (effect_index == LOOM_SCF_UNROLL_EFFECT_INDEX_INVALID) return;
+  if (effect_index == LOOM_SCF_UNROLL_EFFECT_INDEX_INVALID) {
+    return;
+  }
   const iree_host_size_t ordinal_index =
       (iree_host_size_t)effect_index * plan->unroll_count + ordinal;
   plan->cloned_ordinals[ordinal_index] = true;
@@ -531,7 +559,9 @@ static iree_status_t loom_scf_unroll_mark_iteration_complete(
     uint32_t trip_count, uint16_t carried_count, loom_ir_remap_t* remaps,
     iree_arena_allocator_t* scratch_arena,
     loom_value_id_t* final_carried_values) {
-  if (carried_count == 0) return iree_ok_status();
+  if (carried_count == 0) {
+    return iree_ok_status();
+  }
 
   loom_value_slice_t yielded_values = loom_scf_yield_values(yield);
   loom_value_id_t* resolved_values = final_carried_values;
@@ -607,7 +637,9 @@ static iree_status_t loom_scf_unroll_initialize_scheduled_tile(
         IREE_SV("body operations with only scf.if/scf.for regions "
                 "and no successors"));
   }
-  if (out_tile->unroll_count == 0) return iree_ok_status();
+  if (out_tile->unroll_count == 0) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       scratch_arena, out_tile->unroll_count, sizeof(*out_tile->remaps),
@@ -676,14 +708,18 @@ static iree_status_t loom_scf_unroll_initialize_scheduled_tile(
 static void loom_scf_unroll_release_source_order(
     loom_scf_unroll_scheduled_tile_t* tile, iree_host_size_t slot,
     uint32_t ordinal) {
-  if (tile->body_ops.source_order_boundary_count == 0) return;
+  if (tile->body_ops.source_order_boundary_count == 0) {
+    return;
+  }
   const iree_host_size_t slot_count =
       (iree_host_size_t)tile->unroll_count * tile->body_ops.count;
   while (tile->source_order.frontier < slot_count &&
          tile->cloned[tile->source_order.frontier]) {
     ++tile->source_order.frontier;
   }
-  if (slot != tile->source_order.boundary_slot) return;
+  if (slot != tile->source_order.boundary_slot) {
+    return;
+  }
   if (++tile->source_order.boundary_index ==
       tile->body_ops.source_order_boundary_count) {
     tile->source_order.boundary_index = 0;
@@ -704,7 +740,9 @@ static iree_status_t loom_scf_unroll_try_clone_scheduled_body_op(
   *out_cloned = false;
   const iree_host_size_t slot =
       (iree_host_size_t)ordinal * tile->body_ops.count + op_index;
-  if (tile->cloned[slot]) return iree_ok_status();
+  if (tile->cloned[slot]) {
+    return iree_ok_status();
+  }
   if (tile->body_ops.source_order_boundary_count != 0 &&
       (slot > tile->source_order.boundary_slot ||
        (slot == tile->source_order.boundary_slot &&
@@ -792,7 +830,9 @@ static iree_status_t loom_scf_unroll_emit_interleaved_tile(
         bool cloned = false;
         IREE_RETURN_IF_ERROR(loom_scf_unroll_try_clone_scheduled_body_op(
             context, op_index, ordinal, tile, &cloned));
-        if (!cloned) break;
+        if (!cloned) {
+          break;
+        }
         ++next_ordinals[op_index];
         made_progress = true;
         bool completed = false;
@@ -809,7 +849,9 @@ static iree_status_t loom_scf_unroll_emit_interleaved_tile(
     }
   }
   for (uint32_t ordinal = 0; ordinal < tile->unroll_count; ++ordinal) {
-    if (tile->completed_iterations[ordinal]) continue;
+    if (tile->completed_iterations[ordinal]) {
+      continue;
+    }
     return loom_scf_unroll_emit_policy_error(
         context, op, IREE_SV("schedule"),
         LOOM_SCF_FOR_UNROLL_SCHEDULE_INTERLEAVED,
@@ -826,7 +868,9 @@ static iree_status_t loom_scf_unroll_classify_recurrence_body_ops(
   *out_independent_ops = NULL;
   *out_independent_count = 0;
   *out_dependent_count = 0;
-  if (body_ops->count == 0) return iree_ok_status();
+  if (body_ops->count == 0) {
+    return iree_ok_status();
+  }
 
   bool* independent_ops = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(scratch_arena, body_ops->count,
@@ -909,7 +953,9 @@ static iree_status_t loom_scf_unroll_emit_recurrence_tile(
     const uint32_t prologue_count = iree_min(tile->unroll_count, 2u);
     for (uint32_t ordinal = 0; ordinal < prologue_count; ++ordinal) {
       for (uint32_t op_index = 0; op_index < tile->body_ops.count; ++op_index) {
-        if (!independent_ops[op_index]) continue;
+        if (!independent_ops[op_index]) {
+          continue;
+        }
         bool cloned = false;
         IREE_RETURN_IF_ERROR(loom_scf_unroll_try_clone_scheduled_body_op(
             context, op_index, ordinal, tile, &cloned));
@@ -944,7 +990,9 @@ static iree_status_t loom_scf_unroll_emit_recurrence_tile(
     const uint32_t lookahead_ordinal = ordinal + 2;
     if (lookahead_ordinal < tile->unroll_count) {
       for (uint32_t op_index = 0; op_index < tile->body_ops.count; ++op_index) {
-        if (!independent_ops[op_index]) continue;
+        if (!independent_ops[op_index]) {
+          continue;
+        }
         bool cloned = false;
         IREE_RETURN_IF_ERROR(loom_scf_unroll_try_clone_scheduled_body_op(
             context, op_index, lookahead_ordinal, tile, &cloned));
@@ -996,7 +1044,9 @@ iree_status_t loom_scf_unroll_tile_emit(
   IREE_RETURN_IF_ERROR(loom_scf_unroll_initialize_scheduled_tile(
       context, op, body_block, iteration_indices, iteration_count,
       initial_carried_values, carried_count, schedule, scratch_arena, &tile));
-  if (loom_pass_has_error_diagnostics(context->pass)) return iree_ok_status();
+  if (loom_pass_has_error_diagnostics(context->pass)) {
+    return iree_ok_status();
+  }
 
   switch (schedule) {
     case LOOM_SCF_FOR_UNROLL_SCHEDULE_INTERLEAVED:

@@ -77,7 +77,9 @@ static const iree_file_toc_t* iree_hal_amdgpu_device_library_find_file_for_arch(
     const iree_file_toc_t* file_toc =
         &iree_hal_amdgpu_device_binaries_create()[i];
     iree_string_view_t file_name = iree_make_cstring_view(file_toc->name);
-    if (!iree_string_view_starts_with(file_name, isa_prefix)) continue;
+    if (!iree_string_view_starts_with(file_name, isa_prefix)) {
+      continue;
+    }
     iree_string_view_t file_arch = iree_string_view_substr(
         file_name, isa_prefix.size, IREE_STRING_VIEW_NPOS);
     if (iree_hal_amdgpu_device_library_target_matches_file_arch(file_arch,
@@ -236,7 +238,9 @@ iree_status_t iree_hal_amdgpu_device_library_initialize(
       status = iree_hsa_executable_load_agent_code_object(
           IREE_LIBHSA(libhsa), out_library->executable, topology->gpu_agents[i],
           out_library->code_object_reader, options, NULL);
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
     }
   }
 

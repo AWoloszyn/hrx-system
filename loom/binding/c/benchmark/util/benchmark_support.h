@@ -46,7 +46,7 @@ loomc_allocator_t loom_allocator();
 
 iree_status_t to_iree_status(loomc_status_t status);
 
-std::string FormatStatus(iree_status_t status);
+std::string FormatStatus(const iree_status_t status);
 
 iree_status_t RequireSucceededResult(const loomc_result_t* result,
                                      const char* operation);

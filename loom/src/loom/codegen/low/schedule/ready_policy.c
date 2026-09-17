@@ -111,7 +111,9 @@ static bool loom_low_schedule_ready_policy_node_result_used_by(
     const loom_value_ordinal_t result_ordinal = result_ordinals[result_index];
     for (uint16_t operand_index = 0; operand_index < consumer->operand_count;
          ++operand_index) {
-      if (result_ordinal == operand_ordinals[operand_index]) return true;
+      if (result_ordinal == operand_ordinals[operand_index]) {
+        return true;
+      }
     }
   }
   return false;
@@ -145,7 +147,9 @@ loom_low_schedule_ready_policy_find_pair(
        record_index = state->pair_affinity_records[record_index].next_record) {
     const loom_low_schedule_pair_affinity_record_t* record =
         &state->pair_affinity_records[record_index];
-    if (record->second_descriptor_ordinal == second_ordinal) return record;
+    if (record->second_descriptor_ordinal == second_ordinal) {
+      return record;
+    }
   }
   return NULL;
 }
@@ -154,7 +158,9 @@ static uint16_t loom_low_schedule_ready_policy_pair_priority(
     const loom_low_schedule_build_state_t* state,
     const loom_low_schedule_ready_policy_t* policy,
     uint32_t descriptor_ordinal) {
-  if (descriptor_ordinal == LOOM_LOW_DESCRIPTOR_ORDINAL_NONE) return 0;
+  if (descriptor_ordinal == LOOM_LOW_DESCRIPTOR_ORDINAL_NONE) {
+    return 0;
+  }
   uint16_t priority = 0;
   for (uint32_t record_index = state->pair_affinity_heads[descriptor_ordinal];
        record_index != LOOM_LOW_SCHEDULE_PAIR_AFFINITY_RECORD_NONE;
@@ -219,7 +225,9 @@ static uint16_t loom_low_schedule_ready_policy_affinity_priority(
   };
   *out_placement_option_count =
       loom_low_placement_pair_possible_alternative_count(&use, recipe);
-  if (*out_placement_option_count == 0) return 0;
+  if (*out_placement_option_count == 0) {
+    return 0;
+  }
   return loom_low_schedule_ready_policy_pair_is_preferred(state, first, second)
              ? UINT16_MAX
              : record->priority;
@@ -370,7 +378,9 @@ uint32_t loom_low_schedule_ready_policy_pair_nominee(
     const uint32_t candidate_node =
         loom_low_schedule_ready_frontier_descriptor_head(
             &policy->frontier, record->second_descriptor_ordinal);
-    if (candidate_node == LOOM_LOW_SCHEDULE_READY_NODE_NONE) continue;
+    if (candidate_node == LOOM_LOW_SCHEDULE_READY_NODE_NONE) {
+      continue;
+    }
     if (record->priority > best_priority ||
         (record->priority == best_priority &&
          (best_node == LOOM_LOW_SCHEDULE_NODE_NONE ||
@@ -474,6 +484,8 @@ void loom_low_schedule_ready_policy_note_node_scheduled(
     return;
   }
 
-  if (loom_low_schedule_ready_policy_node_is_pair_transparent(node)) return;
+  if (loom_low_schedule_ready_policy_node_is_pair_transparent(node)) {
+    return;
+  }
   state->pending_pair_affinity_node = LOOM_LOW_SCHEDULE_NODE_NONE;
 }

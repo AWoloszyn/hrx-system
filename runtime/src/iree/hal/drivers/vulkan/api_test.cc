@@ -19,7 +19,9 @@ namespace {
 static bool ContainsString(iree_host_size_t count, const char* const* values,
                            const char* value) {
   for (iree_host_size_t i = 0; i < count; ++i) {
-    if (std::strcmp(values[i], value) == 0) return true;
+    if (std::strcmp(values[i], value) == 0) {
+      return true;
+    }
   }
   return false;
 }

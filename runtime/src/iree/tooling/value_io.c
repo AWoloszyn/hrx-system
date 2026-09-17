@@ -22,7 +22,9 @@
 static bool iree_tooling_value_copy_to_cstring(iree_string_view_t value,
                                                char* buffer,
                                                iree_host_size_t capacity) {
-  if (value.size >= capacity) return false;
+  if (value.size >= capacity) {
+    return false;
+  }
   memcpy(buffer, value.data, value.size);
   buffer[value.size] = 0;
   return true;
@@ -47,12 +49,16 @@ static bool iree_tooling_value_parse_int64_range(iree_string_view_t literal,
   errno = 0;
   char* end = NULL;
   long long parsed_value = strtoll(buffer, &end, /*base=*/0);
-  if (buffer == end || *end != 0) return false;
+  if (buffer == end || *end != 0) {
+    return false;
+  }
   if ((parsed_value == LLONG_MIN || parsed_value == LLONG_MAX) &&
       errno == ERANGE) {
     return false;
   }
-  if (parsed_value < min_value || parsed_value > max_value) return false;
+  if (parsed_value < min_value || parsed_value > max_value) {
+    return false;
+  }
   *out_value = (int64_t)parsed_value;
   return true;
 }
@@ -60,7 +66,9 @@ static bool iree_tooling_value_parse_int64_range(iree_string_view_t literal,
 static bool iree_tooling_value_parse_uint64_range(iree_string_view_t literal,
                                                   uint64_t max_value,
                                                   uint64_t* out_value) {
-  if (iree_string_view_starts_with_char(literal, '-')) return false;
+  if (iree_string_view_starts_with_char(literal, '-')) {
+    return false;
+  }
   char buffer[64] = {0};
   if (!iree_tooling_value_copy_to_cstring(literal, buffer,
                                           IREE_ARRAYSIZE(buffer))) {
@@ -69,9 +77,15 @@ static bool iree_tooling_value_parse_uint64_range(iree_string_view_t literal,
   errno = 0;
   char* end = NULL;
   unsigned long long parsed_value = strtoull(buffer, &end, /*base=*/0);
-  if (buffer == end || *end != 0) return false;
-  if (parsed_value == ULLONG_MAX && errno == ERANGE) return false;
-  if (parsed_value > max_value) return false;
+  if (buffer == end || *end != 0) {
+    return false;
+  }
+  if (parsed_value == ULLONG_MAX && errno == ERANGE) {
+    return false;
+  }
+  if (parsed_value > max_value) {
+    return false;
+  }
   *out_value = (uint64_t)parsed_value;
   return true;
 }
@@ -86,8 +100,12 @@ static bool iree_tooling_value_parse_float32(iree_string_view_t literal,
   errno = 0;
   char* end = NULL;
   float parsed_value = strtof(buffer, &end);
-  if (buffer == end || *end != 0) return false;
-  if (errno == ERANGE) return false;
+  if (buffer == end || *end != 0) {
+    return false;
+  }
+  if (errno == ERANGE) {
+    return false;
+  }
   *out_value = parsed_value;
   return true;
 }
@@ -102,8 +120,12 @@ static bool iree_tooling_value_parse_float64(iree_string_view_t literal,
   errno = 0;
   char* end = NULL;
   double parsed_value = strtod(buffer, &end);
-  if (buffer == end || *end != 0) return false;
-  if (errno == ERANGE) return false;
+  if (buffer == end || *end != 0) {
+    return false;
+  }
+  if (errno == ERANGE) {
+    return false;
+  }
   *out_value = parsed_value;
   return true;
 }
@@ -362,7 +384,9 @@ static iree_status_t iree_tooling_value_io_stream_list_allocate(
 
 static void iree_tooling_value_io_stream_list_free(
     iree_tooling_value_io_stream_list_t* list) {
-  if (!list) return;
+  if (!list) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   for (iree_host_size_t i = 0; i < list->count; ++i) {
@@ -381,7 +405,9 @@ iree_tooling_value_io_stream_list_find_entry(
     iree_tooling_value_io_stream_list_t* list, iree_string_view_t path) {
   for (iree_host_size_t i = 0; i < list->count; ++i) {
     iree_tooling_value_io_stream_list_entry_t* entry = list->entries[i];
-    if (iree_string_view_equal(path, entry->path)) return entry;
+    if (iree_string_view_equal(path, entry->path)) {
+      return entry;
+    }
   }
   return NULL;
 }
@@ -522,7 +548,9 @@ IREE_API_EXPORT iree_status_t iree_tooling_value_io_context_allocate(
 
 IREE_API_EXPORT void iree_tooling_value_io_context_free(
     iree_tooling_value_io_context_t* context) {
-  if (!context) return;
+  if (!context) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_tooling_value_io_stream_list_t* input_streams = context->input_streams;
@@ -668,7 +696,9 @@ IREE_API_EXPORT iree_status_t iree_tooling_storage_buffer_spec_parse(
 
 IREE_API_EXPORT void iree_tooling_buffer_binding_deinitialize(
     iree_tooling_buffer_binding_t* binding) {
-  if (!binding) return;
+  if (!binding) {
+    return;
+  }
   iree_hal_buffer_release(binding->buffer);
   iree_hal_buffer_view_release(binding->buffer_view);
   memset(binding, 0, sizeof(*binding));

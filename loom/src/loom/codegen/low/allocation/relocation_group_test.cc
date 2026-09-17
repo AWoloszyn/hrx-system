@@ -106,7 +106,9 @@ TEST(LowAllocationRelocationGroupTest, RetainsCoalescedTransportClosure) {
     member = groups.next_members[member];
   }
   EXPECT_EQ(member, indices[2]);
-  for (uint32_t i = 0; i < 7; ++i) EXPECT_TRUE(visited[indices[i]]);
+  for (uint32_t i = 0; i < 7; ++i) {
+    EXPECT_TRUE(visited[indices[i]]);
+  }
 
   iree_arena_deinitialize(&arena);
   iree_arena_block_pool_deinitialize(&pool);

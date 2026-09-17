@@ -213,10 +213,14 @@ static void loom_verify_emit_indexed_pairwise_mismatch(
 static void loom_verify_relation_pairwise_eq(
     loom_verify_state_t* state, const loom_op_t* op,
     const loom_op_vtable_t* vtable, const loom_constraint_t* constraint) {
-  if (constraint->arg_count < 2) return;
+  if (constraint->arg_count < 2) {
+    return;
+  }
   loom_value_id_t first_id =
       loom_verify_resolve_value_field(op, vtable, constraint->args[0]);
-  if (first_id == LOOM_VALUE_ID_INVALID) return;
+  if (first_id == LOOM_VALUE_ID_INVALID) {
+    return;
+  }
   loom_type_t first_type = loom_verify_value_type(state, first_id);
   uint8_t first_ref = constraint->args[0];
   bool first_is_variadic =
@@ -287,11 +291,15 @@ static void loom_verify_relation_all_same(loom_verify_state_t* state,
                                           const loom_op_t* op,
                                           const loom_op_vtable_t* vtable,
                                           const loom_constraint_t* constraint) {
-  if (constraint->arg_count < 1) return;
+  if (constraint->arg_count < 1) {
+    return;
+  }
   uint16_t count = 0;
   const loom_value_id_t* values = loom_verify_resolve_variadic_field(
       op, vtable, constraint->args[0], &count);
-  if (count <= 1) return;
+  if (count <= 1) {
+    return;
+  }
   loom_type_t first_type = loom_verify_value_type(state, values[0]);
   for (uint16_t i = 1; i < count; ++i) {
     loom_type_t other_type = loom_verify_value_type(state, values[i]);
@@ -319,19 +327,27 @@ static void loom_verify_relation_all_same(loom_verify_state_t* state,
 static void loom_verify_relation_field_satisfies(
     loom_verify_state_t* state, const loom_op_t* op,
     const loom_op_vtable_t* vtable, const loom_constraint_t* constraint) {
-  if (constraint->arg_count < 1) return;
+  if (constraint->arg_count < 1) {
+    return;
+  }
   loom_type_constraint_t expected =
       (loom_type_constraint_t)constraint->property;
-  if (expected >= LOOM_TYPE_CONSTRAINT_COUNT_) return;
+  if (expected >= LOOM_TYPE_CONSTRAINT_COUNT_) {
+    return;
+  }
 
   for (uint8_t i = 0; i < constraint->arg_count; ++i) {
     uint8_t field_ref = constraint->args[i];
     if (!loom_verify_is_variadic_field(vtable, field_ref)) {
       loom_value_id_t value_id =
           loom_verify_resolve_value_field(op, vtable, field_ref);
-      if (value_id == LOOM_VALUE_ID_INVALID) continue;
+      if (value_id == LOOM_VALUE_ID_INVALID) {
+        continue;
+      }
       loom_type_t value_type = loom_verify_value_type(state, value_id);
-      if (loom_type_satisfies_constraint(value_type, expected)) continue;
+      if (loom_type_satisfies_constraint(value_type, expected)) {
+        continue;
+      }
 
       char name_buffer[32];
       iree_string_view_t field_name = loom_verify_field_name(
@@ -357,7 +373,9 @@ static void loom_verify_relation_field_satisfies(
         loom_verify_resolve_variadic_field(op, vtable, field_ref, &count);
     for (uint16_t j = 0; j < count; ++j) {
       loom_type_t value_type = loom_verify_value_type(state, values[j]);
-      if (loom_type_satisfies_constraint(value_type, expected)) continue;
+      if (loom_type_satisfies_constraint(value_type, expected)) {
+        continue;
+      }
 
       char name_buffer[32];
       iree_string_view_t field_name = loom_verify_indexed_field_name(
@@ -385,22 +403,34 @@ static void loom_verify_relation_field_satisfies(
 static void loom_verify_relation_region_args_satisfy(
     loom_verify_state_t* state, const loom_op_t* op,
     const loom_op_vtable_t* vtable, const loom_constraint_t* constraint) {
-  if (constraint->arg_count < 1) return;
+  if (constraint->arg_count < 1) {
+    return;
+  }
   loom_type_constraint_t expected =
       (loom_type_constraint_t)constraint->property;
-  if (expected >= LOOM_TYPE_CONSTRAINT_COUNT_) return;
+  if (expected >= LOOM_TYPE_CONSTRAINT_COUNT_) {
+    return;
+  }
   uint8_t region_ref = constraint->args[0];
-  if (LOOM_FIELD_REF_CATEGORY(region_ref) != LOOM_FIELD_REGION) return;
+  if (LOOM_FIELD_REF_CATEGORY(region_ref) != LOOM_FIELD_REGION) {
+    return;
+  }
   uint8_t region_index = LOOM_FIELD_REF_INDEX(region_ref);
-  if (region_index >= op->region_count) return;
+  if (region_index >= op->region_count) {
+    return;
+  }
   loom_region_t* region = loom_op_regions(op)[region_index];
-  if (!region || region->block_count == 0) return;
+  if (!region || region->block_count == 0) {
+    return;
+  }
   loom_block_t* entry = loom_region_entry_block(region);
 
   for (uint16_t i = 0; i < entry->arg_count; ++i) {
     loom_type_t argument_type =
         loom_verify_value_type(state, loom_block_arg_id(entry, i));
-    if (loom_type_satisfies_constraint(argument_type, expected)) continue;
+    if (loom_type_satisfies_constraint(argument_type, expected)) {
+      continue;
+    }
 
     char region_name_buffer[32];
     char argument_name_buffer[64];
@@ -433,11 +463,17 @@ static bool loom_verify_region_entry_args(const loom_op_t* op,
                                           loom_field_ref_t region_ref,
                                           loom_verify_value_span_t* out_span) {
   *out_span = (loom_verify_value_span_t){0};
-  if (LOOM_FIELD_REF_CATEGORY(region_ref) != LOOM_FIELD_REGION) return false;
+  if (LOOM_FIELD_REF_CATEGORY(region_ref) != LOOM_FIELD_REGION) {
+    return false;
+  }
   uint8_t region_index = LOOM_FIELD_REF_INDEX(region_ref);
-  if (region_index >= op->region_count) return false;
+  if (region_index >= op->region_count) {
+    return false;
+  }
   loom_region_t* region = loom_op_regions(op)[region_index];
-  if (!region || region->block_count == 0) return false;
+  if (!region || region->block_count == 0) {
+    return false;
+  }
   loom_block_t* entry = loom_region_entry_block(region);
   out_span->values = entry->arg_ids;
   out_span->count = entry->arg_count;
@@ -459,7 +495,9 @@ static bool loom_verify_region_condition_forward(
     const loom_op_vtable_t* vtable, loom_field_ref_t region_ref,
     loom_verify_condition_forward_t* out_forward) {
   *out_forward = (loom_verify_condition_forward_t){0};
-  if (LOOM_FIELD_REF_CATEGORY(region_ref) != LOOM_FIELD_REGION) return false;
+  if (LOOM_FIELD_REF_CATEGORY(region_ref) != LOOM_FIELD_REGION) {
+    return false;
+  }
   uint8_t region_index = LOOM_FIELD_REF_INDEX(region_ref);
   uint16_t operand_count = 0;
   const loom_value_id_t* operands = NULL;
@@ -516,9 +554,13 @@ static bool loom_verify_region_args_match_field(
 
 static bool loom_verify_query_element_bit_width(loom_type_t type,
                                                 int32_t* out_bit_width) {
-  if (!loom_type_is_scalar(type) && !loom_type_is_shaped(type)) return false;
+  if (!loom_type_is_scalar(type) && !loom_type_is_shaped(type)) {
+    return false;
+  }
   int32_t bit_width = loom_scalar_type_bitwidth(loom_type_element_type(type));
-  if (bit_width <= 0) return false;
+  if (bit_width <= 0) {
+    return false;
+  }
   *out_bit_width = bit_width;
   return true;
 }
@@ -526,11 +568,17 @@ static bool loom_verify_query_element_bit_width(loom_type_t type,
 static bool loom_verify_resolve_i64_attr_field(const loom_op_t* op,
                                                uint8_t attr_ref,
                                                int64_t* out_value) {
-  if (LOOM_FIELD_REF_CATEGORY(attr_ref) != LOOM_FIELD_ATTR) return false;
+  if (LOOM_FIELD_REF_CATEGORY(attr_ref) != LOOM_FIELD_ATTR) {
+    return false;
+  }
   uint8_t attr_index = LOOM_FIELD_REF_INDEX(attr_ref);
-  if (attr_index >= op->attribute_count) return false;
+  if (attr_index >= op->attribute_count) {
+    return false;
+  }
   loom_attribute_t attr = loom_op_attrs(op)[attr_index];
-  if (attr.kind != LOOM_ATTR_I64) return false;
+  if (attr.kind != LOOM_ATTR_I64) {
+    return false;
+  }
   *out_value = loom_attr_as_i64(attr);
   return true;
 }
@@ -538,9 +586,13 @@ static bool loom_verify_resolve_i64_attr_field(const loom_op_t* op,
 static bool loom_verify_resolve_attr_field(const loom_op_t* op,
                                            uint8_t attr_ref,
                                            loom_attribute_t* out_attr) {
-  if (LOOM_FIELD_REF_CATEGORY(attr_ref) != LOOM_FIELD_ATTR) return false;
+  if (LOOM_FIELD_REF_CATEGORY(attr_ref) != LOOM_FIELD_ATTR) {
+    return false;
+  }
   uint8_t attr_index = LOOM_FIELD_REF_INDEX(attr_ref);
-  if (attr_index >= op->attribute_count) return false;
+  if (attr_index >= op->attribute_count) {
+    return false;
+  }
   *out_attr = loom_op_attrs(op)[attr_index];
   return true;
 }
@@ -569,7 +621,9 @@ static void loom_verify_emit_attr_kind_mismatch(
   char attr_name_buffer[32];
   iree_string_view_t attr_name = loom_verify_field_name(
       vtable, attr_ref, attr_name_buffer, sizeof(attr_name_buffer));
-  if (!error) error = LOOM_ERR_TYPE_005;
+  if (!error) {
+    error = LOOM_ERR_TYPE_005;
+  }
   loom_diagnostic_param_t params[] = {
       loom_verify_param_string_for_field(attr_name, attr_ref),
       loom_param_u32(actual_kind),
@@ -622,11 +676,17 @@ static bool loom_verify_attr_literal_fits_scalar_type(
 static void loom_verify_relation_attr_matches_element_type(
     loom_verify_state_t* state, const loom_op_t* op,
     const loom_op_vtable_t* vtable, const loom_constraint_t* constraint) {
-  if (constraint->arg_count < 2) return;
-  if (constraint->property != LOOM_PROPERTY_ELEMENT_TYPE) return;
+  if (constraint->arg_count < 2) {
+    return;
+  }
+  if (constraint->property != LOOM_PROPERTY_ELEMENT_TYPE) {
+    return;
+  }
   uint8_t attr_ref = constraint->args[0];
   uint8_t field_ref = constraint->args[1];
-  if (loom_verify_is_variadic_field(vtable, field_ref)) return;
+  if (loom_verify_is_variadic_field(vtable, field_ref)) {
+    return;
+  }
 
   loom_attribute_t attr = {0};
   loom_value_id_t value_id =
@@ -665,14 +725,20 @@ static void loom_verify_relation_attr_matches_element_type(
 static void loom_verify_relation_attr_i64_predicate(
     loom_verify_state_t* state, const loom_op_t* op,
     const loom_op_vtable_t* vtable, const loom_constraint_t* constraint) {
-  if (constraint->arg_count < 1) return;
+  if (constraint->arg_count < 1) {
+    return;
+  }
   uint8_t attr_ref = constraint->args[0];
   int64_t value = 0;
-  if (!loom_verify_resolve_i64_attr_field(op, attr_ref, &value)) return;
+  if (!loom_verify_resolve_i64_attr_field(op, attr_ref, &value)) {
+    return;
+  }
 
   switch ((enum loom_constraint_property_e)constraint->property) {
     case LOOM_PROPERTY_BIT_WIDTH_POSITIVE:
-      if (value > 0) return;
+      if (value > 0) {
+        return;
+      }
       loom_verify_emit_i64_attr_constraint(state, op, vtable, attr_ref, value,
                                            IREE_SV("positive bit width"));
       return;
@@ -687,7 +753,9 @@ static void loom_verify_relation_attr_i64_predicate(
 static void loom_verify_relation_element_width_order(
     loom_verify_state_t* state, const loom_op_t* op,
     const loom_op_vtable_t* vtable, const loom_constraint_t* constraint) {
-  if (constraint->arg_count < 2) return;
+  if (constraint->arg_count < 2) {
+    return;
+  }
   uint8_t field_ref = constraint->args[0];
   uint8_t reference_ref = constraint->args[1];
   if (loom_verify_is_variadic_field(vtable, field_ref) ||
@@ -728,7 +796,9 @@ static void loom_verify_relation_element_width_order(
     default:
       return;
   }
-  if (relation_matches) return;
+  if (relation_matches) {
+    return;
+  }
 
   char field_name_buffer[32];
   char reference_name_buffer[32];
@@ -761,10 +831,14 @@ static void loom_verify_relation_element_width_order(
 static void loom_verify_relation_element_width_at_least_attr(
     loom_verify_state_t* state, const loom_op_t* op,
     const loom_op_vtable_t* vtable, const loom_constraint_t* constraint) {
-  if (constraint->arg_count < 2) return;
+  if (constraint->arg_count < 2) {
+    return;
+  }
   uint8_t field_ref = constraint->args[0];
   uint8_t attr_ref = constraint->args[1];
-  if (loom_verify_is_variadic_field(vtable, field_ref)) return;
+  if (loom_verify_is_variadic_field(vtable, field_ref)) {
+    return;
+  }
 
   loom_value_id_t value_id =
       loom_verify_resolve_value_field(op, vtable, field_ref);
@@ -780,7 +854,9 @@ static void loom_verify_relation_element_width_at_least_attr(
   if (!loom_verify_query_element_bit_width(value_type, &element_bit_width)) {
     return;
   }
-  if ((int64_t)element_bit_width >= required_bit_width) return;
+  if ((int64_t)element_bit_width >= required_bit_width) {
+    return;
+  }
 
   char field_name_buffer[32];
   char attr_name_buffer[32];
@@ -811,11 +887,15 @@ static void loom_verify_relation_element_width_at_least_attr(
 static void loom_verify_relation_bit_range_within_element_width(
     loom_verify_state_t* state, const loom_op_t* op,
     const loom_op_vtable_t* vtable, const loom_constraint_t* constraint) {
-  if (constraint->arg_count < 3) return;
+  if (constraint->arg_count < 3) {
+    return;
+  }
   uint8_t field_ref = constraint->args[0];
   uint8_t offset_ref = constraint->args[1];
   uint8_t width_ref = constraint->args[2];
-  if (loom_verify_is_variadic_field(vtable, field_ref)) return;
+  if (loom_verify_is_variadic_field(vtable, field_ref)) {
+    return;
+  }
 
   loom_value_id_t value_id =
       loom_verify_resolve_value_field(op, vtable, field_ref);
@@ -879,9 +959,15 @@ static bool loom_verify_total_bit_count_expr(
   *out_expr = (loom_verify_total_bit_count_expr_t){
       .static_factor = (uint64_t)element_width,
   };
-  if (element_width <= 0) return false;
-  if (loom_type_is_scalar(type)) return true;
-  if (!loom_type_is_shaped(type)) return false;
+  if (element_width <= 0) {
+    return false;
+  }
+  if (loom_type_is_scalar(type)) {
+    return true;
+  }
+  if (!loom_type_is_shaped(type)) {
+    return false;
+  }
 
   uint8_t rank = loom_type_rank(type);
   for (uint8_t i = 0; i < rank; ++i) {
@@ -891,14 +977,18 @@ static bool loom_verify_total_bit_count_expr(
         return false;
       }
       loom_value_id_t dimension_value_id = loom_type_dim_value_id_at(type, i);
-      if (dimension_value_id == LOOM_VALUE_ID_INVALID) return false;
+      if (dimension_value_id == LOOM_VALUE_ID_INVALID) {
+        return false;
+      }
       out_expr->dynamic_dims[out_expr->dynamic_dim_count++] =
           dimension_value_id;
       continue;
     }
 
     int64_t dimension_size = loom_type_dim_static_size_at(type, i);
-    if (dimension_size < 0) return false;
+    if (dimension_size < 0) {
+      return false;
+    }
     if (dimension_size == 0) {
       out_expr->static_factor = 0;
       out_expr->dynamic_dim_count = 0;
@@ -924,7 +1014,9 @@ static bool loom_verify_total_bit_count_expr_equal(
     return false;
   }
   for (uint8_t i = 0; i < lhs->dynamic_dim_count; ++i) {
-    if (lhs->dynamic_dims[i] != rhs->dynamic_dims[i]) return false;
+    if (lhs->dynamic_dims[i] != rhs->dynamic_dims[i]) {
+      return false;
+    }
   }
   return true;
 }
@@ -937,7 +1029,9 @@ static bool loom_verify_total_bit_count_expr_equal(
 static void loom_verify_relation_total_bit_count_equal(
     loom_verify_state_t* state, const loom_op_t* op,
     const loom_op_vtable_t* vtable, const loom_constraint_t* constraint) {
-  if (constraint->arg_count < 2) return;
+  if (constraint->arg_count < 2) {
+    return;
+  }
   uint8_t lhs_ref = constraint->args[0];
   uint8_t rhs_ref = constraint->args[1];
   if (loom_verify_is_variadic_field(vtable, lhs_ref) ||
@@ -973,7 +1067,9 @@ static void loom_verify_relation_total_bit_count_equal(
       loom_verify_total_bit_count_expr(lhs_type, lhs_width, &lhs_bit_count) &&
       loom_verify_total_bit_count_expr(rhs_type, rhs_width, &rhs_bit_count) &&
       loom_verify_total_bit_count_expr_equal(&lhs_bit_count, &rhs_bit_count);
-  if (counts_match) return;
+  if (counts_match) {
+    return;
+  }
 
   char lhs_name_buffer[32];
   char expected_buffer[96];
@@ -993,7 +1089,9 @@ static bool loom_verify_static_bit_count(loom_type_t type,
                                          uint64_t* out_bit_count) {
   *out_is_static = false;
   *out_bit_count = 0;
-  if (bit_width_per_element < 0) return false;
+  if (bit_width_per_element < 0) {
+    return false;
+  }
 
   uint64_t element_count = 0;
   if (loom_type_is_scalar(type)) {
@@ -1003,9 +1101,13 @@ static bool loom_verify_static_bit_count(loom_type_t type,
   }
 
   *out_is_static = true;
-  if (bit_width_per_element == 0) return true;
+  if (bit_width_per_element == 0) {
+    return true;
+  }
   uint64_t bit_width = (uint64_t)bit_width_per_element;
-  if (element_count > UINT64_MAX / bit_width) return false;
+  if (element_count > UINT64_MAX / bit_width) {
+    return false;
+  }
   *out_bit_count = element_count * bit_width;
   return true;
 }
@@ -1033,7 +1135,9 @@ static iree_string_view_t loom_verify_payload_bit_count_mismatch_constraint(
 static void loom_verify_relation_payload_bit_count_matches_storage(
     loom_verify_state_t* state, const loom_op_t* op,
     const loom_op_vtable_t* vtable, const loom_constraint_t* constraint) {
-  if (constraint->arg_count < 4) return;
+  if (constraint->arg_count < 4) {
+    return;
+  }
   uint8_t payload_ref = constraint->args[0];
   uint8_t width_ref = constraint->args[1];
   uint8_t storage_ref = constraint->args[2];
@@ -1090,8 +1194,12 @@ static void loom_verify_relation_payload_bit_count_matches_storage(
     return;
   }
 
-  if (!payload_bit_count_is_static || !storage_bit_count_is_static) return;
-  if (payload_bit_count == storage_bit_count) return;
+  if (!payload_bit_count_is_static || !storage_bit_count_is_static) {
+    return;
+  }
+  if (payload_bit_count == storage_bit_count) {
+    return;
+  }
 
   loom_verify_emit_value_field_constraint(
       state, op, vtable, diagnostic_ref, diagnostic_type,
@@ -1137,7 +1245,9 @@ static iree_string_view_t loom_verify_grouped_last_axis_result_constraint(
 static void loom_verify_relation_last_axis_grouped_by(
     loom_verify_state_t* state, const loom_op_t* op,
     const loom_op_vtable_t* vtable, const loom_constraint_t* constraint) {
-  if (constraint->arg_count < 2 || constraint->property == 0) return;
+  if (constraint->arg_count < 2 || constraint->property == 0) {
+    return;
+  }
   uint8_t source_ref = constraint->args[0];
   uint8_t result_ref = constraint->args[1];
   loom_value_id_t source_id =
@@ -1164,7 +1274,9 @@ static void loom_verify_relation_last_axis_grouped_by(
 
   uint8_t source_rank = loom_type_rank(source_type);
   uint8_t result_rank = loom_type_rank(result_type);
-  if (source_rank == 0 || result_rank == 0) return;
+  if (source_rank == 0 || result_rank == 0) {
+    return;
+  }
   if (result_rank != source_rank) {
     loom_diagnostic_param_t params[] = {
         loom_verify_param_string_for_field(result_name, result_ref),
@@ -1191,7 +1303,9 @@ static void loom_verify_relation_last_axis_grouped_by(
     return;
   }
 
-  if (loom_type_dim_is_dynamic_at(source_type, grouped_axis)) return;
+  if (loom_type_dim_is_dynamic_at(source_type, grouped_axis)) {
+    return;
+  }
 
   int64_t source_axis_size =
       loom_type_dim_static_size_at(source_type, grouped_axis);
@@ -1208,11 +1322,15 @@ static void loom_verify_relation_last_axis_grouped_by(
     return;
   }
 
-  if (loom_type_dim_is_dynamic_at(result_type, grouped_axis)) return;
+  if (loom_type_dim_is_dynamic_at(result_type, grouped_axis)) {
+    return;
+  }
 
   int64_t result_axis_size =
       loom_type_dim_static_size_at(result_type, grouped_axis);
-  if (result_axis_size == source_axis_size / group_size) return;
+  if (result_axis_size == source_axis_size / group_size) {
+    return;
+  }
 
   loom_diagnostic_param_t params[] = {
       loom_verify_param_string_for_field(result_name, result_ref),
@@ -1230,13 +1348,17 @@ static void loom_verify_relation_last_axis_grouped_by(
 static void loom_verify_relation_count_matches_rank(
     loom_verify_state_t* state, const loom_op_t* op,
     const loom_op_vtable_t* vtable, const loom_constraint_t* constraint) {
-  if (constraint->arg_count < 2) return;
+  if (constraint->arg_count < 2) {
+    return;
+  }
   loom_type_t shaped_type = loom_verify_value_type(
       state, loom_verify_resolve_value_field(op, vtable, constraint->args[0]));
   uint16_t variadic_count =
       loom_verify_variadic_count(op, vtable, constraint->args[1]);
   uint8_t rank = loom_type_rank(shaped_type);
-  if (variadic_count == rank) return;
+  if (variadic_count == rank) {
+    return;
+  }
   char name_buffer[32];
   iree_string_view_t operand_name = loom_verify_field_name(
       vtable, constraint->args[0], name_buffer, sizeof(name_buffer));
@@ -1257,7 +1379,9 @@ static void loom_verify_relation_count_matches_rank(
 static void loom_verify_relation_count_matches_static_element_count(
     loom_verify_state_t* state, const loom_op_t* op,
     const loom_op_vtable_t* vtable, const loom_constraint_t* constraint) {
-  if (constraint->arg_count < 2) return;
+  if (constraint->arg_count < 2) {
+    return;
+  }
   uint8_t shaped_ref = constraint->args[0];
   uint8_t values_ref = constraint->args[1];
   loom_type_t shaped_type = loom_verify_value_type(
@@ -1288,7 +1412,9 @@ static void loom_verify_relation_count_matches_static_element_count(
   }
 
   uint16_t value_count = loom_verify_variadic_count(op, vtable, values_ref);
-  if (value_count == expected_count) return;
+  if (value_count == expected_count) {
+    return;
+  }
 
   char values_name_buffer[32];
   char shaped_name_buffer[32];
@@ -1321,14 +1447,20 @@ static void loom_verify_relation_count_matches_static_element_count(
 static void loom_verify_relation_attr_in_range_rank(
     loom_verify_state_t* state, const loom_op_t* op,
     const loom_op_vtable_t* vtable, const loom_constraint_t* constraint) {
-  if (constraint->arg_count < 2) return;
+  if (constraint->arg_count < 2) {
+    return;
+  }
   loom_type_t shaped_type = loom_verify_value_type(
       state, loom_verify_resolve_value_field(op, vtable, constraint->args[0]));
   uint8_t attr_index = LOOM_FIELD_REF_INDEX(constraint->args[1]);
-  if (attr_index >= op->attribute_count) return;
+  if (attr_index >= op->attribute_count) {
+    return;
+  }
   int64_t dim_index = loom_attr_as_i64(loom_op_attrs(op)[attr_index]);
   uint8_t rank = loom_type_rank(shaped_type);
-  if (dim_index >= 0 && dim_index < rank) return;
+  if (dim_index >= 0 && dim_index < rank) {
+    return;
+  }
   const loom_error_def_t* error =
       loom_verify_constraint_error_or(constraint, LOOM_ERR_SUBRANGE_002);
   loom_diagnostic_param_t params[] = {
@@ -1345,11 +1477,17 @@ static void loom_verify_relation_attr_in_range_rank(
 static void loom_verify_relation_region_arg_count(
     loom_verify_state_t* state, const loom_op_t* op,
     const loom_op_vtable_t* vtable, const loom_constraint_t* constraint) {
-  if (constraint->arg_count < 2) return;
+  if (constraint->arg_count < 2) {
+    return;
+  }
   uint8_t region_index = LOOM_FIELD_REF_INDEX(constraint->args[0]);
-  if (region_index >= op->region_count) return;
+  if (region_index >= op->region_count) {
+    return;
+  }
   loom_region_t* region = loom_op_regions(op)[region_index];
-  if (!region || region->block_count == 0) return;
+  if (!region || region->block_count == 0) {
+    return;
+  }
   uint16_t block_arg_count = loom_region_entry_arg_count(region);
   uint16_t expected_count = 0;
   if (LOOM_FIELD_REF_CATEGORY(constraint->args[1]) == LOOM_FIELD_REGION) {
@@ -1363,7 +1501,9 @@ static void loom_verify_relation_region_arg_count(
     expected_count =
         loom_verify_variadic_count(op, vtable, constraint->args[1]);
   }
-  if (block_arg_count == expected_count) return;
+  if (block_arg_count == expected_count) {
+    return;
+  }
   const loom_error_def_t* error =
       loom_verify_constraint_error_or(constraint, LOOM_ERR_STRUCTURE_007);
   loom_diagnostic_param_t params[] = {
@@ -1381,9 +1521,13 @@ static void loom_verify_relation_region_arg_count(
 static void loom_verify_relation_region_arg_match(
     loom_verify_state_t* state, const loom_op_t* op,
     const loom_op_vtable_t* vtable, const loom_constraint_t* constraint) {
-  if (constraint->arg_count < 2) return;
+  if (constraint->arg_count < 2) {
+    return;
+  }
   loom_verify_value_span_t args = {0};
-  if (!loom_verify_region_entry_args(op, constraint->args[0], &args)) return;
+  if (!loom_verify_region_entry_args(op, constraint->args[0], &args)) {
+    return;
+  }
   loom_verify_value_span_t inputs = {0};
   if (LOOM_FIELD_REF_CATEGORY(constraint->args[1]) == LOOM_FIELD_REGION) {
     if (!loom_verify_region_entry_args(op, constraint->args[1], &inputs)) {
@@ -1392,7 +1536,9 @@ static void loom_verify_relation_region_arg_match(
   } else {
     inputs.values = loom_verify_resolve_variadic_field(
         op, vtable, constraint->args[1], &inputs.count);
-    if (!inputs.values) return;
+    if (!inputs.values) {
+      return;
+    }
   }
   uint16_t check_count = args.count < inputs.count ? args.count : inputs.count;
   for (uint16_t i = 0; i < check_count; ++i) {
@@ -1426,7 +1572,9 @@ static void loom_verify_relation_region_arg_match(
 static void loom_verify_relation_condition_forward_count(
     loom_verify_state_t* state, const loom_op_t* op,
     const loom_op_vtable_t* vtable, const loom_constraint_t* constraint) {
-  if (constraint->arg_count < 3) return;
+  if (constraint->arg_count < 3) {
+    return;
+  }
   loom_verify_condition_forward_t forward = {0};
   if (!loom_verify_region_condition_forward(state, op, vtable,
                                             constraint->args[0], &forward)) {
@@ -1438,7 +1586,9 @@ static void loom_verify_relation_condition_forward_count(
                                            constraint->args[2])) {
     return;
   }
-  if (forward.count == target_args.count) return;
+  if (forward.count == target_args.count) {
+    return;
+  }
 
   loom_field_ref_t forwarded_ref =
       LOOM_FIELD_REF(LOOM_FIELD_OPERAND, forward.vtable->fixed_operand_count);
@@ -1465,7 +1615,9 @@ static void loom_verify_relation_condition_forward_count(
 static void loom_verify_relation_condition_forward_match(
     loom_verify_state_t* state, const loom_op_t* op,
     const loom_op_vtable_t* vtable, const loom_constraint_t* constraint) {
-  if (constraint->arg_count < 3) return;
+  if (constraint->arg_count < 3) {
+    return;
+  }
   loom_verify_condition_forward_t forward = {0};
   if (!loom_verify_region_condition_forward(state, op, vtable,
                                             constraint->args[0], &forward)) {
@@ -1488,7 +1640,9 @@ static void loom_verify_relation_condition_forward_match(
         loom_verify_value_type(state, forward.values[i]);
     loom_type_t target_type =
         loom_verify_value_type(state, target_args.values[i]);
-    if (loom_type_equal(forwarded_type, target_type)) continue;
+    if (loom_type_equal(forwarded_type, target_type)) {
+      continue;
+    }
 
     char forwarded_name_buffer[32];
     iree_string_view_t forwarded_name = loom_verify_value_field_name(
@@ -1516,8 +1670,12 @@ static bool loom_verify_region_block_yield(
     const loom_op_vtable_t* vtable, uint8_t region_index, uint16_t block_index,
     uint16_t* out_yield_count, const loom_value_id_t** out_yield_operands) {
   *out_yield_count = 0;
-  if (out_yield_operands != NULL) *out_yield_operands = NULL;
-  if (region_index >= op->region_count) return false;
+  if (out_yield_operands != NULL) {
+    *out_yield_operands = NULL;
+  }
+  if (region_index >= op->region_count) {
+    return false;
+  }
   const loom_region_descriptor_t* region_descriptor =
       loom_op_vtable_region_descriptor(vtable, region_index);
   loom_region_t* region = loom_op_regions(op)[region_index];
@@ -1527,7 +1685,9 @@ static bool loom_verify_region_block_yield(
   }
   const loom_block_t* block = loom_region_const_block(region, block_index);
   const loom_op_t* terminator = block->last_op;
-  if (terminator == NULL) return false;
+  if (terminator == NULL) {
+    return false;
+  }
   const loom_op_vtable_t* terminator_vtable =
       loom_verify_lookup_vtable(state, terminator->kind);
   if (terminator_vtable == NULL ||
@@ -1549,11 +1709,17 @@ static bool loom_verify_region_block_yield(
 static void loom_verify_relation_yield_count(
     loom_verify_state_t* state, const loom_op_t* op,
     const loom_op_vtable_t* vtable, const loom_constraint_t* constraint) {
-  if (constraint->arg_count < 2) return;
+  if (constraint->arg_count < 2) {
+    return;
+  }
   const uint8_t region_index = LOOM_FIELD_REF_INDEX(constraint->args[0]);
-  if (region_index >= op->region_count) return;
+  if (region_index >= op->region_count) {
+    return;
+  }
   loom_region_t* region = loom_op_regions(op)[region_index];
-  if (region == NULL) return;
+  if (region == NULL) {
+    return;
+  }
   uint16_t result_count =
       loom_verify_variadic_count(op, vtable, constraint->args[1]);
   // A non-variadic result counts as a single element for the purposes
@@ -1588,20 +1754,28 @@ static void loom_verify_relation_yield_count(
 static void loom_verify_relation_yield_match(
     loom_verify_state_t* state, const loom_op_t* op,
     const loom_op_vtable_t* vtable, const loom_constraint_t* constraint) {
-  if (constraint->arg_count < 2) return;
+  if (constraint->arg_count < 2) {
+    return;
+  }
   // Yields forward into result values — only result-side fields are
   // valid as the second arg.
   if (LOOM_FIELD_REF_CATEGORY(constraint->args[1]) != LOOM_FIELD_RESULT) {
     return;
   }
   const uint8_t region_index = LOOM_FIELD_REF_INDEX(constraint->args[0]);
-  if (region_index >= op->region_count) return;
+  if (region_index >= op->region_count) {
+    return;
+  }
   loom_region_t* region = loom_op_regions(op)[region_index];
-  if (region == NULL) return;
+  if (region == NULL) {
+    return;
+  }
   uint16_t result_count = 0;
   const loom_value_id_t* result_values = loom_verify_resolve_variadic_field(
       op, vtable, constraint->args[1], &result_count);
-  if (!result_values) return;
+  if (!result_values) {
+    return;
+  }
   for (uint16_t block_index = 0; block_index < region->block_count;
        ++block_index) {
     uint16_t yield_count = 0;
@@ -1629,7 +1803,9 @@ static void loom_verify_relation_yield_match(
                                                   yield_type, &yield_remap)
               : loom_constraint_property_equals(yield_type, result_type,
                                                 constraint->property);
-      if (matched) continue;
+      if (matched) {
+        continue;
+      }
       const loom_error_def_t* error =
           loom_verify_constraint_error_or(constraint, LOOM_ERR_TYPE_009);
       const loom_type_t expected_type =
@@ -1654,7 +1830,9 @@ static void loom_verify_relation_yield_match(
 static void loom_verify_relation_variadic_match(
     loom_verify_state_t* state, const loom_op_t* op,
     const loom_op_vtable_t* vtable, const loom_constraint_t* constraint) {
-  if (constraint->arg_count < 2) return;
+  if (constraint->arg_count < 2) {
+    return;
+  }
   uint8_t ref_a = constraint->args[0];
   uint8_t ref_b = constraint->args[1];
   uint16_t count_a = 0;
@@ -1663,7 +1841,9 @@ static void loom_verify_relation_variadic_match(
       loom_verify_resolve_variadic_field(op, vtable, ref_a, &count_a);
   const loom_value_id_t* values_b =
       loom_verify_resolve_variadic_field(op, vtable, ref_b, &count_b);
-  if (!values_a || !values_b) return;
+  if (!values_a || !values_b) {
+    return;
+  }
 
   if (count_a != count_b) {
     char name_a_buffer[32];

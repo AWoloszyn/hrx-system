@@ -33,7 +33,9 @@ static loom_value_relation_mask_t loom_low_storage_value_relation_mask(
     const loom_op_t* op) {
   loom_value_relation_mask_t mask =
       LOOM_VALUE_RELATION_MASK(LOOM_VALUE_RELATION_TIED_RESULT);
-  if (!loom_traits_have_storage_relation(op->traits)) return mask;
+  if (!loom_traits_have_storage_relation(op->traits)) {
+    return mask;
+  }
   if (loom_traits_are_fact_identity(op->traits)) {
     IREE_ASSERT_EQ(op->tied_result_count, 0,
                    "low fact identity must use ordinal storage aliases");
@@ -46,7 +48,9 @@ static loom_value_relation_mask_t loom_low_storage_value_relation_mask(
 }
 
 static uint32_t loom_low_storage_low_relation_count(const loom_op_t* op) {
-  if (!loom_traits_have_storage_relation(op->traits)) return 0;
+  if (!loom_traits_have_storage_relation(op->traits)) {
+    return 0;
+  }
   switch (op->kind) {
     case LOOM_OP_LOW_COPY:
     case LOOM_OP_LOW_MOVE:
@@ -298,7 +302,9 @@ bool loom_low_storage_relation_iterator_next(
 
   const uint32_t low_relation_count =
       loom_low_storage_low_relation_count(iterator->op);
-  if (iterator->low_relation_index >= low_relation_count) return false;
+  if (iterator->low_relation_index >= low_relation_count) {
+    return false;
+  }
   const uint16_t relation_index = iterator->low_relation_index++;
   switch (iterator->op->kind) {
     case LOOM_OP_LOW_COPY:
@@ -351,14 +357,18 @@ bool loom_low_storage_operand_may_read_unit_range(const loom_module_t* module,
   IREE_ASSERT(unit_offset <= operand_unit_count &&
                   unit_count <= operand_unit_count - unit_offset,
               "verified low storage query must fit operand units");
-  if (unit_count == 0) return false;
+  if (unit_count == 0) {
+    return false;
+  }
 
   bool has_source_relation = false;
   loom_low_storage_relation_iterator_t iterator;
   loom_low_storage_relation_iterator_initialize(module, op, &iterator);
   loom_low_storage_relation_t relation;
   while (loom_low_storage_relation_iterator_next(&iterator, &relation)) {
-    if (relation.source_operand_index != operand_index) continue;
+    if (relation.source_operand_index != operand_index) {
+      continue;
+    }
     IREE_ASSERT_EQ(relation.source_value_id, operand_value_id);
     has_source_relation = true;
     if (loom_low_storage_unit_ranges_overlap(unit_offset, unit_count,

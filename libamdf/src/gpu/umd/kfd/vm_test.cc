@@ -96,7 +96,9 @@ class NativeVm {
       return amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, ENOTTY);
     }
     const amdf_status_t status = self.Record(operation);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
 
     switch (operation) {
       case Operation::kQuery: {
@@ -244,7 +246,9 @@ class NativeVm {
     EXPECT_EQ(byte_offset, 0x100000u);
     EXPECT_EQ(byte_length, self.storage.size());
     const amdf_status_t status = self.Record(Operation::kMap);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
     EXPECT_TRUE(self.buffer_owned);
     EXPECT_FALSE(self.mapping_owned);
     self.mapping_owned = true;
@@ -258,7 +262,9 @@ class NativeVm {
     EXPECT_EQ(mapping, self.storage.data());
     EXPECT_EQ(byte_length, self.storage.size());
     const amdf_status_t status = self.Record(Operation::kUnmap);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
     EXPECT_FALSE(self.buffer_owned);
     EXPECT_TRUE(self.mapping_owned);
     self.mapping_owned = false;
@@ -423,8 +429,12 @@ TEST(KfdVmTest, RejectsHostViewOutsideGpuAddressRange) {
     NativeVm native;
     const uintptr_t address =
         reinterpret_cast<uintptr_t>(native.storage.data());
-    if (variant == 0) native.topology.virtual_address.begin = address + 1;
-    if (variant == 1) native.topology.virtual_address.end = address;
+    if (variant == 0) {
+      native.topology.virtual_address.begin = address + 1;
+    }
+    if (variant == 1) {
+      native.topology.virtual_address.end = address;
+    }
     if (variant == 2) {
       native.topology.virtual_address.end = address + native.storage.size() - 1;
     }

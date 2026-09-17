@@ -39,7 +39,9 @@ typedef struct iree_hal_amd_xdna_image_elf_envelope_t {
 static bool iree_hal_amd_xdna_image_source_ranges_overlap(
     iree_hal_amd_xdna_image_source_range_t lhs,
     iree_hal_amd_xdna_image_source_range_t rhs) {
-  if (lhs.length == 0 || rhs.length == 0) return false;
+  if (lhs.length == 0 || rhs.length == 0) {
+    return false;
+  }
   return lhs.offset <= rhs.offset ? rhs.offset - lhs.offset < lhs.length
                                   : lhs.offset - rhs.offset < rhs.length;
 }
@@ -127,7 +129,9 @@ static iree_status_t iree_hal_amd_xdna_image_enumerate_sequence_range(
     iree_byte_sequence_segment_callback_t callback) {
   IREE_RETURN_IF_ERROR(iree_hal_amd_xdna_image_validate_source_range(
       source_sequence, source_range));
-  if (source_range.length == 0) return iree_ok_status();
+  if (source_range.length == 0) {
+    return iree_ok_status();
+  }
 
   const uint64_t source_length = iree_byte_sequence_length(source_sequence);
   iree_const_byte_span_t contiguous_span = iree_const_byte_span_empty();
@@ -374,12 +378,24 @@ static int iree_hal_amd_xdna_image_compare_program_ranges(const void* lhs_ptr,
       (const iree_hal_amd_xdna_image_program_range_index_t*)lhs_ptr;
   const iree_hal_amd_xdna_image_program_range_index_t* rhs =
       (const iree_hal_amd_xdna_image_program_range_index_t*)rhs_ptr;
-  if (lhs->file_range.offset < rhs->file_range.offset) return -1;
-  if (lhs->file_range.offset > rhs->file_range.offset) return 1;
-  if (lhs->file_range.length > rhs->file_range.length) return -1;
-  if (lhs->file_range.length < rhs->file_range.length) return 1;
-  if (lhs->ordinal < rhs->ordinal) return -1;
-  if (lhs->ordinal > rhs->ordinal) return 1;
+  if (lhs->file_range.offset < rhs->file_range.offset) {
+    return -1;
+  }
+  if (lhs->file_range.offset > rhs->file_range.offset) {
+    return 1;
+  }
+  if (lhs->file_range.length > rhs->file_range.length) {
+    return -1;
+  }
+  if (lhs->file_range.length < rhs->file_range.length) {
+    return 1;
+  }
+  if (lhs->ordinal < rhs->ordinal) {
+    return -1;
+  }
+  if (lhs->ordinal > rhs->ordinal) {
+    return 1;
+  }
   return 0;
 }
 
@@ -443,7 +459,9 @@ static iree_status_t iree_hal_amd_xdna_image_validate_program_headers(
   for (iree_host_size_t i = 0; i < directory->program_header_count; ++i) {
     const iree_hal_amd_xdna_image_program_range_index_t* range =
         &range_indexes[i];
-    if (range->file_range.length == 0) continue;
+    if (range->file_range.length == 0) {
+      continue;
+    }
     if (active_range != NULL &&
         iree_hal_amd_xdna_image_source_ranges_overlap(active_range->file_range,
                                                       range->file_range)) {
@@ -520,7 +538,9 @@ iree_status_t iree_hal_amd_xdna_image_directory_create(
 
 void iree_hal_amd_xdna_image_directory_destroy(
     iree_hal_amd_xdna_image_directory_t* directory) {
-  if (directory == NULL) return;
+  if (directory == NULL) {
+    return;
+  }
   const iree_allocator_t host_allocator = directory->host_allocator;
   iree_byte_sequence_release(directory->source_sequence);
   iree_allocator_free(host_allocator, directory);

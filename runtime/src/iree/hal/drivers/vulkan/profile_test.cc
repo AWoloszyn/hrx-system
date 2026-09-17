@@ -130,7 +130,9 @@ class VulkanProfileRecorderTest : public ::testing::Test {
   }
 
   void TearDown() override {
-    if (!recorder_) return;
+    if (!recorder_) {
+      return;
+    }
     IREE_EXPECT_OK(iree_hal_vulkan_profile_recorder_end(recorder_));
     iree_hal_vulkan_profile_recorder_destroy(recorder_);
   }

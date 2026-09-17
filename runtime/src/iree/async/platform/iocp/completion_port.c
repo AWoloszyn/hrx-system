@@ -27,10 +27,14 @@ void iree_async_iocp_completion_port_deinitialize(
   HANDLE poll_thread_handle = (HANDLE)iree_atomic_exchange(
       &completion_port->poll_thread_handle, 0, iree_memory_order_acq_rel);
   if (poll_thread_handle != NULL) {
-    if (!CloseHandle(poll_thread_handle)) iree_abort();
+    if (!CloseHandle(poll_thread_handle)) {
+      iree_abort();
+    }
   }
   if (completion_port->handle != 0) {
-    if (!CloseHandle((HANDLE)completion_port->handle)) iree_abort();
+    if (!CloseHandle((HANDLE)completion_port->handle)) {
+      iree_abort();
+    }
     completion_port->handle = 0;
   }
 }
@@ -58,7 +62,9 @@ iree_status_t iree_async_iocp_completion_port_bind_poll_thread(
           &completion_port->poll_thread_handle, &expected_handle,
           (intptr_t)poll_thread_handle, iree_memory_order_release,
           iree_memory_order_acquire)) {
-    if (!CloseHandle(poll_thread_handle)) iree_abort();
+    if (!CloseHandle(poll_thread_handle)) {
+      iree_abort();
+    }
   }
   return iree_ok_status();
 }

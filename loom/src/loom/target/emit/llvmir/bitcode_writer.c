@@ -44,7 +44,9 @@ static iree_status_t loom_llvmir_bitcode_write_empty_record(
 }
 
 static uint64_t loom_llvmir_bitcode_encode_signed(int64_t value) {
-  if (value >= 0) return ((uint64_t)value) << 1;
+  if (value >= 0) {
+    return ((uint64_t)value) << 1;
+  }
   return (((uint64_t)(-value)) << 1) | 1;
 }
 
@@ -60,7 +62,9 @@ static bool loom_llvmir_bitcode_is_constant_value_kind(
 static bool loom_llvmir_bitcode_value_is_global_initializer(
     const loom_llvmir_module_t* module, loom_llvmir_value_id_t value_id) {
   for (iree_host_size_t i = 0; i < module->global_count; ++i) {
-    if (module->globals[i]->initializer == value_id) return true;
+    if (module->globals[i]->initializer == value_id) {
+      return true;
+    }
   }
   return false;
 }
@@ -105,11 +109,15 @@ static iree_status_t loom_llvmir_bitcode_module_constant_value_id(
 
 static uint64_t loom_llvmir_bitcode_sign_extend_integer_constant(
     uint64_t value, uint32_t bit_width) {
-  if (bit_width == 0 || bit_width >= 64) return value;
+  if (bit_width == 0 || bit_width >= 64) {
+    return value;
+  }
   uint64_t sign_bit = UINT64_C(1) << (bit_width - 1);
   uint64_t value_mask = (UINT64_C(1) << bit_width) - 1;
   uint64_t masked_value = value & value_mask;
-  if ((masked_value & sign_bit) == 0) return masked_value;
+  if ((masked_value & sign_bit) == 0) {
+    return masked_value;
+  }
   return masked_value | ~value_mask;
 }
 
@@ -564,7 +572,9 @@ static iree_status_t loom_llvmir_bitcode_inline_asm_function_type_id(
       const loom_llvmir_block_t* block = function->blocks[j];
       for (iree_host_size_t k = 0; k < block->instruction_count; ++k) {
         const loom_llvmir_instruction_t* instruction = &block->instructions[k];
-        if (instruction->kind != LOOM_LLVMIR_INST_INLINE_ASM) continue;
+        if (instruction->kind != LOOM_LLVMIR_INST_INLINE_ASM) {
+          continue;
+        }
         if (instruction == target_instruction) {
           *out_type_id = type_id;
           return iree_ok_status();
@@ -692,7 +702,9 @@ static iree_status_t loom_llvmir_bitcode_write_type_block(
       const loom_llvmir_block_t* block = function->blocks[j];
       for (iree_host_size_t k = 0; k < block->instruction_count; ++k) {
         const loom_llvmir_instruction_t* instruction = &block->instructions[k];
-        if (instruction->kind != LOOM_LLVMIR_INST_INLINE_ASM) continue;
+        if (instruction->kind != LOOM_LLVMIR_INST_INLINE_ASM) {
+          continue;
+        }
         IREE_RETURN_IF_ERROR(loom_llvmir_bitcode_write_inline_asm_function_type(
             module, instruction, writer));
       }
@@ -789,7 +801,9 @@ static bool loom_llvmir_bitcode_module_has_attrs(
     const loom_llvmir_module_t* module) {
   for (iree_host_size_t i = 0; i < module->function_count; ++i) {
     const loom_llvmir_function_t* function = module->functions[i];
-    if (loom_llvmir_bitcode_function_has_attrs(function)) return true;
+    if (loom_llvmir_bitcode_function_has_attrs(function)) {
+      return true;
+    }
     for (iree_host_size_t j = 0; j < function->block_count; ++j) {
       const loom_llvmir_block_t* block = function->blocks[j];
       for (iree_host_size_t k = 0; k < block->instruction_count; ++k) {
@@ -895,7 +909,9 @@ static iree_status_t loom_llvmir_bitcode_write_attr_group_block(
     for (iree_host_size_t j = 0;
          j < function->parameter_count && iree_status_is_ok(status); ++j) {
       const loom_llvmir_parameter_t* parameter = &function->parameters[j];
-      if (!loom_llvmir_bitcode_attr_list_has_attrs(parameter->attrs)) continue;
+      if (!loom_llvmir_bitcode_attr_list_has_attrs(parameter->attrs)) {
+        continue;
+      }
       status = loom_llvmir_bitcode_write_attr_group_record(
           module, parameter->attrs, group_id, j + 1, writer);
       if (iree_status_is_ok(status)) {
@@ -912,7 +928,9 @@ static iree_status_t loom_llvmir_bitcode_write_attr_group_block(
       for (iree_host_size_t k = 0;
            k < block->instruction_count && iree_status_is_ok(status); ++k) {
         const loom_llvmir_instruction_t* instruction = &block->instructions[k];
-        if (!loom_llvmir_bitcode_call_has_result_attrs(instruction)) continue;
+        if (!loom_llvmir_bitcode_call_has_result_attrs(instruction)) {
+          continue;
+        }
         status = loom_llvmir_bitcode_write_attr_group_record(
             module, instruction->call.result_attrs, group_id, 0, writer);
         if (iree_status_is_ok(status)) {
@@ -1001,7 +1019,9 @@ static iree_status_t loom_llvmir_bitcode_write_attr_block(
   for (iree_host_size_t i = 0;
        i < module->function_count && iree_status_is_ok(status); ++i) {
     const loom_llvmir_function_t* function = module->functions[i];
-    if (!loom_llvmir_bitcode_function_has_attrs(function)) continue;
+    if (!loom_llvmir_bitcode_function_has_attrs(function)) {
+      continue;
+    }
     status = loom_llvmir_bitcode_write_function_attr_record(function, &group_id,
                                                             writer);
   }
@@ -1015,7 +1035,9 @@ static iree_status_t loom_llvmir_bitcode_write_attr_block(
       for (iree_host_size_t k = 0;
            k < block->instruction_count && iree_status_is_ok(status); ++k) {
         const loom_llvmir_instruction_t* instruction = &block->instructions[k];
-        if (!loom_llvmir_bitcode_call_has_result_attrs(instruction)) continue;
+        if (!loom_llvmir_bitcode_call_has_result_attrs(instruction)) {
+          continue;
+        }
         uint64_t operand = call_group_id++;
         status = loom_llvmir_bitcode_write_attr_record(1, &operand, writer);
       }
@@ -1203,7 +1225,9 @@ static iree_status_t loom_llvmir_bitcode_map_mark_instruction_constants(
       return iree_ok_status();
     }
     case LOOM_LLVMIR_INST_RET:
-      if (!instruction->ret.has_value) return iree_ok_status();
+      if (!instruction->ret.has_value) {
+        return iree_ok_status();
+      }
       return loom_llvmir_bitcode_map_mark_constant(module, map,
                                                    instruction->ret.value);
     case LOOM_LLVMIR_INST_BR:
@@ -1264,7 +1288,9 @@ static iree_status_t loom_llvmir_bitcode_inline_asm_value_id(
     const loom_llvmir_block_t* block = function->blocks[i];
     for (iree_host_size_t j = 0; j < block->instruction_count; ++j) {
       const loom_llvmir_instruction_t* instruction = &block->instructions[j];
-      if (instruction->kind != LOOM_LLVMIR_INST_INLINE_ASM) continue;
+      if (instruction->kind != LOOM_LLVMIR_INST_INLINE_ASM) {
+        continue;
+      }
       if (instruction == target_instruction) {
         *out_value_id = value_id;
         return iree_ok_status();
@@ -2456,7 +2482,9 @@ static iree_status_t loom_llvmir_bitcode_write_module_constants_block(
   for (iree_host_size_t i = 0;
        i < module->value_count && iree_status_is_ok(status); ++i) {
     const loom_llvmir_value_t* value = &module->values[i];
-    if (!loom_llvmir_bitcode_is_constant_value_kind(value->kind)) continue;
+    if (!loom_llvmir_bitcode_is_constant_value_kind(value->kind)) {
+      continue;
+    }
     if (!loom_llvmir_bitcode_value_is_global_initializer(
             module, (loom_llvmir_value_id_t)i)) {
       continue;
@@ -2498,9 +2526,15 @@ static iree_status_t loom_llvmir_bitcode_inline_asm_pointer_type_id(
 static uint64_t loom_llvmir_bitcode_inline_asm_flags(
     loom_llvmir_inline_asm_flags_t flags) {
   uint64_t encoded_flags = 0;
-  if (flags & LOOM_LLVMIR_INLINE_ASM_SIDE_EFFECT) encoded_flags |= 1;
-  if (flags & LOOM_LLVMIR_INLINE_ASM_ALIGN_STACK) encoded_flags |= 2;
-  if (flags & LOOM_LLVMIR_INLINE_ASM_INTEL_DIALECT) encoded_flags |= 4;
+  if (flags & LOOM_LLVMIR_INLINE_ASM_SIDE_EFFECT) {
+    encoded_flags |= 1;
+  }
+  if (flags & LOOM_LLVMIR_INLINE_ASM_ALIGN_STACK) {
+    encoded_flags |= 2;
+  }
+  if (flags & LOOM_LLVMIR_INLINE_ASM_INTEL_DIALECT) {
+    encoded_flags |= 4;
+  }
   return encoded_flags;
 }
 
@@ -2600,7 +2634,9 @@ static iree_status_t loom_llvmir_bitcode_write_constants_block(
   for (iree_host_size_t i = 0;
        i < module->value_count && iree_status_is_ok(status); ++i) {
     const loom_llvmir_value_t* value = &module->values[i];
-    if (!loom_llvmir_bitcode_is_constant_value_kind(value->kind)) continue;
+    if (!loom_llvmir_bitcode_is_constant_value_kind(value->kind)) {
+      continue;
+    }
     if (value_map->value_ids[i] == LOOM_LLVMIR_BITCODE_VALUE_ID_INVALID) {
       continue;
     }
@@ -2624,7 +2660,9 @@ static iree_status_t loom_llvmir_bitcode_write_constants_block(
     for (iree_host_size_t j = 0;
          j < block->instruction_count && iree_status_is_ok(status); ++j) {
       const loom_llvmir_instruction_t* instruction = &block->instructions[j];
-      if (instruction->kind != LOOM_LLVMIR_INST_INLINE_ASM) continue;
+      if (instruction->kind != LOOM_LLVMIR_INST_INLINE_ASM) {
+        continue;
+      }
       uint64_t inline_asm_value_id = 0;
       status = loom_llvmir_bitcode_inline_asm_value_id(
           function, value_map, instruction, &inline_asm_value_id);
@@ -2660,7 +2698,9 @@ static bool loom_llvmir_bitcode_metadata_kind_seen(
       if (function == stop_function && attachment == stop_attachment) {
         return false;
       }
-      if (iree_string_view_equal(attachment->name, name)) return true;
+      if (iree_string_view_equal(attachment->name, name)) {
+        return true;
+      }
     }
   }
   return false;
@@ -2669,7 +2709,9 @@ static bool loom_llvmir_bitcode_metadata_kind_seen(
 static bool loom_llvmir_bitcode_module_has_metadata_kinds(
     const loom_llvmir_module_t* module) {
   for (iree_host_size_t i = 0; i < module->function_count; ++i) {
-    if (module->functions[i]->metadata_attachment_count != 0) return true;
+    if (module->functions[i]->metadata_attachment_count != 0) {
+      return true;
+    }
   }
   return false;
 }
@@ -2961,7 +3003,9 @@ static iree_status_t loom_llvmir_bitcode_write_metadata_block(
     const loom_llvmir_function_t* function,
     const loom_llvmir_bitcode_function_value_map_t* value_map,
     loom_llvmir_bitcode_record_writer_t* writer) {
-  if (function->metadata_attachment_count == 0) return iree_ok_status();
+  if (function->metadata_attachment_count == 0) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(loom_llvmir_bitcode_record_writer_enter_subblock(
       writer, LOOM_LLVMIR_BITCODE_METADATA_BLOCK,
       LOOM_LLVMIR_BITCODE_METADATA_ABBREV_WIDTH));
@@ -3032,7 +3076,9 @@ static iree_status_t loom_llvmir_bitcode_write_metadata_block(
 static iree_status_t loom_llvmir_bitcode_write_metadata_attachment_block(
     const loom_llvmir_function_t* function,
     loom_llvmir_bitcode_record_writer_t* writer) {
-  if (function->metadata_attachment_count == 0) return iree_ok_status();
+  if (function->metadata_attachment_count == 0) {
+    return iree_ok_status();
+  }
   if (function->metadata_attachment_count >
       IREE_HOST_SIZE_MAX / (2 * sizeof(uint64_t))) {
     return iree_make_status(
@@ -3827,11 +3873,15 @@ static iree_status_t loom_llvmir_bitcode_write_instruction(
 static bool loom_llvmir_bitcode_function_has_symbol_names(
     const loom_llvmir_function_t* function) {
   for (iree_host_size_t i = 0; i < function->parameter_count; ++i) {
-    if (!iree_string_view_is_empty(function->parameters[i].name)) return true;
+    if (!iree_string_view_is_empty(function->parameters[i].name)) {
+      return true;
+    }
   }
   for (iree_host_size_t i = 0; i < function->block_count; ++i) {
     const loom_llvmir_block_t* block = function->blocks[i];
-    if (!iree_string_view_is_empty(block->name)) return true;
+    if (!iree_string_view_is_empty(block->name)) {
+      return true;
+    }
     for (iree_host_size_t j = 0; j < block->instruction_count; ++j) {
       const loom_llvmir_instruction_t* instruction = &block->instructions[j];
       if (instruction->result_value_id == LOOM_LLVMIR_VALUE_ID_INVALID) {
@@ -3839,7 +3889,9 @@ static bool loom_llvmir_bitcode_function_has_symbol_names(
       }
       const loom_llvmir_value_t* value =
           &function->module->values[instruction->result_value_id];
-      if (!iree_string_view_is_empty(value->name)) return true;
+      if (!iree_string_view_is_empty(value->name)) {
+        return true;
+      }
     }
   }
   return false;
@@ -3899,7 +3951,9 @@ static iree_status_t loom_llvmir_bitcode_write_value_symtab_block(
   for (iree_host_size_t i = 0;
        i < function->parameter_count && iree_status_is_ok(status); ++i) {
     const loom_llvmir_parameter_t* parameter = &function->parameters[i];
-    if (iree_string_view_is_empty(parameter->name)) continue;
+    if (iree_string_view_is_empty(parameter->name)) {
+      continue;
+    }
     uint64_t bitcode_value_id = 0;
     status = loom_llvmir_bitcode_map_value(value_map, parameter->value_id,
                                            &bitcode_value_id);
@@ -3920,7 +3974,9 @@ static iree_status_t loom_llvmir_bitcode_write_value_symtab_block(
       }
       const loom_llvmir_value_t* value =
           &function->module->values[instruction->result_value_id];
-      if (iree_string_view_is_empty(value->name)) continue;
+      if (iree_string_view_is_empty(value->name)) {
+        continue;
+      }
       uint64_t bitcode_value_id = 0;
       status = loom_llvmir_bitcode_map_value(
           value_map, instruction->result_value_id, &bitcode_value_id);
@@ -3934,7 +3990,9 @@ static iree_status_t loom_llvmir_bitcode_write_value_symtab_block(
   for (iree_host_size_t i = 0;
        i < function->block_count && iree_status_is_ok(status); ++i) {
     const loom_llvmir_block_t* block = function->blocks[i];
-    if (iree_string_view_is_empty(block->name)) continue;
+    if (iree_string_view_is_empty(block->name)) {
+      continue;
+    }
     status = loom_llvmir_bitcode_write_value_symtab_record(
         LOOM_LLVMIR_BITCODE_VALUE_SYMTAB_CODE_BBENTRY, block->id, block->name,
         writer);
@@ -4059,7 +4117,9 @@ static iree_status_t loom_llvmir_bitcode_build_module_strtab(
     }
     storage_size += module->functions[i]->name.size;
   }
-  if (storage_size == 0) return iree_ok_status();
+  if (storage_size == 0) {
+    return iree_ok_status();
+  }
 
   iree_allocator_t allocator = iree_allocator_system();
   char* storage = NULL;

@@ -28,7 +28,9 @@
 #endif  // IREE_ASSERT_EQ
 
 int iree_clang_tidy_style_direct_goto(int flag) {
-  if (flag) goto cleanup;
+  if (flag) {
+    goto cleanup;
+  }
   return 0;
 cleanup:
   return 1;
@@ -112,6 +114,10 @@ iree_clang_tidy_style_c_designated_init_t
 
 void iree_clang_tidy_style_resource_release(
     iree_clang_tidy_style_resource_t* resource);
+void iree_clang_tidy_style_resource_await_release(
+    iree_clang_tidy_style_resource_t* resource);
+void iree_clang_tidy_style_resource_wait_release(
+    iree_clang_tidy_style_resource_t* resource);
 void iree_clang_tidy_style_resource_deinitialize(
     iree_clang_tidy_style_resource_t* resource);
 void iree_clang_tidy_style_resource_destroy(
@@ -125,16 +131,30 @@ void iree_clang_tidy_style_extra_cleanup(void);
 typedef void (*iree_clang_tidy_style_release_fn_t)(
     iree_clang_tidy_style_resource_t* resource);
 
+// Exercises fixes for an unbraced release guard.
+// clang-format off
 void iree_clang_tidy_style_guarded_release(
     iree_clang_tidy_style_resource_t* resource) {
   if (resource) iree_clang_tidy_style_resource_release(resource);
 }
+// clang-format on
 
 void iree_clang_tidy_style_guarded_release_with_clear(
     iree_clang_tidy_style_resource_t* resource) {
   if (resource != NULL) {
     iree_clang_tidy_style_resource_release(resource);
     resource = NULL;
+  }
+}
+
+void iree_clang_tidy_style_guarded_wait_ignored(
+    iree_clang_tidy_style_resource_t* awaited_resource,
+    iree_clang_tidy_style_resource_t* waited_resource) {
+  if (awaited_resource) {
+    iree_clang_tidy_style_resource_await_release(awaited_resource);
+  }
+  if (waited_resource) {
+    iree_clang_tidy_style_resource_wait_release(waited_resource);
   }
 }
 

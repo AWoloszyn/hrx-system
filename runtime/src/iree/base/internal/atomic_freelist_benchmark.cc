@@ -38,7 +38,9 @@ class SlotsArray {
     }
   }
   ~SlotsArray() {
-    if (slots_) iree_aligned_free(slots_);
+    if (slots_) {
+      iree_aligned_free(slots_);
+    }
   }
   iree_atomic_freelist_slot_t* data() { return slots_; }
   size_t size() const { return count_; }
@@ -152,7 +154,9 @@ class MutexFreelist {
 
   bool try_pop(uint16_t* out_index) {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (head_ == UINT16_MAX) return false;
+    if (head_ == UINT16_MAX) {
+      return false;
+    }
     *out_index = head_;
     head_ = slots_[head_];
     --available_;
@@ -211,7 +215,9 @@ struct AtomicFreelistShared {
   }
   ~AtomicFreelistShared() {
     iree_atomic_freelist_deinitialize(&freelist);
-    if (slots) iree_aligned_free(slots);
+    if (slots) {
+      iree_aligned_free(slots);
+    }
   }
 };
 

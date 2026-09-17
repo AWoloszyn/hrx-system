@@ -129,7 +129,9 @@ static StatusOr<StreamPtr> CreateStream(iree_io_stream_mode_t mode,
   iree_io_stream_t* stream = NULL;
   iree_status_t status = iree_io_vec_stream_create(
       mode, block_size, iree_allocator_system(), &stream);
-  if (!iree_status_is_ok(status)) return status;
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
   return StreamPtr(stream, iree_io_stream_release);
 }
 
@@ -141,12 +143,18 @@ static StatusOr<StreamPtr> CreateStreamWithContents(iree_io_stream_mode_t mode,
   iree_status_t status =
       iree_io_vec_stream_create(mode | IREE_IO_STREAM_MODE_WRITABLE, block_size,
                                 iree_allocator_system(), &stream);
-  if (!iree_status_is_ok(status)) return status;
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
   StreamPtr stream_owner(stream, iree_io_stream_release);
   status = iree_io_stream_write(stream, sizeof(T) * N, elements);
-  if (!iree_status_is_ok(status)) return status;
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
   status = iree_io_stream_seek(stream, IREE_IO_STREAM_SEEK_SET, 0);
-  if (!iree_status_is_ok(status)) return status;
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
   return stream_owner;
 }
 

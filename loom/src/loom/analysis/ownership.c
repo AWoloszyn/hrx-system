@@ -17,7 +17,9 @@ static bool loom_ownership_result_descriptor_at(
     const loom_result_descriptor_t** out_descriptor, uint8_t* out_field_index) {
   *out_descriptor = NULL;
   *out_field_index = 0;
-  if (!vtable || !vtable->result_descriptors) return false;
+  if (!vtable || !vtable->result_descriptors) {
+    return false;
+  }
   if (result_index < vtable->fixed_result_count) {
     *out_descriptor = &vtable->result_descriptors[result_index];
     *out_field_index = (uint8_t)result_index;
@@ -64,7 +66,9 @@ bool loom_ownership_value_matches(
 bool loom_ownership_operand_effect_at(
     const loom_module_t* module, const loom_op_t* op, uint16_t operand_index,
     loom_ownership_operand_effect_t* out_effect) {
-  if (out_effect) memset(out_effect, 0, sizeof(*out_effect));
+  if (out_effect) {
+    memset(out_effect, 0, sizeof(*out_effect));
+  }
   if (!module || !op || !out_effect || operand_index >= op->operand_count) {
     return false;
   }
@@ -92,7 +96,9 @@ bool loom_ownership_operand_effect_at(
 bool loom_ownership_result_effect_at(
     const loom_module_t* module, const loom_op_t* op, uint16_t result_index,
     loom_ownership_result_effect_t* out_effect) {
-  if (out_effect) memset(out_effect, 0, sizeof(*out_effect));
+  if (out_effect) {
+    memset(out_effect, 0, sizeof(*out_effect));
+  }
   if (!module || !op || !out_effect || result_index >= op->result_count) {
     return false;
   }

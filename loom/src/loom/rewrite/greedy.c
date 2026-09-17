@@ -25,7 +25,9 @@ void loom_greedy_rewrite_driver_set_fact_table(
 }
 
 void loom_greedy_rewrite_driver_reset(loom_greedy_rewrite_driver_t* driver) {
-  if (!driver) return;
+  if (!driver) {
+    return;
+  }
   if (driver->rewriter_initialized) {
     loom_rewriter_deinitialize(&driver->rewriter);
     driver->rewriter_initialized = false;
@@ -37,7 +39,9 @@ void loom_greedy_rewrite_driver_reset(loom_greedy_rewrite_driver_t* driver) {
 
 void loom_greedy_rewrite_driver_deinitialize(
     loom_greedy_rewrite_driver_t* driver) {
-  if (!driver) return;
+  if (!driver) {
+    return;
+  }
   loom_greedy_rewrite_driver_reset(driver);
   memset(driver, 0, sizeof(*driver));
 }
@@ -49,7 +53,9 @@ const loom_value_fact_table_t* loom_greedy_rewrite_driver_fact_table(
 
 void loom_greedy_rewrite_result_record_rewriter_flags(
     loom_greedy_rewrite_result_t* result, const loom_rewriter_t* rewriter) {
-  if (!result || !rewriter) return;
+  if (!result || !rewriter) {
+    return;
+  }
   if (iree_any_bit_set(rewriter->flags, LOOM_REWRITER_FLAG_FACTS_CHANGED)) {
     result->facts_changed = true;
   }
@@ -61,7 +67,9 @@ void loom_greedy_rewrite_result_record_rewriter_flags(
 void loom_greedy_rewrite_result_record_change(
     loom_greedy_rewrite_result_t* result, const loom_rewriter_t* rewriter,
     loom_greedy_rewrite_change_flags_t flags) {
-  if (!result) return;
+  if (!result) {
+    return;
+  }
   result->changed = true;
   loom_greedy_rewrite_result_record_rewriter_flags(result, rewriter);
   if (iree_any_bit_set(flags,
@@ -76,9 +84,13 @@ iree_status_t loom_greedy_rewrite_run_region(
     const loom_greedy_rewrite_options_t* options,
     const loom_greedy_rewrite_callbacks_t* callbacks,
     loom_greedy_rewrite_result_t* out_result) {
-  if (out_result) memset(out_result, 0, sizeof(*out_result));
+  if (out_result) {
+    memset(out_result, 0, sizeof(*out_result));
+  }
   loom_greedy_rewrite_driver_reset(driver);
-  if (!region) return iree_ok_status();
+  if (!region) {
+    return iree_ok_status();
+  }
 
   uint32_t max_iterations = options && options->max_iterations > 0
                                 ? options->max_iterations
@@ -103,14 +115,18 @@ iree_status_t loom_greedy_rewrite_run_region(
   for (uint32_t iteration = 0;
        iree_status_is_ok(status) && iteration < max_iterations; ++iteration) {
     status = loom_rewriter_seed_region(&driver->rewriter, region);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
 
     bool any_changed = false;
     if (callbacks && callbacks->before_worklist) {
       bool changed = false;
       status = callbacks->before_worklist(callbacks->user_data, driver, region,
                                           &result, &changed);
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
       if (changed) {
         any_changed = true;
         if (callbacks->changed) {
@@ -121,11 +137,15 @@ iree_status_t loom_greedy_rewrite_run_region(
 
     loom_op_t* op = NULL;
     while ((op = loom_rewriter_pop(&driver->rewriter)) != NULL) {
-      if (!callbacks || !callbacks->rewrite_op) continue;
+      if (!callbacks || !callbacks->rewrite_op) {
+        continue;
+      }
       bool changed = false;
       status = callbacks->rewrite_op(callbacks->user_data, driver, op, &result,
                                      &changed);
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
       if (changed) {
         any_changed = true;
         if (callbacks->changed) {
@@ -133,8 +153,12 @@ iree_status_t loom_greedy_rewrite_run_region(
         }
       }
     }
-    if (!iree_status_is_ok(status)) break;
-    if (!any_changed) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
+    if (!any_changed) {
+      break;
+    }
   }
 
   if (prepare_region_called && callbacks && callbacks->cleanup_region) {
@@ -145,7 +169,9 @@ iree_status_t loom_greedy_rewrite_run_region(
         result.changed || result.facts_changed || result.types_changed;
     loom_rewriter_deinitialize(&driver->rewriter);
     driver->rewriter_initialized = false;
-    if (out_result) *out_result = result;
+    if (out_result) {
+      *out_result = result;
+    }
     return iree_ok_status();
   }
 

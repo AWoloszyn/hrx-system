@@ -249,7 +249,9 @@ static std::string BuildSharedFanoutSource(
 }
 
 static std::string BuildCompositionSource(const CompositionWorkload& workload) {
-  if (workload.scale == 0) std::abort();
+  if (workload.scale == 0) {
+    std::abort();
+  }
   switch (workload.shape) {
     case CompositionShape::kLinearCfgLeaf:
     case CompositionShape::kCfgChain:
@@ -271,7 +273,9 @@ typedef struct ModuleShape {
 static void AccumulateRegionShape(const loom_module_t* module,
                                   const loom_region_t* region,
                                   ModuleShape* shape) {
-  if (!region) return;
+  if (!region) {
+    return;
+  }
   shape->block_count += region->block_count;
   for (uint16_t block_index = 0; block_index < region->block_count;
        ++block_index) {
@@ -301,7 +305,9 @@ static ModuleShape MeasureModuleShape(const loom_module_t* module) {
        ++symbol_id) {
     const loom_op_t* defining_op =
         module->symbols.entries[symbol_id].defining_op;
-    if (!defining_op) continue;
+    if (!defining_op) {
+      continue;
+    }
     loom_region_t* const* regions =
         loom_op_regions(const_cast<loom_op_t*>(defining_op));
     for (uint8_t region_index = 0; region_index < defining_op->region_count;
@@ -316,11 +322,15 @@ static int64_t ReadPassStatistic(const loom_pass_info_t* pass_info,
                                  const std::vector<uint8_t>& storage,
                                  iree_string_view_t name) {
   const loom_pass_statistic_layout_t* layout = pass_info->statistic_layout;
-  if (!layout || storage.size() != layout->storage_size) std::abort();
+  if (!layout || storage.size() != layout->storage_size) {
+    std::abort();
+  }
   for (uint16_t field_index = 0; field_index < layout->field_count;
        ++field_index) {
     const loom_pass_statistic_field_t* field = &layout->fields[field_index];
-    if (!iree_string_view_equal(field->name, name)) continue;
+    if (!iree_string_view_equal(field->name, name)) {
+      continue;
+    }
     int64_t value = 0;
     std::memcpy(&value, storage.data() + field->offset, sizeof(value));
     return value;
@@ -357,7 +367,9 @@ static iree_status_t PrepareTargetVersions(
   for (loom_symbol_id_t symbol_id = 0; symbol_id < module->symbols.count;
        ++symbol_id) {
     loom_op_t* defining_op = module->symbols.entries[symbol_id].defining_op;
-    if (!loom_low_func_def_isa(defining_op)) continue;
+    if (!loom_low_func_def_isa(defining_op)) {
+      continue;
+    }
     loom_target_function_version_t* version = &(*versions)[version_count++];
     version->base.type = &loom_target_function_version_type;
     version->base.function = loom_func_like_cast(module, defining_op);
@@ -456,13 +468,19 @@ class InlineCallablesBenchmarkFixture {
 
     const loom_string_id_t entry_name_id =
         loom_module_lookup_string(module, IREE_SV("entry"));
-    if (entry_name_id == LOOM_STRING_ID_INVALID) std::abort();
+    if (entry_name_id == LOOM_STRING_ID_INVALID) {
+      std::abort();
+    }
     const loom_symbol_id_t entry_symbol_id =
         loom_module_find_symbol(module, entry_name_id);
-    if (entry_symbol_id == LOOM_SYMBOL_ID_INVALID) std::abort();
+    if (entry_symbol_id == LOOM_SYMBOL_ID_INVALID) {
+      std::abort();
+    }
     const loom_func_like_t entry = loom_func_like_cast(
         module, module->symbols.entries[entry_symbol_id].defining_op);
-    if (!loom_func_like_isa(entry)) std::abort();
+    if (!loom_func_like_isa(entry)) {
+      std::abort();
+    }
   }
 
   const CompositionWorkload& workload() const { return workload_; }
@@ -474,7 +492,9 @@ class InlineCallablesBenchmarkFixture {
     loom_verify_options_t verify_options = {};
     loom_verify_result_t verify_result = {};
     IREE_CHECK_OK(loom_verify_module(module, &verify_options, &verify_result));
-    if (verify_result.error_count != 0) std::abort();
+    if (verify_result.error_count != 0) {
+      std::abort();
+    }
   }
 
   iree_host_size_t ExpectedOutputBlockCount() const {

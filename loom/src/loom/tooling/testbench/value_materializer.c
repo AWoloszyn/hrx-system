@@ -744,7 +744,9 @@ static bool loom_testbench_iota_i64_value(int64_t offset, int64_t step,
                                           iree_host_size_t period,
                                           iree_host_size_t index,
                                           int64_t* out_value) {
-  if (period != 0) index %= period;
+  if (period != 0) {
+    index %= period;
+  }
   if (index > (iree_host_size_t)INT64_MAX) {
     return false;
   }

@@ -11,6 +11,10 @@
 
 namespace clang::tidy::iree {
 
+// Identifies release operations by the ownership naming contract. Release-wait
+// helpers observe completion without consuming the caller's reference.
+bool IsRefCountReleaseFunctionName(StringRef FunctionName);
+
 class RefCountLifecycleCheck final : public ClangTidyCheck {
  public:
   RefCountLifecycleCheck(StringRef Name, ClangTidyContext* Context);

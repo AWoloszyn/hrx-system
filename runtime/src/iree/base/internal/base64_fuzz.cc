@@ -15,12 +15,16 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   {
     iree_string_view_t encoded = {(const char*)data, size};
     iree_host_size_t max_size = iree_base64_decoded_size(encoded);
-    if (max_size > 1024 * 1024) return 0;
+    if (max_size > 1024 * 1024) {
+      return 0;
+    }
 
     uint8_t* buffer = nullptr;
     if (max_size > 0) {
       buffer = (uint8_t*)malloc(max_size);
-      if (!buffer) return 0;
+      if (!buffer) {
+        return 0;
+      }
     }
 
     iree_host_size_t actual_length = 0;
@@ -33,13 +37,17 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
   // Phase 2: Fuzz roundtrip — treat input as raw binary, encode then decode.
   {
-    if (size > 256 * 1024) return 0;
+    if (size > 256 * 1024) {
+      return 0;
+    }
 
     iree_const_byte_span_t input = iree_make_const_byte_span(data, size);
     iree_host_size_t encoded_size = iree_base64_encoded_size(size);
 
     char* encode_buffer = (char*)malloc(encoded_size);
-    if (!encode_buffer && encoded_size > 0) return 0;
+    if (!encode_buffer && encoded_size > 0) {
+      return 0;
+    }
 
     iree_host_size_t encode_length = 0;
     iree_status_t encode_status = iree_base64_encode(

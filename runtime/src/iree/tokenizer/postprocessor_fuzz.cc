@@ -28,7 +28,9 @@
 static size_t parse_template(const uint8_t* data, size_t size,
                              iree_tokenizer_postprocessor_template_t* out) {
   memset(out, 0, sizeof(*out));
-  if (size < 5) return 0;
+  if (size < 5) {
+    return 0;
+  }
 
   // Byte 0: prefix_count (0-7, clamped to max).
   out->prefix_count = data[0] % (IREE_TOKENIZER_POSTPROCESSOR_MAX_PIECES + 1);
@@ -66,7 +68,9 @@ static size_t parse_template(const uint8_t* data, size_t size,
 }
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  if (size < 12) return 0;
+  if (size < 12) {
+    return 0;
+  }
 
   // Byte 0: flags.
   iree_tokenizer_postprocessor_flags_t flags = data[0] & 0x03;
@@ -81,7 +85,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
   iree_tokenizer_postprocessor_template_t single_template;
   size_t consumed = parse_template(data, size, &single_template);
-  if (consumed == 0) return 0;
+  if (consumed == 0) {
+    return 0;
+  }
   data += consumed;
   size -= consumed;
 
@@ -174,7 +180,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
     // Simulate sequence A model tokens.
     iree_host_size_t seq_a_count = 4;
-    if (offset + seq_a_count > 64) seq_a_count = 64 - offset;
+    if (offset + seq_a_count > 64) {
+      seq_a_count = 64 - offset;
+    }
     for (iree_host_size_t i = 0; i < seq_a_count; ++i) {
       token_ids[offset + i] = (int32_t)(i + 200);
     }
@@ -187,7 +195,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
     // Simulate sequence B model tokens.
     iree_host_size_t seq_b_count = 4;
-    if (offset + seq_b_count > 64) seq_b_count = 64 - offset;
+    if (offset + seq_b_count > 64) {
+      seq_b_count = 64 - offset;
+    }
     for (iree_host_size_t i = 0; i < seq_b_count; ++i) {
       token_ids[offset + i] = (int32_t)(i + 300);
     }

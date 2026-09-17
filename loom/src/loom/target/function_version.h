@@ -89,7 +89,9 @@ loom_target_function_version_target_facts(
     const loom_function_version_t* version) {
   const loom_target_function_version_t* target_version =
       loom_target_function_version_const_cast(version);
-  if (target_version == NULL) return NULL;
+  if (target_version == NULL) {
+    return NULL;
+  }
   return target_version->function_target_facts;
 }
 

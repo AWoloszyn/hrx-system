@@ -46,7 +46,9 @@ iree_status_t hrx_hal_queue_transfer_and_wait(
 static hrx_status_t hrx_stream_transfer(
     hrx_stream_t stream, const iree_hal_transfer_operation_t* operation) {
   hrx_status_t status = hrx_stream_flush(stream);
-  if (!hrx_status_is_ok(status)) return status;
+  if (!hrx_status_is_ok(status)) {
+    return status;
+  }
   if (IREE_UNLIKELY(stream->timepoint >= IREE_HAL_SEMAPHORE_MAX_VALUE)) {
     return hrx_make_status(HRX_STATUS_OUT_OF_RANGE,
                            "stream timeline value exhausted");

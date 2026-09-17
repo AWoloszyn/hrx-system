@@ -289,7 +289,9 @@ static iree_status_t CapturingQueueTransfer(
   BeginQueueInvocation(base_queue, kAtomicInvocationNone, wait_semaphore_list,
                        signal_semaphore_list, /*target_buffer=*/nullptr,
                        /*target_offset=*/0, IREE_HAL_ATOMIC_WIDTH_32);
-  if (operation_count != 0) queue->transfer_operation = operations[0];
+  if (operation_count != 0) {
+    queue->transfer_operation = operations[0];
+  }
   ++queue->transfer_invocation_count;
   return CompleteQueueInvocation(queue, signal_semaphore_list);
 }

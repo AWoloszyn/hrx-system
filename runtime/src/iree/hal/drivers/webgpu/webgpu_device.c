@@ -209,7 +209,9 @@ iree_status_t iree_hal_webgpu_device_create(
         &device->queue_family, device_handle, queue_handle, &device->builtins,
         proactor,
         /*frontier_tracker=*/NULL, /*axis=*/0, host_allocator, &device->queue);
-    if (iree_status_is_ok(status)) device->queue_count = 1;
+    if (iree_status_is_ok(status)) {
+      device->queue_count = 1;
+    }
   }
 
   // Create the device allocator.
@@ -339,7 +341,9 @@ static iree_hal_queue_t* iree_hal_webgpu_device_queue(
     iree_hal_queue_family_ordinal_t family_ordinal,
     iree_hal_queue_ordinal_t queue_ordinal) {
   iree_hal_webgpu_device_t* device = iree_hal_webgpu_device_cast(base_device);
-  if (family_ordinal != 0 || queue_ordinal >= device->queue_count) return NULL;
+  if (family_ordinal != 0 || queue_ordinal >= device->queue_count) {
+    return NULL;
+  }
   return &device->queue.base;
 }
 

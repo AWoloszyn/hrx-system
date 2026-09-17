@@ -160,13 +160,19 @@ static bool iree_hal_amdgpu_physical_device_query_pool_epoch(
 static iree_string_view_t iree_hal_amdgpu_format_pool_trace_name(
     char* buffer, iree_host_size_t buffer_capacity, const char* pool_name,
     iree_host_size_t device_ordinal) {
-  if (IREE_UNLIKELY(buffer_capacity == 0)) return iree_string_view_empty();
+  if (IREE_UNLIKELY(buffer_capacity == 0)) {
+    return iree_string_view_empty();
+  }
   const int name_length =
       snprintf(buffer, buffer_capacity, "iree-hal-amdgpu-l0p%" PRIhsz "-%s",
                device_ordinal, pool_name);
-  if (IREE_UNLIKELY(name_length < 0)) return iree_string_view_empty();
+  if (IREE_UNLIKELY(name_length < 0)) {
+    return iree_string_view_empty();
+  }
   iree_host_size_t safe_length = (iree_host_size_t)name_length;
-  if (safe_length >= buffer_capacity) safe_length = buffer_capacity - 1;
+  if (safe_length >= buffer_capacity) {
+    safe_length = buffer_capacity - 1;
+  }
   return iree_make_string_view(buffer, safe_length);
 }
 
@@ -673,7 +679,9 @@ iree_hal_amdgpu_physical_device_initialize_device_block_pools_and_allocators(
       &out_physical_device->coarse_block_pools.large,
       IREE_HAL_AMDGPU_PHYSICAL_DEVICE_COARSE_BLOCK_POOL_LARGE_PAGE_SIZE,
       &out_physical_device->coarse_block_allocators.large));
-  if (!fine_block_memory_pool.handle) return iree_ok_status();
+  if (!fine_block_memory_pool.handle) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(iree_hal_amdgpu_physical_device_initialize_block_pool(
       libhsa, options->device_block_pools.small, device_agent,
@@ -696,7 +704,9 @@ iree_hal_amdgpu_physical_device_initialize_device_block_pools_and_allocators(
 static iree_status_t iree_hal_amdgpu_physical_device_preallocate_host_pool(
     const iree_hal_amdgpu_physical_device_options_t* options,
     iree_hal_amdgpu_physical_device_t* out_physical_device) {
-  if (!options->host_block_pool_initial_capacity) return iree_ok_status();
+  if (!options->host_block_pool_initial_capacity) {
+    return iree_ok_status();
+  }
   return iree_arena_block_pool_preallocate(
       &out_physical_device->fine_host_block_pool,
       options->host_block_pool_initial_capacity);
@@ -1498,7 +1508,9 @@ void iree_hal_amdgpu_physical_device_release_cooperative_queue(
       physical_device->cooperative_queue.queue;
   physical_device->cooperative_queue.queue = NULL;
   iree_slim_mutex_unlock(&physical_device->cooperative_queue.mutex);
-  if (queue) iree_hal_queue_release(&queue->base);
+  if (queue) {
+    iree_hal_queue_release(&queue->base);
+  }
 }
 
 void iree_hal_amdgpu_physical_device_deassign_frontier(
@@ -1678,7 +1690,9 @@ iree_status_t iree_hal_amdgpu_physical_device_trim(
   iree_slim_mutex_lock(&physical_device->cooperative_queue.mutex);
   iree_hal_amdgpu_host_queue_t* cooperative_queue =
       physical_device->cooperative_queue.queue;
-  if (cooperative_queue) iree_hal_queue_retain(&cooperative_queue->base);
+  if (cooperative_queue) {
+    iree_hal_queue_retain(&cooperative_queue->base);
+  }
   iree_slim_mutex_unlock(&physical_device->cooperative_queue.mutex);
   if (cooperative_queue) {
     iree_hal_amdgpu_host_queue_trim(cooperative_queue);

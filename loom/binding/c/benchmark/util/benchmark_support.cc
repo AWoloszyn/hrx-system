@@ -49,7 +49,7 @@ iree_status_t to_iree_status(loomc_status_t status) {
   return iree_status_from_loomc(status);
 }
 
-std::string FormatStatus(iree_status_t status) {
+std::string FormatStatus(const iree_status_t status) {
   char buffer[4096] = {0};
   iree_host_size_t length = 0;
   iree_status_format(status, sizeof(buffer), buffer, &length);

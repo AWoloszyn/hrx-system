@@ -19,11 +19,19 @@ static int loom_module_record_compare(const void* lhs_ptr,
   const loom_module_record_t* rhs = (const loom_module_record_t*)rhs_ptr;
   int comparison = iree_string_view_compare(loom_op_vtable_name(lhs->vtable),
                                             loom_op_vtable_name(rhs->vtable));
-  if (comparison != 0) return comparison;
+  if (comparison != 0) {
+    return comparison;
+  }
   comparison = iree_string_view_compare(lhs->key, rhs->key);
-  if (comparison != 0) return comparison;
-  if (lhs->physical_ordinal < rhs->physical_ordinal) return -1;
-  if (lhs->physical_ordinal > rhs->physical_ordinal) return 1;
+  if (comparison != 0) {
+    return comparison;
+  }
+  if (lhs->physical_ordinal < rhs->physical_ordinal) {
+    return -1;
+  }
+  if (lhs->physical_ordinal > rhs->physical_ordinal) {
+    return 1;
+  }
   return 0;
 }
 
@@ -37,7 +45,9 @@ static iree_host_size_t loom_module_record_count(const loom_module_t* module) {
     loom_block_for_each_op(block, op) {
       const loom_op_vtable_t* vtable =
           loom_context_resolve_op(module->context, op->kind);
-      if (loom_op_vtable_is_keyed_module_record(vtable)) ++record_count;
+      if (loom_op_vtable_is_keyed_module_record(vtable)) {
+        ++record_count;
+      }
     }
   }
   return record_count;
@@ -49,7 +59,9 @@ iree_status_t loom_module_record_plan_initialize(
   iree_arena_initialize(module->arena.block_pool, &out_plan->arena);
 
   out_plan->record_count = loom_module_record_count(module);
-  if (out_plan->record_count == 0) return iree_ok_status();
+  if (out_plan->record_count == 0) {
+    return iree_ok_status();
+  }
 
   iree_status_t status = iree_arena_allocate_array(
       &out_plan->arena, out_plan->record_count, sizeof(*out_plan->records),
@@ -68,7 +80,9 @@ iree_status_t loom_module_record_plan_initialize(
     loom_block_for_each_op(block, op) {
       const loom_op_vtable_t* vtable =
           loom_context_resolve_op(module->context, op->kind);
-      if (!loom_op_vtable_is_keyed_module_record(vtable)) continue;
+      if (!loom_op_vtable_is_keyed_module_record(vtable)) {
+        continue;
+      }
       const loom_attribute_t key_attr =
           loom_op_const_attrs(op)[vtable->module_record_key_attr_index];
       const loom_string_id_t key_id = loom_attr_as_string_id(key_attr);

@@ -69,13 +69,17 @@ class OwnershipTest : public ::testing::Test {
       loom_op_t* op = nullptr;
       loom_block_for_each_op(block, op) {
         if (op->kind == kind) {
-          if (*ordinal == 0) return op;
+          if (*ordinal == 0) {
+            return op;
+          }
           --*ordinal;
         }
         loom_region_t** regions = loom_op_regions(op);
         for (uint8_t i = 0; i < op->region_count; ++i) {
           loom_op_t* nested = FindOpInRegion(regions[i], kind, ordinal);
-          if (nested != nullptr) return nested;
+          if (nested != nullptr) {
+            return nested;
+          }
         }
       }
     }

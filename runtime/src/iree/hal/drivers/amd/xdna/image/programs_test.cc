@@ -144,7 +144,9 @@ static std::vector<uint8_t> encode_array(
     uint32_t tile_program_header_count,
     const std::vector<std::vector<uint8_t>>& records) {
   uint32_t byte_length = IREE_HAL_AMD_XDNA_ELF_ARRAY_HEADER_SIZE;
-  for (const auto& record : records) byte_length += record.size();
+  for (const auto& record : records) {
+    byte_length += record.size();
+  }
   const iree_hal_amd_xdna_elf_array_header_t header = {
       /*.abi_major=*/IREE_HAL_AMD_XDNA_ELF_PROGRAM_ABI_MAJOR,
       /*.abi_minor=*/IREE_HAL_AMD_XDNA_ELF_PROGRAM_ABI_MINOR,
@@ -170,7 +172,9 @@ static std::vector<uint8_t> encode_array(
 static std::vector<uint8_t> encode_control(
     const std::vector<std::vector<uint8_t>>& records) {
   uint32_t byte_length = IREE_HAL_AMD_XDNA_ELF_CONTROL_HEADER_SIZE;
-  for (const auto& record : records) byte_length += record.size();
+  for (const auto& record : records) {
+    byte_length += record.size();
+  }
   const iree_hal_amd_xdna_elf_control_header_t header = {
       /*.abi_major=*/IREE_HAL_AMD_XDNA_ELF_PROGRAM_ABI_MAJOR,
       /*.abi_minor=*/IREE_HAL_AMD_XDNA_ELF_PROGRAM_ABI_MINOR,
@@ -214,7 +218,9 @@ static DirectoryPtr open_directory(const std::vector<uint8_t>& bytes,
   iree_hal_amd_xdna_image_directory_t* directory = nullptr;
   IREE_CHECK_OK(iree_hal_amd_xdna_image_directory_create(
       sequence.get(), iree_allocator_system(), &directory));
-  if (out_sequence != nullptr) *out_sequence = std::move(sequence);
+  if (out_sequence != nullptr) {
+    *out_sequence = std::move(sequence);
+  }
   return DirectoryPtr(directory);
 }
 

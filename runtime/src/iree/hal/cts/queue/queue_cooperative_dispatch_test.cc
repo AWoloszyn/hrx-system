@@ -20,7 +20,9 @@ class QueueCooperativeDispatchTest : public CtsTestBase<> {
  protected:
   void SetUp() override {
     CtsTestBase::SetUp();
-    if (HasFatalFailure() || IsSkipped()) return;
+    if (HasFatalFailure() || IsSkipped()) {
+      return;
+    }
 
     const iree_hal_device_queue_spec_t* queue_spec =
         iree_hal_device_spec_queues(iree_hal_device_spec(device_));

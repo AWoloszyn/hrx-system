@@ -69,7 +69,9 @@ iree_status_t iree_async_posix_poll_set_add(
   poll_set->fds[index].revents = 0;
   poll_set->count++;
 
-  if (out_index) *out_index = index;
+  if (out_index) {
+    *out_index = index;
+  }
   return iree_ok_status();
 }
 
@@ -104,7 +106,9 @@ iree_host_size_t iree_async_posix_poll_set_find(
 iree_status_t iree_async_posix_poll_set_wait(
     iree_async_posix_poll_set_t* poll_set, int timeout_ms,
     iree_host_size_t* out_ready_count) {
-  if (out_ready_count) *out_ready_count = 0;
+  if (out_ready_count) {
+    *out_ready_count = 0;
+  }
 
   // Clear revents before polling.
   for (iree_host_size_t i = 0; i < poll_set->count; ++i) {
@@ -129,7 +133,9 @@ iree_status_t iree_async_posix_poll_set_wait(
     return iree_status_from_code(IREE_STATUS_DEADLINE_EXCEEDED);
   }
 
-  if (out_ready_count) *out_ready_count = (iree_host_size_t)result;
+  if (out_ready_count) {
+    *out_ready_count = (iree_host_size_t)result;
+  }
   return iree_ok_status();
 }
 

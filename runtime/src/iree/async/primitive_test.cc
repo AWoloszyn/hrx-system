@@ -36,8 +36,12 @@ class PrimitiveTestFixture : public ::testing::Test {
   }
 
   void TearDown() override {
-    if (write_fd_ >= 0) close(write_fd_);
-    if (read_fd_ >= 0) close(read_fd_);
+    if (write_fd_ >= 0) {
+      close(write_fd_);
+    }
+    if (read_fd_ >= 0) {
+      close(read_fd_);
+    }
   }
 
   iree_async_primitive_t MakePrimitive() {
@@ -64,7 +68,9 @@ class PrimitiveTestFixture : public ::testing::Test {
   }
 
   void TearDown() override {
-    if (event_) CloseHandle(event_);
+    if (event_) {
+      CloseHandle(event_);
+    }
   }
 
   iree_async_primitive_t MakePrimitive() {

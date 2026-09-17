@@ -136,10 +136,18 @@ int iree_unicode_utf8_encoded_length(uint32_t codepoint);
 // This is useful for advancing through UTF-8 text byte-by-byte when
 // character boundaries are needed but full decoding is not required.
 static inline iree_host_size_t iree_unicode_utf8_sequence_length(uint8_t byte) {
-  if ((byte & 0x80) == 0) return 1;     // ASCII: 0xxxxxxx
-  if ((byte & 0xE0) == 0xC0) return 2;  // 2-byte: 110xxxxx
-  if ((byte & 0xF0) == 0xE0) return 3;  // 3-byte: 1110xxxx
-  if ((byte & 0xF8) == 0xF0) return 4;  // 4-byte: 11110xxx
+  if ((byte & 0x80) == 0) {
+    return 1;  // ASCII: 0xxxxxxx
+  }
+  if ((byte & 0xE0) == 0xC0) {
+    return 2;  // 2-byte: 110xxxxx
+  }
+  if ((byte & 0xF0) == 0xE0) {
+    return 3;  // 3-byte: 1110xxxx
+  }
+  if ((byte & 0xF8) == 0xF0) {
+    return 4;  // 4-byte: 11110xxx
+  }
   return 1;  // Invalid/continuation byte: advance by 1
 }
 
@@ -148,14 +156,20 @@ static inline iree_host_size_t iree_unicode_utf8_sequence_length(uint8_t byte) {
 // Faster than utf8_decode() when the codepoint value is not needed.
 static inline bool iree_unicode_utf8_is_valid_sequence(
     const uint8_t* bytes, iree_host_size_t length) {
-  if (length == 0 || length > 4) return false;
+  if (length == 0 || length > 4) {
+    return false;
+  }
 
   // Single byte (ASCII): valid if high bit is clear.
-  if (length == 1) return (bytes[0] & 0x80) == 0;
+  if (length == 1) {
+    return (bytes[0] & 0x80) == 0;
+  }
 
   // Check continuation bytes are 10xxxxxx.
   for (iree_host_size_t i = 1; i < length; ++i) {
-    if ((bytes[i] & 0xC0) != 0x80) return false;
+    if ((bytes[i] & 0xC0) != 0x80) {
+      return false;
+    }
   }
 
   // Check not overlong (minimal encoding) and valid codepoint range.
@@ -428,8 +442,12 @@ static IREE_ATTRIBUTE_ALWAYS_INLINE inline bool iree_unicode_is_whitespace(
     return true;
   }
   if (codepoint >= 0x80) {
-    if (codepoint == 0x85 || codepoint == 0xA0) return true;
-    if (codepoint < 0x1680 || codepoint > 0x3000) return false;
+    if (codepoint == 0x85 || codepoint == 0xA0) {
+      return true;
+    }
+    if (codepoint < 0x1680 || codepoint > 0x3000) {
+      return false;
+    }
     return iree_unicode_whitespace_lookup(codepoint);
   }
   return false;

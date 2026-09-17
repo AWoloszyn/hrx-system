@@ -131,7 +131,9 @@ class SanitizerDeviceEventRecorder {
                           const iree_hal_device_event_site_t* site) {
     recorder->last_site_available_ = site != nullptr;
     recorder->last_site_ = iree_hal_device_event_site_default();
-    if (!site) return;
+    if (!site) {
+      return;
+    }
     recorder->last_site_ = *site;
     CaptureStringView(site->source_file, &recorder->last_site_source_file_,
                       &recorder->last_site_.source_file);
@@ -147,7 +149,9 @@ class SanitizerDeviceEventRecorder {
 
   static void Capture(void* user_data, const iree_hal_device_event_t* event) {
     auto* recorder = static_cast<SanitizerDeviceEventRecorder*>(user_data);
-    if (!event->payload.data) return;
+    if (!event->payload.data) {
+      return;
+    }
     switch (event->type) {
       case IREE_HAL_DEVICE_EVENT_TYPE_ASAN_REPORT:
         if (event->payload.data_length <

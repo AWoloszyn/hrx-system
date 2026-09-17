@@ -485,7 +485,9 @@ static iree_status_t loom_vector_to_scalar_build_bitpack_static_lane(
         storage_start > source_start ? storage_start : source_start;
     int64_t overlap_end = storage_end < source_end ? storage_end : source_end;
     int64_t bit_count = overlap_end - overlap_start;
-    if (bit_count <= 0) continue;
+    if (bit_count <= 0) {
+      continue;
+    }
 
     loom_value_id_t source_work_lane = LOOM_VALUE_ID_INVALID;
     IREE_RETURN_IF_ERROR(
@@ -771,7 +773,9 @@ static iree_status_t loom_vector_to_scalar_build_bitunpack_static_lane(
         result_start > storage_start ? result_start : storage_start;
     int64_t overlap_end = result_end < storage_end ? result_end : storage_end;
     int64_t bit_count = overlap_end - overlap_start;
-    if (bit_count <= 0) continue;
+    if (bit_count <= 0) {
+      continue;
+    }
 
     loom_value_id_t storage_work_lane = LOOM_VALUE_ID_INVALID;
     IREE_RETURN_IF_ERROR(

@@ -87,9 +87,13 @@ iree_status_t iree_async_posix_poll_set_wait(
 static inline bool iree_async_posix_poll_set_is_ready(
     const iree_async_posix_poll_set_t* poll_set, iree_host_size_t index,
     short* out_revents) {
-  if (index >= poll_set->count) return false;
+  if (index >= poll_set->count) {
+    return false;
+  }
   short revents = poll_set->fds[index].revents;
-  if (out_revents) *out_revents = revents;
+  if (out_revents) {
+    *out_revents = revents;
+  }
   return revents != 0;
 }
 

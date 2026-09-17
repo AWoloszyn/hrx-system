@@ -62,7 +62,9 @@ static iree_status_t iree_hal_amdgpu_system_populate_host_memory_pools(
         z0, iree_hsa_amd_memory_pool_get_info(IREE_LIBHSA(libhsa), pool,
                                               HSA_AMD_MEMORY_POOL_INFO_SEGMENT,
                                               &segment));
-    if (segment != HSA_REGION_SEGMENT_GLOBAL) continue;
+    if (segment != HSA_REGION_SEGMENT_GLOBAL) {
+      continue;
+    }
 
     // Only care about accessible-by-all.
     bool accessible_by_all = false;
@@ -71,7 +73,9 @@ static iree_status_t iree_hal_amdgpu_system_populate_host_memory_pools(
         iree_hsa_amd_memory_pool_get_info(
             IREE_LIBHSA(libhsa), pool,
             HSA_AMD_MEMORY_POOL_INFO_ACCESSIBLE_BY_ALL, &accessible_by_all));
-    if (!accessible_by_all) continue;
+    if (!accessible_by_all) {
+      continue;
+    }
 
     // Must be able to allocate. This should be true for any pool we query that
     // matches the other flags. Workgroup-private pools won't have this set.
@@ -81,7 +85,9 @@ static iree_status_t iree_hal_amdgpu_system_populate_host_memory_pools(
         iree_hsa_amd_memory_pool_get_info(
             IREE_LIBHSA(libhsa), pool,
             HSA_AMD_MEMORY_POOL_INFO_RUNTIME_ALLOC_ALLOWED, &alloc_allowed));
-    if (!alloc_allowed) continue;
+    if (!alloc_allowed) {
+      continue;
+    }
 
     // Coarse-grained pools are used for write-once/read-many data.
     // Kernarg-init pools are used for dispatch argument storage. Fine-grained
@@ -175,7 +181,9 @@ static iree_status_t iree_hal_amdgpu_system_populate_host_regions(
     IREE_RETURN_AND_END_ZONE_IF_ERROR(
         z0, iree_hsa_region_get_info(IREE_LIBHSA(libhsa), region,
                                      HSA_REGION_INFO_SEGMENT, &segment));
-    if (segment != HSA_REGION_SEGMENT_GLOBAL) continue;
+    if (segment != HSA_REGION_SEGMENT_GLOBAL) {
+      continue;
+    }
 
     // Must be able to allocate. This should be true for any pool we query that
     // matches the other flags. Workgroup-private pools won't have this set.
@@ -184,7 +192,9 @@ static iree_status_t iree_hal_amdgpu_system_populate_host_regions(
         z0, iree_hsa_region_get_info(IREE_LIBHSA(libhsa), region,
                                      HSA_REGION_INFO_RUNTIME_ALLOC_ALLOWED,
                                      &alloc_allowed));
-    if (!alloc_allowed) continue;
+    if (!alloc_allowed) {
+      continue;
+    }
 
     // Only want fine-grained so we can use atomics.
     hsa_region_global_flag_t global_flag = 0;
@@ -320,11 +330,15 @@ static iree_status_t iree_hal_amdgpu_system_initialize(
           &out_system->host_memory_pools[host_ordinal];
       status = iree_hal_amdgpu_system_populate_host_memory_pools(
           libhsa, topology->cpu_agents[host_ordinal], host_memory_pools);
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
       status = iree_hal_amdgpu_system_populate_host_regions(
           &out_system->libhsa, topology->cpu_agents[host_ordinal],
           host_memory_pools);
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
     }
   }
 
@@ -390,7 +404,9 @@ iree_status_t iree_hal_amdgpu_system_allocate(
 }
 
 void iree_hal_amdgpu_system_free(iree_hal_amdgpu_system_t* system) {
-  if (!system) return;
+  if (!system) {
+    return;
+  }
   iree_allocator_t host_allocator = system->host_allocator;
   IREE_TRACE_ZONE_BEGIN(z0);
 

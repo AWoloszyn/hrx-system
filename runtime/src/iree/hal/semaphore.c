@@ -294,7 +294,9 @@ IREE_API_EXPORT iree_status_t iree_hal_semaphore_list_clone(
     iree_allocator_t host_allocator, iree_hal_semaphore_list_t* out_list) {
   IREE_ASSERT_ARGUMENT(out_list);
   *out_list = iree_hal_semaphore_list_empty();
-  if (iree_hal_semaphore_list_is_empty(*source_list)) return iree_ok_status();
+  if (iree_hal_semaphore_list_is_empty(*source_list)) {
+    return iree_ok_status();
+  }
 
   // Single allocation for both arrays.
   iree_host_size_t semaphores_size =
@@ -351,7 +353,9 @@ iree_hal_semaphore_list_signal(iree_hal_semaphore_list_t semaphore_list,
     status =
         iree_hal_semaphore_signal(semaphore_list.semaphores[i],
                                   semaphore_list.payload_values[i], frontier);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
   }
 
   IREE_TRACE_ZONE_END(z0);
@@ -389,7 +393,9 @@ IREE_API_EXPORT void iree_hal_semaphore_list_fail(
 IREE_API_EXPORT iree_status_t iree_hal_semaphore_list_wait(
     iree_hal_semaphore_list_t semaphore_list, iree_timeout_t timeout,
     iree_async_wait_flags_t flags) {
-  if (!semaphore_list.count) return iree_ok_status();
+  if (!semaphore_list.count) {
+    return iree_ok_status();
+  }
   // HAL semaphores embed async semaphores at offset 0 (toll-free bridge).
   return iree_async_semaphore_multi_wait(
       IREE_ASYNC_WAIT_MODE_ALL,

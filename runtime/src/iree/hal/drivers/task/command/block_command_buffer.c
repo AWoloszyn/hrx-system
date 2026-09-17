@@ -130,7 +130,9 @@ static bool iree_hal_block_command_buffer_profile_find_id_slot(
 static iree_status_t iree_hal_block_command_buffer_profile_reserve_executables(
     iree_hal_block_command_buffer_t* command_buffer,
     iree_host_size_t minimum_count) {
-  if (minimum_count <= 1) return iree_ok_status();
+  if (minimum_count <= 1) {
+    return iree_ok_status();
+  }
   if (IREE_UNLIKELY(minimum_count > IREE_HOST_SIZE_MAX / 2)) {
     return iree_make_status(
         IREE_STATUS_OUT_OF_RANGE,

@@ -99,7 +99,9 @@ amdf_status_t amdf_xdna_umd_device_create(
   amdf_status_t status =
       amdf_calloc(host_allocator, sizeof(*device),
                   amdf_alignof(amdf_xdna_umd_device_t), (void**)&device);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   device->host_allocator = host_allocator;
   device->profile = profile;
   device->page_size = (size_t)page_size;
@@ -136,7 +138,9 @@ amdf_status_t amdf_xdna_umd_device_create(
     if (!amdf_status_is_ok(release_status)) {
       status = release_status;
     }
-    if (!amdf_status_is_ok(close_status)) status = close_status;
+    if (!amdf_status_is_ok(close_status)) {
+      status = close_status;
+    }
   }
   return status;
 }

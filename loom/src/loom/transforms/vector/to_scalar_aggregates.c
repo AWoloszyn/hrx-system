@@ -19,7 +19,9 @@ static iree_status_t loom_vector_to_scalar_lower_static_aggregate(
   uint16_t element_count = 0;
   IREE_RETURN_IF_ERROR(loom_vector_to_scalar_static_element_count(
       state, state->vector_type, &element_count));
-  if (loom_pass_has_error_diagnostics(state->pass)) return iree_ok_status();
+  if (loom_pass_has_error_diagnostics(state->pass)) {
+    return iree_ok_status();
+  }
   loom_builder_t* builder = &state->rewriter->builder;
   loom_value_id_t* elements = NULL;
   if (element_count > 0) {
@@ -175,7 +177,9 @@ static iree_status_t loom_vector_to_scalar_lower_static_splat(
   uint16_t element_count = 0;
   IREE_RETURN_IF_ERROR(loom_vector_to_scalar_static_element_count(
       state, state->vector_type, &element_count));
-  if (loom_pass_has_error_diagnostics(state->pass)) return iree_ok_status();
+  if (loom_pass_has_error_diagnostics(state->pass)) {
+    return iree_ok_status();
+  }
   loom_value_id_t scalar = loom_vector_splat_scalar(state->op);
   loom_value_id_t* elements = NULL;
   if (element_count > 0) {

@@ -31,7 +31,9 @@ amdf_status_t amdf_memory_resource_allocate(amdf_allocator_t host_allocator,
   const amdf_status_t status = amdf_calloc(
       host_allocator, sizeof(*memory) + count * sizeof(*memory->accesses),
       amdf_alignof(amdf_memory_t), (void**)&memory);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   memory->host_allocator = host_allocator;
   memory->accesses = (amdf_memory_access_state_t*)(memory + 1);
   memory->info.access_count = access_count;
@@ -50,11 +52,14 @@ static amdf_status_t amdf_memory_release_native(amdf_memory_t* memory) {
   for (uint32_t i = memory->info.access_count; i != 0; --i) {
     const uint32_t ordinal = i - 1;
     amdf_memory_access_state_t* access = &memory->accesses[ordinal];
-    if (ordinal == memory->backing_access_ordinal || access->native == NULL)
+    if (ordinal == memory->backing_access_ordinal || access->native == NULL) {
       continue;
+    }
     const amdf_status_t release_status =
         access->vtable->destroy_native(memory, ordinal);
-    if (amdf_status_is_ok(status)) status = release_status;
+    if (amdf_status_is_ok(status)) {
+      status = release_status;
+    }
   }
   amdf_memory_access_state_t* backing =
       &memory->accesses[memory->backing_access_ordinal];

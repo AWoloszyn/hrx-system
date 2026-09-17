@@ -81,7 +81,9 @@ static void loom_kernel_class_assume_group_add_value(
     const loom_module_t* module, loom_value_id_t value_id,
     loom_kernel_class_assume_group_t* group) {
   for (uint16_t i = 0; i < group->value_count; ++i) {
-    if (group->values[i] == value_id) return;
+    if (group->values[i] == value_id) {
+      return;
+    }
   }
   IREE_ASSERT(group->value_count < group->value_capacity);
   group->values[group->value_count] = value_id;
@@ -149,7 +151,9 @@ static void loom_kernel_class_append_conjunction(
         loom_kernel_class_materialize_predicate(
             decision, target_module, target_arguments,
             &decision->model->program.predicates[i], &predicate);
-    if (domain == LOOM_KERNEL_CLASS_ASSUME_DOMAIN_NONE) continue;
+    if (domain == LOOM_KERNEL_CLASS_ASSUME_DOMAIN_NONE) {
+      continue;
+    }
 
     loom_kernel_class_assume_group_t* group =
         domain == LOOM_KERNEL_CLASS_ASSUME_DOMAIN_INDEX ? &groups[0]
@@ -175,7 +179,9 @@ static iree_status_t loom_kernel_class_build_assume(
     loom_rewriter_t* rewriter, loom_op_t* apply_op,
     const loom_kernel_class_assume_group_t* group,
     loom_value_id_t* call_operands) {
-  if (group->predicate_count == 0) return iree_ok_status();
+  if (group->predicate_count == 0) {
+    return iree_ok_status();
+  }
   if (group->predicate_count > UINT16_MAX) {
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                             "kernel class assumption exceeds the predicate "
@@ -229,7 +235,9 @@ static iree_status_t loom_kernel_class_rewrite_application(
       decision->generic_result.action_ordinal == action_ordinal;
   const bool provider_is_local =
       loom_kernel_class_provider_is_local(classifier, provider);
-  if (action_is_source_generic && !provider_is_local) return iree_ok_status();
+  if (action_is_source_generic && !provider_is_local) {
+    return iree_ok_status();
+  }
 
   const loom_value_slice_t target_arguments =
       loom_template_apply_operands(target_apply_op);
@@ -411,7 +419,9 @@ iree_status_t loom_kernel_class_materialize(
         operation_projections[i].target_op, &rewriter);
   }
 
-  if (rewriter_is_initialized) loom_rewriter_deinitialize(&rewriter);
+  if (rewriter_is_initialized) {
+    loom_rewriter_deinitialize(&rewriter);
+  }
   const loom_symbol_ref_t target_kernel =
       target_module != NULL
           ? loom_ir_module_projection_target_symbol(

@@ -50,7 +50,9 @@ static amdf_status_t amdf_linux_xdna_command_query_result(
   const uint32_t state =
       __atomic_load_n((const uint32_t*)packet->host_pointer, __ATOMIC_ACQUIRE) &
       0xf;
-  if (state == 0) return amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
+  if (state == 0) {
+    return amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
+  }
   return state == 4 ? AMDF_STATUS_OK
                     : amdf_make_status(AMDF_STATUS_DOMAIN_FIRMWARE, state);
 }
@@ -93,7 +95,9 @@ static amdf_status_t amdf_linux_xdna_timeline_wait(
     amdf_wait_budget_t remaining;
     const amdf_status_t status =
         amdf_wait_deadline_query_remaining(deadline, &remaining);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
     struct drm_syncobj_timeline_wait wait = {
         .handles = (uintptr_t)&context->completion_syncobj,
         .points = (uintptr_t)&native_sequence,
@@ -111,13 +115,17 @@ static amdf_status_t amdf_linux_xdna_timeline_wait(
       return AMDF_STATUS_OK;
     }
     const int error = errno;
-    if (error != ETIME && error != EINTR) return amdf_linux_error(error);
+    if (error != ETIME && error != EINTR) {
+      return amdf_linux_error(error);
+    }
     // Retry interrupted waits and explicit active polling with the original
     // absolute deadline. A timeout never authorizes releasing accepted work.
     if (remaining.timeout == 0) {
       return amdf_make_api_status(AMDF_STATUS_CODE_DEADLINE_EXCEEDED);
     }
-    if (error == ETIME && remaining.poll != 0) amdf_platform_wait_yield();
+    if (error == ETIME && remaining.poll != 0) {
+      amdf_platform_wait_yield();
+    }
   }
 }
 
@@ -129,7 +137,9 @@ amdf_status_t amdf_xdna_umd_kernel_queue_create(
   amdf_status_t status =
       amdf_calloc(device->host_allocator, sizeof(*queue),
                   amdf_alignof(amdf_xdna_umd_kernel_queue_t), (void**)&queue);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   amdf_atomic_uint64_initialize(&queue->progress, 0);
   amdf_atomic_uint32_initialize(&queue->first_point,
                                 AMDF_LINUX_XDNA_FIRST_POINT_OPEN);
@@ -155,7 +165,9 @@ amdf_status_t amdf_xdna_umd_kernel_queue_create(
   } else {
     const amdf_status_t release_status =
         amdf_linux_xdna_buffer_deinitialize(device->descriptor, &queue->packet);
-    if (!amdf_status_is_ok(release_status)) status = release_status;
+    if (!amdf_status_is_ok(release_status)) {
+      status = release_status;
+    }
     amdf_atomic_uint32_store_release(&context->queue_leased, 0);
     amdf_free(device->host_allocator, queue);
   }
@@ -167,7 +179,9 @@ amdf_status_t amdf_xdna_umd_kernel_queue_submit(
     uint32_t instruction_byte_length, uint64_t* out_native_submission) {
   const amdf_status_t status =
       amdf_atomic_uint64_load_acquire(&queue->context->terminal_status);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   if (queue->context->last_native_sequence == 1) {
     uint32_t expected = AMDF_LINUX_XDNA_FIRST_POINT_OPEN;
     if (!amdf_atomic_uint32_compare_exchange_acq_rel(
@@ -226,7 +240,9 @@ amdf_status_t amdf_xdna_umd_kernel_queue_wait(
       amdf_wait_budget_t remaining;
       const amdf_status_t status =
           amdf_wait_deadline_query_remaining(deadline, &remaining);
-      if (!amdf_status_is_ok(status)) return status;
+      if (!amdf_status_is_ok(status)) {
+        return status;
+      }
       if (remaining.timeout == 0) {
         return amdf_make_api_status(AMDF_STATUS_CODE_DEADLINE_EXCEEDED);
       }
@@ -259,7 +275,9 @@ amdf_status_t amdf_xdna_umd_kernel_queue_destroy(
   amdf_xdna_umd_device_t* device = queue->context->device;
   const amdf_status_t status =
       amdf_linux_xdna_buffer_deinitialize(device->descriptor, &queue->packet);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   amdf_atomic_uint32_store_release(&queue->context->queue_leased, 0);
   amdf_free(device->host_allocator, queue);
   return AMDF_STATUS_OK;

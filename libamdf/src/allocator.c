@@ -44,7 +44,9 @@ static void* AMDF_CALL amdf_system_allocator_resize(
 #else
   void* new_allocation =
       amdf_system_allocator_allocate(NULL, new_byte_length, minimum_alignment);
-  if (new_allocation == NULL) return NULL;
+  if (new_allocation == NULL) {
+    return NULL;
+  }
   memcpy(new_allocation, allocation,
          (size_t)(old_byte_length < new_byte_length ? old_byte_length
                                                     : new_byte_length));
@@ -131,7 +133,9 @@ amdf_status_t amdf_calloc(amdf_allocator_t allocator, size_t byte_length,
   void* pointer = NULL;
   const amdf_status_t status =
       amdf_malloc(allocator, byte_length, minimum_alignment, &pointer);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   memset(pointer, 0, byte_length);
   *out_pointer = pointer;
   return AMDF_STATUS_OK;
@@ -176,7 +180,9 @@ amdf_status_t amdf_realloc(amdf_allocator_t allocator, size_t old_byte_length,
   if (!amdf_allocator_normalize_alignment(minimum_alignment, &alignment)) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
-  if (old_byte_length == new_byte_length) return AMDF_STATUS_OK;
+  if (old_byte_length == new_byte_length) {
+    return AMDF_STATUS_OK;
+  }
 
   void* new_pointer = NULL;
   if (*inout_pointer == NULL) {
@@ -190,7 +196,9 @@ amdf_status_t amdf_realloc(amdf_allocator_t allocator, size_t old_byte_length,
   } else {
     amdf_status_t status =
         amdf_malloc(allocator, new_byte_length, alignment, &new_pointer);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
     memcpy(
         new_pointer, *inout_pointer,
         old_byte_length < new_byte_length ? old_byte_length : new_byte_length);
@@ -201,5 +209,7 @@ amdf_status_t amdf_realloc(amdf_allocator_t allocator, size_t old_byte_length,
 }
 
 void amdf_free(amdf_allocator_t allocator, void* pointer) {
-  if (pointer != NULL) allocator.free(allocator.user_data, pointer);
+  if (pointer != NULL) {
+    allocator.free(allocator.user_data, pointer);
+  }
 }

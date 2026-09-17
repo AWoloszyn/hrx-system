@@ -59,7 +59,9 @@ class MaterializeTest : public ::testing::Test {
       bool allow_unmapped_values = false,
       const loom_ir_remap_options_t* options = nullptr) {
     loom_ir_remap_options_t local_options = {};
-    if (options) local_options = *options;
+    if (options) {
+      local_options = *options;
+    }
     local_options.allow_unmapped_values = allow_unmapped_values;
     loom_ir_remap_t remap = {};
     IREE_CHECK_OK(loom_ir_remap_initialize(source_, target_, &remap_arena_,

@@ -47,7 +47,9 @@ static iree_status_t BenchmarkEncode(iree_benchmark_state_t* benchmark_state,
     iree_status_t status = iree_base64_encode(
         input_span, iree_make_mutable_string_view(output.data(), output.size()),
         &actual_length);
-    if (!iree_status_is_ok(status)) return status;
+    if (!iree_status_is_ok(status)) {
+      return status;
+    }
     iree_optimization_barrier(output[0]);
   }
   return iree_ok_status();
@@ -111,7 +113,9 @@ static iree_status_t BenchmarkDecode(iree_benchmark_state_t* benchmark_state,
     iree_status_t status = iree_base64_decode(
         encoded_view, iree_make_byte_span(output.data(), output.size()),
         &actual_length);
-    if (!iree_status_is_ok(status)) return status;
+    if (!iree_status_is_ok(status)) {
+      return status;
+    }
     iree_optimization_barrier(output[0]);
   }
   return iree_ok_status();
@@ -167,7 +171,9 @@ static iree_status_t BenchmarkRoundtrip(iree_benchmark_state_t* benchmark_state,
         input_span,
         iree_make_mutable_string_view(encoded.data(), encoded.size()),
         &encode_length);
-    if (!iree_status_is_ok(status)) return status;
+    if (!iree_status_is_ok(status)) {
+      return status;
+    }
 
     iree_string_view_t encoded_view =
         iree_make_string_view(encoded.data(), encode_length);
@@ -175,7 +181,9 @@ static iree_status_t BenchmarkRoundtrip(iree_benchmark_state_t* benchmark_state,
     status = iree_base64_decode(
         encoded_view, iree_make_byte_span(output.data(), output.size()),
         &decode_length);
-    if (!iree_status_is_ok(status)) return status;
+    if (!iree_status_is_ok(status)) {
+      return status;
+    }
     iree_optimization_barrier(output[0]);
   }
   return iree_ok_status();

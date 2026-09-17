@@ -1289,7 +1289,9 @@ static inline void iree_async_proactor_unregister_relay(
     iree_async_proactor_t* proactor, iree_async_relay_t* relay,
     iree_async_relay_unregistered_callback_t callback) {
   if (!relay) {
-    if (callback.fn) callback.fn(callback.user_data);
+    if (callback.fn) {
+      callback.fn(callback.user_data);
+    }
     return;
   }
   proactor->vtable->unregister_relay(proactor, relay, callback);
@@ -1416,7 +1418,9 @@ static inline iree_status_t iree_async_proactor_subscribe_signal(
 static inline void iree_async_proactor_unsubscribe_signal(
     iree_async_proactor_t* proactor,
     iree_async_signal_subscription_t* subscription) {
-  if (!subscription) return;  // NULL-safe no-op.
+  if (!subscription) {
+    return;  // NULL-safe no-op.
+  }
   if (proactor->vtable->unsubscribe_signal) {
     proactor->vtable->unsubscribe_signal(proactor, subscription);
   }

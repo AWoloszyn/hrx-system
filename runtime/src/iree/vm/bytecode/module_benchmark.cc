@@ -101,7 +101,9 @@ iree_status_t InitializeBenchmarkContext(BenchmarkContext* context) {
         context->process, IREE_SV("launch"), IREE_SV("launch_config"),
         &context->function);
   }
-  if (!iree_status_is_ok(status)) DeinitializeBenchmarkContext(context);
+  if (!iree_status_is_ok(status)) {
+    DeinitializeBenchmarkContext(context);
+  }
   return status;
 }
 
@@ -120,7 +122,9 @@ iree_status_t RunModuleCreateBenchmark(
       status = create_module(context.environment, IREE_SV("launch"),
                              MakeModuleStorage(&context.module_fixture),
                              iree_allocator_system(), &modules[module_count]);
-      if (iree_status_is_ok(status)) ++module_count;
+      if (iree_status_is_ok(status)) {
+        ++module_count;
+      }
     }
     iree_benchmark_pause_timing(benchmark_state);
     for (iree_host_size_t i = 0; i < module_count; ++i) {

@@ -226,7 +226,9 @@ iree_hal_amdgpu_aql_block_processor_timestamp_dispatch_list_initialize(
   IREE_ASSERT_ARGUMENT(params);
   IREE_ASSERT_ARGUMENT(out_dispatches);
   memset(out_dispatches, 0, sizeof(*out_dispatches));
-  if (params->summaries.count == 0) return iree_ok_status();
+  if (params->summaries.count == 0) {
+    return iree_ok_status();
+  }
   if (IREE_UNLIKELY(!params->summaries.first || !params->storage.dispatches ||
                     !params->storage.completion_signals ||
                     !params->storage.records)) {

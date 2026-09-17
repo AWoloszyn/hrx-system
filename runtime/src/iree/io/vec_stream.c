@@ -130,7 +130,9 @@ IREE_API_EXPORT iree_status_t iree_io_vec_stream_enumerate_blocks(
        block = block->next) {
     status = callback(
         user_data, iree_make_const_byte_span(block->contents, block->length));
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
   }
 
   IREE_TRACE_ZONE_END(z0);
@@ -181,7 +183,9 @@ static iree_status_t iree_io_vec_stream_byte_sequence_enumerate(
     iree_status_t status =
         callback.fn(callback.user_data,
                     iree_make_const_byte_span(block->contents, block->length));
-    if (!iree_status_is_ok(status)) return status;
+    if (!iree_status_is_ok(status)) {
+      return status;
+    }
   }
   return iree_ok_status();
 }
@@ -252,7 +256,9 @@ static iree_io_stream_pos_t iree_io_vec_stream_length(
 
 // Asserts the block list and current offset match.
 static void iree_io_vec_stream_assert_valid(iree_io_vec_stream_t* stream) {
-  if (!stream->block_head) return;
+  if (!stream->block_head) {
+    return;
+  }
   IREE_ASSERT(stream->block_pos);
   IREE_ASSERT_LE(stream->block_pos->offset, stream->offset);
   IREE_ASSERT_GE(stream->block_pos->offset + stream->block_pos->length,
@@ -268,8 +274,12 @@ static iree_status_t iree_io_vec_stream_extend(iree_io_vec_stream_t* stream,
                                                iree_io_stream_pos_t new_length,
                                                bool zero_fill) {
   IREE_ASSERT_ARGUMENT(stream);
-  if (!new_length) return iree_ok_status();
-  if (stream->length >= new_length) return iree_ok_status();
+  if (!new_length) {
+    return iree_ok_status();
+  }
+  if (stream->length >= new_length) {
+    return iree_ok_status();
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   IREE_TRACE_ZONE_APPEND_VALUE_I64(z0, new_length);
 
@@ -298,7 +308,9 @@ static iree_status_t iree_io_vec_stream_extend(iree_io_vec_stream_t* stream,
     iree_io_vec_block_t* block = NULL;
     status = iree_allocator_malloc_uninitialized(
         stream->host_allocator, stream->block_size, (void**)&block);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     iree_host_size_t block_bytes = iree_min(remaining_bytes, block_capacity);
     block->prev = stream->block_tail;
     if (block->prev) {
@@ -317,7 +329,9 @@ static iree_status_t iree_io_vec_stream_extend(iree_io_vec_stream_t* stream,
     remaining_bytes -= block_bytes;
   }
   if (zero_fill || !iree_status_is_ok(status)) {
-    if (!initialization_block) initialization_block = stream->block_head;
+    if (!initialization_block) {
+      initialization_block = stream->block_head;
+    }
     for (; initialization_block;
          initialization_block = initialization_block->next) {
       memset(&initialization_block->contents[initialization_offset], 0,
@@ -428,8 +442,12 @@ static iree_status_t iree_io_vec_stream_read(
     void* buffer, iree_host_size_t* out_buffer_length) {
   IREE_ASSERT_ARGUMENT(base_stream);
   IREE_ASSERT_ARGUMENT(buffer);
-  if (out_buffer_length) *out_buffer_length = 0;
-  if (buffer_capacity == 0) return iree_ok_status();
+  if (out_buffer_length) {
+    *out_buffer_length = 0;
+  }
+  if (buffer_capacity == 0) {
+    return iree_ok_status();
+  }
   iree_io_vec_stream_t* stream = iree_io_vec_stream_cast(base_stream);
   IREE_TRACE_ZONE_BEGIN(z0);
 
@@ -485,7 +503,9 @@ static iree_status_t iree_io_vec_stream_read(
   stream->block_pos = block;
   iree_io_vec_stream_assert_valid(stream);
 
-  if (out_buffer_length) *out_buffer_length = read_bytes;
+  if (out_buffer_length) {
+    *out_buffer_length = read_bytes;
+  }
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
 }
@@ -495,7 +515,9 @@ static iree_status_t iree_io_vec_stream_write(iree_io_stream_t* base_stream,
                                               const void* buffer) {
   IREE_ASSERT_ARGUMENT(base_stream);
   IREE_ASSERT_ARGUMENT(buffer);
-  if (!buffer_length) return iree_ok_status();
+  if (!buffer_length) {
+    return iree_ok_status();
+  }
   iree_io_vec_stream_t* stream = iree_io_vec_stream_cast(base_stream);
   IREE_TRACE_ZONE_BEGIN(z0);
 

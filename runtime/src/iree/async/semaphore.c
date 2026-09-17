@@ -489,7 +489,9 @@ IREE_API_EXPORT iree_status_t iree_async_semaphore_signal_untainted(
     do {
       watermark_raw = iree_atomic_load(&semaphore->last_untainted_value,
                                        iree_memory_order_acquire);
-      if (value <= (uint64_t)watermark_raw) break;
+      if (value <= (uint64_t)watermark_raw) {
+        break;
+      }
     } while (!iree_atomic_compare_exchange_weak(
         &semaphore->last_untainted_value, &watermark_raw, (int64_t)value,
         iree_memory_order_release, iree_memory_order_relaxed));
@@ -515,7 +517,9 @@ IREE_API_EXPORT iree_status_t iree_async_semaphore_publish_untainted(
   do {
     current_raw =
         iree_atomic_load(&semaphore->timeline_value, iree_memory_order_acquire);
-    if (value <= (uint64_t)current_raw) return iree_ok_status();
+    if (value <= (uint64_t)current_raw) {
+      return iree_ok_status();
+    }
   } while (!iree_atomic_compare_exchange_weak(
       &semaphore->timeline_value, &current_raw, (int64_t)value,
       iree_memory_order_release, iree_memory_order_relaxed));
@@ -539,7 +543,9 @@ IREE_API_EXPORT iree_status_t iree_async_semaphore_publish_untainted(
     do {
       watermark_raw = iree_atomic_load(&semaphore->last_untainted_value,
                                        iree_memory_order_acquire);
-      if (value <= (uint64_t)watermark_raw) break;
+      if (value <= (uint64_t)watermark_raw) {
+        break;
+      }
     } while (!iree_atomic_compare_exchange_weak(
         &semaphore->last_untainted_value, &watermark_raw, (int64_t)value,
         iree_memory_order_release, iree_memory_order_relaxed));
@@ -553,7 +559,9 @@ IREE_API_EXPORT iree_status_t iree_async_semaphore_publish_untainted(
 IREE_API_EXPORT bool iree_async_semaphore_merge_frontier(
     iree_async_semaphore_t* semaphore, const iree_async_frontier_t* frontier) {
   IREE_ASSERT_ARGUMENT(frontier);
-  if (frontier->entry_count == 0) return true;
+  if (frontier->entry_count == 0) {
+    return true;
+  }
   iree_slim_mutex_lock(&semaphore->mutex);
   bool merged = iree_async_frontier_merge(
       semaphore->frontier, semaphore->frontier_capacity, frontier);
@@ -766,7 +774,9 @@ IREE_API_EXPORT iree_status_t iree_async_semaphore_multi_wait(
     const uint64_t* minimum_values, iree_host_size_t count,
     iree_timeout_t timeout, iree_async_wait_flags_t flags,
     iree_allocator_t allocator) {
-  if (count == 0) return iree_ok_status();
+  if (count == 0) {
+    return iree_ok_status();
+  }
 
   IREE_TRACE_ZONE_BEGIN(z0);
   IREE_TRACE_ZONE_APPEND_VALUE_I64(z0, (int64_t)count);
@@ -870,7 +880,9 @@ IREE_API_EXPORT iree_status_t iree_async_semaphore_multi_wait(
     timepoints[i].base.user_data = NULL;
     status = iree_async_semaphore_acquire_timepoint(
         semaphores[i], minimum_values[i], &timepoints[i].base);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     ++registered_count;
   }
 

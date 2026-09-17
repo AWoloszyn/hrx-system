@@ -34,7 +34,9 @@ static iree_string_view_t kLongTokens[256];
 static bool kLongTokensInitialized = false;
 
 static void initialize_long_tokens(void) {
-  if (kLongTokensInitialized) return;
+  if (kLongTokensInitialized) {
+    return;
+  }
   // Alternate between common tokens to stress decoder state.
   static const char* kPatterns[] = {"hello", " ", "world", "!", "\xE2\x96\x81"};
   for (size_t i = 0; i < 256; ++i) {
@@ -81,7 +83,9 @@ static void exercise_decoder(iree_tokenizer_decoder_t* decoder) {
   }
 
   void* state_buffer = malloc(state_size);
-  if (!state_buffer) return;
+  if (!state_buffer) {
+    return;
+  }
 
   // Small output buffer to force multiple process() calls.
   char output[64];

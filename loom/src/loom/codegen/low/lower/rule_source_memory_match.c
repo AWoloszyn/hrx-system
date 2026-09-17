@@ -388,7 +388,9 @@ loom_low_lower_rule_source_memory_emits_match(
   for (uint16_t i = 0; i < rule->emit_count; ++i) {
     const uint16_t emit_index = (uint16_t)(rule->emit_start + i);
     const loom_low_lower_emit_t* emit = &rule_set->emits[emit_index];
-    if (emit->source_memory_ordinal == 0) continue;
+    if (emit->source_memory_ordinal == 0) {
+      continue;
+    }
     if (!match.has_source_memory) {
       IREE_ASSERT(state != NULL);
       source_memory_access = loom_low_lower_rule_source_memory_state_resolve(

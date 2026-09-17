@@ -264,9 +264,13 @@ iree_status_t iree_hal_buffer_view_metadata_matcher_describe(
 static bool iree_hal_buffer_view_shape_matches(
     iree_host_size_t shape_rank, const iree_hal_dim_t* shape,
     iree_hal_buffer_view_t* matchee) {
-  if (shape_rank != iree_hal_buffer_view_shape_rank(matchee)) return false;
+  if (shape_rank != iree_hal_buffer_view_shape_rank(matchee)) {
+    return false;
+  }
   for (iree_host_size_t i = 0; i < shape_rank; ++i) {
-    if (shape[i] != iree_hal_buffer_view_shape_dim(matchee, i)) return false;
+    if (shape[i] != iree_hal_buffer_view_shape_dim(matchee, i)) {
+      return false;
+    }
   }
   return true;
 }
@@ -625,7 +629,9 @@ iree_status_t iree_hal_buffer_view_matcher_match(
   // Reuse metadata matching to ensure the buffer views are the same shape/type.
   IREE_RETURN_IF_ERROR(iree_hal_buffer_view_match_metadata_like(
       matcher->expected, matchee, builder, out_matched));
-  if (!*out_matched) return iree_ok_status();
+  if (!*out_matched) {
+    return iree_ok_status();
+  }
 
   iree_hal_buffer_mapping_t actual_mapping;
   IREE_RETURN_IF_ERROR(iree_hal_buffer_map_range(

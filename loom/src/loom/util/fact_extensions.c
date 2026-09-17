@@ -213,10 +213,18 @@ static bool loom_value_fact_view_reference_equal(
 static bool loom_value_fact_address_layout_equal(
     loom_value_fact_address_layout_t lhs,
     loom_value_fact_address_layout_t rhs) {
-  if (lhs.kind != rhs.kind || lhs.rank != rhs.rank) return false;
-  if (lhs.kind != LOOM_VALUE_FACT_ADDRESS_LAYOUT_STRIDED) return true;
-  if (lhs.rank == 0) return true;
-  if (!lhs.strides || !rhs.strides) return lhs.strides == rhs.strides;
+  if (lhs.kind != rhs.kind || lhs.rank != rhs.rank) {
+    return false;
+  }
+  if (lhs.kind != LOOM_VALUE_FACT_ADDRESS_LAYOUT_STRIDED) {
+    return true;
+  }
+  if (lhs.rank == 0) {
+    return true;
+  }
+  if (!lhs.strides || !rhs.strides) {
+    return lhs.strides == rhs.strides;
+  }
   return memcmp(lhs.strides, rhs.strides,
                 lhs.rank * sizeof(loom_value_facts_t)) == 0;
 }
@@ -248,7 +256,9 @@ bool loom_value_fact_encoded_operand_schema_has_scale(
 
 bool loom_value_fact_encoded_operand_schema_scale_is_complete(
     loom_value_fact_encoded_operand_schema_t schema) {
-  if (!loom_value_fact_encoded_operand_schema_has_scale(schema)) return true;
+  if (!loom_value_fact_encoded_operand_schema_has_scale(schema)) {
+    return true;
+  }
   if (schema.scale_topology == 0 || schema.scale_group.element_count == 0 ||
       schema.scale_operand_count == 0) {
     return false;
@@ -342,7 +352,9 @@ static uint32_t loom_value_fact_extension_hash(
 static bool loom_value_fact_extension_content_equal(
     const loom_value_fact_extension_entry_t* lhs,
     const loom_value_fact_extension_entry_t* rhs) {
-  if (lhs->kind != rhs->kind) return false;
+  if (lhs->kind != rhs->kind) {
+    return false;
+  }
   switch (lhs->kind) {
     case LOOM_VALUE_FACT_EXTENSION_UNIFORM_ELEMENT:
       return memcmp(&lhs->payload.uniform_element,
@@ -353,7 +365,9 @@ static bool loom_value_fact_extension_content_equal(
           rhs->payload.small_static_lanes.count) {
         return false;
       }
-      if (lhs->payload.small_static_lanes.count == 0) return true;
+      if (lhs->payload.small_static_lanes.count == 0) {
+        return true;
+      }
       return memcmp(lhs->payload.small_static_lanes.lanes,
                     rhs->payload.small_static_lanes.lanes,
                     lhs->payload.small_static_lanes.count *
@@ -380,7 +394,9 @@ static bool loom_value_fact_extension_content_equal(
               rhs->payload.type_payload.length) {
         return false;
       }
-      if (lhs->payload.type_payload.length == 0) return true;
+      if (lhs->payload.type_payload.length == 0) {
+        return true;
+      }
       return memcmp(lhs->payload.type_payload.data,
                     rhs->payload.type_payload.data,
                     lhs->payload.type_payload.length) == 0;
@@ -393,7 +409,9 @@ static iree_status_t loom_value_fact_table_clone_fact_array(
     loom_value_fact_table_t* table, const loom_value_facts_t* facts,
     iree_host_size_t count, const loom_value_facts_t** out_facts) {
   *out_facts = NULL;
-  if (count == 0) return iree_ok_status();
+  if (count == 0) {
+    return iree_ok_status();
+  }
   loom_value_facts_t* cloned_facts = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(table->transient_arena, count,
                                                  sizeof(loom_value_facts_t),
@@ -438,7 +456,9 @@ static iree_status_t loom_value_fact_table_materialize_extension_payload(
 
 static iree_status_t loom_value_fact_table_ensure_extension_capacity(
     loom_value_fact_table_t* table, iree_host_size_t minimum_count) {
-  if (minimum_count <= table->extensions.capacity) return iree_ok_status();
+  if (minimum_count <= table->extensions.capacity) {
+    return iree_ok_status();
+  }
 
   iree_host_size_t new_capacity =
       table->extensions.capacity > 0 ? table->extensions.capacity * 2 : 64;
@@ -489,7 +509,9 @@ static iree_status_t loom_value_fact_table_rehash_extensions(
 static iree_status_t loom_value_fact_table_ensure_extension_buckets(
     loom_value_fact_table_t* table, iree_host_size_t minimum_count) {
   iree_host_size_t new_bucket_count = table->extensions.bucket_count;
-  if (new_bucket_count == 0) new_bucket_count = 64;
+  if (new_bucket_count == 0) {
+    new_bucket_count = 64;
+  }
   while (minimum_count > new_bucket_count - new_bucket_count / 4) {
     if (new_bucket_count > SIZE_MAX / 2) {
       return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
@@ -582,7 +604,9 @@ loom_value_facts_lookup_extension(const loom_fact_context_t* context,
     return NULL;
   }
   const loom_value_fact_table_t* table = context->table;
-  if (facts.extension_id > table->extensions.count) return NULL;
+  if (facts.extension_id > table->extensions.count) {
+    return NULL;
+  }
   return &table->extensions.entries[facts.extension_id - 1];
 }
 
@@ -612,8 +636,12 @@ static bool loom_value_fact_table_fact_array_equal(
     const loom_value_fact_table_t* lhs_table, const loom_value_facts_t* lhs,
     const loom_value_fact_table_t* rhs_table, const loom_value_facts_t* rhs,
     iree_host_size_t count) {
-  if (count == 0) return true;
-  if (!lhs || !rhs) return lhs == rhs;
+  if (count == 0) {
+    return true;
+  }
+  if (!lhs || !rhs) {
+    return lhs == rhs;
+  }
   for (iree_host_size_t i = 0; i < count; ++i) {
     if (!loom_value_fact_table_facts_equal(lhs_table, lhs[i], rhs_table,
                                            rhs[i])) {
@@ -628,8 +656,12 @@ static bool loom_value_fact_table_address_layout_equal(
     loom_value_fact_address_layout_t lhs,
     const loom_value_fact_table_t* rhs_table,
     loom_value_fact_address_layout_t rhs) {
-  if (lhs.kind != rhs.kind || lhs.rank != rhs.rank) return false;
-  if (lhs.kind != LOOM_VALUE_FACT_ADDRESS_LAYOUT_STRIDED) return true;
+  if (lhs.kind != rhs.kind || lhs.rank != rhs.rank) {
+    return false;
+  }
+  if (lhs.kind != LOOM_VALUE_FACT_ADDRESS_LAYOUT_STRIDED) {
+    return true;
+  }
   return loom_value_fact_table_fact_array_equal(
       lhs_table, lhs.strides, rhs_table, rhs.strides, lhs.rank);
 }
@@ -689,7 +721,9 @@ static bool loom_value_fact_table_extension_entries_equal(
     const loom_value_fact_extension_entry_t* lhs,
     const loom_value_fact_table_t* rhs_table,
     const loom_value_fact_extension_entry_t* rhs) {
-  if (!lhs || !rhs || lhs->kind != rhs->kind) return false;
+  if (!lhs || !rhs || lhs->kind != rhs->kind) {
+    return false;
+  }
   switch (lhs->kind) {
     case LOOM_VALUE_FACT_EXTENSION_UNIFORM_ELEMENT:
       return loom_value_fact_table_facts_equal(
@@ -739,7 +773,9 @@ static bool loom_value_fact_table_extension_entries_equal(
               rhs->payload.type_payload.length) {
         return false;
       }
-      if (lhs->payload.type_payload.length == 0) return true;
+      if (lhs->payload.type_payload.length == 0) {
+        return true;
+      }
       return memcmp(lhs->payload.type_payload.data,
                     rhs->payload.type_payload.data,
                     lhs->payload.type_payload.length) == 0;
@@ -818,7 +854,9 @@ bool loom_value_facts_query_uniform_element(
   if (!entry || entry->kind != LOOM_VALUE_FACT_EXTENSION_UNIFORM_ELEMENT) {
     return false;
   }
-  if (out) *out = entry->payload.uniform_element;
+  if (out) {
+    *out = entry->payload.uniform_element;
+  }
   return true;
 }
 
@@ -843,7 +881,9 @@ bool loom_value_facts_query_small_static_lanes(
   if (!entry || entry->kind != LOOM_VALUE_FACT_EXTENSION_SMALL_STATIC_LANES) {
     return false;
   }
-  if (out) *out = entry->payload.small_static_lanes;
+  if (out) {
+    *out = entry->payload.small_static_lanes;
+  }
   return true;
 }
 
@@ -902,7 +942,9 @@ bool loom_value_facts_query_vector_iota(const loom_fact_context_t* context,
   if (!entry || entry->kind != LOOM_VALUE_FACT_EXTENSION_VECTOR_IOTA) {
     return false;
   }
-  if (out) *out = entry->payload.vector_iota;
+  if (out) {
+    *out = entry->payload.vector_iota;
+  }
   return true;
 }
 
@@ -923,7 +965,9 @@ bool loom_value_facts_query_vector_prefix_mask(
   if (!entry || entry->kind != LOOM_VALUE_FACT_EXTENSION_VECTOR_PREFIX_MASK) {
     return false;
   }
-  if (out) *out = entry->payload.vector_prefix_mask;
+  if (out) {
+    *out = entry->payload.vector_prefix_mask;
+  }
   return true;
 }
 
@@ -953,7 +997,9 @@ bool loom_value_facts_query_encoding_summary(
   if (!entry || entry->kind != LOOM_VALUE_FACT_EXTENSION_ENCODING_SUMMARY) {
     return false;
   }
-  if (out) *out = entry->payload.encoding_summary;
+  if (out) {
+    *out = entry->payload.encoding_summary;
+  }
   return true;
 }
 
@@ -974,7 +1020,9 @@ bool loom_value_facts_query_buffer_reference(
   if (!entry || entry->kind != LOOM_VALUE_FACT_EXTENSION_BUFFER_REFERENCE) {
     return false;
   }
-  if (out) *out = entry->payload.buffer_reference;
+  if (out) {
+    *out = entry->payload.buffer_reference;
+  }
   return true;
 }
 
@@ -995,7 +1043,9 @@ bool loom_value_facts_query_view_reference(
   if (!entry || entry->kind != LOOM_VALUE_FACT_EXTENSION_VIEW_REFERENCE) {
     return false;
   }
-  if (out) *out = entry->payload.view_reference;
+  if (out) {
+    *out = entry->payload.view_reference;
+  }
   return true;
 }
 
@@ -1024,7 +1074,9 @@ bool loom_value_facts_query_extension_payload(
       entry->payload.type_payload.tag != payload_tag) {
     return false;
   }
-  if (out_payload) *out_payload = entry->payload.type_payload.data;
+  if (out_payload) {
+    *out_payload = entry->payload.type_payload.data;
+  }
   if (out_payload_length) {
     *out_payload_length = entry->payload.type_payload.length;
   }
@@ -1040,7 +1092,9 @@ static iree_status_t loom_value_fact_table_clone_fact_array_between_tables(
     const loom_value_facts_t* source_facts, iree_host_size_t count,
     const loom_value_facts_t** out_facts) {
   *out_facts = NULL;
-  if (count == 0) return iree_ok_status();
+  if (count == 0) {
+    return iree_ok_status();
+  }
   loom_value_facts_t* cloned_facts = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(target->transient_arena, count,
                                                  sizeof(loom_value_facts_t),

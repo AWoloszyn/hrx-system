@@ -263,7 +263,9 @@ static iree_status_t iree_hal_flags_dump_devices(iree_string_view_t flag_name,
     IREE_RETURN_IF_ERROR(iree_hal_driver_registry_enumerate(
         driver_registry, host_allocator, &driver_info_count, &driver_infos));
     for (iree_host_size_t i = 0; i < driver_info_count; ++i) {
-      if (i) fprintf(stdout, "\n");
+      if (i) {
+        fprintf(stdout, "\n");
+      }
       const iree_hal_driver_info_t* driver_info = &driver_infos[i];
       IREE_RETURN_IF_ERROR(iree_hal_flags_dump_driver_devices(
           driver_registry, driver_info->driver_name, host_allocator,
@@ -302,7 +304,9 @@ IREE_FLAG_CALLBACK(
 // more meaningful representation of multi-device/multi-node.
 iree_status_t iree_hal_device_set_default_channel_provider(
     iree_hal_device_t* device) {
-  if (!iree_hal_mpi_is_configured()) return iree_ok_status();
+  if (!iree_hal_mpi_is_configured()) {
+    return iree_ok_status();
+  }
   iree_hal_channel_provider_t* channel_provider = NULL;
   IREE_RETURN_IF_ERROR(
       iree_hal_mpi_channel_provider_create(
@@ -398,7 +402,9 @@ iree_status_t iree_hal_create_devices_from_flags(
     }
     iree_hal_device_release(device);
 
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
   }
 
   if (iree_status_is_ok(status)) {
@@ -523,7 +529,9 @@ static iree_status_t iree_hal_profile_capture_filter_set_u32_from_flag(
     int64_t flag_value, iree_hal_profile_capture_filter_flags_t flag,
     const char* flag_name, uint32_t* out_value,
     iree_hal_profile_capture_filter_t* inout_filter) {
-  if (flag_value < 0) return iree_ok_status();
+  if (flag_value < 0) {
+    return iree_ok_status();
+  }
   if (flag_value > UINT32_MAX) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "--%s value exceeds uint32_t", flag_name);
@@ -573,7 +581,9 @@ static iree_status_t iree_hal_profile_sink_create_from_flags(
   IREE_ASSERT_ARGUMENT(out_sink);
   *out_sink = NULL;
 
-  if (strlen(FLAG_device_profiling_output) == 0) return iree_ok_status();
+  if (strlen(FLAG_device_profiling_output) == 0) {
+    return iree_ok_status();
+  }
 
   iree_io_file_handle_t* file_handle = NULL;
   iree_status_t status = iree_io_file_handle_create(
@@ -682,7 +692,9 @@ static bool iree_hal_device_profiling_filter_flags_present(void) {
 static bool iree_hal_profiling_from_flags_any_profile_active(
     const iree_hal_profiling_from_flags_t* profiling) {
   for (iree_host_size_t i = 0; i < profiling->device_count; ++i) {
-    if (profiling->profile_active[i]) return true;
+    if (profiling->profile_active[i]) {
+      return true;
+    }
   }
   return false;
 }
@@ -696,7 +708,9 @@ static bool iree_hal_profiling_from_flags_flush_should_stop(void* arg) {
 
 static void iree_hal_profiling_from_flags_record_flush_status(
     iree_hal_profiling_from_flags_t* profiling, iree_status_t status) {
-  if (iree_status_is_ok(status)) return;
+  if (iree_status_is_ok(status)) {
+    return;
+  }
   iree_slim_mutex_lock(&profiling->flush_status_mutex);
   profiling->flush_status = iree_status_join(profiling->flush_status, status);
   iree_slim_mutex_unlock(&profiling->flush_status_mutex);
@@ -738,7 +752,9 @@ static int iree_hal_profiling_from_flags_flush_thread_main(void* arg) {
         &profiling->flush_notification,
         iree_hal_profiling_from_flags_flush_should_stop, profiling,
         iree_make_timeout_ms(profiling->flush_interval_ms));
-    if (should_stop) break;
+    if (should_stop) {
+      break;
+    }
 
     iree_status_t status = iree_hal_flush_profiling_from_flags(profiling);
     if (!iree_status_is_ok(status)) {
@@ -778,7 +794,9 @@ static iree_status_t iree_hal_profiling_from_flags_start_periodic_flush(
 
 static iree_status_t iree_hal_profiling_from_flags_stop_periodic_flush(
     iree_hal_profiling_from_flags_t* profiling) {
-  if (!profiling || !profiling->flush_thread) return iree_ok_status();
+  if (!profiling || !profiling->flush_thread) {
+    return iree_ok_status();
+  }
 
   iree_atomic_store(&profiling->flush_stop_requested, 1,
                     iree_memory_order_release);
@@ -797,7 +815,9 @@ static iree_status_t iree_hal_profiling_from_flags_stop_periodic_flush(
 
 static void iree_hal_profiling_from_flags_release_devices(
     iree_hal_profiling_from_flags_t* profiling) {
-  if (!profiling) return;
+  if (!profiling) {
+    return;
+  }
   for (iree_host_size_t i = 0; i < profiling->device_count; ++i) {
     iree_hal_device_release(profiling->devices[i]);
   }
@@ -811,7 +831,9 @@ static iree_status_t iree_hal_begin_device_list_profiling_from_flags(
     iree_hal_profiling_from_flags_t** out_profiling) {
   IREE_ASSERT_ARGUMENT(out_profiling);
   *out_profiling = NULL;
-  if (device_count == 0) return iree_ok_status();
+  if (device_count == 0) {
+    return iree_ok_status();
+  }
 
   const iree_flag_string_list_t counter_names =
       FLAG_device_profiling_counter_list();
@@ -991,7 +1013,9 @@ iree_status_t iree_hal_begin_profiling_from_flags(
     iree_hal_profiling_from_flags_t** out_profiling) {
   IREE_ASSERT_ARGUMENT(out_profiling);
   *out_profiling = NULL;
-  if (!device) return iree_ok_status();
+  if (!device) {
+    return iree_ok_status();
+  }
   return iree_hal_begin_device_list_profiling_from_flags(
       1, &device, host_allocator, out_profiling);
 }
@@ -1001,10 +1025,14 @@ iree_status_t iree_hal_begin_device_group_profiling_from_flags(
     iree_hal_profiling_from_flags_t** out_profiling) {
   IREE_ASSERT_ARGUMENT(out_profiling);
   *out_profiling = NULL;
-  if (!device_group) return iree_ok_status();
+  if (!device_group) {
+    return iree_ok_status();
+  }
   iree_host_size_t device_count =
       iree_hal_device_group_device_count(device_group);
-  if (device_count == 0) return iree_ok_status();
+  if (device_count == 0) {
+    return iree_ok_status();
+  }
 
   iree_hal_device_t** devices = NULL;
   iree_host_size_t devices_size = 0;
@@ -1026,7 +1054,9 @@ iree_status_t iree_hal_begin_device_group_profiling_from_flags(
 
 iree_status_t iree_hal_end_profiling_from_flags(
     iree_hal_profiling_from_flags_t* profiling) {
-  if (!profiling) return iree_ok_status();
+  if (!profiling) {
+    return iree_ok_status();
+  }
 
   iree_status_t status =
       iree_hal_profiling_from_flags_stop_periodic_flush(profiling);

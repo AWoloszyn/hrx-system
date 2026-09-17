@@ -73,7 +73,9 @@ iree_status_t iree_hal_memory_arena_allocate(
 }
 
 void iree_hal_memory_arena_free(iree_hal_memory_arena_t* arena) {
-  if (!arena) return;
+  if (!arena) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   if (arena->allocation_count > 0) {
     IREE_ASSERT(false, "arena free with %" PRIu32 " outstanding acquisitions",

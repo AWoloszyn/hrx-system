@@ -69,7 +69,9 @@ static iree_status_t loom_llvmir_builder_copy_attrs(
     iree_host_size_t attr_count, loom_llvmir_attr_list_t* out_list) {
   out_list->attrs = NULL;
   out_list->attr_count = 0;
-  if (attr_count == 0) return iree_ok_status();
+  if (attr_count == 0) {
+    return iree_ok_status();
+  }
   if (attrs == NULL) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "non-empty LLVM attribute list has null storage");
@@ -93,7 +95,9 @@ static iree_status_t loom_llvmir_builder_copy_metadata_attachments(
     iree_host_size_t attachment_count,
     loom_llvmir_metadata_attachment_storage_t** out_attachments) {
   *out_attachments = NULL;
-  if (attachment_count == 0) return iree_ok_status();
+  if (attachment_count == 0) {
+    return iree_ok_status();
+  }
   if (attachments == NULL) {
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,
@@ -126,7 +130,9 @@ static iree_status_t loom_llvmir_builder_copy_values(
     loom_llvmir_module_t* module, const loom_llvmir_value_id_t* values,
     iree_host_size_t value_count, loom_llvmir_value_id_t** out_values) {
   *out_values = NULL;
-  if (value_count == 0) return iree_ok_status();
+  if (value_count == 0) {
+    return iree_ok_status();
+  }
   if (values == NULL) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "non-empty LLVM value list has null storage");
@@ -620,7 +626,9 @@ iree_status_t loom_llvmir_build_call(loom_llvmir_block_t* block,
                             "LLVM call callee has unknown return type");
   }
   if (return_type->kind == LOOM_LLVMIR_TYPE_VOID) {
-    if (out_value_id) *out_value_id = LOOM_LLVMIR_VALUE_ID_INVALID;
+    if (out_value_id) {
+      *out_value_id = LOOM_LLVMIR_VALUE_ID_INVALID;
+    }
   } else {
     if (out_value_id == NULL) {
       return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
@@ -676,7 +684,9 @@ iree_status_t loom_llvmir_build_inline_asm(
                             "LLVM inline asm references unknown result type");
   }
   if (result_type->kind == LOOM_LLVMIR_TYPE_VOID) {
-    if (out_value_id) *out_value_id = LOOM_LLVMIR_VALUE_ID_INVALID;
+    if (out_value_id) {
+      *out_value_id = LOOM_LLVMIR_VALUE_ID_INVALID;
+    }
   } else {
     if (out_value_id == NULL) {
       return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,

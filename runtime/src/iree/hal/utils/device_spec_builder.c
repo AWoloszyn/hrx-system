@@ -53,7 +53,9 @@ struct iree_hal_device_spec_builder_storage_t {
 
 static iree_status_t iree_hal_device_spec_builder_ensure_storage(
     iree_hal_device_spec_builder_t* builder) {
-  if (builder->storage) return iree_ok_status();
+  if (builder->storage) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(iree_allocator_malloc(builder->host_allocator,
                                              sizeof(*builder->storage),
                                              (void**)&builder->storage));
@@ -66,7 +68,9 @@ static iree_status_t iree_hal_device_spec_builder_copy_array(
     iree_host_size_t element_size, const void* source, void** out_target) {
   IREE_ASSERT_ARGUMENT(out_target);
   *out_target = NULL;
-  if (!count) return iree_ok_status();
+  if (!count) {
+    return iree_ok_status();
+  }
   if (IREE_UNLIKELY(!source)) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "non-empty device spec array has NULL storage");
@@ -82,7 +86,9 @@ static iree_status_t iree_hal_device_spec_builder_copy_string(
     iree_string_view_t* out_target) {
   IREE_ASSERT_ARGUMENT(out_target);
   *out_target = iree_string_view_empty();
-  if (iree_string_view_is_empty(source)) return iree_ok_status();
+  if (iree_string_view_is_empty(source)) {
+    return iree_ok_status();
+  }
   char* target = NULL;
   IREE_RETURN_IF_ERROR(iree_allocator_malloc_uninitialized(
       host_allocator, source.size, (void**)&target));
@@ -101,7 +107,9 @@ static iree_status_t iree_hal_device_spec_builder_copy_bytes(
     iree_const_byte_span_t* out_target) {
   IREE_ASSERT_ARGUMENT(out_target);
   *out_target = iree_const_byte_span_empty();
-  if (iree_const_byte_span_is_empty(source)) return iree_ok_status();
+  if (iree_const_byte_span_is_empty(source)) {
+    return iree_ok_status();
+  }
   uint8_t* target = NULL;
   IREE_RETURN_IF_ERROR(iree_allocator_malloc_uninitialized(
       host_allocator, source.data_length, (void**)&target));
@@ -117,7 +125,9 @@ static void iree_hal_device_spec_builder_free_bytes(
 
 static void iree_hal_device_spec_builder_reset_identity(
     iree_hal_device_spec_builder_t* builder) {
-  if (!builder->storage) return;
+  if (!builder->storage) {
+    return;
+  }
   iree_allocator_t host_allocator = builder->host_allocator;
   iree_hal_device_identity_spec_t* identity = &builder->storage->identity;
   iree_hal_device_spec_builder_free_string(host_allocator,
@@ -151,7 +161,9 @@ static void iree_hal_device_spec_builder_reset_identity(
 
 static void iree_hal_device_spec_builder_reset_memory(
     iree_hal_device_spec_builder_t* builder) {
-  if (!builder->storage) return;
+  if (!builder->storage) {
+    return;
+  }
   iree_allocator_t host_allocator = builder->host_allocator;
   if (builder->storage->memory_heaps) {
     for (iree_host_size_t i = 0; i < builder->storage->memory.heap_count; ++i) {
@@ -172,7 +184,9 @@ static void iree_hal_device_spec_builder_reset_memory(
 
 static void iree_hal_device_spec_builder_reset_virtual_memory(
     iree_hal_device_spec_builder_t* builder) {
-  if (!builder->storage) return;
+  if (!builder->storage) {
+    return;
+  }
   iree_allocator_free(builder->host_allocator,
                       builder->storage->virtual_memory_classes);
   builder->storage->virtual_memory_classes = NULL;
@@ -183,7 +197,9 @@ static void iree_hal_device_spec_builder_reset_virtual_memory(
 
 static void iree_hal_device_spec_builder_reset_queues(
     iree_hal_device_spec_builder_t* builder) {
-  if (!builder->storage) return;
+  if (!builder->storage) {
+    return;
+  }
   iree_allocator_t host_allocator = builder->host_allocator;
   if (builder->storage->queue_families) {
     for (iree_host_size_t i = 0; i < builder->storage->queues.family_count;
@@ -212,21 +228,27 @@ static void iree_hal_device_spec_builder_reset_queues(
 
 static void iree_hal_device_spec_builder_reset_dispatch(
     iree_hal_device_spec_builder_t* builder) {
-  if (!builder->storage) return;
+  if (!builder->storage) {
+    return;
+  }
   memset(&builder->storage->dispatch, 0, sizeof(builder->storage->dispatch));
   builder->storage->params.dispatch = NULL;
 }
 
 static void iree_hal_device_spec_builder_reset_timing(
     iree_hal_device_spec_builder_t* builder) {
-  if (!builder->storage) return;
+  if (!builder->storage) {
+    return;
+  }
   memset(&builder->storage->timing, 0, sizeof(builder->storage->timing));
   builder->storage->params.timing = NULL;
 }
 
 static void iree_hal_device_spec_builder_reset_executables(
     iree_hal_device_spec_builder_t* builder) {
-  if (!builder->storage) return;
+  if (!builder->storage) {
+    return;
+  }
   iree_allocator_t host_allocator = builder->host_allocator;
   if (builder->storage->executable_targets) {
     for (iree_host_size_t i = 0; i < builder->storage->executables.target_count;
@@ -247,14 +269,18 @@ static void iree_hal_device_spec_builder_reset_executables(
 
 static void iree_hal_device_spec_builder_reset_sanitizer(
     iree_hal_device_spec_builder_t* builder) {
-  if (!builder->storage) return;
+  if (!builder->storage) {
+    return;
+  }
   memset(&builder->storage->sanitizer, 0, sizeof(builder->storage->sanitizer));
   builder->storage->params.sanitizer = NULL;
 }
 
 static void iree_hal_device_spec_builder_reset_facets(
     iree_hal_device_spec_builder_t* builder) {
-  if (!builder->storage) return;
+  if (!builder->storage) {
+    return;
+  }
   iree_allocator_t host_allocator = builder->host_allocator;
   if (builder->storage->facets) {
     for (iree_host_size_t i = 0; i < builder->storage->params.facet_count;
@@ -294,7 +320,9 @@ void iree_hal_device_spec_builder_initialize(
 
 void iree_hal_device_spec_builder_deinitialize(
     iree_hal_device_spec_builder_t* builder) {
-  if (!builder) return;
+  if (!builder) {
+    return;
+  }
   iree_hal_device_spec_builder_reset_all(builder);
   iree_allocator_free(builder->host_allocator, builder->storage);
   memset(builder, 0, sizeof(*builder));

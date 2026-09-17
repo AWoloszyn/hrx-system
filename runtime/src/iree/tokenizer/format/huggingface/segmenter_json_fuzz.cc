@@ -35,7 +35,9 @@ static char kLongInput[2048];
 static bool kLongInputInitialized = false;
 
 static void initialize_long_input(void) {
-  if (kLongInputInitialized) return;
+  if (kLongInputInitialized) {
+    return;
+  }
   // Pattern: "word1 word2, word3. word4! " repeated to fill buffer.
   const char* pattern = "alpha beta, gamma. delta! ";
   size_t pattern_length = strlen(pattern);
@@ -84,7 +86,9 @@ static void exercise_segmenter(iree_tokenizer_segmenter_t* segmenter) {
   }
 
   void* state_buffer = malloc(state_size);
-  if (!state_buffer) return;
+  if (!state_buffer) {
+    return;
+  }
 
   // Small output buffer to force multiple process() calls on long inputs.
   iree_tokenizer_segment_t segments[64];

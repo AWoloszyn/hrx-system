@@ -189,7 +189,9 @@ iree_hal_replay_dump_file(iree_const_byte_span_t file_contents,
     iree_hal_replay_file_record_t record;
     status = iree_hal_replay_file_parse_record(valid_contents, record_offset,
                                                &record, &offset);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
 
     if (record.header.sequence_ordinal != expected_sequence_ordinal) {
       status = iree_make_status(IREE_STATUS_DATA_LOSS,

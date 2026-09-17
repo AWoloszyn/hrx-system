@@ -60,7 +60,9 @@ static void exercise_normalizer(iree_tokenizer_normalizer_t* normalizer) {
   }
 
   void* state_buffer = malloc(state_size);
-  if (!state_buffer) return;
+  if (!state_buffer) {
+    return;
+  }
 
   char output[256];
 

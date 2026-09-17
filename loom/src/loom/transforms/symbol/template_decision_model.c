@@ -91,7 +91,9 @@ typedef struct loom_template_decision_ranked_choice_t {
 static bool loom_template_decision_ranked_choice_less(
     const loom_template_decision_ranked_choice_t* lhs,
     const loom_template_decision_ranked_choice_t* rhs) {
-  if (lhs->priority != rhs->priority) return lhs->priority > rhs->priority;
+  if (lhs->priority != rhs->priority) {
+    return lhs->priority > rhs->priority;
+  }
   return lhs->choice.action_ordinal < rhs->choice.action_ordinal;
 }
 
@@ -195,13 +197,17 @@ static iree_status_t loom_template_decision_lookup_target_facts(
     loom_symbol_ref_t target_symbol,
     const loom_target_facts_t** out_target_facts) {
   *out_target_facts = NULL;
-  if (!loom_symbol_ref_is_valid(target_symbol)) return iree_ok_status();
+  if (!loom_symbol_ref_is_valid(target_symbol)) {
+    return iree_ok_status();
+  }
   const loom_symbol_facts_base_t* base_facts = NULL;
   IREE_RETURN_IF_ERROR(loom_symbol_fact_table_lookup_ref(
       symbol_facts, module, target_symbol, &base_facts));
   const loom_target_symbol_facts_t* target_facts =
       loom_target_symbol_facts_cast(base_facts);
-  if (target_facts != NULL) *out_target_facts = target_facts->projection;
+  if (target_facts != NULL) {
+    *out_target_facts = target_facts->projection;
+  }
   return iree_ok_status();
 }
 
@@ -209,7 +215,9 @@ static iree_status_t loom_template_decision_allocate_array(
     iree_arena_allocator_t* arena, uint32_t count,
     iree_host_size_t element_size, void** out_values) {
   *out_values = NULL;
-  if (count == 0) return iree_ok_status();
+  if (count == 0) {
+    return iree_ok_status();
+  }
   return iree_arena_allocate_array(arena, count, element_size, out_values);
 }
 
@@ -235,14 +243,18 @@ loom_template_decision_find_signature_operand_linear(
 static bool loom_template_decision_value_ids_are_ordered(
     const loom_value_id_t* value_ids, uint16_t count) {
   for (uint16_t i = 1; i < count; ++i) {
-    if (value_ids[i - 1] >= value_ids[i]) return false;
+    if (value_ids[i - 1] >= value_ids[i]) {
+      return false;
+    }
   }
   return true;
 }
 
 static bool loom_template_decision_may_need_operand_map(
     uint32_t signature_count, uint32_t value_reference_count) {
-  if (signature_count <= 8 || value_reference_count <= 4) return false;
+  if (signature_count <= 8 || value_reference_count <= 4) {
+    return false;
+  }
   return value_reference_count >= signature_count ||
          (uint64_t)value_reference_count * signature_count >
              LOOM_TEMPLATE_DECISION_LINEAR_SIGNATURE_COMPARISON_LIMIT;
@@ -277,7 +289,9 @@ static void loom_template_decision_prepare_signature_lookup(
       .mode = LOOM_TEMPLATE_DECISION_SIGNATURE_LOOKUP_LINEAR,
   };
   const uint32_t signature_count = (uint32_t)argument_count + result_count;
-  if (signature_count <= 8) return;
+  if (signature_count <= 8) {
+    return;
+  }
   if (loom_template_decision_value_ids_are_ordered(argument_ids,
                                                    argument_count) &&
       loom_template_decision_value_ids_are_ordered(result_ids, result_count)) {
@@ -327,7 +341,9 @@ static bool loom_template_decision_find_ordered_value_id(
       end = middle;
     }
   }
-  if (begin == count || value_ids[begin] != value_id) return false;
+  if (begin == count || value_ids[begin] != value_id) {
+    return false;
+  }
   *out_ordinal = begin;
   return true;
 }
@@ -616,7 +632,9 @@ iree_status_t loom_template_decision_model_catalog_build(
         loom_template_provider_catalog_lookup(
             providers,
             (loom_symbol_ref_t){.module_id = 0, .symbol_id = symbol_id});
-    if (family_providers.count == 0) continue;
+    if (family_providers.count == 0) {
+      continue;
+    }
     ++out_catalog->model_count;
     out_catalog->maximum_choice_count = iree_max(
         out_catalog->maximum_choice_count, (uint32_t)family_providers.count);
@@ -658,7 +676,9 @@ iree_status_t loom_template_decision_model_catalog_build(
     };
     const loom_template_provider_slice_t family_providers =
         loom_template_provider_catalog_lookup(providers, family);
-    if (family_providers.count == 0) continue;
+    if (family_providers.count == 0) {
+      continue;
+    }
 
     loom_template_decision_model_t* model = &models[model_ordinal];
     *model = (loom_template_decision_model_t){
@@ -834,7 +854,9 @@ const loom_template_decision_model_t* loom_template_decision_model_lookup(
   if (catalog->symbol_pages != NULL) {
     const loom_template_decision_model_symbol_page_t* page =
         &catalog->symbol_pages[family.symbol_id >> 8];
-    if (page->model_count == 0) return NULL;
+    if (page->model_count == 0) {
+      return NULL;
+    }
     begin = page->first_model_ordinal;
     end = begin + page->model_count;
   }
@@ -1067,7 +1089,9 @@ loom_template_decision_model_constraint_info(
     const loom_template_decision_model_t* model,
     loom_decision_program_constraint_ref_t constraint) {
   loom_template_decision_constraint_info_t info = {0};
-  if (constraint == LOOM_DECISION_PROGRAM_CONSTRAINT_INVALID) return info;
+  if (constraint == LOOM_DECISION_PROGRAM_CONSTRAINT_INVALID) {
+    return info;
+  }
   if (!loom_decision_program_constraint_is_feature(constraint)) {
     info.reason = LOOM_TEMPLATE_PROVIDER_UNRESOLVED_VALUE_PREDICATE;
     return info;

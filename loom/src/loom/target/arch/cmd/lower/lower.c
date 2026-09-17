@@ -186,7 +186,9 @@ static iree_status_t loom_cmd_lower_build_resource(
 
 static iree_status_t loom_cmd_lower_reserve_constant(
     loom_cmd_lower_state_t* state, loom_cmd_lower_constant_table_t* table) {
-  if (table->count < table->capacity) return iree_ok_status();
+  if (table->count < table->capacity) {
+    return iree_ok_status();
+  }
   return iree_arena_grow_array(
       state->scratch_arena, table->count, iree_max(table->count + 1, 8u),
       sizeof(*table->entries), &table->capacity, (void**)&table->entries);
@@ -323,7 +325,9 @@ static iree_status_t loom_cmd_lower_allocate_value_array(
     loom_cmd_lower_state_t* state, iree_host_size_t count,
     loom_value_id_t** out_values) {
   *out_values = NULL;
-  if (count == 0) return iree_ok_status();
+  if (count == 0) {
+    return iree_ok_status();
+  }
   return iree_arena_allocate_array(state->scratch_arena, count,
                                    sizeof(**out_values), (void**)out_values);
 }

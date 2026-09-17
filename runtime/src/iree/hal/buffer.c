@@ -413,7 +413,9 @@ IREE_API_EXPORT iree_status_t iree_hal_buffer_calculate_range(
   // Check if the start of the range runs off the end of the buffer.
   if (IREE_UNLIKELY(offset > max_length)) {
     *out_adjusted_offset = 0;
-    if (out_adjusted_length) *out_adjusted_length = 0;
+    if (out_adjusted_length) {
+      *out_adjusted_length = 0;
+    }
     return iree_make_status(
         IREE_STATUS_OUT_OF_RANGE,
         "attempted to access an address off the end of the valid buffer "
@@ -439,7 +441,9 @@ IREE_API_EXPORT iree_status_t iree_hal_buffer_calculate_range(
   if (adjusted_length == 0) {
     // Fine to have a zero length.
     *out_adjusted_offset = adjusted_offset;
-    if (out_adjusted_length) *out_adjusted_length = adjusted_length;
+    if (out_adjusted_length) {
+      *out_adjusted_length = adjusted_length;
+    }
     return iree_ok_status();
   }
 
@@ -447,7 +451,9 @@ IREE_API_EXPORT iree_status_t iree_hal_buffer_calculate_range(
   iree_device_size_t end = offset + adjusted_length - 1;
   if (IREE_UNLIKELY(end >= max_length)) {
     *out_adjusted_offset = 0;
-    if (out_adjusted_length) *out_adjusted_length = 0;
+    if (out_adjusted_length) {
+      *out_adjusted_length = 0;
+    }
     return iree_make_status(
         IREE_STATUS_OUT_OF_RANGE,
         "attempted to access an address outside of the valid buffer "
@@ -457,7 +463,9 @@ IREE_API_EXPORT iree_status_t iree_hal_buffer_calculate_range(
   }
 
   *out_adjusted_offset = adjusted_offset;
-  if (out_adjusted_length) *out_adjusted_length = adjusted_length;
+  if (out_adjusted_length) {
+    *out_adjusted_length = adjusted_length;
+  }
   return iree_ok_status();
 }
 
@@ -552,7 +560,9 @@ iree_hal_buffer_allocation_placement(const iree_hal_buffer_t* buffer) {
 
 IREE_API_EXPORT void iree_hal_buffer_allocation_preserve(
     iree_hal_buffer_t* buffer) {
-  if (IREE_UNLIKELY(!buffer)) return;
+  if (IREE_UNLIKELY(!buffer)) {
+    return;
+  }
   iree_atomic_uint32_t* preserve_count =
       buffer == buffer->allocated_buffer
           ? &buffer->preserve_count
@@ -562,7 +572,9 @@ IREE_API_EXPORT void iree_hal_buffer_allocation_preserve(
 
 IREE_API_EXPORT IREE_MUST_USE_RESULT bool iree_hal_buffer_allocation_discard(
     iree_hal_buffer_t* buffer) {
-  if (IREE_UNLIKELY(!buffer)) return false;
+  if (IREE_UNLIKELY(!buffer)) {
+    return false;
+  }
   iree_atomic_uint32_t* preserve_count =
       buffer == buffer->allocated_buffer
           ? &buffer->preserve_count
@@ -573,7 +585,9 @@ IREE_API_EXPORT IREE_MUST_USE_RESULT bool iree_hal_buffer_allocation_discard(
 
 IREE_API_EXPORT bool iree_hal_buffer_allocation_is_terminal(
     const iree_hal_buffer_t* buffer) {
-  if (IREE_UNLIKELY(!buffer)) return false;
+  if (IREE_UNLIKELY(!buffer)) {
+    return false;
+  }
   const iree_atomic_uint32_t* preserve_count =
       buffer == buffer->allocated_buffer
           ? &buffer->preserve_count
@@ -914,7 +928,9 @@ IREE_API_EXPORT iree_status_t iree_hal_buffer_prepare_map_range(
   out_buffer_mapping->contents = iree_make_byte_span(NULL, local_byte_length);
 
   // Scoped mappings retain the buffer until unmapped.
-  if (!is_persistent) iree_hal_buffer_retain(buffer);
+  if (!is_persistent) {
+    iree_hal_buffer_retain(buffer);
+  }
 
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
@@ -935,7 +951,9 @@ IREE_API_EXPORT iree_status_t
 iree_hal_buffer_unmap_range(iree_hal_buffer_mapping_t* buffer_mapping) {
   IREE_ASSERT_ARGUMENT(buffer_mapping);
   iree_hal_buffer_t* buffer = buffer_mapping->buffer;
-  if (!buffer) return iree_ok_status();
+  if (!buffer) {
+    return iree_ok_status();
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_status_t status = iree_ok_status();

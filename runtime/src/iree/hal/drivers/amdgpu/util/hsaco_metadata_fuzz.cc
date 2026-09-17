@@ -43,7 +43,9 @@ static void iree_hal_amdgpu_hsaco_metadata_fuzz_store_u64le(
 
 static void iree_hal_amdgpu_hsaco_metadata_fuzz_append_aligned4_padding(
     std::vector<uint8_t>* output) {
-  while ((output->size() & 3) != 0) output->push_back(0);
+  while ((output->size() & 3) != 0) {
+    output->push_back(0);
+  }
 }
 
 static std::vector<uint8_t> iree_hal_amdgpu_hsaco_metadata_fuzz_wrap_as_elf(
@@ -111,7 +113,9 @@ static void iree_hal_amdgpu_hsaco_metadata_fuzz_parse(
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   constexpr size_t kMaxInputSize = 64 * 1024;
-  if (size > kMaxInputSize) size = kMaxInputSize;
+  if (size > kMaxInputSize) {
+    size = kMaxInputSize;
+  }
 
   iree_hal_amdgpu_hsaco_metadata_fuzz_parse(
       iree_make_const_byte_span(data, size));

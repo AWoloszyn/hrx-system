@@ -251,12 +251,16 @@ iree_status_t loom_bytecode_write_types_section(
             page_writer, family_name_id));
         uint8_t present_count = 0;
         for (uint8_t i = 0; i < parameter_count; ++i) {
-          if (!loom_attr_is_absent(parameters[i])) ++present_count;
+          if (!loom_attr_is_absent(parameters[i])) {
+            ++present_count;
+          }
         }
         IREE_RETURN_IF_ERROR(loom_bytecode_page_writer_write_uvarint(
             page_writer, present_count));
         for (uint8_t i = 0; i < parameter_count; ++i) {
-          if (loom_attr_is_absent(parameters[i])) continue;
+          if (loom_attr_is_absent(parameters[i])) {
+            continue;
+          }
           const loom_attr_descriptor_t* parameter_descriptor =
               &descriptor->parameter_descriptors[i];
           uint32_t parameter_name_id = 0;

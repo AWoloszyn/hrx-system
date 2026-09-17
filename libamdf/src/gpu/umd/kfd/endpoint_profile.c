@@ -27,7 +27,9 @@ static amdf_status_t amdf_gpu_kfd_qualify_endpoint_profile(
   uint32_t cache_line_size = 0;
   amdf_status_t status =
       amdf_linux_host_cache_query_line_size(&cache_line_size);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   amdf_gpu_kfd_user_queue_plans_t queue_plans;
   amdf_gpu_kfd_target_user_queue_plans_initialize(
       topology, (size_t)page_size, cache_line_size, &queue_plans);
@@ -50,7 +52,9 @@ amdf_status_t amdf_gpu_umd_create_endpoint_profile(
   amdf_gpu_kfd_topology_t topology = {0};
   amdf_status_t status =
       amdf_gpu_kfd_topology_initialize(endpoint, host_allocator, &topology);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   amdf_gpu_endpoint_profile_t profile;
   status = amdf_gpu_kfd_qualify_endpoint_profile(&topology, &profile);
   amdf_gpu_endpoint_profile_t* owned_profile = NULL;

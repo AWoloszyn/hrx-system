@@ -80,7 +80,9 @@ static iree_status_t loom_spirv_emit_define_atomic_result(
     loom_spirv_emit_state_t* state, const loom_low_descriptor_packet_t* packet,
     const loom_spirv_packet_row_t* row, uint32_t result_id,
     loom_spirv_module_value_ref_t value_ref) {
-  if (row->result_count == 0) return iree_ok_status();
+  if (row->result_count == 0) {
+    return iree_ok_status();
+  }
   value_ref.id = result_id;
   value_ref.value_type = loom_spirv_packet_row_result_type(row);
   return loom_spirv_emit_define_value(
@@ -215,7 +217,9 @@ static iree_status_t loom_spirv_emit_float_atomic_result(
     loom_spirv_emit_state_t* state, const loom_low_descriptor_packet_t* packet,
     const loom_spirv_packet_row_t* row,
     const loom_spirv_module_value_ref_t* float_value, uint32_t integer_id) {
-  if (row->result_count == 0) return iree_ok_status();
+  if (row->result_count == 0) {
+    return iree_ok_status();
+  }
   uint32_t result_id = 0;
   IREE_RETURN_IF_ERROR(loom_spirv_emit_atomic_result(state, packet, row,
                                                      *float_value, &result_id));

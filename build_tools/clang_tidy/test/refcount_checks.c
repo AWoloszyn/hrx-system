@@ -154,6 +154,35 @@ void iree_clang_tidy_refcount_observe(iree_clang_tidy_refcounted_t* resource) {
   (void)resource;
 }
 
+void iree_clang_tidy_refcount_await_release(
+    iree_clang_tidy_refcounted_t* resource);
+void iree_clang_tidy_refcount_wait_release(
+    iree_clang_tidy_refcounted_t* resource);
+
+void iree_clang_tidy_refcount_wait_then_use(
+    iree_clang_tidy_refcounted_t* awaited_resource,
+    iree_clang_tidy_refcounted_t* waited_resource) {
+  if (awaited_resource) {
+    iree_clang_tidy_refcount_await_release(awaited_resource);
+  }
+  iree_clang_tidy_refcount_await_release(awaited_resource);
+  iree_clang_tidy_refcount_observe(awaited_resource);
+  if (waited_resource) {
+    iree_clang_tidy_refcount_wait_release(waited_resource);
+  }
+  iree_clang_tidy_refcount_wait_release(waited_resource);
+  iree_clang_tidy_refcount_observe(waited_resource);
+}
+
+void iree_clang_tidy_refcount_release_then_wait(
+    iree_clang_tidy_refcounted_t* released_before_await,
+    iree_clang_tidy_refcounted_t* released_before_wait) {
+  iree_clang_tidy_refcount_void_release(released_before_await);
+  iree_clang_tidy_refcount_await_release(released_before_await);
+  iree_clang_tidy_refcount_void_release(released_before_wait);
+  iree_clang_tidy_refcount_wait_release(released_before_wait);
+}
+
 void iree_clang_tidy_refcount_unguarded_release(
     iree_clang_tidy_refcounted_t* resource) {
   if (iree_atomic_ref_count_dec(&resource->ref_count) == 1) {

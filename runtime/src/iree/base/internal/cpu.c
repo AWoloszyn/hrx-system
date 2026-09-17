@@ -218,7 +218,9 @@ static void iree_cpu_initialize_from_platform_arm_64(uint64_t* out_fields) {
     int64_t result = 0;
     size_t result_size = sizeof result;
     if (0 == sysctlbyname(f->sysctl_key, &result, &result_size, NULL, 0)) {
-      if (result) out_fields[f->out_field_index] |= f->out_field_bits;
+      if (result) {
+        out_fields[f->out_field_index] |= f->out_field_bits;
+      }
     }
   }
 }
@@ -348,7 +350,9 @@ void iree_cpu_query_data(iree_allocator_t temp_allocator,
 const uint64_t* iree_cpu_data_fields(void) { return iree_cpu_data_cache_; }
 
 uint64_t iree_cpu_data_field(iree_host_size_t field) {
-  if (IREE_UNLIKELY(field >= IREE_ARRAYSIZE(iree_cpu_data_cache_))) return 0;
+  if (IREE_UNLIKELY(field >= IREE_ARRAYSIZE(iree_cpu_data_cache_))) {
+    return 0;
+  }
   return iree_cpu_data_cache_[field];
 }
 

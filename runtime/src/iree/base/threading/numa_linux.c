@@ -234,7 +234,9 @@ static bool iree_numa_try_alloc_explicit_huge(
   iree_host_size_t huge_page_size =
       iree_numa_resolve_huge_page_size(options->huge_page_size);
   int huge_flag = iree_numa_huge_page_flag(huge_page_size);
-  if (huge_flag == 0) return false;
+  if (huge_flag == 0) {
+    return false;
+  }
 
   // Round up to huge page alignment (with overflow check).
   iree_host_size_t aligned_size = 0;
@@ -245,7 +247,9 @@ static bool iree_numa_try_alloc_explicit_huge(
   void* ptr =
       mmap(NULL, aligned_size, PROT_READ | PROT_WRITE,
            MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | huge_flag, -1, 0);
-  if (ptr == MAP_FAILED) return false;
+  if (ptr == MAP_FAILED) {
+    return false;
+  }
 
   *out_ptr = ptr;
   out_info->allocated_size = aligned_size;
@@ -260,7 +264,9 @@ static bool iree_numa_try_alloc_transparent_huge(
     iree_host_size_t size, void** out_ptr, iree_numa_alloc_info_t* out_info) {
   void* ptr = mmap(NULL, size, PROT_READ | PROT_WRITE,
                    MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-  if (ptr == MAP_FAILED) return false;
+  if (ptr == MAP_FAILED) {
+    return false;
+  }
 
 #ifdef MADV_HUGEPAGE
   // Best-effort hint; ignore errors.
@@ -280,7 +286,9 @@ static bool iree_numa_try_alloc_mmap(iree_host_size_t size, void** out_ptr,
                                      iree_numa_alloc_info_t* out_info) {
   void* ptr = mmap(NULL, size, PROT_READ | PROT_WRITE,
                    MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-  if (ptr == MAP_FAILED) return false;
+  if (ptr == MAP_FAILED) {
+    return false;
+  }
 
   *out_ptr = ptr;
   out_info->allocated_size = size;
@@ -338,7 +346,9 @@ iree_numa_alloc(iree_host_size_t size, const iree_numa_alloc_options_t* options,
     }
     void* ptr = NULL;
     iree_status_t status = iree_aligned_alloc(alignment, aligned_size, &ptr);
-    if (!iree_status_is_ok(status)) return status;
+    if (!iree_status_is_ok(status)) {
+      return status;
+    }
     *out_ptr = ptr;
     out_info->allocated_size = aligned_size;
     out_info->huge_page_size = 0;
@@ -370,7 +380,9 @@ iree_numa_alloc(iree_host_size_t size, const iree_numa_alloc_options_t* options,
 
 IREE_API_EXPORT void iree_numa_free(void* ptr,
                                     const iree_numa_alloc_info_t* info) {
-  if (!ptr) return;
+  if (!ptr) {
+    return;
+  }
   IREE_ASSERT_ARGUMENT(info);
 
   switch (info->method) {

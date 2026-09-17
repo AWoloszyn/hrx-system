@@ -31,7 +31,9 @@ static const iree_bitfield_string_mapping_t kTestBitfieldMappings[] = {
 
 static void iree_string_view_fuzz_structured_hex_float(const uint8_t* data,
                                                        size_t size) {
-  if (size < 4) return;
+  if (size < 4) {
+    return;
+  }
 
   static const char kHexDigits[] = "0123456789abcdef";
   const size_t significand_byte_count = size - 3 < 32 ? size - 3 : 32;
@@ -40,12 +42,18 @@ static void iree_string_view_fuzz_structured_hex_float(const uint8_t* data,
 
   char text[96];
   size_t text_length = 0;
-  if ((data[0] & 0x80) != 0) text[text_length++] = '-';
+  if ((data[0] & 0x80) != 0) {
+    text[text_length++] = '-';
+  }
   text[text_length++] = '0';
   text[text_length++] = (data[0] & 0x40) != 0 ? 'X' : 'x';
   for (size_t i = 0; i <= significand_nibble_count; ++i) {
-    if (i == point_position) text[text_length++] = '.';
-    if (i == significand_nibble_count) break;
+    if (i == point_position) {
+      text[text_length++] = '.';
+    }
+    if (i == significand_nibble_count) {
+      break;
+    }
     const uint8_t byte = data[3 + i / 2];
     const uint8_t nibble =
         (i & 1) == 0 ? (uint8_t)(byte >> 4) : (uint8_t)(byte & 0x0F);

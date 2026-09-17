@@ -34,12 +34,16 @@ class ScopedSplitSegmenter {
         iree_make_cstring_view(pattern),
         IREE_TOKENIZER_UTIL_REGEX_COMPILE_FLAG_NONE, iree_allocator_system(),
         &dfa_, &dfa_storage_, &error);
-    if (!iree_status_is_ok(status_)) return;
+    if (!iree_status_is_ok(status_)) {
+      return;
+    }
 
     iree_tokenizer_segmenter_t* raw = nullptr;
     status_ = iree_tokenizer_segmenter_split_allocate(
         dfa_, dfa_storage_, behavior, invert, iree_allocator_system(), &raw);
-    if (!iree_status_is_ok(status_)) return;
+    if (!iree_status_is_ok(status_)) {
+      return;
+    }
 
     segmenter_ = ScopedSegmenter(raw);
     // Ownership of dfa_storage_ transferred to segmenter.
@@ -541,7 +545,9 @@ TEST(SplitSegmenterTest, LargeInputNoDataLoss) {
   std::string input;
   std::vector<std::string> expected;
   for (int i = 0; i < 300; ++i) {
-    if (i > 0) input += " ";
+    if (i > 0) {
+      input += " ";
+    }
     std::string word = "w" + std::to_string(i);
     input += word;
     expected.push_back(word);
@@ -1486,7 +1492,9 @@ TEST(SplitLiteralTest, LargeInputNoDataLoss) {
   std::string input;
   std::vector<std::string> expected;
   for (int i = 0; i < 300; ++i) {
-    if (i > 0) input += ",";
+    if (i > 0) {
+      input += ",";
+    }
     std::string word = "w" + std::to_string(i);
     input += word;
     expected.push_back(word);

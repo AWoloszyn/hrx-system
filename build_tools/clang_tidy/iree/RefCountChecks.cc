@@ -25,6 +25,13 @@
 #include "llvm/ADT/StringRef.h"
 
 namespace clang::tidy::iree {
+
+bool IsRefCountReleaseFunctionName(StringRef FunctionName) {
+  return FunctionName.ends_with("_release") &&
+         !FunctionName.ends_with("_await_release") &&
+         !FunctionName.ends_with("_wait_release");
+}
+
 namespace {
 
 bool IsExternalMacroBody(SourceLocation Location,
@@ -182,21 +189,17 @@ std::string NormalizedCodeSource(StringRef Source) {
   return Result;
 }
 
-bool IsRefCountLifecycleFunctionName(StringRef FunctionName) {
-  return FunctionName.ends_with("_retain") ||
-         FunctionName.ends_with("_release");
-}
-
 bool IsAllocateFunctionName(StringRef FunctionName) {
   return FunctionName.ends_with("_allocate");
 }
 
-bool IsReleaseFunctionName(StringRef FunctionName) {
-  return FunctionName.ends_with("_release");
-}
-
 bool IsRetainFunctionName(StringRef FunctionName) {
   return FunctionName.ends_with("_retain");
+}
+
+bool IsRefCountLifecycleFunctionName(StringRef FunctionName) {
+  return IsRetainFunctionName(FunctionName) ||
+         IsRefCountReleaseFunctionName(FunctionName);
 }
 
 StringRef SimpleFunctionName(const FunctionDecl* Function) {
@@ -652,7 +655,8 @@ std::optional<DirectRefCountOperation> DirectRefCountOperationStatement(
 
 std::optional<DirectRefCountOperation> DirectReleaseStatement(
     const Stmt* Statement) {
-  return DirectRefCountOperationStatement(Statement, IsReleaseFunctionName);
+  return DirectRefCountOperationStatement(Statement,
+                                          IsRefCountReleaseFunctionName);
 }
 
 std::optional<DirectRefCountOperation> DirectRetainStatement(
@@ -769,7 +773,7 @@ class ReleasedUseVisitor final
   void VisitCallExpr(const CallExpr* Expression) {
     const FunctionDecl* Callee = Expression->getDirectCallee();
     StringRef CalleeName = SimpleFunctionName(Callee);
-    if (Callee && (IsReleaseFunctionName(CalleeName) ||
+    if (Callee && (IsRefCountReleaseFunctionName(CalleeName) ||
                    IsRetainFunctionName(CalleeName))) {
       VisitChildren(Expression);
       return;

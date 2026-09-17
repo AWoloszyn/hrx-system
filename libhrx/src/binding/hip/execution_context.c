@@ -138,13 +138,19 @@ static iree_status_t iree_hip_execution_context_allocate_id(
 }
 
 static void iree_hip_execution_context_retain(hipExecutionCtx_t context) {
-  if (!context) return;
+  if (!context) {
+    return;
+  }
   iree_atomic_ref_count_inc(&context->ref_count);
 }
 
 static void iree_hip_execution_context_release(hipExecutionCtx_t context) {
-  if (!context) return;
-  if (iree_atomic_ref_count_dec(&context->ref_count) != 1) return;
+  if (!context) {
+    return;
+  }
+  if (iree_atomic_ref_count_dec(&context->ref_count) != 1) {
+    return;
+  }
   IREE_ASSERT(context->device == NULL);
   IREE_ASSERT(context->primary_context == NULL);
   IREE_ASSERT(context->stream_head == NULL);
@@ -159,7 +165,9 @@ static void iree_hip_execution_context_release(hipExecutionCtx_t context) {
 static hipError_t iree_hip_execution_context_release_primary(
     iree_hal_streaming_device_t* device,
     iree_hal_streaming_context_t* primary_context) {
-  if (!primary_context) return hipSuccess;
+  if (!primary_context) {
+    return hipSuccess;
+  }
   iree_status_t status =
       iree_hal_streaming_device_release_primary_context(device);
   return iree_status_is_ok(status)
@@ -209,7 +217,9 @@ static hipError_t iree_hip_execution_context_deinitialize(
         if (!iree_status_is_ok(status)) {
           const hipError_t synchronize_result =
               iree_hip_execution_context_consume_status(status);
-          if (result == hipSuccess) result = synchronize_result;
+          if (result == hipSuccess) {
+            result = synchronize_result;
+          }
         }
         iree_hal_streaming_context_unregister_stream(common_context,
                                                      common_stream);
@@ -228,7 +238,9 @@ static hipError_t iree_hip_execution_context_deinitialize(
     if (!iree_status_is_ok(status)) {
       const hipError_t synchronize_result =
           iree_hip_execution_context_consume_status(status);
-      if (result == hipSuccess) result = synchronize_result;
+      if (result == hipSuccess) {
+        result = synchronize_result;
+      }
     }
   }
   iree_hal_semaphore_release(event_record_timeline.semaphore);
@@ -236,7 +248,9 @@ static hipError_t iree_hip_execution_context_deinitialize(
   if (context->kind == IREE_HIP_EXECUTION_CONTEXT_KIND_RESOURCE_PARTITIONED) {
     const hipError_t primary_result =
         iree_hip_execution_context_release_primary(device, primary_context);
-    if (result == hipSuccess) result = primary_result;
+    if (result == hipSuccess) {
+      result = primary_result;
+    }
   }
   return result;
 }
@@ -244,7 +258,9 @@ static hipError_t iree_hip_execution_context_deinitialize(
 // Resolves |handle| against the live registry and returns a retained context.
 static hipExecutionCtx_t iree_hip_execution_context_resolve_live(
     hipExecutionCtx_t handle) {
-  if (!handle) return NULL;
+  if (!handle) {
+    return NULL;
+  }
   iree_call_once(&iree_hip_execution_context_registry_once,
                  iree_hip_execution_context_registry_initialize);
 
@@ -273,7 +289,9 @@ static void iree_hip_execution_context_publish(hipExecutionCtx_t context) {
 
 static hipExecutionCtx_t iree_hip_execution_context_take_partitioned(
     hipExecutionCtx_t handle) {
-  if (!handle) return NULL;
+  if (!handle) {
+    return NULL;
+  }
   iree_call_once(&iree_hip_execution_context_registry_once,
                  iree_hip_execution_context_registry_initialize);
 
@@ -504,7 +522,9 @@ hipError_t iree_hip_execution_context_create(
   iree_hal_semaphore_release(event_record_semaphore);
   const hipError_t primary_release_result =
       iree_hip_execution_context_release_primary(device, primary_context);
-  if (primary_release_result != hipSuccess) result = primary_release_result;
+  if (primary_release_result != hipSuccess) {
+    result = primary_release_result;
+  }
   iree_hip_execution_resource_descriptor_release(owned_descriptor);
   iree_hip_execution_resource_descriptor_release(retained_descriptor);
   return result;
@@ -513,7 +533,9 @@ hipError_t iree_hip_execution_context_create(
 hipError_t iree_hip_execution_context_destroy(hipExecutionCtx_t context) {
   hipExecutionCtx_t owned_context =
       iree_hip_execution_context_take_partitioned(context);
-  if (!owned_context) return hipErrorInvalidValue;
+  if (!owned_context) {
+    return hipErrorInvalidValue;
+  }
   const hipError_t result =
       iree_hip_execution_context_deinitialize(owned_context);
   iree_hip_execution_context_release(owned_context);
@@ -524,11 +546,15 @@ hipError_t iree_hip_execution_context_stream_create(
     hipExecutionCtx_t context_handle, unsigned int flags, int priority,
     hipStream_t* out_stream) {
   IREE_ASSERT_ARGUMENT(out_stream);
-  if (flags & ~hipStreamNonBlocking) return hipErrorInvalidValue;
+  if (flags & ~hipStreamNonBlocking) {
+    return hipErrorInvalidValue;
+  }
 
   hipExecutionCtx_t context =
       iree_hip_execution_context_resolve_live(context_handle);
-  if (!context) return hipErrorInvalidValue;
+  if (!context) {
+    return hipErrorInvalidValue;
+  }
 
   hipError_t result = hipSuccess;
   iree_hal_streaming_context_t* common_context = NULL;
@@ -548,7 +574,9 @@ hipError_t iree_hip_execution_context_stream_create(
     }
   } else {
     common_context = context->primary_context;
-    if (!common_context) result = hipErrorInvalidValue;
+    if (!common_context) {
+      result = hipErrorInvalidValue;
+    }
   }
 
   const iree_hal_streaming_execution_resource_set_t* resource_set = NULL;
@@ -561,7 +589,9 @@ hipError_t iree_hip_execution_context_stream_create(
   if (result == hipSuccess) {
     queue_family = iree_hal_device_queue_family(
         device->hal_device, resource_set->queue_family_ordinal);
-    if (!queue_family) result = hipErrorInvalidResourceConfiguration;
+    if (!queue_family) {
+      result = hipErrorInvalidResourceConfiguration;
+    }
   }
 
   int hip_priority = 0;
@@ -609,12 +639,16 @@ hipError_t iree_hip_execution_context_stream_create(
   iree_slim_mutex_unlock(&context->mutex);
 
   iree_hip_execution_context_release(context);
-  if (result == hipSuccess) *out_stream = stream;
+  if (result == hipSuccess) {
+    *out_stream = stream;
+  }
   return result;
 }
 
 void iree_hip_execution_context_unregister_stream(hipStream_t stream) {
-  if (!stream) return;
+  if (!stream) {
+    return;
+  }
 
   // The association itself owns a context reference. Retain it while holding
   // the stream mutex so context teardown cannot clear and release the
@@ -623,7 +657,9 @@ void iree_hip_execution_context_unregister_stream(hipStream_t stream) {
   hipExecutionCtx_t context = stream->execution_context;
   iree_hip_execution_context_retain(context);
   iree_slim_mutex_unlock(&stream->mutex);
-  if (!context) return;
+  if (!context) {
+    return;
+  }
 
   bool was_removed = false;
   iree_slim_mutex_lock(&context->mutex);
@@ -644,8 +680,12 @@ void iree_hip_execution_context_unregister_stream(hipStream_t stream) {
   iree_slim_mutex_unlock(&stream->mutex);
   iree_slim_mutex_unlock(&context->mutex);
 
-  if (was_removed) iree_hip_execution_context_release(context);
-  if (was_removed) iree_hip_stream_release(stream);
+  if (was_removed) {
+    iree_hip_execution_context_release(context);
+  }
+  if (was_removed) {
+    iree_hip_stream_release(stream);
+  }
   iree_hip_execution_context_release(context);
 }
 
@@ -760,7 +800,9 @@ static iree_status_t iree_hip_execution_context_snapshot_locked(
 
 static void iree_hip_execution_context_release_snapshot(
     iree_hip_execution_context_stream_snapshot_t* snapshot) {
-  if (!snapshot->common_context) return;
+  if (!snapshot->common_context) {
+    return;
+  }
   iree_hal_streaming_context_release_stream_snapshot(
       snapshot->common_context, snapshot->streams, snapshot->stream_count);
   iree_hal_streaming_context_release(snapshot->common_context);
@@ -821,7 +863,9 @@ hipError_t iree_hip_execution_context_record_event(
   IREE_ASSERT_ARGUMENT(event);
   hipExecutionCtx_t context =
       iree_hip_execution_context_resolve_live(context_handle);
-  if (!context) return hipErrorInvalidValue;
+  if (!context) {
+    return hipErrorInvalidValue;
+  }
 
   iree_hip_execution_context_stream_snapshot_t snapshot = {0};
   iree_slim_mutex_lock(&context->mutex);
@@ -867,7 +911,9 @@ hipError_t iree_hip_execution_context_wait_event(
   IREE_ASSERT_ARGUMENT(event);
   hipExecutionCtx_t context =
       iree_hip_execution_context_resolve_live(context_handle);
-  if (!context) return hipErrorInvalidValue;
+  if (!context) {
+    return hipErrorInvalidValue;
+  }
 
   iree_hal_streaming_graph_t* capture_graph =
       iree_hal_streaming_event_acquire_capture_graph(event);
@@ -966,7 +1012,9 @@ hipError_t iree_hip_execution_context_synchronize(
     hipExecutionCtx_t context_handle) {
   hipExecutionCtx_t context =
       iree_hip_execution_context_resolve_live(context_handle);
-  if (!context) return hipErrorInvalidValue;
+  if (!context) {
+    return hipErrorInvalidValue;
+  }
 
   iree_hip_execution_context_stream_snapshot_t snapshot = {0};
   iree_hal_semaphore_t* event_record_semaphore = NULL;
@@ -1019,10 +1067,14 @@ hipError_t iree_hip_execution_context_get_resource(
     hipExecutionCtx_t context, hipDevResourceType type,
     hipDevResource* out_resource) {
   IREE_ASSERT_ARGUMENT(out_resource);
-  if (type != hipDevResourceTypeSm) return hipErrorInvalidResourceType;
+  if (type != hipDevResourceTypeSm) {
+    return hipErrorInvalidResourceType;
+  }
   hipExecutionCtx_t retained_context =
       iree_hip_execution_context_resolve_live(context);
-  if (!retained_context) return hipErrorInvalidValue;
+  if (!retained_context) {
+    return hipErrorInvalidValue;
+  }
   const hipDevResource resource = retained_context->sm_resource;
   iree_hip_execution_context_release(retained_context);
   *out_resource = resource;
@@ -1034,7 +1086,9 @@ hipError_t iree_hip_execution_context_get_device(hipExecutionCtx_t context,
   IREE_ASSERT_ARGUMENT(out_device);
   hipExecutionCtx_t retained_context =
       iree_hip_execution_context_resolve_live(context);
-  if (!retained_context) return hipErrorInvalidValue;
+  if (!retained_context) {
+    return hipErrorInvalidValue;
+  }
   const hipDevice_t device = retained_context->device_ordinal;
   iree_hip_execution_context_release(retained_context);
   *out_device = device;
@@ -1046,7 +1100,9 @@ hipError_t iree_hip_execution_context_get_id(
   IREE_ASSERT_ARGUMENT(out_context_id);
   hipExecutionCtx_t retained_context =
       iree_hip_execution_context_resolve_live(context);
-  if (!retained_context) return hipErrorInvalidValue;
+  if (!retained_context) {
+    return hipErrorInvalidValue;
+  }
   const unsigned long long context_id = retained_context->context_id;
   iree_hip_execution_context_release(retained_context);
   *out_context_id = context_id;
@@ -1080,7 +1136,9 @@ static hipError_t iree_hip_execution_context_reset_matching(
     context->next_live_context = NULL;
     const hipError_t deinitialize_result =
         iree_hip_execution_context_deinitialize(context);
-    if (result == hipSuccess) result = deinitialize_result;
+    if (result == hipSuccess) {
+      result = deinitialize_result;
+    }
     iree_hip_execution_context_release(context);
   }
   return result;

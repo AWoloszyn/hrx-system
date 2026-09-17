@@ -53,7 +53,9 @@ bool SelectAtomicTestConfiguration(const iree_hal_device_spec_t* device_spec,
       iree_hal_device_spec_queues(device_spec);
   const iree_hal_device_memory_spec_t* memory =
       iree_hal_device_spec_memory(device_spec);
-  if (!queues || !memory) return false;
+  if (!queues || !memory) {
+    return false;
+  }
 
   for (iree_host_size_t family_index = 0; family_index < queues->family_count;
        ++family_index) {

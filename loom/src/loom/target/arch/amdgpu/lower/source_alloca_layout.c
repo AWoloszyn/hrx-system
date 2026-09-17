@@ -190,7 +190,9 @@ loom_amdgpu_source_alloca_layout_append_footprint_operation(
 
 static iree_status_t loom_amdgpu_source_alloca_layout_initialize_footprints(
     loom_amdgpu_source_alloca_layout_t* layout) {
-  if (layout->entry_count == 0) return iree_ok_status();
+  if (layout->entry_count == 0) {
+    return iree_ok_status();
+  }
   for (loom_value_ordinal_t value_ordinal = 0;
        value_ordinal < layout->value_domain->value_count; ++value_ordinal) {
     const loom_value_id_t value_id =
@@ -203,11 +205,15 @@ static iree_status_t loom_amdgpu_source_alloca_layout_initialize_footprints(
     const loom_value_ordinal_t root_ordinal =
         loom_local_value_domain_try_ordinal(layout->value_domain,
                                             value_root_id);
-    if (root_ordinal == LOOM_VALUE_ORDINAL_INVALID) continue;
+    if (root_ordinal == LOOM_VALUE_ORDINAL_INVALID) {
+      continue;
+    }
 
     const loom_value_t* root_value =
         loom_module_value(layout->module, value_root_id);
-    if (loom_value_is_block_arg(root_value)) continue;
+    if (loom_value_is_block_arg(root_value)) {
+      continue;
+    }
     const loom_op_t* alloca_op = loom_value_def_op(root_value);
     if (!alloca_op || !loom_buffer_alloca_isa(alloca_op) ||
         !alloca_op->parent_block) {
@@ -241,7 +247,9 @@ loom_amdgpu_source_alloca_layout_lookup_footprint(
     loom_value_id_t root_value_id) {
   const loom_value_ordinal_t root_ordinal =
       loom_local_value_domain_try_ordinal(layout->value_domain, root_value_id);
-  if (root_ordinal == LOOM_VALUE_ORDINAL_INVALID) return NULL;
+  if (root_ordinal == LOOM_VALUE_ORDINAL_INVALID) {
+    return NULL;
+  }
   return layout->entries[root_ordinal].footprint;
 }
 
@@ -284,13 +292,17 @@ static iree_status_t loom_amdgpu_source_alloca_layout_try_reuse_slot(
   }
   const loom_amdgpu_source_alloca_layout_footprint_t* footprint =
       loom_amdgpu_source_alloca_layout_lookup_footprint(layout, root_value_id);
-  if (!footprint) return iree_ok_status();
+  if (!footprint) {
+    return iree_ok_status();
+  }
   for (loom_amdgpu_source_alloca_layout_occupant_t* occupant = slot->occupants;
        occupant; occupant = occupant->next) {
     const loom_amdgpu_source_alloca_layout_footprint_t* occupant_footprint =
         loom_amdgpu_source_alloca_layout_lookup_footprint(
             layout, occupant->root_value_id);
-    if (!occupant_footprint) return iree_ok_status();
+    if (!occupant_footprint) {
+      return iree_ok_status();
+    }
     bool mutually_exclusive = false;
     IREE_RETURN_IF_ERROR(
         loom_control_uniformity_prove_mutually_exclusive_execution(
@@ -298,7 +310,9 @@ static iree_status_t loom_amdgpu_source_alloca_layout_try_reuse_slot(
             footprint->operations, occupant_footprint->operation_count,
             occupant_footprint->operations,
             LOOM_VALUE_FACT_UNIFORM_SCOPE_WORKGROUP, &mutually_exclusive));
-    if (!mutually_exclusive) return iree_ok_status();
+    if (!mutually_exclusive) {
+      return iree_ok_status();
+    }
   }
 
   if (byte_length > slot->byte_size) {
@@ -400,7 +414,9 @@ static iree_status_t loom_amdgpu_source_alloca_layout_record_allocation(
       IREE_RETURN_IF_ERROR(loom_amdgpu_source_alloca_layout_try_reuse_slot(
           layout, segment, &segment->slots[i], alloca_op, root_value_id,
           byte_length, byte_alignment, &reused));
-      if (reused) return iree_ok_status();
+      if (reused) {
+        return iree_ok_status();
+      }
     }
   }
   return loom_amdgpu_source_alloca_layout_append_slot(

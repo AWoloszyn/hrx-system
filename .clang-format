@@ -3,6 +3,7 @@
 
 # Runtime code follows Google C/C++ formatting.
 BasedOnStyle: Google
+InsertBraces: true
 
 ---
 Language: Json

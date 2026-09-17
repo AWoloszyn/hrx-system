@@ -488,7 +488,9 @@ TEST_F(PostNormSpecialTokenTest, SmallBufferWithInterleavedTokens) {
   // The special token should appear somewhere in the middle.
   bool found_special = false;
   for (auto id : reference) {
-    if (id == 100u) found_special = true;
+    if (id == 100u) {
+      found_special = true;
+    }
   }
   EXPECT_TRUE(found_special) << "Special token not found in reference output";
 
@@ -639,7 +641,9 @@ TEST_F(WhitespacePreTokenizerTest, WhitespaceSplitAlias) {
       iree_make_string_view(json, strlen(json)), iree_allocator_system(),
       &tokenizer);
   IREE_EXPECT_OK(status);
-  if (tokenizer) iree_tokenizer_free(tokenizer);
+  if (tokenizer) {
+    iree_tokenizer_free(tokenizer);
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -921,16 +925,17 @@ INSTANTIATE_TEST_SUITE_P(
 static std::string repr(const char* s) {
   std::string result = "'";
   for (const char* p = s; *p; ++p) {
-    if (*p == '\n')
+    if (*p == '\n') {
       result += "\\n";
-    else if (*p == '\t')
+    } else if (*p == '\t') {
       result += "\\t";
-    else if (*p == '\'')
+    } else if (*p == '\'') {
       result += "\\'";
-    else if (*p < 32)
+    } else if (*p < 32) {
       result += "\\x" + std::to_string((unsigned char)*p);
-    else
+    } else {
       result += *p;
+    }
   }
   result += "'";
   return result;

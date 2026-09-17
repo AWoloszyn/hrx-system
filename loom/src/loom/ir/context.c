@@ -286,7 +286,9 @@ iree_status_t loom_context_register_type_descriptors(
                               (int)entry->name.size, entry->name.data);
     }
     for (iree_host_size_t j = 0; j < i; ++j) {
-      if (!iree_string_view_equal(entry->name, entries[j].name)) continue;
+      if (!iree_string_view_equal(entry->name, entries[j].name)) {
+        continue;
+      }
       return iree_make_status(IREE_STATUS_ALREADY_EXISTS,
                               "type '%.*s' is repeated in one registration",
                               (int)entry->name.size, entry->name.data);
@@ -360,7 +362,9 @@ iree_status_t loom_context_register_encoding_vtable(
         context->encodings.vtables.entries[i];
     iree_string_view_t registered_name =
         loom_bstring_view(registered_vtable->descriptor->name);
-    if (!iree_string_view_equal(registered_name, name)) continue;
+    if (!iree_string_view_equal(registered_name, name)) {
+      continue;
+    }
     return iree_make_status(IREE_STATUS_ALREADY_EXISTS,
                             "encoding family '%.*s' is already registered",
                             (int)name.size, name.data);
@@ -385,7 +389,9 @@ iree_status_t loom_context_register_encoding_vtable(
 static iree_status_t loom_context_build_encoding_family_name_table(
     loom_context_t* context) {
   const iree_host_size_t family_count = context->encodings.vtables.count;
-  if (family_count == 0) return iree_ok_status();
+  if (family_count == 0) {
+    return iree_ok_status();
+  }
 
   iree_host_size_t name_count = family_count;
   for (iree_host_size_t i = 0; i < family_count; ++i) {
@@ -395,7 +401,9 @@ static iree_status_t loom_context_build_encoding_family_name_table(
 
   uint32_t capacity = iree_host_size_next_power_of_two(
       (iree_host_size_t)(name_count * 4 + 2) / 3);
-  if (capacity < 8) capacity = 8;
+  if (capacity < 8) {
+    capacity = 8;
+  }
   loom_encoding_family_name_entry_t* entries = NULL;
   IREE_RETURN_IF_ERROR(iree_allocator_malloc_array(
       context->allocator, capacity, sizeof(*entries), (void**)&entries));
@@ -441,11 +449,15 @@ static iree_status_t loom_context_build_op_name_table(loom_context_t* context) {
   for (uint8_t d = 0; d < LOOM_DIALECT_BUILTIN_COUNT_; ++d) {
     total_ops += context->op_vtables.dialects[d].op_count;
   }
-  if (total_ops == 0) return iree_ok_status();
+  if (total_ops == 0) {
+    return iree_ok_status();
+  }
 
   // Size to next power of 2 at ~0.75 load factor.
   uint32_t capacity = iree_host_size_next_power_of_two((total_ops * 4 + 2) / 3);
-  if (capacity < 32) capacity = 32;
+  if (capacity < 32) {
+    capacity = 32;
+  }
 
   loom_op_name_entry_t* entries = NULL;
   IREE_RETURN_IF_ERROR(iree_allocator_malloc_array(context->allocator, capacity,
@@ -459,7 +471,9 @@ static iree_status_t loom_context_build_op_name_table(loom_context_t* context) {
     const loom_dialect_vtables_t* dialect = &context->op_vtables.dialects[d];
     for (uint16_t i = 0; i < dialect->op_count; ++i) {
       const loom_op_vtable_t* vtable = dialect->entries[i];
-      if (!vtable) continue;
+      if (!vtable) {
+        continue;
+      }
       iree_string_view_t name = loom_op_vtable_name(vtable);
       uint32_t hash = loom_hash_string(name);
       uint32_t slot = hash & mask;
@@ -486,11 +500,15 @@ static iree_status_t loom_context_build_parameterized_attr_name_table(
        ++dialect_id) {
     total_families += context->parameterized_attrs.dialects[dialect_id].count;
   }
-  if (total_families == 0) return iree_ok_status();
+  if (total_families == 0) {
+    return iree_ok_status();
+  }
 
   uint32_t capacity =
       iree_host_size_next_power_of_two((total_families * 4 + 2) / 3);
-  if (capacity < 16) capacity = 16;
+  if (capacity < 16) {
+    capacity = 16;
+  }
   loom_parameterized_attr_name_entry_t* entries = NULL;
   IREE_RETURN_IF_ERROR(iree_allocator_malloc_array(
       context->allocator, capacity, sizeof(*entries), (void**)&entries));
@@ -542,11 +560,15 @@ static iree_status_t loom_context_build_parameterized_attr_name_table(
 static iree_status_t loom_context_build_type_name_table(
     loom_context_t* context) {
   const iree_host_size_t type_count = context->registered_types.count;
-  if (type_count == 0) return iree_ok_status();
+  if (type_count == 0) {
+    return iree_ok_status();
+  }
 
   uint32_t capacity = iree_host_size_next_power_of_two(
       (iree_host_size_t)(type_count * 4 + 2) / 3);
-  if (capacity < 8) capacity = 8;
+  if (capacity < 8) {
+    capacity = 8;
+  }
   loom_type_name_entry_t* entries = NULL;
   IREE_RETURN_IF_ERROR(iree_allocator_malloc_array(
       context->allocator, capacity, sizeof(*entries), (void**)&entries));
@@ -576,11 +598,15 @@ static iree_status_t loom_context_validate_condition_refinements(
        ++dialect_id) {
     const loom_dialect_vtables_t* dialect =
         &context->op_vtables.dialects[dialect_id];
-    if (dialect->semantics == NULL) continue;
+    if (dialect->semantics == NULL) {
+      continue;
+    }
     for (uint16_t op_index = 0; op_index < dialect->op_count; ++op_index) {
       uint8_t descriptor_index =
           dialect->semantics[op_index].condition_refinement_index;
-      if (descriptor_index == 0) continue;
+      if (descriptor_index == 0) {
+        continue;
+      }
       if (dialect->condition_refinements == NULL ||
           descriptor_index > dialect->condition_refinement_count) {
         return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
@@ -621,11 +647,15 @@ iree_status_t loom_context_finalize(loom_context_t* context) {
 const loom_op_vtable_t* loom_context_resolve_op(const loom_context_t* context,
                                                 loom_op_kind_t kind) {
   uint8_t dialect_id = loom_op_dialect_id(kind);
-  if (dialect_id >= LOOM_DIALECT_BUILTIN_COUNT_) return NULL;
+  if (dialect_id >= LOOM_DIALECT_BUILTIN_COUNT_) {
+    return NULL;
+  }
   const loom_dialect_vtables_t* dialect =
       &context->op_vtables.dialects[dialect_id];
   uint8_t op_index = loom_op_dialect_index(kind);
-  if (op_index >= dialect->op_count) return NULL;
+  if (op_index >= dialect->op_count) {
+    return NULL;
+  }
   return dialect->entries[op_index];
 }
 
@@ -648,11 +678,15 @@ const loom_condition_refinement_descriptor_t*
 loom_context_resolve_condition_refinement(const loom_context_t* context,
                                           loom_op_kind_t kind) {
   uint8_t dialect_id = loom_op_dialect_id(kind);
-  if (dialect_id >= LOOM_DIALECT_BUILTIN_COUNT_) return NULL;
+  if (dialect_id >= LOOM_DIALECT_BUILTIN_COUNT_) {
+    return NULL;
+  }
   const loom_dialect_vtables_t* dialect =
       &context->op_vtables.dialects[dialect_id];
   uint8_t op_index = loom_op_dialect_index(kind);
-  if (op_index >= dialect->op_count || dialect->semantics == NULL) return NULL;
+  if (op_index >= dialect->op_count || dialect->semantics == NULL) {
+    return NULL;
+  }
   uint8_t descriptor_index =
       dialect->semantics[op_index].condition_refinement_index;
   if (descriptor_index == 0 ||
@@ -666,7 +700,9 @@ const loom_op_vtable_t* loom_context_lookup_op_by_name(
     const loom_context_t* context, iree_string_view_t name,
     loom_op_kind_t* out_kind) {
   const loom_op_name_table_t* table = &context->op_name_table;
-  if (table->capacity == 0) return NULL;
+  if (table->capacity == 0) {
+    return NULL;
+  }
   uint32_t mask = table->capacity - 1;
   uint32_t hash = loom_hash_string(name);
   uint32_t slot = hash & mask;
@@ -684,11 +720,15 @@ const loom_parameterized_attr_descriptor_t*
 loom_context_resolve_parameterized_attr(const loom_context_t* context,
                                         loom_parameterized_attr_kind_t kind) {
   uint8_t dialect_id = loom_parameterized_attr_dialect_id(kind);
-  if (dialect_id >= LOOM_DIALECT_BUILTIN_COUNT_) return NULL;
+  if (dialect_id >= LOOM_DIALECT_BUILTIN_COUNT_) {
+    return NULL;
+  }
   const loom_dialect_parameterized_attrs_t* dialect =
       &context->parameterized_attrs.dialects[dialect_id];
   uint8_t family_index = loom_parameterized_attr_dialect_index(kind);
-  if (family_index >= dialect->count) return NULL;
+  if (family_index >= dialect->count) {
+    return NULL;
+  }
   return &dialect->entries[family_index];
 }
 
@@ -697,7 +737,9 @@ loom_context_lookup_parameterized_attr_by_name(const loom_context_t* context,
                                                iree_string_view_t name) {
   const loom_parameterized_attr_name_table_t* table =
       &context->parameterized_attr_name_table;
-  if (table->capacity == 0) return NULL;
+  if (table->capacity == 0) {
+    return NULL;
+  }
   uint32_t mask = table->capacity - 1;
   uint32_t slot = loom_hash_string(name) & mask;
   while (table->entries[slot].descriptor != NULL) {
@@ -712,7 +754,9 @@ loom_context_lookup_parameterized_attr_by_name(const loom_context_t* context,
 const loom_type_descriptor_t* loom_context_lookup_type_by_name(
     const loom_context_t* context, iree_string_view_t name) {
   const loom_type_name_table_t* table = &context->type_name_table;
-  if (table->capacity == 0) return NULL;
+  if (table->capacity == 0) {
+    return NULL;
+  }
   const uint32_t mask = table->capacity - 1;
   uint32_t slot = loom_hash_string(name) & mask;
   while (table->entries[slot].descriptor != NULL) {
@@ -746,7 +790,9 @@ loom_encoding_name_resolution_t loom_context_resolve_encoding_name(
 
 const loom_encoding_vtable_t* loom_context_resolve_encoding_vtable(
     const loom_context_t* context, loom_encoding_family_id_t family_id) {
-  if (family_id == LOOM_ENCODING_FAMILY_ID_INVALID) return NULL;
+  if (family_id == LOOM_ENCODING_FAMILY_ID_INVALID) {
+    return NULL;
+  }
   return context->encodings.vtables.entries[family_id - 1];
 }
 
@@ -763,7 +809,9 @@ iree_string_view_t loom_op_name(const loom_module_t* module,
                                 const loom_op_t* op) {
   const loom_op_vtable_t* vtable =
       loom_context_resolve_op(module->context, op->kind);
-  if (vtable) return loom_op_vtable_name(vtable);
+  if (vtable) {
+    return loom_op_vtable_name(vtable);
+  }
   return IREE_SV("unknown");
 }
 
@@ -776,6 +824,8 @@ bool loom_op_has_trait(const loom_module_t* module, const loom_op_t* op,
                        loom_trait_flags_t trait) {
   const loom_op_vtable_t* vtable =
       loom_context_resolve_op(module->context, op->kind);
-  if (vtable) return (vtable->traits & trait) != 0;
+  if (vtable) {
+    return (vtable->traits & trait) != 0;
+  }
   return false;
 }

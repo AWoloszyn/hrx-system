@@ -323,7 +323,9 @@ static iree_status_t iree_tokenizer_parse_sequence_pre_tokenizer(
        ++i) {
     iree_string_view_t element_value = iree_string_view_empty();
     status = iree_json_array_get(array_value, i, &element_value);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
 
     iree_tokenizer_segmenter_t* child = NULL;
     status = iree_tokenizer_huggingface_parse_segmenter(

@@ -588,7 +588,9 @@ static bool loom_vector_to_scalar_reduce_axes_static_element_count(
     }
     element_count *=
         (uint64_t)loom_type_dim_static_size_at(state->input_type, input_axis);
-    if (element_count > UINT16_MAX) return false;
+    if (element_count > UINT16_MAX) {
+      return false;
+    }
   }
   *out_element_count = (uint16_t)element_count;
   return true;

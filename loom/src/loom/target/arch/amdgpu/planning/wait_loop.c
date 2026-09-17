@@ -25,7 +25,9 @@ struct loom_amdgpu_wait_loop_t {
 static bool loom_amdgpu_wait_loop_interval_is_supported(
     const loom_low_schedule_table_t* schedule,
     const loom_cfg_loop_interval_t* interval) {
-  if (!interval->is_canonical) return false;
+  if (!interval->is_canonical) {
+    return false;
+  }
   const loom_cfg_graph_t* graph = &schedule->cfg_graph;
   const loom_cfg_edge_info_t* entry_edge =
       loom_cfg_graph_edge(graph, interval->entry_edge_index);
@@ -49,7 +51,9 @@ static bool loom_amdgpu_wait_loop_interval_is_supported(
 
   const loom_low_schedule_block_t* preheader =
       &schedule->blocks[interval->entry_predecessor_index];
-  if (preheader->node_count == 0) return false;
+  if (preheader->node_count == 0) {
+    return false;
+  }
   const uint32_t insertion_node =
       preheader->node_start + preheader->node_count - 1;
   IREE_ASSERT_LT(insertion_node, schedule->node_count);
@@ -73,7 +77,9 @@ iree_status_t loom_amdgpu_wait_loop_analysis_initialize(
       .schedule = schedule,
   };
   const loom_cfg_loop_forest_t* forest = &schedule->loop_forest;
-  if (forest->interval_count == 0) return iree_ok_status();
+  if (forest->interval_count == 0) {
+    return iree_ok_status();
+  }
 
   loom_amdgpu_wait_loop_t* loops = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -135,7 +141,9 @@ iree_status_t loom_amdgpu_wait_loop_analysis_initialize(
 uint16_t loom_amdgpu_wait_loop_analysis_preheader(
     const loom_amdgpu_wait_loop_analysis_t* analysis, uint32_t producer_node,
     uint32_t consumer_node) {
-  if (analysis->loop_count == 0) return UINT16_MAX;
+  if (analysis->loop_count == 0) {
+    return UINT16_MAX;
+  }
   const loom_cfg_loop_forest_t* forest = &analysis->schedule->loop_forest;
   const uint16_t producer_block =
       analysis->schedule->nodes[producer_node].block_index;
@@ -143,7 +151,9 @@ uint16_t loom_amdgpu_wait_loop_analysis_preheader(
       analysis->schedule->nodes[consumer_node].block_index;
   const uint32_t innermost_loop =
       forest->innermost_loop_indices[consumer_block];
-  if (innermost_loop == LOOM_CFG_LOOP_NONE) return UINT16_MAX;
+  if (innermost_loop == LOOM_CFG_LOOP_NONE) {
+    return UINT16_MAX;
+  }
 
   uint32_t loop_index =
       analysis->loops[innermost_loop].is_valid
@@ -189,12 +199,16 @@ const loom_cfg_loop_interval_t* loom_amdgpu_wait_loop_analysis_cyclic_interval(
   const loom_cfg_loop_forest_t* forest = &analysis->schedule->loop_forest;
   const uint32_t innermost_loop =
       forest->innermost_loop_indices[consumer->block_index];
-  if (innermost_loop == LOOM_CFG_LOOP_NONE) return NULL;
+  if (innermost_loop == LOOM_CFG_LOOP_NONE) {
+    return NULL;
+  }
   const uint32_t loop_index =
       analysis->loops[innermost_loop].is_valid
           ? innermost_loop
           : analysis->loops[innermost_loop].valid_parent_loop_index;
-  if (loop_index == LOOM_CFG_LOOP_NONE) return NULL;
+  if (loop_index == LOOM_CFG_LOOP_NONE) {
+    return NULL;
+  }
   const loom_cfg_loop_interval_t* interval = &forest->intervals[loop_index];
   return producer->block_index >= interval->header_index &&
                  producer->block_index <= interval->latch_index
@@ -236,7 +250,9 @@ static bool loom_amdgpu_wait_loop_blocks_are_counter_transparent(
   const loom_low_schedule_table_t* schedule = analysis->schedule;
   for (uint32_t block_index = interval->header_index;
        block_index <= interval->latch_index; ++block_index) {
-    if (block_index == frontier_block_index) continue;
+    if (block_index == frontier_block_index) {
+      continue;
+    }
     const loom_low_schedule_block_t* block = &schedule->blocks[block_index];
     for (uint32_t i = 0; i < block->scheduled_node_count; ++i) {
       const uint32_t packet_index = block->scheduled_node_start + i;
@@ -316,7 +332,9 @@ static bool loom_amdgpu_wait_loop_analyze_cyclic_frontier(
       IREE_ASSERT_LT(dependency_index, dependency_count);
       const loom_amdgpu_wait_dependency_t* dependency =
           &dependencies[dependency_index];
-      if ((dependency->counter_mask & counter_mask) == 0) continue;
+      if ((dependency->counter_mask & counter_mask) == 0) {
+        continue;
+      }
       const loom_low_schedule_node_t* producer =
           &schedule->nodes[dependency->producer_node];
       if (producer->block_index != block_index ||
@@ -342,7 +360,9 @@ static bool loom_amdgpu_wait_loop_analyze_cyclic_frontier(
           iree_max(last_consumer_ordinal, consumer->scheduled_ordinal);
     }
   }
-  if (!has_cyclic_dependency) return false;
+  if (!has_cyclic_dependency) {
+    return false;
+  }
 
   uint32_t first_producer_ordinal = UINT32_MAX;
   uint32_t last_producer_ordinal = 0;
@@ -350,11 +370,15 @@ static bool loom_amdgpu_wait_loop_analyze_cyclic_frontier(
   uint32_t outstanding_write_count = 0;
   uint32_t outstanding_workgroup_write_count = 0;
   for (uint32_t i = 0; i < block->scheduled_node_count; ++i) {
-    if (i < pending_start_ordinal) continue;
+    if (i < pending_start_ordinal) {
+      continue;
+    }
     const uint32_t packet_index = block->scheduled_node_start + i;
     const uint32_t node_index = schedule->scheduled_node_indices[packet_index];
     const loom_amdgpu_wait_completion_node_t* node = &nodes[node_index];
-    if ((node->producer_counter_mask & counter_mask) == 0) continue;
+    if ((node->producer_counter_mask & counter_mask) == 0) {
+      continue;
+    }
     first_producer_ordinal = iree_min(first_producer_ordinal, i);
     last_producer_ordinal = i;
     ++outstanding_count;
@@ -480,7 +504,9 @@ iree_status_t loom_amdgpu_wait_loop_analysis_build_cyclic_frontiers(
       counter_mask &= counter_mask - 1;
     }
   }
-  if (!has_candidate) return iree_ok_status();
+  if (!has_candidate) {
+    return iree_ok_status();
+  }
 
   const iree_host_size_t frontier_count =
       schedule->block_count * LOOM_AMDGPU_WAIT_COUNTER_SLOT_COUNT;

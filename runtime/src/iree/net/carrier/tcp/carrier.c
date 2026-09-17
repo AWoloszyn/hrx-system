@@ -201,7 +201,9 @@ static void iree_net_tcp_carrier_retire_pending_operation(
 }
 
 static iree_status_t iree_net_tcp_validate_send_span(iree_async_span_t span) {
-  if (span.length == 0) return iree_ok_status();
+  if (span.length == 0) {
+    return iree_ok_status();
+  }
   if (!iree_async_span_is_cpu_accessible(span)) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "TCP send span is not CPU-accessible");
@@ -254,9 +256,13 @@ static void iree_net_tcp_enqueue_send_locked(iree_net_tcp_carrier_t* carrier,
 static iree_net_tcp_send_slot_t* iree_net_tcp_pop_send_locked(
     iree_net_tcp_carrier_t* carrier) {
   iree_net_tcp_send_slot_t* slot = carrier->send_queue_head;
-  if (!slot) return NULL;
+  if (!slot) {
+    return NULL;
+  }
   carrier->send_queue_head = slot->next;
-  if (!carrier->send_queue_head) carrier->send_queue_tail = NULL;
+  if (!carrier->send_queue_head) {
+    carrier->send_queue_tail = NULL;
+  }
   slot->next = NULL;
   slot->state = IREE_NET_TCP_SEND_SLOT_STATE_SUBMITTED;
   return slot;
@@ -278,7 +284,9 @@ static iree_net_tcp_send_slot_t* iree_net_tcp_find_submitted_send_locked(
   iree_net_tcp_send_slot_t* submitted_slot = NULL;
   for (uint32_t i = 0; i < carrier->send_slot_count; ++i) {
     iree_net_tcp_send_slot_t* slot = &carrier->send_slots[i];
-    if (slot->state != IREE_NET_TCP_SEND_SLOT_STATE_SUBMITTED) continue;
+    if (slot->state != IREE_NET_TCP_SEND_SLOT_STATE_SUBMITTED) {
+      continue;
+    }
     IREE_ASSERT(!submitted_slot,
                 "TCP carrier submitted multiple socket sends concurrently");
     submitted_slot = slot;
@@ -323,7 +331,9 @@ static iree_net_tcp_send_slot_t* iree_net_tcp_detach_send_queue_locked(
     IREE_ASSERT(slot->state == IREE_NET_TCP_SEND_SLOT_STATE_QUEUED);
     slot->state = IREE_NET_TCP_SEND_SLOT_STATE_DETACHED;
   }
-  if (out_tail) *out_tail = tail;
+  if (out_tail) {
+    *out_tail = tail;
+  }
   return head;
 }
 
@@ -335,7 +345,9 @@ static iree_net_tcp_send_slot_t* iree_net_tcp_detach_reservations_locked(
   iree_net_tcp_send_slot_t* tail = NULL;
   for (uint32_t i = 0; i < carrier->send_slot_count; ++i) {
     iree_net_tcp_send_slot_t* slot = &carrier->send_slots[i];
-    if (slot->state != IREE_NET_TCP_SEND_SLOT_STATE_RESERVED) continue;
+    if (slot->state != IREE_NET_TCP_SEND_SLOT_STATE_RESERVED) {
+      continue;
+    }
     slot->reservation_handle = 0;
     slot->state = IREE_NET_TCP_SEND_SLOT_STATE_DETACHED;
     slot->next = NULL;
@@ -377,7 +389,9 @@ static iree_status_t iree_net_tcp_request_send_cancellation_locked(
     iree_net_tcp_carrier_t* carrier) {
   iree_net_tcp_send_slot_t* submitted_slot =
       iree_net_tcp_find_submitted_send_locked(carrier);
-  if (!submitted_slot) return iree_ok_status();
+  if (!submitted_slot) {
+    return iree_ok_status();
+  }
   iree_status_t status = iree_net_tcp_cancel_operation_locked(
       carrier, &submitted_slot->operation.base);
   if (iree_status_is_ok(status)) {
@@ -503,7 +517,9 @@ static bool iree_net_tcp_advance_send_slot(iree_net_tcp_send_slot_t* slot,
       remaining = 0;
     }
   }
-  if (remaining != 0) return false;
+  if (remaining != 0) {
+    return false;
+  }
   slot->bytes_transferred += bytes_transferred;
   return true;
 }
@@ -551,7 +567,9 @@ static iree_status_t iree_net_tcp_start_send_dispatch_locked(
   *out_rejected_slot = NULL;
   iree_net_tcp_send_slot_t* slot =
       iree_net_tcp_claim_send_dispatch_locked(carrier);
-  if (!slot) return iree_ok_status();
+  if (!slot) {
+    return iree_ok_status();
+  }
   iree_status_t status = iree_net_tcp_submit_send_slot_locked(carrier, slot);
   if (!iree_status_is_ok(status)) {
     slot->state = IREE_NET_TCP_SEND_SLOT_STATE_DETACHED;
@@ -712,7 +730,9 @@ static iree_status_t iree_net_tcp_continue_receive_locked(
       !iree_net_carrier_has_terminal_error(&carrier->base)) {
     carrier->receive_state = IREE_NET_TCP_RECEIVE_STATE_SUBMITTED;
     iree_status_t status = iree_net_tcp_submit_receive_locked(carrier);
-    if (iree_status_is_ok(status)) return status;
+    if (iree_status_is_ok(status)) {
+      return status;
+    }
     carrier->receive_state = IREE_NET_TCP_RECEIVE_STATE_RETIRED;
     *out_retire_receive = true;
     return status;
@@ -801,7 +821,9 @@ static void iree_net_tcp_retain_moved_receive_lease(
     iree_net_tcp_carrier_t* carrier,
     iree_net_tcp_receive_lease_context_t* context,
     iree_async_buffer_lease_t* callback_lease) {
-  if (callback_lease->release.fn) return;
+  if (callback_lease->release.fn) {
+    return;
+  }
 
   iree_net_carrier_retain(&carrier->base);
   iree_atomic_fetch_add(&carrier->retained_receive_lease_count, 1,
@@ -1023,7 +1045,9 @@ static void iree_net_tcp_carrier_deactivate(
   iree_slim_mutex_unlock(&carrier->mutex);
 
   IREE_ASSERT(valid_request, "TCP carrier deactivated more than once");
-  if (!valid_request) return;
+  if (!valid_request) {
+    return;
+  }
 
   if (shutdown_socket) {
     cleanup_status = iree_status_join(
@@ -1109,7 +1133,9 @@ static iree_status_t iree_net_tcp_carrier_send(
     slot->span_count = 0;
     slot->first_span = 0;
     for (iree_host_size_t i = 0; i < params->data.count; ++i) {
-      if (params->data.values[i].length == 0) continue;
+      if (params->data.values[i].length == 0) {
+        continue;
+      }
       slot->spans[slot->span_count++] = params->data.values[i];
     }
     iree_async_span_list_retain_regions(
@@ -1133,7 +1159,9 @@ static iree_status_t iree_net_tcp_carrier_send(
 static iree_net_carrier_send_handle_t iree_net_tcp_allocate_reservation_handle(
     iree_net_tcp_carrier_t* carrier, iree_net_tcp_send_slot_t* slot) {
   ++slot->reservation_generation;
-  if (slot->reservation_generation == 0) ++slot->reservation_generation;
+  if (slot->reservation_generation == 0) {
+    ++slot->reservation_generation;
+  }
   const uint32_t slot_index = (uint32_t)(slot - carrier->send_slots);
   return ((uint64_t)slot->reservation_generation << 32) |
          ((uint64_t)slot_index + 1u);
@@ -1234,7 +1262,9 @@ static void iree_net_tcp_carrier_abort_send(
   iree_slim_mutex_unlock(&carrier->mutex);
 
   IREE_ASSERT(valid_reservation, "TCP send reservation is no longer valid");
-  if (!valid_reservation) return;
+  if (!valid_reservation) {
+    return;
+  }
   iree_allocator_free(base_carrier->host_allocator, reservation_buffer);
   if (issue_write_shutdown) {
     iree_net_tcp_issue_deferred_write_shutdown(carrier);
@@ -1300,7 +1330,9 @@ IREE_API_EXPORT iree_status_t iree_net_tcp_carrier_create(
 
   iree_net_tcp_carrier_options_t default_options =
       iree_net_tcp_carrier_options_default();
-  if (!options) options = &default_options;
+  if (!options) {
+    options = &default_options;
+  }
   if (options->max_send_operations == 0 ||
       options->max_send_operations == UINT32_MAX) {
     return iree_make_status(

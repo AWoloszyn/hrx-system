@@ -19,6 +19,8 @@ void iree_tokenizer_model_initialize(
 }
 
 void iree_tokenizer_model_free(iree_tokenizer_model_t* model) {
-  if (!model) return;
+  if (!model) {
+    return;
+  }
   model->vtable->destroy(model);
 }

@@ -25,8 +25,12 @@ iree_hal_channel_provider_query_default_rank_and_count(
     int32_t* out_count) {
   IREE_ASSERT_ARGUMENT(channel_provider);
   IREE_TRACE_ZONE_BEGIN(z0);
-  if (out_rank) *out_rank = IREE_HAL_CHANNEL_RANK_DEFAULT;
-  if (out_count) *out_count = IREE_HAL_CHANNEL_COUNT_DEFAULT;
+  if (out_rank) {
+    *out_rank = IREE_HAL_CHANNEL_RANK_DEFAULT;
+  }
+  if (out_count) {
+    *out_count = IREE_HAL_CHANNEL_COUNT_DEFAULT;
+  }
   iree_status_t status =
       _VTABLE_DISPATCH(channel_provider, query_default_rank_and_count)(
           channel_provider, out_rank, out_count);

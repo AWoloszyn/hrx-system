@@ -180,7 +180,9 @@ static bool QueryAgentCodeObjectTarget(
   if (!iree_status_is_ok(status)) {
     iree_status_free(status);
   }
-  if (!query.found) return false;
+  if (!query.found) {
+    return false;
+  }
   *out_gfxip_version = query.gfxip_version;
   *out_exact_target = query.exact_target;
   *out_code_object_target = query.code_object_target;

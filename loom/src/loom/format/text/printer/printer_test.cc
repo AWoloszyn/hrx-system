@@ -2178,8 +2178,12 @@ TEST_F(PrintPredicateTest, AllPredicateKinds) {
     std::string output = print_op(op, LOOM_TEXT_PRINT_DEFAULT);
     std::string expected =
         std::string("test.predtest [") + expected_names[kind] + "(99";
-    if (predicates[0].arg_count > 1) expected += ", 100";
-    if (predicates[0].arg_count > 2) expected += ", 101";
+    if (predicates[0].arg_count > 1) {
+      expected += ", 100";
+    }
+    if (predicates[0].arg_count > 2) {
+      expected += ", 101";
+    }
     expected += ")]\n";
     EXPECT_EQ(output, expected) << "Failed for predicate kind " << kind;
   }

@@ -34,7 +34,9 @@ using ::iree::testing::status::StatusIs;
 std::string GetUniqueContents(const char* unique_name,
                               iree_host_size_t padded_size) {
   std::string str = std::string("Test with name ") + unique_name + "\n";
-  if (str.size() < padded_size) str.resize(padded_size, 0);
+  if (str.size() < padded_size) {
+    str.resize(padded_size, 0);
+  }
   return str;
 }
 

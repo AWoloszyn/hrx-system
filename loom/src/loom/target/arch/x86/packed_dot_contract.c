@@ -110,7 +110,9 @@ iree_host_size_t loom_x86_packed_dot_descriptor_count(void) {
 
 const loom_x86_packed_dot_descriptor_t* loom_x86_packed_dot_descriptor_at(
     iree_host_size_t index) {
-  if (index >= loom_x86_packed_dot_builtin_descriptor_count) return NULL;
+  if (index >= loom_x86_packed_dot_builtin_descriptor_count) {
+    return NULL;
+  }
   return &loom_x86_packed_dot_builtin_descriptors[index];
 }
 
@@ -207,7 +209,9 @@ const loom_x86_packed_dot_descriptor_t* loom_x86_packed_dot_select(
   };
   if (request == NULL) {
     diagnostic.rejection_bits = LOOM_X86_PACKED_DOT_REJECTION_INVALID_REQUEST;
-    if (out_diagnostic != NULL) *out_diagnostic = diagnostic;
+    if (out_diagnostic != NULL) {
+      *out_diagnostic = diagnostic;
+    }
     return NULL;
   }
 
@@ -241,7 +245,9 @@ const loom_x86_packed_dot_descriptor_t* loom_x86_packed_dot_select(
     }
     ++diagnostic.feature_candidate_count;
 
-    if (out_diagnostic != NULL) *out_diagnostic = diagnostic;
+    if (out_diagnostic != NULL) {
+      *out_diagnostic = diagnostic;
+    }
     return descriptor;
   }
 
@@ -256,7 +262,9 @@ const loom_x86_packed_dot_descriptor_t* loom_x86_packed_dot_select(
   } else if (diagnostic.feature_candidate_count == 0) {
     diagnostic.rejection_bits = LOOM_X86_PACKED_DOT_REJECTION_FEATURES;
   }
-  if (out_diagnostic != NULL) *out_diagnostic = diagnostic;
+  if (out_diagnostic != NULL) {
+    *out_diagnostic = diagnostic;
+  }
   return NULL;
 }
 

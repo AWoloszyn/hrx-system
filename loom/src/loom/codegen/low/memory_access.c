@@ -163,7 +163,9 @@ bool loom_low_memory_access_summaries_may_alias(
 bool loom_low_memory_access_summaries_equal(
     const loom_low_memory_access_summary_t* left,
     const loom_low_memory_access_summary_t* right) {
-  if (left == right) return true;
+  if (left == right) {
+    return true;
+  }
   if (left->memory_space != right->memory_space ||
       left->precision_flags != right->precision_flags) {
     return false;
@@ -192,7 +194,9 @@ bool loom_low_memory_access_summaries_equal(
       left->byte_interval == right->byte_interval) {
     return true;
   }
-  if (left->byte_interval == NULL || right->byte_interval == NULL) return false;
+  if (left->byte_interval == NULL || right->byte_interval == NULL) {
+    return false;
+  }
   const loom_low_byte_interval_t* left_interval = left->byte_interval;
   const loom_low_byte_interval_t* right_interval = right->byte_interval;
   return left_interval->precision_flags == right_interval->precision_flags &&

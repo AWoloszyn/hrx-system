@@ -491,7 +491,9 @@ TEST_P(FencePosixTest, ImportFence_CrossThreadImportRacesWithPoll) {
   start_promise.set_value();
   PollUntilCondition(
       [&] {
-        if (iree_async_semaphore_query(semaphore) >= 1) return true;
+        if (iree_async_semaphore_query(semaphore) >= 1) {
+          return true;
+        }
         return import_completed.load(std::memory_order_acquire) &&
                import_status_code != IREE_STATUS_OK;
       },
@@ -551,7 +553,9 @@ TEST_P(FencePosixTest, ImportFence_ConcurrentImportsRaceWithPoll) {
     });
   }
 
-  for (auto& ready : ready_futures) ready.wait();
+  for (auto& ready : ready_futures) {
+    ready.wait();
+  }
   start_promise.set_value();
   PollUntilCondition(
       [&] {

@@ -271,11 +271,17 @@ static_assert(sizeof(MultiDeviceKernelGate) == 2 * sizeof(uint32_t));
 
 struct MultiDeviceLaunchState {
   ~MultiDeviceLaunchState() {
-    if (!stream && !output && !host_gate) return;
+    if (!stream && !output && !host_gate) {
+      return;
+    }
     const hipError_t select_result = set_device(device);
     EXPECT_EQ(hipSuccess, select_result);
-    if (select_result != hipSuccess) return;
-    if (host_gate) host_gate->Release();
+    if (select_result != hipSuccess) {
+      return;
+    }
+    if (host_gate) {
+      host_gate->Release();
+    }
     if (stream) {
       const hipError_t destroy_result = stream_destroy(stream);
       EXPECT_EQ(hipSuccess, destroy_result);
@@ -728,7 +734,9 @@ TEST(HipModuleExecutionTest,
        ++device) {
     hipDeviceProp_t properties = {};
     ASSERT_EQ(hipSuccess, get_device_properties(&properties, device));
-    if (reference_architecture != properties.gcnArchName) continue;
+    if (reference_architecture != properties.gcnArchName) {
+      continue;
+    }
 
     MultiDeviceLaunchState& state = states[launch_count];
     state.device = device;
@@ -802,7 +810,9 @@ TEST(HipModuleExecutionTest,
     ASSERT_EQ(hipSuccess, set_device(states[0].device));
     const hipError_t enqueue_result = launch_host_function(
         states[0].stream, HostGate::Callback, &prefix_gate);
-    if (enqueue_result == hipSuccess) prefix_gate.Arm();
+    if (enqueue_result == hipSuccess) {
+      prefix_gate.Arm();
+    }
     ASSERT_EQ(hipSuccess, enqueue_result);
     prefix_gate.WaitUntilEntered();
 
@@ -855,7 +865,9 @@ TEST(HipModuleExecutionTest,
         all_kernels_entered &= __atomic_load_n(&states[i].host_gate->entered,
                                                __ATOMIC_ACQUIRE) != 0;
       }
-      if (!all_kernels_entered) std::this_thread::yield();
+      if (!all_kernels_entered) {
+        std::this_thread::yield();
+      }
     }
 
     if (all_kernels_entered) {
@@ -873,7 +885,9 @@ TEST(HipModuleExecutionTest,
       }
     }
 
-    for (size_t i = 0; i < launch_count; ++i) states[i].host_gate->Release();
+    for (size_t i = 0; i < launch_count; ++i) {
+      states[i].host_gate->Release();
+    }
     while (!call_returned.load(std::memory_order_acquire)) {
       std::this_thread::yield();
     }

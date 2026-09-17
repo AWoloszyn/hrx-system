@@ -158,12 +158,16 @@ TEST_F(DeviceStatusTest, ConcurrentFatalErrorsPreserveOneCompleteCause) {
   for (size_t i = 0; i < threads.size(); ++i) {
     threads[i] = std::thread([&, i] { results[i] = Observe(errors[i]); });
   }
-  for (auto& thread : threads) thread.join();
+  for (auto& thread : threads) {
+    thread.join();
+  }
   const amdf_status_t terminal = amdf_kmt_device_status_query(&status_);
   EXPECT_TRUE(terminal == amdf_kmt_make_status(errors[0]) ||
               terminal == amdf_kmt_make_status(errors[1]) ||
               terminal == amdf_kmt_make_status(errors[2]));
-  for (amdf_status_t result : results) EXPECT_EQ(result, terminal);
+  for (amdf_status_t result : results) {
+    EXPECT_EQ(result, terminal);
+  }
   EXPECT_EQ(state_.query_count, 0u);
 }
 

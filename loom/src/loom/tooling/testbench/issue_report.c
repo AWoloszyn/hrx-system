@@ -118,7 +118,9 @@ static const loom_location_entry_t* loom_testbench_issue_file_location(
 static iree_status_t loom_testbench_issue_write_source_location_json(
     const loom_testbench_module_plan_t* module_plan,
     const loom_testbench_issue_t* issue, loom_json_object_writer_t* object) {
-  if (issue->op == NULL) return iree_ok_status();
+  if (issue->op == NULL) {
+    return iree_ok_status();
+  }
   const loom_module_t* module = module_plan->module;
   const loom_location_entry_t* location =
       loom_testbench_issue_file_location(module, issue->op->location);

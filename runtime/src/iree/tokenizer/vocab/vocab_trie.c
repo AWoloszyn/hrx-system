@@ -140,7 +140,9 @@ static iree_status_t iree_tokenizer_daac_node_ensure_child_capacity(
   iree_host_size_t new_capacity =
       node->child_capacity == 0 ? 4
                                 : (iree_host_size_t)node->child_capacity * 2;
-  if (new_capacity > 256) new_capacity = 256;
+  if (new_capacity > 256) {
+    new_capacity = 256;
+  }
 
   iree_tokenizer_daac_child_t* new_children = NULL;
   IREE_RETURN_IF_ERROR(iree_allocator_malloc_array(
@@ -336,7 +338,9 @@ static iree_status_t iree_tokenizer_daac_builder_find_base(
     start_pos = first_byte + 1;
   }
   iree_host_size_t base_candidate = start_pos - first_byte;
-  if (base_candidate == 0) base_candidate = 1;
+  if (base_candidate == 0) {
+    base_candidate = 1;
+  }
 
   while (true) {
     // Ensure arrays are large enough for base_candidate + last_byte.
@@ -423,12 +427,16 @@ static iree_status_t iree_tokenizer_daac_builder_to_array(
     iree_tokenizer_daac_bfs_entry_t entry = queue[queue_head++];
     const iree_tokenizer_daac_build_node_t* node =
         &builder->nodes[entry.build_node];
-    if (node->child_count == 0) continue;
+    if (node->child_count == 0) {
+      continue;
+    }
 
     // Find BASE value for this node.
     int32_t base_value = 0;
     status = iree_tokenizer_daac_builder_find_base(builder, node, &base_value);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
 
     builder->base[entry.array_state] = base_value;
 
@@ -606,7 +614,9 @@ iree_status_t iree_tokenizer_vocab_trie_build(
 //===----------------------------------------------------------------------===//
 
 void iree_tokenizer_vocab_trie_free(iree_tokenizer_vocab_trie_t* trie) {
-  if (!trie) return;
+  if (!trie) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   // Single slab allocation: all arrays are within the trie allocation.
   iree_allocator_free(trie->allocator, trie);

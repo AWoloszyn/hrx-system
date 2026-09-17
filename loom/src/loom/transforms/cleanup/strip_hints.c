@@ -64,10 +64,14 @@ static iree_status_t loom_strip_hints_collect_blocks(
 
       loom_op_t* op = NULL;
       loom_block_for_each_op(block, op) {
-        if (op->region_count == 0) continue;
+        if (op->region_count == 0) {
+          continue;
+        }
         loom_region_t** regions = loom_op_regions(op);
         for (uint8_t r = 0; r < op->region_count; ++r) {
-          if (!regions[r] || regions[r]->block_count == 0) continue;
+          if (!regions[r] || regions[r]->block_count == 0) {
+            continue;
+          }
           if (stack_count >= stack_capacity) {
             IREE_RETURN_IF_ERROR(iree_arena_grow_array(
                 arena, stack_count, stack_count + 1, sizeof(loom_region_t*),
@@ -90,13 +94,17 @@ static iree_status_t loom_strip_hints_collect_blocks(
 
 iree_status_t loom_strip_hints_run(loom_pass_t* pass, loom_module_t* module,
                                    loom_func_like_t function) {
-  if (!loom_func_like_body(function)) return iree_ok_status();
+  if (!loom_func_like_body(function)) {
+    return iree_ok_status();
+  }
   loom_strip_hints_statistics_t* statistics = loom_strip_hints_statistics(pass);
 
   for (uint8_t region_index = 0;
        region_index < loom_func_like_region_count(function); ++region_index) {
     loom_region_t* region = loom_func_like_region(function, region_index);
-    if (!region) continue;
+    if (!region) {
+      continue;
+    }
 
     loom_block_t** all_blocks = NULL;
     iree_host_size_t block_count = 0;

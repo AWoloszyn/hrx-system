@@ -273,7 +273,9 @@ iree_status_t loom_spirv_emit_low_module(
     }
     status = loom_spirv_emit_low_function_into_module(
         &state, symbol->defining_op, allocator);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
   }
   if (iree_status_is_ok(status)) {
     status = loom_spirv_emit_module_state_finalize(&state, out_module);

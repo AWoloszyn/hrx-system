@@ -301,14 +301,22 @@ void loom_verify_poison_boundaries(loom_verify_state_t* state,
 
   const loom_value_id_t* operands = loom_op_const_operands(op);
   for (uint16_t i = 0; i < op->operand_count; ++i) {
-    if (loom_verify_at_error_limit(state)) return;
+    if (loom_verify_at_error_limit(state)) {
+      return;
+    }
     loom_value_id_t value_id = operands[i];
-    if (value_id == LOOM_VALUE_ID_INVALID) continue;
-    if (value_id >= state->module->values.count) continue;
+    if (value_id == LOOM_VALUE_ID_INVALID) {
+      continue;
+    }
+    if (value_id >= state->module->values.count) {
+      continue;
+    }
     if (!loom_verify_value_is_visible(state, value_id)) {
       continue;
     }
-    if (!loom_value_is_poison(state->module, value_id)) continue;
+    if (!loom_value_is_poison(state->module, value_id)) {
+      continue;
+    }
 
     const loom_value_t* value = loom_module_value(state->module, value_id);
     const loom_op_t* poison_op = loom_value_def_op(value);
@@ -400,7 +408,9 @@ static void loom_verify_emit_duplicate_tied_operand(loom_verify_state_t* state,
 iree_status_t loom_verify_tied_results(loom_verify_state_t* state,
                                        const loom_op_t* op,
                                        const loom_op_vtable_t* vtable) {
-  if (op->tied_result_count == 0) return iree_ok_status();
+  if (op->tied_result_count == 0) {
+    return iree_ok_status();
+  }
 
   const bool has_signature_ties = loom_verify_has_func_signature_scope(vtable);
   uint16_t tied_operand_count = 0;

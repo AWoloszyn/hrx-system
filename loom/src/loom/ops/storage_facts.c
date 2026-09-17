@@ -16,7 +16,9 @@
 static bool loom_storage_facts_query_reference_from_table(
     const loom_value_fact_table_t* table, loom_value_facts_t facts,
     loom_storage_reference_facts_t* out_reference) {
-  if (!table) return false;
+  if (!table) {
+    return false;
+  }
   const void* payload = NULL;
   iree_host_size_t payload_length = 0;
   if (!loom_value_facts_query_extension_payload(
@@ -25,7 +27,9 @@ static bool loom_storage_facts_query_reference_from_table(
       payload_length != sizeof(*out_reference)) {
     return false;
   }
-  if (out_reference) memcpy(out_reference, payload, sizeof(*out_reference));
+  if (out_reference) {
+    memcpy(out_reference, payload, sizeof(*out_reference));
+  }
   return true;
 }
 
@@ -74,8 +78,12 @@ iree_status_t loom_storage_facts_make_reserve(
 }
 
 static uint64_t loom_storage_gcd_u64(uint64_t lhs, uint64_t rhs) {
-  if (lhs == 0) return rhs;
-  if (rhs == 0) return lhs;
+  if (lhs == 0) {
+    return rhs;
+  }
+  if (rhs == 0) {
+    return lhs;
+  }
   while (rhs != 0) {
     uint64_t remainder = lhs % rhs;
     lhs = rhs;
@@ -86,7 +94,9 @@ static uint64_t loom_storage_gcd_u64(uint64_t lhs, uint64_t rhs) {
 
 static uint64_t loom_storage_offset_alignment(uint64_t base_alignment,
                                               int64_t byte_offset) {
-  if (byte_offset == 0) return base_alignment;
+  if (byte_offset == 0) {
+    return base_alignment;
+  }
   uint64_t offset_magnitude =
       byte_offset > 0 ? (uint64_t)byte_offset : (uint64_t)(-byte_offset);
   uint64_t alignment = loom_storage_gcd_u64(base_alignment, offset_magnitude);
@@ -237,7 +247,9 @@ static iree_status_t loom_storage_meet_extension(
       .backing_value_id = lhs_reference.backing_value_id,
       .storage_space = lhs_reference.storage_space,
   };
-  if (reference.minimum_alignment == 0) reference.minimum_alignment = 1;
+  if (reference.minimum_alignment == 0) {
+    reference.minimum_alignment = 1;
+  }
   loom_storage_meet_scalar_facts(lhs_reference.byte_offset,
                                  rhs_reference.byte_offset,
                                  &reference.byte_offset);

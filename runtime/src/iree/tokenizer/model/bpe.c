@@ -187,8 +187,12 @@ iree_status_t iree_tokenizer_bpe_model_allocate(
       // Overflow implies very large token length; clamp to maximum.
       min_backtrack = 4095;
     }
-    if (min_backtrack < 2048) min_backtrack = 2048;
-    if (min_backtrack > 4095) min_backtrack = 4095;
+    if (min_backtrack < 2048) {
+      min_backtrack = 2048;
+    }
+    if (min_backtrack > 4095) {
+      min_backtrack = 4095;
+    }
     model->max_backtrack_segment_bytes = min_backtrack;
     // Stack holds at most one token per byte (worst case: all single-byte
     // tokens).
@@ -392,7 +396,9 @@ int32_t iree_tokenizer_bpe_handle_unknown_byte(
 
   if (iree_all_bits_set(model->flags,
                         IREE_TOKENIZER_BPE_FLAG_NO_BYTE_FALLBACK)) {
-    if (special_ids.unk < 0) return -1;
+    if (special_ids.unk < 0) {
+      return -1;
+    }
     if (iree_all_bits_set(model->flags, IREE_TOKENIZER_BPE_FLAG_FUSE_UNK) &&
         last_emitted_token_id == special_ids.unk) {
       return -1;
@@ -402,9 +408,13 @@ int32_t iree_tokenizer_bpe_handle_unknown_byte(
 
   // Try byte fallback token: <0xNN> (precomputed during model construction).
   int32_t token_id = model->byte_fallback_token[byte];
-  if (token_id >= 0) return token_id;
+  if (token_id >= 0) {
+    return token_id;
+  }
 
-  if (special_ids.unk < 0) return -1;
+  if (special_ids.unk < 0) {
+    return -1;
+  }
   if (iree_all_bits_set(model->flags, IREE_TOKENIZER_BPE_FLAG_FUSE_UNK) &&
       last_emitted_token_id == special_ids.unk) {
     return -1;

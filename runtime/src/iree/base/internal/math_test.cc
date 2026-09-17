@@ -294,7 +294,9 @@ TEST(RoundingTest, RoundMulDivU64PortableMatchesUInt128) {
   for (uint64_t value : values) {
     for (uint64_t numerator : values) {
       for (uint64_t denominator : values) {
-        if (denominator == 0) continue;
+        if (denominator == 0) {
+          continue;
+        }
         SCOPED_TRACE(::testing::Message()
                      << "value=" << value << ", numerator=" << numerator
                      << ", denominator=" << denominator);
@@ -557,7 +559,9 @@ static std::vector<WideningExpectation> BuildWideningExpectations(
                                  format.mantissa_bits, format.bias_tweak);
         std::memcpy(&f32_bits, &value, sizeof(f32_bits));
       }
-      if (source & sign_mask) f32_bits |= UINT32_C(0x80000000);
+      if (source & sign_mask) {
+        f32_bits |= UINT32_C(0x80000000);
+      }
       expectation = ExactWideningExpectation(f32_bits);
     }
   }

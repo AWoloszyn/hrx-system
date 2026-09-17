@@ -220,7 +220,9 @@ class VerifyTest : public ::testing::Test {
     if (!parse_capture.diagnostics.empty()) {
       ADD_FAILURE() << "Expected parser success, got "
                     << parse_capture.diagnostics.size() << " diagnostics";
-      if (parsed_module) loom_module_free(parsed_module);
+      if (parsed_module) {
+        loom_module_free(parsed_module);
+      }
       return nullptr;
     }
     EXPECT_NE(parsed_module, nullptr);
@@ -1594,7 +1596,9 @@ static bool FakeSourceResolver(void* user_data, const loom_module_t* module,
   // Pretend every op comes from this source line.
   static const char source[] = "  %result = test.addi %input_a, %input_b : i32";
   (void)module;
-  if (location == LOOM_LOCATION_UNKNOWN) return false;
+  if (location == LOOM_LOCATION_UNKNOWN) {
+    return false;
+  }
   out_range->provenance = LOOM_SOURCE_PROVENANCE_EXACT_SOURCE;
   out_range->filename = IREE_SV("model.loom");
   out_range->source = iree_make_cstring_view(source);

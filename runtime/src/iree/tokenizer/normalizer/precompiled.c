@@ -210,10 +210,14 @@ static int32_t iree_tokenizer_precompiled_trie_lookup(
     // parameter provides the boundary, not null-termination.
 
     node_position ^= c;
-    if (node_position >= state->trie_count) break;
+    if (node_position >= state->trie_count) {
+      break;
+    }
 
     unit = state->trie[node_position];
-    if (iree_tokenizer_precompiled_unit_label(unit) != c) break;
+    if (iree_tokenizer_precompiled_unit_label(unit) != c) {
+      break;
+    }
 
     node_position ^= iree_tokenizer_precompiled_unit_offset(unit);
 
@@ -258,8 +262,12 @@ static iree_string_view_t iree_tokenizer_precompiled_get_replacement(
 static bool iree_tokenizer_precompiled_is_valid_string_start(
     const uint8_t* pool, iree_host_size_t pool_length,
     iree_host_size_t offset) {
-  if (offset == 0) return true;
-  if (offset >= pool_length) return false;
+  if (offset == 0) {
+    return true;
+  }
+  if (offset >= pool_length) {
+    return false;
+  }
   return pool[offset - 1] == '\0';
 }
 
@@ -308,7 +316,9 @@ static iree_status_t iree_tokenizer_precompiled_trie_validate(
       // Verify null terminator exists within pool bounds.
       const uint8_t* string = pool + pool_offset;
       const uint8_t* end = pool + pool_length;
-      while (string < end && *string != '\0') ++string;
+      while (string < end && *string != '\0') {
+        ++string;
+      }
       if (string == end) {
         return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                                 "trie leaf at index %" PRIhsz
@@ -326,7 +336,9 @@ static iree_status_t iree_tokenizer_precompiled_trie_validate(
     const uint8_t* string_start = pool + position;
     const uint8_t* pool_end = pool + pool_length;
     const uint8_t* scan = string_start;
-    while (scan < pool_end && *scan != '\0') ++scan;
+    while (scan < pool_end && *scan != '\0') {
+      ++scan;
+    }
 
     if (scan == pool_end) {
       return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
@@ -374,15 +386,21 @@ static iree_status_t iree_tokenizer_precompiled_trie_validate(
       // Try all 256 possible byte values at this position.
       for (uint32_t c = 0; c < 256; ++c) {
         iree_host_size_t child_position = position ^ c;
-        if (child_position >= trie_count) continue;
+        if (child_position >= trie_count) {
+          continue;
+        }
 
         uint32_t unit = iree_tokenizer_precompiled_load_trie_unit(
             trie_data, child_position);
         // Skip unallocated positions (zero units). A zero unit has label=0,
         // which would falsely match c=0 and create phantom self-loop edges.
-        if (unit == 0) continue;
+        if (unit == 0) {
+          continue;
+        }
         uint8_t label = (uint8_t)(unit & 0xFF);
-        if (label != c) continue;  // Label mismatch, not a valid edge.
+        if (label != c) {
+          continue;  // Label mismatch, not a valid edge.
+        }
 
         iree_host_size_t child_depth = depth + 1;
 
@@ -513,7 +531,9 @@ iree_status_t iree_tokenizer_precompiled_normalizer_allocate(
     while (input_pos < pool_length) {
       const uint8_t* string_start = input_pool + input_pos;
       const uint8_t* scan = string_start;
-      while (*scan != '\0') ++scan;
+      while (*scan != '\0') {
+        ++scan;
+      }
       iree_host_size_t length = (iree_host_size_t)(scan - string_start);
 
       pool_storage[output_pos++] = (uint8_t)length;
@@ -603,7 +623,9 @@ static iree_host_size_t iree_tokenizer_precompiled_emit(
     iree_tokenizer_precompiled_state_t* state, const uint8_t* data,
     iree_host_size_t length, uint8_t* output,
     iree_host_size_t output_capacity) {
-  if (length == 0) return 0;
+  if (length == 0) {
+    return 0;
+  }
 
   if (length <= output_capacity) {
     memcpy(output, data, length);
@@ -628,7 +650,9 @@ static iree_host_size_t iree_tokenizer_precompiled_emit(
 // Returns the length in bytes of the first grapheme.
 static iree_host_size_t iree_tokenizer_precompiled_grapheme_length(
     const uint8_t* data, iree_host_size_t length) {
-  if (length == 0) return 0;
+  if (length == 0) {
+    return 0;
+  }
 
   // Decode first codepoint.
   iree_string_view_t view = {(const char*)data, length};
@@ -647,11 +671,15 @@ static iree_host_size_t iree_tokenizer_precompiled_grapheme_length(
                                     length - grapheme_end};
     iree_host_size_t rel_pos = 0;
     uint32_t codepoint = iree_unicode_utf8_decode(remaining, &rel_pos);
-    if (codepoint == 0 && rel_pos == 0) break;
+    if (codepoint == 0 && rel_pos == 0) {
+      break;
+    }
 
     // Check if this is a combining mark (CCC > 0).
     uint8_t ccc = iree_unicode_ccc(codepoint);
-    if (ccc == 0) break;  // Not a combining mark - end of grapheme.
+    if (ccc == 0) {
+      break;  // Not a combining mark - end of grapheme.
+    }
 
     grapheme_end += rel_pos;
   }
@@ -715,7 +743,9 @@ static iree_host_size_t iree_tokenizer_precompiled_process_grapheme(
       uint8_t first_byte = data[consumed];
       iree_host_size_t char_length =
           iree_unicode_utf8_sequence_length(first_byte);
-      if (char_length == 0) char_length = 1;  // Invalid byte.
+      if (char_length == 0) {
+        char_length = 1;  // Invalid byte.
+      }
       if (consumed + char_length > grapheme_length) {
         char_length = grapheme_length - consumed;
       }
@@ -811,19 +841,25 @@ static iree_status_t iree_tokenizer_precompiled_state_process(
 
   // Process graphemes within safe region.
   while (work_position < safe_length && out_ptr < out_end) {
-    if (state->pending_length > state->pending_offset) break;
+    if (state->pending_length > state->pending_offset) {
+      break;
+    }
 
     iree_host_size_t grapheme_length =
         iree_tokenizer_precompiled_grapheme_length(work_buffer + work_position,
                                                    work_length - work_position);
-    if (grapheme_length == 0) break;
+    if (grapheme_length == 0) {
+      break;
+    }
 
     iree_host_size_t consumed = iree_tokenizer_precompiled_process_grapheme(
         state, work_buffer + work_position, grapheme_length,
         work_length - work_position, &out_ptr, out_end);
     work_position += consumed;
 
-    if (consumed < grapheme_length) break;  // Incomplete processing.
+    if (consumed < grapheme_length) {
+      break;  // Incomplete processing.
+    }
   }
 
   // Save unprocessed tail to overlap buffer.
@@ -899,7 +935,9 @@ static iree_status_t iree_tokenizer_precompiled_state_finalize(
 
   // Process remaining overlap buffer as final data.
   while (state->overlap_length > 0 && out_ptr < out_end) {
-    if (state->pending_length > state->pending_offset) break;
+    if (state->pending_length > state->pending_offset) {
+      break;
+    }
 
     iree_host_size_t grapheme_length =
         iree_tokenizer_precompiled_grapheme_length(state->overlap_buffer,
@@ -931,7 +969,9 @@ static iree_status_t iree_tokenizer_precompiled_state_finalize(
       state->overlap_length -= consumed;
     }
 
-    if (consumed < grapheme_length) break;
+    if (consumed < grapheme_length) {
+      break;
+    }
   }
 
   *out_written = (iree_host_size_t)(out_ptr - (uint8_t*)output.data);

@@ -138,7 +138,9 @@ static bool loom_vector_value_is_all_bool(const loom_rewriter_t* rewriter,
 
 static bool loom_vector_value_is_workgroup_view(const loom_rewriter_t* rewriter,
                                                 loom_value_id_t value_id) {
-  if (!rewriter->fact_table) return false;
+  if (!rewriter->fact_table) {
+    return false;
+  }
   loom_value_fact_view_reference_t reference = {0};
   if (!loom_value_facts_query_view_reference(
           &rewriter->fact_table->context,
@@ -151,7 +153,9 @@ static bool loom_vector_value_is_workgroup_view(const loom_rewriter_t* rewriter,
 static bool loom_vector_facts_to_constant_attr(loom_value_facts_t facts,
                                                loom_scalar_type_t element_type,
                                                loom_attribute_t* out_attr) {
-  if (!loom_value_facts_is_exact(facts)) return false;
+  if (!loom_value_facts_is_exact(facts)) {
+    return false;
+  }
 
   if (loom_scalar_type_is_float(element_type)) {
     double value = 0.0;
@@ -162,9 +166,13 @@ static bool loom_vector_facts_to_constant_attr(loom_value_facts_t facts,
     return true;
   }
 
-  if (loom_value_facts_is_float(facts)) return false;
+  if (loom_value_facts_is_float(facts)) {
+    return false;
+  }
   if (element_type == LOOM_SCALAR_TYPE_I1) {
-    if (facts.range_lo != 0 && facts.range_lo != 1) return false;
+    if (facts.range_lo != 0 && facts.range_lo != 1) {
+      return false;
+    }
     *out_attr = loom_attr_bool(facts.range_lo != 0);
     return true;
   }
@@ -180,11 +188,17 @@ static bool loom_vector_facts_to_constant_attr(loom_value_facts_t facts,
 static bool loom_vector_value_def_op(const loom_rewriter_t* rewriter,
                                      loom_value_id_t value_id,
                                      loom_op_t** out_def_op) {
-  if (value_id >= rewriter->module->values.count) return false;
+  if (value_id >= rewriter->module->values.count) {
+    return false;
+  }
   loom_value_t* value = loom_module_value(rewriter->module, value_id);
-  if (loom_value_is_block_arg(value)) return false;
+  if (loom_value_is_block_arg(value)) {
+    return false;
+  }
   loom_op_t* def_op = loom_value_def_op(value);
-  if (!def_op || (def_op->flags & LOOM_OP_FLAG_DEAD)) return false;
+  if (!def_op || (def_op->flags & LOOM_OP_FLAG_DEAD)) {
+    return false;
+  }
   *out_def_op = def_op;
   return true;
 }
@@ -392,9 +406,13 @@ static iree_status_t loom_vector_build_iota_lane_symbolic(
 static bool loom_vector_get_single_result_type(const loom_rewriter_t* rewriter,
                                                const loom_op_t* op,
                                                loom_type_t* out_result_type) {
-  if (op->result_count != 1) return false;
+  if (op->result_count != 1) {
+    return false;
+  }
   loom_value_id_t result = loom_op_const_results(op)[0];
-  if (result >= rewriter->module->values.count) return false;
+  if (result >= rewriter->module->values.count) {
+    return false;
+  }
   *out_result_type = loom_module_value_type(rewriter->module, result);
   return true;
 }
@@ -463,9 +481,13 @@ static bool loom_vector_type_is_float_vector(loom_type_t type) {
 
 static bool loom_vector_type_query_element_bitwidth(loom_type_t type,
                                                     int32_t* out_bitwidth) {
-  if (!loom_vector_type_is_float_vector(type)) return false;
+  if (!loom_vector_type_is_float_vector(type)) {
+    return false;
+  }
   int32_t bitwidth = loom_scalar_type_bitwidth(loom_type_element_type(type));
-  if (bitwidth <= 0) return false;
+  if (bitwidth <= 0) {
+    return false;
+  }
   *out_bitwidth = bitwidth;
   return true;
 }
@@ -628,8 +650,12 @@ static iree_status_t loom_vector_canonicalize_uniform_result(
     return iree_ok_status();
   }
   loom_trait_flags_t traits = loom_op_effective_traits(rewriter->module, op);
-  if (!iree_any_bit_set(traits, LOOM_TRAIT_PURE)) return iree_ok_status();
-  if (loom_traits_are_convergent(traits)) return iree_ok_status();
+  if (!iree_any_bit_set(traits, LOOM_TRAIT_PURE)) {
+    return iree_ok_status();
+  }
+  if (loom_traits_are_convergent(traits)) {
+    return iree_ok_status();
+  }
 
   loom_type_t result_type = {0};
   if (!loom_vector_get_single_result_type(rewriter, op, &result_type) ||
@@ -739,7 +765,9 @@ static bool loom_vector_describe_scalar_lane_chain_step(
   out_step->scalar_kind = source_op->kind;
   out_step->instance_flags = source_op->instance_flags;
   *out_input = loom_op_const_operands(source_op)[0];
-  if (*out_input >= module->values.count) return false;
+  if (*out_input >= module->values.count) {
+    return false;
+  }
   out_step->input_type = loom_module_value_type(module, *out_input);
   out_step->result_type =
       loom_module_value_type(module, loom_op_const_results(source_op)[0]);
@@ -770,7 +798,9 @@ static bool loom_vector_value_is_static_lane_extract(
   }
 
   loom_value_id_t source = loom_vector_extract_source(extract_op);
-  if (source >= rewriter->module->values.count) return false;
+  if (source >= rewriter->module->values.count) {
+    return false;
+  }
   *out_source = source;
   *out_source_type = loom_module_value_type(rewriter->module, source);
   return true;
@@ -785,7 +815,9 @@ static bool loom_vector_match_scalar_lane_chain(
   loom_value_id_t value = lane_value;
   while (out_chain->step_count < LOOM_VECTOR_LANE_CHAIN_MAX_STEPS) {
     loom_op_t* source_op = NULL;
-    if (!loom_vector_value_def_op(rewriter, value, &source_op)) break;
+    if (!loom_vector_value_def_op(rewriter, value, &source_op)) {
+      break;
+    }
 
     loom_vector_lane_chain_step_t step = {0};
     loom_value_id_t input = LOOM_VALUE_ID_INVALID;
@@ -877,7 +909,9 @@ static iree_status_t loom_vector_canonicalize_from_elements_lane_chain(
   *out_changed = false;
 
   loom_value_slice_t elements = loom_vector_from_elements_elements(op);
-  if (elements.count == 0) return iree_ok_status();
+  if (elements.count == 0) {
+    return iree_ok_status();
+  }
 
   loom_type_t result_type = {0};
   if (!loom_vector_get_single_result_type(rewriter, op, &result_type)) {
@@ -978,7 +1012,9 @@ static iree_status_t loom_vector_canonicalize_from_elements(
     loom_op_t* op, loom_rewriter_t* rewriter, bool* out_changed) {
   *out_changed = false;
   loom_value_slice_t elements = loom_vector_from_elements_elements(op);
-  if (elements.count == 0) return iree_ok_status();
+  if (elements.count == 0) {
+    return iree_ok_status();
+  }
 
   loom_value_id_t first_element = elements.values[0];
   bool all_elements_equal = true;
@@ -1064,11 +1100,17 @@ static iree_status_t loom_vector_canonicalize_iota(loom_op_t* op,
 
 static bool loom_vector_static_indices_are_proven_in_bounds(
     loom_type_t source_type, loom_attribute_t static_indices) {
-  if (!loom_type_is_all_static(source_type)) return false;
-  if (static_indices.count > loom_type_rank(source_type)) return false;
+  if (!loom_type_is_all_static(source_type)) {
+    return false;
+  }
+  if (static_indices.count > loom_type_rank(source_type)) {
+    return false;
+  }
   for (uint16_t i = 0; i < static_indices.count; ++i) {
     int64_t static_index = static_indices.i64_array[i];
-    if (static_index < 0 || static_index == INT64_MIN) return false;
+    if (static_index < 0 || static_index == INT64_MIN) {
+      return false;
+    }
     if (static_index >= loom_type_dim_static_size_at(source_type, i)) {
       return false;
     }
@@ -1147,7 +1189,9 @@ static iree_status_t loom_vector_canonicalize_extract_from_elements(
   loom_value_slice_t elements =
       loom_vector_from_elements_elements(source_def_op);
   iree_host_size_t lane = (iree_host_size_t)static_indices.i64_array[0];
-  if (lane >= elements.count) return iree_ok_status();
+  if (lane >= elements.count) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(loom_vector_replace_single_result_with_value(
       op, rewriter, elements.values[lane]));
@@ -1159,7 +1203,9 @@ static iree_status_t loom_vector_canonicalize_extract_from_iota(
     loom_op_t* op, loom_rewriter_t* rewriter, loom_op_t* source_def_op,
     loom_type_t source_type, loom_type_t result_type, bool* out_changed) {
   *out_changed = false;
-  if (!loom_type_is_scalar(result_type)) return iree_ok_status();
+  if (!loom_type_is_scalar(result_type)) {
+    return iree_ok_status();
+  }
 
   loom_attribute_t static_indices = loom_vector_extract_static_indices(op);
   if (static_indices.count != loom_type_rank(source_type)) {
@@ -1222,9 +1268,13 @@ static iree_status_t loom_vector_canonicalize_extract_from_load(
     loom_op_t* op, loom_rewriter_t* rewriter, loom_op_t* source_def_op,
     loom_type_t source_type, loom_type_t result_type, bool* out_changed) {
   *out_changed = false;
-  if (!loom_type_is_scalar(result_type)) return iree_ok_status();
+  if (!loom_type_is_scalar(result_type)) {
+    return iree_ok_status();
+  }
 
-  if (source_def_op->result_count != 1) return iree_ok_status();
+  if (source_def_op->result_count != 1) {
+    return iree_ok_status();
+  }
   loom_value_id_t load_result = loom_op_const_results(source_def_op)[0];
   if (load_result >= rewriter->module->values.count ||
       !loom_value_has_single_use(
@@ -1553,7 +1603,9 @@ static iree_status_t loom_vector_canonicalize_insert_static_indices(
   }
 
   loom_value_slice_t old_indices = loom_vector_insert_indices(op);
-  if (old_indices.count == 0) return iree_ok_status();
+  if (old_indices.count == 0) {
+    return iree_ok_status();
+  }
 
   int64_t* new_static_indices = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -1573,7 +1625,9 @@ static iree_status_t loom_vector_canonicalize_insert_static_indices(
       new_static_indices[axis] = static_index;
       continue;
     }
-    if (old_dynamic_index >= old_indices.count) return iree_ok_status();
+    if (old_dynamic_index >= old_indices.count) {
+      return iree_ok_status();
+    }
 
     loom_value_id_t dynamic_index = old_indices.values[old_dynamic_index++];
     if (loom_vector_index_value_as_static_index(
@@ -1616,7 +1670,9 @@ static iree_status_t loom_vector_canonicalize_insert(loom_op_t* op,
   IREE_RETURN_IF_ERROR(loom_vector_canonicalize_insert_static_indices(
       op, rewriter, loom_module_value_type(rewriter->module, dest), result_type,
       out_changed));
-  if (*out_changed) return iree_ok_status();
+  if (*out_changed) {
+    return iree_ok_status();
+  }
 
   loom_attribute_t static_indices = loom_vector_insert_static_indices(op);
   loom_value_slice_t indices = loom_vector_insert_indices(op);
@@ -1665,7 +1721,9 @@ static iree_status_t loom_vector_canonicalize_shuffle(loom_op_t* op,
 
   loom_attribute_t source_lanes = loom_vector_shuffle_source_lanes(op);
   for (uint16_t i = 0; i < source_lanes.count; ++i) {
-    if (source_lanes.i64_array[i] != (int64_t)i) return iree_ok_status();
+    if (source_lanes.i64_array[i] != (int64_t)i) {
+      return iree_ok_status();
+    }
   }
 
   loom_value_id_t source = loom_vector_shuffle_source(op);
@@ -1765,7 +1823,9 @@ static iree_status_t loom_vector_canonicalize_comparison(
                                                  : loom_vector_cmpf_lhs(op);
   loom_value_id_t rhs = loom_vector_cmpi_isa(op) ? loom_vector_cmpi_rhs(op)
                                                  : loom_vector_cmpf_rhs(op);
-  if (lhs != rhs) return iree_ok_status();
+  if (lhs != rhs) {
+    return iree_ok_status();
+  }
 
   bool value = false;
   bool has_result = loom_vector_cmpi_isa(op)
@@ -1773,7 +1833,9 @@ static iree_status_t loom_vector_canonicalize_comparison(
                               loom_vector_cmpi_predicate(op), &value)
                         : loom_vector_cmpf_same_operand_result(
                               loom_vector_cmpf_predicate(op), &value);
-  if (!has_result) return iree_ok_status();
+  if (!has_result) {
+    return iree_ok_status();
+  }
 
   loom_type_t result_type = {0};
   if (!loom_vector_get_single_result_type(rewriter, op, &result_type)) {
@@ -2152,7 +2214,9 @@ static iree_status_t loom_vector_canonicalize_binary_identity(
 
 static bool loom_vector_decode_schema_is_dense_q8_0(
     const loom_rewriter_t* rewriter, loom_value_id_t schema_value) {
-  if (!rewriter->fact_table) return false;
+  if (!rewriter->fact_table) {
+    return false;
+  }
   loom_value_fact_encoding_summary_t summary = {0};
   if (!loom_value_facts_query_encoding_summary(
           &rewriter->fact_table->context,
@@ -2183,7 +2247,9 @@ static bool loom_vector_type_is_single_lane_float_vector(
     return false;
   }
   loom_scalar_type_t element_type = loom_type_element_type(type);
-  if (!loom_scalar_type_is_float(element_type)) return false;
+  if (!loom_scalar_type_is_float(element_type)) {
+    return false;
+  }
   *out_element_type = element_type;
   return true;
 }
@@ -2338,9 +2404,13 @@ iree_status_t loom_vector_reduce_canonicalize(loom_op_t* op,
 
 static bool loom_vector_reduce_axes_all_source_axes(loom_type_t input_type,
                                                     loom_attribute_t axes) {
-  if (axes.count != loom_type_rank(input_type)) return false;
+  if (axes.count != loom_type_rank(input_type)) {
+    return false;
+  }
   for (uint16_t i = 0; i < axes.count; ++i) {
-    if (axes.i64_array[i] != (int64_t)i) return false;
+    if (axes.i64_array[i] != (int64_t)i) {
+      return false;
+    }
   }
   return true;
 }
@@ -2829,7 +2899,9 @@ static iree_status_t loom_vector_canonicalize_uniform_then(
   bool changed = false;
   IREE_RETURN_IF_ERROR(
       loom_vector_canonicalize_uniform_result(op, rewriter, &changed));
-  if (changed) return iree_ok_status();
+  if (changed) {
+    return iree_ok_status();
+  }
   return specific_canonicalize(op, rewriter, &changed);
 }
 
@@ -2935,10 +3007,14 @@ iree_status_t loom_vector_masked_memory_canonicalize(
   bool changed = false;
   IREE_RETURN_IF_ERROR(
       loom_vector_canonicalize_all_false_masked_memory(op, rewriter, &changed));
-  if (changed) return iree_ok_status();
+  if (changed) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(loom_vector_canonicalize_contiguous_gather_scatter(
       op, rewriter, &changed));
-  if (changed) return iree_ok_status();
+  if (changed) {
+    return iree_ok_status();
+  }
   return loom_vector_canonicalize_all_true_masked_memory(op, rewriter,
                                                          &changed);
 }

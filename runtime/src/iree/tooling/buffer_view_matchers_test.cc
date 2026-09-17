@@ -61,17 +61,25 @@ class Handle {
   Handle(T* value) noexcept : value_(value) { retain_fn(value_); }
 
   ~Handle() noexcept {
-    if (value_) release_fn(value_);
+    if (value_) {
+      release_fn(value_);
+    }
   }
 
   Handle(const Handle& rhs) noexcept : value_(rhs.value_) {
-    if (value_) retain_fn(value_);
+    if (value_) {
+      retain_fn(value_);
+    }
   }
   Handle& operator=(const Handle& rhs) noexcept {
     if (value_ != rhs.value_) {
-      if (value_) release_fn(value_);
+      if (value_) {
+        release_fn(value_);
+      }
       value_ = rhs.get();
-      if (value_) retain_fn(value_);
+      if (value_) {
+        retain_fn(value_);
+      }
     }
     return *this;
   }
@@ -79,7 +87,9 @@ class Handle {
   Handle(Handle&& rhs) noexcept : value_(rhs.release()) {}
   Handle& operator=(Handle&& rhs) noexcept {
     if (value_ != rhs.value_) {
-      if (value_) release_fn(value_);
+      if (value_) {
+        release_fn(value_);
+      }
       value_ = rhs.release();
     }
     return *this;
@@ -208,7 +218,9 @@ class BufferViewMatchersTest : public ::testing::Test {
                                         iree_hal_element_type_t element_type,
                                         const T* contents) {
     iree_hal_dim_t num_elements = 1;
-    for (iree_hal_dim_t dim : shape) num_elements *= dim;
+    for (iree_hal_dim_t dim : shape) {
+      num_elements *= dim;
+    }
     iree_hal_buffer_params_t params = {0};
     params.type =
         IREE_HAL_MEMORY_TYPE_HOST_LOCAL | IREE_HAL_MEMORY_TYPE_DEVICE_VISIBLE,

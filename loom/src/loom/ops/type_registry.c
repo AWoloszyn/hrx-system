@@ -26,7 +26,9 @@ iree_status_t loom_type_registry_register_types(
                                                   entry_count);
   }
   for (iree_host_size_t i = 0; i < entry_count; ++i) {
-    if (loom_type_registry_lookup(NULL, entries[i].name) == NULL) continue;
+    if (loom_type_registry_lookup(NULL, entries[i].name) == NULL) {
+      continue;
+    }
     return iree_make_status(IREE_STATUS_ALREADY_EXISTS,
                             "type '%.*s' conflicts with a common type",
                             (int)entries[i].name.size, entries[i].name.data);

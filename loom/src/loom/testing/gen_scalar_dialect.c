@@ -434,7 +434,9 @@ static bool loom_test_gen_type_palette_pick_scalar_constant_type(
       matching_weight += palette->weights[i];
     }
   }
-  if (matching_weight == 0) return false;
+  if (matching_weight == 0) {
+    return false;
+  }
 
   uint32_t target = loom_test_gen_next_range(gen, matching_weight);
   uint32_t cumulative = 0;

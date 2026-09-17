@@ -106,8 +106,12 @@ IREE_API_EXPORT void iree_hal_channel_query_rank_and_count(
   int32_t rank = 0;
   int32_t count = 0;
   _VTABLE_DISPATCH(channel, query_rank_and_count)(channel, &rank, &count);
-  if (out_rank) *out_rank = rank;
-  if (out_count) *out_count = count;
+  if (out_rank) {
+    *out_rank = rank;
+  }
+  if (out_count) {
+    *out_count = count;
+  }
 }
 
 IREE_API_EXPORT int32_t

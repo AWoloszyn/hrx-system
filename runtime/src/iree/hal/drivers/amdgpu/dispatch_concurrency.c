@@ -77,8 +77,12 @@ static bool iree_hal_amdgpu_dispatch_concurrency_is_supported_target(
 
 static bool iree_hal_amdgpu_dispatch_concurrency_has_1536_vector_registers(
     iree_hal_amdgpu_gfxip_version_t version) {
-  if (version.major == 12 && version.minor == 0) return true;
-  if (version.major != 11) return false;
+  if (version.major == 12 && version.minor == 0) {
+    return true;
+  }
+  if (version.major != 11) {
+    return false;
+  }
   return (version.minor == 0 && version.stepping <= 1) ||
          (version.minor == 5 && version.stepping == 1);
 }

@@ -16,7 +16,9 @@ static bool iree_hal_amdgpu_agent_list_contains(const hsa_agent_t* agents,
                                                 iree_host_size_t agent_count,
                                                 hsa_agent_t agent) {
   for (iree_host_size_t i = 0; i < agent_count; ++i) {
-    if (agents[i].handle == agent.handle) return true;
+    if (agents[i].handle == agent.handle) {
+      return true;
+    }
   }
   return false;
 }
@@ -148,7 +150,9 @@ IREE_API_EXPORT iree_status_t iree_hal_amdgpu_topology_insert_cpu_agent(
     iree_host_size_t* out_index) {
   IREE_ASSERT_ARGUMENT(topology);
   IREE_ASSERT_ARGUMENT(libhsa);
-  if (out_index) *out_index = 0;
+  if (out_index) {
+    *out_index = 0;
+  }
 
   IREE_RETURN_IF_ERROR(
       iree_hal_amdgpu_topology_verify_storage_counts(topology));
@@ -156,7 +160,9 @@ IREE_API_EXPORT iree_status_t iree_hal_amdgpu_topology_insert_cpu_agent(
   // Scan for the agent in the current topology.
   for (iree_host_size_t i = 0; i < topology->cpu_agent_count; ++i) {
     if (topology->cpu_agents[i].handle == cpu_agent.handle) {
-      if (out_index) *out_index = i;
+      if (out_index) {
+        *out_index = i;
+      }
       return iree_ok_status();
     }
   }
@@ -190,7 +196,9 @@ IREE_API_EXPORT iree_status_t iree_hal_amdgpu_topology_insert_cpu_agent(
   topology->cpu_agents[cpu_agent_index] = cpu_agent;
   topology->all_agents[topology->all_agent_count++] = cpu_agent;
 
-  if (out_index) *out_index = cpu_agent_index;
+  if (out_index) {
+    *out_index = cpu_agent_index;
+  }
   return iree_ok_status();
 }
 
@@ -313,7 +321,9 @@ static iree_status_t iree_hal_amdgpu_compare_gpu_agents(
   IREE_RETURN_IF_ERROR(iree_hsa_agent_get_info(IREE_LIBHSA(libhsa), agent_b,
                                                HSA_AGENT_INFO_VENDOR_NAME,
                                                &vendor_name_b));
-  if (strcmp(vendor_name_a, vendor_name_b) != 0) return iree_ok_status();
+  if (strcmp(vendor_name_a, vendor_name_b) != 0) {
+    return iree_ok_status();
+  }
 
   // Device names must match (same device) - note that they may still be
   // different revisions as this is just a human-friendly name.
@@ -323,7 +333,9 @@ static iree_status_t iree_hal_amdgpu_compare_gpu_agents(
   char name_b[64] = {0};
   IREE_RETURN_IF_ERROR(iree_hsa_agent_get_info(IREE_LIBHSA(libhsa), agent_b,
                                                HSA_AGENT_INFO_NAME, &name_b));
-  if (strcmp(name_a, name_b) != 0) return iree_ok_status();
+  if (strcmp(name_a, name_b) != 0) {
+    return iree_ok_status();
+  }
 
   // Chips should match. This may not always be true (different chips can
   // support the same ISA) but is a good indicator of compatibility for our
@@ -336,7 +348,9 @@ static iree_status_t iree_hal_amdgpu_compare_gpu_agents(
   IREE_RETURN_IF_ERROR(iree_hsa_agent_get_info(
       IREE_LIBHSA(libhsa), agent_b,
       (hsa_agent_info_t)HSA_AMD_AGENT_INFO_CHIP_ID, &chip_id_b));
-  if (chip_id_a != chip_id_b) return iree_ok_status();
+  if (chip_id_a != chip_id_b) {
+    return iree_ok_status();
+  }
 
   *out_are_compatible = true;
   return iree_ok_status();
@@ -611,14 +625,20 @@ IREE_API_EXPORT iree_status_t iree_hal_amdgpu_topology_initialize_with_defaults(
     bool is_compatible = false;
     status = iree_hal_amdgpu_topology_query_agent_compatibility(
         out_topology, libhsa, agents.gpu_agents[i], &is_compatible);
-    if (!iree_status_is_ok(status)) break;
-    if (!is_compatible) continue;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
+    if (!is_compatible) {
+      continue;
+    }
 
     // Add the GPU agent and ensure its host CPU is also in the topology if not
     // already.
     status = iree_hal_amdgpu_topology_insert_gpu_agent_with_nearest_cpu_agent(
         out_topology, libhsa, agents.gpu_agents[i]);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
   }
 
   if (!iree_status_is_ok(status)) {
@@ -672,7 +692,9 @@ IREE_API_EXPORT iree_status_t iree_hal_amdgpu_topology_initialize_from_path(
       iree_host_size_t ordinal = 0;
       status = iree_hal_amdgpu_available_agents_find_gpu_with_uuid(
           &agents, fragment, libhsa, &ordinal);
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
       status = iree_hal_amdgpu_topology_insert_gpu_agent_with_nearest_cpu_agent(
           out_topology, libhsa, agents.gpu_agents[ordinal]);
     } else {
@@ -695,7 +717,9 @@ IREE_API_EXPORT iree_status_t iree_hal_amdgpu_topology_initialize_from_path(
       status = iree_hal_amdgpu_topology_insert_gpu_agent_with_nearest_cpu_agent(
           out_topology, libhsa, agents.gpu_agents[ordinal]);
     }
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
   } while (!iree_string_view_is_empty(path));
 
   if (!iree_status_is_ok(status)) {
@@ -748,10 +772,14 @@ iree_hal_amdgpu_topology_initialize_from_gpu_agent_mask(
   iree_status_t status = iree_ok_status();
   for (iree_host_size_t gpu_ordinal = 0; gpu_ordinal < agents.gpu_agent_count;
        ++gpu_ordinal) {
-    if ((gpu_agent_mask & (1ull << gpu_ordinal)) == 0) continue;
+    if ((gpu_agent_mask & (1ull << gpu_ordinal)) == 0) {
+      continue;
+    }
     status = iree_hal_amdgpu_topology_insert_gpu_agent_with_nearest_cpu_agent(
         out_topology, libhsa, agents.gpu_agents[gpu_ordinal]);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
   }
 
   if (!iree_status_is_ok(status)) {

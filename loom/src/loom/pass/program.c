@@ -228,7 +228,9 @@ static iree_status_t loom_pass_program_copy_attr_value(
       return iree_ok_status();
     }
     case LOOM_ATTR_ENUM_ARRAY: {
-      if (source_attr.count == 0) return iree_ok_status();
+      if (source_attr.count == 0) {
+        return iree_ok_status();
+      }
       uint8_t* values = NULL;
       IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
           &compiler->program->arena, source_attr.count, sizeof(*values),
@@ -239,7 +241,9 @@ static iree_status_t loom_pass_program_copy_attr_value(
       return iree_ok_status();
     }
     case LOOM_ATTR_SIGNED_ENUM_SET: {
-      if (source_attr.count == 0) return iree_ok_status();
+      if (source_attr.count == 0) {
+        return iree_ok_status();
+      }
       uint64_t* words = NULL;
       IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
           &compiler->program->arena, (iree_host_size_t)source_attr.count * 2,
@@ -254,7 +258,9 @@ static iree_status_t loom_pass_program_copy_attr_value(
       return iree_ok_status();
     case LOOM_ATTR_SYMBOL_ARRAY:
     case LOOM_ATTR_SYMBOL_SET: {
-      if (source_attr.count == 0) return iree_ok_status();
+      if (source_attr.count == 0) {
+        return iree_ok_status();
+      }
       loom_symbol_ref_t* values = NULL;
       IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
           &compiler->program->arena, source_attr.count, sizeof(*values),

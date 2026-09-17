@@ -386,18 +386,42 @@ static int iree_hal_amd_xdna_image_compare_placement_indexes(
       &((const iree_hal_amd_xdna_image_placement_index_t*)lhs_ptr)->placement;
   const iree_hal_amd_xdna_image_tile_placement_t* rhs =
       &((const iree_hal_amd_xdna_image_placement_index_t*)rhs_ptr)->placement;
-  if (lhs->owner_column < rhs->owner_column) return -1;
-  if (lhs->owner_column > rhs->owner_column) return 1;
-  if (lhs->owner_row < rhs->owner_row) return -1;
-  if (lhs->owner_row > rhs->owner_row) return 1;
-  if (lhs->memory_space < rhs->memory_space) return -1;
-  if (lhs->memory_space > rhs->memory_space) return 1;
-  if (lhs->owner_offset < rhs->owner_offset) return -1;
-  if (lhs->owner_offset > rhs->owner_offset) return 1;
-  if (lhs->byte_length < rhs->byte_length) return -1;
-  if (lhs->byte_length > rhs->byte_length) return 1;
-  if (lhs->program_header_ordinal < rhs->program_header_ordinal) return -1;
-  if (lhs->program_header_ordinal > rhs->program_header_ordinal) return 1;
+  if (lhs->owner_column < rhs->owner_column) {
+    return -1;
+  }
+  if (lhs->owner_column > rhs->owner_column) {
+    return 1;
+  }
+  if (lhs->owner_row < rhs->owner_row) {
+    return -1;
+  }
+  if (lhs->owner_row > rhs->owner_row) {
+    return 1;
+  }
+  if (lhs->memory_space < rhs->memory_space) {
+    return -1;
+  }
+  if (lhs->memory_space > rhs->memory_space) {
+    return 1;
+  }
+  if (lhs->owner_offset < rhs->owner_offset) {
+    return -1;
+  }
+  if (lhs->owner_offset > rhs->owner_offset) {
+    return 1;
+  }
+  if (lhs->byte_length < rhs->byte_length) {
+    return -1;
+  }
+  if (lhs->byte_length > rhs->byte_length) {
+    return 1;
+  }
+  if (lhs->program_header_ordinal < rhs->program_header_ordinal) {
+    return -1;
+  }
+  if (lhs->program_header_ordinal > rhs->program_header_ordinal) {
+    return 1;
+  }
   return 0;
 }
 
@@ -492,7 +516,9 @@ static iree_status_t iree_hal_amd_xdna_image_validate_array_relationships(
             IREE_STATUS_FAILED_PRECONDITION,
             "XDNA ARRAY records do not match their program framing");
       }
-      if (record->referenced_program_header_ordinal == UINT32_MAX) continue;
+      if (record->referenced_program_header_ordinal == UINT32_MAX) {
+        continue;
+      }
       const uint32_t reference = record->referenced_program_header_ordinal;
       if (reference < array->first_tile_program_header_ordinal ||
           reference >= tile_program_header_end ||
@@ -644,7 +670,9 @@ iree_hal_amd_xdna_image_find_program_record(
       high = middle;
     }
   }
-  if (low == 0) return NULL;
+  if (low == 0) {
+    return NULL;
+  }
   const iree_hal_amd_xdna_image_program_record_t* record =
       iree_hal_amd_xdna_image_programs_record(programs, low - 1);
   return record->program_header_ordinal == program_header_ordinal ? record
@@ -654,7 +682,9 @@ iree_hal_amd_xdna_image_find_program_record(
 static bool iree_hal_amd_xdna_image_relocation_interval_is_satisfiable(
     const iree_hal_amd_xdna_elf_relocation_record_t* relocation) {
   const uint64_t alignment_mask = relocation->required_alignment - 1;
-  if (relocation->minimum_value > UINT64_MAX - alignment_mask) return false;
+  if (relocation->minimum_value > UINT64_MAX - alignment_mask) {
+    return false;
+  }
   const uint64_t first_aligned_value =
       (relocation->minimum_value + alignment_mask) & ~alignment_mask;
   return first_aligned_value <= relocation->maximum_value;
@@ -848,7 +878,9 @@ iree_status_t iree_hal_amd_xdna_image_validation_create(
 
 void iree_hal_amd_xdna_image_validation_destroy(
     iree_hal_amd_xdna_image_validation_t* validation) {
-  if (validation == NULL) return;
+  if (validation == NULL) {
+    return;
+  }
   iree_allocator_free(validation->host_allocator, validation);
 }
 

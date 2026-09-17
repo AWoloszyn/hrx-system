@@ -107,10 +107,14 @@ class TestLogicalDevice {
 
   iree_hal_amdgpu_host_queue_t* first_host_queue() const {
     iree_hal_amdgpu_logical_device_t* logical_device = this->logical_device();
-    if (logical_device->physical_device_count == 0) return NULL;
+    if (logical_device->physical_device_count == 0) {
+      return NULL;
+    }
     iree_hal_amdgpu_physical_device_t* physical_device =
         logical_device->physical_devices[0];
-    if (physical_device->host_queue_count == 0) return NULL;
+    if (physical_device->host_queue_count == 0) {
+      return NULL;
+    }
     return &physical_device->host_queues[0];
   }
 
@@ -183,7 +187,9 @@ static void WaitForSubmittedEpoch(const iree_hal_amdgpu_libhsa_t* libhsa,
                                   iree_hal_amdgpu_host_queue_t* queue) {
   const uint64_t submitted_epoch =
       queue->notification_ring.epoch.next_submission;
-  if (submitted_epoch == 0) return;
+  if (submitted_epoch == 0) {
+    return;
+  }
   const hsa_signal_value_t compare_value =
       (hsa_signal_value_t)(IREE_HAL_AMDGPU_EPOCH_INITIAL_VALUE -
                            submitted_epoch) +

@@ -16,7 +16,9 @@ static iree_status_t loom_test_diagnostic_copy_string(
     iree_arena_allocator_t* arena, iree_string_view_t source,
     iree_string_view_t* out_copy) {
   *out_copy = iree_string_view_empty();
-  if (iree_string_view_is_empty(source)) return iree_ok_status();
+  if (iree_string_view_is_empty(source)) {
+    return iree_ok_status();
+  }
   char* target = NULL;
   IREE_RETURN_IF_ERROR(
       iree_arena_allocate(arena, source.size, (void**)&target));
@@ -178,9 +180,13 @@ iree_status_t loom_test_diagnostic_materialize(
 
 static int loom_test_diagnostic_find_param_index(
     const loom_test_diagnostic_t* diagnostic, iree_string_view_t name) {
-  if (!diagnostic->error || diagnostic->error->param_count == 0) return -1;
+  if (!diagnostic->error || diagnostic->error->param_count == 0) {
+    return -1;
+  }
   for (iree_host_size_t i = 0; i < diagnostic->param_value_count; ++i) {
-    if (i >= diagnostic->error->param_count) return -1;
+    if (i >= diagnostic->error->param_count) {
+      return -1;
+    }
     if (iree_string_view_equal(
             name, iree_make_cstring_view(
                       loom_error_def_param_name(diagnostic->error, i)))) {
@@ -193,7 +199,9 @@ static int loom_test_diagnostic_find_param_index(
 bool loom_test_diagnostic_matches_annotation(
     const loom_test_diagnostic_t* diagnostic,
     const loom_test_annotation_t* annotation) {
-  if (diagnostic->severity != annotation->severity) return false;
+  if (diagnostic->severity != annotation->severity) {
+    return false;
+  }
   if (annotation->domain != LOOM_ERROR_DOMAIN_COUNT_ &&
       diagnostic->domain != annotation->domain) {
     return false;
@@ -266,7 +274,9 @@ iree_status_t loom_test_diagnostics_match_annotations(
   for (iree_host_size_t i = 0; i < diagnostic_count; ++i) {
     diagnostics[i].matched = false;
   }
-  if (annotation_count == 0) return iree_ok_status();
+  if (annotation_count == 0) {
+    return iree_ok_status();
+  }
 
   iree_host_size_t* annotation_to_diagnostic = NULL;
   bool* visited_annotations = NULL;

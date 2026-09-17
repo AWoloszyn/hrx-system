@@ -164,8 +164,12 @@ iree_status_t iree_async_slab_import_dmabuf(int dmabuf_fd, uint64_t offset,
   // Determine mmap protection flags from access flags.
   // These use the same flag bits as iree_async_buffer_access_flag_bits_e.
   int prot = 0;
-  if (access_flags & (1u << 0)) prot |= PROT_READ;   // READ.
-  if (access_flags & (1u << 1)) prot |= PROT_WRITE;  // WRITE.
+  if (access_flags & (1u << 0)) {
+    prot |= PROT_READ;  // READ.
+  }
+  if (access_flags & (1u << 1)) {
+    prot |= PROT_WRITE;  // WRITE.
+  }
 
   // mmap requires page-aligned offset. Align down and track the delta.
   iree_host_size_t page_size = iree_memory_query_info().normal_page_size;

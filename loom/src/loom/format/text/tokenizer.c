@@ -64,7 +64,9 @@ static inline bool loom_is_hex_digit(char c) {
 
 static bool loom_tokenizer_has_delimited_prefix(loom_tokenizer_t* t,
                                                 iree_string_view_t prefix) {
-  if (t->source.size - t->position < prefix.size) return false;
+  if (t->source.size - t->position < prefix.size) {
+    return false;
+  }
   if (memcmp(t->source.data + t->position, prefix.data, prefix.size) != 0) {
     return false;
   }
@@ -72,9 +74,15 @@ static bool loom_tokenizer_has_delimited_prefix(loom_tokenizer_t* t,
 }
 
 static inline int32_t loom_hex_digit_value(char c) {
-  if (c >= '0' && c <= '9') return c - '0';
-  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  if (c >= '0' && c <= '9') {
+    return c - '0';
+  }
+  if (c >= 'a' && c <= 'f') {
+    return c - 'a' + 10;
+  }
+  if (c >= 'A' && c <= 'F') {
+    return c - 'A' + 10;
+  }
   return -1;
 }
 
@@ -88,7 +96,9 @@ static inline bool loom_is_unicode_low_surrogate(uint32_t codepoint) {
 
 static iree_string_view_t loom_tokenizer_eof_text(
     const loom_tokenizer_t* tokenizer) {
-  if (iree_string_view_is_empty(tokenizer->source)) return tokenizer->source;
+  if (iree_string_view_is_empty(tokenizer->source)) {
+    return tokenizer->source;
+  }
   return iree_make_string_view(tokenizer->source.data + tokenizer->position, 0);
 }
 
@@ -137,7 +147,9 @@ static iree_status_t loom_tokenizer_set_error(
     return loom_tokenizer_error(tokenizer,
                                 IREE_SV("too many tokenizer error params"));
   }
-  if (tokenizer->error.error) return iree_ok_status();
+  if (tokenizer->error.error) {
+    return iree_ok_status();
+  }
   tokenizer->error.error = error;
   tokenizer->error.param_count = param_count;
   for (iree_host_size_t i = 0; i < param_count; ++i) {
@@ -177,7 +189,9 @@ static void loom_tokenizer_skip_to_string_recovery_point(loom_tokenizer_t* t) {
       ++t->column;
       return;
     }
-    if (c == '\n') return;
+    if (c == '\n') {
+      return;
+    }
     if ((uint8_t)c >= 0x80) {
       (void)loom_tokenizer_advance_utf8(t);
       continue;
@@ -542,7 +556,9 @@ static iree_status_t loom_tokenizer_consume_string_escape(
       iree_host_size_t unicode_escape_start = escape_start;
       uint32_t codepoint_column = t->column;
       IREE_RETURN_IF_ERROR(loom_tokenizer_consume_hex4(t, &codepoint));
-      if (t->error.error) return iree_ok_status();
+      if (t->error.error) {
+        return iree_ok_status();
+      }
       if (loom_is_unicode_high_surrogate(codepoint)) {
         if (t->position + 2 > t->source.size ||
             t->source.data[t->position] != '\\' ||
@@ -561,7 +577,9 @@ static iree_status_t loom_tokenizer_consume_string_escape(
         uint32_t low_surrogate_column = t->column;
         uint32_t low_surrogate = 0;
         IREE_RETURN_IF_ERROR(loom_tokenizer_consume_hex4(t, &low_surrogate));
-        if (t->error.error) return iree_ok_status();
+        if (t->error.error) {
+          return iree_ok_status();
+        }
         if (!loom_is_unicode_low_surrogate(low_surrogate)) {
           iree_host_size_t low_surrogate_end_position = t->position;
           uint32_t low_surrogate_end_column = t->column;
@@ -624,7 +642,9 @@ static iree_status_t loom_tokenizer_consume_string_escape(
 // content size appears.
 static iree_status_t loom_tokenizer_reserve_decoded_string_text(
     loom_tokenizer_t* t, iree_host_size_t minimum_capacity) {
-  if (minimum_capacity <= t->decoded_string_capacity) return iree_ok_status();
+  if (minimum_capacity <= t->decoded_string_capacity) {
+    return iree_ok_status();
+  }
   if (!t->scratch_arena) {
     return loom_tokenizer_error(
         t, IREE_SV("string literal escapes require a scratch arena"));
@@ -683,8 +703,12 @@ static iree_status_t loom_tokenizer_scan_string_content(
   while (t->position < t->source.size) {
     char c = t->source.data[t->position];
     if (c == '"') {
-      if (out_content_end) *out_content_end = t->position;
-      if (out_has_escapes) *out_has_escapes = has_escapes;
+      if (out_content_end) {
+        *out_content_end = t->position;
+      }
+      if (out_has_escapes) {
+        *out_has_escapes = has_escapes;
+      }
       ++t->position;
       ++t->column;
       return iree_ok_status();

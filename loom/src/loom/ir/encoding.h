@@ -151,7 +151,9 @@ static inline void loom_encoding_collect_parameter_slots(
     const loom_encoding_t* encoding, uint8_t slot_count,
     const loom_named_attr_t** out_slots) {
   IREE_ASSERT(loom_encoding_static_parameters_are_valid(encoding));
-  for (uint8_t i = 0; i < slot_count; ++i) out_slots[i] = NULL;
+  for (uint8_t i = 0; i < slot_count; ++i) {
+    out_slots[i] = NULL;
+  }
   for (uint8_t i = 0; i < encoding->attribute_count; ++i) {
     const loom_named_attr_t* parameter = &encoding->attributes[i];
     const uint8_t descriptor_index =

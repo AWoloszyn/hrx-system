@@ -107,7 +107,9 @@ static kernel_table_t g_kernel_table = {0};
 //===----------------------------------------------------------------------===//
 
 static void trace_msg(int level, const char* fmt, ...) {
-  if (level > g_trace_level || !g_trace_file) return;
+  if (level > g_trace_level || !g_trace_file) {
+    return;
+  }
 
   pthread_mutex_lock(&g_trace_mutex);
 
@@ -184,7 +186,9 @@ static void buffer_table_init(void) {
 }
 
 static bool buffer_table_add(void* ptr, size_t size, buffer_type_t type) {
-  if (!ptr || size == 0) return true;  // NULL/zero-size allocs are valid
+  if (!ptr || size == 0) {
+    return true;  // NULL/zero-size allocs are valid
+  }
 
   pthread_mutex_lock(&g_buffer_table.mutex);
 
@@ -215,7 +219,9 @@ static bool buffer_table_add(void* ptr, size_t size, buffer_type_t type) {
 }
 
 static bool buffer_table_remove(void* ptr) {
-  if (!ptr) return true;  // Free(NULL) is valid
+  if (!ptr) {
+    return true;  // Free(NULL) is valid
+  }
 
   pthread_mutex_lock(&g_buffer_table.mutex);
 
@@ -257,7 +263,9 @@ static void kernel_table_init(void) {
 }
 
 static void kernel_table_add(void* host_func, const char* name) {
-  if (!host_func) return;
+  if (!host_func) {
+    return;
+  }
 
   pthread_mutex_lock(&g_kernel_table.mutex);
 
@@ -333,7 +341,9 @@ static void dump_buffer_hex(const void* data, size_t size, size_t max_bytes) {
 }
 
 static void dump_all_buffers_ex(const char* label, bool force_full_dump) {
-  if (g_trace_dump == 0) return;
+  if (g_trace_dump == 0) {
+    return;
+  }
 
   pthread_mutex_lock(&g_buffer_table.mutex);
 
@@ -346,10 +356,14 @@ static void dump_all_buffers_ex(const char* label, bool force_full_dump) {
 
   for (size_t i = 0; i < MAX_TRACKED_BUFFERS; ++i) {
     tracked_buffer_t* buf = &g_buffer_table.buffers[i];
-    if (!buf->in_use) continue;
+    if (!buf->in_use) {
+      continue;
+    }
 
     // Skip zero-size buffers
-    if (buf->size == 0) continue;
+    if (buf->size == 0) {
+      continue;
+    }
 
     // Determine how many bytes to read - full dump reads everything
     size_t read_size = buf->size;
@@ -365,7 +379,9 @@ static void dump_all_buffers_ex(const char* label, bool force_full_dump) {
     if (buf->type == BUFFER_TYPE_DEVICE) {
       // Ensure staging buffer is large enough
       if (read_size > staging_size) {
-        if (host_staging) free(host_staging);
+        if (host_staging) {
+          free(host_staging);
+        }
         staging_size = read_size;
         host_staging = malloc(staging_size);
         if (!host_staging) {
@@ -402,7 +418,9 @@ static void dump_all_buffers_ex(const char* label, bool force_full_dump) {
     }
   }
 
-  if (host_staging) free(host_staging);
+  if (host_staging) {
+    free(host_staging);
+  }
 
   pthread_mutex_unlock(&g_buffer_table.mutex);
 
@@ -624,7 +642,9 @@ static bool should_full_dump_kernel(const char* kernel_name) {
   // Make a copy since strtok modifies the string
   size_t list_len = strlen(g_kernel_full_dump_list);
   char* list_copy = (char*)malloc(list_len + 1);
-  if (!list_copy) return false;
+  if (!list_copy) {
+    return false;
+  }
   strcpy(list_copy, g_kernel_full_dump_list);
 
   bool found = false;
@@ -748,7 +768,9 @@ static hipError_t wrap_hipLaunchKernel(const void* function_address,
 
 static void trace_kernarg_words(const char* label, const void* buffer,
                                 size_t size) {
-  if (g_trace_level < 2 || !buffer || size == 0) return;
+  if (g_trace_level < 2 || !buffer || size == 0) {
+    return;
+  }
   const size_t word_count = size / sizeof(uint64_t);
   const uint64_t* words = (const uint64_t*)buffer;
   const size_t limit = word_count < 16 ? word_count : 16;

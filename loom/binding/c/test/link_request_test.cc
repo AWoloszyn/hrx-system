@@ -147,7 +147,9 @@ RequestPtr CreateRequest(
     const std::vector<loomc_request_binding_t>& bindings = {}) {
   const loom_module_t* internal_module = loomc_module_const_loom_module(module);
   EXPECT_NE(internal_module, nullptr);
-  if (internal_module == nullptr) return RequestPtr();
+  if (internal_module == nullptr) {
+    return RequestPtr();
+  }
 
   std::vector<loom_symbol_id_t> module_symbol_ids;
   module_symbol_ids.reserve(root_names.size());
@@ -155,11 +157,15 @@ RequestPtr CreateRequest(
     const loom_string_id_t name_id = loom_module_lookup_string(
         internal_module, iree_make_cstring_view(root_name));
     EXPECT_NE(name_id, LOOM_STRING_ID_INVALID);
-    if (name_id == LOOM_STRING_ID_INVALID) return RequestPtr();
+    if (name_id == LOOM_STRING_ID_INVALID) {
+      return RequestPtr();
+    }
     const loom_symbol_id_t symbol_id =
         loom_module_find_symbol(internal_module, name_id);
     EXPECT_NE(symbol_id, LOOM_SYMBOL_ID_INVALID);
-    if (symbol_id == LOOM_SYMBOL_ID_INVALID) return RequestPtr();
+    if (symbol_id == LOOM_SYMBOL_ID_INVALID) {
+      return RequestPtr();
+    }
     module_symbol_ids.push_back(symbol_id);
   }
 
@@ -224,7 +230,9 @@ std::vector<uint8_t> CreateTwoModuleArchive(loomc_byte_span_t first,
                                             iree_string_view_t second_name) {
   const loomc_host_size_t first_directory_offset = BytecodeHeaderEnd(first);
   const loomc_host_size_t second_directory_offset = BytecodeHeaderEnd(second);
-  if (first_directory_offset == 0 || second_directory_offset == 0) return {};
+  if (first_directory_offset == 0 || second_directory_offset == 0) {
+    return {};
+  }
   const uint64_t first_module_offset =
       iree_unaligned_load_le_u64(first.data + first_directory_offset + 8);
   const uint64_t first_module_length =

@@ -107,7 +107,9 @@ static uint32_t loom_low_schedule_dependency_index_count_groups(
               graph,
               loom_low_schedule_dependency_detail_index_at(detail_index, i));
       const uint32_t consumer_node = dependency->consumer_node;
-      if (last_producer_nodes[consumer_node] == producer_node) continue;
+      if (last_producer_nodes[consumer_node] == producer_node) {
+        continue;
+      }
       last_producer_nodes[consumer_node] = producer_node;
       IREE_ASSERT_NE(group_count, UINT32_MAX);
       ++group_count;
@@ -237,7 +239,9 @@ iree_status_t loom_low_schedule_dependency_index_initialize(
                LOOM_LOW_SCHEDULE_DEPENDENCY_GROUP_SEGMENT_CAPACITY) *
           sizeof(loom_low_schedule_dependency_group_t),
       64, &out_index->groups);
-  if (out_index->group_count == 0) return iree_ok_status();
+  if (out_index->group_count == 0) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(loom_low_schedule_dependency_index_allocate_segments(
       &out_index->groups, out_index->group_count,
@@ -269,7 +273,9 @@ iree_status_t loom_low_schedule_dependency_frontier_initialize(
   *out_frontier = (loom_low_schedule_dependency_frontier_t){
       .node_count = index->node_count,
   };
-  if (index->node_count == 0) return iree_ok_status();
+  if (index->node_count == 0) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       arena, index->node_count,
       sizeof(*out_frontier->remaining_producer_counts),

@@ -93,7 +93,9 @@ static BufferPoolContext* CreateBufferPoolContext(
 }
 
 static void DestroyBufferPoolContext(BufferPoolContext* ctx) {
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
   iree_async_buffer_pool_release(ctx->pool);
   iree_async_region_release(ctx->region);
   iree_async_slab_release(ctx->slab);
@@ -113,7 +115,9 @@ static void BM_AcquireRelease(::benchmark::State& state,
   // Use 16 buffers of 4KB (typical network buffer size).
   auto* ctx = CreateBufferPoolContext(factory, /*buffer_size=*/4096,
                                       /*buffer_count=*/16, state);
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
 
   iree_async_buffer_lease_t lease;
   for (auto _ : state) {
@@ -137,7 +141,9 @@ static void BM_AcquireOnly(::benchmark::State& state,
   // Large pool so we don't exhaust during warmup.
   auto* ctx = CreateBufferPoolContext(factory, /*buffer_size=*/4096,
                                       /*buffer_count=*/1024, state);
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
 
   // Acquire all, then release all to set up steady state.
   std::vector<iree_async_buffer_lease_t> leases(ctx->buffer_count);
@@ -194,7 +200,9 @@ static void BM_ReleaseOnly(::benchmark::State& state,
   // Large pool for sustained benchmarking.
   auto* ctx = CreateBufferPoolContext(factory, /*buffer_size=*/4096,
                                       /*buffer_count=*/1024, state);
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
 
   // Pre-acquire all buffers.
   std::vector<iree_async_buffer_lease_t> leases(ctx->buffer_count);
@@ -246,15 +254,21 @@ static void BM_BatchAcquireRelease(::benchmark::State& state,
                                    size_t batch_size) {
   // Pool size must be at least batch_size and power of 2 for io_uring.
   size_t pool_size = batch_size;
-  if (pool_size < 16) pool_size = 16;
+  if (pool_size < 16) {
+    pool_size = 16;
+  }
   // Round up to power of 2.
   size_t po2 = 1;
-  while (po2 < pool_size) po2 <<= 1;
+  while (po2 < pool_size) {
+    po2 <<= 1;
+  }
   pool_size = po2;
 
   auto* ctx =
       CreateBufferPoolContext(factory, /*buffer_size=*/4096, pool_size, state);
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
 
   std::vector<iree_async_buffer_lease_t> leases(batch_size);
 
@@ -292,7 +306,9 @@ static void BM_AcquireReleaseSize(::benchmark::State& state,
                                   iree_host_size_t buffer_size) {
   auto* ctx = CreateBufferPoolContext(factory, buffer_size,
                                       /*buffer_count=*/64, state);
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
 
   iree_async_buffer_lease_t lease;
   for (auto _ : state) {

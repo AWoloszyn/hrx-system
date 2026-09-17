@@ -274,7 +274,9 @@ static iree_status_t iree_hal_amdgpu_pm4_dispatch_record_measure(
   const iree_hal_amdgpu_kernarg_binding_slot_t* binding_slots =
       iree_hal_amdgpu_kernarg_layout_binding_slots(layout);
   for (uint32_t i = 0; i < record->binding_count; ++i) {
-    if (bindings[i].binding_slot == UINT32_MAX) continue;
+    if (bindings[i].binding_slot == UINT32_MAX) {
+      continue;
+    }
     ++out_measurement->fixup_entry_count;
     ++out_measurement->profile_fixup_entry_count;
     const uint32_t kernarg_offset =
@@ -564,7 +566,9 @@ static iree_status_t iree_hal_amdgpu_pm4_dispatch_append_template_fixups(
   const iree_hal_amdgpu_pm4_buffer_ref_record_t* bindings =
       iree_hal_amdgpu_pm4_dispatch_record_bindings(record);
   for (uint32_t i = 0; i < record->binding_count; ++i) {
-    if (bindings[i].binding_slot == UINT32_MAX) continue;
+    if (bindings[i].binding_slot == UINT32_MAX) {
+      continue;
+    }
     iree_host_size_t target_offset = 0;
     const iree_host_size_t kernarg_offset =
         (iree_host_size_t)binding_slots[i].target_qword_index *
@@ -592,13 +596,17 @@ static iree_status_t iree_hal_amdgpu_pm4_dispatch_append_preload_fixups(
       record->descriptor->kernarg_layout;
   const iree_hal_amdgpu_pm4_dispatch_launch_state_t* launch_state =
       &record->descriptor->pm4_launch_state;
-  if (launch_state->kernarg_preload_dword_count == 0) return iree_ok_status();
+  if (launch_state->kernarg_preload_dword_count == 0) {
+    return iree_ok_status();
+  }
   const iree_hal_amdgpu_kernarg_binding_slot_t* binding_slots =
       iree_hal_amdgpu_kernarg_layout_binding_slots(layout);
   const iree_hal_amdgpu_pm4_buffer_ref_record_t* bindings =
       iree_hal_amdgpu_pm4_dispatch_record_bindings(record);
   for (uint32_t i = 0; i < record->binding_count; ++i) {
-    if (bindings[i].binding_slot == UINT32_MAX) continue;
+    if (bindings[i].binding_slot == UINT32_MAX) {
+      continue;
+    }
     const uint32_t kernarg_offset =
         (uint32_t)binding_slots[i].target_qword_index * sizeof(uint64_t);
     bool is_preloaded = false;
@@ -607,7 +615,9 @@ static iree_status_t iree_hal_amdgpu_pm4_dispatch_append_preload_fixups(
         iree_hal_amdgpu_pm4_dispatch_kernarg_range_preload_offset(
             launch_state, kernarg_offset, sizeof(uint64_t), &is_preloaded,
             &preload_dword_offset));
-    if (!is_preloaded) continue;
+    if (!is_preloaded) {
+      continue;
+    }
 
     const iree_host_size_t target_dword_offset =
         (iree_host_size_t)user_data_program_dword_offset + 2u +
@@ -860,7 +870,9 @@ iree_status_t iree_hal_amdgpu_pm4_dispatch_record_materialize(
     IREE_RETURN_IF_ERROR(iree_hal_amdgpu_pm4_dispatch_emit_terminal_packet(
         record, launch_state, state, &stats.dispatch_dwords));
   }
-  if (out_stats) *out_stats = stats;
+  if (out_stats) {
+    *out_stats = stats;
+  }
   return iree_ok_status();
 }
 

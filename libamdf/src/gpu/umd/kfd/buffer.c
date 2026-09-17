@@ -62,7 +62,9 @@ static amdf_status_t amdf_gpu_kfd_buffer_release_native(
     const int result = amdf_gpu_kfd_buffer_ioctl(
         buffer->device->descriptor, AMDKFD_IOC_UNMAP_MEMORY_FROM_GPU, &unmap);
     buffer->unmap_success_count = unmap.n_success;
-    if (result != 0) return amdf_linux_error(errno);
+    if (result != 0) {
+      return amdf_linux_error(errno);
+    }
     if (unmap.n_success != buffer->mapped_gpu_count) {
       return amdf_linux_error(EPROTO);
     }
@@ -137,7 +139,9 @@ amdf_status_t amdf_gpu_kfd_buffer_prepare(
       device->host_allocator, sizeof(*buffer),
       ((size_t)create_info->peer_count + 1) * sizeof(*buffer->gpu_ids),
       amdf_alignof(amdf_gpu_kfd_buffer_t), (void**)&buffer);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   buffer->device = device;
   *buffer_state = buffer;
   uint32_t gpu_count = 1;
@@ -148,8 +152,12 @@ amdf_status_t amdf_gpu_kfd_buffer_prepare(
     const amdf_gpu_kfd_topology_t* topology =
         &create_info->peer_devices[i]->topology;
     uint32_t j = 0;
-    while (j < gpu_count && buffer->gpu_ids[j] != topology->gpu_id) ++j;
-    if (j == gpu_count) buffer->gpu_ids[gpu_count++] = topology->gpu_id;
+    while (j < gpu_count && buffer->gpu_ids[j] != topology->gpu_id) {
+      ++j;
+    }
+    if (j == gpu_count) {
+      buffer->gpu_ids[gpu_count++] = topology->gpu_id;
+    }
     if (topology->virtual_address.begin > minimum_address) {
       minimum_address = topology->virtual_address.begin;
     }
@@ -195,7 +203,9 @@ amdf_status_t amdf_gpu_kfd_buffer_prepare(
   }
   if (amdf_status_is_ok(status)) {
     buffer->handle = allocate.handle;
-    if (buffer->handle == 0) status = amdf_linux_error(EPROTO);
+    if (buffer->handle == 0) {
+      status = amdf_linux_error(EPROTO);
+    }
   }
 
   void* host_pointer = create_info->host_pointer;

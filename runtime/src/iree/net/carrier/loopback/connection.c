@@ -310,7 +310,9 @@ iree_status_t iree_net_loopback_connection_create_pair(
   }
   iree_net_loopback_carrier_options_t default_carrier_options =
       iree_net_loopback_carrier_options_default();
-  if (!carrier_options) carrier_options = &default_carrier_options;
+  if (!carrier_options) {
+    carrier_options = &default_carrier_options;
+  }
   if (carrier_options->max_send_operations == 0 ||
       carrier_options->max_send_spans == 0) {
     return iree_make_status(
@@ -340,14 +342,18 @@ iree_status_t iree_net_loopback_connection_create_pair(
           client_carrier, carrier_options->max_send_operations,
           &client_connection->deactivation_barrier, host_allocator,
           &client_connection->endpoints[i].endpoint);
-      if (iree_status_is_ok(status)) client_carrier = NULL;
+      if (iree_status_is_ok(status)) {
+        client_carrier = NULL;
+      }
     }
     if (iree_status_is_ok(status)) {
       status = iree_net_loopback_framed_endpoint_allocate(
           server_carrier, carrier_options->max_send_operations,
           &server_connection->deactivation_barrier, host_allocator,
           &server_connection->endpoints[i].endpoint);
-      if (iree_status_is_ok(status)) server_carrier = NULL;
+      if (iree_status_is_ok(status)) {
+        server_carrier = NULL;
+      }
     }
     iree_net_carrier_release(client_carrier);
     iree_net_carrier_release(server_carrier);

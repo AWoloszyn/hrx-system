@@ -125,7 +125,9 @@ class GatedFutexWaker {
   }
 
   void Join() {
-    if (thread_.joinable()) thread_.join();
+    if (thread_.joinable()) {
+      thread_.join();
+    }
   }
 
  private:

@@ -88,7 +88,9 @@ iree_status_t iree_hal_amdgpu_block_pool_initialize(
   iree_status_t status = iree_ok_status();
   for (iree_host_size_t i = 0; i < initial_allocation_count; ++i) {
     status = iree_hal_amdgpu_block_pool_grow(out_block_pool);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
   }
 
   iree_slim_mutex_unlock(&out_block_pool->mutex);
@@ -102,7 +104,9 @@ iree_status_t iree_hal_amdgpu_block_pool_initialize(
 
 void iree_hal_amdgpu_block_pool_deinitialize(
     iree_hal_amdgpu_block_pool_t* block_pool) {
-  if (!block_pool || !block_pool->is_initialized) return;
+  if (!block_pool || !block_pool->is_initialized) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   // Should have freed everything so we can just trim the pool to drop all
@@ -176,7 +180,9 @@ static iree_status_t iree_hal_amdgpu_block_pool_grow(
 }
 
 void iree_hal_amdgpu_block_pool_trim(iree_hal_amdgpu_block_pool_t* block_pool) {
-  if (!block_pool || !block_pool->is_initialized) return;
+  if (!block_pool || !block_pool->is_initialized) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   // NOTE: we could steal the whole list and free it outside of the lock but we
@@ -280,7 +286,9 @@ iree_status_t iree_hal_amdgpu_block_pool_acquire(
 void iree_hal_amdgpu_block_pool_release(
     iree_hal_amdgpu_block_pool_t* block_pool, iree_hal_amdgpu_block_t* block) {
   IREE_ASSERT_ARGUMENT(block_pool);
-  if (!block) return;
+  if (!block) {
+    return;
+  }
   IREE_ASSERT(block_pool->is_initialized);
   IREE_TRACE_ZONE_BEGIN(z0);
 
@@ -300,7 +308,9 @@ void iree_hal_amdgpu_block_pool_release_list(
     iree_hal_amdgpu_block_pool_t* block_pool,
     iree_hal_amdgpu_block_t* block_head) {
   IREE_ASSERT_ARGUMENT(block_pool);
-  if (!block_head) return;
+  if (!block_head) {
+    return;
+  }
   IREE_ASSERT(block_pool->is_initialized);
   IREE_TRACE_ZONE_BEGIN(z0);
 
@@ -467,7 +477,9 @@ iree_status_t iree_hal_amdgpu_block_allocator_initialize(
 
 void iree_hal_amdgpu_block_allocator_deinitialize(
     iree_hal_amdgpu_block_allocator_t* allocator) {
-  if (!allocator || !allocator->block_pool) return;
+  if (!allocator || !allocator->block_pool) {
+    return;
+  }
 
   IREE_ASSERT_EQ(allocator->block_head, NULL);
   IREE_ASSERT_EQ(allocator->block_tail, NULL);
@@ -632,7 +644,9 @@ static void iree_hal_amdgpu_block_allocator_free_with_lock(
 void iree_hal_amdgpu_block_allocator_free(
     iree_hal_amdgpu_block_allocator_t* allocator,
     IREE_AMDGPU_DEVICE_PTR void* ptr, iree_hal_amdgpu_block_token_t token) {
-  if (!ptr) return;
+  if (!ptr) {
+    return;
+  }
   iree_slim_mutex_lock(&allocator->mutex);
   iree_hal_amdgpu_block_allocator_free_with_lock(allocator, ptr, token);
   iree_slim_mutex_unlock(&allocator->mutex);

@@ -162,6 +162,14 @@ def macos_cc_toolchains(name, repository_path, metadata, minimum_os, cross):
         ],
         data = native.glob(["resource/lib/darwin/libclang_rt.osx.a"], allow_empty = True),
     )
+
+    # cc_library links its own objects into a dylib without its dependencies.
+    # The final consumer supplies those imports; final links remain strict.
+    cc_args(
+        name = "nodeps_link",
+        actions = [_ACTIONS + "nodeps_dynamic_library_link_actions"],
+        args = ["-Wl,-undefined,dynamic_lookup"],
+    )
     cc_artifact_name_pattern(
         name = "dylib",
         category = "@rules_cc//cc/toolchains/artifacts:dynamic_library",
@@ -208,7 +216,7 @@ def macos_cc_toolchains(name, repository_path, metadata, minimum_os, cross):
             name = "cc_" + architecture,
             compiler = "clang",
             tool_map = ":" + name + "_tools",
-            args = [":target_" + architecture, ":sdk", ":compile", ":libcxx", ":link", ":libraries_" + architecture],
+            args = [":target_" + architecture, ":sdk", ":compile", ":libcxx", ":link", ":nodeps_link", ":libraries_" + architecture],
             artifact_name_patterns = [":dylib"],
             enabled_features = [_STANDARD_FEATURES],
             known_features = [_STANDARD_FEATURES, ":asan", ":sanitizer_debug_info"],

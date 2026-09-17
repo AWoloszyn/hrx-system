@@ -81,7 +81,9 @@ iree_status_t iree_async_primitive_dup(iree_async_primitive_t primitive,
 }
 
 void iree_async_primitive_close(iree_async_primitive_t* primitive) {
-  if (!primitive) return;
+  if (!primitive) {
+    return;
+  }
   switch (primitive->type) {
     case IREE_ASYNC_PRIMITIVE_TYPE_NONE:
       break;

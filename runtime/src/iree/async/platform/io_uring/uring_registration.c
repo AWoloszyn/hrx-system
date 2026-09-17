@@ -72,7 +72,9 @@ static void iree_io_uring_registration_drain_locked(
   while (registration->pending_head) {
     iree_io_uring_registration_request_t* request = registration->pending_head;
     registration->pending_head = request->next;
-    if (!registration->pending_head) registration->pending_tail = NULL;
+    if (!registration->pending_head) {
+      registration->pending_tail = NULL;
+    }
 
     int result = iree_io_uring_registration_syscall(
         registration, request->opcode, request->arg, request->argument_count);
@@ -215,7 +217,9 @@ int iree_io_uring_registration_execute(
 
 void iree_io_uring_registration_drain(
     iree_io_uring_registration_t* registration) {
-  if (!iree_io_uring_registration_has_pending(registration)) return;
+  if (!iree_io_uring_registration_has_pending(registration)) {
+    return;
+  }
 
   const int32_t current_tid = (int32_t)syscall(__NR_gettid);
   iree_slim_mutex_lock(&registration->mutex);

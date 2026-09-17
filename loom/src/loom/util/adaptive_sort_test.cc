@@ -114,10 +114,14 @@ TEST(AdaptiveSortTest, AdversarialInputsHaveNLogNComparisonBound) {
 
   std::vector<uint32_t> organ_pipe;
   organ_pipe.reserve(kCount);
-  for (uint32_t i = 0; i < kCount; i += 2) organ_pipe.push_back(i);
+  for (uint32_t i = 0; i < kCount; i += 2) {
+    organ_pipe.push_back(i);
+  }
   for (uint32_t i = kCount - 1;; i -= 2) {
     organ_pipe.push_back(i);
-    if (i < 2) break;
+    if (i < 2) {
+      break;
+    }
   }
   EXPECT_LE(SortAndVerify(organ_pipe).comparison_count, comparison_bound);
 

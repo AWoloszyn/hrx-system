@@ -495,7 +495,9 @@ static iree_status_t iree_tokenizer_replace_multi_state_process(
     // starting at the LAST overlap position needs all pattern_length bytes
     // from input to complete.
     iree_host_size_t bytes_to_add = pattern_length;
-    if (bytes_to_add > input.size) bytes_to_add = input.size;
+    if (bytes_to_add > input.size) {
+      bytes_to_add = input.size;
+    }
     memcpy(cross_buffer + cross_length, in_ptr, bytes_to_add);
     cross_length += bytes_to_add;
 

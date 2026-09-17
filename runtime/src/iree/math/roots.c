@@ -70,7 +70,9 @@ static bool iree_math_rsqrt_f32_handle_special(float value, float* out_result) {
 
 IREE_API_EXPORT float iree_math_rsqrt_f32_approx(float value) {
   float result = 0.0f;
-  if (iree_math_rsqrt_f32_handle_special(value, &result)) return result;
+  if (iree_math_rsqrt_f32_handle_special(value, &result)) {
+    return result;
+  }
   return 1.0f / iree_math_sqrt_f32_native(value);
 }
 
@@ -87,6 +89,8 @@ IREE_API_EXPORT float iree_math_sqrt_f32_approx(float value) {
   if (IREE_UNLIKELY(sign_bits != 0)) {
     return iree_math_f32_canonical_nan();
   }
-  if (IREE_UNLIKELY(magnitude_bits == IREE_MATH_F32_INFINITY)) return value;
+  if (IREE_UNLIKELY(magnitude_bits == IREE_MATH_F32_INFINITY)) {
+    return value;
+  }
   return iree_math_sqrt_f32_native(value);
 }

@@ -799,7 +799,9 @@ static iree_status_t iree_io_parse_gguf_index_from_memory(
 
   // If there are no tensors then no-op the parse. Probably not what the user
   // wanted but it's legal.
-  if (tensor_count == 0) return iree_ok_status();
+  if (tensor_count == 0) {
+    return iree_ok_status();
+  }
 
   iree_io_gguf_parser_t parser = {
       .file_handle = file_handle,

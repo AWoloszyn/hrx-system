@@ -201,7 +201,9 @@ static iree_status_t loom_cmd_program_plan_prepare_roots(
 
   loom_pass_program_deinitialize(&program);
   loom_module_free(pipeline_module);
-  if (iree_status_is_ok(status)) *out_valid = valid;
+  if (iree_status_is_ok(status)) {
+    *out_valid = valid;
+  }
   return status;
 }
 
@@ -236,7 +238,9 @@ static uint32_t loom_cmd_program_plan_declaration_requirement(
   IREE_ASSERT_EQ(callee.module_id, 0u);
   uint32_t requirement_index =
       symbol_index->ordinal_by_symbol[callee.symbol_id];
-  if (requirement_index != UINT32_MAX) return requirement_index;
+  if (requirement_index != UINT32_MAX) {
+    return requirement_index;
+  }
 
   IREE_ASSERT_LT(plan->entry_requirement_count, UINT32_MAX);
   requirement_index = (uint32_t)plan->entry_requirement_count++;
@@ -269,7 +273,9 @@ static bool loom_cmd_program_plan_exact_scalar_bits(
   IREE_ASSERT(loom_type_is_scalar(type));
   const loom_scalar_type_t scalar_type = loom_type_element_type(type);
   const int32_t bit_count = loom_scalar_type_bitwidth(scalar_type);
-  if (bit_count <= 0 || bit_count > 64) return false;
+  if (bit_count <= 0 || bit_count > 64) {
+    return false;
+  }
   if (loom_scalar_type_is_float(scalar_type)) {
     if (!loom_value_facts_as_exact_float_bits(scalar_type, facts, out_bits)) {
       return false;
@@ -363,7 +369,9 @@ static iree_status_t loom_cmd_program_plan_copy_u32_table(
     const uint32_t* source, uint32_t count, iree_allocator_t allocator,
     uint32_t** out_table) {
   *out_table = NULL;
-  if (count == 0) return iree_ok_status();
+  if (count == 0) {
+    return iree_ok_status();
+  }
   iree_host_size_t byte_length = 0;
   if (!iree_host_size_checked_mul(count, sizeof(**out_table), &byte_length)) {
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
@@ -856,7 +864,9 @@ iree_status_t loom_cmd_program_plan_prepare_materialization(
                           root_builds[i].entry_requirement_indices);
     }
   }
-  if (preparation_module) loom_module_free(preparation_module);
+  if (preparation_module) {
+    loom_module_free(preparation_module);
+  }
   iree_arena_deinitialize(&scratch_arena);
   if (iree_status_is_ok(status) && valid) {
     *out_valid = true;
@@ -868,7 +878,9 @@ iree_status_t loom_cmd_program_plan_prepare_materialization(
 }
 
 void loom_cmd_program_plan_deinitialize(loom_cmd_program_plan_t* plan) {
-  if (!plan) return;
+  if (!plan) {
+    return;
+  }
   for (iree_host_size_t i = 0; i < plan->root_count; ++i) {
     loom_cmd_parameter_requirement_table_deinitialize(
         &plan->roots[i].parameters, plan->host_allocator);
@@ -877,6 +889,8 @@ void loom_cmd_program_plan_deinitialize(loom_cmd_program_plan_t* plan) {
   }
   iree_allocator_free(plan->host_allocator, plan->entry_requirements);
   iree_allocator_free(plan->host_allocator, plan->roots);
-  if (plan->root_module) loom_module_free(plan->root_module);
+  if (plan->root_module) {
+    loom_module_free(plan->root_module);
+  }
   memset(plan, 0, sizeof(*plan));
 }

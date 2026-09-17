@@ -106,7 +106,9 @@ iree_string_view_t loom_target_condition_validate(
 static inline loom_target_condition_outcome_t loom_target_condition_evaluate(
     const loom_target_condition_descriptor_t* descriptor,
     loom_attribute_t condition, const loom_target_facts_t* facts) {
-  if (facts == NULL) return LOOM_TARGET_CONDITION_UNBOUND;
+  if (facts == NULL) {
+    return LOOM_TARGET_CONDITION_UNBOUND;
+  }
   if (descriptor->required_fact_type != NULL &&
       facts->fact_type != descriptor->required_fact_type) {
     return LOOM_TARGET_CONDITION_REJECT;

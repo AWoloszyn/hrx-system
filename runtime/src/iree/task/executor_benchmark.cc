@@ -177,7 +177,9 @@ BENCHMARK(BM_WakeSingleWorker)->UseRealTime();
 // Parameter: number of workers (and budget).
 void BM_WakeAllWorkers(benchmark::State& state) {
   const int worker_count = state.range(0);
-  if (ShouldSkipWorkerCount(state, worker_count)) return;
+  if (ShouldSkipWorkerCount(state, worker_count)) {
+    return;
+  }
   iree_task_executor_t* executor = CreateExecutor(worker_count);
 
   // Give workers enough tiles that they all get work to do.
@@ -224,7 +226,9 @@ BENCHMARK(BM_WakeAllWorkers)
 // measure the overhead of the wake tree when workers loop back quickly.
 void BM_WakeWarmWorkers(benchmark::State& state) {
   const int worker_count = state.range(0);
-  if (ShouldSkipWorkerCount(state, worker_count)) return;
+  if (ShouldSkipWorkerCount(state, worker_count)) {
+    return;
+  }
   iree_task_executor_t* executor = CreateExecutor(worker_count);
 
   const int tiles_per_worker = 10;
@@ -271,7 +275,9 @@ BENCHMARK(BM_WakeWarmWorkers)
 // via the shared desired_wake counter.
 void BM_ConcurrentActivation(benchmark::State& state) {
   const int worker_count = state.range(0);
-  if (ShouldSkipWorkerCount(state, worker_count)) return;
+  if (ShouldSkipWorkerCount(state, worker_count)) {
+    return;
+  }
   iree_task_executor_t* executor = CreateExecutor(worker_count);
 
   const int budget_per_process = worker_count / 2;

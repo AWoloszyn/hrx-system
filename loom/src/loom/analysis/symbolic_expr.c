@@ -134,7 +134,9 @@ bool loom_symbolic_expr_context_try_lookup_summary(
     loom_symbolic_expr_summary_t* out_summary) {
   const loom_symbolic_expr_memo_entry_t* entry =
       loom_symbolic_expr_ready_memo_entry(context, value_id);
-  if (entry == NULL) return false;
+  if (entry == NULL) {
+    return false;
+  }
   *out_summary = (loom_symbolic_expr_summary_t){
       .expression = entry->expression,
       .materialized_dynamic_value_id = entry->materialized_dynamic_value_id,
@@ -144,7 +146,9 @@ bool loom_symbolic_expr_context_try_lookup_summary(
 
 static iree_status_t loom_symbolic_expr_ensure_memo_capacity(
     loom_symbolic_expr_context_t* context, iree_host_size_t minimum_capacity) {
-  if (minimum_capacity <= context->memo_capacity) return iree_ok_status();
+  if (minimum_capacity <= context->memo_capacity) {
+    return iree_ok_status();
+  }
   iree_host_size_t old_capacity = context->memo_capacity;
   void* entries = context->memo_entries;
   IREE_RETURN_IF_ERROR(iree_arena_grow_array(
@@ -224,7 +228,9 @@ iree_status_t loom_symbolic_expr_context_lookup_facts(
           &context->condition_query, context->fact_table,
           context->condition_facts, loom_scf_select_condition(defining_op),
           &condition, &proven));
-      if (!proven) break;
+      if (!proven) {
+        break;
+      }
       value_id = condition ? loom_scf_select_true_value(defining_op)
                            : loom_scf_select_false_value(defining_op);
       loom_value_facts_t selected_facts =
@@ -301,7 +307,9 @@ static bool loom_symbolic_expr_projected_func_arg_representative(
 static bool loom_symbolic_expr_checked_term_count(iree_host_size_t left_count,
                                                   iree_host_size_t right_count,
                                                   iree_host_size_t* out_count) {
-  if (left_count > (iree_host_size_t)-1 - right_count) return false;
+  if (left_count > (iree_host_size_t)-1 - right_count) {
+    return false;
+  }
   *out_count = left_count + right_count;
   return true;
 }
@@ -366,7 +374,9 @@ static iree_status_t loom_symbolic_expr_make_linear(
       coefficient = new_coefficient;
       ++read_index;
     }
-    if (coefficient == 0) continue;
+    if (coefficient == 0) {
+      continue;
+    }
     terms[write_index++] = (loom_symbolic_term_t){
         .coefficient = coefficient,
         .value_id = value_id,
@@ -423,7 +433,9 @@ static iree_status_t loom_symbolic_expr_override_facts(
   loom_value_facts_t facts = {0};
   IREE_RETURN_IF_ERROR(
       loom_symbolic_expr_context_lookup_facts(context, value_id, &facts));
-  if (!loom_value_facts_is_unknown(facts)) expression->facts = facts;
+  if (!loom_value_facts_is_unknown(facts)) {
+    expression->facts = facts;
+  }
   return iree_ok_status();
 }
 
@@ -555,7 +567,9 @@ iree_status_t loom_symbolic_expr_mul_i64(loom_symbolic_expr_context_t* context,
 
 static bool loom_symbolic_expr_constant_value(
     const loom_symbolic_expr_t* expression, int64_t* out_value) {
-  if (!loom_symbolic_expr_is_constant(expression)) return false;
+  if (!loom_symbolic_expr_is_constant(expression)) {
+    return false;
+  }
   *out_value = expression->constant;
   return true;
 }
@@ -664,7 +678,9 @@ static loom_value_id_t loom_symbolic_expr_expansion_materialized_dynamic_value(
       expression->term_count == 0) {
     return LOOM_VALUE_ID_INVALID;
   }
-  if (expression->constant == 0) return frame->value_id;
+  if (expression->constant == 0) {
+    return frame->value_id;
+  }
 
   const loom_symbolic_expr_memo_entry_t* source_entry = NULL;
   switch (frame->kind) {
@@ -976,7 +992,9 @@ static iree_status_t loom_symbolic_expr_expansion_step(
               context, transient_arena, frame->operand_values[0], inout_frames,
               inout_frame_count, inout_frame_capacity, &operand_expression,
               &operand_pending));
-          if (operand_pending) return iree_ok_status();
+          if (operand_pending) {
+            return iree_ok_status();
+          }
           *out_expression = operand_expression;
           if (frame->kind == LOOM_SYMBOLIC_EXPR_EXPANSION_ASSUME) {
             IREE_RETURN_IF_ERROR(
@@ -997,7 +1015,9 @@ static iree_status_t loom_symbolic_expr_expansion_step(
               context, transient_arena, frame->operand_values[0], inout_frames,
               inout_frame_count, inout_frame_capacity, &operand_expression,
               &operand_pending));
-          if (operand_pending) return iree_ok_status();
+          if (operand_pending) {
+            return iree_ok_status();
+          }
           frame->intermediate_expression = operand_expression;
           frame->stage = LOOM_SYMBOLIC_EXPR_EXPANSION_STAGE_SECOND_OPERAND;
           return iree_ok_status();
@@ -1007,7 +1027,9 @@ static iree_status_t loom_symbolic_expr_expansion_step(
               context, transient_arena, frame->operand_values[1], inout_frames,
               inout_frame_count, inout_frame_capacity, &operand_expression,
               &operand_pending));
-          if (operand_pending) return iree_ok_status();
+          if (operand_pending) {
+            return iree_ok_status();
+          }
           if (!loom_symbolic_expr_constant_value(&operand_expression,
                                                  &frame->shift_amount) ||
               frame->shift_amount < 0 || frame->shift_amount > 62) {
@@ -1023,7 +1045,9 @@ static iree_status_t loom_symbolic_expr_expansion_step(
               context, transient_arena, frame->operand_values[0], inout_frames,
               inout_frame_count, inout_frame_capacity, &operand_expression,
               &operand_pending));
-          if (operand_pending) return iree_ok_status();
+          if (operand_pending) {
+            return iree_ok_status();
+          }
           int64_t condition = 0;
           if (!loom_symbolic_expr_constant_value(&operand_expression,
                                                  &condition)) {
@@ -1045,7 +1069,9 @@ static iree_status_t loom_symbolic_expr_expansion_step(
             context, transient_arena, frame->operand_values[0], inout_frames,
             inout_frame_count, inout_frame_capacity, &operand_expression,
             &operand_pending));
-        if (operand_pending) return iree_ok_status();
+        if (operand_pending) {
+          return iree_ok_status();
+        }
         if (frame->kind == LOOM_SYMBOLIC_EXPR_EXPANSION_SHIFT_LEFT) {
           IREE_RETURN_IF_ERROR(loom_symbolic_expr_mul_i64(
               context, &operand_expression, INT64_C(1) << frame->shift_amount,
@@ -1061,7 +1087,9 @@ static iree_status_t loom_symbolic_expr_expansion_step(
           context, transient_arena, frame->operand_values[1], inout_frames,
           inout_frame_count, inout_frame_capacity, &operand_expression,
           &operand_pending));
-      if (operand_pending) return iree_ok_status();
+      if (operand_pending) {
+        return iree_ok_status();
+      }
       if (frame->kind == LOOM_SYMBOLIC_EXPR_EXPANSION_ADD ||
           frame->kind == LOOM_SYMBOLIC_EXPR_EXPANSION_SUBTRACT) {
         IREE_RETURN_IF_ERROR(loom_symbolic_expr_add_or_sub(
@@ -1090,7 +1118,9 @@ static iree_status_t loom_symbolic_expr_expansion_step(
           context, transient_arena, frame->operand_values[2], inout_frames,
           inout_frame_count, inout_frame_capacity, &operand_expression,
           &operand_pending));
-      if (operand_pending) return iree_ok_status();
+      if (operand_pending) {
+        return iree_ok_status();
+      }
       IREE_RETURN_IF_ERROR(
           loom_symbolic_expr_add(context, &frame->intermediate_expression,
                                  &operand_expression, out_expression));
@@ -1149,7 +1179,9 @@ iree_status_t loom_symbolic_expr_from_value(
     status = loom_symbolic_expr_expansion_step(
         context, &transient_arena, &frames, &frame_count, &frame_capacity,
         &expression, &frame_complete);
-    if (!iree_status_is_ok(status) || !frame_complete) continue;
+    if (!iree_status_is_ok(status) || !frame_complete) {
+      continue;
+    }
 
     loom_value_id_t completed_value = frames[frame_count - 1].value_id;
     const uint8_t bit_count = frames[frame_count - 1].integer_bit_count;
@@ -1170,7 +1202,9 @@ iree_status_t loom_symbolic_expr_from_value(
            expression.facts.range_hi == INT64_MAX)) {
         fits = false;
       }
-      if (!fits) expression.flags &= ~LOOM_SYMBOLIC_EXPR_FLAG_LINEAR;
+      if (!fits) {
+        expression.flags &= ~LOOM_SYMBOLIC_EXPR_FLAG_LINEAR;
+      }
     }
     if (!loom_symbolic_expr_is_linear(&expression)) {
       status = loom_symbolic_expr_value(context, completed_value, &expression);

@@ -120,11 +120,15 @@ loom_low_lower_rule_source_memory_materializer_copy_operands(
     loom_low_lower_context_t* context, loom_location_id_t location,
     uint16_t copy_operand_mask, uint16_t operand_count,
     loom_value_id_t* operands) {
-  if (copy_operand_mask == 0) return iree_ok_status();
+  if (copy_operand_mask == 0) {
+    return iree_ok_status();
+  }
   IREE_ASSERT_LE(operand_count, 16);
   for (uint16_t i = 0; i < operand_count; ++i) {
     const uint16_t operand_bit = (uint16_t)((uint16_t)1u << i);
-    if (!iree_any_bit_set(copy_operand_mask, operand_bit)) continue;
+    if (!iree_any_bit_set(copy_operand_mask, operand_bit)) {
+      continue;
+    }
     const loom_type_t copy_type = loom_module_value_type(
         loom_low_lower_context_module(context), operands[i]);
     IREE_ASSERT(loom_low_type_is_register(copy_type));
@@ -182,7 +186,9 @@ loom_low_lower_rule_source_memory_materializer_tied_results(
   IREE_RETURN_IF_ERROR(
       loom_low_lower_rule_source_memory_materializer_copy_operands(
           context, location, copy_operand_mask, operand_count, operands));
-  if (tied_result_count == 0) return iree_ok_status();
+  if (tied_result_count == 0) {
+    return iree_ok_status();
+  }
 
   loom_tied_result_t* tied_results = NULL;
   IREE_RETURN_IF_ERROR(loom_low_lower_allocate_emission_array(
@@ -193,7 +199,9 @@ loom_low_lower_rule_source_memory_materializer_tied_results(
     const loom_low_constraint_t* constraint =
         &descriptor_set
              ->constraints[descriptor_row->constraint_start + (uint32_t)i];
-    if (constraint->kind != LOOM_LOW_CONSTRAINT_KIND_TIED) continue;
+    if (constraint->kind != LOOM_LOW_CONSTRAINT_KIND_TIED) {
+      continue;
+    }
     IREE_ASSERT_NE(constraint->rhs_operand_index, LOOM_LOW_ID_NONE);
     const loom_low_operand_t* result_operand =
         &descriptor_set->operands[descriptor_row->operand_start +

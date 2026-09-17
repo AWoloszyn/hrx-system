@@ -15,7 +15,9 @@
 std::string HrxLoader::library_path_;
 
 HrxDynamicLibrary::~HrxDynamicLibrary() {
-  if (!handle_) return;
+  if (!handle_) {
+    return;
+  }
 #if defined(_WIN32)
   FreeLibrary(reinterpret_cast<HMODULE>(handle_));
 #else
@@ -72,7 +74,9 @@ HrxLoader::HrxLoader() {
   std::string path = library_path_;
   if (path.empty()) {
     const char* env = std::getenv("HRX_LIBRARY");
-    if (env) path = env;
+    if (env) {
+      path = env;
+    }
   }
   if (path.empty()) {
     path = "libhrx.so";

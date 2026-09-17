@@ -61,7 +61,9 @@ static iree_status_t loom_licm_region_stack_initialize(
 static iree_status_t loom_licm_region_stack_push(
     iree_arena_allocator_t* arena, loom_licm_region_stack_t* stack,
     loom_region_t* region) {
-  if (!region || region->block_count == 0) return iree_ok_status();
+  if (!region || region->block_count == 0) {
+    return iree_ok_status();
+  }
   if (stack->count >= stack->capacity) {
     IREE_RETURN_IF_ERROR(iree_arena_grow_array(
         arena, stack->count, stack->count + 1, sizeof(loom_region_t*),
@@ -127,7 +129,9 @@ static iree_status_t loom_licm_push_child_regions(
 static iree_status_t loom_licm_hoist_from_loop_body(
     loom_licm_context_t* context, loom_loop_like_t loop, bool* out_changed) {
   loom_region_t* body = loom_loop_like_body(loop);
-  if (!body) return iree_ok_status();
+  if (!body) {
+    return iree_ok_status();
+  }
 
   context->loop_stack.count = 0;
   IREE_RETURN_IF_ERROR(loom_licm_region_stack_push(context->pass->arena,
@@ -135,7 +139,9 @@ static iree_status_t loom_licm_hoist_from_loop_body(
 
   while (true) {
     loom_region_t* region = loom_licm_region_stack_pop(&context->loop_stack);
-    if (!region) break;
+    if (!region) {
+      break;
+    }
 
     loom_block_t* block = NULL;
     loom_region_for_each_block(region, block) {
@@ -172,7 +178,9 @@ static iree_status_t loom_licm_process_function_once(
     loom_licm_context_t* context, loom_func_like_t function,
     bool* out_changed) {
   loom_region_t* body = loom_func_like_body(function);
-  if (!body) return iree_ok_status();
+  if (!body) {
+    return iree_ok_status();
+  }
 
   context->function_stack.count = 0;
   IREE_RETURN_IF_ERROR(loom_licm_region_stack_push(
@@ -181,7 +189,9 @@ static iree_status_t loom_licm_process_function_once(
   while (true) {
     loom_region_t* region =
         loom_licm_region_stack_pop(&context->function_stack);
-    if (!region) break;
+    if (!region) {
+      break;
+    }
 
     loom_block_t* block = NULL;
     loom_region_for_each_block(region, block) {
@@ -213,7 +223,9 @@ static iree_status_t loom_licm_process_function_once(
 iree_status_t loom_licm_run(loom_pass_t* pass, loom_module_t* module,
                             loom_func_like_t function) {
   loom_region_t* body = loom_func_like_body(function);
-  if (!body) return iree_ok_status();
+  if (!body) {
+    return iree_ok_status();
+  }
 
   loom_rewriter_t rewriter;
   IREE_RETURN_IF_ERROR(

@@ -50,9 +50,15 @@ static iree_memory_order_t iree_hal_task_atomic_memory_order(
     iree_hal_atomic_flags_t flags) {
   const bool acquire = iree_any_bit_set(flags, IREE_HAL_ATOMIC_FLAG_ACQUIRE);
   const bool release = iree_any_bit_set(flags, IREE_HAL_ATOMIC_FLAG_RELEASE);
-  if (acquire && release) return iree_memory_order_acq_rel;
-  if (acquire) return iree_memory_order_acquire;
-  if (release) return iree_memory_order_release;
+  if (acquire && release) {
+    return iree_memory_order_acq_rel;
+  }
+  if (acquire) {
+    return iree_memory_order_acquire;
+  }
+  if (release) {
+    return iree_memory_order_release;
+  }
   return iree_memory_order_relaxed;
 }
 

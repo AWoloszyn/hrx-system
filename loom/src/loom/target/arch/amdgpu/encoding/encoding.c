@@ -322,7 +322,9 @@ bool loom_amdgpu_dpp_control_decode(
   const uint16_t selector = value & 0xFu;
   switch (group) {
     case 0x10:
-      if (selector == 0) return false;
+      if (selector == 0) {
+        return false;
+      }
       *out_decoding = (loom_amdgpu_dpp_control_decoding_t){
           .syntax = LOOM_AMDGPU_DPP_CONTROL_SYNTAX_INDEXED,
           .selector = selector,
@@ -330,7 +332,9 @@ bool loom_amdgpu_dpp_control_decode(
       };
       return true;
     case 0x11:
-      if (selector == 0) return false;
+      if (selector == 0) {
+        return false;
+      }
       *out_decoding = (loom_amdgpu_dpp_control_decoding_t){
           .syntax = LOOM_AMDGPU_DPP_CONTROL_SYNTAX_INDEXED,
           .selector = selector,
@@ -338,7 +342,9 @@ bool loom_amdgpu_dpp_control_decode(
       };
       return true;
     case 0x12:
-      if (selector == 0) return false;
+      if (selector == 0) {
+        return false;
+      }
       *out_decoding = (loom_amdgpu_dpp_control_decoding_t){
           .syntax = LOOM_AMDGPU_DPP_CONTROL_SYNTAX_INDEXED,
           .selector = selector,
@@ -352,7 +358,9 @@ bool loom_amdgpu_dpp_control_decode(
           IREE_SVL("wave_shr:1"),
           IREE_SVL("wave_ror:1"),
       };
-      if (selector > 0xCu || (selector & 0x3u) != 0) return false;
+      if (selector > 0xCu || (selector & 0x3u) != 0) {
+        return false;
+      }
       *out_decoding = (loom_amdgpu_dpp_control_decoding_t){
           .syntax = LOOM_AMDGPU_DPP_CONTROL_SYNTAX_FIXED,
           .text = kSpellings[selector >> 2],
@@ -366,7 +374,9 @@ bool loom_amdgpu_dpp_control_decode(
           IREE_SVL("row_bcast:15"),
           IREE_SVL("row_bcast:31"),
       };
-      if (selector >= IREE_ARRAYSIZE(kSpellings)) return false;
+      if (selector >= IREE_ARRAYSIZE(kSpellings)) {
+        return false;
+      }
       *out_decoding = (loom_amdgpu_dpp_control_decoding_t){
           .syntax = LOOM_AMDGPU_DPP_CONTROL_SYNTAX_FIXED,
           .text = kSpellings[selector],

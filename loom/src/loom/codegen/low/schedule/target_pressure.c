@@ -59,7 +59,9 @@ static void loom_low_schedule_project_candidate_resource_pressure(
         pressure_state->candidate_delta_units_by_reg_class[reg_class_id]);
     const uint64_t peak_live_units =
         pressure_state->resources.peak_live_units_by_reg_class[reg_class_id];
-    if (projected_live_units <= peak_live_units) continue;
+    if (projected_live_units <= peak_live_units) {
+      continue;
+    }
     const loom_target_residency_derived_member_range_t range =
         loom_target_residency_derived_resource_member_range(
             state->pressure_resources, reg_class_id);
@@ -110,7 +112,9 @@ static void loom_low_schedule_score_candidate_resource_pressure(
     const loom_target_residency_derived_resource_t* resource =
         &state->pressure_resources->resources[resource_id];
     const uint16_t cliff_end = resource->cliff_start + resource->cliff_count;
-    if (record->next_cliff_index == cliff_end) continue;
+    if (record->next_cliff_index == cliff_end) {
+      continue;
+    }
     const loom_target_residency_cliff_t* cliffs =
         &state->pressure_resources->cliffs[record->next_cliff_index];
     const iree_host_size_t cliff_count = cliff_end - record->next_cliff_index;
@@ -159,7 +163,9 @@ static void loom_low_schedule_score_candidate_pressure_cliffs_for_class(
   const uint32_t first_actionable_cliff =
       pressure_state->first_actionable_pressure_cliff_indices[reg_class_id];
   const uint32_t cliff_end = range.start + range.count;
-  if (first_actionable_cliff == cliff_end) return;
+  if (first_actionable_cliff == cliff_end) {
+    return;
+  }
   const loom_target_residency_cliff_t* cliffs =
       &state->pressure_cliffs->cliffs[first_actionable_cliff];
   loom_target_residency_cliff_evaluation_t evaluation;

@@ -335,7 +335,9 @@ static void loom_low_schedule_advance_resource_cliffs(
   while (record->next_cliff_index < cliff_end) {
     const loom_target_residency_cliff_t* cliff =
         &state->pressure_resources->cliffs[record->next_cliff_index];
-    if (cliff->cliff_units > record->current_peak_units) break;
+    if (cliff->cliff_units > record->current_peak_units) {
+      break;
+    }
     if (mode == LOOM_LOW_SCHEDULE_RESOURCE_HIGH_WATER_SCHEDULED) {
       const uint32_t penalty = cliff->tier_before - cliff->tier_after;
       record->pressure_cliff_penalty =
@@ -352,12 +354,16 @@ static void loom_low_schedule_note_resource_high_water(
     const loom_low_schedule_build_state_t* state,
     loom_low_schedule_pressure_state_t* pressure_state, uint16_t reg_class_id,
     loom_low_schedule_resource_high_water_mode_t mode) {
-  if (state->pressure_resources == NULL) return;
+  if (state->pressure_resources == NULL) {
+    return;
+  }
   const uint64_t current_live_units =
       pressure_state->current_live_units_by_reg_class[reg_class_id];
   uint64_t* peak_live_units =
       &pressure_state->resources.peak_live_units_by_reg_class[reg_class_id];
-  if (current_live_units <= *peak_live_units) return;
+  if (current_live_units <= *peak_live_units) {
+    return;
+  }
   const uint64_t previous_peak_live_units = *peak_live_units;
   *peak_live_units = current_live_units;
   const loom_target_residency_derived_member_range_t range =
@@ -389,7 +395,9 @@ static void loom_low_schedule_note_resource_high_water(
 static void loom_low_schedule_reset_source_resource_pressure(
     const loom_low_schedule_build_state_t* state,
     loom_low_schedule_pressure_state_t* pressure_state) {
-  if (state->pressure_resources == NULL) return;
+  if (state->pressure_resources == NULL) {
+    return;
+  }
   memset(pressure_state->resources.peak_live_units_by_reg_class, 0,
          state->target.descriptor_set->reg_class_count *
              sizeof(*pressure_state->resources.peak_live_units_by_reg_class));
@@ -884,7 +892,9 @@ static void loom_low_schedule_score_candidate_hazards(
         state->node_completion_wait_cycles[node_index];
   }
   const loom_low_schedule_class_t* schedule_class = node->schedule_class;
-  if (schedule_class == NULL) return;
+  if (schedule_class == NULL) {
+    return;
+  }
   for (uint16_t i = 0; i < schedule_class->hazard_count; ++i) {
     const loom_low_hazard_t* hazard =
         &state->target.descriptor_set
@@ -1165,7 +1175,9 @@ iree_status_t loom_low_schedule_pressure_initialize_unlock_summaries(
   IREE_RETURN_IF_ERROR(loom_low_schedule_dependency_frontier_initialize(
       &state->dependency_index, state->arena,
       &pressure_state->unlocks.frontier));
-  if (node_count == 0) return iree_ok_status();
+  if (node_count == 0) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       state->arena, node_count, sizeof(*pressure_state->unlocks.records),
       (void**)&pressure_state->unlocks.records));
@@ -1542,7 +1554,9 @@ void loom_low_schedule_pressure_update_ready_consumers(
     const loom_low_schedule_build_state_t* state,
     loom_low_schedule_pressure_state_t* pressure_state,
     loom_low_schedule_ready_policy_t* ready_policy, uint32_t scheduled_node) {
-  if (pressure_state->remaining_consumer_counts == NULL) return;
+  if (pressure_state->remaining_consumer_counts == NULL) {
+    return;
+  }
   const loom_low_schedule_node_t* node = &state->nodes[scheduled_node];
   const loom_value_ordinal_t* operand_ordinals =
       loom_low_schedule_node_const_operand_ordinals(node);

@@ -49,14 +49,18 @@ static cudaError_t iree_cuda_error_from_cu_result(CUresult result) {
 
 cudaError_t CUDAAPI cudaDriverGetVersion(int* driverVersion) {
   // TODO: Implement driver version query.
-  if (!driverVersion) return cudaErrorInvalidValue;
+  if (!driverVersion) {
+    return cudaErrorInvalidValue;
+  }
   *driverVersion = 0;
   return cudaErrorNotSupported;
 }
 
 cudaError_t CUDAAPI cudaRuntimeGetVersion(int* runtimeVersion) {
   // TODO: Implement runtime version query.
-  if (!runtimeVersion) return cudaErrorInvalidValue;
+  if (!runtimeVersion) {
+    return cudaErrorInvalidValue;
+  }
   *runtimeVersion = CUDART_VERSION;
   return cudaSuccess;
 }
@@ -65,9 +69,13 @@ cudaError_t CUDAAPI
 cudaGetDriverEntryPoint(const char* symbol, void** funcPtr, uint64_t flags,
                         cudaDriverEntryPointQueryResult* driverStatus) {
   // TODO: Implement get driver entry point.
-  if (!funcPtr) return cudaErrorInvalidValue;
+  if (!funcPtr) {
+    return cudaErrorInvalidValue;
+  }
   *funcPtr = NULL;
-  if (driverStatus) *driverStatus = cudaDriverEntryPointSymbolNotFound;
+  if (driverStatus) {
+    *driverStatus = cudaDriverEntryPointSymbolNotFound;
+  }
   return cudaErrorNotSupported;
 }
 
@@ -75,9 +83,13 @@ cudaError_t CUDAAPI cudaGetDriverEntryPointByVersion(
     const char* symbol, void** funcPtr, unsigned int cudaVersion,
     uint64_t flags, cudaDriverEntryPointQueryResult* driverStatus) {
   // TODO: Implement get driver entry point by version.
-  if (!funcPtr) return cudaErrorInvalidValue;
+  if (!funcPtr) {
+    return cudaErrorInvalidValue;
+  }
   *funcPtr = NULL;
-  if (driverStatus) *driverStatus = cudaDriverEntryPointSymbolNotFound;
+  if (driverStatus) {
+    *driverStatus = cudaDriverEntryPointSymbolNotFound;
+  }
   return cudaErrorNotSupported;
 }
 
@@ -87,7 +99,9 @@ cudaError_t CUDAAPI cudaGetDriverEntryPointByVersion(
 
 cudaError_t CUDAAPI cudaGetDevice(int* device) {
   // TODO: Implement get current device.
-  if (!device) return cudaErrorInvalidValue;
+  if (!device) {
+    return cudaErrorInvalidValue;
+  }
   *device = 0;
   return cudaErrorNotSupported;
 }
@@ -99,14 +113,18 @@ cudaError_t CUDAAPI cudaSetDevice(int device) {
 
 cudaError_t CUDAAPI cudaGetDeviceCount(int* count) {
   // TODO: Implement get device count.
-  if (!count) return cudaErrorInvalidValue;
+  if (!count) {
+    return cudaErrorInvalidValue;
+  }
   *count = 0;
   return cudaErrorNotSupported;
 }
 
 cudaError_t CUDAAPI cudaGetDeviceProperties(cudaDeviceProp* prop, int device) {
   // TODO: Implement get device properties.
-  if (!prop) return cudaErrorInvalidValue;
+  if (!prop) {
+    return cudaErrorInvalidValue;
+  }
   memset(prop, 0, sizeof(*prop));
   return cudaErrorNotSupported;
 }
@@ -114,7 +132,9 @@ cudaError_t CUDAAPI cudaGetDeviceProperties(cudaDeviceProp* prop, int device) {
 cudaError_t CUDAAPI cudaDeviceGetAttribute(int* value, cudaDeviceAttr attr,
                                            int device) {
   // TODO: Implement get device attribute.
-  if (!value) return cudaErrorInvalidValue;
+  if (!value) {
+    return cudaErrorInvalidValue;
+  }
   *value = 0;
   return cudaErrorNotSupported;
 }
@@ -122,7 +142,9 @@ cudaError_t CUDAAPI cudaDeviceGetAttribute(int* value, cudaDeviceAttr attr,
 cudaError_t CUDAAPI cudaDeviceGetDefaultMemPool(cudaMemPool_t* memPool,
                                                 int device) {
   // TODO: Implement get default memory pool.
-  if (!memPool) return cudaErrorInvalidValue;
+  if (!memPool) {
+    return cudaErrorInvalidValue;
+  }
   *memPool = NULL;
   return cudaErrorNotSupported;
 }
@@ -134,7 +156,9 @@ cudaError_t CUDAAPI cudaDeviceSetMemPool(int device, cudaMemPool_t memPool) {
 
 cudaError_t CUDAAPI cudaDeviceGetMemPool(cudaMemPool_t* memPool, int device) {
   // TODO: Implement get memory pool.
-  if (!memPool) return cudaErrorInvalidValue;
+  if (!memPool) {
+    return cudaErrorInvalidValue;
+  }
   *memPool = NULL;
   return cudaErrorNotSupported;
 }
@@ -146,14 +170,18 @@ cudaError_t CUDAAPI cudaDeviceSetCacheConfig(cudaFuncCache cacheConfig) {
 
 cudaError_t CUDAAPI cudaDeviceGetCacheConfig(cudaFuncCache* pCacheConfig) {
   // TODO: Implement get cache config.
-  if (!pCacheConfig) return cudaErrorInvalidValue;
+  if (!pCacheConfig) {
+    return cudaErrorInvalidValue;
+  }
   *pCacheConfig = cudaFuncCachePreferNone;
   return cudaErrorNotSupported;
 }
 
 cudaError_t CUDAAPI cudaChooseDevice(int* device, const cudaDeviceProp* prop) {
   // TODO: Implement choose device.
-  if (!device || !prop) return cudaErrorInvalidValue;
+  if (!device || !prop) {
+    return cudaErrorInvalidValue;
+  }
   *device = 0;
   return cudaErrorNotSupported;
 }
@@ -165,7 +193,9 @@ cudaError_t CUDAAPI cudaSetDeviceFlags(unsigned int flags) {
 
 cudaError_t CUDAAPI cudaGetDeviceFlags(unsigned int* flags) {
   // TODO: Implement get device flags.
-  if (!flags) return cudaErrorInvalidValue;
+  if (!flags) {
+    return cudaErrorInvalidValue;
+  }
   *flags = 0;
   return cudaErrorNotSupported;
 }
@@ -182,7 +212,9 @@ cudaError_t CUDAAPI cudaDeviceSynchronize(void) {
 
 cudaError_t CUDAAPI cudaDeviceGetLimit(size_t* pValue, cudaLimit limit) {
   // TODO: Implement get device limit.
-  if (!pValue) return cudaErrorInvalidValue;
+  if (!pValue) {
+    return cudaErrorInvalidValue;
+  }
   *pValue = 0;
   return cudaErrorNotSupported;
 }
@@ -195,7 +227,9 @@ cudaError_t CUDAAPI cudaDeviceSetLimit(cudaLimit limit, size_t value) {
 cudaError_t CUDAAPI cudaDeviceCanAccessPeer(int* canAccessPeer, int device,
                                             int peerDevice) {
   // TODO: Implement can access peer.
-  if (!canAccessPeer) return cudaErrorInvalidValue;
+  if (!canAccessPeer) {
+    return cudaErrorInvalidValue;
+  }
   *canAccessPeer = 0;
   return cudaErrorNotSupported;
 }
@@ -213,14 +247,18 @@ cudaError_t CUDAAPI cudaDeviceDisablePeerAccess(int peerDevice) {
 
 cudaError_t CUDAAPI cudaDeviceGetPCIBusId(char* pciBusId, int len, int device) {
   // TODO: Implement get PCI bus ID.
-  if (!pciBusId || len <= 0) return cudaErrorInvalidValue;
+  if (!pciBusId || len <= 0) {
+    return cudaErrorInvalidValue;
+  }
   pciBusId[0] = '\0';
   return cudaErrorNotSupported;
 }
 
 cudaError_t CUDAAPI cudaDeviceGetByPCIBusId(int* device, const char* pciBusId) {
   // TODO: Implement get device by PCI bus ID.
-  if (!device || !pciBusId) return cudaErrorInvalidValue;
+  if (!device || !pciBusId) {
+    return cudaErrorInvalidValue;
+  }
   *device = 0;
   return cudaErrorNotSupported;
 }
@@ -279,7 +317,9 @@ const char* CUDAAPI cudaGetErrorName(cudaError_t error) {
 
 cudaError_t CUDAAPI cudaMalloc(void** devPtr, size_t size) {
   // TODO: Implement device memory allocation.
-  if (!devPtr) return cudaErrorInvalidValue;
+  if (!devPtr) {
+    return cudaErrorInvalidValue;
+  }
   *devPtr = NULL;
   return cudaErrorNotSupported;
 }
@@ -291,7 +331,9 @@ cudaError_t CUDAAPI cudaFree(void* devPtr) {
 
 cudaError_t CUDAAPI cudaMallocHost(void** ptr, size_t size) {
   // TODO: Implement host memory allocation.
-  if (!ptr) return cudaErrorInvalidValue;
+  if (!ptr) {
+    return cudaErrorInvalidValue;
+  }
   *ptr = NULL;
   return cudaErrorNotSupported;
 }
@@ -304,7 +346,9 @@ cudaError_t CUDAAPI cudaFreeHost(void* ptr) {
 cudaError_t CUDAAPI cudaMallocManaged(void** devPtr, size_t size,
                                       unsigned int flags) {
   // TODO: Implement managed memory allocation.
-  if (!devPtr) return cudaErrorInvalidValue;
+  if (!devPtr) {
+    return cudaErrorInvalidValue;
+  }
   *devPtr = NULL;
   return cudaErrorNotSupported;
 }
@@ -312,7 +356,9 @@ cudaError_t CUDAAPI cudaMallocManaged(void** devPtr, size_t size,
 cudaError_t CUDAAPI cudaMallocPitch(void** devPtr, size_t* pitch, size_t width,
                                     size_t height) {
   // TODO: Implement pitched memory allocation.
-  if (!devPtr || !pitch) return cudaErrorInvalidValue;
+  if (!devPtr || !pitch) {
+    return cudaErrorInvalidValue;
+  }
   *devPtr = NULL;
   *pitch = 0;
   return cudaErrorNotSupported;
@@ -321,7 +367,9 @@ cudaError_t CUDAAPI cudaMallocPitch(void** devPtr, size_t* pitch, size_t width,
 cudaError_t CUDAAPI cudaHostAlloc(void** pHost, size_t size,
                                   unsigned int flags) {
   // TODO: Implement host allocation with flags.
-  if (!pHost) return cudaErrorInvalidValue;
+  if (!pHost) {
+    return cudaErrorInvalidValue;
+  }
   *pHost = NULL;
   return cudaErrorNotSupported;
 }
@@ -340,14 +388,18 @@ cudaError_t CUDAAPI cudaHostUnregister(void* ptr) {
 cudaError_t CUDAAPI cudaHostGetDevicePointer(void** pDevice, void* pHost,
                                              unsigned int flags) {
   // TODO: Implement get device pointer from host.
-  if (!pDevice) return cudaErrorInvalidValue;
+  if (!pDevice) {
+    return cudaErrorInvalidValue;
+  }
   *pDevice = NULL;
   return cudaErrorNotSupported;
 }
 
 cudaError_t CUDAAPI cudaHostGetFlags(unsigned int* pFlags, void* pHost) {
   // TODO: Implement get host flags.
-  if (!pFlags) return cudaErrorInvalidValue;
+  if (!pFlags) {
+    return cudaErrorInvalidValue;
+  }
   *pFlags = 0;
   return cudaErrorNotSupported;
 }
@@ -385,14 +437,18 @@ cudaError_t CUDAAPI cudaMemcpy2DAsync(void* dst, size_t dpitch, const void* src,
 
 cudaError_t CUDAAPI cudaMemcpy3D(const cudaMemcpy3DParms* p) {
   // TODO: Implement 3D memory copy.
-  if (!p) return cudaErrorInvalidValue;
+  if (!p) {
+    return cudaErrorInvalidValue;
+  }
   return cudaErrorNotSupported;
 }
 
 cudaError_t CUDAAPI cudaMemcpy3DAsync(const cudaMemcpy3DParms* p,
                                       cudaStream_t stream) {
   // TODO: Implement asynchronous 3D memory copy.
-  if (!p) return cudaErrorInvalidValue;
+  if (!p) {
+    return cudaErrorInvalidValue;
+  }
   return cudaErrorNotSupported;
 }
 
@@ -438,9 +494,15 @@ cudaError_t CUDAAPI cudaMemGetInfo(size_t* free, size_t* total) {
   cudaError_t result =
       iree_cuda_error_from_cu_result(cuMemGetInfo(&free_memory, &total_memory));
   iree_cuda_set_error(result);
-  if (result != cudaSuccess) return result;
-  if (free) *free = free_memory;
-  if (total) *total = total_memory;
+  if (result != cudaSuccess) {
+    return result;
+  }
+  if (free) {
+    *free = free_memory;
+  }
+  if (total) {
+    *total = total_memory;
+  }
   return cudaSuccess;
 }
 
@@ -461,15 +523,21 @@ cudaError_t CUDAAPI cudaMemAdvise(const void* devPtr, size_t count,
 cudaError_t CUDAAPI cudaMemGetAddressRange(void** pbase, size_t* psize,
                                            void* devPtr) {
   // TODO: Implement get address range.
-  if (pbase) *pbase = NULL;
-  if (psize) *psize = 0;
+  if (pbase) {
+    *pbase = NULL;
+  }
+  if (psize) {
+    *psize = 0;
+  }
   return cudaErrorNotSupported;
 }
 
 cudaError_t CUDAAPI cudaPointerGetAttributes(cudaPointerAttributes* attributes,
                                              const void* ptr) {
   // TODO: Implement get pointer attributes.
-  if (!attributes) return cudaErrorInvalidValue;
+  if (!attributes) {
+    return cudaErrorInvalidValue;
+  }
   memset(attributes, 0, sizeof(*attributes));
   return cudaErrorNotSupported;
 }
@@ -480,7 +548,9 @@ cudaError_t CUDAAPI cudaPointerGetAttributes(cudaPointerAttributes* attributes,
 
 cudaError_t CUDAAPI cudaStreamCreate(cudaStream_t* pStream) {
   // TODO: Implement stream creation.
-  if (!pStream) return cudaErrorInvalidValue;
+  if (!pStream) {
+    return cudaErrorInvalidValue;
+  }
   *pStream = NULL;
   return cudaErrorNotSupported;
 }
@@ -488,7 +558,9 @@ cudaError_t CUDAAPI cudaStreamCreate(cudaStream_t* pStream) {
 cudaError_t CUDAAPI cudaStreamCreateWithFlags(cudaStream_t* pStream,
                                               unsigned int flags) {
   // TODO: Implement stream creation with flags.
-  if (!pStream) return cudaErrorInvalidValue;
+  if (!pStream) {
+    return cudaErrorInvalidValue;
+  }
   *pStream = NULL;
   return cudaErrorNotSupported;
 }
@@ -497,7 +569,9 @@ cudaError_t CUDAAPI cudaStreamCreateWithPriority(cudaStream_t* pStream,
                                                  unsigned int flags,
                                                  int priority) {
   // TODO: Implement stream creation with priority.
-  if (!pStream) return cudaErrorInvalidValue;
+  if (!pStream) {
+    return cudaErrorInvalidValue;
+  }
   *pStream = NULL;
   return cudaErrorNotSupported;
 }
@@ -533,14 +607,18 @@ cudaError_t CUDAAPI cudaStreamAddCallback(cudaStream_t stream,
 cudaError_t CUDAAPI cudaStreamGetFlags(cudaStream_t hStream,
                                        unsigned int* flags) {
   // TODO: Implement get stream flags.
-  if (!flags) return cudaErrorInvalidValue;
+  if (!flags) {
+    return cudaErrorInvalidValue;
+  }
   *flags = 0;
   return cudaErrorNotSupported;
 }
 
 cudaError_t CUDAAPI cudaStreamGetPriority(cudaStream_t hStream, int* priority) {
   // TODO: Implement get stream priority.
-  if (!priority) return cudaErrorInvalidValue;
+  if (!priority) {
+    return cudaErrorInvalidValue;
+  }
   *priority = 0;
   return cudaErrorNotSupported;
 }
@@ -561,7 +639,9 @@ cudaError_t CUDAAPI cudaStreamBeginCapture(cudaStream_t stream,
 cudaError_t CUDAAPI cudaStreamEndCapture(cudaStream_t stream,
                                          cudaGraph_t* pGraph) {
   // TODO: Implement stream end capture.
-  if (!pGraph) return cudaErrorInvalidValue;
+  if (!pGraph) {
+    return cudaErrorInvalidValue;
+  }
   *pGraph = NULL;
   return cudaErrorNotSupported;
 }
@@ -569,7 +649,9 @@ cudaError_t CUDAAPI cudaStreamEndCapture(cudaStream_t stream,
 cudaError_t CUDAAPI cudaStreamIsCapturing(
     cudaStream_t stream, cudaStreamCaptureStatus* pCaptureStatus) {
   // TODO: Implement stream is capturing.
-  if (!pCaptureStatus) return cudaErrorInvalidValue;
+  if (!pCaptureStatus) {
+    return cudaErrorInvalidValue;
+  }
   *pCaptureStatus = cudaStreamCaptureStatusNone;
   return cudaErrorNotSupported;
 }
@@ -580,12 +662,24 @@ cudaError_t CUDAAPI cudaStreamGetCaptureInfo(
     const cudaGraphNode_t** dependencies_out,
     const cudaGraphEdgeData** edgeData_out, size_t* numDependencies_out) {
   // TODO: Implement stream get capture info.
-  if (captureStatus_out) *captureStatus_out = cudaStreamCaptureStatusNone;
-  if (id_out) *id_out = 0;
-  if (graph_out) *graph_out = NULL;
-  if (dependencies_out) *dependencies_out = NULL;
-  if (edgeData_out) *edgeData_out = NULL;
-  if (numDependencies_out) *numDependencies_out = 0;
+  if (captureStatus_out) {
+    *captureStatus_out = cudaStreamCaptureStatusNone;
+  }
+  if (id_out) {
+    *id_out = 0;
+  }
+  if (graph_out) {
+    *graph_out = NULL;
+  }
+  if (dependencies_out) {
+    *dependencies_out = NULL;
+  }
+  if (edgeData_out) {
+    *edgeData_out = NULL;
+  }
+  if (numDependencies_out) {
+    *numDependencies_out = 0;
+  }
   return cudaErrorNotSupported;
 }
 
@@ -602,7 +696,9 @@ cudaError_t CUDAAPI cudaStreamUpdateCaptureDependencies(
 
 cudaError_t CUDAAPI cudaEventCreate(cudaEvent_t* event) {
   // TODO: Implement event creation.
-  if (!event) return cudaErrorInvalidValue;
+  if (!event) {
+    return cudaErrorInvalidValue;
+  }
   *event = NULL;
   return cudaErrorNotSupported;
 }
@@ -610,7 +706,9 @@ cudaError_t CUDAAPI cudaEventCreate(cudaEvent_t* event) {
 cudaError_t CUDAAPI cudaEventCreateWithFlags(cudaEvent_t* event,
                                              unsigned int flags) {
   // TODO: Implement event creation with flags.
-  if (!event) return cudaErrorInvalidValue;
+  if (!event) {
+    return cudaErrorInvalidValue;
+  }
   *event = NULL;
   return cudaErrorNotSupported;
 }
@@ -645,7 +743,9 @@ cudaError_t CUDAAPI cudaEventQuery(cudaEvent_t event) {
 cudaError_t CUDAAPI cudaEventElapsedTime(float* ms, cudaEvent_t start,
                                          cudaEvent_t end) {
   // TODO: Implement event elapsed time.
-  if (!ms) return cudaErrorInvalidValue;
+  if (!ms) {
+    return cudaErrorInvalidValue;
+  }
   *ms = 0.0f;
   return cudaErrorNotSupported;
 }
@@ -657,7 +757,9 @@ cudaError_t CUDAAPI cudaEventElapsedTime(float* ms, cudaEvent_t start,
 cudaError_t CUDAAPI cudaFuncGetAttributes(cudaFuncAttributes* attr,
                                           const void* func) {
   // TODO: Implement get function attributes.
-  if (!attr) return cudaErrorInvalidValue;
+  if (!attr) {
+    return cudaErrorInvalidValue;
+  }
   memset(attr, 0, sizeof(*attr));
   return cudaErrorNotSupported;
 }
@@ -713,7 +815,9 @@ cudaError_t CUDAAPI cudaSetDoubleForHost(double* d) {
 cudaError_t CUDAAPI cudaOccupancyMaxActiveBlocksPerMultiprocessor(
     int* numBlocks, const void* func, int blockSize, size_t dynamicSMemSize) {
   // TODO: Implement occupancy max active blocks.
-  if (!numBlocks) return cudaErrorInvalidValue;
+  if (!numBlocks) {
+    return cudaErrorInvalidValue;
+  }
   *numBlocks = 0;
   return cudaErrorNotSupported;
 }
@@ -722,7 +826,9 @@ cudaError_t CUDAAPI cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(
     int* numBlocks, const void* func, int blockSize, size_t dynamicSMemSize,
     unsigned int flags) {
   // TODO: Implement occupancy max active blocks with flags.
-  if (!numBlocks) return cudaErrorInvalidValue;
+  if (!numBlocks) {
+    return cudaErrorInvalidValue;
+  }
   *numBlocks = 0;
   return cudaErrorNotSupported;
 }
@@ -751,7 +857,9 @@ cudaError_t CUDAAPI cudaMemcpyPeerAsync(void* dst, int dstDevice,
 cudaError_t CUDAAPI cudaGetDevicePointer(void** pDevice, void* pHost,
                                          unsigned int flags) {
   // TODO: Implement get device pointer.
-  if (!pDevice) return cudaErrorInvalidValue;
+  if (!pDevice) {
+    return cudaErrorInvalidValue;
+  }
   *pDevice = NULL;
   return cudaErrorNotSupported;
 }
@@ -762,7 +870,9 @@ cudaError_t CUDAAPI cudaGetDevicePointer(void** pDevice, void* pHost,
 
 cudaError_t CUDAAPI cudaGraphCreate(cudaGraph_t* pGraph, unsigned int flags) {
   // TODO: Implement graph creation.
-  if (!pGraph) return cudaErrorInvalidValue;
+  if (!pGraph) {
+    return cudaErrorInvalidValue;
+  }
   *pGraph = NULL;
   return cudaErrorNotSupported;
 }
@@ -776,7 +886,9 @@ cudaError_t CUDAAPI cudaGraphInstantiate(cudaGraphExec_t* pGraphExec,
                                          cudaGraph_t graph,
                                          unsigned long long flags) {
   // TODO: Implement graph instantiation.
-  if (!pGraphExec) return cudaErrorInvalidValue;
+  if (!pGraphExec) {
+    return cudaErrorInvalidValue;
+  }
   *pGraphExec = NULL;
   return cudaErrorNotSupported;
 }
@@ -785,7 +897,9 @@ cudaError_t CUDAAPI cudaGraphInstantiateWithFlags(cudaGraphExec_t* pGraphExec,
                                                   cudaGraph_t graph,
                                                   unsigned long long flags) {
   // TODO: Implement graph instantiation with flags.
-  if (!pGraphExec) return cudaErrorInvalidValue;
+  if (!pGraphExec) {
+    return cudaErrorInvalidValue;
+  }
   *pGraphExec = NULL;
   return cudaErrorNotSupported;
 }
@@ -794,7 +908,9 @@ cudaError_t CUDAAPI
 cudaGraphInstantiateWithParams(cudaGraphExec_t* pGraphExec, cudaGraph_t graph,
                                cudaGraphInstantiateParams* instantiateParams) {
   // TODO: Implement graph instantiation with params.
-  if (!pGraphExec) return cudaErrorInvalidValue;
+  if (!pGraphExec) {
+    return cudaErrorInvalidValue;
+  }
   *pGraphExec = NULL;
   if (instantiateParams) {
     instantiateParams->result_out = cudaGraphInstantiateError;
@@ -825,7 +941,9 @@ cudaError_t CUDAAPI cudaGraphAddKernelNode(
     const cudaGraphNode_t* pDependencies, size_t numDependencies,
     const cudaKernelNodeParams* pNodeParams) {
   // TODO: Implement add kernel node.
-  if (!pGraphNode) return cudaErrorInvalidValue;
+  if (!pGraphNode) {
+    return cudaErrorInvalidValue;
+  }
   *pGraphNode = NULL;
   return cudaErrorNotSupported;
 }
@@ -835,7 +953,9 @@ cudaError_t CUDAAPI cudaGraphAddMemcpyNode(
     const cudaGraphNode_t* pDependencies, size_t numDependencies,
     const cudaMemcpy3DParms* pCopyParams) {
   // TODO: Implement add memcpy node.
-  if (!pGraphNode) return cudaErrorInvalidValue;
+  if (!pGraphNode) {
+    return cudaErrorInvalidValue;
+  }
   *pGraphNode = NULL;
   return cudaErrorNotSupported;
 }
@@ -845,7 +965,9 @@ cudaError_t CUDAAPI cudaGraphAddMemsetNode(
     const cudaGraphNode_t* pDependencies, size_t numDependencies,
     const cudaMemsetParams* pMemsetParams) {
   // TODO: Implement add memset node.
-  if (!pGraphNode) return cudaErrorInvalidValue;
+  if (!pGraphNode) {
+    return cudaErrorInvalidValue;
+  }
   *pGraphNode = NULL;
   return cudaErrorNotSupported;
 }
@@ -855,7 +977,9 @@ cudaError_t CUDAAPI cudaGraphAddHostNode(
     const cudaGraphNode_t* pDependencies, size_t numDependencies,
     const cudaHostNodeParams* pNodeParams) {
   // TODO: Implement add host node.
-  if (!pGraphNode) return cudaErrorInvalidValue;
+  if (!pGraphNode) {
+    return cudaErrorInvalidValue;
+  }
   *pGraphNode = NULL;
   return cudaErrorNotSupported;
 }
@@ -865,7 +989,9 @@ cudaGraphAddChildGraphNode(cudaGraphNode_t* pGraphNode, cudaGraph_t graph,
                            const cudaGraphNode_t* pDependencies,
                            size_t numDependencies, cudaGraph_t childGraph) {
   // TODO: Implement add child graph node.
-  if (!pGraphNode) return cudaErrorInvalidValue;
+  if (!pGraphNode) {
+    return cudaErrorInvalidValue;
+  }
   *pGraphNode = NULL;
   return cudaErrorNotSupported;
 }
@@ -875,7 +1001,9 @@ cudaError_t CUDAAPI cudaGraphAddEmptyNode(cudaGraphNode_t* pGraphNode,
                                           const cudaGraphNode_t* pDependencies,
                                           size_t numDependencies) {
   // TODO: Implement add empty node.
-  if (!pGraphNode) return cudaErrorInvalidValue;
+  if (!pGraphNode) {
+    return cudaErrorInvalidValue;
+  }
   *pGraphNode = NULL;
   return cudaErrorNotSupported;
 }
@@ -883,7 +1011,9 @@ cudaError_t CUDAAPI cudaGraphAddEmptyNode(cudaGraphNode_t* pGraphNode,
 cudaError_t CUDAAPI cudaGraphClone(cudaGraph_t* pGraphClone,
                                    cudaGraph_t originalGraph) {
   // TODO: Implement graph clone.
-  if (!pGraphClone) return cudaErrorInvalidValue;
+  if (!pGraphClone) {
+    return cudaErrorInvalidValue;
+  }
   *pGraphClone = NULL;
   return cudaErrorNotSupported;
 }
@@ -891,7 +1021,9 @@ cudaError_t CUDAAPI cudaGraphClone(cudaGraph_t* pGraphClone,
 cudaError_t CUDAAPI cudaGraphNodeGetType(cudaGraphNode_t node,
                                          cudaGraphNodeType* pType) {
   // TODO: Implement get node type.
-  if (!pType) return cudaErrorInvalidValue;
+  if (!pType) {
+    return cudaErrorInvalidValue;
+  }
   *pType = cudaGraphNodeTypeEmpty;
   return cudaErrorNotSupported;
 }
@@ -899,7 +1031,9 @@ cudaError_t CUDAAPI cudaGraphNodeGetType(cudaGraphNode_t node,
 cudaError_t CUDAAPI cudaGraphGetNodes(cudaGraph_t graph, cudaGraphNode_t* nodes,
                                       size_t* numNodes) {
   // TODO: Implement get graph nodes.
-  if (!numNodes) return cudaErrorInvalidValue;
+  if (!numNodes) {
+    return cudaErrorInvalidValue;
+  }
   if (nodes) {
     // Caller provided buffer, fill it.
   } else {
@@ -913,7 +1047,9 @@ cudaError_t CUDAAPI cudaGraphGetRootNodes(cudaGraph_t graph,
                                           cudaGraphNode_t* pRootNodes,
                                           size_t* pNumRootNodes) {
   // TODO: Implement get root nodes.
-  if (!pNumRootNodes) return cudaErrorInvalidValue;
+  if (!pNumRootNodes) {
+    return cudaErrorInvalidValue;
+  }
   if (pRootNodes) {
     // Caller provided buffer, fill it.
   } else {
@@ -927,7 +1063,9 @@ cudaError_t CUDAAPI cudaGraphNodeGetDependencies(cudaGraphNode_t node,
                                                  cudaGraphNode_t* pDependencies,
                                                  size_t* pNumDependencies) {
   // TODO: Implement get node dependencies.
-  if (!pNumDependencies) return cudaErrorInvalidValue;
+  if (!pNumDependencies) {
+    return cudaErrorInvalidValue;
+  }
   if (pDependencies) {
     // Caller provided buffer, fill it.
   } else {
@@ -941,7 +1079,9 @@ cudaError_t CUDAAPI cudaGraphNodeGetDependentNodes(
     cudaGraphNode_t node, cudaGraphNode_t* pDependentNodes,
     size_t* pNumDependentNodes) {
   // TODO: Implement get dependent nodes.
-  if (!pNumDependentNodes) return cudaErrorInvalidValue;
+  if (!pNumDependentNodes) {
+    return cudaErrorInvalidValue;
+  }
   if (pDependentNodes) {
     // Caller provided buffer, fill it.
   } else {
@@ -998,7 +1138,9 @@ cudaError_t CUDAAPI cudaGraphExecKernelNodeSetParams(
 cudaError_t CUDAAPI cudaMemPoolCreate(cudaMemPool_t* pool,
                                       const cudaMemPoolProps* poolProps) {
   // TODO: Implement memory pool creation.
-  if (!pool) return cudaErrorInvalidValue;
+  if (!pool) {
+    return cudaErrorInvalidValue;
+  }
   *pool = NULL;
   return cudaErrorNotSupported;
 }
@@ -1023,7 +1165,9 @@ cudaError_t CUDAAPI cudaMemPoolGetAttribute(cudaMemPool_t pool,
 cudaError_t CUDAAPI cudaMallocAsync(void** ptr, size_t size,
                                     cudaStream_t hStream) {
   // TODO: Implement asynchronous memory allocation.
-  if (!ptr) return cudaErrorInvalidValue;
+  if (!ptr) {
+    return cudaErrorInvalidValue;
+  }
   *ptr = NULL;
   return cudaErrorNotSupported;
 }
@@ -1050,7 +1194,9 @@ cudaError_t CUDAAPI cudaMemPoolGetAccess(cudaMemAccessFlags* flags,
                                          cudaMemPool_t pool,
                                          cudaMemLocation* location) {
   // TODO: Implement get memory pool access.
-  if (!flags) return cudaErrorInvalidValue;
+  if (!flags) {
+    return cudaErrorInvalidValue;
+  }
   *flags = cudaMemAccessFlagsProtNone;
   return cudaErrorNotSupported;
 }
@@ -1062,7 +1208,9 @@ cudaError_t CUDAAPI cudaMemPoolGetAccess(cudaMemAccessFlags* flags,
 cudaError_t CUDAAPI cudaIpcGetEventHandle(cudaIpcEventHandle_t* handle,
                                           cudaEvent_t event) {
   // TODO: Implement IPC get event handle.
-  if (!handle) return cudaErrorInvalidValue;
+  if (!handle) {
+    return cudaErrorInvalidValue;
+  }
   memset(handle, 0, sizeof(*handle));
   return cudaErrorNotSupported;
 }
@@ -1070,7 +1218,9 @@ cudaError_t CUDAAPI cudaIpcGetEventHandle(cudaIpcEventHandle_t* handle,
 cudaError_t CUDAAPI cudaIpcOpenEventHandle(cudaEvent_t* event,
                                            cudaIpcEventHandle_t handle) {
   // TODO: Implement IPC open event handle.
-  if (!event) return cudaErrorInvalidValue;
+  if (!event) {
+    return cudaErrorInvalidValue;
+  }
   *event = NULL;
   return cudaErrorNotSupported;
 }
@@ -1078,7 +1228,9 @@ cudaError_t CUDAAPI cudaIpcOpenEventHandle(cudaEvent_t* event,
 cudaError_t CUDAAPI cudaIpcGetMemHandle(cudaIpcMemHandle_t* handle,
                                         void* devPtr) {
   // TODO: Implement IPC get memory handle.
-  if (!handle) return cudaErrorInvalidValue;
+  if (!handle) {
+    return cudaErrorInvalidValue;
+  }
   memset(handle, 0, sizeof(*handle));
   return cudaErrorNotSupported;
 }
@@ -1087,7 +1239,9 @@ cudaError_t CUDAAPI cudaIpcOpenMemHandle(void** devPtr,
                                          cudaIpcMemHandle_t handle,
                                          unsigned int flags) {
   // TODO: Implement IPC open memory handle.
-  if (!devPtr) return cudaErrorInvalidValue;
+  if (!devPtr) {
+    return cudaErrorInvalidValue;
+  }
   *devPtr = NULL;
   return cudaErrorNotSupported;
 }

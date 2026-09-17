@@ -81,7 +81,9 @@ iree_hal_amdgpu_logical_device_query_device_memory_capacity(
         logical_device->physical_devices[i];
     hsa_amd_memory_pool_t pool =
         physical_device->coarse_block_pools.large.memory_pool;
-    if (!pool.handle) continue;
+    if (!pool.handle) {
+      continue;
+    }
     size_t pool_size = 0;
     IREE_RETURN_IF_ERROR(iree_hsa_amd_memory_pool_get_info(
         IREE_LIBHSA(&system->libhsa), pool, HSA_AMD_MEMORY_POOL_INFO_SIZE,
@@ -216,7 +218,9 @@ IREE_API_EXPORT iree_status_t iree_hal_amdgpu_logical_device_options_parse(
     iree_hal_amdgpu_logical_device_options_t* options,
     iree_string_pair_list_t params) {
   IREE_ASSERT_ARGUMENT(options);
-  if (!params.count) return iree_ok_status();
+  if (!params.count) {
+    return iree_ok_status();
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_status_t status = iree_ok_status();
@@ -1316,7 +1320,9 @@ static bool iree_hal_amdgpu_logical_device_is_profile_counter_range_queue(
 static iree_hal_amdgpu_host_queue_t*
 iree_hal_amdgpu_logical_device_select_profile_counter_range_queue(
     iree_hal_amdgpu_physical_device_t* physical_device) {
-  if (physical_device->host_queue_count == 0) return NULL;
+  if (physical_device->host_queue_count == 0) {
+    return NULL;
+  }
   return &physical_device->host_queues[physical_device->host_queue_count - 1];
 }
 
@@ -1534,7 +1540,9 @@ bool iree_hal_amdgpu_logical_device_lookup_host_queue_epoch_wait(
   IREE_ASSERT_ARGUMENT(out_wait_state);
   memset(out_wait_state, 0, sizeof(*out_wait_state));
 
-  if (!logical_device->host_queue_epoch_table) return false;
+  if (!logical_device->host_queue_epoch_table) {
+    return false;
+  }
   if ((axis >> 32) != (logical_device->axis >> 32)) {
     return false;
   }
@@ -1566,7 +1574,9 @@ bool iree_hal_amdgpu_logical_device_lookup_host_queue_epoch_wait(
 
   uint64_t wait_timeout_hint =
       logical_device->system->info.timestamp_frequency / 1000;
-  if (wait_timeout_hint == 0) wait_timeout_hint = 1;
+  if (wait_timeout_hint == 0) {
+    wait_timeout_hint = 1;
+  }
 
   out_wait_state->libhsa = queue->libhsa;
   out_wait_state->epoch_signal = epoch_signal;
@@ -1631,7 +1641,9 @@ iree_status_t iree_hal_amdgpu_logical_device_check_failure(
     iree_hal_amdgpu_logical_device_t* logical_device) {
   iree_status_t failure_status = (iree_status_t)iree_atomic_load(
       &logical_device->failure_status, iree_memory_order_acquire);
-  if (iree_status_is_ok(failure_status)) return iree_ok_status();
+  if (iree_status_is_ok(failure_status)) {
+    return iree_ok_status();
+  }
   return iree_status_clone(failure_status);
 }
 
@@ -2262,7 +2274,9 @@ iree_hal_amdgpu_logical_device_queue_family(
     iree_hal_queue_family_ordinal_t family_ordinal) {
   iree_hal_amdgpu_logical_device_t* logical_device =
       iree_hal_amdgpu_logical_device_cast(base_device);
-  if (family_ordinal >= logical_device->physical_device_count) return NULL;
+  if (family_ordinal >= logical_device->physical_device_count) {
+    return NULL;
+  }
   return &logical_device->physical_devices[family_ordinal]->queue_family;
 }
 
@@ -2272,10 +2286,14 @@ static iree_hal_queue_t* iree_hal_amdgpu_logical_device_queue(
     iree_hal_queue_ordinal_t queue_ordinal) {
   iree_hal_amdgpu_logical_device_t* logical_device =
       iree_hal_amdgpu_logical_device_cast(base_device);
-  if (family_ordinal >= logical_device->physical_device_count) return NULL;
+  if (family_ordinal >= logical_device->physical_device_count) {
+    return NULL;
+  }
   iree_hal_amdgpu_physical_device_t* physical_device =
       logical_device->physical_devices[family_ordinal];
-  if (queue_ordinal >= physical_device->host_queue_count) return NULL;
+  if (queue_ordinal >= physical_device->host_queue_count) {
+    return NULL;
+  }
   return &physical_device->host_queues[queue_ordinal].base;
 }
 
@@ -2384,14 +2402,18 @@ static iree_status_t iree_hal_amdgpu_logical_device_acquire_queue(
       iree_hal_queue_retain(&queue->base);
     }
     iree_slim_mutex_unlock(&physical_device->cooperative_queue.mutex);
-    if (iree_status_is_ok(status)) *out_queue = &queue->base;
+    if (iree_status_is_ok(status)) {
+      *out_queue = &queue->base;
+    }
     return status;
   }
 
   iree_hal_amdgpu_host_queue_t* queue = NULL;
   iree_status_t status = iree_hal_amdgpu_logical_device_create_dynamic_queue(
       logical_device, physical_device, params, &queue);
-  if (iree_status_is_ok(status)) *out_queue = &queue->base;
+  if (iree_status_is_ok(status)) {
+    *out_queue = &queue->base;
+  }
   return status;
 }
 
@@ -2883,7 +2905,9 @@ static bool iree_hal_amdgpu_logical_device_can_auto_select_pm4_command_buffer(
   }
   // Auto mode must be able to replay either static or dynamic reusable command
   // buffers without changing implementation after recording begins.
-  if (physical_device->host_queue_upload_capacity == 0) return false;
+  if (physical_device->host_queue_upload_capacity == 0) {
+    return false;
+  }
   return true;
 }
 

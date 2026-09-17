@@ -65,7 +65,9 @@ static iree_status_t iree_net_frame_accumulator_complete_reassembly(
 static iree_status_t iree_net_frame_accumulator_process(
     iree_net_frame_accumulator_t* accumulator, iree_async_span_t data,
     iree_async_buffer_lease_t* lease) {
-  if (data.length == 0) return iree_ok_status();
+  if (data.length == 0) {
+    return iree_ok_status();
+  }
   if (!iree_async_span_is_cpu_accessible(data)) {
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                             "frame parsing requires CPU-accessible storage");

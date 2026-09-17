@@ -52,15 +52,22 @@ static bool iree_async_posix_relay_fire_sink(iree_async_relay_t* relay) {
 // Handles EINTR (common on macOS with signal-heavy environments) by retrying.
 // Stops on EAGAIN/EWOULDBLOCK (fully drained) or read returning 0.
 static void iree_async_posix_relay_drain_source(iree_async_relay_t* relay) {
-  if (relay->source.type != IREE_ASYNC_RELAY_SOURCE_TYPE_PRIMITIVE) return;
+  if (relay->source.type != IREE_ASYNC_RELAY_SOURCE_TYPE_PRIMITIVE) {
+    return;
+  }
   uint64_t drain_buffer;
   for (;;) {
     ssize_t bytes_read = read(relay->source.primitive.value.fd, &drain_buffer,
                               sizeof(drain_buffer));
-    if (bytes_read > 0)
+    if (bytes_read > 0) {
       break;  // Drained one value (eventfd atomically resets).
-    if (bytes_read == 0) break;    // EOF.
-    if (errno == EINTR) continue;  // Retry on signal interruption.
+    }
+    if (bytes_read == 0) {
+      break;  // EOF.
+    }
+    if (errno == EINTR) {
+      continue;  // Retry on signal interruption.
+    }
     break;  // EAGAIN or other error — already drained or unusable.
   }
 }
@@ -129,7 +136,9 @@ static iree_status_t iree_async_posix_notification_activate(
   int fd = notification->platform.posix.primitive.value.fd;
   iree_status_t status =
       iree_async_posix_event_set_add(proactor->event_set, fd, POLLIN);
-  if (!iree_status_is_ok(status)) return status;
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
   status = iree_async_posix_fd_map_insert(
       &proactor->fd_map, fd, IREE_ASYNC_POSIX_FD_HANDLER_NOTIFICATION,
       notification);
@@ -350,7 +359,9 @@ iree_status_t iree_async_proactor_posix_register_relay(
 void iree_async_proactor_posix_unregister_relay(
     iree_async_proactor_posix_t* proactor, iree_async_relay_t* relay,
     iree_async_relay_unregistered_callback_t callback) {
-  if (!relay) return;
+  if (!relay) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   if (!relay->platform.posix.is_terminal) {
@@ -371,7 +382,9 @@ void iree_async_proactor_posix_unregister_relay(
   // Release retained notifications and free.
   iree_async_posix_relay_release_resources(relay);
 
-  if (callback.fn) callback.fn(callback.user_data);
+  if (callback.fn) {
+    callback.fn(callback.user_data);
+  }
 
   IREE_TRACE_ZONE_END(z0);
 }

@@ -407,7 +407,9 @@ ReferenceResult EvaluateReference(
       }
       continue;
     }
-    if (choices[i].truth != LOOM_DECISION_TRUTH_TRUE) continue;
+    if (choices[i].truth != LOOM_DECISION_TRUTH_TRUE) {
+      continue;
+    }
     if (!has_match || choices[i].priority > best_match_priority) {
       has_match = true;
       best_match_priority = choices[i].priority;
@@ -424,7 +426,9 @@ ReferenceResult EvaluateReference(
     result.kind = LOOM_DECISION_PROGRAM_RESULT_UNRESOLVED;
     result.unresolved_action_ordinal = highest_maybe_action;
     for (uint32_t i = 0; i < choice_count; ++i) {
-      if (choices[i].truth == LOOM_DECISION_TRUTH_FALSE) continue;
+      if (choices[i].truth == LOOM_DECISION_TRUTH_FALSE) {
+        continue;
+      }
       if (has_match && choices[i].truth == LOOM_DECISION_TRUTH_TRUE &&
           choices[i].priority != best_match_priority) {
         continue;

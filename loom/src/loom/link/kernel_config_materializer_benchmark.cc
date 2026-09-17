@@ -27,7 +27,9 @@
 namespace {
 
 static void CheckStatus(iree_status_t status) {
-  if (!iree_status_is_ok(status)) iree_status_abort(status);
+  if (!iree_status_is_ok(status)) {
+    iree_status_abort(status);
+  }
 }
 
 class KernelConfigFixture {
@@ -50,7 +52,9 @@ class KernelConfigFixture {
         IREE_SV("provider.loombc"), /*index_options=*/nullptr,
         /*options=*/nullptr, /*out_provider_ordinal=*/nullptr));
     kernel_ = loom_link_module_index_lookup_name(index_, IREE_SV("benchmark"));
-    if (kernel_ == nullptr) std::abort();
+    if (kernel_ == nullptr) {
+      std::abort();
+    }
     plan_ = BuildPlan();
 
     const loom_link_module_index_provider_t* provider =
@@ -157,13 +161,17 @@ kernel.def target(@benchmark_target) @benchmark(%element_count: index) {
     CheckStatus(loom_text_parse(
         iree_make_string_view(source.data(), source.size()),
         IREE_SV("provider.loom"), &context_, &block_pool_, &options, &module));
-    if (module == nullptr) std::abort();
+    if (module == nullptr) {
+      std::abort();
+    }
     loom_verify_options_t verify_options = {};
     verify_options.sink.fn = loom_diagnostic_stderr_sink;
     verify_options.max_errors = 20;
     loom_verify_result_t verify_result = {};
     CheckStatus(loom_verify_module(module, &verify_options, &verify_result));
-    if (verify_result.error_count != 0) std::abort();
+    if (verify_result.error_count != 0) {
+      std::abort();
+    }
     return module;
   }
 

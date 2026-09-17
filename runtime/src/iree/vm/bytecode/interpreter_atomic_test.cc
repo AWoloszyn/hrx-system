@@ -290,7 +290,9 @@ void ExpectUpdatesPreservedUnderContention(
       }
     });
   }
-  for (std::thread& thread : threads) thread.join();
+  for (std::thread& thread : threads) {
+    thread.join();
+  }
   EXPECT_EQ(LoadBits<T>(storage.data()),
             static_cast<T>(kThreadCount * kIterationCount));
 }

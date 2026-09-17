@@ -15,7 +15,9 @@
 #include "iree/hal/device_spec.h"
 
 static void iree_hal_device_spec_fuzz_assert(bool condition) {
-  if (!condition) abort();
+  if (!condition) {
+    abort();
+  }
 }
 
 static void iree_hal_device_spec_fuzz_parse(iree_const_byte_span_t bytes) {
@@ -313,7 +315,9 @@ static const std::vector<uint8_t>& iree_hal_device_spec_fuzz_seed(void) {
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   constexpr size_t kMaximumInputSize = 1024 * 1024;
-  if (size > kMaximumInputSize) return 0;
+  if (size > kMaximumInputSize) {
+    return 0;
+  }
 
   // Exercise the complete hostile-input parser surface.
   iree_hal_device_spec_fuzz_parse(iree_make_const_byte_span(data, size));

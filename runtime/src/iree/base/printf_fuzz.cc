@@ -35,7 +35,9 @@ typedef struct {
 } fuzz_input_t;
 
 static uint8_t fuzz_consume_u8(fuzz_input_t* input) {
-  if (input->remaining == 0) return 0;
+  if (input->remaining == 0) {
+    return 0;
+  }
   uint8_t value = input->data[0];
   input->data++;
   input->remaining--;
@@ -108,11 +110,21 @@ static fuzz_spec_type fuzz_build_format_string(fuzz_input_t* input,
 
   // Flags.
   uint8_t flags = fuzz_consume_u8(input);
-  if (flags & 0x01) format[position++] = '-';
-  if (flags & 0x02) format[position++] = '+';
-  if (flags & 0x04) format[position++] = ' ';
-  if (flags & 0x08) format[position++] = '0';
-  if (flags & 0x10) format[position++] = '#';
+  if (flags & 0x01) {
+    format[position++] = '-';
+  }
+  if (flags & 0x02) {
+    format[position++] = '+';
+  }
+  if (flags & 0x04) {
+    format[position++] = ' ';
+  }
+  if (flags & 0x08) {
+    format[position++] = '0';
+  }
+  if (flags & 0x10) {
+    format[position++] = '#';
+  }
 
   // Width.
   uint8_t width_byte = fuzz_consume_u8(input);
@@ -142,7 +154,9 @@ static fuzz_spec_type fuzz_build_format_string(fuzz_input_t* input,
   static const char* const length_strings[] = {"",   "hh", "h", "l",
                                                "ll", "z",  "t", "j"};
   const char* length_str = length_strings[length_mod];
-  while (*length_str) format[position++] = *length_str++;
+  while (*length_str) {
+    format[position++] = *length_str++;
+  }
 
   // Specifier.
   uint8_t spec_choice = fuzz_consume_u8(input) % 16;
@@ -283,100 +297,108 @@ static void fuzz_strategy_full_format(fuzz_input_t* input) {
       uint64_t raw = fuzz_consume_u64(input);
       switch (length_mod) {
         case 0:  // none (int)
-          if (dynamic_count == 2)
+          if (dynamic_count == 2) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0], dynamic_args[1],
                                     (int)(int32_t)raw);
-          else if (dynamic_count == 1)
+          } else if (dynamic_count == 1) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0], (int)(int32_t)raw);
-          else
+          } else {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     (int)(int32_t)raw);
+          }
           break;
         case 1:  // hh (signed char, promoted to int)
-          if (dynamic_count == 2)
+          if (dynamic_count == 2) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0], dynamic_args[1],
                                     (int)(signed char)raw);
-          else if (dynamic_count == 1)
+          } else if (dynamic_count == 1) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0], (int)(signed char)raw);
-          else
+          } else {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     (int)(signed char)raw);
+          }
           break;
         case 2:  // h (short, promoted to int)
-          if (dynamic_count == 2)
+          if (dynamic_count == 2) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0], dynamic_args[1],
                                     (int)(short)raw);
-          else if (dynamic_count == 1)
+          } else if (dynamic_count == 1) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0], (int)(short)raw);
-          else
+          } else {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     (int)(short)raw);
+          }
           break;
         case 3:  // l (long)
-          if (dynamic_count == 2)
+          if (dynamic_count == 2) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0], dynamic_args[1],
                                     (long)(int64_t)raw);
-          else if (dynamic_count == 1)
+          } else if (dynamic_count == 1) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0], (long)(int64_t)raw);
-          else
+          } else {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     (long)(int64_t)raw);
+          }
           break;
         case 4:  // ll (long long)
-          if (dynamic_count == 2)
+          if (dynamic_count == 2) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0], dynamic_args[1],
                                     (long long)(int64_t)raw);
-          else if (dynamic_count == 1)
+          } else if (dynamic_count == 1) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0], (long long)(int64_t)raw);
-          else
+          } else {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     (long long)(int64_t)raw);
+          }
           break;
         case 5:  // z (ptrdiff_t for signed)
-          if (dynamic_count == 2)
+          if (dynamic_count == 2) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0], dynamic_args[1],
                                     (ptrdiff_t)(int64_t)raw);
-          else if (dynamic_count == 1)
+          } else if (dynamic_count == 1) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0], (ptrdiff_t)(int64_t)raw);
-          else
+          } else {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     (ptrdiff_t)(int64_t)raw);
+          }
           break;
         case 6:  // t (ptrdiff_t)
-          if (dynamic_count == 2)
+          if (dynamic_count == 2) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0], dynamic_args[1],
                                     (ptrdiff_t)(int64_t)raw);
-          else if (dynamic_count == 1)
+          } else if (dynamic_count == 1) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0], (ptrdiff_t)(int64_t)raw);
-          else
+          } else {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     (ptrdiff_t)(int64_t)raw);
+          }
           break;
         case 7:  // j (intmax_t)
-          if (dynamic_count == 2)
+          if (dynamic_count == 2) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0], dynamic_args[1],
                                     (intmax_t)(int64_t)raw);
-          else if (dynamic_count == 1)
+          } else if (dynamic_count == 1) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0], (intmax_t)(int64_t)raw);
-          else
+          } else {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     (intmax_t)(int64_t)raw);
+          }
           break;
       }
       break;
@@ -386,103 +408,111 @@ static void fuzz_strategy_full_format(fuzz_input_t* input) {
       uint64_t raw = fuzz_consume_u64(input);
       switch (length_mod) {
         case 0:
-          if (dynamic_count == 2)
+          if (dynamic_count == 2) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0], dynamic_args[1],
                                     (unsigned int)(uint32_t)raw);
-          else if (dynamic_count == 1)
+          } else if (dynamic_count == 1) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0],
                                     (unsigned int)(uint32_t)raw);
-          else
+          } else {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     (unsigned int)(uint32_t)raw);
+          }
           break;
         case 1:
-          if (dynamic_count == 2)
+          if (dynamic_count == 2) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0], dynamic_args[1],
                                     (unsigned int)(unsigned char)raw);
-          else if (dynamic_count == 1)
+          } else if (dynamic_count == 1) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0],
                                     (unsigned int)(unsigned char)raw);
-          else
+          } else {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     (unsigned int)(unsigned char)raw);
+          }
           break;
         case 2:
-          if (dynamic_count == 2)
+          if (dynamic_count == 2) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0], dynamic_args[1],
                                     (unsigned int)(unsigned short)raw);
-          else if (dynamic_count == 1)
+          } else if (dynamic_count == 1) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0],
                                     (unsigned int)(unsigned short)raw);
-          else
+          } else {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     (unsigned int)(unsigned short)raw);
+          }
           break;
         case 3:
-          if (dynamic_count == 2)
+          if (dynamic_count == 2) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0], dynamic_args[1],
                                     (unsigned long)raw);
-          else if (dynamic_count == 1)
+          } else if (dynamic_count == 1) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0], (unsigned long)raw);
-          else
+          } else {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     (unsigned long)raw);
+          }
           break;
         case 4:
-          if (dynamic_count == 2)
+          if (dynamic_count == 2) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0], dynamic_args[1],
                                     (unsigned long long)raw);
-          else if (dynamic_count == 1)
+          } else if (dynamic_count == 1) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0], (unsigned long long)raw);
-          else
+          } else {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     (unsigned long long)raw);
+          }
           break;
         case 5:
-          if (dynamic_count == 2)
+          if (dynamic_count == 2) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0], dynamic_args[1],
                                     (size_t)raw);
-          else if (dynamic_count == 1)
+          } else if (dynamic_count == 1) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0], (size_t)raw);
-          else
+          } else {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     (size_t)raw);
+          }
           break;
         case 6:
-          if (dynamic_count == 2)
+          if (dynamic_count == 2) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0], dynamic_args[1],
                                     (size_t)raw);
-          else if (dynamic_count == 1)
+          } else if (dynamic_count == 1) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0], (size_t)raw);
-          else
+          } else {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     (size_t)raw);
+          }
           break;
         case 7:
-          if (dynamic_count == 2)
+          if (dynamic_count == 2) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0], dynamic_args[1],
                                     (uintmax_t)raw);
-          else if (dynamic_count == 1)
+          } else if (dynamic_count == 1) {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     dynamic_args[0], (uintmax_t)raw);
-          else
+          } else {
             FUZZ_FORMAT_AND_COMPARE(iree_buffer, libc_buffer, format,
                                     (uintmax_t)raw);
+          }
           break;
       }
       break;
@@ -499,21 +529,24 @@ static void fuzz_strategy_full_format(fuzz_input_t* input) {
           if (*p == '*') {
             // Precision * follows '.'; width * does not.
             if (p > format + 1 && *(p - 1) == '.') {
-              if (dynamic_args[dyn_idx] > 15) dynamic_args[dyn_idx] = 15;
+              if (dynamic_args[dyn_idx] > 15) {
+                dynamic_args[dyn_idx] = 15;
+              }
             }
             dyn_idx++;
           }
         }
       }
-      if (dynamic_count == 2)
+      if (dynamic_count == 2) {
         FUZZ_FORMAT_AND_COMPARE_FLOAT(iree_buffer, libc_buffer, value, format,
                                       dynamic_args[0], dynamic_args[1], value);
-      else if (dynamic_count == 1)
+      } else if (dynamic_count == 1) {
         FUZZ_FORMAT_AND_COMPARE_FLOAT(iree_buffer, libc_buffer, value, format,
                                       dynamic_args[0], value);
-      else
+      } else {
         FUZZ_FORMAT_AND_COMPARE_FLOAT(iree_buffer, libc_buffer, value, format,
                                       value);
+      }
       break;
     }
 
@@ -531,14 +564,15 @@ static void fuzz_strategy_full_format(fuzz_input_t* input) {
         string_buffer[i] = 'A' + (fuzz_consume_u8(input) % 26);
       }
       string_buffer[actual_length] = '\0';
-      if (dynamic_count == 2)
+      if (dynamic_count == 2) {
         iree_snprintf(iree_buffer, sizeof(iree_buffer), format, dynamic_args[0],
                       dynamic_args[1], string_buffer);
-      else if (dynamic_count == 1)
+      } else if (dynamic_count == 1) {
         iree_snprintf(iree_buffer, sizeof(iree_buffer), format, dynamic_args[0],
                       string_buffer);
-      else
+      } else {
         iree_snprintf(iree_buffer, sizeof(iree_buffer), format, string_buffer);
+      }
       break;
     }
 
@@ -546,15 +580,18 @@ static void fuzz_strategy_full_format(fuzz_input_t* input) {
       // Only '-' flag and width are defined for %c; other flags and
       // precision are UB. Test for crash/ASAN safety only.
       int value = fuzz_consume_u8(input);
-      if (value == 0) value = 'Z';
-      if (dynamic_count == 2)
+      if (value == 0) {
+        value = 'Z';
+      }
+      if (dynamic_count == 2) {
         iree_snprintf(iree_buffer, sizeof(iree_buffer), format, dynamic_args[0],
                       dynamic_args[1], value);
-      else if (dynamic_count == 1)
+      } else if (dynamic_count == 1) {
         iree_snprintf(iree_buffer, sizeof(iree_buffer), format, dynamic_args[0],
                       value);
-      else
+      } else {
         iree_snprintf(iree_buffer, sizeof(iree_buffer), format, value);
+      }
       break;
     }
 
@@ -562,14 +599,15 @@ static void fuzz_strategy_full_format(fuzz_input_t* input) {
       // %p output is entirely implementation-defined (e.g., glibc uses
       // "(nil)" for NULL, we use "0x0"). Only test for crash/ASAN safety.
       void* value = (void*)(uintptr_t)fuzz_consume_u64(input);
-      if (dynamic_count == 2)
+      if (dynamic_count == 2) {
         iree_snprintf(iree_buffer, sizeof(iree_buffer), format, dynamic_args[0],
                       dynamic_args[1], value);
-      else if (dynamic_count == 1)
+      } else if (dynamic_count == 1) {
         iree_snprintf(iree_buffer, sizeof(iree_buffer), format, dynamic_args[0],
                       value);
-      else
+      } else {
         iree_snprintf(iree_buffer, sizeof(iree_buffer), format, value);
+      }
       break;
     }
 
@@ -583,7 +621,9 @@ static void fuzz_strategy_full_format(fuzz_input_t* input) {
         iree_snprintf(iree_buffer, sizeof(iree_buffer), format);
         snprintf(libc_buffer, sizeof(libc_buffer), format);
 #pragma GCC diagnostic pop
-        if (strcmp(iree_buffer, libc_buffer) != 0) __builtin_trap();
+        if (strcmp(iree_buffer, libc_buffer) != 0) {
+          __builtin_trap();
+        }
       }
       break;
     }
@@ -616,25 +656,30 @@ static void fuzz_strategy_malformed(fuzz_input_t* input) {
       case 2:
         // '%' + flag (truncated).
         format[position++] = '%';
-        if (position < 50)
+        if (position < 50) {
           format[position++] = "+-0 #"[fuzz_consume_u8(input) % 5];
+        }
         break;
       case 3:
         // '%' + length modifier (truncated).
         format[position++] = '%';
-        if (position < 50)
+        if (position < 50) {
           format[position++] = "hlzj"[fuzz_consume_u8(input) % 4];
+        }
         break;
       case 4:
         // '%%' (valid escape).
         format[position++] = '%';
-        if (position < 50) format[position++] = '%';
+        if (position < 50) {
+          format[position++] = '%';
+        }
         break;
       case 5:
         // '%' + digits (width, no specifier).
         format[position++] = '%';
-        if (position < 50)
+        if (position < 50) {
           format[position++] = '0' + fuzz_consume_u8(input) % 10;
+        }
         break;
     }
   }

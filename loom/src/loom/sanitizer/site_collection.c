@@ -54,7 +54,9 @@ static bool loom_sanitizer_site_op_isa(const loom_op_t* op) {
 
 static iree_status_t loom_sanitizer_site_location_validate_child(
     const loom_module_t* module, loom_location_id_t location_id) {
-  if (location_id == LOOM_LOCATION_UNKNOWN) return iree_ok_status();
+  if (location_id == LOOM_LOCATION_UNKNOWN) {
+    return iree_ok_status();
+  }
   if ((iree_host_size_t)location_id >= module->locations.count) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "sanitizer site child location id %u out of range "
@@ -67,7 +69,9 @@ static iree_status_t loom_sanitizer_site_location_validate_child(
 static iree_status_t loom_sanitizer_site_location_find_payload(
     const loom_module_t* module, loom_location_id_t location_id, uint8_t depth,
     loom_sanitizer_site_location_result_t* result) {
-  if (location_id == LOOM_LOCATION_UNKNOWN) return iree_ok_status();
+  if (location_id == LOOM_LOCATION_UNKNOWN) {
+    return iree_ok_status();
+  }
   if (depth >= LOOM_SANITIZER_SITE_LOCATION_MAX_DEPTH) {
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,
@@ -133,7 +137,9 @@ static iree_status_t loom_sanitizer_site_count_visitor(
   loom_sanitizer_site_count_state_t* state =
       (loom_sanitizer_site_count_state_t*)user_data;
   *out_result = LOOM_WALK_CONTINUE;
-  if (!loom_sanitizer_site_op_isa(op)) return iree_ok_status();
+  if (!loom_sanitizer_site_op_isa(op)) {
+    return iree_ok_status();
+  }
   if (state->count == LOOM_SANITIZER_SITE_ID_INVALID) {
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                             "sanitizer site collection exceeded max site id %u",
@@ -150,7 +156,9 @@ static iree_status_t loom_sanitizer_site_collect_visitor(
   loom_sanitizer_site_collect_state_t* state =
       (loom_sanitizer_site_collect_state_t*)user_data;
   *out_result = LOOM_WALK_CONTINUE;
-  if (!loom_sanitizer_site_op_isa(op)) return iree_ok_status();
+  if (!loom_sanitizer_site_op_isa(op)) {
+    return iree_ok_status();
+  }
 
   loom_sanitizer_site_location_result_t location_result = {
       .payload_location = LOOM_LOCATION_UNKNOWN,
@@ -181,7 +189,9 @@ static iree_status_t loom_sanitizer_site_collection_allocate_rows(
     loom_sanitizer_site_collection_t* collection) {
   collection->rows = NULL;
   collection->row_count = row_count;
-  if (row_count == 0) return iree_ok_status();
+  if (row_count == 0) {
+    return iree_ok_status();
+  }
   return iree_arena_allocate_array(arena, row_count,
                                    sizeof(loom_sanitizer_site_row_t),
                                    (void**)&collection->rows);

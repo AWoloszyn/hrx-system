@@ -34,7 +34,9 @@ bool iree_hal_platform_try_query_numa_distance_impl(uint8_t node_a,
   *out_distance = 10;  // Default: same node.
 
   iree_host_size_t node_count = iree_hal_platform_query_numa_node_count_impl();
-  if (node_a >= node_count || node_b >= node_count) return false;
+  if (node_a >= node_count || node_b >= node_count) {
+    return false;
+  }
 
   if (node_a == node_b) {
     *out_distance = 10;

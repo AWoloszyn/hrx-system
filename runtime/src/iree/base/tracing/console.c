@@ -55,12 +55,16 @@ typedef struct iree_tracing_console_t {
 static iree_tracing_console_t _console = {0};
 
 void iree_tracing_console_initialize() {
-  if (_console.file) return;
+  if (_console.file) {
+    return;
+  }
   _console.file = IREE_TRACING_CONSOLE_FILE;
 }
 
 void iree_tracing_console_deinitialize() {
-  if (!_console.file) return;
+  if (!_console.file) {
+    return;
+  }
   fflush(_console.file);
 }
 
@@ -163,7 +167,9 @@ IREE_MUST_USE_RESULT iree_zone_id_t iree_tracing_zone_begin_external_impl(
 }
 
 void iree_tracing_zone_end(iree_zone_id_t zone_id) {
-  if (!zone_id) return;
+  if (!zone_id) {
+    return;
+  }
 
   assert(_thread.depth > 0);
 

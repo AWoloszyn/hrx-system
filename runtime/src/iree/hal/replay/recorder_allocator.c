@@ -609,7 +609,9 @@ static iree_status_t iree_hal_replay_recorder_allocator_physical_memory_free(
   if (consumed) {
     iree_hal_replay_recorder_physical_memory_t** link =
         &allocator->physical_memory_list;
-    while (*link != replay_physical_memory) link = &(*link)->next;
+    while (*link != replay_physical_memory) {
+      link = &(*link)->next;
+    }
     *link = replay_physical_memory->next;
   }
   status = iree_hal_replay_recorder_end_passthrough_operation_with_payload(

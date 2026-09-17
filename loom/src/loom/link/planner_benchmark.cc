@@ -205,7 +205,9 @@ class PlannerCatalogFixture {
     uint16_t argument_count = 0;
     const loom_value_id_t* arguments =
         loom_func_like_arg_ids(function, &argument_count);
-    if (argument_count != 1) std::abort();
+    if (argument_count != 1) {
+      std::abort();
+    }
     loom_builder_t body_builder;
     loom_builder_initialize(
         module, &module->arena,
@@ -251,7 +253,9 @@ class PlannerCatalogFixture {
       uint16_t argument_count = 0;
       const loom_value_id_t* arguments =
           loom_func_like_arg_ids(function, &argument_count);
-      if (argument_count != 1) std::abort();
+      if (argument_count != 1) {
+        std::abort();
+      }
 
       loom_builder_t body_builder;
       loom_builder_initialize(
@@ -694,7 +698,9 @@ static void BM_GlobalDuplicateEnumeration(benchmark::State& state) {
   const loom_link_module_index_symbol_t* selected =
       loom_link_module_index_lookup_global(
           index, iree_make_string_view(symbol_name.data(), symbol_name.size()));
-  if (!selected) std::abort();
+  if (!selected) {
+    std::abort();
+  }
 
   for (auto _ : state) {
     iree_host_size_t duplicate_count = 0;
@@ -704,7 +710,9 @@ static void BM_GlobalDuplicateEnumeration(benchmark::State& state) {
       benchmark::DoNotOptimize(duplicate);
       ++duplicate_count;
     }
-    if (duplicate_count != provider_count - 1) std::abort();
+    if (duplicate_count != provider_count - 1) {
+      std::abort();
+    }
     benchmark::DoNotOptimize(duplicate_count);
   }
   state.counters["duplicates"] = static_cast<double>(provider_count - 1);

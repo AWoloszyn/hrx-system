@@ -33,7 +33,9 @@ class LibmpiTest : public ::testing::Test {
   }
 
   void SetUp() override {
-    if (!library) GTEST_SKIP() << "No MPI library available. Skipping suite.";
+    if (!library) {
+      GTEST_SKIP() << "No MPI library available. Skipping suite.";
+    }
 
     IREE_EXPECT_OK(MPI_RESULT_TO_STATUS(
         &symbols, MPI_Comm_size(IREE_MPI_COMM_WORLD(&symbols), &world_size),
@@ -49,7 +51,9 @@ class LibmpiTest : public ::testing::Test {
   void TearDown() override {}
 
   static void TearDownTestSuite() {
-    if (!library) return;
+    if (!library) {
+      return;
+    }
 
     IREE_EXPECT_OK(
         MPI_RESULT_TO_STATUS(&symbols, MPI_Finalize(), "MPI_Finalize"));

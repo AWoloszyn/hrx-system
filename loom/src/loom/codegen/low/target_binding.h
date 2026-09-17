@@ -116,8 +116,12 @@ static_assert(sizeof(loom_low_descriptor_packet_t) == 16,
 // Returns the descriptor packet kind for |op|.
 static inline loom_low_descriptor_packet_kind_t loom_low_descriptor_packet_kind(
     const loom_op_t* op) {
-  if (loom_low_op_isa(op)) return LOOM_LOW_DESCRIPTOR_PACKET_OP;
-  if (loom_low_const_isa(op)) return LOOM_LOW_DESCRIPTOR_PACKET_CONST;
+  if (loom_low_op_isa(op)) {
+    return LOOM_LOW_DESCRIPTOR_PACKET_OP;
+  }
+  if (loom_low_const_isa(op)) {
+    return LOOM_LOW_DESCRIPTOR_PACKET_CONST;
+  }
   return LOOM_LOW_DESCRIPTOR_PACKET_NONE;
 }
 
@@ -142,7 +146,9 @@ static inline void loom_low_descriptor_packet_initialize(
       /*.op=*/op,
       /*.kind=*/kind,
   };
-  if (kind == LOOM_LOW_DESCRIPTOR_PACKET_NONE) return;
+  if (kind == LOOM_LOW_DESCRIPTOR_PACKET_NONE) {
+    return;
+  }
   out_packet->descriptor_ordinal = loom_low_descriptor_packet_ordinal(op, kind);
   out_packet->descriptor =
       &descriptor_set->descriptors[out_packet->descriptor_ordinal];

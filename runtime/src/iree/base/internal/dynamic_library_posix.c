@@ -159,7 +159,9 @@ iree_status_t iree_dynamic_library_load_from_files(
   iree_host_size_t i = 0;
   for (i = 0; i < search_path_count; ++i) {
     handle = dlopen(search_paths[i], RTLD_LAZY | RTLD_LOCAL);
-    if (handle) break;
+    if (handle) {
+      break;
+    }
   }
   if (!handle) {
     IREE_TRACE_ZONE_END(z0);

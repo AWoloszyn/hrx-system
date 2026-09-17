@@ -32,7 +32,9 @@ class BufferRingTest : public ::testing::Test {
   void TearDown() override {
     IREE_EXPECT_OK(iree_io_uring_buffer_ring_free(second_buffer_ring_));
     IREE_EXPECT_OK(iree_io_uring_buffer_ring_free(first_buffer_ring_));
-    if (ring_initialized_) iree_io_uring_ring_deinitialize(&ring_);
+    if (ring_initialized_) {
+      iree_io_uring_ring_deinitialize(&ring_);
+    }
   }
 
   iree_io_uring_buffer_ring_options_t MakeOptions(void* buffer_base,

@@ -431,7 +431,9 @@ class HipEventTest : public ::testing::Test {
   hipStream_t CreateStream() {
     hipStream_t stream = nullptr;
     EXPECT_EQ(hipSuccess, hip_.stream_create(&stream));
-    if (stream) streams_.push_back(stream);
+    if (stream) {
+      streams_.push_back(stream);
+    }
     return stream;
   }
 
@@ -446,7 +448,9 @@ class HipEventTest : public ::testing::Test {
   hipEvent_t CreateEvent() {
     hipEvent_t event = nullptr;
     EXPECT_EQ(hipSuccess, hip_.event_create(&event));
-    if (event) events_.push_back(event);
+    if (event) {
+      events_.push_back(event);
+    }
     return event;
   }
 
@@ -454,7 +458,9 @@ class HipEventTest : public ::testing::Test {
   hipEvent_t CreateEventWithFlags(unsigned int flags) {
     hipEvent_t event = nullptr;
     EXPECT_EQ(hipSuccess, hip_.event_create_with_flags(&event, flags));
-    if (event) events_.push_back(event);
+    if (event) {
+      events_.push_back(event);
+    }
     return event;
   }
 
@@ -476,7 +482,9 @@ class HipEventTest : public ::testing::Test {
   // Hands a graph the body obtained some other way - ending a stream capture,
   // for one - to the fixture so TearDown destroys it. Ignores null.
   void TrackGraph(hipGraph_t graph) {
-    if (graph) graphs_.push_back(graph);
+    if (graph) {
+      graphs_.push_back(graph);
+    }
   }
 
   // Destroys a graph the fixture owns ahead of TearDown.
@@ -492,7 +500,9 @@ class HipEventTest : public ::testing::Test {
     EXPECT_EQ(hipSuccess, hip_.graph_instantiate(
                               &graph_exec, graph, /*error_node=*/nullptr,
                               /*log_buffer=*/nullptr, /*buffer_size=*/0));
-    if (graph_exec) graph_execs_.push_back(graph_exec);
+    if (graph_exec) {
+      graph_execs_.push_back(graph_exec);
+    }
     return graph_exec;
   }
 
@@ -519,7 +529,9 @@ class HipEventTest : public ::testing::Test {
   hipGraphExec_t InstantiateGraphRecordingAtTheEnd(hipEvent_t event) {
     hipGraph_t graph = CreateGraph();
     EXPECT_NE(nullptr, graph);
-    if (!graph) return nullptr;
+    if (!graph) {
+      return nullptr;
+    }
     hipGraphNode_t record_node = nullptr;
     EXPECT_EQ(hipSuccess, hip_.graph_add_event_record_node(
                               &record_node, graph, /*dependencies=*/nullptr,
@@ -535,7 +547,9 @@ class HipEventTest : public ::testing::Test {
       hipEvent_t event, std::atomic<bool>* host_node_ran) {
     hipGraph_t graph = CreateGraph();
     EXPECT_NE(nullptr, graph);
-    if (!graph) return nullptr;
+    if (!graph) {
+      return nullptr;
+    }
     hipGraphNode_t record_node = nullptr;
     EXPECT_EQ(hipSuccess, hip_.graph_add_event_record_node(
                               &record_node, graph, /*dependencies=*/nullptr,
@@ -559,7 +573,9 @@ class HipEventTest : public ::testing::Test {
                                                           void* user_data) {
     hipGraph_t graph = CreateGraph();
     EXPECT_NE(nullptr, graph);
-    if (!graph) return nullptr;
+    if (!graph) {
+      return nullptr;
+    }
     hipGraphNode_t start_node = nullptr;
     EXPECT_EQ(hipSuccess, hip_.graph_add_event_record_node(
                               &start_node, graph, /*dependencies=*/nullptr,

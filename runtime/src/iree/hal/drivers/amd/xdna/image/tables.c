@@ -273,7 +273,9 @@ static iree_status_t iree_hal_amd_xdna_image_decode_entries(
                 i * IREE_HAL_AMD_XDNA_ELF_ENTRY_RECORD_SIZE,
             IREE_HAL_AMD_XDNA_ELF_ENTRY_RECORD_SIZE),
         entry);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     if (entry->export_ordinal != i ||
         (entry->flags & ~IREE_HAL_AMD_XDNA_ELF_KNOWN_ENTRY_FLAGS) != 0 ||
         (entry->required_capabilities &
@@ -355,7 +357,9 @@ static iree_status_t iree_hal_amd_xdna_image_decode_bindings(
                 i * IREE_HAL_AMD_XDNA_ELF_BINDING_RECORD_SIZE,
             IREE_HAL_AMD_XDNA_ELF_BINDING_RECORD_SIZE),
         binding);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     if (binding->binding_ordinal != i ||
         binding->entry_ordinal >= tables->entry_count || binding->access == 0 ||
         (binding->access & ~IREE_HAL_AMD_XDNA_ELF_KNOWN_BINDING_ACCESS) != 0 ||
@@ -443,7 +447,9 @@ static iree_status_t iree_hal_amd_xdna_image_decode_relocations(
     const iree_hal_amd_xdna_image_directory_t* directory,
     const iree_hal_amd_xdna_image_table_descriptor_t* descriptor,
     iree_hal_amd_xdna_image_tables_t* tables) {
-  if (descriptor->program_header == NULL) return iree_ok_status();
+  if (descriptor->program_header == NULL) {
+    return iree_ok_status();
+  }
   iree_byte_span_t payload = iree_byte_span_empty();
   iree_status_t status = iree_hal_amd_xdna_image_read_program(
       directory, descriptor->program_header, tables->host_allocator, &payload);
@@ -459,7 +465,9 @@ static iree_status_t iree_hal_amd_xdna_image_decode_relocations(
                 i * IREE_HAL_AMD_XDNA_ELF_RELOCATION_RECORD_SIZE,
             IREE_HAL_AMD_XDNA_ELF_RELOCATION_RECORD_SIZE),
         relocation);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     uint64_t target_end = 0;
     if (relocation->binding_ordinal >= tables->binding_count ||
         (relocation->field_byte_width != 4 &&
@@ -506,7 +514,9 @@ static iree_status_t iree_hal_amd_xdna_image_decode_relocations(
                                   i, (unsigned)relocation->kind);
         break;
     }
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     if (i != 0 &&
         (relocation->target_program_header_ordinal < previous_target_ordinal ||
          (relocation->target_program_header_ordinal ==
@@ -659,7 +669,9 @@ iree_status_t iree_hal_amd_xdna_image_tables_create(
 
 void iree_hal_amd_xdna_image_tables_destroy(
     iree_hal_amd_xdna_image_tables_t* tables) {
-  if (tables == NULL) return;
+  if (tables == NULL) {
+    return;
+  }
   iree_allocator_free(tables->host_allocator, tables);
 }
 

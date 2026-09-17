@@ -180,7 +180,9 @@ static bool iree_hal_amdgpu_system_event_deliver(const hsa_amd_event_t* event,
           &registration->agent_targets[i];
       for (iree_host_size_t j = 0; j < IREE_ARRAYSIZE(target->host_queues);
            ++j) {
-        if (!target->host_queues[j]) continue;
+        if (!target->host_queues[j]) {
+          continue;
+        }
         iree_hal_amdgpu_host_queue_record_failure(
             target->host_queues[j],
             iree_hal_amdgpu_system_event_make_status(event));
@@ -249,7 +251,9 @@ static int iree_hal_amdgpu_module_search_visit(struct dl_phdr_info* info,
   const uintptr_t address = (uintptr_t)search->address;
   for (ElfW(Half) i = 0; i < info->dlpi_phnum; ++i) {
     const ElfW(Phdr)* phdr = &info->dlpi_phdr[i];
-    if (phdr->p_type != PT_LOAD) continue;
+    if (phdr->p_type != PT_LOAD) {
+      continue;
+    }
     const uintptr_t segment_start = (uintptr_t)info->dlpi_addr + phdr->p_vaddr;
     if (address < segment_start || address >= segment_start + phdr->p_memsz) {
       continue;
@@ -413,7 +417,9 @@ iree_status_t iree_hal_amdgpu_system_event_register_device(
 
 void iree_hal_amdgpu_system_event_retire_device_status(
     iree_hal_amdgpu_system_event_registration_t* registration) {
-  if (!registration) return;
+  if (!registration) {
+    return;
+  }
 
   // Bounded to the store, on the same reasoning as queue target retirement.
   iree_mutex_lock(&iree_hal_amdgpu_system_event_registry.mutex);
@@ -423,7 +429,9 @@ void iree_hal_amdgpu_system_event_retire_device_status(
 
 void iree_hal_amdgpu_system_event_unregister_device(
     iree_hal_amdgpu_system_event_registration_t* registration) {
-  if (!registration) return;
+  if (!registration) {
+    return;
+  }
 
   iree_mutex_lock(&iree_hal_amdgpu_system_event_registry.mutex);
   iree_hal_amdgpu_system_event_registration_t** registration_ptr =
@@ -453,7 +461,9 @@ iree_hal_amdgpu_system_event_agent_target_t*
 iree_hal_amdgpu_system_event_registration_lookup_agent(
     iree_hal_amdgpu_system_event_registration_t* registration,
     hsa_agent_t agent) {
-  if (!registration) return NULL;
+  if (!registration) {
+    return NULL;
+  }
   for (iree_host_size_t i = 0; i < registration->agent_count; ++i) {
     if (registration->agent_targets[i].agent.handle == agent.handle) {
       return &registration->agent_targets[i];
@@ -466,7 +476,9 @@ iree_status_t iree_hal_amdgpu_system_event_publish_queue_targets(
     iree_hal_amdgpu_system_event_agent_target_t* target,
     iree_hal_amdgpu_host_queue_t* host_queues,
     iree_host_size_t live_queue_count) {
-  if (!target || live_queue_count == 0) return iree_ok_status();
+  if (!target || live_queue_count == 0) {
+    return iree_ok_status();
+  }
   IREE_ASSERT_ARGUMENT(host_queues);
 
   bool occupied_slots[UINT8_MAX + 1u] = {false};
@@ -502,7 +514,9 @@ iree_status_t iree_hal_amdgpu_system_event_publish_queue_targets(
 void iree_hal_amdgpu_system_event_retire_queue_target(
     iree_hal_amdgpu_system_event_agent_target_t* target,
     iree_hal_amdgpu_host_queue_t* host_queue) {
-  if (!target || !host_queue) return;
+  if (!target || !host_queue) {
+    return;
+  }
 
   const uint8_t queue_slot = iree_async_axis_queue_index(host_queue->axis);
   iree_mutex_lock(&iree_hal_amdgpu_system_event_registry.mutex);
@@ -514,7 +528,9 @@ void iree_hal_amdgpu_system_event_retire_queue_target(
 
 void iree_hal_amdgpu_system_event_retire_queue_targets(
     iree_hal_amdgpu_system_event_agent_target_t* target) {
-  if (!target) return;
+  if (!target) {
+    return;
+  }
 
   // Bounded to the store so the mutex acquisition is a quiescence barrier
   // rather than a scope: holding it across queue destruction would serialize

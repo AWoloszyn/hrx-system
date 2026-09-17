@@ -39,12 +39,16 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
  protected:
   void TearDown() override {
     for (amdf_host_mapping_t*& mapping : mappings_) {
-      if (mapping == nullptr) continue;
+      if (mapping == nullptr) {
+        continue;
+      }
       ASSERT_EQ(api_->host_mapping_destroy(mapping), AMDF_STATUS_OK);
       mapping = nullptr;
     }
     for (amdf_memory_t*& memory : memories_) {
-      if (memory == nullptr) continue;
+      if (memory == nullptr) {
+        continue;
+      }
       ASSERT_EQ(api_->memory_destroy(std::exchange(memory, nullptr)),
                 AMDF_STATUS_OK);
     }
@@ -85,7 +89,9 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
     info.byte_length = byte_length;
     info.flags = flags;
     amdf_status_t status = api_->memory_map(memory, &info, &mappings_[ordinal]);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
     mapping_infos_[ordinal] = {};
     mapping_infos_[ordinal].type = AMDF_STRUCTURE_TYPE_HOST_MAPPING_INFO;
     mapping_infos_[ordinal].structure_size = sizeof(mapping_infos_[ordinal]);
@@ -351,7 +357,9 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
     EXPECT_EQ(mapping_infos_[1].pointer,
               static_cast<uint8_t*>(mapping_infos_[0].pointer) + 128);
     const auto* bytes = static_cast<const uint8_t*>(mapping_infos_[1].pointer);
-    for (size_t i = 0; i < 256; ++i) EXPECT_EQ(bytes[i], 0xA5);
+    for (size_t i = 0; i < 256; ++i) {
+      EXPECT_EQ(bytes[i], 0xA5);
+    }
     EXPECT_EQ(api_->host_mapping_cache_control(
                   mappings_[1], AMDF_HOST_CACHE_OPERATION_FLUSH, 0, 256),
               AMDF_STATUS_OK);
@@ -382,7 +390,9 @@ class GpuLinuxMemoryTest : public GpuDeviceFixture {
               AMDF_STATUS_OK);
 
     for (amdf_host_mapping_t*& mapping : mappings_) {
-      if (mapping == nullptr) continue;
+      if (mapping == nullptr) {
+        continue;
+      }
       ASSERT_EQ(api_->host_mapping_destroy(mapping), AMDF_STATUS_OK);
       mapping = nullptr;
     }
@@ -437,8 +447,12 @@ TEST_F(GpuLinuxMemoryTest, OmitsRegistrationWhenLifetimeDoesNotSupportIt) {
     const amdf_status_t status =
         QueryMemoryProfile(system_scope_, ordinal, memory_access_.requirements,
                            &profile, &capabilities);
-    if (amdf_status_code(status) == AMDF_STATUS_CODE_OUT_OF_RANGE) break;
-    if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) continue;
+    if (amdf_status_code(status) == AMDF_STATUS_CODE_OUT_OF_RANGE) {
+      break;
+    }
+    if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
+      continue;
+    }
     ASSERT_EQ(status, AMDF_STATUS_OK);
     EXPECT_NE(profile.roles & AMDF_MEMORY_PROFILE_ROLE_REGISTER,
               AMDF_MEMORY_PROFILE_ROLE_REGISTER);

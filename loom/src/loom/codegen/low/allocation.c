@@ -197,7 +197,9 @@ iree_status_t loom_low_allocate_function(
       .error_count = model->error_count,
       .cfg_graph = model->cfg_graph,
   };
-  if (model->error_count != 0) return iree_ok_status();
+  if (model->error_count != 0) {
+    return iree_ok_status();
+  }
   IREE_ASSERT(loom_local_value_domain_is_acquired(&model->value_domain));
   IREE_ASSERT(iree_any_bit_set(model->value_domain.flags,
                                LOOM_LOCAL_VALUE_DOMAIN_FLAG_REGION_TREE));

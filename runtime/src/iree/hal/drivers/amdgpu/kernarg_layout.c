@@ -281,17 +281,25 @@ static iree_status_t iree_hal_amdgpu_kernarg_layout_validate_params(
 
 static bool iree_hal_amdgpu_kernarg_layout_has_packed_binding_prefix(
     const iree_hal_amdgpu_kernarg_layout_params_t* params) {
-  if (params->binding_count == 0) return false;
+  if (params->binding_count == 0) {
+    return false;
+  }
   for (iree_host_size_t i = 0; i < params->binding_count; ++i) {
-    if (params->binding_slots[i].target_qword_index != i) return false;
+    if (params->binding_slots[i].target_qword_index != i) {
+      return false;
+    }
   }
   return true;
 }
 
 static bool iree_hal_amdgpu_kernarg_layout_has_contiguous_constants(
     const iree_hal_amdgpu_kernarg_layout_params_t* params) {
-  if (params->constant_byte_length == 0) return false;
-  if (params->constant_span_count == 0) return false;
+  if (params->constant_byte_length == 0) {
+    return false;
+  }
+  if (params->constant_span_count == 0) {
+    return false;
+  }
   iree_host_size_t next_source_offset = 0;
   for (iree_host_size_t i = 0; i < params->constant_span_count; ++i) {
     if (params->constant_spans[i].source_byte_offset != next_source_offset) {

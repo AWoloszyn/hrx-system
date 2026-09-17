@@ -116,8 +116,12 @@ static bool iree_hal_task_elf_dynamic_requires_system_loader_32(
     iree_hal_task_elf32_dynamic_t entry;
     memcpy(&entry, executable_data.data + offset + i * sizeof(entry),
            sizeof(entry));
-    if (entry.tag == IREE_HAL_TASK_ELF_DYNAMIC_NULL) break;
-    if (entry.tag == IREE_HAL_TASK_ELF_DYNAMIC_NEEDED) return true;
+    if (entry.tag == IREE_HAL_TASK_ELF_DYNAMIC_NULL) {
+      break;
+    }
+    if (entry.tag == IREE_HAL_TASK_ELF_DYNAMIC_NEEDED) {
+      return true;
+    }
     has_hash |= entry.tag == IREE_HAL_TASK_ELF_DYNAMIC_HASH;
     has_gnu_hash |= entry.tag == IREE_HAL_TASK_ELF_DYNAMIC_GNU_HASH;
   }
@@ -138,8 +142,12 @@ static bool iree_hal_task_elf_dynamic_requires_system_loader_64(
     iree_hal_task_elf64_dynamic_t entry;
     memcpy(&entry, executable_data.data + offset + i * sizeof(entry),
            sizeof(entry));
-    if (entry.tag == IREE_HAL_TASK_ELF_DYNAMIC_NULL) break;
-    if (entry.tag == IREE_HAL_TASK_ELF_DYNAMIC_NEEDED) return true;
+    if (entry.tag == IREE_HAL_TASK_ELF_DYNAMIC_NULL) {
+      break;
+    }
+    if (entry.tag == IREE_HAL_TASK_ELF_DYNAMIC_NEEDED) {
+      return true;
+    }
     has_hash |= entry.tag == IREE_HAL_TASK_ELF_DYNAMIC_HASH;
     has_gnu_hash |= entry.tag == IREE_HAL_TASK_ELF_DYNAMIC_GNU_HASH;
   }

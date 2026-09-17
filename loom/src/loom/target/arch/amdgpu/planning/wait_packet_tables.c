@@ -120,7 +120,9 @@ uint32_t loom_amdgpu_wait_packet_decode_bounds(
         loom_amdgpu_wait_packet_descriptor_immediate(packet_descriptor, i);
     const uint16_t value =
         loom_amdgpu_wait_packet_immediate_value(module, op, immediate);
-    if (value == immediate->no_wait_value) continue;
+    if (value == immediate->no_wait_value) {
+      continue;
+    }
     for (uint32_t slot = 0; slot < LOOM_AMDGPU_WAIT_COUNTER_SLOT_COUNT;
          ++slot) {
       if (iree_any_bit_set(immediate->counter_mask,

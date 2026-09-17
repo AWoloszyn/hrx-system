@@ -49,7 +49,9 @@ struct StopState {
 
   static void OnStopped(void* user_data) {
     auto* self = static_cast<StopState*>(user_data);
-    if (self->sequence) self->completed_sequence = ++*self->sequence;
+    if (self->sequence) {
+      self->completed_sequence = ++*self->sequence;
+    }
     self->completed = true;
   }
 
@@ -73,7 +75,9 @@ struct AcceptState {
                        iree_net_connection_t* connection) {
     auto* self = static_cast<AcceptState*>(user_data);
     ++self->callback_count;
-    if (self->sequence) self->last_accept_sequence = ++*self->sequence;
+    if (self->sequence) {
+      self->last_accept_sequence = ++*self->sequence;
+    }
     self->status_codes.push_back(iree_status_code(status));
     self->connections.push_back(connection);
     iree_status_free(status);
@@ -194,7 +198,9 @@ class TcpFactoryTest : public ::testing::Test {
   }
 
   void PollUntil(const std::function<bool()>& condition) {
-    while (!condition()) Poll();
+    while (!condition()) {
+      Poll();
+    }
   }
 
   std::string CreateListener(
@@ -203,7 +209,9 @@ class TcpFactoryTest : public ::testing::Test {
     IREE_EXPECT_OK(iree_net_transport_factory_create_listener(
         factory_, IREE_SV("127.0.0.1:0"), proactor_,
         /*receive_pool=*/nullptr, accept_callback, host_allocator, &listener_));
-    if (!listener_) return {};
+    if (!listener_) {
+      return {};
+    }
 
     std::array<char, IREE_ASYNC_ADDRESS_MAX_FORMAT_LENGTH> storage = {};
     iree_string_view_t address = iree_string_view_empty();
@@ -222,7 +230,9 @@ class TcpFactoryTest : public ::testing::Test {
   }
 
   void StopAndFreeListener() {
-    if (!listener_) return;
+    if (!listener_) {
+      return;
+    }
     StopState stop_state;
     IREE_ASSERT_OK(iree_net_listener_stop(listener_, stop_state.callback()));
     PollUntil([&] { return stop_state.completed; });
@@ -231,10 +241,14 @@ class TcpFactoryTest : public ::testing::Test {
   }
 
   void DeactivateAndRelease(iree_net_connection_t*& connection) {
-    if (!connection) return;
+    if (!connection) {
+      return;
+    }
     DeactivateState state;
     iree_net_connection_deactivate(connection, state.callback());
-    if (!state.completed) PollUntil([&] { return state.completed; });
+    if (!state.completed) {
+      PollUntil([&] { return state.completed; });
+    }
     iree_net_connection_release(connection);
     connection = nullptr;
   }

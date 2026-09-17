@@ -237,7 +237,9 @@ iree_hal_vulkan_spirv_find_compute_entry_point_by_id(
     iree_hal_vulkan_spirv_compute_entry_point_t* entry_points,
     uint32_t entry_point_id) {
   for (iree_host_size_t i = 0; i < entry_point_count; ++i) {
-    if (entry_points[i].id == entry_point_id) return &entry_points[i];
+    if (entry_points[i].id == entry_point_id) {
+      return &entry_points[i];
+    }
   }
   return NULL;
 }
@@ -374,7 +376,9 @@ static iree_status_t iree_hal_vulkan_spirv_scan_compute_execution_mode(
 static iree_status_t iree_hal_vulkan_spirv_scan_module(
     const uint32_t* spirv_words, iree_host_size_t spirv_word_count,
     iree_hal_vulkan_spirv_scan_state_t* state) {
-  if (state->analysis) memset(state->analysis, 0, sizeof(*state->analysis));
+  if (state->analysis) {
+    memset(state->analysis, 0, sizeof(*state->analysis));
+  }
   state->entry_point_count = 0;
   state->lookup_entry_point_found = false;
   state->lookup_entry_point_id = 0;
@@ -401,9 +405,13 @@ static iree_status_t iree_hal_vulkan_spirv_scan_module(
     if (opcode == IREE_HAL_VULKAN_SPIRV_OP_EXECUTION_MODE) {
       IREE_RETURN_IF_ERROR(iree_hal_vulkan_spirv_scan_compute_execution_mode(
           operands, word_count, state));
-      if (!state->analysis) continue;
+      if (!state->analysis) {
+        continue;
+      }
     }
-    if (!state->analysis) continue;
+    if (!state->analysis) {
+      continue;
+    }
     switch (opcode) {
       case IREE_HAL_VULKAN_SPIRV_OP_MEMORY_MODEL:
         if (word_count < 3) {
@@ -509,7 +517,9 @@ static void iree_hal_vulkan_spirv_bda_dispatch_metadata_initialize(
 void iree_hal_vulkan_spirv_bda_dispatch_metadata_deinitialize(
     iree_hal_vulkan_spirv_bda_dispatch_metadata_t* metadata,
     iree_allocator_t host_allocator) {
-  if (!metadata) return;
+  if (!metadata) {
+    return;
+  }
   iree_allocator_free(host_allocator, metadata->binding_requirements);
   iree_hal_vulkan_spirv_bda_dispatch_metadata_initialize(metadata);
 }
@@ -576,7 +586,9 @@ static iree_status_t iree_hal_vulkan_spirv_parse_bda_metadata_string(
     iree_hal_vulkan_spirv_bda_metadata_parse_state_t* state) {
   static const iree_string_view_t prefix =
       iree_string_view_literal("iree.vulkan.bda.v1");
-  if (!iree_string_view_starts_with(value, prefix)) return iree_ok_status();
+  if (!iree_string_view_starts_with(value, prefix)) {
+    return iree_ok_status();
+  }
 
   value = iree_string_view_remove_prefix(value, prefix.size);
   iree_hal_vulkan_spirv_bda_dispatch_metadata_t* metadata = state->metadata;
@@ -673,7 +685,9 @@ static iree_status_t iree_hal_vulkan_spirv_parse_bda_metadata_string(
           binding_ordinal, minimum_alignment);
     }
     state->has_binding_requirements = true;
-    if (!state->populate_binding_requirements) return iree_ok_status();
+    if (!state->populate_binding_requirements) {
+      return iree_ok_status();
+    }
     if (binding_ordinal >= metadata->binding_count) {
       return iree_make_status(
           IREE_STATUS_INVALID_ARGUMENT,
@@ -713,7 +727,9 @@ static iree_status_t iree_hal_vulkan_spirv_scan_bda_metadata_strings(
     IREE_RETURN_IF_ERROR(iree_hal_vulkan_spirv_next_instruction(
         spirv_words, spirv_word_count, &word_offset, &opcode, &word_count,
         &operands));
-    if (opcode != IREE_HAL_VULKAN_SPIRV_OP_MODULE_PROCESSED) continue;
+    if (opcode != IREE_HAL_VULKAN_SPIRV_OP_MODULE_PROCESSED) {
+      continue;
+    }
     iree_string_view_t value = iree_string_view_empty();
     IREE_RETURN_IF_ERROR(iree_hal_vulkan_spirv_module_processed_string(
         operands, word_count, &value));
@@ -727,7 +743,9 @@ static iree_status_t iree_hal_vulkan_spirv_validate_bda_metadata(
     const iree_hal_vulkan_spirv_bda_metadata_parse_state_t* state) {
   const iree_hal_vulkan_spirv_bda_dispatch_metadata_t* metadata =
       state->metadata;
-  if (!metadata->is_present) return iree_ok_status();
+  if (!metadata->is_present) {
+    return iree_ok_status();
+  }
   if (metadata->root_push_constant_offset != 0) {
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,
@@ -845,12 +863,16 @@ static iree_status_t iree_hal_vulkan_spirv_find_push_constant_pointee_type(
     IREE_RETURN_IF_ERROR(iree_hal_vulkan_spirv_next_instruction(
         spirv_words, spirv_word_count, &word_offset, &opcode, &word_count,
         &operands));
-    if (opcode != IREE_HAL_VULKAN_SPIRV_OP_TYPE_POINTER) continue;
+    if (opcode != IREE_HAL_VULKAN_SPIRV_OP_TYPE_POINTER) {
+      continue;
+    }
     if (word_count < 4) {
       return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                               "SPIR-V OpTypePointer instruction is truncated");
     }
-    if (operands[0] != pointer_type_id) continue;
+    if (operands[0] != pointer_type_id) {
+      continue;
+    }
     if (operands[1] != IREE_HAL_VULKAN_SPIRV_STORAGE_CLASS_PUSH_CONSTANT) {
       return iree_make_status(
           IREE_STATUS_INVALID_ARGUMENT,
@@ -888,7 +910,9 @@ static iree_status_t iree_hal_vulkan_spirv_verify_bda_root_struct_layout(
               IREE_STATUS_INVALID_ARGUMENT,
               "SPIR-V OpTypeStruct instruction is truncated");
         }
-        if (operands[0] != struct_type_id) break;
+        if (operands[0] != struct_type_id) {
+          break;
+        }
         has_struct_type = true;
         if (word_count - 2 < IREE_HAL_VULKAN_SPIRV_BDA_ROOT_MEMBER_COUNT) {
           return iree_make_status(
@@ -1091,7 +1115,9 @@ iree_status_t iree_hal_vulkan_spirv_parse_compute_workgroup_size(
     iree_string_view_t entry_point, bool* out_entry_point_found,
     uint32_t out_workgroup_size[3]) {
   IREE_ASSERT_ARGUMENT(out_workgroup_size);
-  if (out_entry_point_found) *out_entry_point_found = false;
+  if (out_entry_point_found) {
+    *out_entry_point_found = false;
+  }
   memset(out_workgroup_size, 0, sizeof(uint32_t) * 3);
   iree_hal_vulkan_spirv_scan_state_t state = {
       .lookup_entry_point_enabled = true,

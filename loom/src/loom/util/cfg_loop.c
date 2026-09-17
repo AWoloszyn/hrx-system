@@ -100,7 +100,9 @@ static void loom_cfg_loop_include_predecessor_range(
     bool source_has_predecessor, uint16_t source_predecessor_min,
     uint16_t source_predecessor_max, bool* target_has_predecessor,
     uint16_t* target_predecessor_min, uint16_t* target_predecessor_max) {
-  if (!source_has_predecessor) return;
+  if (!source_has_predecessor) {
+    return;
+  }
   loom_cfg_loop_include_predecessor(
       source_predecessor_min, target_has_predecessor, target_predecessor_min,
       target_predecessor_max);
@@ -143,7 +145,9 @@ static iree_status_t loom_cfg_loop_forest_build_impl(
     };
   }
   out_forest->reachable_backward_edge_count = reachable_backward_edge_count;
-  if (interval_count == 0) return iree_ok_status();
+  if (interval_count == 0) {
+    return iree_ok_status();
+  }
 
   uint32_t* innermost_loop_indices = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -297,7 +301,9 @@ bool loom_cfg_loop_forest_calculate_block_execution_counts(
         graph->blocks == NULL ||
         loom_cfg_graph_block_is_reachable(graph, (uint16_t)i);
     out_block_counts[i] = is_reachable ? 1 : 0;
-    if (!is_reachable || forest->interval_count == 0) continue;
+    if (!is_reachable || forest->interval_count == 0) {
+      continue;
+    }
     const uint32_t loop_index = forest->innermost_loop_indices[i];
     if (loop_index != LOOM_CFG_LOOP_NONE &&
         forest->intervals[loop_index].header_index != i &&
@@ -316,7 +322,9 @@ bool loom_cfg_loop_forest_calculate_block_execution_counts(
   // non-header blocks have consumed it below.
   for (iree_host_size_t i = 0; i < forest->interval_count; ++i) {
     const loom_cfg_loop_interval_t* interval = &forest->intervals[i];
-    if (!interval->is_canonical) return false;
+    if (!interval->is_canonical) {
+      return false;
+    }
     const uint64_t parent_body_count =
         interval->parent_loop_index == LOOM_CFG_LOOP_NONE
             ? 1
@@ -329,7 +337,9 @@ bool loom_cfg_loop_forest_calculate_block_execution_counts(
   }
 
   for (iree_host_size_t i = 0; i < graph->block_count; ++i) {
-    if (!loom_cfg_graph_block_is_reachable(graph, (uint16_t)i)) continue;
+    if (!loom_cfg_graph_block_is_reachable(graph, (uint16_t)i)) {
+      continue;
+    }
     const uint32_t loop_index = forest->innermost_loop_indices[i];
     if (loop_index == LOOM_CFG_LOOP_NONE ||
         forest->intervals[loop_index].header_index == i) {

@@ -39,7 +39,9 @@ typedef struct loom_output_stream_t {
 // Writes text through the stream, updating the byte offset.
 static inline iree_status_t loom_output_stream_write(
     loom_output_stream_t* stream, iree_string_view_t text) {
-  if (text.size == 0) return iree_ok_status();
+  if (text.size == 0) {
+    return iree_ok_status();
+  }
   iree_status_t status = stream->write(stream->user_data, text);
   if (iree_status_is_ok(status)) {
     stream->offset += text.size;

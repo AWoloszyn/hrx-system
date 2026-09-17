@@ -49,7 +49,9 @@ loom_target_function_version_projection_parse_generated_name_namespace(
     return false;
   }
   const iree_host_size_t separator = iree_string_view_find_char(name, '_', 0);
-  if (separator == IREE_STRING_VIEW_NPOS) return false;
+  if (separator == IREE_STRING_VIEW_NPOS) {
+    return false;
+  }
 
   const iree_string_view_t namespace_text =
       iree_string_view_substr(name, 0, separator);
@@ -114,7 +116,9 @@ loom_target_function_version_projection_context_table_initialize(
       .present = {.bit_count = context_capacity},
       .exact = {.bit_count = context_capacity},
   };
-  if (context_capacity == 0) return iree_ok_status();
+  if (context_capacity == 0) {
+    return iree_ok_status();
+  }
 
   const iree_host_size_t bitmap_word_count =
       iree_bitmap_calculate_words(context_capacity);
@@ -167,14 +171,18 @@ static iree_status_t loom_target_function_version_projection_plan_build(
   IREE_RETURN_IF_ERROR(
       loom_target_function_version_projection_context_table_initialize(
           context_capacity, arena, &out_plan->contexts));
-  if (context_capacity == 0) return iree_ok_status();
+  if (context_capacity == 0) {
+    return iree_ok_status();
+  }
 
   for (loom_symbol_id_t symbol_id = 0; symbol_id < source_module->symbols.count;
        ++symbol_id) {
     const loom_target_function_version_t* function_version =
         loom_target_function_version_snapshot_at(&out_plan->version_snapshot,
                                                  symbol_id);
-    if (function_version == NULL) continue;
+    if (function_version == NULL) {
+      continue;
+    }
     const loom_target_context_ordinal_t context_ordinal =
         function_version->target_context_ordinal;
     IREE_ASSERT_LT(context_ordinal, context_capacity);
@@ -190,17 +198,23 @@ static iree_status_t loom_target_function_version_projection_plan_build(
       iree_bitmap_count(out_plan->contexts.exact);
   IREE_ASSERT_LE(exact_count, present_count);
   out_plan->materialization_count = present_count - exact_count;
-  if (out_plan->materialization_count == 0) return iree_ok_status();
+  if (out_plan->materialization_count == 0) {
+    return iree_ok_status();
+  }
 
   for (loom_symbol_id_t symbol_id = 0; symbol_id < source_module->symbols.count;
        ++symbol_id) {
     const loom_target_function_version_t* function_version =
         loom_target_function_version_snapshot_at(&out_plan->version_snapshot,
                                                  symbol_id);
-    if (function_version == NULL) continue;
+    if (function_version == NULL) {
+      continue;
+    }
     const loom_target_context_ordinal_t context_ordinal =
         function_version->target_context_ordinal;
-    if (iree_bitmap_test(out_plan->contexts.exact, context_ordinal)) continue;
+    if (iree_bitmap_test(out_plan->contexts.exact, context_ordinal)) {
+      continue;
+    }
     const loom_target_provider_t* provider =
         function_version->resolved_target.provider;
     if (provider->materialize_definition == NULL) {
@@ -310,7 +324,9 @@ loom_target_function_version_projection_materialize_and_bind(
     const loom_target_function_version_t* function_version =
         loom_target_function_version_snapshot_at(&plan->version_snapshot,
                                                  symbol_id);
-    if (function_version == NULL) continue;
+    if (function_version == NULL) {
+      continue;
+    }
 
     const loom_target_context_ordinal_t context_ordinal =
         function_version->target_context_ordinal;

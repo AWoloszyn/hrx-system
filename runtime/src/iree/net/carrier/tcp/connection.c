@@ -320,14 +320,18 @@ static iree_host_size_t iree_net_tcp_payload_length(
 
 static iree_net_tcp_send_state_t* iree_net_tcp_acquire_send_state_locked(
     iree_net_tcp_connection_t* connection, iree_net_tcp_endpoint_t* endpoint) {
-  if (connection->free_send_state_head == IREE_NET_TCP_INDEX_NONE) return NULL;
+  if (connection->free_send_state_head == IREE_NET_TCP_INDEX_NONE) {
+    return NULL;
+  }
   iree_net_tcp_send_state_t* send_state =
       &connection->send_states[connection->free_send_state_head];
   connection->free_send_state_head = send_state->next_free;
   --connection->free_send_state_count;
   send_state->next_free = IREE_NET_TCP_INDEX_NONE;
   ++send_state->generation;
-  if (send_state->generation == 0) ++send_state->generation;
+  if (send_state->generation == 0) {
+    ++send_state->generation;
+  }
   send_state->phase = IREE_NET_TCP_SEND_STATE_PHASE_PREPARING;
   send_state->endpoint = endpoint;
   return send_state;
@@ -360,7 +364,9 @@ static iree_net_tcp_send_state_t* iree_net_tcp_lookup_send_reservation_locked(
     iree_net_carrier_send_handle_t handle) {
   const uint32_t index = (uint32_t)handle;
   const uint32_t generation = (uint32_t)(handle >> 32);
-  if (index >= connection->send_state_count || generation == 0) return NULL;
+  if (index >= connection->send_state_count || generation == 0) {
+    return NULL;
+  }
   iree_net_tcp_send_state_t* send_state = &connection->send_states[index];
   if (send_state->phase != IREE_NET_TCP_SEND_STATE_PHASE_RESERVED ||
       send_state->generation != generation ||
@@ -373,7 +379,9 @@ static iree_net_tcp_send_state_t* iree_net_tcp_lookup_send_reservation_locked(
 static uint32_t iree_net_tcp_acquire_pending_frame_locked(
     iree_net_tcp_connection_t* connection) {
   const uint32_t frame_index = connection->free_pending_frame_head;
-  if (frame_index == IREE_NET_TCP_INDEX_NONE) return frame_index;
+  if (frame_index == IREE_NET_TCP_INDEX_NONE) {
+    return frame_index;
+  }
   iree_net_tcp_pending_frame_t* pending_frame =
       &connection->pending_frames[frame_index];
   connection->free_pending_frame_head = pending_frame->next;
@@ -396,7 +404,9 @@ static void iree_net_tcp_release_pending_frame_locked(
 static uint32_t iree_net_tcp_pop_pending_frame_locked(
     iree_net_tcp_connection_t* connection, iree_net_tcp_endpoint_t* endpoint) {
   const uint32_t frame_index = endpoint->pending_head;
-  if (frame_index == IREE_NET_TCP_INDEX_NONE) return frame_index;
+  if (frame_index == IREE_NET_TCP_INDEX_NONE) {
+    return frame_index;
+  }
   iree_net_tcp_pending_frame_t* pending_frame =
       &connection->pending_frames[frame_index];
   endpoint->pending_head = pending_frame->next;
@@ -457,7 +467,9 @@ static void iree_net_tcp_clear_endpoint_pending_frames(
     const uint32_t frame_index =
         iree_net_tcp_pop_pending_frame_locked(connection, endpoint);
     iree_slim_mutex_unlock(&connection->mutex);
-    if (frame_index == IREE_NET_TCP_INDEX_NONE) break;
+    if (frame_index == IREE_NET_TCP_INDEX_NONE) {
+      break;
+    }
     iree_net_tcp_release_pending_frame(connection, frame_index);
   }
 }
@@ -477,7 +489,9 @@ static void iree_net_tcp_connection_record_terminal_error(
     iree_net_tcp_connection_t* connection, iree_status_t status) {
   IREE_ASSERT(!iree_status_is_ok(status),
               "terminal connection error must be non-OK");
-  if (iree_status_is_ok(status)) return;
+  if (iree_status_is_ok(status)) {
+    return;
+  }
 
   iree_net_connection_retain(&connection->base);
   bool is_first_error = false;
@@ -645,7 +659,9 @@ static void iree_net_tcp_endpoint_activation_complete(
         }
       }
       iree_slim_mutex_unlock(&connection->mutex);
-      if (frame_index == IREE_NET_TCP_INDEX_NONE) break;
+      if (frame_index == IREE_NET_TCP_INDEX_NONE) {
+        break;
+      }
 
       iree_net_tcp_pending_frame_t* pending_frame =
           &connection->pending_frames[frame_index];
@@ -729,7 +745,9 @@ static void iree_net_tcp_endpoint_deactivation_complete(void* user_data) {
   endpoint->deactivate_callback.fn = NULL;
   endpoint->deactivate_callback.user_data = NULL;
   iree_slim_mutex_unlock(&connection->mutex);
-  if (callback) callback(callback_user_data);
+  if (callback) {
+    callback(callback_user_data);
+  }
 }
 
 static void iree_net_tcp_abort_endpoint_reservations(
@@ -761,10 +779,14 @@ static void iree_net_tcp_abort_endpoint_reservations(
       }
     }
     iree_slim_mutex_unlock(&connection->mutex);
-    if (!reservation_found) break;
+    if (!reservation_found) {
+      break;
+    }
     iree_allocator_free(connection->base.host_allocator, staging_buffer);
     iree_net_endpoint_lifecycle_end_operation(&endpoint->lifecycle);
-    if (!more_reservations) break;
+    if (!more_reservations) {
+      break;
+    }
   }
 }
 
@@ -785,7 +807,9 @@ static iree_status_t iree_net_tcp_endpoint_deactivate(
     endpoint->deactivate_callback.user_data = user_data;
   }
   iree_slim_mutex_unlock(&connection->mutex);
-  if (!iree_status_is_ok(status)) return status;
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
 
   iree_net_tcp_clear_endpoint_pending_frames(endpoint);
   iree_net_tcp_abort_endpoint_reservations(endpoint);
@@ -798,7 +822,9 @@ static iree_status_t iree_net_tcp_endpoint_deactivate(
 }
 
 static iree_status_t iree_net_tcp_validate_copy_span(iree_async_span_t span) {
-  if (span.length == 0) return iree_ok_status();
+  if (span.length == 0) {
+    return iree_ok_status();
+  }
   if (!iree_async_span_is_cpu_accessible(span)) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "TCP message span is not CPU-accessible");
@@ -964,9 +990,13 @@ static iree_net_carrier_send_budget_t iree_net_tcp_endpoint_query_send_budget(
   active = iree_status_is_ok(connection->terminal_status) &&
            (endpoint->phase == IREE_NET_TCP_ENDPOINT_PHASE_ACTIVATING ||
             endpoint->phase == IREE_NET_TCP_ENDPOINT_PHASE_ACTIVE);
-  if (active) free_send_state_count = connection->free_send_state_count;
+  if (active) {
+    free_send_state_count = connection->free_send_state_count;
+  }
   iree_slim_mutex_unlock(&connection->mutex);
-  if (!active) return (iree_net_carrier_send_budget_t){0};
+  if (!active) {
+    return (iree_net_carrier_send_budget_t){0};
+  }
 
   iree_net_carrier_send_budget_t budget =
       iree_net_message_endpoint_query_send_budget(connection->wire_endpoint);
@@ -1428,7 +1458,9 @@ iree_status_t iree_net_tcp_connection_create(
   }
   iree_net_tcp_connection_options_t default_options =
       iree_net_tcp_connection_options_default();
-  if (!options) options = &default_options;
+  if (!options) {
+    options = &default_options;
+  }
   iree_host_size_t pending_frame_count = 0;
   IREE_RETURN_IF_ERROR(iree_net_tcp_connection_options_validate_impl(
       options, &pending_frame_count));
@@ -1518,7 +1550,9 @@ iree_status_t iree_net_tcp_connection_create(
         carrier, frame_length, options->max_frame_size,
         &connection->deactivation_barrier, host_allocator,
         &connection->framing_adapter);
-    if (iree_status_is_ok(status)) carrier = NULL;
+    if (iree_status_is_ok(status)) {
+      carrier = NULL;
+    }
   }
   if (iree_status_is_ok(status)) {
     connection->wire_endpoint =

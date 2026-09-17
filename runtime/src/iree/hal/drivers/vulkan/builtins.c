@@ -209,7 +209,9 @@ iree_status_t iree_hal_vulkan_builtins_initialize(
 
 void iree_hal_vulkan_builtins_deinitialize(
     iree_hal_vulkan_builtins_t* builtins) {
-  if (!builtins || !builtins->logical_device) return;
+  if (!builtins || !builtins->logical_device) {
+    return;
+  }
   iree_hal_vulkan_atomic_pipelines_deinitialize(&builtins->atomic_pipelines);
   if (builtins->update_pipeline) {
     iree_vkDestroyPipeline(IREE_VULKAN_DEVICE(&builtins->syms),
@@ -241,7 +243,9 @@ static iree_status_t iree_hal_vulkan_builtins_record_fill_edge(
     VkDescriptorSet descriptor_set, VkBuffer target_buffer,
     VkDeviceSize fill_offset, VkDeviceSize edge_offset, uint32_t edge_length,
     const uint8_t* pattern, iree_host_size_t pattern_length) {
-  if (edge_length == 0) return iree_ok_status();
+  if (edge_length == 0) {
+    return iree_ok_status();
+  }
   if (!descriptor_set) {
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                             "Vulkan built-in fill requires a descriptor set");
@@ -317,7 +321,9 @@ static iree_status_t iree_hal_vulkan_builtins_record_fill_unaligned_impl(
   IREE_ASSERT_ARGUMENT(builtins);
   IREE_ASSERT_ARGUMENT(command_buffer);
   IREE_ASSERT_ARGUMENT(target_buffer);
-  if (length == 0) return iree_ok_status();
+  if (length == 0) {
+    return iree_ok_status();
+  }
   if (length > UINT64_MAX - target_offset) {
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                             "Vulkan built-in fill range overflows");
@@ -330,7 +336,9 @@ static iree_status_t iree_hal_vulkan_builtins_record_fill_unaligned_impl(
   VkDeviceSize start_edge_length = 0;
   if (target_start_word_byte_offset != 0) {
     start_edge_length = sizeof(uint32_t) - target_start_word_byte_offset;
-    if (start_edge_length > length) start_edge_length = length;
+    if (start_edge_length > length) {
+      start_edge_length = length;
+    }
   } else if (length < sizeof(uint32_t)) {
     start_edge_length = length;
   }
@@ -373,7 +381,9 @@ iree_status_t iree_hal_vulkan_builtins_record_fill_unaligned(
   IREE_ASSERT_ARGUMENT(builtins);
   IREE_ASSERT_ARGUMENT(command_buffer);
   IREE_ASSERT_ARGUMENT(target_buffer);
-  if (length == 0) return iree_ok_status();
+  if (length == 0) {
+    return iree_ok_status();
+  }
   if (length > UINT64_MAX - target_offset) {
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                             "Vulkan built-in fill range overflows");
@@ -385,7 +395,9 @@ iree_status_t iree_hal_vulkan_builtins_record_fill_unaligned(
   const uint32_t descriptor_set_count =
       iree_hal_vulkan_builtins_fill_unaligned_descriptor_set_count(
           target_offset, length);
-  if (descriptor_set_count == 0) return iree_ok_status();
+  if (descriptor_set_count == 0) {
+    return iree_ok_status();
+  }
   VkDescriptorSet descriptor_sets[2] = {VK_NULL_HANDLE, VK_NULL_HANDLE};
   VkDescriptorSetLayout descriptor_set_layouts[2] = {
       builtins->storage_buffer_descriptor_set_layout,
@@ -407,14 +419,18 @@ iree_status_t iree_hal_vulkan_builtins_record_fill_unaligned(
 
 uint32_t iree_hal_vulkan_builtins_fill_unaligned_descriptor_set_count(
     VkDeviceSize target_offset, VkDeviceSize length) {
-  if (length == 0) return 0;
+  if (length == 0) {
+    return 0;
+  }
   const VkDeviceSize target_end = target_offset + length;
   const VkDeviceSize target_start_word_byte_offset =
       target_offset % sizeof(uint32_t);
   VkDeviceSize start_edge_length = 0;
   if (target_start_word_byte_offset != 0) {
     start_edge_length = sizeof(uint32_t) - target_start_word_byte_offset;
-    if (start_edge_length > length) start_edge_length = length;
+    if (start_edge_length > length) {
+      start_edge_length = length;
+    }
   } else if (length < sizeof(uint32_t)) {
     start_edge_length = length;
   }
@@ -444,7 +460,9 @@ static iree_status_t iree_hal_vulkan_builtins_record_update_edge(
     VkDescriptorSet descriptor_set, VkBuffer target_buffer,
     VkDeviceSize edge_offset, uint32_t edge_length,
     const uint8_t* source_data) {
-  if (edge_length == 0) return iree_ok_status();
+  if (edge_length == 0) {
+    return iree_ok_status();
+  }
   if (!descriptor_set) {
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                             "Vulkan built-in update requires a descriptor set");
@@ -515,7 +533,9 @@ static iree_status_t iree_hal_vulkan_builtins_record_update_unaligned_impl(
   IREE_ASSERT_ARGUMENT(builtins);
   IREE_ASSERT_ARGUMENT(command_buffer);
   IREE_ASSERT_ARGUMENT(target_buffer);
-  if (length == 0) return iree_ok_status();
+  if (length == 0) {
+    return iree_ok_status();
+  }
   if (!source_data) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "Vulkan built-in update source is NULL");
@@ -538,7 +558,9 @@ static iree_status_t iree_hal_vulkan_builtins_record_update_unaligned_impl(
   VkDeviceSize start_edge_length = 0;
   if (target_start_word_byte_offset != 0) {
     start_edge_length = sizeof(uint32_t) - target_start_word_byte_offset;
-    if (start_edge_length > length) start_edge_length = length;
+    if (start_edge_length > length) {
+      start_edge_length = length;
+    }
   } else if (length < sizeof(uint32_t)) {
     start_edge_length = length;
   }
@@ -587,7 +609,9 @@ iree_status_t iree_hal_vulkan_builtins_record_update_unaligned(
   IREE_ASSERT_ARGUMENT(builtins);
   IREE_ASSERT_ARGUMENT(command_buffer);
   IREE_ASSERT_ARGUMENT(target_buffer);
-  if (length == 0) return iree_ok_status();
+  if (length == 0) {
+    return iree_ok_status();
+  }
   if (length > UINT64_MAX - target_offset) {
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                             "Vulkan built-in update range overflows");
@@ -600,7 +624,9 @@ iree_status_t iree_hal_vulkan_builtins_record_update_unaligned(
   const uint32_t descriptor_set_count =
       iree_hal_vulkan_builtins_update_unaligned_descriptor_set_count(
           target_offset, length);
-  if (descriptor_set_count == 0) return iree_ok_status();
+  if (descriptor_set_count == 0) {
+    return iree_ok_status();
+  }
   VkDescriptorSet descriptor_sets[2] = {VK_NULL_HANDLE, VK_NULL_HANDLE};
   VkDescriptorSetLayout descriptor_set_layouts[2] = {
       builtins->storage_buffer_descriptor_set_layout,

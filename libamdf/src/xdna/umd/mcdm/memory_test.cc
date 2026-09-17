@@ -640,10 +640,12 @@ TEST(WindowsXdnaMemoryPairTest, DescribesAchievedPermissionsWithoutAtomics) {
     ASSERT_EQ(amdf_xdna_umd_memory_describe_site(&query, &description),
               AMDF_STATUS_OK);
     amdf_memory_site_capabilities_t expected = 0;
-    if (permissions & AMDF_MEMORY_ACCESS_READ)
+    if (permissions & AMDF_MEMORY_ACCESS_READ) {
       expected |= AMDF_MEMORY_SITE_CAPABILITY_READ;
-    if (permissions & AMDF_MEMORY_ACCESS_WRITE)
+    }
+    if (permissions & AMDF_MEMORY_ACCESS_WRITE) {
       expected |= AMDF_MEMORY_SITE_CAPABILITY_WRITE;
+    }
     EXPECT_EQ(description.capabilities, expected);
     EXPECT_EQ(description.release.kind, AMDF_CACHE_TRANSITION_KIND_NONE);
     EXPECT_EQ(description.acquire.kind, AMDF_CACHE_TRANSITION_KIND_NONE);

@@ -106,7 +106,9 @@ hsa_status_t iree_hal_amdgpu_profile_aqlprofile_memory_alloc(
   iree_hal_amdgpu_profile_aqlprofile_memory_context_t* context =
       (iree_hal_amdgpu_profile_aqlprofile_memory_context_t*)user_data;
   *ptr = NULL;
-  if (size == 0) return HSA_STATUS_SUCCESS;
+  if (size == 0) {
+    return HSA_STATUS_SUCCESS;
+  }
 
   hsa_amd_memory_pool_t memory_pool = {0};
   const bool should_clear = flags.host_access;
@@ -127,14 +129,20 @@ hsa_status_t iree_hal_amdgpu_profile_aqlprofile_memory_alloc(
   } else {
     return HSA_STATUS_ERROR_INVALID_ARGUMENT;
   }
-  if (!memory_pool.handle) return HSA_STATUS_ERROR_INVALID_ALLOCATION;
+  if (!memory_pool.handle) {
+    return HSA_STATUS_ERROR_INVALID_ALLOCATION;
+  }
 
   hsa_status_t status = iree_hal_amdgpu_profile_hsa_memory_pool_allocate(
       context->libhsa, memory_pool, (size_t)size,
       should_allocate_executable ? HSA_AMD_MEMORY_POOL_EXECUTABLE_FLAG : 0,
       ptr);
-  if (status != HSA_STATUS_SUCCESS) return status;
-  if (should_clear) memset(*ptr, 0, (size_t)size);
+  if (status != HSA_STATUS_SUCCESS) {
+    return status;
+  }
+  if (should_clear) {
+    memset(*ptr, 0, (size_t)size);
+  }
 
   if (should_allow_device_access) {
     status = iree_hal_amdgpu_profile_hsa_agents_allow_access(
@@ -150,7 +158,9 @@ hsa_status_t iree_hal_amdgpu_profile_aqlprofile_memory_alloc(
 
 void iree_hal_amdgpu_profile_aqlprofile_memory_dealloc(void* ptr,
                                                        void* user_data) {
-  if (!ptr) return;
+  if (!ptr) {
+    return;
+  }
   iree_hal_amdgpu_profile_aqlprofile_memory_context_t* context =
       (iree_hal_amdgpu_profile_aqlprofile_memory_context_t*)user_data;
   iree_hal_amdgpu_profile_hsa_memory_pool_free(context->libhsa, ptr);
@@ -160,7 +170,9 @@ hsa_status_t iree_hal_amdgpu_profile_aqlprofile_memory_copy(void* target,
                                                             const void* source,
                                                             size_t size,
                                                             void* user_data) {
-  if (size == 0) return HSA_STATUS_SUCCESS;
+  if (size == 0) {
+    return HSA_STATUS_SUCCESS;
+  }
   iree_hal_amdgpu_profile_aqlprofile_memory_context_t* context =
       (iree_hal_amdgpu_profile_aqlprofile_memory_context_t*)user_data;
   return iree_hal_amdgpu_profile_hsa_memory_copy(context->libhsa, target,

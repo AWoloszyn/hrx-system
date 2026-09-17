@@ -45,7 +45,9 @@ static uint64_t iree_hip_hostcall_descriptor_set_field(uint64_t descriptor,
 
 static iree_hip_hostcall_message_t* iree_hip_hostcall_message_lookup_active(
     iree_hip_hostcall_message_table_t* table, uint64_t message_id) {
-  if (message_id >= table->count) return NULL;
+  if (message_id >= table->count) {
+    return NULL;
+  }
   iree_hip_hostcall_message_t* message = &table->messages[message_id];
   return message->state == IREE_HIP_HOSTCALL_MESSAGE_STATE_ACTIVE ? message
                                                                   : NULL;
@@ -71,7 +73,9 @@ static void iree_hip_hostcall_message_discard(
 static iree_status_t iree_hip_hostcall_message_table_grow(
     iree_hip_hostcall_message_table_t* table,
     iree_host_size_t minimum_capacity) {
-  if (table->capacity >= minimum_capacity) return iree_ok_status();
+  if (table->capacity >= minimum_capacity) {
+    return iree_ok_status();
+  }
 
   iree_host_size_t new_capacity = table->capacity ? table->capacity : 16;
   while (new_capacity < minimum_capacity) {
@@ -138,7 +142,9 @@ static iree_status_t iree_hip_hostcall_message_append(
     iree_hip_hostcall_message_table_t* table,
     iree_hip_hostcall_message_t* message, const uint64_t* data,
     iree_host_size_t count) {
-  if (count == 0) return iree_ok_status();
+  if (count == 0) {
+    return iree_ok_status();
+  }
 
   iree_host_size_t required_count = 0;
   if (IREE_UNLIKELY(
@@ -231,7 +237,9 @@ iree_status_t iree_hip_hostcall_message_consume_fragment(
     iree_hip_hostcall_message_t* message =
         begin ? NULL
               : iree_hip_hostcall_message_lookup_active(table, message_id);
-    if (message) iree_hip_hostcall_message_discard(table, message);
+    if (message) {
+      iree_hip_hostcall_message_discard(table, message);
+    }
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,
         "HIP hostcall descriptor reserved bits are nonzero");

@@ -316,7 +316,9 @@ static inline iree_host_size_t iree_mpsc_queue_read_available(
       iree_atomic_load((iree_atomic_int64_t*)&queue->read_position->value,
                        iree_memory_order_acquire);
   int64_t used = reserve_pos - read_pos;
-  if (IREE_UNLIKELY(used < 0)) return 0;
+  if (IREE_UNLIKELY(used < 0)) {
+    return 0;
+  }
   return (iree_host_size_t)used;
 }
 
@@ -332,7 +334,9 @@ static inline iree_host_size_t iree_mpsc_queue_write_available(
       iree_atomic_load((iree_atomic_int64_t*)&queue->read_position->value,
                        iree_memory_order_acquire);
   int64_t used = reserve_pos - read_pos;
-  if (IREE_UNLIKELY(used < 0 || used > (int64_t)queue->capacity)) return 0;
+  if (IREE_UNLIKELY(used < 0 || used > (int64_t)queue->capacity)) {
+    return 0;
+  }
   return (iree_host_size_t)((int64_t)queue->capacity - used);
 }
 

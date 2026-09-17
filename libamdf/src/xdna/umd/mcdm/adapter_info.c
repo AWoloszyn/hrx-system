@@ -49,7 +49,9 @@ amdf_status_t amdf_windows_xdna_adapter_info_query(
   } info = {0, 0, UINT8_MAX, {0}};
   status = amdf_kmt_query_adapter_info(kmt, adapter, KMTQAITYPE_UMDRIVERPRIVATE,
                                        &info, sizeof(info));
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   if (info.unshared_kernel_buffers > 1) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }

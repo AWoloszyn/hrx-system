@@ -37,7 +37,9 @@ class DispatchReuseTest : public CtsTestBase<> {
  protected:
   void SetUp() override {
     CtsTestBase::SetUp();
-    if (HasFatalFailure() || IsSkipped()) return;
+    if (HasFatalFailure() || IsSkipped()) {
+      return;
+    }
     if (!transfer_queue_) {
       GTEST_SKIP() << "device has no provisioned transfer-capable queue";
     }
@@ -55,7 +57,9 @@ class DispatchReuseTest : public CtsTestBase<> {
     LoadExecutableOrSkipUnsupported(
         "command_buffer_dispatch_multi_workgroup_test.bin",
         &workgroup_id_executable_);
-    if (HasFatalFailure() || IsSkipped()) return;
+    if (HasFatalFailure() || IsSkipped()) {
+      return;
+    }
 
     // Load the absf kernel: output[i] = abs(input[i]).
     LoadExecutableOrSkipUnsupported("command_buffer_dispatch_test.bin",

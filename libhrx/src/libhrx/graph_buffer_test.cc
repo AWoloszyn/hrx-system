@@ -108,7 +108,9 @@ TEST_F(GraphBufferTest, DependentFillThenCopyProducesExpectedContents) {
   uint8_t contents[64] = {};
   IREE_ASSERT_OK(hrx_status_to_iree(hrx_synchronous_d2h(
       device_, destination_, 0, contents, sizeof(contents))));
-  for (uint8_t value : contents) EXPECT_EQ(value, 0xA5u);
+  for (uint8_t value : contents) {
+    EXPECT_EQ(value, 0xA5u);
+  }
 
   hrx_graph_exec_release(executable);
   hrx_graph_release(graph);
@@ -138,7 +140,9 @@ TEST_F(GraphBufferTest, LaunchFlushesPendingStreamWorkBeforeGraphCommands) {
   uint8_t contents[64] = {};
   IREE_ASSERT_OK(hrx_status_to_iree(hrx_synchronous_d2h(
       device_, destination_, 0, contents, sizeof(contents))));
-  for (uint8_t value : contents) EXPECT_EQ(value, pattern);
+  for (uint8_t value : contents) {
+    EXPECT_EQ(value, pattern);
+  }
 
   hrx_graph_exec_release(executable);
   hrx_graph_release(graph);
@@ -177,7 +181,9 @@ TEST_F(GraphBufferTest, AddedDependencyOrdersFillBeforeCopy) {
   uint8_t contents[64] = {};
   IREE_ASSERT_OK(hrx_status_to_iree(hrx_synchronous_d2h(
       device_, destination_, 0, contents, sizeof(contents))));
-  for (uint8_t value : contents) EXPECT_EQ(value, 0x3Cu);
+  for (uint8_t value : contents) {
+    EXPECT_EQ(value, 0x3Cu);
+  }
 
   hrx_graph_exec_release(executable);
   hrx_graph_release(graph);

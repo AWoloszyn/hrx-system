@@ -174,7 +174,9 @@ void iree_async_proactor_thread_release(iree_async_proactor_thread_t* thread) {
 
 void iree_async_proactor_thread_request_stop(
     iree_async_proactor_thread_t* thread) {
-  if (!thread) return;
+  if (!thread) {
+    return;
+  }
   // CAS from 0 → 1 so we don't overwrite the "exited" value of 2.
   int32_t expected = 0;
   iree_atomic_compare_exchange_strong(&thread->stop_requested, &expected, 1,

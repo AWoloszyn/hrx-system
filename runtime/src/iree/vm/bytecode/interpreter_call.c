@@ -34,7 +34,9 @@ static iree_vm_ref_t iree_vm_bytecode_call_stage_ref(iree_vm_ref_t source) {
 
 static bool iree_vm_bytecode_call_ref_matches(iree_vm_ref_t ref,
                                               iree_vm_ref_type_t type) {
-  if (!ref.object) return ref.type_and_state == 0;
+  if (!ref.object) {
+    return ref.type_and_state == 0;
+  }
   return (ref.type_and_state & IREE_VM_REF_STATE_MASK) <=
              IREE_VM_REF_STATE_BORROWED &&
          iree_vm_ref_type(ref) == type;
@@ -263,7 +265,9 @@ iree_status_t iree_vm_bytecode_call_direct(
           : iree_vm_invocation_call_import(execution,
                                            record->target_ordinal_u16,
                                            &plan.packet, out_outcome);
-  if (iree_status_is_ok(status)) iree_vm_bytecode_call_commit(state, &plan);
+  if (iree_status_is_ok(status)) {
+    iree_vm_bytecode_call_commit(state, &plan);
+  }
   return status;
 }
 
@@ -280,6 +284,8 @@ iree_status_t iree_vm_bytecode_call_indirect(
   iree_status_t status = iree_vm_invocation_call_function_ref(
       execution, state->functions[record->target_f8],
       record->callable_type_ordinal_u16, &plan.packet, out_outcome);
-  if (iree_status_is_ok(status)) iree_vm_bytecode_call_commit(state, &plan);
+  if (iree_status_is_ok(status)) {
+    iree_vm_bytecode_call_commit(state, &plan);
+  }
   return status;
 }

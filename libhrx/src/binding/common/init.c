@@ -43,8 +43,12 @@ iree_hal_streaming_device_t* iree_hal_streaming_device_entry(
 
 static uint32_t iree_hal_streaming_u32_or_default(uint64_t value,
                                                   uint32_t default_value) {
-  if (value == 0) return default_value;
-  if (value > UINT32_MAX) return UINT32_MAX;
+  if (value == 0) {
+    return default_value;
+  }
+  if (value > UINT32_MAX) {
+    return UINT32_MAX;
+  }
   return (uint32_t)value;
 }
 
@@ -103,7 +107,9 @@ static iree_status_t iree_hal_streaming_query_device_info(
   iree_status_t status = HRX_CALL(hrx_device_get_property(
       device->hrx_device, HRX_DEVICE_PROPERTY_TOTAL_MEMORY, &total_memory,
       sizeof(total_memory)));
-  if (!iree_status_is_ok(status)) return status;
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
   if (total_memory > IREE_DEVICE_SIZE_MAX) {
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                             "HRX device total memory exceeds the representable "
@@ -319,7 +325,9 @@ static iree_status_t iree_hal_streaming_initialize_device(
 // Deinitializes a device, releasing all its resources.
 static void iree_hal_streaming_deinitialize_device(
     iree_hal_streaming_device_t* device) {
-  if (!device) return;
+  if (!device) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   // Get allocator from global registry for freeing string copies.
@@ -429,11 +437,15 @@ static iree_status_t iree_hal_streaming_query_p2p_capabilities(
 
 void iree_hal_streaming_register_context(
     iree_hal_streaming_context_t* context) {
-  if (!context) return;
+  if (!context) {
+    return;
+  }
 
   iree_hal_streaming_device_registry_t* device_registry =
       iree_hal_streaming_device_registry();
-  if (!device_registry) return;
+  if (!device_registry) {
+    return;
+  }
 
   IREE_TRACE_ZONE_BEGIN(z0);
 
@@ -460,11 +472,15 @@ void iree_hal_streaming_register_context(
 
 void iree_hal_streaming_unregister_context(
     iree_hal_streaming_context_t* context) {
-  if (!context) return;
+  if (!context) {
+    return;
+  }
 
   iree_hal_streaming_device_registry_t* device_registry =
       iree_hal_streaming_device_registry();
-  if (!device_registry) return;
+  if (!device_registry) {
+    return;
+  }
 
   IREE_TRACE_ZONE_BEGIN(z0);
 

@@ -33,7 +33,9 @@ static bool RootPublicFunc(void* user_data, const loom_module_t* module,
                            const loom_symbol_t* symbol) {
   (void)user_data;
   (void)symbol_id;
-  if (!symbol->defining_op) return false;
+  if (!symbol->defining_op) {
+    return false;
+  }
   loom_func_like_t function = loom_func_like_cast(module, symbol->defining_op);
   return loom_func_like_isa(function) &&
          loom_func_like_visibility(function) == LOOM_FUNC_VISIBILITY_PUBLIC;

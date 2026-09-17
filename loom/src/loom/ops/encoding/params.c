@@ -86,7 +86,9 @@ bool loom_encoding_define_try_resolve_unverified_params(
       const int comparison =
           iree_string_view_compare(static_name, dynamic_name);
       if (comparison >= 0) {
-        if (comparison == 0) return false;
+        if (comparison == 0) {
+          return false;
+        }
         break;
       }
       ++static_index;
@@ -98,7 +100,9 @@ bool loom_encoding_define_try_resolve_unverified_params(
           &descriptor->dynamic_parameter_descriptors[descriptor_index];
       descriptor_comparison = iree_string_view_compare(
           loom_bstring_view(dynamic_descriptor->name), dynamic_name);
-      if (descriptor_comparison >= 0) break;
+      if (descriptor_comparison >= 0) {
+        break;
+      }
       ++descriptor_index;
     }
     if (descriptor_index == descriptor->dynamic_parameter_count ||
@@ -112,7 +116,9 @@ bool loom_encoding_define_try_resolve_unverified_params(
     const uint16_t operand_ordinal = (uint16_t)dynamic_entry->value.i64;
     const uint64_t operand_bit = UINT64_C(1) << (operand_ordinal & 63);
     uint64_t* operand_word = &seen_operand_ordinals[operand_ordinal >> 6];
-    if ((*operand_word & operand_bit) != 0) return false;
+    if ((*operand_word & operand_bit) != 0) {
+      return false;
+    }
     *operand_word |= operand_bit;
     const loom_value_id_t value_id =
         params->dynamic_values.values[operand_ordinal];

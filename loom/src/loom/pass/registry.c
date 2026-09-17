@@ -266,7 +266,9 @@ iree_status_t loom_pass_descriptor_validate_options(
                             (int)options.size, options.data);
   }
   if (descriptor->option_schema_count == 0) {
-    if (!has_options) return iree_ok_status();
+    if (!has_options) {
+      return iree_ok_status();
+    }
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "pass '%.*s' does not accept options, got '{%.*s}'",
                             (int)descriptor->key.size, descriptor->key.data,

@@ -19,7 +19,9 @@ namespace {
 class SignalPoolBenchmark : public benchmark::Fixture {
  public:
   static void InitializeOnce() {
-    if (initialized_) return;
+    if (initialized_) {
+      return;
+    }
     initialized_ = true;
     host_allocator_ = iree_allocator_system();
     iree_status_t status = iree_hal_amdgpu_libhsa_initialize(
@@ -45,7 +47,9 @@ class SignalPoolBenchmark : public benchmark::Fixture {
   }
 
   static void DeinitializeOnce() {
-    if (!available_) return;
+    if (!available_) {
+      return;
+    }
     iree_hal_amdgpu_topology_deinitialize(&topology_);
     iree_hal_amdgpu_libhsa_deinitialize(&libhsa_);
     available_ = false;

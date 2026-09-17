@@ -28,7 +28,9 @@ loom_amdgpu_fragment_publication_schedule_class(
     loom_amdgpu_descriptor_ref_t descriptor_ref) {
   const loom_low_descriptor_t* descriptor =
       loom_amdgpu_descriptor_ref_descriptor(descriptor_set, descriptor_ref);
-  if (descriptor == NULL) return NULL;
+  if (descriptor == NULL) {
+    return NULL;
+  }
   const loom_low_descriptor_view_t* descriptor_view =
       loom_low_descriptor_set_descriptor_view(descriptor_set, descriptor);
   return &descriptor_set->schedule_classes[descriptor_view->schedule_class_id];
@@ -39,11 +41,15 @@ loom_amdgpu_fragment_publication_add_descriptor(
     const loom_low_descriptor_set_t* descriptor_set,
     loom_amdgpu_descriptor_ref_t descriptor_ref, uint32_t count,
     loom_low_representation_cost_t* inout_cost) {
-  if (count == 0) return true;
+  if (count == 0) {
+    return true;
+  }
   const loom_low_schedule_class_t* schedule_class =
       loom_amdgpu_fragment_publication_schedule_class(descriptor_set,
                                                       descriptor_ref);
-  if (schedule_class == NULL) return false;
+  if (schedule_class == NULL) {
+    return false;
+  }
   // Publication queries contain at most 32 registers. Two-lane conversions
   // therefore contribute at most 64 instances of a 16-bit issue bound, so the
   // complete fixed recipe cannot overflow either 32-bit cost component.
@@ -67,7 +73,9 @@ loom_amdgpu_fragment_publication_add_vgpr_immediate(
     const loom_low_descriptor_set_t* descriptor_set,
     loom_amdgpu_descriptor_ref_t descriptor_ref, uint32_t immediate,
     uint32_t count, loom_low_representation_cost_t* inout_cost) {
-  if (count == 0) return true;
+  if (count == 0) {
+    return true;
+  }
   const loom_amdgpu_descriptor_ref_t selected_descriptor_ref =
       loom_amdgpu_select_vgpr_binary_immediate_descriptor_ref(
           descriptor_set, descriptor_ref, immediate);
@@ -191,7 +199,9 @@ loom_amdgpu_fragment_publication_add_conversions(
     return false;
   }
 
-  if (pack_u16_count == 0) return true;
+  if (pack_u16_count == 0) {
+    return true;
+  }
   if (loom_amdgpu_descriptor_set_has_ref(
           descriptor_set, LOOM_AMDGPU_DESCRIPTOR_REF_V_CVT_PK_U16_U32)) {
     return loom_amdgpu_fragment_publication_add_descriptor(
@@ -250,7 +260,9 @@ loom_amdgpu_fragment_publication_region_count(
   const uint64_t active_lane_mask =
       loom_amdgpu_fragment_publication_active_lane_mask(query, publication);
   for (uint8_t view_axis = 0; view_axis < query->view_rank; ++view_axis) {
-    if (query->runtime_axes[view_axis].lane_coordinate_scale == 0) continue;
+    if (query->runtime_axes[view_axis].lane_coordinate_scale == 0) {
+      continue;
+    }
     return (uint32_t)iree_math_count_ones_u64(active_lane_mask);
   }
   loom_low_lower_memory_subgroup_access_report_t geometry = {0};
@@ -347,7 +359,9 @@ bool loom_amdgpu_fragment_publication_cost_direct(
   for (uint16_t result_register_count = 1;
        result_register_count < IREE_ARRAYSIZE(packet_counts);
        ++result_register_count) {
-    if (packet_counts[result_register_count] == 0) continue;
+    if (packet_counts[result_register_count] == 0) {
+      continue;
+    }
     if (!loom_amdgpu_fragment_publication_add_descriptor(
             query->descriptor_set, descriptor_refs[result_register_count],
             packet_counts[result_register_count], &recipe_cost)) {
@@ -431,7 +445,9 @@ bool loom_amdgpu_fragment_publication_cost_crosslane(
         query->descriptor_set, store_descriptor_ref, query->register_count,
         &recipe_cost);
   }
-  if (!available) return false;
+  if (!available) {
+    return false;
+  }
 
   const uint32_t compare_distance =
       loom_amdgpu_fragment_publication_schedule_distance(

@@ -154,8 +154,12 @@ static int iree_profile_explain_compare_function_rank(const void* lhs,
       (const iree_profile_explain_function_rank_t*)rhs;
   const double a_score = iree_profile_explain_function_rank_score(a);
   const double b_score = iree_profile_explain_function_rank_score(b);
-  if (a_score < b_score) return 1;
-  if (a_score > b_score) return -1;
+  if (a_score < b_score) {
+    return 1;
+  }
+  if (a_score > b_score) {
+    return -1;
+  }
   return 0;
 }
 
@@ -165,8 +169,12 @@ static int iree_profile_explain_compare_top_event(const void* lhs,
       (const iree_profile_dispatch_top_event_t*)lhs;
   const iree_profile_dispatch_top_event_t* b =
       (const iree_profile_dispatch_top_event_t*)rhs;
-  if (a->duration_ticks < b->duration_ticks) return 1;
-  if (a->duration_ticks > b->duration_ticks) return -1;
+  if (a->duration_ticks < b->duration_ticks) {
+    return 1;
+  }
+  if (a->duration_ticks > b->duration_ticks) {
+    return -1;
+  }
   return 0;
 }
 
@@ -176,8 +184,12 @@ static int iree_profile_explain_compare_top_host_event(const void* lhs,
       (const iree_profile_host_dispatch_top_event_t*)lhs;
   const iree_profile_host_dispatch_top_event_t* b =
       (const iree_profile_host_dispatch_top_event_t*)rhs;
-  if (a->duration_ns < b->duration_ns) return 1;
-  if (a->duration_ns > b->duration_ns) return -1;
+  if (a->duration_ns < b->duration_ns) {
+    return 1;
+  }
+  if (a->duration_ns > b->duration_ns) {
+    return -1;
+  }
   return 0;
 }
 
@@ -187,10 +199,18 @@ static int iree_profile_explain_compare_interval(const void* lhs,
       (const iree_profile_explain_interval_t*)lhs;
   const iree_profile_explain_interval_t* b =
       (const iree_profile_explain_interval_t*)rhs;
-  if (a->start_tick < b->start_tick) return -1;
-  if (a->start_tick > b->start_tick) return 1;
-  if (a->end_tick < b->end_tick) return -1;
-  if (a->end_tick > b->end_tick) return 1;
+  if (a->start_tick < b->start_tick) {
+    return -1;
+  }
+  if (a->start_tick > b->start_tick) {
+    return 1;
+  }
+  if (a->end_tick < b->end_tick) {
+    return -1;
+  }
+  if (a->end_tick > b->end_tick) {
+    return 1;
+  }
   return 0;
 }
 
@@ -238,7 +258,9 @@ static iree_status_t iree_profile_explain_collect_function_ranks(
   const iree_host_size_t candidate_count =
       use_host_execution ? context->host_dispatch_aggregate_count
                          : context->aggregate_count;
-  if (candidate_count == 0) return iree_ok_status();
+  if (candidate_count == 0) {
+    return iree_ok_status();
+  }
 
   iree_profile_explain_function_rank_t* ranks = NULL;
   iree_status_t status = iree_allocator_malloc_array_uninitialized(
@@ -251,7 +273,9 @@ static iree_status_t iree_profile_explain_collect_function_ranks(
            ++i) {
         const iree_profile_host_dispatch_aggregate_t* aggregate =
             &context->host_dispatch_aggregates[i];
-        if (aggregate->valid_count == 0) continue;
+        if (aggregate->valid_count == 0) {
+          continue;
+        }
         iree_profile_explain_function_rank_t* rank = &ranks[rank_count++];
         memset(rank, 0, sizeof(*rank));
         rank->timing_source = IREE_PROFILE_EXPLAIN_TIMING_SOURCE_HOST_EXECUTION;
@@ -273,7 +297,9 @@ static iree_status_t iree_profile_explain_collect_function_ranks(
       for (iree_host_size_t i = 0; i < context->aggregate_count; ++i) {
         const iree_profile_dispatch_aggregate_t* aggregate =
             &context->aggregates[i];
-        if (aggregate->valid_count == 0) continue;
+        if (aggregate->valid_count == 0) {
+          continue;
+        }
 
         const iree_profile_model_device_t* device =
             iree_profile_model_find_device(&context->model,
@@ -360,7 +386,9 @@ static double iree_profile_explain_visible_span_ticks(
 
 static bool iree_profile_explain_accumulate_ticks(uint64_t* total_ticks,
                                                   uint64_t duration_ticks) {
-  if (duration_ticks > UINT64_MAX - *total_ticks) return false;
+  if (duration_ticks > UINT64_MAX - *total_ticks) {
+    return false;
+  }
   *total_ticks += duration_ticks;
   return true;
 }
@@ -469,7 +497,9 @@ static iree_status_t iree_profile_explain_collect_queue_intervals(
 static void iree_profile_explain_merge_queue_intervals(
     iree_profile_explain_interval_t* intervals, iree_host_size_t interval_count,
     iree_profile_explain_queue_summary_t* summary) {
-  if (interval_count == 0) return;
+  if (interval_count == 0) {
+    return;
+  }
   qsort(intervals, interval_count, sizeof(intervals[0]),
         iree_profile_explain_compare_interval);
 
@@ -498,7 +528,9 @@ static iree_status_t iree_profile_explain_summarize_queue(
     iree_allocator_t host_allocator,
     iree_profile_explain_queue_summary_t* out_summary) {
   memset(out_summary, 0, sizeof(*out_summary));
-  if (context->queue_aggregate_count == 0) return iree_ok_status();
+  if (context->queue_aggregate_count == 0) {
+    return iree_ok_status();
+  }
 
   iree_profile_explain_interval_t* intervals = NULL;
   iree_status_t status = iree_allocator_malloc_array_uninitialized(
@@ -573,7 +605,9 @@ static void iree_profile_explain_print_hint_jsonl(const char* severity,
 static bool iree_profile_explain_has_pool_waits(
     const iree_profile_memory_context_t* memory_context) {
   for (iree_host_size_t i = 0; i < memory_context->device_count; ++i) {
-    if (memory_context->devices[i].pool_wait_count != 0) return true;
+    if (memory_context->devices[i].pool_wait_count != 0) {
+      return true;
+    }
   }
   return false;
 }

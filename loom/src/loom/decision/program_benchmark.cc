@@ -54,7 +54,9 @@ struct ProgramFixture {
         truths[i] = LOOM_DECISION_TRUTH_FALSE;
       }
     }
-    for (auto& group : groups) group.choice_count = 1;
+    for (auto& group : groups) {
+      group.choice_count = 1;
+    }
     if (shape == ProgramShape::kAmbiguousGroup) {
       groups[0].choice_count = choice_count;
     }

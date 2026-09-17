@@ -134,7 +134,9 @@ iree_hal_device_observation_populate_memory_total_from_spec(
     const iree_hal_device_spec_t* device_spec,
     iree_hal_device_observation_t* out_observation) {
   IREE_ASSERT_ARGUMENT(out_observation);
-  if (!device_spec) return iree_ok_status();
+  if (!device_spec) {
+    return iree_ok_status();
+  }
 
   const iree_hal_device_memory_spec_t* memory =
       iree_hal_device_spec_memory(device_spec);
@@ -263,7 +265,9 @@ IREE_API_EXPORT iree_status_t iree_hal_device_wait_semaphores(
     const iree_hal_semaphore_list_t semaphore_list, iree_timeout_t timeout,
     iree_async_wait_flags_t flags) {
   IREE_ASSERT_ARGUMENT(device);
-  if (semaphore_list.count == 0) return iree_ok_status();
+  if (semaphore_list.count == 0) {
+    return iree_ok_status();
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   // HAL semaphores embed async semaphores at offset 0 (toll-free bridge).
   iree_status_t status = iree_async_semaphore_multi_wait(
@@ -423,7 +427,9 @@ IREE_API_EXPORT iree_status_t iree_hal_device_list_allocate(
 }
 
 IREE_API_EXPORT void iree_hal_device_list_free(iree_hal_device_list_t* list) {
-  if (!list) return;
+  if (!list) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_allocator_t host_allocator = list->host_allocator;
   for (iree_host_size_t i = 0; i < list->count; ++i) {

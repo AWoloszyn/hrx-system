@@ -479,18 +479,24 @@ static iree_status_t loom_opt_append_reproducer_run_line(
 }
 
 static bool loom_opt_pass_key_is_printable(iree_string_view_t key) {
-  if (key.size == 0) return false;
+  if (key.size == 0) {
+    return false;
+  }
   char first = key.data[0];
   bool valid_start = (first >= 'a' && first <= 'z') ||
                      (first >= 'A' && first <= 'Z') || first == '_' ||
                      first == '$';
-  if (!valid_start) return false;
+  if (!valid_start) {
+    return false;
+  }
   for (iree_host_size_t i = 1; i < key.size; ++i) {
     char c = key.data[i];
     bool valid = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
                  (c >= '0' && c <= '9') || c == '_' || c == '$' || c == '-' ||
                  c == '.';
-    if (!valid) return false;
+    if (!valid) {
+      return false;
+    }
   }
   return true;
 }
@@ -559,7 +565,9 @@ static iree_status_t loom_opt_build_reproducer_synthetic_pipeline(
     loom_pass_pipeline_entry_spec_t spec = {0};
     bool has_entry = false;
     status = loom_pass_pipeline_consume_entry(&remaining, &spec, &has_entry);
-    if (!iree_status_is_ok(status) || !has_entry) break;
+    if (!iree_status_is_ok(status) || !has_entry) {
+      break;
+    }
     if (!loom_opt_pass_key_is_printable(spec.name)) {
       iree_string_builder_reset(&pipeline_builder);
       status = iree_ok_status();
@@ -568,7 +576,9 @@ static iree_status_t loom_opt_build_reproducer_synthetic_pipeline(
 
     const loom_pass_descriptor_t* descriptor = NULL;
     status = loom_pass_registry_lookup(registry, spec.name, &descriptor);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     const loom_pass_info_t* info = descriptor ? descriptor->info() : NULL;
     if (info && info->kind == LOOM_PASS_FUNCTION) {
       status = loom_opt_reproducer_function_group_open(&pipeline_builder,

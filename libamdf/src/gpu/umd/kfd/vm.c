@@ -32,7 +32,9 @@ static amdf_status_t amdf_gpu_kfd_vm_map(void* user_data, int descriptor,
   (void)user_data;
   void* mapping = mmap(NULL, byte_length, PROT_READ | PROT_WRITE, MAP_SHARED,
                        descriptor, (off_t)byte_offset);
-  if (mapping == MAP_FAILED) return amdf_linux_error(errno);
+  if (mapping == MAP_FAILED) {
+    return amdf_linux_error(errno);
+  }
   *out_mapping = mapping;
   return AMDF_STATUS_OK;
 }
@@ -62,14 +64,18 @@ amdf_status_t amdf_gpu_kfd_vm_bootstrap_release(
     const amdf_status_t status =
         native_api->ioctl(native_api->user_data, bootstrap->render_descriptor,
                           DRM_IOCTL_GEM_CLOSE, &release);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
     bootstrap->buffer_handle = 0;
   }
   if (bootstrap->mapping.byte_length != 0) {
     const amdf_status_t status =
         native_api->unmap(native_api->user_data, bootstrap->mapping.pointer,
                           bootstrap->mapping.byte_length);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
     bootstrap->mapping.pointer = NULL;
     bootstrap->mapping.byte_length = 0;
   }
@@ -81,7 +87,9 @@ amdf_status_t amdf_gpu_kfd_vm_bootstrap_release(
     const amdf_status_t status =
         native_api->ioctl(native_api->user_data, bootstrap->render_descriptor,
                           DRM_IOCTL_AMDGPU_CTX, &context);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
     bootstrap->context_identifier = 0;
   }
   return AMDF_STATUS_OK;
@@ -103,7 +111,9 @@ amdf_status_t amdf_gpu_kfd_vm_acquire(
   };
   amdf_status_t status = native_api->ioctl(
       native_api->user_data, render_descriptor, DRM_IOCTL_AMDGPU_INFO, &query);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
 
   // SDMA 2 through 7 share the one-dword, all-zero NOP encoding. The native
   // ring-test IBs use it too. Other instruction formats require qualification;
@@ -122,7 +132,9 @@ amdf_status_t amdf_gpu_kfd_vm_acquire(
   };
   status = native_api->ioctl(native_api->user_data, render_descriptor,
                              DRM_IOCTL_AMDGPU_CTX, &context);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   bootstrap->context_identifier = context.out.alloc.ctx_id;
 
   union drm_amdgpu_gem_create create = {
@@ -133,7 +145,9 @@ amdf_status_t amdf_gpu_kfd_vm_acquire(
   };
   status = native_api->ioctl(native_api->user_data, render_descriptor,
                              DRM_IOCTL_AMDGPU_GEM_CREATE, &create);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   bootstrap->buffer_handle = create.out.handle;
 
   union drm_amdgpu_gem_mmap mapping = {
@@ -141,11 +155,15 @@ amdf_status_t amdf_gpu_kfd_vm_acquire(
   };
   status = native_api->ioctl(native_api->user_data, render_descriptor,
                              DRM_IOCTL_AMDGPU_GEM_MMAP, &mapping);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   status = native_api->map(native_api->user_data, render_descriptor,
                            mapping.out.addr_ptr, page_size,
                            &bootstrap->mapping.pointer);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   bootstrap->mapping.byte_length = page_size;
 
   const uint64_t address = (uintptr_t)bootstrap->mapping.pointer;
@@ -167,7 +185,9 @@ amdf_status_t amdf_gpu_kfd_vm_acquire(
   };
   status = native_api->ioctl(native_api->user_data, render_descriptor,
                              DRM_IOCTL_AMDGPU_GEM_VA, &map);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
 
   // Realize the mapping through CS, which propagates VM update errors and
   // includes page-table dependencies. GEM_VA completion alone can expose a
@@ -204,7 +224,9 @@ amdf_status_t amdf_gpu_kfd_vm_acquire(
   };
   status = native_api->ioctl(native_api->user_data, render_descriptor,
                              DRM_IOCTL_AMDGPU_CS, &submission);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   union drm_amdgpu_wait_cs wait = {
       .in = {.handle = submission.out.handle,
              .timeout = UINT64_MAX,
@@ -214,8 +236,12 @@ amdf_status_t amdf_gpu_kfd_vm_acquire(
   };
   status = native_api->ioctl(native_api->user_data, render_descriptor,
                              DRM_IOCTL_AMDGPU_WAIT_CS, &wait);
-  if (!amdf_status_is_ok(status)) return status;
-  if (wait.out.status != 0) return amdf_linux_error(ETIME);
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
+  if (wait.out.status != 0) {
+    return amdf_linux_error(ETIME);
+  }
 
   // The kernel's implicit BO wait during SDMA-to-CPU conversion excludes its
   // own BOOKKEEP initialization fences. CS completion above covers them. Keep

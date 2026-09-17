@@ -46,7 +46,9 @@ static uint32_t iree_vm_bytecode_find_import_group(
   uint32_t base = 0;
   for (uint32_t i = 0; i < image->layout.imports.group_count; ++i) {
     const uint32_t count = image->layout.imports.groups[i].entry_count_u32;
-    if (import_ordinal >= base && import_ordinal - base < count) return i;
+    if (import_ordinal >= base && import_ordinal - base < count) {
+      return i;
+    }
     base += count;
   }
   IREE_ASSERT_UNREACHABLE("validated import ordinal is not in a group");
@@ -75,7 +77,9 @@ iree_vm_bytecode_find_metadata_scope(
 
 static iree_host_size_t iree_vm_bytecode_import_metadata_count(
     const iree_vm_bytecode_image_t* image, uint16_t ordinal) {
-  if (!image->layout.metadata.header) return 0;
+  if (!image->layout.metadata.header) {
+    return 0;
+  }
   const iree_vm_bytecode_v0_metadata_scope_row_t* scope =
       iree_vm_bytecode_find_metadata_scope(
           image->layout.metadata.import_scopes,
@@ -85,7 +89,9 @@ static iree_host_size_t iree_vm_bytecode_import_metadata_count(
 
 static iree_host_size_t iree_vm_bytecode_export_metadata_count(
     const iree_vm_bytecode_image_t* image, uint16_t ordinal) {
-  if (!image->layout.metadata.header) return 0;
+  if (!image->layout.metadata.header) {
+    return 0;
+  }
   const iree_vm_bytecode_v0_metadata_scope_row_t* scope =
       iree_vm_bytecode_find_metadata_scope(
           image->layout.metadata.export_scopes,
@@ -197,7 +203,9 @@ iree_vm_bytecode_find_presentation(const iree_vm_bytecode_image_t* image,
       high = middle;
     }
   }
-  if (low >= image->layout.presentation.entry_count) return NULL;
+  if (low >= image->layout.presentation.entry_count) {
+    return NULL;
+  }
   const iree_vm_bytecode_v0_presentation_entry_row_t* row =
       &image->layout.presentation.entries[low];
   return row->declaration_kind_u16 == declaration_kind &&
@@ -247,7 +255,9 @@ void iree_vm_bytecode_reflection_query_presentation(
       iree_vm_bytecode_find_presentation(image,
                                          (uint16_t)query->declaration.kind,
                                          (uint16_t)query->declaration.ordinal);
-  if (!row) return;
+  if (!row) {
+    return;
+  }
 
   for (uint32_t i = 0; i < field_count; ++i) {
     const iree_vm_bytecode_v0_presentation_field_row_t* field =

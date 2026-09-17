@@ -34,7 +34,9 @@ static bool iree_hal_amdgpu_profile_device_metrics_value_is_present(
     const iree_hal_amdgpu_profile_device_metric_sample_builder_t* builder,
     uint64_t metric_id) {
   for (uint32_t i = 0; i < builder->record.value_count; ++i) {
-    if (builder->values[i].metric_id == metric_id) return true;
+    if (builder->values[i].metric_id == metric_id) {
+      return true;
+    }
   }
   return false;
 }
@@ -304,7 +306,9 @@ iree_status_t iree_hal_amdgpu_profile_device_metrics_session_allocate(
 
 void iree_hal_amdgpu_profile_device_metrics_session_free(
     iree_hal_amdgpu_profile_device_metrics_session_t* session) {
-  if (!session) return;
+  if (!session) {
+    return;
+  }
   for (iree_host_size_t i = 0; i < session->source_count; ++i) {
     iree_hal_amdgpu_profile_device_metric_source_t* source =
         &session->sources[i];
@@ -317,7 +321,9 @@ iree_status_t iree_hal_amdgpu_profile_device_metrics_session_write_metadata(
     const iree_hal_amdgpu_profile_device_metrics_session_t* session,
     iree_hal_profile_sink_t* sink, uint64_t session_id,
     iree_string_view_t stream_name) {
-  if (!session) return iree_ok_status();
+  if (!session) {
+    return iree_ok_status();
+  }
   iree_status_t status = iree_ok_status();
   for (iree_host_size_t i = 0;
        i < session->source_count && iree_status_is_ok(status); ++i) {
@@ -338,7 +344,9 @@ iree_status_t iree_hal_amdgpu_profile_device_metrics_session_sample_and_write(
     iree_hal_amdgpu_profile_device_metrics_session_t* session,
     iree_hal_profile_sink_t* sink, uint64_t session_id,
     iree_string_view_t stream_name) {
-  if (!session) return iree_ok_status();
+  if (!session) {
+    return iree_ok_status();
+  }
   iree_status_t status = iree_ok_status();
   for (iree_host_size_t i = 0;
        i < session->source_count && iree_status_is_ok(status); ++i) {

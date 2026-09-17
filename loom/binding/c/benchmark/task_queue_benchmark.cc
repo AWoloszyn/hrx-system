@@ -96,7 +96,9 @@ class TaskQueueBenchmarkFixture {
     sink_ = loomc_task_queue_sink(queue_.get());
     iree_atomic_store(&batch_.remaining_count, 0, iree_memory_order_relaxed);
     iree_notification_initialize(&batch_.notification);
-    for (benchmark_task_t& task : tasks_) task.batch = &batch_;
+    for (benchmark_task_t& task : tasks_) {
+      task.batch = &batch_;
+    }
   }
 
   ~TaskQueueBenchmarkFixture() {

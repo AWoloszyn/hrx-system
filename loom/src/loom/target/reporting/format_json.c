@@ -889,7 +889,9 @@ static iree_status_t loom_target_compile_report_format_workload_json(
 
 iree_status_t loom_target_compile_report_json_write_nonzero_u64_field(
     loom_json_object_writer_t* object, iree_string_view_t key, uint64_t value) {
-  if (value == 0) return iree_ok_status();
+  if (value == 0) {
+    return iree_ok_status();
+  }
   return loom_json_object_write_uint64_field(object, key, value);
 }
 

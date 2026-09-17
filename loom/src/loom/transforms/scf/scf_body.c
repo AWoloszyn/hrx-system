@@ -44,10 +44,14 @@ static iree_status_t loom_scf_body_append_reference(loom_value_id_t value_id,
   const loom_value_t* value = loom_module_value(builder->module, value_id);
   bool allow_identity_mapping = false;
   if (loom_value_is_block_arg(value)) {
-    if (loom_value_def_block(value) != builder->block) return iree_ok_status();
+    if (loom_value_def_block(value) != builder->block) {
+      return iree_ok_status();
+    }
   } else {
     const loom_op_t* definition = loom_value_def_op(value);
-    if (!definition || definition == builder->op) return iree_ok_status();
+    if (!definition || definition == builder->op) {
+      return iree_ok_status();
+    }
     if (!definition->parent_block) {
       allow_identity_mapping = true;
     } else if (definition->parent_block != builder->block) {
@@ -79,7 +83,9 @@ static iree_status_t loom_scf_body_append_attribute(
       for (uint16_t i = 0; i < attribute->count; ++i) {
         const loom_predicate_t* predicate = &attribute->predicate_list[i];
         for (uint8_t j = 0; j < predicate->arg_count; ++j) {
-          if (predicate->arg_tags[j] != LOOM_PRED_ARG_VALUE) continue;
+          if (predicate->arg_tags[j] != LOOM_PRED_ARG_VALUE) {
+            continue;
+          }
           IREE_RETURN_IF_ERROR(loom_scf_body_append_reference(
               (loom_value_id_t)predicate->args[j], builder));
         }
@@ -131,7 +137,9 @@ static loom_scf_body_effect_flags_t loom_scf_body_operation_effects(
       flags |= LOOM_SCF_BODY_EFFECT_NON_LOAD_READ;
     }
   }
-  if (loom_traits_may_write(traits)) flags |= LOOM_SCF_BODY_EFFECT_WRITE;
+  if (loom_traits_may_write(traits)) {
+    flags |= LOOM_SCF_BODY_EFFECT_WRITE;
+  }
   if (iree_any_bit_set(traits, LOOM_TRAIT_HINT)) {
     flags |= LOOM_SCF_BODY_EFFECT_SOURCE_ORDER;
   }

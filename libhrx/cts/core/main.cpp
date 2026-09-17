@@ -49,7 +49,9 @@ int main(int argc, char* argv[]) {
   session.cli(cli);
 
   int ret = session.applyCommandLine(argc, argv);
-  if (ret != 0) return ret;
+  if (ret != 0) {
+    return ret;
+  }
   g_test_hip_library_path = hip_library;
 
   // Load library.

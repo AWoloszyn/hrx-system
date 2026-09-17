@@ -1396,8 +1396,12 @@ static iree_status_t loom_testbench_event_record_matches(
   IREE_RETURN_IF_ERROR(loom_testbench_event_optional_string(
       module, attrs, IREE_SV("operation"), &operation_present, &operation));
 
-  if (type_present && event->type != type) return iree_ok_status();
-  if (severity_present && event->severity != severity) return iree_ok_status();
+  if (type_present && event->type != type) {
+    return iree_ok_status();
+  }
+  if (severity_present && event->severity != severity) {
+    return iree_ok_status();
+  }
   if (!loom_testbench_event_match_optional_string(event->source.driver_id,
                                                   driver_present, driver)) {
     return iree_ok_status();
@@ -1419,7 +1423,9 @@ static iree_status_t loom_testbench_event_record_matches(
           event->source.export_ordinal, export_present, export_ordinal)) {
     return iree_ok_status();
   }
-  if (site_id_present && event->site == NULL) return iree_ok_status();
+  if (site_id_present && event->site == NULL) {
+    return iree_ok_status();
+  }
   if (event->site != NULL) {
     if (!loom_testbench_event_match_optional_u64(event->site->site_id,
                                                  site_id_present, site_id)) {
@@ -1449,7 +1455,9 @@ static iree_status_t loom_testbench_event_record_matches(
     bool asan_matches = false;
     IREE_RETURN_IF_ERROR(loom_testbench_event_match_asan(module, asan_attrs,
                                                          event, &asan_matches));
-    if (!asan_matches) return iree_ok_status();
+    if (!asan_matches) {
+      return iree_ok_status();
+    }
   }
 
   bool ubsan_present = false;
@@ -1460,7 +1468,9 @@ static iree_status_t loom_testbench_event_record_matches(
     bool ubsan_matches = false;
     IREE_RETURN_IF_ERROR(loom_testbench_event_match_ubsan(
         module, ubsan_attrs, event, &ubsan_matches));
-    if (!ubsan_matches) return iree_ok_status();
+    if (!ubsan_matches) {
+      return iree_ok_status();
+    }
   }
 
   bool tsan_present = false;
@@ -1471,7 +1481,9 @@ static iree_status_t loom_testbench_event_record_matches(
     bool tsan_matches = false;
     IREE_RETURN_IF_ERROR(loom_testbench_event_match_tsan(module, tsan_attrs,
                                                          event, &tsan_matches));
-    if (!tsan_matches) return iree_ok_status();
+    if (!tsan_matches) {
+      return iree_ok_status();
+    }
   }
 
   *out_matches = true;

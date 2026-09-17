@@ -177,7 +177,9 @@ static std::string BuildSyntaxModule(SyntaxWorkload workload,
     }
     source.push_back((i + 1) % kOperationsPerSourceLine == 0 ? '\n' : ' ');
   }
-  if (operation_count % kOperationsPerSourceLine != 0) source.push_back('\n');
+  if (operation_count % kOperationsPerSourceLine != 0) {
+    source.push_back('\n');
+  }
   source.append("  test.yield\n}\n");
   return source;
 }

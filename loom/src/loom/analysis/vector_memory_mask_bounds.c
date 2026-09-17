@@ -45,9 +45,13 @@ static bool loom_vector_memory_mask_range_op(const loom_module_t* module,
                                              loom_value_id_t mask_value_id,
                                              const loom_op_t** out_op) {
   const loom_value_t* value = loom_module_value(module, mask_value_id);
-  if (loom_value_is_block_arg(value)) return false;
+  if (loom_value_is_block_arg(value)) {
+    return false;
+  }
   const loom_op_t* op = loom_value_def_op(value);
-  if (!op || !loom_vector_mask_range_isa(op)) return false;
+  if (!op || !loom_vector_mask_range_isa(op)) {
+    return false;
+  }
   *out_op = op;
   return true;
 }
@@ -107,16 +111,22 @@ iree_status_t loom_vector_memory_mask_bounds_tail_end(
     const loom_symbolic_expr_t* origin, loom_symbolic_expr_t* out_end,
     bool* out_known) {
   *out_known = false;
-  if (!bounds->has_unit_range) return iree_ok_status();
+  if (!bounds->has_unit_range) {
+    return iree_ok_status();
+  }
 
   bool lower_le_origin = false;
   IREE_RETURN_IF_ERROR(loom_vector_memory_mask_prove_le(
       expression_context, &bounds->lower_bound, origin, &lower_le_origin));
-  if (!lower_le_origin) return iree_ok_status();
+  if (!lower_le_origin) {
+    return iree_ok_status();
+  }
   bool origin_le_lower = false;
   IREE_RETURN_IF_ERROR(loom_vector_memory_mask_prove_le(
       expression_context, origin, &bounds->lower_bound, &origin_le_lower));
-  if (!origin_le_lower) return iree_ok_status();
+  if (!origin_le_lower) {
+    return iree_ok_status();
+  }
 
   *out_end = bounds->upper_bound;
   *out_known = true;

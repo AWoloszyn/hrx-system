@@ -15,11 +15,15 @@
 iree_status_t loom_target_compile_report_record_loop_pipelines(
     loom_target_compile_report_t* report, const loom_module_t* module,
     const loom_function_version_list_t* versions) {
-  if (!report || !versions) return iree_ok_status();
+  if (!report || !versions) {
+    return iree_ok_status();
+  }
   for (iree_host_size_t i = 0; i < versions->count; ++i) {
     const loom_target_function_version_t* version =
         loom_target_function_version_const_cast(versions->values[i]);
-    if (!version || !version->loop_pipelines.head) continue;
+    if (!version || !version->loop_pipelines.head) {
+      continue;
+    }
     const loom_symbol_ref_t function_ref =
         loom_func_like_callee(version->base.function);
     const iree_string_view_t function_name =

@@ -58,9 +58,15 @@ iree_async_posix_event_set_epoll_cast(iree_async_posix_event_set_t* event_set) {
 // Converts poll() event flags to epoll event flags.
 static uint32_t iree_poll_events_to_epoll(short poll_events) {
   uint32_t epoll_events = 0;
-  if (poll_events & POLLIN) epoll_events |= EPOLLIN;
-  if (poll_events & POLLOUT) epoll_events |= EPOLLOUT;
-  if (poll_events & POLLPRI) epoll_events |= EPOLLPRI;
+  if (poll_events & POLLIN) {
+    epoll_events |= EPOLLIN;
+  }
+  if (poll_events & POLLOUT) {
+    epoll_events |= EPOLLOUT;
+  }
+  if (poll_events & POLLPRI) {
+    epoll_events |= EPOLLPRI;
+  }
   // POLLERR and POLLHUP are always reported by epoll, no need to set them.
   return epoll_events;
 }
@@ -68,11 +74,21 @@ static uint32_t iree_poll_events_to_epoll(short poll_events) {
 // Converts epoll event flags to poll() event flags.
 static short iree_epoll_events_to_poll(uint32_t epoll_events) {
   short poll_events = 0;
-  if (epoll_events & EPOLLIN) poll_events |= POLLIN;
-  if (epoll_events & EPOLLOUT) poll_events |= POLLOUT;
-  if (epoll_events & EPOLLPRI) poll_events |= POLLPRI;
-  if (epoll_events & EPOLLERR) poll_events |= POLLERR;
-  if (epoll_events & EPOLLHUP) poll_events |= POLLHUP;
+  if (epoll_events & EPOLLIN) {
+    poll_events |= POLLIN;
+  }
+  if (epoll_events & EPOLLOUT) {
+    poll_events |= POLLOUT;
+  }
+  if (epoll_events & EPOLLPRI) {
+    poll_events |= POLLPRI;
+  }
+  if (epoll_events & EPOLLERR) {
+    poll_events |= POLLERR;
+  }
+  if (epoll_events & EPOLLHUP) {
+    poll_events |= POLLHUP;
+  }
   return poll_events;
 }
 
@@ -161,7 +177,9 @@ static iree_status_t iree_async_posix_event_set_epoll_wait(
     iree_host_size_t* out_ready_count, bool* out_timed_out) {
   iree_async_posix_event_set_epoll_t* event_set =
       iree_async_posix_event_set_epoll_cast(base_event_set);
-  if (out_ready_count) *out_ready_count = 0;
+  if (out_ready_count) {
+    *out_ready_count = 0;
+  }
   *out_timed_out = false;
 
   // Reset iteration state.
@@ -186,7 +204,9 @@ static iree_status_t iree_async_posix_event_set_epoll_wait(
   }
 
   event_set->ready_count = (iree_host_size_t)result;
-  if (out_ready_count) *out_ready_count = event_set->ready_count;
+  if (out_ready_count) {
+    *out_ready_count = event_set->ready_count;
+  }
   return iree_ok_status();
 }
 

@@ -15,8 +15,12 @@ static int iree_vm_bytecode_assembler_symbol_compare(const void* lhs_ptr,
       (const iree_vm_bytecode_assembler_symbol_t*)lhs_ptr;
   const iree_vm_bytecode_assembler_symbol_t* rhs =
       (const iree_vm_bytecode_assembler_symbol_t*)rhs_ptr;
-  if (lhs->scope != rhs->scope) return lhs->scope < rhs->scope ? -1 : 1;
-  if (lhs->domain != rhs->domain) return lhs->domain < rhs->domain ? -1 : 1;
+  if (lhs->scope != rhs->scope) {
+    return lhs->scope < rhs->scope ? -1 : 1;
+  }
+  if (lhs->domain != rhs->domain) {
+    return lhs->domain < rhs->domain ? -1 : 1;
+  }
   return iree_string_view_compare(lhs->name, rhs->name);
 }
 

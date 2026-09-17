@@ -172,7 +172,9 @@ static iree_status_t loom_cmd_serialize_reserve_buffer_refs(
     loom_cmd_serialize_build_t* build, iree_host_size_t additional_count) {
   const iree_host_size_t required_count =
       build->buffer_refs.count + additional_count;
-  if (required_count <= build->buffer_refs.capacity) return iree_ok_status();
+  if (required_count <= build->buffer_refs.capacity) {
+    return iree_ok_status();
+  }
   return iree_arena_grow_array(
       build->arena, build->buffer_refs.count,
       iree_max(required_count,
@@ -185,7 +187,9 @@ static iree_status_t loom_cmd_serialize_reserve_bytes(
     loom_cmd_serialize_build_t* build, loom_cmd_serialize_byte_table_t* table,
     iree_host_size_t additional_count) {
   const iree_host_size_t required_count = table->count + additional_count;
-  if (required_count <= table->capacity) return iree_ok_status();
+  if (required_count <= table->capacity) {
+    return iree_ok_status();
+  }
   return iree_arena_grow_array(
       build->arena, table->count,
       iree_max(required_count,
@@ -197,7 +201,9 @@ static iree_status_t loom_cmd_serialize_reserve_entry_schemas(
     loom_cmd_serialize_build_t* build, iree_host_size_t additional_count) {
   const iree_host_size_t required_count =
       build->entry_schemas.count + additional_count;
-  if (required_count <= build->entry_schemas.capacity) return iree_ok_status();
+  if (required_count <= build->entry_schemas.capacity) {
+    return iree_ok_status();
+  }
   return iree_arena_grow_array(
       build->arena, build->entry_schemas.count,
       iree_max(required_count,
@@ -210,7 +216,9 @@ static iree_status_t loom_cmd_serialize_reserve_commands(
     loom_cmd_serialize_build_t* build, iree_host_size_t additional_count) {
   const iree_host_size_t required_count =
       build->commands.count + additional_count;
-  if (required_count <= build->commands.capacity) return iree_ok_status();
+  if (required_count <= build->commands.capacity) {
+    return iree_ok_status();
+  }
   return iree_arena_grow_array(
       build->arena, build->commands.count,
       iree_max(required_count,
@@ -1023,7 +1031,9 @@ static void loom_cmd_serialize_write_commands(
 static void loom_cmd_serialize_write_parameters(
     const loom_cmd_serialize_build_t* build,
     const loom_cmd_program_format_layout_t* layout, iree_byte_span_t data) {
-  if (!build->parameter_requirements) return;
+  if (!build->parameter_requirements) {
+    return;
+  }
   for (uint32_t i = 0; i < build->parameter_requirements->root_count; ++i) {
     uint8_t* record = data.data + layout->parameter_root_offset +
                       i * LOOM_CMD_PROGRAM_PARAMETER_ROOT_SIZE;

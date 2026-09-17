@@ -200,7 +200,9 @@ static CUresult iree_status_to_cu_result(iree_status_t status) {
 // version, which cuModuleLoadDataEx reports through iree_status_to_cu_result -
 // so the code can only be read by a caller that knows what it asked for.
 static CUresult iree_event_record_status_to_cu_result(iree_status_t status) {
-  if (iree_status_is_ok(status)) return CUDA_SUCCESS;
+  if (iree_status_is_ok(status)) {
+    return CUDA_SUCCESS;
+  }
   const iree_status_code_t code = iree_status_code(status);
   if (code == IREE_STATUS_INCOMPATIBLE) {
     iree_status_free(status);
@@ -546,8 +548,12 @@ CUDAAPI CUresult cuCtxGetApiVersion(CUcontext ctx, unsigned int* version) {
 CUDAAPI CUresult cuCtxGetStreamPriorityRange(int* leastPriority,
                                              int* greatestPriority) {
   IREE_TRACE_ZONE_BEGIN(z0);
-  if (leastPriority) *leastPriority = -1;
-  if (greatestPriority) *greatestPriority = 0;
+  if (leastPriority) {
+    *leastPriority = -1;
+  }
+  if (greatestPriority) {
+    *greatestPriority = 0;
+  }
   IREE_TRACE_ZONE_END(z0);
   return CUDA_SUCCESS;
 }
@@ -1245,8 +1251,12 @@ CUDAAPI CUresult cuMemGetInfo(size_t* free, size_t* total) {
     return CUDA_ERROR_INVALID_DEVICE;
   }
 
-  if (free) *free = free_memory;
-  if (total) *total = total_memory;
+  if (free) {
+    *free = free_memory;
+  }
+  if (total) {
+    *total = total_memory;
+  }
 
   return CUDA_SUCCESS;
 }
@@ -2062,7 +2072,9 @@ CUDAAPI CUresult cuModuleLoadDataEx(CUmodule* module, const void* image,
   // not apply to our HAL backend. We parse them for compatibility but may not
   // use all of them.
   for (unsigned int i = 0; i < numOptions; ++i) {
-    if (!options || !optionValues) continue;
+    if (!options || !optionValues) {
+      continue;
+    }
     switch (options[i]) {
       case CU_JIT_MAX_REGISTERS:
         // Maximum number of registers per thread.
@@ -2214,7 +2226,9 @@ CUDAAPI CUresult cuModuleGetGlobal(CUdeviceptr* dptr, size_t* bytes,
 
   if (iree_status_is_ok(status)) {
     *dptr = (CUdeviceptr)device_ptr;
-    if (bytes) *bytes = (size_t)size;
+    if (bytes) {
+      *bytes = (size_t)size;
+    }
   }
 
   CUresult result = iree_status_to_cu_result(status);
@@ -3360,7 +3374,9 @@ CUDAAPI CUresult cuGraphInstantiate(CUgraphExec* phGraphExec, CUgraph hGraph,
     *phGraphExec = (CUgraphExec)exec;
   } else {
     // Clear error outputs.
-    if (phErrorNode) *phErrorNode = NULL;
+    if (phErrorNode) {
+      *phErrorNode = NULL;
+    }
     if (logBuffer && bufferSize > 0) {
       logBuffer[0] = '\0';
     }
@@ -3463,7 +3479,9 @@ CUDAAPI CUresult cuGraphExecUpdate(CUgraphExec hGraphExec, CUgraph hGraph,
   CUresult result = iree_status_is_ok(status)
                         ? CUDA_SUCCESS
                         : CUDA_ERROR_GRAPH_EXEC_UPDATE_FAILURE;
-  if (!iree_status_is_ok(status)) iree_status_ignore(status);
+  if (!iree_status_is_ok(status)) {
+    iree_status_ignore(status);
+  }
   IREE_TRACE_ZONE_END(z0);
   return result;
 }
@@ -3789,7 +3807,9 @@ CUDAAPI CUresult cuStreamGetCaptureInfo(CUstream hStream,
         iree_hal_streaming_context_current();
     if (!context) {
       *captureStatus = CU_STREAM_CAPTURE_STATUS_NONE;
-      if (id) *id = 0;
+      if (id) {
+        *id = 0;
+      }
       IREE_TRACE_ZONE_END(z0);
       return CUDA_SUCCESS;
     }
@@ -3823,7 +3843,9 @@ CUDAAPI CUresult cuStreamGetCaptureInfo(CUstream hStream,
     }
   } else {
     *captureStatus = CU_STREAM_CAPTURE_STATUS_NONE;
-    if (id) *id = 0;
+    if (id) {
+      *id = 0;
+    }
   }
 
   CUresult result = iree_status_to_cu_result(status);

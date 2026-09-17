@@ -31,7 +31,9 @@ struct loom_value_fact_cfg_graph_entry_t {
 
 static iree_status_t loom_value_fact_table_ensure_capacity(
     loom_value_fact_table_t* table, iree_host_size_t capacity) {
-  if (capacity <= table->capacity) return iree_ok_status();
+  if (capacity <= table->capacity) {
+    return iree_ok_status();
+  }
   const iree_host_size_t old_capacity = table->capacity;
   iree_host_size_t new_capacity = old_capacity;
   loom_value_facts_t* entries = table->entries;
@@ -379,7 +381,9 @@ static iree_status_t loom_value_fact_table_rehash_cfg_graphs(
 static iree_status_t loom_value_fact_table_ensure_cfg_graph_buckets(
     loom_value_fact_table_t* table, iree_host_size_t minimum_count) {
   iree_host_size_t bucket_count = table->cfg_graphs.bucket_count;
-  if (bucket_count == 0) bucket_count = 8;
+  if (bucket_count == 0) {
+    bucket_count = 8;
+  }
   while (minimum_count > bucket_count - bucket_count / 4) {
     if (bucket_count > SIZE_MAX / 2) {
       return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
@@ -398,14 +402,18 @@ loom_value_fact_table_lookup_cfg_entry(const loom_value_fact_table_t* table,
                                        const loom_region_t* region) {
   IREE_ASSERT_ARGUMENT(table);
   IREE_ASSERT_ARGUMENT(region);
-  if (table->cfg_graphs.bucket_count == 0) return NULL;
+  if (table->cfg_graphs.bucket_count == 0) {
+    return NULL;
+  }
   const iree_host_size_t bucket_index =
       loom_value_fact_table_cfg_region_hash(region) &
       (table->cfg_graphs.bucket_count - 1);
   for (loom_value_fact_cfg_graph_entry_t* entry =
            table->cfg_graphs.buckets[bucket_index];
        entry; entry = entry->next_bucket) {
-    if (entry->region == region) return entry;
+    if (entry->region == region) {
+      return entry;
+    }
   }
   return NULL;
 }
@@ -454,7 +462,9 @@ void loom_value_fact_table_forget_cfg_region(loom_value_fact_table_t* table,
                                              const loom_region_t* region) {
   loom_value_fact_cfg_graph_entry_t* entry =
       loom_value_fact_table_lookup_cfg_entry(table, region);
-  if (entry) entry->structure = NULL;
+  if (entry) {
+    entry->structure = NULL;
+  }
 }
 
 iree_status_t loom_value_fact_table_get_or_build_cfg_region(
@@ -464,7 +474,9 @@ iree_status_t loom_value_fact_table_get_or_build_cfg_region(
   loom_value_fact_cfg_graph_entry_t* entry =
       loom_value_fact_table_lookup_cfg_entry(table, region);
   *out_region = entry ? entry->structure : NULL;
-  if (*out_region) return iree_ok_status();
+  if (*out_region) {
+    return iree_ok_status();
+  }
 
   loom_value_fact_cfg_region_t* structure = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate(
@@ -789,7 +801,9 @@ static bool loom_value_fact_table_lookup_contextual_query_origin(
 iree_status_t loom_value_fact_table_define_contextual_query_origin(
     loom_value_fact_table_t* table, loom_value_id_t value_id,
     loom_value_fact_contextual_query_origin_t origin) {
-  if (value_id == LOOM_VALUE_ID_INVALID) return iree_ok_status();
+  if (value_id == LOOM_VALUE_ID_INVALID) {
+    return iree_ok_status();
+  }
   IREE_ASSERT_NE(origin.family_kind, LOOM_PARAMETERIZED_ATTR_KIND_ANY);
   IREE_ASSERT_EQ(origin.reserved, 0u);
   IREE_RETURN_IF_ERROR(
@@ -846,7 +860,9 @@ iree_status_t loom_value_fact_table_clone_defined_facts(
     const loom_module_t* module) {
   for (iree_host_size_t i = 0; i < source->touched_count; ++i) {
     const loom_value_id_t value_id = source->touched_values[i];
-    if (!loom_value_fact_table_has_entry(source, value_id)) continue;
+    if (!loom_value_fact_table_has_entry(source, value_id)) {
+      continue;
+    }
     loom_value_facts_t cloned_facts = loom_value_facts_unknown();
     if (module && value_id < module->values.count) {
       IREE_RETURN_IF_ERROR(loom_value_fact_table_clone_fact_for_type(
@@ -961,7 +977,9 @@ static iree_status_t loom_value_fact_table_forward_contextual_query_origin(
   }
   const uint32_t origin_id =
       table->contextual_query_origins.entries[source_value_id];
-  if (origin_id == 0) return iree_ok_status();
+  if (origin_id == 0) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(
       loom_value_fact_table_ensure_contextual_query_origin_capacity(

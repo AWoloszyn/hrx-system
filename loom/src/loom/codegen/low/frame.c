@@ -77,7 +77,9 @@ static iree_status_t loom_low_emission_frame_reserve_value_bitmap(
 static iree_status_t loom_low_emission_frame_record_value_span(
     iree_host_size_t first_value_id, iree_host_size_t end_value_id,
     iree_arena_allocator_t* arena, iree_bitmap_t* inout_values) {
-  if (first_value_id == end_value_id) return iree_ok_status();
+  if (first_value_id == end_value_id) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(loom_low_emission_frame_reserve_value_bitmap(
       end_value_id, arena, inout_values));
   iree_bitmap_set_span(*inout_values, first_value_id,
@@ -144,7 +146,9 @@ static void loom_low_emission_frame_record_memory_high_water(
     const iree_arena_allocator_t* repair_arena,
     const iree_arena_allocator_t* scratch_arena,
     loom_low_planning_statistics_t* statistics) {
-  if (statistics == NULL) return;
+  if (statistics == NULL) {
+    return;
+  }
   loom_low_emission_frame_record_arena_high_water(
       frame_checkpoint->arena, frame_checkpoint->used_allocation_size,
       frame_checkpoint->total_allocation_size, &statistics->memory.frame_arena);
@@ -197,7 +201,9 @@ static void loom_low_emission_frame_advance_repair_iteration(
     iree_host_size_t* iteration_count,
     loom_low_planning_statistics_t* statistics) {
   ++*iteration_count;
-  if (statistics != NULL) ++statistics->repair.iteration_count;
+  if (statistics != NULL) {
+    ++statistics->repair.iteration_count;
+  }
 }
 
 static iree_status_t loom_low_emission_frame_build_with_diagnostic_emitter(
@@ -217,7 +223,9 @@ static iree_status_t loom_low_emission_frame_build_with_diagnostic_emitter(
       .module = module,
       .function_op = low_func_op,
   };
-  if (statistics != NULL) ++statistics->frame_build_count;
+  if (statistics != NULL) {
+    ++statistics->frame_build_count;
+  }
 
   loom_low_memory_access_table_t memory_access_table =
       options->memory_access_table;
@@ -273,7 +281,9 @@ static iree_status_t loom_low_emission_frame_build_with_diagnostic_emitter(
       .diagnostic_flags = options->allocation_diagnostic_flags,
   };
   if (iree_status_is_ok(status) && out_frame->schedule.error_count == 0) {
-    if (statistics != NULL) ++statistics->allocation_run_count;
+    if (statistics != NULL) {
+      ++statistics->allocation_run_count;
+    }
     status = loom_low_allocate_function(&model, &allocation_options, arena,
                                         &out_frame->allocation);
   }
@@ -326,7 +336,9 @@ static iree_status_t loom_low_emission_frame_lower_spill_traffic(
   if (options->lower_spill_traffic == NULL) {
     return iree_ok_status();
   }
-  if (statistics != NULL) ++statistics->repair.spill_traffic_lowering_count;
+  if (statistics != NULL) {
+    ++statistics->repair.spill_traffic_lowering_count;
+  }
   return options->lower_spill_traffic(
       options->lower_spill_traffic_user_data, module, low_func_op,
       frame_options->emitter, arena, out_result);
@@ -370,7 +382,9 @@ static iree_status_t loom_low_emission_frame_copy_pair_uses(
     loom_low_placement_pair_use_list_t source, iree_arena_allocator_t* arena,
     loom_low_placement_pair_use_list_t* out_copy) {
   *out_copy = source;
-  if (source.count == 0) return iree_ok_status();
+  if (source.count == 0) {
+    return iree_ok_status();
+  }
   loom_low_placement_pair_use_t* values = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       arena, source.count, sizeof(*values), (void**)&values));
@@ -428,7 +442,9 @@ static uint64_t loom_low_emission_frame_residency_resource_units(
     const uint64_t contribution = loom_target_residency_round_resource_units(
         units_by_reg_class[member->direct_resource_id],
         member->contribution_granularity);
-    if (resource_units > UINT64_MAX - contribution) return UINT64_MAX;
+    if (resource_units > UINT64_MAX - contribution) {
+      return UINT64_MAX;
+    }
     resource_units += contribution;
   }
   return resource_units;
@@ -438,7 +454,9 @@ static bool loom_low_emission_frame_crosses_new_pressure_cliff(
     const loom_target_residency_model_t* residency_model,
     const uint32_t* baseline_units_by_reg_class,
     const loom_low_allocation_table_t* allocation) {
-  if (loom_target_residency_model_is_empty(residency_model)) return false;
+  if (loom_target_residency_model_is_empty(residency_model)) {
+    return false;
+  }
   const loom_target_residency_direct_resource_table_t* direct_resources =
       &residency_model->direct_resources;
   IREE_ASSERT_EQ(direct_resources->resource_count,
@@ -459,7 +477,9 @@ static bool loom_low_emission_frame_crosses_new_pressure_cliff(
         cliffs, range.count, residency_model->best_tier,
         allocation->physical_extents.ends_by_reg_class[resource_id],
         &allocated_evaluation);
-    if (allocated_evaluation.tier < baseline_evaluation.tier) return true;
+    if (allocated_evaluation.tier < baseline_evaluation.tier) {
+      return true;
+    }
   }
   const loom_target_residency_derived_resource_table_t* resource_table =
       &residency_model->derived_resources;
@@ -488,7 +508,9 @@ static bool loom_low_emission_frame_crosses_new_pressure_cliff(
     loom_target_residency_evaluate_cliffs(
         cliffs, resource->cliff_count, residency_model->best_tier,
         allocated_resource_units, &allocated_evaluation);
-    if (allocated_evaluation.tier < baseline_evaluation.tier) return true;
+    if (allocated_evaluation.tier < baseline_evaluation.tier) {
+      return true;
+    }
   }
   return false;
 }

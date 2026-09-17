@@ -104,14 +104,15 @@ std::string ProcessChunkedAndFinalize(iree_tokenizer_normalizer_t* normalizer,
       // If we can't make progress, take at least one full codepoint.
       if (to_provide == 0 && remaining_to_provide > 0) {
         uint8_t first_byte = (uint8_t)input[provided_end];
-        if ((first_byte & 0xE0) == 0xC0)
+        if ((first_byte & 0xE0) == 0xC0) {
           to_provide = std::min(remaining_to_provide, size_t{2});
-        else if ((first_byte & 0xF0) == 0xE0)
+        } else if ((first_byte & 0xF0) == 0xE0) {
           to_provide = std::min(remaining_to_provide, size_t{3});
-        else if ((first_byte & 0xF8) == 0xF0)
+        } else if ((first_byte & 0xF8) == 0xF0) {
           to_provide = std::min(remaining_to_provide, size_t{4});
-        else
+        } else {
           to_provide = 1;  // ASCII or invalid, take one byte.
+        }
       }
 
       provided_end += to_provide;
@@ -119,7 +120,9 @@ std::string ProcessChunkedAndFinalize(iree_tokenizer_normalizer_t* normalizer,
 
     // Process from consumed_start to provided_end.
     size_t available = provided_end - consumed_start;
-    if (available == 0) break;  // Nothing to process.
+    if (available == 0) {
+      break;  // Nothing to process.
+    }
 
     iree_host_size_t consumed = 0;
     iree_host_size_t written = 0;

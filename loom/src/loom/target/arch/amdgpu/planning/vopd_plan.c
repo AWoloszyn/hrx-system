@@ -1561,7 +1561,9 @@ static bool loom_amdgpu_vopd_find_visible_packet(
 static void loom_amdgpu_vopd_commit_static_packet(
     loom_amdgpu_vopd_plan_builder_t* builder,
     const loom_amdgpu_vopd_visible_packet_t* visible) {
-  if (builder->matrix_coexecution == NULL) return;
+  if (builder->matrix_coexecution == NULL) {
+    return;
+  }
   const loom_amdgpu_structural_packet_info_t* structural_info =
       visible->packet.descriptor == NULL ? &visible->structural : NULL;
   loom_amdgpu_matrix_coexecution_commit_static_packet(

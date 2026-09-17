@@ -92,7 +92,9 @@ iree_status_t iree_task_scope_consume_status(iree_task_scope_t* scope) {
 
 static void iree_task_scope_try_set_status(iree_task_scope_t* scope,
                                            iree_status_t new_status) {
-  if (IREE_UNLIKELY(iree_status_is_ok(new_status))) return;
+  if (IREE_UNLIKELY(iree_status_is_ok(new_status))) {
+    return;
+  }
 
   IREE_TRACE_ZONE_BEGIN(z0);
   IREE_TRACE_ZONE_APPEND_TEXT(z0, "failed: ");

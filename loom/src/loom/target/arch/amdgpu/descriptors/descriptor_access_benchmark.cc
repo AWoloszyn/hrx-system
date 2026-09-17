@@ -150,8 +150,9 @@ static void BM_AssemblyFacts(benchmark::State& state,
             &descriptor_set->descriptor_views[descriptor_ordinal];
         const uint32_t asm_form_ordinal =
             descriptor_view->canonical_asm_form_ordinal;
-        if (asm_form_ordinal == LOOM_LOW_ASM_FORM_ORDINAL_NONE)
+        if (asm_form_ordinal == LOOM_LOW_ASM_FORM_ORDINAL_NONE) {
           return UINT64_C(0);
+        }
         const loom_low_asm_form_t* asm_form =
             &descriptor_set->asm_forms[asm_form_ordinal];
         return static_cast<uint64_t>(asm_form_ordinal) +

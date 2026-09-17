@@ -42,7 +42,9 @@ void loom_symbol_fact_table_initialize_with_options(
 
 void loom_symbol_fact_table_reset(loom_symbol_fact_table_t* table) {
   table->module = NULL;
-  if (table->count == 0) return;
+  if (table->count == 0) {
+    return;
+  }
   memset(table->entries, 0, table->count * sizeof(*table->entries));
   memset(table->states, 0, table->count * sizeof(*table->states));
 }
@@ -50,7 +52,9 @@ void loom_symbol_fact_table_reset(loom_symbol_fact_table_t* table) {
 static iree_status_t loom_symbol_fact_table_ensure_capacity(
     loom_symbol_fact_table_t* table, iree_host_size_t minimum_count) {
   if (minimum_count <= table->capacity) {
-    if (minimum_count > table->count) table->count = minimum_count;
+    if (minimum_count > table->count) {
+      table->count = minimum_count;
+    }
     return iree_ok_status();
   }
 
@@ -87,7 +91,9 @@ static iree_status_t loom_symbol_fact_table_ensure_capacity(
 static iree_status_t loom_symbol_fact_validate_computed(
     const loom_symbol_fact_domain_t* domain, const loom_symbol_t* symbol,
     const loom_symbol_facts_base_t* facts) {
-  if (!facts) return iree_ok_status();
+  if (!facts) {
+    return iree_ok_status();
+  }
   if (facts->domain != domain) {
     IREE_ASSERT_UNREACHABLE(
         "symbol fact domain produced mismatched payload domain");
@@ -171,7 +177,9 @@ iree_status_t loom_symbol_fact_table_lookup_ref(
     loom_symbol_fact_table_t* table, const loom_module_t* module,
     loom_symbol_ref_t symbol_ref, const loom_symbol_facts_base_t** out_facts) {
   *out_facts = NULL;
-  if (!loom_symbol_ref_is_valid(symbol_ref)) return iree_ok_status();
+  if (!loom_symbol_ref_is_valid(symbol_ref)) {
+    return iree_ok_status();
+  }
   if (symbol_ref.module_id != 0) {
     return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
                             "cross-module symbol fact lookup is not available");
@@ -197,7 +205,9 @@ iree_status_t loom_symbol_fact_context_lookup_resource(
                             "symbol fact resource list has null values");
   }
   for (iree_host_size_t i = 0; i < resources.count; ++i) {
-    if (resources.values[i].key != key) continue;
+    if (resources.values[i].key != key) {
+      continue;
+    }
     if (!resources.values[i].value) {
       return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                               "symbol fact resource has null value");

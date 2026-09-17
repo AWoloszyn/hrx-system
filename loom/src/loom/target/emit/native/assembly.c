@@ -201,7 +201,9 @@ static iree_status_t loom_native_assembly_append_block(
       IREE_RETURN_IF_ERROR(options->append_before_packet.fn(
           options->append_before_packet.user_data, &context));
     }
-    if (!packet_is_visible) continue;
+    if (!packet_is_visible) {
+      continue;
+    }
     const iree_host_size_t line_start = iree_string_builder_size(builder);
     IREE_RETURN_IF_ERROR(iree_string_builder_append_cstring(builder, "  "));
     const iree_host_size_t content_start = iree_string_builder_size(builder);

@@ -22,7 +22,9 @@ hrx_status_t hrx_device_query_total_memory_from_spec(
   iree_status_t status =
       iree_hal_device_observation_populate_memory_total_from_spec(
           iree_hal_device_spec(device->hal_device), &observation);
-  if (!iree_status_is_ok(status)) return hrx_status_from_iree(status);
+  if (!iree_status_is_ok(status)) {
+    return hrx_status_from_iree(status);
+  }
   if (iree_all_bits_set(observation.memory.flags,
                         IREE_HAL_DEVICE_MEMORY_OBSERVATION_FLAG_TOTAL_BYTES)) {
     *out_known = true;
@@ -38,7 +40,9 @@ static hrx_status_t hrx_device_sample_memory(
   iree_status_t status = iree_hal_device_sample_observation(
       device->hal_device, IREE_HAL_DEVICE_OBSERVATION_FLAG_MEMORY,
       &observation);
-  if (!iree_status_is_ok(status)) return hrx_status_from_iree(status);
+  if (!iree_status_is_ok(status)) {
+    return hrx_status_from_iree(status);
+  }
   if (!iree_all_bits_set(observation.provided_flags,
                          IREE_HAL_DEVICE_OBSERVATION_FLAG_MEMORY)) {
     return hrx_make_status(HRX_STATUS_UNAVAILABLE,
@@ -59,7 +63,9 @@ static hrx_status_t hrx_device_sample_memory(
         "HAL device did not provide available memory in its observation");
   }
   *out_total = observation.memory.total_bytes;
-  if (out_available) *out_available = observation.memory.available_bytes;
+  if (out_available) {
+    *out_available = observation.memory.available_bytes;
+  }
   return hrx_ok_status();
 }
 
@@ -98,7 +104,9 @@ hrx_status_t hrx_device_get_property(hrx_device_t device,
       bool total_memory_known = false;
       hrx_status_t status = hrx_device_query_total_memory_from_spec(
           device, &total_memory_known, &total_bytes);
-      if (!hrx_status_is_ok(status)) return status;
+      if (!hrx_status_is_ok(status)) {
+        return status;
+      }
       if (!total_memory_known) {
         return hrx_make_status(
             HRX_STATUS_UNAVAILABLE,
@@ -146,14 +154,18 @@ hrx_status_t hrx_device_get_type(hrx_device_t device,
 }
 
 void hrx_device_retain(hrx_device_t device) {
-  if (!device) return;
+  if (!device) {
+    return;
+  }
   iree_hal_device_retain(device->hal_device);
   iree_hal_device_group_retain(device->hal_device_group);
   iree_atomic_ref_count_inc(&device->ref_count);
 }
 
 void hrx_device_release(hrx_device_t device) {
-  if (!device) return;
+  if (!device) {
+    return;
+  }
   iree_hal_device_t* hal_device = device->hal_device;
   iree_hal_device_group_t* hal_device_group = device->hal_device_group;
   if (iree_atomic_ref_count_dec(&device->ref_count) == 1) {
@@ -176,7 +188,9 @@ hrx_status_t hrx_device_memory_info(hrx_device_t device, size_t* free_bytes,
   iree_device_size_t total = 0;
   iree_device_size_t available = 0;
   hrx_status_t status = hrx_device_sample_memory(device, &total, &available);
-  if (!hrx_status_is_ok(status)) return status;
+  if (!hrx_status_is_ok(status)) {
+    return status;
+  }
   if (total > SIZE_MAX || available > SIZE_MAX) {
     return hrx_make_status(
         HRX_STATUS_OUT_OF_RANGE,

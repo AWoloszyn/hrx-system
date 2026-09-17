@@ -336,7 +336,9 @@ iree_status_t loom_format_convert(iree_const_byte_span_t input,
 
 void loom_format_output_deinitialize(loom_format_output_t* output,
                                      iree_allocator_t allocator) {
-  if (output == NULL) return;
+  if (output == NULL) {
+    return;
+  }
   iree_allocator_free(allocator, output->data);
   *output = (loom_format_output_t){0};
 }

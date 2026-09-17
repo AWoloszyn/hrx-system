@@ -192,14 +192,18 @@ bool iree_async_io_uring_notification_wait(
     while (iree_time_now() < deadline_ns) {
       uint32_t current_epoch =
           iree_atomic_load(notification->epoch_ptr, iree_memory_order_acquire);
-      if (current_epoch != wait_token) return true;
+      if (current_epoch != wait_token) {
+        return true;
+      }
 
       iree_status_code_t status_code =
           is_shared ? iree_futex_wait_shared(notification->epoch_ptr,
                                              wait_token, deadline_ns)
                     : iree_futex_wait(notification->epoch_ptr, wait_token,
                                       deadline_ns);
-      if (status_code == IREE_STATUS_DEADLINE_EXCEEDED) return false;
+      if (status_code == IREE_STATUS_DEADLINE_EXCEEDED) {
+        return false;
+      }
     }
 
     uint32_t final_epoch =
@@ -214,17 +218,25 @@ bool iree_async_io_uring_notification_wait(
   while (iree_time_now() < deadline_ns) {
     uint32_t current_epoch =
         iree_atomic_load(notification->epoch_ptr, iree_memory_order_acquire);
-    if (current_epoch != wait_token) return true;
+    if (current_epoch != wait_token) {
+      return true;
+    }
 
     iree_duration_t remaining_ns = deadline_ns - iree_time_now();
-    if (remaining_ns <= 0) break;
+    if (remaining_ns <= 0) {
+      break;
+    }
     int timeout_ms = (int)(remaining_ns / 1000000);
-    if (timeout_ms <= 0) timeout_ms = 1;
+    if (timeout_ms <= 0) {
+      timeout_ms = 1;
+    }
 
     struct pollfd pfd = {.fd = fd, .events = POLLIN, .revents = 0};
     int result = poll(&pfd, 1, timeout_ms);
     if (result < 0) {
-      if (errno == EINTR) continue;
+      if (errno == EINTR) {
+        continue;
+      }
       return false;
     }
 
@@ -235,7 +247,9 @@ bool iree_async_io_uring_notification_wait(
       IREE_ASSERT(result >= 0 || errno == EAGAIN);
     }
 
-    if (pfd.revents & (POLLHUP | POLLERR)) return false;
+    if (pfd.revents & (POLLHUP | POLLERR)) {
+      return false;
+    }
   }
 
   uint32_t final_epoch =

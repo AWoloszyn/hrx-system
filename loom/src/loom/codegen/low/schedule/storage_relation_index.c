@@ -49,7 +49,9 @@ iree_status_t loom_low_schedule_storage_relation_index_initialize(
       .node_count = node_count,
       .relation_count = (uint32_t)relation_count,
   };
-  if (relation_count == 0) return iree_ok_status();
+  if (relation_count == 0) {
+    return iree_ok_status();
+  }
 
   const iree_host_size_t node_sentinel_count = (iree_host_size_t)node_count + 1;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(

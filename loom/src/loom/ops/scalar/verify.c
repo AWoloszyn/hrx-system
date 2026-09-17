@@ -46,12 +46,16 @@ iree_status_t loom_scalar_geluf_verify(const loom_module_t* module,
   loom_attribute_t scale_attr = loom_op_attrs(op)[1];
   bool has_scale = !loom_attr_is_absent(scale_attr);
   if (loom_scalar_geluf_variant(op) == LOOM_SCALAR_GELUF_VARIANT_LOGISTIC) {
-    if (has_scale) return iree_ok_status();
+    if (has_scale) {
+      return iree_ok_status();
+    }
     return loom_scalar_emit_attribute_kind_mismatch(
         emitter, op, IREE_SV("scale"), /*attr_index=*/1, LOOM_ATTR_ABSENT,
         LOOM_ATTR_F64);
   }
-  if (!has_scale) return iree_ok_status();
+  if (!has_scale) {
+    return iree_ok_status();
+  }
   return loom_scalar_emit_attribute_kind_mismatch(
       emitter, op, IREE_SV("scale"), /*attr_index=*/1, scale_attr.kind,
       LOOM_ATTR_ABSENT);

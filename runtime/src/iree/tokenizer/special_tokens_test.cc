@@ -567,8 +567,12 @@ class SpecialTokensFlagsTest : public ::testing::Test {
     iree_tokenizer_token_id_t id = 0;
     auto result = iree_tokenizer_special_tokens_match(&special_tokens_, input,
                                                       &length, &id, &state_);
-    if (out_length) *out_length = length;
-    if (out_id) *out_id = id;
+    if (out_length) {
+      *out_length = length;
+    }
+    if (out_id) {
+      *out_id = id;
+    }
     return result;
   }
 

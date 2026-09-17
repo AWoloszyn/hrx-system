@@ -60,12 +60,16 @@ void* AMDF_CALL Allocate(void* user_data, uint64_t byte_length,
   auto* state = static_cast<FakeKmtState*>(user_data);
   void* pointer = _aligned_malloc(static_cast<size_t>(byte_length),
                                   static_cast<size_t>(minimum_alignment));
-  if (pointer != nullptr) ++state->live_allocation_count;
+  if (pointer != nullptr) {
+    ++state->live_allocation_count;
+  }
   return pointer;
 }
 
 void AMDF_CALL Free(void* user_data, void* allocation) {
-  if (allocation == nullptr) return;
+  if (allocation == nullptr) {
+    return;
+  }
   auto* state = static_cast<FakeKmtState*>(user_data);
   EXPECT_NE(state->live_allocation_count, 0u);
   --state->live_allocation_count;
@@ -91,7 +95,9 @@ NTSTATUS APIENTRY FakeEscape(const D3DKMT_ESCAPE* query) {
   EXPECT_EQ(query->hDevice, 0x10u);
   EXPECT_EQ(query->hContext, 0u);
   EXPECT_EQ(query->PrivateDriverDataSize, 156u);
-  if (current_state->metadata_status < 0) return current_state->metadata_status;
+  if (current_state->metadata_status < 0) {
+    return current_state->metadata_status;
+  }
   const uint16_t fields[20] = {1, 1, 4, 6, 4, 1, 1, 2, 1, 0};
   std::memcpy(static_cast<uint8_t*>(query->pPrivateDriverData) + 100, fields,
               sizeof(fields));

@@ -84,7 +84,9 @@ hrx_status_t hrx_event_record(hrx_event_t event, hrx_stream_t stream) {
 
   // Flush pending work so it's submitted before the barrier.
   hrx_status_t status = hrx_stream_flush(stream);
-  if (!hrx_status_is_ok(status)) return status;
+  if (!hrx_status_is_ok(status)) {
+    return status;
+  }
 
   // Wait on stream's current timepoint, signal the next value on both the
   // stream's timeline and the event's dedicated semaphore.
@@ -131,7 +133,9 @@ hrx_status_t hrx_event_query(hrx_event_t event, bool* complete) {
 
   uint64_t current = 0;
   hrx_status_t status = hrx_semaphore_query(event->semaphore, &current);
-  if (!hrx_status_is_ok(status)) return status;
+  if (!hrx_status_is_ok(status)) {
+    return status;
+  }
 
   *complete = (current >= event->signal_value);
   return hrx_ok_status();
@@ -170,14 +174,18 @@ hrx_status_t hrx_event_elapsed_time(hrx_event_t start, hrx_event_t stop,
   // Ensure both events have completed.
   bool start_done = false, stop_done = false;
   hrx_status_t status = hrx_event_query(start, &start_done);
-  if (!hrx_status_is_ok(status)) return status;
+  if (!hrx_status_is_ok(status)) {
+    return status;
+  }
   if (!start_done) {
     return hrx_make_status(HRX_STATUS_UNAVAILABLE,
                            "start event has not completed");
   }
 
   status = hrx_event_query(stop, &stop_done);
-  if (!hrx_status_is_ok(status)) return status;
+  if (!hrx_status_is_ok(status)) {
+    return status;
+  }
   if (!stop_done) {
     return hrx_make_status(HRX_STATUS_UNAVAILABLE,
                            "stop event has not completed");
@@ -200,7 +208,9 @@ hrx_status_t hrx_stream_wait_event(hrx_stream_t stream, hrx_event_t event) {
 
   // Flush pending work before inserting the wait barrier.
   hrx_status_t status = hrx_stream_flush(stream);
-  if (!hrx_status_is_ok(status)) return status;
+  if (!hrx_status_is_ok(status)) {
+    return status;
+  }
 
   // Insert a queue barrier that waits on the event's semaphore and signals
   // the stream's next timepoint.

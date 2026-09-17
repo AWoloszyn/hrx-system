@@ -224,7 +224,9 @@ static iree_status_t iree_async_iocp_socket_associate(
 // for all socket families, so we load them once using any socket.
 static iree_status_t iree_async_iocp_load_wsa_extensions(
     iree_async_proactor_iocp_t* proactor, SOCKET sock) {
-  if (proactor->wsa_extensions.loaded) return iree_ok_status();
+  if (proactor->wsa_extensions.loaded) {
+    return iree_ok_status();
+  }
 
   DWORD bytes_returned = 0;
 

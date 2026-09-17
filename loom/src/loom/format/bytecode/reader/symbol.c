@@ -78,7 +78,9 @@ static void loom_bytecode_symbol_record_attribute_metadata(
     uint64_t attribute_ordinal, uint8_t attribute_index,
     loom_bytecode_attr_kind_t kind, uint64_t value_offset,
     const loom_bytecode_reader_cursor_t* cursor) {
-  if (attributes == NULL) return;
+  if (attributes == NULL) {
+    return;
+  }
   attributes[attribute_ordinal] = (loom_bytecode_symbol_attribute_metadata_t){
       .value_offset = value_offset,
       .value_length =

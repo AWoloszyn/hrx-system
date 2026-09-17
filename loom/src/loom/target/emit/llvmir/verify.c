@@ -77,8 +77,12 @@ static bool loom_llvmir_verify_type_is_scalar_integer(
 
 static const loom_llvmir_type_t* loom_llvmir_verify_scalar_type(
     const loom_llvmir_module_t* module, const loom_llvmir_type_t* type) {
-  if (!type) return NULL;
-  if (type->kind != LOOM_LLVMIR_TYPE_VECTOR) return type;
+  if (!type) {
+    return NULL;
+  }
+  if (type->kind != LOOM_LLVMIR_TYPE_VECTOR) {
+    return type;
+  }
   return loom_llvmir_verify_type(module, type->element_type);
 }
 
@@ -139,7 +143,9 @@ static uint32_t loom_llvmir_verify_type_scalar_bit_width(
     const loom_llvmir_module_t* module, const loom_llvmir_type_t* type) {
   const loom_llvmir_type_t* scalar_type =
       loom_llvmir_verify_scalar_type(module, type);
-  if (!scalar_type) return 0;
+  if (!scalar_type) {
+    return 0;
+  }
   switch (scalar_type->kind) {
     case LOOM_LLVMIR_TYPE_INTEGER:
       return scalar_type->bit_width;
@@ -164,7 +170,9 @@ static uint64_t loom_llvmir_verify_type_primitive_bit_width(
     const loom_llvmir_module_t* module, const loom_llvmir_type_t* type) {
   uint32_t scalar_bit_width =
       loom_llvmir_verify_type_scalar_bit_width(module, type);
-  if (scalar_bit_width == 0) return 0;
+  if (scalar_bit_width == 0) {
+    return 0;
+  }
   uint32_t lanes = loom_llvmir_verify_vector_lanes(type);
   return lanes == 0 ? scalar_bit_width : (uint64_t)scalar_bit_width * lanes;
 }
@@ -174,7 +182,9 @@ static bool loom_llvmir_verify_is_power_of_two_u32(uint32_t value) {
 }
 
 static iree_status_t loom_llvmir_verify_memory_alignment(uint32_t alignment) {
-  if (alignment == 0) return iree_ok_status();
+  if (alignment == 0) {
+    return iree_ok_status();
+  }
   if (!loom_llvmir_verify_is_power_of_two_u32(alignment)) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "LLVM memory alignment is not a power of two");
@@ -194,7 +204,9 @@ static bool loom_llvmir_verify_atomic_rmw_op_accepts_type(
     const loom_llvmir_module_t* module, loom_llvmir_atomic_rmw_op_t op,
     loom_llvmir_type_id_t type_id) {
   const loom_llvmir_type_t* type = loom_llvmir_verify_type(module, type_id);
-  if (!type || type->kind == LOOM_LLVMIR_TYPE_VECTOR) return false;
+  if (!type || type->kind == LOOM_LLVMIR_TYPE_VECTOR) {
+    return false;
+  }
   switch (op) {
     case LOOM_LLVMIR_ATOMIC_RMW_XCHG:
       return type->kind == LOOM_LLVMIR_TYPE_INTEGER ||
@@ -342,7 +354,9 @@ static iree_status_t loom_llvmir_verify_metadata_attachments(
     const loom_llvmir_module_t* module,
     const loom_llvmir_metadata_attachment_storage_t* attachments,
     iree_host_size_t attachment_count) {
-  if (attachment_count == 0) return iree_ok_status();
+  if (attachment_count == 0) {
+    return iree_ok_status();
+  }
   if (attachments == NULL) {
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,
@@ -752,7 +766,9 @@ static bool loom_llvmir_verify_bitcast(const loom_llvmir_module_t* module,
       loom_llvmir_verify_type_is_pointer_like(module, source_type);
   bool result_is_pointer =
       loom_llvmir_verify_type_is_pointer_like(module, result_type);
-  if (source_is_pointer != result_is_pointer) return false;
+  if (source_is_pointer != result_is_pointer) {
+    return false;
+  }
   if (!source_is_pointer) {
     uint64_t source_bit_width =
         loom_llvmir_verify_type_primitive_bit_width(module, source_type);
@@ -769,8 +785,12 @@ static bool loom_llvmir_verify_bitcast(const loom_llvmir_module_t* module,
   if (source_is_vector && result_is_vector) {
     return loom_llvmir_verify_same_vector_shape(source_type, result_type);
   }
-  if (source_is_vector) return source_type->element_count == 1;
-  if (result_is_vector) return result_type->element_count == 1;
+  if (source_is_vector) {
+    return source_type->element_count == 1;
+  }
+  if (result_is_vector) {
+    return result_type->element_count == 1;
+  }
   return true;
 }
 
@@ -1373,7 +1393,9 @@ static iree_status_t loom_llvmir_verify_function(
         return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                                 "LLVM phi appears after non-phi instruction");
       }
-      if (instruction->kind != LOOM_LLVMIR_INST_PHI) saw_non_phi = true;
+      if (instruction->kind != LOOM_LLVMIR_INST_PHI) {
+        saw_non_phi = true;
+      }
       if (loom_llvmir_is_terminator(instruction) &&
           j + 1 != block->instruction_count) {
         return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,

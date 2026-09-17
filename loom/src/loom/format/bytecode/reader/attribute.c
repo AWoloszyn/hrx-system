@@ -271,9 +271,13 @@ static iree_status_t loom_bytecode_attribute_retain_predicate_list(
       }
       predicate.value.args[i] = (int64_t)value_number;
     }
-    if (predicates != NULL) predicates[predicate_index] = predicate.value;
+    if (predicates != NULL) {
+      predicates[predicate_index] = predicate.value;
+    }
   }
-  if (out_predicates != NULL) *out_predicates = predicates;
+  if (out_predicates != NULL) {
+    *out_predicates = predicates;
+  }
   *out_predicate_count = predicate_count;
   return iree_ok_status();
 }

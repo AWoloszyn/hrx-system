@@ -129,7 +129,9 @@ class TemplateSelectionQueryTest : public ::testing::Test {
         &catalog, module, &fact_table, external_providers,
         external_provider_count);
     IREE_EXPECT_OK(status);
-    if (!status.ok()) return {};
+    if (!status.ok()) {
+      return {};
+    }
     loom_template_selection_query_result_t result = {};
     const loom_template_selection_query_options_t query_options = {
         /*.mode=*/mode,

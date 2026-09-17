@@ -102,7 +102,9 @@ iree_cpu_feature_count(iree_cpu_architecture_t architecture) {
   iree_host_size_t count = 0;
   for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(iree_cpu_feature_records);
        ++i) {
-    if (iree_cpu_feature_records[i].architecture == architecture) ++count;
+    if (iree_cpu_feature_records[i].architecture == architecture) {
+      ++count;
+    }
   }
   return count;
 }
@@ -112,8 +114,12 @@ IREE_API_EXPORT iree_string_view_t iree_cpu_feature_name(
   for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(iree_cpu_feature_records);
        ++i) {
     const iree_cpu_feature_record_t* record = &iree_cpu_feature_records[i];
-    if (record->architecture != architecture) continue;
-    if (ordinal-- == 0) return record->name;
+    if (record->architecture != architecture) {
+      continue;
+    }
+    if (ordinal-- == 0) {
+      return record->name;
+    }
   }
   return iree_string_view_empty();
 }
@@ -123,7 +129,9 @@ IREE_API_EXPORT iree_cpu_feature_availability_t iree_cpu_data_query_feature(
   IREE_ASSERT_ARGUMENT(cpu_data);
   const iree_cpu_feature_record_t* record =
       iree_cpu_feature_record_find(cpu_data->architecture, name);
-  if (!record) return IREE_CPU_FEATURE_AVAILABILITY_UNKNOWN;
+  if (!record) {
+    return IREE_CPU_FEATURE_AVAILABILITY_UNKNOWN;
+  }
   return iree_all_bits_set(cpu_data->fields[record->field_index],
                            record->field_bit)
              ? IREE_CPU_FEATURE_AVAILABILITY_AVAILABLE

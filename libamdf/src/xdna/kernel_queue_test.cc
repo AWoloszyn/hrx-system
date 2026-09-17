@@ -399,8 +399,9 @@ amdf_status_t amdf_xdna_umd_kernel_queue_create(
 amdf_status_t amdf_xdna_umd_kernel_queue_submit(
     amdf_xdna_umd_kernel_queue_t* queue, uint64_t instruction_address,
     uint32_t instruction_byte_length, uint64_t* out_submission) {
-  if (!amdf_status_is_ok(queue->submission_status))
+  if (!amdf_status_is_ok(queue->submission_status)) {
     return queue->submission_status;
+  }
   EXPECT_EQ(queue->pending_address, 0u);
   queue->pending_address = instruction_address;
   queue->pending_byte_length = instruction_byte_length;

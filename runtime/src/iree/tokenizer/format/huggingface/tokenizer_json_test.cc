@@ -997,7 +997,9 @@ TEST_F(TokenizerJsonTest, StreamingNewlinesBeforeText) {
     total_tokens += token_count;
     input.data += bytes_consumed;
     input.size -= bytes_consumed;
-    if (bytes_consumed == 0) break;
+    if (bytes_consumed == 0) {
+      break;
+    }
   }
 
   // Finalize to flush pending segments (single call like one-shot API).
@@ -1069,7 +1071,9 @@ iree_host_size_t FeedAll(iree_tokenizer_encode_state_t* state,
     total_tokens += token_count;
     text.data += bytes_consumed;
     text.size -= bytes_consumed;
-    if (bytes_consumed == 0 && token_count == 0) break;
+    if (bytes_consumed == 0 && token_count == 0) {
+      break;
+    }
   }
   return total_tokens;
 }
@@ -1154,7 +1158,9 @@ TEST_F(TokenizerJsonTest, PendingTokenBoundDecreasesAfterFeed) {
     total_feed_tokens += token_count2;
     chunk2.data += bytes_consumed2;
     chunk2.size -= bytes_consumed2;
-    if (bytes_consumed2 == 0 && token_count2 == 0) break;
+    if (bytes_consumed2 == 0 && token_count2 == 0) {
+      break;
+    }
   }
 
   iree_host_size_t bound_after_second =
@@ -1297,8 +1303,12 @@ TEST_F(TokenizerJsonTest, PendingTokenBoundWithSpecialTokens) {
   iree_host_size_t total = feed_tokens + finalize_count;
   bool has_bos = false, has_eos = false;
   for (iree_host_size_t i = 0; i < total; ++i) {
-    if (token_buffer[i] == 4) has_bos = true;
-    if (token_buffer[i] == 5) has_eos = true;
+    if (token_buffer[i] == 4) {
+      has_bos = true;
+    }
+    if (token_buffer[i] == 5) {
+      has_eos = true;
+    }
   }
   EXPECT_TRUE(has_bos) << "Expected BOS token (4) in output";
   EXPECT_TRUE(has_eos) << "Expected EOS token (5) in output";

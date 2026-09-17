@@ -663,7 +663,9 @@ static bool loom_low_allocation_checker_unit_lifetimes_overlap(
 static uint32_t loom_low_allocation_checker_content_root(uint32_t* parents,
                                                          uint32_t index) {
   uint32_t root = index;
-  while (parents[root] != root) root = parents[root];
+  while (parents[root] != root) {
+    root = parents[root];
+  }
   while (parents[index] != index) {
     const uint32_t next = parents[index];
     parents[index] = root;
@@ -687,7 +689,9 @@ static iree_status_t loom_low_allocation_checker_contents(
       checker->arena, count, sizeof(*ranks), (void**)&ranks));
   memset(ranks, 0, count * sizeof(*ranks));
   uint32_t* parents = checker->content_roots;
-  for (iree_host_size_t i = 0; i < count; ++i) parents[i] = (uint32_t)i;
+  for (iree_host_size_t i = 0; i < count; ++i) {
+    parents[i] = (uint32_t)i;
+  }
   for (iree_host_size_t i = 0; i < allocation->placement.relation_count; ++i) {
     const loom_low_placement_relation_t* relation =
         &allocation->placement.relations[i];
@@ -722,12 +726,16 @@ static iree_status_t loom_low_allocation_checker_contents(
       uint32_t rhs = loom_low_allocation_checker_content_root(
           parents,
           source->unit_point_start + relation->source_unit_offset + unit);
-      if (lhs == rhs) continue;
+      if (lhs == rhs) {
+        continue;
+      }
       if (ranks[lhs] < ranks[rhs]) {
         parents[lhs] = rhs;
       } else {
         parents[rhs] = lhs;
-        if (ranks[lhs] == ranks[rhs]) ++ranks[lhs];
+        if (ranks[lhs] == ranks[rhs]) {
+          ++ranks[lhs];
+        }
       }
     }
   }
@@ -747,7 +755,9 @@ static bool loom_low_allocation_checker_unit_alias_is_authorized(
       loom_low_allocation_checker_storage_root(checker, lhs, lhs_unit);
   const iree_host_size_t rhs_root =
       loom_low_allocation_checker_storage_root(checker, rhs, rhs_unit);
-  if (lhs_root == rhs_root) return true;
+  if (lhs_root == rhs_root) {
+    return true;
+  }
   const iree_host_size_t lhs_index =
       (iree_host_size_t)lhs->unit_point_start + lhs_unit;
   const iree_host_size_t rhs_index =
@@ -779,7 +789,9 @@ static bool loom_low_allocation_checker_unit_alias_is_authorized(
     const loom_liveness_interval_t* result_interval =
         loom_liveness_interval_for_value_ordinal(&checker->allocation->liveness,
                                                  relation->result_ordinal);
-    if (overlap.start_point < result_interval->start_point) continue;
+    if (overlap.start_point < result_interval->start_point) {
+      continue;
+    }
     for (uint32_t unit = 0; unit < relation->unit_count; ++unit) {
       // A copy's bit identity ends when either value is overwritten. Mandatory
       // storage identity continues, but cannot authorize aliases of old bits.
@@ -1079,7 +1091,9 @@ iree_status_t loom_low_allocation_check_frame(
   }
   IREE_RETURN_IF_ERROR(loom_low_allocation_checker_schedule(&checker));
   IREE_RETURN_IF_ERROR(loom_low_allocation_checker_assignments(&checker));
-  if (out_result->violation_count != 0) return iree_ok_status();
+  if (out_result->violation_count != 0) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       arena, frame->allocation.unit_point_count, sizeof(*checker.storage),
       (void**)&checker.storage));
@@ -1088,7 +1102,9 @@ iree_status_t loom_low_allocation_check_frame(
         .root = i, .clobber_point = UINT32_MAX};
   }
   loom_low_allocation_checker_constraints(&checker);
-  if (out_result->violation_count != 0) return iree_ok_status();
+  if (out_result->violation_count != 0) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(loom_low_allocation_checker_contents(&checker));
   loom_low_allocation_checker_storage_conflicts(&checker);
   loom_low_allocation_checker_early_clobbers(&checker);

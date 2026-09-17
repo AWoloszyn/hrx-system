@@ -153,7 +153,9 @@ static iree_status_t hrx_iree_exact_pool_acquire_reservations(
     status = iree_hal_allocator_allocate_buffer(
         pool->allocator, pool->params, requests[acquired_count].allocation_size,
         &buffers[acquired_count]);
-    if (iree_status_is_ok(status)) ++acquired_count;
+    if (iree_status_is_ok(status)) {
+      ++acquired_count;
+    }
   }
   if (iree_status_is_ok(status)) {
     for (iree_host_size_t i = 0; i < request_count; ++i) {
@@ -225,7 +227,9 @@ static iree_status_t hrx_iree_exact_pool_materialize_reservations(
   for (iree_host_size_t i = 0; i < reservation_count; ++i) {
     iree_hal_buffer_t* buffer =
         (iree_hal_buffer_t*)(uintptr_t)reservations[i].block_handle;
-    if (!transfer_ownership) iree_hal_buffer_retain(buffer);
+    if (!transfer_ownership) {
+      iree_hal_buffer_retain(buffer);
+    }
     out_buffers[i] = buffer;
   }
   if (transfer_ownership) {

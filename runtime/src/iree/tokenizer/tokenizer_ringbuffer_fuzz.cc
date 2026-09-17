@@ -46,7 +46,9 @@ extern "C" int LLVMFuzzerInitialize(int* argc, char*** argv) {
 }
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  if (g_tokenizer == NULL || size < 2) return 0;
+  if (g_tokenizer == NULL || size < 2) {
+    return 0;
+  }
 
   // First byte controls buffer size (powers of 2 from 256 to 16KB).
   uint8_t size_selector = data[0] % 7;  // 0-6
@@ -124,7 +126,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         (chunk_index < size) ? (data[chunk_index % size] & 0x7F) + 1 : 64;
     // Scale to range 1-512 bytes.
     iree_host_size_t chunk_size = ((chunk_base % 64) + 1) * 8;
-    if (chunk_size > size - offset) chunk_size = size - offset;
+    if (chunk_size > size - offset) {
+      chunk_size = size - offset;
+    }
 
     iree_string_view_t chunk =
         iree_make_string_view(input.data + offset, chunk_size);

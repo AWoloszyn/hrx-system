@@ -33,7 +33,9 @@ static iree_status_t loom_bytecode_write_parameterized_attr_payload(
     bool present = false;
     IREE_RETURN_IF_ERROR(loom_bytecode_parameter_is_present(
         family_descriptor, attr.parameterized_slots[i], i, &present));
-    if (present) ++present_count;
+    if (present) {
+      ++present_count;
+    }
   }
   uint32_t family_name_id = 0;
   IREE_RETURN_IF_ERROR(loom_bytecode_numbering_intern_string_view(
@@ -44,7 +46,9 @@ static iree_status_t loom_bytecode_write_parameterized_attr_payload(
       loom_bytecode_page_writer_write_uvarint(writer, present_count));
   for (uint8_t i = 0; i < family_descriptor->parameter_count; ++i) {
     const loom_attribute_t value = attr.parameterized_slots[i];
-    if (loom_attr_is_absent(value)) continue;
+    if (loom_attr_is_absent(value)) {
+      continue;
+    }
     const loom_attr_descriptor_t* parameter_descriptor =
         &family_descriptor->parameter_descriptors[i];
     uint32_t parameter_name_id = 0;
@@ -392,7 +396,9 @@ static iree_status_t loom_bytecode_emit_parameterized_attr_payload(
     bool present = false;
     IREE_RETURN_IF_ERROR(loom_bytecode_parameter_is_present(
         family_descriptor, attr.parameterized_slots[i], i, &present));
-    if (present) ++present_count;
+    if (present) {
+      ++present_count;
+    }
   }
   uint32_t family_name_id = 0;
   IREE_RETURN_IF_ERROR(loom_bytecode_numbering_intern_string_view(
@@ -401,7 +407,9 @@ static iree_status_t loom_bytecode_emit_parameterized_attr_payload(
   IREE_RETURN_IF_ERROR(loom_bytecode_emit_uvarint(builder, present_count));
   for (uint8_t i = 0; i < family_descriptor->parameter_count; ++i) {
     const loom_attribute_t value = attr.parameterized_slots[i];
-    if (loom_attr_is_absent(value)) continue;
+    if (loom_attr_is_absent(value)) {
+      continue;
+    }
     const loom_attr_descriptor_t* parameter_descriptor =
         &family_descriptor->parameter_descriptors[i];
     uint32_t parameter_name_id = 0;

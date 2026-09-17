@@ -115,7 +115,9 @@ const iree_hal_replay_recorder_options_t* iree_hal_replay_recorder_options(
 void iree_hal_replay_recorder_fail(iree_hal_replay_recorder_t* recorder,
                                    iree_status_code_t status_code) {
   IREE_ASSERT_ARGUMENT(recorder);
-  if (status_code == IREE_STATUS_OK) return;
+  if (status_code == IREE_STATUS_OK) {
+    return;
+  }
   iree_slim_mutex_lock(&recorder->mutex);
   if (recorder->terminal_status_code == IREE_STATUS_OK) {
     recorder->terminal_status_code = status_code;
@@ -164,7 +166,9 @@ iree_status_t iree_hal_replay_recorder_reserve_object_id(
   }
   iree_slim_mutex_unlock(&recorder->mutex);
 
-  if (iree_status_is_ok(status)) *out_object_id = object_id;
+  if (iree_status_is_ok(status)) {
+    *out_object_id = object_id;
+  }
   return status;
 }
 
@@ -205,7 +209,9 @@ iree_status_t iree_hal_replay_recorder_record_object(
   }
   iree_slim_mutex_unlock(&recorder->mutex);
 
-  if (iree_status_is_ok(status)) *out_object_id = object_id;
+  if (iree_status_is_ok(status)) {
+    *out_object_id = object_id;
+  }
   return status;
 }
 
@@ -226,7 +232,9 @@ iree_status_t iree_hal_replay_recorder_register_semaphore(
 
 iree_hal_replay_object_id_t iree_hal_replay_recorder_semaphore_id_or_none(
     iree_hal_replay_recorder_t* recorder, iree_hal_semaphore_t* semaphore) {
-  if (!semaphore) return IREE_HAL_REPLAY_OBJECT_ID_NONE;
+  if (!semaphore) {
+    return IREE_HAL_REPLAY_OBJECT_ID_NONE;
+  }
 
   iree_slim_mutex_lock(&recorder->mutex);
   iree_hal_replay_object_id_t semaphore_id = IREE_HAL_REPLAY_OBJECT_ID_NONE;
@@ -246,7 +254,9 @@ static iree_status_t iree_hal_replay_recorder_encode_semaphore_list(
     iree_hal_replay_recorder_t* recorder,
     const iree_hal_semaphore_list_t semaphore_list,
     iree_hal_replay_semaphore_timepoint_payload_t* out_payloads) {
-  if (semaphore_list.count == 0) return iree_ok_status();
+  if (semaphore_list.count == 0) {
+    return iree_ok_status();
+  }
   if (IREE_UNLIKELY(!semaphore_list.semaphores ||
                     !semaphore_list.payload_values || !out_payloads)) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
@@ -280,7 +290,9 @@ iree_status_t iree_hal_replay_recorder_allocate_semaphore_payloads(
   IREE_ASSERT_ARGUMENT(out_payloads_size);
   *out_payloads = NULL;
   *out_payloads_size = 0;
-  if (semaphore_list.count == 0) return iree_ok_status();
+  if (semaphore_list.count == 0) {
+    return iree_ok_status();
+  }
 
   iree_host_size_t payloads_size = 0;
   if (IREE_UNLIKELY(!iree_host_size_checked_mul(
@@ -369,7 +381,9 @@ iree_status_t iree_hal_replay_recorder_end_passthrough_operation_with_payload(
     iree_status_t operation_status, iree_host_size_t iovec_count,
     const iree_const_byte_span_t* iovecs) {
   iree_hal_replay_recorder_t* recorder = pending_record->recorder;
-  if (!recorder) return operation_status;
+  if (!recorder) {
+    return operation_status;
+  }
   pending_record->metadata.status_code =
       (uint32_t)iree_status_code(operation_status);
   iree_status_t record_status = iree_hal_replay_file_writer_append_record(
@@ -444,7 +458,9 @@ IREE_API_EXPORT iree_status_t iree_hal_replay_recorder_create(
 
   iree_hal_replay_recorder_options_t default_options =
       iree_hal_replay_recorder_options_default();
-  if (!options) options = &default_options;
+  if (!options) {
+    options = &default_options;
+  }
   if (IREE_UNLIKELY(options->flags != IREE_HAL_REPLAY_RECORDER_FLAG_NONE)) {
     IREE_TRACE_ZONE_END(z0);
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,

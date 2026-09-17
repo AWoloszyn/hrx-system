@@ -57,7 +57,9 @@ loom_encoding_role_t loom_encoding_value_role(const loom_module_t* module,
     return LOOM_ENCODING_ROLE_UNKNOWN;
   }
   loom_encoding_role_t type_role = loom_type_encoding_role(type);
-  if (type_role != LOOM_ENCODING_ROLE_UNKNOWN) return type_role;
+  if (type_role != LOOM_ENCODING_ROLE_UNKNOWN) {
+    return type_role;
+  }
 
   const loom_value_t* value = loom_module_value(module, value_id);
   if (loom_value_is_block_arg(value)) {

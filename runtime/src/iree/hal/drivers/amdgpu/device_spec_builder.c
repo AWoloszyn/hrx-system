@@ -179,7 +179,9 @@ static iree_status_t iree_hal_amdgpu_device_spec_populate_memory(
   iree_host_size_t heap_count = 0;
   iree_status_t status = iree_hal_allocator_query_memory_heaps(
       params->device_allocator, 0, NULL, &heap_count);
-  if (!iree_status_is_out_of_range(status)) return status;
+  if (!iree_status_is_out_of_range(status)) {
+    return status;
+  }
   iree_status_free(status);
   status = iree_ok_status();
 

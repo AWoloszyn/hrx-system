@@ -140,7 +140,9 @@ iree_status_t iree_io_uring_buffer_ring_allocate(
       reg.bgid = (uint16_t)(options.preferred_group_id + i);
       register_result = iree_io_uring_registration_execute(
           registration, IREE_IORING_REGISTER_PBUF_RING, &reg, 1);
-      if (register_result != -EEXIST) break;
+      if (register_result != -EEXIST) {
+        break;
+      }
     }
 
     if (register_result == -EEXIST) {
@@ -191,7 +193,9 @@ iree_status_t iree_io_uring_buffer_ring_allocate(
 
 iree_status_t iree_io_uring_buffer_ring_free(
     iree_io_uring_buffer_ring_t* ring) {
-  if (!ring) return iree_ok_status();
+  if (!ring) {
+    return iree_ok_status();
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   // Unregister from kernel.

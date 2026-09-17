@@ -162,10 +162,18 @@ iree_tokenizer_unigram_state_pending_tokens(
 // Returns 1 for invalid lead bytes (treats as single-byte character).
 static inline iree_host_size_t iree_tokenizer_unigram_utf8_char_length(
     uint8_t byte) {
-  if (byte < 0x80) return 1;
-  if ((byte & 0xE0) == 0xC0) return 2;
-  if ((byte & 0xF0) == 0xE0) return 3;
-  if ((byte & 0xF8) == 0xF0) return 4;
+  if (byte < 0x80) {
+    return 1;
+  }
+  if ((byte & 0xE0) == 0xC0) {
+    return 2;
+  }
+  if ((byte & 0xF0) == 0xE0) {
+    return 3;
+  }
+  if ((byte & 0xF8) == 0xF0) {
+    return 4;
+  }
   return 1;  // Invalid lead byte, treat as single byte.
 }
 
@@ -405,12 +413,16 @@ static iree_host_size_t iree_tokenizer_unigram_tokenize_chunk(
       iree_tokenizer_unigram_state_pending_tokens(state, model);
 
   // Empty chunks produce no tokens.
-  if (chunk_length == 0) return 0;
+  if (chunk_length == 0) {
+    return 0;
+  }
 
   // Run Viterbi DP.
   iree_host_size_t token_count = iree_tokenizer_unigram_viterbi(
       model, state, chunk_data, chunk_length, segment_byte_offset);
-  if (token_count > 0) return token_count;
+  if (token_count > 0) {
+    return token_count;
+  }
 
   // Viterbi found no valid path — try byte fallback.
   if (!iree_any_bit_set(model->flags,
@@ -606,7 +618,9 @@ static iree_host_size_t iree_tokenizer_unigram_emit_pending(
   iree_tokenizer_unigram_pending_token_t* pending =
       iree_tokenizer_unigram_state_pending_tokens(state, model);
   while (state->pending_emit_index < state->pending_count) {
-    if (token_count >= output.capacity) break;
+    if (token_count >= output.capacity) {
+      break;
+    }
     iree_tokenizer_unigram_pending_token_t* token =
         &pending[state->pending_emit_index];
     output.token_ids[token_count] = token->token_id;
@@ -680,10 +694,14 @@ static iree_status_t iree_tokenizer_unigram_process_segment(
 
   // Process chunks until the segment is fully consumed or output fills.
   while (state->byte_position < segment_length) {
-    if (token_count >= output.capacity) break;
+    if (token_count >= output.capacity) {
+      break;
+    }
 
     // For partial segments, stop before the holdback zone.
-    if (is_partial && state->byte_position >= safe_end) break;
+    if (is_partial && state->byte_position >= safe_end) {
+      break;
+    }
 
     // Determine chunk bounds. Use chunk_size for the Viterbi pass width.
     iree_host_size_t chunk_end = state->byte_position + model->chunk_size;
@@ -716,7 +734,9 @@ static iree_status_t iree_tokenizer_unigram_process_segment(
     if (subtokens == 0 && chunk_length > 0) {
       // Non-empty chunk that couldn't be tokenized — emit UNK if available.
       if (model->unk_token_id != IREE_TOKENIZER_TOKEN_ID_INVALID) {
-        if (token_count >= output.capacity) break;
+        if (token_count >= output.capacity) {
+          break;
+        }
         output.token_ids[token_count] = model->unk_token_id;
         if (output.token_offsets) {
           output.token_offsets[token_count].start =
@@ -790,7 +810,9 @@ static iree_status_t iree_tokenizer_unigram_state_encode(
 
   for (iree_host_size_t segment_index = 0; segment_index < segments.count;
        ++segment_index) {
-    if (token_count >= output.capacity) break;
+    if (token_count >= output.capacity) {
+      break;
+    }
 
     bool is_partial =
         segments.last_is_partial && segment_index == segments.count - 1;

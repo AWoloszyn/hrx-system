@@ -84,14 +84,18 @@ static void iree_profile_summary_record_clock_sample(
 
 static bool iree_profile_summary_accumulate_ticks(uint64_t* total_ticks,
                                                   uint64_t duration_ticks) {
-  if (duration_ticks > UINT64_MAX - *total_ticks) return false;
+  if (duration_ticks > UINT64_MAX - *total_ticks) {
+    return false;
+  }
   *total_ticks += duration_ticks;
   return true;
 }
 
 static bool iree_profile_summary_accumulate_u64(uint64_t* total,
                                                 uint64_t value) {
-  if (value > UINT64_MAX - *total) return false;
+  if (value > UINT64_MAX - *total) {
+    return false;
+  }
   *total += value;
   return true;
 }
@@ -134,7 +138,9 @@ static iree_status_t iree_profile_summary_count_typed_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
     ++*record_count;
   }
   return status;
@@ -152,7 +158,9 @@ static iree_status_t iree_profile_summary_process_device_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_device_record_t device_record =
         iree_hal_profile_device_record_default();
@@ -214,7 +222,9 @@ static iree_status_t iree_profile_summary_process_queue_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_queue_record_t queue_record;
     memcpy(&queue_record, typed_record.contents.data, sizeof(queue_record));
@@ -251,7 +261,9 @@ iree_profile_summary_process_executable_code_object_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_executable_code_object_record_t code_object_record;
     memcpy(&code_object_record, typed_record.contents.data,
@@ -324,7 +336,9 @@ static iree_status_t iree_profile_summary_process_clock_correlation_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_clock_correlation_record_t clock_record;
     memcpy(&clock_record, typed_record.contents.data, sizeof(clock_record));
@@ -355,7 +369,9 @@ static iree_status_t iree_profile_summary_process_dispatch_event_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_dispatch_event_t dispatch_record;
     memcpy(&dispatch_record, typed_record.contents.data,
@@ -390,7 +406,9 @@ static iree_status_t iree_profile_summary_process_counter_set_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_counter_set_record_t counter_set_record;
     memcpy(&counter_set_record, typed_record.contents.data,
@@ -420,7 +438,9 @@ static iree_status_t iree_profile_summary_process_counter_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_counter_record_t counter_record;
     memcpy(&counter_record, typed_record.contents.data, sizeof(counter_record));
@@ -455,7 +475,9 @@ static iree_status_t iree_profile_summary_process_counter_sample_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_counter_sample_record_t sample_record;
     memcpy(&sample_record, typed_record.contents.data, sizeof(sample_record));
@@ -487,7 +509,9 @@ static iree_status_t iree_profile_summary_process_device_metric_source_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_device_metric_source_record_t source_record;
     memcpy(&source_record, typed_record.contents.data, sizeof(source_record));
@@ -519,7 +543,9 @@ iree_profile_summary_process_device_metric_descriptor_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_device_metric_descriptor_record_t descriptor_record;
     memcpy(&descriptor_record, typed_record.contents.data,
@@ -554,7 +580,9 @@ static iree_status_t iree_profile_summary_process_device_metric_sample_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_device_metric_sample_record_t sample_record;
     memcpy(&sample_record, typed_record.contents.data, sizeof(sample_record));
@@ -642,7 +670,9 @@ static iree_status_t iree_profile_summary_process_host_execution_event_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_host_execution_event_t event;
     memcpy(&event, typed_record.contents.data, sizeof(event));
@@ -676,7 +706,9 @@ static iree_status_t iree_profile_summary_process_command_region_event_records(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_command_region_event_t event;
     memcpy(&event, typed_record.contents.data, sizeof(event));
@@ -853,7 +885,9 @@ static void iree_profile_summary_process_session_end_record(
   ++summary->session_end_count;
   iree_status_code_t session_status_code =
       (iree_status_code_t)record->header.session_status_code;
-  if (session_status_code == IREE_STATUS_OK) return;
+  if (session_status_code == IREE_STATUS_OK) {
+    return;
+  }
 
   ++summary->non_ok_session_end_count;
   if (summary->non_ok_session_end_count == 1) {
@@ -915,7 +949,9 @@ static bool iree_profile_device_summary_clock_covers_dispatches(
   if (device->clock_sample_count < 2 || valid_dispatch_count == 0) {
     return false;
   }
-  if (device->invalid_clock_alignment_sample_count != 0) return false;
+  if (device->invalid_clock_alignment_sample_count != 0) {
+    return false;
+  }
   if (!iree_all_bits_set(device->first_clock_sample.flags,
                          IREE_HAL_PROFILE_CLOCK_CORRELATION_FLAG_DEVICE_TICK) ||
       !iree_all_bits_set(device->last_clock_sample.flags,

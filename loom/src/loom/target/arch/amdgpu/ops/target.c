@@ -249,7 +249,9 @@ static iree_status_t loom_amdgpu_target_record_verify_features(
     const loom_amdgpu_processor_info_t* processor) {
   const loom_attribute_t attr =
       loom_op_const_attrs(op)[loom_amdgpu_target_features_ATTR_INDEX];
-  if (loom_attr_is_absent(attr)) return iree_ok_status();
+  if (loom_attr_is_absent(attr)) {
+    return iree_ok_status();
+  }
   const loom_signed_enum_set_t features = loom_attr_as_signed_enum_set(attr);
   if (features.word_count == 0) {
     const loom_diagnostic_param_t params[] = {
@@ -269,7 +271,9 @@ static iree_status_t loom_amdgpu_target_record_verify_features(
         loom_signed_enum_set_contains_positive(features, (uint8_t)stable_value);
     const bool negative =
         loom_signed_enum_set_contains_negative(features, (uint8_t)stable_value);
-    if (!positive && !negative) continue;
+    if (!positive && !negative) {
+      continue;
+    }
     IREE_ASSERT(!(positive && negative));
     const loom_amdgpu_target_id_feature_support_bit_t support_bit =
         loom_amdgpu_target_feature_support_bit((uint8_t)stable_value);

@@ -128,7 +128,9 @@ static iree_status_t loom_test_module_noop_run(loom_pass_t* pass,
   loom_test_pass_trace_t* trace = loom_test_pass_trace_from_pass(pass);
   IREE_RETURN_IF_ERROR(loom_test_pass_trace_record(
       trace, pass, IREE_SV("test.module-noop"), IREE_SV("<module>")));
-  if (trace) ++trace->module_noop_invocation_count;
+  if (trace) {
+    ++trace->module_noop_invocation_count;
+  }
   loom_test_invocation_statistics_t* statistics =
       loom_test_invocation_statistics(pass);
   ++statistics->invocations;
@@ -142,7 +144,9 @@ static iree_status_t loom_test_noop_run(loom_pass_t* pass,
   IREE_RETURN_IF_ERROR(loom_test_pass_trace_record(
       trace, pass, IREE_SV("test.noop"),
       loom_test_pass_function_name(module, function)));
-  if (trace) ++trace->noop_invocation_count;
+  if (trace) {
+    ++trace->noop_invocation_count;
+  }
   loom_test_invocation_statistics_t* statistics =
       loom_test_invocation_statistics(pass);
   ++statistics->invocations;
@@ -164,7 +168,9 @@ static iree_status_t loom_test_mark_changed_run(loom_pass_t* pass,
   IREE_RETURN_IF_ERROR(loom_test_pass_trace_record(
       trace, pass, IREE_SV("test.mark-changed"),
       loom_test_pass_function_name(module, function)));
-  if (trace) ++trace->mark_changed_invocation_count;
+  if (trace) {
+    ++trace->mark_changed_invocation_count;
+  }
   loom_pass_mark_changed(pass);
   loom_test_mark_changed_statistics_t* statistics =
       loom_test_mark_changed_statistics(pass);
@@ -216,7 +222,9 @@ static iree_status_t loom_test_options_run(loom_pass_t* pass,
   IREE_RETURN_IF_ERROR(loom_test_pass_trace_record(
       trace, pass, IREE_SV("test.options"),
       loom_test_pass_function_name(module, function)));
-  if (trace) ++trace->options_invocation_count;
+  if (trace) {
+    ++trace->options_invocation_count;
+  }
   loom_test_invocation_statistics_t* statistics =
       loom_test_invocation_statistics(pass);
   ++statistics->invocations;
@@ -300,7 +308,9 @@ static iree_status_t loom_test_fail_run(loom_pass_t* pass,
   loom_test_pass_trace_t* trace = loom_test_pass_trace_from_pass(pass);
   IREE_RETURN_IF_ERROR(loom_test_pass_trace_record(
       trace, pass, IREE_SV("test.fail"), IREE_SV("<module>")));
-  if (trace) ++trace->fail_invocation_count;
+  if (trace) {
+    ++trace->fail_invocation_count;
+  }
   loom_test_invocation_statistics_t* statistics =
       loom_test_invocation_statistics(pass);
   ++statistics->invocations;

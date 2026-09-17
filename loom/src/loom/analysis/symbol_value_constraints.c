@@ -12,9 +12,13 @@
 
 static bool loom_symbol_value_to_i64(loom_type_t type, loom_attribute_t value,
                                      int64_t* out_value) {
-  if (!loom_type_is_scalar(type)) return false;
+  if (!loom_type_is_scalar(type)) {
+    return false;
+  }
   loom_scalar_type_t scalar_type = loom_type_element_type(type);
-  if (!loom_attr_matches_scalar_type(value, scalar_type, NULL)) return false;
+  if (!loom_attr_matches_scalar_type(value, scalar_type, NULL)) {
+    return false;
+  }
   if (scalar_type == LOOM_SCALAR_TYPE_I1 && value.kind == LOOM_ATTR_BOOL) {
     *out_value = loom_attr_as_bool(value) ? 1 : 0;
     return true;
@@ -44,11 +48,15 @@ static iree_status_t loom_symbol_value_predicate_const_arg(
 }
 
 static bool loom_symbol_value_is_multiple_of(int64_t value, int64_t divisor) {
-  if (divisor == 0) return false;
+  if (divisor == 0) {
+    return false;
+  }
   if (divisor == INT64_MIN) {
     return value == 0 || value == INT64_MIN;
   }
-  if (divisor < 0) divisor = -divisor;
+  if (divisor < 0) {
+    divisor = -divisor;
+  }
   return value % divisor == 0;
 }
 
@@ -178,7 +186,9 @@ iree_status_t loom_symbol_value_constraints_check_exact(
     bool satisfied = false;
     IREE_RETURN_IF_ERROR(
         loom_symbol_value_predicate_satisfied(predicate, value, &satisfied));
-    if (satisfied) continue;
+    if (satisfied) {
+      continue;
+    }
     const char* kind_name = loom_predicate_kind_name(predicate->kind);
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "symbol '@%.*s' value %" PRId64

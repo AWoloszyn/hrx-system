@@ -194,7 +194,9 @@ static inline iree_status_t iree_hal_amdgpu_aql_validate_dispatch_params(
           IREE_STATUS_OUT_OF_RANGE,
           "dispatch work-item grid dimension %u exceeds u32", (unsigned)i);
     }
-    if (!uses_workgroup_clusters) continue;
+    if (!uses_workgroup_clusters) {
+      continue;
+    }
     if (IREE_UNLIKELY(params->workgroup_count[i] == 0)) {
       return iree_make_status(
           IREE_STATUS_INVALID_ARGUMENT,

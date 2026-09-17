@@ -137,7 +137,9 @@ static amdf_status_t amdf_gpu_kfd_user_queue_buffer_create(
   const amdf_status_t status = queue->native_api->buffer_create(
       queue->native_api->user_data, queue->device, create_info, &native,
       &result);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   if (create_info->host_access != AMDF_GPU_KFD_BUFFER_HOST_ACCESS_NONE) {
     memset(result.host_pointer, 0, create_info->byte_length);
   }
@@ -152,7 +154,9 @@ static amdf_status_t amdf_gpu_kfd_user_queue_buffer_create(
 static amdf_status_t amdf_gpu_kfd_user_queue_buffer_destroy(
     amdf_gpu_umd_user_queue_t* queue,
     amdf_gpu_kfd_user_queue_buffer_t* buffer) {
-  if (buffer->native == NULL) return AMDF_STATUS_OK;
+  if (buffer->native == NULL) {
+    return AMDF_STATUS_OK;
+  }
   const amdf_status_t status = queue->native_api->buffer_destroy(
       queue->native_api->user_data, buffer->native);
   if (amdf_status_is_ok(status)) {
@@ -170,7 +174,9 @@ static void amdf_gpu_kfd_user_queue_record_failure(
 
 static amdf_status_t amdf_gpu_kfd_user_queue_classify_error(
     uint64_t error_payload) {
-  if (error_payload == 0) return AMDF_STATUS_OK;
+  if (error_payload == 0) {
+    return AMDF_STATUS_OK;
+  }
   if ((error_payload & (KFD_EC_MASK_DEVICE | KFD_EC_MASK_PROCESS)) != 0) {
     return amdf_make_api_status(AMDF_STATUS_CODE_DEVICE_LOST);
   }
@@ -250,21 +256,27 @@ amdf_status_t amdf_gpu_umd_user_queue_destroy(
               ? AMDF_GPU_KFD_USER_QUEUE_RETIREMENT_FLUSH_REQUIRED
               : AMDF_GPU_KFD_USER_QUEUE_RETIREMENT_RESET_REQUIRED;
     }
-    if (!amdf_status_is_ok(result.status)) return result.status;
+    if (!amdf_status_is_ok(result.status)) {
+      return result.status;
+    }
   }
 
   if (queue->retirement_state ==
       AMDF_GPU_KFD_USER_QUEUE_RETIREMENT_FLUSH_REQUIRED) {
     const amdf_status_t status = amdf_gpu_kfd_user_queue_buffer_destroy(
         queue, &queue->retirement_flush_trigger);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
     queue->retirement_state = AMDF_GPU_KFD_USER_QUEUE_RETIREMENT_RELEASABLE;
   } else if (queue->retirement_state ==
              AMDF_GPU_KFD_USER_QUEUE_RETIREMENT_RESET_REQUIRED) {
     amdf_gpu_kfd_reset_state_t reset_state = {0};
     const amdf_status_t status = queue->native_api->reset_query(
         queue->native_api->user_data, queue->device, &reset_state);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
     if (!reset_state.reset_observed || reset_state.reset_in_progress) {
       return amdf_make_api_status(AMDF_STATUS_CODE_BUSY);
     }
@@ -296,7 +308,9 @@ static bool amdf_gpu_kfd_user_queue_select_plan(
     const amdf_gpu_umd_device_t* device,
     const amdf_gpu_umd_user_queue_create_info_t* create_info,
     amdf_gpu_kfd_user_queue_plan_t* out_plan) {
-  if (!device->reset_monitor.context_owned) return false;
+  if (!device->reset_monitor.context_owned) {
+    return false;
+  }
   amdf_gpu_kfd_user_queue_plans_t plans;
   amdf_gpu_kfd_target_user_queue_plans_initialize(
       &device->topology, device->page_size, device->cache_line_size, &plans);
@@ -338,7 +352,9 @@ amdf_status_t amdf_gpu_umd_user_queue_create(
   amdf_status_t status =
       amdf_calloc(device->host_allocator, sizeof(*queue),
                   amdf_alignof(amdf_gpu_umd_user_queue_t), (void**)&queue);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   queue->device = device;
   queue->native_api = device->user_queue_native_api;
   queue->plan = plan;
@@ -419,7 +435,9 @@ amdf_status_t amdf_gpu_umd_user_queue_create(
           queue->native_api->user_data, device,
           arguments.doorbell_offset & ~mapping_mask, mapping_byte_length,
           &mapping);
-      if (amdf_status_is_ok(status)) queue->doorbell_mapping = mapping;
+      if (amdf_status_is_ok(status)) {
+        queue->doorbell_mapping = mapping;
+      }
     }
   }
 
@@ -461,7 +479,9 @@ amdf_status_t amdf_gpu_umd_user_queue_map(
   const amdf_status_t status = amdf_calloc(
       queue->device->host_allocator, sizeof(*mapping),
       amdf_alignof(amdf_gpu_umd_user_queue_mapping_t), (void**)&mapping);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   mapping->host_allocator = queue->device->host_allocator;
   const amdf_gpu_umd_user_queue_mapping_result_t result = {
       .ring_address = (uintptr_t)((uint8_t*)queue->ring.host_pointer +
@@ -507,7 +527,9 @@ amdf_status_t amdf_gpu_umd_user_queue_query_status(
           amdf_atomic_uint64_load_acquire(&queue->terminal_status))) {
     const amdf_status_t status = queue->native_api->vm_fault_query(
         queue->native_api->user_data, queue->device, &fault);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
   }
   uint64_t producer_index;
   uint64_t consumed_index;
@@ -554,7 +576,9 @@ amdf_status_t amdf_gpu_umd_user_queue_wait_consumed(
   amdf_user_queue_status_t queue_status = {0};
   amdf_status_t status =
       amdf_gpu_umd_user_queue_query_status(queue, &queue_status);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   if (published_index > queue_status.producer_index) {
     return amdf_make_api_status(AMDF_STATUS_CODE_OUT_OF_RANGE);
   }
@@ -562,16 +586,24 @@ amdf_status_t amdf_gpu_umd_user_queue_wait_consumed(
     if (!amdf_status_is_ok(queue_status.terminal_status)) {
       return queue_status.terminal_status;
     }
-    if (queue_status.consumed_index >= published_index) return AMDF_STATUS_OK;
+    if (queue_status.consumed_index >= published_index) {
+      return AMDF_STATUS_OK;
+    }
 
     amdf_wait_budget_t remaining = {0};
     status = amdf_wait_deadline_query_remaining(deadline, &remaining);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
     if (remaining.timeout == 0) {
       return amdf_make_api_status(AMDF_STATUS_CODE_DEADLINE_EXCEEDED);
     }
-    if (remaining.poll == 0) amdf_platform_wait_yield();
+    if (remaining.poll == 0) {
+      amdf_platform_wait_yield();
+    }
     status = amdf_gpu_umd_user_queue_query_status(queue, &queue_status);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
   }
 }

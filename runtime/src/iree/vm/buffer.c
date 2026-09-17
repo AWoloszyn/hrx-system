@@ -43,7 +43,9 @@ static inline iree_vm_buffer_access_flags_t iree_vm_buffer_effective_access(
     const iree_vm_buffer_t* buffer) {
   const iree_vm_buffer_access_flags_t access =
       iree_vm_buffer_local_access(buffer);
-  if (access == IREE_VM_BUFFER_ACCESS_FLAG_NONE) return access;
+  if (access == IREE_VM_BUFFER_ACCESS_FLAG_NONE) {
+    return access;
+  }
   if ((buffer->flags & IREE_VM_BUFFER_FLAG_VIEW) &&
       iree_vm_buffer_local_access(buffer->root) ==
           IREE_VM_BUFFER_ACCESS_FLAG_NONE) {

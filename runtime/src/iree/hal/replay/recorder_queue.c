@@ -145,7 +145,9 @@ static iree_status_t iree_hal_replay_recorder_queue_allocate_array(
   void* ptr = NULL;
   iree_status_t status =
       iree_allocator_malloc(host_allocator, allocation_size, &ptr);
-  if (iree_status_is_ok(status)) *out_ptr = ptr;
+  if (iree_status_is_ok(status)) {
+    *out_ptr = ptr;
+  }
   return status;
 }
 
@@ -200,7 +202,9 @@ iree_hal_replay_recorder_buffer_ref_list_storage_initialize(
     iree_hal_replay_recorder_buffer_ref_list_storage_t* out_storage) {
   memset(out_storage, 0, sizeof(*out_storage));
   out_storage->base_list = source_list;
-  if (source_list.count == 0) return iree_ok_status();
+  if (source_list.count == 0) {
+    return iree_ok_status();
+  }
   if (IREE_UNLIKELY(!source_list.values)) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "replay queue buffer reference storage is NULL");
@@ -369,33 +373,43 @@ static iree_status_t iree_hal_replay_recorder_queue_analyze_transfer(
     iree_host_size_t operation_data_length = 0;
     switch (operation->type) {
       case IREE_HAL_TRANSFER_OPERATION_TYPE_FILL:
-        if (operation->fill.length == 0) break;
+        if (operation->fill.length == 0) {
+          break;
+        }
         can_record &= iree_hal_replay_recorder_queue_has_captured_buffer(
             queue->recorder, operation->fill.target_buffer);
         operation_data_length = operation->fill.pattern_length;
         break;
       case IREE_HAL_TRANSFER_OPERATION_TYPE_UPDATE:
-        if (operation->update.length == 0) break;
+        if (operation->update.length == 0) {
+          break;
+        }
         can_record &= iree_hal_replay_recorder_queue_has_captured_buffer(
             queue->recorder, operation->update.target_buffer);
         operation_data_length = (iree_host_size_t)operation->update.length;
         break;
       case IREE_HAL_TRANSFER_OPERATION_TYPE_COPY:
-        if (operation->copy.length == 0) break;
+        if (operation->copy.length == 0) {
+          break;
+        }
         can_record &= iree_hal_replay_recorder_queue_has_captured_buffer(
                           queue->recorder, operation->copy.source_buffer) &&
                       iree_hal_replay_recorder_queue_has_captured_buffer(
                           queue->recorder, operation->copy.target_buffer);
         break;
       case IREE_HAL_TRANSFER_OPERATION_TYPE_UPLOAD:
-        if (operation->upload.length == 0) break;
+        if (operation->upload.length == 0) {
+          break;
+        }
         can_record &= wait_semaphore_list.count == 0;
         can_record &= iree_hal_replay_recorder_queue_has_captured_buffer(
             queue->recorder, operation->upload.target_buffer);
         operation_data_length = (iree_host_size_t)operation->upload.length;
         break;
       case IREE_HAL_TRANSFER_OPERATION_TYPE_DOWNLOAD:
-        if (operation->download.length == 0) break;
+        if (operation->download.length == 0) {
+          break;
+        }
         can_record &= iree_hal_replay_recorder_queue_has_captured_buffer(
             queue->recorder, operation->download.source_buffer);
         break;
@@ -1224,7 +1238,9 @@ static iree_status_t iree_hal_replay_recorder_queue_prepare_transfer(
     base_operation->type = operation->type;
     switch (operation->type) {
       case IREE_HAL_TRANSFER_OPERATION_TYPE_FILL: {
-        if (operation->fill.length == 0) break;
+        if (operation->fill.length == 0) {
+          break;
+        }
         *base_operation = *operation;
         IREE_RETURN_IF_ERROR(iree_hal_replay_recorder_buffer_unwrap_for_call(
             operation->fill.target_buffer, queue->host_allocator,
@@ -1246,7 +1262,9 @@ static iree_status_t iree_hal_replay_recorder_queue_prepare_transfer(
         break;
       }
       case IREE_HAL_TRANSFER_OPERATION_TYPE_UPDATE: {
-        if (operation->update.length == 0) break;
+        if (operation->update.length == 0) {
+          break;
+        }
         *base_operation = *operation;
         IREE_RETURN_IF_ERROR(iree_hal_replay_recorder_buffer_unwrap_for_call(
             operation->update.target_buffer, queue->host_allocator,
@@ -1270,7 +1288,9 @@ static iree_status_t iree_hal_replay_recorder_queue_prepare_transfer(
         break;
       }
       case IREE_HAL_TRANSFER_OPERATION_TYPE_COPY: {
-        if (operation->copy.length == 0) break;
+        if (operation->copy.length == 0) {
+          break;
+        }
         *base_operation = *operation;
         IREE_RETURN_IF_ERROR(iree_hal_replay_recorder_buffer_unwrap_for_call(
             operation->copy.source_buffer, queue->host_allocator,
@@ -1294,7 +1314,9 @@ static iree_status_t iree_hal_replay_recorder_queue_prepare_transfer(
         break;
       }
       case IREE_HAL_TRANSFER_OPERATION_TYPE_UPLOAD: {
-        if (operation->upload.length == 0) break;
+        if (operation->upload.length == 0) {
+          break;
+        }
         *base_operation = *operation;
         IREE_RETURN_IF_ERROR(iree_hal_replay_recorder_buffer_unwrap_for_call(
             operation->upload.target_buffer, queue->host_allocator,
@@ -1315,7 +1337,9 @@ static iree_status_t iree_hal_replay_recorder_queue_prepare_transfer(
         break;
       }
       case IREE_HAL_TRANSFER_OPERATION_TYPE_DOWNLOAD: {
-        if (operation->download.length == 0) break;
+        if (operation->download.length == 0) {
+          break;
+        }
         *base_operation = *operation;
         IREE_RETURN_IF_ERROR(iree_hal_replay_recorder_buffer_unwrap_for_call(
             operation->download.source_buffer, queue->host_allocator,
@@ -1370,7 +1394,9 @@ static void iree_hal_replay_recorder_queue_destroy(
     iree_hal_queue_t* base_queue) {
   iree_hal_replay_recorder_queue_t* queue =
       (iree_hal_replay_recorder_queue_t*)base_queue;
-  if (iree_allocator_is_null(queue->storage_allocator)) return;
+  if (iree_allocator_is_null(queue->storage_allocator)) {
+    return;
+  }
   iree_allocator_t storage_allocator = queue->storage_allocator;
   iree_hal_queue_release(queue->base_queue);
   iree_allocator_free(storage_allocator, queue);

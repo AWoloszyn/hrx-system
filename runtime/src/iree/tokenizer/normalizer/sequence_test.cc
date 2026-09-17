@@ -668,7 +668,9 @@ TEST_F(SequenceNormalizerTest, HasPendingWithIntermediateBuffer) {
     if (written > 0) {
       result += output_char;
     }
-    if (consumed == 0 && written == 0) break;
+    if (consumed == 0 && written == 0) {
+      break;
+    }
   }
 
   // Process remaining input.
@@ -679,8 +681,12 @@ TEST_F(SequenceNormalizerTest, HasPendingWithIntermediateBuffer) {
         iree_make_string_view(input.data() + pos, input.size() - pos),
         iree_make_mutable_string_view(&output_char, 1),
         IREE_TOKENIZER_NORMALIZER_FLAG_NONE, &consumed, &written));
-    if (written > 0) result += output_char;
-    if (consumed == 0 && written == 0) break;
+    if (written > 0) {
+      result += output_char;
+    }
+    if (consumed == 0 && written == 0) {
+      break;
+    }
     pos += consumed;
   }
 
@@ -735,7 +741,9 @@ TEST_F(SequenceNormalizerTest, ConsumptionGranularityWithLimitedOutput) {
       result.append(output_buffer, written);
     }
 
-    if (consumed == 0 && written == 0) break;
+    if (consumed == 0 && written == 0) {
+      break;
+    }
     position += consumed;
   }
 
@@ -827,8 +835,12 @@ TEST_F(SequenceNormalizerTest, FinalizeRejectsDeferredConsumption) {
           iree_make_string_view(input.data() + pos, input.size() - pos),
           iree_make_mutable_string_view(&output_char, 1),
           IREE_TOKENIZER_NORMALIZER_FLAG_NONE, &consumed, &written));
-      if (written > 0) result += output_char;
-      if (consumed == 0 && written == 0) break;
+      if (written > 0) {
+        result += output_char;
+      }
+      if (consumed == 0 && written == 0) {
+        break;
+      }
       pos += consumed;
     }
 

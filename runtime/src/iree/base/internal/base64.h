@@ -66,10 +66,14 @@ iree_status_t iree_base64_encode(iree_const_byte_span_t data,
 // (L/4)*3+2 < SIZE_MAX for any L, but checked for defense-in-depth).
 static inline iree_host_size_t iree_base64_decoded_size(
     iree_string_view_t encoded) {
-  if (encoded.size == 0) return 0;
+  if (encoded.size == 0) {
+    return 0;
+  }
   // Strip trailing padding to get the data-carrying length.
   iree_host_size_t length = encoded.size;
-  while (length > 0 && encoded.data[length - 1] == '=') --length;
+  while (length > 0 && encoded.data[length - 1] == '=') {
+    --length;
+  }
   // Every 4 base64 characters encode 3 bytes. Trailing groups of 2 characters
   // encode 1 byte, 3 characters encode 2 bytes.
   iree_host_size_t groups_size = 0;

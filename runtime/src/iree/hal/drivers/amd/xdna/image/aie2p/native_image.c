@@ -233,7 +233,9 @@ static iree_status_t iree_hal_amd_xdna_aie2p_native_measure_control(
   *out_measurement = (iree_hal_amd_xdna_aie2p_native_measurement_t){
       .byte_length = IREE_HAL_AMD_XDNA_AIE2P_TRANSACTION_HEADER_SIZE,
   };
-  if (control == NULL) return iree_ok_status();
+  if (control == NULL) {
+    return iree_ok_status();
+  }
 
   const uint64_t record_end =
       (uint64_t)control->first_record_ordinal + control->record_count;
@@ -510,7 +512,9 @@ static iree_status_t iree_hal_amd_xdna_aie2p_native_append_record_relocations(
   while (*relocation_ordinal < relocation_end) {
     const iree_hal_amd_xdna_elf_relocation_record_t* relocation =
         iree_hal_amd_xdna_image_relocation(image, *relocation_ordinal);
-    if (relocation->target_byte_offset >= record_end) break;
+    if (relocation->target_byte_offset >= record_end) {
+      break;
+    }
     if (relocation->binding_ordinal < entry->first_binding_ordinal ||
         relocation->binding_ordinal - entry->first_binding_ordinal >=
             entry->binding_count) {
@@ -739,13 +743,17 @@ iree_status_t iree_hal_amd_xdna_aie2p_native_image_create(
     iree_hal_amd_xdna_aie2p_native_measurement_t measurement;
     status = iree_hal_amd_xdna_aie2p_native_measure_array(
         image, iree_hal_amd_xdna_image_array(image, i), &measurement);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     iree_byte_span_t storage = iree_make_byte_span(
         (uint8_t*)native_image + native_bytes_cursor, measurement.byte_length);
     status = iree_hal_amd_xdna_aie2p_native_encode_array(
         image, target, iree_hal_amd_xdna_image_array(image, i), scratch,
         storage);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     native_image->arrays[i] =
         iree_make_const_byte_span(storage.data, storage.data_length);
     native_bytes_cursor += storage.data_length;
@@ -772,7 +780,9 @@ iree_status_t iree_hal_amd_xdna_aie2p_native_image_create(
     iree_hal_amd_xdna_aie2p_native_measurement_t measurement;
     status = iree_hal_amd_xdna_aie2p_native_measure_control(image, control,
                                                             &measurement);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     iree_byte_span_t storage = iree_make_byte_span(
         (uint8_t*)native_image + native_bytes_cursor, measurement.byte_length);
     iree_hal_amd_xdna_aie2p_native_relocation_t* relocations =
@@ -781,7 +791,9 @@ iree_status_t iree_hal_amd_xdna_aie2p_native_image_create(
         native_relocation_cursor;
     status = iree_hal_amd_xdna_aie2p_native_encode_control(
         image, target, entry, control, scratch, storage, relocations);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     native_image->entries[i] = (iree_hal_amd_xdna_aie2p_native_entry_t){
         .array_ordinal = (uint32_t)array_ordinal,
         .control = iree_make_const_byte_span(storage.data, storage.data_length),
@@ -809,7 +821,9 @@ iree_status_t iree_hal_amd_xdna_aie2p_native_image_create(
 
 void iree_hal_amd_xdna_aie2p_native_image_destroy(
     iree_hal_amd_xdna_aie2p_native_image_t* native_image) {
-  if (native_image == NULL) return;
+  if (native_image == NULL) {
+    return;
+  }
   const iree_allocator_t host_allocator = native_image->host_allocator;
   iree_allocator_free(host_allocator, native_image);
 }

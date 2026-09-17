@@ -156,7 +156,9 @@ typedef struct iree_async_buffer_lease_t {
 // copied lease values are separate owners and must not both be released.
 static inline void iree_async_buffer_lease_release(
     iree_async_buffer_lease_t* lease) {
-  if (!lease) return;
+  if (!lease) {
+    return;
+  }
   iree_async_buffer_recycle_callback_t release = lease->release;
   if (release.fn) {
     iree_async_buffer_index_t buffer_index = lease->buffer_index;

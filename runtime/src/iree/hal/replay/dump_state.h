@@ -67,7 +67,9 @@ typedef struct iree_hal_replay_dump_file_summary_t {
 // Flushes the current builder contents to the streaming sink.
 static inline iree_status_t iree_hal_replay_dump_emit(
     iree_hal_replay_dump_context_t* context, iree_string_builder_t* builder) {
-  if (iree_string_builder_size(builder) == 0) return iree_ok_status();
+  if (iree_string_builder_size(builder) == 0) {
+    return iree_ok_status();
+  }
   iree_status_t status = context->write_callback.fn(
       context->write_callback.user_data, iree_string_builder_view(builder));
   iree_string_builder_reset(builder);

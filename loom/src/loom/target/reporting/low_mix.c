@@ -505,23 +505,31 @@ static bool loom_target_compile_report_low_edge_copy_branch_arg(
   const loom_low_allocation_edge_copy_group_t* group =
       loom_low_allocation_find_edge_copy_group_by_source_ordinal(
           allocation, branch_source_ordinal);
-  if (group == NULL) return false;
+  if (group == NULL) {
+    return false;
+  }
   bool found = false;
   loom_value_id_t source_value_id = LOOM_VALUE_ID_INVALID;
   const iree_host_size_t copy_end =
       (iree_host_size_t)group->copy_start + (iree_host_size_t)group->copy_count;
-  if (copy_end > allocation->edge_copy_count) return false;
+  if (copy_end > allocation->edge_copy_count) {
+    return false;
+  }
   for (iree_host_size_t i = group->copy_start; i < copy_end; ++i) {
     const loom_low_allocation_edge_copy_t* copy = &allocation->edge_copies[i];
     if (copy->payload_index != arg_index ||
         copy->destination_value_id != destination_value_id) {
       continue;
     }
-    if (found && copy->source_value_id != source_value_id) return false;
+    if (found && copy->source_value_id != source_value_id) {
+      return false;
+    }
     found = true;
     source_value_id = copy->source_value_id;
   }
-  if (!found) return false;
+  if (!found) {
+    return false;
+  }
   *out_value_id = source_value_id;
   return true;
 }
@@ -677,7 +685,9 @@ static bool loom_target_compile_report_low_try_counted_loop(
       loom_cfg_graph_edge(graph, interval->entry_edge_index);
   const loom_cfg_edge_info_t* backedge =
       loom_cfg_graph_edge(graph, interval->backedge_edge_index);
-  if (entry_edge == NULL || backedge == NULL) return false;
+  if (entry_edge == NULL || backedge == NULL) {
+    return false;
+  }
 
   const loom_op_t* initial_branch_op = NULL;
   if (!loom_target_compile_report_low_block_branch_to(

@@ -40,7 +40,9 @@ static pthread_mutex_t g_log_mutex = PTHREAD_MUTEX_INITIALIZER;
 //===----------------------------------------------------------------------===//
 
 static void log_msg(int level, const char* fmt, ...) {
-  if (level > g_log_level || !g_log_file) return;
+  if (level > g_log_level || !g_log_file) {
+    return;
+  }
 
   pthread_mutex_lock(&g_log_mutex);
 

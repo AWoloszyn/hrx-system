@@ -54,7 +54,9 @@ struct RecordingAllocator {
   }
 
   static void AMDF_CALL Free(void* user_data, void* pointer) {
-    if (pointer == nullptr) return;
+    if (pointer == nullptr) {
+      return;
+    }
     auto* self = static_cast<RecordingAllocator*>(user_data);
     self->free_count.fetch_add(1, std::memory_order_relaxed);
     self->live_allocation_count.fetch_sub(1, std::memory_order_relaxed);

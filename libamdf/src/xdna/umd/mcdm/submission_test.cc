@@ -64,8 +64,9 @@ TEST_P(WindowsXdnaSubmissionProtocolTest, BuildsContextLifecycleRecords) {
   EXPECT_EQ(initialize.byte_length, header_length + 520u);
   EXPECT_EQ(ReadU64(initialize.bytes, 0x00), 5u);
   EXPECT_EQ(ReadU64(initialize.bytes, 0x28), 0x20u);
-  if (direct)
+  if (direct) {
     EXPECT_EQ(ReadU64(initialize.bytes, 0x30), command.device_address);
+  }
   EXPECT_EQ(ReadU64(initialize.bytes, 0x48), 0u);
   EXPECT_EQ(ReadU32(initialize.bytes, response_offset), 0u);
   EXPECT_EQ(ReadU32(initialize.bytes, response_offset + 4), 8u);
@@ -99,7 +100,9 @@ TEST_P(WindowsXdnaSubmissionProtocolTest,
   EXPECT_EQ(ReadU32(packet.bytes, 0x08), 3u);
   EXPECT_EQ(ReadU64(packet.bytes, 0x10), UINT64_C(0x04008000));
   EXPECT_EQ(ReadU32(packet.bytes, 0x18), 75u);
-  for (size_t i = 0x1C; i < sizeof(packet); ++i) EXPECT_EQ(packet.bytes[i], 0);
+  for (size_t i = 0x1C; i < sizeof(packet); ++i) {
+    EXPECT_EQ(packet.bytes[i], 0);
+  }
 
   std::array<uint8_t, 4096> command_bytes = {};
   amdf_windows_xdna_private_allocation_t execution = {};
@@ -116,8 +119,9 @@ TEST_P(WindowsXdnaSubmissionProtocolTest,
   EXPECT_EQ(ReadU64(submission.bytes, 0x08), 0x30u);
   EXPECT_EQ(ReadU64(submission.bytes, 0x10), 68u);
   EXPECT_EQ(ReadU64(submission.bytes, 0x28), 0x20u);
-  if (direct)
+  if (direct) {
     EXPECT_EQ(ReadU64(submission.bytes, 0x30), command.device_address);
+  }
   EXPECT_EQ(ReadU64(submission.bytes, 0x48), 0u);
   EXPECT_EQ(ReadU32(submission.bytes, response_offset), 8u);
   EXPECT_EQ(ReadU32(submission.bytes, response_offset + 4), 8u);

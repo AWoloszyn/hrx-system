@@ -1063,7 +1063,9 @@ TEST(BPEEndOfWordSuffixTest, PartialSegmentNoSuffix) {
   // NOT be a single "cat</w>" token.)
   bool found_suffixed_token = false;
   for (iree_host_size_t i = 0; i < token_count; ++i) {
-    if (tokens[i] == 0) found_suffixed_token = true;
+    if (tokens[i] == 0) {
+      found_suffixed_token = true;
+    }
   }
   EXPECT_FALSE(found_suffixed_token)
       << "Partial segment should NOT match suffixed token";
@@ -1566,7 +1568,9 @@ TEST(BPEEndOfWordSuffixTest, PartialSegmentNoSuffixWithBacktracking) {
   // versions (token 1 "a</w>" or token 3 "aa</w>") should NOT appear.
   bool found_suffixed = false;
   for (iree_host_size_t i = 0; i < token_count; ++i) {
-    if (tokens[i] == 1 || tokens[i] == 3) found_suffixed = true;
+    if (tokens[i] == 1 || tokens[i] == 3) {
+      found_suffixed = true;
+    }
   }
   EXPECT_FALSE(found_suffixed)
       << "Partial segment should NOT match suffixed tokens";
@@ -2052,19 +2056,27 @@ TEST_F(BPEModelTest, MultiMetaspaceTokensMistralStyle) {
 
   // Multi-metaspace tokens built from merges.
   std::string meta2;
-  for (int i = 0; i < 2; ++i) meta2 += kMeta;
+  for (int i = 0; i < 2; ++i) {
+    meta2 += kMeta;
+  }
   builder.AddToken(259, meta2.c_str());  // ▁▁
 
   std::string meta4;
-  for (int i = 0; i < 4; ++i) meta4 += kMeta;
+  for (int i = 0; i < 4; ++i) {
+    meta4 += kMeta;
+  }
   builder.AddToken(300, meta4.c_str());  // ▁▁▁▁
 
   std::string meta8;
-  for (int i = 0; i < 8; ++i) meta8 += kMeta;
+  for (int i = 0; i < 8; ++i) {
+    meta8 += kMeta;
+  }
   builder.AddToken(320, meta8.c_str());  // ▁▁▁▁▁▁▁▁
 
   std::string meta16;
-  for (int i = 0; i < 16; ++i) meta16 += kMeta;
+  for (int i = 0; i < 16; ++i) {
+    meta16 += kMeta;
+  }
   builder.AddToken(359, meta16.c_str());  // 16 metaspaces
 
   // Byte fallback tokens (like Mistral).
@@ -2098,7 +2110,9 @@ TEST_F(BPEModelTest, MultiMetaspaceTokensMistralStyle) {
   // 50 metaspaces: 16 + 16 + 16 + 2 = 50
   // Should produce: [359, 359, 359, 259]
   std::string meta50;
-  for (int i = 0; i < 50; ++i) meta50 += kMeta;
+  for (int i = 0; i < 50; ++i) {
+    meta50 += kMeta;
+  }
   TestEncode(model(), meta50.c_str(), {359, 359, 359, 259},
              /*expect_pending_after_encode=*/false);
 }

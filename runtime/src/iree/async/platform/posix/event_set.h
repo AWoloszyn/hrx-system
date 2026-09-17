@@ -53,7 +53,9 @@ struct iree_async_posix_event_set_t {
 // Frees an event set allocated with one of the allocate functions.
 static inline void iree_async_posix_event_set_free(
     iree_async_posix_event_set_t* event_set) {
-  if (event_set) event_set->vtable->free(event_set);
+  if (event_set) {
+    event_set->vtable->free(event_set);
+  }
 }
 
 // Adds |fd| to the event set with the given event interest mask.

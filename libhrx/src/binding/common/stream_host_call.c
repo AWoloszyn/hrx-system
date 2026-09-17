@@ -53,7 +53,9 @@ iree_status_t iree_hal_streaming_queue_host_call(
     };
     status = iree_hal_queue_host_call(stream->queue, wait_semaphores,
                                       signal_semaphores, call, args, flags);
-    if (iree_status_is_ok(status)) stream->pending_value = signal_value;
+    if (iree_status_is_ok(status)) {
+      stream->pending_value = signal_value;
+    }
   }
   iree_slim_mutex_unlock(&stream->mutex);
 

@@ -42,8 +42,12 @@ iree_hal_streaming_load_device_pointer_bytes(const void* source) {
 
 static bool iree_hal_streaming_buffer_can_import_for_context(
     const iree_hal_streaming_buffer_t* buffer) {
-  if (!buffer) return false;
-  if (buffer->is_managed) return true;
+  if (!buffer) {
+    return false;
+  }
+  if (buffer->is_managed) {
+    return true;
+  }
   return iree_all_bits_set(
       (iree_hal_memory_type_t)buffer->memory_type,
       IREE_HAL_MEMORY_TYPE_HOST_LOCAL | IREE_HAL_MEMORY_TYPE_DEVICE_VISIBLE);
@@ -57,11 +61,15 @@ static iree_status_t iree_hal_streaming_device_buffer_for_context(
   IREE_ASSERT_ARGUMENT(buffer);
   IREE_ASSERT_ARGUMENT(out_buffer);
   *out_buffer = NULL;
-  if (out_device_ptr) *out_device_ptr = 0;
+  if (out_device_ptr) {
+    *out_device_ptr = 0;
+  }
 
   if (buffer->context == context) {
     *out_buffer = buffer->buffer;
-    if (out_device_ptr) *out_device_ptr = buffer->device_ptr;
+    if (out_device_ptr) {
+      *out_device_ptr = buffer->device_ptr;
+    }
     return iree_ok_status();
   }
   if (!iree_hal_streaming_buffer_can_import_for_context(buffer)) {
@@ -85,7 +93,9 @@ static iree_status_t iree_hal_streaming_device_buffer_for_context(
        import; import = import->next) {
     if (import->context == context) {
       *out_buffer = import->buffer;
-      if (out_device_ptr) *out_device_ptr = buffer->device_ptr;
+      if (out_device_ptr) {
+        *out_device_ptr = buffer->device_ptr;
+      }
       iree_slim_mutex_unlock(&buffer->context_import_mutex);
       return iree_ok_status();
     }
@@ -131,7 +141,9 @@ static iree_status_t iree_hal_streaming_device_buffer_for_context(
     buffer->context_imports = import;
     imported_buffer = NULL;
     *out_buffer = import->buffer;
-    if (out_device_ptr) *out_device_ptr = buffer->device_ptr;
+    if (out_device_ptr) {
+      *out_device_ptr = buffer->device_ptr;
+    }
   }
   iree_slim_mutex_unlock(&buffer->context_import_mutex);
   iree_hal_buffer_release(imported_buffer);
@@ -157,7 +169,9 @@ static iree_status_t iree_hal_streaming_lookup_kernel_buffer_ref(
       iree_hal_streaming_memory_lookup(context, device_pointer, &stream_ref);
   if (iree_status_is_ok(status) ||
       iree_status_code(status) != IREE_STATUS_NOT_FOUND) {
-    if (!iree_status_is_ok(status)) return status;
+    if (!iree_status_is_ok(status)) {
+      return status;
+    }
   } else {
     iree_status_ignore(status);
     if (!iree_hal_streaming_context_has_peer_contexts(context)) {
@@ -165,7 +179,9 @@ static iree_status_t iree_hal_streaming_lookup_kernel_buffer_ref(
     }
     status = iree_hal_streaming_memory_lookup_range_across_contexts(
         device_pointer, 1, &owner_context, &stream_ref);
-    if (!iree_status_is_ok(status)) return status;
+    if (!iree_status_is_ok(status)) {
+      return status;
+    }
 
     if (!iree_hal_streaming_buffer_can_import_for_context(stream_ref.buffer)) {
       iree_hal_streaming_context_release(owner_context);
@@ -287,7 +303,9 @@ iree_status_t iree_hal_streaming_pack_raw_argument_list(
   if (*out_constants_size == 0) {
     *out_constants_size = parameters->buffer_size;
   }
-  if (*out_constants_size == 0) return iree_ok_status();
+  if (*out_constants_size == 0) {
+    return iree_ok_status();
+  }
   if (!out_constants || (!parameter_list && (parameters->buffer_size > 0 ||
                                              parameters->binding_count > 0 ||
                                              parameters->copy_count > 0))) {

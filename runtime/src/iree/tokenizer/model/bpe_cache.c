@@ -34,9 +34,15 @@
 bool iree_tokenizer_bpe_cache_lookup(
     const iree_tokenizer_bpe_model_t* model, iree_tokenizer_bpe_state_t* state,
     iree_string_view_t segment, iree_tokenizer_bpe_output_cursor_t* cursor) {
-  if (model->cache_capacity == 0) return false;
-  if (cursor->offset_ptr) return false;
-  if (segment.size > IREE_TOKENIZER_BPE_CACHE_MAX_KEY_BYTES) return false;
+  if (model->cache_capacity == 0) {
+    return false;
+  }
+  if (cursor->offset_ptr) {
+    return false;
+  }
+  if (segment.size > IREE_TOKENIZER_BPE_CACHE_MAX_KEY_BYTES) {
+    return false;
+  }
 
   uint32_t hash =
       iree_tokenizer_bpe_cache_hash((const uint8_t*)segment.data, segment.size);
@@ -51,7 +57,9 @@ bool iree_tokenizer_bpe_cache_lookup(
   }
 
   // Verify capacity before emitting to avoid partial emission.
-  if (cursor->remaining < entry->token_count) return false;
+  if (cursor->remaining < entry->token_count) {
+    return false;
+  }
   for (uint16_t t = 0; t < entry->token_count; ++t) {
     iree_tokenizer_bpe_emit_and_track(state, cursor, entry->tokens[t], 0,
                                       (uint32_t)segment.size);
@@ -66,9 +74,15 @@ void iree_tokenizer_bpe_cache_populate(
     iree_string_view_t segment,
     const iree_tokenizer_bpe_backtrack_entry_t* stack,
     iree_host_size_t token_count) {
-  if (model->cache_capacity == 0) return;
-  if (segment.size > IREE_TOKENIZER_BPE_CACHE_MAX_KEY_BYTES) return;
-  if (token_count > IREE_TOKENIZER_BPE_CACHE_MAX_TOKENS) return;
+  if (model->cache_capacity == 0) {
+    return;
+  }
+  if (segment.size > IREE_TOKENIZER_BPE_CACHE_MAX_KEY_BYTES) {
+    return;
+  }
+  if (token_count > IREE_TOKENIZER_BPE_CACHE_MAX_TOKENS) {
+    return;
+  }
 
   uint32_t hash =
       iree_tokenizer_bpe_cache_hash((const uint8_t*)segment.data, segment.size);
@@ -201,7 +215,9 @@ void iree_tokenizer_bpe_trie_longest_match_byte_level(
       }
     }
 
-    if (!advanced) break;  // No more matches possible.
+    if (!advanced) {
+      break;  // No more matches possible.
+    }
 
     int32_t token_id = iree_tokenizer_trie_cursor_token_id(&cursor);
     if (token_id >= 0) {
@@ -226,12 +242,16 @@ static void iree_tokenizer_bpe_apply_suffix_to_last_token(
 // Used to decide whether splitting a merge would help with suffix application.
 static bool iree_tokenizer_bpe_token_has_suffix(
     const iree_tokenizer_bpe_model_t* model, uint32_t token_id) {
-  if (model->end_of_word_suffix_length == 0) return false;
+  if (model->end_of_word_suffix_length == 0) {
+    return false;
+  }
 
   // Get the token's text from the vocabulary.
   iree_string_view_t token_text =
       iree_tokenizer_vocab_token_text(model->vocab, token_id);
-  if (token_text.size == 0) return false;
+  if (token_text.size == 0) {
+    return false;
+  }
 
   // Walk the token text through the trie.
   iree_tokenizer_trie_cursor_t cursor;
@@ -369,7 +389,9 @@ static void iree_tokenizer_bpe_try_split_for_suffix(
 static void iree_tokenizer_bpe_apply_suffix_to_last_token(
     const iree_tokenizer_bpe_model_t* model, iree_tokenizer_bpe_state_t* state,
     iree_string_view_t segment) {
-  if (state->backtrack.stack_count == 0) return;
+  if (state->backtrack.stack_count == 0) {
+    return;
+  }
 
   iree_tokenizer_bpe_backtrack_entry_t* stack =
       iree_tokenizer_bpe_state_backtrack_stack(state, model);
@@ -459,7 +481,9 @@ void iree_tokenizer_bpe_apply_suffix_to_backtrack(
 void iree_tokenizer_bpe_apply_suffix_to_last_window_token(
     const iree_tokenizer_bpe_model_t* model, iree_tokenizer_bpe_state_t* state,
     iree_string_view_t segment) {
-  if (state->window.count == 0) return;
+  if (state->window.count == 0) {
+    return;
+  }
 
   iree_tokenizer_bpe_window_token_t* last_token =
       iree_tokenizer_bpe_window_at(state, model, state->window.count - 1);

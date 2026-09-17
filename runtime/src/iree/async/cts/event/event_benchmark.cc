@@ -137,7 +137,9 @@ class EventBenchmarkContext {
 static void BM_EventPoolAcquireRelease(::benchmark::State& state,
                                        const ProactorFactory& factory) {
   auto ctx = EventBenchmarkContext::Create(factory, /*pool_capacity=*/1, state);
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
 
   for (auto _ : state) {
     iree_async_event_t* event = nullptr;
@@ -158,7 +160,9 @@ static void BM_EventPoolBatchAcquireRelease(::benchmark::State& state,
                                             size_t batch_size) {
   auto ctx = EventBenchmarkContext::Create(factory,
                                            /*pool_capacity=*/batch_size, state);
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
 
   std::vector<iree_async_event_t*> events(batch_size, nullptr);
 
@@ -196,7 +200,9 @@ static void BM_EventPoolBatchAcquireRelease(::benchmark::State& state,
 static void BM_EventWaitPreSignaled(::benchmark::State& state,
                                     const ProactorFactory& factory) {
   auto ctx = EventBenchmarkContext::Create(factory, /*pool_capacity=*/1, state);
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
 
   // Acquire event once, reuse across iterations.
   iree_async_event_t* event = nullptr;
@@ -245,7 +251,9 @@ static void BM_EventWaitPreSignaled(::benchmark::State& state,
 static void BM_EventSignalWait(::benchmark::State& state,
                                const ProactorFactory& factory) {
   auto ctx = EventBenchmarkContext::Create(factory, /*pool_capacity=*/1, state);
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
 
   iree_async_event_t* event = nullptr;
   iree_status_t status = iree_async_event_pool_acquire(ctx->pool(), &event);
@@ -299,7 +307,9 @@ static void BM_EventBatchSignalWait(::benchmark::State& state,
                                     size_t batch_size) {
   auto ctx = EventBenchmarkContext::Create(factory,
                                            /*pool_capacity=*/batch_size, state);
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
 
   // Acquire all events upfront.
   std::vector<iree_async_event_t*> events(batch_size, nullptr);
@@ -322,7 +332,9 @@ static void BM_EventBatchSignalWait(::benchmark::State& state,
 
   bool error_occurred = false;
   for (auto _ : state) {
-    if (error_occurred) break;
+    if (error_occurred) {
+      break;
+    }
     ctx->Reset();
 
     // Initialize and submit all waits.
@@ -345,7 +357,9 @@ static void BM_EventBatchSignalWait(::benchmark::State& state,
         break;
       }
     }
-    if (submit_failed) continue;
+    if (submit_failed) {
+      continue;
+    }
 
     // Signal all events.
     for (size_t i = 0; i < batch_size; ++i) {
@@ -398,7 +412,9 @@ struct CrossThreadSync {
   bool WaitForRequest() {
     std::unique_lock<std::mutex> lock(mutex);
     cv.wait(lock, [this] { return signal_requested || stop_requested; });
-    if (stop_requested) return false;
+    if (stop_requested) {
+      return false;
+    }
     signal_requested = false;
     return true;
   }
@@ -409,7 +425,9 @@ struct CrossThreadSync {
 static void BM_EventCrossThreadSignal(::benchmark::State& state,
                                       const ProactorFactory& factory) {
   auto ctx = EventBenchmarkContext::Create(factory, /*pool_capacity=*/1, state);
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
 
   iree_async_event_t* event = nullptr;
   iree_status_t status = iree_async_event_pool_acquire(ctx->pool(), &event);

@@ -92,7 +92,9 @@ static inline bool iree_hal_amdgpu_last_signal_load(
   int32_t sequence;
   do {
     sequence = iree_atomic_load(&cache->sequence, iree_memory_order_acquire);
-    if (IREE_UNLIKELY(sequence & 1)) continue;  // writer in progress
+    if (IREE_UNLIKELY(sequence & 1)) {
+      continue;  // writer in progress
+    }
     *out_flags = (iree_hal_amdgpu_last_signal_flags_t)iree_atomic_load(
         &cache->flags, iree_memory_order_relaxed);
     *out_producer_axis = (iree_async_axis_t)iree_atomic_load(

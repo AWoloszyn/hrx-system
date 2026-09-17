@@ -68,7 +68,9 @@ struct iree_tokenizer_vocab_builder_t {
 // target_ids is managed separately (lazily allocated for explicit ID mode).
 static iree_status_t iree_tokenizer_vocab_builder_reserve_tokens(
     iree_tokenizer_vocab_builder_t* builder, iree_host_size_t min_capacity) {
-  if (builder->token_capacity >= min_capacity) return iree_ok_status();
+  if (builder->token_capacity >= min_capacity) {
+    return iree_ok_status();
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   // Grow by 2x or to min_capacity, whichever is larger.
@@ -76,8 +78,12 @@ static iree_status_t iree_tokenizer_vocab_builder_reserve_tokens(
   if (!iree_host_size_checked_mul(builder->token_capacity, 2, &new_capacity)) {
     new_capacity = min_capacity;  // Overflow, just use min_capacity.
   }
-  if (new_capacity < min_capacity) new_capacity = min_capacity;
-  if (new_capacity < 16) new_capacity = 16;
+  if (new_capacity < min_capacity) {
+    new_capacity = min_capacity;
+  }
+  if (new_capacity < 16) {
+    new_capacity = 16;
+  }
 
   // Calculate slab layout: [tokens][scores].
   iree_host_size_t total_size = 0;
@@ -137,7 +143,9 @@ static iree_status_t iree_tokenizer_vocab_builder_reserve_tokens(
 // Ensures string table has capacity for at least |min_capacity| bytes.
 static iree_status_t iree_tokenizer_vocab_builder_reserve_strings(
     iree_tokenizer_vocab_builder_t* builder, iree_host_size_t min_capacity) {
-  if (builder->string_capacity >= min_capacity) return iree_ok_status();
+  if (builder->string_capacity >= min_capacity) {
+    return iree_ok_status();
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0,
@@ -151,7 +159,9 @@ static iree_status_t iree_tokenizer_vocab_builder_reserve_strings(
 // Ensures merge array has capacity for at least |min_capacity| merges.
 static iree_status_t iree_tokenizer_vocab_builder_reserve_merges(
     iree_tokenizer_vocab_builder_t* builder, iree_host_size_t min_capacity) {
-  if (builder->merge_capacity >= min_capacity) return iree_ok_status();
+  if (builder->merge_capacity >= min_capacity) {
+    return iree_ok_status();
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_allocator_grow_array(
@@ -294,7 +304,9 @@ iree_status_t iree_tokenizer_vocab_builder_add_token(
   // Ensure capacity for the string (always reserve at least 1 byte to avoid
   // NULL string_data when all tokens are empty strings).
   iree_host_size_t min_string_capacity = builder->string_size + text.size;
-  if (min_string_capacity == 0) min_string_capacity = 1;
+  if (min_string_capacity == 0) {
+    min_string_capacity = 1;
+  }
   IREE_RETURN_IF_ERROR(iree_tokenizer_vocab_builder_reserve_strings(
       builder, min_string_capacity));
 
@@ -380,7 +392,9 @@ static iree_status_t iree_tokenizer_vocab_builder_sort(
                                iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                                                 "negative token ID %d", id));
     }
-    if (id > max_id) max_id = id;
+    if (id > max_id) {
+      max_id = id;
+    }
   }
 
   // Guard against max_id + 1 overflowing in int32_t domain before casting.
@@ -665,7 +679,9 @@ iree_status_t iree_tokenizer_vocab_builder_build(
 
 void iree_tokenizer_vocab_builder_free(
     iree_tokenizer_vocab_builder_t* builder) {
-  if (!builder) return;
+  if (!builder) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_allocator_t allocator = builder->allocator;
 

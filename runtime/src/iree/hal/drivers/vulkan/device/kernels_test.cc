@@ -18,7 +18,9 @@ namespace {
 const iree_file_toc_t* FindFile(const iree_file_toc_t* toc, size_t count,
                                 const char* file_name) {
   for (size_t i = 0; i < count; ++i) {
-    if (std::strcmp(toc[i].name, file_name) == 0) return &toc[i];
+    if (std::strcmp(toc[i].name, file_name) == 0) {
+      return &toc[i];
+    }
   }
   return nullptr;
 }

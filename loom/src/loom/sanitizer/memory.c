@@ -13,7 +13,9 @@ bool loom_sanitizer_query_view_memory_space(
     const loom_rewriter_t* rewriter, loom_value_id_t view,
     loom_value_fact_memory_space_t* out_memory_space) {
   *out_memory_space = LOOM_VALUE_FACT_MEMORY_SPACE_UNKNOWN;
-  if (!rewriter->fact_table) return false;
+  if (!rewriter->fact_table) {
+    return false;
+  }
   loom_value_fact_view_reference_t reference = {0};
   if (!loom_value_facts_query_view_reference(
           &rewriter->fact_table->context,

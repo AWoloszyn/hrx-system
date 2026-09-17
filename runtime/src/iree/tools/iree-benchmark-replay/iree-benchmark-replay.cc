@@ -185,7 +185,9 @@ iree_status_t ParseReplayExecutableSubstitutions(
 
   iree_flag_string_list_t flag_list =
       FLAG_replay_executable_substitution_list();
-  if (flag_list.count == 0) return iree_ok_status();
+  if (flag_list.count == 0) {
+    return iree_ok_status();
+  }
 
   iree_host_size_t entry_size = 0;
   if (IREE_UNLIKELY(!iree_host_size_checked_mul(
@@ -263,7 +265,9 @@ iree_status_t ParseReplayExecutableSubstitutions(
         }
       }
     }
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
 
     out_state->entries[i].match_all = match_all;
     out_state->entries[i].executable_id =
@@ -428,7 +432,9 @@ iree_status_t ParseReplayFileRemaps(
   *out_file_path_remap_count = 0;
 
   iree_flag_string_list_t flag_list = FLAG_replay_file_remap_list();
-  if (flag_list.count == 0) return iree_ok_status();
+  if (flag_list.count == 0) {
+    return iree_ok_status();
+  }
 
   iree_host_size_t remap_size = 0;
   if (IREE_UNLIKELY(!iree_host_size_checked_mul(

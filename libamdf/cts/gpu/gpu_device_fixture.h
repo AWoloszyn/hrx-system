@@ -43,7 +43,9 @@ inline uint32_t FindGpuMemoryProfileOrdinal(
     capabilities.structure_size = sizeof(capabilities);
     const amdf_status_t status = api->memory_scope_query_device_profile(
         scope, ordinal, 1, &access, &profile, &capabilities);
-    if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) continue;
+    if (status == amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED)) {
+      continue;
+    }
     if (!amdf_status_is_ok(status)) {
       ADD_FAILURE() << "memory profile query failed: domain="
                     << amdf_status_domain(status)
@@ -103,7 +105,9 @@ class GpuDeviceFixture : public ::testing::Test {
       info.type = AMDF_STRUCTURE_TYPE_MEMORY_SCOPE_INFO;
       info.structure_size = sizeof(info);
       ASSERT_EQ(api_->memory_scope_query_info(scope, &info), AMDF_STATUS_OK);
-      if (info.kind == AMDF_MEMORY_SCOPE_KIND_SYSTEM) system_scope_ = scope;
+      if (info.kind == AMDF_MEMORY_SCOPE_KIND_SYSTEM) {
+        system_scope_ = scope;
+      }
     }
     ASSERT_NE(system_scope_, nullptr);
 
@@ -116,7 +120,9 @@ class GpuDeviceFixture : public ::testing::Test {
           instance_, endpoint_count, summaries.data(), &endpoint_count)));
     }
     for (const amdf_endpoint_summary_t& summary : summaries) {
-      if (summary.engine_kind != AMDF_ENGINE_KIND_GPU) continue;
+      if (summary.engine_kind != AMDF_ENGINE_KIND_GPU) {
+        continue;
+      }
       ASSERT_TRUE(amdf_status_is_ok(
           GetCtsDeviceCache().OpenEndpoint(summary.id, &endpoint_)));
       bool matches = false;
@@ -124,7 +130,9 @@ class GpuDeviceFixture : public ::testing::Test {
       ASSERT_EQ(status, AMDF_STATUS_OK)
           << "domain=" << amdf_status_domain(status)
           << " code=" << amdf_status_code(status);
-      if (matches) break;
+      if (matches) {
+        break;
+      }
       endpoint_ = nullptr;
     }
     if (endpoint_ == nullptr) {
@@ -155,7 +163,9 @@ class GpuDeviceFixture : public ::testing::Test {
       info.type = AMDF_STRUCTURE_TYPE_MEMORY_SCOPE_INFO;
       info.structure_size = sizeof(info);
       ASSERT_EQ(api_->memory_scope_query_info(scope, &info), AMDF_STATUS_OK);
-      if (info.kind == AMDF_MEMORY_SCOPE_KIND_LOCAL) local_scope_ = scope;
+      if (info.kind == AMDF_MEMORY_SCOPE_KIND_LOCAL) {
+        local_scope_ = scope;
+      }
     }
 
     amdf_gpu_device_info_t device_info = {};

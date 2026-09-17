@@ -20,7 +20,9 @@ bool loom_link_symbol_is_concrete_definition(const loom_symbol_t* symbol) {
 
 bool loom_link_symbol_has_global_identity(const loom_module_t* module,
                                           const loom_symbol_t* symbol) {
-  if (!symbol) return false;
+  if (!symbol) {
+    return false;
+  }
   if (iree_any_bit_set(symbol->flags, LOOM_SYMBOL_FLAG_PUBLIC)) {
     return true;
   }

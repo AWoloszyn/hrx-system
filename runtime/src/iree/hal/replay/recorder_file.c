@@ -54,10 +54,14 @@ static iree_status_t iree_hal_replay_recorder_file_capture_fd_digest(
   uint8_t buffer[64 * 1024];
   while (offset < file_length) {
     uint64_t chunk_length = file_length - offset;
-    if (chunk_length > sizeof(buffer)) chunk_length = sizeof(buffer);
+    if (chunk_length > sizeof(buffer)) {
+      chunk_length = sizeof(buffer);
+    }
     ssize_t read_length =
         pread(fd, buffer, (size_t)chunk_length, (off_t)offset);
-    if (read_length < 0 && errno == EINTR) continue;
+    if (read_length < 0 && errno == EINTR) {
+      continue;
+    }
     if (read_length <= 0) {
       return iree_make_status(
           IREE_STATUS_UNAVAILABLE,
@@ -89,7 +93,9 @@ static iree_string_view_t iree_hal_replay_recorder_file_capture_fd_path(
     int fd, iree_byte_span_t storage) {
 #if IREE_FILE_IO_ENABLE && \
     (defined(IREE_PLATFORM_ANDROID) || defined(IREE_PLATFORM_LINUX))
-  if (storage.data_length == 0) return iree_string_view_empty();
+  if (storage.data_length == 0) {
+    return iree_string_view_empty();
+  }
   char link_path[64];
   if (snprintf(link_path, sizeof(link_path), "/proc/self/fd/%d", fd) <= 0) {
     return iree_string_view_empty();
@@ -144,11 +150,15 @@ static iree_status_t iree_hal_replay_recorder_file_capture_fd_range_contents(
   iree_status_t status = iree_ok_status();
   while (iree_status_is_ok(status) && offset < data_length) {
     uint64_t chunk_length = data_length - offset;
-    if (chunk_length > 64 * 1024) chunk_length = 64 * 1024;
+    if (chunk_length > 64 * 1024) {
+      chunk_length = 64 * 1024;
+    }
     uint64_t absolute_offset = source_offset + offset;
     ssize_t read_length = pread(fd, file_bytes + (iree_host_size_t)offset,
                                 (size_t)chunk_length, (off_t)absolute_offset);
-    if (read_length < 0 && errno == EINTR) continue;
+    if (read_length < 0 && errno == EINTR) {
+      continue;
+    }
     if (read_length <= 0) {
       status = iree_make_status(
           IREE_STATUS_UNAVAILABLE,

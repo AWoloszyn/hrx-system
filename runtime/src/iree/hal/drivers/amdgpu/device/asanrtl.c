@@ -42,8 +42,12 @@ static bool iree_asan_is_enabled(void) {
 static bool iree_asan_try_shadow_address(uint64_t address,
                                          uint64_t* out_shadow_address) {
   *out_shadow_address = 0;
-  if (!iree_asan_is_enabled()) return false;
-  if (address < iree_asan_config.application_window_base) return false;
+  if (!iree_asan_is_enabled()) {
+    return false;
+  }
+  if (address < iree_asan_config.application_window_base) {
+    return false;
+  }
   uint64_t application_offset =
       address - iree_asan_config.application_window_base;
   if (application_offset >= iree_asan_config.application_window_size) {
@@ -51,7 +55,9 @@ static bool iree_asan_try_shadow_address(uint64_t address,
   }
   uint64_t reservation_offset =
       application_offset >> iree_asan_config.shadow_scale_shift;
-  if (reservation_offset >= iree_asan_config.shadow_size) return false;
+  if (reservation_offset >= iree_asan_config.shadow_size) {
+    return false;
+  }
   *out_shadow_address = iree_asan_config.shadow_base +
                         (address >> iree_asan_config.shadow_scale_shift);
   return true;
@@ -104,7 +110,9 @@ static bool iree_asan_try_round_up_to_shadow_granule(uint64_t address,
     return true;
   }
   const uint64_t adjustment = iree_asan_shadow_granule_size() - offset;
-  if (adjustment > UINT64_MAX - address) return false;
+  if (adjustment > UINT64_MAX - address) {
+    return false;
+  }
   *out_address = address + adjustment;
   return true;
 }
@@ -124,16 +132,22 @@ static uint8_t iree_asan_max_shadow_value(uint8_t lhs, uint8_t rhs) {
 static bool iree_asan_is_shadow_value_poisoned(uint64_t access_end,
                                                uint64_t shadow_address,
                                                uint8_t shadow_value) {
-  if (shadow_value == 0) return false;
+  if (shadow_value == 0) {
+    return false;
+  }
   const uint64_t granule_size = iree_asan_shadow_granule_size();
-  if (shadow_value >= granule_size) return true;
+  if (shadow_value >= granule_size) {
+    return true;
+  }
 
   const uint64_t granule_base =
       iree_asan_shadow_byte_application_base(shadow_address);
   const uint64_t granule_end = granule_base + granule_size - 1;
   const uint64_t checked_end =
       access_end < granule_end ? access_end : granule_end;
-  if (checked_end < granule_base) return false;
+  if (checked_end < granule_base) {
+    return false;
+  }
   return checked_end - granule_base >= shadow_value;
 }
 
@@ -144,7 +158,9 @@ static bool iree_asan_region_is_poisoned(uint64_t address, uint64_t size,
   *out_fault_address = address;
   *out_shadow_address = 0;
   *out_shadow_value = 0;
-  if (size == 0 || !iree_asan_is_enabled()) return false;
+  if (size == 0 || !iree_asan_is_enabled()) {
+    return false;
+  }
   if (size > UINT64_MAX - address) {
     *out_shadow_value = IREE_ASAN_SHADOW_POISONED;
     return true;
@@ -174,7 +190,9 @@ static bool iree_asan_region_is_poisoned(uint64_t address, uint64_t size,
     if (shadow_value != 0 && shadow_value < iree_asan_shadow_granule_size()) {
       fault_address += shadow_value;
     }
-    if (fault_address < address) fault_address = address;
+    if (fault_address < address) {
+      fault_address = address;
+    }
     *out_fault_address = fault_address;
     return true;
   }
@@ -345,8 +363,12 @@ static bool iree_asan_try_memory_region_shadow_bounds(
   *out_end_shadow_address = 0;
   *out_begin_offset = 0;
   *out_end_offset = 0;
-  if (size == 0 || !iree_asan_is_enabled()) return false;
-  if (size > UINT64_MAX - address) return false;
+  if (size == 0 || !iree_asan_is_enabled()) {
+    return false;
+  }
+  if (size > UINT64_MAX - address) {
+    return false;
+  }
 
   const uint64_t end_address = address + size;
   const uint64_t granule_mask = iree_asan_shadow_granule_mask();
@@ -439,8 +461,12 @@ static void iree_asan_unpoison_memory_region(uint64_t address, uint64_t size) {
 }
 
 void __asan_poison_region(uint64_t address, uint64_t size) {
-  if (size == 0 || !iree_asan_is_enabled()) return;
-  if (size > UINT64_MAX - address) return;
+  if (size == 0 || !iree_asan_is_enabled()) {
+    return;
+  }
+  if (size > UINT64_MAX - address) {
+    return;
+  }
 
   const uint64_t granule_mask = iree_asan_shadow_granule_mask();
   if ((address & granule_mask) != 0) {
@@ -459,7 +485,9 @@ void __asan_poison_region(uint64_t address, uint64_t size) {
   if (!iree_asan_try_round_up_to_shadow_granule(address, &aligned_address)) {
     return;
   }
-  if (end_address <= aligned_address) return;
+  if (end_address <= aligned_address) {
+    return;
+  }
 
   uint64_t first_shadow_address = 0;
   uint64_t last_shadow_address = 0;

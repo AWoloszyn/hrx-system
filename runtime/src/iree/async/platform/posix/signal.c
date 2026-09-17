@@ -124,7 +124,9 @@ iree_status_t iree_async_selfpipe_signal_add_signal(
   if (state->pipe_read_fd < 0) {
     iree_status_t status =
         iree_selfpipe_create_pipe(&state->pipe_read_fd, &state->pipe_write_fd);
-    if (!iree_status_is_ok(status)) return status;
+    if (!iree_status_is_ok(status)) {
+      return status;
+    }
     // Publish the write fd for the signal handler.
     g_selfpipe_write_fd = state->pipe_write_fd;
   }
@@ -170,10 +172,14 @@ iree_status_t iree_async_selfpipe_signal_add_signal(
 void iree_async_selfpipe_signal_remove_signal(
     iree_async_selfpipe_signal_state_t* state, iree_async_signal_t signal) {
   int posix_signal = iree_async_signal_to_posix(signal);
-  if (posix_signal == 0) return;
+  if (posix_signal == 0) {
+    return;
+  }
 
   // Not handling this signal.
-  if (!sigismember(&state->active_mask, posix_signal)) return;
+  if (!sigismember(&state->active_mask, posix_signal)) {
+    return;
+  }
 
   // Block the signal first — prevents new handler invocations. Any in-flight
   // handler on this thread has completed by the time pthread_sigmask returns.

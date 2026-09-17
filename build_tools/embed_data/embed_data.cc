@@ -46,9 +46,13 @@ bool IsIdentifierContinue(char value) {
 }
 
 bool IsValidIdentifier(const std::string& identifier) {
-  if (identifier.empty() || !IsIdentifierStart(identifier[0])) return false;
+  if (identifier.empty() || !IsIdentifierStart(identifier[0])) {
+    return false;
+  }
   for (char value : identifier) {
-    if (!IsIdentifierContinue(value)) return false;
+    if (!IsIdentifierContinue(value)) {
+      return false;
+    }
   }
   return true;
 }
@@ -218,7 +222,9 @@ bool WriteImpl(const Options& options,
 
   for (size_t i = 0; i < options.input_files.size(); ++i) {
     std::vector<uint8_t> contents;
-    if (!ReadFile(options.input_files[i], &contents)) return false;
+    if (!ReadFile(options.input_files[i], &contents)) {
+      return false;
+    }
 
     stream << "IREE_DATA_ALIGNAS_PTR static const uint8_t file_" << i
            << "[] = {\n";
@@ -256,7 +262,9 @@ bool WriteImpl(const Options& options,
 }
 
 bool ParseOptionValue(const char* arg, std::string* key, std::string* value) {
-  if (arg[0] != '-' || arg[1] != '-') return false;
+  if (arg[0] != '-' || arg[1] != '-') {
+    return false;
+  }
   const std::string option(arg + 2);
   const size_t separator_pos = option.find('=');
   if (separator_pos == std::string::npos) {
@@ -313,7 +321,9 @@ bool ParseOptions(int argc, char** argv, Options* options) {
 
 int main(int argc, char** argv) {
   Options options;
-  if (!ParseOptions(argc, argv, &options)) return EXIT_FAILURE;
+  if (!ParseOptions(argc, argv, &options)) {
+    return EXIT_FAILURE;
+  }
 
   std::vector<std::string> toc_files;
   toc_files.reserve(options.input_files.size());
@@ -321,7 +331,11 @@ int main(int argc, char** argv) {
     toc_files.push_back(TocNameForInput(options, input_file));
   }
 
-  if (!WriteHeader(options, toc_files)) return EXIT_FAILURE;
-  if (!WriteImpl(options, toc_files)) return EXIT_FAILURE;
+  if (!WriteHeader(options, toc_files)) {
+    return EXIT_FAILURE;
+  }
+  if (!WriteImpl(options, toc_files)) {
+    return EXIT_FAILURE;
+  }
   return EXIT_SUCCESS;
 }

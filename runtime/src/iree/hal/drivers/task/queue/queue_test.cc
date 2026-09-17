@@ -245,7 +245,9 @@ TEST_P(TaskQueueTest, ConcurrentQueueAcquisitionWithQueueProgress) {
   } while (iree_status_is_ok(status) &&
            remaining.load(std::memory_order_acquire) != 0);
 
-  for (auto& thread : threads) thread.join();
+  for (auto& thread : threads) {
+    thread.join();
+  }
   IREE_EXPECT_OK(status);
   for (iree_async_axis_t axis : axes) {
     EXPECT_TRUE(

@@ -235,7 +235,9 @@ static bool loom_low_lower_rule_type_matches(
 static bool loom_low_lower_rule_vector_extract_tail_type_matches(
     loom_type_t source_type, uint16_t consumed_rank, loom_type_t result_type) {
   const uint8_t source_rank = loom_type_rank(source_type);
-  if (consumed_rank > source_rank) return false;
+  if (consumed_rank > source_rank) {
+    return false;
+  }
   if (loom_type_element_type(source_type) !=
       loom_type_element_type(result_type)) {
     return false;
@@ -243,9 +245,13 @@ static bool loom_low_lower_rule_vector_extract_tail_type_matches(
   if (loom_type_is_scalar(result_type)) {
     return consumed_rank == source_rank;
   }
-  if (!loom_type_is_vector(result_type)) return false;
+  if (!loom_type_is_vector(result_type)) {
+    return false;
+  }
   const uint8_t result_rank = loom_type_rank(result_type);
-  if (consumed_rank + result_rank != source_rank) return false;
+  if (consumed_rank + result_rank != source_rank) {
+    return false;
+  }
   for (uint8_t i = 0; i < result_rank; ++i) {
     if (loom_type_dim(source_type, consumed_rank + i) !=
         loom_type_dim(result_type, i)) {
@@ -259,11 +265,17 @@ static bool loom_low_lower_rule_vector_extract_shape_matches(
     const loom_low_lower_rule_match_context_t* match_context,
     const loom_low_lower_rule_set_t* rule_set, const loom_op_t* source_op,
     const loom_low_lower_guard_t* guard) {
-  if (!loom_vector_extract_isa(source_op)) return false;
-  if (guard->attr_index >= source_op->attribute_count) return false;
+  if (!loom_vector_extract_isa(source_op)) {
+    return false;
+  }
+  if (guard->attr_index >= source_op->attribute_count) {
+    return false;
+  }
   loom_attribute_t static_indices =
       loom_op_const_attrs(source_op)[guard->attr_index];
-  if (static_indices.kind != LOOM_ATTR_I64_ARRAY) return false;
+  if (static_indices.kind != LOOM_ATTR_I64_ARRAY) {
+    return false;
+  }
 
   const loom_value_id_t source_value_id = loom_low_lower_rule_source_value(
       match_context->module, rule_set, source_op, guard->value_ref_index);
@@ -273,7 +285,9 @@ static bool loom_low_lower_rule_vector_extract_shape_matches(
       loom_module_value_type(match_context->module, source_value_id);
   const loom_type_t result_type =
       loom_module_value_type(match_context->module, result_value_id);
-  if (!loom_type_is_vector(source_type)) return false;
+  if (!loom_type_is_vector(source_type)) {
+    return false;
+  }
 
   const loom_value_slice_t dynamic_indices =
       loom_vector_extract_indices(source_op);
@@ -416,11 +430,15 @@ static bool loom_low_lower_rule_result_index_assume_facts(
       match_context->module, rule_set, source_op, value_ref_index);
   const loom_value_t* source_value =
       loom_module_value(match_context->module, source_value_id);
-  if (!loom_value_has_single_use(source_value)) return false;
+  if (!loom_value_has_single_use(source_value)) {
+    return false;
+  }
 
   const loom_use_t use = loom_value_uses(source_value)[0];
   const loom_op_t* user_op = loom_use_user_op(use);
-  if (!user_op || !loom_index_assume_isa(user_op)) return false;
+  if (!user_op || !loom_index_assume_isa(user_op)) {
+    return false;
+  }
 
   const uint16_t operand_index = loom_use_operand_index(use);
   loom_value_slice_t assumed_values = loom_index_assume_values(user_op);
@@ -456,10 +474,14 @@ static iree_status_t loom_low_lower_rule_value_symbolically_fits_bit_count(
     uint16_t value_ref_index, uint8_t bit_count, bool is_signed_domain,
     bool* out_matches) {
   *out_matches = false;
-  if (bit_count == 0 || bit_count > 64) return iree_ok_status();
+  if (bit_count == 0 || bit_count > 64) {
+    return iree_ok_status();
+  }
   loom_symbolic_expr_context_t* expression_context =
       match_context->symbolic_expr_context;
-  if (expression_context == NULL) return iree_ok_status();
+  if (expression_context == NULL) {
+    return iree_ok_status();
+  }
 
   const loom_value_id_t value_id = loom_low_lower_rule_source_value(
       match_context->module, rule_set, source_op, value_ref_index);
@@ -526,7 +548,9 @@ static iree_status_t loom_low_lower_rule_value_facts_fit_bit_count(
     *out_matches =
         loom_value_facts_fit_unsigned_bit_count(facts, (uint8_t)bit_count);
   }
-  if (*out_matches) return iree_ok_status();
+  if (*out_matches) {
+    return iree_ok_status();
+  }
   return loom_low_lower_rule_value_symbolically_fits_bit_count(
       match_context, rule_set, source_op, value_ref_index, (uint8_t)bit_count,
       is_signed_domain, out_matches);
@@ -1248,8 +1272,9 @@ static iree_status_t loom_low_lower_rule_descriptor_maps_initialize(
     loom_low_lower_context_t* context,
     const loom_low_descriptor_set_t* descriptor_set) {
   IREE_ASSERT(descriptor_set != NULL);
-  if (context->lowering.rule_descriptor_map_set == descriptor_set)
+  if (context->lowering.rule_descriptor_map_set == descriptor_set) {
     return iree_ok_status();
+  }
 
   context->lowering.rule_descriptor_map_set = descriptor_set;
   context->lowering.rule_descriptor_maps = NULL;

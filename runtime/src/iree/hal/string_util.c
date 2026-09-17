@@ -31,7 +31,9 @@ IREE_API_EXPORT iree_status_t iree_hal_parse_shape(
   // Count the number of dimensions to see if we have capacity.
   iree_host_size_t shape_rank = 1;  // always at least one if we are not empty
   for (iree_host_size_t i = 0; i < value.size; ++i) {
-    if (value.data[i] == 'x') ++shape_rank;
+    if (value.data[i] == 'x') {
+      ++shape_rank;
+    }
   }
   if (out_shape_rank) {
     *out_shape_rank = shape_rank;
@@ -818,7 +820,9 @@ static iree_status_t iree_hal_format_buffer_elements_recursive(
     subdata.data = data.data;
     subdata.data_length = element_stride;
     for (iree_hal_dim_t i = 0; i < max_count; ++i) {
-      if (i > 0) APPEND_CHAR(' ');
+      if (i > 0) {
+        APPEND_CHAR(' ');
+      }
       iree_host_size_t actual_length = 0;
       iree_status_t status = iree_hal_format_element(
           subdata, element_type, buffer ? buffer_capacity - buffer_length : 0,

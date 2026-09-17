@@ -195,8 +195,12 @@ bool iree_hal_task_transient_buffer_query_reservation(
   iree_slim_mutex_lock(&buffer->mutex);
   const bool has_reservation = buffer->reservation_armed;
   if (has_reservation) {
-    if (out_pool) *out_pool = buffer->source_pool;
-    if (out_reservation) *out_reservation = buffer->reservation;
+    if (out_pool) {
+      *out_pool = buffer->source_pool;
+    }
+    if (out_reservation) {
+      *out_reservation = buffer->reservation;
+    }
   }
   iree_slim_mutex_unlock(&buffer->mutex);
   return has_reservation;

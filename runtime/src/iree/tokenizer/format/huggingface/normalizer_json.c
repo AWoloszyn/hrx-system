@@ -66,8 +66,12 @@ static iree_status_t iree_tokenizer_base64_decode(
 
   // Calculate required output size.
   iree_host_size_t padding = 0;
-  if (encoded.data[encoded.size - 1] == '=') padding++;
-  if (encoded.data[encoded.size - 2] == '=') padding++;
+  if (encoded.data[encoded.size - 1] == '=') {
+    padding++;
+  }
+  if (encoded.data[encoded.size - 2] == '=') {
+    padding++;
+  }
   iree_host_size_t base_decoded = (encoded.size / 4) * 3;
   if (padding > base_decoded) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
@@ -93,7 +97,9 @@ static iree_status_t iree_tokenizer_base64_decode(
                               "invalid base64 character at position %" PRIhsz,
                               i);
     }
-    if (value == -2) continue;  // Padding.
+    if (value == -2) {
+      continue;  // Padding.
+    }
     accumulator = (accumulator << 6) | (uint32_t)value;
     bits += 6;
     if (bits >= 8) {
@@ -149,8 +155,12 @@ static iree_status_t iree_tokenizer_parse_precompiled_normalizer(
 
   // Calculate decoded size.
   iree_host_size_t padding = 0;
-  if (charsmap_b64.data[charsmap_b64.size - 1] == '=') padding++;
-  if (charsmap_b64.data[charsmap_b64.size - 2] == '=') padding++;
+  if (charsmap_b64.data[charsmap_b64.size - 1] == '=') {
+    padding++;
+  }
+  if (charsmap_b64.data[charsmap_b64.size - 2] == '=') {
+    padding++;
+  }
   iree_host_size_t base_decoded = (charsmap_b64.size / 4) * 3;
   if (padding > base_decoded) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
@@ -162,7 +172,9 @@ static iree_status_t iree_tokenizer_parse_precompiled_normalizer(
   uint8_t* decoded_data = NULL;
   iree_status_t status =
       iree_allocator_malloc(allocator, decoded_size, (void**)&decoded_data);
-  if (!iree_status_is_ok(status)) return status;
+  if (!iree_status_is_ok(status)) {
+    return status;
+  }
 
   // Decode base64.
   iree_host_size_t actual_length = 0;

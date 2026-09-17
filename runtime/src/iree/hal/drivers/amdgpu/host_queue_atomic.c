@@ -142,7 +142,9 @@ iree_hal_amdgpu_host_queue_atomic_minimum_release_scope(
 static bool iree_hal_amdgpu_host_queue_atomic_can_use_native_pm4(
     const iree_hal_amdgpu_host_queue_t* queue,
     const iree_hal_amdgpu_host_queue_atomic_operation_t* operation) {
-  if (!queue->pm4_ib_slots) return false;
+  if (!queue->pm4_ib_slots) {
+    return false;
+  }
   switch (operation->kind) {
     case IREE_HAL_AMDGPU_HOST_QUEUE_ATOMIC_OPERATION_WAIT:
       return iree_hal_amdgpu_vendor_packet_capabilities_support_pm4_atomic_wait(
@@ -179,7 +181,9 @@ static bool iree_hal_amdgpu_host_queue_atomic_emit_native_pm4(
 
   uint32_t* dwords =
       iree_hal_amdgpu_pm4_ib_builder_append_dwords(builder, dword_count);
-  if (!dwords) return false;
+  if (!dwords) {
+    return false;
+  }
   uint32_t emitted_dword_count = 0;
   bool did_emit = false;
   switch (operation->kind) {
@@ -220,7 +224,9 @@ static iree_status_t iree_hal_amdgpu_host_queue_submit_atomic_pm4(
       queue, resolution, signal_semaphore_list,
       IREE_ARRAYSIZE(operation_resources), iree_hsa_signal_null(),
       &profile_event_info, out_ready, &submission));
-  if (!*out_ready) return iree_ok_status();
+  if (!*out_ready) {
+    return iree_ok_status();
+  }
 
   if (IREE_UNLIKELY(!iree_hal_amdgpu_host_queue_atomic_emit_native_pm4(
           operation, target_device_ptr, &submission.pm4_ib_builder))) {

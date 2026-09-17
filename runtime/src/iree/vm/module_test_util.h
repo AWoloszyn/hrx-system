@@ -144,7 +144,9 @@ class TableModule {
   iree_status_t Publish() {
     iree_status_t status =
         iree_vm_module_initialize(&vtable_, &definition_.descriptor, &storage_);
-    if (iree_status_is_ok(status)) module_ = &storage_;
+    if (iree_status_is_ok(status)) {
+      module_ = &storage_;
+    }
     return status;
   }
 

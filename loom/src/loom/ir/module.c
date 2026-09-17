@@ -79,7 +79,9 @@ static iree_status_t loom_intern_table_grow(iree_arena_allocator_t* arena,
   // Reinsert all entries from the old table.
   iree_host_size_t mask = new_capacity - 1;
   for (iree_host_size_t i = 0; i < old_capacity; ++i) {
-    if (old_indices[i] == UINT32_MAX) continue;
+    if (old_indices[i] == UINT32_MAX) {
+      continue;
+    }
     uint32_t hash = old_hashes[i];
     iree_host_size_t slot = hash & mask;
     while (table->indices[slot] != UINT32_MAX) {
@@ -95,7 +97,9 @@ static iree_status_t loom_intern_table_grow(iree_arena_allocator_t* arena,
 
 // Clears all entries while retaining the arena-owned table allocation.
 static void loom_intern_table_clear(loom_intern_table_t* table) {
-  if (table->capacity == 0) return;
+  if (table->capacity == 0) {
+    return;
+  }
   memset(table->indices, 0xFF, table->capacity * sizeof(uint32_t));
   table->count = 0;
 }
@@ -132,13 +136,17 @@ static uint32_t loom_intern_table_lookup(const loom_intern_table_t* table,
                                          uint32_t hash,
                                          loom_intern_equal_fn_t equal_fn,
                                          const void* equal_context) {
-  if (table->capacity == 0) return UINT32_MAX;
+  if (table->capacity == 0) {
+    return UINT32_MAX;
+  }
 
   iree_host_size_t mask = table->capacity - 1;
   iree_host_size_t slot = hash & mask;
   while (true) {
     uint32_t index = table->indices[slot];
-    if (index == UINT32_MAX) return UINT32_MAX;
+    if (index == UINT32_MAX) {
+      return UINT32_MAX;
+    }
     if (table->hashes[slot] == hash && equal_fn(equal_context, index)) {
       return index;
     }
@@ -244,7 +252,9 @@ static void loom_value_u32_scratch_fill(loom_value_u32_scratch_t* scratch,
 
 static iree_status_t loom_string_table_ensure_capacity(
     iree_arena_allocator_t* arena, loom_string_table_t* table) {
-  if (table->count < table->capacity) return iree_ok_status();
+  if (table->count < table->capacity) {
+    return iree_ok_status();
+  }
   iree_host_size_t new_capacity =
       table->capacity > 0 ? table->capacity * 2 : 512;
   iree_string_view_t* new_entries = NULL;
@@ -291,7 +301,9 @@ static iree_status_t loom_type_table_ensure_capacity(
 
 static iree_status_t loom_encoding_table_ensure_capacity(
     iree_arena_allocator_t* arena, loom_encoding_table_t* table) {
-  if (table->count < table->capacity) return iree_ok_status();
+  if (table->count < table->capacity) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(iree_arena_grow_array(
       arena, table->count, /*minimum_capacity=*/8, sizeof(loom_encoding_t),
       &table->capacity, (void**)&table->entries));
@@ -300,7 +312,9 @@ static iree_status_t loom_encoding_table_ensure_capacity(
 
 static iree_status_t loom_symbol_table_ensure_capacity(
     iree_arena_allocator_t* arena, loom_symbol_table_t* table) {
-  if (table->count < table->capacity) return iree_ok_status();
+  if (table->count < table->capacity) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(iree_arena_grow_array(
       arena, table->count, /*minimum_capacity=*/8, sizeof(loom_symbol_t),
       &table->capacity, (void**)&table->entries));
@@ -309,7 +323,9 @@ static iree_status_t loom_symbol_table_ensure_capacity(
 
 static iree_status_t loom_source_table_ensure_capacity(
     iree_arena_allocator_t* arena, loom_source_table_t* table) {
-  if (table->count < table->capacity) return iree_ok_status();
+  if (table->count < table->capacity) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(iree_arena_grow_array(
       arena, table->count, /*minimum_capacity=*/4, sizeof(iree_string_view_t),
       &table->capacity, (void**)&table->entries));
@@ -318,7 +334,9 @@ static iree_status_t loom_source_table_ensure_capacity(
 
 static iree_status_t loom_location_table_ensure_capacity(
     iree_arena_allocator_t* arena, loom_location_table_t* table) {
-  if (table->count < table->capacity) return iree_ok_status();
+  if (table->count < table->capacity) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(
       iree_arena_grow_array(arena, table->count, /*minimum_capacity=*/16,
                             sizeof(loom_location_entry_t), &table->capacity,
@@ -328,7 +346,9 @@ static iree_status_t loom_location_table_ensure_capacity(
 
 static iree_status_t loom_comment_table_ensure_capacity(
     iree_arena_allocator_t* arena, loom_comment_table_t* table) {
-  if (table->count < table->capacity) return iree_ok_status();
+  if (table->count < table->capacity) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(
       iree_arena_grow_array(arena, table->count, /*minimum_capacity=*/16,
                             sizeof(loom_comment_attachment_t), &table->capacity,
@@ -339,11 +359,15 @@ static iree_status_t loom_comment_table_ensure_capacity(
 static iree_status_t loom_type_use_table_ensure_record_capacity(
     iree_arena_allocator_t* arena, loom_type_use_table_t* table,
     iree_host_size_t additional_record_count) {
-  if (table->free_count >= additional_record_count) return iree_ok_status();
+  if (table->free_count >= additional_record_count) {
+    return iree_ok_status();
+  }
   iree_host_size_t new_records_needed =
       additional_record_count - table->free_count;
   iree_host_size_t minimum_capacity = table->record_count + new_records_needed;
-  if (minimum_capacity <= table->record_capacity) return iree_ok_status();
+  if (minimum_capacity <= table->record_capacity) {
+    return iree_ok_status();
+  }
   if (minimum_capacity >= LOOM_TYPE_USE_ID_INVALID) {
     return iree_make_status(
         IREE_STATUS_RESOURCE_EXHAUSTED,
@@ -405,7 +429,9 @@ static void loom_region_adjust_summary_counts(loom_region_t* region,
                                               int32_t read_delta,
                                               int32_t write_delta,
                                               int32_t convergent_delta) {
-  if (read_delta == 0 && write_delta == 0 && convergent_delta == 0) return;
+  if (read_delta == 0 && write_delta == 0 && convergent_delta == 0) {
+    return;
+  }
   if (read_delta != 0) {
     loom_region_adjust_summary_count(&region->read_effect_count, read_delta);
   }
@@ -421,14 +447,18 @@ static void loom_region_adjust_summary_counts(loom_region_t* region,
 static void loom_module_adjust_op_ancestor_summary_counts(
     loom_op_t* op, int32_t read_delta, int32_t write_delta,
     int32_t convergent_delta) {
-  if (read_delta == 0 && write_delta == 0 && convergent_delta == 0) return;
+  if (read_delta == 0 && write_delta == 0 && convergent_delta == 0) {
+    return;
+  }
   loom_region_t* region =
       op->parent_block ? op->parent_block->parent_region : NULL;
   loom_op_t* parent_op = op->parent_op;
   while (region) {
     loom_region_adjust_summary_counts(region, read_delta, write_delta,
                                       convergent_delta);
-    if (!parent_op) break;
+    if (!parent_op) {
+      break;
+    }
     region =
         parent_op->parent_block ? parent_op->parent_block->parent_region : NULL;
     parent_op = parent_op->parent_op;
@@ -494,7 +524,9 @@ void loom_module_record_op_summaries(loom_module_t* module, loom_op_t* op) {
 }
 
 void loom_module_drop_op_summaries(loom_module_t* module, loom_op_t* op) {
-  if (!op) return;
+  if (!op) {
+    return;
+  }
   if (iree_any_bit_set(op->flags, LOOM_OP_FLAG_SUMMARIES_COUNTED)) {
     loom_module_adjust_op_direct_summaries(module, op, op->traits, -1);
     op->flags &= ~LOOM_OP_FLAG_SUMMARIES_COUNTED;
@@ -502,7 +534,9 @@ void loom_module_drop_op_summaries(loom_module_t* module, loom_op_t* op) {
   loom_region_t** regions = loom_op_regions(op);
   for (uint8_t i = 0; i < op->region_count; ++i) {
     loom_region_t* region = regions[i];
-    if (!region) continue;
+    if (!region) {
+      continue;
+    }
     loom_block_t* block = NULL;
     loom_region_for_each_block(region, block) {
       loom_op_t* child_op = NULL;
@@ -541,7 +575,9 @@ void loom_module_update_op_direct_summaries(loom_module_t* module,
 iree_status_t loom_region_reserve_block_capacity(
     loom_module_t* module, loom_region_t* region,
     iree_host_size_t minimum_capacity) {
-  if (minimum_capacity <= region->block_capacity) return iree_ok_status();
+  if (minimum_capacity <= region->block_capacity) {
+    return iree_ok_status();
+  }
   if (minimum_capacity > UINT16_MAX) {
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                             "region block count exceeds UINT16_MAX");
@@ -727,7 +763,9 @@ iree_status_t loom_module_allocate(loom_context_t* context,
 }
 
 void loom_module_free(loom_module_t* module) {
-  if (!module) return;
+  if (!module) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_allocator_t allocator = module->allocator;
   iree_arena_deinitialize(&module->arena);
@@ -978,7 +1016,9 @@ iree_status_t loom_module_add_encoding(loom_module_t* module,
   // and reject collisions against any structurally different encoding.
   if (canonical_encoding.alias_id != LOOM_STRING_ID_INVALID) {
     for (iree_host_size_t i = 0; i < module->encodings.count; ++i) {
-      if (i == existing_index) continue;
+      if (i == existing_index) {
+        continue;
+      }
       if (module->encodings.entries[i].alias_id !=
           canonical_encoding.alias_id) {
         continue;
@@ -1088,7 +1128,9 @@ iree_status_t loom_module_add_symbol(loom_module_t* module,
 static iree_status_t loom_module_mark_symbol_references_in_attr(
     const loom_module_t* module, const loom_attribute_t* attr,
     uint8_t* referenced_symbols, uint8_t dict_depth) {
-  if (!attr) return iree_ok_status();
+  if (!attr) {
+    return iree_ok_status();
+  }
   switch ((loom_attr_kind_t)attr->kind) {
     case LOOM_ATTR_SYMBOL: {
       loom_symbol_ref_t symbol_ref = loom_attr_as_symbol(*attr);
@@ -1198,7 +1240,9 @@ static iree_status_t loom_module_mark_symbol_references_in_types(
     const loom_module_t* module, uint8_t* referenced_symbols) {
   for (iree_host_size_t i = 0; i < module->types.count; ++i) {
     loom_type_t type = module->types.entries[i];
-    if (!loom_type_is_parameterized(type)) continue;
+    if (!loom_type_is_parameterized(type)) {
+      continue;
+    }
     const loom_attribute_t* parameters =
         loom_type_parameterized_parameters(type);
     const uint8_t parameter_count =
@@ -1212,7 +1256,9 @@ static iree_status_t loom_module_mark_symbol_references_in_types(
 static iree_status_t loom_module_mark_symbol_references_in_region(
     const loom_module_t* module, const loom_region_t* region,
     uint8_t* referenced_symbols) {
-  if (!region) return iree_ok_status();
+  if (!region) {
+    return iree_ok_status();
+  }
   const loom_block_t* block = NULL;
   loom_region_for_each_block(region, block) {
     const loom_op_t* op = NULL;
@@ -1258,7 +1304,9 @@ static iree_status_t loom_module_remap_symbol_attr(
     }
     case LOOM_ATTR_SYMBOL_ARRAY:
     case LOOM_ATTR_SYMBOL_SET: {
-      if (source_attr.count == 0) return iree_ok_status();
+      if (source_attr.count == 0) {
+        return iree_ok_status();
+      }
       loom_symbol_ref_t* target_refs = NULL;
       for (uint16_t i = 0; i < source_attr.count; ++i) {
         loom_symbol_ref_t source_ref = source_attr.symbol_refs[i];
@@ -1275,7 +1323,9 @@ static iree_status_t loom_module_remap_symbol_attr(
               "id %u",
               (unsigned)i, (unsigned)source_ref.symbol_id);
         }
-        if (new_symbol_id == source_ref.symbol_id) continue;
+        if (new_symbol_id == source_ref.symbol_id) {
+          continue;
+        }
         if (!target_refs) {
           IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
               &module->arena, source_attr.count, sizeof(*target_refs),
@@ -1301,7 +1351,9 @@ static iree_status_t loom_module_remap_symbol_attr(
             "dict attribute nesting exceeds max depth %u",
             (unsigned)LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH);
       }
-      if (source_attr.count == 0) return iree_ok_status();
+      if (source_attr.count == 0) {
+        return iree_ok_status();
+      }
       if (!source_attr.dict_entries) {
         return iree_make_status(
             IREE_STATUS_INVALID_ARGUMENT,
@@ -1315,7 +1367,9 @@ static iree_status_t loom_module_remap_symbol_attr(
             module, new_symbol_ids, old_symbol_count,
             source_attr.dict_entries[i].value, (uint8_t)(dict_depth + 1),
             &target_value, &value_changed));
-        if (!value_changed) continue;
+        if (!value_changed) {
+          continue;
+        }
         if (!target_entries) {
           IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
               &module->arena, source_attr.count, sizeof(*target_entries),
@@ -1339,7 +1393,9 @@ static iree_status_t loom_module_remap_symbol_attr(
             "parameterized attribute nesting exceeds max depth %u",
             (unsigned)LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH);
       }
-      if (source_attr.count == 0) return iree_ok_status();
+      if (source_attr.count == 0) {
+        return iree_ok_status();
+      }
       if (!source_attr.parameterized_slots) {
         return iree_make_status(
             IREE_STATUS_INVALID_ARGUMENT,
@@ -1353,7 +1409,9 @@ static iree_status_t loom_module_remap_symbol_attr(
             module, new_symbol_ids, old_symbol_count,
             source_attr.parameterized_slots[i], (uint8_t)(dict_depth + 1),
             &target_value, &value_changed));
-        if (!value_changed) continue;
+        if (!value_changed) {
+          continue;
+        }
         if (!target_slots) {
           IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
               &module->arena, source_attr.count, sizeof(*target_slots),
@@ -1378,7 +1436,9 @@ static iree_status_t loom_module_remap_symbol_attr(
             "parameterized attribute array nesting exceeds max depth %u",
             (unsigned)LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH);
       }
-      if (source_attr.count == 0) return iree_ok_status();
+      if (source_attr.count == 0) {
+        return iree_ok_status();
+      }
       if (!source_attr.parameterized_array) {
         return iree_make_status(
             IREE_STATUS_INVALID_ARGUMENT,
@@ -1393,7 +1453,9 @@ static iree_status_t loom_module_remap_symbol_attr(
             module, new_symbol_ids, old_symbol_count,
             source_attr.parameterized_array[i], (uint8_t)(dict_depth + 1),
             &target_value, &value_changed));
-        if (!value_changed) continue;
+        if (!value_changed) {
+          continue;
+        }
         if (!target_attributes) {
           IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
               &module->arena, source_attr.count, sizeof(*target_attributes),
@@ -1426,7 +1488,9 @@ static iree_status_t loom_module_remap_symbol_attrs(
     IREE_RETURN_IF_ERROR(
         loom_module_remap_symbol_attr(module, new_symbol_ids, old_symbol_count,
                                       attrs[i], 0, &target_attr, &changed));
-    if (changed) attrs[i] = target_attr;
+    if (changed) {
+      attrs[i] = target_attr;
+    }
   }
   return iree_ok_status();
 }
@@ -1435,7 +1499,9 @@ static iree_status_t loom_module_remap_symbol_named_attrs(
     loom_module_t* module, const uint16_t* new_symbol_ids,
     iree_host_size_t old_symbol_count, const loom_named_attr_t** inout_attrs,
     iree_host_size_t attr_count) {
-  if (attr_count == 0) return iree_ok_status();
+  if (attr_count == 0) {
+    return iree_ok_status();
+  }
   const loom_named_attr_t* source_attrs = *inout_attrs;
   if (!source_attrs) {
     return iree_make_status(
@@ -1449,7 +1515,9 @@ static iree_status_t loom_module_remap_symbol_named_attrs(
     IREE_RETURN_IF_ERROR(loom_module_remap_symbol_attr(
         module, new_symbol_ids, old_symbol_count, source_attrs[i].value, 0,
         &target_value, &value_changed));
-    if (!value_changed) continue;
+    if (!value_changed) {
+      continue;
+    }
     if (!target_attrs) {
       IREE_RETURN_IF_ERROR(iree_arena_allocate_array(&module->arena, attr_count,
                                                      sizeof(*target_attrs),
@@ -1458,14 +1526,18 @@ static iree_status_t loom_module_remap_symbol_named_attrs(
     }
     target_attrs[i].value = target_value;
   }
-  if (target_attrs) *inout_attrs = target_attrs;
+  if (target_attrs) {
+    *inout_attrs = target_attrs;
+  }
   return iree_ok_status();
 }
 
 static iree_status_t loom_module_remap_symbol_region_attrs(
     loom_module_t* module, const uint16_t* new_symbol_ids,
     iree_host_size_t old_symbol_count, loom_region_t* region) {
-  if (!region) return iree_ok_status();
+  if (!region) {
+    return iree_ok_status();
+  }
   loom_block_t* block = NULL;
   loom_region_for_each_block(region, block) {
     loom_op_t* op = NULL;
@@ -1512,9 +1584,13 @@ iree_status_t loom_module_compact_symbols_preserving_symbol_refs(
     iree_host_size_t preserved_symbol_ref_count,
     iree_arena_allocator_t* scratch_arena,
     iree_host_size_t* out_removed_count) {
-  if (out_removed_count) *out_removed_count = 0;
+  if (out_removed_count) {
+    *out_removed_count = 0;
+  }
   const iree_host_size_t old_symbol_count = module->symbols.count;
-  if (old_symbol_count == 0) return iree_ok_status();
+  if (old_symbol_count == 0) {
+    return iree_ok_status();
+  }
   iree_host_size_t max_preserved_symbol_id =
       loom_module_max_preserved_symbol_id(
           preserved_symbol_refs, preserved_symbol_ref_count, old_symbol_count);
@@ -1531,7 +1607,9 @@ iree_status_t loom_module_compact_symbols_preserving_symbol_refs(
   // preserved ordinal prefix keeps their symbol slots valid without rebuilding
   // that interner during symbol compaction.
   for (iree_host_size_t i = 0; i < old_symbol_count; ++i) {
-    if (referenced_symbols[i] == 0) continue;
+    if (referenced_symbols[i] == 0) {
+      continue;
+    }
     if (max_preserved_symbol_id == IREE_HOST_SIZE_MAX ||
         i > max_preserved_symbol_id) {
       max_preserved_symbol_id = i;
@@ -1570,7 +1648,9 @@ iree_status_t loom_module_compact_symbols_preserving_symbol_refs(
     }
   }
 
-  if (removed_count == 0) return iree_ok_status();
+  if (removed_count == 0) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(loom_module_remap_symbol_region_attrs(
       module, new_symbol_ids, old_symbol_count, module->body));
@@ -1589,7 +1669,9 @@ iree_status_t loom_module_compact_symbols_preserving_symbol_refs(
   for (iree_host_size_t old_index = 0; old_index < old_symbol_count;
        ++old_index) {
     uint16_t new_symbol_id = new_symbol_ids[old_index];
-    if (new_symbol_id == LOOM_SYMBOL_ID_INVALID) continue;
+    if (new_symbol_id == LOOM_SYMBOL_ID_INVALID) {
+      continue;
+    }
     const loom_symbol_t* source_symbol = &module->symbols.entries[old_index];
     if (!loom_module_symbol_has_payload(source_symbol) &&
         referenced_symbols[old_index] == 0) {
@@ -1604,7 +1686,9 @@ iree_status_t loom_module_compact_symbols_preserving_symbol_refs(
          (old_symbol_count - new_symbol_count) *
              sizeof(module->symbols.entries[0]));
   module->symbols.count = new_symbol_count;
-  if (out_removed_count) *out_removed_count = removed_count;
+  if (out_removed_count) {
+    *out_removed_count = removed_count;
+  }
   return iree_ok_status();
 }
 
@@ -1865,12 +1949,20 @@ iree_status_t loom_module_attach_block_comments(
 static const iree_string_view_t* loom_module_comments(
     const loom_module_t* module, loom_comment_owner_kind_t owner_kind,
     const void* owner, iree_host_size_t* out_comment_count) {
-  if (out_comment_count) *out_comment_count = 0;
-  if (!owner) return NULL;
+  if (out_comment_count) {
+    *out_comment_count = 0;
+  }
+  if (!owner) {
+    return NULL;
+  }
   const loom_comment_attachment_t* attachment =
       loom_module_find_comment_attachment(module, owner_kind, owner);
-  if (!attachment) return NULL;
-  if (out_comment_count) *out_comment_count = attachment->comment_count;
+  if (!attachment) {
+    return NULL;
+  }
+  if (out_comment_count) {
+    *out_comment_count = attachment->comment_count;
+  }
   return attachment->comments;
 }
 
@@ -1906,7 +1998,9 @@ typedef struct loom_type_use_prepare_t {
 static iree_status_t loom_type_use_prepare_callback(loom_value_id_t value_id,
                                                     void* user_data) {
   loom_type_use_prepare_t* prepare = (loom_type_use_prepare_t*)user_data;
-  if (value_id >= prepare->module->values.count) return iree_ok_status();
+  if (value_id >= prepare->module->values.count) {
+    return iree_ok_status();
+  }
   ++prepare->reference_count;
   return iree_ok_status();
 }
@@ -1915,7 +2009,9 @@ static iree_status_t loom_type_use_prepare_for_type(
     loom_module_t* module, loom_type_t type,
     iree_host_size_t* out_reference_count) {
   *out_reference_count = 0;
-  if (!loom_type_may_reference_values(type)) return iree_ok_status();
+  if (!loom_type_may_reference_values(type)) {
+    return iree_ok_status();
+  }
   loom_type_use_prepare_t prepare = {
       .module = module,
       .reference_count = 0,
@@ -2022,7 +2118,9 @@ static void loom_type_use_table_release_record(loom_type_use_table_t* table,
 
 static void loom_type_use_table_remove_outgoing_for_value(
     loom_type_use_table_t* table, loom_value_id_t user_value_id) {
-  if (user_value_id >= table->value_table->count) return;
+  if (user_value_id >= table->value_table->count) {
+    return;
+  }
   loom_type_use_id_t use_id =
       loom_type_use_table_value_heads(table, user_value_id)
           ->first_outgoing_use_id;
@@ -2044,7 +2142,9 @@ typedef struct loom_type_use_add_t {
 static iree_status_t loom_type_use_add_callback(loom_value_id_t value_id,
                                                 void* user_data) {
   loom_type_use_add_t* add = (loom_type_use_add_t*)user_data;
-  if (value_id >= add->module->values.count) return iree_ok_status();
+  if (value_id >= add->module->values.count) {
+    return iree_ok_status();
+  }
   loom_type_use_id_t use_id = loom_type_use_table_allocate_record(add->table);
   loom_type_use_table_link_record(add->table, use_id, value_id,
                                   add->user_value_id);
@@ -2116,7 +2216,9 @@ iree_status_t loom_module_define_untyped_values(
     loom_module_t* module, iree_host_size_t count,
     loom_value_id_t* out_base_value_id) {
   *out_base_value_id = LOOM_VALUE_ID_INVALID;
-  if (count == 0) return iree_ok_status();
+  if (count == 0) {
+    return iree_ok_status();
+  }
   if (count > LOOM_VALUE_ID_INVALID - module->values.count) {
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                             "value table full (%" PRIhsz
@@ -2503,7 +2605,9 @@ static void loom_module_sift_symbol_ref_heap(const loom_module_t* module,
                              module, refs[larger], refs[right]) < 0) {
       larger = right;
     }
-    if (larger == root) return;
+    if (larger == root) {
+      return;
+    }
     loom_symbol_ref_t temporary = refs[root];
     refs[root] = refs[larger];
     refs[larger] = temporary;
@@ -2785,7 +2889,9 @@ static iree_status_t loom_module_make_parameterized_attr_array_values(
 
 static iree_status_t loom_module_validate_attr_descriptor_value(
     const loom_attr_descriptor_t* descriptor, loom_attribute_t value) {
-  if (!descriptor) return iree_ok_status();
+  if (!descriptor) {
+    return iree_ok_status();
+  }
   iree_string_view_t parameter_name = loom_attr_descriptor_name(descriptor);
   if (loom_attr_is_absent(value)) {
     if (iree_any_bit_set(descriptor->flags, LOOM_ATTR_OPTIONAL)) {
@@ -3294,12 +3400,16 @@ iree_status_t loom_module_replace_canonical_attr_dict(
         found_existing = true;
         break;
       }
-      if (comparison > 0) break;
+      if (comparison > 0) {
+        break;
+      }
       ++entry_index;
     }
 
     if (update->remove) {
-      if (!found_existing) continue;
+      if (!found_existing) {
+        continue;
+      }
       for (iree_host_size_t i = entry_index + 1; i < merged_count; ++i) {
         merged_entries[i - 1] = merged_entries[i];
       }
@@ -3720,7 +3830,9 @@ static void loom_module_note_recent_exact_type(loom_module_t* module,
                                                loom_type_id_t type_id) {
   IREE_ASSERT(type_id < module->types.count);
   const uint32_t ordinal = type_id + 1;
-  if (module->recent_exact_type_ordinals[0] == ordinal) return;
+  if (module->recent_exact_type_ordinals[0] == ordinal) {
+    return;
+  }
   module->recent_exact_type_ordinals[1] = module->recent_exact_type_ordinals[0];
   module->recent_exact_type_ordinals[0] = ordinal;
 }
@@ -3730,7 +3842,9 @@ static loom_type_id_t loom_module_find_recent_exact_type(
   for (iree_host_size_t i = 0;
        i < IREE_ARRAYSIZE(module->recent_exact_type_ordinals); ++i) {
     const uint32_t ordinal = module->recent_exact_type_ordinals[i];
-    if (ordinal == 0) continue;
+    if (ordinal == 0) {
+      continue;
+    }
     const loom_type_id_t type_id = ordinal - 1;
     if (loom_type_has_same_storage(module->types.entries[type_id], type)) {
       return type_id;
@@ -3746,7 +3860,9 @@ static void loom_module_note_recent_register_type(loom_module_t* module,
   IREE_ASSERT(
       loom_type_register_has_value_type(module->types.entries[type_id]));
   const uint32_t ordinal = type_id + 1;
-  if (module->recent_register_type_ordinals[0] == ordinal) return;
+  if (module->recent_register_type_ordinals[0] == ordinal) {
+    return;
+  }
   module->recent_register_type_ordinals[1] =
       module->recent_register_type_ordinals[0];
   module->recent_register_type_ordinals[0] = ordinal;
@@ -3757,7 +3873,9 @@ static loom_type_id_t loom_module_find_recent_register_type_structural(
   for (iree_host_size_t i = 0;
        i < IREE_ARRAYSIZE(module->recent_register_type_ordinals); ++i) {
     const uint32_t ordinal = module->recent_register_type_ordinals[i];
-    if (ordinal == 0) continue;
+    if (ordinal == 0) {
+      continue;
+    }
     const loom_type_id_t type_id = ordinal - 1;
     if (loom_type_equal(module->types.entries[type_id], type)) {
       return type_id;
@@ -3858,17 +3976,23 @@ static bool loom_function_type_equal_fn(const void* context, uint32_t index) {
   const loom_function_type_equal_context_t* ctx =
       (const loom_function_type_equal_context_t*)context;
   loom_type_t type = ctx->module->types.entries[index];
-  if (loom_type_kind(type) != LOOM_TYPE_FUNCTION) return false;
+  if (loom_type_kind(type) != LOOM_TYPE_FUNCTION) {
+    return false;
+  }
 
   const loom_func_type_data_t* data = loom_type_func_data(type);
-  if (!data) return false;
+  if (!data) {
+    return false;
+  }
   if (data->arg_count != ctx->arg_count ||
       data->result_count != ctx->result_count) {
     return false;
   }
 
   for (uint16_t i = 0; i < ctx->arg_count; ++i) {
-    if (!loom_type_equal(data->types[i], ctx->arg_types[i])) return false;
+    if (!loom_type_equal(data->types[i], ctx->arg_types[i])) {
+      return false;
+    }
   }
   for (uint16_t i = 0; i < ctx->result_count; ++i) {
     if (!loom_type_equal(data->types[ctx->arg_count + i],
@@ -4159,7 +4283,9 @@ static iree_status_t loom_module_clone_type_payload(loom_module_t* module,
     case LOOM_TYPE_REGISTER: {
       const loom_register_type_data_t* source_data =
           loom_type_register_data(type);
-      if (!loom_type_register_has_value_type(type)) return iree_ok_status();
+      if (!loom_type_register_has_value_type(type)) {
+        return iree_ok_status();
+      }
       if (!source_data) {
         return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                                 "register type has a NULL typed payload");
@@ -4217,16 +4343,22 @@ static iree_status_t loom_module_intern_type_impl(
     const void* equal_context, loom_module_type_clone_fn_t clone_fn,
     const void* clone_context, loom_type_t* out_interned_type,
     loom_type_id_t* out_type_id, bool* out_miss) {
-  if (out_miss) *out_miss = false;
+  if (out_miss) {
+    *out_miss = false;
+  }
   uint32_t existing_index = loom_intern_table_lookup(&module->type_intern, hash,
                                                      equal_fn, equal_context);
   if (existing_index != UINT32_MAX) {
     *out_interned_type = module->types.entries[existing_index];
-    if (out_type_id) *out_type_id = (loom_type_id_t)existing_index;
+    if (out_type_id) {
+      *out_type_id = (loom_type_id_t)existing_index;
+    }
     loom_module_note_recent_exact_type(module, (loom_type_id_t)existing_index);
     return iree_ok_status();
   }
-  if (out_miss) *out_miss = true;
+  if (out_miss) {
+    *out_miss = true;
+  }
 
   // Type interner slots use 32-bit indices with UINT32_MAX as the empty
   // sentinel in loom_intern_table_t. Reject a new unique type before that
@@ -4253,7 +4385,9 @@ static iree_status_t loom_module_intern_type_impl(
 
   if (result_index != new_index) {
     *out_interned_type = module->types.entries[result_index];
-    if (out_type_id) *out_type_id = (loom_type_id_t)result_index;
+    if (out_type_id) {
+      *out_type_id = (loom_type_id_t)result_index;
+    }
     loom_module_note_recent_exact_type(module, (loom_type_id_t)result_index);
     return iree_ok_status();
   }
@@ -4262,7 +4396,9 @@ static iree_status_t loom_module_intern_type_impl(
   module->types.hashes[new_index] = hash;
   module->types.count++;
   *out_interned_type = type;
-  if (out_type_id) *out_type_id = (loom_type_id_t)new_index;
+  if (out_type_id) {
+    *out_type_id = (loom_type_id_t)new_index;
+  }
   loom_module_note_recent_exact_type(module, (loom_type_id_t)new_index);
   return iree_ok_status();
 }
@@ -4280,7 +4416,9 @@ static iree_status_t loom_module_retain_type_from_context(
 // references, and all non-default static families retain their module IDs.
 static loom_type_t loom_module_canonicalize_shaped_type_attachment(
     const loom_module_t* module, loom_type_t type) {
-  if (!loom_type_has_static_encoding(type)) return type;
+  if (!loom_type_has_static_encoding(type)) {
+    return type;
+  }
   const loom_encoding_t* encoding =
       loom_module_encoding(module, type.encoding_id);
   if (!encoding || !loom_encoding_is_implicit_shaped_attachment(encoding)) {
@@ -4355,7 +4493,9 @@ static iree_status_t loom_module_intern_type_with_dependencies(
       loom_module_find_recent_exact_type(module, type);
   if (recent_type_id != LOOM_TYPE_ID_INVALID) {
     *out_interned_type = module->types.entries[recent_type_id];
-    if (out_type_id) *out_type_id = recent_type_id;
+    if (out_type_id) {
+      *out_type_id = recent_type_id;
+    }
     return iree_ok_status();
   }
   switch (loom_type_kind(type)) {
@@ -4407,7 +4547,9 @@ static iree_status_t loom_module_intern_type_with_dependencies(
     }
     case LOOM_TYPE_REGISTER: {
       const loom_type_t* value_type = loom_type_register_value_type(type);
-      if (!loom_type_register_has_value_type(type)) break;
+      if (!loom_type_register_has_value_type(type)) {
+        break;
+      }
       if (!value_type) {
         return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                                 "register type has a NULL typed payload");
@@ -4908,7 +5050,9 @@ static iree_status_t loom_block_insert_ordinal(loom_block_t* block,
                                                loom_op_t* prev_op,
                                                loom_op_t* next_op,
                                                uint64_t* out_ordinal) {
-  if (!next_op) return loom_block_append_ordinal(block, out_ordinal);
+  if (!next_op) {
+    return loom_block_append_ordinal(block, out_ordinal);
+  }
 
   uint64_t lower = prev_op ? prev_op->block_ordinal : 0;
   uint64_t upper = next_op->block_ordinal;
@@ -4984,7 +5128,9 @@ iree_status_t loom_block_append_op(loom_module_t* module, loom_block_t* block,
 iree_status_t loom_block_insert_before_op(loom_module_t* module,
                                           loom_block_t* block,
                                           loom_op_t* before_op, loom_op_t* op) {
-  if (!before_op) return loom_block_append_op(module, block, op);
+  if (!before_op) {
+    return loom_block_append_op(module, block, op);
+  }
   if (before_op->parent_block != block ||
       iree_any_bit_set(before_op->flags, LOOM_OP_FLAG_DEAD)) {
     return iree_make_status(
@@ -5009,7 +5155,9 @@ iree_status_t loom_block_insert_op(loom_module_t* module, loom_block_t* block,
 
 void loom_block_unlink_op(loom_module_t* module, loom_op_t* op) {
   loom_block_t* block = op->parent_block;
-  if (!block || iree_any_bit_set(op->flags, LOOM_OP_FLAG_DEAD)) return;
+  if (!block || iree_any_bit_set(op->flags, LOOM_OP_FLAG_DEAD)) {
+    return;
+  }
   loom_module_drop_op_summaries(module, op);
 
   if (op->prev_op) {
@@ -5027,7 +5175,9 @@ void loom_block_unlink_op(loom_module_t* module, loom_op_t* op) {
   op->prev_op = NULL;
   op->next_op = NULL;
   op->block_ordinal = 0;
-  if (block->op_count > 0) --block->op_count;
+  if (block->op_count > 0) {
+    --block->op_count;
+  }
 }
 
 iree_host_size_t loom_block_find_op(const loom_block_t* block,
@@ -5035,7 +5185,9 @@ iree_host_size_t loom_block_find_op(const loom_block_t* block,
   iree_host_size_t index = 0;
   const loom_op_t* current = NULL;
   loom_block_for_each_op(block, current) {
-    if (current == op) return index;
+    if (current == op) {
+      return index;
+    }
     ++index;
   }
   return IREE_HOST_SIZE_MAX;

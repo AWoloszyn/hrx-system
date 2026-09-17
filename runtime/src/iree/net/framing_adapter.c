@@ -257,7 +257,9 @@ iree_status_t iree_net_framing_adapter_allocate(
 }
 
 void iree_net_framing_adapter_free(iree_net_framing_adapter_t* adapter) {
-  if (!adapter) return;
+  if (!adapter) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_allocator_t allocator = adapter->host_allocator;
   iree_net_endpoint_lifecycle_deinitialize(&adapter->lifecycle);

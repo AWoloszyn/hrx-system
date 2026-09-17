@@ -200,12 +200,16 @@ class LoopbackCarrierTest : public ::testing::Test {
 
   void PollUntil(iree_async_proactor_t* proactor, PollSide side,
                  const std::function<bool()>& condition) {
-    while (!condition()) Poll(proactor, side);
+    while (!condition()) {
+      Poll(proactor, side);
+    }
   }
 
   void DeactivateAndRelease(iree_net_carrier_t*& carrier,
                             iree_async_proactor_t* proactor, PollSide side) {
-    if (!carrier) return;
+    if (!carrier) {
+      return;
+    }
     iree_net_carrier_state_t state = iree_net_carrier_state(carrier);
     bool deactivation_completed = state == IREE_NET_CARRIER_STATE_DEACTIVATED;
     if (state == IREE_NET_CARRIER_STATE_CREATED ||

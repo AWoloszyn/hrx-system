@@ -15,7 +15,9 @@ static iree_status_t hrx_graph_allocate_node(iree_allocator_t allocator,
                                              uint8_t** out_extra_data) {
   IREE_ASSERT_ARGUMENT(out_node);
   *out_node = NULL;
-  if (out_extra_data) *out_extra_data = NULL;
+  if (out_extra_data) {
+    *out_extra_data = NULL;
+  }
 
   const iree_host_size_t node_size = sizeof(hrx_graph_node_s);
   const iree_host_size_t deps_size =
@@ -111,7 +113,9 @@ static iree_status_t hrx_graph_add_node_internal(hrx_graph_s* graph,
 // buffers before releasing any pool.
 static iree_status_t hrx_graph_capture_buffer_resources(hrx_graph_s* graph,
                                                         hrx_buffer_t buffer) {
-  if (!buffer) return iree_ok_status();
+  if (!buffer) {
+    return iree_ok_status();
+  }
   void* pool_resource = buffer->hal_pool;
   IREE_RETURN_IF_ERROR(iree_hal_resource_set_insert(graph->allocation_pool_set,
                                                     1, &pool_resource));
@@ -210,13 +214,17 @@ hrx_status_t hrx_graph_get_nodes(hrx_graph_t graph, hrx_graph_node_t* nodes,
   IREE_ASSERT_ARGUMENT(inout_count);
 
   size_t requested = *inout_count;
-  if (requested > graph->node_count) requested = graph->node_count;
+  if (requested > graph->node_count) {
+    requested = graph->node_count;
+  }
 
   iree_host_size_t copied = 0;
   hrx_graph_node_block_t* block = graph->node_blocks;
   while (block && copied < requested) {
     iree_host_size_t to_copy = block->count;
-    if (copied + to_copy > requested) to_copy = requested - copied;
+    if (copied + to_copy > requested) {
+      to_copy = requested - copied;
+    }
     for (iree_host_size_t i = 0; i < to_copy; i++) {
       nodes[copied++] = block->nodes[i];
     }
@@ -567,7 +575,9 @@ hrx_status_t hrx_graph_add_dependencies(hrx_graph_t graph,
                                         const hrx_graph_node_t* to_nodes,
                                         size_t count) {
   IREE_ASSERT_ARGUMENT(graph);
-  if (count == 0) return hrx_ok_status();
+  if (count == 0) {
+    return hrx_ok_status();
+  }
   IREE_ASSERT_ARGUMENT(from_nodes);
   IREE_ASSERT_ARGUMENT(to_nodes);
   IREE_TRACE_ZONE_BEGIN(z0);

@@ -57,7 +57,9 @@ class NumpyIOTest : public ::testing::Test {
   StreamPtr OpenInputFile(const char* name) {
     const struct iree_file_toc_t* file_toc = iree_numpy_npy_files_create();
     for (size_t i = 0; i < iree_numpy_npy_files_size(); ++i) {
-      if (strcmp(file_toc[i].name, name) != 0) continue;
+      if (strcmp(file_toc[i].name, name) != 0) {
+        continue;
+      }
       iree_io_stream_t* stream = NULL;
       IREE_CHECK_OK(iree_io_memory_stream_wrap(
           IREE_IO_STREAM_MODE_READABLE | IREE_IO_STREAM_MODE_SEEKABLE,

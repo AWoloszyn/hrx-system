@@ -67,7 +67,9 @@ iree_status_t loom_kernel_request_producer_allocate(
 
 void loom_kernel_request_producer_free(
     loom_kernel_request_producer_t* producer) {
-  if (producer == NULL) return;
+  if (producer == NULL) {
+    return;
+  }
   const iree_allocator_t allocator = producer->allocator;
   loom_link_template_candidate_loader_free(producer->candidate_loader);
   iree_allocator_free(allocator, producer);

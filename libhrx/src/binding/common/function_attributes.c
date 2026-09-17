@@ -114,7 +114,9 @@ iree_status_t iree_hal_streaming_function_attributes_initialize(
       execution->maximum_workgroup_local_memory_size_optin != 0
           ? execution->maximum_workgroup_local_memory_size_optin
           : default_capacity;
-  if (optin_capacity == 0) return iree_ok_status();
+  if (optin_capacity == 0) {
+    return iree_ok_status();
+  }
   if (default_capacity > optin_capacity) {
     return iree_make_status(
         IREE_STATUS_FAILED_PRECONDITION,

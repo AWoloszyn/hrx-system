@@ -51,6 +51,11 @@ def _test_compile_commands_collects_c_and_cxx_sources(name, **kwargs):
         attr_values = {
             "timeout": "short",
         },
+        config_settings = {
+            "//command_line_option:conlyopt": ["-DCONFIG_C_ONLY_FLAG"],
+            "//command_line_option:copt": ["-DCONFIG_COMMON_FLAG"],
+            "//command_line_option:cxxopt": ["-DCONFIG_CXX_ONLY_FLAG"],
+        },
         impl = _test_compile_commands_collects_c_and_cxx_sources_impl,
         target = name + "_commands",
         **kwargs
@@ -63,15 +68,25 @@ def _test_compile_commands_collects_c_and_cxx_sources_impl(env, target):
     for expected in [
         "compile_commands_fixture.c",
         "compile_commands_fixture.cc",
-        "-DCOMMON_FLAG",
         "LOCAL_DEFINE",
     ]:
         if not _contains(entries, expected):
             env.fail("expected %r in compile command entries: %r" % (expected, entries))
-    if not _contains(entries, "-DC_ONLY_FLAG"):
-        env.fail("expected C-only flag in compile command entries: %r" % entries)
-    if not _contains(entries, "-DCXX_ONLY_FLAG"):
-        env.fail("expected C++-only flag in compile command entries: %r" % entries)
+    for encoded_entry in entries:
+        entry = json.decode(encoded_entry)
+        arguments = entry["arguments"]
+        is_c = entry["file"].endswith(".c")
+        expected_flags = [
+            "-DCONFIG_COMMON_FLAG",
+            "-DCONFIG_C_ONLY_FLAG" if is_c else "-DCONFIG_CXX_ONLY_FLAG",
+            "-DCOMMON_FLAG",
+            "-DC_ONLY_FLAG" if is_c else "-DCXX_ONLY_FLAG",
+        ]
+        actual_flags = [argument for argument in arguments if argument in expected_flags]
+        env.expect.that_collection(actual_flags).contains_exactly(expected_flags).in_order()
+        excluded_flags = ["-DCONFIG_CXX_ONLY_FLAG", "-DCXX_ONLY_FLAG"] if is_c else ["-DCONFIG_C_ONLY_FLAG", "-DC_ONLY_FLAG"]
+        for flag in excluded_flags:
+            env.expect.that_collection(arguments).not_contains(flag)
 
 def compile_commands_rules_test_suite(name):
     test_suite(

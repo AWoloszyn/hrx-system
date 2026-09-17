@@ -481,7 +481,9 @@ static uint64_t iree_profile_memory_resolve_pool_id(
     const iree_profile_memory_context_t* context,
     const iree_hal_profile_memory_event_t* event,
     iree_profile_memory_lifecycle_kind_t kind) {
-  if (event->pool_id != 0) return event->pool_id;
+  if (event->pool_id != 0) {
+    return event->pool_id;
+  }
   if (kind != IREE_PROFILE_MEMORY_LIFECYCLE_KIND_QUEUE_ALLOCATION) {
     return event->pool_id;
   }
@@ -544,7 +546,9 @@ static bool iree_profile_memory_event_closes_materialization(
 }
 
 static bool iree_profile_memory_add_u64(uint64_t* target, uint64_t value) {
-  if (value > UINT64_MAX - *target) return false;
+  if (value > UINT64_MAX - *target) {
+    return false;
+  }
   *target += value;
   return true;
 }
@@ -1044,15 +1048,23 @@ static int iree_profile_memory_compare_queue_device_event_to_key(
     const iree_profile_memory_queue_device_event_key_t* key) {
   int cmp = iree_profile_memory_compare_u32(event->physical_device_ordinal,
                                             key->physical_device_ordinal);
-  if (cmp != 0) return cmp;
+  if (cmp != 0) {
+    return cmp;
+  }
   cmp =
       iree_profile_memory_compare_u32(event->queue_ordinal, key->queue_ordinal);
-  if (cmp != 0) return cmp;
+  if (cmp != 0) {
+    return cmp;
+  }
   cmp = iree_profile_memory_compare_u32(event->type, key->type);
-  if (cmp != 0) return cmp;
+  if (cmp != 0) {
+    return cmp;
+  }
   cmp =
       iree_profile_memory_compare_u64(event->submission_id, key->submission_id);
-  if (cmp != 0) return cmp;
+  if (cmp != 0) {
+    return cmp;
+  }
   return iree_profile_memory_compare_u64(event->allocation_id,
                                          key->allocation_id);
 }
@@ -1072,7 +1084,9 @@ static int iree_profile_memory_compare_queue_device_events(
   };
   int cmp =
       iree_profile_memory_compare_queue_device_event_to_key(lhs, &rhs_key);
-  if (cmp != 0) return cmp;
+  if (cmp != 0) {
+    return cmp;
+  }
   return iree_profile_memory_compare_u64(lhs->event_id, rhs->event_id);
 }
 
@@ -1132,7 +1146,9 @@ iree_profile_memory_queue_device_event_index_process_record(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_queue_device_event_t event;
     memcpy(&event, typed_record.contents.data, sizeof(event));
@@ -1157,7 +1173,9 @@ iree_profile_memory_queue_device_event_index_process_record(
 
 static void iree_profile_memory_queue_device_event_index_sort(
     iree_profile_memory_queue_device_event_index_t* index) {
-  if (index->event_count <= 1) return;
+  if (index->event_count <= 1) {
+    return;
+  }
   qsort(index->events, index->event_count, sizeof(index->events[0]),
         iree_profile_memory_compare_queue_device_events);
 }
@@ -1196,7 +1214,9 @@ iree_profile_memory_find_queue_device_event(
       high = mid;
     }
   }
-  if (low == index->event_count) return NULL;
+  if (low == index->event_count) {
+    return NULL;
+  }
   return iree_profile_memory_compare_queue_device_event_to_key(
              &index->events[low], &key) == 0
              ? &index->events[low]
@@ -1254,7 +1274,9 @@ static iree_status_t iree_profile_memory_context_accumulate_event(
     const iree_hal_profile_memory_event_t* event, bool is_truncated,
     iree_profile_memory_event_callback_t event_callback) {
   ++context->matched_event_count;
-  if (is_truncated) ++context->truncated_event_count;
+  if (is_truncated) {
+    ++context->truncated_event_count;
+  }
 
   const bool close_materialization =
       iree_profile_memory_event_closes_materialization(context, event);
@@ -1307,7 +1329,9 @@ iree_status_t iree_profile_memory_context_accumulate_record(
     bool has_record = false;
     status = iree_profile_typed_record_iterator_next(&iterator, &typed_record,
                                                      &has_record);
-    if (!iree_status_is_ok(status) || !has_record) break;
+    if (!iree_status_is_ok(status) || !has_record) {
+      break;
+    }
 
     iree_hal_profile_memory_event_t event;
     memcpy(&event, typed_record.contents.data, sizeof(event));

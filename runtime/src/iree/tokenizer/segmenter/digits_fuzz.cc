@@ -86,7 +86,9 @@ static void process_with_chunk_size(const uint8_t* data, size_t size,
     }
 
     if (consumed == 0 && segment_count == 0) {
-      if (current_chunk_size >= remaining) break;
+      if (current_chunk_size >= remaining) {
+        break;
+      }
       current_chunk_size = current_chunk_size * 2 < remaining
                                ? current_chunk_size * 2
                                : remaining;
@@ -109,7 +111,9 @@ static void process_with_chunk_size(const uint8_t* data, size_t size,
 }
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  if (size > 16 * 1024) size = 16 * 1024;
+  if (size > 16 * 1024) {
+    size = 16 * 1024;
+  }
 
   // Test individual_digits=true mode.
   process_with_chunk_size(data, size, 1, /*individual_digits=*/true);

@@ -1338,7 +1338,9 @@ static iree_status_t iree_hal_device_spec_layout_parse_array(
     iree_host_size_t alignment, iree_host_size_t* inout_total_length,
     iree_host_size_t* out_offset) {
   *out_offset = 0;
-  if (!count) return iree_ok_status();
+  if (!count) {
+    return iree_ok_status();
+  }
   if (IREE_UNLIKELY(count > IREE_HOST_SIZE_MAX / element_size)) {
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                             "device spec parse array size overflow");
@@ -1419,7 +1421,9 @@ static iree_status_t iree_hal_device_spec_parse_storage_initialize(
       iree_alignof(iree_hal_device_spec_facet_t), &layout.total_length,
       &layout.facets));
 
-  if (!layout.total_length) return iree_ok_status();
+  if (!layout.total_length) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(iree_allocator_malloc(
       host_allocator, layout.total_length, &out_storage->allocation));
   uint8_t* base = (uint8_t*)out_storage->allocation;

@@ -202,9 +202,13 @@ iree_status_t iree_clang_tidy_status_lifetime_loop_break_overwrite(void) {
   iree_status_t loop_break_status = iree_ok_status();
   for (int i = 0; i < 4; ++i) {
     loop_break_status = iree_clang_tidy_status_assigned_source();
-    if (!iree_status_is_ok(loop_break_status)) break;
+    if (!iree_status_is_ok(loop_break_status)) {
+      break;
+    }
     loop_break_status = iree_clang_tidy_status_cleanup_source();
-    if (!iree_status_is_ok(loop_break_status)) break;
+    if (!iree_status_is_ok(loop_break_status)) {
+      break;
+    }
   }
   return loop_break_status;
 }

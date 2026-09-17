@@ -803,10 +803,14 @@ static iree_status_t iree_hal_replay_executor_validate_file_reference(
     uint8_t buffer[64 * 1024];
     while (offset < payload->file_length) {
       uint64_t chunk_length = payload->file_length - offset;
-      if (chunk_length > sizeof(buffer)) chunk_length = sizeof(buffer);
+      if (chunk_length > sizeof(buffer)) {
+        chunk_length = sizeof(buffer);
+      }
       ssize_t read_length = pread(primitive.value.fd, buffer,
                                   (size_t)chunk_length, (off_t)offset);
-      if (read_length < 0 && errno == EINTR) continue;
+      if (read_length < 0 && errno == EINTR) {
+        continue;
+      }
       if (read_length <= 0) {
         return iree_make_status(
             IREE_STATUS_UNAVAILABLE,
@@ -893,7 +897,9 @@ static iree_status_t iree_hal_replay_executor_resolve_file_path(
        ++i) {
     const iree_hal_replay_file_path_remap_t* remap =
         &executor->options->file_path_remaps[i];
-    if (iree_string_view_is_empty(remap->captured_prefix)) continue;
+    if (iree_string_view_is_empty(remap->captured_prefix)) {
+      continue;
+    }
     if (!iree_string_view_starts_with(captured_path, remap->captured_prefix)) {
       continue;
     }
@@ -902,7 +908,9 @@ static iree_status_t iree_hal_replay_executor_resolve_file_path(
       selected_remap = remap;
     }
   }
-  if (!selected_remap) return iree_ok_status();
+  if (!selected_remap) {
+    return iree_ok_status();
+  }
 
   iree_string_view_t captured_suffix = iree_string_view_remove_prefix(
       captured_path, selected_remap->captured_prefix.size);
@@ -1051,7 +1059,9 @@ static iree_status_t iree_hal_replay_executor_import_file(
       if (iree_any_bit_set(payload.access, IREE_HAL_MEMORY_ACCESS_WRITE)) {
         mode |= IREE_IO_FILE_MODE_WRITE;
       }
-      if (mode == 0) mode = IREE_IO_FILE_MODE_READ;
+      if (mode == 0) {
+        mode = IREE_IO_FILE_MODE_READ;
+      }
       if (iree_status_is_ok(status)) {
         status = iree_io_file_handle_open(mode, path, executor->host_allocator,
                                           &handle);

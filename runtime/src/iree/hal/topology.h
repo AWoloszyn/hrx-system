@@ -517,7 +517,9 @@ static inline uint32_t iree_hal_topology_device_count(
 static inline uint8_t iree_hal_topology_device_numa_node(
     const iree_hal_topology_t* topology, uint32_t device_ordinal) {
   IREE_ASSERT_LT(device_ordinal, topology->device_count);
-  if (device_ordinal >= topology->device_count) return 0;
+  if (device_ordinal >= topology->device_count) {
+    return 0;
+  }
   return topology->device_numa_nodes[device_ordinal];
 }
 
@@ -530,7 +532,9 @@ static inline iree_host_size_t iree_hal_topology_node_count(
 // Returns the normalized node at |index| or NULL if out of range.
 static inline const iree_hal_topology_node_t* iree_hal_topology_node_at(
     const iree_hal_topology_t* topology, iree_host_size_t index) {
-  if (index >= topology->node_count) return NULL;
+  if (index >= topology->node_count) {
+    return NULL;
+  }
   return &topology->nodes[index];
 }
 
@@ -543,7 +547,9 @@ static inline iree_host_size_t iree_hal_topology_link_count(
 // Returns the normalized link at |index| or NULL if out of range.
 static inline const iree_hal_topology_link_t* iree_hal_topology_link_at(
     const iree_hal_topology_t* topology, iree_host_size_t index) {
-  if (index >= topology->link_count) return NULL;
+  if (index >= topology->link_count) {
+    return NULL;
+  }
   return &topology->links[index];
 }
 

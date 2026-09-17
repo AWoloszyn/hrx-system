@@ -81,7 +81,9 @@ static iree_status_t loom_print_string_literal(loom_output_stream_t* stream,
 }
 
 static bool loom_print_is_bare_identifier(iree_string_view_t value) {
-  if (value.size == 0) return false;
+  if (value.size == 0) {
+    return false;
+  }
   const char first = value.data[0];
   if (!((first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z') ||
         first == '_' || first == '$')) {
@@ -151,7 +153,9 @@ loom_select_canonical_encoding_alias(const loom_module_t* module,
     const loom_named_attr_t* parameter = &encoding->attributes[i];
     const uint8_t parameter_index =
         loom_encoding_parameter_descriptor_index(parameter);
-    if (parameter_index < discriminator_index) continue;
+    if (parameter_index < discriminator_index) {
+      continue;
+    }
     if (parameter_index > discriminator_index ||
         parameter->value.kind != LOOM_ATTR_ENUM) {
       return NULL;
@@ -160,7 +164,9 @@ loom_select_canonical_encoding_alias(const loom_module_t* module,
     const uint8_t alias_ordinal =
         vtable->descriptor
             ->alias_ordinals_by_discriminator[discriminator_value];
-    if (alias_ordinal == 0) return NULL;
+    if (alias_ordinal == 0) {
+      return NULL;
+    }
     const loom_encoding_alias_descriptor_t* alias =
         &vtable->descriptor->aliases[alias_ordinal - 1];
 
@@ -179,7 +185,9 @@ loom_select_canonical_encoding_alias(const loom_module_t* module,
                  alias_parameter->parameter_index) {
         ++encoding_parameter_index;
       }
-      if (encoding_parameter_index == encoding->attribute_count) return NULL;
+      if (encoding_parameter_index == encoding->attribute_count) {
+        return NULL;
+      }
       const loom_named_attr_t* encoding_parameter =
           &encoding->attributes[encoding_parameter_index];
       if (loom_encoding_parameter_descriptor_index(encoding_parameter) !=
@@ -361,7 +369,9 @@ static iree_status_t loom_print_descriptor_backed_type(
     parameters = loom_type_parameterized_parameters(type);
   } else {
     descriptor = loom_type_registry_lookup_builtin(loom_type_kind(type));
-    if (descriptor) parameterized = descriptor->parameterized;
+    if (descriptor) {
+      parameterized = descriptor->parameterized;
+    }
     if (!parameterized || parameterized->parameter_count != 1 ||
         parameterized->parameter_descriptors[0].attr_kind != LOOM_ATTR_ENUM) {
       return iree_make_status(
@@ -401,7 +411,9 @@ static iree_status_t loom_print_descriptor_backed_type(
       stream, iree_make_string_view(name.data, name.size + 1)));
 
   loom_print_context_t parameter_context = {0};
-  if (type_context) parameter_context = *type_context;
+  if (type_context) {
+    parameter_context = *type_context;
+  }
   parameter_context.stream = stream;
   parameter_context.module = module;
   parameter_context.has_previous_token = false;
@@ -622,7 +634,9 @@ iree_status_t loom_text_print_type_with_options(
   ctx.module = module;
   ctx.name_plan = &name_plan;
   ctx.flags = options ? options->flags : LOOM_TEXT_PRINT_DEFAULT;
-  if (options) ctx.low_asm_environment = options->low_asm_environment;
+  if (options) {
+    ctx.low_asm_environment = options->low_asm_environment;
+  }
   iree_status_t status = loom_text_print_type_impl(type, module, stream, &ctx);
   loom_print_name_plan_deinitialize(&name_plan);
   return status;
@@ -903,7 +917,9 @@ static iree_status_t loom_print_parameterized_attr_impl(
     has_previous_parameter = true;
   }
   for (uint8_t i = 0; i < family_descriptor->parameter_count; ++i) {
-    if (i == primary_parameter_index) continue;
+    if (i == primary_parameter_index) {
+      continue;
+    }
     const loom_attr_descriptor_t* parameter_descriptor =
         &family_descriptor->parameter_descriptors[i];
     const loom_attribute_t* parameter = &attr->parameterized_slots[i];
@@ -1058,7 +1074,9 @@ static iree_status_t loom_print_attr_impl(
             loom_signed_enum_set_contains_positive(set, (uint8_t)value);
         bool negative =
             loom_signed_enum_set_contains_negative(set, (uint8_t)value);
-        if (!positive && !negative) continue;
+        if (!positive && !negative) {
+          continue;
+        }
         loom_bstring_t case_name =
             loom_attr_descriptor_enum_case_name(descriptor, (uint8_t)value);
         if (!case_name) {

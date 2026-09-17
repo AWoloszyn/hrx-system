@@ -81,7 +81,9 @@ iree_status_t iree_async_linux_signal_add_signal(
 void iree_async_linux_signal_remove_signal(
     iree_async_linux_signal_state_t* state, iree_async_signal_t signal) {
   int posix_signal = iree_async_signal_to_posix(signal);
-  if (posix_signal == 0) return;
+  if (posix_signal == 0) {
+    return;
+  }
 
   // Check if this signal is in our active mask.
   if (!sigismember(&state->active_mask, posix_signal)) {

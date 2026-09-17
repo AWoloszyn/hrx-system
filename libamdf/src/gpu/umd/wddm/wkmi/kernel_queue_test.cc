@@ -55,21 +55,29 @@ struct FakeNativeState {
 FakeNativeState* current_state = nullptr;
 
 void ExpectDependency(bool condition) {
-  if (!condition) ++current_state->dependency_failure_count;
+  if (!condition) {
+    ++current_state->dependency_failure_count;
+  }
 }
 
 void* AMDF_CALL Allocate(void* user_data, uint64_t byte_length,
                          uint64_t minimum_alignment) {
   auto* state = static_cast<FakeNativeState*>(user_data);
-  if (state->allocation_count++ == state->failure_ordinal) return nullptr;
+  if (state->allocation_count++ == state->failure_ordinal) {
+    return nullptr;
+  }
   void* pointer = _aligned_malloc(static_cast<size_t>(byte_length),
                                   static_cast<size_t>(minimum_alignment));
-  if (pointer != nullptr) ++state->live_allocation_count;
+  if (pointer != nullptr) {
+    ++state->live_allocation_count;
+  }
   return pointer;
 }
 
 void AMDF_CALL Free(void* user_data, void* allocation) {
-  if (allocation == nullptr) return;
+  if (allocation == nullptr) {
+    return;
+  }
   auto* state = static_cast<FakeNativeState*>(user_data);
   --state->live_allocation_count;
   _aligned_free(allocation);
@@ -291,7 +299,9 @@ bool PublishedQueueOwnsSubmissionUntilExplicitDestruction() {
   AMDF_EXPECT(amdf::wkmi_bridge::GpuKernelQueueCreate(&adapter, &create, &queue,
                                                       &info, &native_status) ==
               AMDF_WKMI_BRIDGE_RESULT_SUCCESS);
-  if (queue == nullptr) return false;
+  if (queue == nullptr) {
+    return false;
+  }
   AMDF_EXPECT(info.progress_fence_handle == kFence);
   AMDF_EXPECT(info.progress_fence_pointer == &state.progress);
   AMDF_EXPECT(state.live_allocation_count == 2);

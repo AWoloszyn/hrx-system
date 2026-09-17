@@ -64,7 +64,9 @@ static iree_status_t iree_profile_command_require_option(
 
 static iree_status_t iree_profile_command_require_jsonl_format(
     iree_profile_command_format_bits_t format, const char* flag_name) {
-  if (format == IREE_PROFILE_COMMAND_FORMAT_JSONL) return iree_ok_status();
+  if (format == IREE_PROFILE_COMMAND_FORMAT_JSONL) {
+    return iree_ok_status();
+  }
   return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                           "%s requires --format=jsonl", flag_name);
 }

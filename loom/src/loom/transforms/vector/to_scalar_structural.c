@@ -183,7 +183,9 @@ static bool loom_vector_to_scalar_concat_axis_extents_are_static(
   for (uint16_t i = 0; i < inputs.count; ++i) {
     loom_type_t input_type =
         loom_module_value_type(module, loom_value_slice_get(inputs, i));
-    if (loom_type_dim_is_dynamic_at(input_type, axis)) return false;
+    if (loom_type_dim_is_dynamic_at(input_type, axis)) {
+      return false;
+    }
   }
   return true;
 }
@@ -700,7 +702,9 @@ loom_vector_to_scalar_build_static_shape_changing_bitcast_lane(
         result_start > source_start ? result_start : source_start;
     int64_t overlap_end = result_end < source_end ? result_end : source_end;
     int64_t bit_count = overlap_end - overlap_start;
-    if (bit_count <= 0) continue;
+    if (bit_count <= 0) {
+      continue;
+    }
 
     loom_vector_to_scalar_indices_from_ordinal(input_type, source_ordinal,
                                                source_indices);

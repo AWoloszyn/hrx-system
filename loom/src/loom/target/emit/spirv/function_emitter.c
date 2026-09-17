@@ -1033,7 +1033,9 @@ static iree_status_t loom_spirv_emit_descriptor_packet(
 iree_status_t loom_spirv_emit_low_op(loom_spirv_emit_state_t* state,
                                      const loom_op_t* op) {
   if (loom_traits_are_compile_time_only(op->traits)) {
-    if (op->result_count == 0) return iree_ok_status();
+    if (op->result_count == 0) {
+      return iree_ok_status();
+    }
     IREE_ASSERT(loom_traits_are_fact_identity(op->traits));
     IREE_ASSERT_EQ(op->operand_count, op->result_count);
     const loom_value_id_t* operands = loom_op_const_operands(op);

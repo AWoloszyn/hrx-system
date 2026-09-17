@@ -50,7 +50,9 @@ void iree_hal_amdgpu_device_dispatch_emplace_implicit_args(
     const iree_hal_amdgpu_device_dispatch_kernarg_layout_t* IREE_AMDGPU_RESTRICT
         layout,
     void* IREE_AMDGPU_RESTRICT kernarg_ptr) {
-  if (!layout->has_implicit_args) return;
+  if (!layout->has_implicit_args) {
+    return;
+  }
 
   iree_amdgpu_kernel_implicit_args_t* IREE_AMDGPU_RESTRICT implicit_args =
       (iree_amdgpu_kernel_implicit_args_t*)((uint8_t*)kernarg_ptr +
@@ -170,7 +172,9 @@ iree_hal_amdgpu_device_dispatch_patch_pm4_bindings(
         entries,
     uint8_t* IREE_AMDGPU_RESTRICT target_base, uint32_t entry_count) {
   const size_t entry_index = iree_hal_amdgpu_device_global_linear_id_1d();
-  if (entry_index >= entry_count) return;
+  if (entry_index >= entry_count) {
+    return;
+  }
 
   const iree_hal_amdgpu_command_buffer_pm4_fixup_entry_t entry =
       entries[entry_index];

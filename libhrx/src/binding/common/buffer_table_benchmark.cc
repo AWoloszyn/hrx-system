@@ -36,7 +36,9 @@ struct iree_hal_streaming_buffer_t {
 };
 
 static iree_status_t BufferTableStatus(hrx_status_t status) {
-  if (hrx_status_is_ok(status)) return iree_ok_status();
+  if (hrx_status_is_ok(status)) {
+    return iree_ok_status();
+  }
   iree_status_code_t code = (iree_status_code_t)hrx_status_code(status);
   hrx_status_ignore(status);
   return iree_make_status(code);
@@ -56,7 +58,9 @@ static iree_status_t iree_hal_streaming_buffer_table_allocate(
 
 static void iree_hal_streaming_buffer_table_free(
     iree_hal_streaming_buffer_table_t* table) {
-  if (!table) return;
+  if (!table) {
+    return;
+  }
   hrx_buffer_table_deinitialize(table);
   iree_allocator_free(iree_allocator_system(), table);
 }
@@ -80,7 +84,9 @@ static iree_status_t iree_hal_streaming_buffer_table_lookup(
   hrx_buffer_t buffer = nullptr;
   iree_status_t status = BufferTableStatus(
       hrx_buffer_table_find(table, any_ptr, &buffer, nullptr, nullptr));
-  if (out_buffer) *out_buffer = (iree_hal_streaming_buffer_t*)buffer;
+  if (out_buffer) {
+    *out_buffer = (iree_hal_streaming_buffer_t*)buffer;
+  }
   return status;
 }
 
@@ -90,7 +96,9 @@ static iree_status_t iree_hal_streaming_buffer_table_lookup_range(
   hrx_buffer_t buffer = nullptr;
   iree_status_t status = BufferTableStatus(hrx_buffer_table_find_range(
       table, any_ptr, size, &buffer, nullptr, nullptr));
-  if (out_buffer) *out_buffer = (iree_hal_streaming_buffer_t*)buffer;
+  if (out_buffer) {
+    *out_buffer = (iree_hal_streaming_buffer_t*)buffer;
+  }
   return status;
 }
 //===----------------------------------------------------------------------===//

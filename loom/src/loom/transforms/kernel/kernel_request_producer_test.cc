@@ -140,7 +140,9 @@ kernel.def @classified() {
                               iree_string_view_t name) {
     const loom_string_id_t name_id = loom_module_lookup_string(module, name);
     EXPECT_NE(name_id, LOOM_STRING_ID_INVALID);
-    if (name_id == LOOM_STRING_ID_INVALID) return LOOM_SYMBOL_ID_INVALID;
+    if (name_id == LOOM_STRING_ID_INVALID) {
+      return LOOM_SYMBOL_ID_INVALID;
+    }
     const loom_symbol_id_t symbol_id = loom_module_find_symbol(module, name_id);
     EXPECT_NE(symbol_id, LOOM_SYMBOL_ID_INVALID);
     return symbol_id;
@@ -203,7 +205,9 @@ kernel.def @classified() {
     const loom_link_module_index_provider_t* provider =
         loom_link_module_index_provider_at(index, provider_ordinal);
     EXPECT_NE(provider, nullptr);
-    if (provider == nullptr) return LOOM_LINK_MODULE_INDEX_INVALID_ORDINAL;
+    if (provider == nullptr) {
+      return LOOM_LINK_MODULE_INDEX_INVALID_ORDINAL;
+    }
     const loom_link_module_index_module_t* indexed_module =
         loom_link_module_index_module_at(index, provider->module_start_ordinal);
     EXPECT_NE(indexed_module, nullptr);

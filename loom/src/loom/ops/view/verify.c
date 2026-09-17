@@ -62,7 +62,9 @@ static iree_status_t loom_view_verify_optional_cache_policy(
       loom_op_attrs(op)[cache_temporal_attr_index];
   bool has_cache_scope = !loom_attr_is_absent(cache_scope_attr);
   bool has_cache_temporal = !loom_attr_is_absent(cache_temporal_attr);
-  if (!has_cache_scope && !has_cache_temporal) return iree_ok_status();
+  if (!has_cache_scope && !has_cache_temporal) {
+    return iree_ok_status();
+  }
   if (!has_cache_scope) {
     return loom_view_emit_attribute_value_constraint(
         emitter, op, IREE_SV("cache_scope"), 0,
@@ -82,7 +84,9 @@ static iree_status_t loom_view_verify_optional_cache_policy(
   uint8_t cache_temporal = loom_attr_as_enum(cache_temporal_attr);
   loom_cache_policy_error_t error =
       loom_cache_policy_validate(cache_scope, cache_temporal, access);
-  if (error == LOOM_CACHE_POLICY_ERROR_NONE) return iree_ok_status();
+  if (error == LOOM_CACHE_POLICY_ERROR_NONE) {
+    return iree_ok_status();
+  }
   iree_string_view_t attr_name = loom_cache_policy_error_attr_name(error);
   int64_t actual_value =
       iree_string_view_equal(attr_name, IREE_SV("cache_scope"))
@@ -102,8 +106,12 @@ static iree_status_t loom_view_verify_atomic_kind(
         emitter, op, IREE_SV("kind"), kind,
         IREE_SV("non-exchange atomic reduce kind"));
   }
-  if (!loom_atomic_kind_is_valid(kind)) return iree_ok_status();
-  if (!loom_type_is_scalar(value_type)) return iree_ok_status();
+  if (!loom_atomic_kind_is_valid(kind)) {
+    return iree_ok_status();
+  }
+  if (!loom_type_is_scalar(value_type)) {
+    return iree_ok_status();
+  }
 
   loom_scalar_type_t element_type = loom_type_element_type(value_type);
   if (loom_scalar_type_is_integer(element_type) &&
@@ -149,7 +157,9 @@ static iree_status_t loom_view_refine_verify_static_dimensions(
     }
     int64_t source_size = loom_type_dim_static_size_at(source_type, axis);
     int64_t result_size = loom_type_dim_static_size_at(result_type, axis);
-    if (source_size == result_size) continue;
+    if (source_size == result_size) {
+      continue;
+    }
 
     loom_diagnostic_param_t params[] = {
         loom_param_string(IREE_SV("source static dimension")),

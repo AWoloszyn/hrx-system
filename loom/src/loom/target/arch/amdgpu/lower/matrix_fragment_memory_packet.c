@@ -912,7 +912,9 @@ bool loom_amdgpu_fragment_memory_select_publication(
           uses_dpp
               ? LOOM_AMDGPU_FRAGMENT_MEMORY_EPILOGUE_STRATEGY_DPP_PACKED_B16_STORE
               : LOOM_AMDGPU_FRAGMENT_MEMORY_EPILOGUE_STRATEGY_DS_PACKED_B16_STORE;
-      if (uses_dpp && publication->paired_participant_xor_mask != 1) continue;
+      if (uses_dpp && publication->paired_participant_xor_mask != 1) {
+        continue;
+      }
       const loom_amdgpu_fragment_memory_packet_flags_t crosslane_flags =
           LOOM_AMDGPU_FRAGMENT_MEMORY_PACKET_FLAG_CROSSLANE_PACKED_B16_STORE |
           (uses_dpp
@@ -1232,8 +1234,12 @@ loom_amdgpu_fragment_memory_fp8_full_decode_fallback_reason(
   if (missing_finite && missing_not_subnormal) {
     return IREE_SV("missing_finite_not_subnormal");
   }
-  if (missing_finite) return IREE_SV("missing_finite");
-  if (missing_not_subnormal) return IREE_SV("missing_not_subnormal");
+  if (missing_finite) {
+    return IREE_SV("missing_finite");
+  }
+  if (missing_not_subnormal) {
+    return IREE_SV("missing_not_subnormal");
+  }
   if (iree_any_bit_set(
           action->detail_flags,
           LOOM_AMDGPU_FP8_DECODE_ACTION_DETAIL_FLAG_MISSING_TARGET_PACKETS)) {

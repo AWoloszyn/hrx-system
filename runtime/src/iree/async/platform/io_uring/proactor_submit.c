@@ -138,7 +138,9 @@ static void iree_async_proactor_io_uring_fill_timer(
     // Fallback: relative timeout. There's a small window for drift between
     // computing this and the kernel processing the SQE.
     iree_duration_t remaining = timer->deadline_ns - iree_time_now();
-    if (remaining < 0) remaining = 0;
+    if (remaining < 0) {
+      remaining = 0;
+    }
     timer->platform.timespec.tv_sec = remaining / 1000000000LL;
     timer->platform.timespec.tv_nsec = remaining % 1000000000LL;
     sqe->timeout_flags = 0;
@@ -364,20 +366,28 @@ static iree_status_t iree_async_span_check_fixed_buffer_send(
   *out_buffer_index = 0;
 
   // No region = heap buffer, not registered.
-  if (!span.region) return iree_ok_status();
+  if (!span.region) {
+    return iree_ok_status();
+  }
   iree_async_region_t* region = span.region;
 
   // Region must belong to the submitting proactor.
   // Fixed buffer indices are ring-local; using indices from a different
   // proactor's registration would access wrong memory.
-  if (region->proactor != &proactor->base) return iree_ok_status();
+  if (region->proactor != &proactor->base) {
+    return iree_ok_status();
+  }
 
   // Non-io_uring region = different backend (RDMA, dmabuf, etc.).
-  if (region->type != IREE_ASYNC_REGION_TYPE_IOURING) return iree_ok_status();
+  if (region->type != IREE_ASYNC_REGION_TYPE_IOURING) {
+    return iree_ok_status();
+  }
 
   // buffer_count == 0 = region not registered with indexed buffers.
   uint32_t buffer_count = region->buffer_count;
-  if (buffer_count == 0) return iree_ok_status();
+  if (buffer_count == 0) {
+    return iree_ok_status();
+  }
 
   // From here on, the region claims to have indexed buffers.
   // Validate invariants that should have been established at registration.
@@ -405,18 +415,24 @@ static iree_status_t iree_async_span_check_fixed_buffer_send(
   uint64_t buffer_index_offset = span.offset / buffer_size;
 
   // Span starts beyond registered buffer range.
-  if (buffer_index_offset >= buffer_count) return iree_ok_status();
+  if (buffer_index_offset >= buffer_count) {
+    return iree_ok_status();
+  }
 
   // Check if span fits entirely within one buffer.
   uint32_t offset_in_buffer = (uint32_t)(span.offset % buffer_size);
-  if (offset_in_buffer + span.length > buffer_size) return iree_ok_status();
+  if (offset_in_buffer + span.length > buffer_size) {
+    return iree_ok_status();
+  }
 
   // Calculate final buffer index with overflow check.
   int32_t base_buffer_index = region->handles.iouring.base_buffer_index;
 
   // -1 = region has indexed buffers for pool management but is not
   // kernel-registered for zero-copy (e.g., RLIMIT_MEMLOCK too low).
-  if (base_buffer_index < 0) return iree_ok_status();
+  if (base_buffer_index < 0) {
+    return iree_ok_status();
+  }
 
   uint64_t final_index = (uint64_t)base_buffer_index + buffer_index_offset;
 
@@ -1046,7 +1062,9 @@ static iree_status_t iree_async_proactor_io_uring_execute_semaphore_wait(
       all_satisfied = false;
     }
   }
-  if (all_satisfied) return iree_ok_status();
+  if (all_satisfied) {
+    return iree_ok_status();
+  }
 
   iree_async_semaphore_wait_enqueue_callback_t enqueue_callback = {
       .fn = iree_async_proactor_io_uring_enqueue_semaphore_wait,
@@ -1321,7 +1339,9 @@ static iree_status_t iree_async_proactor_io_uring_submit_sequences(
       status = iree_async_sequence_emulation_begin(&proactor->sequence_emulator,
                                                    sequence);
     }
-    if (!iree_status_is_ok(status)) return status;
+    if (!iree_status_is_ok(status)) {
+      return status;
+    }
   }
   return iree_ok_status();
 }
@@ -1332,7 +1352,9 @@ iree_status_t iree_async_proactor_io_uring_submit(
   iree_async_proactor_io_uring_t* proactor =
       iree_async_proactor_io_uring_cast(base_proactor);
 
-  if (operations.count == 0) return iree_ok_status();
+  if (operations.count == 0) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(iree_async_continuation_prepare_batch(operations));
   for (iree_host_size_t i = 0; i < operations.count; ++i) {
@@ -1357,7 +1379,9 @@ iree_status_t iree_async_proactor_io_uring_submit(
   bool has_software_ops = false;
   for (iree_host_size_t i = 0; i < operations.count; ++i) {
     iree_async_operation_type_t type = operations.values[i]->type;
-    if (type == IREE_ASYNC_OPERATION_TYPE_SEQUENCE) continue;
+    if (type == IREE_ASYNC_OPERATION_TYPE_SEQUENCE) {
+      continue;
+    }
     if (iree_async_proactor_io_uring_is_software_op(type)) {
       has_software_ops = true;
       continue;
@@ -1377,7 +1401,9 @@ iree_status_t iree_async_proactor_io_uring_submit(
 
   // If all operations were SEQUENCE (handled in pre-scan) with no software
   // ops and no kernel ops, there is nothing left to do.
-  if (sqes_needed == 0 && !has_software_ops) return iree_ok_status();
+  if (sqes_needed == 0 && !has_software_ops) {
+    return iree_ok_status();
+  }
 
   // Build linked_next chain for LINKED operations and find split points.
   //
@@ -1473,7 +1499,9 @@ iree_status_t iree_async_proactor_io_uring_submit(
       iree_async_operation_t* operation = operations.values[i];
 
       // SEQUENCE and software ops don't consume SQEs.
-      if (operation->type == IREE_ASYNC_OPERATION_TYPE_SEQUENCE) continue;
+      if (operation->type == IREE_ASYNC_OPERATION_TYPE_SEQUENCE) {
+        continue;
+      }
       if (iree_async_proactor_io_uring_is_software_op(operation->type)) {
         continue;
       }

@@ -169,7 +169,9 @@ static void iree_hal_device_event_sink_stderr_print_source(
 
 static void iree_hal_device_event_sink_stderr_print_site(
     const iree_hal_device_event_site_t* site) {
-  if (!site) return;
+  if (!site) {
+    return;
+  }
   if (!iree_string_view_is_empty(site->source_file)) {
     fprintf(stderr, "  source: ");
     iree_hal_device_event_sink_stderr_print_string_or_na(site->source_file);

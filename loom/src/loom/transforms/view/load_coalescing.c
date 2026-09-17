@@ -104,7 +104,9 @@ iree_status_t loom_view_load_coalescing_rewrite(
     loom_op_t* op, bool* out_changed) {
   *out_changed = false;
   loom_op_t* next_op = op->next_op;
-  if (!next_op || !loom_view_load_isa(next_op)) return iree_ok_status();
+  if (!next_op || !loom_view_load_isa(next_op)) {
+    return iree_ok_status();
+  }
 
   const loom_value_id_t view = loom_view_load_view(op);
   if (view != loom_view_load_view(next_op)) {
@@ -148,7 +150,9 @@ iree_status_t loom_view_load_coalescing_rewrite(
     IREE_RETURN_IF_ERROR(loom_view_load_coalescing_axis_index_difference(
         expression_context, &right_indices[axis], &left_indices[axis],
         &difference, &exact));
-    if (!exact) return iree_ok_status();
+    if (!exact) {
+      return iree_ok_status();
+    }
     const int64_t expected_difference = axis == view_rank - 1 ? 1 : 0;
     if (difference != expected_difference) {
       return iree_ok_status();

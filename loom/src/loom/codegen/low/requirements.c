@@ -129,7 +129,9 @@ static iree_status_t loom_low_requirements_verify_descriptor_schedule(
       iree_any_bit_set(descriptor->flags,
                        LOOM_LOW_DESCRIPTOR_FLAG_SIDE_EFFECTING |
                            LOOM_LOW_DESCRIPTOR_FLAG_TERMINATOR);
-  if (schedule_class->issue_use_count != 0) return iree_ok_status();
+  if (schedule_class->issue_use_count != 0) {
+    return iree_ok_status();
+  }
   if (!has_effect_or_control_payload &&
       loom_low_requirements_schedule_is_zero_cost(schedule_class)) {
     return iree_ok_status();

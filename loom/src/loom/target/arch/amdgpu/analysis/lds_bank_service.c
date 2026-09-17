@@ -84,7 +84,9 @@ static bool loom_amdgpu_lds_bank_service_word_already_requested(
     const uint64_t* requested_words, uint16_t requested_word_count,
     uint64_t address_word) {
   for (uint16_t i = 0; i < requested_word_count; ++i) {
-    if (requested_words[i] == address_word) return true;
+    if (requested_words[i] == address_word) {
+      return true;
+    }
   }
   return false;
 }
@@ -128,10 +130,14 @@ void loom_amdgpu_lds_bank_service_evaluate(
     uint16_t requested_word_count = 0;
     const uint64_t phase_active_lanes =
         active_lane_mask & model->phase_lane_masks[phase];
-    if (phase_active_lanes != 0) ++out_result->uncontended_rounds;
+    if (phase_active_lanes != 0) {
+      ++out_result->uncontended_rounds;
+    }
 
     for (uint8_t lane = 0; lane < model->wave_size; ++lane) {
-      if ((phase_active_lanes & (UINT64_C(1) << lane)) == 0) continue;
+      if ((phase_active_lanes & (UINT64_C(1) << lane)) == 0) {
+        continue;
+      }
       const uint64_t lane_base_byte_offset = lane_base_byte_offsets[lane];
       IREE_ASSERT((lane_base_byte_offset % model->bank_word_byte_count) == 0);
       const uint64_t lane_base_word =

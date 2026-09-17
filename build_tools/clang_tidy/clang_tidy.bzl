@@ -22,18 +22,32 @@ load(
 )
 
 # clang-tidy always parses through Clang even when Bazel's configured compile
-# action uses GCC. Keep target semantic flags intact but omit GCC driver flags
-# that Clang rejects before it can analyze the source.
+# action uses GCC. Keep target semantic flags intact but omit incompatible
+# driver flags and compile-only modes replaced by syntax-only analysis.
 _CLANG_TIDY_UNSUPPORTED_COMPILE_ARGS = {
     "-fno-canonical-system-headers": None,
+    "/c": None,
 }
 
-def _clang_tidy_compile_args(compile_args):
+def _clang_tidy_compile_args(compile_args, compiler):
+    # clang-cl toolchains explicitly add their resource headers with /imsvc.
+    # Replacing the resource directory while retaining that include path makes
+    # include_next visit the same wrapper twice instead of reaching the SDK.
+    resource_includes = {
+        "/imsvc" + arg[len("-resource-dir="):] + "/include": None
+        for arg in compile_args
+        if arg.startswith("-resource-dir=")
+    }
     filtered_args = [
         arg
         for arg in compile_args
-        if arg not in _CLANG_TIDY_UNSUPPORTED_COMPILE_ARGS
+        if arg not in _CLANG_TIDY_UNSUPPORTED_COMPILE_ARGS and arg not in resource_includes
     ]
+
+    # The fixed compilation database replaces argv[0], losing the driver mode
+    # normally selected by clang-cl or cl.exe. Keep MSVC-style options active.
+    if compiler in ["clang-cl", "msvc-cl"]:
+        filtered_args.append("--driver-mode=cl")
 
     # Preserve the resource directory named by Bazel's crosstool module map.
     # The clang-tidy VFS overlay redirects this virtual path to the declared,
@@ -87,8 +101,11 @@ def _module_map_file(module_map):
         return module_map.file
     return module_map
 
-def _compilation_input_depsets(compilation_context):
-    inputs = []
+def _compilation_input_depsets(compilation_context, cc_toolchain):
+    # SDK paths in the compile command require the toolchain's declared inputs.
+    # rules_cc exposes the compiler-only closure through this private field;
+    # all_files would also pull unrelated linker tools and SDK import libraries.
+    inputs = [cc_toolchain._compiler_files]
     for field in [
         "headers",
         "direct_headers",
@@ -173,12 +190,12 @@ def _run_clang_tidy_action(ctx, target, cc_toolchain, feature_configuration, sou
     else:
         args.add("--warnings-as-errors=%s" % ctx.attr._warnings_as_errors)
     args.add("--")
-    args.add_all(_clang_tidy_compile_args(compile_command.compile_args))
+    args.add_all(_clang_tidy_compile_args(compile_command.compile_args, cc_toolchain.compiler))
 
     compilation_context = target[CcInfo].compilation_context
     inputs = depset(
         direct = [source, ctx.file._config, ctx.file._clang_resource_overlay],
-        transitive = _compilation_input_depsets(compilation_context) + [
+        transitive = _compilation_input_depsets(compilation_context, cc_toolchain) + [
             depset(ctx.files._clang_resource_headers),
         ],
     )
@@ -217,12 +234,12 @@ def _run_recursion_summary_action(ctx, target, cc_toolchain, feature_configurati
     args.add("--recursion-summary", summary)
     args.add("--suppress-recursion-diagnostics")
     args.add("--")
-    args.add_all(_clang_tidy_compile_args(compile_command.compile_args))
+    args.add_all(_clang_tidy_compile_args(compile_command.compile_args, cc_toolchain.compiler))
 
     compilation_context = target[CcInfo].compilation_context
     inputs = depset(
         direct = [source, ctx.file._config, ctx.file._clang_resource_overlay],
-        transitive = _compilation_input_depsets(compilation_context) + [
+        transitive = _compilation_input_depsets(compilation_context, cc_toolchain) + [
             depset(ctx.files._clang_resource_headers),
         ],
     )

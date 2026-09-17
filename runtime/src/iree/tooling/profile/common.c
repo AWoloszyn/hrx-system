@@ -79,7 +79,9 @@ bool iree_profile_key_matches(iree_string_view_t key,
 }
 
 double iree_profile_sqrt_f64(double value) {
-  if (value <= 0.0) return 0.0;
+  if (value <= 0.0) {
+    return 0.0;
+  }
   // Keep this standalone C tool free of libm linkage.
   double estimate = value >= 1.0 ? value : 1.0;
   for (int i = 0; i < 32; ++i) {
@@ -112,7 +114,9 @@ void iree_profile_index_deinitialize(iree_profile_index_t* index,
 static iree_status_t iree_profile_index_reserve_capacity(
     iree_profile_index_t* index, iree_allocator_t host_allocator,
     iree_host_size_t minimum_capacity) {
-  if (minimum_capacity <= index->capacity) return iree_ok_status();
+  if (minimum_capacity <= index->capacity) {
+    return iree_ok_status();
+  }
 
   iree_host_size_t new_capacity = index->capacity ? index->capacity : 16;
   while (new_capacity < minimum_capacity) {
@@ -132,7 +136,9 @@ static iree_status_t iree_profile_index_reserve_capacity(
   const iree_host_size_t new_capacity_mask = new_capacity - 1;
   for (iree_host_size_t i = 0; i < index->capacity; ++i) {
     iree_profile_index_entry_t entry = index->entries[i];
-    if (entry.value_plus_one == 0) continue;
+    if (entry.value_plus_one == 0) {
+      continue;
+    }
     iree_host_size_t slot = (iree_host_size_t)entry.hash & new_capacity_mask;
     while (new_entries[slot].value_plus_one != 0) {
       slot = (slot + 1) & new_capacity_mask;
@@ -149,7 +155,9 @@ static iree_status_t iree_profile_index_reserve_capacity(
 iree_status_t iree_profile_index_reserve(iree_profile_index_t* index,
                                          iree_allocator_t host_allocator,
                                          iree_host_size_t minimum_count) {
-  if (minimum_count == 0) return iree_ok_status();
+  if (minimum_count == 0) {
+    return iree_ok_status();
+  }
   if (IREE_UNLIKELY(minimum_count > IREE_HOST_SIZE_MAX / 2)) {
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                             "profile index count overflow");
@@ -163,14 +171,18 @@ bool iree_profile_index_find(const iree_profile_index_t* index, uint64_t hash,
                              const void* user_data,
                              iree_host_size_t* out_value) {
   *out_value = 0;
-  if (index->capacity == 0) return false;
+  if (index->capacity == 0) {
+    return false;
+  }
 
   const iree_host_size_t capacity_mask = index->capacity - 1;
   iree_host_size_t slot = (iree_host_size_t)hash & capacity_mask;
   for (iree_host_size_t probe_count = 0; probe_count < index->capacity;
        ++probe_count) {
     const iree_profile_index_entry_t* entry = &index->entries[slot];
-    if (entry->value_plus_one == 0) return false;
+    if (entry->value_plus_one == 0) {
+      return false;
+    }
     const iree_host_size_t value = entry->value_plus_one - 1;
     if (entry->hash == hash && match(user_data, value)) {
       *out_value = value;
@@ -232,7 +244,9 @@ iree_status_t iree_profile_index_replace(iree_profile_index_t* index,
     for (iree_host_size_t probe_count = 0; probe_count < index->capacity;
          ++probe_count) {
       iree_profile_index_entry_t* entry = &index->entries[slot];
-      if (entry->value_plus_one == 0) break;
+      if (entry->value_plus_one == 0) {
+        break;
+      }
       if (entry->hash == hash && match(user_data, entry->value_plus_one - 1)) {
         entry->value_plus_one = value + 1;
         return iree_ok_status();

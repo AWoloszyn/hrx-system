@@ -60,7 +60,9 @@ IREE_AMDGPU_ATTRIBUTE_KERNEL void
 iree_hal_amdgpu_device_timestamp_initialize_completion_signals(
     iree_amd_signal_t* IREE_AMDGPU_RESTRICT signals, uint32_t signal_count) {
   const size_t signal_index = iree_hal_amdgpu_device_global_linear_id_1d();
-  if (signal_index >= signal_count) return;
+  if (signal_index >= signal_count) {
+    return;
+  }
 
   iree_amd_signal_t* IREE_AMDGPU_RESTRICT signal = &signals[signal_index];
   iree_hal_amdgpu_device_timestamp_arm_completion_signal(signal);
@@ -107,7 +109,9 @@ iree_hal_amdgpu_device_timestamp_harvest_dispatch_records(
         IREE_AMDGPU_RESTRICT sources,
     uint32_t source_count) {
   const size_t source_index = iree_hal_amdgpu_device_global_linear_id_1d();
-  if (source_index >= source_count) return;
+  if (source_index >= source_count) {
+    return;
+  }
 
   const iree_hal_amdgpu_dispatch_timestamp_harvest_source_t source =
       sources[source_index];

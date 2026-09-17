@@ -39,7 +39,9 @@ static iree_status_t hrx_executable_snapshot_export_names(
 
   const iree_host_size_t export_count =
       iree_hal_executable_export_count(hal_executable);
-  if (export_count == 0) return iree_ok_status();
+  if (export_count == 0) {
+    return iree_ok_status();
+  }
   if (export_count > UINT32_MAX) {
     return iree_make_status(
         IREE_STATUS_OUT_OF_RANGE,
@@ -243,14 +245,18 @@ hrx_status_t hrx_executable_load_file(hrx_device_t device, const char* path,
 }
 
 void hrx_executable_retain(hrx_executable_t executable) {
-  if (!executable) return;
+  if (!executable) {
+    return;
+  }
   iree_hal_executable_retain(executable->hal_executable);
   hrx_device_retain(executable->device);
   iree_atomic_ref_count_inc(&executable->ref_count);
 }
 
 void hrx_executable_release(hrx_executable_t executable) {
-  if (!executable) return;
+  if (!executable) {
+    return;
+  }
   iree_hal_executable_t* hal_executable = executable->hal_executable;
   hrx_device_t device = executable->device;
   if (iree_atomic_ref_count_dec(&executable->ref_count) == 1) {

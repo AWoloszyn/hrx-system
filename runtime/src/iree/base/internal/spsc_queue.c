@@ -310,7 +310,9 @@ void iree_spsc_queue_cancel_write(iree_spsc_queue_t* queue) {
 bool iree_spsc_queue_write(iree_spsc_queue_t* queue, const void* data,
                            iree_host_size_t length) {
   void* payload = iree_spsc_queue_begin_write(queue, length);
-  if (!payload) return false;
+  if (!payload) {
+    return false;
+  }
   memcpy(payload, data, length);
   iree_spsc_queue_commit_write(queue, length);
   return true;

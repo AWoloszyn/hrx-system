@@ -23,7 +23,9 @@ static void iree_arena_block_pool_release_tsan(iree_arena_block_t* block_head,
   while (block) {
     iree_arena_block_t* next = block->next;
     IREE_TSAN_RELEASE(block);
-    if (block == block_tail) break;
+    if (block == block_tail) {
+      break;
+    }
     block = next;
   }
 }
@@ -398,7 +400,9 @@ iree_status_t iree_arena_allocate(iree_arena_allocator_t* arena,
         z0, iree_arena_block_pool_acquire(arena->block_pool, &block, &ptr));
     block->next = arena->block_head;
     arena->block_head = block;
-    if (!arena->block_tail) arena->block_tail = block;
+    if (!arena->block_tail) {
+      arena->block_tail = block;
+    }
     arena->total_allocation_size += block_pool->total_block_size;
     arena->block_bytes_remaining = block_pool->usable_block_size;
     IREE_ASAN_POISON_MEMORY_REGION(

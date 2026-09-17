@@ -27,7 +27,9 @@
 
 static iree_status_t iree_hal_amdgpu_host_queue_ensure_command_buffer_scratch(
     iree_hal_amdgpu_host_queue_t* queue) {
-  if (queue->command_buffer_scratch) return iree_ok_status();
+  if (queue->command_buffer_scratch) {
+    return iree_ok_status();
+  }
   iree_hal_amdgpu_host_queue_command_buffer_scratch_t* scratch = NULL;
   IREE_RETURN_IF_ERROR(iree_allocator_malloc(
       queue->host_allocator, sizeof(*scratch), (void**)&scratch));
@@ -85,7 +87,9 @@ iree_hal_amdgpu_host_queue_prepare_command_buffer_binding_ptrs(
     iree_arena_allocator_t* overflow_arena, const uint64_t** out_binding_ptrs) {
   *out_binding_ptrs = NULL;
   const uint32_t binding_count = command_buffer->binding_count;
-  if (binding_count == 0) return iree_ok_status();
+  if (binding_count == 0) {
+    return iree_ok_status();
+  }
   uint64_t* binding_ptrs = NULL;
   if (binding_count <=
       IREE_HAL_AMDGPU_HOST_QUEUE_COMMAND_BUFFER_BINDING_SCRATCH_CAPACITY) {
@@ -118,7 +122,9 @@ iree_status_t iree_hal_amdgpu_host_queue_resolve_command_buffer_binding_ptrs(
     iree_hal_command_buffer_t* command_buffer,
     iree_hal_buffer_binding_table_t binding_table, uint64_t* out_binding_ptrs) {
   const uint32_t binding_count = command_buffer->binding_count;
-  if (binding_count == 0) return iree_ok_status();
+  if (binding_count == 0) {
+    return iree_ok_status();
+  }
   if (IREE_UNLIKELY(binding_table.count < binding_count)) {
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                             "queue_execute binding table count %" PRIhsz
@@ -210,7 +216,9 @@ static bool iree_hal_amdgpu_host_queue_command_buffer_packet_has_barrier(
 static iree_hsa_fence_scope_t
 iree_hal_amdgpu_host_queue_command_buffer_block_payload_acquire_scope(
     const iree_hal_amdgpu_command_buffer_block_header_t* block) {
-  if (block->kernarg_length == 0) return IREE_HSA_FENCE_SCOPE_NONE;
+  if (block->kernarg_length == 0) {
+    return IREE_HSA_FENCE_SCOPE_NONE;
+  }
   return iree_hal_amdgpu_host_queue_kernarg_acquire_scope(
       IREE_HSA_FENCE_SCOPE_NONE);
 }
@@ -220,8 +228,12 @@ iree_hal_amdgpu_host_queue_command_buffer_block_payload_acquire_packet_count(
     const iree_hal_amdgpu_wait_resolution_t* resolution,
     const iree_hal_amdgpu_command_buffer_block_header_t* block,
     uint32_t packet_index_base, iree_hsa_fence_scope_t payload_acquire_scope) {
-  if (payload_acquire_scope == IREE_HSA_FENCE_SCOPE_NONE) return 0;
-  if (block->aql_packet_count == 0) return 0;
+  if (payload_acquire_scope == IREE_HSA_FENCE_SCOPE_NONE) {
+    return 0;
+  }
+  if (block->aql_packet_count == 0) {
+    return 0;
+  }
   if (iree_hal_amdgpu_host_queue_command_buffer_packet_has_barrier(
           resolution, packet_index_base,
           block->aql_packet_count == 1

@@ -35,7 +35,9 @@ class DeferredSemaphoreSignal {
       : semaphore_(semaphore), payload_value_(payload_value) {}
 
   ~DeferredSemaphoreSignal() {
-    if (!semaphore_) return;
+    if (!semaphore_) {
+      return;
+    }
     IREE_EXPECT_OK(iree_hal_semaphore_signal(semaphore_, payload_value_,
                                              /*frontier=*/NULL));
   }
@@ -59,7 +61,9 @@ class TransientBufferTest : public CtsTestBase<> {
  protected:
   void SetUp() override {
     CtsTestBase<>::SetUp();
-    if (this->IsSkipped()) return;
+    if (this->IsSkipped()) {
+      return;
+    }
     if (!transfer_queue_) {
       GTEST_SKIP() << "device has no provisioned transfer-capable queue";
     }

@@ -65,7 +65,9 @@ static void fuzz_tokenizer_deinitialize(fuzz_tokenizer_t* tokenizer) {
 }
 
 static uint8_t fuzz_consume_u8(fuzz_input_t* input) {
-  if (input->remaining == 0) return 0;
+  if (input->remaining == 0) {
+    return 0;
+  }
   uint8_t value = input->data[0];
   input->data++;
   input->remaining--;
@@ -189,7 +191,9 @@ static void fuzz_strategy_raw_tokenize(const uint8_t* data, size_t size) {
     if (token.kind != LOOM_TOKEN_EOF && token.kind != LOOM_TOKEN_NONE) {
       previous_line = token.line;
     }
-    if (token.kind == LOOM_TOKEN_EOF) break;
+    if (token.kind == LOOM_TOKEN_EOF) {
+      break;
+    }
   }
 
   // Malformed input is represented by LOOM_TOKEN_ERROR. The status channel is
@@ -335,7 +339,9 @@ static void fuzz_strategy_grammar_aware(fuzz_input_t* input) {
     uint8_t index = fuzz_consume_u8(input) % kFragmentCount;
     const char* fragment = fragments[index];
     size_t fragment_length = strlen(fragment);
-    if (source_length + fragment_length >= sizeof(source_buffer)) break;
+    if (source_length + fragment_length >= sizeof(source_buffer)) {
+      break;
+    }
     memcpy(source_buffer + source_length, fragment, fragment_length);
     source_length += fragment_length;
   }
@@ -350,7 +356,9 @@ static void fuzz_strategy_grammar_aware(fuzz_input_t* input) {
     loom_token_t token = loom_tokenizer_next(&tokenizer.tokenizer);
     fuzz_assert_position_invariant(&tokenizer.tokenizer);
     fuzz_assert_token_slice_valid(&tokenizer.tokenizer, &token);
-    if (token.kind == LOOM_TOKEN_EOF) break;
+    if (token.kind == LOOM_TOKEN_EOF) {
+      break;
+    }
   }
 
   IREE_CHECK_OK(loom_tokenizer_consume_status(&tokenizer.tokenizer));
@@ -412,7 +420,9 @@ static void fuzz_strategy_truncation(fuzz_input_t* input) {
     loom_token_t token = loom_tokenizer_next(&tokenizer.tokenizer);
     fuzz_assert_position_invariant(&tokenizer.tokenizer);
     fuzz_assert_token_slice_valid(&tokenizer.tokenizer, &token);
-    if (token.kind == LOOM_TOKEN_EOF) break;
+    if (token.kind == LOOM_TOKEN_EOF) {
+      break;
+    }
   }
 
   IREE_CHECK_OK(loom_tokenizer_consume_status(&tokenizer.tokenizer));
@@ -441,7 +451,9 @@ static void fuzz_strategy_angle_nesting(fuzz_input_t* input) {
   int nesting_depth = 1;
 
   for (uint8_t i = 0; i < element_count && input->remaining > 0; ++i) {
-    if (source_length >= sizeof(source_buffer) - 32) break;
+    if (source_length >= sizeof(source_buffer) - 32) {
+      break;
+    }
 
     uint8_t action = fuzz_consume_u8(input) % 8;
     switch (action) {
@@ -554,7 +566,9 @@ static void fuzz_strategy_api_interleave(const uint8_t* data, size_t size,
         // peek — should be idempotent.
         loom_token_t first = loom_tokenizer_peek(&tokenizer.tokenizer);
         loom_token_t second = loom_tokenizer_peek(&tokenizer.tokenizer);
-        if (first.kind != second.kind) __builtin_trap();
+        if (first.kind != second.kind) {
+          __builtin_trap();
+        }
         fuzz_assert_token_slice_valid(&tokenizer.tokenizer, &first);
         break;
       }
@@ -568,9 +582,15 @@ static void fuzz_strategy_api_interleave(const uint8_t* data, size_t size,
         // peek then next — must return same token.
         loom_token_t peeked = loom_tokenizer_peek(&tokenizer.tokenizer);
         loom_token_t consumed = loom_tokenizer_next(&tokenizer.tokenizer);
-        if (peeked.kind != consumed.kind) __builtin_trap();
-        if (peeked.text.data != consumed.text.data) __builtin_trap();
-        if (peeked.text.size != consumed.text.size) __builtin_trap();
+        if (peeked.kind != consumed.kind) {
+          __builtin_trap();
+        }
+        if (peeked.text.data != consumed.text.data) {
+          __builtin_trap();
+        }
+        if (peeked.text.size != consumed.text.size) {
+          __builtin_trap();
+        }
         break;
       }
       case 3: {
@@ -591,7 +611,9 @@ static void fuzz_strategy_api_interleave(const uint8_t* data, size_t size,
         if (!consumed) {
           // Should not have advanced.
           loom_token_t after = loom_tokenizer_peek(&tokenizer.tokenizer);
-          if (before.kind != after.kind) __builtin_trap();
+          if (before.kind != after.kind) {
+            __builtin_trap();
+          }
         }
         break;
       }
@@ -652,7 +674,9 @@ static void fuzz_strategy_api_interleave(const uint8_t* data, size_t size,
 //===----------------------------------------------------------------------===//
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  if (size == 0) return 0;
+  if (size == 0) {
+    return 0;
+  }
 
   // Use the first byte to select which strategy gets the most attention
   // for this input, but always run the raw tokenizer (it's cheap and

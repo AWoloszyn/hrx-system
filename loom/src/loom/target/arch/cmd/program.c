@@ -162,7 +162,9 @@ bool loom_cmd_program_barrier_wave_iterator_next(
   IREE_ASSERT_ARGUMENT(iterator->program);
   IREE_ASSERT_ARGUMENT(out_wave);
   const loom_cmd_program_t* program = iterator->program;
-  if (iterator->next_command == program->commands.count) return false;
+  if (iterator->next_command == program->commands.count) {
+    return false;
+  }
 
   const uint32_t first_command = iterator->next_command;
   loom_cmd_program_command_t command =
@@ -174,7 +176,9 @@ bool loom_cmd_program_barrier_wave_iterator_next(
   uint32_t next_command = first_command + 1;
   while (next_command < program->commands.count) {
     command = loom_cmd_program_command_at(program, next_command);
-    if (loom_cmd_program_command_kind_begins_barrier_wave(command.kind)) break;
+    if (loom_cmd_program_command_kind_begins_barrier_wave(command.kind)) {
+      break;
+    }
     ++next_command;
   }
   *out_wave = (loom_cmd_program_barrier_wave_t){

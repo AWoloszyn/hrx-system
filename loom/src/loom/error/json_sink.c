@@ -197,7 +197,9 @@ static iree_status_t loom_json_render_source_excerpt(
 static iree_status_t loom_json_render_source_range(
     loom_json_object_writer_t* object, iree_string_view_t field_name,
     const loom_source_range_t* range) {
-  if (!loom_json_source_range_has_metadata(range)) return iree_ok_status();
+  if (!loom_json_source_range_has_metadata(range)) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(loom_json_object_begin_field(object, field_name));
   loom_json_object_writer_t range_object;
   IREE_RETURN_IF_ERROR(loom_json_object_begin(object->stream, &range_object));
@@ -339,14 +341,18 @@ static iree_status_t loom_json_render_param_fields(
       break;
     }
   }
-  if (!has_field_refs) return iree_ok_status();
+  if (!has_field_refs) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(
       loom_json_object_begin_field(object, IREE_SV("param_fields")));
   loom_json_object_writer_t param_fields;
   IREE_RETURN_IF_ERROR(loom_json_object_begin(object->stream, &param_fields));
   for (iree_host_size_t i = 0; i < param_count; ++i) {
-    if (!loom_diagnostic_field_ref_is_set(params[i].field_ref)) continue;
+    if (!loom_diagnostic_field_ref_is_set(params[i].field_ref)) {
+      continue;
+    }
     IREE_RETURN_IF_ERROR(loom_json_object_begin_field(
         &param_fields,
         iree_make_cstring_view(loom_error_def_param_name(error, i))));

@@ -104,7 +104,9 @@ bool loom_vector_to_scalar_resolve_descriptor(
     loom_op_kind_t kind, loom_vector_to_scalar_descriptor_t* out_descriptor) {
   // Both forms select each payload lane. Generic lane materialization keeps
   // scf.select's scalar condition unchanged instead of extracting a mask lane.
-  if (kind == LOOM_OP_SCF_SELECT) kind = LOOM_OP_VECTOR_SELECT;
+  if (kind == LOOM_OP_SCF_SELECT) {
+    kind = LOOM_OP_VECTOR_SELECT;
+  }
   const loom_vector_scalarization_t* scalarization =
       loom_vector_scalarization_lookup(kind);
   if (scalarization != NULL) {
@@ -116,14 +118,18 @@ bool loom_vector_to_scalar_resolve_descriptor(
     return true;
   }
 
-  if (loom_op_dialect_id(kind) != LOOM_DIALECT_VECTOR) return false;
+  if (loom_op_dialect_id(kind) != LOOM_DIALECT_VECTOR) {
+    return false;
+  }
   const uint8_t op_index = loom_op_dialect_index(kind);
   if (op_index >= IREE_ARRAYSIZE(kVectorToScalarExplicitDescriptors)) {
     return false;
   }
   const loom_vector_to_scalar_descriptor_t* descriptor =
       &kVectorToScalarExplicitDescriptors[op_index];
-  if (loom_vector_to_scalar_descriptor_is_empty(descriptor)) return false;
+  if (loom_vector_to_scalar_descriptor_is_empty(descriptor)) {
+    return false;
+  }
   *out_descriptor = *descriptor;
   return true;
 }

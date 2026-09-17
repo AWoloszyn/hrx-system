@@ -98,7 +98,9 @@ static int iree_wait_address_condition_wait(iree_wait_address_bucket_t* bucket,
 #elif defined(IREE_WAIT_ADDRESS_USE_RELATIVE_TIMEDWAIT)
   iree_duration_t timeout_ns =
       iree_absolute_deadline_to_timeout_ns(deadline_ns);
-  if (timeout_ns <= 0) return ETIMEDOUT;
+  if (timeout_ns <= 0) {
+    return ETIMEDOUT;
+  }
   struct timespec relative_time = {
       .tv_sec = (time_t)(timeout_ns / 1000000000ull),
       .tv_nsec = (long)(timeout_ns % 1000000000ull),
@@ -108,7 +110,9 @@ static int iree_wait_address_condition_wait(iree_wait_address_bucket_t* bucket,
 #else
   iree_duration_t timeout_ns =
       iree_absolute_deadline_to_timeout_ns(deadline_ns);
-  if (timeout_ns <= 0) return ETIMEDOUT;
+  if (timeout_ns <= 0) {
+    return ETIMEDOUT;
+  }
   struct timespec now_realtime;
   clock_gettime(CLOCK_REALTIME, &now_realtime);
   int64_t deadline_realtime_ns = (int64_t)now_realtime.tv_sec * 1000000000ll +

@@ -51,7 +51,9 @@ static test_byte_sequence_t* test_byte_sequence_cast(
 
 static void test_byte_sequence_destroy(iree_byte_sequence_t* base_sequence) {
   test_byte_sequence_t* sequence = test_byte_sequence_cast(base_sequence);
-  if (sequence->destroy_count) ++*sequence->destroy_count;
+  if (sequence->destroy_count) {
+    ++*sequence->destroy_count;
+  }
 }
 
 static iree_status_t test_byte_sequence_enumerate(
@@ -250,7 +252,9 @@ TEST(ByteSequenceTest, SupportsConcurrentEnumeration) {
       }
     });
   }
-  for (std::thread& thread : threads) thread.join();
+  for (std::thread& thread : threads) {
+    thread.join();
+  }
   EXPECT_TRUE(all_match.load());
 
   iree_byte_sequence_release(&sequence.base);

@@ -153,10 +153,14 @@ iree_status_t iree_hal_amdgpu_aql_program_validate_metadata_only(
       break;
     }
     status = iree_hal_amdgpu_aql_program_validate_block_terminator(block);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     status =
         iree_hal_amdgpu_aql_program_validate_metadata_block_commands(block);
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
 
     switch (block->terminator_opcode) {
       case IREE_HAL_AMDGPU_COMMAND_BUFFER_OPCODE_BRANCH:

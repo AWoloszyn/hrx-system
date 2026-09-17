@@ -35,7 +35,9 @@ static iree_status_t loom_vm_check_emit(
       request->module, &prepare_options, request->low_registry,
       request->environment, request->source_resolver,
       request->diagnostic_collector, request->block_pool));
-  if (request->diagnostic_collector->count) return iree_ok_status();
+  if (request->diagnostic_collector->count) {
+    return iree_ok_status();
+  }
 
   loom_check_diagnostic_emitter_capture_t capture = {
       .diagnostic_collector = request->diagnostic_collector,

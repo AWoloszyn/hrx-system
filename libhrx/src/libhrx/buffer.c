@@ -116,7 +116,9 @@ hrx_status_t hrx_buffer_allocate(hrx_stream_t stream, size_t size,
 }
 
 void hrx_buffer_retain(hrx_buffer_t buffer) {
-  if (!buffer) return;
+  if (!buffer) {
+    return;
+  }
   iree_hal_buffer_retain(buffer->hal_buffer);
   iree_hal_pool_retain(buffer->hal_pool);
   hrx_device_retain(buffer->device);
@@ -125,7 +127,9 @@ void hrx_buffer_retain(hrx_buffer_t buffer) {
 }
 
 void hrx_buffer_release(hrx_buffer_t buffer) {
-  if (!buffer) return;
+  if (!buffer) {
+    return;
+  }
   HRX_TRACE_ZONE_BEGIN(z0, "hrx_buffer_release");
   HRX_TRACE_ZONE_APPEND_BYTES(z0, buffer->size);
   iree_hal_buffer_t* hal_buffer = buffer->hal_buffer;
@@ -167,9 +171,15 @@ hrx_status_t hrx_buffer_map(hrx_buffer_t buffer, hrx_map_flags_t flags,
   }
 
   iree_hal_memory_access_t access = 0;
-  if (flags & HRX_MAP_READ) access |= IREE_HAL_MEMORY_ACCESS_READ;
-  if (flags & HRX_MAP_WRITE) access |= IREE_HAL_MEMORY_ACCESS_WRITE;
-  if (flags & HRX_MAP_DISCARD) access |= IREE_HAL_MEMORY_ACCESS_DISCARD_WRITE;
+  if (flags & HRX_MAP_READ) {
+    access |= IREE_HAL_MEMORY_ACCESS_READ;
+  }
+  if (flags & HRX_MAP_WRITE) {
+    access |= IREE_HAL_MEMORY_ACCESS_WRITE;
+  }
+  if (flags & HRX_MAP_DISCARD) {
+    access |= IREE_HAL_MEMORY_ACCESS_DISCARD_WRITE;
+  }
 
   iree_status_t status = iree_hal_buffer_map_range(
       buffer->hal_buffer, IREE_HAL_MAPPING_MODE_SCOPED, access,
@@ -288,7 +298,9 @@ hrx_status_t hrx_host_memory_unregister(hrx_device_t device, void* host_ptr) {
   size_t offset = 0;
   hrx_status_t status =
       hrx_buffer_table_find(&device->buffer_table, key, &buf, &offset, NULL);
-  if (!hrx_status_is_ok(status)) return status;
+  if (!hrx_status_is_ok(status)) {
+    return status;
+  }
 
   hrx_buffer_table_remove(&device->buffer_table, key);
   if (buf) {

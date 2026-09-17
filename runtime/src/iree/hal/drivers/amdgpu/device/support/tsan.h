@@ -33,7 +33,9 @@ iree_hal_amdgpu_tsan_report_data_race(
     uint32_t prior_workgroup_id_x, uint32_t prior_workgroup_id_y,
     uint32_t prior_workgroup_id_z, uint32_t prior_workitem_id_x,
     uint32_t prior_workitem_id_y, uint32_t prior_workitem_id_z) {
-  if (!feedback_config) return false;
+  if (!feedback_config) {
+    return false;
+  }
 
   iree_hal_amdgpu_feedback_config_t feedback_config_snapshot;
   feedback_config_snapshot.record_length = feedback_config->record_length;

@@ -345,7 +345,9 @@ static uint64_t iree_hal_webgpu_queue_reserve_epoch(
 // reserve_epoch for fast-path ops where submit IS completion.
 static void iree_hal_webgpu_queue_advance_tracker(
     iree_hal_webgpu_queue_t* queue, uint64_t epoch) {
-  if (!queue->frontier_tracker) return;
+  if (!queue->frontier_tracker) {
+    return;
+  }
   iree_async_frontier_tracker_advance(queue->frontier_tracker, queue->axis,
                                       epoch);
 }
@@ -361,7 +363,9 @@ static void iree_hal_webgpu_queue_advance_tracker(
 static const iree_async_frontier_t* iree_hal_webgpu_queue_build_frontier(
     iree_hal_webgpu_queue_t* queue, uint64_t epoch,
     iree_async_single_frontier_t* out_frontier) {
-  if (!queue->frontier_tracker) return NULL;
+  if (!queue->frontier_tracker) {
+    return NULL;
+  }
   iree_async_single_frontier_initialize(out_frontier, queue->axis, epoch);
   return iree_async_single_frontier_as_const_frontier(out_frontier);
 }
@@ -870,8 +874,9 @@ static void iree_hal_webgpu_queue_op_wait_completion(
             &queue->scratch_builder, target_ref, &state->fill.pattern,
             state->fill.pattern_length);
       }
-      if (iree_hal_webgpu_queue_op_finalize_and_submit(state, work_status))
+      if (iree_hal_webgpu_queue_op_finalize_and_submit(state, work_status)) {
         return;
+      }
       break;
     }
 
@@ -889,8 +894,9 @@ static void iree_hal_webgpu_queue_op_wait_completion(
             &queue->scratch_builder, state->update.captured_data,
             /*source_offset=*/0, target_ref);
       }
-      if (iree_hal_webgpu_queue_op_finalize_and_submit(state, work_status))
+      if (iree_hal_webgpu_queue_op_finalize_and_submit(state, work_status)) {
         return;
+      }
       break;
     }
 
@@ -909,8 +915,9 @@ static void iree_hal_webgpu_queue_op_wait_completion(
         work_status = iree_hal_webgpu_builder_copy_buffer(
             &queue->scratch_builder, source_ref, target_ref);
       }
-      if (iree_hal_webgpu_queue_op_finalize_and_submit(state, work_status))
+      if (iree_hal_webgpu_queue_op_finalize_and_submit(state, work_status)) {
         return;
+      }
       break;
     }
 
@@ -949,7 +956,9 @@ static void iree_hal_webgpu_queue_op_wait_completion(
         iree_hal_semaphore_list_fail(state->signal_semaphore_list, work_status);
         break;
       }
-      if (!iree_hal_webgpu_queue_op_register_embedded_signal(state)) break;
+      if (!iree_hal_webgpu_queue_op_register_embedded_signal(state)) {
+        break;
+      }
       return;
     }
 
@@ -969,8 +978,9 @@ static void iree_hal_webgpu_queue_op_wait_completion(
             state->dispatch.bind_group_layout_handle,
             state->dispatch.workgroup_count, binding_list);
       }
-      if (iree_hal_webgpu_queue_op_finalize_and_submit(state, work_status))
+      if (iree_hal_webgpu_queue_op_finalize_and_submit(state, work_status)) {
         return;
+      }
       break;
     }
 
@@ -996,7 +1006,9 @@ static void iree_hal_webgpu_queue_op_wait_completion(
         iree_hal_semaphore_list_fail(state->signal_semaphore_list, work_status);
         break;
       }
-      if (!iree_hal_webgpu_queue_op_register_embedded_signal(state)) break;
+      if (!iree_hal_webgpu_queue_op_register_embedded_signal(state)) {
+        break;
+      }
       return;
     }
 
@@ -1113,7 +1125,9 @@ static iree_status_t iree_hal_webgpu_queue_state_allocate(
   // all per-op element types (they contain pointers and device_size_t fields,
   // both <= max_align_t).
   if (iree_status_is_ok(status) && trailing_count > 0) {
-    if (out_trailing_offset) *out_trailing_offset = total_size;
+    if (out_trailing_offset) {
+      *out_trailing_offset = total_size;
+    }
     iree_host_size_t trailing_bytes = 0;
     if (!iree_host_size_checked_mul(trailing_count, trailing_element_size,
                                     &trailing_bytes) ||

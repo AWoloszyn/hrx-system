@@ -39,7 +39,19 @@ loader configuration.
 
 The Bazel action runner uses the same configured C/C++ compile arguments that
 feed `dev.py bazel compile-commands`, builds one cacheable action per source
-file, and writes a per-source report:
+file, and writes a per-source report. Analysis actions carry the destination
+compiler's SDK input closure and preserve clang-cl/MSVC driver mode when
+analyzing Windows targets. Clang builtin headers come from the analysis tool's
+matching resource directory; SDK linker libraries are not analysis inputs.
+
+The action smoke target exercises C and C++ standard-library headers:
+
+```bash
+iree-bazel-build --repo_env=IREE_CLANG_TIDY_LLVM=auto \
+  //build_tools/clang_tidy:action_smoke
+```
+
+The plugin regression suite runs independently:
 
 ```bash
 iree-bazel-test --repo_env=IREE_CLANG_TIDY_LLVM=auto \
@@ -79,6 +91,18 @@ ctest --test-dir .tmp/iree-clang-tidy-plugin --output-on-failure
 ```
 
 ## Checks
+
+### `readability-braces-around-statements`
+
+Conditional and loop bodies use braces, including single-statement bodies.
+This keeps statement macros such as GoogleTest assertions inside an explicit
+block and makes control-flow grouping visible at the callsite. The repository
+clang-format policy inserts braces automatically. Code generators emit braced
+bodies directly, so generated C/C++ follows the same rule without a formatting
+step in build actions.
+
+Header diagnostics cover first-party source and generated code. External and
+vendored third-party headers retain their own style policy.
 
 ### `iree-assert-output-call`
 
@@ -345,8 +369,12 @@ only pure empty predicates collapse to the named helper.
 Examples:
 
 ```c
-if (iree_string_view_is_empty(name)) return iree_ok_status();
-if (iree_const_byte_span_is_empty(bytes)) return iree_ok_status();
+if (iree_string_view_is_empty(name)) {
+  return iree_ok_status();
+}
+if (iree_const_byte_span_is_empty(bytes)) {
+  return iree_ok_status();
+}
 
 if (name.size > 0 && name.data == NULL) {
   return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
@@ -453,6 +481,11 @@ buffer->data = NULL;  // The handle was already released.
 iree_hal_buffer_release(buffer);
 iree_hal_buffer_release(buffer);  // No remaining modeled reference edge.
 ```
+
+Helpers ending in `_await_release` or `_wait_release` observe release completion
+without consuming the caller's reference. They are ordinary uses of the object:
+using the object after waiting is valid, while waiting through an already
+released handle is diagnosed.
 
 Explicit direct retains in the same block add modeled reference edges, so code
 that deliberately drops multiple owned references stays valid:

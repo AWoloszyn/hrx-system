@@ -25,7 +25,9 @@ void iree_task_topology_query_default_caches(
       GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
     return;
   }
-  if (cache_relationships_size > 64 * 1024) return;
+  if (cache_relationships_size > 64 * 1024) {
+    return;
+  }
   SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX* cache_relationships =
       (SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*)iree_alloca(
           cache_relationships_size);
@@ -40,17 +42,27 @@ void iree_task_topology_query_default_caches(
   for (SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX* p = cache_relationships;
        p < end;
        p = (SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*)((uintptr_t)p + p->Size)) {
-    if (p->Relationship != RelationCache) continue;
-    if (p->Cache.Type != CacheUnified && p->Cache.Type != CacheData) continue;
+    if (p->Relationship != RelationCache) {
+      continue;
+    }
+    if (p->Cache.Type != CacheUnified && p->Cache.Type != CacheData) {
+      continue;
+    }
     switch (p->Cache.Level) {
       case 1:
-        if (!out_caches->l1_data) out_caches->l1_data = p->Cache.CacheSize;
+        if (!out_caches->l1_data) {
+          out_caches->l1_data = p->Cache.CacheSize;
+        }
         break;
       case 2:
-        if (!out_caches->l2_data) out_caches->l2_data = p->Cache.CacheSize;
+        if (!out_caches->l2_data) {
+          out_caches->l2_data = p->Cache.CacheSize;
+        }
         break;
       case 3:
-        if (!out_caches->l3_data) out_caches->l3_data = p->Cache.CacheSize;
+        if (!out_caches->l3_data) {
+          out_caches->l3_data = p->Cache.CacheSize;
+        }
         break;
       default:
         break;
@@ -143,9 +155,15 @@ static void iree_task_topology_assign_cache_info(
     iree_task_topology_group_t* group = &topology->groups[group_i];
     if (group->ideal_thread_affinity.group == group_mask.Group &&
         (group_mask.Mask & (1ull << group->ideal_thread_affinity.id))) {
-      if (caches.l1_data) group->caches.l1_data = caches.l1_data;
-      if (caches.l2_data) group->caches.l2_data = caches.l2_data;
-      if (caches.l3_data) group->caches.l3_data = caches.l3_data;
+      if (caches.l1_data) {
+        group->caches.l1_data = caches.l1_data;
+      }
+      if (caches.l2_data) {
+        group->caches.l2_data = caches.l2_data;
+      }
+      if (caches.l3_data) {
+        group->caches.l3_data = caches.l3_data;
+      }
     }
   }
 }
@@ -339,7 +357,9 @@ iree_status_t iree_task_topology_initialize_from_logical_cpu_set(
   for (SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX* p = all_relationships;
        p < all_relationships_end;
        p = (SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*)((uintptr_t)p + p->Size)) {
-    if (p->Relationship != RelationProcessorCore) continue;
+    if (p->Relationship != RelationProcessorCore) {
+      continue;
+    }
     assert(p->Processor.GroupCount == 1);
     KAFFINITY mask = p->Processor.GroupMask[0].Mask;
     int group_offset = 0;
@@ -366,9 +386,13 @@ iree_status_t iree_task_topology_initialize_from_logical_cpu_set(
         affinity->smt = (p->Processor.Flags & LTP_PC_SMT) == LTP_PC_SMT;
       }
       group_offset += bit_offset + 1;
-      if (out_topology->group_count >= cpu_count) break;
+      if (out_topology->group_count >= cpu_count) {
+        break;
+      }
     }
-    if (out_topology->group_count >= cpu_count) break;
+    if (out_topology->group_count >= cpu_count) {
+      break;
+    }
   }
 
   // Assign constructive sharing masks to each topology group.
@@ -383,7 +407,9 @@ static bool iree_task_topology_core_is_selected(
     bool has_heterogeneous_cores,
     iree_task_topology_performance_level_t performance_level,
     const PROCESSOR_RELATIONSHIP* core) {
-  if (!has_heterogeneous_cores) return true;
+  if (!has_heterogeneous_cores) {
+    return true;
+  }
   switch (performance_level) {
     default:
     case IREE_TASK_TOPOLOGY_PERFORMANCE_LEVEL_ANY:
@@ -504,7 +530,9 @@ iree_status_t iree_task_topology_initialize_from_physical_cores(
     if (p->Relationship == RelationProcessorCore) {
       assert(p->Processor.GroupCount == 1);
       ++total_core_count;
-      if (p->Processor.EfficiencyClass > 0) has_heterogeneous_cores = true;
+      if (p->Processor.EfficiencyClass > 0) {
+        has_heterogeneous_cores = true;
+      }
     }
   }
 

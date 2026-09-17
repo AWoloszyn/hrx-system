@@ -380,7 +380,9 @@ iree_status_t loom_print_module_body(loom_print_context_t* ctx,
     const loom_op_t* current_op = NULL;
     loom_block_for_each_op(block, current_op) {
       const loom_op_vtable_t* vtable = loom_op_vtable(ctx->module, current_op);
-      if (loom_op_vtable_is_keyed_module_record(vtable)) continue;
+      if (loom_op_vtable_is_keyed_module_record(vtable)) {
+        continue;
+      }
       IREE_RETURN_IF_ERROR(loom_print_module_op(ctx, current_op, &printed_any));
     }
   }

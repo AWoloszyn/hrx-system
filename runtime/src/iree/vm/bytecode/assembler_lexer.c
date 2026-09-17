@@ -144,7 +144,9 @@ iree_status_t iree_vm_bytecode_assembler_lexer_parse_unsigned(
     } else if (c >= 'A' && c <= 'F') {
       digit = (unsigned)(c - 'A') + 10;
     }
-    if (digit >= base) break;
+    if (digit >= base) {
+      break;
+    }
     if (value > (maximum - digit) / base) {
       return iree_vm_bytecode_assembler_lexer_error(
           lexer, "integer does not fit its field");
@@ -165,7 +167,9 @@ iree_status_t iree_vm_bytecode_assembler_lexer_parse_signed(
     uint64_t* out_bits) {
   iree_vm_bytecode_assembler_lexer_skip_space(lexer);
   const bool is_negative = lexer->cursor < lexer->end && *lexer->cursor == '-';
-  if (is_negative) ++lexer->cursor;
+  if (is_negative) {
+    ++lexer->cursor;
+  }
   const char* magnitude_begin = lexer->cursor;
   uint64_t magnitude = 0;
   IREE_RETURN_IF_ERROR(iree_vm_bytecode_assembler_lexer_parse_unsigned(
@@ -205,7 +209,9 @@ typedef struct iree_vm_bytecode_assembler_lexer_writer_t {
 
 static iree_status_t iree_vm_bytecode_assembler_lexer_writer_flush(
     iree_vm_bytecode_assembler_lexer_writer_t* writer) {
-  if (!writer->write_fn || writer->buffer_length == 0) return iree_ok_status();
+  if (!writer->write_fn || writer->buffer_length == 0) {
+    return iree_ok_status();
+  }
   iree_status_t status = writer->write_fn(
       writer->user_data,
       iree_make_const_byte_span(writer->buffer, writer->buffer_length));
@@ -221,7 +227,9 @@ static iree_status_t iree_vm_bytecode_assembler_lexer_writer_append(
                                                   "byte literal is too large");
   }
   ++writer->length;
-  if (!writer->write_fn) return iree_ok_status();
+  if (!writer->write_fn) {
+    return iree_ok_status();
+  }
   writer->buffer[writer->buffer_length++] = value;
   if (writer->buffer_length == IREE_ARRAYSIZE(writer->buffer)) {
     return iree_vm_bytecode_assembler_lexer_writer_flush(writer);
@@ -230,9 +238,15 @@ static iree_status_t iree_vm_bytecode_assembler_lexer_writer_append(
 }
 
 static int iree_vm_bytecode_assembler_lexer_hex_digit(char c) {
-  if (c >= '0' && c <= '9') return c - '0';
-  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  if (c >= '0' && c <= '9') {
+    return c - '0';
+  }
+  if (c >= 'a' && c <= 'f') {
+    return c - 'a' + 10;
+  }
+  if (c >= 'A' && c <= 'F') {
+    return c - 'A' + 10;
+  }
   return -1;
 }
 

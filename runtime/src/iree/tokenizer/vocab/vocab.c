@@ -16,7 +16,9 @@
 
 int32_t iree_tokenizer_vocab_lookup(const iree_tokenizer_vocab_t* vocab,
                                     iree_string_view_t text) {
-  if (!vocab || !vocab->hash) return -1;
+  if (!vocab || !vocab->hash) {
+    return -1;
+  }
   return iree_tokenizer_vocab_hash_lookup(vocab->hash, text);
 }
 
@@ -71,7 +73,9 @@ const iree_tokenizer_token_t* iree_tokenizer_vocab_tokens(
 
 iree_tokenizer_special_ids_t iree_tokenizer_vocab_special_ids(
     const iree_tokenizer_vocab_t* vocab) {
-  if (!vocab) return iree_tokenizer_special_ids_none();
+  if (!vocab) {
+    return iree_tokenizer_special_ids_none();
+  }
   return vocab->special_ids;
 }
 
@@ -106,7 +110,9 @@ iree_host_size_t iree_tokenizer_vocab_max_token_length(
 }
 
 void iree_tokenizer_vocab_free(iree_tokenizer_vocab_t* vocab) {
-  if (!vocab) return;
+  if (!vocab) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_allocator_t allocator = vocab->allocator;
 

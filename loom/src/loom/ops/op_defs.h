@@ -916,7 +916,9 @@ static inline bool loom_symbol_implements(
 
 static inline loom_symbol_kind_t loom_symbol_bytecode_kind(
     const loom_symbol_t* symbol) {
-  if (!symbol) return LOOM_SYMBOL_NONE;
+  if (!symbol) {
+    return LOOM_SYMBOL_NONE;
+  }
   return symbol->definition ? symbol->definition->bytecode_kind : symbol->kind;
 }
 

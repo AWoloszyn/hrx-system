@@ -2160,13 +2160,17 @@ static iree_status_t loom_amdgpu_append_branch_target_label(
 static iree_status_t loom_amdgpu_append_branch_groups_before_packet(
     loom_amdgpu_assembly_emit_state_t* state,
     const loom_native_assembly_packet_context_t* context) {
-  if (state->branches.layout == NULL) return iree_ok_status();
+  if (state->branches.layout == NULL) {
+    return iree_ok_status();
+  }
   while (state->branches.next_group_index <
          state->branches.layout->group_count) {
     const iree_host_size_t group_index = state->branches.next_group_index;
     const loom_amdgpu_branch_layout_group_t* group =
         &state->branches.layout->groups[group_index];
-    if (group->packet_index != context->packet->packet_index) break;
+    if (group->packet_index != context->packet->packet_index) {
+      break;
+    }
     IREE_RETURN_IF_ERROR(iree_string_builder_append_format(
         context->builder, "  s_branch .Lbranch_island_group_end%" PRIhsz "\n",
         group_index));

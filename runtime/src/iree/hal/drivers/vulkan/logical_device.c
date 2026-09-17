@@ -365,7 +365,9 @@ static iree_status_t iree_hal_vulkan_host_time_domain_frequency(
 
 static uint64_t iree_hal_vulkan_host_time_domain_timestamp_ns(
     uint64_t timestamp, uint64_t frequency_hz) {
-  if (frequency_hz == 1000000000ull) return timestamp;
+  if (frequency_hz == 1000000000ull) {
+    return timestamp;
+  }
   const uint64_t seconds = timestamp / frequency_hz;
   const uint64_t remainder = timestamp % frequency_hz;
   return seconds * 1000000000ull + (remainder * 1000000000ull) / frequency_hz;
@@ -745,7 +747,9 @@ iree_hal_vulkan_logical_device_queue_family(
     iree_hal_queue_family_ordinal_t family_ordinal) {
   iree_hal_vulkan_logical_device_t* device =
       iree_hal_vulkan_logical_device_cast(base_device);
-  if (family_ordinal >= device->queues.family_count) return NULL;
+  if (family_ordinal >= device->queues.family_count) {
+    return NULL;
+  }
   return &device->queues.families[family_ordinal].base;
 }
 
@@ -755,10 +759,14 @@ static iree_hal_queue_t* iree_hal_vulkan_logical_device_queue(
     iree_hal_queue_ordinal_t queue_ordinal) {
   iree_hal_vulkan_logical_device_t* device =
       iree_hal_vulkan_logical_device_cast(base_device);
-  if (family_ordinal >= device->queues.family_count) return NULL;
+  if (family_ordinal >= device->queues.family_count) {
+    return NULL;
+  }
   const iree_hal_vulkan_queue_family_t* family =
       &device->queues.families[family_ordinal];
-  if (queue_ordinal >= family->queue_count) return NULL;
+  if (queue_ordinal >= family->queue_count) {
+    return NULL;
+  }
   return &device->queues.objects[family->queue_offset + queue_ordinal].base;
 }
 
@@ -905,7 +913,9 @@ static iree_status_t iree_hal_vulkan_logical_device_assign_topology_info(
         /*queue_incarnation=*/0);
     status = iree_hal_vulkan_queue_assign_frontier(
         &device->queues.objects[i], frontier_tracker, queue_axis);
-    if (iree_status_is_ok(status)) assigned_queue_count = i + 1;
+    if (iree_status_is_ok(status)) {
+      assigned_queue_count = i + 1;
+    }
   }
   if (!iree_status_is_ok(status)) {
     for (iree_host_size_t i = 0; i < assigned_queue_count; ++i) {
@@ -1161,7 +1171,9 @@ static iree_status_t iree_hal_vulkan_logical_device_profiling_begin(
   iree_status_t status = iree_hal_vulkan_profile_recorder_create(
       &recorder_options, &resolved_options, device->host_allocator, &recorder);
   iree_allocator_free(device->host_allocator, queue_records);
-  if (!iree_status_is_ok(status) || !recorder) return status;
+  if (!iree_status_is_ok(status) || !recorder) {
+    return status;
+  }
 
   device->profile.recorder = recorder;
   device->profile.host_time_domain = profile_host_time_domain;
@@ -1207,7 +1219,9 @@ static iree_status_t iree_hal_vulkan_logical_device_profiling_end(
   iree_hal_vulkan_logical_device_t* device =
       iree_hal_vulkan_logical_device_cast(base_device);
   iree_hal_vulkan_profile_recorder_t* recorder = device->profile.recorder;
-  if (!recorder) return iree_ok_status();
+  if (!recorder) {
+    return iree_ok_status();
+  }
 
   for (iree_host_size_t i = 0; i < device->queues.queue_count; ++i) {
     iree_hal_vulkan_queue_drain_completions(&device->queues.objects[i]);

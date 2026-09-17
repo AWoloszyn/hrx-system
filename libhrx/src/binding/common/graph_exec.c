@@ -238,7 +238,9 @@ static iree_status_t iree_hal_streaming_graph_record_memcpy_node(
       attrs->execution_extent_depth
           ? attrs->execution_extent_depth
           : (attrs->hip_extent_depth ? attrs->hip_extent_depth : 1);
-  if (width == 0 || height == 0 || depth == 0) return iree_ok_status();
+  if (width == 0 || height == 0 || depth == 0) {
+    return iree_ok_status();
+  }
 
   const iree_device_size_t src_pitch =
       attrs->execution_src_pitch
@@ -364,12 +366,16 @@ iree_hal_streaming_graph_memory_find_reusable_size_entry(
       &device->graph_memory_reusable_size_entries;
   while (*previous_next) {
     if ((*previous_next)->size == size) {
-      if (out_previous_next) *out_previous_next = previous_next;
+      if (out_previous_next) {
+        *out_previous_next = previous_next;
+      }
       return *previous_next;
     }
     previous_next = &(*previous_next)->next;
   }
-  if (out_previous_next) *out_previous_next = previous_next;
+  if (out_previous_next) {
+    *out_previous_next = previous_next;
+  }
   return NULL;
 }
 
@@ -728,7 +734,9 @@ static void iree_hal_streaming_graph_exec_release_child_blocks(
     iree_hal_streaming_graph_exec_t* exec) {
   for (uint32_t i = 0; exec->blocks && i < exec->block_count; ++i) {
     iree_hal_streaming_graph_block_t* block = exec->blocks[i];
-    if (!block) continue;
+    if (!block) {
+      continue;
+    }
     iree_hal_streaming_graph_block_ptrs_t ptrs;
     iree_hal_streaming_graph_block_get_ptrs(block, &ptrs);
     switch (block->type) {
@@ -838,7 +846,9 @@ void iree_hal_streaming_graph_exec_release(
 
 bool iree_hal_streaming_graph_exec_try_retain_live(
     iree_hal_streaming_graph_exec_t* exec) {
-  if (!exec) return false;
+  if (!exec) {
+    return false;
+  }
   iree_slim_mutex_lock(&exec->mutex);
   const bool is_live = !exec->is_destroyed;
   if (is_live) {
@@ -1017,10 +1027,14 @@ iree_status_t iree_hal_streaming_graph_exec_set_event_node_event(
   if (!exec->is_destroyed) {
     for (uint32_t i = 0; i < exec->block_count; ++i) {
       iree_hal_streaming_graph_block_t* block = exec->blocks[i];
-      if (!block || block->type != block_type) continue;
+      if (!block || block->type != block_type) {
+        continue;
+      }
       iree_hal_streaming_graph_block_ptrs_t ptrs;
       iree_hal_streaming_graph_block_get_ptrs(block, &ptrs);
-      if (ptrs.attrs->event.source_node != node) continue;
+      if (ptrs.attrs->event.source_node != node) {
+        continue;
+      }
       old_event = ptrs.attrs->event.event;
       ptrs.attrs->event.event = event;
       found = true;
@@ -1459,7 +1473,9 @@ static inline void iree_hal_streaming_node_index_set_reset(
 // Returns true if the |set| is invalid or |value| is present.
 static bool iree_hal_streaming_node_index_set_test_hazard(
     const iree_hal_streaming_node_index_set_t* set, uint32_t value) {
-  if (set->invalid) return true;
+  if (set->invalid) {
+    return true;
+  }
   for (uint32_t i = 0; i < set->count; ++i) {
     if (set->values[i] == value) {
       return true;
@@ -1499,7 +1515,9 @@ static bool iree_hal_streaming_graph_node_has_recorded_dependency_hazard(
 
   for (const iree_hal_streaming_graph_edge_t* edge = additional_edges; edge;
        edge = edge->next) {
-    if (edge->to != node) continue;
+    if (edge->to != node) {
+      continue;
+    }
     const uint32_t dependency_sort_index =
         node_index_map[edge->from->node_index];
     if (dependency_sort_index == UINT32_MAX) {
@@ -1578,7 +1596,9 @@ static iree_status_t iree_hal_streaming_graph_record_partition(
     iree_hal_streaming_graph_sort_node_t* sort_node =
         &sorted_nodes[node_start_index + i];
     // Ignore nodes from other streams.
-    if (sort_node->stream_id != stream_id) continue;
+    if (sort_node->stream_id != stream_id) {
+      continue;
+    }
     iree_hal_streaming_graph_node_t* node = sort_node->node;
     if (in_stream_count > 0) {
       const bool has_dependency_hazard =
@@ -2604,7 +2624,9 @@ static bool iree_hal_streaming_graph_node_is_visible(
 static iree_host_size_t iree_hal_streaming_graph_visible_node_count(
     const iree_hal_streaming_graph_t* graph) {
   iree_host_size_t visible_count = 0;
-  if (!graph) return 0;
+  if (!graph) {
+    return 0;
+  }
   for (iree_hal_streaming_node_block_t* block = graph->node_blocks; block;
        block = block->next) {
     for (iree_host_size_t i = 0; i < block->count; ++i) {
@@ -2624,8 +2646,12 @@ iree_hal_streaming_graph_visible_node_at_index(
        block = block->next) {
     for (iree_host_size_t i = 0; i < block->count; ++i) {
       iree_hal_streaming_graph_node_t* node = block->nodes[i];
-      if (!iree_hal_streaming_graph_node_is_visible(node)) continue;
-      if (current_visible_index == visible_index) return node;
+      if (!iree_hal_streaming_graph_node_is_visible(node)) {
+        continue;
+      }
+      if (current_visible_index == visible_index) {
+        return node;
+      }
       ++current_visible_index;
     }
   }
@@ -2641,7 +2667,9 @@ static bool iree_hal_streaming_graph_visible_index_of_node(
        block = block->next) {
     for (iree_host_size_t i = 0; i < block->count; ++i) {
       iree_hal_streaming_graph_node_t* candidate = block->nodes[i];
-      if (!iree_hal_streaming_graph_node_is_visible(candidate)) continue;
+      if (!iree_hal_streaming_graph_node_is_visible(candidate)) {
+        continue;
+      }
       if (candidate == node) {
         *out_visible_index = current_visible_index;
         return true;
@@ -2719,7 +2747,9 @@ static bool iree_hal_streaming_graph_visible_dependencies_match(
   }
   for (iree_hal_streaming_graph_edge_t* edge = old_graph->additional_edges;
        edge; edge = edge->next) {
-    if (edge->to != old_node) continue;
+    if (edge->to != old_node) {
+      continue;
+    }
     iree_host_size_t old_dependency_visible_index = 0;
     if (!iree_hal_streaming_graph_visible_index_of_node(
             old_graph, edge->from, &old_dependency_visible_index)) {

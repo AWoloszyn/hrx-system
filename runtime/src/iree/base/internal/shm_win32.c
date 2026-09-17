@@ -122,7 +122,9 @@ static iree_status_t iree_shm_finalize_mapping_win32_default(
 
 iree_host_size_t iree_shm_required_size(iree_host_size_t requested_size) {
   iree_host_size_t page_size = iree_memory_query_info().normal_page_size;
-  if (requested_size == 0) return page_size;
+  if (requested_size == 0) {
+    return page_size;
+  }
   return (requested_size + page_size - 1) & ~(page_size - 1);
 }
 
@@ -431,7 +433,9 @@ iree_status_t iree_shm_open_named(iree_string_view_t name,
 }
 
 void iree_shm_close(iree_shm_mapping_t* mapping) {
-  if (!mapping || !mapping->base) return;
+  if (!mapping || !mapping->base) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
   UnmapViewOfFile(mapping->base);
   if (iree_shm_handle_is_valid(mapping->handle)) {
@@ -461,7 +465,9 @@ iree_status_t iree_shm_handle_dup(iree_shm_handle_t source,
 }
 
 void iree_shm_handle_close(iree_shm_handle_t* handle) {
-  if (!handle || !iree_shm_handle_is_valid(*handle)) return;
+  if (!handle || !iree_shm_handle_is_valid(*handle)) {
+    return;
+  }
   CloseHandle(iree_shm_handle_to_win32(*handle));
   *handle = IREE_SHM_HANDLE_INVALID;
 }
@@ -509,7 +515,9 @@ iree_status_t iree_shm_seal(iree_shm_mapping_t* mapping,
 }
 
 iree_shm_seal_flags_t iree_shm_query_seals(const iree_shm_mapping_t* mapping) {
-  if (!mapping || !mapping->base) return IREE_SHM_SEAL_NONE;
+  if (!mapping || !mapping->base) {
+    return IREE_SHM_SEAL_NONE;
+  }
   MEMORY_BASIC_INFORMATION memory_info;
   if (VirtualQuery(mapping->base, &memory_info, sizeof(memory_info)) == 0) {
     return IREE_SHM_SEAL_NONE;

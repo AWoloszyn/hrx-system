@@ -14,7 +14,9 @@
 static loom_type_t loom_global_symbol_type(const loom_module_t* module,
                                            const loom_symbol_t* symbol) {
   loom_type_t none = {0};
-  if (!symbol || !symbol->defining_op) return none;
+  if (!symbol || !symbol->defining_op) {
+    return none;
+  }
   if (loom_global_constant_isa(symbol->defining_op)) {
     return loom_module_value_type(
         module, loom_global_constant_type(symbol->defining_op));
@@ -29,20 +31,28 @@ static loom_type_t loom_global_symbol_type(const loom_module_t* module,
 static bool loom_global_types_match(loom_type_t global_type,
                                     loom_type_t use_type) {
   loom_type_kind_t kind = loom_type_kind(global_type);
-  if (kind != loom_type_kind(use_type)) return false;
+  if (kind != loom_type_kind(use_type)) {
+    return false;
+  }
   if (!loom_type_is_shaped(global_type)) {
     return loom_type_equal(global_type, use_type);
   }
 
-  if (!loom_type_element_type_equals(global_type, use_type)) return false;
-  if (!loom_type_rank_equals(global_type, use_type)) return false;
+  if (!loom_type_element_type_equals(global_type, use_type)) {
+    return false;
+  }
+  if (!loom_type_rank_equals(global_type, use_type)) {
+    return false;
+  }
 
   uint8_t rank = loom_type_rank(global_type);
   for (uint8_t dimension = 0; dimension < rank; ++dimension) {
     uint64_t global_dim = loom_type_dim(global_type, dimension);
     uint64_t use_dim = loom_type_dim(use_type, dimension);
     if (!loom_dim_is_dynamic(global_dim)) {
-      if (loom_dim_is_dynamic(use_dim)) return false;
+      if (loom_dim_is_dynamic(use_dim)) {
+        return false;
+      }
       if (loom_dim_static_size(global_dim) != loom_dim_static_size(use_dim)) {
         return false;
       }
@@ -88,8 +98,12 @@ static bool loom_global_type_references_dim_result(loom_type_t value_type,
   uint8_t rank = loom_type_rank(value_type);
   for (uint8_t dimension = 0; dimension < rank; ++dimension) {
     uint64_t dim = loom_type_dim(value_type, dimension);
-    if (!loom_dim_is_dynamic(dim)) continue;
-    if (loom_dim_value_id(dim) == value_id) return true;
+    if (!loom_dim_is_dynamic(dim)) {
+      continue;
+    }
+    if (loom_dim_value_id(dim) == value_id) {
+      return true;
+    }
   }
   return false;
 }
@@ -165,7 +179,9 @@ static iree_status_t loom_global_verify_load_results(
         loom_global_type_references_dim_result(value_type, result_id);
     bool referenced_as_encoding =
         loom_global_type_references_encoding_result(value_type, result_id);
-    if (!referenced_as_dim && !referenced_as_encoding) continue;
+    if (!referenced_as_dim && !referenced_as_encoding) {
+      continue;
+    }
 
     if (referenced_as_dim) {
       IREE_RETURN_IF_ERROR(loom_global_verify_result_type(
@@ -177,7 +193,9 @@ static iree_status_t loom_global_verify_load_results(
           module, op, emitter, results, result_index,
           LOOM_TYPE_CONSTRAINT_ANY_ENCODING));
     }
-    if (result_index > 0) ++referenced_count;
+    if (result_index > 0) {
+      ++referenced_count;
+    }
   }
 
   uint16_t expected_result_count = (uint16_t)(1 + referenced_count);
@@ -330,7 +348,9 @@ iree_status_t loom_global_load_verify(const loom_module_t* module,
   IREE_RETURN_IF_ERROR(loom_global_verify_load_results(module, op, emitter));
 
   loom_value_slice_t results = loom_global_load_result(op);
-  if (results.count == 0) return iree_ok_status();
+  if (results.count == 0) {
+    return iree_ok_status();
+  }
   loom_type_t global_type = loom_global_symbol_type(module, symbol);
   loom_type_t loaded_type = loom_module_value_type(module, results.values[0]);
   if (!loom_global_types_match(global_type, loaded_type)) {

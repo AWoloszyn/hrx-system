@@ -81,8 +81,12 @@ static short iree_kevent_to_poll_events(const struct kevent* event) {
       poll_events |= POLLOUT;
       break;
   }
-  if (event->flags & EV_EOF) poll_events |= POLLHUP;
-  if (event->flags & EV_ERROR) poll_events |= POLLERR;
+  if (event->flags & EV_EOF) {
+    poll_events |= POLLHUP;
+  }
+  if (event->flags & EV_ERROR) {
+    poll_events |= POLLERR;
+  }
   return poll_events;
 }
 
@@ -137,7 +141,9 @@ static iree_status_t iree_kqueue_submit_changes(int kqueue_fd, int fd,
   iree_status_t error_status = iree_ok_status();
   for (int i = 0; i < result; ++i) {
     int error = (int)eventlist[i].data;
-    if (error == 0) continue;  // Success receipt.
+    if (error == 0) {
+      continue;  // Success receipt.
+    }
 
     changelist_failed[i] = true;
     bool is_delete = (changelist[i].flags & EV_DELETE) != 0;
@@ -158,7 +164,9 @@ static iree_status_t iree_kqueue_submit_changes(int kqueue_fd, int fd,
     }
   }
 
-  if (iree_status_is_ok(error_status)) return iree_ok_status();
+  if (iree_status_is_ok(error_status)) {
+    return iree_ok_status();
+  }
 
   // Roll back any EV_ADD entries that succeeded to maintain all-or-nothing
   // semantics. Without this, a partial add (e.g., READ succeeded but WRITE
@@ -215,7 +223,9 @@ static iree_status_t iree_async_posix_event_set_kqueue_add(
   if (events & POLLOUT) {
     EV_SET(&changelist[change_count++], fd, EVFILT_WRITE, EV_ADD, 0, 0, NULL);
   }
-  if (change_count == 0) return iree_ok_status();
+  if (change_count == 0) {
+    return iree_ok_status();
+  }
   return iree_kqueue_submit_changes(event_set->kqueue_fd, fd, changelist,
                                     change_count);
 }
@@ -248,7 +258,9 @@ static iree_status_t iree_async_posix_event_set_kqueue_modify(
   if (events & POLLOUT) {
     EV_SET(&changelist[change_count++], fd, EVFILT_WRITE, EV_ADD, 0, 0, NULL);
   }
-  if (change_count == 0) return iree_ok_status();
+  if (change_count == 0) {
+    return iree_ok_status();
+  }
   return iree_kqueue_submit_changes(event_set->kqueue_fd, fd, changelist,
                                     change_count);
 }
@@ -272,7 +284,9 @@ static iree_status_t iree_async_posix_event_set_kqueue_wait(
     iree_host_size_t* out_ready_count, bool* out_timed_out) {
   iree_async_posix_event_set_kqueue_t* event_set =
       iree_async_posix_event_set_kqueue_cast(base_event_set);
-  if (out_ready_count) *out_ready_count = 0;
+  if (out_ready_count) {
+    *out_ready_count = 0;
+  }
   *out_timed_out = false;
 
   event_set->ready_count = 0;
@@ -304,7 +318,9 @@ static iree_status_t iree_async_posix_event_set_kqueue_wait(
   }
 
   event_set->ready_count = (iree_host_size_t)result;
-  if (out_ready_count) *out_ready_count = event_set->ready_count;
+  if (out_ready_count) {
+    *out_ready_count = event_set->ready_count;
+  }
   return iree_ok_status();
 }
 

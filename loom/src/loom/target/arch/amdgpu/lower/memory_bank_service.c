@@ -96,7 +96,9 @@ iree_status_t loom_amdgpu_memory_report_bank_service(
   *out_report = (loom_low_lower_memory_bank_service_report_t){0};
   const loom_amdgpu_lds_bank_service_model_t* model =
       loom_amdgpu_memory_bank_service_model(context, descriptor);
-  if (model == NULL) return iree_ok_status();
+  if (model == NULL) {
+    return iree_ok_status();
+  }
   loom_amdgpu_memory_bank_service_initialize_report(model, out_report);
 
   const loom_low_source_memory_dynamic_term_t* term =
@@ -173,7 +175,9 @@ iree_status_t loom_amdgpu_fragment_memory_report_bank_service(
                                             packet->descriptor_ref);
   const loom_amdgpu_lds_bank_service_model_t* model =
       loom_amdgpu_memory_bank_service_model(context, descriptor);
-  if (model == NULL) return iree_ok_status();
+  if (model == NULL) {
+    return iree_ok_status();
+  }
   loom_amdgpu_memory_bank_service_initialize_report(model, out_report);
 
   if (layout->wave_size != model->wave_size) {

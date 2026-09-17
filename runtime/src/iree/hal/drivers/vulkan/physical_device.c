@@ -125,7 +125,9 @@ static bool iree_hal_vulkan_extension_list_contains(
     uint32_t extension_count, const VkExtensionProperties* extensions,
     const char* extension_name) {
   for (uint32_t i = 0; i < extension_count; ++i) {
-    if (strcmp(extension_name, extensions[i].extensionName) == 0) return true;
+    if (strcmp(extension_name, extensions[i].extensionName) == 0) {
+      return true;
+    }
   }
   return false;
 }
@@ -239,7 +241,9 @@ static iree_status_t iree_hal_vulkan_query_calibrated_timestamp_time_domains(
       /*pTimeDomains=*/NULL);
   IREE_LEAK_CHECK_DISABLE_POP();
   IREE_RETURN_IF_ERROR(status);
-  if (time_domain_count == 0) return iree_ok_status();
+  if (time_domain_count == 0) {
+    return iree_ok_status();
+  }
 
   VkTimeDomainEXT* time_domains = NULL;
   IREE_RETURN_IF_ERROR(iree_allocator_malloc_array(
@@ -301,7 +305,9 @@ static iree_status_t iree_hal_vulkan_query_cooperative_matrix(
       /*pProperties=*/NULL);
   IREE_LEAK_CHECK_DISABLE_POP();
   IREE_RETURN_IF_ERROR(status);
-  if (!property_count) return iree_ok_status();
+  if (!property_count) {
+    return iree_ok_status();
+  }
 
   VkCooperativeMatrixPropertiesKHR* properties = NULL;
   IREE_RETURN_IF_ERROR(
@@ -384,7 +390,9 @@ static bool iree_hal_vulkan_layer_list_contains(uint32_t layer_count,
                                                 const VkLayerProperties* layers,
                                                 const char* layer_name) {
   for (uint32_t i = 0; i < layer_count; ++i) {
-    if (strcmp(layer_name, layers[i].layerName) == 0) return true;
+    if (strcmp(layer_name, layers[i].layerName) == 0) {
+      return true;
+    }
   }
   return false;
 }
@@ -404,7 +412,9 @@ static iree_status_t iree_hal_vulkan_enumerate_instance_extensions(
       IREE_LIBVULKAN(libvulkan), /*pLayerName=*/NULL, &extension_count, NULL);
   IREE_LEAK_CHECK_DISABLE_POP();
   IREE_RETURN_IF_ERROR(status);
-  if (!extension_count) return iree_ok_status();
+  if (!extension_count) {
+    return iree_ok_status();
+  }
 
   VkExtensionProperties* extensions = NULL;
   IREE_RETURN_IF_ERROR(iree_allocator_malloc(
@@ -440,7 +450,9 @@ static iree_status_t iree_hal_vulkan_enumerate_instance_layers(
       IREE_LIBVULKAN(libvulkan), &layer_count, NULL);
   IREE_LEAK_CHECK_DISABLE_POP();
   IREE_RETURN_IF_ERROR(status);
-  if (!layer_count) return iree_ok_status();
+  if (!layer_count) {
+    return iree_ok_status();
+  }
 
   VkLayerProperties* layers = NULL;
   IREE_RETURN_IF_ERROR(iree_allocator_malloc(
@@ -932,7 +944,9 @@ iree_status_t iree_hal_vulkan_enumerate_physical_device_handles(
       &physical_device_count, NULL);
   IREE_LEAK_CHECK_DISABLE_POP();
   IREE_RETURN_IF_ERROR(status);
-  if (!physical_device_count) return iree_ok_status();
+  if (!physical_device_count) {
+    return iree_ok_status();
+  }
 
   VkPhysicalDevice* physical_devices = NULL;
   IREE_RETURN_IF_ERROR(iree_allocator_malloc(
@@ -1091,7 +1105,9 @@ static iree_status_t iree_hal_vulkan_append_baseline_report(
   IREE_RETURN_IF_ERROR(iree_string_builder_append_format(
       builder, "feature_tier[vulkan-1.3]: %s\n",
       supported ? "supported" : "unsupported"));
-  if (supported) return iree_ok_status();
+  if (supported) {
+    return iree_ok_status();
+  }
 
   if (properties->apiVersion < VK_API_VERSION_1_3) {
     IREE_RETURN_IF_ERROR(iree_string_builder_append_string(

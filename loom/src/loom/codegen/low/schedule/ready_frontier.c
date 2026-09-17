@@ -128,7 +128,9 @@ static void loom_low_schedule_ready_heap_sift_down(
     uint32_t node_index) {
   loom_low_schedule_ready_heap_t* heap = &frontier->views[view];
   while (true) {
-    if (heap->count < 2u || position > (heap->count - 2u) / 2u) break;
+    if (heap->count < 2u || position > (heap->count - 2u) / 2u) {
+      break;
+    }
     const uint32_t left_position = position * 2u + 1u;
     const uint32_t right_position = left_position + 1u;
     uint32_t child_position = left_position;
@@ -171,7 +173,9 @@ static void loom_low_schedule_ready_heap_remove(
       loom_low_schedule_ready_heap_get(heap, heap->count - 1u);
   --heap->count;
   state->heap_positions[view] = LOOM_LOW_SCHEDULE_READY_NODE_NONE;
-  if (position == heap->count) return;
+  if (position == heap->count) {
+    return;
+  }
   if (position != 0) {
     const uint32_t parent_position = (position - 1u) / 2u;
     const uint32_t parent_node =
@@ -290,7 +294,9 @@ void loom_low_schedule_ready_frontier_insert(
   }
 
   state->descriptor_ordinal = descriptor_ordinal;
-  if (descriptor_ordinal == LOOM_LOW_SCHEDULE_READY_NODE_NONE) return;
+  if (descriptor_ordinal == LOOM_LOW_SCHEDULE_READY_NODE_NONE) {
+    return;
+  }
   const uint32_t previous_head = frontier->descriptor_heads[descriptor_ordinal];
   state->descriptor_previous_node = LOOM_LOW_SCHEDULE_READY_NODE_NONE;
   state->descriptor_next_node = previous_head;
@@ -314,7 +320,9 @@ void loom_low_schedule_ready_frontier_remove(
   }
 
   const uint32_t descriptor_ordinal = state->descriptor_ordinal;
-  if (descriptor_ordinal == LOOM_LOW_SCHEDULE_READY_NODE_NONE) return;
+  if (descriptor_ordinal == LOOM_LOW_SCHEDULE_READY_NODE_NONE) {
+    return;
+  }
   const uint32_t previous_node = state->descriptor_previous_node;
   const uint32_t next_node = state->descriptor_next_node;
   if (previous_node == LOOM_LOW_SCHEDULE_READY_NODE_NONE) {
@@ -370,11 +378,15 @@ static uint32_t loom_low_schedule_ready_position_heap_pop(
     uint8_t* position_count) {
   const uint32_t result = position_heap[0];
   const uint32_t replacement = position_heap[--*position_count];
-  if (*position_count == 0) return result;
+  if (*position_count == 0) {
+    return result;
+  }
   uint8_t insertion_index = 0;
   while (true) {
     const uint8_t left_index = insertion_index * 2u + 1u;
-    if (left_index >= *position_count) break;
+    if (left_index >= *position_count) {
+      break;
+    }
     const uint8_t right_index = left_index + 1u;
     uint8_t child_index = left_index;
     if (right_index < *position_count &&
@@ -404,7 +416,9 @@ uint8_t loom_low_schedule_ready_frontier_copy_best(
   IREE_ASSERT(capacity > 0 &&
               capacity <= LOOM_LOW_SCHEDULE_READY_COPY_CAPACITY);
   const loom_low_schedule_ready_heap_t* heap = &frontier->views[view];
-  if (heap->count == 0) return 0;
+  if (heap->count == 0) {
+    return 0;
+  }
   capacity = (uint8_t)iree_min((uint32_t)capacity, heap->count);
   uint32_t position_heap[LOOM_LOW_SCHEDULE_READY_COPY_CAPACITY] = {0};
   uint8_t position_count = 1;
@@ -414,7 +428,9 @@ uint8_t loom_low_schedule_ready_frontier_copy_best(
         frontier, view, heap, position_heap, &position_count);
     out_node_indices[output_count++] =
         loom_low_schedule_ready_heap_get(&frontier->views[view], position);
-    if (output_count == capacity) break;
+    if (output_count == capacity) {
+      break;
+    }
     const uint32_t left_position = position * 2u + 1u;
     if (left_position < heap->count) {
       loom_low_schedule_ready_position_heap_insert(
@@ -438,7 +454,9 @@ void loom_low_schedule_ready_frontier_update_key(
   loom_low_schedule_ready_node_state_t* state =
       loom_low_schedule_ready_frontier_node_state(frontier, node_index);
   const uint64_t old_key = state->keys[view];
-  if (old_key == key) return;
+  if (old_key == key) {
+    return;
+  }
   state->keys[view] = key;
   const uint32_t position = state->heap_positions[view];
   if (position != 0) {

@@ -165,7 +165,9 @@ iree_status_t iree_hal_streaming_execution_resource_table_initialize(
 
 void iree_hal_streaming_execution_resource_table_deinitialize(
     iree_hal_streaming_execution_resource_table_t* table) {
-  if (!table || table->incarnation == 0) return;
+  if (!table || table->incarnation == 0) {
+    return;
+  }
   for (iree_host_size_t i = 0; i < table->entry_count; ++i) {
     iree_allocator_free(table->host_allocator, table->entries[i]);
   }

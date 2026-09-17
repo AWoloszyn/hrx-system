@@ -59,7 +59,9 @@ void loom_low_lower_representation_record_union(
     loom_low_lower_representation_recorder_t* recorder,
     loom_value_id_t left_value_id, loom_value_id_t right_value_id) {
   IREE_ASSERT_ARGUMENT(recorder);
-  if (!iree_status_is_ok(recorder->state->terminal_status)) return;
+  if (!iree_status_is_ok(recorder->state->terminal_status)) {
+    return;
+  }
   const loom_value_ordinal_t left_ordinal =
       loom_low_lower_representation_ordinal(recorder, left_value_id);
   const loom_value_ordinal_t right_ordinal =
@@ -77,7 +79,9 @@ void loom_low_lower_representation_record_candidates(
     const loom_low_representation_candidate_t* candidates,
     iree_host_size_t candidate_count) {
   IREE_ASSERT_ARGUMENT(recorder);
-  if (!iree_status_is_ok(recorder->state->terminal_status)) return;
+  if (!iree_status_is_ok(recorder->state->terminal_status)) {
+    return;
+  }
   IREE_ASSERT_ARGUMENT(candidates);
   IREE_ASSERT_GT(candidate_count, 0u);
   const loom_value_ordinal_t value_ordinal =
@@ -93,7 +97,9 @@ bool loom_low_lower_representation_component_is_constrained(
     loom_low_lower_representation_recorder_t* recorder,
     loom_value_id_t source_value_id) {
   IREE_ASSERT_ARGUMENT(recorder);
-  if (!iree_status_is_ok(recorder->state->terminal_status)) return false;
+  if (!iree_status_is_ok(recorder->state->terminal_status)) {
+    return false;
+  }
   const loom_value_ordinal_t value_ordinal =
       loom_low_lower_representation_ordinal(recorder, source_value_id);
   return loom_low_representation_plan_component_is_constrained(
@@ -121,18 +127,26 @@ static const loom_low_lower_representation_boundary_t*
 loom_low_lower_representation_find_boundary(
     const loom_low_lower_representation_provider_t* provider,
     loom_op_kind_t op_kind) {
-  if (provider->boundary_count == 0) return NULL;
-  if (op_kind < provider->boundaries[0].op_kind) return NULL;
+  if (provider->boundary_count == 0) {
+    return NULL;
+  }
+  if (op_kind < provider->boundaries[0].op_kind) {
+    return NULL;
+  }
   const loom_low_lower_representation_boundary_t* last =
       &provider->boundaries[provider->boundary_count - 1];
-  if (op_kind >= last->op_kind) return op_kind == last->op_kind ? last : NULL;
+  if (op_kind >= last->op_kind) {
+    return op_kind == last->op_kind ? last : NULL;
+  }
   uint16_t begin = 0;
   uint16_t end = provider->boundary_count - 1;
   while (begin < end) {
     const uint16_t middle = begin + (uint16_t)((end - begin) / 2);
     const loom_low_lower_representation_boundary_t* boundary =
         &provider->boundaries[middle];
-    if (op_kind == boundary->op_kind) return boundary;
+    if (op_kind == boundary->op_kind) {
+      return boundary;
+    }
     if (op_kind < boundary->op_kind) {
       end = middle;
     } else {
@@ -199,7 +213,9 @@ void loom_low_lower_representation_observer_observe(
   loom_low_lower_representation_recorder_t recorder = {
       .state = state,
   };
-  if (!iree_status_is_ok(state->terminal_status)) return;
+  if (!iree_status_is_ok(state->terminal_status)) {
+    return;
+  }
 
   if (state->provider->relation_mask != 0) {
     loom_value_relation_iterator_t relation_iterator;
@@ -212,7 +228,9 @@ void loom_low_lower_representation_observer_observe(
                                                  &relation);
     }
   }
-  if (!iree_status_is_ok(state->terminal_status)) return;
+  if (!iree_status_is_ok(state->terminal_status)) {
+    return;
+  }
 
   const loom_low_lower_representation_boundary_t* boundary =
       loom_low_lower_representation_find_boundary(state->provider,
@@ -241,7 +259,9 @@ iree_status_t loom_low_lower_representation_observer_end(
   loom_low_representation_conflict_t plan_conflict;
   const bool exact =
       loom_low_representation_plan_solve(&state->plan, &plan_conflict);
-  if (exact) return iree_ok_status();
+  if (exact) {
+    return iree_ok_status();
+  }
 
   return iree_make_status(
       IREE_STATUS_FAILED_PRECONDITION,
@@ -289,7 +309,9 @@ iree_status_t loom_low_lower_representation_query_lookup(
   IREE_RETURN_IF_ERROR(loom_target_contract_query_get_or_allocate_target_state(
       environment, &kLoomLowLowerRepresentationStateKey, sizeof(*state),
       (void**)&state));
-  if (state == NULL || state->provider == NULL) return iree_ok_status();
+  if (state == NULL || state->provider == NULL) {
+    return iree_ok_status();
+  }
   loom_low_lower_representation_state_lookup(state, source_value_id,
                                              out_representation);
   return iree_ok_status();

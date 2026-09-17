@@ -157,7 +157,9 @@ static void fuzz_read_generated_module(const uint8_t* data, size_t size,
   loom_module_t* module = NULL;
   fuzz_ignore_status_or_trap(loom_test_gen_module(
       &generator, &config, &g_context, block_pool, &module));
-  if (!module) __builtin_trap();
+  if (!module) {
+    __builtin_trap();
+  }
 
   std::vector<uint8_t> first = fuzz_write_module(module, block_pool);
   uint32_t diagnostic_count = 0;
@@ -168,7 +170,9 @@ static void fuzz_read_generated_module(const uint8_t* data, size_t size,
       iree_make_const_byte_span(first.data(), first.size()),
       IREE_SV("generated.loombc"), &g_context, block_pool, &options, &result,
       &read_module, iree_allocator_system()));
-  if (result.error_count != 0 || !read_module) __builtin_trap();
+  if (result.error_count != 0 || !read_module) {
+    __builtin_trap();
+  }
   if ((control_byte & 1) != 0) {
     const loom_verify_options_t verify_options = {
         .sink = options.diagnostic_sink,
@@ -177,10 +181,14 @@ static void fuzz_read_generated_module(const uint8_t* data, size_t size,
     loom_verify_result_t verify_result = {0};
     fuzz_ignore_status_or_trap(
         loom_verify_module(read_module, &verify_options, &verify_result));
-    if (verify_result.error_count != 0) __builtin_trap();
+    if (verify_result.error_count != 0) {
+      __builtin_trap();
+    }
   }
   std::vector<uint8_t> second = fuzz_write_module(read_module, block_pool);
-  if (first != second) __builtin_trap();
+  if (first != second) {
+    __builtin_trap();
+  }
 
   loom_module_free(read_module);
   loom_module_free(module);
@@ -191,8 +199,12 @@ static void fuzz_read_generated_module(const uint8_t* data, size_t size,
 //===----------------------------------------------------------------------===//
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  if (size == 0) return 0;
-  if (size > 1024 * 1024) return 0;
+  if (size == 0) {
+    return 0;
+  }
+  if (size > 1024 * 1024) {
+    return 0;
+  }
   fuzz_ensure_context();
 
   iree_arena_block_pool_t block_pool;

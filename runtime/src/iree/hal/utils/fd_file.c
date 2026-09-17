@@ -101,7 +101,9 @@ static iree_status_t iree_hal_platform_fd_pread(
 
   // Cap at INT32_MAX to prevent silent DWORD truncation for >4GB requests.
   // Callers retry for the remaining bytes via out_bytes_read.
-  if (count > INT32_MAX) count = INT32_MAX;
+  if (count > INT32_MAX) {
+    count = INT32_MAX;
+  }
 
   DWORD bytes_read = 0;
   OVERLAPPED overlapped;
@@ -135,7 +137,9 @@ static iree_status_t iree_hal_platform_fd_pwrite(
 
   // Cap at INT32_MAX to prevent silent DWORD truncation for >4GB requests.
   // Callers retry for the remaining bytes via out_bytes_written.
-  if (count > INT32_MAX) count = INT32_MAX;
+  if (count > INT32_MAX) {
+    count = INT32_MAX;
+  }
 
   DWORD bytes_written = 0;
   OVERLAPPED overlapped;
@@ -186,7 +190,9 @@ static iree_status_t iree_hal_platform_fd_pread(
   *out_bytes_read = 0;
   // Cap at INT_MAX: some kernels return -EINVAL for counts exceeding this.
   // Callers retry for the remaining bytes via out_bytes_read.
-  if (count > INT_MAX) count = INT_MAX;
+  if (count > INT_MAX) {
+    count = INT_MAX;
+  }
   ssize_t bytes_read = pread(fd, buffer, (size_t)count, (off_t)offset);
   if (bytes_read > 0) {
     *out_bytes_read = (iree_host_size_t)bytes_read;
@@ -207,7 +213,9 @@ static iree_status_t iree_hal_platform_fd_pwrite(
   *out_bytes_written = 0;
   // Cap at INT_MAX: some kernels return -EINVAL for counts exceeding this.
   // Callers retry for the remaining bytes via out_bytes_written.
-  if (count > INT_MAX) count = INT_MAX;
+  if (count > INT_MAX) {
+    count = INT_MAX;
+  }
   ssize_t bytes_written = pwrite(fd, buffer, (size_t)count, (off_t)offset);
   if (bytes_written > 0) {
     *out_bytes_written = (iree_host_size_t)bytes_written;
@@ -423,7 +431,9 @@ static iree_status_t iree_hal_fd_file_read(iree_hal_file_t* base_file,
                                            iree_hal_buffer_t* buffer,
                                            iree_device_size_t buffer_offset,
                                            iree_device_size_t length) {
-  if (length == 0) return iree_ok_status();
+  if (length == 0) {
+    return iree_ok_status();
+  }
   iree_hal_fd_file_t* file = iree_hal_fd_file_cast(base_file);
 
   iree_hal_buffer_mapping_t mapping = {{0}};
@@ -458,7 +468,9 @@ static iree_status_t iree_hal_fd_file_write(iree_hal_file_t* base_file,
                                             iree_hal_buffer_t* buffer,
                                             iree_device_size_t buffer_offset,
                                             iree_device_size_t length) {
-  if (length == 0) return iree_ok_status();
+  if (length == 0) {
+    return iree_ok_status();
+  }
   iree_hal_fd_file_t* file = iree_hal_fd_file_cast(base_file);
 
   iree_hal_buffer_mapping_t mapping = {{0}};

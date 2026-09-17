@@ -68,10 +68,14 @@ struct Mp {
       Byte(static_cast<uint8_t>(v));
     } else if (v <= 0xffffffffu) {
       Byte(0xce);
-      for (int i = 3; i >= 0; --i) Byte(static_cast<uint8_t>(v >> (i * 8)));
+      for (int i = 3; i >= 0; --i) {
+        Byte(static_cast<uint8_t>(v >> (i * 8)));
+      }
     } else {
       Byte(0xcf);
-      for (int i = 7; i >= 0; --i) Byte(static_cast<uint8_t>(v >> (i * 8)));
+      for (int i = 7; i >= 0; --i) {
+        Byte(static_cast<uint8_t>(v >> (i * 8)));
+      }
     }
   }
   void Map(uint32_t n) {
@@ -102,15 +106,21 @@ std::vector<uint8_t> MakeMetadata(const std::string& kernel_name,
   mp.Str(kernel_name);
   mp.Str("kpack_search_paths");
   mp.Array(static_cast<uint32_t>(paths.size()));
-  for (const auto& p : paths) mp.Str(p);
+  for (const auto& p : paths) {
+    mp.Str(p);
+  }
   return mp.b;
 }
 
 void PutU32LE(std::vector<uint8_t>& v, uint32_t x) {
-  for (int i = 0; i < 4; ++i) v.push_back(static_cast<uint8_t>(x >> (i * 8)));
+  for (int i = 0; i < 4; ++i) {
+    v.push_back(static_cast<uint8_t>(x >> (i * 8)));
+  }
 }
 void PutU64LE(std::vector<uint8_t>& v, uint64_t x) {
-  for (int i = 0; i < 8; ++i) v.push_back(static_cast<uint8_t>(x >> (i * 8)));
+  for (int i = 0; i < 8; ++i) {
+    v.push_back(static_cast<uint8_t>(x >> (i * 8)));
+  }
 }
 
 // Builds a .kpack archive (NoOp, or zstd-per-kernel under IREE_HAVE_ZSTD) in
@@ -162,7 +172,9 @@ class KpackBuilder {
 
     Mp toc;
     uint32_t toc_entry_count = zstd_ ? 8 : 7;
-    if (omit_compression_scheme_) --toc_entry_count;
+    if (omit_compression_scheme_) {
+      --toc_entry_count;
+    }
     toc.Map(toc_entry_count);
     toc.Str("format_version");
     toc.UInt(1);
@@ -172,7 +184,9 @@ class KpackBuilder {
     toc.Str("test");
     toc.Str("gfx_arches");
     toc.Array(static_cast<uint32_t>(arches.size()));
-    for (const auto& a : arches) toc.Str(a);
+    for (const auto& a : arches) {
+      toc.Str(a);
+    }
     if (!omit_compression_scheme_) {
       toc.Str("compression_scheme");
       toc.Str(zstd_ ? "zstd-per-kernel" : "none");
@@ -322,7 +336,9 @@ bool EnsureDirectory(const std::string& path) {
 std::string JoinPathList(const std::vector<std::string>& paths) {
   std::string joined;
   for (const auto& path : paths) {
-    if (!joined.empty()) joined += ':';
+    if (!joined.empty()) {
+      joined += ':';
+    }
     joined += path;
   }
   return joined;
@@ -371,7 +387,9 @@ class GuardedMapping {
     int fd = -1;
     if (!backing_path_.empty()) {
       fd = open(backing_path_.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0600);
-      if (fd < 0) return;
+      if (fd < 0) {
+        return;
+      }
       if (ftruncate(fd, static_cast<off_t>(total_size_)) != 0) {
         close(fd);
         return;
@@ -380,8 +398,12 @@ class GuardedMapping {
     void* base =
         mmap(nullptr, total_size_, PROT_READ | PROT_WRITE,
              fd < 0 ? (MAP_PRIVATE | MAP_ANONYMOUS) : MAP_PRIVATE, fd, 0);
-    if (fd >= 0) close(fd);  // the mapping keeps the file alive
-    if (base == MAP_FAILED) return;
+    if (fd >= 0) {
+      close(fd);  // the mapping keeps the file alive
+    }
+    if (base == MAP_FAILED) {
+      return;
+    }
     // Splits the region into a readable mapping and an unreadable one, so the
     // readable extent is exactly |readable_pages| pages.
     uint8_t* guard = static_cast<uint8_t*>(base) + readable_pages * page_size_;
@@ -393,10 +415,14 @@ class GuardedMapping {
     guard_ = guard;
   }
   ~GuardedMapping() {
-    if (base_) munmap(base_, total_size_);
+    if (base_) {
+      munmap(base_, total_size_);
+    }
     // Only once unmapped: unlinking a mapped file would leave the kernel
     // rendering its entries as "(deleted)", a different case entirely.
-    if (!backing_path_.empty()) unlink(backing_path_.c_str());
+    if (!backing_path_.empty()) {
+      unlink(backing_path_.c_str());
+    }
   }
   GuardedMapping(const GuardedMapping&) = delete;
   GuardedMapping& operator=(const GuardedMapping&) = delete;
@@ -421,7 +447,9 @@ size_t FindOnce(const std::vector<uint8_t>& hay,
   auto first =
       std::search(hay.begin(), hay.end(), needle.begin(), needle.end());
   EXPECT_NE(first, hay.end());
-  if (first == hay.end()) return 0;
+  if (first == hay.end()) {
+    return 0;
+  }
   auto second = std::search(first + 1, hay.end(), needle.begin(), needle.end());
   EXPECT_EQ(second, hay.end());
   return static_cast<size_t>(first - hay.begin());
@@ -1100,8 +1128,9 @@ TEST(KpackArchive, TocOffsetOutOfRange) {
   auto bytes = KpackBuilder(false).Add("a#0", "gfx900", {1}).Build();
   // Corrupt the TOC offset (u64 at byte 8) to point past EOF.
   uint64_t huge = bytes.size() + 1000;
-  for (int i = 0; i < 8; ++i)
+  for (int i = 0; i < 8; ++i) {
     bytes[8 + i] = static_cast<uint8_t>(huge >> (i * 8));
+  }
   iree_hal_streaming_kpack_archive_t archive;
   EXPECT_THAT(
       iree::Status(iree_hal_streaming_kpack_archive_open(
@@ -1274,7 +1303,9 @@ TEST(KpackArchive, TocOffsetInsideHeader) {
   auto bytes = KpackBuilder(false).Add("a#0", "gfx900", {1}).Build();
   // A TOC offset (u64 at byte 8) pointing inside the 16-byte header is below
   // the valid range [16, EOF) and must be rejected.
-  for (int i = 0; i < 8; ++i) bytes[8 + i] = 0;
+  for (int i = 0; i < 8; ++i) {
+    bytes[8 + i] = 0;
+  }
   bytes[8] = 8;
   iree_hal_streaming_kpack_archive_t archive;
   EXPECT_THAT(
@@ -1315,7 +1346,9 @@ TEST(KpackArchive, ZstdWithoutSupportUnimplemented) {
 #if defined(IREE_HAVE_ZSTD)
 TEST(KpackArchive, ZstdGetKernelRoundTrips) {
   std::vector<uint8_t> k1;
-  for (int i = 0; i < 1000; ++i) k1.push_back(static_cast<uint8_t>(i & 0x3f));
+  for (int i = 0; i < 1000; ++i) {
+    k1.push_back(static_cast<uint8_t>(i & 0x3f));
+  }
   std::vector<uint8_t> k2(500, 0x37);
   auto bytes = KpackBuilder(/*zstd=*/true)
                    .Add("lib/libhip.so#0", "gfx1100", k1)
@@ -1348,7 +1381,9 @@ TEST(KpackArchive, ZstdFrameSizeTruncated) {
   auto bytes = KpackBuilder(/*zstd=*/true).Add("a#0", "gfx900", k).Build();
   // Blob at byte 64: [num_kernels u32][frame_size u32][frame...]. Inflate the
   // first frame_size so it runs past the blob end.
-  for (int i = 0; i < 4; ++i) bytes[68 + i] = 0xff;
+  for (int i = 0; i < 4; ++i) {
+    bytes[68 + i] = 0xff;
+  }
   iree_hal_streaming_kpack_archive_t archive;
   IREE_ASSERT_OK(iree_hal_streaming_kpack_archive_open(
       iree_make_const_byte_span(bytes.data(), bytes.size()), &archive));
@@ -1453,7 +1488,9 @@ iree_status_t Resolve(const std::vector<uint8_t>& metadata, uint32_t co_index,
                       const std::vector<std::string>& targets, void** out,
                       iree_host_size_t* out_size) {
   std::vector<iree_string_view_t> tv;
-  for (const auto& t : targets) tv.push_back(iree_make_cstring_view(t.c_str()));
+  for (const auto& t : targets) {
+    tv.push_back(iree_make_cstring_view(t.c_str()));
+  }
   return iree_hal_streaming_kpack_resolve_code_object(
       metadata.data(), co_index, tv.size(), tv.data(), iree_allocator_system(),
       out, out_size);
@@ -1743,8 +1780,9 @@ TEST(KpackResolve, TooManyFeaturesRejected) {
 // path leaves the truncation as the sole explanation for the miss.
 TEST(KpackResolve, TooManyCandidatesReportsTruncationOnMiss) {
   std::vector<std::string> targets;
-  for (int i = 0; i < 65; ++i)
+  for (int i = 0; i < 65; ++i) {
     targets.push_back("gfx" + std::to_string(9000 + i));
+  }
   auto metadata = MakeMetadata("lib/x.so", {"/nonexistent/none.kpack"});
   void* out = nullptr;
   iree_host_size_t out_size = 0;
@@ -1764,8 +1802,9 @@ TEST(KpackResolve, TooManyCandidatesReportsTruncationOnMiss) {
 // never promoted to a terminal RESOURCE_EXHAUSTED.
 TEST(KpackResolve, CandidateOverflowStillResolvesWhenKeptCandidateMatches) {
   std::vector<std::string> targets;
-  for (int i = 0; i < 65; ++i)
+  for (int i = 0; i < 65; ++i) {
     targets.push_back("gfx" + std::to_string(9000 + i));
+  }
   auto elf = MakeMinimalAmdgpuElf();
   // The first target expands to the highest-ranked candidate, which is kept;
   // keying the archive on it lands the match on a kept slot, not a dropped one.
@@ -1789,8 +1828,9 @@ TEST(KpackResolve, CandidateOverflowStillResolvesWhenKeptCandidateMatches) {
 // cap were never searched.
 TEST(KpackResolve, CandidateOverflowTruncationJoinsMissWhenArchivesSearched) {
   std::vector<std::string> targets;
-  for (int i = 0; i < 65; ++i)
+  for (int i = 0; i < 65; ++i) {
     targets.push_back("gfx" + std::to_string(9000 + i));
+  }
   // The archive opens and is searched, but holds no arch any candidate asks
   // for.
   auto archive = KpackBuilder(false)
@@ -1817,8 +1857,9 @@ TEST(KpackResolve, CandidateOverflowTruncationJoinsMissWhenArchivesSearched) {
 TEST(KpackResolve,
      CandidateOverflowTruncationDiscardedWhenLaterTargetRejected) {
   std::vector<std::string> targets;
-  for (int i = 0; i < 65; ++i)
+  for (int i = 0; i < 65; ++i) {
     targets.push_back("gfx" + std::to_string(9000 + i));
+  }
   targets.push_back("gfx942:a+:b+:c+:d+:e+");  // five features: over the cap
   auto metadata = MakeMetadata("lib/x.so", {"/nonexistent/none.kpack"});
 
@@ -2171,7 +2212,9 @@ TEST(KpackResolve, LexicallyCollidingSpellingsOfDifferentFilesAreBothSearched) {
   // spellings differing from their normalized form for a reason unrelated to
   // the collision, masking it.
   std::string base = std::string(::testing::TempDir());
-  while (!base.empty() && base.back() == '/') base.pop_back();
+  while (!base.empty() && base.back() == '/') {
+    base.pop_back();
+  }
   base += "/kpack_collision";
   const std::string directory_a = base + "/A";
   const std::string directory_b = base + "/B";

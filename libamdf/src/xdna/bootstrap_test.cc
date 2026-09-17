@@ -23,8 +23,9 @@ uint32_t ReadU32(const uint8_t* bytes, size_t offset) {
 
 void VerifyChecksum(const uint8_t* bytes, size_t byte_length) {
   uint32_t sum = 0;
-  for (size_t offset = 0; offset < byte_length; offset += 4)
+  for (size_t offset = 0; offset < byte_length; offset += 4) {
     sum += ReadU32(bytes, offset);
+  }
   EXPECT_EQ(sum, UINT32_MAX);
 }
 
@@ -79,8 +80,9 @@ TEST(XdnaBootstrapTest, AdmitsFunctionZeroWithoutArrayEffects) {
   // Exactly one zero-argument NOP: no trailing command can enable a core,
   // initialize DMA or locks, write a route, or overwrite program/data memory.
   EXPECT_EQ(ReadU32(cdo, 20), 0x111u);
-  for (size_t i = cdo_length; i < cdo_storage_length; ++i)
+  for (size_t i = cdo_length; i < cdo_storage_length; ++i) {
     EXPECT_EQ(cdo[i], 0u);
+  }
 }
 
 TEST(XdnaBootstrapTest,

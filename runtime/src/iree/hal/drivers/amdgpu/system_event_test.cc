@@ -69,10 +69,14 @@ TEST(SystemEventPinTest, AddressInNoModuleIsRefused) {
 static int VisitFirstObjectNamedByPath(struct dl_phdr_info* info,
                                        size_t info_size, void* user_data) {
   (void)info_size;
-  if (info->dlpi_name == nullptr || info->dlpi_name[0] != '/') return 0;
+  if (info->dlpi_name == nullptr || info->dlpi_name[0] != '/') {
+    return 0;
+  }
   for (ElfW(Half) i = 0; i < info->dlpi_phnum; ++i) {
     const ElfW(Phdr)* phdr = &info->dlpi_phdr[i];
-    if (phdr->p_type != PT_LOAD) continue;
+    if (phdr->p_type != PT_LOAD) {
+      continue;
+    }
     *static_cast<const void**>(user_data) =
         reinterpret_cast<const void*>(info->dlpi_addr + phdr->p_vaddr);
     return 1;
@@ -130,7 +134,9 @@ static void OpenDisposableSharedObject(const char* stem,
 // rather than a fresh load.
 static bool SharedObjectIsStillMapped(const iree::testing::TempFilePath& path) {
   void* handle = dlopen(path.path().c_str(), RTLD_LAZY | RTLD_NOLOAD);
-  if (!handle) return false;
+  if (!handle) {
+    return false;
+  }
   dlclose(handle);
   return true;
 }
@@ -251,7 +257,9 @@ class FakeLogicalDevice {
   }
 
   ~FakeLogicalDevice() {
-    if (!device_) return;
+    if (!device_) {
+      return;
+    }
     iree_status_free((iree_status_t)iree_atomic_exchange(
         &device_->failure_status, 0, iree_memory_order_acq_rel));
     for (iree_host_size_t i = 0; i < device_->physical_device_count; ++i) {
@@ -276,7 +284,9 @@ class FakeLogicalDevice {
   }
 
   static bool StatusMentions(const iree_status_t status, const char* text) {
-    if (iree_status_is_ok(status)) return false;
+    if (iree_status_is_ok(status)) {
+      return false;
+    }
     iree_allocator_t host_allocator = iree_allocator_system();
     char* buffer = NULL;
     iree_host_size_t buffer_length = 0;

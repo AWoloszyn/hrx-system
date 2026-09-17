@@ -52,7 +52,9 @@ static constexpr size_t kMaxTokensPerItem = 256;
 static constexpr size_t kMaxTextPerItem = 4096;
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  if (g_tokenizer == NULL || size < 6) return 0;
+  if (g_tokenizer == NULL || size < 6) {
+    return 0;
+  }
 
   // First byte: number of batch items (1-16).
   size_t item_count = (data[0] % kMaxBatchItems) + 1;
@@ -61,7 +63,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
   // Interpret remaining bytes as int32_t token IDs.
   size_t total_tokens = size / sizeof(int32_t);
-  if (total_tokens == 0) return 0;
+  if (total_tokens == 0) {
+    return 0;
+  }
   const int32_t* all_tokens = reinterpret_cast<const int32_t*>(data);
 
   // Partition tokens among items.
@@ -70,13 +74,19 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
   size_t token_offset = 0;
   size_t tokens_per_item = total_tokens / item_count;
-  if (tokens_per_item > kMaxTokensPerItem) tokens_per_item = kMaxTokensPerItem;
-  if (tokens_per_item == 0) tokens_per_item = 1;
+  if (tokens_per_item > kMaxTokensPerItem) {
+    tokens_per_item = kMaxTokensPerItem;
+  }
+  if (tokens_per_item == 0) {
+    tokens_per_item = 1;
+  }
 
   for (size_t i = 0; i < item_count; ++i) {
     size_t item_tokens =
         (i == item_count - 1) ? (total_tokens - token_offset) : tokens_per_item;
-    if (item_tokens > kMaxTokensPerItem) item_tokens = kMaxTokensPerItem;
+    if (item_tokens > kMaxTokensPerItem) {
+      item_tokens = kMaxTokensPerItem;
+    }
     if (token_offset + item_tokens > total_tokens) {
       item_tokens = total_tokens - token_offset;
     }

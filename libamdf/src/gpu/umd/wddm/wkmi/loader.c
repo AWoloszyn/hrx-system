@@ -34,7 +34,9 @@ static amdf_status_t amdf_gpu_wddm_wkmi_make_absolute_path(
   amdf_status_t status = amdf_malloc(
       host_allocator, (size_t)required_capacity * sizeof(*absolute_path),
       amdf_alignof(wchar_t), (void**)&absolute_path);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   const DWORD path_length =
       GetFullPathNameW(*inout_path, required_capacity, absolute_path, NULL);
   if (path_length == 0 || path_length >= required_capacity) {
@@ -70,7 +72,9 @@ static amdf_status_t amdf_gpu_wddm_wkmi_allocate_environment_path(
   amdf_status_t status =
       amdf_malloc(host_allocator, (size_t)required_capacity * sizeof(*path),
                   amdf_alignof(wchar_t), (void**)&path);
-  if (!amdf_status_is_ok(status)) return status;
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
   const DWORD path_length = GetEnvironmentVariableW(
       AMDF_WKMI_BRIDGE_PATH_ENVIRONMENT_VARIABLE, path, required_capacity);
   if (path_length == 0 || path_length >= required_capacity) {

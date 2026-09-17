@@ -82,7 +82,9 @@ class GpuMemoryInteropTest : public GpuDeviceFixture {
     endpoint_info.type = AMDF_STRUCTURE_TYPE_ENDPOINT_INFO;
     endpoint_info.structure_size = sizeof(endpoint_info);
     amdf_status_t status = api_->endpoint_query_info(endpoint, &endpoint_info);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
     uint32_t family_ordinal = UINT32_MAX;
     for (uint32_t ordinal = 0; amdf_status_is_ok(status) &&
                                ordinal < endpoint_info.queue_family_count;
@@ -136,14 +138,20 @@ class GpuMemoryInteropTest : public GpuDeviceFixture {
                         : AMDF_HOST_CACHEABILITY_UNKNOWN;
     amdf_status_t status =
         api_->memory_create(system_scope_, &memory_info, &access.memory);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
     access.memory_info.type = AMDF_STRUCTURE_TYPE_MEMORY_INFO;
     access.memory_info.structure_size = sizeof(access.memory_info);
     status = api_->memory_query_info(access.memory, &access.memory_info);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
     status = api_->memory_query_address(
         access.memory, 0, AMDF_MEMORY_ADDRESS_GPU, &access.address);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
 
     amdf_memory_map_info_t map_info = {};
     map_info.type = AMDF_STRUCTURE_TYPE_MEMORY_MAP_INFO;
@@ -151,12 +159,16 @@ class GpuMemoryInteropTest : public GpuDeviceFixture {
     map_info.flags = AMDF_MEMORY_MAP_FLAG_READ | AMDF_MEMORY_MAP_FLAG_WRITE;
     map_info.byte_length = kMemoryByteLength;
     status = api_->memory_map(access.memory, &map_info, &access.mapping);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
     access.mapping_info.type = AMDF_STRUCTURE_TYPE_HOST_MAPPING_INFO;
     access.mapping_info.structure_size = sizeof(access.mapping_info);
     status =
         api_->host_mapping_query_info(access.mapping, &access.mapping_info);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
 
     amdf_gpu_kernel_queue_create_info_t queue_info = {};
     queue_info.type = AMDF_STRUCTURE_TYPE_GPU_KERNEL_QUEUE_CREATE_INFO;
@@ -169,18 +181,24 @@ class GpuMemoryInteropTest : public GpuDeviceFixture {
   amdf_status_t DestroyAccess(DeviceAccess& access) {
     if (access.queue != nullptr) {
       const amdf_status_t status = api_->kernel_queue_destroy(access.queue);
-      if (!amdf_status_is_ok(status)) return status;
+      if (!amdf_status_is_ok(status)) {
+        return status;
+      }
       access.queue = nullptr;
     }
     if (access.mapping != nullptr) {
       const amdf_status_t status = api_->host_mapping_destroy(access.mapping);
-      if (!amdf_status_is_ok(status)) return status;
+      if (!amdf_status_is_ok(status)) {
+        return status;
+      }
       access.mapping = nullptr;
     }
     if (access.memory != nullptr) {
       const amdf_status_t status = api_->memory_destroy(access.memory);
       access.memory = nullptr;
-      if (!amdf_status_is_ok(status)) return status;
+      if (!amdf_status_is_ok(status)) {
+        return status;
+      }
     }
     return AMDF_STATUS_OK;
   }
@@ -206,10 +224,14 @@ class GpuMemoryInteropTest : public GpuDeviceFixture {
     submission.commands = &command;
     amdf_status_t status = gpu_api_->kernel_queue_submit(
         access.queue, &submission, &access.pending_submission);
-    if (!amdf_status_is_ok(status)) return status;
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
     status = api_->kernel_queue_wait(access.queue, access.pending_submission,
                                      AMDF_TIMEOUT_INFINITE, UINT64_C(50000));
-    if (amdf_status_is_ok(status)) access.pending_submission = 0;
+    if (amdf_status_is_ok(status)) {
+      access.pending_submission = 0;
+    }
     return status;
   }
 

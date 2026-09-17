@@ -177,7 +177,9 @@ void iree_memory_flush_icache(void* base_address, iree_host_size_t length) {
 #if defined(IREE_PLATFORM_WINDOWS)
 
 iree_status_t iree_memory_lock(void* ptr, iree_host_size_t size) {
-  if (size == 0) return iree_ok_status();
+  if (size == 0) {
+    return iree_ok_status();
+  }
   if (!VirtualLock(ptr, size)) {
     return iree_make_status(IREE_STATUS_PERMISSION_DENIED,
                             "VirtualLock failed: %lu", GetLastError());
@@ -186,7 +188,9 @@ iree_status_t iree_memory_lock(void* ptr, iree_host_size_t size) {
 }
 
 void iree_memory_unlock(void* ptr, iree_host_size_t size) {
-  if (size == 0) return;
+  if (size == 0) {
+    return;
+  }
   VirtualUnlock(ptr, size);
 }
 
@@ -204,7 +208,9 @@ void iree_memory_protect_sensitive(void* ptr, iree_host_size_t size) {
 #include <sys/mman.h>
 
 iree_status_t iree_memory_lock(void* ptr, iree_host_size_t size) {
-  if (size == 0) return iree_ok_status();
+  if (size == 0) {
+    return iree_ok_status();
+  }
   if (mlock(ptr, size) != 0) {
     return iree_make_status(iree_status_code_from_errno(errno), "mlock failed");
   }
@@ -212,12 +218,16 @@ iree_status_t iree_memory_lock(void* ptr, iree_host_size_t size) {
 }
 
 void iree_memory_unlock(void* ptr, iree_host_size_t size) {
-  if (size == 0) return;
+  if (size == 0) {
+    return;
+  }
   munlock(ptr, size);
 }
 
 void iree_memory_protect_sensitive(void* ptr, iree_host_size_t size) {
-  if (size == 0) return;
+  if (size == 0) {
+    return;
+  }
 #if defined(IREE_PLATFORM_LINUX) || defined(IREE_PLATFORM_ANDROID)
 #if defined(MADV_DONTDUMP)
   madvise(ptr, size, MADV_DONTDUMP);
@@ -250,7 +260,9 @@ void iree_memory_protect_sensitive(void* ptr, iree_host_size_t size) {
 #endif  // IREE_PLATFORM_*
 
 void iree_memory_wipe(void* ptr, iree_host_size_t size) {
-  if (size == 0) return;
+  if (size == 0) {
+    return;
+  }
 #if defined(IREE_PLATFORM_WINDOWS)
   // SecureZeroMemory is guaranteed not to be optimized away.
   SecureZeroMemory(ptr, size);
@@ -310,7 +322,9 @@ iree_status_t iree_aligned_alloc(iree_host_size_t alignment,
   ptr = aligned_alloc(alignment, iree_host_align(size, alignment));
 #elif _POSIX_C_SOURCE >= 200112L
   // https://pubs.opengroup.org/onlinepubs/9699919799/functions/posix_memalign.html
-  if (posix_memalign(&ptr, alignment, size) != 0) ptr = NULL;
+  if (posix_memalign(&ptr, alignment, size) != 0) {
+    ptr = NULL;
+  }
 #else
   // Emulates alignment with normal malloc. We overallocate by at least the
   // alignment + the size of a pointer, store the base pointer at ptr[-1], and

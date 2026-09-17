@@ -254,7 +254,9 @@ iree_status_t iree_async_proactor_create_posix_with_backend(
     for (iree_host_size_t i = 0; i < worker_count; ++i) {
       status = iree_async_posix_worker_initialize(proactor, i, allocator,
                                                   &proactor->workers[i]);
-      if (!iree_status_is_ok(status)) break;
+      if (!iree_status_is_ok(status)) {
+        break;
+      }
       ++proactor->initialized_workers;
     }
   }
@@ -277,7 +279,9 @@ static void iree_async_proactor_posix_destroy(
     iree_async_proactor_t* base_proactor) {
   iree_async_proactor_posix_t* proactor =
       iree_async_proactor_posix_cast(base_proactor);
-  if (!proactor) return;
+  if (!proactor) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   // Signal shutdown to prevent new work from being accepted.
@@ -848,7 +852,9 @@ static iree_status_t iree_async_proactor_posix_submit_socket_accept(
       accept_op->accepted_socket = NULL;
       iree_async_posix_socket_destroy(proactor, accepted_socket);
     }
-    if (accepted_fd >= 0) close(accepted_fd);
+    if (accepted_fd >= 0) {
+      close(accepted_fd);
+    }
   }
   return status;
 }
@@ -2487,7 +2493,9 @@ static iree_status_t iree_async_proactor_posix_poll(
   iree_async_proactor_posix_t* proactor =
       iree_async_proactor_posix_cast(base_proactor);
 
-  if (out_completed_count) *out_completed_count = 0;
+  if (out_completed_count) {
+    *out_completed_count = 0;
+  }
 
   if (iree_atomic_load(&proactor->shutdown_requested,
                        iree_memory_order_acquire)) {
@@ -2539,14 +2547,18 @@ static iree_status_t iree_async_proactor_posix_poll(
   // Calculate timeout considering both user request and pending timers.
   int timeout_ms =
       iree_async_proactor_posix_calculate_timeout_ms(proactor, timeout);
-  if (completed_count > 0 || base_proactor->progress_list) timeout_ms = 0;
+  if (completed_count > 0 || base_proactor->progress_list) {
+    timeout_ms = 0;
+  }
 
   // Poll for ready fds.
   iree_host_size_t ready_count = 0;
   bool timed_out = false;
   iree_status_t poll_status = iree_async_posix_event_set_wait(
       proactor->event_set, timeout_ms, &ready_count, &timed_out);
-  if (!iree_status_is_ok(poll_status)) return poll_status;
+  if (!iree_status_is_ok(poll_status)) {
+    return poll_status;
+  }
   if (timed_out) {
     iree_async_posix_wake_drain(&proactor->wake);
 
@@ -2575,8 +2587,12 @@ static iree_status_t iree_async_proactor_posix_poll(
         iree_async_proactor_posix_drain_completion_queue(proactor);
     iree_async_proactor_posix_drain_incoming_messages(proactor);
 
-    if (out_completed_count) *out_completed_count = completed_count;
-    if (completed_count > 0) return iree_ok_status();
+    if (out_completed_count) {
+      *out_completed_count = completed_count;
+    }
+    if (completed_count > 0) {
+      return iree_ok_status();
+    }
 
     // No completions - truly a deadline exceeded.
     return iree_status_from_code(IREE_STATUS_DEADLINE_EXCEEDED);
@@ -2680,7 +2696,9 @@ static iree_status_t iree_async_proactor_posix_poll(
   completed_count += iree_async_proactor_posix_drain_completion_queue(proactor);
   iree_async_proactor_posix_drain_incoming_messages(proactor);
 
-  if (out_completed_count) *out_completed_count = completed_count;
+  if (out_completed_count) {
+    *out_completed_count = completed_count;
+  }
   return completed_count > 0 || ready_count > 0
              ? iree_ok_status()
              : iree_status_from_code(IREE_STATUS_DEADLINE_EXCEEDED);
@@ -2937,7 +2955,9 @@ static iree_status_t iree_async_proactor_posix_create_event(
 
 static void iree_async_proactor_posix_destroy_event(
     iree_async_proactor_t* base_proactor, iree_async_event_t* event) {
-  if (!event) return;
+  if (!event) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_async_proactor_posix_t* proactor =
@@ -3085,7 +3105,9 @@ static iree_status_t iree_async_proactor_posix_create_notification_shared(
 static void iree_async_proactor_posix_destroy_notification(
     iree_async_proactor_t* base_proactor,
     iree_async_notification_t* notification) {
-  if (!notification) return;
+  if (!notification) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_async_proactor_posix_t* proactor =
@@ -3160,13 +3182,17 @@ static bool iree_async_proactor_posix_notification_wait(
   while (iree_time_now() < deadline_ns) {
     uint32_t current_epoch =
         iree_atomic_load(notification->epoch_ptr, iree_memory_order_acquire);
-    if (current_epoch != wait_token) return true;
+    if (current_epoch != wait_token) {
+      return true;
+    }
     iree_status_code_t wait_result =
         is_shared
             ? iree_futex_wait_shared(notification->epoch_ptr, wait_token,
                                      deadline_ns)
             : iree_futex_wait(notification->epoch_ptr, wait_token, deadline_ns);
-    if (wait_result == IREE_STATUS_DEADLINE_EXCEEDED) break;
+    if (wait_result == IREE_STATUS_DEADLINE_EXCEEDED) {
+      break;
+    }
     // IREE_STATUS_OK or IREE_STATUS_UNAVAILABLE (spurious) — re-check epoch.
   }
   uint32_t final_epoch =
@@ -3231,15 +3257,23 @@ static bool iree_async_proactor_posix_notification_wait_shared(
   while (iree_time_now() < deadline_ns) {
     uint32_t current_epoch =
         iree_atomic_load(notification->epoch_ptr, iree_memory_order_acquire);
-    if (current_epoch != wait_token) return true;
+    if (current_epoch != wait_token) {
+      return true;
+    }
     iree_duration_t remaining_ns = deadline_ns - iree_time_now();
-    if (remaining_ns <= 0) break;
+    if (remaining_ns <= 0) {
+      break;
+    }
     int timeout_ms = (int)(remaining_ns / 1000000);
-    if (timeout_ms <= 0) timeout_ms = 1;
+    if (timeout_ms <= 0) {
+      timeout_ms = 1;
+    }
     struct pollfd pfd = {.fd = fd, .events = POLLIN, .revents = 0};
     int poll_result = poll(&pfd, 1, timeout_ms);
     if (poll_result < 0) {
-      if (errno == EINTR) continue;
+      if (errno == EINTR) {
+        continue;
+      }
       return false;
     }
     if (pfd.revents & POLLIN) {
@@ -3376,7 +3410,9 @@ static iree_status_t iree_async_proactor_posix_register_event_source(
 static void iree_async_proactor_posix_unregister_event_source(
     iree_async_proactor_t* base_proactor,
     iree_async_event_source_t* event_source) {
-  if (!event_source) return;
+  if (!event_source) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_async_proactor_posix_t* proactor =
@@ -3729,7 +3765,9 @@ static void iree_async_proactor_posix_signal_event_source_callback(
     iree_async_poll_events_t events) {
   iree_async_proactor_posix_t* proactor =
       (iree_async_proactor_posix_t*)user_data;
-  if (!proactor->signal.initialized) return;
+  if (!proactor->signal.initialized) {
+    return;
+  }
 
   iree_status_t status = iree_async_posix_signal_read(
       &proactor->signal.backend_state,
@@ -3868,7 +3906,9 @@ static iree_status_t iree_async_proactor_posix_subscribe_signal(
 static void iree_async_proactor_posix_unsubscribe_signal(
     iree_async_proactor_t* base_proactor,
     iree_async_signal_subscription_t* subscription) {
-  if (!subscription) return;
+  if (!subscription) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_async_proactor_posix_t* proactor =

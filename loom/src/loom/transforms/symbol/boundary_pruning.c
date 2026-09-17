@@ -65,15 +65,21 @@ static bool loom_refine_boundaries_result_is_tied(const loom_op_t* op,
                                                   uint16_t result_index) {
   const loom_tied_result_t* tied_results = loom_op_tied_results(op);
   for (uint16_t i = 0; i < op->tied_result_count; ++i) {
-    if (tied_results[i].result_index == result_index) return true;
+    if (tied_results[i].result_index == result_index) {
+      return true;
+    }
   }
   return false;
 }
 
 static bool loom_refine_boundaries_result_is_prunable(
     const loom_module_t* module, const loom_op_t* op, uint16_t result_index) {
-  if (result_index >= op->result_count) return false;
-  if (loom_refine_boundaries_result_is_tied(op, result_index)) return false;
+  if (result_index >= op->result_count) {
+    return false;
+  }
+  if (loom_refine_boundaries_result_is_tied(op, result_index)) {
+    return false;
+  }
   loom_value_id_t result = loom_op_const_results(op)[result_index];
   if (result == LOOM_VALUE_ID_INVALID || result >= module->values.count) {
     return false;
@@ -88,7 +94,9 @@ static iree_status_t loom_refine_boundaries_build_prune_plans(
     iree_arena_allocator_t* arena,
     loom_refine_boundaries_prune_plan_t** out_plans) {
   *out_plans = NULL;
-  if (graph->function_count == 0) return iree_ok_status();
+  if (graph->function_count == 0) {
+    return iree_ok_status();
+  }
 
   loom_refine_boundaries_prune_plan_t* plans = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -98,7 +106,9 @@ static iree_status_t loom_refine_boundaries_build_prune_plans(
   for (iree_host_size_t node = 0; node < graph->function_count; ++node) {
     const loom_refine_boundaries_function_t* function_info =
         &graph->functions[node];
-    if (!function_info->can_refine_boundary) continue;
+    if (!function_info->can_refine_boundary) {
+      continue;
+    }
 
     if (function_info->argument_projection_count == 0) {
       continue;
@@ -238,7 +248,9 @@ static iree_status_t loom_refine_boundaries_copy_result_names(
   loom_value_id_t* new_results = loom_op_results(new_op);
   for (uint16_t i = 0; i < old_op->result_count; ++i) {
     uint16_t new_index = old_to_new_result_indices[i];
-    if (new_index == UINT16_MAX) continue;
+    if (new_index == UINT16_MAX) {
+      continue;
+    }
     loom_value_id_t old_result = old_results[i];
     loom_value_id_t new_result = new_results[new_index];
     if (old_result == LOOM_VALUE_ID_INVALID ||
@@ -507,7 +519,9 @@ static iree_status_t loom_refine_boundaries_append_return_op(
     loom_walk_result_t* out_result) {
   (void)context;
   *out_result = LOOM_WALK_CONTINUE;
-  if (!loom_func_return_isa(op)) return iree_ok_status();
+  if (!loom_func_return_isa(op)) {
+    return iree_ok_status();
+  }
 
   loom_refine_boundaries_return_list_t* list =
       (loom_refine_boundaries_return_list_t*)user_data;
@@ -551,7 +565,9 @@ static iree_status_t loom_refine_boundaries_rewrite_pruned_return(
     IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
         arena, operands.count, sizeof(*kept_operands), (void**)&kept_operands));
     for (uint16_t i = 0; i < operands.count; ++i) {
-      if (plan->prune_results[i]) continue;
+      if (plan->prune_results[i]) {
+        continue;
+      }
       kept_operands[kept_count++] = operands.values[i];
     }
   }
@@ -573,7 +589,9 @@ static iree_status_t loom_refine_boundaries_rewrite_pruned_returns(
     iree_arena_allocator_t* walk_arena) {
   for (iree_host_size_t node = 0; node < graph->function_count; ++node) {
     const loom_refine_boundaries_prune_plan_t* plan = &plans[node];
-    if (!plan->has_prunable_results) continue;
+    if (!plan->has_prunable_results) {
+      continue;
+    }
 
     loom_refine_boundaries_return_list_t returns = {0};
     IREE_RETURN_IF_ERROR(loom_refine_boundaries_collect_return_ops(
@@ -593,7 +611,9 @@ static iree_status_t loom_refine_boundaries_remove_pruned_results(
   *out_pruned_count = 0;
   for (iree_host_size_t node = 0; node < graph->function_count; ++node) {
     const loom_refine_boundaries_prune_plan_t* plan = &plans[node];
-    if (!plan->has_prunable_results) continue;
+    if (!plan->has_prunable_results) {
+      continue;
+    }
     loom_op_t* function_op = graph->functions[node].function.op;
     uint16_t removed_count = 0;
     IREE_RETURN_IF_ERROR(loom_op_remove_results(
@@ -609,7 +629,9 @@ static iree_status_t loom_refine_boundaries_remove_pruned_arguments(
   *out_pruned_count = 0;
   for (iree_host_size_t node = 0; node < graph->function_count; ++node) {
     const loom_refine_boundaries_prune_plan_t* plan = &plans[node];
-    if (!plan->has_prunable_arguments) continue;
+    if (!plan->has_prunable_arguments) {
+      continue;
+    }
     const loom_refine_boundaries_function_t* function_info =
         &graph->functions[node];
     for (uint8_t projection_index = 0;
@@ -640,7 +662,9 @@ iree_status_t loom_refine_boundaries_prune_internal_boundaries(
   loom_refine_boundaries_prune_plan_t* plans = NULL;
   IREE_RETURN_IF_ERROR(
       loom_refine_boundaries_build_prune_plans(module, graph, arena, &plans));
-  if (!plans) return iree_ok_status();
+  if (!plans) {
+    return iree_ok_status();
+  }
 
   IREE_RETURN_IF_ERROR(loom_refine_boundaries_preflight_pruned_calls(
       module, graph, plans, walk_arena));

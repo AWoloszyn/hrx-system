@@ -254,8 +254,12 @@ void iree_hal_streaming_event_timestamp_slot_retain(
 void iree_hal_streaming_event_timestamp_slot_release(
     iree_hal_streaming_event_timestamp_slot_t* slot,
     iree_hal_semaphore_t* retire_semaphore, uint64_t retire_value) {
-  if (!slot) return;
-  if (iree_atomic_ref_count_dec(&slot->ref_count) != 1) return;
+  if (!slot) {
+    return;
+  }
+  if (iree_atomic_ref_count_dec(&slot->ref_count) != 1) {
+    return;
+  }
 
   iree_hal_streaming_event_timestamp_pool_t* pool = slot->slab->pool;
   iree_slim_mutex_lock(&pool->mutex);

@@ -21,7 +21,9 @@ static loom_print_context_t loom_print_context_make(
   context.module = module;
   context.name_plan = name_plan;
   context.flags = options ? options->flags : LOOM_TEXT_PRINT_DEFAULT;
-  if (options) context.low_asm_environment = options->low_asm_environment;
+  if (options) {
+    context.low_asm_environment = options->low_asm_environment;
+  }
   return context;
 }
 
@@ -31,7 +33,9 @@ static bool loom_module_has_printable_content(const loom_module_t* module) {
       return true;
     }
   }
-  if (!module->body) return false;
+  if (!module->body) {
+    return false;
+  }
   for (uint16_t i = 0; i < module->body->block_count; ++i) {
     const loom_block_t* block = loom_region_const_block(module->body, i);
     if (block->label_id != LOOM_STRING_ID_INVALID || block->first_op) {
@@ -122,7 +126,9 @@ iree_status_t loom_text_print_operation_with_options(
   loom_print_context_t ctx =
       loom_print_context_make(module, stream, options, &name_plan);
   iree_status_t status = loom_print_op_comments(&ctx, op);
-  if (iree_status_is_ok(status)) status = loom_print_op(&ctx, op);
+  if (iree_status_is_ok(status)) {
+    status = loom_print_op(&ctx, op);
+  }
   loom_print_name_plan_deinitialize(&name_plan);
   return status;
 }
@@ -175,7 +181,9 @@ iree_status_t loom_text_print_operation_with_field_callback(
       .field_callback = callback,
   };
   iree_status_t status = loom_print_op_comments(&ctx, op);
-  if (iree_status_is_ok(status)) status = loom_print_op(&ctx, op);
+  if (iree_status_is_ok(status)) {
+    status = loom_print_op(&ctx, op);
+  }
   loom_print_name_plan_deinitialize(&name_plan);
   return status;
 }

@@ -425,7 +425,9 @@ TEST_F(SequenceSegmenterTest, ProcessBackpressureCapacity1) {
     total_consumed += consumed;
 
     // Safety: if no progress, break.
-    if (consumed == 0 && count == 0) break;
+    if (consumed == 0 && count == 0) {
+      break;
+    }
   }
 
   // Finalize to get any remaining segments.
@@ -435,7 +437,9 @@ TEST_F(SequenceSegmenterTest, ProcessBackpressureCapacity1) {
     iree_host_size_t count = 0;
     IREE_ASSERT_OK(iree_tokenizer_segmenter_state_finalize(
         state.get(), remaining, output, &count));
-    if (count == 0) break;
+    if (count == 0) {
+      break;
+    }
     results.push_back(std::string(remaining.data + segment.start,
                                   segment.end - segment.start));
   }

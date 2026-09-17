@@ -13,11 +13,21 @@
 // when appropriate.
 static uint32_t loom_value_facts_compute_flags(int64_t lo, int64_t hi) {
   uint32_t flags = 0;
-  if (lo == hi) flags |= LOOM_VALUE_FACT_EXACT;
-  if (lo >= 0) flags |= LOOM_VALUE_FACT_NON_NEGATIVE;
-  if (lo > 0 || hi < 0) flags |= LOOM_VALUE_FACT_NON_ZERO;
-  if (lo > 0) flags |= LOOM_VALUE_FACT_POSITIVE;
-  if (lo >= 0 && hi <= 1) flags |= LOOM_VALUE_FACT_BOOLEAN;
+  if (lo == hi) {
+    flags |= LOOM_VALUE_FACT_EXACT;
+  }
+  if (lo >= 0) {
+    flags |= LOOM_VALUE_FACT_NON_NEGATIVE;
+  }
+  if (lo > 0 || hi < 0) {
+    flags |= LOOM_VALUE_FACT_NON_ZERO;
+  }
+  if (lo > 0) {
+    flags |= LOOM_VALUE_FACT_POSITIVE;
+  }
+  if (lo >= 0 && hi <= 1) {
+    flags |= LOOM_VALUE_FACT_BOOLEAN;
+  }
   // Power-of-two only provable for exact values from range alone.
   if (lo == hi && lo > 0 && (lo & (lo - 1)) == 0) {
     flags |= LOOM_VALUE_FACT_POWER_OF_TWO;
@@ -100,10 +110,16 @@ loom_value_facts_t loom_value_facts_exact_i64(int64_t value) {
 
 loom_value_facts_t loom_value_facts_make(int64_t lo, int64_t hi,
                                          int64_t known_divisor) {
-  if (known_divisor < 1) known_divisor = 1;
+  if (known_divisor < 1) {
+    known_divisor = 1;
+  }
   // Invalid range: fall back to unknown.
-  if (lo > hi) return loom_value_facts_unknown();
-  if (lo == hi) known_divisor = loom_value_facts_exact_i64_divisor(lo);
+  if (lo > hi) {
+    return loom_value_facts_unknown();
+  }
+  if (lo == hi) {
+    known_divisor = loom_value_facts_exact_i64_divisor(lo);
+  }
   loom_value_facts_t facts = {0};
   facts.range_lo = lo;
   facts.range_hi = hi;
@@ -319,10 +335,14 @@ bool loom_value_facts_make_unsigned_raw_bits(uint64_t raw_bits,
 
 static int64_t loom_value_facts_sign_extend_raw_bits(uint64_t raw_bits,
                                                      int32_t bit_count) {
-  if (bit_count <= 0) return 0;
+  if (bit_count <= 0) {
+    return 0;
+  }
   const uint64_t masked = iree_math_mask_low_bits_u64(raw_bits, bit_count);
   const uint64_t sign_bit = UINT64_C(1) << (bit_count - 1);
-  if ((masked & sign_bit) == 0) return (int64_t)masked;
+  if ((masked & sign_bit) == 0) {
+    return (int64_t)masked;
+  }
   const int64_t signed_sign_bit =
       bit_count == 64 ? INT64_MIN : -(int64_t)sign_bit;
   return signed_sign_bit + (int64_t)(masked & (sign_bit - 1));
@@ -339,7 +359,9 @@ loom_value_facts_t loom_value_facts_make_signed_raw_bits(uint64_t raw_bits,
 
 loom_value_facts_t loom_value_facts_sign_extend(loom_value_facts_t source_facts,
                                                 int32_t source_bit_count) {
-  if (source_bit_count != 1) return source_facts;
+  if (source_bit_count != 1) {
+    return source_facts;
+  }
 
   uint64_t raw_bits = 0;
   loom_value_facts_t result_facts =
@@ -507,7 +529,9 @@ static bool loom_value_facts_predicate_required_range(
     int64_t* out_maximum) {
   *out_minimum = INT64_MIN;
   *out_maximum = INT64_MAX;
-  if (!loom_value_facts_predicate_value_first_arg(predicate)) return false;
+  if (!loom_value_facts_predicate_value_first_arg(predicate)) {
+    return false;
+  }
 
   int64_t constant = 0;
   switch ((loom_predicate_kind_t)predicate->kind) {
@@ -619,7 +643,9 @@ static bool loom_value_facts_predicate_exact_i64_conflict(
     default:
       return false;
   }
-  if (!conflicts) return false;
+  if (!conflicts) {
+    return false;
+  }
 
   if (out_conflict != NULL) {
     *out_conflict = (loom_value_fact_predicate_conflict_t){
@@ -701,22 +727,30 @@ bool loom_value_facts_predicate_conflict(
 // endpoints to possible multiples so consumers need not rediscover this fact.
 static void loom_value_facts_refine_divisible_range(loom_value_facts_t* facts) {
   const int64_t divisor = facts->known_divisor;
-  if (divisor <= 1 || loom_value_facts_is_float(*facts)) return;
+  if (divisor <= 1 || loom_value_facts_is_float(*facts)) {
+    return;
+  }
   int64_t lower = facts->range_lo;
   int64_t upper = facts->range_hi;
   if (lower != INT64_MIN) {
     const int64_t remainder = lower % divisor;
     const int64_t adjustment = remainder > 0 ? divisor - remainder : -remainder;
-    if (!iree_checked_add_i64(lower, adjustment, &lower)) return;
+    if (!iree_checked_add_i64(lower, adjustment, &lower)) {
+      return;
+    }
   }
   if (upper != INT64_MAX) {
     const int64_t remainder = upper % divisor;
     const int64_t adjustment = remainder < 0 ? divisor + remainder : remainder;
-    if (!iree_checked_sub_i64(upper, adjustment, &upper)) return;
+    if (!iree_checked_sub_i64(upper, adjustment, &upper)) {
+      return;
+    }
   }
   // The lattice has no empty set. Contradictory predicates retain their
   // conservative interval instead of manufacturing an exact value.
-  if (lower > upper) return;
+  if (lower > upper) {
+    return;
+  }
   facts->range_lo = lower;
   facts->range_hi = upper;
 }
@@ -918,7 +952,9 @@ bool loom_value_facts_refine_relation(uint8_t predicate_kind,
     default:
       return false;
   }
-  if (lhs_result) loom_value_facts_recompute_flags(lhs_result);
+  if (lhs_result) {
+    loom_value_facts_recompute_flags(lhs_result);
+  }
   if (rhs_result && rhs_result != lhs_result) {
     loom_value_facts_recompute_flags(rhs_result);
   }
@@ -1025,8 +1061,12 @@ void loom_value_facts_muli(const loom_value_facts_t* lhs,
   }
   int64_t lo = corners[0], hi = corners[0];
   for (int i = 1; i < 4; ++i) {
-    if (corners[i] < lo) lo = corners[i];
-    if (corners[i] > hi) hi = corners[i];
+    if (corners[i] < lo) {
+      lo = corners[i];
+    }
+    if (corners[i] > hi) {
+      hi = corners[i];
+    }
   }
 
   *out = loom_value_facts_make(lo, hi, divisor);
@@ -1142,7 +1182,9 @@ static int64_t loom_value_facts_remainder_i64(int64_t dividend,
                                               int64_t divisor) {
   const uint64_t remainder =
       iree_math_magnitude_i64(dividend) % iree_math_magnitude_i64(divisor);
-  if (dividend >= 0 || remainder == 0) return (int64_t)remainder;
+  if (dividend >= 0 || remainder == 0) {
+    return (int64_t)remainder;
+  }
   return -(int64_t)remainder;
 }
 
@@ -1188,7 +1230,9 @@ void loom_value_facts_remsi(const loom_value_facts_t* lhs,
 // [0, 63].
 static int64_t loom_value_facts_arithmetic_shift_right_i64(int64_t value,
                                                            uint32_t shift) {
-  if (value >= 0) return (int64_t)((uint64_t)value >> shift);
+  if (value >= 0) {
+    return (int64_t)((uint64_t)value >> shift);
+  }
   const uint64_t complement_magnitude = (uint64_t)(-(value + INT64_C(1)));
   return -INT64_C(1) - (int64_t)(complement_magnitude >> shift);
 }
@@ -1333,7 +1377,9 @@ void loom_value_facts_shrsi(const loom_value_facts_t* lhs,
 static int64_t loom_value_facts_non_negative_bitwise_upper_bound(
     int64_t lhs_hi, int64_t rhs_hi) {
   uint64_t maximum_operand = (uint64_t)iree_max(lhs_hi, rhs_hi);
-  if (maximum_operand == 0) return 0;
+  if (maximum_operand == 0) {
+    return 0;
+  }
   uint32_t bit_count =
       64u - (uint32_t)iree_math_count_leading_zeros_u64(maximum_operand);
   return (int64_t)((UINT64_C(1) << bit_count) - 1);
@@ -1417,7 +1463,9 @@ void loom_value_facts_ori(const loom_value_facts_t* lhs,
   // Both non-negative: result is non-negative.
   if (lhs_lo >= 0 && rhs_lo >= 0) {
     int64_t lo = iree_max(lhs_lo, rhs_lo);
-    if (either_exact_nonzero && lo == 0) lo = 1;
+    if (either_exact_nonzero && lo == 0) {
+      lo = 1;
+    }
     *out = loom_value_facts_make(lo, INT64_MAX, 1);
     loom_value_facts_propagate_bitwise_flags(&lhs_facts, &rhs_facts, out);
     return;
@@ -1558,8 +1606,12 @@ void loom_value_facts_fmai(const loom_value_facts_t* a,
   // Find min/max of products.
   int64_t prod_lo = products[0], prod_hi = products[0];
   for (int i = 1; i < 4; ++i) {
-    if (products[i] < prod_lo) prod_lo = products[i];
-    if (products[i] > prod_hi) prod_hi = products[i];
+    if (products[i] < prod_lo) {
+      prod_lo = products[i];
+    }
+    if (products[i] > prod_hi) {
+      prod_hi = products[i];
+    }
   }
 
   // Add c: result range is [prod_lo + c_lo, prod_hi + c_hi].
@@ -1644,15 +1696,21 @@ void loom_value_facts_absi(const loom_value_facts_t* input,
 
 static bool loom_value_facts_type_dim(loom_type_t type, uint8_t index,
                                       uint64_t* out_dim) {
-  if (index >= loom_type_rank(type)) return false;
+  if (index >= loom_type_rank(type)) {
+    return false;
+  }
   if (loom_type_has_inline_dims(type)) {
-    if (index >= IREE_ARRAYSIZE(type.dims)) return false;
+    if (index >= IREE_ARRAYSIZE(type.dims)) {
+      return false;
+    }
     *out_dim = type.dims[index];
     return true;
   }
   const loom_overflow_dim_t* overflow_dims =
       (const loom_overflow_dim_t*)(uintptr_t)type.dims[0];
-  if (!overflow_dims) return false;
+  if (!overflow_dims) {
+    return false;
+  }
   *out_dim = overflow_dims[index];
   return true;
 }
@@ -1694,7 +1752,9 @@ void loom_value_facts_element_count(loom_type_t type,
                                     iree_host_size_t value_fact_count,
                                     loom_value_facts_t* out_count) {
   *out_count = loom_value_facts_unknown();
-  if (!loom_type_is_shaped(type)) return;
+  if (!loom_type_is_shaped(type)) {
+    return;
+  }
 
   loom_value_facts_t accumulator = loom_value_facts_exact_i64(1);
   uint8_t rank = loom_type_rank(type);
@@ -1730,7 +1790,9 @@ static bool loom_value_facts_shaped_dims_equal(loom_type_t lhs_type,
     return false;
   }
   uint8_t rank = loom_type_rank(lhs_type);
-  if (rank != loom_type_rank(rhs_type)) return false;
+  if (rank != loom_type_rank(rhs_type)) {
+    return false;
+  }
   for (uint8_t i = 0; i < rank; ++i) {
     uint64_t lhs_dim = 0;
     uint64_t rhs_dim = 0;
@@ -1738,7 +1800,9 @@ static bool loom_value_facts_shaped_dims_equal(loom_type_t lhs_type,
         !loom_value_facts_type_dim(rhs_type, i, &rhs_dim)) {
       return false;
     }
-    if (lhs_dim != rhs_dim) return false;
+    if (lhs_dim != rhs_dim) {
+      return false;
+    }
   }
   return true;
 }
@@ -1748,7 +1812,9 @@ bool loom_value_facts_element_counts_equal(
     iree_host_size_t lhs_value_fact_count, loom_type_t rhs_type,
     const loom_value_facts_t* rhs_value_facts,
     iree_host_size_t rhs_value_fact_count) {
-  if (loom_value_facts_shaped_dims_equal(lhs_type, rhs_type)) return true;
+  if (loom_value_facts_shaped_dims_equal(lhs_type, rhs_type)) {
+    return true;
+  }
 
   loom_value_facts_t lhs_count = {0};
   loom_value_facts_element_count(lhs_type, lhs_value_facts,

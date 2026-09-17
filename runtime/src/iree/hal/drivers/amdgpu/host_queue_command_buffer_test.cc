@@ -204,8 +204,12 @@ static const uint32_t* FindPm4DispatchDirectPacket(
   for (uint32_t i = 0; i + IREE_HAL_AMDGPU_PM4_DISPATCH_DIRECT_DWORD_COUNT <=
                        pm4_program->dword_count;
        ++i) {
-    if (pm4_program->dwords[i] != dispatch_direct_header) continue;
-    if (dispatch_direct_ordinal == 0) return &pm4_program->dwords[i];
+    if (pm4_program->dwords[i] != dispatch_direct_header) {
+      continue;
+    }
+    if (dispatch_direct_ordinal == 0) {
+      return &pm4_program->dwords[i];
+    }
     --dispatch_direct_ordinal;
   }
   return nullptr;
@@ -811,7 +815,9 @@ TEST_F(HostQueueCommandBufferTest,
         iree_hal_buffer_allocated_buffer(buffer);
     void* base_pointer =
         iree_hal_amdgpu_buffer_device_pointer(allocated_buffer);
-    if (!base_pointer) return nullptr;
+    if (!base_pointer) {
+      return nullptr;
+    }
     return (void*)((uintptr_t)base_pointer +
                    iree_hal_buffer_byte_offset(buffer));
   };

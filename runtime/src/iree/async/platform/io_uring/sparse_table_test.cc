@@ -175,7 +175,9 @@ TEST_F(SparseTableTest, ConcurrentReservationsAreDistinct) {
     release_requested = true;
   }
   gate_condition.notify_all();
-  for (std::thread& thread : threads) thread.join();
+  for (std::thread& thread : threads) {
+    thread.join();
+  }
 
   int32_t slot = iree_io_uring_sparse_table_acquire(table_, kThreadCount);
   EXPECT_EQ(slot, 0);

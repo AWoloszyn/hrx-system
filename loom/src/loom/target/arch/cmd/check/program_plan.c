@@ -43,7 +43,9 @@ static iree_status_t loom_cmd_program_plan_check_parse_roots(
 
   iree_host_size_t root_count = 1;
   for (iree_host_size_t i = 0; i < roots_text.size; ++i) {
-    if (roots_text.data[i] == ',') ++root_count;
+    if (roots_text.data[i] == ',') {
+      ++root_count;
+    }
   }
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(arena, root_count,
                                                  sizeof(*options->root_names),

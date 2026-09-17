@@ -944,7 +944,9 @@ iree_hal_amdgpu_aql_block_processor_profile_current_dispatch(
   }
   const iree_hal_amdgpu_aql_block_processor_profile_dispatch_t* dispatch =
       &processor->profile.dispatches.values[state->profile.event];
-  if (IREE_UNLIKELY(!dispatch->summary)) return NULL;
+  if (IREE_UNLIKELY(!dispatch->summary)) {
+    return NULL;
+  }
   if (dispatch->summary->packets.dispatch_ordinal != dispatch_packet_ordinal) {
     return NULL;
   }
@@ -1015,7 +1017,9 @@ static void iree_hal_amdgpu_aql_block_processor_profile_emit_counter_starts(
     uint64_t event_position,
     iree_hal_amdgpu_aql_packet_control_t packet_control,
     iree_hal_amdgpu_aql_block_processor_profile_state_t* state) {
-  if (processor->profile.counter_set_count == 0) return;
+  if (processor->profile.counter_set_count == 0) {
+    return;
+  }
   iree_hal_amdgpu_host_queue_emplace_profile_counter_start_packets(
       processor->queue, event_position, processor->profile.counter_set_count,
       processor->packets.first_payload_id, state->packets.emitted,
@@ -1027,7 +1031,9 @@ static void iree_hal_amdgpu_aql_block_processor_profile_emit_counter_read_stops(
     const iree_hal_amdgpu_aql_block_processor_profile_t* processor,
     uint64_t event_position,
     iree_hal_amdgpu_aql_block_processor_profile_state_t* state) {
-  if (processor->profile.counter_set_count == 0) return;
+  if (processor->profile.counter_set_count == 0) {
+    return;
+  }
   iree_hal_amdgpu_host_queue_emplace_profile_counter_read_stop_packets(
       processor->queue, event_position, processor->profile.counter_set_count,
       processor->packets.first_payload_id, state->packets.emitted,

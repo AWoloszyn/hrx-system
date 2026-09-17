@@ -95,7 +95,9 @@ static iree_status_t loom_amdgpu_low_verify_instruction_constraints(
     IREE_RETURN_IF_ERROR(
         loom_low_verify_context_emit(context, packet->op, LOOM_ERR_AMDGPU_047,
                                      params, IREE_ARRAYSIZE(params)));
-    if (loom_low_verify_context_should_stop(context)) break;
+    if (loom_low_verify_context_should_stop(context)) {
+      break;
+    }
   }
   return iree_ok_status();
 }

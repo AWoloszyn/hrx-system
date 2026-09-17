@@ -301,13 +301,19 @@ iree_status_t iree_async_proactor_io_uring_register_dmabuf(
   // so a READ region needs an internally writable mapping to use that
   // optimization. The published region retains the caller's access flags.
   int prot = 0;
-  if (access_flags & IREE_ASYNC_BUFFER_ACCESS_FLAG_READ) prot |= PROT_READ;
-  if (access_flags & IREE_ASYNC_BUFFER_ACCESS_FLAG_WRITE) prot |= PROT_WRITE;
+  if (access_flags & IREE_ASYNC_BUFFER_ACCESS_FLAG_READ) {
+    prot |= PROT_READ;
+  }
+  if (access_flags & IREE_ASYNC_BUFFER_ACCESS_FLAG_WRITE) {
+    prot |= PROT_WRITE;
+  }
   bool can_register_fixed_buffer =
       (access_flags & IREE_ASYNC_BUFFER_ACCESS_FLAG_READ) &&
       proactor->buffer_table != NULL;
   int mapping_prot = prot;
-  if (can_register_fixed_buffer) mapping_prot |= PROT_WRITE;
+  if (can_register_fixed_buffer) {
+    mapping_prot |= PROT_WRITE;
+  }
 
   // mmap requires page-aligned offset. Align offset down to page boundary and
   // adjust length up to cover the full requested range. We track the delta so
@@ -633,7 +639,9 @@ static iree_status_t iree_async_io_uring_slab_region_register_fixed_buffers(
         register_result = iree_io_uring_ring_register(
             &proactor->ring, IREE_IORING_REGISTER_BUFFERS_UPDATE, &update,
             sizeof(update));
-        if (register_result <= 0) break;
+        if (register_result <= 0) {
+          break;
+        }
         if ((uint32_t)register_result > remaining_count) {
           iree_status_abort(iree_make_status(
               IREE_STATUS_INTERNAL,
@@ -725,8 +733,9 @@ static iree_status_t iree_async_io_uring_slab_region_register_fixed_buffers(
     }
   }
 
-  if (iovecs_heap_allocated)
+  if (iovecs_heap_allocated) {
     iree_allocator_free(slab_region->allocator, iovecs);
+  }
 
   return status;
 }

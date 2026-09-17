@@ -43,7 +43,9 @@ static iree_status_t loom_cfg_resolve_forwarding_targets(
                                                  sizeof(*path), (void**)&path));
   memset(states, 0, block_count * sizeof(*states));
   for (uint16_t start = 0; start < block_count; ++start) {
-    if (states[start] == LOOM_CFG_FORWARD_RESOLVED) continue;
+    if (states[start] == LOOM_CFG_FORWARD_RESOLVED) {
+      continue;
+    }
     iree_host_size_t path_count = 0;
     uint16_t current = start;
     while (states[current] == LOOM_CFG_FORWARD_UNVISITED) {
@@ -94,7 +96,9 @@ iree_status_t loom_cfg_forward_empty_blocks(
     const loom_dominance_info_t* dominance, iree_arena_allocator_t* arena,
     iree_host_size_t* out_forwarded_count) {
   *out_forwarded_count = 0;
-  if (graph->malformed || graph->block_count <= 1) return iree_ok_status();
+  if (graph->malformed || graph->block_count <= 1) {
+    return iree_ok_status();
+  }
   uint16_t* targets = NULL;
   const loom_op_t** payloads = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -120,7 +124,9 @@ iree_status_t loom_cfg_forward_empty_blocks(
       has_forwarding |= targets[i] != i;
     }
   }
-  if (!has_forwarding) return iree_ok_status();
+  if (!has_forwarding) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(
       loom_cfg_resolve_forwarding_targets(targets, graph->block_count, arena));
 

@@ -98,6 +98,8 @@ TEST(WaitTest, ClockFailurePreservesOutputs) {
 
 extern "C" amdf_status_t amdf_platform_wait_query_time(
     uint64_t* out_nanoseconds) {
-  if (amdf_status_is_ok(clock_status)) *out_nanoseconds = now;
+  if (amdf_status_is_ok(clock_status)) {
+    *out_nanoseconds = now;
+  }
   return clock_status;
 }

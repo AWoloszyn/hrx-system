@@ -52,7 +52,9 @@ static iree_status_t iree_hal_streaming_context_synchronize_streams(
 iree_hal_streaming_timestamp_domain_t iree_hal_streaming_query_timestamp_domain(
     const iree_hal_device_spec_t* spec) {
   const iree_hal_streaming_timestamp_domain_t none = {0};
-  if (!spec) return none;
+  if (!spec) {
+    return none;
+  }
   const iree_hal_device_timing_spec_t* timing =
       iree_hal_device_spec_timing(spec);
   if (!iree_all_bits_set(timing->flags,
@@ -61,7 +63,9 @@ iree_hal_streaming_timestamp_domain_t iree_hal_streaming_query_timestamp_domain(
   }
   const iree_hal_device_queue_spec_t* queues =
       iree_hal_device_spec_queues(spec);
-  if (queues->family_count != 1) return none;
+  if (queues->family_count != 1) {
+    return none;
+  }
   const iree_hal_queue_family_spec_t* family = &queues->families[0];
   // Exactly one physical device: the header guarantees a single comparable
   // domain only for one family covering one physical device.
@@ -359,7 +363,9 @@ void iree_hal_streaming_context_retain(iree_hal_streaming_context_t* context) {
 
 bool iree_hal_streaming_context_try_retain(
     iree_hal_streaming_context_t* context) {
-  if (!context) return false;
+  if (!context) {
+    return false;
+  }
   int32_t reference_count = iree_atomic_ref_count_load(&context->ref_count);
   while (reference_count > 0) {
     if (iree_atomic_compare_exchange_weak(
@@ -446,7 +452,9 @@ iree_status_t iree_hal_streaming_context_push(
 iree_status_t iree_hal_streaming_context_pop(
     iree_hal_streaming_context_t** out_context) {
   IREE_TRACE_ZONE_BEGIN(z0);
-  if (out_context) *out_context = NULL;
+  if (out_context) {
+    *out_context = NULL;
+  }
 
   // Release current context.
   if (iree_hal_streaming_current_context) {
@@ -812,7 +820,9 @@ iree_status_t iree_hal_streaming_context_allocate_capture_id(
 void iree_hal_streaming_context_unregister_stream(
     iree_hal_streaming_context_t* context,
     iree_hal_streaming_stream_t* stream) {
-  if (!context || !stream) return;
+  if (!context || !stream) {
+    return;
+  }
   IREE_TRACE_ZONE_BEGIN(z0);
 
   bool found = false;
@@ -844,7 +854,9 @@ bool iree_hal_streaming_context_has_peer_contexts(
     iree_hal_streaming_context_t* context) {
   iree_hal_streaming_device_registry_t* device_registry =
       iree_hal_streaming_device_registry();
-  if (!device_registry) return false;
+  if (!device_registry) {
+    return false;
+  }
 
   bool has_peer = false;
   iree_slim_mutex_lock(&device_registry->context_list.mutex);
@@ -1182,9 +1194,13 @@ static iree_status_t iree_hal_streaming_context_synchronize_streams(
   // ordering excludes non-blocking streams, while device/context-wide
   // synchronization includes them.
   for (iree_host_size_t i = 0; i < count; ++i) {
-    if (!iree_status_is_ok(status)) break;
+    if (!iree_status_is_ok(status)) {
+      break;
+    }
     iree_hal_streaming_stream_t* stream = streams_copy[i];
-    if (!stream) continue;
+    if (!stream) {
+      continue;
+    }
     if (!include_non_blocking_streams &&
         (stream->flags & IREE_HAL_STREAMING_STREAM_FLAG_NON_BLOCKING)) {
       continue;

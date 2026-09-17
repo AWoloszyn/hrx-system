@@ -52,7 +52,9 @@ class LowAllocationStorageLeaseIndexTest : public ::testing::Test {
   void Initialize(std::vector<loom_low_allocation_storage_lease_t>& leases,
                   loom_low_allocation_storage_lease_unit_index_t* index) {
     size_t units = 0;
-    for (const auto& lease : leases) units += lease.location_count;
+    for (const auto& lease : leases) {
+      units += lease.location_count;
+    }
     IREE_ASSERT_OK(loom_low_allocation_storage_lease_unit_index_initialize(
         index, leases.data(), leases.size(), units, units, &arena_));
   }
@@ -269,7 +271,9 @@ TEST_F(LowAllocationStorageLeaseIndexTest, PreservesEmptyBoundaryQueries) {
 
 TEST_F(LowAllocationStorageLeaseIndexTest, RetiresMembersDuringIteration) {
   std::vector<loom_low_allocation_storage_lease_t> leases;
-  for (uint32_t i = 0; i < 64; ++i) leases.push_back(Lease(i, i + 1));
+  for (uint32_t i = 0; i < 64; ++i) {
+    leases.push_back(Lease(i, i + 1));
+  }
   loom_low_allocation_storage_lease_unit_index_t index;
   Initialize(leases, &index);
   for (uint32_t i = 0; i < leases.size(); ++i) {

@@ -158,7 +158,9 @@ static bool iree_hal_amdgpu_slab_provider_record_memory_event(
     allocation_id =
         iree_hal_amdgpu_logical_device_allocate_profile_memory_allocation_id(
             provider->device, &session_id);
-    if (allocation_id == 0) return false;
+    if (allocation_id == 0) {
+      return false;
+    }
   } else if (allocation_id == 0) {
     return false;
   }

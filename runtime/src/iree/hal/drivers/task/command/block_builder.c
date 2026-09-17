@@ -27,7 +27,9 @@ static iree_arena_block_t* iree_hal_cmd_block_data_to_arena_block(
 
 void iree_hal_cmd_block_recording_release(
     iree_hal_cmd_block_recording_t* recording) {
-  if (!recording->first_block) return;
+  if (!recording->first_block) {
+    return;
+  }
 
   // Walk our block chain and reconstruct the arena_block_t chain for release.
   iree_arena_block_t* arena_head = NULL;
@@ -64,7 +66,9 @@ void iree_hal_cmd_block_builder_initialize(
 
 void iree_hal_cmd_block_builder_deinitialize(
     iree_hal_cmd_block_builder_t* builder) {
-  if (!builder->block_pool) return;
+  if (!builder->block_pool) {
+    return;
+  }
 
   // Release the current in-progress block (if any).
   if (builder->current_header) {
@@ -329,7 +333,9 @@ static iree_host_size_t iree_hal_cmd_block_builder_remaining(
           builder->region_count + 1);
   iree_host_size_t backward =
       (iree_host_size_t)(builder->fixup_cursor - builder->cmd_cursor);
-  if (backward < metadata_reservation) return 0;
+  if (backward < metadata_reservation) {
+    return 0;
+  }
   return backward - metadata_reservation;
 }
 
@@ -439,7 +445,9 @@ iree_status_t iree_hal_cmd_block_builder_append_cmd(
     void** out_cmd, iree_hal_cmd_fixup_t** out_fixups) {
   IREE_ASSERT(out_cmd);
   *out_cmd = NULL;
-  if (out_fixups) *out_fixups = NULL;
+  if (out_fixups) {
+    *out_fixups = NULL;
+  }
 
   if (IREE_UNLIKELY(!builder->current_header)) {
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,

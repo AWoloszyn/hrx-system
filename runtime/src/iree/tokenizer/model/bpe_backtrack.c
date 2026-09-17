@@ -224,7 +224,9 @@ static bool iree_tokenizer_bpe_is_valid_token_pair(
       for (iree_host_size_t split_pos = frame->split_pos;
            split_pos < decompose_text.size; ++split_pos) {
         // Skip the position already tried by the fast path.
-        if (split_pos == table_split_pos && table_split_pos > 0) continue;
+        if (split_pos == table_split_pos && table_split_pos > 0) {
+          continue;
+        }
 
         iree_string_view_t left_text =
             iree_make_string_view(decompose_text.data, split_pos);
@@ -234,13 +236,17 @@ static bool iree_tokenizer_bpe_is_valid_token_pair(
         // Look up both halves in vocab.
         int32_t left_id = iree_tokenizer_vocab_lookup(vocab, left_text);
         int32_t right_id = iree_tokenizer_vocab_lookup(vocab, right_text);
-        if (left_id < 0 || right_id < 0) continue;
+        if (left_id < 0 || right_id < 0) {
+          continue;
+        }
 
         // Check if there's a merge left + right → decompose_token.
         iree_tokenizer_merge_hash_result_t merge =
             iree_tokenizer_vocab_merge_hash_lookup(model->merge_hash, left_id,
                                                    right_id);
-        if (merge.result_id != (int32_t)decompose_token) continue;
+        if (merge.result_id != (int32_t)decompose_token) {
+          continue;
+        }
 
         // Valid decomposition found. Compute new limit and push child frame.
         uint32_t new_limit;
@@ -352,7 +358,9 @@ static int32_t iree_tokenizer_bpe_find_first_token_at(
     const iree_tokenizer_bpe_model_t* model, const uint8_t* data,
     iree_host_size_t size, iree_host_size_t max_bytes,
     iree_host_size_t* out_length) {
-  if (size == 0) return -1;
+  if (size == 0) {
+    return -1;
+  }
 
   const bool byte_level =
       iree_all_bits_set(model->flags, IREE_TOKENIZER_BPE_FLAG_BYTE_LEVEL_INPUT);
@@ -367,7 +375,9 @@ static int32_t iree_tokenizer_bpe_find_first_token_at(
     }
     int32_t token = iree_tokenizer_trie_cursor_token_id(&cursor);
     if (token >= 0) {
-      if (out_length) *out_length = i + 1;
+      if (out_length) {
+        *out_length = i + 1;
+      }
       return token;
     }
   }
@@ -383,7 +393,9 @@ static int32_t iree_tokenizer_bpe_token_at_position(
     iree_host_size_t size, iree_host_size_t* out_length) {
   int32_t token = iree_tokenizer_bpe_single_char_token(model, data[0]);
   if (token >= 0) {
-    if (out_length) *out_length = 1;
+    if (out_length) {
+      *out_length = 1;
+    }
     return token;
   }
   return iree_tokenizer_bpe_find_first_token_at(model, data, size, 8,
@@ -402,12 +414,16 @@ static bool iree_tokenizer_bpe_is_token_consumed_rightward(
     const iree_tokenizer_bpe_model_t* model, int32_t token,
     const uint8_t* remaining_data, iree_host_size_t remaining_size,
     iree_host_size_t token_end, uint32_t max_rank) {
-  if (token_end >= remaining_size) return false;
+  if (token_end >= remaining_size) {
+    return false;
+  }
   iree_host_size_t following_length = 1;
   int32_t following_token = iree_tokenizer_bpe_token_at_position(
       model, remaining_data + token_end, remaining_size - token_end,
       &following_length);
-  if (following_token < 0) return false;
+  if (following_token < 0) {
+    return false;
+  }
 
   iree_tokenizer_merge_hash_result_t merge =
       iree_tokenizer_vocab_merge_hash_lookup(model->merge_hash, token,
@@ -457,13 +473,17 @@ static bool iree_tokenizer_bpe_is_suffix_merge_preempted(
     const iree_tokenizer_bpe_model_t* model, int32_t prefix_token,
     uint32_t suffix_merge_rank, const uint8_t* remaining_data,
     iree_host_size_t remaining_size, iree_host_size_t prefix_end) {
-  if (prefix_end >= remaining_size) return false;
+  if (prefix_end >= remaining_size) {
+    return false;
+  }
 
   iree_host_size_t next_length = 1;
   int32_t next_token = iree_tokenizer_bpe_token_at_position(
       model, remaining_data + prefix_end, remaining_size - prefix_end,
       &next_length);
-  if (next_token < 0) return false;
+  if (next_token < 0) {
+    return false;
+  }
 
   // Direct preemption: merge(prefix, next) at rank < suffix_merge_rank.
   // Only valid if next is actually available (not consumed rightward).
@@ -496,7 +516,9 @@ static bool iree_tokenizer_bpe_is_suffix_merge_preempted(
         model, remaining_data + compound_end, remaining_size - compound_end,
         &extension_length);
   }
-  if (extension_token < 0) return false;
+  if (extension_token < 0) {
+    return false;
+  }
 
   iree_tokenizer_merge_hash_result_t compound_merge =
       iree_tokenizer_vocab_merge_hash_lookup(model->merge_hash, next_token,
@@ -519,11 +541,15 @@ static bool iree_tokenizer_bpe_is_suffix_merge_preempted(
     }
 
     // Extend compound by one more character.
-    if (compound_end >= remaining_size) break;
+    if (compound_end >= remaining_size) {
+      break;
+    }
     extension_token = iree_tokenizer_bpe_token_at_position(
         model, remaining_data + compound_end, remaining_size - compound_end,
         &extension_length);
-    if (extension_token < 0) break;
+    if (extension_token < 0) {
+      break;
+    }
 
     compound_merge = iree_tokenizer_vocab_merge_hash_lookup(
         model->merge_hash, compound_token, extension_token);
@@ -572,7 +598,9 @@ static bool iree_tokenizer_bpe_is_suffix_blocked(
     const char* suffix_data, iree_host_size_t suffix_length,
     uint32_t* out_blocking_rank) {
   *out_blocking_rank = 0;
-  if (remaining_size == 0 && suffix_length == 0) return false;
+  if (remaining_size == 0 && suffix_length == 0) {
+    return false;
+  }
 
   const iree_tokenizer_bpe_split_entry_t* split_table =
       model->backtrack_tables.split_table;
@@ -581,7 +609,9 @@ static bool iree_tokenizer_bpe_is_suffix_blocked(
       iree_all_bits_set(model->flags, IREE_TOKENIZER_BPE_FLAG_BYTE_LEVEL_INPUT);
 
   uint32_t token_rank = effective_rank[(uint32_t)token];
-  if (token_rank <= 1) return false;  // Base token, no suffix to check.
+  if (token_rank <= 1) {
+    return false;  // Base token, no suffix to check.
+  }
 
   // Collect all rightmost suffixes with their consumption ranks.
   // A suffix is "consumed" when its parent forms - if a potential suffix merge
@@ -624,7 +654,9 @@ static bool iree_tokenizer_bpe_is_suffix_blocked(
   }
   IREE_ASSERT(suffix_count < IREE_ARRAYSIZE(suffixes),
               "suffix chain depth exceeds capacity");
-  if (suffix_count == 0) return false;
+  if (suffix_count == 0) {
+    return false;
+  }
 
   // Walk the trie to enumerate all prefix tokens of the remaining input.
   iree_tokenizer_trie_cursor_t cursor;
@@ -641,21 +673,29 @@ static bool iree_tokenizer_bpe_is_suffix_blocked(
     bytes_consumed = i + 1;
 
     int32_t prefix_token = iree_tokenizer_trie_cursor_token_id(&cursor);
-    if (prefix_token < 0) continue;
+    if (prefix_token < 0) {
+      continue;
+    }
 
     // Check each suffix against this prefix.
     for (iree_host_size_t s = 0; s < suffix_count; ++s) {
       iree_tokenizer_merge_hash_result_t merge =
           iree_tokenizer_vocab_merge_hash_lookup(
               model->merge_hash, (int32_t)suffixes[s], prefix_token);
-      if (!iree_tokenizer_merge_hash_result_is_valid(merge)) continue;
+      if (!iree_tokenizer_merge_hash_result_is_valid(merge)) {
+        continue;
+      }
 
       // Skip if merge rank is too high to matter.
       uint32_t merge_effective_rank = merge.rank + 1;
-      if (merge_effective_rank >= token_rank) continue;
+      if (merge_effective_rank >= token_rank) {
+        continue;
+      }
 
       // Skip if the suffix is consumed before this merge could fire.
-      if (merge_effective_rank >= suffix_consumed_at[s]) continue;
+      if (merge_effective_rank >= suffix_consumed_at[s]) {
+        continue;
+      }
 
       // Skip when suffix == prefix (repeating pattern case).
       // When the suffix token equals the prefix token, we have a repeating
@@ -663,7 +703,9 @@ static bool iree_tokenizer_bpe_is_suffix_blocked(
       // would also face suffix blocking by the same pattern, creating an
       // infinite loop. The suffix blocking optimization doesn't help here
       // because there's no "better" tokenization to defer to.
-      if ((int32_t)suffixes[s] == prefix_token) continue;
+      if ((int32_t)suffixes[s] == prefix_token) {
+        continue;
+      }
 
       // Check if the prefix would be consumed by lower-rank merges first.
       if (iree_tokenizer_bpe_is_suffix_merge_preempted(
@@ -714,24 +756,34 @@ static bool iree_tokenizer_bpe_is_suffix_blocked(
     }
 
     int32_t prefix_token = iree_tokenizer_trie_cursor_token_id(&cursor);
-    if (prefix_token < 0) continue;
+    if (prefix_token < 0) {
+      continue;
+    }
 
     // Check each token suffix against this suffixed prefix token.
     for (iree_host_size_t s = 0; s < suffix_count; ++s) {
       iree_tokenizer_merge_hash_result_t merge =
           iree_tokenizer_vocab_merge_hash_lookup(
               model->merge_hash, (int32_t)suffixes[s], prefix_token);
-      if (!iree_tokenizer_merge_hash_result_is_valid(merge)) continue;
+      if (!iree_tokenizer_merge_hash_result_is_valid(merge)) {
+        continue;
+      }
 
       // Skip if merge rank is too high to matter.
       uint32_t merge_effective_rank = merge.rank + 1;
-      if (merge_effective_rank >= token_rank) continue;
+      if (merge_effective_rank >= token_rank) {
+        continue;
+      }
 
       // Skip if the token suffix is consumed before this merge could fire.
-      if (merge_effective_rank >= suffix_consumed_at[s]) continue;
+      if (merge_effective_rank >= suffix_consumed_at[s]) {
+        continue;
+      }
 
       // Skip when suffix == prefix (repeating pattern case).
-      if ((int32_t)suffixes[s] == prefix_token) continue;
+      if ((int32_t)suffixes[s] == prefix_token) {
+        continue;
+      }
 
       // Suffixed tokens consume all remaining input + suffix bytes, so no
       // preemption check is needed. The prefix_token represents the complete
