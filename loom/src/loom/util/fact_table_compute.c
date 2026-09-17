@@ -1602,6 +1602,16 @@ static iree_status_t loom_value_fact_table_compute_counted_loop_summary(
   loom_value_facts_t* result_facts = NULL;
   IREE_RETURN_IF_ERROR(
       loom_value_fact_table_allocate_fact_array(table, count, &result_facts));
+  loom_value_facts_t trip_facts = loom_value_facts_unknown();
+  loom_value_facts_propagate_ternary_distribution(lower_bound, upper_bound,
+                                                  step, &trip_facts);
+  const loom_block_t* body_block = loom_region_const_entry_block(body);
+  const loom_op_t* yield = loom_value_fact_region_terminator(body);
+  // Rewriter builders finalize the new loop before moving its body. Missing
+  // terminators contribute unknown facts until the region edit is published.
+  const loom_value_id_t* yielded_values =
+      yield ? loom_op_const_operands(yield) : NULL;
+  const loom_value_slice_t initial_values = loom_loop_like_iter_args(loop);
   for (uint16_t i = 0; i < count; ++i) {
     if (zero_trip) {
       result_facts[i] = init_facts[i];
@@ -1611,6 +1621,22 @@ static iree_status_t loom_value_fact_table_compute_counted_loop_summary(
       IREE_RETURN_IF_ERROR(loom_value_fact_table_meet_for_type(
           table, module, types[i], table, init_facts[i], table,
           yielded_facts[i], &result_facts[i]));
+    }
+    // Uniform state at one iteration need not be uniform after invocations
+    // exit on different iterations. Directly unchanged state is independent
+    // of the trip count, as is a result proven exact by the scalar domain.
+    const bool unchanged =
+        yielded_values &&
+        (yielded_values[i] ==
+             loom_block_arg_id(body_block, carried_arg_offset + i) ||
+         yielded_values[i] == initial_values.values[i]);
+    if (!zero_trip && !unchanged) {
+      loom_value_facts_propagate_binary_distribution(
+          result_facts[i], trip_facts, &result_facts[i]);
+      if (loom_value_facts_is_lane_varying(result_facts[i])) {
+        loom_value_facts_mark_lane_distribution_for_type(types[i],
+                                                         &result_facts[i]);
+      }
     }
   }
   return loom_value_fact_table_define_region_results(
@@ -1700,6 +1726,37 @@ static iree_status_t loom_value_fact_table_compute_condition_loop_summary(
         table, yield, /*operand_offset=*/0, yielded_facts, count);
   }
 
+  const loom_op_t* condition =
+      loom_value_fact_region_terminator(condition_region);
+  const loom_value_id_t* condition_values =
+      condition ? loom_op_const_operands(condition) : NULL;
+  const loom_value_facts_t condition_facts =
+      condition_values
+          ? loom_value_fact_table_lookup(table, condition_values[0])
+          : loom_value_facts_unknown();
+  const loom_op_t* yield = loom_value_fact_region_terminator(body);
+  const loom_value_id_t* yielded_values =
+      yield ? loom_op_const_operands(yield) : NULL;
+  const loom_block_t* condition_block =
+      loom_region_const_entry_block(condition_region);
+  const loom_block_t* body_block = loom_region_const_entry_block(body);
+  const loom_value_slice_t initial_values = loom_loop_like_iter_args(loop);
+  for (uint16_t i = 0; i < count; ++i) {
+    const bool unchanged =
+        condition_values && yielded_values &&
+        (condition_values[1 + i] == initial_values.values[i] ||
+         (condition_values[1 + i] == loom_block_arg_id(condition_block, i) &&
+          (yielded_values[i] == loom_block_arg_id(body_block, i) ||
+           yielded_values[i] == initial_values.values[i])));
+    if (!unchanged) {
+      loom_value_facts_propagate_binary_distribution(
+          forwarded_facts[i], condition_facts, &forwarded_facts[i]);
+      if (loom_value_facts_is_lane_varying(forwarded_facts[i])) {
+        loom_value_facts_mark_lane_distribution_for_type(types[i],
+                                                         &forwarded_facts[i]);
+      }
+    }
+  }
   return loom_value_fact_table_define_region_results(
       table, module, loop.op, forwarded_facts, count, out_changed);
 }
