@@ -253,6 +253,18 @@ const EmbeddedSource kI32MemoryChainSource = FindEmbeddedSource(
     loomc_benchmark_synthetic_i32_chain_smoke_size(), "i32_memory_chain.loom");
 
 [[maybe_unused]] const bool kAmdgpuWorkloadBenchmarksRegistered = [] {
+  RegisterInputScalingCompileBenchmarks(
+      kAmdgpuWorkloadTarget, "FfnGateUpQuadraticBF16",
+      {
+          /*.source=*/FindEmbeddedSource(
+              loomc_benchmark_ffn_gate_up_smoke_create(),
+              loomc_benchmark_ffn_gate_up_smoke_size(),
+              "gate_up_quadratic_bf16_amdgpu.loom"),
+          /*.function_symbol=*/"ffn_gate_up_quadratic_bf16",
+          /*.artifact_identifier=*/"ffn_gate_up_quadratic_bf16.hsaco",
+          /*.input_size_config_symbol=*/"ffn_gate_up.input_size",
+      },
+      {512, 1024, 4096}, {512, 1024, 4096});
   RegisterPipelineCompileBenchmarks(
       kAmdgpuWorkloadTarget, "ScfPipeline",
       {
