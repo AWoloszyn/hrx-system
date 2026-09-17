@@ -1,0 +1,172 @@
+// Independent exact expectations for N rows and lane L:
+// left: N * (10 + 16 * L + 256 * (N - 1));
+// right: N * (-5 + 8 * L + 128 * (N - 1)).
+// Distinct inputs, counts, and output sentinels expose crossed instance state.
+kernel.decl @sum_paired_rows() launch(%left_count: index, %right_count: index, %left_input: buffer, %right_input: buffer, %left_output: buffer, %right_output: buffer)
+
+check.case public @paired_rows_0_0 {
+  %left_count = check.literal value(0) : index
+  %right_count = check.literal value(0) : index
+  %left_input = check.generate.iota offset(1.0) step(1.0) : tensor<64x32x4xf32>
+  %right_input = check.generate.iota offset(-2.0) step(0.5) : tensor<64x32x4xf32>
+  %left_output = check.generate.fill value(-1.0) : tensor<32xf32>
+  %right_output = check.generate.fill value(1.0) : tensor<32xf32>
+  %left_expected = check.generate.iota offset(0.0) step(0.0) : tensor<32xf32>
+  %right_expected = check.generate.iota offset(0.0) step(0.0) : tensor<32xf32>
+  kernel.launch @sum_paired_rows(%left_count, %right_count, %left_input, %right_input, %left_output, %right_output) : (index, index, tensor<64x32x4xf32>, tensor<64x32x4xf32>, tensor<32xf32>, tensor<32xf32>)
+  check.expect.bitwise actual(%left_output) expected(%left_expected) : tensor<32xf32>
+  check.expect.bitwise actual(%right_output) expected(%right_expected) : tensor<32xf32>
+  check.return
+}
+
+check.case public @paired_rows_0_64 {
+  %left_count = check.literal value(0) : index
+  %right_count = check.literal value(64) : index
+  %left_input = check.generate.iota offset(1.0) step(1.0) : tensor<64x32x4xf32>
+  %right_input = check.generate.iota offset(-2.0) step(0.5) : tensor<64x32x4xf32>
+  %left_output = check.generate.fill value(-1.0) : tensor<32xf32>
+  %right_output = check.generate.fill value(1.0) : tensor<32xf32>
+  %left_expected = check.generate.iota offset(0.0) step(0.0) : tensor<32xf32>
+  %right_expected = check.generate.iota offset(515776.0) step(512.0) : tensor<32xf32>
+  kernel.launch @sum_paired_rows(%left_count, %right_count, %left_input, %right_input, %left_output, %right_output) : (index, index, tensor<64x32x4xf32>, tensor<64x32x4xf32>, tensor<32xf32>, tensor<32xf32>)
+  check.expect.bitwise actual(%left_output) expected(%left_expected) : tensor<32xf32>
+  check.expect.bitwise actual(%right_output) expected(%right_expected) : tensor<32xf32>
+  check.return
+}
+
+check.case public @paired_rows_64_0 {
+  %left_count = check.literal value(64) : index
+  %right_count = check.literal value(0) : index
+  %left_input = check.generate.iota offset(1.0) step(1.0) : tensor<64x32x4xf32>
+  %right_input = check.generate.iota offset(-2.0) step(0.5) : tensor<64x32x4xf32>
+  %left_output = check.generate.fill value(-1.0) : tensor<32xf32>
+  %right_output = check.generate.fill value(1.0) : tensor<32xf32>
+  %left_expected = check.generate.iota offset(1032832.0) step(1024.0) : tensor<32xf32>
+  %right_expected = check.generate.iota offset(0.0) step(0.0) : tensor<32xf32>
+  kernel.launch @sum_paired_rows(%left_count, %right_count, %left_input, %right_input, %left_output, %right_output) : (index, index, tensor<64x32x4xf32>, tensor<64x32x4xf32>, tensor<32xf32>, tensor<32xf32>)
+  check.expect.bitwise actual(%left_output) expected(%left_expected) : tensor<32xf32>
+  check.expect.bitwise actual(%right_output) expected(%right_expected) : tensor<32xf32>
+  check.return
+}
+
+check.case public @paired_rows_1_2 {
+  %left_count = check.literal value(1) : index
+  %right_count = check.literal value(2) : index
+  %left_input = check.generate.iota offset(1.0) step(1.0) : tensor<64x32x4xf32>
+  %right_input = check.generate.iota offset(-2.0) step(0.5) : tensor<64x32x4xf32>
+  %left_output = check.generate.fill value(-1.0) : tensor<32xf32>
+  %right_output = check.generate.fill value(1.0) : tensor<32xf32>
+  %left_expected = check.generate.iota offset(10.0) step(16.0) : tensor<32xf32>
+  %right_expected = check.generate.iota offset(246.0) step(16.0) : tensor<32xf32>
+  kernel.launch @sum_paired_rows(%left_count, %right_count, %left_input, %right_input, %left_output, %right_output) : (index, index, tensor<64x32x4xf32>, tensor<64x32x4xf32>, tensor<32xf32>, tensor<32xf32>)
+  check.expect.bitwise actual(%left_output) expected(%left_expected) : tensor<32xf32>
+  check.expect.bitwise actual(%right_output) expected(%right_expected) : tensor<32xf32>
+  check.return
+}
+
+check.case public @paired_rows_2_1 {
+  %left_count = check.literal value(2) : index
+  %right_count = check.literal value(1) : index
+  %left_input = check.generate.iota offset(1.0) step(1.0) : tensor<64x32x4xf32>
+  %right_input = check.generate.iota offset(-2.0) step(0.5) : tensor<64x32x4xf32>
+  %left_output = check.generate.fill value(-1.0) : tensor<32xf32>
+  %right_output = check.generate.fill value(1.0) : tensor<32xf32>
+  %left_expected = check.generate.iota offset(532.0) step(32.0) : tensor<32xf32>
+  %right_expected = check.generate.iota offset(-5.0) step(8.0) : tensor<32xf32>
+  kernel.launch @sum_paired_rows(%left_count, %right_count, %left_input, %right_input, %left_output, %right_output) : (index, index, tensor<64x32x4xf32>, tensor<64x32x4xf32>, tensor<32xf32>, tensor<32xf32>)
+  check.expect.bitwise actual(%left_output) expected(%left_expected) : tensor<32xf32>
+  check.expect.bitwise actual(%right_output) expected(%right_expected) : tensor<32xf32>
+  check.return
+}
+
+check.case public @paired_rows_3_4 {
+  %left_count = check.literal value(3) : index
+  %right_count = check.literal value(4) : index
+  %left_input = check.generate.iota offset(1.0) step(1.0) : tensor<64x32x4xf32>
+  %right_input = check.generate.iota offset(-2.0) step(0.5) : tensor<64x32x4xf32>
+  %left_output = check.generate.fill value(-1.0) : tensor<32xf32>
+  %right_output = check.generate.fill value(1.0) : tensor<32xf32>
+  %left_expected = check.generate.iota offset(1566.0) step(48.0) : tensor<32xf32>
+  %right_expected = check.generate.iota offset(1516.0) step(32.0) : tensor<32xf32>
+  kernel.launch @sum_paired_rows(%left_count, %right_count, %left_input, %right_input, %left_output, %right_output) : (index, index, tensor<64x32x4xf32>, tensor<64x32x4xf32>, tensor<32xf32>, tensor<32xf32>)
+  check.expect.bitwise actual(%left_output) expected(%left_expected) : tensor<32xf32>
+  check.expect.bitwise actual(%right_output) expected(%right_expected) : tensor<32xf32>
+  check.return
+}
+
+check.case public @paired_rows_4_3 {
+  %left_count = check.literal value(4) : index
+  %right_count = check.literal value(3) : index
+  %left_input = check.generate.iota offset(1.0) step(1.0) : tensor<64x32x4xf32>
+  %right_input = check.generate.iota offset(-2.0) step(0.5) : tensor<64x32x4xf32>
+  %left_output = check.generate.fill value(-1.0) : tensor<32xf32>
+  %right_output = check.generate.fill value(1.0) : tensor<32xf32>
+  %left_expected = check.generate.iota offset(3112.0) step(64.0) : tensor<32xf32>
+  %right_expected = check.generate.iota offset(753.0) step(24.0) : tensor<32xf32>
+  kernel.launch @sum_paired_rows(%left_count, %right_count, %left_input, %right_input, %left_output, %right_output) : (index, index, tensor<64x32x4xf32>, tensor<64x32x4xf32>, tensor<32xf32>, tensor<32xf32>)
+  check.expect.bitwise actual(%left_output) expected(%left_expected) : tensor<32xf32>
+  check.expect.bitwise actual(%right_output) expected(%right_expected) : tensor<32xf32>
+  check.return
+}
+
+check.case public @paired_rows_5_7 {
+  %left_count = check.literal value(5) : index
+  %right_count = check.literal value(7) : index
+  %left_input = check.generate.iota offset(1.0) step(1.0) : tensor<64x32x4xf32>
+  %right_input = check.generate.iota offset(-2.0) step(0.5) : tensor<64x32x4xf32>
+  %left_output = check.generate.fill value(-1.0) : tensor<32xf32>
+  %right_output = check.generate.fill value(1.0) : tensor<32xf32>
+  %left_expected = check.generate.iota offset(5170.0) step(80.0) : tensor<32xf32>
+  %right_expected = check.generate.iota offset(5341.0) step(56.0) : tensor<32xf32>
+  kernel.launch @sum_paired_rows(%left_count, %right_count, %left_input, %right_input, %left_output, %right_output) : (index, index, tensor<64x32x4xf32>, tensor<64x32x4xf32>, tensor<32xf32>, tensor<32xf32>)
+  check.expect.bitwise actual(%left_output) expected(%left_expected) : tensor<32xf32>
+  check.expect.bitwise actual(%right_output) expected(%right_expected) : tensor<32xf32>
+  check.return
+}
+
+check.case public @paired_rows_7_5 {
+  %left_count = check.literal value(7) : index
+  %right_count = check.literal value(5) : index
+  %left_input = check.generate.iota offset(1.0) step(1.0) : tensor<64x32x4xf32>
+  %right_input = check.generate.iota offset(-2.0) step(0.5) : tensor<64x32x4xf32>
+  %left_output = check.generate.fill value(-1.0) : tensor<32xf32>
+  %right_output = check.generate.fill value(1.0) : tensor<32xf32>
+  %left_expected = check.generate.iota offset(10822.0) step(112.0) : tensor<32xf32>
+  %right_expected = check.generate.iota offset(2535.0) step(40.0) : tensor<32xf32>
+  kernel.launch @sum_paired_rows(%left_count, %right_count, %left_input, %right_input, %left_output, %right_output) : (index, index, tensor<64x32x4xf32>, tensor<64x32x4xf32>, tensor<32xf32>, tensor<32xf32>)
+  check.expect.bitwise actual(%left_output) expected(%left_expected) : tensor<32xf32>
+  check.expect.bitwise actual(%right_output) expected(%right_expected) : tensor<32xf32>
+  check.return
+}
+
+check.case public @paired_rows_63_64 {
+  %left_count = check.literal value(63) : index
+  %right_count = check.literal value(64) : index
+  %left_input = check.generate.iota offset(1.0) step(1.0) : tensor<64x32x4xf32>
+  %right_input = check.generate.iota offset(-2.0) step(0.5) : tensor<64x32x4xf32>
+  %left_output = check.generate.fill value(-1.0) : tensor<32xf32>
+  %right_output = check.generate.fill value(1.0) : tensor<32xf32>
+  %left_expected = check.generate.iota offset(1000566.0) step(1008.0) : tensor<32xf32>
+  %right_expected = check.generate.iota offset(515776.0) step(512.0) : tensor<32xf32>
+  kernel.launch @sum_paired_rows(%left_count, %right_count, %left_input, %right_input, %left_output, %right_output) : (index, index, tensor<64x32x4xf32>, tensor<64x32x4xf32>, tensor<32xf32>, tensor<32xf32>)
+  check.expect.bitwise actual(%left_output) expected(%left_expected) : tensor<32xf32>
+  check.expect.bitwise actual(%right_output) expected(%right_expected) : tensor<32xf32>
+  check.return
+}
+
+check.case public @paired_rows_64_63 {
+  %left_count = check.literal value(64) : index
+  %right_count = check.literal value(63) : index
+  %left_input = check.generate.iota offset(1.0) step(1.0) : tensor<64x32x4xf32>
+  %right_input = check.generate.iota offset(-2.0) step(0.5) : tensor<64x32x4xf32>
+  %left_output = check.generate.fill value(-1.0) : tensor<32xf32>
+  %right_output = check.generate.fill value(1.0) : tensor<32xf32>
+  %left_expected = check.generate.iota offset(1032832.0) step(1024.0) : tensor<32xf32>
+  %right_expected = check.generate.iota offset(499653.0) step(504.0) : tensor<32xf32>
+  kernel.launch @sum_paired_rows(%left_count, %right_count, %left_input, %right_input, %left_output, %right_output) : (index, index, tensor<64x32x4xf32>, tensor<64x32x4xf32>, tensor<32xf32>, tensor<32xf32>)
+  check.expect.bitwise actual(%left_output) expected(%left_expected) : tensor<32xf32>
+  check.expect.bitwise actual(%right_output) expected(%right_expected) : tensor<32xf32>
+  check.return
+}
+
+check.benchmark<@paired_rows_64_63> @paired_rows_time

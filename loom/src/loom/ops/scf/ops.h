@@ -46,6 +46,8 @@ typedef enum loom_scf_for_unroll_schedule_e {
 } loom_scf_for_unroll_schedule_t;
 
 // LOOM_OP_SCF_FOR: Bounded counted loop over an index or offset domain with optional loop-carried state.
+//
+// The optional `pipeline(%depth)` and `unroll(%factor)` policies accept independent SSA values, including template arguments and arithmetic on specialized target properties. Pipelining runs before unrolling. Compile reports retain applied schedules and final resource costs; `loom-compile-report suggest` proposes evidence-backed comparisons. The [per-instance schedule search](../../../../workflows/search-loop-schedules.md) shows checked candidates, resource cliffs, and controlled measurements.
 // scf.for %iv = [%c0 to %n step %c1] {
 //   scf.yield
 // }

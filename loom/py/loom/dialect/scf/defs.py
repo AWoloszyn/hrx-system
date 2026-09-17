@@ -303,7 +303,17 @@ scf_lookup = Op(
 scf_for = Op(
     "scf.for",
     group=scf_ops,
-    doc="Bounded counted loop over an index or offset domain with optional loop-carried state.",
+    doc=(
+        "Bounded counted loop over an index or offset domain with optional loop-carried state.\n\n"
+        "The optional `pipeline(%depth)` and `unroll(%factor)` policies accept "
+        "independent SSA values, including template arguments and arithmetic on "
+        "specialized target properties. Pipelining runs before unrolling. "
+        "Compile reports retain applied schedules and final resource costs; "
+        "`loom-compile-report suggest` proposes evidence-backed comparisons. "
+        "The [per-instance schedule search]"
+        "(../../../../workflows/search-loop-schedules.md) "
+        "shows checked candidates, resource cliffs, and controlled measurements."
+    ),
     canonicalize="loom_scf_for_canonicalize",
     verify="loom_scf_for_verify",
     operands=[

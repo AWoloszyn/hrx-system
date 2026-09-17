@@ -76,15 +76,18 @@ def test_dialect_index_sorts_each_user_facing_section() -> None:
 
 def test_generated_reference_links_resolve() -> None:
     files = generate_reference_files()
+    source_root = Path(__file__).parents[4] / "docs" / "src"
+    available_paths = {f"reference/{path}" for path in files}
+    available_paths.update(path.relative_to(source_root).as_posix() for path in source_root.rglob("*.md"))
     for source_path, contents in files.items():
         if not source_path.endswith(".md"):
             continue
-        source_dir = posixpath.dirname(source_path)
+        source_dir = posixpath.dirname(f"reference/{source_path}")
         prose = _prose_without_fenced_code(contents)
         for target in _MARKDOWN_LINK_PATTERN.findall(prose):
             assert "://" not in target
             resolved = posixpath.normpath(posixpath.join(source_dir, target))
-            assert resolved in files, f"{source_path}: missing {target}"
+            assert resolved in available_paths, f"{source_path}: missing {target}"
 
 
 def test_reference_renders_semantics_and_canonical_examples() -> None:

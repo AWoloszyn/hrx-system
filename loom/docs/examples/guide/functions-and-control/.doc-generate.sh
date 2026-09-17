@@ -31,6 +31,8 @@ cp -- "${script_dir}/read-ahead.loom" "${output_dir}/read-ahead.loom"
 cp -- "${script_dir}/read-ahead-tests.loom" "${output_dir}/read-ahead-tests.loom"
 cp -- "${script_dir}/vector-read-ahead.loom" "${output_dir}/vector-read-ahead.loom"
 cp -- "${script_dir}/vector-read-ahead-tests.loom" "${output_dir}/vector-read-ahead-tests.loom"
+cp -- "${script_dir}/paired-read-ahead.loom" "${output_dir}/paired-read-ahead.loom"
+cp -- "${script_dir}/paired-read-ahead-tests.loom" "${output_dir}/paired-read-ahead-tests.loom"
 cp -- "${script_dir}/guarded-read-ahead.loom" "${output_dir}/guarded-read-ahead.loom"
 cp -- "${script_dir}/guarded-read-ahead-tests.loom" "${output_dir}/guarded-read-ahead-tests.loom"
 cp -- "${repo_root}/loom/src/loom/test/corpus/checked_benchmarks/streaming_packed_s8_dot.loom" \
@@ -121,3 +123,91 @@ test -s pipeline-copy-waits.txt
   --benchmark=@streaming_packed_s8_dot_read_ahead_n128_time \
   --config=packed_stream.depth=4 --config=packed_stream.unroll=2 \
   --dry-run --output=packed-dot.plan.json
+
+# Compile the independent caller grid and retain the bounded evidence readers use.
+"${loom_format}" --check paired-read-ahead.loom
+"${loom_format}" --check paired-read-ahead-tests.loom
+"${loom_link}" vector-read-ahead.loom paired-read-ahead.loom \
+  paired-read-ahead-tests.loom --mode=merge --to=bc --output=paired-read-ahead.loombc
+mkdir -p paired
+compile_pair() {
+  local left_depth="$1" left_factor="$2" right_depth="$3" right_factor="$4"
+  local candidate="paired/l${1}u${2}-r${3}u${4}"
+  "${loom_compile}" paired-read-ahead.loombc --root=@sum_paired_rows \
+    --target=amdgpu:gfx1151 --format=amdgpu-hsaco \
+    --config="paired_rows.left_lookahead=$((left_depth - 1))" \
+    --config="paired_rows.left_unroll=${left_factor}" \
+    --config="paired_rows.right_lookahead=$((right_depth - 1))" \
+    --config="paired_rows.right_unroll=${right_factor}" \
+    --output="${candidate}.hsaco" --compile-report=details \
+    --compile-report-output="${candidate}.report.json"
+  "${loom_report}" show "${candidate}.report.json" --format=json >"${candidate}.view.json"
+  "${loom_report}" suggest "${candidate}.report.json" >"${candidate}.suggest.txt"
+}
+for left_depth in 1 4; do
+  for left_factor in 1 4; do
+    for right_depth in 1 4; do
+      for right_factor in 1 4; do
+        compile_pair "${left_depth}" "${left_factor}" "${right_depth}" "${right_factor}"
+      done
+    done
+  done
+done
+for depth in 8 16 32; do
+  compile_pair "${depth}" 4 "${depth}" 4
+done
+"${loom_report}" diff paired/l1u4-r1u4.report.json paired/l4u4-r1u4.report.json \
+  --force >paired/depth.diff.txt
+grep -Fq 'paired_rows.left_lookahead' paired/depth.diff.txt
+sed -n '/^\[scf.compare_pipeline_depth\]/,/^$/p' paired/l4u4-r1u1.suggest.txt \
+  >paired-pipeline-suggest.txt
+test -s paired-pipeline-suggest.txt
+"${loom_compile}" paired-read-ahead.loombc --root=@sum_paired_rows \
+  --target=spirv:vulkan1.3+bda --format=spirv-binary --output=paired-rows.spv
+"${loom_benchmark}" paired-read-ahead.loombc --benchmark=@paired_rows_time \
+  --dry-run --output=paired-rows.plan.json
+
+python3 - <<'PY'
+import itertools
+import json
+from pathlib import Path
+
+policies = list(itertools.product((1, 4), repeat=4))
+policies += [(depth, 4, depth, 4) for depth in (8, 16, 32)]
+views = {}
+for left_depth, left_factor, right_depth, right_factor in policies:
+    name = f"l{left_depth}u{left_factor}-r{right_depth}u{right_factor}"
+    view = json.loads(Path(f"paired/{name}.view.json").read_text())
+    expected = {
+        "paired_rows.left_lookahead": str(left_depth - 1),
+        "paired_rows.left_unroll": str(left_factor),
+        "paired_rows.right_lookahead": str(right_depth - 1),
+        "paired_rows.right_unroll": str(right_factor),
+    }
+    assert view["identity"]["config_bindings"] == [
+        {"key": key, "value": value} for key, value in sorted(expected.items())
+    ], name
+    assert [row["depth"] for row in view["loop_pipelines"]["rows"]] == [
+        left_depth, right_depth
+    ], name
+    assert len(view["entries"]) == 1, name
+    views[name] = view["entries"][0]
+
+lines = [
+    "| Left policy | Right policy | Code bytes | VGPRs | Modeled residency | Spills |",
+    "| --- | --- | ---: | ---: | ---: | ---: |",
+]
+for left_depth, left_factor, right_depth, right_factor in (
+    (1, 1, 1, 1), (1, 4, 1, 4), (4, 1, 4, 1), (4, 4, 1, 1),
+    (4, 4, 4, 4), (8, 4, 8, 4), (16, 4, 16, 4), (32, 4, 32, 4),
+):
+    entry = views[f"l{left_depth}u{left_factor}-r{right_depth}u{right_factor}"]
+    facts = entry["artifact_facts"]
+    analysis = entry["compiler_analysis"]
+    lines.append(
+        f"| {left_depth} / {left_factor} | {right_depth} / {right_factor} | "
+        f"{facts['code_byte_count']} | {analysis['vector_register_count']} | "
+        f"{analysis['occupancy_percent']}% | {analysis['allocation_spill_count']} |"
+    )
+Path("paired-resources.md").write_text("\n".join(lines) + "\n")
+PY

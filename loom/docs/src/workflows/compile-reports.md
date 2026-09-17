@@ -163,10 +163,12 @@ loom-compile-report diff \
   candidate.report.json
 ```
 
-The default `exact` contract requires the complete compilation identity to
+The default `exact` contract requires the recorded compilation identity to
 match: schema, mode, artifact kind and format, backend, module, function,
 target, specialization, configuration, workload, and entry set. A mismatch is
-an error rather than a misleading delta.
+an error rather than a misleading delta. These fields do not fingerprint source
+contents or the compiler binary; a reproducible experiment records those
+identities alongside the reports.
 
 ```shell
 loom-compile-report diff \
@@ -176,9 +178,9 @@ loom-compile-report diff \
   >candidate.diff.json
 ```
 
-When historical or externally produced artifacts cannot be regenerated with a
-common identity, `--force` can compare reports containing exactly one compiled
-entry each:
+An intentional configuration sweep changes that identity, as can historical or
+externally produced artifacts. `--force` can compare reports containing exactly
+one compiled entry each:
 
 ```shell
 loom-compile-report diff \
@@ -191,8 +193,11 @@ The forced view preserves both report and entry identities, lists every field
 that violates the exact comparison contract, and labels the deltas as
 observational rather than causal. Reports with more than one entry remain an
 error because entry order is not a semantic pairing contract. Use the strict
-default for controlled experiments; `--force` makes otherwise inaccessible
-evidence inspectable, but does not repair the experiment.
+default when the recorded context is held fixed. A
+[per-instance schedule search](search-loop-schedules.md) uses `--force` to inspect
+an intentional policy change while retaining the fixed source, compiler, numeric
+contract, and workload. The tool exposes the mismatch; the experiment establishes
+which variable changed.
 
 Wave memory diffs group packet and strategy variants under the stable authored
 source identity. A scalar-to-wide lowering therefore appears as removed and

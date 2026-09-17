@@ -55,6 +55,10 @@ from loom.gen.ops.c_parameterized_attrs import (
 from loom.gen.support.generated_file import line_comment_header
 
 
+def _doc_comment_lines(doc: str) -> list[str]:
+    return [f"// {line}" if line else "//" for line in doc.splitlines()]
+
+
 def generate_ops_h(
     dialect_name: str,
     dialect_id: int,
@@ -147,7 +151,7 @@ def generate_ops_h(
             const_prefix = c_prefix.upper()
             max_value = max(case.value for case in enum_def.cases)
             if enum_def.doc:
-                lines.append(f"// {enum_def.doc}")
+                lines.extend(_doc_comment_lines(enum_def.doc))
             if parameter.open_enum:
                 lines.append(f"typedef uint8_t {c_prefix}_t;")
                 lines.append(f"typedef enum {enum_tag} {{")
@@ -172,7 +176,7 @@ def generate_ops_h(
         const_prefix = c_prefix.upper()
         max_value = max(case.value for case in enum_def.cases)
         if enum_def.doc:
-            lines.append(f"// {enum_def.doc}")
+            lines.extend(_doc_comment_lines(enum_def.doc))
         if open_enum:
             lines.append(f"typedef uint8_t {c_prefix}_t;")
             lines.append(f"typedef enum {enum_tag} {{")
@@ -199,7 +203,7 @@ def generate_ops_h(
         c_prefix = _c_encoding_family_prefix(family)
         const_prefix = c_prefix.upper()
         if family.doc and (family.parameters or family.dynamic_parameters):
-            lines.append(f"// {family.doc}")
+            lines.extend(_doc_comment_lines(family.doc))
         if family.parameters:
             lines.append(f"typedef enum {c_prefix}_parameter_e {{")
             for index, parameter in enumerate(family.parameters):
@@ -262,7 +266,7 @@ def generate_ops_h(
             emitted_flag_enums.add(attr_def.enum_def.name)
             enum_prefix = "LOOM_" + op.namespace.upper() + "_" + attr_def.enum_def.name.upper()
             if attr_def.enum_def.doc:
-                lines.append(f"// {attr_def.enum_def.doc}")
+                lines.extend(_doc_comment_lines(attr_def.enum_def.doc))
             lines.extend(f"#define {enum_prefix}_{_enum_case_c_ident(case.keyword)} ((uint8_t){case.value})" for case in attr_def.enum_def.cases)
             lines.append("")
 
@@ -277,7 +281,7 @@ def generate_ops_h(
     # Emit shared enums first.
     for enum_id, (c_prefix, const_prefix, enum_def) in shared_enums.items():
         if enum_def.doc:
-            lines.append(f"// {enum_def.doc}")
+            lines.extend(_doc_comment_lines(enum_def.doc))
         max_value = max(c.value for c in enum_def.cases)
         if enum_id in open_enum_ids:
             lines.append(f"typedef uint8_t {c_prefix}_t;")
@@ -310,7 +314,7 @@ def generate_ops_h(
             enum_tag = c_prefix + "_e"
             const_prefix = c_prefix.upper()
             if attr_def.enum_def.doc:
-                lines.append(f"// {attr_def.enum_def.doc}")
+                lines.extend(_doc_comment_lines(attr_def.enum_def.doc))
             max_value = max(c.value for c in attr_def.enum_def.cases)
             if attr_def.open_enum:
                 lines.append(f"typedef uint8_t {c_prefix}_t;")
@@ -341,7 +345,7 @@ def generate_ops_h(
             asm_fmt_lines = [op.name]
         doc = op.doc or f"{op.name} operation."
 
-        lines.append(f"// {enum_name}: {doc}")
+        lines.extend(_doc_comment_lines(f"{enum_name}: {doc}"))
         lines.extend(f"// {line}" for line in asm_fmt_lines)
 
         # ISA check.
