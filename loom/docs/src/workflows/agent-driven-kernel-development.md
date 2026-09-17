@@ -304,6 +304,15 @@ configuration sweeps, and actual `show`/`suggest` output. The
 [control-flow guide](../guide/functions-and-control.md#unrolling-is-a-loop-policy)
 owns the exact policy and schedule semantics.
 
+For authored native motifs, [Low scheduling scopes](../guide/functions-and-control.md#compose-independently-scheduled-helpers)
+keep a helper's phases ordered while independent invocations interleave.
+`low.schedule.begin`, `low.schedule.step`, and `low.schedule.end` survive helper
+inlining and loop cloning without shared group IDs. They impose instruction
+order without memory waits. Compare native waits and register use along with
+`scope_count`; a larger overlap window may cost more live registers. Native
+AMDGPU and x86 enforce the contract, while intermediate representations reject
+it when they cannot guarantee final instruction order.
+
 ## Ask the compiler before asking the GPU
 
 The baseline and candidate compile under the same root, workload,

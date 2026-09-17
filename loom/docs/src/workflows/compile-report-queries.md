@@ -282,6 +282,24 @@ The source schedule survives lowering and separate compile/emit calls. It
 describes the applied source transformation; the target's schedule bands and
 wait rows below show how the resulting operations are emitted.
 
+## Inspect authored scheduling scopes
+
+[Native scheduling scopes](../guide/functions-and-control.md#compose-independently-scheduled-helpers)
+retain a helper's phase order while independent instances interleave. The
+report counts reachable materialized scopes after inlining and loop cloning:
+
+```shell
+jq '{scope_count: (.schedule.scope_count // 0),
+     entries: [.entries.rows[]? |
+       {function, scope_count: (.schedule_scope_count // 0)}]}' report.json
+```
+
+The count is static; it is not multiplied by runtime loop iterations. Zero
+counts are omitted from the report. Compare scopes together with
+[register pressure](#explain-a-register-or-spill-cliff) and native wait
+rows: imposing instruction order does not establish memory completion, and
+allowing more overlap may increase the live register set.
+
 ## Inspect schedule bands
 
 Schedule-band summaries retain semantic tags, band width, node counts,

@@ -79,6 +79,7 @@ iree_c_embed_data(
     synthetic_paired_matrix_smoke
   SRCS
     "synthetic/paired_matrix_helpers.loom"
+    "synthetic/paired_scoped_matrix_helpers.loom"
   C_FILE_OUTPUT
     "synthetic_paired_matrix_smoke.c"
   H_FILE_OUTPUT

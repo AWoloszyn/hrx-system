@@ -56,6 +56,7 @@ loom_module(
   SRCS
     "${PROJECT_SOURCE_DIR}/loom/binding/c/benchmark/kernels/attention/prefill_f16_wmma_amdgpu.loom"
     "${PROJECT_SOURCE_DIR}/loom/binding/c/benchmark/kernels/synthetic/paired_matrix_helpers.loom"
+    "${PROJECT_SOURCE_DIR}/loom/binding/c/benchmark/kernels/synthetic/paired_scoped_matrix_helpers.loom"
     "loom::test::corpus::authoring::hip::gfx11_cases"
     "${_GLOB_GFX11_X_LOOM}"
   MODE

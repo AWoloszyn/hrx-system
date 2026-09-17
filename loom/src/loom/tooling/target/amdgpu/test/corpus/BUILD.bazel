@@ -69,6 +69,7 @@ loom_module(
     srcs = [
         "//loom/binding/c/benchmark/kernels:attention/prefill_f16_wmma_amdgpu.loom",
         "//loom/binding/c/benchmark/kernels:synthetic/paired_matrix_helpers.loom",
+        "//loom/binding/c/benchmark/kernels:synthetic/paired_scoped_matrix_helpers.loom",
         "//loom/src/loom/test/corpus/authoring/hip:gfx11_cases",
     ] + glob(["gfx11/*.loom"]),
     output_format = "bc",

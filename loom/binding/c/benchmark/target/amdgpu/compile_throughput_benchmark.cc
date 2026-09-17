@@ -321,6 +321,18 @@ const EmbeddedSource kI32MemoryChainSource = FindEmbeddedSource(
           /*.input_size_config_symbol=*/"benchmark.pair_count",
       },
       {1, 2, 4, 8, 16, 32, 64, 128}, {1, 2, 4, 8, 16, 32, 64, 128});
+  RegisterInputScalingCompileBenchmarks(
+      kAmdgpuWorkloadTarget, "PairedScopedMatrixHelpers",
+      {
+          /*.source=*/FindEmbeddedSource(
+              loomc_benchmark_synthetic_paired_matrix_smoke_create(),
+              loomc_benchmark_synthetic_paired_matrix_smoke_size(),
+              "paired_scoped_matrix_helpers.loom"),
+          /*.function_symbol=*/"paired_scoped_matrix_helpers",
+          /*.artifact_identifier=*/"paired_scoped_matrix_helpers.hsaco",
+          /*.input_size_config_symbol=*/"benchmark.pair_count",
+      },
+      {1, 2, 4, 8, 16, 32, 64, 128}, {1, 2, 4, 8, 16, 32, 64, 128});
   RegisterAttentionCompileBenchmarks(
       kAmdgpuWorkloadTarget,
       {
