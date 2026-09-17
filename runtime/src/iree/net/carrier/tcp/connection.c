@@ -346,6 +346,15 @@ static void iree_net_tcp_release_send_state_locked(
   ++connection->free_send_state_count;
 }
 
+static uint8_t* iree_net_tcp_consume_send_reservation_locked(
+    iree_net_tcp_connection_t* connection,
+    iree_net_tcp_send_state_t* send_state) {
+  IREE_ASSERT(send_state->phase == IREE_NET_TCP_SEND_STATE_PHASE_RESERVED);
+  uint8_t* staging_buffer = send_state->staging_buffer;
+  iree_net_tcp_release_send_state_locked(connection, send_state);
+  return staging_buffer;
+}
+
 static iree_net_tcp_send_state_t* iree_net_tcp_lookup_send_reservation_locked(
     iree_net_tcp_connection_t* connection, iree_net_tcp_endpoint_t* endpoint,
     iree_net_carrier_send_handle_t handle) {
@@ -729,8 +738,8 @@ static void iree_net_tcp_abort_endpoint_reservations(
       if (send_state->endpoint == endpoint &&
           send_state->phase == IREE_NET_TCP_SEND_STATE_PHASE_RESERVED) {
         reservation_found = true;
-        staging_buffer = send_state->staging_buffer;
-        iree_net_tcp_release_send_state_locked(connection, send_state);
+        staging_buffer = iree_net_tcp_consume_send_reservation_locked(
+            connection, send_state);
         for (uint32_t j = i + 1; j < connection->send_state_count; ++j) {
           const iree_net_tcp_send_state_t* remaining_state =
               &connection->send_states[j];
@@ -1047,6 +1056,7 @@ static iree_status_t iree_net_tcp_endpoint_commit_send(
   iree_net_tcp_connection_t* connection = endpoint->connection;
   iree_net_tcp_send_state_t* send_state = NULL;
   iree_async_span_t wire_span = iree_async_span_empty();
+  uint8_t* rejected_staging_buffer = NULL;
   iree_slim_mutex_lock(&connection->mutex);
   send_state =
       iree_net_tcp_lookup_send_reservation_locked(connection, endpoint, handle);
@@ -1056,6 +1066,10 @@ static iree_status_t iree_net_tcp_endpoint_commit_send(
        endpoint->phase != IREE_NET_TCP_ENDPOINT_PHASE_ACTIVE)) {
     status = iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                               "TCP send reservation is no longer valid");
+  } else if (!iree_status_is_ok(connection->terminal_status)) {
+    status = iree_status_clone(connection->terminal_status);
+    rejected_staging_buffer =
+        iree_net_tcp_consume_send_reservation_locked(connection, send_state);
   } else {
     send_state->phase = IREE_NET_TCP_SEND_STATE_PHASE_IN_FLIGHT;
     send_state->completion_callback = completion_callback;
@@ -1065,7 +1079,11 @@ static iree_status_t iree_net_tcp_endpoint_commit_send(
   }
   iree_slim_mutex_unlock(&connection->mutex);
 
-  if (iree_status_is_ok(status)) {
+  if (rejected_staging_buffer) {
+    iree_allocator_free(connection->base.host_allocator,
+                        rejected_staging_buffer);
+    iree_net_endpoint_lifecycle_end_operation(&endpoint->lifecycle);
+  } else if (iree_status_is_ok(status)) {
     iree_net_message_endpoint_send_params_t wire_params = {
         .data = iree_async_span_list_make(&wire_span, 1),
         .completion_callback =
@@ -1093,8 +1111,8 @@ static void iree_net_tcp_endpoint_abort_send(
       iree_net_tcp_lookup_send_reservation_locked(connection, endpoint, handle);
   IREE_ASSERT(send_state, "TCP send reservation is no longer valid");
   if (send_state) {
-    staging_buffer = send_state->staging_buffer;
-    iree_net_tcp_release_send_state_locked(connection, send_state);
+    staging_buffer =
+        iree_net_tcp_consume_send_reservation_locked(connection, send_state);
   }
   iree_slim_mutex_unlock(&connection->mutex);
   if (send_state) {

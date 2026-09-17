@@ -802,6 +802,107 @@ TEST_F(TcpConnectionTest, DeactivationInvalidatesDirectReservation) {
   EXPECT_EQ(send_result.callback_count, 0);
 }
 
+TEST_F(TcpConnectionTest, ReservedCommitReturnsDirectMessageFailure) {
+  CreateConnectionPair();
+  iree_net_message_endpoint_t client_endpoint =
+      OpenEndpoint(client_connection_);
+  iree_net_message_endpoint_t server_endpoint =
+      OpenEndpoint(server_connection_);
+  MessageResult* client_messages = CreateMessageResult();
+  MessageResult* server_messages = CreateMessageResult();
+  server_messages->message_status = IREE_STATUS_DATA_LOSS;
+  ActivateEndpoint(client_endpoint, client_messages);
+  ActivateEndpoint(server_endpoint, server_messages);
+
+  void* reservation_data = nullptr;
+  iree_net_carrier_send_handle_t reservation_handle = 0;
+  IREE_ASSERT_OK(iree_net_message_endpoint_begin_send(
+      server_endpoint, 1, &reservation_data, &reservation_handle));
+  *static_cast<uint8_t*>(reservation_data) = 0x7A;
+
+  uint8_t payload = 0x5A;
+  iree_async_span_t span = iree_async_span_from_ptr(&payload, 1);
+  SendResult trigger_result;
+  trigger_result.is_polling = &is_polling_;
+  IREE_ASSERT_OK(SendMessage(
+      client_endpoint, iree_async_span_list_make(&span, 1), &trigger_result));
+  PollUntil([&] {
+    return trigger_result.callback_count == 1 &&
+           server_messages->error_count == 1;
+  });
+  ASSERT_EQ(server_messages->error_code, IREE_STATUS_DATA_LOSS);
+
+  SendResult commit_result;
+  commit_result.is_polling = &is_polling_;
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_DATA_LOSS,
+      iree_net_message_endpoint_commit_send(server_endpoint, reservation_handle,
+                                            {SendCompleted, &commit_result}));
+  EXPECT_EQ(commit_result.callback_count, 0);
+
+  DeactivateAndRelease(&server_connection_);
+  EXPECT_EQ(commit_result.callback_count, 0);
+}
+
+TEST_F(TcpConnectionTest, ReservedCommitReturnsDeferredMessageFailure) {
+  CreateConnectionPair();
+  iree_net_message_endpoint_t client_endpoint =
+      OpenEndpoint(client_connection_);
+  iree_net_message_endpoint_t server_endpoint =
+      OpenEndpoint(server_connection_);
+  iree_net_message_endpoint_t client_marker_endpoint =
+      OpenEndpoint(client_connection_);
+  iree_net_message_endpoint_t server_marker_endpoint =
+      OpenEndpoint(server_connection_);
+  MessageResult* client_messages = CreateMessageResult();
+  MessageResult* client_marker_messages = CreateMessageResult();
+  MessageResult* server_marker_messages = CreateMessageResult();
+  ActivateEndpoint(client_endpoint, client_messages);
+  ActivateEndpoint(client_marker_endpoint, client_marker_messages);
+  ActivateEndpoint(server_marker_endpoint, server_marker_messages);
+
+  uint8_t payload = 0x5A;
+  iree_async_span_t span = iree_async_span_from_ptr(&payload, 1);
+  SendResult queued_result;
+  SendResult marker_result;
+  queued_result.is_polling = &is_polling_;
+  marker_result.is_polling = &is_polling_;
+  IREE_ASSERT_OK(SendMessage(
+      client_endpoint, iree_async_span_list_make(&span, 1), &queued_result));
+  IREE_ASSERT_OK(SendMessage(client_marker_endpoint,
+                             iree_async_span_list_make(&span, 1),
+                             &marker_result));
+  // Ordered wire delivery proves the earlier frame reached the inactive
+  // endpoint before this marker reaches its active endpoint.
+  PollUntil([&] {
+    return queued_result.callback_count == 1 &&
+           marker_result.callback_count == 1 &&
+           server_marker_messages->messages.size() == 1;
+  });
+
+  MessageResult* server_messages = CreateMessageResult();
+  server_messages->message_status = IREE_STATUS_DATA_LOSS;
+  ActivateEndpoint(server_endpoint, server_messages);
+  void* reservation_data = nullptr;
+  iree_net_carrier_send_handle_t reservation_handle = 0;
+  IREE_ASSERT_OK(iree_net_message_endpoint_begin_send(
+      server_endpoint, 1, &reservation_data, &reservation_handle));
+  *static_cast<uint8_t*>(reservation_data) = 0x7A;
+  PollUntil([&] { return server_messages->error_count == 1; });
+  ASSERT_EQ(server_messages->error_code, IREE_STATUS_DATA_LOSS);
+
+  SendResult commit_result;
+  commit_result.is_polling = &is_polling_;
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_DATA_LOSS,
+      iree_net_message_endpoint_commit_send(server_endpoint, reservation_handle,
+                                            {SendCompleted, &commit_result}));
+  EXPECT_EQ(commit_result.callback_count, 0);
+
+  DeactivateAndRelease(&server_connection_);
+  EXPECT_EQ(commit_result.callback_count, 0);
+}
+
 TEST_F(TcpConnectionTest, InvalidScatterOverflowRestoresAdmission) {
   iree_net_tcp_connection_options_t options =
       iree_net_tcp_connection_options_default();
