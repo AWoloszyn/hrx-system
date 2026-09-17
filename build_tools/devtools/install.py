@@ -134,6 +134,43 @@ TOOLS = {
             ),
         },
     ),
+    "buildozer": Tool(
+        version="8.5.1",
+        install_names=("buildozer",),
+        groups=("bazel",),
+        assets={
+            "darwin-amd64": ToolAsset(
+                url="https://github.com/bazel-contrib/buildtools/releases/download/v8.5.1/buildozer-darwin-amd64",
+                sha256="b85b9ad59c1543999a5d8bc8bee6e42b9f025be3ff520bc2d090213698850b43",
+                binary_name="buildozer",
+            ),
+            "darwin-arm64": ToolAsset(
+                url="https://github.com/bazel-contrib/buildtools/releases/download/v8.5.1/buildozer-darwin-arm64",
+                sha256="d0cf2f6e11031d62bfd4584e46eb6bb708a883ff948be76538b34b83de833262",
+                binary_name="buildozer",
+            ),
+            "linux-amd64": ToolAsset(
+                url="https://github.com/bazel-contrib/buildtools/releases/download/v8.5.1/buildozer-linux-amd64",
+                sha256="2b745ca2ad41f1e01673fb59ac50af6b45ca26105c1d20fad64c3d05a95522f5",
+                binary_name="buildozer",
+            ),
+            "linux-arm64": ToolAsset(
+                url="https://github.com/bazel-contrib/buildtools/releases/download/v8.5.1/buildozer-linux-arm64",
+                sha256="87ee1d2d81d08ccae8f9147fc58503967c85878279e892f2990912412feef1a1",
+                binary_name="buildozer",
+            ),
+            "windows-amd64": ToolAsset(
+                url="https://github.com/bazel-contrib/buildtools/releases/download/v8.5.1/buildozer-windows-amd64.exe",
+                sha256="e177155c2c8ef41569791de34f13077cefe3e5623f9f02e099347232bc028901",
+                binary_name="buildozer.exe",
+            ),
+            "windows-arm64": ToolAsset(
+                url="https://github.com/bazel-contrib/buildtools/releases/download/v8.5.1/buildozer-windows-arm64.exe",
+                sha256="f6528a676f4bc22a1f92358d3150d9d1ab4fcb19054f55b7e04775d8cdc3e94b",
+                binary_name="buildozer.exe",
+            ),
+        },
+    ),
     "doxygen": Tool(
         version="1.17.0",
         install_names=("doxygen",),

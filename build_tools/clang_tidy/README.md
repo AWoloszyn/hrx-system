@@ -61,6 +61,14 @@ and runs `run-clang-tidy` against source files using that build tree's
 or `IREE_CMAKE_BUILD_DIR`. The runner defaults to a capped parallel job count
 and can be tuned with `IREE_CLANG_TIDY_JOBS`.
 
+The configured compilation database determines which selected sources are
+analyzed. Sources excluded by project or platform configuration are reported
+as skipped; the remaining sources still run. For example, `AMDF_BUILD=OFF`
+excludes libamdf without blocking analysis of enabled projects. If the entire
+source selection is excluded, source analysis succeeds as a skip without
+building the plugin. Selected plugin infrastructure changes still run the
+plugin checks. `--verbose` lists the excluded paths.
+
 Plugin-only CMake validation is also available:
 
 ```bash
@@ -256,9 +264,9 @@ do not transfer ownership and are accepted.
 
 ### `iree-cpp-designated-initializer`
 
-`iree-cpp-designated-initializer` diagnoses C++ designated initializers. MSVC
-does not support this syntax, so C++ aggregate initializers should use IREE's
-comment field-label convention instead:
+`iree-cpp-designated-initializer` diagnoses designated initializers in C++
+language modes before C++20. Clang accepts them as an extension in those modes,
+but portable aggregate initializers use IREE's comment field-label convention:
 
 ```c++
 iree_hal_buffer_params_t params = {
@@ -268,8 +276,10 @@ iree_hal_buffer_params_t params = {
 };
 ```
 
-The check is C++-only. C designated initializers remain valid and are not
-diagnosed:
+The check uses the translation unit's configured language standard. C++20 and
+later support designated initializers, including in MSVC; libamdf explicitly
+selects C++20 for its private C++ code. C designated initializers also remain
+valid and are not diagnosed:
 
 ```c
 iree_hal_buffer_params_t params = {

@@ -359,6 +359,44 @@ def forwarded_tool_args(arguments: list[str]) -> list[str]:
     return arguments
 
 
+def clang_tidy_configuration_args(targets: list[str]) -> list[str]:
+    """Enables libamdf only when the root-relative target scope selects it.
+
+    Track positive patterns not fully covered by a later exclusion. Partial
+    exclusions leave a broader pattern selected without querying Bazel's graph.
+    Package wildcards can resolve to named targets, so only identical patterns
+    or recursive exclusions establish coverage without loading packages.
+    Dependencies alone do not trigger an override of configured enablement.
+    """
+    selected: set[tuple[str, str]] = set()
+    for target in targets:
+        excluded = target.startswith("-")
+        pattern = target.removeprefix("-")
+        repository, separator, relative_pattern = pattern.partition("//")
+        if separator:
+            if repository not in ("", "@", "@@", "@hrx"):
+                continue
+            pattern = relative_pattern
+        package, _, name = pattern.partition(":")
+        if package == "...":
+            package = "libamdf/..."
+        if package != "libamdf" and not package.startswith("libamdf/"):
+            continue
+        name = name or package.rsplit("/", 1)[-1]
+        if not excluded:
+            selected.add((package, name))
+        elif package.endswith("/..."):
+            directory = package.removesuffix("/...")
+            selected = {
+                entry
+                for entry in selected
+                if entry[0] != directory and not entry[0].startswith(directory + "/")
+            }
+        else:
+            selected.discard((package, name))
+    return ["--//libamdf/config:enabled=true"] if selected else []
+
+
 def clang_tidy_build_argv(
     bazel: str,
     targets: list[str],
@@ -370,6 +408,7 @@ def clang_tidy_build_argv(
         argv.append("--keep_going")
     argv += [
         CLANG_TIDY_REPO_ENV,
+        *clang_tidy_configuration_args(targets),
         f"--aspects={CLANG_TIDY_ASPECT}",
         f"--output_groups={CLANG_TIDY_OUTPUT_GROUP}",
         "--",

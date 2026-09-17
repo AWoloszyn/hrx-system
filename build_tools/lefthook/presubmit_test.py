@@ -9,7 +9,9 @@ from __future__ import annotations
 import contextlib
 import importlib.util
 import io
+import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -258,6 +260,16 @@ class PresubmitTest(unittest.TestCase):
         self.assertIn(presubmit.SEMGREP_CONFIG, command)
         self.assertIn("7", command)
         self.assertEqual(command[-1], "runtime/src/iree/base/status.c")
+
+    def test_libamdf_static_analysis_scope_includes_sources_and_headers(self):
+        for path in (
+            "libamdf/src/allocator.c",
+            "libamdf/src/allocator_test.cc",
+            "libamdf/include/amdf/base.h",
+        ):
+            with self.subTest(path=path):
+                self.assertTrue(presubmit.is_semgrep_candidate_file(path))
+                self.assertTrue(presubmit.is_clang_tidy_candidate_file(path))
 
     def test_semgrep_default_jobs_are_capped_on_large_machines(self):
         with (
@@ -673,13 +685,14 @@ class PresubmitTest(unittest.TestCase):
             )
 
     def test_cmake_clang_tidy_command_uses_parallel_driver(self):
+        source = str(presubmit.REPO_ROOT / "runtime/src/iree/base/status.c")
         with mock.patch.object(presubmit, "clang_tidy_jobs", return_value=17):
             command = presubmit.cmake_clang_tidy_command(
                 run_clang_tidy="run-clang-tidy",
                 clang_tidy="clang-tidy",
                 plugin=Path(".tmp/plugin/libIREEClangTidyPlugin.so"),
                 compile_commands_dir=Path("build/cmake-debug"),
-                files=["runtime/src/iree/base/status.c"],
+                files=[source],
             )
 
         self.assertEqual(command[0], "run-clang-tidy")
@@ -692,7 +705,182 @@ class PresubmitTest(unittest.TestCase):
         self.assertIn("-j", command)
         self.assertIn("17", command)
         self.assertIn("-warnings-as-errors=*", command)
-        self.assertEqual(command[-1], "runtime/src/iree/base/status.c")
+        pattern = re.compile(command[-1])
+        self.assertIsNotNone(pattern.search(source))
+        self.assertIsNone(pattern.search(source.replace(".c", "Xc")))
+        self.assertIsNone(pattern.search(source + "pp"))
+
+    def test_cmake_clang_tidy_respects_configured_sources(self):
+        runtime = "runtime/src/iree/base/status.c"
+        libamdf = "libamdf/src/allocator.c"
+        windows = "runtime/src/iree/base/threading/thread_windows.c"
+        infrastructure = "build_tools/clang_tidy/check.cc"
+        cases = [
+            ([runtime, libamdf], [runtime]),
+            ([libamdf], [runtime]),
+            ([libamdf], [runtime, libamdf]),
+            ([runtime, windows], [runtime]),
+            ([libamdf], []),
+            ([libamdf, infrastructure], [runtime]),
+            ([infrastructure], None),
+        ]
+        for selected, configured in cases:
+            for fix in (False, True):
+                with self.subTest(selected=selected, configured=configured, fix=fix):
+                    with tempfile.TemporaryDirectory() as temporary_dir:
+                        repo_root = Path(temporary_dir)
+                        for path in (runtime, libamdf, windows, infrastructure):
+                            source = repo_root / path
+                            source.parent.mkdir(parents=True, exist_ok=True)
+                            source.write_text("", encoding="utf-8")
+                        build_dir = repo_root / "build"
+                        build_dir.mkdir()
+                        if configured is not None:
+                            # CMake entries may spell files relative to their directory.
+                            database = [
+                                {
+                                    "directory": str(build_dir),
+                                    "file": os.path.relpath(
+                                        repo_root / path, build_dir
+                                    ),
+                                    "arguments": ["clang", "-c", str(repo_root / path)],
+                                }
+                                for path in configured
+                            ]
+                            (build_dir / "compile_commands.json").write_text(
+                                json.dumps(database), encoding="utf-8"
+                            )
+                        llvm_package = repo_root / "packages" / "llvm"
+                        clang_package = llvm_package.parent / "clang"
+                        clang_package.mkdir(parents=True)
+                        (clang_package / "ClangConfig.cmake").write_text(
+                            "", encoding="utf-8"
+                        )
+                        plugin_dir = repo_root / "plugin"
+                        plugin_dir.mkdir()
+                        (plugin_dir / "libIREEClangTidyPlugin.so").write_text(
+                            "", encoding="utf-8"
+                        )
+                        output = io.StringIO()
+                        with (
+                            contextlib.redirect_stdout(output),
+                            mock.patch.object(presubmit, "REPO_ROOT", repo_root),
+                            mock.patch.object(
+                                presubmit, "CLANG_TIDY_CMAKE_BUILD_DIR", plugin_dir
+                            ),
+                            mock.patch.dict(
+                                os.environ,
+                                {presubmit.CMAKE_BUILD_DIR_ENV: str(build_dir)},
+                            ),
+                            mock.patch.object(
+                                presubmit,
+                                "clang_tidy_llvm_tools",
+                                return_value=("llvm-config", "clang-tidy", "clang++"),
+                            ) as tools,
+                            mock.patch.object(
+                                presubmit,
+                                "llvm_cmake_dir",
+                                return_value=str(llvm_package),
+                            ),
+                            mock.patch.object(
+                                presubmit,
+                                "clang_tidy_run_tool",
+                                return_value="run-clang-tidy",
+                            ),
+                            mock.patch.object(
+                                presubmit,
+                                "clang_tidy_apply_replacements_tool",
+                                return_value="clang-apply-replacements",
+                            ),
+                            mock.patch.object(
+                                presubmit, "require_tool", return_value=True
+                            ),
+                            mock.patch.object(
+                                presubmit, "run_command", return_value=True
+                            ) as commands,
+                        ):
+                            ok = presubmit.run_clang_tidy_cmake(
+                                input_scope(selected),
+                                profile="ci",
+                                verbose=True,
+                                fix=fix,
+                            )
+                        self.assertTrue(ok, output.getvalue())
+                        expected_files = set(selected) & set(configured or [])
+                        excluded_files = (
+                            set(selected) - expected_files - {infrastructure}
+                        )
+                        if excluded_files:
+                            self.assertIn(
+                                "[skip] clang-tidy sources", output.getvalue()
+                            )
+                            for path in excluded_files:
+                                self.assertIn(path, output.getvalue())
+                        if not expected_files and infrastructure not in selected:
+                            tools.assert_not_called()
+                            commands.assert_not_called()
+                        else:
+                            tools.assert_called_once_with()
+                        invocations = [call.args[0] for call in commands.call_args_list]
+                        analyses = [
+                            command
+                            for command in invocations
+                            if command[0] == "run-clang-tidy"
+                        ]
+                        self.assertEqual(
+                            len(analyses), (2 if fix else 1) if expected_files else 0
+                        )
+                        for command in analyses:
+                            patterns = command[-len(expected_files) :]
+                            matched = {
+                                path
+                                for path in (
+                                    runtime,
+                                    libamdf,
+                                    windows,
+                                    runtime + ".other",
+                                )
+                                if any(
+                                    re.search(pattern, str(repo_root / path))
+                                    for pattern in patterns
+                                )
+                            }
+                            self.assertEqual(matched, expected_files)
+                        self.assertEqual(
+                            any(command[0] == "ctest" for command in invocations),
+                            infrastructure in selected,
+                        )
+
+    def test_cmake_clang_tidy_rejects_missing_or_invalid_database(self):
+        for database in (None, "[", "{}", "[{}]", '[{"file": 1, "directory": "/tmp"}]'):
+            with self.subTest(database=database):
+                with tempfile.TemporaryDirectory() as temporary_dir:
+                    repo_root = Path(temporary_dir)
+                    path = "runtime/src/iree/base/status.c"
+                    source = repo_root / path
+                    source.parent.mkdir(parents=True)
+                    source.write_text("", encoding="utf-8")
+                    if database is not None:
+                        (repo_root / "compile_commands.json").write_text(
+                            database, encoding="utf-8"
+                        )
+                    output = io.StringIO()
+                    with (
+                        contextlib.redirect_stdout(output),
+                        mock.patch.object(presubmit, "REPO_ROOT", repo_root),
+                        mock.patch.dict(
+                            os.environ, {presubmit.CMAKE_BUILD_DIR_ENV: str(repo_root)}
+                        ),
+                        mock.patch.object(presubmit, "clang_tidy_llvm_tools") as tools,
+                    ):
+                        self.assertFalse(
+                            presubmit.run_clang_tidy_cmake(
+                                input_scope([path]), profile="ci", verbose=False
+                            )
+                        )
+                    tools.assert_not_called()
+                    self.assertIn("[fail] clang-tidy:", output.getvalue())
+                    self.assertIn("compile_commands.json", output.getvalue())
 
     def test_cmake_clang_tidy_plugin_configure_pins_matching_packages(self):
         llvm_package_dir = Path("/opt/llvm/lib/cmake/llvm")
@@ -722,6 +910,7 @@ class PresubmitTest(unittest.TestCase):
         self.assertIn("23", command)
 
     def test_cmake_clang_tidy_fix_command_uses_parallel_driver(self):
+        source = str(presubmit.REPO_ROOT / "runtime/src/iree/base/status.c")
         with mock.patch.object(presubmit, "clang_tidy_jobs", return_value=19):
             command = presubmit.cmake_run_clang_tidy_fix_command(
                 run_clang_tidy="run-clang-tidy",
@@ -729,7 +918,7 @@ class PresubmitTest(unittest.TestCase):
                 clang_apply_replacements="clang-apply-replacements",
                 plugin=Path(".tmp/plugin/libIREEClangTidyPlugin.so"),
                 compile_commands_dir=Path("build/cmake-debug"),
-                files=["runtime/src/iree/base/status.c"],
+                files=[source],
             )
 
         self.assertEqual(command[0], "run-clang-tidy")
@@ -742,7 +931,10 @@ class PresubmitTest(unittest.TestCase):
         self.assertIn("19", command)
         self.assertIn("-fix", command)
         self.assertIn("-format", command)
-        self.assertEqual(command[-1], "runtime/src/iree/base/status.c")
+        pattern = re.compile(command[-1])
+        self.assertIsNotNone(pattern.search(source))
+        self.assertIsNone(pattern.search(source.replace(".c", "Xc")))
+        self.assertIsNone(pattern.search(source + "pp"))
 
     def test_cmake_build_dir_uses_recorded_devtools_state(self):
         with tempfile.TemporaryDirectory() as temporary_dir:
@@ -856,10 +1048,65 @@ class PresubmitTest(unittest.TestCase):
         self.assertTrue(ok)
         command = run_command.call_args.args[0]
         self.assertNotIn("--keep_going", command)
+        self.assertNotIn("--//libamdf/config:enabled=true", command)
+        self.assertNotIn("--//libamdf/config:enabled=false", command)
         self.assertIn(
             f"--output_groups={presubmit.CLANG_TIDY_LOCAL_OUTPUT_GROUP}", command
         )
         self.assertIn("//build_tools/bazel/test:all", command)
+
+    def test_libamdf_clang_tidy_routes_and_enables_optional_package(self):
+        source_path = "libamdf/src/allocator.c"
+        header_path = "libamdf/src/allocator.h"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "libamdf/src"
+            package.mkdir(parents=True)
+            (package / "BUILD.bazel").write_text(
+                'amdf_cc_library(name = "allocator", srcs = ["allocator.c"])\n',
+                encoding="utf-8",
+            )
+            (root / source_path).write_text("", encoding="utf-8")
+            (root / header_path).write_text("", encoding="utf-8")
+            with (
+                mock.patch.object(presubmit, "REPO_ROOT", root),
+                mock.patch.object(presubmit.sys, "platform", "linux"),
+                mock.patch.object(
+                    presubmit, "clang_tidy_llvm_available", return_value=True
+                ),
+                mock.patch.object(
+                    presubmit, "run_command", return_value=True
+                ) as run_command,
+            ):
+                self.assertTrue(
+                    presubmit.run_clang_tidy(
+                        input_scope([source_path]),
+                        profile="ci",
+                        lane="bazel",
+                        verbose=False,
+                    )
+                )
+                self.assertEqual(
+                    presubmit.cmake_clang_tidy_candidate_files(
+                        [source_path, header_path]
+                    ),
+                    [source_path],
+                )
+
+        command = run_command.call_args.args[0]
+        self.assertIn("--//libamdf/config:enabled=true", command)
+        self.assertEqual(command[-1], "//libamdf/src:all")
+
+    def test_clang_tidy_runtime_fix_preserves_configured_libamdf_enablement(self):
+        command = presubmit.clang_tidy_bazel_command(
+            ["//runtime/src/iree/base:all"],
+            emit_fixes=True,
+            local_outputs=True,
+        )
+
+        self.assertNotIn("--//libamdf/config:enabled=true", command)
+        self.assertNotIn("--//libamdf/config:enabled=false", command)
+        self.assertIn("--aspects_parameters=emit_fixes=true", command)
 
     def test_clang_tidy_ci_runs_bazel_packages_keep_going(self):
         with (

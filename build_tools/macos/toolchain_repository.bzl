@@ -26,9 +26,9 @@ def _required_path(repository_ctx, path):
 
 def _execute(repository_ctx, arguments):
     environment = elf_loader_environment() | {
-        "DYLD_LIBRARY_PATH": "",
         "DYLD_FRAMEWORK_PATH": "",
         "DYLD_INSERT_LIBRARIES": "",
+        "DYLD_LIBRARY_PATH": "",
     }
     result = repository_ctx.execute(arguments, environment = environment, quiet = True)
     if result.return_code:

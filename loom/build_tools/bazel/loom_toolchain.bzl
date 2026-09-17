@@ -63,6 +63,20 @@ def loom_tools_toolchains(
     format, lint, link, and test roles. Splitting the roles prevents a rule
     using one executable from configuring the dependency graphs of the other
     tools.
+
+    Args:
+      name: Prefix for generated implementation and registration targets.
+      benchmark_tool: Label of the benchmark executable.
+      compile_tool: Label of the compile executable.
+      format_tool: Label of the format executable.
+      lint_tool: Label of the lint executable.
+      link_tool: Label of the link executable.
+      test_tool: Label of the test executable.
+      exec_compatible_with: Execution-platform constraints for each registration.
+      target_compatible_with: Target-platform constraints for each registration.
+      target_settings: Config settings required by each registration.
+      tags: Tags applied to implementations and registrations.
+      visibility: Visibility of the toolchain registrations.
     """
     tools = {
         "benchmark": benchmark_tool,

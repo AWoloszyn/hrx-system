@@ -47,6 +47,7 @@ LANE_TOOLS = {
     "bazel": (
         ("bazel", "--version", r"\b9\.2\.0\b"),
         ("buildifier", "--version", r"\b8\.5\.1\b"),
+        ("buildozer", "--version", r"\b8\.5\.1\b"),
     ),
     "cmake": (
         ("cmake", "--version", None),

@@ -4,13 +4,14 @@ rules:
       - c
     severity: ERROR
     message: >-
-      IREE C runtime code uses scoped status handling and terminal cleanup
+      C runtime code uses scoped status handling and terminal cleanup
       blocks instead of goto-based error handling.
     pattern-regex: "\\bgoto\\s+[A-Za-z_][A-Za-z0-9_]*\\s*;"
     paths:
       include:
         - /runtime/src/iree/**/*.c
         - /loom/src/loom/**/*.c
+        - /libamdf/**/*.c
 
   - id: iree.tests.raw-status-is-ok-expectation
     languages:

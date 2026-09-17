@@ -107,6 +107,13 @@ tool output are useful.
 bazel-to-cmake, generated AMDGPU target metadata, watchwords, merge-conflict
 markers, and basic text hygiene.
 
+Buildifier checks formatting and all lint categories in the pinned release,
+including unused loads and variables, deprecated Starlark APIs, and declaration
+documentation. The fixer applies available repairs and then runs the same lint
+check; findings without automatic repairs still fail. Unused Starlark loads
+are detectable syntactically, while unused C/C++ `deps` require separate
+compilation and link analysis.
+
 clang-format runs C/C++ files in parallel batches. Set `IREE_CLANG_FORMAT_JOBS`
 to override the default worker cap when diagnosing local machine behavior.
 
@@ -220,8 +227,9 @@ clearly instead of falling back to a source distribution that may produce a
 broken analyzer executable.
 
 Standalone binaries are installed by `build_tools/devtools/install.py` into the
-selected tool environment. The Bazel lane installs Bazelisk and buildifier with
-pinned URLs and SHA-256 hashes:
+selected tool environment. The Bazel lane installs Bazelisk, buildifier, and
+buildozer with pinned URLs and SHA-256 hashes for Linux, macOS, and Windows on
+x86-64 and ARM64. Buildifier and buildozer share a buildtools release pin:
 
 ```bash
 python dev.py bazel setup
@@ -239,6 +247,57 @@ wrong version. Clang-tidy uses the Bazel LLVM repository model under
 not available. The GitHub presubmit workflow fetches the ROCm LLVM toolchain and
 sets `IREE_CLANG_TIDY_REQUIRED=1` so missing LLVM tools fail loudly instead of
 silently skipping.
+
+## Bazel Editing
+
+[Buildozer](https://github.com/bazel-contrib/buildtools/blob/main/buildozer/README.md)
+applies explicit edits to authored BUILD files, including repository macros.
+It can batch dependency changes, move attributes, update loads, and create or
+rename targets. It does not infer C/C++ dependency ownership or evaluate macros
+and configurations. Dependency-removal decisions still require include, compile,
+and link evidence for the supported configurations.
+
+Its JSON print output is useful for inspecting a target before editing:
+
+```bash
+buildozer -output_json 'print name kind deps' \
+  //libamdf/src/platform:native_wait | jq .
+```
+
+The returned `select()` is expression text, not a resolved dependency list.
+Value-based `remove` and `replace` commands affect every matching `select()` arm.
+`set_select` replaces the complete attribute; it does not patch one branch.
+`-edit-variables` can change a shared variable and therefore affect other rules.
+Review the full diff and configuration evidence before applying those edits.
+
+For an established removal from a target such as `//example:library`, preview
+the rewritten file with `-stdout`, then apply the same command without it:
+
+```bash
+buildozer -stdout 'remove deps //example:unused' //example:library
+buildozer 'remove deps //example:unused' //example:library
+```
+
+`buildozer -f <commands-file>` batches newline-separated
+`command|label|label` records. Exit status `3` means a successful in-place no-op;
+`0` means a change or a read-only success. A `-stdout` preview also returns `0`
+for a no-op, so its exit status alone does not indicate a proposed change.
+Buildozer is an explicit editing tool and is not run automatically by the hooks.
+
+Buildifier also supports structured lint output for selected BUILD/Starlark files:
+
+```bash
+buildifier -mode=check -lint=warn -warnings=all -format=json \
+  runtime/src/iree/base/BUILD.bazel > /tmp/buildifier.json
+jq -c '.files[] | .filename as $file | .warnings[]? |
+  {file: $file, category, start, message}' /tmp/buildifier.json
+jq -e '.success' /tmp/buildifier.json
+```
+
+JSON mode returns exit status `0` even when `.success` is false. Consumers use
+that field to decide whether lint passed. Hooks use text output and its failure
+exit status. The dispatcher explicitly selects `-warnings=all`; the JSON config
+format's `warningsList` accepts category names, not the CLI shorthand `all`.
 
 ## Static Analysis
 
@@ -267,17 +326,34 @@ uses roughly 85% of detected logical CPUs capped at 14 jobs. That cap avoids
 Semgrep's current high-core-count OCaml-domain failure mode while keeping the
 local/CI default comfortably fast for this repository size.
 
-Clang-tidy runs only in the Bazel lane. It maps changed C/C++ files under
-`runtime/src/iree/`, `loom/src/loom/`, and `libhrx/` to their nearest Bazel
-package and invokes the checked-in clang-tidy aspect:
+Semgrep and clang-tidy select C/C++ files under `runtime/src/iree/`,
+`loom/src/loom/`, `libamdf/`, and `libhrx/`. Each Semgrep rule further scopes
+its applicable paths and languages. The no-goto rule covers libamdf C sources;
+IREE status-ownership rules apply to IREE consumers.
+
+In the Bazel lane, clang-tidy maps selected files to their nearest package and
+invokes the checked-in clang-tidy aspect. File-based and explicit-target analysis
+enable `//libamdf/config:enabled` when the selected scope includes libamdf,
+including repository-wide target patterns. Excluding the complete libamdf tree
+removes that override unless a later pattern selects it again. Other scopes
+preserve the configured value, avoiding analysis-cache invalidation on
+runtime-only checks. Transitive dependencies use the configured project
+enablement:
 
 ```bash
 python dev.py bazel precommit --profile paranoid runtime/src/iree/base/status.c
 ```
 
-Changes under `build_tools/clang_tidy/` run the plugin smoke test and action
-smoke target instead. See `build_tools/clang_tidy/README.md` for the direct
-Bazel commands and LLVM discovery environment variables.
+Header and shared build-infrastructure changes can expand the analysis to all
+tracked C/C++ files. Changes under `build_tools/clang_tidy/` also run the plugin
+smoke test and action smoke target. The CMake lane analyzes selected sources
+present in the configured compilation database and reports the rest as skipped.
+For example, `AMDF_BUILD=OFF` skips libamdf while enabled projects still run.
+An entirely excluded source selection succeeds as a skip before plugin setup;
+selected plugin infrastructure checks still run.
+Native Windows hooks currently delegate both providers to Linux presubmit CI.
+See `build_tools/clang_tidy/README.md` for the direct Bazel commands and LLVM
+discovery environment variables.
 
 ## Project Dispatch
 

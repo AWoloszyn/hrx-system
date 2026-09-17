@@ -445,7 +445,22 @@ def iree_amdgpu_hip_binary(
         device_libraries_marker = AMDGPU_HIP_DEVICE_LIBRARIES_MARKER,
         out = None,
         **kwargs):
-    """Builds one device-library-linked HIP code object."""
+    """Builds one device-library-linked HIP code object.
+
+    Args:
+      name: Name of the output target.
+      target: Target triple, which must be amdgcn-amd-amdhsa.
+      arch: GPU architecture passed to Clang's --offload-arch option.
+      srcs: List containing exactly one HIP device source file.
+      copts: Additional HIP compiler options.
+      clang_tool: Label of the Clang compiler executable.
+      offload_bundler_tool: Label of the tool extracting the device code object.
+      objcopy_tool: Label of the object-copy tool used by the offload bundler.
+      device_libraries_dep: Label providing the HIP device bitcode libraries.
+      device_libraries_marker: Label of a file locating the device library directory.
+      out: Output filename, defaulting to <name>.so.
+      **kwargs: Additional attributes for the output target.
+    """
     if not AMDGPU_HIP_DEVICE_LIBRARIES_AVAILABLE:
         _incompatible_filegroup(name, kwargs)
         return

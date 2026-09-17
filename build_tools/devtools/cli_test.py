@@ -717,6 +717,7 @@ class CliTest(unittest.TestCase):
         self.assertIn("//runtime/src/iree/tokenizer:all", description)
         self.assertNotIn("build_tools/lefthook/presubmit.py", description)
         self.assertNotIn("--keep_going", description)
+        self.assertNotIn("--//libamdf/config:enabled=", description)
 
     def test_bazel_clang_tidy_ci_target_keeps_going(self):
         args = cli.parse_arguments(
@@ -734,6 +735,50 @@ class CliTest(unittest.TestCase):
 
         self.assertIn("--keep_going", description)
         self.assertIn("//runtime/src/iree/tokenizer:all", description)
+
+    def test_bazel_clang_tidy_scopes_libamdf_enablement(self):
+        cases = (
+            (["//libamdf/src:allocator"], True),
+            (["//libamdf"], True),
+            (["//libamdf/..."], True),
+            (["//libamdf:all"], True),
+            (["//..."], True),
+            (["//...:all"], True),
+            (["//...:*"], True),
+            (["...:all-targets"], True),
+            (["@//libamdf/..."], True),
+            (["@@//libamdf/..."], True),
+            (["@hrx//libamdf/..."], True),
+            (["//libamdf/...", "-//libamdf/src/..."], True),
+            (["//...", "-//libamdf:all"], True),
+            (["//libamdf/cts:*", "-//libamdf/cts:all"], True),
+            (["//...", "-//libamdf/...", "//libamdf/src:allocator"], True),
+            (["-//libamdf/...", "//..."], True),
+            (["//runtime/..."], False),
+            (["//:all"], False),
+            ([":all"], False),
+            (["//libamdf_tools:helper"], False),
+            (["@external//libamdf/..."], False),
+            (["@@external+//..."], False),
+            (["//runtime/...", "-//libamdf/..."], False),
+            (["//...", "-//libamdf/..."], False),
+            (["//...:all", "-//libamdf/...:all"], False),
+            (["@@//...", "-@hrx//libamdf/...:all-targets"], False),
+            (["//libamdf/src:allocator", "-//libamdf/src:allocator"], False),
+            (["//libamdf/src:all", "-//libamdf/src:all"], False),
+            (["//libamdf/src:all", "-//libamdf/src/..."], False),
+            (["//libamdf", "-//libamdf:libamdf"], False),
+        )
+        for targets, enabled in cases:
+            with self.subTest(targets=targets):
+                args = cli.parse_arguments(["bazel", "clang-tidy", "--", *targets])
+
+                description = normalized_plan_description(args.handler(args))
+
+                self.assertEqual(
+                    "--//libamdf/config:enabled=true" in description, enabled
+                )
+                self.assertNotIn("--//libamdf/config:enabled=false", description)
 
     def test_bazel_clang_tidy_git_scope_uses_presubmit_provider(self):
         args = cli.parse_arguments(["bazel", "clang-tidy", "--base", "origin/main"])

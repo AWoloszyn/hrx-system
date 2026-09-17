@@ -38,6 +38,7 @@ from urllib.request import url2pathname
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
+from build_tools.devtools.bazel import clang_tidy_configuration_args
 from build_tools.devtools.source_lock import (
     NonEmptyTrackedFileSnapshot,
     source_mutation_lock,
@@ -79,6 +80,7 @@ SEMGREP_EXTENSIONS = C_ANALYSIS_EXTENSIONS
 SEMGREP_PATH_PREFIXES = (
     "runtime/src/iree/",
     "loom/src/loom/",
+    "libamdf/",
     "libhrx/",
 )
 SEMGREP_DEFAULT_MAX_JOBS = 14
@@ -376,7 +378,7 @@ def parse_arguments() -> argparse.Namespace:
         action="store_false",
         default=True,
         help=(
-            "Skip runtime/libhrx/loom product tests while still running "
+            "Skip runtime/libamdf/libhrx/loom product tests while still running "
             "changed repository-tool tests."
         ),
     )
@@ -1305,14 +1307,19 @@ def run_buildifier(paths: list[str], fix: bool, verbose: bool) -> bool:
         return skip_step("Buildifier", "no Bazel files")
     if not require_tool("buildifier", "Buildifier"):
         return False
-    command_prefix = ["buildifier", "-lint=off"]
-    if not fix:
-        command_prefix.append("-mode=check")
-    commands = command_argument_batches(command_prefix, files)
-    ok = run_parallel_commands(commands, "Buildifier", verbose, jobs=1)
-    if fix and ok:
-        ok = stage_files(files, verbose)
-    return ok
+    command_prefix = ["buildifier", "-warnings=all"]
+    ok = True
+    if fix:
+        commands = command_argument_batches(
+            [*command_prefix, "-mode=fix", "-lint=fix"], files
+        )
+        ok = run_parallel_commands(commands, "Buildifier fixes", verbose, jobs=1)
+        ok = stage_files(files, verbose) and ok
+    # Lint fix mode silently leaves findings that have no automatic repair.
+    commands = command_argument_batches(
+        [*command_prefix, "-mode=check", "-lint=warn"], files
+    )
+    return run_parallel_commands(commands, "Buildifier", verbose, jobs=1) and ok
 
 
 def run_ruff(paths: list[str], fix: bool, verbose: bool) -> bool:
@@ -1768,6 +1775,7 @@ def clang_tidy_bazel_command(
         )
     command += [
         CLANG_TIDY_REPO_ENV,
+        *clang_tidy_configuration_args(targets),
         f"--aspects={CLANG_TIDY_ASPECT}",
         f"--output_groups={','.join(output_groups)}",
     ]
@@ -1887,6 +1895,42 @@ def cmake_clang_tidy_candidate_files(paths: list[str]) -> list[str]:
     )
 
 
+def cmake_clang_tidy_configured_files(
+    compile_commands: Path, candidate_files: list[str]
+) -> tuple[list[str], list[str]]:
+    """Returns selected database paths and sources excluded by configuration."""
+    database = json.loads(compile_commands.read_text(encoding="utf-8"))
+    if not isinstance(database, list):
+        raise ValueError("expected a compilation database array")
+    compiled_files: dict[str, Path] = {}
+    for index, command in enumerate(database):
+        if not isinstance(command, dict) or not all(
+            isinstance(command.get(field), str) and command[field]
+            for field in ("directory", "file")
+        ):
+            raise ValueError(
+                f"compile command {index} requires nonempty directory and file paths"
+            )
+        # Match run-clang-tidy's path spelling, including relative file entries.
+        filename = os.path.abspath(REPO_ROOT / command["directory"] / command["file"])
+        compiled_files[filename] = Path(filename).resolve()
+    candidates = {path: (REPO_ROOT / path).resolve() for path in candidate_files}
+    selected_paths = set(candidates.values())
+    configured_paths = set(compiled_files.values())
+    return (
+        sorted(
+            path
+            for path, resolved in compiled_files.items()
+            if resolved in selected_paths
+        ),
+        [
+            path
+            for path, resolved in candidates.items()
+            if resolved not in configured_paths
+        ],
+    )
+
+
 def llvm_cmake_dir(llvm_config: str) -> str | None:
     result = subprocess.run(
         [llvm_config, "--cmakedir"],
@@ -1959,7 +2003,7 @@ def cmake_clang_tidy_command(
         "-j",
         str(clang_tidy_jobs()),
         "-warnings-as-errors=*",
-        *files,
+        *[f"^{re.escape(path)}$" for path in files],
     ]
 
 
@@ -1999,7 +2043,7 @@ def cmake_run_clang_tidy_fix_command(
         "-fix",
         "-format",
         "-style=file",
-        *files,
+        *[f"^{re.escape(path)}$" for path in files],
     ]
 
 
@@ -2104,6 +2148,34 @@ def run_clang_tidy_cmake(
     if not candidate_files and not infra_files:
         return skip_step("clang-tidy", "no C/C++ runtime inputs")
 
+    compile_commands_dir = cmake_build_dir_from_env()
+    if candidate_files:
+        compile_commands = compile_commands_dir / "compile_commands.json"
+        if not compile_commands.is_file():
+            print(
+                f"[fail] clang-tidy: CMake compile_commands.json is missing: "
+                f"{compile_commands}"
+            )
+            print("hint: run python dev.py cmake configure")
+            return False
+        try:
+            candidate_files, excluded_files = cmake_clang_tidy_configured_files(
+                compile_commands, candidate_files
+            )
+        except (OSError, ValueError) as error:
+            print(f"[fail] clang-tidy: cannot read {compile_commands}: {error}")
+            return False
+        if excluded_files:
+            skip_step(
+                "clang-tidy sources",
+                f"{len(excluded_files)} selected source(s) are not in {compile_commands}",
+            )
+            if verbose:
+                for path in excluded_files:
+                    print(f"  {path}")
+        if not candidate_files and not infra_files:
+            return True
+
     tools = clang_tidy_llvm_tools()
     if not tools:
         if clang_tidy_required(profile):
@@ -2124,7 +2196,7 @@ def run_clang_tidy_cmake(
                 "clang-tidy", f"{CLANG_TIDY_SETUP_HINT} with run-clang-tidy"
             )
     clang_apply_replacements = None
-    if fix:
+    if fix and candidate_files:
         clang_apply_replacements = clang_tidy_apply_replacements_tool()
         if not clang_apply_replacements:
             print(
@@ -2190,16 +2262,6 @@ def run_clang_tidy_cmake(
             f"[fail] clang-tidy CMake plugin: built plugin was not found under "
             f"{CLANG_TIDY_CMAKE_BUILD_DIR}"
         )
-        return False
-
-    compile_commands_dir = cmake_build_dir_from_env()
-    compile_commands = compile_commands_dir / "compile_commands.json"
-    if not compile_commands.is_file():
-        print(
-            f"[fail] clang-tidy: CMake compile_commands.json is missing: "
-            f"{compile_commands}"
-        )
-        print("hint: run python dev.py cmake configure")
         return False
 
     ok = (
