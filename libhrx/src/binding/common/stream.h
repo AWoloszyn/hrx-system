@@ -42,6 +42,10 @@ typedef struct iree_hal_streaming_dispatch_params_t {
   size_t buffer_size;
   // Flags controlling parameter interpretation and dispatch behavior.
   iree_hal_streaming_dispatch_flags_t flags;
+  // Exact workitem dimensions, or zeroes when every workgroup is full.
+  uint32_t workitem_count[3];
+  // Opaque function token preserved for binding-level graph parameter queries.
+  void* binding_function;
 } iree_hal_streaming_dispatch_params_t;
 
 // One member of a kernel launch batch.

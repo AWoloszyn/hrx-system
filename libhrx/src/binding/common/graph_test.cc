@@ -327,10 +327,13 @@ TEST(GraphTest, KernelParameterUpdateCapturesPrepackedArgumentSpans) {
       /*.buffer=*/exact_arguments.data(),
       /*.buffer_size=*/exact_arguments.size(),
       /*.flags=*/IREE_HAL_STREAMING_DISPATCH_FLAG_PRE_PACKED,
+      /*.workitem_count=*/{},
+      /*.binding_function=*/reinterpret_cast<void*>(uintptr_t{0x1234}),
   };
   IREE_EXPECT_OK(iree_hal_streaming_graph_set_kernel_node_params(
       &node, &symbol, &exact_params));
   EXPECT_EQ(exact_arguments.size(), node.attrs.kernel.constants.data_length);
+  EXPECT_EQ(exact_params.binding_function, node.attrs.kernel.hip_function);
   EXPECT_EQ(0, memcmp(exact_arguments.data(), constants.data(),
                       exact_arguments.size()));
   for (size_t i = exact_arguments.size(); i < constants.size(); ++i) {
@@ -575,6 +578,81 @@ struct ProbedHostAllocator {
     return iree_allocator_t{this, &ProbedHostAllocator::Control};
   }
 };
+
+struct FailOnAttemptAllocator {
+  ~FailOnAttemptAllocator() {
+    for (size_t i = 0; i < allocation_count; ++i) {
+      iree_allocator_free(delegate, allocations[i]);
+    }
+  }
+
+  static iree_status_t Control(void* self, iree_allocator_command_t command,
+                               const void* params, void** inout_ptr) {
+    auto* allocator = static_cast<FailOnAttemptAllocator*>(self);
+    if (command != IREE_ALLOCATOR_COMMAND_MALLOC &&
+        command != IREE_ALLOCATOR_COMMAND_CALLOC) {
+      return allocator->delegate.ctl(allocator->delegate.self, command, params,
+                                     inout_ptr);
+    }
+
+    ++allocator->allocation_attempt_count;
+    if (allocator->allocation_attempt_count ==
+        allocator->fail_on_allocation_attempt) {
+      return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                              "injected allocation failure");
+    }
+    IREE_RETURN_IF_ERROR(allocator->delegate.ctl(allocator->delegate.self,
+                                                 command, params, inout_ptr));
+    if (allocator->allocation_count >= allocator->allocations.size()) {
+      iree_allocator_free(allocator->delegate, *inout_ptr);
+      *inout_ptr = nullptr;
+      return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                              "test allocation tracking capacity exceeded");
+    }
+    allocator->allocations[allocator->allocation_count++] = *inout_ptr;
+    return iree_ok_status();
+  }
+
+  iree_allocator_t AsAllocator() {
+    return iree_allocator_t{this, &FailOnAttemptAllocator::Control};
+  }
+
+  iree_allocator_t delegate = iree_allocator_system();
+  int fail_on_allocation_attempt = 0;
+  int allocation_attempt_count = 0;
+  std::array<void*, 8> allocations = {};
+  size_t allocation_count = 0;
+};
+
+TEST(GraphTest, NodePublicationIsFailureAtomic) {
+  FailOnAttemptAllocator allocator;
+  allocator.fail_on_allocation_attempt = 3;
+  iree_hal_streaming_graph_t graph = {};
+  graph.arena_allocator = allocator.AsAllocator();
+
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_RESOURCE_EXHAUSTED,
+      iree_hal_streaming_graph_add_empty_node(&graph, /*dependencies=*/nullptr,
+                                              /*dependency_count=*/0,
+                                              /*out_node=*/nullptr));
+  EXPECT_EQ(0u, graph.node_count);
+  EXPECT_EQ(0u, graph.root_count);
+  EXPECT_EQ(0u, graph.next_clone_source_node_index);
+  EXPECT_EQ(nullptr, graph.node_blocks);
+  EXPECT_EQ(nullptr, graph.current_node_block);
+  EXPECT_EQ(nullptr, graph.root_blocks);
+  EXPECT_EQ(nullptr, graph.current_root_block);
+
+  allocator.fail_on_allocation_attempt = 0;
+  iree_hal_streaming_graph_node_t* node = nullptr;
+  IREE_ASSERT_OK(iree_hal_streaming_graph_add_empty_node(
+      &graph, /*dependencies=*/nullptr, /*dependency_count=*/0, &node));
+  ASSERT_NE(nullptr, node);
+  EXPECT_EQ(0u, node->node_index);
+  EXPECT_EQ(0u, node->clone_source_node_index);
+  EXPECT_EQ(1u, graph.node_count);
+  EXPECT_EQ(1u, graph.root_count);
+}
 
 void InitializeSingleCopySymbol(uint16_t direct_arg_bytes,
                                 uint16_t destination_offset,

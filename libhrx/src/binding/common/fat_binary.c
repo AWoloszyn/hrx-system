@@ -54,6 +54,18 @@
 #define HRX_ELF_HSA_ABI_VERSION_V5 3
 #define HRX_ELF_HSA_ABI_VERSION_V6 4
 
+#define HRX_ELF_SHT_NULL 0
+#define HRX_ELF_SHT_SYMTAB 2
+#define HRX_ELF_SHT_STRTAB 3
+#define HRX_ELF_SHT_NOBITS 8
+#define HRX_ELF_SHT_DYNSYM 11
+#define HRX_ELF_SHN_UNDEF 0
+#define HRX_ELF_SHN_LORESERVE 0xff00u
+#define HRX_ELF_PN_XNUM UINT16_MAX
+#define HRX_ELF_STB_GLOBAL 1
+#define HRX_ELF_STB_WEAK 2
+#define HRX_ELF_STT_OBJECT 1
+
 #define HRX_EF_AMDGPU_MACH 0x0FFu
 #define HRX_EF_AMDGPU_FEATURE_XNACK_V3 0x100u
 #define HRX_EF_AMDGPU_FEATURE_SRAMECC_V3 0x200u
@@ -114,6 +126,13 @@ typedef struct hrx_ccob_header_v3_t {
   uint64_t hash;
 } hrx_ccob_header_v3_t;
 
+static iree_status_t hrx_fat_parse_ccob(iree_const_byte_span_t data,
+                                        uint16_t* out_version,
+                                        uint16_t* out_method,
+                                        uint64_t* out_uncompressed_size,
+                                        uint64_t* out_file_size,
+                                        iree_host_size_t* out_payload_offset);
+
 typedef struct hrx_elf64_header_t {
   uint8_t magic[4];
   uint8_t elf_class;
@@ -138,6 +157,64 @@ typedef struct hrx_elf64_header_t {
 } hrx_elf64_header_t;
 static_assert(sizeof(hrx_elf64_header_t) == 64,
               "ELF64 header must be 64 bytes");
+
+typedef struct hrx_elf64_section_header_t {
+  uint32_t name;
+  uint32_t type;
+  uint64_t flags;
+  uint64_t address;
+  uint64_t offset;
+  uint64_t size;
+  uint32_t link;
+  uint32_t info;
+  uint64_t address_alignment;
+  uint64_t entry_size;
+} hrx_elf64_section_header_t;
+static_assert(sizeof(hrx_elf64_section_header_t) == 64,
+              "ELF64 section header must be 64 bytes");
+
+typedef struct hrx_elf64_program_header_t {
+  uint32_t type;
+  uint32_t flags;
+  uint64_t offset;
+  uint64_t virtual_address;
+  uint64_t physical_address;
+  uint64_t file_size;
+  uint64_t memory_size;
+  uint64_t alignment;
+} hrx_elf64_program_header_t;
+static_assert(sizeof(hrx_elf64_program_header_t) == 56,
+              "ELF64 program header must be 56 bytes");
+
+typedef struct hrx_elf64_symbol_t {
+  uint32_t name;
+  uint8_t info;
+  uint8_t other;
+  uint16_t section_index;
+  uint64_t value;
+  uint64_t size;
+} hrx_elf64_symbol_t;
+static_assert(sizeof(hrx_elf64_symbol_t) == 24,
+              "ELF64 symbol must be 24 bytes");
+
+typedef struct hrx_elf64_view_t {
+  // Complete caller-provided ELF byte span.
+  iree_const_byte_span_t data;
+  // Decoded ELF file header.
+  hrx_elf64_header_t header;
+  // Normalized section count, including an extended count from section zero.
+  iree_host_size_t section_count;
+  // Checked byte offset of the section-header table.
+  iree_host_size_t section_table_offset;
+  // Checked byte end of the section-header table.
+  iree_host_size_t section_table_end;
+  // Normalized program count, including an extended count from section zero.
+  iree_host_size_t program_count;
+  // Checked byte offset of the program-header table.
+  iree_host_size_t program_table_offset;
+  // Checked byte end of the program-header table.
+  iree_host_size_t program_table_end;
+} hrx_elf64_view_t;
 
 typedef enum hrx_amdgpu_feature_state_e {
   HRX_AMDGPU_FEATURE_STATE_ANY = 0,
@@ -217,6 +294,149 @@ static bool hrx_fat_is_wrapper(iree_const_byte_span_t data) {
 bool iree_hal_streaming_fat_binary_is_supported(iree_const_byte_span_t data) {
   return hrx_fat_is_elf(data) || hrx_fat_is_uncompressed_bundle(data) ||
          hrx_fat_is_ccob(data) || hrx_fat_is_wrapper(data);
+}
+
+static iree_status_t hrx_fat_measure_bundle(iree_const_byte_span_t data,
+                                            iree_host_size_t* out_data_length) {
+  const uint8_t* cursor = data.data + HRX_OFFLOAD_BUNDLE_MAGIC_SIZE;
+  uint64_t entry_count = 0;
+  memcpy(&entry_count, cursor, sizeof(entry_count));
+  cursor += sizeof(entry_count);
+  if (IREE_UNLIKELY(entry_count > UINT16_MAX)) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "offload bundle entry count is too large");
+  }
+
+  iree_host_size_t metadata_length =
+      HRX_OFFLOAD_BUNDLE_MAGIC_SIZE + sizeof(entry_count);
+  iree_host_size_t data_length = metadata_length;
+  for (uint64_t i = 0; i < entry_count; ++i) {
+    hrx_bundle_entry_t entry;
+    memcpy(&entry, cursor, sizeof(entry));
+    cursor += sizeof(entry);
+
+    if (IREE_UNLIKELY(entry.triple_size > IREE_HOST_SIZE_MAX ||
+                      entry.offset > IREE_HOST_SIZE_MAX ||
+                      entry.size > IREE_HOST_SIZE_MAX)) {
+      return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                              "offload bundle entry range exceeds host size");
+    }
+    iree_host_size_t metadata_end = 0;
+    iree_host_size_t payload_end = 0;
+    if (IREE_UNLIKELY(!iree_host_size_checked_add(
+                          metadata_length, sizeof(entry), &metadata_length) ||
+                      !iree_host_size_checked_add(
+                          metadata_length, (iree_host_size_t)entry.triple_size,
+                          &metadata_end) ||
+                      !iree_host_size_checked_add(
+                          (iree_host_size_t)entry.offset,
+                          (iree_host_size_t)entry.size, &payload_end))) {
+      return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                              "offload bundle size overflow");
+    }
+    cursor += (iree_host_size_t)entry.triple_size;
+    metadata_length = metadata_end;
+    data_length = iree_max(data_length, iree_max(metadata_end, payload_end));
+  }
+
+  *out_data_length = data_length;
+  return iree_ok_status();
+}
+
+static iree_status_t hrx_fat_measure_unwrapped(
+    iree_const_byte_span_t data, iree_host_size_t* out_data_length) {
+  if (data.data_length > 0) {
+    *out_data_length = data.data_length;
+    return iree_ok_status();
+  }
+  if (hrx_fat_is_elf(data)) {
+    char target_key[HRX_FAT_TARGET_KEY_CAPACITY] = {0};
+    return iree_hal_streaming_fat_binary_describe_amdgpu_elf(
+        data, sizeof(target_key), target_key, out_data_length);
+  }
+  if (hrx_fat_is_uncompressed_bundle(data)) {
+    return hrx_fat_measure_bundle(data, out_data_length);
+  }
+  if (hrx_fat_is_ccob(data)) {
+    uint16_t version = 0;
+    uint16_t method = 0;
+    uint64_t uncompressed_size = 0;
+    uint64_t file_size = 0;
+    iree_host_size_t payload_offset = 0;
+    IREE_RETURN_IF_ERROR(hrx_fat_parse_ccob(data, &version, &method,
+                                            &uncompressed_size, &file_size,
+                                            &payload_offset));
+    if (file_size > 0) {
+      if (IREE_UNLIKELY(file_size > IREE_HOST_SIZE_MAX ||
+                        file_size < payload_offset)) {
+        return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                                "CCOB file size is invalid");
+      }
+      *out_data_length = (iree_host_size_t)file_size;
+      return iree_ok_status();
+    }
+    return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
+                            "CCOB v%u does not encode a clonable source length",
+                            version);
+  }
+  return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                          "unrecognized module binary");
+}
+
+iree_status_t iree_hal_streaming_fat_binary_clone(
+    iree_const_byte_span_t data, iree_allocator_t host_allocator,
+    void** out_data, iree_host_size_t* out_data_length) {
+  IREE_ASSERT_ARGUMENT(out_data);
+  IREE_ASSERT_ARGUMENT(out_data_length);
+  *out_data = NULL;
+  *out_data_length = 0;
+  if (!data.data) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "module binary is NULL");
+  }
+
+  if (!hrx_fat_is_wrapper(data)) {
+    iree_host_size_t data_length = 0;
+    IREE_RETURN_IF_ERROR(hrx_fat_measure_unwrapped(data, &data_length));
+    void* clone = NULL;
+    IREE_RETURN_IF_ERROR(
+        iree_allocator_malloc(host_allocator, data_length, &clone));
+    memcpy(clone, data.data, data_length);
+    *out_data = clone;
+    *out_data_length = data_length;
+    return iree_ok_status();
+  }
+
+  hrx_hip_fat_binary_header_t header;
+  memcpy(&header, data.data, sizeof(header));
+  if (header.version != HRX_HIP_FAT_VERSION || !header.binary) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "invalid HIP fat-binary wrapper");
+  }
+  if (header.magic == HRX_HIP_FAT_MAGIC_HIPK) {
+    return iree_make_status(
+        IREE_STATUS_UNIMPLEMENTED,
+        "HIPK source ownership depends on its original file mapping");
+  }
+
+  iree_host_size_t payload_length = 0;
+  IREE_RETURN_IF_ERROR(hrx_fat_measure_unwrapped(
+      iree_make_const_byte_span(header.binary, 0), &payload_length));
+  iree_host_size_t clone_length = 0;
+  if (IREE_UNLIKELY(!iree_host_size_checked_add(sizeof(header), payload_length,
+                                                &clone_length))) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "HIP fat-binary clone size overflow");
+  }
+  uint8_t* clone = NULL;
+  IREE_RETURN_IF_ERROR(
+      iree_allocator_malloc(host_allocator, clone_length, (void**)&clone));
+  memcpy(clone + sizeof(header), header.binary, payload_length);
+  header.binary = clone + sizeof(header);
+  memcpy(clone, &header, sizeof(header));
+  *out_data = clone;
+  *out_data_length = clone_length;
+  return iree_ok_status();
 }
 
 //===----------------------------------------------------------------------===//
@@ -300,18 +520,225 @@ static iree_status_t hrx_fat_format_amdgpu_target_key(
                                            &length, IREE_SV("xnack"), xnack);
 }
 
-// Validates an AMDGPU ELF header, computes the total on-disk ELF size from the
-// section-header table, and derives the AMDGPU HAL target key.
-iree_status_t iree_hal_streaming_fat_binary_describe_amdgpu_elf(
-    iree_const_byte_span_t elf, iree_host_size_t target_key_capacity,
-    char* target_key, iree_host_size_t* out_size) {
-  if (!hrx_fat_length_at_least(elf, sizeof(hrx_elf64_header_t))) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "ELF data too small (got %" PRIhsz ")",
-                            elf.data_length);
+static iree_status_t hrx_fat_elf_checked_range(iree_const_byte_span_t elf,
+                                               uint64_t offset_value,
+                                               uint64_t length_value,
+                                               iree_host_size_t* out_offset,
+                                               iree_host_size_t* out_end) {
+  if (IREE_UNLIKELY(offset_value > IREE_HOST_SIZE_MAX ||
+                    length_value > IREE_HOST_SIZE_MAX)) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "ELF file range exceeds the host address space");
   }
-  hrx_elf64_header_t h;
-  memcpy(&h, elf.data, sizeof(h));
+  const iree_host_size_t offset = (iree_host_size_t)offset_value;
+  iree_host_size_t end = 0;
+  if (IREE_UNLIKELY(!iree_host_size_checked_add(
+          offset, (iree_host_size_t)length_value, &end))) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "ELF file range overflows the host address space");
+  }
+  if (IREE_UNLIKELY(elf.data_length != 0 && end > elf.data_length)) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "ELF file range exceeds the available data");
+  }
+  if (out_offset) {
+    *out_offset = offset;
+  }
+  if (out_end) {
+    *out_end = end;
+  }
+  return iree_ok_status();
+}
+
+static iree_status_t hrx_fat_elf_view_initialize(iree_const_byte_span_t elf,
+                                                 hrx_elf64_view_t* out_view) {
+  *out_view = (hrx_elf64_view_t){0};
+  if (IREE_UNLIKELY(!elf.data || !hrx_fat_length_at_least(
+                                     elf, sizeof(hrx_elf64_header_t)))) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "ELF data is too small for a header");
+  }
+
+  out_view->data = elf;
+  memcpy(&out_view->header, elf.data, sizeof(out_view->header));
+  const hrx_elf64_header_t* header = &out_view->header;
+  uint32_t magic = 0;
+  memcpy(&magic, header->magic, sizeof(magic));
+  if (IREE_UNLIKELY(magic != HRX_ELF_MAGIC_INT)) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "ELF header has invalid magic");
+  }
+  if (IREE_UNLIKELY(header->ehsize < sizeof(*header))) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "ELF header size is too small");
+  }
+  IREE_RETURN_IF_ERROR(
+      hrx_fat_elf_checked_range(elf, 0, header->ehsize, NULL, NULL));
+
+  uint64_t section_count = header->shnum;
+  uint64_t program_count = header->phnum;
+  if (IREE_UNLIKELY(header->shnum >= HRX_ELF_SHN_LORESERVE)) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "ELF section count uses a reserved header value");
+  }
+  const bool uses_extended_section_count =
+      header->shnum == 0 && header->shoff != 0;
+  const bool uses_extended_program_count = header->phnum == HRX_ELF_PN_XNUM;
+  const bool needs_section_zero =
+      uses_extended_section_count || uses_extended_program_count;
+  if (needs_section_zero) {
+    if (IREE_UNLIKELY(header->shoff == 0 ||
+                      header->shentsize < sizeof(hrx_elf64_section_header_t))) {
+      return iree_make_status(
+          IREE_STATUS_INVALID_ARGUMENT,
+          "ELF extended counts require a complete section-zero header");
+    }
+    iree_host_size_t section_zero_offset = 0;
+    IREE_RETURN_IF_ERROR(hrx_fat_elf_checked_range(
+        elf, header->shoff, sizeof(hrx_elf64_section_header_t),
+        &section_zero_offset, NULL));
+    hrx_elf64_section_header_t section_zero;
+    memcpy(&section_zero, elf.data + section_zero_offset, sizeof(section_zero));
+    if (IREE_UNLIKELY(section_zero.type != HRX_ELF_SHT_NULL)) {
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "ELF section zero must have null type");
+    }
+    if (uses_extended_section_count) {
+      if (IREE_UNLIKELY(section_zero.size < HRX_ELF_SHN_LORESERVE)) {
+        return iree_make_status(
+            IREE_STATUS_INVALID_ARGUMENT,
+            "ELF extended section count is below the reserved range");
+      }
+      section_count = section_zero.size;
+    }
+    if (uses_extended_program_count) {
+      if (IREE_UNLIKELY(section_zero.info < HRX_ELF_PN_XNUM)) {
+        return iree_make_status(
+            IREE_STATUS_INVALID_ARGUMENT,
+            "ELF extended program count is below the reserved value");
+      }
+      program_count = section_zero.info;
+    }
+  }
+
+  if (IREE_UNLIKELY(section_count > IREE_HOST_SIZE_MAX)) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "ELF section count exceeds host size");
+  }
+  out_view->section_count = (iree_host_size_t)section_count;
+  if (out_view->section_count > 0) {
+    if (IREE_UNLIKELY(header->shoff == 0 ||
+                      header->shentsize < sizeof(hrx_elf64_section_header_t))) {
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "ELF section header size is too small");
+    }
+    iree_host_size_t section_table_length = 0;
+    if (IREE_UNLIKELY(!iree_host_size_checked_mul(out_view->section_count,
+                                                  header->shentsize,
+                                                  &section_table_length))) {
+      return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                              "ELF section table size overflow");
+    }
+    IREE_RETURN_IF_ERROR(hrx_fat_elf_checked_range(
+        elf, header->shoff, section_table_length,
+        &out_view->section_table_offset, &out_view->section_table_end));
+  }
+
+  if (IREE_UNLIKELY(program_count > IREE_HOST_SIZE_MAX)) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "ELF program count exceeds host size");
+  }
+  out_view->program_count = (iree_host_size_t)program_count;
+  if (out_view->program_count > 0) {
+    if (IREE_UNLIKELY(header->phoff == 0 ||
+                      header->phentsize < sizeof(hrx_elf64_program_header_t))) {
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "ELF program header size is too small");
+    }
+    iree_host_size_t program_table_length = 0;
+    if (IREE_UNLIKELY(!iree_host_size_checked_mul(out_view->program_count,
+                                                  header->phentsize,
+                                                  &program_table_length))) {
+      return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                              "ELF program table size overflow");
+    }
+    IREE_RETURN_IF_ERROR(hrx_fat_elf_checked_range(
+        elf, header->phoff, program_table_length,
+        &out_view->program_table_offset, &out_view->program_table_end));
+  }
+
+  return iree_ok_status();
+}
+
+static iree_status_t hrx_fat_elf_read_section_header(
+    const hrx_elf64_view_t* view, iree_host_size_t section_index,
+    hrx_elf64_section_header_t* out_section) {
+  if (IREE_UNLIKELY(section_index >= view->section_count)) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "ELF section index %" PRIhsz " out of range",
+                            section_index);
+  }
+  iree_host_size_t relative_offset = 0;
+  if (IREE_UNLIKELY(!iree_host_size_checked_mul(
+          section_index, view->header.shentsize, &relative_offset))) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "ELF section header offset overflow");
+  }
+  memcpy(out_section,
+         view->data.data + view->section_table_offset + relative_offset,
+         sizeof(*out_section));
+  return iree_ok_status();
+}
+
+static iree_status_t hrx_fat_measure_elf(const hrx_elf64_view_t* view,
+                                         iree_host_size_t* out_size) {
+  iree_host_size_t size = view->header.ehsize;
+  if (view->section_count > 0) {
+    size = iree_max(size, view->section_table_end);
+    for (iree_host_size_t i = 0; i < view->section_count; ++i) {
+      hrx_elf64_section_header_t section;
+      IREE_RETURN_IF_ERROR(hrx_fat_elf_read_section_header(view, i, &section));
+      if (section.type == HRX_ELF_SHT_NOBITS || section.size == 0) {
+        continue;
+      }
+      iree_host_size_t section_end = 0;
+      IREE_RETURN_IF_ERROR(hrx_fat_elf_checked_range(
+          view->data, section.offset, section.size, NULL, &section_end));
+      size = iree_max(size, section_end);
+    }
+  }
+
+  if (view->program_count > 0) {
+    size = iree_max(size, view->program_table_end);
+    for (iree_host_size_t i = 0; i < view->program_count; ++i) {
+      iree_host_size_t relative_offset = 0;
+      if (IREE_UNLIKELY(!iree_host_size_checked_mul(i, view->header.phentsize,
+                                                    &relative_offset))) {
+        return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                                "ELF program header offset overflow");
+      }
+      hrx_elf64_program_header_t program;
+      memcpy(&program,
+             view->data.data + view->program_table_offset + relative_offset,
+             sizeof(program));
+      if (program.file_size == 0) {
+        continue;
+      }
+      iree_host_size_t segment_end = 0;
+      IREE_RETURN_IF_ERROR(hrx_fat_elf_checked_range(
+          view->data, program.offset, program.file_size, NULL, &segment_end));
+      size = iree_max(size, segment_end);
+    }
+  }
+
+  *out_size = size;
+  return iree_ok_status();
+}
+
+static iree_status_t hrx_fat_describe_amdgpu_elf_view(
+    const hrx_elf64_view_t* view, iree_host_size_t target_key_capacity,
+    char* target_key) {
+  const hrx_elf64_header_t h = view->header;
   if (h.elf_class != HRX_ELFCLASS64) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "ELF class must be 64-bit, got %u", h.elf_class);
@@ -400,31 +827,119 @@ iree_status_t iree_hal_streaming_fat_binary_describe_amdgpu_elf(
         generic_version);
   }
 
-  IREE_RETURN_IF_ERROR(hrx_fat_format_amdgpu_target_key(
-      machine_target, sramecc, xnack, target_key_capacity, target_key));
+  return hrx_fat_format_amdgpu_target_key(machine_target, sramecc, xnack,
+                                          target_key_capacity, target_key);
+}
 
-  if (h.shoff > IREE_HOST_SIZE_MAX) {
+// Validates an AMDGPU ELF header, computes its complete on-disk extent, and
+// derives the AMDGPU HAL target key.
+iree_status_t iree_hal_streaming_fat_binary_describe_amdgpu_elf(
+    iree_const_byte_span_t elf, iree_host_size_t target_key_capacity,
+    char* target_key, iree_host_size_t* out_size) {
+  hrx_elf64_view_t view;
+  IREE_RETURN_IF_ERROR(hrx_fat_elf_view_initialize(elf, &view));
+  IREE_RETURN_IF_ERROR(
+      hrx_fat_describe_amdgpu_elf_view(&view, target_key_capacity, target_key));
+  return out_size ? hrx_fat_measure_elf(&view, out_size) : iree_ok_status();
+}
+
+static iree_status_t hrx_fat_elf_section_span(
+    const hrx_elf64_view_t* view, const hrx_elf64_section_header_t* section,
+    iree_const_byte_span_t* out_span) {
+  *out_span = iree_const_byte_span_empty();
+  if (IREE_UNLIKELY(section->offset > IREE_HOST_SIZE_MAX ||
+                    section->size > IREE_HOST_SIZE_MAX)) {
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
-                            "ELF section table offset is out of range");
+                            "ELF section range exceeds host address space");
   }
-  iree_host_size_t section_table_size = 0;
-  iree_host_size_t size = 0;
-  if (!iree_host_size_checked_mul((iree_host_size_t)h.shentsize,
-                                  (iree_host_size_t)h.shnum,
-                                  &section_table_size) ||
-      !iree_host_size_checked_add((iree_host_size_t)h.shoff, section_table_size,
-                                  &size)) {
+  const iree_host_size_t offset = (iree_host_size_t)section->offset;
+  const iree_host_size_t size = (iree_host_size_t)section->size;
+  iree_host_size_t end = 0;
+  if (IREE_UNLIKELY(
+          !iree_host_size_checked_add(offset, size, &end) ||
+          (view->data.data_length != 0 && end > view->data.data_length))) {
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
-                            "ELF section table size overflow");
+                            "ELF section range is out of bounds");
   }
-  if (elf.data_length != 0 && size > elf.data_length) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "ELF claims size %" PRIhsz " but only %" PRIhsz
-                            " bytes available",
-                            size, elf.data_length);
-  }
-  if (out_size) {
-    *out_size = size;
+  *out_span = iree_make_const_byte_span(view->data.data + offset, end - offset);
+  return iree_ok_status();
+}
+
+iree_status_t iree_hal_streaming_fat_binary_visit_elf_global_objects(
+    iree_const_byte_span_t elf,
+    iree_hal_streaming_fat_binary_global_visitor_t visitor, void* user_data) {
+  IREE_ASSERT_ARGUMENT(elf.data);
+  IREE_ASSERT_ARGUMENT(visitor);
+  hrx_elf64_view_t view;
+  IREE_RETURN_IF_ERROR(hrx_fat_elf_view_initialize(elf, &view));
+  char target_key[HRX_FAT_TARGET_KEY_CAPACITY];
+  IREE_RETURN_IF_ERROR(
+      hrx_fat_describe_amdgpu_elf_view(&view, sizeof(target_key), target_key));
+
+  for (iree_host_size_t section_index = 0; section_index < view.section_count;
+       ++section_index) {
+    hrx_elf64_section_header_t symbol_section;
+    IREE_RETURN_IF_ERROR(
+        hrx_fat_elf_read_section_header(&view, section_index, &symbol_section));
+    if (symbol_section.type != HRX_ELF_SHT_SYMTAB &&
+        symbol_section.type != HRX_ELF_SHT_DYNSYM) {
+      continue;
+    }
+    if (IREE_UNLIKELY(symbol_section.entry_size < sizeof(hrx_elf64_symbol_t) ||
+                      symbol_section.entry_size > IREE_HOST_SIZE_MAX ||
+                      symbol_section.size % symbol_section.entry_size != 0 ||
+                      symbol_section.link >= view.section_count)) {
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "ELF symbol table layout is invalid");
+    }
+
+    hrx_elf64_section_header_t string_section;
+    IREE_RETURN_IF_ERROR(hrx_fat_elf_read_section_header(
+        &view, symbol_section.link, &string_section));
+    if (IREE_UNLIKELY(string_section.type != HRX_ELF_SHT_STRTAB)) {
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "ELF symbol table has no string table");
+    }
+
+    iree_const_byte_span_t symbols;
+    iree_const_byte_span_t strings;
+    IREE_RETURN_IF_ERROR(
+        hrx_fat_elf_section_span(&view, &symbol_section, &symbols));
+    IREE_RETURN_IF_ERROR(
+        hrx_fat_elf_section_span(&view, &string_section, &strings));
+    const iree_host_size_t entry_size =
+        (iree_host_size_t)symbol_section.entry_size;
+    const iree_host_size_t symbol_count = symbols.data_length / entry_size;
+    for (iree_host_size_t i = 0; i < symbol_count; ++i) {
+      hrx_elf64_symbol_t symbol;
+      memcpy(&symbol, symbols.data + i * entry_size, sizeof(symbol));
+      const uint8_t binding = symbol.info >> 4;
+      const uint8_t type = symbol.info & 0x0Fu;
+      if (type != HRX_ELF_STT_OBJECT ||
+          (binding != HRX_ELF_STB_GLOBAL && binding != HRX_ELF_STB_WEAK) ||
+          symbol.section_index == HRX_ELF_SHN_UNDEF) {
+        continue;
+      }
+      if (IREE_UNLIKELY(symbol.name >= strings.data_length)) {
+        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "ELF symbol name offset is out of bounds");
+      }
+
+      const char* name = (const char*)strings.data + symbol.name;
+      const iree_host_size_t maximum_length = strings.data_length - symbol.name;
+      const char* terminator = (const char*)memchr(name, '\0', maximum_length);
+      if (IREE_UNLIKELY(!terminator)) {
+        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "ELF symbol name is not terminated");
+      }
+      const iree_string_view_t name_view =
+          iree_make_string_view(name, (iree_host_size_t)(terminator - name));
+      if (iree_string_view_is_empty(name_view) ||
+          iree_string_view_ends_with(name_view, IREE_SV(".kd"))) {
+        continue;
+      }
+      IREE_RETURN_IF_ERROR(visitor(user_data, name_view));
+    }
   }
   return iree_ok_status();
 }
