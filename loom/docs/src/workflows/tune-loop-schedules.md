@@ -274,6 +274,13 @@ explains the identity checks.
 
 ## Check that read-ahead survives native code generation
 
+For a directly authored instruction sequence,
+[scheduling fences and locked Low helpers](../guide/functions-and-control.md#control-instruction-order)
+control compiler order. A fence can keep future loads ahead of a consumer
+without requiring them to complete. Completion still follows actual operand
+and storage hazards, so inspection of the final waits matters for both manual
+schedules and `scf.for` pipelines.
+
 The source schedule records how far values travel between iterations. Hardware
 overlap also depends on their final register assignments. A load can remain
 pending until its value is read, but a register-to-register queue copy reads
