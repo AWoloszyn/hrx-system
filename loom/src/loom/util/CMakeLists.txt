@@ -251,6 +251,20 @@ loom_cc_test(
     iree::testing::gtest_main
 )
 
+loom_cc_test(
+  NAME
+    fact_table_compute_test
+  SRCS
+    "fact_table_compute_test.cc"
+  DEPS
+    ::fact_table
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::ir
+    loom::ops::index
+)
+
 loom_cc_library(
   NAME
     predicate_facts

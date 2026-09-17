@@ -141,6 +141,15 @@ struct loom_value_fact_table_t {
   // Context object passed to op-specific fact inference callbacks.
   loom_fact_context_t context;
 
+  // Canonical SSA identities retained while computing value facts. Only
+  // declared identity operations populate this map; numeric equality does not.
+  struct {
+    // Canonical value IDs, or LOOM_VALUE_ID_INVALID for a value's own identity.
+    loom_value_id_t* entries;
+    // Allocated entry count. Storage grows lazily on the first alias.
+    iree_host_size_t capacity;
+  } identities;
+
   // Region execution context and optional CFG structure retained by the fact
   // owner. Entries and buckets have transient scope lifetime.
   struct {
@@ -410,7 +419,15 @@ bool loom_value_fact_table_query_contextual_query_origin(
     loom_value_id_t value_id,
     loom_value_fact_contextual_query_origin_t* out_origin);
 
-// Clones all defined source entries into |target|. When |module| is provided,
+// Returns the canonical SSA identity retained for |value_id|, or |value_id|
+// itself when the table is NULL or no identity has been established. This is
+// an O(1) lookup, not an IR traversal. Identities have the same populated-scope
+// lifetime and mutation/recomputation contract as numeric facts.
+loom_value_id_t loom_value_fact_table_query_identity(
+    const loom_value_fact_table_t* table, loom_value_id_t value_id);
+
+// Clones all defined source entries and their identities into |target|, using
+// the same module-local value IDs. When |module| is provided,
 // extension payloads use the type-owned domain implied by each value ID.
 // Undefined entries remain unset in |target| so normal block-argument and op
 // fact seeding can fill them.
@@ -418,12 +435,13 @@ iree_status_t loom_value_fact_table_clone_defined_facts(
     loom_value_fact_table_t* target, const loom_value_fact_table_t* source,
     const loom_module_t* module);
 
-// Propagates retained materialization and contextual origins through declared
-// value-alias and fact-identity operations. Numeric facts are computed
-// separately.
+// Propagates SSA identities and retained materialization and contextual origins
+// through declared value-alias and fact-identity operations. Numeric facts are
+// computed separately. Identity changes set |inout_changed| when non-NULL
+// without clearing changes already reported by numeric inference.
 iree_status_t loom_value_fact_table_propagate_origins(
     loom_value_fact_table_t* table, const loom_module_t* module,
-    const loom_op_t* op);
+    const loom_op_t* op, bool* inout_changed);
 
 // Computes facts for a single op. Ordinary ops call their vtable fact inference
 // function; LoopLike and RegionBranch ops visit their nested regions and

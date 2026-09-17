@@ -223,6 +223,19 @@ loom_cc_test(
     ],
 )
 
+loom_cc_test(
+    name = "fact_table_compute_test",
+    srcs = ["fact_table_compute_test.cc"],
+    deps = [
+        ":fact_table",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops/index",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
 loom_cc_library(
     name = "predicate_facts",
     srcs = ["predicate_facts.c"],
