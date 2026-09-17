@@ -93,7 +93,12 @@ def _string_list_attr(ctx, name):
     return value
 
 def _user_compile_flags(ctx, language):
-    flags = []
+    # Match rules_cc ordering: configured options precede rule-local options.
+    flags = list(ctx.fragments.cpp.copts)
+    if language == "c":
+        flags.extend(ctx.fragments.cpp.conlyopts)
+    elif language == "c++":
+        flags.extend(ctx.fragments.cpp.cxxopts)
     flags.extend(_string_list_attr(ctx, "copts"))
     if language == "c":
         flags.extend(_string_list_attr(ctx, "conlyopts"))
