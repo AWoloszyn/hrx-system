@@ -6,9 +6,46 @@
 
 #include "config.h"
 
+#include <string.h>
+
 #include "diagnostic.h"
 #include "loom/tooling/config/config.h"
 #include "loomc/iree.h"
+
+iree_status_t loomc_config_binding_list_append(
+    loomc_config_binding_list_t* list,
+    const loom_tooling_config_binding_t* binding,
+    iree_arena_allocator_t* arena) {
+  iree_host_size_t allocation_size = sizeof(loomc_config_binding_record_t);
+  if (!iree_host_size_checked_add(allocation_size, binding->key.size,
+                                  &allocation_size) ||
+      !iree_host_size_checked_add(allocation_size, binding->value.size,
+                                  &allocation_size)) {
+    return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                            "applied config binding is too large");
+  }
+  loomc_config_binding_record_t* record = NULL;
+  IREE_RETURN_IF_ERROR(
+      iree_arena_allocate(arena, allocation_size, (void**)&record));
+  char* storage = (char*)(record + 1);
+  memcpy(storage, binding->key.data, binding->key.size);
+  memcpy(storage + binding->key.size, binding->value.data, binding->value.size);
+  *record = (loomc_config_binding_record_t){
+      .binding =
+          {
+              .key = iree_make_string_view(storage, binding->key.size),
+              .value = iree_make_string_view(storage + binding->key.size,
+                                             binding->value.size),
+          },
+  };
+  if (list->tail) {
+    list->tail->next = record;
+  } else {
+    list->head = record;
+  }
+  list->tail = record;
+  return iree_ok_status();
+}
 
 loomc_status_t loomc_config_validate_policy_flags(
     loomc_config_policy_flags_t flags) {
@@ -35,8 +72,8 @@ loomc_status_t loomc_config_apply_module(
   if (loomc_status_is_ok(status) && loomc_result_succeeded(options->result) &&
       options->config_module != NULL) {
     status = loomc_status_from_iree(loom_tooling_config_overlay_module(
-        options->target_module, options->config_module, options->block_pool,
-        &materialize_result));
+        options->target_module, options->config_module, options->binding_sink,
+        options->block_pool, &materialize_result));
   }
   if (loomc_status_is_ok(status) && loomc_result_succeeded(options->result) &&
       materialize_result.materialized_count != 0) {

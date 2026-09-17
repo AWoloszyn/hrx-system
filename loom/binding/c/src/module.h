@@ -7,6 +7,7 @@
 #ifndef LOOMC_MODULE_STORAGE_H_
 #define LOOMC_MODULE_STORAGE_H_
 
+#include "config.h"
 #include "iree/base/internal/arena.h"
 #include "loom/error/diagnostic.h"
 #include "loom/ir/function_version.h"
@@ -119,10 +120,19 @@ LOOMC_API_PRIVATE loomc_status_t loomc_module_serialize_explicit_source(
 // Clears prior compiler products and returns their module-owned arena.
 //
 // The returned arena remains live until the next compilation or module
-// destruction. Compilation uses it for function versions and their facts so a
-// later loomc_emit_module call can consume the exact specialized targets.
-LOOMC_API_PRIVATE iree_arena_allocator_t*
-loomc_module_prepare_function_versions(loomc_module_t* module);
+// destruction. Compilation retains applied configuration and function versions
+// here for later loomc_emit_module calls.
+LOOMC_API_PRIVATE iree_arena_allocator_t* loomc_module_prepare_compilation(
+    loomc_module_t* module);
+
+// Captures applied invocation bindings into the module's compiler storage.
+LOOMC_API_PRIVATE loom_tooling_config_binding_sink_t
+loomc_module_config_binding_sink(loomc_module_t* module);
+
+// Returns the last compilation's bindings, valid for the module's lifetime or
+// until another compilation replaces its invocation products.
+LOOMC_API_PRIVATE const loomc_config_binding_list_t*
+loomc_module_config_bindings(const loomc_module_t* module);
 
 // Publishes function versions produced by a successful compilation.
 LOOMC_API_PRIVATE void loomc_module_publish_function_versions(

@@ -15,7 +15,10 @@
 /// Compile reports are optional machine-readable sidecars for target emission.
 /// They describe the selected backend, target, terminal status, artifact size,
 /// and target-provided compiler analysis facts available at the selected
-/// verbosity.
+/// verbosity. Summary and detail reports include configuration bindings applied
+/// by the module's last successful compilation. These bindings survive release
+/// of the configuration module and compile result, workspace trimming, and
+/// module cloning. IR serialization alone does not carry invocation bindings.
 ///
 /// Report generation is opt-in. Omitting this descriptor, or setting `mode` to
 /// `LOOMC_COMPILE_REPORT_MODE_NONE`, keeps emission on the normal artifact

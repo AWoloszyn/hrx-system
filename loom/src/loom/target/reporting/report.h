@@ -1230,7 +1230,7 @@ typedef struct loom_target_compile_report_source_low_transform_row_t {
 typedef struct loom_target_compile_report_config_binding_row_t {
   // Config symbol name without the textual '@' sigil.
   iree_string_view_t key;
-  // Caller-provided textual value bound to |key|.
+  // Canonical textual value bound to |key|. Stored rows own both strings.
   iree_string_view_t value;
 } loom_target_compile_report_config_binding_row_t;
 
@@ -1859,12 +1859,12 @@ static inline const void* loom_target_compile_report_vec_const_rows(
 
 // Structured feedback from one module-to-artifact compilation.
 //
-// Reports borrow every string view from the compiled module, target records,
-// compile options, config bindings, backend tables, or artifact storage. Detail
-// row lists are owned by the report and allocated from |allocator| as rows are
-// recorded.
-// Consumers that need a report to outlive those string owners must copy the
-// strings before releasing the module or candidate.
+// Reports borrow string views from the compiled module, target records,
+// compile options, backend tables, or artifact storage. Config binding rows own
+// their key/value strings because materialization inputs may be transient.
+// Detail row lists are owned by the report and allocated from |allocator| as
+// rows are recorded. Consumers that need a report to outlive those string
+// owners must copy the strings before releasing the module or candidate.
 typedef struct loom_target_compile_report_t {
   // Host allocator used for owned row storage.
   iree_allocator_t allocator;
@@ -2097,8 +2097,8 @@ void loom_target_compile_report_deinitialize(
     loom_target_compile_report_t* report);
 
 // Initializes |out_target| as a deep copy of |source| using |allocator| for
-// owned row storage. String views remain borrowed from the same owners
-// referenced by |source|.
+// owned row storage. Config binding strings are copied; other string views
+// remain borrowed from the same owners referenced by |source|.
 iree_status_t loom_target_compile_report_clone(
     const loom_target_compile_report_t* source, iree_allocator_t allocator,
     loom_target_compile_report_t* out_target);

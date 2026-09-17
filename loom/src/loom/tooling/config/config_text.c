@@ -536,6 +536,28 @@ static iree_status_t loom_tooling_config_parse_value(
                           key.data);
 }
 
+iree_status_t loom_tooling_config_notify_binding(
+    loom_tooling_config_binding_sink_t sink, const loom_module_t* module,
+    iree_string_view_t key, loom_attribute_t value) {
+  if (!sink.fn) {
+    return iree_ok_status();
+  }
+  iree_string_builder_t builder;
+  iree_string_builder_initialize(module->allocator, &builder);
+  loom_output_stream_t stream;
+  loom_output_stream_for_builder(&builder, &stream);
+  iree_status_t status = loom_text_print_attribute(&value, module, &stream);
+  if (iree_status_is_ok(status)) {
+    const loom_tooling_config_binding_t binding = {
+        .key = key,
+        .value = iree_string_builder_view(&builder),
+    };
+    status = sink.fn(sink.user_data, &binding);
+  }
+  iree_string_builder_deinitialize(&builder);
+  return status;
+}
+
 iree_status_t loom_tooling_config_materialize_module(
     loom_module_t* module,
     const loom_tooling_config_materialize_options_t* options,
@@ -592,6 +614,8 @@ iree_status_t loom_tooling_config_materialize_module(
     IREE_RETURN_IF_ERROR(loom_tooling_config_apply_exact_value(
         module, loom_tooling_config_symbol_name(module, symbol), old_op,
         config_type, value));
+    IREE_RETURN_IF_ERROR(loom_tooling_config_notify_binding(
+        options->binding_sink, module, key, value));
     ++result.materialized_count;
   }
 

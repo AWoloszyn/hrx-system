@@ -48,6 +48,8 @@ loom_cc_library(
 loom_cc_library(
     name = "report",
     srcs = [
+        "config_bindings.c",
+        "config_bindings.h",
         "loop_pipeline.c",
         "memory_summary.c",
         "memory_summary.h",
@@ -208,6 +210,7 @@ loom_cc_test(
 loom_cc_test(
     name = "format_test",
     srcs = [
+        "config_bindings_test.cc",
         "format_json_test.cc",
         "format_lowering_test.cc",
         "format_planning_test.cc",

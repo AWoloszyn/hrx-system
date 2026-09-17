@@ -378,7 +378,8 @@ LOOMC_API_EXPORT void loomc_module_release(loomc_module_t* module);
 /// modules may be mutated independently after this call returns. When a prior
 /// compilation retained resolved function targets outside the source IR, the
 /// clone materializes those targets into ordinary definitions and function
-/// target references. The clone needs no invocation-local compiler facts.
+/// target references. Applied configuration bindings are copied for later
+/// emission reports; their strings do not borrow from the source module.
 ///
 /// @thread_safety
 /// Cloning reads `source_module` and mutates `workspace`. Concurrent clones of

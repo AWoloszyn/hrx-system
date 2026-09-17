@@ -1704,6 +1704,8 @@ TEST(AmdgpuTargetTest, PipelineSchedulesSurviveSeparateCompileAndRepeatedEmit) {
   PassProgramPtr pass_program = CreatePreparedLowPassProgram(context.get());
   SourcePtr source = CreateTextSource("loop_pipeline.loom", R"(
 amdgpu.target<gfx1151> @gpu
+config.def @first_depth = 1 : index
+config.def @second_depth = 4 : index
 
 kernel.def target(@gpu) @loop_pipeline() {
   %c1 = index.constant 1 : index
@@ -1713,17 +1715,18 @@ kernel.def target(@gpu) @loop_pipeline() {
   %end = index.assume %count [range(%count, 0, 64)] : index
   %c0 = index.constant 0 : index
   %c1 = index.constant 1 : index
-  %c3 = index.constant 3 : index
+  %first_depth = config.get @first_depth : index
+  %second_depth = config.get @second_depth : index
   %base = index.constant 0 : offset
   %initial = scalar.constant 0.0 : f32
   %data = buffer.view %input[%base] : buffer -> view<64xf32>
   %destination = buffer.view %output[%base] : buffer -> view<1xf32>
-  %first = scf.for %i = [%c0 to %end step %c1](%sum = %initial : f32) -> (f32) pipeline(%c3) {
+  %first = scf.for %i = [%c0 to %end step %c1](%sum = %initial : f32) -> (f32) pipeline(%first_depth) {
     %value = view.load %data[%i] : view<64xf32> -> f32
     %next = scalar.addf %sum, %value : f32
     scf.yield %next : f32
   }
-  %second = scf.for %j = [%c0 to %end step %c1](%sum = %first : f32) -> (f32) pipeline(%c1) {
+  %second = scf.for %j = [%c0 to %end step %c1](%sum = %first : f32) -> (f32) pipeline(%second_depth) {
     %value = view.load %data[%j] : view<64xf32> -> f32
     %next = scalar.addf %sum, %value : f32
     scf.yield %next : f32
@@ -1739,14 +1742,25 @@ kernel.def target(@gpu) @loop_pipeline() {
 )");
   ModulePtr module =
       DeserializeModule(context.get(), workspace.get(), source.get());
+  SourcePtr config_source = CreateTextSource("loop_config.loom", R"(
+config.def @first_depth = 3 : index
+config.def @second_depth = 1 : index
+config.def @unused = 9 : index
+)");
+  ModulePtr config =
+      DeserializeModule(context.get(), workspace.get(), config_source.get());
+  loomc_compile_options_t compile_options = {};
+  compile_options.config_module = config.get();
   loomc_result_t* raw_compile_result = nullptr;
   LOOMC_ASSERT_OK(loomc_compile_module(
       compiler.get(), workspace.get(), pass_program.get(), module.get(),
-      nullptr, loomc_allocator_system(), &raw_compile_result));
+      &compile_options, loomc_allocator_system(), &raw_compile_result));
   ResultPtr compile_result(raw_compile_result);
   ExpectSucceededResult(compile_result.get());
   ASSERT_TRUE(loomc_result_succeeded(compile_result.get()));
   compile_result.reset();
+  config.reset();
+  config_source.reset();
   pass_program.reset();
   compiler.reset();
   source.reset();
@@ -1769,6 +1783,13 @@ kernel.def target(@gpu) @loop_pipeline() {
                      LOOMC_ARTIFACT_FORMAT_COMPILE_REPORT_JSON);
     ASSERT_NE(artifact, nullptr);
     const std::string report = ToString(artifact->contents);
+    EXPECT_NE(report.find("\"key\":\"first_depth\",\"value\":\"3\""),
+              std::string::npos)
+        << report;
+    EXPECT_NE(report.find("\"key\":\"second_depth\",\"value\":\"1\""),
+              std::string::npos)
+        << report;
+    EXPECT_EQ(report.find("unused"), std::string::npos);
     const size_t begin = report.find("\"loop_pipelines\":");
     ASSERT_NE(begin, std::string::npos) << report;
     const size_t end = report.find("\"memory\":", begin);

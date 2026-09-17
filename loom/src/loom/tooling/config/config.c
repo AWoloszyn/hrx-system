@@ -115,6 +115,7 @@ iree_status_t loom_tooling_config_apply_exact_value(loom_module_t* module,
 
 iree_status_t loom_tooling_config_overlay_module(
     loom_module_t* module, const loom_module_t* config_module,
+    loom_tooling_config_binding_sink_t binding_sink,
     iree_arena_block_pool_t* block_pool,
     loom_tooling_config_materialize_result_t* out_result) {
   IREE_ASSERT_ARGUMENT(module);
@@ -196,6 +197,8 @@ iree_status_t loom_tooling_config_overlay_module(
     }
     IREE_RETURN_IF_ERROR(loom_tooling_config_apply_exact_value(
         module, key, target_op, target_type, remapped_value));
+    IREE_RETURN_IF_ERROR(loom_tooling_config_notify_binding(
+        binding_sink, module, key, remapped_value));
     ++result.materialized_count;
   }
 

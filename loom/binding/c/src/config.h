@@ -10,6 +10,7 @@
 #include "iree/base/api.h"
 #include "iree/base/internal/arena.h"
 #include "loom/ir/module.h"
+#include "loom/tooling/config/config.h"
 #include "loomc/config.h"
 #include "result.h"
 #include "visibility.h"
@@ -27,6 +28,28 @@ typedef struct loomc_config_application_result_t {
   loomc_host_size_t ignored_count;
 } loomc_config_application_result_t;
 
+// One applied invocation binding with arena-owned key and value strings.
+typedef struct loomc_config_binding_record_t {
+  // Next binding in application order, or NULL.
+  struct loomc_config_binding_record_t* next;
+  // Copied binding independent of the caller's config module lifetime.
+  loom_tooling_config_binding_t binding;
+} loomc_config_binding_record_t;
+
+// Applied invocation configuration retained with a compiled module.
+typedef struct loomc_config_binding_list_t {
+  // First applied binding, or NULL for unconfigured compilations.
+  loomc_config_binding_record_t* head;
+  // Last applied binding for constant-time appends, or NULL.
+  loomc_config_binding_record_t* tail;
+} loomc_config_binding_list_t;
+
+// Copies one producer-established binding without duplicate-key rediscovery.
+LOOMC_API_PRIVATE iree_status_t
+loomc_config_binding_list_append(loomc_config_binding_list_t* list,
+                                 const loom_tooling_config_binding_t* binding,
+                                 iree_arena_allocator_t* arena);
+
 // Structured config module application options.
 typedef struct loomc_config_apply_module_options_t {
   // Typed config definitions to overlay, or NULL to apply only policy.
@@ -34,6 +57,9 @@ typedef struct loomc_config_apply_module_options_t {
 
   // Module receiving exact config values.
   loom_module_t* target_module;
+
+  // Receives applied bindings for the compiled module's retained identity.
+  loom_tooling_config_binding_sink_t binding_sink;
 
   // Final config validation and resolution policy.
   loomc_config_policy_flags_t policy_flags;

@@ -40,11 +40,15 @@ struct loomc_module_t {
   // Internal linked, parsed, or optimized module.
   loom_module_t* module;
 
-  // Arena owning compiler products associated with the current module IR.
-  iree_arena_allocator_t function_version_arena;
-
-  // Concrete function versions published by the last successful compilation.
-  loom_function_version_owner_t function_versions;
+  // Products retained across result release and separate artifact emission.
+  struct {
+    // Arena owning invocation facts and concrete function versions.
+    iree_arena_allocator_t arena;
+    // Concrete versions published by the last successful compilation.
+    loom_function_version_owner_t function_versions;
+    // Applied invocation bindings with copied key/value strings.
+    loomc_config_binding_list_t config_bindings;
+  } compilation;
 };
 
 typedef struct loomc_module_ir_projection_t {
@@ -82,7 +86,7 @@ typedef struct loomc_module_deserialize_state_t {
 
 static void loomc_module_destroy(loomc_module_t* module) {
   loomc_allocator_t allocator = module->allocator;
-  iree_arena_deinitialize(&module->function_version_arena);
+  iree_arena_deinitialize(&module->compilation.arena);
   loom_module_free(module->module);
   loomc_workspace_release(module->workspace);
   loomc_context_release(module->context);
@@ -475,9 +479,9 @@ loomc_status_t loomc_module_create_empty(loomc_context_t* context,
   module->workspace = workspace;
   loomc_workspace_retain(workspace);
   iree_arena_initialize(loomc_workspace_block_pool(workspace),
-                        &module->function_version_arena);
-  loom_function_version_owner_initialize(&module->function_version_arena,
-                                         &module->function_versions);
+                        &module->compilation.arena);
+  loom_function_version_owner_initialize(
+      &module->compilation.arena, &module->compilation.function_versions);
 
   *out_module = module;
   return loomc_ok_status();
@@ -519,25 +523,46 @@ const loom_module_t* loomc_module_const_loom_module(
   return module ? module->module : NULL;
 }
 
-iree_arena_allocator_t* loomc_module_prepare_function_versions(
+iree_arena_allocator_t* loomc_module_prepare_compilation(
     loomc_module_t* module) {
   IREE_ASSERT_ARGUMENT(module);
-  iree_arena_reset(&module->function_version_arena);
-  loom_function_version_owner_initialize(&module->function_version_arena,
-                                         &module->function_versions);
-  return &module->function_version_arena;
+  iree_arena_reset(&module->compilation.arena);
+  module->compilation.config_bindings = (loomc_config_binding_list_t){0};
+  loom_function_version_owner_initialize(
+      &module->compilation.arena, &module->compilation.function_versions);
+  return &module->compilation.arena;
+}
+
+static iree_status_t loomc_module_record_config_binding(
+    void* user_data, const loom_tooling_config_binding_t* binding) {
+  loomc_module_t* module = (loomc_module_t*)user_data;
+  return loomc_config_binding_list_append(&module->compilation.config_bindings,
+                                          binding, &module->compilation.arena);
+}
+
+loom_tooling_config_binding_sink_t loomc_module_config_binding_sink(
+    loomc_module_t* module) {
+  return (loom_tooling_config_binding_sink_t){
+      .fn = loomc_module_record_config_binding,
+      .user_data = module,
+  };
+}
+
+const loomc_config_binding_list_t* loomc_module_config_bindings(
+    const loomc_module_t* module) {
+  return &module->compilation.config_bindings;
 }
 
 void loomc_module_publish_function_versions(
     loomc_module_t* module, loom_function_version_owner_t function_versions) {
   IREE_ASSERT_ARGUMENT(module);
-  module->function_versions = function_versions;
+  module->compilation.function_versions = function_versions;
 }
 
 const loom_function_version_list_t* loomc_module_function_versions(
     const loomc_module_t* module) {
-  return module && module->function_versions.list.count != 0
-             ? &module->function_versions.list
+  return module && module->compilation.function_versions.list.count != 0
+             ? &module->compilation.function_versions.list
              : NULL;
 }
 
@@ -592,6 +617,13 @@ loomc_status_t loomc_module_clone(const loomc_module_t* source_module,
     if (loomc_status_is_ok(status)) {
       cloned_internal_module = NULL;
     }
+  }
+  for (const loomc_config_binding_record_t* binding =
+           source_module->compilation.config_bindings.head;
+       binding != NULL && loomc_status_is_ok(status); binding = binding->next) {
+    status = loomc_status_from_iree(loomc_config_binding_list_append(
+        &module->compilation.config_bindings, &binding->binding,
+        &module->compilation.arena));
   }
   if (loomc_status_is_ok(status)) {
     *out_module = module;

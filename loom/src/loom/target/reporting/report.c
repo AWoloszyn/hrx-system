@@ -8,6 +8,7 @@
 
 #include <string.h>
 
+#include "loom/target/reporting/config_bindings.h"
 #include "loom/target/reporting/memory_summary.h"
 #include "loom/target/reporting/row_list.h"
 
@@ -271,10 +272,8 @@ iree_status_t loom_target_compile_report_clone(
         &target.target_insertion_rows);
   }
   if (iree_status_is_ok(status)) {
-    status = loom_target_compile_report_row_list_clone(
-        &source->config_binding_rows,
-        sizeof(loom_target_compile_report_config_binding_row_t), allocator,
-        &target.config_binding_rows);
+    status = loom_target_compile_report_config_bindings_append_all(
+        &target.config_binding_rows, &source->config_binding_rows, allocator);
   }
   if (iree_status_is_ok(status)) {
     status = loom_target_compile_report_row_list_clone(
@@ -1535,9 +1534,8 @@ iree_status_t loom_target_compile_report_record_entry_report(
   }
   if (iree_any_bit_set(entry_report->detail_flags,
                        LOOM_TARGET_COMPILE_REPORT_DETAIL_CONFIG_BINDING_ROWS)) {
-    IREE_RETURN_IF_ERROR(loom_target_compile_report_row_list_append_all(
+    IREE_RETURN_IF_ERROR(loom_target_compile_report_config_bindings_append_all(
         &report->config_binding_rows, &entry_report->config_binding_rows,
-        sizeof(loom_target_compile_report_config_binding_row_t),
         report->allocator));
   }
   if (iree_any_bit_set(entry_report->detail_flags,
@@ -1726,18 +1724,6 @@ iree_status_t loom_target_compile_report_record_source_low_row(
       loom_target_compile_report_source_low_selection_summary_from_row(row);
   return loom_target_compile_report_record_source_low_selection_summary_row(
       report, &summary);
-}
-
-iree_status_t loom_target_compile_report_record_config_binding_row(
-    loom_target_compile_report_t* report,
-    const loom_target_compile_report_config_binding_row_t* row) {
-  report->detail_flags |= LOOM_TARGET_COMPILE_REPORT_DETAIL_CONFIG_BINDING_ROWS;
-  if (!loom_target_compile_report_wants_details(
-          report, LOOM_TARGET_COMPILE_REPORT_DETAIL_CONFIG_BINDING_ROWS)) {
-    return iree_ok_status();
-  }
-  return loom_target_compile_report_row_list_append(
-      &report->config_binding_rows, sizeof(*row), report->allocator, row);
 }
 
 iree_status_t loom_target_compile_report_record_source_low_target_row(
